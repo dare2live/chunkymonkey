@@ -12,7 +12,17 @@ from typing import Optional, Tuple
 
 from services.industry import industry_join_clause
 from services.utils import safe_float as _safe_float, percentile_ranks as _percentile_ranks
-from services.constants import PATH_THRESHOLDS
+from services.constants import (
+    PATH_THRESHOLDS,
+    COMPOSITE_WEIGHTS,
+    CEILING_RULES,
+    POOL_THRESHOLDS,
+    EVENT_TYPE_SCORES,
+    SETUP_LEVEL_THRESHOLDS,
+    ATTENTION_WEIGHTS,
+    ATTENTION_BOOST_PARAMS,
+    CROWDING_PENALTY_CAP,
+)
 
 logger = logging.getLogger("cm-api")
 
@@ -54,21 +64,6 @@ STOCK_SCORE_DEFAULTS = {
     "overheated_penalty": 20,       # 过热扣分
     "conflict_penalty": 15,         # 冲突扣分
     "path_exhausted_penalty": 15,   # 已充分演绎扣分
-}
-
-# 事件类型得分
-EVENT_TYPE_SCORES = {
-    "new_entry": 100,
-    "increase": 70,
-    "unchanged": 30,
-    "decrease": 10,
-    "exit": 0,
-}
-
-SETUP_LEVEL_THRESHOLDS = {
-    "level3": {"min_samples": 5, "min_edge_raw": 2.5},
-    "level2": {"min_samples": 8, "min_edge_raw": 2.0},
-    "level1": {"min_samples": 12, "min_edge_raw": 1.5},
 }
 
 
@@ -1171,15 +1166,16 @@ def _external_attention_score(attention_row: Optional[dict]) -> Optional[float]:
     )
 
     weighted = []
+    aw = ATTENTION_WEIGHTS
     if comment_available or any(value is not None for value in (focus_index, composite_score, participation)):
         if composite_score is not None:
-            weighted.append((0.42, _clamp_score(composite_score)))
+            weighted.append((aw["composite"], _clamp_score(composite_score)))
         if focus_index is not None:
-            weighted.append((0.30, _clamp_score(focus_index)))
+            weighted.append((aw["focus"], _clamp_score(focus_index)))
         if participation is not None:
-            weighted.append((0.28, participation))
+            weighted.append((aw["participation"], participation))
     if survey_available and survey_score is not None:
-        weighted.append((0.18, survey_score))
+        weighted.append((aw["survey"], survey_score))
     if not weighted:
         return None
     total_weight = sum(weight for weight, _ in weighted)
@@ -1189,12 +1185,13 @@ def _external_attention_score(attention_row: Optional[dict]) -> Optional[float]:
 def _external_attention_boost(attention_score: Optional[float], survey_count_30d: int) -> float:
     if attention_score is None:
         return 0.0
-    boost = max(attention_score - 55.0, 0.0) * 0.18
-    if survey_count_30d >= 2:
-        boost += 0.8
+    bp = ATTENTION_BOOST_PARAMS
+    boost = max(attention_score - bp["baseline"], 0.0) * bp["multiplier"]
+    if survey_count_30d >= bp["survey_high_count"]:
+        boost += bp["survey_high_pts"]
     elif survey_count_30d >= 1:
-        boost += 0.4
-    return round(min(boost, 8.0), 2)
+        boost += bp["survey_low_pts"]
+    return round(min(boost, bp["max_boost"]), 2)
 
 
 def _external_crowding_penalty(
@@ -1221,7 +1218,7 @@ def _external_crowding_penalty(
     penalty += _score_ge(stage_score, ((68, 1.5), (60, 0.8)), 0.0)
     penalty += _score_ge(price_20d, ((25, 1.5), (15, 0.8)), 0.0)
     penalty += _score_ge(price_1m, ((30, 1.2), (18, 0.6)), 0.0)
-    return round(min(penalty, 10.0), 2)
+    return round(min(penalty, CROWDING_PENALTY_CAP), 2)
 
 
 def _external_attention_signal(
@@ -1230,12 +1227,14 @@ def _external_attention_signal(
     survey_count_30d: int,
     survey_count_90d: int,
 ) -> Optional[str]:
-    if crowding_penalty >= 6 and (attention_score or 0) >= 60:
+    cr = CEILING_RULES
+    pt = POOL_THRESHOLDS
+    if crowding_penalty >= cr["crowding_moderate"] and (attention_score or 0) >= pt["b_composite"]:
         return "热度拥挤"
     if attention_score is not None:
-        if attention_score >= 72:
+        if attention_score >= pt["ext_attn_confirm"]:
             return "外部确认增强"
-        if attention_score >= 60:
+        if attention_score >= pt["b_composite"]:
             return "关注度抬升"
     if survey_count_30d >= 2 or survey_count_90d >= 4:
         return "调研活跃"
@@ -1256,7 +1255,10 @@ def compute_composite_priority(
     返回 (raw_score, final_score)。
     权重：发现 35% + 质量 30% + 阶段 20% + 预测 15%。
     """
-    raw = discovery * 0.35 + quality * 0.30 + stage * 0.20 + forecast_effective * 0.15
+    raw = (discovery * COMPOSITE_WEIGHTS["discovery"]
+           + quality * COMPOSITE_WEIGHTS["quality"]
+           + stage * COMPOSITE_WEIGHTS["stage"]
+           + forecast_effective * COMPOSITE_WEIGHTS["forecast"])
     raw = round(max(0.0, min(100.0, raw)), 2)
     final = round(max(0.0, min(100.0, raw + attention_boost - crowding_penalty)), 2)
     return raw, final
@@ -1274,18 +1276,19 @@ def apply_composite_ceiling(
     """
     ceiling = None
     reasons = []
-    if stage < 40:
-        ceiling = 69.0 if ceiling is None else min(ceiling, 69.0)
-        reasons.append("阶段分低于40，综合分封顶69")
-    if quality < 45 and stock_archetype != "周期/事件驱动型":
-        ceiling = 64.0 if ceiling is None else min(ceiling, 64.0)
-        reasons.append("质量分低于45，非周期/事件型综合分封顶64")
-    if crowding_penalty >= 8:
-        ceiling = 69.0 if ceiling is None else min(ceiling, 69.0)
-        reasons.append("外部热度拥挤，综合分封顶69")
-    elif crowding_penalty >= 6 and stage < 60:
-        ceiling = 74.0 if ceiling is None else min(ceiling, 74.0)
-        reasons.append("外部热度偏拥挤且阶段分不足60，综合分封顶74")
+    cr = CEILING_RULES
+    if stage < cr["stage_floor"]:
+        ceiling = cr["stage_floor_cap"] if ceiling is None else min(ceiling, cr["stage_floor_cap"])
+        reasons.append(f"阶段分低于{cr['stage_floor']}，综合分封顶{cr['stage_floor_cap']:.0f}")
+    if quality < cr["quality_floor"] and stock_archetype not in cr["quality_exempt_archetypes"]:
+        ceiling = cr["quality_floor_cap"] if ceiling is None else min(ceiling, cr["quality_floor_cap"])
+        reasons.append(f"质量分低于{cr['quality_floor']}，非周期/事件型综合分封顶{cr['quality_floor_cap']:.0f}")
+    if crowding_penalty >= cr["crowding_severe"]:
+        ceiling = cr["crowding_severe_cap"] if ceiling is None else min(ceiling, cr["crowding_severe_cap"])
+        reasons.append(f"外部热度拥挤，综合分封顶{cr['crowding_severe_cap']:.0f}")
+    elif crowding_penalty >= cr["crowding_moderate"] and stage < cr["crowding_moderate_stage"]:
+        ceiling = cr["crowding_moderate_cap"] if ceiling is None else min(ceiling, cr["crowding_moderate_cap"])
+        reasons.append(f"外部热度偏拥挤且阶段分不足{cr['crowding_moderate_stage']}，综合分封顶{cr['crowding_moderate_cap']:.0f}")
     if ceiling is not None and composite > ceiling:
         capped = min(composite, ceiling)
         reason_text = "；".join(reasons[:2]) if reasons else None
@@ -1306,44 +1309,46 @@ def assign_priority_pool(
 
     返回 (pool, reason)。
     """
-    if stage < 40 or composite < 45:
+    pt = POOL_THRESHOLDS
+    if stage < pt["d_stage"] or composite < pt["d_composite"]:
         pool = "D池"
-        reason = "阶段分低于40，进入D池" if stage < 40 else "综合优先分低于45，进入D池"
+        reason = f"阶段分低于{pt['d_stage']}，进入D池" if stage < pt["d_stage"] else f"综合优先分低于{pt['d_composite']}，进入D池"
     elif (
-        composite >= 75
-        and stage >= 50
-        and quality >= 55
-        and discovery >= 50
+        composite >= pt["a_composite"]
+        and stage >= pt["a_stage"]
+        and quality >= pt["a_quality"]
+        and discovery >= pt["a_discovery"]
     ):
         pool = "A池"
         if promoted_by_external:
             reason = "内部分接近A池，外部确认增强后进入A池"
         else:
-            reason = "综合分达75且通过发现/质量/阶段门槛，进入A池"
-    elif composite >= 60:
+            reason = f"综合分达{pt['a_composite']}且通过发现/质量/阶段门槛，进入A池"
+    elif composite >= pt["b_composite"]:
         pool = "B池"
         blockers = []
-        if composite >= 75 and discovery < 50:
-            blockers.append("发现分不足50")
-        if composite >= 75 and quality < 55:
-            blockers.append("质量分不足55")
-        if composite >= 75 and stage < 50:
-            blockers.append("阶段分不足50")
+        if composite >= pt["a_composite"] and discovery < pt["a_discovery"]:
+            blockers.append(f"发现分不足{pt['a_discovery']}")
+        if composite >= pt["a_composite"] and quality < pt["a_quality"]:
+            blockers.append(f"质量分不足{pt['a_quality']}")
+        if composite >= pt["a_composite"] and stage < pt["a_stage"]:
+            blockers.append(f"阶段分不足{pt['a_stage']}")
         if blockers:
             reason = "综合分虽高，但未满足A池门槛：" + "、".join(blockers[:2])
         elif demoted_by_crowding:
             reason = "内部分已达A池，但外部热度拥挤导致降至B池"
-        elif raw_composite < 60 <= composite and (external_attention_score or 0) >= 70:
+        elif raw_composite < pt["b_composite"] <= composite and (external_attention_score or 0) >= pt["ext_attn_promote"]:
             reason = "外部确认增强后进入B池"
         else:
-            reason = "综合优先分介于60-75，进入B池"
+            reason = f"综合优先分介于{pt['b_composite']}-{pt['a_composite']}，进入B池"
     else:
         pool = "C池"
-        reason = "综合优先分介于45-60，进入C池"
+        reason = f"综合优先分介于{pt['d_composite']}-{pt['b_composite']}，进入C池"
 
-    if reason and external_crowding_penalty >= 6 and not demoted_by_crowding:
+    cr = CEILING_RULES
+    if reason and external_crowding_penalty >= cr["crowding_moderate"] and not demoted_by_crowding:
         reason += "；外部热度拥挤"
-    elif reason and (external_attention_score or 0) >= 72 and not promoted_by_external:
+    elif reason and (external_attention_score or 0) >= pt["ext_attn_confirm"] and not promoted_by_external:
         reason += "；外部确认增强"
 
     return pool, reason
