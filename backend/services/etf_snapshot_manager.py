@@ -99,6 +99,8 @@ def _source_status_refresh_fingerprint(source_status: Optional[dict]) -> tuple:
         for item in (payload.get("source_breakdown") or [])
     )
     return (
+        payload.get("universe_source"),
+        payload.get("universe_source_updated_at"),
         payload.get("universe_updated_at"),
         payload.get("latest_kline_success_at"),
         payload.get("latest_kline_attempt_at"),
@@ -144,6 +146,18 @@ def _build_etf_source_status(conn, mkt_conn, *, computed_at: Optional[str] = Non
         if updated_at and (universe_updated_at is None or updated_at > universe_updated_at):
             universe_updated_at = updated_at
 
+    universe_state = mkt_conn.execute(
+        """
+        SELECT source, row_count, last_success_at, last_attempt_at, last_error
+        FROM etf_sync_state
+        WHERE dataset = 'asset_universe' AND code = '__all__' AND freq = 'snapshot' AND adjust = 'none'
+        """
+    ).fetchone()
+    universe_source = universe_state["source"] if universe_state else None
+    universe_source_updated_at = None
+    if universe_state:
+        universe_source_updated_at = universe_state["last_success_at"] or universe_state["last_attempt_at"]
+
     state_rows = mkt_conn.execute(
         """
         SELECT code, source, min_date, max_date, row_count,
@@ -183,6 +197,8 @@ def _build_etf_source_status(conn, mkt_conn, *, computed_at: Optional[str] = Non
 
     return {
         "universe_count": len(etf_codes),
+        "universe_source": universe_source,
+        "universe_source_updated_at": universe_source_updated_at,
         "universe_updated_at": universe_updated_at,
         "kline_etf_count": len(with_data),
         "kline_coverage_ratio": round(len(with_data) * 100.0 / len(etf_codes), 2) if etf_codes else None,

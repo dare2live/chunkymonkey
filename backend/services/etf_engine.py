@@ -24,6 +24,24 @@ logger = logging.getLogger("cm-api")
 ProgressCb = Optional[Callable[[str, int, int, str], None]]
 
 
+def _write_asset_universe_sync_state(conn, *, source: Optional[str], row_count: int, synced_at: str) -> None:
+        conn.execute(
+                """
+                INSERT INTO etf_sync_state
+                (dataset, code, freq, adjust, source, min_date, max_date,
+                 row_count, last_success_at, last_attempt_at, last_error)
+                VALUES ('asset_universe', '__all__', 'snapshot', 'none', ?, NULL, NULL, ?, ?, ?, NULL)
+                ON CONFLICT(dataset, code, freq, adjust) DO UPDATE SET
+                    source=COALESCE(excluded.source, source),
+                    row_count=excluded.row_count,
+                    last_success_at=excluded.last_success_at,
+                    last_attempt_at=excluded.last_attempt_at,
+                    last_error=NULL
+                """,
+                (source, row_count, synced_at, synced_at),
+        )
+
+
 def _mean(values):
     clean = [_safe_float(v) for v in values if _safe_float(v) is not None]
     if not clean:
@@ -228,19 +246,21 @@ def _rotation_eligible(row: Dict) -> bool:
     return True
 
 
-async def sync_etf_universe(conn, mkt_conn, sync_kline: bool = True,
-                              kline_days: int = 120,
-                              kline_start_date: Optional[str] = None,
-                              max_etfs: int = None,
-                              progress_cb: ProgressCb = None) -> Dict[str, int]:
+async def sync_etf_universe(etf_conn, etf_price_conn, sync_kline: bool = True,
+                            kline_days: int = 120,
+                            kline_start_date: Optional[str] = None,
+                            max_etfs: int = None,
+                            progress_cb: ProgressCb = None) -> Dict[str, int]:
     """
     从 mootdx 拉取 ETF 列表写入 etf_asset_universe，并可选地同步 K 线。
 
     progress_cb(stage, current, total, message) 在关键节点回调，让前端能展示进度条。
 
-    返回 {"etf_count": N, "kline_etf_count": M, "kline_rows": K}
+    注意：当前 ETF 资产池和 ETF K 线都落在 etf.db，调用方通常传入同一个连接。
+
+    返回 {"etf_count": N, "kline_etf_count": M, "kline_rows": K, ...}
     """
-    from services.akshare_client import fetch_etf_list, fetch_etf_kline
+    from services.akshare_client import fetch_etf_kline, fetch_etf_list_with_source
     from services.etf_db import upsert_price_rows, update_sync_state
 
     def _progress(stage: str, current: int, total: int, message: str) -> None:
@@ -253,11 +273,17 @@ async def sync_etf_universe(conn, mkt_conn, sync_kline: bool = True,
     now = datetime.now().isoformat()
     logger.info("[ETF] 开始拉取 ETF 列表 ...")
     _progress("fetch_list", 0, 0, "拉取 ETF 列表")
-    etf_list = await fetch_etf_list()
+    etf_list, list_source = await fetch_etf_list_with_source()
     if not etf_list:
         logger.warning("[ETF] ETF 列表源均未返回有效结果，跳过")
         _progress("done", 0, 0, "未获取到 ETF 列表")
-        return {"etf_count": 0, "kline_etf_count": 0, "kline_rows": 0}
+        return {
+            "etf_count": 0,
+            "kline_etf_count": 0,
+            "kline_rows": 0,
+            "list_source": list_source or None,
+            "kline_source_breakdown": [],
+        }
 
     raw_count = len(etf_list)
     etf_list = [
@@ -271,14 +297,14 @@ async def sync_etf_universe(conn, mkt_conn, sync_kline: bool = True,
     if max_etfs:
         etf_list = etf_list[:max_etfs]
     total_etfs = len(etf_list)
-    logger.info(f"[ETF] 共 {total_etfs} 只 ETF 待入库")
+    logger.info(f"[ETF] ETF 列表来源 {list_source or 'unknown'}，共 {total_etfs} 只 ETF 待入库")
     _progress("fetch_list", total_etfs, total_etfs, f"获取到 {total_etfs} 只 ETF")
 
     # 1) 写入 etf_asset_universe
     etf_count = 0
-    conn.execute("BEGIN IMMEDIATE")
+    etf_conn.execute("BEGIN IMMEDIATE")
     try:
-        conn.execute("DELETE FROM etf_asset_universe")
+        etf_conn.execute("DELETE FROM etf_asset_universe")
         for e in etf_list:
             code = e.get("code")
             name = (e.get("name") or "").replace("\x00", "").strip()
@@ -286,24 +312,32 @@ async def sync_etf_universe(conn, mkt_conn, sync_kline: bool = True,
             if not code:
                 continue
             category = _infer_etf_category(code, name)
-            conn.execute("""
+            etf_conn.execute("""
                 INSERT INTO etf_asset_universe
                   (code, name, market, category, is_active, updated_at)
                 VALUES (?, ?, ?, ?, 1, ?)
             """, (code, name, market, category, now))
             etf_count += 1
-        conn.commit()
+        _write_asset_universe_sync_state(etf_conn, source=list_source or None, row_count=etf_count, synced_at=now)
+        etf_conn.commit()
         logger.info(f"[ETF] 写入 etf_asset_universe: {etf_count} 只 ETF")
         _progress("write_universe", etf_count, total_etfs, f"已写入 {etf_count} 只 ETF")
     except Exception as e:
-        conn.rollback()
+        etf_conn.rollback()
         logger.error(f"[ETF] 写入资产池失败: {e}")
         _progress("error", 0, total_etfs, f"写入资产池失败：{e}")
-        return {"etf_count": 0, "kline_etf_count": 0, "kline_rows": 0}
+        return {
+            "etf_count": 0,
+            "kline_etf_count": 0,
+            "kline_rows": 0,
+            "list_source": list_source or None,
+            "kline_source_breakdown": [],
+        }
 
     # 2) 同步 K 线（可选）
     kline_etf_count = 0
     kline_rows = 0
+    kline_source_breakdown: dict[str, int] = {}
     if sync_kline:
         end_dt = datetime.now()
         start_date = (kline_start_date or "").strip()
@@ -342,13 +376,15 @@ async def sync_etf_universe(conn, mkt_conn, sync_kline: bool = True,
                         "amount": float(r["amount"]) if r.get("amount") is not None else None,
                     })
                 if rows:
-                    upsert_price_rows(mkt_conn, rows, source=src or "mootdx", batch_id=batch_id)
+                    source_name = src or "unknown"
+                    upsert_price_rows(etf_price_conn, rows, source=source_name, batch_id=batch_id)
                     kline_etf_count += 1
                     kline_rows += len(rows)
+                    kline_source_breakdown[source_name] = kline_source_breakdown.get(source_name, 0) + 1
                     try:
                         update_sync_state(
-                            mkt_conn, code, "daily",
-                            source=src or "mootdx",
+                            etf_price_conn, code, "daily",
+                            source=source_name,
                             min_date=rows[0]["date"],
                             max_date=rows[-1]["date"],
                             row_count=len(rows),
@@ -379,15 +415,22 @@ async def sync_etf_universe(conn, mkt_conn, sync_kline: bool = True,
         "etf_count": etf_count,
         "kline_etf_count": kline_etf_count,
         "kline_rows": kline_rows,
+        "list_source": list_source or None,
+        "kline_source_breakdown": [
+            {"source": source, "count": count}
+            for source, count in sorted(kline_source_breakdown.items(), key=lambda item: (-item[1], item[0]))
+        ],
     }
 
 
-def calc_etf_momentum(conn, mkt_conn) -> List[Dict]:
+def calc_etf_momentum(etf_conn, etf_price_conn) -> List[Dict]:
     """
     基于 etf.db 的 ETF 专属 K 线计算 ETF 动量指标。
+    当前 ETF 资产池与 ETF K 线都在同一个库里；第二个连接参数保留是为了兼容既有调用。
+
     简单口径：20 日收益率 → 转 0~100 分；趋势状态由动量分档。
     """
-    etfs = conn.execute(
+    etfs = etf_conn.execute(
         "SELECT code, name, category FROM etf_asset_universe WHERE is_active = 1"
     ).fetchall()
     results = []
@@ -408,7 +451,7 @@ def calc_etf_momentum(conn, mkt_conn) -> List[Dict]:
             continue
         cat = row["category"] or _infer_etf_category(code, name)
         qlib_signal = qlib_signal_map.get(code) or {}
-        prices_60 = mkt_conn.execute("""
+        prices_60 = etf_price_conn.execute("""
             SELECT date, high, low, close, amount FROM etf_price_kline
             WHERE code = ? AND freq = 'daily' ORDER BY date DESC LIMIT 60
         """, (code,)).fetchall()

@@ -18,16 +18,13 @@ from typing import Optional
 
 import pandas as pd
 
-from services.tdx_source import get_tdx_quotes_class, iter_tdx_servers, parse_tdx_server_string
+from services.tdx_source import call_tdx_quotes_with_retry
+from services.tdx_source import clear_mootdx_unavailable as _clear_shared_mootdx_unavailable
+from services.tdx_source import get_mootdx_unavailable_state as _get_shared_mootdx_unavailable_state
+from services.tdx_source import mark_mootdx_unavailable as _mark_shared_mootdx_unavailable
+from services.tdx_source import mootdx_circuit_open as _shared_mootdx_circuit_open
 
 logger = logging.getLogger("cm-api")
-_MOOTDX_TIMEOUT_SECONDS = 5
-_MOOTDX_CIRCUIT_BREAKER_SECONDS = 300
-_MOOTDX_UNAVAILABLE_STATE = {
-    "until": 0.0,
-    "summary": "",
-    "attempts": [],
-}
 
 # 禁用代理，避免 akshare (requests) 走系统代理导致连接失败
 os.environ.pop("http_proxy", None)
@@ -58,14 +55,6 @@ def _looks_like_empty_payload_error(err: Exception) -> bool:
 def _market_symbol(code: str) -> str:
     text = str(code or "").strip()
     return f"sh{text}" if text.startswith("6") else f"sz{text}"
-
-
-def _parse_server_string(s: str) -> Optional[tuple]:
-    return parse_tdx_server_string(s)
-
-
-def _iter_tdx_servers():
-    return iter_tdx_servers()
 
 
 def _summarize_mootdx_attempts(attempts: list[dict]) -> str:
@@ -110,30 +99,31 @@ def _normalize_etf_spot_frame(df: pd.DataFrame) -> list[dict]:
     return results
 
 
-def _mootdx_circuit_open() -> bool:
-    return time.time() < float(_MOOTDX_UNAVAILABLE_STATE.get("until") or 0.0)
+def _get_mootdx_unavailable_state() -> dict[str, object]:
+    return _get_shared_mootdx_unavailable_state()
 
 
 def _mark_mootdx_unavailable(summary: str, attempts: list[dict]) -> None:
-    _MOOTDX_UNAVAILABLE_STATE["until"] = time.time() + _MOOTDX_CIRCUIT_BREAKER_SECONDS
-    _MOOTDX_UNAVAILABLE_STATE["summary"] = summary
-    _MOOTDX_UNAVAILABLE_STATE["attempts"] = list(attempts)
+    _mark_shared_mootdx_unavailable(summary, attempts)
 
 
 def _clear_mootdx_unavailable() -> None:
-    _MOOTDX_UNAVAILABLE_STATE["until"] = 0.0
-    _MOOTDX_UNAVAILABLE_STATE["summary"] = ""
-    _MOOTDX_UNAVAILABLE_STATE["attempts"] = []
+    _clear_shared_mootdx_unavailable()
+
+
+def _mootdx_circuit_open() -> bool:
+    return _shared_mootdx_circuit_open()
 
 
 async def _fetch_daily_mootdx_with_diagnostics(code: str, start_date: str, end_date: str):
     """用 mootdx 从通达信服务器获取日K线，并返回逐服务器诊断。"""
     if _mootdx_circuit_open():
+        state = _get_mootdx_unavailable_state()
         return None, None, {
             "ok": False,
             "cached": True,
-            "attempts": list(_MOOTDX_UNAVAILABLE_STATE.get("attempts") or []),
-            "summary": _MOOTDX_UNAVAILABLE_STATE.get("summary") or "mootdx circuit open",
+            "attempts": list(state.get("attempts") or []),
+            "summary": state.get("summary") or "mootdx circuit open",
         }
 
     diagnostics = {
@@ -141,10 +131,6 @@ async def _fetch_daily_mootdx_with_diagnostics(code: str, start_date: str, end_d
         "attempts": [],
         "summary": "mootdx 未执行",
     }
-    Quotes = get_tdx_quotes_class()
-    if Quotes is None:
-        diagnostics["summary"] = "mootdx 未安装"
-        return None, None, diagnostics
 
     try:
         start_dt = datetime.strptime(start_date[:8], "%Y%m%d")
@@ -156,67 +142,47 @@ async def _fetch_daily_mootdx_with_diagnostics(code: str, start_date: str, end_d
     start_fmt = f"{start_date[:4]}-{start_date[4:6]}-{start_date[6:8]}"
     end_fmt = f"{end_date[:4]}-{end_date[4:6]}-{end_date[6:8]}"
 
-    for server in _iter_tdx_servers():
-        attempt = {"server": server, "ok": False}
-        started_at = time.time()
+    def _fetch_on_client(client):
+        df = client.bars(symbol=code, frequency=9, offset=min(days_needed, 800))
+        if df is None or df.empty:
+            raise ValueError("empty")
 
-        def _fetch():
-            client = Quotes.factory(
-                market="std",
-                multithread=False,
-                heartbeat=False,
-                server=server,
-                timeout=_MOOTDX_TIMEOUT_SECONDS,
-            )
-            try:
-                return client.bars(symbol=code, frequency=9, offset=min(days_needed, 800))
-            finally:
-                try:
-                    client.close()
-                except Exception:
-                    pass
+        df = df.rename(columns={"vol": "volume"})
+        df = df.loc[:, ~df.columns.duplicated()]
+        df["date"] = df.index.strftime("%Y-%m-%d") if hasattr(df.index, "strftime") else df["datetime"].astype(str).str[:10]
+        df = df[(df["date"] >= start_fmt) & (df["date"] <= end_fmt)]
+        if df.empty:
+            raise ValueError("empty_after_filter")
 
-        try:
-            df = await asyncio.get_event_loop().run_in_executor(None, _fetch)
-            attempt["elapsed_sec"] = round(time.time() - started_at, 3)
-            if df is None or df.empty:
-                attempt["error_type"] = "empty"
-                attempt["error"] = "empty"
-                diagnostics["attempts"].append(attempt)
-                continue
+        for col in ["open", "high", "low", "close", "volume", "amount"]:
+            if col not in df.columns:
+                df[col] = None
+        return df[["date", "open", "high", "low", "close", "volume", "amount"]]
 
-            df = df.rename(columns={"vol": "volume"})
-            df = df.loc[:, ~df.columns.duplicated()]
-            df["date"] = df.index.strftime("%Y-%m-%d") if hasattr(df.index, "strftime") else df["datetime"].astype(str).str[:10]
-            df = df[(df["date"] >= start_fmt) & (df["date"] <= end_fmt)]
-            if df.empty:
-                attempt["error_type"] = "empty_after_filter"
-                attempt["error"] = "empty_after_filter"
-                diagnostics["attempts"].append(attempt)
-                continue
-
-            for col in ["open", "high", "low", "close", "volume", "amount"]:
-                if col not in df.columns:
-                    df[col] = None
-
-            attempt["ok"] = True
-            attempt["rows"] = len(df)
-            diagnostics["attempts"].append(attempt)
-            diagnostics["ok"] = True
-            diagnostics["server"] = server
-            diagnostics["summary"] = f"mootdx {server}"
-            _clear_mootdx_unavailable()
-            return df[["date", "open", "high", "low", "close", "volume", "amount"]], "mootdx", diagnostics
-        except Exception as e:
-            attempt["elapsed_sec"] = round(time.time() - started_at, 3)
-            attempt["error_type"] = type(e).__name__
-            attempt["error"] = str(e)
-            diagnostics["attempts"].append(attempt)
-            logger.debug(f"[mootdx] {code} {server} 失败: {e}")
-
-    diagnostics["summary"] = _summarize_mootdx_attempts(diagnostics["attempts"])
-    _mark_mootdx_unavailable(diagnostics["summary"], diagnostics["attempts"])
-    return None, None, diagnostics
+    try:
+        df, _source, attempts = await asyncio.get_event_loop().run_in_executor(
+            None,
+            lambda: call_tdx_quotes_with_retry(
+                _fetch_on_client,
+                action_name=f"bars[{code}]",
+                collect_attempts=True,
+            ),
+        )
+        diagnostics["attempts"] = attempts
+        diagnostics["ok"] = True
+        diagnostics["server"] = attempts[-1]["server"] if attempts else None
+        diagnostics["summary"] = f"mootdx {diagnostics['server']}"
+        _clear_mootdx_unavailable()
+        return df, "mootdx", diagnostics
+    except ImportError:
+        diagnostics["summary"] = "mootdx 未安装"
+        return None, None, diagnostics
+    except Exception as e:
+        diagnostics["attempts"] = list(getattr(e, "tdx_attempts", []) or [])
+        diagnostics["summary"] = _summarize_mootdx_attempts(diagnostics["attempts"]) if diagnostics["attempts"] else str(e)
+        _mark_mootdx_unavailable(diagnostics["summary"], diagnostics["attempts"])
+        logger.debug(f"[mootdx] {code} 失败: {e}")
+        return None, None, diagnostics
 
 
 async def _safe_akshare_call(func, *args, timeout=30, retries=2, **kwargs):
@@ -728,56 +694,43 @@ async def fetch_sw_industry_all():
 
 async def _fetch_etf_list_mootdx() -> list[dict]:
     if _mootdx_circuit_open():
-        logger.warning(f"[ETF] 跳过 mootdx ETF 列表探测：{_MOOTDX_UNAVAILABLE_STATE.get('summary') or 'mootdx circuit open'}")
+        state = _get_mootdx_unavailable_state()
+        logger.warning(f"[ETF] 跳过 mootdx ETF 列表探测：{state.get('summary') or 'mootdx circuit open'}")
         return []
 
-    Quotes = get_tdx_quotes_class()
-    if Quotes is None:
+    def _fetch_on_client(client):
+        results = []
+        for market in [0, 1]:
+            stocks = client.stocks(market=market)
+            if stocks is None or stocks.empty:
+                continue
+            for _, row in stocks.iterrows():
+                code = str(row.get("code", "")).strip()
+                name = str(row.get("name", "")).strip()
+                if market == 0 and code.startswith("15"):
+                    results.append({"code": code, "name": name, "market": "sz", "asset_type": "etf"})
+                elif market == 1 and (code.startswith("51") or code.startswith("56") or code.startswith("58")):
+                    results.append({"code": code, "name": name, "market": "sh", "asset_type": "etf"})
+        if not results:
+            raise ValueError("empty")
+        return results
+
+    try:
+        results, source = await asyncio.get_event_loop().run_in_executor(
+            None,
+            lambda: call_tdx_quotes_with_retry(
+                _fetch_on_client,
+                action_name="stocks[etf-list]",
+            ),
+        )
+        _clear_mootdx_unavailable()
+        logger.info(f"[ETF] ETF 列表来自 {source}: {len(results)} 只")
+        return results
+    except ImportError:
         return []
-
-    attempts = []
-    for server in _iter_tdx_servers():
-        started_at = time.time()
-        def _fetch():
-            client = Quotes.factory(
-                market="std",
-                multithread=False,
-                heartbeat=False,
-                server=server,
-                timeout=_MOOTDX_TIMEOUT_SECONDS,
-            )
-            results = []
-            try:
-                for market in [0, 1]:
-                    stocks = client.stocks(market=market)
-                    if stocks is None or stocks.empty:
-                        continue
-                    for _, row in stocks.iterrows():
-                        code = str(row.get("code", "")).strip()
-                        name = str(row.get("name", "")).strip()
-                        if market == 0 and code.startswith("15"):
-                            results.append({"code": code, "name": name, "market": "sz", "asset_type": "etf"})
-                        elif market == 1 and (code.startswith("51") or code.startswith("56") or code.startswith("58")):
-                            results.append({"code": code, "name": name, "market": "sh", "asset_type": "etf"})
-            finally:
-                try:
-                    client.close()
-                except Exception:
-                    pass
-            return results
-
-        try:
-            results = await asyncio.get_event_loop().run_in_executor(None, _fetch)
-            if results:
-                _clear_mootdx_unavailable()
-                logger.info(f"[ETF] ETF 列表来自 mootdx {server}: {len(results)} 只")
-                return results
-            attempts.append({"server": server, "ok": False, "error_type": "empty", "error": "empty", "elapsed_sec": round(time.time() - started_at, 3)})
-        except Exception as e:
-            attempts.append({"server": server, "ok": False, "error_type": type(e).__name__, "error": str(e), "elapsed_sec": round(time.time() - started_at, 3)})
-            logger.warning(f"[ETF] mootdx ETF 列表 {server} 失败: {e}")
-    if attempts:
-        _mark_mootdx_unavailable(_summarize_mootdx_attempts(attempts), attempts)
+    except Exception as e:
+        logger.warning(f"[ETF] mootdx ETF 列表失败: {e}")
+        _mark_mootdx_unavailable(f"mootdx stocks failed: {e}", [])
     return []
 
 
@@ -795,16 +748,31 @@ async def _fetch_etf_list_ths() -> list[dict]:
         return []
 
 
+def _coerce_etf_list_result(payload, default_source: str) -> tuple[list[dict], str]:
+    if isinstance(payload, tuple) and len(payload) == 2:
+        rows, source = payload
+        return list(rows or []), str(source or "")
+    rows = list(payload or [])
+    return rows, default_source if rows else ""
+
+
 # ============================================================
 # ETF / 指数 K 线
 # ============================================================
 
+async def fetch_etf_list_with_source() -> tuple[list[dict], str]:
+    """获取 ETF 列表，并显式返回本次有效数据源。"""
+    rows, source = _coerce_etf_list_result(await _fetch_etf_list_mootdx(), "mootdx")
+    if rows:
+        return rows, source
+
+    rows, source = _coerce_etf_list_result(await _fetch_etf_list_ths(), "ths")
+    return rows, source
+
 async def fetch_etf_list() -> list[dict]:
     """获取 ETF 列表，优先 mootdx，失败后回退同花顺 ETF 列表源。"""
-    results = await _fetch_etf_list_mootdx()
-    if results:
-        return results
-    return await _fetch_etf_list_ths()
+    results, _source = await fetch_etf_list_with_source()
+    return results
 
 
 async def fetch_etf_kline(code: str, start_date: str, end_date: str):
@@ -828,9 +796,6 @@ async def fetch_etf_kline(code: str, start_date: str, end_date: str):
 async def fetch_index_kline(code: str, start_date: str, end_date: str):
     """获取指数 K 线（通过 mootdx index_bars）"""
     try:
-        Quotes = get_tdx_quotes_class()
-        if Quotes is None:
-            return None, None
         from datetime import datetime
 
         try:
@@ -846,30 +811,18 @@ async def fetch_index_kline(code: str, start_date: str, end_date: str):
         else:
             mkt = 0  # 深市指数
 
-        def _fetch():
-            servers = _iter_tdx_servers()
-            last_exc = None
-            for srv in servers[:5]:
-                try:
-                    client = Quotes.factory(market='std', multithread=False, heartbeat=False,
-                                            server=srv)
-                    try:
-                        df = client.index_bars(frequency=9, market=mkt, symbol=code,
-                                               offset=min(days_needed, 800))
-                        return df
-                    finally:
-                        try:
-                            client.close()
-                        except Exception:
-                            pass
-                except Exception as exc:
-                    last_exc = exc
-                    continue
-            if last_exc:
-                raise last_exc
-            return None
-
-        df = await asyncio.get_event_loop().run_in_executor(None, _fetch)
+        df, _source = await asyncio.get_event_loop().run_in_executor(
+            None,
+            lambda: call_tdx_quotes_with_retry(
+                lambda client: client.index_bars(
+                    frequency=9,
+                    market=mkt,
+                    symbol=code,
+                    offset=min(days_needed, 800),
+                ),
+                action_name=f"index_bars[{code}]",
+            ),
+        )
         if df is None or df.empty:
             return None, None
 
