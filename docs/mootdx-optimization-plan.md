@@ -10,7 +10,7 @@
 | Phase | 状态 | 说明 |
 |-------|------|------|
 | Phase 1: 基础设施 | ✅ 已完成 | 服务器合并117台、capabilities模块、pyproject更新、README重写 |
-| Phase 2: 本项目接入新数据 | 🔲 待开始 | Affair财务数据、统一服务器、机构持股 |
+| Phase 2: 本项目接入新数据 | ✅ 基础完成 | 服务器统一、Affair gpcw 入库、仓库更名 tdxhub；待接入 holdings/scoring |
 | Phase 3: 扩展数据接入 | 🔲 待开始 | 除权除息、板块、实时行情、连接池 |
 | Phase 4: 代码质量 | 🔲 待开始 | 异常处理、类型标注、测试 |
 | Phase 5: 长期优化 | 🔲 待开始 | Tick数据、asyncio、connect.cfg |
@@ -463,16 +463,141 @@ def finance(self, symbol: str = '000001') -> pd.DataFrame | None:
 | 2.4 | 接入机构持股明细 | `holdings.py` / `scoring.py` | 🔲 待接入 |
 | 2.5 | 接入一致预期数据 | `stock_forecast_engine.py` | 🔲 待接入 |
 | 2.6 | requirements.txt 更新 | `backend/requirements.txt` | ✅ 指向 tdxhub |
+| 2.7 | sync_gpcw 加入定期更新 | `routers/updater.py` | 🔲 待接入 |
 
 **已验证**:
 - 4 个季度 gpcw 文件正确下载、解析、入库（17,981 行）
 - 机构持股明细完整：基金/险资/社保/QFII/私募/信托/银行/法人 各类型
 - 招行(600036) ROE=11.8, EPS=5.7, 基金1397家, 股东47.9万户
-- 处理了 gpcw 重复列名问题（净资产收益率等9个字段）
+- 处理了 gpcw 重复列名问题（净资产收益率等9个字段，取 iloc[0]）
+- 服务器 fallback 机制：mootdx 未安装时降级到内置 5 台后备列表
 
-**待做**:
-- 2.4/2.5: 将 gpcw 机构持股数据接入 holdings.py 和 scoring.py
-- 将 sync_gpcw_files 加入定期更新流程 (updater.py)
+#### 2.A 已完成工作详情
+
+**仓库改名 (2.0)**
+- GitHub API 改名 `dare2live/mootdx` → `dare2live/tdxhub`
+- 本地目录 `/Users/dp/Documents/M/mootdx` → `/Users/dp/Documents/M/tdxhub`
+- git remote 更新；GitHub 自动设置旧 URL 重定向
+- Python 包名保持 `import mootdx` 不变（兼容性）
+
+**服务器列表统一 (2.1/2.1b/2.1c)**
+- `akshare_client.py`: 删除 14 台硬编码 `_TDX_SERVER_CANDIDATES`，
+  改为 `from mootdx.consts import HQ_HOSTS`，提取 `(host, port)` 二元组
+- `financial_client.py`: 删除 7 台硬编码 `_FINANCIAL_TDX_SERVERS`，同上
+- `fetch_index_kline()`: 消除硬编码 `119.147.212.81:7709`，
+  改用 `_iter_tdx_servers()` 遍历前 5 台，首个成功即返回
+- 两个文件均有 `try/except ImportError` 降级逻辑：mootdx 缺失时使用 5 台内置后备
+
+**tdx_affair_client.py (2.2/2.3)**
+
+新建 `backend/services/tdx_affair_client.py`，提供：
+
+| 函数 | 功能 |
+|------|------|
+| `sync_gpcw_files(conn, quarters=4)` | 下载最近 N 季度 gpcw → 解析 → INSERT OR REPLACE 到 raw_gpcw_detail |
+| `get_latest_institutional_holdings(conn, stock_codes)` | 查询最新一期机构持股明细 |
+| `get_gpcw_financial_snapshot(conn, stock_code, limit=8)` | 查询某只股票多期财务数据 |
+
+raw_gpcw_detail 表设计（92 列）：
+
+| 分类 | 字段数 | 说明 |
+|------|--------|------|
+| 主键 | 2 | stock_code, report_date |
+| 每股指标 | 8 | eps, nav_per_share, roe, ocf_per_share 等 |
+| 利润表 | 4 | revenue, operating_profit, net_profit, net_profit_deducted |
+| 现金流 | 3 | operating/investing/financing_cashflow |
+| 资产负债 | 7 | total_assets, total_liabilities, cash, inventory 等 |
+| 股本结构 | 4 | total_shares, float_a_shares, free_float_shares, restricted |
+| 股东 | 4 | holder_count, top1_holder, top10_holder, top10_float_holder |
+| **机构持股** | **21** | inst_total + 10 类机构 (count+shares) + national_team |
+| 业绩预告 | 5 | forecast_profit_yoy_low/high, forecast_profit_low/high, announce_date |
+| 业绩快报 | 4 | express_net_profit, eps, roe_diluted, net_profit_deducted |
+| TTM/年度 | 4 | revenue_ttm, net_profit_ttm, ocf_ttm, total_revenue_ttm |
+| 其它 | 2 | employee_count, report_announce_date |
+| 时间戳 | 1 | ingested_at |
+
+gpcw 重复列名处理：gpcw 585 列中有 9 对重名（如"净资产收益率"出现两次），
+`_safe_float()` 检测到 pandas Series 时取 `iloc[0]`（主报表值）。
+
+#### 2.B 待做：机构持股接入 scoring（2.4）
+
+**设计思路**：
+- `holdings.py` 当前从东财/AKShare 获取机构持仓，gpcw 是独立的验证源
+- gpcw 的优势：按机构类型细分（基金/险资/社保/QFII/私募/信托/银行/法人）
+- 可以在 `scoring.py` 中新增维度：
+  - 机构类型多样性（inst_type_diversity）：参与的机构类型越多越好
+  - 基金重仓度（fund_concentration）：基金持股占自由流通股比例
+  - 险资/社保配置信号（long_money_signal）：险资+社保持股变化
+  - 股东集中度（holder_concentration）：top10 持股 / 总股本
+
+**实施要点**：
+- gpcw 数据按季度更新，不适合做高频特征，适合做「底仓质量」评分
+- 与现有东财持仓数据交叉验证：两个源的机构总数应大致吻合
+- 新特征加入 scoring 权重时需对比有/无该特征的评分效果
+
+#### 2.C 待做：一致预期接入 forecast（2.5）
+
+**设计思路**：
+- gpcw 包含业绩预告字段（净利润同比增幅上/下限、净利润上/下限、公告日期）
+- 可增强 `stock_forecast_engine.py`：
+  - 业绩预告超预期信号（forecast_profit_yoy_high > 某阈值）
+  - 业绩确定性（forecast_profit_yoy_high - low 差值越小越确定）
+  - 快报 vs 预告一致性
+
+**注意**：gpcw 不含卖方分析师一致预期（EPS/目标价），那是付费数据。
+gpcw 的"业绩预告"是公司自己发布的盈利预计，两者不同。
+
+#### 2.D 待做：加入 updater.py 定期更新（2.7）
+
+gpcw 文件按季度发布（3/6/9/12月末），但实际上是滚动更新的：
+同一个 gpcw20251231.zip 随着上市公司陆续发布年报会不断膨胀。
+
+**建议**：
+- 在 updater.py 的每日更新流程末尾加入 `sync_gpcw_files(conn, quarters=2)`
+- 只拉最近 2 个季度（最新季和上一季），已有数据用 INSERT OR REPLACE 覆盖
+- 每次约 10MB 下载 + 10s 解析，对每日跑批影响很小
+
+#### 2.E 优化建议：围绕 gpcw 的增值方案
+
+**P0 — 直接可用，收益最大**
+
+1. **gpcw 机构持股 vs 东财持仓交叉验证**
+   - gpcw 来源：通达信数据中心 → 证交所公开持仓数据
+   - 东财来源：上市公司公告 → 东方财富解析
+   - 两个源应该基本一致，不一致的股票值得重点关注（数据质量问题 or 持仓变动信号）
+   - 可以 `holdings.py` 中新增 cross_validate_institutional_holdings() 比对
+
+2. **gpcw 股东人数变化 → 筹码集中度信号**
+   - holder_count 季度对比：减少 = 筹码集中（通常偏多）
+   - 与当前 scoring 中的价格动量信号形成互补，属于基本面维度
+   - 实施简单：只需对比最近两期 raw_gpcw_detail 的 holder_count
+
+3. **gpcw 业绩预告惊喜因子**
+   - forecast_profit_yoy_high > 50% 且 forecast_profit_yoy_low > 20% → 强正面预告
+   - 结合公告日期(forecast_announce_date)做事件研究：预告后股价反应
+   - 可以扩展 event_engine.py 或作为 scoring 的一个独立因子
+
+**P1 — 需要更多开发**
+
+4. **gpcw 财务质量因子补充 quality_feature_engine**
+   - 当前 quality_feature_engine.py 的数据来源是 akshare 财报
+   - gpcw 多了几个有用字段：
+     - `capital_reserve_per_share` 资本公积（高资本公积 → 有送转能力）
+     - `undistributed_profit_per_share` 未分配利润
+     - `ocf_per_share` vs `eps` 经营现金流/EPS 比值（>1 质量好）
+     - `restricted_a_shares` / `total_shares` 限售股占比（解禁压力）
+
+5. **gpcw 替代部分 akshare 财务数据拉取**
+   - 当前 financial_client.py 用 akshare/sina 接口批量拉取历史财报
+   - gpcw 每季度一个文件覆盖全 A 股，无需逐股拉取
+   - 但 gpcw 只有最新一期快照，不如 akshare 有多期历史
+   - **折中方案**：首次全量用 akshare，增量用 gpcw（每日更新最快）
+
+6. **国家队持股追踪**
+   - `national_team_shares_wan` 是独有数据（东财持仓不直接区分国家队）
+   - "国家队"包括汇金公司、证金公司、外管局等
+   - 对于判断市场底部/顶部有参考价值
+   - 可以建立 national_team_trend 时间序列，观察增减持趋势
 
 ### Phase 3: 扩展数据接入（~2 个工作日）
 
