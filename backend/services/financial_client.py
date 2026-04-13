@@ -441,15 +441,18 @@ def _cleanup_snapshot_stub(conn, stock_code: str, notice_date: Optional[str], re
     )
 
 
-_FINANCIAL_TDX_SERVERS = (
-    ("110.41.147.114", 7709),
-    ("124.70.199.56", 7709),
-    ("121.36.225.169", 7709),
-    ("123.60.70.228", 7709),
-    ("116.205.163.254", 7709),
-    ("116.205.171.132", 7709),
-    ("116.205.183.150", 7709),
-)
+_FINANCIAL_TDX_SERVERS: tuple
+try:
+    from mootdx.consts import HQ_HOSTS as _MOOTDX_HQ_HOSTS
+    _FINANCIAL_TDX_SERVERS = tuple((h, p) for _name, h, p in _MOOTDX_HQ_HOSTS)
+except ImportError:
+    _FINANCIAL_TDX_SERVERS = (
+        ("110.41.147.114", 7709),
+        ("124.70.199.56", 7709),
+        ("121.36.225.169", 7709),
+        ("123.60.70.228", 7709),
+        ("116.205.163.254", 7709),
+    )
 
 
 def _fetch_latest_snapshot_batch(codes):

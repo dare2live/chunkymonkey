@@ -20,22 +20,18 @@ import pandas as pd
 
 logger = logging.getLogger("cm-api")
 
-_TDX_SERVER_CANDIDATES = (
-    ("110.41.147.114", 7709),
-    ("124.70.199.56", 7709),
-    ("121.36.225.169", 7709),
-    ("123.60.70.228", 7709),
-    ("123.60.73.44", 7709),
-    ("124.70.133.119", 7709),
-    ("124.71.187.72", 7709),
-    ("124.71.187.122", 7709),
-    ("119.97.185.59", 7709),
-    ("124.71.9.153", 7709),
-    ("123.60.84.66", 7709),
-    ("116.205.163.254", 7709),
-    ("116.205.171.132", 7709),
-    ("116.205.183.150", 7709),
-)
+try:
+    from mootdx.consts import HQ_HOSTS as _MOOTDX_HQ_HOSTS
+    _TDX_SERVER_CANDIDATES = tuple((h, p) for _name, h, p in _MOOTDX_HQ_HOSTS)
+except ImportError:
+    logger.warning("[mootdx] 无法导入 HQ_HOSTS，使用内置后备服务器列表")
+    _TDX_SERVER_CANDIDATES = (
+        ("110.41.147.114", 7709),
+        ("124.70.199.56", 7709),
+        ("121.36.225.169", 7709),
+        ("123.60.70.228", 7709),
+        ("116.205.163.254", 7709),
+    )
 _MOOTDX_TIMEOUT_SECONDS = 5
 _MOOTDX_CIRCUIT_BREAKER_SECONDS = 300
 _MOOTDX_UNAVAILABLE_STATE = {
@@ -878,17 +874,27 @@ async def fetch_index_kline(code: str, start_date: str, end_date: str):
             mkt = 0  # 深市指数
 
         def _fetch():
-            client = Quotes.factory(market='std', multithread=False, heartbeat=False,
-                                    server='119.147.212.81:7709')
-            try:
-                df = client.index_bars(frequency=9, market=mkt, symbol=code,
-                                       offset=min(days_needed, 800))
-                return df
-            finally:
+            servers = _iter_tdx_servers()
+            last_exc = None
+            for srv in servers[:5]:
                 try:
-                    client.close()
-                except Exception:
-                    pass
+                    client = Quotes.factory(market='std', multithread=False, heartbeat=False,
+                                            server=srv)
+                    try:
+                        df = client.index_bars(frequency=9, market=mkt, symbol=code,
+                                               offset=min(days_needed, 800))
+                        return df
+                    finally:
+                        try:
+                            client.close()
+                        except Exception:
+                            pass
+                except Exception as exc:
+                    last_exc = exc
+                    continue
+            if last_exc:
+                raise last_exc
+            return None
 
         df = await asyncio.get_event_loop().run_in_executor(None, _fetch)
         if df is None or df.empty:

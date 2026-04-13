@@ -1,6 +1,6 @@
 # mootdx fork 优化 & 全量数据接入计划
 
-> 目标：将 dare2live/mootdx 打造成通达信数据的**统一接入层**，覆盖 tdxpy(pytdx) 全部能力，
+> 目标：将 dare2live/tdxhub (原 mootdx fork) 打造成通达信数据的**统一接入层**，覆盖 tdxpy(pytdx) 全部能力，
 > 同时解决性能、兼容性、服务器发现等问题。本项目(chunky-monkey-v2)按需从中取数据。
 
 ---
@@ -24,7 +24,7 @@
 pytdx (rainx, 已归档 2020)
   └─ tdxpy 0.2.7 (bopo 维护, 2024)
        └─ mootdx 0.11.7 (bopo 原作, 已停更 2+ 年)
-            └─ dare2live/mootdx 0.12.0 fork (你维护)
+            └─ dare2live/tdxhub 0.12.0 fork (你维护, 原 mootdx)
 ```
 
 ### fork 已完成的修复（含本次 Phase 1）
@@ -115,7 +115,7 @@ def import_from_connect_cfg(cfg_path: str) -> list:
 ### 2.1 设计原则
 
 ```
-dare2live/mootdx (你维护)
+dare2live/tdxhub (你维护, 原 mootdx)
   ├─ quotes.py      → StdQuotes  (A股行情全部能力)
   ├─ ext_quotes.py  → ExtQuotes  (扩展市场全部能力)
   ├─ affair.py      → Affair     (专业财务数据)
@@ -448,22 +448,31 @@ def finance(self, symbol: str = '000001') -> pd.DataFrame | None:
 - `capabilities.summary()` 输出 29 个 API 方法
 - `Quotes.factory().bars('600036')` 连接正常返回数据
 
-### Phase 2: 本项目接入新数据源（~2-3 个工作日）
+### Phase 2: 本项目接入新数据源 ✅ 基础设施已完成（2026-04-13）
 
 **目标**: 接入 Affair 专业财务数据 + 统一服务器
 
-| 序号 | 改动 | 文件 | 说明 |
+| 序号 | 改动 | 文件 | 状态 |
 |------|------|------|------|
-| 2.1 | 本项目服务器列表统一 | `akshare_client.py`, `financial_client.py` | 改为从 mootdx ServerPool 获取 |
-| 2.2 | 新增 Affair 数据同步 | `services/tdx_affair_client.py` (新) | 定期下载最新 gpcw，解析入库 |
-| 2.3 | 建表 raw_gpcw_detail | db schema | 500+ 字段中取需要的入库 |
-| 2.4 | 接入机构持股明细 | `holdings.py` / `scoring.py` | gpcw 机构持股数据作为补充 |
-| 2.5 | 接入一致预期数据 | `stock_forecast_engine.py` | gpcw 预期数据作为新特征 |
+| 2.0 | GitHub 仓库更名 mootdx → tdxhub | `dare2live/tdxhub` | ✅ |
+| 2.1 | 服务器列表统一 (14台→117台) | `akshare_client.py` | ✅ 从 mootdx.consts.HQ_HOSTS 导入 |
+| 2.1b | 服务器列表统一 (7台→117台) | `financial_client.py` | ✅ 同上 |
+| 2.1c | 消除硬编码服务器 | `akshare_client.py` fetch_index_kline | ✅ 改用 _iter_tdx_servers() |
+| 2.2 | 新增 Affair 数据同步 | `services/tdx_affair_client.py` (新) | ✅ sync_gpcw_files() |
+| 2.3 | 建表 raw_gpcw_detail (92列) | `tdx_affair_client.py` | ✅ 含机构持股+财务+业绩预告 |
+| 2.4 | 接入机构持股明细 | `holdings.py` / `scoring.py` | 🔲 待接入 |
+| 2.5 | 接入一致预期数据 | `stock_forecast_engine.py` | 🔲 待接入 |
+| 2.6 | requirements.txt 更新 | `backend/requirements.txt` | ✅ 指向 tdxhub |
 
-**验证**:
-- Affair 数据能正确下载、解析、入库
-- 机构持股明细与现有数据交叉验证一致
-- stock_scores 评分有新特征参与
+**已验证**:
+- 4 个季度 gpcw 文件正确下载、解析、入库（17,981 行）
+- 机构持股明细完整：基金/险资/社保/QFII/私募/信托/银行/法人 各类型
+- 招行(600036) ROE=11.8, EPS=5.7, 基金1397家, 股东47.9万户
+- 处理了 gpcw 重复列名问题（净资产收益率等9个字段）
+
+**待做**:
+- 2.4/2.5: 将 gpcw 机构持股数据接入 holdings.py 和 scoring.py
+- 将 sync_gpcw_files 加入定期更新流程 (updater.py)
 
 ### Phase 3: 扩展数据接入（~2 个工作日）
 
