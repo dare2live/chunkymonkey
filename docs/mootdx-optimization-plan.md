@@ -5,6 +5,18 @@
 
 ---
 
+## 实施进度
+
+| Phase | 状态 | 说明 |
+|-------|------|------|
+| Phase 1: 基础设施 | ✅ 已完成 | 服务器合并117台、capabilities模块、pyproject更新、README重写 |
+| Phase 2: 本项目接入新数据 | 🔲 待开始 | Affair财务数据、统一服务器、机构持股 |
+| Phase 3: 扩展数据接入 | 🔲 待开始 | 除权除息、板块、实时行情、连接池 |
+| Phase 4: 代码质量 | 🔲 待开始 | 异常处理、类型标注、测试 |
+| Phase 5: 长期优化 | 🔲 待开始 | Tick数据、asyncio、connect.cfg |
+
+---
+
 ## 〇、现状总结
 
 ### 依赖链
@@ -12,14 +24,17 @@
 pytdx (rainx, 已归档 2020)
   └─ tdxpy 0.2.7 (bopo 维护, 2024)
        └─ mootdx 0.11.7 (bopo 原作, 已停更 2+ 年)
-            └─ dare2live/mootdx fork (你维护, 3 commits ahead)
+            └─ dare2live/mootdx 0.12.0 fork (你维护)
 ```
 
-### fork 已完成的修复
-1. 更新 TDX 服务器列表（38→14 台存活）
+### fork 已完成的修复（含本次 Phase 1）
+1. 更新 TDX 服务器列表 → **117 台**（合并 tdxpy 104 + mootdx 原始 38，去重）
 2. 修复 `valid_server` 支持字符串 `"ip:port"` 格式
 3. 修复 StdQuotes/ExtQuotes 构造函数 server 参数链路
-4. 替换 `py_mini_racer` → `mini_racer`（解决 M 芯片问题）
+4. 替换 `py_mini_racer` → `mini_racer`（解决 M 芯片问题，移入可选依赖）
+5. **新增 `capabilities.py` 模块** — 29 个 API 方法结构化注册，`summary()` 打印全景表
+6. **README 完整重写** — 全部 API 文档化，含代码示例、字段说明、协议限制
+7. Python 版本提升至 3.9+，依赖从 `^` 锁定改为 `>=` 下限
 
 ### 本项目目前只使用了 3 个功能
 | 功能 | 文件 | mootdx API |
@@ -45,35 +60,12 @@ mootdx 只保留 14 台是过度裁剪。
 
 ### 1.2 实施方案
 
-#### Phase 1: 合并全量服务器池（mootdx 改动）
+#### Phase 1: 合并全量服务器池 ✅ 已完成
 
-修改 `mootdx/consts.py`，合并 tdxpy + mootdx 的全部服务器：
+`mootdx/consts.py` 已直接内联 117 台去重服务器，按券商分组注释。
+`mootdx/server.py` 不再从 `tdxpy.constants` 导入 hq_hosts，避免重复。
 
-```python
-# consts.py
-from tdxpy.constants import hq_hosts as _tdxpy_hq_hosts
-
-# mootdx 自有云服务器（保留注释标注来源和验证日期）
-_MOOTDX_HQ_HOSTS = [
-    ('深圳双线主站1', '110.41.147.114', 7709),
-    # ... 现有的 38 台
-]
-
-def get_all_hq_hosts() -> list[tuple[str, str, int]]:
-    """合并所有来源的 HQ 服务器，去重"""
-    seen = set()
-    result = []
-    for item in _MOOTDX_HQ_HOSTS + list(_tdxpy_hq_hosts):
-        key = (item[1], item[2])
-        if key not in seen:
-            seen.add(key)
-            result.append(item)
-    return result
-
-HQ_HOSTS = get_all_hq_hosts()  # ~117 台
-```
-
-#### Phase 2: 添加运行时健康检查 + 延迟排序
+#### Phase 2: 添加运行时健康检查 + 延迟排序（待实施）
 
 新增 `mootdx/server_pool.py`：
 
@@ -437,22 +429,24 @@ def finance(self, symbol: str = '000001') -> pd.DataFrame | None:
 
 ## 七、分阶段实施路线
 
-### Phase 1: 基础设施（~1-2 个工作日）
+### Phase 1: 基础设施 ✅ 已完成（2026-04-13）
 
-**目标**: 服务器管理 + 连接池 + 依赖清理
+**目标**: 服务器管理 + 能力目录 + 依赖清理
 
-| 序号 | 改动 | 文件 | 说明 |
+| 序号 | 改动 | 文件 | 状态 |
 |------|------|------|------|
-| 1.1 | 合并全量服务器列表 | `mootdx/consts.py` | 合并 tdxpy 104 台 + mootdx 38 台 |
-| 1.2 | 新增 ServerPool | `mootdx/server_pool.py` | 并发健康检查 + 延迟排序 |
-| 1.3 | 新增 ConnectionPool | `mootdx/pool.py` | 连接复用 |
-| 1.4 | mini-racer 移入可选依赖 | `pyproject.toml` | 不影响核心功能 |
-| 1.5 | 更新 Python 版本支持 | `pyproject.toml` | 3.9+ |
-| 1.6 | 更新 README | `README.md` | 标注 M 芯片已解决 |
+| 1.1 | 合并全量服务器列表 (14→117台) | `mootdx/consts.py` | ✅ |
+| 1.2 | 新增 API 能力目录模块 | `mootdx/capabilities.py` (新) | ✅ |
+| 1.3 | server.py 不再重复导入 tdxpy hosts | `mootdx/server.py` | ✅ |
+| 1.4 | mini-racer 移入可选依赖 | `pyproject.toml` | ✅ |
+| 1.5 | Python 版本 3.9+, 依赖降低锁定 | `pyproject.toml` | ✅ |
+| 1.6 | README 完整重写 (全部 API 文档化) | `README.md` | ✅ |
+| 1.7 | 版本号 0.11.7→0.12.0 | `__init__.py`, `pyproject.toml` | ✅ |
 
-**验证**: 
-- `python -c "from mootdx.server_pool import ServerPool; sp = ServerPool(); print(sp.get_best(5))"`
-- 确认连接池正常复用
+**验证通过**: 
+- `HQ_HOSTS` 117 台，全部来自 `consts.py`
+- `capabilities.summary()` 输出 29 个 API 方法
+- `Quotes.factory().bars('600036')` 连接正常返回数据
 
 ### Phase 2: 本项目接入新数据源（~2-3 个工作日）
 
