@@ -21,6 +21,8 @@ from collections import defaultdict
 from datetime import datetime
 from typing import Iterable, Optional
 
+from services.tdx_source import get_tdx_quotes_class, iter_tdx_servers
+
 logger = logging.getLogger("cm-api")
 
 FIN_HISTORY_TARGET_ROWS = 8
@@ -440,29 +442,13 @@ def _cleanup_snapshot_stub(conn, stock_code: str, notice_date: Optional[str], re
         (stock_code, notice, report_date),
     )
 
-
-_FINANCIAL_TDX_SERVERS: tuple
-try:
-    from mootdx.consts import HQ_HOSTS as _MOOTDX_HQ_HOSTS
-    _FINANCIAL_TDX_SERVERS = tuple((h, p) for _name, h, p in _MOOTDX_HQ_HOSTS)
-except ImportError:
-    _FINANCIAL_TDX_SERVERS = (
-        ("110.41.147.114", 7709),
-        ("124.70.199.56", 7709),
-        ("121.36.225.169", 7709),
-        ("123.60.70.228", 7709),
-        ("116.205.163.254", 7709),
-    )
-
-
 def _fetch_latest_snapshot_batch(codes):
-    try:
-        from mootdx.quotes import Quotes
-    except ImportError:
+    Quotes = get_tdx_quotes_class()
+    if Quotes is None:
         logger.warning("[财务] mootdx 未安装，跳过最新快照同步")
         return {}
 
-    for server in _FINANCIAL_TDX_SERVERS:
+    for server in iter_tdx_servers():
         try:
             client = Quotes.factory(
                 market="std",

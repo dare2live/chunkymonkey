@@ -17,6 +17,8 @@ import tempfile
 from pathlib import Path
 from typing import Optional
 
+from services.tdx_source import get_tdx_affair_class
+
 logger = logging.getLogger("cm-api")
 
 # gpcw 文件中我们关注的字段 → 入库列名映射
@@ -108,6 +110,8 @@ _FIELD_MAP = {
     "财报公告日期": "report_announce_date",
 }
 
+_SELECTED_GPCW_COLUMNS = ("report_date",) + tuple(_FIELD_MAP.keys())
+
 # DB 列定义（除 stock_code, report_date, ingested_at 外全部为 REAL）
 _DB_COLUMNS = ["stock_code TEXT NOT NULL", "report_date TEXT NOT NULL"] + \
               [f"{v} REAL" for v in _FIELD_MAP.values()] + \
@@ -177,9 +181,8 @@ def sync_gpcw_files(
     -------
     dict : { 'files_synced': int, 'rows_upserted': int, 'errors': list }
     """
-    try:
-        from mootdx.affair import Affair
-    except ImportError:
+    Affair = get_tdx_affair_class()
+    if Affair is None:
         logger.error("[gpcw] mootdx 未安装，无法同步 gpcw 数据")
         return {"files_synced": 0, "rows_upserted": 0, "errors": ["mootdx not installed"]}
 
@@ -227,7 +230,11 @@ def sync_gpcw_files(
 
         try:
             logger.info(f"[gpcw] 下载并解析 {filename} ...")
-            df = Affair.parse(downdir=downdir, filename=filename)
+            df = Affair.parse(
+                downdir=downdir,
+                filename=filename,
+                columns=_SELECTED_GPCW_COLUMNS,
+            )
 
             if df is None or df.empty:
                 logger.warning(f"[gpcw] {filename} 解析为空")

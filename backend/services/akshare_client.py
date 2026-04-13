@@ -18,20 +18,9 @@ from typing import Optional
 
 import pandas as pd
 
-logger = logging.getLogger("cm-api")
+from services.tdx_source import get_tdx_quotes_class, iter_tdx_servers, parse_tdx_server_string
 
-try:
-    from mootdx.consts import HQ_HOSTS as _MOOTDX_HQ_HOSTS
-    _TDX_SERVER_CANDIDATES = tuple((h, p) for _name, h, p in _MOOTDX_HQ_HOSTS)
-except ImportError:
-    logger.warning("[mootdx] 无法导入 HQ_HOSTS，使用内置后备服务器列表")
-    _TDX_SERVER_CANDIDATES = (
-        ("110.41.147.114", 7709),
-        ("124.70.199.56", 7709),
-        ("121.36.225.169", 7709),
-        ("123.60.70.228", 7709),
-        ("116.205.163.254", 7709),
-    )
+logger = logging.getLogger("cm-api")
 _MOOTDX_TIMEOUT_SECONDS = 5
 _MOOTDX_CIRCUIT_BREAKER_SECONDS = 300
 _MOOTDX_UNAVAILABLE_STATE = {
@@ -72,27 +61,11 @@ def _market_symbol(code: str) -> str:
 
 
 def _parse_server_string(s: str) -> Optional[tuple]:
-    """Parse 'ip:port' string to (ip, port) tuple."""
-    parts = s.strip().split(":")
-    if len(parts) == 2:
-        try:
-            return (parts[0], int(parts[1]))
-        except ValueError:
-            pass
-    return None
+    return parse_tdx_server_string(s)
 
 
 def _iter_tdx_servers():
-    custom_raw = [item.strip() for item in os.environ.get("CM_TDX_SERVERS", "").split(",") if item.strip()]
-    custom = [_parse_server_string(s) for s in custom_raw]
-    custom = [s for s in custom if s is not None]
-    ordered = []
-    seen = set()
-    for server in custom + list(_TDX_SERVER_CANDIDATES):
-        if server not in seen:
-            seen.add(server)
-            ordered.append(server)
-    return ordered
+    return iter_tdx_servers()
 
 
 def _summarize_mootdx_attempts(attempts: list[dict]) -> str:
@@ -168,9 +141,8 @@ async def _fetch_daily_mootdx_with_diagnostics(code: str, start_date: str, end_d
         "attempts": [],
         "summary": "mootdx 未执行",
     }
-    try:
-        from mootdx.quotes import Quotes
-    except ImportError:
+    Quotes = get_tdx_quotes_class()
+    if Quotes is None:
         diagnostics["summary"] = "mootdx 未安装"
         return None, None, diagnostics
 
@@ -759,9 +731,8 @@ async def _fetch_etf_list_mootdx() -> list[dict]:
         logger.warning(f"[ETF] 跳过 mootdx ETF 列表探测：{_MOOTDX_UNAVAILABLE_STATE.get('summary') or 'mootdx circuit open'}")
         return []
 
-    try:
-        from mootdx.quotes import Quotes
-    except ImportError:
+    Quotes = get_tdx_quotes_class()
+    if Quotes is None:
         return []
 
     attempts = []
@@ -857,7 +828,9 @@ async def fetch_etf_kline(code: str, start_date: str, end_date: str):
 async def fetch_index_kline(code: str, start_date: str, end_date: str):
     """获取指数 K 线（通过 mootdx index_bars）"""
     try:
-        from mootdx.quotes import Quotes
+        Quotes = get_tdx_quotes_class()
+        if Quotes is None:
+            return None, None
         from datetime import datetime
 
         try:
@@ -911,8 +884,6 @@ async def fetch_index_kline(code: str, start_date: str, end_date: str):
             if col not in df.columns:
                 df[col] = None
         return df[["date", "open", "high", "low", "close", "volume", "amount"]], "mootdx_index"
-    except ImportError:
-        return None, None
     except Exception as e:
         logger.debug(f"[指数] {code} 失败: {e}")
         return None, None
