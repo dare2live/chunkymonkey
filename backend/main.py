@@ -6,17 +6,20 @@ FastAPI 入口
 
 import logging
 import sys
+import hashlib
+import re
 from pathlib import Path
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import FileResponse, Response
+from fastapi.responses import HTMLResponse, Response
 
 # 确保 backend 目录在 path 中
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from services.db import init_db, get_conn
 from services.market_db import init_market_db
+from services.runtime_patches import apply_runtime_patches
 
 # 日志
 logging.basicConfig(
@@ -25,6 +28,8 @@ logging.basicConfig(
     datefmt="%H:%M:%S",
 )
 logger = logging.getLogger("cm-api")
+
+apply_runtime_patches()
 
 # 初始化数据库（仅建表，不做迁移）
 init_db()
@@ -90,9 +95,6 @@ def register_modules(app):
 
 app_modules = register_modules(app)
 
-from routers.financial import router as financial_router
-app.include_router(financial_router, prefix="/api/financial", tags=["financial"])
-
 from routers.screening import router as screening_router
 app.include_router(screening_router, prefix="/api/screening", tags=["screening"])
 
@@ -143,6 +145,43 @@ async def favicon():
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 ASSETS_DIR = PROJECT_ROOT / "assets"
 INDEX_HTML = PROJECT_ROOT / "index.html"
+INDEX_ASSET_FILES = [
+    INDEX_HTML,
+    ASSETS_DIR / "css" / "main.css",
+    ASSETS_DIR / "js" / "app-cache.js",
+    ASSETS_DIR / "js" / "app-nav.js",
+    ASSETS_DIR / "js" / "app-list-state.js",
+    ASSETS_DIR / "js" / "app.js",
+]
+INDEX_ASSET_VERSION_PATTERN = re.compile(
+    r"(window\.CM_ASSET_VERSION\s*=\s*')[^']+('\s*;)"
+)
+
+
+def build_index_asset_version() -> str:
+    hasher = hashlib.sha1()
+    for path in INDEX_ASSET_FILES:
+        if not path.exists():
+            continue
+        stat = path.stat()
+        hasher.update(str(path.relative_to(PROJECT_ROOT)).encode("utf-8"))
+        hasher.update(str(stat.st_size).encode("utf-8"))
+        hasher.update(str(stat.st_mtime_ns).encode("utf-8"))
+    return hasher.hexdigest()[:12]
+
+
+def render_index_html() -> str:
+    html = INDEX_HTML.read_text(encoding="utf-8")
+    asset_version = build_index_asset_version()
+    rendered_html, replacements = INDEX_ASSET_VERSION_PATTERN.subn(
+        lambda match: f"{match.group(1)}{asset_version}{match.group(2)}",
+        html,
+        count=1,
+    )
+    if replacements != 1:
+        logger.warning("index.html 未找到唯一的 CM_ASSET_VERSION 注入点，返回原始内容")
+        return html
+    return rendered_html
 
 if ASSETS_DIR.exists():
     app.mount("/assets", StaticFiles(directory=str(ASSETS_DIR)), name="assets")
@@ -151,5 +190,8 @@ if ASSETS_DIR.exists():
 @app.get("/")
 async def index():
     if INDEX_HTML.exists():
-        return FileResponse(str(INDEX_HTML))
+        return HTMLResponse(
+            content=render_index_html(),
+            headers={"Cache-Control": "no-store"},
+        )
     return {"message": "Chunky Monkey v2 API", "docs": "/docs"}

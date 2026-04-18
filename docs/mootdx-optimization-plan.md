@@ -1,4 +1,4 @@
-# mootdx fork 优化 & 全量数据接入计划
+# tdxhub 优化 & 全量数据接入计划
 
 > 目标：将 dare2live/tdxhub (原 mootdx fork) 打造成通达信数据的**统一接入层**，覆盖 tdxpy(pytdx) 全部能力，
 > 同时解决性能、兼容性、服务器发现等问题。本项目(chunky-monkey-v2)按需从中取数据。
@@ -11,9 +11,9 @@
 |-------|------|------|
 | Phase 1: 基础设施 | ✅ 已完成 | 服务器合并117台、capabilities模块、pyproject更新、README重写 |
 | Phase 2: 本项目接入新数据 | ✅ 基础完成 | 服务器统一、Affair gpcw 入库、仓库更名 tdxhub；待接入 holdings/scoring |
-| Phase 3: 扩展数据接入 | 🔲 待开始 | 除权除息、板块、实时行情、连接池 |
-| Phase 4: 代码质量 | 🔲 待开始 | 异常处理、类型标注、测试 |
-| Phase 5: 长期优化 | 🔲 待开始 | Tick数据、asyncio、connect.cfg |
+| Phase 3: 扩展数据接入 | ✅ 已完成 | xdxr、TDX 板块、批量实时行情已接入；共享 Quotes 连接池已覆盖 batch quotes、财务快照、ETF 列表、指数 K 线、日 K 线诊断链 |
+| Phase 4: 文档治理 + 代码质量 | ✅ 已完成 | 文档站、异常层级、公开 API 签名、依赖分组与 focused tests 已收口 |
+| Phase 5: 长期优化 | ✅ 已完成 | Tick / 扩展市场能力已补公开示例，bestip 已支持原生 asyncio 与 connect.cfg 导入 |
 
 ---
 
@@ -31,7 +31,7 @@ pytdx (rainx, 已归档 2020)
 1. 更新 TDX 服务器列表 → **117 台**（合并 tdxpy 104 + mootdx 原始 38，去重）
 2. 修复 `valid_server` 支持字符串 `"ip:port"` 格式
 3. 修复 StdQuotes/ExtQuotes 构造函数 server 参数链路
-4. 替换 `py_mini_racer` → `mini_racer`（解决 M 芯片问题，移入可选依赖）
+4. 安装依赖切到 `mini-racer`，导入模块仍为 `py_mini_racer`（解决 M 芯片问题，移入可选依赖）
 5. **新增 `capabilities.py` 模块** — 29 个 API 方法结构化注册，`summary()` 打印全景表
 6. **README 完整重写** — 全部 API 文档化，含代码示例、字段说明、协议限制
 7. Python 版本提升至 3.9+，依赖从 `^` 锁定改为 `>=` 下限
@@ -282,7 +282,7 @@ client.transactions(symbol='600036', date='20260413')  # 历史分笔
 ## 四、PyMiniRacer / M 芯片问题
 
 ### 现状
-- fork 已将 `py_mini_racer` 替换为 `mini_racer`（bpcreech 维护）
+- fork 安装依赖已切到 `mini-racer`（bpcreech 维护），但运行时导入模块名仍为 `py_mini_racer`
 - `mini-racer` 0.14.1 (2026-01) 明确支持 macOS aarch64 (M 芯片)
 - 兼容性表：macOS ≥ 10.9 的 x86_64 + aarch64 都有预编译 wheel
 
@@ -292,11 +292,8 @@ client.transactions(symbol='600036', date='20260413')  # 历史分笔
 
 ```toml
 # pyproject.toml
-[tool.poetry.dependencies]
-mini-racer = {version = "*", optional = true}
-
-[tool.poetry.extras]
-formula = ["mini-racer"]  # 选股公式功能
+[tool.poetry.group.racer.dependencies]
+mini-racer = {version = ">=0.12.0", optional = true}
 ```
 
 ---
@@ -605,35 +602,37 @@ gpcw 文件按季度发布（3/6/9/12月末），但实际上是滚动更新的�
 
 | 序号 | 改动 | 文件 | 说明 |
 |------|------|------|------|
-| 3.1 | 除权除息数据同步 | `services/xdxr_client.py` (新) | xdxr 数据入库 |
-| 3.2 | 板块概念数据同步 | `services/block_client.py` (新) | 概念/行业板块成分股 |
-| 3.3 | 批量实时行情 | `akshare_client.py` | 补充 quotes() 批量查询 |
-| 3.4 | 连接池接入 | `akshare_client.py`, `financial_client.py` | 用 ConnectionPool 替代每次新建 |
+| 3.1 | 除权除息数据同步 | `services/xdxr_client.py` (新) | xdxr 数据入库，已接入 `sync_market_data` |
+| 3.2 | 板块概念数据同步 | `services/block_client.py` (新) | 概念/行业板块成分股，已接入 `sync_industry` |
+| 3.3 | 批量实时行情 | `services/quote_snapshot_client.py`, `services/setup_tracker.py` | 已补充 tdxhub `quotes()` 批量查询，并接入 setup 当前价刷新 |
+| 3.4 | 连接池接入 | `services/tdx_source.py`, `services/quote_snapshot_client.py`, `akshare_client.py`, `financial_client.py`, `services/xdxr_client.py`, `services/block_client.py` | 共享 Quotes 连接池已覆盖 batch quotes、财务快照、ETF 列表、指数 K 线、日 K 线诊断链、xdxr、block |
 
 **验证**:
 - 复权数据与 akshare 一致
 - 板块数据能正确查询
 - K线获取性能提升（A/B 对比）
 
-### Phase 4: 代码质量（~1 个工作日）
+### Phase 4: 文档治理 + 代码质量（~1 个工作日）
 
-**目标**: 异常处理 + 类型标注 + 测试
+**目标**: 文档站去上游化 + 异常处理 + 类型标注 + 测试
 
 | 序号 | 改动 | 文件 | 说明 |
 |------|------|------|------|
-| 4.1 | 异常类层级 | `mootdx/exceptions.py` | 细化异常 |
-| 4.2 | 公开 API 类型标注 | `mootdx/quotes.py` | 全部添加 |
-| 4.3 | 依赖分组 | `pyproject.toml` | core/cli/formula extras |
-| 4.4 | 基础测试 | `tests/` | 连接池、ServerPool、Affair |
+| 4.1 | 文档站入口纠偏 | `mkdocs.yml`, `docs/index.md`, `docs/setup.md`, `docs/quick.md` | 已完成，统一为 tdxhub 当前 fork 语境 |
+| 4.2 | FAQ / API / CLI 文档清理 | `docs/faq`, `docs/api`, `docs/cli` | 已完成两批清理，补齐 FAQ、CLI 与 API 当前行为 |
+| 4.3 | 异常类层级 | `mootdx/exceptions.py` | 已完成，统一基类/依赖异常/校验异常，并补 focused tests |
+| 4.4 | 公开 API 类型标注 | `mootdx/quotes.py` | 已完成：Quotes / BaseQuotes / StdQuotes / ExtQuotes 主公开面签名已补齐 |
+| 4.5 | 依赖分组 | `pyproject.toml` | 已完成：`cli` / `racer` extras 已落地，README 与安装页已同步 |
+| 4.6 | 基础测试 | `tests/` | 已补 holiday / exception / quotes util / connect.cfg focused tests |
 
-### Phase 5: 长期优化（按需）
+### Phase 5: 长期优化（已收口）
 
 | 序号 | 改动 | 说明 |
 |------|------|------|
-| 5.1 | 分笔 Tick 数据接入 | 数据量大，需规划存储 |
-| 5.2 | asyncio 原生化 | 替换 socket → asyncio.open_connection |
-| 5.3 | connect.cfg 解析器 | 从通达信客户端导入最新服务器 |
-| 5.4 | 扩展市场 | 期货/港股数据（如果需要） |
+| 5.1 | 分笔 Tick 数据接入 | 已完成：标准市场 `transaction()` / `transactions()` 示例已补齐 |
+| 5.2 | asyncio 原生化 | 已完成：`bestip(sync=False)` 改为 `asyncio.open_connection` 原生 TCP 探测 |
+| 5.3 | connect.cfg 解析器 | 已完成：支持从通达信客户端 `connect.cfg` 导入 `HQHOST` / `DSHOST` |
+| 5.4 | 扩展市场 | 已完成：ExtQuotes 主公开面签名与公开示例已补齐 |
 
 ---
 

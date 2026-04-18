@@ -1,10 +1,20 @@
+import sqlite3
 import sys
+from datetime import datetime
 from pathlib import Path
 
 # Add backend directory to Python path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from services.utils import safe_float, percentile_ranks, normalize_ymd, clamp, clamp_score, parse_any_date
+from services.utils import (
+    clamp,
+    clamp_score,
+    latest_completed_trade_date,
+    normalize_ymd,
+    parse_any_date,
+    percentile_ranks,
+    safe_float,
+)
 
 def test_safe_float():
     assert safe_float(1.5) == 1.5
@@ -39,11 +49,34 @@ def test_clamp_score():
     assert clamp_score(150.0, 0.0, 100.0) == 100.0
 
 def test_parse_any_date():
-    from datetime import datetime
     assert parse_any_date("2025-01-15") == datetime(2025, 1, 15)
     assert parse_any_date("20250115") == datetime(2025, 1, 15)
     assert parse_any_date(None) is None
     assert parse_any_date("") is None
     assert parse_any_date("abc") is None
     assert parse_any_date("  2025-01-15  ") == datetime(2025, 1, 15)
+
+
+def test_latest_completed_trade_date_before_close_uses_previous_trade_day():
+    conn = sqlite3.connect(":memory:")
+    conn.row_factory = sqlite3.Row
+    conn.execute("CREATE TABLE dim_trading_calendar (trade_date TEXT PRIMARY KEY, is_trading INTEGER NOT NULL)")
+    conn.executemany(
+        "INSERT INTO dim_trading_calendar(trade_date, is_trading) VALUES (?, ?)",
+        [("2026-04-13", 1), ("2026-04-14", 1), ("2026-04-15", 1)],
+    )
+    assert latest_completed_trade_date(conn, datetime(2026, 4, 14, 0, 30)) == "2026-04-13"
+    conn.close()
+
+
+def test_latest_completed_trade_date_after_close_can_use_same_day():
+    conn = sqlite3.connect(":memory:")
+    conn.row_factory = sqlite3.Row
+    conn.execute("CREATE TABLE dim_trading_calendar (trade_date TEXT PRIMARY KEY, is_trading INTEGER NOT NULL)")
+    conn.executemany(
+        "INSERT INTO dim_trading_calendar(trade_date, is_trading) VALUES (?, ?)",
+        [("2026-04-13", 1), ("2026-04-14", 1), ("2026-04-15", 1)],
+    )
+    assert latest_completed_trade_date(conn, datetime(2026, 4, 14, 16, 5)) == "2026-04-14"
+    conn.close()
 

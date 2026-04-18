@@ -5,22 +5,24 @@
     1. sync_raw                 — 下载十大股东
     2. match_inst               — 匹配跟踪机构
     3. sync_market_data         — 同步行情数据
-    4. sync_financial           — 同步财务数据
-    5. gen_events               — 生成事件
-    6. calc_returns             — 计算收益
-    7. sync_industry            — 申万行业
-    8. calc_financial_derived   — 计算财务指标
-    9. build_current_rel        — 构建当前关系
- 10. build_profiles           — 机构画像
- 11. build_industry_stat      — 行业统计
- 12. build_trends             — 生成股票列表
- 13. calc_screening           — TDX 选股筛选
- 14. calc_sector_momentum     — 板块动量分析
- 15. build_external_attention — 外部关注快照
- 16. build_stage_features     — 阶段特征构建
- 17. build_forecast_features  — 预测特征构建
- 18. calc_inst_scores         — 机构评分
- 19. calc_stock_scores        — 股票评分
+    4. sync_northbound         — 同步北向持仓
+    5. sync_financial          — 同步财务数据
+    6. gen_events              — 生成事件
+    7. calc_returns            — 计算收益
+    8. sync_industry           — 申万行业
+    9. calc_financial_derived  — 计算财务指标
+ 10. build_current_rel        — 构建当前关系
+ 11. build_profiles           — 机构画像
+ 12. build_industry_stat      — 行业统计
+ 13. build_trends             — 生成股票列表
+ 14. calc_screening           — TDX 选股筛选
+ 15. calc_sector_momentum     — 板块动量分析
+ 16. build_external_attention — 外部关注快照
+ 17. build_stage_features     — 阶段特征构建
+ 18. build_forecast_features  — 预测特征构建
+ 19. build_turtle_features    — 海龟特征构建
+ 20. calc_inst_scores         — 机构评分
+ 21. calc_stock_scores        — 股票评分
 """
 
 import asyncio
@@ -45,6 +47,8 @@ from services.gap_queue import (
     summarize_gap_queue,
 )
 from services.industry import industry_join_clause, summarize_industry_coverage
+from services.tdx_source import iter_tdx_servers
+from services.utils import latest_completed_trade_date
 
 logger = logging.getLogger("cm-api")
 router = APIRouter()
@@ -87,6 +91,82 @@ def _reset_ui_logs():
     _ui_logs = []
     _ui_log_seq = 0
 
+
+def _record_sync_source_metric(stats: dict, source: str, elapsed_sec: float, rows: int = 0) -> None:
+    entry = stats.setdefault(source, {
+        "count": 0,
+        "rows": 0,
+        "elapsed_total_sec": 0.0,
+        "max_elapsed_sec": 0.0,
+    })
+    entry["count"] += 1
+    entry["rows"] += max(0, int(rows or 0))
+    entry["elapsed_total_sec"] += max(0.0, float(elapsed_sec or 0.0))
+    entry["max_elapsed_sec"] = max(entry["max_elapsed_sec"], max(0.0, float(elapsed_sec or 0.0)))
+
+
+def _snapshot_sync_source_metrics(stats: dict) -> dict:
+    snapshot = {}
+    for source, entry in sorted(stats.items()):
+        count = int(entry.get("count") or 0)
+        elapsed_total = float(entry.get("elapsed_total_sec") or 0.0)
+        snapshot[source] = {
+            "count": count,
+            "rows": int(entry.get("rows") or 0),
+            "avg_elapsed_sec": round(elapsed_total / count, 3) if count else 0.0,
+            "max_elapsed_sec": round(float(entry.get("max_elapsed_sec") or 0.0), 3),
+            "elapsed_total_sec": round(elapsed_total, 3),
+        }
+    return snapshot
+
+
+def _format_sync_source_metrics(stats: dict) -> str:
+    if not stats:
+        return "无成功来源"
+    parts = []
+    for source, entry in stats.items():
+        parts.append(
+            f"{source}={entry['count']}只/均{entry['avg_elapsed_sec']:.2f}s/峰{entry['max_elapsed_sec']:.2f}s/行{entry['rows']}"
+        )
+    return "；".join(parts)
+
+
+def _build_daily_sync_batch_summary(
+    range_start: int,
+    range_end: int,
+    *,
+    stats: dict,
+    batch_elapsed_sec: float,
+) -> dict:
+    snapshot = _snapshot_sync_source_metrics(stats)
+    success_count = sum(int(entry.get("count") or 0) for entry in snapshot.values())
+    batch_total = max(0, range_end - range_start + 1)
+    return {
+        "range_start": range_start,
+        "range_end": range_end,
+        "count": batch_total,
+        "success_count": success_count,
+        "failed_count": max(0, batch_total - success_count),
+        "batch_elapsed_sec": round(max(0.0, float(batch_elapsed_sec or 0.0)), 3),
+        "source_stats": snapshot,
+    }
+
+
+def _normalize_update_step_detail(detail: Optional[dict]) -> Optional[dict]:
+    if not isinstance(detail, dict):
+        return None
+
+    normalized = dict(detail)
+    daily_sync = normalized.get("daily_sync")
+    if isinstance(daily_sync, dict):
+        normalized_daily_sync = dict(daily_sync)
+        normalized_daily_sync.setdefault("prefer_fallback", False)
+        normalized_daily_sync.setdefault("strategy_reason", None)
+        normalized_daily_sync.setdefault("preflight_sample", None)
+        normalized["daily_sync"] = normalized_daily_sync
+
+    return normalized
+
 # ============================================================
 # 步骤定义
 # ============================================================
@@ -95,22 +175,24 @@ STEPS = [
     {"id": "sync_raw",              "name": "下载十大股东",     "group": "data", "order": 1},
     {"id": "match_inst",            "name": "匹配跟踪机构",    "group": "data", "order": 2},
     {"id": "sync_market_data",      "name": "同步行情数据",    "group": "data", "order": 3},
-    {"id": "sync_financial",        "name": "同步财务数据",    "group": "data", "order": 4},
-    {"id": "gen_events",            "name": "生成事件",        "group": "calc", "order": 5},
-    {"id": "calc_returns",          "name": "计算收益",        "group": "calc", "order": 6},
-    {"id": "sync_industry",         "name": "申万行业",        "group": "data", "order": 7},
-    {"id": "calc_financial_derived","name": "计算财务指标",    "group": "calc", "order": 8},
-    {"id": "build_current_rel",     "name": "构建当前关系",    "group": "mart", "order": 9},
-    {"id": "build_profiles",        "name": "机构画像",        "group": "mart", "order": 10},
-    {"id": "build_industry_stat",   "name": "行业统计",        "group": "mart", "order": 11},
-    {"id": "build_trends",          "name": "生成股票列表",    "group": "mart", "order": 12},
-    {"id": "calc_screening",        "name": "TDX选股筛选",     "group": "mart", "order": 13},
-    {"id": "calc_sector_momentum",  "name": "板块动量分析",    "group": "mart", "order": 14},
-    {"id": "build_external_attention","name": "外部关注快照",  "group": "mart", "order": 15},
-    {"id": "build_stage_features",  "name": "阶段特征构建",    "group": "mart", "order": 16},
-    {"id": "build_forecast_features","name": "预测特征构建",   "group": "mart", "order": 17},
-    {"id": "calc_inst_scores",      "name": "机构评分",        "group": "mart", "order": 18},
-    {"id": "calc_stock_scores",     "name": "股票评分",        "group": "mart", "order": 19},
+    {"id": "sync_northbound",       "name": "同步北向持仓",    "group": "data", "order": 4},
+    {"id": "sync_financial",        "name": "同步财务数据",    "group": "data", "order": 5},
+    {"id": "gen_events",            "name": "生成事件",        "group": "calc", "order": 6},
+    {"id": "calc_returns",          "name": "计算收益",        "group": "calc", "order": 7},
+    {"id": "sync_industry",         "name": "申万行业",        "group": "data", "order": 8},
+    {"id": "calc_financial_derived","name": "计算财务指标",    "group": "calc", "order": 9},
+    {"id": "build_current_rel",     "name": "构建当前关系",    "group": "mart", "order": 10},
+    {"id": "build_profiles",        "name": "机构画像",        "group": "mart", "order": 11},
+    {"id": "build_industry_stat",   "name": "行业统计",        "group": "mart", "order": 12},
+    {"id": "build_trends",          "name": "生成股票列表",    "group": "mart", "order": 13},
+    {"id": "calc_screening",        "name": "TDX选股筛选",     "group": "mart", "order": 14},
+    {"id": "calc_sector_momentum",  "name": "板块动量分析",    "group": "mart", "order": 15},
+    {"id": "build_external_attention","name": "外部关注快照",  "group": "mart", "order": 16},
+    {"id": "build_stage_features",  "name": "阶段特征构建",    "group": "mart", "order": 17},
+    {"id": "build_forecast_features","name": "预测特征构建",   "group": "mart", "order": 18},
+    {"id": "build_turtle_features", "name": "海龟特征构建",    "group": "mart", "order": 19},
+    {"id": "calc_inst_scores",      "name": "机构评分",        "group": "mart", "order": 20},
+    {"id": "calc_stock_scores",     "name": "股票评分",        "group": "mart", "order": 21},
 ]
 
 # 硬依赖：failed → 跳过本步骤
@@ -118,6 +200,7 @@ HARD_DEPS = {
     "sync_raw": [],
     "match_inst": ["sync_raw"],
     "sync_market_data": ["match_inst"],
+    "sync_northbound": [],
     "sync_financial": [],
     "gen_events": ["match_inst"],
     "calc_returns": ["gen_events"],
@@ -132,6 +215,7 @@ HARD_DEPS = {
     "build_external_attention": [],
     "build_stage_features": ["build_trends", "calc_sector_momentum"],
     "build_forecast_features": ["build_stage_features"],
+    "build_turtle_features": ["build_stage_features"],
     "calc_inst_scores": ["build_profiles", "build_industry_stat"],
     "calc_stock_scores": ["calc_inst_scores", "build_stage_features", "build_forecast_features"],
 }
@@ -148,6 +232,7 @@ SOFT_DEPS = {
     "build_external_attention": [],
     "build_stage_features": ["calc_financial_derived"],
     "build_forecast_features": [],
+    "build_turtle_features": ["build_forecast_features"],
     "calc_inst_scores": ["calc_returns"],
     "calc_stock_scores": ["calc_returns", "calc_screening", "build_external_attention"],
 }
@@ -212,6 +297,69 @@ def _finish_run_context(extra: Optional[dict] = None):
         invalidate_etf_snapshot_cache()
     except Exception as e:
         logger.warning(f"[更新结束] 缓存失效操作异常: {e}")
+
+
+_DERIVED_RESET_TABLES = [
+    ("events", "fact_institution_event"),
+    ("current_rel", "mart_current_relationship"),
+    ("profiles", "mart_institution_profile"),
+    ("industry_stat", "mart_institution_industry_stat"),
+    ("trends", "mart_stock_trend"),
+    ("steps", "step_status"),
+]
+
+
+_INDUSTRY_RESET_TABLES = [
+    ("event_industry_snapshots", "fact_institution_event_industry_snapshot"),
+    ("setup_snapshots", "fact_setup_snapshot"),
+    ("current_rel", "mart_current_relationship"),
+    ("profiles", "mart_institution_profile"),
+    ("industry_stat", "mart_institution_industry_stat"),
+    ("trends", "mart_stock_trend"),
+    ("sector_momentum", "mart_sector_momentum"),
+    ("industry_context_latest", "dim_stock_industry_context_latest"),
+    ("quality_latest", "dim_stock_quality_latest"),
+    ("stage_latest", "dim_stock_stage_latest"),
+    ("forecast_latest", "dim_stock_forecast_latest"),
+    ("turtle_latest", "dim_stock_turtle_latest"),
+    ("stock_archetype_fact", "fact_stock_archetype"),
+    ("stock_archetype_latest", "dim_stock_archetype_latest"),
+    ("sector_forecast_fact", "fact_sector_forecast_features"),
+    ("sector_forecast_latest", "dim_sector_forecast_latest"),
+    ("steps", "step_status"),
+]
+
+
+def _table_exists(conn, table_name: str) -> bool:
+    row = conn.execute(
+        "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ? LIMIT 1",
+        (table_name,),
+    ).fetchone()
+    return bool(row)
+
+
+def _reset_tables(conn, tables):
+    counts = {}
+    missing_tables = []
+    existing_tables = []
+    conn.execute("BEGIN IMMEDIATE")
+    try:
+        for key, table_name in tables:
+            if not _table_exists(conn, table_name):
+                counts[key] = 0
+                missing_tables.append(table_name)
+                continue
+            existing_tables.append(table_name)
+            counts[key] = conn.execute(f"SELECT COUNT(*) FROM {table_name}").fetchone()[0]
+
+        for table_name in existing_tables:
+            conn.execute(f"DELETE FROM {table_name}")
+
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
+    return counts, missing_tables
 
 
 def _is_audit_snapshot_refreshing() -> bool:
@@ -935,7 +1083,7 @@ def _build_exclusion_set(conn) -> set:
     return excluded
 
 
-async def _step_match_inst(conn) -> int:
+def _step_match_inst_sync(conn) -> int:
     """匹配跟踪机构持仓"""
     institutions = conn.execute(
         "SELECT id, name, aliases FROM inst_institutions WHERE enabled = 1 AND blacklisted = 0 AND merged_into IS NULL"
@@ -1003,8 +1151,8 @@ async def _step_match_inst(conn) -> int:
                         ))
                         total += 1
                     except Exception as e:
-                        _insert_errors = getattr(_step_match_inst, '_insert_errors', 0) + 1
-                        _step_match_inst._insert_errors = _insert_errors
+                        _insert_errors = getattr(_step_match_inst_sync, '_insert_errors', 0) + 1
+                        _step_match_inst_sync._insert_errors = _insert_errors
                         if _insert_errors <= 3:
                             logger.warning(f"[匹配] 持仓插入失败 inst={inst_id} stock={r['stock_code']}: {e}")
                         elif _insert_errors == 4:
@@ -1018,6 +1166,11 @@ async def _step_match_inst(conn) -> int:
     return total
 
 
+async def _step_match_inst(conn) -> int:
+    """匹配跟踪机构持仓"""
+    return await _run_blocking_db_task(_step_match_inst_sync)
+
+
 
 # [Phase 5 已删除] _step_kline_monthly 和 _step_kline_daily 已被 _step_sync_market_data 替代
 
@@ -1025,9 +1178,111 @@ async def _step_match_inst(conn) -> int:
 async def _step_gen_events(conn) -> int:
     """生成机构事件"""
     from services.event_engine import generate_events, generate_exit_events
-    count = generate_events(conn)
-    count += generate_exit_events(conn)
-    return count
+
+    def _worker(worker_conn):
+        count = generate_events(worker_conn)
+        count += generate_exit_events(worker_conn)
+        snapshot_result = _capture_missing_event_industry_snapshots(
+            worker_conn,
+            snapshot_source="event_generation",
+        )
+        if snapshot_result["inserted"] or snapshot_result["pending_without_dim"]:
+            logger.info(
+                "[事件行业快照] gen_events 后补齐 %s 条，仍缺 %s 条（当前无行业映射 %s 条）"
+                % (
+                    snapshot_result["inserted"],
+                    snapshot_result["pending"],
+                    snapshot_result["pending_without_dim"],
+                )
+            )
+        return count
+
+    return await _run_blocking_db_task(_worker)
+
+
+def _capture_missing_event_industry_snapshots(conn, *, snapshot_source: str) -> dict:
+    """为尚未固化口径的事件补齐行业快照。
+
+    快照独立于 fact_institution_event，避免事件表重建时历史行业口径被当前 dim 覆盖。
+    """
+    missing_sql = """
+        SELECT COUNT(*)
+        FROM fact_institution_event e
+        LEFT JOIN fact_institution_event_industry_snapshot s
+          ON s.institution_id = e.institution_id
+         AND s.stock_code = e.stock_code
+         AND s.report_date = e.report_date
+        WHERE s.institution_id IS NULL
+    """
+    missing_without_dim_sql = """
+        SELECT COUNT(*)
+        FROM fact_institution_event e
+        LEFT JOIN fact_institution_event_industry_snapshot s
+          ON s.institution_id = e.institution_id
+         AND s.stock_code = e.stock_code
+         AND s.report_date = e.report_date
+        LEFT JOIN dim_stock_industry d ON d.stock_code = e.stock_code
+        WHERE s.institution_id IS NULL
+          AND d.stock_code IS NULL
+    """
+
+    pending_before = conn.execute(missing_sql).fetchone()[0]
+    if not pending_before:
+        return {"inserted": 0, "pending": 0, "pending_without_dim": 0}
+
+    captured_at = datetime.now().isoformat()
+    before_changes = conn.total_changes
+    conn.execute("BEGIN IMMEDIATE")
+    try:
+        conn.execute(
+            """
+            INSERT OR IGNORE INTO fact_institution_event_industry_snapshot (
+                institution_id,
+                stock_code,
+                report_date,
+                notice_date,
+                sw_level1,
+                sw_level2,
+                sw_level3,
+                sw_code,
+                snapshot_source,
+                industry_updated_at,
+                captured_at
+            )
+            SELECT e.institution_id,
+                   e.stock_code,
+                   e.report_date,
+                   e.notice_date,
+                   d.sw_level1,
+                   d.sw_level2,
+                   d.sw_level3,
+                   d.sw_code,
+                   ?,
+                   d.updated_at,
+                   ?
+            FROM fact_institution_event e
+            INNER JOIN dim_stock_industry d ON d.stock_code = e.stock_code
+            LEFT JOIN fact_institution_event_industry_snapshot s
+              ON s.institution_id = e.institution_id
+             AND s.stock_code = e.stock_code
+             AND s.report_date = e.report_date
+            WHERE s.institution_id IS NULL
+            """,
+            (snapshot_source, captured_at),
+        )
+        inserted = conn.total_changes - before_changes
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
+
+    pending_after = conn.execute(missing_sql).fetchone()[0]
+    pending_without_dim = conn.execute(missing_without_dim_sql).fetchone()[0]
+    return {
+        "inserted": inserted,
+        "pending": pending_after,
+        "pending_without_dim": pending_without_dim,
+    }
 
 
 async def _run_blocking_db_task(task_fn, timeout: int = 120):
@@ -1041,13 +1296,29 @@ async def _run_blocking_db_task(task_fn, timeout: int = 120):
     return await asyncio.to_thread(_worker)
 
 
+async def _run_blocking_market_db_task(task_fn, timeout: int = 120):
+    """把同时依赖业务库和行情库的本地重算移到线程里。"""
+    from services.market_db import get_market_conn
+
+    def _worker():
+        worker_conn = get_conn(timeout=timeout)
+        worker_mkt_conn = get_market_conn()
+        try:
+            return task_fn(worker_conn, worker_mkt_conn)
+        finally:
+            worker_mkt_conn.close()
+            worker_conn.close()
+
+    return await asyncio.to_thread(_worker)
+
+
 async def _step_calc_returns(conn) -> int:
     """计算事件收益"""
     from services.return_engine import calculate_returns
     return await _run_blocking_db_task(calculate_returns)
 
 
-async def _step_build_profiles(conn) -> int:
+def _step_build_profiles_sync(conn) -> int:
     """计算机构画像 mart_institution_profile"""
     from services.holdings import refresh_stock_latest_cache
 
@@ -1359,7 +1630,12 @@ async def _step_build_profiles(conn) -> int:
     return count
 
 
-async def _step_build_trends(conn) -> int:
+async def _step_build_profiles(conn) -> int:
+    """计算机构画像 mart_institution_profile"""
+    return await _run_blocking_db_task(_step_build_profiles_sync)
+
+
+def _step_build_trends_sync(conn) -> int:
     """计算股票趋势 mart_stock_trend"""
     from services.holdings import refresh_stock_latest_cache
     refresh_stock_latest_cache(conn)
@@ -1522,9 +1798,16 @@ async def _step_build_trends(conn) -> int:
     return count
 
 
+async def _step_build_trends(conn) -> int:
+    """计算股票趋势 mart_stock_trend"""
+    return await _run_blocking_db_task(_step_build_trends_sync)
+
+
 async def _step_sync_industry(conn) -> int:
     """获取申万三级行业分类"""
-    from services.akshare_client import fetch_sw_industry_all
+    from services.akshare_client import fetch_sw_industry_all_with_source
+    from services.block_client import sync_tdx_blocks
+    from services.security_master import get_active_a_stock_codes
 
     # 构建排除集合
     excluded_codes = _build_exclusion_set(conn)
@@ -1536,10 +1819,19 @@ async def _step_sync_industry(conn) -> int:
         "industry_sync": {
             "status": "running",
             "updated_rows": 0,
+            "snapshot_backfilled": 0,
+            "snapshot_pending": 0,
+            "source": "",
+            "source_degraded": False,
             "before_missing": summarize_gap_queue(conn, datasets=("industry",))["datasets"][0]["unresolved"],
             "after_missing": None,
             "gap_summary": summarize_gap_queue(conn, datasets=("industry",), limit_per_dataset=6)["datasets"][0],
-        }
+        },
+        "block_sync": {
+            "status": "pending",
+            "member_rows": 0,
+            "catalog_rows": 0,
+        },
     }
 
     def _push_progress():
@@ -1551,14 +1843,32 @@ async def _step_sync_industry(conn) -> int:
         )
 
     _raise_if_stop()
-    industry_data = await fetch_sw_industry_all()
+    snapshot_result = _capture_missing_event_industry_snapshots(
+        conn,
+        snapshot_source="pre_sync_dim_stock_industry",
+    )
+    detail["industry_sync"]["snapshot_backfilled"] = snapshot_result["inserted"]
+    detail["industry_sync"]["snapshot_pending"] = snapshot_result["pending"]
+    if snapshot_result["inserted"] or snapshot_result["pending_without_dim"]:
+        logger.info(
+            "[事件行业快照] sync_industry 前补齐 %s 条，仍缺 %s 条（当前无行业映射 %s 条）"
+            % (
+                snapshot_result["inserted"],
+                snapshot_result["pending"],
+                snapshot_result["pending_without_dim"],
+            )
+        )
+    industry_data, industry_source = await fetch_sw_industry_all_with_source()
+    industry_source = str(industry_source or "")
+    industry_source_degraded = bool(industry_source and not industry_source.startswith("tdx_"))
     if not industry_data:
+        blocked_reason = f"TDX 行业源不可用: {industry_source or 'tdx_research_industry_empty'}"
         mark_current_missing_as(
             conn,
             "industry",
             status="blocked",
-            reason="行业源无返回，当前未执行补齐",
-            last_error="industry_source_empty",
+            reason=blocked_reason,
+            last_error=industry_source or "tdx_research_industry_empty",
             stock_names=stock_names,
             commit=False,
         )
@@ -1566,13 +1876,17 @@ async def _step_sync_industry(conn) -> int:
         detail["industry_sync"] = {
             "status": "blocked",
             "updated_rows": 0,
+            "snapshot_backfilled": snapshot_result["inserted"],
+            "snapshot_pending": snapshot_result["pending"],
+            "source": industry_source,
+            "source_degraded": industry_source_degraded,
             "before_missing": detail["industry_sync"]["before_missing"],
             "after_missing": gap_summary["unresolved"],
-            "reason": "行业源无返回，当前未执行补齐",
+            "reason": blocked_reason,
             "gap_summary": gap_summary,
         }
         _push_progress()
-        logger.warning("[行业] 未获取到数据")
+        logger.warning(f"[行业] 未获取到数据: {blocked_reason}")
         return 0
 
     now = datetime.now().isoformat()
@@ -1594,18 +1908,120 @@ async def _step_sync_industry(conn) -> int:
     detail["industry_sync"] = {
         "status": "partial" if gap_summary["unresolved"] else "success",
         "updated_rows": count,
+        "snapshot_backfilled": snapshot_result["inserted"],
+        "snapshot_pending": snapshot_result["pending"],
+        "source": industry_source,
+        "source_degraded": industry_source_degraded,
         "before_missing": detail["industry_sync"]["before_missing"],
         "after_missing": gap_summary["unresolved"],
         "gap_summary": gap_summary,
     }
     conn.commit()
     _push_progress()
-    logger.info(f"[行业] 完成: {count} 只股票")
+
+    try:
+        active_codes = get_active_a_stock_codes(conn)
+        block_status = await sync_tdx_blocks(
+            conn,
+            active_codes=active_codes,
+            excluded_codes=excluded_codes,
+            should_stop=_raise_if_stop,
+        )
+        detail["block_sync"] = block_status
+        count += block_status.get("member_rows", 0)
+        _push_progress()
+    except Exception as e:
+        detail["block_sync"] = {
+            "status": "failed" if not isinstance(e, _RunStopped) else "stopped",
+            "member_rows": 0,
+            "catalog_rows": 0,
+            "error": str(e)[:200],
+        }
+        _push_progress()
+        if isinstance(e, _RunStopped):
+            raise
+        logger.error(f"[板块] 同步失败: {e}")
+
+    logger.info(
+        f"[行业] 完成: 行业{detail['industry_sync']['updated_rows']}条"
+        f" ({industry_source or 'unknown'}), "
+        f"板块成员{detail['block_sync'].get('member_rows', 0)}条"
+    )
     return count
 
 
-async def _step_build_industry_stat(conn) -> int:
+async def _step_sync_northbound(conn) -> int:
+    """同步最近交易日附近的北向持仓日级事实。"""
+    from services.northbound_client import sync_northbound_daily
+    from services.security_master import get_active_a_stock_codes
+
+    trade_date = latest_completed_trade_date(conn)
+    if not trade_date:
+        logger.warning("[北向] 未找到最近完成交易日，跳过同步")
+        _update_step(
+            conn,
+            "sync_northbound",
+            error=json.dumps(
+                {
+                    "status": "skipped",
+                    "reason": "missing_trade_calendar",
+                    "written_rows": 0,
+                },
+                ensure_ascii=False,
+            ),
+            records=0,
+        )
+        return 0
+
+    end_dt = datetime.strptime(trade_date, "%Y-%m-%d")
+    start_dt = end_dt - timedelta(days=10)
+    detail = {
+        "status": "running",
+        "requested_start_date": start_dt.strftime("%Y-%m-%d"),
+        "requested_end_date": trade_date,
+        "written_rows": 0,
+        "trade_dates": [],
+    }
+    _update_step(
+        conn,
+        "sync_northbound",
+        error=json.dumps(detail, ensure_ascii=False),
+        records=0,
+    )
+
+    active_codes = get_active_a_stock_codes(conn)
+    result = await sync_northbound_daily(
+        conn,
+        start_date=detail["requested_start_date"],
+        end_date=detail["requested_end_date"],
+        active_codes=active_codes,
+    )
+    detail.update(result)
+    _update_step(
+        conn,
+        "sync_northbound",
+        error=json.dumps(detail, ensure_ascii=False),
+        records=result.get("written_rows", 0),
+    )
+    return int(result.get("written_rows") or 0)
+
+
+def _step_build_industry_stat_sync(conn) -> int:
     """计算机构在各行业的表现统计"""
+    snapshot_result = _capture_missing_event_industry_snapshots(
+        conn,
+        snapshot_source="build_industry_stat_fill",
+    )
+    if snapshot_result["inserted"] or snapshot_result["pending_without_dim"]:
+        logger.info(
+            "[事件行业快照] build_industry_stat 前补齐 %s 条，仍缺 %s 条（当前无行业映射 %s 条）"
+            % (
+                snapshot_result["inserted"],
+                snapshot_result["pending"],
+                snapshot_result["pending_without_dim"],
+            )
+        )
+
     now = datetime.now().isoformat()
     conn.execute("BEGIN IMMEDIATE")
     try:
@@ -1623,10 +2039,8 @@ async def _step_build_industry_stat(conn) -> int:
             # 按行业分组统计（一二三级都做）
             for level_col, level_name in [("sw_level1", "level1"), ("sw_level2", "level2"), ("sw_level3", "level3")]:
                 _raise_if_stop()
-                industry_join = industry_join_clause("e.stock_code", alias="industry_dim", join_type="INNER")
-                # 从增强后的 fact_institution_event + 统一行业解析口径读取
                 rows = conn.execute(f"""
-                    SELECT industry_dim.{level_col} as industry,
+                    SELECT s.{level_col} as industry,
                            COUNT(*) as cnt,
                            AVG(e.gain_30d) as avg30, AVG(e.gain_60d) as avg60,
                            AVG(e.gain_90d) as avg90, AVG(e.gain_120d) as avg120,
@@ -1636,10 +2050,13 @@ async def _step_build_industry_stat(conn) -> int:
                            COUNT(CASE WHEN e.gain_30d > 0 OR e.gain_60d > 0 THEN 1 END) * 100.0 / MAX(COUNT(*), 1) as wr_total,
                            AVG(e.max_drawdown_30d) as dd30, AVG(e.max_drawdown_60d) as dd60
                     FROM fact_institution_event e
-                    {industry_join}
+                    INNER JOIN fact_institution_event_industry_snapshot s
+                      ON s.institution_id = e.institution_id
+                     AND s.stock_code = e.stock_code
+                     AND s.report_date = e.report_date
                     WHERE e.institution_id = ? AND e.gain_30d IS NOT NULL
-                        AND industry_dim.{level_col} IS NOT NULL AND industry_dim.{level_col} != ''
-                    GROUP BY industry_dim.{level_col}
+                        AND s.{level_col} IS NOT NULL AND s.{level_col} != ''
+                    GROUP BY s.{level_col}
                     HAVING cnt >= 1
                 """, (inst_id,)).fetchall()
 
@@ -1665,6 +2082,11 @@ async def _step_build_industry_stat(conn) -> int:
     return count
 
 
+async def _step_build_industry_stat(conn) -> int:
+    """计算机构在各行业的表现统计"""
+    return await _run_blocking_db_task(_step_build_industry_stat_sync)
+
+
 async def _step_sync_market_data(conn) -> int:
     """同步行情数据：合并原 kline_monthly + kline_daily，写入 market_data.db"""
     import json as _json
@@ -1672,7 +2094,12 @@ async def _step_sync_market_data(conn) -> int:
         get_market_conn, upsert_price_rows, update_sync_state,
         get_all_sync_states
     )
-    from services.akshare_client import fetch_stock_kline_monthly, fetch_stock_kline_daily
+    from services.akshare_client import (
+        fetch_stock_kline_monthly,
+        fetch_stock_kline_daily,
+        probe_stock_kline_fallback_preference,
+    )
+    from services.xdxr_client import sync_xdxr_for_codes
 
     mkt_conn = get_market_conn()
     sub_status = {}
@@ -1915,12 +2342,7 @@ async def _step_sync_market_data(conn) -> int:
         missing_d = [c for c in codes if c not in daily_price_codes]
         missing_d_set = set(missing_d)
         # 用交易日历判断：max_date < 最新已收盘交易日 → 需补差额
-        latest_trade = conn.execute(
-            "SELECT MAX(trade_date) FROM dim_trading_calendar "
-            "WHERE is_trading=1 AND trade_date <= ?",
-            (datetime.now().strftime("%Y-%m-%d"),)
-        ).fetchone()
-        latest_trade_date = latest_trade[0] if latest_trade and latest_trade[0] else datetime.now().strftime("%Y-%m-%d")
+        latest_trade_date = latest_completed_trade_date(conn) or datetime.now().strftime("%Y-%m-%d")
         # 查询当前停牌列表（从东财停复牌接口）
         suspended_codes = set()
         try:
@@ -1953,8 +2375,49 @@ async def _step_sync_market_data(conn) -> int:
         d_count = 0
         processed_d = 0
         failed_codes = []
-        sem = asyncio.Semaphore(4)
+        daily_concurrency = max(16, min(32, max(1, len(iter_tdx_servers())) * 4))
+        progress_every = 10 if len(to_fetch_d) >= 10 else 1
+        batch_size = 100
+        sem = asyncio.Semaphore(daily_concurrency)
+        total_source_stats = {}
+        batch_source_stats = {}
+        recent_batches = []
+        batch_start_index = 1
+        batch_started_at = time.monotonic()
         daily_gap_before = _dataset_gap_summary("daily_kline")
+
+        def _daily_fetch_start_date(code: str) -> str:
+            state = existing_daily.get(code)
+            if state and state.get("max_date"):
+                try:
+                    start_dt = datetime.strptime(state["max_date"][:10], "%Y-%m-%d") - timedelta(days=20)
+                    return start_dt.strftime("%Y%m%d")
+                except Exception:
+                    return "20230101"
+            return "20230101"
+
+        daily_end_date = datetime.now().strftime("%Y%m%d")
+        daily_preflight = None
+        daily_prefer_fallback = False
+        if to_fetch_d:
+            sample_code = to_fetch_d[0]
+            try:
+                daily_preflight = await probe_stock_kline_fallback_preference(
+                    sample_code,
+                    _daily_fetch_start_date(sample_code),
+                    daily_end_date,
+                )
+                daily_prefer_fallback = bool(daily_preflight.get("prefer_fallback"))
+            except Exception as e:
+                daily_preflight = {
+                    "sample_code": sample_code,
+                    "prefer_fallback": False,
+                    "reason": f"preflight_failed:{str(e)[:120]}",
+                    "elapsed_sec": 0.0,
+                    "timeout_failures": 0,
+                }
+                logger.warning(f"[行情同步] 日K预检失败，继续默认 mootdx 首选: {e}")
+
         sub_status["daily_sync"] = {
             "status": "running" if to_fetch_d else "skipped",
             "done_codes": 0,
@@ -1963,17 +2426,38 @@ async def _step_sync_market_data(conn) -> int:
             "rows": 0,
             "failed_count": 0,
             "failed_codes": [],
+            "concurrency": daily_concurrency,
+            "batch_size": batch_size,
+            "source_stats": {},
+            "recent_batches": [],
             "before_missing": daily_gap_before["unresolved"],
             "after_missing": daily_gap_before["unresolved"],
             "gap_summary": daily_gap_before,
+            "prefer_fallback": daily_prefer_fallback,
+            "strategy_reason": (daily_preflight or {}).get("reason"),
+            "preflight_sample": (daily_preflight or {}).get("sample_code"),
         }
-        logger.info(f"[行情同步] 日K待同步: {len(to_fetch_d)} 只")
+        if daily_prefer_fallback:
+            logger.warning(
+                f"[行情同步] 日K批次预检命中 fallback-first: "
+                f"{daily_preflight.get('sample_code')} -> {daily_preflight.get('reason')}"
+            )
+        elif daily_preflight:
+            logger.info(
+                f"[行情同步] 日K批次预检通过: "
+                f"{daily_preflight.get('sample_code')} -> {daily_preflight.get('reason')}"
+            )
+        logger.info(f"[行情同步] 日K待同步: {len(to_fetch_d)} 只，并发 {daily_concurrency}")
         _push_progress()
 
         async def _fetch_one(code):
             nonlocal d_count, daily_rows_total
             async with sem:
                 _raise_if_stop()
+                started_at = time.monotonic()
+                source = ""
+                rows_written = 0
+                ok = False
                 try:
                     if code in missing_d_set:
                         mark_gap_retrying(
@@ -1984,21 +2468,14 @@ async def _step_sync_market_data(conn) -> int:
                             reason="正在尝试补齐日K",
                             commit=False,
                         )
-                    state = existing_daily.get(code)
-                    if state and state.get("max_date"):
-                        try:
-                            start_dt = datetime.strptime(state["max_date"][:10], "%Y-%m-%d") - timedelta(days=20)
-                            start_date = start_dt.strftime("%Y%m%d")
-                        except Exception:
-                            start_date = "20230101"
-                    else:
-                        start_date = "20230101"
+                    start_date = _daily_fetch_start_date(code)
 
                     df, source = await fetch_stock_kline_daily(
                         code,
                         days=150,
                         start_date=start_date,
-                        end_date=datetime.now().strftime("%Y%m%d"),
+                        end_date=daily_end_date,
+                        prefer_fallback=daily_prefer_fallback,
                     )
                     if df is not None and not df.empty:
                         rows_data = [
@@ -2008,6 +2485,7 @@ async def _step_sync_market_data(conn) -> int:
                              "volume": r.get("volume"), "amount": r.get("amount")}
                             for _, r in df.iterrows()
                         ]
+                        rows_written = len(rows_data)
                         write_source = f"akshare_{source}" if source else "akshare_unknown"
                         upsert_price_rows(mkt_conn, rows_data, source=write_source)
                         dates = [r["date"] for r in rows_data]
@@ -2016,6 +2494,7 @@ async def _step_sync_market_data(conn) -> int:
                                           row_count=len(rows_data))
                         d_count += 1
                         daily_rows_total += len(rows_data)
+                        ok = True
                         if code in missing_d_set:
                             mark_gap_resolved(
                                 conn,
@@ -2061,29 +2540,90 @@ async def _step_sync_market_data(conn) -> int:
                             commit=False,
                         )
                     logger.warning(f"[行情同步] 日K {code} 失败: {e}")
+                return {
+                    "code": code,
+                    "ok": ok,
+                    "source": source or "unknown",
+                    "rows": rows_written,
+                    "elapsed_sec": round(time.monotonic() - started_at, 3),
+                }
 
-        # 分批并发
-        for i in range(0, len(to_fetch_d), 20):
-            _raise_if_stop()
-            batch = to_fetch_d[i:i + 20]
-            await asyncio.gather(*[_fetch_one(c) for c in batch])
-            processed_d = min(i + len(batch), len(to_fetch_d))
-            daily_gap = _dataset_gap_summary("daily_kline")
-            sub_status["daily_sync"].update({
-                "done_codes": processed_d,
-                "success_codes": d_count,
-                "rows": daily_rows_total,
-                "failed_count": len(failed_codes),
-                "failed_codes": failed_codes[:20],
-                "last_batch_size": len(batch),
-                "after_missing": daily_gap["unresolved"],
-                "gap_summary": daily_gap,
-            })
-            logger.info(
-                f"[行情同步] 日K进度: {processed_d}/{len(to_fetch_d)}"
-                f"，失败 {len(failed_codes)}"
-            )
-            _push_progress()
+        tasks = [asyncio.create_task(_fetch_one(code)) for code in to_fetch_d]
+        try:
+            for task in asyncio.as_completed(tasks):
+                _raise_if_stop()
+                result = await task
+                processed_d += 1
+                latest_fetch = {
+                    "code": result.get("code"),
+                    "source": result.get("source"),
+                    "ok": bool(result.get("ok")),
+                    "rows": int(result.get("rows") or 0),
+                    "elapsed_sec": float(result.get("elapsed_sec") or 0.0),
+                }
+                if latest_fetch["ok"]:
+                    _record_sync_source_metric(
+                        total_source_stats,
+                        latest_fetch["source"],
+                        latest_fetch["elapsed_sec"],
+                        latest_fetch["rows"],
+                    )
+                    _record_sync_source_metric(
+                        batch_source_stats,
+                        latest_fetch["source"],
+                        latest_fetch["elapsed_sec"],
+                        latest_fetch["rows"],
+                    )
+
+                if processed_d % batch_size == 0 or processed_d == len(to_fetch_d):
+                    batch_summary = _build_daily_sync_batch_summary(
+                        batch_start_index,
+                        processed_d,
+                        stats=batch_source_stats,
+                        batch_elapsed_sec=time.monotonic() - batch_started_at,
+                    )
+                    recent_batches = (recent_batches + [batch_summary])[-5:]
+                    logger.info(
+                        f"[行情同步] 日K批次 {batch_summary['range_start']}-{batch_summary['range_end']}: "
+                        f"来源 {_format_sync_source_metrics(batch_summary['source_stats'])}"
+                        f"，失败 {batch_summary['failed_count']}"
+                        f"，批耗时 {batch_summary['batch_elapsed_sec']:.2f}s"
+                    )
+                    batch_source_stats = {}
+                    batch_start_index = processed_d + 1
+                    batch_started_at = time.monotonic()
+
+                if (
+                    processed_d == len(to_fetch_d)
+                    or processed_d % progress_every == 0
+                ):
+                    daily_gap = _dataset_gap_summary("daily_kline")
+                    sub_status["daily_sync"].update({
+                        "done_codes": processed_d,
+                        "success_codes": d_count,
+                        "rows": daily_rows_total,
+                        "failed_count": len(failed_codes),
+                        "failed_codes": failed_codes[:20],
+                        "concurrency": daily_concurrency,
+                        "batch_size": batch_size,
+                        "source_stats": _snapshot_sync_source_metrics(total_source_stats),
+                        "recent_batches": recent_batches,
+                        "latest_fetch": latest_fetch,
+                        "after_missing": daily_gap["unresolved"],
+                        "gap_summary": daily_gap,
+                    })
+                    logger.info(
+                        f"[行情同步] 日K进度: {processed_d}/{len(to_fetch_d)}"
+                        f"，失败 {len(failed_codes)}"
+                        f"，并发 {daily_concurrency}"
+                    )
+                    _push_progress()
+        finally:
+            for task in tasks:
+                if not task.done():
+                    task.cancel()
+            if tasks:
+                await asyncio.gather(*tasks, return_exceptions=True)
 
         reconcile_gap_queue_snapshot(
             conn,
@@ -2103,9 +2643,16 @@ async def _step_sync_market_data(conn) -> int:
             "rows": daily_rows_total,
             "failed_count": len(failed_codes),
             "failed_codes": failed_codes[:20],  # 只保留前 20 个
+            "concurrency": daily_concurrency,
+            "batch_size": batch_size,
+            "source_stats": _snapshot_sync_source_metrics(total_source_stats),
+            "recent_batches": recent_batches,
             "before_missing": daily_gap_before["unresolved"],
             "after_missing": daily_gap["unresolved"],
             "gap_summary": daily_gap,
+            "prefer_fallback": daily_prefer_fallback,
+            "strategy_reason": (daily_preflight or {}).get("reason"),
+            "preflight_sample": (daily_preflight or {}).get("sample_code"),
         }
         if failed_codes:
             logger.warning("[行情同步] 日K未获取到: " + ", ".join(failed_codes[:20]))
@@ -2120,15 +2667,68 @@ async def _step_sync_market_data(conn) -> int:
             "success_codes": sub_status.get("daily_sync", {}).get("success_codes", 0),
             "failed_count": len(failed_codes) if "failed_codes" in locals() else 0,
             "failed_codes": failed_codes[:20] if "failed_codes" in locals() else [],
+            "concurrency": sub_status.get("daily_sync", {}).get("concurrency"),
+            "batch_size": sub_status.get("daily_sync", {}).get("batch_size"),
+            "source_stats": sub_status.get("daily_sync", {}).get("source_stats", {}),
+            "recent_batches": sub_status.get("daily_sync", {}).get("recent_batches", []),
+            "latest_fetch": sub_status.get("daily_sync", {}).get("latest_fetch"),
             "before_missing": sub_status.get("daily_sync", {}).get("before_missing"),
             "after_missing": daily_gap["unresolved"],
             "gap_summary": daily_gap,
+            "prefer_fallback": sub_status.get("daily_sync", {}).get("prefer_fallback", False),
+            "strategy_reason": sub_status.get("daily_sync", {}).get("strategy_reason"),
+            "preflight_sample": sub_status.get("daily_sync", {}).get("preflight_sample"),
             "error": str(e)[:200],
         }
         _push_progress()
         if isinstance(e, _RunStopped):
             raise
         logger.error(f"[行情同步] 日K失败: {e}")
+
+    # --- xdxr ---
+    try:
+        sub_status["xdxr_sync"] = {
+            "status": "running" if codes else "skipped",
+            "done_codes": 0,
+            "total_codes": len(codes),
+            "success_codes": 0,
+            "rows": 0,
+            "failed_count": 0,
+            "failed_codes": [],
+            "skipped_recent": 0,
+            "concurrency": 0,
+        }
+        _push_progress()
+
+        def _on_xdxr_progress(progress: dict):
+            sub_status["xdxr_sync"] = progress
+            _push_progress()
+
+        xdxr_status = await sync_xdxr_for_codes(
+            mkt_conn,
+            codes,
+            should_stop=_raise_if_stop,
+            progress_callback=_on_xdxr_progress,
+        )
+        total_rows += xdxr_status.get("rows", 0)
+        sub_status["xdxr_sync"] = xdxr_status
+        _push_progress()
+    except Exception as e:
+        sub_status["xdxr_sync"] = {
+            "status": "stopped" if isinstance(e, _RunStopped) else "failed",
+            "done_codes": sub_status.get("xdxr_sync", {}).get("done_codes", 0),
+            "total_codes": sub_status.get("xdxr_sync", {}).get("total_codes", 0),
+            "rows": sub_status.get("xdxr_sync", {}).get("rows", 0),
+            "success_codes": sub_status.get("xdxr_sync", {}).get("success_codes", 0),
+            "failed_count": sub_status.get("xdxr_sync", {}).get("failed_count", 0),
+            "failed_codes": sub_status.get("xdxr_sync", {}).get("failed_codes", []),
+            "skipped_recent": sub_status.get("xdxr_sync", {}).get("skipped_recent", 0),
+            "error": str(e)[:200],
+        }
+        _push_progress()
+        if isinstance(e, _RunStopped):
+            raise
+        logger.error(f"[行情同步] xdxr失败: {e}")
 
     sub_status["sync_state_refresh"] = {"status": "success"}
     mkt_conn.close()
@@ -2143,75 +2743,132 @@ async def _step_sync_market_data(conn) -> int:
 async def _step_build_current_rel(conn) -> int:
     """构建 mart_current_relationship 物化表"""
     from services.holdings import build_current_relationship
-    return build_current_relationship(conn)
+    return await _run_blocking_db_task(build_current_relationship)
 
 
 async def _step_sync_financial(conn) -> int:
     """同步财务数据（mootdx finance）"""
+    import json as _json
     from services.financial_client import sync_financial_data
-    return await sync_financial_data(conn)
+    from services.tdx_affair_client import sync_gpcw_files
+
+    progress_records = 0
+    last_progress = {}
+
+    def _on_progress(progress: dict):
+        nonlocal progress_records, last_progress
+        last_progress = progress or {}
+        progress_records = ((progress.get("summary") or {}).get("records") or 0)
+        _update_step(
+            conn,
+            "sync_financial",
+            error=_json.dumps(progress, ensure_ascii=False),
+            records=progress_records,
+        )
+
+    total = await sync_financial_data(
+        conn,
+        progress_callback=_on_progress,
+        should_stop=_raise_if_stop,
+    )
+
+    try:
+        gpcw_result = await _run_blocking_db_task(
+            lambda worker_conn: sync_gpcw_files(worker_conn, quarters=12),
+            timeout=300,
+        )
+        gpcw_progress = {
+            "status": "partial" if gpcw_result.get("errors") else "success",
+            "quarters": 12,
+            "files_synced": int(gpcw_result.get("files_synced") or 0),
+            "rows_upserted": int(gpcw_result.get("rows_upserted") or 0),
+            "errors": list(gpcw_result.get("errors") or []),
+        }
+    except Exception as exc:
+        logger.exception("[sync_financial] gpcw history backfill failed")
+        gpcw_progress = {
+            "status": "error",
+            "quarters": 12,
+            "files_synced": 0,
+            "rows_upserted": 0,
+            "errors": [str(exc)],
+        }
+
+    merged_progress = dict(last_progress or {})
+    merged_progress["gpcw_history"] = gpcw_progress
+    _update_step(
+        conn,
+        "sync_financial",
+        error=_json.dumps(merged_progress, ensure_ascii=False),
+        records=progress_records,
+    )
+    return total
 
 
 async def _step_calc_financial_derived(conn) -> int:
     """计算财务派生指标"""
     from services.financial_client import calc_financial_derived
-    return calc_financial_derived(conn)
+    return await _run_blocking_db_task(calc_financial_derived)
 
 
 async def _step_calc_screening(conn) -> int:
     """TDX 选股筛选"""
     from services.screening_engine import run_all_screens
-    from services.market_db import get_market_conn
-    mkt_conn = get_market_conn()
-    try:
-        return run_all_screens(conn, mkt_conn)
-    finally:
-        mkt_conn.close()
+    return await _run_blocking_market_db_task(run_all_screens)
 
 
 async def _step_calc_sector_momentum(conn) -> int:
     """板块动量分析 + 双重确认信号"""
     from services.sector_momentum import calc_sector_momentum, calc_dual_confirm
     from services.industry_context_engine import build_stock_industry_context
-    from services.market_db import get_market_conn
-    mkt_conn = get_market_conn()
-    try:
-        sector_count = calc_sector_momentum(conn, mkt_conn)
-        dual_count = calc_dual_confirm(conn)
-        context_count = build_stock_industry_context(conn)
+
+    def _worker(worker_conn, worker_mkt_conn):
+        sector_count = calc_sector_momentum(worker_conn, worker_mkt_conn)
+        dual_count = calc_dual_confirm(worker_conn)
+        context_count = build_stock_industry_context(worker_conn)
         return sector_count + dual_count + context_count
-    finally:
-        mkt_conn.close()
+
+    return await _run_blocking_market_db_task(_worker)
 
 
 async def _step_build_external_attention(conn) -> int:
     """外部关注快照"""
     from services.external_attention import sync_external_attention_snapshot
 
-    return sync_external_attention_snapshot(conn)
+    return await _run_blocking_db_task(sync_external_attention_snapshot)
 
 
 async def _step_build_stage_features(conn) -> int:
     """阶段特征构建"""
     from services.stock_stage_engine import build_stock_stage_features
-    from services.market_db import get_market_conn
-    mkt_conn = get_market_conn()
-    try:
-        return build_stock_stage_features(conn, mkt_conn)
-    finally:
-        mkt_conn.close()
+    return await _run_blocking_market_db_task(build_stock_stage_features)
 
 
 async def _step_build_forecast_features(conn) -> int:
     """预测特征构建"""
+    from services.sector_forecast_engine import build_sector_forecast_features
     from services.stock_forecast_engine import build_stock_forecast_features
-    return build_stock_forecast_features(conn)
+
+    def _worker(worker_conn):
+        stock_count = build_stock_forecast_features(worker_conn)
+        sector_count = build_sector_forecast_features(worker_conn)
+        return stock_count, sector_count
+
+    stock_count, sector_count = await _run_blocking_db_task(_worker)
+    logger.info(f"[预测特征] 股票 {stock_count} 只 · 行业 {sector_count} 个")
+    return stock_count + sector_count
+
+
+async def _step_build_turtle_features(conn) -> int:
+    """海龟特征构建"""
+    from services.stock_turtle_engine import build_stock_turtle_features
+    return await _run_blocking_market_db_task(build_stock_turtle_features)
 
 
 async def _step_calc_inst_scores(conn) -> int:
     """计算机构评分"""
     from services.scoring import calculate_institution_scores
-    return calculate_institution_scores(conn)
+    return await _run_blocking_db_task(calculate_institution_scores)
 
 
 async def _step_calc_stock_scores(conn) -> int:
@@ -2219,8 +2876,12 @@ async def _step_calc_stock_scores(conn) -> int:
     from services.scoring import calculate_stock_scores
     from services.setup_tracker import refresh_setup_tracking
 
-    count = calculate_stock_scores(conn)
-    tracking = refresh_setup_tracking(conn)
+    def _worker(worker_conn):
+        count = calculate_stock_scores(worker_conn)
+        tracking = refresh_setup_tracking(worker_conn)
+        return count, tracking
+
+    count, tracking = await _run_blocking_db_task(_worker)
     logger.info(
         f"[Setup跟踪] 快照 {tracking['snapshot_date']} · {tracking['snapshots']} 条候选 · 刷新 {tracking['refreshed']} 条"
     )
@@ -2231,6 +2892,7 @@ RUNNERS = {
     "sync_raw": _step_sync_raw,
     "match_inst": _step_match_inst,
     "sync_market_data": _step_sync_market_data,
+    "sync_northbound": _step_sync_northbound,
     "sync_financial": _step_sync_financial,
     "gen_events": _step_gen_events,
     "calc_returns": _step_calc_returns,
@@ -2245,6 +2907,7 @@ RUNNERS = {
     "build_external_attention": _step_build_external_attention,
     "build_stage_features": _step_build_stage_features,
     "build_forecast_features": _step_build_forecast_features,
+    "build_turtle_features": _step_build_turtle_features,
     "calc_inst_scores": _step_calc_inst_scores,
     "calc_stock_scores": _step_calc_stock_scores,
 }
@@ -2535,7 +3198,7 @@ async def update_status():
             parsed = json.loads(raw)
         except Exception:
             return None
-        return parsed if isinstance(parsed, dict) else None
+        return _normalize_update_step_detail(parsed)
 
     conn = get_conn()
     try:
@@ -2576,31 +3239,56 @@ async def reset_derived():
     """清空可重算派生层，保留原始数据、持仓、行业和K线源数据"""
     conn = get_conn(timeout=120)
     try:
-        counts = {
-            "events": conn.execute("SELECT COUNT(*) FROM fact_institution_event").fetchone()[0],
-            "current_rel": conn.execute("SELECT COUNT(*) FROM mart_current_relationship").fetchone()[0],
-            "profiles": conn.execute("SELECT COUNT(*) FROM mart_institution_profile").fetchone()[0],
-            "industry_stat": conn.execute("SELECT COUNT(*) FROM mart_institution_industry_stat").fetchone()[0],
-            "trends": conn.execute("SELECT COUNT(*) FROM mart_stock_trend").fetchone()[0],
-            "steps": conn.execute("SELECT COUNT(*) FROM step_status").fetchone()[0],
-        }
-
-        conn.execute("DELETE FROM fact_institution_event")
-        conn.execute("DELETE FROM mart_current_relationship")
-        conn.execute("DELETE FROM mart_institution_profile")
-        conn.execute("DELETE FROM mart_institution_industry_stat")
-        conn.execute("DELETE FROM mart_stock_trend")
-        conn.execute("DELETE FROM step_status")
-        conn.commit()
+        counts, missing_tables = _reset_tables(conn, _DERIVED_RESET_TABLES)
 
         total = sum(counts.values())
         return {
             "ok": True,
             "message": f"已清空 {total} 条派生数据，请重新执行智能更新",
             "counts": counts,
+            "missing_tables": missing_tables,
         }
     finally:
         conn.close()
+
+
+@router.post("/update/reset-industry-derived")
+async def reset_industry_derived(restart_smart: bool = True):
+    """清空行业口径切换后需要重算的快照和派生层，并可直接接续智能更新。"""
+    global _is_running
+    if _is_running:
+        return {"ok": False, "message": "更新正在进行中"}
+
+    conn = get_conn(timeout=120)
+    try:
+        counts, missing_tables = _reset_tables(conn, _INDUSTRY_RESET_TABLES)
+    finally:
+        conn.close()
+
+    total = sum(counts.values())
+    response = {
+        "ok": True,
+        "message": f"已清空 {total} 条行业相关派生/快照数据，请重新执行智能更新",
+        "counts": counts,
+        "missing_tables": missing_tables,
+        "preserved_tables": [
+            "dim_stock_industry",
+            "fact_institution_event",
+            "inst_holdings",
+            "market_kline_daily",
+            "raw_gpcw_financial",
+            "fact_financial_derived",
+            "qlib_predictions",
+        ],
+    }
+    if not restart_smart:
+        return response
+
+    smart_result = await smart_update()
+    response["message"] = f"已清空 {total} 条行业相关派生/快照数据，并启动智能更新"
+    response["smart_update"] = smart_result
+    response["ok"] = bool(smart_result.get("ok", True))
+    return response
 
 
 @router.get("/update/connectivity")
@@ -2626,9 +3314,9 @@ async def data_audit(force: bool = False):
         conn.close()
 
 
-@router.get("/update/smart-plan")
+@router.get("/update/smart-plan", include_in_schema=False)
 async def smart_plan():
-    """智能更新计划（不执行，只返回建议）"""
+    """内部运维接口：智能更新计划（不执行，只返回建议）。"""
     from services.audit import build_smart_plan
     conn = get_conn()
     try:

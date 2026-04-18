@@ -58,6 +58,31 @@ def init_market_db():
         CREATE INDEX IF NOT EXISTS idx_pk_date
             ON price_kline(date);
 
+        -- 除权除息 / 股本变动事件（TDX xdxr）
+        CREATE TABLE IF NOT EXISTS price_xdxr (
+            code            TEXT NOT NULL,
+            date            TEXT NOT NULL,
+            category        INTEGER NOT NULL,
+            name            TEXT,
+            fenhong         REAL,
+            peigujia        REAL,
+            songzhuangu     REAL,
+            peigu           REAL,
+            suogu           REAL,
+            panqianliutong  REAL,
+            panhouliutong   REAL,
+            qianzongguben   REAL,
+            houzongguben    REAL,
+            fenshu          REAL,
+            xingquanjia     REAL,
+            source          TEXT,
+            batch_id        TEXT,
+            ingested_at     TEXT,
+            PRIMARY KEY (code, date, category)
+        );
+        CREATE INDEX IF NOT EXISTS idx_xdxr_code_date
+            ON price_xdxr(code, date);
+
         -- 同步状态表（覆盖状态交给审计层推导，不在此表堆字段）
         CREATE TABLE IF NOT EXISTS market_sync_state (
             dataset         TEXT NOT NULL DEFAULT 'price_kline',
@@ -135,14 +160,27 @@ def get_kline_range(conn, code: str, start: str, end: str,
     return [dict(r) for r in rows]
 
 
-def get_sync_state(conn, code: str, freq: str = "daily") -> Optional[dict]:
-    """查询某只股票的同步状态"""
-    row = conn.execute(
-        "SELECT * FROM market_sync_state "
-        "WHERE dataset='price_kline' AND code=? AND freq=? AND adjust='qfq'",
-        (code, freq)
-    ).fetchone()
-    return dict(row) if row else None
+def get_xdxr_events(conn, code: str, start: Optional[str] = None,
+                    end: Optional[str] = None) -> "list[dict]":
+    """查询某只股票的除权除息 / 股本变动事件。"""
+    where = ["code=?"]
+    params: list = [code]
+    if start:
+        where.append("date>=?")
+        params.append(start)
+    if end:
+        where.append("date<=?")
+        params.append(end)
+
+    rows = conn.execute(
+        "SELECT code, date, category, name, fenhong, peigujia, songzhuangu, "
+        " peigu, suogu, panqianliutong, panhouliutong, qianzongguben, "
+        " houzongguben, fenshu, xingquanjia, source "
+        f"FROM price_xdxr WHERE {' AND '.join(where)} "
+        "ORDER BY date, category",
+        params,
+    ).fetchall()
+    return [dict(r) for r in rows]
 
 
 def get_all_sync_states(conn, freq: str = "daily") -> "list[dict]":
@@ -151,6 +189,15 @@ def get_all_sync_states(conn, freq: str = "daily") -> "list[dict]":
         "SELECT * FROM market_sync_state "
         "WHERE dataset='price_kline' AND freq=? AND adjust='qfq'",
         (freq,)
+    ).fetchall()
+    return [dict(r) for r in rows]
+
+
+def get_all_xdxr_sync_states(conn) -> "list[dict]":
+    """查询所有股票的 xdxr 同步状态。"""
+    rows = conn.execute(
+        "SELECT * FROM market_sync_state "
+        "WHERE dataset='price_xdxr' AND freq='event' AND adjust='none'"
     ).fetchall()
     return [dict(r) for r in rows]
 
@@ -193,6 +240,46 @@ def upsert_price_rows(conn, rows: list[dict], source: str,
     return len(rows)
 
 
+def replace_xdxr_rows(conn, code: str, rows: list[dict], source: str,
+                      batch_id: str = None) -> int:
+    """按股票全量替换 xdxr 事件，保持单一真相源。"""
+    now = _now_iso()
+    conn.execute("DELETE FROM price_xdxr WHERE code=?", (code,))
+    if rows:
+        conn.executemany(
+            "INSERT INTO price_xdxr "
+            "(code, date, category, name, fenhong, peigujia, songzhuangu, "
+            " peigu, suogu, panqianliutong, panhouliutong, qianzongguben, "
+            " houzongguben, fenshu, xingquanjia, source, batch_id, ingested_at) "
+            "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+            [
+                (
+                    code,
+                    row["date"],
+                    row["category"],
+                    row.get("name"),
+                    row.get("fenhong"),
+                    row.get("peigujia"),
+                    row.get("songzhuangu"),
+                    row.get("peigu"),
+                    row.get("suogu"),
+                    row.get("panqianliutong"),
+                    row.get("panhouliutong"),
+                    row.get("qianzongguben"),
+                    row.get("houzongguben"),
+                    row.get("fenshu"),
+                    row.get("xingquanjia"),
+                    source,
+                    batch_id,
+                    now,
+                )
+                for row in rows
+            ],
+        )
+    conn.commit()
+    return len(rows)
+
+
 def update_sync_state(conn, code: str, freq: str, *,
                        source: str = None,
                        min_date: str = None,
@@ -220,6 +307,42 @@ def update_sync_state(conn, code: str, freq: str, *,
             now if error is None else None,  # last_success_at
             now,                              # last_attempt_at
             error,                            # last_error
+        ),
+    )
+    conn.commit()
+
+
+def update_xdxr_sync_state(conn, code: str, *,
+                           source: str = None,
+                           min_date: str = None,
+                           max_date: str = None,
+                           row_count: int = None,
+                           error: str = None):
+    """更新 xdxr 同步状态（UPSERT 语义）。"""
+    now = _now_iso()
+    conn.execute(
+        "INSERT INTO market_sync_state "
+        "(dataset, code, freq, adjust, source, min_date, max_date, "
+        " row_count, last_success_at, last_attempt_at, last_error) "
+        "VALUES ('price_xdxr',?,'event','none',?,?,?,?,?,?,?) "
+        "ON CONFLICT(dataset, code, freq, adjust) DO UPDATE SET "
+        " source=COALESCE(excluded.source, source), "
+        " min_date=COALESCE(excluded.min_date, min_date), "
+        " max_date=COALESCE(excluded.max_date, max_date), "
+        " row_count=COALESCE(excluded.row_count, row_count), "
+        " last_success_at=CASE WHEN excluded.last_error IS NULL "
+        "   THEN excluded.last_success_at ELSE last_success_at END, "
+        " last_attempt_at=excluded.last_attempt_at, "
+        " last_error=excluded.last_error",
+        (
+            code,
+            source,
+            min_date,
+            max_date,
+            row_count,
+            now if error is None else None,
+            now,
+            error,
         ),
     )
     conn.commit()

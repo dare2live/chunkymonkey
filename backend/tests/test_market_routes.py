@@ -12,5 +12,6 @@ def test_market_status():
     res = client.get("/api/inst/market/status")
     assert res.status_code == 200
     data = res.json()
+    assert data["ok"] is True
     assert "current_stocks" in data
     assert "latest_notice_date" in data

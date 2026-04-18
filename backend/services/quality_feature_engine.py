@@ -9,6 +9,7 @@ import logging
 from datetime import date, datetime
 from typing import Optional
 
+from services.industry import industry_level_value, load_industry_map
 from services.utils import safe_float as _safe_float, percentile_ranks as _percentile_ranks, clamp_score as _clamp_score
 
 logger = logging.getLogger("cm-api")
@@ -181,20 +182,21 @@ def ensure_tables(conn):
     conn.commit()
 
 
-def _load_financial_groups(conn):
+def _load_financial_groups(conn, industry_map):
     financial_by_stock = {}
     fin_groups = {("all", "all"): []}
     fin_pct_map = {}
     fin_group_sizes = {}
     rows = conn.execute("""
         SELECT f.stock_code, f.latest_report_date, f.roe, f.debt_ratio, f.current_ratio,
-               f.gross_margin, f.ocf_to_profit, f.contract_to_revenue,
-               i.sw_level1, i.sw_level2
+               f.gross_margin, f.ocf_to_profit, f.contract_to_revenue
         FROM dim_financial_latest f
-        LEFT JOIN dim_stock_industry i ON i.stock_code = f.stock_code
     """).fetchall()
     for row in rows:
         d = dict(row)
+        industry = industry_map.get(d["stock_code"]) or {}
+        d["sw_level1"] = industry_level_value(industry, 1)
+        d["sw_level2"] = industry_level_value(industry, 2)
         financial_by_stock[d["stock_code"]] = d
         fin_groups[("all", "all")].append(d)
         if d.get("sw_level2"):
@@ -223,7 +225,7 @@ def _load_financial_groups(conn):
     return financial_by_stock, fin_pct_map, fin_group_sizes
 
 
-def _load_indicator_groups(conn):
+def _load_indicator_groups(conn, industry_map):
     indicator_by_stock = {}
     indicator_groups = {("all", "all"): []}
     indicator_pct_map = {}
@@ -232,12 +234,14 @@ def _load_indicator_groups(conn):
         SELECT f.stock_code, f.latest_report_date, f.roe_ak, f.roa_ak, f.gross_margin_ak,
                f.net_margin_ak, f.current_ratio_ak, f.quick_ratio_ak, f.debt_ratio_ak,
                f.asset_turnover_ak, f.inventory_turnover_ak, f.receivables_turnover_ak,
-               f.revenue_growth_yoy_ak, f.net_profit_growth_yoy_ak, i.sw_level1, i.sw_level2
+               f.revenue_growth_yoy_ak, f.net_profit_growth_yoy_ak
         FROM dim_financial_indicator_latest f
-        LEFT JOIN dim_stock_industry i ON i.stock_code = f.stock_code
     """).fetchall()
     for row in rows:
         d = dict(row)
+        industry = industry_map.get(d["stock_code"]) or {}
+        d["sw_level1"] = industry_level_value(industry, 1)
+        d["sw_level2"] = industry_level_value(industry, 2)
         indicator_by_stock[d["stock_code"]] = d
         indicator_groups[("all", "all")].append(d)
         if d.get("sw_level2"):
@@ -281,9 +285,10 @@ def build_quality_features(conn, snapshot_date: Optional[str] = None) -> int:
     ensure_tables(conn)
     snapshot_date = snapshot_date or date.today().strftime("%Y-%m-%d")
     now = datetime.now().isoformat()
+    industry_map = load_industry_map(conn)
 
-    financial_by_stock, fin_pct_map, fin_group_sizes = _load_financial_groups(conn)
-    indicator_by_stock, indicator_pct_map, indicator_group_sizes = _load_indicator_groups(conn)
+    financial_by_stock, fin_pct_map, fin_group_sizes = _load_financial_groups(conn, industry_map)
+    indicator_by_stock, indicator_pct_map, indicator_group_sizes = _load_indicator_groups(conn, industry_map)
     capital_by_stock = {}
     try:
         rows = conn.execute("""
@@ -313,15 +318,13 @@ def build_quality_features(conn, snapshot_date: Optional[str] = None) -> int:
     except Exception:
         archetype_by_stock = {}
 
-    stock_rows = conn.execute("""
-        SELECT stock_code, sw_level1, sw_level2
-        FROM dim_stock_industry
-        UNION
-        SELECT stock_code, NULL AS sw_level1, NULL AS sw_level2
-        FROM dim_financial_latest
-        WHERE stock_code NOT IN (SELECT stock_code FROM dim_stock_industry)
-    """).fetchall()
-    stock_meta = {row["stock_code"]: dict(row) for row in stock_rows}
+    stock_meta = {
+        code: {
+            "sw_level1": industry_level_value(industry, 1),
+            "sw_level2": industry_level_value(industry, 2),
+        }
+        for code, industry in industry_map.items()
+    }
     all_codes = sorted(set(stock_meta) | set(financial_by_stock) | set(indicator_by_stock) | set(capital_by_stock))
 
     conn.execute("DELETE FROM fact_stock_quality_features WHERE snapshot_date = ?", (snapshot_date,))

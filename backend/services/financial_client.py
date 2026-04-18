@@ -16,18 +16,33 @@ financial_client.py — 财务数据同步与计算
 """
 
 import asyncio
+import copy
 import logging
+import time
 from collections import defaultdict
-from datetime import datetime
-from typing import Iterable, Optional
+from concurrent.futures import ThreadPoolExecutor
+from datetime import datetime, timedelta
+from typing import Callable, Iterable, Optional
 
-from services.tdx_source import get_tdx_quotes_class, iter_tdx_servers
+from services.tdx_source import call_tdx_quotes_with_retry, iter_tdx_servers
 
 logger = logging.getLogger("cm-api")
 
 FIN_HISTORY_TARGET_ROWS = 8
 FIN_HISTORY_FETCH_LIMIT = 12
 FIN_HISTORY_BATCH_SIZE = 24
+FIN_HISTORY_RETRY_COOLDOWN_HOURS = 6
+FIN_HISTORY_SOURCE_RETRY_ATTEMPTS = 3
+FIN_HISTORY_SOURCE_RETRY_BASE_DELAY_SECONDS = 0.75
+FIN_SNAPSHOT_BATCH_SIZE = 50
+FIN_SNAPSHOT_RECENT_HOURS = 24
+FIN_SNAPSHOT_PROGRESS_EVERY = 250
+FIN_SNAPSHOT_BATCH_CONCURRENCY = max(4, min(12, max(1, len(iter_tdx_servers())) * 2))
+
+_FIN_SNAPSHOT_EXECUTOR = ThreadPoolExecutor(
+    max_workers=FIN_SNAPSHOT_BATCH_CONCURRENCY,
+    thread_name_prefix="financial-snapshot",
+)
 
 RAW_FINANCIAL_COLUMNS = [
     "stock_code",
@@ -154,6 +169,10 @@ def ensure_tables(conn):
             last_report_date  TEXT,
             last_snapshot_at  TEXT,
             last_history_at   TEXT,
+            history_status    TEXT,
+            history_error     TEXT,
+            snapshot_status   TEXT,
+            snapshot_error    TEXT,
             status            TEXT DEFAULT 'pending',
             error             TEXT,
             updated_at        TEXT
@@ -170,6 +189,13 @@ def ensure_tables(conn):
         "net_margin": "REAL",
         "history_rows": "INTEGER DEFAULT 0",
     })
+    _ensure_columns(conn, "financial_sync_state", {
+        "history_status": "TEXT",
+        "history_error": "TEXT",
+        "snapshot_status": "TEXT",
+        "snapshot_error": "TEXT",
+    })
+    _bootstrap_financial_sync_state_phase_columns(conn)
     conn.commit()
 
 
@@ -353,41 +379,295 @@ def _upsert_raw_financial(conn, record: dict) -> None:
 
 def _update_snapshot_state(conn, stock_codes: Iterable[str], snapshot_at: str) -> None:
     for code in stock_codes:
-        row = conn.execute(
+        _upsert_snapshot_state(conn, code, updated_at=snapshot_at, snapshot_at=snapshot_at, status="ok")
+
+
+def _upsert_snapshot_state(
+    conn,
+    stock_code: str,
+    updated_at: str,
+    *,
+    snapshot_at: Optional[str] = None,
+    status: str,
+    error: Optional[str] = None,
+) -> None:
+    code = _normalize_stock_code(stock_code)
+    if not code:
+        return
+
+    row = conn.execute(
+        """
+        SELECT COUNT(*) AS cnt, MAX(report_date) AS latest_report
+        FROM raw_gpcw_financial
+        WHERE stock_code = ?
+        """,
+        (code,),
+    ).fetchone()
+    conn.execute(
+        """
+        INSERT INTO financial_sync_state
+        (stock_code, history_rows, last_report_date, last_snapshot_at,
+         snapshot_status, snapshot_error, status, error, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ON CONFLICT(stock_code) DO UPDATE SET
+            history_rows = excluded.history_rows,
+            last_report_date = COALESCE(excluded.last_report_date, financial_sync_state.last_report_date),
+            last_snapshot_at = COALESCE(excluded.last_snapshot_at, financial_sync_state.last_snapshot_at),
+            snapshot_status = excluded.snapshot_status,
+            snapshot_error = excluded.snapshot_error,
+            status = excluded.status,
+            error = excluded.error,
+            updated_at = excluded.updated_at
+        """,
+        (
+            code,
+            row["cnt"] if row else 0,
+            row["latest_report"] if row else None,
+            snapshot_at,
+            status,
+            error,
+            status,
+            error,
+            updated_at,
+        ),
+    )
+
+
+def _parse_sync_timestamp(value: Optional[str]) -> Optional[datetime]:
+    text = str(value or "").strip()
+    if not text:
+        return None
+
+    normalized = text[:-1] + "+00:00" if text.endswith("Z") else text
+    for parser in (
+        lambda current: datetime.fromisoformat(current),
+        lambda current: datetime.strptime(current, "%Y-%m-%d %H:%M:%S"),
+        lambda current: datetime.strptime(current, "%Y-%m-%d %H:%M:%S.%f"),
+    ):
+        try:
+            parsed = parser(normalized)
+            if parsed.tzinfo is not None:
+                return parsed.astimezone().replace(tzinfo=None)
+            return parsed
+        except ValueError:
+            continue
+    return None
+
+
+def _normalize_history_stage_status(status: Optional[str], history_rows: int) -> str:
+    current = str(status or "").strip()
+    if current == "ok" and history_rows < FIN_HISTORY_TARGET_ROWS:
+        return "partial"
+    if current:
+        return current
+    return "ok" if history_rows >= FIN_HISTORY_TARGET_ROWS else "partial"
+
+
+def _state_field_value(state, field: str):
+    if state is None:
+        return None
+    if isinstance(state, dict):
+        return state.get(field)
+    if hasattr(state, "keys"):
+        try:
+            if field in state.keys():
+                return state[field]
+        except Exception:
+            return None
+    return None
+
+
+def _snapshot_stage_status(state) -> str:
+    return str(
+        _state_field_value(state, "snapshot_status")
+        or _state_field_value(state, "status")
+        or ""
+    ).strip()
+
+
+def _history_stage_status(state, history_rows: int) -> str:
+    return _normalize_history_stage_status(
+        _state_field_value(state, "history_status") or _state_field_value(state, "status"),
+        history_rows,
+    )
+
+
+def _bootstrap_financial_sync_state_phase_columns(conn) -> None:
+    try:
+        rows = conn.execute(
             """
-            SELECT COUNT(*) AS cnt, MAX(report_date) AS latest_report
-            FROM raw_gpcw_financial
+            SELECT stock_code, history_rows, last_history_at, last_snapshot_at,
+                   status, error, history_status, history_error,
+                   snapshot_status, snapshot_error
+            FROM financial_sync_state
+            """
+        ).fetchall()
+    except Exception:
+        return
+
+    updates = []
+    for row in rows:
+        history_rows = int(row["history_rows"] or 0)
+        history_status = row["history_status"]
+        history_error = row["history_error"]
+        snapshot_status = row["snapshot_status"]
+        snapshot_error = row["snapshot_error"]
+
+        if history_status is None and row["last_history_at"]:
+            history_status = _normalize_history_stage_status(row["status"], history_rows)
+            if history_error is None and str(row["status"] or "").strip() in {"failed", "empty", "partial"}:
+                history_error = row["error"]
+
+        if snapshot_status is None and row["last_snapshot_at"]:
+            snapshot_status = str(row["status"] or "").strip() or "ok"
+            if snapshot_error is None:
+                snapshot_error = row["error"]
+
+        if (
+            history_status != row["history_status"]
+            or history_error != row["history_error"]
+            or snapshot_status != row["snapshot_status"]
+            or snapshot_error != row["snapshot_error"]
+        ):
+            updates.append((history_status, history_error, snapshot_status, snapshot_error, row["stock_code"]))
+
+    if updates:
+        conn.executemany(
+            """
+            UPDATE financial_sync_state
+            SET history_status = ?, history_error = ?,
+                snapshot_status = ?, snapshot_error = ?
             WHERE stock_code = ?
             """,
-            (code,),
-        ).fetchone()
-        conn.execute(
-            """
-            INSERT INTO financial_sync_state
-            (stock_code, history_rows, last_report_date, last_snapshot_at, status, error, updated_at)
-            VALUES (?, ?, ?, ?, 'ok', NULL, ?)
-            ON CONFLICT(stock_code) DO UPDATE SET
-                history_rows = excluded.history_rows,
-                last_report_date = excluded.last_report_date,
-                last_snapshot_at = excluded.last_snapshot_at,
-                status = CASE
-                    WHEN financial_sync_state.status = 'failed' THEN financial_sync_state.status
-                    ELSE 'ok'
-                END,
-                error = CASE
-                    WHEN financial_sync_state.status = 'failed' THEN financial_sync_state.error
-                    ELSE NULL
-                END,
-                updated_at = excluded.updated_at
-            """,
-            (
-                code,
-                row["cnt"] if row else 0,
-                row["latest_report"] if row else None,
-                snapshot_at,
-                snapshot_at,
-            ),
+            updates,
         )
+
+
+def summarize_history_gap_state(
+    conn,
+    stock_codes: Optional[list] = None,
+    *,
+    cooldown_hours: int = FIN_HISTORY_RETRY_COOLDOWN_HOURS,
+) -> dict:
+    params: list = []
+    in_clause = ""
+    if stock_codes:
+        normalized = [_normalize_stock_code(code) for code in stock_codes if _normalize_stock_code(code)]
+        if not normalized:
+            return {
+                "total_gap": 0,
+                "retryable_gap": 0,
+                "cooling_gap": 0,
+                "recent_failed_gap": 0,
+                "recent_empty_gap": 0,
+                "recent_partial_gap": 0,
+                "cooldown_hours": cooldown_hours,
+            }
+        placeholders = ",".join("?" for _ in normalized)
+        in_clause = f" WHERE t.stock_code IN ({placeholders}) "
+        params.extend(normalized)
+
+    history_status_select = "NULL AS history_status"
+    try:
+        if "history_status" in _table_columns(conn, "financial_sync_state"):
+            history_status_select = "s.history_status AS history_status"
+    except Exception:
+        pass
+
+    base_sql = f"""
+        WITH fin AS (
+            SELECT stock_code, COUNT(*) AS history_rows
+            FROM raw_gpcw_financial
+            GROUP BY stock_code
+        )
+        SELECT t.stock_code,
+               COALESCE(f.history_rows, 0) AS history_rows,
+               s.last_history_at,
+               {history_status_select}
+        FROM mart_stock_trend t
+        LEFT JOIN fin f ON f.stock_code = t.stock_code
+        LEFT JOIN financial_sync_state s ON s.stock_code = t.stock_code
+        {in_clause}
+    """
+    fallback_sql = f"""
+        WITH fin AS (
+            SELECT stock_code, COUNT(*) AS history_rows
+            FROM raw_gpcw_financial
+            GROUP BY stock_code
+        )
+        SELECT t.stock_code,
+               COALESCE(f.history_rows, 0) AS history_rows,
+               NULL AS last_history_at,
+               NULL AS history_status
+        FROM mart_stock_trend t
+        LEFT JOIN fin f ON f.stock_code = t.stock_code
+        {in_clause}
+    """
+    try:
+        rows = conn.execute(base_sql, params).fetchall()
+    except Exception:
+        rows = conn.execute(fallback_sql, params).fetchall()
+
+    cutoff = datetime.now() - timedelta(hours=cooldown_hours)
+    summary = {
+        "total_gap": 0,
+        "retryable_gap": 0,
+        "cooling_gap": 0,
+        "recent_failed_gap": 0,
+        "recent_empty_gap": 0,
+        "recent_partial_gap": 0,
+        "cooldown_hours": cooldown_hours,
+    }
+
+    for row in rows:
+        history_rows = int(row["history_rows"] or 0)
+        if history_rows >= FIN_HISTORY_TARGET_ROWS:
+            continue
+
+        summary["total_gap"] += 1
+        last_history_at = _parse_sync_timestamp(row["last_history_at"])
+        if last_history_at and last_history_at >= cutoff:
+            summary["cooling_gap"] += 1
+            history_status = _normalize_history_stage_status(row["history_status"], history_rows)
+            if history_status == "failed":
+                summary["recent_failed_gap"] += 1
+            elif history_status == "empty":
+                summary["recent_empty_gap"] += 1
+            elif history_status == "partial":
+                summary["recent_partial_gap"] += 1
+        else:
+            summary["retryable_gap"] += 1
+
+    return summary
+
+
+def _select_snapshot_candidates(
+    conn,
+    stock_codes: list[str],
+    snapshot_now: datetime,
+    cooldown_hours: int = FIN_SNAPSHOT_RECENT_HOURS,
+) -> tuple[list[str], int]:
+    if not stock_codes:
+        return [], 0
+
+    cutoff = snapshot_now - timedelta(hours=cooldown_hours)
+    state_rows = conn.execute(
+        """
+        SELECT stock_code, last_snapshot_at, status, snapshot_status
+        FROM financial_sync_state
+        """
+    ).fetchall()
+    state_by_code = {row["stock_code"]: row for row in state_rows}
+    candidates = []
+
+    for code in stock_codes:
+        state = state_by_code.get(code)
+        last_snapshot_at = _parse_sync_timestamp(state["last_snapshot_at"]) if state else None
+        if state and _snapshot_stage_status(state) == "ok" and last_snapshot_at and last_snapshot_at >= cutoff:
+            continue
+        candidates.append(code)
+
+    return candidates, len(stock_codes) - len(candidates)
 
 
 def _resolve_snapshot_report_date(conn, stock_code: str, notice_date: Optional[str]) -> Optional[str]:
@@ -424,7 +704,24 @@ def _resolve_snapshot_report_date(conn, stock_code: str, notice_date: Optional[s
         if nearby and nearby["report_date"]:
             return nearby["report_date"]
 
-    return _infer_report_date_from_notice_date(notice)
+    inferred = _infer_report_date_from_notice_date(notice)
+    if inferred:
+        return inferred
+
+    latest = conn.execute(
+        """
+        SELECT report_date
+        FROM raw_gpcw_financial
+        WHERE stock_code = ?
+        ORDER BY report_date DESC
+        LIMIT 1
+        """,
+        (stock_code,),
+    ).fetchone()
+    if latest and latest["report_date"]:
+        return latest["report_date"]
+
+    return None
 
 
 def _cleanup_snapshot_stub(conn, stock_code: str, notice_date: Optional[str], report_date: Optional[str]) -> None:
@@ -442,40 +739,31 @@ def _cleanup_snapshot_stub(conn, stock_code: str, notice_date: Optional[str], re
         (stock_code, notice, report_date),
     )
 
+
 def _fetch_latest_snapshot_batch(codes):
-    Quotes = get_tdx_quotes_class()
-    if Quotes is None:
-        logger.warning("[财务] mootdx 未安装，跳过最新快照同步")
-        return {}
-
-    for server in iter_tdx_servers():
-        try:
-            client = Quotes.factory(
-                market="std",
-                multithread=False,
-                heartbeat=False,
-                server=server,
-                timeout=5,
-            )
-            results = {}
-            for code in codes:
-                try:
-                    fin = client.finance(symbol=code)
-                    if fin is not None and not fin.empty:
-                        results[code] = fin.iloc[0].to_dict()
-                except Exception:
-                    continue
+    def _fetch_on_client(client):
+        results = {}
+        for code in codes:
             try:
-                client.close()
+                fin = client.finance(symbol=code)
+                if fin is not None and not fin.empty:
+                    results[code] = fin.iloc[0].to_dict()
             except Exception:
-                pass
-            if results:
-                return results
-        except Exception as exc:
-            logger.debug(f"[财务] mootdx {server} 连接失败: {exc}")
-            continue
+                continue
+        if not results:
+            raise ValueError("empty finance batch")
+        return results
 
-    logger.error("[财务] mootdx 所有服务器均连接失败")
+    try:
+        results, _source = call_tdx_quotes_with_retry(
+            _fetch_on_client,
+            action_name=f"finance[{len(codes)}]",
+        )
+        return results
+    except ImportError:
+        logger.warning("[财务] mootdx 未安装，跳过最新快照同步")
+    except Exception as exc:
+        logger.error(f"[财务] 最新快照同步失败: {exc}")
     return {}
 
 
@@ -605,6 +893,47 @@ def _merge_history_records(stock_code: str, *parts: list[dict]) -> list[dict]:
     return records[:FIN_HISTORY_FETCH_LIMIT]
 
 
+def _is_retryable_history_fetch_error(exc: Exception) -> bool:
+    text = str(exc or "").strip().lower()
+    if not text:
+        return False
+    retryable_fragments = (
+        "expecting value",
+        "char 0",
+        "jsondecodeerror",
+        "read timed out",
+        "timed out",
+        "connection aborted",
+        "connection reset",
+        "remote end closed connection",
+        "max retries exceeded",
+        "temporarily unavailable",
+        "503",
+        "504",
+    )
+    return any(fragment in text for fragment in retryable_fragments)
+
+
+def _fetch_sina_statement_with_retry(ak_module, symbol: str, statement: str):
+    last_exc: Optional[Exception] = None
+    for attempt in range(1, FIN_HISTORY_SOURCE_RETRY_ATTEMPTS + 1):
+        try:
+            return ak_module.stock_financial_report_sina(stock=symbol, symbol=statement)
+        except Exception as exc:
+            last_exc = exc
+            if attempt >= FIN_HISTORY_SOURCE_RETRY_ATTEMPTS or not _is_retryable_history_fetch_error(exc):
+                raise
+            delay = FIN_HISTORY_SOURCE_RETRY_BASE_DELAY_SECONDS * attempt
+            logger.warning(
+                f"[财务] {symbol} {statement} 第 {attempt} 次抓取失败，{delay:.2f}s 后重试: {str(exc)[:120]}"
+            )
+            time.sleep(delay)
+
+    if last_exc is not None:
+        raise last_exc
+    raise RuntimeError(f"history_fetch_unexpected_empty_retry_loop:{symbol}:{statement}")
+
+
 def _fetch_sina_history_batch(stock_codes: list[str]) -> tuple[list[dict], dict[str, dict]]:
     try:
         import akshare as ak
@@ -621,10 +950,19 @@ def _fetch_sina_history_batch(stock_codes: list[str]) -> tuple[list[dict], dict[
             states[code] = {"status": "skipped", "error": "当前财报历史接口暂不支持该市场"}
             continue
 
+        statement_failures = []
+
+        def _fetch_statement(statement: str):
+            try:
+                return _fetch_sina_statement_with_retry(ak, symbol, statement)
+            except Exception as exc:
+                statement_failures.append(f"{statement}:{str(exc)[:120]}")
+                return None
+
         try:
-            balance_df = ak.stock_financial_report_sina(stock=symbol, symbol="资产负债表")
-            income_df = ak.stock_financial_report_sina(stock=symbol, symbol="利润表")
-            cashflow_df = ak.stock_financial_report_sina(stock=symbol, symbol="现金流量表")
+            balance_df = _fetch_statement("资产负债表")
+            income_df = _fetch_statement("利润表")
+            cashflow_df = _fetch_statement("现金流量表")
             merged = _merge_history_records(
                 code,
                 _extract_balance_rows(balance_df, "akshare_sina_balance"),
@@ -632,15 +970,22 @@ def _fetch_sina_history_batch(stock_codes: list[str]) -> tuple[list[dict], dict[
                 _extract_cashflow_rows(cashflow_df, "akshare_sina_cashflow"),
             )
             if not merged:
-                states[code] = {"status": "empty", "error": "未获取到历史财报"}
+                if statement_failures:
+                    states[code] = {"status": "failed", "error": "; ".join(statement_failures)[:300]}
+                else:
+                    states[code] = {"status": "empty", "error": "未获取到历史财报"}
                 continue
 
             all_records.extend(merged)
-            states[code] = {
+            state = {
                 "status": "ok",
                 "history_rows": len(merged),
                 "last_report_date": merged[0]["report_date"],
             }
+            if statement_failures:
+                state["status"] = "partial"
+                state["error"] = "; ".join(statement_failures)[:300]
+            states[code] = state
         except Exception as exc:
             states[code] = {"status": "failed", "error": str(exc)[:300]}
 
@@ -650,7 +995,8 @@ def _fetch_sina_history_batch(stock_codes: list[str]) -> tuple[list[dict], dict[
 def _select_history_candidates(conn, stock_codes: Optional[list] = None, limit: int = FIN_HISTORY_BATCH_SIZE) -> list[str]:
     ensure_tables(conn)
 
-    params: list = [FIN_HISTORY_TARGET_ROWS]
+    history_cutoff = (datetime.now() - timedelta(hours=FIN_HISTORY_RETRY_COOLDOWN_HOURS)).isoformat()
+    params: list = [FIN_HISTORY_TARGET_ROWS, history_cutoff]
     in_clause = ""
     if stock_codes:
         normalized = [_normalize_stock_code(code) for code in stock_codes if _normalize_stock_code(code)]
@@ -676,10 +1022,11 @@ def _select_history_candidates(conn, stock_codes: Optional[list] = None, limit: 
         LEFT JOIN mart_current_relationship m ON m.stock_code = a.stock_code
         LEFT JOIN mart_stock_trend t ON t.stock_code = a.stock_code
         WHERE e.stock_code IS NULL
-          AND (
-                COALESCE(f.history_rows, 0) < ?
-             OR COALESCE(s.status, '') IN ('failed', 'empty', 'partial')
-          )
+             AND COALESCE(f.history_rows, 0) < ?
+             AND (
+                     s.last_history_at IS NULL
+                 OR s.last_history_at < ?
+             )
           {in_clause}
         GROUP BY a.stock_code
         ORDER BY
@@ -697,6 +1044,13 @@ def _select_history_candidates(conn, stock_codes: Optional[list] = None, limit: 
         params,
     ).fetchall()
     return [row["stock_code"] for row in rows]
+
+
+def _resolve_history_candidate_limit(conn, stock_codes: Optional[list]) -> int:
+    requested_count = len(stock_codes or [])
+    if requested_count <= 0:
+        return FIN_HISTORY_BATCH_SIZE
+    return min(requested_count, FIN_HISTORY_BATCH_SIZE)
 
 
 def _apply_history_backfill(conn, stock_codes: list[str], records: list[dict], states: dict[str, dict], synced_at: str) -> int:
@@ -721,18 +1075,19 @@ def _apply_history_backfill(conn, stock_codes: list[str], records: list[dict], s
         state = states.get(code, {})
         history_rows = count_row["cnt"] if count_row else 0
         last_report_date = count_row["latest_report"] if count_row else None
-        status = state.get("status") or ("ok" if history_rows >= FIN_HISTORY_TARGET_ROWS else "partial")
-        if status == "ok" and history_rows < FIN_HISTORY_TARGET_ROWS:
-            status = "partial"
+        history_status = _history_stage_status(state, history_rows)
         conn.execute(
             """
             INSERT INTO financial_sync_state
-            (stock_code, history_rows, last_report_date, last_history_at, status, error, updated_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?)
+            (stock_code, history_rows, last_report_date, last_history_at,
+             history_status, history_error, status, error, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(stock_code) DO UPDATE SET
                 history_rows = excluded.history_rows,
                 last_report_date = excluded.last_report_date,
                 last_history_at = excluded.last_history_at,
+                history_status = excluded.history_status,
+                history_error = excluded.history_error,
                 status = excluded.status,
                 error = excluded.error,
                 updated_at = excluded.updated_at
@@ -742,7 +1097,9 @@ def _apply_history_backfill(conn, stock_codes: list[str], records: list[dict], s
                 history_rows,
                 last_report_date,
                 synced_at,
-                status,
+                history_status,
+                state.get("error"),
+                history_status,
                 state.get("error"),
                 synced_at,
             ),
@@ -754,7 +1111,13 @@ def _apply_history_backfill(conn, stock_codes: list[str], records: list[dict], s
 # 公共同步入口
 # ============================================================
 
-async def sync_financial_data(conn, stock_codes: Optional[list] = None) -> int:
+async def sync_financial_data(
+    conn,
+    stock_codes: Optional[list] = None,
+    *,
+    progress_callback: Optional[Callable[[dict], None]] = None,
+    should_stop=None,
+) -> int:
     """同步最新快照，并增量回填历史财务序列。"""
     ensure_tables(conn)
 
@@ -773,107 +1136,402 @@ async def sync_financial_data(conn, stock_codes: Optional[list] = None) -> int:
         logger.warning("[财务] dim_active_a_stock 为空，请先跑「数据获取 → 同步十大股东」拉取主数据")
         return 0
 
+    def _check_stop() -> None:
+        if should_stop:
+            should_stop()
+
+    progress = {
+        "summary": {
+            "status": "running",
+            "records": 0,
+            "history_rows": 0,
+            "snapshot_rows": 0,
+            "capital_rows": 0,
+            "indicator_rows": 0,
+            "quality_stocks": 0,
+            "archetype_stocks": 0,
+        },
+        "history_backfill": {
+            "status": "pending",
+            "candidate_codes": 0,
+            "done_codes": 0,
+            "success_codes": 0,
+            "partial_codes": 0,
+            "failed_codes": 0,
+            "rows": 0,
+            "target_reports": FIN_HISTORY_FETCH_LIMIT,
+        },
+        "snapshot_sync": {
+            "status": "pending",
+            "candidate_codes": 0,
+            "done_codes": 0,
+            "success_codes": 0,
+            "failed_codes": 0,
+            "rows": 0,
+            "skipped_recent": 0,
+            "batch_size": FIN_SNAPSHOT_BATCH_SIZE,
+        },
+        "capital_behavior": {
+            "status": "pending",
+            "rows": 0,
+        },
+        "financial_indicator": {
+            "status": "pending",
+            "rows": 0,
+        },
+        "quality_features": {
+            "status": "pending",
+            "stock_count": 0,
+        },
+        "stock_archetypes": {
+            "status": "pending",
+            "stock_count": 0,
+        },
+    }
+
+    def _resolve_stage_status(*, candidates: int, success: int = 0, partial: int = 0, failed: int = 0) -> str:
+        if candidates <= 0:
+            return "skipped"
+        if failed and not (success or partial):
+            return "failed"
+        if failed or partial:
+            return "partial"
+        return "success"
+
+    def _refresh_summary(status: Optional[str] = None) -> None:
+        history_rows = progress["history_backfill"]["rows"]
+        snapshot_rows = progress["snapshot_sync"]["rows"]
+        capital_rows = progress["capital_behavior"]["rows"]
+        indicator_rows = progress["financial_indicator"]["rows"]
+        progress["summary"].update({
+            "records": history_rows + snapshot_rows + capital_rows + indicator_rows,
+            "history_rows": history_rows,
+            "snapshot_rows": snapshot_rows,
+            "capital_rows": capital_rows,
+            "indicator_rows": indicator_rows,
+            "quality_stocks": progress["quality_features"]["stock_count"],
+            "archetype_stocks": progress["stock_archetypes"]["stock_count"],
+        })
+        if status:
+            progress["summary"]["status"] = status
+
+    def _emit_progress(status: Optional[str] = None) -> None:
+        _refresh_summary(status)
+        if not progress_callback:
+            return
+        try:
+            progress_callback(copy.deepcopy(progress))
+        except Exception as exc:
+            logger.warning(f"[财务] 进度回调失败: {exc}")
+
+    _emit_progress()
+
     loop = asyncio.get_running_loop()
+
+    async def _run_local_db_stage(task_fn):
+        from services.db import get_conn as _get_conn
+
+        def _worker():
+            worker_conn = _get_conn(timeout=120)
+            try:
+                return task_fn(worker_conn)
+            finally:
+                worker_conn.close()
+
+        return await loop.run_in_executor(None, _worker)
+
     now = datetime.now().isoformat()
-    history_candidates = _select_history_candidates(conn, stock_codes=stock_codes, limit=FIN_HISTORY_BATCH_SIZE)
+    history_batch_limit = _resolve_history_candidate_limit(conn, stock_codes)
+    history_candidates = _select_history_candidates(conn, stock_codes=stock_codes, limit=history_batch_limit)
+    progress["history_backfill"].update({
+        "status": "running" if history_candidates else "skipped",
+        "candidate_codes": len(history_candidates),
+        "done_codes": 0,
+        "success_codes": 0,
+        "partial_codes": 0,
+        "failed_codes": 0,
+        "rows": 0,
+        "target_reports": FIN_HISTORY_FETCH_LIMIT,
+        "batch_limit": history_batch_limit,
+    })
+    _emit_progress()
     history_upserts = 0
     if history_candidates:
+        _check_stop()
         logger.info(
-            f"[财务] 开始回填历史财报: 候选 {len(history_candidates)} 只，目标每只最多 {FIN_HISTORY_FETCH_LIMIT} 期"
+            f"[财务] 开始回填历史财报: 候选 {len(history_candidates)} 只"
+            f"（批次上限 {history_batch_limit}），目标每只最多 {FIN_HISTORY_FETCH_LIMIT} 期"
         )
         records, states = await loop.run_in_executor(None, _fetch_sina_history_batch, history_candidates)
+        _check_stop()
         history_upserts = _apply_history_backfill(conn, history_candidates, records, states, now)
         conn.commit()
         success_count = sum(1 for state in states.values() if state.get("status") == "ok")
         partial_count = sum(1 for state in states.values() if state.get("status") == "partial")
         failed_count = len(history_candidates) - success_count - partial_count
+        progress["history_backfill"].update({
+            "status": _resolve_stage_status(
+                candidates=len(history_candidates),
+                success=success_count,
+                partial=partial_count,
+                failed=failed_count,
+            ),
+            "candidate_codes": len(history_candidates),
+            "done_codes": len(history_candidates),
+            "success_codes": success_count,
+            "partial_codes": partial_count,
+            "failed_codes": failed_count,
+            "rows": history_upserts,
+            "target_reports": FIN_HISTORY_FETCH_LIMIT,
+            "batch_limit": history_batch_limit,
+        })
+        _emit_progress()
         logger.info(
             f"[财务] 历史回填完成: {history_upserts} 条记录, 成功 {success_count}, 未满目标 {partial_count}, 失败/空结果 {failed_count}"
         )
     else:
         logger.info("[财务] 历史财报覆盖已达当前批次目标，无需回填")
 
-    logger.info(f"[财务] 开始同步 {len(stock_codes)} 只股票的最新财务快照")
-    batch_size = 50
-    all_results = {}
-    for i in range(0, len(stock_codes), batch_size):
-        batch = stock_codes[i:i + batch_size]
-        batch_results = await loop.run_in_executor(None, _fetch_latest_snapshot_batch, batch)
-        all_results.update(batch_results)
-        if (i // batch_size) % 10 == 0 and i > 0:
-            logger.info(f"[财务] 最新快照已获取 {len(all_results)}/{len(stock_codes)}")
-
-    if not all_results:
-        logger.warning("[财务] 未获取到任何最新财务快照")
     latest_upserts = 0
+    snapshot_now = datetime.now()
+    snapshot_candidates, skipped_recent = _select_snapshot_candidates(conn, stock_codes, snapshot_now)
+    progress["snapshot_sync"].update({
+        "status": "running" if snapshot_candidates else "skipped",
+        "candidate_codes": len(snapshot_candidates),
+        "done_codes": 0,
+        "success_codes": 0,
+        "failed_codes": 0,
+        "rows": 0,
+        "skipped_recent": skipped_recent,
+        "batch_size": FIN_SNAPSHOT_BATCH_SIZE,
+    })
+    _emit_progress()
+    if snapshot_candidates:
+        logger.info(
+            f"[财务] 开始同步 {len(snapshot_candidates)} 只股票的最新财务快照"
+            + (f"，跳过最近已成功 {skipped_recent} 只" if skipped_recent else "")
+        )
+    else:
+        logger.info(f"[财务] 最新快照最近已完成，跳过 {skipped_recent} 只股票")
 
-    for code, raw in all_results.items():
-        parsed = _parse_finance_record(raw)
-        notice_date = _normalize_date(raw.get("updated_date"))
-        report_date = _resolve_snapshot_report_date(conn, code, notice_date) or notice_date
-        record = {
-            "stock_code": code,
-            "report_date": report_date,
-            "notice_date": notice_date,
-            "report_type": "latest_snapshot",
-            "is_audited": None,
-            "total_assets": parsed.get("total_assets"),
-            "total_liabilities": parsed.get("total_liabilities"),
-            "net_assets": parsed.get("net_assets"),
-            "current_assets": parsed.get("current_assets"),
-            "current_liabilities": parsed.get("current_liabilities"),
-            "revenue": parsed.get("revenue"),
-            "operating_profit": parsed.get("operating_profit"),
-            "net_profit": parsed.get("net_profit"),
-            "operating_cashflow": parsed.get("operating_cashflow"),
-            "total_shares": parsed.get("total_shares"),
-            "float_shares": parsed.get("float_shares"),
-            "holder_count": parsed.get("holder_count"),
-            "contract_liabilities": None,
-            "eps": parsed.get("eps"),
-            "nav_per_share": parsed.get("nav_per_share"),
-            "gross_profit": parsed.get("gross_profit"),
-            "inventory": parsed.get("inventory"),
-            "undistributed_profit": parsed.get("undistributed_profit"),
-            "source_file": "mootdx_finance",
-            "ingested_at": now,
-        }
-        _upsert_raw_financial(conn, record)
-        _cleanup_snapshot_stub(conn, code, notice_date, report_date)
-        latest_upserts += 1
+    snapshot_failures = 0
+    snapshot_processed = 0
 
-    if all_results:
-        _update_snapshot_state(conn, all_results.keys(), now)
-        conn.commit()
-    logger.info(f"[财务] 最新快照同步完成: {latest_upserts} 条")
+    if snapshot_candidates:
+        _check_stop()
+        batches = [
+            snapshot_candidates[index:index + FIN_SNAPSHOT_BATCH_SIZE]
+            for index in range(0, len(snapshot_candidates), FIN_SNAPSHOT_BATCH_SIZE)
+        ]
+
+        async def _run_snapshot_batch(batch: list[str]) -> tuple[list[str], dict[str, dict]]:
+            result = await loop.run_in_executor(_FIN_SNAPSHOT_EXECUTOR, _fetch_latest_snapshot_batch, batch)
+            return batch, result
+
+        tasks = [asyncio.create_task(_run_snapshot_batch(batch)) for batch in batches]
+        try:
+            for task in asyncio.as_completed(tasks):
+                _check_stop()
+                batch, batch_results = await task
+                batch_synced_at = datetime.now().isoformat()
+                batch_success_codes = []
+
+                for code in batch:
+                    raw = batch_results.get(code)
+                    if not raw:
+                        _upsert_snapshot_state(
+                            conn,
+                            code,
+                            updated_at=batch_synced_at,
+                            status="failed",
+                            error="snapshot_empty",
+                        )
+                        snapshot_failures += 1
+                        continue
+
+                    parsed = _parse_finance_record(raw)
+                    notice_date = _normalize_date(raw.get("updated_date"))
+                    report_date = _resolve_snapshot_report_date(conn, code, notice_date)
+                    if not report_date:
+                        _upsert_snapshot_state(
+                            conn,
+                            code,
+                            updated_at=batch_synced_at,
+                            status="failed",
+                            error="missing_snapshot_report_date",
+                        )
+                        snapshot_failures += 1
+                        continue
+
+                    record = {
+                        "stock_code": code,
+                        "report_date": report_date,
+                        "notice_date": notice_date,
+                        "report_type": "latest_snapshot",
+                        "is_audited": None,
+                        "total_assets": parsed.get("total_assets"),
+                        "total_liabilities": parsed.get("total_liabilities"),
+                        "net_assets": parsed.get("net_assets"),
+                        "current_assets": parsed.get("current_assets"),
+                        "current_liabilities": parsed.get("current_liabilities"),
+                        "revenue": parsed.get("revenue"),
+                        "operating_profit": parsed.get("operating_profit"),
+                        "net_profit": parsed.get("net_profit"),
+                        "operating_cashflow": parsed.get("operating_cashflow"),
+                        "total_shares": parsed.get("total_shares"),
+                        "float_shares": parsed.get("float_shares"),
+                        "holder_count": parsed.get("holder_count"),
+                        "contract_liabilities": None,
+                        "eps": parsed.get("eps"),
+                        "nav_per_share": parsed.get("nav_per_share"),
+                        "gross_profit": parsed.get("gross_profit"),
+                        "inventory": parsed.get("inventory"),
+                        "undistributed_profit": parsed.get("undistributed_profit"),
+                        "source_file": "mootdx_finance",
+                        "ingested_at": batch_synced_at,
+                    }
+                    _upsert_raw_financial(conn, record)
+                    _cleanup_snapshot_stub(conn, code, notice_date, report_date)
+                    batch_success_codes.append(code)
+                    latest_upserts += 1
+
+                if batch_success_codes:
+                    _update_snapshot_state(conn, batch_success_codes, batch_synced_at)
+                conn.commit()
+
+                snapshot_processed += len(batch)
+                progress["snapshot_sync"].update({
+                    "status": "running",
+                    "candidate_codes": len(snapshot_candidates),
+                    "done_codes": snapshot_processed,
+                    "success_codes": latest_upserts,
+                    "failed_codes": snapshot_failures,
+                    "rows": latest_upserts,
+                    "skipped_recent": skipped_recent,
+                    "batch_size": FIN_SNAPSHOT_BATCH_SIZE,
+                })
+                if (
+                    snapshot_processed == len(snapshot_candidates)
+                    or snapshot_processed % FIN_SNAPSHOT_PROGRESS_EVERY == 0
+                ):
+                    logger.info(
+                        f"[财务] 最新快照已处理 {snapshot_processed}/{len(snapshot_candidates)}"
+                        f"，成功 {latest_upserts}，失败 {snapshot_failures}"
+                    )
+                    _emit_progress()
+        finally:
+            for task in tasks:
+                if not task.done():
+                    task.cancel()
+            if tasks:
+                await asyncio.gather(*tasks, return_exceptions=True)
+
+        if latest_upserts == 0:
+            logger.warning("[财务] 未获取到任何可落库的最新财务快照")
+
+    progress["snapshot_sync"].update({
+        "status": _resolve_stage_status(
+            candidates=len(snapshot_candidates),
+            success=latest_upserts,
+            failed=snapshot_failures,
+        ),
+        "candidate_codes": len(snapshot_candidates),
+        "done_codes": snapshot_processed,
+        "success_codes": latest_upserts,
+        "failed_codes": snapshot_failures,
+        "rows": latest_upserts,
+        "skipped_recent": skipped_recent,
+        "batch_size": FIN_SNAPSHOT_BATCH_SIZE,
+    })
+    _emit_progress()
+
+    logger.info(
+        f"[财务] 最新快照同步完成: {latest_upserts} 条"
+        + (f"，失败 {snapshot_failures} 只" if snapshot_failures else "")
+        + (f"，跳过最近已成功 {skipped_recent} 只" if skipped_recent else "")
+    )
 
     capital_total = 0
+    progress["capital_behavior"]["status"] = "running"
+    _emit_progress()
     try:
+        _check_stop()
         from services.capital_client import sync_capital_behavior_data
         capital_total = await sync_capital_behavior_data(conn, stock_codes=stock_codes)
+        progress["capital_behavior"].update({
+            "status": "success",
+            "rows": capital_total,
+        })
     except Exception as exc:
+        progress["capital_behavior"].update({
+            "status": "failed",
+            "rows": 0,
+            "error": str(exc)[:200],
+        })
         logger.warning(f"[财务] 资本行为增强同步失败，跳过本轮: {exc}")
+    _emit_progress()
 
     indicator_total = 0
+    progress["financial_indicator"]["status"] = "running"
+    _emit_progress()
     try:
+        _check_stop()
         from services.financial_indicator_client import sync_financial_indicator_data
         indicator_total = await sync_financial_indicator_data(conn, stock_codes=stock_codes)
+        progress["financial_indicator"].update({
+            "status": "success",
+            "rows": indicator_total,
+        })
     except Exception as exc:
+        progress["financial_indicator"].update({
+            "status": "failed",
+            "rows": 0,
+            "error": str(exc)[:200],
+        })
         logger.warning(f"[财务] 扩展财务指标同步失败，跳过本轮: {exc}")
+    _emit_progress()
 
     quality_feature_total = 0
+    progress["quality_features"]["status"] = "running"
+    _emit_progress()
     try:
+        _check_stop()
         from services.quality_feature_engine import build_quality_features
-        quality_feature_total = build_quality_features(conn)
+        conn.commit()
+        quality_feature_total = await _run_local_db_stage(build_quality_features)
+        progress["quality_features"].update({
+            "status": "success",
+            "stock_count": quality_feature_total,
+        })
     except Exception as exc:
+        progress["quality_features"].update({
+            "status": "failed",
+            "stock_count": 0,
+            "error": str(exc)[:200],
+        })
         logger.warning(f"[财务] 质量特征构建失败，跳过本轮: {exc}")
+    _emit_progress()
 
     archetype_total = 0
+    progress["stock_archetypes"]["status"] = "running"
+    _emit_progress()
     try:
+        _check_stop()
         from services.stock_archetype_engine import build_stock_archetypes
-        archetype_total = build_stock_archetypes(conn)
+        conn.commit()
+        archetype_total = await _run_local_db_stage(build_stock_archetypes)
+        progress["stock_archetypes"].update({
+            "status": "success",
+            "stock_count": archetype_total,
+        })
     except Exception as exc:
+        progress["stock_archetypes"].update({
+            "status": "failed",
+            "stock_count": 0,
+            "error": str(exc)[:200],
+        })
         logger.warning(f"[财务] 股票类型构建失败，跳过本轮: {exc}")
+    _emit_progress()
 
     total = latest_upserts + history_upserts
     logger.info(
@@ -881,6 +1539,7 @@ async def sync_financial_data(conn, stock_codes: Optional[list] = None) -> int:
         f"资本行为 {capital_total} 条, 扩展指标 {indicator_total} 条, "
         f"质量特征 {quality_feature_total} 只, 股票类型 {archetype_total} 只"
     )
+    _emit_progress("completed")
     return total + capital_total + indicator_total
 
 

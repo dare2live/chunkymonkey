@@ -14,7 +14,6 @@ import logging
 import os
 import sqlite3
 import tempfile
-from pathlib import Path
 from typing import Optional
 
 from services.tdx_source import get_tdx_affair_class
@@ -110,11 +109,29 @@ _FIELD_MAP = {
     "财报公告日期": "report_announce_date",
 }
 
-_SELECTED_GPCW_COLUMNS = ("report_date",) + tuple(_FIELD_MAP.keys())
+# 通达信对少数字段返回的是新口径列名或 colXXX 原始编号，需要在这里并口。
+_FIELD_ALIASES_BY_DB_COLUMN = {
+    db_column: (source_name,)
+    for source_name, db_column in _FIELD_MAP.items()
+}
+_FIELD_ALIASES_BY_DB_COLUMN.update({
+    "contract_liabilities": ("合同负债(万元)", "预收款项"),
+    "operating_cost": ("其中：营业成本",),
+    "operating_cost_single_quarter": ("col328",),
+})
+
+_NUMERIC_DB_COLUMNS = tuple(_FIELD_ALIASES_BY_DB_COLUMN.keys())
+_SELECTED_GPCW_COLUMNS = ("report_date",) + tuple(
+    dict.fromkeys(
+        source_name
+        for source_names in _FIELD_ALIASES_BY_DB_COLUMN.values()
+        for source_name in source_names
+    )
+)
 
 # DB 列定义（除 stock_code, report_date, ingested_at 外全部为 REAL）
 _DB_COLUMNS = ["stock_code TEXT NOT NULL", "report_date TEXT NOT NULL"] + \
-              [f"{v} REAL" for v in _FIELD_MAP.values()] + \
+              [f"{column} REAL" for column in _NUMERIC_DB_COLUMNS] + \
               ["ingested_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP"]
 
 
@@ -130,6 +147,16 @@ def _ensure_table(conn: sqlite3.Connection):
         CREATE INDEX IF NOT EXISTS idx_gpcw_report
         ON raw_gpcw_detail(report_date)
     """)
+
+    existing_columns = {
+        row[1]
+        for row in conn.execute("PRAGMA table_info(raw_gpcw_detail)").fetchall()
+    }
+    for column in _NUMERIC_DB_COLUMNS:
+        if column in existing_columns:
+            continue
+        conn.execute(f'ALTER TABLE raw_gpcw_detail ADD COLUMN "{column}" REAL')
+
     conn.commit()
 
 
@@ -161,6 +188,14 @@ def _safe_float(val) -> Optional[float]:
         return f
     except (ValueError, TypeError):
         return None
+
+
+def _pick_first_numeric_value(row, source_names: tuple[str, ...]) -> Optional[float]:
+    for source_name in source_names:
+        value = _safe_float(row.get(source_name))
+        if value is not None:
+            return value
+    return None
 
 
 def sync_gpcw_files(
@@ -208,7 +243,7 @@ def sync_gpcw_files(
     except Exception:
         pass
 
-    db_col_names = ["stock_code", "report_date"] + list(_FIELD_MAP.values())
+    db_col_names = ["stock_code", "report_date"] + list(_NUMERIC_DB_COLUMNS)
     placeholders = ",".join(["?"] * len(db_col_names))
     col_list = ",".join(db_col_names)
     upsert_sql = f"""
@@ -246,8 +281,8 @@ def sync_gpcw_files(
                 row = df.loc[code]
                 rd = _normalize_report_date(row.get("report_date")) or report_date
                 values = [str(code), rd]
-                for cn_name in _FIELD_MAP:
-                    values.append(_safe_float(row.get(cn_name)))
+                for source_names in _FIELD_ALIASES_BY_DB_COLUMN.values():
+                    values.append(_pick_first_numeric_value(row, source_names))
                 rows_batch.append(tuple(values))
 
             conn.executemany(upsert_sql, rows_batch)
@@ -328,7 +363,7 @@ def get_gpcw_financial_snapshot(
     """
     _ensure_table(conn)
 
-    cols = ["stock_code", "report_date"] + list(_FIELD_MAP.values())
+    cols = ["stock_code", "report_date"] + list(_NUMERIC_DB_COLUMNS)
     col_list = ", ".join(cols)
     rows = conn.execute(
         f"SELECT {col_list} FROM raw_gpcw_detail WHERE stock_code = ? ORDER BY report_date DESC LIMIT ?",

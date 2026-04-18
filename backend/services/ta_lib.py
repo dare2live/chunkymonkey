@@ -5,7 +5,7 @@ ta_lib.py — 共享技术指标计算库
 Qlib 因子引擎和 TDX 选股引擎共用此库，确保"单点计算、多处复用"。
 
 通达信函数对照：
-  MA → ma()          EMA → ema()        SMA → sma()
+    MA → ma()          EMA → ema()
   HHV → hhv()        LLV → llv()        REF → ref()
   BARSLAST → barslast()                  BARSLASTCOUNT → barslastcount()
   CROSS → cross()    COUNT → count()     SUM → rolling_sum()
@@ -29,21 +29,6 @@ def ma(series: pd.Series, n: int) -> pd.Series:
 def ema(series: pd.Series, n: int) -> pd.Series:
     """指数移动平均 EMA(S, N)，adjust=False 匹配通达信原生算法"""
     return series.ewm(span=n, min_periods=n, adjust=False).mean()
-
-
-def sma(series: pd.Series, n: int, m: int = 1) -> pd.Series:
-    """通达信 SMA(S, N, M) = (M*S + (N-M)*REF(SMA,1)) / N"""
-    src = series.values.astype(float)
-    out = np.full(len(src), np.nan)
-    if len(src) >= n:
-        out[n - 1] = np.nanmean(src[:n])
-        for i in range(n, len(src)):
-            prev = out[i - 1]
-            if np.isnan(prev):
-                out[i] = np.nan
-            else:
-                out[i] = (m * src[i] + (n - m) * prev) / n
-    return pd.Series(out, index=series.index)
 
 
 def ref(series: pd.Series, n: int) -> pd.Series:

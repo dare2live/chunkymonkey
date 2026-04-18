@@ -130,18 +130,3 @@ def get_active_a_stock_codes(conn, max_age_hours: int = ACTIVE_STOCK_CACHE_HOURS
             logger.warning(f"[主数据] 刷新当前A股主数据失败，回退旧缓存: {e}")
             return cached
         raise
-
-
-def get_active_a_stock_map(conn, max_age_hours: int = ACTIVE_STOCK_CACHE_HOURS) -> Dict[str, str]:
-    """返回 {stock_code: stock_name} 映射。"""
-    if not _cache_is_fresh(conn, max_age_hours=max_age_hours):
-        cached = conn.execute("SELECT COUNT(*) FROM dim_active_a_stock").fetchone()[0]
-        try:
-            refresh_active_a_stock_master(conn)
-        except Exception:
-            if not cached:
-                raise
-    rows = conn.execute(
-        "SELECT stock_code, stock_name FROM dim_active_a_stock WHERE stock_code IS NOT NULL"
-    ).fetchall()
-    return {str(r["stock_code"]).strip(): (r["stock_name"] or "") for r in rows if r["stock_code"]}

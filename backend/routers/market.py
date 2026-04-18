@@ -11,7 +11,7 @@ import time
 from datetime import datetime, timedelta
 
 import httpx
-from fastapi import APIRouter, Query
+from fastapi import APIRouter
 
 from services.db import get_conn
 from services.utils import safe_float as _safe_float
@@ -162,6 +162,7 @@ async def market_status():
             holdings = audit["layers"].get("holdings", {})
             current_rel = audit["layers"].get("current_relationship", {})
             return {
+                "ok": True,
                 "total_records": raw.get("count", 0),
                 "latest_notice_date": raw.get("latest_notice"),
                 "total_stocks": raw.get("stocks", 0),
@@ -178,6 +179,7 @@ async def market_status():
         current_stocks = conn.execute("SELECT COUNT(DISTINCT stock_code) FROM mart_current_relationship").fetchone()[0]
         periods = conn.execute("SELECT COUNT(DISTINCT report_date) FROM market_raw_holdings").fetchone()[0]
         return {
+            "ok": True,
             "total_records": total,
             "latest_notice_date": latest,
             "total_stocks": stocks,
@@ -185,31 +187,5 @@ async def market_status():
             "current_stocks": current_stocks,
             "total_periods": periods,
         }
-    finally:
-        conn.close()
-
-
-@router.get("/market/stock-latest-periods")
-async def stock_latest_periods():
-    """每只股票的最新3个报告期"""
-    conn = get_conn()
-    try:
-        rows = conn.execute("""
-            SELECT stock_code, report_date
-            FROM market_raw_holdings
-            WHERE stock_code IS NOT NULL AND report_date IS NOT NULL
-            GROUP BY stock_code, report_date
-            ORDER BY stock_code, report_date DESC
-        """).fetchall()
-
-        data = {}
-        for row in rows:
-            code = row["stock_code"]
-            if code not in data:
-                data[code] = []
-            if len(data[code]) < 3:
-                data[code].append(row["report_date"])
-
-        return {"ok": True, "data": data, "total_stocks": len(data)}
     finally:
         conn.close()

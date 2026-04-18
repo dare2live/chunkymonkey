@@ -14,6 +14,7 @@ from datetime import date, datetime
 from statistics import median, pstdev
 from typing import Optional
 
+from services.industry import industry_level_value, load_industry_map
 from services.utils import safe_float as _safe_float, clamp as _clamp
 
 logger = logging.getLogger("cm-api")
@@ -580,15 +581,14 @@ def build_stock_archetypes(conn, snapshot_date: Optional[str] = None) -> int:
     price_data   = _load_price_data()
     capital_data = _load_capital_data(conn)
     gm_data      = _load_gross_margin_data(conn)
+    industry_map = load_industry_map(conn)
 
     # ── 加载财务历史（增加 net_assets, operating_profit） ──
     raw_rows = conn.execute("""
         SELECT r.stock_code, r.report_date, r.revenue, r.net_profit,
                r.operating_cashflow, r.operating_profit, r.inventory,
-               r.total_shares, r.net_assets, r.holder_count, r.eps,
-               i.sw_level1, i.sw_level2
+               r.total_shares, r.net_assets, r.holder_count, r.eps
         FROM raw_gpcw_financial r
-        LEFT JOIN dim_stock_industry i ON i.stock_code = r.stock_code
         ORDER BY r.stock_code, r.report_date DESC
     """).fetchall()
 
@@ -614,7 +614,11 @@ def build_stock_archetypes(conn, snapshot_date: Optional[str] = None) -> int:
 
     raw_by_stock = defaultdict(list)
     for row in raw_rows:
-        raw_by_stock[row["stock_code"]].append(dict(row))
+        payload = dict(row)
+        industry = industry_map.get(row["stock_code"]) or {}
+        payload["sw_level1"] = industry_level_value(industry, 1)
+        payload["sw_level2"] = industry_level_value(industry, 2)
+        raw_by_stock[row["stock_code"]].append(payload)
 
     derived_by_stock = defaultdict(list)
     for row in derived_rows:

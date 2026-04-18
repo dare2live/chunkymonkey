@@ -15,7 +15,7 @@ import logging
 from datetime import datetime
 from collections import defaultdict
 
-from services.industry import industry_join_clause, industry_select_clause
+from services.industry import event_industry_join_clause, event_industry_select_clause
 from services.setup_replay import build_setup_replay
 
 logger = logging.getLogger("cm-api")
@@ -90,7 +90,7 @@ def build_inst_industry_performance(conn) -> dict:
         inst_baseline[r["institution_id"]] = r["avg30"] or 0
 
     count = 0
-    industry_join = industry_join_clause("e.stock_code", alias="industry_dim", join_type="INNER")
+    industry_join = event_industry_join_clause("e", alias="industry_dim", join_type="INNER")
     for level_col, level_name in [("sw_level1", "L1"), ("sw_level2", "L2"), ("sw_level3", "L3")]:
         rows = conn.execute(f"""
             SELECT
@@ -205,8 +205,8 @@ def build_holding_chains(conn) -> dict:
         {industry_join}
         ORDER BY e.institution_id, e.stock_code, e.report_date
     """.format(
-        industry_columns=industry_select_clause(alias="industry_dim"),
-        industry_join=industry_join_clause("e.stock_code", alias="industry_dim", join_type="LEFT"),
+        industry_columns=event_industry_select_clause(alias="industry_dim"),
+        industry_join=event_industry_join_clause("e", alias="industry_dim", join_type="LEFT"),
     )).fetchall()
 
     chains = []
@@ -336,6 +336,7 @@ def build_cross_factor_analysis(conn) -> dict:
         WHERE event_type IN ('new_entry','increase') AND gain_30d IS NOT NULL
     """).fetchone()[0] or 0
 
+    industry_join = event_industry_join_clause("e", alias="industry_dim", join_type="INNER")
     analyses = [
         # (factor_a, factor_b, SQL)
         ("inst_type", "industry_l1", """
@@ -350,7 +351,7 @@ def build_cross_factor_analysis(conn) -> dict:
             WHERE e.event_type IN ('new_entry','increase') AND e.gain_30d IS NOT NULL
                 AND industry_dim.sw_level1 IS NOT NULL
             GROUP BY i.type, industry_dim.sw_level1 HAVING n>=10
-        """.format(industry_join=industry_join_clause("e.stock_code", alias="industry_dim", join_type="INNER"))),
+        """.format(industry_join=industry_join)),
         ("change_magnitude", "industry_l1", """
             SELECT CASE
                 WHEN e.change_pct>100 THEN '翻倍加仓'
@@ -368,7 +369,7 @@ def build_cross_factor_analysis(conn) -> dict:
             WHERE e.event_type IN ('new_entry','increase') AND e.gain_30d IS NOT NULL
                 AND industry_dim.sw_level1 IS NOT NULL
             GROUP BY fa, industry_dim.sw_level1 HAVING n>=10
-        """.format(industry_join=industry_join_clause("e.stock_code", alias="industry_dim", join_type="INNER"))),
+        """.format(industry_join=industry_join)),
         ("report_season", "inst_type", """
             SELECT CASE
                 WHEN e.report_date LIKE '%0331' THEN 'Q1'
@@ -402,7 +403,7 @@ def build_cross_factor_analysis(conn) -> dict:
             WHERE e.event_type IN ('new_entry','increase') AND e.gain_30d IS NOT NULL
                 AND e.premium_pct IS NOT NULL AND industry_dim.sw_level1 IS NOT NULL
             GROUP BY fa, industry_dim.sw_level1 HAVING n>=10
-        """.format(industry_join=industry_join_clause("e.stock_code", alias="industry_dim", join_type="INNER"))),
+        """.format(industry_join=industry_join)),
         ("consensus", "premium_bucket", """
             WITH stock_inst AS (
                 SELECT stock_code, report_date, COUNT(DISTINCT institution_id) as inst_cnt

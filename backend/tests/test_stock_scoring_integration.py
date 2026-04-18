@@ -70,6 +70,8 @@ def _make_conn():
             report_age_days INTEGER,
             discovery_score REAL,
             company_quality_score REAL,
+            company_quality_score_source TEXT,
+            quality_feature_snapshot_date TEXT,
             stage_score REAL,
             forecast_score REAL,
             forecast_score_effective REAL,
@@ -80,6 +82,8 @@ def _make_conn():
             stock_archetype TEXT,
             priority_pool TEXT,
             priority_pool_reason TEXT,
+            stock_gate TEXT,
+            stock_gate_reason TEXT,
             attention_comment_trade_date TEXT,
             attention_focus_index REAL,
             attention_composite_score REAL,
@@ -170,6 +174,9 @@ def _make_conn():
 
         CREATE TABLE dim_stock_quality_latest (
             stock_code TEXT PRIMARY KEY,
+            snapshot_date TEXT,
+            latest_financial_report_date TEXT,
+            latest_indicator_report_date TEXT,
             quality_profit_raw REAL,
             quality_cash_raw REAL,
             quality_balance_raw REAL,
@@ -224,6 +231,20 @@ def _make_conn():
             forecast_reason TEXT
         );
 
+        CREATE TABLE dim_stock_turtle_latest (
+            stock_code TEXT PRIMARY KEY,
+            preferred_system TEXT,
+            turtle_setup_state TEXT,
+            turtle_breakout_score REAL,
+            turtle_risk_score REAL,
+            turtle_execution_score_v1 REAL,
+            turtle_reason TEXT,
+            entry_signal_20 INTEGER,
+            entry_signal_55 INTEGER,
+            exit_signal_10 INTEGER,
+            exit_signal_20 INTEGER
+        );
+
         CREATE TABLE dim_stock_attention_latest (
             stock_code TEXT PRIMARY KEY,
             comment_trade_date TEXT,
@@ -254,9 +275,12 @@ def _make_market_conn():
             date TEXT,
             freq TEXT,
             adjust TEXT,
+            open REAL,
             close REAL,
             high REAL,
-            low REAL
+            low REAL,
+            volume REAL,
+            amount REAL
         )
         """
     )
@@ -296,6 +320,7 @@ def test_calculate_stock_scores_ranks_strong_new_entry_above_weak_signal(monkeyp
             """,
             [
                 ("inst_strong", 92.0, 88.0, 25, 25, 18.0, 66.0, 7.0),
+                ("inst_quality_only", 98.0, 42.0, 30, 12, 6.0, 51.0, 15.0),
                 ("inst_weak", 35.0, 24.0, 12, 12, 2.0, 38.0, 18.0),
             ],
         )
@@ -320,6 +345,7 @@ def test_calculate_stock_scores_ranks_strong_new_entry_above_weak_signal(monkeyp
             """,
             [
                 ("inst_strong", "强机构", "000001", "new_entry", recent_notice, recent_report, 1, 6.0, 200000000.0, 15.0, 2.0, "follow"),
+                ("inst_quality_only", "高分老机构", "000001", "unchanged", recent_notice, recent_report, 4, 1.1, 30000000.0, 0.0, 8.0, "observe"),
                 ("inst_weak", "弱机构", "000002", "decrease", old_notice, old_report, 9, 0.8, 12000000.0, -6.0, 25.0, "avoid"),
             ],
         )
@@ -353,15 +379,16 @@ def test_calculate_stock_scores_ranks_strong_new_entry_above_weak_signal(monkeyp
         conn.executemany(
             """
             INSERT INTO dim_stock_quality_latest (
-                stock_code, quality_profit_raw, quality_cash_raw, quality_balance_raw,
+                stock_code, snapshot_date, latest_financial_report_date, latest_indicator_report_date,
+                quality_profit_raw, quality_cash_raw, quality_balance_raw,
                 quality_margin_raw, quality_contract_raw, quality_freshness_raw,
                 quality_capital_raw, quality_efficiency_raw, quality_growth_raw,
                 quality_score_v1
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             [
-                ("000001", 20.0, 20.0, 14.0, 8.0, 4.0, 5.0, 5.0, 10.0, 6.0, 82.0),
-                ("000002", 4.0, 3.0, 2.0, 2.0, 1.0, 1.0, -2.0, 3.0, 1.0, 32.0),
+                ("000001", recent_notice, recent_report, recent_report, 20.0, 20.0, 14.0, 8.0, 4.0, 5.0, 5.0, 10.0, 6.0, 82.0),
+                ("000002", old_notice, old_report, old_report, 4.0, 3.0, 2.0, 2.0, 1.0, 1.0, -2.0, 3.0, 1.0, 32.0),
             ],
         )
         conn.executemany(
@@ -378,8 +405,8 @@ def test_calculate_stock_scores_ranks_strong_new_entry_above_weak_signal(monkeyp
             ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             [
-                ("000001", "温和验证", 18.0, 6.0, 8.0, 15.0, 20.0, 35.0, 5.0, 10.0, 1, 8.0, 1.2, 18.0, 5.0, "follow", 75.0, 6.0, 0.0, 0.0, 0.0, 0.0, 0.0, 78.0, "阶段顺风"),
-                ("000002", "失效破坏", -12.0, 28.0, -18.0, -25.0, -30.0, -40.0, -15.0, -20.0, 0, 25.0, 0.6, 45.0, 18.0, "avoid", 28.0, -7.0, 0.0, 0.0, 0.0, 0.0, 0.0, 32.0, "阶段转坏"),
+                ("000001", "温和验证", 18.0, 6.0, 8.0, 15.0, 20.0, 35.0, 5.0, 10.0, 1, 8.0, 1.2, 18.0, 5.0, "avoid", 75.0, 6.0, 0.0, 0.0, 0.0, 0.0, 0.0, 78.0, "阶段顺风"),
+                ("000002", "失效破坏", -12.0, 28.0, -18.0, -25.0, -30.0, -40.0, -15.0, -20.0, 0, 25.0, 0.6, 45.0, 18.0, "follow", 28.0, -7.0, 0.0, 0.0, 0.0, 0.0, 0.0, 32.0, "阶段转坏"),
             ],
         )
         conn.executemany(
@@ -391,8 +418,21 @@ def test_calculate_stock_scores_ranks_strong_new_entry_above_weak_signal(monkeyp
             ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             [
-                ("000001", "model_1", 0.92, 1, 95.0, 90.0, 90.0, 84.0, 86.0, 88.0, "Qlib短期预测较强"),
-                ("000002", "model_1", 0.21, 20, 20.0, 18.0, 20.0, 22.0, 25.0, 24.0, "预测结构中性"),
+                ("000001", "model_1", 0.92, 1, 95.0, 90.0, 90.0, 84.0, 86.0, 88.0, "Qlib截面排序较强"),
+                ("000002", "model_1", 0.21, 20, 20.0, 18.0, 20.0, 22.0, 25.0, 24.0, "Qlib排序结构中性"),
+            ],
+        )
+        conn.executemany(
+            """
+            INSERT INTO dim_stock_turtle_latest (
+                stock_code, preferred_system, turtle_setup_state,
+                turtle_breakout_score, turtle_risk_score, turtle_execution_score_v1,
+                turtle_reason, entry_signal_20, entry_signal_55, exit_signal_10, exit_signal_20
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            [
+                ("000001", "S2", "S2突破触发", 82.0, 69.0, 76.0, "55日突破已触发", 1, 1, 0, 0),
+                ("000002", "S1", "20日退出触发", 24.0, 30.0, 32.0, "20日退出触发", 0, 0, 1, 1),
             ],
         )
         conn.execute(
@@ -420,22 +460,139 @@ def test_calculate_stock_scores_ranks_strong_new_entry_above_weak_signal(monkeyp
         }
         strong = rows["000001"]
         weak = rows["000002"]
+        stage_rows = {
+            row["stock_code"]: row
+            for row in conn.execute(
+                "SELECT stock_code, stock_gate FROM dim_stock_stage_latest ORDER BY stock_code"
+            ).fetchall()
+        }
 
         assert strong["priority_pool"] == "A池"
+        assert strong["stock_gate"] == "follow"
+        assert "综合评分" in (strong["stock_gate_reason"] or "")
+        assert stage_rows["000001"]["stock_gate"] == "follow"
+        assert strong["leader_inst"] == "inst_strong"
         assert strong["stock_archetype"] == "高质量稳健型"
         assert strong["composite_priority_score"] >= 75
         assert strong["discovery_score"] > strong["stage_score"] - 5
+        assert strong["company_quality_score"] == 82.0
+        assert strong["company_quality_score_source"] == "quality_feature_v1"
+        assert strong["quality_feature_snapshot_date"] == recent_notice
         assert strong["external_attention_score"] is not None
         assert strong["forecast_score"] == 88.0
-        assert strong["forecast_score_effective"] == 100.0
+        assert strong["forecast_score_effective"] == 88.0
+        assert strong["turtle_setup_state"] == "S2突破触发"
+        assert strong["turtle_score_delta"] > 0
+        assert "海龟" in (strong["score_highlights"] or "")
 
         assert weak["priority_pool"] == "D池"
+        assert weak["stock_gate"] == "avoid"
+        assert "综合评分" in (weak["stock_gate_reason"] or "")
+        assert stage_rows["000002"]["stock_gate"] == "avoid"
         assert weak["stage_score"] < 40
+        assert weak["company_quality_score"] == 32.0
         assert weak["company_quality_score"] < 45
         assert weak["composite_priority_score"] < 45
-        assert "阶段分低于D池阈值" in (weak["score_risks"] or "")
+        assert weak["turtle_setup_state"] == "20日退出触发"
+        assert weak["turtle_score_delta"] < 0
+        assert "海龟" in (weak["score_risks"] or "")
 
         assert strong["action_score"] > weak["action_score"]
         assert strong["composite_priority_score"] > weak["composite_priority_score"]
     finally:
         conn.close()
+
+
+def test_calculate_stock_scores_ignores_stale_quality_feature_snapshot(monkeypatch):
+    conn = _make_conn()
+    market_conn = _make_market_conn()
+    today = date.today()
+    recent_notice = (today - timedelta(days=6)).strftime("%Y-%m-%d")
+    recent_report = (today - timedelta(days=20)).strftime("%Y-%m-%d")
+    stale_notice = (today - timedelta(days=80)).strftime("%Y-%m-%d")
+    stale_report = (today - timedelta(days=120)).strftime("%Y-%m-%d")
+
+    monkeypatch.setattr(market_db, "get_market_conn", lambda timeout=30: market_conn)
+
+    try:
+        conn.execute(
+            """
+            INSERT INTO mart_stock_trend (
+                stock_code, stock_name, latest_events, latest_report_date, latest_notice_date,
+                price_1m_pct, price_20d_pct, price_trend, qlib_rank, qlib_score, qlib_percentile
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            ("000009", "错位质量股", "[]", recent_report, recent_notice, 6.0, 10.0, "震荡", 3, 0.85, 88.0),
+        )
+        conn.execute(
+            """
+            INSERT INTO mart_institution_profile (
+                institution_id, quality_score, followability_score, total_events,
+                buy_event_count, buy_avg_gain_30d, buy_win_rate_30d, buy_median_max_drawdown_30d
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            ("inst_quality", 90.0, 84.0, 18, 18, 14.0, 63.0, 6.0),
+        )
+        conn.execute(
+            """
+            INSERT INTO mart_institution_industry_stat (
+                institution_id, sw_level, industry_name, sample_events,
+                avg_gain_30d, win_rate_30d, max_drawdown_30d
+            ) VALUES (?, ?, ?, ?, ?, ?, ?)
+            """,
+            ("inst_quality", "level2", "半导体", 10, 16.0, 68.0, 7.0),
+        )
+        conn.execute(
+            """
+            INSERT INTO mart_current_relationship (
+                institution_id, display_name, stock_code, event_type, notice_date, report_date,
+                holder_rank, hold_ratio, hold_market_cap, change_pct, premium_pct, follow_gate
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            ("inst_quality", "质量机构", "000009", "new_entry", recent_notice, recent_report, 1, 4.5, 160000000.0, 9.0, 1.8, "follow"),
+        )
+        conn.execute(
+            "INSERT INTO fact_institution_event (institution_id, stock_code, report_date, event_type, premium_pct, gain_30d, max_drawdown_30d) VALUES (?, ?, ?, ?, ?, ?, ?)",
+            ("inst_quality", "000009", recent_report, "new_entry", 1.8, 12.0, 6.0),
+        )
+        conn.execute(
+            "INSERT INTO dim_stock_industry (stock_code, sw_level1, sw_level2, sw_level3) VALUES (?, ?, ?, ?)",
+            ("000009", "电子", "半导体", "芯片设计"),
+        )
+        conn.execute(
+            """
+            INSERT INTO dim_financial_latest (
+                stock_code, latest_report_date, roe, debt_ratio, current_ratio,
+                gross_margin, ocf_to_profit, contract_to_revenue,
+                holder_count, holder_count_change_pct, float_shares, total_shares
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            ("000009", recent_report, 0.20, 0.28, 2.1, 0.44, 1.18, 0.04, 9500, -0.06, 100000000.0, 108000000.0),
+        )
+        conn.execute(
+            """
+            INSERT INTO dim_stock_quality_latest (
+                stock_code, snapshot_date, latest_financial_report_date, latest_indicator_report_date,
+                quality_profit_raw, quality_cash_raw, quality_balance_raw,
+                quality_margin_raw, quality_contract_raw, quality_freshness_raw,
+                quality_capital_raw, quality_efficiency_raw, quality_growth_raw,
+                quality_score_v1
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            ("000009", stale_notice, stale_report, stale_report, 1.0, 1.0, 1.0, 1.0, 0.5, 0.5, -1.0, 1.0, 1.0, 5.0),
+        )
+
+        scored = calculate_stock_scores(conn)
+
+        assert scored == 1
+        row = conn.execute(
+            "SELECT company_quality_score, company_quality_score_source, quality_feature_snapshot_date FROM mart_stock_trend WHERE stock_code = ?",
+            ("000009",),
+        ).fetchone()
+        assert row["company_quality_score"] > 50.0
+        assert row["company_quality_score"] != 5.0
+        assert row["company_quality_score_source"] == "stock_scoring_v2"
+        assert row["quality_feature_snapshot_date"] is None
+    finally:
+        conn.close()
+        market_conn.close()

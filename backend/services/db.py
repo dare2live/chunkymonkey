@@ -2,9 +2,9 @@
 数据库服务 — Chunky Monkey v2
 
 数据分层：
-  原始层（只追加）: market_raw_holdings, raw_fetch_batch
-  维度层: dim_active_a_stock, dim_stock_industry, dim_trading_calendar, inst_institutions, inst_name_aliases
-  事实层: inst_holdings, fact_institution_event, fact_northbound_daily, stock_watchlist
+    原始层（只追加）: market_raw_holdings, raw_fetch_batch
+    维度层: dim_active_a_stock, dim_stock_industry, dim_tdx_block_catalog, dim_stock_tdx_block, dim_trading_calendar, inst_institutions, inst_name_aliases
+    事实层: inst_holdings, fact_institution_event, fact_institution_event_industry_snapshot, fact_northbound_daily, stock_watchlist
   集市层（可重算）: mart_institution_profile, mart_institution_industry_stat, mart_stock_trend
   系统层: sys_schema_version, excluded_stocks, exclusion_categories, app_settings
 """
@@ -103,6 +103,32 @@ def init_db():
             CREATE INDEX IF NOT EXISTS idx_dsi_l1 ON dim_stock_industry(sw_level1);
             CREATE INDEX IF NOT EXISTS idx_dsi_l2 ON dim_stock_industry(sw_level2);
 
+            CREATE TABLE IF NOT EXISTS dim_tdx_block_catalog (
+                block_category TEXT NOT NULL,
+                block_name     TEXT NOT NULL,
+                block_file     TEXT NOT NULL,
+                block_type     INTEGER,
+                member_count   INTEGER DEFAULT 0,
+                source         TEXT,
+                updated_at     TEXT,
+                PRIMARY KEY (block_category, block_name)
+            );
+            CREATE INDEX IF NOT EXISTS idx_tdx_block_type ON dim_tdx_block_catalog(block_type);
+
+            CREATE TABLE IF NOT EXISTS dim_stock_tdx_block (
+                stock_code      TEXT NOT NULL,
+                block_category  TEXT NOT NULL,
+                block_name      TEXT NOT NULL,
+                block_file      TEXT NOT NULL,
+                block_type      INTEGER,
+                code_index      INTEGER,
+                source          TEXT,
+                updated_at      TEXT,
+                PRIMARY KEY (stock_code, block_category, block_name)
+            );
+            CREATE INDEX IF NOT EXISTS idx_stock_tdx_block_name ON dim_stock_tdx_block(block_name);
+            CREATE INDEX IF NOT EXISTS idx_stock_tdx_block_cat ON dim_stock_tdx_block(block_category);
+
             CREATE TABLE IF NOT EXISTS dim_trading_calendar (
                 trade_date  TEXT PRIMARY KEY,
                 is_trading  INTEGER DEFAULT 1
@@ -184,6 +210,25 @@ def init_db():
             CREATE INDEX IF NOT EXISTS idx_event_date ON fact_institution_event(report_date);
             CREATE INDEX IF NOT EXISTS idx_event_notice ON fact_institution_event(notice_date);
 
+            CREATE TABLE IF NOT EXISTS fact_institution_event_industry_snapshot (
+                institution_id      TEXT NOT NULL,
+                stock_code          TEXT NOT NULL,
+                report_date         TEXT NOT NULL,
+                notice_date         TEXT,
+                sw_level1           TEXT,
+                sw_level2           TEXT,
+                sw_level3           TEXT,
+                sw_code             TEXT,
+                snapshot_source     TEXT,
+                industry_updated_at TEXT,
+                captured_at         TEXT,
+                PRIMARY KEY (institution_id, stock_code, report_date)
+            );
+            CREATE INDEX IF NOT EXISTS idx_event_industry_snapshot_l1
+                ON fact_institution_event_industry_snapshot(sw_level1);
+            CREATE INDEX IF NOT EXISTS idx_event_industry_snapshot_l2
+                ON fact_institution_event_industry_snapshot(sw_level2);
+
             -- 收益字段已合并入 fact_institution_event
 
             CREATE TABLE IF NOT EXISTS fact_northbound_daily (
@@ -237,6 +282,8 @@ def init_db():
                 action_score          REAL,
                 discovery_score       REAL,
                 company_quality_score REAL,
+                company_quality_score_source TEXT,
+                quality_feature_snapshot_date TEXT,
                 stage_score           REAL,
                 forecast_score        REAL,
                 forecast_score_effective REAL,
@@ -443,6 +490,8 @@ def init_db():
                 qlib_percentile    REAL,
                 discovery_score    REAL,
                 company_quality_score REAL,
+                company_quality_score_source TEXT,
+                quality_feature_snapshot_date TEXT,
                 stage_score        REAL,
                 forecast_score     REAL,
                 forecast_score_effective REAL,
@@ -453,6 +502,8 @@ def init_db():
                 stock_archetype    TEXT,
                 priority_pool      TEXT,
                 priority_pool_reason TEXT,
+                stock_gate         TEXT,
+                stock_gate_reason  TEXT,
                 attention_comment_trade_date TEXT,
                 attention_focus_index REAL,
                 attention_composite_score REAL,
@@ -602,11 +653,13 @@ def init_db():
                      "report_age_days INTEGER", "qlib_rank INTEGER",
                      "qlib_score REAL", "qlib_percentile REAL",
                      "discovery_score REAL", "company_quality_score REAL",
+                     "company_quality_score_source TEXT", "quality_feature_snapshot_date TEXT",
                      "stage_score REAL", "forecast_score REAL",
                      "forecast_score_effective REAL", "raw_composite_priority_score REAL",
                      "composite_priority_score REAL", "composite_cap_score REAL",
                      "composite_cap_reason TEXT", "stock_archetype TEXT",
                      "priority_pool TEXT", "priority_pool_reason TEXT",
+                     "stock_gate TEXT", "stock_gate_reason TEXT",
                      "score_highlights TEXT", "score_risks TEXT"]:
             try:
                 conn.execute(f"ALTER TABLE mart_stock_trend ADD COLUMN {col}")
@@ -660,6 +713,8 @@ def init_db():
             "action_score REAL",
             "discovery_score REAL",
             "company_quality_score REAL",
+            "company_quality_score_source TEXT",
+            "quality_feature_snapshot_date TEXT",
             "stage_score REAL",
             "forecast_score REAL",
             "forecast_score_effective REAL",
@@ -958,19 +1013,6 @@ def init_db():
                    ('module_etf_enabled', '1', CURRENT_TIMESTAMP),
                    ('module_akquant_enabled', '0', CURRENT_TIMESTAMP)
         """)
-        # 一次性迁移：qlib 模块默认从 0 升到 1（仅当历史默认值未被用户显式改过时）
-        cur = conn.execute(
-            "SELECT value FROM app_settings WHERE key='_migration_qlib_default_v1'"
-        ).fetchone()
-        if not cur:
-            conn.execute(
-                "UPDATE app_settings SET value='1', updated_at=CURRENT_TIMESTAMP "
-                "WHERE key='module_qlib_enabled' AND value='0'"
-            )
-            conn.execute(
-                "INSERT OR IGNORE INTO app_settings (key, value, updated_at) "
-                "VALUES ('_migration_qlib_default_v1', 'done', CURRENT_TIMESTAMP)"
-            )
 
         conn.execute("DELETE FROM app_settings WHERE key LIKE 'scoring.stock.%'")
         conn.execute("DELETE FROM app_settings WHERE key LIKE 'scoring.timing.%'")

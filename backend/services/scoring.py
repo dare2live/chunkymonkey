@@ -10,7 +10,7 @@ import logging
 from datetime import datetime
 from typing import Optional, Tuple
 
-from services.industry import industry_join_clause
+from services.industry import event_industry_join_clause, industry_join_clause, industry_level_value, load_industry_map
 from services.utils import safe_float as _safe_float, percentile_ranks as _percentile_ranks
 from services.constants import (
     PATH_THRESHOLDS,
@@ -25,6 +25,24 @@ from services.constants import (
 )
 
 logger = logging.getLogger("cm-api")
+
+
+def _forecast_cross_section_score(forecast_row: Optional[dict]) -> Optional[float]:
+    if not forecast_row:
+        return None
+    score = _safe_float(forecast_row.get("forecast_cross_section_score"))
+    if score is not None:
+        return score
+    return _safe_float(forecast_row.get("forecast_20d_score"))
+
+
+def _forecast_industry_relative_score(forecast_row: Optional[dict]) -> Optional[float]:
+    if not forecast_row:
+        return None
+    score = _safe_float(forecast_row.get("forecast_industry_relative_score"))
+    if score is not None:
+        return score
+    return _safe_float(forecast_row.get("forecast_60d_excess_score"))
 
 # ============================================================
 # 默认评分配置
@@ -64,6 +82,16 @@ STOCK_SCORE_DEFAULTS = {
     "overheated_penalty": 20,       # 过热扣分
     "conflict_penalty": 15,         # 冲突扣分
     "path_exhausted_penalty": 15,   # 已充分演绎扣分
+    # 综合研究层权重（评分卡可调）
+    "composite_discovery_weight": round(COMPOSITE_WEIGHTS["discovery"] * 100, 2),
+    "composite_quality_weight": round(COMPOSITE_WEIGHTS["quality"] * 100, 2),
+    "composite_stage_weight": round(COMPOSITE_WEIGHTS["stage"] * 100, 2),
+    "composite_forecast_weight": round(COMPOSITE_WEIGHTS["forecast"] * 100, 2),
+    # 外部确认层权重（评分卡可调）
+    "attention_composite_weight": round(ATTENTION_WEIGHTS["composite"] * 100, 2),
+    "attention_focus_weight": round(ATTENTION_WEIGHTS["focus"] * 100, 2),
+    "attention_participation_weight": round(ATTENTION_WEIGHTS["participation"] * 100, 2),
+    "attention_survey_weight": round(ATTENTION_WEIGHTS["survey"] * 100, 2),
 }
 
 
@@ -75,12 +103,13 @@ def load_scoring_config(conn, prefix: str) -> dict:
     """
     从 app_settings 加载评分权重配置。
 
-    prefix: "scoring.institution" | "scoring.followability"
+    prefix: "scoring.institution" | "scoring.followability" | "scoring.stock"
     找不到时回退到内置默认值。
     """
     defaults_map = {
         "scoring.institution": INST_SCORE_DEFAULTS,
         "scoring.followability": FOLLOW_SCORE_DEFAULTS,
+        "scoring.stock": STOCK_SCORE_DEFAULTS,
     }
     defaults = defaults_map.get(prefix, {})
 
@@ -115,6 +144,83 @@ def save_scoring_config(conn, prefix: str, config: dict):
     logger.info(f"[评分] 保存配置 prefix={prefix}, {len(config)} 项")
 
 
+def delete_scoring_config(conn, prefix: str):
+    """删除评分权重配置，恢复默认值回退。"""
+    conn.execute("DELETE FROM app_settings WHERE key LIKE ?", (f"{prefix}.%",))
+    conn.commit()
+    logger.info(f"[评分] 删除配置 prefix={prefix}")
+
+
+def _resolved_weight_map(config: Optional[dict], defaults: dict[str, float]) -> dict[str, float]:
+    weights = {}
+    total = 0.0
+    for key, default_value in defaults.items():
+        raw_value = _safe_float((config or {}).get(key))
+        value = raw_value if raw_value is not None and raw_value >= 0 else float(default_value)
+        weights[key] = value
+        total += value
+    if total > 0:
+        return weights
+    return {key: float(value) for key, value in defaults.items()}
+
+
+def stock_composite_weight_map(config: Optional[dict] = None) -> dict[str, float]:
+    return _resolved_weight_map(config, {
+        "discovery": STOCK_SCORE_DEFAULTS["composite_discovery_weight"],
+        "quality": STOCK_SCORE_DEFAULTS["composite_quality_weight"],
+        "stage": STOCK_SCORE_DEFAULTS["composite_stage_weight"],
+        "forecast": STOCK_SCORE_DEFAULTS["composite_forecast_weight"],
+    })
+
+
+def stock_attention_weight_map(config: Optional[dict] = None) -> dict[str, float]:
+    return _resolved_weight_map(config, {
+        "composite": STOCK_SCORE_DEFAULTS["attention_composite_weight"],
+        "focus": STOCK_SCORE_DEFAULTS["attention_focus_weight"],
+        "participation": STOCK_SCORE_DEFAULTS["attention_participation_weight"],
+        "survey": STOCK_SCORE_DEFAULTS["attention_survey_weight"],
+    })
+
+
+def derive_stock_gate_from_priority(
+    priority_pool: Optional[str],
+    composite_priority_score: Optional[float] = None,
+    priority_pool_reason: Optional[str] = None,
+) -> Tuple[Optional[str], str]:
+    score = _safe_float(composite_priority_score)
+    score_text = (
+        f"综合评分 {score:.2f}"
+        if score is not None
+        else "综合评分未生成"
+    )
+    reason_suffix = f"：{priority_pool_reason}" if priority_pool_reason else ""
+    pool_meta = {
+        "A池": ("follow", "进入 A池，属于重点优先池"),
+        "B池": ("watch", "进入 B池，属于持续跟踪池"),
+        "C池": ("observe", "进入 C池，属于观察池"),
+        "D池": ("avoid", "进入 D池，属于排除/兑现池"),
+    }
+    if priority_pool in pool_meta:
+        gate, pool_reason = pool_meta[priority_pool]
+        return gate, f"{score_text}，{pool_reason}{reason_suffix}"
+
+    if score is None:
+        return None, "暂无综合评分结果"
+    if score >= 75:
+        gate = "follow"
+        gate_reason = "综合评分达到 A 池阈值"
+    elif score >= 60:
+        gate = "watch"
+        gate_reason = "综合评分位于 B 池阈值区间"
+    elif score >= 45:
+        gate = "observe"
+        gate_reason = "综合评分位于 C 池阈值区间"
+    else:
+        gate = "avoid"
+        gate_reason = "综合评分落入 D 池阈值区间"
+    return gate, f"{score_text}，{gate_reason}{reason_suffix}"
+
+
 # ============================================================
 # 辅助函数
 # ============================================================
@@ -127,6 +233,25 @@ def _days_since(value) -> Optional[int]:
     if not dt:
         return None
     return max((datetime.now() - dt).days, 0)
+
+
+def _iso_date_text(value) -> Optional[str]:
+    dt = _parse_any_date(value)
+    return dt.strftime("%Y-%m-%d") if dt else None
+
+
+def _should_use_quality_feature_snapshot(stock_row: dict, quality_row: Optional[dict]) -> bool:
+    if not quality_row:
+        return False
+    if _safe_float(quality_row.get("quality_score_v1")) is None:
+        return False
+    if quality_row.get("snapshot_date") is None:
+        return False
+    stock_report_date = _iso_date_text(stock_row.get("latest_report_date"))
+    if not stock_report_date:
+        return True
+    feature_report_date = _iso_date_text(quality_row.get("latest_financial_report_date"))
+    return feature_report_date == stock_report_date
 
 
 def _report_recency_grade(days: Optional[int]) -> int:
@@ -423,7 +548,7 @@ def _load_crowding_fit_lookup(conn) -> dict:
             FROM skilled s
             JOIN crowd c USING (stock_code, report_date)
             GROUP BY s.event_type, crowd_bucket, premium_bucket
-        """.format(industry_join=industry_join_clause("e.stock_code", alias="industry_dim", join_type="INNER"))).fetchall()
+        """.format(industry_join=event_industry_join_clause("e", alias="industry_dim", join_type="INNER"))).fetchall()
         for row in rows:
             lookup["skilled_l3"][(row["event_type"], row["crowd_bucket"], row["premium_bucket"])] = {
                 "n": int(row["sample_count"] or 0),
@@ -708,6 +833,30 @@ def _evaluate_setup_candidate(holder: dict, profile: dict, stock_industry: dict,
         }
 
     return None
+
+
+def _select_leader_institution(holders: list[dict], inst_profiles: dict) -> Optional[str]:
+    best_inst = None
+    best_key = None
+    for holder in holders:
+        institution_id = holder.get("institution_id")
+        if not institution_id:
+            continue
+        profile = inst_profiles.get(institution_id) or {}
+        signal_key = (
+            {"new_entry": 4, "increase": 3, "unchanged": 2, "decrease": 1, "exit": 0}.get(holder.get("event_type"), 0),
+            {"follow": 3, "watch": 2, "observe": 1, "avoid": 0}.get(holder.get("follow_gate"), 0),
+            _safe_float(holder.get("hold_market_cap")) or 0.0,
+            _safe_float(holder.get("hold_ratio")) or 0.0,
+            _safe_float(holder.get("change_pct")) or 0.0,
+            -(_days_since(holder.get("notice_date") or holder.get("report_date")) or 999),
+            _safe_float(profile.get("followability_score")) or 0.0,
+            _safe_float(profile.get("quality_score")) or 0.0,
+        )
+        if best_key is None or signal_key > best_key:
+            best_key = signal_key
+            best_inst = institution_id
+    return best_inst
 
 
 # ============================================================
@@ -1145,7 +1294,7 @@ def _attention_survey_activity_score(
     return _clamp_score(raw)
 
 
-def _external_attention_score(attention_row: Optional[dict]) -> Optional[float]:
+def _external_attention_score(attention_row: Optional[dict], weights: Optional[dict[str, float]] = None) -> Optional[float]:
     if not attention_row:
         return None
 
@@ -1166,7 +1315,7 @@ def _external_attention_score(attention_row: Optional[dict]) -> Optional[float]:
     )
 
     weighted = []
-    aw = ATTENTION_WEIGHTS
+    aw = weights or ATTENTION_WEIGHTS
     if comment_available or any(value is not None for value in (focus_index, composite_score, participation)):
         if composite_score is not None:
             weighted.append((aw["composite"], _clamp_score(composite_score)))
@@ -1248,17 +1397,25 @@ def _external_attention_signal(
 def compute_composite_priority(
     discovery: float, quality: float, stage: float, forecast_effective: float,
     attention_boost: float = 0.0, crowding_penalty: float = 0.0,
+    weights: Optional[dict[str, float]] = None,
 ) -> Tuple[float, float]:
     """
     计算原始/最终复合优先分。
 
     返回 (raw_score, final_score)。
-    权重：发现 35% + 质量 30% + 阶段 20% + 预测 15%。
+    权重来自评分卡配置，默认：发现 35 + 质量 30 + 阶段 20 + 预测 15。
     """
-    raw = (discovery * COMPOSITE_WEIGHTS["discovery"]
-           + quality * COMPOSITE_WEIGHTS["quality"]
-           + stage * COMPOSITE_WEIGHTS["stage"]
-           + forecast_effective * COMPOSITE_WEIGHTS["forecast"])
+    cw = weights or COMPOSITE_WEIGHTS
+    total_weight = sum(max(float(cw.get(key) or 0.0), 0.0) for key in ("discovery", "quality", "stage", "forecast"))
+    if total_weight <= 0:
+        cw = COMPOSITE_WEIGHTS
+        total_weight = sum(float(COMPOSITE_WEIGHTS[key]) for key in ("discovery", "quality", "stage", "forecast"))
+    raw = (
+        discovery * max(float(cw.get("discovery") or 0.0), 0.0)
+        + quality * max(float(cw.get("quality") or 0.0), 0.0)
+        + stage * max(float(cw.get("stage") or 0.0), 0.0)
+        + forecast_effective * max(float(cw.get("forecast") or 0.0), 0.0)
+    ) / total_weight
     raw = round(max(0.0, min(100.0, raw)), 2)
     final = round(max(0.0, min(100.0, raw + attention_boost - crowding_penalty)), 2)
     return raw, final
@@ -1352,6 +1509,44 @@ def assign_priority_pool(
         reason += "；外部确认增强"
 
     return pool, reason
+
+
+def apply_turtle_execution_overlay(
+    composite: float,
+    *,
+    turtle_row: Optional[dict],
+    stage: float,
+    forecast_effective: float,
+) -> Tuple[float, float, Optional[str]]:
+    if not turtle_row:
+        return composite, 0.0, None
+
+    execution_score = _safe_float(turtle_row.get("turtle_execution_score_v1"))
+    if execution_score is None:
+        return composite, 0.0, None
+
+    state = str(turtle_row.get("turtle_setup_state") or "").strip()
+    preferred_system = str(turtle_row.get("preferred_system") or "").strip()
+    delta = 0.0
+    reason = None
+
+    if state in {"S1突破触发", "S2突破触发"}:
+        delta += min(max((execution_score - 60.0) * 0.12 + 2.0, 2.0), 6.0)
+        reason = f"海龟{preferred_system or '突破'}触发"
+    elif state in {"S1待突破", "S2待突破"} and execution_score >= 65:
+        delta += min((execution_score - 65.0) * 0.06 + 1.0, 3.0)
+        reason = f"海龟{preferred_system or '待突破'}接近入场"
+    elif state in {"10日退出触发", "20日退出触发"}:
+        delta -= min(max((55.0 - min(execution_score, 55.0)) * 0.10 + 2.5, 2.5), 8.0)
+        reason = f"海龟{state}"
+
+    if delta > 0 and stage < 45:
+        delta = min(delta, 2.0)
+    if delta > 0 and forecast_effective < 45:
+        delta = min(delta, 1.5)
+
+    adjusted = _clamp_score(composite + delta)
+    return adjusted, round(delta, 2), reason
 
 
 def _score_discovery(
@@ -1512,10 +1707,10 @@ def _build_highlight_risk_reasons(
         highlight_reasons.append("近90天持续有机构调研")
     if stage_score >= 65:
         highlight_reasons.append("阶段位置友好")
-    if (_safe_float(forecast_row.get("forecast_20d_score")) or 0) >= 75:
-        highlight_reasons.append("Qlib 20日预测较强")
-    elif (_safe_float(forecast_row.get("forecast_60d_excess_score")) or 0) >= 70:
-        highlight_reasons.append("行业相对预测较强")
+    if (_forecast_cross_section_score(forecast_row) or 0) >= 75:
+        highlight_reasons.append("Qlib 截面排序较强")
+    elif (_forecast_industry_relative_score(forecast_row) or 0) >= 70:
+        highlight_reasons.append("行业内相对排序较强")
     elif (_safe_float(forecast_row.get("forecast_risk_adjusted_score")) or 0) >= 70:
         highlight_reasons.append("波动收益性价比较好")
     elif qlib_percentile is not None and qlib_percentile >= 75:
@@ -1539,8 +1734,6 @@ def _build_highlight_risk_reasons(
         risk_reasons.append("短期外部热度偏高")
     if composite_priority_score >= 75 and external_attention_score is not None and external_attention_score < 45:
         risk_reasons.append("外部确认偏弱")
-    if stock_gate == "avoid":
-        risk_reasons.append("持仓机构给出回避")
     if has_conflict:
         risk_reasons.append("同股存在方向冲突")
     if not forecast_row and qlib_percentile is None:
@@ -1589,12 +1782,16 @@ def calculate_stock_scores(conn) -> int:
 
     返回评分股票数。
     """
-    # legacy action_score 仅保留给验证/兼容链路，权重已冻结到内置默认值
-    config = dict(STOCK_SCORE_DEFAULTS)
+    # legacy action_score 仅保留给验证/兼容链路，但权重仍允许从 app_settings 热更新
+    config = load_scoring_config(conn, "scoring.stock")
+    composite_weights = stock_composite_weight_map(config)
+    attention_weights = stock_attention_weight_map(config)
     path_thresholds = PATH_THRESHOLDS
     logger.info(f"[评分] 股票评分开始")
 
     for column_def in [
+        "stock_gate TEXT",
+        "stock_gate_reason TEXT",
         "attention_comment_trade_date TEXT",
         "attention_focus_index REAL",
         "attention_composite_score REAL",
@@ -1608,6 +1805,13 @@ def calculate_stock_scores(conn) -> int:
         "external_attention_score REAL",
         "external_crowding_penalty REAL",
         "external_attention_signal TEXT",
+        "turtle_execution_score REAL",
+        "turtle_breakout_score REAL",
+        "turtle_risk_score REAL",
+        "turtle_score_delta REAL",
+        "turtle_setup_state TEXT",
+        "turtle_preferred_system TEXT",
+        "turtle_reason TEXT",
     ]:
         try:
             conn.execute(f"ALTER TABLE mart_stock_trend ADD COLUMN {column_def}")
@@ -1677,13 +1881,12 @@ def calculate_stock_scores(conn) -> int:
         logger.info("[评分] sw_level2 数据不足，回退到 sw_level1 行业匹配")
 
     # Phase 1: 预加载股票行业 — 改为 sw_level2 主导
-    from services.industry import load_industry_map
     _ind_map = load_industry_map(conn)
     stock_industry = {}
     stock_industry_name = {}
     for code, ind in _ind_map.items():
         stock_industry[code] = ind
-        stock_industry_name[code] = ind.get("sw_level2") or ind.get("sw_level1", "")
+        stock_industry_name[code] = industry_level_value(ind, 2) or industry_level_value(ind, 1)
 
     # 财务快照：v1 质量分使用最新财务快照 + 行业相对分位
     financial_by_stock = {}
@@ -1693,13 +1896,14 @@ def calculate_stock_scores(conn) -> int:
     fin_rows = conn.execute("""
         SELECT f.stock_code, f.latest_report_date, f.roe, f.debt_ratio, f.current_ratio,
                f.gross_margin, f.ocf_to_profit, f.contract_to_revenue,
-               f.holder_count, f.holder_count_change_pct, f.float_shares, f.total_shares,
-               i.sw_level1, i.sw_level2
+               f.holder_count, f.holder_count_change_pct, f.float_shares, f.total_shares
         FROM dim_financial_latest f
-        LEFT JOIN dim_stock_industry i ON i.stock_code = f.stock_code
     """).fetchall()
     for row in fin_rows:
         d = dict(row)
+        industry = stock_industry.get(d["stock_code"]) or {}
+        d["sw_level1"] = industry_level_value(industry, 1)
+        d["sw_level2"] = industry_level_value(industry, 2)
         financial_by_stock[d["stock_code"]] = d
         fin_groups[("all", "all")].append(d)
         if d.get("sw_level2"):
@@ -1765,12 +1969,14 @@ def calculate_stock_scores(conn) -> int:
             SELECT f.stock_code, f.latest_report_date, f.roe_ak, f.roa_ak, f.gross_margin_ak,
                    f.net_margin_ak, f.current_ratio_ak, f.quick_ratio_ak, f.debt_ratio_ak,
                    f.asset_turnover_ak, f.inventory_turnover_ak, f.receivables_turnover_ak,
-                   f.revenue_growth_yoy_ak, f.net_profit_growth_yoy_ak, i.sw_level1, i.sw_level2
+                   f.revenue_growth_yoy_ak, f.net_profit_growth_yoy_ak
             FROM dim_financial_indicator_latest f
-            LEFT JOIN dim_stock_industry i ON i.stock_code = f.stock_code
         """).fetchall()
         for row in indicator_rows:
             d = dict(row)
+            industry = stock_industry.get(d["stock_code"]) or {}
+            d["sw_level1"] = industry_level_value(industry, 1)
+            d["sw_level2"] = industry_level_value(industry, 2)
             indicator_by_stock[d["stock_code"]] = d
             indicator_groups[("all", "all")].append(d)
             if d.get("sw_level2"):
@@ -1815,7 +2021,9 @@ def calculate_stock_scores(conn) -> int:
     quality_feature_by_stock = {}
     try:
         qf_rows = conn.execute("""
-            SELECT stock_code, quality_profit_raw, quality_cash_raw, quality_balance_raw,
+            SELECT stock_code, snapshot_date,
+                   latest_financial_report_date, latest_indicator_report_date,
+                   quality_profit_raw, quality_cash_raw, quality_balance_raw,
                    quality_margin_raw, quality_contract_raw, quality_freshness_raw,
                    quality_capital_raw, quality_efficiency_raw, quality_growth_raw,
                    quality_score_v1
@@ -1876,6 +2084,21 @@ def calculate_stock_scores(conn) -> int:
             forecast_feature_by_stock[row["stock_code"]] = dict(row)
     except Exception:
         forecast_feature_by_stock = {}
+
+    turtle_feature_by_stock = {}
+    try:
+        turtle_rows = conn.execute("""
+            SELECT stock_code, preferred_system, turtle_setup_state,
+                   turtle_breakout_score, turtle_risk_score,
+                   turtle_execution_score_v1, turtle_reason,
+                   entry_signal_20, entry_signal_55,
+                   exit_signal_10, exit_signal_20
+            FROM dim_stock_turtle_latest
+        """).fetchall()
+        for row in turtle_rows:
+            turtle_feature_by_stock[row["stock_code"]] = dict(row)
+    except Exception:
+        turtle_feature_by_stock = {}
 
     industry_context_by_stock = {}
     try:
@@ -1961,21 +2184,27 @@ def calculate_stock_scores(conn) -> int:
             1 for h in holders if h.get("event_type") in ("new_entry", "increase")
         )
 
-        # --- 龙头机构 ---
-        leader_inst = None
-        leader_score = 0
-        for h in holders:
-            isc = inst_scores.get(h["institution_id"])
-            if isc is not None and isc > leader_score:
-                leader_score = isc
-                leader_inst = h["institution_id"]
-
-        leader_quality_norm = min(leader_score, 100)
-
-        # --- 行业命中 / 发现层主背景 ---
         stock_ind = stock_industry.get(sc, {})
         stock_sw1 = stock_ind.get("sw_level1")
         stock_sw2 = stock_ind.get("sw_level2")
+
+        best_setup = None
+        for h in holders:
+            profile = inst_profiles.get(h["institution_id"])
+            if not profile:
+                continue
+            candidate = _evaluate_setup_candidate(
+                h, profile, stock_ind, industry_stats, buy_signal_count, crowding_lookup
+            )
+            if candidate and (best_setup is None or _setup_sort_key(candidate) < _setup_sort_key(best_setup)):
+                best_setup = candidate
+
+        # --- 龙头机构 ---
+        leader_inst = best_setup.get("setup_inst_id") if best_setup else _select_leader_institution(holders, inst_profiles)
+        leader_score = _safe_float(inst_scores.get(leader_inst)) or 0.0
+        leader_quality_norm = min(leader_score, 100)
+
+        # --- 行业命中 / 发现层主背景 ---
         industry_match_score = 0
         if leader_inst:
             stock_ind_name = stock_industry_name.get(sc)
@@ -2060,18 +2289,6 @@ def calculate_stock_scores(conn) -> int:
             penalty += config.get("path_exhausted_penalty", 0)
 
         action_score = round(max(base_score - penalty, 0), 2)
-
-        # --- Setup A 叠加层 ---
-        best_setup = None
-        for h in holders:
-            profile = inst_profiles.get(h["institution_id"])
-            if not profile:
-                continue
-            candidate = _evaluate_setup_candidate(
-                h, profile, stock_ind, industry_stats, buy_signal_count, crowding_lookup
-            )
-            if candidate and (best_setup is None or _setup_sort_key(candidate) < _setup_sort_key(best_setup)):
-                best_setup = candidate
 
         # ============================================================
         # 新四层评分：Discovery / Quality / Stage / Forecast
@@ -2227,7 +2444,9 @@ def calculate_stock_scores(conn) -> int:
             + quality_efficiency
             + quality_growth
         )
-        if sc in quality_feature_by_stock:
+        quality_feature_snapshot_date = None
+        company_quality_score_source = "stock_scoring_v2"
+        if _should_use_quality_feature_snapshot(stock, quality_feature_by_stock.get(sc)):
             qf = quality_feature_by_stock[sc]
             quality_profit = _prefer_numeric(_safe_float(qf.get("quality_profit_raw")), quality_profit)
             quality_cash = _prefer_numeric(_safe_float(qf.get("quality_cash_raw")), quality_cash)
@@ -2239,6 +2458,8 @@ def calculate_stock_scores(conn) -> int:
             quality_efficiency = _prefer_numeric(_safe_float(qf.get("quality_efficiency_raw")), quality_efficiency)
             quality_growth = _prefer_numeric(_safe_float(qf.get("quality_growth_raw")), quality_growth)
             company_quality_score = _prefer_numeric(_safe_float(qf.get("quality_score_v1")), company_quality_score)
+            quality_feature_snapshot_date = _iso_date_text(qf.get("snapshot_date"))
+            company_quality_score_source = "quality_feature_v1"
 
         # 3) Archetype
         archetype_row = archetype_by_stock.get(sc) or {}
@@ -2262,22 +2483,10 @@ def calculate_stock_scores(conn) -> int:
 
         # 4) Stage Score
         industry_ctx = industry_context_by_stock.get(sc) or {}
-        follow_count = sum(1 for h in holders if h.get("follow_gate") == "follow")
-        watch_count = sum(1 for h in holders if h.get("follow_gate") == "watch")
-        observe_count = sum(1 for h in holders if h.get("follow_gate") == "observe")
-        avoid_count = sum(1 for h in holders if h.get("follow_gate") == "avoid")
-        stock_gate = (
-            "follow" if follow_count > 0 else
-            "watch" if watch_count > 0 else
-            "observe" if observe_count > 0 else
-            "avoid" if avoid_count > 0 else None
-        )
-
         price_20d = _safe_float(stock.get("price_20d_pct"))
         price_1m = _safe_float(stock.get("price_1m_pct"))
         if stage_row:
             path_state = stage_row.get("path_state") or path_state
-            stock_gate = stage_row.get("stock_gate") or stock_gate
             stage_score = _safe_float(stage_row.get("stage_score_v1"))
             if stage_score is None:
                 stage_score = _safe_float(stage_row.get("generic_stage_raw"))
@@ -2324,13 +2533,6 @@ def calculate_stock_scores(conn) -> int:
                 2 if notice_age_days <= 120 else
                 -4
             )
-            stage_score += {
-                "follow": 10,
-                "watch": 5,
-                "observe": 0,
-                "avoid": -15,
-                None: 0,
-            }.get(stock_gate, 0)
             stage_score += _safe_float(industry_ctx.get("stage_industry_adjust_raw")) or 0
             if has_conflict:
                 stage_score -= 8
@@ -2350,9 +2552,7 @@ def calculate_stock_scores(conn) -> int:
             forecast_score = _clamp_score(qlib_percentile if qlib_percentile is not None else 50.0)
         else:
             forecast_score = _clamp_score(forecast_score)
-        forecast_score_effective = _clamp_score(
-            forecast_score * max(stage_score / 60.0, 0.5)
-        )
+        forecast_score_effective = forecast_score
 
         attention_row = attention_by_stock.get(sc) or {}
         attention_comment_trade_date = attention_row.get("comment_trade_date")
@@ -2367,7 +2567,7 @@ def calculate_stock_scores(conn) -> int:
         attention_survey_count_90d = int(attention_row.get("survey_count_90d") or 0)
         attention_survey_org_total_30d = int(attention_row.get("survey_org_total_30d") or 0)
         attention_survey_org_total_90d = int(attention_row.get("survey_org_total_90d") or 0)
-        external_attention_score = _external_attention_score(attention_row)
+        external_attention_score = _external_attention_score(attention_row, attention_weights)
         external_attention_boost = _external_attention_boost(
             external_attention_score,
             attention_survey_count_30d,
@@ -2385,15 +2585,30 @@ def calculate_stock_scores(conn) -> int:
             attention_survey_count_90d,
         )
 
+        turtle_row = turtle_feature_by_stock.get(sc) or {}
+        turtle_execution_score = _safe_float(turtle_row.get("turtle_execution_score_v1"))
+        turtle_breakout_score = _safe_float(turtle_row.get("turtle_breakout_score"))
+        turtle_risk_score = _safe_float(turtle_row.get("turtle_risk_score"))
+        turtle_setup_state = turtle_row.get("turtle_setup_state")
+        turtle_preferred_system = turtle_row.get("preferred_system")
+        turtle_reason = turtle_row.get("turtle_reason")
+
         raw_composite_priority_score, composite_priority_score = compute_composite_priority(
             discovery_score, company_quality_score, stage_score, forecast_score_effective,
             external_attention_boost, external_crowding_penalty,
+            weights=composite_weights,
         )
         promoted_by_external = (raw_composite_priority_score < 75 <= composite_priority_score)
         demoted_by_crowding = (
             raw_composite_priority_score >= 75
             and composite_priority_score < 75
             and external_crowding_penalty >= 6
+        )
+        composite_priority_score, turtle_score_delta, turtle_execution_overlay_reason = apply_turtle_execution_overlay(
+            composite_priority_score,
+            turtle_row=turtle_row,
+            stage=stage_score,
+            forecast_effective=forecast_score_effective,
         )
         composite_priority_score, composite_cap_score, composite_cap_reason = apply_composite_ceiling(
             composite_priority_score, stage_score, company_quality_score,
@@ -2404,6 +2619,11 @@ def calculate_stock_scores(conn) -> int:
             discovery_score, company_quality_score, stage_score,
             external_attention_score, external_crowding_penalty,
             promoted_by_external, demoted_by_crowding,
+        )
+        stock_gate, stock_gate_reason = derive_stock_gate_from_priority(
+            priority_pool,
+            composite_priority_score,
+            priority_pool_reason,
         )
 
         highlight_reasons = []
@@ -2444,14 +2664,20 @@ def calculate_stock_scores(conn) -> int:
             highlight_reasons.append("近90天持续有机构调研")
         if stage_score >= 65:
             highlight_reasons.append("阶段位置友好")
-        if (_safe_float(forecast_row.get("forecast_20d_score")) or 0) >= 75:
-            highlight_reasons.append("Qlib 20日预测较强")
-        elif (_safe_float(forecast_row.get("forecast_60d_excess_score")) or 0) >= 70:
-            highlight_reasons.append("行业相对预测较强")
+        if (_forecast_cross_section_score(forecast_row) or 0) >= 75:
+            highlight_reasons.append("Qlib 截面排序较强")
+        elif (_forecast_industry_relative_score(forecast_row) or 0) >= 70:
+            highlight_reasons.append("行业内相对排序较强")
         elif (_safe_float(forecast_row.get("forecast_risk_adjusted_score")) or 0) >= 70:
             highlight_reasons.append("波动收益性价比较好")
         elif qlib_percentile is not None and qlib_percentile >= 75:
             highlight_reasons.append("Qlib 排名靠前")
+        if turtle_score_delta > 0 and turtle_setup_state in {"S1突破触发", "S2突破触发"}:
+            highlight_reasons.insert(0, turtle_execution_overlay_reason or "海龟突破触发")
+        elif turtle_score_delta > 0 and turtle_setup_state in {"S1待突破", "S2待突破"}:
+            highlight_reasons.insert(0, turtle_execution_overlay_reason or "海龟接近突破位")
+        elif turtle_execution_score is not None and turtle_execution_score >= 70:
+            highlight_reasons.append("海龟执行分较高")
 
         if company_quality_score < 45:
             risk_reasons.append("公司质量偏弱")
@@ -2471,8 +2697,6 @@ def calculate_stock_scores(conn) -> int:
             risk_reasons.append("短期外部热度偏高")
         if composite_priority_score >= 75 and external_attention_score is not None and external_attention_score < 45:
             risk_reasons.append("外部确认偏弱")
-        if stock_gate == "avoid":
-            risk_reasons.append("持仓机构给出回避")
         if has_conflict:
             risk_reasons.append("同股存在方向冲突")
         if not forecast_row and qlib_percentile is None:
@@ -2501,6 +2725,10 @@ def calculate_stock_scores(conn) -> int:
             (price_20d is not None and price_20d > 20) or (price_1m is not None and price_1m > 25)
         ):
             risk_reasons.append("短期走势偏热")
+        if turtle_score_delta < 0 and turtle_setup_state in {"10日退出触发", "20日退出触发"}:
+            risk_reasons.insert(0, turtle_execution_overlay_reason or "海龟退出触发")
+        elif turtle_execution_score is not None and turtle_execution_score <= 40:
+            risk_reasons.append("海龟执行分偏低")
 
         highlights_text = _top_reasons(highlight_reasons)
         risks_text = _top_reasons(risk_reasons)
@@ -2536,15 +2764,19 @@ def calculate_stock_scores(conn) -> int:
             best_setup.get("crowding_fit_sample") if best_setup else None,
             best_setup.get("crowding_fit_source") if best_setup else None,
             best_setup.get("report_age_days") if best_setup else None,
-            discovery_score, company_quality_score, stage_score,
-            forecast_score, forecast_score_effective, raw_composite_priority_score,
+            discovery_score, company_quality_score, company_quality_score_source,
+            quality_feature_snapshot_date, stage_score, forecast_score,
+            forecast_score_effective, raw_composite_priority_score,
             composite_priority_score, composite_cap_score, composite_cap_reason,
             stock_archetype, priority_pool, priority_pool_reason,
+            stock_gate, stock_gate_reason,
             attention_comment_trade_date, attention_focus_index, attention_composite_score,
             attention_institution_participation, attention_turnover_rate, attention_rank_change,
             attention_survey_count_30d, attention_survey_count_90d,
             attention_survey_org_total_30d, attention_survey_org_total_90d,
             external_attention_score, external_crowding_penalty, external_attention_signal,
+            turtle_execution_score, turtle_breakout_score, turtle_risk_score,
+            turtle_score_delta, turtle_setup_state, turtle_preferred_system, turtle_reason,
             highlights_text, risks_text,
             now, sc
         ))
@@ -2566,20 +2798,60 @@ def calculate_stock_scores(conn) -> int:
                 crowding_yield_grade = ?, crowding_stability_raw = ?, crowding_stability_grade = ?,
                 crowding_fit_raw = ?, crowding_fit_grade = ?, crowding_fit_sample = ?,
                 crowding_fit_source = ?, report_age_days = ?,
-                discovery_score = ?, company_quality_score = ?, stage_score = ?,
-                forecast_score = ?, forecast_score_effective = ?, raw_composite_priority_score = ?,
+                discovery_score = ?, company_quality_score = ?, company_quality_score_source = ?,
+                quality_feature_snapshot_date = ?, stage_score = ?, forecast_score = ?,
+                forecast_score_effective = ?, raw_composite_priority_score = ?,
                 composite_priority_score = ?, composite_cap_score = ?, composite_cap_reason = ?,
                 stock_archetype = ?, priority_pool = ?, priority_pool_reason = ?,
+                stock_gate = ?, stock_gate_reason = ?,
                 attention_comment_trade_date = ?, attention_focus_index = ?, attention_composite_score = ?,
                 attention_institution_participation = ?, attention_turnover_rate = ?, attention_rank_change = ?,
                 attention_survey_count_30d = ?, attention_survey_count_90d = ?,
                 attention_survey_org_total_30d = ?, attention_survey_org_total_90d = ?,
                 external_attention_score = ?, external_crowding_penalty = ?, external_attention_signal = ?,
+                turtle_execution_score = ?, turtle_breakout_score = ?, turtle_risk_score = ?,
+                turtle_score_delta = ?, turtle_setup_state = ?, turtle_preferred_system = ?, turtle_reason = ?,
                 score_highlights = ?, score_risks = ?,
                 updated_at = ?
             WHERE stock_code = ?
         """, results)
         conn.commit()
+        try:
+            conn.execute(
+                """
+                UPDATE dim_stock_stage_latest
+                SET stock_gate = (
+                    SELECT t.stock_gate
+                    FROM mart_stock_trend t
+                    WHERE t.stock_code = dim_stock_stage_latest.stock_code
+                )
+                WHERE EXISTS (
+                    SELECT 1
+                    FROM mart_stock_trend t
+                    WHERE t.stock_code = dim_stock_stage_latest.stock_code
+                )
+                """
+            )
+            latest_snapshot_row = conn.execute(
+                "SELECT MAX(snapshot_date) AS snapshot_date FROM fact_stock_stage_features"
+            ).fetchone()
+            latest_snapshot_date = latest_snapshot_row["snapshot_date"] if latest_snapshot_row else None
+            if latest_snapshot_date:
+                conn.execute(
+                    """
+                    UPDATE fact_stock_stage_features
+                    SET stock_gate = (
+                        SELECT t.stock_gate
+                        FROM mart_stock_trend t
+                        WHERE t.stock_code = fact_stock_stage_features.stock_code
+                    )
+                    WHERE snapshot_date = ?
+                    """,
+                    (latest_snapshot_date,),
+                )
+            conn.commit()
+        except Exception:
+            logger.exception("[评分] 同步股票闸门到阶段特征失败")
 
     _shared_mkt.close()
     logger.info(f"[评分] 股票评分完成: {scored} 只")

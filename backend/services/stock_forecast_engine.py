@@ -1,12 +1,17 @@
 """
 stock_forecast_engine.py — 股票预测特征中间事实层
 
-把 Qlib 预测结果拆成结构化预测分：
-- 20 日收益概率分
-- 60 日相对行业超额分
+把 Qlib 横截面预测结果拆成结构化研究分：
+- Qlib 截面排序分
+- 行业内相对排序分
 - 波动收益性价比分
 
 供评分、解释页和训练后回流统一复用。
+
+兼容说明：
+- 历史列 forecast_20d_score 实际承载 Qlib 截面排序分
+- 历史列 forecast_60d_excess_score 实际承载 行业内相对排序分
+新代码统一暴露语义化别名，并继续回写旧列，避免旧接口/旧数据读取中断。
 """
 
 import logging
@@ -14,11 +19,65 @@ from collections import defaultdict
 from datetime import date, datetime
 from typing import Optional
 
+from services.industry import industry_level_value, load_industry_map
 from services.qlib_full_engine import ensure_tables as ensure_qlib_tables
+from services.qlib_full_engine import get_default_model_id
 from services.qlib_full_engine import sync_latest_predictions_to_stock_trend
 from services.utils import safe_float as _safe_float, percentile_ranks as _percentile_ranks, clamp_score as _clamp_score
 
 logger = logging.getLogger("cm-api")
+
+FORECAST_CROSS_SECTION_SCORE_FIELD = "forecast_cross_section_score"
+LEGACY_FORECAST_CROSS_SECTION_SCORE_FIELD = "forecast_20d_score"
+FORECAST_INDUSTRY_RELATIVE_SCORE_FIELD = "forecast_industry_relative_score"
+LEGACY_FORECAST_INDUSTRY_RELATIVE_SCORE_FIELD = "forecast_60d_excess_score"
+FORECAST_INDUSTRY_GROUP_LEVEL2_PREFIX = "二级行业:"
+FORECAST_INDUSTRY_GROUP_LEVEL1_PREFIX = "一级行业:"
+FORECAST_INDUSTRY_GROUP_ALL_FALLBACK = "全市场回退"
+
+
+def _build_industry_relative_group(level: str, name: Optional[str] = None) -> str:
+    if level == "l2":
+        return f"{FORECAST_INDUSTRY_GROUP_LEVEL2_PREFIX}{name or ''}"
+    if level == "l1":
+        return f"{FORECAST_INDUSTRY_GROUP_LEVEL1_PREFIX}{name or ''}"
+    return FORECAST_INDUSTRY_GROUP_ALL_FALLBACK
+
+
+def normalize_industry_relative_group(group: Optional[str]) -> Optional[str]:
+    if group is None:
+        return None
+    text = str(group).strip()
+    if not text:
+        return text
+    if text.startswith("SW2:"):
+        return _build_industry_relative_group("l2", text[4:])
+    if text.startswith("SW1:"):
+        return _build_industry_relative_group("l1", text[4:])
+    if text == "ALL_FALLBACK":
+        return FORECAST_INDUSTRY_GROUP_ALL_FALLBACK
+    return text
+
+
+def apply_forecast_score_aliases(row: Optional[dict]) -> Optional[dict]:
+    if row is None:
+        return None
+    item = dict(row)
+    cross_section_score = _safe_float(item.get(FORECAST_CROSS_SECTION_SCORE_FIELD))
+    if cross_section_score is None:
+        cross_section_score = _safe_float(item.get(LEGACY_FORECAST_CROSS_SECTION_SCORE_FIELD))
+    industry_relative_score = _safe_float(item.get(FORECAST_INDUSTRY_RELATIVE_SCORE_FIELD))
+    if industry_relative_score is None:
+        industry_relative_score = _safe_float(item.get(LEGACY_FORECAST_INDUSTRY_RELATIVE_SCORE_FIELD))
+
+    item[FORECAST_CROSS_SECTION_SCORE_FIELD] = cross_section_score
+    item[LEGACY_FORECAST_CROSS_SECTION_SCORE_FIELD] = cross_section_score
+    item[FORECAST_INDUSTRY_RELATIVE_SCORE_FIELD] = industry_relative_score
+    item[LEGACY_FORECAST_INDUSTRY_RELATIVE_SCORE_FIELD] = industry_relative_score
+    for group_field in ("industry_relative_group", "forecast_industry_relative_group"):
+        if group_field in item:
+            item[group_field] = normalize_industry_relative_group(item.get(group_field))
+    return item
 
 
 def ensure_tables(conn):
@@ -40,7 +99,9 @@ def ensure_tables(conn):
             max_drawdown_60d                 REAL,
             volatility_rank                  REAL,
             drawdown_rank                    REAL,
+            forecast_cross_section_score     REAL,
             forecast_20d_score               REAL,
+            forecast_industry_relative_score REAL,
             forecast_60d_excess_score        REAL,
             forecast_risk_adjusted_score     REAL,
             forecast_score_v1                REAL,
@@ -67,7 +128,9 @@ def ensure_tables(conn):
             max_drawdown_60d                 REAL,
             volatility_rank                  REAL,
             drawdown_rank                    REAL,
+            forecast_cross_section_score     REAL,
             forecast_20d_score               REAL,
+            forecast_industry_relative_score REAL,
             forecast_60d_excess_score        REAL,
             forecast_risk_adjusted_score     REAL,
             forecast_score_v1                REAL,
@@ -75,6 +138,16 @@ def ensure_tables(conn):
             updated_at                       TEXT
         );
     """)
+    for ddl in [
+        "ALTER TABLE fact_stock_forecast_features ADD COLUMN forecast_cross_section_score REAL",
+        "ALTER TABLE fact_stock_forecast_features ADD COLUMN forecast_industry_relative_score REAL",
+        "ALTER TABLE dim_stock_forecast_latest ADD COLUMN forecast_cross_section_score REAL",
+        "ALTER TABLE dim_stock_forecast_latest ADD COLUMN forecast_industry_relative_score REAL",
+    ]:
+        try:
+            conn.execute(ddl)
+        except Exception:
+            pass
     conn.commit()
 
 
@@ -84,25 +157,21 @@ def build_stock_forecast_features(conn, snapshot_date: Optional[str] = None) -> 
     snapshot_date = snapshot_date or date.today().strftime("%Y-%m-%d")
     now = datetime.now().isoformat()
 
-    model_row = conn.execute(
-        "SELECT model_id FROM qlib_model_state WHERE status='trained' ORDER BY created_at DESC LIMIT 1"
-    ).fetchone()
-    if not model_row:
+    model_id = get_default_model_id(conn)
+    if not model_id:
         conn.execute("DELETE FROM dim_stock_forecast_latest")
         conn.commit()
         logger.info("[预测特征] 无可用 Qlib 模型，跳过构建")
         return 0
 
-    model_id = model_row["model_id"]
     sync_latest_predictions_to_stock_trend(conn, model_id=model_id)
+    industry_map = load_industry_map(conn)
 
     pred_rows = conn.execute("""
         SELECT p.model_id, p.stock_code, p.stock_name, p.predict_date,
                p.qlib_score, p.qlib_rank, p.qlib_percentile,
-               i.sw_level1, i.sw_level2,
                s.volatility_20d, s.max_drawdown_60d
         FROM qlib_predictions p
-        LEFT JOIN dim_stock_industry i ON i.stock_code = p.stock_code
         LEFT JOIN dim_stock_stage_latest s ON s.stock_code = p.stock_code
         WHERE p.model_id = ?
     """, (model_id,)).fetchall()
@@ -112,7 +181,13 @@ def build_stock_forecast_features(conn, snapshot_date: Optional[str] = None) -> 
         logger.info(f"[预测特征] 模型 {model_id} 无预测结果，跳过构建")
         return 0
 
-    rows = [dict(row) for row in pred_rows]
+    rows = []
+    for row in pred_rows:
+        item = dict(row)
+        industry = industry_map.get(item["stock_code"]) or {}
+        item["sw_level1"] = industry_level_value(industry, 1)
+        item["sw_level2"] = industry_level_value(industry, 2)
+        rows.append(item)
     by_group = {("all", "all"): list(rows)}
     for row in rows:
         if row.get("sw_level2"):
@@ -140,39 +215,43 @@ def build_stock_forecast_features(conn, snapshot_date: Optional[str] = None) -> 
         sw1 = row.get("sw_level1")
         if sw2 and group_sizes.get(("l2", sw2), 0) >= 15:
             industry_pct = group_rank_map.get(("l2", sw2, stock_code))
-            rel_group = f"SW2:{sw2}"
+            rel_group = _build_industry_relative_group("l2", sw2)
         elif sw1 and group_sizes.get(("l1", sw1), 0) >= 20:
             industry_pct = group_rank_map.get(("l1", sw1, stock_code))
-            rel_group = f"SW1:{sw1}"
+            rel_group = _build_industry_relative_group("l1", sw1)
         else:
             industry_pct = group_rank_map.get(("all", "all", stock_code))
-            rel_group = "ALL"
+            rel_group = FORECAST_INDUSTRY_GROUP_ALL_FALLBACK
 
         qlib_pct = _safe_float(row.get("qlib_percentile"))
         vol_rank = vol_ranks[idx]
         dd_rank = dd_ranks[idx]
-        forecast_20d_score = _clamp_score(qlib_pct if qlib_pct is not None else 50.0)
-        forecast_60d_excess_score = _clamp_score(industry_pct if industry_pct is not None else forecast_20d_score)
+        forecast_cross_section_score = _clamp_score(qlib_pct if qlib_pct is not None else 50.0)
+        forecast_industry_relative_score = _clamp_score(
+            industry_pct if industry_pct is not None else forecast_cross_section_score
+        )
+        forecast_20d_score = forecast_cross_section_score
+        forecast_60d_excess_score = forecast_industry_relative_score
         risk_adjusted = _clamp_score(
-            forecast_20d_score * 0.55
+            forecast_cross_section_score * 0.55
             + (vol_rank if vol_rank is not None else 50.0) * 0.25
             + (dd_rank if dd_rank is not None else 50.0) * 0.20
         )
         forecast_score_v1 = _clamp_score(
-            forecast_20d_score * 0.40
-            + forecast_60d_excess_score * 0.40
+            forecast_cross_section_score * 0.40
+            + forecast_industry_relative_score * 0.40
             + risk_adjusted * 0.20
         )
 
         reasons = []
-        if forecast_20d_score >= 75:
-            reasons.append("Qlib短期预测较强")
-        if forecast_60d_excess_score >= 70:
-            reasons.append("行业内相对预测靠前")
+        if forecast_cross_section_score >= 75:
+            reasons.append("Qlib截面排序较强")
+        if forecast_industry_relative_score >= 70:
+            reasons.append("行业内相对排序靠前")
         if risk_adjusted >= 70:
             reasons.append("波动收益性价比较好")
         if not reasons:
-            reasons.append("预测结构中性")
+            reasons.append("Qlib排序结构中性")
         forecast_reason = "；".join(reasons[:2])
 
         conn.execute("""
@@ -181,10 +260,12 @@ def build_stock_forecast_features(conn, snapshot_date: Optional[str] = None) -> 
                 sw_level1, sw_level2, qlib_score, qlib_rank, qlib_percentile,
                 industry_qlib_percentile, industry_relative_group,
                 volatility_20d, max_drawdown_60d, volatility_rank, drawdown_rank,
+                forecast_cross_section_score,
                 forecast_20d_score, forecast_60d_excess_score,
+                forecast_industry_relative_score,
                 forecast_risk_adjusted_score, forecast_score_v1, forecast_reason, updated_at
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """, (
             snapshot_date,
             model_id,
@@ -202,8 +283,10 @@ def build_stock_forecast_features(conn, snapshot_date: Optional[str] = None) -> 
             _safe_float(row.get("max_drawdown_60d")),
             vol_rank,
             dd_rank,
+            forecast_cross_section_score,
             forecast_20d_score,
             forecast_60d_excess_score,
+            forecast_industry_relative_score,
             risk_adjusted,
             forecast_score_v1,
             forecast_reason,
@@ -218,14 +301,18 @@ def build_stock_forecast_features(conn, snapshot_date: Optional[str] = None) -> 
             sw_level1, sw_level2, qlib_score, qlib_rank, qlib_percentile,
             industry_qlib_percentile, industry_relative_group,
             volatility_20d, max_drawdown_60d, volatility_rank, drawdown_rank,
+            forecast_cross_section_score,
             forecast_20d_score, forecast_60d_excess_score,
+            forecast_industry_relative_score,
             forecast_risk_adjusted_score, forecast_score_v1, forecast_reason, updated_at
         )
         SELECT stock_code, snapshot_date, model_id, predict_date, stock_name,
                sw_level1, sw_level2, qlib_score, qlib_rank, qlib_percentile,
                industry_qlib_percentile, industry_relative_group,
                volatility_20d, max_drawdown_60d, volatility_rank, drawdown_rank,
+               forecast_cross_section_score,
                forecast_20d_score, forecast_60d_excess_score,
+               forecast_industry_relative_score,
                forecast_risk_adjusted_score, forecast_score_v1, forecast_reason, updated_at
         FROM fact_stock_forecast_features
         WHERE snapshot_date = ? AND model_id = ?

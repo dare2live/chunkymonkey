@@ -11,7 +11,7 @@ sector_momentum.py — 板块动量模块
 数据来源：
   - 板块指数 K 线：AKShare 申万行业指数日线
   - 机构事件：fact_institution_event
-  - 行业映射：dim_stock_industry (sw_level1/sw_level2)
+    - 行业映射：dim_stock_industry 主行业链
 
 计算结果存入 mart_sector_momentum 表，被 scoring.py / screening_engine.py 读取。
 单点计算、多处复用。
@@ -24,9 +24,26 @@ from datetime import datetime
 import numpy as np
 import pandas as pd
 
-from services.ta_lib import ma, ema, macd, cross, hhv, llv, barslast
+from services.industry import (
+    industry_join_clause,
+    industry_level_value,
+    industry_level_nonempty_condition,
+    industry_level_select,
+    load_industry_map,
+)
+from services.ta_lib import ma, macd, cross, hhv, llv, barslast
 
 logger = logging.getLogger("cm-api")
+
+SECTOR_LEVEL = 1
+
+
+def _sector_select(alias: str) -> str:
+    return industry_level_select(SECTOR_LEVEL, alias=alias, result_alias="sector_name")
+
+
+def _sector_nonempty_condition(alias: str) -> str:
+    return industry_level_nonempty_condition(SECTOR_LEVEL, alias=alias)
 
 
 # ============================================================
@@ -310,21 +327,18 @@ def calc_sector_momentum(smart_conn, mkt_conn) -> int:
     """
     ensure_tables(smart_conn)
 
-    # 获取申万一级行业列表
-    industries = smart_conn.execute(
-        "SELECT DISTINCT sw_level1 FROM dim_stock_industry WHERE sw_level1 IS NOT NULL AND sw_level1 != ''"
-    ).fetchall()
+    industry_map = load_industry_map(smart_conn)
+    industry_stocks = {}
+    for stock_code, industry in industry_map.items():
+        sector_name = industry_level_value(industry, SECTOR_LEVEL)
+        if not sector_name:
+            continue
+        industry_stocks.setdefault(sector_name, []).append(stock_code)
 
+    industries = [{"sector_name": sector_name} for sector_name in sorted(industry_stocks)]
     if not industries:
         logger.info("[板块动量] 无行业分类数据")
         return 0
-
-    # 获取行业-股票映射
-    industry_stocks = {}
-    for row in smart_conn.execute(
-        "SELECT stock_code, sw_level1 FROM dim_stock_industry WHERE sw_level1 IS NOT NULL"
-    ).fetchall():
-        industry_stocks.setdefault(row["sw_level1"], []).append(row["stock_code"])
 
     # 全市场等权基线：作为行业强弱的相对参照
     benchmark_close = None
@@ -356,7 +370,7 @@ def calc_sector_momentum(smart_conn, mkt_conn) -> int:
     sector_rotation_rows = []
 
     for sec_idx, ind_row in enumerate(industries):
-        sector = ind_row["sw_level1"]
+        sector = ind_row["sector_name"]
         codes = industry_stocks.get(sector, [])
         if len(codes) < 5:
             continue
@@ -519,16 +533,16 @@ def calc_dual_confirm(smart_conn) -> int:
         return 0
 
     # 获取最近的机构 new_entry/increase 事件
-    events = smart_conn.execute("""
+    events = smart_conn.execute(f"""
         SELECT e.stock_code, e.institution_id, e.event_type, e.report_date,
-               si.sw_level1 as sector_name
+               {_sector_select('si')}
         FROM fact_institution_event e
-        LEFT JOIN dim_stock_industry si ON e.stock_code = si.stock_code
+        {industry_join_clause('e.stock_code', alias='si', join_type='LEFT')}
         WHERE e.event_type IN ('new_entry', 'increase')
           AND e.report_date >= date('now', '-6 months')
-          AND si.sw_level1 IS NOT NULL
+          AND {_sector_nonempty_condition('si')}
         ORDER BY e.report_date DESC
-    """).fetchall()
+        """).fetchall()
 
     if not events:
         logger.info("[双重确认] 无符合条件的事件")

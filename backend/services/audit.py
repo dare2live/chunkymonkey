@@ -9,13 +9,14 @@
 import json
 import logging
 import time
-from datetime import datetime
+from datetime import date, datetime
 from typing import Optional
 
 from services.db import get_conn
 from services.gap_queue import reconcile_gap_queue_snapshot
 from services.industry import count_industry_rows, summarize_industry_coverage
 from services.market_db import get_market_conn
+from services.utils import latest_completed_trade_date
 
 logger = logging.getLogger("cm-api")
 
@@ -44,7 +45,7 @@ _TFP_CACHE: dict = {"date": None, "codes": None, "ts": 0.0}
 _AUDIT_TTL_SECONDS = 8.0  # 工作台轮询节奏 1-2s，8s 内复用
 _TFP_TTL_SECONDS = 1800   # 停牌列表 30 分钟刷新一次
 _AUDIT_SNAPSHOT_KEY = "holder_workbench"
-_AUDIT_SNAPSHOT_SCHEMA_VERSION = 1
+_AUDIT_SNAPSHOT_SCHEMA_VERSION = 5
 
 
 def _json_dumps(payload) -> str:
@@ -71,10 +72,120 @@ def _attach_snapshot_meta(payload: dict, *, computed_at: Optional[str], source: 
     return result
 
 
+def _days_lag(start_date: Optional[str], end_date: Optional[str]) -> Optional[int]:
+    if not start_date or not end_date:
+        return None
+    try:
+        start = date.fromisoformat(str(start_date)[:10])
+        end = date.fromisoformat(str(end_date)[:10])
+    except Exception:
+        return None
+    return (end - start).days
+
+
+def _classify_plannable_stale_kline_codes(
+    conn,
+    stale_rows,
+    *,
+    holding_codes: set[str],
+    suspended_codes: set[str],
+) -> tuple[int, int]:
+    try:
+        excluded_codes = {r[0] for r in conn.execute("SELECT stock_code FROM excluded_stocks").fetchall()}
+    except Exception:
+        excluded_codes = set()
+
+    stale_count = 0
+    suspended_count = 0
+    for row in stale_rows or []:
+        code = row["code"] if hasattr(row, "keys") else row[0]
+        if not code or code in excluded_codes or code not in holding_codes:
+            continue
+        if code in suspended_codes:
+            suspended_count += 1
+        else:
+            stale_count += 1
+    return stale_count, suspended_count
+
+
+def _recent_step_detail_status(conn, step_id: str, detail_status: str, *, cooldown_hours: int = 6) -> bool:
+    try:
+        row = conn.execute(
+            "SELECT finished_at, error FROM step_status WHERE step_id = ? LIMIT 1",
+            (step_id,),
+        ).fetchone()
+    except Exception:
+        return False
+    if not row:
+        return False
+
+    finished_at = row["finished_at"] if hasattr(row, "keys") else row[0]
+    error = row["error"] if hasattr(row, "keys") else row[1]
+    if not finished_at or not error:
+        return False
+    try:
+        finished_dt = datetime.fromisoformat(str(finished_at))
+    except Exception:
+        return False
+    if (datetime.now() - finished_dt).total_seconds() > cooldown_hours * 3600:
+        return False
+    try:
+        payload = json.loads(error)
+    except Exception:
+        return False
+    return payload.get("status") == detail_status
+
+
+def _load_expected_current_snapshot(conn) -> dict:
+    summary = {
+        "rows_cnt": 0,
+        "inst_cnt": 0,
+        "stock_cnt": 0,
+        "stock_codes": set(),
+    }
+
+    base_sql = """
+        WITH latest AS (
+            SELECT stock_code, MAX(report_date) AS max_rd
+            FROM market_raw_holdings
+            GROUP BY stock_code
+        ),
+        expected AS (
+            SELECT h.institution_id, h.stock_code
+            FROM inst_holdings h
+            JOIN latest l ON h.stock_code = l.stock_code AND h.report_date = l.max_rd
+            JOIN inst_institutions i ON i.id = h.institution_id
+            WHERE i.enabled = 1 AND i.blacklisted = 0 AND i.merged_into IS NULL
+        )
+    """
+
+    try:
+        row = conn.execute(
+            base_sql +
+            """
+            SELECT
+                COUNT(*) AS rows_cnt,
+                COUNT(DISTINCT institution_id) AS inst_cnt,
+                COUNT(DISTINCT stock_code) AS stock_cnt
+            FROM expected
+            """
+        ).fetchone()
+        code_rows = conn.execute(
+            base_sql + "SELECT DISTINCT stock_code FROM expected WHERE stock_code IS NOT NULL"
+        ).fetchall()
+    except Exception:
+        return summary
+
+    summary["rows_cnt"] = int(row["rows_cnt"] or 0) if row else 0
+    summary["inst_cnt"] = int(row["inst_cnt"] or 0) if row else 0
+    summary["stock_cnt"] = int(row["stock_cnt"] or 0) if row else 0
+    summary["stock_codes"] = {str(r["stock_code"]) for r in code_rows if r["stock_code"]}
+    return summary
+
 def load_quality_audit_snapshot(conn) -> Optional[dict]:
     row = conn.execute(
         """
-        SELECT computed_at, source, audit_json
+        SELECT schema_version, computed_at, source, audit_json
         FROM mart_audit_snapshot_state
         WHERE state_key = ?
         LIMIT 1
@@ -82,6 +193,8 @@ def load_quality_audit_snapshot(conn) -> Optional[dict]:
         (_AUDIT_SNAPSHOT_KEY,),
     ).fetchone()
     if not row:
+        return None
+    if int(row["schema_version"] or 0) != _AUDIT_SNAPSHOT_SCHEMA_VERSION:
         return None
     payload = _json_loads(row["audit_json"])
     if not isinstance(payload, dict) or not payload.get("layers"):
@@ -167,6 +280,292 @@ def _get_suspended_codes(trade_date: str) -> set:
         pass
     _TFP_CACHE.update({"date": trade_date, "codes": codes, "ts": now})
     return codes
+
+
+def _summarize_external_attention(
+    conn,
+    latest_market_date: Optional[str],
+    expected_stocks: int,
+    *,
+    expected_stock_codes: Optional[set[str]] = None,
+) -> dict:
+    summary = {
+        "latest_snapshot_date": "",
+        "snapshot_rows": 0,
+        "comment_covered": 0,
+        "survey_covered": 0,
+        "comment_trade_date": "",
+        "comment_trade_lag_days": None,
+        "last_survey_date": "",
+        "expected_stocks": expected_stocks,
+        "covered_stocks": 0,
+        "missing_stocks": max(expected_stocks, 0),
+        "coverage": 0,
+        "snapshot_lag_days": None,
+        "trend_scope": 0,
+        "trend_scored_stocks": 0,
+        "trend_signal_count": 0,
+    }
+
+    try:
+        row = conn.execute(
+            "SELECT MAX(snapshot_date) AS snapshot_date FROM dim_stock_attention_latest"
+        ).fetchone()
+    except Exception:
+        return summary
+
+    latest_snapshot_date = row["snapshot_date"] if row and row["snapshot_date"] else None
+    if not latest_snapshot_date:
+        return summary
+
+    summary["latest_snapshot_date"] = latest_snapshot_date
+    summary["snapshot_rows"] = _scalar(
+        conn,
+        "SELECT COUNT(*) FROM dim_stock_attention_latest WHERE snapshot_date = ?",
+        (latest_snapshot_date,),
+    )
+    summary["comment_covered"] = _scalar(
+        conn,
+        "SELECT COUNT(*) FROM dim_stock_attention_latest WHERE snapshot_date = ? AND comment_available = 1",
+        (latest_snapshot_date,),
+    )
+    summary["survey_covered"] = _scalar(
+        conn,
+        "SELECT COUNT(*) FROM dim_stock_attention_latest WHERE snapshot_date = ? AND survey_available = 1",
+        (latest_snapshot_date,),
+    )
+
+    latest_source_row = conn.execute(
+        """
+        SELECT MAX(comment_trade_date) AS comment_trade_date,
+               MAX(last_survey_date) AS last_survey_date
+        FROM dim_stock_attention_latest
+        WHERE snapshot_date = ?
+        """,
+        (latest_snapshot_date,),
+    ).fetchone()
+    if latest_source_row:
+        summary["comment_trade_date"] = latest_source_row["comment_trade_date"] or ""
+        summary["last_survey_date"] = latest_source_row["last_survey_date"] or ""
+
+    summary["snapshot_lag_days"] = _days_lag(latest_snapshot_date, date.today().isoformat())
+    summary["comment_trade_lag_days"] = _days_lag(summary["comment_trade_date"], latest_market_date)
+
+    try:
+        summary["trend_scope"] = _scalar(conn, "SELECT COUNT(*) FROM mart_stock_trend")
+        summary["trend_scored_stocks"] = _scalar(
+            conn,
+            """
+            SELECT COUNT(*)
+            FROM mart_stock_trend
+            WHERE external_attention_score IS NOT NULL
+               OR COALESCE(attention_comment_trade_date, '') != ''
+               OR COALESCE(external_attention_signal, '') != ''
+            """,
+        )
+        summary["trend_signal_count"] = _scalar(
+            conn,
+            "SELECT COUNT(*) FROM mart_stock_trend WHERE COALESCE(external_attention_signal, '') != ''",
+        )
+    except Exception:
+        pass
+
+    expected_codes = {str(code) for code in (expected_stock_codes or set()) if code}
+    if expected_codes:
+        try:
+            snapshot_rows = conn.execute(
+                "SELECT stock_code FROM dim_stock_attention_latest WHERE snapshot_date = ?",
+                (latest_snapshot_date,),
+            ).fetchall()
+            snapshot_codes = {str(row["stock_code"]) for row in snapshot_rows if row["stock_code"]}
+            summary["expected_stocks"] = len(expected_codes)
+            summary["covered_stocks"] = len(expected_codes & snapshot_codes)
+        except Exception:
+            summary["covered_stocks"] = 0
+        summary["missing_stocks"] = max(len(expected_codes) - int(summary["covered_stocks"] or 0), 0)
+        summary["coverage"] = _pct(summary["covered_stocks"], len(expected_codes))
+    elif expected_stocks > 0:
+        try:
+            summary["covered_stocks"] = _scalar(
+                conn,
+                """
+                SELECT COUNT(DISTINCT c.stock_code)
+                FROM mart_current_relationship c
+                JOIN dim_stock_attention_latest a
+                  ON a.stock_code = c.stock_code
+                 AND a.snapshot_date = ?
+                """,
+                (latest_snapshot_date,),
+            )
+        except Exception:
+            summary["covered_stocks"] = 0
+        summary["missing_stocks"] = max(expected_stocks - int(summary["covered_stocks"] or 0), 0)
+        summary["coverage"] = _pct(summary["covered_stocks"], expected_stocks)
+    else:
+        summary["missing_stocks"] = 0
+
+    return summary
+
+
+def _external_attention_plan_reason(layer: Optional[dict]) -> Optional[str]:
+    info = layer or {}
+    if not info.get("latest_snapshot_date") or not int(info.get("snapshot_rows") or 0):
+        return "无外部关注快照"
+    snapshot_lag_days = info.get("snapshot_lag_days")
+    if isinstance(snapshot_lag_days, (int, float)) and snapshot_lag_days > 0:
+        return f"外部关注快照滞后{int(snapshot_lag_days)}天"
+    missing_stocks = int(info.get("missing_stocks") or 0)
+    expected_stocks = int(info.get("expected_stocks") or 0)
+    if expected_stocks > 0 and missing_stocks > 0:
+        return f"{missing_stocks}只当前股票缺外部关注覆盖"
+    return None
+
+def _needs_stock_score_recalc(planned_steps: list[str]) -> bool:
+    return any(
+        step in planned_steps
+        for step in [
+            "calc_inst_scores",
+            "build_trends",
+            "build_stage_features",
+            "build_forecast_features",
+            "build_turtle_features",
+            "build_external_attention",
+        ]
+    )
+
+
+def _summarize_current_relationship_freshness(conn) -> dict:
+    summary = {
+        "latest_raw_report_date": "",
+        "latest_current_report_date": "",
+        "stale_stocks": 0,
+        "sample_stock_code": "",
+        "sample_expected_report_date": "",
+        "sample_current_report_date": "",
+    }
+
+    try:
+        raw_row = conn.execute(
+            "SELECT MAX(report_date) AS report_date FROM market_raw_holdings"
+        ).fetchone()
+        current_row = conn.execute(
+            "SELECT MAX(report_date) AS report_date FROM mart_current_relationship"
+        ).fetchone()
+        summary["latest_raw_report_date"] = raw_row["report_date"] if raw_row and raw_row["report_date"] else ""
+        summary["latest_current_report_date"] = current_row["report_date"] if current_row and current_row["report_date"] else ""
+
+        summary["stale_stocks"] = _scalar(
+            conn,
+            """
+            SELECT COUNT(*)
+            FROM (
+                SELECT current_latest.stock_code
+                FROM (
+                    SELECT stock_code, MAX(report_date) AS max_rd
+                    FROM mart_current_relationship
+                    GROUP BY stock_code
+                ) current_latest
+                LEFT JOIN (
+                    SELECT stock_code, MAX(report_date) AS max_rd
+                    FROM market_raw_holdings
+                    GROUP BY stock_code
+                ) raw_latest
+                  ON raw_latest.stock_code = current_latest.stock_code
+                WHERE COALESCE(current_latest.max_rd, '') != COALESCE(raw_latest.max_rd, '')
+            )
+            """,
+        )
+
+        sample_row = conn.execute(
+            """
+            SELECT current_latest.stock_code,
+                   raw_latest.max_rd AS expected_report_date,
+                   current_latest.max_rd AS current_report_date
+            FROM (
+                SELECT stock_code, MAX(report_date) AS max_rd
+                FROM mart_current_relationship
+                GROUP BY stock_code
+            ) current_latest
+            LEFT JOIN (
+                SELECT stock_code, MAX(report_date) AS max_rd
+                FROM market_raw_holdings
+                GROUP BY stock_code
+            ) raw_latest
+              ON raw_latest.stock_code = current_latest.stock_code
+            WHERE COALESCE(current_latest.max_rd, '') != COALESCE(raw_latest.max_rd, '')
+            ORDER BY current_latest.stock_code
+            LIMIT 1
+            """
+        ).fetchone()
+        if sample_row:
+            summary["sample_stock_code"] = sample_row["stock_code"] or ""
+            summary["sample_expected_report_date"] = sample_row["expected_report_date"] or ""
+            summary["sample_current_report_date"] = sample_row["current_report_date"] or ""
+    except Exception:
+        return summary
+
+    return summary
+
+
+def _current_relationship_plan_reason(layer: Optional[dict]) -> Optional[str]:
+    info = layer or {}
+    if int(info.get("count") or 0) <= 0:
+        return "当前关系表为空，需构建"
+
+    stale_stocks = int(info.get("stale_stocks") or 0)
+    if stale_stocks > 0:
+        return f"{stale_stocks}只股票当前关系落后于最新报告期"
+
+    stock_gap = int(info.get("stock_gap") or 0)
+    if stock_gap < 0:
+        return f"当前关系少{abs(stock_gap)}只最新股票"
+    if stock_gap > 0:
+        return f"当前关系多{stock_gap}只非最新股票"
+
+    institution_gap = int(info.get("institution_gap") or 0)
+    if institution_gap < 0:
+        return f"当前关系少{abs(institution_gap)}家最新机构"
+    if institution_gap > 0:
+        return f"当前关系多{institution_gap}家非最新机构"
+
+    row_gap = int(info.get("row_gap") or 0)
+    if row_gap < 0:
+        return f"当前关系少{abs(row_gap)}条最新持仓关系"
+    if row_gap > 0:
+        return f"当前关系多{row_gap}条冗余持仓关系"
+
+    return None
+
+
+def _summarize_northbound_freshness(conn) -> dict:
+    summary = {
+        "table_available": False,
+        "row_count": 0,
+        "latest_trade_date": "",
+        "target_trade_date": "",
+        "lag_days": None,
+    }
+
+    try:
+        row = conn.execute(
+            "SELECT COUNT(*) AS row_count, MAX(trade_date) AS latest_trade_date FROM fact_northbound_daily"
+        ).fetchone()
+    except Exception:
+        return summary
+
+    summary["table_available"] = True
+    if row:
+        summary["row_count"] = int(row["row_count"] or 0)
+        summary["latest_trade_date"] = row["latest_trade_date"] or ""
+
+    try:
+        summary["target_trade_date"] = latest_completed_trade_date(conn) or ""
+    except Exception:
+        summary["target_trade_date"] = ""
+
+    lag_days = _days_lag(summary["latest_trade_date"], summary["target_trade_date"])
+    summary["lag_days"] = lag_days if lag_days is None else max(lag_days, 0)
+    return summary
 
 
 def run_quality_audit(conn, use_cache: bool = True) -> dict:
@@ -355,6 +754,15 @@ def run_quality_audit(conn, use_cache: bool = True) -> dict:
     ).fetchall()
     holding_codes = {r[0] for r in holding_code_rows}
     holding_stocks = len(holding_codes)
+    financial_universe_stocks = _scalar(
+        conn,
+        """
+        SELECT COUNT(*)
+        FROM dim_active_a_stock a
+        LEFT JOIN excluded_stocks e ON e.stock_code = a.stock_code
+        WHERE e.stock_code IS NULL
+        """,
+    )
     kline_stocks = len(daily_codes)
     kline_covered = len(holding_codes & daily_codes)
     kline_missing = len(holding_codes - daily_codes)
@@ -365,12 +773,7 @@ def run_quality_audit(conn, use_cache: bool = True) -> dict:
     kline_suspended_count = 0
     kline_latest_trade = None
     try:
-        latest_trade_row = conn.execute(
-            "SELECT MAX(trade_date) AS d FROM dim_trading_calendar "
-            "WHERE is_trading=1 AND trade_date <= ?",
-            (datetime.now().strftime("%Y-%m-%d"),)
-        ).fetchone()
-        kline_latest_trade = latest_trade_row[0] if latest_trade_row else None
+        kline_latest_trade = latest_completed_trade_date(conn)
         if kline_latest_trade:
             mkt_conn2 = get_market_conn()
             stale_rows = mkt_conn2.execute(
@@ -380,18 +783,14 @@ def run_quality_audit(conn, use_cache: bool = True) -> dict:
                 (kline_latest_trade,)
             ).fetchall()
             mkt_conn2.close()
-            excluded_codes = {r[0] for r in conn.execute("SELECT stock_code FROM excluded_stocks").fetchall()}
-            active_codes = {r[0] for r in conn.execute("SELECT stock_code FROM dim_active_a_stock").fetchall()}
             # 查停牌列表（带 30 分钟 TTL 缓存，避免每次审计都打 akshare 网络）
             suspended_codes = _get_suspended_codes(kline_latest_trade)
-            for r in stale_rows:
-                code = r["code"]
-                if code in excluded_codes or code not in active_codes:
-                    continue
-                if code in suspended_codes:
-                    kline_suspended_count += 1
-                else:
-                    kline_stale_count += 1
+            kline_stale_count, kline_suspended_count = _classify_plannable_stale_kline_codes(
+                conn,
+                stale_rows,
+                holding_codes=holding_codes,
+                suspended_codes=suspended_codes,
+            )
     except Exception:
         pass
 
@@ -409,28 +808,11 @@ def run_quality_audit(conn, use_cache: bool = True) -> dict:
     industry_coverage = _pct(industry_complete_codes, holding_stocks)
 
     # 当前关系层基线（业务口径：每只股票取全市场最新报告期中的 tracked 机构）
-    current_expected = conn.execute("""
-        WITH latest AS (
-            SELECT stock_code, MAX(report_date) AS max_rd
-            FROM market_raw_holdings
-            GROUP BY stock_code
-        ),
-        expected AS (
-            SELECT h.institution_id, h.stock_code
-            FROM inst_holdings h
-            JOIN latest l ON h.stock_code = l.stock_code AND h.report_date = l.max_rd
-            JOIN inst_institutions i ON i.id = h.institution_id
-            WHERE i.enabled = 1 AND i.blacklisted = 0 AND i.merged_into IS NULL
-        )
-        SELECT
-            COUNT(*) AS rows_cnt,
-            COUNT(DISTINCT institution_id) AS inst_cnt,
-            COUNT(DISTINCT stock_code) AS stock_cnt
-        FROM expected
-    """).fetchone()
+    current_expected = _load_expected_current_snapshot(conn)
     expected_current_rows = current_expected["rows_cnt"] or 0
     expected_current_inst = current_expected["inst_cnt"] or 0
     expected_current_stocks = current_expected["stock_cnt"] or 0
+    expected_current_codes = current_expected["stock_codes"] or set()
 
     # 当前关系层
     try:
@@ -445,11 +827,13 @@ def run_quality_audit(conn, use_cache: bool = True) -> dict:
             conn,
             "SELECT COUNT(DISTINCT stock_code) FROM mart_current_relationship WHERE has_industry_data = 1",
         )
+        current_rel_freshness = _summarize_current_relationship_freshness(conn)
     except Exception:
         current_rel_count = 0
         current_rel_inst_count = 0
         current_rel_stock_count = 0
         current_rel_industry_stocks = 0
+        current_rel_freshness = _summarize_current_relationship_freshness(conn)
 
     tracked_without_current = max(inst_tracked - expected_current_inst, 0)
     matched_without_current = max(holdings_inst_count - expected_current_inst, 0)
@@ -522,6 +906,19 @@ def run_quality_audit(conn, use_cache: bool = True) -> dict:
     try:
         fin_derived_count = _scalar(conn, "SELECT COUNT(*) FROM fact_financial_derived")
         fin_latest_count = _scalar(conn, "SELECT COUNT(*) FROM dim_financial_latest")
+        fin_tracked_latest_count = _scalar(
+            conn,
+            """
+            SELECT COUNT(*)
+            FROM dim_financial_latest
+            WHERE stock_code IN (
+                SELECT DISTINCT stock_code
+                FROM inst_holdings
+                WHERE stock_code IS NOT NULL
+                  AND stock_code NOT IN (SELECT stock_code FROM excluded_stocks)
+            )
+            """,
+        )
         fin_history_ready = _scalar(conn, """
             SELECT COUNT(*) FROM (
                 SELECT stock_code
@@ -546,11 +943,16 @@ def run_quality_audit(conn, use_cache: bool = True) -> dict:
     except Exception:
         fin_derived_count = 0
         fin_latest_count = 0
+        fin_tracked_latest_count = 0
         fin_history_ready = 0
         fin_research_scope = 0
         fin_research_history_ready = 0
     fin_history_gap = max(fin_latest_count - fin_history_ready, 0)
     fin_research_history_gap = max(fin_research_scope - fin_research_history_ready, 0)
+    fin_missing_stocks = max(financial_universe_stocks - fin_latest_count, 0)
+    fin_coverage = _pct(fin_latest_count, financial_universe_stocks)
+    fin_tracked_missing = max(holding_stocks - fin_tracked_latest_count, 0)
+    fin_tracked_coverage = _pct(fin_tracked_latest_count, holding_stocks)
     try:
         capital_latest_count = _scalar(conn, "SELECT COUNT(*) FROM dim_capital_behavior_latest")
         capital_detail_synced_count = _scalar(conn, """
@@ -629,12 +1031,23 @@ def run_quality_audit(conn, use_cache: bool = True) -> dict:
         industry_context_count = _scalar(conn, "SELECT COUNT(*) FROM dim_stock_industry_context_latest")
         stage_feature_count = _scalar(conn, "SELECT COUNT(*) FROM dim_stock_stage_latest")
         forecast_feature_count = _scalar(conn, "SELECT COUNT(*) FROM dim_stock_forecast_latest")
+        sector_forecast_count = _scalar(conn, "SELECT COUNT(*) FROM dim_sector_forecast_latest")
+        turtle_feature_count = _scalar(conn, "SELECT COUNT(*) FROM dim_stock_turtle_latest")
     except Exception:
         sector_count = 0
         dual_confirm_count = 0
         industry_context_count = 0
         stage_feature_count = 0
         forecast_feature_count = 0
+        sector_forecast_count = 0
+        turtle_feature_count = 0
+
+    attention = _summarize_external_attention(
+        conn,
+        latest_market_date,
+        expected_current_stocks,
+        expected_stock_codes=expected_current_codes,
+    )
 
     # 收益层：停牌事件技术（已在上方提早计算完毕）
 
@@ -780,10 +1193,13 @@ def run_quality_audit(conn, use_cache: bool = True) -> dict:
                 "extra_stocks": max(trend_count - expected_current_stocks, 0),
                 "without_current_relationship": trend_without_current_rel,
             },
+            "external_attention": attention,
             "financial": {
                 "raw_count": fin_raw_count,
                 "derived_count": fin_derived_count,
                 "latest_count": fin_latest_count,
+                "missing_stocks": fin_missing_stocks,
+                "coverage": fin_coverage,
                 "history_target_rows": FIN_HISTORY_TARGET_ROWS,
                 "history_ready_stocks": fin_history_ready,
                 "history_gap_stocks": fin_history_gap,
@@ -800,7 +1216,11 @@ def run_quality_audit(conn, use_cache: bool = True) -> dict:
                 "indicator_research_gap": indicator_research_gap,
                 "quality_feature_latest_count": quality_feature_latest_count,
                 "archetype_latest_count": archetype_latest_count,
-                "expected_stocks": holding_stocks,
+                "expected_stocks": financial_universe_stocks,
+                "tracked_latest_count": fin_tracked_latest_count,
+                "tracked_expected_stocks": holding_stocks,
+                "tracked_missing_stocks": fin_tracked_missing,
+                "tracked_coverage": fin_tracked_coverage,
             },
             "screening": {
                 "count": screen_count,
@@ -814,6 +1234,8 @@ def run_quality_audit(conn, use_cache: bool = True) -> dict:
                 "industry_context_count": industry_context_count,
                 "stage_feature_count": stage_feature_count,
                 "forecast_feature_count": forecast_feature_count,
+                "sector_forecast_count": sector_forecast_count,
+                "turtle_feature_count": turtle_feature_count,
             },
             "current_relationship": {
                 "count": current_rel_count,
@@ -823,12 +1245,24 @@ def run_quality_audit(conn, use_cache: bool = True) -> dict:
                 "expected_institutions": expected_current_inst,
                 "expected_stocks": expected_current_stocks,
                 "row_gap": current_rel_count - expected_current_rows,
+                "missing_rows": max(expected_current_rows - current_rel_count, 0),
+                "extra_rows": max(current_rel_count - expected_current_rows, 0),
                 "institution_gap": current_rel_inst_count - expected_current_inst,
+                "missing_institutions": max(expected_current_inst - current_rel_inst_count, 0),
+                "extra_institutions": max(current_rel_inst_count - expected_current_inst, 0),
                 "stock_gap": current_rel_stock_count - expected_current_stocks,
+                "missing_stocks": max(expected_current_stocks - current_rel_stock_count, 0),
+                "extra_stocks": max(current_rel_stock_count - expected_current_stocks, 0),
                 "industry_stocks": current_rel_industry_stocks,
                 "industry_missing_stocks": max(current_rel_stock_count - current_rel_industry_stocks, 0),
                 "tracked_without_current": tracked_without_current,
                 "matched_without_current": matched_without_current,
+                "latest_raw_report_date": current_rel_freshness.get("latest_raw_report_date") or "",
+                "latest_current_report_date": current_rel_freshness.get("latest_current_report_date") or "",
+                "stale_stocks": int(current_rel_freshness.get("stale_stocks") or 0),
+                "sample_stock_code": current_rel_freshness.get("sample_stock_code") or "",
+                "sample_expected_report_date": current_rel_freshness.get("sample_expected_report_date") or "",
+                "sample_current_report_date": current_rel_freshness.get("sample_current_report_date") or "",
             },
         }
     }
@@ -847,11 +1281,12 @@ def build_smart_plan(conn, force_all=False, *, audit: Optional[dict] = None, use
     """
     # 所有可能的步骤 ID
     ALL_STEPS = [
-        "sync_raw", "match_inst", "sync_market_data",
+        "sync_raw", "match_inst", "sync_market_data", "sync_northbound",
         "gen_events", "calc_returns", "sync_industry",
         "sync_financial", "calc_financial_derived",
         "build_current_rel", "build_profiles", "build_industry_stat", "build_trends",
-        "calc_screening", "calc_sector_momentum", "build_stage_features", "build_forecast_features",
+        "calc_screening", "calc_sector_momentum", "build_external_attention",
+        "build_stage_features", "build_forecast_features", "build_turtle_features",
         "calc_inst_scores", "calc_stock_scores",
     ]
 
@@ -874,7 +1309,10 @@ def build_smart_plan(conn, force_all=False, *, audit: Optional[dict] = None, use
 
     # 运行质量审计（这里允许复用 audit 缓存——run_quality_audit 自带 TTL）
     if audit is None:
-        audit = load_quality_audit_snapshot(conn) or run_quality_audit(conn, use_cache=use_cache)
+        if use_cache:
+            audit = load_quality_audit_snapshot(conn) or run_quality_audit(conn, use_cache=True)
+        else:
+            audit = run_quality_audit(conn, use_cache=False)
 
     # 1. 原始数据是否过期（> 1 天无新数据）
     raw_latest = audit["layers"]["raw"].get("latest_notice", "")
@@ -920,6 +1358,37 @@ def build_smart_plan(conn, force_all=False, *, audit: Optional[dict] = None, use
     else:
         plan["skip_reasons"]["sync_market_data"] = "K线已完整且已覆盖最新交易日"
 
+    # 3b. 北向持仓是否缺失或过期
+    northbound_freshness = _summarize_northbound_freshness(conn)
+    latest_northbound_date = northbound_freshness.get("latest_trade_date") or ""
+    target_northbound_date = northbound_freshness.get("target_trade_date") or ""
+    northbound_recently_unavailable = _recent_step_detail_status(
+        conn,
+        "sync_northbound",
+        "source_unavailable",
+    )
+    if not northbound_freshness.get("table_available"):
+        plan["skip_reasons"]["sync_northbound"] = "北向持仓事实表不存在"
+    elif northbound_recently_unavailable:
+        plan["skip_reasons"]["sync_northbound"] = "北向上游最近不可用，等待冷却后重试"
+    elif int(northbound_freshness.get("row_count") or 0) == 0:
+        plan["steps"].append("sync_northbound")
+        plan["reason"].append("无北向持仓数据")
+    elif target_northbound_date and latest_northbound_date and latest_northbound_date < target_northbound_date:
+        plan["steps"].append("sync_northbound")
+        plan["reason"].append(
+            f"北向持仓最新日期 {latest_northbound_date}，落后最新交易日 {target_northbound_date}"
+        )
+    elif target_northbound_date and not latest_northbound_date:
+        plan["steps"].append("sync_northbound")
+        plan["reason"].append("无北向持仓数据")
+    elif not target_northbound_date:
+        plan["skip_reasons"]["sync_northbound"] = "无法确定最近交易日，暂不调度北向同步"
+    else:
+        plan["skip_reasons"]["sync_northbound"] = (
+            f"北向持仓已覆盖最新交易日（{latest_northbound_date}）"
+        )
+
     # 4. 事件是否需要重算
     if audit["layers"]["events"]["count"] == 0 and audit["layers"]["holdings"]["count"] > 0:
         plan["steps"].append("gen_events")
@@ -956,21 +1425,38 @@ def build_smart_plan(conn, force_all=False, *, audit: Optional[dict] = None, use
 
     # 6b. 财务数据是否需要同步
     try:
-        from services.financial_client import FIN_HISTORY_TARGET_ROWS
+        from services.financial_client import (
+            FIN_HISTORY_RETRY_COOLDOWN_HOURS,
+            FIN_HISTORY_TARGET_ROWS,
+            summarize_history_gap_state,
+        )
     except Exception:
+        FIN_HISTORY_RETRY_COOLDOWN_HOURS = 6
         FIN_HISTORY_TARGET_ROWS = 8
+        summarize_history_gap_state = None
     try:
         fin_count = conn.execute("SELECT COUNT(*) FROM dim_financial_latest").fetchone()[0]
         quality_feature_count = conn.execute("SELECT COUNT(*) FROM dim_stock_quality_latest").fetchone()[0]
-        fin_history_gap = conn.execute("""
-            SELECT COUNT(*) FROM (
-                SELECT t.stock_code
-                FROM mart_stock_trend t
-                LEFT JOIN raw_gpcw_financial r ON r.stock_code = t.stock_code
-                GROUP BY t.stock_code
-                HAVING COUNT(r.report_date) < ?
+        if summarize_history_gap_state is not None:
+            fin_history_summary = summarize_history_gap_state(
+                conn,
+                cooldown_hours=FIN_HISTORY_RETRY_COOLDOWN_HOURS,
             )
-        """, (FIN_HISTORY_TARGET_ROWS,)).fetchone()[0]
+            fin_history_gap = int(fin_history_summary.get("total_gap") or 0)
+            fin_retryable_history_gap = int(fin_history_summary.get("retryable_gap") or 0)
+            fin_cooling_history_gap = int(fin_history_summary.get("cooling_gap") or 0)
+        else:
+            fin_history_gap = conn.execute("""
+                SELECT COUNT(*) FROM (
+                    SELECT t.stock_code
+                    FROM mart_stock_trend t
+                    LEFT JOIN raw_gpcw_financial r ON r.stock_code = t.stock_code
+                    GROUP BY t.stock_code
+                    HAVING COUNT(r.report_date) < ?
+                )
+            """, (FIN_HISTORY_TARGET_ROWS,)).fetchone()[0]
+            fin_retryable_history_gap = fin_history_gap
+            fin_cooling_history_gap = 0
         indicator_history_gap = conn.execute("""
             SELECT COUNT(*) FROM (
                 SELECT t.stock_code
@@ -984,6 +1470,8 @@ def build_smart_plan(conn, force_all=False, *, audit: Optional[dict] = None, use
         fin_count = 0
         quality_feature_count = 0
         fin_history_gap = 0
+        fin_retryable_history_gap = 0
+        fin_cooling_history_gap = 0
         indicator_history_gap = 0
     if fin_count == 0:
         plan["steps"].append("sync_financial")
@@ -991,9 +1479,15 @@ def build_smart_plan(conn, force_all=False, *, audit: Optional[dict] = None, use
     elif quality_feature_count == 0:
         plan["steps"].append("sync_financial")
         plan["reason"].append("无质量特征中间层")
-    elif fin_history_gap > 0:
+    if fin_retryable_history_gap > 0:
         plan["steps"].append("sync_financial")
-        plan["reason"].append(f"{fin_history_gap} 只研究股票财务历史不足 {FIN_HISTORY_TARGET_ROWS} 期")
+        plan["reason"].append(
+            f"{fin_retryable_history_gap} 只研究股票财务历史不足 {FIN_HISTORY_TARGET_ROWS} 期"
+        )
+    elif fin_cooling_history_gap > 0:
+        plan["skip_reasons"]["sync_financial"] = (
+            f"{fin_cooling_history_gap} 只研究股票财务历史缺口刚重试，等待冷却后继续"
+        )
     elif indicator_history_gap > 0:
         plan["steps"].append("sync_financial")
         plan["reason"].append(f"{indicator_history_gap} 只研究股票扩展财务指标不足 {FIN_HISTORY_TARGET_ROWS} 期")
@@ -1011,12 +1505,13 @@ def build_smart_plan(conn, force_all=False, *, audit: Optional[dict] = None, use
         plan["skip_reasons"]["calc_financial_derived"] = "财务数据未变更"
 
     # 7. 当前关系层
+    current_rel_reason = _current_relationship_plan_reason(audit["layers"].get("current_relationship"))
     if any(s in plan["steps"] for s in ["gen_events", "calc_returns", "sync_industry", "match_inst"]):
         plan["steps"].append("build_current_rel")
         plan["reason"].append("上游变更后重建当前关系")
-    elif audit["layers"]["current_relationship"]["count"] == 0:
+    elif current_rel_reason:
         plan["steps"].append("build_current_rel")
-        plan["reason"].append("当前关系表为空，需构建")
+        plan["reason"].append(current_rel_reason)
     else:
         plan["skip_reasons"]["build_current_rel"] = "上游未变更，当前关系已是最新"
 
@@ -1062,24 +1557,66 @@ def build_smart_plan(conn, force_all=False, *, audit: Optional[dict] = None, use
         forecast_model_row = conn.execute(
             "SELECT model_id FROM dim_stock_forecast_latest LIMIT 1"
         ).fetchone()
+        sector_forecast_model_row = conn.execute(
+            "SELECT model_id FROM dim_sector_forecast_latest LIMIT 1"
+        ).fetchone()
+        sector_forecast_count = _scalar(conn, "SELECT COUNT(*) FROM dim_sector_forecast_latest")
         trained_model_id = trained_model_row[0] if trained_model_row else None
         forecast_model_id = forecast_model_row[0] if forecast_model_row else None
+        sector_forecast_model_id = sector_forecast_model_row[0] if sector_forecast_model_row else None
     except Exception:
         trained_model_id = None
         forecast_model_id = None
+        sector_forecast_model_id = None
+        sector_forecast_count = 0
     if any(s in plan["steps"] for s in ["build_stage_features"]):
         plan["steps"].append("build_forecast_features")
         plan["reason"].append("阶段特征变更后重算预测特征")
     elif trained_model_id and trained_model_id != forecast_model_id:
         plan["steps"].append("build_forecast_features")
         plan["reason"].append("Qlib 最新模型尚未回流预测特征层")
+    elif trained_model_id and trained_model_id != sector_forecast_model_id:
+        plan["steps"].append("build_forecast_features")
+        plan["reason"].append("行业级 Qlib 快照尚未回流最新模型")
     elif trained_model_id and not forecast_model_id:
         plan["steps"].append("build_forecast_features")
         plan["reason"].append("无预测特征中间层")
+    elif trained_model_id and not sector_forecast_count:
+        plan["steps"].append("build_forecast_features")
+        plan["reason"].append("无行业级 Qlib 快照")
     elif not trained_model_id:
         plan["skip_reasons"]["build_forecast_features"] = "无已训练 Qlib 模型"
     else:
         plan["skip_reasons"]["build_forecast_features"] = "预测特征已是最新"
+
+    # 10a. 海龟执行特征层
+    try:
+        turtle_count_row = conn.execute("SELECT COUNT(*) FROM dim_stock_turtle_latest").fetchone()
+        turtle_model_row = conn.execute("SELECT model_id FROM dim_stock_turtle_latest LIMIT 1").fetchone()
+        turtle_count = turtle_count_row[0] if turtle_count_row else 0
+        turtle_model_id = turtle_model_row[0] if turtle_model_row else None
+    except Exception:
+        turtle_count = 0
+        turtle_model_id = None
+    if any(s in plan["steps"] for s in ["build_stage_features", "build_forecast_features"]):
+        plan["steps"].append("build_turtle_features")
+        plan["reason"].append("阶段或预测特征变更后重算海龟执行特征")
+    elif turtle_count == 0:
+        plan["steps"].append("build_turtle_features")
+        plan["reason"].append("无海龟执行特征中间层")
+    elif forecast_model_id and forecast_model_id != turtle_model_id:
+        plan["steps"].append("build_turtle_features")
+        plan["reason"].append("预测特征最新模型尚未回流海龟执行特征层")
+    else:
+        plan["skip_reasons"]["build_turtle_features"] = "海龟执行特征已是最新"
+
+    # 10b. 外部关注快照
+    attention_reason = _external_attention_plan_reason(audit["layers"].get("external_attention"))
+    if attention_reason:
+        plan["steps"].append("build_external_attention")
+        plan["reason"].append(attention_reason)
+    else:
+        plan["skip_reasons"]["build_external_attention"] = "外部关注快照已是最新"
 
     # 11. 机构评分
     if any(s in plan["steps"] for s in ["build_profiles", "build_industry_stat"]):
@@ -1089,9 +1626,9 @@ def build_smart_plan(conn, force_all=False, *, audit: Optional[dict] = None, use
         plan["skip_reasons"]["calc_inst_scores"] = "上游未变更，无需重算"
 
     # 12. 股票评分
-    if any(s in plan["steps"] for s in ["calc_inst_scores", "build_stage_features", "build_forecast_features"]):
+    if _needs_stock_score_recalc(plan["steps"]):
         plan["steps"].append("calc_stock_scores")
-        plan["reason"].append("机构评分、阶段特征或预测特征变更后重算股票评分")
+        plan["reason"].append("机构评分、趋势、阶段/预测/海龟特征或外部关注变更后重算股票评分")
     else:
         plan["skip_reasons"]["calc_stock_scores"] = "上游未变更，无需重算"
 

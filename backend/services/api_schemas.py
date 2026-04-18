@@ -1,5 +1,5 @@
 from typing import List, Optional, Any, Dict
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict
 
 
 # ==========================================
@@ -31,8 +31,7 @@ class EastMoneyHoldingsItem(BaseModel):
     HOLDER_STATEE: Optional[str] = None
     HOLDSTATE: Optional[str] = None
 
-    class Config:
-        extra = "allow"  # Allow extra keys, we just want to protect against fundamental changes
+    model_config = ConfigDict(extra="allow")
 
 
 class EastMoneyHoldingsResponse(BaseModel):
@@ -73,14 +72,12 @@ class KLineDailyRow(BaseModel):
 class SWIndustryRow(BaseModel):
     """AKShare SW Industry tree structure row parsing"""
     股票代码: str
-    
-    class Config:
-        extra = "allow"
+
+    model_config = ConfigDict(extra="allow")
 
 
 class SWIndustryTreeRow(BaseModel):
     """AKShare SW Industry Tree category row"""
     类目编码: str
-    
-    class Config:
-        extra = "allow"
+
+    model_config = ConfigDict(extra="allow")

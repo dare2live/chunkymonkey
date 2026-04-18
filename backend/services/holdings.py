@@ -13,15 +13,26 @@
 import logging
 from datetime import datetime
 
+from services.industry import attach_industry_aliases
 from services.utils import safe_float as _safe_float
 from services.utils import parse_any_date as _parse_date_like
 
 logger = logging.getLogger("cm-api")
 
+_INDUSTRY_PAYLOAD_KEYS = {
+    "sw_level1",
+    "sw_level2",
+    "sw_level3",
+    "industry_level1",
+    "industry_level2",
+    "industry_level3",
+}
 
-def _chunked(items, size=200):
-    for idx in range(0, len(items), size):
-        yield items[idx:idx + size]
+
+def _with_industry_aliases(payload: dict) -> dict:
+    if any(key in payload for key in _INDUSTRY_PAYLOAD_KEYS):
+        attach_industry_aliases(payload, payload)
+    return payload
 
 
 def refresh_stock_latest_cache(conn):
@@ -78,30 +89,6 @@ def _ensure_cache(conn):
         refresh_stock_latest_cache(conn)
 
 
-def get_stock_latest_rd(conn):
-    """获取每只股票全市场最新报告期"""
-    _ensure_cache(conn)
-    rows = conn.execute("""
-        SELECT stock_code, max_rd
-        FROM _cache_stock_latest_rd
-    """).fetchall()
-    return {r["stock_code"]: r["max_rd"] for r in rows}
-
-
-def get_stock_prev_rd(conn):
-    """获取每只股票全市场倒数第二个报告期"""
-    rows = conn.execute("""
-        SELECT stock_code, report_date,
-               ROW_NUMBER() OVER (PARTITION BY stock_code ORDER BY report_date DESC) as rn
-        FROM (SELECT DISTINCT stock_code, report_date FROM market_raw_holdings)
-    """).fetchall()
-    result = {}
-    for r in rows:
-        if r["rn"] == 2:
-            result[r["stock_code"]] = r["report_date"]
-    return result
-
-
 def get_inst_current_holdings(conn, inst_id):
     """获取某机构的当前持仓 — 从 mart_current_relationship 读取（单一真相源）"""
     rows = conn.execute("""
@@ -120,7 +107,7 @@ def get_inst_current_holdings(conn, inst_id):
             WHERE stock_code = ? AND institution_id != ?
         """, (code, inst_id)).fetchall()
 
-        result.append({
+        result.append(_with_industry_aliases({
             "stock_code": code, "stock_name": h["stock_name"],
             "report_date": rd, "notice_date": h["notice_date"],
             "hold_amount": h["hold_amount"], "hold_market_cap": h["hold_market_cap"],
@@ -137,7 +124,7 @@ def get_inst_current_holdings(conn, inst_id):
             "gain_10d": h["gain_10d"], "gain_30d": h["gain_30d"],
             "gain_60d": h["gain_60d"], "gain_120d": h["gain_120d"],
             "other_institutions": [{"id": o["id"], "name": o["name"], "type": o["type"]} for o in others],
-        })
+        }))
     return result
 
 
@@ -197,67 +184,8 @@ def get_stock_institutions(conn, stock_code):
         return [], None
 
     latest_rd = rows[0]["report_date"]
-    result = [dict(r) for r in rows]
+    result = [_with_industry_aliases(dict(r)) for r in rows]
     return result, latest_rd
-
-
-def get_inst_summary(conn, inst_id):
-    """获取机构持仓摘要 — 从 mart_current_relationship 读取（单一真相源）"""
-    row = conn.execute("""
-        SELECT COUNT(*) as cnt, SUM(hold_market_cap) as cap, MAX(notice_date) as notice
-        FROM mart_current_relationship
-        WHERE institution_id = ?
-    """, (inst_id,)).fetchone()
-    return {
-        "current_stock_count": row["cnt"] or 0,
-        "current_total_cap": row["cap"],
-        "latest_notice_date": row["notice"],
-    }
-
-
-# ============================================================
-# 内部工具函数
-# ============================================================
-
-from services.constants import CHANGE_MAP as _CHANGE_MAP
-
-
-def _get_event_and_return(conn, inst_id, stock_code, report_date, hold_change=None):
-    """获取事件和收益（从增强后的 fact_institution_event 读取，不再读 fact_event_return）"""
-    ev = conn.execute("""
-        SELECT event_type, change_pct, gain_10d, gain_30d, gain_60d, gain_120d
-        FROM fact_institution_event
-        WHERE institution_id = ? AND stock_code = ? AND report_date = ?
-    """, (inst_id, stock_code, report_date)).fetchone()
-
-    event_type = ev["event_type"] if ev else None
-    if not event_type and hold_change:
-        event_type = _CHANGE_MAP.get((hold_change or "").strip())
-
-    # Phase 5: 直接从增强后的 fact_institution_event 读取（fact_event_return 已退役）
-    gains = {
-        "gain_10d": ev["gain_10d"] if ev else None,
-        "gain_30d": ev["gain_30d"] if ev else None,
-        "gain_60d": ev["gain_60d"] if ev else None,
-        "gain_120d": ev["gain_120d"] if ev else None,
-    }
-
-    return (
-        {"event_type": event_type, "change_pct": ev["change_pct"] if ev else None},
-        gains,
-    )
-
-
-def _get_other_institutions(conn, stock_code, report_date, exclude_inst_id):
-    """获取同一报告期持有该股票的其他跟踪机构"""
-    rows = conn.execute("""
-        SELECT i.id, COALESCE(NULLIF(i.display_name,''), i.name) as name, i.type
-        FROM inst_holdings oh
-        JOIN inst_institutions i ON oh.institution_id = i.id
-        WHERE oh.stock_code = ? AND oh.report_date = ? AND oh.institution_id != ?
-          AND i.enabled = 1 AND i.blacklisted = 0 AND i.merged_into IS NULL
-    """, (stock_code, report_date, exclude_inst_id)).fetchall()
-    return [{"id": o["id"], "name": o["name"], "type": o["type"]} for o in rows]
 
 
 # ============================================================
@@ -360,6 +288,9 @@ def build_current_relationship(conn) -> int:
     for r in rows:
         code = r["stock_code"]
         ind = industry_map.get(code, {})
+        industry_level1 = ind.get("industry_level1") or ind.get("sw_level1")
+        industry_level2 = ind.get("industry_level2") or ind.get("sw_level2")
+        industry_level3 = ind.get("industry_level3") or ind.get("sw_level3")
         key = (r["institution_id"], code)
         entry = entry_dates.get(key, {})
 
@@ -407,9 +338,9 @@ def build_current_relationship(conn) -> int:
             r["price_entry"], r["return_to_now"], r["path_state"],
             entry.get("entry_report_date"), entry_nd,
             notice_age, disclosure_lag, current_held_days,
-            ind.get("sw_level1"), ind.get("sw_level2"), ind.get("sw_level3"),
+            industry_level1, industry_level2, industry_level3,
             1 if (r["return_to_now"] is not None or r["gain_30d"] is not None) else 0,
-            1 if ind.get("sw_level1") else 0,
+            1 if industry_level1 else 0,
             now_iso,
         ))
 
@@ -442,64 +373,3 @@ def build_current_relationship(conn) -> int:
 # ---------------------------------------------------------------------------
 # 共享 loaders：所有页面统一读 mart_current_relationship
 # ---------------------------------------------------------------------------
-
-def load_current_holder_map(conn) -> dict:
-    """返回 {stock_code: [inst dicts]}，用于股票列表/详情"""
-    rows = conn.execute(
-        "SELECT * FROM mart_current_relationship ORDER BY hold_market_cap DESC"
-    ).fetchall()
-    result = {}
-    for r in rows:
-        code = r["stock_code"]
-        if code not in result:
-            result[code] = []
-        result[code].append(dict(r))
-    return result
-
-
-def load_current_stock_map(conn) -> dict:
-    """返回 {institution_id: [stock dicts]}，用于机构列表/详情"""
-    rows = conn.execute(
-        "SELECT * FROM mart_current_relationship ORDER BY hold_market_cap DESC"
-    ).fetchall()
-    result = {}
-    for r in rows:
-        iid = r["institution_id"]
-        if iid not in result:
-            result[iid] = []
-        result[iid].append(dict(r))
-    return result
-
-
-def get_stock_current_summary(conn, stock_code) -> dict:
-    """从物化表获取某股票的当前摘要"""
-    rows = conn.execute(
-        "SELECT * FROM mart_current_relationship WHERE stock_code=? "
-        "ORDER BY hold_market_cap DESC",
-        (stock_code,)
-    ).fetchall()
-    if not rows:
-        return {"tracked_count": 0, "holders": [], "total_cap": 0}
-    return {
-        "tracked_count": len(rows),
-        "holders": [dict(r) for r in rows],
-        "total_cap": sum(r["hold_market_cap"] or 0 for r in rows),
-        "latest_notice_date": max((r["notice_date"] or "") for r in rows) or None,
-    }
-
-
-def get_inst_current_summary(conn, inst_id) -> dict:
-    """从物化表获取某机构的当前摘要"""
-    rows = conn.execute(
-        "SELECT * FROM mart_current_relationship WHERE institution_id=? "
-        "ORDER BY hold_market_cap DESC",
-        (inst_id,)
-    ).fetchall()
-    if not rows:
-        return {"current_stock_count": 0, "holdings": [], "current_total_cap": 0}
-    return {
-        "current_stock_count": len(rows),
-        "holdings": [dict(r) for r in rows],
-        "current_total_cap": sum(r["hold_market_cap"] or 0 for r in rows),
-        "latest_notice_date": max((r["notice_date"] or "") for r in rows) or None,
-    }

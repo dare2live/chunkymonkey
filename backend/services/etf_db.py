@@ -17,7 +17,6 @@ logger = logging.getLogger("cm-api")
 
 _DB_DIR = Path(__file__).resolve().parent.parent.parent / "data"
 _DB_PATH = _DB_DIR / "etf.db"
-_BOOTSTRAP_ATTEMPTED = False
 
 
 def _now_iso() -> str:
@@ -32,7 +31,6 @@ def get_etf_conn(timeout: int = 30) -> sqlite3.Connection:
     conn.execute("PRAGMA foreign_keys=ON")
     conn.row_factory = sqlite3.Row
     _ensure_schema(conn)
-    _maybe_bootstrap_legacy(conn)
     return conn
 
 
@@ -345,155 +343,3 @@ def update_sync_state(conn: sqlite3.Connection, code: str, freq: str, *,
         ),
     )
     conn.commit()
-
-
-def _target_has_data(conn: sqlite3.Connection) -> bool:
-    checks = [
-        "SELECT 1 FROM etf_asset_universe LIMIT 1",
-        "SELECT 1 FROM etf_price_kline LIMIT 1",
-        "SELECT 1 FROM mart_etf_snapshot_state WHERE snapshot_id IS NOT NULL LIMIT 1",
-    ]
-    return any(conn.execute(sql).fetchone() is not None for sql in checks)
-
-
-def _copy_rows(conn: sqlite3.Connection, table: str, columns: tuple[str, ...], rows) -> None:
-    if not rows:
-        return
-    placeholders = ", ".join(["?"] * len(columns))
-    col_sql = ", ".join(columns)
-    conn.executemany(
-        f"INSERT OR REPLACE INTO {table} ({col_sql}) VALUES ({placeholders})",
-        [tuple(row[column] for column in columns) for row in rows],
-    )
-
-
-def _maybe_bootstrap_legacy(conn: sqlite3.Connection) -> None:
-    global _BOOTSTRAP_ATTEMPTED
-    if _BOOTSTRAP_ATTEMPTED or _target_has_data(conn):
-        _BOOTSTRAP_ATTEMPTED = True
-        return
-
-    _BOOTSTRAP_ATTEMPTED = True
-
-    try:
-        from services.db import get_conn as get_business_conn
-        from services.market_db import get_market_conn
-    except Exception as exc:
-        logger.warning("[ETF_DB] 无法加载 legacy 数据源，跳过 bootstrap: %s", exc)
-        return
-
-    business_conn = get_business_conn()
-    market_conn = get_market_conn()
-    try:
-        legacy_assets = business_conn.execute(
-            """
-            SELECT code, name, market, category, is_active, updated_at
-            FROM dim_asset_universe
-            WHERE asset_type = 'etf'
-            ORDER BY code
-            """
-        ).fetchall()
-        if not legacy_assets:
-            return
-
-        asset_rows = [dict(row) for row in legacy_assets]
-        codes = [row["code"] for row in asset_rows if row.get("code")]
-
-        conn.execute("BEGIN IMMEDIATE")
-        _copy_rows(
-            conn,
-            "etf_asset_universe",
-            ("code", "name", "market", "category", "is_active", "updated_at"),
-            asset_rows,
-        )
-
-        for start in range(0, len(codes), 50):
-            chunk = codes[start:start + 50]
-            placeholders = ", ".join(["?"] * len(chunk))
-            price_rows = market_conn.execute(
-                f"""
-                SELECT code, date, freq, adjust, open, high, low, close,
-                       volume, amount, source, batch_id, ingested_at
-                FROM price_kline
-                WHERE code IN ({placeholders})
-                """,
-                chunk,
-            ).fetchall()
-            _copy_rows(
-                conn,
-                "etf_price_kline",
-                (
-                    "code", "date", "freq", "adjust", "open", "high", "low", "close",
-                    "volume", "amount", "source", "batch_id", "ingested_at",
-                ),
-                price_rows,
-            )
-
-            sync_rows = market_conn.execute(
-                f"""
-                SELECT dataset, code, freq, adjust, source, min_date, max_date,
-                       row_count, last_success_at, last_attempt_at, last_error
-                FROM market_sync_state
-                WHERE dataset = 'price_kline'
-                  AND code IN ({placeholders})
-                """,
-                chunk,
-            ).fetchall()
-            _copy_rows(
-                conn,
-                "etf_sync_state",
-                (
-                    "dataset", "code", "freq", "adjust", "source", "min_date", "max_date",
-                    "row_count", "last_success_at", "last_attempt_at", "last_error",
-                ),
-                sync_rows,
-            )
-
-        latest_rows = business_conn.execute(
-            """
-            SELECT code, snapshot_id, category, factor_rank, factor_score,
-                   rotation_score, strategy_type, payload_json, updated_at
-            FROM mart_etf_snapshot_latest
-            """
-        ).fetchall()
-        _copy_rows(
-            conn,
-            "mart_etf_snapshot_latest",
-            (
-                "code", "snapshot_id", "category", "factor_rank", "factor_score",
-                "rotation_score", "strategy_type", "payload_json", "updated_at",
-            ),
-            latest_rows,
-        )
-
-        state_rows = business_conn.execute(
-            """
-            SELECT state_key, snapshot_id, schema_version, computed_at, etf_count,
-                   history_start, history_end, overview_json,
-                   factor_snapshot_json, mining_snapshot_json, source_status_json
-            FROM mart_etf_snapshot_state
-            """
-        ).fetchall()
-        _copy_rows(
-            conn,
-            "mart_etf_snapshot_state",
-            (
-                "state_key", "snapshot_id", "schema_version", "computed_at", "etf_count",
-                "history_start", "history_end", "overview_json", "factor_snapshot_json",
-                "mining_snapshot_json", "source_status_json",
-            ),
-            state_rows,
-        )
-
-        conn.commit()
-        logger.info(
-            "[ETF_DB] 已从 legacy 共享库迁移 ETF 数据: universe=%s, codes=%s",
-            len(asset_rows),
-            len(codes),
-        )
-    except Exception as exc:
-        conn.rollback()
-        logger.exception("[ETF_DB] legacy bootstrap 失败: %s", exc)
-    finally:
-        business_conn.close()
-        market_conn.close()

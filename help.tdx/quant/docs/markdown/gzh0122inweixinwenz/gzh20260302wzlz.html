@@ -1,0 +1,792 @@
+<!DOCTYPE html>
+<html lang="en-US">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width,initial-scale=1">
+    <title>打通通达信量化任督二脉：公式与Python双向数据互通闭环 | 通达信量化平台</title>
+    <meta name="generator" content="VuePress 1.8.2">
+    <link rel="SHORTCUT ICON" href="../../../favicon.ico" type="image/x-icon">
+    <script src="../../../js/main%EF%B9%96v=3.js"></script>
+    <meta name="description" content="通达信量化平台在线文档，为用户提供在线帮助">
+    
+    <link rel="preload" href="../../../assets/css/0.styles.eccd10d4.css" as="style"><link rel="preload" href="../../../assets/js/app.e6b58a59.js" as="script"><link rel="preload" href="../../../assets/js/2.e6f00c24.js" as="script"><link rel="preload" href="../../../assets/js/35.70b628a2.js" as="script"><link rel="prefetch" href="../../../assets/js/10.ed8c8741.js"><link rel="prefetch" href="../../../assets/js/11.3b0c375b.js"><link rel="prefetch" href="../../../assets/js/12.fc04b920.js"><link rel="prefetch" href="../../../assets/js/13.a21dc8ea.js"><link rel="prefetch" href="../../../assets/js/14.069375c7.js"><link rel="prefetch" href="../../../assets/js/15.4767a888.js"><link rel="prefetch" href="../../../assets/js/16.3ead6cf4.js"><link rel="prefetch" href="../../../assets/js/17.0f7e702a.js"><link rel="prefetch" href="../../../assets/js/18.c78c35e2.js"><link rel="prefetch" href="../../../assets/js/19.7588bf1a.js"><link rel="prefetch" href="../../../assets/js/20.40bb5c6a.js"><link rel="prefetch" href="../../../assets/js/21.94e8407b.js"><link rel="prefetch" href="../../../assets/js/22.918a16f3.js"><link rel="prefetch" href="../../../assets/js/23.e2009958.js"><link rel="prefetch" href="../../../assets/js/24.cc438bac.js"><link rel="prefetch" href="../../../assets/js/25.83ae82b7.js"><link rel="prefetch" href="../../../assets/js/26.9812c4ab.js"><link rel="prefetch" href="../../../assets/js/27.aadd0721.js"><link rel="prefetch" href="../../../assets/js/28.e0d4abf6.js"><link rel="prefetch" href="../../../assets/js/29.56c73086.js"><link rel="prefetch" href="../../../assets/js/3.c4011794.js"><link rel="prefetch" href="../../../assets/js/30.baf51fd3.js"><link rel="prefetch" href="../../../assets/js/31.9d7da5f8.js"><link rel="prefetch" href="../../../assets/js/32.413eba81.js"><link rel="prefetch" href="../../../assets/js/33.d353548b.js"><link rel="prefetch" href="../../../assets/js/34.6e4085ef.js"><link rel="prefetch" href="../../../assets/js/36.0279697e.js"><link rel="prefetch" href="../../../assets/js/37.083c6b6f.js"><link rel="prefetch" href="../../../assets/js/38.167d4da8.js"><link rel="prefetch" href="../../../assets/js/39.af0dc5fa.js"><link rel="prefetch" href="../../../assets/js/4.95f56cdb.js"><link rel="prefetch" href="../../../assets/js/40.01ff8226.js"><link rel="prefetch" href="../../../assets/js/41.5d05764d.js"><link rel="prefetch" href="../../../assets/js/42.9a0d44ee.js"><link rel="prefetch" href="../../../assets/js/43.f947e92a.js"><link rel="prefetch" href="../../../assets/js/44.e8e1610a.js"><link rel="prefetch" href="../../../assets/js/45.17158d15.js"><link rel="prefetch" href="../../../assets/js/46.630ca752.js"><link rel="prefetch" href="../../../assets/js/47.7156ead9.js"><link rel="prefetch" href="../../../assets/js/48.bd4d0e5d.js"><link rel="prefetch" href="../../../assets/js/49.a81e1265.js"><link rel="prefetch" href="../../../assets/js/5.17a37503.js"><link rel="prefetch" href="../../../assets/js/50.cc64ca97.js"><link rel="prefetch" href="../../../assets/js/51.01a3f972.js"><link rel="prefetch" href="../../../assets/js/52.f97fee7a.js"><link rel="prefetch" href="../../../assets/js/53.b2e40c8f.js"><link rel="prefetch" href="../../../assets/js/54.880f2481.js"><link rel="prefetch" href="../../../assets/js/55.fb425043.js"><link rel="prefetch" href="../../../assets/js/56.120bcb98.js"><link rel="prefetch" href="../../../assets/js/57.62a08b44.js"><link rel="prefetch" href="../../../assets/js/58.17b9756a.js"><link rel="prefetch" href="../../../assets/js/59.7a769752.js"><link rel="prefetch" href="../../../assets/js/6.132881d2.js"><link rel="prefetch" href="../../../assets/js/60.237805ee.js"><link rel="prefetch" href="../../../assets/js/61.efee9029.js"><link rel="prefetch" href="../../../assets/js/62.647ea84a.js"><link rel="prefetch" href="../../../assets/js/63.b9b89b4d.js"><link rel="prefetch" href="../../../assets/js/64.520404aa.js"><link rel="prefetch" href="../../../assets/js/65.1c6df9d8.js"><link rel="prefetch" href="../../../assets/js/66.a7051235.js"><link rel="prefetch" href="../../../assets/js/67.77b1e036.js"><link rel="prefetch" href="../../../assets/js/68.2ffc7ee5.js"><link rel="prefetch" href="../../../assets/js/69.156d4931.js"><link rel="prefetch" href="../../../assets/js/7.6fa7525b.js"><link rel="prefetch" href="../../../assets/js/70.ffb4e588.js"><link rel="prefetch" href="../../../assets/js/71.9ad66feb.js"><link rel="prefetch" href="../../../assets/js/72.f8501f02.js"><link rel="prefetch" href="../../../assets/js/73.cbcf9965.js"><link rel="prefetch" href="../../../assets/js/74.f0b07e12.js"><link rel="prefetch" href="../../../assets/js/75.f048bbd3.js"><link rel="prefetch" href="../../../assets/js/76.cda7bdfd.js"><link rel="prefetch" href="../../../assets/js/77.3e55fa2a.js"><link rel="prefetch" href="../../../assets/js/78.d0a608a4.js"><link rel="prefetch" href="../../../assets/js/79.2d2d949b.js"><link rel="prefetch" href="../../../assets/js/8.cc064496.js"><link rel="prefetch" href="../../../assets/js/80.bfb83805.js"><link rel="prefetch" href="../../../assets/js/81.c03f2c7b.js"><link rel="prefetch" href="../../../assets/js/82.12ea5795.js"><link rel="prefetch" href="../../../assets/js/83.c8029a9c.js"><link rel="prefetch" href="../../../assets/js/84.cae7e213.js"><link rel="prefetch" href="../../../assets/js/85.40e0be11.js"><link rel="prefetch" href="../../../assets/js/9.87bfe186.js">
+    <link rel="stylesheet" href="../../../assets/css/0.styles.eccd10d4.css">
+  </head>
+  <body>
+    <div id="app" data-server-rendered="true"><div class="theme-container"><header class="navbar"><div class="sidebar-button"><svg xmlns="http://www.w3.org/2000/svg" aria-hidden="true" role="img" viewBox="0 0 448 512" class="icon"><path fill="currentColor" d="M436 124H12c-6.627 0-12-5.373-12-12V80c0-6.627 5.373-12 12-12h424c6.627 0 12 5.373 12 12v32c0 6.627-5.373 12-12 12zm0 160H12c-6.627 0-12-5.373-12-12v-32c0-6.627 5.373-12 12-12h424c6.627 0 12 5.373 12 12v32c0 6.627-5.373 12-12 12zm0 160H12c-6.627 0-12-5.373-12-12v-32c0-6.627 5.373-12 12-12h424c6.627 0 12 5.373 12 12v32c0 6.627-5.373 12-12 12z"></path></svg></div> <a href="../../../index.html" class="home-link router-link-active"><img src="../../../logo.png" alt="通达信量化平台" class="logo"> <span class="site-name can-hide">通达信量化平台</span></a> <div class="links"><div class="search-box"><input aria-label="Search" autocomplete="off" spellcheck="false" value=""> <!----></div> <!----></div></header> <div class="sidebar-mask"></div> <aside class="sidebar"><!---->  <ul class="sidebar-links"><li><section class="sidebar-group collapsable depth-0"><a href="../mindoc-1cfsjkbf8f3is/index.html" class="sidebar-heading clickable"><span>TdxQuant概述</span> <span class="arrow right"></span></a> <!----></section></li><li><section class="sidebar-group collapsable depth-0"><a href="../ctx.stock.md/index.html" class="sidebar-heading clickable"><span>通用函数</span> <span class="arrow right"></span></a> <!----></section></li><li><section class="sidebar-group collapsable depth-0"><a href="../mindoc-1ctuhthaq5qmg/index.html" class="sidebar-heading clickable"><span>行情类信息</span> <span class="arrow right"></span></a> <!----></section></li><li><section class="sidebar-group collapsable depth-0"><a href="../TdxQuant.md/index.html" class="sidebar-heading clickable"><span>财务类数据</span> <span class="arrow right"></span></a> <!----></section></li><li><section class="sidebar-group collapsable depth-0"><a href="../mindoc-1ctuhttn72svo/index.html" class="sidebar-heading clickable"><span>分类/板块成份股</span> <span class="arrow right"></span></a> <!----></section></li><li><section class="sidebar-group collapsable depth-0"><a href="../mindoc-1h139a4ckchkk/index.html" class="sidebar-heading clickable"><span>自选股/自定义板块</span> <span class="arrow right"></span></a> <!----></section></li><li><section class="sidebar-group collapsable depth-0"><a href="../mindoc-1h13a594nhvb4/index.html" class="sidebar-heading clickable"><span>ETF/可转债/期货数据</span> <span class="arrow right"></span></a> <!----></section></li><li><section class="sidebar-group collapsable depth-0"><a href="../mindoc-1h3hrvkp4sc0g/index.html" class="sidebar-heading clickable"><span>调用通达信公式</span> <span class="arrow right"></span></a> <!----></section></li><li><section class="sidebar-group collapsable depth-0"><a href="../mindoc-1h7k4iqb1grk4/index.html" class="sidebar-heading clickable"><span>交易函数</span> <span class="arrow right"></span></a> <!----></section></li><li><a href="../Dict.html" class="sidebar-link">常量枚举</a></li><li><a href="../mindoc-1h12t4q6fg29o.html" class="sidebar-link">回测及模拟交易</a></li><li><section class="sidebar-group collapsable depth-0"><a href="../mindoc-1h1525ci3mnkc/index.html" class="sidebar-heading clickable"><span>场景化示例</span> <span class="arrow right"></span></a> <!----></section></li><li><section class="sidebar-group collapsable depth-0"><a href="index.html" class="sidebar-heading clickable router-link-active open"><span>公众号文章例子</span> <span class="arrow down"></span></a> <ul class="sidebar-links sidebar-group-items"><li><a href="gzh20260122wzlz.html" class="sidebar-link">20260122公众号文章</a></li><li><a href="gzh20260302wzlz.html" aria-current="page" class="active sidebar-link">20260302公众号文章</a></li></ul></section></li><li><a href="../mindoc-tdxpy.html" class="sidebar-link">常见问题</a></li></ul> </aside> <main class="page"> <div class="theme-default-content content__default"><h1 id="打通通达信量化任督二脉-公式与python双向数据互通闭环"><a href="#%E6%89%93%E9%80%9A%E9%80%9A%E8%BE%BE%E4%BF%A1%E9%87%8F%E5%8C%96%E4%BB%BB%E7%9D%A3%E4%BA%8C%E8%84%89-%E5%85%AC%E5%BC%8F%E4%B8%8Epython%E5%8F%8C%E5%90%91%E6%95%B0%E6%8D%AE%E4%BA%92%E9%80%9A%E9%97%AD%E7%8E%AF" class="header-anchor">#</a> 打通通达信量化任督二脉：公式与Python双向数据互通闭环</h1> <p>以下是<a href="https://mp.weixin.qq.com/s/rVU4DJamqip6bEGlsYZCDQ" target="_blank" rel="noopener noreferrer">[20250122通达信趋势财经公众号发布文章]<span><svg xmlns="http://www.w3.org/2000/svg" aria-hidden="true" focusable="false" x="0px" y="0px" viewBox="0 0 100 100" width="15" height="15" class="icon outbound"><path fill="currentColor" d="M18.8,85.1h56l0,0c2.2,0,4-1.8,4-4v-32h-8v28h-48v-48h28v-8h-32l0,0c-2.2,0-4,1.8-4,4v56C14.8,83.3,16.6,85.1,18.8,85.1z"></path> <polygon fill="currentColor" points="45.7,48.7 51.3,54.3 77.2,28.5 77.2,37.2 85.2,37.2 85.2,14.9 62.8,14.9 62.8,22.9 71.5,22.9"></polygon></svg> <span class="sr-only">(opens new window)</span></span></a>涉及的策略例子的完整代码。</p> <blockquote><p>📄 <strong>利用MACD公式筛选金叉信号.py</strong><br>
+用途：批量处理版本，一次计算全市场MACD指标，筛选金叉股票</p></blockquote> <div class="language-python line-numbers-mode"><pre class="language-python"><code><span class="token keyword">from</span> tqcenter <span class="token keyword">import</span> tq
+
+<span class="token triple-quoted-string string">'''
+    利用此示例需要先在客户端下载全A股盘后数据，不然结果不准确
+    通过MACD指标公式选出最新交易日金叉的股票
+'''</span>
+
+tq<span class="token punctuation">.</span>initialize<span class="token punctuation">(</span>__file__<span class="token punctuation">)</span>
+
+<span class="token comment">#先获取A股全部股票</span>
+all_stocks <span class="token operator">=</span> tq<span class="token punctuation">.</span>get_stock_list<span class="token punctuation">(</span>market<span class="token operator">=</span><span class="token string">'5'</span><span class="token punctuation">)</span>
+
+<span class="token keyword">print</span><span class="token punctuation">(</span><span class="token string">&quot;正在处理，请等待...&quot;</span><span class="token punctuation">)</span>
+<span class="token keyword">import</span> time
+
+<span class="token comment"># 开始计时</span>
+start_time <span class="token operator">=</span> time<span class="token punctuation">.</span>time<span class="token punctuation">(</span><span class="token punctuation">)</span>
+
+macd_stocks <span class="token operator">=</span> <span class="token punctuation">[</span><span class="token punctuation">]</span>
+mul_zb_result <span class="token operator">=</span> tq<span class="token punctuation">.</span>formula_process_mul_zb<span class="token punctuation">(</span>
+    formula_name<span class="token operator">=</span><span class="token string">'MACD'</span><span class="token punctuation">,</span>
+    formula_arg<span class="token operator">=</span><span class="token string">'12,26,9'</span><span class="token punctuation">,</span>
+    xsflag<span class="token operator">=</span><span class="token number">6</span><span class="token punctuation">,</span>
+    return_count<span class="token operator">=</span><span class="token number">2</span><span class="token punctuation">,</span>
+    return_date<span class="token operator">=</span><span class="token boolean">False</span><span class="token punctuation">,</span>
+    stock_list<span class="token operator">=</span>all_stocks<span class="token punctuation">,</span>
+    <span class="token comment"># stock_list=['600722.SH'],</span>
+    stock_period<span class="token operator">=</span><span class="token string">'1d'</span><span class="token punctuation">,</span>
+    count<span class="token operator">=</span><span class="token number">100</span><span class="token punctuation">,</span>
+    dividend_type<span class="token operator">=</span><span class="token number">1</span><span class="token punctuation">)</span>
+<span class="token comment"># print(mul_zb_result)</span>
+
+<span class="token keyword">if</span> mul_zb_result<span class="token punctuation">:</span>
+    <span class="token keyword">for</span> key <span class="token keyword">in</span> mul_zb_result<span class="token punctuation">:</span>
+        <span class="token keyword">if</span> key <span class="token operator">!=</span> <span class="token string">&quot;ErrorId&quot;</span><span class="token punctuation">:</span>
+            <span class="token keyword">if</span> <span class="token builtin">len</span><span class="token punctuation">(</span>mul_zb_result<span class="token punctuation">[</span>key<span class="token punctuation">]</span><span class="token punctuation">[</span><span class="token string">'DIF'</span><span class="token punctuation">]</span><span class="token punctuation">)</span> <span class="token operator">&gt;=</span> <span class="token number">2</span> <span class="token keyword">and</span> <span class="token builtin">len</span><span class="token punctuation">(</span>mul_zb_result<span class="token punctuation">[</span>key<span class="token punctuation">]</span><span class="token punctuation">[</span><span class="token string">'DEA'</span><span class="token punctuation">]</span><span class="token punctuation">)</span> <span class="token operator">&gt;=</span> <span class="token number">2</span><span class="token punctuation">:</span>
+                <span class="token keyword">if</span> <span class="token builtin">float</span><span class="token punctuation">(</span>mul_zb_result<span class="token punctuation">[</span>key<span class="token punctuation">]</span><span class="token punctuation">[</span><span class="token string">'DIF'</span><span class="token punctuation">]</span><span class="token punctuation">[</span><span class="token operator">-</span><span class="token number">2</span><span class="token punctuation">]</span><span class="token punctuation">)</span> <span class="token operator">&lt;</span> <span class="token builtin">float</span><span class="token punctuation">(</span>mul_zb_result<span class="token punctuation">[</span>key<span class="token punctuation">]</span><span class="token punctuation">[</span><span class="token string">'DEA'</span><span class="token punctuation">]</span><span class="token punctuation">[</span><span class="token operator">-</span><span class="token number">2</span><span class="token punctuation">]</span><span class="token punctuation">)</span> <span class="token keyword">and</span> <span class="token builtin">float</span><span class="token punctuation">(</span>mul_zb_result<span class="token punctuation">[</span>key<span class="token punctuation">]</span><span class="token punctuation">[</span><span class="token string">'DIF'</span><span class="token punctuation">]</span><span class="token punctuation">[</span><span class="token operator">-</span><span class="token number">1</span><span class="token punctuation">]</span><span class="token punctuation">)</span> <span class="token operator">&gt;=</span> <span class="token builtin">float</span><span class="token punctuation">(</span>mul_zb_result<span class="token punctuation">[</span>key<span class="token punctuation">]</span><span class="token punctuation">[</span><span class="token string">'DEA'</span><span class="token punctuation">]</span><span class="token punctuation">[</span><span class="token operator">-</span><span class="token number">1</span><span class="token punctuation">]</span><span class="token punctuation">)</span><span class="token punctuation">:</span>
+                    macd_stocks<span class="token punctuation">.</span>append<span class="token punctuation">(</span>key<span class="token punctuation">)</span>  
+
+
+<span class="token keyword">print</span><span class="token punctuation">(</span><span class="token string">&quot;今日MACD金叉股票列表：&quot;</span><span class="token punctuation">)</span>
+<span class="token keyword">print</span><span class="token punctuation">(</span>macd_stocks<span class="token punctuation">)</span>
+<span class="token keyword">print</span><span class="token punctuation">(</span><span class="token string">&quot;符合MACD金叉条件的股票数量：&quot;</span><span class="token punctuation">,</span> <span class="token builtin">len</span><span class="token punctuation">(</span>macd_stocks<span class="token punctuation">)</span><span class="token punctuation">)</span>
+<span class="token comment"># 结束计时</span>
+end_time <span class="token operator">=</span> time<span class="token punctuation">.</span>time<span class="token punctuation">(</span><span class="token punctuation">)</span>
+
+<span class="token comment"># 计算时间差</span>
+execution_time <span class="token operator">=</span> end_time <span class="token operator">-</span> start_time
+<span class="token keyword">print</span><span class="token punctuation">(</span><span class="token string-interpolation"><span class="token string">f&quot;执行时间: </span><span class="token interpolation"><span class="token punctuation">{</span>execution_time<span class="token punctuation">:</span><span class="token format-spec">.6f</span><span class="token punctuation">}</span></span><span class="token string"> 秒&quot;</span></span><span class="token punctuation">)</span>  <span class="token comment"># 保留6位小数</span>
+<span class="token keyword">print</span><span class="token punctuation">(</span><span class="token string-interpolation"><span class="token string">f&quot;执行时间: </span><span class="token interpolation"><span class="token punctuation">{</span>execution_time <span class="token operator">*</span> <span class="token number">1000</span><span class="token punctuation">:</span><span class="token format-spec">.2f</span><span class="token punctuation">}</span></span><span class="token string"> 毫秒&quot;</span></span><span class="token punctuation">)</span>  <span class="token comment"># 转换为毫秒</span>
+
+zxg_result <span class="token operator">=</span> tq<span class="token punctuation">.</span>send_user_block<span class="token punctuation">(</span>block_code<span class="token operator">=</span><span class="token string">''</span><span class="token punctuation">,</span> stocks<span class="token operator">=</span>macd_stocks<span class="token punctuation">)</span>
+</code></pre> <div class="line-numbers-wrapper"><span class="line-number">1</span><br><span class="line-number">2</span><br><span class="line-number">3</span><br><span class="line-number">4</span><br><span class="line-number">5</span><br><span class="line-number">6</span><br><span class="line-number">7</span><br><span class="line-number">8</span><br><span class="line-number">9</span><br><span class="line-number">10</span><br><span class="line-number">11</span><br><span class="line-number">12</span><br><span class="line-number">13</span><br><span class="line-number">14</span><br><span class="line-number">15</span><br><span class="line-number">16</span><br><span class="line-number">17</span><br><span class="line-number">18</span><br><span class="line-number">19</span><br><span class="line-number">20</span><br><span class="line-number">21</span><br><span class="line-number">22</span><br><span class="line-number">23</span><br><span class="line-number">24</span><br><span class="line-number">25</span><br><span class="line-number">26</span><br><span class="line-number">27</span><br><span class="line-number">28</span><br><span class="line-number">29</span><br><span class="line-number">30</span><br><span class="line-number">31</span><br><span class="line-number">32</span><br><span class="line-number">33</span><br><span class="line-number">34</span><br><span class="line-number">35</span><br><span class="line-number">36</span><br><span class="line-number">37</span><br><span class="line-number">38</span><br><span class="line-number">39</span><br><span class="line-number">40</span><br><span class="line-number">41</span><br><span class="line-number">42</span><br><span class="line-number">43</span><br><span class="line-number">44</span><br><span class="line-number">45</span><br><span class="line-number">46</span><br><span class="line-number">47</span><br><span class="line-number">48</span><br><span class="line-number">49</span><br><span class="line-number">50</span><br><span class="line-number">51</span><br><span class="line-number">52</span><br></div></div><blockquote><p>📄 <strong>利用MACD公式筛选金叉信号for单.py</strong><br>
+用途：for循环版本，逐只股票计算MACD指标，适合小数量测试对比</p></blockquote> <div class="language-python line-numbers-mode"><pre class="language-python"><code><span class="token keyword">from</span> tqcenter <span class="token keyword">import</span> tq
+
+<span class="token triple-quoted-string string">'''
+
+    利用此示例需要先在客户端下载全A股盘后数据，不然结果不准确
+
+    通过MACD指标公式选出最新交易日金叉的股票
+
+'''</span>
+tq<span class="token punctuation">.</span>initialize<span class="token punctuation">(</span>__file__<span class="token punctuation">)</span>
+
+<span class="token comment">#先获取A股全部股票</span>
+
+all_stocks <span class="token operator">=</span> tq<span class="token punctuation">.</span>get_stock_list<span class="token punctuation">(</span>market<span class="token operator">=</span><span class="token string">'5'</span><span class="token punctuation">)</span>
+
+<span class="token keyword">print</span><span class="token punctuation">(</span><span class="token string">&quot;正在处理，请等待...&quot;</span><span class="token punctuation">)</span>
+
+<span class="token keyword">import</span> time
+
+<span class="token comment"># 开始计时</span>
+
+start_time <span class="token operator">=</span> time<span class="token punctuation">.</span>time<span class="token punctuation">(</span><span class="token punctuation">)</span>
+
+macd_stocks <span class="token operator">=</span> <span class="token punctuation">[</span><span class="token punctuation">]</span>
+
+<span class="token keyword">for</span> stock <span class="token keyword">in</span> all_stocks<span class="token punctuation">:</span>
+
+    <span class="token keyword">try</span><span class="token punctuation">:</span>
+
+        <span class="token comment"># 1. 设置股票数据</span>
+
+        tq<span class="token punctuation">.</span>formula_set_data_info<span class="token punctuation">(</span>
+            stock_code<span class="token operator">=</span>stock<span class="token punctuation">,</span>
+            stock_period<span class="token operator">=</span><span class="token string">'1d'</span><span class="token punctuation">,</span>
+            count<span class="token operator">=</span><span class="token number">100</span><span class="token punctuation">,</span>  <span class="token comment"># 需要足够的数据计算MACD</span>
+            dividend_type<span class="token operator">=</span><span class="token number">1</span>  <span class="token comment"># 前复权</span>
+        <span class="token punctuation">)</span>
+
+        <span class="token comment"># 2. 获取MACD指标</span>
+
+        macd_result <span class="token operator">=</span> tq<span class="token punctuation">.</span>formula_zb<span class="token punctuation">(</span>
+            formula_name<span class="token operator">=</span><span class="token string">'MACD'</span><span class="token punctuation">,</span>
+            formula_arg<span class="token operator">=</span><span class="token string">'12,26,9'</span><span class="token punctuation">,</span>
+            xsflag<span class="token operator">=</span><span class="token number">6</span>
+        <span class="token punctuation">)</span>
+
+        <span class="token comment"># 3. 获取DIF和DEA值，判断金叉</span>
+
+        <span class="token keyword">if</span> macd_result <span class="token keyword">and</span> <span class="token string">'Data'</span> <span class="token keyword">in</span> macd_result<span class="token punctuation">:</span>
+            dif_values <span class="token operator">=</span> macd_result<span class="token punctuation">[</span><span class="token string">'Data'</span><span class="token punctuation">]</span><span class="token punctuation">[</span><span class="token string">'DIF'</span><span class="token punctuation">]</span>
+            dea_values <span class="token operator">=</span> macd_result<span class="token punctuation">[</span><span class="token string">'Data'</span><span class="token punctuation">]</span><span class="token punctuation">[</span><span class="token string">'DEA'</span><span class="token punctuation">]</span>
+
+            <span class="token keyword">if</span> <span class="token builtin">len</span><span class="token punctuation">(</span>dif_values<span class="token punctuation">)</span> <span class="token operator">&gt;=</span> <span class="token number">2</span> <span class="token keyword">and</span> <span class="token builtin">len</span><span class="token punctuation">(</span>dea_values<span class="token punctuation">)</span> <span class="token operator">&gt;=</span> <span class="token number">2</span><span class="token punctuation">:</span>
+                dif_prev <span class="token operator">=</span> <span class="token builtin">float</span><span class="token punctuation">(</span>dif_values<span class="token punctuation">[</span><span class="token operator">-</span><span class="token number">2</span><span class="token punctuation">]</span><span class="token punctuation">)</span>  <span class="token comment"># 前一天的DIF</span>
+                dif_now <span class="token operator">=</span> <span class="token builtin">float</span><span class="token punctuation">(</span>dif_values<span class="token punctuation">[</span><span class="token operator">-</span><span class="token number">1</span><span class="token punctuation">]</span><span class="token punctuation">)</span>   <span class="token comment"># 今天的DIF</span>
+                dea_prev <span class="token operator">=</span> <span class="token builtin">float</span><span class="token punctuation">(</span>dea_values<span class="token punctuation">[</span><span class="token operator">-</span><span class="token number">2</span><span class="token punctuation">]</span><span class="token punctuation">)</span>  <span class="token comment"># 前一天的DEA</span>
+                dea_now <span class="token operator">=</span> <span class="token builtin">float</span><span class="token punctuation">(</span>dea_values<span class="token punctuation">[</span><span class="token operator">-</span><span class="token number">1</span><span class="token punctuation">]</span><span class="token punctuation">)</span>   <span class="token comment"># 今天的DEA</span>
+
+                <span class="token comment"># MACD金叉信号：昨天DIF&lt;DEA，今天DIF&gt;=DEA</span>
+                <span class="token keyword">if</span> dif_prev <span class="token operator">&lt;</span> dea_prev <span class="token keyword">and</span> dif_now <span class="token operator">&gt;=</span> dea_now<span class="token punctuation">:</span>
+                    macd_stocks<span class="token punctuation">.</span>append<span class="token punctuation">(</span>stock<span class="token punctuation">)</span>
+                    <span class="token keyword">print</span><span class="token punctuation">(</span><span class="token string-interpolation"><span class="token string">f&quot;MACD金叉信号: </span><span class="token interpolation"><span class="token punctuation">{</span>stock<span class="token punctuation">}</span></span><span class="token string">, DIF: </span><span class="token interpolation"><span class="token punctuation">{</span>dif_prev<span class="token punctuation">:</span><span class="token format-spec">.4f</span><span class="token punctuation">}</span></span><span class="token string">→</span><span class="token interpolation"><span class="token punctuation">{</span>dif_now<span class="token punctuation">:</span><span class="token format-spec">.4f</span><span class="token punctuation">}</span></span><span class="token string">, DEA: </span><span class="token interpolation"><span class="token punctuation">{</span>dea_prev<span class="token punctuation">:</span><span class="token format-spec">.4f</span><span class="token punctuation">}</span></span><span class="token string">→</span><span class="token interpolation"><span class="token punctuation">{</span>dea_now<span class="token punctuation">:</span><span class="token format-spec">.4f</span><span class="token punctuation">}</span></span><span class="token string">&quot;</span></span><span class="token punctuation">)</span>
+
+    <span class="token keyword">except</span> Exception <span class="token keyword">as</span> e<span class="token punctuation">:</span>
+        <span class="token keyword">print</span><span class="token punctuation">(</span><span class="token string-interpolation"><span class="token string">f&quot;处理股票 </span><span class="token interpolation"><span class="token punctuation">{</span>stock<span class="token punctuation">}</span></span><span class="token string"> 时出错: </span><span class="token interpolation"><span class="token punctuation">{</span>e<span class="token punctuation">}</span></span><span class="token string">&quot;</span></span><span class="token punctuation">)</span>
+        <span class="token keyword">continue</span>
+
+<span class="token keyword">print</span><span class="token punctuation">(</span><span class="token string">&quot;今日MACD金叉股票列表：&quot;</span><span class="token punctuation">)</span>
+<span class="token keyword">print</span><span class="token punctuation">(</span>macd_stocks<span class="token punctuation">)</span>
+<span class="token keyword">print</span><span class="token punctuation">(</span><span class="token string">&quot;符合MACD金叉条件的股票数量：&quot;</span><span class="token punctuation">,</span> <span class="token builtin">len</span><span class="token punctuation">(</span>macd_stocks<span class="token punctuation">)</span><span class="token punctuation">)</span>
+
+<span class="token comment"># 结束计时</span>
+
+end_time <span class="token operator">=</span> time<span class="token punctuation">.</span>time<span class="token punctuation">(</span><span class="token punctuation">)</span>
+
+<span class="token comment"># 计算时间差</span>
+
+execution_time <span class="token operator">=</span> end_time <span class="token operator">-</span> start_time
+
+<span class="token keyword">print</span><span class="token punctuation">(</span><span class="token string-interpolation"><span class="token string">f&quot;执行时间: </span><span class="token interpolation"><span class="token punctuation">{</span>execution_time<span class="token punctuation">:</span><span class="token format-spec">.6f</span><span class="token punctuation">}</span></span><span class="token string"> 秒&quot;</span></span><span class="token punctuation">)</span>  <span class="token comment"># 保留6位小数</span>
+<span class="token keyword">print</span><span class="token punctuation">(</span><span class="token string-interpolation"><span class="token string">f&quot;执行时间: </span><span class="token interpolation"><span class="token punctuation">{</span>execution_time <span class="token operator">*</span> <span class="token number">1000</span><span class="token punctuation">:</span><span class="token format-spec">.2f</span><span class="token punctuation">}</span></span><span class="token string"> 毫秒&quot;</span></span><span class="token punctuation">)</span>  <span class="token comment"># 转换为毫秒</span>
+
+zxg_result <span class="token operator">=</span> tq<span class="token punctuation">.</span>send_user_block<span class="token punctuation">(</span>block_code<span class="token operator">=</span><span class="token string">''</span><span class="token punctuation">,</span> stocks<span class="token operator">=</span>macd_stocks<span class="token punctuation">)</span>
+</code></pre> <div class="line-numbers-wrapper"><span class="line-number">1</span><br><span class="line-number">2</span><br><span class="line-number">3</span><br><span class="line-number">4</span><br><span class="line-number">5</span><br><span class="line-number">6</span><br><span class="line-number">7</span><br><span class="line-number">8</span><br><span class="line-number">9</span><br><span class="line-number">10</span><br><span class="line-number">11</span><br><span class="line-number">12</span><br><span class="line-number">13</span><br><span class="line-number">14</span><br><span class="line-number">15</span><br><span class="line-number">16</span><br><span class="line-number">17</span><br><span class="line-number">18</span><br><span class="line-number">19</span><br><span class="line-number">20</span><br><span class="line-number">21</span><br><span class="line-number">22</span><br><span class="line-number">23</span><br><span class="line-number">24</span><br><span class="line-number">25</span><br><span class="line-number">26</span><br><span class="line-number">27</span><br><span class="line-number">28</span><br><span class="line-number">29</span><br><span class="line-number">30</span><br><span class="line-number">31</span><br><span class="line-number">32</span><br><span class="line-number">33</span><br><span class="line-number">34</span><br><span class="line-number">35</span><br><span class="line-number">36</span><br><span class="line-number">37</span><br><span class="line-number">38</span><br><span class="line-number">39</span><br><span class="line-number">40</span><br><span class="line-number">41</span><br><span class="line-number">42</span><br><span class="line-number">43</span><br><span class="line-number">44</span><br><span class="line-number">45</span><br><span class="line-number">46</span><br><span class="line-number">47</span><br><span class="line-number">48</span><br><span class="line-number">49</span><br><span class="line-number">50</span><br><span class="line-number">51</span><br><span class="line-number">52</span><br><span class="line-number">53</span><br><span class="line-number">54</span><br><span class="line-number">55</span><br><span class="line-number">56</span><br><span class="line-number">57</span><br><span class="line-number">58</span><br><span class="line-number">59</span><br><span class="line-number">60</span><br><span class="line-number">61</span><br><span class="line-number">62</span><br><span class="line-number">63</span><br><span class="line-number">64</span><br><span class="line-number">65</span><br><span class="line-number">66</span><br><span class="line-number">67</span><br><span class="line-number">68</span><br><span class="line-number">69</span><br><span class="line-number">70</span><br><span class="line-number">71</span><br><span class="line-number">72</span><br><span class="line-number">73</span><br><span class="line-number">74</span><br><span class="line-number">75</span><br><span class="line-number">76</span><br><span class="line-number">77</span><br><span class="line-number">78</span><br><span class="line-number">79</span><br><span class="line-number">80</span><br><span class="line-number">81</span><br><span class="line-number">82</span><br><span class="line-number">83</span><br></div></div><hr> <blockquote><p>📄 <strong>订阅Handlebar.py</strong><br>
+用途：订阅方式实时预警，使用subscribe_hq，每6秒运行一次回调（适合100只以内股票）</p></blockquote> <div class="language-python line-numbers-mode"><pre class="language-python"><code><span class="token keyword">import</span> datetime
+
+<span class="token keyword">import</span> json
+
+<span class="token keyword">import</span> sys
+
+sys<span class="token punctuation">.</span>path<span class="token punctuation">.</span>append<span class="token punctuation">(</span><span class="token string">'C:/new_tdx_test2025/PYPlugins/user'</span><span class="token punctuation">)</span>
+
+<span class="token keyword">from</span> tqcenter <span class="token keyword">import</span> tq
+
+tq<span class="token punctuation">.</span>initialize<span class="token punctuation">(</span><span class="token string">'订阅Handlebar.py'</span><span class="token punctuation">)</span>
+
+<span class="token triple-quoted-string string">&quot;&quot;&quot;
+
+这里是外部运行的初始化模式把tqcenter目录加上，再import它，   initialize参数****.py标准的py文件名就行
+
+&quot;&quot;&quot;</span>
+
+<span class="token comment"># 获取A股全部股票（测试时限制数量）# 订阅不能超过100只</span>
+
+all_stocks <span class="token operator">=</span> tq<span class="token punctuation">.</span>get_stock_list<span class="token punctuation">(</span>market<span class="token operator">=</span><span class="token string">'5'</span><span class="token punctuation">)</span><span class="token punctuation">[</span><span class="token punctuation">:</span><span class="token number">50</span><span class="token punctuation">]</span>
+
+<span class="token keyword">def</span> <span class="token function">get_real_time_data</span><span class="token punctuation">(</span>stock_code<span class="token punctuation">)</span><span class="token punctuation">:</span>
+
+    <span class="token triple-quoted-string string">&quot;&quot;&quot;
+
+    获取股票的实时行情数据
+
+    根据通达信TQ接口文档，这里需要调用相应的数据获取函数
+
+    &quot;&quot;&quot;</span>
+
+    <span class="token keyword">try</span><span class="token punctuation">:</span>
+
+        <span class="token comment"># 获取最近两天的数据，用于获取前一日收盘价</span>
+
+        market_data <span class="token operator">=</span> tq<span class="token punctuation">.</span>get_market_data<span class="token punctuation">(</span>
+
+            field_list<span class="token operator">=</span><span class="token punctuation">[</span><span class="token string">'Close'</span><span class="token punctuation">,</span> <span class="token string">'Volume'</span><span class="token punctuation">]</span><span class="token punctuation">,</span>
+
+            stock_list<span class="token operator">=</span><span class="token punctuation">[</span>stock_code<span class="token punctuation">]</span><span class="token punctuation">,</span>
+
+            count<span class="token operator">=</span><span class="token number">2</span><span class="token punctuation">,</span>  <span class="token comment"># 获取2天数据，用于获取前一日收盘价</span>
+
+            period<span class="token operator">=</span><span class="token string">'1d'</span><span class="token punctuation">,</span>
+
+            dividend_type<span class="token operator">=</span><span class="token string">'none'</span><span class="token punctuation">,</span>
+
+            fill_data<span class="token operator">=</span><span class="token boolean">True</span>
+
+        <span class="token punctuation">)</span>
+
+        <span class="token keyword">if</span> market_data <span class="token keyword">and</span> <span class="token string">'Close'</span> <span class="token keyword">in</span> market_data<span class="token punctuation">:</span>
+
+            close_df <span class="token operator">=</span> market_data<span class="token punctuation">[</span><span class="token string">'Close'</span><span class="token punctuation">]</span>
+
+            <span class="token keyword">if</span> <span class="token keyword">not</span> close_df<span class="token punctuation">.</span>empty<span class="token punctuation">:</span>
+
+                <span class="token comment"># 获取最新收盘价</span>
+
+                last_price <span class="token operator">=</span> close_df<span class="token punctuation">.</span>iloc<span class="token punctuation">[</span><span class="token operator">-</span><span class="token number">1</span><span class="token punctuation">]</span><span class="token punctuation">[</span>stock_code<span class="token punctuation">]</span>
+
+                <span class="token comment"># 获取前一日收盘价</span>
+
+                <span class="token keyword">if</span> <span class="token builtin">len</span><span class="token punctuation">(</span>close_df<span class="token punctuation">)</span> <span class="token operator">&gt;=</span> <span class="token number">2</span><span class="token punctuation">:</span>
+
+                    prev_close <span class="token operator">=</span> close_df<span class="token punctuation">.</span>iloc<span class="token punctuation">[</span><span class="token operator">-</span><span class="token number">2</span><span class="token punctuation">]</span><span class="token punctuation">[</span>stock_code<span class="token punctuation">]</span>
+
+                <span class="token keyword">else</span><span class="token punctuation">:</span>
+
+                    prev_close <span class="token operator">=</span> <span class="token string">'0.00'</span>
+
+                <span class="token comment"># 获取成交量</span>
+
+                <span class="token keyword">if</span> <span class="token string">'Volume'</span> <span class="token keyword">in</span> market_data<span class="token punctuation">:</span>
+
+                    volume_df <span class="token operator">=</span> market_data<span class="token punctuation">[</span><span class="token string">'Volume'</span><span class="token punctuation">]</span>
+
+                    volume <span class="token operator">=</span> volume_df<span class="token punctuation">.</span>iloc<span class="token punctuation">[</span><span class="token operator">-</span><span class="token number">1</span><span class="token punctuation">]</span><span class="token punctuation">[</span>stock_code<span class="token punctuation">]</span> <span class="token keyword">if</span> <span class="token keyword">not</span> volume_df<span class="token punctuation">.</span>empty <span class="token keyword">else</span> <span class="token string">'0'</span>
+
+                <span class="token keyword">else</span><span class="token punctuation">:</span>
+
+                    volume <span class="token operator">=</span> <span class="token string">'0'</span>
+
+                <span class="token keyword">return</span> <span class="token builtin">str</span><span class="token punctuation">(</span>last_price<span class="token punctuation">)</span><span class="token punctuation">,</span> <span class="token builtin">str</span><span class="token punctuation">(</span>prev_close<span class="token punctuation">)</span><span class="token punctuation">,</span> <span class="token builtin">str</span><span class="token punctuation">(</span>volume<span class="token punctuation">)</span>
+
+    <span class="token keyword">except</span> Exception <span class="token keyword">as</span> e<span class="token punctuation">:</span>
+
+        <span class="token keyword">print</span><span class="token punctuation">(</span><span class="token string-interpolation"><span class="token string">f&quot;获取</span><span class="token interpolation"><span class="token punctuation">{</span>stock_code<span class="token punctuation">}</span></span><span class="token string">实时数据失败: </span><span class="token interpolation"><span class="token punctuation">{</span>e<span class="token punctuation">}</span></span><span class="token string">&quot;</span></span><span class="token punctuation">)</span>
+
+    <span class="token keyword">return</span> <span class="token string">'0.00'</span><span class="token punctuation">,</span> <span class="token string">'0.00'</span><span class="token punctuation">,</span> <span class="token string">'0'</span>
+
+<span class="token keyword">def</span> <span class="token function">my_callback_func</span><span class="token punctuation">(</span>data_str<span class="token punctuation">)</span><span class="token punctuation">:</span>
+
+    <span class="token keyword">print</span><span class="token punctuation">(</span><span class="token string">&quot;Callback received data:&quot;</span><span class="token punctuation">,</span> data_str<span class="token punctuation">)</span>
+
+    code_json <span class="token operator">=</span> json<span class="token punctuation">.</span>loads<span class="token punctuation">(</span>data_str<span class="token punctuation">)</span>
+
+    <span class="token keyword">print</span><span class="token punctuation">(</span><span class="token string-interpolation"><span class="token string">f&quot;codes = </span><span class="token interpolation"><span class="token punctuation">{</span>code_json<span class="token punctuation">.</span>get<span class="token punctuation">(</span><span class="token string">'Code'</span><span class="token punctuation">)</span><span class="token punctuation">}</span></span><span class="token string">&quot;</span></span><span class="token punctuation">)</span>
+
+    upn_stocks <span class="token operator">=</span> <span class="token punctuation">[</span><span class="token punctuation">]</span>  <span class="token comment"># 用于存放符合UPN公式选股条件的股票列表</span>
+
+    <span class="token keyword">for</span> stock <span class="token keyword">in</span> all_stocks<span class="token punctuation">:</span>
+
+        formula_set_res <span class="token operator">=</span> tq<span class="token punctuation">.</span>formula_set_data_info<span class="token punctuation">(</span>
+
+            stock_code<span class="token operator">=</span>stock<span class="token punctuation">,</span>
+
+            stock_period<span class="token operator">=</span><span class="token string">'1d'</span><span class="token punctuation">,</span>
+
+            count<span class="token operator">=</span><span class="token number">20</span><span class="token punctuation">,</span>
+
+            dividend_type<span class="token operator">=</span><span class="token number">1</span>
+
+        <span class="token punctuation">)</span>
+
+        <span class="token keyword">if</span> formula_set_res<span class="token punctuation">:</span>
+
+            <span class="token comment"># 使用UPN公式选股，参数'3'表示3日上涨</span>
+
+            formula_xg <span class="token operator">=</span> tq<span class="token punctuation">.</span>formula_xg<span class="token punctuation">(</span>formula_name<span class="token operator">=</span><span class="token string">'UPN'</span><span class="token punctuation">,</span> formula_arg<span class="token operator">=</span><span class="token string">'3'</span><span class="token punctuation">)</span>
+
+            <span class="token keyword">print</span><span class="token punctuation">(</span><span class="token string-interpolation"><span class="token string">f&quot;formula_xg = </span><span class="token interpolation"><span class="token punctuation">{</span>formula_xg<span class="token punctuation">}</span></span><span class="token string">&quot;</span></span><span class="token punctuation">)</span>
+
+            <span class="token keyword">if</span> formula_xg <span class="token keyword">and</span> <span class="token string">'Data'</span> <span class="token keyword">in</span> formula_xg <span class="token keyword">and</span> <span class="token string">'UP3'</span> <span class="token keyword">in</span> formula_xg<span class="token punctuation">[</span><span class="token string">'Data'</span><span class="token punctuation">]</span><span class="token punctuation">:</span>
+
+                up3_data <span class="token operator">=</span> formula_xg<span class="token punctuation">[</span><span class="token string">'Data'</span><span class="token punctuation">]</span><span class="token punctuation">[</span><span class="token string">'UP3'</span><span class="token punctuation">]</span>
+
+                <span class="token keyword">if</span> up3_data <span class="token keyword">and</span> <span class="token builtin">len</span><span class="token punctuation">(</span>up3_data<span class="token punctuation">)</span> <span class="token operator">&gt;</span> <span class="token number">0</span> <span class="token keyword">and</span> up3_data<span class="token punctuation">[</span><span class="token operator">-</span><span class="token number">1</span><span class="token punctuation">]</span> <span class="token keyword">is</span> <span class="token keyword">not</span> <span class="token boolean">None</span><span class="token punctuation">:</span>
+
+                    <span class="token keyword">if</span> up3_data<span class="token punctuation">[</span><span class="token operator">-</span><span class="token number">1</span><span class="token punctuation">]</span> <span class="token operator">!=</span> <span class="token string">'0'</span><span class="token punctuation">:</span>  <span class="token comment">#之前版本是0.00也行 这里要改一下</span>
+
+                        upn_stocks<span class="token punctuation">.</span>append<span class="token punctuation">(</span>stock<span class="token punctuation">)</span>
+
+    <span class="token keyword">print</span><span class="token punctuation">(</span><span class="token string">&quot;符合UPN公式选股条件的股票列表：&quot;</span><span class="token punctuation">)</span>
+
+    <span class="token keyword">print</span><span class="token punctuation">(</span>upn_stocks<span class="token punctuation">)</span>
+
+    <span class="token keyword">print</span><span class="token punctuation">(</span><span class="token string">&quot;符合UPN公式选股条件的股票数量：&quot;</span><span class="token punctuation">,</span> <span class="token builtin">len</span><span class="token punctuation">(</span>upn_stocks<span class="token punctuation">)</span><span class="token punctuation">)</span>
+
+    <span class="token comment"># 为选出的股票发送预警</span>
+
+    <span class="token keyword">if</span> upn_stocks<span class="token punctuation">:</span>
+
+        send_warnings_for_stocks<span class="token punctuation">(</span>upn_stocks<span class="token punctuation">)</span>
+
+    <span class="token keyword">return</span> <span class="token boolean">None</span>
+
+<span class="token keyword">def</span> <span class="token function">send_warnings_for_stocks</span><span class="token punctuation">(</span>stock_list<span class="token punctuation">)</span><span class="token punctuation">:</span>
+
+    <span class="token triple-quoted-string string">&quot;&quot;&quot;为股票列表发送预警信息&quot;&quot;&quot;</span>
+
+    <span class="token keyword">if</span> <span class="token keyword">not</span> stock_list<span class="token punctuation">:</span>
+
+        <span class="token keyword">return</span>
+
+    <span class="token comment"># 获取当前时间，格式化为YYYYMMDDHHMMSS</span>
+
+    current_time <span class="token operator">=</span> datetime<span class="token punctuation">.</span>datetime<span class="token punctuation">.</span>now<span class="token punctuation">(</span><span class="token punctuation">)</span><span class="token punctuation">.</span>strftime<span class="token punctuation">(</span><span class="token string">&quot;%Y%m%d%H%M%S&quot;</span><span class="token punctuation">)</span>
+
+    <span class="token comment"># 准备预警参数列表</span>
+
+    stock_count <span class="token operator">=</span> <span class="token builtin">len</span><span class="token punctuation">(</span>stock_list<span class="token punctuation">)</span>
+
+    <span class="token comment"># 初始化列表</span>
+
+    time_list <span class="token operator">=</span> <span class="token punctuation">[</span><span class="token punctuation">]</span>
+
+    price_list <span class="token operator">=</span> <span class="token punctuation">[</span><span class="token punctuation">]</span>
+
+    close_list <span class="token operator">=</span> <span class="token punctuation">[</span><span class="token punctuation">]</span>
+
+    volum_list <span class="token operator">=</span> <span class="token punctuation">[</span><span class="token punctuation">]</span>
+
+    <span class="token comment"># 为每只股票获取实时数据</span>
+
+    <span class="token keyword">for</span> stock <span class="token keyword">in</span> stock_list<span class="token punctuation">:</span>
+
+        last_price<span class="token punctuation">,</span> prev_close<span class="token punctuation">,</span> volume <span class="token operator">=</span> get_real_time_data<span class="token punctuation">(</span>stock<span class="token punctuation">)</span>
+
+        time_list<span class="token punctuation">.</span>append<span class="token punctuation">(</span>current_time<span class="token punctuation">)</span>
+
+        price_list<span class="token punctuation">.</span>append<span class="token punctuation">(</span>last_price<span class="token punctuation">)</span>
+
+        close_list<span class="token punctuation">.</span>append<span class="token punctuation">(</span>prev_close<span class="token punctuation">)</span>
+
+        volum_list<span class="token punctuation">.</span>append<span class="token punctuation">(</span>volume<span class="token punctuation">)</span>
+
+    <span class="token comment"># 其他固定参数</span>
+
+    reason_list <span class="token operator">=</span> <span class="token punctuation">[</span><span class="token string">&quot;3天连涨&quot;</span><span class="token punctuation">]</span> <span class="token operator">*</span> stock_count  <span class="token comment"># 根据实际选股条件修改</span>
+
+    bs_flag_list <span class="token operator">=</span> <span class="token punctuation">[</span><span class="token string">'0'</span><span class="token punctuation">]</span> <span class="token operator">*</span> stock_count  <span class="token comment"># 买卖标志：0</span>
+
+    warn_type_list <span class="token operator">=</span> <span class="token punctuation">[</span><span class="token string">'0'</span><span class="token punctuation">]</span> <span class="token operator">*</span> stock_count  <span class="token comment"># 预警类型：0</span>
+
+    <span class="token comment"># 调用send_warn函数发送预警</span>
+
+    <span class="token keyword">try</span><span class="token punctuation">:</span>
+
+        warn_res <span class="token operator">=</span> tq<span class="token punctuation">.</span>send_warn<span class="token punctuation">(</span>
+
+            stock_list<span class="token operator">=</span>stock_list<span class="token punctuation">,</span>
+
+            time_list<span class="token operator">=</span>time_list<span class="token punctuation">,</span>
+
+            price_list<span class="token operator">=</span>price_list<span class="token punctuation">,</span>
+
+            close_list<span class="token operator">=</span>close_list<span class="token punctuation">,</span>
+
+            volum_list<span class="token operator">=</span>volum_list<span class="token punctuation">,</span>
+
+            bs_flag_list<span class="token operator">=</span>bs_flag_list<span class="token punctuation">,</span>
+
+            warn_type_list<span class="token operator">=</span>warn_type_list<span class="token punctuation">,</span>
+
+            reason_list<span class="token operator">=</span>reason_list<span class="token punctuation">,</span>
+
+            count<span class="token operator">=</span>stock_count
+
+        <span class="token punctuation">)</span>
+
+        <span class="token keyword">print</span><span class="token punctuation">(</span><span class="token string">&quot;预警发送结果：&quot;</span><span class="token punctuation">,</span> warn_res<span class="token punctuation">)</span>
+
+        <span class="token comment"># 根据搜索结果[6](@ref)，预警发送成功后会在TQ策略信号窗口展示</span>
+
+        <span class="token comment"># 预警图标对应bs_flag_list的每个元素的整数值，0买为红色B，1卖为绿色S，2未知为黄色双叠三角形</span>
+
+        <span class="token comment"># 双击买卖预警信号记录可以直接打开闪电下单进行买卖操作</span>
+
+    <span class="token keyword">except</span> Exception <span class="token keyword">as</span> e<span class="token punctuation">:</span>
+
+        <span class="token keyword">print</span><span class="token punctuation">(</span><span class="token string-interpolation"><span class="token string">f&quot;发送预警失败: </span><span class="token interpolation"><span class="token punctuation">{</span>e<span class="token punctuation">}</span></span><span class="token string">&quot;</span></span><span class="token punctuation">)</span>
+
+<span class="token comment"># 订阅行情</span>
+
+sub_hq <span class="token operator">=</span> tq<span class="token punctuation">.</span>subscribe_hq<span class="token punctuation">(</span>stock_list<span class="token operator">=</span>all_stocks<span class="token punctuation">,</span> callback<span class="token operator">=</span>my_callback_func<span class="token punctuation">)</span>
+
+<span class="token keyword">print</span><span class="token punctuation">(</span><span class="token string">&quot;订阅结果：&quot;</span><span class="token punctuation">,</span> sub_hq<span class="token punctuation">)</span>
+
+<span class="token comment"># 可选：设置定时执行或保持运行</span>
+
+<span class="token keyword">import</span> time
+
+<span class="token keyword">try</span><span class="token punctuation">:</span>
+
+    <span class="token keyword">print</span><span class="token punctuation">(</span><span class="token string">&quot;程序运行中，按Ctrl+C停止...&quot;</span><span class="token punctuation">)</span>
+
+    <span class="token keyword">while</span> <span class="token boolean">True</span><span class="token punctuation">:</span>
+
+        time<span class="token punctuation">.</span>sleep<span class="token punctuation">(</span><span class="token number">60</span><span class="token punctuation">)</span>  <span class="token comment"># 每分钟检查一次</span>
+
+<span class="token keyword">except</span> KeyboardInterrupt<span class="token punctuation">:</span>
+
+    <span class="token keyword">print</span><span class="token punctuation">(</span><span class="token string">&quot;程序终止&quot;</span><span class="token punctuation">)</span>
+
+    <span class="token comment"># 取消订阅</span>
+
+    <span class="token keyword">if</span> sub_hq<span class="token punctuation">:</span>
+
+        tq<span class="token punctuation">.</span>unsubscribe_hq<span class="token punctuation">(</span>stock_list<span class="token operator">=</span>all_stocks<span class="token punctuation">)</span>
+
+tq<span class="token punctuation">.</span>close<span class="token punctuation">(</span><span class="token punctuation">)</span>
+</code></pre> <div class="line-numbers-wrapper"><span class="line-number">1</span><br><span class="line-number">2</span><br><span class="line-number">3</span><br><span class="line-number">4</span><br><span class="line-number">5</span><br><span class="line-number">6</span><br><span class="line-number">7</span><br><span class="line-number">8</span><br><span class="line-number">9</span><br><span class="line-number">10</span><br><span class="line-number">11</span><br><span class="line-number">12</span><br><span class="line-number">13</span><br><span class="line-number">14</span><br><span class="line-number">15</span><br><span class="line-number">16</span><br><span class="line-number">17</span><br><span class="line-number">18</span><br><span class="line-number">19</span><br><span class="line-number">20</span><br><span class="line-number">21</span><br><span class="line-number">22</span><br><span class="line-number">23</span><br><span class="line-number">24</span><br><span class="line-number">25</span><br><span class="line-number">26</span><br><span class="line-number">27</span><br><span class="line-number">28</span><br><span class="line-number">29</span><br><span class="line-number">30</span><br><span class="line-number">31</span><br><span class="line-number">32</span><br><span class="line-number">33</span><br><span class="line-number">34</span><br><span class="line-number">35</span><br><span class="line-number">36</span><br><span class="line-number">37</span><br><span class="line-number">38</span><br><span class="line-number">39</span><br><span class="line-number">40</span><br><span class="line-number">41</span><br><span class="line-number">42</span><br><span class="line-number">43</span><br><span class="line-number">44</span><br><span class="line-number">45</span><br><span class="line-number">46</span><br><span class="line-number">47</span><br><span class="line-number">48</span><br><span class="line-number">49</span><br><span class="line-number">50</span><br><span class="line-number">51</span><br><span class="line-number">52</span><br><span class="line-number">53</span><br><span class="line-number">54</span><br><span class="line-number">55</span><br><span class="line-number">56</span><br><span class="line-number">57</span><br><span class="line-number">58</span><br><span class="line-number">59</span><br><span class="line-number">60</span><br><span class="line-number">61</span><br><span class="line-number">62</span><br><span class="line-number">63</span><br><span class="line-number">64</span><br><span class="line-number">65</span><br><span class="line-number">66</span><br><span class="line-number">67</span><br><span class="line-number">68</span><br><span class="line-number">69</span><br><span class="line-number">70</span><br><span class="line-number">71</span><br><span class="line-number">72</span><br><span class="line-number">73</span><br><span class="line-number">74</span><br><span class="line-number">75</span><br><span class="line-number">76</span><br><span class="line-number">77</span><br><span class="line-number">78</span><br><span class="line-number">79</span><br><span class="line-number">80</span><br><span class="line-number">81</span><br><span class="line-number">82</span><br><span class="line-number">83</span><br><span class="line-number">84</span><br><span class="line-number">85</span><br><span class="line-number">86</span><br><span class="line-number">87</span><br><span class="line-number">88</span><br><span class="line-number">89</span><br><span class="line-number">90</span><br><span class="line-number">91</span><br><span class="line-number">92</span><br><span class="line-number">93</span><br><span class="line-number">94</span><br><span class="line-number">95</span><br><span class="line-number">96</span><br><span class="line-number">97</span><br><span class="line-number">98</span><br><span class="line-number">99</span><br><span class="line-number">100</span><br><span class="line-number">101</span><br><span class="line-number">102</span><br><span class="line-number">103</span><br><span class="line-number">104</span><br><span class="line-number">105</span><br><span class="line-number">106</span><br><span class="line-number">107</span><br><span class="line-number">108</span><br><span class="line-number">109</span><br><span class="line-number">110</span><br><span class="line-number">111</span><br><span class="line-number">112</span><br><span class="line-number">113</span><br><span class="line-number">114</span><br><span class="line-number">115</span><br><span class="line-number">116</span><br><span class="line-number">117</span><br><span class="line-number">118</span><br><span class="line-number">119</span><br><span class="line-number">120</span><br><span class="line-number">121</span><br><span class="line-number">122</span><br><span class="line-number">123</span><br><span class="line-number">124</span><br><span class="line-number">125</span><br><span class="line-number">126</span><br><span class="line-number">127</span><br><span class="line-number">128</span><br><span class="line-number">129</span><br><span class="line-number">130</span><br><span class="line-number">131</span><br><span class="line-number">132</span><br><span class="line-number">133</span><br><span class="line-number">134</span><br><span class="line-number">135</span><br><span class="line-number">136</span><br><span class="line-number">137</span><br><span class="line-number">138</span><br><span class="line-number">139</span><br><span class="line-number">140</span><br><span class="line-number">141</span><br><span class="line-number">142</span><br><span class="line-number">143</span><br><span class="line-number">144</span><br><span class="line-number">145</span><br><span class="line-number">146</span><br><span class="line-number">147</span><br><span class="line-number">148</span><br><span class="line-number">149</span><br><span class="line-number">150</span><br><span class="line-number">151</span><br><span class="line-number">152</span><br><span class="line-number">153</span><br><span class="line-number">154</span><br><span class="line-number">155</span><br><span class="line-number">156</span><br><span class="line-number">157</span><br><span class="line-number">158</span><br><span class="line-number">159</span><br><span class="line-number">160</span><br><span class="line-number">161</span><br><span class="line-number">162</span><br><span class="line-number">163</span><br><span class="line-number">164</span><br><span class="line-number">165</span><br><span class="line-number">166</span><br><span class="line-number">167</span><br><span class="line-number">168</span><br><span class="line-number">169</span><br><span class="line-number">170</span><br><span class="line-number">171</span><br><span class="line-number">172</span><br><span class="line-number">173</span><br><span class="line-number">174</span><br><span class="line-number">175</span><br><span class="line-number">176</span><br><span class="line-number">177</span><br><span class="line-number">178</span><br><span class="line-number">179</span><br><span class="line-number">180</span><br><span class="line-number">181</span><br><span class="line-number">182</span><br><span class="line-number">183</span><br><span class="line-number">184</span><br><span class="line-number">185</span><br><span class="line-number">186</span><br><span class="line-number">187</span><br><span class="line-number">188</span><br><span class="line-number">189</span><br><span class="line-number">190</span><br><span class="line-number">191</span><br><span class="line-number">192</span><br><span class="line-number">193</span><br><span class="line-number">194</span><br><span class="line-number">195</span><br><span class="line-number">196</span><br><span class="line-number">197</span><br><span class="line-number">198</span><br><span class="line-number">199</span><br><span class="line-number">200</span><br><span class="line-number">201</span><br><span class="line-number">202</span><br><span class="line-number">203</span><br><span class="line-number">204</span><br><span class="line-number">205</span><br><span class="line-number">206</span><br><span class="line-number">207</span><br><span class="line-number">208</span><br><span class="line-number">209</span><br><span class="line-number">210</span><br><span class="line-number">211</span><br><span class="line-number">212</span><br><span class="line-number">213</span><br><span class="line-number">214</span><br><span class="line-number">215</span><br><span class="line-number">216</span><br><span class="line-number">217</span><br><span class="line-number">218</span><br><span class="line-number">219</span><br><span class="line-number">220</span><br><span class="line-number">221</span><br><span class="line-number">222</span><br><span class="line-number">223</span><br><span class="line-number">224</span><br><span class="line-number">225</span><br><span class="line-number">226</span><br><span class="line-number">227</span><br><span class="line-number">228</span><br><span class="line-number">229</span><br><span class="line-number">230</span><br><span class="line-number">231</span><br><span class="line-number">232</span><br><span class="line-number">233</span><br><span class="line-number">234</span><br><span class="line-number">235</span><br><span class="line-number">236</span><br><span class="line-number">237</span><br><span class="line-number">238</span><br><span class="line-number">239</span><br><span class="line-number">240</span><br><span class="line-number">241</span><br><span class="line-number">242</span><br><span class="line-number">243</span><br><span class="line-number">244</span><br><span class="line-number">245</span><br><span class="line-number">246</span><br><span class="line-number">247</span><br><span class="line-number">248</span><br><span class="line-number">249</span><br><span class="line-number">250</span><br><span class="line-number">251</span><br><span class="line-number">252</span><br><span class="line-number">253</span><br><span class="line-number">254</span><br><span class="line-number">255</span><br><span class="line-number">256</span><br><span class="line-number">257</span><br><span class="line-number">258</span><br><span class="line-number">259</span><br><span class="line-number">260</span><br><span class="line-number">261</span><br><span class="line-number">262</span><br><span class="line-number">263</span><br></div></div><hr> <blockquote><p>📄 <strong>定时器实时预警Handlebar效果.py</strong><br>
+用途：定时器方式实时预警，每分钟运行一次（可覆盖全市场几千只股票）</p></blockquote> <div class="language-python line-numbers-mode"><pre class="language-python"><code><span class="token comment">#定时器实时预警</span>
+
+定时器实时预警Handlebar效果<span class="token punctuation">.</span>py
+```python
+<span class="token comment">#定时器实时预警</span>
+
+<span class="token keyword">import</span> datetime
+
+<span class="token keyword">import</span> json
+
+<span class="token keyword">import</span> sys
+
+<span class="token keyword">import</span> time
+
+sys<span class="token punctuation">.</span>path<span class="token punctuation">.</span>append<span class="token punctuation">(</span><span class="token string">'C:/new_tdx_test2025/PYPlugins/user'</span><span class="token punctuation">)</span>
+
+<span class="token keyword">from</span> tqcenter <span class="token keyword">import</span> tq
+
+tq<span class="token punctuation">.</span>initialize<span class="token punctuation">(</span><span class="token string">'定时器实时预警Handlebar效果.py'</span><span class="token punctuation">)</span>
+
+<span class="token comment"># 获取A股全部股票（测试时限制数量）</span>
+
+all_stocks <span class="token operator">=</span> tq<span class="token punctuation">.</span>get_stock_list<span class="token punctuation">(</span>market<span class="token operator">=</span><span class="token string">'5'</span><span class="token punctuation">)</span><span class="token punctuation">[</span><span class="token punctuation">:</span><span class="token number">150</span><span class="token punctuation">]</span>
+
+<span class="token keyword">def</span> <span class="token function">get_real_time_data</span><span class="token punctuation">(</span>stock_code<span class="token punctuation">)</span><span class="token punctuation">:</span>
+
+    <span class="token triple-quoted-string string">&quot;&quot;&quot;
+
+    获取股票的实时行情数据
+
+    根据通达信TQ接口文档，这里需要调用相应的数据获取函数
+
+    &quot;&quot;&quot;</span>
+
+    <span class="token keyword">try</span><span class="token punctuation">:</span>
+
+        <span class="token comment"># 获取最近两天的数据，用于获取前一日收盘价</span>
+
+        market_data <span class="token operator">=</span> tq<span class="token punctuation">.</span>get_market_data<span class="token punctuation">(</span>
+
+            field_list<span class="token operator">=</span><span class="token punctuation">[</span><span class="token string">'Close'</span><span class="token punctuation">,</span> <span class="token string">'Volume'</span><span class="token punctuation">]</span><span class="token punctuation">,</span>
+
+            stock_list<span class="token operator">=</span><span class="token punctuation">[</span>stock_code<span class="token punctuation">]</span><span class="token punctuation">,</span>
+
+            count<span class="token operator">=</span><span class="token number">2</span><span class="token punctuation">,</span>  <span class="token comment"># 获取2天数据，用于获取前一日收盘价</span>
+
+            period<span class="token operator">=</span><span class="token string">'1d'</span><span class="token punctuation">,</span>
+
+            dividend_type<span class="token operator">=</span><span class="token string">'none'</span><span class="token punctuation">,</span>
+
+            fill_data<span class="token operator">=</span><span class="token boolean">True</span>
+
+        <span class="token punctuation">)</span>
+
+        <span class="token keyword">if</span> market_data <span class="token keyword">and</span> <span class="token string">'Close'</span> <span class="token keyword">in</span> market_data<span class="token punctuation">:</span>
+
+            close_df <span class="token operator">=</span> market_data<span class="token punctuation">[</span><span class="token string">'Close'</span><span class="token punctuation">]</span>
+
+            <span class="token keyword">if</span> <span class="token keyword">not</span> close_df<span class="token punctuation">.</span>empty<span class="token punctuation">:</span>
+
+                <span class="token comment"># 获取最新收盘价</span>
+
+                last_price <span class="token operator">=</span> close_df<span class="token punctuation">.</span>iloc<span class="token punctuation">[</span><span class="token operator">-</span><span class="token number">1</span><span class="token punctuation">]</span><span class="token punctuation">[</span>stock_code<span class="token punctuation">]</span>
+
+                <span class="token comment"># 获取前一日收盘价</span>
+
+                <span class="token keyword">if</span> <span class="token builtin">len</span><span class="token punctuation">(</span>close_df<span class="token punctuation">)</span> <span class="token operator">&gt;=</span> <span class="token number">2</span><span class="token punctuation">:</span>
+
+                    prev_close <span class="token operator">=</span> close_df<span class="token punctuation">.</span>iloc<span class="token punctuation">[</span><span class="token operator">-</span><span class="token number">2</span><span class="token punctuation">]</span><span class="token punctuation">[</span>stock_code<span class="token punctuation">]</span>
+
+                <span class="token keyword">else</span><span class="token punctuation">:</span>
+
+                    prev_close <span class="token operator">=</span> <span class="token string">'0.00'</span>
+
+                <span class="token comment"># 获取成交量</span>
+
+                <span class="token keyword">if</span> <span class="token string">'Volume'</span> <span class="token keyword">in</span> market_data<span class="token punctuation">:</span>
+
+                    volume_df <span class="token operator">=</span> market_data<span class="token punctuation">[</span><span class="token string">'Volume'</span><span class="token punctuation">]</span>
+
+                    volume <span class="token operator">=</span> volume_df<span class="token punctuation">.</span>iloc<span class="token punctuation">[</span><span class="token operator">-</span><span class="token number">1</span><span class="token punctuation">]</span><span class="token punctuation">[</span>stock_code<span class="token punctuation">]</span> <span class="token keyword">if</span> <span class="token keyword">not</span> volume_df<span class="token punctuation">.</span>empty <span class="token keyword">else</span> <span class="token string">'0'</span>
+
+                <span class="token keyword">else</span><span class="token punctuation">:</span>
+
+                    volume <span class="token operator">=</span> <span class="token string">'0'</span>
+
+                <span class="token keyword">return</span> <span class="token builtin">str</span><span class="token punctuation">(</span>last_price<span class="token punctuation">)</span><span class="token punctuation">,</span> <span class="token builtin">str</span><span class="token punctuation">(</span>prev_close<span class="token punctuation">)</span><span class="token punctuation">,</span> <span class="token builtin">str</span><span class="token punctuation">(</span>volume<span class="token punctuation">)</span>
+
+    <span class="token keyword">except</span> Exception <span class="token keyword">as</span> e<span class="token punctuation">:</span>
+
+        <span class="token keyword">print</span><span class="token punctuation">(</span><span class="token string-interpolation"><span class="token string">f&quot;获取</span><span class="token interpolation"><span class="token punctuation">{</span>stock_code<span class="token punctuation">}</span></span><span class="token string">实时数据失败: </span><span class="token interpolation"><span class="token punctuation">{</span>e<span class="token punctuation">}</span></span><span class="token string">&quot;</span></span><span class="token punctuation">)</span>
+
+    <span class="token keyword">return</span> <span class="token string">'0.00'</span><span class="token punctuation">,</span> <span class="token string">'0.00'</span><span class="token punctuation">,</span> <span class="token string">'0'</span>
+
+<span class="token keyword">def</span> <span class="token function">run_upn_selection</span><span class="token punctuation">(</span><span class="token punctuation">)</span><span class="token punctuation">:</span>
+
+    <span class="token triple-quoted-string string">&quot;&quot;&quot;
+
+    执行UPN公式选股并发送预警
+
+    这个函数将每分钟执行一次
+
+    &quot;&quot;&quot;</span>
+
+    <span class="token keyword">print</span><span class="token punctuation">(</span><span class="token string-interpolation"><span class="token string">f&quot;\n</span><span class="token interpolation"><span class="token punctuation">{</span><span class="token string">'='</span><span class="token operator">*</span><span class="token number">50</span><span class="token punctuation">}</span></span><span class="token string">&quot;</span></span><span class="token punctuation">)</span>
+
+    <span class="token keyword">print</span><span class="token punctuation">(</span><span class="token string-interpolation"><span class="token string">f&quot;执行时间: </span><span class="token interpolation"><span class="token punctuation">{</span>datetime<span class="token punctuation">.</span>datetime<span class="token punctuation">.</span>now<span class="token punctuation">(</span><span class="token punctuation">)</span><span class="token punctuation">.</span>strftime<span class="token punctuation">(</span><span class="token string">'%Y-%m-%d %H:%M:%S'</span><span class="token punctuation">)</span><span class="token punctuation">}</span></span><span class="token string">&quot;</span></span><span class="token punctuation">)</span>
+
+    <span class="token keyword">print</span><span class="token punctuation">(</span><span class="token string-interpolation"><span class="token string">f&quot;</span><span class="token interpolation"><span class="token punctuation">{</span><span class="token string">'='</span><span class="token operator">*</span><span class="token number">50</span><span class="token punctuation">}</span></span><span class="token string">&quot;</span></span><span class="token punctuation">)</span>
+
+    upn_stocks <span class="token operator">=</span> <span class="token punctuation">[</span><span class="token punctuation">]</span>  <span class="token comment"># 用于存放符合UPN公式选股条件的股票列表</span>
+
+    <span class="token keyword">for</span> stock <span class="token keyword">in</span> all_stocks<span class="token punctuation">:</span>
+
+        formula_set_res <span class="token operator">=</span> tq<span class="token punctuation">.</span>formula_set_data_info<span class="token punctuation">(</span>
+
+            stock_code<span class="token operator">=</span>stock<span class="token punctuation">,</span>
+
+            stock_period<span class="token operator">=</span><span class="token string">'1d'</span><span class="token punctuation">,</span>
+
+            count<span class="token operator">=</span><span class="token number">5</span><span class="token punctuation">,</span>
+
+            dividend_type<span class="token operator">=</span><span class="token number">1</span>
+
+        <span class="token punctuation">)</span>
+
+        <span class="token keyword">if</span> formula_set_res<span class="token punctuation">:</span>
+
+            <span class="token comment"># 使用UPN公式选股，参数'3'表示3日上涨</span>
+
+            formula_xg <span class="token operator">=</span> tq<span class="token punctuation">.</span>formula_xg<span class="token punctuation">(</span>formula_name<span class="token operator">=</span><span class="token string">'UPN'</span><span class="token punctuation">,</span> formula_arg<span class="token operator">=</span><span class="token string">'3'</span><span class="token punctuation">)</span>
+
+            <span class="token keyword">if</span> formula_xg <span class="token keyword">and</span> <span class="token string">'Data'</span> <span class="token keyword">in</span> formula_xg <span class="token keyword">and</span> <span class="token string">'UP3'</span> <span class="token keyword">in</span> formula_xg<span class="token punctuation">[</span><span class="token string">'Data'</span><span class="token punctuation">]</span><span class="token punctuation">:</span>
+
+                up3_data <span class="token operator">=</span> formula_xg<span class="token punctuation">[</span><span class="token string">'Data'</span><span class="token punctuation">]</span><span class="token punctuation">[</span><span class="token string">'UP3'</span><span class="token punctuation">]</span>
+
+                <span class="token keyword">if</span> up3_data <span class="token keyword">and</span> <span class="token builtin">len</span><span class="token punctuation">(</span>up3_data<span class="token punctuation">)</span> <span class="token operator">&gt;</span> <span class="token number">0</span> <span class="token keyword">and</span> up3_data<span class="token punctuation">[</span><span class="token operator">-</span><span class="token number">1</span><span class="token punctuation">]</span> <span class="token keyword">is</span> <span class="token keyword">not</span> <span class="token boolean">None</span><span class="token punctuation">:</span>
+
+                    <span class="token keyword">if</span> up3_data<span class="token punctuation">[</span><span class="token operator">-</span><span class="token number">1</span><span class="token punctuation">]</span> <span class="token operator">!=</span> <span class="token string">'0'</span><span class="token punctuation">:</span>
+
+                        upn_stocks<span class="token punctuation">.</span>append<span class="token punctuation">(</span>stock<span class="token punctuation">)</span>
+
+    <span class="token keyword">print</span><span class="token punctuation">(</span><span class="token string">&quot;符合UPN公式选股条件的股票列表：&quot;</span><span class="token punctuation">)</span>
+
+    <span class="token keyword">print</span><span class="token punctuation">(</span>upn_stocks<span class="token punctuation">)</span>
+
+    <span class="token keyword">print</span><span class="token punctuation">(</span><span class="token string">&quot;符合UPN公式选股条件的股票数量：&quot;</span><span class="token punctuation">,</span> <span class="token builtin">len</span><span class="token punctuation">(</span>upn_stocks<span class="token punctuation">)</span><span class="token punctuation">)</span>
+
+    <span class="token comment"># 为选出的股票发送预警</span>
+
+    <span class="token keyword">if</span> upn_stocks<span class="token punctuation">:</span>
+
+        send_warnings_for_stocks<span class="token punctuation">(</span>upn_stocks<span class="token punctuation">)</span>
+
+    <span class="token keyword">else</span><span class="token punctuation">:</span>
+
+        <span class="token keyword">print</span><span class="token punctuation">(</span><span class="token string">&quot;本次选股未发现符合条件的股票&quot;</span><span class="token punctuation">)</span>
+
+<span class="token keyword">def</span> <span class="token function">send_warnings_for_stocks</span><span class="token punctuation">(</span>stock_list<span class="token punctuation">)</span><span class="token punctuation">:</span>
+
+    <span class="token triple-quoted-string string">&quot;&quot;&quot;为股票列表发送预警信息&quot;&quot;&quot;</span>
+
+    <span class="token keyword">if</span> <span class="token keyword">not</span> stock_list<span class="token punctuation">:</span>
+
+        <span class="token keyword">return</span>
+
+    <span class="token comment"># 获取当前时间，格式化为YYYYMMDDHHMMSS</span>
+
+    current_time <span class="token operator">=</span> datetime<span class="token punctuation">.</span>datetime<span class="token punctuation">.</span>now<span class="token punctuation">(</span><span class="token punctuation">)</span><span class="token punctuation">.</span>strftime<span class="token punctuation">(</span><span class="token string">&quot;%Y%m%d%H%M%S&quot;</span><span class="token punctuation">)</span>
+
+    <span class="token comment"># 准备预警参数列表</span>
+
+    stock_count <span class="token operator">=</span> <span class="token builtin">len</span><span class="token punctuation">(</span>stock_list<span class="token punctuation">)</span>
+
+    <span class="token comment"># 初始化列表</span>
+
+    time_list <span class="token operator">=</span> <span class="token punctuation">[</span><span class="token punctuation">]</span>
+
+    price_list <span class="token operator">=</span> <span class="token punctuation">[</span><span class="token punctuation">]</span>
+
+    close_list <span class="token operator">=</span> <span class="token punctuation">[</span><span class="token punctuation">]</span>
+
+    volum_list <span class="token operator">=</span> <span class="token punctuation">[</span><span class="token punctuation">]</span>
+
+    <span class="token comment"># 为每只股票获取实时数据</span>
+
+    <span class="token keyword">for</span> stock <span class="token keyword">in</span> stock_list<span class="token punctuation">:</span>
+
+        last_price<span class="token punctuation">,</span> prev_close<span class="token punctuation">,</span> volume <span class="token operator">=</span> get_real_time_data<span class="token punctuation">(</span>stock<span class="token punctuation">)</span>
+
+        time_list<span class="token punctuation">.</span>append<span class="token punctuation">(</span>current_time<span class="token punctuation">)</span>
+
+        price_list<span class="token punctuation">.</span>append<span class="token punctuation">(</span>last_price<span class="token punctuation">)</span>
+
+        close_list<span class="token punctuation">.</span>append<span class="token punctuation">(</span>prev_close<span class="token punctuation">)</span>
+
+        volum_list<span class="token punctuation">.</span>append<span class="token punctuation">(</span>volume<span class="token punctuation">)</span>
+
+    <span class="token comment"># 其他固定参数</span>
+
+    reason_list <span class="token operator">=</span> <span class="token punctuation">[</span><span class="token string">&quot;3天连涨&quot;</span><span class="token punctuation">]</span> <span class="token operator">*</span> stock_count  <span class="token comment"># 根据实际选股条件修改</span>
+
+    bs_flag_list <span class="token operator">=</span> <span class="token punctuation">[</span><span class="token string">'0'</span><span class="token punctuation">]</span> <span class="token operator">*</span> stock_count  <span class="token comment"># 买卖标志：0</span>
+
+    warn_type_list <span class="token operator">=</span> <span class="token punctuation">[</span><span class="token string">'0'</span><span class="token punctuation">]</span> <span class="token operator">*</span> stock_count  <span class="token comment"># 预警类型：0</span>
+
+    <span class="token comment"># 调用send_warn函数发送预警</span>
+
+    <span class="token keyword">try</span><span class="token punctuation">:</span>
+
+        warn_res <span class="token operator">=</span> tq<span class="token punctuation">.</span>send_warn<span class="token punctuation">(</span>
+
+            stock_list<span class="token operator">=</span>stock_list<span class="token punctuation">,</span>
+
+            time_list<span class="token operator">=</span>time_list<span class="token punctuation">,</span>
+
+            price_list<span class="token operator">=</span>price_list<span class="token punctuation">,</span>
+
+            close_list<span class="token operator">=</span>close_list<span class="token punctuation">,</span>
+
+            volum_list<span class="token operator">=</span>volum_list<span class="token punctuation">,</span>
+
+            bs_flag_list<span class="token operator">=</span>bs_flag_list<span class="token punctuation">,</span>
+
+            warn_type_list<span class="token operator">=</span>warn_type_list<span class="token punctuation">,</span>
+
+            reason_list<span class="token operator">=</span>reason_list<span class="token punctuation">,</span>
+
+            count<span class="token operator">=</span>stock_count
+
+        <span class="token punctuation">)</span>
+
+        <span class="token keyword">print</span><span class="token punctuation">(</span><span class="token string">&quot;预警发送结果：&quot;</span><span class="token punctuation">,</span> warn_res<span class="token punctuation">)</span>
+
+        <span class="token comment"># 根据搜索结果[5](@ref)，预警发送成功后会在TQ策略信号窗口展示</span>
+
+        <span class="token comment"># 预警图标对应bs_flag_list的每个元素的整数值，0买为红色B，1卖为绿色S，2未知为黄色双叠三角形</span>
+
+        <span class="token comment"># 双击买卖预警信号记录可以直接打开闪电下单进行买卖操作</span>
+
+    <span class="token keyword">except</span> Exception <span class="token keyword">as</span> e<span class="token punctuation">:</span>
+
+        <span class="token keyword">print</span><span class="token punctuation">(</span><span class="token string-interpolation"><span class="token string">f&quot;发送预警失败: </span><span class="token interpolation"><span class="token punctuation">{</span>e<span class="token punctuation">}</span></span><span class="token string">&quot;</span></span><span class="token punctuation">)</span>
+
+<span class="token comment"># 主循环：每分钟执行一次选股</span>
+
+<span class="token keyword">def</span> <span class="token function">main_loop</span><span class="token punctuation">(</span><span class="token punctuation">)</span><span class="token punctuation">:</span>
+
+    <span class="token triple-quoted-string string">&quot;&quot;&quot;
+
+    主循环函数，每分钟执行一次选股
+
+    使用time.sleep()实现定时执行[6](@ref)
+
+    &quot;&quot;&quot;</span>
+
+    <span class="token keyword">print</span><span class="token punctuation">(</span><span class="token string">&quot;UPN选股预警系统启动&quot;</span><span class="token punctuation">)</span>
+
+    <span class="token keyword">print</span><span class="token punctuation">(</span><span class="token string-interpolation"><span class="token string">f&quot;开始时间: </span><span class="token interpolation"><span class="token punctuation">{</span>datetime<span class="token punctuation">.</span>datetime<span class="token punctuation">.</span>now<span class="token punctuation">(</span><span class="token punctuation">)</span><span class="token punctuation">.</span>strftime<span class="token punctuation">(</span><span class="token string">'%Y-%m-%d %H:%M:%S'</span><span class="token punctuation">)</span><span class="token punctuation">}</span></span><span class="token string">&quot;</span></span><span class="token punctuation">)</span>
+
+    <span class="token keyword">print</span><span class="token punctuation">(</span><span class="token string-interpolation"><span class="token string">f&quot;监控股票数量: </span><span class="token interpolation"><span class="token punctuation">{</span><span class="token builtin">len</span><span class="token punctuation">(</span>all_stocks<span class="token punctuation">)</span><span class="token punctuation">}</span></span><span class="token string">&quot;</span></span><span class="token punctuation">)</span>
+
+    <span class="token keyword">print</span><span class="token punctuation">(</span><span class="token string">&quot;=&quot;</span><span class="token operator">*</span><span class="token number">50</span><span class="token punctuation">)</span>
+
+    execution_count <span class="token operator">=</span> <span class="token number">0</span>
+
+    <span class="token keyword">try</span><span class="token punctuation">:</span>
+
+        <span class="token keyword">while</span> <span class="token boolean">True</span><span class="token punctuation">:</span>
+
+            execution_count <span class="token operator">+=</span> <span class="token number">1</span>
+
+            <span class="token keyword">print</span><span class="token punctuation">(</span><span class="token string-interpolation"><span class="token string">f&quot;\n第</span><span class="token interpolation"><span class="token punctuation">{</span>execution_count<span class="token punctuation">}</span></span><span class="token string">次执行选股...&quot;</span></span><span class="token punctuation">)</span>
+
+            <span class="token comment"># 执行选股逻辑</span>
+
+            run_upn_selection<span class="token punctuation">(</span><span class="token punctuation">)</span>
+
+            <span class="token comment"># 计算下次执行时间</span>
+
+            next_time <span class="token operator">=</span> datetime<span class="token punctuation">.</span>datetime<span class="token punctuation">.</span>now<span class="token punctuation">(</span><span class="token punctuation">)</span> <span class="token operator">+</span> datetime<span class="token punctuation">.</span>timedelta<span class="token punctuation">(</span>minutes<span class="token operator">=</span><span class="token number">1</span><span class="token punctuation">)</span>
+
+            <span class="token keyword">print</span><span class="token punctuation">(</span><span class="token string-interpolation"><span class="token string">f&quot;下次执行时间: </span><span class="token interpolation"><span class="token punctuation">{</span>next_time<span class="token punctuation">.</span>strftime<span class="token punctuation">(</span><span class="token string">'%Y-%m-%d %H:%M:%S'</span><span class="token punctuation">)</span><span class="token punctuation">}</span></span><span class="token string">&quot;</span></span><span class="token punctuation">)</span>
+
+            <span class="token comment"># 等待60秒[6](@ref)</span>
+
+            time<span class="token punctuation">.</span>sleep<span class="token punctuation">(</span><span class="token number">60</span><span class="token punctuation">)</span>
+
+    <span class="token keyword">except</span> KeyboardInterrupt<span class="token punctuation">:</span>
+
+        <span class="token keyword">print</span><span class="token punctuation">(</span><span class="token string">&quot;\n程序被用户中断&quot;</span><span class="token punctuation">)</span>
+
+    <span class="token keyword">except</span> Exception <span class="token keyword">as</span> e<span class="token punctuation">:</span>
+
+        <span class="token keyword">print</span><span class="token punctuation">(</span><span class="token string-interpolation"><span class="token string">f&quot;程序运行出错: </span><span class="token interpolation"><span class="token punctuation">{</span>e<span class="token punctuation">}</span></span><span class="token string">&quot;</span></span><span class="token punctuation">)</span>
+
+    <span class="token keyword">finally</span><span class="token punctuation">:</span>
+
+        <span class="token keyword">print</span><span class="token punctuation">(</span><span class="token string">&quot;UPN选股预警系统已停止&quot;</span><span class="token punctuation">)</span>
+
+<span class="token comment"># 启动主循环</span>
+
+<span class="token keyword">if</span> __name__ <span class="token operator">==</span> <span class="token string">&quot;__main__&quot;</span><span class="token punctuation">:</span>
+
+main_loop<span class="token punctuation">(</span><span class="token punctuation">)</span>
+</code></pre> <div class="line-numbers-wrapper"><span class="line-number">1</span><br><span class="line-number">2</span><br><span class="line-number">3</span><br><span class="line-number">4</span><br><span class="line-number">5</span><br><span class="line-number">6</span><br><span class="line-number">7</span><br><span class="line-number">8</span><br><span class="line-number">9</span><br><span class="line-number">10</span><br><span class="line-number">11</span><br><span class="line-number">12</span><br><span class="line-number">13</span><br><span class="line-number">14</span><br><span class="line-number">15</span><br><span class="line-number">16</span><br><span class="line-number">17</span><br><span class="line-number">18</span><br><span class="line-number">19</span><br><span class="line-number">20</span><br><span class="line-number">21</span><br><span class="line-number">22</span><br><span class="line-number">23</span><br><span class="line-number">24</span><br><span class="line-number">25</span><br><span class="line-number">26</span><br><span class="line-number">27</span><br><span class="line-number">28</span><br><span class="line-number">29</span><br><span class="line-number">30</span><br><span class="line-number">31</span><br><span class="line-number">32</span><br><span class="line-number">33</span><br><span class="line-number">34</span><br><span class="line-number">35</span><br><span class="line-number">36</span><br><span class="line-number">37</span><br><span class="line-number">38</span><br><span class="line-number">39</span><br><span class="line-number">40</span><br><span class="line-number">41</span><br><span class="line-number">42</span><br><span class="line-number">43</span><br><span class="line-number">44</span><br><span class="line-number">45</span><br><span class="line-number">46</span><br><span class="line-number">47</span><br><span class="line-number">48</span><br><span class="line-number">49</span><br><span class="line-number">50</span><br><span class="line-number">51</span><br><span class="line-number">52</span><br><span class="line-number">53</span><br><span class="line-number">54</span><br><span class="line-number">55</span><br><span class="line-number">56</span><br><span class="line-number">57</span><br><span class="line-number">58</span><br><span class="line-number">59</span><br><span class="line-number">60</span><br><span class="line-number">61</span><br><span class="line-number">62</span><br><span class="line-number">63</span><br><span class="line-number">64</span><br><span class="line-number">65</span><br><span class="line-number">66</span><br><span class="line-number">67</span><br><span class="line-number">68</span><br><span class="line-number">69</span><br><span class="line-number">70</span><br><span class="line-number">71</span><br><span class="line-number">72</span><br><span class="line-number">73</span><br><span class="line-number">74</span><br><span class="line-number">75</span><br><span class="line-number">76</span><br><span class="line-number">77</span><br><span class="line-number">78</span><br><span class="line-number">79</span><br><span class="line-number">80</span><br><span class="line-number">81</span><br><span class="line-number">82</span><br><span class="line-number">83</span><br><span class="line-number">84</span><br><span class="line-number">85</span><br><span class="line-number">86</span><br><span class="line-number">87</span><br><span class="line-number">88</span><br><span class="line-number">89</span><br><span class="line-number">90</span><br><span class="line-number">91</span><br><span class="line-number">92</span><br><span class="line-number">93</span><br><span class="line-number">94</span><br><span class="line-number">95</span><br><span class="line-number">96</span><br><span class="line-number">97</span><br><span class="line-number">98</span><br><span class="line-number">99</span><br><span class="line-number">100</span><br><span class="line-number">101</span><br><span class="line-number">102</span><br><span class="line-number">103</span><br><span class="line-number">104</span><br><span class="line-number">105</span><br><span class="line-number">106</span><br><span class="line-number">107</span><br><span class="line-number">108</span><br><span class="line-number">109</span><br><span class="line-number">110</span><br><span class="line-number">111</span><br><span class="line-number">112</span><br><span class="line-number">113</span><br><span class="line-number">114</span><br><span class="line-number">115</span><br><span class="line-number">116</span><br><span class="line-number">117</span><br><span class="line-number">118</span><br><span class="line-number">119</span><br><span class="line-number">120</span><br><span class="line-number">121</span><br><span class="line-number">122</span><br><span class="line-number">123</span><br><span class="line-number">124</span><br><span class="line-number">125</span><br><span class="line-number">126</span><br><span class="line-number">127</span><br><span class="line-number">128</span><br><span class="line-number">129</span><br><span class="line-number">130</span><br><span class="line-number">131</span><br><span class="line-number">132</span><br><span class="line-number">133</span><br><span class="line-number">134</span><br><span class="line-number">135</span><br><span class="line-number">136</span><br><span class="line-number">137</span><br><span class="line-number">138</span><br><span class="line-number">139</span><br><span class="line-number">140</span><br><span class="line-number">141</span><br><span class="line-number">142</span><br><span class="line-number">143</span><br><span class="line-number">144</span><br><span class="line-number">145</span><br><span class="line-number">146</span><br><span class="line-number">147</span><br><span class="line-number">148</span><br><span class="line-number">149</span><br><span class="line-number">150</span><br><span class="line-number">151</span><br><span class="line-number">152</span><br><span class="line-number">153</span><br><span class="line-number">154</span><br><span class="line-number">155</span><br><span class="line-number">156</span><br><span class="line-number">157</span><br><span class="line-number">158</span><br><span class="line-number">159</span><br><span class="line-number">160</span><br><span class="line-number">161</span><br><span class="line-number">162</span><br><span class="line-number">163</span><br><span class="line-number">164</span><br><span class="line-number">165</span><br><span class="line-number">166</span><br><span class="line-number">167</span><br><span class="line-number">168</span><br><span class="line-number">169</span><br><span class="line-number">170</span><br><span class="line-number">171</span><br><span class="line-number">172</span><br><span class="line-number">173</span><br><span class="line-number">174</span><br><span class="line-number">175</span><br><span class="line-number">176</span><br><span class="line-number">177</span><br><span class="line-number">178</span><br><span class="line-number">179</span><br><span class="line-number">180</span><br><span class="line-number">181</span><br><span class="line-number">182</span><br><span class="line-number">183</span><br><span class="line-number">184</span><br><span class="line-number">185</span><br><span class="line-number">186</span><br><span class="line-number">187</span><br><span class="line-number">188</span><br><span class="line-number">189</span><br><span class="line-number">190</span><br><span class="line-number">191</span><br><span class="line-number">192</span><br><span class="line-number">193</span><br><span class="line-number">194</span><br><span class="line-number">195</span><br><span class="line-number">196</span><br><span class="line-number">197</span><br><span class="line-number">198</span><br><span class="line-number">199</span><br><span class="line-number">200</span><br><span class="line-number">201</span><br><span class="line-number">202</span><br><span class="line-number">203</span><br><span class="line-number">204</span><br><span class="line-number">205</span><br><span class="line-number">206</span><br><span class="line-number">207</span><br><span class="line-number">208</span><br><span class="line-number">209</span><br><span class="line-number">210</span><br><span class="line-number">211</span><br><span class="line-number">212</span><br><span class="line-number">213</span><br><span class="line-number">214</span><br><span class="line-number">215</span><br><span class="line-number">216</span><br><span class="line-number">217</span><br><span class="line-number">218</span><br><span class="line-number">219</span><br><span class="line-number">220</span><br><span class="line-number">221</span><br><span class="line-number">222</span><br><span class="line-number">223</span><br><span class="line-number">224</span><br><span class="line-number">225</span><br><span class="line-number">226</span><br><span class="line-number">227</span><br><span class="line-number">228</span><br><span class="line-number">229</span><br><span class="line-number">230</span><br><span class="line-number">231</span><br><span class="line-number">232</span><br><span class="line-number">233</span><br><span class="line-number">234</span><br><span class="line-number">235</span><br><span class="line-number">236</span><br><span class="line-number">237</span><br><span class="line-number">238</span><br><span class="line-number">239</span><br><span class="line-number">240</span><br><span class="line-number">241</span><br><span class="line-number">242</span><br><span class="line-number">243</span><br><span class="line-number">244</span><br><span class="line-number">245</span><br><span class="line-number">246</span><br><span class="line-number">247</span><br><span class="line-number">248</span><br><span class="line-number">249</span><br><span class="line-number">250</span><br><span class="line-number">251</span><br><span class="line-number">252</span><br><span class="line-number">253</span><br><span class="line-number">254</span><br><span class="line-number">255</span><br><span class="line-number">256</span><br><span class="line-number">257</span><br><span class="line-number">258</span><br><span class="line-number">259</span><br><span class="line-number">260</span><br><span class="line-number">261</span><br><span class="line-number">262</span><br><span class="line-number">263</span><br><span class="line-number">264</span><br><span class="line-number">265</span><br><span class="line-number">266</span><br><span class="line-number">267</span><br><span class="line-number">268</span><br><span class="line-number">269</span><br><span class="line-number">270</span><br><span class="line-number">271</span><br><span class="line-number">272</span><br><span class="line-number">273</span><br><span class="line-number">274</span><br><span class="line-number">275</span><br><span class="line-number">276</span><br><span class="line-number">277</span><br><span class="line-number">278</span><br><span class="line-number">279</span><br><span class="line-number">280</span><br><span class="line-number">281</span><br><span class="line-number">282</span><br><span class="line-number">283</span><br><span class="line-number">284</span><br><span class="line-number">285</span><br><span class="line-number">286</span><br><span class="line-number">287</span><br><span class="line-number">288</span><br><span class="line-number">289</span><br><span class="line-number">290</span><br><span class="line-number">291</span><br><span class="line-number">292</span><br><span class="line-number">293</span><br><span class="line-number">294</span><br><span class="line-number">295</span><br><span class="line-number">296</span><br><span class="line-number">297</span><br><span class="line-number">298</span><br><span class="line-number">299</span><br><span class="line-number">300</span><br><span class="line-number">301</span><br><span class="line-number">302</span><br><span class="line-number">303</span><br><span class="line-number">304</span><br><span class="line-number">305</span><br></div></div><hr> <blockquote><p>📄 <strong>利用UPN公式筛选出近期连涨股.py</strong><br>
+用途：批量处理版本，使用UPN公式筛选3日连涨股票</p></blockquote> <div class="language-python line-numbers-mode"><pre class="language-python"><code><span class="token keyword">from</span> tqcenter <span class="token keyword">import</span> tq
+
+<span class="token keyword">import</span> time
+
+<span class="token triple-quoted-string string">'''
+
+    利用此示例需要先在客户端下载全A股盘后数据，不然结果不准确
+
+'''</span>
+
+tq<span class="token punctuation">.</span>initialize<span class="token punctuation">(</span>__file__<span class="token punctuation">)</span>
+
+<span class="token comment">#先获取A股全部股票</span>
+
+all_stocks <span class="token operator">=</span> tq<span class="token punctuation">.</span>get_stock_list<span class="token punctuation">(</span>market<span class="token operator">=</span><span class="token string">'5'</span><span class="token punctuation">)</span>
+
+<span class="token keyword">print</span><span class="token punctuation">(</span><span class="token string">&quot;正在处理，请等待...&quot;</span><span class="token punctuation">)</span>
+
+upn_stocks <span class="token operator">=</span> <span class="token punctuation">[</span><span class="token punctuation">]</span>
+
+mul_xg_result <span class="token operator">=</span> tq<span class="token punctuation">.</span>formula_process_mul_xg<span class="token punctuation">(</span>
+
+    formula_name<span class="token operator">=</span><span class="token string">'UPN'</span><span class="token punctuation">,</span>
+
+    formula_arg<span class="token operator">=</span><span class="token string">'3'</span><span class="token punctuation">,</span>
+
+    return_count<span class="token operator">=</span><span class="token number">1</span><span class="token punctuation">,</span>
+
+    return_date<span class="token operator">=</span><span class="token boolean">False</span><span class="token punctuation">,</span>
+
+    stock_list<span class="token operator">=</span>all_stocks<span class="token punctuation">,</span>
+
+    stock_period<span class="token operator">=</span><span class="token string">'1d'</span><span class="token punctuation">,</span>
+
+    count<span class="token operator">=</span><span class="token number">5</span><span class="token punctuation">,</span>
+
+    dividend_type<span class="token operator">=</span><span class="token number">1</span><span class="token punctuation">)</span>
+
+<span class="token comment"># print(mul_xg_result)</span>
+
+<span class="token keyword">if</span> mul_xg_result<span class="token punctuation">:</span>
+
+    <span class="token keyword">for</span> key <span class="token keyword">in</span> mul_xg_result<span class="token punctuation">:</span>
+
+        <span class="token keyword">if</span> key <span class="token operator">!=</span> <span class="token string">&quot;ErrorId&quot;</span><span class="token punctuation">:</span>
+
+            <span class="token keyword">if</span> mul_xg_result<span class="token punctuation">[</span>key<span class="token punctuation">]</span><span class="token punctuation">[</span><span class="token string">'UP3'</span><span class="token punctuation">]</span> <span class="token keyword">and</span> mul_xg_result<span class="token punctuation">[</span>key<span class="token punctuation">]</span><span class="token punctuation">[</span><span class="token string">'UP3'</span><span class="token punctuation">]</span><span class="token punctuation">[</span><span class="token operator">-</span><span class="token number">1</span><span class="token punctuation">]</span> <span class="token operator">==</span> <span class="token string">'1'</span><span class="token punctuation">:</span>
+
+                upn_stocks<span class="token punctuation">.</span>append<span class="token punctuation">(</span>key<span class="token punctuation">)</span>
+
+<span class="token keyword">print</span><span class="token punctuation">(</span><span class="token string">&quot;符合UPN公式选股条件的股票列表：&quot;</span><span class="token punctuation">)</span>
+
+<span class="token keyword">print</span><span class="token punctuation">(</span>upn_stocks<span class="token punctuation">)</span>
+
+<span class="token keyword">print</span><span class="token punctuation">(</span><span class="token string">&quot;符合UPN公式选股条件的股票数量：&quot;</span><span class="token punctuation">,</span> <span class="token builtin">len</span><span class="token punctuation">(</span>upn_stocks<span class="token punctuation">)</span><span class="token punctuation">)</span>
+
+zxg_result <span class="token operator">=</span> tq<span class="token punctuation">.</span>send_user_block<span class="token punctuation">(</span>block_code<span class="token operator">=</span><span class="token string">''</span><span class="token punctuation">,</span> stocks<span class="token operator">=</span>upn_stocks<span class="token punctuation">)</span>
+</code></pre> <div class="line-numbers-wrapper"><span class="line-number">1</span><br><span class="line-number">2</span><br><span class="line-number">3</span><br><span class="line-number">4</span><br><span class="line-number">5</span><br><span class="line-number">6</span><br><span class="line-number">7</span><br><span class="line-number">8</span><br><span class="line-number">9</span><br><span class="line-number">10</span><br><span class="line-number">11</span><br><span class="line-number">12</span><br><span class="line-number">13</span><br><span class="line-number">14</span><br><span class="line-number">15</span><br><span class="line-number">16</span><br><span class="line-number">17</span><br><span class="line-number">18</span><br><span class="line-number">19</span><br><span class="line-number">20</span><br><span class="line-number">21</span><br><span class="line-number">22</span><br><span class="line-number">23</span><br><span class="line-number">24</span><br><span class="line-number">25</span><br><span class="line-number">26</span><br><span class="line-number">27</span><br><span class="line-number">28</span><br><span class="line-number">29</span><br><span class="line-number">30</span><br><span class="line-number">31</span><br><span class="line-number">32</span><br><span class="line-number">33</span><br><span class="line-number">34</span><br><span class="line-number">35</span><br><span class="line-number">36</span><br><span class="line-number">37</span><br><span class="line-number">38</span><br><span class="line-number">39</span><br><span class="line-number">40</span><br><span class="line-number">41</span><br><span class="line-number">42</span><br><span class="line-number">43</span><br><span class="line-number">44</span><br><span class="line-number">45</span><br><span class="line-number">46</span><br><span class="line-number">47</span><br><span class="line-number">48</span><br><span class="line-number">49</span><br><span class="line-number">50</span><br><span class="line-number">51</span><br><span class="line-number">52</span><br><span class="line-number">53</span><br><span class="line-number">54</span><br><span class="line-number">55</span><br><span class="line-number">56</span><br><span class="line-number">57</span><br></div></div></div> <footer class="page-edit"><!----> <!----></footer> <div class="page-nav"><p class="inner"><span class="prev">
+      ←
+      <a href="gzh20260122wzlz.html" class="prev">
+        20260122公众号文章
+      </a></span> <span class="next"><a href="../mindoc-tdxpy.html">
+        常见问题
+      </a>
+      →
+    </span></p></div> </main></div><div class="global-ui"><!----></div></div>
+    <script src="../../../assets/js/app.e6b58a59.js" defer></script><script src="../../../assets/js/2.e6f00c24.js" defer></script><script src="../../../assets/js/35.70b628a2.js" defer></script>
+  </body>
+</html>

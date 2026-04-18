@@ -7,8 +7,10 @@
     throw new Error('Frontend state modules failed to initialize');
   }
 
+  var _initPromise = null;
   const BASE = location.origin;
   const SHORT_CACHE_TTL_MS = window.AppCache.SHORT_CACHE_TTL_MS;
+  const INDUSTRY_OVERVIEW_SUMMARY_URL = '/api/screening/industry-overview?topn=4&summary=v2';
   var AppCache = window.AppCache;
   var AppNav = window.AppNav;
   var AppListState = window.AppListState;
@@ -65,6 +67,12 @@
     return AppCache.apiCached(api, path, ttlMs, opts);
   }
 
+  async function loadIndustryOverviewSummary() {
+    var cached = await apiCached(INDUSTRY_OVERVIEW_SUMMARY_URL, SHORT_CACHE_TTL_MS).catch(function () { return null; });
+    if (cached?.summary && Array.isArray(cached.summary.sector_focus)) return cached;
+    return api(INDUSTRY_OVERVIEW_SUMMARY_URL);
+  }
+
   // ============================================================
   // Navigation
   // ============================================================
@@ -100,7 +108,7 @@
         }
       });
     }
-    ({ dashboard: loadDashboard, research: loadResearch, stocks: loadStockView, qlib: loadQlib, etf: loadEtf })[name]?.();
+    ({ dashboard: loadDashboard, system: loadSystem, research: loadResearch, stocks: loadStockView, qlib: loadQlib, etf: loadEtf })[name]?.();
   }
 
   function showEtfTab(tabName) {
@@ -213,24 +221,25 @@
   async function loadDashboard() {
     // 并行加载：管线状态 + 候选池
     var trendsP = api('/api/inst/stock-trends');
+    var industryP = loadIndustryOverviewSummary().catch(function () { return null; });
     await refreshDashboardStatus(true);
     try {
-      var trends = await trendsP;
-      if (trends?.data) renderCandidatePool(trends.data);
+      var results = await Promise.all([trendsP, industryP]);
+      var trends = results[0];
+      var industry = results[1];
+      if (industry?.data) industryViewState.setData(industry.data || []);
+      if (industry?.summary) industryViewState.setSummary(industry.summary || null);
+      if (trends?.summary) stockListState.setSummary(trends.summary || null);
+      if (trends?.data) renderCandidatePool(trends.data, industry?.summary || industryViewState.getSummary(), trends?.summary || stockListState.getSummary());
     } catch (e) { /* 候选池加载失败不影响主流程 */ }
   }
 
-  function topCountEntries(map, limit) {
-    return Object.keys(map || {}).map(function (key) {
-      return { key: key, count: map[key] || 0 };
-    }).sort(function (a, b) {
-      if (b.count !== a.count) return b.count - a.count;
-      return String(a.key).localeCompare(String(b.key), 'zh-CN');
-    }).slice(0, limit || 4);
+  async function loadSystem() {
+    await refreshDashboardStatus(true, true);
   }
 
-  function summarizeStocks(stocks) {
-    var summary = {
+  function emptyStockSummary(stocks) {
+    return {
       total: (stocks || []).length,
       abTotal: 0,
       followTotal: 0,
@@ -240,34 +249,227 @@
       gates: { follow: 0, watch: 0, observe: 0, avoid: 0 },
       signals: {},
       industries: {},
-      sources: {}
+      sources: {},
+      attentionCovered: 0,
+      attentionBoosted: 0,
+      attentionCrowded: 0,
+      attentionSignals: {},
+      turtleCovered: 0,
+      turtleBreakout: 0,
+      turtleWatch: 0,
+      turtleExit: 0,
+      topIndustries: [],
+      topSignals: [],
+      topSources: [],
+      topAttentionSignals: []
     };
-    (stocks || []).forEach(function (s) {
-      var pool = s.priority_pool || '未分池';
-      var gate = stockGateInfo(s).key || '';
-      var source = stockSourceName(s);
-      var industry = s.setup_industry_name || s.sw_level2 || s.sw_level1 || '';
-      summary.pools[pool] = (summary.pools[pool] || 0) + 1;
-      if (pool === 'A池' || pool === 'B池') summary.abTotal += 1;
-      if (gate && summary.gates[gate] != null) summary.gates[gate] += 1;
-      if (gate === 'follow') summary.followTotal += 1;
-      if (s.setup_tag) {
-        summary.setupTotal += 1;
-        var signalKey = 'A' + (s.setup_priority != null ? s.setup_priority : '?');
-        summary.signals[signalKey] = (summary.signals[signalKey] || 0) + 1;
-      }
-      if (industry) summary.industries[industry] = (summary.industries[industry] || 0) + 1;
-      if (source && source !== '-') summary.sources[source] = (summary.sources[source] || 0) + 1;
-      if (s._dual_confirm) summary.dualConfirm += 1;
-    });
-    summary.topIndustries = topCountEntries(summary.industries, 4);
-    summary.topSignals = topCountEntries(summary.signals, 4);
-    summary.topSources = topCountEntries(summary.sources, 3);
+  }
+
+  function resolveStockSummary(stocks, stockSummary) {
+    var summary = emptyStockSummary(stocks);
+    if (!stockSummary || typeof stockSummary !== 'object') return summary;
+    summary = Object.assign(summary, stockSummary);
+    summary.pools = stockSummary.pools || {};
+    summary.gates = Object.assign({}, { follow: 0, watch: 0, observe: 0, avoid: 0 }, stockSummary.gates || {});
+    summary.signals = stockSummary.signals || {};
+    summary.industries = stockSummary.industries || {};
+    summary.sources = stockSummary.sources || {};
+    summary.attentionSignals = stockSummary.attentionSignals || {};
+    summary.topIndustries = Array.isArray(stockSummary.topIndustries) ? stockSummary.topIndustries : [];
+    summary.topSignals = Array.isArray(stockSummary.topSignals) ? stockSummary.topSignals : [];
+    summary.topSources = Array.isArray(stockSummary.topSources) ? stockSummary.topSources : [];
+    summary.topAttentionSignals = Array.isArray(stockSummary.topAttentionSignals) ? stockSummary.topAttentionSignals : [];
     return summary;
   }
 
   function summaryChip(label, count, tone) {
     return '<span class="summary-chip summary-chip--' + tone + '">' + esc(label) + ' ' + fmt(count) + '</span>';
+  }
+
+  function hasQlibSectorFocus(sectorSummary) {
+    return !!(sectorSummary && Array.isArray(sectorSummary.sector_focus) && sectorSummary.sector_focus.length);
+  }
+
+  function sectorFocusItems(summary, sectorSummary) {
+    if (hasQlibSectorFocus(sectorSummary)) {
+      return sectorSummary.sector_focus.map(function (item) {
+        return {
+          label: item.sector_name || '-',
+          value: item.next_rotation_score,
+          metric: 'score',
+          sub: item.next_rotation_label || item.next_rotation_reason || '',
+          stockCount: item.stock_count || 0
+        };
+      });
+    }
+    return (summary.topIndustries || []).map(function (item) {
+      return {
+        label: item.key,
+        value: item.count,
+        metric: 'count',
+        sub: fmt(item.count) + ' 只',
+        stockCount: item.count || 0
+      };
+    });
+  }
+
+  function renderSectorFocusChip(item) {
+    if (!item) return '';
+    if (item.metric !== 'score') return summaryChip(item.label, item.value, 'neutral');
+    return '<span class="summary-chip summary-chip--neutral">' + esc(item.label) + ' ' + esc(fmtScore(item.value)) + '</span>';
+  }
+
+  function sectorFocusLeadSub(item) {
+    if (!item) return '暂无';
+    if (item.metric === 'score') {
+      return 'Qlib前瞻 ' + fmtScore(item.value) + (item.sub ? ' · ' + item.sub : '');
+    }
+    return fmt(item.value) + ' 只';
+  }
+
+  function sectorFocusSubtitle(summary, sectorSummary, focusItems) {
+    if (hasQlibSectorFocus(sectorSummary)) {
+      var lead = focusItems && focusItems[0];
+      return 'Qlib前瞻：' + (lead && lead.sub ? lead.sub : '行业动量已纳入聚合');
+    }
+    return '来源集中：' + (summary.topSources.length ? summary.topSources.map(function (item) { return item.key + ' ' + fmt(item.count); }).join(' · ') : '暂无');
+  }
+
+  function hasAttentionCoverage(s) {
+    return !!(s && (
+      s.external_attention_signal ||
+      s.external_attention_score != null ||
+      s.attention_focus_index != null ||
+      s.attention_comment_trade_date ||
+      s.attention_composite_score != null
+    ));
+  }
+
+  function hasTurtleCoverage(s) {
+    return !!(s && (
+      s.turtle_setup_state ||
+      s.turtle_execution_score != null ||
+      s.turtle_breakout_score != null ||
+      s.turtle_risk_score != null ||
+      s.turtle_score_delta != null ||
+      s.turtle_reason ||
+      s.turtle_preferred_system
+    ));
+  }
+
+  function turtleSystemLabel(system) {
+    if (system === 'S1') return 'S1 系统';
+    if (system === 'S2') return 'S2 系统';
+    if (system === '观察') return '观察';
+    return system || '-';
+  }
+
+  function turtleStateMeta(state) {
+    return {
+      'S2突破触发': { label: 'S2突破触发', shortLabel: 'S2突破', tone: 'good', group: 'breakout' },
+      'S1突破触发': { label: 'S1突破触发', shortLabel: 'S1突破', tone: 'good', group: 'breakout' },
+      'S2待突破': { label: 'S2待突破', shortLabel: 'S2待突', tone: 'accent', group: 'watch' },
+      'S1待突破': { label: 'S1待突破', shortLabel: 'S1待突', tone: 'accent', group: 'watch' },
+      '20日退出触发': { label: '20日退出触发', shortLabel: '20日退出', tone: 'warn', group: 'exit' },
+      '10日退出触发': { label: '10日退出触发', shortLabel: '10日退出', tone: 'warn', group: 'exit' },
+      '等待形态': { label: '等待形态', shortLabel: '等待形态', tone: 'neutral', group: 'waiting' }
+    }[state || ''] || (state ? { label: String(state), shortLabel: String(state), tone: 'neutral', group: 'covered' } : null);
+  }
+
+  function turtleStateTag(state, useShortLabel) {
+    var meta = turtleStateMeta(state);
+    if (!meta) return '';
+    return '<span class="stock-attention-pill stock-attention-pill--' + meta.tone + '">' + esc(useShortLabel ? (meta.shortLabel || meta.label) : meta.label) + '</span>';
+  }
+
+  function attentionSummaryTone(signal) {
+    var meta = attentionSignalMeta(signal);
+    if (!meta) return 'neutral';
+    return meta.tone === 'warn' ? 'warning' : 'attention';
+  }
+
+
+  function stockScoreValue(s, dimension) {
+    if (!s) return null;
+    if (dimension === 'discovery') return s.discovery_score;
+    if (dimension === 'quality') return s.company_quality_score;
+    if (dimension === 'stage') return s.stage_score;
+    if (dimension === 'forecast') return s.forecast_score_effective != null ? s.forecast_score_effective : s.forecast_score;
+    return null;
+  }
+
+  function stockScoreBandMeta(dimension, rawScore) {
+    if (rawScore == null || rawScore === '') return { key: 'missing', label: '缺失', tone: 'neutral' };
+    var score = Number(rawScore);
+    if (Number.isNaN(score)) return { key: 'missing', label: '缺失', tone: 'neutral' };
+    var strong = 75;
+    var mid = 60;
+    var watch = 45;
+    if (dimension === 'stage') {
+      strong = 70;
+      mid = 55;
+      watch = 40;
+    } else if (dimension === 'forecast') {
+      strong = 70;
+      mid = 55;
+      watch = 35;
+    }
+    if (score >= strong) return { key: 'strong', label: '强', tone: 'good' };
+    if (score >= mid) return { key: 'mid', label: '中', tone: 'accent' };
+    if (score >= watch) return { key: 'watch', label: '观察', tone: 'warn' };
+    return { key: 'weak', label: '弱', tone: 'neutral' };
+  }
+
+  function stockScoreSubtext(s, dimension) {
+    if (!s) return '';
+    if (dimension === 'discovery') return s.display_inst_name || s.setup_inst_name || preferredIndustryLabel(s) || '机构发现';
+    if (dimension === 'quality') return s.stock_archetype || '公司质量';
+    if (dimension === 'stage') return s.path_state || s.stage_reason || '阶段过滤';
+    if (dimension === 'forecast') return s.forecast_reason || s.forecast_model_id || '排序增强';
+    return '';
+  }
+
+  function screeningHitCount(screen) {
+    if (!screen) return 0;
+    if (screen.hit_count != null) return Number(screen.hit_count || 0);
+    return (screen.f1_hit ? 1 : 0) + (screen.f3_hit ? 1 : 0) + (screen.f5_hit ? 1 : 0);
+  }
+
+  function stockScreeningInline(s) {
+    var screen = s && s._screen;
+    if (!screen) return '<span class="muted">待筛选</span>';
+    var tags = [];
+    if (screen.f1_hit) tags.push('<span class="tag tag-sm" style="background:#3b82f6;color:#fff" title="MA突破">F1</span>');
+    if (screen.f3_hit) tags.push('<span class="tag tag-sm" style="background:#8b5cf6;color:#fff" title="趋势跟踪">F3</span>');
+    if (screen.f5_hit) tags.push('<span class="tag tag-sm" style="background:#f59e0b;color:#fff" title="MACD金叉">F5</span>');
+    if (!tags.length) return '<span class="muted">未命中</span>';
+    return '<div style="display:flex;flex-direction:column;gap:4px;align-items:flex-start">' +
+      '<div style="display:flex;flex-wrap:wrap;gap:4px">' + tags.join('') + '</div>' +
+      '<div class="muted" style="font-size:11px">' + screeningHitCount(screen) + ' 式命中</div>' +
+      '</div>';
+  }
+
+  function stockSortRows(stocks) {
+    var mode = stockListState.getSortMode();
+    return (stocks || []).slice().sort(function (left, right) {
+      var diff = 0;
+      if (mode === 'attention') {
+        diff = Number(right.external_attention_score || -1) - Number(left.external_attention_score || -1);
+        if (!diff) diff = Number(right.attention_focus_index || -1) - Number(left.attention_focus_index || -1);
+      } else if (mode === 'crowding') {
+        diff = Number(right.external_crowding_penalty || -1) - Number(left.external_crowding_penalty || -1);
+        if (!diff) diff = Number(right.external_attention_score || -1) - Number(left.external_attention_score || -1);
+      } else if (mode === 'turtle') {
+        diff = Number(right.turtle_execution_score || -1) - Number(left.turtle_execution_score || -1);
+        if (!diff) diff = Number(right.turtle_score_delta || -99) - Number(left.turtle_score_delta || -99);
+        if (!diff) diff = Number(right.turtle_breakout_score || -1) - Number(left.turtle_breakout_score || -1);
+      } else {
+        diff = Number(right.composite_priority_score || -1) - Number(left.composite_priority_score || -1);
+      }
+      if (!diff) diff = Number(right.discovery_score || -1) - Number(left.discovery_score || -1);
+      if (!diff) diff = String(left.stock_code || '').localeCompare(String(right.stock_code || ''), 'zh-CN');
+      return diff;
+    });
   }
 
   function summaryRow(label, count, tone, total) {
@@ -287,8 +489,9 @@
       '</div>';
   }
 
-  function renderDashboardOverview(stocks) {
-    var summary = summarizeStocks(stocks);
+  function renderDashboardOverview(stocks, sectorSummary, stockSummary) {
+    var summary = resolveStockSummary(stocks, stockSummary);
+    var focusItems = sectorFocusItems(summary, sectorSummary);
     var heroMeta = el('dashboardHeroMeta');
     var insightGrid = el('dashboardInsightGrid');
     if (heroMeta) {
@@ -321,11 +524,9 @@
       '<section class="summary-card">' +
         '<div class="summary-card-head"><span class="summary-card-kicker">Sector Focus</span><strong>当前主线行业</strong></div>' +
         '<div class="summary-card-tags">' +
-          (summary.topIndustries.length ? summary.topIndustries.map(function (item) { return summaryChip(item.key, item.count, 'neutral'); }).join('') : '<span class="summary-empty">暂无行业聚集</span>') +
+          (focusItems.length ? focusItems.map(renderSectorFocusChip).join('') : '<span class="summary-empty">暂无行业聚集</span>') +
         '</div>' +
-        '<div class="summary-card-sub">来源集中：' +
-          (summary.topSources.length ? summary.topSources.map(function (item) { return esc(item.key) + ' ' + fmt(item.count); }).join(' · ') : '暂无') +
-        '</div>' +
+        '<div class="summary-card-sub">' + esc(sectorFocusSubtitle(summary, sectorSummary, focusItems)) + '</div>' +
       '</section>' +
       '<section class="summary-card">' +
         '<div class="summary-card-head"><span class="summary-card-kicker">Signal Density</span><strong>Setup 与验证</strong></div>' +
@@ -336,16 +537,20 @@
       '</section>';
   }
 
-  function renderStockResearchSummary(stocks) {
-    var summary = summarizeStocks(stocks);
+  function renderStockResearchSummary(stocks, sectorSummary, stockSummary) {
+    var summary = resolveStockSummary(stocks, stockSummary);
+    var focusItems = sectorFocusItems(summary, sectorSummary);
+    var leadFocus = focusItems[0];
     var stockSummaryBar = el('stockSummaryBar');
     var stockListMeta = el('stockListMeta');
     if (stockSummaryBar) {
       stockSummaryBar.innerHTML = [
         { label: 'A/B 候选', value: fmt(summary.abTotal), sub: 'A池 ' + fmt(summary.pools['A池'] || 0) + ' · B池 ' + fmt(summary.pools['B池'] || 0), tone: 'primary' },
         { label: '可跟', value: fmt(summary.followTotal), sub: '关注 ' + fmt(summary.gates.watch || 0), tone: 'success' },
+        { label: '海龟执行', value: fmt(summary.turtleBreakout), sub: '待突破 ' + fmt(summary.turtleWatch) + ' · 退出 ' + fmt(summary.turtleExit), tone: 'turtle' },
+        { label: '外部覆盖', value: fmt(summary.attentionCovered), sub: '增强 ' + fmt(summary.attentionBoosted) + ' · 拥挤 ' + fmt(summary.attentionCrowded), tone: 'attention' },
         { label: '双确认', value: fmt(summary.dualConfirm), sub: 'Setup ' + fmt(summary.setupTotal), tone: 'accent' },
-        { label: '主线行业', value: summary.topIndustries[0] ? summary.topIndustries[0].key : '-', sub: summary.topIndustries[0] ? fmt(summary.topIndustries[0].count) + ' 只' : '暂无', tone: 'neutral' }
+        { label: '主线行业', value: leadFocus ? leadFocus.label : '-', sub: sectorFocusLeadSub(leadFocus), tone: 'neutral' }
       ].map(function (item) {
         return '<div class="stock-summary-chip stock-summary-chip--' + item.tone + '">' +
           '<span class="stock-summary-label">' + esc(item.label) + '</span>' +
@@ -359,11 +564,12 @@
         '<div class="table-meta-bar">' +
           '<div class="table-meta-copy">' +
             '<div class="table-meta-title">当前股票宇宙</div>' +
-            '<div class="table-meta-sub">共 ' + fmt(summary.total) + ' 只股票 · A/B池 ' + fmt(summary.abTotal) + ' · 可跟 ' + fmt(summary.followTotal) + ' · 双确认 ' + fmt(summary.dualConfirm) + '</div>' +
+            '<div class="table-meta-sub">共 ' + fmt(summary.total) + ' 只股票 · A/B池 ' + fmt(summary.abTotal) + ' · 可跟 ' + fmt(summary.followTotal) + ' · 海龟突破 ' + fmt(summary.turtleBreakout) + ' · 外部覆盖 ' + fmt(summary.attentionCovered) + ' · 双确认 ' + fmt(summary.dualConfirm) + '</div>' +
           '</div>' +
           '<div class="table-meta-tags">' +
-            (summary.topIndustries.length ? summary.topIndustries.map(function (item) { return summaryChip(item.key, item.count, 'neutral'); }).join('') : '') +
+              (focusItems.length ? focusItems.map(renderSectorFocusChip).join('') : '') +
             (summary.topSignals.length ? summary.topSignals.map(function (item) { return summaryChip(item.key, item.count, 'signal'); }).join('') : '') +
+            (summary.topAttentionSignals.length ? summary.topAttentionSignals.map(function (item) { return summaryChip(item.key, item.count, attentionSummaryTone(item.key)); }).join('') : '') +
           '</div>' +
         '</div>';
     }
@@ -386,10 +592,11 @@
     });
   }
 
-  function renderCandidatePool(stocks) {
+  function renderCandidatePool(stocks, sectorSummary, stockSummary) {
     var container = el('candidatePoolSection');
-    renderDashboardOverview(stocks || []);
-    renderStockResearchSummary(stocks || []);
+    var summary = resolveStockSummary(stocks || [], stockSummary);
+    renderDashboardOverview(stocks || [], sectorSummary, stockSummary);
+    renderStockResearchSummary(stocks || [], sectorSummary, stockSummary);
     if (!container) return;
     // 按综合分降序，取 A/B 池
     var pool = stocks
@@ -402,12 +609,8 @@
       return;
     }
 
-    // 统计各池数量
-    var poolCounts = {};
-    stocks.forEach(function (s) {
-      var p = s.priority_pool || '未分池';
-      poolCounts[p] = (poolCounts[p] || 0) + 1;
-    });
+    // 候选池头部计数统一复用后端 summary，避免与摘要区口径漂移。
+    var poolCounts = summary.pools || {};
     var countHtml = Object.keys(poolCounts).sort().map(function (k) {
       var color = k === 'A池' ? '#059669' : k === 'B池' ? '#3b82f6' : k === 'C池' ? '#f59e0b' : '#94a3b8';
       return '<span style="display:inline-flex;align-items:center;gap:4px;font-size:12px"><span style="width:8px;height:8px;border-radius:50%;background:' + color + '"></span>' + esc(k) + ' ' + poolCounts[k] + '</span>';
@@ -417,7 +620,7 @@
       var composite = s.composite_priority_score != null ? Number(s.composite_priority_score).toFixed(1) : '-';
       var poolTag = priorityPoolTag(s.priority_pool);
       var archetype = s.stock_archetype || '';
-      var industry = s.setup_industry_name || s.sw_level3 || s.sw_level2 || s.sw_level1 || '';
+      var industry = preferredIndustryLabel(s);
       var signal = s.setup_tag ? setupBadge(s.setup_tag, s.setup_priority, s.setup_confidence) : '';
       var summary = stockCompositeSummary(s);
       var gate = stockGateTag(s);
@@ -452,8 +655,8 @@
   }
 
   async function refreshDashboardStatus(includeConnectivity) {
-    // 并行拉 audit，避免 renderUpdatePanel 二次往返
-    var auditPromise = _lastAuditSnapshot ? Promise.resolve(_lastAuditSnapshot) : refreshAuditSnapshot();
+    var forceAudit = arguments.length > 1 ? !!arguments[1] : false;
+    var auditPromise = forceAudit ? refreshAuditSnapshot(true) : Promise.resolve(_lastAuditSnapshot);
     var [status, inst, ev, up] = await Promise.all([
       api('/api/inst/market/status'),
       api('/api/inst/institutions'),
@@ -468,8 +671,7 @@
     }
     if (inst?.data) { el('statInst').className = 'stat-value'; el('statInst').textContent = inst.data.filter(i => i.enabled && !i.blacklisted).length; }
     if (ev) { el('statEvents').className = 'stat-value'; el('statEvents').textContent = fmt(ev.total); }
-    // 先渲染 step grid（不等 audit），再异步补充审计信息
-    await renderUpdatePanel(up);
+    await renderUpdatePanel(up, { forceAudit: forceAudit });
     // connectivity 异步加载，不阻塞主流程
     if (includeConnectivity !== false) checkNetwork();
   }
@@ -481,7 +683,7 @@
     btn.disabled = true;
     btn.textContent = '刷新中...';
     try {
-      await refreshDashboardStatus(false);
+      await refreshDashboardStatus(false, true);
     } finally {
       btn.disabled = false;
       btn.textContent = originalText;
@@ -550,43 +752,6 @@
       '</svg>';
   }
 
-  function renderCards(data, tf) {
-    var d = tf === 'all' ? data : data.filter(p => p.inst_type === tf);
-    var c = el('instCardsContainer');
-    if (!d.length) { c.innerHTML = '<div class="muted">暂无机构画像数据。</div>'; return; }
-    c.innerHTML = d.map(p =>
-      '<div class="inst-card"><div class="inst-card-head">' +
-      '<span class="inst-card-name clickable-name" onclick="event.stopPropagation();App.toggleInstDetail(\'' + esc(p.institution_id) + '\',this)">' + esc(p.display_name || p.institution_name || '') + '</span>' +
-      (p.quality_score != null ? '<span style="font-size:11px;background:#eef2ff;color:#4f46e5;padding:2px 8px;border-radius:10px;margin-left:6px;font-weight:600">实力 ' + Number(p.quality_score).toFixed(1) + '</span>' : '') +
-      (p.followability_score != null ? '<span style="font-size:11px;background:#ecfdf5;color:#059669;padding:2px 8px;border-radius:10px;margin-left:6px;font-weight:600">可跟 ' + Number(p.followability_score).toFixed(1) + '</span>' : '') +
-      typeTag(p.inst_type) + '</div>' +
-      '<div class="inst-card-chart" id="chart-' + esc(p.institution_id) + '" style="height:64px;margin:6px 0;border:1px solid #f1f5f9;border-radius:6px;padding:4px;background:#fafbfc"><div class="muted" style="font-size:11px;text-align:center;line-height:56px">加载中...</div></div>' +
-      '<div class="inst-card-metrics">' +
-      metric('历史胜率', pct(p.total_win_rate)) +
-      metric('30日胜率', pct(p.win_rate_30d)) +
-      metric('60日胜率', pct(p.win_rate_60d)) +
-      metric('最大回撤', p.median_max_drawdown_30d != null ? '-' + p.median_max_drawdown_30d.toFixed(1) + '%' : '-') +
-      metric('持仓股票', (p.current_stock_count || 0) + '只') +
-      metric('持仓资金', compactNum(p.current_total_cap)) +
-      '<div class="metric" style="display:flex;gap:4px;align-items:center">' +
-      (p.recent_new_entry_count ? evTag('new_entry') + ' ' + p.recent_new_entry_count : '') +
-      (p.recent_increase_count ? ' ' + evTag('increase') + ' ' + p.recent_increase_count : '') +
-      (p.recent_exit_count ? ' ' + evTag('exit') + ' ' + p.recent_exit_count : '') +
-      '</div>' +
-      '</div></div>'
-    ).join('');
-    // 异步加载收益曲线
-    d.forEach(function (p) {
-      api('/api/inst/profiles/returns-history/' + encodeURIComponent(p.institution_id)).then(function (r) {
-        var chartEl = document.getElementById('chart-' + p.institution_id);
-        if (chartEl && r?.ok && r.data?.length) {
-          chartEl.innerHTML = buildReturnsSvg(r.data, 280, 56);
-        } else if (chartEl) {
-          chartEl.innerHTML = '<div class="muted" style="font-size:11px;text-align:center;line-height:56px">暂无收益数据</div>';
-        }
-      });
-    });
-  }
 
   // Phase 3: 机构列表维度切换
   function renderInstList(data, tf) {
@@ -709,37 +874,18 @@
       return;
     }
     _stockListLoadingPromise = (async function () {
-      var r = await api('/api/inst/stock-trends');
+      var results = await Promise.all([
+        api('/api/inst/stock-trends'),
+        loadIndustryOverviewSummary().catch(function () { return null; })
+      ]);
+      var r = results[0];
+      var industry = results[1];
       stockListState.setData(r?.data || []);
+      stockListState.setSummary(r?.summary || null);
       var stockData = stockListState.getData();
-      // 并行加载选股结果、板块动量和双重确认，再合并到股票列表
-      try {
-        var [screenR, sectorR, dualConfirmR] = await Promise.all([
-          api('/api/screening/results?limit=5000'),
-          api('/api/screening/sector-momentum'),
-          api('/api/screening/dual-confirm')
-        ]);
-        if (screenR?.ok && screenR.data) {
-          var screenMap = {};
-          screenR.data.forEach(function (s) { screenMap[s.stock_code] = s; });
-          stockData.forEach(function (s) { s._screen = screenMap[s.stock_code] || null; });
-        }
-        if (sectorR?.ok && sectorR.data) {
-          var sectorMap = {};
-          sectorR.data.forEach(function (s) { sectorMap[s.sector_name] = s; });
-          stockData.forEach(function (s) {
-            var ind = s.sw_level1 || s.setup_industry_name;
-            var sm = ind ? sectorMap[ind] : null;
-            s._sector_trend = sm ? sm.trend_state : null;
-          });
-        }
-        if (dualConfirmR?.ok && dualConfirmR.data) {
-          var dualMap = {};
-          dualConfirmR.data.forEach(function (d) { if (d.dual_confirm) dualMap[d.stock_code] = true; });
-          stockData.forEach(function (s) { s._dual_confirm = dualMap[s.stock_code] || false; });
-        }
-      } catch (e) { }
       stockData.forEach(decorateStockSearchBlob);
+      if (industry?.data) industryViewState.setData(industry.data || []);
+      if (industry?.summary) industryViewState.setSummary(industry.summary || null);
       _stockListLoadedAt = Date.now();
     })();
     try {
@@ -766,12 +912,57 @@
       { key: 'observe', label: '观察' },
       { key: 'avoid', label: '回避' }
     ];
+    var attentions = [
+      { key: 'all', label: '全部' },
+      { key: 'covered', label: '已覆盖' },
+      { key: 'confirm', label: '确认增强' },
+      { key: 'rising', label: '关注抬升' },
+      { key: 'survey', label: '调研活跃' },
+      { key: 'crowded', label: '热度拥挤' }
+    ];
+    var turtles = [
+      { key: 'all', label: '全部' },
+      { key: 'breakout', label: '突破触发' },
+      { key: 'watch', label: '待突破' },
+      { key: 'exit', label: '退出触发' },
+      { key: 'covered', label: '已覆盖' }
+    ];
+    var screenings = [
+      { key: 'all', label: '全部' },
+      { key: 'hit', label: '任一命中' },
+      { key: 'f1', label: 'F1' },
+      { key: 'f3', label: 'F3' },
+      { key: 'f5', label: 'F5' },
+      { key: 'none', label: '未命中' }
+    ];
+    var scoreBands = [
+      { key: 'all', label: '全部' },
+      { key: 'strong', label: '强' },
+      { key: 'mid', label: '中' },
+      { key: 'watch', label: '观察' },
+      { key: 'weak', label: '弱' },
+      { key: 'missing', label: '缺失' }
+    ];
+    var sorts = [
+      { key: 'composite', label: '综合优先' },
+      { key: 'turtle', label: '海龟执行' },
+      { key: 'attention', label: '外部确认' },
+      { key: 'crowding', label: '热度折扣' }
+    ];
     function chip(group, key, label, active) {
       return '<span class="type-tag stock-filter-chip' + (active ? ' active' : '') + '" data-filter-group="' + group + '" data-filter-key="' + key + '">' + label + '</span>';
     }
     return '<div class="stock-filter-bar">' +
       '<div class="stock-filter-group"><span class="stock-filter-label-pill">信号</span>' + signals.map(function (f) { return chip('signal', f.key, f.label, f.key === stockListState.getFilterSignal()) }).join('') + '</div>' +
       '<div class="stock-filter-group"><span class="stock-filter-label-pill">执行</span>' + gates.map(function (f) { return chip('gate', f.key, f.label, f.key === stockListState.getFilterGate()) }).join('') + '</div>' +
+      '<div class="stock-filter-group"><span class="stock-filter-label-pill stock-filter-label-pill--discovery">发现</span>' + scoreBands.map(function (f) { return chip('discovery', f.key, f.label, f.key === stockListState.getFilterDiscovery()) }).join('') + '</div>' +
+      '<div class="stock-filter-group"><span class="stock-filter-label-pill stock-filter-label-pill--quality">质量</span>' + scoreBands.map(function (f) { return chip('quality', f.key, f.label, f.key === stockListState.getFilterQuality()) }).join('') + '</div>' +
+      '<div class="stock-filter-group"><span class="stock-filter-label-pill stock-filter-label-pill--stage">阶段</span>' + scoreBands.map(function (f) { return chip('stageScore', f.key, f.label, f.key === stockListState.getFilterStageScore()) }).join('') + '</div>' +
+      '<div class="stock-filter-group"><span class="stock-filter-label-pill stock-filter-label-pill--forecast">预测</span>' + scoreBands.map(function (f) { return chip('forecast', f.key, f.label, f.key === stockListState.getFilterForecast()) }).join('') + '</div>' +
+      '<div class="stock-filter-group"><span class="stock-filter-label-pill">TDX</span>' + screenings.map(function (f) { return chip('screening', f.key, f.label, f.key === stockListState.getFilterScreening()) }).join('') + '</div>' +
+      '<div class="stock-filter-group"><span class="stock-filter-label-pill stock-filter-label-pill--turtle">海龟</span>' + turtles.map(function (f) { return chip('turtle', f.key, f.label, f.key === stockListState.getFilterTurtle()) }).join('') + '</div>' +
+      '<div class="stock-filter-group"><span class="stock-filter-label-pill stock-filter-label-pill--attention">外部</span>' + attentions.map(function (f) { return chip('attention', f.key, f.label, f.key === stockListState.getFilterAttention()) }).join('') + '</div>' +
+      '<div class="stock-filter-group"><span class="stock-filter-label-pill stock-filter-label-pill--sort">排序</span>' + sorts.map(function (f) { return chip('sort', f.key, f.label, f.key === stockListState.getSortMode()) }).join('') + '</div>' +
       '</div>';
   }
 
@@ -784,6 +975,18 @@
         var key = chip.dataset.filterKey;
         if (group === 'signal') stockListState.setFilterSignal(key);
         if (group === 'gate') stockListState.setFilterGate(key);
+        if (group === 'discovery') stockListState.setFilterDiscovery(key);
+        if (group === 'quality') stockListState.setFilterQuality(key);
+        if (group === 'stageScore') stockListState.setFilterStageScore(key);
+        if (group === 'forecast') stockListState.setFilterForecast(key);
+        if (group === 'screening') stockListState.setFilterScreening(key);
+        if (group === 'turtle') stockListState.setFilterTurtle(key);
+        if (group === 'attention') stockListState.setFilterAttention(key);
+        if (group === 'sort') {
+          stockListState.setSortMode(key);
+          renderStockList();
+          return;
+        }
         chip.closest('.stock-filter-group').querySelectorAll('.stock-filter-chip').forEach(function (c) { c.classList.remove('active') });
         chip.classList.add('active');
         applyStockFilters();
@@ -809,19 +1012,67 @@
     return stockGateInfo(s).key === filterGate;
   }
 
+  function matchAttentionFilter(s) {
+    var filterAttention = stockListState.getFilterAttention();
+    if (filterAttention === 'all') return true;
+    if (filterAttention === 'covered') return hasAttentionCoverage(s);
+    if (filterAttention === 'confirm') return s.external_attention_signal === '外部确认增强';
+    if (filterAttention === 'rising') return s.external_attention_signal === '关注度抬升';
+    if (filterAttention === 'survey') return s.external_attention_signal === '调研活跃';
+    if (filterAttention === 'crowded') return s.external_attention_signal === '热度拥挤';
+    return true;
+  }
+
+  function matchScoreBandFilter(s, dimension, filterValue) {
+    if (filterValue === 'all') return true;
+    return stockScoreBandMeta(dimension, stockScoreValue(s, dimension)).key === filterValue;
+  }
+
+  function matchScreeningFilter(s) {
+    var filterScreening = stockListState.getFilterScreening();
+    var screen = s && s._screen;
+    var hitCount = screeningHitCount(screen);
+    if (filterScreening === 'all') return true;
+    if (filterScreening === 'hit') return hitCount > 0;
+    if (filterScreening === 'none') return hitCount === 0;
+    if (filterScreening === 'f1') return !!(screen && screen.f1_hit);
+    if (filterScreening === 'f3') return !!(screen && screen.f3_hit);
+    if (filterScreening === 'f5') return !!(screen && screen.f5_hit);
+    return true;
+  }
+
+  function matchTurtleFilter(s) {
+    var filterTurtle = stockListState.getFilterTurtle();
+    var meta = turtleStateMeta(s && s.turtle_setup_state);
+    if (filterTurtle === 'all') return true;
+    if (filterTurtle === 'covered') return hasTurtleCoverage(s);
+    if (!meta) return false;
+    return meta.group === filterTurtle;
+  }
+
   function decorateStockSearchBlob(s) {
     if (!s) return s;
+    var screeningTerms = [];
+    if (s._screen) {
+      if (s._screen.f1_hit) screeningTerms.push('f1', 'ma突破');
+      if (s._screen.f3_hit) screeningTerms.push('f3', '趋势跟踪');
+      if (s._screen.f5_hit) screeningTerms.push('f5', 'macd金叉');
+      if (!screeningTerms.length) screeningTerms.push('未命中');
+    }
     s._search_blob = [
       s.stock_code,
       s.stock_name,
-      s.sw_level1,
-      s.sw_level2,
-      s.sw_level3,
+      industryLevels(s).join(' '),
       s.setup_industry_name,
       s.stock_archetype,
       s.priority_pool,
       s.display_inst_name,
-      s.setup_inst_name
+      s.setup_inst_name,
+      s.external_attention_signal,
+      s.turtle_setup_state,
+      s.turtle_preferred_system,
+      s.turtle_reason,
+      screeningTerms.join(' ')
     ].map(function (v) {
       return String(v || '').toLowerCase();
     }).join(' ');
@@ -830,14 +1081,23 @@
 
   function applyStockFilters() {
     var keyword = ((el('stockSearch')?.value) || '').trim().toLowerCase();
-    var rows = el('stockListContainer')?.querySelectorAll('tbody tr[data-stock-idx]');
+    var rows = el('stockListContainer')?.querySelectorAll('tbody tr[data-stock-code]');
     if (!rows) return;
     var data = stockListState.getData() || [];
+    var stockMap = {};
+    data.forEach(function (item) { stockMap[item.stock_code] = item; });
     rows.forEach(function (tr) {
-      var idx = parseInt(tr.dataset.stockIdx);
-      var s = data[idx];
+      var s = stockMap[tr.dataset.stockCode];
       if (!s) { tr.style.display = 'none'; return; }
-      var show = matchSignalFilter(s) && matchGateFilter(s);
+      var show = matchSignalFilter(s) &&
+        matchGateFilter(s) &&
+        matchScoreBandFilter(s, 'discovery', stockListState.getFilterDiscovery()) &&
+        matchScoreBandFilter(s, 'quality', stockListState.getFilterQuality()) &&
+        matchScoreBandFilter(s, 'stage', stockListState.getFilterStageScore()) &&
+        matchScoreBandFilter(s, 'forecast', stockListState.getFilterForecast()) &&
+        matchScreeningFilter(s) &&
+        matchTurtleFilter(s) &&
+        matchAttentionFilter(s);
       if (show && keyword) show = String(s._search_blob || '').includes(keyword);
       tr.style.display = show ? '' : 'none';
     });
@@ -1085,7 +1345,7 @@
       industryMiniMetric('快照10日', fmt(summary?.snapshot_feedback_ready_10d_total || 0), '成熟 10 日快照样本') +
       industryMiniMetric('快照30日', fmt(summary?.snapshot_feedback_ready_total || 0), '成熟 30 日快照样本 · 覆盖行业 ' + fmt(summary?.snapshot_feedback_sector_count || 0)) +
       industryMiniMetric('快照60日', fmt(summary?.snapshot_feedback_ready_60d_total || 0), '成熟 60 日快照样本') +
-      industryMiniMetric('最强行业', esc(summary?.strongest_sector || '-'), '按行业动量排序') +
+      industryMiniMetric('最强行业', summary?.strongest_sector || '-', summary?.strongest_sector_note || '按行业动量排序') +
       '</div>' +
       (hasSnapshotCoverage && noMaturedSnapshotYet
         ? '<div class="industry-feedback-empty" style="margin-top:10px">快照历史已经开始积累，但当前还没有成熟到 10/30/60 日窗口的行业级样本，这不是链路异常。</div>'
@@ -1147,6 +1407,7 @@
         industryMiniMetric('买入信号', fmt(item.recent_buy_signal_count || 0), '涉及股票 ' + fmt(item.recent_buy_signal_stock_count || 0)) +
         industryMiniMetric('候选股票', fmt(item.candidate_count || 0), 'Setup ' + fmt(item.setup_candidate_count || 0)) +
         industryMiniMetric('质量强', fmt(item.quality_strong_count || 0), '阶段强 ' + fmt(item.stage_strong_count || 0)) +
+        industryMiniMetric('Qlib前瞻', item.next_rotation_score != null ? scoreNum(item.next_rotation_score) : '-', item.next_rotation_label || (item.high_conviction_count ? ('高置信 ' + fmt(item.high_conviction_count)) : '等待 Qlib 覆盖')) +
         industryMiniMetric('轮动分', scoreNum(item.rotation_score), '短排 ' + fmt(item.rotation_rank_1m || 0) + ' · 长排 ' + fmt(item.rotation_rank_3m || 0)) +
         industryMiniMetric('行业顺风', scoreNum(item.avg_tailwind_score), '均综合 ' + scoreNum(item.avg_composite_score)) +
         '</div>' +
@@ -1183,7 +1444,7 @@
     var c = el('industryViewContainer');
     if (!c) return;
     c.innerHTML = '<div class="panel"><div class="muted">加载行业研究背景中...</div></div>';
-    var r = await apiCached('/api/screening/industry-overview?topn=4', SHORT_CACHE_TTL_MS);
+    var r = await loadIndustryOverviewSummary();
     industryViewState.setData(r?.data || []);
     industryViewState.setSummary(r?.summary || null);
     renderIndustryView(industryViewState.getSummary(), industryViewState.getData());
@@ -1234,60 +1495,31 @@
     if (filterArea) { filterArea.innerHTML = renderStockFilters(); bindStockFilters(); }
 
     var c = el('stockListContainer');
-    var emptyCols = 8;
-    var colgroup = '<colgroup><col style="width:130px"><col style="width:110px"><col style="width:140px"><col style="width:180px"><col style="width:100px"><col style="width:100px"><col style="width:70px"><col style="width:110px"></colgroup>';
-    var head = '<tr><th>股票</th><th>信号 / 执行</th><th>来源 / 行业</th><th>综合评分</th><th>报告期</th><th>公告</th><th title="当前持仓机构总数 (其中可跟家数)">机构</th><th>标签</th></tr>';
-    var row = function (s, idx) {
-      // 信号 + 执行档合并
-      var gateHtml = stockGateTag(s);
-      var signalHtml = s.setup_tag
-        ? setupBadge(s.setup_tag, s.setup_priority, s.setup_confidence)
-        : '<span class="muted" style="font-size:11px">' + esc(s.path_state || '-') + '</span>';
-      var signalGateHtml = '<div style="line-height:1.5">' + signalHtml + '<div style="margin-top:3px">' + gateHtml + '</div></div>';
-      var source = stockSourceName(s);
-      var industry = s.setup_industry_name || s.sw_level3 || s.sw_level2 || s.sw_level1 || '';
-      var sourceIndustryHtml = '<div style="line-height:1.5"><div style="font-weight:600;font-size:12px">' + esc(source) + '</div>' +
-        (industry ? '<div style="font-size:11px;color:#94a3b8">' + esc(industry) + '</div>' : '') + '</div>';
-      var reportHtml = fmtDate(s.latest_report_date) + ' ' + daysAgoPill(s.latest_report_date);
-      var noticeHtml = fmtDate(s.latest_notice_date) + ' ' + daysAgoPill(s.latest_notice_date);
-      var scoreHtml = stockCompositeCell(s);
-      // 标签列：选股信号 + 板块动量 + 双重确认
-      var tagParts = [];
-      if (s._screen) {
-        if (s._screen.f1_hit) tagParts.push('<span class="tag tag-sm" style="background:#3b82f6;color:#fff" title="MA突破">F1</span>');
-        if (s._screen.f3_hit) tagParts.push('<span class="tag tag-sm" style="background:#8b5cf6;color:#fff" title="趋势跟踪">F3</span>');
-        if (s._screen.f5_hit) tagParts.push('<span class="tag tag-sm" style="background:#f59e0b;color:#fff" title="MACD金叉">F5</span>');
-      }
-      if (s._dual_confirm) {
-        tagParts.push('<span class="tag tag-sm" style="background:#10b981;color:#fff" title="机构+板块双重确认">双确</span>');
-      } else if (s._sector_trend) {
-        var tc = s._sector_trend === 'bullish' ? '#10b981' : s._sector_trend === 'recovering' ? '#3b82f6' : s._sector_trend === 'weakening' ? '#f59e0b' : '#94a3b8';
-        var trendLabel = { bullish: '\u770b\u591a', recovering: '\u56de\u5347', weakening: '\u8f6c\u5f31', bearish: '\u770b\u7a7a', consolidating: '\u9707\u8361' }[s._sector_trend] || s._sector_trend;
-        tagParts.push('<span style="color:' + tc + ';font-size:11px">' + esc(trendLabel) + '</span>');
-      }
-      var tagsHtml = tagParts.length ? '<div style="display:flex;flex-wrap:wrap;gap:3px">' + tagParts.join('') + '</div>' : '<span class="muted">-</span>';
-      // 机构
-      var holderTotal = (s.holder_total != null) ? s.holder_total : (s.inst_count_t0 || 0);
-      var holderFollow = s.holder_follow_count || 0;
-      var holderHtml = '<span style="font-size:12px;color:#0f172a">' + holderTotal + '</span>' +
-        (holderFollow > 0
-          ? ' <span style="font-size:11px;color:#059669;font-weight:600" title="可跟机构数">(' + holderFollow + ')</span>'
-          : '');
-      return '<tr data-stock-idx="' + idx + '">' +
+    var emptyCols = 11;
+    var colgroup = '<colgroup><col style="width:136px"><col style="width:108px"><col style="width:126px"><col style="width:126px"><col style="width:92px"><col style="width:96px"><col style="width:96px"><col style="width:96px"><col style="width:96px"><col style="width:128px"><col style="width:112px"></colgroup>';
+    var head = '<tr><th>股票</th><th>研究结论</th><th>报告期</th><th>公告日</th><th title="当前持仓机构总数与执行分布">机构</th><th>发现分</th><th>质量分</th><th>阶段分</th><th>预测分</th><th>综合 / 池子</th><th>TDX选股</th></tr>';
+    var row = function (s) {
+      var screeningHtml = stockScreeningInline(s);
+      return '<tr data-stock-code="' + esc(s.stock_code) + '">' +
         '<td>' + stockCell(s.stock_code, s.stock_name) + '</td>' +
-        '<td>' + signalGateHtml + '</td>' +
-        '<td>' + sourceIndustryHtml + '</td>' +
-        '<td>' + scoreHtml + '</td>' +
-        '<td data-sort-value="' + esc(fmtDate(s.latest_report_date)) + '">' + reportHtml + '</td>' +
-        '<td data-sort-value="' + esc(fmtDate(s.latest_notice_date)) + '">' + noticeHtml + '</td>' +
-        '<td>' + holderHtml + '</td>' +
-        '<td>' + tagsHtml + '</td>' +
+        '<td>' + stockResearchCell(s) + '</td>' +
+        '<td data-sort-value="' + esc(String(s.latest_report_date || '')) + '">' + stockDateSummaryCell(s.latest_report_date) + '</td>' +
+        '<td data-sort-value="' + esc(String(s.latest_notice_date || '')) + '">' + stockDateSummaryCell(s.latest_notice_date) + '</td>' +
+        '<td data-sort-value="' + esc(String(s.holder_total != null ? s.holder_total : (s.inst_count_t0 || 0))) + '">' + stockHolderCoverageCell(s) + '</td>' +
+        '<td data-sort-value="' + esc(String(stockScoreValue(s, 'discovery') != null ? stockScoreValue(s, 'discovery') : -1)) + '">' + stockDimensionCell(s, 'discovery') + '</td>' +
+        '<td data-sort-value="' + esc(String(stockScoreValue(s, 'quality') != null ? stockScoreValue(s, 'quality') : -1)) + '">' + stockDimensionCell(s, 'quality') + '</td>' +
+        '<td data-sort-value="' + esc(String(stockScoreValue(s, 'stage') != null ? stockScoreValue(s, 'stage') : -1)) + '">' + stockDimensionCell(s, 'stage') + '</td>' +
+        '<td data-sort-value="' + esc(String(stockScoreValue(s, 'forecast') != null ? stockScoreValue(s, 'forecast') : -1)) + '">' + stockDimensionCell(s, 'forecast') + '</td>' +
+        '<td data-sort-value="' + esc(String(s.composite_priority_score != null ? s.composite_priority_score : -1)) + '">' + stockCompositeCell(s) + '</td>' +
+        '<td data-sort-value="' + esc(String(screeningHitCount(s._screen))) + '">' + screeningHtml + '</td>' +
         '</tr>';
     };
-    var data = stockListState.getData() || [];
-    renderStockResearchSummary(data);
-    if (!data.length) {
+    var sourceData = stockListState.getData() || [];
+    var data = stockSortRows(sourceData);
+    renderStockResearchSummary(sourceData, industryViewState.getSummary(), stockListState.getSummary());
+    if (!sourceData.length) {
       c.innerHTML = '<div class="data-shell"><div class="table-scroll-wrap"><table class="data-table data-table-compact data-table-cards">' + colgroup + '<thead>' + head + '</thead><tbody><tr><td class="empty-row" colspan="' + emptyCols + '">暂无数据</td></tr></tbody></table></div></div>';
+      bindStockListInteractions();
       return;
     }
     var renderSeq = ++_stockListRenderSeq;
@@ -1319,11 +1551,25 @@
         return;
       }
       applyStockFilters();
+      bindStockListInteractions();
       scheduleSortableTables('stockListContainer');
     }
 
     requestAnimationFrame(flushChunk);
   }
+
+  function bindStockListInteractions() {
+    var container = el('stockListContainer');
+    if (!container || container.dataset.detailBound === '1') return;
+    container.dataset.detailBound = '1';
+    container.addEventListener('click', function (event) {
+      if (event.target.closest('[onclick],a,button,input,textarea,select,label')) return;
+      var row = event.target.closest('tr[data-stock-code]');
+      if (!row || !container.contains(row)) return;
+      toggleStockDetail(row.dataset.stockCode, row);
+    });
+  }
+
   function switchStockDim() { renderStockList(); }
 
   // ============================================================
@@ -1466,14 +1712,14 @@
     if (cands?.data?.length) {
       sections.push('<div style="margin-bottom:18px"><div style="font-size:14px;font-weight:700;margin-bottom:8px">研究候选</div>' +
         candHead + cands.data.map(function (s) {
-          return '<tr><td>' + stockCell(s.stock_code, s.stock_name) + '</td><td>' + stockSignalCell(s) + '</td><td>' + stockExecutionCell(s) + '</td><td>' + sourceInstitutionCell(s) + '</td><td>' + stockReportCell(s) + '</td><td>' + stockCompositeCell(s) + '</td></tr>';
+          return '<tr><td>' + stockCell(s.stock_code, s.stock_name) + '</td><td>' + stockSignalCell(s) + '</td><td>' + stockExecutionCell(s) + '</td><td>' + sourceInstitutionCell(s) + '</td><td>' + stockReportCell(s) + '</td><td>' + stockCompositeCell(s) + stockAttentionVerdictCell(s, { withReason: true }) + '</td></tr>';
         }).join('') + '</tbody></table></div>');
     }
     var head = '<table class="data-table"><thead><tr><th>股票</th><th>入池日期</th><th>入池价</th><th>理由</th><th>当前Setup</th><th>来源</th><th>至今</th><th>最大涨</th><th>最大撤</th><th>状态</th></tr></thead><tbody>';
     if (r?.data?.length) {
       sections.push('<div><div style="font-size:14px;font-weight:700;margin-bottom:8px">手工股票池</div>' +
         head + r.data.map(function (w) {
-          return '<tr><td>' + stockCell(w.stock_code, w.stock_name) + '</td><td>' + fmtDate(w.added_date) + '</td><td>' + (w.added_price || '-') + '</td><td>' + esc(w.added_reason || '') + '</td><td>' + setupSummaryCell(w) + '</td><td>' + esc(w.source_institution || '') + '</td><td>' + fmtGain(w.gain_since_added) + '</td><td>' + fmtGain(w.max_gain) + '</td><td>' + (w.max_drawdown != null ? '-' + w.max_drawdown.toFixed(1) + '%' : '-') + '</td><td>' + esc(w.status || '') + '</td></tr>';
+          return '<tr><td>' + stockCell(w.stock_code, w.stock_name) + '</td><td>' + fmtDate(w.added_date) + '</td><td>' + (w.added_price || '-') + '</td><td>' + esc(w.added_reason || '') + '</td><td>' + setupSummaryCell(w) + stockAttentionVerdictCell(w, { withReason: true }) + '</td><td>' + esc(w.source_institution || '') + '</td><td>' + fmtGain(w.gain_since_added) + '</td><td>' + fmtGain(w.max_gain) + '</td><td>' + (w.max_drawdown != null ? '-' + w.max_drawdown.toFixed(1) + '%' : '-') + '</td><td>' + esc(w.status || '') + '</td></tr>';
         }).join('') + '</tbody></table></div>');
     } else {
       sections.push('<div><div style="font-size:14px;font-weight:700;margin-bottom:8px">手工股票池</div>' +
@@ -1486,7 +1732,7 @@
           var gain10 = s.matured_10d ? fmtGain(s.gain_10d) : '<span class="muted">待成熟</span>';
           var gain30 = s.matured_30d ? fmtGain(s.gain_30d) : '<span class="muted">待成熟</span>';
           var gain60 = s.matured_60d ? fmtGain(s.gain_60d) : '<span class="muted">待成熟</span>';
-          return '<tr><td>' + fmtDate(s.snapshot_date) + '</td><td>' + stockCell(s.stock_code, s.stock_name) + '</td><td>' + stockCompositeCell(s) + '</td><td>' + setupSummaryCell(s) + '</td><td>' + esc(s.setup_inst_name || '-') + '</td><td>' + gain10 + '</td><td>' + gain30 + '</td><td>' + gain60 + '</td><td>' + fmtGain(s.gain_to_now) + '</td></tr>';
+          return '<tr><td>' + fmtDate(s.snapshot_date) + '</td><td>' + stockCell(s.stock_code, s.stock_name) + '</td><td>' + stockCompositeCell(s) + stockAttentionVerdictCell(s, { withReason: true }) + '</td><td>' + setupSummaryCell(s) + '</td><td>' + esc(s.setup_inst_name || '-') + '</td><td>' + gain10 + '</td><td>' + gain30 + '</td><td>' + gain60 + '</td><td>' + fmtGain(s.gain_to_now) + '</td></tr>';
         }).join('') + '</tbody></table></div>');
     }
     c.innerHTML = sections.join('');
@@ -1501,35 +1747,30 @@
       '</div>';
   }
 
+  function qualityScoreSourceMeta(item) {
+    if (!item) return '';
+    var source = item.company_quality_score_source === 'quality_feature_v1' ? '质量快照' : '评分兜底';
+    var parts = [source];
+    if (item.company_quality_score_source === 'quality_feature_v1' && item.quality_feature_snapshot_date) {
+      parts.push('快照 ' + fmtDate(item.quality_feature_snapshot_date));
+    }
+    return parts.join(' · ');
+  }
+
   function validationStockTable(rows, reasonField) {
     if (!rows || !rows.length) return '<div class="muted" style="font-size:12px">暂无样本。</div>';
-    return '<table class="data-table data-table-compact"><thead><tr><th>股票</th><th>池子</th><th>新 / 旧</th><th>质量 / 阶段 / 预测</th><th>原因</th></tr></thead><tbody>' +
+    return '<table class="data-table data-table-compact"><thead><tr><th>股票</th><th>池子</th><th>综合 / 原始</th><th>质量 / 阶段 / 预测</th><th>原因</th></tr></thead><tbody>' +
       rows.map(function (item) {
         var reason = item[reasonField] || item.priority_pool_reason || item.composite_cap_reason || '-';
+        var qualityMeta = [item.stock_archetype || '待分类'];
+        var qualitySourceMeta = qualityScoreSourceMeta(item);
+        if (qualitySourceMeta) qualityMeta.push(qualitySourceMeta);
         return '<tr>' +
           '<td>' + stockCell(item.stock_code, item.stock_name) + '</td>' +
           '<td>' + priorityPoolTag(item.priority_pool) + '</td>' +
-          '<td><div style="font-size:12px;color:#0f172a;font-weight:600">综合 ' + scoreNum(item.composite_priority_score) + '</div><div class="muted" style="font-size:10px">Legacy ' + scoreNum(item.action_score) + '</div></td>' +
-          '<td><div style="font-size:12px;color:#0f172a">质 ' + scoreNum(item.company_quality_score) + ' · 阶 ' + scoreNum(item.stage_score) + ' · 测 ' + scoreNum(item.forecast_score) + '</div><div class="muted" style="font-size:10px">' + esc(item.stock_archetype || '待分类') + '</div></td>' +
+          '<td><div style="font-size:12px;color:#0f172a;font-weight:600">综合 ' + scoreNum(item.composite_priority_score) + '</div><div class="muted" style="font-size:10px">原始 ' + scoreNum(item.raw_composite_priority_score) + '</div></td>' +
+          '<td><div style="font-size:12px;color:#0f172a">质 ' + scoreNum(item.company_quality_score) + ' · 阶 ' + scoreNum(item.stage_score) + ' · 测 ' + scoreNum(item.forecast_score) + '</div><div class="muted" style="font-size:10px">' + esc(qualityMeta.join(' · ')) + '</div></td>' +
           '<td><div style="font-size:11px;color:#475569;line-height:1.5">' + esc(reason) + '</div></td>' +
-          '</tr>';
-      }).join('') +
-      '</tbody></table>';
-  }
-
-  function validationRankTable(rows, mode) {
-    if (!rows || !rows.length) return '<div class="muted" style="font-size:12px">暂无明显位次变化。</div>';
-    return '<table class="data-table data-table-compact"><thead><tr><th>股票</th><th>新排序</th><th>旧排序</th><th>位次变化</th><th>当前状态</th></tr></thead><tbody>' +
-      rows.map(function (item) {
-        var delta = Number(item.rank_delta || 0);
-        var deltaText = (delta >= 0 ? '+' : '') + delta;
-        var deltaColor = mode === 'promoted' ? '#166534' : '#b91c1c';
-        return '<tr>' +
-          '<td>' + stockCell(item.stock_code, item.stock_name) + '</td>' +
-          '<td>#' + fmt(item.composite_rank) + '</td>' +
-          '<td>#' + fmt(item.legacy_rank) + '</td>' +
-          '<td><span style="font-size:12px;font-weight:700;color:' + deltaColor + '">' + esc(deltaText) + '</span></td>' +
-          '<td><div style="font-size:12px;color:#0f172a">' + priorityPoolTag(item.priority_pool) + '</div><div class="muted" style="font-size:10px;margin-top:3px">综合 ' + scoreNum(item.composite_priority_score) + ' · Legacy ' + scoreNum(item.action_score) + '</div></td>' +
           '</tr>';
       }).join('') +
       '</tbody></table>';
@@ -1561,39 +1802,281 @@
       '</tbody></table>';
   }
 
-  function validationSnapshotRankSummaryTable(rows) {
-    if (!rows || !rows.length) return '<div class="muted" style="font-size:12px">暂无成熟快照日，暂时还不能做快照期后验对比。</div>';
-    var grouped = {};
-    rows.forEach(function (item) {
-      grouped[item.topn] = grouped[item.topn] || {};
-      grouped[item.topn][item.method] = item;
-    });
-    return '<table class="data-table data-table-compact"><thead><tr><th>TopN</th><th>新综合排序</th><th>旧 action_score</th><th>重合样本</th></tr></thead><tbody>' +
-      Object.keys(grouped).sort(function (a, b) { return Number(a) - Number(b); }).map(function (key) {
-        var composite = grouped[key].composite || {};
-        var legacy = grouped[key].legacy || {};
+  function validationAttentionPoolTable(rows) {
+    if (!rows || !rows.length) return '<div class="muted" style="font-size:12px">暂无池子 attention 数据。</div>';
+    return '<table class="data-table data-table-compact"><thead><tr><th>池子</th><th>覆盖</th><th>增强</th><th>拥挤</th><th>均确分</th><th>均折扣</th><th>均分差</th><th>近20日</th></tr></thead><tbody>' +
+      rows.map(function (item) {
         return '<tr>' +
-          '<td>Top' + esc(String(key)) + '</td>' +
-          '<td><div>' + fmtGain(composite.avg_gain_30d) + '</div><div class="muted" style="font-size:10px">样本 ' + fmt(composite.sample_count || 0) + ' · 胜率 ' + pct(composite.win_rate_30d) + ' · 回撤 ' + (composite.avg_drawdown_30d != null ? '-' + Number(composite.avg_drawdown_30d).toFixed(1) + '%' : '-') + '</div></td>' +
-          '<td><div>' + fmtGain(legacy.avg_gain_30d) + '</div><div class="muted" style="font-size:10px">样本 ' + fmt(legacy.sample_count || 0) + ' · 胜率 ' + pct(legacy.win_rate_30d) + ' · 回撤 ' + (legacy.avg_drawdown_30d != null ? '-' + Number(legacy.avg_drawdown_30d).toFixed(1) + '%' : '-') + '</div></td>' +
-          '<td>' + fmt(composite.overlap_count || 0) + '</td>' +
+          '<td>' + priorityPoolTag(item.priority_pool) + '</td>' +
+          '<td>' + fmt(item.attention_covered_count || 0) + '</td>' +
+          '<td>' + fmt(item.attention_boosted_count || 0) + '</td>' +
+          '<td>' + fmt(item.attention_crowded_count || 0) + '</td>' +
+          '<td>' + scoreNum(item.avg_attention_score) + '</td>' +
+          '<td>' + scoreNum(item.avg_crowding_penalty) + '</td>' +
+          '<td>' + signedScore(item.avg_score_delta) + '</td>' +
+          '<td>' + fmtGain(item.avg_price_20d_pct) + '</td>' +
           '</tr>';
       }).join('') +
       '</tbody></table>';
   }
 
-  function validationSnapshotRankHistoryTable(rows) {
-    if (!rows || !rows.length) return '<div class="muted" style="font-size:12px">暂无成熟快照日。</div>';
-    return '<table class="data-table data-table-compact"><thead><tr><th>快照日</th><th>新综合 Top20</th><th>旧 action_score Top20</th><th>重合</th></tr></thead><tbody>' +
+  function validationAttentionImpactTable(rows) {
+    if (!rows || !rows.length) return '<div class="muted" style="font-size:12px">暂无样本。</div>';
+    return '<table class="data-table data-table-compact"><thead><tr><th>股票</th><th>当前池子</th><th>外部裁决</th><th>Raw → 综合</th><th>近20日</th><th>说明</th></tr></thead><tbody>' +
       rows.map(function (item) {
+        var signalHtml = attentionSignalTag(item.external_attention_signal) || '<span class="stock-attention-pill stock-attention-pill--neutral">外部覆盖</span>';
+        var signalMeta = [];
+        if (item.external_attention_score != null) signalMeta.push('确 ' + scoreNum(item.external_attention_score));
+        if (item.external_crowding_penalty != null && Number(item.external_crowding_penalty) > 0) signalMeta.push('挤 ' + scoreNum(item.external_crowding_penalty));
+        var reason = item.priority_pool_reason || item.composite_cap_reason || '-';
+        var delta = (item.composite_priority_score != null && item.raw_composite_priority_score != null)
+          ? (Number(item.composite_priority_score) - Number(item.raw_composite_priority_score))
+          : null;
         return '<tr>' +
-          '<td>' + esc(fmtDate(item.snapshot_date)) + '</td>' +
-          '<td><div>' + fmtGain(item.composite_avg_gain_30d) + '</div><div class="muted" style="font-size:10px">样本 ' + fmt(item.composite_count || 0) + ' · 胜率 ' + pct(item.composite_win_rate_30d) + '</div></td>' +
-          '<td><div>' + fmtGain(item.legacy_avg_gain_30d) + '</div><div class="muted" style="font-size:10px">样本 ' + fmt(item.legacy_count || 0) + ' · 胜率 ' + pct(item.legacy_win_rate_30d) + '</div></td>' +
-          '<td>' + fmt(item.top20_overlap || 0) + '</td>' +
+          '<td>' + stockCell(item.stock_code, item.stock_name) + '</td>' +
+          '<td><div style="line-height:1.45">' + priorityPoolTag(item.priority_pool) + '<div class="muted" style="font-size:10px;margin-top:3px">' + esc(item.stock_archetype || '待分类') + '</div></div></td>' +
+          '<td><div style="line-height:1.45">' + signalHtml + (signalMeta.length ? '<div class="muted" style="font-size:10px;margin-top:4px">' + esc(signalMeta.join(' · ')) + '</div>' : '') + '</div></td>' +
+          '<td><div style="font-size:12px;font-weight:600;color:#0f172a">' + scoreNum(item.raw_composite_priority_score) + ' → ' + scoreNum(item.composite_priority_score) + '</div><div class="muted" style="font-size:10px;margin-top:3px">Δ ' + signedScore(delta) + '</div></td>' +
+          '<td>' + fmtGain(item.price_20d_pct) + '</td>' +
+          '<td><div style="font-size:11px;color:#475569;line-height:1.5">' + esc(reason) + '</div></td>' +
           '</tr>';
       }).join('') +
       '</tbody></table>';
+  }
+
+  function validationAttentionMiniStat(label, valueHtml, tone) {
+    return '<div class="validation-attention-mini-stat' + (tone ? ' validation-attention-mini-stat--' + tone : '') + '">' +
+      '<div class="validation-attention-mini-label">' + esc(label) + '</div>' +
+      '<div class="validation-attention-mini-value">' + (valueHtml || '-') + '</div>' +
+      '</div>';
+  }
+
+  function validationAttentionMeter(segments) {
+    var total = 0;
+    (segments || []).forEach(function (segment) {
+      total += Math.max(Number(segment && segment.value || 0), 0);
+    });
+    if (total <= 0) {
+      return '<div class="validation-attention-meter validation-attention-meter--empty"><span class="validation-attention-meter-segment validation-attention-meter-segment--empty" style="width:100%"></span></div>';
+    }
+    return '<div class="validation-attention-meter">' +
+      segments.map(function (segment) {
+        var value = Math.max(Number(segment && segment.value || 0), 0);
+        if (!value) return '';
+        return '<span class="validation-attention-meter-segment validation-attention-meter-segment--' + (segment.tone || 'neutral') + '" style="width:' + (value / total * 100).toFixed(1) + '%"></span>';
+      }).join('') +
+      '</div>';
+  }
+
+  function validationAttentionChip(label, valueHtml, tone) {
+    return '<span class="validation-attention-chip validation-attention-chip--' + (tone || 'neutral') + '">' +
+      '<span class="validation-attention-chip-label">' + esc(label) + '</span>' +
+      '<span class="validation-attention-chip-value">' + (valueHtml || '-') + '</span>' +
+      '</span>';
+  }
+
+  function validationAttentionSummaryCard(label, valueHtml, subtext, bodyHtml, tone) {
+    return '<div class="validation-attention-summary-card validation-attention-summary-card--' + (tone || 'neutral') + '">' +
+      '<div class="validation-attention-summary-label">' + esc(label) + '</div>' +
+      '<div class="validation-attention-summary-value">' + (valueHtml || '-') + '</div>' +
+      (subtext ? '<div class="validation-attention-summary-sub">' + esc(subtext) + '</div>' : '') +
+      (bodyHtml ? '<div class="validation-attention-summary-body">' + bodyHtml + '</div>' : '') +
+      '</div>';
+  }
+
+  function validationAttentionDeltaMeter(value, maxAbs) {
+    if (value == null) return '<div class="validation-attention-delta-meter"></div>';
+    var safeMax = Math.max(Number(maxAbs || 0), 1);
+    var width = Math.min(Math.abs(Number(value)) / safeMax * 100, 100);
+    var tone = Number(value) >= 0 ? 'good' : 'warn';
+    return '<div class="validation-attention-delta-meter"><span class="validation-attention-delta-meter-fill validation-attention-delta-meter-fill--' + tone + '" style="width:' + width.toFixed(1) + '%"></span></div>';
+  }
+
+  function validationAttentionDeltaRow(label, value, maxAbs) {
+    return '<div class="validation-attention-delta-row">' +
+      '<div class="validation-attention-delta-label">' + esc(label) + '</div>' +
+      validationAttentionDeltaMeter(value, maxAbs) +
+      '<div class="validation-attention-delta-value ' + (value != null && Number(value) >= 0 ? 'positive' : 'negative') + '">' + signedScore(value) + '</div>' +
+      '</div>';
+  }
+
+  function validationAttentionPoolVisual(rows) {
+    if (!rows || !rows.length) return '<div class="muted" style="font-size:12px">暂无池子 attention 数据。</div>';
+    return '<div class="validation-attention-pool-grid">' +
+      rows.map(function (item) {
+        var total = Math.max(Number(item.total || 0), 0);
+        var covered = Math.max(Number(item.attention_covered_count || 0), 0);
+        var boosted = Math.max(Number(item.attention_boosted_count || 0), 0);
+        var crowded = Math.max(Number(item.attention_crowded_count || 0), 0);
+        var coveredBase = Math.max(covered, boosted + crowded, 0);
+        var neutral = Math.max(coveredBase - boosted - crowded, 0);
+        var coverPct = total > 0 ? covered / total * 100 : 0;
+        var tone = item.priority_pool === 'A池' ? 'focus'
+          : item.priority_pool === 'B池' ? 'good'
+            : item.priority_pool === 'C池' ? 'accent'
+              : 'neutral';
+        return '<div class="validation-attention-pool-card validation-attention-pool-card--' + tone + '">' +
+          '<div class="validation-attention-pool-head">' +
+          '<div>' +
+          '<div class="validation-attention-pool-title">' + priorityPoolTag(item.priority_pool) + '</div>' +
+          '<div class="validation-attention-pool-sub">覆盖 ' + fmt(covered) + ' / ' + fmt(total) + ' · 均确分 ' + scoreNum(item.avg_attention_score) + '</div>' +
+          '</div>' +
+          '<div class="validation-attention-pool-cover">' + (total > 0 ? coverPct.toFixed(0) + '%' : '-') + '</div>' +
+          '</div>' +
+          '<div class="validation-attention-meter-wrap">' +
+          validationAttentionMeter([
+            { value: boosted, tone: 'good' },
+            { value: neutral, tone: 'neutral' },
+            { value: crowded, tone: 'warn' }
+          ]) +
+          '<div class="validation-attention-meter-legend">' +
+          validationAttentionChip('增强', fmt(boosted), 'good') +
+          validationAttentionChip('中性', fmt(neutral), 'neutral') +
+          validationAttentionChip('拥挤', fmt(crowded), 'warn') +
+          '</div>' +
+          '</div>' +
+          '<div class="validation-attention-pool-stats">' +
+          validationAttentionMiniStat('均确分', scoreNum(item.avg_attention_score), 'accent') +
+          validationAttentionMiniStat('均折扣', scoreNum(item.avg_crowding_penalty), 'warn') +
+          validationAttentionMiniStat('均分差', signedScore(item.avg_score_delta), item.avg_score_delta != null && Number(item.avg_score_delta) >= 0 ? 'good' : 'warn') +
+          validationAttentionMiniStat('近20日', fmtGain(item.avg_price_20d_pct)) +
+          '</div>' +
+          '</div>';
+      }).join('') +
+      '</div>';
+  }
+
+  function validationAttentionSummaryVisual(summary, attentionSummary) {
+    summary = summary || {};
+    attentionSummary = attentionSummary || {};
+    var signaled = Number(attentionSummary.attention_signaled_count || 0);
+    var boosted = Number(attentionSummary.boosted_signal_count || 0);
+    var crowded = Number(attentionSummary.crowded_signal_count || 0);
+    var promotedToA = Number(attentionSummary.promoted_to_a_count || 0);
+    var promotedToB = Number(attentionSummary.promoted_to_b_count || 0);
+    var promoted = promotedToA + promotedToB;
+    var demoted = Number(attentionSummary.demoted_by_crowding_count || 0);
+    var crowdedAB = Number(summary.ab_pool_crowded_count || 0);
+    var crowdedBase = Math.max(crowdedAB, demoted, 0);
+    var maxAbsDelta = Math.max(Math.abs(Number(attentionSummary.boosted_avg_delta || 0)), Math.abs(Number(attentionSummary.crowded_avg_delta || 0)), 1);
+    return '<div class="validation-attention-summary-grid">' +
+      validationAttentionSummaryCard(
+        '当前信号',
+        fmt(signaled),
+        '增强 ' + fmt(boosted) + ' · 拥挤 ' + fmt(crowded),
+        validationAttentionMeter([
+          { value: boosted, tone: 'good' },
+          { value: crowded, tone: 'warn' }
+        ]) +
+        '<div class="validation-attention-chip-row">' +
+        validationAttentionChip('增强', fmt(boosted), 'good') +
+        validationAttentionChip('拥挤', fmt(crowded), 'warn') +
+        '</div>',
+        'accent'
+      ) +
+      validationAttentionSummaryCard(
+        '晋池确认',
+        fmt(promoted),
+        'A池 ' + fmt(promotedToA) + ' · B池 ' + fmt(promotedToB),
+        '<div class="validation-attention-chip-row">' +
+        validationAttentionChip('A池', fmt(promotedToA), 'focus') +
+        validationAttentionChip('B池', fmt(promotedToB), 'accent') +
+        validationAttentionChip('A池现存确认', fmt(summary.a_pool_confirm_count || 0), 'good') +
+        '</div>',
+        'focus'
+      ) +
+      validationAttentionSummaryCard(
+        '拥挤压制',
+        fmt(demoted),
+        'A/B池拥挤 ' + fmt(crowdedAB),
+        validationAttentionMeter([
+          { value: demoted, tone: 'warn' },
+          { value: Math.max(crowdedBase - demoted, 0), tone: 'neutral' }
+        ]) +
+        '<div class="validation-attention-chip-row">' +
+        validationAttentionChip('压回B池', fmt(demoted), 'warn') +
+        validationAttentionChip('池内拥挤', fmt(crowdedAB), 'neutral') +
+        '</div>',
+        'warn'
+      ) +
+      validationAttentionSummaryCard(
+        '均分差',
+        signedScore(attentionSummary.boosted_avg_delta),
+        '增强组对比拥挤组',
+        validationAttentionDeltaRow('增强组', attentionSummary.boosted_avg_delta, maxAbsDelta) +
+        validationAttentionDeltaRow('拥挤组', attentionSummary.crowded_avg_delta, maxAbsDelta),
+        'neutral'
+      ) +
+      '</div>';
+  }
+
+  function renderTurtleValidationPanel(turtle) {
+    var summary = turtle && turtle.summary || {};
+    var states = turtle && turtle.state_distribution || [];
+    var systems = turtle && turtle.system_distribution || [];
+    var bands = turtle && turtle.score_bands || [];
+    var hints = turtle && turtle.hints || [];
+    var methodology = turtle && turtle.methodology || '';
+    var stateTable = '<table class="data-table data-table-compact"><thead><tr><th>状态</th><th>样本</th><th>执行分</th><th>突破分</th><th>风险分</th><th>阶段分</th><th>预测分</th><th>近20日</th><th>A池</th><th>D池</th></tr></thead><tbody>' +
+      (states.length ? states.map(function (item) {
+        return '<tr>' +
+          '<td>' + turtleStateTag(item.turtle_setup_state) + '</td>' +
+          '<td>' + fmt(item.total) + '</td>' +
+          '<td>' + scoreNum(item.avg_execution_score) + '</td>' +
+          '<td>' + scoreNum(item.avg_breakout_score) + '</td>' +
+          '<td>' + scoreNum(item.avg_risk_score) + '</td>' +
+          '<td>' + scoreNum(item.avg_stage_score) + '</td>' +
+          '<td>' + scoreNum(item.avg_forecast_score) + '</td>' +
+          '<td>' + fmtGain(item.avg_price_20d_pct) + '</td>' +
+          '<td>' + fmt(item.a_pool_count) + '</td>' +
+          '<td>' + fmt(item.d_pool_count) + '</td>' +
+          '</tr>';
+      }).join('') : '<tr><td class="empty-row" colspan="10">暂无海龟状态样本</td></tr>') +
+      '</tbody></table>';
+    var systemTable = '<table class="data-table data-table-compact"><thead><tr><th>系统</th><th>样本</th><th>执行分</th><th>突破分</th><th>风险分</th><th>近20日</th></tr></thead><tbody>' +
+      (systems.length ? systems.map(function (item) {
+        return '<tr>' +
+          '<td>' + esc(turtleSystemLabel(item.preferred_system)) + '</td>' +
+          '<td>' + fmt(item.total) + '</td>' +
+          '<td>' + scoreNum(item.avg_execution_score) + '</td>' +
+          '<td>' + scoreNum(item.avg_breakout_score) + '</td>' +
+          '<td>' + scoreNum(item.avg_risk_score) + '</td>' +
+          '<td>' + fmtGain(item.avg_price_20d_pct) + '</td>' +
+          '</tr>';
+      }).join('') : '<tr><td class="empty-row" colspan="6">暂无海龟系统样本</td></tr>') +
+      '</tbody></table>';
+    var bandTable = '<table class="data-table data-table-compact"><thead><tr><th>执行分带</th><th>样本</th><th>均执行分</th><th>突破触发</th><th>退出触发</th><th>近20日</th></tr></thead><tbody>' +
+      (bands.length ? bands.map(function (item) {
+        return '<tr>' +
+          '<td>' + esc(item.band_label || '-') + '</td>' +
+          '<td>' + fmt(item.total) + '</td>' +
+          '<td>' + scoreNum(item.avg_execution_score) + '</td>' +
+          '<td>' + fmt(item.breakout_trigger_count) + '</td>' +
+          '<td>' + fmt(item.exit_trigger_count) + '</td>' +
+          '<td>' + fmtGain(item.avg_price_20d_pct) + '</td>' +
+          '</tr>';
+      }).join('') : '<tr><td class="empty-row" colspan="6">暂无海龟分带样本</td></tr>') +
+      '</tbody></table>';
+    return '<div class="validation-section-grid" style="margin-top:14px">' +
+      '<div class="panel validation-table-card">' +
+      '<div class="validation-section-head"><div><div class="validation-section-title">海龟执行验证</div><div class="validation-section-sub">' + esc(methodology || '用海龟执行状态观察突破、待突破和退出是否能把强弱股票分开。') + '</div></div></div>' +
+      '<div class="validation-kpi-grid">' +
+      validationMetricCard('海龟覆盖', fmt(summary.covered_stock_count || 0), '覆盖率 ' + pct(summary.coverage_ratio)) +
+      validationMetricCard('突破触发', fmt(summary.breakout_trigger_count || 0), '待突破 ' + fmt(summary.watchlist_count || 0)) +
+      validationMetricCard('退出触发', fmt(summary.exit_trigger_count || 0), '执行风险过滤') +
+      validationMetricCard('平均执行分', scoreNum(summary.avg_execution_score), '突破 ' + scoreNum(summary.avg_breakout_score) + ' · 风险 ' + scoreNum(summary.avg_risk_score)) +
+      validationMetricCard('近20日反馈', fmtGain(summary.avg_price_20d_pct), '海龟覆盖股票横截面') +
+      '</div>' +
+      (hints.length ? '<div class="validation-overlap-note">' + esc(hints.join(' · ')) + '</div>' : '') +
+      stateTable +
+      '</div>' +
+      '<div class="panel validation-table-card">' +
+      '<div class="validation-section-head"><div><div class="validation-section-title">系统 / 分带分布</div><div class="validation-section-sub">把 S1 / S2 和执行分带拆开，观察当前执行层是偏进攻还是偏风险过滤。</div></div></div>' +
+      systemTable +
+      '<div style="height:12px"></div>' +
+      bandTable +
+      '</div>' +
+      '</div>';
   }
 
   function renderValidationScopeBanner(scope) {
@@ -1639,17 +2122,17 @@
     var scope = report.scope || {};
     var summary = report.summary || {};
     var pools = report.pool_feedback || [];
+    var attentionLinkage = report.attention_linkage || {};
+    var attentionSummary = attentionLinkage.summary || {};
+    var turtleValidation = report.turtle_validation || {};
     var snapshotReplay = report.snapshot_pool_replay || {};
     var snapshotCoverage = snapshotReplay.coverage || {};
     var snapshotBaseline = snapshotReplay.baseline || {};
     var snapshotPools = snapshotReplay.by_pool || [];
     var snapshotHistory = snapshotReplay.history || [];
-    var snapshotRankCompare = report.snapshot_rank_compare || {};
-    var compare = report.legacy_compare || {};
     var anomalies = report.anomalies || {};
     var audit = report.audit || {};
     var qlibSummary = report.qlib_summary || {};
-    var overlap = compare.overlap || {};
     var snapshotPendingText = snapshotMaturityPendingText(
       {
         scored_snapshot_dates: summary.snapshot_scored_dates,
@@ -1662,10 +2145,6 @@
       },
       scope.sector ? ('行业 ' + scope.sector) : '全市场'
     );
-    var rankComparePendingText =
-      Number(summary.snapshot_scored_dates || 0) > 0 && Number(summary.snapshot_rank_matured_dates || 0) === 0
-        ? '快照期排序对比样本仍在积累中 · 已评分快照日 ' + fmt(summary.snapshot_scored_dates || 0)
-        : '';
     var poolTable = '<table class="data-table data-table-compact"><thead><tr><th>池子</th><th>股票数</th><th>Setup</th><th>封顶</th><th>均综合</th><th>均发现</th><th>均质量</th><th>均阶段</th><th>均预测</th><th>近20日反馈</th></tr></thead><tbody>' +
       (pools.length ? pools.map(function (item) {
         return '<tr>' +
@@ -1697,18 +2176,26 @@
           '</tr>';
       }).join('') : '<tr><td class="empty-row" colspan="9">暂无快照池回放数据</td></tr>') +
       '</tbody></table>';
+    var attentionPoolVisual = validationAttentionPoolVisual(pools);
+    var attentionSummaryVisual = validationAttentionSummaryVisual(summary, attentionSummary);
+    var turtleValidationPanel = renderTurtleValidationPanel(turtleValidation);
 
     return renderValidationScopeBanner(scope) +
       '<div class="validation-kpi-grid">' +
       validationMetricCard('评分覆盖', fmt(summary.stock_count || 0), '当前已分池股票总数') +
       validationMetricCard('A池', fmt(summary.a_pool_count || 0), '重点优先池') +
-      validationMetricCard('Top20重合', fmt(summary.overlap_top20 || 0), '新旧排序共同入围') +
+      validationMetricCard('快照30日成熟', fmt(snapshotBaseline.matured_30d_count || 0), '已形成30日后验的快照样本') +
+      validationMetricCard('外部晋池', fmt((summary.attention_promoted_to_a_count || 0) + (summary.attention_promoted_to_b_count || 0)), 'A池 ' + fmt(summary.attention_promoted_to_a_count || 0) + ' · B池 ' + fmt(summary.attention_promoted_to_b_count || 0)) +
+      validationMetricCard('拥挤压制', fmt(summary.crowding_demoted_count || 0), 'A/B池拥挤 ' + fmt(summary.ab_pool_crowded_count || 0)) +
       validationMetricCard('封顶股票', fmt(summary.capped_total || 0), '触发 Stage / Quality 封顶') +
       validationMetricCard('异常项', fmt(summary.anomaly_total || 0), '高分冲突或阶段错配') +
       validationMetricCard('审计分', scoreNum(summary.audit_score), '来自数据质量审计') +
+      validationMetricCard('外部信号', fmt(summary.attention_signaled_count || 0), '增强 ' + fmt(summary.attention_boosted_count || 0) + ' · 拥挤 ' + fmt(summary.attention_crowded_count || 0)) +
+      validationMetricCard('海龟覆盖', fmt(summary.turtle_covered_count || 0), '突破 ' + fmt(summary.turtle_breakout_trigger_count || 0) + ' · 待突破 ' + fmt(summary.turtle_watchlist_count || 0)) +
+      validationMetricCard('海龟退出', fmt(summary.turtle_exit_trigger_count || 0), '执行层风险过滤') +
       validationMetricCard('快照已评分', fmt(summary.snapshot_scored_rows || 0), '带四层主分的快照样本') +
       validationMetricCard('快照评分日', fmt(summary.snapshot_scored_dates || 0), '可用于历史分池回放') +
-      validationMetricCard('快照成熟日', fmt(summary.snapshot_rank_matured_dates || 0), '可用于新旧排序后验对比') +
+      validationMetricCard('快照60日成熟', fmt(snapshotBaseline.matured_60d_count || 0), '已形成60日后验的快照样本') +
       validationMetricCard('Qlib覆盖', fmt(summary.qlib_prediction_count || 0), esc(fmtDate(summary.qlib_predict_date) || '-')) +
       '</div>' +
       '<div class="validation-section-grid">' +
@@ -1736,6 +2223,20 @@
       '</div>' +
       '</div>' +
       '</div>' +
+      '<div class="validation-section-grid" style="margin-top:14px">' +
+      '<div class="panel validation-table-card">' +
+      '<div class="validation-section-head"><div><div class="validation-section-title">当前池子的外部关注分布</div><div class="validation-section-sub">把 attention 覆盖、增强、拥挤和当前分差按 A/B/C/D 池打平，直接看外部关注在当前池子里的分布。</div></div></div>' +
+      attentionPoolVisual +
+      '<div class="validation-overlap-note">A池确认增强 ' + fmt(summary.a_pool_confirm_count || 0) + ' · A/B池热度拥挤 ' + fmt(summary.ab_pool_crowded_count || 0) + ' · 增强组均分差 ' + signedScore(attentionSummary.boosted_avg_delta) + ' · 拥挤组均分差 ' + signedScore(attentionSummary.crowded_avg_delta) + '</div>' +
+      validationAttentionPoolTable(pools) +
+      '</div>' +
+      '<div class="panel validation-table-card">' +
+      '<div class="validation-section-head"><div><div class="validation-section-title">外部关注联动摘要</div><div class="validation-section-sub">这里不做前瞻回测，只解释当前 external attention 如何把股票推入更高池，或因 crowding 被主动压制。</div></div></div>' +
+      attentionSummaryVisual +
+      '<div class="validation-overlap-note">当前验证口径：这里只解释当前池子的 external attention 联动，不把近20日反馈当成前瞻回测。</div>' +
+      '</div>' +
+      '</div>' +
+      turtleValidationPanel +
       '<div class="panel validation-table-card" style="margin-top:14px">' +
       '<div class="validation-section-head"><div><div class="validation-section-title">Qlib 模型验证上下文</div><div class="validation-section-sub">Forecast 和与预测有关的验证，优先直接消费完整版 Qlib 的模型指标、预测覆盖和因子结构。</div></div></div>' +
       renderQlibSummaryBlock(qlibSummary, { title: '当前 Qlib 模型', note: '这里显示的是当前正在回流到 Forecast 的真实模型，而不是额外拼出来的并行预测口径。' }) +
@@ -1754,25 +2255,12 @@
       '</div>' +
       '<div class="validation-section-grid">' +
       '<div class="panel validation-table-card">' +
-      '<div class="validation-section-head"><div><div class="validation-section-title">快照期后验对比</div><div class="validation-section-sub">只看已经成熟 30 日的快照日，比较新综合排序和旧 action_score 排序在同一批候选中的后验表现。</div></div></div>' +
-      (rankComparePendingText ? '<div class="validation-overlap-note">' + esc(rankComparePendingText) + '</div>' : '') +
-      validationSnapshotRankSummaryTable(snapshotRankCompare.summary || []) +
+      '<div class="validation-section-head"><div><div class="validation-section-title">外部确认晋池样本</div><div class="validation-section-sub">这批股票原始四层分未到目标池门槛，但因为外部确认增强被推入更高池。</div></div></div>' +
+      validationAttentionImpactTable(attentionLinkage.promoted_samples || []) +
       '</div>' +
       '<div class="panel validation-table-card">' +
-      '<div class="validation-section-head"><div><div class="validation-section-title">快照期历史对比</div><div class="validation-section-sub">按快照日展开 Top20 的新旧排序后验，用来观察两套排序是否逐步分化。</div></div></div>' +
-      (rankComparePendingText ? '<div class="validation-overlap-note">' + esc(rankComparePendingText) + '</div>' : '') +
-      validationSnapshotRankHistoryTable(snapshotRankCompare.history || []) +
-      '</div>' +
-      '</div>' +
-      '<div class="validation-section-grid">' +
-      '<div class="panel validation-table-card">' +
-      '<div class="validation-section-head"><div><div class="validation-section-title">新排序上调样本</div><div class="validation-section-sub">对比口径：新排序 = 分池优先级 + 综合分；旧排序 = legacy action_score。</div></div></div>' +
-      '<div class="validation-overlap-note">Top20 重合 ' + fmt(overlap.top20 || 0) + ' · Top50 重合 ' + fmt(overlap.top50 || 0) + ' · Top100 重合 ' + fmt(overlap.top100 || 0) + '</div>' +
-      validationRankTable(compare.promoted || [], 'promoted') +
-      '</div>' +
-      '<div class="panel validation-table-card">' +
-      '<div class="validation-section-head"><div><div class="validation-section-title">旧排序更靠前样本</div><div class="validation-section-sub">这批股票说明新体系在主动压缩部分旧高分股的优先级。</div></div></div>' +
-      validationRankTable(compare.demoted || [], 'demoted') +
+      '<div class="validation-section-head"><div><div class="validation-section-title">热度拥挤压制样本</div><div class="validation-section-sub">这批股票说明 crowding penalty 正在主动压制短期过热的高分股。</div></div></div>' +
+      validationAttentionImpactTable(attentionLinkage.crowded_samples || []) +
       '</div>' +
       '</div>' +
       '<div class="validation-section-grid validation-section-grid-3">' +
@@ -1838,8 +2326,25 @@
     stopped: '#f59e0b',
     idle: '#e2e8f0'
   };
+  var AUDIT_SNAPSHOT_STORAGE_KEY = 'cm.audit.snapshot.v1';
+  function loadStoredAuditSnapshot() {
+    try {
+      var raw = window.localStorage ? window.localStorage.getItem(AUDIT_SNAPSHOT_STORAGE_KEY) : null;
+      if (!raw) return null;
+      var parsed = JSON.parse(raw);
+      return parsed && parsed.layers ? parsed : null;
+    } catch (e) {
+      return null;
+    }
+  }
+  function persistAuditSnapshot(audit) {
+    try {
+      if (!window.localStorage) return;
+      if (audit && audit.layers) window.localStorage.setItem(AUDIT_SNAPSHOT_STORAGE_KEY, JSON.stringify(audit));
+    } catch (e) {}
+  }
   var _uiRunning = false;
-  var _lastAuditSnapshot = null;
+  var _lastAuditSnapshot = loadStoredAuditSnapshot();
   var _auditRefreshPromise = null;
   var _activeRunContext = null;
   var _lastRunContext = null;
@@ -1858,8 +2363,50 @@
     colsample_bytree: 0.8,
     use_alpha158: true,
     use_financial: true,
-    use_institution: true
+    use_institution: true,
+    use_turtle: true,
+    use_quality: true,
+    use_stage: true,
+    use_northbound: false
   };
+  var _qlibDefaultParamsPromise = null;
+  var _qlibFeatureFlags = {
+    northbound: {
+      enabled: false,
+      label: '北向因子',
+      reason: '北向数据链尚未接通，当前训练固定不使用该特征。'
+    }
+  };
+
+  function updateQlibFeatureFlags(flags) {
+    if (!flags || typeof flags !== 'object') return;
+    Object.keys(flags).forEach(function (key) {
+      var current = _qlibFeatureFlags[key] || { enabled: true, label: key, reason: '' };
+      _qlibFeatureFlags[key] = Object.assign({}, current, flags[key] || {});
+    });
+  }
+
+  function qlibFeatureFlag(key) {
+    var current = _qlibFeatureFlags[key] || { enabled: true, label: key, reason: '' };
+    return Object.assign({}, current);
+  }
+
+  function qlibFeatureEnabled(key) {
+    return !!qlibFeatureFlag(key).enabled;
+  }
+
+  function applyQlibFeatureAvailability(params) {
+    var northboundFlag = qlibFeatureFlag('northbound');
+    var northboundEl = el('qlibUseNorthbound');
+    if (northboundEl) {
+      northboundEl.disabled = !northboundFlag.enabled;
+      northboundEl.checked = northboundFlag.enabled ? !!(params && params.use_northbound) : false;
+      northboundEl.title = northboundFlag.enabled ? '' : (northboundFlag.reason || '');
+    }
+    var featureHintEl = el('qlibFeatureHint');
+    if (featureHintEl) featureHintEl.textContent = northboundFlag.reason || '';
+  }
+
   var DOWNSTREAM_LABELS = {
     sync_market_data: ['计算收益', '构建当前关系', '机构画像', '行业统计', '生成股票列表', 'TDX选股筛选', '板块动量分析', '机构评分', '股票评分'],
     sync_financial: ['计算财务指标', 'TDX选股筛选'],
@@ -1870,9 +2417,12 @@
     build_current_rel: ['机构画像', '行业统计', '生成股票列表', '机构评分', '股票评分'],
     build_profiles: ['机构评分', '股票评分'],
     build_industry_stat: ['机构评分', '股票评分'],
-    build_trends: ['股票评分'],
+    build_trends: ['阶段特征构建', '预测特征构建', '股票评分'],
     calc_screening: ['股票评分'],
-    calc_sector_momentum: ['股票评分'],
+    calc_sector_momentum: ['阶段特征构建', '预测特征构建', '股票评分'],
+    build_external_attention: ['股票评分'],
+    build_stage_features: ['预测特征构建', '股票评分'],
+    build_forecast_features: ['股票评分'],
     calc_inst_scores: ['股票评分'],
   };
   var STEP_DEFAULTS = [
@@ -1890,12 +2440,33 @@
     { step_id: 'build_trends', step_name: '生成股票列表', status: 'idle', desc: '汇总当前持仓股的信号与趋势' },
     { step_id: 'calc_screening', step_name: 'TDX选股筛选', status: 'idle', desc: '运行通达信 F1/F3/F5 选股公式' },
     { step_id: 'calc_sector_momentum', step_name: '板块动量分析', status: 'idle', desc: '计算板块技术态势与双重确认信号' },
+    { step_id: 'build_external_attention', step_name: '外部关注快照', status: 'idle', desc: '同步千股千评与调研统计，更新外部关注快照' },
+    { step_id: 'build_stage_features', step_name: '阶段特征构建', status: 'idle', desc: '汇总趋势、行业与财务上下文，生成阶段特征' },
+    { step_id: 'build_forecast_features', step_name: '预测特征构建', status: 'idle', desc: '把最新阶段特征回流到预测特征层' },
     { step_id: 'calc_inst_scores', step_name: '机构评分', status: 'idle', desc: '多维度评分机构实力、胜率、稳定性' },
     { step_id: 'calc_stock_scores', step_name: '股票评分', status: 'idle', desc: '综合评分每只股票的行动价值' }
   ];
 
   function cloneStepDefinitions() {
     return STEP_DEFAULTS.map(function (step) { return Object.assign({}, step); });
+  }
+
+  function mergeStepDefinitions(steps) {
+    var known = {};
+    cloneStepDefinitions().forEach(function (step) {
+      known[step.step_id] = true;
+    });
+    var byId = {};
+    (steps || []).forEach(function (step) {
+      if (step && step.step_id) byId[step.step_id] = Object.assign({}, step);
+    });
+    var merged = cloneStepDefinitions().map(function (step) {
+      return Object.assign({}, step, byId[step.step_id] || {});
+    });
+    (steps || []).forEach(function (step) {
+      if (step && step.step_id && !known[step.step_id]) merged.push(Object.assign({}, step));
+    });
+    return merged;
   }
 
   function makePlannedSteps(stepIds, skipReasons) {
@@ -2025,12 +2596,55 @@
     return lines.join('');
   }
 
-  function isStepActiveInCurrentRun(stepId) {
-    if (!_uiRunning || !_activeRunContext || !stepId) return false;
-    var stepIds = _activeRunContext.step_ids || [];
-    if (Array.isArray(stepIds) && stepIds.length) return stepIds.indexOf(stepId) >= 0;
-    return _activeRunContext.step_id === stepId;
+  function renderFinancialSyncDetail(step) {
+    var detail = step.detail;
+    if (!detail) return '';
+    var lines = [];
+    var progressObj = null;
+    var summary = detail.summary;
+    if (summary && typeof summary.records === 'number') {
+      lines.push('<div style="font-size:10px;color:#64748b;margin-top:2px">新增记录 ' + fmt(summary.records) + ' 条</div>');
+    }
+    function stageLine(label, obj, stockLabel) {
+      if (!obj) return;
+      var text = label + ' ';
+      if (typeof obj.done_codes === 'number' && typeof obj.candidate_codes === 'number') {
+        text += obj.done_codes + '/' + obj.candidate_codes;
+      } else if (typeof obj.candidate_codes === 'number') {
+        text += '0/' + obj.candidate_codes;
+      } else {
+        text += obj.status || '';
+      }
+      if (typeof obj.rows === 'number') text += ' · ' + fmt(obj.rows) + '条';
+      if (typeof obj.success_codes === 'number' && obj.success_codes > 0) text += ' · 成功' + fmt(obj.success_codes);
+      if (typeof obj.partial_codes === 'number' && obj.partial_codes > 0) text += ' · 未满目标' + fmt(obj.partial_codes);
+      if (typeof obj.failed_codes === 'number' && obj.failed_codes > 0) text += ' · 失败' + fmt(obj.failed_codes);
+      if (typeof obj.skipped_recent === 'number' && obj.skipped_recent > 0) text += ' · 跳过' + fmt(obj.skipped_recent);
+      if (typeof obj.stock_count === 'number') text += ' · ' + fmt(obj.stock_count) + (stockLabel || '只');
+      lines.push('<div style="font-size:10px;color:#64748b;margin-top:2px">' + esc(text) + '</div>');
+      if (obj.error) {
+        lines.push('<div style="font-size:10px;color:#b45309;margin-top:2px">' + esc(obj.error) + '</div>');
+      }
+      if (typeof obj.candidate_codes === 'number' && obj.candidate_codes > 0 && obj.status === 'running') {
+        progressObj = obj;
+      }
+    }
+    stageLine('历史', detail.history_backfill);
+    stageLine('最新', detail.snapshot_sync);
+    stageLine('资本', detail.capital_behavior);
+    stageLine('指标', detail.financial_indicator);
+    stageLine('质量', detail.quality_features);
+    stageLine('类型', detail.stock_archetypes);
+    if (_stopRequestedUi && step && step.status === 'running') {
+      lines.push('<div style="font-size:10px;color:#f59e0b;margin-top:2px">正在等待当前请求结束后停止</div>');
+    }
+    if (!progressObj) return lines.join('');
+    var done = typeof progressObj.done_codes === 'number' ? progressObj.done_codes : 0;
+    var total = Math.max(progressObj.candidate_codes || 0, 1);
+    var pct = Math.max(0, Math.min(100, Math.round(done / total * 100)));
+    return lines.join('') + '<div class="step-mini-progress"><div class="step-mini-progress-fill" style="width:' + pct + '%"></div></div>';
   }
+
 
   function normalizeStepReason(step) {
     var msg = step && step.error ? String(step.error) : '';
@@ -2042,11 +2656,6 @@
     return msg;
   }
 
-  function parseTsMs(ts) {
-    if (!ts) return 0;
-    var d = new Date(ts);
-    return isNaN(d) ? 0 : d.getTime();
-  }
 
   function hasStepHistory(steps) {
     return !!(steps && steps.some(function (s) {
@@ -2067,6 +2676,8 @@
     var profiles = layers.profiles || {};
     var industryStat = layers.industry_stat || {};
     var trends = layers.trends || {};
+    var sectorMom = layers.sector_momentum || {};
+    var externalAttention = layers.external_attention || {};
     var notes = [];
     var actionable = false;
     var actionLabel = '';
@@ -2221,7 +2832,8 @@
     } else if (stepId === 'sync_financial') {
       var financial = layers.financial || {};
       if (typeof financial.raw_count === 'number') addNote('审计 ' + fmt(financial.raw_count) + ' 条原始财务记录');
-      if (typeof financial.latest_count === 'number') addNote(fmt(financial.latest_count) + '/' + fmt(financial.expected_stocks || 0) + ' 只股票有最新财务快照');
+      if (typeof financial.latest_count === 'number') addNote(fmt(financial.latest_count) + '/' + fmt(financial.expected_stocks || 0) + ' 只A股主数据股票有最新财务快照');
+      if (typeof financial.tracked_latest_count === 'number') addNote(fmt(financial.tracked_latest_count) + '/' + fmt(financial.tracked_expected_stocks || 0) + ' 只持仓股票已有财务覆盖');
       hasData = (financial.raw_count || 0) > 0 || (financial.latest_count || 0) > 0;
       actionable = ['failed', 'skipped', 'stopped'].includes(status);
       actionLabel = '单独补拉';
@@ -2241,12 +2853,61 @@
       actionable = (screening.count || 0) === 0 || ['failed', 'skipped', 'stopped'].includes(status);
       actionLabel = '单独补跑';
     } else if (stepId === 'calc_sector_momentum') {
-      var sectorMom = layers.sector_momentum || {};
       if (typeof sectorMom.count === 'number') addNote('审计 ' + fmt(sectorMom.count) + ' 个板块动量已计算');
       if (typeof sectorMom.dual_confirm_count === 'number' && sectorMom.count > 0) addNote('双重确认信号 ' + fmt(sectorMom.dual_confirm_count) + ' 个');
       hasData = (sectorMom.count || 0) > 0;
       actionable = (sectorMom.count || 0) === 0 || ['failed', 'skipped', 'stopped'].includes(status);
       actionLabel = '单独补跑';
+    } else if (stepId === 'build_external_attention') {
+      if (externalAttention.latest_snapshot_date) {
+        var freshnessBits = ['最新快照 ' + fmtDate(externalAttention.latest_snapshot_date)];
+        if (externalAttention.comment_trade_date) freshnessBits.push('评论日 ' + fmtDate(externalAttention.comment_trade_date));
+        addNote(freshnessBits.join(' · '));
+      }
+      if (typeof externalAttention.expected_stocks === 'number' && externalAttention.expected_stocks > 0) {
+        addNote(
+          '审计 ' + fmt(externalAttention.covered_stocks || 0) + '/' + fmt(externalAttention.expected_stocks) +
+          ' 只当前股票有外部覆盖 · 覆盖' + (externalAttention.coverage != null ? externalAttention.coverage : 0) + '%'
+        );
+      } else if (typeof externalAttention.snapshot_rows === 'number' && externalAttention.snapshot_rows > 0) {
+        addNote('审计 ' + fmt(externalAttention.snapshot_rows) + ' 条外部关注最新记录');
+      }
+      var sourceBits = [];
+      if (typeof externalAttention.comment_covered === 'number') sourceBits.push('千评 ' + fmt(externalAttention.comment_covered));
+      if (typeof externalAttention.survey_covered === 'number') sourceBits.push('调研 ' + fmt(externalAttention.survey_covered));
+      if (sourceBits.length) addNote(sourceBits.join(' · '));
+      if (typeof externalAttention.trend_scope === 'number' && externalAttention.trend_scope > 0) {
+        addNote(
+          '其中 ' + fmt(externalAttention.trend_scored_stocks || 0) + '/' + fmt(externalAttention.trend_scope) +
+          ' 只研究股票已回流 attention 评分 · 信号 ' + fmt(externalAttention.trend_signal_count || 0) + ' 只'
+        );
+      }
+      if ((externalAttention.snapshot_lag_days || 0) > 0) addIssue('快照滞后 ' + fmt(externalAttention.snapshot_lag_days) + ' 天');
+      if ((externalAttention.missing_stocks || 0) > 0) addIssue('仍缺 ' + fmt(externalAttention.missing_stocks) + ' 只当前股票外部覆盖');
+      hasData = (externalAttention.snapshot_rows || 0) > 0;
+      issueCount = Math.max(externalAttention.missing_stocks || 0, (externalAttention.snapshot_lag_days || 0) > 0 ? 1 : 0);
+      actionable = !hasData || issueCount > 0 || ['failed', 'skipped', 'stopped'].includes(status);
+      actionLabel = hasData ? '刷新外部关注' : '补拉外部关注';
+    } else if (stepId === 'build_stage_features') {
+      var stageExpected = trends.count || 0;
+      if (typeof sectorMom.stage_feature_count === 'number') addNote('审计 ' + fmt(sectorMom.stage_feature_count) + '/' + fmt(stageExpected) + ' 只入榜股票已生成阶段特征');
+      if (typeof sectorMom.industry_context_count === 'number' && sectorMom.industry_context_count > 0) {
+        addNote('行业上下文 ' + fmt(sectorMom.industry_context_count) + ' 只 · 板块动量 ' + fmt(sectorMom.count || 0) + ' 个');
+      }
+      var stageGap = Math.max(stageExpected - (sectorMom.stage_feature_count || 0), 0);
+      if (stageGap > 0) addIssue('仍缺 ' + fmt(stageGap) + ' 只股票阶段特征');
+      hasData = stageExpected === 0 || (sectorMom.stage_feature_count || 0) > 0;
+      issueCount = stageGap;
+      actionable = stageGap > 0 || ['failed', 'skipped', 'stopped'].includes(status);
+      actionLabel = stageGap > 0 ? '补齐阶段特征' : '重算阶段特征';
+    } else if (stepId === 'build_forecast_features') {
+      var forecastBase = sectorMom.stage_feature_count || 0;
+      if (typeof sectorMom.forecast_feature_count === 'number') addNote('审计 ' + fmt(sectorMom.forecast_feature_count) + ' 只股票已有预测特征');
+      if (typeof sectorMom.sector_forecast_count === 'number') addNote('行业级 Qlib 快照 ' + fmt(sectorMom.sector_forecast_count) + ' 个');
+      if (forecastBase > 0) addNote('阶段特征底座 ' + fmt(forecastBase) + ' 只');
+      hasData = forecastBase === 0 || (sectorMom.forecast_feature_count || 0) > 0;
+      actionable = ['failed', 'skipped', 'stopped'].includes(status);
+      actionLabel = '重算预测特征';
     } else if (stepId === 'calc_inst_scores') {
       if (typeof profiles.scored === 'number') addNote('审计 ' + fmt(profiles.scored) + '/' + fmt(profiles.count || institutions.tracked || 0) + ' 家机构已评分');
       if (Math.max((profiles.count || 0) - (profiles.scored || 0), 0) > 0) addIssue('仍缺 ' + fmt(Math.max((profiles.count || 0) - (profiles.scored || 0), 0)) + ' 家机构评分');
@@ -2406,10 +3067,15 @@
   }
 
   async function refreshAuditSnapshot() {
+    var forceRefresh = arguments.length > 0 ? !!arguments[0] : false;
+    if (!forceRefresh && _lastAuditSnapshot) return _lastAuditSnapshot;
     if (_auditRefreshPromise) return _auditRefreshPromise;
     _auditRefreshPromise = (async function () {
       var audit = await api('/api/inst/update/audit');
-      if (audit && audit.layers) _lastAuditSnapshot = audit;
+      if (audit && audit.layers) {
+        _lastAuditSnapshot = audit;
+        persistAuditSnapshot(audit);
+      }
       return _lastAuditSnapshot;
     })();
     try {
@@ -2419,14 +3085,14 @@
     }
   }
 
-  async function renderUpdatePanel(up) {
+  async function renderUpdatePanel(up, options) {
+    var forceAudit = !!(options && options.forceAudit);
     if (up?.run_context) _activeRunContext = up.run_context;
     if (up?.last_run_context) _lastRunContext = up.last_run_context;
     if (up?.running) {
       _uiRunning = true;
       _stopRequestedUi = !!up.stop_requested;
-      if (!_lastAuditSnapshot && !_auditRefreshPromise) refreshAuditSnapshot();
-      var runningSteps = withAuditNotes(up.steps || STEP_DEFAULTS, _lastAuditSnapshot || {});
+      var runningSteps = withAuditNotes(mergeStepDefinitions(up.steps || STEP_DEFAULTS), _lastAuditSnapshot || {});
       maybeRenderStepGrid(runningSteps);
       maybeRenderWorkbenchSummary(up.summary);
       syncServerLogs(up.logs || [], true);
@@ -2442,10 +3108,8 @@
     _uiRunning = false;
     _stopRequestedUi = false;
     _activeRunContext = null;
-    // 一次性渲染：等 audit 拿到再画 grid，杜绝「无 audit → 有 audit」闪烁
-    // 后续 polling 时 _lastAuditSnapshot 已存在，不会再阻塞
-    var baseSteps = hasStepHistory(up?.steps) ? up.steps : STEP_DEFAULTS;
-    if (!_lastAuditSnapshot) await refreshAuditSnapshot();
+    var baseSteps = hasStepHistory(up?.steps) ? mergeStepDefinitions(up.steps) : STEP_DEFAULTS;
+    if (forceAudit) await refreshAuditSnapshot(true);
     var enrichedSteps = withAuditNotes(baseSteps, _lastAuditSnapshot);
     maybeRenderStepGrid(enrichedSteps);
     maybeRenderWorkbenchSummary(up?.summary);
@@ -2464,14 +3128,14 @@
     var GROUP_MAP = {
       sync_raw: 'data', match_inst: 'data', sync_market_data: 'data', sync_financial: 'data', sync_industry: 'data',
       gen_events: 'calc', calc_returns: 'calc', calc_financial_derived: 'calc',
-      build_current_rel: 'mart', build_profiles: 'mart', build_industry_stat: 'mart', build_trends: 'mart', calc_screening: 'mart', calc_sector_momentum: 'mart', calc_inst_scores: 'mart', calc_stock_scores: 'mart'
+      build_current_rel: 'mart', build_profiles: 'mart', build_industry_stat: 'mart', build_trends: 'mart', calc_screening: 'mart', calc_sector_momentum: 'mart', build_external_attention: 'mart', build_stage_features: 'mart', build_forecast_features: 'mart', calc_inst_scores: 'mart', calc_stock_scores: 'mart'
     };
     // 单点定义：每列的身份（序号 + 名称 + 操作动词 + 步骤总数）
     // CSS 颜色由 .data-col / .calc-col / .mart-col 各自的 --col-color 提供
     var GROUP_DEF = {
       data: { name: '数据获取', verb: '同步数据', count: 5, badge: '①' },
       calc: { name: '事实计算', verb: '全量计算', count: 3, badge: '②' },
-      mart: { name: '集市构建', verb: '重构集市', count: 8, badge: '③' }
+      mart: { name: '集市构建', verb: '重构集市', count: 11, badge: '③' }
     };
     var grouped = { data: [], calc: [], mart: [] };
 
@@ -2490,7 +3154,9 @@
         var timeStr = fmtTime(s.finished_at || s.started_at);
         var detailHtml = s.step_id === 'sync_market_data'
           ? renderMarketSyncDetail(s)
-          : (s.step_id === 'sync_industry' ? renderIndustrySyncDetail(s) : '');
+          : (s.step_id === 'sync_industry'
+            ? renderIndustrySyncDetail(s)
+            : (s.step_id === 'sync_financial' ? renderFinancialSyncDetail(s) : ''));
         var canShowAction = !!s.actionable;
         var actionable = canShowAction && !_uiRunning;
         var reasonStr = '';
@@ -2685,12 +3351,7 @@
       effectiveRunning = false;
     }
     if (r.steps) {
-      if (effectiveRunning) {
-        if (!_lastAuditSnapshot && !_auditRefreshPromise) refreshAuditSnapshot();
-      } else if (!_lastAuditSnapshot) {
-        await refreshAuditSnapshot();
-      }
-      var steps = withAuditNotes(r.steps, _lastAuditSnapshot || {});
+      var steps = withAuditNotes(mergeStepDefinitions(r.steps), _lastAuditSnapshot || {});
       maybeRenderStepGrid(steps);
       maybeRenderWorkbenchSummary(r.summary);
       syncServerLogs(r.logs || [], false);
@@ -2707,7 +3368,7 @@
       _activeRunContext = null;
       el('btnUpdateAll').disabled = false; el('btnUpdateAll').textContent = '智能更新';
       el('btnStop').style.display = 'none';
-      await renderUpdatePanel(r);
+      await renderUpdatePanel(r, { forceAudit: true });
     }
   }
 
@@ -3035,7 +3696,8 @@
     var r = await api('/api/inst/update/reset-derived', { method: 'POST' });
     if (r?.ok) {
       await modalAlert(r.message || '已重置派生数据');
-      loadDashboard();
+      if (el('view-system')?.classList.contains('active')) loadSystem();
+      else loadDashboard();
     } else {
       await modalAlert((r && (r.message || r.error)) || '重置失败');
     }
@@ -3213,7 +3875,7 @@
       html += '<table class="data-table"><thead><tr><th>股票</th><th>行业</th><th>报告期</th><th>事件</th><th>机构成本</th><th>跟随溢价</th><th>门槛</th><th>持仓市值</th><th>其他机构</th></tr></thead><tbody>';
       html += holdings.map(function (h) {
         var others = (h.other_institutions || []).map(function (o) { return instLink(o.id, o.name, o.type); }).join(' ') || '-';
-        var indFull = (h.sw_level1 || '') + (h.sw_level2 ? ' > ' + h.sw_level2 : '') + (h.sw_level3 ? ' > ' + h.sw_level3 : '') || '-';
+        var indFull = industryChain(h) || '-';
         var cost = h.inst_ref_cost != null ? Number(h.inst_ref_cost).toFixed(2) + '<div class="muted" style="font-size:10px">' + esc(costMethodText(h.inst_cost_method)) + '</div>' : '-';
         var premium = h.premium_pct != null ? premiumText(h.premium_pct) + '<div class="muted" style="font-size:10px">' + esc(h.premium_bucket || '') + '</div>' : '-';
         return '<tr><td>' + stockCell(h.stock_code, h.stock_name) + '</td><td style="font-size:11px;color:#64748b">' + esc(indFull) + '</td><td>' + fmtDate(h.report_date) + '</td><td>' + (h.event_type ? evTag(h.event_type) : '-') + '</td><td>' + cost + '</td><td>' + premium + '</td><td>' + followGateTag(h.follow_gate, h.follow_gate_reason) + '</td><td>' + compactNum(h.hold_market_cap) + '</td><td>' + others + '</td></tr>';
@@ -3292,20 +3954,13 @@
       if (!r || !r.ok) { panel.innerHTML = '<div class="detail-loading">加载失败: ' + esc(r && r.detail || '未知') + '</div>'; return; }
       try {
       var insts = r.institutions || [];
-      var indStr = r.industry ? (r.industry.sw_level1 || '') + (r.industry.sw_level2 ? ' > ' + r.industry.sw_level2 : '') + (r.industry.sw_level3 ? ' > ' + r.industry.sw_level3 : '') : '';
+      var detailPayload = Object.assign({}, r, r.setup || {}, r.stage || {}, r.forecast || {}, r.turtle || {});
       var html = '';
-      if (indStr) html += '<div style="margin-bottom:8px"><span class="muted" style="font-size:12px">行业：' + esc(indStr) + '</span></div>';
-      html += renderSetupBlock(r.setup, insts, r);
-      html += renderStockDetailCardGrid(r.setup, r.stage, r.forecast, insts, r);
-      if (!insts.length) { html += '<div class="muted">暂无机构持仓</div>'; panel.innerHTML = html; return; }
-      html += '<table class="data-table data-table-compact"><thead><tr><th>机构</th><th>类型</th><th>事件</th><th>机构成本</th><th>跟随溢价</th><th>执行</th><th>持仓市值</th><th>报告至今</th><th>公告至今</th></tr></thead><tbody>';
-      html += insts.map(function (inst) {
-        var cost = inst.inst_ref_cost != null ? Number(inst.inst_ref_cost).toFixed(2) + '<span class="muted" style="font-size:10px;margin-left:3px">' + esc(costMethodText(inst.inst_cost_method)) + '</span>' : '-';
-        var premium = inst.premium_pct != null ? premiumText(inst.premium_pct) + '<span class="muted" style="font-size:10px;margin-left:3px">' + esc(premiumBucketText(inst.premium_bucket)) + '</span>' : '-';
-        var noticeToNow = inst.notice_return_to_now != null ? fmtGain(inst.notice_return_to_now) : '<span class="muted">' + esc(inst.notice_return_status === '待最新收盘' ? '待K线' : (inst.notice_return_status || '-')) + '</span>';
-        return '<tr><td><b class="clickable-name" onclick="App.toggleInstDetail(\'' + esc(inst.institution_id) + '\',this)">' + esc(inst.inst_name || '') + '</b></td><td>' + typeTag(inst.inst_type) + '</td><td>' + (inst.event_type ? evTag(inst.event_type) : '-') + '</td><td>' + cost + '</td><td>' + premium + '</td><td>' + followGateTag(inst.follow_gate, inst.follow_gate_reason) + '</td><td>' + compactNum(inst.hold_market_cap) + '</td><td>' + fmtGain(inst.report_return_to_now) + '</td><td>' + noticeToNow + '</td></tr>';
-      }).join('');
-      html += '</tbody></table>';
+      html += renderStockReportHero(detailPayload);
+      html += renderStockInstitutionCoverageSection(detailPayload, insts);
+      html += renderStockEvidenceTimeline(detailPayload);
+      html += renderSetupBlock(r.setup, insts, detailPayload);
+      html += renderStockDetailCardGrid(detailPayload);
       panel.innerHTML = html;
       } catch (e) { panel.innerHTML = '<div class="detail-loading">渲染出错: ' + esc(String(e)) + '</div>'; }
     }).catch(function (e) { panel.innerHTML = '<div class="detail-loading">请求出错: ' + esc(String(e)) + '</div>'; });
@@ -3386,16 +4041,7 @@
     return String(d).replace('T', ' ').slice(0, 19);
   }
   function premiumText(v) { if (v == null) return '-'; var n = Number(v); return (n > 0 ? '+' : '') + n.toFixed(1) + '%' }
-  function premiumBucketText(v) {
-    if (!v) return '-';
-    return String(v)
-      .replace('discount', '折价')
-      .replace('near_cost', '近成本')
-      .replace('premium', '溢价')
-      .replace('high_premium', '高溢价');
-  }
   function fmtDate(d) { if (!d) return '-'; var s = String(d).replace(/[^0-9]/g, '').slice(0, 8); return s.length === 8 ? s.slice(0, 4) + '-' + s.slice(4, 6) + '-' + s.slice(6, 8) : String(d) }
-  function gainText(v) { if (v == null) return '-'; var n = Number(v); return (n >= 0 ? '+' : '') + n.toFixed(1) + '%' }
   function fmtGain(v) { if (v == null) return '-'; var n = Number(v); return '<span class="' + (n >= 0 ? 'gain-pos' : 'gain-neg') + '">' + (n >= 0 ? '+' : '') + n.toFixed(1) + '%</span>' }
   function compactNum(v) { if (v == null) return '-'; var n = Number(v); return n >= 1e8 ? (n / 1e8).toFixed(1) + '亿' : n >= 1e4 ? (n / 1e4).toFixed(0) + '万' : n.toFixed(0) }
   function metric(l, v) { return '<div class="metric"><div class="metric-value">' + v + '</div><div class="metric-label">' + l + '</div></div>' }
@@ -3423,6 +4069,9 @@
     if (s.composite_priority_score != null) scoreLine.push('综合 ' + scoreNum(s.composite_priority_score));
     else if (s.discovery_score != null) scoreLine.push('发现 ' + scoreNum(s.discovery_score));
     if (scoreLine.length) sub.push(scoreLine.join(' · '));
+    if (s.company_quality_score != null || s.company_quality_score_source || s.quality_feature_snapshot_date) {
+      sub.push(qualityScoreSourceMeta(s));
+    }
     var name = stockSourceName(s);
     if (name && name !== '-') sub.push(name);
     if (s.score_highlights) sub.push(s.score_highlights);
@@ -3431,49 +4080,43 @@
   }
   function renderSetupBlock(setup, institutions, payload) {
     var scoreTarget = Object.assign({}, payload || {}, (payload && payload.stage) || {}, (payload && payload.forecast) || {}, setup || {});
-    var scoreStrip = '<div style="display:flex;flex-wrap:wrap;gap:10px;margin:0 0 12px 0">' +
-      focusMetric('综合优先分', scoreNum(scoreTarget.composite_priority_score), scoreTarget.priority_pool || '-') +
-      focusMetric('发现分', scoreNum(scoreTarget.discovery_score), '机构发现') +
-      focusMetric('质量分', scoreNum(scoreTarget.company_quality_score), scoreTarget.stock_archetype || '公司质量') +
-      focusMetric('阶段分', scoreNum(scoreTarget.stage_score), scoreTarget.stage_reason || scoreTarget.path_state || '-') +
-      focusMetric('预测分', scoreNum(scoreTarget.forecast_score), scoreTarget.forecast_reason || scoreTarget.score_highlights || '-') +
-      '</div>';
-    var focusConstraint = renderFocusConstraintLine(scoreTarget);
-    if (!setup || !setup.setup_tag) {
-      return '<div class="stock-focus-card stock-focus-card--empty">' +
-        scoreStrip +
-        '<div class="stock-focus-headline" style="color:#94a3b8;font-size:13px">暂无当前核心信号</div>' +
-        '<div style="color:#cbd5e1;font-size:12px;margin-top:6px">未命中行业高手切入 Setup，可继续观察。</div>' +
-        (focusConstraint ? '<div style="color:#cbd5e1;font-size:11px;margin-top:8px;line-height:1.6">' + esc(focusConstraint) + '</div>' : '') +
-        '</div>';
-    }
-    var meta = setupPriorityMeta(setup.setup_priority);
-    var confText = setup.setup_confidence ? ' · ' + esc(setup.setup_confidence) : '';
-    var grades = [
-      gradeInline('行业', setup.industry_skill_grade),
-      gradeInline('可跟', setup.followability_grade),
-      gradeInline('收益', setup.crowding_yield_grade),
-      gradeInline('稳健', setup.crowding_stability_grade),
-      gradeInline('溢价', setup.premium_grade),
-      gradeInline('时效', setup.report_recency_grade),
-      gradeInline('可靠', setup.reliability_grade)
-    ].filter(Boolean).join('<span style="color:#e2e8f0;margin:0 6px">|</span>');
-    return '<div class="stock-focus-card">' +
-      scoreStrip +
-      '<div style="display:flex;align-items:center;gap:12px;margin-bottom:12px">' +
-      '<span class="setup-badge-lg" style="background:' + meta.bg + ';color:' + meta.fg + '">Setup ' + meta.label + '</span>' +
-      '<span class="stock-focus-headline">' + esc(stockSignalHeadline(setup)) + '</span>' +
-      '</div>' +
-      '<div class="stock-focus-narrative" title="' + esc(setup.setup_reason || '') + '">' + esc(stockSignalNarrative(setup)) + confText + '</div>' +
-      '<div class="stock-focus-grade-bar">' + grades + '</div>' +
-      (focusConstraint ? '<div style="font-size:12px;color:#cbd5e1;line-height:1.6;margin-top:10px">' + esc(focusConstraint) + '</div>' : '') +
-      '</div>';
-  }
-  function gradeInline(label, value) {
-    if (value == null) return '';
-    var v = Number(value);
-    var color = v <= 2 ? '#059669' : v <= 3 ? '#d97706' : '#94a3b8';
-    return '<span style="white-space:nowrap"><span style="color:#94a3b8">' + label + '</span> <span style="color:' + color + ';font-weight:600">' + v + '</span></span>';
+    var insts = Array.isArray(institutions) ? institutions : [];
+    var gate = stockGateInfo(scoreTarget);
+    var source = stockSourceName(scoreTarget);
+    var leader = scoreTarget.leader_inst ? shortInstName(scoreTarget.leader_inst) : (insts[0] && insts[0].inst_name ? insts[0].inst_name : '');
+    var industry = preferredIndustryLabel(scoreTarget);
+    var latestReport = scoreTarget.latest_report_date || '';
+    var latestNotice = scoreTarget.latest_notice_date || '';
+    var thesis = [];
+    if (setup && setup.setup_tag) thesis.push((gate.key ? (gate.label + '，') : '') + stockSignalNarrative(scoreTarget));
+    else thesis.push((gate.key ? (gate.label + '，') : '') + (scoreTarget.path_state || '等待新的机构动作'));
+    if (scoreTarget.score_highlights) thesis.push('亮点：' + scoreTarget.score_highlights);
+    if (scoreTarget.score_risks) thesis.push('风险：' + scoreTarget.score_risks);
+    var summaryRows = [
+      stockReportHeroMetric('当前结论', gate.label || '待验证', gate.reason || '列表区仅保留状态，详情页展开完整判断', gate.key === 'follow' ? 'good' : (gate.key === 'watch' ? 'accent' : 'neutral')),
+      stockReportHeroMetric('核心信号', setup && setup.setup_tag ? stockSignalHeadline(scoreTarget) : '暂无当前核心信号', setup && setup.setup_confidence ? ('置信 ' + setup.setup_confidence) : (setup && setup.setup_reason ? setup.setup_reason : '等待下一次明确触发')),
+      stockReportHeroMetric('来源机构', source || '-', leader ? ('领头 ' + leader) : (insts.length ? ('覆盖 ' + fmt(insts.length) + ' 家') : '暂无当前机构覆盖')),
+      stockReportHeroMetric('行业定位', industry || '-', scoreTarget.stock_archetype || '未分类'),
+      stockReportHeroMetric('研究池', scoreTarget.priority_pool || '未分池', scoreTarget.priority_pool_reason || scoreTarget.composite_cap_reason || '等待更多证据'),
+      stockReportHeroMetric('外部关注', scoreTarget.external_attention_signal || (scoreTarget.external_attention_score != null ? '外部覆盖' : '中性'), [scoreTarget.external_attention_score != null ? ('确认 ' + scoreNum(scoreTarget.external_attention_score)) : '', scoreTarget.external_crowding_penalty != null ? ('折扣 ' + scoreNum(scoreTarget.external_crowding_penalty)) : ''].filter(Boolean).join(' · ')),
+      stockReportHeroMetric('海龟执行', scoreTarget.turtle_setup_state || '未覆盖', [scoreTarget.turtle_preferred_system ? turtleSystemLabel(scoreTarget.turtle_preferred_system) : '', scoreTarget.turtle_score_delta != null ? ('修正 ' + signedScore(scoreTarget.turtle_score_delta)) : ''].filter(Boolean).join(' · ')),
+      stockReportHeroMetric('最新报告', latestReport ? fmtDate(latestReport) : '-', latestReport ? daysFromDateDigits(latestReport) : '暂无'),
+      stockReportHeroMetric('最新公告', latestNotice ? fmtDate(latestNotice) : '-', [latestNotice ? daysFromDateDigits(latestNotice) : '', latestReport && latestNotice ? ('披露滞后 ' + daysBetweenDates(latestReport, latestNotice)) : ''].filter(Boolean).join(' · ')),
+      stockReportHeroMetric('当前机构数', fmt(insts.length), insts.length ? ('可跟 ' + fmt(insts.filter(function (item) { return item.follow_gate === 'follow'; }).length) + ' 家') : '暂无持仓机构')
+    ];
+    var callouts = [
+      scoreTarget.score_highlights ? { label: '加分主因', text: scoreTarget.score_highlights, tone: 'positive' } : null,
+      scoreTarget.score_risks ? { label: '核心风险', text: scoreTarget.score_risks, tone: 'warning' } : null,
+      renderFocusConstraintLine(scoreTarget) ? { label: '约束条件', text: renderFocusConstraintLine(scoreTarget), tone: 'neutral' } : null
+    ].filter(Boolean);
+    return renderStockReportSection(
+      '投资摘要',
+      '把列表里省掉的来源、约束和亮点收回到详情页，先看摘要，再看底稿。',
+      '<div class="stock-report-thesis"><div class="stock-report-thesis-label">当前摘要</div><div class="stock-report-thesis-body">' + esc(thesis.join(' ')) + '</div></div>' +
+      renderStockReportKeyTable(summaryRows, 2) +
+      renderStockReportCallouts(callouts),
+      'stock-report-section--summary'
+    );
   }
   function followGateTag(gate, reason) {
     // 用于「机构-股票对」级 follow_gate（loose：基于 event_type + premium_pct 两输入）
@@ -3483,22 +4126,11 @@
     return '<span style="display:inline-flex;align-items:center;gap:4px;padding:2px 8px;border-radius:999px;background:' + color + '14;color:' + color + ';font-size:11px;font-weight:600" title="' + esc(reason || '') + '">' + label + '</span>';
   }
   // 单一真相源：股票级 gate 解析器
-  // 优先用后端预算的 stock_gate（从 MCR holder follow_gate 聚合）
-  // 兜底用 holder_xxx_count 重算同一逻辑，保证显示列与筛选列共用一份判定
+  // 只消费后端回传的 stock_gate / stock_gate_reason，前端不再重算业务门槛
   function stockGateInfo(s) {
     if (!s) return { key: null, label: '-', color: '#94a3b8', reason: '' };
-    var gate = s.stock_gate;
+    var gate = s.stock_gate || null;
     var reason = s.stock_gate_reason || '';
-    if (!gate) {
-      var f = s.holder_follow_count || 0;
-      var w = s.holder_watch_count || 0;
-      var o = s.holder_observe_count || 0;
-      var a = s.holder_avoid_count || 0;
-      if (f > 0) { gate = 'follow'; reason = f + ' 家持仓机构可跟'; }
-      else if (w > 0) { gate = 'watch'; reason = w + ' 家持仓机构关注'; }
-      else if (o > 0) { gate = 'observe'; reason = o + ' 家持仓机构观察'; }
-      else if (a > 0) { gate = 'avoid'; reason = a + ' 家持仓机构回避'; }
-    }
     var meta = {
       follow: { label: '可跟', color: '#059669' },
       watch: { label: '关注', color: '#10b981' },
@@ -3519,6 +4151,21 @@
     if (!s) return '-';
     return s.display_inst_name || s.setup_inst_name || '-';
   }
+  function industryLevels(item) {
+    if (!item) return [];
+    return [
+      item.industry_level1 || item.sw_level1,
+      item.industry_level2 || item.sw_level2,
+      item.industry_level3 || item.sw_level3
+    ].filter(Boolean);
+  }
+  function industryChain(item) {
+    return industryLevels(item).join(' > ');
+  }
+  function preferredIndustryLabel(item) {
+    if (!item) return '';
+    return item.setup_industry_name || industryLevels(item).slice(-1)[0] || '';
+  }
   function costMethodText(v) {
     if (!v) return '-';
     return String(v)
@@ -3533,13 +4180,33 @@
       .replace('monthly_close_mean_qfq', '月线均价')
       .replace(/_/g, ' ');
   }
-  function xqLink(code) { if (!code) return ''; var p = code.startsWith('6') ? 'SH' : 'SZ'; return '<a class="xq-link" href="https://xueqiu.com/S/' + p + code + '" target="_blank">' + p + ':' + esc(code) + '</a>' }
+  function securityMarketPrefix(code) { if (!code) return ''; return code.startsWith('6') ? 'SH' : 'SZ'; }
+  function xqLink(code) { if (!code) return ''; var p = securityMarketPrefix(code); return '<a class="xq-link" href="https://xueqiu.com/S/' + p + code + '" target="_blank">' + p + ':' + esc(code) + '</a>' }
   function xueqiuPillLink(code, label, stopPropagation) {
     if (!code) return '';
-    var prefix = code.startsWith('1') || code.startsWith('0') || code.startsWith('3') ? 'SZ' : 'SH';
+    var prefix = code.startsWith('1') || code.startsWith('0') || code.startsWith('3') ? 'SZ' : securityMarketPrefix(code);
     var text = label || code;
     var clickAttr = stopPropagation ? ' onclick="event.stopPropagation()"' : '';
     return '<a href="https://xueqiu.com/S/' + prefix + esc(code) + '" target="_blank" rel="noopener"' + clickAttr + ' style="display:inline-flex;align-items:center;padding:3px 10px;border-radius:999px;background:#eff6ff;color:#1d4ed8;font-size:11px;font-weight:700;border:1px solid #bfdbfe;text-decoration:none">' + esc(text) + '</a>';
+  }
+  function securityIdentityBlock(code, name, opts) {
+    opts = opts || {};
+    var wrapperClass = opts.wrapperClass || 'security-identity';
+    var metaClass = opts.metaClass || '';
+    var label = name || code || '-';
+    var nameClasses = ['security-identity-name'];
+    if (opts.nameClass) nameClasses.push(opts.nameClass);
+    if (opts.clickAction) nameClasses.push('clickable-name');
+    var nameHtml = opts.clickAction
+      ? '<span class="' + nameClasses.join(' ') + '" onclick="' + opts.clickAction + '">' + esc(label) + '</span>'
+      : '<span class="' + nameClasses.join(' ') + '">' + esc(label) + '</span>';
+    var metaParts = [];
+    if (opts.includeCodeTag && code) metaParts.push('<span class="security-code-tag">' + esc(opts.codeLabel || code) + '</span>');
+    if (opts.includeMarketLink && code) metaParts.push(xqLink(code));
+    if (opts.includeXueqiuPill && code) metaParts.push(xueqiuPillLink(code, opts.xueqiuLabel || '雪球', true));
+    return '<div class="' + wrapperClass + '"><div class="security-identity-main">' + nameHtml + '</div>' +
+      (metaParts.length ? '<div class="security-identity-meta' + (metaClass ? (' ' + metaClass) : '') + '">' + metaParts.join('') + '</div>' : '') +
+      '</div>';
   }
   function recommendedStrategySummary(item) {
     if (!item) {
@@ -3565,7 +4232,11 @@
     };
   }
   function stockCell(code, name) {
-    return '<div class="stock-name-cell"><div><span class="clickable-name" onclick="App.toggleStockDetail(\'' + esc(code) + '\',this)">' + esc(name || code) + '</span> ' + xqLink(code) + '</div></div>';
+    return '<div class="stock-name-cell">' + securityIdentityBlock(code, name, {
+      wrapperClass: 'security-identity security-identity--stock-cell',
+      clickAction: 'App.toggleStockDetail(\'' + esc(code) + '\',this)',
+      includeMarketLink: true
+    }) + '</div>';
   }
   function shortInstName(v) {
     if (!v) return '';
@@ -3576,6 +4247,11 @@
     if (s.length !== 8) return null;
     var d = new Date(s.substring(0, 4) + '-' + s.substring(4, 6) + '-' + s.substring(6, 8));
     return isNaN(d) ? null : d;
+  }
+  function normalizeTimelineDateText(v) {
+    var s = String(v || '').replace(/[^0-9]/g, '').slice(0, 8);
+    if (s.length !== 8) return '';
+    return s.substring(0, 4) + '-' + s.substring(4, 6) + '-' + s.substring(6, 8);
   }
   function daysFromDateDigits(v) {
     var d = parseDateDigits(v);
@@ -3626,14 +4302,21 @@
     if (!s || !s.setup_tag) return s && (s.path_state || s.price_trend) ? String(s.path_state || s.price_trend) : '等待新的机构动作';
     var parts = [];
     var name = stockSourceName(s);
+    var industry = preferredIndustryLabel(s);
     if (name && name !== '-') parts.push(name);
-    if (s.setup_industry_name) parts.push(s.setup_industry_name);
+    if (industry) parts.push(industry);
     if (s.report_recency_grade != null && Number(s.report_recency_grade) <= 2) parts.push(setupTimelinessText(s.report_recency_grade));
     if (s.premium_grade === 1) parts.push('低溢价');
     return parts.join(' · ') || (s.setup_reason || '-');
   }
   function scoreNum(v) {
     return v != null ? Number(v).toFixed(1) : '-';
+  }
+  function fmtScore(v, digits) {
+    if (v == null) return '-';
+    var n = Number(v);
+    if (Number.isNaN(n)) return '-';
+    return n.toFixed(digits == null ? 1 : digits);
   }
   function signedScore(v) {
     if (v == null) return '-';
@@ -3645,464 +4328,845 @@
     var n = Number(v);
     return (n >= 0 ? '+' : '') + n.toFixed(1) + '%';
   }
-  function stockStageStructText(s) {
-    var parts = [];
-    if (s && s.path_state) parts.push(String(s.path_state));
-    if (s && s.generic_stage_raw != null) parts.push('通用 ' + scoreNum(s.generic_stage_raw));
-    if (s && s.stage_type_adjust_raw != null) parts.push('型修 ' + signedScore(s.stage_type_adjust_raw));
-    return parts.join(' · ');
-  }
-  function stockForecastStructText(s) {
-    var parts = [];
-    if (s && s.forecast_20d_score != null) parts.push('预20 ' + scoreNum(s.forecast_20d_score));
-    if (s && s.forecast_60d_excess_score != null) parts.push('预60 ' + scoreNum(s.forecast_60d_excess_score));
-    if (s && s.forecast_risk_adjusted_score != null) parts.push('性价比 ' + scoreNum(s.forecast_risk_adjusted_score));
-    return parts.join(' · ');
+  function signedCountText(v, suffix) {
+    if (v == null) return '-';
+    var n = Number(v);
+    return (n >= 0 ? '+' : '') + fmt(Math.round(n)) + (suffix || '');
   }
   function renderFocusConstraintLine(s) {
     if (!s) return '';
     var parts = [];
     if (s.setup_execution_reason) parts.push(s.setup_execution_reason);
     else if (s.priority_pool_reason) parts.push(s.priority_pool_reason);
+    if (s.turtle_setup_state) parts.push('海龟 ' + s.turtle_setup_state);
+    if (s.turtle_score_delta != null && Number(s.turtle_score_delta) !== 0) parts.push('海龟修正 ' + signedScore(s.turtle_score_delta));
     if (s.composite_cap_reason) parts.push(s.composite_cap_reason);
+    if (s.external_attention_signal) parts.push('外部信号 ' + s.external_attention_signal);
+    else if (s.external_attention_score != null && Number(s.external_attention_score) >= 65) parts.push('外部确认 ' + scoreNum(s.external_attention_score));
+    if (s.external_crowding_penalty != null && Number(s.external_crowding_penalty) >= 4) parts.push('热度折扣 ' + scoreNum(s.external_crowding_penalty));
     if (s.raw_composite_priority_score != null && s.composite_priority_score != null && Number(s.raw_composite_priority_score) !== Number(s.composite_priority_score)) {
       parts.push('综合裁决 ' + scoreNum(s.raw_composite_priority_score) + ' -> ' + scoreNum(s.composite_priority_score));
     }
     return parts.join(' · ');
   }
-  function detailMetricItem(label, value, tone) {
-    var cls = tone ? ' stock-detail-item--' + tone : '';
-    return '<div class="stock-detail-item' + cls + '"><div class="stock-detail-item-label">' + esc(label) + '</div><div class="stock-detail-item-value">' + esc(value == null ? '-' : String(value)) + '</div></div>';
+  function renderStockReportSection(title, subtitle, body, extraClass) {
+    if (!body) return '';
+    return '<section class="stock-report-section' + (extraClass ? (' ' + extraClass) : '') + '">' +
+      '<div class="stock-report-section-head"><div class="stock-report-section-title">' + esc(title || '-') + '</div>' + (subtitle ? '<div class="stock-report-section-sub">' + esc(subtitle) + '</div>' : '') + '</div>' +
+      body +
+      '</section>';
   }
-  function detailTextBlock(label, text, tone) {
-    if (!text) return '';
-    var cls = tone ? ' stock-detail-text--' + tone : '';
-    return '<div class="stock-detail-text' + cls + '"><div class="stock-detail-text-label">' + esc(label) + '</div><div class="stock-detail-text-body">' + esc(text) + '</div></div>';
-  }
-  function renderStockBehaviorCard(setup, insts, base) {
-    var s = Object.assign({}, base || {}, setup || {});
-    var rows = Array.isArray(insts) ? insts : [];
-    var totalInst = rows.length;
-    var totalCap = rows.reduce(function (sum, item) {
-      return sum + (Number(item.hold_market_cap || 0) || 0);
-    }, 0);
-    var avgPremium = rows.reduce(function (sum, item) {
-      return item.premium_pct == null ? sum : sum + Number(item.premium_pct || 0);
-    }, 0);
-    var premiumCount = rows.filter(function (item) { return item.premium_pct != null; }).length;
-    var leaderName = s.leader_inst ? shortInstName(s.leader_inst) : (rows[0] && rows[0].inst_name ? rows[0].inst_name : '-');
-    var summary = [
-      s.setup_tag ? ('当前由 ' + stockSourceName(s) + ' 的 ' + setupEventText(s.setup_event_type) + ' 信号触发') : '',
-      s.setup_industry_name || '',
-      s.priority_pool_reason || ''
-    ].filter(Boolean).join(' · ');
-    var behaviorBreakdown = renderStockBehaviorBreakdown(rows);
-    var behaviorSignals = renderStockBehaviorSignals(s, rows);
-    var behaviorSummary = renderStockBehaviorSummary(s, rows, leaderName, premiumCount ? (avgPremium / premiumCount) : null);
-    return '<div class="stock-detail-card">' +
-      '<div class="stock-detail-card-head"><div class="stock-detail-card-title">机构行为卡</div><div class="stock-detail-card-sub">谁在买、怎么买、最近是否有新动作</div></div>' +
-      '<div class="stock-detail-metrics">' +
-      detailMetricItem('来源机构', stockSourceName(s) || '-') +
-      detailMetricItem('领头机构', leaderName || '-') +
-      detailMetricItem('触发事件', setupEventText(s.setup_event_type) || '-') +
-      detailMetricItem('发现分', scoreNum(s.discovery_score), 'accent') +
-      detailMetricItem('机构数', fmt(totalInst)) +
-      detailMetricItem('共识度', fmt(s.consensus_count || 0)) +
-      detailMetricItem('平均溢价', premiumCount ? premiumText(avgPremium / premiumCount) : '-') +
-      detailMetricItem('合计市值', compactNum(totalCap)) +
-      detailMetricItem('最新报告', fmtDate(s.latest_report_date)) +
-      detailMetricItem('最新公告', fmtDate(s.latest_notice_date)) +
-      '</div>' +
-      detailTextBlock('机构行为结论', summary || (s.setup_reason || '等待新的机构动作')) +
-      behaviorBreakdown +
-      behaviorSignals +
-      behaviorSummary +
-      (s.setup_reason ? detailTextBlock('触发说明', s.setup_reason) : '') +
-      (s.setup_execution_reason ? detailTextBlock('执行建议', s.setup_execution_reason, 'neutral') : '') +
-      '</div>';
-  }
-
-  function renderStockBehaviorBreakdown(insts) {
-    var rows = Array.isArray(insts) ? insts : [];
+  function renderStockReportKeyTable(items, pairsPerRow) {
+    var rows = (items || []).filter(Boolean);
     if (!rows.length) return '';
-    var gateCounts = { follow: 0, watch: 0, observe: 0, avoid: 0 };
-    var eventCounts = { new_entry: 0, increase: 0, decrease: 0, unchanged: 0 };
-    rows.forEach(function (inst) {
-      if (inst.follow_gate && gateCounts[inst.follow_gate] != null) gateCounts[inst.follow_gate] += 1;
-      if (inst.event_type && eventCounts[inst.event_type] != null) eventCounts[inst.event_type] += 1;
-    });
-    var items = [
-      detailMetricItem('可跟', fmt(gateCounts.follow), gateCounts.follow > 0 ? 'good' : ''),
-      detailMetricItem('关注', fmt(gateCounts.watch)),
-      detailMetricItem('观察', fmt(gateCounts.observe), gateCounts.observe > 0 ? 'warn' : ''),
-      detailMetricItem('回避', fmt(gateCounts.avoid), gateCounts.avoid > 0 ? 'warn' : ''),
-      detailMetricItem('新进', fmt(eventCounts.new_entry), eventCounts.new_entry > 0 ? 'good' : ''),
-      detailMetricItem('增持', fmt(eventCounts.increase), eventCounts.increase > 0 ? 'good' : ''),
-      detailMetricItem('减持', fmt(eventCounts.decrease), eventCounts.decrease > 0 ? 'warn' : ''),
-      detailMetricItem('不变', fmt(eventCounts.unchanged))
+    var pairCount = Math.max(1, pairsPerRow || 2);
+    var html = '<table class="stock-report-key-table"><tbody>';
+    for (var i = 0; i < rows.length; i += pairCount) {
+      var chunk = rows.slice(i, i + pairCount);
+      html += '<tr>';
+      chunk.forEach(function (item) {
+        var valueHtml = item.valueHtml != null ? item.valueHtml : esc(item.value == null ? '-' : String(item.value));
+        var noteHtml = item.noteHtml != null ? item.noteHtml : (item.note ? esc(String(item.note)) : '');
+        html += '<th>' + esc(item.label || '-') + '</th>' +
+          '<td class="stock-report-key-cell' + (item.tone ? (' stock-report-key-cell--' + item.tone) : '') + '">' +
+          '<div class="stock-report-key-value">' + valueHtml + '</div>' +
+          (noteHtml ? '<div class="stock-report-key-note">' + noteHtml + '</div>' : '') +
+          '</td>';
+      });
+      for (var j = chunk.length; j < pairCount; j += 1) {
+        html += '<th class="stock-report-key-spacer"></th><td class="stock-report-key-spacer"></td>';
+      }
+      html += '</tr>';
+    }
+    html += '</tbody></table>';
+    return html;
+  }
+  function renderStockReportSubtable(title, rows, pairsPerRow, note, extraClass) {
+    if (!rows || !rows.filter(Boolean).length) return '';
+    return '<div class="stock-report-subtable' + (extraClass ? (' ' + extraClass) : '') + '">' +
+      '<div class="stock-report-subtable-head"><div class="stock-report-subtable-title">' + esc(title || '-') + '</div>' + (note ? '<div class="stock-report-subtable-note">' + esc(note) + '</div>' : '') + '</div>' +
+      renderStockReportKeyTable(rows, pairsPerRow) +
+      '</div>';
+  }
+  function renderStockReportModule(title, note, body, extraClass) {
+    if (!body) return '';
+    return '<div class="stock-report-subtable stock-report-module' + (extraClass ? (' ' + extraClass) : '') + '">' +
+      '<div class="stock-report-subtable-head"><div class="stock-report-subtable-title">' + esc(title || '-') + '</div>' + (note ? '<div class="stock-report-subtable-note">' + esc(note) + '</div>' : '') + '</div>' +
+      '<div class="stock-report-module-body">' + body + '</div>' +
+      '</div>';
+  }
+  function renderStockReportMatrixTable(rows) {
+    var items = (rows || []).filter(Boolean);
+    if (!items.length) return '';
+    return '<table class="data-table data-table-compact stock-report-matrix-table"><thead><tr><th>维度</th><th>分数</th><th>当前状态</th><th>关键信号</th><th>风险 / 约束</th></tr></thead><tbody>' +
+      items.map(function (item) {
+        var statusHtml = item.statusHtml != null ? item.statusHtml : esc(item.status == null ? '-' : String(item.status));
+        return '<tr>' +
+          '<td class="stock-report-matrix-dim">' + esc(item.dim || '-') + '</td>' +
+          '<td>' + esc(item.score == null ? '-' : String(item.score)) + '</td>' +
+          '<td>' + statusHtml + '</td>' +
+          '<td>' + esc(item.signal || '-') + '</td>' +
+          '<td>' + esc(item.risk || '-') + '</td>' +
+          '</tr>';
+      }).join('') +
+      '</tbody></table>';
+  }
+  function renderStockReportCallouts(items) {
+    var rows = (items || []).filter(Boolean);
+    if (!rows.length) return '';
+    return '<div class="stock-report-callout-row">' + rows.map(function (item) {
+      return '<div class="stock-report-callout stock-report-callout--' + esc(item.tone || 'neutral') + '">' +
+        '<div class="stock-report-callout-label">' + esc(item.label || '-') + '</div>' +
+        '<div class="stock-report-callout-text">' + esc(item.text || '-') + '</div>' +
+        '</div>';
+    }).join('') + '</div>';
+  }
+    function renderStockInstitutionCoverageSection(base, institutions) {
+      var rows = Array.isArray(institutions) ? institutions : [];
+      var followCount = rows.filter(function (item) { return item.follow_gate === 'follow'; }).length;
+      var watchCount = rows.filter(function (item) { return item.follow_gate === 'watch'; }).length;
+      var observeCount = rows.filter(function (item) { return item.follow_gate === 'observe'; }).length;
+      var avoidCount = rows.filter(function (item) { return item.follow_gate === 'avoid'; }).length;
+      var summaryRows = [
+        stockReportHeroMetric('覆盖机构', fmt(rows.length), followCount ? ('可跟 ' + fmt(followCount) + ' 家') : '暂无可跟席位'),
+        stockReportHeroMetric('执行分层', [followCount ? ('可跟 ' + fmt(followCount)) : '', watchCount ? ('关注 ' + fmt(watchCount)) : '', observeCount ? ('观察 ' + fmt(observeCount)) : '', avoidCount ? ('回避 ' + fmt(avoidCount)) : ''].filter(Boolean).join(' · ') || '-'),
+        stockReportHeroMetric('最新报告', base.latest_report_date ? fmtDate(base.latest_report_date) : '-', base.latest_report_date ? daysFromDateDigits(base.latest_report_date) : '暂无'),
+        stockReportHeroMetric('最新公告', base.latest_notice_date ? fmtDate(base.latest_notice_date) : '-', base.latest_notice_date ? daysFromDateDigits(base.latest_notice_date) : '暂无'),
+        stockReportHeroMetric('最新收盘', base.price_timeline && base.price_timeline.end_close != null ? Number(base.price_timeline.end_close).toFixed(2) : '-', base.latest_close_date ? fmtDate(base.latest_close_date) : '待更新'),
+        stockReportHeroMetric('覆盖结构', rows.length ? ('前3家 ' + rows.slice(0, 3).map(function (item) { return item.inst_name; }).filter(Boolean).join(' / ')) : '-', rows.length ? '按当前仍在持仓的跟踪机构排序' : '暂无机构覆盖')
+      ];
+      var tableRows = rows.map(function (inst) {
+        var instMeta = [inst.holder_rank != null ? ('席位 #' + fmt(inst.holder_rank)) : '', inst.current_held_days != null ? (fmt(Math.round(inst.current_held_days)) + '天') : ''].filter(Boolean).join(' · ');
+        var costText = inst.inst_ref_cost != null ? Number(inst.inst_ref_cost).toFixed(2) : '-';
+        var costNote = inst.inst_cost_method ? costMethodText(inst.inst_cost_method) : '';
+        return '<tr>' +
+          '<td><div class="stock-source-cell"><div class="stock-source-main">' + instLink(inst.institution_id, inst.inst_name || '-', inst.inst_type) + '</div>' + (instMeta ? '<div class="stock-source-sub">' + esc(instMeta) + '</div>' : '') + '</div></td>' +
+          '<td>' + (inst.event_type ? evTag(inst.event_type) : '<span class="muted">-</span>') + '</td>' +
+          '<td>' + followGateTag(inst.follow_gate, inst.follow_gate_reason) + '</td>' +
+          '<td>' + fmtDate(inst.report_date) + '</td>' +
+          '<td>' + fmtDate(inst.notice_date) + '</td>' +
+          '<td>' + fmtGain(inst.report_return_to_now) + '</td>' +
+          '<td>' + fmtGain(inst.notice_return_to_now) + '</td>' +
+          '<td>' + premiumText(inst.premium_pct) + '</td>' +
+          '<td>' + pct(inst.hold_ratio) + '</td>' +
+          '<td><div>' + esc(costText) + '</div>' + (costNote ? '<div class="muted" style="font-size:10px;margin-top:3px">' + esc(costNote) + '</div>' : '') + '</td>' +
+          '<td>' + compactNum(inst.hold_market_cap) + '</td>' +
+          '</tr>';
+      }).join('') || '<tr><td colspan="11" class="muted">暂无机构覆盖</td></tr>';
+      var tableHtml = '<div class="stock-report-table-wrap"><table class="data-table data-table-compact stock-report-inst-table"><thead><tr><th>机构</th><th>动作</th><th>执行</th><th>报告期</th><th>公告日</th><th>报告后</th><th>公告后</th><th>溢价</th><th>持股比</th><th>参考成本</th><th>持仓市值</th></tr></thead><tbody>' + tableRows + '</tbody></table></div>';
+      return renderStockReportSection(
+        '机构覆盖明细',
+        '把谁在里面、谁可跟、谁在减持放到最前面，先看席位结构，再看轨迹和判断。',
+        renderStockReportKeyTable(summaryRows, 3) + renderStockReportModule('当前机构覆盖表', '报告后 / 公告后收益统一对齐到当前最新收盘。', tableHtml, 'stock-report-module--table'),
+        'stock-report-section--coverage'
+      );
+    }
+    function stockHouseholdCountText(value) {
+      if (value == null) return '-';
+      var n = Number(value);
+      if (Math.abs(n) >= 10000) return (n / 10000).toFixed(1) + '万户';
+      return fmt(Math.round(n)) + '户';
+    }
+    function stockInstitutionCountText(value) {
+      if (value == null) return '-';
+      return fmt(Math.round(Number(value))) + '家';
+    }
+    function stockMoneyText(value) {
+      if (value == null) return '-';
+      return compactNum(Number(value));
+    }
+    function renderStockTrajectoryOverlayModule(overlay) {
+      var series = overlay && Array.isArray(overlay.series) ? overlay.series.slice().reverse() : [];
+      if (!series.length) return '';
+      var headerNote = [
+        overlay.quarters_loaded != null ? ('已载入 ' + fmt(overlay.quarters_loaded) + ' 季') : '',
+        overlay.latest_complete_report_date ? ('完整季度 ' + fmtDate(overlay.latest_complete_report_date)) : '',
+        overlay.latest_available_report_date && overlay.latest_available_report_date !== overlay.latest_complete_report_date ? ('最新落库 ' + fmtDate(overlay.latest_available_report_date)) : ''
+      ].filter(Boolean).join(' · ');
+      var rows = series.slice(0, 8).map(function (item) {
+        var deltaParts = [];
+        if (item.holder_count_delta_pct != null) deltaParts.push('股东 ' + signedPct(item.holder_count_delta_pct));
+        if (item.inst_total_count_delta != null && Number(item.inst_total_count_delta) !== 0) deltaParts.push('机构 ' + signedCountText(item.inst_total_count_delta, '家'));
+        if (item.fund_count_delta != null && Number(item.fund_count_delta) !== 0) deltaParts.push('基金 ' + signedCountText(item.fund_count_delta, '家'));
+        if (item.national_team_shares_wan_delta != null && Number(item.national_team_shares_wan_delta) !== 0) deltaParts.push('国家队 ' + signedCountText(item.national_team_shares_wan_delta, '万股'));
+        return '<tr>' +
+          '<td>' + esc(fmtDate(item.report_date)) + '</td>' +
+          '<td>' + esc(stockHouseholdCountText(item.holder_count)) + '</td>' +
+          '<td>' + esc(stockInstitutionCountText(item.inst_total_count)) + '</td>' +
+          '<td>' + esc(stockInstitutionCountText(item.fund_count)) + '</td>' +
+          '<td>' + esc(stockInstitutionCountText(item.insurance_count)) + ' / ' + esc(stockInstitutionCountText(item.qfii_count)) + '</td>' +
+          '<td>' + esc(item.national_team_shares_wan != null ? (Number(item.national_team_shares_wan) >= 10000 ? (Number(item.national_team_shares_wan) / 10000).toFixed(2) + '亿股' : fmt(Math.round(Number(item.national_team_shares_wan))) + '万股') : '-') + '</td>' +
+          '<td>' + esc(deltaParts.join(' · ') || '首个落库季度') + '</td>' +
+          '</tr>';
+      }).join('');
+      var body = '<div class="stock-report-inline-note">' + esc(overlay.capability_note || 'TDXHub 季度结构已纳入时间轴。') + '</div>' +
+        '<div class="stock-report-inline-note stock-report-inline-note--muted">上图信号区已把股东人数与机构总量入图，这里保留原始季度值与环比变化，便于复核。</div>' +
+        '<div class="stock-report-table-wrap"><table class="data-table data-table-compact stock-report-trajectory-table"><thead><tr><th>季度</th><th>股东人数</th><th>机构总量</th><th>基金</th><th>保险 / QFII</th><th>国家队</th><th>环比变化</th></tr></thead><tbody>' + rows + '</tbody></table></div>';
+      return renderStockReportModule('TDXHub 季度结构明细', headerNote, body, 'stock-report-module--table');
+    }
+    function renderStockMarketSignalModule(marginOverlay, changeSummary) {
+      var margin = marginOverlay || {};
+      var summary = changeSummary || {};
+      var hasMargin = Array.isArray(margin.points) && margin.points.length;
+      var hasChange = summary.event_count != null || summary.increase_count != null || summary.decrease_count != null || summary.latest_notice_date;
+      if (!hasMargin && !hasChange) return '';
+      var note = [
+        hasMargin && margin.latest_trade_date ? ('两融 ' + fmtDate(margin.latest_trade_date)) : '',
+        hasChange && summary.latest_notice_date ? ('最新公告 ' + fmtDate(summary.latest_notice_date)) : '',
+        summary.window_days ? ('窗口 ' + fmt(summary.window_days) + ' 天') : ''
+      ].filter(Boolean).join(' · ');
+      var rows = [
+        {
+          label: '融资余额',
+          value: hasMargin && margin.latest_fin_balance != null ? stockMoneyText(margin.latest_fin_balance) : '-',
+          delta: hasMargin ? [
+            margin.fin_balance_change_20d_pct != null ? ('20日 ' + signedPct(margin.fin_balance_change_20d_pct)) : '',
+            margin.fin_balance_change_60d_pct != null ? ('60日 ' + signedPct(margin.fin_balance_change_60d_pct)) : ''
+          ].filter(Boolean).join(' · ') || '-' : '-',
+          note: hasMargin && margin.latest_fin_balance_ratio != null ? ('占比 ' + Number(margin.latest_fin_balance_ratio).toFixed(2) + '%') : '东财日频两融'
+        },
+        {
+          label: '融券余额',
+          value: hasMargin && margin.latest_loan_balance != null ? stockMoneyText(margin.latest_loan_balance) : '-',
+          delta: hasMargin ? [
+            margin.loan_balance_change_20d_pct != null ? ('20日 ' + signedPct(margin.loan_balance_change_20d_pct)) : '',
+            margin.loan_balance_change_60d_pct != null ? ('60日 ' + signedPct(margin.loan_balance_change_60d_pct)) : ''
+          ].filter(Boolean).join(' · ') || '-' : '-',
+          note: hasMargin && margin.latest_loan_balance_ratio != null ? ('占比 ' + Number(margin.latest_loan_balance_ratio).toFixed(3) + '%') : '东财日频两融'
+        },
+        {
+          label: '高管/股东增减持',
+          value: hasChange ? ('增持 ' + fmt(summary.increase_count || 0) + ' / 减持 ' + fmt(summary.decrease_count || 0)) : '-',
+          delta: hasChange && summary.net_event_count != null ? ('净方向 ' + signedCountText(summary.net_event_count, '次')) : '-',
+          note: hasChange ? (summary.latest_notice_date ? ('最新公告 ' + fmtDate(summary.latest_notice_date)) : '最近180天事件汇总') : '-'
+        }
+      ].filter(function (item) {
+        return item.value !== '-' || item.delta !== '-' || item.note !== '-';
+      });
+      if (!rows.length) return '';
+      var tableHtml = '<div class="stock-report-inline-note">融资/融券在图上按日频曲线展示，增减持在图上按事件带展示；这里保留最新原始口径。</div>' +
+        '<div class="stock-report-table-wrap"><table class="data-table data-table-compact stock-report-trajectory-table"><thead><tr><th>信号</th><th>当前值</th><th>变化</th><th>说明</th></tr></thead><tbody>' + rows.map(function (item) {
+          return '<tr>' +
+            '<td>' + esc(item.label) + '</td>' +
+            '<td>' + esc(item.value) + '</td>' +
+            '<td>' + esc(item.delta) + '</td>' +
+            '<td>' + esc(item.note) + '</td>' +
+            '</tr>';
+        }).join('') + '</tbody></table></div>';
+      return renderStockReportModule('两融与增减持摘要', note, tableHtml, 'stock-report-module--table');
+    }
+    function renderStockTdxBlockModule(blockPayload) {
+      var payload = blockPayload || {};
+      var categories = Array.isArray(payload.categories) ? payload.categories.filter(function (item) {
+        return item && Array.isArray(item.blocks) && item.blocks.length;
+      }) : [];
+      if (!categories.length) return '';
+      var note = [
+        payload.total_blocks != null ? ('归属 ' + fmt(payload.total_blocks) + ' 个板块') : '',
+        payload.updated_at ? ('同步 ' + fmtDateTime(payload.updated_at)) : '',
+        payload.source ? ('来源 ' + payload.source) : ''
+      ].filter(Boolean).join(' · ');
+      var body = '<div class="stock-report-inline-note">把 sync_industry 落下来的 TDX 概念 / 风格 / 指数归属挂回详情页，成员数越小通常代表篮子更窄。</div>' + categories.map(function (category) {
+        var blocks = (category.blocks || []).slice(0, 8);
+        var hiddenCount = Math.max(0, Number(category.count || blocks.length) - blocks.length);
+        return '<div class="stock-report-inline-note"><strong>' + esc(category.label || category.category || '-') + '</strong>' +
+          (category.count != null ? ' · ' + esc(fmt(category.count)) + ' 个' : '') +
+          '</div>' +
+          '<div class="stock-price-summary-row">' + blocks.map(function (block) {
+            var title = block.member_count != null ? ('成员 ' + fmt(block.member_count)) : '成员数未知';
+            var label = block.member_count != null ? ((block.name || '-') + ' · ' + fmt(block.member_count)) : (block.name || '-');
+            return '<span class="stock-price-summary-pill" title="' + esc(title) + '">' + esc(label) + '</span>';
+          }).join('') +
+          (hiddenCount > 0 ? '<span class="stock-price-summary-pill">+' + esc(fmt(hiddenCount)) + ' 个更多</span>' : '') +
+          '</div>';
+      }).join('');
+      return renderStockReportModule('TDX 板块归属', note, body, 'stock-report-module--table');
+    }
+    function renderStockQlibAssociationModule(association) {
+      var preferredLabels = ['股东人数', '机构总量', '融资余额', '融券余额', '近180天增持', '近180天减持'];
+      var rows = association && Array.isArray(association.rows) ? association.rows.slice() : [];
+      if (!rows.length) return '';
+      var rowMap = {};
+      rows.forEach(function (item) {
+        if (item && item.label && !rowMap[item.label]) rowMap[item.label] = item;
+      });
+      var filteredRows = preferredLabels.map(function (label) {
+        return rowMap[label] || null;
+      }).filter(Boolean);
+      if (filteredRows.length) rows = filteredRows;
+      var note = [
+        association.model_id ? ('模型 ' + association.model_id) : '',
+        association.predict_date ? ('预测 ' + fmtDate(association.predict_date)) : '',
+        association.report_date ? ('结构快照 ' + fmtDate(association.report_date)) : '',
+        association.sample_count != null ? ('样本 ' + fmt(association.sample_count)) : '',
+        association.sample_breakdown && association.sample_breakdown.length ? association.sample_breakdown.join(' · ') : ''
+      ].filter(Boolean).join(' · ');
+      var summaryHtml = (association.summary || []).length
+        ? '<div class="stock-report-inline-note">' + esc((association.summary || []).join('；')) + '</div>'
+        : '';
+      var tableHtml = '<div class="stock-report-table-wrap"><table class="data-table data-table-compact stock-report-trajectory-table"><thead><tr><th>信号维度</th><th>当前值</th><th>近阶段变化</th><th>Qlib 关联</th><th>当前位置</th></tr></thead><tbody>' + rows.map(function (item) {
+        var assocText = item.corr != null ? (item.association + ' (' + Number(item.corr).toFixed(2) + ')') : item.association;
+        return '<tr>' +
+          '<td>' + esc(item.label || '-') + '</td>' +
+          '<td>' + esc(item.value_text || '-') + '</td>' +
+          '<td>' + esc(item.delta_text || '-') + '</td>' +
+          '<td>' + esc(assocText || '-') + '</td>' +
+          '<td>' + esc(item.position_text || '-') + '</td>' +
+          '</tr>';
+      }).join('') + '</tbody></table></div>';
+      var limitationHtml = (association.limitations || []).length
+        ? '<div class="stock-report-inline-note stock-report-inline-note--muted">' + esc((association.limitations || []).join(' ')) + '</div>'
+        : '';
+      return renderStockReportModule('Qlib 联动摘要', note, summaryHtml + tableHtml + limitationHtml, 'stock-report-module--table');
+    }
+  function attentionSignalMeta(signal) {
+    return {
+      '外部确认增强': { label: '外部确认增强', tone: 'good' },
+      '关注度抬升': { label: '关注度抬升', tone: 'accent' },
+      '调研活跃': { label: '调研活跃', tone: 'info' },
+      '热度拥挤': { label: '热度拥挤', tone: 'warn' }
+    }[signal || ''] || null;
+  }
+  function attentionSignalTag(signal) {
+    var meta = attentionSignalMeta(signal);
+    if (!meta) return '';
+    return '<span class="stock-attention-pill stock-attention-pill--' + meta.tone + '">' + esc(meta.label) + '</span>';
+  }
+  function stockReportHeroMetric(label, value, subtext, tone, valueHtml, noteHtml) {
+    return {
+      label: label,
+      value: value,
+      note: subtext,
+      tone: tone || '',
+      valueHtml: valueHtml,
+      noteHtml: noteHtml
+    };
+  }
+  function renderStockReportHero(base, attention) {
+    if (!base) return '';
+    var insts = Array.isArray(base.institutions) ? base.institutions : [];
+    var timeline = base.price_timeline || {};
+    var latestReport = base.latest_report_date || (base.setup && base.setup.latest_report_date) || (insts[0] && insts[0].report_date);
+    var latestNotice = base.latest_notice_date || (base.setup && base.setup.latest_notice_date) || '';
+    var followCount = insts.filter(function (item) { return item.follow_gate === 'follow'; }).length;
+    var industry = '';
+    if (base.industry) {
+      industry = industryChain(base.industry);
+    }
+    if (!industry) industry = preferredIndustryLabel(base);
+    var chips = [priorityPoolTag(base.priority_pool)];
+    if (stockGateInfo(base).key) chips.push(stockGateTag(base));
+    if (base.external_attention_signal) chips.push(attentionSignalTag(base.external_attention_signal));
+    if (base.turtle_setup_state) chips.push(turtleStateTag(base.turtle_setup_state, true));
+    if (base.stock_archetype) chips.push('<span class="stock-attention-pill stock-attention-pill--neutral">' + esc(base.stock_archetype) + '</span>');
+    var summaryParts = [];
+    if (industry) summaryParts.push(industry);
+    var narrative = stockSignalNarrative(base);
+    if (narrative && narrative !== '-') summaryParts.push(narrative);
+    if (base.score_risks) summaryParts.push('风险：' + base.score_risks);
+    var heroRows = [
+      stockReportHeroMetric('综合优先', scoreNum(base.composite_priority_score), base.priority_pool || '未分池', Number(base.composite_priority_score || 0) >= 75 ? 'good' : ''),
+      stockReportHeroMetric('最新价', timeline.end_close != null ? Number(timeline.end_close).toFixed(2) : '-', timeline.end_date ? fmtDate(timeline.end_date) : '待K线'),
+      stockReportHeroMetric('三年涨跌', timeline.change_pct != null ? signedPct(timeline.change_pct) : '-', timeline.start_date && timeline.end_date ? (fmtDate(timeline.start_date) + ' -> ' + fmtDate(timeline.end_date)) : '近三年价格', timeline.change_pct != null && Number(timeline.change_pct) >= 0 ? 'good' : ''),
+      stockReportHeroMetric('最新报告', latestReport ? fmtDate(latestReport) : '-', latestReport ? daysFromDateDigits(latestReport) : '暂无'),
+      stockReportHeroMetric('公告时点', latestNotice ? fmtDate(latestNotice) : '-', latestNotice ? daysFromDateDigits(latestNotice) : '暂无'),
+      stockReportHeroMetric('当前机构', fmt(insts.length), followCount ? ('可跟 ' + followCount + ' 家') : '待执行分层')
     ];
-    return '<div class="stock-detail-text stock-detail-text--neutral">' +
-      '<div class="stock-detail-text-label">行为拆解</div>' +
-      '<div class="stock-detail-metrics" style="margin-top:8px">' + items.join('') + '</div>' +
+    return '<div class="stock-report-hero">' +
+      '<div class="stock-report-hero-head">' +
+      '<div>' +
+      '<div class="stock-report-hero-title">' + securityIdentityBlock(base.stock_code, base.stock_name, { wrapperClass: 'security-identity security-identity--hero', nameClass: 'stock-report-hero-name', includeMarketLink: true, includeXueqiuPill: true }) + '</div>' +
+      (summaryParts.length ? '<div class="stock-report-hero-sub">' + esc(summaryParts.join(' · ')) + '</div>' : '') +
+      '<div class="stock-report-hero-chip-row">' + chips.join('') + '</div>' +
+      '</div>' +
+      '</div>' +
+      '<div class="stock-report-hero-metrics">' + renderStockReportKeyTable(heroRows, 3) + '</div>' +
       '</div>';
   }
-
-  function renderStockBehaviorSignals(s, insts) {
-    var rows = Array.isArray(insts) ? insts : [];
-    var premiumValues = rows.filter(function (inst) { return inst.premium_pct != null; }).map(function (inst) { return Number(inst.premium_pct || 0); });
-    var avgPremium = premiumValues.length ? premiumValues.reduce(function (sum, value) { return sum + value; }, 0) / premiumValues.length : null;
-    var nearCostCount = premiumValues.filter(function (value) { return value > 0 && value <= 5; }).length;
-    var discountCount = premiumValues.filter(function (value) { return value <= 0; }).length;
-    var highPremiumCount = premiumValues.filter(function (value) { return value > 20; }).length;
-    var avgHeldDays = rows.filter(function (inst) { return inst.current_held_days != null; }).map(function (inst) { return Number(inst.current_held_days || 0); });
-    var avgDisclosureLag = rows.filter(function (inst) { return inst.disclosure_lag_days != null; }).map(function (inst) { return Number(inst.disclosure_lag_days || 0); });
-    var topInst = rows[0] || {};
-    var items = [
-      s.setup_follow_gate ? detailMetricItem('源头执行', stockGateInfo({ stock_gate: s.setup_follow_gate, stock_gate_reason: s.setup_follow_gate_reason }).label) : '',
-      s.setup_premium_pct != null ? detailMetricItem('源头溢价', premiumText(s.setup_premium_pct)) : '',
-      avgPremium != null ? detailMetricItem('平均溢价', premiumText(avgPremium)) : '',
-      nearCostCount ? detailMetricItem('近成本机构', fmt(nearCostCount), 'good') : '',
-      discountCount ? detailMetricItem('折价机构', fmt(discountCount), 'good') : '',
-      highPremiumCount ? detailMetricItem('高溢价机构', fmt(highPremiumCount), 'warn') : '',
-      topInst.hold_ratio != null ? detailMetricItem('首位持股比', pct(topInst.hold_ratio)) : '',
-      topInst.holder_rank != null ? detailMetricItem('首位席次', '#' + fmt(topInst.holder_rank)) : '',
-      avgHeldDays.length ? detailMetricItem('平均持有天数', fmt(Math.round(avgHeldDays.reduce(function (sum, value) { return sum + value; }, 0) / avgHeldDays.length)) + '天') : '',
-      avgDisclosureLag.length ? detailMetricItem('平均披露时差', fmt(Math.round(avgDisclosureLag.reduce(function (sum, value) { return sum + value; }, 0) / avgDisclosureLag.length)) + '天') : ''
-    ].filter(Boolean);
-    if (!items.length) return '';
-    return '<div class="stock-detail-text stock-detail-text--info">' +
-      '<div class="stock-detail-text-label">机构行为信号</div>' +
-      '<div class="stock-detail-metrics" style="margin-top:8px">' + items.join('') + '</div>' +
-      '</div>';
+  function stockTrajectorySeriesMeta(key) {
+    return {
+      holder_count: { label: '股东人数', stroke: '#0f766e', fill: 'rgba(15, 118, 110, 0.12)', text: '#115e59' },
+      inst_total_count: { label: '机构总量', stroke: '#c2410c', fill: 'rgba(194, 65, 12, 0.12)', text: '#9a3412' },
+      fin_balance: { label: '融资余额', stroke: '#6d28d9', fill: 'rgba(109, 40, 217, 0.12)', text: '#5b21b6' },
+      loan_balance: { label: '融券余额', stroke: '#dc2626', fill: 'rgba(220, 38, 38, 0.12)', text: '#b91c1c' }
+    }[key] || { label: key || '信号', stroke: '#64748b', fill: 'rgba(100, 116, 139, 0.12)', text: '#475569' };
   }
-
-  function renderStockBehaviorSummary(s, insts, leaderName, avgPremium) {
-    var rows = Array.isArray(insts) ? insts : [];
-    if (!rows.length && !s.setup_reason) return '';
-    var parts = [];
-    var topNames = rows.slice(0, 3).map(function (inst) { return inst.inst_name; }).filter(Boolean);
-    var followCount = rows.filter(function (inst) { return inst.follow_gate === 'follow'; }).length;
-    var watchCount = rows.filter(function (inst) { return inst.follow_gate === 'watch'; }).length;
-    if (leaderName && leaderName !== '-') parts.push('当前由 ' + leaderName + ' 领头');
-    if (topNames.length) parts.push('前排机构为 ' + topNames.join(' / '));
-    if (followCount || watchCount) parts.push('可执行机构 ' + fmt(followCount) + ' 家，关注机构 ' + fmt(watchCount) + ' 家');
-    if (avgPremium != null) {
-      if (avgPremium <= 5) parts.push('整体仍接近机构成本区');
-      else if (avgPremium >= 20) parts.push('整体已进入高溢价区');
-      else parts.push('整体位于正常溢价区');
+  function normalizeStockTimelineEventKey(event) {
+    var lane = event && event.lane ? String(event.lane) : '';
+    var tone = event && event.tone ? String(event.tone) : '';
+    if (lane === 'tdx') return 'tdx';
+    if (lane === 'change') {
+      if (tone === 'increase') return 'increase';
+      if (tone === 'decrease') return 'decrease';
+      return 'change';
     }
-    return parts.length ? detailTextBlock('行为结构', parts.join('；'), 'neutral') : '';
+    if (lane === 'survey') return 'survey';
+    if (lane === 'research') return 'research';
+    if (lane === 'news') return 'news';
+    if (lane === 'signal') return 'signal';
+    if (lane === 'capital') return 'capital';
+    if (lane === 'report') return 'report';
+    if (lane === 'notice') return 'notice';
+    if (tone === 'increase') return 'increase';
+    if (tone === 'decrease') return 'decrease';
+    return lane || tone || 'notice';
   }
-
-  function renderStockQualityCard(setup, base) {
-    var s = Object.assign({}, base || {}, setup || {});
-    var chips = [
-      gradeChip('行业', s.industry_skill_grade),
-      gradeChip('可跟', s.followability_grade),
-      gradeChip('溢价', s.premium_grade),
-      gradeChip('时效', s.report_recency_grade),
-      gradeChip('可靠', s.reliability_grade)
+  function stockTimelineEventMeta(input) {
+    var key = typeof input === 'string' ? input : normalizeStockTimelineEventKey(input);
+    return {
+      report: { label: '报告期', stroke: '#4f46e5', fill: '#eef2ff', text: '#4338ca' },
+      notice: { label: '公告披露', stroke: '#0284c7', fill: '#eff6ff', text: '#075985' },
+      capital: { label: '资本事项', stroke: '#ea580c', fill: '#fff7ed', text: '#c2410c' },
+      change: { label: '股东/高管', stroke: '#be123c', fill: '#fff1f2', text: '#be123c' },
+      increase: { label: '增持', stroke: '#059669', fill: '#ecfdf5', text: '#047857' },
+      decrease: { label: '减持', stroke: '#dc2626', fill: '#fef2f2', text: '#b91c1c' },
+      signal: { label: '外部关注', stroke: '#7c3aed', fill: '#f5f3ff', text: '#6d28d9' },
+      survey: { label: '机构调研', stroke: '#0d9488', fill: '#ecfeff', text: '#0f766e' },
+      research: { label: '个股研报', stroke: '#16a34a', fill: '#f0fdf4', text: '#15803d' },
+      news: { label: '新闻脉冲', stroke: '#ca8a04', fill: '#fefce8', text: '#a16207' },
+      tdx: { label: 'TDX季度', stroke: '#0f766e', fill: '#ecfeff', text: '#0f766e' }
+    }[key] || { label: key || '事件', stroke: '#94a3b8', fill: '#f8fafc', text: '#475569' };
+  }
+  function stockTimelineLaneKey(event) {
+    var key = normalizeStockTimelineEventKey(event);
+    if (key === 'increase' || key === 'decrease') return 'change';
+    return key;
+  }
+  function stockTimelineLaneOrder() {
+    return ['report', 'notice', 'capital', 'change', 'signal', 'survey', 'research', 'news'];
+  }
+  function stockTrajectorySeriesByKey(seriesList, key) {
+    var items = Array.isArray(seriesList) ? seriesList : [];
+    for (var i = 0; i < items.length; i += 1) {
+      if (items[i] && items[i].key === key) return items[i];
+    }
+    return null;
+  }
+  function buildStockTrajectorySeries(base) {
+    var signalSeries = [];
+    var quarterlySeries = base && base.tdx_quarterly_overlay && Array.isArray(base.tdx_quarterly_overlay.series)
+      ? base.tdx_quarterly_overlay.series
+      : [];
+    var marginPoints = base && base.margin_balance_overlay && Array.isArray(base.margin_balance_overlay.points)
+      ? base.margin_balance_overlay.points
+      : [];
+    function appendSignalSeries(key, rows, valueKey, formatValue) {
+      var points = (rows || []).map(function (item) {
+        var dateText = normalizeTimelineDateText(item.date || item.report_date);
+        var value = item && item[valueKey] != null ? Number(item[valueKey]) : null;
+        if (!dateText || value == null || isNaN(value)) return null;
+        return { date: dateText, value: value, text: formatValue(value) };
+      }).filter(Boolean);
+      if (!points.length) return;
+      signalSeries.push({
+        key: key,
+        points: points,
+        latestText: points[points.length - 1].text,
+        latestDate: points[points.length - 1].date
+      });
+    }
+    appendSignalSeries('holder_count', quarterlySeries, 'holder_count', stockHouseholdCountText);
+    appendSignalSeries('inst_total_count', quarterlySeries, 'inst_total_count', stockInstitutionCountText);
+    appendSignalSeries('fin_balance', marginPoints, 'fin_balance', stockMoneyText);
+    appendSignalSeries('loan_balance', marginPoints, 'loan_balance', stockMoneyText);
+    return signalSeries;
+  }
+  function collectStockTimelineEvents(base) {
+    return Array.isArray(base && base.timeline_events) ? base.timeline_events.slice() : [];
+  }
+  function timelineEventSortValue(dateText) {
+    var parsed = parseDateDigits(dateText);
+    return parsed ? parsed.getTime() : 0;
+  }
+  function condenseStockTimelineEvents(events) {
+    var grouped = {};
+    (Array.isArray(events) ? events : []).forEach(function (item) {
+      if (!item) return;
+      var dateText = normalizeTimelineDateText(item.date);
+      var typeKey = normalizeStockTimelineEventKey(item);
+      if (!dateText || typeKey === 'tdx') return;
+      var laneKey = stockTimelineLaneKey(item);
+      var groupKey = [dateText, laneKey, typeKey].join('|');
+      if (!grouped[groupKey]) {
+        grouped[groupKey] = {
+          date: dateText,
+          lane: laneKey,
+          tone: typeKey,
+          title: item.title,
+          body: item.body,
+          baseBody: item.body,
+          shortLabel: item.shortLabel || item.title,
+          count: 1
+        };
+        return;
+      }
+      grouped[groupKey].count += 1;
+      if (grouped[groupKey].title !== item.title) grouped[groupKey].title = stockTimelineEventMeta(typeKey).label;
+      grouped[groupKey].body = `${grouped[groupKey].baseBody}；另有 ${grouped[groupKey].count - 1} 条同日事件`;
+    });
+    return Object.keys(grouped).map(function (key) {
+      var item = grouped[key];
+      return {
+        date: item.date,
+        lane: item.lane,
+        tone: item.tone,
+        title: item.title,
+        body: item.body,
+        shortLabel: item.shortLabel,
+        count: item.count
+      };
+    }).sort(function (a, b) {
+      return timelineEventSortValue(a.date) - timelineEventSortValue(b.date);
+    });
+  }
+  function renderStockTrajectorySignalLegend(signalSeries) {
+    var items = (Array.isArray(signalSeries) ? signalSeries : []).map(function (series) {
+      var meta = stockTrajectorySeriesMeta(series.key);
+      var latestDate = series.latestDate ? fmtDate(series.latestDate) : '';
+      return `<span class='stock-price-legend-item stock-price-legend-item--curve'><span class='stock-price-legend-line' style='background:${meta.stroke}'></span><span class='stock-price-legend-label'>${esc(meta.label)}</span><span class='stock-price-legend-value'>${esc(series.latestText || '-')}</span>${latestDate ? `<span class='stock-price-legend-note'>${esc(latestDate)}</span>` : ''}</span>`;
+    }).join('');
+    return items ? `<div class='stock-price-legend stock-price-legend--curves'>${items}</div>` : '';
+  }
+  function renderStockTimelineEventLegend(events) {
+    var counts = {};
+    (Array.isArray(events) ? events : []).forEach(function (item) {
+      var key = normalizeStockTimelineEventKey(item);
+      if (key === 'tdx') return;
+      counts[key] = (counts[key] || 0) + 1;
+    });
+    var ordered = ['report', 'notice', 'capital', 'increase', 'decrease', 'signal', 'survey', 'research', 'news'];
+    var items = ordered.filter(function (key) {
+      return counts[key];
+    }).map(function (key) {
+      var meta = stockTimelineEventMeta(key);
+      return `<span class='stock-price-legend-item'><span class='stock-price-legend-dot' style='background:${meta.stroke}'></span><span class='stock-price-legend-label'>${esc(meta.label)}</span><span class='stock-price-legend-note'>${esc(fmt(counts[key]))}</span></span>`;
+    }).join('');
+    return items ? `<div class='stock-price-legend stock-price-legend--events'>${items}</div>` : '';
+  }
+  function renderStockTimelineEventDigest(events) {
+    var rows = (Array.isArray(events) ? events : []).slice().sort(function (a, b) {
+      return timelineEventSortValue(b.date) - timelineEventSortValue(a.date);
+    }).slice(0, 12);
+    if (!rows.length) return '';
+    var body = `<div class='stock-report-table-wrap'><table class='data-table data-table-compact stock-price-event-table'><thead><tr><th>日期</th><th>类别</th><th>事项</th><th>明细</th></tr></thead><tbody>${rows.map(function (event) {
+      var meta = stockTimelineEventMeta(event);
+      var badge = `<span class='stock-price-event-badge' style='background:${meta.fill};color:${meta.text};border-color:${meta.stroke}'>${esc(meta.label)}</span>`;
+      return `<tr><td>${esc(fmtDate(event.date))}</td><td>${badge}</td><td>${esc(event.title || '-')}</td><td>${esc(event.body || '-')}</td></tr>`;
+    }).join('')}</tbody></table></div>`;
+    return renderStockReportModule('事件明细', '与图上事件带一一对应，按时间倒序展示最近 12 条。', body, 'stock-report-module--table');
+  }
+  function buildStockTimelineSvg(points, signalSeries, events) {
+    if (!Array.isArray(points) || !points.length) return `<div class='muted' style='padding:26px 0;text-align:center;font-size:12px'>暂无近三年价格数据。</div>`;
+    var validPoints = points.filter(function (point) { return parseDateDigits(point.date); });
+    if (!validPoints.length) return `<div class='muted' style='padding:26px 0;text-align:center;font-size:12px'>价格日期无效。</div>`;
+    var width = 1160;
+    var left = 58;
+    var right = 28;
+    var top = 22;
+    var priceBottom = 178;
+    var signalTop = 214;
+    var signalBottom = 296;
+    var eventTop = 332;
+    var laneGap = 28;
+    var minTs = parseDateDigits(validPoints[0].date).getTime();
+    var maxTs = parseDateDigits(validPoints[validPoints.length - 1].date).getTime();
+    if (minTs === maxTs) maxTs += 86400000;
+    var closes = validPoints.map(function (point) { return Number(point.close || 0); });
+    var minClose = Math.min.apply(null, closes);
+    var maxClose = Math.max.apply(null, closes);
+    if (minClose === maxClose) {
+      minClose -= 1;
+      maxClose += 1;
+    }
+    var padding = (maxClose - minClose) * 0.08;
+    var low = minClose - padding;
+    var high = maxClose + padding;
+    function xFor(dateText) {
+      var parsed = parseDateDigits(dateText);
+      if (!parsed) return left;
+      var ratio = (parsed.getTime() - minTs) / (maxTs - minTs);
+      ratio = Math.max(0, Math.min(1, ratio));
+      return left + ratio * (width - left - right);
+    }
+    function priceYFor(close) {
+      return top + (1 - (Number(close || 0) - low) / (high - low)) * (priceBottom - top);
+    }
+    function signalYFor(ratio) {
+      return signalBottom - ratio * (signalBottom - signalTop);
+    }
+    var condensedEvents = Array.isArray(events) ? events : [];
+    var laneKeys = stockTimelineLaneOrder().filter(function (laneKey) {
+      return condensedEvents.some(function (event) { return stockTimelineLaneKey(event) === laneKey; });
+    });
+    var laneYMap = {};
+    laneKeys.forEach(function (laneKey, index) {
+      laneYMap[laneKey] = eventTop + index * laneGap;
+    });
+    var axisLineY = laneKeys.length ? laneYMap[laneKeys[laneKeys.length - 1]] + 14 : signalBottom + 22;
+    var axisLabelY = axisLineY + 18;
+    var height = axisLabelY + 24;
+    var pricePath = validPoints.map(function (point, index) {
+      return `${index ? 'L' : 'M'} ${xFor(point.date).toFixed(1)} ${priceYFor(point.close).toFixed(1)}`;
+    }).join(' ');
+    var priceArea = `${pricePath} L ${xFor(validPoints[validPoints.length - 1].date).toFixed(1)} ${priceBottom} L ${xFor(validPoints[0].date).toFixed(1)} ${priceBottom} Z`;
+    var priceGrid = [0, 0.25, 0.5, 0.75, 1].map(function (ratio) {
+      var y = top + (priceBottom - top) * ratio;
+      var value = (high - (high - low) * ratio).toFixed(2);
+      return `<line x1='${left}' y1='${y.toFixed(1)}' x2='${width - right}' y2='${y.toFixed(1)}' stroke='#e2e8f0' stroke-dasharray='4 4'></line><text x='${left - 10}' y='${(y + 4).toFixed(1)}' text-anchor='end' fill='#94a3b8' font-size='10'>${esc(value)}</text>`;
+    }).join('');
+    var tickIndexes = [0, 0.25, 0.5, 0.75, 1].map(function (ratio) {
+      return Math.min(validPoints.length - 1, Math.round((validPoints.length - 1) * ratio));
+    }).filter(function (value, index, arr) {
+      return arr.indexOf(value) === index;
+    });
+    var ticks = tickIndexes.map(function (idx) {
+      var point = validPoints[idx];
+      var x = xFor(point.date);
+      return `<line x1='${x.toFixed(1)}' y1='${axisLineY}' x2='${x.toFixed(1)}' y2='${axisLineY + 8}' stroke='#cbd5e1'></line><text x='${x.toFixed(1)}' y='${axisLabelY}' text-anchor='middle' fill='#94a3b8' font-size='10'>${esc(fmtDate(point.date))}</text>`;
+    }).join('');
+    var normalizedSeries = (Array.isArray(signalSeries) ? signalSeries : []).map(function (series) {
+      var cleanPoints = (series.points || []).filter(function (point) {
+        return parseDateDigits(point.date) && point.value != null;
+      });
+      if (!cleanPoints.length) return null;
+      var values = cleanPoints.map(function (point) { return Number(point.value); });
+      var minValue = Math.min.apply(null, values);
+      var maxValue = Math.max.apply(null, values);
+      var span = maxValue - minValue;
+      return {
+        key: series.key,
+        points: cleanPoints.map(function (point) {
+          return {
+            date: point.date,
+            value: point.value,
+            text: point.text,
+            ratio: span <= 0 ? 0.5 : (Number(point.value) - minValue) / span
+          };
+        })
+      };
+    }).filter(Boolean);
+    var signalGrid = [0, 0.5, 1].map(function (ratio) {
+      var y = signalYFor(ratio);
+      return `<line x1='${left}' y1='${y.toFixed(1)}' x2='${width - right}' y2='${y.toFixed(1)}' stroke='#dbeafe'></line><text x='${width - right + 4}' y='${(y + 4).toFixed(1)}' fill='#94a3b8' font-size='10'>${Math.round(ratio * 100)}</text>`;
+    }).join('');
+    var signalPaths = normalizedSeries.map(function (series) {
+      var meta = stockTrajectorySeriesMeta(series.key);
+      var path = series.points.map(function (point, index) {
+        return `${index ? 'L' : 'M'} ${xFor(point.date).toFixed(1)} ${signalYFor(point.ratio).toFixed(1)}`;
+      }).join(' ');
+      var lastPoint = series.points[series.points.length - 1];
+      var markers = series.points.length <= 16
+        ? series.points.map(function (point) {
+          return `<circle cx='${xFor(point.date).toFixed(1)}' cy='${signalYFor(point.ratio).toFixed(1)}' r='2.8' fill='${meta.stroke}'></circle>`;
+        }).join('')
+        : '';
+      return `<path d='${path}' fill='none' stroke='${meta.stroke}' stroke-width='${series.key.indexOf('balance') >= 0 ? '1.9' : '2.2'}' stroke-linecap='round' stroke-linejoin='round'></path>${markers}<circle cx='${xFor(lastPoint.date).toFixed(1)}' cy='${signalYFor(lastPoint.ratio).toFixed(1)}' r='4.1' fill='#ffffff' stroke='${meta.stroke}' stroke-width='2'></circle>`;
+    }).join('');
+    var laneLabels = laneKeys.map(function (laneKey) {
+      var meta = stockTimelineEventMeta(laneKey === 'change' ? 'change' : laneKey);
+      return `<text x='12' y='${laneYMap[laneKey] + 4}' fill='${meta.text}' font-size='11' font-weight='700'>${esc(meta.label)}</text><line x1='${left}' y1='${laneYMap[laneKey]}' x2='${width - right}' y2='${laneYMap[laneKey]}' stroke='#e2e8f0'></line>`;
+    }).join('');
+    var eventMarks = condensedEvents.map(function (event) {
+      var laneKey = stockTimelineLaneKey(event);
+      var laneY = laneYMap[laneKey];
+      if (laneY == null) return '';
+      var meta = stockTimelineEventMeta(event);
+      var x = xFor(event.date);
+      var shadow = event.count > 1
+        ? `<rect x='${(x - 5.5 + 2).toFixed(1)}' y='${(laneY - 5.5 - 2).toFixed(1)}' width='11' height='11' rx='4' fill='${meta.fill}' stroke='${meta.stroke}' stroke-width='1.2' opacity='0.42'></rect>`
+        : '';
+      var tooltip = [fmtDate(event.date), meta.label, event.title, event.body].filter(Boolean).join(' · ');
+      return `<g><title>${esc(tooltip)}</title>${shadow}<rect x='${(x - 5.5).toFixed(1)}' y='${(laneY - 5.5).toFixed(1)}' width='11' height='11' rx='4' fill='${meta.fill}' stroke='${meta.stroke}' stroke-width='1.6'></rect></g>`;
+    }).join('');
+    var lastPricePoint = validPoints[validPoints.length - 1];
+    return `<svg class='stock-price-chart' viewBox='0 0 ${width} ${height}' aria-label='三年价格与多信号时间线'><defs><linearGradient id='stockPriceAreaGradientV237' x1='0' x2='0' y1='0' y2='1'><stop offset='0%' stop-color='#60a5fa' stop-opacity='0.30'></stop><stop offset='100%' stop-color='#ffffff' stop-opacity='0'></stop></linearGradient></defs><text x='12' y='18' fill='#475569' font-size='11' font-weight='700'>价格</text><text x='12' y='206' fill='#475569' font-size='11' font-weight='700'>结构 / 资金信号</text><text x='${width - right}' y='206' text-anchor='end' fill='#94a3b8' font-size='10'>各曲线按近三年各自区间归一化</text>${priceGrid}<rect x='${left}' y='${signalTop}' width='${width - left - right}' height='${signalBottom - signalTop}' rx='14' fill='#f8fbff' stroke='#dbeafe'></rect>${signalGrid}<path d='${priceArea}' fill='url(#stockPriceAreaGradientV237)'></path><path d='${pricePath}' fill='none' stroke='#2563eb' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'></path><circle cx='${xFor(lastPricePoint.date).toFixed(1)}' cy='${priceYFor(lastPricePoint.close).toFixed(1)}' r='4.6' fill='#ffffff' stroke='#2563eb' stroke-width='2'></circle>${normalizedSeries.length ? signalPaths : `<text x='${left + 12}' y='${signalTop + 34}' fill='#94a3b8' font-size='11'>暂无可叠加的结构 / 资金曲线</text>`}<line x1='${left}' y1='${axisLineY}' x2='${width - right}' y2='${axisLineY}' stroke='#cbd5e1'></line>${laneLabels}${eventMarks}${ticks}</svg>`;
+  }
+  function renderStockEvidenceTimeline(base) {
+    var timeline = base.price_timeline || {};
+    var points = timeline.points || [];
+    var rawEvents = collectStockTimelineEvents(base);
+    var condensedEvents = condenseStockTimelineEvents(rawEvents);
+    var signalSeries = buildStockTrajectorySeries(base);
+    var overlayModule = renderStockTrajectoryOverlayModule(base.tdx_quarterly_overlay || null);
+    var marketSignalModule = renderStockMarketSignalModule(base.margin_balance_overlay || null, base.shareholder_change_summary || null);
+    var blockModule = renderStockTdxBlockModule(base.tdx_blocks || null);
+    var associationModule = renderStockQlibAssociationModule(base.qlib_tdx_association || null);
+    var moduleGrid = [overlayModule, marketSignalModule, blockModule, associationModule].filter(Boolean).join('');
+    if (!points.length && !signalSeries.length && !condensedEvents.length && !moduleGrid) return '';
+    var holderSeries = stockTrajectorySeriesByKey(signalSeries, 'holder_count');
+    var instSeries = stockTrajectorySeriesByKey(signalSeries, 'inst_total_count');
+    var finSeries = stockTrajectorySeriesByKey(signalSeries, 'fin_balance');
+    var loanSeries = stockTrajectorySeriesByKey(signalSeries, 'loan_balance');
+    var shareholderSummary = base.shareholder_change_summary || {};
+    var summaryPills = [
+      timeline.start_date && timeline.end_date ? `<span class='stock-price-summary-pill'>区间 ${esc(fmtDate(timeline.start_date) + ' - ' + fmtDate(timeline.end_date))}</span>` : '',
+      timeline.change_pct != null ? `<span class='stock-price-summary-pill'>三年涨跌 ${esc(signedPct(timeline.change_pct))}</span>` : '',
+      timeline.end_close != null ? `<span class='stock-price-summary-pill'>最新价 ${esc(Number(timeline.end_close).toFixed(2))}</span>` : '',
+      holderSeries ? `<span class='stock-price-summary-pill'>股东 ${esc(holderSeries.latestText || '-')}</span>` : '',
+      instSeries ? `<span class='stock-price-summary-pill'>机构 ${esc(instSeries.latestText || '-')}</span>` : '',
+      finSeries ? `<span class='stock-price-summary-pill'>融资 ${esc(finSeries.latestText || '-')}</span>` : '',
+      loanSeries ? `<span class='stock-price-summary-pill'>融券 ${esc(loanSeries.latestText || '-')}</span>` : '',
+      shareholderSummary.event_count != null ? `<span class='stock-price-summary-pill'>180天增/减 ${esc(fmt(shareholderSummary.increase_count || 0) + '/' + fmt(shareholderSummary.decrease_count || 0))}</span>` : '',
+      condensedEvents.length ? `<span class='stock-price-summary-pill'>事件带 ${esc(String(condensedEvents.length))} 条</span>` : ''
     ].filter(Boolean).join('');
-    var qualityBreakdown = renderStockQualityBreakdown(s);
-    var qualityMetrics = renderStockQualityMetrics(s);
-    var qualitySummary = renderStockQualitySummary(s);
-    return '<div class="stock-detail-card">' +
-      '<div class="stock-detail-card-head"><div class="stock-detail-card-title">质量卡</div><div class="stock-detail-card-sub">公司质量、股票类型和当前主要优劣势</div></div>' +
-      '<div class="stock-detail-metrics">' +
-      detailMetricItem('质量分', scoreNum(s.company_quality_score), 'good') +
-      detailMetricItem('股票类型', s.stock_archetype || '待分类') +
-      detailMetricItem('行业技能', s.industry_skill_grade != null ? String(s.industry_skill_grade) + '级' : '-') +
-      detailMetricItem('可跟等级', s.followability_grade != null ? String(s.followability_grade) + '级' : '-') +
-      detailMetricItem('溢价等级', s.premium_grade != null ? String(s.premium_grade) + '级' : '-') +
-      detailMetricItem('可靠等级', s.reliability_grade != null ? String(s.reliability_grade) + '级' : '-') +
-      '</div>' +
-      (chips ? '<div class="stock-detail-chip-row">' + chips + '</div>' : '') +
-      qualityBreakdown +
-      qualityMetrics +
-      qualitySummary +
-      (s.score_highlights ? detailTextBlock('加分主因', s.score_highlights, 'positive') : '') +
-      (s.score_risks ? detailTextBlock('扣分主因', s.score_risks, 'warning') : '') +
-      '</div>';
+    var chartNote = `<div class='stock-price-chart-note'>价格区使用前复权收盘；中段信号区把股东人数、机构总量、融资余额、融券余额按各自近三年区间归一化叠加；下方事件带与明细表按同一分类口径展示。</div>`;
+    var signalLegend = renderStockTrajectorySignalLegend(signalSeries);
+    var eventLegend = renderStockTimelineEventLegend(condensedEvents);
+    var eventDigest = renderStockTimelineEventDigest(condensedEvents);
+    return renderStockReportSection(
+      '价格与事件轨迹',
+      '把价格、结构资金曲线和事件带压到同一条横轴上，先看共振，再下钻到明细。',
+      (summaryPills ? `<div class='stock-price-summary-row'>${summaryPills}</div>` : '') +
+      chartNote +
+      `<div class='stock-price-chart-wrap'>${buildStockTimelineSvg(points, signalSeries, condensedEvents)}</div>` +
+      signalLegend +
+      eventLegend +
+      eventDigest +
+      (moduleGrid ? `<div class='stock-report-trajectory-grid'>${moduleGrid}</div>` : ''),
+      'stock-report-section--trajectory'
+    );
   }
-
-  function renderStockQualityBreakdown(s) {
-    var items = [
-      { label: '利润', value: s.quality_profit_raw },
-      { label: '现金', value: s.quality_cash_raw },
-      { label: '负债', value: s.quality_balance_raw },
-      { label: '利润率', value: s.quality_margin_raw },
-      { label: '合同/库存', value: s.quality_contract_raw },
-      { label: '新鲜度', value: s.quality_freshness_raw },
-      { label: '资本纪律', value: s.quality_capital_raw },
-      { label: '效率', value: s.quality_efficiency_raw },
-      { label: '增长', value: s.quality_growth_raw }
-    ].filter(function (item) {
-      return item.value != null;
-    });
-    if (!items.length) return '';
-    return '<div class="stock-detail-text stock-detail-text--neutral">' +
-      '<div class="stock-detail-text-label">质量子分拆解</div>' +
-      '<div class="stock-detail-metrics" style="margin-top:8px">' +
-      items.map(function (item) {
-        return detailMetricItem(item.label, scoreNum(item.value));
-      }).join('') +
-      '</div>' +
-      '</div>';
+  function renderStockReportScoreSection(base) {
+    var attention = base.attention || {};
+    var snapshot = attention.snapshot || {};
+    var research = attention.research || {};
+    var news = attention.news || {};
+    var survey30 = base.attention_survey_count_30d != null ? Number(base.attention_survey_count_30d) : Number(snapshot.survey_count_30d || 0);
+    var survey90 = base.attention_survey_count_90d != null ? Number(base.attention_survey_count_90d) : Number(snapshot.survey_count_90d || 0);
+    var qualitySourceLabel = base.company_quality_score_source === 'quality_feature_v1' ? '质量特征快照' : '评分引擎兜底';
+    var qualitySourceHint = base.quality_snapshot_date ? ('快照 ' + fmtDate(base.quality_snapshot_date)) : (base.quality_latest_financial_report_date ? ('财报 ' + fmtDate(base.quality_latest_financial_report_date)) : '');
+    var rows = [
+      {
+        dim: '发现',
+        score: scoreNum(base.discovery_score),
+        statusHtml: (base.setup_tag ? setupBadge(base.setup_tag, base.setup_priority, base.setup_confidence) + ' ' : '') + stockGateTag(base),
+        signal: [stockSourceName(base), base.setup_event_type ? setupEventText(base.setup_event_type) : '', base.consensus_count != null ? ('共识 ' + fmt(base.consensus_count)) : ''].filter(Boolean).join(' · ') || '等待新的机构动作',
+        risk: base.setup_execution_reason || base.priority_pool_reason || '等待下一次明确触发'
+      },
+      {
+        dim: '质量',
+        score: scoreNum(base.company_quality_score),
+        status: base.stock_archetype || '待分类',
+        signal: [base.roe != null ? ('ROE ' + pct(base.roe)) : '', base.gross_margin != null ? ('毛利 ' + pct(base.gross_margin)) : '', base.net_profit_positive_8q != null ? ('8期净利正 ' + fmt(base.net_profit_positive_8q) + '/8') : '', qualitySourceLabel].filter(Boolean).join(' · ') || '等待更多财务覆盖',
+        risk: base.score_risks || qualitySourceHint || '财报覆盖仍需补厚'
+      },
+      {
+        dim: '阶段',
+        score: scoreNum(base.stage_score),
+        status: base.path_state || '待判断',
+        signal: [base.return_3m != null ? ('3月 ' + signedPct(base.return_3m)) : '', base.return_12m != null ? ('12月 ' + signedPct(base.return_12m)) : '', base.amount_ratio_20_120 != null ? ('量能 ' + scoreNum(base.amount_ratio_20_120)) : ''].filter(Boolean).join(' · ') || '等待路径确认',
+        risk: base.stage_reason || base.composite_cap_reason || '观察阶段约束'
+      },
+      {
+        dim: '预测',
+        score: scoreNum(base.forecast_score_effective != null ? base.forecast_score_effective : base.forecast_score),
+        status: base.qlib_rank != null ? ('AI #' + fmt(base.qlib_rank)) : (base.forecast_industry_relative_group || '模型待刷新'),
+        signal: [base.qlib_percentile != null ? ('市场分位 ' + pct(base.qlib_percentile)) : '', (base.forecast_cross_section_score != null ? base.forecast_cross_section_score : base.forecast_20d_score) != null ? ('Qlib截面 ' + scoreNum(base.forecast_cross_section_score != null ? base.forecast_cross_section_score : base.forecast_20d_score)) : '', (base.forecast_industry_relative_score != null ? base.forecast_industry_relative_score : base.forecast_60d_excess_score) != null ? ('行业相对 ' + scoreNum(base.forecast_industry_relative_score != null ? base.forecast_industry_relative_score : base.forecast_60d_excess_score)) : ''].filter(Boolean).join(' · ') || '等待模型覆盖',
+        risk: base.forecast_reason || (base.forecast_score_effective != null && base.forecast_score != null && Number(base.forecast_score_effective) < Number(base.forecast_score) ? '阶段过滤压缩了预测分' : '模型暂无额外说明')
+      },
+      {
+        dim: '外部',
+        score: scoreNum(base.external_attention_score),
+        statusHtml: attentionSignalTag(base.external_attention_signal) || '<span class="stock-attention-pill stock-attention-pill--neutral">中性</span>',
+        signal: [survey30 ? ('30天调研 ' + fmt(survey30)) : '', survey90 ? ('90天调研 ' + fmt(survey90)) : '', Number(research.count_90d || 0) ? ('90天研报 ' + fmt(research.count_90d || 0)) : '', Number(news.count_30d || 0) ? ('30天新闻 ' + fmt(news.count_30d || 0)) : ''].filter(Boolean).join(' · ') || '外部关注仍偏安静',
+        risk: base.external_crowding_penalty != null ? ('热度折扣 ' + scoreNum(base.external_crowding_penalty)) : '暂无拥挤惩罚'
+      },
+      {
+        dim: '海龟',
+        score: scoreNum(base.turtle_execution_score),
+        statusHtml: base.turtle_setup_state ? turtleStateTag(base.turtle_setup_state, true) : '<span class="stock-attention-pill stock-attention-pill--neutral">未覆盖</span>',
+        signal: [base.turtle_preferred_system ? turtleSystemLabel(base.turtle_preferred_system) : '', base.breakout_dist_20_pct != null ? ('距20日位 ' + signedPct(base.breakout_dist_20_pct)) : '', base.exit_dist_10_pct != null ? ('距10日位 ' + signedPct(base.exit_dist_10_pct)) : ''].filter(Boolean).join(' · ') || '等待突破位与退出位收敛',
+        risk: base.turtle_reason || '执行层暂未给出额外说明'
+      }
+    ];
+    return renderStockReportSection('评分与判断框架', '把发现、质量、阶段、预测、外部和海龟放回同一张研究判断表。', renderStockReportMatrixTable(rows));
   }
-
-  function renderStockQualityMetrics(s) {
-    var items = [
-      s.roe != null ? detailMetricItem('ROE', pct(s.roe)) : '',
-      s.roa_ak != null ? detailMetricItem('ROA', pct(s.roa_ak)) : '',
-      s.gross_margin != null ? detailMetricItem('毛利率', pct(s.gross_margin)) : '',
-      s.ocf_to_profit != null ? detailMetricItem('现利比', scoreNum(s.ocf_to_profit)) : '',
-      s.debt_ratio != null ? detailMetricItem('负债率', pct(s.debt_ratio)) : '',
-      s.current_ratio != null ? detailMetricItem('流动比率', scoreNum(s.current_ratio)) : '',
-      s.total_shares_growth_3y != null ? detailMetricItem('3年股本变动', signedPct(s.total_shares_growth_3y)) : '',
-      s.holder_count_change_pct != null ? detailMetricItem('股东人数变动', signedPct(s.holder_count_change_pct)) : '',
-      s.net_profit_positive_8q != null ? detailMetricItem('8期净利为正', scoreNum(s.net_profit_positive_8q) + '/8') : '',
-      s.operating_cashflow_positive_8q != null ? detailMetricItem('8期现金流为正', scoreNum(s.operating_cashflow_positive_8q) + '/8') : '',
-      s.revenue_yoy_positive_4q != null ? detailMetricItem('4期营收同比为正', scoreNum(s.revenue_yoy_positive_4q) + '/4') : '',
-      s.profit_yoy_positive_4q != null ? detailMetricItem('4期利润同比为正', scoreNum(s.profit_yoy_positive_4q) + '/4') : '',
-      s.revenue_growth_yoy_ak != null ? detailMetricItem('营收同比', signedPct(s.revenue_growth_yoy_ak)) : '',
-      s.net_profit_growth_yoy_ak != null ? detailMetricItem('利润同比', signedPct(s.net_profit_growth_yoy_ak)) : ''
+  function renderStockReportDataSection(base) {
+    var attention = base.attention || {};
+    var snapshot = attention.snapshot || {};
+    var research = attention.research || {};
+    var news = attention.news || {};
+    var industry = preferredIndustryLabel(base);
+    var survey30 = base.attention_survey_count_30d != null ? Number(base.attention_survey_count_30d) : Number(snapshot.survey_count_30d || 0);
+    var survey90 = base.attention_survey_count_90d != null ? Number(base.attention_survey_count_90d) : Number(snapshot.survey_count_90d || 0);
+    var qualitySourceLabel = base.company_quality_score_source === 'quality_feature_v1' ? '质量特征快照' : '评分引擎兜底';
+    var qualitySourceHint = [base.quality_snapshot_date ? ('快照 ' + fmtDate(base.quality_snapshot_date)) : '', base.quality_latest_financial_report_date ? ('财报 ' + fmtDate(base.quality_latest_financial_report_date)) : ''].filter(Boolean).join(' · ');
+    var qualityRows = [
+      stockReportHeroMetric('质量来源', qualitySourceLabel, qualitySourceHint),
+      stockReportHeroMetric('股票类型', base.stock_archetype || '待分类', industry || ''),
+      stockReportHeroMetric('财务口径', base.quality_latest_financial_report_date ? fmtDate(base.quality_latest_financial_report_date) : '-', [base.quality_latest_indicator_report_date ? ('指标 ' + fmtDate(base.quality_latest_indicator_report_date)) : '', base.quality_snapshot_date ? ('快照 ' + fmtDate(base.quality_snapshot_date)) : ''].filter(Boolean).join(' · ')),
+      stockReportHeroMetric('ROE', base.roe != null ? pct(base.roe) : '-', '', base.roe != null && Number(base.roe) >= 15 ? 'good' : ''),
+      stockReportHeroMetric('ROA', base.roa_ak != null ? pct(base.roa_ak) : '-'),
+      stockReportHeroMetric('毛利率', base.gross_margin != null ? pct(base.gross_margin) : '-'),
+      stockReportHeroMetric('现利比', base.ocf_to_profit != null ? scoreNum(base.ocf_to_profit) : '-'),
+      stockReportHeroMetric('负债率', base.debt_ratio != null ? pct(base.debt_ratio) : '-'),
+      stockReportHeroMetric('流动比率', base.current_ratio != null ? scoreNum(base.current_ratio) : '-'),
+      stockReportHeroMetric('8期净利为正', base.net_profit_positive_8q != null ? (fmt(base.net_profit_positive_8q) + '/8') : '-'),
+      stockReportHeroMetric('8期现金为正', base.operating_cashflow_positive_8q != null ? (fmt(base.operating_cashflow_positive_8q) + '/8') : '-'),
+      stockReportHeroMetric('4期营收同比为正', base.revenue_yoy_positive_4q != null ? (fmt(base.revenue_yoy_positive_4q) + '/4') : '-'),
+      stockReportHeroMetric('4期利润同比为正', base.profit_yoy_positive_4q != null ? (fmt(base.profit_yoy_positive_4q) + '/4') : '-'),
+      stockReportHeroMetric('3年股本变动', base.total_shares_growth_3y != null ? signedPct(base.total_shares_growth_3y) : '-'),
+      stockReportHeroMetric('股东人数变动', base.holder_count_change_pct != null ? signedPct(base.holder_count_change_pct) : '-')
+    ];
+    var stageRows = [
+      stockReportHeroMetric('路径状态', base.path_state || '待判断', base.stage_reason || ''),
+      stockReportHeroMetric('执行门槛', stockGateInfo(base).label || '未分层', stockGateInfo(base).reason || ''),
+      stockReportHeroMetric('1月收益', base.return_1m != null ? signedPct(base.return_1m) : '-'),
+      stockReportHeroMetric('3月收益', base.return_3m != null ? signedPct(base.return_3m) : '-'),
+      stockReportHeroMetric('6月收益', base.return_6m != null ? signedPct(base.return_6m) : '-'),
+      stockReportHeroMetric('12月收益', base.return_12m != null ? signedPct(base.return_12m) : '-'),
+      stockReportHeroMetric('60日回撤', base.max_drawdown_60d != null ? pct(base.max_drawdown_60d) : '-'),
+      stockReportHeroMetric('距250日线', base.dist_ma250_pct != null ? signedPct(base.dist_ma250_pct) : '-'),
+      stockReportHeroMetric('站上250日线', base.above_ma250 != null ? (base.above_ma250 ? '是' : '否') : '-'),
+      stockReportHeroMetric('20/120量能', base.amount_ratio_20_120 != null ? scoreNum(base.amount_ratio_20_120) : '-'),
+      stockReportHeroMetric('20日波动', base.volatility_20d != null ? pct(base.volatility_20d) : '-'),
+      stockReportHeroMetric('20日振幅', base.amplitude_20d != null ? pct(base.amplitude_20d) : '-'),
+      stockReportHeroMetric('通用阶段', base.generic_stage_raw != null ? scoreNum(base.generic_stage_raw) : '-'),
+      stockReportHeroMetric('类型修正', base.stage_type_adjust_raw != null ? signedScore(base.stage_type_adjust_raw) : '-')
+    ];
+    var modelRows = [
+      stockReportHeroMetric('模型ID', base.forecast_model_id || '-', base.forecast_predict_date ? ('预测日 ' + fmtDate(base.forecast_predict_date)) : ''),
+      stockReportHeroMetric('AI排行', base.qlib_rank != null ? ('#' + fmt(base.qlib_rank)) : '-'),
+      stockReportHeroMetric('市场分位', base.qlib_percentile != null ? pct(base.qlib_percentile) : '-'),
+      stockReportHeroMetric('行业分位', base.industry_qlib_percentile != null ? pct(base.industry_qlib_percentile) : '-'),
+      stockReportHeroMetric('Qlib截面', (base.forecast_cross_section_score != null ? base.forecast_cross_section_score : base.forecast_20d_score) != null ? scoreNum(base.forecast_cross_section_score != null ? base.forecast_cross_section_score : base.forecast_20d_score) : '-'),
+      stockReportHeroMetric('行业相对', (base.forecast_industry_relative_score != null ? base.forecast_industry_relative_score : base.forecast_60d_excess_score) != null ? scoreNum(base.forecast_industry_relative_score != null ? base.forecast_industry_relative_score : base.forecast_60d_excess_score) : '-'),
+      stockReportHeroMetric('风险收益', base.forecast_risk_adjusted_score != null ? scoreNum(base.forecast_risk_adjusted_score) : '-'),
+      stockReportHeroMetric('关注指数', base.attention_focus_index != null ? scoreNum(base.attention_focus_index) : (snapshot.focus_index != null ? scoreNum(snapshot.focus_index) : '-')),
+      stockReportHeroMetric('综合关注分', base.attention_composite_score != null ? scoreNum(base.attention_composite_score) : (snapshot.composite_score != null ? scoreNum(snapshot.composite_score) : '-')),
+      stockReportHeroMetric('机构参与', base.attention_institution_participation != null ? pct(base.attention_institution_participation) : (snapshot.institution_participation != null ? pct(snapshot.institution_participation) : '-')),
+      stockReportHeroMetric('30/90天调研', fmt(survey30) + ' / ' + fmt(survey90), snapshot.last_survey_date ? ('最新 ' + fmtDate(snapshot.last_survey_date)) : ''),
+      stockReportHeroMetric('90天研报 / 30天新闻', fmt(research.count_90d || 0) + ' / ' + fmt(news.count_30d || 0), research.latest_date ? ('研报 ' + fmtDate(research.latest_date)) : (news.latest_time ? ('新闻 ' + fmtDate(news.latest_time)) : ''))
+    ];
+    var turtleRows = [
+      stockReportHeroMetric('系统 / 状态', [base.turtle_preferred_system ? turtleSystemLabel(base.turtle_preferred_system) : '', base.turtle_setup_state || '未覆盖'].filter(Boolean).join(' / ') || '未覆盖', base.turtle_reason || ''),
+      stockReportHeroMetric('ATR% / 收盘', [base.atr_14_pct != null ? pct(base.atr_14_pct) : '-', base.close_price != null ? Number(base.close_price).toFixed(2) : '-'].join(' / '), base.latest_trade_date ? fmtDate(base.latest_trade_date) : ''),
+      stockReportHeroMetric('20日 / 55日突破位', [base.entry_level_20 != null ? Number(base.entry_level_20).toFixed(2) : '-', base.entry_level_55 != null ? Number(base.entry_level_55).toFixed(2) : '-'].join(' / '), [base.breakout_dist_20_pct != null ? ('距20 ' + signedPct(base.breakout_dist_20_pct)) : '', base.breakout_dist_55_pct != null ? ('距55 ' + signedPct(base.breakout_dist_55_pct)) : ''].filter(Boolean).join(' · ')),
+      stockReportHeroMetric('10日 / 20日退出位', [base.exit_level_10 != null ? Number(base.exit_level_10).toFixed(2) : '-', base.exit_level_20 != null ? Number(base.exit_level_20).toFixed(2) : '-'].join(' / '), [base.exit_dist_10_pct != null ? ('距10 ' + signedPct(base.exit_dist_10_pct)) : '', base.exit_dist_20_pct != null ? ('距20 ' + signedPct(base.exit_dist_20_pct)) : ''].filter(Boolean).join(' · ')),
+      stockReportHeroMetric('S1止损 / 加仓', [base.stop_level_20_2n != null ? Number(base.stop_level_20_2n).toFixed(2) : '-', [base.add_level_20_1, base.add_level_20_2, base.add_level_20_3].filter(function (value) { return value != null; }).map(function (value) { return Number(value).toFixed(2); }).join(' / ') || '-'].join(' / ')),
+      stockReportHeroMetric('S2止损 / 加仓', [base.stop_level_55_2n != null ? Number(base.stop_level_55_2n).toFixed(2) : '-', [base.add_level_55_1, base.add_level_55_2, base.add_level_55_3].filter(function (value) { return value != null; }).map(function (value) { return Number(value).toFixed(2); }).join(' / ') || '-'].join(' / '))
+    ];
+    var noteCallouts = [
+      base.stage_reason ? { label: '阶段判断', text: base.stage_reason, tone: 'neutral' } : null,
+      base.forecast_reason ? { label: '预测判断', text: base.forecast_reason, tone: 'info' } : null,
+      base.turtle_reason ? { label: '海龟说明', text: base.turtle_reason, tone: 'neutral' } : null
     ].filter(Boolean);
-    if (!items.length) return '';
-    var meta = [
-      s.quality_latest_financial_report_date ? ('财务 ' + fmtDate(s.quality_latest_financial_report_date)) : '',
-      s.quality_latest_indicator_report_date ? ('指标 ' + fmtDate(s.quality_latest_indicator_report_date)) : ''
-    ].filter(Boolean).join(' · ');
-    return '<div class="stock-detail-text stock-detail-text--info">' +
-      '<div class="stock-detail-text-label">关键财务信号' + (meta ? ' · ' + meta : '') + '</div>' +
-      '<div class="stock-detail-metrics" style="margin-top:8px">' +
-      items.join('') +
+    return renderStockReportSection(
+      '研究底稿',
+      '把列表里省掉的财务、路径、模型和执行细节都压回到表格里，展开就是一页研报。',
+      '<div class="stock-report-data-grid">' +
+      renderStockReportSubtable('公司质量', qualityRows, 2) +
+      renderStockReportSubtable('阶段与交易位置', stageRows, 2) +
+      renderStockReportSubtable('模型排序与外部热度', modelRows, 2) +
+      renderStockReportSubtable('海龟执行参考', turtleRows, 1) +
       '</div>' +
-      '</div>';
+      renderStockReportCallouts(noteCallouts)
+    );
   }
-
-  function renderStockQualitySummary(s) {
-    var components = [
-      { label: '利润', value: s.quality_profit_raw },
-      { label: '现金', value: s.quality_cash_raw },
-      { label: '负债', value: s.quality_balance_raw },
-      { label: '利润率', value: s.quality_margin_raw },
-      { label: '合同/库存', value: s.quality_contract_raw },
-      { label: '新鲜度', value: s.quality_freshness_raw },
-      { label: '资本纪律', value: s.quality_capital_raw },
-      { label: '效率', value: s.quality_efficiency_raw },
-      { label: '增长', value: s.quality_growth_raw }
-    ].filter(function (item) {
-      return item.value != null;
-    });
-    if (!components.length) return '';
-    components.sort(function (a, b) {
-      return Number(b.value || 0) - Number(a.value || 0);
-    });
-    var strongest = components.slice(0, 3).map(function (item) { return item.label; }).join(' / ');
-    var weakest = components.slice(-2).reverse().map(function (item) { return item.label; }).join(' / ');
-    var extra = [];
-    if (s.future_unlock_ratio_180d != null) extra.push('180日解禁 ' + pct(s.future_unlock_ratio_180d));
-    if (s.dividend_financing_ratio != null) extra.push('分红/融资 ' + scoreNum(s.dividend_financing_ratio));
-    if (s.total_shares_growth_3y != null) extra.push('3年股本 ' + signedPct(s.total_shares_growth_3y));
-    if (s.holder_count_change_pct != null) extra.push('股东人数 ' + signedPct(s.holder_count_change_pct));
-    if (s.net_profit_positive_8q != null) extra.push('8期净利正 ' + scoreNum(s.net_profit_positive_8q) + '/8');
-    if (s.operating_cashflow_positive_8q != null) extra.push('8期现金正 ' + scoreNum(s.operating_cashflow_positive_8q) + '/8');
-    if (s.contract_to_revenue != null) extra.push('合同/收入 ' + scoreNum(s.contract_to_revenue));
-    var text = '当前质量分主要由 ' + strongest + ' 支撑';
-    if (weakest) text += '；相对偏弱的是 ' + weakest;
-    if (extra.length) text += '。补充信号：' + extra.join(' · ');
-    return detailTextBlock('质量结构', text, 'neutral');
-  }
-  function renderStockStageCard(stage, base) {
-    var s = Object.assign({}, base || {}, stage || {});
-    var stageBreakdown = renderStockStageBreakdown(s);
-    var stageSignals = renderStockStageSignals(s);
-    var stageSummary = renderStockStageSummary(s);
-    return '<div class="stock-detail-card">' +
-      '<div class="stock-detail-card-head"><div class="stock-detail-card-title">阶段卡</div><div class="stock-detail-card-sub">当前阶段是否仍适合买，以及是否触发限制</div></div>' +
-      '<div class="stock-detail-metrics">' +
-      detailMetricItem('阶段分', scoreNum(s.stage_score), 'warn') +
-      detailMetricItem('路径状态', s.path_state || '-') +
-      detailMetricItem('通用阶段', scoreNum(s.generic_stage_raw)) +
-      detailMetricItem('类型修正', signedScore(s.stage_type_adjust_raw)) +
-      detailMetricItem('60日回撤', pct(s.max_drawdown_60d)) +
-      detailMetricItem('距250日线', signedPct(s.dist_ma250_pct)) +
-      detailMetricItem('站上250日线', s.above_ma250 ? '是' : (s.above_ma250 === 0 ? '否' : '-')) +
-      '</div>' +
-      stageBreakdown +
-      stageSignals +
-      stageSummary +
-      (s.stage_reason ? detailTextBlock('阶段判断', s.stage_reason) : '') +
-      (s.priority_pool_reason ? detailTextBlock('分池约束', s.priority_pool_reason, 'neutral') : '') +
-      (s.composite_cap_reason ? detailTextBlock('封顶约束', s.composite_cap_reason, 'warning') : '') +
-      '</div>';
-  }
-
-  function renderStockStageBreakdown(s) {
-    var items = [];
-    if (s.stock_archetype === '高质量稳健型') {
-      items = [
-        { label: '续航', value: s.stage_quality_continuity_raw },
-        { label: '趋势健康', value: s.stage_quality_trend_raw },
-        { label: '过热惩罚', value: s.stage_quality_overheat_penalty }
-      ];
-    } else if (s.stock_archetype === '成长兑现型') {
-      items = [
-        { label: '增长延续', value: s.stage_growth_continuity_raw },
-        { label: '放缓惩罚', value: s.stage_growth_slowdown_penalty },
-        { label: '透支惩罚', value: s.stage_growth_stretch_penalty }
-      ];
-    } else {
-      items = [
-        { label: '修复验证', value: s.stage_cycle_recovery_raw },
-        { label: '兑现惩罚', value: s.stage_cycle_realization_penalty },
-        { label: '不确定惩罚', value: s.stage_cycle_uncertainty_penalty }
-      ];
-    }
-    items = items.filter(function (item) { return item.value != null; });
-    if (!items.length) return '';
-    return '<div class="stock-detail-text stock-detail-text--neutral">' +
-      '<div class="stock-detail-text-label">阶段子分拆解</div>' +
-      '<div class="stock-detail-metrics" style="margin-top:8px">' +
-      items.map(function (item) {
-        var value = Number(item.value || 0);
-        return detailMetricItem(item.label, (value >= 0 ? '+' : '') + value.toFixed(1), value >= 0 ? 'good' : 'warn');
-      }).join('') +
-      '</div>' +
-      '</div>';
-  }
-
-  function renderStockStageSignals(s) {
-    var items = [
-      s.return_1m != null ? detailMetricItem('1月收益', signedPct(s.return_1m)) : '',
-      s.return_3m != null ? detailMetricItem('3月收益', signedPct(s.return_3m)) : '',
-      s.return_6m != null ? detailMetricItem('6月收益', signedPct(s.return_6m)) : '',
-      s.return_12m != null ? detailMetricItem('12月收益', signedPct(s.return_12m)) : '',
-      s.path_max_gain_pct != null ? detailMetricItem('路径最高涨幅', signedPct(s.path_max_gain_pct)) : '',
-      s.path_max_drawdown_pct != null ? detailMetricItem('路径最大回撤', pct(s.path_max_drawdown_pct)) : '',
-      s.amount_ratio_20_120 != null ? detailMetricItem('量能放大', scoreNum(s.amount_ratio_20_120)) : '',
-      s.volatility_20d != null ? detailMetricItem('20日波动', pct(s.volatility_20d)) : '',
-      s.amplitude_20d != null ? detailMetricItem('20日振幅', pct(s.amplitude_20d)) : '',
-      s.stock_gate ? detailMetricItem('执行门槛', s.stock_gate) : ''
-    ].filter(Boolean);
-    if (!items.length) return '';
-    var gateMeta = [];
-    if (s.gate_follow_count != null) gateMeta.push('follow ' + fmt(s.gate_follow_count || 0));
-    if (s.gate_watch_count != null) gateMeta.push('watch ' + fmt(s.gate_watch_count || 0));
-    if (s.gate_observe_count != null) gateMeta.push('observe ' + fmt(s.gate_observe_count || 0));
-    if (s.gate_avoid_count != null) gateMeta.push('avoid ' + fmt(s.gate_avoid_count || 0));
-    return '<div class="stock-detail-text stock-detail-text--info">' +
-      '<div class="stock-detail-text-label">路径与量价信号' + (gateMeta.length ? ' · ' + gateMeta.join(' / ') : '') + '</div>' +
-      '<div class="stock-detail-metrics" style="margin-top:8px">' +
-      items.join('') +
-      '</div>' +
-      '</div>';
-  }
-
-  function renderStockStageSummary(s) {
-    var parts = [];
-    if (s.stock_archetype) parts.push(s.stock_archetype);
-    if (s.path_state) parts.push('当前处于' + s.path_state);
-    if (s.return_12m != null) {
-      if (Number(s.return_12m) > 80) parts.push('过去12个月涨幅偏高');
-      else if (Number(s.return_12m) < 0) parts.push('过去12个月仍未明显修复');
-      else parts.push('过去12个月仍在可跟踪区间');
-    }
-    if (s.amount_ratio_20_120 != null && Number(s.amount_ratio_20_120) >= 2) parts.push('近期量能明显放大');
-    if (s.volatility_20d != null && Number(s.volatility_20d) >= 5) parts.push('短期波动偏大');
-    if (!parts.length) return '';
-    return detailTextBlock('阶段结构', parts.join('；'), 'neutral');
-  }
-  function renderStockForecastCard(forecast, base) {
-    var s = Object.assign({}, base || {}, forecast || {});
-    var meta = [
-      s.forecast_snapshot_date ? ('快照 ' + fmtDate(s.forecast_snapshot_date)) : '',
-      s.forecast_predict_date ? ('预测日 ' + fmtDate(s.forecast_predict_date)) : '',
-      s.forecast_industry_relative_group || '',
-      s.forecast_model_id ? ('模型 ' + s.forecast_model_id) : ''
-    ].filter(Boolean).join(' · ');
-    var forecastBreakdown = renderStockForecastBreakdown(s);
-    var forecastSignals = renderStockForecastSignals(s);
-    var forecastSummary = renderStockForecastSummary(s);
-    return '<div class="stock-detail-card">' +
-      '<div class="stock-detail-card-head"><div class="stock-detail-card-title">预测卡</div><div class="stock-detail-card-sub">Qlib 排序增强结果，以及当前生效后的预测贡献</div></div>' +
-      '<div class="stock-detail-metrics">' +
-      detailMetricItem('预测分', scoreNum(s.forecast_score), 'accent') +
-      detailMetricItem('生效预测', scoreNum(s.forecast_score_effective)) +
-      detailMetricItem('Qlib分', scoreNum(s.qlib_score)) +
-      detailMetricItem('AI排行', s.qlib_rank != null ? ('#' + fmt(s.qlib_rank)) : '-') +
-      detailMetricItem('市场分位', pct(s.qlib_percentile)) +
-      detailMetricItem('行业分位', pct(s.industry_qlib_percentile)) +
-      detailMetricItem('波动排位', pct(s.volatility_rank)) +
-      detailMetricItem('回撤排位', pct(s.drawdown_rank)) +
-      '</div>' +
-      forecastBreakdown +
-      forecastSignals +
-      forecastSummary +
-      (s.forecast_reason ? detailTextBlock('预测判断', s.forecast_reason, 'info') : '') +
-      (meta ? detailTextBlock('模型信息', meta, 'neutral') : '') +
-      '</div>';
-  }
-
-  function renderStockForecastBreakdown(s) {
-    var items = [
-      { label: '预20', value: s.forecast_20d_score },
-      { label: '预60', value: s.forecast_60d_excess_score },
-      { label: '性价比', value: s.forecast_risk_adjusted_score }
-    ].filter(function (item) { return item.value != null; });
-    if (!items.length) return '';
-    return '<div class="stock-detail-text stock-detail-text--neutral">' +
-      '<div class="stock-detail-text-label">预测子分拆解</div>' +
-      '<div class="stock-detail-metrics" style="margin-top:8px">' +
-      items.map(function (item) { return detailMetricItem(item.label, scoreNum(item.value)); }).join('') +
-      '</div>' +
-      '</div>';
-  }
-
-  function renderStockForecastSignals(s) {
-    var items = [
-      s.forecast_20d_score != null ? detailMetricItem('20日概率', scoreNum(s.forecast_20d_score)) : '',
-      s.forecast_60d_excess_score != null ? detailMetricItem('60日超额', scoreNum(s.forecast_60d_excess_score)) : '',
-      s.forecast_risk_adjusted_score != null ? detailMetricItem('风险收益', scoreNum(s.forecast_risk_adjusted_score)) : '',
-      s.qlib_percentile != null ? detailMetricItem('全市场分位', pct(s.qlib_percentile)) : '',
-      s.industry_qlib_percentile != null ? detailMetricItem('行业内分位', pct(s.industry_qlib_percentile)) : '',
-      s.volatility_rank != null ? detailMetricItem('低波优势', pct(s.volatility_rank)) : '',
-      s.drawdown_rank != null ? detailMetricItem('回撤优势', pct(s.drawdown_rank)) : ''
-    ].filter(Boolean);
-    if (!items.length) return '';
-    return '<div class="stock-detail-text stock-detail-text--info">' +
-      '<div class="stock-detail-text-label">预测结构信号</div>' +
-      '<div class="stock-detail-metrics" style="margin-top:8px">' +
-      items.join('') +
-      '</div>' +
-      '</div>';
-  }
-
-  function renderStockForecastSummary(s) {
-    var parts = [];
-    if (s.forecast_score != null && s.forecast_score_effective != null && Number(s.forecast_score_effective) < Number(s.forecast_score)) {
-      parts.push('阶段过滤压缩了预测贡献');
-    } else if (s.forecast_score_effective != null) {
-      parts.push('阶段过滤未明显压缩预测贡献');
-    }
-    if (s.qlib_percentile != null) {
-      if (Number(s.qlib_percentile) >= 80) parts.push('全市场分位进入前 20%');
-      else if (Number(s.qlib_percentile) <= 30) parts.push('全市场分位仍偏后');
-    }
-    if (s.industry_qlib_percentile != null) {
-      if (Number(s.industry_qlib_percentile) >= 80) parts.push('行业内排序靠前');
-      else if (Number(s.industry_qlib_percentile) <= 30) parts.push('行业内排序仍偏后');
-    }
-    if (s.forecast_industry_relative_group) parts.push('行业相对组别 ' + s.forecast_industry_relative_group);
-    return parts.length ? detailTextBlock('预测结构', parts.join('；'), 'neutral') : '';
-  }
-  function renderStockDetailCardGrid(setup, stage, forecast, insts, payload) {
-    var base = Object.assign({}, payload || {}, setup || {}, stage || {}, forecast || {});
+  function renderStockDetailCardGrid(base) {
     return '<div class="stock-detail-grid">' +
-      renderStockBehaviorCard(setup, insts, base) +
-      renderStockQualityCard(setup, base) +
-      renderStockStageCard(stage, base) +
-      renderStockForecastCard(forecast, base) +
+      renderStockReportScoreSection(base) +
+      renderStockReportDataSection(base) +
       '</div>';
   }
   function priorityPoolTag(pool) {
@@ -4125,12 +5189,62 @@
   function stockCompositeCell(s) {
     var composite = s.composite_priority_score != null ? Number(s.composite_priority_score).toFixed(1) : '-';
     var poolHtml = priorityPoolTag(s.priority_pool);
-    var archetype = s.stock_archetype || '待分类';
-    var summary = stockCompositeSummary(s);
-    return '<div style="line-height:1.45">' +
-      '<div style="display:flex;align-items:center;gap:5px;flex-wrap:wrap">' + poolHtml + '<span style="font-size:13px;font-weight:700;color:#0f172a">' + composite + '</span></div>' +
-      '<div style="font-size:11px;color:#475569;margin-top:2px">' + esc(summary) + '</div>' +
-      '<div style="font-size:10px;color:#94a3b8;margin-top:1px">' + esc(archetype) + '</div>' +
+    var tooltip = [stockCompositeSummary(s), s.stock_archetype || '待分类'].filter(Boolean).join(' · ');
+    return '<div class="stock-composite-cell" title="' + esc(tooltip) + '">' +
+      '<div class="stock-composite-main">' + poolHtml + '<span class="stock-composite-score">' + composite + '</span></div>' +
+      '</div>';
+  }
+  function stockResearchCell(s) {
+    var gate = stockGateInfo(s);
+    var tone = gate.key === 'follow' ? 'good' : gate.key === 'watch' ? 'accent' : gate.key === 'observe' ? 'warn' : 'neutral';
+    var label = gate.label || '待验证';
+    var tooltip = gate.reason || s.setup_reason || s.priority_pool_reason || s.stage_reason || s.forecast_reason || '展开详情查看完整研报';
+    return '<div class="stock-research-cell">' +
+      '<span class="stock-research-status stock-research-status--' + tone + '" title="' + esc(tooltip) + '">' + esc(label) + '</span>' +
+      '</div>';
+  }
+  function stockDateSummaryCell(dateText, subtext) {
+    if (!dateText) return '<div class="stock-date-cell"><div class="stock-date-main">-</div></div>';
+    return '<div class="stock-date-cell"><div class="stock-date-main">' + fmtDate(dateText) + ' ' + daysAgoPill(dateText) + '</div></div>';
+  }
+  function stockHolderCoverageCell(s) {
+    var holderTotal = (s && s.holder_total != null) ? Number(s.holder_total || 0) : Number((s && s.inst_count_t0) || 0);
+    var follow = Number((s && s.holder_follow_count) || 0);
+    var watch = Number((s && s.holder_watch_count) || 0);
+    var observe = Number((s && s.holder_observe_count) || 0);
+    var avoid = Number((s && s.holder_avoid_count) || 0);
+    var parts = [];
+    if (follow) parts.push('可跟 ' + follow);
+    if (watch) parts.push('关注 ' + watch);
+    if (observe) parts.push('观察 ' + observe);
+    if (avoid) parts.push('回避 ' + avoid);
+    var lead = follow ? ('可跟 ' + follow) : (watch ? ('关注 ' + watch) : (observe ? ('观察 ' + observe) : (avoid ? ('回避 ' + avoid) : '未分层')));
+    return '<div class="stock-holder-cell" title="' + esc(parts.join(' · ') || '暂无执行分层') + '"><div class="stock-holder-main">' + esc(String(holderTotal)) + '</div><div class="stock-holder-sub">' + esc(lead) + '</div></div>';
+  }
+  function stockDimensionCell(s, dimension) {
+    var score = stockScoreValue(s, dimension);
+    var band = stockScoreBandMeta(dimension, score);
+    var sub = stockScoreSubtext(s, dimension);
+    return '<div class="stock-score-cell" title="' + esc(sub || '') + '"><div class="stock-score-head"><span class="stock-score-value">' + esc(scoreNum(score)) + '</span><span class="stock-score-pill stock-score-pill--' + band.tone + '">' + esc(band.label) + '</span></div>' +
+      '</div>';
+  }
+  function stockAttentionVerdictCell(s, opts) {
+    opts = opts || {};
+    if (!s) return '';
+    var tag = attentionSignalTag(s.external_attention_signal);
+    var metrics = [];
+    if (s.external_attention_score != null) metrics.push('确 ' + scoreNum(s.external_attention_score));
+    if (s.external_crowding_penalty != null && Number(s.external_crowding_penalty) > 0) metrics.push('挤 ' + scoreNum(s.external_crowding_penalty));
+    if (s.raw_composite_priority_score != null && s.composite_priority_score != null && Number(s.raw_composite_priority_score) !== Number(s.composite_priority_score)) {
+      metrics.push(scoreNum(s.raw_composite_priority_score) + ' → ' + scoreNum(s.composite_priority_score));
+    }
+    var reason = opts.withReason ? (s.priority_pool_reason || s.composite_cap_reason || '') : '';
+    if (!tag && !metrics.length && !reason) return '';
+    var lead = tag || '<span class="stock-attention-pill stock-attention-pill--neutral">外部覆盖</span>';
+    return '<div style="margin-top:6px;line-height:1.45">' +
+      lead +
+      (metrics.length ? '<div class="muted" style="font-size:10px;margin-top:4px">' + esc(metrics.join(' · ')) + '</div>' : '') +
+      (reason ? '<div class="muted" style="font-size:10px;margin-top:4px">' + esc(reason) + '</div>' : '') +
       '</div>';
   }
   function stockSignalCell(s) {
@@ -4156,20 +5270,11 @@
   }
   function sourceInstitutionCell(s) {
     var name = stockSourceName(s);
-    var sub = s.setup_industry_name || s.sw_level3 || s.sw_level2 || s.sw_level1 || '-';
+    var sub = preferredIndustryLabel(s) || '-';
     return '<div class="stock-source-cell"><div class="stock-source-main">' + esc(name) + '</div><div class="stock-source-sub">' + esc(sub) + '</div></div>';
   }
   function stockReportCell(s) {
     return '<div class="stock-source-cell"><div class="stock-source-main">' + fmtDate(s.latest_report_date) + '</div><div class="stock-source-sub">' + esc(daysBetweenDates(s.latest_report_date, s.latest_notice_date)) + ' 披露</div></div>';
-  }
-  function stockReportAgeCell(s) {
-    return '<div class="stock-source-cell"><div class="stock-source-main">' + esc(daysFromDateDigits(s.latest_report_date)) + '</div><div class="stock-source-sub">' + esc(gainText(s.setup_report_return_to_now != null ? s.setup_report_return_to_now : s.price_20d_pct)) + '</div></div>';
-  }
-  function focusMetric(label, value, sub) {
-    return '<div class="stock-focus-metric"><div class="stock-focus-metric-label">' + label + '</div><div class="stock-focus-metric-value">' + value + '</div>' + (sub && sub !== '-' ? '<div class="stock-focus-metric-sub">' + esc(sub) + '</div>' : '') + '</div>';
-  }
-  function gradeChip(label, value) {
-    return '<span class="stock-grade-chip">' + label + ' ' + (value != null ? String(value) + '级' : '-') + '</span>';
   }
   function instLink(id, name, type) { return '<span class="type-tag clickable-name" data-type="' + esc(type || 'other') + '" onclick="App.toggleInstDetail(\'' + esc(id) + '\',this)" style="cursor:pointer;font-size:11px">' + esc(name || '') + '</span>' }
   function typeTag(type, label) { return '<span class="type-tag" data-type="' + esc(type || 'other') + '">' + (label || esc(type || 'other')) + '</span>' }
@@ -4420,6 +5525,18 @@
         return '<div class="score-rule-item">' + esc(item) + '</div>';
       }).join('') + '</div>' +
       '</div>';
+    var overlay = framework.external_overlay || {};
+    var overlayCard = (overlay.summary || (overlay.items || []).length)
+      ? '<div class="score-rule-card">' +
+      '<div class="score-rule-title">' + esc(overlay.label || '外部关注叠加层') + '</div>' +
+      '<div class="score-rule-list">' +
+      (overlay.summary ? '<div class="score-rule-item">' + esc(overlay.summary) + '</div>' : '') +
+      (overlay.items || []).map(function (item) {
+        return '<div class="score-rule-item">' + esc(item) + '</div>';
+      }).join('') +
+      '</div>' +
+      '</div>'
+      : '';
     var poolRows = (framework.pools || []).map(function (item) {
       return '<tr><td>' + priorityPoolTag(item.label) + '</td><td>' + esc(item.gate || '-') + '</td><td>' + esc(item.meaning || '-') + '</td></tr>';
     }).join('');
@@ -4427,7 +5544,105 @@
       '<div class="score-rule-title">池子规则</div>' +
       '<table class="score-pool-table"><thead><tr><th>池子</th><th>门槛</th><th>含义</th></tr></thead><tbody>' + poolRows + '</tbody></table>' +
       '</div>';
-    return '<div class="score-rule-grid">' + formulaCard + capsCard + '</div>' + poolCard;
+    return '<div class="score-rule-grid">' + formulaCard + capsCard + overlayCard + '</div>' + poolCard;
+  }
+
+  function renderStockAttentionCalibration(calibration) {
+    if (!calibration || !calibration.summary) return '';
+    var summary = calibration.summary || {};
+    var hints = Array.isArray(calibration.hints) ? calibration.hints : [];
+    var signals = Array.isArray(calibration.signal_distribution) ? calibration.signal_distribution : [];
+    var scoreBands = Array.isArray(calibration.score_bands) ? calibration.score_bands : [];
+    var penaltyBands = Array.isArray(calibration.penalty_bands) ? calibration.penalty_bands : [];
+
+    var summaryCards = '<div class="scorecard-stats-grid">' +
+      renderScorecardMiniCard('外部覆盖', fmt(summary.covered_stock_count || 0), '覆盖率 ' + pct(summary.coverage_ratio)) +
+      renderScorecardMiniCard('触发信号', fmt(summary.signaled_stock_count || 0), '增强 ' + fmt(summary.boosted_signal_count || 0) + ' · 拥挤 ' + fmt(summary.crowded_signal_count || 0)) +
+      renderScorecardMiniCard('加分股票', fmt(summary.score_up_count || 0), '均分差 ' + signedScore(summary.avg_score_delta)) +
+      renderScorecardMiniCard('降分股票', fmt(summary.score_down_count || 0), '被热度和拥挤压制') +
+      renderScorecardMiniCard('晋升A池', fmt(summary.promoted_to_a_count || 0), '晋升B池 ' + fmt(summary.promoted_to_b_count || 0)) +
+      renderScorecardMiniCard('拥挤降级', fmt(summary.demoted_by_crowding_count || 0), '均折扣 ' + scoreNum(summary.avg_crowding_penalty)) +
+      '</div>';
+
+    var readinessNote = summary.replay_ready_20d
+      ? 'attention 快照历史已达到 ' + fmt(summary.snapshot_days || 0) + ' 天，后续可以继续扩成 20/60 日严格前瞻回放。'
+      : 'attention 快照历史当前只有 ' + fmt(summary.snapshot_days || 0) + ' 天（最新 ' + esc(fmtDate(summary.latest_snapshot_date)) + '），本阶段先做横截面校验，不把它伪装成前瞻回放。';
+
+    var hintCard = '<div class="score-rule-card" style="margin-top:12px">' +
+      '<div class="score-rule-title">校准结论</div>' +
+      '<div class="scorecard-note">' + esc(calibration.methodology || '-') + '</div>' +
+      '<div class="score-rule-list" style="margin-top:10px">' +
+      '<div class="score-rule-item">' + esc(readinessNote) + '</div>' +
+      hints.map(function (item) { return '<div class="score-rule-item">' + esc(item) + '</div>'; }).join('') +
+      '</div>' +
+      '</div>';
+
+    var signalTable = signals.length
+      ? '<div class="score-rule-card">' +
+      '<div class="score-rule-title">当前信号横截面</div>' +
+      '<table class="score-pool-table"><thead><tr><th>信号</th><th>股票数</th><th>均确分</th><th>均折扣</th><th>均分差</th><th>近20日</th><th>胜率</th><th>晋A / 拥挤降级</th></tr></thead><tbody>' +
+      signals.map(function (item) {
+        return '<tr>' +
+          '<td>' + (attentionSignalTag(item.signal_label) || esc(item.signal_label || '未触发')) + '</td>' +
+          '<td>' + fmt(item.total) + '</td>' +
+          '<td>' + scoreNum(item.avg_attention_score) + '</td>' +
+          '<td>' + scoreNum(item.avg_crowding_penalty) + '</td>' +
+          '<td>' + signedScore(item.avg_score_delta) + '</td>' +
+          '<td>' + fmtGain(item.avg_price_20d_pct) + '</td>' +
+          '<td>' + pct(item.win_rate_20d) + '</td>' +
+          '<td>' + fmt(item.promoted_to_a_count || 0) + ' / ' + fmt(item.demoted_by_crowding_count || 0) + '</td>' +
+          '</tr>';
+      }).join('') +
+      '</tbody></table>' +
+      '</div>'
+      : '';
+
+    var scoreBandTable = scoreBands.length
+      ? '<div class="score-rule-card">' +
+      '<div class="score-rule-title">Attention 分层校验</div>' +
+      '<table class="score-pool-table"><thead><tr><th>分层</th><th>股票数</th><th>均折扣</th><th>均分差</th><th>近20日</th><th>胜率</th><th>晋A / 拥挤降级</th></tr></thead><tbody>' +
+      scoreBands.map(function (item) {
+        return '<tr>' +
+          '<td>' + esc(item.band_label || '-') + '</td>' +
+          '<td>' + fmt(item.total) + '</td>' +
+          '<td>' + scoreNum(item.avg_crowding_penalty) + '</td>' +
+          '<td>' + signedScore(item.avg_score_delta) + '</td>' +
+          '<td>' + fmtGain(item.avg_price_20d_pct) + '</td>' +
+          '<td>' + pct(item.win_rate_20d) + '</td>' +
+          '<td>' + fmt(item.promoted_to_a_count || 0) + ' / ' + fmt(item.demoted_by_crowding_count || 0) + '</td>' +
+          '</tr>';
+      }).join('') +
+      '</tbody></table>' +
+      '</div>'
+      : '';
+
+    var penaltyBandTable = penaltyBands.length
+      ? '<div class="score-rule-card">' +
+      '<div class="score-rule-title">拥挤折扣分层</div>' +
+      '<table class="score-pool-table"><thead><tr><th>折扣层</th><th>股票数</th><th>均确分</th><th>均分差</th><th>近20日</th><th>胜率</th><th>加分 / 降分</th></tr></thead><tbody>' +
+      penaltyBands.map(function (item) {
+        return '<tr>' +
+          '<td>' + esc(item.band_label || '-') + '</td>' +
+          '<td>' + fmt(item.total) + '</td>' +
+          '<td>' + scoreNum(item.avg_attention_score) + '</td>' +
+          '<td>' + signedScore(item.avg_score_delta) + '</td>' +
+          '<td>' + fmtGain(item.avg_price_20d_pct) + '</td>' +
+          '<td>' + pct(item.win_rate_20d) + '</td>' +
+          '<td>' + fmt(item.score_up_count || 0) + ' / ' + fmt(item.score_down_count || 0) + '</td>' +
+          '</tr>';
+      }).join('') +
+      '</tbody></table>' +
+      '</div>'
+      : '';
+
+    return '<div class="score-rule-card" style="margin-top:12px">' +
+      '<div class="score-rule-title">外部关注校准</div>' +
+      '<div class="scorecard-note">现在先校验阈值是否把强弱和拥挤层次分开，并明确说明当前还缺多少 attention 历史，避免把横截面结果误当成前瞻回放。</div>' +
+      '</div>' +
+      summaryCards +
+      hintCard +
+      '<div class="score-rule-grid" style="margin-top:12px">' + signalTable + scoreBandTable + '</div>' +
+      '<div class="score-rule-grid" style="margin-top:12px">' + penaltyBandTable + '</div>';
   }
 
   function renderQlibFeatureStackLabel(params) {
@@ -4436,6 +5651,7 @@
     if (params.use_alpha158) parts.push('Alpha158');
     if (params.use_financial) parts.push('financial');
     if (params.use_institution) parts.push('institution');
+    if (params.use_turtle) parts.push('turtle');
     return parts.length ? parts.join(' + ') : '-';
   }
 
@@ -4456,6 +5672,26 @@
     }).join('') + '</div>';
   }
 
+  function qlibBacktestStatusLabel(status) {
+    if (status === 'success') return '已写入';
+    if (status === 'failed') return '失败';
+    if (status === 'running' || status === 'pending') return '生成中';
+    if (status === 'missing') return '未写入';
+    return '未知';
+  }
+
+  function qlibBacktestRuntimeNote(summary) {
+    if (!summary) return '';
+    var parts = [];
+    var backtestStatus = summary.backtest_status || (summary.latest_backtest ? 'success' : 'missing');
+    parts.push('回测' + qlibBacktestStatusLabel(backtestStatus));
+    if (summary.train_params && summary.train_params.use_benchmark === false) parts.push('基准关闭');
+    else if (summary.backtest_benchmark) parts.push('基准 ' + summary.backtest_benchmark);
+    if (backtestStatus === 'failed' && summary.backtest_error) parts.push(summary.backtest_error);
+    if (backtestStatus === 'missing') parts.push('当前模型未写入独立回测结果');
+    return parts.join(' · ');
+  }
+
   function renderQlibSummaryBlock(summary, opts) {
     if (!summary || !summary.model_id) {
       return '<div class="score-rule-card">' +
@@ -4465,6 +5701,7 @@
     }
     opts = opts || {};
     var latestBacktest = summary.latest_backtest || null;
+    var backtestStatus = summary.backtest_status || (latestBacktest ? 'success' : 'missing');
     var title = opts.title || 'Qlib 模型摘要';
     var note = opts.note || '评分和验证里与预测相关的部分，优先直接复用完整版 Qlib 的真实训练产物，而不是再造一套并行预测体系。';
     var metricGrid = '<div class="scorecard-stats-grid">' +
@@ -4497,14 +5734,16 @@
       ? '<div class="score-rule-card" style="margin-top:12px">' +
       '<div class="score-rule-title">最近回测</div>' +
       '<div class="score-rule-list">' +
+      '<div class="score-rule-item"><b>状态</b>：' + esc(qlibBacktestStatusLabel(backtestStatus)) + ' · <b>基准</b>：' + esc(latestBacktest.benchmark || summary.backtest_benchmark || (summary.train_params && summary.train_params.use_benchmark === false ? '关闭' : '-')) + '</div>' +
       '<div class="score-rule-item"><b>策略</b>：' + esc(latestBacktest.strategy || '-') + '</div>' +
       '<div class="score-rule-item"><b>Sharpe</b>：' + scoreNum(latestBacktest.sharpe_ratio) + ' · <b>Calmar</b>：' + scoreNum(latestBacktest.calmar_ratio) + '</div>' +
       '<div class="score-rule-item"><b>年化</b>：' + fmtGain(latestBacktest.annual_return != null ? latestBacktest.annual_return * 100 : null) + ' · <b>回撤</b>：' + fmtGain(latestBacktest.max_drawdown != null ? -latestBacktest.max_drawdown * 100 : null) + ' · <b>换手</b>：' + scoreNum(latestBacktest.turnover) + '</div>' +
+      '<div class="score-rule-item"><b>写回时间</b>：' + esc(fmtDate(latestBacktest.created_at)) + '</div>' +
       '</div>' +
       '</div>'
       : '<div class="score-rule-card" style="margin-top:12px">' +
       '<div class="score-rule-title">最近回测</div>' +
-      '<div class="scorecard-note">当前库里还没有写入独立回测结果，验证页先直接使用 Qlib 模型指标、预测覆盖和快照后验。</div>' +
+      '<div class="scorecard-note">' + esc(qlibBacktestRuntimeNote(summary)) + '。验证页暂时直接使用 Qlib 模型指标、预测覆盖和快照后验。</div>' +
       '</div>';
     return '<div class="score-rule-card" style="margin-bottom:12px">' +
       '<div class="score-rule-title">' + esc(title) + '</div>' +
@@ -4519,6 +5758,8 @@
     var currentPools = Array.isArray(stats.current_pools) ? stats.current_pools : [];
     var archetypes = Array.isArray(stats.archetypes) ? stats.archetypes : [];
     var qlibSummary = stats.qlib_summary || {};
+    var attentionCalibration = stats.attention_calibration || null;
+    var qualitySourceSummary = stats.quality_source_summary || {};
     var replay = stats.snapshot_replay || {};
     var coverage = replay.coverage || {};
     var baseline = replay.baseline || {};
@@ -4534,12 +5775,31 @@
         matured_60d_count: baseline.matured_60d_count
       }
     );
+    var qualitySourceNoteParts = [];
+    if ((qualitySourceSummary.quality_feature_v1_count || 0) > 0 || (qualitySourceSummary.stock_scoring_v2_count || 0) > 0) {
+      qualitySourceNoteParts.push('质量快照 ' + fmt(qualitySourceSummary.quality_feature_v1_count || 0) + ' 只');
+      qualitySourceNoteParts.push('评分兜底 ' + fmt(qualitySourceSummary.stock_scoring_v2_count || 0) + ' 只');
+    }
+    if ((qualitySourceSummary.other_source_count || 0) > 0) {
+      qualitySourceNoteParts.push('其他来源 ' + fmt(qualitySourceSummary.other_source_count || 0) + ' 只');
+    }
+    if (qualitySourceSummary.latest_snapshot_date) {
+      qualitySourceNoteParts.push('最近质量快照 ' + fmtDate(qualitySourceSummary.latest_snapshot_date));
+    }
+    var qualitySourceNote = qualitySourceNoteParts.length
+      ? ('质量分来源已显式拆开：' + qualitySourceNoteParts.join(' · '))
+      : '';
+    var qualitySnapshotSubtext = (qualitySourceSummary.quality_feature_v1_count || 0) > 0
+      ? (qualitySourceSummary.latest_snapshot_date ? ('最近 ' + fmtDate(qualitySourceSummary.latest_snapshot_date)) : '已有对齐快照')
+      : '当前没有对齐快照';
 
     var summaryCards = '<div class="scorecard-stats-grid">' +
       renderScorecardMiniCard('当前覆盖', fmt(summary.stock_count || 0), '已进入四层评分的股票') +
       renderScorecardMiniCard('Setup候选', fmt(summary.setup_count || 0), '当前带 Setup 标签的股票') +
       renderScorecardMiniCard('封顶样本', fmt(summary.capped_count || 0), '触发阶段/质量封顶') +
       renderScorecardMiniCard('A池股票', fmt(summary.a_pool_count || 0), '当前重点优先池') +
+      renderScorecardMiniCard('质量快照', fmt(qualitySourceSummary.quality_feature_v1_count || 0), qualitySnapshotSubtext) +
+      renderScorecardMiniCard('评分兜底', fmt(qualitySourceSummary.stock_scoring_v2_count || 0), '未命中对齐快照时回退 stock_scoring_v2') +
       renderScorecardMiniCard('快照样本', fmt(summary.snapshot_scored_rows || 0), '已写入四层主分的快照行') +
       renderScorecardMiniCard('快照日', fmt(summary.snapshot_scored_dates || 0), esc((summary.first_scored_snapshot_date || '-') + ' ~ ' + (summary.last_scored_snapshot_date || '-'))) +
       '</div>';
@@ -4604,8 +5864,10 @@
     return '<div class="score-rule-card" style="margin-bottom:12px">' +
       '<div class="score-rule-title">当前样本与回放摘要</div>' +
       '<div class="scorecard-note">评分卡现在不只解释公式，也直接展示当前分池结构、股票类型分布和快照后验摘要，帮助判断这套口径在当前样本上的真实形态。</div>' +
+      (qualitySourceNote ? '<div class="scorecard-note">' + esc(qualitySourceNote) + '</div>' : '') +
       '</div>' +
       summaryCards +
+      (attentionCalibration ? renderStockAttentionCalibration(attentionCalibration) : '') +
       '<div style="margin-top:12px">' + renderQlibSummaryBlock(qlibSummary, { title: 'Qlib 真实模型摘要' }) + '</div>' +
       '<div class="score-rule-grid" style="margin-top:12px">' + poolTable + archetypeTable + '</div>' +
       replayTable;
@@ -4652,7 +5914,12 @@
   }
 
   async function loadStockScorecard() {
-    var fw = await api('/api/inst/scoring/framework/stock');
+    var pair = await Promise.all([
+      api('/api/inst/scoring/framework/stock'),
+      api('/api/inst/scoring/config/stock')
+    ]);
+    var fw = pair[0];
+    var cfg = pair[1];
     if (!fw?.ok) return;
     var framework = fw.data || {};
     el('stockScoreFramework').innerHTML =
@@ -4663,6 +5930,7 @@
       '<div class="score-framework-grid">' + (framework.layers || []).map(renderStockFrameworkLayer).join('') + '</div>';
     el('stockScoreRules').innerHTML = renderStockFrameworkRules(framework);
     el('stockScoreStats').innerHTML = renderStockScorecardStats(fw.stats || null);
+    el('stockScoreParams').innerHTML = renderScoreParamCard('stockResearchParams', framework, cfg?.config || {}, cfg?.defaults || {});
   }
 
   function gatherScoreParams(containerIds) {
@@ -4694,6 +5962,34 @@
     loadInstScorecard();
   }
 
+  function clearStockResearchCaches() {
+    if (window.AppCache && typeof window.AppCache.clearShortApiCache === 'function') {
+      window.AppCache.clearShortApiCache('/api/inst/stock-trends');
+    }
+    _stockListLoadedAt = 0;
+    _stockListLoadingPromise = null;
+  }
+
+  async function calcStockScore() {
+    var stockParams = gatherScoreParams('stockResearchParams');
+    await api('/api/inst/scoring/config/stock', { method: 'POST', body: JSON.stringify({ config: stockParams }) });
+    var r = await api('/api/inst/scoring/calculate/stock', { method: 'POST' });
+    if (!r?.ok) {
+      modalAlert(r?.message || '计算失败');
+      return;
+    }
+    clearStockResearchCaches();
+    await refreshAuditSnapshot(true);
+    await Promise.all([loadStockScorecard(), loadStockList(true)]);
+    modalAlert(r.message || '计算完成');
+  }
+
+  async function resetStockScore() {
+    if (!await modalConfirm('恢复默认股票研究权重？')) return;
+    await api('/api/inst/scoring/config/stock', { method: 'DELETE' });
+    loadStockScorecard();
+  }
+
   // ============================================================
   // Init
   // ============================================================
@@ -4701,6 +5997,7 @@
     renderIdleStepGrid();
     await checkHealth(); // ensure it awaits first to initialize module toggles
     showView('dashboard');
+    el('btnGoSystem')?.addEventListener('click', function () { showView('system'); });
     el('btnUpdateAll').addEventListener('click', startUpdate);
     el('btnRefreshStatus')?.addEventListener('click', refreshWorkbenchStatus);
     el('btnStop').addEventListener('click', async () => {
@@ -4766,6 +6063,20 @@
           'write_universe': '写入资产池', 'sync_kline': '同步 K 线', 'build_snapshot': '重建最新快照',
           'done': '完成', 'error': '失败'
         })[d.stage] || d.stage;
+        var listSource = d.result && d.result.list_source ? d.result.list_source : '';
+        var klineBreakdown = d.result && Array.isArray(d.result.kline_source_breakdown)
+          ? d.result.kline_source_breakdown.map(function (item) {
+              return (item.source || '未知') + ' · ' + fmt(item.count || 0);
+            }).join(' / ')
+          : '';
+        var extraSummary = '';
+        if (!d.running && d.result) {
+          extraSummary = '<div style="margin-top:8px;font-size:12px;line-height:1.7;color:#334155">' +
+            '<div><strong>资产池来源：</strong>' + esc(listSource || '暂无') + '</div>' +
+            '<div><strong>K线来源分布：</strong>' + esc(klineBreakdown || '暂无') + '</div>' +
+            '<div><strong>快照：</strong>' + esc(d.result.snapshot_id || '-') + ' · <strong>覆盖ETF：</strong>' + esc(fmt(d.result.etf_count || 0)) + ' · <strong>日线ETF：</strong>' + esc(fmt(d.result.kline_etf_count || 0)) + '</div>' +
+            '</div>';
+        }
         if (msgEl) {
           msgEl.innerHTML = '<div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">' +
             '<span style="font-weight:600">' + esc(stageLabel) + '</span>' +
@@ -4773,7 +6084,8 @@
             '<span>' + esc(d.message || '') + '</span>' +
             '</div>' +
             (d.total > 0 ? '<div style="margin-top:6px;height:6px;background:#e2e8f0;border-radius:3px;overflow:hidden">' +
-              '<div style="height:100%;width:' + pct + '%;background:' + (d.stage === 'error' ? '#ef4444' : '#3b82f6') + ';transition:width .3s"></div></div>' : '');
+              '<div style="height:100%;width:' + pct + '%;background:' + (d.stage === 'error' ? '#ef4444' : '#3b82f6') + ';transition:width .3s"></div></div>' : '') +
+            extraSummary;
         }
         if (box && d.logs && d.logs.length) {
           box.innerHTML = d.logs.slice(-30).map(function (line) {
@@ -4792,6 +6104,15 @@
       }, 1500);
     }
     setInterval(checkHealth, 30000);
+  }
+
+  function startInit() {
+    if (_initPromise) return _initPromise;
+    _initPromise = init().catch(function (error) {
+      console.error('App init failed', error);
+      throw error;
+    });
+    return _initPromise;
   }
 
   // ============================================================
@@ -4933,6 +6254,8 @@
     var sourceBreakdown = (source.source_breakdown || []).map(function (item) {
       return '<span style="padding:3px 8px;border-radius:999px;background:#eff6ff;color:#1d4ed8;font-size:11px;font-weight:600">' + esc((item.source || '未知') + ' · ' + fmt(item.count || 0)) + '</span>';
     }).join('') || '<span class="muted">暂无来源明细</span>';
+    var universeSourceText = source.universe_source || '暂无';
+    var universeSourceUpdatedText = fmtDateTime(source.universe_source_updated_at);
     var missingExamples = (source.no_kline_examples || []).length
       ? esc((source.no_kline_examples || []).join('、'))
       : '暂无';
@@ -4997,8 +6320,9 @@
       statusPill('行业源', !!connectivity.industry_source, connectivity.industry_source_detail) +
       '</div>' +
       '<div style="display:flex;gap:16px;flex-wrap:wrap;font-size:12px;line-height:1.8;color:#334155">' +
+      '<div style="min-width:260px;flex:1"><strong>资产池来源：</strong>' + esc(universeSourceText) + '<br><strong>来源记录时间：</strong>' + esc(universeSourceUpdatedText) + '<br><strong>ETF池更新时间：</strong>' + esc(fmtDateTime(source.universe_updated_at)) + '</div>' +
       '<div style="min-width:260px;flex:1"><strong>全局历史区间：</strong>' + esc((source.history_start || '-') + ' ~ ' + (source.history_end || '-')) + '<br><strong>日线覆盖率：</strong>' + esc(source.kline_coverage_ratio != null ? Number(source.kline_coverage_ratio).toFixed(2) + '%' : '-') + '<br><strong>最近成功：</strong>' + esc(fmtDateTime(source.latest_kline_success_at)) + '</div>' +
-      '<div style="min-width:260px;flex:1"><strong>ETF池更新时间：</strong>' + esc(fmtDateTime(source.universe_updated_at)) + '<br><strong>最近尝试：</strong>' + esc(fmtDateTime(source.latest_kline_attempt_at)) + '<br><strong>快照滞后：</strong>' + esc(source.snapshot_lag_minutes != null ? source.snapshot_lag_minutes + ' 分钟' : '-') + '</div>' +
+      '<div style="min-width:260px;flex:1"><strong>最近尝试：</strong>' + esc(fmtDateTime(source.latest_kline_attempt_at)) + '<br><strong>快照滞后：</strong>' + esc(source.snapshot_lag_minutes != null ? source.snapshot_lag_minutes + ' 分钟' : '-') + '<br><strong>同步错误数：</strong>' + esc(fmt(source.last_error_count || 0)) + '</div>' +
       '</div>' +
       '<div style="margin-top:10px;font-size:12px;color:#0f172a"><strong>来源分布：</strong> ' + sourceBreakdown + '</div>' +
       '<div style="margin-top:8px;font-size:12px;color:#64748b"><strong>当前无日线样例：</strong>' + missingExamples + '</div>' +
@@ -5198,7 +6522,7 @@
         var strategyMeta = recommendedStrategySummary(etf);
         return '<tr>' +
           '<td>#' + (index + 1) + '</td>' +
-          '<td><div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap"><span data-etf-analyze="' + esc(etf.code || '') + '" style="cursor:pointer;font-weight:700;color:#0f172a">' + esc(etf.name || etf.code || '-') + '</span>' + xueqiuPillLink(etf.code, etf.code, true) + '</div></td>' +
+          '<td><div data-etf-analyze="' + esc(etf.code || '') + '" style="cursor:pointer">' + securityIdentityBlock(etf.code, etf.name || etf.code || '-', { wrapperClass: 'security-identity', nameClass: 'etf-inline-name', includeCodeTag: true, includeXueqiuPill: true }) + '</div></td>' +
           '<td><span style="display:inline-flex;align-items:center;padding:2px 8px;border-radius:999px;background:' + strategyMeta.tone.bg + ';color:' + strategyMeta.tone.fg + ';font-size:10px;font-weight:700">' + esc(strategyMeta.label) + '</span></td>' +
           '<td>' + (strategyMeta.recommendedReturn != null ? signedPct(strategyMeta.recommendedReturn) : '<span class="muted">-</span>') + '</td>' +
           '<td>' + (strategyMeta.comparisonReturn != null ? ('<span title="' + esc(strategyMeta.comparisonLabel || '对照') + '">' + signedPct(strategyMeta.comparisonReturn) + '</span>') : '<span class="muted">-</span>') + '</td>' +
@@ -5379,8 +6703,7 @@
     var recStrategyTone = etfStrategyTone(recStrategy);
     var headerHtml =
       '<div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:14px">' +
-      '<div style="font-weight:700;font-size:16px">' + esc(info.name || code) + ' <span class="muted" style="font-size:12px;font-weight:400">' + esc(code) + '</span></div>' +
-      xueqiuPillLink(code, code, true) +
+      securityIdentityBlock(code, info.name || code, { wrapperClass: 'security-identity security-identity--hero', includeMarketLink: true, includeXueqiuPill: true }) +
       '<span style="padding:3px 12px;border-radius:var(--radius-pill);background:' + rc.bg + ';color:' + rc.fg + ';font-size:12px;font-weight:700">' + esc(verdict.rating || '分析中') + '</span>' +
       (recStrategy ? '<span style="padding:3px 10px;border-radius:var(--radius-pill);background:' + recStrategyTone.bg + ';color:' + recStrategyTone.fg + ';font-size:11px;font-weight:700">推荐: ' + esc(recStrategy) + '</span>' : '') +
       (info.strategy_type ? '<span style="padding:2px 8px;border-radius:var(--radius-pill);background:var(--primary-light);color:var(--primary);font-size:11px;font-weight:600">' + esc(info.strategy_type) + '</span>' : '') +
@@ -5899,7 +7222,7 @@
           var stratTone = etfStrategyTone(item.preferred_strategy || '买入持有');
           return '<tr style="cursor:pointer" data-etf-analyze="' + esc(item.code || '') + '">' +
             '<td>#' + (index + 1) + '</td>' +
-            '<td><div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap"><span style="font-weight:600">' + esc(item.name || item.code || '-') + '</span>' + xueqiuPillLink(item.code, item.code, true) + '</div></td>' +
+            '<td>' + securityIdentityBlock(item.code, item.name || item.code || '-', { wrapperClass: 'security-identity', includeCodeTag: true, includeXueqiuPill: true }) + '</td>' +
             '<td>' + (item.predicted_buy_hold_return_pct != null ? signedPct(Number(item.predicted_buy_hold_return_pct)) : '<span class="muted">-</span>') + '</td>' +
             '<td>' + (item.predicted_grid_return_pct != null ? signedPct(Number(item.predicted_grid_return_pct)) : '<span class="muted">-</span>') + '</td>' +
             '<td>' + (item.predicted_grid_excess_pct != null ? signedPct(Number(item.predicted_grid_excess_pct)) : '<span class="muted">-</span>') + '</td>' +
@@ -5963,9 +7286,8 @@
         '<th>排名</th><th>ETF</th><th>分类</th><th>因子分</th><th>4周相强</th><th>12周相强</th><th>轮动分</th><th>策略</th><th>网格超额</th>' +
         '</tr></thead><tbody>';
       leaders.forEach(function (item) {
-        var prefix = item.code && item.code.startsWith('1') ? 'SZ' : 'SH';
         var nameHtml = item.code
-          ? '<div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap"><span style="font-weight:600">' + esc(item.name || item.code) + '</span>' + xueqiuPillLink(item.code, item.code, true) + '</div>'
+          ? securityIdentityBlock(item.code, item.name || item.code, { wrapperClass: 'security-identity', includeCodeTag: true, includeXueqiuPill: true })
           : esc(item.name || '-');
         var stratTone = etfStrategyTone(item.strategy_type);
         leaderHtml += '<tr style="cursor:pointer" data-etf-analyze="' + esc(item.code || '') + '">' +
@@ -6016,8 +7338,43 @@
   // ============================================================
   // Qlib AI Tab
   // ============================================================
+  async function loadQlibDefaultParams(forceRefresh) {
+    if (_qlibDefaultParamsPromise && !forceRefresh) return _qlibDefaultParamsPromise;
+    _qlibDefaultParamsPromise = (async function () {
+      var response = await api('/api/qlib/date-range');
+      var data = response && response.ok ? response.data : null;
+      if (data) {
+        QLIB_DEFAULT_PARAMS.train_start = data.train_start || QLIB_DEFAULT_PARAMS.train_start;
+        QLIB_DEFAULT_PARAMS.train_end = data.train_end || QLIB_DEFAULT_PARAMS.train_end;
+        QLIB_DEFAULT_PARAMS.valid_start = data.valid_start || QLIB_DEFAULT_PARAMS.valid_start;
+        QLIB_DEFAULT_PARAMS.valid_end = data.valid_end || QLIB_DEFAULT_PARAMS.valid_end;
+        QLIB_DEFAULT_PARAMS.test_start = data.test_start || QLIB_DEFAULT_PARAMS.test_start;
+        QLIB_DEFAULT_PARAMS.test_end = data.test_end || QLIB_DEFAULT_PARAMS.test_end;
+      }
+      return Object.assign({}, QLIB_DEFAULT_PARAMS);
+    })();
+    return _qlibDefaultParamsPromise;
+  }
+
+  function normalizeQlibModelParams(params) {
+    if (!params) return Object.assign({}, QLIB_DEFAULT_PARAMS);
+    var normalized = Object.assign({}, QLIB_DEFAULT_PARAMS, params);
+    ['use_quality', 'use_stage', 'use_northbound'].forEach(function (key) {
+      if (!Object.prototype.hasOwnProperty.call(params, key)) normalized[key] = false;
+    });
+    if (!qlibFeatureEnabled('northbound')) normalized.use_northbound = false;
+    return normalized;
+  }
+
+  function normalizeQlibFormParams(params) {
+    if (!params) return Object.assign({}, QLIB_DEFAULT_PARAMS);
+    var normalized = Object.assign({}, QLIB_DEFAULT_PARAMS, params);
+    if (!qlibFeatureEnabled('northbound')) normalized.use_northbound = false;
+    return normalized;
+  }
+
   function setQlibForm(params) {
-    var cfg = Object.assign({}, QLIB_DEFAULT_PARAMS, params || {});
+    var cfg = normalizeQlibFormParams(params);
     el('qlibTrainStart').value = cfg.train_start || QLIB_DEFAULT_PARAMS.train_start;
     el('qlibTrainEnd').value = cfg.train_end || QLIB_DEFAULT_PARAMS.train_end;
     el('qlibValidEnd').value = cfg.valid_end || QLIB_DEFAULT_PARAMS.valid_end;
@@ -6032,6 +7389,10 @@
     el('qlibUseAlpha158').checked = cfg.use_alpha158 !== false;
     el('qlibUseFinancial').checked = cfg.use_financial !== false;
     el('qlibUseInstitution').checked = cfg.use_institution !== false;
+    el('qlibUseTurtle').checked = cfg.use_turtle !== false;
+    el('qlibUseQuality').checked = cfg.use_quality !== false;
+    el('qlibUseStage').checked = cfg.use_stage !== false;
+    applyQlibFeatureAvailability(cfg);
   }
 
   function getQlibTrainParams() {
@@ -6049,7 +7410,11 @@
       colsample_bytree: Number(el('qlibColsample')?.value || QLIB_DEFAULT_PARAMS.colsample_bytree),
       use_alpha158: !!el('qlibUseAlpha158')?.checked,
       use_financial: !!el('qlibUseFinancial')?.checked,
-      use_institution: !!el('qlibUseInstitution')?.checked
+      use_institution: !!el('qlibUseInstitution')?.checked,
+      use_turtle: !!el('qlibUseTurtle')?.checked,
+      use_quality: !!el('qlibUseQuality')?.checked,
+      use_stage: !!el('qlibUseStage')?.checked,
+      use_northbound: qlibFeatureEnabled('northbound') && !!el('qlibUseNorthbound')?.checked
     };
   }
 
@@ -6066,8 +7431,12 @@
     var toggles = [];
     var sampleLimit = Number(params.sample_stock_limit || 0);
     if (params.use_alpha158) toggles.push('Alpha158');
+    else toggles.push('轻量OHLCV');
     if (params.use_financial) toggles.push('财务因子');
     if (params.use_institution) toggles.push('机构因子');
+    if (params.use_turtle) toggles.push('海龟因子');
+    if (params.use_quality) toggles.push('质量因子');
+    if (params.use_stage) toggles.push('阶段因子');
     return [
       sampleLimit > 0 ? ('样本上限 ' + sampleLimit) : '样本 全量',
       '轮数 ' + params.num_boost_round,
@@ -6087,7 +7456,8 @@
     return '';
   }
 
-  function resetQlibParams() {
+  async function resetQlibParams() {
+    await loadQlibDefaultParams(true);
     setQlibForm(QLIB_DEFAULT_PARAMS);
     el('qlibParamSummary').textContent = qlibParamSummaryText(QLIB_DEFAULT_PARAMS);
   }
@@ -6095,6 +7465,7 @@
   async function startQlibTrain() {
     var btn = el('btnQlibTrain');
     if (!btn) return;
+    await loadQlibDefaultParams();
     var params = getQlibTrainParams();
     btn.disabled = true;
     btn.textContent = '训练中...';
@@ -6112,21 +7483,32 @@
       var s = await api('/api/qlib/status');
       if (s && !s.training) {
         clearInterval(poll);
+        clearStockResearchCaches();
         loadQlib();
       }
     }, 5000);
   }
 
   async function loadQlib() {
+    await loadQlibDefaultParams();
     var status = await api('/api/qlib/status');
     if (!status) return;
+    updateQlibFeatureFlags(status.feature_flags);
     el('qlibStatStatus').style.color = '';
     var model = status.model || null;
     var params = null;
+    var formParams = null;
     if (model && model.train_params_json) {
-      try { params = JSON.parse(model.train_params_json); } catch (e) { params = null; }
+      try {
+        var parsedParams = JSON.parse(model.train_params_json);
+        params = normalizeQlibModelParams(parsedParams);
+        formParams = normalizeQlibFormParams(parsedParams);
+      } catch (e) {
+        params = null;
+        formParams = null;
+      }
     }
-    setQlibForm(params || QLIB_DEFAULT_PARAMS);
+    setQlibForm(formParams || QLIB_DEFAULT_PARAMS);
     el('qlibParamSummary').textContent = qlibParamSummaryText(params || QLIB_DEFAULT_PARAMS);
 
     // 依赖检查
@@ -6162,7 +7544,8 @@
       el('qlibStatStocks').textContent = fmt(model?.stock_count || 0);
       el('qlibStatFactors').textContent = fmt(model?.factor_count || 0);
       el('qlibStatWindow').textContent = qlibWindowText(model);
-      el('qlibTrainMsg').textContent = model?.error || '调整参数后点击“重新计算评分”，训练完成后会回写到股票研究列表。';
+      var failedBacktestHint = qlibBacktestRuntimeNote(model);
+      el('qlibTrainMsg').textContent = (status.train_error || model?.error || '调整参数后点击“重新计算评分”，训练完成后会回写到股票研究列表。') + (failedBacktestHint ? ' · ' + failedBacktestHint : '');
       el('btnQlibTrain').disabled = false;
       el('btnQlibTrain').textContent = '重新计算评分';
       el('qlibFactorChart').innerHTML = '<div class="muted">暂无因子数据</div>';
@@ -6177,32 +7560,96 @@
     el('qlibStatFactors').textContent = fmt(model.factor_count || 0);
     el('qlibStatWindow').textContent = qlibWindowText(model);
     var coverageHint = qlibCoverageHint(model, params || QLIB_DEFAULT_PARAMS);
-    el('qlibTrainMsg').textContent = '模型ID: ' + (model.model_id || '-') + ' · 训练完成后已同步最新 Qlib 排名到股票研究列表。' + (coverageHint ? ' · ' + coverageHint : '');
+    var backtestHint = qlibBacktestRuntimeNote(model);
+    var trainErrorHint = status.train_error ? (' · 最近一次训练失败: ' + status.train_error) : '';
+    el('qlibTrainMsg').textContent = '模型ID: ' + (model.model_id || '-') + ' · 训练完成后已同步最新 Qlib 排名到股票研究列表。' + (coverageHint ? ' · ' + coverageHint : '') + (backtestHint ? ' · ' + backtestHint : '') + trainErrorHint;
     el('btnQlibTrain').disabled = false;
     el('btnQlibTrain').textContent = '重新计算评分';
 
     var factors = await api('/api/qlib/factors');
-    if (factors?.data) renderQlibFactorChart(factors.data);
+    if (factors?.data) renderQlibFactorChart(factors.data, params || QLIB_DEFAULT_PARAMS);
     else el('qlibFactorChart').innerHTML = '<div class="muted">暂无因子数据</div>';
   }
 
-  function renderQlibFactorChart(factors) {
+  function renderQlibFactorChart(factors, params) {
     var top = factors.slice(0, 20);
     if (!top.length) { el('qlibFactorChart').innerHTML = '<div class="muted">无因子数据</div>'; return; }
     var maxImp = Math.max.apply(null, top.map(function (f) { return f.importance || 0 }));
     if (maxImp <= 0) maxImp = 1;
     var barH = 18, gap = 4, pad = 120, w = 400, h = top.length * (barH + gap) + 10;
+    var groupMeta = {
+      alpha158: { label: 'Alpha158', color: '#3b82f6' },
+      financial: { label: '财务因子', color: '#f59e0b' },
+      institution: { label: '机构因子', color: '#10b981' },
+      turtle: { label: '海龟因子', color: '#ef4444' },
+      quality: { label: '质量因子', color: '#14b8a6' },
+      stage: { label: '阶段因子', color: '#f97316' },
+      northbound: { label: '北向因子', color: '#0ea5e9' }
+    };
+    var groupTotals = {};
+    var totalImportance = 0;
+    factors.forEach(function (f) {
+      var group = f.factor_group || 'alpha158';
+      var importance = Number(f.importance || 0);
+      if (!groupTotals[group]) groupTotals[group] = { total: 0, count: 0 };
+      groupTotals[group].total += importance;
+      groupTotals[group].count += 1;
+      totalImportance += importance;
+    });
+    var groups = Object.keys(groupTotals).map(function (group) {
+      var meta = groupMeta[group] || { label: group, color: '#64748b' };
+      return {
+        key: group,
+        label: meta.label,
+        color: meta.color,
+        total: groupTotals[group].total,
+        count: groupTotals[group].count,
+        share: totalImportance > 0 ? groupTotals[group].total / totalImportance * 100 : 0,
+      };
+    }).sort(function (a, b) { return b.total - a.total; });
+    var enabledGroups = [
+      params?.use_alpha158 !== false ? 'alpha158' : null,
+      params?.use_financial ? 'financial' : null,
+      params?.use_institution ? 'institution' : null,
+      params?.use_turtle ? 'turtle' : null,
+      params?.use_quality ? 'quality' : null,
+      params?.use_stage ? 'stage' : null,
+      qlibFeatureEnabled('northbound') && params?.use_northbound ? 'northbound' : null,
+    ].filter(Boolean);
+    var missingEnabled = enabledGroups.filter(function (group) {
+      return !groupTotals[group];
+    }).map(function (group) {
+      return (groupMeta[group] || { label: group }).label;
+    });
+    var summaryNotes = [];
+    if (groups.length === 1) summaryNotes.push('当前最新模型的重要性仍集中在 ' + groups[0].label + '。');
+    if (missingEnabled.length) summaryNotes.push('已启用但未进入重要性表：' + missingEnabled.join('、') + '。');
+    var summaryCards = groups.map(function (group) {
+      return '<div class="score-rule-card" style="padding:12px">' +
+        '<div class="score-rule-title" style="display:flex;align-items:center;gap:8px">' +
+        '<span style="display:inline-block;width:10px;height:10px;border-radius:999px;background:' + group.color + '"></span>' + esc(group.label) + '</div>' +
+        '<div style="font-size:22px;font-weight:700;color:#0f172a;margin:6px 0 2px">' + fmtScore(group.share) + '%</div>' +
+        '<div class="muted" style="font-size:12px">总重要性 ' + fmtScore(group.total) + ' · 因子数 ' + fmt(group.count) + '</div>' +
+        '</div>';
+    }).join('');
     var bars = top.map(function (f, i) {
       var y = i * (barH + gap) + 5;
       var barW = Math.max(2, (f.importance || 0) / maxImp * (w - pad - 20));
-      var color = f.factor_group === 'institution' ? '#10b981' : (f.factor_group === 'financial' ? '#f59e0b' : '#3b82f6');
+      var color = (groupMeta[f.factor_group] || groupMeta.alpha158).color;
       var label = (f.factor_name || '').replace('inst_', '机构_');
       return '<text x="' + (pad - 4) + '" y="' + (y + barH - 4) + '" text-anchor="end" font-size="10" fill="#475569">' + esc(label) + '</text>' +
         '<rect x="' + pad + '" y="' + y + '" width="' + barW + '" height="' + barH + '" rx="3" fill="' + color + '" opacity="0.8"/>' +
         '<text x="' + (pad + barW + 4) + '" y="' + (y + barH - 4) + '" font-size="9" fill="#94a3b8">' + Number(f.importance).toFixed(0) + '</text>';
     }).join('');
+    var legend = Object.keys(groupMeta).map(function (group) {
+      var meta = groupMeta[group];
+      return '<span style="display:inline-block;width:10px;height:10px;background:' + meta.color + ';border-radius:2px;margin-right:4px"></span><span style="font-size:11px;color:#64748b;margin-right:12px">' + meta.label + '</span>';
+    }).join('');
     el('qlibFactorChart').innerHTML =
-      '<div style="margin-bottom:6px"><span style="display:inline-block;width:10px;height:10px;background:#3b82f6;border-radius:2px;margin-right:4px"></span><span style="font-size:11px;color:#64748b">Alpha158</span> <span style="display:inline-block;width:10px;height:10px;background:#f59e0b;border-radius:2px;margin-left:12px;margin-right:4px"></span><span style="font-size:11px;color:#64748b">财务因子</span> <span style="display:inline-block;width:10px;height:10px;background:#10b981;border-radius:2px;margin-left:12px;margin-right:4px"></span><span style="font-size:11px;color:#64748b">机构因子</span></div>' +
+      '<div class="score-rule-grid" style="margin-bottom:10px">' + summaryCards + '</div>' +
+      (summaryNotes.length ? '<div style="margin-bottom:8px;padding:10px 12px;border-radius:10px;background:#f8fafc;border:1px solid #e2e8f0;font-size:12px;color:#475569;line-height:1.6">' + esc(summaryNotes.join(' ')) + '</div>' : '') +
+      '<div style="margin-bottom:6px">' + legend + '</div>' +
+      '<div style="font-size:12px;font-weight:600;color:#0f172a;margin-bottom:6px">Top 20 因子</div>' +
       '<svg viewBox="0 0 ' + w + ' ' + h + '" style="width:100%;height:' + h + 'px">' + bars + '</svg>';
   }
 
@@ -6239,6 +7686,10 @@
       if (polls > 120) { clearInterval(timer); btn.disabled = false; btn.textContent = '救生艇'; }
     }, 3000);
   }
-  window.App = { saveModuleSettings, showView, setAlias, setType, toggleBlack, deleteInst, restoreInst, calcInstScore, resetInstScore, toggleInstDetail, toggleInstBreakdown, toggleStockDetail, switchInstDim, switchStockDim, runSingleStep, openSectorValidation, clearStockValidationFilter, openStockFromCandidate, _api: api };
-  document.addEventListener('DOMContentLoaded', init);
+  window.App = { saveModuleSettings, showView, setAlias, setType, toggleBlack, deleteInst, restoreInst, calcInstScore, resetInstScore, calcStockScore, resetStockScore, toggleInstDetail, toggleInstBreakdown, toggleStockDetail, switchInstDim, switchStockDim, runSingleStep, openSectorValidation, clearStockValidationFilter, openStockFromCandidate, _api: api };
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', startInit, { once: true });
+  } else {
+    startInit();
+  }
 })();

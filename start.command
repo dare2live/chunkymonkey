@@ -4,6 +4,7 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "$0")" && pwd)"
 BACKEND_DIR="$ROOT_DIR/backend"
 PORT=8000
+RELOAD_MODE="${CM_RELOAD:-0}"
 
 find_port_pids() {
   lsof -nP -iTCP:"$PORT" -sTCP:LISTEN -t 2>/dev/null | sort -u
@@ -12,8 +13,14 @@ find_port_pids() {
 pid_belongs_to_project() {
   local pid="$1"
   local cwd
+  local cmd
   cwd="$(lsof -a -p "$pid" -d cwd -Fn 2>/dev/null | sed -n 's/^n//p' | head -n 1)"
-  [[ "$cwd" == "$BACKEND_DIR" ]]
+  if [[ "$cwd" == "$ROOT_DIR" || "$cwd" == "$BACKEND_DIR" ]]; then
+    return 0
+  fi
+
+  cmd="$(ps -ww -p "$pid" -o command= 2>/dev/null | head -n 1)"
+  [[ "$cmd" == *"$BACKEND_DIR"* || "$cmd" == *"$ROOT_DIR/start.command"* ]]
 }
 
 stop_project_server() {
@@ -52,7 +59,7 @@ check_port_conflict() {
   while IFS= read -r pid; do
     [[ -z "$pid" ]] && continue
     if ! pid_belongs_to_project "$pid"; then
-      echo "端口 $PORT 已被其他程序占用（PID: $pid），未自动处理。"
+      printf '端口 %s 已被其他程序占用（PID: %s），未自动处理。\n' "$PORT" "$pid"
       echo "请先关闭占用该端口的程序，或改用其他端口启动。"
       exit 1
     fi
@@ -68,6 +75,15 @@ echo "========================================"
 echo "  Chunky Monkey v2 启动中..."
 echo "  地址: http://localhost:$PORT"
 echo "  API:  http://localhost:$PORT/docs"
+if [[ "$RELOAD_MODE" == "1" ]]; then
+  echo "  模式: 开发热重载 (CM_RELOAD=1)"
+else
+  echo "  模式: 稳定运行（默认，不启用热重载）"
+fi
 echo "  按 Ctrl+C 停止"
 echo "========================================"
-python3 -m uvicorn main:app --host 0.0.0.0 --port "$PORT" --reload
+if [[ "$RELOAD_MODE" == "1" ]]; then
+  exec python3 -m uvicorn main:app --host 0.0.0.0 --port "$PORT" --reload --reload-dir "$BACKEND_DIR"
+fi
+
+exec python3 -m uvicorn main:app --host 0.0.0.0 --port "$PORT"

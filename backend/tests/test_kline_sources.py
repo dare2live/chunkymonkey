@@ -8,16 +8,18 @@ import pandas as pd
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
+import services.akshare_client as akshare_client  # noqa: E402
 import services.etf_db as etf_db  # noqa: E402
 from services.akshare_client import fetch_etf_kline, fetch_etf_list, fetch_etf_list_with_source, test_kline_availability as check_kline_availability  # noqa: E402
 from services.etf_engine import sync_etf_universe  # noqa: E402
+from services.kline_source import aggregate_monthly_from_daily  # noqa: E402
 from services.etf_snapshot_manager import _build_etf_source_status  # noqa: E402
 
 
-def _kline_df():
+def _kline_df(date: str = "2026-04-01"):
     return pd.DataFrame([
         {
-            "date": "2026-04-01",
+            "date": date,
             "open": 1.0,
             "high": 1.1,
             "low": 0.9,
@@ -78,6 +80,113 @@ class KlineSourceFallbackTests(unittest.IsolatedAsyncioTestCase):
         self.assertFalse(df.empty)
         self.assertEqual(source, "tx")
 
+    @patch("services.akshare_client._fetch_daily_akshare_fallbacks", new_callable=AsyncMock)
+    async def test_fetch_daily_with_fallback_skips_mootdx_when_circuit_is_open(self, fallback_mock):
+        fallback_mock.return_value = (
+            _kline_df(),
+            "tx",
+            {"ok": True, "attempts": [{"source": "tx", "ok": True}]},
+        )
+        akshare_client._mark_mootdx_unavailable("mootdx timeout x2，切换 fallback", [], cooldown_seconds=180)
+
+        try:
+            df, source = await akshare_client._fetch_daily_with_fallback("000001", "20260401", "20260410")
+        finally:
+            akshare_client._clear_mootdx_unavailable()
+
+        self.assertIsNotNone(df)
+        self.assertFalse(df.empty)
+        self.assertEqual(source, "tx")
+
+    @patch("services.akshare_client._fetch_daily_akshare_fallbacks", new_callable=AsyncMock)
+    @patch("services.akshare_client._fetch_daily_mootdx_with_diagnostics", new_callable=AsyncMock)
+    async def test_fetch_daily_with_fallback_prefers_akshare_before_mootdx(self, mootdx_mock, fallback_mock):
+        fallback_mock.return_value = (
+            _kline_df("2026-04-10"),
+            "tx",
+            {"ok": True, "attempts": [{"source": "tx", "ok": True}]},
+        )
+
+        df, source = await akshare_client._fetch_daily_with_fallback(
+            "000001",
+            "20260401",
+            "20260410",
+            prefer_fallback=True,
+        )
+
+        self.assertIsNotNone(df)
+        self.assertFalse(df.empty)
+        self.assertEqual(source, "tx")
+        mootdx_mock.assert_not_awaited()
+
+    @patch("services.akshare_client._fetch_daily_akshare_fallbacks", new_callable=AsyncMock)
+    @patch("services.akshare_client._fetch_daily_mootdx_with_diagnostics", new_callable=AsyncMock)
+    async def test_fetch_daily_with_fallback_prefers_fresher_fallback_result(self, mootdx_mock, fallback_mock):
+        mootdx_mock.return_value = (
+            _kline_df("2026-04-03"),
+            "mootdx",
+            {"ok": True, "summary": "mootdx stale", "fallback_recommended": False},
+        )
+        fallback_mock.return_value = (
+            _kline_df("2026-04-10"),
+            "tx",
+            {"ok": True, "attempts": [{"source": "tx", "ok": True}]},
+        )
+
+        df, source = await akshare_client._fetch_daily_with_fallback("000001", "20260401", "20260410")
+
+        self.assertEqual(source, "tx")
+        self.assertEqual(str(df["date"].max())[:10], "2026-04-10")
+
+    @patch("services.akshare_client._fetch_daily_akshare_fallbacks", new_callable=AsyncMock)
+    @patch("services.akshare_client._fetch_daily_mootdx_with_diagnostics", new_callable=AsyncMock)
+    async def test_fetch_daily_with_fallback_prefers_fresher_mootdx_result_after_fallback_probe(self, mootdx_mock, fallback_mock):
+        fallback_mock.return_value = (
+            _kline_df("2026-04-03"),
+            "tx",
+            {"ok": True, "attempts": [{"source": "tx", "ok": True}]},
+        )
+        mootdx_mock.return_value = (
+            _kline_df("2026-04-10"),
+            "mootdx",
+            {"ok": True, "summary": "mootdx healthy", "fallback_recommended": False},
+        )
+
+        df, source = await akshare_client._fetch_daily_with_fallback(
+            "000001",
+            "20260401",
+            "20260410",
+            prefer_fallback=True,
+        )
+
+        self.assertEqual(source, "mootdx")
+        self.assertEqual(str(df["date"].max())[:10], "2026-04-10")
+
+    @patch("services.akshare_client._fetch_daily_mootdx_with_diagnostics", new_callable=AsyncMock)
+    async def test_probe_stock_kline_fallback_preference_marks_degraded_mootdx(self, mootdx_mock):
+        mootdx_mock.return_value = (
+            _kline_df(),
+            "mootdx",
+            {
+                "ok": True,
+                "summary": "mootdx 218.6.170.47:7709 · timeout x3",
+                "timeout_failures": 3,
+                "fallback_recommended": True,
+                "elapsed_sec": 15.7,
+            },
+        )
+
+        probe = await akshare_client.probe_stock_kline_fallback_preference(
+            "000001",
+            "20260401",
+            "20260410",
+        )
+
+        self.assertTrue(probe["prefer_fallback"])
+        self.assertEqual(probe["sample_code"], "000001")
+        self.assertEqual(probe["timeout_failures"], 3)
+        self.assertIn("timeout x3", probe["reason"])
+
     @patch("services.akshare_client._fetch_etf_list_ths", new_callable=AsyncMock)
     @patch("services.akshare_client._fetch_etf_list_mootdx", new_callable=AsyncMock)
     async def test_fetch_etf_list_falls_back_to_ths(self, mootdx_mock, ths_mock):
@@ -130,6 +239,23 @@ class KlineSourceFallbackTests(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(source_status["kline_etf_count"], 1)
         finally:
             conn.close()
+
+
+class KlineSourceHelperTests(unittest.TestCase):
+    def test_aggregate_monthly_from_daily_rolls_up_ohlcv(self):
+        monthly = aggregate_monthly_from_daily(pd.DataFrame([
+            {"date": "2026-03-03", "open": 1.0, "high": 1.3, "low": 0.9, "close": 1.2, "volume": 100.0, "amount": 110.0},
+            {"date": "2026-03-28", "open": 1.2, "high": 1.4, "low": 1.1, "close": 1.35, "volume": 120.0, "amount": 125.0},
+            {"date": "2026-04-02", "open": 1.35, "high": 1.5, "low": 1.3, "close": 1.45, "volume": 90.0, "amount": 98.0},
+        ]))
+
+        self.assertEqual(list(monthly["date"]), ["2026-03-01", "2026-04-01"])
+        self.assertEqual(monthly.iloc[0]["open"], 1.0)
+        self.assertEqual(monthly.iloc[0]["close"], 1.35)
+        self.assertEqual(monthly.iloc[0]["high"], 1.4)
+        self.assertEqual(monthly.iloc[0]["low"], 0.9)
+        self.assertEqual(monthly.iloc[0]["volume"], 220.0)
+        self.assertEqual(monthly.iloc[0]["amount"], 235.0)
 
 
 if __name__ == "__main__":

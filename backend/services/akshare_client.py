@@ -1,23 +1,27 @@
 """
 AKShare 数据获取客户端
 
-函数：月K线、日K线、交易日历、申万行业分类。
+函数：月K线、日K线、交易日历、行业分类。
 
 说明：
 - K 线优先走东财；失败后自动回退新浪 / 腾讯
 - 缺失股票拉全历史，已存在股票走增量续拉
-- 行业检测用真实 AKShare 接口，不再只测无关 URL
+- 行业分类仅接受 TDX 研究行业，异常时返回阻断原因，不做跨源回退
 """
 
 import asyncio
 import logging
 import os
+import threading
 import time
 from datetime import datetime, timedelta
 from typing import Optional
 
 import pandas as pd
 
+from services.kline_source import aggregate_monthly_from_daily as _aggregate_monthly_from_daily
+from services.kline_source import fetch_daily_akshare_fallbacks as _fetch_daily_akshare_fallbacks
+from services.kline_source import normalize_price_frame as _normalize_price_frame
 from services.tdx_source import call_tdx_quotes_with_retry
 from services.tdx_source import clear_mootdx_unavailable as _clear_shared_mootdx_unavailable
 from services.tdx_source import get_mootdx_unavailable_state as _get_shared_mootdx_unavailable_state
@@ -25,6 +29,15 @@ from services.tdx_source import mark_mootdx_unavailable as _mark_shared_mootdx_u
 from services.tdx_source import mootdx_circuit_open as _shared_mootdx_circuit_open
 
 logger = logging.getLogger("cm-api")
+_MOOTDX_DEGRADED_TIMEOUT_THRESHOLD = 2
+_MOOTDX_DEGRADED_COOLDOWN_SECONDS = 180
+_TDX_RESEARCH_LEVELS: tuple[tuple[str, str], ...] = (
+    ("16", "sw_level1"),
+    ("17", "sw_level2"),
+    ("18", "sw_level3"),
+)
+_TDX_RESEARCH_INIT_GUARD = threading.Lock()
+_TDX_RESEARCH_INITIALIZED = False
 
 # 禁用代理，避免 akshare (requests) 走系统代理导致连接失败
 os.environ.pop("http_proxy", None)
@@ -40,23 +53,6 @@ class NetworkError(Exception):
     pass
 
 
-def _looks_like_empty_payload_error(err: Exception) -> bool:
-    text = str(err or "")
-    markers = [
-        "Length mismatch",
-        "Expected axis has 0 elements",
-        "new values have 6 elements",
-        "Columns must be same length as key",
-        "No tables found",
-    ]
-    return any(marker in text for marker in markers)
-
-
-def _market_symbol(code: str) -> str:
-    text = str(code or "").strip()
-    return f"sh{text}" if text.startswith("6") else f"sz{text}"
-
-
 def _summarize_mootdx_attempts(attempts: list[dict]) -> str:
     failed = [item for item in attempts if not item.get("ok")]
     if not failed:
@@ -67,6 +63,35 @@ def _summarize_mootdx_attempts(attempts: list[dict]) -> str:
         if error_type not in error_types:
             error_types.append(error_type)
     return f"mootdx {'/'.join(error_types)} ({len(failed)}服)"
+
+
+def _normalize_fetch_date(value: Optional[str]) -> Optional[str]:
+    text = str(value or "").strip()
+    if not text:
+        return None
+    digits = "".join(ch for ch in text if ch.isdigit())
+    if len(digits) >= 8:
+        digits = digits[:8]
+        return f"{digits[:4]}-{digits[4:6]}-{digits[6:8]}"
+    if len(text) >= 10 and "-" in text:
+        return text[:10]
+    return None
+
+
+def _frame_latest_date(df: Optional[pd.DataFrame]) -> Optional[str]:
+    if df is None or df.empty or "date" not in df.columns:
+        return None
+    normalized = [_normalize_fetch_date(value) for value in df["date"].tolist()]
+    normalized = [value for value in normalized if value]
+    return max(normalized) if normalized else None
+
+
+def _is_frame_fresh_enough(df: Optional[pd.DataFrame], expected_end_date: Optional[str]) -> bool:
+    expected = _normalize_fetch_date(expected_end_date)
+    latest = _frame_latest_date(df)
+    if not latest or not expected:
+        return bool(latest)
+    return latest >= expected
 
 
 def _infer_etf_market(code: str) -> str:
@@ -103,8 +128,11 @@ def _get_mootdx_unavailable_state() -> dict[str, object]:
     return _get_shared_mootdx_unavailable_state()
 
 
-def _mark_mootdx_unavailable(summary: str, attempts: list[dict]) -> None:
-    _mark_shared_mootdx_unavailable(summary, attempts)
+def _mark_mootdx_unavailable(summary: str, attempts: list[dict], *, cooldown_seconds: Optional[int] = None) -> None:
+    if cooldown_seconds is None:
+        _mark_shared_mootdx_unavailable(summary, attempts)
+        return
+    _mark_shared_mootdx_unavailable(summary, attempts, cooldown_seconds=cooldown_seconds)
 
 
 def _clear_mootdx_unavailable() -> None:
@@ -115,21 +143,37 @@ def _mootdx_circuit_open() -> bool:
     return _shared_mootdx_circuit_open()
 
 
+def _count_mootdx_timeout_failures(attempts: list[dict]) -> int:
+    total = 0
+    for item in attempts or []:
+        if item.get("ok"):
+            continue
+        error_text = str(item.get("error_type") or item.get("error") or "").lower()
+        if "timeout" in error_text:
+            total += 1
+    return total
+
+
 async def _fetch_daily_mootdx_with_diagnostics(code: str, start_date: str, end_date: str):
     """用 mootdx 从通达信服务器获取日K线，并返回逐服务器诊断。"""
     if _mootdx_circuit_open():
         state = _get_mootdx_unavailable_state()
+        cached_attempts = list(state.get("attempts") or [])
         return None, None, {
             "ok": False,
             "cached": True,
-            "attempts": list(state.get("attempts") or []),
+            "attempts": cached_attempts,
             "summary": state.get("summary") or "mootdx circuit open",
+            "timeout_failures": _count_mootdx_timeout_failures(cached_attempts),
+            "fallback_recommended": True,
         }
 
     diagnostics = {
         "ok": False,
         "attempts": [],
         "summary": "mootdx 未执行",
+        "timeout_failures": 0,
+        "fallback_recommended": False,
     }
 
     try:
@@ -171,14 +215,36 @@ async def _fetch_daily_mootdx_with_diagnostics(code: str, start_date: str, end_d
         diagnostics["attempts"] = attempts
         diagnostics["ok"] = True
         diagnostics["server"] = attempts[-1]["server"] if attempts else None
+        diagnostics["elapsed_sec"] = round(sum(float(item.get("elapsed_sec") or 0.0) for item in attempts), 3)
+        diagnostics["timeout_failures"] = _count_mootdx_timeout_failures(attempts)
+        diagnostics["fallback_recommended"] = diagnostics["timeout_failures"] >= _MOOTDX_DEGRADED_TIMEOUT_THRESHOLD
         diagnostics["summary"] = f"mootdx {diagnostics['server']}"
-        _clear_mootdx_unavailable()
+        if diagnostics["fallback_recommended"]:
+            _TDX_RESEARCH_LEVELS: tuple[tuple[str, str], ...] = (
+                ("16", "sw_level1"),
+                ("17", "sw_level2"),
+                ("18", "sw_level3"),
+            )
+            _TDX_RESEARCH_INIT_GUARD = threading.Lock()
+            _TDX_RESEARCH_INITIALIZED = False
+            diagnostics["summary"] = (
+                f"mootdx {diagnostics['server']} · timeout x{diagnostics['timeout_failures']}"
+            )
+            _mark_mootdx_unavailable(
+                f"mootdx timeout x{diagnostics['timeout_failures']}，切换 fallback",
+                attempts,
+                cooldown_seconds=_MOOTDX_DEGRADED_COOLDOWN_SECONDS,
+            )
+        else:
+            _clear_mootdx_unavailable()
         return df, "mootdx", diagnostics
     except ImportError:
         diagnostics["summary"] = "mootdx 未安装"
         return None, None, diagnostics
     except Exception as e:
         diagnostics["attempts"] = list(getattr(e, "tdx_attempts", []) or [])
+        diagnostics["timeout_failures"] = _count_mootdx_timeout_failures(diagnostics["attempts"])
+        diagnostics["fallback_recommended"] = True
         diagnostics["summary"] = _summarize_mootdx_attempts(diagnostics["attempts"]) if diagnostics["attempts"] else str(e)
         _mark_mootdx_unavailable(diagnostics["summary"], diagnostics["attempts"])
         logger.debug(f"[mootdx] {code} 失败: {e}")
@@ -213,218 +279,100 @@ async def _safe_akshare_call(func, *args, timeout=30, retries=2, **kwargs):
     if last_err:
         raise last_err
     return None
-
-
-def _normalize_price_frame(df, source: str):
-    """统一 K 线 DataFrame 列名为 date/open/high/low/close/volume/amount"""
-    if df is None or df.empty:
-        return None
-    frame = df.copy()
-
-    if source == "eastmoney":
-        frame = frame.rename(columns={
-            "日期": "date",
-            "开盘": "open",
-            "最高": "high",
-            "最低": "low",
-            "收盘": "close",
-            "成交量": "volume",
-            "成交额": "amount",
-        })
-    elif source == "sina":
-        pass
-    elif source == "tx":
-        # 腾讯接口通常只有 amount，无 volume
-        if "volume" not in frame.columns:
-            frame["volume"] = None
-    required = ["date", "open", "high", "low", "close"]
-    if not all(col in frame.columns for col in required):
-        return None
-    for col in ["volume", "amount"]:
-        if col not in frame.columns:
-            frame[col] = None
-    frame = frame[["date", "open", "high", "low", "close", "volume", "amount"]].copy()
-    frame["date"] = frame["date"].astype(str).str[:10]
-    return frame
-
-
-def _aggregate_monthly_from_daily(df: pd.DataFrame):
-    """从日 K 聚合月 K"""
-    if df is None or df.empty:
-        return None
-    frame = df.copy()
-    frame["date"] = pd.to_datetime(frame["date"])
-    frame = frame.sort_values("date")
-    frame["month"] = frame["date"].dt.to_period("M")
-
-    rows = []
-    for _, group in frame.groupby("month", sort=True):
-        group = group.sort_values("date")
-        rows.append({
-            "date": group.iloc[0]["date"].strftime("%Y-%m-01"),
-            "open": group.iloc[0]["open"],
-            "high": group["high"].max(),
-            "low": group["low"].min(),
-            "close": group.iloc[-1]["close"],
-            "volume": group["volume"].sum(min_count=1),
-            "amount": group["amount"].sum(min_count=1),
-        })
-    return pd.DataFrame(rows)
-
-
-def _build_path_map_from_cninfo_tree(tree_df: pd.DataFrame):
-    """把 cninfo 申万分类树转换成 {code: [l1,l2,l3]}"""
-    if tree_df is None or tree_df.empty:
-        return {}
-    rows = {}
-    for _, row in tree_df.iterrows():
-        code = str(row.get("类目编码") or "").strip()
-        if not code:
-            continue
-        rows[code] = {
-            "name": str(row.get("类目名称") or "").strip(),
-            "parent": str(row.get("父类编码") or "").strip(),
-            "level": int(row.get("分级") or 0),
-        }
-    path_map = {}
-    for code in rows:
-        current = code
-        path = []
-        seen = set()
-        while current and current in rows and current not in seen:
-            seen.add(current)
-            item = rows[current]
-            if item["level"] > 0 and item["name"]:
-                path.append(item["name"])
-            current = item["parent"]
-        if path:
-            path_map[code] = list(reversed(path))
-            if code.startswith("S"):
-                path_map[code[1:]] = path_map[code]
-    return path_map
-
-
 async def _fetch_daily_mootdx(code: str, start_date: str, end_date: str):
     """用 mootdx 从通达信服务器获取日K线（首选数据源）"""
     df, source, _ = await _fetch_daily_mootdx_with_diagnostics(code, start_date, end_date)
     return df, source
 
 
-async def _fetch_daily_akshare_fallbacks(code: str, start_date: str, end_date: str):
-    import akshare as ak
-
-    attempts = [
-        (
-            "eastmoney",
-            ak.stock_zh_a_hist,
-            {
-                "symbol": code,
-                "period": "daily",
-                "start_date": start_date,
-                "end_date": end_date,
-                "adjust": "qfq",
-            },
-        ),
-        (
-            "sina",
-            ak.stock_zh_a_daily,
-            {
-                "symbol": _market_symbol(code),
-                "start_date": start_date,
-                "end_date": end_date,
-                "adjust": "qfq",
-            },
-        ),
-        (
-            "tx",
-            ak.stock_zh_a_hist_tx,
-            {
-                "symbol": _market_symbol(code),
-                "start_date": start_date,
-                "end_date": end_date,
-                "adjust": "qfq",
-            },
-        ),
-    ]
-
-    diagnostics = {
-        "ok": False,
-        "attempts": [],
-        "all_empty": False,
-        "last_error": None,
-    }
-    empty_sources = []
-    last_err = None
-
-    for source, func, kwargs in attempts:
-        attempt = {"source": source, "ok": False}
-        started_at = time.time()
-        try:
-            df = await _safe_akshare_call(func, timeout=30, retries=1, **kwargs)
-            norm = _normalize_price_frame(df, source)
-            if norm is not None and not norm.empty:
-                from services.api_schemas import KLineDailyRow
-                from pydantic import TypeAdapter, ValidationError
-
-                try:
-                    records = norm.to_dict("records")
-                    TypeAdapter(list[KLineDailyRow]).validate_python(records)
-                    attempt["ok"] = True
-                    attempt["rows"] = len(norm)
-                    attempt["elapsed_sec"] = round(time.time() - started_at, 3)
-                    diagnostics["attempts"].append(attempt)
-                    diagnostics["ok"] = True
-                    diagnostics["effective_source"] = source
-                    return norm, source, diagnostics
-                except ValidationError as e:
-                    logger.error(f"[日K fallback] {source} 防腐层截断 - Schema校验失败: {e}")
-                    last_err = ValueError(f"{source}: schema validation failed")
-                    empty_sources.append(source)
-                    attempt["error_type"] = "ValidationError"
-                    attempt["error"] = str(e)
-            else:
-                empty_sources.append(source)
-                last_err = ValueError(f"{source}: empty")
-                attempt["error_type"] = "empty"
-                attempt["error"] = "empty"
-        except Exception as e:
-            if _looks_like_empty_payload_error(e):
-                empty_sources.append(source)
-                last_err = ValueError(f"{source}: empty")
-                attempt["error_type"] = "empty"
-                attempt["error"] = "empty"
-            else:
-                last_err = e
-                attempt["error_type"] = type(e).__name__
-                attempt["error"] = str(e)
-            logger.debug(f"[日K fallback] {code} {source} 失败: {e}")
-
-        attempt["elapsed_sec"] = round(time.time() - started_at, 3)
-        diagnostics["attempts"].append(attempt)
-
-    diagnostics["all_empty"] = bool(empty_sources and len(empty_sources) == len(attempts))
-    if diagnostics["all_empty"]:
-        diagnostics["last_error"] = "all_sources_empty(eastmoney/sina/tx)"
-    elif last_err:
-        diagnostics["last_error"] = str(last_err)
-    return None, "", diagnostics
-
-
-async def _fetch_daily_with_fallback(code: str, start_date: str, end_date: str):
-    # 优先级1: mootdx（通达信服务器，Mac原生）
-    df_m, src_m = await _fetch_daily_mootdx(code, start_date, end_date)
-    if df_m is not None and not df_m.empty:
-        return df_m, src_m
-
-    df_fb, src_fb, diagnostics = await _fetch_daily_akshare_fallbacks(code, start_date, end_date)
-    if df_fb is not None and not df_fb.empty:
-        return df_fb, src_fb
-
+def _raise_daily_fallback_error(diagnostics: dict) -> None:
     if diagnostics.get("all_empty"):
         raise ValueError(diagnostics.get("last_error") or "all_sources_empty(eastmoney/sina/tx)")
     if diagnostics.get("last_error"):
         raise ValueError(diagnostics["last_error"])
+
+
+async def _fetch_daily_with_fallback(
+    code: str,
+    start_date: str,
+    end_date: str,
+    *,
+    prefer_fallback: bool = False,
+):
+    import akshare as ak
+
+    best_df = None
+    best_source = ""
+    best_latest = None
+    fallback_diagnostics = None
+
+    def _remember_result(df, source):
+        nonlocal best_df, best_source, best_latest
+        latest = _frame_latest_date(df)
+        if df is None or df.empty or not latest:
+            return latest
+        if best_df is None or best_latest is None or latest > best_latest:
+            best_df = df
+            best_source = source
+            best_latest = latest
+        return latest
+
+    if prefer_fallback:
+        df_fb, src_fb, fallback_diagnostics = await _fetch_daily_akshare_fallbacks(
+            code,
+            start_date,
+            end_date,
+            safe_call=_safe_akshare_call,
+        )
+        if df_fb is not None and not df_fb.empty:
+            _remember_result(df_fb, src_fb)
+        if _is_frame_fresh_enough(df_fb, end_date):
+            return df_fb, src_fb
+
+    # 优先级1: mootdx（通达信服务器，Mac原生）
+    df_m, src_m, diagnostics_m = await _fetch_daily_mootdx_with_diagnostics(code, start_date, end_date)
+    if df_m is not None and not df_m.empty:
+        _remember_result(df_m, src_m)
+        if diagnostics_m.get("fallback_recommended"):
+            logger.warning(
+                f"[日K] {code} mootdx 连续超时，后续短时回退 fallback（{diagnostics_m.get('summary') or 'mootdx degraded'}）"
+            )
+        if _is_frame_fresh_enough(df_m, end_date):
+            return df_m, src_m
+
+    if fallback_diagnostics is None:
+        df_fb, src_fb, fallback_diagnostics = await _fetch_daily_akshare_fallbacks(
+            code,
+            start_date,
+            end_date,
+            safe_call=_safe_akshare_call,
+        )
+        if df_fb is not None and not df_fb.empty:
+            _remember_result(df_fb, src_fb)
+        if _is_frame_fresh_enough(df_fb, end_date):
+            return df_fb, src_fb
+
+    if best_df is not None and not best_df.empty:
+        return best_df, best_source
+
+    _raise_daily_fallback_error(fallback_diagnostics or {})
     return None, ""
+
+
+async def probe_stock_kline_fallback_preference(code: str, start_date: str, end_date: str) -> dict:
+    _, _, diagnostics = await _fetch_daily_mootdx_with_diagnostics(code, start_date, end_date)
+    prefer_fallback = (
+        not diagnostics.get("ok")
+        or bool(diagnostics.get("cached"))
+        or bool(diagnostics.get("fallback_recommended"))
+    )
+    return {
+        "sample_code": code,
+        "prefer_fallback": prefer_fallback,
+        "reason": diagnostics.get("summary") or ("mootdx unavailable" if prefer_fallback else "mootdx healthy"),
+        "elapsed_sec": float(diagnostics.get("elapsed_sec") or 0.0),
+        "timeout_failures": int(diagnostics.get("timeout_failures") or 0),
+    }
 
 
 async def fetch_stock_kline_monthly(code: str, limit: int = 36,
@@ -471,13 +419,19 @@ async def fetch_stock_kline_monthly(code: str, limit: int = 36,
 
 async def fetch_stock_kline_daily(code: str, days: int = 150,
                                   start_date: Optional[str] = None,
-                                  end_date: Optional[str] = None):
+                                  end_date: Optional[str] = None,
+                                  prefer_fallback: bool = False):
     """获取日K线。缺失股票拉全历史，失败时自动回退新浪 / 腾讯。"""
     end_date = end_date or datetime.now().strftime("%Y%m%d")
     start = start_date or (datetime.now() - timedelta(days=days)).strftime("%Y%m%d")
 
     try:
-        df, source = await _fetch_daily_with_fallback(code, start, end_date)
+        df, source = await _fetch_daily_with_fallback(
+            code,
+            start,
+            end_date,
+            prefer_fallback=prefer_fallback,
+        )
         if df is not None and not df.empty:
             return df, source
     except Exception as e:
@@ -498,7 +452,12 @@ async def test_kline_availability(sample_code: str = "000001") -> dict:
     }
 
     mootdx_task = asyncio.create_task(_fetch_daily_mootdx_with_diagnostics(sample_code, start_date, end_date))
-    fallback_task = asyncio.create_task(_fetch_daily_akshare_fallbacks(sample_code, start_date, end_date))
+    fallback_task = asyncio.create_task(_fetch_daily_akshare_fallbacks(
+        sample_code,
+        start_date,
+        end_date,
+        safe_call=_safe_akshare_call,
+    ))
     (df_m, src_m, mootdx_diag), (df_fb, src_fb, fallback_diag) = await asyncio.gather(mootdx_task, fallback_task)
     result["mootdx"] = mootdx_diag
     if df_m is not None and not df_m.empty and src_m:
@@ -521,175 +480,218 @@ async def test_kline_availability(sample_code: str = "000001") -> dict:
     return result
 
 
-async def test_industry_availability() -> tuple[bool, str]:
-    """测试申万行业源可用性；直接测真实 akshare 接口。"""
-    import akshare as ak
+def _normalize_tdx_sector_code(value: object) -> str:
+    text = str(value or "").strip().upper()
+    if not text:
+        return ""
+    if "." in text:
+        head, tail = text.split(".", 1)
+        digits = "".join(ch for ch in head if ch.isdigit())
+        suffix = "".join(ch for ch in tail if ch.isalpha())
+        if digits and suffix:
+            return f"{digits}.{suffix}"
+        return digits
+    digits = "".join(ch for ch in text if ch.isdigit())
+    return digits
 
-    attempts = [
-        ("sw_hist", lambda: ak.stock_industry_clf_hist_sw().head(1)),
-        ("sw_l1", lambda: ak.sw_index_first_info().head(1)),
-    ]
-    for source, func in attempts:
-        try:
-            df = await _safe_akshare_call(func, timeout=20, retries=0)
-            if df is not None and not df.empty:
-                return True, source
-        except Exception:
+
+def _normalize_tdx_stock_code(value: object) -> str:
+    text = str(value or "").strip().upper()
+    if not text:
+        return ""
+    if "." in text:
+        text = text.split(".", 1)[0]
+    digits = "".join(ch for ch in text if ch.isdigit())
+    return digits[-6:] if len(digits) >= 6 else ""
+
+
+def _coerce_tdx_code_name_rows(payload) -> list[dict[str, str]]:
+    if payload is None:
+        return []
+    rows = []
+    for item in list(payload):
+        code = ""
+        name = ""
+        if isinstance(item, dict):
+            code = item.get("Code") or item.get("code") or item.get("证券代码") or item.get("代码") or ""
+            name = item.get("Name") or item.get("name") or item.get("证券名称") or item.get("名称") or ""
+        elif isinstance(item, (list, tuple)) and len(item) >= 2:
+            code, name = item[0], item[1]
+        sector_code = _normalize_tdx_sector_code(code)
+        sector_name = str(name or "").strip()
+        if not sector_code or not sector_name:
             continue
-    return False, ""
+        rows.append({"code": sector_code, "name": sector_name})
+    return rows
+
+
+def _coerce_tdx_code_list(payload) -> list[str]:
+    if payload is None:
+        return []
+    codes = []
+    for item in list(payload):
+        code = item
+        if isinstance(item, dict):
+            code = item.get("Code") or item.get("code") or item.get("证券代码") or item.get("代码") or ""
+        elif isinstance(item, (list, tuple)) and item:
+            code = item[0]
+        stock_code = _normalize_tdx_stock_code(code)
+        if stock_code:
+            codes.append(stock_code)
+    return codes
+
+
+def _get_tdx_research_client():
+    try:
+        from tqcenter import tq
+    except ImportError as exc:
+        raise ImportError("tqcenter not installed") from exc
+
+    global _TDX_RESEARCH_INITIALIZED
+    with _TDX_RESEARCH_INIT_GUARD:
+        if not _TDX_RESEARCH_INITIALIZED:
+            initialize = getattr(tq, "initialize", None)
+            if callable(initialize):
+                initialize(__file__)
+            _TDX_RESEARCH_INITIALIZED = True
+    return tq
+
+
+async def _call_tdx_research_api(method_name: str, *args, **kwargs):
+    loop = asyncio.get_running_loop()
+
+    def _invoke():
+        client = _get_tdx_research_client()
+        method = getattr(client, method_name, None)
+        if not callable(method):
+            raise AttributeError(f"tqcenter missing {method_name}")
+        return method(*args, **kwargs)
+
+    return await loop.run_in_executor(None, _invoke)
+
+
+async def _fetch_tdx_research_sector_rows(level_code: str) -> list[dict[str, str]]:
+    rows = _coerce_tdx_code_name_rows(
+        await _call_tdx_research_api("get_stock_list", level_code, list_type=1)
+    )
+    if not rows:
+        raise ValueError(f"tdx research level {level_code} empty")
+    return rows
+
+
+async def _fetch_tdx_research_sector_members(sector_code: str) -> list[str]:
+    return list(
+        dict.fromkeys(
+            _coerce_tdx_code_list(
+                await _call_tdx_research_api(
+                    "get_stock_list_in_sector",
+                    sector_code,
+                    block_type=0,
+                    list_type=0,
+                )
+            )
+        )
+    )
+
+
+async def _collect_tdx_level_assignments(level_code: str, field_name: str) -> tuple[dict[str, str], dict[str, str]]:
+    sectors = await _fetch_tdx_research_sector_rows(level_code)
+    assignments: dict[str, str] = {}
+    sector_codes: dict[str, str] = {}
+    duplicate_examples: list[str] = []
+    duplicate_count = 0
+
+    logger.info(f"[行业][TDX] 拉取 {field_name}: {len(sectors)} 个板块")
+    for index, sector in enumerate(sectors, start=1):
+        members = await _fetch_tdx_research_sector_members(sector["code"])
+        for stock_code in members:
+            current_code = sector_codes.get(stock_code)
+            if current_code and current_code != sector["code"]:
+                duplicate_count += 1
+                if len(duplicate_examples) < 10:
+                    duplicate_examples.append(
+                        f"{stock_code}:{current_code}->{sector['code']}"
+                    )
+                continue
+            assignments.setdefault(stock_code, sector["name"])
+            sector_codes.setdefault(stock_code, sector["code"])
+        if index % 20 == 0 or index == len(sectors):
+            logger.info(
+                f"[行业][TDX] {field_name} 进度: {index}/{len(sectors)}, 已覆盖 {len(assignments)} 只股票"
+            )
+
+    if duplicate_count:
+        sample = ", ".join(duplicate_examples)
+        raise ValueError(
+            f"tdx_research_industry_duplicate:{field_name}:{duplicate_count}:{sample}"
+        )
+    return assignments, sector_codes
+
+
+async def _test_tdx_industry_availability() -> tuple[bool, str]:
+    try:
+        level1_rows, level3_rows = await asyncio.gather(
+            _fetch_tdx_research_sector_rows("16"),
+            _fetch_tdx_research_sector_rows("18"),
+        )
+        if level1_rows and level3_rows:
+            return True, "tdx_research_industry"
+        return False, "tdx_research_industry_empty"
+    except Exception as exc:
+        return False, f"tdx_research_industry_error:{str(exc)[:160]}"
+
+
+async def _fetch_tdx_research_industry_all() -> list[dict]:
+    level_values: dict[str, dict[str, str]] = {}
+    level_codes: dict[str, dict[str, str]] = {}
+
+    for level_code, field_name in _TDX_RESEARCH_LEVELS:
+        assignments, sector_codes = await _collect_tdx_level_assignments(level_code, field_name)
+        if not assignments:
+            raise ValueError(f"tdx_research_industry_empty:{field_name}")
+        level_values[field_name] = assignments
+        level_codes[field_name] = sector_codes
+
+    all_codes = sorted(set().union(*(set(mapping.keys()) for mapping in level_values.values())))
+    results = []
+    for stock_code in all_codes:
+        results.append({
+            "stock_code": stock_code,
+            "sw_level1": level_values["sw_level1"].get(stock_code, ""),
+            "sw_level2": level_values["sw_level2"].get(stock_code, ""),
+            "sw_level3": level_values["sw_level3"].get(stock_code, ""),
+            "sw_code": (
+                level_codes["sw_level3"].get(stock_code)
+                or level_codes["sw_level2"].get(stock_code)
+                or level_codes["sw_level1"].get(stock_code)
+                or ""
+            ),
+        })
+
+    logger.info(f"[行业][TDX] 完成: {len(results)} 只股票的研究行业映射")
+    return results
+
+
+async def fetch_sw_industry_all_with_source() -> tuple[list[dict], str]:
+    try:
+        rows = await _fetch_tdx_research_industry_all()
+        if rows:
+            return rows, "tdx_research_industry"
+        return [], "tdx_research_industry_empty"
+    except Exception as exc:
+        reason = f"tdx_research_industry_error:{str(exc)[:160]}"
+        logger.error(f"[行业][TDX] 研究行业不可用: {reason}")
+        return [], reason
+
+
+async def test_industry_availability() -> tuple[bool, str]:
+    """测试行业源可用性；只接受通达信研究行业。"""
+    return await _test_tdx_industry_availability()
 
 
 async def fetch_sw_industry_all():
-    """获取申万三级行业分类（全市场股票-行业映射）
-
-    策略：
-    1. 获取一二三级行业列表，建立层级映射（三级→二级→一级）
-    2. 遍历三级行业获取成分股
-    3. 用申万历史归属表补齐“当前成分股不包含”的老票/边缘票
-    4. 通过层级映射填充一二级行业名
-    5. stock_code 去掉 .SH/.SZ 后缀，与 inst_holdings 格式一致
-
-    返回 list[dict]，每个 dict: {stock_code, sw_level1, sw_level2, sw_level3, sw_code}
-    """
-    import akshare as ak
-
-    results = []
-
-    # 1. 建立行业层级映射
-    logger.info("[行业] 获取申万行业层级...")
-    try:
-        df1 = await _safe_akshare_call(ak.sw_index_first_info, timeout=30)
-        df2 = await _safe_akshare_call(ak.sw_index_second_info, timeout=30)
-        df3 = await _safe_akshare_call(ak.sw_index_third_info, timeout=30)
-        sw_tree_df = await _safe_akshare_call(
-            ak.stock_industry_category_cninfo,
-            symbol="申银万国行业分类标准",
-            timeout=30,
-        )
-        if sw_tree_df is not None and not sw_tree_df.empty:
-            from services.api_schemas import SWIndustryTreeRow
-            from pydantic import TypeAdapter, ValidationError
-            try:
-                TypeAdapter(list[SWIndustryTreeRow]).validate_python(sw_tree_df.to_dict('records'))
-            except ValidationError as e:
-                logger.error(f"[行业] 防腐层截断 - cninfo 行业树Schema验证失败: {e}")
-                sw_tree_df = None
-    except Exception as e:
-        logger.error(f"[行业] 获取行业层级失败: {e}")
-        return results
-
-    if df3 is None or df3.empty:
-        logger.warning("[行业] 三级行业列表为空")
-        return results
-
-    # 一级：{行业名: 行业名} (自身)
-    level1_names = set(df1["行业名称"].tolist()) if df1 is not None else set()
-
-    # 二级→一级映射：{二级名: 一级名}
-    l2_to_l1 = {}
-    if df2 is not None:
-        for _, r in df2.iterrows():
-            l2_to_l1[str(r.get("行业名称", "")).strip()] = str(r.get("上级行业", "")).strip()
-
-    # 三级→二级映射：{三级名: 二级名}
-    l3_to_l2 = {}
-    code_to_l3 = {}
-    for _, r in df3.iterrows():
-        l3_name = str(r.get("行业名称", "")).strip()
-        l3_to_l2[l3_name] = str(r.get("上级行业", "")).strip()
-        code_to_l3[str(r.get("行业代码", "")).strip()] = l3_name
-
-    codes = df3["行业代码"].tolist()
-    names = df3["行业名称"].tolist()
-    logger.info(f"[行业] 共 {len(codes)} 个三级行业，层级映射已建立 (一级{len(level1_names)}，二级{len(l2_to_l1)}，三级{len(l3_to_l2)})")
-    path_map = _build_path_map_from_cninfo_tree(sw_tree_df)
-
-    # 2. 逐个三级行业获取当前成分股
-    seen = set()
-    for i, (sw_code, l3_name) in enumerate(zip(codes, names)):
-        try:
-            df = await _safe_akshare_call(
-                ak.sw_index_third_cons, symbol=str(sw_code),
-                timeout=20, retries=1
-            )
-            if df is None or df.empty:
-                continue
-
-            from services.api_schemas import SWIndustryRow
-            from pydantic import TypeAdapter, ValidationError
-            try:
-                TypeAdapter(list[SWIndustryRow]).validate_python(df.to_dict('records'))
-            except ValidationError as e:
-                logger.error(f"[行业] {sw_code} 防腐层截断 - Schema验证失败: {e}")
-                continue
-
-            # 通过层级映射查找一二级
-            l3 = str(l3_name).strip()
-            l2 = l3_to_l2.get(l3, "")
-            l1 = l2_to_l1.get(l2, "")
-
-            for _, row in df.iterrows():
-                raw_code = str(row.get("股票代码", "")).strip()
-                if not raw_code:
-                    continue
-                # 去掉 .SH/.SZ 后缀，与 inst_holdings 的 stock_code 格式一致
-                stock_code = raw_code.split(".")[0] if "." in raw_code else raw_code
-                if stock_code in seen:
-                    continue
-                seen.add(stock_code)
-                results.append({
-                    "stock_code": stock_code,
-                    "sw_level1": l1,
-                    "sw_level2": l2,
-                    "sw_level3": l3,
-                    "sw_code": str(sw_code),
-                })
-
-            if (i + 1) % 20 == 0:
-                logger.info(f"[行业] 进度: {i+1}/{len(codes)}, 已获取 {len(results)} 只股票")
-                await asyncio.sleep(0.5)
-        except Exception as e:
-            logger.debug(f"[行业] {sw_code} 失败: {e}")
-            await asyncio.sleep(1)
-
-    current_count = len(results)
-
-    # 3. 用申万历史归属补齐非当前成分股
-    try:
-        hist_df = await _safe_akshare_call(ak.stock_industry_clf_hist_sw, timeout=45, retries=1)
-        if hist_df is not None and not hist_df.empty:
-            hist_df = hist_df.copy()
-            hist_df["symbol6"] = hist_df["symbol"].astype(str).str.zfill(6)
-            hist_df["start_date"] = hist_df["start_date"].astype(str)
-            hist_df["update_time"] = hist_df["update_time"].astype(str)
-            hist_df = hist_df.sort_values(["symbol6", "start_date", "update_time"])
-            latest_hist = hist_df.groupby("symbol6", as_index=False).tail(1)
-
-            hist_added = 0
-            for _, row in latest_hist.iterrows():
-                stock_code = str(row.get("symbol6") or "").strip()
-                if not stock_code or stock_code in seen:
-                    continue
-                industry_code = str(row.get("industry_code") or "").strip()
-                path = path_map.get(industry_code) or path_map.get(f"S{industry_code}") or []
-                if len(path) < 3:
-                    continue
-                l1, l2, l3 = path[0], path[1], path[2]
-                seen.add(stock_code)
-                results.append({
-                    "stock_code": stock_code,
-                    "sw_level1": l1,
-                    "sw_level2": l2,
-                    "sw_level3": l3,
-                    "sw_code": industry_code,
-                })
-                hist_added += 1
-            logger.info(f"[行业] 历史归属补齐: +{hist_added} 只股票")
-    except Exception as e:
-        logger.debug(f"[行业] 历史归属补齐失败: {e}")
-
-    logger.info(f"[行业] 完成: {len(results)} 只股票的行业分类（当前成分股 {current_count}）")
-    return results
+    rows, _source = await fetch_sw_industry_all_with_source()
+    return rows
 
 
 async def _fetch_etf_list_mootdx() -> list[dict]:
@@ -731,6 +733,7 @@ async def _fetch_etf_list_mootdx() -> list[dict]:
     except Exception as e:
         logger.warning(f"[ETF] mootdx ETF 列表失败: {e}")
         _mark_mootdx_unavailable(f"mootdx stocks failed: {e}", [])
+
     return []
 
 
@@ -781,7 +784,12 @@ async def fetch_etf_kline(code: str, start_date: str, end_date: str):
     if df is not None and not df.empty:
         return df, source
 
-    df_fb, source_fb, diagnostics = await _fetch_daily_akshare_fallbacks(code, start_date, end_date)
+    df_fb, source_fb, diagnostics = await _fetch_daily_akshare_fallbacks(
+        code,
+        start_date,
+        end_date,
+        safe_call=_safe_akshare_call,
+    )
     if df_fb is not None and not df_fb.empty:
         logger.debug(
             f"[ETF] {code} mootdx 不可用，回退 {source_fb}（{mootdx_diag.get('summary') or _summarize_mootdx_attempts(mootdx_diag.get('attempts') or [])}）"

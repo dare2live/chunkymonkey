@@ -4,8 +4,11 @@ utils.py — 全局共享工具函数
 所有模块共用的纯函数放在这里，消除跨文件重复定义。
 """
 
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Optional
+from zoneinfo import ZoneInfo
+
+_MARKET_TZ = ZoneInfo("Asia/Shanghai")
 
 
 def safe_float(value) -> Optional[float]:
@@ -87,3 +90,28 @@ def parse_any_date(value) -> Optional[datetime]:
         except ValueError:
             continue
     return None
+
+
+def latest_completed_trade_date(conn, now: Optional[datetime] = None, close_hour: int = 16) -> Optional[str]:
+    """返回最近一个已完成收盘的交易日（北京时间口径）。"""
+    if now is None:
+        now_local = datetime.now(_MARKET_TZ)
+    elif now.tzinfo is None:
+        now_local = now.replace(tzinfo=_MARKET_TZ)
+    else:
+        now_local = now.astimezone(_MARKET_TZ)
+
+    anchor_date = now_local.date()
+    if now_local.hour < close_hour:
+        anchor_date -= timedelta(days=1)
+
+    row = conn.execute(
+        "SELECT MAX(trade_date) AS d FROM dim_trading_calendar "
+        "WHERE is_trading=1 AND trade_date <= ?",
+        (anchor_date.strftime("%Y-%m-%d"),)
+    ).fetchone()
+    if not row:
+        return None
+    if hasattr(row, "keys") and "d" in row.keys():
+        return row["d"]
+    return row[0]

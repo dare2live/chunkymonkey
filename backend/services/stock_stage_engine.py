@@ -352,12 +352,7 @@ def build_stock_stage_features(conn, mkt_conn=None, snapshot_date: Optional[str]
             watch_count = int(gates.get("watch_count") or 0)
             observe_count = int(gates.get("observe_count") or 0)
             avoid_count = int(gates.get("avoid_count") or 0)
-            stock_gate = (
-                "follow" if follow_count > 0 else
-                "watch" if watch_count > 0 else
-                "observe" if observe_count > 0 else
-                "avoid" if avoid_count > 0 else None
-            )
+            stock_gate = None
 
             notice_age_days = _days_since(notice_anchor)
             generic_stage_raw = 45.0
@@ -399,13 +394,6 @@ def build_stock_stage_features(conn, mkt_conn=None, snapshot_date: Optional[str]
                 2 if notice_age_days is not None and notice_age_days <= 120 else
                 -4
             )
-            generic_stage_raw += {
-                "follow": 10,
-                "watch": 5,
-                "observe": 0,
-                "avoid": -15,
-                None: 0,
-            }.get(stock_gate, 0)
             generic_stage_raw += _safe_float((industry_by_stock.get(stock_code) or {}).get("stage_industry_adjust_raw")) or 0
 
             archetype = archetype_by_stock.get(stock_code) or {}

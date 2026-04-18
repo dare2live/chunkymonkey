@@ -11,8 +11,9 @@ import logging
 from datetime import datetime
 from typing import Optional
 
-from services.industry import load_industry_map
+from services.industry import industry_level_value, load_industry_map
 from services.market_db import get_market_conn
+from services.quote_snapshot_client import fetch_stock_spot_batch
 from services.utils import safe_float as _safe_float
 
 logger = logging.getLogger("cm-api")
@@ -66,6 +67,14 @@ def _get_nth_trade_date(conn, anchor_date: str, offset: int) -> Optional[str]:
     return row["trade_date"] if row else None
 
 
+def _is_trading_day(conn, anchor_date: str) -> bool:
+    row = conn.execute(
+        "SELECT 1 FROM dim_trading_calendar WHERE trade_date = ? AND is_trading = 1",
+        (anchor_date,),
+    ).fetchone()
+    return row is not None
+
+
 def _calc_gain(entry_price: Optional[float], exit_price: Optional[float]) -> Optional[float]:
     if entry_price is None or exit_price is None or entry_price <= 0:
         return None
@@ -96,6 +105,11 @@ def _calc_max_drawdown(mkt_conn, code: str, start_date: str, end_date: str) -> O
     return round(max_drawdown, 2)
 
 
+def _table_column_names(conn, table_name: str) -> set[str]:
+    rows = conn.execute(f"PRAGMA table_info({table_name})").fetchall()
+    return {row["name"] if hasattr(row, "keys") else row[1] for row in rows}
+
+
 def snapshot_setup_candidates(conn, snapshot_date: Optional[str] = None) -> int:
     snapshot_date = snapshot_date or _resolve_snapshot_date()
     now = datetime.now().isoformat()
@@ -105,7 +119,9 @@ def snapshot_setup_candidates(conn, snapshot_date: Optional[str] = None) -> int:
                setup_tag, setup_priority, setup_reason, setup_confidence,
                setup_level, setup_inst_id, setup_inst_name, setup_event_type,
                setup_industry_name, action_score,
-               discovery_score, company_quality_score, stage_score,
+               discovery_score, company_quality_score,
+               company_quality_score_source, quality_feature_snapshot_date,
+               stage_score,
                forecast_score, forecast_score_effective,
                raw_composite_priority_score, composite_priority_score,
                composite_cap_score, composite_cap_reason,
@@ -127,7 +143,9 @@ def snapshot_setup_candidates(conn, snapshot_date: Optional[str] = None) -> int:
         "setup_tag", "setup_priority", "setup_reason", "setup_confidence",
         "setup_level", "setup_inst_id", "setup_inst_name", "setup_event_type",
         "setup_industry_name", "snapshot_sw_level1", "snapshot_sw_level2", "snapshot_sw_level3", "action_score",
-        "discovery_score", "company_quality_score", "stage_score",
+        "discovery_score", "company_quality_score",
+        "company_quality_score_source", "quality_feature_snapshot_date",
+        "stage_score",
         "forecast_score", "forecast_score_effective",
         "raw_composite_priority_score", "composite_priority_score",
         "composite_cap_score", "composite_cap_reason",
@@ -172,12 +190,14 @@ def snapshot_setup_candidates(conn, snapshot_date: Optional[str] = None) -> int:
                 row["setup_inst_name"],
                 row["setup_event_type"],
                 row["setup_industry_name"],
-                industry.get("sw_level1"),
-                industry.get("sw_level2"),
-                industry.get("sw_level3"),
+                industry_level_value(industry, 1),
+                industry_level_value(industry, 2),
+                industry_level_value(industry, 3),
                 row["action_score"],
                 row["discovery_score"],
                 row["company_quality_score"],
+                row["company_quality_score_source"] or "stock_scoring_v2",
+                row["quality_feature_snapshot_date"],
                 row["stage_score"],
                 row["forecast_score"],
                 row["forecast_score_effective"],
@@ -255,9 +275,9 @@ def backfill_setup_snapshot_industry(conn, snapshot_date: Optional[str] = None) 
     updates = []
     for row in rows:
         industry = industry_map.get(row["stock_code"]) or {}
-        sw_level1 = row["snapshot_sw_level1"] or industry.get("sw_level1")
-        sw_level2 = row["snapshot_sw_level2"] or industry.get("sw_level2")
-        sw_level3 = row["snapshot_sw_level3"] or industry.get("sw_level3")
+        sw_level1 = row["snapshot_sw_level1"] or industry_level_value(industry, 1)
+        sw_level2 = row["snapshot_sw_level2"] or industry_level_value(industry, 2)
+        sw_level3 = row["snapshot_sw_level3"] or industry_level_value(industry, 3)
         if not any((sw_level1, sw_level2, sw_level3)):
             continue
         updates.append((
@@ -311,6 +331,15 @@ def refresh_setup_snapshot_returns(conn, snapshot_date: Optional[str] = None) ->
         {where}
     """, params).fetchall()
 
+    quote_map = {}
+    if rows:
+        try:
+            quote_map = fetch_stock_spot_batch(row["stock_code"] for row in rows)
+        except Exception as e:
+            logger.warning(f"[Setup跟踪] 实时行情获取失败，回退日K收盘价: {e}")
+
+    today_is_trading = _is_trading_day(conn, today)
+
     mkt_conn = get_market_conn()
     try:
         conn.execute("BEGIN IMMEDIATE")
@@ -325,6 +354,12 @@ def refresh_setup_snapshot_returns(conn, snapshot_date: Optional[str] = None) ->
             latest = _get_latest_close_on_or_before(mkt_conn, stock_code, today)
             current_trade_date = latest["date"] if latest else None
             current_price = _safe_float(latest["close"]) if latest else None
+            quote = quote_map.get(stock_code) or {}
+            quote_price = _safe_float(quote.get("price"))
+            if quote_price is not None and quote_price > 0:
+                current_price = quote_price
+                if today_is_trading:
+                    current_trade_date = today
             gain_to_now = _calc_gain(entry_price, current_price)
 
             horizon_values = {}
@@ -503,11 +538,24 @@ def get_setup_tracking_summary(conn) -> dict:
 
 
 def list_setup_tracking_snapshots(conn, limit: int = 200):
-    rows = conn.execute("""
+    snapshot_columns = _table_column_names(conn, "fact_setup_snapshot")
+    quality_source_select = (
+        "COALESCE(company_quality_score_source, 'stock_scoring_v2') AS company_quality_score_source"
+        if "company_quality_score_source" in snapshot_columns
+        else "'stock_scoring_v2' AS company_quality_score_source"
+    )
+    quality_snapshot_select = (
+        "quality_feature_snapshot_date"
+        if "quality_feature_snapshot_date" in snapshot_columns
+        else "NULL AS quality_feature_snapshot_date"
+    )
+    rows = conn.execute(f"""
         SELECT snapshot_date, stock_code, stock_name,
                setup_tag, setup_priority, setup_reason, setup_confidence,
                setup_inst_name, latest_report_date,
-               discovery_score, company_quality_score, stage_score,
+               discovery_score, company_quality_score,
+               {quality_source_select}, {quality_snapshot_select},
+               stage_score,
                forecast_score, composite_priority_score, priority_pool,
                stock_archetype, score_highlights, score_risks,
                crowding_bucket, crowding_fit_raw, crowding_fit_grade,

@@ -9,7 +9,17 @@ import logging
 from datetime import date, datetime, timedelta
 from typing import Optional
 
+from services.industry import industry_level_alias, load_industry_map
+
 logger = logging.getLogger("cm-api")
+
+
+def _industry_level_value(industry: Optional[dict], level: int) -> str:
+    if not industry:
+        return ""
+    neutral_key = industry_level_alias(level)
+    legacy_key = f"sw_level{level}"
+    return industry.get(neutral_key) or industry.get(legacy_key) or ""
 
 
 def ensure_tables(conn):
@@ -197,18 +207,14 @@ def build_stock_industry_context(conn, snapshot_date: Optional[str] = None) -> i
     except Exception:
         dual_by_stock = {}
 
-    stocks = conn.execute("""
-        SELECT stock_code, sw_level1, sw_level2
-        FROM dim_stock_industry
-    """).fetchall()
+    industry_map = load_industry_map(conn)
 
     conn.execute("DELETE FROM fact_stock_industry_context WHERE snapshot_date = ?", (snapshot_date,))
     inserted = 0
-    for row in stocks:
-        stock_code = row["stock_code"]
-        sw_level1 = row["sw_level1"]
-        sw_level2 = row["sw_level2"]
-        sector = sector_by_name.get(sw_level1 or "") or {}
+    for stock_code, industry in industry_map.items():
+        industry_level1 = _industry_level_value(industry, 1)
+        industry_level2 = _industry_level_value(industry, 2)
+        sector = sector_by_name.get(industry_level1 or "") or {}
         dual = dual_by_stock.get(stock_code) or {}
         tailwind_score, stage_adjust = _score_tailwind(
             sector.get("momentum_score"),
@@ -235,8 +241,8 @@ def build_stock_industry_context(conn, snapshot_date: Optional[str] = None) -> i
         """, (
             snapshot_date,
             stock_code,
-            sw_level1,
-            sw_level2,
+            industry_level1,
+            industry_level2,
             sector.get("momentum_score"),
             sector.get("trend_state"),
             int(sector.get("macd_cross") or 0),

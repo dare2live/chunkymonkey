@@ -6,7 +6,15 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Chunky Monkey v2</title>
   <link rel="stylesheet" href="https://rsms.me/inter/inter.css">
-  <link rel="stylesheet" href="assets/css/main.css?v=2.3.0">
+  <script>
+    window.CM_ASSET_VERSION = '2.3.35';
+    (function (version) {
+      var link = document.createElement('link');
+      link.rel = 'stylesheet';
+      link.href = 'assets/css/main.css?v=' + version;
+      document.head.appendChild(link);
+    })(window.CM_ASSET_VERSION);
+  </script>
 </head>
 
 <body>
@@ -28,6 +36,7 @@
     <!-- 股东挖掘二级导航 -->
     <div class="nav-sub-bar" id="nav-sub-holder">
       <button class="nav-btn active" data-view="dashboard">工作台</button>
+      <button class="nav-btn" data-view="system">系统</button>
       <button class="nav-btn" data-view="research">机构研究</button>
       <button class="nav-btn" data-view="stocks">股票研究</button>
       <button class="nav-btn" id="nav-qlib" data-view="qlib" style="display:none">Qlib</button>
@@ -90,6 +99,27 @@
 
       <!-- 候选池 -->
       <div id="candidatePoolSection" style="margin-top:14px"></div>
+
+      <div class="panel" style="margin-top:14px">
+        <div class="panel-head">
+          <span style="font-weight:600">系统运维已独立</span>
+          <div class="panel-actions">
+            <button class="btn-outline" id="btnGoSystem">打开系统视图</button>
+          </div>
+        </div>
+        <div class="muted" style="font-size:12px">
+          智能更新、单步补跑、模块开关、日志与全量重算已迁到“系统”页，研究工作台只保留候选池与研究概览。
+        </div>
+      </div>
+    </section>
+
+    <!-- ==================== 系统 ==================== -->
+    <section class="view" id="view-system">
+      <div class="panel panel-hero" style="margin-bottom:14px">
+        <div class="section-kicker">Operations Console</div>
+        <h2 style="font-size:28px;line-height:1.08;letter-spacing:-0.5px;font-weight:520;color:#111827;margin-bottom:10px">系统与数据管线</h2>
+        <p class="muted" style="font-size:14px;line-height:1.7;max-width:920px">把智能更新、单步补跑、模块开关、网络检查、日志和全量重算集中到独立系统视图，避免继续和研究工作流混在同一个工作台里。</p>
+      </div>
 
       <!-- 数据更新（可折叠） -->
       <div class="panel pipeline-section" style="margin-top:14px">
@@ -289,6 +319,11 @@
           <div id="stockScoreFramework"></div>
           <div id="stockScoreRules" style="margin-top:14px"></div>
           <div id="stockScoreStats" style="margin-top:14px"></div>
+          <div id="stockScoreParams" style="margin-top:14px"></div>
+          <div style="margin-top:12px">
+            <button class="btn primary" onclick="App.calcStockScore()">计算</button>
+            <button class="btn" onclick="App.resetStockScore()">恢复默认</button>
+          </div>
         </div>
       </div>
       <div class="stab-content" id="stab-watchlist">
@@ -448,7 +483,12 @@
               <label><input type="checkbox" id="qlibUseAlpha158"> Alpha158 量价因子</label>
               <label><input type="checkbox" id="qlibUseFinancial"> 财务因子</label>
               <label><input type="checkbox" id="qlibUseInstitution"> 机构行为因子</label>
+              <label><input type="checkbox" id="qlibUseTurtle"> 海龟执行因子</label>
+              <label><input type="checkbox" id="qlibUseQuality"> 质量因子</label>
+              <label><input type="checkbox" id="qlibUseStage"> 阶段因子</label>
+              <label><input type="checkbox" id="qlibUseNorthbound" disabled> 北向因子</label>
             </div>
+            <div id="qlibFeatureHint" class="muted" style="font-size:11px;margin-top:10px">北向数据链尚未接通，当前训练固定不使用该特征。</div>
             <div class="muted" style="font-size:11px;margin-top:10px">训练完成后，Qlib 排名会直接同步到股票研究列表。</div>
           </section>
         </div>
@@ -476,10 +516,28 @@
     </div>
   </div>
 
-  <script src="assets/js/app-cache.js?v=2.3.0"></script>
-  <script src="assets/js/app-nav.js?v=2.3.0"></script>
-  <script src="assets/js/app-list-state.js?v=2.3.0"></script>
-  <script src="assets/js/app.js?v=2.3.0"></script>
+  <script>
+    (function (version) {
+      var scripts = [
+        'assets/js/app-cache.js',
+        'assets/js/app-nav.js',
+        'assets/js/app-list-state.js',
+        'assets/js/app.js'
+      ];
+
+      function loadScript(index) {
+        if (index >= scripts.length) return;
+        var script = document.createElement('script');
+        script.src = scripts[index] + '?v=' + version;
+        script.onload = function () {
+          loadScript(index + 1);
+        };
+        document.body.appendChild(script);
+      }
+
+      loadScript(0);
+    })(window.CM_ASSET_VERSION);
+  </script>
 </body>
 
 </html>
