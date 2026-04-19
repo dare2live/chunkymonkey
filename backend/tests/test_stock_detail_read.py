@@ -206,7 +206,7 @@ def test_load_stock_tdx_block_memberships_groups_by_category():
 
 def test_load_stock_detail_context_builds_canonical_payload(monkeypatch):
     monkeypatch.setattr(stock_detail_read, "load_stock_name", lambda _conn, _code: "贵州茅台")
-    monkeypatch.setattr(stock_detail_read, "resolve_industry", lambda _conn, _code: {"sw_level2": "白酒"})
+    monkeypatch.setattr(stock_detail_read, "resolve_industry", lambda _conn, _code: {"tdx_l2": "T2000", "tdx_l2_name": "白酒"})
     monkeypatch.setattr(
         stock_detail_read,
         "load_stock_detail_timeline",
@@ -266,8 +266,8 @@ def test_load_stock_detail_context_builds_canonical_payload(monkeypatch):
     )
 
     assert payload["stock_name"] == "贵州茅台"
-    assert payload["industry"]["sw_level2"] == "白酒"
-    assert payload["industry"]["industry_level2"] == "白酒"
+    assert payload["industry"]["tdx_l2"] == "T2000"
+    assert payload["industry"]["tdx_l2_name"] == "白酒"
     assert payload["institutions"][0]["latest_close_date"] == "20260415"
     assert payload["setup"]["institution_count"] == 1
     assert payload["stage"]["path_state"] == "突破准备"
@@ -443,101 +443,3 @@ def test_build_stock_setup_payload_normalizes_setup_and_child_payloads():
     assert payload["stage"]["path_state"] == "未充分演绎"
     assert payload["forecast"]["forecast_cross_section_score"] == 83.0
     assert payload["turtle"]["turtle_setup_state"] == "S1待突破"
-
-
-def test_build_stock_scoring_breakdown_payload_defaults_quality_source_and_keeps_factors():
-    payload = stock_detail_read.build_stock_scoring_breakdown_payload(
-        {
-            "stock_code": "000001",
-            "leader_inst": "测试机构",
-            "leader_score": 88.0,
-            "consensus_count": 3,
-            "latest_notice_date": "2024-04-10",
-            "notice_age_days": 7,
-            "company_quality_score": 71.5,
-            "company_quality_score_source": None,
-            "quality_feature_snapshot_date": None,
-            "discovery_score": 76.0,
-            "stage_score": 58.0,
-            "forecast_score": 62.0,
-            "forecast_score_effective": 59.0,
-            "raw_composite_priority_score": 81.2,
-            "composite_priority_score": 64.0,
-            "composite_cap_score": 64.0,
-            "composite_cap_reason": "阶段封顶",
-            "stock_archetype": "成长型",
-            "priority_pool": "B池",
-            "priority_pool_reason": "阶段封顶",
-            "score_highlights": "盈利质量稳定",
-            "score_risks": "财报覆盖仍需观察",
-            "path_state": "突破准备",
-            "data_completeness": 92.0,
-            "sw_level2": "半导体",
-            "price_entry": 12.3,
-            "return_to_now": 8.6,
-            "inst_ref_cost": 11.8,
-            "inst_cost_method": "weighted",
-            "premium_pct": 4.2,
-            "premium_bucket": "温和",
-            "follow_gate": "follow",
-            "setup_tag": "观察",
-            "setup_priority": 2,
-            "setup_reason": "等待突破",
-            "setup_confidence": 0.8,
-            "setup_level": "L2",
-            "setup_inst_name": "测试机构",
-            "setup_event_type": "increase",
-            "setup_industry_name": "半导体",
-            "setup_score_raw": 77.0,
-            "setup_execution_gate": "watch",
-            "setup_execution_reason": "等待趋势确认",
-            "industry_skill_raw": 68.0,
-            "industry_skill_grade": "A",
-            "followability_grade": "A",
-            "premium_grade": "B",
-            "report_recency_grade": "A",
-            "reliability_grade": "A",
-            "crowding_bucket": "中等",
-            "crowding_yield_raw": 3.5,
-            "crowding_yield_grade": "B",
-            "crowding_stability_raw": 4.2,
-            "crowding_stability_grade": "A",
-            "crowding_fit_raw": 5.1,
-            "crowding_fit_grade": "A",
-            "crowding_fit_sample": 12,
-            "crowding_fit_source": "fit_v1",
-            "report_age_days": 9,
-            "path_max_gain_pct": 18.0,
-            "path_max_drawdown_pct": -7.0,
-            "generic_stage_raw": 61.0,
-            "stage_type_adjust_raw": -3.0,
-            "stage_reason": "阶段仍需确认",
-            "max_drawdown_60d": -12.0,
-            "dist_ma250_pct": 4.5,
-            "above_ma250": 1,
-            "forecast_20d_score": 63.0,
-            "forecast_60d_excess_score": 58.0,
-            "forecast_risk_adjusted_score": 55.0,
-            "forecast_reason": "模型相对行业占优",
-            "forecast_model_id": "model-x",
-            "forecast_predict_date": "2024-04-11",
-            "forecast_industry_relative_group": "前10%",
-            "turtle_execution_score": 54.0,
-            "turtle_breakout_score": 52.0,
-            "turtle_risk_score": 48.0,
-            "turtle_score_delta": 6.0,
-            "turtle_setup_state": "watch",
-            "turtle_preferred_system": "S1",
-            "turtle_reason": "等待突破",
-        },
-        object_id="000001",
-    )
-
-    assert payload["company_quality_score_source"] == "stock_scoring_v2"
-    assert payload["quality_snapshot_date"] is None
-    assert payload["stage"]["path_state"] == "突破准备"
-    assert payload["forecast"]["forecast_cross_section_score"] == 63.0
-    assert payload["turtle"]["turtle_preferred_system"] == "S1"
-    assert payload["factors"]["quality"]["source_type"] == "stock_scoring_v2"
-    assert payload["factors"]["price_path"]["follow_gate"] == "follow"
-    assert payload["factors"]["setup"]["crowding_fit_source"] == "fit_v1"

@@ -44,11 +44,13 @@ from services.institution_write import (
     upsert_watchlist_entry,
 )
 from services.stock_detail_read import (
+    extract_forecast_payload,
+    extract_stage_payload,
+    extract_turtle_payload,
     load_stock_attention_payload,
     load_stock_detail_context,
     load_stock_detail_timeline,
     load_stock_qlib_tdx_association,
-    load_stock_scoring_breakdown,
 )
 from services.stock_watchlist_read import load_candidate_setup_rows, load_manual_stock_blacklist_rows, load_watchlist_rows
 from services.stock_trends_read import (
@@ -1361,6 +1363,8 @@ async def scoring_breakdown(card_type: str, object_id: str):
                        ff.model_id AS forecast_model_id,
                        ff.predict_date AS forecast_predict_date,
                        ff.industry_relative_group AS forecast_industry_relative_group,
+                       t.turtle_execution_score, t.turtle_breakout_score, t.turtle_risk_score,
+                       t.turtle_score_delta, t.turtle_setup_state, t.turtle_preferred_system, t.turtle_reason,
                        m.tdx_l2, m.notice_age_days, m.price_entry, m.return_to_now,
                        m.inst_ref_cost, m.inst_cost_method,
                        m.premium_pct, m.premium_bucket, m.follow_gate
@@ -1392,8 +1396,9 @@ async def scoring_breakdown(card_type: str, object_id: str):
                 "score_risks": s.get("score_risks"),
                 "path_state": s.get("path_state"),
                 "data_completeness": s.get("data_completeness"),
-                "stage": _extract_stage_payload(s),
-                "forecast": _extract_forecast_payload(s),
+                "stage": extract_stage_payload(s),
+                "forecast": extract_forecast_payload(s),
+                "turtle": extract_turtle_payload(s),
                 "formula": "Composite = 发现35% + 质量30% + 阶段20% + 生效预测15%；Stage<40 封顶69；Quality<45 且非周期/事件型封顶64；A池要求 Composite≥75 且 Stage≥50 且 Quality≥55 且 Discovery≥50",
                 "factors": {
                     "leader": {"inst": s.get("leader_inst"), "score": s.get("leader_score"),
