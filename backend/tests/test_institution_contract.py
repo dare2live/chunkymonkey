@@ -91,7 +91,7 @@ def test_stock_detail_route_preserves_shared_context_payload(monkeypatch):
         assert shareholder_change_payload == {"recent_180d": {"event_count": 2}}
         return {
             "stock_name": "贵州茅台",
-            "industry": {"sw_level2": "白酒", "industry_level2": "白酒"},
+            "industry": {"industry_level2": "白酒"},
             "institutions": institutions,
             "setup": {"setup_tag": "观察"},
             "stage": {"path_state": "突破准备"},

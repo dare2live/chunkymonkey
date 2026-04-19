@@ -9,17 +9,7 @@ import logging
 from datetime import date, datetime, timedelta
 from typing import Optional
 
-from services.industry import industry_level_alias, load_industry_map
-
 logger = logging.getLogger("cm-api")
-
-
-def _industry_level_value(industry: Optional[dict], level: int) -> str:
-    if not industry:
-        return ""
-    neutral_key = industry_level_alias(level)
-    legacy_key = f"sw_level{level}"
-    return industry.get(neutral_key) or industry.get(legacy_key) or ""
 
 
 def ensure_tables(conn):

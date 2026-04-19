@@ -39,7 +39,7 @@ def test_current_industry_reads_are_centralized() -> None:
     assert not unexpected, "发现未通过 shared industry helper 的当前行业直连:\n" + "\n".join(unexpected)
 
 
-def test_frontend_legacy_industry_fallback_is_centralized() -> None:
+def test_frontend_has_no_sw_legacy_references() -> None:
     legacy_pattern = re.compile(r"\bsw_level[123]\b")
     js_hits = {}
 
@@ -49,15 +49,7 @@ def test_frontend_legacy_industry_fallback_is_centralized() -> None:
         if matches:
             js_hits[str(rel_path)] = matches
 
-    assert set(js_hits) == {"assets/js/app.js"}
-
-    app_js = (REPO_ROOT / "assets" / "js" / "app.js").read_text(encoding="utf-8")
-    assert sum(len(matches) for matches in js_hits.values()) == 3
-    assert re.search(
-        r"function industryLevels\(item\)\s*\{[^}]*item\.industry_level1 \|\| item\.sw_level1,[^}]*item\.industry_level2 \|\| item\.sw_level2,[^}]*item\.industry_level3 \|\| item\.sw_level3",
-        app_js,
-        re.S,
-    )
+    assert js_hits == {}, f"前端仍有 sw_level* 兜底 (应已随 Phase 2 TDX 迁移退役): {js_hits}"
 
 
 def _make_archetype_conn() -> sqlite3.Connection:

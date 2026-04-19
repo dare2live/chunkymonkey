@@ -4222,9 +4222,9 @@
   function industryLevels(item) {
     if (!item) return [];
     return [
-      item.industry_level1 || item.sw_level1,
-      item.industry_level2 || item.sw_level2,
-      item.industry_level3 || item.sw_level3
+      item.industry_level1,
+      item.industry_level2,
+      item.industry_level3
     ].filter(Boolean);
   }
   function industryChain(item) {
