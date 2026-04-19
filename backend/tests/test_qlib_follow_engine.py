@@ -235,6 +235,74 @@ def test_gpcw_join_handles_yyyymmdd_event_dates() -> None:
     assert s["forecast_profit_yoy_mid"] == 20.0   # (15+25)/2
 
 
+def test_industry_zscore_groups_by_industry_and_report_date() -> None:
+    """Phase 4c: D1/D2/D3 的 _z 列按 (tdx_l1, report_date) 分组, 组内 ≥5 才算。"""
+    conn = _make_conn()
+    mkt_conn = _make_mkt_conn()
+    # 5 只 T07 行业股票, 同一季度, 各自不同 YoY
+    for i in range(5):
+        code = f"60000{i}"
+        conn.execute(
+            "INSERT INTO dim_stock_tdx_industry VALUES (?, ?, ?, ?, ?, ?, ?)",
+            (code, "T07", "T0701", "T070101", "信息技术", "半导体", "设计"),
+        )
+        conn.execute(
+            "INSERT INTO fact_institution_event VALUES (?, ?, ?, ?, ?, ?, ?)",
+            (f"inst_{i}", code, "20250930", f"2025110{i+1}", "new_entry", 0.0, 5.0),
+        )
+        # holder_count: 10000 -> 10000 * (1 + i*0.10) → YoY = 0, 10, 20, 30, 40
+        curr = 10000 * (1.0 + i * 0.10)
+        conn.execute(
+            "INSERT INTO raw_gpcw_detail VALUES (?, ?, ?, ?, ?, ?)",
+            (code, "2025-09-30", curr, None, None, None),
+        )
+        conn.execute(
+            "INSERT INTO raw_gpcw_detail VALUES (?, ?, ?, ?, ?, ?)",
+            (code, "2024-09-30", 10000, None, None, None),
+        )
+    conn.commit()
+    out, _ = extract_training_matrix(conn, mkt_conn, window_start="20250101", window_end="20260101")
+    assert len(out) == 5
+    # YoY 序列 [0, 10, 20, 30, 40], 均值 20, 标准差 sqrt(200)≈14.14
+    # 中位样本 (YoY=20) 的 z 应 ≈ 0
+    z_vals = sorted([s["holder_count_yoy_z"] for s in out if s["holder_count_yoy_z"] is not None])
+    assert len(z_vals) == 5
+    # 序列应对称：最小/最大绝对值相等，中间 ≈ 0
+    assert abs(z_vals[0]) > 1.3 and z_vals[0] < 0
+    assert abs(z_vals[-1]) > 1.3 and z_vals[-1] > 0
+    assert abs(z_vals[2]) < 0.01
+
+
+def test_industry_zscore_skips_groups_below_min_count() -> None:
+    """Phase 4c: 同组 < 5 样本时 z 列应为 None (避免小样本噪声)。"""
+    conn = _make_conn()
+    mkt_conn = _make_mkt_conn()
+    # 仅 3 只 T07 股票, 低于 5 的阈值
+    for i in range(3):
+        code = f"60000{i}"
+        conn.execute(
+            "INSERT INTO dim_stock_tdx_industry VALUES (?, ?, ?, ?, ?, ?, ?)",
+            (code, "T07", "T0701", "T070101", "信息技术", "半导体", "设计"),
+        )
+        conn.execute(
+            "INSERT INTO fact_institution_event VALUES (?, ?, ?, ?, ?, ?, ?)",
+            (f"inst_{i}", code, "20250930", f"2025110{i+1}", "new_entry", 0.0, 5.0),
+        )
+        conn.execute(
+            "INSERT INTO raw_gpcw_detail VALUES (?, ?, ?, ?, ?, ?)",
+            (code, "2025-09-30", 10000 * (1.0 + i * 0.10), None, None, None),
+        )
+        conn.execute(
+            "INSERT INTO raw_gpcw_detail VALUES (?, ?, ?, ?, ?, ?)",
+            (code, "2024-09-30", 10000, None, None, None),
+        )
+    conn.commit()
+    out, _ = extract_training_matrix(conn, mkt_conn, window_start="20250101", window_end="20260101")
+    for s in out:
+        assert s["holder_count_yoy"] is not None      # 原值仍算出
+        assert s["holder_count_yoy_z"] is None        # z 列小样本时不算
+
+
 def test_d8_survey_count_90d_only_past_window() -> None:
     conn = _make_conn()
     mkt_conn = _make_mkt_conn()

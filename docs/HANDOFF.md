@@ -1,7 +1,7 @@
 # 交接文档 · signals_v2 开发上下文
 
 > **这份文档给下一个 claude 读**。把它放在对话最前面，读完就能接着推进。
-> 最后更新：2026-04-19（+ 行业化规划）
+> 最后更新：2026-04-19（Phase 4 收尾 — Qlib IC 确认不可达 > 0.05，定位"第二意见"）
 
 ---
 
@@ -345,10 +345,40 @@ event.cl_yoy_zscore = (stock_yoy - ind_mean) / ind_std
 ### Phase 实施（修正版）
 
 - ~~Phase 1 行业白名单~~ — **删除**
-- **Phase 1（新）· Qlib 重训为主路径** — 2-3 天
-- **Phase 2 · 方案 B z-score（仅 Qlib 失败时）** — 2 天
+- ~~Phase 1（新）· Qlib 重训为主路径~~ — **已完成 2026-04-19**（Phase 4a+b+c）
+- ~~Phase 2 · 方案 B z-score~~ — **已完成 2026-04-19**（作为 Phase 4c 一并完成，IC 仍未过关）
 - **Phase 3 · 行业切换到 tdxhub block**（独立任务）— 3-5 天
-- **Phase 4 · 目标**：Qlib IC > 0.05 或 cohort edge > +18pp
+- ~~Phase 4 · 目标 Qlib IC > 0.05~~ — **结论：不可达，Qlib 确认只能作"第二意见"**
+
+### Phase 4 实测结论（2026-04-19）
+
+**Phase 4a**（特征扩展）：`qlib_follow_engine.extract_training_matrix` 从 16 维 → 38 维
+- D1 holder_count_yoy（79% 填充）
+- D2 contract_liabilities_yoy（68% 填充，受 GPCW 字段缺失约束）
+- D3 forecast_profit_yoy_mid（93% 填充）
+- D5 future_unlock_ratio_180d
+- D6 peer_count_same_quarter
+- D7 inst_recent_ev_60d（排除未成熟 / 本身样本 >60d 过滤）
+- D8 survey_count_90d
+- TDX L1 one-hot（13 bit: T01..T13）
+
+**Phase 4b**（首轮训练，无 z-score）：
+- 样本：n_train=26596, n_valid=3088（train_end=20260301, valid=6 月）
+- **Valid IC = -0.0063**（目标 > 0.05，未达到）
+
+**Phase 4c**（+ 行业内 z-score，方案 B 兜底）：
+- 新增特征 `holder_count_yoy_z`, `contract_liabilities_yoy_z`, `forecast_profit_yoy_mid_z`（按 tdx_l1 + report_date 分组，≥5 样本才归一化）
+- Z-score 在模型中确实进入 Top 10（forecast_profit_yoy_mid_z 特征重要性 13，排第 4；holder_count_yoy_z 排第 9）
+- **Valid IC = -0.0196**（比 4b 更差）
+
+**核心结论**：
+1. Qlib follow 模型（60 日跟随收益 label）在当前数据密度（30K 样本 / 38 维）下无法突破 IC=0 线。增特征和归一化都无助于此。
+2. 规则 V6（硬规则 + SW edge +14.44pp）仍是主力，Qlib 定位调整为**第二意见**（参与前端并排展示，不合成一个分数）。
+3. 不再追加方案 C（行业白名单）—— 用户明确否决且 V6 边际收益已足够。
+
+**剩余 TODO（降优先级）**：
+- 如日后样本密度显著扩大（>100K）可考虑用 classification objective（涨/跌二分类）而非 regression，IC 规则未必同构。
+- 前端把 Qlib 预测作为"第二意见"挂到 detail 卡（独立任务，不阻塞主路径）。
 
 ---
 

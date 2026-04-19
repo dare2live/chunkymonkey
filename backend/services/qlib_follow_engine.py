@@ -130,6 +130,12 @@ FEATURE_COLUMNS = [
     "future_unlock_ratio_180d",      # D5
     "inst_recent_ev_60d",            # D7
     "survey_count_90d",              # D8
+    # 行业内 z-score (Phase 4c 方案 B):
+    # YoY 类特征跨行业基数差异大 (银行 +30% vs 科技 +300% 语义不同),
+    # 按 (tdx_l1, report_date) 分组归一化让树模型捕捉同期相对强度
+    "holder_count_yoy_z",
+    "contract_liabilities_yoy_z",
+    "forecast_profit_yoy_mid_z",
     # 价格动量（from price_kline，窗口聚合）
     "return_20d_before",
     "return_60d_before",
@@ -263,6 +269,9 @@ def extract_training_matrix(
             "future_unlock_ratio_180d": None,
             "inst_recent_ev_60d": None,
             "survey_count_90d": None,
+            "holder_count_yoy_z": None,
+            "contract_liabilities_yoy_z": None,
+            "forecast_profit_yoy_mid_z": None,
             "return_20d_before": None,
             "return_60d_before": None,
             "volatility_60d": None,
@@ -334,6 +343,37 @@ def extract_training_matrix(
             )
     except Exception as exc:
         logger.warning(f"[qlib_follow] GPCW 衍生特征补全失败: {exc}")
+
+    # Phase 4c · 方案 B: D1/D2/D3 行业内 z-score
+    # 按 (tdx_l1, report_date) 分组, 组内 ≥5 样本才计算 z, 否则保留 None
+    for raw_col, z_col in (
+        ("holder_count_yoy", "holder_count_yoy_z"),
+        ("contract_liabilities_yoy", "contract_liabilities_yoy_z"),
+        ("forecast_profit_yoy_mid", "forecast_profit_yoy_mid_z"),
+    ):
+        groups: dict = {}
+        for s in out:
+            key = (s.get("industry"), s.get("report_date"))
+            if s.get(raw_col) is None or key[0] is None:
+                continue
+            groups.setdefault(key, []).append(s[raw_col])
+        group_stats: dict = {}
+        for key, vals in groups.items():
+            if len(vals) < 5:
+                continue
+            m = sum(vals) / len(vals)
+            var = sum((v - m) ** 2 for v in vals) / len(vals)
+            std = var ** 0.5
+            if std > 0:
+                group_stats[key] = (m, std)
+        for s in out:
+            v = s.get(raw_col)
+            if v is None:
+                continue
+            stats = group_stats.get((s.get("industry"), s.get("report_date")))
+            if stats:
+                m, std = stats
+                s[z_col] = (v - m) / std
 
     # 补：D5 future_unlock_ratio_180d — 按 stock_code 聚合未来 180d 解禁占流通市值比
     try:
