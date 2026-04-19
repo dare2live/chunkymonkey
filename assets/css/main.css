@@ -5346,10 +5346,13 @@ tr.detail-row>td>.detail-panel {
 /* Signals v2 · 硬规则 breakdown（detail 抽屉顶部） */
 .sig-breakdown-panel { margin-bottom: 8px; }
 .sig-breakdown-grid {
-  display: grid; grid-template-columns: repeat(6, 1fr); gap: 8px;
+  display: grid; grid-template-columns: repeat(7, 1fr); gap: 8px;
 }
-@media (max-width: 1100px) {
-  .sig-breakdown-grid { grid-template-columns: repeat(3, 1fr); }
+@media (max-width: 1280px) {
+  .sig-breakdown-grid { grid-template-columns: repeat(4, 1fr); }
+}
+@media (max-width: 900px) {
+  .sig-breakdown-grid { grid-template-columns: repeat(2, 1fr); }
 }
 .sig-breakdown-cell {
   position: relative;

@@ -178,6 +178,7 @@ STEPS = [
     {"id": "gen_events",            "name": "生成事件",        "group": "calc", "order": 5},
     {"id": "calc_returns",          "name": "计算收益",        "group": "calc", "order": 6},
     {"id": "sync_industry",         "name": "通达信行业",      "group": "data", "order": 7},
+    {"id": "sync_surveys",          "name": "机构调研",        "group": "data", "order": 7.5},
     {"id": "calc_financial_derived","name": "计算财务指标",    "group": "calc", "order": 8},
     {"id": "build_current_rel",     "name": "构建当前关系",    "group": "mart", "order": 9},
     {"id": "build_profiles",        "name": "机构画像",        "group": "mart", "order": 10},
@@ -202,6 +203,7 @@ HARD_DEPS = {
     "gen_events": ["match_inst"],
     "calc_returns": ["gen_events"],
     "sync_industry": ["match_inst"],
+    "sync_surveys": [],
     "calc_financial_derived": ["sync_financial"],
     "build_current_rel": ["gen_events"],
     "build_profiles": ["build_current_rel"],
@@ -2703,6 +2705,23 @@ async def _step_build_external_attention(conn) -> int:
     return await _run_blocking_db_task(sync_external_attention_snapshot)
 
 
+async def _step_sync_surveys(conn) -> int:
+    """机构调研同步（D8 数据源）"""
+    from services.institution_survey_client import sync_institution_surveys
+
+    def _worker(worker_conn):
+        return sync_institution_surveys(worker_conn, days_back=180)
+
+    result = await _run_blocking_db_task(_worker)
+    errors = result.get("errors") or []
+    if errors:
+        logger.warning(f"[机构调研] 同步错误: {errors}")
+    logger.info(
+        f"[机构调研] raw={result.get('rows_upserted', 0)} · mart={result.get('mart_rows', 0)}"
+    )
+    return int(result.get("rows_upserted") or 0)
+
+
 async def _step_build_stage_features(conn) -> int:
     """阶段特征构建"""
     from services.stock_stage_engine import build_stock_stage_features
@@ -2762,6 +2781,7 @@ RUNNERS = {
     "gen_events": _step_gen_events,
     "calc_returns": _step_calc_returns,
     "sync_industry": _step_sync_industry,
+    "sync_surveys": _step_sync_surveys,
     "calc_financial_derived": _step_calc_financial_derived,
     "build_current_rel": _step_build_current_rel,
     "build_profiles": _step_build_profiles,

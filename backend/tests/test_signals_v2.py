@@ -447,7 +447,7 @@ def test_today_signals_recent_only(memdb):
 
 # ─── rule_breakdown (Step 2.5) ───────────────────────────────────────
 
-def test_build_rule_breakdown_six_checks_default_shape():
+def test_build_rule_breakdown_seven_checks_default_shape():
     from services.signals_v2 import _build_rule_breakdown
 
     event = {}  # 所有原始值都缺失
@@ -458,6 +458,7 @@ def test_build_rule_breakdown_six_checks_default_shape():
     assert keys == [
         "inst_type", "premium_pct", "hold_ratio",
         "holder_count_yoy", "forecast_profit_yoy_mid", "future_unlock_ratio_180d",
+        "survey_count_90d",
     ]
     # 全部原始值缺失时 status=unknown
     assert all(c["status"] == "unknown" for c in bd["checks"])
@@ -522,8 +523,96 @@ def test_recommend_for_event_includes_rule_breakdown(memdb):
     rec = recommend_for_event(memdb, event, config=cfg, as_of_date="2024-04-20")
     assert rec.rule_breakdown is not None
     assert rec.rule_breakdown["triggered"] is None  # 无硬规则命中
-    assert len(rec.rule_breakdown["checks"]) == 6
+    assert len(rec.rule_breakdown["checks"]) == 7
     # to_dict 也把 rule_breakdown 透传
     d = rec.to_dict()
     assert "rule_breakdown" in d
     assert d["rule_breakdown"]["checks"][1]["key"] == "premium_pct"
+    assert d["rule_breakdown"]["checks"][6]["key"] == "survey_count_90d"
+
+
+# ─── D8 机构调研 ─────────────────────────────────────────────────────
+
+def test_d8_apply_hard_rule_skip_when_enabled_and_below_threshold():
+    from services.signals_v2 import _apply_hard_rules
+
+    cfg = PolicyConfig(min_survey_count_90d=2)
+    event = {"inst_type": "牛散", "premium_pct": 5.0, "survey_count_90d": 1}
+    action, label = _apply_hard_rules(event, cfg)
+    assert action == "skip"
+    assert label == "survey_too_quiet"
+
+
+def test_d8_passes_when_disabled():
+    from services.signals_v2 import _apply_hard_rules
+
+    cfg = PolicyConfig(min_survey_count_90d=0)
+    event = {"inst_type": "牛散", "premium_pct": 5.0, "survey_count_90d": 0}
+    action, label = _apply_hard_rules(event, cfg)
+    assert action is None
+    assert label is None
+
+
+def test_d8_breakdown_displays_unavailable_when_disabled():
+    from services.signals_v2 import _build_rule_breakdown
+
+    cfg = PolicyConfig(min_survey_count_90d=0)
+    event = {"survey_count_90d": 3}
+    bd = _build_rule_breakdown(event, cfg, None)
+    d8 = next(c for c in bd["checks"] if c["key"] == "survey_count_90d")
+    assert d8["threshold_display"] == "未启用"
+    assert d8["status"] == "pass"
+    assert d8["raw"] == 3
+
+
+def test_d8_count_surveys_as_of_respects_notice_date():
+    """survey.notice_date 必须 <= event.notice_date，否则算 look-ahead。"""
+    from services.signals_v2 import _count_surveys_as_of
+
+    surveys = [
+        ("2024-01-10", "2024-01-15"),  # ok: in window, disclosed before
+        ("2024-02-01", "2024-02-05"),  # ok: in window
+        ("2024-03-15", "2024-03-20"),  # future disclosure → excluded
+        ("2023-10-01", "2023-10-05"),  # too old → excluded
+    ]
+    n = _count_surveys_as_of(surveys, "2024-03-01", window_days=90)
+    assert n == 2
+
+
+def test_d8_enrichment_integrates_with_recommend(memdb):
+    memdb.executescript("""
+        CREATE TABLE IF NOT EXISTS raw_institution_surveys (
+            stock_code TEXT, survey_date TEXT, notice_date TEXT,
+            inst_count INTEGER,
+            PRIMARY KEY (stock_code, survey_date, notice_date)
+        );
+    """)
+    memdb.executemany(
+        "INSERT INTO raw_institution_surveys(stock_code, survey_date, notice_date, inst_count) VALUES (?,?,?,?)",
+        [
+            ("000088", "2024-03-01", "2024-03-05", 5),
+            ("000088", "2024-03-20", "2024-03-25", 3),
+        ],
+    )
+    memdb.commit()
+
+    _seed_events(memdb, [
+        ("inst1", f"0001{i:02d}", "2023-Q1", f"2023-{(i%12)+1:02d}-15",
+         "new_entry", 0.0, 10.0, "医药")
+        for i in range(10)
+    ])
+    event = {
+        "institution_id": "inst1",
+        "stock_code": "000088",
+        "stock_name": "股票88",
+        "industry": "医药",
+        "report_date": "2024-03-31",
+        "notice_date": "2024-04-20",
+        "event_type": "new_entry",
+        "premium_pct": 3.0,
+    }
+
+    from services.signals_v2 import _enrich_events_with_gpcw
+    evs = [event]
+    _enrich_events_with_gpcw(memdb, evs)
+    assert evs[0]["survey_count_90d"] == 2  # 两条调研都在 90d 窗口内

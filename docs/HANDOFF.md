@@ -1,7 +1,7 @@
 # 交接文档 · signals_v2 开发上下文
 
 > **这份文档给下一个 claude 读**。把它放在对话最前面，读完就能接着推进。
-> 最后更新：2026-04-19（Phase 4 收尾 — Qlib IC 确认不可达 > 0.05，定位"第二意见"）
+> 最后更新：2026-04-19（D8 机构调研入库 + 硬规则通路接入 + cohort 实证）
 
 ---
 
@@ -226,7 +226,7 @@ hold<0.5%     +5.43%
 | **D5** | 180d 解禁 ≤5% | `dim_capital_behavior_latest.future_unlock_ratio_180d` | 风险规避 | ✓ V6 硬规则 |
 | D6 | 同期拥挤度（peer_count） | `fact_institution_event` 自聚合 | 未深挖 | 待 Qlib |
 | D7 | 机构近期 EV（**连续特征**） | cohort 自动生成 | 待 Qlib | 未做 |
-| **D8** | 机构调研热度（近 90d） | akshare `stock_jgdy_tj_em`（**未入库**） | 独立 alpha 明显但与 V6 规则冗余 | ❌ 不叠加，候选 Qlib 特征 |
+| **D8** | 机构调研热度（近 90d） | `raw_institution_surveys` + `mart_stock_survey_activity`（已入库，180d 覆盖） | **负向**：min≥1 把 follow edge 从 -1.32pp 推到 -7.30pp | ✓ breakdown 展示；默认 `min_survey_count_90d=0`（不启用硬规则） |
 
 ### D8 机构调研数据发现详情（2026-04-19）
 数据接口：`akshare.stock_jgdy_tj_em(date=...)` — 返回从 date 起的累计调研记录
@@ -248,6 +248,31 @@ V6 原: n=128 EV+21.77% WR 80% edge+14.44pp
 +D8:   n=24  EV+13.67% WR 79% edge+6.34pp  ← 反而降!
 ```
 V6 的 follow 里很多股票"机构还没调研的隐藏好货"，D8 硬筛会排除它们。**D8 单独 alpha 明显但和 V6 重叠，不作为硬规则**。留作 Qlib 特征或独立 follow 通道。
+
+### D8 入库与硬规则通路（2026-04-19 Phase 5）
+
+**入库**：`services/institution_survey_client.py:sync_institution_surveys` 已挂接 `updater.STEPS`（`sync_surveys`，order 7.5，与 external_attention 同级独立数据源）。表：
+- `raw_institution_surveys`：原始明细（stock_code, survey_date, notice_date, inst_count, ...）
+- `mart_stock_survey_activity`：as_of 快照的 30/60/90d 聚合
+
+**当前数据状态**：raw 8557 行、notice_date 覆盖 2025-10-22 → 2026-04-17（约 6 月）、mart 1555 股。
+
+**硬规则通路**：
+- 配置项 `min_survey_count_90d`（int，默认 0 = 不启用）
+- `_apply_hard_rules` 新增 D8 检查，命中返回 `(skip, survey_too_quiet)`
+- `_build_rule_breakdown` 扩展到 7 维，前端 6 列网格改 7 列
+- `_enrich_events_with_gpcw` 批量计算 `survey_count_90d`，关键：**早于覆盖起始日的事件 → None（unknown），不算"调研冷门"**（避免 look-ahead / 数据缺失误杀）
+
+**Phase E cohort 实证**（backtest 29684 事件）：
+```
+D8   | follow_n  follow_ev  follow_wr | edge
+0    |      303       2.51      40.3% | -1.32pp
+1    |      230      -3.47      29.1% | -7.30pp   ← min≥1 反而变坏
+2    |      227      -3.72      28.6% | -7.55pp
+3    |      227      -3.72      28.6% | -7.55pp
+```
+
+**结论**：在当前 6 月覆盖窗口下，调研活跃 ≠ 后续超额。"已被关注=已被定价" 假说得到支持。保留 breakdown 展示供用户参考，**默认禁用硬规则**。未来扩充到 12 月+ 覆盖后可重评。
 
 ### D2 合同负债探测详情（2026-04-19）
 - 原 `raw_gpcw_detail` 没有 contract_liabilities 字段（未映射）

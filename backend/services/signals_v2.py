@@ -77,6 +77,9 @@ DEFAULT_CONFIG: dict = {
     # 实证：>5% 解禁 n=3 全负 (样本小但方向对)
     # max_unlock_ratio_180d: 上限（%）；99999 = 不启用
     "max_unlock_ratio_180d": 5.0,
+    # D8 · 机构调研活跃度（近 90 日）
+    # 实证：调研次数 = 近期机构关注度的客观指标；0=不启用（默认），待 cohort 验证后调至 1 或 2
+    "min_survey_count_90d": 0,
 }
 
 
@@ -98,6 +101,7 @@ class PolicyConfig:
     max_holder_yoy_pct: float = 30.0  # D1: 股东人数 YoY 上限；99999=不启用
     min_forecast_profit_yoy: float = 20.0  # D3: 业绩预告利润 YoY 下限（%）；-9999=不启用
     max_unlock_ratio_180d: float = 5.0     # D5: 180 天解禁上限（%）；99999=不启用
+    min_survey_count_90d: int = 0          # D8: 近 90d 调研次数下限；0=不启用
 
     @property
     def blacklist_set(self) -> set[str]:
@@ -631,6 +635,11 @@ def _apply_hard_rules(event: dict, config: PolicyConfig) -> tuple[Optional[str],
     if unlock is not None and unlock > config.max_unlock_ratio_180d:
         return ("skip", "unlock_risk")
 
+    # D8: 近 90 日机构调研次数（活跃度）
+    survey_cnt = event.get("survey_count_90d")
+    if config.min_survey_count_90d > 0 and survey_cnt is not None and survey_cnt < config.min_survey_count_90d:
+        return ("skip", "survey_too_quiet")
+
     return (None, None)
 
 
@@ -653,6 +662,7 @@ def _build_rule_breakdown(
     hc_yoy = event.get("holder_count_yoy")
     fc_mid = event.get("forecast_profit_yoy_mid")
     unlock = event.get("future_unlock_ratio_180d")
+    survey_cnt = event.get("survey_count_90d")
 
     def _status(raw, pass_cond) -> str:
         if raw is None:
@@ -708,6 +718,21 @@ def _build_rule_breakdown(
             "threshold_display": f"≤ {config.max_unlock_ratio_180d}%",
             "status": _status(unlock, unlock is not None and unlock <= config.max_unlock_ratio_180d),
             "rule_id": "unlock_risk",
+        },
+        {
+            "key": "survey_count_90d",
+            "label": "D8 近90d调研",
+            "raw": survey_cnt,
+            "threshold_display": (
+                f"≥ {config.min_survey_count_90d} 次"
+                if config.min_survey_count_90d > 0 else "未启用"
+            ),
+            "status": (
+                "unknown" if survey_cnt is None
+                else "pass" if config.min_survey_count_90d == 0 or survey_cnt >= config.min_survey_count_90d
+                else "fail"
+            ),
+            "rule_id": "survey_too_quiet",
         },
     ]
     return {
@@ -792,12 +817,86 @@ def _compute_holder_count_yoy(
     return round((cur_hc - prev_hc) / prev_hc * 100, 2)
 
 
+def _load_survey_by_stock(conn, stock_codes: set[str]) -> dict[str, list[tuple[str, str]]]:
+    """
+    一次性批量加载 raw_institution_surveys，返回 {stock_code: [(survey_date, notice_date), ...]}
+
+    as-of 过滤放在调用端：按 event.notice_date 筛选 survey.notice_date <= 事件公告日 + 90d 窗口。
+    """
+    if not stock_codes:
+        return {}
+    out: dict[str, list[tuple[str, str]]] = {}
+    placeholders = ",".join("?" * len(stock_codes))
+    try:
+        rows = conn.execute(
+            f"""SELECT stock_code, survey_date, notice_date
+                FROM raw_institution_surveys
+                WHERE stock_code IN ({placeholders})""",
+            list(stock_codes),
+        ).fetchall()
+        for r in rows:
+            sc = r["stock_code"]
+            sd = r["survey_date"]
+            nd = r["notice_date"]
+            if sc and sd and nd:
+                out.setdefault(sc, []).append((sd, nd))
+    except Exception as exc:
+        logger.warning(f"[signals_v2] 加载 survey 失败: {exc}")
+    return out
+
+
+def _load_survey_coverage_start(conn) -> Optional[str]:
+    """
+    返回 raw_institution_surveys 里的最早 notice_date（YYYY-MM-DD）。
+    早于此日期的事件 D8 视为 unknown（数据未覆盖，不算冷门）。
+    """
+    try:
+        row = conn.execute(
+            "SELECT MIN(notice_date) AS min_nd FROM raw_institution_surveys"
+        ).fetchone()
+        return row["min_nd"] if row and row["min_nd"] else None
+    except Exception:
+        return None
+
+
+def _event_notice_iso(notice_date) -> Optional[str]:
+    """事件 notice_date 归一化成 YYYY-MM-DD。入库里有 YYYYMMDD 和 YYYY-MM-DD 混用。"""
+    if notice_date is None:
+        return None
+    digits = str(notice_date).replace("-", "").replace("/", "")
+    if len(digits) < 8 or not digits[:8].isdigit():
+        return None
+    return f"{digits[:4]}-{digits[4:6]}-{digits[6:8]}"
+
+
+def _count_surveys_as_of(
+    surveys: list[tuple[str, str]],
+    event_nd_iso: str,
+    window_days: int = 90,
+) -> int:
+    """
+    在 event_nd_iso 这个时点（as-of），过去 window_days 天内被调研的次数。
+    survey (survey_date, notice_date) 二者都是 YYYY-MM-DD。
+    约束：survey.notice_date <= event_nd_iso（避免 look-ahead）
+          survey.survey_date in [event_nd_iso - window_days, event_nd_iso]
+    """
+    if not surveys or not event_nd_iso:
+        return 0
+    dt = datetime.strptime(event_nd_iso, "%Y-%m-%d")
+    lower = (dt - timedelta(days=window_days)).strftime("%Y-%m-%d")
+    return sum(
+        1 for (sd, nd) in surveys
+        if nd <= event_nd_iso and lower <= sd <= event_nd_iso
+    )
+
+
 def _enrich_events_with_gpcw(conn, events: list[dict]) -> None:
     """
     给 events 列表 in-place 添加特征：
-      - holder_count_yoy        D1 股东人数同比变化率（%）
-      - forecast_profit_yoy_mid D3 业绩预告利润同比中值（%）
+      - holder_count_yoy         D1 股东人数同比变化率（%）
+      - forecast_profit_yoy_mid  D3 业绩预告利润同比中值（%）
       - future_unlock_ratio_180d D5 180 天解禁比例（%）
+      - survey_count_90d         D8 近 90 日机构调研次数（point-in-time，避免 look-ahead）
 
     一次性预加载所有维度的 map 避免重复扫表。
     """
@@ -818,6 +917,11 @@ def _enrich_events_with_gpcw(conn, events: list[dict]) -> None:
     except Exception as exc:
         logger.warning(f"[signals_v2] 加载 unlock 失败: {exc}")
 
+    # D8: 批量加载调研数据 + 覆盖区间
+    stock_codes = {ev.get("stock_code") for ev in events if ev.get("stock_code")}
+    survey_by_stock = _load_survey_by_stock(conn, stock_codes)
+    coverage_start = _load_survey_coverage_start(conn)  # YYYY-MM-DD 最早 notice_date
+
     for ev in events:
         rd = str(ev.get("report_date", ""))
         digits = rd.replace("-", "")
@@ -829,6 +933,17 @@ def _enrich_events_with_gpcw(conn, events: list[dict]) -> None:
         ev["holder_count_yoy"] = _compute_holder_count_yoy(stock, rd, hc_map)
         ev["forecast_profit_yoy_mid"] = fc_map.get((stock, rd_iso))
         ev["future_unlock_ratio_180d"] = unlock_map.get(stock)
+
+        event_nd_iso = _event_notice_iso(ev.get("notice_date"))
+        # 数据未覆盖的老事件 → unknown（避免把数据缺失误判成"调研冷门"）
+        if not event_nd_iso or not stock:
+            ev["survey_count_90d"] = None
+        elif coverage_start and event_nd_iso < coverage_start:
+            ev["survey_count_90d"] = None
+        else:
+            ev["survey_count_90d"] = _count_surveys_as_of(
+                survey_by_stock.get(stock, []), event_nd_iso, window_days=90,
+            )
 
 
 def _decide_dual_window(

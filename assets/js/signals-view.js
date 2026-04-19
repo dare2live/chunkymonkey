@@ -353,6 +353,8 @@
   function fmtBreakdownRaw(raw, key) {
     if (raw === null || raw === undefined) return '<span class="muted">—</span>';
     if (key === 'inst_type') return esc(String(raw));
+    // survey_count_90d 是整数次数
+    if (key === 'survey_count_90d') return esc(String(raw)) + ' 次';
     // 数值字段保留 2 位小数
     return fmtPctPlain(raw, 2);
   }
@@ -367,6 +369,7 @@
       holder_dispersing: 'D1 股东散户化',
       forecast_too_weak: 'D3 预告偏弱',
       unlock_risk: 'D5 解禁风险',
+      survey_too_quiet: 'D8 调研冷门',
     };
     const triggered = bd.triggered ? (triggerLabel[bd.triggered] || bd.triggered) : null;
     return `
@@ -374,7 +377,7 @@
         <div class="sig-panel-head">
           <h4>硬规则检查
             <span class="muted" style="font-weight:400">
-              ${triggered ? '· 触发：<b style="color:#b91c1c">' + esc(triggered) + '</b>' : '· 6 维全部通过或未评估'}
+              ${triggered ? '· 触发：<b style="color:#b91c1c">' + esc(triggered) + '</b>' : '· 7 维全部通过或未评估'}
             </span>
           </h4>
         </div>
