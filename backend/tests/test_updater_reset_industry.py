@@ -15,7 +15,6 @@ client = TestClient(app)
 
 
 INDUSTRY_RESET_TABLES = [
-    "fact_institution_event_industry_snapshot",
     "fact_setup_snapshot",
     "mart_current_relationship",
     "mart_institution_profile",
@@ -36,7 +35,6 @@ INDUSTRY_RESET_TABLES = [
 
 
 PRESERVED_TABLES = [
-    "dim_stock_industry",
     "fact_institution_event",
 ]
 
@@ -71,7 +69,6 @@ def test_reset_industry_derived_clears_industry_dependent_tables(tmp_path, monke
 
     payload = response.json()
     assert payload["ok"] is True
-    assert payload["counts"]["event_industry_snapshots"] == 1
     assert payload["counts"]["profiles"] == 1
     assert payload["counts"]["sector_forecast_latest"] == 1
     assert payload["missing_tables"] == []

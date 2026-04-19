@@ -203,25 +203,9 @@ def init_db():
             CREATE INDEX IF NOT EXISTS idx_event_date ON fact_institution_event(report_date);
             CREATE INDEX IF NOT EXISTS idx_event_notice ON fact_institution_event(notice_date);
 
-            CREATE TABLE IF NOT EXISTS fact_institution_event_industry_snapshot (
-                institution_id      TEXT NOT NULL,
-                stock_code          TEXT NOT NULL,
-                report_date         TEXT NOT NULL,
-                notice_date         TEXT,
-                sw_level1           TEXT,
-                sw_level2           TEXT,
-                sw_level3           TEXT,
-                sw_code             TEXT,
-                snapshot_source     TEXT,
-                industry_updated_at TEXT,
-                captured_at         TEXT,
-                PRIMARY KEY (institution_id, stock_code, report_date)
-            );
-            CREATE INDEX IF NOT EXISTS idx_event_industry_snapshot_l1
-                ON fact_institution_event_industry_snapshot(sw_level1);
-            CREATE INDEX IF NOT EXISTS idx_event_industry_snapshot_l2
-                ON fact_institution_event_industry_snapshot(sw_level2);
-
+            -- Phase 3b-3: fact_institution_event_industry_snapshot 已退役
+            -- (原申万行业快照口径被 dim_stock_tdx_industry 直连聚合替代;
+            --  backtest_engine / scoring 的 crowding_fit 口径也已同步)
             -- 收益字段已合并入 fact_institution_event
 
             CREATE TABLE IF NOT EXISTS fact_northbound_daily (
@@ -832,6 +816,18 @@ def init_db():
                 conn.execute(
                     "ALTER TABLE mart_institution_industry_stat RENAME COLUMN sw_level TO industry_level"
                 )
+        except Exception:
+            pass
+
+        # Phase 3b-3: DROP 退役表 fact_institution_event_industry_snapshot
+        # 申万快照已被 dim_stock_tdx_industry 直 JOIN 替代, 相关 SQL helper 亦已删除。
+        for idx in ("idx_event_industry_snapshot_l1", "idx_event_industry_snapshot_l2"):
+            try:
+                conn.execute(f"DROP INDEX IF EXISTS {idx}")
+            except Exception:
+                pass
+        try:
+            conn.execute("DROP TABLE IF EXISTS fact_institution_event_industry_snapshot")
         except Exception:
             pass
 

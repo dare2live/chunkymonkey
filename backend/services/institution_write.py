@@ -92,7 +92,6 @@ def delete_institution_record(conn, inst_id: str) -> None:
         conn.execute("DELETE FROM inst_institutions WHERE id = ?", (inst_id,))
         conn.execute("DELETE FROM inst_holdings WHERE institution_id = ?", (inst_id,))
         conn.execute("DELETE FROM fact_institution_event WHERE institution_id = ?", (inst_id,))
-        conn.execute("DELETE FROM fact_institution_event_industry_snapshot WHERE institution_id = ?", (inst_id,))
         conn.execute("DELETE FROM mart_current_relationship WHERE institution_id = ?", (inst_id,))
         conn.execute("DELETE FROM mart_institution_profile WHERE institution_id = ?", (inst_id,))
         conn.execute("DELETE FROM mart_institution_industry_stat WHERE institution_id = ?", (inst_id,))

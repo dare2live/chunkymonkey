@@ -306,7 +306,6 @@ _DERIVED_RESET_TABLES = [
 
 
 _INDUSTRY_RESET_TABLES = [
-    ("event_industry_snapshots", "fact_institution_event_industry_snapshot"),
     ("setup_snapshots", "fact_setup_snapshot"),
     ("current_rel", "mart_current_relationship"),
     ("profiles", "mart_institution_profile"),
@@ -1194,11 +1193,9 @@ async def _step_gen_events(conn) -> int:
     return await _run_blocking_db_task(_worker)
 
 
-# Phase 3b-1: _capture_missing_event_industry_snapshots 已删除。
-# 原功能向 fact_institution_event_industry_snapshot 补申万快照,
-# 数据源 dim_stock_industry 已在 Phase 2 TDX 迁移时退役;
-# 下游 _step_build_industry_stat_sync 改走 dim_stock_tdx_industry 直 JOIN,
-# snapshot 表本身的退役放到 Phase 3b-2 处理。
+# Phase 3b-3: fact_institution_event_industry_snapshot 已退役。
+# _capture_missing_event_industry_snapshots + snapshot 表本身均已删除,
+# _step_build_industry_stat_sync / backtest_engine / scoring 统一走 dim_stock_tdx_industry 直 JOIN。
 
 
 async def _run_blocking_db_task(task_fn, timeout: int = 120):

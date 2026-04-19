@@ -28,7 +28,6 @@ def _make_conn():
         );
         CREATE TABLE inst_holdings (institution_id TEXT);
         CREATE TABLE fact_institution_event (institution_id TEXT);
-        CREATE TABLE fact_institution_event_industry_snapshot (institution_id TEXT);
         CREATE TABLE mart_current_relationship (institution_id TEXT);
         CREATE TABLE mart_institution_profile (institution_id TEXT);
         CREATE TABLE mart_institution_industry_stat (institution_id TEXT);
@@ -90,7 +89,6 @@ def test_institution_write_crud_and_cascade_delete():
     for table in [
         "inst_holdings",
         "fact_institution_event",
-        "fact_institution_event_industry_snapshot",
         "mart_current_relationship",
         "mart_institution_profile",
         "mart_institution_industry_stat",
@@ -104,7 +102,6 @@ def test_institution_write_crud_and_cascade_delete():
     for table in [
         "inst_holdings",
         "fact_institution_event",
-        "fact_institution_event_industry_snapshot",
         "mart_current_relationship",
         "mart_institution_profile",
         "mart_institution_industry_stat",

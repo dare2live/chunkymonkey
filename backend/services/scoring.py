@@ -10,7 +10,7 @@ import logging
 from datetime import datetime
 from typing import Optional, Tuple
 
-from services.industry import event_industry_join_clause, industry_join_clause, industry_level_value, load_industry_map
+from services.industry import industry_join_clause, industry_level_value, load_industry_map
 from services.utils import safe_float as _safe_float, percentile_ranks as _percentile_ranks
 from services.constants import (
     PATH_THRESHOLDS,
@@ -548,7 +548,7 @@ def _load_crowding_fit_lookup(conn) -> dict:
             FROM skilled s
             JOIN crowd c USING (stock_code, report_date)
             GROUP BY s.event_type, crowd_bucket, premium_bucket
-        """.format(industry_join=event_industry_join_clause("e", alias="industry_dim", join_type="INNER"))).fetchall()
+        """.format(industry_join=industry_join_clause("e.stock_code", alias="industry_dim", join_type="INNER"))).fetchall()
         for row in rows:
             lookup["skilled_l3"][(row["event_type"], row["crowd_bucket"], row["premium_bucket"])] = {
                 "n": int(row["sample_count"] or 0),

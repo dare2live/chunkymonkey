@@ -15,7 +15,7 @@ import logging
 from datetime import datetime
 from collections import defaultdict
 
-from services.industry import event_industry_join_clause, event_industry_select_clause
+from services.industry import industry_join_clause, industry_select_clause
 from services.setup_replay import build_setup_replay
 
 logger = logging.getLogger("cm-api")
@@ -205,8 +205,8 @@ def build_holding_chains(conn) -> dict:
         {industry_join}
         ORDER BY e.institution_id, e.stock_code, e.report_date
     """.format(
-        industry_columns=event_industry_select_clause(alias="industry_dim"),
-        industry_join=event_industry_join_clause("e", alias="industry_dim", join_type="LEFT"),
+        industry_columns=industry_select_clause(alias="industry_dim"),
+        industry_join=industry_join_clause("e.stock_code", alias="industry_dim", join_type="LEFT"),
     )).fetchall()
 
     chains = []
@@ -336,7 +336,6 @@ def build_cross_factor_analysis(conn) -> dict:
         WHERE event_type IN ('new_entry','increase') AND gain_30d IS NOT NULL
     """).fetchone()[0] or 0
 
-    industry_join = event_industry_join_clause("e", alias="industry_dim", join_type="INNER")
     analyses = [
         # (factor_a, factor_b, SQL)
         ("inst_type", "industry_l1", """

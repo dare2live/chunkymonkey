@@ -8,8 +8,6 @@ industry.py — 行业解析单点实现 (Phase 2: 通达信 TDX 三级分类)
 - 物化表构建 → load_industry_map() 批量装载
 - 页面/服务层 → resolve_industry() 单点查询
 - SQL 拼接 → industry_join_clause / industry_select_clause / industry_complete_condition
-- 历史事件行业快照 (fact_institution_event_industry_snapshot) 暂保留 sw_level* 列,
-  通过 event_industry_* helper 访问, 后续单独迁移。
 """
 
 from typing import Optional
@@ -24,10 +22,6 @@ _industry_cache: dict = None
 INDUSTRY_LEVEL_COLUMNS = ("tdx_l1", "tdx_l2", "tdx_l3")
 INDUSTRY_NAME_COLUMNS = ("tdx_l1_name", "tdx_l2_name", "tdx_l3_name")
 INDUSTRY_TABLE = "dim_stock_tdx_industry"
-
-# 事件快照表仍为历史申万口径 (Phase 3 再迁移)
-EVENT_INDUSTRY_TABLE = "fact_institution_event_industry_snapshot"
-EVENT_INDUSTRY_LEVEL_COLUMNS = ("sw_level1", "sw_level2", "sw_level3")
 
 
 def _validate_industry_level(level: int) -> int:
@@ -136,32 +130,6 @@ def industry_complete_condition(*, alias: str = "industry_dim") -> str:
     return " AND ".join(
         industry_level_nonempty_condition(level, alias=alias) for level in (1, 2, 3)
     )
-
-
-# ─── 事件快照 (历史申万口径, 待迁移) ─────────────────────────────────
-
-def event_industry_join_clause(
-    event_alias: str, *, alias: str = "industry_dim", join_type: str = "LEFT"
-) -> str:
-    mode = join_type.strip().upper()
-    if mode not in {"LEFT", "INNER"}:
-        raise ValueError(f"Unsupported industry join type: {join_type}")
-    return (
-        f"{mode} JOIN {EVENT_INDUSTRY_TABLE} {alias} "
-        f"ON {event_alias}.institution_id = {alias}.institution_id "
-        f"AND {event_alias}.stock_code = {alias}.stock_code "
-        f"AND {event_alias}.report_date = {alias}.report_date"
-    )
-
-
-def event_industry_select_clause(*, alias: str = "industry_dim", prefix: str = "") -> str:
-    """事件快照表 (sw_level1/2/3) SELECT 片段, 结果列名按 tdx_l* 别名对齐。"""
-    parts = []
-    for level in (1, 2, 3):
-        src = f"{alias}.{EVENT_INDUSTRY_LEVEL_COLUMNS[level - 1]}"
-        dst = f"{prefix}{industry_level_alias(level)}"
-        parts.append(f"{src} AS {dst}")
-    return ", ".join(parts)
 
 
 # ─── 批量/单点查询 ──────────────────────────────────────────────────
