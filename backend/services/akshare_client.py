@@ -1,12 +1,13 @@
 """
 AKShare 数据获取客户端
 
-函数：月K线、日K线、交易日历、申万行业分类。
+函数：月K线、日K线、交易日历。
 
 说明：
 - K 线优先走东财；失败后自动回退新浪 / 腾讯
 - 缺失股票拉全历史，已存在股票走增量续拉
-- 行业检测用真实 AKShare 接口，不再只测无关 URL
+- 行业分类统一走 services.tdx_industry_client (通达信 tdxhy.cfg),
+  本模块已不提供行业函数。
 """
 
 import asyncio
@@ -272,38 +273,6 @@ def _aggregate_monthly_from_daily(df: pd.DataFrame):
     return pd.DataFrame(rows)
 
 
-def _build_path_map_from_cninfo_tree(tree_df: pd.DataFrame):
-    """把 cninfo 申万分类树转换成 {code: [l1,l2,l3]}"""
-    if tree_df is None or tree_df.empty:
-        return {}
-    rows = {}
-    for _, row in tree_df.iterrows():
-        code = str(row.get("类目编码") or "").strip()
-        if not code:
-            continue
-        rows[code] = {
-            "name": str(row.get("类目名称") or "").strip(),
-            "parent": str(row.get("父类编码") or "").strip(),
-            "level": int(row.get("分级") or 0),
-        }
-    path_map = {}
-    for code in rows:
-        current = code
-        path = []
-        seen = set()
-        while current and current in rows and current not in seen:
-            seen.add(current)
-            item = rows[current]
-            if item["level"] > 0 and item["name"]:
-                path.append(item["name"])
-            current = item["parent"]
-        if path:
-            path_map[code] = list(reversed(path))
-            if code.startswith("S"):
-                path_map[code[1:]] = path_map[code]
-    return path_map
-
-
 async def _fetch_daily_mootdx(code: str, start_date: str, end_date: str):
     """用 mootdx 从通达信服务器获取日K线（首选数据源）"""
     df, source, _ = await _fetch_daily_mootdx_with_diagnostics(code, start_date, end_date)
@@ -519,177 +488,6 @@ async def test_kline_availability(sample_code: str = "000001") -> dict:
             result["detail"] += f" · fallback {fallback_diag['last_error']}"
     result["elapsed_sec"] = round(time.time() - started_at, 3)
     return result
-
-
-async def test_industry_availability() -> tuple[bool, str]:
-    """测试申万行业源可用性；直接测真实 akshare 接口。"""
-    import akshare as ak
-
-    attempts = [
-        ("sw_hist", lambda: ak.stock_industry_clf_hist_sw().head(1)),
-        ("sw_l1", lambda: ak.sw_index_first_info().head(1)),
-    ]
-    for source, func in attempts:
-        try:
-            df = await _safe_akshare_call(func, timeout=20, retries=0)
-            if df is not None and not df.empty:
-                return True, source
-        except Exception:
-            continue
-    return False, ""
-
-
-async def fetch_sw_industry_all():
-    """获取申万三级行业分类（全市场股票-行业映射）
-
-    策略：
-    1. 获取一二三级行业列表，建立层级映射（三级→二级→一级）
-    2. 遍历三级行业获取成分股
-    3. 用申万历史归属表补齐“当前成分股不包含”的老票/边缘票
-    4. 通过层级映射填充一二级行业名
-    5. stock_code 去掉 .SH/.SZ 后缀，与 inst_holdings 格式一致
-
-    返回 list[dict]，每个 dict: {stock_code, sw_level1, sw_level2, sw_level3, sw_code}
-    """
-    import akshare as ak
-
-    results = []
-
-    # 1. 建立行业层级映射
-    logger.info("[行业] 获取申万行业层级...")
-    try:
-        df1 = await _safe_akshare_call(ak.sw_index_first_info, timeout=30)
-        df2 = await _safe_akshare_call(ak.sw_index_second_info, timeout=30)
-        df3 = await _safe_akshare_call(ak.sw_index_third_info, timeout=30)
-        sw_tree_df = await _safe_akshare_call(
-            ak.stock_industry_category_cninfo,
-            symbol="申银万国行业分类标准",
-            timeout=30,
-        )
-        if sw_tree_df is not None and not sw_tree_df.empty:
-            from services.api_schemas import SWIndustryTreeRow
-            from pydantic import TypeAdapter, ValidationError
-            try:
-                TypeAdapter(list[SWIndustryTreeRow]).validate_python(sw_tree_df.to_dict('records'))
-            except ValidationError as e:
-                logger.error(f"[行业] 防腐层截断 - cninfo 行业树Schema验证失败: {e}")
-                sw_tree_df = None
-    except Exception as e:
-        logger.error(f"[行业] 获取行业层级失败: {e}")
-        return results
-
-    if df3 is None or df3.empty:
-        logger.warning("[行业] 三级行业列表为空")
-        return results
-
-    # 一级：{行业名: 行业名} (自身)
-    level1_names = set(df1["行业名称"].tolist()) if df1 is not None else set()
-
-    # 二级→一级映射：{二级名: 一级名}
-    l2_to_l1 = {}
-    if df2 is not None:
-        for _, r in df2.iterrows():
-            l2_to_l1[str(r.get("行业名称", "")).strip()] = str(r.get("上级行业", "")).strip()
-
-    # 三级→二级映射：{三级名: 二级名}
-    l3_to_l2 = {}
-    code_to_l3 = {}
-    for _, r in df3.iterrows():
-        l3_name = str(r.get("行业名称", "")).strip()
-        l3_to_l2[l3_name] = str(r.get("上级行业", "")).strip()
-        code_to_l3[str(r.get("行业代码", "")).strip()] = l3_name
-
-    codes = df3["行业代码"].tolist()
-    names = df3["行业名称"].tolist()
-    logger.info(f"[行业] 共 {len(codes)} 个三级行业，层级映射已建立 (一级{len(level1_names)}，二级{len(l2_to_l1)}，三级{len(l3_to_l2)})")
-    path_map = _build_path_map_from_cninfo_tree(sw_tree_df)
-
-    # 2. 逐个三级行业获取当前成分股
-    seen = set()
-    for i, (sw_code, l3_name) in enumerate(zip(codes, names)):
-        try:
-            df = await _safe_akshare_call(
-                ak.sw_index_third_cons, symbol=str(sw_code),
-                timeout=20, retries=1
-            )
-            if df is None or df.empty:
-                continue
-
-            from services.api_schemas import SWIndustryRow
-            from pydantic import TypeAdapter, ValidationError
-            try:
-                TypeAdapter(list[SWIndustryRow]).validate_python(df.to_dict('records'))
-            except ValidationError as e:
-                logger.error(f"[行业] {sw_code} 防腐层截断 - Schema验证失败: {e}")
-                continue
-
-            # 通过层级映射查找一二级
-            l3 = str(l3_name).strip()
-            l2 = l3_to_l2.get(l3, "")
-            l1 = l2_to_l1.get(l2, "")
-
-            for _, row in df.iterrows():
-                raw_code = str(row.get("股票代码", "")).strip()
-                if not raw_code:
-                    continue
-                # 去掉 .SH/.SZ 后缀，与 inst_holdings 的 stock_code 格式一致
-                stock_code = raw_code.split(".")[0] if "." in raw_code else raw_code
-                if stock_code in seen:
-                    continue
-                seen.add(stock_code)
-                results.append({
-                    "stock_code": stock_code,
-                    "sw_level1": l1,
-                    "sw_level2": l2,
-                    "sw_level3": l3,
-                    "sw_code": str(sw_code),
-                })
-
-            if (i + 1) % 20 == 0:
-                logger.info(f"[行业] 进度: {i+1}/{len(codes)}, 已获取 {len(results)} 只股票")
-                await asyncio.sleep(0.5)
-        except Exception as e:
-            logger.debug(f"[行业] {sw_code} 失败: {e}")
-            await asyncio.sleep(1)
-
-    current_count = len(results)
-
-    # 3. 用申万历史归属补齐非当前成分股
-    try:
-        hist_df = await _safe_akshare_call(ak.stock_industry_clf_hist_sw, timeout=45, retries=1)
-        if hist_df is not None and not hist_df.empty:
-            hist_df = hist_df.copy()
-            hist_df["symbol6"] = hist_df["symbol"].astype(str).str.zfill(6)
-            hist_df["start_date"] = hist_df["start_date"].astype(str)
-            hist_df["update_time"] = hist_df["update_time"].astype(str)
-            hist_df = hist_df.sort_values(["symbol6", "start_date", "update_time"])
-            latest_hist = hist_df.groupby("symbol6", as_index=False).tail(1)
-
-            hist_added = 0
-            for _, row in latest_hist.iterrows():
-                stock_code = str(row.get("symbol6") or "").strip()
-                if not stock_code or stock_code in seen:
-                    continue
-                industry_code = str(row.get("industry_code") or "").strip()
-                path = path_map.get(industry_code) or path_map.get(f"S{industry_code}") or []
-                if len(path) < 3:
-                    continue
-                l1, l2, l3 = path[0], path[1], path[2]
-                seen.add(stock_code)
-                results.append({
-                    "stock_code": stock_code,
-                    "sw_level1": l1,
-                    "sw_level2": l2,
-                    "sw_level3": l3,
-                    "sw_code": industry_code,
-                })
-                hist_added += 1
-            logger.info(f"[行业] 历史归属补齐: +{hist_added} 只股票")
-    except Exception as e:
-        logger.debug(f"[行业] 历史归属补齐失败: {e}")
-
-    logger.info(f"[行业] 完成: {len(results)} 只股票的行业分类（当前成分股 {current_count}）")
-    return results
 
 
 async def _fetch_etf_list_mootdx() -> list[dict]:

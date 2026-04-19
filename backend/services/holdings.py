@@ -125,7 +125,7 @@ def get_inst_current_holdings(conn, inst_id):
             "report_date": rd, "notice_date": h["notice_date"],
             "hold_amount": h["hold_amount"], "hold_market_cap": h["hold_market_cap"],
             "hold_ratio": h["hold_ratio"],
-            "sw_level1": h["sw_level1"], "sw_level2": h["sw_level2"], "sw_level3": h["sw_level3"],
+            "tdx_l1": h["tdx_l1"], "tdx_l2": h["tdx_l2"], "tdx_l3": h["tdx_l3"],
             "event_type": h["event_type"], "change_pct": h["change_pct"],
             "report_season": h["report_season"],
             "inst_ref_cost": h["inst_ref_cost"],
@@ -407,9 +407,9 @@ def build_current_relationship(conn) -> int:
             r["price_entry"], r["return_to_now"], r["path_state"],
             entry.get("entry_report_date"), entry_nd,
             notice_age, disclosure_lag, current_held_days,
-            ind.get("sw_level1"), ind.get("sw_level2"), ind.get("sw_level3"),
+            ind.get("tdx_l1"), ind.get("tdx_l2"), ind.get("tdx_l3"),
             1 if (r["return_to_now"] is not None or r["gain_30d"] is not None) else 0,
-            1 if ind.get("sw_level1") else 0,
+            1 if ind.get("tdx_l1") else 0,
             now_iso,
         ))
 
@@ -429,7 +429,7 @@ def build_current_relationship(conn) -> int:
                 price_entry, return_to_now, path_state,
                 entry_report_date, entry_notice_date,
                 notice_age_days, disclosure_lag_days, current_held_days,
-                sw_level1, sw_level2, sw_level3,
+                tdx_l1, tdx_l2, tdx_l3,
                 has_return_data, has_industry_data, updated_at
             ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
         """, batch)

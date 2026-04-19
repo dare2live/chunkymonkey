@@ -63,7 +63,7 @@ def _make_conn():
         CREATE TABLE mart_current_relationship (
             institution_id TEXT NOT NULL,
             stock_code TEXT NOT NULL,
-            sw_level2 TEXT
+            tdx_l2 TEXT
         );
 
         CREATE TABLE mart_institution_industry_stat (
@@ -251,7 +251,7 @@ def test_buy_sample_confidence_dampens_small_sample_and_fills_industries():
         )
 
         conn.executemany(
-            "INSERT INTO mart_current_relationship (institution_id, stock_code, sw_level2) VALUES (?, ?, ?)",
+            "INSERT INTO mart_current_relationship (institution_id, stock_code, tdx_l2) VALUES (?, ?, ?)",
             [
                 ("elite_small", "000001", "半导体"),
                 ("elite_small", "000002", "半导体"),

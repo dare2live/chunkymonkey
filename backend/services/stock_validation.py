@@ -62,9 +62,9 @@ def _sector_exists_clause(alias: str, sector: str | None, *, snapshot_level1_col
                       COALESCE({alias}.{snapshot_level1_col}, '') = ''
                       AND EXISTS (
                           SELECT 1
-                          FROM dim_stock_industry sector_ctx
+                          FROM dim_stock_tdx_industry sector_ctx
                           WHERE sector_ctx.stock_code = {alias}.stock_code
-                            AND sector_ctx.sw_level1 = ?
+                            AND sector_ctx.tdx_l1_name = ?
                       )
                   )
               )
@@ -77,7 +77,7 @@ def _sector_exists_clause(alias: str, sector: str | None, *, snapshot_level1_col
               SELECT 1
               FROM dim_stock_industry_context_latest sector_ctx
               WHERE sector_ctx.stock_code = {alias}.stock_code
-                AND sector_ctx.sw_level1 = ?
+                AND sector_ctx.tdx_l1_name = ?
           )
         """,
         (normalized,),
@@ -131,7 +131,7 @@ def _load_pool_feedback(conn, sector: str | None = None) -> list[dict]:
 
 
 def _load_snapshot_pool_replay(conn, sector: str | None = None) -> dict:
-    sector_clause, sector_params = _sector_exists_clause("s", sector, snapshot_level1_col="snapshot_sw_level1")
+    sector_clause, sector_params = _sector_exists_clause("s", sector, snapshot_level1_col="snapshot_tdx_l1_name")
     coverage_row = conn.execute(
         f"""
         SELECT COUNT(*) AS total_rows,
@@ -300,7 +300,7 @@ def _load_snapshot_pool_replay(conn, sector: str | None = None) -> dict:
 
 
 def _load_snapshot_rank_compare(conn, sector: str | None = None) -> dict:
-    sector_clause, sector_params = _sector_exists_clause("fact_setup_snapshot", sector, snapshot_level1_col="snapshot_sw_level1")
+    sector_clause, sector_params = _sector_exists_clause("fact_setup_snapshot", sector, snapshot_level1_col="snapshot_tdx_l1_name")
     rows = conn.execute(
         f"""
         WITH ranked AS (

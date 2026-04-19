@@ -15,10 +15,10 @@ def _make_conn():
     conn.row_factory = sqlite3.Row
     conn.executescript(
         """
-        CREATE TABLE dim_stock_industry (
+        CREATE TABLE dim_stock_tdx_industry (
             stock_code TEXT PRIMARY KEY,
-            sw_level1 TEXT,
-            sw_level2 TEXT
+            tdx_l1 TEXT,
+            tdx_l2 TEXT
         );
 
         CREATE TABLE dim_stock_stage_latest (
@@ -31,7 +31,7 @@ def _make_conn():
     return conn
 
 
-def test_build_stock_forecast_features_prefers_sw2_group_and_matches_formula(monkeypatch):
+def test_build_stock_forecast_features_prefers_tdx2_group_and_matches_formula(monkeypatch):
     conn = _make_conn()
     try:
         ensure_qlib_tables(conn)
@@ -58,7 +58,7 @@ def test_build_stock_forecast_features_prefers_sw2_group_and_matches_formula(mon
                 ("model_1", code, f"芯片股{idx}", "2026-04-13", qlib_score, idx + 1, qlib_percentile),
             )
             conn.execute(
-                "INSERT INTO dim_stock_industry (stock_code, sw_level1, sw_level2) VALUES (?, ?, ?)",
+                "INSERT INTO dim_stock_tdx_industry (stock_code, tdx_l1, tdx_l2) VALUES (?, ?, ?)",
                 (code, "电子", "芯片"),
             )
             conn.execute(
@@ -74,7 +74,7 @@ def test_build_stock_forecast_features_prefers_sw2_group_and_matches_formula(mon
             "SELECT * FROM dim_stock_forecast_latest WHERE stock_code = ?",
             ("600000",),
         ).fetchone()
-        assert row["industry_relative_group"] == "SW2:芯片"
+        assert row["industry_relative_group"] == "TDX2:芯片"
         assert row["forecast_20d_score"] == row["qlib_percentile"]
 
         expected_risk = clamp_score(

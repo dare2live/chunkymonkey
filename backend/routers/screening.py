@@ -130,12 +130,12 @@ async def get_industry_overview(topn: int = Query(3, ge=1, le=10)):
         active_map = {}
         try:
             rows = conn.execute("""
-                SELECT sw_level1 AS sector_name,
+                SELECT tdx_l1 AS sector_name,
                        COUNT(DISTINCT institution_id) AS active_institution_count,
                        COUNT(DISTINCT stock_code) AS current_stock_count
                 FROM mart_current_relationship
-                WHERE sw_level1 IS NOT NULL AND sw_level1 != ''
-                GROUP BY sw_level1
+                WHERE tdx_l1 IS NOT NULL AND tdx_l1 != ''
+                GROUP BY tdx_l1
             """).fetchall()
             active_map = {row["sector_name"]: dict(row) for row in rows}
         except Exception:
@@ -144,7 +144,7 @@ async def get_industry_overview(topn: int = Query(3, ge=1, le=10)):
         candidate_map = {}
         try:
             rows = conn.execute("""
-                SELECT ctx.sw_level1 AS sector_name,
+                SELECT ctx.tdx_l1 AS sector_name,
                        COUNT(*) AS candidate_count,
                        AVG(t.discovery_score) AS avg_discovery_score,
                        AVG(t.company_quality_score) AS avg_quality_score,
@@ -186,8 +186,8 @@ async def get_industry_overview(topn: int = Query(3, ge=1, le=10)):
                        SUM(CASE WHEN COALESCE(t.composite_priority_score, -1) < 45 THEN 1 ELSE 0 END) AS composite_band_below_45
                 FROM mart_stock_trend t
                 INNER JOIN dim_stock_industry_context_latest ctx ON ctx.stock_code = t.stock_code
-                WHERE ctx.sw_level1 IS NOT NULL AND ctx.sw_level1 != ''
-                GROUP BY ctx.sw_level1
+                WHERE ctx.tdx_l1 IS NOT NULL AND ctx.tdx_l1 != ''
+                GROUP BY ctx.tdx_l1
             """).fetchall()
             candidate_map = {row["sector_name"]: dict(row) for row in rows}
         except Exception:
@@ -196,7 +196,7 @@ async def get_industry_overview(topn: int = Query(3, ge=1, le=10)):
         snapshot_feedback_map = {}
         try:
             rows = conn.execute("""
-                SELECT snapshot_sw_level1 AS sector_name,
+                SELECT snapshot_tdx_l1 AS sector_name,
                        COUNT(*) AS snapshot_total_count,
                        COUNT(DISTINCT snapshot_date) AS snapshot_date_count,
                        MIN(snapshot_date) AS snapshot_first_date,
@@ -239,8 +239,8 @@ async def get_industry_overview(topn: int = Query(3, ge=1, le=10)):
                                 WHEN priority_pool = 'A池' AND matured_60d = 1 AND gain_60d IS NOT NULL THEN 0.0
                                 ELSE NULL END) * 100 AS snapshot_a_win_rate_60d
                 FROM fact_setup_snapshot
-                WHERE snapshot_sw_level1 IS NOT NULL AND snapshot_sw_level1 != ''
-                GROUP BY snapshot_sw_level1
+                WHERE snapshot_tdx_l1 IS NOT NULL AND snapshot_tdx_l1 != ''
+                GROUP BY snapshot_tdx_l1
             """).fetchall()
             snapshot_feedback_map = {row["sector_name"]: dict(row) for row in rows}
         except Exception:
@@ -249,13 +249,13 @@ async def get_industry_overview(topn: int = Query(3, ge=1, le=10)):
         context_map = {}
         try:
             rows = conn.execute("""
-                SELECT sw_level1 AS sector_name,
+                SELECT tdx_l1 AS sector_name,
                        AVG(industry_tailwind_score) AS avg_tailwind_score,
                        SUM(CASE WHEN dual_confirm_recent_180d > 0 THEN 1 ELSE 0 END) AS dual_confirm_stock_count,
                        SUM(dual_confirm_recent_180d) AS dual_confirm_signal_count
                 FROM dim_stock_industry_context_latest
-                WHERE sw_level1 IS NOT NULL AND sw_level1 != ''
-                GROUP BY sw_level1
+                WHERE tdx_l1 IS NOT NULL AND tdx_l1 != ''
+                GROUP BY tdx_l1
             """).fetchall()
             context_map = {row["sector_name"]: dict(row) for row in rows}
         except Exception:
@@ -265,17 +265,17 @@ async def get_industry_overview(topn: int = Query(3, ge=1, le=10)):
         recent_event_map = {}
         try:
             rows = conn.execute(f"""
-                SELECT industry_dim.sw_level1 AS sector_name,
+                SELECT industry_dim.tdx_l1 AS sector_name,
                        SUM(CASE WHEN e.event_type = 'new_entry' THEN 1 ELSE 0 END) AS recent_new_entry_count,
                        COUNT(DISTINCT CASE WHEN e.event_type = 'new_entry' THEN e.stock_code END) AS recent_new_entry_stock_count,
                        SUM(CASE WHEN e.event_type IN ('new_entry', 'increase') THEN 1 ELSE 0 END) AS recent_buy_signal_count,
                        COUNT(DISTINCT CASE WHEN e.event_type IN ('new_entry', 'increase') THEN e.stock_code END) AS recent_buy_signal_stock_count
                 FROM fact_institution_event e
                 {industry_join_clause("e.stock_code", alias="industry_dim", join_type="INNER")}
-                WHERE industry_dim.sw_level1 IS NOT NULL
-                  AND industry_dim.sw_level1 != ''
+                WHERE industry_dim.tdx_l1 IS NOT NULL
+                  AND industry_dim.tdx_l1 != ''
                   AND COALESCE(NULLIF(REPLACE(e.notice_date, '-', ''), ''), REPLACE(e.report_date, '-', '')) >= ?
-                GROUP BY industry_dim.sw_level1
+                GROUP BY industry_dim.tdx_l1
             """, (cutoff,)).fetchall()
             recent_event_map = {row["sector_name"]: dict(row) for row in rows}
         except Exception:
@@ -287,7 +287,7 @@ async def get_industry_overview(topn: int = Query(3, ge=1, le=10)):
                 SELECT sector_name, stock_code, stock_name, stock_archetype, priority_pool,
                        composite_priority_score, company_quality_score, stage_score, setup_tag
                 FROM (
-                    SELECT ctx.sw_level1 AS sector_name,
+                    SELECT ctx.tdx_l1 AS sector_name,
                            t.stock_code,
                            t.stock_name,
                            t.stock_archetype,
@@ -297,7 +297,7 @@ async def get_industry_overview(topn: int = Query(3, ge=1, le=10)):
                            t.stage_score,
                            t.setup_tag,
                            ROW_NUMBER() OVER (
-                               PARTITION BY ctx.sw_level1
+                               PARTITION BY ctx.tdx_l1
                                ORDER BY
                                    CASE COALESCE(t.priority_pool, '')
                                        WHEN 'A池' THEN 0
@@ -311,7 +311,7 @@ async def get_industry_overview(topn: int = Query(3, ge=1, le=10)):
                            ) AS rn
                     FROM mart_stock_trend t
                     INNER JOIN dim_stock_industry_context_latest ctx ON ctx.stock_code = t.stock_code
-                    WHERE ctx.sw_level1 IS NOT NULL AND ctx.sw_level1 != ''
+                    WHERE ctx.tdx_l1 IS NOT NULL AND ctx.tdx_l1 != ''
                 )
                 WHERE rn <= ?
                 ORDER BY sector_name, rn

@@ -126,7 +126,7 @@ def snapshot_setup_candidates(conn, snapshot_date: Optional[str] = None) -> int:
         "snapshot_date", "stock_code", "stock_name",
         "setup_tag", "setup_priority", "setup_reason", "setup_confidence",
         "setup_level", "setup_inst_id", "setup_inst_name", "setup_event_type",
-        "setup_industry_name", "snapshot_sw_level1", "snapshot_sw_level2", "snapshot_sw_level3", "action_score",
+        "setup_industry_name", "snapshot_tdx_l1", "snapshot_tdx_l2", "snapshot_tdx_l3", "action_score",
         "discovery_score", "company_quality_score", "stage_score",
         "forecast_score", "forecast_score_effective",
         "raw_composite_priority_score", "composite_priority_score",
@@ -172,9 +172,9 @@ def snapshot_setup_candidates(conn, snapshot_date: Optional[str] = None) -> int:
                 row["setup_inst_name"],
                 row["setup_event_type"],
                 row["setup_industry_name"],
-                industry.get("sw_level1"),
-                industry.get("sw_level2"),
-                industry.get("sw_level3"),
+                industry.get("tdx_l1"),
+                industry.get("tdx_l2"),
+                industry.get("tdx_l3"),
                 row["action_score"],
                 row["discovery_score"],
                 row["company_quality_score"],
@@ -230,9 +230,9 @@ def snapshot_setup_candidates(conn, snapshot_date: Optional[str] = None) -> int:
 def backfill_setup_snapshot_industry(conn, snapshot_date: Optional[str] = None) -> int:
     params = []
     where = """
-        WHERE COALESCE(snapshot_sw_level1, '') = ''
-           OR COALESCE(snapshot_sw_level2, '') = ''
-           OR COALESCE(snapshot_sw_level3, '') = ''
+        WHERE COALESCE(snapshot_tdx_l1, '') = ''
+           OR COALESCE(snapshot_tdx_l2, '') = ''
+           OR COALESCE(snapshot_tdx_l3, '') = ''
     """
     if snapshot_date:
         where += " AND snapshot_date = ?"
@@ -241,7 +241,7 @@ def backfill_setup_snapshot_industry(conn, snapshot_date: Optional[str] = None) 
     rows = conn.execute(
         f"""
         SELECT snapshot_date, stock_code, setup_tag, setup_inst_id,
-               snapshot_sw_level1, snapshot_sw_level2, snapshot_sw_level3
+               snapshot_tdx_l1, snapshot_tdx_l2, snapshot_tdx_l3
         FROM fact_setup_snapshot
         {where}
         """,
@@ -255,15 +255,15 @@ def backfill_setup_snapshot_industry(conn, snapshot_date: Optional[str] = None) 
     updates = []
     for row in rows:
         industry = industry_map.get(row["stock_code"]) or {}
-        sw_level1 = row["snapshot_sw_level1"] or industry.get("sw_level1")
-        sw_level2 = row["snapshot_sw_level2"] or industry.get("sw_level2")
-        sw_level3 = row["snapshot_sw_level3"] or industry.get("sw_level3")
-        if not any((sw_level1, sw_level2, sw_level3)):
+        tdx_l1 = row["snapshot_tdx_l1"] or industry.get("tdx_l1")
+        tdx_l2 = row["snapshot_tdx_l2"] or industry.get("tdx_l2")
+        tdx_l3 = row["snapshot_tdx_l3"] or industry.get("tdx_l3")
+        if not any((tdx_l1, tdx_l2, tdx_l3)):
             continue
         updates.append((
-            sw_level1,
-            sw_level2,
-            sw_level3,
+            tdx_l1,
+            tdx_l2,
+            tdx_l3,
             now,
             row["snapshot_date"],
             row["stock_code"],
@@ -279,9 +279,9 @@ def backfill_setup_snapshot_industry(conn, snapshot_date: Optional[str] = None) 
         conn.executemany(
             """
             UPDATE fact_setup_snapshot
-            SET snapshot_sw_level1 = ?,
-                snapshot_sw_level2 = ?,
-                snapshot_sw_level3 = ?,
+            SET snapshot_tdx_l1 = ?,
+                snapshot_tdx_l2 = ?,
+                snapshot_tdx_l3 = ?,
                 updated_at = ?
             WHERE snapshot_date = ? AND stock_code = ? AND setup_tag = ? AND setup_inst_id = ?
             """,

@@ -285,9 +285,9 @@ def fetch_institution_history(
             e.report_date, e.notice_date, e.event_type,
             e.premium_pct, e.{gain_column} AS gain,
             e.max_drawdown_30d, e.max_drawdown_60d,
-            i.sw_level1 AS industry
+            i.tdx_l1 AS industry
         FROM fact_institution_event e
-        LEFT JOIN dim_stock_industry i ON i.stock_code = e.stock_code
+        LEFT JOIN dim_stock_tdx_industry i ON i.stock_code = e.stock_code
         WHERE {' AND '.join(where_parts)}
         ORDER BY e.notice_date DESC
     """
@@ -819,11 +819,11 @@ def build_today_signals(
             e.stock_code, e.stock_name,
             e.report_date, e.notice_date, e.event_type,
             e.premium_pct, e.{cfg.gain_column} AS realized_return_pct,
-            ind.sw_level1 AS industry,
+            ind.tdx_l1 AS industry,
             h.holder_rank, h.hold_ratio
         FROM fact_institution_event e
         LEFT JOIN inst_institutions i ON i.id = e.institution_id
-        LEFT JOIN dim_stock_industry ind ON ind.stock_code = e.stock_code
+        LEFT JOIN dim_stock_tdx_industry ind ON ind.stock_code = e.stock_code
         LEFT JOIN inst_holdings h ON h.institution_id = e.institution_id
                AND h.stock_code = e.stock_code AND h.report_date = e.report_date
         WHERE e.event_type IN ('new_entry', 'increase')
@@ -854,9 +854,9 @@ def build_today_signals(
         SELECT e.institution_id, e.notice_date,
                e.{cfg.gain_column} AS gain,
                e.max_drawdown_30d, e.max_drawdown_60d,
-               ind.sw_level1 AS industry
+               ind.tdx_l1 AS industry
         FROM fact_institution_event e
-        LEFT JOIN dim_stock_industry ind ON ind.stock_code = e.stock_code
+        LEFT JOIN dim_stock_tdx_industry ind ON ind.stock_code = e.stock_code
         WHERE e.event_type IN ('new_entry','increase')
           AND e.{cfg.gain_column} IS NOT NULL
           AND e.institution_id IN ({placeholders})
@@ -993,9 +993,9 @@ def fetch_similar_for_event(
 
     row = conn.execute("""
         SELECT e.institution_id, e.stock_code, e.report_date, e.notice_date, e.event_type,
-               e.premium_pct, ind.sw_level1 AS industry
+               e.premium_pct, ind.tdx_l1 AS industry
         FROM fact_institution_event e
-        LEFT JOIN dim_stock_industry ind ON ind.stock_code = e.stock_code
+        LEFT JOIN dim_stock_tdx_industry ind ON ind.stock_code = e.stock_code
         WHERE e.institution_id = ? AND e.stock_code = ? AND e.report_date = ?
     """, (inst_id, stock_code, report_date)).fetchone()
 
@@ -1082,11 +1082,11 @@ def backtest_historical(
             e.institution_id,
             e.stock_code, e.stock_name, e.report_date, e.notice_date, e.event_type,
             e.premium_pct, e.{cfg.gain_column} AS gain,
-            ind.sw_level1 AS industry,
+            ind.tdx_l1 AS industry,
             i.type AS inst_type,
             h.holder_rank, h.hold_ratio
         FROM fact_institution_event e
-        LEFT JOIN dim_stock_industry ind ON ind.stock_code = e.stock_code
+        LEFT JOIN dim_stock_tdx_industry ind ON ind.stock_code = e.stock_code
         LEFT JOIN inst_institutions i ON i.id = e.institution_id
         LEFT JOIN inst_holdings h ON h.institution_id = e.institution_id
                AND h.stock_code = e.stock_code AND h.report_date = e.report_date
@@ -1291,11 +1291,11 @@ def cohort_recent_matured(
             e.institution_id, e.stock_code, e.stock_name,
             e.report_date, e.notice_date, e.event_type,
             e.premium_pct, e.{cfg.gain_column} AS gain,
-            ind.sw_level1 AS industry,
+            ind.tdx_l1 AS industry,
             i.type AS inst_type,
             h.holder_rank, h.hold_ratio
         FROM fact_institution_event e
-        LEFT JOIN dim_stock_industry ind ON ind.stock_code = e.stock_code
+        LEFT JOIN dim_stock_tdx_industry ind ON ind.stock_code = e.stock_code
         LEFT JOIN inst_institutions i ON i.id = e.institution_id
         LEFT JOIN inst_holdings h ON h.institution_id = e.institution_id
                AND h.stock_code = e.stock_code AND h.report_date = e.report_date
@@ -1322,9 +1322,9 @@ def cohort_recent_matured(
     # 预加载所有历史 buy 事件，供 KNN 左切查询
     all_events_rows = conn.execute(f"""
         SELECT e.institution_id, e.notice_date, e.{cfg.gain_column} AS gain,
-               ind.sw_level1 AS industry
+               ind.tdx_l1 AS industry
         FROM fact_institution_event e
-        LEFT JOIN dim_stock_industry ind ON ind.stock_code = e.stock_code
+        LEFT JOIN dim_stock_tdx_industry ind ON ind.stock_code = e.stock_code
         WHERE e.event_type IN ('new_entry','increase')
           AND e.{cfg.gain_column} IS NOT NULL
         ORDER BY e.notice_date ASC

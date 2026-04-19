@@ -145,9 +145,9 @@ def extract_training_matrix(
         SELECT
             e.institution_id, e.stock_code, e.report_date, e.notice_date,
             e.event_type, e.premium_pct, e.gain_60d,
-            i.sw_level1 AS industry
+            i.tdx_l1 AS industry
         FROM fact_institution_event e
-        LEFT JOIN dim_stock_industry i ON i.stock_code = e.stock_code
+        LEFT JOIN dim_stock_tdx_industry i ON i.stock_code = e.stock_code
         WHERE e.event_type IN ('new_entry', 'increase')
           AND e.gain_60d IS NOT NULL
           AND e.notice_date >= ?
@@ -166,13 +166,13 @@ def extract_training_matrix(
 
     # 机构×行业历史胜率预聚合（简化版：全时段胜率，严谨版应 as-of）
     inst_ind_rows = conn.execute("""
-        SELECT e.institution_id, i.sw_level1 AS industry,
+        SELECT e.institution_id, i.tdx_l1 AS industry,
                AVG(CASE WHEN e.gain_60d > 0 THEN 1.0 ELSE 0.0 END) AS hit_rate,
                COUNT(*) AS n
         FROM fact_institution_event e
-        LEFT JOIN dim_stock_industry i ON i.stock_code = e.stock_code
+        LEFT JOIN dim_stock_tdx_industry i ON i.stock_code = e.stock_code
         WHERE e.event_type IN ('new_entry', 'increase') AND e.gain_60d IS NOT NULL
-        GROUP BY e.institution_id, i.sw_level1
+        GROUP BY e.institution_id, i.tdx_l1
     """).fetchall()
     ind_hit_map = {
         (r["institution_id"], r["industry"]): float(r["hit_rate"] or 0)

@@ -91,7 +91,7 @@ def build_inst_industry_performance(conn) -> dict:
 
     count = 0
     industry_join = industry_join_clause("e.stock_code", alias="industry_dim", join_type="INNER")
-    for level_col, level_name in [("sw_level1", "L1"), ("sw_level2", "L2"), ("sw_level3", "L3")]:
+    for level_col, level_name in [("tdx_l1", "L1"), ("tdx_l2", "L2"), ("tdx_l3", "L3")]:
         rows = conn.execute(f"""
             SELECT
                 e.institution_id,
@@ -245,7 +245,7 @@ def build_holding_chains(conn) -> dict:
                 "follow_g60": ev["gain_60d"],
                 "follow_g120": ev["gain_120d"],
                 "dd30": ev["max_drawdown_30d"],
-                "l1": ev["sw_level1"], "l2": ev["sw_level2"], "l3": ev["sw_level3"],
+                "l1": ev["tdx_l1"], "l2": ev["tdx_l2"], "l3": ev["tdx_l3"],
             }
         elif et == "exit":
             if current_chain and current_chain["status"] == "open":
@@ -339,7 +339,7 @@ def build_cross_factor_analysis(conn) -> dict:
     analyses = [
         # (factor_a, factor_b, SQL)
         ("inst_type", "industry_l1", """
-            SELECT i.type as fa, industry_dim.sw_level1 as fb,
+            SELECT i.type as fa, industry_dim.tdx_l1 as fb,
                 COUNT(*) as n, AVG(e.gain_30d) as g30, AVG(e.gain_60d) as g60, AVG(e.gain_120d) as g120,
                 SUM(CASE WHEN e.gain_30d>0 THEN 1 ELSE 0 END)*100.0/COUNT(*) as wr30,
                 SUM(CASE WHEN e.gain_60d>0 THEN 1 ELSE 0 END)*100.0/MAX(SUM(CASE WHEN e.gain_60d IS NOT NULL THEN 1 ELSE 0 END),1) as wr60,
@@ -348,8 +348,8 @@ def build_cross_factor_analysis(conn) -> dict:
             JOIN inst_institutions i ON e.institution_id=i.id
             {industry_join}
             WHERE e.event_type IN ('new_entry','increase') AND e.gain_30d IS NOT NULL
-                AND industry_dim.sw_level1 IS NOT NULL
-            GROUP BY i.type, industry_dim.sw_level1 HAVING n>=10
+                AND industry_dim.tdx_l1 IS NOT NULL
+            GROUP BY i.type, industry_dim.tdx_l1 HAVING n>=10
         """.format(industry_join=industry_join_clause("e.stock_code", alias="industry_dim", join_type="INNER"))),
         ("change_magnitude", "industry_l1", """
             SELECT CASE
@@ -358,7 +358,7 @@ def build_cross_factor_analysis(conn) -> dict:
                 WHEN e.change_pct>0 THEN '小幅加仓'
                 WHEN e.change_pct IS NULL THEN '新进'
                 ELSE '其他'
-            END as fa, industry_dim.sw_level1 as fb,
+            END as fa, industry_dim.tdx_l1 as fb,
                 COUNT(*) as n, AVG(e.gain_30d) as g30, AVG(e.gain_60d) as g60, AVG(e.gain_120d) as g120,
                 SUM(CASE WHEN e.gain_30d>0 THEN 1 ELSE 0 END)*100.0/COUNT(*) as wr30,
                 SUM(CASE WHEN e.gain_60d>0 THEN 1 ELSE 0 END)*100.0/MAX(SUM(CASE WHEN e.gain_60d IS NOT NULL THEN 1 ELSE 0 END),1) as wr60,
@@ -366,8 +366,8 @@ def build_cross_factor_analysis(conn) -> dict:
             FROM fact_institution_event e
             {industry_join}
             WHERE e.event_type IN ('new_entry','increase') AND e.gain_30d IS NOT NULL
-                AND industry_dim.sw_level1 IS NOT NULL
-            GROUP BY fa, industry_dim.sw_level1 HAVING n>=10
+                AND industry_dim.tdx_l1 IS NOT NULL
+            GROUP BY fa, industry_dim.tdx_l1 HAVING n>=10
         """.format(industry_join=industry_join_clause("e.stock_code", alias="industry_dim", join_type="INNER"))),
         ("report_season", "inst_type", """
             SELECT CASE
@@ -392,7 +392,7 @@ def build_cross_factor_analysis(conn) -> dict:
                 WHEN e.premium_pct<=10 THEN '0-10%'
                 WHEN e.premium_pct<=20 THEN '10-20%'
                 ELSE '>20%'
-            END as fa, industry_dim.sw_level1 as fb,
+            END as fa, industry_dim.tdx_l1 as fb,
                 COUNT(*) as n, AVG(e.gain_30d) as g30, AVG(e.gain_60d) as g60, AVG(e.gain_120d) as g120,
                 SUM(CASE WHEN e.gain_30d>0 THEN 1 ELSE 0 END)*100.0/COUNT(*) as wr30,
                 SUM(CASE WHEN e.gain_60d>0 THEN 1 ELSE 0 END)*100.0/MAX(SUM(CASE WHEN e.gain_60d IS NOT NULL THEN 1 ELSE 0 END),1) as wr60,
@@ -400,8 +400,8 @@ def build_cross_factor_analysis(conn) -> dict:
             FROM fact_institution_event e
             {industry_join}
             WHERE e.event_type IN ('new_entry','increase') AND e.gain_30d IS NOT NULL
-                AND e.premium_pct IS NOT NULL AND industry_dim.sw_level1 IS NOT NULL
-            GROUP BY fa, industry_dim.sw_level1 HAVING n>=10
+                AND e.premium_pct IS NOT NULL AND industry_dim.tdx_l1 IS NOT NULL
+            GROUP BY fa, industry_dim.tdx_l1 HAVING n>=10
         """.format(industry_join=industry_join_clause("e.stock_code", alias="industry_dim", join_type="INNER"))),
         ("consensus", "premium_bucket", """
             WITH stock_inst AS (

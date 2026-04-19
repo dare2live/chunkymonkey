@@ -17,8 +17,6 @@ def ensure_tables(conn):
         CREATE TABLE IF NOT EXISTS fact_stock_industry_context (
             snapshot_date             TEXT NOT NULL,
             stock_code                TEXT NOT NULL,
-            sw_level1                 TEXT,
-            sw_level2                 TEXT,
             tdx_l1                    TEXT,
             tdx_l2                    TEXT,
             tdx_l1_name               TEXT,
@@ -54,8 +52,6 @@ def ensure_tables(conn):
         CREATE TABLE IF NOT EXISTS dim_stock_industry_context_latest (
             stock_code                TEXT PRIMARY KEY,
             snapshot_date             TEXT,
-            sw_level1                 TEXT,
-            sw_level2                 TEXT,
             tdx_l1                    TEXT,
             tdx_l2                    TEXT,
             tdx_l1_name               TEXT,
@@ -102,6 +98,13 @@ def ensure_tables(conn):
             conn.execute(f"ALTER TABLE dim_stock_industry_context_latest ADD COLUMN {col}")
         except Exception:
             pass
+    # Phase 2 迁移: 退役 sw_level1/2 列
+    for tbl in ("fact_stock_industry_context", "dim_stock_industry_context_latest"):
+        for col in ("sw_level1", "sw_level2"):
+            try:
+                conn.execute(f"ALTER TABLE {tbl} DROP COLUMN {col}")
+            except Exception:
+                pass
     conn.commit()
 
 
@@ -207,17 +210,19 @@ def build_stock_industry_context(conn, snapshot_date: Optional[str] = None) -> i
         dual_by_stock = {}
 
     stocks = conn.execute("""
-        SELECT stock_code, sw_level1, sw_level2
-        FROM dim_stock_industry
+        SELECT stock_code, tdx_l1, tdx_l2, tdx_l1_name, tdx_l2_name
+        FROM dim_stock_tdx_industry
     """).fetchall()
 
     conn.execute("DELETE FROM fact_stock_industry_context WHERE snapshot_date = ?", (snapshot_date,))
     inserted = 0
     for row in stocks:
         stock_code = row["stock_code"]
-        sw_level1 = row["sw_level1"]
-        sw_level2 = row["sw_level2"]
-        sector = sector_by_name.get(sw_level1 or "") or {}
+        tdx_l1 = row["tdx_l1"]
+        tdx_l2 = row["tdx_l2"]
+        tdx_l1_name = row["tdx_l1_name"]
+        tdx_l2_name = row["tdx_l2_name"]
+        sector = sector_by_name.get(tdx_l1_name or "") or {}
         dual = dual_by_stock.get(stock_code) or {}
         tailwind_score, stage_adjust = _score_tailwind(
             sector.get("momentum_score"),
@@ -232,7 +237,8 @@ def build_stock_industry_context(conn, snapshot_date: Optional[str] = None) -> i
 
         conn.execute("""
             INSERT OR REPLACE INTO fact_stock_industry_context
-            (snapshot_date, stock_code, sw_level1, sw_level2, sector_momentum_score,
+            (snapshot_date, stock_code, tdx_l1, tdx_l2, tdx_l1_name, tdx_l2_name,
+             sector_momentum_score,
              sector_trend_state, sector_macd_cross, sector_return_1m, sector_return_3m,
              sector_return_6m, sector_return_12m, sector_excess_1m, sector_excess_3m,
              sector_excess_6m, sector_excess_12m, sector_rotation_score,
@@ -240,12 +246,14 @@ def build_stock_industry_context(conn, snapshot_date: Optional[str] = None) -> i
              sector_rotation_bucket, sector_rotation_blacklisted, dual_confirm_total,
              dual_confirm_recent_180d, dual_confirm_new_entry, dual_confirm_increase,
              industry_tailwind_score, stage_industry_adjust_raw, updated_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """, (
             snapshot_date,
             stock_code,
-            sw_level1,
-            sw_level2,
+            tdx_l1,
+            tdx_l2,
+            tdx_l1_name,
+            tdx_l2_name,
             sector.get("momentum_score"),
             sector.get("trend_state"),
             int(sector.get("macd_cross") or 0),
@@ -276,7 +284,8 @@ def build_stock_industry_context(conn, snapshot_date: Optional[str] = None) -> i
     conn.execute("DELETE FROM dim_stock_industry_context_latest")
     conn.execute("""
         INSERT INTO dim_stock_industry_context_latest (
-            stock_code, snapshot_date, sw_level1, sw_level2, sector_momentum_score,
+            stock_code, snapshot_date, tdx_l1, tdx_l2, tdx_l1_name, tdx_l2_name,
+            sector_momentum_score,
             sector_trend_state, sector_macd_cross, sector_return_1m, sector_return_3m,
             sector_return_6m, sector_return_12m, sector_excess_1m, sector_excess_3m,
             sector_excess_6m, sector_excess_12m, sector_rotation_score,
@@ -285,7 +294,8 @@ def build_stock_industry_context(conn, snapshot_date: Optional[str] = None) -> i
             dual_confirm_recent_180d, dual_confirm_new_entry, dual_confirm_increase,
             industry_tailwind_score, stage_industry_adjust_raw, updated_at
         )
-        SELECT stock_code, snapshot_date, sw_level1, sw_level2, sector_momentum_score,
+        SELECT stock_code, snapshot_date, tdx_l1, tdx_l2, tdx_l1_name, tdx_l2_name,
+               sector_momentum_score,
                sector_trend_state, sector_macd_cross, sector_return_1m, sector_return_3m,
                sector_return_6m, sector_return_12m, sector_excess_1m, sector_excess_3m,
                sector_excess_6m, sector_excess_12m, sector_rotation_score,

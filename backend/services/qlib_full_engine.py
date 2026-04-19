@@ -45,7 +45,7 @@ def _safe_round(value, digits: int = 4):
         return None
 
 
-_SW_LEVEL1_TO_ETF_CATEGORY = [
+_TDX_L1_TO_ETF_CATEGORY = [
     (("医药", "医疗", "生物"), "医疗健康"),
     (("半导体", "芯片"), "半导体"),
     (("电力设备", "新能源", "光伏", "风电", "电池"), "新能源"),
@@ -62,13 +62,13 @@ _SW_LEVEL1_TO_ETF_CATEGORY = [
 ]
 
 
-def _map_sw_level1_to_etf_category(sw_level1: Optional[str]) -> Optional[str]:
-    if not sw_level1:
+def _map_tdx_l1_to_etf_category(tdx_l1: Optional[str]) -> Optional[str]:
+    if not tdx_l1:
         return None
-    text = str(sw_level1).strip()
+    text = str(tdx_l1).strip()
     if not text:
         return None
-    for aliases, category in _SW_LEVEL1_TO_ETF_CATEGORY:
+    for aliases, category in _TDX_L1_TO_ETF_CATEGORY:
         if any(alias in text for alias in aliases):
             return category
     return None
@@ -1111,7 +1111,7 @@ def get_qlib_etf_consensus(conn, model_id: Optional[str] = None, topk: int = 50)
     rows = conn.execute(
         """
         SELECT p.stock_code, p.stock_name, p.qlib_score, p.qlib_rank, p.qlib_percentile,
-               ctx.sw_level1
+               ctx.tdx_l1
         FROM qlib_predictions p
         LEFT JOIN dim_stock_industry_context_latest ctx ON ctx.stock_code = p.stock_code
         WHERE p.model_id = ?
@@ -1134,7 +1134,7 @@ def get_qlib_etf_consensus(conn, model_id: Optional[str] = None, topk: int = 50)
     mapped_stock_count = 0
     for row in rows:
         item = dict(row)
-        category = _map_sw_level1_to_etf_category(item.get("sw_level1"))
+        category = _map_tdx_l1_to_etf_category(item.get("tdx_l1"))
         if not category:
             continue
         mapped_stock_count += 1

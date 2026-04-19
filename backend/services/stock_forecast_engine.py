@@ -29,8 +29,8 @@ def ensure_tables(conn):
             predict_date                     TEXT,
             stock_code                       TEXT NOT NULL,
             stock_name                       TEXT,
-            sw_level1                        TEXT,
-            sw_level2                        TEXT,
+            tdx_l1                           TEXT,
+            tdx_l2                           TEXT,
             qlib_score                       REAL,
             qlib_rank                        INTEGER,
             qlib_percentile                  REAL,
@@ -56,8 +56,8 @@ def ensure_tables(conn):
             model_id                         TEXT,
             predict_date                     TEXT,
             stock_name                       TEXT,
-            sw_level1                        TEXT,
-            sw_level2                        TEXT,
+            tdx_l1                           TEXT,
+            tdx_l2                           TEXT,
             qlib_score                       REAL,
             qlib_rank                        INTEGER,
             qlib_percentile                  REAL,
@@ -99,10 +99,10 @@ def build_stock_forecast_features(conn, snapshot_date: Optional[str] = None) -> 
     pred_rows = conn.execute("""
         SELECT p.model_id, p.stock_code, p.stock_name, p.predict_date,
                p.qlib_score, p.qlib_rank, p.qlib_percentile,
-               i.sw_level1, i.sw_level2,
+               i.tdx_l1, i.tdx_l2,
                s.volatility_20d, s.max_drawdown_60d
         FROM qlib_predictions p
-        LEFT JOIN dim_stock_industry i ON i.stock_code = p.stock_code
+        LEFT JOIN dim_stock_tdx_industry i ON i.stock_code = p.stock_code
         LEFT JOIN dim_stock_stage_latest s ON s.stock_code = p.stock_code
         WHERE p.model_id = ?
     """, (model_id,)).fetchall()
@@ -115,10 +115,10 @@ def build_stock_forecast_features(conn, snapshot_date: Optional[str] = None) -> 
     rows = [dict(row) for row in pred_rows]
     by_group = {("all", "all"): list(rows)}
     for row in rows:
-        if row.get("sw_level2"):
-            by_group.setdefault(("l2", row["sw_level2"]), []).append(row)
-        if row.get("sw_level1"):
-            by_group.setdefault(("l1", row["sw_level1"]), []).append(row)
+        if row.get("tdx_l2"):
+            by_group.setdefault(("l2", row["tdx_l2"]), []).append(row)
+        if row.get("tdx_l1"):
+            by_group.setdefault(("l1", row["tdx_l1"]), []).append(row)
 
     group_sizes = {key: len(group_rows) for key, group_rows in by_group.items()}
     group_rank_map = {}
@@ -136,14 +136,14 @@ def build_stock_forecast_features(conn, snapshot_date: Optional[str] = None) -> 
     inserted = 0
     for idx, row in enumerate(rows):
         stock_code = row["stock_code"]
-        sw2 = row.get("sw_level2")
-        sw1 = row.get("sw_level1")
-        if sw2 and group_sizes.get(("l2", sw2), 0) >= 15:
-            industry_pct = group_rank_map.get(("l2", sw2, stock_code))
-            rel_group = f"SW2:{sw2}"
-        elif sw1 and group_sizes.get(("l1", sw1), 0) >= 20:
-            industry_pct = group_rank_map.get(("l1", sw1, stock_code))
-            rel_group = f"SW1:{sw1}"
+        tdx2 = row.get("tdx_l2")
+        tdx1 = row.get("tdx_l1")
+        if tdx2 and group_sizes.get(("l2", tdx2), 0) >= 15:
+            industry_pct = group_rank_map.get(("l2", tdx2, stock_code))
+            rel_group = f"TDX2:{tdx2}"
+        elif tdx1 and group_sizes.get(("l1", tdx1), 0) >= 20:
+            industry_pct = group_rank_map.get(("l1", tdx1, stock_code))
+            rel_group = f"TDX1:{tdx1}"
         else:
             industry_pct = group_rank_map.get(("all", "all", stock_code))
             rel_group = "ALL"
@@ -178,7 +178,7 @@ def build_stock_forecast_features(conn, snapshot_date: Optional[str] = None) -> 
         conn.execute("""
             INSERT OR REPLACE INTO fact_stock_forecast_features (
                 snapshot_date, model_id, predict_date, stock_code, stock_name,
-                sw_level1, sw_level2, qlib_score, qlib_rank, qlib_percentile,
+                tdx_l1, tdx_l2, qlib_score, qlib_rank, qlib_percentile,
                 industry_qlib_percentile, industry_relative_group,
                 volatility_20d, max_drawdown_60d, volatility_rank, drawdown_rank,
                 forecast_20d_score, forecast_60d_excess_score,
@@ -191,8 +191,8 @@ def build_stock_forecast_features(conn, snapshot_date: Optional[str] = None) -> 
             row.get("predict_date"),
             stock_code,
             row.get("stock_name"),
-            sw1,
-            sw2,
+            tdx1,
+            tdx2,
             row.get("qlib_score"),
             row.get("qlib_rank"),
             qlib_pct,
@@ -215,14 +215,14 @@ def build_stock_forecast_features(conn, snapshot_date: Optional[str] = None) -> 
     conn.execute("""
         INSERT INTO dim_stock_forecast_latest (
             stock_code, snapshot_date, model_id, predict_date, stock_name,
-            sw_level1, sw_level2, qlib_score, qlib_rank, qlib_percentile,
+            tdx_l1, tdx_l2, qlib_score, qlib_rank, qlib_percentile,
             industry_qlib_percentile, industry_relative_group,
             volatility_20d, max_drawdown_60d, volatility_rank, drawdown_rank,
             forecast_20d_score, forecast_60d_excess_score,
             forecast_risk_adjusted_score, forecast_score_v1, forecast_reason, updated_at
         )
         SELECT stock_code, snapshot_date, model_id, predict_date, stock_name,
-               sw_level1, sw_level2, qlib_score, qlib_rank, qlib_percentile,
+               tdx_l1, tdx_l2, qlib_score, qlib_rank, qlib_percentile,
                industry_qlib_percentile, industry_relative_group,
                volatility_20d, max_drawdown_60d, volatility_rank, drawdown_rank,
                forecast_20d_score, forecast_60d_excess_score,

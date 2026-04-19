@@ -199,10 +199,10 @@ def test_old_reference_cleanup():
         ("INTO fact_event_return", "write to fact_event_return"),
         ("FROM stock_kline", "direct read from stock_kline"),
         ("INTO stock_kline", "write to stock_kline"),
-        ("dim_stock_industry", "direct access to dim_stock_industry"),
+        ("dim_stock_industry\\b", "direct access to retired dim_stock_industry (sw)"),
     ]:
         result = subprocess.run(
-            ["grep", "-rn", pattern, str(backend_dir),
+            ["grep", "-rnE", pattern, str(backend_dir),
              "--include=*.py"],
             capture_output=True, text=True
         )
@@ -219,7 +219,8 @@ def test_old_reference_cleanup():
                 code_part = ":".join(line.split(":")[2:]).strip()
                 if code_part.startswith("#") or "DEPRECATED" in code_part or "deprecated" in code_part:
                     continue
-                if "INSERT OR REPLACE INTO dim_stock_industry" in code_part:
+                # 过滤 dim_stock_industry_context_latest / dim_stock_tdx_industry (新表，保留)
+                if "dim_stock_industry_context_latest" in code_part or "dim_stock_tdx_industry" in code_part:
                     continue
                 # 检查是否是 try/except 保护的过渡期代码
                 if "try:" in code_part or "except" in code_part:

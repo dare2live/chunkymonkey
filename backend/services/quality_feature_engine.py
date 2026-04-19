@@ -67,8 +67,8 @@ def ensure_tables(conn):
             stock_code                 TEXT NOT NULL,
             latest_financial_report_date TEXT,
             latest_indicator_report_date TEXT,
-            sw_level1                  TEXT,
-            sw_level2                  TEXT,
+            tdx_l1                     TEXT,
+            tdx_l2                     TEXT,
             roe                        REAL,
             roa_ak                     REAL,
             gross_margin               REAL,
@@ -118,8 +118,8 @@ def ensure_tables(conn):
             snapshot_date              TEXT,
             latest_financial_report_date TEXT,
             latest_indicator_report_date TEXT,
-            sw_level1                  TEXT,
-            sw_level2                  TEXT,
+            tdx_l1                     TEXT,
+            tdx_l2                     TEXT,
             roe                        REAL,
             roa_ak                     REAL,
             gross_margin               REAL,
@@ -189,18 +189,18 @@ def _load_financial_groups(conn):
     rows = conn.execute("""
         SELECT f.stock_code, f.latest_report_date, f.roe, f.debt_ratio, f.current_ratio,
                f.gross_margin, f.ocf_to_profit, f.contract_to_revenue,
-               i.sw_level1, i.sw_level2
+               i.tdx_l1, i.tdx_l2
         FROM dim_financial_latest f
-        LEFT JOIN dim_stock_industry i ON i.stock_code = f.stock_code
+        LEFT JOIN dim_stock_tdx_industry i ON i.stock_code = f.stock_code
     """).fetchall()
     for row in rows:
         d = dict(row)
         financial_by_stock[d["stock_code"]] = d
         fin_groups[("all", "all")].append(d)
-        if d.get("sw_level2"):
-            fin_groups.setdefault(("l2", d["sw_level2"]), []).append(d)
-        if d.get("sw_level1"):
-            fin_groups.setdefault(("l1", d["sw_level1"]), []).append(d)
+        if d.get("tdx_l2"):
+            fin_groups.setdefault(("l2", d["tdx_l2"]), []).append(d)
+        if d.get("tdx_l1"):
+            fin_groups.setdefault(("l1", d["tdx_l1"]), []).append(d)
 
     fin_metrics = {
         "roe": False,
@@ -232,18 +232,18 @@ def _load_indicator_groups(conn):
         SELECT f.stock_code, f.latest_report_date, f.roe_ak, f.roa_ak, f.gross_margin_ak,
                f.net_margin_ak, f.current_ratio_ak, f.quick_ratio_ak, f.debt_ratio_ak,
                f.asset_turnover_ak, f.inventory_turnover_ak, f.receivables_turnover_ak,
-               f.revenue_growth_yoy_ak, f.net_profit_growth_yoy_ak, i.sw_level1, i.sw_level2
+               f.revenue_growth_yoy_ak, f.net_profit_growth_yoy_ak, i.tdx_l1, i.tdx_l2
         FROM dim_financial_indicator_latest f
-        LEFT JOIN dim_stock_industry i ON i.stock_code = f.stock_code
+        LEFT JOIN dim_stock_tdx_industry i ON i.stock_code = f.stock_code
     """).fetchall()
     for row in rows:
         d = dict(row)
         indicator_by_stock[d["stock_code"]] = d
         indicator_groups[("all", "all")].append(d)
-        if d.get("sw_level2"):
-            indicator_groups.setdefault(("l2", d["sw_level2"]), []).append(d)
-        if d.get("sw_level1"):
-            indicator_groups.setdefault(("l1", d["sw_level1"]), []).append(d)
+        if d.get("tdx_l2"):
+            indicator_groups.setdefault(("l2", d["tdx_l2"]), []).append(d)
+        if d.get("tdx_l1"):
+            indicator_groups.setdefault(("l1", d["tdx_l1"]), []).append(d)
     indicator_metrics = {
         "roa_ak": False,
         "asset_turnover_ak": False,
@@ -265,13 +265,13 @@ def _load_indicator_groups(conn):
     return indicator_by_stock, indicator_pct_map, indicator_group_sizes
 
 
-def _pick_rank(stock_code: str, metric: str, sw_level2: Optional[str], sw_level1: Optional[str], pct_map: dict, group_sizes: dict) -> Optional[float]:
-    if sw_level2 and group_sizes.get(("l2", sw_level2), 0) >= 15:
-        rank = pct_map.get(("l2", sw_level2, metric, stock_code))
+def _pick_rank(stock_code: str, metric: str, tdx_l2: Optional[str], tdx_l1: Optional[str], pct_map: dict, group_sizes: dict) -> Optional[float]:
+    if tdx_l2 and group_sizes.get(("l2", tdx_l2), 0) >= 15:
+        rank = pct_map.get(("l2", tdx_l2, metric, stock_code))
         if rank is not None:
             return rank
-    if sw_level1 and group_sizes.get(("l1", sw_level1), 0) >= 20:
-        rank = pct_map.get(("l1", sw_level1, metric, stock_code))
+    if tdx_l1 and group_sizes.get(("l1", tdx_l1), 0) >= 20:
+        rank = pct_map.get(("l1", tdx_l1, metric, stock_code))
         if rank is not None:
             return rank
     return pct_map.get(("all", "all", metric, stock_code))
@@ -314,12 +314,12 @@ def build_quality_features(conn, snapshot_date: Optional[str] = None) -> int:
         archetype_by_stock = {}
 
     stock_rows = conn.execute("""
-        SELECT stock_code, sw_level1, sw_level2
-        FROM dim_stock_industry
+        SELECT stock_code, tdx_l1, tdx_l2
+        FROM dim_stock_tdx_industry
         UNION
-        SELECT stock_code, NULL AS sw_level1, NULL AS sw_level2
+        SELECT stock_code, NULL AS tdx_l1, NULL AS tdx_l2
         FROM dim_financial_latest
-        WHERE stock_code NOT IN (SELECT stock_code FROM dim_stock_industry)
+        WHERE stock_code NOT IN (SELECT stock_code FROM dim_stock_tdx_industry)
     """).fetchall()
     stock_meta = {row["stock_code"]: dict(row) for row in stock_rows}
     all_codes = sorted(set(stock_meta) | set(financial_by_stock) | set(indicator_by_stock) | set(capital_by_stock))
@@ -328,8 +328,8 @@ def build_quality_features(conn, snapshot_date: Optional[str] = None) -> int:
     inserted = 0
     for sc in all_codes:
         meta = stock_meta.get(sc) or {}
-        sw_level1 = meta.get("sw_level1")
-        sw_level2 = meta.get("sw_level2")
+        tdx_l1 = meta.get("tdx_l1")
+        tdx_l2 = meta.get("tdx_l2")
         fin = financial_by_stock.get(sc) or {}
         indicator = indicator_by_stock.get(sc) or {}
         capital = capital_by_stock.get(sc) or {}
@@ -367,16 +367,16 @@ def build_quality_features(conn, snapshot_date: Optional[str] = None) -> int:
         inventory_turnover_ak = _safe_float(indicator.get("inventory_turnover_ak"))
         receivables_turnover_ak = _safe_float(indicator.get("receivables_turnover_ak"))
 
-        roe_rank = _pick_rank(sc, "roe", sw_level2, sw_level1, fin_pct_map, fin_group_sizes)
-        gross_margin_rank = _pick_rank(sc, "gross_margin", sw_level2, sw_level1, fin_pct_map, fin_group_sizes)
-        ocf_rank = _pick_rank(sc, "ocf_to_profit", sw_level2, sw_level1, fin_pct_map, fin_group_sizes)
-        debt_rank = _pick_rank(sc, "debt_ratio", sw_level2, sw_level1, fin_pct_map, fin_group_sizes)
-        current_ratio_rank = _pick_rank(sc, "current_ratio", sw_level2, sw_level1, fin_pct_map, fin_group_sizes)
-        contract_rank = _pick_rank(sc, "contract_to_revenue", sw_level2, sw_level1, fin_pct_map, fin_group_sizes)
-        roa_rank = _pick_rank(sc, "roa_ak", sw_level2, sw_level1, indicator_pct_map, indicator_group_sizes)
-        asset_turnover_rank = _pick_rank(sc, "asset_turnover_ak", sw_level2, sw_level1, indicator_pct_map, indicator_group_sizes)
-        inventory_turnover_rank = _pick_rank(sc, "inventory_turnover_ak", sw_level2, sw_level1, indicator_pct_map, indicator_group_sizes)
-        receivables_turnover_rank = _pick_rank(sc, "receivables_turnover_ak", sw_level2, sw_level1, indicator_pct_map, indicator_group_sizes)
+        roe_rank = _pick_rank(sc, "roe", tdx_l2, tdx_l1, fin_pct_map, fin_group_sizes)
+        gross_margin_rank = _pick_rank(sc, "gross_margin", tdx_l2, tdx_l1, fin_pct_map, fin_group_sizes)
+        ocf_rank = _pick_rank(sc, "ocf_to_profit", tdx_l2, tdx_l1, fin_pct_map, fin_group_sizes)
+        debt_rank = _pick_rank(sc, "debt_ratio", tdx_l2, tdx_l1, fin_pct_map, fin_group_sizes)
+        current_ratio_rank = _pick_rank(sc, "current_ratio", tdx_l2, tdx_l1, fin_pct_map, fin_group_sizes)
+        contract_rank = _pick_rank(sc, "contract_to_revenue", tdx_l2, tdx_l1, fin_pct_map, fin_group_sizes)
+        roa_rank = _pick_rank(sc, "roa_ak", tdx_l2, tdx_l1, indicator_pct_map, indicator_group_sizes)
+        asset_turnover_rank = _pick_rank(sc, "asset_turnover_ak", tdx_l2, tdx_l1, indicator_pct_map, indicator_group_sizes)
+        inventory_turnover_rank = _pick_rank(sc, "inventory_turnover_ak", tdx_l2, tdx_l1, indicator_pct_map, indicator_group_sizes)
+        receivables_turnover_rank = _pick_rank(sc, "receivables_turnover_ak", tdx_l2, tdx_l1, indicator_pct_map, indicator_group_sizes)
 
         quality_profit_raw = (
             _rank_score(roe_rank, 18)
@@ -479,7 +479,7 @@ def build_quality_features(conn, snapshot_date: Optional[str] = None) -> int:
         conn.execute("""
             INSERT OR REPLACE INTO fact_stock_quality_features
             (snapshot_date, stock_code, latest_financial_report_date, latest_indicator_report_date,
-             sw_level1, sw_level2, roe, roa_ak, gross_margin, ocf_to_profit, debt_ratio,
+             tdx_l1, tdx_l2, roe, roa_ak, gross_margin, ocf_to_profit, debt_ratio,
              current_ratio, contract_to_revenue, revenue_growth_yoy_ak, net_profit_growth_yoy_ak,
              dividend_financing_ratio, repurchase_count_3y, active_repurchase_count,
              future_unlock_ratio_180d, holder_count_change_pct, total_shares_growth_3y,
@@ -494,7 +494,7 @@ def build_quality_features(conn, snapshot_date: Optional[str] = None) -> int:
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """, (
             snapshot_date, sc, fin.get("latest_report_date"), indicator.get("latest_report_date"),
-            sw_level1, sw_level2, roe, roa_ak, gross_margin, ocf_to_profit, debt_ratio,
+            tdx_l1, tdx_l2, roe, roa_ak, gross_margin, ocf_to_profit, debt_ratio,
             current_ratio, contract_to_revenue, revenue_growth_yoy_ak, net_profit_growth_yoy_ak,
             dividend_financing_ratio, repurchase_count_3y, active_repurchase_count,
             future_unlock_ratio_180d, holder_count_change_pct, total_shares_growth_3y,
@@ -513,7 +513,7 @@ def build_quality_features(conn, snapshot_date: Optional[str] = None) -> int:
     conn.execute("""
         INSERT INTO dim_stock_quality_latest
         (stock_code, snapshot_date, latest_financial_report_date, latest_indicator_report_date,
-         sw_level1, sw_level2, roe, roa_ak, gross_margin, ocf_to_profit, debt_ratio,
+         tdx_l1, tdx_l2, roe, roa_ak, gross_margin, ocf_to_profit, debt_ratio,
          current_ratio, contract_to_revenue, revenue_growth_yoy_ak, net_profit_growth_yoy_ak,
          dividend_financing_ratio, repurchase_count_3y, active_repurchase_count,
          future_unlock_ratio_180d, holder_count_change_pct, total_shares_growth_3y,
@@ -526,7 +526,7 @@ def build_quality_features(conn, snapshot_date: Optional[str] = None) -> int:
          quality_freshness_raw, quality_capital_raw, quality_efficiency_raw,
          quality_growth_raw, quality_score_v1, updated_at)
         SELECT stock_code, snapshot_date, latest_financial_report_date, latest_indicator_report_date,
-               sw_level1, sw_level2, roe, roa_ak, gross_margin, ocf_to_profit, debt_ratio,
+               tdx_l1, tdx_l2, roe, roa_ak, gross_margin, ocf_to_profit, debt_ratio,
                current_ratio, contract_to_revenue, revenue_growth_yoy_ak, net_profit_growth_yoy_ak,
                dividend_financing_ratio, repurchase_count_3y, active_repurchase_count,
                future_unlock_ratio_180d, holder_count_change_pct, total_shares_growth_3y,

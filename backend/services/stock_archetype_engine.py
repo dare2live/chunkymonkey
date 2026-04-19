@@ -18,7 +18,7 @@ from services.utils import safe_float as _safe_float, clamp as _clamp
 
 logger = logging.getLogger("cm-api")
 
-# ─── 周期型行业集合（申万一级）────────────────────────────────────────
+# ─── 周期型行业集合（通达信一级中文名）────────────────────────────────
 CYCLICAL_INDUSTRIES = {
     "采掘", "有色金属", "钢铁", "化工",
     "建材", "建筑装饰", "汽车", "交通运输", "房地产",
@@ -132,8 +132,8 @@ def ensure_tables(conn):
             snapshot_date               TEXT NOT NULL,
             stock_code                  TEXT NOT NULL,
             latest_report_date          TEXT,
-            sw_level1                   TEXT,
-            sw_level2                   TEXT,
+            tdx_l1                      TEXT,
+            tdx_l2                      TEXT,
             financial_history_rows      INTEGER DEFAULT 0,
             yoy_history_rows            INTEGER DEFAULT 0,
             high_quality_hits           INTEGER DEFAULT 0,
@@ -168,8 +168,8 @@ def ensure_tables(conn):
             stock_code                  TEXT PRIMARY KEY,
             snapshot_date               TEXT,
             latest_report_date          TEXT,
-            sw_level1                   TEXT,
-            sw_level2                   TEXT,
+            tdx_l1                      TEXT,
+            tdx_l2                      TEXT,
             financial_history_rows      INTEGER DEFAULT 0,
             yoy_history_rows            INTEGER DEFAULT 0,
             high_quality_hits           INTEGER DEFAULT 0,
@@ -238,7 +238,7 @@ def classify_lynch_type(data: dict) -> tuple:
     latest_yoy  = data.get("latest_profit_yoy") or 0
     pb          = data.get("pb_mrq")
     ocf_avg     = data.get("ocf_quality_4q_avg") or 0
-    sw1         = data.get("sw_level1") or ""
+    tdx1        = data.get("tdx_l1") or ""
     rev_std     = data.get("revenue_yoy_std_4q") or 0
     rev_avg     = data.get("revenue_yoy_median_4q") or 0
     profit_avg  = data.get("profit_yoy_median_4q") or 0
@@ -255,12 +255,12 @@ def classify_lynch_type(data: dict) -> tuple:
         return ("隐蔽资产型", conf, f"市净率 {pb:.2f} 低于 0.8 且现金流健康")
 
     # 3. 周期型（行业标签优先；但若营收极稳定则降级为增长类）
-    is_cyc_industry = sw1 in CYCLICAL_INDUSTRIES
+    is_cyc_industry = tdx1 in CYCLICAL_INDUSTRIES
     is_volatile     = rev_std > 0.25
     very_stable     = rev_std < 0.10          # 营收极稳定则不算周期
     if (is_cyc_industry or is_volatile) and not very_stable:
         conf = 70 if is_cyc_industry else 55
-        reason = f"申万一级{sw1}属周期行业" if is_cyc_industry else f"营收增速标准差 {rev_std*100:.0f}% 波动显著"
+        reason = f"通达信一级{tdx1}属周期行业" if is_cyc_industry else f"营收增速标准差 {rev_std*100:.0f}% 波动显著"
         return ("周期型", conf, reason)
 
     # 4. 基于增速分类
@@ -582,13 +582,14 @@ def build_stock_archetypes(conn, snapshot_date: Optional[str] = None) -> int:
     gm_data      = _load_gross_margin_data(conn)
 
     # ── 加载财务历史（增加 net_assets, operating_profit） ──
+    # 注: 用通达信一级中文名作为 tdx_l1 值,与 CYCLICAL_INDUSTRIES (中文) 保持可比
     raw_rows = conn.execute("""
         SELECT r.stock_code, r.report_date, r.revenue, r.net_profit,
                r.operating_cashflow, r.operating_profit, r.inventory,
                r.total_shares, r.net_assets, r.holder_count, r.eps,
-               i.sw_level1, i.sw_level2
+               i.tdx_l1_name AS tdx_l1, i.tdx_l2_name AS tdx_l2
         FROM raw_gpcw_financial r
-        LEFT JOIN dim_stock_industry i ON i.stock_code = r.stock_code
+        LEFT JOIN dim_stock_tdx_industry i ON i.stock_code = r.stock_code
         ORDER BY r.stock_code, r.report_date DESC
     """).fetchall()
 
@@ -629,8 +630,8 @@ def build_stock_archetypes(conn, snapshot_date: Optional[str] = None) -> int:
         rows = sorted(rows, key=lambda item: item["report_date"], reverse=True)
         rows_by_date = {row["report_date"]: row for row in rows}
         drows = sorted(derived_by_stock.get(stock_code, []), key=lambda item: item["report_date"], reverse=True)
-        sw_level1 = rows[0].get("sw_level1")
-        sw_level2 = rows[0].get("sw_level2")
+        tdx_l1 = rows[0].get("tdx_l1")
+        tdx_l2 = rows[0].get("tdx_l2")
         latest_report_date = rows[0].get("report_date")
 
         latest_8  = rows[:8]
@@ -667,7 +668,7 @@ def build_stock_archetypes(conn, snapshot_date: Optional[str] = None) -> int:
         net_profit_sign_switch_8q  = _sign_switch_count([_safe_float(r.get("net_profit")) for r in latest_8])
 
         inventory_revenue_vol_4q = None
-        if sw_level1 not in {"银行", "非银金融"}:
+        if tdx_l1 not in {"银行", "非银金融"}:
             inv_rev_series = []
             for row in rows[:4]:
                 ratio = _safe_div(_safe_float(row.get("inventory")), _safe_float(row.get("revenue")))
@@ -825,7 +826,7 @@ def build_stock_archetypes(conn, snapshot_date: Optional[str] = None) -> int:
             "latest_profit_yoy":        latest_profit_yoy,
             "pb_mrq":                   pb_mrq,
             "ocf_quality_4q_avg":       ocf_quality_4q_avg,
-            "sw_level1":                sw_level1,
+            "tdx_l1":                   tdx_l1,
             "revenue_yoy_std_4q":       revenue_yoy_std_4q,
             "revenue_yoy_median_4q":    revenue_yoy_median_4q,
             "profit_yoy_median_4q":     profit_yoy_median_4q,
@@ -847,7 +848,7 @@ def build_stock_archetypes(conn, snapshot_date: Optional[str] = None) -> int:
         # ── 写入数据库 ──
         conn.execute("""
             INSERT OR REPLACE INTO fact_stock_archetype (
-                snapshot_date, stock_code, latest_report_date, sw_level1, sw_level2,
+                snapshot_date, stock_code, latest_report_date, tdx_l1, tdx_l2,
                 financial_history_rows, yoy_history_rows, high_quality_hits, growth_hits,
                 cycle_flags, net_profit_positive_8q, operating_cashflow_positive_8q,
                 revenue_yoy_positive_4q, profit_yoy_positive_4q, eps_yoy_positive_4q,
@@ -869,7 +870,7 @@ def build_stock_archetypes(conn, snapshot_date: Optional[str] = None) -> int:
                 ?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?
             )
         """, (
-            snapshot_date, stock_code, latest_report_date, sw_level1, sw_level2,
+            snapshot_date, stock_code, latest_report_date, tdx_l1, tdx_l2,
             len(rows),
             max(len(revenue_yoy_series), len(profit_yoy_series), len(eps_yoy_series)),
             high_quality_hits, growth_hits, cycle_flags,
@@ -895,7 +896,7 @@ def build_stock_archetypes(conn, snapshot_date: Optional[str] = None) -> int:
     conn.execute("DELETE FROM dim_stock_archetype_latest")
     conn.execute("""
         INSERT INTO dim_stock_archetype_latest
-        SELECT stock_code, snapshot_date, latest_report_date, sw_level1, sw_level2,
+        SELECT stock_code, snapshot_date, latest_report_date, tdx_l1, tdx_l2,
                financial_history_rows, yoy_history_rows, high_quality_hits, growth_hits,
                cycle_flags, net_profit_positive_8q, operating_cashflow_positive_8q,
                revenue_yoy_positive_4q, profit_yoy_positive_4q, eps_yoy_positive_4q,

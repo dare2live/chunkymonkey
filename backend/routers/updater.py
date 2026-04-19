@@ -8,7 +8,7 @@
     4. sync_financial           — 同步财务数据
     5. gen_events               — 生成事件
     6. calc_returns             — 计算收益
-    7. sync_industry            — 申万行业
+    7. sync_industry            — 通达信行业
     8. calc_financial_derived   — 计算财务指标
     9. build_current_rel        — 构建当前关系
  10. build_profiles           — 机构画像
@@ -98,7 +98,7 @@ STEPS = [
     {"id": "sync_financial",        "name": "同步财务数据",    "group": "data", "order": 4},
     {"id": "gen_events",            "name": "生成事件",        "group": "calc", "order": 5},
     {"id": "calc_returns",          "name": "计算收益",        "group": "calc", "order": 6},
-    {"id": "sync_industry",         "name": "申万行业",        "group": "data", "order": 7},
+    {"id": "sync_industry",         "name": "通达信行业",      "group": "data", "order": 7},
     {"id": "calc_financial_derived","name": "计算财务指标",    "group": "calc", "order": 8},
     {"id": "build_current_rel",     "name": "构建当前关系",    "group": "mart", "order": 9},
     {"id": "build_profiles",        "name": "机构画像",        "group": "mart", "order": 10},
@@ -639,10 +639,21 @@ async def _compute_connectivity() -> dict:
             }
 
     async def _check_industry():
-        from services.akshare_client import test_industry_availability
+        """通达信行业源连通性探测：尝试从 tdxhy.cfg 服务器拉取首包。"""
+        from services.tdx_industry_client import _fetch_tdxhy_bytes
+
+        def _probe():
+            try:
+                data, source = _fetch_tdxhy_bytes()
+                return bool(data), source
+            except Exception:
+                return False, ""
 
         try:
-            industry_ok, industry_source = await asyncio.wait_for(test_industry_availability(), timeout=8)
+            industry_ok, industry_source = await asyncio.wait_for(
+                asyncio.get_event_loop().run_in_executor(None, _probe),
+                timeout=8,
+            )
             payload = {"industry_source": industry_ok}
             if industry_source:
                 payload["industry_source_detail"] = industry_source
@@ -1523,15 +1534,12 @@ async def _step_build_trends(conn) -> int:
 
 
 async def _step_sync_industry(conn) -> int:
-    """获取申万三级行业分类"""
-    from services.akshare_client import fetch_sw_industry_all
+    """通达信行业同步 — 拉取 tdxhy.cfg 并全量 upsert 到 dim_stock_tdx_industry"""
+    from services.tdx_industry_client import sync_tdx_industry
 
-    # 构建排除集合
-    excluded_codes = _build_exclusion_set(conn)
     stock_names = _tracked_stock_names(conn)
     reconcile_gap_queue_snapshot(conn, stock_names=stock_names, datasets=("industry",), commit=True)
 
-    count = 0
     detail = {
         "industry_sync": {
             "status": "running",
@@ -1542,6 +1550,8 @@ async def _step_sync_industry(conn) -> int:
         }
     }
 
+    count = 0
+
     def _push_progress():
         _update_step(
             conn,
@@ -1551,14 +1561,22 @@ async def _step_sync_industry(conn) -> int:
         )
 
     _raise_if_stop()
-    industry_data = await fetch_sw_industry_all()
-    if not industry_data:
+    # sync_tdx_industry 是同步函数（TDX 服务器下载 + 本地解析 + executemany），
+    # 放到线程池避免阻塞事件循环
+    tdx_result = await asyncio.get_event_loop().run_in_executor(
+        None, sync_tdx_industry, conn
+    )
+
+    count = int(tdx_result.get("rows_upserted") or 0)
+    errors = tdx_result.get("errors") or []
+
+    if count == 0:
         mark_current_missing_as(
             conn,
             "industry",
             status="blocked",
-            reason="行业源无返回，当前未执行补齐",
-            last_error="industry_source_empty",
+            reason="通达信行业源无返回，当前未执行补齐",
+            last_error=";".join(errors) or "tdx_industry_source_empty",
             stock_names=stock_names,
             commit=False,
         )
@@ -1568,26 +1586,15 @@ async def _step_sync_industry(conn) -> int:
             "updated_rows": 0,
             "before_missing": detail["industry_sync"]["before_missing"],
             "after_missing": gap_summary["unresolved"],
-            "reason": "行业源无返回，当前未执行补齐",
+            "reason": "通达信行业源无返回，当前未执行补齐",
+            "errors": errors,
+            "source": tdx_result.get("source"),
             "gap_summary": gap_summary,
         }
+        conn.commit()
         _push_progress()
-        logger.warning("[行业] 未获取到数据")
+        logger.warning("[通达信行业] 未获取到数据")
         return 0
-
-    now = datetime.now().isoformat()
-    for item in industry_data:
-        _raise_if_stop()
-        code = item["stock_code"]
-        if code in excluded_codes:
-            continue
-        conn.execute("""
-            INSERT OR REPLACE INTO dim_stock_industry
-            (stock_code, sw_level1, sw_level2, sw_level3, sw_code, updated_at)
-            VALUES (?, ?, ?, ?, ?, ?)
-        """, (code, item["sw_level1"], item["sw_level2"], item["sw_level3"],
-              item["sw_code"], now))
-        count += 1
 
     reconcile_gap_queue_snapshot(conn, stock_names=stock_names, datasets=("industry",), commit=False)
     gap_summary = summarize_gap_queue(conn, datasets=("industry",), limit_per_dataset=6)["datasets"][0]
@@ -1596,11 +1603,20 @@ async def _step_sync_industry(conn) -> int:
         "updated_rows": count,
         "before_missing": detail["industry_sync"]["before_missing"],
         "after_missing": gap_summary["unresolved"],
+        "source": tdx_result.get("source"),
+        "fetched_at": tdx_result.get("fetched_at"),
+        "l1_count": tdx_result.get("l1_count"),
+        "l2_count": tdx_result.get("l2_count"),
+        "l3_count": tdx_result.get("l3_count"),
+        "errors": errors,
         "gap_summary": gap_summary,
     }
     conn.commit()
     _push_progress()
-    logger.info(f"[行业] 完成: {count} 只股票")
+    logger.info(
+        f"[通达信行业] 完成: {count} 只股票, "
+        f"L1={tdx_result.get('l1_count')}/L2={tdx_result.get('l2_count')}/L3={tdx_result.get('l3_count')}"
+    )
     return count
 
 
@@ -1621,7 +1637,7 @@ async def _step_build_industry_stat(conn) -> int:
             inst_id = inst["id"]
 
             # 按行业分组统计（一二三级都做）
-            for level_col, level_name in [("sw_level1", "level1"), ("sw_level2", "level2"), ("sw_level3", "level3")]:
+            for level_col, level_name in [("tdx_l1", "level1"), ("tdx_l2", "level2"), ("tdx_l3", "level3")]:
                 _raise_if_stop()
                 industry_join = industry_join_clause("e.stock_code", alias="industry_dim", join_type="INNER")
                 # 从增强后的 fact_institution_event + 统一行业解析口径读取
