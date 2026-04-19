@@ -335,24 +335,70 @@
     area.scrollIntoView({ behavior: 'smooth', block: 'start' });
     el('sigCloseDetail').addEventListener('click', () => area.innerHTML = '');
 
+    // 从已拉取的 signal 列表里找到当前事件，拿到 rule_breakdown（无需新 API）
+    const signal = (state.signals || []).find(s => s.event_id === eventId) || null;
+
     try {
       const [similar, track] = await Promise.all([
         apiGet(`/api/signals/event/${encodeURIComponent(eventId)}/similar?limit=50`),
         apiGet(`/api/signals/institution/${encodeURIComponent(institutionId)}`),
       ]);
-      renderDetail(area, eventId, similar, track);
+      renderDetail(area, eventId, similar, track, signal);
     } catch (e) {
       area.innerHTML = `<div class="sig-drawer"><div class="sig-drawer-head"><h3>加载失败</h3><button class="sig-btn sig-btn-ghost" id="sigCloseDetail">关闭</button></div><div class="sig-empty">${esc(e.message)}</div></div>`;
       el('sigCloseDetail').addEventListener('click', () => area.innerHTML = '');
     }
   }
 
-  function renderDetail(area, eventId, similar, track) {
+  function fmtBreakdownRaw(raw, key) {
+    if (raw === null || raw === undefined) return '<span class="muted">—</span>';
+    if (key === 'inst_type') return esc(String(raw));
+    // 数值字段保留 2 位小数
+    return fmtPctPlain(raw, 2);
+  }
+
+  function renderRuleBreakdown(bd) {
+    if (!bd || !Array.isArray(bd.checks)) return '';
+    const statusIcon = { pass: '✓', fail: '✗', unknown: '—' };
+    const triggerLabel = {
+      inst_type_blacklisted: '机构类型黑名单',
+      premium_too_high: '溢价过高',
+      hold_ratio_too_low: '持仓占比过低',
+      holder_dispersing: 'D1 股东散户化',
+      forecast_too_weak: 'D3 预告偏弱',
+      unlock_risk: 'D5 解禁风险',
+    };
+    const triggered = bd.triggered ? (triggerLabel[bd.triggered] || bd.triggered) : null;
+    return `
+      <div class="sig-breakdown-panel">
+        <div class="sig-panel-head">
+          <h4>硬规则检查
+            <span class="muted" style="font-weight:400">
+              ${triggered ? '· 触发：<b style="color:#b91c1c">' + esc(triggered) + '</b>' : '· 6 维全部通过或未评估'}
+            </span>
+          </h4>
+        </div>
+        <div class="sig-breakdown-grid">
+          ${bd.checks.map(c => `
+            <div class="sig-breakdown-cell sig-breakdown-${esc(c.status)}">
+              <div class="sig-breakdown-label">${esc(c.label)}</div>
+              <div class="sig-breakdown-raw">${fmtBreakdownRaw(c.raw, c.key)}</div>
+              <div class="sig-breakdown-thresh muted">${esc(c.threshold_display)}</div>
+              <div class="sig-breakdown-badge">${statusIcon[c.status] || '—'}</div>
+            </div>
+          `).join('')}
+        </div>
+      </div>
+    `;
+  }
+
+  function renderDetail(area, eventId, similar, track, signal) {
     const stats = similar.stats || {};
     const scope = similar.scope || '';
     const samples = similar.samples || [];
     const overall = track.overall || {};
     const byInd = track.by_industry || [];
+    const breakdown = signal ? signal.rule_breakdown : null;
 
     area.innerHTML = `
       <div class="sig-drawer">
@@ -360,6 +406,7 @@
           <h3>事件证据链 <span class="muted">${esc(eventId.split('|').slice(-2).join(' · '))}</span></h3>
           <button class="sig-btn sig-btn-ghost" id="sigCloseDetail">关闭</button>
         </div>
+        ${breakdown ? `<div style="padding:14px 14px 0">${renderRuleBreakdown(breakdown)}</div>` : ''}
         <div class="sig-drawer-grid">
           <div class="sig-drawer-panel">
             <div class="sig-panel-head">
@@ -483,6 +530,62 @@
     }
   }
 
+  function renderConfigCohortInline(cohort) {
+    if (!cohort || !cohort.cohort_size) {
+      return `
+        <div class="sig-config-cohort">
+          <div class="sig-config-cohort-title">当前参数下 cohort 预览</div>
+          <div class="muted">暂无成熟样本</div>
+        </div>
+      `;
+    }
+    const f = cohort.by_bucket.follow || {};
+    const b = cohort.by_bucket.blind || {};
+    const s = cohort.by_bucket.skip || {};
+    const edgeF = cohort.edge_vs_blind.follow || {};
+    const edgeS = cohort.edge_vs_blind.skip || {};
+    return `
+      <div class="sig-config-cohort">
+        <div class="sig-config-cohort-title">
+          当前参数下 cohort 预览
+          <span class="muted" style="font-weight:400">· ${esc(cohort.window.start)}~${esc(cohort.window.end)} · n=${cohort.cohort_size}</span>
+        </div>
+        <div class="sig-config-cohort-grid">
+          <div class="sig-config-cohort-cell">
+            <div class="muted">Follow</div>
+            <b>${fmtPct(f.ev_pct)}</b>
+            <div class="muted">n=${f.n} · 胜 ${fmtWinRate(f.win_rate)}</div>
+            <div style="color:${(edgeF.ev_diff_pct||0)>0?'#16a34a':'#dc2626'}">vs Blind ${fmtPct(edgeF.ev_diff_pct)}</div>
+          </div>
+          <div class="sig-config-cohort-cell">
+            <div class="muted">Blind</div>
+            <b>${fmtPct(b.ev_pct)}</b>
+            <div class="muted">n=${b.n} · 胜 ${fmtWinRate(b.win_rate)}</div>
+            <div class="muted">基线</div>
+          </div>
+          <div class="sig-config-cohort-cell">
+            <div class="muted">Skip</div>
+            <b>${fmtPct(s.ev_pct)}</b>
+            <div class="muted">n=${s.n} · 胜 ${fmtWinRate(s.win_rate)}</div>
+            <div style="color:${(edgeS.ev_diff_pct||0)<0?'#16a34a':'#dc2626'}">vs Blind ${fmtPct(edgeS.ev_diff_pct)}</div>
+          </div>
+        </div>
+      </div>
+    `;
+  }
+
+  async function refreshConfigCohort() {
+    const holder = el('sigConfigCohortHolder');
+    if (!holder) return;
+    holder.innerHTML = `<div class="sig-config-cohort"><div class="muted">重算中…</div></div>`;
+    try {
+      const cohort = await apiGet('/api/signals/cohort/recent?lookback_days=180');
+      holder.innerHTML = renderConfigCohortInline(cohort);
+    } catch (e) {
+      holder.innerHTML = `<div class="sig-config-cohort"><div class="muted">cohort 加载失败: ${esc(e.message)}</div></div>`;
+    }
+  }
+
   function renderConfigPanel(area, payload) {
     const cur = payload.current || {};
     const def = payload.defaults || {};
@@ -497,6 +600,7 @@
     };
     const stepFor = (k) => fieldKind(k) === 'float' ? '0.1' : '1';
 
+    // 首屏先用 state.cohort（已在 reload 拉过），保存后再主动刷新
     area.innerHTML = `
       <div class="sig-drawer">
         <div class="sig-drawer-head">
@@ -506,6 +610,7 @@
             <button class="sig-btn sig-btn-ghost" id="sigCloseConfig">关闭</button>
           </div>
         </div>
+        <div id="sigConfigCohortHolder">${renderConfigCohortInline(state.cohort)}</div>
         <div class="sig-config-grid">
           ${fields.map(k => {
             const kind = fieldKind(k);
@@ -523,7 +628,8 @@
           }).join('')}
         </div>
         <div class="sig-config-actions">
-          <button class="sig-btn" id="sigSaveConfig">保存并刷新信号</button>
+          <button class="sig-btn" id="sigSaveConfig">保存并重算 cohort</button>
+          <button class="sig-btn sig-btn-ghost" id="sigRecomputeCohort" style="margin-left:8px">仅重算 cohort</button>
         </div>
       </div>
     `;
@@ -532,6 +638,9 @@
       await apiPost('/api/signals/config/reset');
       await openConfig();
       await reload();
+    });
+    el('sigRecomputeCohort').addEventListener('click', async () => {
+      await refreshConfigCohort();
     });
     el('sigSaveConfig').addEventListener('click', async () => {
       const patch = {};
@@ -547,11 +656,19 @@
           if (!isNaN(v)) patch[k] = kind === 'int' ? Math.round(v) : v;
         }
       });
+      const btn = el('sigSaveConfig');
+      btn.disabled = true; btn.textContent = '保存中…';
       try {
         await apiPost('/api/signals/config', patch);
-        area.innerHTML = '';
+        // 立即刷新内嵌 cohort（用户看 edge 变化）
+        await refreshConfigCohort();
+        btn.textContent = '已保存，刷新信号列表…';
         await reload();
+        btn.textContent = '保存并重算 cohort';
+        btn.disabled = false;
       } catch (e) {
+        btn.textContent = '保存并重算 cohort';
+        btn.disabled = false;
         alert('保存失败: ' + e.message);
       }
     });

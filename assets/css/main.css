@@ -5343,6 +5343,48 @@ tr.detail-row>td>.detail-panel {
 .sig-row-active { background: #fef9c3; }
 .sig-row-active:hover { background: #fef08a; }
 
+/* Signals v2 · 硬规则 breakdown（detail 抽屉顶部） */
+.sig-breakdown-panel { margin-bottom: 8px; }
+.sig-breakdown-grid {
+  display: grid; grid-template-columns: repeat(6, 1fr); gap: 8px;
+}
+@media (max-width: 1100px) {
+  .sig-breakdown-grid { grid-template-columns: repeat(3, 1fr); }
+}
+.sig-breakdown-cell {
+  position: relative;
+  padding: 8px 10px; border-radius: 8px;
+  background: #f8fafc; border: 1px solid #e2e8f0;
+  min-height: 74px;
+}
+.sig-breakdown-label { font-size: 11px; color: #334155; font-weight: 600; }
+.sig-breakdown-raw { font-size: 15px; font-weight: 700; color: #0f172a; margin-top: 2px; }
+.sig-breakdown-thresh { font-size: 10px; margin-top: 2px; }
+.sig-breakdown-badge {
+  position: absolute; top: 6px; right: 8px;
+  font-size: 14px; font-weight: 700;
+}
+.sig-breakdown-pass { background: #f0fdf4; border-color: #86efac; }
+.sig-breakdown-pass .sig-breakdown-badge { color: #16a34a; }
+.sig-breakdown-fail { background: #fef2f2; border-color: #fca5a5; }
+.sig-breakdown-fail .sig-breakdown-badge { color: #dc2626; }
+.sig-breakdown-unknown .sig-breakdown-badge { color: #94a3b8; }
+
+/* Signals v2 · 参数面板内嵌 cohort 反馈 */
+.sig-config-cohort {
+  margin: 0 14px 14px; padding: 10px 14px;
+  background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px;
+}
+.sig-config-cohort-title { font-size: 12px; font-weight: 600; color: #0f172a; margin-bottom: 8px; }
+.sig-config-cohort-grid {
+  display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; font-size: 11px;
+}
+.sig-config-cohort-cell {
+  padding: 8px; background: #fff; border: 1px solid #e2e8f0; border-radius: 6px;
+  text-align: center;
+}
+.sig-config-cohort-cell b { display: block; font-size: 16px; color: #0f172a; margin: 2px 0; }
+
 /* Signals v2 · 双口径展示 */
 .sig-reason-tag {
   display: inline-block; margin-left: 4px; padding: 1px 6px;

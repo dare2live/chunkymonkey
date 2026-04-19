@@ -443,3 +443,87 @@ def test_today_signals_recent_only(memdb):
     signals = build_today_signals(memdb, config=cfg)
     assert len(signals) == 1
     assert signals[0].stock_code == "000001"
+
+
+# ─── rule_breakdown (Step 2.5) ───────────────────────────────────────
+
+def test_build_rule_breakdown_six_checks_default_shape():
+    from services.signals_v2 import _build_rule_breakdown
+
+    event = {}  # 所有原始值都缺失
+    cfg = PolicyConfig()
+    bd = _build_rule_breakdown(event, cfg, None)
+    assert bd["triggered"] is None
+    keys = [c["key"] for c in bd["checks"]]
+    assert keys == [
+        "inst_type", "premium_pct", "hold_ratio",
+        "holder_count_yoy", "forecast_profit_yoy_mid", "future_unlock_ratio_180d",
+    ]
+    # 全部原始值缺失时 status=unknown
+    assert all(c["status"] == "unknown" for c in bd["checks"])
+
+
+def test_build_rule_breakdown_pass_fail_unknown_states():
+    from services.signals_v2 import _build_rule_breakdown
+
+    cfg = PolicyConfig(
+        max_premium_pct=15.0,
+        min_hold_ratio=0.3,
+        max_holder_yoy_pct=30.0,
+        min_forecast_profit_yoy=20.0,
+        max_unlock_ratio_180d=5.0,
+        inst_type_blacklist="基金,国家队",
+    )
+    # 混合：部分通过、部分失败、部分缺失
+    event = {
+        "inst_type": "基金",              # fail (在黑名单)
+        "premium_pct": 8.0,               # pass
+        "hold_ratio": 0.1,                # fail (<0.3)
+        "holder_count_yoy": 45.0,         # fail (>30)
+        # forecast_profit_yoy_mid 缺失 → unknown
+        "future_unlock_ratio_180d": 3.0,  # pass
+    }
+    bd = _build_rule_breakdown(event, cfg, "inst_type_blacklisted")
+    checks_by_key = {c["key"]: c for c in bd["checks"]}
+    assert bd["triggered"] == "inst_type_blacklisted"
+    assert checks_by_key["inst_type"]["status"] == "fail"
+    assert checks_by_key["premium_pct"]["status"] == "pass"
+    assert checks_by_key["hold_ratio"]["status"] == "fail"
+    assert checks_by_key["holder_count_yoy"]["status"] == "fail"
+    assert checks_by_key["forecast_profit_yoy_mid"]["status"] == "unknown"
+    assert checks_by_key["future_unlock_ratio_180d"]["status"] == "pass"
+    # raw 值透传
+    assert checks_by_key["premium_pct"]["raw"] == 8.0
+    assert checks_by_key["holder_count_yoy"]["raw"] == 45.0
+    # threshold_display 包含阈值字串
+    assert "15.0" in checks_by_key["premium_pct"]["threshold_display"]
+    assert "30.0" in checks_by_key["holder_count_yoy"]["threshold_display"]
+
+
+def test_recommend_for_event_includes_rule_breakdown(memdb):
+    _seed_events(memdb, [
+        ("inst1", f"0001{i:02d}", "2023-Q1", f"2023-{(i%12)+1:02d}-15",
+         "new_entry", 0.0, 10.0, "医药")
+        for i in range(10)
+    ])
+    event = {
+        "institution_id": "inst1",
+        "stock_code": "000099",
+        "stock_name": "股票99",
+        "industry": "医药",
+        "report_date": "2024-03-31",
+        "notice_date": "2024-04-20",
+        "event_type": "new_entry",
+        "premium_pct": 3.0,
+        "holder_count_yoy": 10.0,          # pass
+        "forecast_profit_yoy_mid": 50.0,   # pass
+    }
+    cfg = PolicyConfig(min_sample=5, prefer_same_industry_min_sample=5)
+    rec = recommend_for_event(memdb, event, config=cfg, as_of_date="2024-04-20")
+    assert rec.rule_breakdown is not None
+    assert rec.rule_breakdown["triggered"] is None  # 无硬规则命中
+    assert len(rec.rule_breakdown["checks"]) == 6
+    # to_dict 也把 rule_breakdown 透传
+    d = rec.to_dict()
+    assert "rule_breakdown" in d
+    assert d["rule_breakdown"]["checks"][1]["key"] == "premium_pct"

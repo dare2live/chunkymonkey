@@ -212,6 +212,8 @@ class Recommendation:
     scope: Optional[str] = None
     # 这个事件本身的 gain（如果已 matured，用于反馈分析）
     realized_return_pct: Optional[float] = None
+    # 硬规则 breakdown：6 维检查清单，告诉用户"为什么是 skip"
+    rule_breakdown: Optional[dict] = None
 
     def to_dict(self) -> dict:
         d = {
@@ -232,6 +234,7 @@ class Recommendation:
             "ev_stats": self.ev_stats.to_dict() if self.ev_stats else None,
             "scope": self.scope,
             "realized_return_pct": self.realized_return_pct,
+            "rule_breakdown": self.rule_breakdown,
         }
         return d
 
@@ -421,6 +424,7 @@ def recommend_for_event(
     decision = _decide_dual_window(event, history_long, history_short, config)
     stats, scope = _pick_display_window(decision)
     reason = _build_reason(decision, config)
+    rule_breakdown = _build_rule_breakdown(event, config, decision.get("hard_rule_hit"))
 
     return Recommendation(
         event_id=_event_id(event),
@@ -440,6 +444,7 @@ def recommend_for_event(
         ev_stats=stats,
         scope=scope,
         realized_return_pct=_safe_float(event.get("realized_return_pct")),
+        rule_breakdown=rule_breakdown,
     )
 
 
@@ -627,6 +632,88 @@ def _apply_hard_rules(event: dict, config: PolicyConfig) -> tuple[Optional[str],
         return ("skip", "unlock_risk")
 
     return (None, None)
+
+
+def _build_rule_breakdown(
+    event: dict,
+    config: PolicyConfig,
+    hard_rule_hit: Optional[str],
+) -> dict:
+    """
+    构造 6 维硬规则检查清单，供前端展示"为什么是 skip"。
+
+    每维状态：
+      - pass：原始值已知且通过门槛
+      - fail：原始值已知且不通过
+      - unknown：原始值缺失（未入库 / 无对应报告）—— 不算 skip 理由
+    """
+    inst_type = event.get("inst_type")
+    premium = event.get("premium_pct")
+    hold_ratio = event.get("hold_ratio")
+    hc_yoy = event.get("holder_count_yoy")
+    fc_mid = event.get("forecast_profit_yoy_mid")
+    unlock = event.get("future_unlock_ratio_180d")
+
+    def _status(raw, pass_cond) -> str:
+        if raw is None:
+            return "unknown"
+        return "pass" if pass_cond else "fail"
+
+    checks = [
+        {
+            "key": "inst_type",
+            "label": "机构类型",
+            "raw": inst_type,
+            "threshold_display": f"非黑名单({config.inst_type_blacklist or '-'})",
+            "status": _status(inst_type, inst_type not in config.blacklist_set)
+                        if inst_type else "unknown",
+            "rule_id": "inst_type_blacklisted",
+        },
+        {
+            "key": "premium_pct",
+            "label": "溢价 (%)",
+            "raw": premium,
+            "threshold_display": f"≤ {config.max_premium_pct}%",
+            "status": _status(premium, premium is not None and premium <= config.max_premium_pct),
+            "rule_id": "premium_too_high",
+        },
+        {
+            "key": "hold_ratio",
+            "label": "持仓占比 (%)",
+            "raw": hold_ratio,
+            "threshold_display": f"≥ {config.min_hold_ratio}%",
+            "status": _status(hold_ratio, hold_ratio is not None and hold_ratio >= config.min_hold_ratio),
+            "rule_id": "hold_ratio_too_low",
+        },
+        {
+            "key": "holder_count_yoy",
+            "label": "D1 股东 YoY (%)",
+            "raw": hc_yoy,
+            "threshold_display": f"≤ {config.max_holder_yoy_pct}%",
+            "status": _status(hc_yoy, hc_yoy is not None and hc_yoy <= config.max_holder_yoy_pct),
+            "rule_id": "holder_dispersing",
+        },
+        {
+            "key": "forecast_profit_yoy_mid",
+            "label": "D3 预告利润 YoY (%)",
+            "raw": fc_mid,
+            "threshold_display": f"≥ {config.min_forecast_profit_yoy}%",
+            "status": _status(fc_mid, fc_mid is not None and fc_mid >= config.min_forecast_profit_yoy),
+            "rule_id": "forecast_too_weak",
+        },
+        {
+            "key": "future_unlock_ratio_180d",
+            "label": "D5 180d 解禁 (%)",
+            "raw": unlock,
+            "threshold_display": f"≤ {config.max_unlock_ratio_180d}%",
+            "status": _status(unlock, unlock is not None and unlock <= config.max_unlock_ratio_180d),
+            "rule_id": "unlock_risk",
+        },
+    ]
+    return {
+        "triggered": hard_rule_hit,
+        "checks": checks,
+    }
 
 
 def _load_gpcw_feature_maps(conn) -> dict:
@@ -882,6 +969,7 @@ def build_today_signals(
         decision = _decide_dual_window(event, history_long, history_short, cfg)
         stats, scope = _pick_display_window(decision)
         reason = _build_reason(decision, cfg)
+        rule_breakdown = _build_rule_breakdown(event, cfg, decision.get("hard_rule_hit"))
 
         signals.append(Recommendation(
             event_id=_event_id(event),
@@ -901,6 +989,7 @@ def build_today_signals(
             ev_stats=stats,
             scope=scope,
             realized_return_pct=_safe_float(event.get("realized_return_pct")),
+            rule_breakdown=rule_breakdown,
         ))
 
     # 按 action 分组，follow > watch > skip，同组按 long EV 降序
