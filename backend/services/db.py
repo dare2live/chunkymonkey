@@ -234,6 +234,12 @@ def init_db():
                 snapshot_sw_level1    TEXT,
                 snapshot_sw_level2    TEXT,
                 snapshot_sw_level3    TEXT,
+                snapshot_tdx_l1       TEXT,
+                snapshot_tdx_l2       TEXT,
+                snapshot_tdx_l3       TEXT,
+                snapshot_tdx_l1_name  TEXT,
+                snapshot_tdx_l2_name  TEXT,
+                snapshot_tdx_l3_name  TEXT,
                 action_score          REAL,
                 discovery_score       REAL,
                 company_quality_score REAL,
@@ -657,6 +663,12 @@ def init_db():
             "snapshot_sw_level1 TEXT",
             "snapshot_sw_level2 TEXT",
             "snapshot_sw_level3 TEXT",
+            "snapshot_tdx_l1 TEXT",
+            "snapshot_tdx_l2 TEXT",
+            "snapshot_tdx_l3 TEXT",
+            "snapshot_tdx_l1_name TEXT",
+            "snapshot_tdx_l2_name TEXT",
+            "snapshot_tdx_l3_name TEXT",
             "action_score REAL",
             "discovery_score REAL",
             "company_quality_score REAL",
@@ -712,6 +724,15 @@ def init_db():
                 conn.execute(f"ALTER TABLE fact_setup_snapshot ADD COLUMN {col}")
             except Exception:
                 pass
+
+        # TDX 行业索引：必须在 ALTER TABLE 补齐列之后才能建
+        try:
+            conn.execute(
+                "CREATE INDEX IF NOT EXISTS idx_setup_snapshot_tdx1_date "
+                "ON fact_setup_snapshot(snapshot_tdx_l1, snapshot_date)"
+            )
+        except Exception:
+            pass
 
         # Phase 0: mart 表增加 data_completeness 列
         for tbl in ["mart_institution_profile", "mart_institution_industry_stat",
@@ -804,6 +825,12 @@ def init_db():
                 sw_level1         TEXT,
                 sw_level2         TEXT,
                 sw_level3         TEXT,
+                tdx_l1            TEXT,
+                tdx_l2            TEXT,
+                tdx_l3            TEXT,
+                tdx_l1_name       TEXT,
+                tdx_l2_name       TEXT,
+                tdx_l3_name       TEXT,
                 has_return_data   INTEGER DEFAULT 0,
                 has_industry_data INTEGER DEFAULT 0,
                 updated_at        TEXT,
@@ -827,6 +854,12 @@ def init_db():
             "premium_bucket TEXT",
             "follow_gate TEXT",
             "follow_gate_reason TEXT",
+            "tdx_l1 TEXT",
+            "tdx_l2 TEXT",
+            "tdx_l3 TEXT",
+            "tdx_l1_name TEXT",
+            "tdx_l2_name TEXT",
+            "tdx_l3_name TEXT",
         ]:
             try:
                 conn.execute(f"ALTER TABLE mart_current_relationship ADD COLUMN {col}")

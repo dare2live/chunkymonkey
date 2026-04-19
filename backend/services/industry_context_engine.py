@@ -19,6 +19,10 @@ def ensure_tables(conn):
             stock_code                TEXT NOT NULL,
             sw_level1                 TEXT,
             sw_level2                 TEXT,
+            tdx_l1                    TEXT,
+            tdx_l2                    TEXT,
+            tdx_l1_name               TEXT,
+            tdx_l2_name               TEXT,
             sector_momentum_score     REAL,
             sector_trend_state        TEXT,
             sector_macd_cross         INTEGER DEFAULT 0,
@@ -52,6 +56,10 @@ def ensure_tables(conn):
             snapshot_date             TEXT,
             sw_level1                 TEXT,
             sw_level2                 TEXT,
+            tdx_l1                    TEXT,
+            tdx_l2                    TEXT,
+            tdx_l1_name               TEXT,
+            tdx_l2_name               TEXT,
             sector_momentum_score     REAL,
             sector_trend_state        TEXT,
             sector_macd_cross         INTEGER DEFAULT 0,
@@ -84,6 +92,7 @@ def ensure_tables(conn):
         "sector_rotation_score REAL", "sector_rotation_rank INTEGER", "sector_rotation_rank_1m INTEGER",
         "sector_rotation_rank_3m INTEGER", "sector_rotation_bucket TEXT",
         "sector_rotation_blacklisted INTEGER DEFAULT 0",
+        "tdx_l1 TEXT", "tdx_l2 TEXT", "tdx_l1_name TEXT", "tdx_l2_name TEXT",
     ]:
         try:
             conn.execute(f"ALTER TABLE fact_stock_industry_context ADD COLUMN {col}")
