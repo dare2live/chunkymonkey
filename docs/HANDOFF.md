@@ -151,19 +151,52 @@ hold<0.5%     +5.43%
 
 ---
 
-## 6. 7 个待挖的 alpha 维度（D1-D7，按价值降序）
+## 6. 挖过的 alpha 维度（D1-D8，实证结果记录）
 
-| # | 维度 | 数据位置 | 状态 |
-|---|-----|---------|------|
-| **D1** | 股东人数 YoY | `raw_gpcw_detail.holder_count` | **下一步** |
-| **D2** | 合同负债 YoY | `raw_gpcw_detail.contract_liabilities` | 下一步 |
-| **D3** | 业绩预告 | `raw_gpcw_detail.forecast_profit_yoy_low/high` | 下一步 |
-| **D4** | 北向持股变化 | `fact_northbound_daily` | 下一步 |
-| **D5** | 回购 / 解禁标签 | `capital_client` 已拉 akshare | 下一步 |
-| D6 | 同期拥挤度 | `fact_institution_event` 自聚合 | 待做 |
-| D7 | 机构近期 EV（**连续特征**，不做黑白名单） | cohort 自动生成 | 待做 |
+| # | 维度 | 数据位置 | 实证 edge | 当前处理 |
+|---|-----|---------|----------|---------|
+| **D1** | 股东人数 YoY ≤30% | `raw_gpcw_detail.holder_count` | **+1.93pp** | ✓ V6 硬规则 |
+| **D2** | 合同负债 YoY | GPCW `合同负债(万元)`（新映射） | 各档差异小，**不显著** | ❌ 不作硬规则，候选 Qlib 特征 |
+| **D3** | 业绩预告利润 YoY ≥20% | `raw_gpcw_detail.forecast_profit_yoy_*` | **+9.22pp** ★ | ✓ V6 硬规则 |
+| D4 | 北向持股变化 | `fact_northbound_daily` | **表 0 行，无数据** | ✗ 暂跳过 |
+| **D5** | 180d 解禁 ≤5% | `dim_capital_behavior_latest.future_unlock_ratio_180d` | 风险规避 | ✓ V6 硬规则 |
+| D6 | 同期拥挤度（peer_count） | `fact_institution_event` 自聚合 | 未深挖 | 待 Qlib |
+| D7 | 机构近期 EV（**连续特征**） | cohort 自动生成 | 待 Qlib | 未做 |
+| **D8** | 机构调研热度（近 90d） | akshare `stock_jgdy_tj_em`（**未入库**） | 独立 alpha 明显但与 V6 规则冗余 | ❌ 不叠加，候选 Qlib 特征 |
 
-**注意 D7**：用户明确反对硬黑白名单（机构是动态的）。正确做法是把"机构近 N 月 EV"作为**连续数值特征**喂给 Qlib，让模型自己学权重。
+### D8 机构调研数据发现详情（2026-04-19）
+数据接口：`akshare.stock_jgdy_tj_em(date=...)` — 返回从 date 起的累计调研记录
+字段：代码、名称、**接待机构数量**（核心）、接待方式、接待日期、公告日期
+
+**前 90 天接待家数 vs gain_60d 分档**（cohort n=2674, 覆盖 47%）：
+```
+0 (无调研)    n=3022  EV+6.00% WR 52%
+1-20          n=1516  EV+7.71% WR 57%
+21-50         n=544   EV+11.74% WR 62%  ★ 高
+51-100        n=309   EV+7.36%  WR 60%
+101-200       n=214   EV+11.40% WR 65%  ★ 高
+>200          n=91    EV+9.06%  WR 50%  过度炒作回落
+```
+
+**与 V6 (D1+D3+D5) 叠加测试**（`min_survey_90d=20`）：
+```
+V6 原: n=128 EV+21.77% WR 80% edge+14.44pp
++D8:   n=24  EV+13.67% WR 79% edge+6.34pp  ← 反而降!
+```
+V6 的 follow 里很多股票"机构还没调研的隐藏好货"，D8 硬筛会排除它们。**D8 单独 alpha 明显但和 V6 重叠，不作为硬规则**。留作 Qlib 特征或独立 follow 通道。
+
+### D2 合同负债探测详情（2026-04-19）
+- 原 `raw_gpcw_detail` 没有 contract_liabilities 字段（未映射）
+- 原 `raw_gpcw_financial.contract_liabilities` 覆盖仅 10%（老表，字段稀疏）
+- **GPCW 源文件实际有**：字段名为 `合同负债(万元)`（带 `(万元)` 后缀），100% 覆盖
+- 已修正 `tdx_affair_client.py:_FIELD_MAP` 加上此字段（+ "预收款项" 老科目）
+- 内存验证 95.5% cohort 覆盖，但 YoY 各档 EV 差异不大（+5.85~+8.42%）
+- **不作为 V6 硬规则**，留作 Qlib 特征（模型能学行业差异）
+
+### 下次 sync GPCW 时会获得合同负债字段 
+- `_FIELD_MAP` 已加 `"合同负债(万元)": "contract_liabilities_wan"`
+- 重跑 `sync_gpcw_files()` 后 `raw_gpcw_detail.contract_liabilities_wan` 有 100% 数据
+- **注意**：列已加但数据要跑 sync 才会有——下一轮 claude 做 Qlib 重训前跑一次 sync
 
 ---
 
@@ -182,11 +215,23 @@ hold<0.5%     +5.43%
 - 改完立即重跑 cohort 展示新 edge
 - 关键：**没有硬编码，所有阈值都可调**
 
+**Step 2.5 · 新数据源入库（下一轮做）**
+- 机构调研数据（D8）：需新增 DAG step `sync_institution_surveys`
+  - 调 `akshare.stock_jgdy_tj_em(date=<6个月前>)` 拉全量
+  - 新表 `raw_institution_surveys` + 聚合表 `mart_stock_survey_activity`
+  - 字段：stock_code, survey_date, notice_date, inst_count, reception_type
+- 合同负债（D2）：`_FIELD_MAP` 已补，只需重跑一次 GPCW sync
+  - `python -c "from services.tdx_affair_client import sync_gpcw_files; sync_gpcw_files(conn, quarters=10)"`
+
 **Step 3 · Qlib 重训（下一轮做）**
-- 把 D1-D5 全部作为特征喂进 `qlib_follow_engine.extract_training_matrix`
-- 加 D6 拥挤度（peer_count_same_quarter 已在骨架里）
-- 加 D7 机构近期 EV（**连续特征**，不做黑白名单）
-- 加 D2 合同负债 YoY 作为特征（即使稀疏，让模型学 NaN handling）
+- 把 D1-D8 全部作为连续特征喂进 `qlib_follow_engine.extract_training_matrix`
+  - D1 holder_count_yoy
+  - D2 contract_liabilities_yoy（需 Step 2.5 先跑 sync）
+  - D3 forecast_profit_yoy_mid
+  - D5 future_unlock_ratio_180d
+  - D6 peer_count_same_quarter（骨架已在）
+  - D7 机构近期 EV（连续，不做黑白名单）
+  - D8 survey_count_90d（需 Step 2.5 先入库）
 - 跑训练看 IC 能否从 -0.009 提到 > 0.05
 
 **Step 4 · 视图整合（下一轮做）**

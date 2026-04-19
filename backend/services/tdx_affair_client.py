@@ -51,6 +51,10 @@ _FIELD_MAP = {
     "存货": "inventory",
     "货币资金": "cash",
     "应收账款": "accounts_receivable",
+    # 合同负债（新会计准则后的"预收账款"，B2B 领先营收的关键前瞻指标）
+    # 探测确认字段名是 "合同负债(万元)"（带单位后缀），单位万元
+    "合同负债(万元)": "contract_liabilities_wan",
+    "预收款项": "advance_receipts",  # 2017 前老科目，保留便于与 contract_liab 合并使用
     # ── 股本结构 ──
     "总股本": "total_shares",
     "已上市流通A股": "float_a_shares",
