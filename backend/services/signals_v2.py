@@ -27,7 +27,7 @@ from __future__ import annotations
 import json
 import logging
 from dataclasses import asdict, dataclass, field
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Optional
 
 from services.utils import safe_float as _safe_float
@@ -449,11 +449,15 @@ def institution_track_record(
     ]
     industry_breakdown.sort(key=lambda x: -(x["ev_pct"] or 0))
 
+    # 多周期对比（与 overall 同机构的买入事件，只是换 horizon）
+    multi_horizon = institution_multi_horizon(conn, institution_id)
+
     return {
         "institution_id": institution_id,
         "horizon_days": cfg.horizon_days,
         "overall": overall.to_dict(),
         "by_industry": industry_breakdown,
+        "by_horizon": multi_horizon["horizons"],
         "recent_events_sample": [_history_row_public(h) for h in history[:20]],
     }
 
@@ -729,6 +733,193 @@ def _build_quarterly_trend(follow_rows: list[dict], all_rows: list[dict]) -> lis
             "blind_win_rate": round(sum(1 for g in b_gains if g > 0)/len(b_gains), 3) if b_gains else None,
         })
     return trend
+
+
+# ─────────────────────────────────────────────────────────────────────
+# 反馈闭环：最近已成熟 cohort 的实际表现
+# ─────────────────────────────────────────────────────────────────────
+
+def cohort_recent_matured(
+    conn,
+    *,
+    lookback_days: int = 180,
+    config: Optional[PolicyConfig] = None,
+) -> dict:
+    """
+    最近 N 天内已成熟（gain_60d 非空）的事件 cohort 的实际表现。
+
+    意义：打开页面时就能看到"过去系统推荐的 follow 档，实际跑出来了吗"——
+    不是拿回测在自己的数据上吹，而是看真实走完 60 天的事件结果。
+
+    Returns:
+        {
+          "window": {"start": "YYYY-MM-DD", "end": "YYYY-MM-DD", "lookback_days": N},
+          "cohort_size": int,
+          "by_bucket": {
+              "follow": {"n", "ev_pct", "win_rate", "median_pct"},
+              "watch":  {...},
+              "skip":   {...},
+              "blind":  {...},
+          },
+          "edge_vs_blind": {
+              "follow": {"ev_diff_pct", "win_diff_pp"},
+              ...
+          }
+        }
+    """
+    cfg = config or load_config(conn)
+
+    # 计算窗口：只看已成熟（有 gain_60d 的）的事件
+    # gain_60d 需要 60 交易日 → 约 90 日历日后才可用
+    end_date = datetime.now() - timedelta(days=90)
+    start_date = end_date - timedelta(days=lookback_days)
+    # 转成 YYYYMMDD 与 DB 格式一致
+    start_str = start_date.strftime("%Y%m%d")
+    end_str = end_date.strftime("%Y%m%d")
+
+    rows = conn.execute(f"""
+        SELECT
+            e.institution_id, e.stock_code, e.stock_name,
+            e.report_date, e.notice_date, e.event_type,
+            e.premium_pct, e.{cfg.gain_column} AS gain,
+            ind.sw_level1 AS industry
+        FROM fact_institution_event e
+        LEFT JOIN dim_stock_industry ind ON ind.stock_code = e.stock_code
+        WHERE e.event_type IN ('new_entry','increase')
+          AND e.{cfg.gain_column} IS NOT NULL
+          AND e.notice_date >= ?
+          AND e.notice_date <= ?
+        ORDER BY e.notice_date ASC
+    """, (start_str, end_str)).fetchall()
+
+    events = [dict(r) for r in rows]
+    if not events:
+        return {
+            "window": {
+                "start": start_str, "end": end_str, "lookback_days": lookback_days,
+            },
+            "cohort_size": 0,
+            "by_bucket": {}, "edge_vs_blind": {},
+            "note": "窗口内无已成熟事件",
+        }
+
+    # 预加载所有历史 buy 事件，供 KNN 左切查询
+    all_events_rows = conn.execute(f"""
+        SELECT e.institution_id, e.notice_date, e.{cfg.gain_column} AS gain,
+               ind.sw_level1 AS industry
+        FROM fact_institution_event e
+        LEFT JOIN dim_stock_industry ind ON ind.stock_code = e.stock_code
+        WHERE e.event_type IN ('new_entry','increase')
+          AND e.{cfg.gain_column} IS NOT NULL
+        ORDER BY e.notice_date ASC
+    """).fetchall()
+
+    timeline: dict[str, list[dict]] = {}
+    for ev in all_events_rows:
+        timeline.setdefault(ev["institution_id"], []).append(dict(ev))
+
+    # 分档
+    buckets: dict[str, list[float]] = {"follow": [], "watch": [], "skip": []}
+    for ev in events:
+        history = []
+        for past in timeline.get(ev["institution_id"], []):
+            if past["notice_date"] < ev["notice_date"]:
+                history.append(past)
+            else:
+                break
+        action, _scope = _decide_from_history(ev, history, cfg)
+        gain = _safe_float(ev.get("gain"))
+        if gain is None:
+            continue
+        buckets[action].append(gain)
+
+    all_gains = [float(e["gain"]) for e in events if e.get("gain") is not None]
+
+    def _pack(gains: list[float]) -> dict:
+        if not gains:
+            return {"n": 0}
+        n = len(gains)
+        ev_pct = sum(gains) / n
+        wr = sum(1 for g in gains if g > 0) / n
+        median = sorted(gains)[n // 2]
+        return {
+            "n": n,
+            "ev_pct": round(ev_pct, 2),
+            "win_rate": round(wr, 3),
+            "median_pct": round(median, 2),
+        }
+
+    packed = {
+        "follow": _pack(buckets["follow"]),
+        "watch": _pack(buckets["watch"]),
+        "skip": _pack(buckets["skip"]),
+        "blind": _pack(all_gains),
+    }
+
+    # Edge vs blind
+    blind_ev = packed["blind"].get("ev_pct", 0) or 0
+    blind_wr = packed["blind"].get("win_rate", 0) or 0
+    edge = {}
+    for b in ("follow", "watch", "skip"):
+        pb = packed[b]
+        if pb.get("ev_pct") is None:
+            continue
+        edge[b] = {
+            "ev_diff_pct": round(pb["ev_pct"] - blind_ev, 2),
+            "win_diff_pp": round((pb["win_rate"] - blind_wr) * 100, 1),
+        }
+
+    return {
+        "window": {
+            "start": f"{start_str[:4]}-{start_str[4:6]}-{start_str[6:8]}",
+            "end": f"{end_str[:4]}-{end_str[4:6]}-{end_str[6:8]}",
+            "lookback_days": lookback_days,
+        },
+        "cohort_size": len(events),
+        "by_bucket": packed,
+        "edge_vs_blind": edge,
+    }
+
+
+# ─────────────────────────────────────────────────────────────────────
+# 机构多周期 track record（30/60/90/120 天对比）
+# ─────────────────────────────────────────────────────────────────────
+
+def institution_multi_horizon(conn, institution_id: str) -> dict:
+    """
+    展示机构在不同持有期的 EV / 胜率对比。
+    让用户看出"这个机构的 edge 是短线还是长线"。
+    """
+    horizons = [30, 60, 90, 120]
+    out = {"institution_id": institution_id, "horizons": []}
+
+    for h in horizons:
+        col = f"gain_{h}d"
+        try:
+            rows = conn.execute(f"""
+                SELECT e.{col} AS gain
+                FROM fact_institution_event e
+                WHERE e.institution_id = ?
+                  AND e.event_type IN ('new_entry','increase')
+                  AND e.{col} IS NOT NULL
+            """, (institution_id,)).fetchall()
+        except Exception:
+            rows = []
+
+        gains = [float(r["gain"]) for r in rows if r["gain"] is not None]
+        if not gains:
+            out["horizons"].append({"horizon_days": h, "n": 0})
+            continue
+
+        n = len(gains)
+        out["horizons"].append({
+            "horizon_days": h,
+            "n": n,
+            "ev_pct": round(sum(gains) / n, 2),
+            "win_rate": round(sum(1 for g in gains if g > 0) / n, 3),
+            "median_pct": round(sorted(gains)[n // 2], 2),
+        })
+    return out
 
 
 # ─────────────────────────────────────────────────────────────────────

@@ -22,6 +22,8 @@ from services.signals_v2 import (
     institution_track_record,
     fetch_similar_for_event,
     backtest_historical,
+    cohort_recent_matured,
+    institution_multi_horizon,
 )
 
 logger = logging.getLogger("cm-api")
@@ -163,6 +165,38 @@ async def get_event_similar(event_id: str, limit: int = 50):
         if "error" in result:
             raise HTTPException(404, result["error"])
         return result
+    finally:
+        conn.close()
+
+
+# ─────────────────────────────────────────────────────────────────────
+# 反馈闭环：最近已成熟 cohort（真实 out-of-sample 结果）
+# ─────────────────────────────────────────────────────────────────────
+
+@router.get("/cohort/recent")
+async def get_recent_cohort(lookback_days: int = 180):
+    """
+    "最近已成熟"cohort 的实际表现。
+
+    回答一个问题：过去系统打的 follow/watch/skip 档，到期实际是几档收益？
+    这是系统的诚实体检——不是拿当下样本回测，而是 out-of-sample 跟踪。
+    """
+    conn = get_conn()
+    try:
+        return cohort_recent_matured(conn, lookback_days=lookback_days)
+    finally:
+        conn.close()
+
+
+@router.get("/institution/{institution_id}/multi-horizon")
+async def get_institution_multi_horizon(institution_id: str):
+    """
+    机构在 30/60/90/120 天不同持有期的 EV/胜率对比。
+    揭示"这个机构的 edge 是短线还是长线"。
+    """
+    conn = get_conn()
+    try:
+        return institution_multi_horizon(conn, institution_id)
     finally:
         conn.close()
 

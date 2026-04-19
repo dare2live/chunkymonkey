@@ -20,6 +20,7 @@
     config: null,
     signals: [],
     summary: null,
+    cohort: null,
     currentFilter: 'follow',
     currentFreshness: 90,
     loading: false,
@@ -181,6 +182,57 @@
     `;
   }
 
+  function renderCohortCard() {
+    const c = state.cohort;
+    if (!c || !c.cohort_size) {
+      return `
+        <div class="sig-cohort-card sig-cohort-empty">
+          <div class="sig-cohort-title">反馈闭环：已成熟 cohort</div>
+          <div class="muted" style="font-size:12px">${c && c.note ? esc(c.note) : '暂无足够成熟数据'}</div>
+        </div>`;
+    }
+    const f = c.by_bucket.follow || {};
+    const s = c.by_bucket.skip || {};
+    const b = c.by_bucket.blind || {};
+    const edgeF = c.edge_vs_blind.follow || {};
+    const edgeS = c.edge_vs_blind.skip || {};
+    const followOk = (edgeF.ev_diff_pct || 0) > 0;
+    const skipOk = (edgeS.ev_diff_pct || 0) < 0;
+    return `
+      <div class="sig-cohort-card">
+        <div class="sig-cohort-title">
+          反馈闭环：已成熟 cohort
+          <span class="muted" style="font-weight:400">（${esc(c.window.start)} ~ ${esc(c.window.end)} · n=${c.cohort_size}）</span>
+        </div>
+        <div class="sig-cohort-grid">
+          <div class="sig-cohort-cell ${followOk ? 'sig-cohort-good' : 'sig-cohort-bad'}">
+            <div class="sig-cohort-bucket">Follow</div>
+            <div class="sig-cohort-val">${fmtPct(f.ev_pct)}</div>
+            <div class="sig-cohort-sub">n=${f.n} · 胜 ${fmtWinRate(f.win_rate)}</div>
+            <div class="sig-cohort-edge">vs Blind ${fmtPct(edgeF.ev_diff_pct)}</div>
+          </div>
+          <div class="sig-cohort-cell">
+            <div class="sig-cohort-bucket">Blind 对照</div>
+            <div class="sig-cohort-val">${fmtPct(b.ev_pct)}</div>
+            <div class="sig-cohort-sub">n=${b.n} · 胜 ${fmtWinRate(b.win_rate)}</div>
+            <div class="sig-cohort-edge muted">基线</div>
+          </div>
+          <div class="sig-cohort-cell ${skipOk ? 'sig-cohort-good' : 'sig-cohort-bad'}">
+            <div class="sig-cohort-bucket">Skip（负向筛选）</div>
+            <div class="sig-cohort-val">${fmtPct(s.ev_pct)}</div>
+            <div class="sig-cohort-sub">n=${s.n} · 胜 ${fmtWinRate(s.win_rate)}</div>
+            <div class="sig-cohort-edge">vs Blind ${fmtPct(edgeS.ev_diff_pct)}</div>
+          </div>
+        </div>
+        <div class="muted sig-cohort-hint">
+          ${followOk && skipOk
+            ? '✓ Follow 优于盲跟、Skip 劣于盲跟——筛选能力有效'
+            : '⚠ 筛选方向与预期不一致，可能样本量不足或市场风格偏离'}
+        </div>
+      </div>
+    `;
+  }
+
   function renderRoot() {
     const root = el('view-signals-v2');
     if (!root) return;
@@ -192,6 +244,7 @@
             <p class="muted">用历史同机构×同行业的 60 天跟随收益做 KNN 决策，只给三档建议：<b>可跟 / 观察 / 不跟</b>。没有评分合成，没有封顶规则，所有判断可回到同行业历史事件表里验证。</p>
           </div>
         </div>
+        <div id="sigCohortArea">${renderCohortCard()}</div>
         <div id="sigSummaryArea">${renderSummary()}</div>
         <div id="sigTableArea">${state.loading ? '<div class="sig-empty">加载中...</div>' : renderSignalsTable()}</div>
         <div id="sigDetailArea"></div>
@@ -330,6 +383,33 @@
               <div class="sig-metric"><div class="sig-metric-val">${overall.ev_pct == null ? '-' : fmtPct(overall.ev_pct)}</div><div class="sig-metric-lbl">全局 EV</div></div>
               <div class="sig-metric"><div class="sig-metric-val">${fmtWinRate(overall.win_rate)}</div><div class="sig-metric-lbl">全局胜率</div></div>
               <div class="sig-metric"><div class="sig-metric-val">${overall.avg_drawdown_pct == null ? '-' : fmtPctPlain(overall.avg_drawdown_pct, 1)}</div><div class="sig-metric-lbl">均回撤</div></div>
+            </div>
+            <div class="sig-panel-head" style="margin-top:14px">
+              <h4>持有期对比 <span class="muted">（揭示 edge 是短线还是长线）</span></h4>
+            </div>
+            <div class="sig-table-wrap">
+              <table class="sig-table sig-table-sm">
+                <thead>
+                  <tr>
+                    <th>持有期</th>
+                    <th class="sig-num">样本</th>
+                    <th class="sig-num">EV</th>
+                    <th class="sig-num">胜率</th>
+                    <th class="sig-num">中位</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  ${(track.by_horizon || []).map(h => `
+                    <tr${h.horizon_days === (state.config && state.config.horizon_days || 60) ? ' class="sig-row-active"' : ''}>
+                      <td>${h.horizon_days} 日${h.horizon_days === (state.config && state.config.horizon_days || 60) ? ' <span class="muted">(当前)</span>' : ''}</td>
+                      <td class="sig-num">${h.n || 0}</td>
+                      <td class="sig-num">${h.ev_pct == null ? '-' : fmtPct(h.ev_pct)}</td>
+                      <td class="sig-num">${fmtWinRate(h.win_rate)}</td>
+                      <td class="sig-num">${h.median_pct == null ? '-' : fmtPct(h.median_pct)}</td>
+                    </tr>
+                  `).join('')}
+                </tbody>
+              </table>
             </div>
             <div class="sig-panel-head" style="margin-top:16px">
               <h4>按行业拆分 <span class="muted">（只展示样本≥门槛的行业）</span></h4>
@@ -554,9 +634,13 @@
     state.loading = true;
     renderRoot();
     try {
-      const r = await apiGet(`/api/signals/today?freshness_days=${state.currentFreshness}&limit=2000`);
-      state.signals = r.signals || [];
-      state.summary = r.summary || null;
+      const [today, cohort] = await Promise.all([
+        apiGet(`/api/signals/today?freshness_days=${state.currentFreshness}&limit=2000`),
+        apiGet(`/api/signals/cohort/recent?lookback_days=180`).catch(() => null),
+      ]);
+      state.signals = today.signals || [];
+      state.summary = today.summary || null;
+      state.cohort = cohort;
     } catch (e) {
       console.error('signals load failed', e);
       state.signals = [];

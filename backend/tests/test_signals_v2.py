@@ -29,6 +29,8 @@ from services.signals_v2 import (
     backtest_historical,
     build_today_signals,
     ensure_defaults,
+    cohort_recent_matured,
+    institution_multi_horizon,
 )
 
 
@@ -315,6 +317,73 @@ def test_backtest_basic(memdb):
 
 
 # ─── build_today_signals 集成 ───────────────────────────────────────
+
+# ─── cohort_recent_matured ──────────────────────────────────────────
+
+def test_cohort_empty_window(memdb):
+    """无已成熟事件时应返回 cohort_size=0"""
+    r = cohort_recent_matured(memdb, lookback_days=30)
+    assert r["cohort_size"] == 0
+    assert "note" in r
+
+
+def test_cohort_nonempty(memdb):
+    """成熟事件应分档并报告 edge_vs_blind"""
+    from datetime import datetime, timedelta
+    # 构造 180-90 天前的成熟事件 (9 个月前左右)
+    # 需要有足够历史让 decide 产出 follow/watch/skip
+    target_date = (datetime.now() - timedelta(days=120)).strftime("%Y%m%d")
+    hist_base = (datetime.now() - timedelta(days=720)).strftime("%Y%m%d")
+
+    events = []
+    # 机构 inst1 历史 15 条 buy 事件全 +15%
+    for i in range(15):
+        events.append((
+            "inst1", f"HIST{i:03d}", "hist",
+            f"{int(hist_base) + i}",  # 略错开日期
+            "new_entry", 0.0, 15.0, "医药"
+        ))
+    # cohort 窗口内 5 条新事件（inst1 做出）
+    for i in range(5):
+        events.append((
+            "inst1", f"COHORT{i:03d}", "cohort",
+            str(int(target_date) + i),
+            "new_entry", 0.0, 10.0, "医药"
+        ))
+    _seed_events(memdb, events)
+
+    cfg = PolicyConfig(min_sample=5, ev_threshold_pct=5.0,
+                       prefer_same_industry_min_sample=5)
+    r = cohort_recent_matured(memdb, lookback_days=180, config=cfg)
+    # 应有 5 条 cohort 事件，且因为历史 inst1 EV=+15 > 门槛，全部进 follow
+    assert r["cohort_size"] == 5
+    assert r["by_bucket"]["follow"]["n"] == 5
+    # Follow 实际 EV 应等于 10.0（cohort 样本都是 +10%）
+    assert r["by_bucket"]["follow"]["ev_pct"] == 10.0
+
+
+# ─── institution_multi_horizon ──────────────────────────────────────
+
+def test_multi_horizon_empty(memdb):
+    r = institution_multi_horizon(memdb, "nonexistent_inst")
+    assert len(r["horizons"]) == 4
+    assert all(h["n"] == 0 for h in r["horizons"])
+
+
+def test_multi_horizon_with_data(memdb):
+    # 只填 gain_60d
+    _seed_events(memdb, [
+        ("inst1", f"00000{i}", "2024-03-31", f"2024-{i:02d}-20",
+         "new_entry", 0.0, 10.0, "医药")
+        for i in range(1, 6)
+    ])
+    r = institution_multi_horizon(memdb, "inst1")
+    # 只 gain_60d 有值
+    by_h = {x["horizon_days"]: x for x in r["horizons"]}
+    assert by_h[60]["n"] == 5
+    assert by_h[60]["ev_pct"] == 10.0
+    assert by_h[30]["n"] == 0  # 30d 没填
+
 
 def test_today_signals_recent_only(memdb):
     # 一条今天、一条 100 天前，freshness=30 天应只看到今天的

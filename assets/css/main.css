@@ -3989,3 +3989,31 @@ tr.detail-row>td>.detail-panel {
 .sig-bt-val { font-size: 22px; font-weight: 800; margin: 4px 0; }
 .sig-bt-sub { font-size: 11px; color: #64748b; }
 .sig-bt-diff { padding: 10px 14px; font-size: 13px; color: #0f172a; }
+
+/* Signals v2 · cohort 反馈闭环卡片 */
+.sig-cohort-card {
+  background: #fff; border: 1px solid #e2e8f0; border-radius: 10px;
+  padding: 12px 16px; margin-bottom: 12px;
+}
+.sig-cohort-empty { background: #f8fafc; }
+.sig-cohort-title {
+  font-size: 13px; font-weight: 600; color: #0f172a; margin-bottom: 10px;
+}
+.sig-cohort-grid {
+  display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px;
+}
+.sig-cohort-cell {
+  padding: 10px; background: #f8fafc; border: 1px solid #e2e8f0;
+  border-radius: 8px; text-align: center;
+}
+.sig-cohort-good { background: #dcfce7; border-color: #86efac; }
+.sig-cohort-bad { background: #fef2f2; border-color: #fecaca; }
+.sig-cohort-bucket { font-size: 11px; color: #64748b; font-weight: 600; }
+.sig-cohort-val { font-size: 20px; font-weight: 800; margin: 4px 0; }
+.sig-cohort-sub { font-size: 11px; color: #64748b; }
+.sig-cohort-edge { font-size: 11px; margin-top: 3px; font-weight: 600; }
+.sig-cohort-hint { margin-top: 8px; font-size: 11px; }
+
+/* multi-horizon 行高亮当前 horizon */
+.sig-row-active { background: #fef9c3; }
+.sig-row-active:hover { background: #fef08a; }
