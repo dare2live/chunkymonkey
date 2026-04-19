@@ -48,6 +48,13 @@ DEFAULT_CONFIG: dict = {
     "win_threshold": 0.55,
     "prefer_same_industry_min_sample": 10,
     "signal_freshness_days": 90,
+    # 严谨左切：一个事件的 gain_Xd 从 notice_date 起需要 X 个交易日后才能确认。
+    # 60 交易日 ≈ 90 日历日。决策时只能用已成熟的历史样本，否则构成 look-ahead bias。
+    # 用户可调；设为 0 等同于不严格（对齐老逻辑）。
+    "cooldown_days": 90,
+    # 双口径 KNN：短期窗口 + 长期全样本并排。分歧触发警示档。
+    "short_window_days": 365,
+    "short_min_sample": 5,
 }
 
 
@@ -59,6 +66,9 @@ class PolicyConfig:
     win_threshold: float = 0.55
     prefer_same_industry_min_sample: int = 10
     signal_freshness_days: int = 90
+    cooldown_days: int = 90
+    short_window_days: int = 365
+    short_min_sample: int = 5
 
     @property
     def gain_column(self) -> str:
@@ -128,8 +138,19 @@ class EvStats:
 
 
 @dataclass
+class WindowDecision:
+    """一个窗口（短或长）的决策细节。"""
+    action: str                # "follow" | "watch" | "skip" | "insufficient"
+    scope: str                 # "inst_industry" | "inst_all" | "insufficient"
+    stats: EvStats
+
+    def to_dict(self) -> dict:
+        return {"action": self.action, "scope": self.scope, "stats": self.stats.to_dict()}
+
+
+@dataclass
 class Recommendation:
-    """单个事件的推荐结果。"""
+    """单个事件的推荐结果（双口径版）。"""
     event_id: str                    # institution_id|stock_code|report_date
     institution_id: str
     institution_name: str
@@ -139,17 +160,40 @@ class Recommendation:
     notice_date: str
     event_type: str
     premium_pct: Optional[float]
-    # 决策
+    # 最终合并后的决策
     action: str                      # "follow" | "watch" | "skip"
     reason: str                      # 可读说明
-    scope: str                       # similarity scope used: "inst_industry" | "inst_all" | "insufficient"
-    ev_stats: EvStats                # 历史样本聚合
+    reason_label: str                # 机器可读的分歧标签（如 "both_follow" / "short_follow_long_diverge"）
+    # 双口径展开
+    short: Optional[WindowDecision] = None   # 短窗口（近 365 天）
+    long: Optional[WindowDecision] = None    # 长窗口（全部历史）
+    # 兼容旧版：ev_stats/scope 指向 "当前主档" 对应口径的统计
+    # 对 follow/watch/skip 合并档来说，默认指向 long 口径展示
+    ev_stats: Optional[EvStats] = None
+    scope: Optional[str] = None
     # 这个事件本身的 gain（如果已 matured，用于反馈分析）
     realized_return_pct: Optional[float] = None
 
     def to_dict(self) -> dict:
-        d = asdict(self)
-        d["ev_stats"] = self.ev_stats.to_dict()
+        d = {
+            "event_id": self.event_id,
+            "institution_id": self.institution_id,
+            "institution_name": self.institution_name,
+            "stock_code": self.stock_code,
+            "stock_name": self.stock_name,
+            "industry": self.industry,
+            "notice_date": self.notice_date,
+            "event_type": self.event_type,
+            "premium_pct": self.premium_pct,
+            "action": self.action,
+            "reason": self.reason,
+            "reason_label": self.reason_label,
+            "short": self.short.to_dict() if self.short else None,
+            "long": self.long.to_dict() if self.long else None,
+            "ev_stats": self.ev_stats.to_dict() if self.ev_stats else None,
+            "scope": self.scope,
+            "realized_return_pct": self.realized_return_pct,
+        }
         return d
 
 
@@ -167,13 +211,16 @@ def fetch_institution_history(
     gain_column: str,
     as_of_date: Optional[str] = None,
     event_types: tuple[str, ...] = BUY_EVENT_TYPES,
+    cooldown_days: int = 0,
     limit: Optional[int] = None,
 ) -> list[dict]:
     """
     拉取一个机构的全历史 buy 事件 + 对应 gain。
 
-    as_of_date: 严格左切——只取 notice_date < as_of_date 的事件
-               （避免 look-ahead bias，回测必须传）
+    as_of_date: 决策时点（YYYYMMDD 或 YYYY-MM-DD）
+    cooldown_days: 成熟延迟。只取 notice_date + cooldown_days < as_of_date 的样本
+                   （保证其 gain_Xd 在决策时已完全确认，避免 look-ahead bias）
+                   默认 0 = 不严格（对齐老逻辑）；推荐 90（60 trade days）。
     """
     where_parts = [
         "institution_id = ?",
@@ -183,8 +230,15 @@ def fetch_institution_history(
     params: list = [institution_id, *event_types]
 
     if as_of_date:
-        where_parts.append("notice_date < ?")
-        params.append(as_of_date)
+        if cooldown_days > 0:
+            # 严格：past.notice_date + cooldown < as_of_date
+            # = past.notice_date < as_of_date - cooldown
+            cutoff_date = _shift_date(as_of_date, -cooldown_days)
+            where_parts.append("notice_date < ?")
+            params.append(cutoff_date or as_of_date)
+        else:
+            where_parts.append("notice_date < ?")
+            params.append(as_of_date)
 
     sql = f"""
         SELECT
@@ -203,6 +257,52 @@ def fetch_institution_history(
 
     rows = conn.execute(sql, params).fetchall()
     return [dict(r) for r in rows]
+
+
+def _shift_date(date_str: Optional[str], delta_days: int) -> Optional[str]:
+    """YYYYMMDD 或 YYYY-MM-DD 加减 N 日历日。保持输入格式。"""
+    if not date_str:
+        return None
+    raw = str(date_str)
+    digits = raw.replace("-", "").replace("/", "")
+    if len(digits) < 8 or not digits[:8].isdigit():
+        return None
+    try:
+        dt = datetime.strptime(digits[:8], "%Y%m%d")
+    except ValueError:
+        return None
+    shifted = dt + timedelta(days=delta_days)
+    return shifted.strftime("%Y%m%d") if "-" not in raw else shifted.strftime("%Y-%m-%d")
+
+
+def _filter_history_for_decision(
+    timeline: list[dict],
+    as_of_date: Optional[str],
+    *,
+    cooldown_days: int = 0,
+    min_notice_date: Optional[str] = None,
+) -> list[dict]:
+    """
+    内存版左切 + cooldown 过滤。用于 backtest / build_today_signals。
+
+    规则：
+      - past.notice_date 必须严格早于 as_of_date - cooldown_days
+      - 如果 min_notice_date 非空，past.notice_date 还必须晚于等于它（用于短期窗口）
+
+    timeline 需按 notice_date 升序。
+    """
+    if not as_of_date:
+        return list(timeline)
+    cutoff = _shift_date(as_of_date, -cooldown_days) or as_of_date
+    history = []
+    for past in timeline:
+        nd = past["notice_date"]
+        if nd >= cutoff:
+            break  # timeline ASC 排序，后面都更晚
+        if min_notice_date is not None and nd < min_notice_date:
+            continue
+        history.append(past)
+    return history
 
 
 def compute_ev_stats(history: list[dict], *, drawdown_col: str = "max_drawdown_60d") -> EvStats:
@@ -264,36 +364,24 @@ def recommend_for_event(
         2. 如果同机构×同行业样本 ≥ prefer_same_industry_min_sample，优先用这个子集
     """
     cutoff = as_of_date or event.get("notice_date")
-    history = fetch_institution_history(
+    # 长窗口：全部历史，cooldown 过滤
+    history_long = fetch_institution_history(
         conn,
         event["institution_id"],
         gain_column=config.gain_column,
         as_of_date=cutoff,
+        cooldown_days=config.cooldown_days,
     )
-
-    action, scope = _decide_from_history(event, history, config)
-
-    # 根据 scope 选择用于展示的 stats（follow/watch 展示 filtered 子集；skip 展示全集）
-    event_industry = event.get("industry")
-    if scope == "inst_industry" and event_industry:
-        filtered = [h for h in history if h.get("industry") == event_industry]
-        stats = compute_ev_stats(filtered)
+    # 短窗口：从 history_long 里再按 short_window_days 截近期
+    if config.short_window_days and cutoff:
+        short_start = _shift_date(cutoff, -config.short_window_days)
+        history_short = [h for h in history_long if h["notice_date"] >= (short_start or "")]
     else:
-        stats = compute_ev_stats(history)
+        history_short = history_long
 
-    ev = stats.ev_pct if stats.ev_pct is not None else 0.0
-    wr = stats.win_rate if stats.win_rate is not None else 0.0
-
-    # 构造可读 reason
-    if action == "skip" and scope == "insufficient":
-        reason = f"样本不足(n={stats.n})，无法判断"
-    elif action == "follow":
-        scope_label = {"inst_industry": "同机构·同行业", "inst_all": "同机构·全行业"}.get(scope, scope)
-        reason = f"[{scope_label} n={stats.n}] 历史 EV {ev:.1f}% / 胜率 {wr*100:.0f}%"
-    elif action == "watch":
-        reason = f"历史 EV {ev:.1f}% / 胜率 {wr*100:.0f}%，边缘档（阈值 {config.ev_threshold_pct:.0f}% / {config.win_threshold*100:.0f}%）"
-    else:
-        reason = f"历史 EV {ev:.1f}% / 胜率 {wr*100:.0f}%，低于阈值"
+    decision = _decide_dual_window(event, history_long, history_short, config)
+    stats, scope = _pick_display_window(decision)
+    reason = _build_reason(decision, config)
 
     return Recommendation(
         event_id=_event_id(event),
@@ -301,14 +389,17 @@ def recommend_for_event(
         institution_name=event.get("institution_name") or event["institution_id"],
         stock_code=event["stock_code"],
         stock_name=event.get("stock_name") or "",
-        industry=event_industry,
+        industry=event.get("industry"),
         notice_date=event.get("notice_date") or "",
         event_type=event.get("event_type") or "",
         premium_pct=_safe_float(event.get("premium_pct")),
-        action=action,
+        action=decision["action"],
         reason=reason,
-        scope=scope,
+        reason_label=decision["reason_label"],
+        short=WindowDecision(**decision["short"]),
+        long=WindowDecision(**decision["long"]),
         ev_stats=stats,
+        scope=scope,
         realized_return_pct=_safe_float(event.get("realized_return_pct")),
     )
 
@@ -317,18 +408,65 @@ def _event_id(event: dict) -> str:
     return f"{event.get('institution_id','')}|{event.get('stock_code','')}|{event.get('report_date','')}"
 
 
-def _decide_from_history(
+_REASON_LABEL_CN = {
+    "both_follow": "短期与长期一致可跟（高置信）",
+    "short_follow_long_diverge": "近期表现好但长期不支持，警惕均值回归",
+    "long_follow_short_diverge": "长期可跟但近期走弱，警惕策略失效",
+    "both_watch": "两个口径都处于边缘档",
+    "both_below": "两个口径都低于阈值",
+    "long_follow_short_insufficient": "长期可跟，近期样本不足降档观察",
+    "short_follow_long_insufficient": "近期可跟但长期样本不足，降档观察",
+    "long_only_watch": "仅长期数据有结论",
+    "long_only_skip": "仅长期数据有结论",
+    "short_only_watch": "仅近期数据有结论",
+    "short_only_skip": "仅近期数据有结论",
+    "both_insufficient": "短长样本都不足，无法判断",
+}
+
+
+def _build_reason(decision: dict, config: PolicyConfig) -> str:
+    """
+    根据 _decide_dual_window 输出构造可读 reason 文案。
+    """
+    label_cn = _REASON_LABEL_CN.get(decision["reason_label"], decision["reason_label"])
+    short_stats = decision["short"]["stats"]
+    long_stats = decision["long"]["stats"]
+    short_txt = (
+        f"近{config.short_window_days//30 or 1}月 n={short_stats.n} "
+        f"EV {short_stats.ev_pct:+.1f}%" if short_stats.ev_pct is not None else
+        f"近{config.short_window_days//30 or 1}月 n={short_stats.n}"
+    )
+    long_txt = (
+        f"全期 n={long_stats.n} EV {long_stats.ev_pct:+.1f}%"
+        if long_stats.ev_pct is not None else f"全期 n={long_stats.n}"
+    )
+    return f"[{label_cn}] {short_txt} · {long_txt}"
+
+
+def _pick_display_window(decision: dict) -> tuple[Optional[EvStats], Optional[str]]:
+    """
+    选展示用的主统计（兼容旧版 ev_stats / scope 字段）。
+    规则：**永远用长口径**——样本更全、噪音更低。
+    短口径信息在 decision["short"] 里单独展示。
+    """
+    l = decision["long"]
+    return l["stats"], l["scope"]
+
+
+def _decide_single_window(
     event: dict,
     history: list[dict],
     config: PolicyConfig,
-) -> tuple[str, str]:
+    *,
+    min_sample_override: Optional[int] = None,
+) -> tuple[str, str, EvStats]:
     """
-    内部：根据一个已经 in-memory 的 history 列表做决策。
-    返回 (action, scope)。
-    供 backtest 和 recommend_for_event 共用，避免重复决策逻辑。
+    单一窗口决策（长或短都走这个函数）。
+    返回 (action, scope, stats)。
     """
-    if len(history) < config.min_sample:
-        return ("skip", "insufficient")
+    min_sample = min_sample_override if min_sample_override is not None else config.min_sample
+    if len(history) < min_sample:
+        return ("skip", "insufficient", compute_ev_stats(history))
 
     # 优先同行业
     scope = "inst_all"
@@ -340,18 +478,107 @@ def _decide_from_history(
             filtered = same_industry
             scope = "inst_industry"
 
-    gains = [_safe_float(h.get("gain")) for h in filtered]
-    gains = [g for g in gains if g is not None]
-    if not gains:
-        return ("skip", "no_valid_gain")
-    ev = sum(gains) / len(gains)
-    wr = sum(1 for g in gains if g > 0) / len(gains)
+    stats = compute_ev_stats(filtered)
+    if stats.n == 0 or stats.ev_pct is None:
+        return ("skip", "no_valid_gain", stats)
+
+    ev = stats.ev_pct
+    wr = stats.win_rate or 0.0
 
     if ev < config.ev_threshold_pct or wr < config.win_threshold:
+        # 边缘档：EV 到门槛的 60% 或胜率到 90% 算 watch
         if ev >= config.ev_threshold_pct * 0.6 or wr >= config.win_threshold * 0.9:
-            return ("watch", scope)
-        return ("skip", scope)
-    return ("follow", scope)
+            return ("watch", scope, stats)
+        return ("skip", scope, stats)
+    return ("follow", scope, stats)
+
+
+def _merge_double_window_actions(short_action: str, long_action: str) -> tuple[str, str]:
+    """
+    合并短窗口 + 长窗口两个决策。
+
+    规则：
+      - 都 follow → follow (高置信：近期和历史都支持)
+      - 短 follow + 长 skip/watch → watch (近期好但历史不一致，警惕均值回归)
+      - 短 skip/watch + 长 follow → watch (历史好但近期走弱，警惕失效)
+      - 两者都 watch → watch
+      - 至少一个 skip 且都不 follow → skip
+      - insufficient 按保守处理：任一方 insufficient，另一方决定
+
+    第二个返回是 reason 标签，用于前端解释。
+    """
+    def _rank(a: str) -> int:
+        return {"follow": 3, "watch": 2, "skip": 1, "insufficient": 0}.get(a, 0)
+
+    # 任一为 insufficient（短样本不足很常见），用另一方的结果但降档
+    if short_action == "insufficient" and long_action == "insufficient":
+        return ("skip", "both_insufficient")
+    if short_action == "insufficient":
+        # 长有结论，短样本不够 → 按长的，但如是 follow 降到 watch
+        if long_action == "follow":
+            return ("watch", "long_follow_short_insufficient")
+        return (long_action, f"long_only_{long_action}")
+    if long_action == "insufficient":
+        if short_action == "follow":
+            return ("watch", "short_follow_long_insufficient")
+        return (short_action, f"short_only_{short_action}")
+
+    # 两者都有结论
+    if short_action == "follow" and long_action == "follow":
+        return ("follow", "both_follow")
+    if short_action == "follow" and long_action != "follow":
+        return ("watch", "short_follow_long_diverge")
+    if short_action != "follow" and long_action == "follow":
+        return ("watch", "long_follow_short_diverge")
+    # 没有一方是 follow：取更严的那个
+    if short_action == "skip" or long_action == "skip":
+        return ("skip", "both_below")
+    return ("watch", "both_watch")
+
+
+def _decide_from_history(
+    event: dict,
+    history: list[dict],
+    config: PolicyConfig,
+) -> tuple[str, str]:
+    """
+    单口径接口（兼容旧调用点）：只用长窗口决策。
+    新代码应直接用 _decide_dual_window 拿到短+长两套统计。
+    """
+    long_action, long_scope, _ = _decide_single_window(event, history, config)
+    return (long_action, long_scope)
+
+
+def _decide_dual_window(
+    event: dict,
+    history_long: list[dict],
+    history_short: list[dict],
+    config: PolicyConfig,
+) -> dict:
+    """
+    双口径决策（短期 + 长期）。是新系统的主决策入口。
+
+    Returns:
+        {
+          "action": "follow" | "watch" | "skip",
+          "reason_label": "both_follow" | "short_follow_long_diverge" | ...,
+          "short": {"action": ..., "scope": ..., "stats": EvStats},
+          "long":  {"action": ..., "scope": ..., "stats": EvStats},
+        }
+    """
+    short_action, short_scope, short_stats = _decide_single_window(
+        event, history_short, config, min_sample_override=config.short_min_sample,
+    )
+    long_action, long_scope, long_stats = _decide_single_window(
+        event, history_long, config,
+    )
+    action, reason_label = _merge_double_window_actions(short_action, long_action)
+    return {
+        "action": action,
+        "reason_label": reason_label,
+        "short": {"action": short_action, "scope": short_scope, "stats": short_stats},
+        "long":  {"action": long_action,  "scope": long_scope,  "stats": long_stats},
+    }
 
 
 # ─────────────────────────────────────────────────────────────────────
@@ -413,7 +640,7 @@ def build_today_signals(
         WHERE e.event_type IN ('new_entry','increase')
           AND e.{cfg.gain_column} IS NOT NULL
           AND e.institution_id IN ({placeholders})
-        ORDER BY e.institution_id, e.notice_date DESC
+        ORDER BY e.institution_id, e.notice_date ASC
     """, list(institution_ids)).fetchall()
 
     inst_timeline: dict[str, list[dict]] = {}
@@ -423,34 +650,18 @@ def build_today_signals(
     signals = []
     for row in rows:
         event = dict(row)
-        # 以事件自己的 notice_date 为左切点，避免用未来信息
-        # 直接用内存 timeline 做决策，不再每个事件发 SQL
-        history = [
-            h for h in inst_timeline.get(event["institution_id"], [])
-            if h["notice_date"] < event["notice_date"]
-        ]
-        action, scope = _decide_from_history(event, history, cfg)
+        timeline = inst_timeline.get(event["institution_id"], [])
+        # 长窗口：严格左切 + cooldown
+        history_long = _filter_history_for_decision(
+            timeline, event["notice_date"], cooldown_days=cfg.cooldown_days,
+        )
+        # 短窗口：长窗口的最近 short_window_days 段
+        short_start = _shift_date(event["notice_date"], -cfg.short_window_days) or ""
+        history_short = [h for h in history_long if h["notice_date"] >= short_start]
 
-        # 根据 scope 选择展示统计
-        event_industry = event.get("industry")
-        if scope == "inst_industry" and event_industry:
-            filtered = [h for h in history if h.get("industry") == event_industry]
-            stats = compute_ev_stats(filtered)
-        else:
-            stats = compute_ev_stats(history)
-
-        ev = stats.ev_pct if stats.ev_pct is not None else 0.0
-        wr = stats.win_rate if stats.win_rate is not None else 0.0
-
-        if action == "skip" and scope == "insufficient":
-            reason = f"样本不足(n={stats.n})，无法判断"
-        elif action == "follow":
-            scope_label = {"inst_industry": "同机构·同行业", "inst_all": "同机构·全行业"}.get(scope, scope)
-            reason = f"[{scope_label} n={stats.n}] 历史 EV {ev:.1f}% / 胜率 {wr*100:.0f}%"
-        elif action == "watch":
-            reason = f"历史 EV {ev:.1f}% / 胜率 {wr*100:.0f}%，边缘档（阈值 {cfg.ev_threshold_pct:.0f}% / {cfg.win_threshold*100:.0f}%）"
-        else:
-            reason = f"历史 EV {ev:.1f}% / 胜率 {wr*100:.0f}%，低于阈值"
+        decision = _decide_dual_window(event, history_long, history_short, cfg)
+        stats, scope = _pick_display_window(decision)
+        reason = _build_reason(decision, cfg)
 
         signals.append(Recommendation(
             event_id=_event_id(event),
@@ -458,24 +669,27 @@ def build_today_signals(
             institution_name=event.get("institution_name") or event["institution_id"],
             stock_code=event["stock_code"],
             stock_name=event.get("stock_name") or "",
-            industry=event_industry,
+            industry=event.get("industry"),
             notice_date=event.get("notice_date") or "",
             event_type=event.get("event_type") or "",
             premium_pct=_safe_float(event.get("premium_pct")),
-            action=action,
+            action=decision["action"],
             reason=reason,
-            scope=scope,
+            reason_label=decision["reason_label"],
+            short=WindowDecision(**decision["short"]),
+            long=WindowDecision(**decision["long"]),
             ev_stats=stats,
+            scope=scope,
             realized_return_pct=_safe_float(event.get("realized_return_pct")),
         ))
 
-    # 按 action 分组，follow > watch > skip，同组按 EV 降序
+    # 按 action 分组，follow > watch > skip，同组按 long EV 降序
     action_rank = {"follow": 0, "watch": 1, "skip": 2}
-    signals.sort(key=lambda r: (
-        action_rank.get(r.action, 9),
-        -(r.ev_stats.ev_pct or -999),
-        -(r.ev_stats.n or 0),
-    ))
+    def _sort_key(r: Recommendation):
+        ev = r.ev_stats.ev_pct if r.ev_stats else None
+        n = r.ev_stats.n if r.ev_stats else 0
+        return (action_rank.get(r.action, 9), -(ev or -999), -(n or 0))
+    signals.sort(key=_sort_key)
     return signals
 
 
@@ -667,16 +881,17 @@ def backtest_historical(
     for ev in events:
         inst_id = ev["institution_id"]
         notice_date = ev["notice_date"]
-        # 同机构严格早于本次的事件（timeline 已排序）
         timeline = inst_timeline[inst_id]
-        history = []
-        for past in timeline:
-            if past["notice_date"] < notice_date:
-                history.append(past)
-            else:
-                break  # ASC 排序后遇到 >= 就停
+        # 长窗口：cooldown 严格左切
+        history_long = _filter_history_for_decision(
+            timeline, notice_date, cooldown_days=cfg.cooldown_days,
+        )
+        # 短窗口
+        short_start = _shift_date(notice_date, -cfg.short_window_days) or ""
+        history_short = [h for h in history_long if h["notice_date"] >= short_start]
 
-        action, scope = _decide_from_history(ev, history, cfg)
+        decision = _decide_dual_window(ev, history_long, history_short, cfg)
+        action = decision["action"]
         gain = _safe_float(ev.get("gain"))
         if gain is None:
             continue
@@ -685,7 +900,7 @@ def backtest_historical(
             "gain": gain,
             "institution_id": inst_id,
             "stock_code": ev["stock_code"],
-            "scope": scope,
+            "reason_label": decision["reason_label"],
         })
 
     summary = {
@@ -810,7 +1025,7 @@ def cohort_recent_matured(
     *,
     lookback_days: int = 180,
     config: Optional[PolicyConfig] = None,
-) -> dict:
+) -> dict:  # noqa: C901 — 复杂度可接受
     """
     最近 N 天内已成熟（gain_60d 非空）的事件 cohort 的实际表现。
 
@@ -884,20 +1099,20 @@ def cohort_recent_matured(
     for ev in all_events_rows:
         timeline.setdefault(ev["institution_id"], []).append(dict(ev))
 
-    # 分档
+    # 分档（cohort 验证走双口径 + cooldown）
     buckets: dict[str, list[float]] = {"follow": [], "watch": [], "skip": []}
     for ev in events:
-        history = []
-        for past in timeline.get(ev["institution_id"], []):
-            if past["notice_date"] < ev["notice_date"]:
-                history.append(past)
-            else:
-                break
-        action, _scope = _decide_from_history(ev, history, cfg)
+        timeline_i = timeline.get(ev["institution_id"], [])
+        history_long = _filter_history_for_decision(
+            timeline_i, ev["notice_date"], cooldown_days=cfg.cooldown_days,
+        )
+        short_start = _shift_date(ev["notice_date"], -cfg.short_window_days) or ""
+        history_short = [h for h in history_long if h["notice_date"] >= short_start]
+        decision = _decide_dual_window(ev, history_long, history_short, cfg)
         gain = _safe_float(ev.get("gain"))
         if gain is None:
             continue
-        buckets[action].append(gain)
+        buckets[decision["action"]].append(gain)
 
     all_gains = [float(e["gain"]) for e in events if e.get("gain") is not None]
 

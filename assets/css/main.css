@@ -4017,3 +4017,15 @@ tr.detail-row>td>.detail-panel {
 /* multi-horizon 行高亮当前 horizon */
 .sig-row-active { background: #fef9c3; }
 .sig-row-active:hover { background: #fef08a; }
+
+/* Signals v2 · 双口径展示 */
+.sig-reason-tag {
+  display: inline-block; margin-left: 4px; padding: 1px 6px;
+  border-radius: 4px; font-size: 10px; font-weight: 500;
+}
+.sig-reason-good { background: #dbeafe; color: #1e3a8a; }
+.sig-reason-warn { background: #fef3c7; color: #713f12; }
+.sig-reason-bad  { background: #fee2e2; color: #7f1d1d; }
+.sig-win-cell { display: flex; flex-direction: column; gap: 0; line-height: 1.2; }
+.sig-win-cell b { font-size: 13px; }
+.sig-win-cell .muted { font-size: 10px; }

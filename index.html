@@ -488,7 +488,7 @@
   <script src="assets/js/app.js?v=2.3.0"></script>
   <script src="assets/js/signals-view.js?v=2.3.0"></script>
   <script>
-    // signals v2 视图懒加载：切到该 tab 时初始化
+    // signals v2 视图懒加载：切到该 tab 时初始化 + 默认就把视图切到 signals-v2
     (function () {
       document.addEventListener('DOMContentLoaded', function () {
         const nav = document.querySelector('[data-view="signals-v2"]');
@@ -498,8 +498,17 @@
           loaded = true;
           window.SignalsV2 && window.SignalsV2.load();
         }
-        // 默认首屏就是 signals v2，直接加载
-        init();
+        // 等 app.js 完成默认 showView 后，强制切到 signals-v2
+        function boot() {
+          if (window.App && window.App.showView) {
+            window.App.showView('signals-v2');
+            init();
+          } else {
+            setTimeout(boot, 50);
+          }
+        }
+        // 给 app.js 一个 tick 先跑自己的 init
+        setTimeout(boot, 150);
         if (nav) nav.addEventListener('click', function () { setTimeout(init, 50); });
       });
     })();

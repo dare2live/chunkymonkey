@@ -333,10 +333,12 @@ def test_cohort_nonempty(memdb):
     # 构造 180-90 天前的成熟事件 (9 个月前左右)
     # 需要有足够历史让 decide 产出 follow/watch/skip
     target_date = (datetime.now() - timedelta(days=120)).strftime("%Y%m%d")
-    hist_base = (datetime.now() - timedelta(days=720)).strftime("%Y%m%d")
+    # hist_base 在 cohort 窗口（90-270 天）之外、短窗口（365 天）之内
+    # → 300 天前，距离 cohort 事件 180 天，仍在短窗口
+    hist_base = (datetime.now() - timedelta(days=300)).strftime("%Y%m%d")
 
     events = []
-    # 机构 inst1 历史 15 条 buy 事件全 +15%
+    # 机构 inst1 历史 15 条 buy 事件全 +15%（在短窗口内，cohort 窗口外）
     for i in range(15):
         events.append((
             "inst1", f"HIST{i:03d}", "hist",
@@ -352,14 +354,50 @@ def test_cohort_nonempty(memdb):
         ))
     _seed_events(memdb, events)
 
+    # cooldown_days=0 让历史在短时间跨度内仍可用
     cfg = PolicyConfig(min_sample=5, ev_threshold_pct=5.0,
-                       prefer_same_industry_min_sample=5)
+                       prefer_same_industry_min_sample=5,
+                       cooldown_days=0, short_min_sample=5,
+                       short_window_days=365)
     r = cohort_recent_matured(memdb, lookback_days=180, config=cfg)
-    # 应有 5 条 cohort 事件，且因为历史 inst1 EV=+15 > 门槛，全部进 follow
+    # 应有 5 条 cohort 事件
     assert r["cohort_size"] == 5
+    # 短+长窗口都足够且 EV > 阈值 → 全部 follow
     assert r["by_bucket"]["follow"]["n"] == 5
     # Follow 实际 EV 应等于 10.0（cohort 样本都是 +10%）
     assert r["by_bucket"]["follow"]["ev_pct"] == 10.0
+
+
+def test_cohort_dual_window_divergence(memdb):
+    """短口径样本不足时应降档为 watch（不再是老的单一 follow 决策）"""
+    from datetime import datetime, timedelta
+    target_date = (datetime.now() - timedelta(days=120)).strftime("%Y%m%d")
+    hist_base = (datetime.now() - timedelta(days=720)).strftime("%Y%m%d")  # 远超 365
+
+    events = []
+    for i in range(15):
+        events.append((
+            "inst1", f"HIST{i:03d}", "hist",
+            f"{int(hist_base) + i}",
+            "new_entry", 0.0, 15.0, "医药"
+        ))
+    for i in range(5):
+        events.append((
+            "inst1", f"COHORT{i:03d}", "cohort",
+            str(int(target_date) + i),
+            "new_entry", 0.0, 10.0, "医药"
+        ))
+    _seed_events(memdb, events)
+
+    cfg = PolicyConfig(min_sample=5, ev_threshold_pct=5.0,
+                       prefer_same_industry_min_sample=5,
+                       cooldown_days=0, short_min_sample=5,
+                       short_window_days=365)
+    r = cohort_recent_matured(memdb, lookback_days=180, config=cfg)
+    assert r["cohort_size"] == 5
+    # 长窗口有数据（15 条历史）、短窗口空（历史太老）→ 降档 watch
+    assert r["by_bucket"]["follow"]["n"] == 0
+    assert r["by_bucket"]["watch"]["n"] == 5
 
 
 # ─── institution_multi_horizon ──────────────────────────────────────

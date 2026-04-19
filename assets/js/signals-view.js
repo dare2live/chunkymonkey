@@ -112,21 +112,48 @@
     `;
   }
 
+  const REASON_LABEL_TAG = {
+    both_follow: { text: '双口径一致', tone: 'good' },
+    short_follow_long_diverge: { text: '近期好·长期弱', tone: 'warn' },
+    long_follow_short_diverge: { text: '长期好·近期弱', tone: 'warn' },
+    both_watch: { text: '双口径边缘', tone: 'warn' },
+    both_below: { text: '双口径偏弱', tone: 'bad' },
+    long_follow_short_insufficient: { text: '短期样本不足', tone: 'warn' },
+    short_follow_long_insufficient: { text: '长期样本不足', tone: 'warn' },
+    long_only_watch: { text: '仅长期数据', tone: 'warn' },
+    long_only_skip: { text: '仅长期数据', tone: 'warn' },
+    short_only_watch: { text: '仅近期数据', tone: 'warn' },
+    short_only_skip: { text: '仅近期数据', tone: 'warn' },
+    both_insufficient: { text: '样本不足', tone: 'bad' },
+  };
+
+  function reasonBadge(reasonLabel) {
+    const r = REASON_LABEL_TAG[reasonLabel];
+    if (!r) return '';
+    return `<span class="sig-reason-tag sig-reason-${r.tone}">${r.text}</span>`;
+  }
+
+  function windowCell(win) {
+    if (!win) return '<span class="muted">—</span>';
+    const s = win.stats || {};
+    if (!s.n) return '<span class="muted">n=0</span>';
+    const evCls = (s.ev_pct || 0) >= 5 ? 'sig-pos' : (s.ev_pct || 0) < 0 ? 'sig-neg' : 'muted';
+    return `<div class="sig-win-cell">
+      <span class="${evCls}"><b>${s.ev_pct == null ? '-' : (s.ev_pct >= 0 ? '+' : '') + s.ev_pct.toFixed(1) + '%'}</b></span>
+      <span class="muted">·${s.n}·${Math.round((s.win_rate || 0) * 100)}%</span>
+    </div>`;
+  }
+
   function renderSignalRow(sig) {
     const ev = sig.ev_stats || {};
     const realized = sig.realized_return_pct;
     const realizedCell = realized == null
       ? '<span class="muted">—</span>'
       : fmtPct(realized);
-    const scopeLabel = {
-      inst_industry: '同机构·同行业',
-      inst_all: '同机构·全行业',
-      insufficient: '样本不足',
-    }[sig.scope] || sig.scope;
 
     return `
       <tr class="sig-row" data-event-id="${encodeURIComponent(sig.event_id)}" data-inst-id="${encodeURIComponent(sig.institution_id)}">
-        <td>${actionBadge(sig.action)}</td>
+        <td style="white-space:nowrap">${actionBadge(sig.action)} ${reasonBadge(sig.reason_label)}</td>
         <td>
           <div class="sig-stock"><b>${esc(sig.stock_code)}</b> ${esc(sig.stock_name || '')}</div>
           <div class="muted sig-industry">${esc(sig.industry || '—')}</div>
@@ -135,13 +162,11 @@
           <div>${esc(sig.institution_name || sig.institution_id)}</div>
           <div class="muted sig-sub">${esc(sig.event_type)} · ${fmtDate(sig.notice_date)}</div>
         </td>
-        <td class="sig-num">${ev.n || 0}</td>
-        <td class="sig-num">${ev.ev_pct == null ? '-' : fmtPct(ev.ev_pct)}</td>
-        <td class="sig-num">${fmtWinRate(ev.win_rate)}</td>
+        <td class="sig-num">${windowCell(sig.short)}</td>
+        <td class="sig-num">${windowCell(sig.long)}</td>
         <td class="sig-num">${sig.premium_pct == null ? '-' : fmtPct(sig.premium_pct)}</td>
         <td class="sig-num">${ev.avg_drawdown_pct == null ? '-' : fmtPctPlain(ev.avg_drawdown_pct, 1)}</td>
         <td class="sig-num">${realizedCell}</td>
-        <td class="sig-scope muted" style="white-space:nowrap">${scopeLabel}</td>
         <td style="white-space:nowrap"><button class="sig-btn sig-btn-sm sig-detail-btn">详情</button></td>
       </tr>
     `;
@@ -161,16 +186,14 @@
         <table class="sig-table">
           <thead>
             <tr>
-              <th style="width:60px">建议</th>
+              <th style="width:180px;white-space:nowrap">建议 · 双口径</th>
               <th>股票</th>
               <th>机构 · 事件</th>
-              <th class="sig-num" style="width:52px">样本</th>
-              <th class="sig-num" style="width:80px">历史EV</th>
-              <th class="sig-num" style="width:60px">胜率</th>
+              <th class="sig-num" style="width:120px" title="近 365 天：EV · n · 胜率">近期 EV</th>
+              <th class="sig-num" style="width:120px" title="全部历史：EV · n · 胜率（严谨 cooldown 过滤）">长期 EV</th>
               <th class="sig-num" style="width:68px">溢价</th>
-              <th class="sig-num" style="width:68px" title="历史相似样本的平均最大回撤">均回撤</th>
+              <th class="sig-num" style="width:68px" title="长期样本平均最大回撤">均回撤</th>
               <th class="sig-num" style="width:72px" title="本事件发生后实际 60d 收益（仅供复盘）">实际</th>
-              <th class="sig-scope" style="width:110px;white-space:nowrap">相似口径</th>
               <th style="width:70px"></th>
             </tr>
           </thead>
