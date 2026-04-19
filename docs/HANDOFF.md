@@ -1,7 +1,44 @@
 # 交接文档 · signals_v2 开发上下文
 
 > **这份文档给下一个 claude 读**。把它放在对话最前面，读完就能接着推进。
-> 最后更新：2026-04-19
+> 最后更新：2026-04-19（+ 行业化规划）
+
+---
+
+## ★ 下一轮开场必读（优先级最高）
+
+用户反复强调的几件事，如果忽略了会被"骂"：
+
+1. **行业异质性**：几乎所有硬规则参数（premium / holder_yoy / forecast_yoy / hold_ratio）都有行业差异。**合同负债必须分行业**（见第 6 节底部的完整方案）。Phase 1-5 有明确实施路径。
+2. **参数全前端可调**，禁止硬编码。新增任何阈值都要走 `DEFAULT_CONFIG` + app_settings + 前端面板。
+3. **机构不做黑白名单**，只做连续特征喂 Qlib（机构是动态的）。
+4. **边做边验**：每加一个维度跑 cohort 看 edge，不累积。
+5. **诚实面对数字**：look-ahead bias 揭露过一次，下轮不要再翻这种错。cooldown_days=90 不能动。
+
+**下轮开场行动**（按顺序）：
+
+```
+A. 跑 GPCW sync 补齐合同负债数据
+   from services.tdx_affair_client import sync_gpcw_files
+   from services.db import get_conn
+   sync_gpcw_files(get_conn(), quarters=12)
+   # 耗时约 5-10 分钟，下载 12 个季度文件
+
+B. 验证合同负债字段落库了
+   sqlite3 data/smartmoney.db \
+     "SELECT COUNT(*) FROM raw_gpcw_detail WHERE contract_liabilities_wan IS NOT NULL"
+
+C. 按第 6 节"D2 行业化方案"Phase 1（方案 C 行业白名单）动手
+   在 _apply_hard_rules 里加 D2 分行业过滤
+   跑 cohort_recent_matured 看 edge 增量
+
+D. 如 C 有效，Phase 2（方案 B z-score）
+
+E. 如 C+B 都搞定，回到整体优先级：
+   - Step 2 前端参数全量可调
+   - Step 3 Qlib 重训（D1-D8 全特征）
+   - Step 4 视图整合
+```
 
 ---
 
@@ -190,13 +227,112 @@ V6 的 follow 里很多股票"机构还没调研的隐藏好货"，D8 硬筛会�
 - 原 `raw_gpcw_financial.contract_liabilities` 覆盖仅 10%（老表，字段稀疏）
 - **GPCW 源文件实际有**：字段名为 `合同负债(万元)`（带 `(万元)` 后缀），100% 覆盖
 - 已修正 `tdx_affair_client.py:_FIELD_MAP` 加上此字段（+ "预收款项" 老科目）
-- 内存验证 95.5% cohort 覆盖，但 YoY 各档 EV 差异不大（+5.85~+8.42%）
-- **不作为 V6 硬规则**，留作 Qlib 特征（模型能学行业差异）
+- 内存验证 95.5% cohort 覆盖，但**全行业混合后 YoY 各档 EV 差异不大**（+5.85~+8.42%）
+- 原因：合同负债对不同行业含义差别巨大，混合计算等于稀释信号
 
-### 下次 sync GPCW 时会获得合同负债字段 
-- `_FIELD_MAP` 已加 `"合同负债(万元)": "contract_liabilities_wan"`
-- 重跑 `sync_gpcw_files()` 后 `raw_gpcw_detail.contract_liabilities_wan` 有 100% 数据
-- **注意**：列已加但数据要跑 sync 才会有——下一轮 claude 做 Qlib 重训前跑一次 sync
+### ★ D2 下一步必须做：合同负债的行业化方案
+
+**为什么必须分行业**（用户明确指出，2026-04-19）：
+
+合同负债（新准则下的预收账款）在不同行业含义完全不同：
+
+| 行业类别 | 行业例子 | 合同负债 YoY 的信号含义 | 方向 |
+|---------|---------|----------------------|------|
+| **强前瞻行业**（合同负债领先营收 1-3Q） | 半导体设备 / 军工 / 建筑工程 / 游戏流水 / SaaS / 新能源设备 | 大涨 = 在手订单潮，强 alpha 信号 | **正向加分** |
+| **弱信号行业** | 银行 / 保险 / 券商 | 会计准则不适用或无意义 | **忽略该特征** |
+| **反向信号行业** | 地产（历史上预售款） | 现阶段减少 = 现金流健康，行业缩量 | **方向可能反** |
+| **中性行业** | 一般制造 / 消费 | 反映短期订单，但周期短噪音大 | **弱信号** |
+
+全行业混合是**稀释**不是"抵消"——因为各行业信号方向+幅度都不同。
+
+### 实施路径（三选一，按优先级）
+
+**方案 A（推荐长期）· Qlib 自学交互**
+```python
+# qlib_follow_engine.extract_training_matrix 里加：
+features = {
+    'contract_liab_yoy': cl_yoy,
+    'sw_level1_onehot_<31 bits>': industry_onehot,
+    # 或更紧凑的 embedding
+}
+```
+LightGBM 原生支持类别交互，会自动学"半导体的 CL YoY 比消费的 CL YoY 信号更强"这种规则。不需要手工定阈值。
+
+**方案 B（中期）· 行业内 Z-score**
+```python
+# 预聚合：每个行业每季度的 CL YoY 分布
+INSERT INTO mart_industry_contract_liab_stats (
+    sw_level1, report_date,
+    cl_yoy_mean, cl_yoy_std, cl_yoy_median, cl_yoy_p75, cl_yoy_p25,
+    n_stocks
+)
+
+# 为每个事件算相对行业的 z-score
+event.cl_yoy_zscore = (stock_cl_yoy - industry_mean) / industry_std
+
+# 硬规则：z-score ≥ 1.5 (即领先同行业 1.5 个标准差) 作为加分项
+# 或 percentile ≥ 75 (行业内 top 25%)
+```
+优点：参数可调 + 可解释。
+缺点：银行/保险这类"应跳过"的行业还要手工剔除。
+
+**方案 C（短期）· 行业白名单 + 单一阈值**
+```python
+# 只在"强前瞻行业"应用 D2 过滤
+CONTRACT_LIAB_APPLICABLE_INDUSTRIES = {
+    '国防军工', '电子', '计算机', '通信',  # 科技 / 半导体 / 军工
+    '建筑装饰', '建筑材料',                # 建筑
+    '电力设备',                          # 新能源
+    '传媒',                              # 游戏
+}
+if event.industry in applicable AND event.cl_yoy >= 30:
+    → 加分 bonus
+elif event.industry in {'银行','非银金融'}:
+    → 跳过 D2 过滤
+else:
+    → 使用全局 YoY 判断（当前方案）
+```
+最简单，但阈值仍是全行业统一。
+
+### 验证步骤（下一轮 claude 接着做）
+
+1. **第 0 步：跑 GPCW sync** 获得 `contract_liabilities_wan` 数据
+   ```python
+   from services.tdx_affair_client import sync_gpcw_files
+   from services.db import get_conn
+   sync_gpcw_files(get_conn(), quarters=12)  # 近 3 年数据
+   ```
+
+2. **第 1 步：探测 cohort 里每个行业的 CL YoY 和 gain_60d 的关系**
+   分组统计：`SELECT sw_level1, AVG(cl_yoy), AVG(gain_60d) WHERE cl_yoy > threshold` 看哪些行业正 alpha
+
+3. **第 2 步：方案 C 先验证**
+   把强前瞻行业的 CL YoY >= 30% 作为可选硬规则或加分项，看 V6 cohort edge 能不能再 +1~2pp
+
+4. **第 3 步：如果方案 C 有效**，同时启动方案 B 做行业 z-score 预聚合表
+   mart_industry_contract_liab_stats 每季度重算
+
+5. **第 4 步：Qlib 重训**时带 sw_level1 onehot + contract_liab_yoy 两个特征一起喂
+   让 ML 学完整行业交互
+
+### 这个行业化思路适用于其他维度
+
+用户指出的合同负债问题其实是**更大问题的体现**——许多硬规则阈值都该行业化：
+
+| 当前硬规则参数 | 可能的行业化方向 |
+|--------------|----------------|
+| `max_premium_pct=15` | 科技成长股可以容忍 20%+，消费稳态股可能 5% 就算高 |
+| `max_holder_yoy_pct=30` | 小盘股股东人数波动本来就大 |
+| `min_forecast_profit_yoy=20` | 周期股 20% 是周期底部，成长股 50% 才算真增长 |
+| `min_hold_ratio=0.3` | 小盘股流通盘小，0.3% 已经是大股东 |
+
+### 推荐：Phase-by-Phase 实施
+
+- **Phase 1**：方案 C（行业白名单 + D2 启用） — 1 天
+- **Phase 2**：方案 B（行业 z-score 表） — 2 天
+- **Phase 3**：其他硬规则（premium, forecast）都升级为"行业相对分位" — 2-3 天
+- **Phase 4**：方案 A（Qlib 喂行业特征 + 全量连续） — 2 天
+- **Phase 5**：观察 cohort edge 能否从 V6 +14.44pp 推到 +18-20pp
 
 ---
 
@@ -221,7 +357,8 @@ V6 的 follow 里很多股票"机构还没调研的隐藏好货"，D8 硬筛会�
   - 新表 `raw_institution_surveys` + 聚合表 `mart_stock_survey_activity`
   - 字段：stock_code, survey_date, notice_date, inst_count, reception_type
 - 合同负债（D2）：`_FIELD_MAP` 已补，只需重跑一次 GPCW sync
-  - `python -c "from services.tdx_affair_client import sync_gpcw_files; sync_gpcw_files(conn, quarters=10)"`
+  - `python -c "from services.tdx_affair_client import sync_gpcw_files; sync_gpcw_files(conn, quarters=12)"`
+  - **重要**：sync 后必须做**行业化处理**才有用（见本文件"D2 下一步必须做：合同负债的行业化方案"章节）
 
 **Step 3 · Qlib 重训（下一轮做）**
 - 把 D1-D8 全部作为连续特征喂进 `qlib_follow_engine.extract_training_matrix`
