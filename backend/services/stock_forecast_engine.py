@@ -19,7 +19,6 @@ from collections import defaultdict
 from datetime import date, datetime
 from typing import Optional
 
-from services.industry import industry_level_value, load_industry_map
 from services.qlib_full_engine import ensure_tables as ensure_qlib_tables
 from services.qlib_full_engine import get_default_model_id
 from services.qlib_full_engine import sync_latest_predictions_to_stock_trend
@@ -50,6 +49,10 @@ def normalize_industry_relative_group(group: Optional[str]) -> Optional[str]:
     text = str(group).strip()
     if not text:
         return text
+    if text.startswith("TDX2:"):
+        return _build_industry_relative_group("l2", text[5:])
+    if text.startswith("TDX1:"):
+        return _build_industry_relative_group("l1", text[5:])
     if text.startswith("SW2:"):
         return _build_industry_relative_group("l2", text[4:])
     if text.startswith("SW1:"):
@@ -88,8 +91,8 @@ def ensure_tables(conn):
             predict_date                     TEXT,
             stock_code                       TEXT NOT NULL,
             stock_name                       TEXT,
-            tdx_l1                           TEXT,
-            tdx_l2                           TEXT,
+            tdx_l1_name                      TEXT,
+            tdx_l2_name                      TEXT,
             qlib_score                       REAL,
             qlib_rank                        INTEGER,
             qlib_percentile                  REAL,
@@ -117,8 +120,8 @@ def ensure_tables(conn):
             model_id                         TEXT,
             predict_date                     TEXT,
             stock_name                       TEXT,
-            tdx_l1                           TEXT,
-            tdx_l2                           TEXT,
+            tdx_l1_name                      TEXT,
+            tdx_l2_name                      TEXT,
             qlib_score                       REAL,
             qlib_rank                        INTEGER,
             qlib_percentile                  REAL,
@@ -165,12 +168,11 @@ def build_stock_forecast_features(conn, snapshot_date: Optional[str] = None) -> 
         return 0
 
     sync_latest_predictions_to_stock_trend(conn, model_id=model_id)
-    industry_map = load_industry_map(conn)
 
     pred_rows = conn.execute("""
         SELECT p.model_id, p.stock_code, p.stock_name, p.predict_date,
                p.qlib_score, p.qlib_rank, p.qlib_percentile,
-               i.tdx_l1, i.tdx_l2,
+               i.tdx_l1_name, i.tdx_l2_name,
                s.volatility_20d, s.max_drawdown_60d
         FROM qlib_predictions p
         LEFT JOIN dim_stock_tdx_industry i ON i.stock_code = p.stock_code
@@ -183,19 +185,13 @@ def build_stock_forecast_features(conn, snapshot_date: Optional[str] = None) -> 
         logger.info(f"[预测特征] 模型 {model_id} 无预测结果，跳过构建")
         return 0
 
-    rows = []
-    for row in pred_rows:
-        item = dict(row)
-        industry = industry_map.get(item["stock_code"]) or {}
-        item["sw_level1"] = industry_level_value(industry, 1)
-        item["sw_level2"] = industry_level_value(industry, 2)
-        rows.append(item)
+    rows = [dict(row) for row in pred_rows]
     by_group = {("all", "all"): list(rows)}
     for row in rows:
-        if row.get("tdx_l2"):
-            by_group.setdefault(("l2", row["tdx_l2"]), []).append(row)
-        if row.get("tdx_l1"):
-            by_group.setdefault(("l1", row["tdx_l1"]), []).append(row)
+        if row.get("tdx_l2_name"):
+            by_group.setdefault(("l2", row["tdx_l2_name"]), []).append(row)
+        if row.get("tdx_l1_name"):
+            by_group.setdefault(("l1", row["tdx_l1_name"]), []).append(row)
 
     group_sizes = {key: len(group_rows) for key, group_rows in by_group.items()}
     group_rank_map = {}
@@ -213,8 +209,8 @@ def build_stock_forecast_features(conn, snapshot_date: Optional[str] = None) -> 
     inserted = 0
     for idx, row in enumerate(rows):
         stock_code = row["stock_code"]
-        tdx2 = row.get("tdx_l2")
-        tdx1 = row.get("tdx_l1")
+        tdx2 = row.get("tdx_l2_name")
+        tdx1 = row.get("tdx_l1_name")
         if tdx2 and group_sizes.get(("l2", tdx2), 0) >= 15:
             industry_pct = group_rank_map.get(("l2", tdx2, stock_code))
             rel_group = f"TDX2:{tdx2}"
@@ -259,7 +255,7 @@ def build_stock_forecast_features(conn, snapshot_date: Optional[str] = None) -> 
         conn.execute("""
             INSERT OR REPLACE INTO fact_stock_forecast_features (
                 snapshot_date, model_id, predict_date, stock_code, stock_name,
-                tdx_l1, tdx_l2, qlib_score, qlib_rank, qlib_percentile,
+                tdx_l1_name, tdx_l2_name, qlib_score, qlib_rank, qlib_percentile,
                 industry_qlib_percentile, industry_relative_group,
                 volatility_20d, max_drawdown_60d, volatility_rank, drawdown_rank,
                 forecast_cross_section_score,
@@ -300,7 +296,7 @@ def build_stock_forecast_features(conn, snapshot_date: Optional[str] = None) -> 
     conn.execute("""
         INSERT INTO dim_stock_forecast_latest (
             stock_code, snapshot_date, model_id, predict_date, stock_name,
-            tdx_l1, tdx_l2, qlib_score, qlib_rank, qlib_percentile,
+            tdx_l1_name, tdx_l2_name, qlib_score, qlib_rank, qlib_percentile,
             industry_qlib_percentile, industry_relative_group,
             volatility_20d, max_drawdown_60d, volatility_rank, drawdown_rank,
             forecast_cross_section_score,
@@ -309,7 +305,7 @@ def build_stock_forecast_features(conn, snapshot_date: Optional[str] = None) -> 
             forecast_risk_adjusted_score, forecast_score_v1, forecast_reason, updated_at
         )
         SELECT stock_code, snapshot_date, model_id, predict_date, stock_name,
-               tdx_l1, tdx_l2, qlib_score, qlib_rank, qlib_percentile,
+               tdx_l1_name, tdx_l2_name, qlib_score, qlib_rank, qlib_percentile,
                industry_qlib_percentile, industry_relative_group,
                volatility_20d, max_drawdown_60d, volatility_rank, drawdown_rank,
                forecast_cross_section_score,

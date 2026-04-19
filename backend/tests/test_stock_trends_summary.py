@@ -111,8 +111,8 @@ def test_build_stock_trends_payload_enriches_rows_and_blacklist_fallbacks():
             }
         },
         industry_map={
-            "600001": {"industry_level1": "电子", "industry_level2": "半导体", "industry_level3": "芯片设计"},
-            "600999": {"industry_level1": "金融", "industry_level2": "证券", "industry_level3": "券商"},
+            "600001": {"tdx_l1": "T10", "tdx_l2": "T1001", "tdx_l3": "T100101"},
+            "600999": {"tdx_l1": "T40", "tdx_l2": "T4001", "tdx_l3": "T400101"},
         },
         screening_map={"600001": {"formula": "f1", "hits": 2}},
         dual_confirm_map={"600001": {"dual_confirm_count": 2, "dual_confirm_latest_report_date": "2026-04-15"}},
@@ -123,8 +123,7 @@ def test_build_stock_trends_payload_enriches_rows_and_blacklist_fallbacks():
 
     active = rows[0]
     assert active["stock_code"] == "600001"
-    assert active["sw_level2"] == "半导体"
-    assert active["industry_level2"] == "半导体"
+    assert active["tdx_l2"] == "T1001"
     assert active["holder_follow_count"] == 2
     assert active["forecast_cross_section_score"] == 63.0
     assert active["forecast_industry_relative_score"] == 58.0
@@ -137,8 +136,7 @@ def test_build_stock_trends_payload_enriches_rows_and_blacklist_fallbacks():
     assert blacklisted["stock_code"] == "600999"
     assert blacklisted["stock_gate"] is None
     assert blacklisted["stock_gate_reason"] == "已拉黑"
-    assert blacklisted["sw_level2"] == "证券"
-    assert blacklisted["industry_level2"] == "证券"
+    assert blacklisted["tdx_l2"] == "T4001"
 
     summary = payload["summary"]
     assert summary["total"] == 2
@@ -194,8 +192,8 @@ def test_load_stock_trends_payload_queries_and_assembles(monkeypatch):
             raise AssertionError(sql)
 
     monkeypatch.setattr(industry_service, "load_industry_map", lambda conn: {
-        "600001": {"industry_level1": "电子", "industry_level2": "半导体", "industry_level3": "芯片设计"},
-        "600999": {"industry_level1": "金融", "industry_level2": "证券", "industry_level3": "券商"},
+        "600001": {"tdx_l1": "T10", "tdx_l2": "T1001", "tdx_l3": "T100101"},
+        "600999": {"tdx_l1": "T40", "tdx_l2": "T4001", "tdx_l3": "T400101"},
     })
     monkeypatch.setattr(screening_read, "load_screening_snapshot_map", lambda conn: {"600001": {"formula": "f1", "hits": 2}})
     monkeypatch.setattr(screening_read, "load_dual_confirm_snapshot_map", lambda conn: {"600001": {"dual_confirm_count": 2, "dual_confirm_latest_report_date": "2026-04-15"}})
@@ -205,8 +203,7 @@ def test_load_stock_trends_payload_queries_and_assembles(monkeypatch):
     rows = payload["data"]
     assert len(rows) == 2
     assert rows[0]["stock_code"] == "600001"
-    assert rows[0]["sw_level2"] == "半导体"
-    assert rows[0]["industry_level2"] == "半导体"
+    assert rows[0]["tdx_l2"] == "T1001"
     assert rows[0]["holder_follow_count"] == 2
     assert rows[0]["forecast_cross_section_score"] == 63.0
     assert rows[0]["stock_gate"] == "follow"

@@ -18,7 +18,11 @@ def _make_conn():
         CREATE TABLE dim_stock_tdx_industry (
             stock_code TEXT PRIMARY KEY,
             tdx_l1 TEXT,
-            tdx_l2 TEXT
+            tdx_l2 TEXT,
+            tdx_l3 TEXT,
+            tdx_l1_name TEXT,
+            tdx_l2_name TEXT,
+            tdx_l3_name TEXT
         );
 
         CREATE TABLE dim_stock_stage_latest (
@@ -58,8 +62,8 @@ def test_build_stock_forecast_features_prefers_tdx2_group_and_matches_formula(mo
                 ("model_1", code, f"芯片股{idx}", "2026-04-13", qlib_score, idx + 1, qlib_percentile),
             )
             conn.execute(
-                "INSERT INTO dim_stock_tdx_industry (stock_code, tdx_l1, tdx_l2) VALUES (?, ?, ?)",
-                (code, "电子", "芯片"),
+                "INSERT INTO dim_stock_tdx_industry (stock_code, tdx_l1, tdx_l2, tdx_l1_name, tdx_l2_name) VALUES (?, ?, ?, ?, ?)",
+                (code, "T10", "T1001", "电子", "芯片"),
             )
             conn.execute(
                 "INSERT INTO dim_stock_stage_latest (stock_code, volatility_20d, max_drawdown_60d) VALUES (?, ?, ?)",
@@ -146,8 +150,8 @@ def test_build_stock_forecast_features_prefers_active_model_and_marks_global_fal
                 ("model_active", code, f"回退股{idx}", "2026-04-13", 0.8 - idx * 0.1, idx + 1, 95.0 - idx * 20.0),
             )
             conn.execute(
-                "INSERT INTO dim_stock_industry (stock_code, sw_level1, sw_level2) VALUES (?, ?, ?)",
-                (code, "电子", f"小组{idx}"),
+                "INSERT INTO dim_stock_tdx_industry (stock_code, tdx_l1, tdx_l2, tdx_l1_name, tdx_l2_name) VALUES (?, ?, ?, ?, ?)",
+                (code, "T10", f"T100{idx}", "电子", f"小组{idx}"),
             )
             conn.execute(
                 "INSERT INTO dim_stock_stage_latest (stock_code, volatility_20d, max_drawdown_60d) VALUES (?, ?, ?)",
@@ -167,57 +171,6 @@ def test_build_stock_forecast_features_prefers_active_model_and_marks_global_fal
         conn.close()
 
 
-def test_build_stock_forecast_features_uses_shared_industry_alias_map(monkeypatch):
-    conn = _make_conn()
-    try:
-        ensure_qlib_tables(conn)
-        monkeypatch.setattr(
-            "services.stock_forecast_engine.sync_latest_predictions_to_stock_trend",
-            lambda smart_conn, model_id=None: 0,
-        )
-        monkeypatch.setattr(
-            "services.stock_forecast_engine.load_industry_map",
-            lambda _conn: {
-                f"60{idx:04d}": {"industry_level1": "电子", "industry_level2": "芯片"}
-                for idx in range(15)
-            },
-        )
-
-        conn.execute(
-            "INSERT INTO qlib_model_state (model_id, status, created_at) VALUES (?, ?, ?)",
-            ("model_alias", "trained", "2026-04-13T09:00:00"),
-        )
-        for idx in range(15):
-            code = f"60{idx:04d}"
-            conn.execute(
-                """
-                INSERT INTO qlib_predictions (
-                    model_id, stock_code, stock_name, predict_date,
-                    qlib_score, qlib_rank, qlib_percentile
-                ) VALUES (?, ?, ?, ?, ?, ?, ?)
-                """,
-                ("model_alias", code, f"别名股{idx}", "2026-04-13", 0.9 - idx * 0.01, idx + 1, 95.0 - idx * 2),
-            )
-            conn.execute(
-                "INSERT INTO dim_stock_stage_latest (stock_code, volatility_20d, max_drawdown_60d) VALUES (?, ?, ?)",
-                (code, 10 + idx, 5 + idx),
-            )
-        conn.commit()
-
-        inserted = build_stock_forecast_features(conn, snapshot_date="2026-04-13")
-
-        row = conn.execute(
-            "SELECT sw_level1, sw_level2, industry_relative_group FROM dim_stock_forecast_latest WHERE stock_code = ?",
-            ("600000",),
-        ).fetchone()
-        assert inserted == 15
-        assert row["sw_level1"] == "电子"
-        assert row["sw_level2"] == "芯片"
-        assert row["industry_relative_group"] == "二级行业:芯片"
-    finally:
-        conn.close()
-
-
 def test_apply_forecast_score_aliases_normalizes_legacy_industry_group_labels():
     level2_row = apply_forecast_score_aliases({
         "forecast_20d_score": 61.0,
@@ -231,3 +184,9 @@ def test_apply_forecast_score_aliases_normalizes_legacy_industry_group_labels():
 
     level1_row = apply_forecast_score_aliases({"industry_relative_group": "SW1:电子"})
     assert level1_row["industry_relative_group"] == "一级行业:电子"
+
+    tdx2_row = apply_forecast_score_aliases({"industry_relative_group": "TDX2:芯片"})
+    assert tdx2_row["industry_relative_group"] == "二级行业:芯片"
+
+    tdx1_row = apply_forecast_score_aliases({"industry_relative_group": "TDX1:电子"})
+    assert tdx1_row["industry_relative_group"] == "一级行业:电子"

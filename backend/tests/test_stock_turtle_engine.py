@@ -34,17 +34,21 @@ def _make_conn():
         CREATE TABLE dim_stock_forecast_latest (
             stock_code TEXT PRIMARY KEY,
             model_id TEXT,
-            sw_level1 TEXT,
-            sw_level2 TEXT,
+            tdx_l1_name TEXT,
+            tdx_l2_name TEXT,
             qlib_score REAL,
             qlib_percentile REAL,
             forecast_score_v1 REAL
         );
 
-        CREATE TABLE dim_stock_industry (
+        CREATE TABLE dim_stock_tdx_industry (
             stock_code TEXT PRIMARY KEY,
-            sw_level1 TEXT,
-            sw_level2 TEXT
+            tdx_l1 TEXT,
+            tdx_l2 TEXT,
+            tdx_l3 TEXT,
+            tdx_l1_name TEXT,
+            tdx_l2_name TEXT,
+            tdx_l3_name TEXT
         );
         """
     )
@@ -107,7 +111,7 @@ def test_build_stock_turtle_features_materializes_breakout_and_reference_levels(
         conn.execute(
             """
             INSERT INTO dim_stock_forecast_latest (
-                stock_code, model_id, sw_level1, sw_level2,
+                stock_code, model_id, tdx_l1_name, tdx_l2_name,
                 qlib_score, qlib_percentile, forecast_score_v1
             ) VALUES (?, ?, ?, ?, ?, ?, ?)
             """,
@@ -183,7 +187,7 @@ def test_build_stock_turtle_features_marks_exit_state_on_break_of_exit_channels(
         conn.execute(
             """
             INSERT INTO dim_stock_forecast_latest (
-                stock_code, model_id, sw_level1, sw_level2,
+                stock_code, model_id, tdx_l1_name, tdx_l2_name,
                 qlib_score, qlib_percentile, forecast_score_v1
             ) VALUES (?, ?, ?, ?, ?, ?, ?)
             """,
@@ -238,7 +242,7 @@ def test_build_stock_turtle_features_falls_back_to_shared_industry_alias_map(mon
         ensure_tables(conn)
         monkeypatch.setattr(
             "services.stock_turtle_engine.load_industry_map",
-            lambda _conn: {"600010": {"industry_level1": "电子", "industry_level2": "芯片"}},
+            lambda _conn: {"600010": {"tdx_l1_name": "电子", "tdx_l2_name": "芯片"}},
         )
         conn.execute(
             "INSERT INTO mart_stock_trend (stock_code, stock_name, latest_notice_date, latest_report_date) VALUES (?, ?, ?, ?)",
@@ -256,7 +260,7 @@ def test_build_stock_turtle_features_falls_back_to_shared_industry_alias_map(mon
         conn.execute(
             """
             INSERT INTO dim_stock_forecast_latest (
-                stock_code, model_id, sw_level1, sw_level2,
+                stock_code, model_id, tdx_l1_name, tdx_l2_name,
                 qlib_score, qlib_percentile, forecast_score_v1
             ) VALUES (?, ?, ?, ?, ?, ?, ?)
             """,
@@ -280,12 +284,12 @@ def test_build_stock_turtle_features_falls_back_to_shared_industry_alias_map(mon
         inserted = build_stock_turtle_features(conn, mkt_conn, snapshot_date="2026-04-13")
 
         row = conn.execute(
-            "SELECT sw_level1, sw_level2 FROM dim_stock_turtle_latest WHERE stock_code = ?",
+            "SELECT tdx_l1_name, tdx_l2_name FROM dim_stock_turtle_latest WHERE stock_code = ?",
             ("600010",),
         ).fetchone()
         assert inserted == 1
-        assert row["sw_level1"] == "电子"
-        assert row["sw_level2"] == "芯片"
+        assert row["tdx_l1_name"] == "电子"
+        assert row["tdx_l2_name"] == "芯片"
     finally:
         mkt_conn.close()
         conn.close()
@@ -312,7 +316,7 @@ def test_build_stock_turtle_features_ignores_stage_gate_when_scoring_risk():
         conn.execute(
             """
             INSERT INTO dim_stock_forecast_latest (
-                stock_code, model_id, sw_level1, sw_level2,
+                stock_code, model_id, tdx_l1_name, tdx_l2_name,
                 qlib_score, qlib_percentile, forecast_score_v1
             ) VALUES (?, ?, ?, ?, ?, ?, ?)
             """,

@@ -182,9 +182,9 @@ def _build_institution_industry_summary(conn, inst_id: str, holdings: list[dict]
     total_with_industry = 0
 
     def _industry_level_value(industry: dict, level: int) -> str:
-        neutral_key = industry_level_alias(level)
-        legacy_key = f"sw_level{level}"
-        return (industry.get(neutral_key) or industry.get(legacy_key) or "") if industry else ""
+        if not industry:
+            return ""
+        return industry.get(industry_level_alias(level)) or ""
 
     for stock_code in stock_codes:
         industry = industry_map.get(stock_code)

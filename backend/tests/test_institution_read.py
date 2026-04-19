@@ -287,8 +287,8 @@ def test_load_institution_profile_detail_appends_exits_and_builds_industry_summa
             institution_read,
             "load_industry_map",
             lambda _conn: {
-                "600001": {"industry_level1": "电子", "industry_level2": "半导体", "industry_level3": "芯片设计"},
-                "600002": {"sw_level1": "电子", "sw_level2": "半导体", "sw_level3": "封装测试"},
+                "600001": {"tdx_l1": "电子", "tdx_l2": "半导体", "tdx_l3": "芯片设计"},
+                "600002": {"tdx_l1": "电子", "tdx_l2": "半导体", "tdx_l3": "封装测试"},
             },
         )
         conn.executemany(

@@ -190,8 +190,8 @@ def build_stock_turtle_features(conn, mkt_conn, snapshot_date: Optional[str] = N
         """
         SELECT t.stock_code, t.stock_name, t.latest_notice_date, t.latest_report_date,
                f.model_id,
-               f.sw_level1 AS tdx_l1_name,
-               f.sw_level2 AS tdx_l2_name,
+               f.tdx_l1_name,
+               f.tdx_l2_name,
                s.path_state, s.stock_gate,
                s.amount_ratio_20_120, s.volatility_20d, s.amplitude_20d, s.stage_score_v1,
                f.forecast_score_v1, f.qlib_score, f.qlib_percentile

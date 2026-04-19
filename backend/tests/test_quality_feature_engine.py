@@ -40,23 +40,25 @@ def _make_conn():
             revenue_growth_yoy_ak REAL,
             net_profit_growth_yoy_ak REAL
         );
+
+        CREATE TABLE dim_stock_tdx_industry (
+            stock_code TEXT PRIMARY KEY,
+            tdx_l1 TEXT,
+            tdx_l2 TEXT,
+            tdx_l3 TEXT,
+            tdx_l1_name TEXT,
+            tdx_l2_name TEXT,
+            tdx_l3_name TEXT
+        );
         """
     )
     return conn
 
 
-def test_build_quality_features_uses_shared_industry_alias_map(monkeypatch):
+def test_build_quality_features_uses_shared_industry_alias_map():
     conn = _make_conn()
     try:
         ensure_tables(conn)
-        monkeypatch.setattr(
-            "services.quality_feature_engine.load_industry_map",
-            lambda _conn: {
-                f"60{idx:04d}": {"industry_level1": "电子", "industry_level2": "芯片"}
-                for idx in range(15)
-            },
-        )
-
         for idx in range(15):
             code = f"60{idx:04d}"
             conn.execute(
@@ -67,17 +69,21 @@ def test_build_quality_features_uses_shared_industry_alias_map(monkeypatch):
                 "INSERT INTO dim_financial_indicator_latest VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 (code, "2026-03-31", 0.12, 0.08 + idx * 0.002, 0.28, 0.12, 1.6, 1.2, 0.45, 0.9, 2.0, 3.0, 12.0, 10.0),
             )
+            conn.execute(
+                "INSERT INTO dim_stock_tdx_industry VALUES (?, ?, ?, ?, ?, ?, ?)",
+                (code, "T10", "T1001", "T100101", "电子", "芯片", "设计"),
+            )
         conn.commit()
 
         inserted = build_quality_features(conn, snapshot_date="2026-04-18")
 
         row = conn.execute(
-            "SELECT sw_level1, sw_level2, roe_rank, roa_rank, quality_score_v1 FROM dim_stock_quality_latest WHERE stock_code = ?",
+            "SELECT tdx_l1, tdx_l2, roe_rank, roa_rank, quality_score_v1 FROM dim_stock_quality_latest WHERE stock_code = ?",
             ("600000",),
         ).fetchone()
         assert inserted == 15
-        assert row["sw_level1"] == "电子"
-        assert row["sw_level2"] == "芯片"
+        assert row["tdx_l1"] == "T10"
+        assert row["tdx_l2"] == "T1001"
         assert row["roe_rank"] is not None
         assert row["roa_rank"] is not None
         assert row["quality_score_v1"] is not None

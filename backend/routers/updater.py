@@ -173,6 +173,7 @@ STEPS = [
     {"id": "sync_raw",              "name": "下载十大股东",     "group": "data", "order": 1},
     {"id": "match_inst",            "name": "匹配跟踪机构",    "group": "data", "order": 2},
     {"id": "sync_market_data",      "name": "同步行情数据",    "group": "data", "order": 3},
+    {"id": "sync_northbound",       "name": "同步北向持仓",    "group": "data", "order": 3.5},
     {"id": "sync_financial",        "name": "同步财务数据",    "group": "data", "order": 4},
     {"id": "gen_events",            "name": "生成事件",        "group": "calc", "order": 5},
     {"id": "calc_returns",          "name": "计算收益",        "group": "calc", "order": 6},
@@ -3136,7 +3137,7 @@ async def reset_industry_derived(restart_smart: bool = True):
         "counts": counts,
         "missing_tables": missing_tables,
         "preserved_tables": [
-            "dim_stock_industry",
+            "dim_stock_tdx_industry",
             "fact_institution_event",
             "inst_holdings",
             "market_kline_daily",

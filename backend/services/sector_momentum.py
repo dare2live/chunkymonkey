@@ -327,22 +327,17 @@ def calc_sector_momentum(smart_conn, mkt_conn) -> int:
     """
     ensure_tables(smart_conn)
 
-    # 获取通达信一级行业列表（按中文名聚合，板块名 = tdx_l1_name）
-    industries = smart_conn.execute(
-        "SELECT DISTINCT tdx_l1_name FROM dim_stock_tdx_industry WHERE tdx_l1_name IS NOT NULL AND tdx_l1_name != ''"
-    ).fetchall()
+    # 获取行业-股票映射 (按中文名聚合，板块名 = tdx_l1_name)
+    industry_stocks = {}
+    for row in smart_conn.execute(
+        "SELECT stock_code, tdx_l1_name FROM dim_stock_tdx_industry WHERE tdx_l1_name IS NOT NULL AND tdx_l1_name != ''"
+    ).fetchall():
+        industry_stocks.setdefault(row["tdx_l1_name"], []).append(row["stock_code"])
 
-    industries = [{"sector_name": sector_name} for sector_name in sorted(industry_stocks)]
+    industries = [{"tdx_l1_name": sector_name} for sector_name in sorted(industry_stocks)]
     if not industries:
         logger.info("[板块动量] 无行业分类数据")
         return 0
-
-    # 获取行业-股票映射
-    industry_stocks = {}
-    for row in smart_conn.execute(
-        "SELECT stock_code, tdx_l1_name FROM dim_stock_tdx_industry WHERE tdx_l1_name IS NOT NULL"
-    ).fetchall():
-        industry_stocks.setdefault(row["tdx_l1_name"], []).append(row["stock_code"])
 
     # 全市场等权基线：作为行业强弱的相对参照
     benchmark_close = None

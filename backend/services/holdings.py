@@ -20,12 +20,12 @@ from services.utils import parse_any_date as _parse_date_like
 logger = logging.getLogger("cm-api")
 
 _INDUSTRY_PAYLOAD_KEYS = {
-    "sw_level1",
-    "sw_level2",
-    "sw_level3",
-    "industry_level1",
-    "industry_level2",
-    "industry_level3",
+    "tdx_l1",
+    "tdx_l2",
+    "tdx_l3",
+    "tdx_l1_name",
+    "tdx_l2_name",
+    "tdx_l3_name",
 }
 
 
@@ -288,9 +288,6 @@ def build_current_relationship(conn) -> int:
     for r in rows:
         code = r["stock_code"]
         ind = industry_map.get(code, {})
-        industry_level1 = ind.get("industry_level1") or ind.get("sw_level1")
-        industry_level2 = ind.get("industry_level2") or ind.get("sw_level2")
-        industry_level3 = ind.get("industry_level3") or ind.get("sw_level3")
         key = (r["institution_id"], code)
         entry = entry_dates.get(key, {})
 

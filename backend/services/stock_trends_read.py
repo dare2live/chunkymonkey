@@ -426,10 +426,8 @@ def build_stock_trends_summary(rows: list[dict]) -> dict:
         source = stock_source_name(item)
         industry = (
             item.get("setup_industry_name")
-            or item.get("industry_level2")
-            or item.get("sw_level2")
-            or item.get("industry_level1")
-            or item.get("sw_level1")
+            or item.get("tdx_l2_name")
+            or item.get("tdx_l1_name")
             or ""
         )
         attention_signal = item.get("external_attention_signal") or ""

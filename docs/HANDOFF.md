@@ -17,8 +17,8 @@
 
 ### 当前实情澄清（2026-04-19）
 
-- **行业分类仍是申万 SW，未切到通达信 block**。dim_stock_industry 里只有 sw_level1/2/3，`.block()` 调用 0 处。切换 tdxhub block 是独立任务，**不阻塞 Qlib**。
-- V6 当前 edge +14.44pp / WR 80% / n=128 是在 SW 行业分组下得到的，对 Qlib 训练够用。
+- **行业分类已于 Phase 2 全量切到通达信 TDX**。dim_stock_industry 已 DROP，取而代之的 dim_stock_tdx_industry 存 tdx_l1/l2/l3 (code) + tdx_l1_name/l2_name/l3_name (中文)。
+- V6 当前 edge +14.44pp / WR 80% / n=128 的历史 cohort 是在 SW 分组下得到的；后续再跑 cohort 请改用 TDX 三级分类，复核 edge。
 
 ### Cohort 行业分布健康度（5696 事件）
 

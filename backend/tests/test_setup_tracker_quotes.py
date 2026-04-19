@@ -175,9 +175,9 @@ def test_backfill_setup_snapshot_industry_uses_shared_industry_alias_map(monkeyp
             stock_code TEXT,
             setup_tag TEXT,
             setup_inst_id TEXT,
-            snapshot_sw_level1 TEXT,
-            snapshot_sw_level2 TEXT,
-            snapshot_sw_level3 TEXT,
+            snapshot_tdx_l1 TEXT,
+            snapshot_tdx_l2 TEXT,
+            snapshot_tdx_l3 TEXT,
             updated_at TEXT,
             PRIMARY KEY (snapshot_date, stock_code, setup_tag, setup_inst_id)
         );
@@ -194,9 +194,9 @@ def test_backfill_setup_snapshot_industry_uses_shared_industry_alias_map(monkeyp
             "load_industry_map",
             lambda _conn: {
                 "600036": {
-                    "industry_level1": "银行",
-                    "industry_level2": "股份制银行",
-                    "industry_level3": "全国性股份制银行",
+                    "tdx_l1": "T01",
+                    "tdx_l2": "T0101",
+                    "tdx_l3": "T010101",
                 }
             },
         )
@@ -204,12 +204,12 @@ def test_backfill_setup_snapshot_industry_uses_shared_industry_alias_map(monkeyp
         updated = setup_tracker.backfill_setup_snapshot_industry(conn, snapshot_date="2026-04-15")
 
         row = conn.execute(
-            "SELECT snapshot_sw_level1, snapshot_sw_level2, snapshot_sw_level3 FROM fact_setup_snapshot WHERE stock_code = '600036'"
+            "SELECT snapshot_tdx_l1, snapshot_tdx_l2, snapshot_tdx_l3 FROM fact_setup_snapshot WHERE stock_code = '600036'"
         ).fetchone()
         assert updated == 1
-        assert row["snapshot_sw_level1"] == "银行"
-        assert row["snapshot_sw_level2"] == "股份制银行"
-        assert row["snapshot_sw_level3"] == "全国性股份制银行"
+        assert row["snapshot_tdx_l1"] == "T01"
+        assert row["snapshot_tdx_l2"] == "T0101"
+        assert row["snapshot_tdx_l3"] == "T010101"
     finally:
         conn.close()
 

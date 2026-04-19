@@ -59,7 +59,7 @@ def _seed_forecast_rows(conn, model_id: str, snapshot_date: str, sector_name: st
             """
             INSERT INTO dim_stock_forecast_latest (
                 stock_code, snapshot_date, model_id, predict_date, stock_name,
-                sw_level1, sw_level2, qlib_score, qlib_rank, qlib_percentile,
+                tdx_l1_name, tdx_l2_name, qlib_score, qlib_rank, qlib_percentile,
                 industry_qlib_percentile, industry_relative_group,
                 volatility_20d, max_drawdown_60d, volatility_rank, drawdown_rank,
                 forecast_20d_score, forecast_60d_excess_score,

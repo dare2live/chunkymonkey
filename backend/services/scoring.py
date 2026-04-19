@@ -10,7 +10,7 @@ import logging
 from datetime import datetime
 from typing import Optional, Tuple
 
-from services.industry import industry_join_clause, industry_level_value, load_industry_map
+from services.industry import industry_join_clause, load_industry_map
 from services.utils import safe_float as _safe_float, percentile_ranks as _percentile_ranks
 from services.constants import (
     PATH_THRESHOLDS,
@@ -1904,9 +1904,6 @@ def calculate_stock_scores(conn) -> int:
     """).fetchall()
     for row in fin_rows:
         d = dict(row)
-        industry = stock_industry.get(d["stock_code"]) or {}
-        d["sw_level1"] = industry_level_value(industry, 1)
-        d["sw_level2"] = industry_level_value(industry, 2)
         financial_by_stock[d["stock_code"]] = d
         fin_groups[("all", "all")].append(d)
         if d.get("tdx_l2"):
@@ -1978,9 +1975,6 @@ def calculate_stock_scores(conn) -> int:
         """).fetchall()
         for row in indicator_rows:
             d = dict(row)
-            industry = stock_industry.get(d["stock_code"]) or {}
-            d["sw_level1"] = industry_level_value(industry, 1)
-            d["sw_level2"] = industry_level_value(industry, 2)
             indicator_by_stock[d["stock_code"]] = d
             indicator_groups[("all", "all")].append(d)
             if d.get("tdx_l2"):
@@ -2188,6 +2182,10 @@ def calculate_stock_scores(conn) -> int:
             1 for h in holders if h.get("event_type") in ("new_entry", "increase")
         )
 
+        leader_inst = _select_leader_institution(holders, inst_profiles)
+        leader_score = _safe_float(inst_scores.get(leader_inst)) or 0 if leader_inst else 0
+        leader_quality_norm = min(leader_score, 100)
+
         stock_ind = stock_industry.get(sc, {})
         stock_sw1 = stock_ind.get("tdx_l1")
         stock_sw2 = stock_ind.get("tdx_l2")
@@ -2275,6 +2273,18 @@ def calculate_stock_scores(conn) -> int:
             penalty += config.get("path_exhausted_penalty", 0)
 
         action_score = round(max(base_score - penalty, 0), 2)
+
+        # --- Setup A 叠加层 ---
+        best_setup = None
+        for h in holders:
+            profile = inst_profiles.get(h["institution_id"])
+            if not profile:
+                continue
+            candidate = _evaluate_setup_candidate(
+                h, profile, stock_ind, industry_stats, buy_signal_count, crowding_lookup
+            )
+            if candidate and (best_setup is None or _setup_sort_key(candidate) < _setup_sort_key(best_setup)):
+                best_setup = candidate
 
         # ============================================================
         # 新四层评分：Discovery / Quality / Stage / Forecast

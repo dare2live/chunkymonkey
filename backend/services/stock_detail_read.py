@@ -267,12 +267,9 @@ async def load_stock_attention_payload(conn, stock_code: str) -> dict:
     fallback_industry = ""
     if industry_meta:
         fallback_industry = (
-            industry_meta.get("industry_level2")
-            or industry_meta.get("industry_level1")
-            or industry_meta.get("industry_level3")
-            or industry_meta.get("sw_level2")
-            or industry_meta.get("sw_level1")
-            or industry_meta.get("sw_level3")
+            industry_meta.get("tdx_l2_name")
+            or industry_meta.get("tdx_l1_name")
+            or industry_meta.get("tdx_l3_name")
             or ""
         )
     if not basic_info:

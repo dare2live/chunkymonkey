@@ -94,7 +94,21 @@ def init_db():
 
             -- dim_stock_industry (申万三级) 已于 Phase 2 (TDX 迁移) 退役；
             -- 统一使用 dim_stock_tdx_industry 作为唯一行业真相源
-            -- (schema 见 backend/services/tdx_industry_client.py::_ensure_table)
+            -- (同步维护: backend/services/tdx_industry_client.py::_ensure_table)
+            CREATE TABLE IF NOT EXISTS dim_stock_tdx_industry (
+                stock_code    TEXT PRIMARY KEY,
+                tdx_l1        TEXT,
+                tdx_l2        TEXT,
+                tdx_l3        TEXT,
+                tdx_l1_name   TEXT,
+                tdx_l2_name   TEXT,
+                tdx_l3_name   TEXT,
+                sw_x_legacy   TEXT,
+                updated_at    TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            );
+            CREATE INDEX IF NOT EXISTS idx_tdx_industry_l1 ON dim_stock_tdx_industry(tdx_l1);
+            CREATE INDEX IF NOT EXISTS idx_tdx_industry_l2 ON dim_stock_tdx_industry(tdx_l2);
+            CREATE INDEX IF NOT EXISTS idx_tdx_industry_l3 ON dim_stock_tdx_industry(tdx_l3);
 
             CREATE TABLE IF NOT EXISTS dim_tdx_block_catalog (
                 block_category TEXT NOT NULL,
@@ -860,6 +874,18 @@ def init_db():
                 pass
         turtle_tables = ("fact_stock_turtle_features", "dim_stock_turtle_latest")
         for table in turtle_tables:
+            try:
+                cols = {r[1] for r in conn.execute(f"PRAGMA table_info({table})").fetchall()}
+                if "sw_level1" in cols and "tdx_l1_name" not in cols:
+                    conn.execute(f"ALTER TABLE {table} RENAME COLUMN sw_level1 TO tdx_l1_name")
+                if "sw_level2" in cols and "tdx_l2_name" not in cols:
+                    conn.execute(f"ALTER TABLE {table} RENAME COLUMN sw_level2 TO tdx_l2_name")
+            except Exception:
+                pass
+
+        # Phase 3d-3: forecast 表列名正名 (实际存 TDX 中文名)
+        forecast_tables = ("fact_stock_forecast_features", "dim_stock_forecast_latest")
+        for table in forecast_tables:
             try:
                 cols = {r[1] for r in conn.execute(f"PRAGMA table_info({table})").fetchall()}
                 if "sw_level1" in cols and "tdx_l1_name" not in cols:

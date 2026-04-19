@@ -38,7 +38,7 @@ def _make_conn():
         CREATE TABLE mart_current_relationship (
             institution_id TEXT,
             stock_code TEXT,
-            sw_level1 TEXT
+            tdx_l1 TEXT
         );
 
         CREATE TABLE mart_stock_trend (
@@ -56,13 +56,13 @@ def _make_conn():
 
         CREATE TABLE dim_stock_industry_context_latest (
             stock_code TEXT,
-            sw_level1 TEXT,
+            tdx_l1 TEXT,
             industry_tailwind_score REAL,
             dual_confirm_recent_180d INTEGER
         );
 
         CREATE TABLE fact_setup_snapshot (
-            snapshot_sw_level1 TEXT,
+            snapshot_tdx_l1 TEXT,
             snapshot_date TEXT,
             priority_pool TEXT,
             matured_10d INTEGER,
@@ -80,11 +80,14 @@ def _make_conn():
             report_date TEXT
         );
 
-        CREATE TABLE dim_stock_industry (
+        CREATE TABLE dim_stock_tdx_industry (
             stock_code TEXT,
-            sw_level1 TEXT,
-            sw_level2 TEXT,
-            sw_level3 TEXT
+            tdx_l1 TEXT,
+            tdx_l2 TEXT,
+            tdx_l3 TEXT,
+            tdx_l1_name TEXT,
+            tdx_l2_name TEXT,
+            tdx_l3_name TEXT
         );
         """
     )
@@ -133,10 +136,10 @@ def _make_conn():
         ],
     )
     conn.executemany(
-        "INSERT INTO dim_stock_industry VALUES (?, ?, ?, ?)",
+        "INSERT INTO dim_stock_tdx_industry (stock_code, tdx_l1, tdx_l2, tdx_l3, tdx_l1_name, tdx_l2_name, tdx_l3_name) VALUES (?, ?, ?, ?, ?, ?, ?)",
         [
-            ("600001", "汽车", "汽车零部件", "零部件"),
-            ("600002", "半导体", "半导体", "芯片设计"),
+            ("600001", "汽车", "汽车零部件", "零部件", "汽车", "汽车零部件", "零部件"),
+            ("600002", "半导体", "半导体", "芯片设计", "半导体", "半导体", "芯片设计"),
         ],
     )
     conn.commit()

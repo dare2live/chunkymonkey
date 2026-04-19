@@ -151,9 +151,10 @@ def _ensure_table(conn: sqlite3.Connection):
         CREATE INDEX IF NOT EXISTS idx_gpcw_report
         ON raw_gpcw_detail(report_date)
     """)
-    # 前向兼容：如果 _FIELD_MAP 新增了字段但表已存在，自动 ALTER TABLE ADD COLUMN
+    # 前向兼容：如果 _FIELD_MAP / _FIELD_ALIASES_BY_DB_COLUMN 新增了字段但表已存在，
+    # 自动 ALTER TABLE ADD COLUMN (覆盖全部 DB 列, 不只 _FIELD_MAP.values())
     existing = {row[1] for row in conn.execute("PRAGMA table_info(raw_gpcw_detail)").fetchall()}
-    for col in _FIELD_MAP.values():
+    for col in _NUMERIC_DB_COLUMNS:
         if col not in existing:
             conn.execute(f"ALTER TABLE raw_gpcw_detail ADD COLUMN {col} REAL")
             logger.info(f"[gpcw] ALTER TABLE: 新增字段 {col}")
