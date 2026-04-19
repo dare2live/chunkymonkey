@@ -10,6 +10,7 @@ from datetime import date, timedelta
 from fastapi import APIRouter, Query
 from services.db import get_conn
 from services.industry import industry_join_clause
+from services.tdx_industry_names import get_tdx_industry_name
 
 router = APIRouter()
 
@@ -320,6 +321,28 @@ async def get_industry_overview(topn: int = Query(3, ge=1, le=10)):
                 top_stock_map.setdefault(row["sector_name"], []).append(dict(row))
         except Exception:
             top_stock_map = {}
+
+        def _to_name_keyed(m: dict) -> dict:
+            out: dict = {}
+            for key, val in m.items():
+                if not key:
+                    continue
+                name = get_tdx_industry_name(key) or key
+                if isinstance(val, list):
+                    for row in val:
+                        if isinstance(row, dict) and "sector_name" in row:
+                            row["sector_name"] = name
+                elif isinstance(val, dict) and "sector_name" in val:
+                    val["sector_name"] = name
+                out[name] = val
+            return out
+
+        active_map = _to_name_keyed(active_map)
+        candidate_map = _to_name_keyed(candidate_map)
+        snapshot_feedback_map = _to_name_keyed(snapshot_feedback_map)
+        context_map = _to_name_keyed(context_map)
+        recent_event_map = _to_name_keyed(recent_event_map)
+        top_stock_map = _to_name_keyed(top_stock_map)
 
         sectors = sorted(
             set(sector_map.keys())
