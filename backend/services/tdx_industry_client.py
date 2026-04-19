@@ -44,17 +44,25 @@ _ONE_CHUNK = 0x7530  # 30000 bytes per chunk (TDX protocol limit)
 def _ensure_table(conn: sqlite3.Connection) -> None:
     conn.executescript("""
         CREATE TABLE IF NOT EXISTS dim_stock_tdx_industry (
-            stock_code  TEXT PRIMARY KEY,
-            tdx_l1      TEXT,
-            tdx_l2      TEXT,
-            tdx_l3      TEXT,
-            sw_x_legacy TEXT,
-            updated_at  TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            stock_code    TEXT PRIMARY KEY,
+            tdx_l1        TEXT,
+            tdx_l2        TEXT,
+            tdx_l3        TEXT,
+            tdx_l1_name   TEXT,
+            tdx_l2_name   TEXT,
+            tdx_l3_name   TEXT,
+            sw_x_legacy   TEXT,
+            updated_at    TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         );
         CREATE INDEX IF NOT EXISTS idx_tdx_industry_l1 ON dim_stock_tdx_industry(tdx_l1);
         CREATE INDEX IF NOT EXISTS idx_tdx_industry_l2 ON dim_stock_tdx_industry(tdx_l2);
         CREATE INDEX IF NOT EXISTS idx_tdx_industry_l3 ON dim_stock_tdx_industry(tdx_l3);
     """)
+    existing = {row[1] for row in conn.execute("PRAGMA table_info(dim_stock_tdx_industry)").fetchall()}
+    for col in ("tdx_l1_name", "tdx_l2_name", "tdx_l3_name"):
+        if col not in existing:
+            conn.execute(f"ALTER TABLE dim_stock_tdx_industry ADD COLUMN {col} TEXT")
+            logger.info(f"[tdx_industry] ALTER TABLE: 新增列 {col}")
     conn.commit()
 
 
@@ -119,10 +127,18 @@ def _split_tdx_code(code: str) -> tuple[Optional[str], Optional[str], Optional[s
     return (l1, l2, l3)
 
 
-def _parse_tdxhy(data: bytes) -> list[tuple[str, Optional[str], Optional[str], Optional[str], Optional[str]]]:
-    """解析 tdxhy.cfg 字节流，返回 [(stock_code, tdx_l1, tdx_l2, tdx_l3, sw_x_legacy), ...]。"""
+_ParsedRow = tuple[str, Optional[str], Optional[str], Optional[str],
+                   Optional[str], Optional[str], Optional[str], Optional[str]]
+
+
+def _parse_tdxhy(data: bytes) -> list[_ParsedRow]:
+    """解析 tdxhy.cfg 字节流，返回
+    [(stock_code, tdx_l1, tdx_l2, tdx_l3, tdx_l1_name, tdx_l2_name, tdx_l3_name, sw_x_legacy), ...]。
+    """
+    from backend.services.tdx_industry_names import get_tdx_industry_name
+
     text = data.decode("gbk", errors="ignore")
-    rows: list[tuple[str, Optional[str], Optional[str], Optional[str], Optional[str]]] = []
+    rows: list[_ParsedRow] = []
     for line in text.splitlines():
         line = line.strip()
         if not line:
@@ -137,7 +153,14 @@ def _parse_tdxhy(data: bytes) -> list[tuple[str, Optional[str], Optional[str], O
         if not stock_code:
             continue
         l1, l2, l3 = _split_tdx_code(tdx_raw)
-        rows.append((stock_code, l1, l2, l3, sw_x))
+        rows.append((
+            stock_code,
+            l1, l2, l3,
+            get_tdx_industry_name(l1),
+            get_tdx_industry_name(l2),
+            get_tdx_industry_name(l3),
+            sw_x,
+        ))
     return rows
 
 
@@ -200,12 +223,17 @@ def sync_tdx_industry(conn: sqlite3.Connection) -> dict:
 
     upsert_sql = """
         INSERT INTO dim_stock_tdx_industry
-          (stock_code, tdx_l1, tdx_l2, tdx_l3, sw_x_legacy, updated_at)
-        VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+          (stock_code, tdx_l1, tdx_l2, tdx_l3,
+           tdx_l1_name, tdx_l2_name, tdx_l3_name,
+           sw_x_legacy, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
         ON CONFLICT(stock_code) DO UPDATE SET
           tdx_l1      = excluded.tdx_l1,
           tdx_l2      = excluded.tdx_l2,
           tdx_l3      = excluded.tdx_l3,
+          tdx_l1_name = excluded.tdx_l1_name,
+          tdx_l2_name = excluded.tdx_l2_name,
+          tdx_l3_name = excluded.tdx_l3_name,
           sw_x_legacy = excluded.sw_x_legacy,
           updated_at  = CURRENT_TIMESTAMP
     """
@@ -225,9 +253,11 @@ def sync_tdx_industry(conn: sqlite3.Connection) -> dict:
 # ─────────────────────────────────────────────────────────────────────
 
 def get_tdx_industry(conn: sqlite3.Connection, stock_code: str) -> Optional[dict]:
-    """查询单只股票的通达信行业三级代码。"""
+    """查询单只股票的通达信行业三级代码（含中文名）。"""
     row = conn.execute(
-        "SELECT tdx_l1, tdx_l2, tdx_l3, sw_x_legacy FROM dim_stock_tdx_industry WHERE stock_code=?",
+        """SELECT tdx_l1, tdx_l2, tdx_l3,
+                  tdx_l1_name, tdx_l2_name, tdx_l3_name, sw_x_legacy
+             FROM dim_stock_tdx_industry WHERE stock_code=?""",
         (stock_code,),
     ).fetchone()
     if not row:
@@ -236,16 +266,25 @@ def get_tdx_industry(conn: sqlite3.Connection, stock_code: str) -> Optional[dict
         "tdx_l1": row[0],
         "tdx_l2": row[1],
         "tdx_l3": row[2],
-        "sw_x_legacy": row[3],
+        "tdx_l1_name": row[3],
+        "tdx_l2_name": row[4],
+        "tdx_l3_name": row[5],
+        "sw_x_legacy": row[6],
     }
 
 
 def load_tdx_industry_map(conn: sqlite3.Connection) -> dict[str, dict]:
-    """批量加载全量股票→行业映射（供构建大型特征矩阵时避免 N+1 查询）。"""
+    """批量加载全量股票→行业映射（含中文名）。"""
     rows = conn.execute(
-        "SELECT stock_code, tdx_l1, tdx_l2, tdx_l3, sw_x_legacy FROM dim_stock_tdx_industry"
+        """SELECT stock_code, tdx_l1, tdx_l2, tdx_l3,
+                  tdx_l1_name, tdx_l2_name, tdx_l3_name, sw_x_legacy
+             FROM dim_stock_tdx_industry"""
     ).fetchall()
     return {
-        r[0]: {"tdx_l1": r[1], "tdx_l2": r[2], "tdx_l3": r[3], "sw_x_legacy": r[4]}
+        r[0]: {
+            "tdx_l1": r[1], "tdx_l2": r[2], "tdx_l3": r[3],
+            "tdx_l1_name": r[4], "tdx_l2_name": r[5], "tdx_l3_name": r[6],
+            "sw_x_legacy": r[7],
+        }
         for r in rows
     }
