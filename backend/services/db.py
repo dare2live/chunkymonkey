@@ -419,6 +419,7 @@ def init_db():
                 institution_id TEXT NOT NULL,
                 sw_level       TEXT NOT NULL,
                 industry_name  TEXT NOT NULL,
+                tdx_code       TEXT,
                 sample_events  INTEGER DEFAULT 0,
                 avg_gain_30d   REAL,
                 avg_gain_60d   REAL,
@@ -812,6 +813,15 @@ def init_db():
                 )
             except Exception:
                 pass
+
+        # Phase 3b-1: mart_institution_industry_stat 增加 tdx_code 列
+        # 用于记录每行聚合的 TDX 行业代码 (T01 / T0401 / T040101); industry_name 仍存中文名。
+        try:
+            conn.execute(
+                "ALTER TABLE mart_institution_industry_stat ADD COLUMN tdx_code TEXT"
+            )
+        except Exception:
+            pass
 
         # Phase 1: mart_institution_profile 买入类评分字段 + 评分元数据
         for col in ["score_basis TEXT", "score_confidence TEXT",

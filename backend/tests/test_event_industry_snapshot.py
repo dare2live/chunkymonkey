@@ -1,3 +1,12 @@
+"""
+Phase 3b-1: 事件行业聚合口径迁移测试
+
+- 原 _capture_missing_event_industry_snapshots / dim_stock_industry 快照路径已删除
+  (Phase 2 申万源退役后 dim_stock_industry 被 DROP, 快照补齐函数永久失效)
+- 本文件仅保留新的 TDX 路径契约: _step_build_industry_stat_sync 按当前
+  dim_stock_tdx_industry 聚合, 写入 tdx_code + industry_name.
+"""
+
 import sqlite3
 import sys
 from pathlib import Path
@@ -27,28 +36,15 @@ def _make_conn():
             PRIMARY KEY (institution_id, stock_code, report_date)
         );
 
-        CREATE TABLE dim_stock_industry (
-            stock_code TEXT PRIMARY KEY,
-            sw_level1 TEXT,
-            sw_level2 TEXT,
-            sw_level3 TEXT,
-            sw_code TEXT,
-            updated_at TEXT
-        );
-
-        CREATE TABLE fact_institution_event_industry_snapshot (
-            institution_id TEXT NOT NULL,
-            stock_code TEXT NOT NULL,
-            report_date TEXT NOT NULL,
-            notice_date TEXT,
-            sw_level1 TEXT,
-            sw_level2 TEXT,
-            sw_level3 TEXT,
-            sw_code TEXT,
-            snapshot_source TEXT,
-            industry_updated_at TEXT,
-            captured_at TEXT,
-            PRIMARY KEY (institution_id, stock_code, report_date)
+        CREATE TABLE dim_stock_tdx_industry (
+            stock_code     TEXT PRIMARY KEY,
+            tdx_l1         TEXT,
+            tdx_l2         TEXT,
+            tdx_l3         TEXT,
+            tdx_l1_name    TEXT,
+            tdx_l2_name    TEXT,
+            tdx_l3_name    TEXT,
+            updated_at     TEXT
         );
 
         CREATE TABLE inst_institutions (
@@ -62,6 +58,7 @@ def _make_conn():
             institution_id TEXT NOT NULL,
             sw_level TEXT NOT NULL,
             industry_name TEXT NOT NULL,
+            tdx_code TEXT,
             sample_events INTEGER DEFAULT 0,
             avg_gain_30d REAL,
             avg_gain_60d REAL,
@@ -81,70 +78,7 @@ def _make_conn():
     return conn
 
 
-def test_capture_missing_event_industry_snapshots_preserves_existing_rows():
-    conn = _make_conn()
-    try:
-        conn.executemany(
-            "INSERT INTO fact_institution_event VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-            [
-                ("inst_a", "600001", "2026-03-31", "2026-04-10", 8.0, 10.0, 12.0, 15.0, -4.0, -6.0),
-                ("inst_a", "600002", "2026-03-31", "2026-04-10", 5.0, 6.0, 7.0, 8.0, -2.0, -3.0),
-            ],
-        )
-        conn.executemany(
-            "INSERT INTO dim_stock_industry VALUES (?, ?, ?, ?, ?, ?)",
-            [
-                ("600001", "新电子", "新半导体", "新芯片", "TDX001", "2026-04-18T09:00:00"),
-                ("600002", "银行", "股份行", "全国性股份行", "TDX002", "2026-04-18T09:00:00"),
-            ],
-        )
-        conn.execute(
-            """
-            INSERT INTO fact_institution_event_industry_snapshot VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """,
-            (
-                "inst_a",
-                "600001",
-                "2026-03-31",
-                "2026-04-10",
-                "旧电子",
-                "旧半导体",
-                "旧芯片",
-                "OLD001",
-                "legacy_snapshot",
-                "2026-04-01T09:00:00",
-                "2026-04-01T09:05:00",
-            ),
-        )
-        conn.commit()
-
-        result = updater._capture_missing_event_industry_snapshots(
-            conn,
-            snapshot_source="pre_sync_dim_stock_industry",
-        )
-
-        assert result == {"inserted": 1, "pending": 0, "pending_without_dim": 0}
-
-        preserved = conn.execute(
-            "SELECT sw_level1, sw_code, snapshot_source FROM fact_institution_event_industry_snapshot WHERE stock_code = '600001'"
-        ).fetchone()
-        assert preserved["sw_level1"] == "旧电子"
-        assert preserved["sw_code"] == "OLD001"
-        assert preserved["snapshot_source"] == "legacy_snapshot"
-
-        inserted = conn.execute(
-            "SELECT sw_level1, sw_level2, sw_level3, sw_code, snapshot_source FROM fact_institution_event_industry_snapshot WHERE stock_code = '600002'"
-        ).fetchone()
-        assert inserted["sw_level1"] == "银行"
-        assert inserted["sw_level2"] == "股份行"
-        assert inserted["sw_level3"] == "全国性股份行"
-        assert inserted["sw_code"] == "TDX002"
-        assert inserted["snapshot_source"] == "pre_sync_dim_stock_industry"
-    finally:
-        conn.close()
-
-
-def test_build_industry_stat_uses_event_industry_snapshot_not_current_dim(monkeypatch):
+def test_build_industry_stat_joins_dim_stock_tdx_industry(monkeypatch):
     conn = _make_conn()
     try:
         monkeypatch.setattr(updater, "_raise_if_stop", lambda: None)
@@ -152,45 +86,80 @@ def test_build_industry_stat_uses_event_industry_snapshot_not_current_dim(monkey
             "INSERT INTO inst_institutions VALUES (?, ?, ?, ?)",
             ("inst_a", 1, 0, None),
         )
-        conn.execute(
+        conn.executemany(
             "INSERT INTO fact_institution_event VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-            ("inst_a", "600001", "2026-03-31", "2026-04-10", 8.0, 12.0, 15.0, 20.0, -4.0, -6.0),
+            [
+                # 两条事件同属 T12 信息产业 / T1204 计算机 / T120401 软件
+                ("inst_a", "600001", "2026-03-31", "2026-04-10", 8.0, 12.0, 15.0, 20.0, -4.0, -6.0),
+                ("inst_a", "600002", "2026-03-31", "2026-04-10", 4.0, -2.0, 6.0, 10.0, -5.0, -7.0),
+            ],
+        )
+        conn.executemany(
+            "INSERT INTO dim_stock_tdx_industry VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+            [
+                ("600001", "T12", "T1204", "T120401", "信息产业", "计算机", "软件", "2026-04-19T09:00"),
+                ("600002", "T12", "T1204", "T120401", "信息产业", "计算机", "软件", "2026-04-19T09:00"),
+            ],
+        )
+        conn.commit()
+
+        written = updater._step_build_industry_stat_sync(conn)
+
+        # 两条事件在 L1/L2/L3 各归一组 → 3 行
+        assert written == 3
+        rows = conn.execute(
+            "SELECT sw_level, industry_name, tdx_code, sample_events, avg_gain_30d "
+            "FROM mart_institution_industry_stat ORDER BY sw_level"
+        ).fetchall()
+        assert [(r["sw_level"], r["industry_name"], r["tdx_code"]) for r in rows] == [
+            ("level1", "信息产业", "T12"),
+            ("level2", "计算机", "T1204"),
+            ("level3", "软件", "T120401"),
+        ]
+        assert all(r["sample_events"] == 2 for r in rows)
+        # 两条 gain_30d 为 8.0 和 4.0, 平均 6.0
+        assert all(abs(r["avg_gain_30d"] - 6.0) < 1e-6 for r in rows)
+    finally:
+        conn.close()
+
+
+def test_build_industry_stat_skips_events_without_industry(monkeypatch):
+    """dim 中没有该股票的事件应被 INNER JOIN 过滤掉, 不占样本"""
+    conn = _make_conn()
+    try:
+        monkeypatch.setattr(updater, "_raise_if_stop", lambda: None)
+        conn.execute(
+            "INSERT INTO inst_institutions VALUES (?, ?, ?, ?)",
+            ("inst_a", 1, 0, None),
+        )
+        conn.executemany(
+            "INSERT INTO fact_institution_event VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            [
+                ("inst_a", "600001", "2026-03-31", "2026-04-10", 8.0, 12.0, 15.0, 20.0, -4.0, -6.0),
+                # 600999 在 dim 中缺失 → 应被排除
+                ("inst_a", "600999", "2026-03-31", "2026-04-10", -5.0, -6.0, -7.0, -8.0, -9.0, -10.0),
+            ],
         )
         conn.execute(
-            "INSERT INTO dim_stock_industry VALUES (?, ?, ?, ?, ?, ?)",
-            ("600001", "新电子", "新半导体", "新芯片", "TDX001", "2026-04-18T09:00:00"),
-        )
-        conn.execute(
-            """
-            INSERT INTO fact_institution_event_industry_snapshot VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """,
-            (
-                "inst_a",
-                "600001",
-                "2026-03-31",
-                "2026-04-10",
-                "旧电子",
-                "旧半导体",
-                "旧芯片",
-                "OLD001",
-                "legacy_snapshot",
-                "2026-04-01T09:00:00",
-                "2026-04-01T09:05:00",
-            ),
+            "INSERT INTO dim_stock_tdx_industry VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+            ("600001", "T10", "T1001", "T100101", "金融", "银行", "国有行", "2026-04-19T09:00"),
         )
         conn.commit()
 
         written = updater._step_build_industry_stat_sync(conn)
 
         assert written == 3
-        rows = conn.execute(
-            "SELECT sw_level, industry_name, avg_gain_30d FROM mart_institution_industry_stat ORDER BY sw_level"
-        ).fetchall()
-        assert [(row["sw_level"], row["industry_name"]) for row in rows] == [
-            ("level1", "旧电子"),
-            ("level2", "旧半导体"),
-            ("level3", "旧芯片"),
-        ]
-        assert all(row["avg_gain_30d"] == 8.0 for row in rows)
+        # 只应聚合 600001 的 gain_30d = 8.0
+        row = conn.execute(
+            "SELECT avg_gain_30d, sample_events FROM mart_institution_industry_stat "
+            "WHERE sw_level='level1'"
+        ).fetchone()
+        assert row["sample_events"] == 1
+        assert abs(row["avg_gain_30d"] - 8.0) < 1e-6
     finally:
         conn.close()
+
+
+def test_capture_function_removed():
+    """Phase 3b-1: 确认 _capture_missing_event_industry_snapshots 已从 updater 删除"""
+    assert not hasattr(updater, "_capture_missing_event_industry_snapshots")

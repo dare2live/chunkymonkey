@@ -1189,107 +1189,16 @@ async def _step_gen_events(conn) -> int:
     def _worker(worker_conn):
         count = generate_events(worker_conn)
         count += generate_exit_events(worker_conn)
-        snapshot_result = _capture_missing_event_industry_snapshots(
-            worker_conn,
-            snapshot_source="event_generation",
-        )
-        if snapshot_result["inserted"] or snapshot_result["pending_without_dim"]:
-            logger.info(
-                "[事件行业快照] gen_events 后补齐 %s 条，仍缺 %s 条（当前无行业映射 %s 条）"
-                % (
-                    snapshot_result["inserted"],
-                    snapshot_result["pending"],
-                    snapshot_result["pending_without_dim"],
-                )
-            )
         return count
 
     return await _run_blocking_db_task(_worker)
 
 
-def _capture_missing_event_industry_snapshots(conn, *, snapshot_source: str) -> dict:
-    """为尚未固化口径的事件补齐行业快照。
-
-    快照独立于 fact_institution_event，避免事件表重建时历史行业口径被当前 dim 覆盖。
-    """
-    missing_sql = """
-        SELECT COUNT(*)
-        FROM fact_institution_event e
-        LEFT JOIN fact_institution_event_industry_snapshot s
-          ON s.institution_id = e.institution_id
-         AND s.stock_code = e.stock_code
-         AND s.report_date = e.report_date
-        WHERE s.institution_id IS NULL
-    """
-    missing_without_dim_sql = """
-        SELECT COUNT(*)
-        FROM fact_institution_event e
-        LEFT JOIN fact_institution_event_industry_snapshot s
-          ON s.institution_id = e.institution_id
-         AND s.stock_code = e.stock_code
-         AND s.report_date = e.report_date
-        LEFT JOIN dim_stock_industry d ON d.stock_code = e.stock_code
-        WHERE s.institution_id IS NULL
-          AND d.stock_code IS NULL
-    """
-
-    pending_before = conn.execute(missing_sql).fetchone()[0]
-    if not pending_before:
-        return {"inserted": 0, "pending": 0, "pending_without_dim": 0}
-
-    captured_at = datetime.now().isoformat()
-    before_changes = conn.total_changes
-    conn.execute("BEGIN IMMEDIATE")
-    try:
-        conn.execute(
-            """
-            INSERT OR IGNORE INTO fact_institution_event_industry_snapshot (
-                institution_id,
-                stock_code,
-                report_date,
-                notice_date,
-                sw_level1,
-                sw_level2,
-                sw_level3,
-                sw_code,
-                snapshot_source,
-                industry_updated_at,
-                captured_at
-            )
-            SELECT e.institution_id,
-                   e.stock_code,
-                   e.report_date,
-                   e.notice_date,
-                   d.sw_level1,
-                   d.sw_level2,
-                   d.sw_level3,
-                   d.sw_code,
-                   ?,
-                   d.updated_at,
-                   ?
-            FROM fact_institution_event e
-            INNER JOIN dim_stock_industry d ON d.stock_code = e.stock_code
-            LEFT JOIN fact_institution_event_industry_snapshot s
-              ON s.institution_id = e.institution_id
-             AND s.stock_code = e.stock_code
-             AND s.report_date = e.report_date
-            WHERE s.institution_id IS NULL
-            """,
-            (snapshot_source, captured_at),
-        )
-        inserted = conn.total_changes - before_changes
-        conn.commit()
-    except Exception:
-        conn.rollback()
-        raise
-
-    pending_after = conn.execute(missing_sql).fetchone()[0]
-    pending_without_dim = conn.execute(missing_without_dim_sql).fetchone()[0]
-    return {
-        "inserted": inserted,
-        "pending": pending_after,
-        "pending_without_dim": pending_without_dim,
-    }
+# Phase 3b-1: _capture_missing_event_industry_snapshots 已删除。
+# 原功能向 fact_institution_event_industry_snapshot 补申万快照,
+# 数据源 dim_stock_industry 已在 Phase 2 TDX 迁移时退役;
+# 下游 _step_build_industry_stat_sync 改走 dim_stock_tdx_industry 直 JOIN,
+# snapshot 表本身的退役放到 Phase 3b-2 处理。
 
 
 async def _run_blocking_db_task(task_fn, timeout: int = 120):
@@ -1971,21 +1880,11 @@ async def _step_sync_northbound(conn) -> int:
 
 
 def _step_build_industry_stat_sync(conn) -> int:
-    """计算机构在各行业的表现统计"""
-    snapshot_result = _capture_missing_event_industry_snapshots(
-        conn,
-        snapshot_source="build_industry_stat_fill",
-    )
-    if snapshot_result["inserted"] or snapshot_result["pending_without_dim"]:
-        logger.info(
-            "[事件行业快照] build_industry_stat 前补齐 %s 条，仍缺 %s 条（当前无行业映射 %s 条）"
-            % (
-                snapshot_result["inserted"],
-                snapshot_result["pending"],
-                snapshot_result["pending_without_dim"],
-            )
-        )
+    """计算机构在各行业 (TDX 一二三级) 的表现统计。
 
+    口径: 事件现任所属股票 → dim_stock_tdx_industry 的当前 tdx_l{1,2,3}。
+    不再走 fact_institution_event_industry_snapshot (Phase 2 申万退役后已空置)。
+    """
     now = datetime.now().isoformat()
     conn.execute("BEGIN IMMEDIATE")
     try:
@@ -1995,16 +1894,22 @@ def _step_build_industry_stat_sync(conn) -> int:
             "SELECT id FROM inst_institutions WHERE enabled = 1 AND blacklisted = 0 AND merged_into IS NULL"
         ).fetchall()
 
+        level_specs = [
+            (1, "level1", "tdx_l1", "tdx_l1_name"),
+            (2, "level2", "tdx_l2", "tdx_l2_name"),
+            (3, "level3", "tdx_l3", "tdx_l3_name"),
+        ]
+
         count = 0
         for inst in institutions:
             _raise_if_stop()
             inst_id = inst["id"]
 
-            # 按行业分组统计（一二三级都做）
-            for level_col, level_name in [("tdx_l1", "level1"), ("tdx_l2", "level2"), ("tdx_l3", "level3")]:
+            for _, level_name, code_col, name_col in level_specs:
                 _raise_if_stop()
                 rows = conn.execute(f"""
-                    SELECT s.{level_col} as industry,
+                    SELECT i.{code_col} AS tdx_code,
+                           i.{name_col} AS industry_name,
                            COUNT(*) as cnt,
                            AVG(e.gain_30d) as avg30, AVG(e.gain_60d) as avg60,
                            AVG(e.gain_90d) as avg90, AVG(e.gain_120d) as avg120,
@@ -2014,25 +1919,23 @@ def _step_build_industry_stat_sync(conn) -> int:
                            COUNT(CASE WHEN e.gain_30d > 0 OR e.gain_60d > 0 THEN 1 END) * 100.0 / MAX(COUNT(*), 1) as wr_total,
                            AVG(e.max_drawdown_30d) as dd30, AVG(e.max_drawdown_60d) as dd60
                     FROM fact_institution_event e
-                    INNER JOIN fact_institution_event_industry_snapshot s
-                      ON s.institution_id = e.institution_id
-                     AND s.stock_code = e.stock_code
-                     AND s.report_date = e.report_date
+                    INNER JOIN dim_stock_tdx_industry i ON i.stock_code = e.stock_code
                     WHERE e.institution_id = ? AND e.gain_30d IS NOT NULL
-                        AND s.{level_col} IS NOT NULL AND s.{level_col} != ''
-                    GROUP BY s.{level_col}
+                      AND i.{code_col} IS NOT NULL AND i.{code_col} != ''
+                      AND i.{name_col} IS NOT NULL AND i.{name_col} != ''
+                    GROUP BY i.{code_col}, i.{name_col}
                     HAVING cnt >= 1
                 """, (inst_id,)).fetchall()
 
                 for r in rows:
                     conn.execute("""
                         INSERT OR REPLACE INTO mart_institution_industry_stat
-                        (institution_id, sw_level, industry_name, sample_events,
+                        (institution_id, sw_level, industry_name, tdx_code, sample_events,
                          avg_gain_30d, avg_gain_60d, avg_gain_90d, avg_gain_120d,
                          win_rate_30d, win_rate_60d, win_rate_90d, total_win_rate,
                          max_drawdown_30d, max_drawdown_60d, updated_at)
-                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                    """, (inst_id, level_name, r["industry"], r["cnt"],
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """, (inst_id, level_name, r["industry_name"], r["tdx_code"], r["cnt"],
                           r["avg30"], r["avg60"], r["avg90"], r["avg120"],
                           r["wr30"], r["wr60"], r["wr90"], r["wr_total"],
                           r["dd30"], r["dd60"], now))
@@ -2042,7 +1945,7 @@ def _step_build_industry_stat_sync(conn) -> int:
     except Exception:
         conn.rollback()
         raise
-    logger.info(f"[行业统计] 完成: {count} 条")
+    logger.info(f"[行业统计] 完成: {count} 条 (基于 dim_stock_tdx_industry)")
     return count
 
 
