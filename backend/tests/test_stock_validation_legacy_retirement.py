@@ -67,9 +67,10 @@ def test_load_pool_feedback_filters_by_sector_via_industry_context_table():
             raw_composite_priority_score REAL,
             price_20d_pct REAL
         );
-        CREATE TABLE dim_stock_industry (
+        CREATE TABLE dim_stock_tdx_industry (
             stock_code TEXT PRIMARY KEY,
-            sw_level1 TEXT
+            tdx_l1 TEXT,
+            tdx_l1_name TEXT
         );
         """
     )
@@ -82,8 +83,8 @@ def test_load_pool_feedback_filters_by_sector_via_industry_context_table():
             ],
         )
         conn.executemany(
-            "INSERT INTO dim_stock_industry VALUES (?, ?)",
-            [("000001", "电子"), ("000002", "银行")],
+            "INSERT INTO dim_stock_tdx_industry VALUES (?, ?, ?)",
+            [("000001", "T10", "电子"), ("000002", "T15", "银行")],
         )
         conn.commit()
 
@@ -96,7 +97,7 @@ def test_load_pool_feedback_filters_by_sector_via_industry_context_table():
         conn.close()
 
 
-def test_load_snapshot_pool_replay_sector_filter_falls_back_to_dim_stock_industry():
+def test_load_snapshot_pool_replay_sector_filter_falls_back_to_tdx_industry():
     conn = sqlite3.connect(":memory:")
     conn.row_factory = sqlite3.Row
     conn.executescript(
@@ -104,7 +105,7 @@ def test_load_snapshot_pool_replay_sector_filter_falls_back_to_dim_stock_industr
         CREATE TABLE fact_setup_snapshot (
             stock_code TEXT,
             snapshot_date TEXT,
-            snapshot_sw_level1 TEXT,
+            snapshot_tdx_l1_name TEXT,
             priority_pool TEXT,
             composite_priority_score REAL,
             matured_10d INTEGER,
@@ -117,9 +118,10 @@ def test_load_snapshot_pool_replay_sector_filter_falls_back_to_dim_stock_industr
             gain_60d REAL,
             max_drawdown_60d REAL
         );
-        CREATE TABLE dim_stock_industry (
+        CREATE TABLE dim_stock_tdx_industry (
             stock_code TEXT,
-            sw_level1 TEXT
+            tdx_l1 TEXT,
+            tdx_l1_name TEXT
         );
         """
     )
@@ -128,7 +130,7 @@ def test_load_snapshot_pool_replay_sector_filter_falls_back_to_dim_stock_industr
             "INSERT INTO fact_setup_snapshot VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             ("000001", "2026-04-01", "", "A池", 82.0, 1, 3.0, -1.0, 1, 6.0, -2.0, 0, None, None),
         )
-        conn.execute("INSERT INTO dim_stock_industry VALUES (?, ?)", ("000001", "电子"))
+        conn.execute("INSERT INTO dim_stock_tdx_industry VALUES (?, ?, ?)", ("000001", "T10", "电子"))
         conn.commit()
 
         replay = stock_validation._load_snapshot_pool_replay(conn, sector="电子")
@@ -323,7 +325,7 @@ def test_stock_scoring_breakdown_returns_quality_provenance(monkeypatch):
         );
         CREATE TABLE mart_current_relationship (
             stock_code TEXT PRIMARY KEY,
-            sw_level2 TEXT,
+            tdx_l2 TEXT,
             notice_age_days INTEGER,
             price_entry REAL,
             return_to_now REAL,
@@ -396,7 +398,7 @@ def test_stock_scoring_breakdown_returns_quality_provenance(monkeypatch):
         conn.execute(
             """
             INSERT INTO mart_current_relationship (
-                stock_code, sw_level2, notice_age_days, price_entry, return_to_now,
+                stock_code, tdx_l2, notice_age_days, price_entry, return_to_now,
                 inst_ref_cost, inst_cost_method, premium_pct, premium_bucket, follow_gate
             ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,

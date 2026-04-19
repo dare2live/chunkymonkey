@@ -65,9 +65,16 @@ def _sector_exists_clause(
     alias: str,
     sector: str | None,
     *,
+    snapshot_level1_col: str | None = None,
     level1_col: str | None = None,
     fallback_to_dim_industry: bool = False,
 ) -> tuple[str, tuple]:
+    """生成行业筛选片段, 统一走 dim_stock_tdx_industry 真相源。
+
+    - snapshot_level1_col: 快照表上已物化的 level1 列 (优先走快照, 否则回退 JOIN TDX 真相源)
+    - level1_col: 目标表上已物化的 level1 列 (直接字面比较)
+    - fallback_to_dim_industry: 兼容老调用, 目标表自身无行业列时走 EXISTS 子查询
+    """
     normalized = _normalize_sector(sector)
     if not normalized:
         return "", ()
@@ -85,15 +92,17 @@ def _sector_exists_clause(
                             AND sector_ctx.tdx_l1_name = ?
                       )
                   )
-                """,
-                (normalized, normalized),
-            )
-        return (f" AND COALESCE({level1_expr}, '') = ?", (normalized,))
+              )
+            """,
+            (normalized, normalized),
+        )
+    if level1_col and not fallback_to_dim_industry:
+        return (f" AND COALESCE({alias}.{level1_col}, '') = ?", (normalized,))
     return (
         f"""
           AND EXISTS (
               SELECT 1
-                            FROM dim_stock_industry sector_ctx
+              FROM dim_stock_tdx_industry sector_ctx
               WHERE sector_ctx.stock_code = {alias}.stock_code
                 AND sector_ctx.tdx_l1_name = ?
           )

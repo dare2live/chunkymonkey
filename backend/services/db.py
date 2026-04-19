@@ -844,6 +844,31 @@ def init_db():
             except Exception:
                 pass
 
+        # Phase 3d-2: quality/turtle 表列名正名
+        # - quality_features/quality_latest: sw_level1/2 → tdx_l1/tdx_l2 (存 TDX 代码)
+        # - turtle_features/turtle_latest:   sw_level1/2 → tdx_l1_name/tdx_l2_name
+        #   (当前经 dim_stock_forecast_latest 来源一路传递中文名, 保持语义一致)
+        quality_tables = ("fact_stock_quality_features", "dim_stock_quality_latest")
+        for table in quality_tables:
+            try:
+                cols = {r[1] for r in conn.execute(f"PRAGMA table_info({table})").fetchall()}
+                if "sw_level1" in cols and "tdx_l1" not in cols:
+                    conn.execute(f"ALTER TABLE {table} RENAME COLUMN sw_level1 TO tdx_l1")
+                if "sw_level2" in cols and "tdx_l2" not in cols:
+                    conn.execute(f"ALTER TABLE {table} RENAME COLUMN sw_level2 TO tdx_l2")
+            except Exception:
+                pass
+        turtle_tables = ("fact_stock_turtle_features", "dim_stock_turtle_latest")
+        for table in turtle_tables:
+            try:
+                cols = {r[1] for r in conn.execute(f"PRAGMA table_info({table})").fetchall()}
+                if "sw_level1" in cols and "tdx_l1_name" not in cols:
+                    conn.execute(f"ALTER TABLE {table} RENAME COLUMN sw_level1 TO tdx_l1_name")
+                if "sw_level2" in cols and "tdx_l2_name" not in cols:
+                    conn.execute(f"ALTER TABLE {table} RENAME COLUMN sw_level2 TO tdx_l2_name")
+            except Exception:
+                pass
+
         # Phase 1: mart_institution_profile 买入类评分字段 + 评分元数据
         for col in ["score_basis TEXT", "score_confidence TEXT",
                      "historical_median_holding_days INTEGER",

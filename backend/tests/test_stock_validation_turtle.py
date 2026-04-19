@@ -21,7 +21,7 @@ def _make_conn():
 
         CREATE TABLE dim_stock_turtle_latest (
             stock_code TEXT PRIMARY KEY,
-            sw_level1 TEXT,
+            tdx_l1_name TEXT,
             turtle_setup_state TEXT,
             preferred_system TEXT,
             turtle_execution_score_v1 REAL,
@@ -31,9 +31,10 @@ def _make_conn():
             forecast_score_v1 REAL
         );
 
-        CREATE TABLE dim_stock_industry (
-            stock_code TEXT,
-            sw_level1 TEXT
+        CREATE TABLE dim_stock_tdx_industry (
+            stock_code TEXT PRIMARY KEY,
+            tdx_l1 TEXT,
+            tdx_l1_name TEXT
         );
         """
     )
@@ -55,7 +56,7 @@ def test_load_turtle_validation_summarizes_breakout_watch_and_exit_states():
         conn.executemany(
             """
             INSERT INTO dim_stock_turtle_latest (
-                stock_code, sw_level1, turtle_setup_state, preferred_system,
+                stock_code, tdx_l1_name, turtle_setup_state, preferred_system,
                 turtle_execution_score_v1, turtle_breakout_score, turtle_risk_score,
                 stage_score_v1, forecast_score_v1
             ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
@@ -89,7 +90,7 @@ def test_load_turtle_validation_summarizes_breakout_watch_and_exit_states():
         conn.close()
 
 
-def test_load_turtle_validation_sector_filter_falls_back_to_dim_stock_industry():
+def test_load_turtle_validation_sector_filter_falls_back_to_tdx_industry():
     conn = _make_conn()
     try:
         conn.execute(
@@ -100,7 +101,10 @@ def test_load_turtle_validation_sector_filter_falls_back_to_dim_stock_industry()
             "INSERT INTO dim_stock_turtle_latest VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
             ("600001", "", "S2突破触发", "S2", 76.0, 82.0, 68.0, 78.0, 74.0),
         )
-        conn.execute("INSERT INTO dim_stock_industry VALUES (?, ?)", ("600001", "电子"))
+        conn.execute(
+            "INSERT INTO dim_stock_tdx_industry VALUES (?, ?, ?)",
+            ("600001", "T10", "电子"),
+        )
         conn.commit()
 
         report = _load_turtle_validation(conn, sector="电子")

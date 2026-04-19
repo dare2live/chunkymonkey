@@ -14,7 +14,7 @@ from typing import Optional
 
 import pandas as pd
 
-from services.industry import industry_level_value, load_industry_map
+from services.industry import load_industry_map
 from services.ta_lib import compute_alpha_factors, hhv, llv
 from services.utils import safe_float as _safe_float, clamp_score as _clamp_score
 
@@ -190,8 +190,8 @@ def build_stock_turtle_features(conn, mkt_conn, snapshot_date: Optional[str] = N
         """
         SELECT t.stock_code, t.stock_name, t.latest_notice_date, t.latest_report_date,
                f.model_id,
-               f.sw_level1,
-               f.sw_level2,
+               f.sw_level1 AS tdx_l1_name,
+               f.sw_level2 AS tdx_l2_name,
                s.path_state, s.stock_gate,
                s.amount_ratio_20_120, s.volatility_20d, s.amplitude_20d, s.stage_score_v1,
                f.forecast_score_v1, f.qlib_score, f.qlib_percentile
@@ -213,8 +213,8 @@ def build_stock_turtle_features(conn, mkt_conn, snapshot_date: Optional[str] = N
     stock_rows = [dict(row) for row in stocks]
     for row in stock_rows:
         industry = industry_map.get(row["stock_code"]) or {}
-        row["sw_level1"] = row.get("sw_level1") or industry_level_value(industry, 1)
-        row["sw_level2"] = row.get("sw_level2") or industry_level_value(industry, 2)
+        row["tdx_l1_name"] = row.get("tdx_l1_name") or industry.get("tdx_l1_name")
+        row["tdx_l2_name"] = row.get("tdx_l2_name") or industry.get("tdx_l2_name")
     price_history = _load_price_history(mkt_conn, [row["stock_code"] for row in stock_rows])
 
     inserted = 0
@@ -350,7 +350,7 @@ def build_stock_turtle_features(conn, mkt_conn, snapshot_date: Optional[str] = N
             """
             INSERT OR REPLACE INTO fact_stock_turtle_features (
                 snapshot_date, stock_code, stock_name, latest_trade_date,
-                latest_notice_date, latest_report_date, model_id, sw_level1, sw_level2,
+                latest_notice_date, latest_report_date, model_id, tdx_l1_name, tdx_l2_name,
                 path_state, stock_gate, close_price, atr_14, atr_14_pct,
                 entry_level_20, entry_level_55, exit_level_10, exit_level_20,
                 breakout_dist_20_pct, breakout_dist_55_pct, exit_dist_10_pct, exit_dist_20_pct,
@@ -374,8 +374,8 @@ def build_stock_turtle_features(conn, mkt_conn, snapshot_date: Optional[str] = N
                 row.get("latest_notice_date"),
                 row.get("latest_report_date"),
                 row.get("model_id"),
-                row.get("sw_level1"),
-                row.get("sw_level2"),
+                row.get("tdx_l1_name"),
+                row.get("tdx_l2_name"),
                 row.get("path_state"),
                 row.get("stock_gate"),
                 close_price,
@@ -425,7 +425,7 @@ def build_stock_turtle_features(conn, mkt_conn, snapshot_date: Optional[str] = N
         """
         INSERT INTO dim_stock_turtle_latest (
             stock_code, snapshot_date, stock_name, latest_trade_date,
-            latest_notice_date, latest_report_date, model_id, sw_level1, sw_level2,
+            latest_notice_date, latest_report_date, model_id, tdx_l1_name, tdx_l2_name,
             path_state, stock_gate, close_price, atr_14, atr_14_pct,
             entry_level_20, entry_level_55, exit_level_10, exit_level_20,
             breakout_dist_20_pct, breakout_dist_55_pct, exit_dist_10_pct, exit_dist_20_pct,
@@ -440,7 +440,7 @@ def build_stock_turtle_features(conn, mkt_conn, snapshot_date: Optional[str] = N
             turtle_reason, schema_version, updated_at
         )
         SELECT stock_code, snapshot_date, stock_name, latest_trade_date,
-               latest_notice_date, latest_report_date, model_id, sw_level1, sw_level2,
+               latest_notice_date, latest_report_date, model_id, tdx_l1_name, tdx_l2_name,
                path_state, stock_gate, close_price, atr_14, atr_14_pct,
                entry_level_20, entry_level_55, exit_level_10, exit_level_20,
                breakout_dist_20_pct, breakout_dist_55_pct, exit_dist_10_pct, exit_dist_20_pct,
@@ -474,8 +474,8 @@ def ensure_tables(conn):
             latest_notice_date            TEXT,
             latest_report_date            TEXT,
             model_id                      TEXT,
-            sw_level1                     TEXT,
-            sw_level2                     TEXT,
+            tdx_l1_name                   TEXT,
+            tdx_l2_name                   TEXT,
             path_state                    TEXT,
             stock_gate                    TEXT,
             close_price                   REAL,
@@ -530,8 +530,8 @@ def ensure_tables(conn):
             latest_notice_date            TEXT,
             latest_report_date            TEXT,
             model_id                      TEXT,
-            sw_level1                     TEXT,
-            sw_level2                     TEXT,
+            tdx_l1_name                   TEXT,
+            tdx_l2_name                   TEXT,
             path_state                    TEXT,
             stock_gate                    TEXT,
             close_price                   REAL,

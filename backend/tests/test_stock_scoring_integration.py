@@ -559,8 +559,8 @@ def test_calculate_stock_scores_ignores_stale_quality_feature_snapshot(monkeypat
             ("inst_quality", "000009", recent_report, "new_entry", 1.8, 12.0, 6.0),
         )
         conn.execute(
-            "INSERT INTO dim_stock_industry (stock_code, sw_level1, sw_level2, sw_level3) VALUES (?, ?, ?, ?)",
-            ("000009", "电子", "半导体", "芯片设计"),
+            "INSERT INTO dim_stock_tdx_industry (stock_code, tdx_l1, tdx_l2, tdx_l3, tdx_l1_name, tdx_l2_name, tdx_l3_name) VALUES (?, ?, ?, ?, ?, ?, ?)",
+            ("000009", "T10", "T1010", "T101001", "电子", "半导体", "芯片设计"),
         )
         conn.execute(
             """

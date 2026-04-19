@@ -9,7 +9,6 @@ import logging
 from datetime import date, datetime
 from typing import Optional
 
-from services.industry import industry_level_value, load_industry_map
 from services.utils import safe_float as _safe_float, percentile_ranks as _percentile_ranks, clamp_score as _clamp_score
 
 logger = logging.getLogger("cm-api")
@@ -182,7 +181,7 @@ def ensure_tables(conn):
     conn.commit()
 
 
-def _load_financial_groups(conn, industry_map):
+def _load_financial_groups(conn):
     financial_by_stock = {}
     fin_groups = {("all", "all"): []}
     fin_pct_map = {}
@@ -196,9 +195,6 @@ def _load_financial_groups(conn, industry_map):
     """).fetchall()
     for row in rows:
         d = dict(row)
-        industry = industry_map.get(d["stock_code"]) or {}
-        d["sw_level1"] = industry_level_value(industry, 1)
-        d["sw_level2"] = industry_level_value(industry, 2)
         financial_by_stock[d["stock_code"]] = d
         fin_groups[("all", "all")].append(d)
         if d.get("tdx_l2"):
@@ -227,7 +223,7 @@ def _load_financial_groups(conn, industry_map):
     return financial_by_stock, fin_pct_map, fin_group_sizes
 
 
-def _load_indicator_groups(conn, industry_map):
+def _load_indicator_groups(conn):
     indicator_by_stock = {}
     indicator_groups = {("all", "all"): []}
     indicator_pct_map = {}
@@ -242,9 +238,6 @@ def _load_indicator_groups(conn, industry_map):
     """).fetchall()
     for row in rows:
         d = dict(row)
-        industry = industry_map.get(d["stock_code"]) or {}
-        d["sw_level1"] = industry_level_value(industry, 1)
-        d["sw_level2"] = industry_level_value(industry, 2)
         indicator_by_stock[d["stock_code"]] = d
         indicator_groups[("all", "all")].append(d)
         if d.get("tdx_l2"):
@@ -288,10 +281,9 @@ def build_quality_features(conn, snapshot_date: Optional[str] = None) -> int:
     ensure_tables(conn)
     snapshot_date = snapshot_date or date.today().strftime("%Y-%m-%d")
     now = datetime.now().isoformat()
-    industry_map = load_industry_map(conn)
 
-    financial_by_stock, fin_pct_map, fin_group_sizes = _load_financial_groups(conn, industry_map)
-    indicator_by_stock, indicator_pct_map, indicator_group_sizes = _load_indicator_groups(conn, industry_map)
+    financial_by_stock, fin_pct_map, fin_group_sizes = _load_financial_groups(conn)
+    indicator_by_stock, indicator_pct_map, indicator_group_sizes = _load_indicator_groups(conn)
     capital_by_stock = {}
     try:
         rows = conn.execute("""
