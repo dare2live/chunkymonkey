@@ -1,7 +1,7 @@
 """
 sector_momentum.py — 板块动量模块
 
-计算申万行业板块的技术状态（MACD/均线/趋势），
+计算通达信行业板块的技术状态（MACD/均线/趋势），
 与机构事件叠加产生"双重确认"信号。
 
 核心逻辑：
@@ -9,9 +9,9 @@ sector_momentum.py — 板块动量模块
   = 双重确认信号（含金量高于单维度信号）
 
 数据来源：
-  - 板块指数 K 线：AKShare 申万行业指数日线
+  - 板块指数 K 线：成分股等权合成
   - 机构事件：fact_institution_event
-    - 行业映射：dim_stock_industry 主行业链
+  - 行业映射：dim_stock_tdx_industry (tdx_l1/tdx_l2, 以 tdx_l1_name 作板块名)
 
 计算结果存入 mart_sector_momentum 表，被 scoring.py / screening_engine.py 读取。
 单点计算、多处复用。
@@ -327,18 +327,22 @@ def calc_sector_momentum(smart_conn, mkt_conn) -> int:
     """
     ensure_tables(smart_conn)
 
-    industry_map = load_industry_map(smart_conn)
-    industry_stocks = {}
-    for stock_code, industry in industry_map.items():
-        sector_name = industry_level_value(industry, SECTOR_LEVEL)
-        if not sector_name:
-            continue
-        industry_stocks.setdefault(sector_name, []).append(stock_code)
+    # 获取通达信一级行业列表（按中文名聚合，板块名 = tdx_l1_name）
+    industries = smart_conn.execute(
+        "SELECT DISTINCT tdx_l1_name FROM dim_stock_tdx_industry WHERE tdx_l1_name IS NOT NULL AND tdx_l1_name != ''"
+    ).fetchall()
 
     industries = [{"sector_name": sector_name} for sector_name in sorted(industry_stocks)]
     if not industries:
         logger.info("[板块动量] 无行业分类数据")
         return 0
+
+    # 获取行业-股票映射
+    industry_stocks = {}
+    for row in smart_conn.execute(
+        "SELECT stock_code, tdx_l1_name FROM dim_stock_tdx_industry WHERE tdx_l1_name IS NOT NULL"
+    ).fetchall():
+        industry_stocks.setdefault(row["tdx_l1_name"], []).append(row["stock_code"])
 
     # 全市场等权基线：作为行业强弱的相对参照
     benchmark_close = None
@@ -370,7 +374,7 @@ def calc_sector_momentum(smart_conn, mkt_conn) -> int:
     sector_rotation_rows = []
 
     for sec_idx, ind_row in enumerate(industries):
-        sector = ind_row["sector_name"]
+        sector = ind_row["tdx_l1_name"]
         codes = industry_stocks.get(sector, [])
         if len(codes) < 5:
             continue
@@ -535,12 +539,12 @@ def calc_dual_confirm(smart_conn) -> int:
     # 获取最近的机构 new_entry/increase 事件
     events = smart_conn.execute(f"""
         SELECT e.stock_code, e.institution_id, e.event_type, e.report_date,
-               {_sector_select('si')}
+               si.tdx_l1_name as sector_name
         FROM fact_institution_event e
-        {industry_join_clause('e.stock_code', alias='si', join_type='LEFT')}
+        LEFT JOIN dim_stock_tdx_industry si ON e.stock_code = si.stock_code
         WHERE e.event_type IN ('new_entry', 'increase')
           AND e.report_date >= date('now', '-6 months')
-          AND {_sector_nonempty_condition('si')}
+          AND si.tdx_l1_name IS NOT NULL
         ORDER BY e.report_date DESC
         """).fetchall()
 

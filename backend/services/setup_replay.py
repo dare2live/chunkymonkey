@@ -205,9 +205,9 @@ def _evaluate_replay_candidate(
     crowd_bucket = _crowding_bucket(crowd_count)
 
     for level, industry_name in (
-        ("level3", event_row.get("sw_level3")),
-        ("level2", event_row.get("sw_level2")),
-        ("level1", event_row.get("sw_level1")),
+        ("level3", event_row.get("tdx_l3")),
+        ("level2", event_row.get("tdx_l2")),
+        ("level1", event_row.get("tdx_l1")),
     ):
         if not industry_name:
             continue
@@ -359,9 +359,9 @@ def _create_replay_tables(conn):
             premium_bucket TEXT,
             crowd_count INTEGER,
             crowding_bucket TEXT,
-            sw_level1 TEXT,
-            sw_level2 TEXT,
-            sw_level3 TEXT,
+            tdx_l1 TEXT,
+            tdx_l2 TEXT,
+            tdx_l3 TEXT,
             prior_inst_buy_count INTEGER,
             prior_safe_follow_count INTEGER,
             matched_level TEXT,
@@ -616,9 +616,9 @@ def build_setup_replay(conn) -> dict:
             inst_baseline = _build_inst_baseline(inst_buy_aggs[inst_id], inst_safe_aggs[inst_id])
             industry_lookup = {}
             for level, industry_name in (
-                ("level1", row.get("sw_level1")),
-                ("level2", row.get("sw_level2")),
-                ("level3", row.get("sw_level3")),
+                ("level1", row.get("tdx_l1")),
+                ("level2", row.get("tdx_l2")),
+                ("level3", row.get("tdx_l3")),
             ):
                 if industry_name:
                     agg = inst_industry_aggs.get((inst_id, level, industry_name))
@@ -652,9 +652,9 @@ def build_setup_replay(conn) -> dict:
                 row.get("premium_bucket"),
                 crowd_count,
                 candidate.get("crowding_bucket") if candidate else _crowding_bucket(crowd_count),
-                row.get("sw_level1"),
-                row.get("sw_level2"),
-                row.get("sw_level3"),
+                row.get("tdx_l1"),
+                row.get("tdx_l2"),
+                row.get("tdx_l3"),
                 int(inst_baseline.get("buy_count") or 0),
                 int(inst_baseline.get("safe_follow_event_count") or 0),
                 candidate.get("matched_level") if candidate else None,
@@ -717,9 +717,9 @@ def build_setup_replay(conn) -> dict:
                 safe_agg["safe_sum_win_30d"] += 1 if (_safe_float(row.get("gain_30d")) or 0.0) > 0 else 0
 
             for level, industry_name in (
-                ("level1", row.get("sw_level1")),
-                ("level2", row.get("sw_level2")),
-                ("level3", row.get("sw_level3")),
+                ("level1", row.get("tdx_l1")),
+                ("level2", row.get("tdx_l2")),
+                ("level3", row.get("tdx_l3")),
             ):
                 if not industry_name:
                     continue
@@ -752,7 +752,7 @@ def build_setup_replay(conn) -> dict:
         "replay_date", "institution_id", "inst_name", "inst_type", "stock_code", "stock_name",
         "report_date", "notice_date", "event_type", "follow_gate", "follow_gate_reason",
         "premium_pct", "premium_bucket", "crowd_count", "crowding_bucket",
-        "sw_level1", "sw_level2", "sw_level3", "prior_inst_buy_count", "prior_safe_follow_count",
+        "tdx_l1", "tdx_l2", "tdx_l3", "prior_inst_buy_count", "prior_safe_follow_count",
         "matched_level", "matched_industry_name", "setup_tag", "setup_priority", "setup_reason",
         "setup_confidence", "setup_score_raw", "setup_execution_gate", "setup_execution_reason",
         "industry_skill_raw", "industry_skill_grade",

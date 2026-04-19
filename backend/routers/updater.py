@@ -5,24 +5,22 @@
     1. sync_raw                 — 下载十大股东
     2. match_inst               — 匹配跟踪机构
     3. sync_market_data         — 同步行情数据
-    4. sync_northbound         — 同步北向持仓
-    5. sync_financial          — 同步财务数据
-    6. gen_events              — 生成事件
-    7. calc_returns            — 计算收益
-    8. sync_industry           — 申万行业
-    9. calc_financial_derived  — 计算财务指标
- 10. build_current_rel        — 构建当前关系
- 11. build_profiles           — 机构画像
- 12. build_industry_stat      — 行业统计
- 13. build_trends             — 生成股票列表
- 14. calc_screening           — TDX 选股筛选
- 15. calc_sector_momentum     — 板块动量分析
- 16. build_external_attention — 外部关注快照
- 17. build_stage_features     — 阶段特征构建
- 18. build_forecast_features  — 预测特征构建
- 19. build_turtle_features    — 海龟特征构建
- 20. calc_inst_scores         — 机构评分
- 21. calc_stock_scores        — 股票评分
+    4. sync_financial           — 同步财务数据
+    5. gen_events               — 生成事件
+    6. calc_returns             — 计算收益
+    7. sync_industry            — 通达信行业
+    8. calc_financial_derived   — 计算财务指标
+    9. build_current_rel        — 构建当前关系
+ 10. build_profiles           — 机构画像
+ 11. build_industry_stat      — 行业统计
+ 12. build_trends             — 生成股票列表
+ 13. calc_screening           — TDX 选股筛选
+ 14. calc_sector_momentum     — 板块动量分析
+ 15. build_external_attention — 外部关注快照
+ 16. build_stage_features     — 阶段特征构建
+ 17. build_forecast_features  — 预测特征构建
+ 18. calc_inst_scores         — 机构评分
+ 19. calc_stock_scores        — 股票评分
 """
 
 import asyncio
@@ -175,24 +173,22 @@ STEPS = [
     {"id": "sync_raw",              "name": "下载十大股东",     "group": "data", "order": 1},
     {"id": "match_inst",            "name": "匹配跟踪机构",    "group": "data", "order": 2},
     {"id": "sync_market_data",      "name": "同步行情数据",    "group": "data", "order": 3},
-    {"id": "sync_northbound",       "name": "同步北向持仓",    "group": "data", "order": 4},
-    {"id": "sync_financial",        "name": "同步财务数据",    "group": "data", "order": 5},
-    {"id": "gen_events",            "name": "生成事件",        "group": "calc", "order": 6},
-    {"id": "calc_returns",          "name": "计算收益",        "group": "calc", "order": 7},
-    {"id": "sync_industry",         "name": "申万行业",        "group": "data", "order": 8},
-    {"id": "calc_financial_derived","name": "计算财务指标",    "group": "calc", "order": 9},
-    {"id": "build_current_rel",     "name": "构建当前关系",    "group": "mart", "order": 10},
-    {"id": "build_profiles",        "name": "机构画像",        "group": "mart", "order": 11},
-    {"id": "build_industry_stat",   "name": "行业统计",        "group": "mart", "order": 12},
-    {"id": "build_trends",          "name": "生成股票列表",    "group": "mart", "order": 13},
-    {"id": "calc_screening",        "name": "TDX选股筛选",     "group": "mart", "order": 14},
-    {"id": "calc_sector_momentum",  "name": "板块动量分析",    "group": "mart", "order": 15},
-    {"id": "build_external_attention","name": "外部关注快照",  "group": "mart", "order": 16},
-    {"id": "build_stage_features",  "name": "阶段特征构建",    "group": "mart", "order": 17},
-    {"id": "build_forecast_features","name": "预测特征构建",   "group": "mart", "order": 18},
-    {"id": "build_turtle_features", "name": "海龟特征构建",    "group": "mart", "order": 19},
-    {"id": "calc_inst_scores",      "name": "机构评分",        "group": "mart", "order": 20},
-    {"id": "calc_stock_scores",     "name": "股票评分",        "group": "mart", "order": 21},
+    {"id": "sync_financial",        "name": "同步财务数据",    "group": "data", "order": 4},
+    {"id": "gen_events",            "name": "生成事件",        "group": "calc", "order": 5},
+    {"id": "calc_returns",          "name": "计算收益",        "group": "calc", "order": 6},
+    {"id": "sync_industry",         "name": "通达信行业",      "group": "data", "order": 7},
+    {"id": "calc_financial_derived","name": "计算财务指标",    "group": "calc", "order": 8},
+    {"id": "build_current_rel",     "name": "构建当前关系",    "group": "mart", "order": 9},
+    {"id": "build_profiles",        "name": "机构画像",        "group": "mart", "order": 10},
+    {"id": "build_industry_stat",   "name": "行业统计",        "group": "mart", "order": 11},
+    {"id": "build_trends",          "name": "生成股票列表",    "group": "mart", "order": 12},
+    {"id": "calc_screening",        "name": "TDX选股筛选",     "group": "mart", "order": 13},
+    {"id": "calc_sector_momentum",  "name": "板块动量分析",    "group": "mart", "order": 14},
+    {"id": "build_external_attention","name": "外部关注快照",  "group": "mart", "order": 15},
+    {"id": "build_stage_features",  "name": "阶段特征构建",    "group": "mart", "order": 16},
+    {"id": "build_forecast_features","name": "预测特征构建",   "group": "mart", "order": 17},
+    {"id": "calc_inst_scores",      "name": "机构评分",        "group": "mart", "order": 18},
+    {"id": "calc_stock_scores",     "name": "股票评分",        "group": "mart", "order": 19},
 ]
 
 # 硬依赖：failed → 跳过本步骤
@@ -787,10 +783,21 @@ async def _compute_connectivity() -> dict:
             }
 
     async def _check_industry():
-        from services.akshare_client import test_industry_availability
+        """通达信行业源连通性探测：尝试从 tdxhy.cfg 服务器拉取首包。"""
+        from services.tdx_industry_client import _fetch_tdxhy_bytes
+
+        def _probe():
+            try:
+                data, source = _fetch_tdxhy_bytes()
+                return bool(data), source
+            except Exception:
+                return False, ""
 
         try:
-            industry_ok, industry_source = await asyncio.wait_for(test_industry_availability(), timeout=8)
+            industry_ok, industry_source = await asyncio.wait_for(
+                asyncio.get_event_loop().run_in_executor(None, _probe),
+                timeout=8,
+            )
             payload = {"industry_source": industry_ok}
             if industry_source:
                 payload["industry_source_detail"] = industry_source
@@ -1804,17 +1811,12 @@ async def _step_build_trends(conn) -> int:
 
 
 async def _step_sync_industry(conn) -> int:
-    """获取申万三级行业分类"""
-    from services.akshare_client import fetch_sw_industry_all_with_source
-    from services.block_client import sync_tdx_blocks
-    from services.security_master import get_active_a_stock_codes
+    """通达信行业同步 — 拉取 tdxhy.cfg 并全量 upsert 到 dim_stock_tdx_industry"""
+    from services.tdx_industry_client import sync_tdx_industry
 
-    # 构建排除集合
-    excluded_codes = _build_exclusion_set(conn)
     stock_names = _tracked_stock_names(conn)
     reconcile_gap_queue_snapshot(conn, stock_names=stock_names, datasets=("industry",), commit=True)
 
-    count = 0
     detail = {
         "industry_sync": {
             "status": "running",
@@ -1834,6 +1836,8 @@ async def _step_sync_industry(conn) -> int:
         },
     }
 
+    count = 0
+
     def _push_progress():
         _update_step(
             conn,
@@ -1843,32 +1847,22 @@ async def _step_sync_industry(conn) -> int:
         )
 
     _raise_if_stop()
-    snapshot_result = _capture_missing_event_industry_snapshots(
-        conn,
-        snapshot_source="pre_sync_dim_stock_industry",
+    # sync_tdx_industry 是同步函数（TDX 服务器下载 + 本地解析 + executemany），
+    # 放到线程池避免阻塞事件循环
+    tdx_result = await asyncio.get_event_loop().run_in_executor(
+        None, sync_tdx_industry, conn
     )
-    detail["industry_sync"]["snapshot_backfilled"] = snapshot_result["inserted"]
-    detail["industry_sync"]["snapshot_pending"] = snapshot_result["pending"]
-    if snapshot_result["inserted"] or snapshot_result["pending_without_dim"]:
-        logger.info(
-            "[事件行业快照] sync_industry 前补齐 %s 条，仍缺 %s 条（当前无行业映射 %s 条）"
-            % (
-                snapshot_result["inserted"],
-                snapshot_result["pending"],
-                snapshot_result["pending_without_dim"],
-            )
-        )
-    industry_data, industry_source = await fetch_sw_industry_all_with_source()
-    industry_source = str(industry_source or "")
-    industry_source_degraded = bool(industry_source and not industry_source.startswith("tdx_"))
-    if not industry_data:
-        blocked_reason = f"TDX 行业源不可用: {industry_source or 'tdx_research_industry_empty'}"
+
+    count = int(tdx_result.get("rows_upserted") or 0)
+    errors = tdx_result.get("errors") or []
+
+    if count == 0:
         mark_current_missing_as(
             conn,
             "industry",
             status="blocked",
-            reason=blocked_reason,
-            last_error=industry_source or "tdx_research_industry_empty",
+            reason="通达信行业源无返回，当前未执行补齐",
+            last_error=";".join(errors) or "tdx_industry_source_empty",
             stock_names=stock_names,
             commit=False,
         )
@@ -1882,26 +1876,15 @@ async def _step_sync_industry(conn) -> int:
             "source_degraded": industry_source_degraded,
             "before_missing": detail["industry_sync"]["before_missing"],
             "after_missing": gap_summary["unresolved"],
-            "reason": blocked_reason,
+            "reason": "通达信行业源无返回，当前未执行补齐",
+            "errors": errors,
+            "source": tdx_result.get("source"),
             "gap_summary": gap_summary,
         }
+        conn.commit()
         _push_progress()
-        logger.warning(f"[行业] 未获取到数据: {blocked_reason}")
+        logger.warning("[通达信行业] 未获取到数据")
         return 0
-
-    now = datetime.now().isoformat()
-    for item in industry_data:
-        _raise_if_stop()
-        code = item["stock_code"]
-        if code in excluded_codes:
-            continue
-        conn.execute("""
-            INSERT OR REPLACE INTO dim_stock_industry
-            (stock_code, sw_level1, sw_level2, sw_level3, sw_code, updated_at)
-            VALUES (?, ?, ?, ?, ?, ?)
-        """, (code, item["sw_level1"], item["sw_level2"], item["sw_level3"],
-              item["sw_code"], now))
-        count += 1
 
     reconcile_gap_queue_snapshot(conn, stock_names=stock_names, datasets=("industry",), commit=False)
     gap_summary = summarize_gap_queue(conn, datasets=("industry",), limit_per_dataset=6)["datasets"][0]
@@ -1914,38 +1897,19 @@ async def _step_sync_industry(conn) -> int:
         "source_degraded": industry_source_degraded,
         "before_missing": detail["industry_sync"]["before_missing"],
         "after_missing": gap_summary["unresolved"],
+        "source": tdx_result.get("source"),
+        "fetched_at": tdx_result.get("fetched_at"),
+        "l1_count": tdx_result.get("l1_count"),
+        "l2_count": tdx_result.get("l2_count"),
+        "l3_count": tdx_result.get("l3_count"),
+        "errors": errors,
         "gap_summary": gap_summary,
     }
     conn.commit()
     _push_progress()
-
-    try:
-        active_codes = get_active_a_stock_codes(conn)
-        block_status = await sync_tdx_blocks(
-            conn,
-            active_codes=active_codes,
-            excluded_codes=excluded_codes,
-            should_stop=_raise_if_stop,
-        )
-        detail["block_sync"] = block_status
-        count += block_status.get("member_rows", 0)
-        _push_progress()
-    except Exception as e:
-        detail["block_sync"] = {
-            "status": "failed" if not isinstance(e, _RunStopped) else "stopped",
-            "member_rows": 0,
-            "catalog_rows": 0,
-            "error": str(e)[:200],
-        }
-        _push_progress()
-        if isinstance(e, _RunStopped):
-            raise
-        logger.error(f"[板块] 同步失败: {e}")
-
     logger.info(
-        f"[行业] 完成: 行业{detail['industry_sync']['updated_rows']}条"
-        f" ({industry_source or 'unknown'}), "
-        f"板块成员{detail['block_sync'].get('member_rows', 0)}条"
+        f"[通达信行业] 完成: {count} 只股票, "
+        f"L1={tdx_result.get('l1_count')}/L2={tdx_result.get('l2_count')}/L3={tdx_result.get('l3_count')}"
     )
     return count
 
@@ -2037,7 +2001,7 @@ def _step_build_industry_stat_sync(conn) -> int:
             inst_id = inst["id"]
 
             # 按行业分组统计（一二三级都做）
-            for level_col, level_name in [("sw_level1", "level1"), ("sw_level2", "level2"), ("sw_level3", "level3")]:
+            for level_col, level_name in [("tdx_l1", "level1"), ("tdx_l2", "level2"), ("tdx_l3", "level3")]:
                 _raise_if_stop()
                 rows = conn.execute(f"""
                     SELECT s.{level_col} as industry,

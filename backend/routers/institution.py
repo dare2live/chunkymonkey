@@ -267,9 +267,283 @@ async def list_stock_trends():
 
     conn = get_conn()
     try:
-        trends_payload = load_stock_trends_payload(conn)
-        result = trends_payload["data"]
-        summary = trends_payload["summary"]
+        blacklist_rows = conn.execute("""
+            SELECT e.stock_code,
+                   COALESCE(
+                       NULLIF(e.stock_name, ''),
+                       d.stock_name,
+                       (
+                           SELECT mr.stock_name
+                           FROM market_raw_holdings mr
+                           WHERE mr.stock_code = e.stock_code
+                           ORDER BY mr.report_date DESC, mr.notice_date DESC
+                           LIMIT 1
+                       ),
+                       e.stock_code
+                   ) AS stock_name,
+                   e.reason,
+                   e.created_at
+            FROM excluded_stocks e
+            LEFT JOIN dim_active_a_stock d ON d.stock_code = e.stock_code
+            WHERE e.category = 'MANUAL'
+            ORDER BY e.created_at DESC
+        """).fetchall()
+        blacklist_map = {r["stock_code"]: dict(r) for r in blacklist_rows}
+
+        rows = conn.execute("""
+            SELECT t.stock_code,
+                   t.stock_name,
+                   t.price_trend,
+                   t.latest_report_date,
+                   t.latest_notice_date,
+                   t.path_state,
+                   t.setup_tag,
+                   t.setup_priority,
+                   t.setup_reason,
+                   t.setup_confidence,
+                   t.setup_level,
+                   t.setup_inst_id,
+                   t.setup_inst_name,
+                   t.setup_event_type,
+                   t.setup_industry_name,
+                   t.setup_score_raw,
+                   t.industry_skill_raw,
+                   t.industry_skill_grade,
+                   t.followability_grade,
+                   t.premium_grade,
+                   t.report_recency_grade,
+                   t.reliability_grade,
+                   t.discovery_score,
+                   t.company_quality_score,
+                   t.stage_score,
+                   t.forecast_score,
+                   t.forecast_score_effective,
+                   t.raw_composite_priority_score,
+                   t.composite_priority_score,
+                   t.composite_cap_score,
+                   t.composite_cap_reason,
+                   t.stock_archetype,
+                   t.priority_pool,
+                   t.priority_pool_reason,
+                   t.attention_comment_trade_date,
+                   t.attention_focus_index,
+                   t.attention_composite_score,
+                   t.attention_institution_participation,
+                   t.attention_turnover_rate,
+                   t.attention_rank_change,
+                   t.attention_survey_count_30d,
+                   t.attention_survey_count_90d,
+                   t.attention_survey_org_total_30d,
+                   t.attention_survey_org_total_90d,
+                   t.external_attention_score,
+                   t.external_crowding_penalty,
+                   t.external_attention_signal,
+                   t.score_highlights,
+                   t.score_risks,
+                   t.qlib_rank,
+                   COALESCE(
+                       ii_setup.display_name,
+                       ii_leader.display_name,
+                       t.setup_inst_name,
+                       ii_leader.name,
+                       t.leader_inst
+                   ) AS display_inst_name,
+                   st.generic_stage_raw,
+                   st.stage_type_adjust_raw,
+                   st.stage_reason,
+                   st.path_max_gain_pct,
+                   st.path_max_drawdown_pct,
+                   st.max_drawdown_60d,
+                   st.dist_ma250_pct,
+                   st.above_ma250,
+                   ff.forecast_20d_score,
+                   ff.forecast_60d_excess_score,
+                   ff.forecast_risk_adjusted_score,
+                   ff.forecast_reason,
+                   ff.model_id            AS forecast_model_id,
+                   ff.predict_date        AS forecast_predict_date,
+                   ff.industry_relative_group AS forecast_industry_relative_group
+            FROM mart_stock_trend t
+            LEFT JOIN inst_institutions ii_setup  ON ii_setup.id  = t.setup_inst_id
+            LEFT JOIN inst_institutions ii_leader ON ii_leader.id = t.leader_inst
+            LEFT JOIN dim_stock_stage_latest st ON st.stock_code = t.stock_code
+            LEFT JOIN dim_stock_forecast_latest ff ON ff.stock_code = t.stock_code
+            ORDER BY
+                CASE COALESCE(t.priority_pool, '')
+                    WHEN 'A池' THEN 0
+                    WHEN 'B池' THEN 1
+                    WHEN 'C池' THEN 2
+                    WHEN 'D池' THEN 3
+                    ELSE 9
+                END,
+                CASE WHEN t.composite_priority_score IS NOT NULL THEN 0 ELSE 1 END,
+                COALESCE(t.composite_priority_score, 0) DESC,
+                CASE WHEN t.setup_tag IS NOT NULL THEN 0 ELSE 1 END,
+                COALESCE(t.setup_priority, 9),
+                COALESCE(t.discovery_score, 0) DESC,
+                COALESCE(t.setup_score_raw, 0) DESC,
+                t.stock_code
+        """).fetchall()
+        coverage_rows = conn.execute("""
+            SELECT
+                stock_code,
+                COUNT(*) AS holder_total,
+                SUM(CASE WHEN follow_gate = 'follow'  THEN 1 ELSE 0 END) AS holder_follow_count,
+                SUM(CASE WHEN follow_gate = 'watch'   THEN 1 ELSE 0 END) AS holder_watch_count,
+                SUM(CASE WHEN follow_gate = 'observe' THEN 1 ELSE 0 END) AS holder_observe_count,
+                SUM(CASE WHEN follow_gate = 'avoid'   THEN 1 ELSE 0 END) AS holder_avoid_count
+            FROM mart_current_relationship
+            GROUP BY stock_code
+        """).fetchall()
+        coverage_map = {r["stock_code"]: dict(r) for r in coverage_rows}
+        industry_map = load_industry_map(conn)
+        result = []
+        seen = set()
+        for row in rows:
+            item = dict(row)
+            blacklist = blacklist_map.get(item["stock_code"])
+            industry = industry_map.get(item["stock_code"], {})
+            item["tdx_l1"] = industry.get("tdx_l1")
+            item["tdx_l2"] = industry.get("tdx_l2")
+            item["tdx_l3"] = industry.get("tdx_l3")
+            coverage = coverage_map.get(item["stock_code"], {})
+            holder_total = coverage.get("holder_total") or 0
+            item["holder_total"] = holder_total
+            holder_follow = coverage.get("holder_follow_count") or 0
+            holder_watch = coverage.get("holder_watch_count") or 0
+            holder_observe = coverage.get("holder_observe_count") or 0
+            holder_avoid = coverage.get("holder_avoid_count") or 0
+            item["holder_follow_count"] = holder_follow
+            item["holder_watch_count"] = holder_watch
+            item["holder_observe_count"] = holder_observe
+            item["holder_avoid_count"] = holder_avoid
+
+            # 单一真相源：股票级 stock_gate（从 MCR 持仓机构 follow_gate 聚合，最高优先级胜出）
+            # 与机构页 follow_gate 同一口径，避免「各算各的」
+            if holder_follow > 0:
+                stock_gate = "follow"
+                stock_gate_reason = f"{holder_follow} 家持仓机构可跟"
+            elif holder_watch > 0:
+                stock_gate = "watch"
+                stock_gate_reason = f"{holder_watch} 家持仓机构关注"
+            elif holder_observe > 0:
+                stock_gate = "observe"
+                stock_gate_reason = f"{holder_observe} 家持仓机构观察"
+            elif holder_avoid > 0:
+                stock_gate = "avoid"
+                stock_gate_reason = f"{holder_avoid} 家持仓机构回避"
+            else:
+                stock_gate = None
+                stock_gate_reason = "暂无持仓机构数据" if not holder_total else "持仓机构均未生成 follow_gate"
+            item["stock_gate"] = stock_gate
+            item["stock_gate_reason"] = stock_gate_reason
+            item["_sort_blacklisted"] = 1 if blacklist else 0
+            result.append(item)
+            seen.add(item["stock_code"])
+
+        for code, blacklist in blacklist_map.items():
+            if code in seen:
+                continue
+            industry = industry_map.get(code, {})
+            result.append({
+                "stock_code": code,
+                "stock_name": blacklist.get("stock_name") or code,
+                "latest_report_date": None,
+                "latest_notice_date": None,
+                "price_trend": None,
+                "path_state": None,
+                "setup_tag": None,
+                "setup_priority": None,
+                "setup_reason": None,
+                "setup_confidence": None,
+                "setup_level": None,
+                "setup_inst_id": None,
+                "setup_inst_name": None,
+                "setup_event_type": None,
+                "setup_industry_name": None,
+                "setup_score_raw": None,
+                "industry_skill_raw": None,
+                "industry_skill_grade": None,
+                "followability_grade": None,
+                "premium_grade": None,
+                "report_recency_grade": None,
+                "reliability_grade": None,
+                "holder_total": None,
+                "holder_follow_count": None,
+                "holder_watch_count": None,
+                "holder_observe_count": None,
+                "holder_avoid_count": None,
+                "stock_gate": None,
+                "stock_gate_reason": "已拉黑",
+                "display_inst_name": None,
+                "discovery_score": None,
+                "company_quality_score": None,
+                "stage_score": None,
+                "forecast_score": None,
+                "forecast_score_effective": None,
+                "raw_composite_priority_score": None,
+                "composite_priority_score": None,
+                "composite_cap_score": None,
+                "composite_cap_reason": None,
+                "stock_archetype": None,
+                "priority_pool": None,
+                "priority_pool_reason": None,
+                "attention_comment_trade_date": None,
+                "attention_focus_index": None,
+                "attention_composite_score": None,
+                "attention_institution_participation": None,
+                "attention_turnover_rate": None,
+                "attention_rank_change": None,
+                "attention_survey_count_30d": None,
+                "attention_survey_count_90d": None,
+                "attention_survey_org_total_30d": None,
+                "attention_survey_org_total_90d": None,
+                "external_attention_score": None,
+                "external_crowding_penalty": None,
+                "external_attention_signal": None,
+                "score_highlights": None,
+                "score_risks": None,
+                "generic_stage_raw": None,
+                "stage_type_adjust_raw": None,
+                "stage_reason": None,
+                "path_max_gain_pct": None,
+                "path_max_drawdown_pct": None,
+                "max_drawdown_60d": None,
+                "dist_ma250_pct": None,
+                "above_ma250": None,
+                "forecast_20d_score": None,
+                "forecast_60d_excess_score": None,
+                "forecast_risk_adjusted_score": None,
+                "forecast_reason": None,
+                "forecast_model_id": None,
+                "forecast_predict_date": None,
+                "forecast_industry_relative_group": None,
+                "tdx_l1": industry.get("tdx_l1"),
+                "tdx_l2": industry.get("tdx_l2"),
+                "tdx_l3": industry.get("tdx_l3"),
+                "_sort_blacklisted": 1,
+            })
+
+        result.sort(
+            key=lambda item: (
+                item.get("_sort_blacklisted") or 0,
+                {
+                    "A池": 0,
+                    "B池": 1,
+                    "C池": 2,
+                    "D池": 3,
+                }.get(item.get("priority_pool"), 9),
+                -(item.get("composite_priority_score") or 0),
+                0 if item.get("setup_tag") else 1,
+                item.get("setup_priority") if item.get("setup_priority") is not None else 9,
+                -(item.get("discovery_score") or 0),
+                -(item.get("setup_score_raw") or 0),
+                -(item.get("holder_total") or 0),
+                item.get("stock_code") or "",
+            )
+        )
+        for item in result:
+            item.pop("_sort_blacklisted", None)
         _stock_trends_cache["ts"] = now_ts
         _stock_trends_cache["payload"] = {"data": result, "summary": summary}
         return {"ok": True, "data": result, "summary": summary, "total": len(result), "cached": False}
@@ -282,7 +556,62 @@ async def list_candidate_setups(limit: int = Query(200, ge=1, le=1000)):
     """研究型候选 setup 队列（显式标签层，不自动正式入池）"""
     conn = get_conn()
     try:
-        data = load_candidate_setup_rows(conn, limit=limit)
+        excluded = {
+            row["stock_code"]
+            for row in conn.execute(
+                "SELECT stock_code FROM excluded_stocks WHERE category = 'MANUAL'"
+            ).fetchall()
+        }
+        rows = conn.execute("""
+            SELECT stock_code, stock_name,
+                   latest_report_date, latest_notice_date, path_state,
+                   setup_tag, setup_priority, setup_reason, setup_confidence,
+                   setup_level, setup_inst_id, setup_inst_name, setup_event_type,
+                   setup_industry_name, setup_score_raw,
+                   setup_execution_gate, setup_execution_reason,
+                   industry_skill_raw, industry_skill_grade,
+                   followability_grade, premium_grade, report_recency_grade,
+                   reliability_grade, report_age_days,
+                   discovery_score, company_quality_score, stage_score,
+                   forecast_score, forecast_score_effective,
+                   raw_composite_priority_score, composite_priority_score,
+                   composite_cap_score, composite_cap_reason,
+                   stock_archetype, priority_pool, priority_pool_reason,
+                   score_highlights, score_risks,
+                   crowding_bucket, crowding_yield_raw, crowding_yield_grade,
+                   crowding_stability_raw, crowding_stability_grade,
+                   crowding_fit_raw, crowding_fit_grade, crowding_fit_sample,
+                   crowding_fit_source, qlib_rank
+            FROM mart_stock_trend
+            WHERE setup_tag IS NOT NULL
+            ORDER BY
+                CASE COALESCE(priority_pool, '')
+                    WHEN 'A池' THEN 0
+                    WHEN 'B池' THEN 1
+                    WHEN 'C池' THEN 2
+                    WHEN 'D池' THEN 3
+                    ELSE 9
+                END,
+                CASE WHEN composite_priority_score IS NOT NULL THEN 0 ELSE 1 END,
+                COALESCE(composite_priority_score, 0) DESC,
+                COALESCE(setup_priority, 9),
+                COALESCE(setup_score_raw, 0) DESC,
+                COALESCE(discovery_score, 0) DESC,
+                COALESCE(latest_report_date, '') DESC,
+                stock_code
+            LIMIT ?
+        """, (limit,)).fetchall()
+        industry_map = load_industry_map(conn)
+        data = []
+        for row in rows:
+            item = dict(row)
+            if item["stock_code"] in excluded:
+                continue
+            ind = industry_map.get(item["stock_code"], {})
+            item["tdx_l1"] = ind.get("tdx_l1")
+            item["tdx_l2"] = ind.get("tdx_l2")
+            item["tdx_l3"] = ind.get("tdx_l3")
+            data.append(item)
         return {"ok": True, "data": data, "total": len(data)}
     finally:
         conn.close()
@@ -512,8 +841,78 @@ async def get_institution_detail(inst_id: str):
     """机构持仓明细 — 统一通过 holdings 模块查询"""
     conn = get_conn()
     try:
-        payload = load_institution_profile_detail(conn, inst_id)
-        return {"ok": True, **payload}
+        result = get_inst_current_holdings(conn, inst_id)
+
+        # 退出的股票也列出，标注 event_type=exit
+        exits = get_inst_exits(conn, inst_id)
+        for ex in exits:
+            result.append({
+                "stock_code": ex["stock_code"],
+                "stock_name": ex["stock_name"],
+                "report_date": ex["exit_report_date"],
+                "notice_date": None,
+                "hold_amount": 0,
+                "hold_market_cap": 0,
+                "hold_ratio": None,
+                "event_type": "exit",
+                "change_pct": -100.0,
+                "gain_10d": None, "gain_30d": None, "gain_60d": None, "gain_120d": None,
+                "other_institutions": [],
+            })
+
+        # 行业汇总（通过 industry resolver 批量加载）
+        industry_summary = []
+        stock_codes = [h["stock_code"] for h in result if h.get("event_type") != "exit"]
+        if stock_codes:
+            from services.industry import load_industry_map
+            ind_map = load_industry_map(conn)
+            ind_rows = [
+                {"tdx_l1": ind_map[c].get("tdx_l1"), "tdx_l2": ind_map[c].get("tdx_l2"),
+                 "tdx_l3": ind_map[c].get("tdx_l3"), "stock_code": c}
+                for c in stock_codes if c in ind_map
+            ]
+
+            # 按一级 → 二级 → 三级 聚合
+            from collections import defaultdict
+            tree = defaultdict(lambda: {"stocks": 0, "children": defaultdict(lambda: {"stocks": 0, "children": defaultdict(int)})})
+            for r in ind_rows:
+                l1, l2, l3 = r["tdx_l1"] or "", r["tdx_l2"] or "", r["tdx_l3"] or ""
+                if l1:
+                    tree[l1]["stocks"] += 1
+                    if l2:
+                        tree[l1]["children"][l2]["stocks"] += 1
+                        if l3:
+                            tree[l1]["children"][l2]["children"][l3] += 1
+
+            total_with_ind = len(ind_rows)
+            for l1, v1 in sorted(tree.items(), key=lambda x: -x[1]["stocks"]):
+                l1_data = {"level1": l1, "stock_count": v1["stocks"],
+                           "pct": round(v1["stocks"] / max(total_with_ind, 1) * 100, 1),
+                           "children": []}
+                for l2, v2 in sorted(v1["children"].items(), key=lambda x: -x[1]["stocks"]):
+                    l2_data = {"level2": l2, "stock_count": v2["stocks"], "children": []}
+                    for l3, cnt in sorted(v2["children"].items(), key=lambda x: -x[1]):
+                        l2_data["children"].append({"level3": l3, "stock_count": cnt})
+                    # 历史表现（如有）
+                    stat = conn.execute("""
+                        SELECT avg_gain_30d, win_rate_30d FROM mart_institution_industry_stat
+                        WHERE institution_id = ? AND sw_level = 'level2' AND industry_name = ?
+                    """, (inst_id, l2)).fetchone()
+                    if stat:
+                        l2_data["avg_gain_30d"] = stat["avg_gain_30d"]
+                        l2_data["win_rate_30d"] = stat["win_rate_30d"]
+                    l1_data["children"].append(l2_data)
+                # 一级行业也查业绩
+                l1_stat = conn.execute("""
+                    SELECT avg_gain_30d, win_rate_30d FROM mart_institution_industry_stat
+                    WHERE institution_id = ? AND sw_level = 'level1' AND industry_name = ?
+                """, (inst_id, l1)).fetchone()
+                if l1_stat:
+                    l1_data["avg_gain_30d"] = l1_stat["avg_gain_30d"]
+                    l1_data["win_rate_30d"] = l1_stat["win_rate_30d"]
+                industry_summary.append(l1_data)
+
+        return {"ok": True, "data": result, "total": len(result), "industry_summary": industry_summary}
     finally:
         conn.close()
 
@@ -549,9 +948,53 @@ async def get_stock_attention(stock_code: str):
     """内部验证接口：单股外部关注明细。"""
     conn = get_conn()
     try:
-        return await load_stock_attention_payload(conn, stock_code)
+        snapshot = get_latest_stock_attention(conn, stock_code)
+        stock_meta = conn.execute(
+            "SELECT stock_name FROM dim_active_a_stock WHERE stock_code = ? LIMIT 1",
+            (stock_code,),
+        ).fetchone()
+        if not stock_meta:
+            stock_meta = conn.execute(
+                "SELECT stock_name FROM market_raw_holdings WHERE stock_code = ? LIMIT 1",
+                (stock_code,),
+            ).fetchone()
+        industry_meta = conn.execute(
+            "SELECT tdx_l1, tdx_l2, tdx_l3 FROM dim_stock_tdx_industry WHERE stock_code = ? LIMIT 1",
+            (stock_code,),
+        ).fetchone()
     finally:
         conn.close()
+
+    detail = await asyncio.to_thread(fetch_stock_attention_detail, stock_code)
+    basic_info = dict(detail.get("basic_info") or {})
+    fallback_name = (snapshot or {}).get("stock_name") or (stock_meta["stock_name"] if stock_meta else "")
+    fallback_industry = ""
+    if industry_meta:
+        fallback_industry = industry_meta["tdx_l2"] or industry_meta["tdx_l1"] or industry_meta["tdx_l3"] or ""
+    if not basic_info:
+        basic_info = {
+            "股票代码": detail.get("stock_code") or stock_code,
+            "股票简称": fallback_name,
+            "行业": fallback_industry,
+        }
+    else:
+        basic_info.setdefault("股票代码", detail.get("stock_code") or stock_code)
+        if fallback_name:
+            basic_info.setdefault("股票简称", fallback_name)
+        if fallback_industry:
+            basic_info.setdefault("行业", fallback_industry)
+
+    return {
+        "ok": True,
+        "stock_code": detail.get("stock_code") or stock_code,
+        "stock_name": detail.get("stock_name") or fallback_name,
+        "snapshot": snapshot,
+        "basic_info": basic_info,
+        "series": detail.get("series") or {},
+        "research": detail.get("research") or {},
+        "news": detail.get("news") or {},
+        "diagnostics": detail.get("diagnostics") or {},
+    }
 
 
 @router.get("/profiles/returns-history/{inst_id}")
@@ -891,10 +1334,120 @@ async def scoring_breakdown(card_type: str, object_id: str):
             return payload
 
         elif card_type == "stock":
-            payload = load_stock_scoring_breakdown(conn, object_id)
-            if not payload:
+            s = conn.execute("""
+                SELECT t.stock_code, t.stock_name,
+                       t.leader_inst, t.leader_score, t.consensus_count, t.path_state,
+                       t.data_completeness, t.latest_notice_date,
+                       t.discovery_score, t.company_quality_score, t.stage_score,
+                       t.forecast_score, t.forecast_score_effective, t.composite_priority_score,
+                       t.stock_archetype, t.priority_pool, t.score_highlights, t.score_risks,
+                       t.setup_tag, t.setup_priority, t.setup_reason, t.setup_confidence,
+                       t.setup_level, t.setup_inst_name, t.setup_event_type,
+                       t.setup_industry_name, t.setup_score_raw,
+                       t.setup_execution_gate, t.setup_execution_reason,
+                       t.industry_skill_raw,
+                       t.industry_skill_grade, t.followability_grade, t.premium_grade,
+                       t.report_recency_grade, t.reliability_grade,
+                       t.crowding_bucket, t.crowding_yield_raw, t.crowding_yield_grade,
+                       t.crowding_stability_raw, t.crowding_stability_grade,
+                       t.crowding_fit_raw, t.crowding_fit_grade, t.crowding_fit_sample,
+                       t.crowding_fit_source, t.report_age_days,
+                       st.path_max_gain_pct, st.path_max_drawdown_pct,
+                       st.generic_stage_raw, st.stage_type_adjust_raw, st.stage_reason,
+                       st.max_drawdown_60d, st.dist_ma250_pct, st.above_ma250,
+                       ff.forecast_20d_score, ff.forecast_60d_excess_score,
+                       ff.forecast_risk_adjusted_score, ff.forecast_reason,
+                       ff.model_id AS forecast_model_id,
+                       ff.predict_date AS forecast_predict_date,
+                       ff.industry_relative_group AS forecast_industry_relative_group,
+                       m.tdx_l2, m.notice_age_days, m.price_entry, m.return_to_now,
+                       m.inst_ref_cost, m.inst_cost_method,
+                       m.premium_pct, m.premium_bucket, m.follow_gate
+                FROM mart_stock_trend t
+                LEFT JOIN dim_stock_stage_latest st ON st.stock_code = t.stock_code
+                LEFT JOIN dim_stock_forecast_latest ff ON ff.stock_code = t.stock_code
+                LEFT JOIN mart_current_relationship m ON t.stock_code = m.stock_code
+                WHERE t.stock_code = ?
+                LIMIT 1
+            """, (object_id,)).fetchone()
+            if not s:
                 return {"ok": False, "message": "股票不存在"}
-            return payload
+            s = dict(s)
+            return {
+                "ok": True, "card_type": "stock", "object_id": object_id,
+                "discovery_score": s.get("discovery_score"),
+                "company_quality_score": s.get("company_quality_score"),
+                "stage_score": s.get("stage_score"),
+                "forecast_score": s.get("forecast_score"),
+                "forecast_score_effective": s.get("forecast_score_effective"),
+                "raw_composite_priority_score": s.get("raw_composite_priority_score"),
+                "composite_priority_score": s.get("composite_priority_score"),
+                "composite_cap_score": s.get("composite_cap_score"),
+                "composite_cap_reason": s.get("composite_cap_reason"),
+                "stock_archetype": s.get("stock_archetype"),
+                "priority_pool": s.get("priority_pool"),
+                "priority_pool_reason": s.get("priority_pool_reason"),
+                "score_highlights": s.get("score_highlights"),
+                "score_risks": s.get("score_risks"),
+                "path_state": s.get("path_state"),
+                "data_completeness": s.get("data_completeness"),
+                "stage": _extract_stage_payload(s),
+                "forecast": _extract_forecast_payload(s),
+                "formula": "Composite = 发现35% + 质量30% + 阶段20% + 生效预测15%；Stage<40 封顶69；Quality<45 且非周期/事件型封顶64；A池要求 Composite≥75 且 Stage≥50 且 Quality≥55 且 Discovery≥50",
+                "factors": {
+                    "leader": {"inst": s.get("leader_inst"), "score": s.get("leader_score"),
+                               "source": "mart_institution_profile.quality_score", "weight": "30%"},
+                    "industry_match": {"stock_industry": s.get("tdx_l2"),
+                                       "source": "mart_current_relationship.tdx_l2 vs leader best_industry",
+                                       "weight": "25%"},
+                    "consensus": {"count": s.get("consensus_count"),
+                                  "source": "mart_current_relationship 中 quality_score ≥ 75th 的机构数",
+                                  "weight": "10%"},
+                    "timeliness": {"notice_age_days": s.get("notice_age_days"),
+                                   "notice_date": s.get("latest_notice_date"),
+                                   "source": "notice_date 距今天数（30日=100分，180日=0分）",
+                                   "weight": "10%"},
+                    "price_path": {"entry_price": s.get("price_entry"),
+                                   "inst_ref_cost": s.get("inst_ref_cost"),
+                                   "inst_cost_method": s.get("inst_cost_method"),
+                                   "premium_pct": s.get("premium_pct"),
+                                   "premium_bucket": s.get("premium_bucket"),
+                                   "follow_gate": s.get("follow_gate"),
+                                   "return_to_now": s.get("return_to_now"),
+                                   "path_state": s.get("path_state"),
+                                   "source": "market_data.db 日K线计算"},
+                    "setup": {
+                        "tag": s.get("setup_tag"),
+                        "priority": s.get("setup_priority"),
+                        "reason": s.get("setup_reason"),
+                        "confidence": s.get("setup_confidence"),
+                        "level": s.get("setup_level"),
+                        "institution": s.get("setup_inst_name"),
+                        "event_type": s.get("setup_event_type"),
+                        "industry_name": s.get("setup_industry_name"),
+                        "setup_score_raw": s.get("setup_score_raw"),
+                        "setup_execution_gate": s.get("setup_execution_gate"),
+                        "setup_execution_reason": s.get("setup_execution_reason"),
+                        "industry_skill_raw": s.get("industry_skill_raw"),
+                        "industry_skill_grade": s.get("industry_skill_grade"),
+                        "followability_grade": s.get("followability_grade"),
+                        "premium_grade": s.get("premium_grade"),
+                        "report_recency_grade": s.get("report_recency_grade"),
+                        "reliability_grade": s.get("reliability_grade"),
+                        "crowding_bucket": s.get("crowding_bucket"),
+                        "crowding_yield_raw": s.get("crowding_yield_raw"),
+                        "crowding_yield_grade": s.get("crowding_yield_grade"),
+                        "crowding_stability_raw": s.get("crowding_stability_raw"),
+                        "crowding_stability_grade": s.get("crowding_stability_grade"),
+                        "crowding_fit_raw": s.get("crowding_fit_raw"),
+                        "crowding_fit_grade": s.get("crowding_fit_grade"),
+                        "crowding_fit_sample": s.get("crowding_fit_sample"),
+                        "crowding_fit_source": s.get("crowding_fit_source"),
+                        "report_age_days": s.get("report_age_days"),
+                        "source": "mart_stock_trend Setup A 叠加层",
+                    },
+                },
+            }
         else:
             return {"ok": False, "message": f"未知类型: {card_type}"}
     finally:

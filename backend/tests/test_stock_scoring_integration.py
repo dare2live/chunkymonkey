@@ -150,11 +150,11 @@ def _make_conn():
             max_drawdown_30d REAL
         );
 
-        CREATE TABLE dim_stock_industry (
+        CREATE TABLE dim_stock_tdx_industry (
             stock_code TEXT PRIMARY KEY,
-            sw_level1 TEXT,
-            sw_level2 TEXT,
-            sw_level3 TEXT
+            tdx_l1 TEXT,
+            tdx_l2 TEXT,
+            tdx_l3 TEXT
         );
 
         CREATE TABLE dim_financial_latest (
@@ -357,7 +357,7 @@ def test_calculate_stock_scores_ranks_strong_new_entry_above_weak_signal(monkeyp
             ],
         )
         conn.executemany(
-            "INSERT INTO dim_stock_industry (stock_code, sw_level1, sw_level2, sw_level3) VALUES (?, ?, ?, ?)",
+            "INSERT INTO dim_stock_tdx_industry (stock_code, tdx_l1, tdx_l2, tdx_l3) VALUES (?, ?, ?, ?)",
             [
                 ("000001", "电子", "半导体", "芯片设计"),
                 ("000002", "传媒", "传媒", "广告营销"),

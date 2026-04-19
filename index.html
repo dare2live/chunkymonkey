@@ -35,8 +35,8 @@
   <div class="sub-bar" id="subBar">
     <!-- 股东挖掘二级导航 -->
     <div class="nav-sub-bar" id="nav-sub-holder">
-      <button class="nav-btn active" data-view="dashboard">工作台</button>
-      <button class="nav-btn" data-view="system">系统</button>
+      <button class="nav-btn active" data-view="signals-v2">信号 v2</button>
+      <button class="nav-btn" data-view="dashboard">工作台 <small style="opacity:.6">legacy</small></button>
       <button class="nav-btn" data-view="research">机构研究</button>
       <button class="nav-btn" data-view="stocks">股票研究</button>
       <button class="nav-btn" id="nav-qlib" data-view="qlib" style="display:none">Qlib</button>
@@ -51,8 +51,13 @@
   </div>
 
   <main class="content">
-    <!-- ==================== 工作台 ==================== -->
-    <section class="view active" id="view-dashboard">
+    <!-- ==================== 信号 v2（主视图） ==================== -->
+    <section class="view active" id="view-signals-v2">
+      <div class="muted" style="padding:20px;text-align:center">加载中...</div>
+    </section>
+
+    <!-- ==================== 工作台（legacy） ==================== -->
+    <section class="view" id="view-dashboard">
       <div class="dashboard-hero panel panel-hero">
         <div class="dashboard-hero-copy">
           <div class="section-kicker">Candidate Discovery Workbench</div>
@@ -516,27 +521,36 @@
     </div>
   </div>
 
+  <script src="assets/js/app-cache.js?v=2.3.0"></script>
+  <script src="assets/js/app-nav.js?v=2.3.0"></script>
+  <script src="assets/js/app-list-state.js?v=2.3.0"></script>
+  <script src="assets/js/app.js?v=2.3.0"></script>
+  <script src="assets/js/signals-view.js?v=2.3.0"></script>
   <script>
-    (function (version) {
-      var scripts = [
-        'assets/js/app-cache.js',
-        'assets/js/app-nav.js',
-        'assets/js/app-list-state.js',
-        'assets/js/app.js'
-      ];
-
-      function loadScript(index) {
-        if (index >= scripts.length) return;
-        var script = document.createElement('script');
-        script.src = scripts[index] + '?v=' + version;
-        script.onload = function () {
-          loadScript(index + 1);
-        };
-        document.body.appendChild(script);
-      }
-
-      loadScript(0);
-    })(window.CM_ASSET_VERSION);
+    // signals v2 视图懒加载：切到该 tab 时初始化 + 默认就把视图切到 signals-v2
+    (function () {
+      document.addEventListener('DOMContentLoaded', function () {
+        const nav = document.querySelector('[data-view="signals-v2"]');
+        let loaded = false;
+        function init() {
+          if (loaded) return;
+          loaded = true;
+          window.SignalsV2 && window.SignalsV2.load();
+        }
+        // 等 app.js 完成默认 showView 后，强制切到 signals-v2
+        function boot() {
+          if (window.App && window.App.showView) {
+            window.App.showView('signals-v2');
+            init();
+          } else {
+            setTimeout(boot, 50);
+          }
+        }
+        // 给 app.js 一个 tick 先跑自己的 init
+        setTimeout(boot, 150);
+        if (nav) nav.addEventListener('click', function () { setTimeout(init, 50); });
+      });
+    })();
   </script>
 </body>
 

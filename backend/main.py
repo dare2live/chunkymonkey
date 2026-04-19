@@ -98,6 +98,20 @@ app_modules = register_modules(app)
 from routers.screening import router as screening_router
 app.include_router(screening_router, prefix="/api/screening", tags=["screening"])
 
+from routers.signals import router as signals_router
+app.include_router(signals_router, prefix="/api/signals", tags=["signals"])
+
+# 初始化 signals_v2 默认配置（幂等）
+try:
+    _conn = get_conn()
+    try:
+        from services.signals_v2 import ensure_defaults as _signals_v2_defaults
+        _signals_v2_defaults(_conn)
+    finally:
+        _conn.close()
+except Exception as _e:
+    logger.warning(f"signals_v2 ensure_defaults failed: {_e}")
+
 # 设置选项相关的API (比如开启/关闭功能模块)
 @app.post("/api/settings/modules")
 async def toggle_modules(settings: dict):

@@ -1,12 +1,13 @@
 """
 AKShare 数据获取客户端
 
-函数：月K线、日K线、交易日历、行业分类。
+函数：月K线、日K线、交易日历。
 
 说明：
 - K 线优先走东财；失败后自动回退新浪 / 腾讯
 - 缺失股票拉全历史，已存在股票走增量续拉
-- 行业分类仅接受 TDX 研究行业，异常时返回阻断原因，不做跨源回退
+- 行业分类统一走 services.tdx_industry_client (通达信 tdxhy.cfg),
+  本模块已不提供行业函数。
 """
 
 import asyncio
@@ -279,6 +280,65 @@ async def _safe_akshare_call(func, *args, timeout=30, retries=2, **kwargs):
     if last_err:
         raise last_err
     return None
+
+
+def _normalize_price_frame(df, source: str):
+    """统一 K 线 DataFrame 列名为 date/open/high/low/close/volume/amount"""
+    if df is None or df.empty:
+        return None
+    frame = df.copy()
+
+    if source == "eastmoney":
+        frame = frame.rename(columns={
+            "日期": "date",
+            "开盘": "open",
+            "最高": "high",
+            "最低": "low",
+            "收盘": "close",
+            "成交量": "volume",
+            "成交额": "amount",
+        })
+    elif source == "sina":
+        pass
+    elif source == "tx":
+        # 腾讯接口通常只有 amount，无 volume
+        if "volume" not in frame.columns:
+            frame["volume"] = None
+    required = ["date", "open", "high", "low", "close"]
+    if not all(col in frame.columns for col in required):
+        return None
+    for col in ["volume", "amount"]:
+        if col not in frame.columns:
+            frame[col] = None
+    frame = frame[["date", "open", "high", "low", "close", "volume", "amount"]].copy()
+    frame["date"] = frame["date"].astype(str).str[:10]
+    return frame
+
+
+def _aggregate_monthly_from_daily(df: pd.DataFrame):
+    """从日 K 聚合月 K"""
+    if df is None or df.empty:
+        return None
+    frame = df.copy()
+    frame["date"] = pd.to_datetime(frame["date"])
+    frame = frame.sort_values("date")
+    frame["month"] = frame["date"].dt.to_period("M")
+
+    rows = []
+    for _, group in frame.groupby("month", sort=True):
+        group = group.sort_values("date")
+        rows.append({
+            "date": group.iloc[0]["date"].strftime("%Y-%m-01"),
+            "open": group.iloc[0]["open"],
+            "high": group["high"].max(),
+            "low": group["low"].min(),
+            "close": group.iloc[-1]["close"],
+            "volume": group["volume"].sum(min_count=1),
+            "amount": group["amount"].sum(min_count=1),
+        })
+    return pd.DataFrame(rows)
+
+
 async def _fetch_daily_mootdx(code: str, start_date: str, end_date: str):
     """用 mootdx 从通达信服务器获取日K线（首选数据源）"""
     df, source, _ = await _fetch_daily_mootdx_with_diagnostics(code, start_date, end_date)
@@ -478,220 +538,6 @@ async def test_kline_availability(sample_code: str = "000001") -> dict:
             result["detail"] += f" · fallback {fallback_diag['last_error']}"
     result["elapsed_sec"] = round(time.time() - started_at, 3)
     return result
-
-
-def _normalize_tdx_sector_code(value: object) -> str:
-    text = str(value or "").strip().upper()
-    if not text:
-        return ""
-    if "." in text:
-        head, tail = text.split(".", 1)
-        digits = "".join(ch for ch in head if ch.isdigit())
-        suffix = "".join(ch for ch in tail if ch.isalpha())
-        if digits and suffix:
-            return f"{digits}.{suffix}"
-        return digits
-    digits = "".join(ch for ch in text if ch.isdigit())
-    return digits
-
-
-def _normalize_tdx_stock_code(value: object) -> str:
-    text = str(value or "").strip().upper()
-    if not text:
-        return ""
-    if "." in text:
-        text = text.split(".", 1)[0]
-    digits = "".join(ch for ch in text if ch.isdigit())
-    return digits[-6:] if len(digits) >= 6 else ""
-
-
-def _coerce_tdx_code_name_rows(payload) -> list[dict[str, str]]:
-    if payload is None:
-        return []
-    rows = []
-    for item in list(payload):
-        code = ""
-        name = ""
-        if isinstance(item, dict):
-            code = item.get("Code") or item.get("code") or item.get("证券代码") or item.get("代码") or ""
-            name = item.get("Name") or item.get("name") or item.get("证券名称") or item.get("名称") or ""
-        elif isinstance(item, (list, tuple)) and len(item) >= 2:
-            code, name = item[0], item[1]
-        sector_code = _normalize_tdx_sector_code(code)
-        sector_name = str(name or "").strip()
-        if not sector_code or not sector_name:
-            continue
-        rows.append({"code": sector_code, "name": sector_name})
-    return rows
-
-
-def _coerce_tdx_code_list(payload) -> list[str]:
-    if payload is None:
-        return []
-    codes = []
-    for item in list(payload):
-        code = item
-        if isinstance(item, dict):
-            code = item.get("Code") or item.get("code") or item.get("证券代码") or item.get("代码") or ""
-        elif isinstance(item, (list, tuple)) and item:
-            code = item[0]
-        stock_code = _normalize_tdx_stock_code(code)
-        if stock_code:
-            codes.append(stock_code)
-    return codes
-
-
-def _get_tdx_research_client():
-    try:
-        from tqcenter import tq
-    except ImportError as exc:
-        raise ImportError("tqcenter not installed") from exc
-
-    global _TDX_RESEARCH_INITIALIZED
-    with _TDX_RESEARCH_INIT_GUARD:
-        if not _TDX_RESEARCH_INITIALIZED:
-            initialize = getattr(tq, "initialize", None)
-            if callable(initialize):
-                initialize(__file__)
-            _TDX_RESEARCH_INITIALIZED = True
-    return tq
-
-
-async def _call_tdx_research_api(method_name: str, *args, **kwargs):
-    loop = asyncio.get_running_loop()
-
-    def _invoke():
-        client = _get_tdx_research_client()
-        method = getattr(client, method_name, None)
-        if not callable(method):
-            raise AttributeError(f"tqcenter missing {method_name}")
-        return method(*args, **kwargs)
-
-    return await loop.run_in_executor(None, _invoke)
-
-
-async def _fetch_tdx_research_sector_rows(level_code: str) -> list[dict[str, str]]:
-    rows = _coerce_tdx_code_name_rows(
-        await _call_tdx_research_api("get_stock_list", level_code, list_type=1)
-    )
-    if not rows:
-        raise ValueError(f"tdx research level {level_code} empty")
-    return rows
-
-
-async def _fetch_tdx_research_sector_members(sector_code: str) -> list[str]:
-    return list(
-        dict.fromkeys(
-            _coerce_tdx_code_list(
-                await _call_tdx_research_api(
-                    "get_stock_list_in_sector",
-                    sector_code,
-                    block_type=0,
-                    list_type=0,
-                )
-            )
-        )
-    )
-
-
-async def _collect_tdx_level_assignments(level_code: str, field_name: str) -> tuple[dict[str, str], dict[str, str]]:
-    sectors = await _fetch_tdx_research_sector_rows(level_code)
-    assignments: dict[str, str] = {}
-    sector_codes: dict[str, str] = {}
-    duplicate_examples: list[str] = []
-    duplicate_count = 0
-
-    logger.info(f"[行业][TDX] 拉取 {field_name}: {len(sectors)} 个板块")
-    for index, sector in enumerate(sectors, start=1):
-        members = await _fetch_tdx_research_sector_members(sector["code"])
-        for stock_code in members:
-            current_code = sector_codes.get(stock_code)
-            if current_code and current_code != sector["code"]:
-                duplicate_count += 1
-                if len(duplicate_examples) < 10:
-                    duplicate_examples.append(
-                        f"{stock_code}:{current_code}->{sector['code']}"
-                    )
-                continue
-            assignments.setdefault(stock_code, sector["name"])
-            sector_codes.setdefault(stock_code, sector["code"])
-        if index % 20 == 0 or index == len(sectors):
-            logger.info(
-                f"[行业][TDX] {field_name} 进度: {index}/{len(sectors)}, 已覆盖 {len(assignments)} 只股票"
-            )
-
-    if duplicate_count:
-        sample = ", ".join(duplicate_examples)
-        raise ValueError(
-            f"tdx_research_industry_duplicate:{field_name}:{duplicate_count}:{sample}"
-        )
-    return assignments, sector_codes
-
-
-async def _test_tdx_industry_availability() -> tuple[bool, str]:
-    try:
-        level1_rows, level3_rows = await asyncio.gather(
-            _fetch_tdx_research_sector_rows("16"),
-            _fetch_tdx_research_sector_rows("18"),
-        )
-        if level1_rows and level3_rows:
-            return True, "tdx_research_industry"
-        return False, "tdx_research_industry_empty"
-    except Exception as exc:
-        return False, f"tdx_research_industry_error:{str(exc)[:160]}"
-
-
-async def _fetch_tdx_research_industry_all() -> list[dict]:
-    level_values: dict[str, dict[str, str]] = {}
-    level_codes: dict[str, dict[str, str]] = {}
-
-    for level_code, field_name in _TDX_RESEARCH_LEVELS:
-        assignments, sector_codes = await _collect_tdx_level_assignments(level_code, field_name)
-        if not assignments:
-            raise ValueError(f"tdx_research_industry_empty:{field_name}")
-        level_values[field_name] = assignments
-        level_codes[field_name] = sector_codes
-
-    all_codes = sorted(set().union(*(set(mapping.keys()) for mapping in level_values.values())))
-    results = []
-    for stock_code in all_codes:
-        results.append({
-            "stock_code": stock_code,
-            "sw_level1": level_values["sw_level1"].get(stock_code, ""),
-            "sw_level2": level_values["sw_level2"].get(stock_code, ""),
-            "sw_level3": level_values["sw_level3"].get(stock_code, ""),
-            "sw_code": (
-                level_codes["sw_level3"].get(stock_code)
-                or level_codes["sw_level2"].get(stock_code)
-                or level_codes["sw_level1"].get(stock_code)
-                or ""
-            ),
-        })
-
-    logger.info(f"[行业][TDX] 完成: {len(results)} 只股票的研究行业映射")
-    return results
-
-
-async def fetch_sw_industry_all_with_source() -> tuple[list[dict], str]:
-    try:
-        rows = await _fetch_tdx_research_industry_all()
-        if rows:
-            return rows, "tdx_research_industry"
-        return [], "tdx_research_industry_empty"
-    except Exception as exc:
-        reason = f"tdx_research_industry_error:{str(exc)[:160]}"
-        logger.error(f"[行业][TDX] 研究行业不可用: {reason}")
-        return [], reason
-
-
-async def test_industry_availability() -> tuple[bool, str]:
-    """测试行业源可用性；只接受通达信研究行业。"""
-    return await _test_tdx_industry_availability()
-
-
-async def fetch_sw_industry_all():
-    rows, _source = await fetch_sw_industry_all_with_source()
-    return rows
 
 
 async def _fetch_etf_list_mootdx() -> list[dict]:

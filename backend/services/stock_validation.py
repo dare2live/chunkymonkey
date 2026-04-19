@@ -71,22 +71,18 @@ def _sector_exists_clause(
     normalized = _normalize_sector(sector)
     if not normalized:
         return "", ()
-    context_level1_expr = industry_level_expr(SECTOR_LEVEL, alias="sector_ctx")
-    if level1_col:
-        level1_expr = f"{alias}.{level1_col}"
-        if fallback_to_dim_industry:
-            return (
-                f"""
-                  AND (
-                      (COALESCE({level1_expr}, '') != '' AND {level1_expr} = ?)
-                      OR (
-                          COALESCE({level1_expr}, '') = ''
-                          AND EXISTS (
-                              SELECT 1
-                              FROM dim_stock_industry sector_ctx
-                              WHERE sector_ctx.stock_code = {alias}.stock_code
-                                AND {context_level1_expr} = ?
-                          )
+    if snapshot_level1_col:
+        return (
+            f"""
+              AND (
+                  (COALESCE({alias}.{snapshot_level1_col}, '') != '' AND {alias}.{snapshot_level1_col} = ?)
+                  OR (
+                      COALESCE({alias}.{snapshot_level1_col}, '') = ''
+                      AND EXISTS (
+                          SELECT 1
+                          FROM dim_stock_tdx_industry sector_ctx
+                          WHERE sector_ctx.stock_code = {alias}.stock_code
+                            AND sector_ctx.tdx_l1_name = ?
                       )
                   )
                 """,
@@ -99,7 +95,7 @@ def _sector_exists_clause(
               SELECT 1
                             FROM dim_stock_industry sector_ctx
               WHERE sector_ctx.stock_code = {alias}.stock_code
-                AND {context_level1_expr} = ?
+                AND sector_ctx.tdx_l1_name = ?
           )
         """,
         (normalized,),
@@ -165,12 +161,7 @@ def _load_pool_feedback(conn, sector: str | None = None) -> list[dict]:
 
 
 def _load_snapshot_pool_replay(conn, sector: str | None = None) -> dict:
-    sector_clause, sector_params = _sector_exists_clause(
-        "s",
-        sector,
-        level1_col=industry_level_db_column(SECTOR_LEVEL, snapshot=True),
-        fallback_to_dim_industry=True,
-    )
+    sector_clause, sector_params = _sector_exists_clause("s", sector, snapshot_level1_col="snapshot_tdx_l1_name")
     coverage_row = conn.execute(
         f"""
         SELECT COUNT(*) AS total_rows,
@@ -335,6 +326,243 @@ def _load_snapshot_pool_replay(conn, sector: str | None = None) -> dict:
         "baseline": baseline,
         "by_pool": by_pool,
         "history": _serialize_rows(history_rows, history_fields),
+    }
+
+
+def _load_snapshot_rank_compare(conn, sector: str | None = None) -> dict:
+    sector_clause, sector_params = _sector_exists_clause("fact_setup_snapshot", sector, snapshot_level1_col="snapshot_tdx_l1_name")
+    rows = conn.execute(
+        f"""
+        WITH ranked AS (
+            SELECT snapshot_date,
+                   stock_code,
+                   stock_name,
+                   gain_30d,
+                   max_drawdown_30d,
+                   ROW_NUMBER() OVER (
+                       PARTITION BY snapshot_date
+                       ORDER BY
+                           CASE COALESCE(priority_pool, '')
+                               WHEN 'A池' THEN 0
+                               WHEN 'B池' THEN 1
+                               WHEN 'C池' THEN 2
+                               WHEN 'D池' THEN 3
+                               ELSE 9
+                           END,
+                           COALESCE(composite_priority_score, 0) DESC,
+                           stock_code
+                   ) AS composite_rank,
+                   ROW_NUMBER() OVER (
+                       PARTITION BY snapshot_date
+                       ORDER BY COALESCE(action_score, 0) DESC, stock_code
+                   ) AS legacy_rank
+            FROM fact_setup_snapshot
+            WHERE composite_priority_score IS NOT NULL
+              AND action_score IS NOT NULL
+              AND matured_30d = 1
+              AND gain_30d IS NOT NULL
+              {sector_clause}
+        )
+        SELECT *
+        FROM ranked
+        ORDER BY snapshot_date DESC, composite_rank, legacy_rank
+        """,
+        sector_params,
+    ).fetchall()
+
+    if not rows:
+        return {
+            "summary": [],
+            "history": [],
+            "matured_snapshot_dates": 0,
+        }
+
+    topns = (10, 20, 50)
+    method_aggs = {
+        topn: {
+            "composite": {"count": 0, "sum_gain": 0.0, "sum_win": 0, "sum_dd": 0.0, "snapshot_dates": set()},
+            "legacy": {"count": 0, "sum_gain": 0.0, "sum_win": 0, "sum_dd": 0.0, "snapshot_dates": set()},
+        }
+        for topn in topns
+    }
+    overlap_sets = {
+        topn: {}
+        for topn in topns
+    }
+    history_aggs = {}
+
+    for row in rows:
+        item = dict(row)
+        snapshot_date = item["snapshot_date"]
+        history_aggs.setdefault(snapshot_date, {
+            "snapshot_date": snapshot_date,
+            "composite": {"count": 0, "sum_gain": 0.0, "sum_win": 0, "sum_dd": 0.0},
+            "legacy": {"count": 0, "sum_gain": 0.0, "sum_win": 0, "sum_dd": 0.0},
+            "top20_overlap": set(),
+            "top20_composite": set(),
+            "top20_legacy": set(),
+        })
+
+        gain = float(item["gain_30d"])
+        drawdown = float(item["max_drawdown_30d"]) if item["max_drawdown_30d"] is not None else 0.0
+        for topn in topns:
+            if item["composite_rank"] <= topn:
+                agg = method_aggs[topn]["composite"]
+                agg["count"] += 1
+                agg["sum_gain"] += gain
+                agg["sum_win"] += 1 if gain > 0 else 0
+                agg["sum_dd"] += drawdown
+                agg["snapshot_dates"].add(snapshot_date)
+                overlap_sets[topn].setdefault(snapshot_date, {"composite": set(), "legacy": set()})
+                overlap_sets[topn][snapshot_date]["composite"].add(item["stock_code"])
+            if item["legacy_rank"] <= topn:
+                agg = method_aggs[topn]["legacy"]
+                agg["count"] += 1
+                agg["sum_gain"] += gain
+                agg["sum_win"] += 1 if gain > 0 else 0
+                agg["sum_dd"] += drawdown
+                agg["snapshot_dates"].add(snapshot_date)
+                overlap_sets[topn].setdefault(snapshot_date, {"composite": set(), "legacy": set()})
+                overlap_sets[topn][snapshot_date]["legacy"].add(item["stock_code"])
+
+        if item["composite_rank"] <= 20:
+            agg = history_aggs[snapshot_date]["composite"]
+            agg["count"] += 1
+            agg["sum_gain"] += gain
+            agg["sum_win"] += 1 if gain > 0 else 0
+            agg["sum_dd"] += drawdown
+            history_aggs[snapshot_date]["top20_composite"].add(item["stock_code"])
+        if item["legacy_rank"] <= 20:
+            agg = history_aggs[snapshot_date]["legacy"]
+            agg["count"] += 1
+            agg["sum_gain"] += gain
+            agg["sum_win"] += 1 if gain > 0 else 0
+            agg["sum_dd"] += drawdown
+            history_aggs[snapshot_date]["top20_legacy"].add(item["stock_code"])
+
+    summary = []
+    for topn in topns:
+        per_date = overlap_sets[topn]
+        overlap_total = sum(
+            len(values["composite"] & values["legacy"])
+            for values in per_date.values()
+        )
+        for method in ("composite", "legacy"):
+            agg = method_aggs[topn][method]
+            count = agg["count"]
+            summary.append({
+                "topn": topn,
+                "method": method,
+                "sample_count": count,
+                "snapshot_days": len(agg["snapshot_dates"]),
+                "avg_gain_30d": _safe_round(agg["sum_gain"] / count) if count else None,
+                "win_rate_30d": _safe_round(agg["sum_win"] * 100.0 / count) if count else None,
+                "avg_drawdown_30d": _safe_round(agg["sum_dd"] / count) if count else None,
+                "overlap_count": overlap_total if method == "composite" else None,
+            })
+
+    history = []
+    for snapshot_date in sorted(history_aggs.keys(), reverse=True)[:12]:
+        item = history_aggs[snapshot_date]
+        composite = item["composite"]
+        legacy = item["legacy"]
+        history.append({
+            "snapshot_date": snapshot_date,
+            "composite_count": composite["count"],
+            "composite_avg_gain_30d": _safe_round(composite["sum_gain"] / composite["count"]) if composite["count"] else None,
+            "composite_win_rate_30d": _safe_round(composite["sum_win"] * 100.0 / composite["count"]) if composite["count"] else None,
+            "legacy_count": legacy["count"],
+            "legacy_avg_gain_30d": _safe_round(legacy["sum_gain"] / legacy["count"]) if legacy["count"] else None,
+            "legacy_win_rate_30d": _safe_round(legacy["sum_win"] * 100.0 / legacy["count"]) if legacy["count"] else None,
+            "top20_overlap": len(item["top20_composite"] & item["top20_legacy"]),
+        })
+
+    return {
+        "summary": summary,
+        "history": history,
+        "matured_snapshot_dates": len(history_aggs),
+    }
+
+
+def _load_rank_compare(conn, limit: int = 120, sector: str | None = None) -> dict:
+    sector_clause, sector_params = _sector_exists_clause("mart_stock_trend", sector)
+    rows = conn.execute(
+        f"""
+        WITH ranked AS (
+            SELECT stock_code,
+                   stock_name,
+                   priority_pool,
+                   stock_archetype,
+                   action_score,
+                   composite_priority_score,
+                   ROW_NUMBER() OVER (
+                       ORDER BY
+                           CASE COALESCE(priority_pool, '')
+                               WHEN 'A池' THEN 0
+                               WHEN 'B池' THEN 1
+                               WHEN 'C池' THEN 2
+                               WHEN 'D池' THEN 3
+                               ELSE 9
+                           END,
+                           COALESCE(composite_priority_score, 0) DESC,
+                           stock_code
+                   ) AS composite_rank,
+                   ROW_NUMBER() OVER (
+                       ORDER BY COALESCE(action_score, 0) DESC, stock_code
+                   ) AS legacy_rank
+            FROM mart_stock_trend
+            WHERE action_score IS NOT NULL OR composite_priority_score IS NOT NULL
+              {sector_clause}
+        )
+        SELECT *
+        FROM ranked
+        WHERE composite_rank <= ? OR legacy_rank <= ?
+        ORDER BY composite_rank, legacy_rank
+        """,
+        sector_params + (limit, limit),
+    ).fetchall()
+
+    items = []
+    top_sets = {20: {"composite": set(), "legacy": set()}, 50: {"composite": set(), "legacy": set()}, 100: {"composite": set(), "legacy": set()}}
+    for row in rows:
+        item = dict(row)
+        item["action_score"] = _safe_round(item.get("action_score"))
+        item["composite_priority_score"] = _safe_round(item.get("composite_priority_score"))
+        item["rank_delta"] = int(item["legacy_rank"] - item["composite_rank"])
+        items.append(item)
+        for topn in (20, 50, 100):
+            if item["composite_rank"] <= topn:
+                top_sets[topn]["composite"].add(item["stock_code"])
+            if item["legacy_rank"] <= topn:
+                top_sets[topn]["legacy"].add(item["stock_code"])
+
+    overlap = {
+        f"top{topn}": len(top_sets[topn]["composite"] & top_sets[topn]["legacy"])
+        for topn in (20, 50, 100)
+    }
+
+    promoted = [
+        item for item in items
+        if item.get("rank_delta", 0) >= 10
+        and item.get("action_score") is not None
+        and item.get("composite_priority_score") is not None
+        and (item["composite_rank"] <= limit or item["legacy_rank"] <= limit)
+    ]
+    promoted.sort(key=lambda item: (-item["rank_delta"], item["composite_rank"], item["stock_code"]))
+
+    demoted = [
+        item for item in items
+        if item.get("rank_delta", 0) <= -10
+        and item.get("action_score") is not None
+        and item.get("composite_priority_score") is not None
+        and (item["composite_rank"] <= limit or item["legacy_rank"] <= limit)
+    ]
+    demoted.sort(key=lambda item: (item["rank_delta"], item["legacy_rank"], item["stock_code"]))
+
+    return {
+        "overlap": overlap,
+        "promoted": promoted[:12],
+        "demoted": demoted[:12],
     }
 
 

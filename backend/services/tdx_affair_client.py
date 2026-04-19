@@ -50,6 +50,10 @@ _FIELD_MAP = {
     "存货": "inventory",
     "货币资金": "cash",
     "应收账款": "accounts_receivable",
+    # 合同负债（新会计准则后的"预收账款"，B2B 领先营收的关键前瞻指标）
+    # 探测确认字段名是 "合同负债(万元)"（带单位后缀），单位万元
+    "合同负债(万元)": "contract_liabilities_wan",
+    "预收款项": "advance_receipts",  # 2017 前老科目，保留便于与 contract_liab 合并使用
     # ── 股本结构 ──
     "总股本": "total_shares",
     "已上市流通A股": "float_a_shares",
@@ -147,16 +151,12 @@ def _ensure_table(conn: sqlite3.Connection):
         CREATE INDEX IF NOT EXISTS idx_gpcw_report
         ON raw_gpcw_detail(report_date)
     """)
-
-    existing_columns = {
-        row[1]
-        for row in conn.execute("PRAGMA table_info(raw_gpcw_detail)").fetchall()
-    }
-    for column in _NUMERIC_DB_COLUMNS:
-        if column in existing_columns:
-            continue
-        conn.execute(f'ALTER TABLE raw_gpcw_detail ADD COLUMN "{column}" REAL')
-
+    # 前向兼容：如果 _FIELD_MAP 新增了字段但表已存在，自动 ALTER TABLE ADD COLUMN
+    existing = {row[1] for row in conn.execute("PRAGMA table_info(raw_gpcw_detail)").fetchall()}
+    for col in _FIELD_MAP.values():
+        if col not in existing:
+            conn.execute(f"ALTER TABLE raw_gpcw_detail ADD COLUMN {col} REAL")
+            logger.info(f"[gpcw] ALTER TABLE: 新增字段 {col}")
     conn.commit()
 
 
@@ -202,6 +202,7 @@ def sync_gpcw_files(
     conn: sqlite3.Connection,
     quarters: int = 4,
     downdir: Optional[str] = None,
+    force_resync: bool = False,
 ) -> dict:
     """
     同步最近 N 个季度的 gpcw 文件到 raw_gpcw_detail 表。
@@ -211,6 +212,8 @@ def sync_gpcw_files(
     conn : 数据库连接（smartmoney.db）
     quarters : 要同步的最近季度数，默认 4（一年）
     downdir : gpcw 文件下载目录，默认系统临时目录
+    force_resync : True 时忽略 existing_dates 跳过逻辑，对所有 target 季度重新下载并
+                   INSERT OR REPLACE 已有行（用于 _FIELD_MAP 新增字段后回填历史数据）
 
     Returns
     -------
@@ -235,13 +238,16 @@ def sync_gpcw_files(
 
     logger.info(f"[gpcw] 准备同步 {len(target_files)} 个季度文件")
 
-    # 检查已入库的 report_date 列表
+    # 检查已入库的 report_date 列表（force_resync=True 时跳过此检查，对所有目标季度重拉）
     existing_dates = set()
-    try:
-        rows = conn.execute("SELECT DISTINCT report_date FROM raw_gpcw_detail").fetchall()
-        existing_dates = {r[0] for r in rows}
-    except Exception:
-        pass
+    if not force_resync:
+        try:
+            rows = conn.execute("SELECT DISTINCT report_date FROM raw_gpcw_detail").fetchall()
+            existing_dates = {r[0] for r in rows}
+        except Exception:
+            pass
+    else:
+        logger.info("[gpcw] force_resync=True：将重新下载所有目标季度文件")
 
     db_col_names = ["stock_code", "report_date"] + list(_NUMERIC_DB_COLUMNS)
     placeholders = ",".join(["?"] * len(db_col_names))

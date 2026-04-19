@@ -2,9 +2,9 @@
 数据库服务 — Chunky Monkey v2
 
 数据分层：
-    原始层（只追加）: market_raw_holdings, raw_fetch_batch
-    维度层: dim_active_a_stock, dim_stock_industry, dim_tdx_block_catalog, dim_stock_tdx_block, dim_trading_calendar, inst_institutions, inst_name_aliases
-    事实层: inst_holdings, fact_institution_event, fact_institution_event_industry_snapshot, fact_northbound_daily, stock_watchlist
+  原始层（只追加）: market_raw_holdings, raw_fetch_batch
+  维度层: dim_active_a_stock, dim_stock_tdx_industry, dim_trading_calendar, inst_institutions, inst_name_aliases
+  事实层: inst_holdings, fact_institution_event, fact_northbound_daily, stock_watchlist
   集市层（可重算）: mart_institution_profile, mart_institution_industry_stat, mart_stock_trend
   系统层: sys_schema_version, excluded_stocks, exclusion_categories, app_settings
 """
@@ -92,16 +92,9 @@ def init_db():
             );
             CREATE INDEX IF NOT EXISTS idx_daas_updated ON dim_active_a_stock(updated_at);
 
-            CREATE TABLE IF NOT EXISTS dim_stock_industry (
-                stock_code  TEXT PRIMARY KEY,
-                sw_level1   TEXT,
-                sw_level2   TEXT,
-                sw_level3   TEXT,
-                sw_code     TEXT,
-                updated_at  TEXT
-            );
-            CREATE INDEX IF NOT EXISTS idx_dsi_l1 ON dim_stock_industry(sw_level1);
-            CREATE INDEX IF NOT EXISTS idx_dsi_l2 ON dim_stock_industry(sw_level2);
+            -- dim_stock_industry (申万三级) 已于 Phase 2 (TDX 迁移) 退役；
+            -- 统一使用 dim_stock_tdx_industry 作为唯一行业真相源
+            -- (schema 见 backend/services/tdx_industry_client.py::_ensure_table)
 
             CREATE TABLE IF NOT EXISTS dim_tdx_block_catalog (
                 block_category TEXT NOT NULL,
@@ -276,9 +269,12 @@ def init_db():
                 setup_inst_name       TEXT,
                 setup_event_type      TEXT,
                 setup_industry_name   TEXT,
-                snapshot_sw_level1    TEXT,
-                snapshot_sw_level2    TEXT,
-                snapshot_sw_level3    TEXT,
+                snapshot_tdx_l1       TEXT,
+                snapshot_tdx_l2       TEXT,
+                snapshot_tdx_l3       TEXT,
+                snapshot_tdx_l1_name  TEXT,
+                snapshot_tdx_l2_name  TEXT,
+                snapshot_tdx_l3_name  TEXT,
                 action_score          REAL,
                 discovery_score       REAL,
                 company_quality_score REAL,
@@ -340,8 +336,6 @@ def init_db():
                 ON fact_setup_snapshot(setup_tag, snapshot_date);
             CREATE INDEX IF NOT EXISTS idx_setup_snapshot_stock
                 ON fact_setup_snapshot(stock_code);
-            CREATE INDEX IF NOT EXISTS idx_setup_snapshot_sw1_date
-                ON fact_setup_snapshot(snapshot_sw_level1, snapshot_date);
 
             -- ============================================================
             -- 集市层（派生，可重算）
@@ -707,9 +701,12 @@ def init_db():
             "setup_inst_name TEXT",
             "setup_event_type TEXT",
             "setup_industry_name TEXT",
-            "snapshot_sw_level1 TEXT",
-            "snapshot_sw_level2 TEXT",
-            "snapshot_sw_level3 TEXT",
+            "snapshot_tdx_l1 TEXT",
+            "snapshot_tdx_l2 TEXT",
+            "snapshot_tdx_l3 TEXT",
+            "snapshot_tdx_l1_name TEXT",
+            "snapshot_tdx_l2_name TEXT",
+            "snapshot_tdx_l3_name TEXT",
             "action_score REAL",
             "discovery_score REAL",
             "company_quality_score REAL",
@@ -767,6 +764,44 @@ def init_db():
                 conn.execute(f"ALTER TABLE fact_setup_snapshot ADD COLUMN {col}")
             except Exception:
                 pass
+
+        # TDX 行业索引：必须在 ALTER TABLE 补齐列之后才能建
+        try:
+            conn.execute(
+                "CREATE INDEX IF NOT EXISTS idx_setup_snapshot_tdx1_date "
+                "ON fact_setup_snapshot(snapshot_tdx_l1, snapshot_date)"
+            )
+        except Exception:
+            pass
+
+        # ─────────────────────────────────────────────────────────────
+        # TDX 迁移: 退役申万 SW 列与 dim_stock_industry 表
+        # (执行 Phase 2 迁移后, sw_level* 列从 schema 中移除;
+        #  老库残留列通过 DROP COLUMN 清理)
+        # 注意: 必须先 DROP 相关索引, 否则 DROP COLUMN 会因索引依赖失败
+        # ─────────────────────────────────────────────────────────────
+        for idx in ("idx_setup_snapshot_sw1_date", "idx_dsi_l1", "idx_dsi_l2"):
+            try:
+                conn.execute(f"DROP INDEX IF EXISTS {idx}")
+            except Exception:
+                pass
+        sw_drop_plan = [
+            ("fact_setup_snapshot", "snapshot_sw_level1"),
+            ("fact_setup_snapshot", "snapshot_sw_level2"),
+            ("fact_setup_snapshot", "snapshot_sw_level3"),
+            ("mart_current_relationship", "sw_level1"),
+            ("mart_current_relationship", "sw_level2"),
+            ("mart_current_relationship", "sw_level3"),
+        ]
+        for tbl, col in sw_drop_plan:
+            try:
+                conn.execute(f"ALTER TABLE {tbl} DROP COLUMN {col}")
+            except Exception:
+                pass
+        try:
+            conn.execute("DROP TABLE IF EXISTS dim_stock_industry")
+        except Exception:
+            pass
 
         # Phase 0: mart 表增加 data_completeness 列
         for tbl in ["mart_institution_profile", "mart_institution_industry_stat",
@@ -856,9 +891,12 @@ def init_db():
                 notice_age_days   INTEGER,
                 disclosure_lag_days INTEGER,
                 current_held_days INTEGER,
-                sw_level1         TEXT,
-                sw_level2         TEXT,
-                sw_level3         TEXT,
+                tdx_l1            TEXT,
+                tdx_l2            TEXT,
+                tdx_l3            TEXT,
+                tdx_l1_name       TEXT,
+                tdx_l2_name       TEXT,
+                tdx_l3_name       TEXT,
                 has_return_data   INTEGER DEFAULT 0,
                 has_industry_data INTEGER DEFAULT 0,
                 updated_at        TEXT,
@@ -882,6 +920,12 @@ def init_db():
             "premium_bucket TEXT",
             "follow_gate TEXT",
             "follow_gate_reason TEXT",
+            "tdx_l1 TEXT",
+            "tdx_l2 TEXT",
+            "tdx_l3 TEXT",
+            "tdx_l1_name TEXT",
+            "tdx_l2_name TEXT",
+            "tdx_l3_name TEXT",
         ]:
             try:
                 conn.execute(f"ALTER TABLE mart_current_relationship ADD COLUMN {col}")
