@@ -396,12 +396,78 @@ def build_today_signals(
         ORDER BY e.notice_date DESC, e.institution_id
     """, (f"-{fresh_days} days",)).fetchall()
 
+    if not rows:
+        return []
+
+    # 性能优化：一次 SQL 拉全部相关机构的历史 buy 事件，内存做 KNN 查询
+    # 避免每个事件独立 SQL (1307 事件 * 30ms JOIN = 40 秒)
+    institution_ids = {row["institution_id"] for row in rows}
+    placeholders = ",".join("?" * len(institution_ids))
+    all_history_rows = conn.execute(f"""
+        SELECT e.institution_id, e.notice_date,
+               e.{cfg.gain_column} AS gain,
+               e.max_drawdown_30d, e.max_drawdown_60d,
+               ind.sw_level1 AS industry
+        FROM fact_institution_event e
+        LEFT JOIN dim_stock_industry ind ON ind.stock_code = e.stock_code
+        WHERE e.event_type IN ('new_entry','increase')
+          AND e.{cfg.gain_column} IS NOT NULL
+          AND e.institution_id IN ({placeholders})
+        ORDER BY e.institution_id, e.notice_date DESC
+    """, list(institution_ids)).fetchall()
+
+    inst_timeline: dict[str, list[dict]] = {}
+    for r in all_history_rows:
+        inst_timeline.setdefault(r["institution_id"], []).append(dict(r))
+
     signals = []
     for row in rows:
         event = dict(row)
         # 以事件自己的 notice_date 为左切点，避免用未来信息
-        rec = recommend_for_event(conn, event, config=cfg, as_of_date=event["notice_date"])
-        signals.append(rec)
+        # 直接用内存 timeline 做决策，不再每个事件发 SQL
+        history = [
+            h for h in inst_timeline.get(event["institution_id"], [])
+            if h["notice_date"] < event["notice_date"]
+        ]
+        action, scope = _decide_from_history(event, history, cfg)
+
+        # 根据 scope 选择展示统计
+        event_industry = event.get("industry")
+        if scope == "inst_industry" and event_industry:
+            filtered = [h for h in history if h.get("industry") == event_industry]
+            stats = compute_ev_stats(filtered)
+        else:
+            stats = compute_ev_stats(history)
+
+        ev = stats.ev_pct if stats.ev_pct is not None else 0.0
+        wr = stats.win_rate if stats.win_rate is not None else 0.0
+
+        if action == "skip" and scope == "insufficient":
+            reason = f"样本不足(n={stats.n})，无法判断"
+        elif action == "follow":
+            scope_label = {"inst_industry": "同机构·同行业", "inst_all": "同机构·全行业"}.get(scope, scope)
+            reason = f"[{scope_label} n={stats.n}] 历史 EV {ev:.1f}% / 胜率 {wr*100:.0f}%"
+        elif action == "watch":
+            reason = f"历史 EV {ev:.1f}% / 胜率 {wr*100:.0f}%，边缘档（阈值 {cfg.ev_threshold_pct:.0f}% / {cfg.win_threshold*100:.0f}%）"
+        else:
+            reason = f"历史 EV {ev:.1f}% / 胜率 {wr*100:.0f}%，低于阈值"
+
+        signals.append(Recommendation(
+            event_id=_event_id(event),
+            institution_id=event["institution_id"],
+            institution_name=event.get("institution_name") or event["institution_id"],
+            stock_code=event["stock_code"],
+            stock_name=event.get("stock_name") or "",
+            industry=event_industry,
+            notice_date=event.get("notice_date") or "",
+            event_type=event.get("event_type") or "",
+            premium_pct=_safe_float(event.get("premium_pct")),
+            action=action,
+            reason=reason,
+            scope=scope,
+            ev_stats=stats,
+            realized_return_pct=_safe_float(event.get("realized_return_pct")),
+        ))
 
     # 按 action 分组，follow > watch > skip，同组按 EV 降序
     action_rank = {"follow": 0, "watch": 1, "skip": 2}

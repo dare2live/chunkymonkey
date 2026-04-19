@@ -141,8 +141,8 @@
         <td class="sig-num">${sig.premium_pct == null ? '-' : fmtPct(sig.premium_pct)}</td>
         <td class="sig-num">${ev.avg_drawdown_pct == null ? '-' : fmtPctPlain(ev.avg_drawdown_pct, 1)}</td>
         <td class="sig-num">${realizedCell}</td>
-        <td class="sig-scope muted">${scopeLabel}</td>
-        <td><button class="sig-btn sig-btn-sm sig-detail-btn">详情</button></td>
+        <td class="sig-scope muted" style="white-space:nowrap">${scopeLabel}</td>
+        <td style="white-space:nowrap"><button class="sig-btn sig-btn-sm sig-detail-btn">详情</button></td>
       </tr>
     `;
   }
@@ -170,8 +170,8 @@
               <th class="sig-num" style="width:68px">溢价</th>
               <th class="sig-num" style="width:68px" title="历史相似样本的平均最大回撤">均回撤</th>
               <th class="sig-num" style="width:72px" title="本事件发生后实际 60d 收益（仅供复盘）">实际</th>
-              <th class="sig-scope">相似口径</th>
-              <th style="width:60px"></th>
+              <th class="sig-scope" style="width:110px;white-space:nowrap">相似口径</th>
+              <th style="width:70px"></th>
             </tr>
           </thead>
           <tbody>
