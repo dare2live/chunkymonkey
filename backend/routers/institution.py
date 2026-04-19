@@ -13,6 +13,7 @@ from pydantic import BaseModel
 from typing import Optional
 
 from services.db import get_conn
+from services.industry import load_industry_map
 from services.market_signals import (
     load_shareholder_change_payload,
 )
@@ -545,8 +546,8 @@ async def list_stock_trends():
         for item in result:
             item.pop("_sort_blacklisted", None)
         _stock_trends_cache["ts"] = now_ts
-        _stock_trends_cache["payload"] = {"data": result, "summary": summary}
-        return {"ok": True, "data": result, "summary": summary, "total": len(result), "cached": False}
+        _stock_trends_cache["payload"] = {"data": result}
+        return {"ok": True, "data": result, "total": len(result), "cached": False}
     finally:
         conn.close()
 
