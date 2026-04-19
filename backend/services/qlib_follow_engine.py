@@ -103,6 +103,11 @@ def ensure_tables(conn):
 # 特征抽取（从数据库 join 构造训练矩阵，不依赖 qlib 运行时）
 # ─────────────────────────────────────────────────────────────────────
 
+# TDX 一级行业 one-hot (与 qlib_full_engine 保持一致：T01..T13)
+_TDX_L1_ONEHOT_CODES = tuple(f"T{i:02d}" for i in range(1, 14))
+_TDX_L1_ONEHOT_FEATURES = tuple(f"ind_t{i:02d}" for i in range(1, 14))
+
+
 FEATURE_COLUMNS = [
     # 事件级
     "premium_pct",
@@ -118,14 +123,62 @@ FEATURE_COLUMNS = [
     "profit_yoy",
     "ocf_to_profit",
     "contract_to_revenue",
+    # D1-D8 挖过的 alpha 维度
+    "holder_count_yoy",              # D1
+    "contract_liabilities_yoy",      # D2
+    "forecast_profit_yoy_mid",       # D3
+    "future_unlock_ratio_180d",      # D5
+    "inst_recent_ev_60d",            # D7
+    "survey_count_90d",              # D8
     # 价格动量（from price_kline，窗口聚合）
     "return_20d_before",
     "return_60d_before",
     "volatility_60d",
     "dist_from_120d_high",
+    # TDX 一级行业 one-hot (13 维)
+    *_TDX_L1_ONEHOT_FEATURES,
 ]
 
 LABEL_COLUMN = "gain_60d"
+
+
+def _iso_date(d) -> Optional[str]:
+    """把 YYYYMMDD 或 YYYY-MM-DD 统一成 YYYY-MM-DD，None/空→None。"""
+    if d is None:
+        return None
+    s = str(d)
+    if not s:
+        return None
+    if len(s) == 8 and s.isdigit():
+        return f"{s[:4]}-{s[4:6]}-{s[6:8]}"
+    return s
+
+
+def _shift_days(iso: str, days: int) -> str:
+    dt = datetime.strptime(iso, "%Y-%m-%d") + timedelta(days=days)
+    return dt.strftime("%Y-%m-%d")
+
+
+def _prev_year_quarter(report_date: str) -> Optional[str]:
+    """'2025-09-30' → '2024-09-30'. 失败返回 None。"""
+    try:
+        dt = datetime.strptime(report_date, "%Y-%m-%d")
+        return dt.replace(year=dt.year - 1).strftime("%Y-%m-%d")
+    except Exception:
+        return None
+
+
+def _yoy(curr, prev) -> Optional[float]:
+    """YoY 增长率 %。prev<=0 或为 None 返回 None（避免基数异常）。"""
+    try:
+        if curr is None or prev is None:
+            return None
+        c = float(curr); p = float(prev)
+        if p <= 0:
+            return None
+        return (c - p) / p * 100.0
+    except Exception:
+        return None
 
 
 def extract_training_matrix(
@@ -184,13 +237,14 @@ def extract_training_matrix(
         peer = peer_map.get((r["stock_code"], r["report_date"]), 1) - 1  # 不含自己
         ind_hit = ind_hit_map.get((r["institution_id"], r["industry"]))
 
+        industry_code = r["industry"]
         sample = {
             "institution_id": r["institution_id"],
             "stock_code": r["stock_code"],
             "report_date": r["report_date"],
             "notice_date": r["notice_date"],
-            "industry": r["industry"],
-            # 特征
+            "industry": industry_code,
+            # 事件级特征
             "premium_pct": _safe(r["premium_pct"]),
             "peer_count_same_quarter": peer,
             "institution_industry_hit_rate": ind_hit,
@@ -203,11 +257,20 @@ def extract_training_matrix(
             "profit_yoy": None,
             "ocf_to_profit": None,
             "contract_to_revenue": None,
+            "holder_count_yoy": None,
+            "contract_liabilities_yoy": None,
+            "forecast_profit_yoy_mid": None,
+            "future_unlock_ratio_180d": None,
+            "inst_recent_ev_60d": None,
+            "survey_count_90d": None,
             "return_20d_before": None,
             "return_60d_before": None,
             "volatility_60d": None,
             "dist_from_120d_high": None,
             "days_since_industry_latest_high": None,
+            # TDX L1 one-hot (13 维)
+            **{feat: (1 if industry_code == code else 0)
+               for code, feat in zip(_TDX_L1_ONEHOT_CODES, _TDX_L1_ONEHOT_FEATURES)},
             # Label
             "gain_60d": _safe(r["gain_60d"]),
         }
@@ -229,6 +292,129 @@ def extract_training_matrix(
                 s[col] = _safe(f.get(col))
     except Exception as exc:
         logger.warning(f"[qlib_follow] 财务特征补全失败（可能表不存在）: {exc}")
+
+    # 补：D1 holder_count_yoy / D2 contract_liabilities_yoy / D3 forecast_profit_yoy_mid
+    # 匹配 (stock_code, report_date)，再 join 去年同季度做 YoY
+    # 注意：fact_institution_event.report_date 是 YYYYMMDD，
+    # raw_gpcw_detail.report_date 是 YYYY-MM-DD，需要归一化。
+    try:
+        gpcw_rows = conn.execute("""
+            SELECT stock_code, report_date, holder_count, contract_liabilities_wan,
+                   forecast_profit_yoy_low, forecast_profit_yoy_high
+            FROM raw_gpcw_detail
+        """).fetchall()
+        gpcw_map = {(g["stock_code"], _iso_date(g["report_date"])): dict(g) for g in gpcw_rows}
+        for s in out:
+            rd_iso = _iso_date(s["report_date"])
+            if not rd_iso:
+                continue
+            curr = gpcw_map.get((s["stock_code"], rd_iso))
+            if not curr:
+                continue
+            # D3: 预告 YoY 中值 (low+high)/2 — 直接读当季预告值
+            lo = _safe(curr.get("forecast_profit_yoy_low"))
+            hi = _safe(curr.get("forecast_profit_yoy_high"))
+            if lo is not None and hi is not None:
+                s["forecast_profit_yoy_mid"] = (lo + hi) / 2.0
+            elif lo is not None:
+                s["forecast_profit_yoy_mid"] = lo
+            elif hi is not None:
+                s["forecast_profit_yoy_mid"] = hi
+            # D1/D2: YoY 需要去年同季度
+            prev_rd = _prev_year_quarter(rd_iso)
+            if not prev_rd:
+                continue
+            prev = gpcw_map.get((s["stock_code"], prev_rd))
+            if not prev:
+                continue
+            s["holder_count_yoy"] = _yoy(curr.get("holder_count"), prev.get("holder_count"))
+            s["contract_liabilities_yoy"] = _yoy(
+                curr.get("contract_liabilities_wan"),
+                prev.get("contract_liabilities_wan"),
+            )
+    except Exception as exc:
+        logger.warning(f"[qlib_follow] GPCW 衍生特征补全失败: {exc}")
+
+    # 补：D5 future_unlock_ratio_180d — 按 stock_code 聚合未来 180d 解禁占流通市值比
+    try:
+        unlock_rows = conn.execute("""
+            SELECT stock_code, unlock_date, unlock_ratio_float_mkt
+            FROM raw_capital_unlock
+            WHERE unlock_ratio_float_mkt IS NOT NULL
+        """).fetchall()
+        unlock_by_stock: dict = {}
+        for u in unlock_rows:
+            iso = _iso_date(u["unlock_date"])
+            if not iso:
+                continue
+            unlock_by_stock.setdefault(u["stock_code"], []).append(
+                (iso, float(u["unlock_ratio_float_mkt"] or 0.0))
+            )
+        for s in out:
+            anchor = _iso_date(s["notice_date"])
+            if not anchor:
+                continue
+            end = _shift_days(anchor, 180)
+            total = sum(
+                ratio for d, ratio in unlock_by_stock.get(s["stock_code"], [])
+                if anchor < d <= end
+            )
+            s["future_unlock_ratio_180d"] = total if total > 0 else 0.0
+    except Exception as exc:
+        logger.warning(f"[qlib_follow] D5 解禁特征补全失败: {exc}")
+
+    # 补：D7 inst_recent_ev_60d — 机构在此事件前已成熟 (gain_60d 已观察) 的所有事件平均收益
+    #     as-of 严谨：排除 notice_date >= 当前事件 notice_date - 60d 的事件 (gain_60d 未观察)
+    try:
+        all_inst_rows = conn.execute("""
+            SELECT institution_id, notice_date, gain_60d
+            FROM fact_institution_event
+            WHERE event_type IN ('new_entry', 'increase')
+              AND gain_60d IS NOT NULL
+              AND notice_date IS NOT NULL
+            ORDER BY institution_id, notice_date ASC
+        """).fetchall()
+        inst_history: dict = {}
+        for ev in all_inst_rows:
+            iso = _iso_date(ev["notice_date"])
+            if not iso:
+                continue
+            inst_history.setdefault(ev["institution_id"], []).append(
+                (iso, float(ev["gain_60d"]))
+            )
+        for s in out:
+            anchor = _iso_date(s["notice_date"])
+            if not anchor:
+                continue
+            cutoff = _shift_days(anchor, -60)
+            past = [g for d, g in inst_history.get(s["institution_id"], []) if d < cutoff]
+            if len(past) >= 3:
+                s["inst_recent_ev_60d"] = sum(past) / len(past)
+    except Exception as exc:
+        logger.warning(f"[qlib_follow] D7 机构近期 EV 补全失败: {exc}")
+
+    # 补：D8 survey_count_90d — 事件 notice_date 前 90d 内该股的调研次数
+    try:
+        survey_rows = conn.execute("""
+            SELECT stock_code, survey_date
+            FROM raw_institution_surveys
+            WHERE survey_date IS NOT NULL
+        """).fetchall()
+        surveys_by_stock: dict = {}
+        for sv in survey_rows:
+            iso = _iso_date(sv["survey_date"])
+            if not iso:
+                continue
+            surveys_by_stock.setdefault(sv["stock_code"], []).append(iso)
+        for s in out:
+            anchor = _iso_date(s["notice_date"])
+            if not anchor:
+                continue
+            start = _shift_days(anchor, -90)
+            cnt = sum(1 for d in surveys_by_stock.get(s["stock_code"], []) if start <= d < anchor)
+            s["survey_count_90d"] = cnt
+    except Exception as exc:
+        logger.warning(f"[qlib_follow] D8 调研特征补全失败: {exc}")
 
     # 补：价格特征（从 market_data.db）
     try:
