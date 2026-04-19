@@ -9,35 +9,62 @@
 
 用户反复强调的几件事，如果忽略了会被"骂"：
 
-1. **行业异质性**：几乎所有硬规则参数（premium / holder_yoy / forecast_yoy / hold_ratio）都有行业差异。**合同负债必须分行业**（见第 6 节底部的完整方案）。Phase 1-5 有明确实施路径。
-2. **参数全前端可调**，禁止硬编码。新增任何阈值都要走 `DEFAULT_CONFIG` + app_settings + 前端面板。
-3. **机构不做黑白名单**，只做连续特征喂 Qlib（机构是动态的）。
-4. **边做边验**：每加一个维度跑 cohort 看 edge，不累积。
-5. **诚实面对数字**：look-ahead bias 揭露过一次，下轮不要再翻这种错。cooldown_days=90 不能动。
+1. **禁止硬编码阈值 = 禁止人工定行业白名单**。所有"异质性"问题（合同负债、溢价、股东变化等）都交给 Qlib + 行业 onehot 特征，让模型自己学。不要自作聪明写 `CONTRACT_LIAB_APPLICABLE_INDUSTRIES = {...}` 这种白名单。
+2. **参数全前端可调**。新增任何阈值都要走 `DEFAULT_CONFIG` + app_settings + 前端面板。
+3. **机构不做黑白名单**，只做连续特征喂 Qlib。
+4. **边做边验**：每加一个维度跑 cohort 看 edge。
+5. **诚实面对数字**：look-ahead bias（cooldown_days=90 底线）不能再翻车。
 
-**下轮开场行动**（按顺序）：
+### 当前实情澄清（2026-04-19）
+
+- **行业分类仍是申万 SW，未切到通达信 block**。dim_stock_industry 里只有 sw_level1/2/3，`.block()` 调用 0 处。切换 tdxhub block 是独立任务，**不阻塞 Qlib**。
+- V6 当前 edge +14.44pp / WR 80% / n=128 是在 SW 行业分组下得到的，对 Qlib 训练够用。
+
+### Cohort 行业分布健康度（5696 事件）
+
+前 10 行业占比 60%，分布相对均衡（没有被某一两个行业主导），这对 Qlib 训练友好：
 
 ```
-A. 跑 GPCW sync 补齐合同负债数据
+电子     633 (11%)  机械设备 567 (10%)  医药生物 479 (8%)
+电力设备 433 (8%)   基础化工 404 (7%)   计算机   337 (6%)
+汽车     334 (6%)   有色金属 202 (4%)   传媒     170 (3%)
+公用事业 163 (3%)   ...
+```
+
+银行/保险/非银金融也都有样本（只是数量较小）。**适合 Qlib 直接训，不必预先裁剪行业**。
+
+### 下轮开场行动（新顺序）
+
+```
+A. 跑 GPCW sync 补齐合同负债数据（5-10 分钟）
    from services.tdx_affair_client import sync_gpcw_files
    from services.db import get_conn
    sync_gpcw_files(get_conn(), quarters=12)
-   # 耗时约 5-10 分钟，下载 12 个季度文件
 
-B. 验证合同负债字段落库了
+B. 验证合同负债字段落库
    sqlite3 data/smartmoney.db \
      "SELECT COUNT(*) FROM raw_gpcw_detail WHERE contract_liabilities_wan IS NOT NULL"
 
-C. 按第 6 节"D2 行业化方案"Phase 1（方案 C 行业白名单）动手
-   在 _apply_hard_rules 里加 D2 分行业过滤
-   跑 cohort_recent_matured 看 edge 增量
+C. ★ Qlib 重训为主路径（不预设行业白名单）
+   扩展 qlib_follow_engine.extract_training_matrix 加入：
+     - contract_liabilities_yoy（D2，由 C 步提供）
+     - sw_level1 one-hot (31 bit)   ← 关键：类别特征让 Qlib 学行业交互
+     - D1 holder_count_yoy（已有）
+     - D5 future_unlock_ratio_180d（已有）
+     - D6 peer_count_same_quarter
+     - D7 机构近期 EV（连续值）
+     - D8 survey_count_90d（需先入库 akshare stock_jgdy_tj_em）
+   跑训练看 IC 能否从 -0.009 提到 > 0.05
+   关键：不要人工写"哪些行业用哪些阈值"，让 LightGBM 自己学
 
-D. 如 C 有效，Phase 2（方案 B z-score）
+D. 如果 Qlib IC 仍 < 0.05：
+   考虑方案 B · 行业内 z-score（仍不是硬白名单，而是归一化）
+   如果 C 中 Qlib 成功：方案 B/C 都不需要
 
-E. 如 C+B 都搞定，回到整体优先级：
+E. 独立任务（不依赖上面）
    - Step 2 前端参数全量可调
-   - Step 3 Qlib 重训（D1-D8 全特征）
-   - Step 4 视图整合
+   - 行业切换到 tdxhub block
+   - 视图整合
 ```
 
 ---
@@ -245,94 +272,83 @@ V6 的 follow 里很多股票"机构还没调研的隐藏好货"，D8 硬筛会�
 
 全行业混合是**稀释**不是"抵消"——因为各行业信号方向+幅度都不同。
 
-### 实施路径（三选一，按优先级）
+### 正确实施方案（2026-04-19 修正）
 
-**方案 A（推荐长期）· Qlib 自学交互**
+**用户明确否决硬编码行业白名单（"应该用 qlib 算一下才对"）**。所以方案 C（手工白名单）从推荐里删除。正确路径只有一条：
+
+#### 方案 A · Qlib 学（唯一推荐）
+
 ```python
-# qlib_follow_engine.extract_training_matrix 里加：
+# qlib_follow_engine.extract_training_matrix 补：
 features = {
-    'contract_liab_yoy': cl_yoy,
-    'sw_level1_onehot_<31 bits>': industry_onehot,
-    # 或更紧凑的 embedding
+    # --- 原有 ---
+    'premium_pct', 'peer_count_same_quarter',
+    'institution_industry_hit_rate',
+    'roe', 'debt_ratio', 'gross_margin',
+    'return_20d_before', 'volatility_60d', ...
+    
+    # --- D1-D8 新加 ---
+    'holder_count_yoy',           # D1
+    'contract_liabilities_yoy',   # D2 ← 本轮补的字段
+    'forecast_profit_yoy_mid',    # D3
+    'future_unlock_ratio_180d',   # D5
+    'survey_count_90d',           # D8 (需入库)
+    
+    # --- 行业作为类别特征 ---
+    'sw_level1': one_hot (31 bits)  # ← 关键，让模型学行业交互
+    # 或 industry_embedding (可选优化)
 }
 ```
-LightGBM 原生支持类别交互，会自动学"半导体的 CL YoY 比消费的 CL YoY 信号更强"这种规则。不需要手工定阈值。
 
-**方案 B（中期）· 行业内 Z-score**
+LightGBM 对类别特征的交互天然擅长。模型会自动学"半导体股票的 contract_liab YoY 系数大 / 银行股票的 contract_liab 系数接近 0 / 消费股的 contract_liab 系数小"这类规则，**无需人工列表**。
+
+#### 方案 B · 备选（如果 Qlib IC 提不上来）
+
+方案 B 保留但降级：**只在方案 A 失败时考虑**。
+
 ```python
-# 预聚合：每个行业每季度的 CL YoY 分布
-INSERT INTO mart_industry_contract_liab_stats (
-    sw_level1, report_date,
-    cl_yoy_mean, cl_yoy_std, cl_yoy_median, cl_yoy_p75, cl_yoy_p25,
-    n_stocks
-)
+# 行业内 z-score（仍不是白名单，是统计归一化）
+mart_industry_contract_liab_stats
+  - sw_level1, report_date, cl_yoy_mean, cl_yoy_std
 
-# 为每个事件算相对行业的 z-score
-event.cl_yoy_zscore = (stock_cl_yoy - industry_mean) / industry_std
-
-# 硬规则：z-score ≥ 1.5 (即领先同行业 1.5 个标准差) 作为加分项
-# 或 percentile ≥ 75 (行业内 top 25%)
+event.cl_yoy_zscore = (stock_yoy - ind_mean) / ind_std
 ```
-优点：参数可调 + 可解释。
-缺点：银行/保险这类"应跳过"的行业还要手工剔除。
 
-**方案 C（短期）· 行业白名单 + 单一阈值**
-```python
-# 只在"强前瞻行业"应用 D2 过滤
-CONTRACT_LIAB_APPLICABLE_INDUSTRIES = {
-    '国防军工', '电子', '计算机', '通信',  # 科技 / 半导体 / 军工
-    '建筑装饰', '建筑材料',                # 建筑
-    '电力设备',                          # 新能源
-    '传媒',                              # 游戏
-}
-if event.industry in applicable AND event.cl_yoy >= 30:
-    → 加分 bonus
-elif event.industry in {'银行','非银金融'}:
-    → 跳过 D2 过滤
-else:
-    → 使用全局 YoY 判断（当前方案）
-```
-最简单，但阈值仍是全行业统一。
+这是纯统计处理，不是"挑行业"，符合"不硬编码"原则。
 
-### 验证步骤（下一轮 claude 接着做）
+#### 方案 C · 已废弃
 
-1. **第 0 步：跑 GPCW sync** 获得 `contract_liabilities_wan` 数据
-   ```python
-   from services.tdx_affair_client import sync_gpcw_files
-   from services.db import get_conn
-   sync_gpcw_files(get_conn(), quarters=12)  # 近 3 年数据
-   ```
+> ~~手工白名单 `CONTRACT_LIAB_APPLICABLE_INDUSTRIES = {...}`~~ 违反"不预设、动态看待"原则，**不再考虑**。
 
-2. **第 1 步：探测 cohort 里每个行业的 CL YoY 和 gain_60d 的关系**
-   分组统计：`SELECT sw_level1, AVG(cl_yoy), AVG(gain_60d) WHERE cl_yoy > threshold` 看哪些行业正 alpha
+### 验证步骤（按新方案）
 
-3. **第 2 步：方案 C 先验证**
-   把强前瞻行业的 CL YoY >= 30% 作为可选硬规则或加分项，看 V6 cohort edge 能不能再 +1~2pp
+1. **GPCW sync 拿到 contract_liabilities_wan**（下一轮必做第一步）
+2. **直接跑 Qlib 重训**，特征清单见上方方案 A
+3. **观察 IC / R² 变化**：
+   - 旧（仅事件级特征）：R²=-0.08, IC=-0.009
+   - 新（+ D1-D8 + sw_level1 onehot）：目标 IC > 0.05
+4. **如 Qlib 仍无效 → 上方案 B（z-score）**，但绝不用方案 C
+5. **Qlib 成功后**：把 Qlib 预测作为"第二意见"并排展示到前端（不合成一个分）
 
-4. **第 3 步：如果方案 C 有效**，同时启动方案 B 做行业 z-score 预聚合表
-   mart_industry_contract_liab_stats 每季度重算
+### 行业异质性不只影响合同负债
 
-5. **第 4 步：Qlib 重训**时带 sw_level1 onehot + contract_liab_yoy 两个特征一起喂
-   让 ML 学完整行业交互
+同样的"应该让 Qlib 学而不是预设阈值"原则，适用于其他硬规则：
 
-### 这个行业化思路适用于其他维度
+| 当前硬规则 | 为什么可能错了 | 修正 |
+|-----------|---------------|------|
+| `max_premium_pct=15` | 科技股可容忍 20%+，消费股 5% 就高 | 喂给 Qlib + industry onehot 学 |
+| `max_holder_yoy_pct=30` | 小盘股股东波动本来就大 | 同上 |
+| `min_forecast_profit_yoy=20` | 周期股/成长股基数不同 | 同上 |
 
-用户指出的合同负债问题其实是**更大问题的体现**——许多硬规则阈值都该行业化：
+**但**：V6 当前 edge +14.44pp 在 SW 一刀切阈值下已经成立，说明**这些硬规则没糟到必须立刻改**。让 Qlib 作为第二意见运行一段时间后再考虑是否淘汰硬规则。
 
-| 当前硬规则参数 | 可能的行业化方向 |
-|--------------|----------------|
-| `max_premium_pct=15` | 科技成长股可以容忍 20%+，消费稳态股可能 5% 就算高 |
-| `max_holder_yoy_pct=30` | 小盘股股东人数波动本来就大 |
-| `min_forecast_profit_yoy=20` | 周期股 20% 是周期底部，成长股 50% 才算真增长 |
-| `min_hold_ratio=0.3` | 小盘股流通盘小，0.3% 已经是大股东 |
+### Phase 实施（修正版）
 
-### 推荐：Phase-by-Phase 实施
-
-- **Phase 1**：方案 C（行业白名单 + D2 启用） — 1 天
-- **Phase 2**：方案 B（行业 z-score 表） — 2 天
-- **Phase 3**：其他硬规则（premium, forecast）都升级为"行业相对分位" — 2-3 天
-- **Phase 4**：方案 A（Qlib 喂行业特征 + 全量连续） — 2 天
-- **Phase 5**：观察 cohort edge 能否从 V6 +14.44pp 推到 +18-20pp
+- ~~Phase 1 行业白名单~~ — **删除**
+- **Phase 1（新）· Qlib 重训为主路径** — 2-3 天
+- **Phase 2 · 方案 B z-score（仅 Qlib 失败时）** — 2 天
+- **Phase 3 · 行业切换到 tdxhub block**（独立任务）— 3-5 天
+- **Phase 4 · 目标**：Qlib IC > 0.05 或 cohort edge > +18pp
 
 ---
 
