@@ -488,6 +488,15 @@
     const def = payload.defaults || {};
     const desc = payload.descriptions || {};
     const fields = Object.keys(def);
+
+    const fieldKind = (k) => {
+      const v = def[k];
+      if (typeof v === 'string') return 'string';
+      if (Number.isInteger(v)) return 'int';
+      return 'float';
+    };
+    const stepFor = (k) => fieldKind(k) === 'float' ? '0.1' : '1';
+
     area.innerHTML = `
       <div class="sig-drawer">
         <div class="sig-drawer-head">
@@ -498,13 +507,20 @@
           </div>
         </div>
         <div class="sig-config-grid">
-          ${fields.map(k => `
-            <label class="sig-config-field">
-              <span>${esc(k)}</span>
-              <input data-key="${esc(k)}" type="number" step="${k.includes('threshold') ? '0.1' : '1'}" value="${cur[k]}">
-              <div class="muted sig-config-desc">${esc(desc[k] || '')} · 默认 ${esc(String(def[k]))}</div>
-            </label>
-          `).join('')}
+          ${fields.map(k => {
+            const kind = fieldKind(k);
+            const inputAttrs = kind === 'string'
+              ? `type="text"`
+              : `type="number" step="${stepFor(k)}"`;
+            const curVal = cur[k] === null || cur[k] === undefined ? '' : cur[k];
+            return `
+              <label class="sig-config-field" data-kind="${kind}">
+                <span>${esc(k)}</span>
+                <input data-key="${esc(k)}" data-kind="${kind}" ${inputAttrs} value="${esc(String(curVal))}">
+                <div class="muted sig-config-desc">${esc(desc[k] || '')} · 默认 ${esc(String(def[k]))}</div>
+              </label>
+            `;
+          }).join('')}
         </div>
         <div class="sig-config-actions">
           <button class="sig-btn" id="sigSaveConfig">保存并刷新信号</button>
@@ -521,8 +537,15 @@
       const patch = {};
       document.querySelectorAll('.sig-config-field input').forEach(input => {
         const k = input.dataset.key;
-        const v = parseFloat(input.value);
-        if (!isNaN(v)) patch[k] = v;
+        const kind = input.dataset.kind;
+        const raw = input.value;
+        if (kind === 'string') {
+          // 字符串字段：空值也允许（表示清空黑名单等）
+          patch[k] = raw;
+        } else {
+          const v = parseFloat(raw);
+          if (!isNaN(v)) patch[k] = kind === 'int' ? Math.round(v) : v;
+        }
       });
       try {
         await apiPost('/api/signals/config', patch);

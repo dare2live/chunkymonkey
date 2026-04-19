@@ -6,10 +6,9 @@ signals_v2 HTTP 路由
 """
 
 import logging
-from typing import Optional
+from typing import Any, Dict, Optional
 
-from fastapi import APIRouter, HTTPException
-from pydantic import BaseModel, Field
+from fastapi import APIRouter, HTTPException, Request
 
 from services.db import get_conn
 from services.signals_v2 import (
@@ -34,13 +33,41 @@ router = APIRouter()
 # 配置
 # ─────────────────────────────────────────────────────────────────────
 
-class ConfigPatch(BaseModel):
-    horizon_days: Optional[int] = Field(None, ge=10, le=120)
-    min_sample: Optional[int] = Field(None, ge=1)
-    ev_threshold_pct: Optional[float] = Field(None)
-    win_threshold: Optional[float] = Field(None, ge=0, le=1)
-    prefer_same_industry_min_sample: Optional[int] = Field(None, ge=1)
-    signal_freshness_days: Optional[int] = Field(None, ge=1, le=365)
+# 所有配置键的人读说明；键白名单以 DEFAULT_CONFIG 为准（这里只配文案）。
+CONFIG_DESCRIPTIONS: Dict[str, str] = {
+    "horizon_days": "持有期天数（10/30/60/90/120，决定用哪个 gain_*d 列）",
+    "min_sample": "机构历史 buy 事件最小样本量",
+    "ev_threshold_pct": "follow 档 EV% 门槛",
+    "win_threshold": "follow 档胜率门槛（0-1）",
+    "prefer_same_industry_min_sample": "同行业子集样本≥此值优先用",
+    "signal_freshness_days": "今日信号列表取多少天内的事件",
+    "cooldown_days": "严谨左切：事件需 N 日后才算成熟样本（防 look-ahead），0=老逻辑",
+    "short_window_days": "双口径 KNN 短期窗口天数",
+    "short_min_sample": "短期窗口最小样本量",
+    "max_premium_pct": "溢价硬顶（%），超过直接 skip；99999=不启用",
+    "min_hold_ratio": "持仓占流通股下限（%）；0=不启用",
+    "inst_type_blacklist": "机构类型黑名单（逗号分隔，负 alpha 类型）",
+    "inst_type_preferred": "机构类型优选（逗号分隔，历史 beat blind 类型）",
+    "max_holder_yoy_pct": "D1 股东人数 YoY 上限（%），越小越严；99999=不启用",
+    "min_forecast_profit_yoy": "D3 业绩预告利润 YoY 下限（%）；-9999=不启用",
+    "max_unlock_ratio_180d": "D5 180 天解禁比例上限（%）；99999=不启用",
+}
+
+
+def _coerce_config_value(key: str, raw: Any) -> Any:
+    """按 DEFAULT_CONFIG 目标类型强转；非法值抛 HTTPException。"""
+    default = DEFAULT_CONFIG[key]
+    try:
+        if isinstance(default, bool):
+            # 放在 int 之前：bool 是 int 的子类
+            return bool(raw) if not isinstance(raw, str) else raw.strip().lower() in ("true", "1", "yes")
+        if isinstance(default, int):
+            return int(float(raw))
+        if isinstance(default, float):
+            return float(raw)
+        return str(raw)
+    except (ValueError, TypeError):
+        raise HTTPException(400, f"invalid value for {key}: {raw!r}")
 
 
 @router.get("/config")
@@ -53,29 +80,35 @@ async def get_signal_config():
         return {
             "current": asdict(cfg),
             "defaults": DEFAULT_CONFIG,
-            "descriptions": {
-                "horizon_days": "持有期天数（10/30/60/90/120，决定用哪个 gain_*d 列）",
-                "min_sample": "机构历史 buy 事件最小样本量",
-                "ev_threshold_pct": "follow 档 EV% 门槛",
-                "win_threshold": "follow 档胜率门槛（0-1）",
-                "prefer_same_industry_min_sample": "同行业子集样本≥此值优先用",
-                "signal_freshness_days": "今日信号列表取多少天内的事件",
-            },
+            "descriptions": CONFIG_DESCRIPTIONS,
         }
     finally:
         conn.close()
 
 
 @router.post("/config")
-async def update_signal_config(patch: ConfigPatch):
+async def update_signal_config(request: Request):
+    try:
+        patch_raw = await request.json()
+    except Exception:
+        raise HTTPException(400, "invalid JSON body")
+
+    if not isinstance(patch_raw, dict):
+        raise HTTPException(400, "body must be a JSON object")
+
+    unknown = [k for k in patch_raw.keys() if k not in DEFAULT_CONFIG]
+    if unknown:
+        raise HTTPException(400, f"unknown config keys: {unknown}")
+
+    updates = {k: _coerce_config_value(k, v) for k, v in patch_raw.items()}
+    if not updates:
+        return {"ok": False, "message": "no changes"}
+
+    if "horizon_days" in updates and updates["horizon_days"] not in (10, 30, 60, 90, 120):
+        raise HTTPException(400, "horizon_days must be one of 10/30/60/90/120")
+
     conn = get_conn()
     try:
-        updates = {k: v for k, v in patch.model_dump().items() if v is not None}
-        if not updates:
-            return {"ok": False, "message": "no changes"}
-        # 额外校验 horizon_days 必须匹配有对应 gain_*d 列
-        if "horizon_days" in updates and updates["horizon_days"] not in (10, 30, 60, 90, 120):
-            raise HTTPException(400, "horizon_days must be one of 10/30/60/90/120")
         save_config(conn, updates)
         cfg = load_config(conn)
         from dataclasses import asdict
