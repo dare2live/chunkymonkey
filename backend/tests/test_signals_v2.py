@@ -65,6 +65,11 @@ def memdb():
             id TEXT PRIMARY KEY,
             name TEXT, display_name TEXT, type TEXT, enabled INTEGER DEFAULT 1
         );
+        CREATE TABLE inst_holdings (
+            institution_id TEXT, stock_code TEXT, report_date TEXT,
+            holder_rank INTEGER, hold_ratio REAL, hold_amount REAL,
+            PRIMARY KEY (institution_id, stock_code, report_date)
+        );
     """)
     yield conn
     conn.close()

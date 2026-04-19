@@ -55,6 +55,15 @@ DEFAULT_CONFIG: dict = {
     # 双口径 KNN：短期窗口 + 长期全样本并排。分歧触发警示档。
     "short_window_days": 365,
     "short_min_sample": 5,
+    # 多维度硬规则过滤（基于健康检查的实证发现）
+    # 溢价硬顶：超过此值直接 skip（实证：≤15% 把 OOS edge 从 +0.82 推到 +2.06pp）
+    "max_premium_pct": 15.0,
+    # 持仓占流通股 % 下限（实证：<0.5% 的胜率仅 53%）
+    "min_hold_ratio": 0.3,
+    # 机构类型黑名单（实证：这些类型负 alpha）
+    "inst_type_blacklist": "基金,国家队",
+    # 机构类型硬性加分（这些类型历史上显著 beat blind）
+    "inst_type_preferred": "牛散,券商,社保,QFII,北向",
 }
 
 
@@ -69,6 +78,18 @@ class PolicyConfig:
     cooldown_days: int = 90
     short_window_days: int = 365
     short_min_sample: int = 5
+    max_premium_pct: float = 15.0
+    min_hold_ratio: float = 0.3
+    inst_type_blacklist: str = "基金,国家队"
+    inst_type_preferred: str = "牛散,券商,社保,QFII,北向"
+
+    @property
+    def blacklist_set(self) -> set[str]:
+        return {t.strip() for t in (self.inst_type_blacklist or "").split(",") if t.strip()}
+
+    @property
+    def preferred_set(self) -> set[str]:
+        return {t.strip() for t in (self.inst_type_preferred or "").split(",") if t.strip()}
 
     @property
     def gain_column(self) -> str:
@@ -93,7 +114,9 @@ def load_config(conn) -> PolicyConfig:
                 continue
             try:
                 default_val = DEFAULT_CONFIG[short_key]
-                if isinstance(default_val, int):
+                if isinstance(default_val, str):
+                    merged[short_key] = str(row["value"])
+                elif isinstance(default_val, int):
                     merged[short_key] = int(float(row["value"]))
                 else:
                     merged[short_key] = float(row["value"])
@@ -549,6 +572,31 @@ def _decide_from_history(
     return (long_action, long_scope)
 
 
+def _apply_hard_rules(event: dict, config: PolicyConfig) -> tuple[Optional[str], Optional[str]]:
+    """
+    应用基于 cohort 实证的硬规则过滤。
+    返回 (action, reason_label) 若命中硬规则，否则 (None, None) 让后续 KNN 决定。
+
+    硬规则（都来自 health check 的数据）：
+      - 机构类型黑名单 (基金/国家队) → skip
+      - premium > max_premium_pct → skip
+      - hold_ratio < min_hold_ratio → skip
+    """
+    inst_type = event.get("inst_type")
+    if inst_type and inst_type in config.blacklist_set:
+        return ("skip", "inst_type_blacklisted")
+
+    premium = event.get("premium_pct")
+    if premium is not None and premium > config.max_premium_pct:
+        return ("skip", "premium_too_high")
+
+    hold_ratio = event.get("hold_ratio")
+    if hold_ratio is not None and hold_ratio < config.min_hold_ratio:
+        return ("skip", "hold_ratio_too_low")
+
+    return (None, None)
+
+
 def _decide_dual_window(
     event: dict,
     history_long: list[dict],
@@ -556,28 +604,45 @@ def _decide_dual_window(
     config: PolicyConfig,
 ) -> dict:
     """
-    双口径决策（短期 + 长期）。是新系统的主决策入口。
+    双口径决策（短期 + 长期）+ 硬规则前筛。
+
+    流程：
+      1. 硬规则过滤（基于实证：机构类型/溢价/持仓比例）
+      2. 双口径 KNN (short + long)
+      3. 合并两个窗口的 action
 
     Returns:
         {
           "action": "follow" | "watch" | "skip",
-          "reason_label": "both_follow" | "short_follow_long_diverge" | ...,
+          "reason_label": ...,
           "short": {"action": ..., "scope": ..., "stats": EvStats},
           "long":  {"action": ..., "scope": ..., "stats": EvStats},
         }
     """
+    # Step 1: 硬规则前筛
+    hard_action, hard_label = _apply_hard_rules(event, config)
+
+    # Step 2: 计算双口径 KNN（即使命中硬规则也计算，用于展示）
     short_action, short_scope, short_stats = _decide_single_window(
         event, history_short, config, min_sample_override=config.short_min_sample,
     )
     long_action, long_scope, long_stats = _decide_single_window(
         event, history_long, config,
     )
-    action, reason_label = _merge_double_window_actions(short_action, long_action)
+    knn_action, knn_label = _merge_double_window_actions(short_action, long_action)
+
+    # Step 3: 硬规则优先（比 KNN 更保守时覆盖）
+    if hard_action == "skip":
+        action, reason_label = hard_action, hard_label
+    else:
+        action, reason_label = knn_action, knn_label
+
     return {
         "action": action,
         "reason_label": reason_label,
         "short": {"action": short_action, "scope": short_scope, "stats": short_stats},
         "long":  {"action": long_action,  "scope": long_scope,  "stats": long_stats},
+        "hard_rule_hit": hard_label if hard_action else None,
     }
 
 
@@ -603,14 +668,17 @@ def build_today_signals(
     # SQLite date() 函数对这种格式无法解析，需在查询端重新拼接。
     rows = conn.execute(f"""
         SELECT
-            e.institution_id, i.display_name AS institution_name,
+            e.institution_id, i.display_name AS institution_name, i.type AS inst_type,
             e.stock_code, e.stock_name,
             e.report_date, e.notice_date, e.event_type,
             e.premium_pct, e.{cfg.gain_column} AS realized_return_pct,
-            ind.sw_level1 AS industry
+            ind.sw_level1 AS industry,
+            h.holder_rank, h.hold_ratio
         FROM fact_institution_event e
         LEFT JOIN inst_institutions i ON i.id = e.institution_id
         LEFT JOIN dim_stock_industry ind ON ind.stock_code = e.stock_code
+        LEFT JOIN inst_holdings h ON h.institution_id = e.institution_id
+               AND h.stock_code = e.stock_code AND h.report_date = e.report_date
         WHERE e.event_type IN ('new_entry', 'increase')
           AND e.notice_date IS NOT NULL
           AND (
@@ -862,9 +930,14 @@ def backtest_historical(
             e.institution_id,
             e.stock_code, e.stock_name, e.report_date, e.notice_date, e.event_type,
             e.premium_pct, e.{cfg.gain_column} AS gain,
-            ind.sw_level1 AS industry
+            ind.sw_level1 AS industry,
+            i.type AS inst_type,
+            h.holder_rank, h.hold_ratio
         FROM fact_institution_event e
         LEFT JOIN dim_stock_industry ind ON ind.stock_code = e.stock_code
+        LEFT JOIN inst_institutions i ON i.id = e.institution_id
+        LEFT JOIN inst_holdings h ON h.institution_id = e.institution_id
+               AND h.stock_code = e.stock_code AND h.report_date = e.report_date
         WHERE {' AND '.join(where)}
         ORDER BY e.notice_date ASC
     """
