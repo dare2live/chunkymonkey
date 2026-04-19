@@ -13,7 +13,6 @@ AKShare 数据获取客户端
 import asyncio
 import logging
 import os
-import threading
 import time
 from datetime import datetime, timedelta
 from typing import Optional
@@ -32,13 +31,6 @@ from services.tdx_source import mootdx_circuit_open as _shared_mootdx_circuit_op
 logger = logging.getLogger("cm-api")
 _MOOTDX_DEGRADED_TIMEOUT_THRESHOLD = 2
 _MOOTDX_DEGRADED_COOLDOWN_SECONDS = 180
-_TDX_RESEARCH_LEVELS: tuple[tuple[str, str], ...] = (
-    ("16", "sw_level1"),
-    ("17", "sw_level2"),
-    ("18", "sw_level3"),
-)
-_TDX_RESEARCH_INIT_GUARD = threading.Lock()
-_TDX_RESEARCH_INITIALIZED = False
 
 # 禁用代理，避免 akshare (requests) 走系统代理导致连接失败
 os.environ.pop("http_proxy", None)
@@ -221,13 +213,6 @@ async def _fetch_daily_mootdx_with_diagnostics(code: str, start_date: str, end_d
         diagnostics["fallback_recommended"] = diagnostics["timeout_failures"] >= _MOOTDX_DEGRADED_TIMEOUT_THRESHOLD
         diagnostics["summary"] = f"mootdx {diagnostics['server']}"
         if diagnostics["fallback_recommended"]:
-            _TDX_RESEARCH_LEVELS: tuple[tuple[str, str], ...] = (
-                ("16", "sw_level1"),
-                ("17", "sw_level2"),
-                ("18", "sw_level3"),
-            )
-            _TDX_RESEARCH_INIT_GUARD = threading.Lock()
-            _TDX_RESEARCH_INITIALIZED = False
             diagnostics["summary"] = (
                 f"mootdx {diagnostics['server']} · timeout x{diagnostics['timeout_failures']}"
             )

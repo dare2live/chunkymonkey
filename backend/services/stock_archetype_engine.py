@@ -14,7 +14,6 @@ from datetime import date, datetime
 from statistics import median, pstdev
 from typing import Optional
 
-from services.industry import industry_level_value, load_industry_map
 from services.utils import safe_float as _safe_float, clamp as _clamp
 
 logger = logging.getLogger("cm-api")
@@ -133,8 +132,8 @@ def ensure_tables(conn):
             snapshot_date               TEXT NOT NULL,
             stock_code                  TEXT NOT NULL,
             latest_report_date          TEXT,
-            tdx_l1                      TEXT,
-            tdx_l2                      TEXT,
+            tdx_l1_name                 TEXT,
+            tdx_l2_name                 TEXT,
             financial_history_rows      INTEGER DEFAULT 0,
             yoy_history_rows            INTEGER DEFAULT 0,
             high_quality_hits           INTEGER DEFAULT 0,
@@ -169,8 +168,8 @@ def ensure_tables(conn):
             stock_code                  TEXT PRIMARY KEY,
             snapshot_date               TEXT,
             latest_report_date          TEXT,
-            tdx_l1                      TEXT,
-            tdx_l2                      TEXT,
+            tdx_l1_name                 TEXT,
+            tdx_l2_name                 TEXT,
             financial_history_rows      INTEGER DEFAULT 0,
             yoy_history_rows            INTEGER DEFAULT 0,
             high_quality_hits           INTEGER DEFAULT 0,
@@ -581,7 +580,6 @@ def build_stock_archetypes(conn, snapshot_date: Optional[str] = None) -> int:
     price_data   = _load_price_data()
     capital_data = _load_capital_data(conn)
     gm_data      = _load_gross_margin_data(conn)
-    industry_map = load_industry_map(conn)
 
     # ── 加载财务历史（增加 net_assets, operating_profit） ──
     # 注: 用通达信一级中文名作为 tdx_l1 值,与 CYCLICAL_INDUSTRIES (中文) 保持可比
@@ -618,9 +616,6 @@ def build_stock_archetypes(conn, snapshot_date: Optional[str] = None) -> int:
     raw_by_stock = defaultdict(list)
     for row in raw_rows:
         payload = dict(row)
-        industry = industry_map.get(row["stock_code"]) or {}
-        payload["sw_level1"] = industry_level_value(industry, 1)
-        payload["sw_level2"] = industry_level_value(industry, 2)
         raw_by_stock[row["stock_code"]].append(payload)
 
     derived_by_stock = defaultdict(list)
@@ -854,7 +849,7 @@ def build_stock_archetypes(conn, snapshot_date: Optional[str] = None) -> int:
         # ── 写入数据库 ──
         conn.execute("""
             INSERT OR REPLACE INTO fact_stock_archetype (
-                snapshot_date, stock_code, latest_report_date, tdx_l1, tdx_l2,
+                snapshot_date, stock_code, latest_report_date, tdx_l1_name, tdx_l2_name,
                 financial_history_rows, yoy_history_rows, high_quality_hits, growth_hits,
                 cycle_flags, net_profit_positive_8q, operating_cashflow_positive_8q,
                 revenue_yoy_positive_4q, profit_yoy_positive_4q, eps_yoy_positive_4q,
@@ -902,7 +897,7 @@ def build_stock_archetypes(conn, snapshot_date: Optional[str] = None) -> int:
     conn.execute("DELETE FROM dim_stock_archetype_latest")
     conn.execute("""
         INSERT INTO dim_stock_archetype_latest
-        SELECT stock_code, snapshot_date, latest_report_date, tdx_l1, tdx_l2,
+        SELECT stock_code, snapshot_date, latest_report_date, tdx_l1_name, tdx_l2_name,
                financial_history_rows, yoy_history_rows, high_quality_hits, growth_hits,
                cycle_flags, net_profit_positive_8q, operating_cashflow_positive_8q,
                revenue_yoy_positive_4q, profit_yoy_positive_4q, eps_yoy_positive_4q,

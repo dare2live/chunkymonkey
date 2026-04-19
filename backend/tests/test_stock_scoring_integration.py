@@ -154,7 +154,10 @@ def _make_conn():
             stock_code TEXT PRIMARY KEY,
             tdx_l1 TEXT,
             tdx_l2 TEXT,
-            tdx_l3 TEXT
+            tdx_l3 TEXT,
+            tdx_l1_name TEXT,
+            tdx_l2_name TEXT,
+            tdx_l3_name TEXT
         );
 
         CREATE TABLE dim_financial_latest (

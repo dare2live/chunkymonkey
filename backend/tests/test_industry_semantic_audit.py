@@ -96,6 +96,16 @@ def _make_archetype_conn() -> sqlite3.Connection:
             quality_growth_raw REAL,
             quality_balance_raw REAL
         );
+
+        CREATE TABLE dim_stock_tdx_industry (
+            stock_code  TEXT PRIMARY KEY,
+            tdx_l1      TEXT,
+            tdx_l2      TEXT,
+            tdx_l3      TEXT,
+            tdx_l1_name TEXT,
+            tdx_l2_name TEXT,
+            tdx_l3_name TEXT
+        );
         """
     )
     return conn
@@ -105,9 +115,10 @@ def test_build_stock_archetypes_uses_shared_industry_alias_map(monkeypatch) -> N
     conn = _make_archetype_conn()
     try:
         ensure_archetype_tables(conn)
-        monkeypatch.setattr("services.stock_archetype_engine.load_industry_map", lambda _conn: {
-            "600000": {"industry_level1": "电子", "industry_level2": "半导体"}
-        })
+        conn.execute(
+            "INSERT INTO dim_stock_tdx_industry VALUES (?, ?, ?, ?, ?, ?, ?)",
+            ("600000", "T10", "T1010", "T101001", "电子", "半导体", "半导体设备"),
+        )
         monkeypatch.setattr("services.stock_archetype_engine._load_price_data", lambda: {})
         monkeypatch.setattr("services.stock_archetype_engine._load_capital_data", lambda _conn: {})
         monkeypatch.setattr("services.stock_archetype_engine._load_gross_margin_data", lambda _conn: {})
@@ -141,12 +152,12 @@ def test_build_stock_archetypes_uses_shared_industry_alias_map(monkeypatch) -> N
         inserted = build_stock_archetypes(conn, snapshot_date="2026-04-18")
 
         row = conn.execute(
-            "SELECT sw_level1, sw_level2, stock_archetype FROM dim_stock_archetype_latest WHERE stock_code = ?",
+            "SELECT tdx_l1_name, tdx_l2_name, stock_archetype FROM dim_stock_archetype_latest WHERE stock_code = ?",
             ("600000",),
         ).fetchone()
         assert inserted == 1
-        assert row["sw_level1"] == "电子"
-        assert row["sw_level2"] == "半导体"
+        assert row["tdx_l1_name"] == "电子"
+        assert row["tdx_l2_name"] == "半导体"
         assert row["stock_archetype"]
     finally:
         conn.close()

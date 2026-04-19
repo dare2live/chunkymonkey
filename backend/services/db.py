@@ -831,6 +831,19 @@ def init_db():
         except Exception:
             pass
 
+        # Phase 3d-1: fact_stock_archetype / dim_stock_archetype_latest 列名正名
+        # 原列 sw_level1/sw_level2 实际存的是通达信一级/二级中文名 (非申万代码),
+        # 字面上与 TDX 真相源冲突, 重命名为 tdx_l1_name/tdx_l2_name 消歧。
+        for table in ("fact_stock_archetype", "dim_stock_archetype_latest"):
+            try:
+                cols = {r[1] for r in conn.execute(f"PRAGMA table_info({table})").fetchall()}
+                if "sw_level1" in cols and "tdx_l1_name" not in cols:
+                    conn.execute(f"ALTER TABLE {table} RENAME COLUMN sw_level1 TO tdx_l1_name")
+                if "sw_level2" in cols and "tdx_l2_name" not in cols:
+                    conn.execute(f"ALTER TABLE {table} RENAME COLUMN sw_level2 TO tdx_l2_name")
+            except Exception:
+                pass
+
         # Phase 1: mart_institution_profile 买入类评分字段 + 评分元数据
         for col in ["score_basis TEXT", "score_confidence TEXT",
                      "historical_median_holding_days INTEGER",
