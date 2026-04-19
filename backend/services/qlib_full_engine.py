@@ -672,6 +672,51 @@ def _load_northbound_factors(smart_conn, codes: list) -> pd.DataFrame:
     return _finalize_time_series_factor_frame(data)
 
 
+_TDX_L1_ONEHOT_CODES = tuple(f"T{i:02d}" for i in range(1, 14))
+_TDX_L1_ONEHOT_FEATURES = tuple(f"ind_t{i:02d}" for i in range(1, 14))
+
+
+def _load_industry_onehot_factors(smart_conn, codes: list) -> pd.DataFrame:
+    """加载 TDX 一级行业 one-hot (T01..T13).
+
+    行业为静态属性, 返回按 instrument 单索引的 DataFrame; 注入时走 single-level 分支,
+    自动 broadcast 到所有训练样本, 避免与时序因子一起 outer-join 产生索引歧义。
+    """
+    if not codes:
+        return pd.DataFrame()
+    try:
+        placeholders = ",".join("?" for _ in codes)
+        rows = smart_conn.execute(
+            f"SELECT stock_code, tdx_l1 FROM dim_stock_tdx_industry "
+            f"WHERE stock_code IN ({placeholders}) "
+            f"  AND tdx_l1 IS NOT NULL AND tdx_l1 != ''",
+            codes,
+        ).fetchall()
+    except Exception as e:
+        logger.warning(f"[Qlib-Full] 行业 one-hot 加载失败: {e}")
+        return pd.DataFrame()
+
+    if not rows:
+        return pd.DataFrame()
+
+    data = []
+    for row in rows:
+        instrument = _instrument_from_stock_code(row["stock_code"])
+        if not instrument:
+            continue
+        tdx_l1 = row["tdx_l1"]
+        entry = {"instrument": instrument}
+        for code, feat in zip(_TDX_L1_ONEHOT_CODES, _TDX_L1_ONEHOT_FEATURES):
+            entry[feat] = 1 if tdx_l1 == code else 0
+        data.append(entry)
+
+    if not data:
+        return pd.DataFrame()
+
+    df = pd.DataFrame(data).drop_duplicates(subset=["instrument"], keep="last")
+    return df.set_index("instrument").sort_index()
+
+
 def _load_combined_custom_factors(
     smart_conn,
     codes: list[str],
@@ -2019,6 +2064,7 @@ def train_full_model(smart_conn, data_dir: str = None, *, params: Optional[dict]
     use_quality = params.get("use_quality", True)
     use_stage = params.get("use_stage", True)
     use_northbound = params.get("use_northbound", False)
+    use_industry_onehot = params.get("use_industry_onehot", True)
     universe_source = str(params.get("universe_source") or "active_a_stock").strip()
     sample_stock_limit = int(params.get("sample_stock_limit", 0) or 0)
 
@@ -2124,6 +2170,18 @@ def train_full_model(smart_conn, data_dir: str = None, *, params: Optional[dict]
         # Qlib DatasetH 内部用 handler.fetch() 获取特征 DataFrame
         # 我们在 handler._data 层面直接 concat（社区通用做法）
         _inject_custom_factors_into_handler(handler, custom_factors)
+
+        # TDX 一级行业 one-hot (静态属性, instrument 单索引, 在 handler 中广播)
+        if bool(use_industry_onehot):
+            industry_onehot = _load_industry_onehot_factors(smart_conn, all_codes)
+            industry_onehot_count = (
+                len(industry_onehot.columns) if not industry_onehot.empty else 0
+            )
+            logger.info(
+                f"[Qlib-Full] 行业 one-hot: {industry_onehot_count} 个, 覆盖 {len(industry_onehot)} 只股票"
+            )
+            _inject_custom_factors_into_handler(handler, industry_onehot)
+
         feature_name_candidates = _extract_handler_feature_names(handler)
 
         # LGBModel

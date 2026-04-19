@@ -70,6 +70,7 @@ class QlibTrainParams(BaseModel):
     use_quality: bool = True
     use_stage: bool = True
     use_northbound: bool = False
+    use_industry_onehot: bool = True
 
 
 class QlibBacktestReplayParams(BaseModel):
