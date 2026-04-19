@@ -72,7 +72,7 @@ def _ensure_table(conn: sqlite3.Connection) -> None:
 
 def _fetch_tdxhy_bytes() -> tuple[bytes, str]:
     """通过 tdxhub 117 台服务器重试下载 tdxhy.cfg。返回 (bytes, source_label)。"""
-    from backend.services.tdx_source import call_tdx_quotes_with_retry
+    from services.tdx_source import call_tdx_quotes_with_retry
 
     def _op(client):
         meta = client.client.get_block_info_meta(_TDXHY_FILE)
@@ -135,7 +135,7 @@ def _parse_tdxhy(data: bytes) -> list[_ParsedRow]:
     """解析 tdxhy.cfg 字节流，返回
     [(stock_code, tdx_l1, tdx_l2, tdx_l3, tdx_l1_name, tdx_l2_name, tdx_l3_name, sw_x_legacy), ...]。
     """
-    from backend.services.tdx_industry_names import get_tdx_industry_name
+    from services.tdx_industry_names import get_tdx_industry_name
 
     text = data.decode("gbk", errors="ignore")
     rows: list[_ParsedRow] = []
