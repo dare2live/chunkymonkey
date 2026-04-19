@@ -262,7 +262,7 @@ def test_load_institution_profile_detail_appends_exits_and_builds_industry_summa
         """
         CREATE TABLE mart_institution_industry_stat (
             institution_id TEXT,
-            sw_level TEXT,
+            industry_level TEXT,
             industry_name TEXT,
             avg_gain_30d REAL,
             win_rate_30d REAL

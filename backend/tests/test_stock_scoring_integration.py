@@ -115,13 +115,13 @@ def _make_conn():
 
         CREATE TABLE mart_institution_industry_stat (
             institution_id TEXT NOT NULL,
-            sw_level TEXT NOT NULL,
+            industry_level TEXT NOT NULL,
             industry_name TEXT NOT NULL,
             sample_events INTEGER,
             avg_gain_30d REAL,
             win_rate_30d REAL,
             max_drawdown_30d REAL,
-            PRIMARY KEY (institution_id, sw_level, industry_name)
+            PRIMARY KEY (institution_id, industry_level, industry_name)
         );
 
         CREATE TABLE mart_current_relationship (
@@ -327,7 +327,7 @@ def test_calculate_stock_scores_ranks_strong_new_entry_above_weak_signal(monkeyp
         conn.executemany(
             """
             INSERT INTO mart_institution_industry_stat (
-                institution_id, sw_level, industry_name, sample_events,
+                institution_id, industry_level, industry_name, sample_events,
                 avg_gain_30d, win_rate_30d, max_drawdown_30d
             ) VALUES (?, ?, ?, ?, ?, ?, ?)
             """,
@@ -536,7 +536,7 @@ def test_calculate_stock_scores_ignores_stale_quality_feature_snapshot(monkeypat
         conn.execute(
             """
             INSERT INTO mart_institution_industry_stat (
-                institution_id, sw_level, industry_name, sample_events,
+                institution_id, industry_level, industry_name, sample_events,
                 avg_gain_30d, win_rate_30d, max_drawdown_30d
             ) VALUES (?, ?, ?, ?, ?, ?, ?)
             """,

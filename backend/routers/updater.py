@@ -1930,7 +1930,7 @@ def _step_build_industry_stat_sync(conn) -> int:
                 for r in rows:
                     conn.execute("""
                         INSERT OR REPLACE INTO mart_institution_industry_stat
-                        (institution_id, sw_level, industry_name, tdx_code, sample_events,
+                        (institution_id, industry_level, industry_name, tdx_code, sample_events,
                          avg_gain_30d, avg_gain_60d, avg_gain_90d, avg_gain_120d,
                          win_rate_30d, win_rate_60d, win_rate_90d, total_win_rate,
                          max_drawdown_30d, max_drawdown_60d, updated_at)

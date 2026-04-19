@@ -1081,7 +1081,7 @@ def _fill_top_industries(conn):
             SELECT industry_name,
                    COALESCE(avg_gain_30d, 0) * COALESCE(win_rate_30d, 0) / 100.0 as perf
             FROM mart_institution_industry_stat
-            WHERE institution_id = ? AND sw_level = 'level2' AND sample_events >= 3
+            WHERE institution_id = ? AND industry_level = 'level2' AND sample_events >= 3
             ORDER BY perf DESC LIMIT 3
         """, (iid,)).fetchall()
         best = [r["industry_name"] for r in best_rows]
@@ -1846,12 +1846,12 @@ def calculate_stock_scores(conn) -> int:
 
     industry_stats = {}
     for row in conn.execute("""
-        SELECT institution_id, sw_level, industry_name, sample_events,
+        SELECT institution_id, industry_level, industry_name, sample_events,
                avg_gain_30d, win_rate_30d, max_drawdown_30d
         FROM mart_institution_industry_stat
     """).fetchall():
         d = dict(row)
-        industry_stats[(d["institution_id"], d["sw_level"], d["industry_name"])] = d
+        industry_stats[(d["institution_id"], d["industry_level"], d["industry_name"])] = d
 
     crowding_lookup = _load_crowding_fit_lookup(conn)
 
@@ -1864,7 +1864,7 @@ def calculate_stock_scores(conn) -> int:
                    ORDER BY (COALESCE(avg_gain_30d, 0) * COALESCE(win_rate_30d, 0)) DESC
                ) as rn
         FROM mart_institution_industry_stat
-        WHERE sw_level = 'level2' AND sample_events >= 3
+        WHERE industry_level = 'level2' AND sample_events >= 3
     """).fetchall():
         if row["rn"] == 1:
             inst_best_industry[row["institution_id"]] = row["industry_name"]
@@ -1874,7 +1874,7 @@ def calculate_stock_scores(conn) -> int:
             SELECT institution_id, industry_name,
                    ROW_NUMBER() OVER (PARTITION BY institution_id ORDER BY sample_events DESC) as rn
             FROM mart_institution_industry_stat
-            WHERE sw_level = 'level1'
+            WHERE industry_level = 'level1'
         """).fetchall():
             if row["rn"] == 1:
                 inst_best_industry[row["institution_id"]] = row["industry_name"]

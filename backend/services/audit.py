@@ -848,9 +848,9 @@ def run_quality_audit(conn, use_cache: bool = True) -> dict:
         SELECT
             COUNT(*) AS row_cnt,
             COUNT(DISTINCT institution_id) AS inst_cnt,
-            COUNT(DISTINCT CASE WHEN sw_level = 'level1' THEN institution_id END) AS level1_inst,
-            COUNT(DISTINCT CASE WHEN sw_level = 'level2' THEN institution_id END) AS level2_inst,
-            COUNT(DISTINCT CASE WHEN sw_level = 'level3' THEN institution_id END) AS level3_inst
+            COUNT(DISTINCT CASE WHEN industry_level = 'level1' THEN institution_id END) AS level1_inst,
+            COUNT(DISTINCT CASE WHEN industry_level = 'level2' THEN institution_id END) AS level2_inst,
+            COUNT(DISTINCT CASE WHEN industry_level = 'level3' THEN institution_id END) AS level3_inst
         FROM mart_institution_industry_stat
     """).fetchone()
     industry_stat_count = industry_stat_row["row_cnt"] or 0
@@ -863,9 +863,9 @@ def run_quality_audit(conn, use_cache: bool = True) -> dict:
             SELECT institution_id
             FROM mart_institution_industry_stat
             GROUP BY institution_id
-            HAVING SUM(CASE WHEN sw_level = 'level1' THEN 1 ELSE 0 END) > 0
-               AND SUM(CASE WHEN sw_level = 'level2' THEN 1 ELSE 0 END) > 0
-               AND SUM(CASE WHEN sw_level = 'level3' THEN 1 ELSE 0 END) > 0
+            HAVING SUM(CASE WHEN industry_level = 'level1' THEN 1 ELSE 0 END) > 0
+               AND SUM(CASE WHEN industry_level = 'level2' THEN 1 ELSE 0 END) > 0
+               AND SUM(CASE WHEN industry_level = 'level3' THEN 1 ELSE 0 END) > 0
         )
     """)
     industry_stat_expected_inst = _scalar(

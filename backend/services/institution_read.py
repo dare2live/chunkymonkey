@@ -154,14 +154,14 @@ def load_institution_profiles(conn) -> list[dict]:
 def _load_institution_industry_stat_map(conn, inst_id: str) -> dict:
     rows = conn.execute(
         """
-        SELECT sw_level, industry_name, avg_gain_30d, win_rate_30d
+        SELECT industry_level, industry_name, avg_gain_30d, win_rate_30d
         FROM mart_institution_industry_stat
         WHERE institution_id = ?
         """,
         (inst_id,),
     ).fetchall()
     return {
-        (row["sw_level"], row["industry_name"]): dict(row)
+        (row["industry_level"], row["industry_name"]): dict(row)
         for row in rows
     }
 

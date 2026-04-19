@@ -56,7 +56,7 @@ def _make_conn():
 
         CREATE TABLE mart_institution_industry_stat (
             institution_id TEXT NOT NULL,
-            sw_level TEXT NOT NULL,
+            industry_level TEXT NOT NULL,
             industry_name TEXT NOT NULL,
             tdx_code TEXT,
             sample_events INTEGER DEFAULT 0,
@@ -71,7 +71,7 @@ def _make_conn():
             max_drawdown_30d REAL,
             max_drawdown_60d REAL,
             updated_at TEXT,
-            PRIMARY KEY (institution_id, sw_level, industry_name)
+            PRIMARY KEY (institution_id, industry_level, industry_name)
         );
         """
     )
@@ -108,10 +108,10 @@ def test_build_industry_stat_joins_dim_stock_tdx_industry(monkeypatch):
         # 两条事件在 L1/L2/L3 各归一组 → 3 行
         assert written == 3
         rows = conn.execute(
-            "SELECT sw_level, industry_name, tdx_code, sample_events, avg_gain_30d "
-            "FROM mart_institution_industry_stat ORDER BY sw_level"
+            "SELECT industry_level, industry_name, tdx_code, sample_events, avg_gain_30d "
+            "FROM mart_institution_industry_stat ORDER BY industry_level"
         ).fetchall()
-        assert [(r["sw_level"], r["industry_name"], r["tdx_code"]) for r in rows] == [
+        assert [(r["industry_level"], r["industry_name"], r["tdx_code"]) for r in rows] == [
             ("level1", "信息产业", "T12"),
             ("level2", "计算机", "T1204"),
             ("level3", "软件", "T120401"),
@@ -152,7 +152,7 @@ def test_build_industry_stat_skips_events_without_industry(monkeypatch):
         # 只应聚合 600001 的 gain_30d = 8.0
         row = conn.execute(
             "SELECT avg_gain_30d, sample_events FROM mart_institution_industry_stat "
-            "WHERE sw_level='level1'"
+            "WHERE industry_level='level1'"
         ).fetchone()
         assert row["sample_events"] == 1
         assert abs(row["avg_gain_30d"] - 8.0) < 1e-6

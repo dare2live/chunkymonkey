@@ -897,7 +897,7 @@ async def get_institution_detail(inst_id: str):
                     # 历史表现（如有）
                     stat = conn.execute("""
                         SELECT avg_gain_30d, win_rate_30d FROM mart_institution_industry_stat
-                        WHERE institution_id = ? AND sw_level = 'level2' AND industry_name = ?
+                        WHERE institution_id = ? AND industry_level = 'level2' AND industry_name = ?
                     """, (inst_id, l2)).fetchone()
                     if stat:
                         l2_data["avg_gain_30d"] = stat["avg_gain_30d"]
@@ -906,7 +906,7 @@ async def get_institution_detail(inst_id: str):
                 # 一级行业也查业绩
                 l1_stat = conn.execute("""
                     SELECT avg_gain_30d, win_rate_30d FROM mart_institution_industry_stat
-                    WHERE institution_id = ? AND sw_level = 'level1' AND industry_name = ?
+                    WHERE institution_id = ? AND industry_level = 'level1' AND industry_name = ?
                 """, (inst_id, l1)).fetchone()
                 if l1_stat:
                     l1_data["avg_gain_30d"] = l1_stat["avg_gain_30d"]

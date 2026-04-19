@@ -417,7 +417,7 @@ def init_db():
 
             CREATE TABLE IF NOT EXISTS mart_institution_industry_stat (
                 institution_id TEXT NOT NULL,
-                sw_level       TEXT NOT NULL,
+                industry_level TEXT NOT NULL,
                 industry_name  TEXT NOT NULL,
                 tdx_code       TEXT,
                 sample_events  INTEGER DEFAULT 0,
@@ -432,7 +432,7 @@ def init_db():
                 max_drawdown_30d REAL,
                 max_drawdown_60d REAL,
                 updated_at     TEXT,
-                PRIMARY KEY (institution_id, sw_level, industry_name)
+                PRIMARY KEY (institution_id, industry_level, industry_name)
             );
 
             CREATE TABLE IF NOT EXISTS mart_stock_trend (
@@ -820,6 +820,18 @@ def init_db():
             conn.execute(
                 "ALTER TABLE mart_institution_industry_stat ADD COLUMN tdx_code TEXT"
             )
+        except Exception:
+            pass
+
+        # Phase 3b-2: mart_institution_industry_stat.sw_level → industry_level
+        # 原列名在 Phase 2 申万退役后语义已漂移 (值仍是 level1/level2/level3),
+        # 重命名以解除 "sw" 字面与 TDX 真相源的混淆。SQLite 3.25+ 支持 RENAME COLUMN。
+        try:
+            cols = {r[1] for r in conn.execute("PRAGMA table_info(mart_institution_industry_stat)").fetchall()}
+            if "sw_level" in cols and "industry_level" not in cols:
+                conn.execute(
+                    "ALTER TABLE mart_institution_industry_stat RENAME COLUMN sw_level TO industry_level"
+                )
         except Exception:
             pass
 
