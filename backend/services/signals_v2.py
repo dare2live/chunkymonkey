@@ -64,6 +64,19 @@ DEFAULT_CONFIG: dict = {
     "inst_type_blacklist": "基金,国家队",
     # 机构类型硬性加分（这些类型历史上显著 beat blind）
     "inst_type_preferred": "牛散,券商,社保,QFII,北向",
+    # D1 · 股东人数 YoY（筹码集中度）
+    # 实证：max_yoy=30 把 OOS edge 从 +3.29pp 推到 +5.22pp (WR 70%)
+    # 99999 = 不启用；数值越小越严（0 = 只留筹码集中的）
+    "max_holder_yoy_pct": 30.0,
+    # D3 · 业绩预告利润同比（取 low/high 中值）
+    # 实证：+D1 +D3(fc≥20) 组合 OOS edge +14.44pp, EV+21.77%, WR 80%
+    # min_forecast_profit_yoy: 最低预告中值（%）；-9999 = 不启用
+    # 说明：<20% 的"微增"事件 EV 仅 +5.63%，>20% 开始才是真"增长"
+    "min_forecast_profit_yoy": 20.0,
+    # D5 · 180 天解禁比例（风险规避）
+    # 实证：>5% 解禁 n=3 全负 (样本小但方向对)
+    # max_unlock_ratio_180d: 上限（%）；99999 = 不启用
+    "max_unlock_ratio_180d": 5.0,
 }
 
 
@@ -82,6 +95,9 @@ class PolicyConfig:
     min_hold_ratio: float = 0.3
     inst_type_blacklist: str = "基金,国家队"
     inst_type_preferred: str = "牛散,券商,社保,QFII,北向"
+    max_holder_yoy_pct: float = 30.0  # D1: 股东人数 YoY 上限；99999=不启用
+    min_forecast_profit_yoy: float = 20.0  # D3: 业绩预告利润 YoY 下限（%）；-9999=不启用
+    max_unlock_ratio_180d: float = 5.0     # D5: 180 天解禁上限（%）；99999=不启用
 
     @property
     def blacklist_set(self) -> set[str]:
@@ -577,10 +593,11 @@ def _apply_hard_rules(event: dict, config: PolicyConfig) -> tuple[Optional[str],
     应用基于 cohort 实证的硬规则过滤。
     返回 (action, reason_label) 若命中硬规则，否则 (None, None) 让后续 KNN 决定。
 
-    硬规则（都来自 health check 的数据）：
-      - 机构类型黑名单 (基金/国家队) → skip
+    硬规则（都来自 health check 的数据，所有阈值参数化）：
+      - 机构类型黑名单 → skip
       - premium > max_premium_pct → skip
       - hold_ratio < min_hold_ratio → skip
+      - holder_count_yoy > max_holder_yoy_pct → skip (D1 股东散户化)
     """
     inst_type = event.get("inst_type")
     if inst_type and inst_type in config.blacklist_set:
@@ -594,7 +611,137 @@ def _apply_hard_rules(event: dict, config: PolicyConfig) -> tuple[Optional[str],
     if hold_ratio is not None and hold_ratio < config.min_hold_ratio:
         return ("skip", "hold_ratio_too_low")
 
+    # D1: 股东人数 YoY（数值 = 人数变化率，>0 表示散户化，<0 表示筹码集中）
+    hc_yoy = event.get("holder_count_yoy")
+    if hc_yoy is not None and hc_yoy > config.max_holder_yoy_pct:
+        return ("skip", "holder_dispersing")
+
+    # D3: 业绩预告利润同比中值
+    fc_mid = event.get("forecast_profit_yoy_mid")
+    if fc_mid is not None and fc_mid < config.min_forecast_profit_yoy:
+        return ("skip", "forecast_too_weak")
+
+    # D5: 未来 180 天解禁比例（风险规避）
+    unlock = event.get("future_unlock_ratio_180d")
+    if unlock is not None and unlock > config.max_unlock_ratio_180d:
+        return ("skip", "unlock_risk")
+
     return (None, None)
+
+
+def _load_gpcw_feature_maps(conn) -> dict:
+    """
+    一次性预加载 GPCW 里我们要的所有字段，key = (stock, report_date_iso)。
+
+    返回 dict: {feature_name: {(stock, date): value}}
+    """
+    out = {
+        "holder_count": {},           # D1
+        "forecast_profit_yoy_mid": {}, # D3
+    }
+    try:
+        rows = conn.execute("""
+            SELECT stock_code, report_date, holder_count,
+                   forecast_profit_yoy_low, forecast_profit_yoy_high
+            FROM raw_gpcw_detail
+        """).fetchall()
+        for r in rows:
+            k = (r["stock_code"], r["report_date"])
+            if r["holder_count"] is not None:
+                try:
+                    out["holder_count"][k] = float(r["holder_count"])
+                except Exception:
+                    pass
+            low = r["forecast_profit_yoy_low"]
+            high = r["forecast_profit_yoy_high"]
+            try:
+                if low is not None and high is not None:
+                    out["forecast_profit_yoy_mid"][k] = (float(low) + float(high)) / 2
+                elif low is not None:
+                    out["forecast_profit_yoy_mid"][k] = float(low)
+                elif high is not None:
+                    out["forecast_profit_yoy_mid"][k] = float(high)
+            except Exception:
+                pass
+    except Exception as exc:
+        logger.warning(f"[signals_v2] 加载 GPCW 特征失败: {exc}")
+    return out
+
+
+def _load_gpcw_holder_count_map(conn) -> dict:
+    """向后兼容的 wrapper。"""
+    return _load_gpcw_feature_maps(conn)["holder_count"]
+
+
+def _compute_holder_count_yoy(
+    stock_code: str,
+    event_report_date: str,
+    gpcw_map: dict,
+) -> Optional[float]:
+    """
+    算某事件对应的股东人数 YoY（%）。
+    event_report_date 格式 YYYYMMDD 或 YYYY-MM-DD；
+    GPCW map 里是 YYYY-MM-DD。
+    """
+    # 归一化 event_report_date 到 YYYY-MM-DD
+    digits = str(event_report_date).replace("-", "")
+    if len(digits) < 8:
+        return None
+    rd_iso = f"{digits[:4]}-{digits[4:6]}-{digits[6:8]}"
+
+    cur_hc = gpcw_map.get((stock_code, rd_iso))
+    if cur_hc is None or cur_hc <= 0:
+        return None
+
+    # 4 季度前同 mmdd
+    try:
+        prev_iso = f"{int(rd_iso[:4])-1}{rd_iso[4:]}"
+    except Exception:
+        return None
+    prev_hc = gpcw_map.get((stock_code, prev_iso))
+    if prev_hc is None or prev_hc <= 0:
+        return None
+
+    return round((cur_hc - prev_hc) / prev_hc * 100, 2)
+
+
+def _enrich_events_with_gpcw(conn, events: list[dict]) -> None:
+    """
+    给 events 列表 in-place 添加特征：
+      - holder_count_yoy        D1 股东人数同比变化率（%）
+      - forecast_profit_yoy_mid D3 业绩预告利润同比中值（%）
+      - future_unlock_ratio_180d D5 180 天解禁比例（%）
+
+    一次性预加载所有维度的 map 避免重复扫表。
+    """
+    if not events:
+        return
+    maps = _load_gpcw_feature_maps(conn)
+    hc_map = maps["holder_count"]
+    fc_map = maps["forecast_profit_yoy_mid"]
+
+    # D5: 解禁数据从 dim_capital_behavior_latest 加载
+    unlock_map = {}
+    try:
+        for r in conn.execute(
+            "SELECT stock_code, future_unlock_ratio_180d "
+            "FROM dim_capital_behavior_latest WHERE future_unlock_ratio_180d IS NOT NULL"
+        ).fetchall():
+            unlock_map[r["stock_code"]] = float(r["future_unlock_ratio_180d"])
+    except Exception as exc:
+        logger.warning(f"[signals_v2] 加载 unlock 失败: {exc}")
+
+    for ev in events:
+        rd = str(ev.get("report_date", ""))
+        digits = rd.replace("-", "")
+        if len(digits) >= 8:
+            rd_iso = f"{digits[:4]}-{digits[4:6]}-{digits[6:8]}"
+        else:
+            rd_iso = rd
+        stock = ev.get("stock_code", "")
+        ev["holder_count_yoy"] = _compute_holder_count_yoy(stock, rd, hc_map)
+        ev["forecast_profit_yoy_mid"] = fc_map.get((stock, rd_iso))
+        ev["future_unlock_ratio_180d"] = unlock_map.get(stock)
 
 
 def _decide_dual_window(
@@ -693,6 +840,11 @@ def build_today_signals(
 
     if not rows:
         return []
+
+    # 补 GPCW 特征（D1 股东人数 YoY 等）
+    rows_list = [dict(r) for r in rows]
+    _enrich_events_with_gpcw(conn, rows_list)
+    rows = rows_list
 
     # 性能优化：一次 SQL 拉全部相关机构的历史 buy 事件，内存做 KNN 查询
     # 避免每个事件独立 SQL (1307 事件 * 30ms JOIN = 40 秒)
@@ -945,6 +1097,9 @@ def backtest_historical(
     if not events:
         return {"error": "no_events", "config": asdict(cfg)}
 
+    # 补 GPCW 特征 (D1: holder_count_yoy)
+    _enrich_events_with_gpcw(conn, events)
+
     # 按机构聚合全历史（已按 notice_date ASC 排序），内存中做 KNN 查找
     inst_timeline: dict[str, list[dict]] = {}
     for ev in events:
@@ -1136,9 +1291,14 @@ def cohort_recent_matured(
             e.institution_id, e.stock_code, e.stock_name,
             e.report_date, e.notice_date, e.event_type,
             e.premium_pct, e.{cfg.gain_column} AS gain,
-            ind.sw_level1 AS industry
+            ind.sw_level1 AS industry,
+            i.type AS inst_type,
+            h.holder_rank, h.hold_ratio
         FROM fact_institution_event e
         LEFT JOIN dim_stock_industry ind ON ind.stock_code = e.stock_code
+        LEFT JOIN inst_institutions i ON i.id = e.institution_id
+        LEFT JOIN inst_holdings h ON h.institution_id = e.institution_id
+               AND h.stock_code = e.stock_code AND h.report_date = e.report_date
         WHERE e.event_type IN ('new_entry','increase')
           AND e.{cfg.gain_column} IS NOT NULL
           AND e.notice_date >= ?
@@ -1147,6 +1307,8 @@ def cohort_recent_matured(
     """, (start_str, end_str)).fetchall()
 
     events = [dict(r) for r in rows]
+    # 补 GPCW 特征 (D1 等)
+    _enrich_events_with_gpcw(conn, events)
     if not events:
         return {
             "window": {

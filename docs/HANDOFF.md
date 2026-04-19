@@ -1,0 +1,321 @@
+# 交接文档 · signals_v2 开发上下文
+
+> **这份文档给下一个 claude 读**。把它放在对话最前面，读完就能接着推进。
+> 最后更新：2026-04-19
+
+---
+
+## 0. 项目一句话
+
+**从十大流通股东数据挖掘高胜率跟随信号，以此盈利**。主角是机构，股票是机构行为的载体。
+
+---
+
+## 1. 用户偏好（关键！必须记住）
+
+按重要程度排序：
+
+1. **诚实 > 好看**。数字真实比看起来漂亮重要。之前虚假 +7.4% alpha 被揭穿是 look-ahead bias 污染后，用户反而更信任系统。
+2. **稳定数据源 > 复杂变量工程**。tdxhub 优先，akshare 只做 tdxhub 没有的补充。
+3. **不堆砌数据 / 不堆砌功能**。少即是多。每加一个东西必须能说清为什么加。
+4. **所有参数前端可调，禁止硬编码**。用户要能 UI 上改阈值立刻看到效果。
+5. **动态看待，不固化黑白名单**。机构 PM 会换、策略会变、市场会变。用连续特征喂 ML，不用硬规则打标。
+6. **边做边验**。每加一个特征都要跑 cohort 看 edge 变化，不要一口气做完再看。
+7. **现有代码 80% 是对的**。不是推倒重写，是修正 + 精简。
+8. **第一性原理**。如果解决方案复杂化，回到"我到底要解决什么"再想。
+9. **不喜欢啰嗦**。回答要直接、抓重点、给数字。
+10. **敢删**。该删的代码不要留注释"保留以防"——删就是了。
+
+### 用户明确否决的设计（别再提）
+- ❌ 机构黑白名单硬规则（2026-04-19 明确反对，改用连续特征喂 ML）
+- ❌ 多维合成分 × 权重（A/B/C/D 池 / Setup / Gate 三套评级并存）
+- ❌ 2019 之前训练数据（A 股结构变化大）
+- ❌ qlib label=日内收益（口径错位，必须改 follow_return_60d）
+- ❌ UI 上的 disclaimer / 免责声明（只有我自己看）
+
+---
+
+## 2. 核心架构（9 层）
+
+```
+L1 · 数据获取 (Raw)                     market_raw_holdings / price_kline / raw_gpcw_detail
+    ↓
+L2 · 事件生成 (Event)                    fact_institution_event + gain_30/60/90/120d
+    ↓
+L3 · 真相源 ★                           fact_institution_event.gain_60d 唯一 label
+    ↓
+L4 · 决策函数 (Recommend)                signals_v2.py: KNN + 硬规则 + 双口径
+    ↓
+L5 · 历史回测 (Backtest)                 全量 backtest_historical + cohort_recent_matured
+    ↓
+L6 · Qlib 对照 (规划中)                  qlib_follow_engine.py: label=gain_60d, 滚动 36 月
+    ↓
+L7 · 快照 (Snapshot, DAG 落表)          fact_signal_daily (待建)
+    ↓
+L8 · 展示 (只读快照)                     assets/js/signals-view.js
+    ↓
+L9 · 反馈闭环                           cohort_recent_matured → 前端 review 卡
+```
+
+**原则**：每层只读上游、快照写入后不改、前端零运行时计算。
+
+---
+
+## 3. 代码结构
+
+```
+backend/
+├── services/
+│   ├── signals_v2.py          ★ 主决策引擎 (968 行)
+│   ├── qlib_follow_engine.py  ★ Qlib 事件级模型 (548 行, 骨架)
+│   ├── db.py                  主 SQLite schema
+│   ├── market_db.py           市场数据库 (price_kline)
+│   ├── return_engine.py       计算 gain_30/60/90/120d
+│   ├── event_engine.py        生成 fact_institution_event
+│   ├── (legacy) scoring.py / quality_feature_engine.py / ... 未删但不再用
+├── routers/
+│   ├── signals.py             ★ signals_v2 API 路由
+│   └── (legacy) 老路由保留兼容
+├── tests/test_signals_v2.py   ★ 26 个单测全过
+
+assets/
+├── js/signals-view.js         ★ 新信号视图 (独立命名空间 sig-*)
+├── js/app.js                  老前端 (未改)
+├── css/main.css               尾部追加了 sig-* 样式
+├── index.html                 默认 tab 改为 "信号 v2"
+
+docs/
+├── signals_v2_baseline.md     V1 旧 baseline（含 look-ahead，保留作反例）
+├── signals_v2_baseline_v2.md  V3 严谨左切 + 双口径
+├── signals_v2_baseline_v3.md  V5a 当前默认 (硬规则 + premium≤15)
+├── HANDOFF.md                 ★ 本文件
+
+start-signals-v2.command       启动 worktree 后端 (8001)
+```
+
+---
+
+## 4. Baseline 演进历史（数字是真相）
+
+| 版本 | 关键改动 | OOS cohort Follow EV | vs Blind edge | WR | n |
+|------|---------|-------------------|---------------|------|---|
+| V0 | 原始 KNN，无 cooldown | +7.40% | +3.67pp (虚假!) | 59% | 4597 |
+| V1 | 加 cooldown_days=90 | +2.13% | -1.70pp | 45% | 4454 |
+| V3 | V1+V2 = 真严谨双口径 | +8.15% | +0.82pp | 58% | 1576 |
+| V4 | +硬规则 (prem≤20) | +9.08% | +1.75pp | 63% | 1179 |
+| V5a | +prem≤15 (硬规则收紧) | +9.39% | +2.06pp | 64% | 1042 |
+| **V6** | **+D1 max_yoy=30 + D3 min_fc=20 + D5 max_unlock=5** | **+21.77%** | **+14.44pp** | **80%** | 128 |
+
+完整 cohort：2025-07-23 ~ 2026-01-19, n=5696 buy 事件, Blind EV=+7.33%
+
+**V6 说明**（2026-04-19）：深挖三个 GPCW 未用字段后获得显著 alpha 突破：
+- D1 股东人数 YoY ≤30%（筹码集中度）：单独贡献 +1.93pp
+- D3 业绩预告利润 YoY ≥20%（真增长）：单独贡献 +9.22pp ← 最强
+- D5 未来 180 日解禁 ≤5%（风险规避）：微弱贡献
+
+n=128 看似少但每季度 ~30-40 个信号对用户而言够用。EV +21.77% / 60d ≈ 年化 130%+（理论值，未考虑重叠持仓）。
+
+**警示**：n=128 相对 5696 cohort 是 2.2% 的子集，方差不小。实盘跑半年才能确认稳定。
+
+---
+
+## 5. 用户指出的 alpha 源（实证发现）
+
+cohort 健康检查揭示的 3 大被忽略维度：
+
+### 机构类型分化（差 7pp）
+```
+牛散   EV+9.71% WR 62.2%   ★ 强 alpha
+券商   EV+8.48% WR 56.2%
+社保   EV+7.57% WR 56.0%
+北向   EV+7.18% WR 55.5%
+QFII  EV+7.28% WR 54.2%
+基金   EV+3.07% WR 36.6%   ★ 负 alpha!
+国家队 EV+0.68% WR 44.4%
+```
+
+### 溢价档（U 型）
+```
+-10~0 折价   +8.03% WR 62.6%  ★
+0~20 正常    +8~9%  WR 57-58%
+>20 高溢价  +5.25% WR 43.4%   ★ 负 alpha
+```
+
+### 持仓强度（线性）
+```
+rank=1        +10.95%  ★
+rank=7-10     +6.87%
+hold>5%       +9.54%   ★
+hold<0.5%     +5.43%
+```
+
+---
+
+## 6. 7 个待挖的 alpha 维度（D1-D7，按价值降序）
+
+| # | 维度 | 数据位置 | 状态 |
+|---|-----|---------|------|
+| **D1** | 股东人数 YoY | `raw_gpcw_detail.holder_count` | **下一步** |
+| **D2** | 合同负债 YoY | `raw_gpcw_detail.contract_liabilities` | 下一步 |
+| **D3** | 业绩预告 | `raw_gpcw_detail.forecast_profit_yoy_low/high` | 下一步 |
+| **D4** | 北向持股变化 | `fact_northbound_daily` | 下一步 |
+| **D5** | 回购 / 解禁标签 | `capital_client` 已拉 akshare | 下一步 |
+| D6 | 同期拥挤度 | `fact_institution_event` 自聚合 | 待做 |
+| D7 | 机构近期 EV（**连续特征**，不做黑白名单） | cohort 自动生成 | 待做 |
+
+**注意 D7**：用户明确反对硬黑白名单（机构是动态的）。正确做法是把"机构近 N 月 EV"作为**连续数值特征**喂给 Qlib，让模型自己学权重。
+
+---
+
+## 7. 当前待做（接上这条链继续）
+
+**Step 1 · 边做边验** ✅ D1+D3+D5 已完成
+- D1 股东人数 YoY ≤30%  → +1.93pp
+- D2 合同负债 YoY：数据只 10% 覆盖，跳过（留给 Qlib）
+- D3 业绩预告利润 YoY ≥20% → +9.22pp（最强）
+- D4 北向资金：fact_northbound_daily 0 行，跳过
+- D5 180d 解禁 ≤5%：风险规避
+
+**Step 2 · 前端参数全量可调（下一轮做）**
+- 扩展 `signals-view.js` 的"参数"抽屉面板
+- 让所有 `DEFAULT_CONFIG` 键都 UI 可改（新增 6 个参数都要覆盖）
+- 改完立即重跑 cohort 展示新 edge
+- 关键：**没有硬编码，所有阈值都可调**
+
+**Step 3 · Qlib 重训（下一轮做）**
+- 把 D1-D5 全部作为特征喂进 `qlib_follow_engine.extract_training_matrix`
+- 加 D6 拥挤度（peer_count_same_quarter 已在骨架里）
+- 加 D7 机构近期 EV（**连续特征**，不做黑白名单）
+- 加 D2 合同负债 YoY 作为特征（即使稀疏，让模型学 NaN handling）
+- 跑训练看 IC 能否从 -0.009 提到 > 0.05
+
+**Step 4 · 视图整合（下一轮做）**
+- 股票 + 信号合并为一个 tab + 胶囊筛选
+- 机构研究简化为 track record 成绩单
+- 工作台只保留 DAG / 日志 / 审计
+
+**Step 5 · 实盘观察（下下轮）**
+- n=128 是 2.2% cohort 子集，方差大
+- 上线后跟半年看 WR 是否稳在 70%+
+- 否则回调 D3 阈值或加更多特征
+
+---
+
+## 8. 关键配置（都在 app_settings 以 signals.v2.* 前缀）
+
+```python
+DEFAULT_CONFIG = {
+    "horizon_days": 60,                    # 持有期，对齐 fact_institution_event.gain_60d 列
+    "min_sample": 10,                      # 长窗口最小样本
+    "ev_threshold_pct": 5.0,               # follow EV 门槛
+    "win_threshold": 0.55,                 # follow 胜率门槛
+    "prefer_same_industry_min_sample": 10, # 同行业子集门槛
+    "signal_freshness_days": 90,           # 今日信号窗口
+    "cooldown_days": 90,                   # ★ 严谨左切，不能动（防 look-ahead）
+    "short_window_days": 365,              # 短口径窗口
+    "short_min_sample": 5,                 # 短口径最小样本
+    "max_premium_pct": 15.0,               # 硬规则：溢价上限
+    "min_hold_ratio": 0.3,                 # 硬规则：占流通股下限
+    "inst_type_blacklist": "基金,国家队",    # 硬规则：机构类型黑名单
+    "inst_type_preferred": "牛散,券商,社保,QFII,北向",  # 优势类型（未实装）
+    # D1-D5 新增
+    "max_holder_yoy_pct": 30.0,            # D1 股东人数 YoY 上限 (%) — 99999 = 不启用
+    "min_forecast_profit_yoy": 20.0,       # D3 业绩预告利润 YoY 下限 (%) — -9999 = 不启用
+    "max_unlock_ratio_180d": 5.0,          # D5 180 天解禁上限 (%) — 99999 = 不启用
+}
+```
+
+**所有参数** 都通过 `/api/signals/config` GET / POST 可读可改。下一轮要做的：前端抽屉把所有键都开出来。
+
+---
+
+## 9. Git / 环境
+
+**主分支**：`claude/affectionate-wing-5ce5ce` (worktree 路径: `/Users/dp/Documents/M/stock/.claude/worktrees/affectionate-wing-5ce5ce/`)
+
+**最近 commits**：
+```
+47d2639 feat(signals_v2): 多维度硬规则过滤 + OOS edge +0.82pp→+2.06pp
+2b0f85c feat(signals_v2): 严谨左切 + 双口径 KNN + Qlib 骨架
+c9ba3e7 perf(signals_v2): build_today_signals 40s→2s
+b7a9dd1 feat(signals_v2): 反馈闭环 + 机构多周期对比
+ba04202 feat(signals_v2): 极简跟随信号引擎 — 第一性原理重构
+```
+
+**PR**: https://github.com/dare2live/chunky-monkey-v2/pull/new/claude/affectionate-wing-5ce5ce
+
+---
+
+## 10. ⚠️ 技术陷阱清单（下一轮 claude 看清楚）
+
+### A. DB 连接路径
+- worktree 的 `data/` 需要是 symlink 指向 `/Users/dp/Documents/M/stock/data/`
+- 每次 commit 前 `rm data && git checkout HEAD -- data/`，commit 后再 `ln -sf /Users/dp/Documents/M/stock/data data`
+- 否则 git 会以为 `data/qlib_data/*` 等跟踪文件被删除
+
+### B. uvicorn 端口管理
+- main 项目在 8000（用户 start.command 启动）
+- 我的 worktree 在 8001（我的 start-signals-v2.command）
+- 共享同一个 DB
+- 启动前用 `pkill -f "uvicorn.*8001"` 清理
+- 看日志 `/tmp/signals_v2_api.log`
+
+### C. Preview MCP 沙盒限制
+- **不能跑 Python** uvicorn（site-packages 的 h11/httptools 被 sandbox 阻断 import）
+- **必须用 Node** 做静态 + 反向代理
+- 配置在 `.claude/launch.json`（已 gitignored）
+- 端口 8080 代理 → 8001 后端
+
+### D. Chrome MCP
+- 经常 "not connected"，要用户手动 chrome://extensions 重启扩展
+- 原因：扩展 service worker 休眠
+- native host log: `~/Library/Logs/Claude/chrome-native-host.log`
+
+### E. 回测性能优化
+- 原始每事件独立 SQL 会慢 20-40 秒
+- 必须一次性 SQL 预加载所有相关机构历史 + 内存 KNN 查找
+- 具体见 `signals_v2.py` 的 `_filter_history_for_decision`
+
+### F. 日期格式不一
+- `fact_institution_event.notice_date` 是 `YYYYMMDD`（无分隔符）
+- 其他地方可能是 `YYYY-MM-DD`
+- 字符串比较时必须用 `_shift_date()` 归一化
+- SQLite `date()` 函数对 YYYYMMDD 不工作！要自己拼 `substr || '-' || substr`
+
+### G. 左切严谨度（**不能动**）
+- `cooldown_days = 90` 是防 look-ahead bias 的底线
+- 设为 0 会让 Follow edge 虚假膨胀 +5pp（V0 vs V3 差距就是这个）
+- 任何人想改这个都要**先读 signals_v2_baseline_v2.md 再说**
+
+---
+
+## 11. 下一轮 claude 第一句话应该说什么
+
+推荐开场：
+
+> 我读了 docs/HANDOFF.md，了解项目背景。当前是 V5a 默认配置（OOS edge +2.06pp）。
+> 用户上一轮要求：边做边验 D1-D5 数据源深挖，参数全前端可调，机构表现做连续特征不做黑白名单。
+> 我从 D1（股东人数 YoY）开始，实现后立即跑 cohort_recent_matured 看 edge 变化。
+
+然后：
+1. 先跑一遍 `pytest tests/test_signals_v2.py` 确认 26 测试通过
+2. 启动 `start-signals-v2.command`（或直接 `uvicorn main:app --port 8001`）
+3. 实现 D1，跑 `cohort_recent_matured(conn, config=cfg_with_D1)` 对比 baseline
+4. 如 edge 提升 ≥ 0.3pp 留下；否则回滚
+5. 下一个 D2
+
+---
+
+## 12. 待解答的开放问题
+
+1. **D4 北向资金**：`fact_northbound_daily` 有数据吗？需先确认
+2. **D5 回购/解禁**：`capital_client` 拉的数据入哪张表了？
+3. **D7 机构近期 EV 如何定义**：滚动 2 年 or 4 年？是 ev_60d_all 还是按行业分？
+4. **Qlib 重训**：能否在 R²>0 之前就上线作为"第二意见"？
+5. **前端参数面板**：目前只展示了 6 个参数，需要扩展到全部 DEFAULT_CONFIG
+
+这些都是待和用户讨论的点。
+
+---
+
+完。
