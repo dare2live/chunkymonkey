@@ -2522,6 +2522,17 @@
     el('btnStop').style.display = 'none';
   }
 
+  // Step 5 任务 B：从"3 列 × 19 卡片密铺"改为"3 组折叠行表"，
+  // 默认折叠到三行概览，有 failed/partial/running 的组自动展开。
+  var STEP_STATUS_ICON = {
+    completed: '✓', partial: '!', failed: '✗', blocked: '◌',
+    running: '↻', pending: '○', skipped: '⊘', stopped: '■', idle: '○'
+  };
+  var STEP_STATUS_LABEL = {
+    completed: '完成', partial: '有缺口', failed: '失败', blocked: '阻断',
+    running: '运行中', pending: '等待执行', skipped: '本轮跳过', stopped: '已停止', idle: ''
+  };
+
   function renderStepGrid(steps) {
     if (!steps || !steps.length) { el('stepGrid').innerHTML = ''; return; }
 
@@ -2530,106 +2541,105 @@
       gen_events: 'calc', calc_returns: 'calc', calc_financial_derived: 'calc',
       build_current_rel: 'mart', build_profiles: 'mart', build_industry_stat: 'mart', build_trends: 'mart', calc_screening: 'mart', calc_sector_momentum: 'mart', build_external_attention: 'mart', build_stage_features: 'mart', build_forecast_features: 'mart', calc_inst_scores: 'mart', calc_stock_scores: 'mart'
     };
-    // 单点定义：每列的身份（序号 + 名称 + 操作动词 + 步骤总数）
-    // CSS 颜色由 .data-col / .calc-col / .mart-col 各自的 --col-color 提供
     var GROUP_DEF = {
-      data: { name: '数据获取', verb: '同步数据', count: 5, badge: '①' },
+      data: { name: '数据获取', verb: '重新同步', count: 5, badge: '①' },
       calc: { name: '事实计算', verb: '全量计算', count: 3, badge: '②' },
       mart: { name: '集市构建', verb: '重构集市', count: 11, badge: '③' }
     };
     var grouped = { data: [], calc: [], mart: [] };
-
     steps.forEach(function (s) {
       var g = GROUP_MAP[s.step_id] || 'mart';
       grouped[g].push(s);
     });
 
+    // 保留用户手动展开状态（每次重渲染时读取 <details open>）
+    var prevOpen = {};
+    el('stepGrid').querySelectorAll('details[data-group]').forEach(function (d) {
+      prevOpen[d.dataset.group] = d.open;
+    });
+
     var html = '';
     ['data', 'calc', 'mart'].forEach(function (gId) {
-      var cardsHtml = grouped[gId].map(function (s) {
-        var cardStatus = s.display_status || s.status || 'idle';
-        var color = STATUS_COLORS[cardStatus] || '#e2e8f0';
-        var statusText = { completed: '完成', partial: '有缺口', failed: '失败', blocked: '阻断', running: '运行中', pending: '等待执行', skipped: '本轮跳过', stopped: '已停止', idle: '' }[cardStatus] || '';
-        if (_stopRequestedUi && cardStatus === 'running') statusText = '停止中';
+      var groupSteps = grouped[gId];
+      var def = GROUP_DEF[gId];
+      var counts = { completed: 0, failed: 0, partial: 0, running: 0, skipped: 0, stopped: 0, blocked: 0, pending: 0, idle: 0 };
+      groupSteps.forEach(function (s) { counts[s.status || 'idle'] = (counts[s.status || 'idle'] || 0) + 1; });
+      var total = def.count;
+      var completedN = counts.completed;
+      var failedN = counts.failed + counts.partial + counts.blocked;
+      var runningN = counts.running;
+
+      // 折叠策略：有失败/运行中 → 强制展开；否则保留上次状态，首次渲染默认折叠
+      var shouldOpen = (failedN > 0 || runningN > 0);
+      if (!shouldOpen && prevOpen[gId] !== undefined) shouldOpen = prevOpen[gId];
+
+      // 组摘要状态色
+      var groupTone = failedN > 0 ? 'bad' : runningN > 0 ? 'running' : completedN === total ? 'ok' : 'pending';
+      var summaryBits = [];
+      summaryBits.push(completedN + '/' + total);
+      if (runningN > 0) summaryBits.push(runningN + ' 运行中');
+      if (failedN > 0) summaryBits.push(failedN + ' 需关注');
+      if (counts.skipped > 0) summaryBits.push(counts.skipped + ' 跳过');
+
+      var rowsHtml = groupSteps.map(function (s) {
+        var st = s.display_status || s.status || 'idle';
+        var color = STATUS_COLORS[st] || '#cbd5e1';
+        var icon = STEP_STATUS_ICON[st] || '○';
+        var label = STEP_STATUS_LABEL[st] || '';
+        if (_stopRequestedUi && st === 'running') label = '停止中';
         var timeStr = fmtTime(s.finished_at || s.started_at);
+        var recordStr = s.records ? fmt(s.records) + ' 条' : '';
         var detailHtml = s.step_id === 'sync_market_data'
           ? renderMarketSyncDetail(s)
-          : (s.step_id === 'sync_industry'
-            ? renderIndustrySyncDetail(s)
+          : (s.step_id === 'sync_industry' ? renderIndustrySyncDetail(s)
             : (s.step_id === 'sync_financial' ? renderFinancialSyncDetail(s) : ''));
-        var canShowAction = !!s.actionable;
-        var actionable = canShowAction && !_uiRunning;
-        var reasonStr = '';
-        if (s.error && !s.detail && !['completed', 'partial', 'idle'].includes(cardStatus)) {
-          reasonStr = '<div style="font-size:10px;color:' + ((cardStatus === 'failed') ? '#ef4444' : '#f59e0b') + ';margin-top:2px">' + esc(normalizeStepReason(s)).substring(0, 40) + '</div>';
-        }
-        var auditHtml = (s.audit_notes || []).map(function (note) {
+        var auditInline = (s.audit_notes || []).map(function (note) {
           var formatted = formatAuditNote(note);
-          var noteColor = formatted.tone === 'issue' ? '#ef4444' : '#64748b';
-          return '<div style="font-size:10px;color:' + noteColor + ';margin-top:2px">' + formatted.html + '</div>';
+          var nc = formatted.tone === 'issue' ? '#ef4444' : '#64748b';
+          return '<span class="step-row-audit" style="color:' + nc + '">' + formatted.html + '</span>';
         }).join('');
+        var reasonStr = '';
+        if (s.error && !s.detail && !['completed', 'partial', 'idle'].includes(st)) {
+          reasonStr = '<span class="step-row-error" style="color:' + (st === 'failed' ? '#ef4444' : '#f59e0b') + '">' + esc(normalizeStepReason(s)).substring(0, 60) + '</span>';
+        }
+        var canShowAction = !!s.actionable && !_uiRunning;
         var actionHtml = canShowAction
-          ? '<button type="button" class="btn-sm step-card-action-btn" data-step-id="' + esc(s.step_id) + '" data-step-name="' + esc(s.step_name || s.step_id) + '"' + (_uiRunning ? ' disabled title="当前有任务在运行，暂不可并行执行"' : '') + '>' + esc(s.action_label || '单独补跑') + '</button>'
-          : '';
-        var toneClass = '';
-        if (cardStatus === 'partial' || cardStatus === 'failed') toneClass = ' audit-issue';
-        else if (cardStatus === 'completed') toneClass = ' audit-ok';
-        else if (cardStatus === 'blocked' || cardStatus === 'skipped' || cardStatus === 'stopped') toneClass = ' audit-warn';
-        var stepDesc = s.desc || '';
-        return '<div class="step-card ' + esc(cardStatus) + toneClass + (actionable ? ' actionable' : '') + '" style="border-top:3px solid ' + color + '"' +
-          (actionable ? ' data-step-id="' + esc(s.step_id) + '" data-step-name="' + esc(s.step_name || s.step_id) + '" tabindex="0" role="button" title="' + esc(s.action_label || '单独补跑') + '"' : '') + '>' +
-          '<div class="step-card-head"><div>' +
-          '<div style="font-size:12px;font-weight:600;min-width:0">' + esc(s.step_name || s.step_id) + '</div>' +
-          '</div>' + actionHtml + '</div>' +
-          '<div style="font-size:11px;color:' + color + '">' + statusText + '</div>' +
-          (cardStatus === 'idle' && stepDesc ? '<div class="step-card-desc">' + esc(stepDesc) + '</div>' : '') +
-          (s.records ? '<div style="font-size:11px;color:#64748b">' + fmt(s.records) + '条</div>' : '') +
-          detailHtml +
-          auditHtml +
-          (timeStr ? '<div style="font-size:10px;color:#94a3b8;margin-top:2px">' + timeStr + '</div>' : '') +
-          reasonStr + '</div>';
+          ? '<button type="button" class="btn-text step-row-action" data-step-id="' + esc(s.step_id) + '" data-step-name="' + esc(s.step_name || s.step_id) + '">补跑</button>'
+          : '<span class="step-row-action-placeholder"></span>';
+
+        var rowCls = 'step-row step-row-' + esc(st);
+        return '<div class="' + rowCls + '">' +
+          '<span class="step-row-icon" style="color:' + color + '">' + icon + '</span>' +
+          '<span class="step-row-name">' + esc(s.step_name || s.step_id) + '</span>' +
+          '<span class="step-row-label" style="color:' + color + '">' + esc(label) + '</span>' +
+          '<span class="step-row-meta">' + (recordStr ? esc(recordStr) + ' · ' : '') + (timeStr ? esc(timeStr) : '') + '</span>' +
+          '<span class="step-row-notes">' + auditInline + reasonStr + '</span>' +
+          actionHtml +
+          '</div>' +
+          (detailHtml ? '<div class="step-row-detail">' + detailHtml + '</div>' : '');
       }).join('');
 
-      var def = GROUP_DEF[gId];
-      var total = def.count;
-      var completedCount = grouped[gId].filter(function (s) { return s.status === 'completed'; }).length;
-      var statText = total + '步 · ' + completedCount + '/' + total + ' 完成';
-
-      html += '<div class="step-group-col ' + gId + '-col">' +
-        '<div class="step-group-header">' +
-        '<div class="group-title">' +
-        '<span class="group-badge" aria-hidden="true">' + def.badge + '</span>' +
-        '<span class="group-name">' + def.name + '</span>' +
-        '<button type="button" class="step-group-run-btn" data-group="' + gId + '"' + (_uiRunning ? ' disabled' : '') + '>' + def.verb + '</button>' +
-        '</div>' +
-        '<div class="group-stats">' + statText + '</div>' +
-        '</div>' +
-        '<div class="step-group-cards">' + cardsHtml + '</div>' +
-        '</div>';
+      html += '<details class="step-group step-group-' + gId + ' step-group-tone-' + groupTone + '" data-group="' + gId + '"' + (shouldOpen ? ' open' : '') + '>' +
+        '<summary class="step-group-summary">' +
+          '<span class="step-group-badge">' + def.badge + '</span>' +
+          '<span class="step-group-name">' + def.name + '</span>' +
+          '<span class="step-group-stats">' + summaryBits.join(' · ') + '</span>' +
+          '<button type="button" class="btn-outline step-group-run-btn" data-group="' + gId + '"' + (_uiRunning ? ' disabled' : '') + '>' + def.verb + '</button>' +
+        '</summary>' +
+        '<div class="step-group-body">' + rowsHtml + '</div>' +
+      '</details>';
     });
 
     el('stepGrid').innerHTML = html;
 
     el('stepGrid').querySelectorAll('.step-group-run-btn').forEach(function (btn) {
-      btn.addEventListener('click', function () {
+      btn.addEventListener('click', function (e) {
+        e.preventDefault(); e.stopPropagation();
         if (_uiRunning) return;
         runGroup(btn.dataset.group, btn.textContent);
       });
     });
-
-    el('stepGrid').querySelectorAll('.step-card.actionable').forEach(function (card) {
-      card.addEventListener('click', function (e) {
-        if (e.target.closest('.step-card-action-btn') || e.target.closest('.step-group-run-btn')) return;
-        runSingleStep(card.dataset.stepId, card.dataset.stepName);
-      });
-      card.addEventListener('keydown', function (e) {
-        if (e.key === 'Enter' || e.key === ' ') {
-          e.preventDefault();
-          runSingleStep(card.dataset.stepId, card.dataset.stepName);
-        }
-      });
-    });
-    el('stepGrid').querySelectorAll('.step-card-action-btn').forEach(function (btn) {
+    el('stepGrid').querySelectorAll('.step-row-action').forEach(function (btn) {
       btn.addEventListener('click', function (e) {
         e.stopPropagation();
         runSingleStep(btn.dataset.stepId, btn.dataset.stepName);

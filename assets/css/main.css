@@ -1399,6 +1399,170 @@ select {
   cursor: not-allowed;
 }
 
+/* ============================================================
+   Step 5 任务 B · 数据管线新 UI（折叠组 + 紧凑行）
+   ============================================================ */
+#stepGrid {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.step-group {
+  background: #fff;
+  border: 1px solid #e5e7eb;
+  border-radius: 10px;
+  overflow: hidden;
+  border-left: 3px solid transparent;
+}
+.step-group-tone-ok      { border-left-color: #10b981; }
+.step-group-tone-running { border-left-color: #3b82f6; }
+.step-group-tone-pending { border-left-color: #cbd5e1; }
+.step-group-tone-bad     { border-left-color: #ef4444; background: #fef9f9; }
+.step-group-summary {
+  list-style: none;
+  cursor: pointer;
+  user-select: none;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 14px;
+  font-size: 13px;
+}
+.step-group-summary::-webkit-details-marker { display: none; }
+.step-group-summary::before {
+  content: "▸";
+  color: #94a3b8;
+  font-size: 10px;
+  transition: transform 0.15s;
+  width: 10px;
+  flex-shrink: 0;
+}
+.step-group[open] > .step-group-summary::before { transform: rotate(90deg); }
+.step-group-summary:hover { background: #f8fafc; }
+.step-group-badge {
+  font-size: 14px;
+  font-weight: 700;
+  color: #1e40af;
+  width: 18px;
+}
+.step-group-name {
+  font-weight: 600;
+  color: #0f172a;
+  min-width: 70px;
+}
+.step-group-stats {
+  flex: 1;
+  font-size: 12px;
+  color: #64748b;
+  font-variant-numeric: tabular-nums;
+}
+.step-group-tone-bad .step-group-stats {
+  color: #b91c1c;
+  font-weight: 500;
+}
+.step-group-summary .step-group-run-btn {
+  padding: 4px 12px;
+  font-size: 12px;
+}
+.step-group-body {
+  border-top: 1px solid #f1f5f9;
+  padding: 4px 0;
+}
+.step-row {
+  display: grid;
+  grid-template-columns: 20px 160px 70px 1fr auto auto;
+  gap: 10px;
+  align-items: center;
+  padding: 6px 14px 6px 32px;
+  font-size: 12px;
+  border-top: 1px solid transparent;
+}
+.step-row:hover { background: #f8fafc; }
+.step-row + .step-row { border-top-color: #f1f5f9; }
+.step-row-icon {
+  font-size: 14px;
+  text-align: center;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+.step-row-running .step-row-icon {
+  animation: step-row-spin 1.2s linear infinite;
+  display: inline-block;
+}
+@keyframes step-row-spin {
+  from { transform: rotate(0deg); }
+  to   { transform: rotate(360deg); }
+}
+.step-row-name {
+  font-weight: 500;
+  color: #0f172a;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.step-row-label {
+  font-size: 11px;
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+}
+.step-row-meta {
+  font-size: 11px;
+  color: #94a3b8;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.step-row-notes {
+  font-size: 11px;
+  color: #64748b;
+  max-width: 360px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  justify-self: end;
+}
+.step-row-audit + .step-row-audit,
+.step-row-audit + .step-row-error {
+  margin-left: 6px;
+}
+.step-row-action {
+  font-size: 11px;
+  padding: 2px 10px;
+  background: transparent;
+  border: 1px solid #cbd5e1;
+  border-radius: 4px;
+  color: #475569;
+  cursor: pointer;
+}
+.step-row-action:hover { background: #e2e8f0; color: #0f172a; }
+.step-row-action-placeholder {
+  display: inline-block;
+  width: 44px;
+  height: 1px;
+}
+.step-row-detail {
+  padding: 4px 14px 8px 52px;
+  font-size: 11px;
+  color: #64748b;
+  border-top: 1px dashed #f1f5f9;
+  background: #fafbfc;
+}
+.step-row-failed { background: #fef2f2; }
+.step-row-failed:hover { background: #fee2e2; }
+.step-row-partial { background: #fffbeb; }
+.step-row-partial:hover { background: #fef3c7; }
+.step-row-running { background: #eff6ff; }
+.step-row-running:hover { background: #dbeafe; }
+
+@media (max-width: 780px) {
+  .step-row {
+    grid-template-columns: 20px 1fr auto auto;
+    gap: 6px;
+  }
+  .step-row-meta, .step-row-notes { display: none; }
+}
+
 .step-mini-progress {
   margin-top: 8px;
   height: 5px;
