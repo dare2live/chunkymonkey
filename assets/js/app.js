@@ -838,42 +838,45 @@
       return;
     }
     _stockListLoadingPromise = (async function () {
+      // Step 5 任务 C：股票列表并行拉 signals_v2/today，按 stock_code 索引注入每行，
+      // 让"信号"列直接展示 signals_v2 当期 action 而非 legacy setup_tag。
       var results = await Promise.all([
         api('/api/inst/stock-trends'),
-        loadIndustryOverviewSummary().catch(function () { return null; })
+        loadIndustryOverviewSummary().catch(function () { return null; }),
+        api('/api/signals/today?freshness_days=90&limit=2000').catch(function () { return null; }),
+        api('/api/inst/watchlist').catch(function () { return null; }),
       ]);
       var r = results[0];
       var industry = results[1];
+      var sig = results[2];
+      var watchlist = results[3];
       stockListState.setData(r?.data || []);
       stockListState.setSummary(r?.summary || null);
       var stockData = stockListState.getData();
-      // 并行加载选股结果、板块动量和双重确认，再合并到股票列表
-      try {
-        var [screenR, sectorR, dualConfirmR] = await Promise.all([
-          api('/api/screening/results?limit=5000'),
-          api('/api/screening/sector-momentum'),
-          api('/api/screening/dual-confirm')
-        ]);
-        if (screenR?.ok && screenR.data) {
-          var screenMap = {};
-          screenR.data.forEach(function (s) { screenMap[s.stock_code] = s; });
-          stockData.forEach(function (s) { s._screen = screenMap[s.stock_code] || null; });
-        }
-        if (sectorR?.ok && sectorR.data) {
-          var sectorMap = {};
-          sectorR.data.forEach(function (s) { sectorMap[s.sector_name] = s; });
-          stockData.forEach(function (s) {
-            var ind = s.tdx_l1 || s.setup_industry_name;
-            var sm = ind ? sectorMap[ind] : null;
-            s._sector_trend = sm ? sm.trend_state : null;
-          });
-        }
-        if (dualConfirmR?.ok && dualConfirmR.data) {
-          var dualMap = {};
-          dualConfirmR.data.forEach(function (d) { if (d.dual_confirm) dualMap[d.stock_code] = true; });
-          stockData.forEach(function (s) { s._dual_confirm = dualMap[s.stock_code] || false; });
-        }
-      } catch (e) { }
+      // 按 stock_code 取"最近一条 follow > watch > skip"的 signal 合并
+      var sigByStock = {};
+      if (sig && Array.isArray(sig.signals)) {
+        var rank = { follow: 0, watch: 1, skip: 2 };
+        sig.signals.forEach(function (ev) {
+          var code = ev.stock_code;
+          if (!code) return;
+          var prev = sigByStock[code];
+          var prevRank = prev ? (rank[prev.action] != null ? rank[prev.action] : 9) : 9;
+          var currRank = rank[ev.action] != null ? rank[ev.action] : 9;
+          if (currRank < prevRank) {
+            sigByStock[code] = ev;
+          } else if (currRank === prevRank && prev && String(ev.notice_date || '') > String(prev.notice_date || '')) {
+            sigByStock[code] = ev;
+          } else if (!prev) {
+            sigByStock[code] = ev;
+          }
+        });
+      }
+      var wlSet = new Set((watchlist?.data || []).map(function (w) { return w.stock_code; }));
+      stockData.forEach(function (s) {
+        s._sig_v2 = sigByStock[s.stock_code] || null;
+        s._in_watchlist = wlSet.has(s.stock_code);
+      });
       stockData.forEach(decorateStockSearchBlob);
       if (industry?.data) industryViewState.setData(industry.data || []);
       if (industry?.summary) industryViewState.setSummary(industry.summary || null);
@@ -1048,57 +1051,57 @@
     if (filterArea) { filterArea.innerHTML = renderStockFilters(); bindStockFilters(); }
 
     var c = el('stockListContainer');
-    var emptyCols = 8;
-    var colgroup = '<colgroup><col style="width:130px"><col style="width:110px"><col style="width:140px"><col style="width:180px"><col style="width:100px"><col style="width:100px"><col style="width:70px"><col style="width:110px"></colgroup>';
-    var head = '<tr><th>股票</th><th>信号 / 执行</th><th>来源 / 行业</th><th>综合评分</th><th>报告期</th><th>公告</th><th title="当前持仓机构总数 (其中可跟家数)">机构</th><th>标签</th></tr>';
+    // Step 5 任务 C + F：head/row 严格对齐为 7 列，信号列从 legacy setup_tag 换成 signals_v2 action。
+    // 删除 4 个单独 score 维度 / 标签列 / 来源机构列 / 报告期列（冗余或 legacy）。
+    var emptyCols = 7;
+    var colgroup = '<colgroup><col style="width:140px"><col style="width:160px"><col style="width:130px"><col style="width:100px"><col style="width:120px"><col style="width:80px"><col style="width:90px"></colgroup>';
+    var head = '<tr><th>股票</th><th>当期信号</th><th>行业</th><th>综合评分</th><th>最近公告</th><th title="当前持仓机构总数 (其中可跟家数)">机构</th><th></th></tr>';
+    var TDX_L1_NAMES_TBL = {
+      T01: '能源', T02: '材料', T03: '日常消费', T04: '可选消费',
+      T05: '商贸', T06: '社会服务', T07: '装备制造', T08: '公用事业',
+      T09: '交通运输', T10: '金融', T11: '建筑地产', T12: '信息产业', T13: '综合类'
+    };
+    function signalV2Cell(s) {
+      var ev = s && s._sig_v2;
+      if (!ev) return '<span class="muted" style="font-size:11px">无当期信号</span>';
+      var action = ev.action || 'skip';
+      var badgeMap = {
+        follow: { text: '可跟', bg: '#dcfce7', fg: '#166534' },
+        watch:  { text: '观察', bg: '#fef3c7', fg: '#92400e' },
+        skip:   { text: '不跟', bg: '#f1f5f9', fg: '#64748b' },
+      };
+      var bd = badgeMap[action] || badgeMap.skip;
+      var badge = '<span style="background:' + bd.bg + ';color:' + bd.fg + ';font-size:10px;font-weight:600;padding:2px 8px;border-radius:3px">' + bd.text + '</span>';
+      var evLong = ev.long && ev.long.stats;
+      var evShort = ev.short && ev.short.stats;
+      var evLine = '';
+      if (evLong && evLong.ev_pct != null) {
+        var sign = evLong.ev_pct >= 0 ? '+' : '';
+        var color = evLong.ev_pct >= 5 ? '#059669' : evLong.ev_pct < 0 ? '#dc2626' : '#64748b';
+        evLine = '<span style="font-size:11px;color:' + color + ';margin-left:6px">' + sign + evLong.ev_pct.toFixed(1) + '% · n=' + (evLong.n || 0) + '</span>';
+      }
+      return '<div style="line-height:1.4">' + badge + evLine + '<div class="muted" style="font-size:10px">' +
+        esc(ev.institution_name || ev.institution_id || '') + ' · ' + fmtDate(ev.notice_date) + '</div></div>';
+    }
+    function industryCell(s) {
+      var name = TDX_L1_NAMES_TBL[(s.tdx_l1 || '').trim()] || s.tdx_l2 || s.tdx_l1 || '—';
+      var sub = (s.tdx_l2 || s.tdx_l3) ? ('<div class="muted" style="font-size:10px">' + esc(s.tdx_l3 || s.tdx_l2 || '') + '</div>') : '';
+      return '<div style="line-height:1.4"><div style="font-size:12px">' + esc(name) + '</div>' + sub + '</div>';
+    }
+    function watchlistButton(s) {
+      var inList = !!s._in_watchlist;
+      if (inList) return '<span class="muted" style="font-size:11px">已在自选</span>';
+      return '<button type="button" class="btn-text stock-watch-btn" data-stock-code="' + esc(s.stock_code) + '" data-stock-name="' + esc(s.stock_name || '') + '" style="font-size:11px;color:#1e40af">+ 加自选</button>';
+    }
     var row = function (s, idx) {
-      // 信号 + 执行档合并
-      var gateHtml = stockGateTag(s);
-      var signalHtml = s.setup_tag
-        ? setupBadge(s.setup_tag, s.setup_priority, s.setup_confidence)
-        : '<span class="muted" style="font-size:11px">' + esc(s.path_state || '-') + '</span>';
-      var signalGateHtml = '<div style="line-height:1.5">' + signalHtml + '<div style="margin-top:3px">' + gateHtml + '</div></div>';
-      var source = stockSourceName(s);
-      var industry = s.setup_industry_name || s.tdx_l3 || s.tdx_l2 || s.tdx_l1 || '';
-      var sourceIndustryHtml = '<div style="line-height:1.5"><div style="font-weight:600;font-size:12px">' + esc(source) + '</div>' +
-        (industry ? '<div style="font-size:11px;color:#94a3b8">' + esc(industry) + '</div>' : '') + '</div>';
-      var reportHtml = fmtDate(s.latest_report_date) + ' ' + daysAgoPill(s.latest_report_date);
-      var noticeHtml = fmtDate(s.latest_notice_date) + ' ' + daysAgoPill(s.latest_notice_date);
-      var scoreHtml = stockCompositeCell(s);
-      // 标签列：选股信号 + 板块动量 + 双重确认
-      var tagParts = [];
-      if (s._screen) {
-        if (s._screen.f1_hit) tagParts.push('<span class="tag tag-sm" style="background:#3b82f6;color:#fff" title="MA突破">F1</span>');
-        if (s._screen.f3_hit) tagParts.push('<span class="tag tag-sm" style="background:#8b5cf6;color:#fff" title="趋势跟踪">F3</span>');
-        if (s._screen.f5_hit) tagParts.push('<span class="tag tag-sm" style="background:#f59e0b;color:#fff" title="MACD金叉">F5</span>');
-      }
-      if (s._dual_confirm) {
-        tagParts.push('<span class="tag tag-sm" style="background:#10b981;color:#fff" title="机构+板块双重确认">双确</span>');
-      } else if (s._sector_trend) {
-        var tc = s._sector_trend === 'bullish' ? '#10b981' : s._sector_trend === 'recovering' ? '#3b82f6' : s._sector_trend === 'weakening' ? '#f59e0b' : '#94a3b8';
-        var trendLabel = { bullish: '\u770b\u591a', recovering: '\u56de\u5347', weakening: '\u8f6c\u5f31', bearish: '\u770b\u7a7a', consolidating: '\u9707\u8361' }[s._sector_trend] || s._sector_trend;
-        tagParts.push('<span style="color:' + tc + ';font-size:11px">' + esc(trendLabel) + '</span>');
-      }
-      var tagsHtml = tagParts.length ? '<div style="display:flex;flex-wrap:wrap;gap:3px">' + tagParts.join('') + '</div>' : '<span class="muted">-</span>';
-      // 机构
-      var holderTotal = (s.holder_total != null) ? s.holder_total : (s.inst_count_t0 || 0);
-      var holderFollow = s.holder_follow_count || 0;
-      var holderHtml = '<span style="font-size:12px;color:#0f172a">' + holderTotal + '</span>' +
-        (holderFollow > 0
-          ? ' <span style="font-size:11px;color:#059669;font-weight:600" title="可跟机构数">(' + holderFollow + ')</span>'
-          : '');
-      return '<tr data-stock-idx="' + idx + '">' +
+      return '<tr data-stock-idx="' + idx + '" data-stock-code="' + esc(s.stock_code) + '">' +
         '<td>' + stockCell(s.stock_code, s.stock_name) + '</td>' +
-        '<td>' + stockResearchCell(s) + '</td>' +
-        '<td data-sort-value="' + esc(String(s.latest_report_date || '')) + '">' + stockDateSummaryCell(s.latest_report_date) + '</td>' +
+        '<td>' + signalV2Cell(s) + '</td>' +
+        '<td data-sort-value="' + esc((s.tdx_l1 || '')) + '">' + industryCell(s) + '</td>' +
+        '<td data-sort-value="' + esc(String(s.composite_priority_score != null ? s.composite_priority_score : -1)) + '">' + stockCompositeCell(s) + '</td>' +
         '<td data-sort-value="' + esc(String(s.latest_notice_date || '')) + '">' + stockDateSummaryCell(s.latest_notice_date) + '</td>' +
         '<td data-sort-value="' + esc(String(s.holder_total != null ? s.holder_total : (s.inst_count_t0 || 0))) + '">' + stockHolderCoverageCell(s) + '</td>' +
-        '<td data-sort-value="' + esc(String(stockScoreValue(s, 'discovery') != null ? stockScoreValue(s, 'discovery') : -1)) + '">' + stockDimensionCell(s, 'discovery') + '</td>' +
-        '<td data-sort-value="' + esc(String(stockScoreValue(s, 'quality') != null ? stockScoreValue(s, 'quality') : -1)) + '">' + stockDimensionCell(s, 'quality') + '</td>' +
-        '<td data-sort-value="' + esc(String(stockScoreValue(s, 'stage') != null ? stockScoreValue(s, 'stage') : -1)) + '">' + stockDimensionCell(s, 'stage') + '</td>' +
-        '<td data-sort-value="' + esc(String(stockScoreValue(s, 'forecast') != null ? stockScoreValue(s, 'forecast') : -1)) + '">' + stockDimensionCell(s, 'forecast') + '</td>' +
-        '<td data-sort-value="' + esc(String(s.composite_priority_score != null ? s.composite_priority_score : -1)) + '">' + stockCompositeCell(s) + '</td>' +
-        '<td data-sort-value="' + esc(String(screeningHitCount(s._screen))) + '">' + tagsHtml + '</td>' +
+        '<td>' + watchlistButton(s) + '</td>' +
         '</tr>';
     };
     var sourceData = stockListState.getData() || [];
@@ -1149,7 +1152,23 @@
     var container = el('stockListContainer');
     if (!container || container.dataset.detailBound === '1') return;
     container.dataset.detailBound = '1';
-    container.addEventListener('click', function (event) {
+    container.addEventListener('click', async function (event) {
+      // Step 5 任务 C：拦截"+ 加自选"按钮点击
+      var watchBtn = event.target.closest('.stock-watch-btn');
+      if (watchBtn) {
+        event.stopPropagation();
+        var code = watchBtn.dataset.stockCode;
+        var name = watchBtn.dataset.stockName;
+        try {
+          await api('/api/inst/watchlist', { method: 'POST', body: JSON.stringify({ stock_code: code, stock_name: name }) });
+          watchBtn.outerHTML = '<span class="muted" style="font-size:11px">已在自选</span>';
+          // 同步更新 stockListState 里对应 row 的 _in_watchlist
+          stockListState.getData().forEach(function (s) { if (s.stock_code === code) s._in_watchlist = true; });
+        } catch (e) {
+          showToast('加入自选失败: ' + e.message, 'error');
+        }
+        return;
+      }
       if (event.target.closest('[onclick],a,button,input,textarea,select,label')) return;
       var row = event.target.closest('tr[data-stock-code]');
       if (!row || !container.contains(row)) return;
