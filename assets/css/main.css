@@ -5412,6 +5412,34 @@ tr.detail-row>td>.detail-panel {
 .sig-cap-btn.sig-cap-active .muted { color: #c7d2fe; }
 .sig-caps-clear { align-self: flex-end; margin-top: 2px; }
 
+/* Signals v2 · 视角切换（事件 / 股票聚合） */
+.sig-viewmode {
+  display: inline-flex; align-items: center; gap: 6px; margin-top: 8px;
+  font-size: 12px;
+}
+.sig-vm-btn {
+  font-size: 12px; padding: 3px 10px;
+  border: 1px solid #cbd5e1; background: #fff; color: #475569;
+  border-radius: 6px; cursor: pointer; transition: all 0.15s;
+}
+.sig-vm-btn:hover { background: #f1f5f9; }
+.sig-vm-btn.sig-vm-active {
+  background: #0f172a; color: #fff; border-color: #0f172a;
+}
+
+/* Signals v2 · 股票聚合视角 · 共识条 */
+.sig-consensus-bar {
+  display: flex; height: 6px; border-radius: 3px; overflow: hidden;
+  background: #f1f5f9;
+}
+.sig-consensus-f { background: #16a34a; }
+.sig-consensus-w { background: #f59e0b; }
+.sig-consensus-s { background: #cbd5e1; }
+.sig-consensus-legend {
+  font-size: 10px; margin-top: 3px; display: flex; gap: 4px;
+}
+.sig-stock-row td { vertical-align: middle; }
+
 /* Signals v2 · 参数面板内嵌 cohort 反馈 */
 .sig-config-cohort {
   margin: 0 14px 14px; padding: 10px 14px;

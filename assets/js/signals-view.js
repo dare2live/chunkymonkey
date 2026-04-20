@@ -31,6 +31,7 @@
     currentFreshness: 90,
     filterIndustries: new Set(),   // Set<string> of TDX L1 codes; empty = all
     filterInstTypes: new Set(),    // Set<string>; empty = all
+    viewMode: 'event',             // 'event' | 'stock'
     loading: false,
   };
 
@@ -105,6 +106,11 @@
             <button class="${tabClass('all')}" data-filter="all">全部 · ${totalShown}</button>
           </div>
           <div class="sig-summary-hint muted">近 ${s.freshness_days || state.currentFreshness} 天 buy 事件；历史 EV、胜率基于该机构/该行业严格早于事件公告日的数据</div>
+          <div class="sig-viewmode">
+            <span class="muted">视角</span>
+            <button class="sig-vm-btn${state.viewMode === 'event' ? ' sig-vm-active' : ''}" data-viewmode="event">事件</button>
+            <button class="sig-vm-btn${state.viewMode === 'stock' ? ' sig-vm-active' : ''}" data-viewmode="stock">股票聚合</button>
+          </div>
         </div>
         <div class="sig-summary-right">
           <label class="sig-inline">
@@ -271,11 +277,143 @@
     `;
   }
 
+  function aggregateByStock(events) {
+    const groups = new Map();
+    events.forEach(ev => {
+      const key = ev.stock_code;
+      if (!groups.has(key)) {
+        groups.set(key, {
+          stock_code: ev.stock_code,
+          stock_name: ev.stock_name,
+          industry: ev.industry,
+          events: [],
+          institutions: new Set(),
+          actions: { follow: 0, watch: 0, skip: 0 },
+        });
+      }
+      const g = groups.get(key);
+      g.events.push(ev);
+      g.institutions.add(ev.institution_id);
+      if (g.actions[ev.action] !== undefined) g.actions[ev.action] += 1;
+    });
+    const out = Array.from(groups.values()).map(g => {
+      const premiums = g.events.map(e => e.premium_pct).filter(v => v != null);
+      const shortEVs = g.events.map(e => e.short && e.short.stats && e.short.stats.ev_pct).filter(v => v != null);
+      const longEVs = g.events.map(e => e.long && e.long.stats && e.long.stats.ev_pct).filter(v => v != null);
+      const avg = (arr) => arr.length ? arr.reduce((a,b)=>a+b,0) / arr.length : null;
+      const best = (arr) => arr.length ? Math.max(...arr) : null;
+      // priority event: follow > watch > skip, then most recent notice_date
+      const rank = { follow: 0, watch: 1, skip: 2 };
+      const sorted = [...g.events].sort((a, b) => {
+        const ra = rank[a.action] ?? 9; const rb = rank[b.action] ?? 9;
+        if (ra !== rb) return ra - rb;
+        return String(b.notice_date || '').localeCompare(String(a.notice_date || ''));
+      });
+      const topEvent = sorted[0];
+      return {
+        ...g,
+        inst_count: g.institutions.size,
+        ev_count: g.events.length,
+        premium_avg: avg(premiums),
+        short_ev_best: best(shortEVs),
+        long_ev_best: best(longEVs),
+        top_action: topEvent.action,
+        top_event_id: topEvent.event_id,
+        top_inst_id: topEvent.institution_id,
+        latest_notice: sorted.reduce((m, e) => {
+          const d = String(e.notice_date || '');
+          return d > m ? d : m;
+        }, ''),
+      };
+    });
+    // sort: follow count desc, then inst_count desc, then latest_notice desc
+    out.sort((a, b) => {
+      if (b.actions.follow !== a.actions.follow) return b.actions.follow - a.actions.follow;
+      if (b.inst_count !== a.inst_count) return b.inst_count - a.inst_count;
+      return String(b.latest_notice).localeCompare(String(a.latest_notice));
+    });
+    return out;
+  }
+
+  function consensusBar(actions) {
+    const total = actions.follow + actions.watch + actions.skip;
+    if (!total) return '';
+    const f = Math.round(actions.follow / total * 100);
+    const w = Math.round(actions.watch / total * 100);
+    const s = Math.max(0, 100 - f - w);
+    return `
+      <div class="sig-consensus-bar" title="Follow ${actions.follow} · Watch ${actions.watch} · Skip ${actions.skip}">
+        <div class="sig-consensus-f" style="width:${f}%"></div>
+        <div class="sig-consensus-w" style="width:${w}%"></div>
+        <div class="sig-consensus-s" style="width:${s}%"></div>
+      </div>
+      <div class="sig-consensus-legend muted">
+        <span class="sig-pos">${actions.follow}</span>·<span>${actions.watch}</span>·<span class="muted">${actions.skip}</span>
+      </div>
+    `;
+  }
+
+  function renderStockRow(agg) {
+    const premCell = agg.premium_avg == null ? '-' : fmtPct(agg.premium_avg);
+    const shortCell = agg.short_ev_best == null ? '-' : fmtPct(agg.short_ev_best);
+    const longCell = agg.long_ev_best == null ? '-' : fmtPct(agg.long_ev_best);
+    return `
+      <tr class="sig-row sig-stock-row"
+          data-event-id="${encodeURIComponent(agg.top_event_id)}"
+          data-inst-id="${encodeURIComponent(agg.top_inst_id)}">
+        <td>
+          <div class="sig-stock"><b>${esc(agg.stock_code)}</b> ${esc(agg.stock_name || '')}</div>
+          <div class="muted sig-industry">${esc(TDX_L1_NAMES[agg.industry] || agg.industry || '—')}</div>
+        </td>
+        <td class="sig-num">${agg.inst_count}<div class="muted sig-sub">${agg.ev_count} 事件</div></td>
+        <td style="width:140px">${consensusBar(agg.actions)}</td>
+        <td class="sig-num">${premCell}</td>
+        <td class="sig-num">${shortCell}</td>
+        <td class="sig-num">${longCell}</td>
+        <td><span class="muted sig-sub">${fmtDate(agg.latest_notice)}</span></td>
+        <td style="white-space:nowrap"><button class="sig-btn sig-btn-sm sig-detail-btn">代表事件</button></td>
+      </tr>
+    `;
+  }
+
+  function renderStockTable(events) {
+    if (events.length === 0) {
+      const hasCapFilter = state.filterIndustries.size > 0 || state.filterInstTypes.size > 0;
+      return `<div class="sig-empty">${hasCapFilter ? '（当前胶囊筛选下）' : ''}无匹配股票</div>`;
+    }
+    const aggs = aggregateByStock(events);
+    return `
+      <div class="sig-table-wrap">
+        <table class="sig-table">
+          <thead>
+            <tr>
+              <th>股票</th>
+              <th class="sig-num" style="width:90px" title="去重机构数 · 总事件数">机构 / 事件</th>
+              <th style="width:160px" title="Follow / Watch / Skip 事件数分布">共识</th>
+              <th class="sig-num" style="width:80px">平均溢价</th>
+              <th class="sig-num" style="width:100px">最佳近期 EV</th>
+              <th class="sig-num" style="width:100px">最佳长期 EV</th>
+              <th style="width:90px">最近事件</th>
+              <th style="width:90px"></th>
+            </tr>
+          </thead>
+          <tbody>
+            ${aggs.map(renderStockRow).join('')}
+          </tbody>
+        </table>
+      </div>
+    `;
+  }
+
   function renderSignalsTable() {
     const afterCaps = applyCapsuleFilters(state.signals);
     const filtered = state.currentFilter === 'all'
       ? afterCaps
       : afterCaps.filter(s => s.action === state.currentFilter);
+
+    if (state.viewMode === 'stock') {
+      return renderStockTable(filtered);
+    }
 
     if (filtered.length === 0) {
       const hasCapFilter = state.filterIndustries.size > 0 || state.filterInstTypes.size > 0;
@@ -393,6 +531,12 @@
         refreshFiltersAndTable();
       });
     });
+    root.querySelectorAll('[data-viewmode]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        state.viewMode = btn.dataset.viewmode;
+        refreshFiltersAndTable();
+      });
+    });
     rebindFilters();
     rebindTable();
   }
@@ -409,6 +553,12 @@
     document.querySelectorAll('.sig-tab').forEach(btn => {
       btn.addEventListener('click', () => {
         state.currentFilter = btn.dataset.filter;
+        refreshFiltersAndTable();
+      });
+    });
+    document.querySelectorAll('[data-viewmode]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        state.viewMode = btn.dataset.viewmode;
         refreshFiltersAndTable();
       });
     });
