@@ -1,7 +1,7 @@
 # 交接文档 · signals_v2 开发上下文
 
 > **这份文档给下一个 claude 读**。把它放在对话最前面，读完就能接着推进。
-> 最后更新：2026-04-20（D8 完成 · 前端 7 维点灯 · `inst_type_preferred` 死代码退役）
+> 最后更新：2026-04-20（Step 5 视图整合收尾 · 4 主 tab 定型 · 后端 6 模块清理 · 数据管线 UI 重塑）
 
 ---
 
@@ -9,63 +9,43 @@
 
 用户反复强调的几件事，如果忽略了会被"骂"：
 
-1. **禁止硬编码阈值 = 禁止人工定行业白名单**。所有"异质性"问题（合同负债、溢价、股东变化等）都交给 Qlib + 行业 onehot 特征，让模型自己学。不要自作聪明写 `CONTRACT_LIAB_APPLICABLE_INDUSTRIES = {...}` 这种白名单。
+1. **禁止硬编码阈值 = 禁止人工定行业白名单**。所有"异质性"问题（合同负债、溢价、股东变化等）都交给 Qlib + 行业 onehot 特征，让模型自己学。
 2. **参数全前端可调**。新增任何阈值都要走 `DEFAULT_CONFIG` + app_settings + 前端面板。
 3. **机构不做黑白名单**，只做连续特征喂 Qlib。
 4. **边做边验**：每加一个维度跑 cohort 看 edge。
 5. **诚实面对数字**：look-ahead bias（cooldown_days=90 底线）不能再翻车。
+6. **视图删除 > 视图新增**。2026-04-20 Step 5 大减法：legacy 候选池 / 股票评分框架 / setup 追踪 / 海龟 / 外部关注 / qlib 一级 tab / 行业背景 tab 全部撤下。发现新信号的唯一入口是「信号」tab；深挖单股去「股票」；看机构 track record 去「机构」；运维去「工作台」。
 
-### 当前实情澄清（2026-04-19）
+### 当前实情澄清（2026-04-20 — 替代 04-19 老版）
 
-- **行业分类已于 Phase 2 全量切到通达信 TDX**。dim_stock_industry 已 DROP，取而代之的 dim_stock_tdx_industry 存 tdx_l1/l2/l3 (code) + tdx_l1_name/l2_name/l3_name (中文)。
-- V6 当前 edge +14.44pp / WR 80% / n=128 的历史 cohort 是在 SW 分组下得到的；后续再跑 cohort 请改用 TDX 三级分类，复核 edge。
+- **事件规模**：`fact_institution_event` 从 29,684 扩到 **56,326**（buy 31,015，其中 gain_60d 已观察 **29,684**，成熟率 95.7%）
+- **V6 cohort edge 缩水**：原 +14.44pp（n=128，SW 分组）→ Phase A 复核后 **+10.64pp（n=91，TDX 分组）**；**79/91=87% 样本集中在 2025-Q4 一个季度**，全量历史 edge 为 -1.32pp。V6 仍作为主力硬规则，但 UI 上已用「季度分布」胶囊诚实披露集中度（见 signals_v2 cohort 卡片）
+- **Qlib follow 模型确认封存**：Phase 4a-c + Phase A2 共 4 轮训练，合同负债覆盖从 68% 提到 88% 对 IC 无改善，最佳 IC 仍在 -0.02 附近。`qlib_follow_engine.py` 代码 + model artifacts 保留，不挂前端。
+- **D8 调研硬规则默认禁用**：两个口径都负向（全量 -7.30pp / cohort -2.98pp）。待覆盖窗口扩到 12 月+ 再复评
+- **前端导航**：6 tab → 4 tab。「信号」「机构」「股票」「工作台」。Qlib 降到工作台折叠区实验室
+- **后端清理**：2026-04-20 一轮删 6 个 legacy service（quality_feature_engine / stock_archetype_engine / setup_tracker / setup_validation / setup_replay / stock_validation）+ 7 个对应测试，共 7218 行代码
 
-### Cohort 行业分布健康度（5696 事件）
+### 下轮开场行动（Step 5 收尾后接下来）
 
-前 10 行业占比 60%，分布相对均衡（没有被某一两个行业主导），这对 Qlib 训练友好：
-
-```
-电子     633 (11%)  机械设备 567 (10%)  医药生物 479 (8%)
-电力设备 433 (8%)   基础化工 404 (7%)   计算机   337 (6%)
-汽车     334 (6%)   有色金属 202 (4%)   传媒     170 (3%)
-公用事业 163 (3%)   ...
-```
-
-银行/保险/非银金融也都有样本（只是数量较小）。**适合 Qlib 直接训，不必预先裁剪行业**。
-
-### 下轮开场行动（新顺序）
+已经没有"马上必做"的数据/模型任务；剩下都是时间/样本积累性质：
 
 ```
-A. 跑 GPCW sync 补齐合同负债数据（5-10 分钟）
-   from services.tdx_affair_client import sync_gpcw_files
-   from services.db import get_conn
-   sync_gpcw_files(get_conn(), quarters=12)
+A. 实盘观察（Step 6，跨半年）
+   V6 n=91 是 cohort 的 1.6% 子集，79/91 集中在 2025-Q4 单季度。
+   上线半年内跟踪 WR 是否稳在 70%+；如果翻车再回炉调阈值。
 
-B. 验证合同负债字段落库
-   sqlite3 data/smartmoney.db \
-     "SELECT COUNT(*) FROM raw_gpcw_detail WHERE contract_liabilities_wan IS NOT NULL"
+B. D8 窗口扩充复评（Step 7，等数据累积）
+   当前 raw_institution_surveys 覆盖 2025-10-22 → 2026-04-17 约 6 月。
+   扩到 12 月+ 后重跑 cohort：判断"调研活跃 ≠ 超额"结论是否稳定。
+   若翻转，考虑启用 min_survey_count_90d > 0。
 
-C. ★ Qlib 重训为主路径（不预设行业白名单）
-   扩展 qlib_follow_engine.extract_training_matrix 加入：
-     - contract_liabilities_yoy（D2，由 C 步提供）
-     - sw_level1 one-hot (31 bit)   ← 关键：类别特征让 Qlib 学行业交互
-     - D1 holder_count_yoy（已有）
-     - D5 future_unlock_ratio_180d（已有）
-     - D6 peer_count_same_quarter
-     - D7 机构近期 EV（连续值）
-     - D8 survey_count_90d（需先入库 akshare stock_jgdy_tj_em）
-   跑训练看 IC 能否从 -0.009 提到 > 0.05
-   关键：不要人工写"哪些行业用哪些阈值"，让 LightGBM 自己学
-
-D. 如果 Qlib IC 仍 < 0.05：
-   考虑方案 B · 行业内 z-score（仍不是硬白名单，而是归一化）
-   如果 C 中 Qlib 成功：方案 B/C 都不需要
-
-E. 独立任务（不依赖上面）
-   - Step 2 前端参数全量可调
-   - 行业切换到 tdxhub block
-   - 视图整合
+C. 文档/配置最终精简（可选）
+   - HANDOFF 本身已是 v2，若再攒一轮改动可以 rewrite
+   - app_settings 已经 16 键齐全；没有新增需求
+   - 后端路由审计：setup-replay/*/backtest 是否能再减
 ```
+
+如果没有新想法，建议直接跑实盘观察（A）。代码层面系统已经干净。
 
 ---
 
@@ -161,25 +141,23 @@ start-signals-v2.command       启动 worktree 后端 (8001)
 
 ## 4. Baseline 演进历史（数字是真相）
 
-| 版本 | 关键改动 | OOS cohort Follow EV | vs Blind edge | WR | n |
-|------|---------|-------------------|---------------|------|---|
-| V0 | 原始 KNN，无 cooldown | +7.40% | +3.67pp (虚假!) | 59% | 4597 |
-| V1 | 加 cooldown_days=90 | +2.13% | -1.70pp | 45% | 4454 |
-| V3 | V1+V2 = 真严谨双口径 | +8.15% | +0.82pp | 58% | 1576 |
-| V4 | +硬规则 (prem≤20) | +9.08% | +1.75pp | 63% | 1179 |
-| V5a | +prem≤15 (硬规则收紧) | +9.39% | +2.06pp | 64% | 1042 |
-| **V6** | **+D1 max_yoy=30 + D3 min_fc=20 + D5 max_unlock=5** | **+21.77%** | **+14.44pp** | **80%** | 128 |
+| 版本 | 关键改动 | OOS cohort Follow EV | vs Blind edge | WR | n | 分组 |
+|------|---------|-------------------|---------------|------|---|---|
+| V0 | 原始 KNN，无 cooldown | +7.40% | +3.67pp (虚假!) | 59% | 4597 | SW |
+| V1 | 加 cooldown_days=90 | +2.13% | -1.70pp | 45% | 4454 | SW |
+| V3 | V1+V2 = 真严谨双口径 | +8.15% | +0.82pp | 58% | 1576 | SW |
+| V4 | +硬规则 (prem≤20) | +9.08% | +1.75pp | 63% | 1179 | SW |
+| V5a | +prem≤15 (硬规则收紧) | +9.39% | +2.06pp | 64% | 1042 | SW |
+| V6 | +D1 max_yoy=30 + D3 min_fc=20 + D5 max_unlock=5 | +21.77% | +14.44pp | 80% | 128 | SW |
+| **V7** | **V6 配置不变，新数据复核（TDX 分组）** | **+17.97%** | **+10.64pp** | **71%** | **91** | **TDX** |
 
-完整 cohort：2025-07-23 ~ 2026-01-19, n=5696 buy 事件, Blind EV=+7.33%
+**V7 复核** Phase A（2026-04-20 · signals_v2_baseline_v4.md）：
+- 样本扩到 56,326 事件 / 29,684 buy 成熟后，V6 edge 缩水 **-26%**（+14.44 → +10.64）
+- follow 样本 **79/91 = 87% 集中于 2025-Q4 单季度**；其他季度样本稀疏
+- **V6 全量历史 edge 是 -1.32pp**（HANDOFF v1 未披露；近 180d cohort 为正但历史大段时间负 edge）
+- V6 仍作主力硬规则（cohort edge 显著），但 cohort 卡片已用季度分布诚实披露集中度
 
-**V6 说明**（2026-04-19）：深挖三个 GPCW 未用字段后获得显著 alpha 突破：
-- D1 股东人数 YoY ≤30%（筹码集中度）：单独贡献 +1.93pp
-- D3 业绩预告利润 YoY ≥20%（真增长）：单独贡献 +9.22pp ← 最强
-- D5 未来 180 日解禁 ≤5%（风险规避）：微弱贡献
-
-n=128 看似少但每季度 ~30-40 个信号对用户而言够用。EV +21.77% / 60d ≈ 年化 130%+（理论值，未考虑重叠持仓）。
-
-**警示**：n=128 相对 5696 cohort 是 2.2% 的子集，方差不小。实盘跑半年才能确认稳定。
+完整 cohort（Phase A 重跑）：近 180d 成熟样本 n=5696（不变），Blind EV=+7.33%
 
 ---
 
@@ -432,21 +410,31 @@ event.cl_yoy_zscore = (stock_yoy - ind_mean) / ind_std
 - as-of 过滤：survey.notice_date ≤ event.notice_date；窗口 90d
 - **覆盖起始日前的事件→None**（避免数据缺失被误判为"冷门"）
 
-**Step 4 · Qlib 第二意见** 🟡 部分完成（Phase 4a-c 实验结论确定）
-- Phase 4a+b+c：特征 16 维→38 维、+行业内 z-score、Valid IC 仍 -0.02
-- 结论：Qlib follow 模型在当前 30K 样本密度下无法突破 IC=0 线
-- **定位调整**：不追求合成评分，保留骨架 + 模型存储，定位"第二意见"展示（不强制融合）
-- **剩余**：前端独立 tile 展示 `qlib_prediction`（独立任务，不阻塞主路径）
+**Step 4 · Qlib 第二意见** ✅ 封存（Phase 4a-c + Phase A2 共 4 轮）
+- 合同负债覆盖 68% → 88% 对 IC 无改善；最佳 IC 仍在 -0.02
+- 结论：Qlib follow 模型在 30K 样本密度下无法突破 IC=0 线
+- `qlib_follow_engine.py` 骨架保留，前端不挂 tile（IC≈0 展示会误导）
+- 训练控制台入口降级到工作台高级区折叠区
 
-**Step 5 · 视图整合**（独立大任务，留给专门轮次）
-- 股票 + 信号合并为一个 tab + 胶囊筛选
-- 机构研究简化为 track record 成绩单
-- 工作台只保留 DAG / 日志 / 审计
+**Step 5 · 视图整合** ✅ 完成（2026-04-20 一轮完成 5a-5f 共 8+ 个 commit）
+落地清单：
+- 5a 行业 + 机构类型胶囊筛选（commit 92f38114）
+- 5b 股票聚合视角（commit c397a6b2）
+- 5c 股票抽屉展开该股所有事件（commit d3c64b2f）
+- **后端 6 模块清理** — 删 legacy/setup/stock-validation 共 7218 行（ff1a25a9）
+- **5d 工作台重塑** — 从候选池展示改为运维控制台（4 层信息密度）（6af1a2f9）
+- **5e 股票视图瘦身** — 6 tab → 3 tab，banner 去 legacy 定位（9726f3c5）
+- 任务 1-4：机构抽屉追加 signals track record（21f7f458）/ 股票筛选条 10 组 → 3 组（94a5ee91）
+  / 工作台事件成熟卡真实数字（46270b80）/ app.js legacy 函数删除 696 行（48aef72f）
+- 任务 A-F：pytest skip guard（0e9de223）/ 数据管线 UI 折叠行表（534fe4ee）
+  / 股票表格 11 列 → 7 列 + signals_v2 action（0292cb18）/ AppListState 清理（08b62598）
 
-**Step 6 · 实盘观察**（下下轮）
-- V6 n=128 是 5696 cohort 的 2.2% 子集，方差大
-- 上线后跟半年看 WR 是否稳在 70%+
-- 否则回调 D3 阈值或加更多特征
+主视图最终结构：4 tab 股东挖掘（信号 / 机构 / 股票 / 工作台）+ ETF group（不变）
+
+**Step 6 · 实盘观察**（下一步主要任务，跨半年）
+- V6 n=91 是近 180d cohort 的 1.6% 子集，79/91=87% 集中于 2025-Q4 单季度
+- 全量历史 edge -1.32pp vs 近 180d +10.64pp 的巨大反差提示「可能过拟合近期行情」
+- 上线后跟踪 WR 是否稳在 70%+；如果翻车回炉调 D3 阈值或松绑某条规则
 
 **Step 7 · D8 窗口扩充复评**（待数据累积）
 - 当前覆盖 2025-10-22 → 2026-04-17（约 6 月）
@@ -486,18 +474,27 @@ DEFAULT_CONFIG = {
 
 ## 9. Git / 环境
 
-**工作分支**：`main`（从 Phase 5 起所有 signals_v2 改动直接落 main；worktree `distracted-wilson-b532cd` 仅作隔离工作目录，不承载最终 commits）
+**工作分支**：`main`（每个 commit 直接 push origin HEAD:main，不保留 feature 分支；worktree 只做隔离工作目录，commit 完即删）
 
-**最近 commits**（截至 2026-04-20）：
+**最近 commits**（截至 2026-04-20 · Step 5 视图整合全部收尾）：
 ```
-007b543c feat: D8 机构调研入库 + 第 7 维硬规则通路
-bee1ccf9 feat(signals_v2): Step 2.5 — 硬规则 breakdown 展示 + 参数面板即时 cohort 反馈
-6d50702d feat(signals_v2): 前端参数面板暴露全 16 键（Step 2）
-2e547e62 feat: Phase 4c — 行业内 z-score 特征 + Phase 4 最终结论
-68e4288c feat: Phase 4a — qlib_follow_engine 接入 D1-D8 + TDX L1 one-hot
-9a3b140e refactor: Phase 3d-4 — 清除 SW 兜底最终残留
-daba59eb refactor: Phase 3d-3 — 完成 SW→TDX 最终迁移 + 修 merge artifact
+08b62598 refactor: 任务 D — AppListState legacy state 方法删除
+0292cb18 feat: 任务 C + F — 股票表格重构为 7 列（signals_v2 action + 加自选）
+534fe4ee feat: 任务 B — 数据管线 UI 从 19 卡片密铺改为折叠行表
+0e9de223 test: 任务 A — pytest 预存 fail 转 skip guard
+48aef72f feat: Step 5 任务 4 — app.js legacy 函数批量删除 696 行
+46270b80 feat: Step 5 任务 3 — 工作台「事件成熟」卡接入真实 endpoint
+94a5ee91 feat: Step 5 任务 2 — 股票筛选条瘦身 10 组 → 3 组 + 行业过滤新增
+21f7f458 feat: Step 5 任务 1 — 机构抽屉追加 signals v2 track record tile
+9726f3c5 feat: Step 5e 股票视图瘦身 — banner 重塑 + 6 tab → 3 tab
+6af1a2f9 feat: Step 5d 视图整合 — 工作台重塑 + 机构简化 + Qlib 降级
+ff1a25a9 refactor: 子步 1 — 后端清理 legacy/setup/stock-validation 共 6 模块
+8e335a76 feat(signals_v2): Phase B0 — cohort 卡片按季度拆分 follow 分布
+24289a34 feat(signals_v2): Phase A 基准复核 — V6 edge +10.64pp / Qlib IC -0.025 封存
 ```
+
+本轮净改动：前端 app.js 7781 行 → ~6400 行（-17%）/ 后端 -7218 行 legacy / 新增 2 endpoint
+（/api/signals/events/stats 和 signals_v2.cohort.quarterly 字段）
 
 **仓库**: https://github.com/dare2live/chunky-monkey-v2（main 分支）
 
@@ -550,28 +547,32 @@ daba59eb refactor: Phase 3d-3 — 完成 SW→TDX 最终迁移 + 修 merge artif
 
 推荐开场：
 
-> 我读了 docs/HANDOFF.md，了解项目背景。当前是 V5a 默认配置（OOS edge +2.06pp）。
-> 用户上一轮要求：边做边验 D1-D5 数据源深挖，参数全前端可调，机构表现做连续特征不做黑白名单。
-> 我从 D1（股东人数 YoY）开始，实现后立即跑 cohort_recent_matured 看 edge 变化。
+> 我读了 docs/HANDOFF.md，了解项目背景。当前主力 V6 硬规则（Phase A 复核后 cohort edge +10.64pp，n=91，87% 集中于 2025-Q4）。
+> Step 5 视图整合 2026-04-20 一轮完整收尾：4 tab 前端定型（信号/机构/股票/工作台），后端清 7218 行 legacy。
+> 代码层面系统已干净，剩下都是数据/时间积累性质任务。
 
 然后：
-1. 先跑一遍 `pytest tests/test_signals_v2.py` 确认 26 测试通过
-2. 启动 `start-signals-v2.command`（或直接 `uvicorn main:app --port 8001`）
-3. 实现 D1，跑 `cohort_recent_matured(conn, config=cfg_with_D1)` 对比 baseline
-4. 如 edge 提升 ≥ 0.3pp 留下；否则回滚
-5. 下一个 D2
+1. 先核对 `ls -la data` 是否 symlink 正确，否则跑 `rm -rf data && ln -sf /Users/dp/Documents/M/stock/data data`
+2. 跑 `pytest backend/tests/` 确认 257 passed / 2 skipped（不是 failed）
+3. 启动 `start-signals-v2.command`（或直接 `cd backend && python3 -m uvicorn main:app --port 8001`）
+4. 启动 preview：`mcp__Claude_Preview__preview_start signals-preview`
+5. 如果用户没有新需求，建议打开信号 v2 跟踪当前 follow 信号实盘表现（Step 6）
+6. 如果用户有新功能想加，先问：这个是"发现新信号" / "深挖单股" / "看机构" / "运维" 哪一类？对应 4 tab 之一
 
 ---
 
 ## 12. 待解答的开放问题
 
-1. **D4 北向资金**：`fact_northbound_daily` 有数据吗？需先确认
-2. **D5 回购/解禁**：`capital_client` 拉的数据入哪张表了？
-3. **D7 机构近期 EV 如何定义**：滚动 2 年 or 4 年？是 ev_60d_all 还是按行业分？
-4. **Qlib 重训**：能否在 R²>0 之前就上线作为"第二意见"？
-5. **前端参数面板**：目前只展示了 6 个参数，需要扩展到全部 DEFAULT_CONFIG
+大多数 v1 时期的问题已闭环：
 
-这些都是待和用户讨论的点。
+| 历史问题 | 2026-04-20 结论 |
+|---|---|
+| D4 北向资金：表有数据吗？ | `fact_northbound_daily` 0 行，跳过 |
+| D5 回购/解禁 | `dim_capital_behavior_latest.future_unlock_ratio_180d`（D5 硬规则生效）|
+| Qlib 重训：能在 IC>0 前上线？ | 不能，4 次重训 IC 均 <0，封存不挂前端 |
+| 前端参数面板只暴露 6 个？ | 已 16 键全暴露（Step 2）|
+
+**当前没有待解答的开放问题**。如果有新的，在这里补。
 
 ---
 
