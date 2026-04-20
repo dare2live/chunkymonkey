@@ -4796,6 +4796,18 @@
   // ============================================================
   // Network Connectivity Check
   // ============================================================
+  function normalizeSourceName(detail, fallback) {
+    if (!detail) return fallback;
+    var s = String(detail).trim();
+    // 抽取实际源名，去掉 HTTP 状态码 / IP / 端口 / 括号尾注
+    if (/^HTTP\s*\d+$/i.test(s)) return fallback;
+    s = s.split(/[\s(（]/)[0];                 // 去掉括号说明
+    s = s.replace(/_[\d.]+:\d+$/, '');         // tdxhub_218.6.170.47:7709 → tdxhub
+    s = s.replace(/:\d+$/, '');                // host:port → host
+    // 项目自维护 tdxhub 源统一展示为 tdxhub（底层 python 包名仍为 mootdx）
+    if (/^mootdx$/i.test(s)) s = 'tdxhub';
+    return s || fallback;
+  }
   function setSourcePill(id, name, online, detail, pending) {
     var pill = el(id);
     if (!pill) return;
@@ -4822,9 +4834,12 @@
       primeNetworkPills();
       return;
     }
-    setSourcePill('sourcePillHoldings', '股东源', !!r.holdings_source, r.holdings_source_detail, false);
-    setSourcePill('sourcePillKline', 'K线源', !!r.kline_source, r.kline_source_detail, false);
-    setSourcePill('sourcePillIndustry', '行业源', !!r.industry_source, r.industry_source_detail, false);
+    setSourcePill('sourcePillHoldings', '股东源', !!r.holdings_source,
+      normalizeSourceName(r.holdings_source_detail, 'akshare'), false);
+    setSourcePill('sourcePillKline', 'K线源', !!r.kline_source,
+      normalizeSourceName(r.kline_source_detail, 'tdxhub'), false);
+    setSourcePill('sourcePillIndustry', '行业源', !!r.industry_source,
+      normalizeSourceName(r.industry_source_detail, 'tdxhub'), false);
   }
 
   // ============================================================
