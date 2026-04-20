@@ -5439,6 +5439,19 @@ tr.detail-row>td>.detail-panel {
   font-size: 10px; margin-top: 3px; display: flex; gap: 4px;
 }
 .sig-stock-row td { vertical-align: middle; }
+.sig-stock-detail-btn { background:#0f172a; color:#fff; border:none; padding:4px 10px; border-radius:4px; cursor:pointer; font-size:11px; }
+.sig-stock-detail-btn:hover { background:#1e293b; }
+
+/* Signals v2 · 股票抽屉（5c） */
+.sig-stock-drawer-summary {
+  display:flex; flex-direction:column; gap:10px;
+  background:#f8fafc; border:1px solid #e2e8f0; border-radius:8px; padding:12px;
+}
+.sig-stock-drawer-consensus { display:flex; flex-direction:column; gap:4px; }
+.sig-stock-drawer-kpis { display:flex; flex-wrap:wrap; gap:18px; font-size:13px; }
+.sig-stock-event-row:hover td { background:#f1f5f9; }
+.sig-stock-event-open { background:#1e40af; color:#fff; border:none; padding:3px 8px; border-radius:3px; cursor:pointer; font-size:11px; }
+.sig-stock-event-open:hover { background:#2563eb; }
 
 /* Signals v2 · 参数面板内嵌 cohort 反馈 */
 .sig-config-cohort {

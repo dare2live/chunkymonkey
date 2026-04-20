@@ -32,6 +32,7 @@
     filterIndustries: new Set(),   // Set<string> of TDX L1 codes; empty = all
     filterInstTypes: new Set(),    // Set<string>; empty = all
     viewMode: 'event',             // 'event' | 'stock'
+    stockAggIndex: new Map(),      // stock_code -> agg（5c 抽屉用）
     loading: false,
   };
 
@@ -359,6 +360,7 @@
     const longCell = agg.long_ev_best == null ? '-' : fmtPct(agg.long_ev_best);
     return `
       <tr class="sig-row sig-stock-row"
+          data-stock-code="${esc(agg.stock_code)}"
           data-event-id="${encodeURIComponent(agg.top_event_id)}"
           data-inst-id="${encodeURIComponent(agg.top_inst_id)}">
         <td>
@@ -371,7 +373,7 @@
         <td class="sig-num">${shortCell}</td>
         <td class="sig-num">${longCell}</td>
         <td><span class="muted sig-sub">${fmtDate(agg.latest_notice)}</span></td>
-        <td style="white-space:nowrap"><button class="sig-btn sig-btn-sm sig-detail-btn">代表事件</button></td>
+        <td style="white-space:nowrap"><button class="sig-btn sig-btn-sm sig-stock-detail-btn">查看事件</button></td>
       </tr>
     `;
   }
@@ -382,6 +384,7 @@
       return `<div class="sig-empty">${hasCapFilter ? '（当前胶囊筛选下）' : ''}无匹配股票</div>`;
     }
     const aggs = aggregateByStock(events);
+    state.stockAggIndex = new Map(aggs.map(a => [a.stock_code, a]));
     return `
       <div class="sig-table-wrap">
         <table class="sig-table">
@@ -606,6 +609,11 @@
         const iid = decodeURIComponent(row.dataset.instId);
         await showDetail(eid, iid);
       });
+      row.querySelector('.sig-stock-detail-btn')?.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const code = row.dataset.stockCode;
+        if (code) showStockDetail(code);
+      });
     });
   }
 
@@ -630,6 +638,92 @@
       area.innerHTML = `<div class="sig-drawer"><div class="sig-drawer-head"><h3>加载失败</h3><button class="sig-btn sig-btn-ghost" id="sigCloseDetail">关闭</button></div><div class="sig-empty">${esc(e.message)}</div></div>`;
       el('sigCloseDetail').addEventListener('click', () => area.innerHTML = '');
     }
+  }
+
+  // ─── 股票抽屉：聚合行展开查看该股所有事件（5c）─────────────────
+
+  function showStockDetail(stockCode) {
+    const agg = state.stockAggIndex.get(stockCode);
+    const area = el('sigDetailArea');
+    if (!agg) {
+      area.innerHTML = `<div class="sig-drawer"><div class="sig-drawer-head"><h3>未找到股票</h3><button class="sig-btn sig-btn-ghost" id="sigCloseDetail">关闭</button></div></div>`;
+      el('sigCloseDetail').addEventListener('click', () => area.innerHTML = '');
+      return;
+    }
+
+    const industry = TDX_L1_NAMES[agg.industry] || agg.industry || '—';
+    const rows = [...agg.events].sort((a, b) => {
+      const rank = { follow: 0, watch: 1, skip: 2 };
+      const ra = rank[a.action] ?? 9;
+      const rb = rank[b.action] ?? 9;
+      if (ra !== rb) return ra - rb;
+      return String(b.notice_date || '').localeCompare(String(a.notice_date || ''));
+    });
+
+    const eventRowsHtml = rows.map(ev => {
+      const shortEV = ev.short && ev.short.stats ? ev.short.stats.ev_pct : null;
+      const longEV = ev.long && ev.long.stats ? ev.long.stats.ev_pct : null;
+      const prem = ev.premium_pct == null ? '-' : fmtPct(ev.premium_pct);
+      return `
+        <tr class="sig-stock-event-row"
+            data-event-id="${encodeURIComponent(ev.event_id)}"
+            data-inst-id="${encodeURIComponent(ev.institution_id)}">
+          <td>${actionBadge(ev.action)}</td>
+          <td><span class="muted sig-sub">${fmtDate(ev.notice_date)}</span></td>
+          <td><b>${esc(ev.institution_name || ev.institution_id || '-')}</b><div class="muted sig-sub">${esc(ev.institution_type || '')}</div></td>
+          <td class="sig-num">${prem}</td>
+          <td class="sig-num">${shortEV == null ? '-' : fmtPct(shortEV)}</td>
+          <td class="sig-num">${longEV == null ? '-' : fmtPct(longEV)}</td>
+          <td><button class="sig-btn sig-btn-sm sig-stock-event-open">详情</button></td>
+        </tr>
+      `;
+    }).join('');
+
+    area.innerHTML = `
+      <div class="sig-drawer">
+        <div class="sig-drawer-head">
+          <h3>${esc(agg.stock_code)} ${esc(agg.stock_name || '')} <span class="muted" style="font-weight:400">· ${esc(industry)} · ${agg.ev_count} 事件 / ${agg.inst_count} 机构</span></h3>
+          <button class="sig-btn sig-btn-ghost" id="sigCloseDetail">关闭</button>
+        </div>
+        <div style="padding:14px">
+          <div class="sig-stock-drawer-summary">
+            <div class="sig-stock-drawer-consensus">${consensusBar(agg.actions)}
+              <div class="sig-consensus-legend muted"><span class="sig-pos">${agg.actions.follow}</span> follow · <span>${agg.actions.watch}</span> watch · <span class="muted">${agg.actions.skip}</span> skip</div>
+            </div>
+            <div class="sig-stock-drawer-kpis">
+              <span><span class="muted">平均溢价</span> ${agg.premium_avg == null ? '-' : fmtPct(agg.premium_avg)}</span>
+              <span><span class="muted">最佳近期 EV</span> ${agg.short_ev_best == null ? '-' : fmtPct(agg.short_ev_best)}</span>
+              <span><span class="muted">最佳长期 EV</span> ${agg.long_ev_best == null ? '-' : fmtPct(agg.long_ev_best)}</span>
+              <span><span class="muted">最近事件</span> ${fmtDate(agg.latest_notice)}</span>
+            </div>
+          </div>
+          <div class="sig-table-wrap" style="margin-top:12px">
+            <table class="sig-table sig-table-sm">
+              <thead>
+                <tr>
+                  <th style="width:60px">档位</th>
+                  <th style="width:90px">公告日</th>
+                  <th>机构</th>
+                  <th class="sig-num" style="width:80px">溢价</th>
+                  <th class="sig-num" style="width:100px">近期 EV</th>
+                  <th class="sig-num" style="width:100px">长期 EV</th>
+                  <th style="width:70px"></th>
+                </tr>
+              </thead>
+              <tbody>${eventRowsHtml}</tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    `;
+    area.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    el('sigCloseDetail').addEventListener('click', () => area.innerHTML = '');
+    area.querySelectorAll('.sig-stock-event-row').forEach(r => {
+      r.querySelector('.sig-stock-event-open')?.addEventListener('click', (e) => {
+        e.stopPropagation();
+        showDetail(decodeURIComponent(r.dataset.eventId), decodeURIComponent(r.dataset.instId));
+      });
+    });
   }
 
   function fmtBreakdownRaw(raw, key) {
