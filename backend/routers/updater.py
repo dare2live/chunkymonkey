@@ -796,9 +796,10 @@ async def _compute_connectivity() -> dict:
                 return False, ""
 
         try:
+            # tdxhub 轮询 117 台服务器，8 秒只够 1~2 台；给 15 秒让它至少能跑 3~4 台
             industry_ok, industry_source = await asyncio.wait_for(
                 asyncio.get_event_loop().run_in_executor(None, _probe),
-                timeout=8,
+                timeout=15,
             )
             payload = {"industry_source": industry_ok}
             if industry_source:
