@@ -1174,169 +1174,36 @@
   function switchStockDim() { renderStockList(); }
 
   // ============================================================
-  // Watchlist
+  // Watchlist 自选股（C1 紧急精简：去掉 setup-validation/tracking/candidates 等 legacy 段）
   // ============================================================
-  function setupReplayGroupLabel(name) {
-    return {
-      baseline_all_buy: '全量买入基线',
-      setup_hit_all: 'Setup 命中',
-      priority_1: 'Setup A1',
-      priority_2: 'Setup A2',
-      priority_3: 'Setup A3',
-      priority_4: 'Setup A4',
-      priority_5: 'Setup A5'
-    }[name] || String(name || '-');
-  }
-  function setupValidationGateCell(gate) {
-    if (!gate) return '<span class="muted">-</span>';
-    if (['follow', 'watch', 'observe', 'avoid'].indexOf(gate) >= 0) return followGateTag(gate, '');
-    return esc(String(gate));
-  }
-  function renderSetupValidationPanel(report) {
-    if (!report) return '';
-    var forward = report.forward || {};
-    var replay = report.replay || {};
-    var latest = forward.latest_snapshot || {};
-    var overall = forward.overall || {};
-    var chain = forward.tracking_chain || {};
-    var decision = report.decision || {};
-    var insights = report.insights || [];
-    var snapshotHistory = forward.snapshot_history || [];
-    var priorityGroups = forward.latest_priority_groups || [];
-    var gateGroups = forward.latest_gate_groups || [];
-    var coreReplayGroups = [];
-    if (replay.baseline) coreReplayGroups.push(replay.baseline);
-    if (replay.setup_hit) coreReplayGroups.push(replay.setup_hit);
-    (replay.priority_groups || []).forEach(function (item) {
-      if (['1', '2', '3'].indexOf(String(item.factor_value || '')) >= 0) coreReplayGroups.push(item);
-    });
-    var setupSnapshotPendingText = snapshotMaturityPendingText(
-      {
-        total_snapshot_days: forward.total_snapshot_days,
-        latest_snapshot_total: latest.total
-      },
-      {
-        matured_10d_count: overall.h10 && overall.h10.matured_count,
-        matured_30d_count: overall.h30 && overall.h30.matured_count,
-        matured_60d_count: overall.h60 && overall.h60.matured_count
-      }
-    );
-    return '<div class="setup-validation-panel">' +
-      '<div class="setup-validation-head">' +
-      '<div>' +
-      '<div class="setup-validation-title">Setup 验证面板</div>' +
-      '<div class="muted" style="font-size:11px;margin-top:4px">把前瞻快照、历史 replay 和评分决策放在同一个判断面里。先确认证据，再决定是否提权。</div>' +
-      '</div>' +
-      '<div class="setup-validation-badge ' + esc(decision.phase3_status || 'defer') + '">' + esc(decision.phase3_status === 'defer' ? 'Phase 3 暂缓' : 'Phase 3 可推进') + '</div>' +
-      '</div>' +
-      '<div class="setup-validation-metrics">' +
-      metric('最新快照', esc(fmtDate(forward.latest_snapshot_date))) +
-      metric('市场最新交易日', esc(fmtDate(chain.market_latest_trade_date))) +
-      metric('快照是否最新', chain.snapshot_is_current ? '是' : '否') +
-      metric('快照日数', fmt(forward.total_snapshot_days || 0)) +
-      metric('最新候选数', fmt(latest.total || 0)) +
-      metric('已成熟10日', fmt(overall.h10 && overall.h10.matured_count || 0)) +
-      metric('已成熟30日', fmt(overall.h30 && overall.h30.matured_count || 0)) +
-      metric('已成熟60日', fmt(overall.h60 && overall.h60.matured_count || 0)) +
-      '</div>' +
-      '<div class="setup-validation-callout ' + esc(decision.phase3_status || 'defer') + '">' +
-      '<div class="setup-validation-callout-title">当前结论</div>' +
-      '<div class="setup-validation-callout-text">' + esc(decision.recommended_action || '-') + '</div>' +
-      ((decision.reasons || []).length ? '<ul class="setup-validation-list">' +
-        decision.reasons.map(function (text) { return '<li>' + esc(text) + '</li>'; }).join('') +
-        '</ul>' : '') +
-      '</div>' +
-      ((insights || []).length ? '<div class="setup-validation-section">' +
-        '<div class="setup-validation-section-title">关键发现</div>' +
-        '<ul class="setup-validation-list">' +
-        insights.map(function (text) { return '<li>' + esc(text) + '</li>'; }).join('') +
-        '</ul>' +
-        '</div>' : '') +
-      '<div class="setup-validation-grid">' +
-      '<div class="setup-validation-card">' +
-      '<div class="setup-validation-section-title">最新快照按优先级</div>' +
-      '<table class="data-table"><thead><tr><th>优先级</th><th>样本</th><th>均综合分</th><th>均Setup分</th><th>成熟30日</th></tr></thead><tbody>' +
-      (priorityGroups.length ? priorityGroups.map(function (item) {
-        return '<tr><td>' + setupBadge('industry_expert_entry', item.group_value, null) + '</td><td>' + fmt(item.total) + '</td><td>' + scoreNum(item.avg_composite_score) + '</td><td>' + (item.avg_setup_score != null ? Number(item.avg_setup_score).toFixed(1) : '-') + '</td><td>' + fmt(item.h30 && item.h30.matured_count || 0) + '</td></tr>';
-      }).join('') : '<tr><td class="empty-row" colspan="5">暂无数据</td></tr>') +
-      '</tbody></table>' +
-      '</div>' +
-      '<div class="setup-validation-card">' +
-      '<div class="setup-validation-section-title">最新快照按执行建议</div>' +
-      '<table class="data-table"><thead><tr><th>执行</th><th>样本</th><th>均综合分</th><th>均Setup分</th><th>成熟30日</th></tr></thead><tbody>' +
-      (gateGroups.length ? gateGroups.map(function (item) {
-        return '<tr><td>' + setupValidationGateCell(item.group_value) + '</td><td>' + fmt(item.total) + '</td><td>' + scoreNum(item.avg_composite_score) + '</td><td>' + (item.avg_setup_score != null ? Number(item.avg_setup_score).toFixed(1) : '-') + '</td><td>' + fmt(item.h30 && item.h30.matured_count || 0) + '</td></tr>';
-      }).join('') : '<tr><td class="empty-row" colspan="5">暂无数据</td></tr>') +
-      '</tbody></table>' +
-      '</div>' +
-      '</div>' +
-      '<div class="setup-validation-section">' +
-      '<div class="setup-validation-section-title">历史 replay 对照</div>' +
-      '<table class="data-table"><thead><tr><th>组别</th><th>样本</th><th>30日均收益</th><th>30日胜率</th><th>30日回撤</th><th>vs基线</th></tr></thead><tbody>' +
-      (coreReplayGroups.length ? coreReplayGroups.map(function (item) {
-        var label = item.group_name ? setupReplayGroupLabel(item.group_name) : ('Setup A' + String(item.factor_value || ''));
-        return '<tr><td>' + esc(label) + '</td><td>' + fmt(item.sample_count) + '</td><td>' + fmtGain(item.avg_gain_30d) + '</td><td>' + pct(item.win_rate_30d) + '</td><td>' + (item.avg_drawdown_30d != null ? '-' + Number(item.avg_drawdown_30d).toFixed(1) + '%' : '-') + '</td><td>' + fmtGain(item.uplift_vs_baseline_30d) + '</td></tr>';
-      }).join('') : '<tr><td class="empty-row" colspan="6">暂无 replay 数据</td></tr>') +
-      '</tbody></table>' +
-      '</div>' +
-      '<div class="setup-validation-section">' +
-      '<div class="setup-validation-section-title">执行建议历史表现</div>' +
-      '<table class="data-table"><thead><tr><th>执行</th><th>样本</th><th>30日均收益</th><th>30日胜率</th><th>30日回撤</th><th>vs基线</th></tr></thead><tbody>' +
-      ((replay.gate_groups || []).length ? replay.gate_groups.map(function (item) {
-        return '<tr><td>' + setupValidationGateCell(item.factor_value) + '</td><td>' + fmt(item.sample_count) + '</td><td>' + fmtGain(item.avg_gain_30d) + '</td><td>' + pct(item.win_rate_30d) + '</td><td>' + (item.avg_drawdown_30d != null ? '-' + Number(item.avg_drawdown_30d).toFixed(1) + '%' : '-') + '</td><td>' + fmtGain(item.uplift_vs_baseline_30d) + '</td></tr>';
-      }).join('') : '<tr><td class="empty-row" colspan="6">暂无历史 gate 数据</td></tr>') +
-      '</tbody></table>' +
-      '</div>' +
-      '<div class="setup-validation-section">' +
-      '<div class="setup-validation-section-title">前瞻快照历史</div>' +
-      (setupSnapshotPendingText ? '<div class="validation-overlap-note">' + esc(setupSnapshotPendingText) + '</div>' : '') +
-      '<table class="data-table"><thead><tr><th>快照日</th><th>样本</th><th>成熟10日</th><th>成熟30日</th><th>成熟60日</th><th>30日均收益</th><th>30日胜率</th></tr></thead><tbody>' +
-      (snapshotHistory.length ? snapshotHistory.map(function (item) {
-        return '<tr><td>' + esc(fmtDate(item.snapshot_date)) + '</td><td>' + fmt(item.total) + '</td><td>' + fmt(item.h10 && item.h10.matured_count || 0) + '</td><td>' + fmt(item.h30 && item.h30.matured_count || 0) + '</td><td>' + fmt(item.h60 && item.h60.matured_count || 0) + '</td><td>' + fmtGain(item.h30 && item.h30.avg_gain) + '</td><td>' + pct(item.h30 && item.h30.win_rate) + '</td></tr>';
-      }).join('') : '<tr><td class="empty-row" colspan="7">暂无快照历史</td></tr>') +
-      '</tbody></table>' +
-      '</div>' +
-      '</div>';
-  }
   async function loadWatchlist() {
-    var rs = await Promise.all([
-      apiCached('/api/inst/watchlist', SHORT_CACHE_TTL_MS),
-      apiCached('/api/inst/candidate-setups', SHORT_CACHE_TTL_MS),
-      apiCached('/api/inst/setup-validation/report', SHORT_CACHE_TTL_MS),
-      apiCached('/api/inst/setup-tracking/snapshots?limit=80', SHORT_CACHE_TTL_MS)
-    ]);
-    var r = rs[0], cands = rs[1], validationReport = rs[2], trackingSnapshots = rs[3];
+    var r = await apiCached('/api/inst/watchlist', SHORT_CACHE_TTL_MS);
     var c = el('watchlistContainer');
-    var sections = [];
-    if (validationReport?.data) sections.push(renderSetupValidationPanel(validationReport.data));
-    var candHead = '<table class="data-table"><thead><tr><th>股票</th><th>核心判断</th><th>执行</th><th>来源机构</th><th>报告期</th><th>池子 / 综合</th></tr></thead><tbody>';
-    if (cands?.data?.length) {
-      sections.push('<div style="margin-bottom:18px"><div style="font-size:14px;font-weight:700;margin-bottom:8px">研究候选</div>' +
-        candHead + cands.data.map(function (s) {
-          return '<tr><td>' + stockCell(s.stock_code, s.stock_name) + '</td><td>' + stockSignalCell(s) + '</td><td>' + stockExecutionCell(s) + '</td><td>' + sourceInstitutionCell(s) + '</td><td>' + stockReportCell(s) + '</td><td>' + stockCompositeCell(s) + stockAttentionVerdictCell(s, { withReason: true }) + '</td></tr>';
-        }).join('') + '</tbody></table></div>');
+    var rows = (r && r.data) || [];
+    var head = '<table class="data-table"><thead><tr>' +
+      '<th>股票</th><th>入池日期</th><th>入池价</th><th>理由</th>' +
+      '<th>至今涨跌</th><th>最大涨</th><th>最大撤</th><th>状态</th>' +
+      '</tr></thead><tbody>';
+    if (!rows.length) {
+      c.innerHTML = '<div class="panel" style="padding:24px;text-align:center">' +
+        '<div class="muted" style="font-size:13px">自选股列表为空。</div>' +
+        '<div class="muted" style="font-size:11px;margin-top:6px">去「股票」tab 点行尾「+ 加自选」按钮添加。</div>' +
+        '</div>';
+      return;
     }
-    var head = '<table class="data-table"><thead><tr><th>股票</th><th>入池日期</th><th>入池价</th><th>理由</th><th>当前Setup</th><th>来源</th><th>至今</th><th>最大涨</th><th>最大撤</th><th>状态</th></tr></thead><tbody>';
-    if (r?.data?.length) {
-      sections.push('<div><div style="font-size:14px;font-weight:700;margin-bottom:8px">手工股票池</div>' +
-        head + r.data.map(function (w) {
-          return '<tr><td>' + stockCell(w.stock_code, w.stock_name) + '</td><td>' + fmtDate(w.added_date) + '</td><td>' + (w.added_price || '-') + '</td><td>' + esc(w.added_reason || '') + '</td><td>' + setupSummaryCell(w) + stockAttentionVerdictCell(w, { withReason: true }) + '</td><td>' + esc(w.source_institution || '') + '</td><td>' + fmtGain(w.gain_since_added) + '</td><td>' + fmtGain(w.max_gain) + '</td><td>' + (w.max_drawdown != null ? '-' + w.max_drawdown.toFixed(1) + '%' : '-') + '</td><td>' + esc(w.status || '') + '</td></tr>';
-        }).join('') + '</tbody></table></div>');
-    } else {
-      sections.push('<div><div style="font-size:14px;font-weight:700;margin-bottom:8px">手工股票池</div>' +
-        head + '<tr><td class=”empty-row” colspan=”10”>暂无股票。</td></tr></tbody></table></div>');
-    }
-    var trackHead = '<table class="data-table"><thead><tr><th>快照日</th><th>股票</th><th>池子 / 综合</th><th>Setup</th><th>来源机构</th><th>10日</th><th>30日</th><th>60日</th><th>至今</th></tr></thead><tbody>';
-    if (trackingSnapshots?.data?.length) {
-      sections.push('<div style="margin-top:18px"><div style="font-size:14px;font-weight:700;margin-bottom:8px">最近跟踪快照</div>' +
-        trackHead + trackingSnapshots.data.map(function (s) {
-          var gain10 = s.matured_10d ? fmtGain(s.gain_10d) : '<span class="muted">待成熟</span>';
-          var gain30 = s.matured_30d ? fmtGain(s.gain_30d) : '<span class="muted">待成熟</span>';
-          var gain60 = s.matured_60d ? fmtGain(s.gain_60d) : '<span class="muted">待成熟</span>';
-          return '<tr><td>' + fmtDate(s.snapshot_date) + '</td><td>' + stockCell(s.stock_code, s.stock_name) + '</td><td>' + stockCompositeCell(s) + stockAttentionVerdictCell(s, { withReason: true }) + '</td><td>' + setupSummaryCell(s) + '</td><td>' + esc(s.setup_inst_name || '-') + '</td><td>' + gain10 + '</td><td>' + gain30 + '</td><td>' + gain60 + '</td><td>' + fmtGain(s.gain_to_now) + '</td></tr>';
-        }).join('') + '</tbody></table></div>');
-    }
-    c.innerHTML = sections.join('');
+    c.innerHTML = '<div class="panel">' +
+      head + rows.map(function (w) {
+        return '<tr>' +
+          '<td>' + stockCell(w.stock_code, w.stock_name) + '</td>' +
+          '<td>' + fmtDate(w.added_date) + '</td>' +
+          '<td>' + (w.added_price || '-') + '</td>' +
+          '<td>' + esc(w.added_reason || '') + '</td>' +
+          '<td>' + fmtGain(w.gain_since_added) + '</td>' +
+          '<td>' + fmtGain(w.max_gain) + '</td>' +
+          '<td>' + (w.max_drawdown != null ? '-' + Number(w.max_drawdown).toFixed(1) + '%' : '-') + '</td>' +
+          '<td>' + esc(w.status || '') + '</td>' +
+          '</tr>';
+      }).join('') + '</tbody></table></div>';
     scheduleSortableTables('watchlistContainer');
   }
 
