@@ -5338,6 +5338,19 @@ tr.detail-row>td>.detail-panel {
 .sig-cohort-sub { font-size: 11px; color: #64748b; }
 .sig-cohort-edge { font-size: 11px; margin-top: 3px; font-weight: 600; }
 .sig-cohort-hint { margin-top: 8px; font-size: 11px; }
+/* Phase B0 · follow 档按季度分布（Alpha 集中度诚实披露） */
+.sig-q-row {
+  display: flex; flex-wrap: wrap; gap: 4px;
+  margin-top: 6px; font-size: 10px;
+}
+.sig-q-cell {
+  padding: 1px 6px; background: rgba(255,255,255,0.65);
+  border: 1px solid rgba(0,0,0,0.06); border-radius: 10px;
+  color: #334155; font-variant-numeric: tabular-nums;
+}
+.sig-q-cell.sig-q-hot {
+  background: #fef3c7; border-color: #fde68a; color: #92400e; font-weight: 600;
+}
 
 /* multi-horizon 行高亮当前 horizon */
 .sig-row-active { background: #fef9c3; }

@@ -1532,7 +1532,8 @@ def cohort_recent_matured(
         timeline.setdefault(ev["institution_id"], []).append(dict(ev))
 
     # 分档（cohort 验证走双口径 + cooldown）
-    buckets: dict[str, list[float]] = {"follow": [], "watch": [], "skip": []}
+    # 存结构化 dict 方便做季度拆分（诚实披露 V6 alpha 是否集中在某个季度）
+    buckets: dict[str, list[dict]] = {"follow": [], "watch": [], "skip": []}
     for ev in events:
         timeline_i = timeline.get(ev["institution_id"], [])
         history_long = _filter_history_for_decision(
@@ -1544,13 +1545,20 @@ def cohort_recent_matured(
         gain = _safe_float(ev.get("gain"))
         if gain is None:
             continue
-        buckets[decision["action"]].append(gain)
+        buckets[decision["action"]].append({
+            "gain": gain,
+            "notice_date": ev.get("notice_date"),
+        })
 
-    all_gains = [float(e["gain"]) for e in events if e.get("gain") is not None]
+    all_rows = [
+        {"gain": float(e["gain"]), "notice_date": e.get("notice_date")}
+        for e in events if e.get("gain") is not None
+    ]
 
-    def _pack(gains: list[float]) -> dict:
-        if not gains:
+    def _pack(rows: list[dict]) -> dict:
+        if not rows:
             return {"n": 0}
+        gains = [r["gain"] for r in rows]
         n = len(gains)
         ev_pct = sum(gains) / n
         wr = sum(1 for g in gains if g > 0) / n
@@ -1562,11 +1570,32 @@ def cohort_recent_matured(
             "median_pct": round(median, 2),
         }
 
+    def _pack_with_quarters(rows: list[dict]) -> dict:
+        """follow/watch/skip 档的 _pack 扩展：额外拆季度，揭示样本是否集中在单季。"""
+        base = _pack(rows)
+        if not rows:
+            return base
+        quarters: dict[str, list[float]] = {}
+        for r in rows:
+            q = _quarter_key(r.get("notice_date"))
+            if q:
+                quarters.setdefault(q, []).append(r["gain"])
+        breakdown = []
+        for q in sorted(quarters.keys()):
+            gs = quarters[q]
+            breakdown.append({
+                "quarter": q,
+                "n": len(gs),
+                "ev_pct": round(sum(gs) / len(gs), 2),
+            })
+        base["quarterly"] = breakdown
+        return base
+
     packed = {
-        "follow": _pack(buckets["follow"]),
-        "watch": _pack(buckets["watch"]),
+        "follow": _pack_with_quarters(buckets["follow"]),
+        "watch": _pack_with_quarters(buckets["watch"]),
         "skip": _pack(buckets["skip"]),
-        "blind": _pack(all_gains),
+        "blind": _pack(all_rows),
     }
 
     # Edge vs blind

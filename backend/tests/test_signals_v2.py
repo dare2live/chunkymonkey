@@ -373,6 +373,43 @@ def test_cohort_nonempty(memdb):
     assert r["by_bucket"]["follow"]["ev_pct"] == 10.0
 
 
+def test_cohort_follow_quarterly_breakdown(memdb):
+    """follow/watch 档应返回 quarterly 字段，揭示样本按季度分布（Phase A 后的诚实披露）"""
+    from datetime import datetime, timedelta
+    target_date = (datetime.now() - timedelta(days=120)).strftime("%Y%m%d")
+    hist_base = (datetime.now() - timedelta(days=300)).strftime("%Y%m%d")
+
+    events = []
+    for i in range(15):
+        events.append((
+            "inst1", f"HIST{i:03d}", "hist",
+            f"{int(hist_base) + i}",
+            "new_entry", 0.0, 15.0, "医药"
+        ))
+    # 5 个 cohort 事件都在同一日期范围，应聚到同一季度
+    for i in range(5):
+        events.append((
+            "inst1", f"COHORT{i:03d}", "cohort",
+            str(int(target_date) + i),
+            "new_entry", 0.0, 10.0, "医药"
+        ))
+    _seed_events(memdb, events)
+
+    cfg = PolicyConfig(min_sample=5, ev_threshold_pct=5.0,
+                       prefer_same_industry_min_sample=5,
+                       cooldown_days=0, short_min_sample=5,
+                       short_window_days=365)
+    r = cohort_recent_matured(memdb, lookback_days=180, config=cfg)
+    follow = r["by_bucket"]["follow"]
+    assert "quarterly" in follow
+    # 5 个 cohort 事件全部相近日期 → 只有 1 个季度桶，n=5
+    assert len(follow["quarterly"]) >= 1
+    total_n = sum(q["n"] for q in follow["quarterly"])
+    assert total_n == follow["n"]
+    # skip 档不加 quarterly（没 alpha 可披露，保持简洁）
+    assert "quarterly" not in r["by_bucket"]["skip"]
+
+
 def test_cohort_dual_window_divergence(memdb):
     """短口径样本不足时应降档为 watch（不再是老的单一 follow 决策）"""
     from datetime import datetime, timedelta

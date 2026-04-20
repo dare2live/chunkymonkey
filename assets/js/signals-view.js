@@ -464,6 +464,24 @@
     const edgeS = c.edge_vs_blind.skip || {};
     const followOk = (edgeF.ev_diff_pct || 0) > 0;
     const skipOk = (edgeS.ev_diff_pct || 0) < 0;
+    // Phase B0 · 诚实披露：follow 档按季度拆分，揭示 alpha 是否集中在单季。
+    // 不加 disclaimer 文字，直接给数据，让用户自己判断。
+    const followQuarters = Array.isArray(f.quarterly) ? f.quarterly : [];
+    const fTotal = f.n || 0;
+    let concentrationPct = 0;
+    let concentrationQ = null;
+    followQuarters.forEach(q => {
+      const pct = fTotal > 0 ? (q.n / fTotal) * 100 : 0;
+      if (pct > concentrationPct) { concentrationPct = pct; concentrationQ = q.quarter; }
+    });
+    const isConcentrated = concentrationPct >= 60 && followQuarters.length > 1;
+    const quartersHtml = followQuarters.length
+      ? followQuarters.map(q => {
+          const pct = fTotal > 0 ? Math.round((q.n / fTotal) * 100) : 0;
+          const hot = pct >= 60 ? ' sig-q-hot' : '';
+          return `<span class="sig-q-cell${hot}" title="${esc(q.quarter)} · n=${q.n} · EV ${fmtPctPlain(q.ev_pct, 1)} · 占 ${pct}%">${esc(q.quarter.slice(2))}:${q.n}</span>`;
+        }).join('')
+      : '';
     return `
       <div class="sig-cohort-card">
         <div class="sig-cohort-title">
@@ -476,6 +494,7 @@
             <div class="sig-cohort-val">${fmtPct(f.ev_pct)}</div>
             <div class="sig-cohort-sub">n=${f.n} · 胜 ${fmtWinRate(f.win_rate)}</div>
             <div class="sig-cohort-edge">vs Blind ${fmtPct(edgeF.ev_diff_pct)}</div>
+            ${quartersHtml ? `<div class="sig-q-row" aria-label="Follow 按季度分布">${quartersHtml}</div>` : ''}
           </div>
           <div class="sig-cohort-cell">
             <div class="sig-cohort-bucket">Blind 对照</div>
@@ -494,6 +513,7 @@
           ${followOk && skipOk
             ? '✓ Follow 优于盲跟、Skip 劣于盲跟——筛选能力有效'
             : '⚠ 筛选方向与预期不一致，可能样本量不足或市场风格偏离'}
+          ${isConcentrated ? ` · <b style="color:#b45309">Follow 样本 ${Math.round(concentrationPct)}% 集中于 ${esc(concentrationQ)}</b>` : ''}
         </div>
       </div>
     `;
