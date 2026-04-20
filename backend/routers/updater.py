@@ -1757,10 +1757,16 @@ async def _step_sync_industry(conn) -> int:
 
     _raise_if_stop()
     # sync_tdx_industry 是同步函数（TDX 服务器下载 + 本地解析 + executemany），
-    # 放到线程池避免阻塞事件循环
-    tdx_result = await asyncio.get_event_loop().run_in_executor(
-        None, sync_tdx_industry, conn
-    )
+    # 放到线程池避免阻塞事件循环。SQLite 连接不能跨线程传递，在 executor 内
+    # 单独开一个连接，写完后主线程的 conn 无需感知（写入同一个 DB 文件）。
+    def _run_in_thread():
+        thread_conn = get_conn(timeout=120)
+        try:
+            return sync_tdx_industry(thread_conn)
+        finally:
+            thread_conn.close()
+
+    tdx_result = await asyncio.get_event_loop().run_in_executor(None, _run_in_thread)
 
     count = int(tdx_result.get("rows_upserted") or 0)
     errors = tdx_result.get("errors") or []

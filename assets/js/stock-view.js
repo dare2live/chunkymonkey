@@ -428,9 +428,29 @@
       <div id="sv-filter-area">${renderFilterBar(state.byStock)}</div>
       <div id="sv-list-root"></div>
       <div id="sv-drawer-area"></div>
+      <details class="workbench-section" id="sv-watchlist-section" style="margin-top:8px">
+        <summary><span class="workbench-section-title">自选股</span><span class="muted" style="font-size:11px;font-weight:400">手工加入跟踪的股票</span></summary>
+        <div id="watchlistContainer" style="padding:10px 0">加载中...</div>
+      </details>
+      <details class="workbench-section" id="sv-exclusion-section">
+        <summary><span class="workbench-section-title">股票排除规则</span><span class="muted" style="font-size:11px;font-weight:400">被排除的股票不参与分析</span></summary>
+        <div id="exclusionCategories" style="padding:10px 0">加载中...</div>
+      </details>
     </div>`;
     bindFilterEvents();
+    bindAuxSections();
     renderList();
+  }
+
+  function bindAuxSections() {
+    const wlSec = el('sv-watchlist-section');
+    if (wlSec) wlSec.addEventListener('toggle', () => {
+      if (wlSec.open && global.App) global.App.loadWatchlist();
+    }, { once: true });
+    const exclSec = el('sv-exclusion-section');
+    if (exclSec) exclSec.addEventListener('toggle', () => {
+      if (exclSec.open && global.App) global.App.loadExclusions();
+    }, { once: true });
   }
 
   function bindFilterEvents() {

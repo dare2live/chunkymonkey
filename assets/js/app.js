@@ -5351,24 +5351,32 @@
     document.querySelectorAll('.inst-dim-switch .dim-btn').forEach(function (btn) {
       btn.addEventListener('click', function () { switchInstDim(btn.dataset.dim); });
     });
-    // 工作台折叠区首次展开时延迟加载内容
-    var mgmtLoaded = false, qlibLoaded = false, wlLoaded = false, exclLoaded = false;
+    // 机构页面胶囊标签：列表 | 管理
+    var instMgmtLoaded = false;
+    document.querySelectorAll('#view-research .inst-page-tabs .chip').forEach(function (btn) {
+      btn.addEventListener('click', function () {
+        var tab = btn.dataset.itab;
+        document.querySelectorAll('#view-research .inst-page-tabs .chip').forEach(function (b) {
+          b.classList.toggle('chip-primary', b.dataset.itab === tab);
+          b.classList.toggle('chip-outline', b.dataset.itab !== tab);
+        });
+        el('itab-list').style.display = tab === 'list' ? '' : 'none';
+        el('itab-manage').style.display = tab === 'manage' ? '' : 'none';
+        if (tab === 'manage' && !instMgmtLoaded) {
+          instMgmtLoaded = true;
+          loadInstMgmt && loadInstMgmt();
+        }
+      });
+    });
+    // 工作台折叠区首次展开时延迟加载内容（自选股/排除规则已移至股票页面）
+    var qlibLoaded = false;
     document.querySelectorAll('.workbench-section').forEach(function (det) {
       det.addEventListener('toggle', function () {
         if (!det.open) return;
         var title = (det.querySelector('.workbench-section-title')?.textContent || '').trim();
-        if (title.indexOf('机构批量管理') >= 0 && !mgmtLoaded) {
-          mgmtLoaded = true;
-          loadInstMgmt && loadInstMgmt();
-        } else if (title.indexOf('Qlib 模型实验室') >= 0 && !qlibLoaded) {
+        if (title.indexOf('Qlib 模型实验室') >= 0 && !qlibLoaded) {
           qlibLoaded = true;
           loadQlib && loadQlib();
-        } else if (title.indexOf('自选股') >= 0 && !wlLoaded) {
-          wlLoaded = true;
-          loadWatchlist && loadWatchlist();
-        } else if (title.indexOf('股票排除规则') >= 0 && !exclLoaded) {
-          exclLoaded = true;
-          loadExclusions && loadExclusions();
         }
       });
     });
@@ -7037,7 +7045,7 @@
       if (polls > 120) { clearInterval(timer); btn.disabled = false; btn.textContent = '救生艇'; }
     }, 3000);
   }
-  window.App = { saveModuleSettings, showView, setAlias, setType, toggleBlack, deleteInst, restoreInst, toggleInstDetail, toggleInstBreakdown, toggleStockDetail, switchInstDim, switchStockDim, runSingleStep, _api: api };
+  window.App = { saveModuleSettings, showView, setAlias, setType, toggleBlack, deleteInst, restoreInst, toggleInstDetail, toggleInstBreakdown, toggleStockDetail, switchInstDim, switchStockDim, runSingleStep, loadWatchlist, loadExclusions, _api: api };
   if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', startInit, { once: true });
   } else {
