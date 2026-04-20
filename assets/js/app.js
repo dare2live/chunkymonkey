@@ -936,7 +936,7 @@
     }
     return '<div class="stock-filter-bar">' +
       '<div class="stock-filter-group"><span class="stock-filter-label-pill">执行</span>' + gates.map(function (f) { return chip('gate', f.key, f.label, f.key === stockListState.getFilterGate()) }).join('') + '</div>' +
-      '<div class="stock-filter-group"><span class="stock-filter-label-pill">行业</span>' + industries.map(function (f) { return chip('industry', f.key, f.label, f.key === (stockListState.getFilterIndustry ? stockListState.getFilterIndustry() : 'all')) }).join('') + '</div>' +
+      '<div class="stock-filter-group"><span class="stock-filter-label-pill">行业</span>' + industries.map(function (f) { return chip('industry', f.key, f.label, f.key === stockListState.getFilterIndustry()) }).join('') + '</div>' +
       '<div class="stock-filter-group"><span class="stock-filter-label-pill stock-filter-label-pill--sort">排序</span>' + sorts.map(function (f) { return chip('sort', f.key, f.label, f.key === stockListState.getSortMode()) }).join('') + '</div>' +
       '</div>';
   }
@@ -952,12 +952,7 @@
         var group = chip.dataset.filterGroup;
         var key = chip.dataset.filterKey;
         if (group === 'gate') stockListState.setFilterGate(key);
-        if (group === 'industry' && stockListState.setFilterIndustry) {
-          stockListState.setFilterIndustry(key);
-        } else if (group === 'industry') {
-          // AppListState 尚未实现 Industry filter 时用 closure 兜底
-          window._stockIndustryFilter = key;
-        }
+        if (group === 'industry') stockListState.setFilterIndustry(key);
         if (group === 'sort') {
           stockListState.setSortMode(key);
           renderStockList();
@@ -1012,7 +1007,7 @@
   }
 
   function matchIndustryFilter(s) {
-    var filter = (stockListState.getFilterIndustry && stockListState.getFilterIndustry()) || window._stockIndustryFilter || 'all';
+    var filter = stockListState.getFilterIndustry();
     if (filter === 'all') return true;
     return (s.tdx_l1 || '').trim() === filter;
   }

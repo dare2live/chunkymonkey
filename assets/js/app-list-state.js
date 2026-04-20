@@ -5,18 +5,19 @@
     dim: 'overview',
     data: []
   };
+  // Step 5 任务 D：股票列表 state 只保留 signals_v2 主流程用得到的维度
+  //   - gate: follow/watch/observe/avoid 执行档筛选
+  //   - industry: TDX L1 行业筛选
+  //   - sortMode: composite / notice
+  // 删除的 legacy state（与筛选条瘦身同步）：
+  //   filterSignal(setup A1-A5) / filterAttention / filterTurtle /
+  //   filterScreening / filterDiscovery / filterQuality / filterStageScore /
+  //   filterForecast
   var _stock = {
     data: [],
     summary: null,
-    filterSignal: 'all',
     filterGate: 'all',
-    filterAttention: 'all',
-    filterTurtle: 'all',
-    filterScreening: 'all',
-    filterDiscovery: 'all',
-    filterQuality: 'all',
-    filterStageScore: 'all',
-    filterForecast: 'all',
+    filterIndustry: 'all',
     sortMode: 'composite'
   };
   var _industry = {
@@ -56,24 +57,10 @@
       setData: setStockData,
       getSummary: function () { return _stock.summary; },
       setSummary: setStockSummary,
-      getFilterSignal: function () { return _stock.filterSignal; },
-      setFilterSignal: function (value) { _stock.filterSignal = value || 'all'; return _stock.filterSignal; },
       getFilterGate: function () { return _stock.filterGate; },
       setFilterGate: function (value) { _stock.filterGate = value || 'all'; return _stock.filterGate; },
-      getFilterAttention: function () { return _stock.filterAttention; },
-      setFilterAttention: function (value) { _stock.filterAttention = value || 'all'; return _stock.filterAttention; },
-      getFilterTurtle: function () { return _stock.filterTurtle; },
-      setFilterTurtle: function (value) { _stock.filterTurtle = value || 'all'; return _stock.filterTurtle; },
-      getFilterScreening: function () { return _stock.filterScreening; },
-      setFilterScreening: function (value) { _stock.filterScreening = value || 'all'; return _stock.filterScreening; },
-      getFilterDiscovery: function () { return _stock.filterDiscovery; },
-      setFilterDiscovery: function (value) { _stock.filterDiscovery = value || 'all'; return _stock.filterDiscovery; },
-      getFilterQuality: function () { return _stock.filterQuality; },
-      setFilterQuality: function (value) { _stock.filterQuality = value || 'all'; return _stock.filterQuality; },
-      getFilterStageScore: function () { return _stock.filterStageScore; },
-      setFilterStageScore: function (value) { _stock.filterStageScore = value || 'all'; return _stock.filterStageScore; },
-      getFilterForecast: function () { return _stock.filterForecast; },
-      setFilterForecast: function (value) { _stock.filterForecast = value || 'all'; return _stock.filterForecast; },
+      getFilterIndustry: function () { return _stock.filterIndustry; },
+      setFilterIndustry: function (value) { _stock.filterIndustry = value || 'all'; return _stock.filterIndustry; },
       getSortMode: function () { return _stock.sortMode; },
       setSortMode: function (value) { _stock.sortMode = value || 'composite'; return _stock.sortMode; },
     },
