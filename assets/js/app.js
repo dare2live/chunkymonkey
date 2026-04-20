@@ -108,7 +108,8 @@
         }
       });
     }
-    ({ dashboard: loadWorkbench, research: loadResearch, stocks: loadStockView, etf: loadEtf })[name]?.();
+    // C6a: 股票 tab 下线 → dispatcher 移除 stocks；自选股/排除规则 在工作台折叠区懒加载
+    ({ dashboard: loadWorkbench, research: loadResearch, etf: loadEtf })[name]?.();
   }
 
   function showEtfTab(tabName) {
@@ -1185,9 +1186,8 @@
       '<th>至今涨跌</th><th>最大涨</th><th>最大撤</th><th>状态</th>' +
       '</tr></thead><tbody>';
     if (!rows.length) {
-      c.innerHTML = '<div class="panel" style="padding:24px;text-align:center">' +
-        '<div class="muted" style="font-size:13px">自选股列表为空。</div>' +
-        '<div class="muted" style="font-size:11px;margin-top:6px">去「股票」tab 点行尾「+ 加自选」按钮添加。</div>' +
+      c.innerHTML = '<div class="muted" style="font-size:12px;padding:8px 0">' +
+        '自选股列表为空。去「信号」tab → 股票聚合视角 → 点股票行添加（C6b 即将实装）。' +
         '</div>';
       return;
     }
@@ -5307,7 +5307,7 @@
       btn.addEventListener('click', function () { switchInstDim(btn.dataset.dim); });
     });
     // 工作台折叠区首次展开时延迟加载内容
-    var mgmtLoaded = false, qlibLoaded = false;
+    var mgmtLoaded = false, qlibLoaded = false, wlLoaded = false, exclLoaded = false;
     document.querySelectorAll('.workbench-section').forEach(function (det) {
       det.addEventListener('toggle', function () {
         if (!det.open) return;
@@ -5318,6 +5318,12 @@
         } else if (title.indexOf('Qlib 模型实验室') >= 0 && !qlibLoaded) {
           qlibLoaded = true;
           loadQlib && loadQlib();
+        } else if (title.indexOf('自选股') >= 0 && !wlLoaded) {
+          wlLoaded = true;
+          loadWatchlist && loadWatchlist();
+        } else if (title.indexOf('股票排除规则') >= 0 && !exclLoaded) {
+          exclLoaded = true;
+          loadExclusions && loadExclusions();
         }
       });
     });

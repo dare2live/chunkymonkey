@@ -7,7 +7,7 @@
   <title>Chunky Monkey v2</title>
   <link rel="stylesheet" href="https://rsms.me/inter/inter.css">
   <script>
-    window.CM_ASSET_VERSION = '2.4.4';
+    window.CM_ASSET_VERSION = '2.4.5';
     (function (version) {
       var link = document.createElement('link');
       link.rel = 'stylesheet';
@@ -31,11 +31,10 @@
     </nav>
   </header>
   <div class="sub-bar" id="subBar">
-    <!-- 股东挖掘二级导航 -->
+    <!-- 股东挖掘二级导航（C6a：股票 tab 下线，功能整合到信号视图） -->
     <div class="nav-sub-bar" id="nav-sub-holder">
       <button class="nav-btn active" data-view="signals-v2">信号</button>
       <button class="nav-btn" data-view="research">机构</button>
-      <button class="nav-btn" data-view="stocks">股票</button>
       <button class="nav-btn" data-view="dashboard">工作台</button>
     </div>
     <!-- ETF研究二级导航 -->
@@ -266,6 +265,18 @@
         </div>
       </details>
 
+      <!-- 自选股 · C6a 从原股票 tab 移入 -->
+      <details class="workbench-section">
+        <summary><span class="workbench-section-title">自选股</span><span class="muted" style="font-size:11px;font-weight:400">手工加入跟踪的股票</span></summary>
+        <div id="watchlistContainer" style="padding:10px 0">加载中...</div>
+      </details>
+
+      <!-- 股票排除规则 · C6a 从原股票 tab 移入 -->
+      <details class="workbench-section">
+        <summary><span class="workbench-section-title">股票排除规则</span><span class="muted" style="font-size:11px;font-weight:400">被排除的股票不参与分析</span></summary>
+        <div id="exclusionCategories" style="padding:10px 0">加载中...</div>
+      </details>
+
       <details class="workbench-section workbench-danger">
         <summary><span class="workbench-section-title" style="color:#b91c1c">全量重算派生数据</span><span class="muted" style="font-size:11px;font-weight:400">危险操作，二次确认</span></summary>
         <div style="padding:10px 0">
@@ -295,42 +306,9 @@
       <div id="instListContainer">加载中...</div>
     </section>
 
-    <!-- ==================== 股票（深挖 + 自选） ==================== -->
-    <section class="view" id="view-stocks">
-      <div class="stock-banner-v2">
-        <div class="stock-banner-head">
-          <div class="stock-banner-title">
-            <div class="section-kicker">Stock Research</div>
-            <h2 class="research-title">股票研究</h2>
-            <p class="muted research-tagline">从信号视图进来深挖一只具体股票：谁在买、事件时间线、是否进自选。发现新股票请回到「信号」tab。</p>
-          </div>
-          <div id="stockSummaryBar" class="stock-summary-strip"></div>
-        </div>
-        <div class="stock-banner-nav">
-          <div class="view-tabs stock-tabs" id="stockTabs">
-            <button class="tab-btn active" data-stab="list">股票列表</button>
-            <button class="tab-btn" data-stab="watchlist">自选股</button>
-            <button class="tab-btn" data-stab="exclusions">排除规则</button>
-          </div>
-          <input type="text" class="search-input" id="stockSearch" placeholder="搜索股票代码/名称/行业" style="width:220px">
-        </div>
-        <div id="stockFilterArea"></div>
-      </div>
-      <div class="stab-content active" id="stab-list">
-        <div id="stockListMeta"></div>
-        <div id="stockListContainer">加载中...</div>
-      </div>
-      <div class="stab-content" id="stab-watchlist">
-        <div id="watchlistContainer">加载中...</div>
-      </div>
-      <div class="stab-content" id="stab-exclusions">
-        <div class="panel">
-          <h3 style="margin-bottom:6px">股票排除规则</h3>
-          <p class="muted" style="font-size:12px;margin-bottom:14px">被排除的股票不参与分析和展示。</p>
-          <div id="exclusionCategories">加载中...</div>
-        </div>
-      </div>
-    </section>
+    <!-- view-stocks 已下线（C6a）：深挖股票移到信号视图的"股票聚合"视角；
+         自选股和排除规则挪到工作台折叠区。搜索代码可在信号 tab 右上搜索框 -->
+
 
     <!-- ==================== ETF研究 ==================== -->
     <section class="view" id="view-etf">
