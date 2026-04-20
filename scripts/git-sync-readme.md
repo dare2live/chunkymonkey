@@ -39,3 +39,4 @@ mv .git/hooks/post-commit .git/hooks/post-commit.disabled
 ## 注意
 
 主目录自身的 commit 也会触发，但因为在主目录里就不再 pull 自己（避免自环），只 push。
+
