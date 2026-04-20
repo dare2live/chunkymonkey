@@ -7,7 +7,7 @@
   <title>Chunky Monkey v2</title>
   <link rel="stylesheet" href="https://rsms.me/inter/inter.css">
   <script>
-    window.CM_ASSET_VERSION = '2.3.35';
+    window.CM_ASSET_VERSION = '2.4.0';
     (function (version) {
       var link = document.createElement('link');
       link.rel = 'stylesheet';
@@ -396,11 +396,15 @@
     </div>
   </div>
 
-  <script src="assets/js/app-cache.js?v=2.3.0"></script>
-  <script src="assets/js/app-nav.js?v=2.3.0"></script>
-  <script src="assets/js/app-list-state.js?v=2.3.0"></script>
-  <script src="assets/js/app.js?v=2.3.0"></script>
-  <script src="assets/js/signals-view.js?v=2.3.0"></script>
+  <script>
+    // 动态注入 JS 脚本，版本号跟 CM_ASSET_VERSION 绑定，避免浏览器缓存旧版 app.js
+    (function (version) {
+      ['assets/js/app-cache.js', 'assets/js/app-nav.js', 'assets/js/app-list-state.js',
+       'assets/js/app.js', 'assets/js/signals-view.js'].forEach(function (src) {
+        document.write('<script src="' + src + '?v=' + version + '"><\/script>');
+      });
+    })(window.CM_ASSET_VERSION);
+  </script>
   <script>
     // signals v2 视图懒加载：切到该 tab 时初始化 + 默认就把视图切到 signals-v2
     (function () {
