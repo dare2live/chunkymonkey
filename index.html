@@ -7,7 +7,7 @@
   <title>Chunky Monkey v2</title>
   <link rel="stylesheet" href="https://rsms.me/inter/inter.css">
   <script>
-    window.CM_ASSET_VERSION = '2.4.5';
+    window.CM_ASSET_VERSION = '2.5.0';
     (function (version) {
       var link = document.createElement('link');
       link.rel = 'stylesheet';
@@ -377,6 +377,7 @@
     // 动态注入 JS 脚本，版本号跟 CM_ASSET_VERSION 绑定，避免浏览器缓存旧版 app.js
     (function (version) {
       ['assets/js/app-cache.js', 'assets/js/app-nav.js', 'assets/js/app-list-state.js',
+       'assets/js/signal-adapter.js',
        'assets/js/app.js', 'assets/js/signals-view.js'].forEach(function (src) {
         document.write('<script src="' + src + '?v=' + version + '"><\/script>');
       });

@@ -6003,3 +6003,19 @@ tr.detail-row>td>.detail-panel {
   text-transform: uppercase;
   margin-right: var(--cm-sp-2);
 }
+
+/* C6b · 自选星标（信号视图股票聚合行） */
+.sig-star {
+  font-size: 16px;
+  line-height: 1;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  padding: 4px;
+  border-radius: var(--cm-r-sm);
+  color: var(--cm-ink-300);
+  transition: color var(--cm-motion-fast), background var(--cm-motion-fast);
+}
+.sig-star:hover { background: var(--cm-ink-50); }
+.sig-star-on { color: #f59e0b; }
+.sig-star-on:hover { color: #d97706; background: var(--cm-warn-100); }

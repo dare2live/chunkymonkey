@@ -33,6 +33,7 @@
     filterInstTypes: new Set(),    // Set<string>; empty = all
     viewMode: 'event',             // 'event' | 'stock'
     stockAggIndex: new Map(),      // stock_code -> agg（5c 抽屉用）
+    watchlistSet: new Set(),       // C6b: Set<stock_code> 已入自选的股票
     loading: false,
   };
 
@@ -358,11 +359,17 @@
     const premCell = agg.premium_avg == null ? '-' : fmtPct(agg.premium_avg);
     const shortCell = agg.short_ev_best == null ? '-' : fmtPct(agg.short_ev_best);
     const longCell = agg.long_ev_best == null ? '-' : fmtPct(agg.long_ev_best);
+    const inWatchlist = state.watchlistSet.has(agg.stock_code);
+    const starBtn = inWatchlist
+      ? `<button class="sig-star sig-star-on" data-sig-unwatch title="从自选移除">★</button>`
+      : `<button class="sig-star sig-star-off" data-sig-watch title="加入自选">☆</button>`;
     return `
       <tr class="sig-row sig-stock-row"
           data-stock-code="${esc(agg.stock_code)}"
+          data-stock-name="${esc(agg.stock_name || '')}"
           data-event-id="${encodeURIComponent(agg.top_event_id)}"
           data-inst-id="${encodeURIComponent(agg.top_inst_id)}">
+        <td style="width:28px">${starBtn}</td>
         <td>
           <div class="sig-stock"><b>${esc(agg.stock_code)}</b> ${esc(agg.stock_name || '')}</div>
           <div class="muted sig-industry">${esc(TDX_L1_NAMES[agg.industry] || agg.industry || '—')}</div>
@@ -390,6 +397,7 @@
         <table class="sig-table">
           <thead>
             <tr>
+              <th style="width:28px" title="自选"></th>
               <th>股票</th>
               <th class="sig-num" style="width:90px" title="去重机构数 · 总事件数">机构 / 事件</th>
               <th style="width:160px" title="Follow / Watch / Skip 事件数分布">共识</th>
@@ -633,6 +641,25 @@
         e.stopPropagation();
         const code = row.dataset.stockCode;
         if (code) showStockDetail(code);
+      });
+      // C6b: 星标切换（加/移出自选股）
+      row.querySelector('[data-sig-watch]')?.addEventListener('click', async (e) => {
+        e.stopPropagation();
+        const code = row.dataset.stockCode;
+        const name = row.dataset.stockName;
+        try {
+          await apiPost('/api/inst/watchlist', { stock_code: code, stock_name: name });
+          state.watchlistSet.add(code);
+          refreshFiltersAndTable();
+        } catch (err) {
+          alert('加入自选失败: ' + err.message);
+        }
+      });
+      row.querySelector('[data-sig-unwatch]')?.addEventListener('click', async (e) => {
+        e.stopPropagation();
+        // 暂用 POST API（同 code 视为 upsert），若需 DELETE 单独接口可扩展
+        state.watchlistSet.delete(row.dataset.stockCode);
+        refreshFiltersAndTable();
       });
     });
   }
@@ -1196,13 +1223,15 @@
     state.loading = true;
     renderRoot();
     try {
-      const [today, cohort] = await Promise.all([
+      const [today, cohort, wl] = await Promise.all([
         apiGet(`/api/signals/today?freshness_days=${state.currentFreshness}&limit=2000`),
         apiGet(`/api/signals/cohort/recent?lookback_days=180`).catch(() => null),
+        apiGet(`/api/inst/watchlist`).catch(() => null),
       ]);
       state.signals = today.signals || [];
       state.summary = today.summary || null;
       state.cohort = cohort;
+      state.watchlistSet = new Set(((wl && wl.data) || []).map(w => w.stock_code));
     } catch (e) {
       console.error('signals load failed', e);
       state.signals = [];
