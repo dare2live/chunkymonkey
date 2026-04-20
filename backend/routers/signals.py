@@ -47,7 +47,6 @@ CONFIG_DESCRIPTIONS: Dict[str, str] = {
     "max_premium_pct": "溢价硬顶（%），超过直接 skip；99999=不启用",
     "min_hold_ratio": "持仓占流通股下限（%）；0=不启用",
     "inst_type_blacklist": "机构类型黑名单（逗号分隔，负 alpha 类型）",
-    "inst_type_preferred": "机构类型优选（逗号分隔，历史 beat blind 类型）",
     "max_holder_yoy_pct": "D1 股东人数 YoY 上限（%），越小越严；99999=不启用",
     "min_forecast_profit_yoy": "D3 业绩预告利润 YoY 下限（%）；-9999=不启用",
     "max_unlock_ratio_180d": "D5 180 天解禁比例上限（%）；99999=不启用",

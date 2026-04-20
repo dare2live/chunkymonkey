@@ -133,6 +133,22 @@
     return `<span class="sig-reason-tag sig-reason-${r.tone}">${r.text}</span>`;
   }
 
+  function ruleDots(breakdown) {
+    if (!breakdown || !Array.isArray(breakdown.checks)) return '';
+    const statusWord = { pass: '通过', fail: '不通过', unknown: '未采集' };
+    const dots = breakdown.checks.map(c => {
+      let rawDisp;
+      if (c.raw == null) rawDisp = '—';
+      else if (c.key === 'survey_count_90d') rawDisp = String(c.raw) + ' 次';
+      else if (c.key === 'inst_type') rawDisp = String(c.raw);
+      else if (typeof c.raw === 'number') rawDisp = c.raw.toFixed(2);
+      else rawDisp = String(c.raw);
+      const tip = `${c.label}: ${statusWord[c.status] || '?'} · 原始 ${rawDisp} · 阈值 ${c.threshold_display}`;
+      return `<span class="sig-dot sig-dot-${esc(c.status)}" title="${esc(tip)}"></span>`;
+    }).join('');
+    return `<div class="sig-rule-dots" aria-label="7 维硬规则体检">${dots}</div>`;
+  }
+
   function windowCell(win) {
     if (!win) return '<span class="muted">—</span>';
     const s = win.stats || {};
@@ -153,7 +169,10 @@
 
     return `
       <tr class="sig-row" data-event-id="${encodeURIComponent(sig.event_id)}" data-inst-id="${encodeURIComponent(sig.institution_id)}">
-        <td style="white-space:nowrap">${actionBadge(sig.action)} ${reasonBadge(sig.reason_label)}</td>
+        <td>
+          <div style="white-space:nowrap">${actionBadge(sig.action)} ${reasonBadge(sig.reason_label)}</div>
+          ${ruleDots(sig.rule_breakdown)}
+        </td>
         <td>
           <div class="sig-stock"><b>${esc(sig.stock_code)}</b> ${esc(sig.stock_name || '')}</div>
           <div class="muted sig-industry">${esc(sig.industry || '—')}</div>

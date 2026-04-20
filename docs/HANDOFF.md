@@ -1,7 +1,7 @@
 # 交接文档 · signals_v2 开发上下文
 
 > **这份文档给下一个 claude 读**。把它放在对话最前面，读完就能接着推进。
-> 最后更新：2026-04-19（D8 机构调研入库 + 硬规则通路接入 + cohort 实证）
+> 最后更新：2026-04-20（D8 完成 · 前端 7 维点灯 · `inst_type_preferred` 死代码退役）
 
 ---
 
@@ -130,8 +130,8 @@ L9 · 反馈闭环                           cohort_recent_matured → 前端 re
 ```
 backend/
 ├── services/
-│   ├── signals_v2.py          ★ 主决策引擎 (968 行)
-│   ├── qlib_follow_engine.py  ★ Qlib 事件级模型 (548 行, 骨架)
+│   ├── signals_v2.py          ★ 主决策引擎 (1650 行)
+│   ├── qlib_follow_engine.py  ★ Qlib 事件级模型 (796 行, 骨架，定位"第二意见")
 │   ├── db.py                  主 SQLite schema
 │   ├── market_db.py           市场数据库 (price_kline)
 │   ├── return_engine.py       计算 gain_30/60/90/120d
@@ -140,7 +140,7 @@ backend/
 ├── routers/
 │   ├── signals.py             ★ signals_v2 API 路由
 │   └── (legacy) 老路由保留兼容
-├── tests/test_signals_v2.py   ★ 26 个单测全过
+├── tests/test_signals_v2.py   ★ 34 个单测全过（含 D8 5 个）
 
 assets/
 ├── js/signals-view.js         ★ 新信号视图 (独立命名空间 sig-*)
@@ -409,48 +409,49 @@ event.cl_yoy_zscore = (stock_yoy - ind_mean) / ind_std
 
 ## 7. 当前待做（接上这条链继续）
 
-**Step 1 · 边做边验** ✅ D1+D3+D5 已完成
-- D1 股东人数 YoY ≤30%  → +1.93pp
-- D2 合同负债 YoY：数据只 10% 覆盖，跳过（留给 Qlib）
+**Step 1 · 边做边验** ✅ 完成（V6 硬规则定型）
+- D1 股东人数 YoY ≤30% → +1.93pp
+- D2 合同负债 YoY：`_FIELD_MAP` 已补，全行业混合不显著 → 留给 Qlib
 - D3 业绩预告利润 YoY ≥20% → +9.22pp（最强）
-- D4 北向资金：fact_northbound_daily 0 行，跳过
+- D4 北向资金：`fact_northbound_daily` 0 行，跳过
 - D5 180d 解禁 ≤5%：风险规避
+- D8 机构调研近 90d：负向（min≥1 把 follow edge 推到 -7.30pp），默认 `min_survey_count_90d=0` 不启用
 
-**Step 2 · 前端参数全量可调（下一轮做）**
-- 扩展 `signals-view.js` 的"参数"抽屉面板
-- 让所有 `DEFAULT_CONFIG` 键都 UI 可改（新增 6 个参数都要覆盖）
-- 改完立即重跑 cohort 展示新 edge
-- 关键：**没有硬编码，所有阈值都可调**
+**Step 2 · 前端参数全量可调** ✅ 完成（commit 6d50702d）
+- 参数抽屉暴露 16 键全部可改（含 D8 `min_survey_count_90d`）
+- 保存即重算 cohort，内嵌 edge 变化对比
 
-**Step 2.5 · 新数据源入库（下一轮做）**
-- 机构调研数据（D8）：需新增 DAG step `sync_institution_surveys`
-  - 调 `akshare.stock_jgdy_tj_em(date=<6个月前>)` 拉全量
-  - 新表 `raw_institution_surveys` + 聚合表 `mart_stock_survey_activity`
-  - 字段：stock_code, survey_date, notice_date, inst_count, reception_type
-- 合同负债（D2）：`_FIELD_MAP` 已补，只需重跑一次 GPCW sync
-  - `python -c "from services.tdx_affair_client import sync_gpcw_files; sync_gpcw_files(conn, quarters=12)"`
-  - **重要**：sync 后必须做**行业化处理**才有用（见本文件"D2 下一步必须做：合同负债的行业化方案"章节）
+**Step 2.5 · 硬规则 breakdown 展示** ✅ 完成（commit bee1ccf9 + 本轮 W2）
+- 详情抽屉展示 7 维体检（pass/fail/unknown）+ 触发规则红标
+- 主列表行加 7 维点灯（绿/红/灰，hover 显示 `label · 原始值 · 阈值`）
+- `.sig-breakdown-grid` 从 6 列改 7 列
 
-**Step 3 · Qlib 重训（下一轮做）**
-- 把 D1-D8 全部作为连续特征喂进 `qlib_follow_engine.extract_training_matrix`
-  - D1 holder_count_yoy
-  - D2 contract_liabilities_yoy（需 Step 2.5 先跑 sync）
-  - D3 forecast_profit_yoy_mid
-  - D5 future_unlock_ratio_180d
-  - D6 peer_count_same_quarter（骨架已在）
-  - D7 机构近期 EV（连续，不做黑白名单）
-  - D8 survey_count_90d（需 Step 2.5 先入库）
-- 跑训练看 IC 能否从 -0.009 提到 > 0.05
+**Step 3 · D8 数据源入库** ✅ 完成（commit 007b543c）
+- `raw_institution_surveys`（8557 行）+ `mart_stock_survey_activity`（1555 股）
+- `updater.STEPS` 新增 `sync_surveys`（order 7.5，独立数据源）
+- as-of 过滤：survey.notice_date ≤ event.notice_date；窗口 90d
+- **覆盖起始日前的事件→None**（避免数据缺失被误判为"冷门"）
 
-**Step 4 · 视图整合（下一轮做）**
+**Step 4 · Qlib 第二意见** 🟡 部分完成（Phase 4a-c 实验结论确定）
+- Phase 4a+b+c：特征 16 维→38 维、+行业内 z-score、Valid IC 仍 -0.02
+- 结论：Qlib follow 模型在当前 30K 样本密度下无法突破 IC=0 线
+- **定位调整**：不追求合成评分，保留骨架 + 模型存储，定位"第二意见"展示（不强制融合）
+- **剩余**：前端独立 tile 展示 `qlib_prediction`（独立任务，不阻塞主路径）
+
+**Step 5 · 视图整合**（独立大任务，留给专门轮次）
 - 股票 + 信号合并为一个 tab + 胶囊筛选
 - 机构研究简化为 track record 成绩单
 - 工作台只保留 DAG / 日志 / 审计
 
-**Step 5 · 实盘观察（下下轮）**
-- n=128 是 2.2% cohort 子集，方差大
+**Step 6 · 实盘观察**（下下轮）
+- V6 n=128 是 5696 cohort 的 2.2% 子集，方差大
 - 上线后跟半年看 WR 是否稳在 70%+
 - 否则回调 D3 阈值或加更多特征
+
+**Step 7 · D8 窗口扩充复评**（待数据累积）
+- 当前覆盖 2025-10-22 → 2026-04-17（约 6 月）
+- 扩到 12 月+ 后重跑 cohort：判断"调研活跃 ≠ 超额"结论是否稳定
+- 若翻转（调研变正向），考虑启用 `min_survey_count_90d > 0`
 
 ---
 
@@ -470,32 +471,35 @@ DEFAULT_CONFIG = {
     "max_premium_pct": 15.0,               # 硬规则：溢价上限
     "min_hold_ratio": 0.3,                 # 硬规则：占流通股下限
     "inst_type_blacklist": "基金,国家队",    # 硬规则：机构类型黑名单
-    "inst_type_preferred": "牛散,券商,社保,QFII,北向",  # 优势类型（未实装）
-    # D1-D5 新增
+    # D1-D8 新增（所有阈值前端可调，不满意直接 UI 改）
     "max_holder_yoy_pct": 30.0,            # D1 股东人数 YoY 上限 (%) — 99999 = 不启用
     "min_forecast_profit_yoy": 20.0,       # D3 业绩预告利润 YoY 下限 (%) — -9999 = 不启用
     "max_unlock_ratio_180d": 5.0,          # D5 180 天解禁上限 (%) — 99999 = 不启用
+    "min_survey_count_90d": 0,             # D8 近 90d 调研家数下限 — 0 = 不启用（当前默认，基于负向 cohort 结论）
 }
 ```
 
-**所有参数** 都通过 `/api/signals/config` GET / POST 可读可改。下一轮要做的：前端抽屉把所有键都开出来。
+**所有参数** 通过 `/api/signals/config` GET / POST 可读可改；前端参数抽屉已全量暴露 16 键。
+> 2026-04-20 清理：`inst_type_preferred` 原为"优势机构类型"的预留键（未实装、无读路径），按"不做黑白名单"原则连同 `preferred_set` property 一起退役。
 
 ---
 
 ## 9. Git / 环境
 
-**主分支**：`claude/affectionate-wing-5ce5ce` (worktree 路径: `/Users/dp/Documents/M/stock/.claude/worktrees/affectionate-wing-5ce5ce/`)
+**工作分支**：`main`（从 Phase 5 起所有 signals_v2 改动直接落 main；worktree `distracted-wilson-b532cd` 仅作隔离工作目录，不承载最终 commits）
 
-**最近 commits**：
+**最近 commits**（截至 2026-04-20）：
 ```
-47d2639 feat(signals_v2): 多维度硬规则过滤 + OOS edge +0.82pp→+2.06pp
-2b0f85c feat(signals_v2): 严谨左切 + 双口径 KNN + Qlib 骨架
-c9ba3e7 perf(signals_v2): build_today_signals 40s→2s
-b7a9dd1 feat(signals_v2): 反馈闭环 + 机构多周期对比
-ba04202 feat(signals_v2): 极简跟随信号引擎 — 第一性原理重构
+007b543c feat: D8 机构调研入库 + 第 7 维硬规则通路
+bee1ccf9 feat(signals_v2): Step 2.5 — 硬规则 breakdown 展示 + 参数面板即时 cohort 反馈
+6d50702d feat(signals_v2): 前端参数面板暴露全 16 键（Step 2）
+2e547e62 feat: Phase 4c — 行业内 z-score 特征 + Phase 4 最终结论
+68e4288c feat: Phase 4a — qlib_follow_engine 接入 D1-D8 + TDX L1 one-hot
+9a3b140e refactor: Phase 3d-4 — 清除 SW 兜底最终残留
+daba59eb refactor: Phase 3d-3 — 完成 SW→TDX 最终迁移 + 修 merge artifact
 ```
 
-**PR**: https://github.com/dare2live/chunky-monkey-v2/pull/new/claude/affectionate-wing-5ce5ce
+**仓库**: https://github.com/dare2live/chunky-monkey-v2（main 分支）
 
 ---
 

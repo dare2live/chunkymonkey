@@ -5373,6 +5373,19 @@ tr.detail-row>td>.detail-panel {
 .sig-breakdown-fail .sig-breakdown-badge { color: #dc2626; }
 .sig-breakdown-unknown .sig-breakdown-badge { color: #94a3b8; }
 
+/* Signals v2 · 主列表 7 维点灯 */
+.sig-rule-dots {
+  display: flex; gap: 3px; margin-top: 5px; align-items: center;
+}
+.sig-dot {
+  width: 8px; height: 8px; border-radius: 50%;
+  display: inline-block; flex-shrink: 0;
+  border: 1px solid rgba(0,0,0,0.06); cursor: help;
+}
+.sig-dot-pass { background: #16a34a; }
+.sig-dot-fail { background: #dc2626; }
+.sig-dot-unknown { background: #e2e8f0; }
+
 /* Signals v2 · 参数面板内嵌 cohort 反馈 */
 .sig-config-cohort {
   margin: 0 14px 14px; padding: 10px 14px;

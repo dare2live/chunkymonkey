@@ -62,8 +62,6 @@ DEFAULT_CONFIG: dict = {
     "min_hold_ratio": 0.3,
     # 机构类型黑名单（实证：这些类型负 alpha）
     "inst_type_blacklist": "基金,国家队",
-    # 机构类型硬性加分（这些类型历史上显著 beat blind）
-    "inst_type_preferred": "牛散,券商,社保,QFII,北向",
     # D1 · 股东人数 YoY（筹码集中度）
     # 实证：max_yoy=30 把 OOS edge 从 +3.29pp 推到 +5.22pp (WR 70%)
     # 99999 = 不启用；数值越小越严（0 = 只留筹码集中的）
@@ -97,7 +95,6 @@ class PolicyConfig:
     max_premium_pct: float = 15.0
     min_hold_ratio: float = 0.3
     inst_type_blacklist: str = "基金,国家队"
-    inst_type_preferred: str = "牛散,券商,社保,QFII,北向"
     max_holder_yoy_pct: float = 30.0  # D1: 股东人数 YoY 上限；99999=不启用
     min_forecast_profit_yoy: float = 20.0  # D3: 业绩预告利润 YoY 下限（%）；-9999=不启用
     max_unlock_ratio_180d: float = 5.0     # D5: 180 天解禁上限（%）；99999=不启用
@@ -106,10 +103,6 @@ class PolicyConfig:
     @property
     def blacklist_set(self) -> set[str]:
         return {t.strip() for t in (self.inst_type_blacklist or "").split(",") if t.strip()}
-
-    @property
-    def preferred_set(self) -> set[str]:
-        return {t.strip() for t in (self.inst_type_preferred or "").split(",") if t.strip()}
 
     @property
     def gain_column(self) -> str:
@@ -216,7 +209,7 @@ class Recommendation:
     scope: Optional[str] = None
     # 这个事件本身的 gain（如果已 matured，用于反馈分析）
     realized_return_pct: Optional[float] = None
-    # 硬规则 breakdown：6 维检查清单，告诉用户"为什么是 skip"
+    # 硬规则 breakdown：7 维检查清单，告诉用户"为什么是 skip"
     rule_breakdown: Optional[dict] = None
 
     def to_dict(self) -> dict:
@@ -649,7 +642,7 @@ def _build_rule_breakdown(
     hard_rule_hit: Optional[str],
 ) -> dict:
     """
-    构造 6 维硬规则检查清单，供前端展示"为什么是 skip"。
+    构造 7 维硬规则检查清单，供前端展示"为什么是 skip"。
 
     每维状态：
       - pass：原始值已知且通过门槛
