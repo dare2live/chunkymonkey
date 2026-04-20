@@ -235,6 +235,45 @@ async def get_institution_multi_horizon(institution_id: str):
 
 
 # ─────────────────────────────────────────────────────────────────────
+# 事件总体统计（工作台健康卡数据源）
+# ─────────────────────────────────────────────────────────────────────
+
+@router.get("/events/stats")
+async def get_event_stats():
+    """
+    fact_institution_event 层面的核心计数，供工作台「事件成熟」健康卡拉取。
+    不再只看 total —— 同时暴露"成熟率" = 有 gain_60d 的事件数 / buy 事件总数。
+    """
+    conn = get_conn()
+    try:
+        row = conn.execute("""
+            SELECT
+                COUNT(*) AS total_events,
+                COUNT(DISTINCT institution_id) AS distinct_institutions,
+                COUNT(DISTINCT stock_code) AS distinct_stocks,
+                SUM(CASE WHEN event_type IN ('new_entry','increase') THEN 1 ELSE 0 END) AS buy_total,
+                SUM(CASE WHEN event_type IN ('new_entry','increase') AND gain_60d IS NOT NULL THEN 1 ELSE 0 END) AS buy_matured,
+                MAX(notice_date) AS latest_notice_date,
+                MIN(notice_date) AS earliest_notice_date
+            FROM fact_institution_event
+        """).fetchone()
+        buy_total = row["buy_total"] or 0
+        buy_matured = row["buy_matured"] or 0
+        return {
+            "total_events": row["total_events"] or 0,
+            "buy_total": buy_total,
+            "buy_matured": buy_matured,
+            "matured_ratio": (buy_matured / buy_total) if buy_total else 0.0,
+            "distinct_institutions": row["distinct_institutions"] or 0,
+            "distinct_stocks": row["distinct_stocks"] or 0,
+            "latest_notice_date": row["latest_notice_date"],
+            "earliest_notice_date": row["earliest_notice_date"],
+        }
+    finally:
+        conn.close()
+
+
+# ─────────────────────────────────────────────────────────────────────
 # 回测
 # ─────────────────────────────────────────────────────────────────────
 

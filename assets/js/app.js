@@ -216,15 +216,15 @@
   async function refreshWorkbenchHealthBar() {
     // 并行拉 5 个数据源拼装 5 张健康卡
     try {
-      var [status, inst, ev, up, sig] = await Promise.all([
+      var [status, inst, evStats, up, sig] = await Promise.all([
         api('/api/inst/market/status').catch(() => null),
         api('/api/inst/institutions').catch(() => null),
-        api('/api/inst/events?limit=1').catch(() => null),
+        api('/api/signals/events/stats').catch(() => null),
         api('/api/inst/update/status').catch(() => null),
         api('/api/signals/today?freshness_days=90&limit=2000').catch(() => null),
       ]);
       renderHealthFreshness(status);
-      renderHealthEvents(ev, status);
+      renderHealthEvents(evStats, status);
       renderHealthInst(inst);
       renderHealthSignals(sig);
       renderHealthPipeline(up);
@@ -258,19 +258,22 @@
     else setChip('wbFreshChip', '⚠ 已过时', 'bad');
   }
 
-  function renderHealthEvents(ev, status) {
-    // events 总数来自 /events?limit=1 的 total 字段
-    var total = ev?.total || (status?.total_records) || 0;
-    var matured = ev?.matured_count;  // 若无字段回退用一个估算（接口不暴露则显示为 —）
-    setText('wbEvTotal', '总 ' + fmt(total));
-    if (matured != null) {
-      setText('wbEvMatured', fmt(matured));
-      var pct = total ? Math.round(matured / total * 100) : 0;
-      setText('wbEvPct', '成熟率 ' + pct + '%');
-    } else {
-      setText('wbEvMatured', fmt(total));
+  function renderHealthEvents(evStats, status) {
+    // 任务 3：事件成熟卡直接显示 /api/signals/events/stats 的真实数字
+    // buy_total 为所有 new_entry/increase 事件，buy_matured 为其中 gain_60d 已观察到的
+    if (!evStats) {
+      var fallback = (status?.total_records) || 0;
+      setText('wbEvMatured', fmt(fallback));
+      setText('wbEvTotal', '事件总数');
       setText('wbEvPct', '');
+      return;
     }
+    var total = evStats.buy_total || 0;
+    var matured = evStats.buy_matured || 0;
+    var pct = total ? Math.round(matured / total * 100) : 0;
+    setText('wbEvMatured', fmt(matured));
+    setText('wbEvTotal', '成熟 / 总 ' + fmt(total));
+    setText('wbEvPct', '成熟率 ' + pct + '%');
   }
 
   function renderHealthInst(inst) {
