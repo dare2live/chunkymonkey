@@ -87,8 +87,8 @@
     if (subHolder) subHolder.style.display = name === 'holder' ? '' : 'none';
     if (subEtf) subEtf.style.display = name === 'etf' ? '' : 'none';
     if (name === 'holder') {
-      // 进入股东挖掘默认显示工作台
-      showView('dashboard');
+      // C6g: 进入股东挖掘默认显示股票视图
+      showView('stocks');
     } else if (name === 'etf') {
       showView('etf');
     }
@@ -108,8 +108,8 @@
         }
       });
     }
-    // C6a: 股票 tab 下线 → dispatcher 移除 stocks；自选股/排除规则 在工作台折叠区懒加载
-    ({ dashboard: loadWorkbench, research: loadResearch, etf: loadEtf })[name]?.();
+    // C6g: stocks 为主入口，signals-v2 tab 下线
+    ({ stocks: loadStocks, dashboard: loadWorkbench, research: loadResearch, etf: loadEtf })[name]?.();
   }
 
   function showEtfTab(tabName) {
@@ -209,9 +209,54 @@
   // Workbench — 运维控制台（Step 5d 重塑）
   // 聚焦：健康带 + 数据管线 + 日志 + 高级折叠区
   // ============================================================
+
+  // ── 股票视图（C6g 主入口）─────────────────────────────────────
+  var _stocksLoaded = false;
+  function loadStocks() {
+    if (window.StockView) {
+      if (!_stocksLoaded) { _stocksLoaded = true; window.StockView.load(); }
+      else { window.StockView.reload(); }
+    }
+  }
+
   async function loadWorkbench() {
     await refreshDashboardStatus(true, true);
     refreshWorkbenchHealthBar();
+    _mountWorkbenchWidgets();
+  }
+
+  // 工作台 widget 懒挂载（只挂一次）
+  var _widgetsMounted = false;
+  function _mountWorkbenchWidgets() {
+    if (_widgetsMounted) return;
+    _widgetsMounted = true;
+    // 信号参数 widget — 展开时挂载
+    var paramsSection = document.getElementById('wb-signal-params-section');
+    if (paramsSection) {
+      paramsSection.addEventListener('toggle', function () {
+        if (paramsSection.open && window.SignalParamsWidget) {
+          window.SignalParamsWidget.mount('wb-signal-params-container');
+        }
+      }, { once: true });
+    }
+    // Cohort widget — 展开时挂载
+    var cohortSection = document.getElementById('wb-cohort-section');
+    if (cohortSection) {
+      cohortSection.addEventListener('toggle', function () {
+        if (cohortSection.open && window.CohortCardWidget) {
+          window.CohortCardWidget.mount('wb-cohort-container');
+        }
+      }, { once: true });
+    }
+    // 回测 widget — 展开时挂载
+    var btSection = document.getElementById('wb-backtest-section');
+    if (btSection) {
+      btSection.addEventListener('toggle', function () {
+        if (btSection.open && window.BacktestPanelWidget) {
+          window.BacktestPanelWidget.mount('wb-backtest-container');
+        }
+      }, { once: true });
+    }
   }
 
   async function refreshWorkbenchHealthBar() {
@@ -5290,7 +5335,7 @@
   async function init() {
     renderIdleStepGrid();
     await checkHealth(); // ensure it awaits first to initialize module toggles
-    showView('dashboard');
+    showView('stocks');
     el('btnUpdateAll').addEventListener('click', startUpdate);
     el('btnRefreshStatus')?.addEventListener('click', refreshWorkbenchStatus);
     el('btnStop').addEventListener('click', async () => {

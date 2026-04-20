@@ -6019,3 +6019,142 @@ tr.detail-row>td>.detail-panel {
 .sig-star:hover { background: var(--cm-ink-50); }
 .sig-star-on { color: #f59e0b; }
 .sig-star-on:hover { color: #d97706; background: var(--cm-warn-100); }
+
+/* ============================================================
+   C6d/C6e/C6g · 股票视图（sv-* 命名空间）
+   ============================================================ */
+
+/* 根容器 */
+.sv-root { padding: var(--cm-sp-4); }
+
+/* 筛选栏 */
+.sv-filter-bar {
+  display: flex;
+  align-items: center;
+  gap: var(--cm-sp-3);
+  flex-wrap: wrap;
+  padding: var(--cm-sp-3) 0;
+  margin-bottom: var(--cm-sp-3);
+  border-bottom: 1px solid var(--cm-ink-100);
+}
+.sv-select {
+  padding: 5px 10px;
+  border: 1px solid var(--cm-ink-100);
+  border-radius: var(--cm-r-md);
+  font-size: var(--cm-fs-12);
+  background: var(--cm-surface);
+  color: var(--cm-ink-700);
+}
+.sv-filter-wl {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: var(--cm-fs-12);
+  color: var(--cm-ink-500);
+  cursor: pointer;
+}
+.sv-count-hint { font-size: var(--cm-fs-11); }
+
+/* 列表表格 */
+.sv-table td { height: var(--cm-row-h); vertical-align: middle; }
+.sv-stock-name { font-size: var(--cm-fs-13); }
+.sv-industry { font-size: var(--cm-fs-11); margin-top: 2px; }
+.sv-signal-cell { text-align: center; }
+.sv-consensus-cell { min-width: 140px; }
+.sv-inst-count { font-size: var(--cm-fs-12); font-weight: 600; margin-bottom: 4px; }
+.sv-date-cell { font-size: var(--cm-fs-12); }
+.sv-actions-cell {
+  white-space: nowrap;
+  display: flex;
+  align-items: center;
+  gap: var(--cm-sp-2);
+  height: var(--cm-row-h);
+}
+.sv-sub { font-size: var(--cm-fs-11); }
+
+/* 抽屉 */
+.sv-drawer { border-top: 3px solid var(--cm-brand-400); }
+.sv-drawer-kpis {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--cm-sp-4);
+  padding: var(--cm-sp-3) var(--cm-sp-4);
+  background: var(--cm-ink-50);
+  border-bottom: 1px solid var(--cm-ink-100);
+  font-size: var(--cm-fs-13);
+}
+.sv-drawer-tabs {
+  display: flex;
+  gap: 0;
+  border-bottom: 1px solid var(--cm-ink-100);
+  padding: 0 var(--cm-sp-4);
+}
+.sv-tab-btn {
+  padding: var(--cm-sp-2) var(--cm-sp-4);
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  font-size: var(--cm-fs-13);
+  color: var(--cm-ink-500);
+  border-bottom: 2px solid transparent;
+  margin-bottom: -1px;
+  transition: color var(--cm-motion-fast), border-color var(--cm-motion-fast);
+}
+.sv-tab-btn:hover { color: var(--cm-ink-900); }
+.sv-tab-active {
+  color: var(--cm-brand-500);
+  border-bottom-color: var(--cm-brand-500);
+  font-weight: 600;
+}
+.sv-drawer-content { padding: var(--cm-sp-4); }
+
+/* 证据链 */
+.sv-evidence-wrap { display: flex; flex-direction: column; gap: var(--cm-sp-4); }
+.sv-evidence-block { background: var(--cm-ink-50); border-radius: var(--cm-r-lg); padding: var(--cm-sp-3); }
+.sv-evidence-head {
+  display: flex;
+  align-items: center;
+  gap: var(--cm-sp-2);
+  margin-bottom: var(--cm-sp-3);
+  font-size: var(--cm-fs-13);
+}
+.sv-evidence-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(110px, 1fr));
+  gap: var(--cm-sp-2);
+}
+.sv-evidence-chip {
+  border-radius: var(--cm-r-md);
+  padding: var(--cm-sp-2) var(--cm-sp-3);
+  font-size: var(--cm-fs-11);
+  text-align: center;
+  cursor: default;
+  border: 1px solid transparent;
+}
+.sv-evidence-pass {
+  background: var(--cm-ok-100);
+  border-color: #86efac;
+  color: var(--cm-ok-500);
+}
+.sv-evidence-fail {
+  background: var(--cm-bad-100);
+  border-color: #fca5a5;
+  color: var(--cm-bad-500);
+}
+.sv-evidence-unknown {
+  background: var(--cm-ink-50);
+  border-color: var(--cm-ink-100);
+  color: var(--cm-ink-500);
+}
+.sv-evidence-label { font-weight: 600; margin-bottom: 2px; }
+.sv-evidence-val { font-size: var(--cm-fs-12); }
+.sv-evidence-badge { font-size: 14px; margin-top: 2px; }
+
+/* 参数历史 */
+.sv-history-row {
+  display: flex;
+  gap: var(--cm-sp-3);
+  padding: 4px 0;
+  border-bottom: 1px solid var(--cm-ink-50);
+  align-items: flex-start;
+}

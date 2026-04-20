@@ -7,7 +7,7 @@
   <title>Chunky Monkey v2</title>
   <link rel="stylesheet" href="https://rsms.me/inter/inter.css">
   <script>
-    window.CM_ASSET_VERSION = '2.5.0';
+    window.CM_ASSET_VERSION = '3.0.0';
     (function (version) {
       var link = document.createElement('link');
       link.rel = 'stylesheet';
@@ -31,9 +31,9 @@
     </nav>
   </header>
   <div class="sub-bar" id="subBar">
-    <!-- 股东挖掘二级导航（C6a：股票 tab 下线，功能整合到信号视图） -->
+    <!-- 股东挖掘二级导航（C6g：信号 tab 下线，股票为主入口） -->
     <div class="nav-sub-bar" id="nav-sub-holder">
-      <button class="nav-btn active" data-view="signals-v2">信号</button>
+      <button class="nav-btn active" data-view="stocks">股票</button>
       <button class="nav-btn" data-view="research">机构</button>
       <button class="nav-btn" data-view="dashboard">工作台</button>
     </div>
@@ -47,8 +47,8 @@
   </div>
 
   <main class="content">
-    <!-- ==================== 信号 v2（主视图） ==================== -->
-    <section class="view active" id="view-signals-v2">
+    <!-- ==================== 股票（主视图 C6g） ==================== -->
+    <section class="view active" id="view-stocks">
       <div class="muted" style="padding:20px;text-align:center">加载中...</div>
     </section>
 
@@ -138,6 +138,24 @@
       <details class="workbench-section">
         <summary><span class="workbench-section-title">数据质量审计</span></summary>
         <div id="wbAuditDetail" class="muted" style="padding:10px 0;font-size:12px">智能更新后自动刷新快照。</div>
+      </details>
+
+      <!-- C6f 信号参数 widget -->
+      <details class="workbench-section" id="wb-signal-params-section">
+        <summary><span class="workbench-section-title">信号参数</span><span class="muted" style="font-size:11px;font-weight:400">调参后股票列表自动刷新</span></summary>
+        <div id="wb-signal-params-container" style="padding:10px 0"></div>
+      </details>
+
+      <!-- C6f Cohort 反馈闭环 widget -->
+      <details class="workbench-section" id="wb-cohort-section">
+        <summary><span class="workbench-section-title">Cohort 反馈闭环</span><span class="muted" style="font-size:11px;font-weight:400">已成熟样本 Follow vs Blind</span></summary>
+        <div id="wb-cohort-container" data-cohort-widget style="padding:10px 0"></div>
+      </details>
+
+      <!-- C6f 历史回测 widget -->
+      <details class="workbench-section" id="wb-backtest-section">
+        <summary><span class="workbench-section-title">历史回测</span><span class="muted" style="font-size:11px;font-weight:400">按需手动触发，约 10-15 秒</span></summary>
+        <div id="wb-backtest-container" style="padding:10px 0"></div>
       </details>
 
       <details class="workbench-section">
@@ -317,7 +335,7 @@
         <div class="panel-head">
           <span style="font-weight:600">ETF 数据同步</span>
           <div class="panel-actions">
-            <button class="btn-outline" id="btnEtfSync">同步 ETF 数据</button>
+            <button class="chip chip-outline" id="btnEtfSync">同步 ETF 数据</button>
           </div>
         </div>
         <div id="etfMsg" class="muted" style="font-size:12px">数据可能非最新，请先点击同步。</div>
@@ -367,8 +385,8 @@
       style="background:#fff;border-radius:12px;padding:24px 28px;max-width:420px;width:90%;box-shadow:0 8px 30px rgba(0,0,0,0.15)">
       <div id="modalBody" style="font-size:14px;line-height:1.6;margin-bottom:18px"></div>
       <div style="display:flex;gap:8px;justify-content:flex-end">
-        <button id="modalCancel" class="btn-outline" style="display:none;padding:6px 16px;border-radius:6px">取消</button>
-        <button id="modalOk" class="btn-primary" style="padding:6px 16px;border-radius:6px">确定</button>
+        <button id="modalCancel" class="chip chip-outline" style="display:none">取消</button>
+        <button id="modalOk" class="chip chip-primary">确定</button>
       </div>
     </div>
   </div>
@@ -378,34 +396,27 @@
     (function (version) {
       ['assets/js/app-cache.js', 'assets/js/app-nav.js', 'assets/js/app-list-state.js',
        'assets/js/signal-adapter.js',
-       'assets/js/app.js', 'assets/js/signals-view.js'].forEach(function (src) {
+       'assets/js/widgets/signal-params.js',
+       'assets/js/widgets/cohort-card.js',
+       'assets/js/widgets/backtest-panel.js',
+       'assets/js/stock-view.js',
+       'assets/js/app.js'].forEach(function (src) {
         document.write('<script src="' + src + '?v=' + version + '"><\/script>');
       });
     })(window.CM_ASSET_VERSION);
   </script>
   <script>
-    // signals v2 视图懒加载：切到该 tab 时初始化 + 默认就把视图切到 signals-v2
+    // 默认入口：股票视图（C6g）
     (function () {
       document.addEventListener('DOMContentLoaded', function () {
-        const nav = document.querySelector('[data-view="signals-v2"]');
-        let loaded = false;
-        function init() {
-          if (loaded) return;
-          loaded = true;
-          window.SignalsV2 && window.SignalsV2.load();
-        }
-        // 等 app.js 完成默认 showView 后，强制切到 signals-v2
         function boot() {
           if (window.App && window.App.showView) {
-            window.App.showView('signals-v2');
-            init();
+            window.App.showView('stocks');
           } else {
             setTimeout(boot, 50);
           }
         }
-        // 给 app.js 一个 tick 先跑自己的 init
         setTimeout(boot, 150);
-        if (nav) nav.addEventListener('click', function () { setTimeout(init, 50); });
       });
     })();
   </script>
