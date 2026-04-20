@@ -1090,13 +1090,22 @@ select {
   background: var(--panel);
 }
 
+.data-table-cards tbody tr[data-stock-idx],
+.data-table-cards tbody tr[data-inst-idx] {
+  /* C5 · 列表行统一 56px 高度，2 行内容垂直居中 */
+  height: var(--cm-row-h);
+}
+
 .data-table-cards tbody tr[data-stock-idx] td,
 .data-table-cards tbody tr[data-inst-idx] td {
   border-bottom: none;
-  padding: 6px 8px;
+  padding: var(--cm-sp-2) var(--cm-sp-3);
   border-top: 1px solid var(--line-light);
   border-bottom: 1px solid var(--line-light);
-  vertical-align: top;
+  /* 单元格内容垂直居中（主信息 + 副信息两行） */
+  vertical-align: middle;
+  font-size: var(--cm-fs-12);
+  line-height: 1.45;
 }
 
 .data-table-cards tbody tr[data-stock-idx] td:first-child,
