@@ -16,6 +16,12 @@
   'use strict';
 
   const BASE = '';
+  const TDX_L1_NAMES = {
+    T01: '能源', T02: '材料', T03: '日常消费', T04: '可选消费',
+    T05: '商贸', T06: '社会服务', T07: '装备制造', T08: '公用事业',
+    T09: '交通运输', T10: '金融', T11: '建筑地产', T12: '信息产业',
+    T13: '综合类',
+  };
   const state = {
     config: null,
     signals: [],
@@ -23,6 +29,8 @@
     cohort: null,
     currentFilter: 'follow',
     currentFreshness: 90,
+    filterIndustries: new Set(),   // Set<string> of TDX L1 codes; empty = all
+    filterInstTypes: new Set(),    // Set<string>; empty = all
     loading: false,
   };
 
@@ -80,7 +88,12 @@
   function renderSummary() {
     const s = state.summary || { by_action: {}, total: 0, freshness_days: state.currentFreshness };
     const cfg = state.config || {};
-    const buckets = s.by_action || {};
+    const afterCaps = applyCapsuleFilters(state.signals);
+    const capActive = state.filterIndustries.size > 0 || state.filterInstTypes.size > 0;
+    const buckets = capActive
+      ? afterCaps.reduce((acc, sig) => { acc[sig.action] = (acc[sig.action] || 0) + 1; return acc; }, {})
+      : (s.by_action || {});
+    const totalShown = capActive ? afterCaps.length : (s.total || 0);
     const tabClass = (k) => 'sig-tab' + (state.currentFilter === k ? ' sig-tab-active' : '');
     return `
       <div class="sig-summary">
@@ -89,7 +102,7 @@
             <button class="${tabClass('follow')}" data-filter="follow">可跟 · ${buckets.follow || 0}</button>
             <button class="${tabClass('watch')}" data-filter="watch">观察 · ${buckets.watch || 0}</button>
             <button class="${tabClass('skip')}" data-filter="skip">不跟 · ${buckets.skip || 0}</button>
-            <button class="${tabClass('all')}" data-filter="all">全部 · ${s.total || 0}</button>
+            <button class="${tabClass('all')}" data-filter="all">全部 · ${totalShown}</button>
           </div>
           <div class="sig-summary-hint muted">近 ${s.freshness_days || state.currentFreshness} 天 buy 事件；历史 EV、胜率基于该机构/该行业严格早于事件公告日的数据</div>
         </div>
@@ -131,6 +144,73 @@
     const r = REASON_LABEL_TAG[reasonLabel];
     if (!r) return '';
     return `<span class="sig-reason-tag sig-reason-${r.tone}">${r.text}</span>`;
+  }
+
+  function signalIndustryCode(sig) {
+    return (sig.industry || '').trim() || null;
+  }
+  function signalInstType(sig) {
+    const bd = sig.rule_breakdown;
+    if (!bd || !Array.isArray(bd.checks)) return null;
+    const instCheck = bd.checks.find(c => c.key === 'inst_type');
+    return instCheck && instCheck.raw ? String(instCheck.raw) : null;
+  }
+
+  function collectFilterOptions(signals) {
+    const industries = new Map();   // code → count (only codes actually seen)
+    const instTypes = new Map();
+    (signals || []).forEach(sig => {
+      const ind = signalIndustryCode(sig);
+      if (ind) industries.set(ind, (industries.get(ind) || 0) + 1);
+      const it = signalInstType(sig);
+      if (it) instTypes.set(it, (instTypes.get(it) || 0) + 1);
+    });
+    return {
+      industries: Array.from(industries.entries())
+        .sort(([a], [b]) => a.localeCompare(b)),
+      instTypes: Array.from(instTypes.entries())
+        .sort((a, b) => b[1] - a[1]),
+    };
+  }
+
+  function renderFilterCapsules(signals) {
+    const { industries, instTypes } = collectFilterOptions(signals);
+    const indActive = state.filterIndustries.size > 0;
+    const itActive = state.filterInstTypes.size > 0;
+    const indBtns = industries.map(([code, n]) => {
+      const on = state.filterIndustries.has(code);
+      const label = TDX_L1_NAMES[code] || code;
+      return `<button class="sig-cap-btn${on ? ' sig-cap-active' : ''}" data-capind="${esc(code)}">${esc(label)} <span class="muted">${n}</span></button>`;
+    }).join('');
+    const itBtns = instTypes.map(([it, n]) => {
+      const on = state.filterInstTypes.has(it);
+      return `<button class="sig-cap-btn${on ? ' sig-cap-active' : ''}" data-capit="${esc(it)}">${esc(it)} <span class="muted">${n}</span></button>`;
+    }).join('');
+    const anyActive = indActive || itActive;
+    return `
+      <div class="sig-caps">
+        <div class="sig-caps-row">
+          <span class="sig-caps-label">行业</span>
+          <div class="sig-caps-body">${indBtns || '<span class="muted">无数据</span>'}</div>
+        </div>
+        <div class="sig-caps-row">
+          <span class="sig-caps-label">机构类型</span>
+          <div class="sig-caps-body">${itBtns || '<span class="muted">无数据</span>'}</div>
+        </div>
+        ${anyActive ? '<button class="sig-btn sig-btn-ghost sig-caps-clear" id="sigClearFilters">清空筛选</button>' : ''}
+      </div>
+    `;
+  }
+
+  function applyCapsuleFilters(signals) {
+    const fi = state.filterIndustries;
+    const ft = state.filterInstTypes;
+    if (fi.size === 0 && ft.size === 0) return signals;
+    return signals.filter(s => {
+      if (fi.size > 0 && !fi.has(signalIndustryCode(s))) return false;
+      if (ft.size > 0 && !ft.has(signalInstType(s))) return false;
+      return true;
+    });
   }
 
   function ruleDots(breakdown) {
@@ -192,12 +272,15 @@
   }
 
   function renderSignalsTable() {
+    const afterCaps = applyCapsuleFilters(state.signals);
     const filtered = state.currentFilter === 'all'
-      ? state.signals
-      : state.signals.filter(s => s.action === state.currentFilter);
+      ? afterCaps
+      : afterCaps.filter(s => s.action === state.currentFilter);
 
     if (filtered.length === 0) {
-      return `<div class="sig-empty">窗口内无 ${state.currentFilter === 'all' ? '' : '「' + state.currentFilter + '」档'} 信号</div>`;
+      const hasCapFilter = state.filterIndustries.size > 0 || state.filterInstTypes.size > 0;
+      const hint = hasCapFilter ? '（当前胶囊筛选下）' : '';
+      return `<div class="sig-empty">${hint}窗口内无 ${state.currentFilter === 'all' ? '' : '「' + state.currentFilter + '」档'} 信号</div>`;
     }
 
     return `
@@ -288,6 +371,7 @@
         </div>
         <div id="sigCohortArea">${renderCohortCard()}</div>
         <div id="sigSummaryArea">${renderSummary()}</div>
+        <div id="sigFilterArea">${renderFilterCapsules(state.signals)}</div>
         <div id="sigTableArea">${state.loading ? '<div class="sig-empty">加载中...</div>' : renderSignalsTable()}</div>
         <div id="sigDetailArea"></div>
         <div id="sigConfigArea"></div>
@@ -306,12 +390,10 @@
     root.querySelectorAll('.sig-tab').forEach(btn => {
       btn.addEventListener('click', () => {
         state.currentFilter = btn.dataset.filter;
-        el('sigSummaryArea').innerHTML = renderSummary();
-        el('sigTableArea').innerHTML = renderSignalsTable();
-        rebindTable();
-        rebindSummary();
+        refreshFiltersAndTable();
       });
     });
+    rebindFilters();
     rebindTable();
   }
 
@@ -327,11 +409,42 @@
     document.querySelectorAll('.sig-tab').forEach(btn => {
       btn.addEventListener('click', () => {
         state.currentFilter = btn.dataset.filter;
-        el('sigSummaryArea').innerHTML = renderSummary();
-        el('sigTableArea').innerHTML = renderSignalsTable();
-        rebindTable();
-        rebindSummary();
+        refreshFiltersAndTable();
       });
+    });
+  }
+
+  function refreshFiltersAndTable() {
+    el('sigFilterArea').innerHTML = renderFilterCapsules(state.signals);
+    el('sigSummaryArea').innerHTML = renderSummary();
+    el('sigTableArea').innerHTML = renderSignalsTable();
+    rebindSummary();
+    rebindFilters();
+    rebindTable();
+  }
+
+  function rebindFilters() {
+    document.querySelectorAll('[data-capind]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const code = btn.dataset.capind;
+        if (state.filterIndustries.has(code)) state.filterIndustries.delete(code);
+        else state.filterIndustries.add(code);
+        refreshFiltersAndTable();
+      });
+    });
+    document.querySelectorAll('[data-capit]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const it = btn.dataset.capit;
+        if (state.filterInstTypes.has(it)) state.filterInstTypes.delete(it);
+        else state.filterInstTypes.add(it);
+        refreshFiltersAndTable();
+      });
+    });
+    const clr = el('sigClearFilters');
+    if (clr) clr.addEventListener('click', () => {
+      state.filterIndustries.clear();
+      state.filterInstTypes.clear();
+      refreshFiltersAndTable();
     });
   }
 

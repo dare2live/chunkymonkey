@@ -5386,6 +5386,32 @@ tr.detail-row>td>.detail-panel {
 .sig-dot-fail { background: #dc2626; }
 .sig-dot-unknown { background: #e2e8f0; }
 
+/* Signals v2 · 胶囊筛选（行业 / 机构类型） */
+.sig-caps {
+  background: #fff; border: 1px solid #e2e8f0; border-radius: 10px;
+  padding: 10px 14px; margin-bottom: 12px;
+  display: flex; flex-direction: column; gap: 8px;
+}
+.sig-caps-row {
+  display: flex; align-items: flex-start; gap: 10px;
+}
+.sig-caps-label {
+  flex-shrink: 0; font-size: 12px; font-weight: 600; color: #475569;
+  min-width: 56px; padding-top: 6px;
+}
+.sig-caps-body { display: flex; flex-wrap: wrap; gap: 6px; flex: 1; }
+.sig-cap-btn {
+  font-size: 12px; padding: 4px 10px;
+  border: 1px solid #cbd5e1; background: #f8fafc; color: #334155;
+  border-radius: 999px; cursor: pointer; transition: all 0.15s;
+}
+.sig-cap-btn:hover { background: #e2e8f0; }
+.sig-cap-btn.sig-cap-active {
+  background: #1e40af; color: #fff; border-color: #1e40af;
+}
+.sig-cap-btn.sig-cap-active .muted { color: #c7d2fe; }
+.sig-caps-clear { align-self: flex-end; margin-top: 2px; }
+
 /* Signals v2 · 参数面板内嵌 cohort 反馈 */
 .sig-config-cohort {
   margin: 0 14px 14px; padding: 10px 14px;
