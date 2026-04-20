@@ -380,6 +380,13 @@ select {
   background: #94a3b8;
 }
 
+/* 小样本警示：样本数不足统计阈值（默认 10）时把业绩数字变灰虚化，避免过度自信 */
+.low-sample {
+  color: #94a3b8 !important;
+  font-style: italic;
+  opacity: .75;
+}
+
 /* ====== 统计卡片 ====== */
 .stats-row {
   display: grid;

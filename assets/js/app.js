@@ -814,10 +814,21 @@
         return '<td><b class="clickable-name" onclick="App.toggleInstDetail(\'' + esc(p.institution_id) + '\',this)">' + esc(p.display_name || p.institution_name || '') + '</b></td><td>' + typeTag(p.inst_type) + '</td><td>' + (p.quality_score != null ? Number(p.quality_score).toFixed(1) : '-') + '</td><td>' + (p.followability_score != null ? Number(p.followability_score).toFixed(1) : '-') + '</td><td>' + confBadge + '</td><td>' + pct(p.win_rate_30d) + '</td><td>' + (p.current_stock_count || 0) + '</td><td>' + compactNum(p.current_total_cap) + '</td><td>' + fmtDate(p.latest_notice_date) + '</td><td>' + (p.latest_notice_date ? daysAgo(p.latest_notice_date) : '-') + '</td>';
       };
     } else if (instDim === 'returns') {
+      // 最小可信样本阈值，与 signals.v2.min_sample 一致（10 条）
+      var MIN_BUY_SAMPLES = 10;
       head = '<tr><th>机构</th><th>买入事件</th><th>30日胜率</th><th>60日胜率</th><th>120日胜率</th><th>30日均收</th><th>60日均收</th><th>120日均收</th><th>依据</th></tr>';
       row = function (p) {
         var basisTag = p.score_basis === 'buy' ? '<span style="color:#3b82f6;font-size:10px">买入</span>' : '<span style="color:#94a3b8;font-size:10px">全事件</span>';
-        return '<td><b class="clickable-name" onclick="App.toggleInstDetail(\'' + esc(p.institution_id) + '\',this)">' + esc(p.display_name || p.institution_name || '') + '</b></td><td>' + (p.buy_event_count || p.total_events || 0) + '</td><td>' + pct(p.buy_win_rate_30d || p.win_rate_30d) + '</td><td>' + pct(p.buy_win_rate_60d || p.win_rate_60d) + '</td><td>' + pct(p.buy_win_rate_120d || p.win_rate_90d) + '</td><td>' + fmtGain(p.buy_avg_gain_30d || p.avg_gain_30d) + '</td><td>' + fmtGain(p.buy_avg_gain_60d || p.avg_gain_60d) + '</td><td>' + fmtGain(p.buy_avg_gain_120d || p.avg_gain_120d) + '</td><td>' + basisTag + '</td>';
+        var n = p.buy_event_count || p.total_events || 0;
+        var lowSample = n < MIN_BUY_SAMPLES;
+        var wrap = function (html) {
+          if (!lowSample) return html;
+          return '<span class="low-sample" title="样本仅 ' + n + ' 条，低于 ' + MIN_BUY_SAMPLES + ' 条可信门槛">' + html + '</span>';
+        };
+        var nCell = lowSample
+          ? '<span class="low-sample" title="样本仅 ' + n + ' 条，低于 ' + MIN_BUY_SAMPLES + ' 条可信门槛">' + n + ' *</span>'
+          : String(n);
+        return '<td><b class="clickable-name" onclick="App.toggleInstDetail(\'' + esc(p.institution_id) + '\',this)">' + esc(p.display_name || p.institution_name || '') + '</b></td><td>' + nCell + '</td><td>' + wrap(pct(p.buy_win_rate_30d || p.win_rate_30d)) + '</td><td>' + wrap(pct(p.buy_win_rate_60d || p.win_rate_60d)) + '</td><td>' + wrap(pct(p.buy_win_rate_120d || p.win_rate_90d)) + '</td><td>' + wrap(fmtGain(p.buy_avg_gain_30d || p.avg_gain_30d)) + '</td><td>' + wrap(fmtGain(p.buy_avg_gain_60d || p.avg_gain_60d)) + '</td><td>' + wrap(fmtGain(p.buy_avg_gain_120d || p.avg_gain_120d)) + '</td><td>' + basisTag + '</td>';
       };
     } else {
       head = '<tr><th>机构</th><th>回撤30d</th><th>回撤60d</th><th>主要行业</th><th>优势行业</th><th>集中度</th><th>完整性</th></tr>';
