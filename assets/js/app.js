@@ -1755,9 +1755,11 @@
     { step_id: 'sync_raw', step_name: '下载十大股东', status: 'idle', desc: '从全市场拉取最新十大股东入驻数据' },
     { step_id: 'match_inst', step_name: '匹配跟踪机构', status: 'idle', desc: '将原始数据与跟踪名单匹配' },
     { step_id: 'sync_market_data', step_name: '同步行情数据', status: 'idle', desc: '补齐持仓股月K/日K数据' },
+    { step_id: 'sync_northbound', step_name: '同步北向持仓', status: 'idle', desc: '陆股通北向每日持股快照（自 2024-08-19 停更）' },
     { step_id: 'sync_financial', step_name: '同步财务数据', status: 'idle', desc: '从通达信同步 gpcw 财务数据' },
     { step_id: 'gen_events', step_name: '生成事件', status: 'idle', desc: '比对持仓变动，生成新进/增持/减持事件' },
     { step_id: 'calc_returns', step_name: '计算收益', status: 'idle', desc: '计算每个事件公告后的收益与回撤' },
+    { step_id: 'sync_surveys', step_name: '机构调研', status: 'idle', desc: '同步调研事件供外部关注信号' },
     { step_id: 'sync_industry', step_name: '通达信行业', status: 'idle', desc: '给持仓股补充通达信三级行业分类' },
     { step_id: 'calc_financial_derived', step_name: '计算财务指标', status: 'idle', desc: '计算 ROE、毛利率等财务派生指标' },
     { step_id: 'build_current_rel', step_name: '构建当前关系', status: 'idle', desc: '构建“机构→股票”当前持仓关系' },
@@ -2086,6 +2088,24 @@
       hasData = (returns.total || 0) === 0 || (returns.count || 0) > 0 || (returns.not_ready_events || 0) > 0;
       actionable = ((returns.actionable_missing_events || 0) > 0) || ['failed', 'skipped', 'stopped'].includes(status);
       actionLabel = ((returns.actionable_missing_events || 0) > 0) ? '补算缺失收益' : '单独补跑';
+    } else if (stepId === 'sync_northbound') {
+      var northbound = layers.northbound || {};
+      var lastTradeDate = northbound.last_trade_date || '2024-08-16';
+      addNote('数据源：东方财富陆股通北向持股（' + lastTradeDate + ' 后停更）');
+      if (typeof northbound.rows === 'number') addNote('审计 ' + fmt(northbound.rows) + ' 条历史快照');
+      if (/source_retired|停止|停更|停止更新/.test(step.error || '')) {
+        addNote('数据源已退役，该节点仅保留历史存量');
+      }
+      hasData = (northbound.rows || 0) > 0;
+      actionable = ['failed'].includes(status);
+      actionLabel = '单独补跑';
+    } else if (stepId === 'sync_surveys') {
+      var surveys = layers.surveys || {};
+      if (typeof surveys.count === 'number') addNote('审计 ' + fmt(surveys.count) + ' 条机构调研记录');
+      if (surveys.latest_date) addNote('最近调研日 ' + fmtDate(surveys.latest_date));
+      hasData = (surveys.count || 0) > 0;
+      actionable = ['failed', 'skipped', 'stopped'].includes(status);
+      actionLabel = '单独补跑';
     } else if (stepId === 'sync_industry') {
       if (typeof industry.expected_stocks === 'number') {
         addNote('股票维度：给匹配持仓股补通达信三级分类');
@@ -2463,12 +2483,12 @@
     if (!steps || !steps.length) { el('stepGrid').innerHTML = ''; return; }
 
     var GROUP_MAP = {
-      sync_raw: 'data', match_inst: 'data', sync_market_data: 'data', sync_financial: 'data', sync_industry: 'data',
+      sync_raw: 'data', match_inst: 'data', sync_market_data: 'data', sync_northbound: 'data', sync_financial: 'data', sync_surveys: 'data', sync_industry: 'data',
       gen_events: 'calc', calc_returns: 'calc', calc_financial_derived: 'calc',
       build_current_rel: 'mart', build_profiles: 'mart', build_industry_stat: 'mart', build_trends: 'mart', calc_screening: 'mart', calc_sector_momentum: 'mart', build_external_attention: 'mart', build_stage_features: 'mart', build_forecast_features: 'mart', calc_inst_scores: 'mart', calc_stock_scores: 'mart'
     };
     var GROUP_DEF = {
-      data: { name: '数据获取', verb: '重新同步', count: 5, badge: '①' },
+      data: { name: '数据获取', verb: '重新同步', count: 7, badge: '①' },
       calc: { name: '事实计算', verb: '全量计算', count: 3, badge: '②' },
       mart: { name: '集市构建', verb: '重构集市', count: 11, badge: '③' }
     };

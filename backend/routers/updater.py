@@ -1730,8 +1730,6 @@ async def _step_sync_industry(conn) -> int:
         "industry_sync": {
             "status": "running",
             "updated_rows": 0,
-            "snapshot_backfilled": 0,
-            "snapshot_pending": 0,
             "source": "",
             "source_degraded": False,
             "before_missing": summarize_gap_queue(conn, datasets=("industry",))["datasets"][0]["unresolved"],
@@ -1785,15 +1783,12 @@ async def _step_sync_industry(conn) -> int:
         detail["industry_sync"] = {
             "status": "blocked",
             "updated_rows": 0,
-            "snapshot_backfilled": snapshot_result["inserted"],
-            "snapshot_pending": snapshot_result["pending"],
-            "source": industry_source,
-            "source_degraded": industry_source_degraded,
+            "source": tdx_result.get("source", ""),
+            "source_degraded": False,
             "before_missing": detail["industry_sync"]["before_missing"],
             "after_missing": gap_summary["unresolved"],
             "reason": "通达信行业源无返回，当前未执行补齐",
             "errors": errors,
-            "source": tdx_result.get("source"),
             "gap_summary": gap_summary,
         }
         conn.commit()
@@ -1806,13 +1801,10 @@ async def _step_sync_industry(conn) -> int:
     detail["industry_sync"] = {
         "status": "partial" if gap_summary["unresolved"] else "success",
         "updated_rows": count,
-        "snapshot_backfilled": snapshot_result["inserted"],
-        "snapshot_pending": snapshot_result["pending"],
-        "source": industry_source,
-        "source_degraded": industry_source_degraded,
+        "source": tdx_result.get("source", ""),
+        "source_degraded": False,
         "before_missing": detail["industry_sync"]["before_missing"],
         "after_missing": gap_summary["unresolved"],
-        "source": tdx_result.get("source"),
         "fetched_at": tdx_result.get("fetched_at"),
         "l1_count": tdx_result.get("l1_count"),
         "l2_count": tdx_result.get("l2_count"),
@@ -1829,34 +1821,51 @@ async def _step_sync_industry(conn) -> int:
     return count
 
 
-async def _step_sync_northbound(conn) -> int:
-    """同步最近交易日附近的北向持仓日级事实。"""
+NORTHBOUND_DISCLOSURE_LAST_DATE = "2024-08-16"
+
+
+async def _step_sync_northbound(conn):
+    """同步最近交易日附近的北向持仓日级事实。
+
+    沪深港交易所自 2024-08-19 起停止发布陆股通个股持股明细，
+    该节点请求区间完全落在停更日之后时直接跳过，避免持续请求失效 API。
+    返回 str 时更高层视作 skipped。
+    """
     from services.northbound_client import sync_northbound_daily
     from services.security_master import get_active_a_stock_codes
 
     trade_date = latest_completed_trade_date(conn)
     if not trade_date:
         logger.warning("[北向] 未找到最近完成交易日，跳过同步")
+        return "未找到最近完成交易日，跳过同步"
+
+    end_dt = datetime.strptime(trade_date, "%Y-%m-%d")
+    start_dt = end_dt - timedelta(days=10)
+    start_str = start_dt.strftime("%Y-%m-%d")
+
+    if start_str > NORTHBOUND_DISCLOSURE_LAST_DATE:
+        reason = f"陆股通个股披露自 {NORTHBOUND_DISCLOSURE_LAST_DATE} 后停止更新"
+        logger.info(f"[北向] 数据源已停止公布，跳过同步（请求区间 {start_str} ~ {trade_date}）")
         _update_step(
             conn,
             "sync_northbound",
             error=json.dumps(
                 {
-                    "status": "skipped",
-                    "reason": "missing_trade_calendar",
+                    "status": "source_retired",
+                    "reason": reason,
+                    "requested_start_date": start_str,
+                    "requested_end_date": trade_date,
                     "written_rows": 0,
                 },
                 ensure_ascii=False,
             ),
             records=0,
         )
-        return 0
+        return reason
 
-    end_dt = datetime.strptime(trade_date, "%Y-%m-%d")
-    start_dt = end_dt - timedelta(days=10)
     detail = {
         "status": "running",
-        "requested_start_date": start_dt.strftime("%Y-%m-%d"),
+        "requested_start_date": start_str,
         "requested_end_date": trade_date,
         "written_rows": 0,
         "trade_dates": [],
@@ -1871,8 +1880,8 @@ async def _step_sync_northbound(conn) -> int:
     active_codes = get_active_a_stock_codes(conn)
     result = await sync_northbound_daily(
         conn,
-        start_date=detail["requested_start_date"],
-        end_date=detail["requested_end_date"],
+        start_date=start_str,
+        end_date=trade_date,
         active_codes=active_codes,
     )
     detail.update(result)
@@ -1882,6 +1891,9 @@ async def _step_sync_northbound(conn) -> int:
         error=json.dumps(detail, ensure_ascii=False),
         records=result.get("written_rows", 0),
     )
+
+    if result.get("status") == "source_unavailable":
+        return f"北向源暂不可用：{result.get('error') or '未知错误'}"
     return int(result.get("written_rows") or 0)
 
 
@@ -2938,10 +2950,11 @@ async def update_all():
             skipped = set()
             stopped = set()
 
-            # 预检连通性
+            # 预检连通性 —— 仅 K 线源做 precheck（跨服务探测成本高、失败不可恢复）。
+            # 行业源放弃 precheck：tdxhub 单点探测易误报，
+            # sync_tdx_industry 内部 count==0 分支已能写入 blocked 兜底。
             conn_status = await check_connectivity()
             kline_available = conn_status.get("kline_source", False)
-            industry_available = conn_status.get("industry_source", False)
             if not kline_available:
                 logger.warning(f"[更新] K线源不可用 — {conn_status.get('message', '')}")
 
@@ -2987,20 +3000,6 @@ async def update_all():
                     _update_step(conn, sid, status="skipped", error="K线源不可用")
                     skipped.add(sid)
                     continue
-                if sid == "sync_industry" and not industry_available:
-                    mark_current_missing_as(
-                        conn,
-                        "industry",
-                        status="blocked",
-                        reason="行业源不可用，当前未执行同步",
-                        last_error=conn_status.get("message", ""),
-                        stock_names=_tracked_stock_names(conn),
-                        commit=True,
-                    )
-                    _update_step(conn, sid, status="skipped", error="行业源不可用")
-                    skipped.add(sid)
-                    continue
-
                 # 软依赖检查：仅作为日志或提示
                 _soft_missing = [d for d in soft if d in failed or d in skipped]
 
@@ -3261,10 +3260,9 @@ async def smart_update():
             """)
             conn.commit()
 
-            # 预检连通性
+            # 预检连通性 —— 仅 K 线源 precheck，行业源放弃 precheck（sync_industry 自身兜底）
             conn_status = await check_connectivity()
             kline_available = conn_status.get("kline_source", False)
-            industry_available = conn_status.get("industry_source", False)
 
             completed = set()
             failed = set()
@@ -3325,20 +3323,6 @@ async def smart_update():
                     _update_step(conn, sid, status="skipped", error="K线源不可用")
                     skipped.add(sid)
                     continue
-                if sid == "sync_industry" and not industry_available:
-                    mark_current_missing_as(
-                        conn,
-                        "industry",
-                        status="blocked",
-                        reason="行业源不可用，当前未执行同步",
-                        last_error=conn_status.get("message", ""),
-                        stock_names=_tracked_stock_names(conn),
-                        commit=True,
-                    )
-                    _update_step(conn, sid, status="skipped", error="行业源不可用")
-                    skipped.add(sid)
-                    continue
-
                 _update_step(conn, sid, status="running", started_at=datetime.now().isoformat())
                 logger.info(f"[智能更新] 开始: {step['name']}")
 
@@ -3431,15 +3415,13 @@ async def run_single_step(step_id: str):
         try:
             selected = set(step_ids)
             kline_available = True
-            industry_available = True
+            # 仅 K线源做 precheck —— 多服试探成本低、失败不可恢复。
+            # 行业源(sync_industry) 放弃 precheck：tdxhub 单点探测易误报，
+            # 且 sync_tdx_industry 内部 count==0 分支已能写入 blocked 兜底。
+            conn_status = {}
             if "sync_market_data" in selected:
                 conn_status = await check_connectivity()
                 kline_available = conn_status.get("kline_source", False)
-                if "sync_industry" in selected:
-                    industry_available = conn_status.get("industry_source", False)
-            elif "sync_industry" in selected:
-                conn_status = await check_connectivity()
-                industry_available = conn_status.get("industry_source", False)
 
             completed = set()
             failed = set()
@@ -3495,23 +3477,6 @@ async def run_single_step(step_id: str):
                                  error="K线源不可用")
                     skipped.add(sid)
                     logger.warning(f"[单步] 跳过: {step_label}: K线源不可用")
-                    continue
-                if sid == "sync_industry" and not industry_available:
-                    mark_current_missing_as(
-                        conn,
-                        "industry",
-                        status="blocked",
-                        reason="行业源不可用，当前未执行同步",
-                        last_error=conn_status.get("message", ""),
-                        stock_names=_tracked_stock_names(conn),
-                        commit=True,
-                    )
-                    _update_step(conn, sid, status="skipped",
-                                 started_at=datetime.now().isoformat(),
-                                 finished_at=datetime.now().isoformat(),
-                                 error="行业源不可用")
-                    skipped.add(sid)
-                    logger.warning(f"[单步] 跳过: {step_label}: 行业源不可用")
                     continue
 
                 _update_step(conn, sid, status="running",
@@ -3692,7 +3657,6 @@ async def _run_group_pipeline(run_mode: str, run_name: str, group_id: str):
             
             conn_status = await check_connectivity()
             kline_available = conn_status.get("kline_source", False)
-            industry_available = conn_status.get("industry_source", False)
 
             completed = set()
             failed = set()
@@ -3722,10 +3686,6 @@ async def _run_group_pipeline(run_mode: str, run_name: str, group_id: str):
 
                 if sid == "sync_market_data" and not kline_available:
                     _update_step(conn, sid, status="skipped", error="K线源不可用")
-                    skipped.add(sid)
-                    continue
-                if sid == "sync_industry" and not industry_available:
-                    _update_step(conn, sid, status="skipped", error="行业源不可用")
                     skipped.add(sid)
                     continue
 
