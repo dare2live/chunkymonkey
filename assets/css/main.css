@@ -5492,3 +5492,118 @@ tr.detail-row>td>.detail-panel {
 .sig-win-cell { display: flex; flex-direction: column; gap: 0; line-height: 1.2; }
 .sig-win-cell b { font-size: 13px; }
 .sig-win-cell .muted { font-size: 10px; }
+
+/* ============================================================
+   工作台（Operations Console）· Step 5d 重塑
+   ============================================================ */
+.workbench-hero { padding: 18px 22px 16px; }
+.workbench-title { font-size: 26px; line-height: 1.1; font-weight: 520; letter-spacing: -0.3px; color: #111827; margin: 4px 0 8px; }
+.workbench-tagline { font-size: 13px; line-height: 1.6; max-width: 900px; margin: 0; }
+
+/* Layer 1 · 健康摘要带 */
+.workbench-health {
+  display: grid; grid-template-columns: repeat(5, 1fr); gap: 10px;
+  margin-bottom: 14px;
+}
+.wb-card {
+  padding: 14px 16px; background: #fff; border: 1px solid #e5e7eb;
+  border-radius: 10px; display: flex; flex-direction: column; gap: 4px;
+  min-height: 100px;
+}
+.wb-card-label { font-size: 11px; font-weight: 600; color: #64748b; letter-spacing: 0.2px; text-transform: uppercase; }
+.wb-card-value { font-size: 22px; font-weight: 700; color: #0f172a; line-height: 1.1; margin-top: 4px; font-variant-numeric: tabular-nums; }
+.wb-card-sub { font-size: 12px; color: #475569; line-height: 1.35; }
+.wb-card-chip {
+  margin-top: auto; align-self: flex-start; font-size: 10px; font-weight: 600;
+  padding: 2px 8px; border-radius: 9999px;
+  background: #f1f5f9; color: #475569; line-height: 1.5; letter-spacing: 0.2px;
+}
+.wb-card-chip.chip-ok    { background: #dcfce7; color: #15803d; }
+.wb-card-chip.chip-warn  { background: #fef3c7; color: #92400e; }
+.wb-card-chip.chip-bad   { background: #fee2e2; color: #b91c1c; }
+
+/* Layer 2 · 主操作 + 日志 */
+.workbench-ops {
+  display: grid; grid-template-columns: 1fr 360px; gap: 14px;
+  margin-bottom: 14px;
+}
+.workbench-ops-left {
+  padding: 14px 16px; background: #fff; border: 1px solid #e5e7eb; border-radius: 10px;
+}
+.workbench-ops-actions { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+.workbench-ops-actions .btn-primary { padding: 8px 20px; font-size: 14px; font-weight: 600; }
+.workbench-ops-actions .btn-outline, .workbench-ops-actions .btn-danger { padding: 8px 14px; font-size: 13px; }
+.workbench-sources {
+  display: flex; gap: 8px; flex-wrap: wrap; margin-top: 12px; padding: 0;
+}
+.workbench-sources .source-pill { background: transparent; border: 1px solid #e5e7eb; }
+.workbench-ops-log {
+  background: #0f172a; color: #e2e8f0; border-radius: 10px;
+  display: flex; flex-direction: column; min-height: 160px; max-height: 220px; overflow: hidden;
+}
+.workbench-ops-log .log-head {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 8px 12px; font-size: 11px; font-weight: 600;
+  border-bottom: 1px solid rgba(255,255,255,0.08); letter-spacing: 0.3px;
+}
+.workbench-ops-log .btn-text { color: #94a3b8; background: transparent; border: none; cursor: pointer; }
+.workbench-ops-log .btn-text:hover { color: #e2e8f0; }
+.workbench-ops-log .log-box {
+  flex: 1; overflow-y: auto; padding: 8px 12px; font-size: 11px;
+  font-family: ui-monospace,SFMono-Regular,Menlo,monospace; line-height: 1.6;
+  background: transparent; color: inherit; border: none;
+}
+
+/* Layer 3 + Layer 4 · 折叠区（details/summary） */
+.workbench-section {
+  background: #fff; border: 1px solid #e5e7eb; border-radius: 10px;
+  padding: 10px 16px; margin-bottom: 10px;
+}
+.workbench-section > summary {
+  list-style: none; cursor: pointer; user-select: none;
+  display: flex; align-items: center; justify-content: space-between; gap: 10px;
+  padding: 4px 0; outline: none;
+}
+.workbench-section > summary::-webkit-details-marker { display: none; }
+.workbench-section > summary::before {
+  content: "▸"; color: #94a3b8; margin-right: 6px; font-size: 10px;
+  transition: transform 0.15s; display: inline-block;
+}
+.workbench-section[open] > summary::before { transform: rotate(90deg); }
+.workbench-section > summary:hover { background: #f8fafc; margin: 0 -16px; padding: 4px 16px; border-radius: 6px; }
+.workbench-section-title { font-size: 14px; font-weight: 600; color: #0f172a; flex: 1; }
+.workbench-section > summary > span + span { margin-left: 8px; }
+.workbench-danger > summary { background: #fef2f2; margin: 0 -16px; padding: 6px 16px; border-radius: 6px; }
+.workbench-danger > summary:hover { background: #fee2e2; }
+.workbench-mgmt, .workbench-qlib { padding-top: 10px; }
+
+@media (max-width: 960px) {
+  .workbench-health { grid-template-columns: repeat(2, 1fr); }
+  .workbench-ops { grid-template-columns: 1fr; }
+  .workbench-ops-log { max-height: 180px; }
+}
+
+/* ============================================================
+   机构 track record 视图
+   ============================================================ */
+.research-header {
+  display: flex; align-items: flex-start; justify-content: space-between; gap: 16px;
+  margin-bottom: 14px; flex-wrap: wrap;
+}
+.research-header-title { flex: 1; min-width: 300px; }
+.research-title { font-size: 24px; line-height: 1.1; font-weight: 520; letter-spacing: -0.3px; color: #111827; margin: 4px 0 8px; }
+.research-tagline { font-size: 13px; line-height: 1.6; max-width: 720px; margin: 0; }
+.inst-dim-switch {
+  display: flex; align-items: center; gap: 6px; margin-bottom: 12px;
+  padding: 6px 10px; background: #f8fafc; border: 1px solid #e5e7eb; border-radius: 8px;
+  width: fit-content;
+}
+.inst-dim-switch .dim-btn {
+  padding: 4px 12px; font-size: 12px; border: 1px solid transparent;
+  border-radius: 6px; background: transparent; color: #475569; cursor: pointer;
+  transition: all 0.12s;
+}
+.inst-dim-switch .dim-btn:hover { background: #fff; color: #0f172a; }
+.inst-dim-switch .dim-btn.active {
+  background: #1e40af; color: #fff; border-color: #1e40af; font-weight: 600;
+}

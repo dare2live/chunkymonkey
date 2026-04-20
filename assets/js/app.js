@@ -108,7 +108,7 @@
         }
       });
     }
-    ({ dashboard: loadDashboard, system: loadSystem, research: loadResearch, stocks: loadStockView, qlib: loadQlib, etf: loadEtf })[name]?.();
+    ({ dashboard: loadWorkbench, research: loadResearch, stocks: loadStockView, etf: loadEtf })[name]?.();
   }
 
   function showEtfTab(tabName) {
@@ -152,18 +152,8 @@
   // Dashboard sub-tabs
   // 工作台不再有 tabs，排除规则和网络检测在页面加载时一起执行
 
-  // Research sub-tabs
-  document.querySelectorAll('.research-tabs .tab-btn').forEach(btn => {
-    btn.addEventListener('click', () => {
-      document.querySelectorAll('.research-tabs .tab-btn').forEach(b => b.classList.remove('active'));
-      document.querySelectorAll('.rtab-content').forEach(c => c.classList.remove('active'));
-      btn.classList.add('active');
-      var t = document.getElementById('rtab-' + btn.dataset.rtab);
-      if (t) t.classList.add('active');
-      if (btn.dataset.rtab === 'mgmt') loadInstMgmt();
-      if (btn.dataset.rtab === 'scorecard') loadInstScorecard();
-    });
-  });
+  // Step 5d：机构 sub-tabs 已合并为单列表 + 抽屉（见 renderInstList）。
+  // 批量管理挪至工作台的折叠区，首次展开时延迟加载。
 
   // Stock sub-tabs
   document.querySelectorAll('.stock-tabs .tab-btn').forEach(btn => {
@@ -216,30 +206,123 @@
   }
 
   // ============================================================
-  // Dashboard — Overview
+  // Workbench — 运维控制台（Step 5d 重塑）
+  // 聚焦：健康带 + 数据管线 + 日志 + 高级折叠区
   // ============================================================
-  async function loadDashboard() {
-    // 并行加载：管线状态 + 候选池
-    var trendsP = api('/api/inst/stock-trends');
-    var industryP = loadIndustryOverviewSummary().catch(function () { return null; });
-    await refreshDashboardStatus(true);
-    try {
-      var results = await Promise.all([trendsP, industryP]);
-      var trends = results[0];
-      var industry = results[1];
-      if (industry?.data) industryViewState.setData(industry.data || []);
-      if (industry?.summary) industryViewState.setSummary(industry.summary || null);
-      if (trends?.summary) stockListState.setSummary(trends.summary || null);
-      if (trends?.data) renderCandidatePool(trends.data, industry?.summary || industryViewState.getSummary(), trends?.summary || stockListState.getSummary());
-    } catch (e) { /* 候选池加载失败不影响主流程 */ }
+  async function loadWorkbench() {
+    await refreshDashboardStatus(true, true);
+    refreshWorkbenchHealthBar();
   }
 
-  async function loadSystem() {
-    await refreshDashboardStatus(true, true);
+  async function refreshWorkbenchHealthBar() {
+    // 并行拉 5 个数据源拼装 5 张健康卡
+    try {
+      var [status, inst, ev, up, sig] = await Promise.all([
+        api('/api/inst/market/status').catch(() => null),
+        api('/api/inst/institutions').catch(() => null),
+        api('/api/inst/events?limit=1').catch(() => null),
+        api('/api/inst/update/status').catch(() => null),
+        api('/api/signals/today?freshness_days=90&limit=2000').catch(() => null),
+      ]);
+      renderHealthFreshness(status);
+      renderHealthEvents(ev, status);
+      renderHealthInst(inst);
+      renderHealthSignals(sig);
+      renderHealthPipeline(up);
+    } catch (e) { /* 不阻塞 */ }
+  }
+
+  function setText(id, text) { var n = el(id); if (n) n.textContent = text == null ? '—' : String(text); }
+  function setHtml(id, html) { var n = el(id); if (n) n.innerHTML = html || ''; }
+  function setChip(id, text, tone) {
+    var n = el(id); if (!n) return;
+    n.textContent = text || '';
+    n.classList.remove('chip-ok', 'chip-warn', 'chip-bad');
+    if (tone) n.classList.add('chip-' + tone);
+  }
+  function daysAgoFromYmd(ymd) {
+    if (!ymd) return null;
+    var s = String(ymd).replace(/[^0-9]/g, '').slice(0, 8);
+    if (s.length !== 8) return null;
+    var dt = new Date(+s.slice(0,4), +s.slice(4,6)-1, +s.slice(6,8));
+    return Math.floor((Date.now() - dt.getTime()) / 86400000);
+  }
+
+  function renderHealthFreshness(status) {
+    if (!status) { setText('wbFreshDate', '—'); return; }
+    setText('wbFreshDate', fmtDate(status.latest_notice_date));
+    var days = daysAgoFromYmd(status.latest_notice_date);
+    setText('wbFreshAge', days == null ? '' : '距今 ' + days + ' 天');
+    if (days == null) setChip('wbFreshChip', '');
+    else if (days <= 3) setChip('wbFreshChip', '✓ 新鲜', 'ok');
+    else if (days <= 7) setChip('wbFreshChip', '稍旧', 'warn');
+    else setChip('wbFreshChip', '⚠ 已过时', 'bad');
+  }
+
+  function renderHealthEvents(ev, status) {
+    // events 总数来自 /events?limit=1 的 total 字段
+    var total = ev?.total || (status?.total_records) || 0;
+    var matured = ev?.matured_count;  // 若无字段回退用一个估算（接口不暴露则显示为 —）
+    setText('wbEvTotal', '总 ' + fmt(total));
+    if (matured != null) {
+      setText('wbEvMatured', fmt(matured));
+      var pct = total ? Math.round(matured / total * 100) : 0;
+      setText('wbEvPct', '成熟率 ' + pct + '%');
+    } else {
+      setText('wbEvMatured', fmt(total));
+      setText('wbEvPct', '');
+    }
+  }
+
+  function renderHealthInst(inst) {
+    var arr = (inst && inst.data) ? inst.data : [];
+    var active = arr.filter(i => i.enabled && !i.blacklisted).length;
+    var total = arr.length;
+    setText('wbInstActive', fmt(active));
+    setText('wbInstTotal', '总 ' + fmt(total) + ' · 黑名单 ' + fmt(total - active));
+    // 分类数
+    var types = {};
+    arr.forEach(i => { if (i.enabled && !i.blacklisted && i.type) types[i.type] = (types[i.type]||0) + 1; });
+    var top = Object.entries(types).sort((a,b) => b[1]-a[1]).slice(0, 3).map(([t,n]) => t+':'+n).join(' · ');
+    setText('wbInstTypes', top);
+  }
+
+  function renderHealthSignals(sig) {
+    if (!sig) { setText('wbSigFollow', '—'); return; }
+    var by = (sig.summary && sig.summary.by_action) || {};
+    setText('wbSigFollow', fmt(by.follow || 0) + ' 可跟');
+    setText('wbSigWatchSkip', fmt(by.watch || 0) + ' 观察 · ' + fmt(by.skip || 0) + ' 不跟');
+  }
+
+  function renderHealthPipeline(up) {
+    if (!up) { setText('wbPipeStatus', '—'); return; }
+    var running = up.running === true;
+    var summary = up.summary || {};
+    var counts = summary.counts || {};
+    var failedCount = counts.failed || 0;
+    var completedCount = counts.completed || 0;
+    var skippedCount = counts.skipped || 0;
+    var latestAt = counts.latest_at || summary.latest_status_at || null;
+    if (running) {
+      setText('wbPipeStatus', '运行中');
+      setChip('wbPipeChip', '进行中', 'warn');
+    } else if (failedCount > 0) {
+      setText('wbPipeStatus', failedCount + ' 步失败');
+      setChip('wbPipeChip', '需排查', 'bad');
+    } else {
+      setText('wbPipeStatus', '✓ 就绪');
+      setChip('wbPipeChip', (completedCount + '/' + (completedCount + skippedCount + failedCount)) + ' 步', 'ok');
+    }
+    if (latestAt) {
+      var d = latestAt.slice(0, 16).replace('T', ' ');
+      setText('wbPipeLast', '上次运行 ' + d);
+    } else {
+      setText('wbPipeLast', '');
+    }
   }
 
   function emptyStockSummary(stocks) {
-    return {
+    var summary = {
       total: (stocks || []).length,
       abTotal: 0,
       followTotal: 0,
@@ -265,8 +348,8 @@
     };
     (stocks || []).forEach(function (s) {
       var pool = s.priority_pool || '未分池';
-      var gate = stockGateInfo(s).key || '';
-      var source = stockSourceName(s);
+      var gate = (stockGateInfo && stockGateInfo(s) || {}).key || '';
+      var source = (typeof stockSourceName === 'function') ? stockSourceName(s) : '';
       var industry = s.setup_industry_name || s.tdx_l2 || s.tdx_l1 || '';
       summary.pools[pool] = (summary.pools[pool] || 0) + 1;
       if (pool === 'A池' || pool === 'B池') summary.abTotal += 1;
@@ -281,10 +364,34 @@
       if (source && source !== '-') summary.sources[source] = (summary.sources[source] || 0) + 1;
       if (s._dual_confirm) summary.dualConfirm += 1;
     });
-    summary.topIndustries = topCountEntries(summary.industries, 4);
-    summary.topSignals = topCountEntries(summary.signals, 4);
-    summary.topSources = topCountEntries(summary.sources, 3);
+    if (typeof topCountEntries === 'function') {
+      summary.topIndustries = topCountEntries(summary.industries, 4);
+      summary.topSignals = topCountEntries(summary.signals, 4);
+      summary.topSources = topCountEntries(summary.sources, 3);
+    }
     return summary;
+  }
+
+  // Step 5d 补齐：HEAD 里 resolveStockSummary 调用点有 3 处但从未定义，导致
+  // renderStockResearchSummary 在 loadStockView 中一直静默抛 ReferenceError。
+  // 本函数合并「后端 summary」与「本地算出的 summary」两种来源：
+  //   - 后端 stockSummary 非空：优先用（缺字段回退到本地）
+  //   - 后端 stockSummary 为空：完全用本地计算
+  function resolveStockSummary(stocks, stockSummary) {
+    var local = emptyStockSummary(stocks || []);
+    if (!stockSummary || typeof stockSummary !== 'object') return local;
+    return Object.assign({}, local, stockSummary, {
+      pools: Object.assign({}, local.pools, stockSummary.pools || {}),
+      gates: Object.assign({}, local.gates, stockSummary.gates || {}),
+      signals: Object.assign({}, local.signals, stockSummary.signals || {}),
+      industries: Object.assign({}, local.industries, stockSummary.industries || {}),
+      sources: Object.assign({}, local.sources, stockSummary.sources || {}),
+      attentionSignals: Object.assign({}, local.attentionSignals, stockSummary.attentionSignals || {}),
+      topIndustries: stockSummary.topIndustries || local.topIndustries,
+      topSignals: stockSummary.topSignals || local.topSignals,
+      topSources: stockSummary.topSources || local.topSources,
+      topAttentionSignals: stockSummary.topAttentionSignals || local.topAttentionSignals,
+    });
   }
 
   function summaryChip(label, count, tone) {
@@ -494,53 +601,8 @@
       '</div>';
   }
 
-  function renderDashboardOverview(stocks, sectorSummary, stockSummary) {
-    var summary = resolveStockSummary(stocks, stockSummary);
-    var focusItems = sectorFocusItems(summary, sectorSummary);
-    var heroMeta = el('dashboardHeroMeta');
-    var insightGrid = el('dashboardInsightGrid');
-    if (heroMeta) {
-      heroMeta.innerHTML = [
-        heroMetricCard('A/B 候选', fmt(summary.abTotal), 'A池 ' + fmt(summary.pools['A池'] || 0) + ' · B池 ' + fmt(summary.pools['B池'] || 0)),
-        heroMetricCard('可跟名单', fmt(summary.followTotal), '关注 ' + fmt(summary.gates.watch || 0) + ' · 观察 ' + fmt(summary.gates.observe || 0)),
-        heroMetricCard('双确认', fmt(summary.dualConfirm), 'Setup ' + fmt(summary.setupTotal) + ' · 总股票 ' + fmt(summary.total))
-      ].join('');
-    }
-    if (!insightGrid) return;
-    insightGrid.innerHTML =
-      '<section class="summary-card">' +
-        '<div class="summary-card-head"><span class="summary-card-kicker">Pool Mix</span><strong>候选池分布</strong></div>' +
-        '<div class="summary-card-body">' +
-          summaryRow('A池', summary.pools['A池'] || 0, 'a', summary.total) +
-          summaryRow('B池', summary.pools['B池'] || 0, 'b', summary.total) +
-          summaryRow('C池', summary.pools['C池'] || 0, 'c', summary.total) +
-          summaryRow('D池', summary.pools['D池'] || 0, 'd', summary.total) +
-        '</div>' +
-      '</section>' +
-      '<section class="summary-card">' +
-        '<div class="summary-card-head"><span class="summary-card-kicker">Execution</span><strong>执行档节奏</strong></div>' +
-        '<div class="summary-card-body">' +
-          summaryRow('可跟', summary.gates.follow || 0, 'follow', summary.total) +
-          summaryRow('关注', summary.gates.watch || 0, 'watch', summary.total) +
-          summaryRow('观察', summary.gates.observe || 0, 'observe', summary.total) +
-          summaryRow('回避', summary.gates.avoid || 0, 'avoid', summary.total) +
-        '</div>' +
-      '</section>' +
-      '<section class="summary-card">' +
-        '<div class="summary-card-head"><span class="summary-card-kicker">Sector Focus</span><strong>当前主线行业</strong></div>' +
-        '<div class="summary-card-tags">' +
-          (focusItems.length ? focusItems.map(renderSectorFocusChip).join('') : '<span class="summary-empty">暂无行业聚集</span>') +
-        '</div>' +
-        '<div class="summary-card-sub">' + esc(sectorFocusSubtitle(summary, sectorSummary, focusItems)) + '</div>' +
-      '</section>' +
-      '<section class="summary-card">' +
-        '<div class="summary-card-head"><span class="summary-card-kicker">Signal Density</span><strong>Setup 与验证</strong></div>' +
-        '<div class="summary-card-tags">' +
-          (summary.topSignals.length ? summary.topSignals.map(function (item) { return summaryChip(item.key, item.count, 'signal'); }).join('') : '<span class="summary-empty">暂无 Setup</span>') +
-        '</div>' +
-        '<div class="summary-card-sub">双确认 ' + fmt(summary.dualConfirm) + ' · 可跟 ' + fmt(summary.followTotal) + ' · A/B池 ' + fmt(summary.abTotal) + '</div>' +
-      '</section>';
-  }
+  // renderDashboardOverview 已随 Step 5d 工作台重塑移除。
+  // 候选池/评分框架从「工作台」撤下，主入口统一为信号 v2。
 
   function renderStockResearchSummary(stocks, sectorSummary, stockSummary) {
     var summary = resolveStockSummary(stocks, stockSummary);
@@ -580,104 +642,17 @@
     }
   }
 
-  function openStockFromCandidate(stockCode) {
-    document.querySelectorAll('.stock-tabs .tab-btn').forEach(function (btn) {
-      btn.classList.toggle('active', btn.dataset.stab === 'list');
-    });
-    document.querySelectorAll('.stab-content').forEach(function (panel) {
-      panel.classList.toggle('active', panel.id === 'stab-list');
-    });
-    setStockSearchContext('list');
-    showView('stocks');
-    var searchInput = el('stockSearch');
-    if (searchInput) searchInput.value = stockCode || '';
-    Promise.resolve(loadStockList()).then(function () {
-      applyStockFilters();
-      document.querySelector('.stock-banner')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-    });
-  }
-
-  function renderCandidatePool(stocks, sectorSummary, stockSummary) {
-    var container = el('candidatePoolSection');
-    var summary = resolveStockSummary(stocks || [], stockSummary);
-    renderDashboardOverview(stocks || [], sectorSummary, stockSummary);
-    renderStockResearchSummary(stocks || [], sectorSummary, stockSummary);
-    if (!container) return;
-    // 按综合分降序，取 A/B 池
-    var pool = stocks
-      .filter(function (s) { var p = s.priority_pool || ''; return p === 'A池' || p === 'B池'; })
-      .sort(function (a, b) { return (b.composite_priority_score || 0) - (a.composite_priority_score || 0); })
-      .slice(0, 20);
-
-    if (!pool.length) {
-      container.innerHTML = '<div class="panel" style="padding:20px;text-align:center"><span class="muted">暂无候选股票</span></div>';
-      return;
-    }
-
-    // 候选池头部计数统一复用后端 summary，避免与摘要区口径漂移。
-    var poolCounts = summary.pools || {};
-    var countHtml = Object.keys(poolCounts).sort().map(function (k) {
-      var color = k === 'A池' ? '#059669' : k === 'B池' ? '#3b82f6' : k === 'C池' ? '#f59e0b' : '#94a3b8';
-      return '<span style="display:inline-flex;align-items:center;gap:4px;font-size:12px"><span style="width:8px;height:8px;border-radius:50%;background:' + color + '"></span>' + esc(k) + ' ' + poolCounts[k] + '</span>';
-    }).join('<span style="margin:0 6px;color:#e2e8f0">|</span>');
-
-    var cardsHtml = pool.map(function (s) {
-      var composite = s.composite_priority_score != null ? Number(s.composite_priority_score).toFixed(1) : '-';
-      var poolTag = priorityPoolTag(s.priority_pool);
-      var archetype = s.stock_archetype || '';
-      var industry = s.setup_industry_name || s.tdx_l3 || s.tdx_l2 || s.tdx_l1 || '';
-      var signal = s.setup_tag ? setupBadge(s.setup_tag, s.setup_priority, s.setup_confidence) : '';
-      var summary = stockCompositeSummary(s);
-      var gate = stockGateTag(s);
-      return '<div class="candidate-card" onclick="App.openStockFromCandidate && App.openStockFromCandidate(\'' + esc(s.stock_code) + '\')">' +
-        '<div class="candidate-card-header">' +
-          '<div class="candidate-card-name">' + esc(s.stock_name) + '</div>' +
-          '<div class="candidate-card-code">' + esc(s.stock_code) + '</div>' +
-        '</div>' +
-        '<div class="candidate-card-score">' +
-          poolTag + ' <span style="font-size:18px;font-weight:700;color:#0f172a">' + composite + '</span>' +
-        '</div>' +
-        '<div class="candidate-card-tags">' +
-          signal +
-          gate +
-          (archetype ? '<span class="tag tag-sm" style="background:#f1f5f9;color:#475569">' + esc(archetype) + '</span>' : '') +
-        '</div>' +
-        '<div class="candidate-card-meta">' +
-          '<span style="color:#64748b;font-size:11px">' + esc(industry) + '</span>' +
-          '<span style="color:#94a3b8;font-size:10px">' + esc(summary) + '</span>' +
-        '</div>' +
-      '</div>';
-    }).join('');
-
-    container.innerHTML =
-      '<div class="candidate-section">' +
-        '<div class="candidate-section-head">' +
-          '<div class="candidate-section-title"><span>候选池 Top ' + pool.length + '</span><span class="badge">A/B 优先</span></div>' +
-          '<div class="candidate-count-strip">' + countHtml + '</div>' +
-        '</div>' +
-        '<div class="candidate-grid">' + cardsHtml + '</div>' +
-      '</div>';
-  }
+  // openStockFromCandidate / renderCandidatePool 已移除（Step 5d）。
+  // 股票研究主入口从「候选池卡片」迁至信号 v2 的"股票聚合"视图。
 
   async function refreshDashboardStatus(includeConnectivity) {
+    // Step 5d 重塑：工作台 5 张健康卡由 refreshWorkbenchHealthBar 直接拉 API 渲染。
+    // 此函数现只负责"管线步骤网格 + 审计快照 + 网络源 pill"这三件事。
     var forceAudit = arguments.length > 1 ? !!arguments[1] : false;
     var auditPromise = forceAudit ? refreshAuditSnapshot(true) : Promise.resolve(_lastAuditSnapshot);
-    var [status, inst, ev, up] = await Promise.all([
-      api('/api/inst/market/status'),
-      api('/api/inst/institutions'),
-      api('/api/inst/events?limit=1'),
-      api('/api/inst/update/status'),
-    ]);
+    var up = await api('/api/inst/update/status').catch(() => null);
     await auditPromise;
-    if (status) {
-      el('statRaw').className = 'stat-value'; el('statRaw').textContent = fmt(status.total_records);
-      el('statStocks').className = 'stat-value'; el('statStocks').textContent = fmt(status.matched_stocks != null ? status.matched_stocks : status.total_stocks);
-      el('statLatest').className = 'stat-value'; el('statLatest').textContent = fmtDate(status.latest_notice_date);
-    }
-    if (inst?.data) { el('statInst').className = 'stat-value'; el('statInst').textContent = inst.data.filter(i => i.enabled && !i.blacklisted).length; }
-    if (ev) { el('statEvents').className = 'stat-value'; el('statEvents').textContent = fmt(ev.total); }
     await renderUpdatePanel(up, { forceAudit: forceAudit });
-    // connectivity 异步加载，不阻塞主流程
     if (includeConnectivity !== false) checkNetwork();
   }
 
@@ -758,22 +733,20 @@
   }
 
 
-  // Phase 3: 机构列表维度切换
+  // Phase 3: 机构列表维度切换（Step 5d：按钮组移到 HTML 的 .inst-dim-switch）
+  function syncDimSwitchActive() {
+    var dim = instListState.getDim();
+    document.querySelectorAll('.inst-dim-switch .dim-btn').forEach(function (btn) {
+      btn.classList.toggle('active', btn.dataset.dim === dim);
+    });
+  }
+
   function renderInstList(data, tf) {
     instListState.setData(tf === 'all' ? data : data.filter(function (p) { return p.inst_type === tf }));
     var instData = instListState.getData();
     var instDim = instListState.getDim();
     var c = el('instListContainer');
-    // 维度切换栏
-    var dims = [
-      { id: 'overview', label: '概览' },
-      { id: 'returns', label: '收益' },
-      { id: 'risk', label: '风险与行业' }
-    ];
-    var dimBar = '<div style="display:flex;gap:6px;margin-bottom:8px">' +
-      dims.map(function (dim) {
-        return '<button class="btn-sm ' + (dim.id === instDim ? 'primary' : '') + '" onclick="App.switchInstDim(\'' + dim.id + '\')" style="font-size:12px">' + dim.label + '</button>';
-      }).join('') + '</div>';
+    syncDimSwitchActive();
 
     var head, row;
     if (instDim === 'overview') {
@@ -798,7 +771,7 @@
       };
     }
 
-    c.innerHTML = dimBar + '<table class="data-table data-table-cards"><thead>' + head + '</thead><tbody>' +
+    c.innerHTML = '<table class="data-table data-table-cards"><thead>' + head + '</thead><tbody>' +
       (instData.length ? instData.map(function (p, i) { return '<tr data-inst-idx="' + i + '">' + row(p) + '</tr>' }).join('') : '<tr><td class="empty-row" colspan="11">暂无数据</td></tr>') +
       '</tbody></table>';
     scheduleSortableTables('instListContainer');
@@ -1579,7 +1552,7 @@
         '<td data-sort-value="' + esc(String(stockScoreValue(s, 'stage') != null ? stockScoreValue(s, 'stage') : -1)) + '">' + stockDimensionCell(s, 'stage') + '</td>' +
         '<td data-sort-value="' + esc(String(stockScoreValue(s, 'forecast') != null ? stockScoreValue(s, 'forecast') : -1)) + '">' + stockDimensionCell(s, 'forecast') + '</td>' +
         '<td data-sort-value="' + esc(String(s.composite_priority_score != null ? s.composite_priority_score : -1)) + '">' + stockCompositeCell(s) + '</td>' +
-        '<td data-sort-value="' + esc(String(screeningHitCount(s._screen))) + '">' + screeningHtml + '</td>' +
+        '<td data-sort-value="' + esc(String(screeningHitCount(s._screen))) + '">' + tagsHtml + '</td>' +
         '</tr>';
     };
     var sourceData = stockListState.getData() || [];
@@ -3764,8 +3737,7 @@
     var r = await api('/api/inst/update/reset-derived', { method: 'POST' });
     if (r?.ok) {
       await modalAlert(r.message || '已重置派生数据');
-      if (el('view-system')?.classList.contains('active')) loadSystem();
-      else loadDashboard();
+      loadWorkbench();
     } else {
       await modalAlert((r && (r.message || r.error)) || '重置失败');
     }
@@ -6065,7 +6037,6 @@
     renderIdleStepGrid();
     await checkHealth(); // ensure it awaits first to initialize module toggles
     showView('dashboard');
-    el('btnGoSystem')?.addEventListener('click', function () { showView('system'); });
     el('btnUpdateAll').addEventListener('click', startUpdate);
     el('btnRefreshStatus')?.addEventListener('click', refreshWorkbenchStatus);
     el('btnStop').addEventListener('click', async () => {
@@ -6076,18 +6047,25 @@
     });
     el('btnClearLog')?.addEventListener('click', () => el('updateLog').innerHTML = '');
     el('btnCopyLog')?.addEventListener('click', copyLogs);
-    el('btnToggleSystemOps')?.addEventListener('click', () => togglePanel('btnToggleSystemOps', 'systemOpsPanel', '系统操作', '收起系统操作'));
-    // 管线折叠
-    el('pipelineToggle')?.addEventListener('click', function (e) {
-      if (e.target.closest('.panel-actions')) return; // 不要拦截内部按钮
-      var body = el('pipelineBody');
-      var arrow = el('pipelineArrow');
-      var netStatus = el('networkStatus');
-      if (!body) return;
-      var open = body.style.display !== 'none';
-      body.style.display = open ? 'none' : '';
-      if (netStatus) netStatus.style.display = open ? 'none' : '';
-      if (arrow) arrow.textContent = open ? '▶' : '▼';
+    // Step 5d：管线折叠改由 <details> 原生处理，系统操作面板删除。
+    // 机构维度切换（overview / returns / risk）
+    document.querySelectorAll('.inst-dim-switch .dim-btn').forEach(function (btn) {
+      btn.addEventListener('click', function () { switchInstDim(btn.dataset.dim); });
+    });
+    // 工作台折叠区首次展开时延迟加载内容
+    var mgmtLoaded = false, qlibLoaded = false;
+    document.querySelectorAll('.workbench-section').forEach(function (det) {
+      det.addEventListener('toggle', function () {
+        if (!det.open) return;
+        var title = (det.querySelector('.workbench-section-title')?.textContent || '').trim();
+        if (title.indexOf('机构批量管理') >= 0 && !mgmtLoaded) {
+          mgmtLoaded = true;
+          loadInstMgmt && loadInstMgmt();
+        } else if (title.indexOf('Qlib 模型实验室') >= 0 && !qlibLoaded) {
+          qlibLoaded = true;
+          loadQlib && loadQlib();
+        }
+      });
     });
     el('btnReset')?.addEventListener('click', resetDerivedData);
     el('btnSearchInst')?.addEventListener('click', searchInst);
@@ -7754,7 +7732,7 @@
       if (polls > 120) { clearInterval(timer); btn.disabled = false; btn.textContent = '救生艇'; }
     }, 3000);
   }
-  window.App = { saveModuleSettings, showView, setAlias, setType, toggleBlack, deleteInst, restoreInst, calcInstScore, resetInstScore, calcStockScore, resetStockScore, toggleInstDetail, toggleInstBreakdown, toggleStockDetail, switchInstDim, switchStockDim, runSingleStep, openSectorValidation, clearStockValidationFilter, openStockFromCandidate, _api: api };
+  window.App = { saveModuleSettings, showView, setAlias, setType, toggleBlack, deleteInst, restoreInst, calcInstScore, resetInstScore, calcStockScore, resetStockScore, toggleInstDetail, toggleInstBreakdown, toggleStockDetail, switchInstDim, switchStockDim, runSingleStep, openSectorValidation, clearStockValidationFilter, _api: api };
   if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', startInit, { once: true });
   } else {
