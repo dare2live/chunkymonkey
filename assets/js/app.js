@@ -3814,13 +3814,15 @@
       clickedEl.parentNode.insertBefore(panel, clickedEl.nextSibling);
     }
 
-    // Fetch detail + profile + chart data in parallel
+    // Fetch detail + profile + chart data + signals_v2 track record in parallel
     Promise.all([
       api('/api/inst/profiles/detail/' + encodeURIComponent(instId)),
       api('/api/inst/profiles'),
-      api('/api/inst/profiles/returns-history/' + encodeURIComponent(instId))
+      api('/api/inst/profiles/returns-history/' + encodeURIComponent(instId)),
+      api('/api/signals/institution/' + encodeURIComponent(instId)).catch(function () { return null; })
     ]).then(function (results) {
       var r = results[0], profilesResp = results[1], chartResp = results[2];
+      var sv2 = results[3];
       if (!r || !r.ok) { panel.innerHTML = '<div class="detail-loading">加载失败</div>'; return; }
       var holdings = r.data || [];
 
@@ -3898,6 +3900,12 @@
       // 分隔线
       html += '<hr style="border:none;border-top:1px solid #e2e8f0;margin:14px 0">';
 
+      // Signals v2 track record（与 signals-view 抽屉同源，Step 5e 补足任务 1）
+      if (sv2 && sv2.overall) {
+        html += renderInstSignalsTrackRecord(sv2);
+        html += '<hr style="border:none;border-top:1px solid #e2e8f0;margin:14px 0">';
+      }
+
       // 持仓明细表
       if (!holdings.length) { html += '<div class="muted">暂无持仓明细</div>'; panel.innerHTML = html; return; }
       html += '<table class="data-table"><thead><tr><th>股票</th><th>行业</th><th>报告期</th><th>事件</th><th>机构成本</th><th>跟随溢价</th><th>门槛</th><th>持仓市值</th><th>其他机构</th></tr></thead><tbody>';
@@ -3911,6 +3919,76 @@
       html += '</tbody></table>';
       panel.innerHTML = html;
     });
+  }
+
+  // Step 5 任务 1：在机构抽屉末尾追加 signals_v2 track record 块，
+  // 与 signals-view.js 的 institution_track_record 组件风格对齐。
+  function renderInstSignalsTrackRecord(sv2) {
+    var overall = sv2.overall || {};
+    var byHorizon = Array.isArray(sv2.by_horizon) ? sv2.by_horizon : [];
+    var byIndustry = Array.isArray(sv2.by_industry) ? sv2.by_industry : [];
+    var horizonDays = sv2.horizon_days || 60;
+
+    function fmtGainSigned(v) {
+      if (v == null) return '-';
+      var n = Number(v);
+      var cls = n >= 0 ? 'color:#059669' : 'color:#dc2626';
+      return '<span style="' + cls + '">' + (n >= 0 ? '+' : '') + n.toFixed(2) + '%</span>';
+    }
+    function fmtWr(wr) {
+      if (wr == null) return '-';
+      return Math.round(Number(wr) * 100) + '%';
+    }
+    var metricsHtml =
+      '<div style="display:flex;flex-wrap:wrap;gap:12px;font-size:12px;margin-bottom:10px">' +
+      metric('总事件', overall.n || 0) +
+      metric('全局 EV', fmtGainSigned(overall.ev_pct)) +
+      metric('全局胜率', fmtWr(overall.win_rate)) +
+      metric('均回撤', overall.avg_drawdown_pct != null ? '-' + Number(overall.avg_drawdown_pct).toFixed(1) + '%' : '-') +
+      metric('中位', fmtGainSigned(overall.median_pct)) +
+      '</div>';
+
+    var horizonHtml = byHorizon.length
+      ? '<div style="margin-bottom:10px"><div style="font-size:12px;font-weight:600;margin-bottom:4px;color:#0f172a">持有期对比（揭示 edge 是短线还是长线）</div>' +
+        '<table class="data-table" style="font-size:12px"><thead><tr>' +
+        '<th>持有期</th><th class="num">样本</th><th class="num">EV</th><th class="num">胜率</th><th class="num">中位</th>' +
+        '</tr></thead><tbody>' +
+        byHorizon.map(function (h) {
+          var isCurrent = h.horizon_days === horizonDays;
+          return '<tr' + (isCurrent ? ' style="background:#fef9c3"' : '') + '>' +
+            '<td>' + (h.horizon_days || 0) + ' 日' + (isCurrent ? ' <span class="muted" style="font-size:10px">(当前)</span>' : '') + '</td>' +
+            '<td class="num">' + (h.n || 0) + '</td>' +
+            '<td class="num">' + fmtGainSigned(h.ev_pct) + '</td>' +
+            '<td class="num">' + fmtWr(h.win_rate) + '</td>' +
+            '<td class="num">' + fmtGainSigned(h.median_pct) + '</td>' +
+            '</tr>';
+        }).join('') +
+        '</tbody></table></div>'
+      : '';
+
+    var industryHtml = byIndustry.length
+      ? '<div><div style="font-size:12px;font-weight:600;margin-bottom:4px;color:#0f172a">按行业拆分（只展示样本 ≥ 门槛的行业）</div>' +
+        '<table class="data-table" style="font-size:12px"><thead><tr>' +
+        '<th>行业</th><th class="num">n</th><th class="num">EV</th><th class="num">胜率</th><th class="num">均回撤</th>' +
+        '</tr></thead><tbody>' +
+        byIndustry.slice(0, 15).map(function (r) {
+          return '<tr>' +
+            '<td>' + esc(r.industry || '—') + '</td>' +
+            '<td class="num">' + (r.n || 0) + '</td>' +
+            '<td class="num">' + fmtGainSigned(r.ev_pct) + '</td>' +
+            '<td class="num">' + fmtWr(r.win_rate) + '</td>' +
+            '<td class="num">' + (r.avg_drawdown_pct != null ? '-' + Number(r.avg_drawdown_pct).toFixed(1) + '%' : '-') + '</td>' +
+            '</tr>';
+        }).join('') +
+        '</tbody></table></div>'
+      : '';
+
+    return '<div class="sv2-track-record" style="background:#f8fafc;padding:12px 14px;border-radius:8px;border:1px solid #e5e7eb">' +
+      '<div style="font-size:13px;font-weight:600;color:#0f172a;margin-bottom:8px">' +
+      '<span style="background:#1e40af;color:#fff;font-size:10px;padding:2px 8px;border-radius:3px;margin-right:6px">signals v2</span>' +
+      'track record（' + horizonDays + '日跟随收益口径）</div>' +
+      metricsHtml + horizonHtml + industryHtml +
+      '</div>';
   }
 
   async function toggleInstBreakdown(instId) {
