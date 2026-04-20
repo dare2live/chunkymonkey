@@ -561,19 +561,14 @@
   }
 
   function stockSortRows(stocks) {
+    // Step 5 任务 2：排序从 4 种（composite/turtle/attention/crowding）简化为 2 种
+    // （composite/notice）。turtle/attention/crowding 旧 mode 值仍 fall-through 到
+    // composite，不会报错，但 UI 不再暴露这些选项。
     var mode = stockListState.getSortMode();
     return (stocks || []).slice().sort(function (left, right) {
       var diff = 0;
-      if (mode === 'attention') {
-        diff = Number(right.external_attention_score || -1) - Number(left.external_attention_score || -1);
-        if (!diff) diff = Number(right.attention_focus_index || -1) - Number(left.attention_focus_index || -1);
-      } else if (mode === 'crowding') {
-        diff = Number(right.external_crowding_penalty || -1) - Number(left.external_crowding_penalty || -1);
-        if (!diff) diff = Number(right.external_attention_score || -1) - Number(left.external_attention_score || -1);
-      } else if (mode === 'turtle') {
-        diff = Number(right.turtle_execution_score || -1) - Number(left.turtle_execution_score || -1);
-        if (!diff) diff = Number(right.turtle_score_delta || -99) - Number(left.turtle_score_delta || -99);
-        if (!diff) diff = Number(right.turtle_breakout_score || -1) - Number(left.turtle_breakout_score || -1);
+      if (mode === 'notice') {
+        diff = String(right.latest_notice_date || '').localeCompare(String(left.latest_notice_date || ''));
       } else {
         diff = Number(right.composite_priority_score || -1) - Number(left.composite_priority_score || -1);
       }
@@ -905,60 +900,44 @@
       { key: 'observe', label: '观察' },
       { key: 'avoid', label: '回避' }
     ];
-    var attentions = [
-      { key: 'all', label: '全部' },
-      { key: 'covered', label: '已覆盖' },
-      { key: 'confirm', label: '确认增强' },
-      { key: 'rising', label: '关注抬升' },
-      { key: 'survey', label: '调研活跃' },
-      { key: 'crowded', label: '热度拥挤' }
-    ];
-    var turtles = [
-      { key: 'all', label: '全部' },
-      { key: 'breakout', label: '突破触发' },
-      { key: 'watch', label: '待突破' },
-      { key: 'exit', label: '退出触发' },
-      { key: 'covered', label: '已覆盖' }
-    ];
-    var screenings = [
-      { key: 'all', label: '全部' },
-      { key: 'hit', label: '任一命中' },
-      { key: 'f1', label: 'F1' },
-      { key: 'f3', label: 'F3' },
-      { key: 'f5', label: 'F5' },
-      { key: 'none', label: '未命中' }
-    ];
-    var scoreBands = [
-      { key: 'all', label: '全部' },
-      { key: 'strong', label: '强' },
-      { key: 'mid', label: '中' },
-      { key: 'watch', label: '观察' },
-      { key: 'weak', label: '弱' },
-      { key: 'missing', label: '缺失' }
-    ];
+    // Step 5 任务 2：筛选条瘦身。删除 8 组 legacy 分类（信号 setup / 发现 / 质量 / 阶段 / 预测 /
+    // TDX / 海龟 / 外部），保留与 signals_v2 决策流程对齐的 2 组（执行 / 排序）+ 1 组新增行业。
+    // 理由：stocks 视图定位为"深挖单只股票"，发现新股票应回到信号 v2 主视图；多维评分 legacy
+    // 筛选对 signals_v2 使用者噪音大。
     var sorts = [
       { key: 'composite', label: '综合优先' },
-      { key: 'turtle', label: '海龟执行' },
-      { key: 'attention', label: '外部确认' },
-      { key: 'crowding', label: '热度折扣' }
+      { key: 'notice', label: '公告最近' },
     ];
+    // 从列表数据里实时提取 TDX L1 分布作为行业筛选胶囊
+    var tdxL1Counts = {};
+    (stockListState.getData() || []).forEach(function (s) {
+      var code = (s.tdx_l1 || '').trim();
+      if (code) tdxL1Counts[code] = (tdxL1Counts[code] || 0) + 1;
+    });
+    var tdxL1Names = {
+      T01: '能源', T02: '材料', T03: '日常消费', T04: '可选消费',
+      T05: '商贸', T06: '社会服务', T07: '装备制造', T08: '公用事业',
+      T09: '交通运输', T10: '金融', T11: '建筑地产', T12: '信息产业',
+      T13: '综合类'
+    };
+    var industries = [{ key: 'all', label: '全部' }].concat(
+      Object.keys(tdxL1Counts).sort().map(function (code) {
+        return { key: code, label: (tdxL1Names[code] || code) + ' ' + tdxL1Counts[code] };
+      })
+    );
     function chip(group, key, label, active) {
       return '<span class="type-tag stock-filter-chip' + (active ? ' active' : '') + '" data-filter-group="' + group + '" data-filter-key="' + key + '">' + label + '</span>';
     }
     return '<div class="stock-filter-bar">' +
-      '<div class="stock-filter-group"><span class="stock-filter-label-pill">信号</span>' + signals.map(function (f) { return chip('signal', f.key, f.label, f.key === stockListState.getFilterSignal()) }).join('') + '</div>' +
       '<div class="stock-filter-group"><span class="stock-filter-label-pill">执行</span>' + gates.map(function (f) { return chip('gate', f.key, f.label, f.key === stockListState.getFilterGate()) }).join('') + '</div>' +
-      '<div class="stock-filter-group"><span class="stock-filter-label-pill stock-filter-label-pill--discovery">发现</span>' + scoreBands.map(function (f) { return chip('discovery', f.key, f.label, f.key === stockListState.getFilterDiscovery()) }).join('') + '</div>' +
-      '<div class="stock-filter-group"><span class="stock-filter-label-pill stock-filter-label-pill--quality">质量</span>' + scoreBands.map(function (f) { return chip('quality', f.key, f.label, f.key === stockListState.getFilterQuality()) }).join('') + '</div>' +
-      '<div class="stock-filter-group"><span class="stock-filter-label-pill stock-filter-label-pill--stage">阶段</span>' + scoreBands.map(function (f) { return chip('stageScore', f.key, f.label, f.key === stockListState.getFilterStageScore()) }).join('') + '</div>' +
-      '<div class="stock-filter-group"><span class="stock-filter-label-pill stock-filter-label-pill--forecast">预测</span>' + scoreBands.map(function (f) { return chip('forecast', f.key, f.label, f.key === stockListState.getFilterForecast()) }).join('') + '</div>' +
-      '<div class="stock-filter-group"><span class="stock-filter-label-pill">TDX</span>' + screenings.map(function (f) { return chip('screening', f.key, f.label, f.key === stockListState.getFilterScreening()) }).join('') + '</div>' +
-      '<div class="stock-filter-group"><span class="stock-filter-label-pill stock-filter-label-pill--turtle">海龟</span>' + turtles.map(function (f) { return chip('turtle', f.key, f.label, f.key === stockListState.getFilterTurtle()) }).join('') + '</div>' +
-      '<div class="stock-filter-group"><span class="stock-filter-label-pill stock-filter-label-pill--attention">外部</span>' + attentions.map(function (f) { return chip('attention', f.key, f.label, f.key === stockListState.getFilterAttention()) }).join('') + '</div>' +
+      '<div class="stock-filter-group"><span class="stock-filter-label-pill">行业</span>' + industries.map(function (f) { return chip('industry', f.key, f.label, f.key === (stockListState.getFilterIndustry ? stockListState.getFilterIndustry() : 'all')) }).join('') + '</div>' +
       '<div class="stock-filter-group"><span class="stock-filter-label-pill stock-filter-label-pill--sort">排序</span>' + sorts.map(function (f) { return chip('sort', f.key, f.label, f.key === stockListState.getSortMode()) }).join('') + '</div>' +
       '</div>';
   }
 
+  // Step 5 任务 2：筛选条瘦身后，本函数只处理 gate / industry / sort 三组。
+  // 旧 setup / discovery / quality / stageScore / forecast / screening / turtle / attention
+  // 的 state 仍保留在 AppListState 中（下轮删除），但不再绑定 UI。
   function bindStockFilters() {
     var area = el('stockFilterArea');
     if (!area) return;
@@ -966,15 +945,13 @@
       chip.addEventListener('click', function () {
         var group = chip.dataset.filterGroup;
         var key = chip.dataset.filterKey;
-        if (group === 'signal') stockListState.setFilterSignal(key);
         if (group === 'gate') stockListState.setFilterGate(key);
-        if (group === 'discovery') stockListState.setFilterDiscovery(key);
-        if (group === 'quality') stockListState.setFilterQuality(key);
-        if (group === 'stageScore') stockListState.setFilterStageScore(key);
-        if (group === 'forecast') stockListState.setFilterForecast(key);
-        if (group === 'screening') stockListState.setFilterScreening(key);
-        if (group === 'turtle') stockListState.setFilterTurtle(key);
-        if (group === 'attention') stockListState.setFilterAttention(key);
+        if (group === 'industry' && stockListState.setFilterIndustry) {
+          stockListState.setFilterIndustry(key);
+        } else if (group === 'industry') {
+          // AppListState 尚未实现 Industry filter 时用 closure 兜底
+          window._stockIndustryFilter = key;
+        }
         if (group === 'sort') {
           stockListState.setSortMode(key);
           renderStockList();
@@ -1074,7 +1051,15 @@
     return s;
   }
 
+  function matchIndustryFilter(s) {
+    var filter = (stockListState.getFilterIndustry && stockListState.getFilterIndustry()) || window._stockIndustryFilter || 'all';
+    if (filter === 'all') return true;
+    return (s.tdx_l1 || '').trim() === filter;
+  }
+
   function applyStockFilters() {
+    // Step 5 任务 2：filter 链从 9 个（signal/gate/4 scoreBand/screening/turtle/attention）
+    // 简化为 2 个（gate/industry）+ keyword。
     var keyword = ((el('stockSearch')?.value) || '').trim().toLowerCase();
     var rows = el('stockListContainer')?.querySelectorAll('tbody tr[data-stock-code]');
     if (!rows) return;
@@ -1084,15 +1069,7 @@
     rows.forEach(function (tr) {
       var s = stockMap[tr.dataset.stockCode];
       if (!s) { tr.style.display = 'none'; return; }
-      var show = matchSignalFilter(s) &&
-        matchGateFilter(s) &&
-        matchScoreBandFilter(s, 'discovery', stockListState.getFilterDiscovery()) &&
-        matchScoreBandFilter(s, 'quality', stockListState.getFilterQuality()) &&
-        matchScoreBandFilter(s, 'stage', stockListState.getFilterStageScore()) &&
-        matchScoreBandFilter(s, 'forecast', stockListState.getFilterForecast()) &&
-        matchScreeningFilter(s) &&
-        matchTurtleFilter(s) &&
-        matchAttentionFilter(s);
+      var show = matchGateFilter(s) && matchIndustryFilter(s);
       if (show && keyword) show = String(s._search_blob || '').includes(keyword);
       tr.style.display = show ? '' : 'none';
     });
