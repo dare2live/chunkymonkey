@@ -8,7 +8,8 @@
 
 每次 `git commit` 之后自动：
 1. `git push origin HEAD:main` → 推到 GitHub
-2. `cd /Users/dp/Documents/M/stock && git pull --ff-only` → 同步主目录
+2. 主目录 `git merge --ff-only origin/main` → 直接用本地 .git/refs 同步
+   （不走 GitHub fetch 避免推送后 1-2 秒传播延迟）
 
 不论你在哪个 worktree commit，主目录都会跟着更新。
 8000 端口的 start.command 浏览器刷新就能看到新前端文件
