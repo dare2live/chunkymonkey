@@ -328,11 +328,21 @@
     var total = arr.length;
     setText('wbInstActive', fmt(active));
     setText('wbInstTotal', '总 ' + fmt(total) + ' · 黑名单 ' + fmt(total - active));
-    // 分类数
+    // 展示全部类别，按数量降序；卡片位置有限，类别数多时展示 Top 4 + "+N类"
     var types = {};
     arr.forEach(i => { if (i.enabled && !i.blacklisted && i.type) types[i.type] = (types[i.type]||0) + 1; });
-    var top = Object.entries(types).sort((a,b) => b[1]-a[1]).slice(0, 3).map(([t,n]) => t+':'+n).join(' · ');
-    setText('wbInstTypes', top);
+    var sorted = Object.entries(types).sort((a,b) => b[1]-a[1]);
+    var chipLabel;
+    if (sorted.length <= 4) {
+      chipLabel = sorted.map(([t,n]) => t + n).join(' · ');
+    } else {
+      chipLabel = sorted.slice(0, 4).map(([t,n]) => t + n).join(' · ') + ' · +' + (sorted.length - 4) + '类';
+    }
+    var wbInstTypesEl = el('wbInstTypes');
+    if (wbInstTypesEl) {
+      wbInstTypesEl.textContent = chipLabel;
+      wbInstTypesEl.title = sorted.map(([t,n]) => t + ' ' + n).join('\n');
+    }
   }
 
   function renderHealthSignals(sig) {
@@ -710,9 +720,21 @@
   async function loadResearch() {
     var [profiles, inst] = await Promise.all([api('/api/inst/profiles'), api('/api/inst/institutions')]);
 
-    var types = [...new Set((inst?.data || []).map(i => i.type).filter(Boolean))];
+    // 按类型统计数量（仅计启用且未拉黑），按数量降序排列
+    var typeCounts = {};
+    (inst?.data || []).forEach(function (i) {
+      if (!i || !i.type || !i.enabled || i.blacklisted) return;
+      typeCounts[i.type] = (typeCounts[i.type] || 0) + 1;
+    });
+    var orderedTypes = Object.entries(typeCounts)
+      .sort(function (a, b) { return b[1] - a[1]; })
+      .map(function (kv) { return kv[0]; });
+    var totalActive = Object.values(typeCounts).reduce(function (a, b) { return a + b; }, 0);
+
     var filterEl = el('instTypeFilter');
-    filterEl.innerHTML = typeTag('all', '全部') + types.map(t => typeTag(t)).join('');
+    filterEl.innerHTML =
+      typeTag('all', '全部 ' + totalActive) +
+      orderedTypes.map(function (t) { return typeTag(t, t + ' ' + typeCounts[t]); }).join('');
     filterEl.querySelectorAll('.type-tag').forEach(tag => {
       tag.addEventListener('click', () => {
         filterEl.querySelectorAll('.type-tag').forEach(t => t.classList.remove('active'));
