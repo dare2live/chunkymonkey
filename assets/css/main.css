@@ -5485,14 +5485,22 @@ tr.detail-row>td>.detail-panel {
 }
 
 .sig-drawer {
-  margin-top: 12px; background: #fff; border: 1px solid #0f172a;
-  border-radius: 10px; overflow: hidden;
+  margin-top: 12px;
+  background: var(--cm-surface);
+  border: 1px solid var(--cm-ink-100);
+  border-radius: var(--cm-r-xl);
+  overflow: hidden;
+  box-shadow: var(--cm-shadow-lg);
+  animation: detailSlide 150ms ease;
 }
 .sig-drawer-head {
   display: flex; justify-content: space-between; align-items: center;
-  padding: 12px 16px; background: #0f172a; color: #fff;
+  padding: 12px 16px;
+  background: var(--cm-ink-50);
+  border-bottom: 1px solid var(--cm-ink-100);
+  color: var(--cm-ink-900);
 }
-.sig-drawer-head h3 { margin: 0; font-size: 14px; }
+.sig-drawer-head h3 { margin: 0; font-size: 14px; color: var(--cm-ink-900); }
 .sig-drawer-grid {
   display: grid; grid-template-columns: 1fr 1fr; gap: 12px; padding: 14px;
 }
@@ -5926,6 +5934,22 @@ tr.detail-row>td>.detail-panel {
 }
 .chip-danger:hover { background: #b91c1c; border-color: #b91c1c; }
 
+.chip-ok {
+  background: var(--cm-ok-500);
+  color: #fff;
+  border-color: var(--cm-ok-500);
+  font-weight: 600;
+}
+.chip-ok:hover { background: #047857; border-color: #047857; }
+
+.chip-warn {
+  background: var(--cm-warn-500);
+  color: #fff;
+  border-color: var(--cm-warn-500);
+  font-weight: 600;
+}
+.chip-warn:hover { background: #b45309; border-color: #b45309; }
+
 /* Toggle (用于筛选胶囊、维度切换) */
 .chip-toggle {
   background: transparent;
@@ -6073,7 +6097,9 @@ tr.detail-row>td>.detail-panel {
 .sv-sub { font-size: var(--cm-fs-11); }
 
 /* 抽屉 */
+/* sv-drawer 继承 .sig-drawer 基础样式，加品牌色顶边作为区分标识 */
 .sv-drawer { border-top: 3px solid var(--cm-brand-400); }
+.sv-drawer .sig-drawer-head { background: var(--cm-brand-50); border-bottom-color: var(--cm-brand-100); }
 .sv-drawer-kpis {
   display: flex;
   flex-wrap: wrap;

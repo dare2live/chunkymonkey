@@ -1132,7 +1132,7 @@
     function watchlistButton(s) {
       var inList = !!s._in_watchlist;
       if (inList) return '<span class="muted" style="font-size:11px">已在自选</span>';
-      return '<button type="button" class="btn-text stock-watch-btn" data-stock-code="' + esc(s.stock_code) + '" data-stock-name="' + esc(s.stock_name || '') + '" style="font-size:11px;color:#1e40af">+ 加自选</button>';
+      return '<button type="button" class="chip chip-ghost chip-sm stock-watch-btn" data-stock-code="' + esc(s.stock_code) + '" data-stock-name="' + esc(s.stock_name || '') + '">+ 加自选</button>';
     }
     var row = function (s, idx) {
       return '<tr data-stock-idx="' + idx + '" data-stock-code="' + esc(s.stock_code) + '">' +
@@ -1600,7 +1600,7 @@
       '<div class="validation-scope-title">行业验证视角：' + esc(scope.sector) + '</div>' +
       '<div class="validation-scope-sub">当前分池反馈、快照回放、新旧排序对比和异常样本已按该行业过滤。审计摘要仍保持全市场口径。</div>' +
       '</div>' +
-      '<button class="btn-sm" type="button" onclick="App.clearStockValidationFilter()">查看全市场</button>' +
+      '<button class="chip chip-outline chip-sm" type="button" onclick="App.clearStockValidationFilter()">查看全市场</button>' +
       '</div>' +
       '</div>';
   }
@@ -2530,7 +2530,7 @@
         }
         var canShowAction = !!s.actionable && !_uiRunning;
         var actionHtml = canShowAction
-          ? '<button type="button" class="btn-text step-row-action" data-step-id="' + esc(s.step_id) + '" data-step-name="' + esc(s.step_name || s.step_id) + '">补跑</button>'
+          ? '<button type="button" class="chip chip-ghost chip-sm step-row-action" data-step-id="' + esc(s.step_id) + '" data-step-name="' + esc(s.step_name || s.step_id) + '">补跑</button>'
           : '<span class="step-row-action-placeholder"></span>';
 
         var rowCls = 'step-row step-row-' + esc(st);
@@ -2550,7 +2550,7 @@
           '<span class="step-group-badge">' + def.badge + '</span>' +
           '<span class="step-group-name">' + def.name + '</span>' +
           '<span class="step-group-stats">' + summaryBits.join(' · ') + '</span>' +
-          '<button type="button" class="btn-outline step-group-run-btn" data-group="' + gId + '"' + (_uiRunning ? ' disabled' : '') + '>' + def.verb + '</button>' +
+          '<button type="button" class="chip chip-outline chip-sm step-group-run-btn" data-group="' + gId + '"' + (_uiRunning ? ' disabled' : '') + '>' + def.verb + '</button>' +
         '</summary>' +
         '<div class="step-group-body">' + rowsHtml + '</div>' +
       '</details>';
@@ -2866,13 +2866,13 @@
         var st = i.blacklisted ? evTag('exit', '已拉黑') : i.merged_into ? evTag('unchanged', '已合并') : !i.enabled ? evTag('unchanged', '禁用') : evTag('new_entry', '正常');
         var ops = '';
         if (i.merged_into || i.blacklisted || !i.enabled) {
-          ops = '<button class="btn-sm success" onclick="App.restoreInst(\'' + esc(i.id) + '\')">恢复</button> ' +
-            '<button class="btn-sm danger" onclick="App.deleteInst(\'' + esc(i.id) + '\')">删除</button>';
+          ops = '<button class="chip chip-ok chip-sm" onclick="App.restoreInst(\'' + esc(i.id) + '\')">恢复</button> ' +
+            '<button class="chip chip-danger chip-sm" onclick="App.deleteInst(\'' + esc(i.id) + '\')">删除</button>';
         } else {
-          ops = '<button class="btn-sm" onclick="App.setAlias(\'' + esc(i.id) + '\')">简称</button> ' +
-            '<button class="btn-sm" onclick="App.setType(\'' + esc(i.id) + '\')">类型</button> ' +
-            '<button class="btn-sm warn" onclick="App.toggleBlack(\'' + esc(i.id) + '\',1)">拉黑</button> ' +
-            '<button class="btn-sm danger" onclick="App.deleteInst(\'' + esc(i.id) + '\')">删除</button>';
+          ops = '<button class="chip chip-outline chip-sm" onclick="App.setAlias(\'' + esc(i.id) + '\')">简称</button> ' +
+            '<button class="chip chip-outline chip-sm" onclick="App.setType(\'' + esc(i.id) + '\')">类型</button> ' +
+            '<button class="chip chip-warn chip-sm" onclick="App.toggleBlack(\'' + esc(i.id) + '\',1)">拉黑</button> ' +
+            '<button class="chip chip-danger chip-sm" onclick="App.deleteInst(\'' + esc(i.id) + '\')">删除</button>';
         }
         return '<tr' + (i.blacklisted || i.merged_into ? ' style="opacity:0.6"' : '') + '>' +
           '<td><input type="checkbox" class="row-check" data-id="' + esc(i.id) + '"></td>' +
@@ -3162,7 +3162,7 @@
         '</div>';
 
       // Phase 4: 评分拆解入口
-      html += '<div style="margin:8px 0"><button class="btn-sm" style="font-size:11px" onclick="App.toggleInstBreakdown(\'' + esc(instId) + '\')">评分拆解</button></div>' +
+      html += '<div style="margin:8px 0"><button class="chip chip-outline chip-sm" onclick="App.toggleInstBreakdown(\'' + esc(instId) + '\')">评分拆解</button></div>' +
         '<div id="breakdown-' + esc(instId) + '" style="display:none"></div>';
 
       // 行业分布 + 业绩表现
@@ -6282,7 +6282,7 @@
     panel.innerHTML = '<div class="panel" style="margin-top:14px">' +
       '<div class="panel-head" style="justify-content:space-between">' +
       '<span style="font-weight:600">深度量化分析</span>' +
-      '<button class="btn-text" onclick="document.getElementById(\'' + panelId + '\').innerHTML=\'\'">关闭</button>' +
+      '<button class="chip chip-ghost chip-sm" onclick="document.getElementById(\'' + panelId + '\').innerHTML=\'\'">关闭</button>' +
       '</div>' +
       headerHtml + issueHtml + qlibHtml + optimizerHtml + comparisonHtml + ledgerHtml + curveHtml + tradeTimelineHtml + stepsHtml + periodHtml + verdictHtml +
       '</div>';
