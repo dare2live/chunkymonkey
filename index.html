@@ -296,24 +296,21 @@
       <div id="instListContainer">加载中...</div>
     </section>
 
-    <!-- ==================== 股票列表 ==================== -->
+    <!-- ==================== 股票（深挖 + 自选） ==================== -->
     <section class="view" id="view-stocks">
-      <div class="stock-banner">
+      <div class="stock-banner-v2">
         <div class="stock-banner-head">
-          <div>
+          <div class="stock-banner-title">
             <div class="section-kicker">Stock Research</div>
-            <h2>股票候选池工作区</h2>
-            <p>按候选池、执行档、来源行业和评分拆解快速缩到可跟名单，再进入验证与复盘。</p>
+            <h2 class="research-title">股票研究</h2>
+            <p class="muted research-tagline">从信号视图进来深挖一只具体股票：谁在买、事件时间线、是否进自选。发现新股票请回到「信号」tab。</p>
           </div>
           <div id="stockSummaryBar" class="stock-summary-strip"></div>
         </div>
         <div class="stock-banner-nav">
           <div class="view-tabs stock-tabs" id="stockTabs">
             <button class="tab-btn active" data-stab="list">股票列表</button>
-            <button class="tab-btn" data-stab="industry">行业背景</button>
-            <button class="tab-btn" data-stab="watchlist">股票池</button>
-            <button class="tab-btn" data-stab="validation">验证</button>
-            <button class="tab-btn" data-stab="scorecard">评分卡</button>
+            <button class="tab-btn" data-stab="watchlist">自选股</button>
             <button class="tab-btn" data-stab="exclusions">排除规则</button>
           </div>
           <input type="text" class="search-input" id="stockSearch" placeholder="搜索股票代码/名称/行业" style="width:220px">
@@ -324,28 +321,8 @@
         <div id="stockListMeta"></div>
         <div id="stockListContainer">加载中...</div>
       </div>
-      <div class="stab-content" id="stab-industry">
-        <div id="industryViewContainer">加载中...</div>
-      </div>
-      <div class="stab-content" id="stab-scorecard">
-        <div class="panel" style="margin-bottom:14px">
-          <h3 style="margin-bottom:6px">股票评分框架</h3>
-          <p class="muted" style="font-size:12px;margin-bottom:14px">这里展示当前真实生效的四层评分字典、综合公式和池子门槛，不再暴露旧行动分调参入口。</p>
-          <div id="stockScoreFramework"></div>
-          <div id="stockScoreRules" style="margin-top:14px"></div>
-          <div id="stockScoreStats" style="margin-top:14px"></div>
-          <div id="stockScoreParams" style="margin-top:14px"></div>
-          <div style="margin-top:12px">
-            <button class="btn primary" onclick="App.calcStockScore()">计算</button>
-            <button class="btn" onclick="App.resetStockScore()">恢复默认</button>
-          </div>
-        </div>
-      </div>
       <div class="stab-content" id="stab-watchlist">
         <div id="watchlistContainer">加载中...</div>
-      </div>
-      <div class="stab-content" id="stab-validation">
-        <div id="stockValidationContainer">加载中...</div>
       </div>
       <div class="stab-content" id="stab-exclusions">
         <div class="panel">

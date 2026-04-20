@@ -176,10 +176,9 @@
     if (r && r.status === 'ok') {
       badge.textContent = 'Online'; badge.className = 'logo-status online';
 
-      // Update dynamic modules nav
+      // Update dynamic modules nav（Step 5d：Qlib 一级入口下线，仅保留 ETF group 动态显示）
       var modules = r.enabled_modules || [];
-      var navQlib = el('nav-qlib'), navGroupEtf = el('nav-group-etf');
-      if (navQlib) navQlib.style.display = modules.includes('qlib') ? '' : 'none';
+      var navGroupEtf = el('nav-group-etf');
       if (navGroupEtf) navGroupEtf.style.display = modules.includes('etf') ? '' : 'none';
 
       // Update checkboxes in settings
@@ -605,19 +604,16 @@
   // 候选池/评分框架从「工作台」撤下，主入口统一为信号 v2。
 
   function renderStockResearchSummary(stocks, sectorSummary, stockSummary) {
+    // Step 5e 重塑：股票视图不再服务"候选池筛选"，改为"股票深挖 + 自选管理"。
+    // 汇总胶囊从 6 个 legacy 指标（A/B池 / 海龟 / 外部关注 / Setup）简化为 3 个 signals_v2 口径的事实数字。
     var summary = resolveStockSummary(stocks, stockSummary);
-    var focusItems = sectorFocusItems(summary, sectorSummary);
-    var leadFocus = focusItems[0];
     var stockSummaryBar = el('stockSummaryBar');
     var stockListMeta = el('stockListMeta');
     if (stockSummaryBar) {
       stockSummaryBar.innerHTML = [
-        { label: 'A/B 候选', value: fmt(summary.abTotal), sub: 'A池 ' + fmt(summary.pools['A池'] || 0) + ' · B池 ' + fmt(summary.pools['B池'] || 0), tone: 'primary' },
-        { label: '可跟', value: fmt(summary.followTotal), sub: '关注 ' + fmt(summary.gates.watch || 0), tone: 'success' },
-        { label: '海龟执行', value: fmt(summary.turtleBreakout), sub: '待突破 ' + fmt(summary.turtleWatch) + ' · 退出 ' + fmt(summary.turtleExit), tone: 'turtle' },
-        { label: '外部覆盖', value: fmt(summary.attentionCovered), sub: '增强 ' + fmt(summary.attentionBoosted) + ' · 拥挤 ' + fmt(summary.attentionCrowded), tone: 'attention' },
-        { label: '双确认', value: fmt(summary.dualConfirm), sub: 'Setup ' + fmt(summary.setupTotal), tone: 'accent' },
-        { label: '主线行业', value: leadFocus ? leadFocus.label : '-', sub: sectorFocusLeadSub(leadFocus), tone: 'neutral' }
+        { label: '覆盖股票', value: fmt(summary.total), sub: '被机构持仓的 A 股', tone: 'neutral' },
+        { label: '可跟执行', value: fmt(summary.followTotal), sub: '当前 gate=follow 的持仓', tone: 'success' },
+        { label: '已纳入自选', value: fmt(summary.watchlistTotal || 0), sub: '去「自选股」tab 管理', tone: 'accent' },
       ].map(function (item) {
         return '<div class="stock-summary-chip stock-summary-chip--' + item.tone + '">' +
           '<span class="stock-summary-label">' + esc(item.label) + '</span>' +
@@ -630,13 +626,7 @@
       stockListMeta.innerHTML =
         '<div class="table-meta-bar">' +
           '<div class="table-meta-copy">' +
-            '<div class="table-meta-title">当前股票宇宙</div>' +
-            '<div class="table-meta-sub">共 ' + fmt(summary.total) + ' 只股票 · A/B池 ' + fmt(summary.abTotal) + ' · 可跟 ' + fmt(summary.followTotal) + ' · 海龟突破 ' + fmt(summary.turtleBreakout) + ' · 外部覆盖 ' + fmt(summary.attentionCovered) + ' · 双确认 ' + fmt(summary.dualConfirm) + '</div>' +
-          '</div>' +
-          '<div class="table-meta-tags">' +
-              (focusItems.length ? focusItems.map(renderSectorFocusChip).join('') : '') +
-            (summary.topSignals.length ? summary.topSignals.map(function (item) { return summaryChip(item.key, item.count, 'signal'); }).join('') : '') +
-            (summary.topAttentionSignals.length ? summary.topAttentionSignals.map(function (item) { return summaryChip(item.key, item.count, attentionSummaryTone(item.key)); }).join('') : '') +
+            '<div class="table-meta-sub">共 ' + fmt(summary.total) + ' 只股票 · 可跟 ' + fmt(summary.followTotal) + '。点击股票行可展开机构持仓明细。</div>' +
           '</div>' +
         '</div>';
     }
@@ -830,10 +820,8 @@
   async function loadActiveStockSubtab() {
     var stab = activeStockSubtab();
     setStockSearchContext(stab);
+    // Step 5e：股票视图 6 tab → 3 tab（list / watchlist / exclusions）
     if (stab === 'watchlist') return loadWatchlist();
-    if (stab === 'industry') return loadIndustryView();
-    if (stab === 'validation') return loadStockValidation();
-    if (stab === 'scorecard') return loadStockScorecard();
     if (stab === 'exclusions') return loadExclusions();
     return loadStockList();
   }
