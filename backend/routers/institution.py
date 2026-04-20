@@ -620,103 +620,6 @@ async def list_candidate_setups(limit: int = Query(200, ge=1, le=1000)):
         conn.close()
 
 
-@router.get("/setup-tracking/summary", include_in_schema=False)
-async def get_setup_tracking_summary():
-    """内部分析接口：Setup A 前瞻跟踪摘要。"""
-    from services.setup_tracker import get_setup_tracking_summary
-
-    conn = get_conn()
-    try:
-        data = get_setup_tracking_summary(conn)
-        return {"ok": True, "data": data}
-    finally:
-        conn.close()
-
-
-@router.get("/setup-tracking/snapshots")
-async def get_setup_tracking_snapshots(limit: int = Query(120, ge=1, le=1000)):
-    """最近的 Setup A 快照及其后验结果"""
-    from services.setup_tracker import list_setup_tracking_snapshots
-
-    conn = get_conn()
-    try:
-        data = list_setup_tracking_snapshots(conn, limit=limit)
-        return {"ok": True, "data": data, "total": len(data)}
-    finally:
-        conn.close()
-
-
-@router.get("/setup-validation/report")
-async def get_setup_validation_report():
-    """Setup 前瞻验证报告：前瞻快照 + 历史 replay + 当前决策"""
-    from services.setup_validation import get_setup_validation_report
-
-    conn = get_conn()
-    try:
-        data = get_setup_validation_report(conn)
-        return {"ok": True, "data": data}
-    finally:
-        conn.close()
-
-
-@router.get("/stock-validation/report")
-async def get_stock_validation_report(sector: Optional[str] = Query(None)):
-    """四层股票评分体系验证报告"""
-    from services.stock_validation import get_stock_validation_report
-
-    conn = get_conn()
-    try:
-        data = get_stock_validation_report(conn, sector=sector)
-        return {"ok": True, "data": data}
-    finally:
-        conn.close()
-
-
-@router.get("/setup-replay/summary", include_in_schema=False)
-async def get_setup_replay_summary():
-    """内部分析接口：历史 Setup 回放摘要。"""
-    from services.setup_replay import get_setup_replay_summary
-
-    conn = get_conn()
-    try:
-        data = get_setup_replay_summary(conn)
-        return {"ok": True, "data": data}
-    finally:
-        conn.close()
-
-
-@router.get("/setup-replay/factors", include_in_schema=False)
-async def get_setup_replay_factors(
-    factor: str = Query("", description="可选：setup_priority / matched_level / premium_grade 等"),
-    limit: int = Query(200, ge=1, le=1000),
-):
-    """内部分析接口：历史 Setup 回放因子表现。"""
-    from services.setup_replay import list_setup_replay_factors
-
-    conn = get_conn()
-    try:
-        data = list_setup_replay_factors(conn, factor_name=(factor or None), limit=limit)
-        return {"ok": True, "data": data, "total": len(data)}
-    finally:
-        conn.close()
-
-
-@router.get("/setup-replay/events", include_in_schema=False)
-async def get_setup_replay_events(
-    limit: int = Query(200, ge=1, le=1000),
-    setup_only: bool = Query(True, description="只返回命中 setup 的历史事件"),
-):
-    """内部分析接口：历史 Setup 回放事件明细。"""
-    from services.setup_replay import list_setup_replay_events
-
-    conn = get_conn()
-    try:
-        data = list_setup_replay_events(conn, limit=limit, setup_only=setup_only)
-        return {"ok": True, "data": data, "total": len(data)}
-    finally:
-        conn.close()
-
-
 # ============================================================
 # 股票池
 # ============================================================
@@ -1277,12 +1180,7 @@ async def get_scoring_config(card_type: str):
 async def get_scoring_framework(card_type: str):
     """获取评分框架字典，用于评分卡说明页。"""
     if card_type == "stock":
-        from services.stock_validation import get_stock_scorecard_stats
-        conn = get_conn()
-        try:
-            return {"ok": True, "data": STOCK_SCORING_FRAMEWORK, "stats": get_stock_scorecard_stats(conn)}
-        finally:
-            conn.close()
+        return {"ok": True, "data": STOCK_SCORING_FRAMEWORK, "stats": {}}
     if card_type == "institution":
         conn = get_conn()
         try:
@@ -1478,7 +1376,6 @@ async def scoring_breakdown(card_type: str, object_id: str):
 async def calculate_scores(card_type: str):
     """计算评分"""
     from services.scoring import calculate_institution_scores, calculate_stock_scores
-    from services.setup_tracker import refresh_setup_tracking
     conn = get_conn(timeout=120)
     try:
         if card_type == "institution":
@@ -1486,22 +1383,9 @@ async def calculate_scores(card_type: str):
             return {"ok": True, "message": f"已计算 {count} 个机构评分"}
         elif card_type == "stock":
             count = calculate_stock_scores(conn)
-            tracking = refresh_setup_tracking(conn)
             _stock_trends_cache["ts"] = 0.0
             _stock_trends_cache["payload"] = None
-            industry_message = (
-                f"；历史行业快照回填 {tracking['industry_backfilled']} 条"
-                if tracking.get("industry_backfilled")
-                else ""
-            )
-            return {
-                "ok": True,
-                "message": (
-                    f"已计算 {count} 只股票评分；"
-                    f"已刷新 {tracking['snapshot_date']} 的 Setup 跟踪快照 {tracking['snapshots']} 条"
-                    f"{industry_message}"
-                ),
-            }
+            return {"ok": True, "message": f"已计算 {count} 只股票评分"}
         else:
             return {"ok": False, "message": f"未知类型: {card_type}"}
     finally:

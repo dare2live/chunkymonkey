@@ -1179,14 +1179,6 @@ async def sync_financial_data(
             "status": "pending",
             "rows": 0,
         },
-        "quality_features": {
-            "status": "pending",
-            "stock_count": 0,
-        },
-        "stock_archetypes": {
-            "status": "pending",
-            "stock_count": 0,
-        },
     }
 
     def _resolve_stage_status(*, candidates: int, success: int = 0, partial: int = 0, failed: int = 0) -> str:
@@ -1209,8 +1201,6 @@ async def sync_financial_data(
             "snapshot_rows": snapshot_rows,
             "capital_rows": capital_rows,
             "indicator_rows": indicator_rows,
-            "quality_stocks": progress["quality_features"]["stock_count"],
-            "archetype_stocks": progress["stock_archetypes"]["stock_count"],
         })
         if status:
             progress["summary"]["status"] = status
@@ -1491,53 +1481,10 @@ async def sync_financial_data(
         logger.warning(f"[财务] 扩展财务指标同步失败，跳过本轮: {exc}")
     _emit_progress()
 
-    quality_feature_total = 0
-    progress["quality_features"]["status"] = "running"
-    _emit_progress()
-    try:
-        _check_stop()
-        from services.quality_feature_engine import build_quality_features
-        conn.commit()
-        quality_feature_total = await _run_local_db_stage(build_quality_features)
-        progress["quality_features"].update({
-            "status": "success",
-            "stock_count": quality_feature_total,
-        })
-    except Exception as exc:
-        progress["quality_features"].update({
-            "status": "failed",
-            "stock_count": 0,
-            "error": str(exc)[:200],
-        })
-        logger.warning(f"[财务] 质量特征构建失败，跳过本轮: {exc}")
-    _emit_progress()
-
-    archetype_total = 0
-    progress["stock_archetypes"]["status"] = "running"
-    _emit_progress()
-    try:
-        _check_stop()
-        from services.stock_archetype_engine import build_stock_archetypes
-        conn.commit()
-        archetype_total = await _run_local_db_stage(build_stock_archetypes)
-        progress["stock_archetypes"].update({
-            "status": "success",
-            "stock_count": archetype_total,
-        })
-    except Exception as exc:
-        progress["stock_archetypes"].update({
-            "status": "failed",
-            "stock_count": 0,
-            "error": str(exc)[:200],
-        })
-        logger.warning(f"[财务] 股票类型构建失败，跳过本轮: {exc}")
-    _emit_progress()
-
     total = latest_upserts + history_upserts
     logger.info(
         f"[财务] 同步结束: 最新 {latest_upserts} 条, 历史 {history_upserts} 条, "
-        f"资本行为 {capital_total} 条, 扩展指标 {indicator_total} 条, "
-        f"质量特征 {quality_feature_total} 只, 股票类型 {archetype_total} 只"
+        f"资本行为 {capital_total} 条, 扩展指标 {indicator_total} 条"
     )
     _emit_progress("completed")
     return total + capital_total + indicator_total

@@ -1052,10 +1052,6 @@ def init_db():
         from services.capital_client import ensure_tables as _ensure_capital_tables
         _ensure_capital_tables(conn)
 
-        # 质量特征中间层（由 quality_feature_engine.py ensure_tables 管理）
-        from services.quality_feature_engine import ensure_tables as _ensure_quality_feature_tables
-        _ensure_quality_feature_tables(conn)
-
         # 行业上下文中间层（由 industry_context_engine.py ensure_tables 管理）
         from services.industry_context_engine import ensure_tables as _ensure_industry_context_tables
         _ensure_industry_context_tables(conn)

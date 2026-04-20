@@ -2758,18 +2758,7 @@ async def _step_calc_inst_scores(conn) -> int:
 async def _step_calc_stock_scores(conn) -> int:
     """计算股票评分"""
     from services.scoring import calculate_stock_scores
-    from services.setup_tracker import refresh_setup_tracking
-
-    def _worker(worker_conn):
-        count = calculate_stock_scores(worker_conn)
-        tracking = refresh_setup_tracking(worker_conn)
-        return count, tracking
-
-    count, tracking = await _run_blocking_db_task(_worker)
-    logger.info(
-        f"[Setup跟踪] 快照 {tracking['snapshot_date']} · {tracking['snapshots']} 条候选 · 刷新 {tracking['refreshed']} 条"
-    )
-    return count
+    return await _run_blocking_db_task(calculate_stock_scores)
 
 
 RUNNERS = {

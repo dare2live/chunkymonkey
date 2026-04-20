@@ -153,7 +153,6 @@ async def qlib_train(body: Optional[QlibTrainParams] = None):
                         from services.stock_forecast_engine import build_stock_forecast_features
                         from services.stock_turtle_engine import build_stock_turtle_features
                         from services.scoring import calculate_stock_scores
-                        from services.setup_tracker import refresh_setup_tracking
 
                         forecast_count = build_stock_forecast_features(smart_conn)
                         sector_forecast_count = build_sector_forecast_features(smart_conn)
@@ -163,12 +162,10 @@ async def qlib_train(body: Optional[QlibTrainParams] = None):
                         finally:
                             mkt_conn.close()
                         score_count = calculate_stock_scores(smart_conn)
-                        tracking = refresh_setup_tracking(smart_conn)
                         result["forecast_features"] = forecast_count
                         result["sector_forecast_features"] = sector_forecast_count
                         result["turtle_features"] = turtle_count
                         result["stock_scores"] = score_count
-                        result["setup_snapshots"] = tracking.get("snapshots")
                     except Exception as exc:
                         logger.warning(f"[Qlib] 训练后回流预测/评分失败: {exc}")
                     return result

@@ -71,7 +71,6 @@ def test_qlib_train_refreshes_sector_forecast_after_stock_forecast(monkeypatch):
     import services.market_db as market_db
     import services.scoring as scoring
     import services.sector_forecast_engine as sector_forecast_engine
-    import services.setup_tracker as setup_tracker
     import services.stock_forecast_engine as stock_forecast_engine
     import services.stock_turtle_engine as stock_turtle_engine
 
@@ -97,11 +96,6 @@ def test_qlib_train_refreshes_sector_forecast_after_stock_forecast(monkeypatch):
         "calculate_stock_scores",
         lambda conn: calls.append("stock_scores") or 9,
     )
-    monkeypatch.setattr(
-        setup_tracker,
-        "refresh_setup_tracking",
-        lambda conn: calls.append("setup_tracking") or {"snapshots": 3},
-    )
 
     response = asyncio.run(qlib_router.qlib_train())
 
@@ -116,5 +110,4 @@ def test_qlib_train_refreshes_sector_forecast_after_stock_forecast(monkeypatch):
         "sector_forecast",
         "turtle",
         "stock_scores",
-        "setup_tracking",
     ]

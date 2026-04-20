@@ -63,7 +63,6 @@ def test_calc_topk_avg_return_averages_top_bucket_per_day():
 def test_run_full_backtest_aggregates_all_sections(monkeypatch):
     monkeypatch.setattr(backtest_engine, "build_inst_industry_performance", lambda conn: {"rows": 11})
     monkeypatch.setattr(backtest_engine, "build_holding_chains", lambda conn: {"rows": 7})
-    monkeypatch.setattr(backtest_engine, "build_setup_replay", lambda conn: {"rows": 5})
     monkeypatch.setattr(backtest_engine, "build_cross_factor_analysis", lambda conn: {"rows": 3})
     monkeypatch.setattr(backtest_engine, "build_signal_transfer", lambda conn: {"rows": 2})
 
@@ -72,7 +71,6 @@ def test_run_full_backtest_aggregates_all_sections(monkeypatch):
     assert result == {
         "inst_industry": {"rows": 11},
         "holding_chains": {"rows": 7},
-        "setup_replay": {"rows": 5},
         "cross_factor": {"rows": 3},
         "signal_transfer": {"rows": 2},
     }

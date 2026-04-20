@@ -14,8 +14,6 @@ client = TestClient(app)
 
 PUBLIC_PATHS = [
     "/api/inst/events",
-    "/api/inst/setup-tracking/snapshots",
-    "/api/inst/setup-validation/report",
     "/api/inst/stocks/detail/{stock_code}",
     "/api/inst/update/status",
     "/api/inst/update/smart",
@@ -25,9 +23,12 @@ PUBLIC_PATHS = [
 HIDDEN_PATHS = [
     "/api/inst/holdings",
     "/api/inst/setup-tracking/summary",
+    "/api/inst/setup-tracking/snapshots",
+    "/api/inst/setup-validation/report",
     "/api/inst/setup-replay/summary",
     "/api/inst/setup-replay/factors",
     "/api/inst/setup-replay/events",
+    "/api/inst/stock-validation/report",
     "/api/inst/stocks/attention/{stock_code}",
     "/api/inst/industry-stats",
     "/api/inst/update/smart-plan",

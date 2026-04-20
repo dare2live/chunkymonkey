@@ -1,12 +1,11 @@
 """
 backtest_engine.py — 历史回测引擎
 
-对历史数据做全量研究回放，产出 5 张研究表：
+对历史数据做全量研究回放，产出 4 张研究表：
 1. 机构三层行业真实表现
 2. 持仓链条全景
-3. Setup A 历史回放
-4. 多维交叉分析
-5. 信号传递效率
+3. 多维交叉分析
+4. 信号传递效率
 
 独立执行，不进 DAG。
 """
@@ -16,7 +15,6 @@ from datetime import datetime
 from collections import defaultdict
 
 from services.industry import industry_join_clause, industry_select_clause
-from services.setup_replay import build_setup_replay
 
 logger = logging.getLogger("cm-api")
 
@@ -27,25 +25,17 @@ def run_full_backtest(conn, mkt_conn) -> dict:
 
     logger.info("[回测] 开始全量历史回测...")
 
-    # 表 1
     r1 = build_inst_industry_performance(conn)
     results["inst_industry"] = r1
 
-    # 表 2
     r2 = build_holding_chains(conn)
     results["holding_chains"] = r2
 
-    # 表 3
-    r3 = build_setup_replay(conn)
-    results["setup_replay"] = r3
+    r3 = build_cross_factor_analysis(conn)
+    results["cross_factor"] = r3
 
-    # 表 4
-    r4 = build_cross_factor_analysis(conn)
-    results["cross_factor"] = r4
-
-    # 表 5
-    r5 = build_signal_transfer(conn)
-    results["signal_transfer"] = r5
+    r4 = build_signal_transfer(conn)
+    results["signal_transfer"] = r4
 
     logger.info("[回测] 全量回测完成")
     return results

@@ -135,14 +135,16 @@ def test_institution_openapi_hides_internal_replay_and_smart_plan_routes():
     assert response.status_code == 200
     paths = response.json().get("paths", {})
 
-    assert "/api/inst/setup-validation/report" in paths
-    assert "/api/inst/setup-tracking/snapshots" in paths
     assert "/api/inst/events" in paths
     assert "/api/inst/profiles/detail/{inst_id}" in paths
+    # Setup / replay / validation 路由已废弃删除
+    assert "/api/inst/setup-validation/report" not in paths
+    assert "/api/inst/setup-tracking/snapshots" not in paths
     assert "/api/inst/setup-replay/summary" not in paths
     assert "/api/inst/setup-replay/factors" not in paths
     assert "/api/inst/setup-replay/events" not in paths
     assert "/api/inst/setup-tracking/summary" not in paths
+    assert "/api/inst/stock-validation/report" not in paths
     assert "/api/inst/holdings" not in paths
     assert "/api/inst/stocks/attention/{stock_code}" not in paths
     assert "/api/inst/industry-stats" not in paths

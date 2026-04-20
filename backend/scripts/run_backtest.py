@@ -92,69 +92,7 @@ def generate_report(conn):
                       f"{r['ig']:+.1f}% | {r['fg30']:+.1f}% | {r['prem']:+.1f}% |" if r['ig'] else "")
 
     # === 表 3 摘要 ===
-    lines.append("\n\n## 3. Setup Replay\n")
-
-    replay_rows = conn.execute("""
-        SELECT *
-        FROM research_setup_replay_summary
-        WHERE group_name IN ('baseline_all_buy', 'setup_hit_all', 'priority_1', 'priority_2', 'priority_3', 'priority_4', 'priority_5')
-        ORDER BY CASE
-            WHEN group_name = 'baseline_all_buy' THEN 0
-            WHEN group_name = 'setup_hit_all' THEN 1
-            ELSE 2
-        END, group_name
-    """).fetchall()
-    lines.append("| 组别 | 样本 | 30d均收 | 30d胜率 | 30d回撤 | 60d均收 | 60d胜率 | 120d均收 | 120d胜率 | vs基线 |")
-    lines.append("|---|---|---|---|---|---|---|---|---|---|")
-    for r in replay_rows:
-        label = {
-            "baseline_all_buy": "全量买入基线",
-            "setup_hit_all": "Setup 命中",
-            "priority_1": "Setup A1",
-            "priority_2": "Setup A2",
-            "priority_3": "Setup A3",
-            "priority_4": "Setup A4",
-            "priority_5": "Setup A5",
-        }.get(r["group_name"], r["group_name"])
-        def _pct(v):
-            return f"{v:.1f}%" if v is not None else "-"
-        def _gain(v):
-            return f"{v:+.2f}%" if v is not None else "-"
-        def _dd(v):
-            return f"{v:.1f}%" if v is not None else "-"
-        lines.append(
-            f"| {label} | {r['sample_count']} | {_gain(r['avg_gain_30d'])} | {_pct(r['win_rate_30d'])} | "
-            f"{_dd(r['avg_drawdown_30d'])} | {_gain(r['avg_gain_60d'])} | {_pct(r['win_rate_60d'])} | "
-            f"{_gain(r['avg_gain_120d'])} | {_pct(r['win_rate_120d'])} | {_gain(r['uplift_vs_baseline_30d'])} |"
-        )
-
-    lines.append("\n### Setup 因子 Top\n")
-    lines.append("| 因子 | 值 | 样本 | 30d均收 | 30d胜率 | 30d回撤 | vs基线 |")
-    lines.append("|---|---|---|---|---|---|---|")
-    replay_factors = conn.execute("""
-        SELECT factor_name, factor_value, sample_count, avg_gain_30d, win_rate_30d,
-               avg_drawdown_30d, uplift_vs_baseline_30d
-        FROM research_setup_replay_factor
-        WHERE factor_name IN (
-            'setup_priority', 'matched_level', 'premium_grade',
-            'crowding_fit_grade', 'crowding_yield_grade', 'crowding_stability_grade',
-            'setup_execution_gate'
-        )
-        ORDER BY uplift_vs_baseline_30d DESC, sample_count DESC
-        LIMIT 20
-    """).fetchall()
-    for r in replay_factors:
-        gain = f"{r['avg_gain_30d']:+.2f}%" if r["avg_gain_30d"] is not None else "-"
-        wr = f"{r['win_rate_30d']:.1f}%" if r["win_rate_30d"] is not None else "-"
-        dd = f"{r['avg_drawdown_30d']:.1f}%" if r["avg_drawdown_30d"] is not None else "-"
-        uplift = f"{r['uplift_vs_baseline_30d']:+.2f}%" if r["uplift_vs_baseline_30d"] is not None else "-"
-        lines.append(
-            f"| {r['factor_name']} | {r['factor_value']} | {r['sample_count']} | "
-            f"{gain} | {wr} | {dd} | {uplift} |"
-        )
-
-    # === 表 4 摘要 ===
-    lines.append("\n\n## 4. 交叉分析关键发现\n")
+    lines.append("\n\n## 3. 交叉分析关键发现\n")
 
     # 机构类型 × 行业 top 组合
     lines.append("### 机构类型 × 行业 Top 10 (样本>=20, 按30d收益)\n")
@@ -188,8 +126,8 @@ def generate_report(conn):
         lines.append(f"| {r['factor_a_value']} | {r['factor_b_value']} | {r['sample_count']} | "
                       f"{r['avg_gain_30d']:+.2f}% | {r['win_rate_30d']:.1f}% | {r['avg_drawdown_30d']:.1f}% |")
 
-    # === 表 5 摘要 ===
-    lines.append("\n\n## 5. 信号传递效率\n")
+    # === 表 4 摘要 ===
+    lines.append("\n\n## 4. 信号传递效率\n")
     st = conn.execute("""
         SELECT COUNT(*) as rows,
                AVG(signal_capture_30d) as avg_cap

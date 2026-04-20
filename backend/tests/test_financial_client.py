@@ -34,8 +34,6 @@ def _fake_optional_modules() -> dict[str, object]:
     return {
         "services.capital_client": types.SimpleNamespace(sync_capital_behavior_data=_async_zero),
         "services.financial_indicator_client": types.SimpleNamespace(sync_financial_indicator_data=_async_zero),
-        "services.quality_feature_engine": types.SimpleNamespace(build_quality_features=lambda conn: 0),
-        "services.stock_archetype_engine": types.SimpleNamespace(build_stock_archetypes=lambda conn: 0),
     }
 
 
