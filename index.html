@@ -7,7 +7,7 @@
   <title>Chunky Monkey v2</title>
   <link rel="stylesheet" href="https://rsms.me/inter/inter.css">
   <script>
-    window.CM_ASSET_VERSION = '2.4.2';
+    window.CM_ASSET_VERSION = '2.4.3';
     (function (version) {
       var link = document.createElement('link');
       link.rel = 'stylesheet';
@@ -95,33 +95,34 @@
         </div>
       </div>
 
-      <!-- Layer 2 · 主操作 + 数据源 pill + 实时日志 -->
+      <!-- Layer 2 · 主操作 + 数据源 + 实时日志（C4 重写：chip 按钮统一 + 日志白卡化） -->
       <div class="workbench-ops">
         <div class="workbench-ops-left">
-          <div class="workbench-ops-actions">
-            <button class="btn-primary" id="btnUpdateAll">智能更新</button>
-            <button class="btn-outline" id="btnRefreshStatus">刷新状态</button>
-            <button class="btn-danger" id="btnStop" style="display:none">停止</button>
+          <div class="chip-group">
+            <button class="chip chip-primary" id="btnUpdateAll">智能更新</button>
+            <button class="chip chip-outline" id="btnRefreshStatus">刷新状态</button>
+            <button class="chip chip-danger chip-sm" id="btnStop" style="display:none">停止</button>
           </div>
           <div id="progressArea" style="display:none;margin-top:12px">
             <div class="progress-bar"><div class="progress-fill" id="progressFill"></div></div>
             <div class="progress-text" id="progressText">0/19 · 0%</div>
           </div>
-          <div id="networkStatus" class="network-status workbench-sources">
-            <span id="sourcePillHoldings" class="source-pill offline"><span class="source-pill-dot"></span><span class="source-pill-text">股东源</span></span>
-            <span id="sourcePillKline" class="source-pill offline"><span class="source-pill-dot"></span><span class="source-pill-text">K线源</span></span>
-            <span id="sourcePillIndustry" class="source-pill offline"><span class="source-pill-dot"></span><span class="source-pill-text">行业源</span></span>
+          <div id="networkStatus" class="chip-group workbench-sources">
+            <span class="chip-group-label">数据源</span>
+            <span id="sourcePillHoldings" class="chip chip-sm chip-tint-muted"><span class="src-dot"></span>股东源</span>
+            <span id="sourcePillKline" class="chip chip-sm chip-tint-muted"><span class="src-dot"></span>K线源</span>
+            <span id="sourcePillIndustry" class="chip chip-sm chip-tint-muted"><span class="src-dot"></span>行业源</span>
           </div>
         </div>
-        <aside class="workbench-ops-log">
+        <aside class="workbench-ops-log panel">
           <div class="log-head">
-            <span>运行日志</span>
-            <div style="display:flex;gap:10px;align-items:center">
-              <button class="btn-text" id="btnCopyLog" style="font-size:11px">复制</button>
-              <button class="btn-text" id="btnClearLog" style="font-size:11px">清空</button>
+            <span class="log-head-title">运行日志</span>
+            <div class="chip-group">
+              <button class="chip chip-ghost chip-sm" id="btnCopyLog">复制</button>
+              <button class="chip chip-ghost chip-sm" id="btnClearLog">清空</button>
             </div>
           </div>
-          <div id="updateLog" class="log-box update-log-box"></div>
+          <div id="updateLog" class="log-box"></div>
         </aside>
       </div>
 
@@ -157,7 +158,7 @@
                 <option value="其他">其他</option>
               </select>
               <input type="text" class="search-input" id="mgmtSearch" placeholder="多词用逗号或空格分隔" style="flex:1;min-width:200px">
-              <button class="btn-primary" id="btnSearchInst">搜索</button>
+              <button class="chip chip-primary" id="btnSearchInst">搜索</button>
             </div>
             <div id="searchResultArea" style="display:none">
               <div style="display:flex;gap:8px;align-items:center;margin-bottom:10px;flex-wrap:wrap">
@@ -171,7 +172,7 @@
                   <option value="券商">券商</option><option value="信托">信托</option>
                   <option value="私募">私募</option>
                 </select>
-                <button class="btn-primary" id="btnImportChecked">导入选中</button>
+                <button class="chip chip-primary" id="btnImportChecked">导入选中</button>
                 <span id="searchResultCount" class="muted" style="font-size:12px;margin-left:4px"></span>
               </div>
               <div id="searchResults"></div>
@@ -181,11 +182,11 @@
           <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;flex-wrap:wrap;gap:8px">
             <div class="type-filter" id="mgmtTypeFilter" style="margin:0"></div>
             <div class="mgmt-actions" style="display:flex;gap:6px;flex-wrap:wrap">
-              <button class="btn-outline" id="btnBatchAlias">批量设简称</button>
-              <button class="btn-outline" id="btnBatchType">批量设类型</button>
-              <button class="btn-outline" id="btnBatchMerge">批量合并</button>
-              <button class="btn-outline" id="btnBatchBlack">批量拉黑</button>
-              <button class="btn-sm danger" id="btnBatchDelete">批量删除</button>
+              <button class="chip chip-outline" id="btnBatchAlias">批量设简称</button>
+              <button class="chip chip-outline" id="btnBatchType">批量设类型</button>
+              <button class="chip chip-outline" id="btnBatchMerge">批量合并</button>
+              <button class="chip chip-outline" id="btnBatchBlack">批量拉黑</button>
+              <button class="chip chip-danger chip-sm" id="btnBatchDelete">批量删除</button>
             </div>
           </div>
           <div id="instMgmtTable" class="muted" style="font-size:12px">点击展开时加载...</div>
@@ -197,7 +198,7 @@
         <div class="module-toggles" style="display:flex;gap:16px;font-size:13px;padding:10px 0;align-items:center;flex-wrap:wrap">
           <label><input type="checkbox" id="chkModuleQlib"> 启用 Qlib（需后端支持）</label>
           <label><input type="checkbox" id="chkModuleEtf"> 启用 ETF 量化</label>
-          <button class="btn-outline" onclick="App.saveModuleSettings()" style="padding:4px 12px;font-size:12px">保存配置并重启</button>
+          <button class="chip chip-outline chip-sm" onclick="App.saveModuleSettings()">保存配置并重启</button>
         </div>
       </details>
 
@@ -215,8 +216,8 @@
             <div class="panel-head">
               <span style="font-weight:600">训练控制台</span>
               <div class="panel-actions">
-                <button class="btn-outline" id="btnQlibResetParams">恢复默认</button>
-                <button class="btn-primary" id="btnQlibTrain">重新训练</button>
+                <button class="chip chip-outline" id="btnQlibResetParams">恢复默认</button>
+                <button class="chip chip-primary" id="btnQlibTrain">重新训练</button>
               </div>
             </div>
             <div class="qlib-params-grid">
@@ -269,7 +270,7 @@
         <summary><span class="workbench-section-title" style="color:#b91c1c">全量重算派生数据</span><span class="muted" style="font-size:11px;font-weight:400">危险操作，二次确认</span></summary>
         <div style="padding:10px 0">
           <p class="muted" style="font-size:12px;margin-bottom:10px">清空事件、收益、画像和趋势派生层（raw 层保留），从原始数据重新计算。预计 10-20 分钟。</p>
-          <button class="btn-danger" id="btnReset">重算全部派生数据</button>
+          <button class="chip chip-danger" id="btnReset">重算全部派生数据</button>
         </div>
       </details>
     </section>

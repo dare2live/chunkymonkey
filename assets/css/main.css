@@ -5742,30 +5742,48 @@ tr.detail-row>td>.detail-panel {
   margin-bottom: 14px;
 }
 .workbench-ops-left {
-  padding: 14px 16px; background: #fff; border: 1px solid #e5e7eb; border-radius: 10px;
+  padding: var(--cm-sp-4); background: var(--cm-surface);
+  border: 1px solid var(--cm-ink-100); border-radius: var(--cm-r-lg);
 }
-.workbench-ops-actions { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
-.workbench-ops-actions .btn-primary { padding: 8px 20px; font-size: 14px; font-weight: 600; }
-.workbench-ops-actions .btn-outline, .workbench-ops-actions .btn-danger { padding: 8px 14px; font-size: 13px; }
-.workbench-sources {
-  display: flex; gap: 8px; flex-wrap: wrap; margin-top: 12px; padding: 0;
+.workbench-sources { margin-top: var(--cm-sp-3); }
+.workbench-sources .src-dot {
+  display: inline-block; width: 6px; height: 6px; border-radius: var(--cm-r-pill);
+  background: var(--cm-ink-300); margin-right: 6px;
 }
-.workbench-sources .source-pill { background: transparent; border: 1px solid #e5e7eb; }
+.workbench-sources .chip-tint-ok .src-dot { background: var(--cm-ok-500); }
+.workbench-sources .chip-tint-bad .src-dot { background: var(--cm-bad-500); }
+.workbench-sources .chip-tint-warn .src-dot { background: var(--cm-warn-500); }
+
+/* C4 · 日志面板白卡化（原 #0f172a 深底 → 白卡 + 等宽字 + 错误行红字） */
 .workbench-ops-log {
-  background: #0f172a; color: #e2e8f0; border-radius: 10px;
-  display: flex; flex-direction: column; min-height: 160px; max-height: 220px; overflow: hidden;
+  display: flex; flex-direction: column;
+  min-height: 180px; max-height: 240px;
+  overflow: hidden; padding: 0;
 }
 .workbench-ops-log .log-head {
   display: flex; align-items: center; justify-content: space-between;
-  padding: 8px 12px; font-size: 11px; font-weight: 600;
-  border-bottom: 1px solid rgba(255,255,255,0.08); letter-spacing: 0.3px;
+  padding: var(--cm-sp-3) var(--cm-sp-4);
+  border-bottom: 1px solid var(--cm-ink-100);
+  background: var(--cm-ink-50);
 }
-.workbench-ops-log .btn-text { color: #94a3b8; background: transparent; border: none; cursor: pointer; }
-.workbench-ops-log .btn-text:hover { color: #e2e8f0; }
+.workbench-ops-log .log-head-title {
+  font-size: var(--cm-fs-12); font-weight: 600;
+  color: var(--cm-ink-700); letter-spacing: 0.3px;
+}
 .workbench-ops-log .log-box {
-  flex: 1; overflow-y: auto; padding: 8px 12px; font-size: 11px;
-  font-family: ui-monospace,SFMono-Regular,Menlo,monospace; line-height: 1.6;
-  background: transparent; color: inherit; border: none;
+  flex: 1; overflow-y: auto;
+  padding: var(--cm-sp-3) var(--cm-sp-4);
+  font-size: var(--cm-fs-11); line-height: 1.65;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  background: var(--cm-surface); color: var(--cm-ink-700);
+  border: none;
+}
+.workbench-ops-log .log-box .log-line { display: block; padding: 1px 0; }
+.workbench-ops-log .log-box .log-err { color: var(--cm-bad-500); }
+.workbench-ops-log .log-box .log-warn { color: var(--cm-warn-500); }
+.workbench-ops-log .log-box .log-ts { color: var(--cm-ink-300); margin-right: 6px; }
+.workbench-ops-log .log-box:empty::before {
+  content: "等待运行日志…"; color: var(--cm-ink-300); font-style: italic;
 }
 
 /* Layer 3 + Layer 4 · 折叠区（details/summary） */
