@@ -6092,6 +6092,55 @@ tr.detail-row>td>.detail-panel {
 }
 .sv-count-hint { font-size: var(--cm-fs-11); }
 
+/* 选股 + 海龟 多选筛选行（第二行） */
+.sv-filter-bar-sub {
+  padding: var(--cm-sp-2) 0;
+  margin-top: calc(-1 * var(--cm-sp-3));
+  margin-bottom: var(--cm-sp-3);
+  border-bottom: 1px solid var(--cm-ink-100);
+  font-size: var(--cm-fs-12);
+}
+.sv-filter-label {
+  font-size: var(--cm-fs-11);
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+/* TDX 命中徽章（行内） */
+.sv-tdx-cell { white-space: nowrap; }
+.sv-tdx-chip {
+  display: inline-block;
+  padding: 1px 6px;
+  margin-right: 2px;
+  border-radius: var(--cm-r-sm);
+  font-size: var(--cm-fs-11);
+  font-weight: 600;
+  background: var(--cm-brand-50);
+  color: var(--cm-brand-700);
+  border: 1px solid var(--cm-brand-100);
+}
+.sv-tdx-f1 { background: #ecfdf5; color: #047857; border-color: #a7f3d0; }
+.sv-tdx-f3 { background: #eff6ff; color: #1d4ed8; border-color: #bfdbfe; }
+.sv-tdx-f5 { background: #fef3c7; color: #b45309; border-color: #fcd34d; }
+
+/* 海龟状态徽章 */
+.sv-turtle-cell { white-space: nowrap; }
+.sv-turtle-badge {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: var(--cm-r-sm);
+  font-size: var(--cm-fs-11);
+  font-weight: 600;
+  border: 1px solid transparent;
+  background: var(--cm-ink-50);
+  color: var(--cm-ink-600);
+}
+.sv-turtle-breakout { background: #fef2f2; color: #b91c1c; border-color: #fecaca; }
+.sv-turtle-pre { background: #fef3c7; color: #b45309; border-color: #fcd34d; }
+.sv-turtle-exit { background: #ede9fe; color: #6d28d9; border-color: #c4b5fd; }
+.sv-turtle-wait { background: var(--cm-ink-50); color: var(--cm-ink-500); border-color: var(--cm-ink-100); }
+
 /* 列表表格 */
 .sv-table td { height: var(--cm-row-h); vertical-align: middle; }
 .sv-stock-name { font-size: var(--cm-fs-13); }

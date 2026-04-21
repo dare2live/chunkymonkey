@@ -23,11 +23,24 @@
     filterInstType: '',
     filterMinInst: 0,
     filterWatchlistOnly: false,
+    filterScreening: new Set(),   // 多选：'f1' / 'f3' / 'f5'
+    filterTurtle: new Set(),      // 多选：'breakout' / 'pre' / 'exit' / 'wait'
+    screeningMap: new Map(),      // stock_code → mart_stock_screening 行
+    turtleMap: new Map(),         // stock_code → dim_stock_turtle_latest 行
     loading: false,
     drawerStock: null,     // 当前打开的股票 code
     drawerTab: 'events',   // events | timeline | evidence
     freshnessDays: 90,
   };
+
+  // 海龟 setup_state 中文 → 桶（用于多选过滤）
+  function turtleBucket(setupState) {
+    const s = String(setupState || '');
+    if (s.includes('突破触发')) return 'breakout';
+    if (s.includes('待突破')) return 'pre';
+    if (s.includes('退出触发')) return 'exit';
+    return 'wait';
+  }
 
   function el(id) { return document.getElementById(id); }
   function esc(s) {
@@ -91,6 +104,19 @@
       }
       if (state.filterMinInst > 0 && s.instCount < state.filterMinInst) return false;
       if (state.filterWatchlistOnly && !state.watchlistSet.has(s.stockCode)) return false;
+      if (state.filterScreening.size > 0) {
+        const scr = state.screeningMap.get(s.stockCode);
+        if (!scr) return false;
+        const hit = (state.filterScreening.has('f1') && scr.f1_hit)
+                 || (state.filterScreening.has('f3') && scr.f3_hit)
+                 || (state.filterScreening.has('f5') && scr.f5_hit);
+        if (!hit) return false;
+      }
+      if (state.filterTurtle.size > 0) {
+        const tur = state.turtleMap.get(s.stockCode);
+        if (!tur) return false;
+        if (!state.filterTurtle.has(turtleBucket(tur.turtle_setup_state))) return false;
+      }
       return true;
     });
   }
@@ -110,6 +136,30 @@
     <div class="sig-consensus-legend muted">
       <span class="sig-pos">${ac.follow}</span>·<span>${ac.watch}</span>·<span class="muted">${ac.skip}</span>
     </div>`;
+  }
+
+  // 选股命中徽章（F1/F3/F5）
+  function renderScreeningChips(stockCode) {
+    const scr = state.screeningMap.get(stockCode);
+    if (!scr) return '<span class="muted sv-sub">—</span>';
+    const chips = [];
+    if (scr.f1_hit) chips.push('<span class="sv-tdx-chip sv-tdx-f1" title="F1 长期低位突破">F1</span>');
+    if (scr.f3_hit) chips.push('<span class="sv-tdx-chip sv-tdx-f3" title="F3 多级回撤">F3</span>');
+    if (scr.f5_hit) chips.push('<span class="sv-tdx-chip sv-tdx-f5" title="F5 连跌反转">F5</span>');
+    if (!chips.length) return '<span class="muted sv-sub">—</span>';
+    return chips.join(' ');
+  }
+
+  // 海龟状态徽章
+  function renderTurtleBadge(stockCode) {
+    const tur = state.turtleMap.get(stockCode);
+    if (!tur) return '<span class="muted sv-sub">—</span>';
+    const state_ = String(tur.turtle_setup_state || '');
+    if (!state_) return '<span class="muted sv-sub">—</span>';
+    const bucket = turtleBucket(state_);
+    const score = tur.turtle_execution_score_v1;
+    const scoreStr = score != null ? Number(score).toFixed(0) : '—';
+    return `<span class="sv-turtle-badge sv-turtle-${bucket}" title="${esc(state_)} · 执行分 ${scoreStr}">${esc(state_)}</span>`;
   }
 
   // ── 渲染列表行 ───────────────────────────────────────────────────
@@ -133,6 +183,8 @@
         <div class="sv-inst-count">${s.instCount} 机构</div>
         ${consensusBar(s.actionCounts)}
       </td>
+      <td class="sv-tdx-cell">${renderScreeningChips(s.stockCode)}</td>
+      <td class="sv-turtle-cell">${renderTurtleBadge(s.stockCode)}</td>
       <td class="sig-num">
         ${s.longEVBest != null ? fmtPct(s.longEVBest) : '-'}
         ${s.topEvent?.longEV?.n ? `<div class="muted sv-sub">n=${s.topEvent.longEV.n}</div>` : ''}
@@ -147,6 +199,28 @@
         <button class="chip chip-outline chip-sm sv-detail-btn">详情</button>
       </td>
     </tr>`;
+  }
+
+  // 多选 chip 计数：当前 byStock 中各桶/公式命中的股票数
+  function countScreeningHits(byStock) {
+    const out = { f1: 0, f3: 0, f5: 0 };
+    byStock.forEach(s => {
+      const r = state.screeningMap.get(s.stockCode);
+      if (!r) return;
+      if (r.f1_hit) out.f1 += 1;
+      if (r.f3_hit) out.f3 += 1;
+      if (r.f5_hit) out.f5 += 1;
+    });
+    return out;
+  }
+  function countTurtleBuckets(byStock) {
+    const out = { breakout: 0, pre: 0, exit: 0, wait: 0 };
+    byStock.forEach(s => {
+      const r = state.turtleMap.get(s.stockCode);
+      if (!r || !r.turtle_setup_state) return;
+      out[turtleBucket(r.turtle_setup_state)] += 1;
+    });
+    return out;
   }
 
   // ── 渲染筛选栏 ──────────────────────────────────────────────────
@@ -167,6 +241,29 @@
         `<option value="${esc(it)}" ${state.filterInstType === it ? 'selected' : ''}>${esc(it)} (${n})</option>`
       ).join('');
 
+    const scrCount = countScreeningHits(byStock);
+    const scrChips = [
+      ['f1', 'F1 长期低位'],
+      ['f3', 'F3 多级回撤'],
+      ['f5', 'F5 连跌反转'],
+    ].map(([k, label]) => {
+      const active = state.filterScreening.has(k);
+      const n = scrCount[k] || 0;
+      return `<button class="chip chip-sm sv-filter-tdx ${active ? 'chip-primary' : 'chip-outline'}" data-tdx="${k}">${label} (${n})</button>`;
+    }).join('');
+
+    const tCount = countTurtleBuckets(byStock);
+    const turtleChips = [
+      ['breakout', '突破触发'],
+      ['pre', '待突破'],
+      ['exit', '退出触发'],
+      ['wait', '等待形态'],
+    ].map(([k, label]) => {
+      const active = state.filterTurtle.has(k);
+      const n = tCount[k] || 0;
+      return `<button class="chip chip-sm sv-filter-turtle sv-filter-turtle-${k} ${active ? 'chip-primary' : 'chip-outline'}" data-turtle="${k}">${label} (${n})</button>`;
+    }).join('');
+
     return `<div class="sv-filter-bar">
       <div class="chip-group">${actionBtns}</div>
       <select class="sv-select" id="svIndFilter">${indOptions}</select>
@@ -175,6 +272,13 @@
         <input type="checkbox" id="svWlOnly" ${state.filterWatchlistOnly ? 'checked' : ''}> 仅自选
       </label>
       <span class="muted sv-count-hint" id="svCountHint"></span>
+    </div>
+    <div class="sv-filter-bar sv-filter-bar-sub">
+      <span class="muted sv-filter-label">TDX</span>
+      <div class="chip-group">${scrChips}</div>
+      <span class="muted sv-filter-label">海龟</span>
+      <div class="chip-group">${turtleChips}</div>
+      ${(state.filterScreening.size + state.filterTurtle.size) > 0 ? '<button class="chip chip-ghost chip-sm" id="svClearScreening">清除</button>' : ''}
     </div>`;
   }
 
@@ -197,6 +301,8 @@
             <th>股票</th>
             <th style="width:70px">当期信号</th>
             <th style="width:160px">共识</th>
+            <th style="width:90px" title="TDX 选股命中：F1 长期低位 / F3 多级回撤 / F5 连跌反转">TDX</th>
+            <th style="width:110px" title="海龟执行特征 setup_state">海龟</th>
             <th class="sig-num" style="width:100px" title="该股最佳长期 EV">长期 EV</th>
             <th class="sig-num" style="width:80px">平均溢价</th>
             <th style="width:100px">最近事件</th>
@@ -466,6 +572,28 @@
     if (itSel) itSel.addEventListener('change', () => { state.filterInstType = itSel.value; renderList(); });
     const wlChk = el('svWlOnly');
     if (wlChk) wlChk.addEventListener('change', () => { state.filterWatchlistOnly = wlChk.checked; renderList(); });
+    document.querySelectorAll('.sv-filter-tdx').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const k = btn.dataset.tdx;
+        if (state.filterScreening.has(k)) state.filterScreening.delete(k);
+        else state.filterScreening.add(k);
+        refreshFilter();
+      });
+    });
+    document.querySelectorAll('.sv-filter-turtle').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const k = btn.dataset.turtle;
+        if (state.filterTurtle.has(k)) state.filterTurtle.delete(k);
+        else state.filterTurtle.add(k);
+        refreshFilter();
+      });
+    });
+    const clearBtn = el('svClearScreening');
+    if (clearBtn) clearBtn.addEventListener('click', () => {
+      state.filterScreening.clear();
+      state.filterTurtle.clear();
+      refreshFilter();
+    });
   }
 
   function refreshFilter() {
@@ -482,20 +610,23 @@
     state.loading = true;
     renderList();
     try {
-      const [result, wl] = await Promise.all([
+      const [result, wl, enrich] = await Promise.all([
         global.SignalAdapter.fetchSignals(state.freshnessDays),
         fetch('/api/inst/watchlist').then(r => r.ok ? r.json() : null).catch(() => null),
+        global.SignalAdapter.fetchScreeningEnrichment().catch(() => null),
       ]);
       state.byStock = result.byStock || [];
       state.rawEvents = result.events || [];
       state.watchlistSet = new Set(((wl && wl.data) || []).map(w => w.stock_code));
+      state.screeningMap = (enrich && enrich.screening) || new Map();
+      state.turtleMap = (enrich && enrich.turtle) || new Map();
     } catch (e) {
       console.error('StockView reload failed', e);
       state.byStock = [];
       state.rawEvents = [];
     }
     state.loading = false;
-    renderList();
+    refreshFilter();
     // 如果有打开的抽屉，数据已刷新，重新渲染抽屉内容
     if (state.drawerStock) renderDrawer();
   }

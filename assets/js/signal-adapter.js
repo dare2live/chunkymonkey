@@ -156,6 +156,24 @@
     return await apiGet(`/api/signals/cohort/recent?lookback_days=${lookbackDays}`);
   }
 
+  // 选股 + 海龟 → byStock 增强（股票视图列 / 多选筛选用）
+  // 返回 { screening: Map<code, row>, turtle: Map<code, row> }
+  // 失败静默：前端列回退为 '—'，不阻塞主表渲染
+  async function fetchScreeningEnrichment() {
+    const out = { screening: new Map(), turtle: new Map() };
+    const [scr, tur] = await Promise.all([
+      apiGet('/api/screening/results?limit=5000').catch(() => null),
+      apiGet('/api/screening/turtle-states').catch(() => null),
+    ]);
+    if (scr && Array.isArray(scr.data)) {
+      scr.data.forEach(r => { if (r && r.stock_code) out.screening.set(r.stock_code, r); });
+    }
+    if (tur && Array.isArray(tur.data)) {
+      tur.data.forEach(r => { if (r && r.stock_code) out.turtle.set(r.stock_code, r); });
+    }
+    return out;
+  }
+
   async function fetchConfig() {
     return await apiGet('/api/signals/config');
   }
@@ -213,6 +231,7 @@
   global.SignalAdapter = {
     fetchSignals,
     fetchCohort,
+    fetchScreeningEnrichment,
     fetchConfig,
     fetchEventStats,
     fetchInstTrackRecord,

@@ -10,6 +10,7 @@ from services.screening_read import (
     get_screening_summary,
     list_dual_confirm_rows,
     list_screening_results,
+    list_turtle_states,
 )
 from services.tdx_industry_names import get_tdx_industry_name
 
@@ -476,5 +477,16 @@ async def get_summary():
     conn = get_conn()
     try:
         return {"ok": True, **get_screening_summary(conn)}
+    finally:
+        conn.close()
+
+
+@router.get("/turtle-states", include_in_schema=False)
+async def get_turtle_states():
+    """轻量列表：股票 → 海龟 setup_state + 执行分（前端股票视图关联用）。"""
+    conn = get_conn()
+    try:
+        rows = list_turtle_states(conn)
+        return {"ok": True, "count": len(rows), "data": rows}
     finally:
         conn.close()

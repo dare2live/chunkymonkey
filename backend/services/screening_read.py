@@ -100,6 +100,25 @@ def get_screening_detail(conn, stock_code: str) -> Optional[dict]:
     return dict(row) if row else None
 
 
+def list_turtle_states(conn) -> list[dict]:
+    """轻量列表：股票 → 海龟 setup_state + 执行分。
+
+    供前端股票视图按 stock_code 关联展示，不携带价位/ATR 等大字段。
+    """
+    try:
+        rows = conn.execute(
+            """
+            SELECT stock_code, turtle_setup_state, turtle_execution_score_v1,
+                   turtle_breakout_score, turtle_risk_score,
+                   preferred_system, snapshot_date
+            FROM dim_stock_turtle_latest
+            """
+        ).fetchall()
+    except Exception:
+        return []
+    return [dict(row) for row in rows]
+
+
 def get_screening_summary(conn) -> dict:
     total = conn.execute("SELECT COUNT(*) FROM mart_stock_screening").fetchone()[0]
     f1 = conn.execute("SELECT COUNT(*) FROM mart_stock_screening WHERE f1_hit = 1").fetchone()[0]
