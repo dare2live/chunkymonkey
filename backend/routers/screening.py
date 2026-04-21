@@ -127,7 +127,7 @@ async def get_industry_overview(topn: int = Query(3, ge=1, le=10)):
         candidate_map = {}
         try:
             rows = conn.execute("""
-                SELECT ctx.tdx_l1 AS sector_name,
+                SELECT ctx.sw_l1 AS sector_name,
                        COUNT(*) AS candidate_count,
                        AVG(t.discovery_score) AS avg_discovery_score,
                        AVG(t.company_quality_score) AS avg_quality_score,
@@ -169,8 +169,8 @@ async def get_industry_overview(topn: int = Query(3, ge=1, le=10)):
                        SUM(CASE WHEN COALESCE(t.composite_priority_score, -1) < 45 THEN 1 ELSE 0 END) AS composite_band_below_45
                 FROM mart_stock_trend t
                 INNER JOIN dim_stock_industry_context_latest ctx ON ctx.stock_code = t.stock_code
-                WHERE ctx.tdx_l1 IS NOT NULL AND ctx.tdx_l1 != ''
-                GROUP BY ctx.tdx_l1
+                WHERE ctx.sw_l1 IS NOT NULL AND ctx.sw_l1 != ''
+                GROUP BY ctx.sw_l1
             """).fetchall()
             candidate_map = {row["sector_name"]: dict(row) for row in rows}
         except Exception:
@@ -232,13 +232,13 @@ async def get_industry_overview(topn: int = Query(3, ge=1, le=10)):
         context_map = {}
         try:
             rows = conn.execute("""
-                SELECT tdx_l1 AS sector_name,
+                SELECT sw_l1 AS sector_name,
                        AVG(industry_tailwind_score) AS avg_tailwind_score,
                        SUM(CASE WHEN dual_confirm_recent_180d > 0 THEN 1 ELSE 0 END) AS dual_confirm_stock_count,
                        SUM(dual_confirm_recent_180d) AS dual_confirm_signal_count
                 FROM dim_stock_industry_context_latest
-                WHERE tdx_l1 IS NOT NULL AND tdx_l1 != ''
-                GROUP BY tdx_l1
+                WHERE sw_l1 IS NOT NULL AND sw_l1 != ''
+                GROUP BY sw_l1
             """).fetchall()
             context_map = {row["sector_name"]: dict(row) for row in rows}
         except Exception:
@@ -270,7 +270,7 @@ async def get_industry_overview(topn: int = Query(3, ge=1, le=10)):
                 SELECT sector_name, stock_code, stock_name, stock_archetype, priority_pool,
                        composite_priority_score, company_quality_score, stage_score, setup_tag
                 FROM (
-                    SELECT ctx.tdx_l1 AS sector_name,
+                    SELECT ctx.sw_l1 AS sector_name,
                            t.stock_code,
                            t.stock_name,
                            t.stock_archetype,
@@ -280,7 +280,7 @@ async def get_industry_overview(topn: int = Query(3, ge=1, le=10)):
                            t.stage_score,
                            t.setup_tag,
                            ROW_NUMBER() OVER (
-                               PARTITION BY ctx.tdx_l1
+                               PARTITION BY ctx.sw_l1
                                ORDER BY
                                    CASE COALESCE(t.priority_pool, '')
                                        WHEN 'A池' THEN 0
@@ -294,7 +294,7 @@ async def get_industry_overview(topn: int = Query(3, ge=1, le=10)):
                            ) AS rn
                     FROM mart_stock_trend t
                     INNER JOIN dim_stock_industry_context_latest ctx ON ctx.stock_code = t.stock_code
-                    WHERE ctx.tdx_l1 IS NOT NULL AND ctx.tdx_l1 != ''
+                    WHERE ctx.sw_l1 IS NOT NULL AND ctx.sw_l1 != ''
                 )
                 WHERE rn <= ?
                 ORDER BY sector_name, rn

@@ -8,7 +8,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 import services.industry_context_engine as industry_context_engine
 
 
-def test_build_stock_industry_context_reads_from_tdx_industry():
+def test_build_stock_industry_context_reads_from_sw_industry():
     conn = sqlite3.connect(":memory:")
     conn.row_factory = sqlite3.Row
     conn.executescript(
@@ -59,13 +59,13 @@ def test_build_stock_industry_context_reads_from_tdx_industry():
         inserted = industry_context_engine.build_stock_industry_context(conn, snapshot_date="2026-04-18")
 
         row = conn.execute(
-            "SELECT tdx_l1, tdx_l2, tdx_l1_name, tdx_l2_name, industry_tailwind_score FROM dim_stock_industry_context_latest WHERE stock_code = '600001'"
+            "SELECT sw_l1, sw_l2, sw_l1_name, sw_l2_name, industry_tailwind_score FROM dim_stock_industry_context_latest WHERE stock_code = '600001'"
         ).fetchone()
         assert inserted == 1
-        assert row["tdx_l1"] == "T10"
-        assert row["tdx_l2"] == "T1001"
-        assert row["tdx_l1_name"] == "电子"
-        assert row["tdx_l2_name"] == "半导体"
+        assert row["sw_l1"] == "T10"
+        assert row["sw_l2"] == "T1001"
+        assert row["sw_l1_name"] == "电子"
+        assert row["sw_l2_name"] == "半导体"
         assert row["industry_tailwind_score"] is not None
     finally:
         conn.close()

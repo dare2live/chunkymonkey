@@ -17,10 +17,10 @@ def ensure_tables(conn):
         CREATE TABLE IF NOT EXISTS fact_stock_industry_context (
             snapshot_date             TEXT NOT NULL,
             stock_code                TEXT NOT NULL,
-            tdx_l1                    TEXT,
-            tdx_l2                    TEXT,
-            tdx_l1_name               TEXT,
-            tdx_l2_name               TEXT,
+            sw_l1                     TEXT,
+            sw_l2                     TEXT,
+            sw_l1_name                TEXT,
+            sw_l2_name                TEXT,
             sector_momentum_score     REAL,
             sector_trend_state        TEXT,
             sector_macd_cross         INTEGER DEFAULT 0,
@@ -52,10 +52,10 @@ def ensure_tables(conn):
         CREATE TABLE IF NOT EXISTS dim_stock_industry_context_latest (
             stock_code                TEXT PRIMARY KEY,
             snapshot_date             TEXT,
-            tdx_l1                    TEXT,
-            tdx_l2                    TEXT,
-            tdx_l1_name               TEXT,
-            tdx_l2_name               TEXT,
+            sw_l1                     TEXT,
+            sw_l2                     TEXT,
+            sw_l1_name                TEXT,
+            sw_l2_name                TEXT,
             sector_momentum_score     REAL,
             sector_trend_state        TEXT,
             sector_macd_cross         INTEGER DEFAULT 0,
@@ -82,13 +82,28 @@ def ensure_tables(conn):
             updated_at                TEXT
         );
     """)
+    # Phase 3B-1 迁移: tdx_l1/l2/l1_name/l2_name → sw_l1/l2/l1_name/l2_name
+    # 两张表用 ALTER TABLE RENAME COLUMN；SQLite 3.25+ 支持。
+    # 如果源列不存在（新建库）则 pass。
+    for tbl in ("fact_stock_industry_context", "dim_stock_industry_context_latest"):
+        cols = {r[1] for r in conn.execute(f"PRAGMA table_info({tbl})").fetchall()}
+        for old, new in (
+            ("tdx_l1", "sw_l1"), ("tdx_l2", "sw_l2"),
+            ("tdx_l1_name", "sw_l1_name"), ("tdx_l2_name", "sw_l2_name"),
+        ):
+            if old in cols and new not in cols:
+                try:
+                    conn.execute(f"ALTER TABLE {tbl} RENAME COLUMN {old} TO {new}")
+                except Exception:
+                    pass
+
     for col in [
         "sector_return_1m REAL", "sector_return_3m REAL", "sector_return_6m REAL", "sector_return_12m REAL",
         "sector_excess_1m REAL", "sector_excess_3m REAL", "sector_excess_6m REAL", "sector_excess_12m REAL",
         "sector_rotation_score REAL", "sector_rotation_rank INTEGER", "sector_rotation_rank_1m INTEGER",
         "sector_rotation_rank_3m INTEGER", "sector_rotation_bucket TEXT",
         "sector_rotation_blacklisted INTEGER DEFAULT 0",
-        "tdx_l1 TEXT", "tdx_l2 TEXT", "tdx_l1_name TEXT", "tdx_l2_name TEXT",
+        "sw_l1 TEXT", "sw_l2 TEXT", "sw_l1_name TEXT", "sw_l2_name TEXT",
     ]:
         try:
             conn.execute(f"ALTER TABLE fact_stock_industry_context ADD COLUMN {col}")
@@ -98,7 +113,7 @@ def ensure_tables(conn):
             conn.execute(f"ALTER TABLE dim_stock_industry_context_latest ADD COLUMN {col}")
         except Exception:
             pass
-    # Phase 2 迁移: 退役 sw_level1/2 列
+    # Phase 2 迁移: 退役 sw_level1/2 列 (历史命名)
     for tbl in ("fact_stock_industry_context", "dim_stock_industry_context_latest"):
         for col in ("sw_level1", "sw_level2"):
             try:
@@ -210,9 +225,7 @@ def build_stock_industry_context(conn, snapshot_date: Optional[str] = None) -> i
         dual_by_stock = {}
 
     stocks = conn.execute("""
-        SELECT stock_code,
-               sw_l1 AS tdx_l1, sw_l2 AS tdx_l2,
-               sw_l1_name AS tdx_l1_name, sw_l2_name AS tdx_l2_name
+        SELECT stock_code, sw_l1, sw_l2, sw_l1_name, sw_l2_name
         FROM dim_stock_sw_industry
     """).fetchall()
 
@@ -220,11 +233,11 @@ def build_stock_industry_context(conn, snapshot_date: Optional[str] = None) -> i
     inserted = 0
     for row in stocks:
         stock_code = row["stock_code"]
-        tdx_l1 = row["tdx_l1"]
-        tdx_l2 = row["tdx_l2"]
-        tdx_l1_name = row["tdx_l1_name"]
-        tdx_l2_name = row["tdx_l2_name"]
-        sector = sector_by_name.get(tdx_l1_name or "") or {}
+        sw_l1 = row["sw_l1"]
+        sw_l2 = row["sw_l2"]
+        sw_l1_name = row["sw_l1_name"]
+        sw_l2_name = row["sw_l2_name"]
+        sector = sector_by_name.get(sw_l1_name or "") or {}
         dual = dual_by_stock.get(stock_code) or {}
         tailwind_score, stage_adjust = _score_tailwind(
             sector.get("momentum_score"),
@@ -239,7 +252,7 @@ def build_stock_industry_context(conn, snapshot_date: Optional[str] = None) -> i
 
         conn.execute("""
             INSERT OR REPLACE INTO fact_stock_industry_context
-            (snapshot_date, stock_code, tdx_l1, tdx_l2, tdx_l1_name, tdx_l2_name,
+            (snapshot_date, stock_code, sw_l1, sw_l2, sw_l1_name, sw_l2_name,
              sector_momentum_score,
              sector_trend_state, sector_macd_cross, sector_return_1m, sector_return_3m,
              sector_return_6m, sector_return_12m, sector_excess_1m, sector_excess_3m,
@@ -252,10 +265,10 @@ def build_stock_industry_context(conn, snapshot_date: Optional[str] = None) -> i
         """, (
             snapshot_date,
             stock_code,
-            tdx_l1,
-            tdx_l2,
-            tdx_l1_name,
-            tdx_l2_name,
+            sw_l1,
+            sw_l2,
+            sw_l1_name,
+            sw_l2_name,
             sector.get("momentum_score"),
             sector.get("trend_state"),
             int(sector.get("macd_cross") or 0),
@@ -286,7 +299,7 @@ def build_stock_industry_context(conn, snapshot_date: Optional[str] = None) -> i
     conn.execute("DELETE FROM dim_stock_industry_context_latest")
     conn.execute("""
         INSERT INTO dim_stock_industry_context_latest (
-            stock_code, snapshot_date, tdx_l1, tdx_l2, tdx_l1_name, tdx_l2_name,
+            stock_code, snapshot_date, sw_l1, sw_l2, sw_l1_name, sw_l2_name,
             sector_momentum_score,
             sector_trend_state, sector_macd_cross, sector_return_1m, sector_return_3m,
             sector_return_6m, sector_return_12m, sector_excess_1m, sector_excess_3m,
@@ -296,7 +309,7 @@ def build_stock_industry_context(conn, snapshot_date: Optional[str] = None) -> i
             dual_confirm_recent_180d, dual_confirm_new_entry, dual_confirm_increase,
             industry_tailwind_score, stage_industry_adjust_raw, updated_at
         )
-        SELECT stock_code, snapshot_date, tdx_l1, tdx_l2, tdx_l1_name, tdx_l2_name,
+        SELECT stock_code, snapshot_date, sw_l1, sw_l2, sw_l1_name, sw_l2_name,
                sector_momentum_score,
                sector_trend_state, sector_macd_cross, sector_return_1m, sector_return_3m,
                sector_return_6m, sector_return_12m, sector_excess_1m, sector_excess_3m,

@@ -2588,7 +2588,7 @@ def get_qlib_etf_consensus(conn, model_id: Optional[str] = None, topk: int = 50)
     rows = conn.execute(
         """
         SELECT p.stock_code, p.stock_name, p.qlib_score, p.qlib_rank, p.qlib_percentile,
-               ctx.tdx_l1
+               ctx.sw_l1
         FROM qlib_predictions p
         LEFT JOIN dim_stock_industry_context_latest ctx ON ctx.stock_code = p.stock_code
         WHERE p.model_id = ?
@@ -2611,7 +2611,7 @@ def get_qlib_etf_consensus(conn, model_id: Optional[str] = None, topk: int = 50)
     mapped_stock_count = 0
     for row in rows:
         item = dict(row)
-        category = _map_tdx_l1_to_etf_category(item.get("tdx_l1"))
+        category = _map_tdx_l1_to_etf_category(item.get("sw_l1"))
         if not category:
             continue
         mapped_stock_count += 1
