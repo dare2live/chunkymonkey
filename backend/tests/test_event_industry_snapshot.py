@@ -3,8 +3,8 @@ Phase 3b-1: 事件行业聚合口径迁移测试
 
 - 原 _capture_missing_event_industry_snapshots / dim_stock_industry 快照路径已删除
   (Phase 2 申万源退役后 dim_stock_industry 被 DROP, 快照补齐函数永久失效)
-- 本文件仅保留新的 TDX 路径契约: _step_build_industry_stat_sync 按当前
-  dim_stock_tdx_industry 聚合, 写入 tdx_code + industry_name.
+- 本文件保留 SW 路径契约: _step_build_industry_stat_sync 按当前
+  dim_stock_sw_industry 聚合, 写入 industry_code + industry_name (字段名仍为 tdx_code 兼容下游).
 """
 
 import sqlite3
@@ -36,14 +36,14 @@ def _make_conn():
             PRIMARY KEY (institution_id, stock_code, report_date)
         );
 
-        CREATE TABLE dim_stock_tdx_industry (
+        CREATE TABLE dim_stock_sw_industry (
             stock_code     TEXT PRIMARY KEY,
-            tdx_l1         TEXT,
-            tdx_l2         TEXT,
-            tdx_l3         TEXT,
-            tdx_l1_name    TEXT,
-            tdx_l2_name    TEXT,
-            tdx_l3_name    TEXT,
+            sw_l1          TEXT,
+            sw_l2          TEXT,
+            sw_l3          TEXT,
+            sw_l1_name     TEXT,
+            sw_l2_name     TEXT,
+            sw_l3_name     TEXT,
             updated_at     TEXT
         );
 
@@ -78,7 +78,7 @@ def _make_conn():
     return conn
 
 
-def test_build_industry_stat_joins_dim_stock_tdx_industry(monkeypatch):
+def test_build_industry_stat_joins_dim_stock_sw_industry(monkeypatch):
     conn = _make_conn()
     try:
         monkeypatch.setattr(updater, "_raise_if_stop", lambda: None)
@@ -95,7 +95,7 @@ def test_build_industry_stat_joins_dim_stock_tdx_industry(monkeypatch):
             ],
         )
         conn.executemany(
-            "INSERT INTO dim_stock_tdx_industry VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+            "INSERT INTO dim_stock_sw_industry VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
             [
                 ("600001", "T12", "T1204", "T120401", "信息产业", "计算机", "软件", "2026-04-19T09:00"),
                 ("600002", "T12", "T1204", "T120401", "信息产业", "计算机", "软件", "2026-04-19T09:00"),
@@ -141,7 +141,7 @@ def test_build_industry_stat_skips_events_without_industry(monkeypatch):
             ],
         )
         conn.execute(
-            "INSERT INTO dim_stock_tdx_industry VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+            "INSERT INTO dim_stock_sw_industry VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
             ("600001", "T10", "T1001", "T100101", "金融", "银行", "国有行", "2026-04-19T09:00"),
         )
         conn.commit()

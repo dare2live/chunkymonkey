@@ -512,7 +512,7 @@ def _load_crowding_fit_lookup(conn) -> dict:
             buy_events AS (
                 SELECT e.stock_code, e.report_date, e.event_type, e.premium_pct,
                        e.gain_30d, e.max_drawdown_30d, e.institution_id,
-                       industry_dim.tdx_l3
+                       industry_dim.sw_l3 AS tdx_l3
                 FROM fact_institution_event e
                 {industry_join}
                 WHERE e.event_type IN ('new_entry', 'increase') AND e.gain_30d IS NOT NULL
@@ -1876,9 +1876,9 @@ def calculate_stock_scores(conn) -> int:
         SELECT f.stock_code, f.latest_report_date, f.roe, f.debt_ratio, f.current_ratio,
                f.gross_margin, f.ocf_to_profit, f.contract_to_revenue,
                f.holder_count, f.holder_count_change_pct, f.float_shares, f.total_shares,
-               i.tdx_l1, i.tdx_l2
+               i.sw_l1 AS tdx_l1, i.sw_l2 AS tdx_l2
         FROM dim_financial_latest f
-        LEFT JOIN dim_stock_tdx_industry i ON i.stock_code = f.stock_code
+        LEFT JOIN dim_stock_sw_industry i ON i.stock_code = f.stock_code
     """).fetchall()
     for row in fin_rows:
         d = dict(row)
@@ -1947,9 +1947,10 @@ def calculate_stock_scores(conn) -> int:
             SELECT f.stock_code, f.latest_report_date, f.roe_ak, f.roa_ak, f.gross_margin_ak,
                    f.net_margin_ak, f.current_ratio_ak, f.quick_ratio_ak, f.debt_ratio_ak,
                    f.asset_turnover_ak, f.inventory_turnover_ak, f.receivables_turnover_ak,
-                   f.revenue_growth_yoy_ak, f.net_profit_growth_yoy_ak, i.tdx_l1, i.tdx_l2
+                   f.revenue_growth_yoy_ak, f.net_profit_growth_yoy_ak,
+                   i.sw_l1 AS tdx_l1, i.sw_l2 AS tdx_l2
             FROM dim_financial_indicator_latest f
-            LEFT JOIN dim_stock_tdx_industry i ON i.stock_code = f.stock_code
+            LEFT JOIN dim_stock_sw_industry i ON i.stock_code = f.stock_code
         """).fetchall()
         for row in indicator_rows:
             d = dict(row)

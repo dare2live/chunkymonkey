@@ -227,7 +227,7 @@ SOFT_DEPS = {
     "calc_returns": ["sync_market_data"],
     "build_current_rel": ["calc_returns", "sync_industry"],
     "build_profiles": ["calc_returns"],
-    "build_industry_stat": ["calc_returns", "sync_industry"],
+    "build_industry_stat": ["calc_returns", "sync_industry_sw"],
     "build_trends": ["calc_returns", "sync_industry"],
     "calc_screening": ["calc_financial_derived"],
     "calc_sector_momentum": ["build_trends"],
@@ -1967,10 +1967,14 @@ async def _step_sync_northbound(conn):
 
 
 def _step_build_industry_stat_sync(conn) -> int:
-    """计算机构在各行业 (TDX 一二三级) 的表现统计。
+    """计算机构在各行业 (申万一二三级) 的表现统计。
 
-    口径: 事件现任所属股票 → dim_stock_tdx_industry 的当前 tdx_l{1,2,3}。
-    不再走 fact_institution_event_industry_snapshot (Phase 2 申万退役后已空置)。
+    口径: 事件现任所属股票 → dim_stock_sw_industry 的当前 sw_l{1,2,3}。
+    Phase 2A 切换：从 TDX 51% L3 覆盖切到申万 100% L3 覆盖。
+
+    mart 表 schema 兼容：tdx_code 字段保留名称（短期），实际存 SW industry_code
+    （L1=2 位 / L2=4 位 / L3=6 位数字）。L3 中文名暂未补全时，industry_name
+    回退为 'L3-{code}' 占位串，不影响评分逻辑（key 是 institution_id+level+code）。
     """
     now = datetime.now().isoformat()
     conn.execute("BEGIN IMMEDIATE")
@@ -1981,10 +1985,11 @@ def _step_build_industry_stat_sync(conn) -> int:
             "SELECT id FROM inst_institutions WHERE enabled = 1 AND blacklisted = 0 AND merged_into IS NULL"
         ).fetchall()
 
+        # SW 三级：(level_name, code 字段, name 字段, 占位前缀)
         level_specs = [
-            (1, "level1", "tdx_l1", "tdx_l1_name"),
-            (2, "level2", "tdx_l2", "tdx_l2_name"),
-            (3, "level3", "tdx_l3", "tdx_l3_name"),
+            ("level1", "sw_l1", "sw_l1_name", "L1"),
+            ("level2", "sw_l2", "sw_l2_name", "L2"),
+            ("level3", "sw_l3", "sw_l3_name", "L3"),
         ]
 
         count = 0
@@ -1992,11 +1997,13 @@ def _step_build_industry_stat_sync(conn) -> int:
             _raise_if_stop()
             inst_id = inst["id"]
 
-            for _, level_name, code_col, name_col in level_specs:
+            for level_name, code_col, name_col, fallback_prefix in level_specs:
                 _raise_if_stop()
+                # SW L2/L3 名称暂未补全时，COALESCE 回退到 'L{n}-{code}' 占位
+                # 保证 industry_name 永远非空（mart schema NOT NULL 约束）
                 rows = conn.execute(f"""
-                    SELECT i.{code_col} AS tdx_code,
-                           i.{name_col} AS industry_name,
+                    SELECT i.{code_col} AS industry_code,
+                           COALESCE(i.{name_col}, '{fallback_prefix}-' || i.{code_col}) AS industry_name,
                            COUNT(*) as cnt,
                            AVG(e.gain_30d) as avg30, AVG(e.gain_60d) as avg60,
                            AVG(e.gain_90d) as avg90, AVG(e.gain_120d) as avg120,
@@ -2006,11 +2013,10 @@ def _step_build_industry_stat_sync(conn) -> int:
                            COUNT(CASE WHEN e.gain_30d > 0 OR e.gain_60d > 0 THEN 1 END) * 100.0 / MAX(COUNT(*), 1) as wr_total,
                            AVG(e.max_drawdown_30d) as dd30, AVG(e.max_drawdown_60d) as dd60
                     FROM fact_institution_event e
-                    INNER JOIN dim_stock_tdx_industry i ON i.stock_code = e.stock_code
+                    INNER JOIN dim_stock_sw_industry i ON i.stock_code = e.stock_code
                     WHERE e.institution_id = ? AND e.gain_30d IS NOT NULL
                       AND i.{code_col} IS NOT NULL AND i.{code_col} != ''
-                      AND i.{name_col} IS NOT NULL AND i.{name_col} != ''
-                    GROUP BY i.{code_col}, i.{name_col}
+                    GROUP BY i.{code_col}
                     HAVING cnt >= 1
                 """, (inst_id,)).fetchall()
 
@@ -2022,7 +2028,7 @@ def _step_build_industry_stat_sync(conn) -> int:
                          win_rate_30d, win_rate_60d, win_rate_90d, total_win_rate,
                          max_drawdown_30d, max_drawdown_60d, updated_at)
                         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                    """, (inst_id, level_name, r["industry_name"], r["tdx_code"], r["cnt"],
+                    """, (inst_id, level_name, r["industry_name"], r["industry_code"], r["cnt"],
                           r["avg30"], r["avg60"], r["avg90"], r["avg120"],
                           r["wr30"], r["wr60"], r["wr90"], r["wr_total"],
                           r["dd30"], r["dd60"], now))
@@ -2032,7 +2038,7 @@ def _step_build_industry_stat_sync(conn) -> int:
     except Exception:
         conn.rollback()
         raise
-    logger.info(f"[行业统计] 完成: {count} 条 (基于 dim_stock_tdx_industry)")
+    logger.info(f"[行业统计] 完成: {count} 条 (基于 dim_stock_sw_industry · 申万)")
     return count
 
 

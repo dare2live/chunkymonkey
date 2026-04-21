@@ -15,14 +15,14 @@ def _make_conn():
     conn.row_factory = sqlite3.Row
     conn.executescript(
         """
-        CREATE TABLE dim_stock_tdx_industry (
+        CREATE TABLE dim_stock_sw_industry (
             stock_code TEXT PRIMARY KEY,
-            tdx_l1 TEXT,
-            tdx_l2 TEXT,
-            tdx_l3 TEXT,
-            tdx_l1_name TEXT,
-            tdx_l2_name TEXT,
-            tdx_l3_name TEXT
+            sw_l1 TEXT,
+            sw_l2 TEXT,
+            sw_l3 TEXT,
+            sw_l1_name TEXT,
+            sw_l2_name TEXT,
+            sw_l3_name TEXT
         );
 
         CREATE TABLE dim_stock_stage_latest (
@@ -62,7 +62,7 @@ def test_build_stock_forecast_features_prefers_tdx2_group_and_matches_formula(mo
                 ("model_1", code, f"芯片股{idx}", "2026-04-13", qlib_score, idx + 1, qlib_percentile),
             )
             conn.execute(
-                "INSERT INTO dim_stock_tdx_industry (stock_code, tdx_l1, tdx_l2, tdx_l1_name, tdx_l2_name) VALUES (?, ?, ?, ?, ?)",
+                "INSERT INTO dim_stock_sw_industry (stock_code, sw_l1, sw_l2, sw_l1_name, sw_l2_name) VALUES (?, ?, ?, ?, ?)",
                 (code, "T10", "T1001", "电子", "芯片"),
             )
             conn.execute(
@@ -150,7 +150,7 @@ def test_build_stock_forecast_features_prefers_active_model_and_marks_global_fal
                 ("model_active", code, f"回退股{idx}", "2026-04-13", 0.8 - idx * 0.1, idx + 1, 95.0 - idx * 20.0),
             )
             conn.execute(
-                "INSERT INTO dim_stock_tdx_industry (stock_code, tdx_l1, tdx_l2, tdx_l1_name, tdx_l2_name) VALUES (?, ?, ?, ?, ?)",
+                "INSERT INTO dim_stock_sw_industry (stock_code, sw_l1, sw_l2, sw_l1_name, sw_l2_name) VALUES (?, ?, ?, ?, ?)",
                 (code, "T10", f"T100{idx}", "电子", f"小组{idx}"),
             )
             conn.execute(

@@ -80,14 +80,14 @@ def _make_conn():
             report_date TEXT
         );
 
-        CREATE TABLE dim_stock_tdx_industry (
+        CREATE TABLE dim_stock_sw_industry (
             stock_code TEXT,
-            tdx_l1 TEXT,
-            tdx_l2 TEXT,
-            tdx_l3 TEXT,
-            tdx_l1_name TEXT,
-            tdx_l2_name TEXT,
-            tdx_l3_name TEXT
+            sw_l1 TEXT,
+            sw_l2 TEXT,
+            sw_l3 TEXT,
+            sw_l1_name TEXT,
+            sw_l2_name TEXT,
+            sw_l3_name TEXT
         );
         """
     )
@@ -136,7 +136,7 @@ def _make_conn():
         ],
     )
     conn.executemany(
-        "INSERT INTO dim_stock_tdx_industry (stock_code, tdx_l1, tdx_l2, tdx_l3, tdx_l1_name, tdx_l2_name, tdx_l3_name) VALUES (?, ?, ?, ?, ?, ?, ?)",
+        "INSERT INTO dim_stock_sw_industry (stock_code, sw_l1, sw_l2, sw_l3, sw_l1_name, sw_l2_name, sw_l3_name) VALUES (?, ?, ?, ?, ?, ?, ?)",
         [
             ("600001", "汽车", "汽车零部件", "零部件", "汽车", "汽车零部件", "零部件"),
             ("600002", "半导体", "半导体", "芯片设计", "半导体", "半导体", "芯片设计"),

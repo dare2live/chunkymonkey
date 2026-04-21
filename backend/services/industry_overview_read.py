@@ -69,13 +69,13 @@ def load_sector_forecast_map(conn, sector_count: int) -> dict[str, dict]:
 def load_sector_active_map(conn) -> dict[str, dict]:
     return _query_sector_map(
         conn,
-        f"""
-        SELECT {_sector_select('rel')},
+        """
+        SELECT rel.tdx_l1 AS sector_name,
                COUNT(DISTINCT institution_id) AS active_institution_count,
                COUNT(DISTINCT stock_code) AS current_stock_count
         FROM mart_current_relationship rel
-        WHERE {_sector_nonempty_condition('rel')}
-        GROUP BY {_sector_expr('rel')}
+        WHERE rel.tdx_l1 IS NOT NULL AND rel.tdx_l1 != ''
+        GROUP BY rel.tdx_l1
         """,
     )
 
@@ -84,7 +84,7 @@ def load_sector_candidate_map(conn) -> dict[str, dict]:
     return _query_sector_map(
         conn,
         f"""
-        SELECT {_sector_select('ctx')},
+        SELECT ctx.tdx_l1 AS sector_name,
                COUNT(*) AS candidate_count,
                AVG(t.discovery_score) AS avg_discovery_score,
                AVG(t.company_quality_score) AS avg_quality_score,
@@ -126,8 +126,8 @@ def load_sector_candidate_map(conn) -> dict[str, dict]:
                SUM(CASE WHEN COALESCE(t.composite_priority_score, -1) < 45 THEN 1 ELSE 0 END) AS composite_band_below_45
         FROM mart_stock_trend t
         INNER JOIN dim_stock_industry_context_latest ctx ON ctx.stock_code = t.stock_code
-        WHERE {_sector_nonempty_condition('ctx')}
-        GROUP BY {_sector_expr('ctx')}
+        WHERE ctx.tdx_l1 IS NOT NULL AND ctx.tdx_l1 != ''
+        GROUP BY ctx.tdx_l1
         """,
     )
 
@@ -188,14 +188,14 @@ def load_sector_snapshot_feedback_map(conn) -> dict[str, dict]:
 def load_sector_context_map(conn) -> dict[str, dict]:
     return _query_sector_map(
         conn,
-        f"""
-        SELECT {_sector_select('ctx')},
+        """
+        SELECT ctx.tdx_l1 AS sector_name,
                AVG(industry_tailwind_score) AS avg_tailwind_score,
                SUM(CASE WHEN dual_confirm_recent_180d > 0 THEN 1 ELSE 0 END) AS dual_confirm_stock_count,
                SUM(dual_confirm_recent_180d) AS dual_confirm_signal_count
         FROM dim_stock_industry_context_latest ctx
-        WHERE {_sector_nonempty_condition('ctx')}
-        GROUP BY {_sector_expr('ctx')}
+        WHERE ctx.tdx_l1 IS NOT NULL AND ctx.tdx_l1 != ''
+        GROUP BY ctx.tdx_l1
         """,
     )
 
@@ -222,11 +222,11 @@ def load_sector_recent_event_map(conn, *, cutoff: str) -> dict[str, dict]:
 def load_sector_top_stock_map(conn, *, topn: int) -> dict[str, list[dict]]:
     try:
         rows = conn.execute(
-            f"""
+            """
             SELECT sector_name, stock_code, stock_name, stock_archetype, priority_pool,
                    composite_priority_score, company_quality_score, stage_score, setup_tag
             FROM (
-                SELECT {_sector_select('ctx')},
+                SELECT ctx.tdx_l1 AS sector_name,
                        t.stock_code,
                        t.stock_name,
                        t.stock_archetype,
@@ -236,7 +236,7 @@ def load_sector_top_stock_map(conn, *, topn: int) -> dict[str, list[dict]]:
                        t.stage_score,
                        t.setup_tag,
                        ROW_NUMBER() OVER (
-                           PARTITION BY {_sector_expr('ctx')}
+                           PARTITION BY ctx.tdx_l1
                            ORDER BY
                                CASE COALESCE(t.priority_pool, '')
                                    WHEN 'A池' THEN 0
@@ -250,7 +250,7 @@ def load_sector_top_stock_map(conn, *, topn: int) -> dict[str, list[dict]]:
                        ) AS rn
                 FROM mart_stock_trend t
                 INNER JOIN dim_stock_industry_context_latest ctx ON ctx.stock_code = t.stock_code
-                  WHERE {_sector_nonempty_condition('ctx')}
+                  WHERE ctx.tdx_l1 IS NOT NULL AND ctx.tdx_l1 != ''
             )
             WHERE rn <= ?
             ORDER BY sector_name, rn

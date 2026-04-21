@@ -248,17 +248,17 @@ async def get_industry_overview(topn: int = Query(3, ge=1, le=10)):
         recent_event_map = {}
         try:
             rows = conn.execute(f"""
-                SELECT industry_dim.tdx_l1 AS sector_name,
+                SELECT industry_dim.sw_l1 AS sector_name,
                        SUM(CASE WHEN e.event_type = 'new_entry' THEN 1 ELSE 0 END) AS recent_new_entry_count,
                        COUNT(DISTINCT CASE WHEN e.event_type = 'new_entry' THEN e.stock_code END) AS recent_new_entry_stock_count,
                        SUM(CASE WHEN e.event_type IN ('new_entry', 'increase') THEN 1 ELSE 0 END) AS recent_buy_signal_count,
                        COUNT(DISTINCT CASE WHEN e.event_type IN ('new_entry', 'increase') THEN e.stock_code END) AS recent_buy_signal_stock_count
                 FROM fact_institution_event e
                 {industry_join_clause("e.stock_code", alias="industry_dim", join_type="INNER")}
-                WHERE industry_dim.tdx_l1 IS NOT NULL
-                  AND industry_dim.tdx_l1 != ''
+                WHERE industry_dim.sw_l1 IS NOT NULL
+                  AND industry_dim.sw_l1 != ''
                   AND COALESCE(NULLIF(REPLACE(e.notice_date, '-', ''), ''), REPLACE(e.report_date, '-', '')) >= ?
-                GROUP BY industry_dim.tdx_l1
+                GROUP BY industry_dim.sw_l1
             """, (cutoff,)).fetchall()
             recent_event_map = {row["sector_name"]: dict(row) for row in rows}
         except Exception:

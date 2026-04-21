@@ -1282,7 +1282,7 @@ def build_smart_plan(conn, force_all=False, *, audit: Optional[dict] = None, use
     # 所有可能的步骤 ID
     ALL_STEPS = [
         "sync_raw", "match_inst", "sync_market_data", "sync_northbound",
-        "gen_events", "calc_returns", "sync_industry",
+        "gen_events", "calc_returns", "sync_industry", "sync_industry_sw",
         "sync_financial", "calc_financial_derived",
         "build_current_rel", "build_profiles", "build_industry_stat", "build_trends",
         "calc_screening", "calc_sector_momentum", "build_external_attention",
@@ -1412,16 +1412,18 @@ def build_smart_plan(conn, force_all=False, *, audit: Optional[dict] = None, use
     else:
         plan["skip_reasons"]["calc_returns"] = "事件和K线未变更"
 
-    # 6. 行业是否缺失
+    # 6. 行业是否缺失 (audit.industry.count 已切到 dim_stock_sw_industry —— 申万官方分类)
     missing_industry = audit["layers"]["industry"].get("missing", 0)
     if missing_industry > 0:
-        plan["steps"].append("sync_industry")
+        plan["steps"].append("sync_industry_sw")
         plan["reason"].append(f"{missing_industry} 只股票缺行业分类")
     elif audit["layers"]["industry"]["count"] == 0:
-        plan["steps"].append("sync_industry")
+        plan["steps"].append("sync_industry_sw")
         plan["reason"].append("无行业数据")
     else:
-        plan["skip_reasons"]["sync_industry"] = "行业数据已完整"
+        plan["skip_reasons"]["sync_industry_sw"] = "行业数据已完整"
+    # 老 TDX 分类 (sync_industry) 已不再读入业务，保留写入只为 Phase 3 退役观察
+    plan["skip_reasons"]["sync_industry"] = "TDX 已停止读取，等待 Phase 3 整体下线"
 
     # 6a. 机构调研：D8 维度数据源，每日新增；最新公告日 > 1 天即重新拉取
     try:
@@ -1531,7 +1533,7 @@ def build_smart_plan(conn, force_all=False, *, audit: Optional[dict] = None, use
 
     # 7. 当前关系层
     current_rel_reason = _current_relationship_plan_reason(audit["layers"].get("current_relationship"))
-    if any(s in plan["steps"] for s in ["gen_events", "calc_returns", "sync_industry", "match_inst"]):
+    if any(s in plan["steps"] for s in ["gen_events", "calc_returns", "sync_industry_sw", "match_inst"]):
         plan["steps"].append("build_current_rel")
         plan["reason"].append("上游变更后重建当前关系")
     elif current_rel_reason:
@@ -1547,7 +1549,7 @@ def build_smart_plan(conn, force_all=False, *, audit: Optional[dict] = None, use
     else:
         plan["skip_reasons"]["build_profiles"] = "上游未变更，无需重算"
 
-    if any(s in plan["steps"] for s in ["build_current_rel", "calc_returns", "sync_industry"]):
+    if any(s in plan["steps"] for s in ["build_current_rel", "calc_returns", "sync_industry_sw"]):
         plan["steps"].append("build_industry_stat")
         plan["reason"].append("上游变更后重算行业统计")
     else:
@@ -1647,7 +1649,7 @@ def build_smart_plan(conn, force_all=False, *, audit: Optional[dict] = None, use
     plan["skip_reasons"]["calc_screening"] = "已迁出智能更新，请用工作台·选股扫描手动触发"
 
     # 14. 板块动量
-    if any(s in plan["steps"] for s in ["sync_market_data", "sync_industry"]):
+    if any(s in plan["steps"] for s in ["sync_market_data", "sync_industry_sw"]):
         plan["steps"].append("calc_sector_momentum")
         plan["reason"].append("行情或行业变更后重算板块动量")
     else:

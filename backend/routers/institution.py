@@ -866,7 +866,7 @@ async def get_stock_attention(stock_code: str):
                 (stock_code,),
             ).fetchone()
         industry_meta = conn.execute(
-            "SELECT tdx_l1, tdx_l2, tdx_l3 FROM dim_stock_tdx_industry WHERE stock_code = ? LIMIT 1",
+            "SELECT sw_l1 AS tdx_l1, sw_l2 AS tdx_l2, sw_l3 AS tdx_l3 FROM dim_stock_sw_industry WHERE stock_code = ? LIMIT 1",
             (stock_code,),
         ).fetchone()
     finally:

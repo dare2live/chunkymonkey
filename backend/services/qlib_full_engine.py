@@ -687,9 +687,9 @@ def _load_industry_onehot_factors(smart_conn, codes: list) -> pd.DataFrame:
     try:
         placeholders = ",".join("?" for _ in codes)
         rows = smart_conn.execute(
-            f"SELECT stock_code, tdx_l1 FROM dim_stock_tdx_industry "
+            f"SELECT stock_code, sw_l1 AS tdx_l1 FROM dim_stock_sw_industry "
             f"WHERE stock_code IN ({placeholders}) "
-            f"  AND tdx_l1 IS NOT NULL AND tdx_l1 != ''",
+            f"  AND sw_l1 IS NOT NULL AND sw_l1 != ''",
             codes,
         ).fetchall()
     except Exception as e:
@@ -2585,9 +2585,8 @@ def get_qlib_etf_consensus(conn, model_id: Optional[str] = None, topk: int = 50)
 
     model_id = summary.get("model_id")
     model_status = summary.get("status") or "unknown"
-    industry_level1_expr = industry_level_expr(1, alias="ctx")
     rows = conn.execute(
-        f"""
+        """
         SELECT p.stock_code, p.stock_name, p.qlib_score, p.qlib_rank, p.qlib_percentile,
                ctx.tdx_l1
         FROM qlib_predictions p

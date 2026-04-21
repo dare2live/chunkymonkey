@@ -172,10 +172,10 @@ def build_stock_forecast_features(conn, snapshot_date: Optional[str] = None) -> 
     pred_rows = conn.execute("""
         SELECT p.model_id, p.stock_code, p.stock_name, p.predict_date,
                p.qlib_score, p.qlib_rank, p.qlib_percentile,
-               i.tdx_l1_name, i.tdx_l2_name,
+               i.sw_l1_name AS tdx_l1_name, i.sw_l2_name AS tdx_l2_name,
                s.volatility_20d, s.max_drawdown_60d
         FROM qlib_predictions p
-        LEFT JOIN dim_stock_tdx_industry i ON i.stock_code = p.stock_code
+        LEFT JOIN dim_stock_sw_industry i ON i.stock_code = p.stock_code
         LEFT JOIN dim_stock_stage_latest s ON s.stock_code = p.stock_code
         WHERE p.model_id = ?
     """, (model_id,)).fetchall()

@@ -34,14 +34,14 @@ def test_build_stock_industry_context_reads_from_tdx_industry():
             rotation_blacklisted INTEGER
         );
 
-        CREATE TABLE dim_stock_tdx_industry (
+        CREATE TABLE dim_stock_sw_industry (
             stock_code TEXT PRIMARY KEY,
-            tdx_l1 TEXT,
-            tdx_l2 TEXT,
-            tdx_l3 TEXT,
-            tdx_l1_name TEXT,
-            tdx_l2_name TEXT,
-            tdx_l3_name TEXT
+            sw_l1 TEXT,
+            sw_l2 TEXT,
+            sw_l3 TEXT,
+            sw_l1_name TEXT,
+            sw_l2_name TEXT,
+            sw_l3_name TEXT
         );
         """
     )
@@ -51,7 +51,7 @@ def test_build_stock_industry_context_reads_from_tdx_industry():
             ("电子", 78.0, "recovering", 1, 5.0, 8.0, 10.0, 12.0, 1.0, 2.0, 3.0, 4.0, 74.0, 1, 1, 2, "leader", 0),
         )
         conn.execute(
-            "INSERT INTO dim_stock_tdx_industry (stock_code, tdx_l1, tdx_l2, tdx_l1_name, tdx_l2_name) VALUES (?, ?, ?, ?, ?)",
+            "INSERT INTO dim_stock_sw_industry (stock_code, sw_l1, sw_l2, sw_l1_name, sw_l2_name) VALUES (?, ?, ?, ?, ?)",
             ("600001", "T10", "T1001", "电子", "半导体"),
         )
         conn.commit()

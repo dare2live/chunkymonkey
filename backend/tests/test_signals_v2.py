@@ -57,9 +57,9 @@ def memdb():
             max_drawdown_30d REAL, max_drawdown_60d REAL,
             PRIMARY KEY (institution_id, stock_code, report_date)
         );
-        CREATE TABLE dim_stock_tdx_industry (
+        CREATE TABLE dim_stock_sw_industry (
             stock_code TEXT PRIMARY KEY,
-            tdx_l1 TEXT, tdx_l2 TEXT, tdx_l3 TEXT
+            sw_l1 TEXT, sw_l2 TEXT, sw_l3 TEXT
         );
         CREATE TABLE inst_institutions (
             id TEXT PRIMARY KEY,
@@ -89,7 +89,7 @@ def _seed_events(conn, events):
         """, (inst, stock, f"股票{stock}", rd, nd, et, prem, gain60, 10.0))
     for stock, ind in industries.items():
         conn.execute("""
-            INSERT OR REPLACE INTO dim_stock_tdx_industry (stock_code, tdx_l1)
+            INSERT OR REPLACE INTO dim_stock_sw_industry (stock_code, sw_l1)
             VALUES (?, ?)
         """, (stock, ind))
     conn.commit()

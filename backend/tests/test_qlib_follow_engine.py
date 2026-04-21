@@ -24,10 +24,10 @@ def _make_conn() -> sqlite3.Connection:
             institution_id TEXT, stock_code TEXT, report_date TEXT, notice_date TEXT,
             event_type TEXT, premium_pct REAL, gain_60d REAL
         );
-        CREATE TABLE dim_stock_tdx_industry (
+        CREATE TABLE dim_stock_sw_industry (
             stock_code TEXT PRIMARY KEY,
-            tdx_l1 TEXT, tdx_l2 TEXT, tdx_l3 TEXT,
-            tdx_l1_name TEXT, tdx_l2_name TEXT, tdx_l3_name TEXT
+            sw_l1 TEXT, sw_l2 TEXT, sw_l3 TEXT,
+            sw_l1_name TEXT, sw_l2_name TEXT, sw_l3_name TEXT
         );
         CREATE TABLE dim_financial_latest (
             stock_code TEXT PRIMARY KEY,
@@ -65,7 +65,7 @@ def _make_mkt_conn() -> sqlite3.Connection:
 
 def _seed_common(conn: sqlite3.Connection) -> None:
     conn.execute(
-        "INSERT INTO dim_stock_tdx_industry VALUES (?, ?, ?, ?, ?, ?, ?)",
+        "INSERT INTO dim_stock_sw_industry VALUES (?, ?, ?, ?, ?, ?, ?)",
         ("600001", "T07", "T0701", "T070101", "信息技术", "半导体", "设计"),
     )
     conn.execute(
@@ -243,7 +243,7 @@ def test_industry_zscore_groups_by_industry_and_report_date() -> None:
     for i in range(5):
         code = f"60000{i}"
         conn.execute(
-            "INSERT INTO dim_stock_tdx_industry VALUES (?, ?, ?, ?, ?, ?, ?)",
+            "INSERT INTO dim_stock_sw_industry VALUES (?, ?, ?, ?, ?, ?, ?)",
             (code, "T07", "T0701", "T070101", "信息技术", "半导体", "设计"),
         )
         conn.execute(
@@ -281,7 +281,7 @@ def test_industry_zscore_skips_groups_below_min_count() -> None:
     for i in range(3):
         code = f"60000{i}"
         conn.execute(
-            "INSERT INTO dim_stock_tdx_industry VALUES (?, ?, ?, ?, ?, ?, ?)",
+            "INSERT INTO dim_stock_sw_industry VALUES (?, ?, ?, ?, ?, ?, ?)",
             (code, "T07", "T0701", "T070101", "信息技术", "半导体", "设计"),
         )
         conn.execute(

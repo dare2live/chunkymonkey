@@ -92,9 +92,28 @@ def init_db():
             );
             CREATE INDEX IF NOT EXISTS idx_daas_updated ON dim_active_a_stock(updated_at);
 
-            -- dim_stock_industry (申万三级) 已于 Phase 2 (TDX 迁移) 退役；
-            -- 统一使用 dim_stock_tdx_industry 作为唯一行业真相源
-            -- (同步维护: backend/services/tdx_industry_client.py::_ensure_table)
+            -- 行业真相源演进：
+            --   Phase 1 (旧): dim_stock_industry (申万三级) — 已退役
+            --   Phase 2 (中): dim_stock_tdx_industry (TDX 三级) — L3 仅 51% 覆盖, 待 Phase 3 退役
+            --   Phase 3 (新): dim_stock_sw_industry (申万官方三级) — L3 100% 覆盖, 当前唯一读取源
+            -- (同步维护: services/sw_industry_client.py::_ensure_table)
+            CREATE TABLE IF NOT EXISTS dim_stock_sw_industry (
+                stock_code     TEXT PRIMARY KEY,
+                sw_l1          TEXT,
+                sw_l2          TEXT,
+                sw_l3          TEXT,
+                sw_l1_name     TEXT,
+                sw_l2_name     TEXT,
+                sw_l3_name     TEXT,
+                start_date     TEXT,
+                source_update  TEXT,
+                updated_at     TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            );
+            CREATE INDEX IF NOT EXISTS idx_sw_industry_l1 ON dim_stock_sw_industry(sw_l1);
+            CREATE INDEX IF NOT EXISTS idx_sw_industry_l2 ON dim_stock_sw_industry(sw_l2);
+            CREATE INDEX IF NOT EXISTS idx_sw_industry_l3 ON dim_stock_sw_industry(sw_l3);
+
+            -- 旧 TDX 表保留, 写入由 sync_industry 维护; 计划 Phase 3 整体下线
             CREATE TABLE IF NOT EXISTS dim_stock_tdx_industry (
                 stock_code    TEXT PRIMARY KEY,
                 tdx_l1        TEXT,
