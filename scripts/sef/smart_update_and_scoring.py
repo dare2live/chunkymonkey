@@ -58,7 +58,7 @@ def _wait_for_done(base: str, max_seconds: int = 1800) -> dict:
     last: dict = {}
     for _ in range(max_seconds // 5):
         try:
-            status = _http("GET", f"{base}/update/status", timeout=10)
+            status = _http("GET", f"{base}/api/inst/update/status", timeout=10)
         except Exception:  # noqa: BLE001
             time.sleep(5)
             continue
@@ -110,27 +110,27 @@ def main():
             raise RuntimeError("uvicorn did not become ready")
 
         if not args.skip_update:
-            plan = _http("GET", f"{base}/update/smart-plan")
+            plan = _http("GET", f"{base}/api/inst/update/smart-plan")
             report["plan"] = plan.get("plan", {})
             steps_to_run = plan.get("plan", {}).get("steps") or []
             if not steps_to_run:
                 report["update"] = {"noop": True, "message": "data is up-to-date"}
             else:
-                resp = _http("POST", f"{base}/update/smart", body={})
+                resp = _http("POST", f"{base}/api/inst/update/smart", body={})
                 report["update_kickoff"] = resp
                 status = _wait_for_done(base, max_seconds=3600)
                 report["update_final_status"] = status
 
         # 评分样本
         try:
-            signals = _http("GET", f"{base}/signals/today?limit={args.signals_sample}")
+            signals = _http("GET", f"{base}/api/signals/today?limit={args.signals_sample}")
         except Exception as e:  # noqa: BLE001
             signals = {"error": str(e)}
         report["signals_today"] = signals
 
         # audit 快照
         try:
-            audit_resp = _http("GET", f"{base}/update/audit", timeout=60)
+            audit_resp = _http("GET", f"{base}/api/inst/update/audit", timeout=60)
         except Exception as e:  # noqa: BLE001
             audit_resp = {"error": str(e)}
         report["audit"] = audit_resp
