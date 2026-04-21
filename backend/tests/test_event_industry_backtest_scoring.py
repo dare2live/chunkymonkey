@@ -1,4 +1,9 @@
-"""backtest_engine / scoring 行业直连口径测试（dim_stock_sw_industry sw_l1/2/3）。"""
+"""
+Phase 3b-3: backtest_engine / scoring 口径迁移测试
+
+- 原 fact_institution_event_industry_snapshot + sw_level* 已退役
+- 本文件覆盖迁移后的直连口径: 当前 dim_stock_tdx_industry + tdx_l1/2/3
+"""
 
 import sqlite3
 import sys
@@ -19,19 +24,19 @@ def _make_conn():
 def _create_tdx_dim(conn, rows: list[tuple]) -> None:
     conn.executescript(
         """
-        CREATE TABLE dim_stock_sw_industry (
+        CREATE TABLE dim_stock_tdx_industry (
             stock_code  TEXT PRIMARY KEY,
-            sw_l1       TEXT,
-            sw_l2       TEXT,
-            sw_l3       TEXT,
-            sw_l1_name  TEXT,
-            sw_l2_name  TEXT,
-            sw_l3_name  TEXT
+            tdx_l1      TEXT,
+            tdx_l2      TEXT,
+            tdx_l3      TEXT,
+            tdx_l1_name TEXT,
+            tdx_l2_name TEXT,
+            tdx_l3_name TEXT
         );
         """
     )
     conn.executemany(
-        "INSERT INTO dim_stock_sw_industry VALUES (?, ?, ?, ?, ?, ?, ?)",
+        "INSERT INTO dim_stock_tdx_industry VALUES (?, ?, ?, ?, ?, ?, ?)",
         rows,
     )
 

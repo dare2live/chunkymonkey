@@ -24,12 +24,12 @@ def test_get_inst_current_holdings_adds_industry_aliases_and_other_institutions(
             hold_amount REAL,
             hold_market_cap REAL,
             hold_ratio REAL,
-            sw_l1 TEXT,
-            sw_l2 TEXT,
-            sw_l3 TEXT,
-            sw_l1_name TEXT,
-            sw_l2_name TEXT,
-            sw_l3_name TEXT,
+            tdx_l1 TEXT,
+            tdx_l2 TEXT,
+            tdx_l3 TEXT,
+            tdx_l1_name TEXT,
+            tdx_l2_name TEXT,
+            tdx_l3_name TEXT,
             event_type TEXT,
             change_pct REAL,
             report_season TEXT,
@@ -71,7 +71,7 @@ def test_get_inst_current_holdings_adds_industry_aliases_and_other_institutions(
         rows = holdings.get_inst_current_holdings(conn, "inst_a")
 
         assert len(rows) == 1
-        assert rows[0]["sw_l2"] == "T1001"
+        assert rows[0]["tdx_l2"] == "T1001"
         assert rows[0]["other_institutions"][0]["id"] == "inst_b"
     finally:
         conn.close()

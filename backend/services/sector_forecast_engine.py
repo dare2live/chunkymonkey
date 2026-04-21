@@ -148,7 +148,7 @@ def build_sector_forecast_features(
         params.append(snapshot_date)
     rows = conn.execute(
         f"""
-        SELECT sf.sw_l1_name AS sector_name,
+        SELECT sf.tdx_l1_name AS sector_name,
                COUNT(*) AS stock_count,
                AVG(sf.qlib_score) AS avg_qlib_score,
                AVG(sf.qlib_percentile) AS avg_qlib_percentile,
@@ -166,11 +166,11 @@ def build_sector_forecast_features(
                msm.trend_state AS sector_trend_state,
                msm.momentum_score AS sector_momentum_score
         FROM dim_stock_forecast_latest sf
-        LEFT JOIN mart_sector_momentum msm ON msm.sector_name = sf.sw_l1_name
-        WHERE sf.sw_l1_name IS NOT NULL
-          AND sf.sw_l1_name != ''
+        LEFT JOIN mart_sector_momentum msm ON msm.sector_name = sf.tdx_l1_name
+        WHERE sf.tdx_l1_name IS NOT NULL
+          AND sf.tdx_l1_name != ''
           AND sf.model_id = ?{snapshot_filter}
-        GROUP BY sf.sw_l1_name
+        GROUP BY sf.tdx_l1_name
         HAVING COUNT(*) >= 5
         """,
         params,

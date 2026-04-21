@@ -1,4 +1,11 @@
-"""事件行业聚合口径测试：_step_build_industry_stat_sync 按 dim_stock_sw_industry 聚合。"""
+"""
+Phase 3b-1: 事件行业聚合口径迁移测试
+
+- 原 _capture_missing_event_industry_snapshots / dim_stock_industry 快照路径已删除
+  (Phase 2 申万源退役后 dim_stock_industry 被 DROP, 快照补齐函数永久失效)
+- 本文件仅保留新的 TDX 路径契约: _step_build_industry_stat_sync 按当前
+  dim_stock_tdx_industry 聚合, 写入 tdx_code + industry_name.
+"""
 
 import sqlite3
 import sys
@@ -29,14 +36,14 @@ def _make_conn():
             PRIMARY KEY (institution_id, stock_code, report_date)
         );
 
-        CREATE TABLE dim_stock_sw_industry (
+        CREATE TABLE dim_stock_tdx_industry (
             stock_code     TEXT PRIMARY KEY,
-            sw_l1          TEXT,
-            sw_l2          TEXT,
-            sw_l3          TEXT,
-            sw_l1_name     TEXT,
-            sw_l2_name     TEXT,
-            sw_l3_name     TEXT,
+            tdx_l1         TEXT,
+            tdx_l2         TEXT,
+            tdx_l3         TEXT,
+            tdx_l1_name    TEXT,
+            tdx_l2_name    TEXT,
+            tdx_l3_name    TEXT,
             updated_at     TEXT
         );
 
@@ -51,7 +58,7 @@ def _make_conn():
             institution_id TEXT NOT NULL,
             industry_level TEXT NOT NULL,
             industry_name TEXT NOT NULL,
-            industry_code TEXT,
+            tdx_code TEXT,
             sample_events INTEGER DEFAULT 0,
             avg_gain_30d REAL,
             avg_gain_60d REAL,
@@ -71,7 +78,7 @@ def _make_conn():
     return conn
 
 
-def test_build_industry_stat_joins_dim_stock_sw_industry(monkeypatch):
+def test_build_industry_stat_joins_dim_stock_tdx_industry(monkeypatch):
     conn = _make_conn()
     try:
         monkeypatch.setattr(updater, "_raise_if_stop", lambda: None)
@@ -88,7 +95,7 @@ def test_build_industry_stat_joins_dim_stock_sw_industry(monkeypatch):
             ],
         )
         conn.executemany(
-            "INSERT INTO dim_stock_sw_industry VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+            "INSERT INTO dim_stock_tdx_industry VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
             [
                 ("600001", "T12", "T1204", "T120401", "信息产业", "计算机", "软件", "2026-04-19T09:00"),
                 ("600002", "T12", "T1204", "T120401", "信息产业", "计算机", "软件", "2026-04-19T09:00"),
@@ -101,10 +108,10 @@ def test_build_industry_stat_joins_dim_stock_sw_industry(monkeypatch):
         # 两条事件在 L1/L2/L3 各归一组 → 3 行
         assert written == 3
         rows = conn.execute(
-            "SELECT industry_level, industry_name, industry_code, sample_events, avg_gain_30d "
+            "SELECT industry_level, industry_name, tdx_code, sample_events, avg_gain_30d "
             "FROM mart_institution_industry_stat ORDER BY industry_level"
         ).fetchall()
-        assert [(r["industry_level"], r["industry_name"], r["industry_code"]) for r in rows] == [
+        assert [(r["industry_level"], r["industry_name"], r["tdx_code"]) for r in rows] == [
             ("level1", "信息产业", "T12"),
             ("level2", "计算机", "T1204"),
             ("level3", "软件", "T120401"),
@@ -134,7 +141,7 @@ def test_build_industry_stat_skips_events_without_industry(monkeypatch):
             ],
         )
         conn.execute(
-            "INSERT INTO dim_stock_sw_industry VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+            "INSERT INTO dim_stock_tdx_industry VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
             ("600001", "T10", "T1001", "T100101", "金融", "银行", "国有行", "2026-04-19T09:00"),
         )
         conn.commit()

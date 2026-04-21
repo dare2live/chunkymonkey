@@ -28,7 +28,7 @@ class EtfQlibConsensusTests(unittest.TestCase):
             """
             CREATE TABLE dim_stock_industry_context_latest (
                 stock_code TEXT PRIMARY KEY,
-                sw_l1 TEXT
+                tdx_l1 TEXT
             )
             """
         )
@@ -179,7 +179,7 @@ class EtfQlibConsensusTests(unittest.TestCase):
                 ],
             )
             conn.executemany(
-                "INSERT INTO dim_stock_industry_context_latest (stock_code, sw_l1) VALUES (?, ?)",
+                "INSERT INTO dim_stock_industry_context_latest (stock_code, tdx_l1) VALUES (?, ?)",
                 [
                     ("000001", "医药生物"),
                     ("000002", "计算机"),

@@ -226,8 +226,8 @@ def test_old_reference_cleanup():
                 code_part = ":".join(line.split(":")[2:]).strip()
                 if code_part.startswith("#") or "DEPRECATED" in code_part or "deprecated" in code_part:
                     continue
-                # 过滤 dim_stock_industry_context_latest (新表，保留)
-                if "dim_stock_industry_context_latest" in code_part:
+                # 过滤 dim_stock_industry_context_latest / dim_stock_tdx_industry (新表，保留)
+                if "dim_stock_industry_context_latest" in code_part or "dim_stock_tdx_industry" in code_part:
                     continue
                 # 检查是否是 try/except 保护的过渡期代码
                 if "try:" in code_part or "except" in code_part:

@@ -407,9 +407,9 @@ async def list_stock_trends():
             item = dict(row)
             blacklist = blacklist_map.get(item["stock_code"])
             industry = industry_map.get(item["stock_code"], {})
-            item["sw_l1"] = industry.get("sw_l1")
-            item["sw_l2"] = industry.get("sw_l2")
-            item["sw_l3"] = industry.get("sw_l3")
+            item["tdx_l1"] = industry.get("tdx_l1")
+            item["tdx_l2"] = industry.get("tdx_l2")
+            item["tdx_l3"] = industry.get("tdx_l3")
             coverage = coverage_map.get(item["stock_code"], {})
             holder_total = coverage.get("holder_total") or 0
             item["holder_total"] = holder_total
@@ -522,9 +522,9 @@ async def list_stock_trends():
                 "forecast_model_id": None,
                 "forecast_predict_date": None,
                 "forecast_industry_relative_group": None,
-                "sw_l1": industry.get("sw_l1"),
-                "sw_l2": industry.get("sw_l2"),
-                "sw_l3": industry.get("sw_l3"),
+                "tdx_l1": industry.get("tdx_l1"),
+                "tdx_l2": industry.get("tdx_l2"),
+                "tdx_l3": industry.get("tdx_l3"),
                 "_sort_blacklisted": 1,
             })
 
@@ -612,9 +612,9 @@ async def list_candidate_setups(limit: int = Query(200, ge=1, le=1000)):
             if item["stock_code"] in excluded:
                 continue
             ind = industry_map.get(item["stock_code"], {})
-            item["sw_l1"] = ind.get("sw_l1")
-            item["sw_l2"] = ind.get("sw_l2")
-            item["sw_l3"] = ind.get("sw_l3")
+            item["tdx_l1"] = ind.get("tdx_l1")
+            item["tdx_l2"] = ind.get("tdx_l2")
+            item["tdx_l3"] = ind.get("tdx_l3")
             data.append(item)
         return {"ok": True, "data": data, "total": len(data)}
     finally:
@@ -774,8 +774,8 @@ async def get_institution_detail(inst_id: str):
             from services.industry import load_industry_map
             ind_map = load_industry_map(conn)
             ind_rows = [
-                {"sw_l1": ind_map[c].get("sw_l1"), "sw_l2": ind_map[c].get("sw_l2"),
-                 "sw_l3": ind_map[c].get("sw_l3"), "stock_code": c}
+                {"tdx_l1": ind_map[c].get("tdx_l1"), "tdx_l2": ind_map[c].get("tdx_l2"),
+                 "tdx_l3": ind_map[c].get("tdx_l3"), "stock_code": c}
                 for c in stock_codes if c in ind_map
             ]
 
@@ -783,7 +783,7 @@ async def get_institution_detail(inst_id: str):
             from collections import defaultdict
             tree = defaultdict(lambda: {"stocks": 0, "children": defaultdict(lambda: {"stocks": 0, "children": defaultdict(int)})})
             for r in ind_rows:
-                l1, l2, l3 = r["sw_l1"] or "", r["sw_l2"] or "", r["sw_l3"] or ""
+                l1, l2, l3 = r["tdx_l1"] or "", r["tdx_l2"] or "", r["tdx_l3"] or ""
                 if l1:
                     tree[l1]["stocks"] += 1
                     if l2:
@@ -866,7 +866,7 @@ async def get_stock_attention(stock_code: str):
                 (stock_code,),
             ).fetchone()
         industry_meta = conn.execute(
-            "SELECT sw_l1, sw_l2, sw_l3 FROM dim_stock_sw_industry WHERE stock_code = ? LIMIT 1",
+            "SELECT tdx_l1, tdx_l2, tdx_l3 FROM dim_stock_tdx_industry WHERE stock_code = ? LIMIT 1",
             (stock_code,),
         ).fetchone()
     finally:
@@ -877,7 +877,7 @@ async def get_stock_attention(stock_code: str):
     fallback_name = (snapshot or {}).get("stock_name") or (stock_meta["stock_name"] if stock_meta else "")
     fallback_industry = ""
     if industry_meta:
-        fallback_industry = industry_meta["sw_l2"] or industry_meta["sw_l1"] or industry_meta["sw_l3"] or ""
+        fallback_industry = industry_meta["tdx_l2"] or industry_meta["tdx_l1"] or industry_meta["tdx_l3"] or ""
     if not basic_info:
         basic_info = {
             "股票代码": detail.get("stock_code") or stock_code,
@@ -1269,7 +1269,7 @@ async def scoring_breakdown(card_type: str, object_id: str):
                        ff.industry_relative_group AS forecast_industry_relative_group,
                        t.turtle_execution_score, t.turtle_breakout_score, t.turtle_risk_score,
                        t.turtle_score_delta, t.turtle_setup_state, t.turtle_preferred_system, t.turtle_reason,
-                       m.sw_l2, m.notice_age_days, m.price_entry, m.return_to_now,
+                       m.tdx_l2, m.notice_age_days, m.price_entry, m.return_to_now,
                        m.inst_ref_cost, m.inst_cost_method,
                        m.premium_pct, m.premium_bucket, m.follow_gate
                 FROM mart_stock_trend t
@@ -1316,8 +1316,8 @@ async def scoring_breakdown(card_type: str, object_id: str):
                     },
                     "leader": {"inst": s.get("leader_inst"), "score": s.get("leader_score"),
                                "source": "mart_institution_profile.quality_score", "weight": "30%"},
-                    "industry_match": {"stock_industry": s.get("sw_l2"),
-                                       "source": "mart_current_relationship.sw_l2 vs leader best_industry",
+                    "industry_match": {"stock_industry": s.get("tdx_l2"),
+                                       "source": "mart_current_relationship.tdx_l2 vs leader best_industry",
                                        "weight": "25%"},
                     "consensus": {"count": s.get("consensus_count"),
                                   "source": "mart_current_relationship 中 quality_score ≥ 75th 的机构数",

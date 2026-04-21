@@ -3,7 +3,7 @@
 
 数据分层：
   原始层（只追加）: market_raw_holdings, raw_fetch_batch
-  维度层: dim_active_a_stock, dim_stock_sw_industry, dim_trading_calendar, inst_institutions, inst_name_aliases
+  维度层: dim_active_a_stock, dim_stock_tdx_industry, dim_trading_calendar, inst_institutions, inst_name_aliases
   事实层: inst_holdings, fact_institution_event, fact_northbound_daily, stock_watchlist
   集市层（可重算）: mart_institution_profile, mart_institution_industry_stat, mart_stock_trend
   系统层: sys_schema_version, excluded_stocks, exclusion_categories, app_settings
@@ -27,22 +27,6 @@ def get_conn(timeout: int = 30) -> sqlite3.Connection:
     conn.execute("PRAGMA journal_mode=WAL")
     conn.execute("PRAGMA busy_timeout=10000")
     return conn
-
-
-def _rename_industry_columns(conn, tables, renames):
-    for table in tables:
-        try:
-            cols = {r[1] for r in conn.execute(f"PRAGMA table_info({table})").fetchall()}
-        except Exception:
-            continue
-        for old, new in renames:
-            if old in cols and new not in cols:
-                try:
-                    conn.execute(f"ALTER TABLE {table} RENAME COLUMN {old} TO {new}")
-                    cols.discard(old)
-                    cols.add(new)
-                except Exception:
-                    pass
 
 
 def init_db():
@@ -108,21 +92,23 @@ def init_db():
             );
             CREATE INDEX IF NOT EXISTS idx_daas_updated ON dim_active_a_stock(updated_at);
 
-            CREATE TABLE IF NOT EXISTS dim_stock_sw_industry (
-                stock_code     TEXT PRIMARY KEY,
-                sw_l1          TEXT,
-                sw_l2          TEXT,
-                sw_l3          TEXT,
-                sw_l1_name     TEXT,
-                sw_l2_name     TEXT,
-                sw_l3_name     TEXT,
-                start_date     TEXT,
-                source_update  TEXT,
-                updated_at     TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            -- dim_stock_industry (申万三级) 已于 Phase 2 (TDX 迁移) 退役；
+            -- 统一使用 dim_stock_tdx_industry 作为唯一行业真相源
+            -- (同步维护: backend/services/tdx_industry_client.py::_ensure_table)
+            CREATE TABLE IF NOT EXISTS dim_stock_tdx_industry (
+                stock_code    TEXT PRIMARY KEY,
+                tdx_l1        TEXT,
+                tdx_l2        TEXT,
+                tdx_l3        TEXT,
+                tdx_l1_name   TEXT,
+                tdx_l2_name   TEXT,
+                tdx_l3_name   TEXT,
+                sw_x_legacy   TEXT,
+                updated_at    TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             );
-            CREATE INDEX IF NOT EXISTS idx_sw_industry_l1 ON dim_stock_sw_industry(sw_l1);
-            CREATE INDEX IF NOT EXISTS idx_sw_industry_l2 ON dim_stock_sw_industry(sw_l2);
-            CREATE INDEX IF NOT EXISTS idx_sw_industry_l3 ON dim_stock_sw_industry(sw_l3);
+            CREATE INDEX IF NOT EXISTS idx_tdx_industry_l1 ON dim_stock_tdx_industry(tdx_l1);
+            CREATE INDEX IF NOT EXISTS idx_tdx_industry_l2 ON dim_stock_tdx_industry(tdx_l2);
+            CREATE INDEX IF NOT EXISTS idx_tdx_industry_l3 ON dim_stock_tdx_industry(tdx_l3);
 
             CREATE TABLE IF NOT EXISTS dim_tdx_block_catalog (
                 block_category TEXT NOT NULL,
@@ -231,6 +217,11 @@ def init_db():
             CREATE INDEX IF NOT EXISTS idx_event_date ON fact_institution_event(report_date);
             CREATE INDEX IF NOT EXISTS idx_event_notice ON fact_institution_event(notice_date);
 
+            -- Phase 3b-3: fact_institution_event_industry_snapshot 已退役
+            -- (原申万行业快照口径被 dim_stock_tdx_industry 直连聚合替代;
+            --  backtest_engine / scoring 的 crowding_fit 口径也已同步)
+            -- 收益字段已合并入 fact_institution_event
+
             CREATE TABLE IF NOT EXISTS fact_northbound_daily (
                 stock_code      TEXT NOT NULL,
                 stock_name      TEXT,
@@ -262,6 +253,87 @@ def init_db():
                 updated_at          TEXT,
                 PRIMARY KEY (stock_code, added_date)
             );
+
+            CREATE TABLE IF NOT EXISTS fact_setup_snapshot (
+                snapshot_date         TEXT NOT NULL,
+                stock_code            TEXT NOT NULL,
+                stock_name            TEXT,
+                setup_tag             TEXT NOT NULL,
+                setup_priority        INTEGER,
+                setup_reason          TEXT,
+                setup_confidence      TEXT,
+                setup_level           TEXT,
+                setup_inst_id         TEXT,
+                setup_inst_name       TEXT,
+                setup_event_type      TEXT,
+                setup_industry_name   TEXT,
+                snapshot_tdx_l1       TEXT,
+                snapshot_tdx_l2       TEXT,
+                snapshot_tdx_l3       TEXT,
+                snapshot_tdx_l1_name  TEXT,
+                snapshot_tdx_l2_name  TEXT,
+                snapshot_tdx_l3_name  TEXT,
+                action_score          REAL,
+                discovery_score       REAL,
+                company_quality_score REAL,
+                company_quality_score_source TEXT,
+                quality_feature_snapshot_date TEXT,
+                stage_score           REAL,
+                forecast_score        REAL,
+                forecast_score_effective REAL,
+                raw_composite_priority_score REAL,
+                composite_priority_score REAL,
+                composite_cap_score   REAL,
+                composite_cap_reason  TEXT,
+                stock_archetype       TEXT,
+                priority_pool         TEXT,
+                priority_pool_reason  TEXT,
+                score_highlights      TEXT,
+                score_risks           TEXT,
+                latest_report_date    TEXT,
+                latest_notice_date    TEXT,
+                report_age_days       INTEGER,
+                setup_score_raw       REAL,
+                setup_execution_gate  TEXT,
+                setup_execution_reason TEXT,
+                industry_skill_raw    REAL,
+                industry_skill_grade  INTEGER,
+                followability_grade   INTEGER,
+                premium_grade         INTEGER,
+                report_recency_grade  INTEGER,
+                reliability_grade     INTEGER,
+                crowding_bucket       TEXT,
+                crowding_yield_raw    REAL,
+                crowding_yield_grade  INTEGER,
+                crowding_stability_raw REAL,
+                crowding_stability_grade INTEGER,
+                crowding_fit_raw      REAL,
+                crowding_fit_grade    INTEGER,
+                crowding_fit_sample   INTEGER,
+                crowding_fit_source   TEXT,
+                entry_trade_date      TEXT,
+                entry_price           REAL,
+                current_trade_date    TEXT,
+                current_price         REAL,
+                gain_to_now           REAL,
+                gain_10d              REAL,
+                gain_30d              REAL,
+                gain_60d              REAL,
+                max_drawdown_10d      REAL,
+                max_drawdown_30d      REAL,
+                max_drawdown_60d      REAL,
+                matured_10d           INTEGER DEFAULT 0,
+                matured_30d           INTEGER DEFAULT 0,
+                matured_60d           INTEGER DEFAULT 0,
+                updated_at            TEXT,
+                PRIMARY KEY (snapshot_date, stock_code, setup_tag, setup_inst_id)
+            );
+            CREATE INDEX IF NOT EXISTS idx_setup_snapshot_date
+                ON fact_setup_snapshot(snapshot_date);
+            CREATE INDEX IF NOT EXISTS idx_setup_snapshot_tag
+                ON fact_setup_snapshot(setup_tag, snapshot_date);
+            CREATE INDEX IF NOT EXISTS idx_setup_snapshot_stock
+                ON fact_setup_snapshot(stock_code);
 
             -- ============================================================
             -- 集市层（派生，可重算）
@@ -345,7 +417,7 @@ def init_db():
                 institution_id TEXT NOT NULL,
                 industry_level TEXT NOT NULL,
                 industry_name  TEXT NOT NULL,
-                industry_code  TEXT,
+                tdx_code       TEXT,
                 sample_events  INTEGER DEFAULT 0,
                 avg_gain_30d   REAL,
                 avg_gain_60d   REAL,
@@ -619,16 +691,108 @@ def init_db():
             except Exception:
                 pass
 
-        for idx in ("idx_dsi_l1", "idx_dsi_l2"):
+        for col in [
+            "stock_name TEXT",
+            "setup_priority INTEGER",
+            "setup_reason TEXT",
+            "setup_confidence TEXT",
+            "setup_level TEXT",
+            "setup_inst_name TEXT",
+            "setup_event_type TEXT",
+            "setup_industry_name TEXT",
+            "snapshot_tdx_l1 TEXT",
+            "snapshot_tdx_l2 TEXT",
+            "snapshot_tdx_l3 TEXT",
+            "snapshot_tdx_l1_name TEXT",
+            "snapshot_tdx_l2_name TEXT",
+            "snapshot_tdx_l3_name TEXT",
+            "action_score REAL",
+            "discovery_score REAL",
+            "company_quality_score REAL",
+            "company_quality_score_source TEXT",
+            "quality_feature_snapshot_date TEXT",
+            "stage_score REAL",
+            "forecast_score REAL",
+            "forecast_score_effective REAL",
+            "raw_composite_priority_score REAL",
+            "composite_priority_score REAL",
+            "composite_cap_score REAL",
+            "composite_cap_reason TEXT",
+            "stock_archetype TEXT",
+            "priority_pool TEXT",
+            "priority_pool_reason TEXT",
+            "score_highlights TEXT",
+            "score_risks TEXT",
+            "latest_report_date TEXT",
+            "latest_notice_date TEXT",
+            "report_age_days INTEGER",
+            "setup_score_raw REAL",
+            "setup_execution_gate TEXT",
+            "setup_execution_reason TEXT",
+            "industry_skill_raw REAL",
+            "industry_skill_grade INTEGER",
+            "followability_grade INTEGER",
+            "premium_grade INTEGER",
+            "report_recency_grade INTEGER",
+            "reliability_grade INTEGER",
+            "crowding_bucket TEXT",
+            "crowding_yield_raw REAL",
+            "crowding_yield_grade INTEGER",
+            "crowding_stability_raw REAL",
+            "crowding_stability_grade INTEGER",
+            "crowding_fit_raw REAL",
+            "crowding_fit_grade INTEGER",
+            "crowding_fit_sample INTEGER",
+            "crowding_fit_source TEXT",
+            "entry_trade_date TEXT",
+            "entry_price REAL",
+            "current_trade_date TEXT",
+            "current_price REAL",
+            "gain_to_now REAL",
+            "gain_10d REAL",
+            "gain_30d REAL",
+            "gain_60d REAL",
+            "max_drawdown_10d REAL",
+            "max_drawdown_30d REAL",
+            "max_drawdown_60d REAL",
+            "matured_10d INTEGER DEFAULT 0",
+            "matured_30d INTEGER DEFAULT 0",
+            "matured_60d INTEGER DEFAULT 0",
+        ]:
+            try:
+                conn.execute(f"ALTER TABLE fact_setup_snapshot ADD COLUMN {col}")
+            except Exception:
+                pass
+
+        # TDX 行业索引：必须在 ALTER TABLE 补齐列之后才能建
+        try:
+            conn.execute(
+                "CREATE INDEX IF NOT EXISTS idx_setup_snapshot_tdx1_date "
+                "ON fact_setup_snapshot(snapshot_tdx_l1, snapshot_date)"
+            )
+        except Exception:
+            pass
+
+        # ─────────────────────────────────────────────────────────────
+        # TDX 迁移: 退役申万 SW 列与 dim_stock_industry 表
+        # (执行 Phase 2 迁移后, sw_level* 列从 schema 中移除;
+        #  老库残留列通过 DROP COLUMN 清理)
+        # 注意: 必须先 DROP 相关索引, 否则 DROP COLUMN 会因索引依赖失败
+        # ─────────────────────────────────────────────────────────────
+        for idx in ("idx_setup_snapshot_sw1_date", "idx_dsi_l1", "idx_dsi_l2"):
             try:
                 conn.execute(f"DROP INDEX IF EXISTS {idx}")
             except Exception:
                 pass
-        for tbl, col in (
+        sw_drop_plan = [
+            ("fact_setup_snapshot", "snapshot_sw_level1"),
+            ("fact_setup_snapshot", "snapshot_sw_level2"),
+            ("fact_setup_snapshot", "snapshot_sw_level3"),
             ("mart_current_relationship", "sw_level1"),
             ("mart_current_relationship", "sw_level2"),
             ("mart_current_relationship", "sw_level3"),
-        ):
+        ]
+        for tbl, col in sw_drop_plan:
             try:
                 conn.execute(f"ALTER TABLE {tbl} DROP COLUMN {col}")
             except Exception:
@@ -648,32 +812,29 @@ def init_db():
             except Exception:
                 pass
 
+        # Phase 3b-1: mart_institution_industry_stat 增加 tdx_code 列
+        # 用于记录每行聚合的 TDX 行业代码 (T01 / T0401 / T040101); industry_name 仍存中文名。
+        try:
+            conn.execute(
+                "ALTER TABLE mart_institution_industry_stat ADD COLUMN tdx_code TEXT"
+            )
+        except Exception:
+            pass
+
+        # Phase 3b-2: mart_institution_industry_stat.sw_level → industry_level
+        # 原列名在 Phase 2 申万退役后语义已漂移 (值仍是 level1/level2/level3),
+        # 重命名以解除 "sw" 字面与 TDX 真相源的混淆。SQLite 3.25+ 支持 RENAME COLUMN。
         try:
             cols = {r[1] for r in conn.execute("PRAGMA table_info(mart_institution_industry_stat)").fetchall()}
             if "sw_level" in cols and "industry_level" not in cols:
                 conn.execute(
                     "ALTER TABLE mart_institution_industry_stat RENAME COLUMN sw_level TO industry_level"
                 )
-            if "tdx_code" in cols and "industry_code" in cols:
-                conn.execute(
-                    "UPDATE mart_institution_industry_stat "
-                    "SET industry_code = COALESCE(industry_code, tdx_code) "
-                    "WHERE industry_code IS NULL AND tdx_code IS NOT NULL"
-                )
-                conn.execute("ALTER TABLE mart_institution_industry_stat DROP COLUMN tdx_code")
-            elif "tdx_code" in cols and "industry_code" not in cols:
-                conn.execute(
-                    "ALTER TABLE mart_institution_industry_stat RENAME COLUMN tdx_code TO industry_code"
-                )
-        except Exception:
-            pass
-        try:
-            conn.execute(
-                "ALTER TABLE mart_institution_industry_stat ADD COLUMN industry_code TEXT"
-            )
         except Exception:
             pass
 
+        # Phase 3b-3: DROP 退役表 fact_institution_event_industry_snapshot
+        # 申万快照已被 dim_stock_tdx_industry 直 JOIN 替代, 相关 SQL helper 亦已删除。
         for idx in ("idx_event_industry_snapshot_l1", "idx_event_industry_snapshot_l2"):
             try:
                 conn.execute(f"DROP INDEX IF EXISTS {idx}")
@@ -684,48 +845,55 @@ def init_db():
         except Exception:
             pass
 
-        for idx in ("idx_tdx_industry_l1", "idx_tdx_industry_l2", "idx_tdx_industry_l3"):
+        # Phase 3d-1: fact_stock_archetype / dim_stock_archetype_latest 列名正名
+        # 原列 sw_level1/sw_level2 实际存的是通达信一级/二级中文名 (非申万代码),
+        # 字面上与 TDX 真相源冲突, 重命名为 tdx_l1_name/tdx_l2_name 消歧。
+        for table in ("fact_stock_archetype", "dim_stock_archetype_latest"):
             try:
-                conn.execute(f"DROP INDEX IF EXISTS {idx}")
+                cols = {r[1] for r in conn.execute(f"PRAGMA table_info({table})").fetchall()}
+                if "sw_level1" in cols and "tdx_l1_name" not in cols:
+                    conn.execute(f"ALTER TABLE {table} RENAME COLUMN sw_level1 TO tdx_l1_name")
+                if "sw_level2" in cols and "tdx_l2_name" not in cols:
+                    conn.execute(f"ALTER TABLE {table} RENAME COLUMN sw_level2 TO tdx_l2_name")
             except Exception:
                 pass
-        try:
-            conn.execute("DROP TABLE IF EXISTS dim_stock_tdx_industry")
-        except Exception:
-            pass
 
-        for idx in (
-            "idx_setup_snapshot_date", "idx_setup_snapshot_tag", "idx_setup_snapshot_stock",
-            "idx_setup_snapshot_tdx1_date", "idx_setup_snapshot_sw1_date",
-        ):
+        # Phase 3d-2: quality/turtle 表列名正名
+        # - quality_features/quality_latest: sw_level1/2 → tdx_l1/tdx_l2 (存 TDX 代码)
+        # - turtle_features/turtle_latest:   sw_level1/2 → tdx_l1_name/tdx_l2_name
+        #   (当前经 dim_stock_forecast_latest 来源一路传递中文名, 保持语义一致)
+        quality_tables = ("fact_stock_quality_features", "dim_stock_quality_latest")
+        for table in quality_tables:
             try:
-                conn.execute(f"DROP INDEX IF EXISTS {idx}")
+                cols = {r[1] for r in conn.execute(f"PRAGMA table_info({table})").fetchall()}
+                if "sw_level1" in cols and "tdx_l1" not in cols:
+                    conn.execute(f"ALTER TABLE {table} RENAME COLUMN sw_level1 TO tdx_l1")
+                if "sw_level2" in cols and "tdx_l2" not in cols:
+                    conn.execute(f"ALTER TABLE {table} RENAME COLUMN sw_level2 TO tdx_l2")
             except Exception:
                 pass
-        try:
-            conn.execute("DROP TABLE IF EXISTS fact_setup_snapshot")
-        except Exception:
-            pass
+        turtle_tables = ("fact_stock_turtle_features", "dim_stock_turtle_latest")
+        for table in turtle_tables:
+            try:
+                cols = {r[1] for r in conn.execute(f"PRAGMA table_info({table})").fetchall()}
+                if "sw_level1" in cols and "tdx_l1_name" not in cols:
+                    conn.execute(f"ALTER TABLE {table} RENAME COLUMN sw_level1 TO tdx_l1_name")
+                if "sw_level2" in cols and "tdx_l2_name" not in cols:
+                    conn.execute(f"ALTER TABLE {table} RENAME COLUMN sw_level2 TO tdx_l2_name")
+            except Exception:
+                pass
 
-        _rename_industry_columns(
-            conn,
-            ("fact_stock_archetype", "dim_stock_archetype_latest"),
-            [("sw_level1", "sw_l1_name"), ("tdx_l1_name", "sw_l1_name"),
-             ("sw_level2", "sw_l2_name"), ("tdx_l2_name", "sw_l2_name")],
-        )
-        _rename_industry_columns(
-            conn,
-            ("fact_stock_quality_features", "dim_stock_quality_latest"),
-            [("sw_level1", "sw_l1"), ("tdx_l1", "sw_l1"),
-             ("sw_level2", "sw_l2"), ("tdx_l2", "sw_l2")],
-        )
-        _rename_industry_columns(
-            conn,
-            ("fact_stock_turtle_features", "dim_stock_turtle_latest",
-             "fact_stock_forecast_features", "dim_stock_forecast_latest"),
-            [("sw_level1", "sw_l1_name"), ("tdx_l1_name", "sw_l1_name"),
-             ("sw_level2", "sw_l2_name"), ("tdx_l2_name", "sw_l2_name")],
-        )
+        # Phase 3d-3: forecast 表列名正名 (实际存 TDX 中文名)
+        forecast_tables = ("fact_stock_forecast_features", "dim_stock_forecast_latest")
+        for table in forecast_tables:
+            try:
+                cols = {r[1] for r in conn.execute(f"PRAGMA table_info({table})").fetchall()}
+                if "sw_level1" in cols and "tdx_l1_name" not in cols:
+                    conn.execute(f"ALTER TABLE {table} RENAME COLUMN sw_level1 TO tdx_l1_name")
+                if "sw_level2" in cols and "tdx_l2_name" not in cols:
+                    conn.execute(f"ALTER TABLE {table} RENAME COLUMN sw_level2 TO tdx_l2_name")
+            except Exception:
+                pass
 
         # Phase 1: mart_institution_profile 买入类评分字段 + 评分元数据
         for col in ["score_basis TEXT", "score_confidence TEXT",
@@ -805,12 +973,12 @@ def init_db():
                 notice_age_days   INTEGER,
                 disclosure_lag_days INTEGER,
                 current_held_days INTEGER,
-                sw_l1             TEXT,
-                sw_l2             TEXT,
-                sw_l3             TEXT,
-                sw_l1_name        TEXT,
-                sw_l2_name        TEXT,
-                sw_l3_name        TEXT,
+                tdx_l1            TEXT,
+                tdx_l2            TEXT,
+                tdx_l3            TEXT,
+                tdx_l1_name       TEXT,
+                tdx_l2_name       TEXT,
+                tdx_l3_name       TEXT,
                 has_return_data   INTEGER DEFAULT 0,
                 has_industry_data INTEGER DEFAULT 0,
                 updated_at        TEXT,
@@ -826,16 +994,44 @@ def init_db():
             "ON mart_current_relationship(stock_code)"
         )
 
-        mcr_cols = {r[1] for r in conn.execute("PRAGMA table_info(mart_current_relationship)").fetchall()}
-        for old, new in (
-            ("tdx_l1", "sw_l1"), ("tdx_l2", "sw_l2"), ("tdx_l3", "sw_l3"),
-            ("tdx_l1_name", "sw_l1_name"), ("tdx_l2_name", "sw_l2_name"), ("tdx_l3_name", "sw_l3_name"),
+        for tbl in (
+            "mart_current_relationship",
+            "dim_stock_industry_context_latest",
+            "fact_stock_industry_context",
+            "fact_stock_archetype", "dim_stock_archetype_latest",
+            "fact_stock_quality_features", "dim_stock_quality_latest",
+            "fact_stock_turtle_features", "dim_stock_turtle_latest",
+            "fact_stock_forecast_features", "dim_stock_forecast_latest",
         ):
-            if old in mcr_cols and new not in mcr_cols:
-                try:
-                    conn.execute(f"ALTER TABLE mart_current_relationship RENAME COLUMN {old} TO {new}")
-                except Exception:
-                    pass
+            try:
+                cols = {r[1] for r in conn.execute(f"PRAGMA table_info({tbl})").fetchall()}
+            except Exception:
+                continue
+            for old, new in (
+                ("sw_l1", "tdx_l1"), ("sw_l2", "tdx_l2"), ("sw_l3", "tdx_l3"),
+                ("sw_l1_name", "tdx_l1_name"), ("sw_l2_name", "tdx_l2_name"), ("sw_l3_name", "tdx_l3_name"),
+            ):
+                if old in cols and new not in cols:
+                    try:
+                        conn.execute(f"ALTER TABLE {tbl} RENAME COLUMN {old} TO {new}")
+                        cols.discard(old)
+                        cols.add(new)
+                    except Exception:
+                        pass
+
+        try:
+            cols = {r[1] for r in conn.execute("PRAGMA table_info(mart_institution_industry_stat)").fetchall()}
+            if "industry_code" in cols and "tdx_code" in cols:
+                conn.execute(
+                    "UPDATE mart_institution_industry_stat "
+                    "SET tdx_code = COALESCE(tdx_code, industry_code) "
+                    "WHERE tdx_code IS NULL AND industry_code IS NOT NULL"
+                )
+                conn.execute("ALTER TABLE mart_institution_industry_stat DROP COLUMN industry_code")
+            elif "industry_code" in cols and "tdx_code" not in cols:
+                conn.execute("ALTER TABLE mart_institution_industry_stat RENAME COLUMN industry_code TO tdx_code")
+        except Exception:
+            pass
 
         for col in [
             "report_season TEXT",
@@ -845,12 +1041,12 @@ def init_db():
             "premium_bucket TEXT",
             "follow_gate TEXT",
             "follow_gate_reason TEXT",
-            "sw_l1 TEXT",
-            "sw_l2 TEXT",
-            "sw_l3 TEXT",
-            "sw_l1_name TEXT",
-            "sw_l2_name TEXT",
-            "sw_l3_name TEXT",
+            "tdx_l1 TEXT",
+            "tdx_l2 TEXT",
+            "tdx_l3 TEXT",
+            "tdx_l1_name TEXT",
+            "tdx_l2_name TEXT",
+            "tdx_l3_name TEXT",
         ]:
             try:
                 conn.execute(f"ALTER TABLE mart_current_relationship ADD COLUMN {col}")

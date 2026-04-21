@@ -103,18 +103,19 @@ def ensure_tables(conn):
 # 特征抽取（从数据库 join 构造训练矩阵，不依赖 qlib 运行时）
 # ─────────────────────────────────────────────────────────────────────
 
-from services.sw_industry_names import SW_L1_NAMES as _SW_L1_NAMES
-
-_SW_L1_ONEHOT_CODES = tuple(sorted(_SW_L1_NAMES.keys()))
-_SW_L1_ONEHOT_FEATURES = tuple(f"ind_sw{code}" for code in _SW_L1_ONEHOT_CODES)
+# TDX 一级行业 one-hot (与 qlib_full_engine 保持一致：T01..T13)
+_TDX_L1_ONEHOT_CODES = tuple(f"T{i:02d}" for i in range(1, 14))
+_TDX_L1_ONEHOT_FEATURES = tuple(f"ind_t{i:02d}" for i in range(1, 14))
 
 
 FEATURE_COLUMNS = [
+    # 事件级
     "premium_pct",
     "peer_count_same_quarter",
     "institution_industry_hit_rate",
     "event_type_is_new_entry",
     "days_since_industry_latest_high",
+    # 股票财务（from raw_gpcw_detail / fact_financial_derived）
     "roe",
     "debt_ratio",
     "gross_margin",
@@ -122,20 +123,26 @@ FEATURE_COLUMNS = [
     "profit_yoy",
     "ocf_to_profit",
     "contract_to_revenue",
-    "holder_count_yoy",
-    "contract_liabilities_yoy",
-    "forecast_profit_yoy_mid",
-    "future_unlock_ratio_180d",
-    "inst_recent_ev_60d",
-    "survey_count_90d",
+    # D1-D8 挖过的 alpha 维度
+    "holder_count_yoy",              # D1
+    "contract_liabilities_yoy",      # D2
+    "forecast_profit_yoy_mid",       # D3
+    "future_unlock_ratio_180d",      # D5
+    "inst_recent_ev_60d",            # D7
+    "survey_count_90d",              # D8
+    # 行业内 z-score (Phase 4c 方案 B):
+    # YoY 类特征跨行业基数差异大 (银行 +30% vs 科技 +300% 语义不同),
+    # 按 (tdx_l1, report_date) 分组归一化让树模型捕捉同期相对强度
     "holder_count_yoy_z",
     "contract_liabilities_yoy_z",
     "forecast_profit_yoy_mid_z",
+    # 价格动量（from price_kline，窗口聚合）
     "return_20d_before",
     "return_60d_before",
     "volatility_60d",
     "dist_from_120d_high",
-    *_SW_L1_ONEHOT_FEATURES,
+    # TDX 一级行业 one-hot (13 维)
+    *_TDX_L1_ONEHOT_FEATURES,
 ]
 
 LABEL_COLUMN = "gain_60d"
@@ -197,9 +204,9 @@ def extract_training_matrix(
         SELECT
             e.institution_id, e.stock_code, e.report_date, e.notice_date,
             e.event_type, e.premium_pct, e.gain_60d,
-            i.sw_l1 AS industry
+            i.tdx_l1 AS industry
         FROM fact_institution_event e
-        LEFT JOIN dim_stock_sw_industry i ON i.stock_code = e.stock_code
+        LEFT JOIN dim_stock_tdx_industry i ON i.stock_code = e.stock_code
         WHERE e.event_type IN ('new_entry', 'increase')
           AND e.gain_60d IS NOT NULL
           AND e.notice_date >= ?
@@ -218,13 +225,13 @@ def extract_training_matrix(
 
     # 机构×行业历史胜率预聚合（简化版：全时段胜率，严谨版应 as-of）
     inst_ind_rows = conn.execute("""
-        SELECT e.institution_id, i.sw_l1 AS industry,
+        SELECT e.institution_id, i.tdx_l1 AS industry,
                AVG(CASE WHEN e.gain_60d > 0 THEN 1.0 ELSE 0.0 END) AS hit_rate,
                COUNT(*) AS n
         FROM fact_institution_event e
-        LEFT JOIN dim_stock_sw_industry i ON i.stock_code = e.stock_code
+        LEFT JOIN dim_stock_tdx_industry i ON i.stock_code = e.stock_code
         WHERE e.event_type IN ('new_entry', 'increase') AND e.gain_60d IS NOT NULL
-        GROUP BY e.institution_id, i.sw_l1
+        GROUP BY e.institution_id, i.tdx_l1
     """).fetchall()
     ind_hit_map = {
         (r["institution_id"], r["industry"]): float(r["hit_rate"] or 0)
@@ -270,8 +277,10 @@ def extract_training_matrix(
             "volatility_60d": None,
             "dist_from_120d_high": None,
             "days_since_industry_latest_high": None,
+            # TDX L1 one-hot (13 维)
             **{feat: (1 if industry_code == code else 0)
-               for code, feat in zip(_SW_L1_ONEHOT_CODES, _SW_L1_ONEHOT_FEATURES)},
+               for code, feat in zip(_TDX_L1_ONEHOT_CODES, _TDX_L1_ONEHOT_FEATURES)},
+            # Label
             "gain_60d": _safe(r["gain_60d"]),
         }
         out.append(sample)
@@ -335,6 +344,8 @@ def extract_training_matrix(
     except Exception as exc:
         logger.warning(f"[qlib_follow] GPCW 衍生特征补全失败: {exc}")
 
+    # Phase 4c · 方案 B: D1/D2/D3 行业内 z-score
+    # 按 (tdx_l1, report_date) 分组, 组内 ≥5 样本才计算 z, 否则保留 None
     for raw_col, z_col in (
         ("holder_count_yoy", "holder_count_yoy_z"),
         ("contract_liabilities_yoy", "contract_liabilities_yoy_z"),

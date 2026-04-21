@@ -8,12 +8,12 @@ from services.industry import attach_industry_aliases
 
 
 _INDUSTRY_PAYLOAD_KEYS = {
-    "sw_l1",
-    "sw_l2",
-    "sw_l3",
-    "sw_l1_name",
-    "sw_l2_name",
-    "sw_l3_name",
+    "tdx_l1",
+    "tdx_l2",
+    "tdx_l3",
+    "tdx_l1_name",
+    "tdx_l2_name",
+    "tdx_l3_name",
 }
 
 

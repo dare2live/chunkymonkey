@@ -6,7 +6,7 @@ AKShare 数据获取客户端
 说明：
 - K 线优先走东财；失败后自动回退新浪 / 腾讯
 - 缺失股票拉全历史，已存在股票走增量续拉
-- 行业分类统一走 services.sw_industry_client (申万官方源 via akshare),
+- 行业分类统一走 services.tdx_industry_client (通达信 tdxhy.cfg),
   本模块已不提供行业函数。
 """
 

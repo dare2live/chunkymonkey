@@ -7,17 +7,11 @@
 (function (global) {
   'use strict';
 
-  // 申万一级行业名（31 个活跃 L1，code 前 2 位）
-  // Phase 2C：替代旧 TDX 13 类，对齐 backend/services/sw_industry_names.py::SW_L1_NAMES
-  const SW_L1_NAMES = {
-    '11': '农林牧渔', '22': '基础化工', '23': '钢铁', '24': '有色金属',
-    '27': '电子', '28': '汽车', '33': '家用电器', '34': '食品饮料',
-    '35': '纺织服饰', '36': '轻工制造', '37': '医药生物', '41': '公用事业',
-    '42': '交通运输', '43': '房地产', '45': '商贸零售', '46': '社会服务',
-    '48': '银行', '49': '非银金融', '51': '综合', '61': '建筑材料',
-    '62': '建筑装饰', '63': '电力设备', '64': '机械设备', '65': '国防军工',
-    '71': '计算机', '72': '传媒', '73': '通信', '74': '煤炭',
-    '75': '石油石化', '76': '环保', '77': '美容护理',
+  const TDX_L1_NAMES = {
+    T01: '能源', T02: '材料', T03: '日常消费', T04: '可选消费',
+    T05: '商贸', T06: '社会服务', T07: '装备制造', T08: '公用事业',
+    T09: '交通运输', T10: '金融', T11: '建筑地产', T12: '信息产业',
+    T13: '综合类',
   };
 
   const state = {
@@ -176,7 +170,7 @@
       : `<button class="sig-star sig-star-off" data-sv-watch="${esc(s.stockCode)}" data-sv-name="${esc(s.stockName || '')}" title="加入自选">☆</button>`;
     const da = daysAgo(s.latestNotice);
     const daLabel = da == null ? fmtDate(s.latestNotice) : da === 0 ? '今天' : da + '天前';
-    const indLabel = SW_L1_NAMES[s.industry] || s.industry || '—';
+    const indLabel = TDX_L1_NAMES[s.industry] || s.industry || '—';
     return `<tr class="sv-row" data-sv-code="${esc(s.stockCode)}">
       <td>
         <div class="sv-stock-name"><b>${esc(s.stockCode)}</b> ${esc(s.stockName || '')}</div>
@@ -240,7 +234,7 @@
 
     const indOptions = `<option value="">全部行业</option>` +
       industries.map(([code, n]) =>
-        `<option value="${esc(code)}" ${state.filterIndustry === code ? 'selected' : ''}>${esc(SW_L1_NAMES[code] || code)} (${n})</option>`
+        `<option value="${esc(code)}" ${state.filterIndustry === code ? 'selected' : ''}>${esc(TDX_L1_NAMES[code] || code)} (${n})</option>`
       ).join('');
     const itOptions = `<option value="">全部机构类型</option>` +
       instTypes.map(([it, n]) =>
@@ -364,7 +358,7 @@
     const s = state.byStock.find(x => x.stockCode === code);
     if (!s) { area.innerHTML = ''; return; }
     const inWl = state.watchlistSet.has(code);
-    const indLabel = SW_L1_NAMES[s.industry] || s.industry || '—';
+    const indLabel = TDX_L1_NAMES[s.industry] || s.industry || '—';
     const tabs = [
       { key: 'events', label: '机构持仓' },
       { key: 'timeline', label: '事件时间线' },

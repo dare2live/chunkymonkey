@@ -150,14 +150,14 @@ def _make_conn():
             max_drawdown_30d REAL
         );
 
-        CREATE TABLE dim_stock_sw_industry (
+        CREATE TABLE dim_stock_tdx_industry (
             stock_code TEXT PRIMARY KEY,
-            sw_l1 TEXT,
-            sw_l2 TEXT,
-            sw_l3 TEXT,
-            sw_l1_name TEXT,
-            sw_l2_name TEXT,
-            sw_l3_name TEXT
+            tdx_l1 TEXT,
+            tdx_l2 TEXT,
+            tdx_l3 TEXT,
+            tdx_l1_name TEXT,
+            tdx_l2_name TEXT,
+            tdx_l3_name TEXT
         );
 
         CREATE TABLE dim_financial_latest (
@@ -360,7 +360,7 @@ def test_calculate_stock_scores_ranks_strong_new_entry_above_weak_signal(monkeyp
             ],
         )
         conn.executemany(
-            "INSERT INTO dim_stock_sw_industry (stock_code, sw_l1, sw_l2, sw_l3) VALUES (?, ?, ?, ?)",
+            "INSERT INTO dim_stock_tdx_industry (stock_code, tdx_l1, tdx_l2, tdx_l3) VALUES (?, ?, ?, ?)",
             [
                 ("000001", "电子", "半导体", "芯片设计"),
                 ("000002", "传媒", "传媒", "广告营销"),
@@ -559,7 +559,7 @@ def test_calculate_stock_scores_ignores_stale_quality_feature_snapshot(monkeypat
             ("inst_quality", "000009", recent_report, "new_entry", 1.8, 12.0, 6.0),
         )
         conn.execute(
-            "INSERT INTO dim_stock_sw_industry (stock_code, sw_l1, sw_l2, sw_l3, sw_l1_name, sw_l2_name, sw_l3_name) VALUES (?, ?, ?, ?, ?, ?, ?)",
+            "INSERT INTO dim_stock_tdx_industry (stock_code, tdx_l1, tdx_l2, tdx_l3, tdx_l1_name, tdx_l2_name, tdx_l3_name) VALUES (?, ?, ?, ?, ?, ?, ?)",
             ("000009", "T10", "T1010", "T101001", "电子", "半导体", "芯片设计"),
         )
         conn.execute(

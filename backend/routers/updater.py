@@ -1,14 +1,14 @@
 """
 数据更新管线
 
-当前主 DAG（Phase 3A 清理后，TDX 行业源已退役）：
+当前主 DAG（Phase 5 清理后）：
     1. sync_raw                 — 下载十大股东
     2. match_inst               — 匹配跟踪机构
     3. sync_market_data         — 同步行情数据
     4. sync_financial           — 同步财务数据
     5. gen_events               — 生成事件
     6. calc_returns             — 计算收益
-    7. sync_industry_sw         — 申万行业
+    7. sync_industry            — 通达信行业
     8. calc_financial_derived   — 计算财务指标
     9. build_current_rel        — 构建当前关系
  10. build_profiles           — 机构画像
@@ -177,7 +177,7 @@ STEPS = [
     {"id": "sync_financial",        "name": "同步财务数据",    "group": "data", "order": 4},
     {"id": "gen_events",            "name": "生成事件",        "group": "calc", "order": 5},
     {"id": "calc_returns",          "name": "计算收益",        "group": "calc", "order": 6},
-    {"id": "sync_industry_sw",      "name": "申万行业",        "group": "data", "order": 7.1},
+    {"id": "sync_industry",         "name": "通达信行业",      "group": "data", "order": 7},
     {"id": "sync_surveys",          "name": "机构调研",        "group": "data", "order": 7.5},
     {"id": "calc_financial_derived","name": "计算财务指标",    "group": "calc", "order": 8},
     {"id": "build_current_rel",     "name": "构建当前关系",    "group": "mart", "order": 9},
@@ -203,7 +203,7 @@ HARD_DEPS = {
     "sync_financial": [],
     "gen_events": ["match_inst"],
     "calc_returns": ["gen_events"],
-    "sync_industry_sw": ["match_inst"],
+    "sync_industry": ["match_inst"],
     "sync_surveys": [],
     "calc_financial_derived": ["sync_financial"],
     "build_current_rel": ["gen_events"],
@@ -211,7 +211,7 @@ HARD_DEPS = {
     "build_industry_stat": ["build_current_rel"],
     "build_trends": ["build_current_rel"],
     "calc_screening": ["sync_market_data"],
-    "calc_sector_momentum": ["sync_market_data", "sync_industry_sw"],
+    "calc_sector_momentum": ["sync_market_data", "sync_industry"],
     "build_external_attention": [],
     "build_stage_features": ["build_trends", "calc_sector_momentum"],
     "build_forecast_features": ["build_stage_features"],
@@ -223,10 +223,10 @@ HARD_DEPS = {
 # 软依赖：failed/skipped → 继续执行但标注 data_completeness='partial'
 SOFT_DEPS = {
     "calc_returns": ["sync_market_data"],
-    "build_current_rel": ["calc_returns", "sync_industry_sw"],
+    "build_current_rel": ["calc_returns", "sync_industry"],
     "build_profiles": ["calc_returns"],
-    "build_industry_stat": ["calc_returns", "sync_industry_sw"],
-    "build_trends": ["calc_returns", "sync_industry_sw"],
+    "build_industry_stat": ["calc_returns", "sync_industry"],
+    "build_trends": ["calc_returns", "sync_industry"],
     "calc_screening": ["calc_financial_derived"],
     "calc_sector_momentum": ["build_trends"],
     "build_external_attention": [],
@@ -310,6 +310,7 @@ _DERIVED_RESET_TABLES = [
 
 
 _INDUSTRY_RESET_TABLES = [
+    ("setup_snapshots", "fact_setup_snapshot"),
     ("current_rel", "mart_current_relationship"),
     ("profiles", "mart_institution_profile"),
     ("industry_stat", "mart_institution_industry_stat"),
@@ -734,7 +735,7 @@ _CONNECTIVITY_TARGETS = {
 _CONNECTIVITY_LABELS = {
     "holdings_source": "股东源",
     "kline_source": "K线源",
-    "industry_source": "行业源",  # 申万行业源（akshare）；无独立探测，直接复用 K 线探测结果
+    "industry_source": "行业源",
 }
 
 _CONNECTIVITY_CACHE_TTL_SECONDS = 300
@@ -784,15 +785,34 @@ async def _compute_connectivity() -> dict:
                 },
             }
 
-    parts = await asyncio.gather(_check_holdings(), _check_kline())
+    async def _check_industry():
+        """通达信行业源连通性探测：尝试从 tdxhy.cfg 服务器拉取首包。"""
+        from services.tdx_industry_client import _fetch_tdxhy_bytes
+
+        def _probe():
+            try:
+                data, source = _fetch_tdxhy_bytes()
+                return bool(data), source
+            except Exception:
+                return False, ""
+
+        try:
+            # tdxhub 轮询 117 台服务器，冷启动找到第一台能用的服务器可能需要 ~16s，
+            # 之后 server cursor 粘滞后续调用 <1s；给 25s 容忍冷启动延迟
+            industry_ok, industry_source = await asyncio.wait_for(
+                asyncio.get_event_loop().run_in_executor(None, _probe),
+                timeout=25,
+            )
+            payload = {"industry_source": industry_ok}
+            if industry_source:
+                payload["industry_source_detail"] = industry_source
+            return payload
+        except Exception:
+            return {"industry_source": False}
+
+    parts = await asyncio.gather(_check_holdings(), _check_kline(), _check_industry())
     for part in parts:
         results.update(part)
-
-    # 申万行业源走 akshare，基础设施与 K 线源一致，不做独立探测
-    # 复用 K 线探测结果即可反映 akshare 整体可用性
-    results["industry_source"] = bool(results.get("kline_source"))
-    if results.get("kline_source_detail"):
-        results["industry_source_detail"] = "akshare"
 
     unreachable = []
     for key, label in _CONNECTIVITY_LABELS.items():
@@ -1181,7 +1201,7 @@ async def _step_gen_events(conn) -> int:
 
 # Phase 3b-3: fact_institution_event_industry_snapshot 已退役。
 # _capture_missing_event_industry_snapshots + snapshot 表本身均已删除,
-# _step_build_industry_stat_sync / backtest_engine / scoring 统一走 dim_stock_sw_industry 直 JOIN。
+# _step_build_industry_stat_sync / backtest_engine / scoring 统一走 dim_stock_tdx_industry 直 JOIN。
 
 
 async def _run_blocking_db_task(task_fn, timeout: int = 120):
@@ -1702,90 +1722,104 @@ async def _step_build_trends(conn) -> int:
     return await _run_blocking_db_task(_step_build_trends_sync)
 
 
-async def _step_sync_industry_sw(conn) -> int:
-    """申万行业同步 — 拉取 akshare.stock_industry_clf_hist_sw 并 upsert dim_stock_sw_industry。
-
-    L3 覆盖 100%，作为行业真相源。Phase 3A 退役 TDX 后是系统唯一行业数据源。
-    """
-    from services.sw_industry_client import sync_sw_industry
+async def _step_sync_industry(conn) -> int:
+    """通达信行业同步 — 拉取 tdxhy.cfg 并全量 upsert 到 dim_stock_tdx_industry"""
+    from services.tdx_industry_client import sync_tdx_industry
 
     stock_names = _tracked_stock_names(conn)
     reconcile_gap_queue_snapshot(conn, stock_names=stock_names, datasets=("industry",), commit=True)
 
     detail = {
-        "status": "running",
-        "rows_upserted": 0,
-        "before_missing": summarize_gap_queue(conn, datasets=("industry",))["datasets"][0]["unresolved"],
-        "after_missing": None,
-        "gap_summary": summarize_gap_queue(conn, datasets=("industry",), limit_per_dataset=6)["datasets"][0],
+        "industry_sync": {
+            "status": "running",
+            "updated_rows": 0,
+            "source": "",
+            "source_degraded": False,
+            "before_missing": summarize_gap_queue(conn, datasets=("industry",))["datasets"][0]["unresolved"],
+            "after_missing": None,
+            "gap_summary": summarize_gap_queue(conn, datasets=("industry",), limit_per_dataset=6)["datasets"][0],
+        },
+        "block_sync": {
+            "status": "pending",
+            "member_rows": 0,
+            "catalog_rows": 0,
+        },
     }
 
-    def _push(rec):
+    count = 0
+
+    def _push_progress():
         _update_step(
             conn,
-            "sync_industry_sw",
+            "sync_industry",
             error=json.dumps(detail, ensure_ascii=False),
-            records=int(rec or 0),
+            records=count,
         )
 
     _raise_if_stop()
-
+    # sync_tdx_industry 是同步函数（TDX 服务器下载 + 本地解析 + executemany），
+    # 放到线程池避免阻塞事件循环。SQLite 连接不能跨线程传递，在 executor 内
+    # 单独开一个连接，写完后主线程的 conn 无需感知（写入同一个 DB 文件）。
     def _run_in_thread():
         thread_conn = get_conn(timeout=120)
         try:
-            return sync_sw_industry(thread_conn)
+            return sync_tdx_industry(thread_conn)
         finally:
             thread_conn.close()
 
-    sw_result = await asyncio.get_event_loop().run_in_executor(None, _run_in_thread)
-    count = int(sw_result.get("rows_upserted") or 0)
-    errors = sw_result.get("errors") or []
+    tdx_result = await asyncio.get_event_loop().run_in_executor(None, _run_in_thread)
+
+    count = int(tdx_result.get("rows_upserted") or 0)
+    errors = tdx_result.get("errors") or []
 
     if count == 0:
         mark_current_missing_as(
             conn,
             "industry",
             status="blocked",
-            reason="申万行业源无返回，当前未执行补齐",
-            last_error=";".join(errors) or "sw_industry_source_empty",
+            reason="通达信行业源无返回，当前未执行补齐",
+            last_error=";".join(errors) or "tdx_industry_source_empty",
             stock_names=stock_names,
             commit=False,
         )
         gap_summary = summarize_gap_queue(conn, datasets=("industry",), limit_per_dataset=6)["datasets"][0]
-        detail = {
+        detail["industry_sync"] = {
             "status": "blocked",
-            "rows_upserted": 0,
-            "fetched_at": sw_result.get("fetched_at"),
-            "errors": errors,
-            "reason": "申万行业源无返回，当前未执行补齐",
+            "updated_rows": 0,
+            "source": tdx_result.get("source", ""),
+            "source_degraded": False,
+            "before_missing": detail["industry_sync"]["before_missing"],
             "after_missing": gap_summary["unresolved"],
+            "reason": "通达信行业源无返回，当前未执行补齐",
+            "errors": errors,
             "gap_summary": gap_summary,
         }
         conn.commit()
-        _push(0)
-        logger.warning("[申万行业] 未获取到数据")
+        _push_progress()
+        logger.warning("[通达信行业] 未获取到数据")
         return 0
 
     reconcile_gap_queue_snapshot(conn, stock_names=stock_names, datasets=("industry",), commit=False)
     gap_summary = summarize_gap_queue(conn, datasets=("industry",), limit_per_dataset=6)["datasets"][0]
-    detail = {
+    detail["industry_sync"] = {
         "status": "partial" if gap_summary["unresolved"] else "success",
-        "rows_upserted": count,
-        "fetched_at": sw_result.get("fetched_at"),
-        "l1_count": sw_result.get("l1_count"),
-        "l2_count": sw_result.get("l2_count"),
-        "l3_count": sw_result.get("l3_count"),
-        "l3_coverage": sw_result.get("l3_coverage"),
+        "updated_rows": count,
+        "source": tdx_result.get("source", ""),
+        "source_degraded": False,
+        "before_missing": detail["industry_sync"]["before_missing"],
         "after_missing": gap_summary["unresolved"],
+        "fetched_at": tdx_result.get("fetched_at"),
+        "l1_count": tdx_result.get("l1_count"),
+        "l2_count": tdx_result.get("l2_count"),
+        "l3_count": tdx_result.get("l3_count"),
         "errors": errors,
         "gap_summary": gap_summary,
     }
     conn.commit()
-    _push(count)
+    _push_progress()
     logger.info(
-        f"[申万行业] 完成: {count} 只股票, "
-        f"L1={sw_result.get('l1_count')}/L2={sw_result.get('l2_count')}/L3={sw_result.get('l3_count')}, "
-        f"L3 覆盖={(sw_result.get('l3_coverage') or 0)*100:.1f}%"
+        f"[通达信行业] 完成: {count} 只股票, "
+        f"L1={tdx_result.get('l1_count')}/L2={tdx_result.get('l2_count')}/L3={tdx_result.get('l3_count')}"
     )
     return count
 
@@ -1867,11 +1901,10 @@ async def _step_sync_northbound(conn):
 
 
 def _step_build_industry_stat_sync(conn) -> int:
-    """计算机构在各行业 (申万一二三级) 的表现统计。
+    """计算机构在各行业 (TDX 一二三级) 的表现统计。
 
-    口径: 事件现任所属股票 → dim_stock_sw_industry 的当前 sw_l{1,2,3}。
-    L3 中文名未补全时 industry_name 回退为 'L3-{code}' 占位, 评分逻辑按
-    (institution_id, industry_level, industry_code) 做 key。
+    口径: 事件现任所属股票 → dim_stock_tdx_industry 的当前 tdx_l{1,2,3}。
+    不再走 fact_institution_event_industry_snapshot (Phase 2 申万退役后已空置)。
     """
     now = datetime.now().isoformat()
     conn.execute("BEGIN IMMEDIATE")
@@ -1882,11 +1915,10 @@ def _step_build_industry_stat_sync(conn) -> int:
             "SELECT id FROM inst_institutions WHERE enabled = 1 AND blacklisted = 0 AND merged_into IS NULL"
         ).fetchall()
 
-        # SW 三级：(level_name, code 字段, name 字段, 占位前缀)
         level_specs = [
-            ("level1", "sw_l1", "sw_l1_name", "L1"),
-            ("level2", "sw_l2", "sw_l2_name", "L2"),
-            ("level3", "sw_l3", "sw_l3_name", "L3"),
+            (1, "level1", "tdx_l1", "tdx_l1_name"),
+            (2, "level2", "tdx_l2", "tdx_l2_name"),
+            (3, "level3", "tdx_l3", "tdx_l3_name"),
         ]
 
         count = 0
@@ -1894,13 +1926,11 @@ def _step_build_industry_stat_sync(conn) -> int:
             _raise_if_stop()
             inst_id = inst["id"]
 
-            for level_name, code_col, name_col, fallback_prefix in level_specs:
+            for _, level_name, code_col, name_col in level_specs:
                 _raise_if_stop()
-                # SW L2/L3 名称暂未补全时，COALESCE 回退到 'L{n}-{code}' 占位
-                # 保证 industry_name 永远非空（mart schema NOT NULL 约束）
                 rows = conn.execute(f"""
-                    SELECT i.{code_col} AS industry_code,
-                           COALESCE(i.{name_col}, '{fallback_prefix}-' || i.{code_col}) AS industry_name,
+                    SELECT i.{code_col} AS tdx_code,
+                           i.{name_col} AS industry_name,
                            COUNT(*) as cnt,
                            AVG(e.gain_30d) as avg30, AVG(e.gain_60d) as avg60,
                            AVG(e.gain_90d) as avg90, AVG(e.gain_120d) as avg120,
@@ -1910,22 +1940,23 @@ def _step_build_industry_stat_sync(conn) -> int:
                            COUNT(CASE WHEN e.gain_30d > 0 OR e.gain_60d > 0 THEN 1 END) * 100.0 / MAX(COUNT(*), 1) as wr_total,
                            AVG(e.max_drawdown_30d) as dd30, AVG(e.max_drawdown_60d) as dd60
                     FROM fact_institution_event e
-                    INNER JOIN dim_stock_sw_industry i ON i.stock_code = e.stock_code
+                    INNER JOIN dim_stock_tdx_industry i ON i.stock_code = e.stock_code
                     WHERE e.institution_id = ? AND e.gain_30d IS NOT NULL
                       AND i.{code_col} IS NOT NULL AND i.{code_col} != ''
-                    GROUP BY i.{code_col}
+                      AND i.{name_col} IS NOT NULL AND i.{name_col} != ''
+                    GROUP BY i.{code_col}, i.{name_col}
                     HAVING cnt >= 1
                 """, (inst_id,)).fetchall()
 
                 for r in rows:
                     conn.execute("""
                         INSERT OR REPLACE INTO mart_institution_industry_stat
-                        (institution_id, industry_level, industry_name, industry_code, sample_events,
+                        (institution_id, industry_level, industry_name, tdx_code, sample_events,
                          avg_gain_30d, avg_gain_60d, avg_gain_90d, avg_gain_120d,
                          win_rate_30d, win_rate_60d, win_rate_90d, total_win_rate,
                          max_drawdown_30d, max_drawdown_60d, updated_at)
                         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                    """, (inst_id, level_name, r["industry_name"], r["industry_code"], r["cnt"],
+                    """, (inst_id, level_name, r["industry_name"], r["tdx_code"], r["cnt"],
                           r["avg30"], r["avg60"], r["avg90"], r["avg120"],
                           r["wr30"], r["wr60"], r["wr90"], r["wr_total"],
                           r["dd30"], r["dd60"], now))
@@ -1935,7 +1966,7 @@ def _step_build_industry_stat_sync(conn) -> int:
     except Exception:
         conn.rollback()
         raise
-    logger.info(f"[行业统计] 完成: {count} 条 (基于 dim_stock_sw_industry · 申万)")
+    logger.info(f"[行业统计] 完成: {count} 条 (基于 dim_stock_tdx_industry)")
     return count
 
 
@@ -2759,7 +2790,7 @@ RUNNERS = {
     "sync_financial": _step_sync_financial,
     "gen_events": _step_gen_events,
     "calc_returns": _step_calc_returns,
-    "sync_industry_sw": _step_sync_industry_sw,
+    "sync_industry": _step_sync_industry,
     "sync_surveys": _step_sync_surveys,
     "calc_financial_derived": _step_calc_financial_derived,
     "build_current_rel": _step_build_current_rel,
@@ -2787,11 +2818,11 @@ def _calibrate_data_completeness(conn, step_id, skipped, failed):
 
     判定规则（写死）：
     - build_profiles: calc_returns skipped/failed OR 收益覆盖率 < 50% → partial
-    - build_industry_stat: calc_returns 或 sync_industry_sw 缺失 OR 行业覆盖率 < 80% → partial
+    - build_industry_stat: calc_returns 或 sync_industry 缺失 OR 行业覆盖率 < 80% → partial
     - build_trends: 收益或行业覆盖任一不足 → partial
     """
     calc_returns_missing = _is_blocking_upstream_state(conn, "calc_returns")
-    sync_industry_missing = _is_blocking_upstream_state(conn, "sync_industry_sw")
+    sync_industry_missing = _is_blocking_upstream_state(conn, "sync_industry")
 
     # 查实际覆盖率
     returns_partial = calc_returns_missing
@@ -2923,7 +2954,8 @@ async def update_all():
             stopped = set()
 
             # 预检连通性 —— 仅 K 线源做 precheck（跨服务探测成本高、失败不可恢复）。
-            # 行业源（申万经 akshare）放弃 precheck：sync_industry_sw 内部 count==0 分支已能写入 blocked 兜底。
+            # 行业源放弃 precheck：tdxhub 单点探测易误报，
+            # sync_tdx_industry 内部 count==0 分支已能写入 blocked 兜底。
             conn_status = await check_connectivity()
             kline_available = conn_status.get("kline_source", False)
             if not kline_available:
@@ -3122,7 +3154,7 @@ async def reset_industry_derived(restart_smart: bool = True):
         "counts": counts,
         "missing_tables": missing_tables,
         "preserved_tables": [
-            "dim_stock_sw_industry",
+            "dim_stock_tdx_industry",
             "fact_institution_event",
             "inst_holdings",
             "market_kline_daily",
@@ -3231,7 +3263,7 @@ async def smart_update():
             """)
             conn.commit()
 
-            # 预检连通性 —— 仅 K 线源 precheck，行业源放弃 precheck（sync_industry_sw 自身兜底）
+            # 预检连通性 —— 仅 K 线源 precheck，行业源放弃 precheck（sync_industry 自身兜底）
             conn_status = await check_connectivity()
             kline_available = conn_status.get("kline_source", False)
 
@@ -3387,8 +3419,8 @@ async def run_single_step(step_id: str):
             selected = set(step_ids)
             kline_available = True
             # 仅 K线源做 precheck —— 多服试探成本低、失败不可恢复。
-            # 行业源(sync_industry_sw via akshare) 放弃 precheck：akshare 整体可用性已由 K 线探测覆盖，
-            # 且 sync_sw_industry 内部 count==0 分支已能写入 blocked 兜底。
+            # 行业源(sync_industry) 放弃 precheck：tdxhub 单点探测易误报，
+            # 且 sync_tdx_industry 内部 count==0 分支已能写入 blocked 兜底。
             conn_status = {}
             if "sync_market_data" in selected:
                 conn_status = await check_connectivity()
