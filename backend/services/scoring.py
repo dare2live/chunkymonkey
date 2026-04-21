@@ -1518,35 +1518,13 @@ def apply_turtle_execution_overlay(
     stage: float,
     forecast_effective: float,
 ) -> Tuple[float, float, Optional[str]]:
-    if not turtle_row:
-        return composite, 0.0, None
+    """海龟执行特征已迁出股票评分体系。
 
-    execution_score = _safe_float(turtle_row.get("turtle_execution_score_v1"))
-    if execution_score is None:
-        return composite, 0.0, None
-
-    state = str(turtle_row.get("turtle_setup_state") or "").strip()
-    preferred_system = str(turtle_row.get("preferred_system") or "").strip()
-    delta = 0.0
-    reason = None
-
-    if state in {"S1突破触发", "S2突破触发"}:
-        delta += min(max((execution_score - 60.0) * 0.12 + 2.0, 2.0), 6.0)
-        reason = f"海龟{preferred_system or '突破'}触发"
-    elif state in {"S1待突破", "S2待突破"} and execution_score >= 65:
-        delta += min((execution_score - 65.0) * 0.06 + 1.0, 3.0)
-        reason = f"海龟{preferred_system or '待突破'}接近入场"
-    elif state in {"10日退出触发", "20日退出触发"}:
-        delta -= min(max((55.0 - min(execution_score, 55.0)) * 0.10 + 2.5, 2.5), 8.0)
-        reason = f"海龟{state}"
-
-    if delta > 0 and stage < 45:
-        delta = min(delta, 2.0)
-    if delta > 0 and forecast_effective < 45:
-        delta = min(delta, 1.5)
-
-    adjusted = _clamp_score(composite + delta)
-    return adjusted, round(delta, 2), reason
+    Turtle 特征改作独立"选股模块"输出，不再叠加到 composite_priority_score。
+    本函数保留签名仅为存储兼容（mart_stock_trend.turtle_score_delta 列），
+    一律返回 0 delta、原 composite、None reason。
+    历史 turtle_setup_state 等原始字段仍由调用方写入 mart_stock_trend 供选股展示。"""
+    return composite, 0.0, None
 
 
 def _score_discovery(

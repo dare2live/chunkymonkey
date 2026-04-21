@@ -234,7 +234,7 @@ SOFT_DEPS = {
     "build_forecast_features": [],
     "build_turtle_features": ["build_forecast_features"],
     "calc_inst_scores": ["calc_returns"],
-    "calc_stock_scores": ["calc_returns", "calc_screening", "build_external_attention"],
+    "calc_stock_scores": ["calc_returns", "build_external_attention"],
 }
 
 _is_running = False

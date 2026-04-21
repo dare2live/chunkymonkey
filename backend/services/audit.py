@@ -421,6 +421,7 @@ def _external_attention_plan_reason(layer: Optional[dict]) -> Optional[str]:
     return None
 
 def _needs_stock_score_recalc(planned_steps: list[str]) -> bool:
+    # build_turtle_features 已迁出智能更新（不再作为评分项），不再触发股票评分重算
     return any(
         step in planned_steps
         for step in [
@@ -428,7 +429,6 @@ def _needs_stock_score_recalc(planned_steps: list[str]) -> bool:
             "build_trends",
             "build_stage_features",
             "build_forecast_features",
-            "build_turtle_features",
             "build_external_attention",
         ]
     )
@@ -1614,26 +1614,8 @@ def build_smart_plan(conn, force_all=False, *, audit: Optional[dict] = None, use
     else:
         plan["skip_reasons"]["build_forecast_features"] = "预测特征已是最新"
 
-    # 10a. 海龟执行特征层
-    try:
-        turtle_count_row = conn.execute("SELECT COUNT(*) FROM dim_stock_turtle_latest").fetchone()
-        turtle_model_row = conn.execute("SELECT model_id FROM dim_stock_turtle_latest LIMIT 1").fetchone()
-        turtle_count = turtle_count_row[0] if turtle_count_row else 0
-        turtle_model_id = turtle_model_row[0] if turtle_model_row else None
-    except Exception:
-        turtle_count = 0
-        turtle_model_id = None
-    if any(s in plan["steps"] for s in ["build_stage_features", "build_forecast_features"]):
-        plan["steps"].append("build_turtle_features")
-        plan["reason"].append("阶段或预测特征变更后重算海龟执行特征")
-    elif turtle_count == 0:
-        plan["steps"].append("build_turtle_features")
-        plan["reason"].append("无海龟执行特征中间层")
-    elif forecast_model_id and forecast_model_id != turtle_model_id:
-        plan["steps"].append("build_turtle_features")
-        plan["reason"].append("预测特征最新模型尚未回流海龟执行特征层")
-    else:
-        plan["skip_reasons"]["build_turtle_features"] = "海龟执行特征已是最新"
+    # 10a. 海龟执行特征层 —— 已迁出智能更新，转独立"选股模块"手动触发，不再随智能更新自动重算
+    plan["skip_reasons"]["build_turtle_features"] = "已迁出智能更新，请用工作台·选股扫描手动触发"
 
     # 10b. 外部关注快照
     attention_reason = _external_attention_plan_reason(audit["layers"].get("external_attention"))
@@ -1657,26 +1639,12 @@ def build_smart_plan(conn, force_all=False, *, audit: Optional[dict] = None, use
     # 12. 股票评分
     if _needs_stock_score_recalc(plan["steps"]):
         plan["steps"].append("calc_stock_scores")
-        plan["reason"].append("机构评分、趋势、阶段/预测/海龟特征或外部关注变更后重算股票评分")
+        plan["reason"].append("机构评分、趋势、阶段/预测特征或外部关注变更后重算股票评分")
     else:
         plan["skip_reasons"]["calc_stock_scores"] = "上游未变更，无需重算"
 
-    # 13. 选股筛选
-    if any(s in plan["steps"] for s in ["sync_market_data", "calc_financial_derived"]):
-        plan["steps"].append("calc_screening")
-        plan["reason"].append("行情或财务变更后重新筛选")
-    else:
-        try:
-            screen_row = conn.execute(
-                "SELECT screen_date FROM mart_stock_screening LIMIT 1"
-            ).fetchone()
-            if not screen_row:
-                plan["steps"].append("calc_screening")
-                plan["reason"].append("无选股结果")
-            else:
-                plan["skip_reasons"]["calc_screening"] = "行情和财务未变更"
-        except Exception:
-            plan["skip_reasons"]["calc_screening"] = "选股表不存在"
+    # 13. 选股筛选 —— 已迁出智能更新，转独立"选股模块"手动触发
+    plan["skip_reasons"]["calc_screening"] = "已迁出智能更新，请用工作台·选股扫描手动触发"
 
     # 14. 板块动量
     if any(s in plan["steps"] for s in ["sync_market_data", "sync_industry"]):
