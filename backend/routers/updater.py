@@ -178,6 +178,7 @@ STEPS = [
     {"id": "gen_events",            "name": "生成事件",        "group": "calc", "order": 5},
     {"id": "calc_returns",          "name": "计算收益",        "group": "calc", "order": 6},
     {"id": "sync_industry",         "name": "通达信行业",      "group": "data", "order": 7},
+    {"id": "sync_industry_sw",      "name": "申万行业",        "group": "data", "order": 7.1},
     {"id": "sync_surveys",          "name": "机构调研",        "group": "data", "order": 7.5},
     {"id": "calc_financial_derived","name": "计算财务指标",    "group": "calc", "order": 8},
     {"id": "build_current_rel",     "name": "构建当前关系",    "group": "mart", "order": 9},
@@ -204,6 +205,7 @@ HARD_DEPS = {
     "gen_events": ["match_inst"],
     "calc_returns": ["gen_events"],
     "sync_industry": ["match_inst"],
+    "sync_industry_sw": ["match_inst"],
     "sync_surveys": [],
     "calc_financial_derived": ["sync_financial"],
     "build_current_rel": ["gen_events"],
@@ -1824,6 +1826,70 @@ async def _step_sync_industry(conn) -> int:
     return count
 
 
+async def _step_sync_industry_sw(conn) -> int:
+    """申万行业同步 — 拉取 akshare.stock_industry_clf_hist_sw 并 upsert dim_stock_sw_industry。
+
+    与 sync_industry（TDX）独立运行：
+      - TDX 覆盖 L3 仅 51%（金融/信息产业等 L1 整体无 L3）
+      - 申万源 L3 100% 覆盖，作为后续 mart 派生层的主源
+      - Phase 1 双源并行；Phase 2 mart 切到 SW；Phase 3 退役 TDX
+    """
+    from services.sw_industry_client import sync_sw_industry
+
+    detail = {"status": "running", "rows_upserted": 0}
+
+    def _push(rec):
+        _update_step(
+            conn,
+            "sync_industry_sw",
+            error=json.dumps(detail, ensure_ascii=False),
+            records=int(rec or 0),
+        )
+
+    _raise_if_stop()
+
+    def _run_in_thread():
+        thread_conn = get_conn(timeout=120)
+        try:
+            return sync_sw_industry(thread_conn)
+        finally:
+            thread_conn.close()
+
+    sw_result = await asyncio.get_event_loop().run_in_executor(None, _run_in_thread)
+    count = int(sw_result.get("rows_upserted") or 0)
+    errors = sw_result.get("errors") or []
+
+    if count == 0:
+        detail = {
+            "status": "failed",
+            "rows_upserted": 0,
+            "fetched_at": sw_result.get("fetched_at"),
+            "errors": errors,
+            "reason": "申万行业源无返回",
+        }
+        _push(0)
+        logger.warning("[申万行业] 未获取到数据")
+        return 0
+
+    detail = {
+        "status": "success",
+        "rows_upserted": count,
+        "fetched_at": sw_result.get("fetched_at"),
+        "l1_count": sw_result.get("l1_count"),
+        "l2_count": sw_result.get("l2_count"),
+        "l3_count": sw_result.get("l3_count"),
+        "l3_coverage": sw_result.get("l3_coverage"),
+        "errors": errors,
+    }
+    _push(count)
+    logger.info(
+        f"[申万行业] 完成: {count} 只股票, "
+        f"L1={sw_result.get('l1_count')}/L2={sw_result.get('l2_count')}/L3={sw_result.get('l3_count')}, "
+        f"L3 覆盖={(sw_result.get('l3_coverage') or 0)*100:.1f}%"
+    )
+    return count
+
+
 NORTHBOUND_DISCLOSURE_LAST_DATE = "2024-08-16"
 
 
@@ -2791,6 +2857,7 @@ RUNNERS = {
     "gen_events": _step_gen_events,
     "calc_returns": _step_calc_returns,
     "sync_industry": _step_sync_industry,
+    "sync_industry_sw": _step_sync_industry_sw,
     "sync_surveys": _step_sync_surveys,
     "calc_financial_derived": _step_calc_financial_derived,
     "build_current_rel": _step_build_current_rel,
