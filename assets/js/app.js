@@ -1026,21 +1026,26 @@
       { key: 'composite', label: '综合优先' },
       { key: 'notice', label: '公告最近' },
     ];
-    // 从列表数据里实时提取 TDX L1 分布作为行业筛选胶囊
-    var tdxL1Counts = {};
+    // Phase 2C：行业胶囊从 TDX 13 类切到申万 31 个一级行业。
+    // s.tdx_l1 字段名保留（resolver 别名兼容），但值现在是申万 2 位 code（'34' 食品饮料 等）。
+    var swL1Counts = {};
     (stockListState.getData() || []).forEach(function (s) {
       var code = (s.tdx_l1 || '').trim();
-      if (code) tdxL1Counts[code] = (tdxL1Counts[code] || 0) + 1;
+      if (code) swL1Counts[code] = (swL1Counts[code] || 0) + 1;
     });
-    var tdxL1Names = {
-      T01: '能源', T02: '材料', T03: '日常消费', T04: '可选消费',
-      T05: '商贸', T06: '社会服务', T07: '装备制造', T08: '公用事业',
-      T09: '交通运输', T10: '金融', T11: '建筑地产', T12: '信息产业',
-      T13: '综合类'
+    var swL1Names = {
+      '11': '农林牧渔', '22': '基础化工', '23': '钢铁', '24': '有色金属',
+      '27': '电子', '28': '汽车', '33': '家用电器', '34': '食品饮料',
+      '35': '纺织服饰', '36': '轻工制造', '37': '医药生物', '41': '公用事业',
+      '42': '交通运输', '43': '房地产', '45': '商贸零售', '46': '社会服务',
+      '48': '银行', '49': '非银金融', '51': '综合', '61': '建筑材料',
+      '62': '建筑装饰', '63': '电力设备', '64': '机械设备', '65': '国防军工',
+      '71': '计算机', '72': '传媒', '73': '通信', '74': '煤炭',
+      '75': '石油石化', '76': '环保', '77': '美容护理'
     };
     var industries = [{ key: 'all', label: '全部' }].concat(
-      Object.keys(tdxL1Counts).sort().map(function (code) {
-        return { key: code, label: (tdxL1Names[code] || code) + ' ' + tdxL1Counts[code] };
+      Object.keys(swL1Counts).sort().map(function (code) {
+        return { key: code, label: (swL1Names[code] || code) + ' ' + swL1Counts[code] };
       })
     );
     function chip(group, key, label, active) {
@@ -1163,10 +1168,16 @@
     var emptyCols = 7;
     var colgroup = '<colgroup><col style="width:140px"><col style="width:160px"><col style="width:130px"><col style="width:100px"><col style="width:120px"><col style="width:80px"><col style="width:90px"></colgroup>';
     var head = '<tr><th>股票</th><th>当期信号</th><th>行业</th><th>综合评分</th><th>最近公告</th><th title="当前持仓机构总数 (其中可跟家数)">机构</th><th></th></tr>';
-    var TDX_L1_NAMES_TBL = {
-      T01: '能源', T02: '材料', T03: '日常消费', T04: '可选消费',
-      T05: '商贸', T06: '社会服务', T07: '装备制造', T08: '公用事业',
-      T09: '交通运输', T10: '金融', T11: '建筑地产', T12: '信息产业', T13: '综合类'
+    // Phase 2C：股票表行业列名映射换成申万 31 类（与 swL1Names 同源）。
+    var SW_L1_NAMES_TBL = {
+      '11': '农林牧渔', '22': '基础化工', '23': '钢铁', '24': '有色金属',
+      '27': '电子', '28': '汽车', '33': '家用电器', '34': '食品饮料',
+      '35': '纺织服饰', '36': '轻工制造', '37': '医药生物', '41': '公用事业',
+      '42': '交通运输', '43': '房地产', '45': '商贸零售', '46': '社会服务',
+      '48': '银行', '49': '非银金融', '51': '综合', '61': '建筑材料',
+      '62': '建筑装饰', '63': '电力设备', '64': '机械设备', '65': '国防军工',
+      '71': '计算机', '72': '传媒', '73': '通信', '74': '煤炭',
+      '75': '石油石化', '76': '环保', '77': '美容护理'
     };
     function signalV2Cell(s) {
       var ev = s && s._sig_v2;
@@ -1191,7 +1202,7 @@
         esc(ev.institution_name || ev.institution_id || '') + ' · ' + fmtDate(ev.notice_date) + '</div></div>';
     }
     function industryCell(s) {
-      var name = TDX_L1_NAMES_TBL[(s.tdx_l1 || '').trim()] || s.tdx_l2 || s.tdx_l1 || '—';
+      var name = SW_L1_NAMES_TBL[(s.tdx_l1 || '').trim()] || s.tdx_l2 || s.tdx_l1 || '—';
       var sub = (s.tdx_l2 || s.tdx_l3) ? ('<div class="muted" style="font-size:10px">' + esc(s.tdx_l3 || s.tdx_l2 || '') + '</div>') : '';
       return '<div style="line-height:1.4"><div style="font-size:12px">' + esc(name) + '</div>' + sub + '</div>';
     }
