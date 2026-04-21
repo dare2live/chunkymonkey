@@ -1269,7 +1269,7 @@ async def scoring_breakdown(card_type: str, object_id: str):
                        ff.industry_relative_group AS forecast_industry_relative_group,
                        t.turtle_execution_score, t.turtle_breakout_score, t.turtle_risk_score,
                        t.turtle_score_delta, t.turtle_setup_state, t.turtle_preferred_system, t.turtle_reason,
-                       m.tdx_l2, m.notice_age_days, m.price_entry, m.return_to_now,
+                       m.sw_l2 AS tdx_l2, m.notice_age_days, m.price_entry, m.return_to_now,
                        m.inst_ref_cost, m.inst_cost_method,
                        m.premium_pct, m.premium_bucket, m.follow_gate
                 FROM mart_stock_trend t
@@ -1317,7 +1317,7 @@ async def scoring_breakdown(card_type: str, object_id: str):
                     "leader": {"inst": s.get("leader_inst"), "score": s.get("leader_score"),
                                "source": "mart_institution_profile.quality_score", "weight": "30%"},
                     "industry_match": {"stock_industry": s.get("tdx_l2"),
-                                       "source": "mart_current_relationship.tdx_l2 vs leader best_industry",
+                                       "source": "mart_current_relationship.sw_l2 vs leader best_industry",
                                        "weight": "25%"},
                     "consensus": {"count": s.get("consensus_count"),
                                   "source": "mart_current_relationship 中 quality_score ≥ 75th 的机构数",

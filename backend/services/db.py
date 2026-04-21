@@ -987,12 +987,12 @@ def init_db():
                 notice_age_days   INTEGER,
                 disclosure_lag_days INTEGER,
                 current_held_days INTEGER,
-                tdx_l1            TEXT,
-                tdx_l2            TEXT,
-                tdx_l3            TEXT,
-                tdx_l1_name       TEXT,
-                tdx_l2_name       TEXT,
-                tdx_l3_name       TEXT,
+                sw_l1             TEXT,
+                sw_l2             TEXT,
+                sw_l3             TEXT,
+                sw_l1_name        TEXT,
+                sw_l2_name        TEXT,
+                sw_l3_name        TEXT,
                 has_return_data   INTEGER DEFAULT 0,
                 has_industry_data INTEGER DEFAULT 0,
                 updated_at        TEXT,
@@ -1008,6 +1008,18 @@ def init_db():
             "ON mart_current_relationship(stock_code)"
         )
 
+        # Phase 3B-2 迁移: mart_current_relationship 物理列 tdx_l* → sw_l*
+        mcr_cols = {r[1] for r in conn.execute("PRAGMA table_info(mart_current_relationship)").fetchall()}
+        for old, new in (
+            ("tdx_l1", "sw_l1"), ("tdx_l2", "sw_l2"), ("tdx_l3", "sw_l3"),
+            ("tdx_l1_name", "sw_l1_name"), ("tdx_l2_name", "sw_l2_name"), ("tdx_l3_name", "sw_l3_name"),
+        ):
+            if old in mcr_cols and new not in mcr_cols:
+                try:
+                    conn.execute(f"ALTER TABLE mart_current_relationship RENAME COLUMN {old} TO {new}")
+                except Exception:
+                    pass
+
         for col in [
             "report_season TEXT",
             "inst_ref_cost REAL",
@@ -1016,12 +1028,12 @@ def init_db():
             "premium_bucket TEXT",
             "follow_gate TEXT",
             "follow_gate_reason TEXT",
-            "tdx_l1 TEXT",
-            "tdx_l2 TEXT",
-            "tdx_l3 TEXT",
-            "tdx_l1_name TEXT",
-            "tdx_l2_name TEXT",
-            "tdx_l3_name TEXT",
+            "sw_l1 TEXT",
+            "sw_l2 TEXT",
+            "sw_l3 TEXT",
+            "sw_l1_name TEXT",
+            "sw_l2_name TEXT",
+            "sw_l3_name TEXT",
         ]:
             try:
                 conn.execute(f"ALTER TABLE mart_current_relationship ADD COLUMN {col}")

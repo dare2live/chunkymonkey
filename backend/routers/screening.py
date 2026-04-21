@@ -113,12 +113,12 @@ async def get_industry_overview(topn: int = Query(3, ge=1, le=10)):
         active_map = {}
         try:
             rows = conn.execute("""
-                SELECT tdx_l1 AS sector_name,
+                SELECT sw_l1 AS sector_name,
                        COUNT(DISTINCT institution_id) AS active_institution_count,
                        COUNT(DISTINCT stock_code) AS current_stock_count
                 FROM mart_current_relationship
-                WHERE tdx_l1 IS NOT NULL AND tdx_l1 != ''
-                GROUP BY tdx_l1
+                WHERE sw_l1 IS NOT NULL AND sw_l1 != ''
+                GROUP BY sw_l1
             """).fetchall()
             active_map = {row["sector_name"]: dict(row) for row in rows}
         except Exception:

@@ -112,7 +112,7 @@ def get_inst_current_holdings(conn, inst_id):
             "report_date": rd, "notice_date": h["notice_date"],
             "hold_amount": h["hold_amount"], "hold_market_cap": h["hold_market_cap"],
             "hold_ratio": h["hold_ratio"],
-            "tdx_l1": h["tdx_l1"], "tdx_l2": h["tdx_l2"], "tdx_l3": h["tdx_l3"],
+            "tdx_l1": h["sw_l1"], "tdx_l2": h["sw_l2"], "tdx_l3": h["sw_l3"],
             "event_type": h["event_type"], "change_pct": h["change_pct"],
             "report_season": h["report_season"],
             "inst_ref_cost": h["inst_ref_cost"],
@@ -357,7 +357,7 @@ def build_current_relationship(conn) -> int:
                 price_entry, return_to_now, path_state,
                 entry_report_date, entry_notice_date,
                 notice_age_days, disclosure_lag_days, current_held_days,
-                tdx_l1, tdx_l2, tdx_l3,
+                sw_l1, sw_l2, sw_l3,
                 has_return_data, has_industry_data, updated_at
             ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
         """, batch)

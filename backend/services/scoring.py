@@ -1069,12 +1069,12 @@ def _fill_top_industries(conn):
 
         # main_industry: 从 mart_current_relationship 按行业频次
         main_rows = conn.execute("""
-            SELECT tdx_l2, COUNT(*) as cnt
+            SELECT sw_l2, COUNT(*) as cnt
             FROM mart_current_relationship
-            WHERE institution_id = ? AND tdx_l2 IS NOT NULL AND tdx_l2 != ''
-            GROUP BY tdx_l2 ORDER BY cnt DESC LIMIT 3
+            WHERE institution_id = ? AND sw_l2 IS NOT NULL AND sw_l2 != ''
+            GROUP BY sw_l2 ORDER BY cnt DESC LIMIT 3
         """, (iid,)).fetchall()
-        main = [r["tdx_l2"] for r in main_rows]
+        main = [r["sw_l2"] for r in main_rows]
 
         # best_industry: 从 mart_institution_industry_stat 按表现排序
         best_rows = conn.execute("""
