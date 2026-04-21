@@ -1828,6 +1828,7 @@
     { step_id: 'build_external_attention', step_name: '外部关注快照', status: 'idle', desc: '同步千股千评与调研统计，更新外部关注快照' },
     { step_id: 'build_stage_features', step_name: '阶段特征构建', status: 'idle', desc: '汇总趋势、行业与财务上下文，生成阶段特征' },
     { step_id: 'build_forecast_features', step_name: '预测特征构建', status: 'idle', desc: '把最新阶段特征回流到预测特征层' },
+    { step_id: 'build_turtle_features', step_name: '海龟执行特征', status: 'idle', desc: '基于阶段特征构建海龟执行因子' },
     { step_id: 'calc_inst_scores', step_name: '机构评分', status: 'idle', desc: '多维度评分机构实力、胜率、稳定性' },
     { step_id: 'calc_stock_scores', step_name: '股票评分', status: 'idle', desc: '综合评分每只股票的行动价值' }
   ];
@@ -2541,13 +2542,14 @@
 
     var GROUP_MAP = {
       sync_raw: 'data', match_inst: 'data', sync_market_data: 'data', sync_northbound: 'data', sync_financial: 'data', sync_surveys: 'data', sync_industry: 'data',
+      build_turtle_features: 'mart',
       gen_events: 'calc', calc_returns: 'calc', calc_financial_derived: 'calc',
       build_current_rel: 'mart', build_profiles: 'mart', build_industry_stat: 'mart', build_trends: 'mart', calc_screening: 'mart', calc_sector_momentum: 'mart', build_external_attention: 'mart', build_stage_features: 'mart', build_forecast_features: 'mart', calc_inst_scores: 'mart', calc_stock_scores: 'mart'
     };
     var GROUP_DEF = {
       data: { name: '数据获取', verb: '重新同步', count: 7, badge: '①' },
       calc: { name: '事实计算', verb: '全量计算', count: 3, badge: '②' },
-      mart: { name: '集市构建', verb: '重构集市', count: 11, badge: '③' }
+      mart: { name: '集市构建', verb: '重构集市', count: 12, badge: '③' }
     };
     var grouped = { data: [], calc: [], mart: [] };
     steps.forEach(function (s) {

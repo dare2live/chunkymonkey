@@ -1423,6 +1423,29 @@ def build_smart_plan(conn, force_all=False, *, audit: Optional[dict] = None, use
     else:
         plan["skip_reasons"]["sync_industry"] = "行业数据已完整"
 
+    # 6a. 机构调研：D8 维度数据源，每日新增；最新公告日 > 1 天即重新拉取
+    try:
+        latest_survey_row = conn.execute(
+            "SELECT MAX(notice_date) FROM raw_institution_surveys"
+        ).fetchone()
+        latest_survey_str = (latest_survey_row[0] or "")[:10] if latest_survey_row else ""
+    except Exception:
+        latest_survey_str = ""
+    if not latest_survey_str:
+        plan["steps"].append("sync_surveys")
+        plan["reason"].append("无机构调研数据")
+    else:
+        try:
+            latest_survey_dt = datetime.strptime(latest_survey_str, "%Y-%m-%d")
+            if (datetime.now() - latest_survey_dt).days >= 1:
+                plan["steps"].append("sync_surveys")
+                plan["reason"].append(f"机构调研已 {(datetime.now() - latest_survey_dt).days} 天未更新（最新 {latest_survey_str}）")
+            else:
+                plan["skip_reasons"]["sync_surveys"] = f"机构调研已是最新（{latest_survey_str}）"
+        except (ValueError, TypeError):
+            plan["steps"].append("sync_surveys")
+            plan["reason"].append("无法解析机构调研日期")
+
     # 6b. 财务数据是否需要同步
     try:
         from services.financial_client import (
