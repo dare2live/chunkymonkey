@@ -160,6 +160,12 @@
         <div id="wb-backtest-container" style="padding:10px 0"></div>
       </details>
 
+      <!-- 选股扫描 widget（Phase 2：TDX 选股 + 海龟特征 解耦后手动触发） -->
+      <details class="workbench-section" id="wb-screening-section">
+        <summary><span class="workbench-section-title">选股扫描</span><span class="muted" style="font-size:11px;font-weight:400">TDX F1/F3/F5 + 海龟执行特征（手动触发）</span></summary>
+        <div id="wb-screening-container" style="padding:10px 0"></div>
+      </details>
+
       <div class="wb-group-header">系统设置</div>
 
       <details class="workbench-section">
@@ -398,6 +404,7 @@
        'assets/js/widgets/signal-params.js',
        'assets/js/widgets/cohort-card.js',
        'assets/js/widgets/backtest-panel.js',
+       'assets/js/widgets/screening-panel.js',
        'assets/js/stock-view.js',
        'assets/js/app.js'].forEach(function (src) {
         document.write('<script src="' + src + '?v=' + version + '"><\/script>');

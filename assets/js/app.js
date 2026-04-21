@@ -257,6 +257,15 @@
         }
       }, { once: true });
     }
+    // 选股扫描 widget — 展开时挂载（Phase 2）
+    var screenSection = document.getElementById('wb-screening-section');
+    if (screenSection) {
+      screenSection.addEventListener('toggle', function () {
+        if (screenSection.open && window.ScreeningPanelWidget) {
+          window.ScreeningPanelWidget.mount('wb-screening-container');
+        }
+      }, { once: true });
+    }
   }
 
   async function refreshWorkbenchHealthBar() {

@@ -112,6 +112,33 @@ def get_screening_summary(conn) -> dict:
     if row:
         screen_date = row["screen_date"]
 
+    turtle_count = 0
+    turtle_breakout_count = 0
+    turtle_pre_breakout_count = 0
+    turtle_exit_count = 0
+    turtle_snapshot_date = None
+    try:
+        turtle_count = conn.execute("SELECT COUNT(*) FROM dim_stock_turtle_latest").fetchone()[0]
+        state_rows = conn.execute(
+            "SELECT turtle_setup_state, COUNT(*) AS n FROM dim_stock_turtle_latest GROUP BY turtle_setup_state"
+        ).fetchall()
+        for r in state_rows:
+            state = (r["turtle_setup_state"] or "").strip()
+            n = int(r["n"] or 0)
+            if "突破触发" in state:
+                turtle_breakout_count += n
+            elif "待突破" in state:
+                turtle_pre_breakout_count += n
+            elif "退出触发" in state:
+                turtle_exit_count += n
+        row = conn.execute(
+            "SELECT MAX(snapshot_date) AS d FROM dim_stock_turtle_latest"
+        ).fetchone()
+        if row:
+            turtle_snapshot_date = row["d"]
+    except Exception:
+        pass
+
     return {
         "screen_date": screen_date,
         "total_stocks": int(total or 0),
@@ -119,4 +146,9 @@ def get_screening_summary(conn) -> dict:
         "f3_hits": int(f3 or 0),
         "f5_hits": int(f5 or 0),
         "any_hit": int(any_hit or 0),
+        "turtle_feature_count": int(turtle_count or 0),
+        "turtle_breakout_count": int(turtle_breakout_count or 0),
+        "turtle_pre_breakout_count": int(turtle_pre_breakout_count or 0),
+        "turtle_exit_count": int(turtle_exit_count or 0),
+        "turtle_snapshot_date": turtle_snapshot_date,
     }
