@@ -130,13 +130,42 @@ def load_tracked_institutions(conn, show: str = "active") -> list[dict]:
 
 
 def load_institution_profiles(conn) -> list[dict]:
+    # 退出/减持表现：事件公告后 N 日的"避损率"（gain<=0 占比）+ 平均后续涨跌。
+    # 避损率高 & 平均后续涨跌越负 = 机构卖点越准。样本口径与 buy_* 对称。
     rows = conn.execute(
         """
+        WITH exit_stats AS (
+            SELECT e.institution_id,
+                COUNT(*) AS exit_event_count,
+                AVG(e.gain_30d) AS exit_post_avg_gain_30d,
+                AVG(e.gain_60d) AS exit_post_avg_gain_60d,
+                AVG(e.gain_120d) AS exit_post_avg_gain_120d,
+                100.0 * SUM(CASE WHEN e.gain_30d <= 0 THEN 1 ELSE 0 END)
+                    / NULLIF(SUM(CASE WHEN e.gain_30d IS NOT NULL THEN 1 ELSE 0 END), 0)
+                    AS exit_avoid_loss_rate_30d,
+                100.0 * SUM(CASE WHEN e.gain_60d <= 0 THEN 1 ELSE 0 END)
+                    / NULLIF(SUM(CASE WHEN e.gain_60d IS NOT NULL THEN 1 ELSE 0 END), 0)
+                    AS exit_avoid_loss_rate_60d,
+                100.0 * SUM(CASE WHEN e.gain_120d <= 0 THEN 1 ELSE 0 END)
+                    / NULLIF(SUM(CASE WHEN e.gain_120d IS NOT NULL THEN 1 ELSE 0 END), 0)
+                    AS exit_avoid_loss_rate_120d
+            FROM fact_institution_event e
+            WHERE e.event_type IN ('decrease', 'exit')
+            GROUP BY e.institution_id
+        )
         SELECT p.*,
                i.display_name AS _live_display_name,
-               i.type AS _live_type
+               i.type AS _live_type,
+               x.exit_event_count,
+               x.exit_post_avg_gain_30d,
+               x.exit_post_avg_gain_60d,
+               x.exit_post_avg_gain_120d,
+               x.exit_avoid_loss_rate_30d,
+               x.exit_avoid_loss_rate_60d,
+               x.exit_avoid_loss_rate_120d
         FROM mart_institution_profile p
         JOIN inst_institutions i ON p.institution_id = i.id
+        LEFT JOIN exit_stats x ON x.institution_id = p.institution_id
         WHERE i.enabled = 1 AND i.blacklisted = 0 AND i.merged_into IS NULL
         ORDER BY p.win_rate_30d DESC NULLS LAST
         """
