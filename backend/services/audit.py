@@ -1437,9 +1437,11 @@ def build_smart_plan(conn, force_all=False, *, audit: Optional[dict] = None, use
     else:
         try:
             latest_survey_dt = datetime.strptime(latest_survey_str, "%Y-%m-%d")
-            if (datetime.now() - latest_survey_dt).days >= 1:
+            survey_lag = (datetime.now() - latest_survey_dt).days
+            # 调研公告通常隔 1-2 个工作日才到位，超过 2 天才视为陈旧
+            if survey_lag >= 2:
                 plan["steps"].append("sync_surveys")
-                plan["reason"].append(f"机构调研已 {(datetime.now() - latest_survey_dt).days} 天未更新（最新 {latest_survey_str}）")
+                plan["reason"].append(f"机构调研已 {survey_lag} 天未更新（最新 {latest_survey_str}）")
             else:
                 plan["skip_reasons"]["sync_surveys"] = f"机构调研已是最新（{latest_survey_str}）"
         except (ValueError, TypeError):
