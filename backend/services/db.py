@@ -256,86 +256,8 @@ def init_db():
                 PRIMARY KEY (stock_code, added_date)
             );
 
-            CREATE TABLE IF NOT EXISTS fact_setup_snapshot (
-                snapshot_date         TEXT NOT NULL,
-                stock_code            TEXT NOT NULL,
-                stock_name            TEXT,
-                setup_tag             TEXT NOT NULL,
-                setup_priority        INTEGER,
-                setup_reason          TEXT,
-                setup_confidence      TEXT,
-                setup_level           TEXT,
-                setup_inst_id         TEXT,
-                setup_inst_name       TEXT,
-                setup_event_type      TEXT,
-                setup_industry_name   TEXT,
-                snapshot_tdx_l1       TEXT,
-                snapshot_tdx_l2       TEXT,
-                snapshot_tdx_l3       TEXT,
-                snapshot_tdx_l1_name  TEXT,
-                snapshot_tdx_l2_name  TEXT,
-                snapshot_tdx_l3_name  TEXT,
-                action_score          REAL,
-                discovery_score       REAL,
-                company_quality_score REAL,
-                company_quality_score_source TEXT,
-                quality_feature_snapshot_date TEXT,
-                stage_score           REAL,
-                forecast_score        REAL,
-                forecast_score_effective REAL,
-                raw_composite_priority_score REAL,
-                composite_priority_score REAL,
-                composite_cap_score   REAL,
-                composite_cap_reason  TEXT,
-                stock_archetype       TEXT,
-                priority_pool         TEXT,
-                priority_pool_reason  TEXT,
-                score_highlights      TEXT,
-                score_risks           TEXT,
-                latest_report_date    TEXT,
-                latest_notice_date    TEXT,
-                report_age_days       INTEGER,
-                setup_score_raw       REAL,
-                setup_execution_gate  TEXT,
-                setup_execution_reason TEXT,
-                industry_skill_raw    REAL,
-                industry_skill_grade  INTEGER,
-                followability_grade   INTEGER,
-                premium_grade         INTEGER,
-                report_recency_grade  INTEGER,
-                reliability_grade     INTEGER,
-                crowding_bucket       TEXT,
-                crowding_yield_raw    REAL,
-                crowding_yield_grade  INTEGER,
-                crowding_stability_raw REAL,
-                crowding_stability_grade INTEGER,
-                crowding_fit_raw      REAL,
-                crowding_fit_grade    INTEGER,
-                crowding_fit_sample   INTEGER,
-                crowding_fit_source   TEXT,
-                entry_trade_date      TEXT,
-                entry_price           REAL,
-                current_trade_date    TEXT,
-                current_price         REAL,
-                gain_to_now           REAL,
-                gain_10d              REAL,
-                gain_30d              REAL,
-                gain_60d              REAL,
-                max_drawdown_10d      REAL,
-                max_drawdown_30d      REAL,
-                max_drawdown_60d      REAL,
-                matured_10d           INTEGER DEFAULT 0,
-                matured_30d           INTEGER DEFAULT 0,
-                matured_60d           INTEGER DEFAULT 0,
-                updated_at            TEXT,
-                PRIMARY KEY (snapshot_date, stock_code, setup_tag, setup_inst_id)
-            );
-            CREATE INDEX IF NOT EXISTS idx_setup_snapshot_date
-                ON fact_setup_snapshot(snapshot_date);
-            CREATE INDEX IF NOT EXISTS idx_setup_snapshot_tag
-                ON fact_setup_snapshot(setup_tag, snapshot_date);
-            CREATE INDEX IF NOT EXISTS idx_setup_snapshot_stock
-                ON fact_setup_snapshot(stock_code);
+            -- Phase 3B-3: fact_setup_snapshot 已退役 (setup_tracker 下线后无写入路径)
+            -- 表结构移除, migration 末尾 DROP TABLE 清理旧库残留
 
             -- ============================================================
             -- 集市层（派生，可重算）
@@ -693,87 +615,9 @@ def init_db():
             except Exception:
                 pass
 
-        for col in [
-            "stock_name TEXT",
-            "setup_priority INTEGER",
-            "setup_reason TEXT",
-            "setup_confidence TEXT",
-            "setup_level TEXT",
-            "setup_inst_name TEXT",
-            "setup_event_type TEXT",
-            "setup_industry_name TEXT",
-            "snapshot_tdx_l1 TEXT",
-            "snapshot_tdx_l2 TEXT",
-            "snapshot_tdx_l3 TEXT",
-            "snapshot_tdx_l1_name TEXT",
-            "snapshot_tdx_l2_name TEXT",
-            "snapshot_tdx_l3_name TEXT",
-            "action_score REAL",
-            "discovery_score REAL",
-            "company_quality_score REAL",
-            "company_quality_score_source TEXT",
-            "quality_feature_snapshot_date TEXT",
-            "stage_score REAL",
-            "forecast_score REAL",
-            "forecast_score_effective REAL",
-            "raw_composite_priority_score REAL",
-            "composite_priority_score REAL",
-            "composite_cap_score REAL",
-            "composite_cap_reason TEXT",
-            "stock_archetype TEXT",
-            "priority_pool TEXT",
-            "priority_pool_reason TEXT",
-            "score_highlights TEXT",
-            "score_risks TEXT",
-            "latest_report_date TEXT",
-            "latest_notice_date TEXT",
-            "report_age_days INTEGER",
-            "setup_score_raw REAL",
-            "setup_execution_gate TEXT",
-            "setup_execution_reason TEXT",
-            "industry_skill_raw REAL",
-            "industry_skill_grade INTEGER",
-            "followability_grade INTEGER",
-            "premium_grade INTEGER",
-            "report_recency_grade INTEGER",
-            "reliability_grade INTEGER",
-            "crowding_bucket TEXT",
-            "crowding_yield_raw REAL",
-            "crowding_yield_grade INTEGER",
-            "crowding_stability_raw REAL",
-            "crowding_stability_grade INTEGER",
-            "crowding_fit_raw REAL",
-            "crowding_fit_grade INTEGER",
-            "crowding_fit_sample INTEGER",
-            "crowding_fit_source TEXT",
-            "entry_trade_date TEXT",
-            "entry_price REAL",
-            "current_trade_date TEXT",
-            "current_price REAL",
-            "gain_to_now REAL",
-            "gain_10d REAL",
-            "gain_30d REAL",
-            "gain_60d REAL",
-            "max_drawdown_10d REAL",
-            "max_drawdown_30d REAL",
-            "max_drawdown_60d REAL",
-            "matured_10d INTEGER DEFAULT 0",
-            "matured_30d INTEGER DEFAULT 0",
-            "matured_60d INTEGER DEFAULT 0",
-        ]:
-            try:
-                conn.execute(f"ALTER TABLE fact_setup_snapshot ADD COLUMN {col}")
-            except Exception:
-                pass
-
-        # TDX 行业索引：必须在 ALTER TABLE 补齐列之后才能建
-        try:
-            conn.execute(
-                "CREATE INDEX IF NOT EXISTS idx_setup_snapshot_tdx1_date "
-                "ON fact_setup_snapshot(snapshot_tdx_l1, snapshot_date)"
-            )
-        except Exception:
-            pass
+        # Phase 3B-3: fact_setup_snapshot 彻底退役
+        # (原先 ALTER ADD COLUMN 列表 + tdx 索引 + sw_level* DROP COLUMN 迁移
+        #  整体移除；DROP TABLE 见本 init 末尾)
 
         # ─────────────────────────────────────────────────────────────
         # TDX 迁移: 退役申万 SW 列与 dim_stock_industry 表
@@ -781,15 +625,12 @@ def init_db():
         #  老库残留列通过 DROP COLUMN 清理)
         # 注意: 必须先 DROP 相关索引, 否则 DROP COLUMN 会因索引依赖失败
         # ─────────────────────────────────────────────────────────────
-        for idx in ("idx_setup_snapshot_sw1_date", "idx_dsi_l1", "idx_dsi_l2"):
+        for idx in ("idx_dsi_l1", "idx_dsi_l2"):
             try:
                 conn.execute(f"DROP INDEX IF EXISTS {idx}")
             except Exception:
                 pass
         sw_drop_plan = [
-            ("fact_setup_snapshot", "snapshot_sw_level1"),
-            ("fact_setup_snapshot", "snapshot_sw_level2"),
-            ("fact_setup_snapshot", "snapshot_sw_level3"),
             ("mart_current_relationship", "sw_level1"),
             ("mart_current_relationship", "sw_level2"),
             ("mart_current_relationship", "sw_level3"),
@@ -856,6 +697,21 @@ def init_db():
                 pass
         try:
             conn.execute("DROP TABLE IF EXISTS dim_stock_tdx_industry")
+        except Exception:
+            pass
+
+        # Phase 3B-3: DROP 退役表 fact_setup_snapshot + 索引
+        # setup_tracker 下线后已无写入路径, snapshot_tdx_l* 列名亦与 Phase 3 不符。
+        for idx in (
+            "idx_setup_snapshot_date", "idx_setup_snapshot_tag", "idx_setup_snapshot_stock",
+            "idx_setup_snapshot_tdx1_date", "idx_setup_snapshot_sw1_date",
+        ):
+            try:
+                conn.execute(f"DROP INDEX IF EXISTS {idx}")
+            except Exception:
+                pass
+        try:
+            conn.execute("DROP TABLE IF EXISTS fact_setup_snapshot")
         except Exception:
             pass
 

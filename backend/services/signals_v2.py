@@ -1001,7 +1001,7 @@ def build_today_signals(
     """
     生成"今日信号"列表：最近 freshness_days 天内新公告的 buy 事件，每个事件跑 recommend。
 
-    这是 legacy fact_setup_snapshot / mart_stock_trend 的替代方案。
+    这是 legacy mart_stock_trend 的替代方案。
     """
     cfg = config or load_config(conn)
     fresh_days = freshness_days or cfg.signal_freshness_days

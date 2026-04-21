@@ -15,7 +15,6 @@ client = TestClient(app)
 
 
 INDUSTRY_RESET_TABLES = [
-    "fact_setup_snapshot",
     "mart_current_relationship",
     "mart_institution_profile",
     "mart_institution_industry_stat",

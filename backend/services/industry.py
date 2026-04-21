@@ -1,15 +1,17 @@
 """
-industry.py — 行业解析单点实现 (Phase 2B: 申万官方三级分类)
+industry.py — 行业解析单点实现 (申万官方三级分类)
 
 所有需要行业信息的地方统一通过本模块访问。
-当前数据源: dim_stock_sw_industry (TDX 已于 Phase 2 切换到申万,
+当前数据源: dim_stock_sw_industry (Phase 2 从 TDX 切换到申万,
 覆盖率从 51% 提升到 100% L3)。
 
-口径切换策略：
-  - 物理列改为 sw_l1/sw_l2/sw_l3 (sw_industry_client 落库的字段名)
-  - SQL 输出别名仍为 tdx_l1/tdx_l2/tdx_l3 (下游 dict key / SQL 列引用零修改)
-  - industry_level_alias() 返回 'tdx_l{n}' 作为逻辑别名 (历史兼容)
-  - 待 Phase 3 全面退役 TDX 后，alias 可一次性 rename 为 sw_l{n}
+Phase 3 系列清理后的口径:
+  - 物理列与源表一致: sw_l1/sw_l2/sw_l3 (sw_industry_client 落库)
+  - 派生表 (mart_current_relationship / dim_stock_industry_context_latest
+    / fact_stock_industry_context) 物理列同步 sw_l*
+  - resolver dict key 仍保留 tdx_l{n} 作为 API 契约兼容
+    (Phase 3C 美容时可再迁移)
+  - fact_setup_snapshot 已 Phase 3B-3 退役
 
 用法约定:
 - 物化表构建 → load_industry_map() 批量装载
@@ -57,13 +59,10 @@ def _table_columns(conn, table_name: str) -> set[str]:
 def industry_level_db_column(level: int, *, snapshot: bool = False) -> str:
     """行业层级在物理表中的实际列名。
 
-    snapshot=True  → fact_setup_snapshot 上的 `snapshot_tdx_l{level}` 列
-                     (历史快照保留 tdx_ 前缀,数据已固化)
-    snapshot=False → dim_stock_sw_industry 上的 `sw_l{level}` 列 (申万官方源)
+    snapshot 分支已于 Phase 3B-3 随 fact_setup_snapshot 一起退役；
+    仅保留参数签名兼容调用方（现统一返回 sw_l{level}）。
     """
     _validate_industry_level(level)
-    if snapshot:
-        return f"snapshot_tdx_l{level}"
     return f"sw_l{level}"
 
 
@@ -84,8 +83,8 @@ def industry_name_alias(level: int) -> str:
     return f"tdx_l{_validate_industry_level(level)}_name"
 
 
-def industry_level_expr(level: int, *, alias: str = "industry_dim", snapshot: bool = False) -> str:
-    return f"{alias}.{industry_level_db_column(level, snapshot=snapshot)}"
+def industry_level_expr(level: int, *, alias: str = "industry_dim") -> str:
+    return f"{alias}.{industry_level_db_column(level)}"
 
 
 def industry_level_select(
@@ -93,16 +92,15 @@ def industry_level_select(
     *,
     alias: str = "industry_dim",
     result_alias: Optional[str] = None,
-    snapshot: bool = False,
 ) -> str:
-    expr = industry_level_expr(level, alias=alias, snapshot=snapshot)
+    expr = industry_level_expr(level, alias=alias)
     return f"{expr} AS {result_alias}" if result_alias else expr
 
 
 def industry_level_nonempty_condition(
-    level: int, *, alias: str = "industry_dim", snapshot: bool = False
+    level: int, *, alias: str = "industry_dim"
 ) -> str:
-    expr = industry_level_expr(level, alias=alias, snapshot=snapshot)
+    expr = industry_level_expr(level, alias=alias)
     return f"{expr} IS NOT NULL AND {expr} != ''"
 
 

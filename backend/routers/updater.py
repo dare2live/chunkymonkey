@@ -310,7 +310,6 @@ _DERIVED_RESET_TABLES = [
 
 
 _INDUSTRY_RESET_TABLES = [
-    ("setup_snapshots", "fact_setup_snapshot"),
     ("current_rel", "mart_current_relationship"),
     ("profiles", "mart_institution_profile"),
     ("industry_stat", "mart_institution_industry_stat"),

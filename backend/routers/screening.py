@@ -176,58 +176,8 @@ async def get_industry_overview(topn: int = Query(3, ge=1, le=10)):
         except Exception:
             candidate_map = {}
 
-        snapshot_feedback_map = {}
-        try:
-            rows = conn.execute("""
-                SELECT snapshot_tdx_l1 AS sector_name,
-                       COUNT(*) AS snapshot_total_count,
-                       COUNT(DISTINCT snapshot_date) AS snapshot_date_count,
-                       MIN(snapshot_date) AS snapshot_first_date,
-                       MAX(snapshot_date) AS snapshot_last_date,
-                       SUM(CASE WHEN priority_pool IS NOT NULL AND priority_pool != '' THEN 1 ELSE 0 END) AS snapshot_scored_count,
-                       COUNT(DISTINCT CASE WHEN priority_pool IS NOT NULL AND priority_pool != '' THEN snapshot_date END) AS snapshot_scored_date_count,
-                       SUM(CASE WHEN matured_10d = 1 AND gain_10d IS NOT NULL THEN 1 ELSE 0 END) AS snapshot_feedback_10d_count,
-                       AVG(CASE WHEN matured_10d = 1 THEN gain_10d END) AS snapshot_avg_gain_10d,
-                       AVG(CASE WHEN matured_10d = 1 AND gain_10d > 0 THEN 1.0
-                                WHEN matured_10d = 1 AND gain_10d IS NOT NULL THEN 0.0
-                                ELSE NULL END) * 100 AS snapshot_win_rate_10d,
-                       SUM(CASE WHEN matured_30d = 1 AND gain_30d IS NOT NULL THEN 1 ELSE 0 END) AS snapshot_feedback_30d_count,
-                       AVG(CASE WHEN matured_30d = 1 THEN gain_30d END) AS snapshot_avg_gain_30d,
-                       AVG(CASE WHEN matured_30d = 1 AND gain_30d > 0 THEN 1.0
-                                WHEN matured_30d = 1 AND gain_30d IS NOT NULL THEN 0.0
-                                ELSE NULL END) * 100 AS snapshot_win_rate_30d,
-                       SUM(CASE WHEN matured_60d = 1 AND gain_60d IS NOT NULL THEN 1 ELSE 0 END) AS snapshot_feedback_60d_count,
-                       AVG(CASE WHEN matured_60d = 1 THEN gain_60d END) AS snapshot_avg_gain_60d,
-                       AVG(CASE WHEN matured_60d = 1 AND gain_60d > 0 THEN 1.0
-                                WHEN matured_60d = 1 AND gain_60d IS NOT NULL THEN 0.0
-                                ELSE NULL END) * 100 AS snapshot_win_rate_60d,
-                       SUM(CASE WHEN priority_pool = 'A池' AND matured_10d = 1 AND gain_10d IS NOT NULL THEN 1 ELSE 0 END) AS snapshot_a_feedback_10d_count,
-                       AVG(CASE WHEN priority_pool = 'A池' AND matured_10d = 1 THEN gain_10d END) AS snapshot_a_avg_gain_10d,
-                       AVG(CASE WHEN priority_pool = 'A池' AND matured_10d = 1 AND gain_10d > 0 THEN 1.0
-                                WHEN priority_pool = 'A池' AND matured_10d = 1 AND gain_10d IS NOT NULL THEN 0.0
-                                ELSE NULL END) * 100 AS snapshot_a_win_rate_10d,
-                       SUM(CASE WHEN priority_pool IN ('A池', 'B池') AND matured_30d = 1 AND gain_30d IS NOT NULL THEN 1 ELSE 0 END) AS snapshot_ab_feedback_30d_count,
-                       AVG(CASE WHEN priority_pool IN ('A池', 'B池') AND matured_30d = 1 THEN gain_30d END) AS snapshot_ab_avg_gain_30d,
-                       AVG(CASE WHEN priority_pool IN ('A池', 'B池') AND matured_30d = 1 AND gain_30d > 0 THEN 1.0
-                                WHEN priority_pool IN ('A池', 'B池') AND matured_30d = 1 AND gain_30d IS NOT NULL THEN 0.0
-                                ELSE NULL END) * 100 AS snapshot_ab_win_rate_30d,
-                       SUM(CASE WHEN priority_pool = 'A池' AND matured_30d = 1 AND gain_30d IS NOT NULL THEN 1 ELSE 0 END) AS snapshot_a_feedback_30d_count,
-                       AVG(CASE WHEN priority_pool = 'A池' AND matured_30d = 1 THEN gain_30d END) AS snapshot_a_avg_gain_30d,
-                       AVG(CASE WHEN priority_pool = 'A池' AND matured_30d = 1 AND gain_30d > 0 THEN 1.0
-                                WHEN priority_pool = 'A池' AND matured_30d = 1 AND gain_30d IS NOT NULL THEN 0.0
-                                ELSE NULL END) * 100 AS snapshot_a_win_rate_30d,
-                       SUM(CASE WHEN priority_pool = 'A池' AND matured_60d = 1 AND gain_60d IS NOT NULL THEN 1 ELSE 0 END) AS snapshot_a_feedback_60d_count,
-                       AVG(CASE WHEN priority_pool = 'A池' AND matured_60d = 1 THEN gain_60d END) AS snapshot_a_avg_gain_60d,
-                       AVG(CASE WHEN priority_pool = 'A池' AND matured_60d = 1 AND gain_60d > 0 THEN 1.0
-                                WHEN priority_pool = 'A池' AND matured_60d = 1 AND gain_60d IS NOT NULL THEN 0.0
-                                ELSE NULL END) * 100 AS snapshot_a_win_rate_60d
-                FROM fact_setup_snapshot
-                WHERE snapshot_tdx_l1 IS NOT NULL AND snapshot_tdx_l1 != ''
-                GROUP BY snapshot_tdx_l1
-            """).fetchall()
-            snapshot_feedback_map = {row["sector_name"]: dict(row) for row in rows}
-        except Exception:
-            snapshot_feedback_map = {}
+        # Phase 3B-3: fact_setup_snapshot 已退役（setup_tracker 下线后无写入路径）
+        # 原 snapshot_feedback_map 所有字段已从 /industry-overview 响应中移除
 
         context_map = {}
         try:
@@ -321,7 +271,6 @@ async def get_industry_overview(topn: int = Query(3, ge=1, le=10)):
 
         active_map = _to_name_keyed(active_map)
         candidate_map = _to_name_keyed(candidate_map)
-        snapshot_feedback_map = _to_name_keyed(snapshot_feedback_map)
         context_map = _to_name_keyed(context_map)
         recent_event_map = _to_name_keyed(recent_event_map)
         top_stock_map = _to_name_keyed(top_stock_map)
@@ -330,7 +279,6 @@ async def get_industry_overview(topn: int = Query(3, ge=1, le=10)):
             set(sector_map.keys())
             | set(active_map.keys())
             | set(candidate_map.keys())
-            | set(snapshot_feedback_map.keys())
             | set(context_map.keys())
             | set(recent_event_map.keys())
         )
@@ -342,7 +290,6 @@ async def get_industry_overview(topn: int = Query(3, ge=1, le=10)):
             sector = sector_map.get(sector_name) or {}
             active = active_map.get(sector_name) or {}
             candidate = candidate_map.get(sector_name) or {}
-            snapshot_feedback = snapshot_feedback_map.get(sector_name) or {}
             context = context_map.get(sector_name) or {}
             recent = recent_event_map.get(sector_name) or {}
 
@@ -376,33 +323,6 @@ async def get_industry_overview(topn: int = Query(3, ge=1, le=10)):
                 "feedback_20d_count": candidate.get("feedback_20d_count", 0),
                 "avg_price_20d_pct": candidate.get("avg_price_20d_pct"),
                 "win_rate_20d": candidate.get("win_rate_20d"),
-                "snapshot_total_count": snapshot_feedback.get("snapshot_total_count", 0),
-                "snapshot_date_count": snapshot_feedback.get("snapshot_date_count", 0),
-                "snapshot_first_date": snapshot_feedback.get("snapshot_first_date"),
-                "snapshot_last_date": snapshot_feedback.get("snapshot_last_date"),
-                "snapshot_scored_count": snapshot_feedback.get("snapshot_scored_count", 0),
-                "snapshot_scored_date_count": snapshot_feedback.get("snapshot_scored_date_count", 0),
-                "snapshot_feedback_10d_count": snapshot_feedback.get("snapshot_feedback_10d_count", 0),
-                "snapshot_avg_gain_10d": snapshot_feedback.get("snapshot_avg_gain_10d"),
-                "snapshot_win_rate_10d": snapshot_feedback.get("snapshot_win_rate_10d"),
-                "snapshot_feedback_30d_count": snapshot_feedback.get("snapshot_feedback_30d_count", 0),
-                "snapshot_avg_gain_30d": snapshot_feedback.get("snapshot_avg_gain_30d"),
-                "snapshot_win_rate_30d": snapshot_feedback.get("snapshot_win_rate_30d"),
-                "snapshot_feedback_60d_count": snapshot_feedback.get("snapshot_feedback_60d_count", 0),
-                "snapshot_avg_gain_60d": snapshot_feedback.get("snapshot_avg_gain_60d"),
-                "snapshot_win_rate_60d": snapshot_feedback.get("snapshot_win_rate_60d"),
-                "snapshot_a_feedback_10d_count": snapshot_feedback.get("snapshot_a_feedback_10d_count", 0),
-                "snapshot_a_avg_gain_10d": snapshot_feedback.get("snapshot_a_avg_gain_10d"),
-                "snapshot_a_win_rate_10d": snapshot_feedback.get("snapshot_a_win_rate_10d"),
-                "snapshot_ab_feedback_30d_count": snapshot_feedback.get("snapshot_ab_feedback_30d_count", 0),
-                "snapshot_ab_avg_gain_30d": snapshot_feedback.get("snapshot_ab_avg_gain_30d"),
-                "snapshot_ab_win_rate_30d": snapshot_feedback.get("snapshot_ab_win_rate_30d"),
-                "snapshot_a_feedback_30d_count": snapshot_feedback.get("snapshot_a_feedback_30d_count", 0),
-                "snapshot_a_avg_gain_30d": snapshot_feedback.get("snapshot_a_avg_gain_30d"),
-                "snapshot_a_win_rate_30d": snapshot_feedback.get("snapshot_a_win_rate_30d"),
-                "snapshot_a_feedback_60d_count": snapshot_feedback.get("snapshot_a_feedback_60d_count", 0),
-                "snapshot_a_avg_gain_60d": snapshot_feedback.get("snapshot_a_avg_gain_60d"),
-                "snapshot_a_win_rate_60d": snapshot_feedback.get("snapshot_a_win_rate_60d"),
                 "setup_candidate_count": candidate.get("setup_candidate_count", 0),
                 "a_pool_count": candidate.get("a_pool_count", 0),
                 "b_pool_count": candidate.get("b_pool_count", 0),
@@ -461,10 +381,6 @@ async def get_industry_overview(topn: int = Query(3, ge=1, le=10)):
             "dual_confirm_total": sum(item.get("dual_confirm_stock_count") or 0 for item in data),
             "positive_trend_count": sum(1 for item in data if item.get("trend_state") in ("bullish", "recovering")),
             "feedback_ready_total": sum(item.get("feedback_20d_count") or 0 for item in data),
-            "snapshot_feedback_ready_10d_total": sum(item.get("snapshot_feedback_10d_count") or 0 for item in data),
-            "snapshot_feedback_ready_total": sum(item.get("snapshot_feedback_30d_count") or 0 for item in data),
-            "snapshot_feedback_ready_60d_total": sum(item.get("snapshot_feedback_60d_count") or 0 for item in data),
-            "snapshot_feedback_sector_count": sum(1 for item in data if (item.get("snapshot_feedback_30d_count") or 0) > 0),
         }
         return {"ok": True, "count": len(data), "summary": summary, "data": data}
     finally:
