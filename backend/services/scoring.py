@@ -512,7 +512,7 @@ def _load_crowding_fit_lookup(conn) -> dict:
             buy_events AS (
                 SELECT e.stock_code, e.report_date, e.event_type, e.premium_pct,
                        e.gain_30d, e.max_drawdown_30d, e.institution_id,
-                       industry_dim.sw_l3 AS tdx_l3
+                       industry_dim.sw_l3
                 FROM fact_institution_event e
                 {industry_join}
                 WHERE e.event_type IN ('new_entry', 'increase') AND e.gain_30d IS NOT NULL
@@ -522,7 +522,7 @@ def _load_crowding_fit_lookup(conn) -> dict:
                 FROM buy_events b
                 JOIN perf p
                   ON p.institution_id = b.institution_id
-                 AND p.industry_name = b.tdx_l3
+                 AND p.industry_name = b.sw_l3
             ),
             crowd AS (
                 SELECT stock_code, report_date, COUNT(*) AS signal_count
@@ -736,9 +736,9 @@ def _evaluate_setup_candidate(holder: dict, profile: dict, stock_industry: dict,
     follow_grade = _followability_grade(_safe_float(profile.get("followability_score")), follow_gate)
 
     for level, industry_name in (
-        ("level3", stock_industry.get("tdx_l3")),
-        ("level2", stock_industry.get("tdx_l2")),
-        ("level1", stock_industry.get("tdx_l1")),
+        ("level3", stock_industry.get("sw_l3")),
+        ("level2", stock_industry.get("sw_l2")),
+        ("level1", stock_industry.get("sw_l1")),
     ):
         if not industry_name:
             continue
@@ -1544,12 +1544,11 @@ def _score_discovery(
 
     返回 (discovery_score, discovery_skill, discovery_fresh, discovery_strength)。
     """
-    stock_sw1 = stock_ind.get("tdx_l1")
-    stock_sw2 = stock_ind.get("tdx_l2")
+    stock_sw1 = stock_ind.get("sw_l1")
+    stock_sw2 = stock_ind.get("sw_l2")
     hold_ratio_q40, hold_ratio_q60, hold_ratio_q80 = hold_ratio_quantiles
     hold_cap_q40, hold_cap_q60, hold_cap_q80 = hold_cap_quantiles
 
-    # --- 机构行业能力 ---
     industry_profile = None
     if leader_inst and stock_sw2:
         industry_profile = industry_stats.get((leader_inst, "level2", stock_sw2))
@@ -1833,7 +1832,6 @@ def calculate_stock_scores(conn) -> int:
 
     crowding_lookup = _load_crowding_fit_lookup(conn)
 
-    # Phase 1: 预加载机构最佳行业 — 改为 tdx_l2，按表现排序（非样本数）
     inst_best_industry = {}
     for row in conn.execute("""
         SELECT institution_id, industry_name,
@@ -1846,7 +1844,6 @@ def calculate_stock_scores(conn) -> int:
     """).fetchall():
         if row["rn"] == 1:
             inst_best_industry[row["institution_id"]] = row["industry_name"]
-    # 如果 level2 数据不足，回退到 level1
     if not inst_best_industry:
         for row in conn.execute("""
             SELECT institution_id, industry_name,
@@ -1856,18 +1853,15 @@ def calculate_stock_scores(conn) -> int:
         """).fetchall():
             if row["rn"] == 1:
                 inst_best_industry[row["institution_id"]] = row["industry_name"]
-        logger.info("[评分] tdx_l2 数据不足，回退到 tdx_l1 行业匹配")
 
-    # Phase 1: 预加载股票行业 — 改为 tdx_l2 主导
     from services.industry import load_industry_map
     _ind_map = load_industry_map(conn)
     stock_industry = {}
     stock_industry_name = {}
     for code, ind in _ind_map.items():
         stock_industry[code] = ind
-        stock_industry_name[code] = ind.get("tdx_l2") or ind.get("tdx_l1", "")
+        stock_industry_name[code] = ind.get("sw_l2") or ind.get("sw_l1", "")
 
-    # 财务快照：v1 质量分使用最新财务快照 + 行业相对分位
     financial_by_stock = {}
     fin_groups = {("all", "all"): []}
     fin_pct_map = {}
@@ -1876,7 +1870,7 @@ def calculate_stock_scores(conn) -> int:
         SELECT f.stock_code, f.latest_report_date, f.roe, f.debt_ratio, f.current_ratio,
                f.gross_margin, f.ocf_to_profit, f.contract_to_revenue,
                f.holder_count, f.holder_count_change_pct, f.float_shares, f.total_shares,
-               i.sw_l1 AS tdx_l1, i.sw_l2 AS tdx_l2
+               i.sw_l1, i.sw_l2
         FROM dim_financial_latest f
         LEFT JOIN dim_stock_sw_industry i ON i.stock_code = f.stock_code
     """).fetchall()
@@ -1884,10 +1878,10 @@ def calculate_stock_scores(conn) -> int:
         d = dict(row)
         financial_by_stock[d["stock_code"]] = d
         fin_groups[("all", "all")].append(d)
-        if d.get("tdx_l2"):
-            fin_groups.setdefault(("l2", d["tdx_l2"]), []).append(d)
-        if d.get("tdx_l1"):
-            fin_groups.setdefault(("l1", d["tdx_l1"]), []).append(d)
+        if d.get("sw_l2"):
+            fin_groups.setdefault(("l2", d["sw_l2"]), []).append(d)
+        if d.get("sw_l1"):
+            fin_groups.setdefault(("l1", d["sw_l1"]), []).append(d)
 
     fin_metrics = {
         "roe": False,
@@ -1908,13 +1902,13 @@ def calculate_stock_scores(conn) -> int:
                 if rank is not None:
                     fin_pct_map[(level, group_name, metric, r["stock_code"])] = rank
 
-    def _fin_rank(stock_code: str, metric: str, tdx_l2: Optional[str], tdx_l1: Optional[str]) -> Optional[float]:
-        if tdx_l2 and fin_group_sizes.get(("l2", tdx_l2), 0) >= 15:
-            rank = fin_pct_map.get(("l2", tdx_l2, metric, stock_code))
+    def _fin_rank(stock_code: str, metric: str, sw_l2: Optional[str], sw_l1: Optional[str]) -> Optional[float]:
+        if sw_l2 and fin_group_sizes.get(("l2", sw_l2), 0) >= 15:
+            rank = fin_pct_map.get(("l2", sw_l2, metric, stock_code))
             if rank is not None:
                 return rank
-        if tdx_l1 and fin_group_sizes.get(("l1", tdx_l1), 0) >= 20:
-            rank = fin_pct_map.get(("l1", tdx_l1, metric, stock_code))
+        if sw_l1 and fin_group_sizes.get(("l1", sw_l1), 0) >= 20:
+            rank = fin_pct_map.get(("l1", sw_l1, metric, stock_code))
             if rank is not None:
                 return rank
         return fin_pct_map.get(("all", "all", metric, stock_code))
@@ -1948,7 +1942,7 @@ def calculate_stock_scores(conn) -> int:
                    f.net_margin_ak, f.current_ratio_ak, f.quick_ratio_ak, f.debt_ratio_ak,
                    f.asset_turnover_ak, f.inventory_turnover_ak, f.receivables_turnover_ak,
                    f.revenue_growth_yoy_ak, f.net_profit_growth_yoy_ak,
-                   i.sw_l1 AS tdx_l1, i.sw_l2 AS tdx_l2
+                   i.sw_l1, i.sw_l2
             FROM dim_financial_indicator_latest f
             LEFT JOIN dim_stock_sw_industry i ON i.stock_code = f.stock_code
         """).fetchall()
@@ -1956,10 +1950,10 @@ def calculate_stock_scores(conn) -> int:
             d = dict(row)
             indicator_by_stock[d["stock_code"]] = d
             indicator_groups[("all", "all")].append(d)
-            if d.get("tdx_l2"):
-                indicator_groups.setdefault(("l2", d["tdx_l2"]), []).append(d)
-            if d.get("tdx_l1"):
-                indicator_groups.setdefault(("l1", d["tdx_l1"]), []).append(d)
+            if d.get("sw_l2"):
+                indicator_groups.setdefault(("l2", d["sw_l2"]), []).append(d)
+            if d.get("sw_l1"):
+                indicator_groups.setdefault(("l1", d["sw_l1"]), []).append(d)
         indicator_metrics = {
             "roa_ak": False,
             "asset_turnover_ak": False,
@@ -1984,13 +1978,13 @@ def calculate_stock_scores(conn) -> int:
         indicator_pct_map = {}
         indicator_group_sizes = {}
 
-    def _indicator_rank(stock_code: str, metric: str, tdx_l2: Optional[str], tdx_l1: Optional[str]) -> Optional[float]:
-        if tdx_l2 and indicator_group_sizes.get(("l2", tdx_l2), 0) >= 15:
-            rank = indicator_pct_map.get(("l2", tdx_l2, metric, stock_code))
+    def _indicator_rank(stock_code: str, metric: str, sw_l2: Optional[str], sw_l1: Optional[str]) -> Optional[float]:
+        if sw_l2 and indicator_group_sizes.get(("l2", sw_l2), 0) >= 15:
+            rank = indicator_pct_map.get(("l2", sw_l2, metric, stock_code))
             if rank is not None:
                 return rank
-        if tdx_l1 and indicator_group_sizes.get(("l1", tdx_l1), 0) >= 20:
-            rank = indicator_pct_map.get(("l1", tdx_l1, metric, stock_code))
+        if sw_l1 and indicator_group_sizes.get(("l1", sw_l1), 0) >= 20:
+            rank = indicator_pct_map.get(("l1", sw_l1, metric, stock_code))
             if rank is not None:
                 return rank
         return indicator_pct_map.get(("all", "all", metric, stock_code))
@@ -2166,8 +2160,8 @@ def calculate_stock_scores(conn) -> int:
         leader_quality_norm = min(leader_score, 100)
 
         stock_ind = stock_industry.get(sc, {})
-        stock_sw1 = stock_ind.get("tdx_l1")
-        stock_sw2 = stock_ind.get("tdx_l2")
+        stock_sw1 = stock_ind.get("sw_l1")
+        stock_sw2 = stock_ind.get("sw_l2")
         industry_match_score = 0
         if leader_inst:
             stock_ind_name = stock_industry_name.get(sc)

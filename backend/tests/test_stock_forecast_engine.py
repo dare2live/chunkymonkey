@@ -35,7 +35,7 @@ def _make_conn():
     return conn
 
 
-def test_build_stock_forecast_features_prefers_tdx2_group_and_matches_formula(monkeypatch):
+def test_build_stock_forecast_features_prefers_sw2_group_and_matches_formula(monkeypatch):
     conn = _make_conn()
     try:
         ensure_qlib_tables(conn)
@@ -78,7 +78,7 @@ def test_build_stock_forecast_features_prefers_tdx2_group_and_matches_formula(mo
             "SELECT * FROM dim_stock_forecast_latest WHERE stock_code = ?",
             ("600000",),
         ).fetchone()
-        assert row["industry_relative_group"] == "TDX2:芯片"
+        assert row["industry_relative_group"] == "SW2:芯片"
         assert row["forecast_20d_score"] == row["qlib_percentile"]
 
         expected_risk = clamp_score(

@@ -1,9 +1,4 @@
-"""
-Phase 3b-3: backtest_engine / scoring 口径迁移测试
-
-- 原 fact_institution_event_industry_snapshot + sw_level* 已退役
-- 本文件覆盖迁移后的直连口径: 当前 dim_stock_sw_industry + sw_l1/2/3 (SQL 层 AS tdx_l{n} 兼容下游)
-"""
+"""backtest_engine / scoring 行业直连口径测试（dim_stock_sw_industry sw_l1/2/3）。"""
 
 import sqlite3
 import sys

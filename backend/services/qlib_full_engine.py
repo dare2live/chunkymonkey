@@ -77,7 +77,7 @@ def _safe_round(value, digits: int = 4):
         return None
 
 
-_TDX_L1_TO_ETF_CATEGORY = [
+_SW_L1_NAME_TO_ETF_CATEGORY = [
     (("医药", "医疗", "生物"), "医疗健康"),
     (("半导体", "芯片"), "半导体"),
     (("电力设备", "新能源", "光伏", "风电", "电池"), "新能源"),
@@ -94,13 +94,13 @@ _TDX_L1_TO_ETF_CATEGORY = [
 ]
 
 
-def _map_tdx_l1_to_etf_category(tdx_l1: Optional[str]) -> Optional[str]:
-    if not tdx_l1:
+def _map_sw_l1_name_to_etf_category(sw_l1_name: Optional[str]) -> Optional[str]:
+    if not sw_l1_name:
         return None
-    text = str(tdx_l1).strip()
+    text = str(sw_l1_name).strip()
     if not text:
         return None
-    for aliases, category in _TDX_L1_TO_ETF_CATEGORY:
+    for aliases, category in _SW_L1_NAME_TO_ETF_CATEGORY:
         if any(alias in text for alias in aliases):
             return category
     return None
@@ -672,8 +672,10 @@ def _load_northbound_factors(smart_conn, codes: list) -> pd.DataFrame:
     return _finalize_time_series_factor_frame(data)
 
 
-_TDX_L1_ONEHOT_CODES = tuple(f"T{i:02d}" for i in range(1, 14))
-_TDX_L1_ONEHOT_FEATURES = tuple(f"ind_t{i:02d}" for i in range(1, 14))
+from services.sw_industry_names import SW_L1_NAMES as _SW_L1_NAMES
+
+_SW_L1_ONEHOT_CODES = tuple(sorted(_SW_L1_NAMES.keys()))
+_SW_L1_ONEHOT_FEATURES = tuple(f"ind_sw{code}" for code in _SW_L1_ONEHOT_CODES)
 
 
 def _load_industry_onehot_factors(smart_conn, codes: list) -> pd.DataFrame:
@@ -687,7 +689,7 @@ def _load_industry_onehot_factors(smart_conn, codes: list) -> pd.DataFrame:
     try:
         placeholders = ",".join("?" for _ in codes)
         rows = smart_conn.execute(
-            f"SELECT stock_code, sw_l1 AS tdx_l1 FROM dim_stock_sw_industry "
+            f"SELECT stock_code, sw_l1 FROM dim_stock_sw_industry "
             f"WHERE stock_code IN ({placeholders}) "
             f"  AND sw_l1 IS NOT NULL AND sw_l1 != ''",
             codes,
@@ -704,10 +706,10 @@ def _load_industry_onehot_factors(smart_conn, codes: list) -> pd.DataFrame:
         instrument = _instrument_from_stock_code(row["stock_code"])
         if not instrument:
             continue
-        tdx_l1 = row["tdx_l1"]
+        sw_l1 = row["sw_l1"]
         entry = {"instrument": instrument}
-        for code, feat in zip(_TDX_L1_ONEHOT_CODES, _TDX_L1_ONEHOT_FEATURES):
-            entry[feat] = 1 if tdx_l1 == code else 0
+        for code, feat in zip(_SW_L1_ONEHOT_CODES, _SW_L1_ONEHOT_FEATURES):
+            entry[feat] = 1 if sw_l1 == code else 0
         data.append(entry)
 
     if not data:
@@ -2611,7 +2613,7 @@ def get_qlib_etf_consensus(conn, model_id: Optional[str] = None, topk: int = 50)
     mapped_stock_count = 0
     for row in rows:
         item = dict(row)
-        category = _map_tdx_l1_to_etf_category(item.get("sw_l1"))
+        category = _map_sw_l1_name_to_etf_category(item.get("sw_l1"))
         if not category:
             continue
         mapped_stock_count += 1

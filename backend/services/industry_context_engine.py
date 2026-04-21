@@ -82,9 +82,6 @@ def ensure_tables(conn):
             updated_at                TEXT
         );
     """)
-    # Phase 3B-1 迁移: tdx_l1/l2/l1_name/l2_name → sw_l1/l2/l1_name/l2_name
-    # 两张表用 ALTER TABLE RENAME COLUMN；SQLite 3.25+ 支持。
-    # 如果源列不存在（新建库）则 pass。
     for tbl in ("fact_stock_industry_context", "dim_stock_industry_context_latest"):
         cols = {r[1] for r in conn.execute(f"PRAGMA table_info({tbl})").fetchall()}
         for old, new in (
@@ -113,7 +110,6 @@ def ensure_tables(conn):
             conn.execute(f"ALTER TABLE dim_stock_industry_context_latest ADD COLUMN {col}")
         except Exception:
             pass
-    # Phase 2 迁移: 退役 sw_level1/2 列 (历史命名)
     for tbl in ("fact_stock_industry_context", "dim_stock_industry_context_latest"):
         for col in ("sw_level1", "sw_level2"):
             try:

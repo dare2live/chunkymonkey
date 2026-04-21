@@ -206,7 +206,7 @@ def test_load_stock_tdx_block_memberships_groups_by_category():
 
 def test_load_stock_detail_context_builds_canonical_payload(monkeypatch):
     monkeypatch.setattr(stock_detail_read, "load_stock_name", lambda _conn, _code: "贵州茅台")
-    monkeypatch.setattr(stock_detail_read, "resolve_industry", lambda _conn, _code: {"tdx_l2": "T2000", "tdx_l2_name": "白酒"})
+    monkeypatch.setattr(stock_detail_read, "resolve_industry", lambda _conn, _code: {"sw_l2": "T2000", "sw_l2_name": "白酒"})
     monkeypatch.setattr(
         stock_detail_read,
         "load_stock_detail_timeline",
@@ -266,8 +266,8 @@ def test_load_stock_detail_context_builds_canonical_payload(monkeypatch):
     )
 
     assert payload["stock_name"] == "贵州茅台"
-    assert payload["industry"]["tdx_l2"] == "T2000"
-    assert payload["industry"]["tdx_l2_name"] == "白酒"
+    assert payload["industry"]["sw_l2"] == "T2000"
+    assert payload["industry"]["sw_l2_name"] == "白酒"
     assert payload["institutions"][0]["latest_close_date"] == "20260415"
     assert payload["setup"]["institution_count"] == 1
     assert payload["stage"]["path_state"] == "突破准备"

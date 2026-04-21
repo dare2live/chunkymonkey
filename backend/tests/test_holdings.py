@@ -71,7 +71,7 @@ def test_get_inst_current_holdings_adds_industry_aliases_and_other_institutions(
         rows = holdings.get_inst_current_holdings(conn, "inst_a")
 
         assert len(rows) == 1
-        assert rows[0]["tdx_l2"] == "T1001"
+        assert rows[0]["sw_l2"] == "T1001"
         assert rows[0]["other_institutions"][0]["id"] == "inst_b"
     finally:
         conn.close()

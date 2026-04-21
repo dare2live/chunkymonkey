@@ -18,12 +18,12 @@ def test_load_holdings_rows_filters_and_orders():
             stock_code TEXT,
             report_date TEXT,
             hold_market_cap REAL,
-            tdx_l1 TEXT,
-            tdx_l2 TEXT,
-            tdx_l3 TEXT,
-            tdx_l1_name TEXT,
-            tdx_l2_name TEXT,
-            tdx_l3_name TEXT
+            sw_l1 TEXT,
+            sw_l2 TEXT,
+            sw_l3 TEXT,
+            sw_l1_name TEXT,
+            sw_l2_name TEXT,
+            sw_l3_name TEXT
         );
         """
     )
@@ -41,8 +41,8 @@ def test_load_holdings_rows_filters_and_orders():
         rows = institution_aux_read.load_holdings_rows(conn, institution_id="inst_a")
 
         assert [row["stock_code"] for row in rows] == ["600001", "600002"]
-        assert rows[0]["tdx_l2"] == "T1001"
-        assert rows[0]["tdx_l2_name"] == "半导体"
+        assert rows[0]["sw_l2"] == "T1001"
+        assert rows[0]["sw_l2_name"] == "半导体"
     finally:
         conn.close()
 
@@ -58,12 +58,12 @@ def test_load_event_rows_returns_filtered_rows_and_total():
             event_type TEXT,
             notice_date TEXT,
             report_date TEXT,
-            tdx_l1 TEXT,
-            tdx_l2 TEXT,
-            tdx_l3 TEXT,
-            tdx_l1_name TEXT,
-            tdx_l2_name TEXT,
-            tdx_l3_name TEXT
+            sw_l1 TEXT,
+            sw_l2 TEXT,
+            sw_l3 TEXT,
+            sw_l1_name TEXT,
+            sw_l2_name TEXT,
+            sw_l3_name TEXT
         );
         CREATE TABLE inst_institutions (
             id TEXT PRIMARY KEY,
@@ -89,8 +89,8 @@ def test_load_event_rows_returns_filtered_rows_and_total():
         assert len(payload["data"]) == 1
         assert payload["data"][0]["inst_display_name"] == "机构甲"
         assert payload["data"][0]["event_type"] == "increase"
-        assert payload["data"][0]["tdx_l1"] == "T10"
-        assert payload["data"][0]["tdx_l1_name"] == "电子"
+        assert payload["data"][0]["sw_l1"] == "T10"
+        assert payload["data"][0]["sw_l1_name"] == "电子"
     finally:
         conn.close()
 

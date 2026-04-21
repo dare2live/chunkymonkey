@@ -235,7 +235,7 @@ def build_holding_chains(conn) -> dict:
                 "follow_g60": ev["gain_60d"],
                 "follow_g120": ev["gain_120d"],
                 "dd30": ev["max_drawdown_30d"],
-                "l1": ev["tdx_l1"], "l2": ev["tdx_l2"], "l3": ev["tdx_l3"],
+                "l1": ev["sw_l1"], "l2": ev["sw_l2"], "l3": ev["sw_l3"],
             }
         elif et == "exit":
             if current_chain and current_chain["status"] == "open":

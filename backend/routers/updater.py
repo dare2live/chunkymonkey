@@ -1870,11 +1870,8 @@ def _step_build_industry_stat_sync(conn) -> int:
     """计算机构在各行业 (申万一二三级) 的表现统计。
 
     口径: 事件现任所属股票 → dim_stock_sw_industry 的当前 sw_l{1,2,3}。
-    Phase 2A 切换：从 TDX 51% L3 覆盖切到申万 100% L3 覆盖。
-
-    mart 表 schema 兼容：tdx_code 字段保留名称（短期），实际存 SW industry_code
-    （L1=2 位 / L2=4 位 / L3=6 位数字）。L3 中文名暂未补全时，industry_name
-    回退为 'L3-{code}' 占位串，不影响评分逻辑（key 是 institution_id+level+code）。
+    L3 中文名未补全时 industry_name 回退为 'L3-{code}' 占位, 评分逻辑按
+    (institution_id, industry_level, industry_code) 做 key。
     """
     now = datetime.now().isoformat()
     conn.execute("BEGIN IMMEDIATE")
@@ -1923,7 +1920,7 @@ def _step_build_industry_stat_sync(conn) -> int:
                 for r in rows:
                     conn.execute("""
                         INSERT OR REPLACE INTO mart_institution_industry_stat
-                        (institution_id, industry_level, industry_name, tdx_code, sample_events,
+                        (institution_id, industry_level, industry_name, industry_code, sample_events,
                          avg_gain_30d, avg_gain_60d, avg_gain_90d, avg_gain_120d,
                          win_rate_30d, win_rate_60d, win_rate_90d, total_win_rate,
                          max_drawdown_30d, max_drawdown_60d, updated_at)

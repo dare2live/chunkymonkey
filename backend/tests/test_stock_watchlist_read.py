@@ -151,8 +151,8 @@ def test_load_candidate_setup_rows_filters_manual_exclusions_and_adds_stock_gate
             stock_watchlist_read,
             "load_industry_map",
             lambda _conn: {
-                "600001": {"tdx_l1": "T10", "tdx_l2": "T1001", "tdx_l3": "T100101"},
-                "600002": {"tdx_l1": "T20", "tdx_l2": "T2001", "tdx_l3": "T200101"},
+                "600001": {"sw_l1": "T10", "sw_l2": "T1001", "sw_l3": "T100101"},
+                "600002": {"sw_l1": "T20", "sw_l2": "T2001", "sw_l3": "T200101"},
             },
         )
 
@@ -161,7 +161,7 @@ def test_load_candidate_setup_rows_filters_manual_exclusions_and_adds_stock_gate
         assert len(rows) == 1
         item = rows[0]
         assert item["stock_code"] == "600001"
-        assert item["tdx_l2"] == "T1001"
+        assert item["sw_l2"] == "T1001"
         assert item["stock_gate"] == "follow"
         assert "A池" in (item["stock_gate_reason"] or "")
     finally:

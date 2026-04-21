@@ -327,14 +327,13 @@ def calc_sector_momentum(smart_conn, mkt_conn) -> int:
     """
     ensure_tables(smart_conn)
 
-    # 获取行业-股票映射 (按中文名聚合，板块名 = sw_l1_name, 输出别名 tdx_l1_name 兼容下游)
     industry_stocks = {}
     for row in smart_conn.execute(
-        "SELECT stock_code, sw_l1_name AS tdx_l1_name FROM dim_stock_sw_industry WHERE sw_l1_name IS NOT NULL AND sw_l1_name != ''"
+        "SELECT stock_code, sw_l1_name FROM dim_stock_sw_industry WHERE sw_l1_name IS NOT NULL AND sw_l1_name != ''"
     ).fetchall():
-        industry_stocks.setdefault(row["tdx_l1_name"], []).append(row["stock_code"])
+        industry_stocks.setdefault(row["sw_l1_name"], []).append(row["stock_code"])
 
-    industries = [{"tdx_l1_name": sector_name} for sector_name in sorted(industry_stocks)]
+    industries = [{"sw_l1_name": sector_name} for sector_name in sorted(industry_stocks)]
     if not industries:
         logger.info("[板块动量] 无行业分类数据")
         return 0
@@ -369,7 +368,7 @@ def calc_sector_momentum(smart_conn, mkt_conn) -> int:
     sector_rotation_rows = []
 
     for sec_idx, ind_row in enumerate(industries):
-        sector = ind_row["tdx_l1_name"]
+        sector = ind_row["sw_l1_name"]
         codes = industry_stocks.get(sector, [])
         if len(codes) < 5:
             continue

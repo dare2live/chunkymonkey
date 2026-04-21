@@ -9,8 +9,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from services.qlib_follow_engine import (
     FEATURE_COLUMNS,
-    _TDX_L1_ONEHOT_CODES,
-    _TDX_L1_ONEHOT_FEATURES,
+    _SW_L1_ONEHOT_CODES,
+    _SW_L1_ONEHOT_FEATURES,
     _yoy,
     extract_training_matrix,
 )
@@ -66,7 +66,7 @@ def _make_mkt_conn() -> sqlite3.Connection:
 def _seed_common(conn: sqlite3.Connection) -> None:
     conn.execute(
         "INSERT INTO dim_stock_sw_industry VALUES (?, ?, ?, ?, ?, ?, ?)",
-        ("600001", "T07", "T0701", "T070101", "信息技术", "半导体", "设计"),
+        ("600001", "27", "2701", "270101", "电子", "半导体", "设计"),
     )
     conn.execute(
         "INSERT INTO dim_financial_latest VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
@@ -82,10 +82,10 @@ def test_feature_columns_contain_all_d_and_onehot() -> None:
     }
     missing = expected_d - set(FEATURE_COLUMNS)
     assert not missing, f"FEATURE_COLUMNS 缺少 D 系列: {missing}"
-    onehot_missing = set(_TDX_L1_ONEHOT_FEATURES) - set(FEATURE_COLUMNS)
+    onehot_missing = set(_SW_L1_ONEHOT_FEATURES) - set(FEATURE_COLUMNS)
     assert not onehot_missing, f"FEATURE_COLUMNS 缺少 one-hot: {onehot_missing}"
-    assert len(_TDX_L1_ONEHOT_CODES) == 13
-    assert len(_TDX_L1_ONEHOT_FEATURES) == 13
+    assert len(_SW_L1_ONEHOT_CODES) == 31
+    assert len(_SW_L1_ONEHOT_FEATURES) == 31
 
 
 def test_yoy_helper_handles_edge_cases() -> None:
@@ -117,10 +117,9 @@ def test_extract_matrix_basic_fields_and_onehot() -> None:
     assert s["event_type_is_new_entry"] == 1
     # 财务 join
     assert s["roe"] == 0.12
-    # one-hot：T07 命中，其它为 0
-    assert s["ind_t07"] == 1
-    for code, feat in zip(_TDX_L1_ONEHOT_CODES, _TDX_L1_ONEHOT_FEATURES):
-        if code != "T07":
+    assert s["ind_sw27"] == 1
+    for code, feat in zip(_SW_L1_ONEHOT_CODES, _SW_L1_ONEHOT_FEATURES):
+        if code != "27":
             assert s[feat] == 0, f"{feat} 应为 0"
     # D 特征默认 None (未喂源数据)
     assert s["holder_count_yoy"] is None
@@ -236,15 +235,15 @@ def test_gpcw_join_handles_yyyymmdd_event_dates() -> None:
 
 
 def test_industry_zscore_groups_by_industry_and_report_date() -> None:
-    """Phase 4c: D1/D2/D3 的 _z 列按 (tdx_l1, report_date) 分组, 组内 ≥5 才算。"""
+    """D1/D2/D3 的 _z 列按 (sw_l1, report_date) 分组, 组内 ≥5 才算。"""
     conn = _make_conn()
     mkt_conn = _make_mkt_conn()
-    # 5 只 T07 行业股票, 同一季度, 各自不同 YoY
+    # 5 只 27 行业股票, 同一季度, 各自不同 YoY
     for i in range(5):
         code = f"60000{i}"
         conn.execute(
             "INSERT INTO dim_stock_sw_industry VALUES (?, ?, ?, ?, ?, ?, ?)",
-            (code, "T07", "T0701", "T070101", "信息技术", "半导体", "设计"),
+            (code, "27", "2701", "270101", "信息技术", "半导体", "设计"),
         )
         conn.execute(
             "INSERT INTO fact_institution_event VALUES (?, ?, ?, ?, ?, ?, ?)",
@@ -277,12 +276,12 @@ def test_industry_zscore_skips_groups_below_min_count() -> None:
     """Phase 4c: 同组 < 5 样本时 z 列应为 None (避免小样本噪声)。"""
     conn = _make_conn()
     mkt_conn = _make_mkt_conn()
-    # 仅 3 只 T07 股票, 低于 5 的阈值
+    # 仅 3 只 27 股票, 低于 5 的阈值
     for i in range(3):
         code = f"60000{i}"
         conn.execute(
             "INSERT INTO dim_stock_sw_industry VALUES (?, ?, ?, ?, ?, ?, ?)",
-            (code, "T07", "T0701", "T070101", "信息技术", "半导体", "设计"),
+            (code, "27", "2701", "270101", "信息技术", "半导体", "设计"),
         )
         conn.execute(
             "INSERT INTO fact_institution_event VALUES (?, ?, ?, ?, ?, ?, ?)",

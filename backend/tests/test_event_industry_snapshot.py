@@ -1,11 +1,4 @@
-"""
-Phase 3b-1: 事件行业聚合口径迁移测试
-
-- 原 _capture_missing_event_industry_snapshots / dim_stock_industry 快照路径已删除
-  (Phase 2 申万源退役后 dim_stock_industry 被 DROP, 快照补齐函数永久失效)
-- 本文件保留 SW 路径契约: _step_build_industry_stat_sync 按当前
-  dim_stock_sw_industry 聚合, 写入 industry_code + industry_name (字段名仍为 tdx_code 兼容下游).
-"""
+"""事件行业聚合口径测试：_step_build_industry_stat_sync 按 dim_stock_sw_industry 聚合。"""
 
 import sqlite3
 import sys
@@ -58,7 +51,7 @@ def _make_conn():
             institution_id TEXT NOT NULL,
             industry_level TEXT NOT NULL,
             industry_name TEXT NOT NULL,
-            tdx_code TEXT,
+            industry_code TEXT,
             sample_events INTEGER DEFAULT 0,
             avg_gain_30d REAL,
             avg_gain_60d REAL,
@@ -108,10 +101,10 @@ def test_build_industry_stat_joins_dim_stock_sw_industry(monkeypatch):
         # 两条事件在 L1/L2/L3 各归一组 → 3 行
         assert written == 3
         rows = conn.execute(
-            "SELECT industry_level, industry_name, tdx_code, sample_events, avg_gain_30d "
+            "SELECT industry_level, industry_name, industry_code, sample_events, avg_gain_30d "
             "FROM mart_institution_industry_stat ORDER BY industry_level"
         ).fetchall()
-        assert [(r["industry_level"], r["industry_name"], r["tdx_code"]) for r in rows] == [
+        assert [(r["industry_level"], r["industry_name"], r["industry_code"]) for r in rows] == [
             ("level1", "信息产业", "T12"),
             ("level2", "计算机", "T1204"),
             ("level3", "软件", "T120401"),

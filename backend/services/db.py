@@ -29,6 +29,22 @@ def get_conn(timeout: int = 30) -> sqlite3.Connection:
     return conn
 
 
+def _rename_industry_columns(conn, tables, renames):
+    for table in tables:
+        try:
+            cols = {r[1] for r in conn.execute(f"PRAGMA table_info({table})").fetchall()}
+        except Exception:
+            continue
+        for old, new in renames:
+            if old in cols and new not in cols:
+                try:
+                    conn.execute(f"ALTER TABLE {table} RENAME COLUMN {old} TO {new}")
+                    cols.discard(old)
+                    cols.add(new)
+                except Exception:
+                    pass
+
+
 def init_db():
     conn = get_conn()
     try:
@@ -92,10 +108,6 @@ def init_db():
             );
             CREATE INDEX IF NOT EXISTS idx_daas_updated ON dim_active_a_stock(updated_at);
 
-            -- 行业真相源演进（Phase 3A 清理后）：
-            --   dim_stock_sw_industry (申万官方三级) — L3 100% 覆盖, 唯一真相源
-            -- 历史版本：dim_stock_industry（旧申万）/ dim_stock_tdx_industry (TDX) 均已退役
-            -- (同步维护: services/sw_industry_client.py::_ensure_table)
             CREATE TABLE IF NOT EXISTS dim_stock_sw_industry (
                 stock_code     TEXT PRIMARY KEY,
                 sw_l1          TEXT,
@@ -219,11 +231,6 @@ def init_db():
             CREATE INDEX IF NOT EXISTS idx_event_date ON fact_institution_event(report_date);
             CREATE INDEX IF NOT EXISTS idx_event_notice ON fact_institution_event(notice_date);
 
-            -- Phase 3b-3: fact_institution_event_industry_snapshot 已退役
-            -- (原申万行业快照口径被 dim_stock_sw_industry 直连聚合替代;
-            --  backtest_engine / scoring 的 crowding_fit 口径也已同步)
-            -- 收益字段已合并入 fact_institution_event
-
             CREATE TABLE IF NOT EXISTS fact_northbound_daily (
                 stock_code      TEXT NOT NULL,
                 stock_name      TEXT,
@@ -255,9 +262,6 @@ def init_db():
                 updated_at          TEXT,
                 PRIMARY KEY (stock_code, added_date)
             );
-
-            -- Phase 3B-3: fact_setup_snapshot 已退役 (setup_tracker 下线后无写入路径)
-            -- 表结构移除, migration 末尾 DROP TABLE 清理旧库残留
 
             -- ============================================================
             -- 集市层（派生，可重算）
@@ -341,7 +345,7 @@ def init_db():
                 institution_id TEXT NOT NULL,
                 industry_level TEXT NOT NULL,
                 industry_name  TEXT NOT NULL,
-                tdx_code       TEXT,
+                industry_code  TEXT,
                 sample_events  INTEGER DEFAULT 0,
                 avg_gain_30d   REAL,
                 avg_gain_60d   REAL,
@@ -615,27 +619,16 @@ def init_db():
             except Exception:
                 pass
 
-        # Phase 3B-3: fact_setup_snapshot 彻底退役
-        # (原先 ALTER ADD COLUMN 列表 + tdx 索引 + sw_level* DROP COLUMN 迁移
-        #  整体移除；DROP TABLE 见本 init 末尾)
-
-        # ─────────────────────────────────────────────────────────────
-        # TDX 迁移: 退役申万 SW 列与 dim_stock_industry 表
-        # (执行 Phase 2 迁移后, sw_level* 列从 schema 中移除;
-        #  老库残留列通过 DROP COLUMN 清理)
-        # 注意: 必须先 DROP 相关索引, 否则 DROP COLUMN 会因索引依赖失败
-        # ─────────────────────────────────────────────────────────────
         for idx in ("idx_dsi_l1", "idx_dsi_l2"):
             try:
                 conn.execute(f"DROP INDEX IF EXISTS {idx}")
             except Exception:
                 pass
-        sw_drop_plan = [
+        for tbl, col in (
             ("mart_current_relationship", "sw_level1"),
             ("mart_current_relationship", "sw_level2"),
             ("mart_current_relationship", "sw_level3"),
-        ]
-        for tbl, col in sw_drop_plan:
+        ):
             try:
                 conn.execute(f"ALTER TABLE {tbl} DROP COLUMN {col}")
             except Exception:
@@ -655,29 +648,32 @@ def init_db():
             except Exception:
                 pass
 
-        # Phase 3b-1: mart_institution_industry_stat 增加 tdx_code 列
-        # 用于记录每行聚合的 TDX 行业代码 (T01 / T0401 / T040101); industry_name 仍存中文名。
-        try:
-            conn.execute(
-                "ALTER TABLE mart_institution_industry_stat ADD COLUMN tdx_code TEXT"
-            )
-        except Exception:
-            pass
-
-        # Phase 3b-2: mart_institution_industry_stat.sw_level → industry_level
-        # 原列名在 Phase 2 申万退役后语义已漂移 (值仍是 level1/level2/level3),
-        # 重命名以解除 "sw" 字面与 TDX 真相源的混淆。SQLite 3.25+ 支持 RENAME COLUMN。
         try:
             cols = {r[1] for r in conn.execute("PRAGMA table_info(mart_institution_industry_stat)").fetchall()}
             if "sw_level" in cols and "industry_level" not in cols:
                 conn.execute(
                     "ALTER TABLE mart_institution_industry_stat RENAME COLUMN sw_level TO industry_level"
                 )
+            if "tdx_code" in cols and "industry_code" in cols:
+                conn.execute(
+                    "UPDATE mart_institution_industry_stat "
+                    "SET industry_code = COALESCE(industry_code, tdx_code) "
+                    "WHERE industry_code IS NULL AND tdx_code IS NOT NULL"
+                )
+                conn.execute("ALTER TABLE mart_institution_industry_stat DROP COLUMN tdx_code")
+            elif "tdx_code" in cols and "industry_code" not in cols:
+                conn.execute(
+                    "ALTER TABLE mart_institution_industry_stat RENAME COLUMN tdx_code TO industry_code"
+                )
+        except Exception:
+            pass
+        try:
+            conn.execute(
+                "ALTER TABLE mart_institution_industry_stat ADD COLUMN industry_code TEXT"
+            )
         except Exception:
             pass
 
-        # Phase 3b-3: DROP 退役表 fact_institution_event_industry_snapshot
-        # 申万快照已被 dim_stock_sw_industry 直 JOIN 替代, 相关 SQL helper 亦已删除。
         for idx in ("idx_event_industry_snapshot_l1", "idx_event_industry_snapshot_l2"):
             try:
                 conn.execute(f"DROP INDEX IF EXISTS {idx}")
@@ -688,8 +684,6 @@ def init_db():
         except Exception:
             pass
 
-        # Phase 3A: DROP 退役表 dim_stock_tdx_industry + 索引
-        # TDX 行业源已由申万官方源（dim_stock_sw_industry）完全取代。
         for idx in ("idx_tdx_industry_l1", "idx_tdx_industry_l2", "idx_tdx_industry_l3"):
             try:
                 conn.execute(f"DROP INDEX IF EXISTS {idx}")
@@ -700,8 +694,6 @@ def init_db():
         except Exception:
             pass
 
-        # Phase 3B-3: DROP 退役表 fact_setup_snapshot + 索引
-        # setup_tracker 下线后已无写入路径, snapshot_tdx_l* 列名亦与 Phase 3 不符。
         for idx in (
             "idx_setup_snapshot_date", "idx_setup_snapshot_tag", "idx_setup_snapshot_stock",
             "idx_setup_snapshot_tdx1_date", "idx_setup_snapshot_sw1_date",
@@ -715,55 +707,25 @@ def init_db():
         except Exception:
             pass
 
-        # Phase 3d-1: fact_stock_archetype / dim_stock_archetype_latest 列名正名
-        # 原列 sw_level1/sw_level2 实际存的是通达信一级/二级中文名 (非申万代码),
-        # 字面上与 TDX 真相源冲突, 重命名为 tdx_l1_name/tdx_l2_name 消歧。
-        for table in ("fact_stock_archetype", "dim_stock_archetype_latest"):
-            try:
-                cols = {r[1] for r in conn.execute(f"PRAGMA table_info({table})").fetchall()}
-                if "sw_level1" in cols and "tdx_l1_name" not in cols:
-                    conn.execute(f"ALTER TABLE {table} RENAME COLUMN sw_level1 TO tdx_l1_name")
-                if "sw_level2" in cols and "tdx_l2_name" not in cols:
-                    conn.execute(f"ALTER TABLE {table} RENAME COLUMN sw_level2 TO tdx_l2_name")
-            except Exception:
-                pass
-
-        # Phase 3d-2: quality/turtle 表列名正名
-        # - quality_features/quality_latest: sw_level1/2 → tdx_l1/tdx_l2 (存 TDX 代码)
-        # - turtle_features/turtle_latest:   sw_level1/2 → tdx_l1_name/tdx_l2_name
-        #   (当前经 dim_stock_forecast_latest 来源一路传递中文名, 保持语义一致)
-        quality_tables = ("fact_stock_quality_features", "dim_stock_quality_latest")
-        for table in quality_tables:
-            try:
-                cols = {r[1] for r in conn.execute(f"PRAGMA table_info({table})").fetchall()}
-                if "sw_level1" in cols and "tdx_l1" not in cols:
-                    conn.execute(f"ALTER TABLE {table} RENAME COLUMN sw_level1 TO tdx_l1")
-                if "sw_level2" in cols and "tdx_l2" not in cols:
-                    conn.execute(f"ALTER TABLE {table} RENAME COLUMN sw_level2 TO tdx_l2")
-            except Exception:
-                pass
-        turtle_tables = ("fact_stock_turtle_features", "dim_stock_turtle_latest")
-        for table in turtle_tables:
-            try:
-                cols = {r[1] for r in conn.execute(f"PRAGMA table_info({table})").fetchall()}
-                if "sw_level1" in cols and "tdx_l1_name" not in cols:
-                    conn.execute(f"ALTER TABLE {table} RENAME COLUMN sw_level1 TO tdx_l1_name")
-                if "sw_level2" in cols and "tdx_l2_name" not in cols:
-                    conn.execute(f"ALTER TABLE {table} RENAME COLUMN sw_level2 TO tdx_l2_name")
-            except Exception:
-                pass
-
-        # Phase 3d-3: forecast 表列名正名 (实际存 TDX 中文名)
-        forecast_tables = ("fact_stock_forecast_features", "dim_stock_forecast_latest")
-        for table in forecast_tables:
-            try:
-                cols = {r[1] for r in conn.execute(f"PRAGMA table_info({table})").fetchall()}
-                if "sw_level1" in cols and "tdx_l1_name" not in cols:
-                    conn.execute(f"ALTER TABLE {table} RENAME COLUMN sw_level1 TO tdx_l1_name")
-                if "sw_level2" in cols and "tdx_l2_name" not in cols:
-                    conn.execute(f"ALTER TABLE {table} RENAME COLUMN sw_level2 TO tdx_l2_name")
-            except Exception:
-                pass
+        _rename_industry_columns(
+            conn,
+            ("fact_stock_archetype", "dim_stock_archetype_latest"),
+            [("sw_level1", "sw_l1_name"), ("tdx_l1_name", "sw_l1_name"),
+             ("sw_level2", "sw_l2_name"), ("tdx_l2_name", "sw_l2_name")],
+        )
+        _rename_industry_columns(
+            conn,
+            ("fact_stock_quality_features", "dim_stock_quality_latest"),
+            [("sw_level1", "sw_l1"), ("tdx_l1", "sw_l1"),
+             ("sw_level2", "sw_l2"), ("tdx_l2", "sw_l2")],
+        )
+        _rename_industry_columns(
+            conn,
+            ("fact_stock_turtle_features", "dim_stock_turtle_latest",
+             "fact_stock_forecast_features", "dim_stock_forecast_latest"),
+            [("sw_level1", "sw_l1_name"), ("tdx_l1_name", "sw_l1_name"),
+             ("sw_level2", "sw_l2_name"), ("tdx_l2_name", "sw_l2_name")],
+        )
 
         # Phase 1: mart_institution_profile 买入类评分字段 + 评分元数据
         for col in ["score_basis TEXT", "score_confidence TEXT",
@@ -864,7 +826,6 @@ def init_db():
             "ON mart_current_relationship(stock_code)"
         )
 
-        # Phase 3B-2 迁移: mart_current_relationship 物理列 tdx_l* → sw_l*
         mcr_cols = {r[1] for r in conn.execute("PRAGMA table_info(mart_current_relationship)").fetchall()}
         for old, new in (
             ("tdx_l1", "sw_l1"), ("tdx_l2", "sw_l2"), ("tdx_l3", "sw_l3"),

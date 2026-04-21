@@ -417,7 +417,7 @@
       var pool = s.priority_pool || '未分池';
       var gate = (stockGateInfo && stockGateInfo(s) || {}).key || '';
       var source = (typeof stockSourceName === 'function') ? stockSourceName(s) : '';
-      var industry = s.setup_industry_name || s.tdx_l2 || s.tdx_l1 || '';
+      var industry = s.setup_industry_name || s.sw_l2 || s.sw_l1 || '';
       summary.pools[pool] = (summary.pools[pool] || 0) + 1;
       if (pool === 'A池' || pool === 'B池') summary.abTotal += 1;
       if (gate && summary.gates[gate] != null) summary.gates[gate] += 1;
@@ -1026,11 +1026,9 @@
       { key: 'composite', label: '综合优先' },
       { key: 'notice', label: '公告最近' },
     ];
-    // Phase 2C：行业胶囊从 TDX 13 类切到申万 31 个一级行业。
-    // s.tdx_l1 字段名保留（resolver 别名兼容），但值现在是申万 2 位 code（'34' 食品饮料 等）。
     var swL1Counts = {};
     (stockListState.getData() || []).forEach(function (s) {
-      var code = (s.tdx_l1 || '').trim();
+      var code = (s.sw_l1 || '').trim();
       if (code) swL1Counts[code] = (swL1Counts[code] || 0) + 1;
     });
     var swL1Names = {
@@ -1104,9 +1102,9 @@
     s._search_blob = [
       s.stock_code,
       s.stock_name,
-      s.tdx_l1,
-      s.tdx_l2,
-      s.tdx_l3,
+      s.sw_l1,
+      s.sw_l2,
+      s.sw_l3,
       s.setup_industry_name,
       s.stock_archetype,
       s.priority_pool,
@@ -1126,7 +1124,7 @@
   function matchIndustryFilter(s) {
     var filter = stockListState.getFilterIndustry();
     if (filter === 'all') return true;
-    return (s.tdx_l1 || '').trim() === filter;
+    return (s.sw_l1 || '').trim() === filter;
   }
 
   function applyStockFilters() {
@@ -1202,8 +1200,8 @@
         esc(ev.institution_name || ev.institution_id || '') + ' · ' + fmtDate(ev.notice_date) + '</div></div>';
     }
     function industryCell(s) {
-      var name = SW_L1_NAMES_TBL[(s.tdx_l1 || '').trim()] || s.tdx_l2 || s.tdx_l1 || '—';
-      var sub = (s.tdx_l2 || s.tdx_l3) ? ('<div class="muted" style="font-size:10px">' + esc(s.tdx_l3 || s.tdx_l2 || '') + '</div>') : '';
+      var name = SW_L1_NAMES_TBL[(s.sw_l1 || '').trim()] || s.sw_l2 || s.sw_l1 || '—';
+      var sub = (s.sw_l2 || s.sw_l3) ? ('<div class="muted" style="font-size:10px">' + esc(s.sw_l3 || s.sw_l2 || '') + '</div>') : '';
       return '<div style="line-height:1.4"><div style="font-size:12px">' + esc(name) + '</div>' + sub + '</div>';
     }
     function watchlistButton(s) {
@@ -1215,7 +1213,7 @@
       return '<tr data-stock-idx="' + idx + '" data-stock-code="' + esc(s.stock_code) + '">' +
         '<td>' + stockCell(s.stock_code, s.stock_name) + '</td>' +
         '<td>' + signalV2Cell(s) + '</td>' +
-        '<td data-sort-value="' + esc((s.tdx_l1 || '')) + '">' + industryCell(s) + '</td>' +
+        '<td data-sort-value="' + esc((s.sw_l1 || '')) + '">' + industryCell(s) + '</td>' +
         '<td data-sort-value="' + esc(String(s.composite_priority_score != null ? s.composite_priority_score : -1)) + '">' + stockCompositeCell(s) + '</td>' +
         '<td data-sort-value="' + esc(String(s.latest_notice_date || '')) + '">' + stockDateSummaryCell(s.latest_notice_date) + '</td>' +
         '<td data-sort-value="' + esc(String(s.holder_total != null ? s.holder_total : (s.inst_count_t0 || 0))) + '">' + stockHolderCoverageCell(s) + '</td>' +
@@ -3317,7 +3315,7 @@
       html += '<table class="data-table"><thead><tr><th>股票</th><th>行业</th><th>报告期</th><th>事件</th><th>机构成本</th><th>跟随溢价</th><th>门槛</th><th>持仓市值</th><th>其他机构</th></tr></thead><tbody>';
       html += holdings.map(function (h) {
         var others = (h.other_institutions || []).map(function (o) { return instLink(o.id, o.name, o.type); }).join(' ') || '-';
-        var indFull = (h.tdx_l1 || '') + (h.tdx_l2 ? ' > ' + h.tdx_l2 : '') + (h.tdx_l3 ? ' > ' + h.tdx_l3 : '') || '-';
+        var indFull = (h.sw_l1 || '') + (h.sw_l2 ? ' > ' + h.sw_l2 : '') + (h.sw_l3 ? ' > ' + h.sw_l3 : '') || '-';
         var cost = h.inst_ref_cost != null ? Number(h.inst_ref_cost).toFixed(2) + '<div class="muted" style="font-size:10px">' + esc(costMethodText(h.inst_cost_method)) + '</div>' : '-';
         var premium = h.premium_pct != null ? premiumText(h.premium_pct) + '<div class="muted" style="font-size:10px">' + esc(h.premium_bucket || '') + '</div>' : '-';
         return '<tr><td>' + stockCell(h.stock_code, h.stock_name) + '</td><td style="font-size:11px;color:#64748b">' + esc(indFull) + '</td><td>' + fmtDate(h.report_date) + '</td><td>' + (h.event_type ? evTag(h.event_type) : '-') + '</td><td>' + cost + '</td><td>' + premium + '</td><td>' + followGateTag(h.follow_gate, h.follow_gate_reason) + '</td><td>' + compactNum(h.hold_market_cap) + '</td><td>' + others + '</td></tr>';
@@ -3466,7 +3464,7 @@
       if (!r || !r.ok) { panel.innerHTML = '<div class="detail-loading">加载失败: ' + esc(r && r.detail || '未知') + '</div>'; return; }
       try {
       var insts = r.institutions || [];
-      var indStr = r.industry ? (r.industry.tdx_l1 || '') + (r.industry.tdx_l2 ? ' > ' + r.industry.tdx_l2 : '') + (r.industry.tdx_l3 ? ' > ' + r.industry.tdx_l3 : '') : '';
+      var indStr = r.industry ? (r.industry.sw_l1 || '') + (r.industry.sw_l2 ? ' > ' + r.industry.sw_l2 : '') + (r.industry.sw_l3 ? ' > ' + r.industry.sw_l3 : '') : '';
       var html = '';
       html += renderStockReportHero(detailPayload);
       html += renderStockInstitutionCoverageSection(detailPayload, insts);
@@ -4782,7 +4780,7 @@
   }
   function sourceInstitutionCell(s) {
     var name = stockSourceName(s);
-    var sub = s.setup_industry_name || s.tdx_l3 || s.tdx_l2 || s.tdx_l1 || '-';
+    var sub = s.setup_industry_name || s.sw_l3 || s.sw_l2 || s.sw_l1 || '-';
     return '<div class="stock-source-cell"><div class="stock-source-main">' + esc(name) + '</div><div class="stock-source-sub">' + esc(sub) + '</div></div>';
   }
   function stockReportCell(s) {
