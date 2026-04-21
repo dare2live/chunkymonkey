@@ -92,7 +92,7 @@ def test_reset_industry_derived_can_chain_to_smart_update(tmp_path, monkeypatch)
 
     monkeypatch.setattr("routers.updater.get_conn", _conn_factory(db_path))
     monkeypatch.setattr("routers.updater._is_running", False)
-    smart_update = AsyncMock(return_value={"ok": True, "steps": 3, "step_ids": ["sync_industry", "build_current_rel", "build_trends"]})
+    smart_update = AsyncMock(return_value={"ok": True, "steps": 3, "step_ids": ["sync_industry_sw", "build_current_rel", "build_trends"]})
     monkeypatch.setattr("routers.updater.smart_update", smart_update)
 
     response = client.post("/api/inst/update/reset-industry-derived")
@@ -101,5 +101,5 @@ def test_reset_industry_derived_can_chain_to_smart_update(tmp_path, monkeypatch)
     payload = response.json()
     assert payload["ok"] is True
     assert "并启动智能更新" in payload["message"]
-    assert payload["smart_update"]["step_ids"] == ["sync_industry", "build_current_rel", "build_trends"]
+    assert payload["smart_update"]["step_ids"] == ["sync_industry_sw", "build_current_rel", "build_trends"]
     smart_update.assert_awaited_once()

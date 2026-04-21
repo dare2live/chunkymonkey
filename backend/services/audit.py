@@ -1282,7 +1282,7 @@ def build_smart_plan(conn, force_all=False, *, audit: Optional[dict] = None, use
     # 所有可能的步骤 ID
     ALL_STEPS = [
         "sync_raw", "match_inst", "sync_market_data", "sync_northbound",
-        "gen_events", "calc_returns", "sync_industry", "sync_industry_sw",
+        "gen_events", "calc_returns", "sync_industry_sw",
         "sync_financial", "calc_financial_derived",
         "build_current_rel", "build_profiles", "build_industry_stat", "build_trends",
         "calc_screening", "calc_sector_momentum", "build_external_attention",
@@ -1422,8 +1422,6 @@ def build_smart_plan(conn, force_all=False, *, audit: Optional[dict] = None, use
         plan["reason"].append("无行业数据")
     else:
         plan["skip_reasons"]["sync_industry_sw"] = "行业数据已完整"
-    # 老 TDX 分类 (sync_industry) 已不再读入业务，保留写入只为 Phase 3 退役观察
-    plan["skip_reasons"]["sync_industry"] = "TDX 已停止读取，等待 Phase 3 整体下线"
 
     # 6a. 机构调研：D8 维度数据源，每日新增；最新公告日 > 1 天即重新拉取
     try:

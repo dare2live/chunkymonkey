@@ -3,7 +3,7 @@
 
 数据分层：
   原始层（只追加）: market_raw_holdings, raw_fetch_batch
-  维度层: dim_active_a_stock, dim_stock_tdx_industry, dim_trading_calendar, inst_institutions, inst_name_aliases
+  维度层: dim_active_a_stock, dim_stock_sw_industry, dim_trading_calendar, inst_institutions, inst_name_aliases
   事实层: inst_holdings, fact_institution_event, fact_northbound_daily, stock_watchlist
   集市层（可重算）: mart_institution_profile, mart_institution_industry_stat, mart_stock_trend
   系统层: sys_schema_version, excluded_stocks, exclusion_categories, app_settings
@@ -92,10 +92,9 @@ def init_db():
             );
             CREATE INDEX IF NOT EXISTS idx_daas_updated ON dim_active_a_stock(updated_at);
 
-            -- 行业真相源演进：
-            --   Phase 1 (旧): dim_stock_industry (申万三级) — 已退役
-            --   Phase 2 (中): dim_stock_tdx_industry (TDX 三级) — L3 仅 51% 覆盖, 待 Phase 3 退役
-            --   Phase 3 (新): dim_stock_sw_industry (申万官方三级) — L3 100% 覆盖, 当前唯一读取源
+            -- 行业真相源演进（Phase 3A 清理后）：
+            --   dim_stock_sw_industry (申万官方三级) — L3 100% 覆盖, 唯一真相源
+            -- 历史版本：dim_stock_industry（旧申万）/ dim_stock_tdx_industry (TDX) 均已退役
             -- (同步维护: services/sw_industry_client.py::_ensure_table)
             CREATE TABLE IF NOT EXISTS dim_stock_sw_industry (
                 stock_code     TEXT PRIMARY KEY,
@@ -112,22 +111,6 @@ def init_db():
             CREATE INDEX IF NOT EXISTS idx_sw_industry_l1 ON dim_stock_sw_industry(sw_l1);
             CREATE INDEX IF NOT EXISTS idx_sw_industry_l2 ON dim_stock_sw_industry(sw_l2);
             CREATE INDEX IF NOT EXISTS idx_sw_industry_l3 ON dim_stock_sw_industry(sw_l3);
-
-            -- 旧 TDX 表保留, 写入由 sync_industry 维护; 计划 Phase 3 整体下线
-            CREATE TABLE IF NOT EXISTS dim_stock_tdx_industry (
-                stock_code    TEXT PRIMARY KEY,
-                tdx_l1        TEXT,
-                tdx_l2        TEXT,
-                tdx_l3        TEXT,
-                tdx_l1_name   TEXT,
-                tdx_l2_name   TEXT,
-                tdx_l3_name   TEXT,
-                sw_x_legacy   TEXT,
-                updated_at    TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-            );
-            CREATE INDEX IF NOT EXISTS idx_tdx_industry_l1 ON dim_stock_tdx_industry(tdx_l1);
-            CREATE INDEX IF NOT EXISTS idx_tdx_industry_l2 ON dim_stock_tdx_industry(tdx_l2);
-            CREATE INDEX IF NOT EXISTS idx_tdx_industry_l3 ON dim_stock_tdx_industry(tdx_l3);
 
             CREATE TABLE IF NOT EXISTS dim_tdx_block_catalog (
                 block_category TEXT NOT NULL,
@@ -237,7 +220,7 @@ def init_db():
             CREATE INDEX IF NOT EXISTS idx_event_notice ON fact_institution_event(notice_date);
 
             -- Phase 3b-3: fact_institution_event_industry_snapshot 已退役
-            -- (原申万行业快照口径被 dim_stock_tdx_industry 直连聚合替代;
+            -- (原申万行业快照口径被 dim_stock_sw_industry 直连聚合替代;
             --  backtest_engine / scoring 的 crowding_fit 口径也已同步)
             -- 收益字段已合并入 fact_institution_event
 
@@ -853,7 +836,7 @@ def init_db():
             pass
 
         # Phase 3b-3: DROP 退役表 fact_institution_event_industry_snapshot
-        # 申万快照已被 dim_stock_tdx_industry 直 JOIN 替代, 相关 SQL helper 亦已删除。
+        # 申万快照已被 dim_stock_sw_industry 直 JOIN 替代, 相关 SQL helper 亦已删除。
         for idx in ("idx_event_industry_snapshot_l1", "idx_event_industry_snapshot_l2"):
             try:
                 conn.execute(f"DROP INDEX IF EXISTS {idx}")
@@ -861,6 +844,18 @@ def init_db():
                 pass
         try:
             conn.execute("DROP TABLE IF EXISTS fact_institution_event_industry_snapshot")
+        except Exception:
+            pass
+
+        # Phase 3A: DROP 退役表 dim_stock_tdx_industry + 索引
+        # TDX 行业源已由申万官方源（dim_stock_sw_industry）完全取代。
+        for idx in ("idx_tdx_industry_l1", "idx_tdx_industry_l2", "idx_tdx_industry_l3"):
+            try:
+                conn.execute(f"DROP INDEX IF EXISTS {idx}")
+            except Exception:
+                pass
+        try:
+            conn.execute("DROP TABLE IF EXISTS dim_stock_tdx_industry")
         except Exception:
             pass
 
