@@ -858,6 +858,7 @@ def run_quality_audit(conn, use_cache: bool = True) -> dict:
     industry_stat_level1_inst = industry_stat_row["level1_inst"] or 0
     industry_stat_level2_inst = industry_stat_row["level2_inst"] or 0
     industry_stat_level3_inst = industry_stat_row["level3_inst"] or 0
+    # 口径对齐 industry_complete_condition：L1+L2 即视为"层级齐全"，L3 为 TDX 可选字段
     industry_stat_complete_inst = _scalar(conn, """
         SELECT COUNT(*) FROM (
             SELECT institution_id
@@ -865,7 +866,6 @@ def run_quality_audit(conn, use_cache: bool = True) -> dict:
             GROUP BY institution_id
             HAVING SUM(CASE WHEN industry_level = 'level1' THEN 1 ELSE 0 END) > 0
                AND SUM(CASE WHEN industry_level = 'level2' THEN 1 ELSE 0 END) > 0
-               AND SUM(CASE WHEN industry_level = 'level3' THEN 1 ELSE 0 END) > 0
         )
     """)
     industry_stat_expected_inst = _scalar(

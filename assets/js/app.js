@@ -2141,9 +2141,9 @@
       actionLabel = '单独补跑';
     } else if (stepId === 'sync_industry') {
       if (typeof industry.expected_stocks === 'number') {
-        addNote('股票维度：给匹配持仓股补通达信三级分类');
-        addNote('审计 ' + fmt(industry.complete_three_level_stocks || 0) + '/' + fmt(industry.expected_stocks) + ' 只匹配持仓股有三级行业 · 覆盖' + (industry.coverage != null ? industry.coverage : 0) + '%');
-        addNote('三级分类齐全：L1 ' + fmt(industry.level1_stocks || 0) + ' / L2 ' + fmt(industry.level2_stocks || 0) + ' / L3 ' + fmt(industry.level3_stocks || 0));
+        addNote('股票维度：给匹配持仓股补通达信行业分类（L1+L2 为必备，L3 为 TDX 可选字段）');
+        addNote('审计 ' + fmt(industry.complete_three_level_stocks || 0) + '/' + fmt(industry.expected_stocks) + ' 只匹配持仓股有完整行业分类 · 覆盖' + (industry.coverage != null ? industry.coverage : 0) + '%');
+        addNote('分级覆盖：L1 ' + fmt(industry.level1_stocks || 0) + ' / L2 ' + fmt(industry.level2_stocks || 0) + ' / L3 ' + fmt(industry.level3_stocks || 0) + '（L3 约半数股票 TDX 源无数据）');
         if ((industry.missing || 0) > 0) addIssue('仍缺 ' + fmt(industry.missing) + ' 只，可单独补齐');
       }
       hasData = (industry.expected_stocks || 0) === 0 || (industry.complete_three_level_stocks || 0) > 0;
@@ -2181,7 +2181,7 @@
     } else if (stepId === 'build_industry_stat') {
       if (typeof industryStat.expected_institutions === 'number') addNote('审计 ' + fmt(industryStat.institutions || 0) + '/' + fmt(industryStat.expected_institutions) + ' 家有收益样本的机构已生成行业统计');
       addNote('机构维度：按行业汇总历史收益表现，不等同于股票行业映射');
-      addNote('三级行业统计齐全 ' + fmt(industryStat.complete_three_level_institutions || 0) + '/' + fmt(industryStat.expected_institutions || 0) + ' 家');
+      addNote('L1+L2 统计齐全 ' + fmt(industryStat.complete_three_level_institutions || 0) + '/' + fmt(industryStat.expected_institutions || 0) + ' 家');
       if ((industryStat.tracked_without_holdings || 0) > 0 || (industryStat.matched_without_returns || 0) > 0) {
         addNote('另有 ' + fmt(industryStat.tracked_without_holdings || 0) + ' 家跟踪机构暂无持仓，' + fmt(industryStat.matched_without_returns || 0) + ' 家匹配机构暂无收益样本');
       }
@@ -2190,7 +2190,7 @@
       }
       if ((industryStat.missing_institutions || 0) > 0) addIssue('仍缺 ' + fmt(industryStat.missing_institutions) + ' 家机构行业统计');
       var incompleteIndustryStat = Math.max((industryStat.expected_institutions || 0) - (industryStat.complete_three_level_institutions || 0), 0);
-      if (incompleteIndustryStat > 0) addIssue('仍有 ' + fmt(incompleteIndustryStat) + ' 家机构行业层级未补齐');
+      if (incompleteIndustryStat > 0) addIssue('仍有 ' + fmt(incompleteIndustryStat) + ' 家机构 L1/L2 层级未补齐');
       hasData = (industryStat.expected_institutions || 0) === 0 || (industryStat.institutions || 0) > 0;
       issueCount = Math.max(
         industryStat.missing_institutions || 0,
