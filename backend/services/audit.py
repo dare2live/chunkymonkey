@@ -1638,6 +1638,10 @@ def build_smart_plan(conn, force_all=False, *, audit: Optional[dict] = None, use
     if attention_reason:
         plan["steps"].append("build_external_attention")
         plan["reason"].append(attention_reason)
+    elif "sync_surveys" in plan["steps"]:
+        # 调研数据是 external_attention 的上游（survey_covered 字段），上游变更必须重算下游
+        plan["steps"].append("build_external_attention")
+        plan["reason"].append("机构调研已更新，重算外部关注快照")
     else:
         plan["skip_reasons"]["build_external_attention"] = "外部关注快照已是最新"
 
