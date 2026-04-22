@@ -20,7 +20,7 @@
 | `Mainline current state` | 当前主仓代码直接可验证的事实 |
 | `Shared DB current state` | 当前 `data/smartmoney.db` 直接可验证的事实 |
 | `Archived report` | 已进入 Git 历史、但不是当前工作树文件的归档报告内容 |
-| `Worktree / testing-only` | 分支实验或阶段性验证结果，不能直接当作主仓已落地能力 |
+| `Worktree / testing-only` | 已删除 worktree 或阶段性实验的历史结果，只能作为归档证据，不能直接当作主仓已落地能力 |
 | `Session reconstruction` | 本轮会话中已完成但未入 Git 的研究结论重建 |
 
 ## 1. 结论先行
@@ -29,7 +29,7 @@
 
 1. 项目已经具备“围绕机构持仓披露行为做研究”的主体骨架，也已经有股票侧列表、详情、评分、信号、Qlib、行业与外部关注等多条能力链。
 2. 但项目还不能宣称已经完成了“机构是主角、股票是载体、最终给出统一跟与不跟结论并稳定优化收益/回撤/胜率”的闭环。
-3. 限制当前业务目标落地的主要问题不是某一个前端页面或某一个字段，而是结构性问题：主仓代码、共享数据库、worktree 报告并不一致；机构评分链未闭环；最终动作结论存在多条并行口径；Qlib 当前标签与中期业务目标不一致；新因子的历史深度仍然太短。
+3. 限制当前业务目标落地的主要问题不是某一个前端页面或某一个字段，而是结构性问题：归档报告与当前主仓现实错位；机构评分链未闭环；最终动作结论存在多条并行口径；Qlib 当前标签与中期业务目标不一致；新因子的历史深度仍然太短。
 4. `Phase A-G` 报告和相关 worktree 实验是有价值的，但它们更像是“候选未来方案的证据”，不是当前主仓已经拥有的现实能力。
 5. 数据源与因子扩展方向是清晰的，且应当继续推进，但必须排在主业务闭环修复之后。否则会继续出现“因子更多了、IC 更好看了、但最终用户侧动作结论没有真正变得更可信”的问题。
 
@@ -70,9 +70,9 @@
 
 `Mainline current state`
 
-`backend/routers/updater.py` 当前实际 `STEPS` 列表包含 22 个步骤，已经覆盖：
+`backend/routers/updater.py` 当前实际 `STEPS` 列表包含 24 个步骤，已经覆盖：
 
-1. 十大股东下载、机构匹配、行情、财务、北向、调研等上游同步。
+1. 十大股东下载、机构匹配、行情、财务、调研、QFII、融资融券、龙虎榜等上游同步。
 2. 事件生成、收益计算、财务派生。
 3. 当前关系、机构画像、行业统计、股票列表、筛选、板块动量、外部关注、阶段特征、预测特征、海龟特征。
 4. 机构评分和股票评分。
@@ -83,38 +83,39 @@
 
 `Mainline current state`
 
-1. 股票研究页主读模型由 `backend/services/stock_trends_read.py` 驱动。
+1. 股票研究页当前主用户路径仍由 `backend/routers/institution.py` 的 `/api/inst/stock-trends` 直接组装返回，尚未完全收口到 `stock_trends_read.py` 这一层共享读模型。
 2. 前端 `assets/js/app.js` 直接消费 `stock_gate`、`stock_gate_reason` 等字段做主展示。
 3. `assets/js/signal-adapter.js` 作为单独的数据适配层，专门服务 `/api/signals/*` 这条 `signals_v2` 并行证据链。
 
-也就是说，主界面已经不是“没有结论”，而是“已经有不止一套结论”。这正是当前系统的能力，也是当前系统的问题来源。
+也就是说，主界面已经不是“没有结论”，而是同时存在 legacy 评分链、当前关系聚合链与 `signals_v2` 并排证据链。这正是当前系统的能力，也是当前系统的问题来源。
 
 ## 4. 当前主仓的真实决策链是什么
 
 这一节只讨论当前主仓代码，不讨论 worktree 方案。
 
-### 4.1 股票研究主列表的 gate 以评分链为主
+### 4.1 当前股票研究主列表的 gate 以 MCR 持仓关系聚合为主
 
 `Mainline current state`
 
-`backend/services/stock_trends_read.py` 中的 `apply_stock_trend_gate()` 会调用 `services.scoring.derive_stock_gate_from_priority()`，根据以下三项推导股票级 `stock_gate`：
+当前活跃的 `/api/inst/stock-trends` 路由在 `backend/routers/institution.py` 中直接查询 `mart_stock_trend` 与 `mart_current_relationship`，随后根据持仓机构 `follow_gate` 计数重新聚合股票级 `stock_gate`：
+
+1. 只要 `holder_follow_count > 0`，股票就记为 `follow`。
+2. 否则按 `watch -> observe -> avoid -> null` 顺序降级。
+3. `stock_gate_reason` 直接由各档持仓机构数量生成。
+
+这意味着当前用户在股票研究主列表看到的 `stock_gate`，主口径并不是直接读取 `mart_stock_trend.stock_gate`，也不是来自 `signals_v2`，而是当前关系层的聚合结果。
+
+### 4.2 评分链推导的 gate 仍然存在于写层与共享 helper 中
+
+`Mainline current state`
+
+`scoring.py` 仍会基于以下三项推导一套 legacy `stock_gate` 并写回 `mart_stock_trend`：
 
 1. `priority_pool`
 2. `composite_priority_score`
 3. `priority_pool_reason`
 
-这意味着股票研究主列表所展示的 `stock_gate`，主口径仍然建立在 `scoring.py` 写回 `mart_stock_trend` 的综合评分链上，而不是直接来自 `signals_v2`。
-
-### 4.2 机构页或部分读路径还保留了另一条基于持仓关系的 gate 聚合口径
-
-`Mainline current state`
-
-`backend/routers/institution.py` 中还存在另一条口径：根据 `mart_current_relationship.follow_gate` 的持仓机构分布，直接聚合出股票级 `stock_gate`。逻辑是：
-
-1. 只要有任一持仓机构 `follow`，股票就记为 `follow`。
-2. 否则按 `watch -> observe -> avoid -> null` 顺序降级。
-
-这条逻辑与 `stock_trends_read.py` 中“由综合分和池子推导 gate”的口径并不相同。它不是一个语义等价的实现细节，而是另一套业务含义：前者问的是“综合评分与池子档位”，后者问的是“当前持仓机构中有没有 follow/watch 级别机构”。
+同时，`backend/services/stock_trends_read.py` 里也保留了基于同一套 `priority_pool/composite` 规则推导 `stock_gate` 的共享 helper。这说明系统当前不是“只有一条 gate”，而是：写层有一套基于综合分的 gate 语义，活跃列表路由又用 MCR 关系层重新聚合了一套用户可见 gate 语义。两者不是等价实现，而是不同业务含义。
 
 ### 4.3 `signals_v2` 是并排决策链，不是当前主仓唯一动作结论系统
 
@@ -163,23 +164,23 @@
 
 ## 6. 当前主仓最核心的五个阻塞点
 
-### 6.1 阻塞点一：主仓代码、共享数据库、worktree 报告并不一致
+### 6.1 阻塞点一：归档报告与当前主仓现实错位
 
-`Mainline current state` + `Shared DB current state` + `Worktree / testing-only`
+`Mainline current state` + `Shared DB current state` + `Archived report`
 
 这是目前最根本的问题。
 
-一方面，当前主仓代码仍然保留了北向相关结构：
+当前主仓代码与共享数据库在北向这件事上其实已经是一致的：
 
-1. `backend/routers/updater.py` 中仍有 `sync_northbound` 步骤。
-2. `backend/services/db.py` 的 schema 仍然预期 `fact_northbound_daily`。
-3. `backend/services/qlib_full_engine.py` 主仓仍然保留 `use_northbound` 这类因子入口。
+1. 当前主代码目录已经没有 `northbound`、`sync_northbound`、`use_northbound` 这类实现残留。
+2. `data/smartmoney.db` 里也不存在 `fact_northbound_daily`。
+3. 原来的 worktree 已经删除，`Phase A-G` 只能作为 Git 历史中的归档材料来理解。
 
-另一方面，当前共享数据库里 `fact_northbound_daily` 实际上不存在。
+真正错位的是历史材料：归档的 `Phase A-G` 报告仍然带着当时的分支上下文、北向退役叙述和替代源实验结论，而当前主仓已经在你写文档期间被同步清理过一轮。
 
-再另一方面，`Phase A-G` 报告又声称北向数据已经被彻底退役，并用 QFII、两融、龙虎榜、供给序列等替代。
+这不再是“主仓代码还在引用不存在的 northbound 表”这种代码级 bug，而是“归档报告和当前现实没有同步收口”的文档级错位。
 
-这三者不能同时为真。当前最合理的解释是：分支做过一套改造，共享数据库也受过影响，但主仓代码并没有同步完成全量收口。因此现在任何基于 `Phase A-G` 的正面能力叙述，都必须先加一句前提：那是 branch 证据，不是主仓现实。
+因此现在任何基于 `Phase A-G` 的正面能力叙述，都必须先加一句前提：那是归档实验材料，不是当前主仓现实。
 
 ### 6.2 阻塞点二：机构评分链未闭环，违背“机构是主角”
 
@@ -207,11 +208,12 @@
 
 当前至少存在三条动作判断相关链路：
 
-1. `scoring.py -> mart_stock_trend -> stock_trends_read.py -> stock_gate`
-2. `institution.py` 中基于 `mart_current_relationship.follow_gate` 聚合的股票级 gate 口径
+1. `scoring.py -> mart_stock_trend` 写回 `composite_priority_score / priority_pool / legacy stock_gate`
+2. `institution.py -> /api/inst/stock-trends` 基于 `mart_current_relationship.follow_gate` 重算用户可见股票级 gate
 3. `signals_v2.py -> /api/signals/* -> signal-adapter.js` 这条 EV/胜率/样本驱动的并排信号链
+4. `stock_trends_read.py` 中还保留着基于 `priority_pool/composite` 推导 gate 的共享 helper，但它尚未接管当前主列表路由
 
-其中第 1 条和第 2 条甚至连 `stock_gate` 这个词都共用，但业务语义并不相同；第 3 条又提供了一套更接近“事件跟随收益学”的动作判断框架。
+其中第 1 条和第 2 条甚至连 `stock_gate` 这个词都共用，但业务语义并不相同；第 3 条又提供了一套更接近“事件跟随收益学”的动作判断框架；第 4 条则说明系统还有一层“计划中的共享读模型”尚未真正收口到活跃路由。
 
 这会造成两个严重后果：
 
@@ -283,7 +285,7 @@
 
 `Archived report` + `Worktree / testing-only`
 
-从 Git 历史可恢复的 `phase-a-to-g-report-2026-04-22.md`，可以提炼出一组非常有价值、但必须明确标注为 branch 证据的结论。
+从 Git 历史可恢复的 `phase-a-to-g-report-2026-04-22.md`，可以提炼出一组非常有价值、但必须明确标注为历史实验材料的结论。原始 worktree 已经删除，因此这些内容现在只能作为归档证据使用。
 
 ### 8.1 它的最大价值不是“指标变好了”，而是重新定义了哪些数据源是活的
 
@@ -451,7 +453,7 @@ AkShare 更适合承担的补充层包括：
 在吸收了主仓证据、共享 DB 证据、归档报告和前序研究后，推荐的唯一行动顺序如下：
 
 1. 先做主仓阻塞点证据包，不先盲目 merge worktree。
-2. 再决定 `Phase A-G` 相关改动中哪些要 cherry-pick，哪些要拒绝，哪些要重做。
+2. 再从 Git 归档中决定 `Phase A-G` 相关改动里哪些要选择性恢复，哪些要拒绝，哪些要重做。
 3. 修复机构评分闭环，确保 `mart_institution_profile` 的核心评分字段真实写回且被后续链消费。
 4. 收口最终动作结论系统，明确 legacy `stock_gate`、MCR 聚合 gate、`signals_v2` 三者的主从关系。
 5. 在确定主动作结论语义后，重定义业务对齐的 Qlib 标签，再重新评估 behavior / supply / expectation 等因子价值。
@@ -466,8 +468,8 @@ AkShare 更适合承担的补充层包括：
 1. `backend/main.py`：主仓路由注册，确认 `/api/signals` 已并行存在。
 2. `backend/routers/updater.py`：当前真实 DAG 与步骤集合。
 3. `backend/services/scoring.py`：机构评分、股票评分、综合分、池子、legacy `stock_gate` 来源。
-4. `backend/services/stock_trends_read.py`：股票研究页当前主读模型，以及基于 `priority_pool/composite` 推导 `stock_gate` 的读侧逻辑。
-5. `backend/routers/institution.py`：基于 `mart_current_relationship.follow_gate` 聚合股票 gate 的另一条业务口径。
+4. `backend/routers/institution.py`：当前活跃的 `/api/inst/stock-trends` 路由，直接组装股票研究主列表，并按 `mart_current_relationship.follow_gate` 聚合用户可见 gate。
+5. `backend/services/stock_trends_read.py`：计划中的共享读模型，以及基于 `priority_pool/composite` 推导 `stock_gate` 的 helper 语义。
 6. `backend/services/signals_v2.py`：并行 EV/胜率/样本驱动决策链。
 7. `assets/js/app.js`：股票研究页对 `stock_gate` 的主消费位置。
 8. `assets/js/signal-adapter.js`：`signals_v2` 的前端唯一适配层。
@@ -477,7 +479,7 @@ AkShare 更适合承担的补充层包括：
 以下材料属于归档或会话重建材料，不应误认为当前工作树文件：
 
 1. `audit-report-2026-04-22.md`：可从 Git 提交 `0465c50d` 恢复其内容，用于背景与历史审计结论。
-2. `phase-a-to-g-report-2026-04-22.md`：可从 Git 提交 `027056a3` 恢复其内容，用于 branch 进展和实验结果背景。
+2. `phase-a-to-g-report-2026-04-22.md`：可从 Git 提交 `027056a3` 恢复其内容，用于已删除 worktree 的历史实验背景。
 3. Tongdaxin-first 数据源研究、AkShare + Qlib 相关性实验、因子 ETL 方案：本轮会话已重建其核心结论，但此前未进入 Git 历史，应视为 `Session reconstruction` 材料。
 
 ## 13. 最终一句话
@@ -500,7 +502,7 @@ AkShare 更适合承担的补充层包括：
 4. `backend/` 整体 grep `northbound`：0 处匹配。
 5. `data/smartmoney.db`：`fact_northbound_daily` 表确实不存在。
 
-也就是说，主仓代码和共享 DB 其实是**一致的**（两者都已经不含北向），不一致的只是 `Phase A-G` 等归档文档的叙述。这不改变"项目存在分支/归档与主仓叙述错位"的大结论，但把阻塞点一的性质从"代码 bug"降级为"文档未同步"。**§6.1 的结论需要改写**：主要问题是"归档文档未随主仓同步更新，导致后续接手的人会基于过时证据判断"，而不是"主仓仍在调用不存在的表"。
+也就是说，主仓代码和共享 DB 其实是**一致的**（两者都已经不含北向），不一致的只是 `Phase A-G` 等归档文档的叙述。这不改变"项目存在归档叙述与主仓现实错位"的大结论，但把阻塞点一的性质从"代码 bug"降级为"文档未同步"。**§6.1 的结论已经按这个方向改写**：主要问题是"归档文档未随主仓同步更新，导致后续接手的人会基于过时证据判断"，而不是"主仓仍在调用不存在的表"。
 
 相应地，我之前准备写的"北向 P0 热修"建议取消——没有热修标的。
 
@@ -522,7 +524,7 @@ AkShare 更适合承担的补充层包括：
 
 ### 14.4 需要推翻或修正的判断
 
-1. **`institution.py` 基于 MCR 聚合的 gate 不一定是"现役第二条口径"，可能是死代码**。文档把它与 `stock_trends_read.py` 并列为两条活口径，但没有验证前端哪个页面、哪个 API 路径实际消费它。"收口决策"之前必须先做一次调用链审计：grep `institution.py` 中该 gate 对应路由在 `assets/js/` 下的所有引用。如果确认不在主用户路径上，应当直接删除而非纳入"需收口的三条链"。不核查就假设它活着，等于人为制造架构复杂度。这一项审计可以在 30 分钟内完成，不能省。
+1. **`institution.py` 基于 MCR 聚合的 gate 不是死代码，而是当前股票列表主路径的一部分**。前端 `assets/js/app.js` 现在直接请求 `/api/inst/stock-trends`，而该路由仍在 `institution.py` 中手写组装，并基于 `mart_current_relationship.follow_gate` 重算用户可见 `stock_gate`。因此当前问题不是“它活不活着”，而是“它确实活着，并且与写层 legacy gate 语义并存”。
 2. **`signals_v2` 作为"并排第二证据链"是良性设计，不应被合并进 legacy gate**。`signals_v2.py` 的模块注释明确写了"物理隔离 legacy 综合评分概念"，这是有意为之的防污染边界。"收口动作结论"的正确动作是**定义主从关系**（哪个是主结论、哪个是辅助证据、用户侧如何呈现），而不是把两者合并成一个数字。合并只会损失信息、增加 debug 难度。文档第 11 节第 4 步的"明确主从关系"措辞是对的，但需要在执行时明确：主从 ≠ 合并。
 3. **历史深度不足是硬约束，不能只写成"阻塞点五"然后等它自然成熟**。当前 `fact_stock_stage_features` 9 个快照日、`fact_stock_turtle_features` 5 个快照日，这意味着任何统计结论都在冷启动期。建议两条并行动作：(a) 用 Tongdaxin / AkShare 回填 60~120 日历史特征，把冷启动期从 3 个月压缩到 1 个月以内；(b) 在用户侧主界面的 `stock_gate` 旁强制挂"历史深度不足，当前为探索期"标签，到 60 个交易日样本后再去掉。默默展示结论然后事后解释"其实当时数据还不够"比先标注再积累要失信得多。
 
@@ -545,7 +547,7 @@ AkShare 更适合承担的补充层包括：
 文档第 11 节 6 步方向正确，但建议两处调整：
 
 1. **取消北向 P0 热修层**（按 §14.1 的核查结论，主仓代码已经清理干净，没有热修标的）。需要做的只是把归档报告中残留的 `sync_northbound` / `use_northbound` 类叙述标注"已退役，仅历史参考"。
-2. **允许并行道路，不要把 worktree 全部冻结**。`Phase A-G` 中"时间对齐修正"和"Supply 归一化"这类属于"诚实性修复"（即纠正已有逻辑的 lookahead bias、口径错误），可以在主仓收口期间平行 cherry-pick——它们不引入新因子权重、不改变动作结论语义，风险低于"等待主仓全部完工"的停滞成本。需要拒绝的是"扩因子、调权重"类改动，直到机构评分闭环和动作结论收口完成。
+2. **允许并行道路，但并行对象应来自 Git 归档中的 `Phase A-G` 历史改动，而不是已删除 worktree**。其中"时间对齐修正"和"Supply 归一化"这类属于"诚实性修复"（即纠正已有逻辑的 lookahead bias、口径错误），可以在主仓收口期间平行选择性恢复——它们不引入新因子权重、不改变动作结论语义，风险低于"等待主仓全部完工"的停滞成本。需要拒绝的是"扩因子、调权重"类改动，直到机构评分闭环和动作结论收口完成。
 
 ### 14.7 风险提示：决策瘫痪
 
@@ -553,7 +555,7 @@ AkShare 更适合承担的补充层包括：
 
 1. **14 天内**：机构评分闭环根因定位报告 + 修复 PR（不是"修好"，是"知道问题在哪、有修复路径"）。
 2. **30 天内**：动作结论主从决策书（不超过 2 页，明确 legacy `stock_gate` / MCR gate / `signals_v2` 三者的主从关系和用户侧展示规则）。
-3. **60 天内**：Qlib 标签对齐首版上线；`Phase A-G` cherry-pick 决策完成；死代码（如果 MCR gate 确认是死代码）清理完成。
+3. **60 天内**：Qlib 标签对齐首版上线；归档 `Phase A-G` 变更的选择性恢复/舍弃决策完成；多口径 gate 的主从关系完成落地。
 
 超过上述窗口仍未落地，说明路线本身有问题，需要重新评估是否应该反向操作（先 merge worktree 在稳定基础上修复，接受更高短期风险但避免长期停滞）。
 
