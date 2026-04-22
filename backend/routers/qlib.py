@@ -45,6 +45,8 @@ class QlibTrainParams(BaseModel):
     use_turtle: bool = True
     use_quality: bool = True
     use_stage: bool = True
+    use_behavior: bool = False
+    use_supply: bool = False
     use_industry_onehot: bool = True
 
 

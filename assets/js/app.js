@@ -1761,7 +1761,9 @@
     use_institution: true,
     use_turtle: true,
     use_quality: true,
-    use_stage: true
+    use_stage: true,
+    use_behavior: false,
+    use_supply: false
   };
   var _qlibDefaultParamsPromise = null;
 
@@ -6861,6 +6863,10 @@
     el('qlibUseTurtle').checked = cfg.use_turtle !== false;
     el('qlibUseQuality').checked = cfg.use_quality !== false;
     el('qlibUseStage').checked = cfg.use_stage !== false;
+    var behEl = el('qlibUseBehavior');
+    if (behEl) behEl.checked = !!cfg.use_behavior;
+    var supEl = el('qlibUseSupply');
+    if (supEl) supEl.checked = !!cfg.use_supply;
   }
 
   function getQlibTrainParams() {
@@ -6881,7 +6887,9 @@
       use_institution: !!el('qlibUseInstitution')?.checked,
       use_turtle: !!el('qlibUseTurtle')?.checked,
       use_quality: !!el('qlibUseQuality')?.checked,
-      use_stage: !!el('qlibUseStage')?.checked
+      use_stage: !!el('qlibUseStage')?.checked,
+      use_behavior: !!el('qlibUseBehavior')?.checked,
+      use_supply: !!el('qlibUseSupply')?.checked
     };
   }
 
@@ -7049,7 +7057,9 @@
       institution: { label: '机构因子', color: '#10b981' },
       turtle: { label: '海龟因子', color: '#ef4444' },
       quality: { label: '质量因子', color: '#14b8a6' },
-      stage: { label: '阶段因子', color: '#f97316' }
+      stage: { label: '阶段因子', color: '#f97316' },
+      behavior: { label: '行为因子', color: '#0ea5e9' },
+      supply: { label: '供给因子', color: '#a855f7' }
     };
     var groupTotals = {};
     var totalImportance = 0;
@@ -7079,6 +7089,8 @@
       params?.use_turtle ? 'turtle' : null,
       params?.use_quality ? 'quality' : null,
       params?.use_stage ? 'stage' : null,
+      params?.use_behavior ? 'behavior' : null,
+      params?.use_supply ? 'supply' : null,
     ].filter(Boolean);
     var missingEnabled = enabledGroups.filter(function (group) {
       return !groupTotals[group];
