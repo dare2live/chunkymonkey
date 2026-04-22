@@ -611,67 +611,6 @@ def _load_stage_factors(smart_conn, codes: list) -> pd.DataFrame:
     return _finalize_time_series_factor_frame(data)
 
 
-def _load_northbound_factors(smart_conn, codes: list) -> pd.DataFrame:
-    """按 trade_date 加载北向持仓因子。"""
-    if not codes:
-        return pd.DataFrame()
-    try:
-        placeholders = ",".join("?" for _ in codes)
-        rows = smart_conn.execute(
-            f"SELECT stock_code, trade_date, hold_shares, hold_market_cap, hold_ratio, change_shares "
-            f"FROM fact_northbound_daily WHERE stock_code IN ({placeholders}) "
-            f"ORDER BY stock_code, trade_date",
-            codes,
-        ).fetchall()
-    except Exception:
-        return pd.DataFrame()
-
-    if not rows:
-        return pd.DataFrame()
-
-    history_df = pd.DataFrame([dict(row) for row in rows])
-    history_df["datetime"] = history_df["trade_date"].map(_normalize_factor_date)
-    history_df = history_df.dropna(subset=["datetime"]).sort_values(["stock_code", "datetime"])
-    history_df["hold_ratio_prev"] = history_df.groupby("stock_code")["hold_ratio"].shift(1)
-    history_df["hold_shares_prev"] = history_df.groupby("stock_code")["hold_shares"].shift(1)
-    history_df["hold_market_cap_prev"] = history_df.groupby("stock_code")["hold_market_cap"].shift(1)
-
-    data = []
-    for row in history_df.to_dict("records"):
-        hold_ratio = row.get("hold_ratio")
-        hold_shares = row.get("hold_shares")
-        hold_market_cap = row.get("hold_market_cap")
-        change_shares = row.get("change_shares")
-        data.append(
-            {
-                "datetime": row["datetime"],
-                "instrument": _instrument_from_stock_code(row["stock_code"]),
-                "nb_hold_shares": hold_shares,
-                "nb_hold_market_cap": hold_market_cap,
-                "nb_hold_ratio": hold_ratio,
-                "nb_change_shares": change_shares,
-                "nb_hold_ratio_change": (
-                    hold_ratio - row.get("hold_ratio_prev")
-                    if hold_ratio is not None and row.get("hold_ratio_prev") is not None
-                    else None
-                ),
-                "nb_hold_shares_change": (
-                    hold_shares - row.get("hold_shares_prev")
-                    if hold_shares is not None and row.get("hold_shares_prev") is not None
-                    else None
-                ),
-                "nb_hold_market_cap_change": (
-                    hold_market_cap - row.get("hold_market_cap_prev")
-                    if hold_market_cap is not None and row.get("hold_market_cap_prev") is not None
-                    else None
-                ),
-                "nb_net_inflow_flag": 1 if (change_shares or 0) > 0 else -1 if (change_shares or 0) < 0 else 0,
-            }
-        )
-
-    return _finalize_time_series_factor_frame(data)
-
-
 _TDX_L1_ONEHOT_CODES = tuple(f"T{i:02d}" for i in range(1, 14))
 _TDX_L1_ONEHOT_FEATURES = tuple(f"ind_t{i:02d}" for i in range(1, 14))
 
@@ -726,7 +665,6 @@ def _load_combined_custom_factors(
     use_turtle: bool,
     use_quality: bool,
     use_stage: bool,
-    use_northbound: bool,
 ) -> pd.DataFrame:
     if not codes:
         return pd.DataFrame()
@@ -751,10 +689,6 @@ def _load_combined_custom_factors(
         stage_factors = _load_stage_factors(smart_conn, codes)
         if not stage_factors.empty:
             factor_frames.append(stage_factors)
-    if use_northbound:
-        northbound_factors = _load_northbound_factors(smart_conn, codes)
-        if not northbound_factors.empty:
-            factor_frames.append(northbound_factors)
     if not factor_frames:
         return pd.DataFrame()
 
@@ -1597,7 +1531,6 @@ def _load_saved_model_replay_bundle(smart_conn, model_row: dict, params: dict):
         use_turtle=bool(params.get("use_turtle", True)),
         use_quality=bool(params.get("use_quality", False)),
         use_stage=bool(params.get("use_stage", False)),
-        use_northbound=bool(params.get("use_northbound", False)),
     )
     custom_factor_count = _inject_custom_factors_into_handler(handler, custom_factors)
     logger.info(
@@ -1664,8 +1597,6 @@ def _persist_training_outputs(smart_conn, *, model_id: str, params: dict,
             factor_group = "quality"
         elif str(factor_name).startswith("stage_"):
             factor_group = "stage"
-        elif str(factor_name).startswith("nb_"):
-            factor_group = "northbound"
         elif str(factor_name).startswith("fin_"):
             factor_group = "financial"
         else:
@@ -1763,7 +1694,6 @@ def _persist_workflow_records(smart_conn, *, model_id: str, dataset, model, para
             use_turtle=params.get("use_turtle", True),
             use_quality=params.get("use_quality", False),
             use_stage=params.get("use_stage", False),
-            use_northbound=params.get("use_northbound", False),
         )
         SignalRecord(model=model, dataset=dataset, recorder=recorder).generate()
         SigAnaRecord(recorder, ana_long_short=True).generate()
@@ -2063,7 +1993,6 @@ def train_full_model(smart_conn, data_dir: str = None, *, params: Optional[dict]
     use_turtle = params.get("use_turtle", True)
     use_quality = params.get("use_quality", True)
     use_stage = params.get("use_stage", True)
-    use_northbound = params.get("use_northbound", False)
     use_industry_onehot = params.get("use_industry_onehot", True)
     universe_source = str(params.get("universe_source") or "active_a_stock").strip()
     sample_stock_limit = int(params.get("sample_stock_limit", 0) or 0)
@@ -2161,7 +2090,6 @@ def train_full_model(smart_conn, data_dir: str = None, *, params: Optional[dict]
             use_turtle=bool(use_turtle),
             use_quality=bool(use_quality),
             use_stage=bool(use_stage),
-            use_northbound=bool(use_northbound),
         )
         custom_factor_count = len(custom_factors.columns) if not custom_factors.empty else 0
         logger.info(f"[Qlib-Full] 自定义因子: {custom_factor_count} 个, 覆盖 {len(custom_factors)} 只股票")
@@ -2527,7 +2455,6 @@ def get_model_summary(conn, model_id: Optional[str] = None) -> dict:
             "use_turtle": bool(params.get("use_turtle", True)),
             "use_quality": bool(params.get("use_quality", False)),
             "use_stage": bool(params.get("use_stage", False)),
-            "use_northbound": bool(params.get("use_northbound", False)),
             "use_benchmark": _use_backtest_benchmark(params),
             "benchmark": _requested_backtest_benchmark(params),
             "universe_source": str(params.get("universe_source") or "active_a_stock"),

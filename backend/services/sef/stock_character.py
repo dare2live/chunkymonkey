@@ -7,10 +7,9 @@
    - new_entry / increase → beta_inst_entry
    - decrease / exit → beta_holder_decline
 2. 对 raw_institution_surveys 按调研热度 → beta_survey_surge
-3. 对 fact_northbound_daily 净买入突增 → beta_northbound_in
-4. noise_floor = 非事件日日收益标准差
-5. info_lag_days = 事件后 CAR 峰值的滞后天数
-6. elasticity_sector = 对所属 TDX L1 行业等权指数的 rolling beta
+3. noise_floor = 非事件日日收益标准差
+4. info_lag_days = 事件后 CAR 峰值的滞后天数
+5. elasticity_sector = 对所属 TDX L1 行业等权指数的 rolling beta
 
 最终 embedding = [beta_* , noise, lag, sector] 14+ 维，用 PCA 压到 20 维（或截断）。
 

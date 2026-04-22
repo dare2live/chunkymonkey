@@ -173,7 +173,6 @@ STEPS = [
     {"id": "sync_raw",              "name": "下载十大股东",     "group": "data", "order": 1},
     {"id": "match_inst",            "name": "匹配跟踪机构",    "group": "data", "order": 2},
     {"id": "sync_market_data",      "name": "同步行情数据",    "group": "data", "order": 3},
-    {"id": "sync_northbound",       "name": "同步北向持仓",    "group": "data", "order": 3.5},
     {"id": "sync_financial",        "name": "同步财务数据",    "group": "data", "order": 4},
     {"id": "gen_events",            "name": "生成事件",        "group": "calc", "order": 5},
     {"id": "calc_returns",          "name": "计算收益",        "group": "calc", "order": 6},
@@ -199,7 +198,6 @@ HARD_DEPS = {
     "sync_raw": [],
     "match_inst": ["sync_raw"],
     "sync_market_data": ["match_inst"],
-    "sync_northbound": [],
     "sync_financial": [],
     "gen_events": ["match_inst"],
     "calc_returns": ["gen_events"],
@@ -1948,82 +1946,6 @@ async def _step_sync_industry(conn) -> int:
     return count
 
 
-NORTHBOUND_DISCLOSURE_LAST_DATE = "2024-08-16"
-
-
-async def _step_sync_northbound(conn):
-    """同步最近交易日附近的北向持仓日级事实。
-
-    沪深港交易所自 2024-08-19 起停止发布陆股通个股持股明细，
-    该节点请求区间完全落在停更日之后时直接跳过，避免持续请求失效 API。
-    返回 str 时更高层视作 skipped。
-    """
-    from services.northbound_client import sync_northbound_daily
-    from services.security_master import get_active_a_stock_codes
-
-    trade_date = latest_completed_trade_date(conn)
-    if not trade_date:
-        logger.warning("[北向] 未找到最近完成交易日，跳过同步")
-        return "未找到最近完成交易日，跳过同步"
-
-    end_dt = datetime.strptime(trade_date, "%Y-%m-%d")
-    start_dt = end_dt - timedelta(days=10)
-    start_str = start_dt.strftime("%Y-%m-%d")
-
-    if start_str > NORTHBOUND_DISCLOSURE_LAST_DATE:
-        reason = f"陆股通个股披露自 {NORTHBOUND_DISCLOSURE_LAST_DATE} 后停止更新"
-        logger.info(f"[北向] 数据源已停止公布，跳过同步（请求区间 {start_str} ~ {trade_date}）")
-        _update_step(
-            conn,
-            "sync_northbound",
-            error=json.dumps(
-                {
-                    "status": "source_retired",
-                    "reason": reason,
-                    "requested_start_date": start_str,
-                    "requested_end_date": trade_date,
-                    "written_rows": 0,
-                },
-                ensure_ascii=False,
-            ),
-            records=0,
-        )
-        return reason
-
-    detail = {
-        "status": "running",
-        "requested_start_date": start_str,
-        "requested_end_date": trade_date,
-        "written_rows": 0,
-        "trade_dates": [],
-    }
-    _update_step(
-        conn,
-        "sync_northbound",
-        error=json.dumps(detail, ensure_ascii=False),
-        records=0,
-    )
-
-    active_codes = get_active_a_stock_codes(conn)
-    result = await sync_northbound_daily(
-        conn,
-        start_date=start_str,
-        end_date=trade_date,
-        active_codes=active_codes,
-    )
-    detail.update(result)
-    _update_step(
-        conn,
-        "sync_northbound",
-        error=json.dumps(detail, ensure_ascii=False),
-        records=result.get("written_rows", 0),
-    )
-
-    if result.get("status") == "source_unavailable":
-        return f"北向源暂不可用：{result.get('error') or '未知错误'}"
-    return int(result.get("written_rows") or 0)
-
-
 def _step_build_industry_stat_sync(conn) -> int:
     """计算机构在各行业 (TDX 一二三级) 的表现统计。
 
@@ -2916,7 +2838,6 @@ RUNNERS = {
     "sync_raw": _step_sync_raw,
     "match_inst": _step_match_inst,
     "sync_market_data": _step_sync_market_data,
-    "sync_northbound": _step_sync_northbound,
     "sync_financial": _step_sync_financial,
     "gen_events": _step_gen_events,
     "calc_returns": _step_calc_returns,

@@ -1761,46 +1761,9 @@
     use_institution: true,
     use_turtle: true,
     use_quality: true,
-    use_stage: true,
-    use_northbound: false
+    use_stage: true
   };
   var _qlibDefaultParamsPromise = null;
-  var _qlibFeatureFlags = {
-    northbound: {
-      enabled: false,
-      label: '北向因子',
-      reason: '北向数据链尚未接通，当前训练固定不使用该特征。'
-    }
-  };
-
-  function updateQlibFeatureFlags(flags) {
-    if (!flags || typeof flags !== 'object') return;
-    Object.keys(flags).forEach(function (key) {
-      var current = _qlibFeatureFlags[key] || { enabled: true, label: key, reason: '' };
-      _qlibFeatureFlags[key] = Object.assign({}, current, flags[key] || {});
-    });
-  }
-
-  function qlibFeatureFlag(key) {
-    var current = _qlibFeatureFlags[key] || { enabled: true, label: key, reason: '' };
-    return Object.assign({}, current);
-  }
-
-  function qlibFeatureEnabled(key) {
-    return !!qlibFeatureFlag(key).enabled;
-  }
-
-  function applyQlibFeatureAvailability(params) {
-    var northboundFlag = qlibFeatureFlag('northbound');
-    var northboundEl = el('qlibUseNorthbound');
-    if (northboundEl) {
-      northboundEl.disabled = !northboundFlag.enabled;
-      northboundEl.checked = northboundFlag.enabled ? !!(params && params.use_northbound) : false;
-      northboundEl.title = northboundFlag.enabled ? '' : (northboundFlag.reason || '');
-    }
-    var featureHintEl = el('qlibFeatureHint');
-    if (featureHintEl) featureHintEl.textContent = northboundFlag.reason || '';
-  }
 
   var DOWNSTREAM_LABELS = {
     sync_market_data: ['计算收益', '构建当前关系', '机构画像', '行业统计', '生成股票列表', 'TDX选股筛选', '板块动量分析', '机构评分', '股票评分'],
@@ -1824,7 +1787,6 @@
     { step_id: 'sync_raw', step_name: '下载十大股东', status: 'idle', desc: '从全市场拉取最新十大股东入驻数据' },
     { step_id: 'match_inst', step_name: '匹配跟踪机构', status: 'idle', desc: '将原始数据与跟踪名单匹配' },
     { step_id: 'sync_market_data', step_name: '同步行情数据', status: 'idle', desc: '补齐持仓股月K/日K数据' },
-    { step_id: 'sync_northbound', step_name: '同步北向持仓', status: 'idle', desc: '陆股通北向每日持股快照（自 2024-08-19 停更）' },
     { step_id: 'sync_financial', step_name: '同步财务数据', status: 'idle', desc: '从通达信同步 gpcw 财务数据' },
     { step_id: 'gen_events', step_name: '生成事件', status: 'idle', desc: '比对持仓变动，生成新进/增持/减持事件' },
     { step_id: 'calc_returns', step_name: '计算收益', status: 'idle', desc: '计算每个事件公告后的收益与回撤' },
@@ -2158,17 +2120,6 @@
       hasData = (returns.total || 0) === 0 || (returns.count || 0) > 0 || (returns.not_ready_events || 0) > 0;
       actionable = ((returns.actionable_missing_events || 0) > 0) || ['failed', 'skipped', 'stopped'].includes(status);
       actionLabel = ((returns.actionable_missing_events || 0) > 0) ? '补算缺失收益' : '单独补跑';
-    } else if (stepId === 'sync_northbound') {
-      var northbound = layers.northbound || {};
-      var lastTradeDate = northbound.last_trade_date || '2024-08-16';
-      addNote('数据源：东方财富陆股通北向持股（' + lastTradeDate + ' 后停更）');
-      if (typeof northbound.rows === 'number') addNote('审计 ' + fmt(northbound.rows) + ' 条历史快照');
-      if (/source_retired|停止|停更|停止更新/.test(step.error || '')) {
-        addNote('数据源已退役，该节点仅保留历史存量');
-      }
-      hasData = (northbound.rows || 0) > 0;
-      actionable = ['failed'].includes(status);
-      actionLabel = '单独补跑';
     } else if (stepId === 'sync_surveys') {
       var surveys = layers.surveys || {};
       if (typeof surveys.count === 'number') addNote('审计 ' + fmt(surveys.count) + ' 条机构调研记录');
@@ -2553,13 +2504,13 @@
     if (!steps || !steps.length) { el('stepGrid').innerHTML = ''; return; }
 
     var GROUP_MAP = {
-      sync_raw: 'data', match_inst: 'data', sync_market_data: 'data', sync_northbound: 'data', sync_financial: 'data', sync_surveys: 'data', sync_industry: 'data',
+      sync_raw: 'data', match_inst: 'data', sync_market_data: 'data', sync_financial: 'data', sync_surveys: 'data', sync_industry: 'data',
       build_turtle_features: 'mart',
       gen_events: 'calc', calc_returns: 'calc', calc_financial_derived: 'calc',
       build_current_rel: 'mart', build_profiles: 'mart', build_industry_stat: 'mart', build_trends: 'mart', calc_screening: 'mart', calc_sector_momentum: 'mart', build_external_attention: 'mart', build_stage_features: 'mart', build_forecast_features: 'mart', calc_inst_scores: 'mart', calc_stock_scores: 'mart'
     };
     var GROUP_DEF = {
-      data: { name: '数据获取', verb: '重新同步', count: 7, badge: '①' },
+      data: { name: '数据获取', verb: '重新同步', count: 6, badge: '①' },
       calc: { name: '事实计算', verb: '全量计算', count: 3, badge: '②' },
       mart: { name: '集市构建', verb: '重构集市', count: 12, badge: '③' }
     };
@@ -6853,18 +6804,15 @@
   function normalizeQlibModelParams(params) {
     if (!params) return Object.assign({}, QLIB_DEFAULT_PARAMS);
     var normalized = Object.assign({}, QLIB_DEFAULT_PARAMS, params);
-    ['use_quality', 'use_stage', 'use_northbound'].forEach(function (key) {
+    ['use_quality', 'use_stage'].forEach(function (key) {
       if (!Object.prototype.hasOwnProperty.call(params, key)) normalized[key] = false;
     });
-    if (!qlibFeatureEnabled('northbound')) normalized.use_northbound = false;
     return normalized;
   }
 
   function normalizeQlibFormParams(params) {
     if (!params) return Object.assign({}, QLIB_DEFAULT_PARAMS);
-    var normalized = Object.assign({}, QLIB_DEFAULT_PARAMS, params);
-    if (!qlibFeatureEnabled('northbound')) normalized.use_northbound = false;
-    return normalized;
+    return Object.assign({}, QLIB_DEFAULT_PARAMS, params);
   }
 
   function setQlibForm(params) {
@@ -6886,7 +6834,6 @@
     el('qlibUseTurtle').checked = cfg.use_turtle !== false;
     el('qlibUseQuality').checked = cfg.use_quality !== false;
     el('qlibUseStage').checked = cfg.use_stage !== false;
-    applyQlibFeatureAvailability(cfg);
   }
 
   function getQlibTrainParams() {
@@ -6907,8 +6854,7 @@
       use_institution: !!el('qlibUseInstitution')?.checked,
       use_turtle: !!el('qlibUseTurtle')?.checked,
       use_quality: !!el('qlibUseQuality')?.checked,
-      use_stage: !!el('qlibUseStage')?.checked,
-      use_northbound: qlibFeatureEnabled('northbound') && !!el('qlibUseNorthbound')?.checked
+      use_stage: !!el('qlibUseStage')?.checked
     };
   }
 
@@ -6987,7 +6933,6 @@
     await loadQlibDefaultParams();
     var status = await api('/api/qlib/status');
     if (!status) return;
-    updateQlibFeatureFlags(status.feature_flags);
     el('qlibStatStatus').style.color = '';
     var model = status.model || null;
     var params = null;
@@ -7077,8 +7022,7 @@
       institution: { label: '机构因子', color: '#10b981' },
       turtle: { label: '海龟因子', color: '#ef4444' },
       quality: { label: '质量因子', color: '#14b8a6' },
-      stage: { label: '阶段因子', color: '#f97316' },
-      northbound: { label: '北向因子', color: '#0ea5e9' }
+      stage: { label: '阶段因子', color: '#f97316' }
     };
     var groupTotals = {};
     var totalImportance = 0;
@@ -7108,7 +7052,6 @@
       params?.use_turtle ? 'turtle' : null,
       params?.use_quality ? 'quality' : null,
       params?.use_stage ? 'stage' : null,
-      qlibFeatureEnabled('northbound') && params?.use_northbound ? 'northbound' : null,
     ].filter(Boolean);
     var missingEnabled = enabledGroups.filter(function (group) {
       return !groupTotals[group];

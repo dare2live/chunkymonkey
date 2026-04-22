@@ -144,7 +144,6 @@ _DDL = [
         beta_holder_decline   REAL,
         beta_margin_surge     REAL,
         beta_survey_surge     REAL,
-        beta_northbound_in    REAL,
         noise_floor           REAL,
         info_lag_days         REAL,
         elasticity_sector     REAL,

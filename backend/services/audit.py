@@ -537,37 +537,6 @@ def _current_relationship_plan_reason(layer: Optional[dict]) -> Optional[str]:
     return None
 
 
-def _summarize_northbound_freshness(conn) -> dict:
-    summary = {
-        "table_available": False,
-        "row_count": 0,
-        "latest_trade_date": "",
-        "target_trade_date": "",
-        "lag_days": None,
-    }
-
-    try:
-        row = conn.execute(
-            "SELECT COUNT(*) AS row_count, MAX(trade_date) AS latest_trade_date FROM fact_northbound_daily"
-        ).fetchone()
-    except Exception:
-        return summary
-
-    summary["table_available"] = True
-    if row:
-        summary["row_count"] = int(row["row_count"] or 0)
-        summary["latest_trade_date"] = row["latest_trade_date"] or ""
-
-    try:
-        summary["target_trade_date"] = latest_completed_trade_date(conn) or ""
-    except Exception:
-        summary["target_trade_date"] = ""
-
-    lag_days = _days_lag(summary["latest_trade_date"], summary["target_trade_date"])
-    summary["lag_days"] = lag_days if lag_days is None else max(lag_days, 0)
-    return summary
-
-
 def run_quality_audit(conn, use_cache: bool = True) -> dict:
     """运行数据质量审计，返回各层状态报告
 
@@ -1281,7 +1250,7 @@ def build_smart_plan(conn, force_all=False, *, audit: Optional[dict] = None, use
     """
     # 所有可能的步骤 ID
     ALL_STEPS = [
-        "sync_raw", "match_inst", "sync_market_data", "sync_northbound",
+        "sync_raw", "match_inst", "sync_market_data",
         "gen_events", "calc_returns", "sync_industry",
         "sync_financial", "calc_financial_derived",
         "build_current_rel", "build_profiles", "build_industry_stat", "build_trends",
@@ -1357,11 +1326,6 @@ def build_smart_plan(conn, force_all=False, *, audit: Optional[dict] = None, use
         plan["reason"].append("持仓变更后补齐K线")
     else:
         plan["skip_reasons"]["sync_market_data"] = "K线已完整且已覆盖最新交易日"
-
-    # 3b. 北向持仓已于 2024-08-16 停止个股披露（陆股通退休）
-    # 审计 5.4 整改：不再把 sync_northbound 加进智能更新计划，避免每次都产生"跳过噪音"。
-    # 该步骤仍在 STEPS 列表保留，供有需要时手动触发重试历史回填。
-    plan["skip_reasons"]["sync_northbound"] = "北向源已退休（2024-08-16 后停止个股披露），不再自动同步"
 
     # 4. 事件是否需要重算
     if audit["layers"]["events"]["count"] == 0 and audit["layers"]["holdings"]["count"] > 0:

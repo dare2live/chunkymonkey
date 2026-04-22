@@ -4,7 +4,7 @@
 数据分层：
   原始层（只追加）: market_raw_holdings, raw_fetch_batch
   维度层: dim_active_a_stock, dim_stock_tdx_industry, dim_trading_calendar, inst_institutions, inst_name_aliases
-  事实层: inst_holdings, fact_institution_event, fact_northbound_daily, stock_watchlist
+  事实层: inst_holdings, fact_institution_event, stock_watchlist
   集市层（可重算）: mart_institution_profile, mart_institution_industry_stat, mart_stock_trend
   系统层: sys_schema_version, excluded_stocks, exclusion_categories, app_settings
 """
@@ -222,18 +222,6 @@ def init_db():
             --  backtest_engine / scoring 的 crowding_fit 口径也已同步)
             -- 收益字段已合并入 fact_institution_event
 
-            CREATE TABLE IF NOT EXISTS fact_northbound_daily (
-                stock_code      TEXT NOT NULL,
-                stock_name      TEXT,
-                hold_shares     REAL,
-                hold_market_cap REAL,
-                hold_ratio      REAL,
-                change_shares   REAL,
-                trade_date      TEXT NOT NULL,
-                updated_at      TEXT,
-                PRIMARY KEY (stock_code, trade_date)
-            );
-
             CREATE TABLE IF NOT EXISTS stock_watchlist (
                 stock_code          TEXT NOT NULL,
                 stock_name          TEXT,
@@ -378,7 +366,6 @@ def init_db():
                 recent_new_entry_count  INTEGER,
                 recent_increase_count   INTEGER,
                 recent_exit_count       INTEGER DEFAULT 0,
-                northbound_overlap_rate REAL,
                 quality_score           REAL,
                 score_basis             TEXT,
                 score_confidence        TEXT,
