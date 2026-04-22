@@ -179,6 +179,8 @@ STEPS = [
     {"id": "sync_industry",         "name": "通达信行业",      "group": "data", "order": 7},
     {"id": "sync_surveys",          "name": "机构调研",        "group": "data", "order": 7.5},
     {"id": "sync_qfii",             "name": "QFII 季报",       "group": "data", "order": 7.6},
+    {"id": "sync_margin",           "name": "融资融券",        "group": "data", "order": 7.7},
+    {"id": "sync_lhb",              "name": "龙虎榜",          "group": "data", "order": 7.8},
     {"id": "calc_financial_derived","name": "计算财务指标",    "group": "calc", "order": 8},
     {"id": "build_current_rel",     "name": "构建当前关系",    "group": "mart", "order": 9},
     {"id": "build_profiles",        "name": "机构画像",        "group": "mart", "order": 10},
@@ -205,6 +207,8 @@ HARD_DEPS = {
     "sync_industry": ["match_inst"],
     "sync_surveys": [],
     "sync_qfii": [],
+    "sync_margin": [],
+    "sync_lhb": [],
     "calc_financial_derived": ["sync_financial"],
     "build_current_rel": ["gen_events"],
     "build_profiles": ["build_current_rel"],
@@ -2797,6 +2801,56 @@ async def _step_sync_surveys(conn) -> int:
     return int(result.get("rows_upserted") or 0)
 
 
+async def _step_sync_margin(conn) -> int:
+    """融资融券日度同步（外资退役后最有信息量的杠杆资金维度）。
+
+    同步最近一个交易日的 SH+SZ 明细；如果 DB 里已有该日，则跳过。
+    """
+    from services.margin_client import ensure_tables, sync_margin_day
+
+    ensure_tables(conn)
+    trade_date = latest_completed_trade_date(conn)
+    if not trade_date:
+        logger.warning("[两融] 未找到最近完成交易日，跳过同步")
+        return 0
+
+    row = conn.execute(
+        "SELECT COUNT(*) FROM raw_margin_daily WHERE trade_date = ?",
+        (trade_date,),
+    ).fetchone()
+    existing = int(row[0] or 0) if row else 0
+    if existing > 0:
+        logger.info(f"[两融] 交易日 {trade_date} 已有 {existing} 条，跳过")
+        return 0
+
+    logger.info(f"[两融] 开始同步交易日 {trade_date}")
+    result = await sync_margin_day(conn, trade_date)
+    return int(result.get("written_rows") or 0)
+
+
+async def _step_sync_lhb(conn) -> int:
+    """龙虎榜日度同步（短线机构与游资痕迹）。
+
+    每次拉取最近 5 天区间 upsert；已入库自然不重复计。
+    """
+    from services.lhb_client import ensure_tables, sync_lhb_range
+
+    ensure_tables(conn)
+    trade_date = latest_completed_trade_date(conn)
+    if not trade_date:
+        logger.warning("[龙虎榜] 未找到最近完成交易日，跳过同步")
+        return 0
+
+    end_dt = datetime.strptime(trade_date, "%Y-%m-%d")
+    start_dt = end_dt - timedelta(days=5)
+    start_str = start_dt.strftime("%Y-%m-%d")
+    logger.info(f"[龙虎榜] 开始同步 {start_str} ~ {trade_date}")
+    result = await sync_lhb_range(conn, start_str, trade_date)
+    if result.get("status") == "source_unavailable":
+        raise RuntimeError(f"lhb_source_failed:{result.get('error')}")
+    return int(result.get("written_rows") or 0)
+
+
 async def _step_sync_qfii(conn) -> int:
     """QFII 季度持股同步（北向陆股通退役后的外资维度替代）。
 
@@ -2879,6 +2933,8 @@ RUNNERS = {
     "sync_industry": _step_sync_industry,
     "sync_surveys": _step_sync_surveys,
     "sync_qfii": _step_sync_qfii,
+    "sync_margin": _step_sync_margin,
+    "sync_lhb": _step_sync_lhb,
     "calc_financial_derived": _step_calc_financial_derived,
     "build_current_rel": _step_build_current_rel,
     "build_profiles": _step_build_profiles,

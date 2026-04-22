@@ -1252,7 +1252,8 @@ def build_smart_plan(conn, force_all=False, *, audit: Optional[dict] = None, use
     ALL_STEPS = [
         "sync_raw", "match_inst", "sync_market_data",
         "gen_events", "calc_returns", "sync_industry",
-        "sync_financial", "sync_qfii", "calc_financial_derived",
+        "sync_financial", "sync_qfii", "sync_margin", "sync_lhb",
+        "calc_financial_derived",
         "build_current_rel", "build_profiles", "build_industry_stat", "build_trends",
         "calc_screening", "calc_sector_momentum", "build_external_attention",
         "build_stage_features", "build_forecast_features", "build_turtle_features",
@@ -1408,6 +1409,46 @@ def build_smart_plan(conn, force_all=False, *, audit: Optional[dict] = None, use
         plan["skip_reasons"]["sync_qfii"] = f"QFII 季报已是最新（{qfii_latest}）"
     else:
         plan["skip_reasons"]["sync_qfii"] = "QFII 季报暂无可同步季度"
+
+    # 6a-3. 两融日度
+    try:
+        target_trade = latest_completed_trade_date(conn) or ""
+        margin_row = conn.execute(
+            "SELECT MAX(trade_date) FROM raw_margin_daily"
+        ).fetchone()
+        margin_latest = (margin_row[0] or "")[:10] if margin_row else ""
+    except Exception:
+        target_trade = ""
+        margin_latest = ""
+
+    if target_trade and margin_latest < target_trade:
+        plan["steps"].append("sync_margin")
+        if margin_latest:
+            plan["reason"].append(f"两融落后于 {target_trade}（当前 {margin_latest}）")
+        else:
+            plan["reason"].append(f"两融尚未接入（目标 {target_trade}）")
+    elif target_trade:
+        plan["skip_reasons"]["sync_margin"] = f"两融已是最新（{margin_latest}）"
+    else:
+        plan["skip_reasons"]["sync_margin"] = "无可同步交易日"
+
+    # 6a-4. 龙虎榜日度
+    try:
+        lhb_row = conn.execute(
+            "SELECT MAX(trade_date) FROM raw_lhb_daily"
+        ).fetchone()
+        lhb_latest = (lhb_row[0] or "")[:10] if lhb_row else ""
+    except Exception:
+        lhb_latest = ""
+
+    if target_trade and lhb_latest < target_trade:
+        plan["steps"].append("sync_lhb")
+        if lhb_latest:
+            plan["reason"].append(f"龙虎榜落后于 {target_trade}（当前 {lhb_latest}）")
+        else:
+            plan["reason"].append(f"龙虎榜尚未接入（目标 {target_trade}）")
+    elif target_trade:
+        plan["skip_reasons"]["sync_lhb"] = f"龙虎榜已是最新（{lhb_latest}）"
 
     # 6b. 财务数据是否需要同步
     try:
