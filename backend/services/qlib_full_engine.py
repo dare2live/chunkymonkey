@@ -612,156 +612,175 @@ def _load_stage_factors(smart_conn, codes: list) -> pd.DataFrame:
 
 
 def _load_behavior_factors(smart_conn, codes: list) -> pd.DataFrame:
-    """加载两融 + 龙虎榜 + QFII 行为因子（Phase E）。
+    """加载两融 + 龙虎榜 + QFII 行为因子（Phase G：时序版本）。
 
-    防穿越：
-    - 两融 trade_date 即可见日（收盘后披露，T 日 EOD 可得）
-    - 龙虎榜 trade_date = 上榜日（盘后公告），post_Nd 是未来收益，**绝不进因子**
-    - QFII 用 notice_date 作 available_date（季报真实披露日）
+    防穿越（关键）：
+    - 两融 trade_date 即可见日（T 日收盘后披露，T 日 EOD 可得）
+    - 龙虎榜 trade_date = 上榜日（盘后公告，即 T 日 EOD 可得）；post_Nd 未来收益
+      **绝不进因子**（loader 里只读统计列，不读 post_Nd）
+    - QFII 用 notice_date 作 available_date；每日取"notice_date <= 当日"的最大
+      report_date 对应的记录，季频广播到日频
 
-    输出按 instrument 单索引的 stock-level 静态特征，由 handler 广播到所有训练样本。
-    这是最小可用版本：只做 cross-sectional 信号，不做时序滚动（避免首轮接入就
-    引入流通盘 / 成交额等外部 join 的复杂性）。
+    输出按 (datetime, instrument) MultiIndex，每个 datapoint 的 datetime 就是
+    该日点可用信息的截止日，确保 cross-sectional rank 和 time-series label 对齐。
     """
     if not codes:
         return pd.DataFrame()
 
     placeholders = ",".join("?" for _ in codes)
-    data: dict[str, dict] = {}  # stock_code -> factor dict
 
-    # 两融：最新 rz_balance / rq_balance 以及 20 日 rz_balance 相对变动
+    # ---- 1) 两融日频序列：rz_balance / rq_balance + 5d/20d rolling 派生 ----
     try:
-        margin_rows = smart_conn.execute(
+        margin_df = pd.read_sql(
             f"""
-            WITH latest AS (
-                SELECT stock_code,
-                       MAX(trade_date) AS latest_date
-                FROM raw_margin_daily
-                WHERE stock_code IN ({placeholders})
-                GROUP BY stock_code
-            ),
-            cur AS (
-                SELECT m.stock_code, m.trade_date,
-                       SUM(COALESCE(m.rz_balance, 0)) AS rz_bal,
-                       SUM(COALESCE(m.rq_balance, 0)) AS rq_bal
-                FROM raw_margin_daily m
-                JOIN latest l ON l.stock_code = m.stock_code AND l.latest_date = m.trade_date
-                GROUP BY m.stock_code, m.trade_date
-            ),
-            m20 AS (
-                SELECT m.stock_code,
-                       AVG(m.rz_balance) AS rz_bal_avg_20
-                FROM raw_margin_daily m
-                JOIN latest l ON l.stock_code = m.stock_code
-                WHERE m.trade_date >= date(l.latest_date, '-30 days')
-                  AND m.trade_date < l.latest_date
-                GROUP BY m.stock_code
-            )
-            SELECT cur.stock_code, cur.rz_bal, cur.rq_bal,
-                   m20.rz_bal_avg_20
-            FROM cur LEFT JOIN m20 USING (stock_code)
+            SELECT stock_code, trade_date,
+                   SUM(COALESCE(rz_balance, 0)) AS rz_bal,
+                   SUM(COALESCE(rq_balance, 0)) AS rq_bal
+            FROM raw_margin_daily
+            WHERE stock_code IN ({placeholders})
+            GROUP BY stock_code, trade_date
             """,
-            codes,
-        ).fetchall()
+            smart_conn,
+            params=codes,
+        )
     except Exception as e:
         logger.warning(f"[Qlib-Full] behavior margin 查询失败: {e}")
-        margin_rows = []
+        margin_df = pd.DataFrame()
 
-    for r in margin_rows:
-        row_dict = dict(r) if not isinstance(r, dict) else r
-        rz = row_dict.get("rz_bal") or 0
-        rq = row_dict.get("rq_bal") or 0
-        avg20 = row_dict.get("rz_bal_avg_20") or 0
-        entry = data.setdefault(row_dict["stock_code"], {})
-        entry["beh_margin_rz_balance"] = float(rz)
-        entry["beh_margin_rq_balance"] = float(rq)
-        entry["beh_margin_rz_vs_avg20"] = (
-            float((rz - avg20) / avg20) if avg20 > 0 else 0.0
-        )
+    margin_ts = pd.DataFrame()
+    if not margin_df.empty:
+        margin_df["trade_date"] = pd.to_datetime(margin_df["trade_date"]).dt.normalize()
+        margin_df = margin_df.sort_values(["stock_code", "trade_date"])
+        grp = margin_df.groupby("stock_code", sort=False)["rz_bal"]
+        margin_df["rz_ma20"] = grp.transform(lambda s: s.rolling(20, min_periods=5).mean())
+        margin_df["rz_chg_5d"] = grp.transform(lambda s: s.pct_change(5).clip(-3, 3))
+        margin_df["beh_margin_rz_log"] = np.log1p(margin_df["rz_bal"].clip(lower=0))
+        margin_df["beh_margin_rq_log"] = np.log1p(margin_df["rq_bal"].clip(lower=0))
+        margin_df["beh_margin_rz_vs_ma20"] = (
+            (margin_df["rz_bal"] - margin_df["rz_ma20"]) / margin_df["rz_ma20"].replace(0, np.nan)
+        ).fillna(0).clip(-3, 3)
+        margin_df["beh_margin_rz_chg5"] = margin_df["rz_chg_5d"].fillna(0)
+        margin_ts = margin_df[[
+            "stock_code", "trade_date",
+            "beh_margin_rz_log", "beh_margin_rq_log",
+            "beh_margin_rz_vs_ma20", "beh_margin_rz_chg5",
+        ]].rename(columns={"trade_date": "datetime"})
 
-    # 龙虎榜：近 60 / 250 日上榜次数 + 近 60 日净买累计
+    # ---- 2) 龙虎榜事件计数：为每 (stock, trade_date) 在交易日历上回看 ----
     try:
-        lhb_rows = smart_conn.execute(
+        lhb_df = pd.read_sql(
             f"""
-            WITH latest AS (
-                SELECT MAX(trade_date) AS dt FROM raw_lhb_daily
-            )
-            SELECT stock_code,
-                   SUM(CASE WHEN trade_date >= date((SELECT dt FROM latest), '-60 days') THEN 1 ELSE 0 END) AS hits_60d,
-                   SUM(CASE WHEN trade_date >= date((SELECT dt FROM latest), '-250 days') THEN 1 ELSE 0 END) AS hits_250d,
-                   SUM(CASE WHEN trade_date >= date((SELECT dt FROM latest), '-60 days') THEN COALESCE(net_buy, 0) ELSE 0 END) AS net_buy_60d
+            SELECT stock_code, trade_date,
+                   COUNT(*) AS hits_today,
+                   SUM(COALESCE(net_buy, 0)) AS net_buy_today
             FROM raw_lhb_daily
             WHERE stock_code IN ({placeholders})
-            GROUP BY stock_code
+            GROUP BY stock_code, trade_date
             """,
-            codes,
-        ).fetchall()
+            smart_conn,
+            params=codes,
+        )
     except Exception as e:
         logger.warning(f"[Qlib-Full] behavior lhb 查询失败: {e}")
-        lhb_rows = []
+        lhb_df = pd.DataFrame()
 
-    for r in lhb_rows:
-        row_dict = dict(r) if not isinstance(r, dict) else r
-        entry = data.setdefault(row_dict["stock_code"], {})
-        entry["beh_lhb_hits_60d"] = int(row_dict.get("hits_60d") or 0)
-        entry["beh_lhb_hits_250d"] = int(row_dict.get("hits_250d") or 0)
-        entry["beh_lhb_net_buy_60d"] = float(row_dict.get("net_buy_60d") or 0)
+    lhb_ts = pd.DataFrame()
+    if not lhb_df.empty and not margin_df.empty:
+        # 用 margin_df 的 (stock_code, trade_date) 作为目标 panel（覆盖所有有两融数据的日期）
+        lhb_df["trade_date"] = pd.to_datetime(lhb_df["trade_date"]).dt.normalize()
+        panel = margin_df[["stock_code", "trade_date"]].copy()
+        merged = panel.merge(lhb_df, on=["stock_code", "trade_date"], how="left")
+        merged["hits_today"] = merged["hits_today"].fillna(0)
+        merged["net_buy_today"] = merged["net_buy_today"].fillna(0)
+        merged = merged.sort_values(["stock_code", "trade_date"])
+        grp = merged.groupby("stock_code", sort=False)
+        # 回看：shift(1) 确保不把当日算进去（严格 T-1 及之前），共 60 个交易日
+        merged["beh_lhb_hits_60d"] = grp["hits_today"].transform(
+            lambda s: s.shift(1).rolling(60, min_periods=1).sum()
+        ).fillna(0)
+        merged["beh_lhb_hits_250d"] = grp["hits_today"].transform(
+            lambda s: s.shift(1).rolling(250, min_periods=1).sum()
+        ).fillna(0)
+        merged["beh_lhb_net_buy_60d"] = grp["net_buy_today"].transform(
+            lambda s: s.shift(1).rolling(60, min_periods=1).sum()
+        ).fillna(0)
+        lhb_ts = merged[[
+            "stock_code", "trade_date",
+            "beh_lhb_hits_60d", "beh_lhb_hits_250d", "beh_lhb_net_buy_60d",
+        ]].rename(columns={"trade_date": "datetime"})
 
-    # QFII：最新季度持仓标签 + 变动方向
+    # ---- 3) QFII 季频标签：按 notice_date 前向填充到当日 ----
     try:
-        qfii_rows = smart_conn.execute(
+        qfii_df = pd.read_sql(
             f"""
-            WITH latest AS (
-                SELECT stock_code, MAX(report_date) AS rd
-                FROM raw_qfii_holding_quarterly
-                WHERE stock_code IN ({placeholders})
-                GROUP BY stock_code
-            )
-            SELECT q.stock_code,
-                   COUNT(DISTINCT q.holder_name) AS qfii_count,
-                   SUM(CASE WHEN q.change_type IN ('新进','增加') THEN 1 ELSE 0 END) AS inflow_cnt,
-                   SUM(CASE WHEN q.change_type = '减少' THEN 1 ELSE 0 END) AS outflow_cnt
-            FROM raw_qfii_holding_quarterly q
-            JOIN latest l ON l.stock_code = q.stock_code AND l.rd = q.report_date
-            GROUP BY q.stock_code
+            SELECT stock_code, report_date, notice_date, change_type, holder_name
+            FROM raw_qfii_holding_quarterly
+            WHERE stock_code IN ({placeholders})
+              AND notice_date IS NOT NULL
             """,
-            codes,
-        ).fetchall()
+            smart_conn,
+            params=codes,
+        )
     except Exception as e:
         logger.warning(f"[Qlib-Full] behavior qfii 查询失败: {e}")
-        qfii_rows = []
+        qfii_df = pd.DataFrame()
 
-    for r in qfii_rows:
-        row_dict = dict(r) if not isinstance(r, dict) else r
-        entry = data.setdefault(row_dict["stock_code"], {})
-        inflow = int(row_dict.get("inflow_cnt") or 0)
-        outflow = int(row_dict.get("outflow_cnt") or 0)
-        entry["beh_qfii_present"] = 1
-        entry["beh_qfii_count"] = int(row_dict.get("qfii_count") or 0)
-        entry["beh_qfii_net_direction"] = (
-            1 if inflow > outflow else -1 if outflow > inflow else 0
+    qfii_ts = pd.DataFrame()
+    if not qfii_df.empty and not margin_df.empty:
+        qfii_df["notice_date"] = pd.to_datetime(qfii_df["notice_date"]).dt.normalize()
+        # 聚合到 (stock, notice_date) 层：该披露日的 QFII 家数 + 方向
+        qfii_df["inflow_flag"] = qfii_df["change_type"].isin(["新进", "增加"]).astype(int)
+        qfii_df["outflow_flag"] = (qfii_df["change_type"] == "减少").astype(int)
+        qfii_by_notice = qfii_df.groupby(["stock_code", "notice_date"]).agg(
+            qfii_count=("holder_name", "nunique"),
+            inflow_cnt=("inflow_flag", "sum"),
+            outflow_cnt=("outflow_flag", "sum"),
+        ).reset_index()
+        qfii_by_notice["beh_qfii_present"] = 1
+        qfii_by_notice["beh_qfii_direction"] = np.sign(
+            qfii_by_notice["inflow_cnt"] - qfii_by_notice["outflow_cnt"]
+        ).astype(int)
+        qfii_by_notice = qfii_by_notice.rename(columns={
+            "notice_date": "datetime",
+            "qfii_count": "beh_qfii_count",
+        })[["stock_code", "datetime", "beh_qfii_present", "beh_qfii_count", "beh_qfii_direction"]]
+
+        # 和 margin panel 对齐并前向填充。pandas merge_asof with by= 要求 on 列
+        # 全局 sorted，因此先按 datetime 排序（非 by+on）。
+        panel = (
+            margin_df[["stock_code", "trade_date"]]
+            .rename(columns={"trade_date": "datetime"})
+            .sort_values("datetime")
+            .reset_index(drop=True)
         )
+        qfii_sorted = qfii_by_notice.sort_values("datetime").reset_index(drop=True)
+        qfii_ts = pd.merge_asof(
+            panel, qfii_sorted,
+            by="stock_code", on="datetime", direction="backward",
+        )
+        for col in ("beh_qfii_present", "beh_qfii_count", "beh_qfii_direction"):
+            qfii_ts[col] = qfii_ts[col].fillna(0)
 
-    if not data:
+    # ---- 4) 合并三家时序，按 (stock_code, datetime) 对齐 ----
+    frames = [f for f in (margin_ts, lhb_ts, qfii_ts) if not f.empty]
+    if not frames:
         return pd.DataFrame()
 
-    # 确保所有股票都有全部字段（缺失补 0，和 Alpha158 一致）
-    all_cols = [
-        "beh_margin_rz_balance", "beh_margin_rq_balance", "beh_margin_rz_vs_avg20",
-        "beh_lhb_hits_60d", "beh_lhb_hits_250d", "beh_lhb_net_buy_60d",
-        "beh_qfii_present", "beh_qfii_count", "beh_qfii_net_direction",
-    ]
-    rows = []
-    for stock_code, entry in data.items():
-        instrument = _instrument_from_stock_code(stock_code)
-        if not instrument:
-            continue
-        filled = {col: entry.get(col, 0) for col in all_cols}
-        filled["instrument"] = instrument
-        rows.append(filled)
+    merged = frames[0]
+    for f in frames[1:]:
+        merged = merged.merge(f, on=["stock_code", "datetime"], how="outer")
 
-    df = pd.DataFrame(rows).drop_duplicates(subset=["instrument"], keep="last")
-    return df.set_index("instrument").sort_index()
+    # 填充缺失（整段时序都对齐）
+    factor_cols = [c for c in merged.columns if c.startswith("beh_")]
+    for c in factor_cols:
+        merged[c] = merged[c].fillna(0)
+
+    merged["instrument"] = merged["stock_code"].map(_instrument_from_stock_code)
+    merged = merged[merged["instrument"].astype(bool)]
+    merged = merged.drop(columns=["stock_code"])
+    merged = merged.drop_duplicates(subset=["datetime", "instrument"], keep="last")
+    merged = merged.sort_values(["instrument", "datetime"])
+    return merged.set_index(["datetime", "instrument"]).sort_index()
 
 
 def _load_supply_factors(smart_conn, codes: list) -> pd.DataFrame:
