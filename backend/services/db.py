@@ -356,6 +356,7 @@ def init_db():
                 win_rate_30d            REAL,
                 win_rate_60d            REAL,
                 win_rate_90d            REAL,
+                win_rate_120d           REAL,
                 total_win_rate          REAL,
                 median_gain_30d         REAL,
                 median_gain_60d         REAL,
@@ -600,6 +601,11 @@ def init_db():
         # 收益字段已直接维护在 fact_institution_event 上
         try:
             conn.execute("ALTER TABLE mart_institution_profile ADD COLUMN win_rate_90d REAL")
+        except Exception:
+            pass
+        try:
+            # 审计报告 4.2: 补齐通用 120 日胜率列（之前仅 buy_win_rate_120d，fallback 路径错配）
+            conn.execute("ALTER TABLE mart_institution_profile ADD COLUMN win_rate_120d REAL")
         except Exception:
             pass
         try:

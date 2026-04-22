@@ -112,6 +112,16 @@ class PolicyConfig:
             return f"gain_{h}d"
         raise ValueError(f"horizon_days={h} 没有对应的 gain 列（支持 10/30/60/90/120）")
 
+    @property
+    def drawdown_column(self) -> str:
+        """当前 horizon 对应的回撤列。
+
+        fact_institution_event 仅有 max_drawdown_30d/60d 两列（schema 限制），
+        按 horizon 映射到最接近的列：≤30d → dd30; ≥60d → dd60。
+        这比原来所有 horizon 都固定 dd60 要一致。
+        """
+        return "max_drawdown_30d" if self.horizon_days <= 30 else "max_drawdown_60d"
+
 
 def load_config(conn) -> PolicyConfig:
     """从 app_settings 读配置，缺省回退到 DEFAULT_CONFIG。"""
@@ -506,8 +516,9 @@ def _decide_single_window(
     返回 (action, scope, stats)。
     """
     min_sample = min_sample_override if min_sample_override is not None else config.min_sample
+    dd_col = config.drawdown_column  # 审计 4.3: 回撤列跟随 horizon
     if len(history) < min_sample:
-        return ("skip", "insufficient", compute_ev_stats(history))
+        return ("skip", "insufficient", compute_ev_stats(history, drawdown_col=dd_col))
 
     # 优先同行业
     scope = "inst_all"
@@ -519,7 +530,7 @@ def _decide_single_window(
             filtered = same_industry
             scope = "inst_industry"
 
-    stats = compute_ev_stats(filtered)
+    stats = compute_ev_stats(filtered, drawdown_col=dd_col)
     if stats.n == 0 or stats.ev_pct is None:
         return ("skip", "no_valid_gain", stats)
 
@@ -1129,7 +1140,8 @@ def institution_track_record(
         institution_id,
         gain_column=cfg.gain_column,
     )
-    overall = compute_ev_stats(history)
+    dd_col = cfg.drawdown_column  # 审计 4.3: 回撤跟随 horizon
+    overall = compute_ev_stats(history, drawdown_col=dd_col)
 
     # 分行业
     industry_stats = {}
@@ -1139,7 +1151,7 @@ def institution_track_record(
     industry_breakdown = [
         {
             "industry": ind,
-            **compute_ev_stats(events).to_dict(),
+            **compute_ev_stats(events, drawdown_col=dd_col).to_dict(),
         }
         for ind, events in industry_stats.items()
         if len(events) >= cfg.min_sample  # 至少够一个可信样本量
@@ -1220,7 +1232,7 @@ def fetch_similar_for_event(
 
     # 截最近 N 条
     filtered_public = [_history_row_public(h) for h in filtered[:limit]]
-    stats = compute_ev_stats(filtered)
+    stats = compute_ev_stats(filtered, drawdown_col=cfg.drawdown_column)
 
     return {
         "event_id": event_id,

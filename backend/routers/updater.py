@@ -1298,11 +1298,20 @@ def _step_build_profiles_sync(conn) -> int:
 
             # 收益统计（从增强后的 fact_institution_event 直接读取）
             returns = conn.execute("""
-                SELECT AVG(e.gain_10d), AVG(e.gain_30d), AVG(e.gain_60d), AVG(e.gain_120d),
-                       AVG(e.max_drawdown_30d), AVG(e.max_drawdown_60d)
+                SELECT AVG(e.gain_10d), AVG(e.gain_30d), AVG(e.gain_60d), AVG(e.gain_120d)
                 FROM fact_institution_event e
                 WHERE e.institution_id = ? AND e.gain_30d IS NOT NULL
             """, (inst_id,)).fetchone()
+
+            # 回撤中位数（Python 端计算，SQLite 无原生 MEDIAN）
+            dd_all_rows = conn.execute("""
+                SELECT max_drawdown_30d, max_drawdown_60d FROM fact_institution_event
+                WHERE institution_id = ? AND gain_30d IS NOT NULL
+            """, (inst_id,)).fetchall()
+            dd30_all = sorted(r[0] for r in dd_all_rows if r[0] is not None)
+            dd60_all = sorted(r[1] for r in dd_all_rows if r[1] is not None)
+            median_dd30 = dd30_all[len(dd30_all) // 2] if dd30_all else None
+            median_dd60 = dd60_all[len(dd60_all) // 2] if dd60_all else None
 
             # 胜率（从增强后的 fact_institution_event 直接读取）
             win30 = conn.execute("""
@@ -1323,10 +1332,18 @@ def _step_build_profiles_sync(conn) -> int:
                 WHERE e.institution_id = ? AND e.gain_90d IS NOT NULL
             """, (inst_id,)).fetchone()
 
-            # 总胜率（任意一个周期盈利即算赢）
+            # 120 日胜率（全事件口径，对齐 buy_win_rate_120d）
+            win120 = conn.execute("""
+                SELECT COUNT(CASE WHEN e.gain_120d > 0 THEN 1 END) * 100.0 / MAX(COUNT(*), 1)
+                FROM fact_institution_event e
+                WHERE e.institution_id = ? AND e.gain_120d IS NOT NULL
+            """, (inst_id,)).fetchone()
+
+            # 总胜率（任意一个周期盈利即算赢；纳入 120d 保持口径一致）
             total_wr = conn.execute("""
                 SELECT COUNT(CASE WHEN COALESCE(e.gain_30d, 0) > 0 OR COALESCE(e.gain_60d, 0) > 0
-                                  OR COALESCE(e.gain_90d, 0) > 0 THEN 1 END) * 100.0 / MAX(COUNT(*), 1)
+                                  OR COALESCE(e.gain_90d, 0) > 0 OR COALESCE(e.gain_120d, 0) > 0
+                                  THEN 1 END) * 100.0 / MAX(COUNT(*), 1)
                 FROM fact_institution_event e
                 WHERE e.institution_id = ?
             """, (inst_id,)).fetchone()
@@ -1335,7 +1352,6 @@ def _step_build_profiles_sync(conn) -> int:
             buy_stats = conn.execute("""
                 SELECT COUNT(*) as cnt,
                        AVG(e.gain_30d) as avg30, AVG(e.gain_60d) as avg60, AVG(e.gain_120d) as avg120,
-                       AVG(e.max_drawdown_30d) as dd30, AVG(e.max_drawdown_60d) as dd60,
                        COUNT(CASE WHEN e.gain_30d > 0 THEN 1 END) * 100.0 / MAX(COUNT(*), 1) as wr30,
                        COUNT(CASE WHEN e.gain_60d > 0 THEN 1 END) * 100.0 / MAX(COUNT(*), 1) as wr60,
                        COUNT(CASE WHEN e.gain_120d > 0 THEN 1 END) * 100.0 / MAX(COUNT(*), 1) as wr120
@@ -1344,6 +1360,18 @@ def _step_build_profiles_sync(conn) -> int:
                   AND e.event_type IN ('new_entry', 'increase')
                   AND e.gain_30d IS NOT NULL
             """, (inst_id,)).fetchone()
+
+            # 买入类回撤中位数（Python 端）
+            buy_dd_rows = conn.execute("""
+                SELECT max_drawdown_30d, max_drawdown_60d FROM fact_institution_event
+                WHERE institution_id = ?
+                  AND event_type IN ('new_entry', 'increase')
+                  AND gain_30d IS NOT NULL
+            """, (inst_id,)).fetchall()
+            buy_dd30_vals = sorted(r[0] for r in buy_dd_rows if r[0] is not None)
+            buy_dd60_vals = sorted(r[1] for r in buy_dd_rows if r[1] is not None)
+            buy_median_dd30 = buy_dd30_vals[len(buy_dd30_vals) // 2] if buy_dd30_vals else None
+            buy_median_dd60 = buy_dd60_vals[len(buy_dd60_vals) // 2] if buy_dd60_vals else None
 
             follow_stats = conn.execute("""
                 SELECT
@@ -1487,7 +1515,7 @@ def _step_build_profiles_sync(conn) -> int:
                 (institution_id, institution_name, display_name, inst_type,
                  total_events, total_stocks, total_periods,
                  avg_gain_10d, avg_gain_30d, avg_gain_60d, avg_gain_120d,
-                 win_rate_30d, win_rate_60d, win_rate_90d, total_win_rate,
+                 win_rate_30d, win_rate_60d, win_rate_90d, win_rate_120d, total_win_rate,
                 median_max_drawdown_30d, median_max_drawdown_60d,
                 current_stock_count, current_total_cap, latest_notice_date,
                 recent_new_entry_count, recent_increase_count, recent_exit_count,
@@ -1503,14 +1531,16 @@ def _step_build_profiles_sync(conn) -> int:
                 signal_transfer_efficiency_30d, followability_hint,
                 historical_median_holding_days, current_avg_held_days,
                 updated_at)
-                VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+                VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
             """, (
                 inst_id, inst["name"], inst["display_name"], inst["type"],
                 stats["total_events"], stats["total_stocks"], stats["total_periods"],
                 returns[0], returns[1], returns[2], returns[3],
                 win30[0] if win30 else None, win60[0] if win60 else None,
-                win90[0] if win90 else None, total_wr[0] if total_wr else None,
-                returns[4], returns[5],
+                win90[0] if win90 else None,
+                win120[0] if win120 else None,
+                total_wr[0] if total_wr else None,
+                median_dd30, median_dd60,
                 current[0], current[1], current[2],
                 recent[0], recent[1], recent[2],
                 buy_stats["cnt"] if buy_stats else 0,
@@ -1520,8 +1550,7 @@ def _step_build_profiles_sync(conn) -> int:
                 buy_stats["wr30"] if buy_stats else None,
                 buy_stats["wr60"] if buy_stats else None,
                 buy_stats["wr120"] if buy_stats else None,
-                buy_stats["dd30"] if buy_stats else None,
-                buy_stats["dd60"] if buy_stats else None,
+                buy_median_dd30, buy_median_dd60,
                 follow_stats["avg_premium"] if follow_stats else None,
                 follow_stats["safe_cnt"] if follow_stats else 0,
                 follow_stats["safe_wr30"] if follow_stats else None,
@@ -1903,8 +1932,14 @@ async def _step_sync_northbound(conn):
 def _step_build_industry_stat_sync(conn) -> int:
     """计算机构在各行业 (TDX 一二三级) 的表现统计。
 
-    口径: 事件现任所属股票 → dim_stock_tdx_industry 的当前 tdx_l{1,2,3}。
-    不再走 fact_institution_event_industry_snapshot (Phase 2 申万退役后已空置)。
+    [审计 4.4 标注] 口径：**当前行业**
+    事件现任所属股票 → dim_stock_tdx_industry 的当前 tdx_l{1,2,3}。
+    这意味着：股票被行业重分类时，历史事件会被映射到最新行业，
+    机构过去在某一行业积累的真实能力会被后来的行业映射改写。
+
+    后续 SEF Phase V 计划支持 event-time 行业快照
+    (fact_institution_event_industry_snapshot)，届时可平滑切换。
+    前端/解释层请明确标注"当前行业口径"。
     """
     now = datetime.now().isoformat()
     conn.execute("BEGIN IMMEDIATE")

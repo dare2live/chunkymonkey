@@ -3226,7 +3226,10 @@
 
       // 画像摘要 + 收益曲线
       var chartSvg = (chartResp?.ok && chartResp.data?.length) ? buildReturnsSvg(chartResp.data, 400, 60) : '<span class="muted">暂无收益数据</span>';
-      var html = '<div style="display:flex;gap:16px;margin-bottom:12px;flex-wrap:wrap;align-items:flex-start">' +
+      var html = '<div style="margin-bottom:6px;font-size:12px;color:#475569;background:#f1f5f9;padding:6px 10px;border-radius:4px">' +
+        '<strong>📊 研究层画像</strong>&nbsp;—&nbsp;描述性指标，不直接决定是否跟投；执行主口径见下方"🎯 跟随决策 track record"。' +
+        '</div>' +
+        '<div style="display:flex;gap:16px;margin-bottom:12px;flex-wrap:wrap;align-items:flex-start">' +
         '<div style="flex:1;min-width:280px">' +
         '<div style="display:flex;flex-wrap:wrap;gap:12px;font-size:12px">' +
         metric('实力分', p.quality_score != null ? Number(p.quality_score).toFixed(1) : '-') +
@@ -3257,6 +3260,7 @@
       var indSummary = r.industry_summary || [];
       if (indSummary.length) {
         html += '<div style="margin-bottom:14px">' +
+          '<div style="font-size:11px;color:#64748b;margin-bottom:4px">⚠️ 当前行业口径：股票被重分类时，历史事件会被映射到最新行业</div>' +
           '<table class="data-table" style="font-size:12px"><thead><tr>' +
           '<th style="text-align:left">行业</th><th>持仓</th><th>占比</th><th>胜率</th><th>30日均</th>' +
           '</tr></thead><tbody>';
@@ -3378,10 +3382,12 @@
         '</tbody></table></div>'
       : '';
 
-    return '<div class="sv2-track-record" style="background:#f8fafc;padding:12px 14px;border-radius:8px;border:1px solid #e5e7eb">' +
+    return '<div class="sv2-track-record" style="background:#fffbeb;padding:12px 14px;border-radius:8px;border:1px solid #fbbf24">' +
       '<div style="font-size:13px;font-weight:600;color:#0f172a;margin-bottom:8px">' +
-      '<span style="background:#1e40af;color:#fff;font-size:10px;padding:2px 8px;border-radius:3px;margin-right:6px">signals v2</span>' +
-      'track record（' + horizonDays + '日跟随收益口径）</div>' +
+      '<span style="background:#d97706;color:#fff;font-size:10px;padding:2px 8px;border-radius:3px;margin-right:6px">🎯 执行主口径</span>' +
+      'signals v2 · track record（' + horizonDays + '日跟随收益口径）' +
+      '<span style="font-weight:400;color:#64748b;font-size:11px;margin-left:6px">与上方研究画像冲突时，以此为准</span>' +
+      '</div>' +
       metricsHtml + horizonHtml + industryHtml +
       '</div>';
   }

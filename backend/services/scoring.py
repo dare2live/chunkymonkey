@@ -920,7 +920,8 @@ def calculate_institution_scores(conn) -> int:
     gain_120d_vals = [_pick(p, "buy_avg_gain_120d", "avg_gain_120d") for p in profiles]
     wr_30d_vals = [_pick(p, "buy_win_rate_30d", "win_rate_30d") for p in profiles]
     wr_60d_vals = [_pick(p, "buy_win_rate_60d", "win_rate_60d") for p in profiles]
-    wr_90d_vals = [_pick(p, "buy_win_rate_120d", "win_rate_90d") for p in profiles]
+    # 审计 4.2 修正：fallback 也走 120 日（之前错配到 win_rate_90d 导致不同机构比较基于不同周期）
+    wr_90d_vals = [_pick(p, "buy_win_rate_120d", "win_rate_120d") for p in profiles]
     # 回撤越小越好，取负值做排名
     dd_vals = []
     for p in profiles:
