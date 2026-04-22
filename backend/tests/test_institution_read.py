@@ -233,6 +233,16 @@ def test_load_institution_profiles_uses_live_display_name_and_type():
             blacklisted INTEGER,
             merged_into TEXT
         );
+        -- load_institution_profiles 的 CTE exit_stats 依赖 fact_institution_event
+        CREATE TABLE fact_institution_event (
+            institution_id TEXT,
+            stock_code TEXT,
+            report_date TEXT,
+            event_type TEXT,
+            gain_30d REAL,
+            gain_60d REAL,
+            gain_120d REAL
+        );
         """
     )
     try:
