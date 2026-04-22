@@ -608,6 +608,20 @@ def init_db():
             conn.execute("ALTER TABLE mart_institution_profile ADD COLUMN win_rate_120d REAL")
         except Exception:
             pass
+        # 审计报告 5.2: 把 institution_read.exit_stats 的 CTE 即席计算沉淀到 mart
+        for col_def in [
+            "exit_event_count INTEGER",
+            "exit_post_avg_gain_30d REAL",
+            "exit_post_avg_gain_60d REAL",
+            "exit_post_avg_gain_120d REAL",
+            "exit_avoid_loss_rate_30d REAL",
+            "exit_avoid_loss_rate_60d REAL",
+            "exit_avoid_loss_rate_120d REAL",
+        ]:
+            try:
+                conn.execute(f"ALTER TABLE mart_institution_profile ADD COLUMN {col_def}")
+            except Exception:
+                pass
         try:
             conn.execute("ALTER TABLE mart_institution_profile ADD COLUMN total_win_rate REAL")
         except Exception:

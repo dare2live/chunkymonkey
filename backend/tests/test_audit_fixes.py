@@ -103,3 +103,110 @@ def test_institution_scoring_read_label_matches_fallback():
     assert "\"120日胜率\"" in source
     # 新逻辑必须取 win_rate_120d 作为 fallback
     assert "profile.get(\"buy_win_rate_120d\") if has_buy else profile.get(\"win_rate_120d\")" in source
+
+
+# ============================================================================
+# P2 5.3 scoring.has_buy_data per-institution（不再是全局 any）
+# ============================================================================
+
+
+def test_scoring_uses_per_institution_has_buy():
+    """scoring.py 不应再有全局 any() 的 has_buy_data 变量 + 在 fallback 路径误用."""
+    from pathlib import Path
+
+    src = (Path(__file__).resolve().parent.parent / "services" / "scoring.py").read_text()
+    # 全局 any() 赋值已被 _has_buy(p) 函数替代
+    assert "has_buy_data = any(" not in src
+    # 新辅助函数存在
+    assert "def _has_buy(p):" in src
+
+
+# ============================================================================
+# P1-B / Phase V event-time 行业快照
+# ============================================================================
+
+
+def test_tdx_industry_history_table_created_and_written(tmp_path, monkeypatch):
+    """sync_tdx_industry 应追加 dim_stock_tdx_industry_history 快照."""
+    import sqlite3
+    from services import tdx_industry_client as tic
+
+    conn = sqlite3.connect(":memory:")
+    conn.row_factory = sqlite3.Row
+    conn.executescript(
+        """
+        CREATE TABLE dim_stock_tdx_industry (
+            stock_code TEXT PRIMARY KEY,
+            tdx_l1 TEXT, tdx_l2 TEXT, tdx_l3 TEXT,
+            tdx_l1_name TEXT, tdx_l2_name TEXT, tdx_l3_name TEXT,
+            sw_x_legacy TEXT, updated_at TIMESTAMP
+        );
+        """
+    )
+
+    # mock 下载 + 解析
+    parsed_fake = [
+        ("600519", "T02", "T0202", "T020201", "日常消费", "饮料", "白酒", "SW食品"),
+        ("000001", "T10", "T1001", "T100101", "金融", "银行", "大型银行", "SW银行"),
+    ]
+    monkeypatch.setattr(tic, "_fetch_tdxhy_bytes", lambda: (b"fake", "http://fake"))
+    monkeypatch.setattr(tic, "_parse_tdxhy", lambda _: parsed_fake)
+
+    result = tic.sync_tdx_industry(conn)
+    assert result["rows_upserted"] == 2
+    assert result.get("history_snapshot_date")
+
+    # history 表应存在且有 2 行
+    hist_rows = conn.execute(
+        "SELECT stock_code, snapshot_date, tdx_l1 FROM dim_stock_tdx_industry_history"
+    ).fetchall()
+    assert len(hist_rows) == 2
+    conn.close()
+
+
+def test_get_tdx_industry_at_event_time_fallback():
+    """历史快照为空时 get_tdx_industry_at 应 fallback 到当前行业."""
+    import sqlite3
+    from services import tdx_industry_client as tic
+
+    conn = sqlite3.connect(":memory:")
+    conn.row_factory = sqlite3.Row
+    conn.executescript(
+        """
+        CREATE TABLE dim_stock_tdx_industry (
+            stock_code TEXT PRIMARY KEY,
+            tdx_l1 TEXT, tdx_l2 TEXT, tdx_l3 TEXT,
+            tdx_l1_name TEXT, tdx_l2_name TEXT, tdx_l3_name TEXT,
+            sw_x_legacy TEXT, updated_at TIMESTAMP
+        );
+        CREATE TABLE dim_stock_tdx_industry_history (
+            stock_code TEXT, snapshot_date TEXT,
+            tdx_l1 TEXT, tdx_l2 TEXT, tdx_l3 TEXT,
+            tdx_l1_name TEXT, tdx_l2_name TEXT, tdx_l3_name TEXT,
+            PRIMARY KEY(stock_code, snapshot_date)
+        );
+        INSERT INTO dim_stock_tdx_industry
+            VALUES('600519','T02','T0202','T020201','消费','饮料','白酒',NULL,'now');
+        """
+    )
+    # 无 history，应回退当前（get_tdx_industry 返回 dict 无 source 字段）
+    ind = tic.get_tdx_industry_at(conn, "600519", "2024-01-01")
+    assert ind is not None
+    assert ind["tdx_l1"] == "T02"
+    assert ind.get("source") != "event_time_snapshot"  # 回退标记
+
+    # 塞一条 2023-06-01 的历史快照（当时行业 T07）
+    conn.execute(
+        "INSERT INTO dim_stock_tdx_industry_history VALUES "
+        "('600519','2023-06-01','T07','T0701','T070101','老行业','子行业','三级')"
+    )
+    # event_date=2024-01-01 应取 ≤ 2024 的最新快照 2023-06-01
+    ind2 = tic.get_tdx_industry_at(conn, "600519", "2024-01-01")
+    assert ind2["tdx_l1"] == "T07"
+    assert ind2["source"] == "event_time_snapshot"
+
+    # event_date=2023-01-01 先于快照，回退当前
+    ind3 = tic.get_tdx_industry_at(conn, "600519", "2023-01-01")
+    assert ind3["tdx_l1"] == "T02"
+
+    conn.close()
