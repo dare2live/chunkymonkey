@@ -537,37 +537,6 @@ def _current_relationship_plan_reason(layer: Optional[dict]) -> Optional[str]:
     return None
 
 
-def _summarize_northbound_freshness(conn) -> dict:
-    summary = {
-        "table_available": False,
-        "row_count": 0,
-        "latest_trade_date": "",
-        "target_trade_date": "",
-        "lag_days": None,
-    }
-
-    try:
-        row = conn.execute(
-            "SELECT COUNT(*) AS row_count, MAX(trade_date) AS latest_trade_date FROM fact_northbound_daily"
-        ).fetchone()
-    except Exception:
-        return summary
-
-    summary["table_available"] = True
-    if row:
-        summary["row_count"] = int(row["row_count"] or 0)
-        summary["latest_trade_date"] = row["latest_trade_date"] or ""
-
-    try:
-        summary["target_trade_date"] = latest_completed_trade_date(conn) or ""
-    except Exception:
-        summary["target_trade_date"] = ""
-
-    lag_days = _days_lag(summary["latest_trade_date"], summary["target_trade_date"])
-    summary["lag_days"] = lag_days if lag_days is None else max(lag_days, 0)
-    return summary
-
-
 def run_quality_audit(conn, use_cache: bool = True) -> dict:
     """运行数据质量审计，返回各层状态报告
 
@@ -1281,9 +1250,10 @@ def build_smart_plan(conn, force_all=False, *, audit: Optional[dict] = None, use
     """
     # 所有可能的步骤 ID
     ALL_STEPS = [
-        "sync_raw", "match_inst", "sync_market_data", "sync_northbound",
+        "sync_raw", "match_inst", "sync_market_data",
         "gen_events", "calc_returns", "sync_industry",
-        "sync_financial", "calc_financial_derived",
+        "sync_financial", "sync_qfii", "sync_margin", "sync_lhb",
+        "calc_financial_derived",
         "build_current_rel", "build_profiles", "build_industry_stat", "build_trends",
         "calc_screening", "calc_sector_momentum", "build_external_attention",
         "build_stage_features", "build_forecast_features", "build_turtle_features",
@@ -1358,11 +1328,6 @@ def build_smart_plan(conn, force_all=False, *, audit: Optional[dict] = None, use
     else:
         plan["skip_reasons"]["sync_market_data"] = "K线已完整且已覆盖最新交易日"
 
-    # 3b. 北向持仓已于 2024-08-16 停止个股披露（陆股通退休）
-    # 审计 5.4 整改：不再把 sync_northbound 加进智能更新计划，避免每次都产生"跳过噪音"。
-    # 该步骤仍在 STEPS 列表保留，供有需要时手动触发重试历史回填。
-    plan["skip_reasons"]["sync_northbound"] = "北向源已退休（2024-08-16 后停止个股披露），不再自动同步"
-
     # 4. 事件是否需要重算
     if audit["layers"]["events"]["count"] == 0 and audit["layers"]["holdings"]["count"] > 0:
         plan["steps"].append("gen_events")
@@ -1421,6 +1386,69 @@ def build_smart_plan(conn, force_all=False, *, audit: Optional[dict] = None, use
         except (ValueError, TypeError):
             plan["steps"].append("sync_surveys")
             plan["reason"].append("无法解析机构调研日期")
+
+    # 6a-2. QFII 季报：季频数据源（2024Q3 起接入），等季度末 +30 天才大概率有披露
+    try:
+        from services.qfii_client import latest_plannable_report_date
+        qfii_target = latest_plannable_report_date()
+        qfii_row = conn.execute(
+            "SELECT MAX(report_date) FROM raw_qfii_holding_quarterly"
+        ).fetchone()
+        qfii_latest = (qfii_row[0] or "")[:10] if qfii_row else ""
+    except Exception:
+        qfii_target = None
+        qfii_latest = ""
+
+    if qfii_target and qfii_latest < qfii_target:
+        plan["steps"].append("sync_qfii")
+        if qfii_latest:
+            plan["reason"].append(f"QFII 季报落后于 {qfii_target}（当前 {qfii_latest}）")
+        else:
+            plan["reason"].append(f"QFII 季报尚未接入（目标 {qfii_target}）")
+    elif qfii_target:
+        plan["skip_reasons"]["sync_qfii"] = f"QFII 季报已是最新（{qfii_latest}）"
+    else:
+        plan["skip_reasons"]["sync_qfii"] = "QFII 季报暂无可同步季度"
+
+    # 6a-3. 两融日度
+    try:
+        target_trade = latest_completed_trade_date(conn) or ""
+        margin_row = conn.execute(
+            "SELECT MAX(trade_date) FROM raw_margin_daily"
+        ).fetchone()
+        margin_latest = (margin_row[0] or "")[:10] if margin_row else ""
+    except Exception:
+        target_trade = ""
+        margin_latest = ""
+
+    if target_trade and margin_latest < target_trade:
+        plan["steps"].append("sync_margin")
+        if margin_latest:
+            plan["reason"].append(f"两融落后于 {target_trade}（当前 {margin_latest}）")
+        else:
+            plan["reason"].append(f"两融尚未接入（目标 {target_trade}）")
+    elif target_trade:
+        plan["skip_reasons"]["sync_margin"] = f"两融已是最新（{margin_latest}）"
+    else:
+        plan["skip_reasons"]["sync_margin"] = "无可同步交易日"
+
+    # 6a-4. 龙虎榜日度
+    try:
+        lhb_row = conn.execute(
+            "SELECT MAX(trade_date) FROM raw_lhb_daily"
+        ).fetchone()
+        lhb_latest = (lhb_row[0] or "")[:10] if lhb_row else ""
+    except Exception:
+        lhb_latest = ""
+
+    if target_trade and lhb_latest < target_trade:
+        plan["steps"].append("sync_lhb")
+        if lhb_latest:
+            plan["reason"].append(f"龙虎榜落后于 {target_trade}（当前 {lhb_latest}）")
+        else:
+            plan["reason"].append(f"龙虎榜尚未接入（目标 {target_trade}）")
+    elif target_trade:
+        plan["skip_reasons"]["sync_lhb"] = f"龙虎榜已是最新（{lhb_latest}）"
 
     # 6b. 财务数据是否需要同步
     try:

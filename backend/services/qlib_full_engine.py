@@ -611,65 +611,295 @@ def _load_stage_factors(smart_conn, codes: list) -> pd.DataFrame:
     return _finalize_time_series_factor_frame(data)
 
 
-def _load_northbound_factors(smart_conn, codes: list) -> pd.DataFrame:
-    """按 trade_date 加载北向持仓因子。"""
+def _load_behavior_factors(smart_conn, codes: list) -> pd.DataFrame:
+    """加载两融 + 龙虎榜 + QFII 行为因子（Phase G：时序版本）。
+
+    防穿越（关键）：
+    - 两融 trade_date 即可见日（T 日收盘后披露，T 日 EOD 可得）
+    - 龙虎榜 trade_date = 上榜日（盘后公告，即 T 日 EOD 可得）；post_Nd 未来收益
+      **绝不进因子**（loader 里只读统计列，不读 post_Nd）
+    - QFII 用 notice_date 作 available_date；每日取"notice_date <= 当日"的最大
+      report_date 对应的记录，季频广播到日频
+
+    输出按 (datetime, instrument) MultiIndex，每个 datapoint 的 datetime 就是
+    该日点可用信息的截止日，确保 cross-sectional rank 和 time-series label 对齐。
+    """
     if not codes:
         return pd.DataFrame()
+
+    placeholders = ",".join("?" for _ in codes)
+
+    # ---- 1) 两融日频序列：rz_balance / rq_balance + 5d/20d rolling 派生 ----
     try:
-        placeholders = ",".join("?" for _ in codes)
-        rows = smart_conn.execute(
-            f"SELECT stock_code, trade_date, hold_shares, hold_market_cap, hold_ratio, change_shares "
-            f"FROM fact_northbound_daily WHERE stock_code IN ({placeholders}) "
-            f"ORDER BY stock_code, trade_date",
+        margin_df = pd.read_sql(
+            f"""
+            SELECT stock_code, trade_date,
+                   SUM(COALESCE(rz_balance, 0)) AS rz_bal,
+                   SUM(COALESCE(rq_balance, 0)) AS rq_bal
+            FROM raw_margin_daily
+            WHERE stock_code IN ({placeholders})
+            GROUP BY stock_code, trade_date
+            """,
+            smart_conn,
+            params=codes,
+        )
+    except Exception as e:
+        logger.warning(f"[Qlib-Full] behavior margin 查询失败: {e}")
+        margin_df = pd.DataFrame()
+
+    margin_ts = pd.DataFrame()
+    if not margin_df.empty:
+        margin_df["trade_date"] = pd.to_datetime(margin_df["trade_date"]).dt.normalize()
+        margin_df = margin_df.sort_values(["stock_code", "trade_date"])
+        grp = margin_df.groupby("stock_code", sort=False)["rz_bal"]
+        margin_df["rz_ma20"] = grp.transform(lambda s: s.rolling(20, min_periods=5).mean())
+        margin_df["rz_chg_5d"] = grp.transform(lambda s: s.pct_change(5).clip(-3, 3))
+        margin_df["beh_margin_rz_log"] = np.log1p(margin_df["rz_bal"].clip(lower=0))
+        margin_df["beh_margin_rq_log"] = np.log1p(margin_df["rq_bal"].clip(lower=0))
+        margin_df["beh_margin_rz_vs_ma20"] = (
+            (margin_df["rz_bal"] - margin_df["rz_ma20"]) / margin_df["rz_ma20"].replace(0, np.nan)
+        ).fillna(0).clip(-3, 3)
+        margin_df["beh_margin_rz_chg5"] = margin_df["rz_chg_5d"].fillna(0)
+        margin_ts = margin_df[[
+            "stock_code", "trade_date",
+            "beh_margin_rz_log", "beh_margin_rq_log",
+            "beh_margin_rz_vs_ma20", "beh_margin_rz_chg5",
+        ]].rename(columns={"trade_date": "datetime"})
+
+    # ---- 2) 龙虎榜事件计数：为每 (stock, trade_date) 在交易日历上回看 ----
+    try:
+        lhb_df = pd.read_sql(
+            f"""
+            SELECT stock_code, trade_date,
+                   COUNT(*) AS hits_today,
+                   SUM(COALESCE(net_buy, 0)) AS net_buy_today
+            FROM raw_lhb_daily
+            WHERE stock_code IN ({placeholders})
+            GROUP BY stock_code, trade_date
+            """,
+            smart_conn,
+            params=codes,
+        )
+    except Exception as e:
+        logger.warning(f"[Qlib-Full] behavior lhb 查询失败: {e}")
+        lhb_df = pd.DataFrame()
+
+    lhb_ts = pd.DataFrame()
+    if not lhb_df.empty and not margin_df.empty:
+        # 用 margin_df 的 (stock_code, trade_date) 作为目标 panel（覆盖所有有两融数据的日期）
+        lhb_df["trade_date"] = pd.to_datetime(lhb_df["trade_date"]).dt.normalize()
+        panel = margin_df[["stock_code", "trade_date"]].copy()
+        merged = panel.merge(lhb_df, on=["stock_code", "trade_date"], how="left")
+        merged["hits_today"] = merged["hits_today"].fillna(0)
+        merged["net_buy_today"] = merged["net_buy_today"].fillna(0)
+        merged = merged.sort_values(["stock_code", "trade_date"])
+        grp = merged.groupby("stock_code", sort=False)
+        # 回看：shift(1) 确保不把当日算进去（严格 T-1 及之前），共 60 个交易日
+        merged["beh_lhb_hits_60d"] = grp["hits_today"].transform(
+            lambda s: s.shift(1).rolling(60, min_periods=1).sum()
+        ).fillna(0)
+        merged["beh_lhb_hits_250d"] = grp["hits_today"].transform(
+            lambda s: s.shift(1).rolling(250, min_periods=1).sum()
+        ).fillna(0)
+        merged["beh_lhb_net_buy_60d"] = grp["net_buy_today"].transform(
+            lambda s: s.shift(1).rolling(60, min_periods=1).sum()
+        ).fillna(0)
+        lhb_ts = merged[[
+            "stock_code", "trade_date",
+            "beh_lhb_hits_60d", "beh_lhb_hits_250d", "beh_lhb_net_buy_60d",
+        ]].rename(columns={"trade_date": "datetime"})
+
+    # ---- 3) QFII 季频标签：按 notice_date 前向填充到当日 ----
+    try:
+        qfii_df = pd.read_sql(
+            f"""
+            SELECT stock_code, report_date, notice_date, change_type, holder_name
+            FROM raw_qfii_holding_quarterly
+            WHERE stock_code IN ({placeholders})
+              AND notice_date IS NOT NULL
+            """,
+            smart_conn,
+            params=codes,
+        )
+    except Exception as e:
+        logger.warning(f"[Qlib-Full] behavior qfii 查询失败: {e}")
+        qfii_df = pd.DataFrame()
+
+    qfii_ts = pd.DataFrame()
+    if not qfii_df.empty and not margin_df.empty:
+        qfii_df["notice_date"] = pd.to_datetime(qfii_df["notice_date"]).dt.normalize()
+        # 聚合到 (stock, notice_date) 层：该披露日的 QFII 家数 + 方向
+        qfii_df["inflow_flag"] = qfii_df["change_type"].isin(["新进", "增加"]).astype(int)
+        qfii_df["outflow_flag"] = (qfii_df["change_type"] == "减少").astype(int)
+        qfii_by_notice = qfii_df.groupby(["stock_code", "notice_date"]).agg(
+            qfii_count=("holder_name", "nunique"),
+            inflow_cnt=("inflow_flag", "sum"),
+            outflow_cnt=("outflow_flag", "sum"),
+        ).reset_index()
+        qfii_by_notice["beh_qfii_present"] = 1
+        qfii_by_notice["beh_qfii_direction"] = np.sign(
+            qfii_by_notice["inflow_cnt"] - qfii_by_notice["outflow_cnt"]
+        ).astype(int)
+        qfii_by_notice = qfii_by_notice.rename(columns={
+            "notice_date": "datetime",
+            "qfii_count": "beh_qfii_count",
+        })[["stock_code", "datetime", "beh_qfii_present", "beh_qfii_count", "beh_qfii_direction"]]
+
+        # 和 margin panel 对齐并前向填充。pandas merge_asof with by= 要求 on 列
+        # 全局 sorted，因此先按 datetime 排序（非 by+on）。
+        panel = (
+            margin_df[["stock_code", "trade_date"]]
+            .rename(columns={"trade_date": "datetime"})
+            .sort_values("datetime")
+            .reset_index(drop=True)
+        )
+        qfii_sorted = qfii_by_notice.sort_values("datetime").reset_index(drop=True)
+        qfii_ts = pd.merge_asof(
+            panel, qfii_sorted,
+            by="stock_code", on="datetime", direction="backward",
+        )
+        for col in ("beh_qfii_present", "beh_qfii_count", "beh_qfii_direction"):
+            qfii_ts[col] = qfii_ts[col].fillna(0)
+
+    # ---- 4) 合并三家时序，按 (stock_code, datetime) 对齐 ----
+    frames = [f for f in (margin_ts, lhb_ts, qfii_ts) if not f.empty]
+    if not frames:
+        return pd.DataFrame()
+
+    merged = frames[0]
+    for f in frames[1:]:
+        merged = merged.merge(f, on=["stock_code", "datetime"], how="outer")
+
+    # 填充缺失（整段时序都对齐）
+    factor_cols = [c for c in merged.columns if c.startswith("beh_")]
+    for c in factor_cols:
+        merged[c] = merged[c].fillna(0)
+
+    merged["instrument"] = merged["stock_code"].map(_instrument_from_stock_code)
+    merged = merged[merged["instrument"].astype(bool)]
+    merged = merged.drop(columns=["stock_code"])
+    merged = merged.drop_duplicates(subset=["datetime", "instrument"], keep="last")
+    merged = merged.sort_values(["instrument", "datetime"])
+    return merged.set_index(["datetime", "instrument"]).sort_index()
+
+
+def _load_supply_factors(smart_conn, codes: list) -> pd.DataFrame:
+    """加载解禁 + 回购供给压力因子（Phase E）。
+
+    防穿越：
+    - 解禁 unlock_date 是未来事件日，snapshot_date 是可见日（当前只能用最新快照，
+      历史视图需等快照积累）
+    - 回购 latest_notice_date 是公告日
+
+    输出按 instrument 单索引的 stock-level 静态特征。
+    """
+    if not codes:
+        return pd.DataFrame()
+
+    placeholders = ",".join("?" for _ in codes)
+    data: dict[str, dict] = {}
+
+    # 解禁：最近快照里，未来 90/180 日解禁占流通盘比例
+    try:
+        unlock_rows = smart_conn.execute(
+            f"""
+            WITH latest AS (
+                SELECT MAX(snapshot_date) AS sd FROM raw_capital_unlock
+            )
+            SELECT u.stock_code,
+                   SUM(CASE
+                         WHEN u.unlock_date <= date((SELECT sd FROM latest), '+90 days')
+                          AND u.unlock_date >= (SELECT sd FROM latest)
+                         THEN COALESCE(u.unlock_ratio_float_mkt, 0)
+                         ELSE 0 END) AS ratio_90d,
+                   SUM(CASE
+                         WHEN u.unlock_date <= date((SELECT sd FROM latest), '+180 days')
+                          AND u.unlock_date >= (SELECT sd FROM latest)
+                         THEN COALESCE(u.unlock_ratio_float_mkt, 0)
+                         ELSE 0 END) AS ratio_180d,
+                   MIN(CASE
+                         WHEN u.unlock_date >= (SELECT sd FROM latest)
+                         THEN julianday(u.unlock_date) - julianday((SELECT sd FROM latest))
+                         END) AS days_ahead
+            FROM raw_capital_unlock u
+            WHERE u.stock_code IN ({placeholders})
+              AND u.snapshot_date = (SELECT sd FROM latest)
+            GROUP BY u.stock_code
+            """,
             codes,
         ).fetchall()
-    except Exception:
-        return pd.DataFrame()
+    except Exception as e:
+        logger.warning(f"[Qlib-Full] supply unlock 查询失败: {e}")
+        unlock_rows = []
 
-    if not rows:
-        return pd.DataFrame()
-
-    history_df = pd.DataFrame([dict(row) for row in rows])
-    history_df["datetime"] = history_df["trade_date"].map(_normalize_factor_date)
-    history_df = history_df.dropna(subset=["datetime"]).sort_values(["stock_code", "datetime"])
-    history_df["hold_ratio_prev"] = history_df.groupby("stock_code")["hold_ratio"].shift(1)
-    history_df["hold_shares_prev"] = history_df.groupby("stock_code")["hold_shares"].shift(1)
-    history_df["hold_market_cap_prev"] = history_df.groupby("stock_code")["hold_market_cap"].shift(1)
-
-    data = []
-    for row in history_df.to_dict("records"):
-        hold_ratio = row.get("hold_ratio")
-        hold_shares = row.get("hold_shares")
-        hold_market_cap = row.get("hold_market_cap")
-        change_shares = row.get("change_shares")
-        data.append(
-            {
-                "datetime": row["datetime"],
-                "instrument": _instrument_from_stock_code(row["stock_code"]),
-                "nb_hold_shares": hold_shares,
-                "nb_hold_market_cap": hold_market_cap,
-                "nb_hold_ratio": hold_ratio,
-                "nb_change_shares": change_shares,
-                "nb_hold_ratio_change": (
-                    hold_ratio - row.get("hold_ratio_prev")
-                    if hold_ratio is not None and row.get("hold_ratio_prev") is not None
-                    else None
-                ),
-                "nb_hold_shares_change": (
-                    hold_shares - row.get("hold_shares_prev")
-                    if hold_shares is not None and row.get("hold_shares_prev") is not None
-                    else None
-                ),
-                "nb_hold_market_cap_change": (
-                    hold_market_cap - row.get("hold_market_cap_prev")
-                    if hold_market_cap is not None and row.get("hold_market_cap_prev") is not None
-                    else None
-                ),
-                "nb_net_inflow_flag": 1 if (change_shares or 0) > 0 else -1 if (change_shares or 0) < 0 else 0,
-            }
+    for r in unlock_rows:
+        row_dict = dict(r) if not isinstance(r, dict) else r
+        entry = data.setdefault(row_dict["stock_code"], {})
+        entry["sup_unlock_ratio_90d"] = float(row_dict.get("ratio_90d") or 0)
+        entry["sup_unlock_ratio_180d"] = float(row_dict.get("ratio_180d") or 0)
+        days_ahead = row_dict.get("days_ahead")
+        entry["sup_unlock_days_ahead"] = (
+            float(days_ahead) if days_ahead is not None else 999.0
         )
 
-    return _finalize_time_series_factor_frame(data)
+    # 回购：近 180 日计划回购规模（相对流通盘比例）+ 进行中回购标记
+    # Phase F 归一化：使用 planned_ratio_high/low（占公告前一日总股本比例）替代
+    # planned_amount，避免大市值公司天然数值大。
+    try:
+        buyback_rows = smart_conn.execute(
+            f"""
+            WITH latest AS (
+                SELECT MAX(snapshot_date) AS sd FROM raw_capital_repurchase
+            )
+            SELECT r.stock_code,
+                   COUNT(*) AS buyback_events,
+                   SUM(COALESCE(r.planned_ratio_high, r.planned_ratio_low, 0)) AS ratio_sum,
+                   MAX(COALESCE(r.planned_ratio_high, r.planned_ratio_low, 0)) AS ratio_max,
+                   SUM(CASE WHEN r.progress IN ('董事会预案','股东大会通过','实施中')
+                            THEN 1 ELSE 0 END) AS active_cnt
+            FROM raw_capital_repurchase r
+            WHERE r.stock_code IN ({placeholders})
+              AND r.snapshot_date = (SELECT sd FROM latest)
+              AND (r.latest_notice_date >= date((SELECT sd FROM latest), '-180 days')
+                   OR r.latest_notice_date IS NULL)
+            GROUP BY r.stock_code
+            """,
+            codes,
+        ).fetchall()
+    except Exception as e:
+        logger.warning(f"[Qlib-Full] supply buyback 查询失败: {e}")
+        buyback_rows = []
+
+    for r in buyback_rows:
+        row_dict = dict(r) if not isinstance(r, dict) else r
+        entry = data.setdefault(row_dict["stock_code"], {})
+        entry["sup_buyback_events_180d"] = int(row_dict.get("buyback_events") or 0)
+        entry["sup_buyback_ratio_sum_180d"] = float(row_dict.get("ratio_sum") or 0)
+        entry["sup_buyback_ratio_max_180d"] = float(row_dict.get("ratio_max") or 0)
+        entry["sup_buyback_active"] = int(row_dict.get("active_cnt") or 0)
+
+    if not data:
+        return pd.DataFrame()
+
+    all_cols = [
+        "sup_unlock_ratio_90d", "sup_unlock_ratio_180d", "sup_unlock_days_ahead",
+        "sup_buyback_events_180d", "sup_buyback_ratio_sum_180d",
+        "sup_buyback_ratio_max_180d", "sup_buyback_active",
+    ]
+    rows = []
+    for stock_code, entry in data.items():
+        instrument = _instrument_from_stock_code(stock_code)
+        if not instrument:
+            continue
+        # days_ahead 缺失 → 999（表示无未来解禁）
+        defaults = {col: 0 for col in all_cols}
+        defaults["sup_unlock_days_ahead"] = 999
+        filled = {**defaults, **entry}
+        filled["instrument"] = instrument
+        rows.append(filled)
+
+    df = pd.DataFrame(rows).drop_duplicates(subset=["instrument"], keep="last")
+    return df.set_index("instrument").sort_index()
 
 
 _TDX_L1_ONEHOT_CODES = tuple(f"T{i:02d}" for i in range(1, 14))
@@ -726,7 +956,8 @@ def _load_combined_custom_factors(
     use_turtle: bool,
     use_quality: bool,
     use_stage: bool,
-    use_northbound: bool,
+    use_behavior: bool = False,
+    use_supply: bool = False,
 ) -> pd.DataFrame:
     if not codes:
         return pd.DataFrame()
@@ -751,10 +982,14 @@ def _load_combined_custom_factors(
         stage_factors = _load_stage_factors(smart_conn, codes)
         if not stage_factors.empty:
             factor_frames.append(stage_factors)
-    if use_northbound:
-        northbound_factors = _load_northbound_factors(smart_conn, codes)
-        if not northbound_factors.empty:
-            factor_frames.append(northbound_factors)
+    if use_behavior:
+        behavior_factors = _load_behavior_factors(smart_conn, codes)
+        if not behavior_factors.empty:
+            factor_frames.append(behavior_factors)
+    if use_supply:
+        supply_factors = _load_supply_factors(smart_conn, codes)
+        if not supply_factors.empty:
+            factor_frames.append(supply_factors)
     if not factor_frames:
         return pd.DataFrame()
 
@@ -1597,7 +1832,8 @@ def _load_saved_model_replay_bundle(smart_conn, model_row: dict, params: dict):
         use_turtle=bool(params.get("use_turtle", True)),
         use_quality=bool(params.get("use_quality", False)),
         use_stage=bool(params.get("use_stage", False)),
-        use_northbound=bool(params.get("use_northbound", False)),
+        use_behavior=bool(params.get("use_behavior", False)),
+        use_supply=bool(params.get("use_supply", False)),
     )
     custom_factor_count = _inject_custom_factors_into_handler(handler, custom_factors)
     logger.info(
@@ -1664,8 +1900,10 @@ def _persist_training_outputs(smart_conn, *, model_id: str, params: dict,
             factor_group = "quality"
         elif str(factor_name).startswith("stage_"):
             factor_group = "stage"
-        elif str(factor_name).startswith("nb_"):
-            factor_group = "northbound"
+        elif str(factor_name).startswith("beh_"):
+            factor_group = "behavior"
+        elif str(factor_name).startswith("sup_"):
+            factor_group = "supply"
         elif str(factor_name).startswith("fin_"):
             factor_group = "financial"
         else:
@@ -1763,7 +2001,8 @@ def _persist_workflow_records(smart_conn, *, model_id: str, dataset, model, para
             use_turtle=params.get("use_turtle", True),
             use_quality=params.get("use_quality", False),
             use_stage=params.get("use_stage", False),
-            use_northbound=params.get("use_northbound", False),
+            use_behavior=params.get("use_behavior", False),
+            use_supply=params.get("use_supply", False),
         )
         SignalRecord(model=model, dataset=dataset, recorder=recorder).generate()
         SigAnaRecord(recorder, ana_long_short=True).generate()
@@ -2063,7 +2302,8 @@ def train_full_model(smart_conn, data_dir: str = None, *, params: Optional[dict]
     use_turtle = params.get("use_turtle", True)
     use_quality = params.get("use_quality", True)
     use_stage = params.get("use_stage", True)
-    use_northbound = params.get("use_northbound", False)
+    use_behavior = params.get("use_behavior", False)
+    use_supply = params.get("use_supply", False)
     use_industry_onehot = params.get("use_industry_onehot", True)
     universe_source = str(params.get("universe_source") or "active_a_stock").strip()
     sample_stock_limit = int(params.get("sample_stock_limit", 0) or 0)
@@ -2161,7 +2401,8 @@ def train_full_model(smart_conn, data_dir: str = None, *, params: Optional[dict]
             use_turtle=bool(use_turtle),
             use_quality=bool(use_quality),
             use_stage=bool(use_stage),
-            use_northbound=bool(use_northbound),
+            use_behavior=bool(use_behavior),
+            use_supply=bool(use_supply),
         )
         custom_factor_count = len(custom_factors.columns) if not custom_factors.empty else 0
         logger.info(f"[Qlib-Full] 自定义因子: {custom_factor_count} 个, 覆盖 {len(custom_factors)} 只股票")
@@ -2527,7 +2768,8 @@ def get_model_summary(conn, model_id: Optional[str] = None) -> dict:
             "use_turtle": bool(params.get("use_turtle", True)),
             "use_quality": bool(params.get("use_quality", False)),
             "use_stage": bool(params.get("use_stage", False)),
-            "use_northbound": bool(params.get("use_northbound", False)),
+            "use_behavior": bool(params.get("use_behavior", False)),
+            "use_supply": bool(params.get("use_supply", False)),
             "use_benchmark": _use_backtest_benchmark(params),
             "benchmark": _requested_backtest_benchmark(params),
             "universe_source": str(params.get("universe_source") or "active_a_stock"),

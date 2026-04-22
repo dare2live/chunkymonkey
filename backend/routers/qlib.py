@@ -20,30 +20,6 @@ router = APIRouter()
 
 _is_training = False
 _train_error = None
-_QLIB_FEATURE_FLAGS = {
-    "northbound": {
-        "enabled": False,
-        "label": "北向因子",
-        "reason": "北向数据链尚未接通，当前训练固定不使用该特征。",
-    }
-}
-
-
-def _copy_feature_flags() -> dict:
-    return {key: dict(value) for key, value in _QLIB_FEATURE_FLAGS.items()}
-
-
-def _normalize_train_params(params: Optional[dict]) -> tuple[dict, list[str]]:
-    normalized = dict(params or {})
-    disabled_features: list[str] = []
-
-    northbound = _QLIB_FEATURE_FLAGS["northbound"]
-    if not northbound["enabled"]:
-        if normalized.get("use_northbound"):
-            disabled_features.append("northbound")
-        normalized["use_northbound"] = False
-
-    return normalized, disabled_features
 
 
 class QlibTrainParams(BaseModel):
@@ -69,7 +45,8 @@ class QlibTrainParams(BaseModel):
     use_turtle: bool = True
     use_quality: bool = True
     use_stage: bool = True
-    use_northbound: bool = False
+    use_behavior: bool = False
+    use_supply: bool = False
     use_industry_onehot: bool = True
 
 
@@ -93,7 +70,6 @@ async def qlib_status():
             "model": model,
             "training": _is_training,
             "train_error": _train_error,
-            "feature_flags": _copy_feature_flags(),
         }
     finally:
         conn.close()
@@ -135,8 +111,7 @@ async def qlib_train(body: Optional[QlibTrainParams] = None):
 
     _is_training = True
     _train_error = None
-    raw_params = (body or QlibTrainParams()).model_dump(exclude_none=True)
-    params, disabled_features = _normalize_train_params(raw_params)
+    params = (body or QlibTrainParams()).model_dump(exclude_none=True)
 
     async def _run():
         global _is_training, _train_error
@@ -181,16 +156,7 @@ async def qlib_train(body: Optional[QlibTrainParams] = None):
             _is_training = False
 
     asyncio.create_task(_run())
-    message = "Qlib 训练已启动，完成后会同步刷新股票研究列表和行业前瞻"
-    if disabled_features:
-        disabled_labels = [
-            _QLIB_FEATURE_FLAGS[key]["label"]
-            for key in disabled_features
-            if key in _QLIB_FEATURE_FLAGS
-        ]
-        if disabled_labels:
-            message += "；当前未启用: " + "、".join(disabled_labels)
-    return {"ok": True, "message": message}
+    return {"ok": True, "message": "Qlib 训练已启动，完成后会同步刷新股票研究列表和行业前瞻"}
 
 
 @router.post("/rebuild-backtest")

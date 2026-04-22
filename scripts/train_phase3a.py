@@ -47,7 +47,6 @@ def _base_params() -> dict:
         "use_turtle": True,
         "use_quality": True,
         "use_stage": True,
-        "use_northbound": False,
     }
 
 

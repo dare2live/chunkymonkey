@@ -123,18 +123,6 @@ def _make_plan_conn(*, with_turtle=True):
             is_trading INTEGER
         );
 
-        CREATE TABLE fact_northbound_daily (
-            stock_code TEXT NOT NULL,
-            stock_name TEXT,
-            hold_shares REAL,
-            hold_market_cap REAL,
-            hold_ratio REAL,
-            change_shares REAL,
-            trade_date TEXT NOT NULL,
-            updated_at TEXT,
-            PRIMARY KEY (stock_code, trade_date)
-        );
-
         CREATE TABLE step_status (
             step_id TEXT PRIMARY KEY,
             error TEXT,
@@ -192,13 +180,6 @@ def _make_plan_conn(*, with_turtle=True):
         conn.execute(
             "INSERT INTO dim_stock_turtle_latest (stock_code, model_id) VALUES ('000001', 'model-1')"
         )
-    conn.executemany(
-        "INSERT INTO fact_northbound_daily VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-        [
-            ("000001", "样本股", 100.0, 500.0, 1.2, 8.0, latest_trade_date, "2026-04-15T00:00:00"),
-            ("000001", "样本股", 92.0, 470.0, 1.1, 7.0, previous_trade_date, "2026-04-14T00:00:00"),
-        ],
-    )
     # 机构调研最新（避免 sync_surveys 触发 build_external_attention + calc_stock_scores）
     conn.execute(
         "INSERT INTO raw_institution_surveys (institution_id, stock_code, notice_date) VALUES (?, ?, ?)",
@@ -459,50 +440,7 @@ class ExternalAttentionSyncPlanTests(unittest.TestCase):
 
         self.assertNotIn("build_turtle_features", plan["steps"])
         self.assertNotIn("calc_stock_scores", plan["steps"])
-        self.assertNotIn("sync_northbound", plan["steps"])
         self.assertEqual(plan["skip_reasons"].get("calc_stock_scores"), "上游未变更，无需重算")
-
-    def test_build_smart_plan_never_schedules_sync_northbound(self):
-        """北向源于 2024-08-16 后停止披露；智能更新不再自动调度该步骤（审计 5.4）."""
-        conn = _make_plan_conn()
-        latest_trade_date = latest_completed_trade_date(conn)
-        self.assertTrue(latest_trade_date)
-
-        # 即便最新快照缺失，也不应再触发 sync_northbound
-        conn.execute(
-            "DELETE FROM fact_northbound_daily WHERE trade_date = ?",
-            (latest_trade_date,),
-        )
-        conn.commit()
-
-        plan = build_smart_plan(conn, audit=_make_audit(), use_cache=False)
-
-        self.assertNotIn("sync_northbound", plan["steps"])
-        reason = plan["skip_reasons"].get("sync_northbound") or ""
-        self.assertIn("退休", reason)
-
-    def test_build_smart_plan_retired_sync_northbound_keeps_skip_reason(self):
-        """sync_northbound 即使 step_status 里有 source_unavailable 冷却，也统一归因为退休."""
-        conn = _make_plan_conn()
-        try:
-            conn.execute("DELETE FROM fact_northbound_daily")
-            conn.execute(
-                "INSERT INTO step_status (step_id, error, finished_at) VALUES (?, ?, ?)",
-                (
-                    "sync_northbound",
-                    '{"status": "source_unavailable", "error": "northbound_source_failed: boom"}',
-                    datetime.now().isoformat(),
-                ),
-            )
-            conn.commit()
-
-            plan = build_smart_plan(conn, audit=_make_audit(), use_cache=False)
-
-            self.assertNotIn("sync_northbound", plan["steps"])
-            reason = plan["skip_reasons"].get("sync_northbound") or ""
-            self.assertIn("退休", reason)
-        finally:
-            conn.close()
 
     def test_build_smart_plan_skips_sync_financial_when_only_recent_history_gaps_remain(self):
         conn = _make_plan_conn()

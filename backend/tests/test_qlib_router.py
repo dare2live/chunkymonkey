@@ -20,30 +20,6 @@ class _DummyConn:
         return None
 
 
-def test_qlib_status_exposes_disabled_northbound_feature(monkeypatch):
-    monkeypatch.setattr(qlib_router, "get_conn", lambda *args, **kwargs: _DummyConn())
-    monkeypatch.setattr(qlib_full_engine, "is_available", lambda: (True, None))
-    monkeypatch.setattr(qlib_full_engine, "get_model_status", lambda conn: None)
-
-    response = client.get("/api/qlib/status")
-
-    assert response.status_code == 200
-    data = response.json()
-    assert data["feature_flags"]["northbound"]["enabled"] is False
-    assert "尚未接通" in data["feature_flags"]["northbound"]["reason"]
-
-
-def test_normalize_train_params_forces_northbound_off():
-    params, disabled_features = qlib_router._normalize_train_params({
-        "use_quality": True,
-        "use_northbound": True,
-    })
-
-    assert params["use_quality"] is True
-    assert params["use_northbound"] is False
-    assert disabled_features == ["northbound"]
-
-
 def test_qlib_train_refreshes_sector_forecast_after_stock_forecast(monkeypatch):
     captured = []
     calls = []
