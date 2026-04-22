@@ -1550,8 +1550,14 @@ def build_smart_plan(conn, force_all=False, *, audit: Optional[dict] = None, use
 
     # 10. 预测特征层
     try:
+        # 审计新报告 3.5 整改：优先 is_active=1（可能最新一次训练退化，被性能评分排除）；
+        # 退回取最新 trained 仅当无 active 模型时。
         trained_model_row = conn.execute(
-            "SELECT model_id FROM qlib_model_state WHERE status='trained' ORDER BY created_at DESC LIMIT 1"
+            """
+            SELECT model_id FROM qlib_model_state
+            WHERE status='trained'
+            ORDER BY is_active DESC, created_at DESC LIMIT 1
+            """
         ).fetchone()
         forecast_model_row = conn.execute(
             "SELECT model_id FROM dim_stock_forecast_latest LIMIT 1"

@@ -883,7 +883,7 @@ def calculate_institution_scores(conn) -> int:
     profiles = conn.execute("""
         SELECT institution_id, total_events,
                avg_gain_30d, avg_gain_60d, avg_gain_120d,
-               win_rate_30d, win_rate_60d, win_rate_90d,
+               win_rate_30d, win_rate_60d, win_rate_90d, win_rate_120d,
                median_max_drawdown_30d, median_gain_30d,
                buy_event_count, buy_avg_gain_30d, buy_avg_gain_60d, buy_avg_gain_120d,
                buy_win_rate_30d, buy_win_rate_60d, buy_win_rate_120d,

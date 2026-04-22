@@ -60,6 +60,7 @@ def _make_breakdown_conn():
             win_rate_30d REAL,
             win_rate_60d REAL,
             win_rate_90d REAL,
+            win_rate_120d REAL,
             median_max_drawdown_30d REAL,
             avg_premium_pct REAL,
             safe_follow_event_count INTEGER,
@@ -180,14 +181,15 @@ def test_load_institution_scoring_breakdown_queries_shared_payload(monkeypatch):
         conn.execute(
             """
             INSERT INTO mart_institution_profile VALUES (
-                ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
+                ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
                 ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
             )
             """,
             (
                 "inst_a", 74.0, 14, 61.0, "high", 9, 11.0, 13.0, 15.0,
                 67.0, 69.0, 72.0, 6.5, 10.0, 8.5, 9.0, 11.0,
-                55.0, 58.0, 60.0, 8.0, 2.5, 5, 63.0, 8.2, 4.1,
+                55.0, 58.0, 60.0, 62.0,  # win_rate_120d 补位
+                8.0, 2.5, 5, 63.0, 8.2, 4.1,
                 2, 70.0, 3, 66.0, 1, 40.0, 0, None, 78.0,
                 "样本充足", "buy", "high", "电子", "半导体", 26.0, 88.0,
             ),
@@ -216,14 +218,15 @@ def test_institution_scoring_breakdown_route_uses_shared_service(monkeypatch):
         conn.execute(
             """
             INSERT INTO mart_institution_profile VALUES (
-                ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
+                ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
                 ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
             )
             """,
             (
                 "inst_route", 71.0, 9, 58.0, "medium", 4, 7.0, 8.0, 9.5,
                 60.0, 61.0, 62.0, 8.2, 6.8, 6.0, 6.5, 7.0,
-                52.0, 53.0, 54.0, 9.2, 3.1, 2, 55.0, 6.2, 5.4,
+                52.0, 53.0, 54.0, 56.0,  # win_rate_120d 补位
+                9.2, 3.1, 2, 55.0, 6.2, 5.4,
                 1, 65.0, 1, 60.0, 0, None, 0, None, 64.0,
                 "样本偏少", "buy", "medium", "机械设备", "自动化设备", 18.0, 80.0,
             ),

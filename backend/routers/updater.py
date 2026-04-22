@@ -1237,6 +1237,34 @@ async def _step_calc_returns(conn) -> int:
     return await _run_blocking_db_task(calculate_returns)
 
 
+def _median(sorted_vals: list) -> Optional[float]:
+    """严格 median：偶数样本取中间两数均值，奇数取中间。审计 2.2.2 整改。"""
+    n = len(sorted_vals)
+    if n == 0:
+        return None
+    if n % 2 == 1:
+        return sorted_vals[n // 2]
+    return (sorted_vals[n // 2 - 1] + sorted_vals[n // 2]) / 2
+
+
+def _parse_notice_date(s: Optional[str]):
+    """审计 2.2.3 整改：fact_institution_event.notice_date 实际是 YYYYMMDD 格式，
+    之前代码用 '%Y-%m-%d' 解析必失败，被 except 静默吞掉，导致
+    historical_median_holding_days 100% 空。
+    """
+    if not s:
+        return None
+    raw = str(s).strip()
+    if not raw:
+        return None
+    try:
+        if len(raw) >= 8 and raw[:8].isdigit():
+            return datetime.strptime(raw[:8], "%Y%m%d")
+        return datetime.strptime(raw[:10], "%Y-%m-%d")
+    except (ValueError, TypeError):
+        return None
+
+
 def _step_build_profiles_sync(conn) -> int:
     """计算机构画像 mart_institution_profile"""
     from services.holdings import refresh_stock_latest_cache
@@ -1304,14 +1332,15 @@ def _step_build_profiles_sync(conn) -> int:
             """, (inst_id,)).fetchone()
 
             # 回撤中位数（Python 端计算，SQLite 无原生 MEDIAN）
+            # 审计 2.2.2 整改：偶数样本取 (a[n//2-1]+a[n//2])/2，严格 median
             dd_all_rows = conn.execute("""
                 SELECT max_drawdown_30d, max_drawdown_60d FROM fact_institution_event
                 WHERE institution_id = ? AND gain_30d IS NOT NULL
             """, (inst_id,)).fetchall()
             dd30_all = sorted(r[0] for r in dd_all_rows if r[0] is not None)
             dd60_all = sorted(r[1] for r in dd_all_rows if r[1] is not None)
-            median_dd30 = dd30_all[len(dd30_all) // 2] if dd30_all else None
-            median_dd60 = dd60_all[len(dd60_all) // 2] if dd60_all else None
+            median_dd30 = _median(dd30_all)
+            median_dd60 = _median(dd60_all)
 
             # 胜率（性能优化：合并 30/60/90/120 + total 为一次 query）
             wr_row = conn.execute("""
@@ -1358,8 +1387,8 @@ def _step_build_profiles_sync(conn) -> int:
             """, (inst_id,)).fetchall()
             buy_dd30_vals = sorted(r[0] for r in buy_dd_rows if r[0] is not None)
             buy_dd60_vals = sorted(r[1] for r in buy_dd_rows if r[1] is not None)
-            buy_median_dd30 = buy_dd30_vals[len(buy_dd30_vals) // 2] if buy_dd30_vals else None
-            buy_median_dd60 = buy_dd60_vals[len(buy_dd60_vals) // 2] if buy_dd60_vals else None
+            buy_median_dd30 = _median(buy_dd30_vals)
+            buy_median_dd60 = _median(buy_dd60_vals)
 
             # 审计 5.2：退出/减持表现沉淀到 mart（原在 institution_read.load_institution_profiles 即席算）
             exit_row = conn.execute("""
@@ -1471,28 +1500,26 @@ def _step_build_profiles_sync(conn) -> int:
                 ORDER BY stock_code, report_date
             """, (inst_id,)).fetchall()
             # 按 stock_code 分组找闭合周期
+            # 审计 2.2.3 整改：notice_date 实际为 YYYYMMDD，用 _parse_notice_date 兼容
             _stock_entries = {}
             for he in holding_events:
                 sc = he["stock_code"]
                 if he["event_type"] == "new_entry":
                     _stock_entries[sc] = he["notice_date"]
                 elif he["event_type"] == "exit" and sc in _stock_entries:
-                    try:
-                        from datetime import datetime as _dt
-                        entry_d = _dt.strptime(_stock_entries[sc][:10], "%Y-%m-%d")
-                        exit_d = _dt.strptime(he["notice_date"][:10], "%Y-%m-%d")
+                    entry_d = _parse_notice_date(_stock_entries[sc])
+                    exit_d = _parse_notice_date(he["notice_date"])
+                    if entry_d and exit_d:
                         days = (exit_d - entry_d).days
                         if days > 0:
                             closed_periods.append(days)
-                    except (ValueError, TypeError):
-                        pass  # 日期格式异常是预期内情况，静默跳过
                     _stock_entries.pop(sc, None)
 
             hist_median_days = None
             if closed_periods:
                 closed_periods.sort()
-                mid = len(closed_periods) // 2
-                hist_median_days = closed_periods[mid] if len(closed_periods) % 2 else (closed_periods[mid-1] + closed_periods[mid]) // 2
+                m = _median(closed_periods)
+                hist_median_days = int(m) if m is not None else None
 
             # current_avg_held_days: 当前持仓的平均估算持有天数
             curr_held = conn.execute("""

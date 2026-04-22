@@ -1192,7 +1192,10 @@
     }
     function industryCell(s) {
       var name = TDX_L1_NAMES_TBL[(s.tdx_l1 || '').trim()] || s.tdx_l2 || s.tdx_l1 || '—';
-      var sub = (s.tdx_l2 || s.tdx_l3) ? ('<div class="muted" style="font-size:10px">' + esc(s.tdx_l3 || s.tdx_l2 || '') + '</div>') : '';
+      // L3 缺失（约一半股票 TDX 源无 L3）时明确标注"L3未分类"，避免误读为 L2 就是最细层
+      var l3Text = s.tdx_l3 ? s.tdx_l3 : (s.tdx_l2 ? 'L3未分类' : '');
+      var subText = l3Text || s.tdx_l2 || '';
+      var sub = subText ? ('<div class="muted" style="font-size:10px">' + esc(subText) + '</div>') : '';
       return '<div style="line-height:1.4"><div style="font-size:12px">' + esc(name) + '</div>' + sub + '</div>';
     }
     function watchlistButton(s) {
@@ -3310,7 +3313,8 @@
       html += '<table class="data-table"><thead><tr><th>股票</th><th>行业</th><th>报告期</th><th>事件</th><th>机构成本</th><th>跟随溢价</th><th>门槛</th><th>持仓市值</th><th>其他机构</th></tr></thead><tbody>';
       html += holdings.map(function (h) {
         var others = (h.other_institutions || []).map(function (o) { return instLink(o.id, o.name, o.type); }).join(' ') || '-';
-        var indFull = (h.tdx_l1 || '') + (h.tdx_l2 ? ' > ' + h.tdx_l2 : '') + (h.tdx_l3 ? ' > ' + h.tdx_l3 : '') || '-';
+        // L3 缺失时明确标注"L3未分类"（约一半股票 TDX 源无 L3）
+        var indFull = (h.tdx_l1 || '') + (h.tdx_l2 ? ' > ' + h.tdx_l2 : '') + (h.tdx_l2 ? ' > ' + (h.tdx_l3 || 'L3未分类') : '') || '-';
         var cost = h.inst_ref_cost != null ? Number(h.inst_ref_cost).toFixed(2) + '<div class="muted" style="font-size:10px">' + esc(costMethodText(h.inst_cost_method)) + '</div>' : '-';
         var premium = h.premium_pct != null ? premiumText(h.premium_pct) + '<div class="muted" style="font-size:10px">' + esc(h.premium_bucket || '') + '</div>' : '-';
         return '<tr><td>' + stockCell(h.stock_code, h.stock_name) + '</td><td style="font-size:11px;color:#64748b">' + esc(indFull) + '</td><td>' + fmtDate(h.report_date) + '</td><td>' + (h.event_type ? evTag(h.event_type) : '-') + '</td><td>' + cost + '</td><td>' + premium + '</td><td>' + followGateTag(h.follow_gate, h.follow_gate_reason) + '</td><td>' + compactNum(h.hold_market_cap) + '</td><td>' + others + '</td></tr>';
@@ -3461,7 +3465,7 @@
       if (!r || !r.ok) { panel.innerHTML = '<div class="detail-loading">加载失败: ' + esc(r && r.detail || '未知') + '</div>'; return; }
       try {
       var insts = r.institutions || [];
-      var indStr = r.industry ? (r.industry.tdx_l1 || '') + (r.industry.tdx_l2 ? ' > ' + r.industry.tdx_l2 : '') + (r.industry.tdx_l3 ? ' > ' + r.industry.tdx_l3 : '') : '';
+      var indStr = r.industry ? (r.industry.tdx_l1 || '') + (r.industry.tdx_l2 ? ' > ' + r.industry.tdx_l2 : '') + (r.industry.tdx_l2 ? ' > ' + (r.industry.tdx_l3 || 'L3未分类') : '') : '';
       var html = '';
       html += renderStockReportHero(detailPayload);
       html += renderStockInstitutionCoverageSection(detailPayload, insts);
@@ -4914,6 +4918,28 @@
       normalizeSourceName(r.kline_source_detail, 'tdxhub'), false);
     setSourcePill('sourcePillIndustry', '行业源', !!r.industry_source,
       normalizeSourceName(r.industry_source_detail, 'tdxhub'), false);
+  }
+
+  // 手动强制刷新连通性（绕过前后端 5 分钟缓存）
+  async function refreshNetwork() {
+    setSourcePill('sourcePillHoldings', '股东源', false, '', true);
+    setSourcePill('sourcePillKline', 'K线源', false, '', true);
+    setSourcePill('sourcePillIndustry', '行业源', false, '', true);
+    try {
+      // 清前端 apiCached 缓存
+      if (window.App && typeof window.App._api === 'function') {
+        // 直接 fetch force=1 绕过后端缓存
+        const r = await fetch('/api/inst/update/connectivity?force=1').then(x => x.json());
+        setSourcePill('sourcePillHoldings', '股东源', !!r.holdings_source,
+          normalizeSourceName(r.holdings_source_detail, 'akshare'), false);
+        setSourcePill('sourcePillKline', 'K线源', !!r.kline_source,
+          normalizeSourceName(r.kline_source_detail, 'tdxhub'), false);
+        setSourcePill('sourcePillIndustry', '行业源', !!r.industry_source,
+          normalizeSourceName(r.industry_source_detail, 'tdxhub'), false);
+      }
+    } catch (e) {
+      primeNetworkPills();
+    }
   }
 
   // ============================================================
@@ -7154,7 +7180,7 @@
       if (polls > 120) { clearInterval(timer); btn.disabled = false; btn.textContent = '救生艇'; }
     }, 3000);
   }
-  window.App = { saveModuleSettings, showView, setAlias, setType, toggleBlack, deleteInst, restoreInst, toggleInstDetail, toggleInstBreakdown, toggleStockDetail, switchInstDim, switchStockDim, runSingleStep, loadWatchlist, loadExclusions, _api: api };
+  window.App = { saveModuleSettings, showView, setAlias, setType, toggleBlack, deleteInst, restoreInst, toggleInstDetail, toggleInstBreakdown, toggleStockDetail, switchInstDim, switchStockDim, runSingleStep, loadWatchlist, loadExclusions, refreshNetwork, _api: api };
   if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', startInit, { once: true });
   } else {
