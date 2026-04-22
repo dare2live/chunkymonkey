@@ -238,12 +238,48 @@ def sync_tdx_industry(conn: sqlite3.Connection) -> dict:
           updated_at  = CURRENT_TIMESTAMP
     """
     conn.executemany(upsert_sql, parsed)
+
+    # 审计 4.4 整改 (Phase V)：每次同步追加一份"当日行业快照"到 history 表，
+    # 以便未来 event-time 行业归因可以 JOIN 到事件发生时的行业分类，
+    # 而不是总用最新 dim_stock_tdx_industry（会让历史事件被重分类到新行业）。
+    # 历史事件在积累足够快照前，仍回退到当前行业（UI 已标注"当前行业口径"）。
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS dim_stock_tdx_industry_history (
+            stock_code    TEXT NOT NULL,
+            snapshot_date TEXT NOT NULL,
+            tdx_l1        TEXT,
+            tdx_l2        TEXT,
+            tdx_l3        TEXT,
+            tdx_l1_name   TEXT,
+            tdx_l2_name   TEXT,
+            tdx_l3_name   TEXT,
+            PRIMARY KEY (stock_code, snapshot_date)
+        )
+        """
+    )
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_tdx_ind_hist_stock ON dim_stock_tdx_industry_history(stock_code)"
+    )
+    snapshot_date = datetime.now().strftime("%Y-%m-%d")
+    conn.executemany(
+        """
+        INSERT OR REPLACE INTO dim_stock_tdx_industry_history
+            (stock_code, snapshot_date, tdx_l1, tdx_l2, tdx_l3,
+             tdx_l1_name, tdx_l2_name, tdx_l3_name)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        [(r[0], snapshot_date, r[1], r[2], r[3], r[4], r[5], r[6]) for r in parsed],
+    )
+
     conn.commit()
     result["rows_upserted"] = len(parsed)
+    result["history_snapshot_date"] = snapshot_date
 
     logger.info(
         f"[tdx_industry] upsert 完成: {len(parsed)} 行, "
-        f"L1={result['l1_count']} / L2={result['l2_count']} / L3={result['l3_count']}"
+        f"L1={result['l1_count']} / L2={result['l2_count']} / L3={result['l3_count']}, "
+        f"history snapshot {snapshot_date}"
     )
     return result
 
@@ -251,6 +287,36 @@ def sync_tdx_industry(conn: sqlite3.Connection) -> dict:
 # ─────────────────────────────────────────────────────────────────────
 # Lookup helpers (轻量查询，供 resolver 调用)
 # ─────────────────────────────────────────────────────────────────────
+
+def get_tdx_industry_at(
+    conn: sqlite3.Connection, stock_code: str, event_date: str
+) -> Optional[dict]:
+    """审计 4.4 / Phase V：返回 ``event_date`` 时点该股所属的 TDX 行业（event-time 口径）。
+
+    优先查 dim_stock_tdx_industry_history 中 ≤ event_date 的最新快照；
+    若 history 为空或该股无历史快照，回退到 dim_stock_tdx_industry 的当前行业。
+    """
+    try:
+        row = conn.execute(
+            """
+            SELECT tdx_l1, tdx_l2, tdx_l3, tdx_l1_name, tdx_l2_name, tdx_l3_name
+            FROM dim_stock_tdx_industry_history
+            WHERE stock_code = ? AND snapshot_date <= ?
+            ORDER BY snapshot_date DESC LIMIT 1
+            """,
+            (stock_code, event_date),
+        ).fetchone()
+    except sqlite3.OperationalError:
+        row = None
+    if row:
+        return {
+            "tdx_l1": row[0], "tdx_l2": row[1], "tdx_l3": row[2],
+            "tdx_l1_name": row[3], "tdx_l2_name": row[4], "tdx_l3_name": row[5],
+            "source": "event_time_snapshot",
+        }
+    # 回退：当前行业
+    return get_tdx_industry(conn, stock_code)
+
 
 def get_tdx_industry(conn: sqlite3.Connection, stock_code: str) -> Optional[dict]:
     """查询单只股票的通达信行业三级代码（含中文名）。"""

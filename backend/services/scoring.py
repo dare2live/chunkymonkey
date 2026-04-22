@@ -901,20 +901,28 @@ def calculate_institution_scores(conn) -> int:
     profiles = [dict(p) for p in profiles]
     n = len(profiles)
 
-    # 判断是否有买入类数据
-    has_buy_data = any(p.get("buy_event_count") and p["buy_event_count"] > 0 for p in profiles)
-    if has_buy_data:
-        logger.info("[评分] 使用买入类指标（new_entry + increase）")
-    else:
-        logger.info("[评分] 买入类指标为空，回退到全事件指标")
+    # 审计 5.3 修正：has_buy_data 原为全局 any()，导致 mixed cohort 里有 buy 的走 buy、没 buy 的 fallback，
+    #              但 sample 维度却永远用 buy_event_count（让纯 fallback 的机构样本=0）。
+    #              改为 per-institution 判断：对每个机构独立决定走 buy 还是 fallback。
+    def _has_buy(p):
+        return bool(p.get("buy_event_count") and p["buy_event_count"] > 0)
 
-    # 提取各指标列（优先买入类）
+    buy_count = sum(1 for p in profiles if _has_buy(p))
+    logger.info(
+        "[评分] per-institution 模式：%d/%d 机构有买入类样本，其余 fallback 到全事件",
+        buy_count, n,
+    )
+
+    # 提取各指标列（per-institution 优先买入类）
     def _pick(p, buy_key, all_key):
-        if has_buy_data and p.get(buy_key) is not None:
+        if _has_buy(p) and p.get(buy_key) is not None:
             return _safe_float(p[buy_key])
         return _safe_float(p.get(all_key))
 
-    sample_vals = [_safe_float(p.get("buy_event_count") if has_buy_data else p["total_events"]) for p in profiles]
+    def _sample_count(p):
+        return _safe_float(p["buy_event_count"]) if _has_buy(p) else _safe_float(p.get("total_events"))
+
+    sample_vals = [_sample_count(p) for p in profiles]
     gain_30d_vals = [_pick(p, "buy_avg_gain_30d", "avg_gain_30d") for p in profiles]
     gain_60d_vals = [_pick(p, "buy_avg_gain_60d", "avg_gain_60d") for p in profiles]
     gain_120d_vals = [_pick(p, "buy_avg_gain_120d", "avg_gain_120d") for p in profiles]
@@ -999,8 +1007,8 @@ def calculate_institution_scores(conn) -> int:
         confidence_factor = min(1.0, math.sqrt(buy_cnt / 10.0)) if buy_cnt > 0 else 0
         score = round(raw_score * confidence_factor, 2) if raw_score is not None else None
 
-        # 评分来源标注
-        score_basis = "buy" if has_buy_data and (profiles[i].get("buy_event_count") or 0) > 0 else "fallback_all"
+        # 评分来源标注（per-institution：该机构自己有 buy 样本则走 buy，否则 fallback）
+        score_basis = "buy" if _has_buy(profiles[i]) else "fallback_all"
         if buy_cnt >= 10:
             score_confidence = "high"
         elif buy_cnt >= 3:

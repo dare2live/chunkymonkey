@@ -1373,6 +1373,25 @@ def _step_build_profiles_sync(conn) -> int:
             buy_median_dd30 = buy_dd30_vals[len(buy_dd30_vals) // 2] if buy_dd30_vals else None
             buy_median_dd60 = buy_dd60_vals[len(buy_dd60_vals) // 2] if buy_dd60_vals else None
 
+            # 审计 5.2：退出/减持表现沉淀到 mart（原在 institution_read.load_institution_profiles 即席算）
+            exit_row = conn.execute("""
+                SELECT COUNT(*) AS cnt,
+                    AVG(e.gain_30d) AS post_avg30,
+                    AVG(e.gain_60d) AS post_avg60,
+                    AVG(e.gain_120d) AS post_avg120,
+                    100.0 * SUM(CASE WHEN e.gain_30d <= 0 THEN 1 ELSE 0 END)
+                        / NULLIF(SUM(CASE WHEN e.gain_30d IS NOT NULL THEN 1 ELSE 0 END), 0)
+                        AS avoid30,
+                    100.0 * SUM(CASE WHEN e.gain_60d <= 0 THEN 1 ELSE 0 END)
+                        / NULLIF(SUM(CASE WHEN e.gain_60d IS NOT NULL THEN 1 ELSE 0 END), 0)
+                        AS avoid60,
+                    100.0 * SUM(CASE WHEN e.gain_120d <= 0 THEN 1 ELSE 0 END)
+                        / NULLIF(SUM(CASE WHEN e.gain_120d IS NOT NULL THEN 1 ELSE 0 END), 0)
+                        AS avoid120
+                FROM fact_institution_event e
+                WHERE e.institution_id = ? AND e.event_type IN ('decrease', 'exit')
+            """, (inst_id,)).fetchone()
+
             follow_stats = conn.execute("""
                 SELECT
                     AVG(CASE
@@ -1530,8 +1549,10 @@ def _step_build_profiles_sync(conn) -> int:
                 premium_high_event_count, premium_high_win_rate_30d,
                 signal_transfer_efficiency_30d, followability_hint,
                 historical_median_holding_days, current_avg_held_days,
+                exit_event_count, exit_post_avg_gain_30d, exit_post_avg_gain_60d, exit_post_avg_gain_120d,
+                exit_avoid_loss_rate_30d, exit_avoid_loss_rate_60d, exit_avoid_loss_rate_120d,
                 updated_at)
-                VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+                VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
             """, (
                 inst_id, inst["name"], inst["display_name"], inst["type"],
                 stats["total_events"], stats["total_stocks"], stats["total_periods"],
@@ -1566,6 +1587,13 @@ def _step_build_profiles_sync(conn) -> int:
                 follow_stats["high_wr30"] if follow_stats else None,
                 signal_transfer_eff, follow_hint,
                 hist_median_days, curr_avg_held,
+                exit_row["cnt"] if exit_row else 0,
+                exit_row["post_avg30"] if exit_row else None,
+                exit_row["post_avg60"] if exit_row else None,
+                exit_row["post_avg120"] if exit_row else None,
+                exit_row["avoid30"] if exit_row else None,
+                exit_row["avoid60"] if exit_row else None,
+                exit_row["avoid120"] if exit_row else None,
                 now
             ))
             count += 1
