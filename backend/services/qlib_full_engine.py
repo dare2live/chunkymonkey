@@ -823,7 +823,9 @@ def _load_supply_factors(smart_conn, codes: list) -> pd.DataFrame:
             float(days_ahead) if days_ahead is not None else 999.0
         )
 
-    # 回购：近 180 日计划回购金额 + 进行中回购标记
+    # 回购：近 180 日计划回购规模（相对流通盘比例）+ 进行中回购标记
+    # Phase F 归一化：使用 planned_ratio_high/low（占公告前一日总股本比例）替代
+    # planned_amount，避免大市值公司天然数值大。
     try:
         buyback_rows = smart_conn.execute(
             f"""
@@ -832,7 +834,8 @@ def _load_supply_factors(smart_conn, codes: list) -> pd.DataFrame:
             )
             SELECT r.stock_code,
                    COUNT(*) AS buyback_events,
-                   SUM(COALESCE(r.planned_amount_high, r.planned_amount_low, 0)) AS planned_amt,
+                   SUM(COALESCE(r.planned_ratio_high, r.planned_ratio_low, 0)) AS ratio_sum,
+                   MAX(COALESCE(r.planned_ratio_high, r.planned_ratio_low, 0)) AS ratio_max,
                    SUM(CASE WHEN r.progress IN ('董事会预案','股东大会通过','实施中')
                             THEN 1 ELSE 0 END) AS active_cnt
             FROM raw_capital_repurchase r
@@ -852,7 +855,8 @@ def _load_supply_factors(smart_conn, codes: list) -> pd.DataFrame:
         row_dict = dict(r) if not isinstance(r, dict) else r
         entry = data.setdefault(row_dict["stock_code"], {})
         entry["sup_buyback_events_180d"] = int(row_dict.get("buyback_events") or 0)
-        entry["sup_buyback_planned_amt"] = float(row_dict.get("planned_amt") or 0)
+        entry["sup_buyback_ratio_sum_180d"] = float(row_dict.get("ratio_sum") or 0)
+        entry["sup_buyback_ratio_max_180d"] = float(row_dict.get("ratio_max") or 0)
         entry["sup_buyback_active"] = int(row_dict.get("active_cnt") or 0)
 
     if not data:
@@ -860,7 +864,8 @@ def _load_supply_factors(smart_conn, codes: list) -> pd.DataFrame:
 
     all_cols = [
         "sup_unlock_ratio_90d", "sup_unlock_ratio_180d", "sup_unlock_days_ahead",
-        "sup_buyback_events_180d", "sup_buyback_planned_amt", "sup_buyback_active",
+        "sup_buyback_events_180d", "sup_buyback_ratio_sum_180d",
+        "sup_buyback_ratio_max_180d", "sup_buyback_active",
     ]
     rows = []
     for stock_code, entry in data.items():
