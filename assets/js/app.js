@@ -1791,6 +1791,7 @@
     { step_id: 'gen_events', step_name: '生成事件', status: 'idle', desc: '比对持仓变动，生成新进/增持/减持事件' },
     { step_id: 'calc_returns', step_name: '计算收益', status: 'idle', desc: '计算每个事件公告后的收益与回撤' },
     { step_id: 'sync_surveys', step_name: '机构调研', status: 'idle', desc: '同步调研事件供外部关注信号' },
+    { step_id: 'sync_qfii', step_name: 'QFII 季报', status: 'idle', desc: '季度末 +30 天后同步 QFII 十大股东持仓（外资维度）' },
     { step_id: 'sync_industry', step_name: '通达信行业', status: 'idle', desc: '给持仓股补充通达信三级行业分类' },
     { step_id: 'calc_financial_derived', step_name: '计算财务指标', status: 'idle', desc: '计算 ROE、毛利率等财务派生指标' },
     { step_id: 'build_current_rel', step_name: '构建当前关系', status: 'idle', desc: '构建“机构→股票”当前持仓关系' },
@@ -2126,6 +2127,14 @@
       if (surveys.latest_date) addNote('最近调研日 ' + fmtDate(surveys.latest_date));
       hasData = (surveys.count || 0) > 0;
       actionable = ['failed', 'skipped', 'stopped'].includes(status);
+      actionLabel = '单独补跑';
+    } else if (stepId === 'sync_qfii') {
+      var qfii = layers.qfii || {};
+      addNote('数据源：东方财富 stock_gdfx_holding_detail_em（季频，QFII 外资十大股东）');
+      if (typeof qfii.rows === 'number') addNote('审计 ' + fmt(qfii.rows) + ' 条季度持仓记录');
+      if (qfii.latest_report_date) addNote('最新报告期 ' + qfii.latest_report_date);
+      hasData = (qfii.rows || 0) > 0;
+      actionable = ['failed'].includes(status);
       actionLabel = '单独补跑';
     } else if (stepId === 'sync_industry') {
       if (typeof industry.expected_stocks === 'number') {
@@ -2504,13 +2513,13 @@
     if (!steps || !steps.length) { el('stepGrid').innerHTML = ''; return; }
 
     var GROUP_MAP = {
-      sync_raw: 'data', match_inst: 'data', sync_market_data: 'data', sync_financial: 'data', sync_surveys: 'data', sync_industry: 'data',
+      sync_raw: 'data', match_inst: 'data', sync_market_data: 'data', sync_financial: 'data', sync_surveys: 'data', sync_qfii: 'data', sync_industry: 'data',
       build_turtle_features: 'mart',
       gen_events: 'calc', calc_returns: 'calc', calc_financial_derived: 'calc',
       build_current_rel: 'mart', build_profiles: 'mart', build_industry_stat: 'mart', build_trends: 'mart', calc_screening: 'mart', calc_sector_momentum: 'mart', build_external_attention: 'mart', build_stage_features: 'mart', build_forecast_features: 'mart', calc_inst_scores: 'mart', calc_stock_scores: 'mart'
     };
     var GROUP_DEF = {
-      data: { name: '数据获取', verb: '重新同步', count: 6, badge: '①' },
+      data: { name: '数据获取', verb: '重新同步', count: 7, badge: '①' },
       calc: { name: '事实计算', verb: '全量计算', count: 3, badge: '②' },
       mart: { name: '集市构建', verb: '重构集市', count: 12, badge: '③' }
     };

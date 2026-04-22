@@ -1252,7 +1252,7 @@ def build_smart_plan(conn, force_all=False, *, audit: Optional[dict] = None, use
     ALL_STEPS = [
         "sync_raw", "match_inst", "sync_market_data",
         "gen_events", "calc_returns", "sync_industry",
-        "sync_financial", "calc_financial_derived",
+        "sync_financial", "sync_qfii", "calc_financial_derived",
         "build_current_rel", "build_profiles", "build_industry_stat", "build_trends",
         "calc_screening", "calc_sector_momentum", "build_external_attention",
         "build_stage_features", "build_forecast_features", "build_turtle_features",
@@ -1385,6 +1385,29 @@ def build_smart_plan(conn, force_all=False, *, audit: Optional[dict] = None, use
         except (ValueError, TypeError):
             plan["steps"].append("sync_surveys")
             plan["reason"].append("无法解析机构调研日期")
+
+    # 6a-2. QFII 季报：季频数据源（2024Q3 起接入），等季度末 +30 天才大概率有披露
+    try:
+        from services.qfii_client import latest_plannable_report_date
+        qfii_target = latest_plannable_report_date()
+        qfii_row = conn.execute(
+            "SELECT MAX(report_date) FROM raw_qfii_holding_quarterly"
+        ).fetchone()
+        qfii_latest = (qfii_row[0] or "")[:10] if qfii_row else ""
+    except Exception:
+        qfii_target = None
+        qfii_latest = ""
+
+    if qfii_target and qfii_latest < qfii_target:
+        plan["steps"].append("sync_qfii")
+        if qfii_latest:
+            plan["reason"].append(f"QFII 季报落后于 {qfii_target}（当前 {qfii_latest}）")
+        else:
+            plan["reason"].append(f"QFII 季报尚未接入（目标 {qfii_target}）")
+    elif qfii_target:
+        plan["skip_reasons"]["sync_qfii"] = f"QFII 季报已是最新（{qfii_latest}）"
+    else:
+        plan["skip_reasons"]["sync_qfii"] = "QFII 季报暂无可同步季度"
 
     # 6b. 财务数据是否需要同步
     try:
