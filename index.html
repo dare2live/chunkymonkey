@@ -111,6 +111,7 @@
             <span id="sourcePillHoldings" class="source-pill"><span class="source-pill-dot"></span><span class="source-pill-text">股东源</span></span>
             <span id="sourcePillKline" class="source-pill"><span class="source-pill-dot"></span><span class="source-pill-text">K线源</span></span>
             <span id="sourcePillIndustry" class="source-pill"><span class="source-pill-dot"></span><span class="source-pill-text">行业源</span></span>
+            <button class="chip chip-sm chip-outline" onclick="App.refreshNetwork()" title="强制重新探测数据源（绕过 5 分钟缓存）" style="padding:2px 8px;font-size:11px">🔄</button>
           </div>
         </div>
         <aside class="workbench-ops-log panel">
@@ -265,6 +266,9 @@
             <div class="section-kicker">Institution Research</div>
             <h2 class="research-title">机构 track record</h2>
             <p class="muted research-tagline">把每家机构过去几年每次 buy 事件的 60 日跟随收益摊开，让用户自己挑可跟的机构。</p>
+            <div style="font-size:11px;color:#64748b;background:#f1f5f9;padding:6px 10px;border-radius:4px;margin-top:6px">
+              📊 <strong>研究边界</strong>：事件来源是<strong>十大股东披露差分</strong>（持仓报告期之间的变化推断），不是机构的真实盘中交易行为。
+            </div>
           </div>
           <input type="text" class="search-input" id="instSearch" placeholder="搜索机构名/别名" style="width:240px">
         </div>

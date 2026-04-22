@@ -530,6 +530,9 @@
         <div class="section-kicker">Stock Research</div>
         <h2 class="workbench-title">股票 · 信号汇总</h2>
         <p class="muted workbench-tagline">信号是股票的属性。以下为近 <span id="svFreshnessLabel">${state.freshnessDays}</span> 天内有机构 buy 事件的股票，按 follow 数排序。</p>
+        <div style="font-size:11px;color:#64748b;background:#f1f5f9;padding:6px 10px;border-radius:4px;margin-top:6px">
+          📊 <strong>画像边界</strong>：这里是"机构覆盖股票画像"，不是全市场画像。只覆盖近期进入机构关系层的 A 股（当前 ~3285/5507 只 active A 股）。
+        </div>
       </div>
       <div id="sv-filter-area">${renderFilterBar(state.byStock)}</div>
       <div id="sv-list-root"></div>

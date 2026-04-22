@@ -255,7 +255,7 @@ def load_institution_scoring_breakdown(conn, institution_id: str) -> Optional[di
                buy_win_rate_30d, buy_win_rate_60d, buy_win_rate_120d,
                buy_median_max_drawdown_30d, median_gain_30d,
                avg_gain_30d, avg_gain_60d, avg_gain_120d,
-               win_rate_30d, win_rate_60d, win_rate_90d,
+               win_rate_30d, win_rate_60d, win_rate_90d, win_rate_120d,
                median_max_drawdown_30d,
                avg_premium_pct, safe_follow_event_count, safe_follow_win_rate_30d,
                safe_follow_avg_gain_30d, safe_follow_avg_drawdown_30d,
