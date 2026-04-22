@@ -241,21 +241,58 @@ def _upsert_rows(conn: sqlite3.Connection, rows: list[dict]) -> int:
 async def sync_margin_day(
     conn: sqlite3.Connection,
     trade_date: str,
+    *,
+    fallback_days: int = 0,
 ) -> dict:
-    """trade_date 形如 '2026-04-21'。"""
+    """trade_date 形如 '2026-04-21'。
+
+    fallback_days > 0 且本日源侧未披露（written_rows == 0）时，自动降级到前
+    fallback_days 个交易日（按 dim_trading_calendar）继续尝试。用于解决两融
+    T 日白天披露滞后问题。
+    """
     ensure_tables(conn)
     yyyymmdd = trade_date.replace("-", "")
     frames = await fetch_margin_day(yyyymmdd)
     sh_rows = _normalize_sh(frames.get("sh"), trade_date)
     sz_rows = _normalize_sz(frames.get("sz"), trade_date)
     total = _upsert_rows(conn, sh_rows + sz_rows)
-    return {
+    result = {
         "trade_date": trade_date,
         "status": "ok" if total > 0 else "empty",
         "written_rows": total,
         "sh_rows": len(sh_rows),
         "sz_rows": len(sz_rows),
+        "fallback_used": False,
     }
+    if total == 0 and fallback_days > 0:
+        prev = _previous_trading_day(conn, trade_date)
+        if prev:
+            logger.info(
+                f"[两融] {trade_date} 源未披露（SH+SZ=0），降级到 {prev}"
+            )
+            inner = await sync_margin_day(
+                conn, prev, fallback_days=fallback_days - 1,
+            )
+            inner["fallback_used"] = True
+            inner["requested_date"] = trade_date
+            return inner
+    return result
+
+
+def _previous_trading_day(
+    conn: sqlite3.Connection,
+    trade_date: str,
+) -> Optional[str]:
+    """按 dim_trading_calendar 返回 trade_date 之前最近的交易日，找不到返回 None。"""
+    try:
+        row = conn.execute(
+            "SELECT MAX(trade_date) FROM dim_trading_calendar "
+            "WHERE is_trading = 1 AND trade_date < ?",
+            (trade_date,),
+        ).fetchone()
+    except Exception:
+        return None
+    return row[0] if row and row[0] else None
 
 
 def _trading_days_between(

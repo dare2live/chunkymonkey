@@ -2805,6 +2805,8 @@ async def _step_sync_margin(conn) -> int:
     """融资融券日度同步（外资退役后最有信息量的杠杆资金维度）。
 
     同步最近一个交易日的 SH+SZ 明细；如果 DB 里已有该日，则跳过。
+    两融 T 日数据通常要等到 T 日晚上才披露完整，白天跑会拿到空响应；
+    因此开启 fallback_days=2，源未披露时自动降级到 T-1、T-2。
     """
     from services.margin_client import ensure_tables, sync_margin_day
 
@@ -2823,8 +2825,14 @@ async def _step_sync_margin(conn) -> int:
         logger.info(f"[两融] 交易日 {trade_date} 已有 {existing} 条，跳过")
         return 0
 
-    logger.info(f"[两融] 开始同步交易日 {trade_date}")
-    result = await sync_margin_day(conn, trade_date)
+    logger.info(f"[两融] 开始同步交易日 {trade_date}（允许 T-1/T-2 降级）")
+    result = await sync_margin_day(conn, trade_date, fallback_days=2)
+    if result.get("fallback_used"):
+        logger.info(
+            f"[两融] 已降级到 {result.get('trade_date')} "
+            f"（原请求 {result.get('requested_date')}），"
+            f"written={result.get('written_rows')}"
+        )
     return int(result.get("written_rows") or 0)
 
 

@@ -169,3 +169,87 @@ def test_updater_registers_sync_margin():
     step = next((s for s in updater.STEPS if s["id"] == "sync_margin"), None)
     assert step is not None and step["group"] == "data"
     assert updater.RUNNERS["sync_margin"] is updater._step_sync_margin
+
+
+def _conn_with_calendar() -> sqlite3.Connection:
+    """创建带 dim_trading_calendar 的 in-memory conn，供 fallback 链路测试使用。"""
+    conn = sqlite3.connect(":memory:")
+    conn.row_factory = sqlite3.Row
+    margin_client.ensure_tables(conn)
+    conn.executescript(
+        """
+        CREATE TABLE dim_trading_calendar (trade_date TEXT PRIMARY KEY, is_trading INTEGER);
+        INSERT INTO dim_trading_calendar VALUES
+            ('2026-04-17', 1),
+            ('2026-04-20', 1),
+            ('2026-04-21', 1),
+            ('2026-04-22', 1);
+        """
+    )
+    conn.commit()
+    return conn
+
+
+def test_previous_trading_day_walks_calendar():
+    conn = _conn_with_calendar()
+    assert margin_client._previous_trading_day(conn, "2026-04-22") == "2026-04-21"
+    assert margin_client._previous_trading_day(conn, "2026-04-20") == "2026-04-17"
+    assert margin_client._previous_trading_day(conn, "2026-04-17") is None
+
+
+def test_fallback_disabled_by_default(monkeypatch):
+    conn = _conn_with_calendar()
+
+    async def _fake_fetch(yyyymmdd: str, retries: int = 3):
+        return {"sh": None, "sz": None}  # 双边失败
+
+    monkeypatch.setattr(margin_client, "fetch_margin_day", _fake_fetch)
+    result = asyncio.run(margin_client.sync_margin_day(conn, "2026-04-22"))
+    assert result["status"] == "empty"
+    assert result["written_rows"] == 0
+    assert result["fallback_used"] is False
+
+
+def test_fallback_walks_back_until_data_found(monkeypatch):
+    conn = _conn_with_calendar()
+    call_log = []
+
+    async def _fake_fetch(yyyymmdd: str, retries: int = 3):
+        call_log.append(yyyymmdd)
+        # T (04-22) 和 T-1 (04-21) 源未披露，T-2 (04-20) 有数据
+        if yyyymmdd == "20260420":
+            return {"sh": _sh_df(), "sz": _sz_df()}
+        return {"sh": None, "sz": None}
+
+    monkeypatch.setattr(margin_client, "fetch_margin_day", _fake_fetch)
+
+    result = asyncio.run(
+        margin_client.sync_margin_day(conn, "2026-04-22", fallback_days=2)
+    )
+    assert result["fallback_used"] is True
+    assert result["requested_date"] == "2026-04-22"
+    assert result["trade_date"] == "2026-04-20"
+    assert result["written_rows"] == 2  # 1 SH + 1 SZ 在 04-20 成功
+    assert call_log == ["20260422", "20260421", "20260420"]
+
+
+def test_fallback_gives_up_after_exhausting_budget(monkeypatch):
+    conn = _conn_with_calendar()
+    call_log = []
+
+    async def _fake_fetch(yyyymmdd: str, retries: int = 3):
+        call_log.append(yyyymmdd)
+        return {"sh": None, "sz": None}  # 整条链全空
+
+    monkeypatch.setattr(margin_client, "fetch_margin_day", _fake_fetch)
+
+    result = asyncio.run(
+        margin_client.sync_margin_day(conn, "2026-04-22", fallback_days=2)
+    )
+    # fallback 链：T → T-1 → T-2 （3 次调用），依然空，status=empty
+    assert result["status"] == "empty"
+    assert result["written_rows"] == 0
+    # 注意最外层结果反映的是最深那一次的 trade_date
+    assert result["trade_date"] == "2026-04-20"
+    assert result["fallback_used"] is True
+    assert call_log == ["20260422", "20260421", "20260420"]
