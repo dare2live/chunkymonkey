@@ -155,6 +155,12 @@ def _make_plan_conn(*, with_turtle=True):
             error TEXT,
             updated_at TEXT
         );
+
+        CREATE TABLE raw_institution_surveys (
+            institution_id TEXT,
+            stock_code TEXT,
+            notice_date TEXT
+        );
         """
     )
 
@@ -192,6 +198,11 @@ def _make_plan_conn(*, with_turtle=True):
             ("000001", "样本股", 100.0, 500.0, 1.2, 8.0, latest_trade_date, "2026-04-15T00:00:00"),
             ("000001", "样本股", 92.0, 470.0, 1.1, 7.0, previous_trade_date, "2026-04-14T00:00:00"),
         ],
+    )
+    # 机构调研最新（避免 sync_surveys 触发 build_external_attention + calc_stock_scores）
+    conn.execute(
+        "INSERT INTO raw_institution_surveys (institution_id, stock_code, notice_date) VALUES (?, ?, ?)",
+        ("inst_a", "000001", today.isoformat()),
     )
     conn.execute("INSERT INTO mart_stock_screening (screen_date) VALUES ('2026-04-15')")
     conn.execute("INSERT INTO mart_sector_momentum (sector_name) VALUES ('行业A')")
@@ -425,7 +436,8 @@ class ExternalAttentionSyncPlanTests(unittest.TestCase):
         self.assertIn("build_trends", plan["steps"])
         self.assertIn("calc_stock_scores", plan["steps"])
 
-    def test_build_smart_plan_recalc_scores_for_standalone_turtle_refresh(self):
+    def test_build_smart_plan_skips_turtle_standalone_refresh(self):
+        """build_turtle_features 已迁出智能更新（手动触发），缺 turtle 数据也不重算."""
         conn = _make_plan_conn(with_turtle=False)
 
         plan = build_smart_plan(conn, audit=_make_audit(), use_cache=False)
@@ -433,8 +445,12 @@ class ExternalAttentionSyncPlanTests(unittest.TestCase):
         self.assertNotIn("build_trends", plan["steps"])
         self.assertNotIn("build_stage_features", plan["steps"])
         self.assertNotIn("build_forecast_features", plan["steps"])
-        self.assertIn("build_turtle_features", plan["steps"])
-        self.assertIn("calc_stock_scores", plan["steps"])
+        self.assertNotIn("build_turtle_features", plan["steps"])
+        self.assertNotIn("calc_stock_scores", plan["steps"])
+        self.assertEqual(
+            plan["skip_reasons"].get("build_turtle_features"),
+            "已迁出智能更新，请用工作台·选股扫描手动触发",
+        )
 
     def test_build_smart_plan_skips_score_recalc_when_everything_is_fresh(self):
         conn = _make_plan_conn(with_turtle=True)
@@ -537,8 +553,9 @@ class ExternalAttentionSyncPlanTests(unittest.TestCase):
     def test_stock_scores_recalc_when_trends_rebuilt(self):
         self.assertTrue(_needs_stock_score_recalc(["build_trends"]))
 
-    def test_stock_scores_recalc_when_turtle_features_rebuilt(self):
-        self.assertTrue(_needs_stock_score_recalc(["build_turtle_features"]))
+    def test_stock_scores_do_not_recalc_when_only_turtle_features_rebuilt(self):
+        """turtle 已迁出智能更新；单独重建 turtle 不再触发股票评分重算."""
+        self.assertFalse(_needs_stock_score_recalc(["build_turtle_features"]))
 
     def test_stock_scores_skip_when_no_upstream_changes(self):
         self.assertFalse(_needs_stock_score_recalc(["calc_screening"]))

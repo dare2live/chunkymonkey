@@ -485,8 +485,9 @@ def test_calculate_stock_scores_ranks_strong_new_entry_above_weak_signal(monkeyp
         assert strong["forecast_score"] == 88.0
         assert strong["forecast_score_effective"] == 88.0
         assert strong["turtle_setup_state"] == "S2突破触发"
-        assert strong["turtle_score_delta"] > 0
-        assert "海龟" in (strong["score_highlights"] or "")
+        # turtle 已迁出股票评分体系，delta 恒为 0；score_highlights 不再保证出现"海龟"
+        assert strong["turtle_score_delta"] == 0.0
+        assert strong["score_highlights"] is not None
 
         assert weak["priority_pool"] == "D池"
         assert weak["stock_gate"] == "avoid"
@@ -497,8 +498,9 @@ def test_calculate_stock_scores_ranks_strong_new_entry_above_weak_signal(monkeyp
         assert weak["company_quality_score"] < 45
         assert weak["composite_priority_score"] < 45
         assert weak["turtle_setup_state"] == "20日退出触发"
-        assert weak["turtle_score_delta"] < 0
-        assert "海龟" in (weak["score_risks"] or "")
+        # turtle 已迁出股票评分体系；delta 恒为 0；score_risks 不再保证出现"海龟"
+        assert weak["turtle_score_delta"] == 0.0
+        assert weak["score_risks"] is not None
 
         assert strong["action_score"] > weak["action_score"]
         assert strong["composite_priority_score"] > weak["composite_priority_score"]
