@@ -1313,40 +1313,28 @@ def _step_build_profiles_sync(conn) -> int:
             median_dd30 = dd30_all[len(dd30_all) // 2] if dd30_all else None
             median_dd60 = dd60_all[len(dd60_all) // 2] if dd60_all else None
 
-            # 胜率（从增强后的 fact_institution_event 直接读取）
-            win30 = conn.execute("""
-                SELECT COUNT(CASE WHEN e.gain_30d > 0 THEN 1 END) * 100.0 / MAX(COUNT(*), 1)
-                FROM fact_institution_event e
-                WHERE e.institution_id = ? AND e.gain_30d IS NOT NULL
-            """, (inst_id,)).fetchone()
-
-            win60 = conn.execute("""
-                SELECT COUNT(CASE WHEN e.gain_60d > 0 THEN 1 END) * 100.0 / MAX(COUNT(*), 1)
-                FROM fact_institution_event e
-                WHERE e.institution_id = ? AND e.gain_60d IS NOT NULL
-            """, (inst_id,)).fetchone()
-
-            win90 = conn.execute("""
-                SELECT COUNT(CASE WHEN e.gain_90d > 0 THEN 1 END) * 100.0 / MAX(COUNT(*), 1)
-                FROM fact_institution_event e
-                WHERE e.institution_id = ? AND e.gain_90d IS NOT NULL
-            """, (inst_id,)).fetchone()
-
-            # 120 日胜率（全事件口径，对齐 buy_win_rate_120d）
-            win120 = conn.execute("""
-                SELECT COUNT(CASE WHEN e.gain_120d > 0 THEN 1 END) * 100.0 / MAX(COUNT(*), 1)
-                FROM fact_institution_event e
-                WHERE e.institution_id = ? AND e.gain_120d IS NOT NULL
-            """, (inst_id,)).fetchone()
-
-            # 总胜率（任意一个周期盈利即算赢；纳入 120d 保持口径一致）
-            total_wr = conn.execute("""
-                SELECT COUNT(CASE WHEN COALESCE(e.gain_30d, 0) > 0 OR COALESCE(e.gain_60d, 0) > 0
-                                  OR COALESCE(e.gain_90d, 0) > 0 OR COALESCE(e.gain_120d, 0) > 0
-                                  THEN 1 END) * 100.0 / MAX(COUNT(*), 1)
+            # 胜率（性能优化：合并 30/60/90/120 + total 为一次 query）
+            wr_row = conn.execute("""
+                SELECT
+                    100.0 * SUM(CASE WHEN e.gain_30d > 0 THEN 1 ELSE 0 END)
+                        / NULLIF(SUM(CASE WHEN e.gain_30d IS NOT NULL THEN 1 ELSE 0 END), 0) AS wr30,
+                    100.0 * SUM(CASE WHEN e.gain_60d > 0 THEN 1 ELSE 0 END)
+                        / NULLIF(SUM(CASE WHEN e.gain_60d IS NOT NULL THEN 1 ELSE 0 END), 0) AS wr60,
+                    100.0 * SUM(CASE WHEN e.gain_90d > 0 THEN 1 ELSE 0 END)
+                        / NULLIF(SUM(CASE WHEN e.gain_90d IS NOT NULL THEN 1 ELSE 0 END), 0) AS wr90,
+                    100.0 * SUM(CASE WHEN e.gain_120d > 0 THEN 1 ELSE 0 END)
+                        / NULLIF(SUM(CASE WHEN e.gain_120d IS NOT NULL THEN 1 ELSE 0 END), 0) AS wr120,
+                    100.0 * SUM(CASE WHEN COALESCE(e.gain_30d, 0) > 0 OR COALESCE(e.gain_60d, 0) > 0
+                                          OR COALESCE(e.gain_90d, 0) > 0 OR COALESCE(e.gain_120d, 0) > 0
+                                     THEN 1 ELSE 0 END) / NULLIF(COUNT(*), 0) AS total_wr
                 FROM fact_institution_event e
                 WHERE e.institution_id = ?
             """, (inst_id,)).fetchone()
+            win30 = (wr_row["wr30"],)
+            win60 = (wr_row["wr60"],)
+            win90 = (wr_row["wr90"],)
+            win120 = (wr_row["wr120"],)
+            total_wr = (wr_row["total_wr"],)
 
             # Phase 1: 买入类事件统计（new_entry + increase）
             buy_stats = conn.execute("""
@@ -1612,7 +1600,14 @@ async def _step_build_profiles(conn) -> int:
 
 
 def _step_build_trends_sync(conn) -> int:
-    """计算股票趋势 mart_stock_trend"""
+    """计算股票趋势 mart_stock_trend.
+
+    性能优化（审计性能诊断）：原 N+1 query 6× × 3285 股 ≈ 20k queries → 17s。
+    重构为批量预聚合：一次性拉所有股票的 inst_holdings / latest_events / price_kline，
+    in-memory 分组查询，目标耗时 < 3s。
+    """
+    from collections import defaultdict
+
     from services.holdings import refresh_stock_latest_cache
     refresh_stock_latest_cache(conn)
     now = datetime.now().isoformat()
@@ -1647,34 +1642,86 @@ def _step_build_trends_sync(conn) -> int:
         except Exception:
             qlib_map = {}
 
-        count = 0
-        # 共享 market_data.db 连接，避免在循环中每只股票重复打开
+        # 批量预聚合 1：每股近 3 期机构家数 + 合计持仓（取代 N+1 的 stock_periods + inst_counts/caps）
+        # 一次性 aggregate：(code, report_date) → (n_inst, sum_cap)
+        # 然后 Python 侧按 code 取最近 3 期
+        agg_rows = conn.execute("""
+            SELECT stock_code, report_date,
+                   COUNT(DISTINCT institution_id) AS n_inst,
+                   SUM(hold_market_cap) AS total_cap
+            FROM inst_holdings
+            WHERE stock_code IS NOT NULL
+            GROUP BY stock_code, report_date
+        """).fetchall()
+        per_stock_periods: dict[str, list[tuple[str, int, float]]] = defaultdict(list)
+        for r in agg_rows:
+            per_stock_periods[r[0]].append((r[1], r[2] or 0, r[3] or 0))
+        for v in per_stock_periods.values():
+            v.sort(key=lambda t: t[0], reverse=True)
+
+        # 批量预聚合 2：每股最近 3 个事件（取代 fact_institution_event N+1）
+        # 用 window function；SQLite 3.25+ 支持 ROW_NUMBER
+        ev_rows = conn.execute("""
+            SELECT stock_code, event_type, holder_name, change_pct, report_date, notice_date
+            FROM (
+                SELECT stock_code, event_type, holder_name, change_pct, report_date, notice_date,
+                       ROW_NUMBER() OVER (
+                         PARTITION BY stock_code
+                         ORDER BY report_date DESC, notice_date DESC
+                       ) AS rn
+                FROM fact_institution_event
+            )
+            WHERE rn <= 3
+        """).fetchall()
+        per_stock_events: dict[str, list] = defaultdict(list)
+        for r in ev_rows:
+            per_stock_events[r[0]].append(r)
+
+        # 批量预聚合 3：每股最近 3 个月 K 线 + 最近 21 日 K 线
+        # 用简单 SELECT + ORDER + Python 侧取 top N；比 window function 快 2×。
         from services.market_db import get_market_conn as _get_mkt_conn
         _mkt = _get_mkt_conn()
+        monthly_rows = _mkt.execute(
+            """
+            SELECT code, date, close FROM price_kline
+            WHERE freq='monthly' AND adjust='qfq'
+            ORDER BY code, date DESC
+            """
+        ).fetchall()
+        per_stock_monthly: dict[str, list] = defaultdict(list)
+        for code, _d, close in monthly_rows:
+            lst = per_stock_monthly[code]
+            if len(lst) < 3:
+                lst.append(close)
+
+        # daily 限定近 45 天（21 交易日 + 缓冲），避免全表扫
+        from datetime import timedelta
+        cutoff_daily = (datetime.now() - timedelta(days=45)).strftime("%Y-%m-%d")
+        daily_rows = _mkt.execute(
+            """
+            SELECT code, close FROM price_kline
+            WHERE freq='daily' AND adjust='qfq' AND date >= ?
+            ORDER BY code, date DESC
+            """,
+            (cutoff_daily,),
+        ).fetchall()
+        per_stock_daily: dict[str, list] = defaultdict(list)
+        for code, close in daily_rows:
+            lst = per_stock_daily[code]
+            if len(lst) < 21:
+                lst.append(close)
+
+        count = 0
+        insert_batch = []
         for stock in stocks:
             _raise_if_stop()
             code = stock["stock_code"]
             name = stock["stock_name"]
 
-            # 该股票自己最近3个报告期（per-stock，不用全局固定日期）
-            stock_periods = conn.execute("""
-                SELECT DISTINCT report_date FROM inst_holdings
-                WHERE stock_code = ? ORDER BY report_date DESC LIMIT 3
-            """, (code,)).fetchall()
-            q_dates = [r[0] for r in stock_periods]
-
-            # 机构增减趋势：近3期机构家数 + 合计持仓
-            inst_counts = []
-            inst_caps = []
-            for qd in q_dates:
-                r = conn.execute("""
-                    SELECT COUNT(DISTINCT institution_id), SUM(hold_market_cap)
-                    FROM inst_holdings WHERE stock_code = ? AND report_date = ?
-                """, (code, qd)).fetchone()
-                inst_counts.append(r[0] or 0)
-                inst_caps.append(r[1] or 0)
-
-            # 补齐到3个
+            # 机构增减趋势：近 3 期家数 + 合计持仓（从 per_stock_periods 取）
+            periods = per_stock_periods.get(code, [])[:3]
+            inst_counts = [p[1] for p in periods]
+            inst_caps = [p[2] for p in periods]
             while len(inst_counts) < 3:
                 inst_counts.append(0)
                 inst_caps.append(0)
@@ -1696,50 +1743,40 @@ def _step_build_trends_sync(conn) -> int:
             inst_trend = trend_str(inst_counts)
             cap_trend = trend_str(inst_caps)
 
-            # 最新事件
-            latest_ev = conn.execute("""
-                SELECT event_type, holder_name, change_pct, report_date, notice_date
-                FROM fact_institution_event
-                WHERE stock_code = ? ORDER BY report_date DESC, notice_date DESC LIMIT 3
-            """, (code,)).fetchall()
-
+            # 最新事件（从 per_stock_events 取）
+            latest_ev = per_stock_events.get(code, [])
             latest_events_json = json.dumps(
-                [{"inst": e["holder_name"][:20], "type": e["event_type"], "pct": e["change_pct"]} for e in latest_ev],
+                [{"inst": (e[2] or "")[:20], "type": e[1], "pct": e[3]} for e in latest_ev],
                 ensure_ascii=False
             ) if latest_ev else "[]"
-            latest_rd = latest_ev[0]["report_date"] if latest_ev else None
-            latest_nd = latest_ev[0]["notice_date"] if latest_ev else None
-            
+            latest_rd = latest_ev[0][4] if latest_ev else None
+            latest_nd = latest_ev[0][5] if latest_ev else None
+
             # AI 评分排名
             qlib_info = qlib_map.get(code) or {}
             qlib_rank = qlib_info.get("qlib_rank")
             qlib_score = qlib_info.get("qlib_score")
             qlib_percentile = qlib_info.get("qlib_percentile")
 
-            # 股价趋势（从共享 _mkt 连接读取）
-            price_rows = _mkt.execute("""
-                SELECT date, close FROM price_kline
-                WHERE code = ? AND freq = 'monthly' AND adjust = 'qfq'
-                ORDER BY date DESC LIMIT 3
-            """, (code,)).fetchall()
+            # 股价趋势（从预加载的 per_stock_monthly/daily 取）
+            monthly_closes = per_stock_monthly.get(code, [])  # 已按 DESC
+            daily_closes = per_stock_daily.get(code, [])       # 已按 DESC
 
             price_1m = None
             price_20d = None
             price_trend = "—"
-            if len(price_rows) >= 2 and price_rows[1][1] and price_rows[1][1] > 0:
-                price_1m = (price_rows[0][1] - price_rows[1][1]) / price_rows[1][1] * 100
+            if len(monthly_closes) >= 2 and monthly_closes[1] and monthly_closes[1] > 0:
+                price_1m = (monthly_closes[0] - monthly_closes[1]) / monthly_closes[1] * 100
 
-            # 20日涨幅（从 market_data.db 日K线）
-            daily_rows = _mkt.execute("""
-                SELECT close FROM price_kline
-                WHERE code = ? AND freq = 'daily' AND adjust = 'qfq'
-                ORDER BY date DESC LIMIT 21
-            """, (code,)).fetchall()
-            if len(daily_rows) >= 21 and daily_rows[-1][0] and daily_rows[-1][0] > 0:
-                price_20d = (daily_rows[0][0] - daily_rows[-1][0]) / daily_rows[-1][0] * 100
+            if len(daily_closes) >= 21 and daily_closes[20] and daily_closes[20] > 0:
+                price_20d = (daily_closes[0] - daily_closes[20]) / daily_closes[20] * 100
 
-            if len(price_rows) >= 3:
-                ups = sum(1 for i in range(len(price_rows) - 1) if price_rows[i][1] and price_rows[i + 1][1] and price_rows[i][1] > price_rows[i + 1][1])
+            if len(monthly_closes) >= 3:
+                ups = sum(
+                    1 for i in range(len(monthly_closes) - 1)
+                    if monthly_closes[i] and monthly_closes[i + 1]
+                    and monthly_closes[i] > monthly_closes[i + 1]
+                )
                 if ups >= 2:
                     price_trend = "连涨"
                 elif ups == 0:
@@ -1747,15 +1784,7 @@ def _step_build_trends_sync(conn) -> int:
                 else:
                     price_trend = "震荡"
 
-            conn.execute("""
-                INSERT OR REPLACE INTO mart_stock_trend
-                (stock_code, stock_name, inst_count_t0, inst_count_t1, inst_count_t2,
-                 inst_cap_t0, inst_cap_t1, inst_cap_t2, inst_trend, cap_trend,
-                 latest_events, latest_report_date, latest_notice_date,
-                 price_1m_pct, price_20d_pct, price_trend, qlib_rank,
-                 qlib_score, qlib_percentile, updated_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """, (
+            insert_batch.append((
                 code, name, inst_counts[0], inst_counts[1], inst_counts[2],
                 inst_caps[0], inst_caps[1], inst_caps[2], inst_trend, cap_trend,
                 latest_events_json, latest_rd, latest_nd,
@@ -1763,6 +1792,17 @@ def _step_build_trends_sync(conn) -> int:
                 qlib_score, qlib_percentile, now
             ))
             count += 1
+
+        # 批量 insert (取代 3285 次 execute)
+        conn.executemany("""
+            INSERT OR REPLACE INTO mart_stock_trend
+            (stock_code, stock_name, inst_count_t0, inst_count_t1, inst_count_t2,
+             inst_cap_t0, inst_cap_t1, inst_cap_t2, inst_trend, cap_trend,
+             latest_events, latest_report_date, latest_notice_date,
+             price_1m_pct, price_20d_pct, price_trend, qlib_rank,
+             qlib_score, qlib_percentile, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """, insert_batch)
 
         _mkt.close()
         conn.commit()
