@@ -462,11 +462,13 @@ class ExternalAttentionSyncPlanTests(unittest.TestCase):
         self.assertNotIn("sync_northbound", plan["steps"])
         self.assertEqual(plan["skip_reasons"].get("calc_stock_scores"), "上游未变更，无需重算")
 
-    def test_build_smart_plan_includes_sync_northbound_when_latest_snapshot_is_stale(self):
+    def test_build_smart_plan_never_schedules_sync_northbound(self):
+        """北向源于 2024-08-16 后停止披露；智能更新不再自动调度该步骤（审计 5.4）."""
         conn = _make_plan_conn()
         latest_trade_date = latest_completed_trade_date(conn)
         self.assertTrue(latest_trade_date)
 
+        # 即便最新快照缺失，也不应再触发 sync_northbound
         conn.execute(
             "DELETE FROM fact_northbound_daily WHERE trade_date = ?",
             (latest_trade_date,),
@@ -475,12 +477,12 @@ class ExternalAttentionSyncPlanTests(unittest.TestCase):
 
         plan = build_smart_plan(conn, audit=_make_audit(), use_cache=False)
 
-        self.assertIn("sync_northbound", plan["steps"])
-        self.assertTrue(
-            any("北向持仓最新日期" in reason or "无北向持仓数据" in reason for reason in plan["reason"])
-        )
+        self.assertNotIn("sync_northbound", plan["steps"])
+        reason = plan["skip_reasons"].get("sync_northbound") or ""
+        self.assertIn("退休", reason)
 
-    def test_build_smart_plan_skips_sync_northbound_during_recent_source_unavailable_cooldown(self):
+    def test_build_smart_plan_retired_sync_northbound_keeps_skip_reason(self):
+        """sync_northbound 即使 step_status 里有 source_unavailable 冷却，也统一归因为退休."""
         conn = _make_plan_conn()
         try:
             conn.execute("DELETE FROM fact_northbound_daily")
@@ -497,10 +499,8 @@ class ExternalAttentionSyncPlanTests(unittest.TestCase):
             plan = build_smart_plan(conn, audit=_make_audit(), use_cache=False)
 
             self.assertNotIn("sync_northbound", plan["steps"])
-            self.assertEqual(
-                plan["skip_reasons"].get("sync_northbound"),
-                "北向上游最近不可用，等待冷却后重试",
-            )
+            reason = plan["skip_reasons"].get("sync_northbound") or ""
+            self.assertIn("退休", reason)
         finally:
             conn.close()
 

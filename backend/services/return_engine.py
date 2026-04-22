@@ -317,21 +317,55 @@ def _classify_path(mkt_conn, code: str, anchor: str) -> dict:
 # 主计算函数
 # ---------------------------------------------------------------------------
 
-def calculate_returns(biz_conn) -> int:
+def calculate_returns(biz_conn, *, full_rescan: bool = False) -> int:
     """
     为所有事件计算收益，结果回写 fact_institution_event。
+
+    审计 5.5 整改：增量化。
+    - full_rescan=True 时强制全量重算（用于 calc_version 升级或首次全量）
+    - 否则跳过：calc_version 匹配且 tradable_date + 180 日已过期
+      （所有 gain_*d / drawdown_*d 字段都已冻结，不会变）
 
     Returns:
         int: 成功计算的事件数
         str: 如果覆盖率不足，返回跳过原因字符串
     """
-    logger.info("[收益] 开始计算...")
+    logger.info("[收益] 开始计算（full_rescan=%s）...", full_rescan)
 
-    events = biz_conn.execute(
-        "SELECT institution_id, stock_code, report_date, notice_date, event_type "
-        "FROM fact_institution_event "
-        "WHERE notice_date IS NOT NULL AND notice_date != ''"
-    ).fetchall()
+    if full_rescan:
+        events = biz_conn.execute(
+            "SELECT institution_id, stock_code, report_date, notice_date, event_type "
+            "FROM fact_institution_event "
+            "WHERE notice_date IS NOT NULL AND notice_date != ''"
+        ).fetchall()
+    else:
+        # 只取：未算（calc_version NULL/旧），或虽已算但 gain_120d 仍可能变化的
+        # 冻结条件: calc_version = 当前版本 AND tradable_date + 180d < today
+        today = datetime.now().strftime("%Y-%m-%d")
+        events = biz_conn.execute(
+            """
+            SELECT institution_id, stock_code, report_date, notice_date, event_type
+            FROM fact_institution_event
+            WHERE notice_date IS NOT NULL AND notice_date != ''
+              AND NOT (
+                calc_version = ?
+                AND tradable_date IS NOT NULL AND tradable_date != ''
+                AND date(tradable_date, '+180 days') < date(?)
+              )
+            """,
+            (CALC_VERSION, today),
+        ).fetchall()
+        skipped_frozen = biz_conn.execute(
+            """
+            SELECT COUNT(*) FROM fact_institution_event
+            WHERE notice_date IS NOT NULL AND notice_date != ''
+              AND calc_version = ?
+              AND tradable_date IS NOT NULL AND tradable_date != ''
+              AND date(tradable_date, '+180 days') < date(?)
+            """,
+            (CALC_VERSION, today),
+        ).fetchone()[0]
+        logger.info("[收益] 增量模式：待算 %d，冻结跳过 %d", len(events), skipped_frozen)
 
     if not events:
         logger.warning("[收益] 无事件数据")

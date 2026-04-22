@@ -1358,36 +1358,10 @@ def build_smart_plan(conn, force_all=False, *, audit: Optional[dict] = None, use
     else:
         plan["skip_reasons"]["sync_market_data"] = "K线已完整且已覆盖最新交易日"
 
-    # 3b. 北向持仓是否缺失或过期
-    northbound_freshness = _summarize_northbound_freshness(conn)
-    latest_northbound_date = northbound_freshness.get("latest_trade_date") or ""
-    target_northbound_date = northbound_freshness.get("target_trade_date") or ""
-    northbound_recently_unavailable = _recent_step_detail_status(
-        conn,
-        "sync_northbound",
-        "source_unavailable",
-    )
-    if not northbound_freshness.get("table_available"):
-        plan["skip_reasons"]["sync_northbound"] = "北向持仓事实表不存在"
-    elif northbound_recently_unavailable:
-        plan["skip_reasons"]["sync_northbound"] = "北向上游最近不可用，等待冷却后重试"
-    elif int(northbound_freshness.get("row_count") or 0) == 0:
-        plan["steps"].append("sync_northbound")
-        plan["reason"].append("无北向持仓数据")
-    elif target_northbound_date and latest_northbound_date and latest_northbound_date < target_northbound_date:
-        plan["steps"].append("sync_northbound")
-        plan["reason"].append(
-            f"北向持仓最新日期 {latest_northbound_date}，落后最新交易日 {target_northbound_date}"
-        )
-    elif target_northbound_date and not latest_northbound_date:
-        plan["steps"].append("sync_northbound")
-        plan["reason"].append("无北向持仓数据")
-    elif not target_northbound_date:
-        plan["skip_reasons"]["sync_northbound"] = "无法确定最近交易日，暂不调度北向同步"
-    else:
-        plan["skip_reasons"]["sync_northbound"] = (
-            f"北向持仓已覆盖最新交易日（{latest_northbound_date}）"
-        )
+    # 3b. 北向持仓已于 2024-08-16 停止个股披露（陆股通退休）
+    # 审计 5.4 整改：不再把 sync_northbound 加进智能更新计划，避免每次都产生"跳过噪音"。
+    # 该步骤仍在 STEPS 列表保留，供有需要时手动触发重试历史回填。
+    plan["skip_reasons"]["sync_northbound"] = "北向源已退休（2024-08-16 后停止个股披露），不再自动同步"
 
     # 4. 事件是否需要重算
     if audit["layers"]["events"]["count"] == 0 and audit["layers"]["holdings"]["count"] > 0:

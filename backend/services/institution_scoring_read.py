@@ -173,7 +173,7 @@ def build_institution_scoring_breakdown_payload(
         (
             "win_rate_90d_weight",
             "120日胜率",
-            profile.get("buy_win_rate_120d") if has_buy else profile.get("win_rate_90d"),
+            profile.get("buy_win_rate_120d") if has_buy else profile.get("win_rate_120d"),
             "gain_120d > 0 的事件占比",
             "120日正收益事件占比",
         ),
