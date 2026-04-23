@@ -1981,3 +1981,68 @@ codex §14.2 原假设："stable cohort 的正 trade expectancy（2.35%/PF 1.90/
 - 不把候选数据源写进产品化前端——保持研究工具形态
 - 不追加付费数据（CSMAR / Wind）除非第一档某一路径给出明确 signal 但需要外部验证
 
+
+## 2026-04-23 [Claude] §2 M5 step 1 执行结果：lhb_inst_net_buy 跟投回测 No-Go（fact）
+
+### 执行
+
+按 §2 新数据源接入候选分析第一档推进 M5 step 1：
+
+1. `backend/scripts/build_lhb_events.py` 新建 ETL，从 `raw_lhb_daily` 去重 + 解析 interpretation + 从 `price_kline` 重算 forward return
+2. `fact_lhb_event` 落库 52 266 行（is_inst_net_buy=1 共 8 515 条）
+3. `run_portfolio_mvp.py` 新增 `load_lhb_events_as_events`，把 LHB 整形为 `fact_institution_event` 列结构（`institution_id='LHB_<code>'`，per-stock dedup 靠 `max_per_inst=1`）
+4. 主循环跑 3 档 inst_buy_seats 阈值（≥1 / ≥3 / ≥5）
+
+### 事件层预览（回测前 sanity check，2023-2026 全窗口）
+
+- is_inst_net_buy=1：n=7 503，avg gain_20d = **-1.87%**，winrate20 = 35.5%
+- is_inst_net_buy=0：n=30 383，avg gain_20d = -1.79%（对照组）
+- inst_buy_seats 分档：0 档 -2.09% / 1 档 -2.95% / 2 档 -0.96% / 3 档 -1.45% / 4 档 -0.77% / 5+ 档 +2.72%（n=97 过小）
+
+**事件层结论**：机构席位净买入并没有普遍的正向 forward return 信号；反而整个 LHB 池子的 gain_20d 普遍为负（momentum-exhaustion 形态）。
+
+### Portfolio 回测结果（run_id=20260423_122239，2024-10-01 ~ 2026-04-21）
+
+| 策略 | n_trades | CAGR | MaxDD | Calmar | Sharpe | PF | WR |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| stable_cohort_pit | 43 | 3.05% | -5.62% | 0.54 | 0.48 | 1.90 | 62.8% |
+| all_events_equal | 457 | 13.97% | -10.00% | 1.40 | 0.98 | 1.37 | 51.9% |
+| random_half | 415 | 13.72% | -8.59% | 1.60 | 0.98 | 1.49 | 51.6% |
+| core_plus_overlay | 529 | 13.98% | -9.87% | 1.42 | 0.99 | 1.41 | 53.3% |
+| **lhb_inst_net_buy** | **1 914** | **-0.45%** | **-20.50%** | **-0.02** | -0.04 | 1.04 | 36.3% |
+| **lhb_inst_buy_ge3** | **1 006** | **4.22%** | **-17.08%** | **0.25** | 0.22 | 1.04 | 35.7% |
+| **lhb_inst_buy_ge5** | 70 | 6.00% | -8.25% | 0.73 | 0.64 | 1.29 | 40.0% |
+| hs300_buy_hold | - | 3.56% | -16.25% | 0.22 | - | - | - |
+
+### 验收门槛判定
+
+§2 新数据源接入候选分析验收门槛：CAGR > HS300+3pp（>6.56%）、Calmar > 1.5、n_trades >= 100。
+
+- `lhb_inst_net_buy`（n=1914）：CAGR 负，**三条全败**
+- `lhb_inst_buy_ge3`（n=1006）：CAGR 4.22 < 6.56，**CAGR/Calmar 两败**
+- `lhb_inst_buy_ge5`（n=70 < 100）：虽有 CAGR 6.00%，但 n_trades 未达门槛且 CAGR 未显著超 HS300，**两败**
+
+**结论：M5 step 1 验证失败**，龙虎榜机构席位净买入事件作为 naive buy-on-event 策略没有 portfolio 级 edge。
+
+### 深层诊断
+
+1. 选股端：stocks 进入龙虎榜本身是因为涨幅/换手率大——典型的动量 exhaustion 前置状态
+2. 时机端：T+1 建仓恰好踩在 momentum 退潮点；WR 36.3% 证实
+3. 若要为 LHB 数据找到 alpha，方向可能是：
+   - **反转 fade**：信号出现后做空/减仓（A 股多数账户不支持裸空）
+   - **机构卖方信号**：捕捉"N家机构卖出"（当前 parser 未解析），hypothesized 作为离场信号而非入场
+   - **组合 + 筛选**：仅在高 inst_buy_seats（≥5）+ 特定 rank_reason（如"日跌幅7%"反弹）时入场——但 lhb_inst_buy_ge5 样本 n=70 太小，需要放宽时间或数据才能严谨验证
+
+### 下一步
+
+按 §2 推荐第一档的 fallback 约定（失败处理：同 δ overlay，保留代码不产品化）：
+
+- `build_lhb_events.py` + `fact_lhb_event` + `load_lhb_events_as_events` 保留，不产品化
+- 不在前端暴露 LHB 卡片
+- **是否继续 M5 step 2（`stock_ggcg_em` 高管增减持）**：待用户决定。Claude 建议继续——高管增减持的 insider 信号机制与 LHB 的 momentum-exhaustion 完全不同，值得独立验证；工作量同属第一档 1 人日
+
+### 不做
+
+- 不给 LHB 强行挑 best-performing 子集以凑合 excess edge（过拟合风险）
+- 不做空/做反向——与用户"买入策略 only"假设不符
+- 不增加 rank_reason 细分 × inst_buy_seats × regime 组合搜索（事件级 avg gain_20d 为负，子集合搜索只会加剧过拟合）

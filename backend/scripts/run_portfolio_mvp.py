@@ -95,6 +95,55 @@ CREATE TABLE IF NOT EXISTS fact_policy_eval (
 """
 
 
+def load_lhb_events_as_events(conn, start_date: str, end_date: str, min_inst_seats: int) -> pd.DataFrame:
+    """M5 step 1：把 fact_lhb_event 整形成 fact_institution_event 的列结构，
+    使其可以直接喂进 simulate_portfolio（institution_id='LHB_'+code 提供 per-stock dedup）。
+
+    start_date / end_date YYYYMMDD。
+    """
+    sd = f"{start_date[:4]}-{start_date[4:6]}-{start_date[6:8]}"
+    ed = f"{end_date[:4]}-{end_date[4:6]}-{end_date[6:8]}"
+    sql = """
+        SELECT fl.trade_date, fl.stock_code, fl.net_buy, fl.inst_buy_seats,
+               fl.is_inst_net_buy,
+               ind.tdx_l1_name l1, ind.tdx_l2_name l2
+        FROM fact_lhb_event fl
+        LEFT JOIN dim_stock_tdx_industry ind ON fl.stock_code = ind.stock_code
+        WHERE fl.is_inst_net_buy = 1
+          AND fl.inst_buy_seats >= ?
+          AND fl.trade_date >= ? AND fl.trade_date <= ?
+          AND ind.tdx_l2_name IS NOT NULL
+    """
+    df = pd.read_sql_query(sql, conn, params=(min_inst_seats, sd, ed))
+    if df.empty:
+        return df
+    # 整形为 simulate_portfolio 接受的列
+    df = df.rename(columns={"trade_date": "notice_dash_src"})
+    df["notice_date"] = df["notice_dash_src"].str.replace("-", "", regex=False)
+    df["report_date"] = df["notice_date"]
+    df["institution_id"] = "LHB_" + df["stock_code"].astype(str)
+    df["event_type"] = "lhb_inst_buy"
+    df["premium_pct"] = 0.0
+    df["premium_bucket"] = None
+    df["inst_name"] = "LHB"
+    df["inst_type"] = "LHB"
+    # 排序分数：inst_buy_seats 主序，net_buy 次序（转亿元标度）
+    df["stable_score"] = df["inst_buy_seats"].fillna(0) * 10.0 + (df["net_buy"].fillna(0) / 1e8)
+    df["verdict"] = "lhb"
+    df["ho_sharpe"] = None; df["ho_n"] = None
+    # 缺省持仓参数（simulator 会 fall back 到 default_params）
+    df["entry_lag"] = None; df["max_hold_days"] = None
+    df["stop_loss"] = None; df["take_profit"] = None
+    return df[[
+        "institution_id", "stock_code", "notice_date", "report_date",
+        "event_type", "premium_pct", "premium_bucket",
+        "inst_name", "inst_type", "l1", "l2",
+        "stable_score", "verdict", "ho_sharpe", "ho_n",
+        "entry_lag", "max_hold_days", "stop_loss", "take_profit",
+        "inst_buy_seats", "net_buy",
+    ]]
+
+
 def load_events_with_pit_cohort(conn, start_date: str, end_date: str) -> pd.DataFrame:
     """加载 portfolio 回测期的候选事件，附加 cohort stable 标签（PIT view）。
 
@@ -473,6 +522,30 @@ def main():
         m_overlay = evaluate(r_overlay)
         _log_row("core_plus_overlay", m_overlay)
         results["core_plus_overlay"] = (r_overlay, m_overlay)
+
+        # M5 step 1：fact_lhb_event 作为独立事件源（§2 新数据源候选分析第一档）
+        for seats, pname in [(1, "lhb_inst_net_buy"),
+                             (3, "lhb_inst_buy_ge3"),
+                             (5, "lhb_inst_buy_ge5")]:
+            lhb_events = load_lhb_events_as_events(conn, args.start, args.end, min_inst_seats=seats)
+            if lhb_events.empty:
+                logger.info("==== %s ====  SKIP (0 events)", pname)
+                continue
+            # 补齐 LHB 事件中新出现的股票价格
+            lhb_codes = sorted(set(lhb_events["stock_code"].astype(str).tolist()))
+            missing = [c for c in lhb_codes if c not in prices]
+            if missing:
+                extra_px = load_prices(missing, _yymmdd_to_dash(args.start), _yymmdd_to_dash(args.end))
+                prices.update(extra_px)
+            logger.info("==== %s ==== (events=%d)", pname, len(lhb_events))
+            # LHB 用 per-stock dedup（institution_id='LHB_<code>'），max_per_inst=1 保证同股同时只有 1 笔
+            r_lhb = simulate_portfolio(lhb_events, prices, trading_days,
+                                       initial_capital=1e7, top_n=args.top_n,
+                                       max_per_inst=1, max_per_l2=4,
+                                       policy_filter=lambda r: True)
+            m_lhb = evaluate(r_lhb)
+            _log_row(pname, m_lhb)
+            results[pname] = (r_lhb, m_lhb)
 
         # 沪深 300 对照
         hs300 = prices.get("510300")
