@@ -2398,3 +2398,187 @@ layer_b_summary.total_l2_with_score = 30
 ### 28.5 一句话
 
 API 层 Layer B 接入完成（含一个静默 bug 修复）。下一轮要做的是前端渲染决策或扩 cohort 覆盖，看用户试用后最痛的是哪个。
+
+---
+
+## 29. 顶层设计：立体画像网络 + 非黑盒模型 + 前端研究工具（2026-04-23）
+
+本节是对用户"每个实体有评分、多维画像形成立体数据库、Qlib/Optuna 找关联、模型非黑盒、前端关联跳转"诉求的收敛性顶层设计。**不再扩方案**，把已有 §15-§28 的渐进修正收束成一张系统全景图。所有内容必须引用现有表/view/字段，不发明新概念。
+
+### 29.1 第一性原理：跟投决策的五问
+
+一次跟投决定需要回答：
+
+1. 这笔事件（institution × stock × notice_date）值得跟吗？
+2. 用什么参数跟？（entry_lag / hold / sl / tp）
+3. 预期赚多少、最多亏多少？
+4. 证据是什么？（机构历史 / 行业共振 / 股票情绪 / 市场背景）
+5. 模型为什么这么判？（可解释，非黑盒）
+
+系统必须对每一问都有"可查、可追溯、可复核"的答案。§14.5 的三可原则是硬门槛，不是参考。
+
+### 29.2 四实体、六评分、一事件
+
+系统的数据宇宙由**四个实体**组成，每个实体一组连续评分：
+
+| 实体 | 当前评分来源 | 评分 view（已有/待建） |
+| --- | --- | --- |
+| **机构 institution** | `mart_institution_profile.quality_score`（不驱动决策，仅展示）+ Layer B | ✅ `v_institution_l2_score`（§26） |
+| **行业 L2** | 无独立 view，分散在 `research_inst_industry_performance` 等 | ⬜ 待建 `v_l2_profile`（29.3 定义） |
+| **股票 stock** | `mart_stock_trend.composite_priority_score`（stock-centric、不含机构证据）| ⬜ 待建 `v_stock_multidim_score`（29.4 定义）|
+| **事件 event** | 单条 `fact_institution_event` + `fact_institution_follow_backtest` cohort 指标 | ⬜ 待建 `v_event_action_score`（29.5 定义）|
+
+**一事件**：`fact_institution_event` 里每条 (institution_id, stock_code, notice_date, event_type) 是系统的原子单元，四实体都围绕它旋转。
+
+### 29.3 L2 行业画像 view（新）
+
+用户诉求："每个 L2 行业持股的机构有评分、该行业的股票"——即 L2 是一个聚合节点，从它能查到两件事：
+
+```sql
+CREATE VIEW v_l2_profile AS
+WITH stable_insts AS (
+  SELECT l2_name, institution_id, stable_score, verdict, rec_params
+  FROM v_institution_l2_score WHERE verdict IN ('stable', 'weak_positive')
+),
+l2_stocks AS (
+  SELECT tdx_l2_name l2_name, COUNT(DISTINCT stock_code) n_stocks
+  FROM dim_stock_tdx_industry GROUP BY tdx_l2_name
+)
+SELECT
+  s.l2_name,
+  s.n_stocks,                           -- 该 L2 股票数
+  COUNT(DISTINCT si.institution_id) n_stable_insts,  -- 稳定机构数
+  AVG(si.stable_score) avg_stable_score,             -- L2 内平均稳定度
+  MAX(si.stable_score) top_stable_score,             -- L2 内最强机构得分
+  (SELECT AVG(stable_score) FROM v_institution_l2_score WHERE l2_name = s.l2_name) avg_all_score
+FROM l2_stocks s LEFT JOIN stable_insts si ON s.l2_name = si.l2_name
+GROUP BY s.l2_name;
+```
+
+API：`/api/inst/industry/l2/{l2_name}` 返回 `{ summary, stable_institutions[], stocks_in_industry[] }`。
+
+### 29.4 股票多维画像 view（新）
+
+用户诉求的五个维度（已验证数据齐备）：
+
+| 维度 | 来源表 | 评分公式（首版） |
+| --- | --- | --- |
+| **机构共振** | `v_institution_l2_score` × `mart_current_relationship`（持仓）| 持仓机构在该股 L2 的 stable_score 加权平均 |
+| **两融情绪** | `raw_margin_daily` | `(rz_balance_delta_30d / avg_balance_120d)` 归一化到 0-100 |
+| **研报预期** | `fact_stock_forecast_features.forecast_score_v1` | 已是 0-100 分，直接取最新快照 |
+| **调研热度** | `mart_stock_survey_activity.inst_count_60d` | 分位归一化到 0-100 |
+| **阶段位置** | `fact_stock_stage_features.dist_ma250_pct / return_3m` | `100 - |dist_ma250 + 20%|*5`（低位加分、追高扣分）|
+
+```sql
+CREATE VIEW v_stock_multidim_score AS ...
+-- 每只股票 → {resonance_score, margin_score, forecast_score, survey_score, stage_score,
+--             overall_score = 加权平均, top_stable_institutions}
+```
+
+每个分数都是连续 0-100，不是布尔。**不擅长/不热门/不合适的维度得低分，不是 0 分**，用户能看到分数对比。
+
+### 29.5 事件级动作评分 view（Qlib 接入点）
+
+这是 Qlib + Optuna 真正发挥的层。Layer C 特征矩阵 + Layer D 模型的收束：
+
+```
+v_event_action_score(institution, stock, notice_date):
+  输入特征（Layer C 特征矩阵）：
+    F1 institution.layer_b.stable_score（该机构在该股 L2 的擅长度）
+    F2 stock.multidim.overall_score
+    F3 stock.margin_score (两融情绪)
+    F4 stock.forecast_score (研报预期)
+    F5 stock.survey_score (调研热度)
+    F6 stock.stage.return_3m / dist_ma250（介入时机）
+    F7 event.premium_bucket（溢价档）
+    F8 event.resonance_count（同期其他机构 stable 数）
+    
+  模型（Qlib LightGBM baseline）：
+    单头回归：forward_ret_20d
+    评分转换：event_action_score = clip(pred * 50 + 50, 0, 100)
+    
+  Optuna 寻优：
+    模型超参（n_estimators / lr / depth）+ 策略参数（hold / sl / tp）联合 TPE
+    目标：IC + holdout Sharpe 多目标 Pareto
+    
+  可解释性：
+    - 每个事件输出 shap_top5（非黑盒核心）
+    - 相似事件召回（最近邻 5 条历史事件）
+    - 置信度 = 预测分布宽度（不光一个点估）
+```
+
+**输出**：`event_action_score (0-100) + confidence + shap_top5_json + similar_events_json + rec_params`。
+
+### 29.6 模型非黑盒的落地清单
+
+用户明确："这些都不要黑盒"。具体到每个输出：
+
+1. **SHAP 归因**：每个 event_action_score 附带"贡献最大的 5 个特征及其值和贡献值"。LightGBM 原生支持，不需要额外训练。
+2. **相似事件召回**：用 Layer C 特征矩阵计算 cosine similarity，返回最近 5 条历史事件及其实际业绩——让用户看到"类似情形过去赚/亏多少"。
+3. **模型性能持续监控**（`qlib_model_evaluation` 表，§19.3 已设计）：KS / AUC / Calibration / IC / RankIC / lift_top_decile 按训练日期落表，前端有一个"模型健康仪表板"。
+4. **置信度带宽**：不止一个预测值，报告 `[pred_low, pred_center, pred_high]`（quantile regression 或 LightGBM 的 pred_std）。
+5. **特征漂移（PSI）**：每日生产预测时计算与训练集的 PSI，> 0.2 触发红灯。
+
+### 29.7 前端关联跳转网络
+
+用户诉求的"关联跳转"核心：**任何实体都是导航节点**，都能从这里跳到那里。
+
+| 从 → 到 | 路径 | 展示重点 |
+| --- | --- | --- |
+| 机构详情 → L2 详情 | 点击擅长 L2 评分 | 该 L2 里其他稳定机构 + 在该 L2 的股票 |
+| L2 详情 → 股票详情 | 点击 L2 下的股票 | 该股票画像 + 在该 L2 的 stable 机构 |
+| L2 详情 → 机构详情 | 点击该 L2 的稳定机构 | 该机构在其他 L2 的画像（对比视角） |
+| 股票详情 → 机构详情 | 点击持仓机构 | 该机构的全貌（擅长 L2、历史业绩） |
+| 股票详情 → 事件详情 | 点击披露事件 | 该事件的 event_action_score + SHAP |
+| 事件详情 → 机构 + L2 + 股票 | 从事件三角形跳任一顶点 | 三个实体的完整画像 |
+| 事件详情 → 相似事件 | 模型召回的历史相似事件 | 看类似情形过去赚/亏多少 |
+| 模型健康 → 某个 IC 低的时段 → 相关事件 | 从模型性能倒推异常事件 | debug 模型的异常 |
+
+前端实现方式：每个评分字段做成可点击链接（点它跳到该评分对应的实体详情页）。不另建 "关联网络" 可视化（复杂度高、维护成本大），用"每个分数都是链接"的原则覆盖 90% 跳转需求。
+
+### 29.8 分层落地路线（6 周，每周一个里程碑）
+
+| 周 | 交付（必须落表 + 必须有 API + 必须人工复核通过） | 验收 |
+| --- | --- | --- |
+| 完成 ✅ | Layer B `v_institution_l2_score` + API | Top 15 业务直觉符合 |
+| **W1**（下周）| `v_l2_profile` view + `/api/inst/industry/l2/{l2_name}` 端点 + 机构详情页 Layer B 卡片接入 | UBS 等 5 家机构页面能看到擅长 L2 + 跳转到 L2 详情页 |
+| W2 | `v_stock_multidim_score` view + 股票详情页五维评分卡片 | 从股票详情页能看到机构共振/两融/研报/调研/阶段 五个分数 |
+| W3 | Layer C 特征矩阵 `fact_event_features`（基于最近 60 天事件，验证特征工程）| 缺失率 < 30%、特征 IC 可查 |
+| W4 | Qlib LightGBM baseline + SHAP + KS/AUC 评估 | holdout IC ≥ 0.03, KS ≥ 本地基线 + 0.05 |
+| W5 | Optuna 联合寻优 + 相似事件召回 | vs baseline Sharpe 提升 + 20 个事件召回样本人工复核 |
+| W6 | 模型健康仪表板 + 事件详情页整合（event_action_score + SHAP + 相似事件）+ PSI 监控 | 用户试用后报告"想看的都能看到" |
+
+**每周结束数据验证**，达标才进下一周；不达标就原地修或收缩范围。
+
+### 29.9 与现有架构的衔接
+
+- **不动**：MCR 主链、legacy composite、stock_gate 主字段、signals_v2——保留它们作为"并行证据链"，不替换
+- **加的是第四个独立数字**：event_action_score 是事件级新字段（落 `fact_event_features` 和 `qlib_event_prediction`，不写入 `mart_stock_trend`）
+- **前端展示方式**：新评分作为补充卡片/徽章，不替换主 gate 列
+- **Qlib 现有模型保留**：next-day 截面分继续跑（legacy），新的 forward 20d 事件模型是新 pipeline 并排跑
+
+### 29.10 不做的事（继续守 §21 秩序）
+
+- ❌ 不合并成"唯一动作链"（§14.4 主从 ≠ 合并原则）
+- ❌ 不重构 scoring.py 的 composite 公式
+- ❌ 不动 mart_stock_trend 主字段
+- ❌ 不上多头神经网（LightGBM 先跑通）
+- ❌ 不扩因子库（现有数据已经足够）
+- ❌ 不做 RL（样本不够、解释性差）
+
+### 29.11 立即可做的第一步（W1）
+
+**具体交付**：
+
+1. 建 `v_l2_profile` view（SQL 在 §29.3 已草稿，可直接执行）
+2. 加 `/api/inst/industry/l2/{l2_name}` 端点到 `institution.py`
+3. 前端 `assets/js/app.js` 机构详情页：
+   - 加一张"Layer B 擅长 L2"卡片，消费 `layer_b_summary.top_stable_l2`
+   - L2 名字做成可点击链接，跳转到 L2 详情弹窗（弹窗消费 `/api/inst/industry/l2/{l2_name}`）
+4. L2 详情弹窗展示：**该 L2 的 stable 机构列表**（跳回机构详情）+ **该 L2 的在仓股票**（为 W2 铺路）
+
+**成功标准**：UBS AG 详情页 → 点"电气设备 评分 100" → 跳 L2 弹窗 → 看到 UBS+JPM+中信 三家 stable 机构 + 装备制造下相关股票。
+
+### 29.12 一句话
+
+**把"机构-L2-股票-事件"四实体统一成一张图，每个节点有连续评分、每条连线可点击跳转、每个预测有 SHAP 和相似事件支撑、每个模型持续报告健康度**。W1 一周兑现"点机构擅长 L2 → 看 L2 里其他稳定机构"这条最短跳转，之后每周扩一条。
