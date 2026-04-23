@@ -3421,7 +3421,7 @@
           (s.top_score != null ? '<span style="margin-left:16px">最高评分 <b>' + s.top_score + '</b></span>' : '') +
           (s.avg_stable_score != null ? '<span style="margin-left:16px">稳定平均 <b>' + s.avg_stable_score + '</b></span>' : '') +
           '</div>';
-      html += '<h4 style="margin:10px 0 6px;font-size:13px;color:#334155">📊 稳定 / 弱正机构（按评分降序）</h4>';
+      html += '<h4 style="margin:10px 0 6px;font-size:13px;color:#334155">稳定 / 弱正机构（按评分降序）</h4>';
       if (r.institutions && r.institutions.length) {
         html += '<table class="data-table" style="font-size:12px;width:100%"><thead><tr>' +
           '<th style="text-align:left">机构</th><th>类型</th><th>评分</th><th>判定</th>' +
@@ -3445,7 +3445,7 @@
       } else {
         html += '<div style="color:#94a3b8;font-size:12px">暂无稳定机构</div>';
       }
-      html += '<h4 style="margin:14px 0 6px;font-size:13px;color:#334155">📈 在仓股票（按 follow 机构数降序，Top 50）</h4>';
+      html += '<h4 style="margin:14px 0 6px;font-size:13px;color:#334155">在仓股票（按 follow 机构数降序，Top 50）</h4>';
       if (r.stocks && r.stocks.length) {
         html += '<table class="data-table" style="font-size:12px;width:100%"><thead><tr>' +
           '<th style="text-align:left">代码</th><th style="text-align:left">名称</th>' +
@@ -3529,11 +3529,11 @@
       return '-';
     }
     var dims = [
-      { key: 'resonance', score: m.resonance_score, label: '🤝 机构共振' },
-      { key: 'margin',    score: m.margin_score,    label: '💰 两融情绪' },
-      { key: 'forecast',  score: m.forecast_score,  label: '📈 研报预期' },
-      { key: 'survey',    score: m.survey_score,    label: '🔍 调研热度' },
-      { key: 'stage',     score: m.stage_score,     label: '📍 阶段位置' },
+      { key: 'resonance', score: m.resonance_score, label: '机构共振' },
+      { key: 'margin',    score: m.margin_score,    label: '两融情绪' },
+      { key: 'forecast',  score: m.forecast_score,  label: '研报预期' },
+      { key: 'survey',    score: m.survey_score,    label: '调研热度' },
+      { key: 'stage',     score: m.stage_score,     label: '阶段位置' },
     ];
     var overall = m.overall_score;
     var ovColor = overall == null ? '#94a3b8' : overall >= 60 ? '#10b981' : overall >= 40 ? '#f59e0b' : '#ef4444';
