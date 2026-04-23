@@ -966,3 +966,122 @@ reason_codes = 支撑该动作的 3-5 条证据
 
 - P0.A 的文档修正（§1 P0.1 补污染源清单加 `research_inst_industry_performance` + model_id 版本）待下一轮，本轮先停；
 - P0.B（C0 PIT 最小基线 + 三段切分）下一轮启动。
+
+---
+
+## 2026-04-23 [Claude] [修正 2026-04-23 Claude] §1 P0.1 污染源清单补齐
+
+### 引用
+
+原 §1 P0.1 "问题" 段（行 94-95）：
+
+> `fact_event_features` 的特征（stage / quality / forecast / survey / margin）使用"最新快照"而非"事件日之前最近快照"...
+
+### 补齐
+
+按 Claude 2026-04-23 独立评估 §2.2 和 codex 2026-04-23 §2 §3，完整污染源清单：
+
+| # | 污染源 | 类型 | 问题 |
+| --- | --- | --- | --- |
+| 1 | `fact_stock_stage_features` | 快照密度 9 天 | 事件日无历史快照 |
+| 2 | `fact_stock_quality_features` | 快照密度 5 天 | 同上 |
+| 3 | `fact_stock_forecast_features` | 快照密度 3 天 | 同上 |
+| 4 | `mart_stock_survey_activity` | 快照密度 3 天 | 同上 |
+| 5 | `mart_institution_profile` | 无 snapshot_date | 单行画像被所有历史事件共用 |
+| 6 | `v_institution_l2_score` | view 无日期列 | 所有历史样本共享当前评分 |
+| 7 | `research_inst_industry_performance` | 无 snapshot_date | 机构 × L2 历史业绩聚合，对历史样本有后验性 |
+| 8 | Optuna 在 holdout 调参 | 评估偷看 | W5 holdout IC 0.173 经 100 trial 选参，非真 OOS |
+| 9 | `qlib_event_prediction` 多 model_id 并存 | 版本管理缺失 | 89055 行跨至少 3 次训练，前端取 "最新" 但旧版本无 is_active 标记 |
+
+`raw_margin_daily`（797 天 daily）和 `price_kline`（797 天 daily 全市场）是当前**唯二具备完整历史**的源，构成 P0.B C0 PIT 基线的基石。
+
+### 对已有 P0 清单的影响
+
+- P0.1 改名为 **P0.B**（与 Claude 2026-04-23 独立评估段 P0.B 对齐），修复目标扩展为：隔离上表 1-7 号污染源，保留 8 号留给 P0.2（三段切分合并进 P0.B）
+- 9 号版本管理降到 P1 新增项 **P1.4 qlib_event_prediction 版本管理**
+
+### 后续动作
+
+本段仅修正 §1 污染清单边界，不改代码。P0.B 实施见下一段。
+
+---
+
+## 2026-04-23 [Claude] 执行 P0.B C0 PIT 基线：结果揭露 W1-W6 IC 全部来自污染（事实陈述）
+
+### 交付
+
+1. 新表 `fact_event_features_pit`（31 372 行 × 33 列，见 `backend/scripts/build_event_features_pit.py`）
+   - 特征族：EV (4 列事件自身) + MG (4 列两融，事件日前 PIT) + PX (12 列价量，事件日前 PIT)
+   - 隔离所有 9 处污染源（见 §1 P0.1 修正段）
+   - 覆盖率：EV 99.7% / MG 78.4% / PX 91.5% / label 96.6%
+2. 新脚本 `backend/scripts/train_event_qlib_pit.py`
+   - 严格三段切分（按 notice_date）：train 70% / valid 15% / holdout 15%
+   - LightGBM baseline（强正则，同 W4 参数）
+   - Early stopping 以 valid 为监控
+
+### 关键结果
+
+三段切分时间边界：
+
+- train：2023-04-08 ~ 2025-04-19（20 779 样本）
+- valid：2025-04-19 ~ 2025-08-27（4 453 样本）
+- holdout：2025-08-27 ~ 2026-01-14（4 453 样本）
+
+指标：
+
+| dataset | IC | RankIC | AUC | KS | n | pos_rate |
+| --- | --- | --- | --- | --- | --- | --- |
+| train | 0.600 | 0.553 | 0.787 | 0.426 | 20 779 | 26.8% |
+| valid | 0.146 | 0.194 | 0.603 | 0.167 | 4 453 | 51.7% |
+| **holdout** | **0.018** | **0.069** | **0.501** | **0.041** | **4 453** | 37.2% |
+
+best_iteration = 481（early stopping on valid）。
+
+### 对比 W1-W6 历史评估
+
+| model_id | holdout IC 声称 | 实际 OOS 口径 |
+| --- | --- | --- |
+| §30/§31 W4 baseline `lgb_event_20260423_065438` | 0.111 | Optuna 直接选 + lookahead 特征 |
+| §32 W5 Optuna tuned `lgb_event_tuned_20260423_070326` | 0.173 | Optuna 100 trial 在 holdout 上选 + lookahead 特征 |
+| **§2 本段 C0 PIT baseline** | **0.018** | 真 OOS，三段切分，无污染 |
+
+IC 从声称的 0.17 回落到实测 0.018。**近 90% 的 IC 来自污染**，不是真实信号。
+
+### 判定
+
+按 Claude 2026-04-23 独立评估段 P0.B 验收（"C0 holdout IC < 0.03 即诚实承认 W1-W6 含夸大"）：
+
+- holdout IC = 0.018 < 0.03：**触发条件成立**
+- holdout KS = 0.041 < §19 本地基线 0.05：**完全不达标**
+- holdout AUC = 0.501 ≈ 随机：**无区分力**
+
+### 公开承认
+
+按 §0.3.1 事实陈述规则，明确承认以下过往表述含夸大：
+
+1. `§30 "Top IC 0.131" / §31 "W4 holdout IC 0.111 超阈值 3.7 倍" / §32 "Optuna 把 IC 推到 0.173 (+55%)" / §33 "非黑盒五件套 / 六周路线完成 / 四层金字塔贯通"` — 这些结论底层建立在含 lookahead 的特征矩阵上；真实可复现的 out-of-sample IC 只有 0.018
+2. `§28/§32 前端 AI 评分卡片` — 展示的 score / confidence 数字基于同样污染管线；P0.A banner 已降级标注，但建议进一步考虑**隐藏卡片**（待下次讨论决定）
+
+### 推论：codex 顶层重构方向是否仍成立？
+
+codex 2026-04-23 方案（CAGR/MaxDD 北极星 + T/A/R/P 四层）**方向不变**，但 C0 结果告诉我们：
+
+- 单用价量 + 两融 + 事件属性无法从事件级预测 60d 收益（IC 0.02）
+- 机构侧信号（Layer B、机构画像、机构 × L2 行业业绩）若按 codex 提议的 Phase C 回补历史快照，可能恢复部分信号——但工作量大（15-20 人日）且不保证有效
+- 另一条路：**事件预测不再追求单事件 60d 收益**，改追求 codex §2 §5.2 提到的"路径分布"（胜率 + 期望上行 + 期望回撤 + 持有时长），配合 Phase B portfolio 回测验证
+
+### 动作
+
+- 本段作为 P0.B "分叉 B" 触发证据
+- Claude 下一步不自行启动 P0.C（stage 公式）或 P1.A（portfolio MVP），**等 codex 或人类决策**：
+  - 路径 1：按原优先级继续做 P0.C + P1.A，验证是否因单事件 label 不对才 IC 低
+  - 路径 2：直接转 codex Phase C 回补机构侧历史快照，工作量大
+  - 路径 3：承认事件级 Qlib 评分路径在当前数据下不成立，前端撤下 AI 卡片，回到 §23 stable cohort 路线（那部分 walk-forward 评估被同样 PIT 标准审视后可能也要重评）
+- 同时，本段 C0 数据可用于验证任何新方案的 IC 基线（任何新方案 holdout IC 必须 > 0.03 才视为有信号）
+
+### 验收
+
+- `fact_event_features_pit` 31 372 行已落库（可 `sqlite3 data/smartmoney.db "SELECT COUNT(*) FROM fact_event_features_pit;"` 复核）
+- `qlib_model_evaluation` 新增 3 行 model_id 前缀 `lgb_event_pit_baseline_`（可 `SELECT model_id, eval_dataset, ic, ks_statistic FROM qlib_model_evaluation WHERE model_id LIKE 'lgb_event_pit_%' ORDER BY eval_dataset;` 复核）
+
+本段为 P0.B 完整交付，等待下一轮决策后才继续 P0.C / P1.A。
