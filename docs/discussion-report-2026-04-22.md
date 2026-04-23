@@ -1319,3 +1319,230 @@ Qlib 的 RL 模块是订单执行级，不学策略。要用 RL 学"何时进 / 
 ### 18.14 一句话总结
 
 Qlib 原生不做业务策略参数寻优，但它的 Strategy 插拔点 + 自定义因子 + 回测引擎三件组件，加上外挂的 Optuna TPE + 按 cohort 分层结构，**可以**自动探索"某类机构在某类行业某种溢价下，介入时机 / 持仓期 / 止损止盈 / 退出触发"的最优组合。真正的风险不是 Qlib 的能力边界，而是**样本稀疏 + 过拟合**——必须用 walk-forward、Top-K 稳健平均、最小样本硬约束、cohort 回退树四层防护兜底。第 14 天交付单 cohort 可行性验证；第 30 天交付 Top-20 cohort 寻优表；第 60 天交付完整链路上线并每周自动迭代。
+
+---
+
+## 19. 三个工程决策的性价比评估（2026-04-23）
+
+这一节回答三个具体工程问题的性价比：
+1. 引入 Optuna 到底值不值？
+2. 解除 TopkDropout 写死状态要花多少？
+3. 过拟合用什么指标监控（KS 曲线之类）？
+
+### 19.1 Optuna 性价比
+
+#### 19.1.1 买什么
+
+| 能力 | 说明 | 对本项目价值 |
+| --- | --- | --- |
+| TPE 采样器 | 贝叶斯优化，比 Random 收敛快 5-10x | ⭐ 67 200 组合参数空间必需 |
+| 多目标优化（MOTPE / NSGA-II） | 原生支持 Pareto 前沿 | ⭐ 年化收益 + MaxDD 双目标必需 |
+| Pruner（早停） | 无望 trial 提前终止 | 节省 30-50% 回测成本 |
+| Study 持久化（SQLite backend） | 中断后续跑 | HPO 一跑几小时，必需 |
+| optuna-dashboard 可视化 | Pareto 前沿/参数重要性 | 调试方便 |
+
+#### 19.1.2 不买什么
+
+- 小样本精度保证（< 50 trial 时 TPE 和 Random 差不多）
+- 全局最优（TPE 是贪心近似，容易陷局部）
+
+#### 19.1.3 成本
+
+- 依赖：`pip install optuna`（纯 Python，无 C 扩展，安装秒级）
+- 学习：核心 API 2 小时上手（study / trial / suggest_* / optimize）
+- 集成代码：~50 行 `objective(trial)` + study 配置
+- 维护：改参数空间改 objective 即可，无侵入
+
+#### 19.1.4 替代方案对比
+
+| 方案 | 集成代码 | 多目标 | 并行 | 持久化 | 本项目适配 |
+| --- | --- | --- | --- | --- | --- |
+| Grid Search | ~20 行 | 手工 | 手工 | 无 | ❌ 67 200 × 10秒 ≈ 186 小时/cohort |
+| Random Search | ~30 行 | 手工 | 易 | 无 | 🟡 200 trial 可行但次优 |
+| **Optuna TPE** | **~50 行** | ✅ 原生 | ✅ 易 | ✅ SQLite | ✅ **推荐** |
+| Ray Tune | ~80 行 | ✅ | ✅ 集群 | ✅ | ⚠️ 更重，单机部署不值得 |
+| scikit-optimize | ~40 行 | 弱 | 弱 | 弱 | ❌ 2022 后社区维护弱 |
+| Hyperopt | ~40 行 | 弱 | 中 | 弱 | ❌ 社区转向 Optuna |
+
+#### 19.1.5 结论
+
+**买 Optuna，性价比明确**。不买的话 §18 寻优基本无法实施。唯一的替代是 Random Search，但多目标和持久化都要手写，最终代码量接近 Optuna 但收敛慢一倍。
+
+### 19.2 解除 TopkDropout 写死的性价比
+
+#### 19.2.1 写死现状
+
+`backend/services/qlib_full_engine.py:1385-1418`：
+
+```python
+def _backtest_strategy_label(params):
+    topk = int((params or {}).get("backtest_topk", 50) or 50)
+    n_drop = int((params or {}).get("backtest_n_drop", 5) or 5)
+    return f"TopkDropoutStrategy(topk={topk},n_drop={n_drop})"
+
+def _build_backtest_config(params, benchmark_code):
+    backtest_config = {
+        "strategy": {
+            "class": "TopkDropoutStrategy",                    # 硬编码
+            "module_path": "qlib.contrib.strategy",            # 硬编码
+            "kwargs": {"signal": "<PRED>",
+                       "topk": int(params.get("backtest_topk", 50)),
+                       "n_drop": int(params.get("backtest_n_drop", 5))},
+        },
+        ...
+    }
+```
+
+只开放 `backtest_topk` / `backtest_n_drop` 两个参数。
+
+#### 19.2.2 解除路径三档
+
+| 档次 | 工作内容 | 工作量 | 换来什么 |
+| --- | --- | --- | --- |
+| A. 参数化 class + module_path + kwargs | 改 `_build_backtest_config` ~10 行，加 strategy 类型切换 | **1 人日** | 能切换到其他 Qlib 内置策略（EnhancedIndexing、SoftTopk 等） |
+| B. 策略注册表 + 自定义 Qlib Strategy 类 | 写 `InstitutionEventStrategy(BaseStrategy)`，继承 Qlib backtest | 2-3 人日 | 事件驱动策略走 Qlib backtest pipeline |
+| C. **跳出 Qlib backtest，自写 pandas 事件仿真器** | 写独立仿真器 `simulate_events(events, params)` | **2-3 人日** | 事件驱动仿真贴业务语义；Qlib backtest 保留给传统 topk 策略 |
+
+#### 19.2.3 关键判断：档 C 优于 B
+
+Qlib Backtest 框架是为**"每日 rebalance 持仓组合"**设计的：
+
+- 输入：每日股票 signal panel（每天每只股票一个打分）
+- 策略：按分排序，持仓 topk 股票，超出持仓下落到 n_drop 档外的卖出换新的
+- 回测：按每日收盘价计算账户净值
+
+本项目 §18 要的是**"按事件入场 + 持有 20 天 + 参数化止损止盈"**：
+
+- 输入：事件流（机构披露日 + 对应股票 + 机构画像）
+- 策略：D 日披露 → D+lag 日按 pacing 买入 → 最长持 max_hold 天 → 期间触发 stop_loss/take_profit 则退出
+- 回测：事件级 PnL，而不是每日账户净值
+
+这两种范式**在 Qlib Backtest 里强行兼容会非常累**——要把事件流转换成 daily signal panel，再用 Strategy 把 signal 翻译回"按事件持有 20 天"，来回两次翻译增加 bug 面。
+
+**直接自写 pandas 事件仿真器**反而更轻：
+
+```python
+def simulate_events(events_df, params):
+    positions = []
+    for event in events_df.itertuples():
+        entry_date = get_trading_day_offset(event.notice_date, params['entry_lag'])
+        entry_price = get_close_price(event.stock_code, entry_date)
+        # 遍历 max_hold 天，每天检查 stop_loss / take_profit / trailing_stop
+        exit_date, exit_price, exit_reason = run_holding_logic(event, params)
+        pnl = (exit_price / entry_price - 1)
+        positions.append({...})
+    return aggregate_metrics(positions)  # IRR / MaxDD / Sharpe / win_rate
+```
+
+~150 行代码，3 人日可完成。Qlib Backtest 保留原样，服务于"传统 topk 选股策略"的回测。
+
+#### 19.2.4 结论
+
+- **不做不是选项**：不解除等于 §18 无法实施
+- **推荐档 C**：自写事件仿真器，2-3 人日，直接对接 Optuna，性价比最高
+- **档 A 是附加项**：可以顺手做（1 人日），让 Qlib backtest 能切换其他策略，但不是 §18 依赖路径
+
+### 19.3 过拟合监控：模型性能评估体系
+
+#### 19.3.1 当前状况
+
+已有：`qlib_model_state` 表的 `ic_mean` / `rank_ic_mean`，`qlib_backtest_result` 表的 `sharpe_ratio` / `calmar_ratio` / `max_drawdown` / `annual_return` / `turnover`。
+
+缺失：**KS、AUC、AUC-PR、Calibration curve、PSI、Lift curve** —— 这些是风控和模型治理的标准组合。
+
+#### 19.3.2 分层评估体系
+
+**Layer 1：模型层（§17 Qlib 评级器）**
+
+| 指标 | 作用 | 本项目价值 | 成本 |
+| --- | --- | --- | --- |
+| IC / RankIC / ICIR | 预测 vs 实际收益相关性 | ✅ 已有 | 0 |
+| **KS statistic** | 二分类区分力（follow vs 非 follow 的累积分布最大差） | ⭐ **必加**（风控标准，KS ≥ 0.3 算好模型） | scipy.stats.ks_2samp，~10 行 |
+| **AUC-ROC** | 二分类排序能力 | ⭐ **必加**（目标 ≥ 0.7） | sklearn.metrics，~5 行 |
+| AUC-PR | 类别不平衡时更稳 | 建议（follow 只占 ~8%，PR 比 ROC 更能反映真实 precision） | ~5 行 |
+| **Calibration curve** | 置信度是否真的可信 | ⭐ **必加**（§17 confidence 正当性的唯一验证手段） | sklearn.calibration + isotonic，~30 行 |
+| Lift curve | 高置信 follow 的 business lift | 建议（给业务方看直观） | ~30 行 |
+| Brier score | 概率预测的校准 + 准确性综合 | 可选 | ~5 行 |
+
+**Layer 2：策略层（§18 寻优结果）**
+
+| 指标 | 作用 | 成本 |
+| --- | --- | --- |
+| 分层 Sharpe（按预测分 decile） | top 层 Sharpe 应该显著高于中层 | 复用回测结果 |
+| 换手率（turnover） | 策略是否过度交易 | 已有 |
+| 稳健性分数（4 段时间 Sharpe 方差） | 防过拟合主要手段 | §18.6 已设计 |
+| Pareto 前沿可视化 | 给业务方看多解备选 | optuna-dashboard 免费 |
+
+**Layer 3：生产监控**
+
+| 指标 | 作用 | 触发动作 | 何时加 |
+| --- | --- | --- | --- |
+| **PSI（Population Stability Index）** | 生产特征分布 vs 训练是否漂移 | PSI > 0.2 → 重训 | 60 天后生产化时 |
+| Prediction drift（KS between train/prod predictions） | 预测分布是否偏移 | drift > 阈值 → 报警 | 60 天后 |
+| SHAP top-3 稳定性 | 主驱动因子是否变化 | 变化率 > 30% → 人工介入 | 60 天后 |
+| Data completeness | 特征缺失率 | 覆盖率 < 95% → 暂停预测 | 30 天后 |
+
+#### 19.3.3 落地优先级与成本
+
+| 时间 | 动作 | 成本 |
+| --- | --- | --- |
+| Phase 17 baseline 出来时（14 天内） | KS + AUC-ROC + AUC-PR 三件套 | ~50 行代码 + 1 人日 |
+| Phase 17 分群微调阶段（30 天） | Calibration + Lift + 分层 Sharpe | ~100 行 + 2 人日 |
+| Phase 18 寻优输出时（30 天） | 稳健性分数 + Pareto 前沿可视化 | ~50 行（复用 optuna 的） |
+| 生产化阶段（60 天） | PSI + prediction drift + SHAP 稳定性 | ~150 行 + 2 人日 |
+
+#### 19.3.4 新表 `qlib_model_evaluation`
+
+```sql
+CREATE TABLE qlib_model_evaluation (
+  model_id           TEXT,
+  eval_date          TEXT,
+  eval_dataset       TEXT,     -- 'train' | 'valid' | 'holdout'
+  ks_statistic       REAL,
+  ks_pvalue          REAL,
+  auc_roc            REAL,
+  auc_pr             REAL,
+  calibration_ece    REAL,     -- Expected Calibration Error
+  brier_score        REAL,
+  lift_top_decile    REAL,
+  sharpe_top_decile  REAL,
+  psi_score          REAL,     -- 生产监控阶段填
+  notes              TEXT,
+  created_at         TEXT,
+  PRIMARY KEY (model_id, eval_date, eval_dataset)
+);
+```
+
+单一落表，避免 metric 散落在多处。前端可做一个"模型健康面板"消费这张表。
+
+#### 19.3.5 为什么 KS 特别重要
+
+本项目在用户侧展示的是 `primary_action = follow / watch / avoid`，这本质是**二分类（或三分类）+ 概率**。KS 给出一个极简的"这个模型能不能区分好样本和坏样本"的回答：
+
+- KS = 0.1 → 几乎无区分力（模型不用上）
+- KS = 0.2-0.3 → 弱区分（探索期勉强）
+- KS = 0.3-0.4 → 可用
+- KS ≥ 0.4 → 好模型
+
+KS < 0.3 说明不管 Sharpe 多高都是运气，必须推翻重来。这是一个**止损线**式的指标，比 IC 或 Sharpe 更适合做"模型能不能上线"的门槛判定。
+
+### 19.4 三个决策综合
+
+| 决策 | 买 / 不买 | 成本 | 不买的代价 |
+| --- | --- | --- | --- |
+| Optuna 引入 | ✅ 买 | 1 依赖 + 2 人日 | §18 寻优不能做 |
+| TopkDropout 解除（档 C：自写事件仿真器） | ✅ 买 | 2-3 人日 | §18 无法启动，§17 评级结果无处落地 |
+| KS / AUC / Calibration 三件套 | ✅ 买 | 1 人日起（持续扩展） | 过拟合靠裸眼判断，§17 / §18 上线依据不足 |
+
+三件合计 5-8 人日，换来 §17 + §18 + 过拟合监控体系成型。这是系统从"研究原型"进入"生产评级"的最小工程投入。
+
+### 19.5 与前几节的衔接更新
+
+- §17 实施路线第 30 天"Qlib baseline 出来"时，必须同步交付 KS + AUC + Calibration（§19.3.3 一项）
+- §18 第 14 天单 cohort 验证时，必须同步用 Optuna（§19.1）+ 事件仿真器（§19.2 档 C）—— 不能先跑一个"简化 Grid Search 版本"，那是技术债
+- §18 第 30 天 Top-20 cohort 寻优时，必须同步交付 Pareto 前沿可视化 + 稳健性分数落表 `fact_cohort_optimal_strategy.robustness_score`
+- §18 第 60 天生产化时，同步上 PSI + prediction drift 监控
+
+### 19.6 一句话总结
+
+Optuna、事件仿真器（替代档 A/B 的 Qlib Strategy 解耦）、KS+AUC+Calibration 评估三件套——**总成本 5-8 人日**，这是 §17 + §18 能落地的**最小工程门槛**。不做 Optuna 则 HPO 不可行；不自写事件仿真器则 §18 无法对接业务；不加 KS/Calibration 则模型上线没止损线，过拟合靠猜。三件必须一起上，缺一件拖累另外两件。
