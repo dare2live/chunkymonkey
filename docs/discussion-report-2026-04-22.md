@@ -1530,3 +1530,59 @@ P1.A 证明存在可交易的 stable-cohort sleeve，
 - `SELECT policy_name, cagr, max_drawdown, final_equity FROM fact_policy_eval WHERE run_id='20260423_112330';` 可复核
 - `SELECT policy_name, COUNT(*) FROM fact_policy_equity_curve WHERE run_id='20260423_112330' GROUP BY 1;` 可复核
 - `SELECT policy_name, COUNT(*), SUM(pnl_pct*position_value) FROM fact_policy_trade WHERE run_id='20260423_112330' GROUP BY 1;` 可复核每笔 PnL
+
+---
+
+## 2026-04-23 [Claude] 收口：事件级评分主线 No-Go 与下一步三条候选
+
+### 汇总两层证据
+
+本收口整合 P0.B（事件级 ML）与 P1.A（非 ML stable cohort portfolio）两条独立验证路径在 PIT 口径下的实证结论。
+
+| 路径 | 方法 | 关键指标 | 基线 | 结论 |
+| --- | --- | --- | --- | --- |
+| P0.B 事件级 ML baseline | `fact_event_features_pit` + LightGBM 三段切分 | holdout **IC 0.018** / AUC 0.501 / KS 0.041 | §19 本地基线 KS 0.05 / §34 止损线 IC 0.03 | No signal |
+| P1.A 非 ML stable cohort | `v_institution_l2_score_pit` + portfolio MVP | holdout **CAGR 3.05%** / excess −0.51% / Calmar 0.54 | HS300 3.56% / 全候选等权 13.97% | No edge |
+
+两层独立验证均指向同一结论：**当前数据结构下，"机构事件研究 → 超额收益"作为可交易假设不成立**。
+
+### 被 PIT 实证否定的具体结论
+
+按 §0.2 "不追溯修改"规则，以下历史结论均不撤除原文，但在本收口下新增状态标注：
+
+| 章节 | 原结论 | PIT 实证修正 |
+| --- | --- | --- |
+| §17 / §23 / §26 | "UBS × 电气设备 stable_score 100"等 Top 15 cohort 可作跟投白名单 | 这些 cohort 的 stable 标签基于含未来信息的 walk-forward；在 PIT + portfolio 回测下无 excess edge |
+| §30 / §31 | "W4 holdout IC 0.111 超 §29 阈值 3.7 倍"、"Top 特征 stage_return_6m +0.131" | lookahead 贡献，真实 OOS IC 0.018 |
+| §32 | "W5 Optuna 把 IC 推到 0.173（+55%）" | Optuna 直接在 holdout 上调参 + lookahead 双重偷看 |
+| §33 | "六周路线完成"、"非黑盒五件套兑现" | 六周路线产物属于 demo 级，非 production |
+| §24 | 四层评分金字塔（Raw → Fact → Layer B/C → Qlib）是下一阶段主线 | 事件级主线在 PIT 口径下无信号，金字塔上层失去支撑 |
+
+### 当前系统未被否定的部分
+
+- 数据采集链路完整（raw 层 + price_kline + raw_margin_daily 完整历史）
+- 事件级真相表 `fact_institution_event` 可靠
+- 研究工具类展示（机构画像 / L2 行业画像 / 事件时间线）对人工研究仍有价值
+- 两融（F6）数据完整 PIT 可用
+- 价量（PX）特征可完整 PIT 回算
+- P0.A banner + P0.C1 折叠已把误导性 AI 评分在 UI 上降级
+
+### 下一步三条候选路径（等决策）
+
+| 路径 | 描述 | 工作量 | ROI | 可证伪性 |
+| --- | --- | --- | --- | --- |
+| **α 平凡基线** | 放弃 stable cohort 筛选，回到"候选事件等权"或"HS300 增强指数"；配合风控（MaxDD 阈值、stop_loss）；定位为"简单跟随机构披露的 smart beta" | 3-5 人日（把 all_events_equal 产品化 + 加风控 + 前端替换主视图）| 中 | 易：CAGR/MaxDD 目标明确 |
+| **β 换 label 层级** | 不做事件级 60d 预测；改做 `cohort × 时段 × 市场 regime` 条件 edge（如"在低波动 regime 下，某些 cohort 胜率显著提升"）。需先构建 `mart_market_regime_daily` | 15-20 人日 | 低-中（投入大，不保证有效；金融时序 regime 本身就难识别）| 中：依赖 regime 定义是否有说服力 |
+| **γ 退役事件级产品线** | 承认"机构事件 → 超额收益"假设在当前数据下不成立；保留数据采集 + 机构/股票/事件画像作为**研究工具**（不承诺 alpha）；撤下 AI 评分和 stable cohort 相关 UI；把项目定位从"跟投评分系统"改为"机构行为研究平台" | 2-3 人日（撤 UI、改 README、清旧表）| 高（诚实收口，释放资源）| 最易 |
+
+### 收口
+
+- **共识**：事件级评分主线 No-Go；P0.B + P1.A 双证据链一致
+- **共识**：codex Phase C 重资产建设（15-20 人日）**暂停**，不在当前证据下启动
+- **共识**：§23-§33 相关 "stable cohort / AI 评分 / 非黑盒五件套" 结论在 PIT + portfolio 口径下无 edge；历史段保留不撤，状态以本段为准
+- **待决**：α / β / γ 三条路径由 codex 或人类决策；Claude 不自选
+- **动作**：
+  - 若选 α：Claude 下一轮开始全候选等权策略的 portfolio 优化 + 风控 + 前端替换
+  - 若选 β：先做 `mart_market_regime_daily` PIT 版（5-7 人日）；Claude 或 codex 认领
+  - 若选 γ：Claude 下一轮做前端撤卡片 + README 重写 + 不活跃表归档（2-3 人日）
+- **验收**：本段作为 P0 + P1.A 阶段总收口。任何后续发言需明确引用本段（例如 "按 §2 2026-04-23 收口段选路径 α/β/γ"）。
