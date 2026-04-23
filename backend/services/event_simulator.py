@@ -88,7 +88,10 @@ def _simulate_one(
     stop_loss: Optional[float],
     take_profit: Optional[float],
 ) -> Optional[dict]:
-    """单事件仿真。entry_date 必须是 code_prices 索引里的交易日。"""
+    """单事件仿真。entry_date 必须是 code_prices 索引里的交易日。
+
+    额外输出 intra_maxdd：持仓期间最低价相对 entry_price 的最大跌幅（负数或 0）。
+    """
     if entry_date not in code_prices.index:
         return None
     entry_price = float(code_prices.loc[entry_date, "close"])
@@ -101,44 +104,46 @@ def _simulate_one(
     if end_pos <= entry_pos:
         return None
 
+    lowest_seen = entry_price
     for i in range(entry_pos + 1, end_pos + 1):
         row = code_prices.iloc[i]
         day_low = float(row["low"]) if not pd.isna(row["low"]) else None
         day_high = float(row["high"]) if not pd.isna(row["high"]) else None
         if day_low is None or day_high is None:
             continue
+        lowest_seen = min(lowest_seen, day_low)
 
         sl_hit = stop_loss is not None and (day_low / entry_price - 1) <= stop_loss
         tp_hit = take_profit is not None and (day_high / entry_price - 1) >= take_profit
 
         if sl_hit and tp_hit:
+            intra = lowest_seen / entry_price - 1
             return {
-                "entry_date": entry_date,
-                "exit_date": dates[i],
+                "entry_date": entry_date, "exit_date": dates[i],
                 "entry_price": entry_price,
                 "exit_price": entry_price * (1 + stop_loss),
-                "pnl": stop_loss,
-                "hold_days": i - entry_pos,
+                "pnl": stop_loss, "hold_days": i - entry_pos,
+                "intra_maxdd": float(intra),
                 "exit_reason": "stop_loss_conservative",
             }
         if sl_hit:
+            intra = lowest_seen / entry_price - 1
             return {
-                "entry_date": entry_date,
-                "exit_date": dates[i],
+                "entry_date": entry_date, "exit_date": dates[i],
                 "entry_price": entry_price,
                 "exit_price": entry_price * (1 + stop_loss),
-                "pnl": stop_loss,
-                "hold_days": i - entry_pos,
+                "pnl": stop_loss, "hold_days": i - entry_pos,
+                "intra_maxdd": float(intra),
                 "exit_reason": "stop_loss",
             }
         if tp_hit:
+            intra = lowest_seen / entry_price - 1
             return {
-                "entry_date": entry_date,
-                "exit_date": dates[i],
+                "entry_date": entry_date, "exit_date": dates[i],
                 "entry_price": entry_price,
                 "exit_price": entry_price * (1 + take_profit),
-                "pnl": take_profit,
-                "hold_days": i - entry_pos,
+                "pnl": take_profit, "hold_days": i - entry_pos,
+                "intra_maxdd": float(intra),
                 "exit_reason": "take_profit",
             }
 
@@ -146,13 +151,13 @@ def _simulate_one(
     last_close = float(last_row["close"]) if not pd.isna(last_row["close"]) else None
     if last_close is None or last_close <= 0:
         return None
+    intra = lowest_seen / entry_price - 1
     return {
-        "entry_date": entry_date,
-        "exit_date": dates[end_pos],
-        "entry_price": entry_price,
-        "exit_price": last_close,
+        "entry_date": entry_date, "exit_date": dates[end_pos],
+        "entry_price": entry_price, "exit_price": last_close,
         "pnl": last_close / entry_price - 1,
         "hold_days": end_pos - entry_pos,
+        "intra_maxdd": float(intra),
         "exit_reason": "max_hold",
     }
 
@@ -223,10 +228,12 @@ def simulate_events(
     pnl_std = float(pnls.std(ddof=1)) if len(pnls) > 1 else 0.0
     sharpe = (avg_pnl / pnl_std) * np.sqrt(252.0 / max(avg_hold, 1.0)) if pnl_std > 0 else 0.0
 
-    sorted_pos = positions_df.sort_values("exit_date").reset_index(drop=True)
-    cum_returns = (1.0 + sorted_pos["pnl"]).cumprod()
-    running_max = cum_returns.cummax()
-    max_drawdown = float((cum_returns / running_max - 1.0).min())
+    # 两个维度的回撤：
+    #   avg_position_maxdd：单笔持仓期间平均最大回撤（负值均值）
+    #   p95_position_maxdd：尾部 5% 的最坏持仓回撤
+    intra_dd = positions_df["intra_maxdd"].astype(float)
+    avg_position_maxdd = float(intra_dd.mean())
+    p95_position_maxdd = float(intra_dd.quantile(0.05))  # 5% 分位（最差）
 
     win_rate = float((pnls > 0).mean())
     exit_reason_counts = positions_df["exit_reason"].value_counts().to_dict()
@@ -239,7 +246,8 @@ def simulate_events(
         "win_rate": win_rate,
         "annual_return": float(annual_return),
         "sharpe": float(sharpe),
-        "max_drawdown": max_drawdown,
+        "avg_position_maxdd": avg_position_maxdd,
+        "p95_position_maxdd": p95_position_maxdd,
         "exit_reason_counts": exit_reason_counts,
         "positions": positions_df,
     }
