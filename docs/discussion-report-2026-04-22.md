@@ -1105,3 +1105,217 @@ Phase 4 原文只写了"20 日持有期 + -8% drawdown"的粗略定义；本节�
 ### 17.8 一句话总结
 
 Qlib 不是要当"股票打分器"，要当"事件条件概率引擎"——给定(机构, 股票, 时点, 溢价, 擅长度, 介入时机)，回答"跟这一笔事件 20 日能赚多少、亏多少、有多确信"。数据和加工的 90% 已就绪，真正缺的是**把 F3/F4/F5 特征注入 Qlib Handler** 和**多任务训练框架**，外加**跟投回测**做生死验证。§17 的实施能让系统第一次出现"机构是主角、追高被惩罚、介入时机被看见"的统一评级，而不是三条互相打架的 gate 链。
+
+---
+
+## 18. 基于 Qlib 的策略参数自动寻优设计（2026-04-23）
+
+这一节回答用户问题：Qlib 能否根据数据自动寻优，针对机构画像和股票画像探索出某一股票最佳介入时机、持仓时间、建仓节奏、退出时机？
+
+### 18.1 把用户的问题拆成可计算的形式
+
+"最佳介入时机 / 持仓时间 / 建仓节奏 / 退出时机"在工程上等价于：**在一个参数化的交易策略空间里，找到使目标函数（年化收益、回撤、Sharpe）最优的参数组合，并按机构画像 × 股票画像分条件求解**。这是**多目标、条件式、约束下的超参数优化（HPO）问题**，不是模型层 HPO。
+
+### 18.2 Qlib 原生支持状况（核查结果）
+
+`Mainline current state` + pyqlib 0.9.x 官方文档
+
+| Qlib 能力 | 是否可用 | 限制 |
+| --- | --- | --- |
+| `qlib.rl` RL 模块 | ❌ 场景不对 | 原生为**单资产订单执行**（拆单防冲击），不是策略级 RL。学"何时进 / 持多久 / 何时退"要自己写 env + policy，训练不稳定 |
+| `qlib.backtest.BaseStrategy` 可插拔 | ✅ 可继承 | 当前项目 `qlib_full_engine.py:1385-1418` **写死 TopkDropoutStrategy**，仅开放 `topk / n_drop`；要自定义持仓期/止损需写新子类 |
+| 原生策略参数 HPO | ❌ 没有 | yaml 手动配；必须外挂 Optuna / Ray Tune |
+| `RollingGen` / `DDG-DA` | 🟡 部分可用 | 按**时间窗**滚动训练，**不是**按 cohort 分群寻优。cohort-wise 要自写外层循环 |
+| 自定义因子注入（Alpha158 扩展） | ✅ 已用 | `_inject_custom_factors_into_handler`，§17 已依赖此能力 |
+
+本地现状：
+
+- `backend/` grep `optuna|ray.tune|hyperopt|skopt|bayes_opt` → **零命中**。无 HPO 依赖。
+- `backend/scripts/run_backtest.py` 跑的是"机构事件研究"生成 `research_*` 表，不是策略参数扫描。
+- `fact_institution_event` **无** `exit_date` / `hold_days` 字段；实际退出时点在 `research_holding_chains`：15 009 条链，但 `chain_status=closed` 只有 **1 131 条**（13 878 条 open 仍持仓中），`alpha_halflife_days` 字段存在但全空。
+
+**判定**：可以做，不免费。需要三样东西：(1) 自定义参数化策略类，(2) 外挂 Optuna HPO，(3) 按 cohort 分群寻优器。外加一次数据层补齐（`chain_days` / `exit_date` 回填或用 open chain 的 proxy）。
+
+### 18.3 策略参数空间
+
+`Session reconstruction`
+
+每一个机构事件按以下参数执行跟投：
+
+```
+策略 = {
+  entry_lag_days: 0|1|2|3|5,              # 披露日 D 起多少个交易日后开始买
+  entry_pacing:   single|twap3|twap5|dip, # 一次性 / 3日等权 / 5日等权 / 跌时加仓
+  max_hold_days:  5|10|15|20|30|45|60,    # 最长持仓
+  stop_loss:      -5%|-8%|-10%|-12%|-15%|none,
+  take_profit:    +10%|+15%|+20%|+30%|none,
+  trailing_stop:  3%|5%|8%|none,
+  exit_trigger:   fixed_days|inst_exit|ma20_break|signal_reverse,
+}
+```
+
+全组合约 5 × 4 × 7 × 6 × 5 × 4 × 4 ≈ **67 200 种**。Grid Search 全扫不现实，用 Bayesian TPE（Optuna）200–500 次 trial 可收敛到 Pareto 前沿。
+
+### 18.4 条件分群策略
+
+全市场一个平均参数没意义（半导体游资和医药公募策略差异巨大）。分群方案按粗到细：
+
+| 方案 | 粒度 | cohort 数 | 可行性 |
+| --- | --- | --- | --- |
+| A. 全市场一个策略 | 1 | 1 | 基线，无区分 |
+| B. (inst_type) | 5 | 5 | 太粗 |
+| **C. (inst_type × L2)** | 5 × 56 | 约 280 | 推荐起点 |
+| D. (inst_type × L2 × premium_bucket) | 5 × 56 × 4 | 约 1 120 | 过细，样本稀释 |
+| E. KMeans(机构画像, K=5) × L2 | 5 × 56 | 约 280 | 机构画像降维后更稳健 |
+
+**最小样本约束**：每 cohort 事件数 ≥ 参数维度 × 20（当前 7 维 → 140 事件）。低于阈值自动回退到父 cohort（L2 → L1 → 全市场）。
+
+当前已有数据估算：机构事件 ~57 000 条，按 C 方案分 280 cohort，平均每 cohort ~200 条，**刚好够寻优但非常紧**。首版应该从 Top 20 个大样本 cohort 开始验证，而不是全 280 个同时上线。
+
+### 18.5 寻优引擎三层结构
+
+```
+for cohort in cohorts_with_enough_samples:              # 外层：cohort 循环
+    train_events, holdout_events = walk_forward_split(cohort.events, ratio=0.7)
+
+    def objective(trial):                                # 中层：Optuna TPE
+        params = {
+            "entry_lag":     trial.suggest_int("lag", 0, 5),
+            "entry_pacing":  trial.suggest_categorical("pacing", ["single","twap3","twap5","dip"]),
+            "max_hold_days": trial.suggest_int("hold", 5, 60, step=5),
+            "stop_loss":     trial.suggest_categorical("sl",[-0.05,-0.08,-0.10,-0.12,-0.15,None]),
+            # ... 其余参数
+        }
+        result = simulate_events(train_events, params)   # 内层：事件级回测
+        return result.annual_return, -result.max_drawdown  # 多目标
+
+    study = optuna.create_study(directions=["maximize","maximize"], sampler=TPESampler())
+    study.optimize(objective, n_trials=300)
+
+    best = select_from_pareto(study.best_trials, by="sharpe")
+    holdout_metrics = simulate_events(holdout_events, best)  # walk-forward 验证
+    save_to_fact_cohort_optimal_strategy(cohort, best, holdout_metrics)
+```
+
+内层 `simulate_events` 就是参数化策略执行器：给一组事件和一组参数，按参数买入/持有/卖出，返回 PnL 曲线 / 年化收益 / MaxDD / Sharpe。
+
+### 18.6 过拟合防护（这是难点，不是寻优本身）
+
+样本稀疏 + 参数空间大 + 非 i.i.d. 金融时序 = 过拟合是几乎必然的。四层防护：
+
+1. **Walk-forward split**：cohort 事件按时间排序，前 70% 寻优，后 30% 验证。仅报告 **holdout Sharpe**，而非 train Sharpe。
+2. **最小样本硬约束**：cohort 事件数 < 7 维 × 20 = 140 时跳过，回退父 cohort。
+3. **Top-K 稳健平均**：不选 Pareto 最优单点，选 Top-10 trials 参数的 **众数 / 中位数**。单点最优通常是噪声。
+4. **稳健性分数**：把 train 期分 4 段，计算每段 Sharpe 的方差。方差大 → 稳健性低 → 该 cohort 不纳入生产。
+
+### 18.7 数据层准备（§18 的前置工作）
+
+| 需求 | 现状 | 补齐方式 |
+| --- | --- | --- |
+| 实际持仓天数 | `research_holding_chains.chain_days` 字段存在但**全空**（15 009 条 0 填充率） | 补一个 SQL UPDATE 用 `julianday(chain_end_date) - julianday(chain_start_date)` 回填 |
+| 实际退出价 / 日期 | `chain_end_date` 有，`exit_price` 无 | 关联 `price_kline` 取对应日收盘价 |
+| alpha 半衰期 | `alpha_halflife_days` 字段存在但**全空** | 现有事件级 `gain_*d` 序列可拟合指数衰减得到，需补一段计算脚本 |
+| Open chain 的退出 proxy | `research_holding_chains` 13 878 条 open | 用 `follow_gain_60d` 作为"假设持 60d"的模拟退出收益；寻优时标注"proxy" |
+
+没有这一步，寻优引擎跑起来后得到的"最佳持仓期"会被统计到"绝大多数 chain 还 open，数据截尾偏向短持仓" —— 得到假的最优。
+
+### 18.8 落表 `fact_cohort_optimal_strategy`
+
+```sql
+CREATE TABLE fact_cohort_optimal_strategy (
+  cohort_key          TEXT,     -- e.g. "mutual_fund|L2_medical|discount"
+  parent_cohort_key   TEXT,     -- 样本不足时回退到哪个父 cohort
+  optimization_date   TEXT,
+  -- 策略参数
+  entry_lag_days      INTEGER,
+  entry_pacing        TEXT,
+  max_hold_days       INTEGER,
+  stop_loss           REAL,
+  take_profit         REAL,
+  trailing_stop       REAL,
+  exit_trigger        TEXT,
+  -- 业绩指标
+  n_events_train      INTEGER,
+  n_events_holdout    INTEGER,
+  train_annual_return REAL,
+  holdout_annual_return REAL,
+  holdout_max_drawdown  REAL,
+  holdout_sharpe      REAL,
+  holdout_win_rate    REAL,
+  robustness_score    REAL,     -- 稳健性（4 段时间 Sharpe 方差的倒数）
+  uses_proxy_exit     INTEGER,  -- 是否用 open chain 的 proxy 数据
+  top_k_config_json   TEXT,     -- Top-10 近优配置，前端可展示备选
+  PRIMARY KEY (cohort_key, optimization_date)
+);
+```
+
+### 18.9 与 §17 Qlib 建模的分工
+
+- **§17 回答"跟不跟"**：事件分类器 + 期望收益/回撤预测（给出 primary_action 和 confidence）
+- **§18 回答"怎么跟"**：给 follow 的事件，查其所属 cohort 的最优策略参数（entry_lag、hold_days、stop_loss 等）
+
+完整 follow 指令的生成链路：
+
+```
+新事件
+  → §17 Qlib 评级 → primary_action=follow, confidence=0.78, shap_top3=...
+  → 查 fact_cohort_optimal_strategy[(inst_type, L2, premium)]
+    → entry_lag=2, pacing=twap3, max_hold=20, stop_loss=-8%, take_profit=+15%
+  → 前端展示："跟 / 置信 78% / D+2 起 3 日分批 / 持至 -8% 止损或 +15% 止盈或第 20 日"
+```
+
+用户看到的不再是一个 gate 字符串，而是**完整可执行策略**，且每个参数都能追溯到"这是由该类事件历史 200 条样本 + 30 条 holdout 验证得出的最优"。
+
+### 18.10 为什么不用 RL
+
+Qlib 的 RL 模块是订单执行级，不学策略。要用 RL 学"何时进 / 持多久 / 何时退"需要：
+- 自定义 environment：state = 当前持仓 + 市场 + 事件特征，action = 买/持/卖，reward = PnL - λ·drawdown
+- PPO 或 DQN 训练
+- 样本量大（每条事件只产生一个 trajectory，57 000 条对 RL 不够）
+- 解释性差（"为什么这时候卖"答不上来）
+
+**判定**：第一版用 Optuna HPO + 可解释参数化策略，不上 RL。RL 可留给 60 天后当"Top-N cohort 已稳定"时的优化手段。
+
+### 18.11 实施路线
+
+**第 1 阶段（14 天）：单 cohort 可行性验证**
+- [ ] 补齐 `chain_days` / `exit_price` / `alpha_halflife_days`（SQL + Python 脚本）
+- [ ] 选样本最多的 cohort（例如"公募 × L2_医药 × discount 溢价"，预估 ~800 事件）
+- [ ] 写参数化策略执行器 `simulate_events(events, params)`（一人日）
+- [ ] 外挂 Optuna，跑 200 trial，得到该 cohort 的最优参数 + holdout Sharpe
+- [ ] 对比固定基线（max_hold=20d, stop_loss=-10%），看是否显著超越
+- [ ] 验收标准：holdout Sharpe ≥ baseline + 0.3 AND MaxDD ≤ baseline
+
+**第 2 阶段（30 天）：Top-20 cohort 全扫**
+- [ ] 按 §18.4 方案 C 分 280 cohort，筛选样本 ≥ 140 的 Top 20
+- [ ] 并行跑 20 个 Optuna study（每个 300 trial）
+- [ ] 写入 `fact_cohort_optimal_strategy`
+- [ ] 稳健性分数 < 阈值 的 cohort 标记 `is_production = 0`
+
+**第 3 阶段（60 天）：生产化 + 前端接入**
+- [ ] `/api/signals` 查询返回时联查 `fact_cohort_optimal_strategy`
+- [ ] 前端事件详情页展示"推荐策略参数"+"备选 Top-3"
+- [ ] Weekly cron：每周重跑寻优，监控参数漂移（漂移大说明过拟合或市场结构变化）
+- [ ] 扩展到全 280 个 cohort + L1 / 全市场三级回退
+
+### 18.12 关键风险
+
+1. **样本不足**：57 000 事件按 280 cohort 分，最小 cohort ≤ 30 事件。**必须回退到父级**，接受 cohort 粒度粗化。不能让过拟合参数进生产。
+2. **Open chain 比例高**（93% 未平仓）：真实退出数据只有 1 131 条。短期必须用 `follow_gain_60d` 作 proxy，长期等 chain 自然平仓积累。
+3. **市场结构变化**：A 股每 2-3 年一轮结构切换，寻优结果可能在新周期完全失效。缓解：walk-forward 分 4 段看稳健性；每季度强制重跑；保留多个历史版本做对比。
+4. **多目标解选择**：Pareto 前沿上选哪个点是业务决策（收益 vs 回撤权衡），不能自动化。第一版默认"Sharpe 最高"，保留配置项让业务方覆盖。
+
+### 18.13 §15 / §17 / §18 的完整拼图
+
+| 层 | 回答什么 | 工具 | 何时落地 |
+| --- | --- | --- | --- |
+| §15 漏斗（机构初筛） | 这家机构值得跟吗 | SQL 硬规则（AND 逻辑） | 14 天 |
+| §17 Qlib 评级 | 这笔事件值得跟吗、收益多少、置信度多少 | LGBM 多任务 + SHAP | 30-60 天 |
+| **§18 策略寻优** | **一旦跟了，具体参数怎么设** | **Optuna HPO + 参数化策略** | **14-60 天** |
+| §16 综合分接入仿真 | 机构分进 composite 影响多大 | 只读仿真 | 已完成 |
+
+§18 是最后一块拼图：不仅告诉用户"跟谁跟什么"，还告诉用户"怎么跟"。
+
+### 18.14 一句话总结
+
+Qlib 原生不做业务策略参数寻优，但它的 Strategy 插拔点 + 自定义因子 + 回测引擎三件组件，加上外挂的 Optuna TPE + 按 cohort 分层结构，**可以**自动探索"某类机构在某类行业某种溢价下，介入时机 / 持仓期 / 止损止盈 / 退出触发"的最优组合。真正的风险不是 Qlib 的能力边界，而是**样本稀疏 + 过拟合**——必须用 walk-forward、Top-K 稳健平均、最小样本硬约束、cohort 回退树四层防护兜底。第 14 天交付单 cohort 可行性验证；第 30 天交付 Top-20 cohort 寻优表；第 60 天交付完整链路上线并每周自动迭代。
