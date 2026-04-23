@@ -2582,3 +2582,109 @@ v_event_action_score(institution, stock, notice_date):
 ### 29.12 一句话
 
 **把"机构-L2-股票-事件"四实体统一成一张图，每个节点有连续评分、每条连线可点击跳转、每个预测有 SHAP 和相似事件支撑、每个模型持续报告健康度**。W1 一周兑现"点机构擅长 L2 → 看 L2 里其他稳定机构"这条最短跳转，之后每周扩一条。
+
+---
+
+## 30. W3 执行：fact_event_features 全量构建 + IC 简测（2026-04-23）
+
+按 §29.8 路线图 W3 交付 Layer C 特征矩阵。注意：原 §29.8 写"近 60 天事件验证"，实际落地改为**全量事件**——60 天 label 成熟度只有 37%，全量可达 96.6%，样本量从 1636 → 31372 增 19 倍。
+
+### 30.1 fact_event_features schema
+
+主键 `(institution_id, stock_code, notice_date, report_date)` ——同披露日含多报告期（公募年报+一季报合并披露）是常态，单主键会冲突。
+
+特征族 9 × 39 列：F1 机构×L2 擅长度 / F3 研报 / F4 调研 / F5 阶段 / F6 两融 / F7 机构个体业绩 / F8 共振 + 事件属性 + label。
+
+### 30.2 全量构建结果
+
+```
+查询返回 31 372 条事件（全部 new_entry/increase 且有 notice_date）
+耗时 10 分钟（主要 resonance_agg nested self-join ±90d window）
+```
+
+### 30.3 按族覆盖率
+
+| 族 | 列数 | 覆盖率 | 判定 |
+| --- | --- | --- | --- |
+| F7 inst_profile（机构个体业绩） | 4 | **100%** | 合格 |
+| F3 forecast（研报预期） | 3 | 99.9% | 合格 |
+| F8 resonance | 1 | 100% | 合格 |
+| label（30d/60d） | 4 | 96.6% | 合格 |
+| F5 stage（阶段特征） | 5 | 85.7% | 合格 |
+| F6 margin（两融） | 2 | 79.1% | 合格 |
+| **F4 survey（调研）** | 2 | **35.3%** | 数据稀疏（1 643 股票有 survey 表） |
+| **F1 inst_l2（Layer B 擅长度）** | 5 | **20.3%** | 数据稀疏（v_institution_l2_score 只 135 cohort） |
+
+两个低覆盖族不是 bug 是**数据客观稀疏**：survey 表只覆盖 1 643 只股票；Layer B view 只覆盖 135 个 (机构, L2) cohort。W4 训练时把它们当作"有值=有信息 / 无值=默认信号"处理，不强求 70% 覆盖。
+
+### 30.4 单特征 IC 简测（全量 31 372 事件 Spearman 秩相关）
+
+**label_gain_60d Top 5**（高 → 未来 60d 收益高）：
+
+| 特征 | 覆盖样本 | Spearman |
+| --- | --- | --- |
+| stage_dist_ma250_pct | 25 184 | **+0.131** |
+| inst_buy_win_rate_60d | 29 685 | **+0.131** |
+| stage_return_6m | 25 223 | +0.129 |
+| inst_buy_avg_gain_60d | 29 685 | +0.125 |
+| inst_quality_score | 29 685 | +0.113 |
+
+**label_max_drawdown_60d Top 5**（注意符号：正数 = 回撤更浅、负数 = 回撤更深；这里 label 本身为负数，所以正相关 = 回撤浅）：
+
+| 特征 | 覆盖样本 | Spearman | 业务含义 |
+| --- | --- | --- | --- |
+| hold_amount | 30 917 | **−0.236** | 大仓位回撤更深 |
+| stage_volatility_20d | 26 451 | +0.190 | 高波动股回撤深（符号：vol 大 ↔ maxdd 负向绝对值大） |
+| change_amount | 30 917 | −0.153 | 加仓量大回撤深 |
+| stage_return_3m | 26 451 | −0.111 | 近期涨幅大的回撤大 |
+| inst_buy_win_rate_60d | 30 917 | −0.096 | 高胜率机构跟投的股票回撤小 |
+
+### 30.5 三个关键洞察（W4 训练前置）
+
+**洞察 1：机构个体业绩（F7）才是真正的核心预测**
+
+4 个 F7 特征（inst_quality_score、inst_buy_win_rate_60d、inst_buy_avg_gain_60d、inst_followability_score）在多个 label 上都是 Top 5。这印证 §15 的观点——**业绩实证本身最有预测力**，胜过 Layer B 评分化（F1 尚未显现 IC 优势，因覆盖只 20%）。
+
+**洞察 2：`stage_dist_ma250_pct` 正相关推翻 §29.4 的 stage_score 公式**
+
+§29.4 我设计的 stage_score 公式是"低位加分、追高扣分"——基于"低位入场安全"的直觉。
+
+IC 实测 **+0.131**：追高（dist_ma250 高）反而未来 60 天收益高。这是**动量效应**（破年线后继续涨的惯性），和我的人工公式相反。
+
+结论：**五维卡片的 stage_score 首版公式方向错了**。W4 训练时必须丢掉这个直觉公式、让模型自己从 dist_ma250_pct 原始值学方向。
+
+**洞察 3：金融数据 IC 0.13 是显著信号**
+
+金融时序 Spearman 典型 0.03-0.05，IC 0.13 是**强信号**。Top 5 特征都 ≥ 0.11，说明 Layer C 特征矩阵是**有预测力的**，不是堆数据。
+
+### 30.6 性能与增量更新
+
+全量 10 分钟太慢。bottleneck 是 `resonance_agg` 的 nested self-join（每条事件要扫过 ±90d 同股票其他事件）。
+
+优化路径（W4 启动前做）：
+- 先把 `resonance_agg` 预计算到单独表，事件特征构建只做 join
+- 或每天增量补昨日新事件（当前 SQL 支持 `--days N` 增量）
+
+### 30.7 对 §29.4 五维公式的必要修正（待 W4 合并）
+
+§29.4 的 stage_score 公式基于"低位加分追高扣分"直觉，IC 显示方向反。但前端五维卡片 §28 已上线——**不立即推翻**，标注"首版未经校准"（已注明），W4 跟模型一起重标定。
+
+其他维度的 IC 信号：
+- resonance_score（机构共振）：无直接 IC 结果，但它是 v_institution_l2_score 的聚合，和 F1 相关
+- margin_score（两融）：margin_rz_balance IC=+0.074，弱相关
+- forecast_score / survey_score：Top 15 里未出现，IC < 0.1，信号弱但非零
+
+W4 结论将重新校准五维权重，不再用"简单平均 = overall"。
+
+### 30.8 W3 交付清单
+
+- [x] `fact_event_features` 表 + 3 个索引
+- [x] `backend/scripts/build_event_features.py` 支持 `--days N` / `--dry-run`
+- [x] 31 372 全量事件落表
+- [x] IC 简测产出 Top 相关特征
+- [x] 发现 §29.4 stage_score 公式方向错误，记录待 W4 修
+- [x] 发现两个低覆盖族（F1 20% / F4 35%）是数据稀疏，非 bug
+
+### 30.9 一句话
+
+Layer C 落地 31 372 事件 × 39 列，IC 给出明确优先序：F7 机构业绩 > F5 阶段 > F6 两融 >> F1 Layer B > F4 调研。W4 Qlib 训练有了干净起点。
