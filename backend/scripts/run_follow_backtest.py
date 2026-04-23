@@ -91,8 +91,12 @@ def load_cohort_events(
     cohort_scheme: str,
     cohort_key: str,
     exclude_north: bool = True,
+    event_cutoff: Optional[str] = None,
 ) -> pd.DataFrame:
-    """按 cohort 方案加载事件。返回列：institution_id, stock_code, notice_date"""
+    """按 cohort 方案加载事件。返回列：institution_id, stock_code, notice_date
+
+    event_cutoff：YYYYMMDD 格式；若给定，只加载 notice_date <= cutoff 的事件（§1 P1.A PIT 截断）
+    """
     base_sql = """
         SELECT fe.institution_id, fe.stock_code, fe.notice_date,
                ii.name AS inst_name, ii.type AS inst_type,
@@ -104,14 +108,17 @@ def load_cohort_events(
           AND fe.notice_date IS NOT NULL AND fe.notice_date != ''
           AND ii.type IS NOT NULL
     """
-    # 仅在需要行业分组时强制 l1 非空；institution scheme 不强制
     if cohort_scheme in ("inst_type_L1", "L1_instgroup", "L1", "institution_L1"):
         base_sql += " AND ind.tdx_l1_name IS NOT NULL "
     if cohort_scheme in ("institution_L2", "L2"):
         base_sql += " AND ind.tdx_l2_name IS NOT NULL "
     if exclude_north:
         base_sql += " AND ii.type != '北向' "
-    df = pd.read_sql_query(base_sql, conn)
+    params: list = []
+    if event_cutoff:
+        base_sql += " AND fe.notice_date <= ? "
+        params.append(event_cutoff)
+    df = pd.read_sql_query(base_sql, conn, params=params if params else None)
     if df.empty:
         return df
 
@@ -147,6 +154,7 @@ def list_top_cohorts(
     top: int,
     min_samples: int,
     exclude_north: bool = True,
+    event_cutoff: Optional[str] = None,
 ) -> list[tuple[str, int]]:
     """列 Top-N cohort，返回 [(cohort_key, n), ...]"""
     base_sql = """
@@ -165,7 +173,11 @@ def list_top_cohorts(
         base_sql += " AND ind.tdx_l2_name IS NOT NULL "
     if exclude_north:
         base_sql += " AND ii.type != '北向' "
-    df = pd.read_sql_query(base_sql, conn)
+    params: list = []
+    if event_cutoff:
+        base_sql += " AND fe.notice_date <= ? "
+        params.append(event_cutoff)
+    df = pd.read_sql_query(base_sql, conn, params=params if params else None)
 
     if scheme == "institution":
         df["cohort_key"] = df["institution_id"].astype(str)
@@ -246,9 +258,14 @@ def run_backtest_for_cohort(
     walk_forward: Optional[float] = None,
     dry_run: bool = False,
     exclude_north: bool = True,
+    event_cutoff: Optional[str] = None,
 ) -> pd.DataFrame:
-    """参数 walk_forward：None 表示全样本；float in (0,1) 表示按 notice_date 切分，前占 ratio 为 train，后为 holdout。"""
-    events = load_cohort_events(conn, cohort_scheme, cohort_key, exclude_north=exclude_north)
+    """参数 walk_forward：None 表示全样本；float in (0,1) 表示按 notice_date 切分，前占 ratio 为 train，后为 holdout。
+
+    cohort_scheme 可含 `_pit_YYYYMMDD` 后缀（用于落表区分）；内部 routing 剥掉后缀使用 base scheme。
+    """
+    base_scheme = cohort_scheme.split("_pit_")[0] if "_pit_" in cohort_scheme else cohort_scheme
+    events = load_cohort_events(conn, base_scheme, cohort_key, exclude_north=exclude_north, event_cutoff=event_cutoff)
     if events.empty:
         logger.warning("[%s | %s] 无事件，跳过", cohort_scheme, cohort_key)
         return pd.DataFrame()
@@ -308,12 +325,18 @@ def main():
                         help="按 notice_date 切分 train/holdout，取值 (0,1)，典型 0.7")
     parser.add_argument("--dry-run", action="store_true", help="不写入数据库")
     parser.add_argument("--grid", default="default", choices=["default"])
+    parser.add_argument("--event-cutoff", type=str, default=None,
+                        help="YYYYMMDD；只用 notice_date <= cutoff 的事件做 walk-forward。"
+                             "启用时 cohort_scheme 自动加 _pit 后缀写入 fact_institution_follow_backtest")
     args = parser.parse_args()
 
     conn = get_conn()
     try:
         ensure_table(conn)
         grid = DEFAULT_GRID
+
+        # PIT 截断下，在 scheme 名加 _pit 后缀用于和原结果共存
+        scheme = args.scheme + ("_pit_" + args.event_cutoff if args.event_cutoff else "")
 
         if args.cohort_key:
             cohorts = [(args.cohort_key, -1)]
@@ -322,19 +345,21 @@ def main():
                 conn, args.scheme, top=args.top,
                 min_samples=args.min_samples,
                 exclude_north=not args.include_north,
+                event_cutoff=args.event_cutoff,
             )
             if not cohorts:
                 logger.error("找不到样本 >= %d 的 cohort", args.min_samples)
                 return
-            logger.info("Top %d cohorts: %s", len(cohorts), cohorts)
+            logger.info("Top %d cohorts (scheme=%s): %s", len(cohorts), scheme, cohorts[:5])
 
         for cohort_key, n in cohorts:
-            logger.info("=== cohort [%s | %s] n=%d ===", args.scheme, cohort_key, n)
+            logger.info("=== cohort [%s | %s] n=%d ===", scheme, cohort_key, n)
             run_backtest_for_cohort(
-                conn, args.scheme, cohort_key, grid,
+                conn, scheme, cohort_key, grid,
                 walk_forward=args.walk_forward,
                 dry_run=args.dry_run,
                 exclude_north=not args.include_north,
+                event_cutoff=args.event_cutoff,
             )
     finally:
         conn.close()
