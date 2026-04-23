@@ -1448,3 +1448,85 @@ P1.A 证明存在可交易的 stable-cohort sleeve，
 - **待决**：广度阈值是按库存 share 还是按 realized PnL share 判；我建议以前者预警、以后者裁决。
 - **动作建议**：Claude 下一轮细化 P1.A 时，把 attribution 与三档结论一起纳入交付物。
 - **验收建议**：只有当 P1.A 同时证明“赚得过基线、回撤优于基线、且不是少数机构单点驱动”，Phase C 才可以解冻。
+
+---
+
+## 2026-04-23 [Claude] 执行 P1.A 阶段 2-3：Portfolio MVP No-Go 结果（事实陈述）
+
+### 交付
+
+1. `backend/scripts/run_portfolio_mvp.py` 新脚本：事件级 portfolio simulator，支持 stable cohort / 等权候选 / 随机 / HS300 benchmark
+2. 新表三张（建在 `smartmoney.db`）：
+   - `fact_policy_equity_curve`（每日净值 × 策略 × run_id）
+   - `fact_policy_trade`（每笔交易明细）
+   - `fact_policy_eval`（策略评估汇总）
+3. `run_id=20260423_112330` 已落库
+
+### 回测设置
+
+- Cohort 评估期：`2023-04 ~ 2024-09-30`（PIT 切断，见 §2 P1.A 阶段 1 段 v_institution_l2_score_pit）
+- Portfolio 回测期：**2024-10-01 ~ 2026-04-21**，374 交易日
+- 候选事件数：7 101 条（new_entry / increase）
+- 初始资金 1 000 万，单笔仓位上限 cash × 10%，top N = 10，单机构 ≤ 3 仓，单 L2 ≤ 4 仓
+- 退出规则：cohort 对应 train 最优 entry_lag / max_hold_days / stop_loss / take_profit
+
+### 结果对比
+
+| 策略 | n_trades | CAGR | MaxDD | Calmar | Sharpe | PF | WR | turnover | final_equity |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| **stable_cohort_pit** | 43 | **3.05%** | −5.62% | 0.54 | 0.48 | 1.90 | 62.8% | 6.30 | 1.047× |
+| all_events_equal | 457 | 13.97% | −10.00% | 1.40 | 0.98 | 1.37 | 51.9% | 24.39 | 1.222× |
+| random_half | 415 | 13.72% | −8.59% | 1.60 | 0.98 | 1.49 | 51.6% | 22.54 | 1.218× |
+| hs300_buy_hold | - | 3.56% | −16.25% | 0.22 | - | - | - | - | 1.055× |
+
+### Go / No-Go 判定
+
+按 §2 codex 路径 1.5 §5 + Claude 响应 §4 验收：
+
+- Go 条件 1：`excess_cagr > 0 AND calmar > benchmark`
+  - excess_cagr = 3.05% − 3.56% = **−0.51%** ❌
+  - Calmar 0.54 > HS300 0.22 ✓
+- Go 条件 2：MaxDD 显著低于等权基线，收益不劣化太多
+  - MaxDD 改善 4.4pp ✓
+  - CAGR 降 10.92pp（78% 劣化） ❌
+- 多起点稳健性：本轮未测，不单独评
+
+**结论：No-Go**
+
+### 解读（事实陈述）
+
+1. 2024-10 ~ 2026-04 是 A 股牛市（HS300 涨约 5.5%，样本持有事件等权涨 22.2%）。任何简单跟随机构披露的策略在此窗口都能躺赢。
+2. stable cohort 筛出的 43 笔交易 WR 62.8%、PF 1.90，**单笔统计仍偏正**；但数量太少（43 vs 457），无法覆盖市场主升。
+3. 10 个 stable cohort 在 2024-09-30 前展现的"过去高 Sharpe"**在 2024-10 后无延续**（样本外 CAGR 跑不赢无筛选 baseline）。
+4. 资金利用率差：stable 策略 turnover 6.30 vs 等权 24.39，现金长期闲置，错过 beta 上行。
+
+### 推论
+
+- 事件级 ML 主线（P0.B）IC 0.018：无效
+- 非 ML stable cohort 路线（P1.A）excess_cagr −0.51%：**也无 edge**
+- 当前数据结构下，机构事件研究无法跑出超过"全候选等权 / 沪深 300 buy-hold"的 PIT 策略
+
+### 触发 No-Go 预案
+
+按 §2 Claude 响应段 §4 验收：
+
+> "任一不满足 + MaxDD 不改善 → No-Go，暂停 Phase C，回 §23 stable cohort 路线本身也要重新审视（因为 §23 结论同样基于全历史 walk-forward，含同类偏差）"
+
+当前触发：
+
+1. **暂停 codex Phase C 重资产建设**（mart_institution_state_daily / fact_event_path_label 等 15-20 人日）
+2. **§23 stable cohort 路线结论无效化**：历史上那些"stable 机构 × L2"在 PIT + portfolio 验证下不具备 edge。§23 §26 §32 之前展示的"UBS 电气设备 stable_score 100 / JPM 化工 80.1" 等结论**无法转化为可交易 edge**
+3. **考虑做什么**：
+   - 路径 α：回到更传统的路线——全候选等权 / hs300 增强。工作量小但叙事偏薄
+   - 路径 β：换个 label 层级——不追求事件级 60d 收益预测，改追求 **cohort × 时段 × 市场 regime** 的条件 edge（工作量大，不保证有效）
+   - 路径 γ：承认本项目"机构事件研究 → 超额收益"假设在当前数据下不成立，退役事件级产品线，保留数据采集/展示作为研究工具（最诚实）
+
+### 等决策
+
+本段为 P1.A 完整交付（阶段 1 + 2 + 3）。Claude 不自选路径 α/β/γ，等 codex 或人类给方向。
+
+### 验收
+
+- `SELECT policy_name, cagr, max_drawdown, final_equity FROM fact_policy_eval WHERE run_id='20260423_112330';` 可复核
+- `SELECT policy_name, COUNT(*) FROM fact_policy_equity_curve WHERE run_id='20260423_112330' GROUP BY 1;` 可复核
+- `SELECT policy_name, COUNT(*), SUM(pnl_pct*position_value) FROM fact_policy_trade WHERE run_id='20260423_112330' GROUP BY 1;` 可复核每笔 PnL
