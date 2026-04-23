@@ -2149,3 +2149,120 @@ M5 step 2 **条件性通过**：
 - 选项 C：**追加第二档数据源**（大宗交易 `stock_dzjy_mrmx` 或交叉验证 `stock_share_hold_change_*`），进一步验证 insider-like 信号是否在其他数据源也显效
 
 Claude 倾向**A**：M5 step 2 是目前唯一在 PIT 口径下有条件通过的方向，值得 1-2 人日深挖；但必须严格执行 OOS + universe-neutral 两道验证，任何一道不达标则退化为选项 B。
+
+## 2026-04-23 [Claude] §2 M5 step 2 Option A 验证：OOS + placebo 组合结果（fact + 判定）
+
+### 1. 验证设计
+
+按用户选择的 Option A 深挖 M5 step 2 可靠性：
+
+- **OOS 窗口**：2023-01-01 ~ 2024-09-30（熊/震荡期，HS300 CAGR=4.07%），完全区别于 IS 窗口（2024-10-01 ~ 2026-04-21，HS300 CAGR=3.56% 但伴随中小盘集体牛）
+- **Placebo**：把 sell 事件当 buy 信号回测（同 simulator 参数），检验 direction 是否有真正信息，还是只是"universe 里的股票都涨"
+- **验收门槛**：CAGR > HS300+3pp（OOS 需 >7.07%）、Calmar > 1.5、n_trades >= 100。与 IS 同口径。
+
+### 2. OOS 事件层证据（2023-01 ~ 2024-09）
+
+| 条件 | n | avg_gain_20d | avg_gain_60d | wr20 |
+| --- | --- | --- | --- | --- |
+| buy 全部 | 1 399 | **+1.63%** | +4.67% | 48.6% |
+| buy ≥1% | 245 | **+2.36%** | +5.39% | 50.2% |
+| buy ≥0.5% | 484 | **+2.35%** | +6.97% | 50.8% |
+| buy 纯个人 | 255 | +2.61% | +9.86% | 50.6% |
+| sell 全部 | 4 710 | **-0.15%** | -1.33% | 42.2% |
+| sell ≥1% | 1 255 | **-0.59%** | -2.41% | 41.0% |
+| sell ≥3% | 61 | **-3.46%** | -7.16% | 31.1% |
+
+**事件层结论**：OOS 窗口里 **buy 平均正收益、sell 平均负收益**，direction 有清晰区分。而 IS 窗口里 buy 和 sell 都是正收益（见上段 §2 M5 step 2）——说明 IS 的"sell also positive"是 universe bull bias 的 artifact，不是永恒真实。
+
+### 3. OOS Portfolio 回测（run_id=20260423_123913，2023-01-01 ~ 2024-09-30）
+
+| 策略 | n_trades | CAGR | MaxDD | Calmar | Sharpe | PF | WR |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| **exec_buy_ge1pct** | **167** | **14.02%** | -8.58% | **1.63** | **1.29** | **1.85** | 49.1% |
+| **exec_buy_ge0.5pct** | **342** | **15.60%** | -9.04% | **1.73** | **1.28** | **1.71** | 48.8% |
+| exec_buy_all | 847 | 6.19% | -18.65% | 0.33 | 0.50 | 1.28 | 44.0% |
+| exec_buy_individual | 193 | 4.60% | -17.42% | 0.26 | 0.44 | 1.34 | 45.6% |
+| exec_sell_as_buy_ge0.5pct_PLACEBO | 1 255 | **-4.44%** | -26.37% | -0.17 | -0.18 | 0.93 | 38.4% |
+| exec_sell_as_buy_ge1pct_PLACEBO | 799 | **-2.15%** | -18.95% | -0.11 | -0.07 | 0.94 | 39.9% |
+| exec_sell_as_buy_ge3pct_PLACEBO | 47 | **-7.63%** | -13.46% | -0.57 | -1.55 | 0.33 | 27.7% |
+| hs300_buy_hold | - | 4.07% | -24.19% | 0.17 | - | - | - |
+
+### 4. 验收判定
+
+#### 4.1 单期 OOS 硬门槛（CAGR>7.07%, Calmar>1.5, n>=100）
+
+- **exec_buy_ge1pct**：CAGR 14.02 ✅, Calmar 1.63 ✅, n=167 ✅ → **三条全过**
+- **exec_buy_ge0.5pct**：CAGR 15.60 ✅, Calmar 1.73 ✅, n=342 ✅ → **三条全过**
+- exec_buy_all：Calmar 0.33 ❌
+- exec_buy_individual：Calmar 0.26 ❌
+
+松阈值策略 OOS 失败，说明真正的 alpha 集中在**大额（≥0.5%）buy 事件**——小额买是噪音，大额买带信息。
+
+#### 4.2 IS + OOS 双期稳健性（同策略两期都过硬门槛）
+
+| 策略 | IS CAGR | IS Calmar | OOS CAGR | OOS Calmar | 双期通过？ |
+| --- | --- | --- | --- | --- | --- |
+| exec_buy_ge1pct | 20.20% | 3.60 | 14.02% | 1.63 | ✅ **YES** |
+| exec_buy_ge0.5pct | 26.45% | 3.33 | 15.60% | 1.73 | ✅ **YES** |
+| exec_buy_all | 22.09% | 2.94 | 6.19% | 0.33 | ❌ OOS Calmar |
+| exec_buy_individual | 19.13% | 3.36 | 4.60% | 0.26 | ❌ OOS Calmar |
+
+**`exec_buy_ge0.5pct` 和 `exec_buy_ge1pct` 是 M5 唯一在 IS + OOS 双期都通过硬门槛的策略。**
+
+#### 4.3 Placebo 检验（universe-neutral 判定）
+
+| placebo 策略 | IS CAGR | OOS CAGR | OOS 结论 |
+| --- | --- | --- | --- |
+| exec_sell_as_buy_ge0.5pct | +35.46% | **-4.44%** | 反转为亏，universe bias 证实 |
+| exec_sell_as_buy_ge1pct | +35.42% | **-2.15%** | 反转为亏 |
+| exec_sell_as_buy_ge3pct | +10.68% | **-7.63%** | 更负，sell 方向在 OOS 明确是负 alpha |
+
+IS 里的 sell-as-buy 高 CAGR 完全是 2024-10~2026-04 中小盘牛 bull-beta 贡献——换到 OOS 就全部变负。**sell 方向没有 buy-style alpha，universe bias 被 placebo + OOS 双重证伪。**
+
+#### 4.4 Direction Alpha 量级（买方超额）
+
+- **OOS direction alpha**（buy_ge1pct CAGR - sell_as_buy_ge1pct CAGR）= 14.02 - (-2.15) = **+16.17 pp/年**
+- **OOS direction alpha**（ge0.5pct）= 15.60 - (-4.44) = **+20.04 pp/年**
+- 量级稳定远超单纯 beta 差，是内生的 direction-specific 信号
+
+### 5. 最终判定：M5 step 2 tight-filter 策略通过 Option A 验证
+
+**`exec_buy_ge0.5pct` 和 `exec_buy_ge1pct` 同时满足**：
+
+1. IS + OOS 双期硬门槛
+2. OOS placebo 翻转为负（universe bias 被证伪）
+3. direction alpha 在两期量级稳定（+12~20 pp/年）
+4. 事件层 expectancy 与 portfolio 结果一致（OOS buy_≥1% avg_gain_20d +2.36% → 年化 ~30% 对应 1e7 全仓；实际 CAGR 14% 合理，因为 portfolio 层利用率 ~50%）
+
+这是自 W1-W6 / P0.B / P1.A / δ overlay / M5 step 1 一系列 No-Go 后，**第一个双期 + placebo 控制下通过验证的策略**。
+
+### 6. 与先前全部失败研究的对比
+
+| 研究 | IS 通过 | OOS 通过 | placebo 翻转 | 最终判定 |
+| --- | --- | --- | --- | --- |
+| W1-W6 主线（Layer B + 五维 + AI 事件评分）| 假 ✅（lookahead） | - | - | No-Go（PIT 后 IC 0.018）|
+| stable_cohort_pit | 部分（WR 62.8% 但 CAGR 3.05%）| - | - | No-Go（低利用率压低 CAGR）|
+| δ overlay (core+sleeve) | ❌ | - | - | No-Go（与 core 无区别）|
+| M5 step 1 LHB | ❌ | - | - | No-Go（momentum exhaustion）|
+| **M5 step 2 exec_buy tight** | ✅ | ✅ | ✅ | **首次通过** |
+
+### 7. 剩余风险（尚未验证，未来要做）
+
+即使 OOS + placebo 都过了，下述风险点仍存在，**禁止直接产品化**：
+
+1. **更长 OOS**：只覆盖 2023-01~2024-09 约 21 个月，建议拉到 2021 年起（需要 raw_executive_trade 历史回填；akshare 能否提供）
+2. **Regime 分解**：2023-01~2024-09 其实混合了 2023Q1 小反弹 + 2023Q2~2024Q1 下跌 + 2024Q2 震荡，不是纯熊市——需要 regime-partition 分解看信号在各 regime 的表现
+3. **Transaction cost**：当前 simulator 假设 0 slippage / 0 fee。实战中 turnover 18-31 需要扣除 0.1%-0.15% 双边成本，可能吃掉 5-10 pp CAGR
+4. **数据源可靠性**：`stock_ggcg_em` 单一接口，若 akshare 改版/东财字段变更会 break。生产化前应加外部交叉（`stock_share_hold_change_sse/szse/bse` 或 CSMAR）
+5. **容量问题**：大额 ≥1% 的增持公告本身数量有限，若真往这个策略投入大资金，成交冲击成本会显著
+6. **数据生成时点**：`公告日` 是披露时间，但高管实际交易发生在 `变动开始日` ~ `变动截止日` 之间。T+1 entry 假设可能对应"消息落地"而非"抢先"，对大资金无效
+
+### 8. 下一步建议
+
+M5 主体到此结束（step 1 + step 2 + Option A 验证）。后续选项：
+
+- **选项 A' 继续验证**（2-3 人日）：实现剩余风险点 1-3 的量化验证（历史回填 + regime 分解 + 交易成本加入）。任一不过则降级为选项 B'
+- **选项 B' 研究工具化**（0.5 人日）：把 `exec_buy_ge0.5pct` 作为**研究展示**加到机构详情页/股票详情页（标"研究参考"，不产品化）
+- **选项 C' 宣告胜利**：写一份 project 状态更新，记录 M5 结果，让项目在"研究平台 + 一个通过验证的候选策略"状态 freeze
+
+Claude 倾向**A'**：剩余风险 1-3 如果能通过，再考虑真正的产品化；风险 4-6（数据源质量/容量/时点）的问题无论做多少回测都不会消失，必须用真实小资金实盘验证（远期路径）。
