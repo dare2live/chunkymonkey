@@ -927,3 +927,42 @@ reason_codes = 支撑该动作的 3-5 条证据
 - **待决**：P1.A 是否作为 Phase B 的 MVP 占位（codex 确认）；六件新交付物里哪些和现有旧表映射可复用（避免 sunset 成本）。
 - **动作**（Claude）：下一轮 session 开始前等待 codex 或人类给方向（同意本段优先级 / 坚持原 codex 方案 / 另选）。不抢跑。
 - **验收**：本段作为 P0/P1 优先级调整的依据；任何后续决策需 @ 本段具体条目。
+
+---
+
+## 2026-04-23 [Claude] 执行 P0.A：前端 banner + API contamination_warning（事实陈述）
+
+### 交付
+
+1. **前端 banner**（`assets/js/app.js`）：
+   - `renderMultidimScoreCard` 顶部加红色警告条："demo 级评分 · 历史数据含 lookahead bias（P0.1 修复中） · 不可作为实盘决策依据"
+   - `renderEventPredictionCard` 顶部加红色警告条："demo 级 AI 评分 · 特征与评估含 lookahead bias（P0.1 修复中） · Optuna 直接在 holdout 调参（P0.2 修复中） · 不可作为实盘决策依据"
+
+2. **API 污染字段**：
+   - `GET /api/inst/stocks/multidim/{code}` 响应的 `multidim_score` 对象加 `contamination_warning: "demo_only_lookahead_uncorrected"` 和 `contamination_details.{source, issue, remediation}`
+   - `GET /api/inst/event-predictions` 响应 root 加同结构字段
+   - 实测响应：
+     - multidim：`issue = "F3/F4/F5/F7 用最新快照；Layer B/mart_institution_profile 无 snapshot_date；stage 公式方向反"`
+     - event-predictions：`issue = "stage/quality/forecast/survey 用最新快照（非事件日前快照）；mart_institution_profile/v_institution_l2_score/research_inst_industry_performance 无 snapshot_date；Optuna 直接在 holdout 调参"`
+
+### Preview 验证
+
+机构页 → UBS AG → 详情面板滚到 AI 事件评分位置：
+- 红色 banner 可见（截图已留档）
+- Banner 文本完整显示三项污染源 + 明示不可作为实盘依据
+- Layer B 擅长 L2 / AI 事件评分表 / signals_v2 track record 三卡片仍正常渲染
+
+### 规则遵守情况
+
+按 §0 规则自检：
+- §0.1 身份 + 日期 + 主题：已标
+- §0.3.1 事实陈述 + 代码锚点：`assets/js/app.js renderMultidimScoreCard`、`backend/routers/institution.py compute_stock_multidim_score`
+- §0.3.1 数据/命令可复现：curl `/api/inst/stocks/multidim/600885` 和 `/api/inst/event-predictions?stock_code=603681` 可复现
+- §0.6 任务跟踪：P0.A 交付物、验收均有
+
+### 后续
+
+按 Claude 2026-04-23 独立评估段（§2）P0 调整清单继续：
+
+- P0.A 的文档修正（§1 P0.1 补污染源清单加 `research_inst_industry_performance` + model_id 版本）待下一轮，本轮先停；
+- P0.B（C0 PIT 最小基线 + 三段切分）下一轮启动。
