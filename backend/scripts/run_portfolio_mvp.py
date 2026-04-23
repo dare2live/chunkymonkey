@@ -95,6 +95,58 @@ CREATE TABLE IF NOT EXISTS fact_policy_eval (
 """
 
 
+def load_exec_trade_events_as_events(conn, start_date: str, end_date: str,
+                                      min_pct_total: float = 0.0,
+                                      individual_only: bool = False,
+                                      direction: str = "buy") -> pd.DataFrame:
+    """M5 step 2：fact_executive_trade_event (direction='buy') 整形为 fact_institution_event 列结构。
+
+    institution_id='EXEC_'+stock_code 配合 max_per_inst=1 实现 per-stock dedup。
+    """
+    sd = f"{start_date[:4]}-{start_date[4:6]}-{start_date[6:8]}"
+    ed = f"{end_date[:4]}-{end_date[4:6]}-{end_date[6:8]}"
+    where = ["fe.direction=?", "fe.notice_date >= ?", "fe.notice_date <= ?", "ind.tdx_l2_name IS NOT NULL"]
+    params = [direction, sd, ed]
+    if min_pct_total > 0:
+        where.append("fe.total_change_pct_total >= ?")
+        params.append(min_pct_total)
+    if individual_only:
+        where.append("fe.any_individual = 1 AND fe.any_corporate = 0")
+    sql = f"""
+        SELECT fe.notice_date, fe.stock_code, fe.n_shareholders,
+               fe.total_change_pct_total, fe.max_change_pct_total,
+               fe.any_individual, fe.any_corporate,
+               ind.tdx_l1_name l1, ind.tdx_l2_name l2
+        FROM fact_executive_trade_event fe
+        LEFT JOIN dim_stock_tdx_industry ind ON fe.stock_code = ind.stock_code
+        WHERE {' AND '.join(where)}
+    """
+    df = pd.read_sql_query(sql, conn, params=params)
+    if df.empty:
+        return df
+    df["notice_date"] = df["notice_date"].astype(str).str.replace("-", "", regex=False)
+    df["report_date"] = df["notice_date"]
+    df["institution_id"] = "EXEC_" + df["stock_code"].astype(str)
+    df["event_type"] = "exec_increase"
+    df["premium_pct"] = 0.0
+    df["premium_bucket"] = None
+    df["inst_name"] = "EXEC"
+    df["inst_type"] = "EXEC"
+    df["stable_score"] = df["total_change_pct_total"].fillna(0)
+    df["verdict"] = "exec"
+    df["ho_sharpe"] = None; df["ho_n"] = None
+    df["entry_lag"] = None; df["max_hold_days"] = None
+    df["stop_loss"] = None; df["take_profit"] = None
+    return df[[
+        "institution_id", "stock_code", "notice_date", "report_date",
+        "event_type", "premium_pct", "premium_bucket",
+        "inst_name", "inst_type", "l1", "l2",
+        "stable_score", "verdict", "ho_sharpe", "ho_n",
+        "entry_lag", "max_hold_days", "stop_loss", "take_profit",
+        "total_change_pct_total", "n_shareholders",
+    ]]
+
+
 def load_lhb_events_as_events(conn, start_date: str, end_date: str, min_inst_seats: int) -> pd.DataFrame:
     """M5 step 1：把 fact_lhb_event 整形成 fact_institution_event 的列结构，
     使其可以直接喂进 simulate_portfolio（institution_id='LHB_'+code 提供 per-stock dedup）。
@@ -546,6 +598,38 @@ def main():
             m_lhb = evaluate(r_lhb)
             _log_row(pname, m_lhb)
             results[pname] = (r_lhb, m_lhb)
+
+        # M5 step 2：fact_executive_trade_event (direction='buy') 作为独立事件源
+        # 包含 exec_sell_as_buy_ge1pct 安慰剂控制组（把卖方事件当买信号回测）
+        for direction_sql, min_pct, ind_only, pname in [
+            ("buy",  0.0, False, "exec_buy_all"),
+            ("buy",  1.0, False, "exec_buy_ge1pct"),
+            ("buy",  0.5, False, "exec_buy_ge0.5pct"),
+            ("buy",  0.0, True,  "exec_buy_individual"),
+            ("sell", 0.5, False, "exec_sell_as_buy_ge0.5pct_PLACEBO"),
+            ("sell", 1.0, False, "exec_sell_as_buy_ge1pct_PLACEBO"),
+            ("sell", 3.0, False, "exec_sell_as_buy_ge3pct_PLACEBO"),
+        ]:
+            exec_events = load_exec_trade_events_as_events(conn, args.start, args.end,
+                                                           min_pct_total=min_pct,
+                                                           individual_only=ind_only,
+                                                           direction=direction_sql)
+            if exec_events.empty:
+                logger.info("==== %s ====  SKIP (0 events)", pname)
+                continue
+            exec_codes = sorted(set(exec_events["stock_code"].astype(str).tolist()))
+            missing = [c for c in exec_codes if c not in prices]
+            if missing:
+                extra_px = load_prices(missing, _yymmdd_to_dash(args.start), _yymmdd_to_dash(args.end))
+                prices.update(extra_px)
+            logger.info("==== %s ==== (events=%d)", pname, len(exec_events))
+            r_ex = simulate_portfolio(exec_events, prices, trading_days,
+                                      initial_capital=1e7, top_n=args.top_n,
+                                      max_per_inst=1, max_per_l2=4,
+                                      policy_filter=lambda r: True)
+            m_ex = evaluate(r_ex)
+            _log_row(pname, m_ex)
+            results[pname] = (r_ex, m_ex)
 
         # 沪深 300 对照
         hs300 = prices.get("510300")

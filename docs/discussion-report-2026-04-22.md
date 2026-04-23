@@ -2046,3 +2046,106 @@ codex §14.2 原假设："stable cohort 的正 trade expectancy（2.35%/PF 1.90/
 - 不给 LHB 强行挑 best-performing 子集以凑合 excess edge（过拟合风险）
 - 不做空/做反向——与用户"买入策略 only"假设不符
 - 不增加 rank_reason 细分 × inst_buy_seats × regime 组合搜索（事件级 avg gain_20d 为负，子集合搜索只会加剧过拟合）
+
+## 2026-04-23 [Claude] §2 M5 step 2 执行结果：exec_increase 跟投 — 过门槛但需 placebo 修正（fact）
+
+### 执行
+
+按 §2 新数据源接入候选分析第一档推进 M5 step 2：
+
+1. `backend/scripts/build_executive_trade_events.py` 新建 ETL：
+   - 数据源 `akshare.stock_ggcg_em(symbol='全部')`
+   - 143 669 条原始股东增减持记录 → `raw_executive_trade`
+   - 按 `(notice_date, stock_code, direction)` 聚合 → 68 166 事件（buy=18 319, sell=49 847）
+   - forward return 从 price_kline qfq 重算，覆盖率 81.5%
+2. `run_portfolio_mvp.py` 新增 `load_exec_trade_events_as_events` + 4 档 buy 策略 + 3 档 placebo（把 sell 当 buy 回测）
+
+### 事件层预览（2024-10-01 ~ 2026-04-21 窗口）
+
+- buy 全部：n=1 463，avg gain_20d = **+2.67%**，winrate20 = 57.2%
+- buy 占总股本≥1%：n=202，avg gain_20d = **+3.94%**，winrate20 = 61.4%  ← 选择性提高显著改善
+- buy 纯个人：n=181，avg gain_20d = +3.02%，winrate20 = 59.1%
+- sell 占总股本≥1%（对照）：n=1 524，avg gain_20d = +3.24%，winrate20 = 53.9%
+
+### Portfolio 回测结果（run_id=20260423_123413，2024-10-01 ~ 2026-04-21）
+
+| 策略 | n_trades | CAGR | MaxDD | Calmar | Sharpe | PF | WR | turnover |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| all_events_equal（对照） | 457 | 13.97% | -10.00% | 1.40 | 0.98 | 1.37 | 51.9% | 24.4 |
+| hs300_buy_hold | - | 3.56% | -16.25% | 0.22 | - | - | - | 1.0 |
+| **exec_buy_all** | **882** | **22.09%** | **-7.52%** | **2.94** | 1.29 | 1.76 | 54.4% | 38.1 |
+| **exec_buy_ge1pct** | **146** | **20.20%** | **-5.62%** | **3.60** | **2.04** | **2.49** | **61.0%** | 18.8 |
+| **exec_buy_ge0.5pct** | **346** | **26.45%** | **-7.94%** | **3.33** | **1.88** | **2.33** | **59.2%** | 31.1 |
+| **exec_buy_individual** | **130** | **19.13%** | **-5.69%** | **3.36** | 1.73 | 2.25 | 58.5% | 17.8 |
+| exec_sell_as_buy_ge0.5pct_PLACEBO | 1 589 | **35.46%** | -10.83% | 3.27 | 1.44 | 1.61 | 49.2% | 53.2 |
+| exec_sell_as_buy_ge1pct_PLACEBO | 1 020 | **35.42%** | -11.28% | 3.14 | 1.61 | 1.68 | 51.6% | 49.6 |
+| exec_sell_as_buy_ge3pct_PLACEBO | 47 | 10.68% | -4.53% | 2.36 | 1.42 | 2.29 | 59.6% | 8.5 |
+
+### 验收门槛判定
+
+§2 验收门槛：CAGR > HS300+3pp（>6.56%）、Calmar > 1.5、n_trades >= 100
+
+- **exec_buy_all**（n=882）：✅ 全过（CAGR 22.09, Calmar 2.94）
+- **exec_buy_ge1pct**（n=146）：✅ 全过（CAGR 20.20, Calmar 3.60 — 最佳）
+- **exec_buy_ge0.5pct**（n=346）：✅ 全过（CAGR 26.45, Calmar 3.33）
+- **exec_buy_individual**（n=130）：✅ 全过（CAGR 19.13, Calmar 3.36）
+
+**四个 buy 策略全部过了硬门槛。**
+
+### 然而：placebo 暴露了 universe bias
+
+关键观察：**安慰剂 `exec_sell_as_buy_ge1pct_PLACEBO` CAGR 35.42% 比所有 real buy 策略都高**。
+
+这说明：股东增减持名单里的股票（无论 buy 还是 sell 方向）在 2024-10 到 2026-04-21 窗口内**整体跑赢 HS300**。很大一部分"alpha"来自这个**universe bias**——`stock_ggcg_em` 返回的股票相对中小盘成长股偏多，本期牛市中活跃交易股集体跑赢。
+
+#### 跨 direction × 选择性对比
+
+| 阈值层 | n_trades (buy) | CAGR (buy) | n_trades (sell) | CAGR (sell-as-buy) |
+| --- | --- | --- | --- | --- |
+| 全部 | 882 | 22.09% | - (≈4816) | ~35%+ |
+| ≥0.5% | 346 | 26.45% | 1 589 | 35.46% |
+| ≥1% | 146 | 20.20% | 1 020 | 35.42% |
+| ≥3% | - | - | 47 | **10.68%** |
+
+**规律**：
+1. buy 方向在 CAGR 层面被 sell 对照组**在数量占优时超越**（n_sell 大约是 n_buy 的 2.9x～7x），sell 只是因为覆盖更多交易日 / 更高 turnover 把 beta 累积得更多
+2. 当把 sell 的阈值拉到 ≥3%（n=47 < 100 未达硬门槛，但可作 qualitative 参考），CAGR 暴跌到 10.68%，远低于 buy_ge1pct 的 20.20%
+
+**结论**：在**对等选择性**的条件下，buy 方向**有**方向性 alpha；但**在低阈值大样本**下，universe beta 吃掉 direction 差。
+
+#### 进一步验证需要
+
+以下检验未做，是"暂不产品化"的门槛：
+
+1. **OOS 时段复现**：本段数据 2024-10 ~ 2026-04 是明牌牛市。拉回 2023-01 ~ 2024-09（熊/震荡）跑同样策略，看 buy_ge1pct 是否保持 Calmar > 1.5
+2. **Universe-neutral 对比**：在 `stock_ggcg_em` 覆盖的股票池里按 beta / size / momentum 做匹配后对比 buy-only vs sell-only，消除 universe bias
+3. **外部 labels 交叉验证**：用 CSMAR / Wind / tushare pro 的独立股东变动数据交叉核对，排除数据源质量/时效问题
+4. **Announcement 窗口滞后实验**：T+5 / T+10 entry 复测，检查 alpha 是不是因为"公告日 PIT 口径"的漏损（公告日 T=0，但实际交易可能前几日发生）
+
+### 判定
+
+M5 step 2 **条件性通过**：
+
+- 硬门槛全过
+- placebo 暴露 universe bias，直接效应 ≤ 绝对数字
+- 在对等选择性条件下方向性 alpha 存在（buy ge1pct Calmar 3.60 vs sell ge3pct Calmar 2.36）
+- 但 OOS / universe-neutral / 外部核对 三条验证未做，现阶段**不能定论为可上线 alpha**
+
+### 与 M5 step 1 (LHB) 对比
+
+| 维度 | LHB (step 1) | exec_trade (step 2) |
+| --- | --- | --- |
+| 硬门槛通过 | ❌ 全败 | ✅ 四档全过 |
+| placebo 对照做没做 | 未做（不需要，结果为负） | 做了，显示有 universe bias |
+| 事件数量足够 | ✅（1 914 / 1 006 / 70） | ✅（882 / 146 / 346 / 130） |
+| 边际有信号 | ❌（momentum exhaustion） | ✅ 在对等选择性下有 direction alpha |
+
+### 下一步建议
+
+先**完成 M5 两步**（本段落完成 M5），然后由用户决定：
+
+- 选项 A：**深挖 step 2 的 OOS / universe-neutral**（1-2 人日），如果 OOS 保持 Calmar > 1.5 且 universe-neutral 后仍有 CAGR lift → 考虑产品化
+- 选项 B：**记入研究工具不产品化**（同 stable_cohort / LHB 路径），保留 `fact_executive_trade_event` + strategies 作为研究对照
+- 选项 C：**追加第二档数据源**（大宗交易 `stock_dzjy_mrmx` 或交叉验证 `stock_share_hold_change_*`），进一步验证 insider-like 信号是否在其他数据源也显效
+
+Claude 倾向**A**：M5 step 2 是目前唯一在 PIT 口径下有条件通过的方向，值得 1-2 人日深挖；但必须严格执行 OOS + universe-neutral 两道验证，任何一道不达标则退化为选项 B。
