@@ -95,22 +95,35 @@ def load_cohort_events(
     """按 cohort 方案加载事件。返回列：institution_id, stock_code, notice_date"""
     base_sql = """
         SELECT fe.institution_id, fe.stock_code, fe.notice_date,
-               ii.type AS inst_type, ind.tdx_l1_name AS l1, ind.tdx_l2_name AS l2
+               ii.name AS inst_name, ii.type AS inst_type,
+               ind.tdx_l1_name AS l1, ind.tdx_l2_name AS l2
         FROM fact_institution_event fe
         LEFT JOIN inst_institutions ii ON fe.institution_id = ii.id
         LEFT JOIN dim_stock_tdx_industry ind ON fe.stock_code = ind.stock_code
         WHERE fe.event_type IN ('new_entry','increase')
           AND fe.notice_date IS NOT NULL AND fe.notice_date != ''
           AND ii.type IS NOT NULL
-          AND ind.tdx_l1_name IS NOT NULL
     """
+    # 仅在需要行业分组时强制 l1 非空；institution scheme 不强制
+    if cohort_scheme in ("inst_type_L1", "L1_instgroup", "L1", "institution_L1"):
+        base_sql += " AND ind.tdx_l1_name IS NOT NULL "
+    if cohort_scheme in ("institution_L2", "L2"):
+        base_sql += " AND ind.tdx_l2_name IS NOT NULL "
     if exclude_north:
         base_sql += " AND ii.type != '北向' "
     df = pd.read_sql_query(base_sql, conn)
     if df.empty:
         return df
 
-    if cohort_scheme == "inst_type_L1":
+    if cohort_scheme == "institution":
+        df = df[df["institution_id"] == cohort_key]
+    elif cohort_scheme == "institution_L1":
+        df = df[df["institution_id"].astype(str) + "|" + df["l1"].astype(str) == cohort_key]
+    elif cohort_scheme == "institution_L2":
+        df = df[df["institution_id"].astype(str) + "|" + df["l2"].astype(str) == cohort_key]
+    elif cohort_scheme == "L2":
+        df = df[df["l2"].astype(str) == cohort_key]
+    elif cohort_scheme == "inst_type_L1":
         df = df[df["inst_type"].astype(str) + "|" + df["l1"].astype(str) == cohort_key]
     elif cohort_scheme == "L1_instgroup":
         df["inst_group"] = df["inst_type"].map(_inst_type_to_group)
@@ -137,20 +150,32 @@ def list_top_cohorts(
 ) -> list[tuple[str, int]]:
     """列 Top-N cohort，返回 [(cohort_key, n), ...]"""
     base_sql = """
-        SELECT ii.type AS inst_type, ind.tdx_l1_name AS l1, ind.tdx_l2_name AS l2
+        SELECT fe.institution_id, ii.name AS inst_name, ii.type AS inst_type,
+               ind.tdx_l1_name AS l1, ind.tdx_l2_name AS l2
         FROM fact_institution_event fe
         LEFT JOIN inst_institutions ii ON fe.institution_id = ii.id
         LEFT JOIN dim_stock_tdx_industry ind ON fe.stock_code = ind.stock_code
         WHERE fe.event_type IN ('new_entry','increase')
           AND fe.notice_date IS NOT NULL AND fe.notice_date != ''
           AND ii.type IS NOT NULL
-          AND ind.tdx_l1_name IS NOT NULL
     """
+    if scheme in ("inst_type_L1", "L1_instgroup", "L1", "institution_L1"):
+        base_sql += " AND ind.tdx_l1_name IS NOT NULL "
+    if scheme in ("institution_L2", "L2"):
+        base_sql += " AND ind.tdx_l2_name IS NOT NULL "
     if exclude_north:
         base_sql += " AND ii.type != '北向' "
     df = pd.read_sql_query(base_sql, conn)
 
-    if scheme == "inst_type_L1":
+    if scheme == "institution":
+        df["cohort_key"] = df["institution_id"].astype(str)
+    elif scheme == "institution_L1":
+        df["cohort_key"] = df["institution_id"].astype(str) + "|" + df["l1"].astype(str)
+    elif scheme == "institution_L2":
+        df["cohort_key"] = df["institution_id"].astype(str) + "|" + df["l2"].astype(str)
+    elif scheme == "L2":
+        df["cohort_key"] = df["l2"].astype(str)
+    elif scheme == "inst_type_L1":
         df["cohort_key"] = df["inst_type"].astype(str) + "|" + df["l1"].astype(str)
     elif scheme == "L1_instgroup":
         df["inst_group"] = df["inst_type"].map(_inst_type_to_group)
@@ -271,8 +296,9 @@ def run_backtest_for_cohort(
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--scheme", default="inst_type_L1",
-                        choices=["inst_type_L1", "L1_instgroup", "L1", "inst_group"])
+    parser.add_argument("--scheme", default="institution_L2",
+                        choices=["institution_L2", "institution_L1", "institution",
+                                 "inst_type_L1", "L1_instgroup", "L1", "L2", "inst_group"])
     parser.add_argument("--top", type=int, default=1, help="跑 Top-N 样本最大的 cohort")
     parser.add_argument("--min-samples", type=int, default=300, help="最低样本阈值")
     parser.add_argument("--cohort-key", type=str, help="单 cohort：直接指定 key（格式依 scheme 定义）")
