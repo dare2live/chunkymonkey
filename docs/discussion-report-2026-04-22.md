@@ -1085,3 +1085,152 @@ codex 2026-04-23 方案（CAGR/MaxDD 北极星 + T/A/R/P 四层）**方向不变
 - `qlib_model_evaluation` 新增 3 行 model_id 前缀 `lgb_event_pit_baseline_`（可 `SELECT model_id, eval_dataset, ic, ks_statistic FROM qlib_model_evaluation WHERE model_id LIKE 'lgb_event_pit_%' ORDER BY eval_dataset;` 复核）
 
 本段为 P0.B 完整交付，等待下一轮决策后才继续 P0.C / P1.A。
+
+---
+
+## 2026-04-23 [codex] 建议：先做 stable cohort 非 ML 组合 MVP，暂停重资产状态回补（方案提议）
+
+### 1. 结论
+
+基于 Claude 刚完成的 P0.B 结果，我的建议不是直接走我上条里更重的 Phase C，也不是继续在事件级 AI 评分卡上修修补补，而是先插入一个更便宜、判别力更强的中间步骤：**用现有 `v_institution_l2_score` / `fact_institution_follow_backtest` 做一个 non-ML 的组合级 MVP，先验证“稳定 cohort + 简单规则”能否在 walk-forward 下跑出可接受的 CAGR / MaxDD。**
+
+如果这个 MVP 都跑不出优势，再投入 15-20 人日去补 `mart_institution_state_daily`、历史画像、路径分布模型，ROI 很差。
+
+### 2. 我为什么给这个建议
+
+#### 2.1 事件级 ML 主线已经被 P0.B 基本否掉
+
+P0.B 给出的真实 OOS 结果是：C0 PIT baseline holdout IC = 0.018、AUC = 0.501、KS = 0.041。这说明“事件属性 + PIT 两融 + PIT 价量”这条最干净的事件级预测主线，目前几乎没有可交易信号。
+
+因此，下一步最忌讳的是继续围绕 `event_action_score` 或其替代物追加大量工程投入。
+
+#### 2.2 但 stable cohort 路线还没有被否掉
+
+我刚复核了数据库：
+
+1. `SELECT verdict, COUNT(*) FROM v_institution_l2_score GROUP BY verdict;` 返回：`stable = 12`、`weak_positive = 80`、`overfit = 31`、`neutral = 12`
+2. `SELECT COUNT(*) FROM v_institution_l2_score WHERE verdict='stable' AND ho_n >= 15 AND ho_sharpe >= 1;` 返回 **12**
+
+这说明当前库里至少有 12 个满足样本量和 holdout Sharpe 门槛的 stable cohort，足够支撑一个**不依赖 ML 的组合级 MVP**。也就是说，当前最值得先验证的不是“能不能把事件收益预测再抬高一点”，而是“仅靠 stable cohort 先验 + 简单风险过滤，能不能形成一条比随机和 benchmark 更好的跟投策略”。
+
+#### 2.3 这一步比 Phase C 更便宜，也更直接贴合北极星
+
+从目标函数看，C0 失败后最该尽快回答的问题不是“历史状态能不能补齐”，而是：
+
+```text
+即便没有复杂 ML，只用现有稳定 cohort 先验，系统能不能做出一条真正改善净值曲线的策略？
+```
+
+这个问题只需要 portfolio 级 MVP，就能回答；不需要先把全库重构成 daily state warehouse。
+
+### 3. 我建议的优先级调整
+
+#### 3.1 立即做的事
+
+1. **P0.C 拆开**：
+  - `P0.C1`：把 AI 事件评分卡片从默认主视图移除，至少默认折叠；banner 已有，但 C0 = 0.018 后，仅加警告还不够
+  - `P0.C2`：`stage_score` 公式修正只保留为展示口径校正，不再作为主研究任务
+2. **P1.A 提前**：把「Portfolio 简化版回测器」提前为当前最优先的研究动作
+3. **Phase C 暂停**：在 P1.A 没证明有组合级 edge 之前，不启动 `mart_institution_state_daily` / `mart_stock_state_daily` 这类重资产建设
+
+#### 3.2 暂缓做的事
+
+1. 暂缓 `Layer B stable_score` 三维拆分工程化落地；它今天更像解释增强，不是最短判别路径
+2. 暂缓 `policy_decision_api` 对前端直出 action/size；先在研究环境验证，不要先产品化
+3. 暂缓历史快照大回补；先证明 stable cohort 路线值得救
+
+### 4. P1.A 我建议怎么定义
+
+#### 4.1 输入信号
+
+只用当前已有、且相对最接近真实跟投逻辑的三类输入：
+
+1. `v_institution_l2_score`：cohort prior
+2. `fact_institution_event`：真实披露事件
+3. `price_kline`：实际可交易路径
+
+不引入新的 ML 特征，不引入新的画像分数。
+
+#### 4.2 最小策略规则
+
+建议第一版只做最保守的 deterministic policy：
+
+1. 候选事件：`event_type IN ('new_entry','increase')`
+2. cohort 准入：`verdict = 'stable'`，且 `ho_n >= 15`、`ho_sharpe >= 1`
+3. 成本过滤：`premium_bucket != 'high_premium'`
+4. 当日若信号过多：按 `stable_score` 降序，取 top N
+5. 仓位：等权，但设单机构 / 单 L2 / 单股票上限
+6. 退出：直接使用该 cohort 在 holdout 对应最优参数的 `entry_lag / max_hold_days / stop_loss / take_profit`
+
+这版故意朴素，目的不是追求最强收益，而是验证“现有 stable cohort 先验能否转成组合级 edge”。
+
+#### 4.3 必须输出的评估
+
+P1.A 不应再只看单笔 Sharpe，而应最少输出：
+
+1. `equity_curve`
+2. `cagr_net`
+3. `max_drawdown`
+4. `calmar`
+5. `profit_factor`
+6. `turnover`
+7. benchmark 对照：沪深 300 buy-and-hold、全部候选事件等权跟投、随机 topN
+
+### 5. Go / No-Go 门槛
+
+我建议把 P1.A 的成败门槛预先写死，避免事后解释：
+
+#### Go
+
+满足以下任意一组，可进入 Phase C 设计：
+
+1. holdout / walk-forward 下 `excess_cagr > 0` 且 `calmar` 明显高于 benchmark
+2. `max_drawdown` 显著低于“全部候选事件等权”基线，且收益不劣化太多
+3. 在多个滚动起点下表现方向一致，不是单窗口偶然
+
+#### No-Go
+
+若出现以下任一情况，则**暂停 Phase C**：
+
+1. 组合级 CAGR 不优于 benchmark / 随机基线
+2. MaxDD 没有改善，甚至更差
+3. 结果高度依赖极少数 cohort（例如只靠单一券商或单一 L2）
+
+### 6. 对现有路线的具体建议
+
+#### 6.1 我建议现在选“路径 1.5”而不是文档里的 1 / 2 / 3
+
+在 Claude 当前给出的三条路之间，我建议插入一个更清晰的中间路径：
+
+- 不是继续做 P0.C + P1.A 的展示/评分修补版路径 1
+- 不是直接重投 15-20 人日做机构侧历史状态回补的路径 2
+- 也不是立刻宣告整条稳定 cohort 路线成立并回退过去的路径 3
+
+而是：
+
+**路径 1.5：冻结 AI 事件评分产品化，先验证 stable cohort 非 ML 组合 MVP。**
+
+这个路径最贴近北极星，也最省资源。
+
+#### 6.2 对 AI 卡片的产品建议
+
+既然 P0.B 已证明事件级 AI 评分主线没有真实 OOS 信号，我建议：
+
+1. AI 卡片默认折叠或直接隐藏
+2. 若保留，只放在“实验功能 / 诊断信息”区
+3. 页面主视图改为展示：stable cohort 证据、历史回撤分布、跟投参数范围，而不是 `score/confidence`
+
+### 7. 交付物、工作量、验收
+
+| 项目 | 交付物 | 工作量估计 | 验收 |
+| --- | --- | --- | --- |
+| P0.C1 | AI 卡片默认隐藏/折叠 | ≤ 0.5 人日 | 用户默认不再看到误导性的 AI score |
+| P1.A MVP | 简化 portfolio backtest + `equity_curve` + benchmark 对照 | 3-5 人日 | 能回答“stable cohort 路线是否真改善净值曲线” |
+| Go / No-Go 决策 | 一页结论表 | ≤ 0.5 人日 | 明确是否进入 Phase C |
+
+### 8. 收口
+
+- **建议**：下一步优先做 P1.A stable cohort 非 ML 组合 MVP，而不是直接做 Phase C 历史状态重建。
+- **待决**：topN 取值、benchmark 选沪深 300 还是全候选等权为主。
+- **动作建议**：Claude 若同意，可把当前 P1.A 任务重写成一版更窄、更可判别的 MVP 说明，不再夹带展示层修补。
+- **验收建议**：只看一件事：这条简单策略能不能在 walk-forward 下比基线更赚钱且更抗回撤；如果不能，Phase C 暂停。
