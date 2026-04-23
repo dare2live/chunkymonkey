@@ -1445,3 +1445,58 @@ async def get_industry_stats(institution_id: str = None):
         conn.close()
 
 
+
+@router.get("/industry/l2/{l2_name}")
+async def get_l2_profile(l2_name: str):
+    """L2 行业画像：summary + stable 机构列表 + 在仓股票列表。
+    
+    §29.3 顶层设计 W1 交付物。让前端能从机构详情页"擅长 L2"卡片
+    点击 L2 名字跳转到此端点展示弹窗。
+    """
+    conn = get_conn()
+    try:
+        # 1. summary
+        row = conn.execute(
+            "SELECT * FROM v_l2_profile WHERE l2_name = ?", (l2_name,)
+        ).fetchone()
+        if not row:
+            return {"ok": False, "message": f"L2 行业 '{l2_name}' 未找到"}
+        summary = dict(row)
+
+        # 2. stable/weak_positive 机构列表（按评分降序）
+        inst_rows = conn.execute("""
+            SELECT v.institution_id, ii.name inst_name, ii.type inst_type,
+                v.stable_score, v.verdict,
+                v.train_n, v.ho_n, v.ho_sharpe,
+                v.entry_lag, v.max_hold_days, v.stop_loss, v.take_profit
+            FROM v_institution_l2_score v
+            LEFT JOIN inst_institutions ii ON v.institution_id = ii.id
+            WHERE v.l2_name = ? AND v.verdict IN ('stable', 'weak_positive')
+            ORDER BY v.stable_score DESC
+        """, (l2_name,)).fetchall()
+        institutions = [dict(r) for r in inst_rows]
+
+        # 3. 该 L2 的在仓股票（当前任意机构持有）
+        #    连接 mart_current_relationship 和 dim_stock_tdx_industry
+        stock_rows = conn.execute("""
+            SELECT DISTINCT mcr.stock_code, mcr.stock_name,
+                COUNT(DISTINCT mcr.institution_id) n_holders,
+                SUM(CASE WHEN mcr.follow_gate = 'follow' THEN 1 ELSE 0 END) n_follow_holders
+            FROM mart_current_relationship mcr
+            JOIN dim_stock_tdx_industry ind ON mcr.stock_code = ind.stock_code
+            WHERE ind.tdx_l2_name = ?
+            GROUP BY mcr.stock_code, mcr.stock_name
+            ORDER BY n_follow_holders DESC, n_holders DESC
+            LIMIT 50
+        """, (l2_name,)).fetchall()
+        stocks = [dict(r) for r in stock_rows]
+
+        return {
+            "ok": True,
+            "l2_name": l2_name,
+            "summary": summary,
+            "institutions": institutions,
+            "stocks": stocks,
+        }
+    finally:
+        conn.close()

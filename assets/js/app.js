@@ -3239,6 +3239,30 @@
       html += '<div style="margin:8px 0"><button class="chip chip-outline chip-sm" onclick="App.toggleInstBreakdown(\'' + esc(instId) + '\')">评分拆解</button></div>' +
         '<div id="breakdown-' + esc(instId) + '" style="display:none"></div>';
 
+      // Layer B 擅长 L2 评分卡片（§29 顶层设计 W1 接入）
+      var lbSummary = r.layer_b_summary;
+      if (lbSummary && lbSummary.stable_l2_count > 0) {
+        html += '<div style="margin-bottom:14px;border:1px solid #bae6fd;border-radius:6px;padding:10px;background:#f0f9ff">' +
+          '<div style="font-size:12px;color:#0369a1;margin-bottom:6px"><b>Layer B 擅长 L2 评分</b> ' +
+          '<span style="color:#64748b;font-size:11px">(' + lbSummary.stable_l2_count + ' 稳定 / ' +
+          lbSummary.total_l2_with_score + ' 有评分 L2)</span></div>' +
+          '<div style="font-size:12px">';
+        (lbSummary.top_stable_l2 || []).forEach(function (l2) {
+          var sl = l2.stop_loss != null ? (Number(l2.stop_loss) * 100).toFixed(0) + '%' : '无';
+          var tp = l2.take_profit != null ? '+' + (Number(l2.take_profit) * 100).toFixed(0) + '%' : '无';
+          var score = l2.stable_score != null ? Number(l2.stable_score).toFixed(1) : '-';
+          var sharpe = l2.ho_sharpe != null ? Number(l2.ho_sharpe).toFixed(2) : '-';
+          html += '<div style="margin:4px 0;display:flex;align-items:center;gap:8px;flex-wrap:wrap">' +
+            '<a href="javascript:void(0)" onclick="App.showL2Profile(\'' + esc(l2.l2_name) + '\')" ' +
+               'style="color:#2563eb;font-weight:600;cursor:pointer;text-decoration:none">' + esc(l2.l2_name) + '</a>' +
+            '<span style="background:#10b981;color:white;padding:1px 8px;border-radius:3px;font-weight:600;font-size:11px">' + score + '</span>' +
+            '<span style="color:#64748b;font-size:11px">train=' + l2.train_n + ' / ho=' + l2.ho_n + ' / Sharpe=' + sharpe + '</span>' +
+            '<span style="color:#475569;font-size:11px">推荐 持仓' + l2.max_hold_days + 'd / 止损' + sl + ' / 止盈' + tp + '</span>' +
+            '</div>';
+        });
+        html += '</div></div>';
+      }
+
       // 行业分布 + 业绩表现
       var indSummary = r.industry_summary || [];
       if (indSummary.length) {
@@ -3374,6 +3398,73 @@
       '</div>' +
       metricsHtml + horizonHtml + industryHtml +
       '</div>';
+  }
+
+  async function showL2Profile(l2Name) {
+    // §29 W1：L2 行业画像弹窗（从机构详情页 Layer B 卡片点击触发）
+    var existing = document.getElementById('l2-profile-modal');
+    if (existing) existing.remove();
+    try {
+      var r = await api('/api/inst/industry/l2/' + encodeURIComponent(l2Name));
+      if (!r.ok) { alert('加载失败：' + (r.message || '')); return; }
+      var s = r.summary || {};
+      var html = '<div id="l2-profile-modal" style="position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.4);z-index:9999;display:flex;align-items:center;justify-content:center" onclick="if(event.target===this)this.remove()">' +
+        '<div style="background:white;border-radius:8px;padding:16px 18px;max-width:860px;width:92%;max-height:85vh;overflow:auto;position:relative;box-shadow:0 10px 40px rgba(0,0,0,0.2)">' +
+        '<button onclick="this.closest(\'#l2-profile-modal\').remove()" style="position:absolute;top:8px;right:12px;background:none;border:none;font-size:22px;cursor:pointer;color:#64748b;line-height:1">×</button>' +
+        '<h3 style="margin:0 0 10px;color:#1e293b;font-size:16px">' + esc(l2Name) + ' <span style="font-size:12px;color:#64748b;font-weight:normal">L2 行业画像</span></h3>' +
+        '<div style="font-size:12px;color:#475569;margin-bottom:14px;padding:8px 10px;background:#f8fafc;border-radius:4px">' +
+          '<span style="margin-right:16px">股票数 <b>' + (s.n_stocks != null ? s.n_stocks : '-') + '</b></span>' +
+          '<span style="margin-right:16px">有评分机构 <b>' + (s.n_insts_with_score != null ? s.n_insts_with_score : '-') + '</b></span>' +
+          '<span style="margin-right:16px;color:#10b981">stable <b>' + (s.n_stable || 0) + '</b></span>' +
+          '<span style="margin-right:16px;color:#f59e0b">weak <b>' + (s.n_weak_positive || 0) + '</b></span>' +
+          '<span style="color:#ef4444">overfit <b>' + (s.n_overfit || 0) + '</b></span>' +
+          (s.top_score != null ? '<span style="margin-left:16px">最高评分 <b>' + s.top_score + '</b></span>' : '') +
+          (s.avg_stable_score != null ? '<span style="margin-left:16px">稳定平均 <b>' + s.avg_stable_score + '</b></span>' : '') +
+          '</div>';
+      html += '<h4 style="margin:10px 0 6px;font-size:13px;color:#334155">📊 稳定 / 弱正机构（按评分降序）</h4>';
+      if (r.institutions && r.institutions.length) {
+        html += '<table class="data-table" style="font-size:12px;width:100%"><thead><tr>' +
+          '<th style="text-align:left">机构</th><th>类型</th><th>评分</th><th>判定</th>' +
+          '<th>train n</th><th>ho n</th><th>ho Sharpe</th><th>推荐参数</th></tr></thead><tbody>';
+        r.institutions.forEach(function (i) {
+          var sl = i.stop_loss != null ? (Number(i.stop_loss) * 100).toFixed(0) + '%' : '无';
+          var tp = i.take_profit != null ? '+' + (Number(i.take_profit) * 100).toFixed(0) + '%' : '无';
+          var vColor = i.verdict === 'stable' ? '#10b981' : '#f59e0b';
+          html += '<tr>' +
+            '<td><a href="javascript:void(0)" onclick="document.getElementById(\'l2-profile-modal\').remove();App.toggleInstDetail(\'' +
+              esc(i.institution_id) + '\')" style="color:#2563eb;cursor:pointer">' + esc(i.inst_name || i.institution_id) + '</a></td>' +
+            '<td>' + esc(i.inst_type || '-') + '</td>' +
+            '<td style="font-weight:600;text-align:center">' + (i.stable_score != null ? Number(i.stable_score).toFixed(1) : '-') + '</td>' +
+            '<td style="text-align:center"><span style="color:' + vColor + ';font-weight:600">' + esc(i.verdict || '') + '</span></td>' +
+            '<td style="text-align:center">' + (i.train_n != null ? i.train_n : '-') + '</td>' +
+            '<td style="text-align:center">' + (i.ho_n != null ? i.ho_n : '-') + '</td>' +
+            '<td style="text-align:center">' + (i.ho_sharpe != null ? Number(i.ho_sharpe).toFixed(2) : '-') + '</td>' +
+            '<td style="font-size:11px;color:#475569">持仓' + (i.max_hold_days || '-') + 'd / 止损' + sl + ' / 止盈' + tp + '</td></tr>';
+        });
+        html += '</tbody></table>';
+      } else {
+        html += '<div style="color:#94a3b8;font-size:12px">暂无稳定机构</div>';
+      }
+      html += '<h4 style="margin:14px 0 6px;font-size:13px;color:#334155">📈 在仓股票（按 follow 机构数降序，Top 50）</h4>';
+      if (r.stocks && r.stocks.length) {
+        html += '<table class="data-table" style="font-size:12px;width:100%"><thead><tr>' +
+          '<th style="text-align:left">代码</th><th style="text-align:left">名称</th>' +
+          '<th>持仓机构</th><th>follow 机构</th></tr></thead><tbody>';
+        r.stocks.forEach(function (st) {
+          html += '<tr>' +
+            '<td>' + esc(st.stock_code) + '</td>' +
+            '<td>' + esc(st.stock_name || '-') + '</td>' +
+            '<td style="text-align:center">' + (st.n_holders || 0) + '</td>' +
+            '<td style="text-align:center">' + ((st.n_follow_holders || 0) > 0 ?
+              '<b style="color:#10b981">' + st.n_follow_holders + '</b>' : '0') + '</td></tr>';
+        });
+        html += '</tbody></table>';
+      }
+      html += '</div></div>';
+      document.body.insertAdjacentHTML('beforeend', html);
+    } catch (e) {
+      alert('加载失败：' + (e && e.message ? e.message : e));
+    }
   }
 
   async function toggleInstBreakdown(instId) {
@@ -7162,7 +7253,7 @@
       if (polls > 120) { clearInterval(timer); btn.disabled = false; btn.textContent = '救生艇'; }
     }, 3000);
   }
-  window.App = { saveModuleSettings, showView, setAlias, setType, toggleBlack, deleteInst, restoreInst, toggleInstDetail, toggleInstBreakdown, toggleStockDetail, switchInstDim, switchStockDim, runSingleStep, loadWatchlist, loadExclusions, refreshNetwork, _api: api };
+  window.App = { saveModuleSettings, showView, setAlias, setType, toggleBlack, deleteInst, restoreInst, toggleInstDetail, toggleInstBreakdown, showL2Profile, toggleStockDetail, switchInstDim, switchStockDim, runSingleStep, loadWatchlist, loadExclusions, refreshNetwork, _api: api };
   if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', startInit, { once: true });
   } else {
