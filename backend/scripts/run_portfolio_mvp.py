@@ -150,11 +150,13 @@ def simulate_portfolio(
     max_per_inst: int = 3,
     max_per_l2: int = 4,
     policy_filter: Optional[callable] = None,
+    sleeve_filter: Optional[callable] = None,
     default_params: Optional[dict] = None,
 ) -> dict:
     """portfolio simulator。
 
     events：候选事件；policy_filter：每个事件返回 True/False 是否进入候选
+    sleeve_filter：若提供，则通过的事件享有当日 topN 优先填充权（overlay / sleeve 语义）
     默认 cohort 最优参数若缺失用 default_params
     """
     default_params = default_params or {"entry_lag": 1, "max_hold_days": 20, "stop_loss": -0.10, "take_profit": 0.20}
@@ -177,12 +179,21 @@ def simulate_portfolio(
     for day in trading_days:
         # 1. 今日到期事件触发建仓
         today_evs = events[events["notice_dash"] == day]
-        if policy_filter is not None:
+        if sleeve_filter is not None:
+            # overlay 语义：sleeve 事件先填充，剩余名额给 core（policy_filter）
+            sleeve_mask = today_evs.apply(sleeve_filter, axis=1) if not today_evs.empty else pd.Series([], dtype=bool)
+            core_mask = today_evs.apply(policy_filter, axis=1) if (policy_filter and not today_evs.empty) else sleeve_mask.copy().map(lambda _: True) if not today_evs.empty else pd.Series([], dtype=bool)
+            sleeve_evs = today_evs[sleeve_mask]
+            core_evs = today_evs[core_mask & ~sleeve_mask]
+            if "stable_score" in sleeve_evs.columns:
+                sleeve_evs = sleeve_evs.sort_values("stable_score", ascending=False, na_position="last")
+            # core 保持 notice_date 先来先到（稳定可复现）
+            core_evs = core_evs.sort_values("notice_date")
+            today_evs = pd.concat([sleeve_evs, core_evs], ignore_index=False)
+        elif policy_filter is not None:
             today_evs = today_evs[today_evs.apply(policy_filter, axis=1)]
-
-        # topN 限制：按 stable_score 降序
-        if "stable_score" in today_evs.columns:
-            today_evs = today_evs.sort_values("stable_score", ascending=False, na_position="last")
+            if "stable_score" in today_evs.columns:
+                today_evs = today_evs.sort_values("stable_score", ascending=False, na_position="last")
         candidates = today_evs.head(top_n).to_dict("records")
 
         for ev in candidates:
@@ -431,14 +442,8 @@ def main():
 
         run_id = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
         results = {}
-        for name, pf in [("stable_cohort_pit", policy_stable),
-                         ("all_events_equal", policy_equal),
-                         ("random_half", policy_random)]:
-            logger.info("==== %s ====", name)
-            r = simulate_portfolio(events, prices, trading_days,
-                                   initial_capital=1e7, top_n=args.top_n,
-                                   policy_filter=pf)
-            m = evaluate(r)
+
+        def _log_row(name, m):
             logger.info("%s: n_trades=%d CAGR=%.2f%% MaxDD=%.2f%% Calmar=%.2f Sharpe=%.2f PF=%s WR=%s turnover=%.2f final=%s",
                         name, m["n_trades"],
                         (m["cagr"] or 0) * 100, (m["max_drawdown"] or 0) * 100,
@@ -447,7 +452,27 @@ def main():
                         f"{m['profit_factor']:.2f}" if m["profit_factor"] not in (None, float("inf")) else "-",
                         f"{(m['win_rate'] or 0)*100:.1f}%", m["turnover"] or 0,
                         f"{m['final_equity']/1e7:.3f}x")
+
+        for name, pf in [("stable_cohort_pit", policy_stable),
+                         ("all_events_equal", policy_equal),
+                         ("random_half", policy_random)]:
+            logger.info("==== %s ====", name)
+            r = simulate_portfolio(events, prices, trading_days,
+                                   initial_capital=1e7, top_n=args.top_n,
+                                   policy_filter=pf)
+            m = evaluate(r)
+            _log_row(name, m)
             results[name] = (r, m)
+
+        # δ overlay：core (all_events_equal) + sleeve (stable_cohort_pit) 优先填充
+        logger.info("==== core_plus_overlay ====")
+        r_overlay = simulate_portfolio(events, prices, trading_days,
+                                       initial_capital=1e7, top_n=args.top_n,
+                                       policy_filter=policy_equal,
+                                       sleeve_filter=policy_stable)
+        m_overlay = evaluate(r_overlay)
+        _log_row("core_plus_overlay", m_overlay)
+        results["core_plus_overlay"] = (r_overlay, m_overlay)
 
         # 沪深 300 对照
         hs300 = prices.get("510300")

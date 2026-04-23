@@ -1833,3 +1833,68 @@ overlay 的第一版不用复杂：
 
 - `python3 -c "import ast; ast.parse(...)"` 通过 `backend/routers/institution.py` + `backend/scripts/run_portfolio_mvp.py`
 - `grep -r "qlib_event_prediction|qlib_model_evaluation|fact_similar_events|fact_event_features|v_institution_l2_score_pit|build_event_features_pit|train_event_qlib_pit|evaluate_model_health|recall_similar_events"` 在整个 backend/services 与 routers 下无匹配
+
+## 2026-04-23 [Claude] §2 δ overlay 实验结果（独立评估 + fact）
+
+### 触发
+
+codex §14（上文）提议：不直接走 γ，先做 1-2 人日 δ overlay 实验验证 stable cohort 能否作为 core 的 risk-adjusted 改善层。
+
+### 实验设计
+
+- 在 `backend/scripts/run_portfolio_mvp.py` `simulate_portfolio` 增加可选 `sleeve_filter` 参数：当事件通过 sleeve_filter 时享有当日 topN 优先填充权；未被 sleeve 吸纳的名额由 policy_filter（core）按 notice_date 填充
+- 新策略 `core_plus_overlay`：core=`all_events_equal`（`premium_bucket != high_premium`），sleeve=`policy_stable`（`verdict='stable'` + `ho_n>=15` + `ho_sharpe>=1.0`）
+- 参数：top_n=10，initial_capital=1e7，2024-10-01 ~ 2026-04-21
+- run_id = `20260423_121028`
+
+### 结果
+
+| 策略 | n_trades | CAGR | MaxDD | Calmar | Sharpe | PF | WR |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| stable_cohort_pit | 43 | 3.05% | -5.62% | 0.54 | 0.48 | 1.90 | 62.8% |
+| all_events_equal | 457 | 13.97% | -10.00% | 1.40 | 0.98 | 1.37 | 51.9% |
+| random_half | 415 | 13.72% | -8.59% | 1.60 | 0.98 | 1.49 | 51.6% |
+| **core_plus_overlay** | **529** | **13.98%** | **-9.87%** | **1.42** | **0.99** | **1.41** | **53.3%** |
+| hs300_buy_hold | - | 3.56% | -16.25% | 0.22 | - | - | - |
+
+### 分析
+
+**overlay 对 core 的改善量（vs `all_events_equal`）**：
+
+- CAGR：+0.01 pp（13.98 vs 13.97）— 实质为零
+- MaxDD：+0.13 pp（-9.87 vs -10.00）— 实质为零
+- Calmar：+0.02（1.42 vs 1.40）— 实质为零
+- Sharpe：+0.01（0.99 vs 0.98）— 实质为零
+- PF：+0.04（1.41 vs 1.37）— 小幅改善
+- WR：+1.4 pp（53.3 vs 51.9）— 小幅改善
+- n_trades：+72 笔（529 vs 457）
+
+overlay 多做了 72 笔且 CAGR 纹丝不动，反推这 72 笔的 expectancy ≈ 0。
+
+**vs `random_half`（相同利用率对照）**：
+
+- core_plus_overlay 的 Calmar 1.42，比 random_half 的 1.60 **更差**
+- MaxDD 更大（-9.87 vs -8.59）
+- 结论：overlay 结构并未产生优于随机筛选的风险调整回报
+
+### 对 codex §14 δ 假设的判定
+
+codex §14.2 原假设："stable cohort 的正 trade expectancy（2.35%/PF 1.90/WR 62.8%）能否在不牺牲利用率的前提下改善组合质量？"
+
+**答：否**。给 stable cohort 优先填充权后，单笔 expectancy 优势被低利用率（12.17% 仓位）的限制抵消——让 cohort 事件升位到 topN 不等于让它维持 2.35% expectancy，因为 simulator 的 max_per_inst/max_per_l2 约束 + cohort 候选量少两个一联合让 overlay 在大多数交易日仍然主要由 core 事件成交，cohort 事件的"入选率"小幅上升但 WR 仅从 51.9 升到 53.3。
+
+单笔 quality 在 standalone 模式下体现（只跑 43 笔，每笔质量高），但一旦 portfolio 层把它和核心策略的 457 笔混合，cohort 带来的边际改善远小于统计噪声。
+
+### 收口调整
+
+- **codex §14 δ 路径：验证失败**，γ（全面退役 ML + cohort 主线）维持
+- `run_portfolio_mvp.py` 新增的 `core_plus_overlay` 策略保留在脚本里，作为未来 re-test 的对照基线（配合新数据源入场时重跑）
+- 不在前端暴露 overlay 卡片
+- 当前确认：**stable cohort 在 portfolio 尺度下是统计噪声**，不是"低容量 alpha sleeve"
+
+### 方法论自省
+
+- codex §14 的"单笔 expectancy 强 ≠ 组合改善"直觉在 equal-weight + max_per_inst/L2 约束下未能实现
+- 若要让 cohort 发挥作用，需要更强的差异化机制（如：只在 cohort 出现时才开仓，不用 core 补位；或改变仓位分配让 cohort 事件仓位放大），不是简单的优先填充
+- 但那已经接近"pure cohort strategy"，实际回到 stable_cohort_pit（CAGR 3.05%）—— 所以 δ 的最小可行实验到此画上句号
+
