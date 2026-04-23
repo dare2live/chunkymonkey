@@ -3543,6 +3543,9 @@
     var overall = m.overall_score;
     var ovColor = overall == null ? '#94a3b8' : overall >= 60 ? '#10b981' : overall >= 40 ? '#f59e0b' : '#ef4444';
     var html = '<div style="margin:10px 0;border:1px solid #c7d2fe;border-radius:6px;padding:12px;background:linear-gradient(180deg,#f5f3ff 0%,#fff 100%)">' +
+      '<div style="background:#fee2e2;border:1px solid #fca5a5;color:#991b1b;padding:6px 10px;border-radius:4px;font-size:12px;margin-bottom:10px;font-weight:600">' +
+      'demo 级评分 · 历史数据含 lookahead bias（P0.1 修复中） · 不可作为实盘决策依据' +
+      '</div>' +
       '<div style="display:flex;align-items:center;margin-bottom:10px">' +
       '<b style="font-size:13px;color:#4c1d95">五维画像评分</b>' +
       '<span style="margin-left:10px;font-size:11px;color:#64748b">§29.4 首版（公式未经回测校准）</span>';
@@ -3633,6 +3636,9 @@
       : '';
 
     var html = '<div style="margin:10px 0;border:1px solid #d1fae5;border-radius:6px;padding:12px;background:linear-gradient(180deg,#f0fdf4 0%,#fff 100%)">';
+    html += '<div style="background:#fee2e2;border:1px solid #fca5a5;color:#991b1b;padding:6px 10px;border-radius:4px;font-size:12px;margin-bottom:8px;font-weight:600">' +
+      'demo 级 AI 评分 · 特征与评估含 lookahead bias（P0.1 修复中） · Optuna 直接在 holdout 调参（P0.2 修复中） · 不可作为实盘决策依据' +
+      '</div>';
     html += '<div style="display:flex;align-items:baseline;margin-bottom:8px;gap:10px;flex-wrap:wrap">' +
       '<b style="font-size:13px;color:#047857">AI 事件评分（§29.5 Layer D）</b>' +
       '<span style="font-size:11px;color:#6b7280">model: ' + esc(ep.model_id || '-') + '</span>' +

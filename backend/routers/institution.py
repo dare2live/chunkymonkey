@@ -881,6 +881,13 @@ def compute_stock_multidim_score(conn, stock_code: str) -> dict:
         "resonance_score": None, "margin_score": None, "forecast_score": None,
         "survey_score": None, "stage_score": None, "overall_score": None,
         "components": {}, "notes": "首版公式未经回测校准（§29.4）",
+        # P0.A（2026-04-23）：明确标记污染状态，前端须展示 banner
+        "contamination_warning": "demo_only_lookahead_uncorrected",
+        "contamination_details": {
+            "source": "fact_event_features + multidim 公式",
+            "issue": "F3/F4/F5/F7 用最新快照；Layer B/mart_institution_profile 无 snapshot_date；stage 公式方向反",
+            "remediation": "见讨论文档 §1 P0.1/P0.3",
+        },
     }
 
     # F1 机构共振
@@ -1706,12 +1713,24 @@ async def list_event_predictions(
             "FROM qlib_model_evaluation WHERE model_id = ?",
             (model_id,),
         ).fetchall()
+        # P0.A（2026-04-23）：污染警告
+        contamination = {
+            "contamination_warning": "demo_only_lookahead_uncorrected",
+            "contamination_details": {
+                "source": "fact_event_features 特征矩阵",
+                "issue": "stage/quality/forecast/survey 用最新快照（非事件日前快照）；"
+                         "mart_institution_profile/v_institution_l2_score/research_inst_industry_performance "
+                         "无 snapshot_date；Optuna 直接在 holdout 调参",
+                "remediation": "见讨论文档 §1 P0.1/P0.2",
+            },
+        }
         return {
             "ok": True,
             "model_id": model_id,
             "evaluation": [dict(r) for r in eval_rows],
             "items": items,
             "count": len(items),
+            **contamination,
         }
     finally:
         conn.close()
