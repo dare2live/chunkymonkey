@@ -253,13 +253,16 @@ def simulate_portfolio(
     policy_filter: Optional[callable] = None,
     sleeve_filter: Optional[callable] = None,
     default_params: Optional[dict] = None,
+    cost_bps_one_way: float = 0.0,
 ) -> dict:
     """portfolio simulator。
 
     events：候选事件；policy_filter：每个事件返回 True/False 是否进入候选
     sleeve_filter：若提供，则通过的事件享有当日 topN 优先填充权（overlay / sleeve 语义）
+    cost_bps_one_way：单边成本（以 basis points, 15 = 0.15%）。买卖两次都扣。
     默认 cohort 最优参数若缺失用 default_params
     """
+    cost_frac = cost_bps_one_way / 10000.0
     default_params = default_params or {"entry_lag": 1, "max_hold_days": 20, "stop_loss": -0.10, "take_profit": 0.20}
 
     # 事件按 notice_date 排序
@@ -320,9 +323,11 @@ def simulate_portfolio(
             entry_date = future_dates[lag]
             if entry_date > trading_days[-1]:
                 continue
-            entry_price = float(code_px.loc[entry_date, "close"])
-            if pd.isna(entry_price) or entry_price <= 0:
+            entry_price_raw = float(code_px.loc[entry_date, "close"])
+            if pd.isna(entry_price_raw) or entry_price_raw <= 0:
                 continue
+            # 交易成本：买入端 slippage/fee 推高实际成本价
+            entry_price = entry_price_raw * (1 + cost_frac)
             alloc = min(max_per_position, cash * 0.1)  # 单笔占 10% cash 或 cap
             if alloc < 1000:
                 continue
@@ -377,6 +382,8 @@ def simulate_portfolio(
                 exit_reason = "max_hold"
                 exit_price = close
             if exit_reason:
+                # 卖出端 slippage/fee 压低实际卖出价
+                exit_price = exit_price * (1 - cost_frac)
                 pnl_pct = exit_price / pos["entry_price"] - 1
                 cash += pos["shares"] * exit_price
                 total_transacted += pos["shares"] * exit_price
@@ -412,7 +419,7 @@ def simulate_portfolio(
         valid_dates = code_px.index[code_px.index <= last_day]
         if len(valid_dates) == 0:
             continue
-        exit_price = float(code_px.loc[valid_dates[-1], "close"])
+        exit_price = float(code_px.loc[valid_dates[-1], "close"]) * (1 - cost_frac)
         pnl_pct = exit_price / pos["entry_price"] - 1
         cash += pos["shares"] * exit_price
         trades.append({
@@ -502,6 +509,8 @@ def main():
     parser.add_argument("--start", default="20241001", help="Portfolio 回测期起点 YYYYMMDD")
     parser.add_argument("--end", default="20260421", help="Portfolio 回测期终点 YYYYMMDD")
     parser.add_argument("--top-n", type=int, default=10)
+    parser.add_argument("--cost-bps", type=float, default=0.0,
+                        help="单边交易成本 bps（15 = 0.15%，典型 A 股 one-way 含佣金+印花税+impact）")
     parser.add_argument("--dry-run", action="store_true")
     args = parser.parse_args()
 
@@ -560,7 +569,8 @@ def main():
             logger.info("==== %s ====", name)
             r = simulate_portfolio(events, prices, trading_days,
                                    initial_capital=1e7, top_n=args.top_n,
-                                   policy_filter=pf)
+                                   policy_filter=pf,
+                                   cost_bps_one_way=args.cost_bps)
             m = evaluate(r)
             _log_row(name, m)
             results[name] = (r, m)
@@ -570,7 +580,8 @@ def main():
         r_overlay = simulate_portfolio(events, prices, trading_days,
                                        initial_capital=1e7, top_n=args.top_n,
                                        policy_filter=policy_equal,
-                                       sleeve_filter=policy_stable)
+                                       sleeve_filter=policy_stable,
+                                       cost_bps_one_way=args.cost_bps)
         m_overlay = evaluate(r_overlay)
         _log_row("core_plus_overlay", m_overlay)
         results["core_plus_overlay"] = (r_overlay, m_overlay)
@@ -594,7 +605,8 @@ def main():
             r_lhb = simulate_portfolio(lhb_events, prices, trading_days,
                                        initial_capital=1e7, top_n=args.top_n,
                                        max_per_inst=1, max_per_l2=4,
-                                       policy_filter=lambda r: True)
+                                       policy_filter=lambda r: True,
+                                       cost_bps_one_way=args.cost_bps)
             m_lhb = evaluate(r_lhb)
             _log_row(pname, m_lhb)
             results[pname] = (r_lhb, m_lhb)
@@ -626,7 +638,8 @@ def main():
             r_ex = simulate_portfolio(exec_events, prices, trading_days,
                                       initial_capital=1e7, top_n=args.top_n,
                                       max_per_inst=1, max_per_l2=4,
-                                      policy_filter=lambda r: True)
+                                      policy_filter=lambda r: True,
+                                      cost_bps_one_way=args.cost_bps)
             m_ex = evaluate(r_ex)
             _log_row(pname, m_ex)
             results[pname] = (r_ex, m_ex)
