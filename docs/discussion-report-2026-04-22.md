@@ -752,13 +752,13 @@ quality_score = Σ(percentile_rank(metric_i) × weight_i) × confidence_factor
 
 本项目真正的进展衡量不是"有多少指标、字段、模型、评分"，而是**"用户按系统推荐跟投后，是否真的赚到钱并控制住了回撤"**。在产出 `fact_institution_follow_backtest` 并用回测数据驱动漏斗阈值之前，所有评分权重调整、composite 公式改造、Qlib 标签重训，都是**方向可能对但证据不足的中间工作**。系统需要的下一步不是更多参数，而是**一张能直接告诉用户"跟这家机构过去能赚多少、亏多少"的回测表**。
 
-## 15. 补充实验：不改代码，用真实数据仿真“把机构评分接入整体评分架构”后的影响
+## 16. 补充实验：不改代码，用真实数据仿真“把机构评分接入整体评分架构”后的影响
 
 日期：2026-04-23
 
 这一节回答一个更具体的问题：如果不改任何源码，只用当前真实库数据，按现有 `scoring.py` 的后半段规则把机构评分真正接入 legacy 综合评分链，结果到底会不会变，变化有多大。
 
-### 15.1 实验目的与约束
+### 16.1 实验目的与约束
 
 本实验刻意遵守三个约束：
 
@@ -768,7 +768,7 @@ quality_score = Σ(percentile_rank(metric_i) × weight_i) × confidence_factor
 
 因此，这不是"新方案上线效果"，而是"在当前架构内最保守地把机构评分接上以后，legacy 综合分 / 池子 / gate 会受到多大影响"的只读仿真。
 
-### 15.2 仿真假设与口径
+### 16.2 仿真假设与口径
 
 本轮仿真采用以下口径：
 
@@ -786,7 +786,7 @@ quality_score = Σ(percentile_rank(metric_i) × weight_i) × confidence_factor
 
 这个口径的意义是：只回答"机构分接入当前 legacy 综合评分架构后会怎样"，不回答"未来新的 `primary_action` 应该怎么设计"。后者已经在 Phase 3 / Phase 4 文档里讨论。
 
-### 15.3 基线校验：仿真没有偏离当前实现
+### 16.3 基线校验：仿真没有偏离当前实现
 
 在跑接入仿真之前，先用库里的现有字段按上述 helper 重算一次当前 legacy `priority_pool` 和 legacy `stock_gate`。结果是：
 
@@ -795,7 +795,7 @@ quality_score = Σ(percentile_rank(metric_i) × weight_i) × confidence_factor
 
 也就是说，本节仿真不是拍脑袋估算，而是建立在"现有规则可以被准确复算"这一前提上，可信度足够高。
 
-### 15.4 当前真实覆盖情况
+### 16.4 当前真实覆盖情况
 
 当前真实库的覆盖情况如下：
 
@@ -807,7 +807,7 @@ quality_score = Σ(percentile_rank(metric_i) × weight_i) × confidence_factor
 
 这组数字本身就说明一个关键事实：**当前 legacy 综合评分体系与机构评分几乎是脱钩的。** 如果它们本来是同一条主链，A/B/C/D 池在机构聚合分上不应该几乎没有梯度。
 
-### 15.5 基线分布
+### 16.5 基线分布
 
 当前 legacy `priority_pool` / legacy `stock_gate` 的基线分布为：
 
@@ -818,7 +818,7 @@ quality_score = Σ(percentile_rank(metric_i) × weight_i) × confidence_factor
 
 注意，这一节讨论的是写层 legacy gate，不是当前 `institution.py` 活跃路由按 MCR 聚合出来的用户可见 gate。
 
-### 15.6 仿真结果：15% 权重接入
+### 16.6 仿真结果：15% 权重接入
 
 把机构聚合分以 `15%` 权重接入 current raw composite 后，结果如下：
 
@@ -834,7 +834,7 @@ quality_score = Σ(percentile_rank(metric_i) × weight_i) × confidence_factor
 
 这个结果说明：即使只做最保守的 `15%` 接入，结果也绝不是"几乎不变"。只要机构评分真正进入综合分主链，约一成的股票池子 / 档位会发生变化。
 
-### 15.7 仿真结果：30% 权重接入
+### 16.7 仿真结果：30% 权重接入
 
 把机构聚合分以 `30%` 权重接入 current raw composite 后，结果进一步放大：
 
@@ -851,7 +851,7 @@ quality_score = Σ(percentile_rank(metric_i) × weight_i) × confidence_factor
 
 这个结果也解释了为什么 A池 / `follow` 档收缩极快：当前很多高 composite 股票本来就在 `80+` 分附近，而股票级机构聚合分的中心区间只有 `50-60` 分。一旦把后者真正接进 raw composite，很多原来由 discovery / quality / stage / forecast 拉起来的高分股会发生明显的均值回归。
 
-### 15.8 这组实验说明了什么
+### 16.8 这组实验说明了什么
 
 这组只读实验支持四个结论：
 
@@ -860,7 +860,7 @@ quality_score = Σ(percentile_rank(metric_i) × weight_i) × confidence_factor
 3. **如果以后要把机构评分接入 legacy composite，不能只做权重接线，还要重做池子阈值治理。** 否则会出现 `follow / A池` 大幅缩容，而这既可能是修正，也可能是简单的均值回归副作用。
 4. **Phase 3 里提出的 `primary_action` 新字段路线是有必要的。** 因为如果直接把机构分硬塞回当前 legacy composite，会产生真实影响，但影响形态更像"把 stock-centric 系统往 institution-first 硬扳"，不一定是最优结构。
 
-### 15.9 重要边界：为什么当前用户主列表仍然不会变
+### 16.9 重要边界：为什么当前用户主列表仍然不会变
 
 必须单独强调一件事：本节仿真改变的是**写层 legacy 综合分语义**，不是当前用户主列表的实际展示结果。
 
@@ -871,8 +871,237 @@ quality_score = Σ(percentile_rank(metric_i) × weight_i) × confidence_factor
 
 换句话说，本节实验说明的是：**把机构评分接入评分主链会显著改变 legacy 综合结论；但在当前主仓实现里，这仍然不会自动传导到用户主列表。** 这也再次证明，当前真正的问题不是单个权重，而是"评分主链"与"活跃展示主链"是两条不同的链。
 
-### 15.10 本节结论
+### 16.10 本节结论
 
 如果只问一句话，本节结论可以写成：
 
 **用真实数据做只读仿真后可以确认，把机构评分真正接入当前 legacy 综合评分架构并不会得到"几乎没影响"的结果；相反，它会对约 10% 到 18% 的股票池子 / 档位产生实质影响。当前之所以补跑机构评分后用户侧几乎看不到变化，根本原因仍然是架构脱钩，而不是机构评分没有辨识力。**
+---
+
+## 17. Qlib 条件概率建模设计：机构×L2 行业、追高惩罚与多任务评级（2026-04-23）
+
+这一节是对用户三个具体诉求的正面回答：
+
+1. 机构擅长的 L2 行业，系统是否已经解决？
+2. "机构可跟 + 画像可跟，但股价较报告期涨幅大"这种追高情形，胜率/收益是否做过回测？是否体现差异？
+3. 充分利用 Qlib 各种能力（Alpha158、Handler 扩展、多任务、SHAP、回测）设计评级预测。
+
+### 17.1 诉求一的现状核查：机构×L2 擅长行业
+
+`Shared DB current state` + `Mainline current state`
+
+数据侧**已经解决**，但决策链未消费。事实：
+
+- `research_inst_industry_performance` 表存在，已有 L1 1338 行、L2 **3003 行**、L3 2223 行，覆盖 221 家机构 × 13/56/76 个行业。
+- 该表有完整字段：`buy_event_count`、`avg_gain_*d`、`win_rate_*d`、`avg_max_drawdown_*d`、`avg_premium_pct`、`low_premium_win_rate_30d`、`high_premium_win_rate_30d`、`industry_edge_30d`。
+- `mart_institution_industry_stat` 是同源展示表，填充完整。
+- **grep 结果**：`signals_v2.py` 对上述表名与字段零引用。`scoring.py` 仅用 `industry_edge_30d` 作为机构层百分位归一化一项，不用于事件级决策。
+
+**判定**：诉求一是"加工完成但决策链未接入"。修复成本低——signals_v2 只需新增一次查询并在硬规则里加一条"同机构同当前股票 L2 历史胜率低于阈值则 skip/降级"。
+
+### 17.2 诉求二的现状核查：追高情形已回测过，但系统未分层使用
+
+`Shared DB current state`
+
+用真实数据验证用户假设：**同机构同行业里，低位入场 vs 追高入场的胜率、收益、回撤差异是否显著？**
+
+实证 1：全部 new_entry + increase 事件按 `premium_bucket` 分层（29 678 样本）：
+
+| premium_bucket | 样本数 | 60日胜率 | 60日平均收益 | 60日回撤 |
+| --- | --- | --- | --- | --- |
+| discount（溢价 -17.39%） | 15 791 | **52.2%** | **+4.87%** | -18.12% |
+| near_cost（-0.40%） | 6 197 | 50.4% | +3.52% | -16.69% |
+| premium（+9.47%） | 3 492 | 46.6% | +2.97% | -18.60% |
+| high_premium（+34.39%） | 4 198 | **39.8%** | **+1.05%** | **-23.91%** |
+
+从低到高单调劣化。低位入场比追高入场胜率高 12.4 个百分点、平均收益高 3.82 个百分点、回撤小 5.79 个百分点。
+
+实证 2：限定"机构×L2 擅长行业"样本（`buy_event_count ≥ 5`，L2 层 941 个组合）：
+
+| 统计维度 | low_premium 胜率 | high_premium 胜率 | 差值 |
+| --- | --- | --- | --- |
+| 机构×L2 层组合均值 | **52.7%** | **26.9%** | **25.8 pp** |
+
+机构在其擅长的 L2 行业里，**低溢价事件胜率 52.7%**，**高溢价事件胜率只有 26.9%**——差距比全市场更大。用户的假设"追高就该降级"被数据完全佐证。
+
+**系统当前怎么用这个事实**：
+
+- `signals_v2` 的硬规则是 `premium_pct > 15% → skip`，单一硬阈值。
+- 没有按机构分层：该机构在该 L2 行业历史高溢价胜率多少，当前事件是否例外，统统不问。
+- 没有按行业分层：某个机构的消费板块高溢价事件可能胜率 40%，半导体板块可能 20%，硬规则一刀切。
+
+**判定**：诉求二"数据已证但系统未用"。这是 §15 核心观点的又一个实例——指标加工完但决策路径不消费。
+
+### 17.3 诉求三：Qlib 当前能力盘点
+
+`Mainline current state`
+
+已使用：
+
+- **Alpha158**（技术面 158 因子）作为 base handler
+- **自定义因子注入** `_inject_custom_factors_into_handler`，当前已注入：`inst_count_t0/t1/t2`、`inst_trend`、`inst_hold_ratio`、`inst_hold_ratio_change`、`inst_hold_market_cap`、`inst_hold_market_cap_change`——全部是**股票维度的机构持仓聚合量**，没有机构个体特征，没有机构×行业交互特征
+- **LightGBM** 回归训练
+- **Topk-Dropout** 策略回测（`qlib_backtest_result`，含 Sharpe/Calmar/MaxDD）
+- **单任务 label**：`Ref($close, -2)/Ref($close, -1) - 1`（next-day 截面）
+
+未使用但可用：
+
+- **机构×L2 交互特征**（`research_inst_industry_performance` 已有数据）
+- **事件级特征**（premium_bucket、event_type、notice_lag、inst_ref_cost）
+- **阶段特征**（`fact_stock_stage_features` 已算出 dist_ma250_pct、return_1m/3m/6m、above_ma250，尚未注入 Qlib）
+- **多任务**（目前单 label，可扩成 classification + regression 多头）
+- **SHAP 可解释性**（LightGBM 原生支持，前端尚未接入）
+- **Calibration**（Platt/Isotonic，LightGBM 输出转为可解释概率）
+- **分群/层级模型**（按机构类型/行业分桶微调，qlib 不阻止）
+
+### 17.4 设计方案：条件概率评级模型
+
+设计目标：**让模型回答"给定这家机构在这个 L2 行业用这个溢价档位、此时介入，未来 20 日赚钱/回撤是多少、置信度多高"**，而不是"哪只股票在截面上排前 50"。
+
+#### 17.4.1 样本单元与标签
+
+**样本单元**：`(institution_id, stock_code, event_date)` 三元组。
+
+- 每一条机构持仓披露事件都是一个训练样本
+- 事件日 = `notice_date`（披露日，用户可见起点）
+- 特征在事件日前（t-1）截断，避免 lookahead
+- 标签在事件日后 20 交易日测量（`notice_date + 20d`）
+
+**多任务标签**（三头并行）：
+
+| 头 | 类型 | 定义 |
+| --- | --- | --- |
+| Head-A: `action_label` | 分类（3 类） | follow = 20d forward return ≥ +8% AND maxdd ≥ -8%；avoid = forward return ≤ -5% OR maxdd ≤ -15%；watch = 其他 |
+| Head-B: `forward_ret_20d` | 回归 | 20日前复权收盘价收益率 |
+| Head-C: `maxdd_20d` | 回归 | 20日最大回撤（负值） |
+
+Head-A 对齐 §15.5 漏斗条件。Head-B/C 作为辅助标签提供连续信号，前端展示"期望赚多少、最多亏多少"。
+
+**损失函数**：`total_loss = α·cross_entropy(A) + β·MSE(B) + γ·MSE(C)`，α=1, β=0.3, γ=0.3 作为起点（待验证）。
+
+实施方式：训练 3 个独立 LightGBM 模型共享特征，而不是一个多头神经网（LGBM 上多任务更稳定、可解释更强）。
+
+#### 17.4.2 特征族设计（9 族，约 250 特征）
+
+| 特征族 | 来源表 | 举例 | 是否已有 |
+| --- | --- | --- | --- |
+| F1: 技术面（Alpha158） | Qlib 内置 | MA5/10/20、RSI、MACD、KDJ、RESI | ✅ |
+| F2: 股票维度机构持仓 | `mart_current_relationship` 聚合 | inst_count_t0/t1、inst_trend、inst_hold_ratio_change | ✅ |
+| **F3: 机构×L2 擅长度** | `research_inst_industry_performance` | `inst_l2_win_rate_30d/60d`、`inst_l2_avg_gain_30d/60d`、`inst_l2_drawdown`、`inst_l2_edge_30d`、`inst_l2_sample_count`、`inst_l2_low_vs_high_premium_gap` | ❌ **待注入** |
+| **F4: 事件属性** | `fact_institution_event` | `premium_pct`、`premium_bucket_enc`、`event_type_enc`、`hold_ratio`、`hold_ratio_change`、`notice_age_days`、`report_to_notice_lag` | ❌ **待注入** |
+| **F5: 介入时机（stage）** | `fact_stock_stage_features` | `dist_ma120_pct`、`dist_ma250_pct`、`above_ma250`、`return_1m/3m/6m/12m`、`max_drawdown_60d`、`volatility_20d`、`amount_ratio_20_120` | ❌ **待注入** |
+| F6: 股票财务质量 | `fact_stock_quality_features` | `quality_score_v1`、子项 | 🟡 部分用 |
+| F7: 机构层个体业绩 | `mart_institution_profile` | `buy_win_rate_60d`、`buy_avg_gain_60d`、`buy_median_max_drawdown_60d`、`exit_post_avg_gain_30d`、`safe_follow_win_rate_30d`、`concentration` | ❌ **待注入** |
+| F8: 供给约束 | Phase A-G 归档，需恢复 | `ban_lift_days_30d`（解禁距离）、`major_holder_reduce_flag` | ❌ **从归档恢复** |
+| F9: 预期/关注 | `fact_stock_forecast`、`mart_external_attention` | `forecast_type_enc`、`forecast_strength`、`research_visits_30d`、`analyst_upgrade_count` | 🟡 部分用 |
+
+关键是 **F3/F4/F5/F7 四族**。F3 回答诉求一（机构擅长行业），F4+F5 回答诉求二（追高 + 介入时机），F7 把机构个体业绩从"展示墓地"接入决策。
+
+#### 17.4.3 训练层级（三层渐进）
+
+**层 1：全市场 baseline**
+- 全部事件样本 → 一个 LGBM 多分类 + 两个 LGBM 回归
+- 用途：整体 IC、特征重要性、回测基线
+- 训练成本：低，每次全量 ≤10 分钟
+
+**层 2：按机构类型分群微调**
+- 按 `inst_type`（公募/私募/QFII/自营/险资）分 5 桶
+- 每桶独立训练一个子模型（继承层 1 参数）
+- 用途：识别不同机构类型的行为差异（公募偏左侧、游资偏右侧）
+- 训练成本：中
+
+**层 3：按 L2 行业分群（条件概率）**
+- 56 个 L2 行业，每个行业独立训练子模型（样本少的行业合并到 L1 fallback）
+- 推理时用"该股票当前所属 L2 的对应子模型"
+- 用途：不同行业的均值回归强度/追高惩罚力度不同，分群更准
+- 训练成本：高，但可并行；样本 < 100 的行业 fallback 到 L1
+
+**集成**：推理时先层 3 子模型给预测，若该 L2 样本不足则回退层 2，再不足回退层 1。
+
+#### 17.4.4 评级输出规范
+
+每个样本产出：
+
+```json
+{
+  "primary_action": "follow" | "watch" | "avoid",
+  "confidence": 0.0 - 1.0,          // LGBM softmax max 概率，Isotonic 校准后
+  "expected_return_20d": float,     // Head-B 预测
+  "expected_maxdd_20d": float,      // Head-C 预测
+  "shap_top3": [                    // 归因前 3 特征
+    {"feature": "inst_l2_win_rate_60d", "value": 0.68, "contribution": +0.24},
+    {"feature": "premium_bucket", "value": "high_premium", "contribution": -0.18},
+    {"feature": "dist_ma250_pct", "value": 0.35, "contribution": +0.09}
+  ],
+  "used_model_layer": "L2_semiconductor" | "L1_fallback" | "baseline",
+  "predict_date": "2026-04-23"
+}
+```
+
+写入新表 `qlib_event_prediction`（事件级，区别于当前 `qlib_predictions` 的股票截面级）。
+
+#### 17.4.5 业绩验证三层
+
+**层 1：模型内部指标**
+- Head-A：分类 accuracy、F1、ROC-AUC
+- Head-B/C：IC、RankIC、MSE
+- 目标：Head-A 在 follow 类的 precision ≥ 60%
+
+**层 2：跟投回测（最关键）**
+- 每日 follow 预测且 confidence ≥ 0.7 的股票，等权持仓 20 日
+- 计算累计 IRR、MaxDD、Sharpe、胜率
+- 基线对照：同期 legacy composite top-50、signals_v2 follow、沪深300
+- 目标：新模型年化超越 legacy composite 且 MaxDD 改善
+
+**层 3：条件分层验证（回应用户诉求二）**
+- 按 premium_bucket 分层回测 follow 预测
+- 按"机构在该 L2 是否擅长（样本≥10 AND win_rate≥50%）"分层回测
+- 按"介入时机"（dist_ma250_pct 分位）分层回测
+- 目标：追高样本的 follow 占比应显著低于低位样本；擅长行业的 follow 占比应显著高于非擅长行业
+
+### 17.5 前端展示（落地诉求二的用户可见化）
+
+事件详情页强制出现三类信号：
+
+1. **追高警示**：若 `premium_bucket` ∈ {premium, high_premium}，主列表显示红色标签"追高 +X%"，悬停显示该机构该 L2 历史追高事件胜率。
+2. **擅长度徽章**：若 `inst_l2_sample_count ≥ 10 AND inst_l2_win_rate_60d ≥ 55%`，显示金色"擅长"徽章；样本 < 10 显示灰色"陌生领域"。
+3. **期望收益/回撤**：显示 `expected_return_20d` 和 `expected_maxdd_20d`，配合置信度条。
+
+用户从事件详情页能直接看到：机构是否擅长这个行业、此时是不是追高、模型预期赚多少亏多少、为什么（SHAP top-3）。这四件事回答后，跟或不跟的判断才算"可复核"。
+
+### 17.6 实施路线（替代 Phase 4）
+
+Phase 4 原文只写了"20 日持有期 + -8% drawdown"的粗略定义；本节用 §17.4 的完整设计替换。
+
+**第 1 阶段（14 天）：决策链路接入，不动模型**
+- [ ] `signals_v2` 新增查询 `research_inst_industry_performance`；硬规则扩展：同机构该股票 L2 历史 `buy_event_count < 5` OR `win_rate_60d < 45%` → 降级 watch
+- [ ] `signals_v2` 硬规则扩展：`premium_bucket = high_premium AND 机构该 L2 high_premium_win_rate_30d < 35%` → skip
+- [ ] `signals_v2` 介入时机：事件日 `stage.dist_ma250_pct < -20%` OR `return_3m > +50%` → 降级 watch
+- [ ] 输出诊断：每天记录 signals_v2 的跟/观察/回避分布，观察变化
+
+**第 2 阶段（30 天）：Qlib baseline 搭建**
+- [ ] 新 handler：继承 Alpha158，注入 F3/F4/F5/F7 四族特征（约 40 个新列）
+- [ ] 新表 `qlib_event_prediction` schema 与写入脚本
+- [ ] Head-A 分类器 + Head-B/C 回归器（层 1 全样本）
+- [ ] 跟投回测脚本：按预测持仓 20 日，输出 IRR/MaxDD/Sharpe
+- [ ] 与 legacy composite / signals_v2 的跟投回测对比
+
+**第 3 阶段（60 天）：分群与生产化**
+- [ ] 层 2（机构类型）与层 3（L2 行业）子模型训练
+- [ ] SHAP 集成到 `qlib_event_prediction.shap_top3`
+- [ ] 前端事件详情页追高警示 + 擅长度徽章 + 期望收益展示
+- [ ] 每日增量训练/增量预测的 cron 调度
+- [ ] 归档 Phase A-G 的 `supply_feat`（解禁、减持）选择性恢复进 F8
+
+### 17.7 与已有工作的衔接
+
+- Phase 1（RCA）：仍成立，`quality_score` 补跑是基础，但 §17 后，`quality_score` 的用途从"加权进 composite"转为"F7 特征之一"进 Qlib
+- Phase 2（CLI）：保留
+- Phase 3（主从决策书）：`primary_action` 不由加权分产生，由 §17.4.4 Head-A 产生；"硬门槛"被"模型 + confidence ≥ 0.7"替代
+- Phase 4（原 Qlib 对齐）：被 §17.4 完整替换
+- §15（漏斗）：漏斗仍在，但不是独立于 Qlib 的硬规则——漏斗条件同时作为 Qlib 特征（F3/F4/F5），让模型自己学会"通过漏斗 → follow"的联合分布，而不是人工写死
+- §16（仿真）：证明了机构评分有区分力，为 F7 特征族的正当性兜底
+
+### 17.8 一句话总结
+
+Qlib 不是要当"股票打分器"，要当"事件条件概率引擎"——给定(机构, 股票, 时点, 溢价, 擅长度, 介入时机)，回答"跟这一笔事件 20 日能赚多少、亏多少、有多确信"。数据和加工的 90% 已就绪，真正缺的是**把 F3/F4/F5 特征注入 Qlib Handler** 和**多任务训练框架**，外加**跟投回测**做生死验证。§17 的实施能让系统第一次出现"机构是主角、追高被惩罚、介入时机被看见"的统一评级，而不是三条互相打架的 gate 链。
