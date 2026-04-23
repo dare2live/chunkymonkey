@@ -767,15 +767,32 @@ async def get_institution_detail(inst_id: str):
                 "other_institutions": [],
             })
 
+        # Layer B 擅长度评分（from v_institution_l2_score，§26 引入）
+        # 查该机构所有 (l2_name, stable_score, verdict, ho_n, ho_sharpe) 用于行业树注释
+        layer_b_rows = conn.execute(
+            "SELECT l2_name, stable_score, verdict, ho_n, ho_sharpe, train_n, "
+            "entry_lag, max_hold_days, stop_loss, take_profit "
+            "FROM v_institution_l2_score WHERE institution_id = ?",
+            (inst_id,)
+        ).fetchall()
+        layer_b_by_l2 = {row["l2_name"]: dict(row) for row in layer_b_rows}
+        layer_b_stable = [
+            dict(row) for row in layer_b_rows if row["verdict"] == "stable"
+        ]
+        layer_b_stable.sort(key=lambda r: (r.get("stable_score") or 0), reverse=True)
+
         # 行业汇总（通过 industry resolver 批量加载）
         industry_summary = []
         stock_codes = [h["stock_code"] for h in result if h.get("event_type") != "exit"]
         if stock_codes:
             from services.industry import load_industry_map
             ind_map = load_industry_map(conn)
+            # 用 tdx_l1_name / tdx_l2_name / tdx_l3_name（中文行业名），
+            # 与 mart_institution_industry_stat.industry_name 和 v_institution_l2_score.l2_name 对齐
             ind_rows = [
-                {"tdx_l1": ind_map[c].get("tdx_l1"), "tdx_l2": ind_map[c].get("tdx_l2"),
-                 "tdx_l3": ind_map[c].get("tdx_l3"), "stock_code": c}
+                {"tdx_l1": ind_map[c].get("tdx_l1_name"),
+                 "tdx_l2": ind_map[c].get("tdx_l2_name"),
+                 "tdx_l3": ind_map[c].get("tdx_l3_name"), "stock_code": c}
                 for c in stock_codes if c in ind_map
             ]
 
@@ -808,6 +825,22 @@ async def get_institution_detail(inst_id: str):
                     if stat:
                         l2_data["avg_gain_30d"] = stat["avg_gain_30d"]
                         l2_data["win_rate_30d"] = stat["win_rate_30d"]
+                    # Layer B 评分（如有）
+                    lb = layer_b_by_l2.get(l2)
+                    if lb:
+                        l2_data["layer_b"] = {
+                            "stable_score": lb["stable_score"],
+                            "verdict": lb["verdict"],
+                            "train_n": lb["train_n"],
+                            "ho_n": lb["ho_n"],
+                            "ho_sharpe": lb["ho_sharpe"],
+                            "rec_params": {
+                                "entry_lag": lb["entry_lag"],
+                                "max_hold_days": lb["max_hold_days"],
+                                "stop_loss": lb["stop_loss"],
+                                "take_profit": lb["take_profit"],
+                            },
+                        }
                     l1_data["children"].append(l2_data)
                 # 一级行业也查业绩
                 l1_stat = conn.execute("""
@@ -819,7 +852,15 @@ async def get_institution_detail(inst_id: str):
                     l1_data["win_rate_30d"] = l1_stat["win_rate_30d"]
                 industry_summary.append(l1_data)
 
-        return {"ok": True, "data": result, "total": len(result), "industry_summary": industry_summary}
+        return {
+            "ok": True, "data": result, "total": len(result),
+            "industry_summary": industry_summary,
+            "layer_b_summary": {
+                "stable_l2_count": len(layer_b_stable),
+                "total_l2_with_score": len(layer_b_rows),
+                "top_stable_l2": layer_b_stable[:10],  # 前 10 个 stable L2，含推荐参数
+            },
+        }
     finally:
         conn.close()
 

@@ -2330,3 +2330,71 @@ Top 15 里最常出现的 L2：
 ### 27.6 一句话
 
 Layer B 第一次作为"有证据支撑的第四个数字"出现在具体股票上，和 legacy/MCR 的冲突被实证坐实。**把这第四个数字接入事件详情页是下一步最具性价比的动作**，不是扩 Layer C/D。
+
+---
+
+## 28. Layer B 接入后端 API（2026-04-23）
+
+§26/§27 把 `v_institution_l2_score` 落库并确认业务直觉合理后，本节把它接入用户可查路径，兑现 §24 "每层先落表再接下一层" 原则。
+
+### 28.1 实施：最小侵入扩 `/profiles/detail/{inst_id}`
+
+只在现有端点上加两个字段，不动其他字段、不改主路由：
+
+1. **`industry_summary` 里 L2 节点新增 `layer_b` 字段**（仅在 v_institution_l2_score 有对应行时出现）：
+   ```json
+   {
+     "level2": "电气设备",
+     "stock_count": 22,
+     "avg_gain_30d": ...,
+     "win_rate_30d": ...,
+     "layer_b": {
+       "stable_score": 100.0,
+       "verdict": "stable",
+       "train_n": 107, "ho_n": 43, "ho_sharpe": 2.055,
+       "rec_params": {"entry_lag": 1, "max_hold_days": 10, "stop_loss": null, "take_profit": 0.2}
+     }
+   }
+   ```
+2. **响应 root 新增 `layer_b_summary`**：
+   ```json
+   {
+     "stable_l2_count": 3,
+     "total_l2_with_score": 30,
+     "top_stable_l2": [ {l2_name, stable_score, ho_n, ho_sharpe, 推荐参数...}, ... ]
+   }
+   ```
+
+### 28.2 顺手修的静默 bug
+
+原 `industry_summary` 树里 `level1/level2/level3` 存的是 TDX **code**（如 `T1001`）而不是行业**名**（如"银行"）。这导致：
+
+- L2 节点里的 `avg_gain_30d` / `win_rate_30d` 一直查不到——因为 `mart_institution_industry_stat.industry_name` 字段存的是 name，用 code 查永远 miss
+- Layer B 匹配也失败（`v_institution_l2_score.l2_name` 也是 name）
+- 前端如果显示 `level2` 字段会看到 `T1001` 而不是"银行"
+
+修复：`ind_rows` 改用 `tdx_l1_name / tdx_l2_name / tdx_l3_name`，与两张 stat 表对齐。
+
+### 28.3 验证：UBS AG
+
+```
+总 L2 43，匹配 layer_b 30（剩 13 个 L2 持仓但无 walk-forward 样本）
+L2 有 avg_gain_30d 的 43/43（修复前 0/43）
+layer_b_summary.stable_l2_count = 3（电气设备/化工/通信设备）
+layer_b_summary.total_l2_with_score = 30
+```
+
+三个 stable L2 都正确标注（电气设备 100.0 / 化工 80.1 / 通信设备 60.0），和 §26.5 Top 15 一致。
+
+### 28.4 前端动作（下一轮）
+
+前端代码暂不改——API 字段加好了，前端可以在任何时候独立加一段渲染代码消费 `layer_b_summary` 和 `industry_summary[].children[].layer_b`。可能的展示位置：
+
+- 机构详情页顶部加"擅长 L2 评分"卡片（展示 `top_stable_l2` 前 N 条 + 推荐参数）
+- 行业树 L2 节点右侧加评分徽章（stable=绿、weak_positive=黄、overfit=灰）
+
+这些是 UI 判断题，留给下一轮确认后再改。
+
+### 28.5 一句话
+
+API 层 Layer B 接入完成（含一个静默 bug 修复）。下一轮要做的是前端渲染决策或扩 cohort 覆盖，看用户试用后最痛的是哪个。
