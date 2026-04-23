@@ -1647,9 +1647,13 @@ async def get_l2_profile(l2_name: str):
 # ============================================================
 
 def _latest_model_id(conn) -> Optional[str]:
+    # P0.C1 修：只挑 qlib_event_prediction 表里有实际 predictions 的 model_id，
+    # 否则 PIT 评估专用 model（仅落 evaluation 不落 predictions）会让前端拿到空列表
     row = conn.execute(
-        "SELECT model_id FROM qlib_model_evaluation WHERE eval_dataset='holdout' "
-        "ORDER BY created_at DESC LIMIT 1"
+        "SELECT qe.model_id FROM qlib_model_evaluation qe "
+        "WHERE qe.eval_dataset='holdout' "
+        "  AND EXISTS (SELECT 1 FROM qlib_event_prediction p WHERE p.model_id = qe.model_id) "
+        "ORDER BY qe.created_at DESC LIMIT 1"
     ).fetchone()
     return row["model_id"] if row else None
 

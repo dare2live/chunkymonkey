@@ -3627,6 +3627,8 @@
 
   function renderEventPredictionCard(ep, stockCode) {
     // §29.5 W5 Layer D：AI 事件评分 / SHAP / 相似事件召回
+    // P0.C1（2026-04-23）：C0 PIT 真 OOS holdout IC = 0.018 后，卡片默认折叠到 <details>，
+    // 仅保留诊断入口；见讨论文档 §2 P0.B 段 + codex 路径 1.5 §6.2
     if (!ep || !ep.ok || !ep.items || ep.items.length === 0) return '';
     var evalSet = ep.evaluation || [];
     var hold = evalSet.find(function (e) { return e.eval_dataset === 'holdout'; });
@@ -3635,9 +3637,16 @@
         ' / AUC ' + Number(hold.auc_roc).toFixed(2) + ' / KS ' + Number(hold.ks_statistic).toFixed(2)
       : '';
 
-    var html = '<div style="margin:10px 0;border:1px solid #d1fae5;border-radius:6px;padding:12px;background:linear-gradient(180deg,#f0fdf4 0%,#fff 100%)">';
+    // details 包装实现默认折叠；用户需点击摘要才展开
+    var html = '<details style="margin:10px 0;border:1px solid #e2e8f0;border-radius:6px;padding:6px 10px;background:#f8fafc">' +
+      '<summary style="cursor:pointer;font-size:12px;color:#475569;padding:4px 0">' +
+      '<b>AI 事件评分（诊断信息，已折叠）</b>' +
+      '<span style="margin-left:10px;color:#b91c1c">PIT holdout IC ≈ 0.018，不具备样本外信号</span>' +
+      '<span style="margin-left:10px;color:#64748b">点击展开查看 demo 诊断</span>' +
+      '</summary>';
+    html += '<div style="margin:10px 0;border:1px solid #d1fae5;border-radius:6px;padding:12px;background:linear-gradient(180deg,#f0fdf4 0%,#fff 100%)">';
     html += '<div style="background:#fee2e2;border:1px solid #fca5a5;color:#991b1b;padding:6px 10px;border-radius:4px;font-size:12px;margin-bottom:8px;font-weight:600">' +
-      'demo 级 AI 评分 · 特征与评估含 lookahead bias（P0.1 修复中） · Optuna 直接在 holdout 调参（P0.2 修复中） · 不可作为实盘决策依据' +
+      'demo 级 AI 评分 · 特征与评估含 lookahead bias（P0.1 修复中） · Optuna 直接在 holdout 调参（P0.2 修复中） · C0 PIT 真 OOS holdout IC 仅 0.018 · 不可作为实盘决策依据' +
       '</div>';
     html += '<div style="display:flex;align-items:baseline;margin-bottom:8px;gap:10px;flex-wrap:wrap">' +
       '<b style="font-size:13px;color:#047857">AI 事件评分（§29.5 Layer D）</b>' +
@@ -3681,7 +3690,8 @@
     });
     html += '</tbody></table>';
     html += '<div style="margin-top:6px;font-size:10px;color:#6b7280">score: 预测 60d 收益在训练分布的分位（0-100）· split=holdout 表示事件落在样本外验证集</div>';
-    html += '</div>';
+    html += '</div>';  // 内部卡片
+    html += '</details>';  // 外部折叠
     return html;
   }
 
