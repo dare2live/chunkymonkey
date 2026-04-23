@@ -4,7 +4,6 @@
 跟踪机构的 CRUD、简称映射、排除管理。
 """
 
-import json
 import logging
 import time
 from datetime import datetime
@@ -867,27 +866,20 @@ async def get_institution_detail(inst_id: str):
 
 
 def compute_stock_multidim_score(conn, stock_code: str) -> dict:
-    """五维评分实时计算（§29 Layer B → Layer C 过渡，W2 交付）。
+    """四维研究画像（研究参考，非可交易评分）。
 
-    五维定义（首版简化公式，阈值由 §15.8 跟投回测反推待接入）：
+    维度：
       F1 resonance  持仓机构在该股 L2 的 stable_score 平均
-      F2 margin     最新 rz_balance 全市场分位（首版；§24 Layer C 应改"增量归一"）
+      F2 margin     最新 rz_balance 全市场分位
       F3 forecast   fact_stock_forecast_features.forecast_score_v1（已是 0-100）
       F4 survey     近 60 天 inst_count 线性归一（50 家 = 满分）
-      F5 stage      基于 dist_ma250_pct 分段：低位 +分、追高 -分
-    overall = 有值维度的简单平均（各 20%）；后续可改加权。
+    overall = 有值维度的简单平均。stage 维度已移除（2026-04-23 M1）：
+    公式方向反 + 历史未回填快照，属 P0.1 污染源之一。
     """
     result = {
         "resonance_score": None, "margin_score": None, "forecast_score": None,
-        "survey_score": None, "stage_score": None, "overall_score": None,
-        "components": {}, "notes": "首版公式未经回测校准（§29.4）",
-        # P0.A（2026-04-23）：明确标记污染状态，前端须展示 banner
-        "contamination_warning": "demo_only_lookahead_uncorrected",
-        "contamination_details": {
-            "source": "fact_event_features + multidim 公式",
-            "issue": "F3/F4/F5/F7 用最新快照；Layer B/mart_institution_profile 无 snapshot_date；stage 公式方向反",
-            "remediation": "见讨论文档 §1 P0.1/P0.3",
-        },
+        "survey_score": None, "overall_score": None,
+        "components": {}, "notes": "研究参考画像，非可交易评分",
     }
 
     # F1 机构共振
@@ -961,33 +953,8 @@ def compute_stock_multidim_score(conn, stock_code: str) -> dict:
             "latest_survey_date": srow["latest_survey_date"],
         }
 
-    # F5 阶段位置
-    strow = conn.execute("""
-        SELECT dist_ma250_pct, return_3m, above_ma250, volatility_20d, snapshot_date
-        FROM fact_stock_stage_features WHERE stock_code = ?
-        ORDER BY snapshot_date DESC LIMIT 1
-    """, (stock_code,)).fetchone()
-    if strow and strow["dist_ma250_pct"] is not None:
-        d250 = strow["dist_ma250_pct"]
-        if d250 < -20:
-            stage_s = 95
-        elif d250 < 0:
-            stage_s = 80 - (d250 + 20) * 0.75
-        elif d250 < 30:
-            stage_s = 65 - d250 * 1.5
-        else:
-            stage_s = max(0.0, 20 - (d250 - 30) * 0.2)
-        result["stage_score"] = round(stage_s, 1)
-        result["components"]["stage"] = {
-            "dist_ma250_pct": strow["dist_ma250_pct"],
-            "return_3m": strow["return_3m"],
-            "above_ma250": strow["above_ma250"],
-            "volatility_20d": strow["volatility_20d"],
-            "snapshot_date": strow["snapshot_date"],
-        }
-
     scores = [v for v in [result["resonance_score"], result["margin_score"],
-              result["forecast_score"], result["survey_score"], result["stage_score"]]
+              result["forecast_score"], result["survey_score"]]
               if v is not None]
     if scores:
         result["overall_score"] = round(sum(scores) / len(scores), 1)
@@ -1637,104 +1604,6 @@ async def get_l2_profile(l2_name: str):
             "summary": summary,
             "institutions": institutions,
             "stocks": stocks,
-        }
-    finally:
-        conn.close()
-
-
-# ============================================================
-# §32 W5: event_action_score / SHAP / 相似事件 查询端点
-# ============================================================
-
-def _latest_model_id(conn) -> Optional[str]:
-    # P0.C1 修：只挑 qlib_event_prediction 表里有实际 predictions 的 model_id，
-    # 否则 PIT 评估专用 model（仅落 evaluation 不落 predictions）会让前端拿到空列表
-    row = conn.execute(
-        "SELECT qe.model_id FROM qlib_model_evaluation qe "
-        "WHERE qe.eval_dataset='holdout' "
-        "  AND EXISTS (SELECT 1 FROM qlib_event_prediction p WHERE p.model_id = qe.model_id) "
-        "ORDER BY qe.created_at DESC LIMIT 1"
-    ).fetchone()
-    return row["model_id"] if row else None
-
-
-@router.get("/event-predictions")
-async def list_event_predictions(
-    inst_id: str = None, stock_code: str = None, limit: int = 20, min_score: float = 0.0,
-):
-    """§29.5 Layer D 预测查询：按机构或股票筛选 Top event_action_score 事件。
-
-    返回 list of { institution_id, stock_code, notice_date, event_action_score,
-                  predicted_gain, confidence, shap_top5, similar_events }.
-    """
-    if not inst_id and not stock_code:
-        return {"ok": False, "message": "需要 inst_id 或 stock_code 至少一个"}
-    conn = get_conn()
-    try:
-        model_id = _latest_model_id(conn)
-        if not model_id:
-            return {"ok": False, "message": "尚无已训练的 Qlib 事件模型"}
-
-        where = ["model_id = ?"]
-        params: list = [model_id]
-        if inst_id:
-            where.append("institution_id = ?"); params.append(inst_id)
-        if stock_code:
-            where.append("stock_code = ?"); params.append(stock_code)
-        where.append("event_action_score >= ?"); params.append(min_score)
-
-        rows = conn.execute(
-            f"SELECT institution_id, stock_code, notice_date, report_date, "
-            f"       event_action_score, predicted_gain, confidence, shap_top5_json, split, predict_date "
-            f"FROM qlib_event_prediction WHERE {' AND '.join(where)} "
-            f"ORDER BY event_action_score DESC LIMIT ?",
-            params + [limit],
-        ).fetchall()
-        items = []
-        for r in rows:
-            try:
-                shap = json.loads(r["shap_top5_json"]) if r["shap_top5_json"] else None
-            except Exception:
-                shap = None
-            # 相似事件 from fact_similar_events
-            sim_rows = conn.execute(
-                "SELECT rank, similarity, similar_institution, similar_stock, similar_notice_date, "
-                "       similar_gain_60d, similar_maxdd_60d "
-                "FROM fact_similar_events "
-                "WHERE model_id=? AND query_institution=? AND query_stock=? AND query_notice_date=? AND query_report_date=? "
-                "ORDER BY rank",
-                (model_id, r["institution_id"], r["stock_code"], r["notice_date"], r["report_date"]),
-            ).fetchall()
-            items.append({
-                **dict(r),
-                "shap_top5": shap,
-                "similar_events": [dict(s) for s in sim_rows],
-            })
-
-        # 全局评估指标
-        eval_rows = conn.execute(
-            "SELECT eval_dataset, n_samples, ic, rank_ic, auc_roc, ks_statistic "
-            "FROM qlib_model_evaluation WHERE model_id = ?",
-            (model_id,),
-        ).fetchall()
-        # P0.A（2026-04-23）：污染警告
-        contamination = {
-            "contamination_warning": "demo_only_lookahead_uncorrected",
-            "contamination_details": {
-                "source": "fact_event_features 特征矩阵",
-                "issue": "stage/quality/forecast/survey 用最新快照（非事件日前快照）；"
-                         "mart_institution_profile/v_institution_l2_score/research_inst_industry_performance "
-                         "无 snapshot_date；Optuna 直接在 holdout 调参",
-                "remediation": "见讨论文档 §1 P0.1/P0.2",
-            },
-        }
-        return {
-            "ok": True,
-            "model_id": model_id,
-            "evaluation": [dict(r) for r in eval_rows],
-            "items": items,
-            "count": len(items),
-            **contamination,
         }
     finally:
         conn.close()

@@ -3192,17 +3192,14 @@
       clickedEl.parentNode.insertBefore(panel, clickedEl.nextSibling);
     }
 
-    // Fetch detail + profile + chart data + signals_v2 track record + AI event predictions in parallel
     Promise.all([
       api('/api/inst/profiles/detail/' + encodeURIComponent(instId)),
       api('/api/inst/profiles'),
       api('/api/inst/profiles/returns-history/' + encodeURIComponent(instId)),
       api('/api/signals/institution/' + encodeURIComponent(instId)).catch(function () { return null; }),
-      api('/api/inst/event-predictions?inst_id=' + encodeURIComponent(instId) + '&limit=10').catch(function () { return null; }),
     ]).then(function (results) {
       var r = results[0], profilesResp = results[1], chartResp = results[2];
       var sv2 = results[3];
-      var ep = results[4];
       if (!r || !r.ok) { panel.innerHTML = '<div class="detail-loading">加载失败</div>'; return; }
       var holdings = r.data || [];
 
@@ -3245,7 +3242,10 @@
       var lbSummary = r.layer_b_summary;
       if (lbSummary && lbSummary.stable_l2_count > 0) {
         html += '<div style="margin-bottom:14px;border:1px solid #bae6fd;border-radius:6px;padding:10px;background:#f0f9ff">' +
-          '<div style="font-size:12px;color:#0369a1;margin-bottom:6px"><b>Layer B 擅长 L2 评分</b> ' +
+          '<div style="background:#fef3c7;border:1px solid #fcd34d;color:#92400e;padding:4px 8px;border-radius:3px;font-size:11px;margin-bottom:6px">' +
+          '研究参考：历史 walk-forward 结果含 PIT 污染；portfolio 回测未显 excess edge（§2 2026-04-23 收口段）' +
+          '</div>' +
+          '<div style="font-size:12px;color:#0369a1;margin-bottom:6px"><b>Layer B 擅长 L2 评分（研究参考）</b> ' +
           '<span style="color:#64748b;font-size:11px">(' + lbSummary.stable_l2_count + ' 稳定 / ' +
           lbSummary.total_l2_with_score + ' 有评分 L2)</span></div>' +
           '<div style="font-size:12px">';
@@ -3264,9 +3264,6 @@
         });
         html += '</div></div>';
       }
-
-      // §29.5 W6 AI 事件评分卡片（Layer D Qlib 输出，复用股票详情页的渲染函数）
-      html += renderEventPredictionCard(ep, null);
 
       // 行业分布 + 业绩表现
       var indSummary = r.industry_summary || [];
@@ -3527,10 +3524,6 @@
       if (key === 'survey' && c.survey) {
         return '近 60 天 ' + (c.survey.inst_count_60d || 0) + ' 家调研';
       }
-      if (key === 'stage' && c.stage) {
-        return '距 MA250 ' + (c.stage.dist_ma250_pct != null ? Number(c.stage.dist_ma250_pct).toFixed(1) + '%' : '-') +
-               ' / 近 3 月 ' + (c.stage.return_3m != null ? Number(c.stage.return_3m).toFixed(1) + '%' : '-');
-      }
       return '-';
     }
     var dims = [
@@ -3538,22 +3531,21 @@
       { key: 'margin',    score: m.margin_score,    label: '两融情绪' },
       { key: 'forecast',  score: m.forecast_score,  label: '研报预期' },
       { key: 'survey',    score: m.survey_score,    label: '调研热度' },
-      { key: 'stage',     score: m.stage_score,     label: '阶段位置' },
     ];
     var overall = m.overall_score;
     var ovColor = overall == null ? '#94a3b8' : overall >= 60 ? '#10b981' : overall >= 40 ? '#f59e0b' : '#ef4444';
     var html = '<div style="margin:10px 0;border:1px solid #c7d2fe;border-radius:6px;padding:12px;background:linear-gradient(180deg,#f5f3ff 0%,#fff 100%)">' +
-      '<div style="background:#fee2e2;border:1px solid #fca5a5;color:#991b1b;padding:6px 10px;border-radius:4px;font-size:12px;margin-bottom:10px;font-weight:600">' +
-      'demo 级评分 · 历史数据含 lookahead bias（P0.1 修复中） · 不可作为实盘决策依据' +
+      '<div style="background:#fef3c7;border:1px solid #fcd34d;color:#92400e;padding:6px 10px;border-radius:4px;font-size:12px;margin-bottom:10px;font-weight:600">' +
+      '研究参考画像，非可交易评分（§2 2026-04-23 收口段）' +
       '</div>' +
       '<div style="display:flex;align-items:center;margin-bottom:10px">' +
-      '<b style="font-size:13px;color:#4c1d95">五维画像评分</b>' +
-      '<span style="margin-left:10px;font-size:11px;color:#64748b">§29.4 首版（公式未经回测校准）</span>';
+      '<b style="font-size:13px;color:#4c1d95">画像评分（研究参考）</b>' +
+      '<span style="margin-left:10px;font-size:11px;color:#64748b">四维平均，未经 PIT 校准</span>';
     if (overall != null) {
       html += '<span style="margin-left:auto;background:' + ovColor + ';color:white;padding:4px 14px;border-radius:4px;font-weight:600;font-size:13px">综合 ' + overall.toFixed(1) + '</span>';
     }
     html += '</div>';
-    html += '<div style="display:grid;grid-template-columns:repeat(5,1fr);gap:8px;font-size:12px">';
+    html += '<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;font-size:12px">';
     dims.forEach(function (d) {
       var s = d.score;
       var display = s != null ? Number(s).toFixed(1) : '-';
@@ -3601,9 +3593,8 @@
     Promise.all([
       api('/api/inst/stocks/detail/' + encodeURIComponent(stockCode)),
       api('/api/inst/stocks/multidim/' + encodeURIComponent(stockCode)).catch(function () { return null; }),
-      api('/api/inst/event-predictions?stock_code=' + encodeURIComponent(stockCode) + '&limit=10').catch(function () { return null; }),
     ]).then(function (results) {
-      var r = results[0], md = results[1], ep = results[2];
+      var r = results[0], md = results[1];
       if (!r || !r.ok) { panel.innerHTML = '<div class="detail-loading">加载失败: ' + esc(r && r.detail || '未知') + '</div>'; return; }
       try {
       var insts = r.institutions || [];
@@ -3614,8 +3605,6 @@
       html += renderStockReportHero(detailPayload);
       // §29.4 W2 五维画像评分（在 hero 之后立即展示，视觉突出）
       html += renderMultidimScoreCard(md && md.multidim_score);
-      // §29.5 W5 AI 事件评分 + SHAP + 相似事件召回（Layer D Qlib 输出）
-      html += renderEventPredictionCard(ep, stockCode);
       html += renderStockInstitutionCoverageSection(detailPayload, insts);
       html += renderStockEvidenceTimeline(detailPayload);
       html += renderSetupBlock(r.setup, insts, detailPayload);
@@ -3623,76 +3612,6 @@
       panel.innerHTML = html;
       } catch (e) { panel.innerHTML = '<div class="detail-loading">渲染出错: ' + esc(String(e)) + '</div>'; }
     }).catch(function (e) { panel.innerHTML = '<div class="detail-loading">请求出错: ' + esc(String(e)) + '</div>'; });
-  }
-
-  function renderEventPredictionCard(ep, stockCode) {
-    // §29.5 W5 Layer D：AI 事件评分 / SHAP / 相似事件召回
-    // P0.C1（2026-04-23）：C0 PIT 真 OOS holdout IC = 0.018 后，卡片默认折叠到 <details>，
-    // 仅保留诊断入口；见讨论文档 §2 P0.B 段 + codex 路径 1.5 §6.2
-    if (!ep || !ep.ok || !ep.items || ep.items.length === 0) return '';
-    var evalSet = ep.evaluation || [];
-    var hold = evalSet.find(function (e) { return e.eval_dataset === 'holdout'; });
-    var evalLine = hold
-      ? '样本外评估: IC ' + Number(hold.ic).toFixed(3) + ' / RankIC ' + Number(hold.rank_ic).toFixed(3) +
-        ' / AUC ' + Number(hold.auc_roc).toFixed(2) + ' / KS ' + Number(hold.ks_statistic).toFixed(2)
-      : '';
-
-    // details 包装实现默认折叠；用户需点击摘要才展开
-    var html = '<details style="margin:10px 0;border:1px solid #e2e8f0;border-radius:6px;padding:6px 10px;background:#f8fafc">' +
-      '<summary style="cursor:pointer;font-size:12px;color:#475569;padding:4px 0">' +
-      '<b>AI 事件评分（诊断信息，已折叠）</b>' +
-      '<span style="margin-left:10px;color:#b91c1c">PIT holdout IC ≈ 0.018，不具备样本外信号</span>' +
-      '<span style="margin-left:10px;color:#64748b">点击展开查看 demo 诊断</span>' +
-      '</summary>';
-    html += '<div style="margin:10px 0;border:1px solid #d1fae5;border-radius:6px;padding:12px;background:linear-gradient(180deg,#f0fdf4 0%,#fff 100%)">';
-    html += '<div style="background:#fee2e2;border:1px solid #fca5a5;color:#991b1b;padding:6px 10px;border-radius:4px;font-size:12px;margin-bottom:8px;font-weight:600">' +
-      'demo 级 AI 评分 · 特征与评估含 lookahead bias（P0.1 修复中） · Optuna 直接在 holdout 调参（P0.2 修复中） · C0 PIT 真 OOS holdout IC 仅 0.018 · 不可作为实盘决策依据' +
-      '</div>';
-    html += '<div style="display:flex;align-items:baseline;margin-bottom:8px;gap:10px;flex-wrap:wrap">' +
-      '<b style="font-size:13px;color:#047857">AI 事件评分（§29.5 Layer D）</b>' +
-      '<span style="font-size:11px;color:#6b7280">model: ' + esc(ep.model_id || '-') + '</span>' +
-      (evalLine ? '<span style="font-size:11px;color:#4b5563">' + evalLine + '</span>' : '') +
-      '</div>';
-
-    html += '<table class="data-table" style="font-size:12px;width:100%"><thead><tr>' +
-      '<th style="text-align:left">机构</th><th>披露日</th><th>score</th><th>预测 60d</th>' +
-      '<th>置信度</th><th>split</th><th style="text-align:left">主推动因子（SHAP）</th>' +
-      '<th style="text-align:left">类似历史（5）</th></tr></thead><tbody>';
-
-    ep.items.forEach(function (it) {
-      var score = Number(it.event_action_score);
-      var scoreColor = score >= 70 ? '#10b981' : score >= 40 ? '#f59e0b' : '#ef4444';
-      var pg = Number(it.predicted_gain);
-      var pgColor = pg >= 0 ? '#10b981' : '#ef4444';
-      var shap = (it.shap_top5 || []).slice(0, 3).map(function (s) {
-        var c = Number(s.contribution);
-        var dirColor = c >= 0 ? '#047857' : '#b91c1c';
-        var sign = c >= 0 ? '+' : '';
-        return '<span style="color:' + dirColor + ';margin-right:6px">' + esc(s.feature) + ' ' + sign + c.toFixed(2) + '</span>';
-      }).join('');
-      var sims = it.similar_events || [];
-      var simGains = sims.map(function (s) { return s.similar_gain_60d; }).filter(function (v) { return v != null; });
-      var simAvg = simGains.length > 0 ? (simGains.reduce(function (a, b) { return a + b; }, 0) / simGains.length) : null;
-      var simDisplay = sims.length === 0 ? '-' :
-        '<span style="font-size:11px">均值 ' + (simAvg != null ? '<b style="color:' + (simAvg >= 0 ? '#047857' : '#b91c1c') + '">' + (simAvg >= 0 ? '+' : '') + simAvg.toFixed(1) + '%</b>' : '-') +
-        '；分布 ' + simGains.map(function (v) { var c = v >= 0 ? '#047857' : '#b91c1c'; return '<span style="color:' + c + '">' + (v >= 0 ? '+' : '') + v.toFixed(0) + '</span>'; }).join('/') + '</span>';
-
-      html += '<tr>' +
-        '<td><span style="font-size:11px">' + esc(it.institution_id || '') + '</span></td>' +
-        '<td style="font-size:11px">' + esc(it.notice_date || '') + '</td>' +
-        '<td><span style="background:' + scoreColor + ';color:white;padding:2px 8px;border-radius:3px;font-weight:600">' + score.toFixed(1) + '</span></td>' +
-        '<td style="color:' + pgColor + ';font-weight:600">' + (pg >= 0 ? '+' : '') + pg.toFixed(2) + '%</td>' +
-        '<td style="text-align:center">' + Number(it.confidence).toFixed(2) + '</td>' +
-        '<td style="font-size:10px;color:#6b7280">' + esc(it.split || '') + '</td>' +
-        '<td style="font-size:11px">' + shap + '</td>' +
-        '<td>' + simDisplay + '</td>' +
-        '</tr>';
-    });
-    html += '</tbody></table>';
-    html += '<div style="margin-top:6px;font-size:10px;color:#6b7280">score: 预测 60d 收益在训练分布的分位（0-100）· split=holdout 表示事件落在样本外验证集</div>';
-    html += '</div>';  // 内部卡片
-    html += '</details>';  // 外部折叠
-    return html;
   }
 
   // ============================================================

@@ -3,14 +3,14 @@
 
 策略规则（§2 codex §4.2 + Claude 响应 §4）：
   1. 候选事件：event_type IN ('new_entry','increase')
-  2. cohort 准入：v_institution_l2_score_pit.verdict='stable' 且 ho_n >= 15 且 ho_sharpe >= 1
+  2. cohort 准入：v_institution_l2_score.verdict='stable' 且 ho_n >= 15 且 ho_sharpe >= 1
   3. 成本过滤：premium_bucket != 'high_premium'
   4. 当日候选超过 topN：按 stable_score 降序取
   5. 仓位：等权，单机构 / 单 L2 / 单股票上限
   6. 退出：使用 cohort 的 train 最优参数（entry_lag, max_hold_days, stop_loss, take_profit）
 
 时间窗口：
-  - cohort 评估期：2023-04 ~ 2024-09-30（锁在 v_institution_l2_score_pit）
+  - cohort 评估期：2023-04 ~ 2024-09-30（锁在 v_institution_l2_score，PIT 口径 cutoff=2024-09-30）
   - portfolio 回测期：2024-10-01 ~ 2026-04-21
 
 对照基线：
@@ -117,7 +117,7 @@ def load_events_with_pit_cohort(conn, start_date: str, end_date: str) -> pd.Data
                v.stable_score, v.verdict, v.ho_sharpe, v.ho_n,
                v.entry_lag, v.max_hold_days, v.stop_loss, v.take_profit
         FROM ev
-        LEFT JOIN v_institution_l2_score_pit v
+        LEFT JOIN v_institution_l2_score v
           ON v.institution_id = ev.institution_id AND v.l2_name = ev.l2
     """
     return pd.read_sql_query(sql, conn, params=(start_date, end_date))

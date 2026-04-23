@@ -1799,3 +1799,37 @@ overlay 的第一版不用复杂：
   - M2：preview 验证 banner 文案更新 + stage_score 隐藏
   - M3：`docs/ARCHITECTURE.md` 存在，链接有效
   - M4：`run_portfolio_mvp.py` 命令行可跑、fact_policy_eval 可查
+
+## 2026-04-23 [Claude] M1-M4 清理执行记录（§0 fact 类）
+
+**触发用户反馈**："为啥隐藏？没用就删除，用就显示。"——推翻此前的"端点保留 retired=true / 前端注释保留"中间态方案，要求硬删除。
+
+### M1 AI 事件评分主线删除
+
+- 脚本 `git rm`：`train_event_qlib.py` / `tune_event_qlib.py` / `train_event_qlib_pit.py` / `build_event_features.py` / `build_event_features_pit.py` / `recall_similar_events.py` / `evaluate_model_health.py`
+- 表 `DROP TABLE`：`fact_event_features` / `fact_event_features_pit` / `qlib_event_prediction` / `qlib_model_evaluation` / `fact_similar_events`
+- 后端 `backend/routers/institution.py`：删除 `/event-predictions` 端点、`_latest_model_id` 函数、`list_event_predictions` 函数；删除 `import json`（无其他引用）
+- 前端 `assets/js/app.js`：删除 `renderEventPredictionCard` 函数体 + 两处调用点（`toggleStockDetail` / `toggleInstDetail`）；清理对应 `var ep = null` 的残留并发分支
+
+### M2 五维画像 → 四维，stage 维度物理删除
+
+- `compute_stock_multidim_score` 删除 F5 stage 计算块、删除 `stage_score` 字段、删除 `contamination_warning` / `contamination_details`（主线已退役，"demo-with-warning" 状态消失）
+- 前端 `renderMultidimScoreCard` 删除 `stage` 维度对象和 `if (key === 'stage')` 分支；grid 从 `repeat(5,1fr)` 改 `repeat(4,1fr)`
+- 黄色 banner 文案更新为"研究参考画像，非可交易评分（§2 2026-04-23 收口段）"
+
+### M3 视图重绑到 PIT
+
+- 旧 polluted `v_institution_l2_score` / `v_l2_profile` DROP 后重建：新 view 直接读 `fact_institution_follow_backtest` 中 `cohort_scheme='institution_L2_pit_20240930'` 的 75 cohorts / 10 stable
+- `fact_institution_follow_backtest` 删除 non-PIT 行：`DELETE FROM fact_institution_follow_backtest WHERE cohort_scheme='institution_L2'`
+- 中间 PIT 视图 `v_institution_l2_score_pit` 合并到 `v_institution_l2_score` 后 DROP
+- `run_portfolio_mvp.py` 同步改 `v_institution_l2_score_pit` → `v_institution_l2_score`
+
+### M4 文档同步
+
+- `docs/ARCHITECTURE.md` 重写：去掉所有"研究复现/保留供研究"中间态措辞，新增"已退役（已从仓库删除，git 历史可查）"独立章节显式列出 M1 删除清单；以"没用就删除，用就显示"为指导原则
+- 本段落是 §2 的 M1-M4 执行记录
+
+### 语法与集成验证
+
+- `python3 -c "import ast; ast.parse(...)"` 通过 `backend/routers/institution.py` + `backend/scripts/run_portfolio_mvp.py`
+- `grep -r "qlib_event_prediction|qlib_model_evaluation|fact_similar_events|fact_event_features|v_institution_l2_score_pit|build_event_features_pit|train_event_qlib_pit|evaluate_model_health|recall_similar_events"` 在整个 backend/services 与 routers 下无匹配
