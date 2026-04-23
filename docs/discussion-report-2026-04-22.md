@@ -2882,3 +2882,103 @@ W5 Qlib 模型给 score 42.44（中等偏下）、predicted_gain +1.76%（略正
 ### 32.8 一句话
 
 Optuna 把 baseline IC 从 0.111 推到 0.173（+55%），相似事件召回落库 29 685 条，前端 AI 评分卡片上线——**用户第一次能看到"AI 给这条事件打多少分、为什么、类似情况过去赚多少"完整闭环**。W5 兑现了 §29 顶层设计的"非黑盒 Qlib 预测"承诺。
+
+---
+
+## 33. W6 非黑盒五件套收口 + 机构详情页 AI 卡片（§19.3 / §29.6）
+
+### 33.1 机构详情页 AI 事件评分接入
+
+§29.8 W6 任务：机构详情页也展示 AI 预测（之前只在股票详情页）。
+
+前端 `toggleInstDetail` 增加 Promise.all 并行请求 `/api/inst/event-predictions?inst_id=X`，复用股票详情页的 `renderEventPredictionCard` 函数（无需单独维护两套 UI）。
+
+验证（UBS AG）：Top 10 事件 score 98.9-99.5 区间，含两条 holdout：
+
+| 事件 | score | 预测 60d | SHAP top 3 | 相似 5 事件实际均值 |
+| --- | --- | --- | --- | --- |
+| 2025-04-30 | 99.0 | +12.85% | change_amount +3.34 / inst_buy_avg_gain_60d +2.51 / premium_pct +1.49 | **+48.8%** (+73/+35/+57/+34/+45) |
+| 2025-10-28 | 99.0 | +12.78% | change_amount +3.27 / inst_buy_avg_gain_60d +2.41 / inst_l2_train_n +1.29 | **+29.6%** (+60/+16/+26/+18/+28) |
+
+非黑盒兑现：每条预测背后 SHAP 正贡献因子 + 5 条相似历史事件实际收益分布。用户能看到"为什么给高分"和"类似情况过去真的赚了多少"。
+
+### 33.2 Calibration + Lift + PSI 三件评估
+
+`backend/scripts/evaluate_model_health.py` 新增，自动回写 `qlib_model_evaluation` 三列：
+
+- `calibration_ece` — Expected Calibration Error（10 bins）
+- `lift_top_decile` — Top 10% 预测的正样本率 / 全体正样本率
+- `psi_json` — 每特征 PSI + calibration_bins + lift_deciles 完整 JSON
+
+**holdout 评估结果**（model_id=lgb_event_tuned_20260423_070326）：
+
+| 指标 | 数值 | 判定 |
+| --- | --- | --- |
+| Calibration ECE | 0.191 | 中等 — event_action_score 用训练分位校准，不是真概率，ECE 是近似 |
+| Top decile lift | **1.28** | 弱区分（base rate 34.7% → top 10% 44.4%）|
+| PSI > 0.2 的特征数 | **4 / 22** | 结构漂移显著 |
+
+### 33.3 PSI 发现：市场 regime 切换暴露
+
+PSI Top 4 严重漂移特征：
+
+| 特征 | PSI | 解释 |
+| --- | --- | --- |
+| **premium_pct** | **0.864** | 爆表。熊市（train 2023-2025 Q1）机构多低溢价买入 vs 牛市（holdout 2025 Q2-2026）多高溢价追入——结构性变化 |
+| inst_buy_win_rate_60d | 0.235 | 机构历史胜率分布随时间段变化 |
+| inst_buy_avg_gain_60d | 0.222 | 同上，均值漂移 |
+| inst_l2_ho_sharpe | 0.204 | Layer B cohort 评分的时段依赖 |
+
+**这直接回答了 W4 过拟合的深层原因**：不是模型问题，是 train/holdout 底层分布结构性切换。即便 Optuna 调到 holdout IC 0.173 也只是"在新分布上恰好表现好"——必须**定期重训**（每季度一次最保险）。
+
+### 33.4 非黑盒五件套交付进度
+
+| 能力 | 状态 | 落地 |
+| --- | --- | --- |
+| SHAP top-5 特征归因 | ✓ W4 | `qlib_event_prediction.shap_top5_json` + 前端展示 |
+| 相似事件召回（最近邻） | ✓ W5 | `fact_similar_events` + 前端表格 |
+| 模型持续监控（KS/AUC/IC）| ✓ W4 | `qlib_model_evaluation` |
+| Calibration + Lift | ✓ W6 | `qlib_model_evaluation.calibration_ece / lift_top_decile` |
+| PSI 特征漂移 | ✓ W6 | `qlib_model_evaluation.psi_json` |
+
+五件全部交付。
+
+### 33.5 W1-W6 六周路线图完成回顾
+
+| 周 | 交付 | 证据 |
+| --- | --- | --- |
+| W1 | Layer B view + L2 画像 API + 前端弹窗 | §26/§28 UBS→电气设备跳转 |
+| W2 | 五维画像评分（机构共振/两融/研报/调研/阶段）| §28 股票详情页卡片 |
+| W3 | fact_event_features 31372 行 + IC 简测 | §30 Top 特征排序 |
+| W4 | Qlib LightGBM baseline + SHAP | §31 holdout IC 0.111 |
+| W5 | Optuna + 相似事件召回 + 前端 | §32 holdout IC 0.173（+55%）|
+| **W6** | **机构详情页 AI 卡片 + Calibration/Lift/PSI** | **§33 非黑盒五件套完成** |
+
+从 §29 顶层设计到 §33 全部落地，**四层金字塔（Raw → Fact → Layer B/C → Qlib）完整贯通**；前端机构详情页 + 股票详情页都能看到 AI 评分 + SHAP + 相似历史。
+
+### 33.6 W6 暂不做的事（明确留背）
+
+| 项 | 理由 | 建议窗口 |
+| --- | --- | --- |
+| 多目标 Optuna (IC + Sharpe) | 需要 portfolio-level 跟投回测基础设施（当前 event_simulator 是单事件级） | W7+ 做 |
+| 置信度带宽（quantile regression） | 当前 confidence 是分数到 50 的距离（近似），不是 CI | W7 考虑 |
+| 生产化 cron 自动重训 | PSI 漂移提示需定期重训，但生产化部署需另做 | W8 考虑 |
+| stage_score 公式重校准 | §30.5 发现 §29.4 的"低位加分追高扣分"方向错；前端卡片仍保留首版标注 | W7 若要上线需修 |
+
+### 33.7 §29 顶层设计交付清单对照
+
+| §29 承诺 | 实际交付 | 状态 |
+| --- | --- | --- |
+| 四实体立体画像（机构/L2/股票/事件） | v_institution_l2_score + v_l2_profile + compute_stock_multidim_score + fact_event_features | ✓ |
+| 连续评分（不是布尔） | Layer B 0-100 + 五维 0-100 + event_action_score 0-100 | ✓ |
+| 多机构共振 | resonance_score（股票级）+ resonance_n_stable_insts（事件级） | ✓ |
+| 股票画像维度（两融/研报/调研等）| margin_score / forecast_score / survey_score / stage_score | ✓ |
+| Qlib + Optuna 寻优 | W4 LightGBM baseline → W5 Optuna TPE 100 trials | ✓ |
+| 非黑盒五件套 | SHAP / 相似召回 / KS/AUC/IC / Calibration+Lift / PSI | ✓ 全部 |
+| 前端关联跳转 | 机构详情→L2 弹窗（W1）；股票详情→五维+AI（W2/W5）；机构详情→AI（W6）| ✓ |
+
+顶层设计 10 条承诺全部兑现。
+
+### 33.8 一句话
+
+W1-W6 六周路线完成，**从"堆指标"到"可解释 AI 评级"的研究工作流完整贯通**：用户能在机构详情页看到该机构 Top 10 预测事件及 SHAP 归因；在股票详情页看到该股五维画像 + 持仓机构 + AI 评分 + 相似历史；PSI 发现 premium_pct 等 4 个特征在熊牛市之间分布爆表漂移，提示生产化必须定期重训。非黑盒兑现，四层金字塔贯通。

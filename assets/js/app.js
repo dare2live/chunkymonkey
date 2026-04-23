@@ -3192,15 +3192,17 @@
       clickedEl.parentNode.insertBefore(panel, clickedEl.nextSibling);
     }
 
-    // Fetch detail + profile + chart data + signals_v2 track record in parallel
+    // Fetch detail + profile + chart data + signals_v2 track record + AI event predictions in parallel
     Promise.all([
       api('/api/inst/profiles/detail/' + encodeURIComponent(instId)),
       api('/api/inst/profiles'),
       api('/api/inst/profiles/returns-history/' + encodeURIComponent(instId)),
-      api('/api/signals/institution/' + encodeURIComponent(instId)).catch(function () { return null; })
+      api('/api/signals/institution/' + encodeURIComponent(instId)).catch(function () { return null; }),
+      api('/api/inst/event-predictions?inst_id=' + encodeURIComponent(instId) + '&limit=10').catch(function () { return null; }),
     ]).then(function (results) {
       var r = results[0], profilesResp = results[1], chartResp = results[2];
       var sv2 = results[3];
+      var ep = results[4];
       if (!r || !r.ok) { panel.innerHTML = '<div class="detail-loading">加载失败</div>'; return; }
       var holdings = r.data || [];
 
@@ -3262,6 +3264,9 @@
         });
         html += '</div></div>';
       }
+
+      // §29.5 W6 AI 事件评分卡片（Layer D Qlib 输出，复用股票详情页的渲染函数）
+      html += renderEventPredictionCard(ep, null);
 
       // 行业分布 + 业绩表现
       var indSummary = r.industry_summary || [];
