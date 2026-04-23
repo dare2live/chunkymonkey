@@ -24,6 +24,7 @@ import logging
 import sys
 from datetime import datetime
 from pathlib import Path
+from typing import Optional
 
 import pandas as pd
 
@@ -36,11 +37,13 @@ logger = logging.getLogger("run_follow_backtest")
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s | %(message)s")
 
 
-# inst_type 合并策略（§20.3）
+# §22 发现：原先 INST_TYPE_GROUPS 里的 key（"公募基金/险资/游资/自营"等）在数据库里不存在，
+# 真实 inst_type 是：券商、社保、QFII、牛散、基金、保险、私募、国家队、国家大基金、北向。
+# 默认 scheme 改为 inst_type_L1（不合并），保留合并 scheme 以兼容旧数据。
 INST_TYPE_GROUPS = {
-    "稳健型": {"公募基金", "险资", "QFII"},
-    "交易型": {"游资", "私募"},
-    "其他": {"自营", "信托", "其他"},
+    "稳健型": {"QFII", "社保", "保险", "基金", "国家大基金"},
+    "交易型": {"券商", "私募"},
+    "另类": {"牛散", "国家队"},
 }
 
 
@@ -48,7 +51,7 @@ def _inst_type_to_group(t: str) -> str:
     for g, members in INST_TYPE_GROUPS.items():
         if t in members:
             return g
-    return "其他"
+    return "未分类"
 
 
 TABLE_DDL = """
@@ -56,6 +59,7 @@ CREATE TABLE IF NOT EXISTS fact_institution_follow_backtest (
     cohort_scheme     TEXT NOT NULL,
     cohort_key        TEXT NOT NULL,
     backtest_run_at   TEXT NOT NULL,
+    split             TEXT NOT NULL,   -- 'all' | 'train' | 'holdout'
     entry_lag         INTEGER NOT NULL,
     max_hold_days     INTEGER NOT NULL,
     stop_loss         REAL,
@@ -72,7 +76,7 @@ CREATE TABLE IF NOT EXISTS fact_institution_follow_backtest (
     exit_reasons_json TEXT,
     event_date_min    TEXT,
     event_date_max    TEXT,
-    PRIMARY KEY (cohort_scheme, cohort_key, backtest_run_at, entry_lag, max_hold_days, stop_loss, take_profit)
+    PRIMARY KEY (cohort_scheme, cohort_key, backtest_run_at, split, entry_lag, max_hold_days, stop_loss, take_profit)
 );
 """
 
@@ -106,7 +110,9 @@ def load_cohort_events(
     if df.empty:
         return df
 
-    if cohort_scheme == "L1_instgroup":
+    if cohort_scheme == "inst_type_L1":
+        df = df[df["inst_type"].astype(str) + "|" + df["l1"].astype(str) == cohort_key]
+    elif cohort_scheme == "L1_instgroup":
         df["inst_group"] = df["inst_type"].map(_inst_type_to_group)
         df = df[df["inst_group"] + "|" + df["l1"].astype(str) == cohort_key]
     elif cohort_scheme == "L1":
@@ -144,7 +150,9 @@ def list_top_cohorts(
         base_sql += " AND ii.type != '北向' "
     df = pd.read_sql_query(base_sql, conn)
 
-    if scheme == "L1_instgroup":
+    if scheme == "inst_type_L1":
+        df["cohort_key"] = df["inst_type"].astype(str) + "|" + df["l1"].astype(str)
+    elif scheme == "L1_instgroup":
         df["inst_group"] = df["inst_type"].map(_inst_type_to_group)
         df["cohort_key"] = df["inst_group"] + "|" + df["l1"].astype(str)
     elif scheme == "L1":
@@ -169,13 +177,51 @@ DEFAULT_GRID = {
 }
 
 
+def _row_for_split(
+    events: pd.DataFrame,
+    params: dict,
+    split: str,
+    cohort_scheme: str,
+    cohort_key: str,
+    run_at: str,
+) -> Optional[dict]:
+    import json
+    result = simulate_events(events, params)
+    if result.get("n_filled", 0) == 0:
+        return None
+    return {
+        "cohort_scheme": cohort_scheme,
+        "cohort_key": cohort_key,
+        "backtest_run_at": run_at,
+        "split": split,
+        "entry_lag": params["entry_lag"],
+        "max_hold_days": params["max_hold_days"],
+        "stop_loss": params["stop_loss"],
+        "take_profit": params["take_profit"],
+        "n_events": result["n_events"],
+        "n_filled": result["n_filled"],
+        "avg_pnl": result["avg_pnl"],
+        "avg_hold_days": result["avg_hold_days"],
+        "win_rate": result["win_rate"],
+        "annual_return": result["annual_return"],
+        "sharpe": result["sharpe"],
+        "avg_position_maxdd": result["avg_position_maxdd"],
+        "p95_position_maxdd": result["p95_position_maxdd"],
+        "exit_reasons_json": json.dumps(result.get("exit_reason_counts", {}), ensure_ascii=False),
+        "event_date_min": str(events["notice_date"].min()),
+        "event_date_max": str(events["notice_date"].max()),
+    }
+
+
 def run_backtest_for_cohort(
     conn,
     cohort_scheme: str,
     cohort_key: str,
     grid: dict[str, list],
+    walk_forward: Optional[float] = None,
     dry_run: bool = False,
 ) -> pd.DataFrame:
+    """参数 walk_forward：None 表示全样本；float in (0,1) 表示按 notice_date 切分，前占 ratio 为 train，后为 holdout。"""
     events = load_cohort_events(conn, cohort_scheme, cohort_key)
     if events.empty:
         logger.warning("[%s | %s] 无事件，跳过", cohort_scheme, cohort_key)
@@ -183,54 +229,35 @@ def run_backtest_for_cohort(
     logger.info("[%s | %s] 加载事件 %d 条", cohort_scheme, cohort_key, len(events))
 
     run_at = datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%S")
-    results = []
+    results: list[dict] = []
     param_combos = list(itertools.product(
         grid["entry_lag"], grid["max_hold_days"], grid["stop_loss"], grid["take_profit"]
     ))
     logger.info("  Grid 组合 %d", len(param_combos))
 
-    for entry_lag, max_hold, sl, tp in param_combos:
-        params = {
-            "entry_lag": entry_lag,
-            "max_hold_days": max_hold,
-            "stop_loss": sl,
-            "take_profit": tp,
-        }
-        result = simulate_events(events, params)
-        if result.get("n_filled", 0) == 0:
-            logger.warning("  %s → n_filled=0，跳过", params)
-            continue
+    if walk_forward is not None:
+        sorted_ev = events.sort_values("notice_date").reset_index(drop=True)
+        cut = int(len(sorted_ev) * walk_forward)
+        train_ev = sorted_ev.iloc[:cut].reset_index(drop=True)
+        hold_ev = sorted_ev.iloc[cut:].reset_index(drop=True)
+        logger.info("  walk-forward: train=%d holdout=%d (cut at %s)", len(train_ev), len(hold_ev), train_ev["notice_date"].max())
+        split_pairs = [("train", train_ev), ("holdout", hold_ev)]
+    else:
+        split_pairs = [("all", events)]
 
-        import json
-        row = {
-            "cohort_scheme": cohort_scheme,
-            "cohort_key": cohort_key,
-            "backtest_run_at": run_at,
-            "entry_lag": entry_lag,
-            "max_hold_days": max_hold,
-            "stop_loss": sl,
-            "take_profit": tp,
-            "n_events": result["n_events"],
-            "n_filled": result["n_filled"],
-            "avg_pnl": result["avg_pnl"],
-            "avg_hold_days": result["avg_hold_days"],
-            "win_rate": result["win_rate"],
-            "annual_return": result["annual_return"],
-            "sharpe": result["sharpe"],
-            "avg_position_maxdd": result["avg_position_maxdd"],
-            "p95_position_maxdd": result["p95_position_maxdd"],
-            "exit_reasons_json": json.dumps(result.get("exit_reason_counts", {}), ensure_ascii=False),
-            "event_date_min": str(events["notice_date"].min()),
-            "event_date_max": str(events["notice_date"].max()),
-        }
-        results.append(row)
-        logger.info(
-            "  hold=%d sl=%s tp=%s → n=%d win=%.1f%% avg_pnl=%.2f%% annual=%.1f%% sharpe=%.2f avg_dd=%.1f%% p95_dd=%.1f%%",
-            max_hold, sl, tp, result["n_filled"],
-            result["win_rate"] * 100, result["avg_pnl"] * 100,
-            result["annual_return"] * 100, result["sharpe"],
-            result["avg_position_maxdd"] * 100, result["p95_position_maxdd"] * 100,
-        )
+    for entry_lag, max_hold, sl, tp in param_combos:
+        params = {"entry_lag": entry_lag, "max_hold_days": max_hold, "stop_loss": sl, "take_profit": tp}
+        for split, ev in split_pairs:
+            row = _row_for_split(ev, params, split, cohort_scheme, cohort_key, run_at)
+            if row is None:
+                continue
+            results.append(row)
+            if split in ("train", "all"):
+                logger.info(
+                    "  [%s] hold=%d sl=%s tp=%s → n=%d win=%.1f%% pnl=%.2f%% sharpe=%.2f",
+                    split, max_hold, sl, tp, row["n_filled"],
+                    row["win_rate"] * 100, row["avg_pnl"] * 100, row["sharpe"],
+                )
 
     df = pd.DataFrame(results)
     if df.empty:
@@ -244,11 +271,14 @@ def run_backtest_for_cohort(
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--scheme", default="L1_instgroup", choices=["L1_instgroup", "L1", "inst_group", "all"])
+    parser.add_argument("--scheme", default="inst_type_L1",
+                        choices=["inst_type_L1", "L1_instgroup", "L1", "inst_group"])
     parser.add_argument("--top", type=int, default=1, help="跑 Top-N 样本最大的 cohort")
-    parser.add_argument("--min-samples", type=int, default=140, help="最低样本阈值")
+    parser.add_argument("--min-samples", type=int, default=300, help="最低样本阈值")
     parser.add_argument("--cohort-key", type=str, help="单 cohort：直接指定 key（格式依 scheme 定义）")
     parser.add_argument("--include-north", action="store_true", help="包含北向机构（默认排除）")
+    parser.add_argument("--walk-forward", type=float, default=None,
+                        help="按 notice_date 切分 train/holdout，取值 (0,1)，典型 0.7")
     parser.add_argument("--dry-run", action="store_true", help="不写入数据库")
     parser.add_argument("--grid", default="default", choices=["default"])
     args = parser.parse_args()
@@ -275,6 +305,7 @@ def main():
             logger.info("=== cohort [%s | %s] n=%d ===", args.scheme, cohort_key, n)
             run_backtest_for_cohort(
                 conn, args.scheme, cohort_key, grid,
+                walk_forward=args.walk_forward,
                 dry_run=args.dry_run,
             )
     finally:
