@@ -1874,3 +1874,241 @@ Optuna、事件仿真器（替代档 A/B 的 Qlib Strategy 解耦）、KS+AUC+Ca
 ### 22.7 一句话总结
 
 **短持仓 + 止盈 + 按 cohort 调参**，是当前 Top-5 cohort 跟投回测给出的共同答案；**紧止损普遍反效果**；**稳健型机构确实有 Sharpe 加成但不压倒性**。不再谈设计，先让 `fact_institution_follow_backtest` 多积累几个 cohort 和一次 walk-forward 验证，然后才决定下一步是扩 Optuna 还是扩 §17。**走一步看一步，而不是先画 60 天蓝图**。
+
+---
+
+## 23. institution × L2 Walk-forward 实证结果（2026-04-23）
+
+§22 用 `inst_type × L1` 粒度，被 §20 的"样本稀疏"工程妥协误导。用户纠正：`inst_type` 是名字关键词自动打标（240 家机构 `manual_type` 字段 0 填充），不是用户手工标签也不是抓取数据自带；应该直接按**具体机构 × L2 行业**分群，用真实业绩说话。
+
+### 23.1 数据血缘确认
+
+`Mainline current state` + `Shared DB current state`
+
+- `inst_institutions` 表：`type` 字段 240/240 有值，默认 `'other'`
+- `manual_type` 字段：**0/240 有值**——原本作为"用户手工标注覆盖层"的字段完全未被使用
+- `type` 值由机构名字关键词匹配生成（含 "QFII"/"社保"/"基金" 等）
+- **结论**：当前按 inst_type 分群等价于按"名字关键词"分群，不是真正的"用户校准过的机构类别"
+
+### 23.2 新方案：按 `institution_id × L2 行业` 分群
+
+- **样本分布**：排北向后 2 945 个 (institution × L2) 组合，样本 ≥ 30 的有 77 个 cohort
+- **Walk-forward**：70% 训练寻优、30% holdout 验证，同 §22 方法
+- **CLI 扩展**：`--scheme institution_L2 --min-samples 30 --walk-forward 0.7`
+
+### 23.3 77 个 cohort 的 walk-forward 分布
+
+| 类别 | 定义 | 数量 | 占比 |
+| --- | --- | --- | --- |
+| Stable | holdout Sharpe ≥ 1.0 AND ≥ 0.7×train | **27** | 35% |
+| Weak positive | holdout Sharpe ∈ [0, 1.0) | 18 | 23% |
+| Neutral | holdout Sharpe ∈ [0, train×0.7) | ~18 | ~24% |
+| **Overfit** | **holdout Sharpe < 0** | **14** | **18%** |
+
+相比 §22 的 `inst_type × L1`（10 cohort 里 5 stable / 3 overfit），`institution × L2` 的**信号密度显著提升**：stable 绝对数多，而且同一机构在不同 L2 上表现差异很大。
+
+### 23.4 Top 15 Stable Cohort（按 holdout Sharpe 排序）
+
+| 机构 | 擅长 L2 | hold | sl | tp | train Sharpe | holdout Sharpe | holdout 胜率 |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| 中信证券自营 | 食品饮料 | 10 | - | +20% | 1.74 | **5.77** | 100% |
+| UBS AG | 有色 | 10 | -8% | +20% | 1.81 | **5.38** | 77.8% |
+| 中信证券自营 | 商业连锁 | 10 | -8% | +20% | 2.29 | 4.46 | 83.3% |
+| JPM 自有资金 | 化工 | 10 | - | +20% | 4.33 | 4.28 | 82.4% |
+| JPM 自有资金 | 电气设备 | 10 | - | +20% | 3.48 | 4.24 | 72.4% |
+| UBS AG | 食品饮料 | 10 | - | +20% | 3.49 | 3.95 | 80% |
+| 中信证券自营 | 建材 | 10 | - | +20% | 1.87 | 3.74 | 69.2% |
+| 高盛国际自有资金 | 工业机械 | 10 | - | - | 2.00 | 3.64 | 66.7% |
+| 高盛国际自有资金 | 元器件 | 10 | - | +20% | 0.27 | 3.38 | 85.7% |
+| 吕强（个人大户） | 互联网 | 10 | -8% | +20% | 1.70 | 2.77 | 80% |
+| 中信证券自营 | 有色 | 10 | -8% | +20% | 0.44 | 2.55 | 57.9% |
+| UBS AG | 家用电器 | 10 | -15% | +20% | 2.15 | 2.54 | 63.6% |
+| 社保 503 组合 | 化工 | 10 | - | +20% | 1.56 | 2.53 | 70% |
+| 中信证券自营 | 医疗保健 | 10 | -8% | - | 1.41 | 2.51 | 73.3% |
+| 申万宏源自营 | 化工 | 10 | - | +20% | 2.95 | 2.45 | 64.3% |
+
+### 23.5 业务观察（inst_type 合并完全捕捉不到）
+
+1. **中信证券自营**独家擅长 5 个 L2：食品饮料、商业连锁、建材、有色、医疗保健——跨板块多元化
+2. **JPM 自有资金**专攻 2 个 L2：化工、电气设备，两者 holdout Sharpe 都 >4，极稳
+3. **UBS AG**擅长 3 个 L2：有色、食品饮料、家用电器（消费 + 周期混合）
+4. **高盛国际**擅长制造业：工业机械、元器件
+5. **吕强（个人大户）**只擅长 1 个：互联网——游资风格但有稳定 niche
+6. **参数偏好**：绝大多数 cohort 最优是 hold=10 + tp=+20%，短持仓 + 止盈普遍有效
+7. **止损策略不统一**：高盛元器件、中信证券商业连锁/有色/医疗保健、UBS 有色等用 sl=-8%；JPM 化工、UBS 食品饮料等不设止损更好——不能一刀切
+
+### 23.6 对 §22 结论的替代
+
+§22 的 "`稳健型×装备制造` Sharpe 2.25" 实际是 "QFII+私募" 的合成结果（私募样本 380 小头、QFII 3924 大头），真身是 **QFII × 装备制造**。在 §23 的 77 个 cohort 中 "QFII × 装备制造" 被具体的 `UBS AG / JPM / 高盛` 拆开，每家机构在不同 L2 上的表现差异巨大——这是 §22 看不到的信号。
+
+**结论**：`inst_type × L1` 的结果作为历史对照保留，不作为业务决策依据。`institution × L2` 是新的主结果。
+
+---
+
+## 24. 综合评分方案：从"布尔白名单"到"多维共振打分"（2026-04-23）
+
+### 24.1 范式转变
+
+§23 的"stable/overfit 布尔"是临时过渡。真正要做的是：
+
+- **不止打分擅长行业，不擅长的也要打分**（连续评分 0-100）
+- **多机构持仓共振**：一只股票有多家机构同时持有，每家介入时机不同，合成 stock-level 可跟分
+- **结合股票画像**：两融余额、机构调研、阶段特征、外部关注、Qlib 预测等多维信号找共振
+- **Qlib + Optuna 真正上场**：既建模学特征交互，又寻优策略参数
+
+### 24.2 可用数据维度盘点
+
+`Shared DB current state`
+
+通过 `sqlite_master` 枚举，当前可作为股票画像维度的表：
+
+| 维度族 | 表 | 用途 |
+| --- | --- | --- |
+| 机构擅长度 | `fact_institution_follow_backtest`（§23 落的表） | 每个 (institution, L2) 的 walk-forward 业绩分 |
+| 两融余额 | `raw_margin_daily` | 融资余额、融券余额、增减速度 |
+| 机构调研 | `raw_institution_surveys` + `mart_stock_survey_activity` | 最近 30/60/90 天被调研次数 |
+| 阶段特征 | `fact_stock_stage_features`（9 快照日） | dist_ma120/250、return_1m/3m/6m、above_ma250、volatility_20d |
+| 股票质量 | `fact_stock_quality_features`（5 快照日） | `quality_score_v1` 及子项 |
+| 预测/分析师 | `fact_stock_forecast_features` | 业绩预告、盈利预测 |
+| 海龟 | `fact_stock_turtle_features`（5 快照日） | 趋势触发信号 |
+| 外部关注 | `fact_stock_attention_snapshot` + `dim_stock_attention_latest` | 分析师上调、舆情热度 |
+| 龙虎榜 | `raw_lhb_daily` | 席位买卖数据 |
+| Qlib 截面预测 | `qlib_predictions`（最新 2026-04-13） | 现有短周期截面排序分 |
+| 股票股性 | `fact_stock_character` | 波动性、弹性、beta |
+
+**关键约束**：阶段/质量/海龟特征的历史快照日只有 5-9 天，不足以支持跨时段统计稳健评估；两融、调研、龙虎榜历史较长（raw 层）。
+
+### 24.3 总体架构（四层）
+
+```
+┌───────────────────────────────────────────────────────────────┐
+│ Layer D: 事件级综合可跟分 event_action_score (0-100)           │
+│ 合成自 Layer C 的多维特征 + Qlib 分类头                         │
+└─────────────────────────────────▲─────────────────────────────┘
+                                  │
+┌───────────────────────────────────────────────────────────────┐
+│ Layer C: 事件特征矩阵 fact_event_features                       │
+│ 每个 (institution, stock, notice_date) 一行，含下列族           │
+│  F1 机构擅长度：该机构在该股票所属 L2 的 stable_score            │
+│  F2 股票阶段：dist_ma250_pct / return_3m / volatility_20d       │
+│  F3 股票画像：quality_score / forecast_strength                  │
+│  F4 两融行为：margin_balance_change_30d                          │
+│  F5 调研关注：survey_count_60d / analyst_upgrade_count           │
+│  F6 事件属性：premium_bucket / hold_ratio / event_type           │
+│  F7 多机构共振：同股票 stable 机构数 / 平均 stable_score          │
+│  F8 Qlib 短周期：qlib_rank / qlib_percentile                     │
+└─────────────────────────────────▲─────────────────────────────┘
+                                  │
+┌───────────────────────────────────────────────────────────────┐
+│ Layer B: 机构擅长度评分 v_institution_l2_score                  │
+│ 从 fact_institution_follow_backtest 得到                         │
+│  每 (institution, L2) → [stable_score, suggested_params]         │
+│  stable_score = f(holdout_sharpe, ratio, n_filled)               │
+│  连续 0-100，不区分 stable/overfit 布尔                           │
+└─────────────────────────────────▲─────────────────────────────┘
+                                  │
+┌───────────────────────────────────────────────────────────────┐
+│ Layer A: 事件仿真器（已完成，§22）                              │
+│ event_simulator.py + run_follow_backtest.py                     │
+└───────────────────────────────────────────────────────────────┘
+```
+
+每一层是可独立验证的产物，可以逐层上线，不需要"全做完才生效"。
+
+### 24.4 Layer B：机构 L2 擅长度评分（立即可做）
+
+当前 §23 的结果是"stable / weak / overfit"三类布尔。Layer B 把它变成**连续 0-100 分**：
+
+```
+stable_score(inst, L2) = 
+    base * min(1, holdout_sharpe / 2.0)          # 主信号：holdout Sharpe
+  * clip(holdout_ratio, 0, 1)                    # 稳健性
+  * min(1, holdout_n_filled / 20)                # 样本置信度
+  * 100
+```
+
+特点：
+- **不擅长的 L2 不是 0 分，是低分**（例如 holdout Sharpe 0.3 得 15 分）
+- holdout Sharpe 负的（overfit）得 0 分
+- 未验证过的 (机构, L2) 组合（样本 < 30）用**全机构平均分**作为先验填充
+
+落表：`v_institution_l2_score` 作为 `fact_institution_follow_backtest` 的衍生 view。
+
+**成功标准**：对 UBS、中信证券、JPM 三家 Top 机构，人工复核其 L2 分数排序符合直觉。
+
+### 24.5 Layer C：事件特征矩阵（中期）
+
+对每条 `fact_institution_event` 事件，把 Layer B + 股票画像 + 事件属性拼成一行特征。
+
+**挑战**：
+1. 股票阶段/质量/海龟特征只有 5-9 快照日，历史事件的特征需要"回溯到事件日最近快照"或"从 raw 层重算"
+2. 两融、调研、外部关注历史完整，需要按事件日做 point-in-time lookup
+
+**分两阶段实施**：
+- **C-阶段 1（近期事件）**：只对最近 60 天的事件构建特征矩阵，验证特征工程代码
+- **C-阶段 2（历史事件）**：为每个历史事件重算 stage/quality 特征（代价大，需要市场数据回溯），再拼特征
+
+**成功标准**：Layer C 写入 `fact_event_features` 至少 5000 行，每行 20+ 个特征，缺失率 < 30%。
+
+### 24.6 Layer D：Qlib 建模 + Optuna 寻优（长期）
+
+用 Layer C 特征矩阵训练 Qlib，学习 `event_action_score = f(features) → forward_return`。
+
+**模型设计**（§17 的简化版）：
+- 起点：单头 LightGBM 回归 forward_return_20d（不是多头，先简单）
+- 损失：MSE
+- 特征：Layer C 的全部列
+- 评估：IC / RankIC / KS / 分层 Sharpe
+
+**Optuna 寻优**：
+- 不是调模型超参，而是**联合调 (feature 权重、策略参数)**：
+  - 策略参数（hold / sl / tp）按 Layer B 推荐的 stable_cohort 最优参数
+  - 模型超参（tree_num / learning_rate / max_depth）Optuna TPE 扫 100 次
+  - 多目标：IC 最大化 + 分层 Sharpe 最大化
+
+**成功标准**：Qlib 模型在 holdout 上 IC ≥ 0.05 且 KS ≥ 本地基线 + 0.05（§20 提出的本地校准止损线）。
+
+### 24.7 多机构共振（Layer C 内）
+
+一只股票有多家机构披露，Layer C 特征矩阵以"事件"为行，但可衍生"股票"视角：
+
+```
+stock_resonance_score(stock, date) = 
+    sum(stable_score(inst_i, stock_L2) for inst_i in 近 90 天披露的机构)
+  / n_institutions_normalized
+  * stock_quality_score
+```
+
+这可用于 stock-level 排序，前端"我的自选股今天谁值得关注"类功能。
+
+### 24.8 不做的事
+
+- 不碰 MCR 主链（§21 秩序原则）
+- 不改股票主列前端（Layer D 结果先落表，前端消费后置）
+- 不上多头神经网（先 LightGBM baseline，复杂度按需上）
+- 不在 Layer B 未完成时启动 Qlib 训练（避免用假评分作特征）
+
+### 24.9 路线图
+
+| 窗口 | 交付 | 验证手段 |
+| --- | --- | --- |
+| **第 1 周** | Layer B（`v_institution_l2_score`）+ 扩 walk-forward 样本阈值到 ≥ 20（+50 cohort） | 对 Top 20 机构人工复核评分排序 |
+| 第 2 周 | Layer C-阶段 1（近期 60 天事件的 `fact_event_features`） | 特征缺失率、单特征 IC |
+| 第 3 周 | Layer D baseline（单头 LightGBM）+ KS/AUC/IC 评估 | holdout IC ≥ 0.03、KS ≥ 本地基线+0.05 |
+| 第 4 周 | Optuna 扩到模型超参 + 策略参数联合寻优 | 对比 baseline 的 holdout Sharpe 提升 |
+| 第 5 周 | Layer D 输出 `event_action_score` 落表 + 股票级共振分 | 抽样 20 事件人工复核、stock 排序合理性 |
+| 第 6 周 | 前端新增"事件评级"卡片（非主列） | 用户试用反馈 |
+
+每周结束**用数据验证**是否达到该周成功标准，达到才进下一步；不达到就原地优化或收缩范围。
+
+### 24.10 核心原则（避免掉回"方案文档"陷阱）
+
+1. **每一层先落表再接下一层**——没有数据就不写下一层的代码
+2. **每周数据验证**——验证不达标先修当前层，不推进
+3. **不上多头网络、不搞复杂架构**——简单方法验证通路
+4. **Layer B 的评分不是最终答案**——它只是下一层的输入，下一层若用模型能学到更好的交互就用模型
+5. **每一步都能产出"用户可查看"的证据**——即便是 SQL 结果或 view，不只是代码
+
+### 24.11 一句话
+
+**第 1 周就要有 Layer B 可查询的评分表**，然后一周验证一次是否达标，达标才进下一周。**不再画 60 天蓝图**，设计和验证的节奏必须对齐。
