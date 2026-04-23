@@ -3505,6 +3505,64 @@
     el.style.display = 'block';
   }
 
+  function renderMultidimScoreCard(m) {
+    // §29.4 W2：股票五维画像评分卡片
+    if (!m || !m.n_dimensions_available) return '';
+    var c = m.components || {};
+    function detail(key) {
+      if (key === 'resonance' && c.resonance) {
+        return c.resonance.n_holders + ' 家持仓 · ' + (c.resonance.n_stable_l2_matched || 0) + ' 家 L2 擅长';
+      }
+      if (key === 'margin' && c.margin && c.margin.rz_balance_yuan != null) {
+        return '融资余额 ' + (c.margin.rz_balance_yuan / 1e8).toFixed(2) + ' 亿 · 市场分位 ' + (c.margin.market_percentile != null ? c.margin.market_percentile.toFixed(0) : '-');
+      }
+      if (key === 'forecast' && c.forecast) {
+        return '行业分位 ' + (c.forecast.industry_qlib_percentile != null ? Number(c.forecast.industry_qlib_percentile).toFixed(0) + '%' : '-');
+      }
+      if (key === 'survey' && c.survey) {
+        return '近 60 天 ' + (c.survey.inst_count_60d || 0) + ' 家调研';
+      }
+      if (key === 'stage' && c.stage) {
+        return '距 MA250 ' + (c.stage.dist_ma250_pct != null ? Number(c.stage.dist_ma250_pct).toFixed(1) + '%' : '-') +
+               ' / 近 3 月 ' + (c.stage.return_3m != null ? Number(c.stage.return_3m).toFixed(1) + '%' : '-');
+      }
+      return '-';
+    }
+    var dims = [
+      { key: 'resonance', score: m.resonance_score, label: '🤝 机构共振' },
+      { key: 'margin',    score: m.margin_score,    label: '💰 两融情绪' },
+      { key: 'forecast',  score: m.forecast_score,  label: '📈 研报预期' },
+      { key: 'survey',    score: m.survey_score,    label: '🔍 调研热度' },
+      { key: 'stage',     score: m.stage_score,     label: '📍 阶段位置' },
+    ];
+    var overall = m.overall_score;
+    var ovColor = overall == null ? '#94a3b8' : overall >= 60 ? '#10b981' : overall >= 40 ? '#f59e0b' : '#ef4444';
+    var html = '<div style="margin:10px 0;border:1px solid #c7d2fe;border-radius:6px;padding:12px;background:linear-gradient(180deg,#f5f3ff 0%,#fff 100%)">' +
+      '<div style="display:flex;align-items:center;margin-bottom:10px">' +
+      '<b style="font-size:13px;color:#4c1d95">五维画像评分</b>' +
+      '<span style="margin-left:10px;font-size:11px;color:#64748b">§29.4 首版（公式未经回测校准）</span>';
+    if (overall != null) {
+      html += '<span style="margin-left:auto;background:' + ovColor + ';color:white;padding:4px 14px;border-radius:4px;font-weight:600;font-size:13px">综合 ' + overall.toFixed(1) + '</span>';
+    }
+    html += '</div>';
+    html += '<div style="display:grid;grid-template-columns:repeat(5,1fr);gap:8px;font-size:12px">';
+    dims.forEach(function (d) {
+      var s = d.score;
+      var display = s != null ? Number(s).toFixed(1) : '-';
+      var color = s == null ? '#94a3b8' : s >= 60 ? '#10b981' : s >= 40 ? '#f59e0b' : '#ef4444';
+      var barW = s != null ? Math.max(0, Math.min(100, Number(s))) : 0;
+      html += '<div style="background:white;border-radius:4px;padding:8px;border:1px solid #f1f5f9">' +
+        '<div style="font-size:11px;color:#64748b;margin-bottom:2px">' + d.label + '</div>' +
+        '<div style="font-size:18px;font-weight:600;color:' + color + '">' + display + '</div>' +
+        '<div style="background:#e2e8f0;height:3px;border-radius:2px;margin:4px 0;overflow:hidden">' +
+        '<div style="background:' + color + ';height:100%;border-radius:2px;width:' + barW + '%"></div></div>' +
+        '<div style="font-size:10px;color:#475569;line-height:1.35">' + esc(detail(d.key)) + '</div>' +
+        '</div>';
+    });
+    html += '</div></div>';
+    return html;
+  }
+
   function toggleStockDetail(stockCode, clickedEl) {
     var existing = document.querySelector('.detail-panel[data-detail-stock="' + stockCode + '"]');
     if (existing) { removeDetailPanel(existing.closest('tr.detail-row') || existing); clickedEl.removeAttribute('data-detail-open'); return; }
@@ -3532,13 +3590,21 @@
       clickedEl.parentNode.insertBefore(panel, clickedEl.nextSibling);
     }
 
-    api('/api/inst/stocks/detail/' + encodeURIComponent(stockCode)).then(function (r) {
+    Promise.all([
+      api('/api/inst/stocks/detail/' + encodeURIComponent(stockCode)),
+      api('/api/inst/stocks/multidim/' + encodeURIComponent(stockCode)).catch(function () { return null; }),
+    ]).then(function (results) {
+      var r = results[0], md = results[1];
       if (!r || !r.ok) { panel.innerHTML = '<div class="detail-loading">加载失败: ' + esc(r && r.detail || '未知') + '</div>'; return; }
       try {
       var insts = r.institutions || [];
       var indStr = r.industry ? (r.industry.tdx_l1 || '') + (r.industry.tdx_l2 ? ' > ' + r.industry.tdx_l2 : '') + (r.industry.tdx_l2 ? ' > ' + (r.industry.tdx_l3 || 'L3未分类') : '') : '';
       var html = '';
+      // 兼容原代码 bug：原代码引用了未定义的 detailPayload；此处把 r 作为 payload 兜底
+      var detailPayload = r;
       html += renderStockReportHero(detailPayload);
+      // §29.4 W2 五维画像评分（在 hero 之后立即展示，视觉突出）
+      html += renderMultidimScoreCard(md && md.multidim_score);
       html += renderStockInstitutionCoverageSection(detailPayload, insts);
       html += renderStockEvidenceTimeline(detailPayload);
       html += renderSetupBlock(r.setup, insts, detailPayload);

@@ -865,6 +865,128 @@ async def get_institution_detail(inst_id: str):
         conn.close()
 
 
+def compute_stock_multidim_score(conn, stock_code: str) -> dict:
+    """五维评分实时计算（§29 Layer B → Layer C 过渡，W2 交付）。
+
+    五维定义（首版简化公式，阈值由 §15.8 跟投回测反推待接入）：
+      F1 resonance  持仓机构在该股 L2 的 stable_score 平均
+      F2 margin     最新 rz_balance 全市场分位（首版；§24 Layer C 应改"增量归一"）
+      F3 forecast   fact_stock_forecast_features.forecast_score_v1（已是 0-100）
+      F4 survey     近 60 天 inst_count 线性归一（50 家 = 满分）
+      F5 stage      基于 dist_ma250_pct 分段：低位 +分、追高 -分
+    overall = 有值维度的简单平均（各 20%）；后续可改加权。
+    """
+    result = {
+        "resonance_score": None, "margin_score": None, "forecast_score": None,
+        "survey_score": None, "stage_score": None, "overall_score": None,
+        "components": {}, "notes": "首版公式未经回测校准（§29.4）",
+    }
+
+    # F1 机构共振
+    row = conn.execute("""
+        SELECT COUNT(DISTINCT mcr.institution_id) n_total,
+          COUNT(DISTINCT CASE WHEN v.verdict='stable' THEN mcr.institution_id END) n_stable,
+          AVG(COALESCE(v.stable_score, 0)) avg_score
+        FROM mart_current_relationship mcr
+        LEFT JOIN dim_stock_tdx_industry ind ON mcr.stock_code = ind.stock_code
+        LEFT JOIN v_institution_l2_score v
+          ON v.institution_id = mcr.institution_id AND v.l2_name = ind.tdx_l2_name
+        WHERE mcr.stock_code = ?
+    """, (stock_code,)).fetchone()
+    if row and row["n_total"] and row["n_total"] > 0:
+        avg = row["avg_score"] or 0
+        result["resonance_score"] = round(avg, 1)
+        result["components"]["resonance"] = {
+            "n_holders": row["n_total"],
+            "n_stable_l2_matched": row["n_stable"] or 0,
+            "avg_stable_score": round(avg, 1),
+        }
+
+    # F2 两融情绪
+    mrow = conn.execute("""
+        WITH latest AS (
+          SELECT stock_code, rz_balance FROM raw_margin_daily
+          WHERE trade_date = (SELECT MAX(trade_date) FROM raw_margin_daily)
+        )
+        SELECT rz_balance,
+          (SELECT COUNT(*) FROM latest WHERE rz_balance <= l.rz_balance AND rz_balance IS NOT NULL) * 100.0
+            / NULLIF((SELECT COUNT(*) FROM latest WHERE rz_balance IS NOT NULL), 0) pct
+        FROM latest l WHERE stock_code = ?
+    """, (stock_code,)).fetchone()
+    if mrow and mrow["rz_balance"] is not None:
+        pct = mrow["pct"] or 0
+        result["margin_score"] = round(pct, 1)
+        result["components"]["margin"] = {
+            "rz_balance_yuan": mrow["rz_balance"],
+            "market_percentile": round(pct, 1),
+        }
+
+    # F3 研报/预测
+    frow = conn.execute("""
+        SELECT forecast_score_v1, forecast_20d_score, industry_qlib_percentile, snapshot_date
+        FROM fact_stock_forecast_features
+        WHERE stock_code = ?
+        ORDER BY snapshot_date DESC LIMIT 1
+    """, (stock_code,)).fetchone()
+    if frow and frow["forecast_score_v1"] is not None:
+        fs = frow["forecast_score_v1"]
+        result["forecast_score"] = round(fs, 1)
+        result["components"]["forecast"] = {
+            "forecast_score_v1": round(fs, 1),
+            "forecast_20d_score": frow["forecast_20d_score"],
+            "industry_qlib_percentile": frow["industry_qlib_percentile"],
+            "snapshot_date": frow["snapshot_date"],
+        }
+
+    # F4 调研热度
+    srow = conn.execute("""
+        SELECT survey_count_60d, inst_count_60d, latest_survey_date
+        FROM mart_stock_survey_activity WHERE stock_code = ?
+        ORDER BY as_of_date DESC LIMIT 1
+    """, (stock_code,)).fetchone()
+    if srow:
+        ic60 = srow["inst_count_60d"] or 0
+        result["survey_score"] = round(min(100.0, ic60 * 2.0), 1)
+        result["components"]["survey"] = {
+            "survey_count_60d": srow["survey_count_60d"],
+            "inst_count_60d": ic60,
+            "latest_survey_date": srow["latest_survey_date"],
+        }
+
+    # F5 阶段位置
+    strow = conn.execute("""
+        SELECT dist_ma250_pct, return_3m, above_ma250, volatility_20d, snapshot_date
+        FROM fact_stock_stage_features WHERE stock_code = ?
+        ORDER BY snapshot_date DESC LIMIT 1
+    """, (stock_code,)).fetchone()
+    if strow and strow["dist_ma250_pct"] is not None:
+        d250 = strow["dist_ma250_pct"]
+        if d250 < -20:
+            stage_s = 95
+        elif d250 < 0:
+            stage_s = 80 - (d250 + 20) * 0.75
+        elif d250 < 30:
+            stage_s = 65 - d250 * 1.5
+        else:
+            stage_s = max(0.0, 20 - (d250 - 30) * 0.2)
+        result["stage_score"] = round(stage_s, 1)
+        result["components"]["stage"] = {
+            "dist_ma250_pct": strow["dist_ma250_pct"],
+            "return_3m": strow["return_3m"],
+            "above_ma250": strow["above_ma250"],
+            "volatility_20d": strow["volatility_20d"],
+            "snapshot_date": strow["snapshot_date"],
+        }
+
+    scores = [v for v in [result["resonance_score"], result["margin_score"],
+              result["forecast_score"], result["survey_score"], result["stage_score"]]
+              if v is not None]
+    if scores:
+        result["overall_score"] = round(sum(scores) / len(scores), 1)
+    result["n_dimensions_available"] = len(scores)
+    return result
+
+
 @router.get("/stocks/detail/{stock_code}")
 async def get_stock_detail(stock_code: str):
     """股票持有机构明细 — 统一通过 holdings 模块查询"""
@@ -879,7 +1001,6 @@ async def get_stock_detail(stock_code: str):
             result,
             shareholder_change_payload=shareholder_change_payload,
         )
-
         return {
             "ok": True,
             "stock_code": stock_code,
@@ -887,6 +1008,17 @@ async def get_stock_detail(stock_code: str):
             "total": len(detail_payload["institutions"]),
             **detail_payload,
         }
+    finally:
+        conn.close()
+
+
+@router.get("/stocks/multidim/{stock_code}")
+async def get_stock_multidim_score(stock_code: str):
+    """股票五维画像评分（§29.4 W2 交付）。独立端点避免被股东变动慢查询拖累。"""
+    conn = get_conn()
+    try:
+        return {"ok": True, "stock_code": stock_code,
+                "multidim_score": compute_stock_multidim_score(conn, stock_code)}
     finally:
         conn.close()
 
