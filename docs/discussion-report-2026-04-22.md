@@ -327,3 +327,264 @@ SELECT 'fact_stock_stage_features' tbl, COUNT(DISTINCT snapshot_date), MIN, MAX 
   - Claude：阶段 1（2-3 人日），阶段 0 完成后接
   - codex：若对阶段 1 特征范围有异议，阶段 0 进行期间补段
 - **验收**：见阶段 0 / 阶段 1 各自验收标准
+
+---
+
+## 2026-04-23 [Claude] 全链路：数据 → 变量加工 → 展示（事实陈述）
+
+### 0. 本段范围
+
+按用户请求梳理 W1-W6 当前态的完整链路，便于后续讨论都在同一张地图上。**展示的是当前污染版的逻辑**，P0 修复后会变。
+
+### 1. 数据源层
+
+#### 1.1 Raw 原始层（只追加不改）
+
+| 表 | 数据库 | 来源 | 关键字段 | 时间覆盖 | 刷新频率 |
+| --- | --- | --- | --- | --- | --- |
+| `price_kline` | `market_data.db` | AkShare + mootdx | code/date/open/high/low/close/volume/amount（daily qfq） | 2023-01-03 ~ 2026-04-21（797 天）| 每日 |
+| `market_raw_holdings` | `smartmoney.db` | 东财十大股东 | 季度披露持仓明细 | 同 fact_institution_event | 季度 |
+| `raw_margin_daily` | `smartmoney.db` | 东财 | code/trade_date/rz_balance/rq_balance/rz_buy/rq_sell 等 | 2023-01-03 ~ 2026-04-21 | 每日 |
+| `raw_institution_surveys` | `smartmoney.db` | 东财 | 机构调研原始记录 | 不确定 | 待确认 |
+| `raw_lhb_daily` | `smartmoney.db` | 东财 | 龙虎榜每日 | 不确定 | 每日 |
+| `raw_qfii_holding_quarterly` | `smartmoney.db` | 东财 | QFII 季报持仓 | 按季 | 季度 |
+| `raw_fetch_batch` | `smartmoney.db` | 系统 | 抓取批次元数据 | - | 每次抓取 |
+
+#### 1.2 Dim 维度层
+
+| 表 | 内容 | 更新方式 |
+| --- | --- | --- |
+| `dim_active_a_stock` | A 股股票主数据 | 定期刷 |
+| `dim_stock_tdx_industry` | 股票 → Tongdaxin L1/L2/L3 行业映射（code + name 双列） | 版本化更新 |
+| `dim_trading_calendar` | 交易日历 | 定期刷 |
+| `dim_stock_quality_latest` / `dim_stock_stage_latest` / `dim_stock_forecast_latest` / `dim_stock_attention_latest` / `dim_stock_turtle_latest` | 最新 fact 切片视图（只保留最新 snapshot） | 跟随 fact 刷 |
+| `inst_institutions` | 机构主表：`id` / `name` / `type`（关键词打标自动生成）/ `manual_type`（用户手动标注，当前 0 填充）/ `merged_into` | updater `match_inst` 步骤 |
+
+#### 1.3 Fact 事实层
+
+| 表 | 主键 | 核心字段 | 时序密度 |
+| --- | --- | --- | --- |
+| `fact_institution_event` | (institution_id, stock_code, report_date) | notice_date / event_type (new_entry/increase/decrease/exit/unchanged) / hold_amount / change_amount / **price_entry** / **premium_pct** / **premium_bucket** (discount/near_cost/premium/high_premium) / **gain_10d/30d/60d/90d/120d** / **max_drawdown_30d/60d** / return_to_now / follow_gate / follow_gate_reason / chain_id | 季度披露 → 每次新季度 full rebuild |
+| `fact_stock_stage_features` | (snapshot_date, stock_code) | dist_ma120_pct / dist_ma250_pct / return_1m/3m/6m/12m / above_ma250 / volatility_20d / stock_archetype / stage_score_v1 | **9 天**（2026-04-08~2026-04-22）|
+| `fact_stock_quality_features` | (snapshot_date, stock_code) | quality_score_v1 + 若干子项 | **5 天**（2026-04-08~2026-04-17）|
+| `fact_stock_forecast_features` | (snapshot_date, model_id, stock_code) | qlib_score / qlib_rank / qlib_percentile / forecast_score_v1 / forecast_20d_score | **3 天**（2026-04-08~2026-04-22）|
+| `fact_stock_turtle_features` | (snapshot_date, stock_code) | 海龟突破/回撤状态 | 5 天 |
+| `fact_stock_attention_snapshot` | (snapshot_date, stock_code) | 分析师调级次数、研报热度 | 若干 |
+| `fact_stock_character` | (stock_code, as_of_date) | 波动性 / 弹性 / beta | 若干 |
+
+#### 1.4 Mart 集市层
+
+| 表 | 来源 | 关键字段 |
+| --- | --- | --- |
+| `mart_institution_profile` | `calc_institution_profile` | **主键只 institution_id，无 snapshot_date**：total_events / avg_gain_*d / win_rate_*d / median_max_drawdown_*d / buy_avg_gain_*d / buy_win_rate_*d / **quality_score** / **followability_score** / concentration / top_industry_* / exit_post_avg_gain_*d / safe_follow_* / signal_transfer_efficiency_30d |
+| `mart_institution_industry_stat` | (institution_id, industry_level, industry_name) | 机构 × L1/L2/L3 行业事件级业绩 |
+| `mart_current_relationship` | (institution_id, stock_code) | 当前持仓 + follow_gate + 行业三级 |
+| `mart_stock_trend` | (stock_code) | composite_priority_score / priority_pool / stock_gate + 若干子分 |
+| `mart_stock_survey_activity` | (stock_code, as_of_date) | inst_count_30d/60d/90d | **3 天**（2026-04-19~2026-04-22）|
+| `mart_stock_screening` | 筛选器产出 | - |
+
+#### 1.5 Research / Qlib 表
+
+| 表 | 内容 |
+| --- | --- |
+| `research_inst_industry_performance` | 机构 × L1/L2/L3 × 事件级业绩 + `low_premium_win_rate_30d` / `high_premium_win_rate_30d` |
+| `research_holding_chains` | 持仓链（entry-exit），15009 条，大部分字段未填 |
+| `qlib_predictions` | Qlib 截面预测（每日 top-k） |
+| `qlib_model_state` | Qlib 模型训练元数据 |
+| `qlib_backtest_result` | Qlib 组合回测结果 |
+| `qlib_event_prediction` | **W4/W5 新增**：事件级预测 event_action_score / predicted_gain / confidence / shap_top5_json |
+| `qlib_model_evaluation` | **W4 新增**：IC / KS / AUC / Calibration ECE / PSI |
+| `fact_event_features` | **W3 新增**：9 族 39 列事件特征矩阵 |
+| `fact_institution_follow_backtest` | **W1 新增**：cohort × 参数 grid 回测，train / holdout split |
+| `fact_similar_events` | **W5 新增**：每 holdout 事件 Top-5 相似事件（leaf embedding）|
+
+#### 1.6 View
+
+- `v_institution_l2_score`（W1 建）：合成 `fact_institution_follow_backtest` train/holdout 最优参数对，产出连续 stable_score 0-100 + verdict
+- `v_l2_profile`（W1 建）：L2 行业汇总（股票数 / stable 机构数 / top_score / avg_stable_score）
+
+### 2. 加工层：变量从 raw 到 feature 的路径
+
+#### 2.1 事件级收益/回撤（`services.return_engine`）
+
+对每条 `fact_institution_event`：
+
+1. 确定 `tradable_date = notice_date + 1 交易日`
+2. 查 `price_kline` 取 `price_entry = close(tradable_date)`
+3. 查未来 10/30/60/90/120 交易日的 close，算 `gain_Nd = close(+N)/price_entry - 1`
+4. 同窗口内 min(close)/price_entry - 1 得 `max_drawdown_Nd`
+5. 估机构真实成本 `inst_ref_cost`（method 见 `return_engine`）
+6. `premium_pct = price_entry / inst_ref_cost - 1` 并分档：discount (< -5%) / near_cost (-5%~+5%) / premium (+5%~+15%) / high_premium (> +15%)
+7. `follow_gate` 基于 `premium_bucket` + `event_type` 给出 follow/watch/observe/avoid
+
+**注意**：`gain_Nd` 和 `max_drawdown_Nd` 是**事后才能算**的字段。训练时作为 label 用，但**不可作为特征**（W4 已排除）。
+
+#### 2.2 机构画像（`scoring.calculate_institution_scores`）
+
+`mart_institution_profile` 每次全量重算（UPDATE）：
+
+- 统计每机构的 `buy_event_count` / `avg_gain_*d` / `win_rate_*d` / `median_max_drawdown_*d`（按 `fact_institution_event` 全史）
+- `quality_score` = 对 9 个维度（sample/gain_30d/60d/120d/win_rate_30d/60d/90d/drawdown/stability）做**百分位归一**，加权求和 × confidence_factor（sqrt(event_count/10) 封顶 1）
+- `followability_score` = 对 6 个 safe_follow_* 维度做同样处理
+
+**污染点**：每次全量重算，旧事件读到的 quality_score 是**全史聚合**值，非事件日那时的值。
+
+#### 2.3 股票阶段 / 质量 / 预测特征
+
+各自 build_*_engine（阶段/质量/预测/海龟）按当前 snapshot_date 计算，只保留最近几个快照日（3-9 天）。**无历史回填**。
+
+#### 2.4 机构 × L2 walk-forward（`run_follow_backtest.py`）
+
+对每个 (institution_id, L2) cohort（样本 ≥ 30）：
+
+- 按 notice_date 切 train 70% / holdout 30%
+- 对参数 Grid：entry_lag(0/1/2) × max_hold_days(5/10/20/40) × stop_loss(None/-0.05/-0.1) × take_profit(None/+0.1/+0.2)
+- 每个参数点调 `event_simulator.simulate_events` 模拟跟投，聚合单笔 pnl
+- 落 `fact_institution_follow_backtest`：每参数点一行，记录 n_filled / avg_pnl / win_rate / annual_return / **sharpe** / avg_position_maxdd / p95_position_maxdd
+
+#### 2.5 Layer B 连续评分（`v_institution_l2_score` view SQL）
+
+每 cohort 取 train Sharpe 最高的参数点，配 holdout 对应点：
+
+```
+stable_score = 100
+  * min(1, ho_sharpe / 2.0)            -- Sharpe 封顶 2.0
+  * clip(ho_sharpe / train_sharpe, 0, 1)  -- 稳健性
+  * min(1, ho_n / 30)                  -- 样本置信度
+```
+
+**只用 Sharpe**。`win_rate` 和 `maxdd` 落表但**不进 stable_score 公式**。
+
+`verdict` 判定：`ho_sharpe ≥ 1.0 AND ratio ≥ 0.7 AND ho_n ≥ 15 → stable`；其他按 sharpe 分档。
+
+#### 2.6 股票五维实时计算（`compute_stock_multidim_score`）
+
+每次前端请求股票详情时实时算：
+
+- **F1 resonance** = 持仓机构在该股 L2 的 stable_score 均值
+- **F2 margin** = 最新 rz_balance 在全市场的分位 × 100
+- **F3 forecast** = 最新 `fact_stock_forecast_features.forecast_score_v1`（已是 0-100）
+- **F4 survey** = `min(100, inst_count_60d × 2)`（50 家调研 = 满分）
+- **F5 stage** = 分段函数（当前写死低位加分追高扣分，**IC 实测方向反**，P0.3 要修）
+- `overall = mean(有值维度)` 简单平均
+
+#### 2.7 事件特征矩阵（`build_event_features.py`）
+
+对每条事件，9 族 39 列：
+
+- F1 Layer B（5 列）：`v_institution_l2_score` JOIN 得 stable_score / verdict / train_n / ho_n / ho_sharpe
+- F3 forecast（3 列）：`fact_stock_forecast_features` 最新快照
+- F4 survey（2 列）：`mart_stock_survey_activity` 最新
+- F5 stage（5 列）：`fact_stock_stage_features` 最新
+- F6 margin（2 列）：`raw_margin_daily` 最新 + 市场分位
+- F7 inst_profile（4 列）：`mart_institution_profile` 当前（buy_win_rate_60d / buy_avg_gain_60d / quality_score / followability_score）
+- F8 resonance（1 列）：同股票 ±90 天内其他机构 stable 事件数
+- 事件属性（8 列）：premium_pct / premium_bucket / hold_amount / change_amount / report_to_notice_lag_days / tdx_l1_name / tdx_l2_name / event_type
+- label（4 列）：label_gain_30d / label_gain_60d / label_max_drawdown_30d / label_max_drawdown_60d
+
+**污染**：F1/F3/F4/F5/F7 对 2023/2024 事件全部用 2026-04 快照值。
+
+#### 2.8 Qlib 训练链（`train_event_qlib.py` + `tune_event_qlib.py`）
+
+- **输入**：fact_event_features 全量（排除 label / id / text / report_to_notice_lag_days 疑似泄漏）25 列数值特征 + label_gain_60d
+- **切分**：train 80% / holdout 20%（按 notice_date，Optuna 直接在 holdout 上调参——P0.2 要改三段）
+- **目标**：回归 label_gain_60d；附加分类阈值 follow = gain > 8% 做 KS/AUC
+- **模型**：LightGBM（最佳 `lr=0.079 / num_leaves=56 / min_data_in_leaf=290 / max_depth=7 / num_boost_round=372`）
+- **输出**：
+  - `predicted_gain`：原始预测值
+  - `event_action_score`：在 train 集 pred 分布的分位 × 100
+  - `confidence`：`2 × |score - 50| / 100`（**不是真置信度**，P1.2 要改）
+  - `shap_top5_json`：LightGBM pred_contrib 原生归因
+
+#### 2.9 相似事件召回（`recall_similar_events.py`）
+
+- 用 LightGBM `pred_leaf=True` 得 (n_samples, n_trees) 叶子矩阵
+- 相似度 = 同叶子棵数 / 总棵数
+- 对每条 holdout 事件召回 train 里 Top-5 相似
+
+**污染**：召回源是 train 集，其 label 正是模型训练目标，存在 circular exposure（P1.3 要标注）
+
+### 3. 展示层
+
+#### 3.1 API 端点清单
+
+| 端点 | 产出 |
+| --- | --- |
+| `GET /api/inst/profiles/detail/{inst_id}` | 机构画像 + 行业 L1/L2 树 + Layer B 擅长 L2（top_stable_l2 Top 10）|
+| `GET /api/inst/stocks/detail/{stock_code}` | 股票持仓机构 + 报告期 + 事件时间线 + setup（legacy 四维综合分） |
+| `GET /api/inst/stocks/multidim/{stock_code}` | 五维画像评分（resonance/margin/forecast/survey/stage + overall）|
+| `GET /api/inst/industry/l2/{l2_name}` | L2 行业画像（summary + stable 机构列表 + 在仓股票 Top 50）|
+| `GET /api/inst/event-predictions?inst_id=X` 或 `?stock_code=Y` | AI 事件评分（event_action_score + shap_top5 + similar_events + 全局 evaluation）|
+
+#### 3.2 前端组件
+
+| 位置 | 组件 | 展示内容 |
+| --- | --- | --- |
+| 股票详情页 | `renderStockReportHero` | 综合优先分 + 池子 + 近期股价 |
+| 股票详情页 | `renderMultidimScoreCard` | 五维画像评分卡片（§2.6 公式产出）|
+| 股票详情页 | `renderEventPredictionCard` | AI 事件评分表（机构 × 日期 × score × SHAP × 相似事件）|
+| 股票详情页 | `renderStockInstitutionCoverageSection` | 持仓机构列表 |
+| 股票详情页 | `renderStockEvidenceTimeline` | 事件时间线 |
+| 股票详情页 | `renderSetupBlock` | Setup 执行优先级（legacy）|
+| 机构详情页 | 顶部 metric | 实力分 / 可跟分 / 胜率 / 收益 / 回撤 |
+| 机构详情页 | Layer B 擅长 L2 卡片 | top_stable_l2 表（score / Sharpe / 推荐参数）|
+| 机构详情页 | `renderEventPredictionCard` | 同股票详情页组件（复用）|
+| 机构详情页 | 行业分布表 | L1 → L2 → L3 展开（胜率 / 30 日均）|
+| 机构详情页 | `renderInstSignalsTrackRecord` | signals_v2 执行口径跟随收益 |
+| L2 画像弹窗 | `showL2Profile` | summary + 该 L2 内 stable/weak 机构 + 在仓股票 Top 50 |
+
+
+### 4. 指标覆盖度自查（回应用户 2026-04-23 问题：胜率 / 回撤 / 累计收益）
+
+用户原问：**"胜率高低与收益率高低没有必然联系吧，胜率低但是回撤小、累计收益高，这也是个不错的机构，这一点在模型里有考虑吗？"**
+
+按链路扫一遍，把"胜率 / 回撤 / 累计收益"三个维度在各层的使用情况列出：
+
+| 层 / 组件 | 胜率 | 回撤 | 累计收益 | 三者组合 |
+| --- | --- | --- | --- | --- |
+| `fact_institution_event.gain_*d` / `max_drawdown_*d` | - | ✓ 单笔计算 | - | - |
+| `mart_institution_profile.win_rate_*d` / `median_max_drawdown_*d` / `avg_gain_*d` | ✓ | ✓ | △ 近似（avg_gain × event_count）| - |
+| `mart_institution_profile.quality_score` | ✓ 占 45% 权重（3 个 win_rate 维度）| ✓ 占 10% 权重（drawdown 维度）| ✓ 占 50% 权重（gain_30/60/120d + stability）| 加权求和后百分位归一——三维度被压成一个数 |
+| `fact_institution_follow_backtest` 回测指标 | `win_rate` 落表 | `avg_position_maxdd` / `p95_position_maxdd` 落表 | `annual_return`（单笔复利近似）| **不组合** |
+| `v_institution_l2_score.stable_score` | ✗ **不直接使用** | ✗ **不直接使用** | ✗ **不直接使用** | 只看 `Sharpe`（隐含收益/波动比，但不等于任一维度）|
+| `v_institution_l2_score.verdict` | ✗ | ✗ | ✗ | 只看 Sharpe + sharpe_ratio + ho_n |
+| Qlib `train_event_qlib` label | ✗ | ✗（单独 label 存在但不用）| 单笔 60d（只有 gain_60d 进 label）| - |
+| 五维 `renderMultidimScoreCard` | ✗ | △（stage_score 隐含近期回撤）| △（forecast_score 间接）| - |
+| UI `renderStockReportHero` | ✓（机构胜率展示）| ✓（max_drawdown 展示）| ✓（avg_gain 展示）| 但无"Kelly 或 profit factor"合成 |
+
+**诚实答案**：**当前模型没有把"胜率 vs 回撤 vs 累计收益"作为三个独立维度评估，Layer B 和 Qlib 都把三者压成单一 Sharpe 或单笔 gain**。
+
+具体缺口：
+
+1. **Sharpe 不区分 "高胜率小盈 vs 低胜率大涨"**：同样 Sharpe=2.0 可以是 "68% 胜率 + 每次 +3%" 或 "35% 胜率 + 赢时 +15% 输时 -3%"。前者像公募蓝筹，后者像游资追涨——业务上是完全不同的两类机构
+2. **Layer B stable_score 只吃 Sharpe**：`stable_score = f(ho_sharpe, stability, n)`，既没有 `win_rate` 阈值也没有 `maxdd` 惩罚
+3. **Qlib label = 单笔 60d gain**：模型学的是"哪些特征预测单笔更高收益"，不学"累计跟这家机构 N 次的复利结果"
+4. **quality_score 表面上 3 维度都有但被压成一个数**：9 维加权 + 百分位归一后，胜率 / 回撤 / 收益的独立信号被消除，用户看到的只是"57.3 分"
+5. **回测指标里 `avg_position_maxdd` 落表但不进任何决策**：和 §15.2 "加工墓地"同病
+
+**可能的补法（留给后续讨论，不立即做）**：
+
+1. **Layer B 分维度评分**：stable_score 拆成 win_rate_score（基于 ho_win_rate）+ drawdown_score（基于 p95_maxdd）+ cumulative_score（基于 train 期累计净值）；verdict 改为 AND 逻辑（三维度都合格才 stable）
+2. **Qlib 多目标 label**：一个 head 预测 gain_60d，一个 head 预测 maxdd_60d，一个 head 做二分类 win_60d；策略层再用 Kelly 或 Sortino 合成
+3. **UI 展示分维度**：机构详情页顶部 metric 组加 "profit_factor" / "Kelly 建议仓位" / "Sortino 比率"，而不是只展示笼统 "可跟分"
+4. **事件仿真器输出 profit factor**：按机构分 cohort 算 `sum(gain when win) / |sum(gain when lose)|`，高 profit factor 的机构即使胜率低也值得跟
+
+**建议**：纳入 P1 或新增 P0.4：指标分维度化。优先级与 P0.1/P0.2/P0.3 并列，因为"压成 Sharpe"和"lookahead"是两个不同性质的污染/失真。
+
+### 5. 关键观察
+
+- 数据源层相对完整，污染主要集中在 **Fact 快照密度** 和 **Mart 无 snapshot_date**（§1.3 和 §1.4 列清楚）
+- 加工层的每一步都**单独可解释**，但组合起来存在"压维度"问题（§4 列清楚）
+- 展示层多组件并存（legacy composite + 五维 + AI 评分 + Layer B），用户能看到**四套不同口径的"分数"**；这与 §6.3 "多口径并存" 一致
+- Qlib 事件级是最完整的一条链（特征 → 模型 → 预测 → SHAP → 相似召回 → UI），但其评估数字被 lookahead 污染，在 P0.1 修复前不可信
+
+### 6. 用途
+
+本段作为后续所有讨论的**底图**：
+
+- 讨论 P0 时 @ §1.3 / §1.4 对齐污染源认知
+- 讨论指标维度时 @ §4 对齐当前缺口
+- 讨论新功能时先问"这是新建哪一层 + 影响哪些现有 API / 组件"
+- 文档体量接近 §0.7 限制时优先归档这段（可迁出至 `ARCHITECTURE.md`）
+
+本段 180+ 行，已超 §0.7 单主题 500 行警戒线的 1/3；若后续还要展开某层细节，应拆独立文件。
