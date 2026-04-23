@@ -1898,3 +1898,86 @@ codex §14.2 原假设："stable cohort 的正 trade expectancy（2.35%/PF 1.90/
 - 若要让 cohort 发挥作用，需要更强的差异化机制（如：只在 cohort 出现时才开仓，不用 core 补位；或改变仓位分配让 cohort 事件仓位放大），不是简单的优先填充
 - 但那已经接近"pure cohort strategy"，实际回到 stable_cohort_pit（CAGR 3.05%）—— 所以 δ 的最小可行实验到此画上句号
 
+
+## 2026-04-23 [Claude] §2 新数据源接入候选分析（独立评估）
+
+### 触发
+
+γ 维持 + δ 验证失败后，唯一能推翻"机构事件 → 超额收益假设"的新证据来自外部数据源。§14 / §2 收口段已把"新数据源接入"写为 β 重启的前置条件之一，但从未列出具体候选。本段补齐候选清单 + 优先级。
+
+### 1. 已接入行为类数据盘点（fact / 2026-04-23 db 快照）
+
+| 表 | 行数 | 用途 | 覆盖期 |
+| --- | --- | --- | --- |
+| `fact_institution_event` | 56 965 | 主事件表（十大/QFII/机构增减持） | 2023-01+ |
+| `raw_margin_daily` | 2 944 065 | 两融日度 | 完整 |
+| `raw_lhb_daily` | 61 980 | 龙虎榜明细 | 2023-2026 完整 |
+| `raw_institution_surveys` | 8 738 | 机构调研 | 部分 |
+| `raw_qfii_holding_quarterly` | 7 878 | QFII 季度持仓 | 部分 |
+| `raw_capital_repurchase` | 5 116 | 上市公司回购 | 部分 |
+| `raw_capital_dividend_*` / `raw_capital_allotment` / `raw_capital_unlock` | 多张 | 分红/配股/解禁 | 部分 |
+
+**关键观察**：
+- 龙虎榜 6 万行已落库，但在研究主链中**仅作为 Qlib panel 特征聚合**（`beh_lhb_hits_60d` / `_net_buy_60d`），**未建 `fact_lhb_event`**，每条龙虎榜未作为独立事件进入 simulator。这是一个已付出采集成本但研究价值未完全兑现的资源。
+- 回购已接入但未建事件表。
+
+### 2. β 前置条件缺口定义（2026-04-23 收口段）
+
+- 缺口 A：**ticker-level 高频持仓变动**（季度十大股东 → 日度变动）
+- 缺口 B：**高频机构行为披露**（非大股东层级）
+- 缺口 C：**外部独立 labels 交叉验证**（当前 gain_60d 全部内生）
+
+### 3. akshare 可获取的候选数据源
+
+| 数据源 | 建议 akshare 函数 | 填补的缺口 | 事件化潜力 | 采集成本 | 期望 alpha 传导 |
+| --- | --- | --- | --- | --- | --- |
+| **高管增减持** | `stock_ggcg_em` | A / B | 高（单笔=独立事件） | 低 | **中高**（内部人信号经典 alpha，但 A 股披露有滞后） |
+| **大宗交易明细** | `stock_dzjy_mrmx` | A / B | 高 | 低 | **中**（折价率 + 买卖席位可推断 LP） |
+| **龙虎榜事件化** | 已有 `raw_lhb_daily` | B | 高（只需 ETL 改造） | 零（数据已有） | **中**（机构席位净买入事件） |
+| **交易所股份变动** | `stock_share_hold_change_sse` / `_szse` / `_bse` | A | 中 | 低 | 中（与 ggcg_em 部分重叠，可交叉验证） |
+| **港股通/陆股通个股** | `stock_hsgt_hold_stock_em` / `_individual_detail_em` | A | 中（panel 而非 event） | 低 | 低-中（beta 属性强） |
+| **研报发布热度** | `stock_research_report_em` | B | 中（事件=研报发布） | 低 | 低（早被 market 吸收） |
+| **CCTV 新闻 sentiment** | `news_cctv` + LLM embedding | B | 低 | 中（LLM 成本） | 低（政策利好 beta） |
+
+### 4. 推荐接入优先级
+
+#### 第一档（最高 ROI，合计 2-3 人日）
+
+1. **raw_lhb_daily 事件化**：建 `fact_lhb_event`（stock_code, trade_date, seat_type, net_buy, gain_20d/60d），复用现有 simulator 框架快速回测"机构席位净买入事件跟投" vs 基线。**数据零成本，只需 ETL**。
+2. **高管增减持 `stock_ggcg_em`**：接入 → `raw_executive_trade` → `fact_executive_trade_event`。经典 insider signal，与现有事件体系正交。
+
+#### 第二档（若第一档其一产生 excess edge 再投入）
+
+3. **大宗交易 `stock_dzjy_mrmx`**：折价率 + 机构席位 LP 推断 → `fact_block_trade_event`
+4. **交易所股份变动** 作为 `stock_ggcg_em` 交叉验证来源
+
+#### 暂缓（ROI 不足或已失势）
+
+- 港股通/陆股通个股：β 属性，α 有限
+- 研报热度：公开信息 alpha 消逝快
+- 新闻 sentiment：需要 LLM embedding + 标签成本高
+
+### 5. 验收门槛（以第一档为例）
+
+**`fact_lhb_event` 跟投回测验收**（与 P1.A Portfolio MVP 同口径）：
+
+- 底线 1：`lhb_inst_net_buy_event` 策略 CAGR > HS300 + 3 pp
+- 底线 2：Calmar > 1.5 或 MaxDD < -8%
+- 底线 3：n_trades >= 100 提供统计稳定性
+- 失败处理：若 3 条中任 1 条失败，视同 δ overlay 失败处理——保留实验代码，不产品化
+
+**`fact_executive_trade_event`**：同上口径。
+
+### 6. 下一步（如获用户授权）
+
+若用户选择推进：
+- **M5 step 1**（1 人日）：`fact_lhb_event` ETL + 接入 run_portfolio_mvp 的新策略 `lhb_inst_net_buy`
+- **M5 step 2**（1-2 人日）：`stock_ggcg_em` DAG 接入 → `raw_executive_trade` → `fact_executive_trade_event`
+- 若两者都触达底线：考虑 M6 重启 β 的 cohort regime 研究；若都失败：承认平台定位就是"机构行为研究工具 + DAG 服务"，不再追加数据源投入
+
+### 7. 不做
+
+- 不预先设计"多数据源融合评分"——先单因子验证各自的事件级 edge
+- 不把候选数据源写进产品化前端——保持研究工具形态
+- 不追加付费数据（CSMAR / Wind）除非第一档某一路径给出明确 signal 但需要外部验证
+
