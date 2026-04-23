@@ -17,10 +17,13 @@
   - take_profit：止盈阈值，正数如 +0.15；None 表示不止盈
   - 同日同时触发止损 / 止盈：保守按止损退出（盘中先触及哪个不可知）
 
-输出指标：
+输出指标（事件级跟随统计，不是 portfolio 级资金曲线）：
   - n_events / n_filled：事件数、有价格能成交的事件数
-  - avg_pnl / avg_hold_days / win_rate / annual_return / sharpe
-  - max_drawdown：按退出日排序 portfolio 累积净值序列回撤
+  - avg_pnl / avg_hold_days / win_rate：单笔 pnl 平均、平均持有天数、胜率
+  - annual_return：基于 (1+avg_pnl)^(252/avg_hold_days)-1 的近似年化（不是组合年化）
+  - sharpe：avg_pnl/std * sqrt(252/avg_hold_days)，单笔独立假设
+  - avg_position_maxdd / p95_position_maxdd：单笔持仓期间最低价相对 entry 的回撤，均值和 5% 分位
+    （注意：不是 portfolio 级累计回撤。disjoint 持仓串联复利的 MaxDD 在统计上没意义，故不报告）
   - exit_reason_counts：{stop_loss, take_profit, max_hold, stop_loss_conservative} 计数
   - positions：事件级明细 DataFrame
 """

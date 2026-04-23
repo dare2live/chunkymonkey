@@ -2142,3 +2142,123 @@ stock_resonance_score(stock, date) =
 ### 25.5 一句话总结
 
 这份讨论文档现在最有价值的，不是它又提出了一套新的综合评分方案，而是它终于开始产出**机构事件级的实证证据**。下一步最该做的，是把这条证据链做厚、做准、做可复现，而不是过早回到新的大评分框架。
+
+---
+
+## 26. §25 证据边界修正 + Layer B 连续评分落地（2026-04-23）
+
+本节是对 §25 指出的三个证据边界问题的修复记录，以及 §24 Layer B 的首次落地。按 codex §25 的建议顺序：先补证据边界、扩实证、再做 Layer B。
+
+### 26.1 修复 §25 指出的三个 bug
+
+1. **北向开关透传**（`backend/scripts/run_follow_backtest.py`）：`run_backtest_for_cohort()` 函数签名加 `exclude_north` 参数并透传给 `load_cohort_events()`；`main()` 调用处传 `exclude_north=not args.include_north`。修复前无论 CLI 传什么 `--include-north` 都被忽略，默认排北向。
+2. **docstring 语义一致性**（`backend/services/event_simulator.py`）：顶部 docstring 把 `max_drawdown` 替换为真实输出字段 `avg_position_maxdd` / `p95_position_maxdd`，并明确写明"不是 portfolio 级累计回撤，disjoint 持仓串联复利 MaxDD 在统计上没意义"。
+3. **holdout n_filled 披露**：新建的 `v_institution_l2_score` view 把 `train_n` 和 `ho_n` 都作为独立列暴露，前端/分析时可以和 Sharpe 并排看，不会把偶然高 Sharpe 误当稳定技能。
+
+### 26.2 扩 walk-forward 到 samples ≥ 20
+
+原 `min-samples=30` 覆盖 77 cohort；放宽到 ≥ 20 后覆盖 **135 cohort**：
+
+| 分类 | ≥30 阈值 | ≥20 阈值 | 变化 |
+| --- | --- | --- | --- |
+| 总 cohort | 77 | 135 | +75% |
+| Stable（宽松口径：holdout Sharpe≥1.0 且 ratio≥0.7） | 27 | 54 | +100% |
+| Overfit（holdout Sharpe<0） | 14 | 31 | +121% |
+
+样本越小越容易过拟合，所以 overfit 数增得更快；但 stable 数也增了一倍。证据库整体增厚。
+
+### 26.3 Layer B：`v_institution_l2_score` 连续评分 view
+
+**落库 view**（SQL 定义在 `smartmoney.db`）：
+
+- **输入**：`fact_institution_follow_backtest` 里 `cohort_scheme='institution_L2'` 的 train/holdout 行
+- **挑每 cohort train Sharpe 最高的参数组**作为该 cohort 推荐参数
+- **输出列**：`institution_id`、`l2_name`、推荐参数、`train_n` / `ho_n`、`train_sharpe` / `ho_sharpe`、`stability_ratio`、`stable_score`（连续 0-100）、`verdict`
+
+**连续评分公式**：
+
+```
+stable_score = 100 * min(1, holdout_sharpe / 2.0)         # 主信号
+             *  max(0, min(1, holdout_sharpe / train_sharpe))  # 稳健性
+             *  min(1, holdout_n / 30)                    # 样本置信
+```
+
+holdout Sharpe 负的 → 0 分；样本少的自然打低分；不稳定的自然打低分。**不擅长的 L2 不是 0 分，是低分**（比如 holdout Sharpe 0.3 大约得 10-15 分）。
+
+**严格 verdict**：比 §23 多一个 `ho_n ≥ 15` 的硬约束，分类更细：
+
+| verdict | 定义 | 数量（135 总） |
+| --- | --- | --- |
+| stable | ho_sharpe ≥ 1.0 AND ratio ≥ 0.7 AND ho_n ≥ 15 | **12** |
+| weak_positive | ho_sharpe ≥ 0.5 且未达 stable | 80 |
+| neutral | ho_sharpe ∈ [0, 0.5) | 12 |
+| overfit | ho_sharpe < 0 | 31 |
+
+严格口径的 12 个 stable 比宽松口径的 54 少，但每一个都是"样本充足 + 稳定性足够"的高置信。
+
+### 26.4 Top 15 (institution, L2) 评分排序（含 holdout 样本量）
+
+| 机构 | L2 | train_n | ho_n | train Sharpe | ho Sharpe | stable_score | verdict |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| UBS AG | 电气设备 | 107 | 43 | 1.75 | 2.06 | **100.0** | stable |
+| JPM 自有资金 | 电气设备 | 67 | 29 | 3.48 | 4.24 | **96.7** | stable |
+| UBS AG | 化工 | 96 | 39 | 2.11 | 1.84 | 80.1 | stable |
+| 中信证券自营 | 化工 | 80 | 35 | 2.75 | 1.94 | 68.3 | stable |
+| 中信证券自营 | 有色 | 45 | 19 | 0.44 | 2.55 | 63.3 | stable |
+| 中信证券自营 | 工业机械 | 81 | 36 | 1.74 | 1.46 | 61.4 | stable |
+| UBS AG | 通信设备 | 44 | 18 | 1.20 | 2.22 | 60.0 | stable |
+| 华泰证券自营 | 工业机械 | 44 | 19 | 0.16 | 1.88 | 59.4 | stable |
+| 中信证券自营 | 电气设备 | 105 | 46 | 3.13 | 1.89 | 57.3 | weak_positive |
+| JPM 自有资金 | 化工 | 49 | 17 | 4.33 | 4.28 | 56.0 | stable |
+| JPM 自有资金 | 元器件 | 58 | 26 | 1.30 | 1.23 | 50.0 | stable |
+| 中信证券自营 | 医疗保健 | 32 | 15 | 1.41 | 2.51 | 50.0 | stable |
+| UBS AG | 工业机械 | 121 | 51 | 3.02 | 1.73 | 49.6 | weak_positive |
+| 华泰证券自营 | 化工 | 45 | 20 | 3.59 | 2.43 | 45.1 | weak_positive |
+| 中信证券自营 | 建材 | 29 | 13 | 1.87 | 3.74 | 43.3 | weak_positive |
+
+### 26.5 Top 20 机构汇总视角
+
+按"stable_score ≥ 50 的 L2 数"排：
+
+| 机构 | 类型 | 覆盖 L2 数 | stable 的 L2 数 | score ≥ 50 L2 数 | 最高评分 | 平均评分 |
+| --- | --- | --- | --- | --- | --- | --- |
+| 中信证券自营 | 券商 | 32 | 5 | 5 | 68.3 | 22.6 |
+| UBS AG | QFII | 30 | 3 | 3 | 100.0 | 21.6 |
+| JPM 自有资金 | QFII | 15 | 3 | 3 | 96.7 | 20.9 |
+| 华泰证券自营 | 券商 | 15 | 1 | 1 | 59.4 | 12.9 |
+| 申万宏源自营 | 券商 | 5 | 0 | 0 | 38.8 | 22.5 |
+
+业务直觉符合：中信证券自营覆盖最广（32 个 L2）但"真正擅长"的只 5 个；UBS 覆盖 30 L2、稳定 3 个、却有满分 100；JPM 样本集中度高（15 个 L2 就稳定 3 个）。**Layer B 的价值是定量告诉用户"哪家机构在哪个 L2 真正擅长"，而不是给机构一个笼统标签。**
+
+### 26.6 电气设备 / 化工 / 工业机械 的跨机构共振
+
+Top 15 里最常出现的 L2：
+
+- **电气设备**：UBS（100）、JPM（96.7）、中信（57.3）—— **3 家头部机构共振**，是最强跟投信号
+- **化工**：UBS（80.1）、中信（68.3）、JPM（56.0）、华泰（45.1）—— 4 家共振
+- **工业机械**：中信（61.4）、华泰（59.4）、UBS（49.6）—— 3 家共振
+
+"共振"本身就是 §24 Layer C 的 `f7_resonance` 特征原型。当前已经能定量看到：电气设备 L2 上有 3 家 Top 机构 stable，是"重仓级"跟投信号；而信息产业 L2（§22 里曾被误当最优）在 Layer B 里几乎无 stable 机构。
+
+### 26.7 对 §25 方向性分歧的回应
+
+§25 反对直接进 §24 Layer B，理由是"会从 3 条动作链膨胀为 4 条"。我部分同意、部分不同意：
+
+- **同意**：Layer D（`event_action_score` 最终落到 `mart_stock_trend` 主字段）不应该先做，那确实会膨胀主动作链
+- **不同意**：Layer B 只是一个 view，不写任何 stock_gate 字段，不参与主决策链竞争。它是"证据库"不是"动作链"，本质和 §23 的表没有区别，只是把布尔升级为连续评分
+- **折中**：Layer B 可做（本节已落），Layer C 先不做，Layer D 彻底不做——等 Layer B 证据足够厚、能支撑明确业务接入点时再考虑
+
+### 26.8 下一步（§24 路线图的调整版）
+
+| 窗口 | 交付 | 成功标准 |
+| --- | --- | --- |
+| 完成 ✅ | Layer B `v_institution_l2_score` 连续评分 view | Top 15 复核业务直觉合理 |
+| 下一步 | **抽 3 只 stable cohort 里代表性股票做明细对账**（§14.3 原始诉求） | 3 只股票的 follow_gate 判定、事件胜率、持仓变化全链路可解释 |
+| 然后 | **把 stable 评分接入前端机构详情页**（非主列） | 用户能在机构详情页看到"该机构擅长行业及评分" |
+| 视情况 | Layer C 特征矩阵启动（仅当前面两步都稳定） | - |
+
+本节完成了 codex §25 提出的全部证据边界修复，并在同时把 Layer B 评分落地。接下来不继续扩架构，而是**把已有证据接入用户可见路径**——这是 §24 核心原则"每层先落表再接下一层"的第一次兑现。
+
+### 26.9 一句话
+
+**bug 修了、样本扩了一倍、评分连续化了，135 cohort 里 12 个严格 stable 可信。现在最该做的是让用户看到这些证据，而不是继续加层。**

@@ -245,9 +245,10 @@ def run_backtest_for_cohort(
     grid: dict[str, list],
     walk_forward: Optional[float] = None,
     dry_run: bool = False,
+    exclude_north: bool = True,
 ) -> pd.DataFrame:
     """参数 walk_forward：None 表示全样本；float in (0,1) 表示按 notice_date 切分，前占 ratio 为 train，后为 holdout。"""
-    events = load_cohort_events(conn, cohort_scheme, cohort_key)
+    events = load_cohort_events(conn, cohort_scheme, cohort_key, exclude_north=exclude_north)
     if events.empty:
         logger.warning("[%s | %s] 无事件，跳过", cohort_scheme, cohort_key)
         return pd.DataFrame()
@@ -333,6 +334,7 @@ def main():
                 conn, args.scheme, cohort_key, grid,
                 walk_forward=args.walk_forward,
                 dry_run=args.dry_run,
+                exclude_north=not args.include_north,
             )
     finally:
         conn.close()
