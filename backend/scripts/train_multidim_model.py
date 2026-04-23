@@ -69,17 +69,26 @@ CREATE TABLE IF NOT EXISTS mart_multidim_prediction (
 
 
 FEATURE_COLS = [
+    # Pillar B 基础
     'ret_1d', 'ret_5d', 'ret_20d', 'ret_60d',
     'vol_z20d', 'ma_ratio_5', 'ma_ratio_20', 'ma_ratio_60', 'ma_ratio_250',
     'rz_balance', 'rz_chg_5d_pct',
+    # Pillar B Alpha158-inspired
+    'kmid', 'klen', 'kup', 'klow', 'ksft',
+    'vol_ratio_5_20', 'vol_std_5d', 'vol_std_20d',
+    'range_pos_20', 'range_pos_60',
+    'momentum_diff', 'amount_chg_5d',
+    # Pillar A 事件
     'inst_event_count_30d', 'inst_event_count_60d',
     'exec_buy_count_90d', 'exec_buy_ge1_count_90d',
     'lhb_inst_buy_count_30d', 'lhb_inst_buy_count_60d',
     'jgdy_count_60d', 'dzjy_count_60d',
     'days_since_exec_buy', 'days_since_lhb',
+    # Pillar C 基本面
     'shareholder_count_qoq', 'inst_count_qoq',
     'fund_count_qoq', 'qfii_count_qoq',
     'yjyg_lower_pct', 'yjyg_upper_pct', 'roe', 'eps_basic',
+    # Regime
     'hs300_ret_20d', 'hs300_ret_60d',
 ]
 

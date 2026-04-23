@@ -45,10 +45,15 @@ DROP TABLE IF EXISTS fact_feature_panel;
 CREATE TABLE fact_feature_panel (
     stock_code TEXT NOT NULL,
     date       TEXT NOT NULL,
-    -- Pillar B 价量
+    -- Pillar B 价量 (基础)
     close REAL, ret_1d REAL, ret_5d REAL, ret_20d REAL, ret_60d REAL,
     vol_z20d REAL, ma_ratio_5 REAL, ma_ratio_20 REAL, ma_ratio_60 REAL, ma_ratio_250 REAL,
     rz_balance REAL, rz_chg_5d_pct REAL,
+    -- Pillar B Alpha158-inspired (K 线 + 滚动统计)
+    kmid REAL, klen REAL, kup REAL, klow REAL, ksft REAL,
+    vol_ratio_5_20 REAL, vol_std_5d REAL, vol_std_20d REAL,
+    range_pos_20 REAL, range_pos_60 REAL,
+    momentum_diff REAL, amount_chg_5d REAL,
     -- Pillar A 事件 rolling
     inst_event_count_30d INTEGER, inst_event_count_60d INTEGER,
     exec_buy_count_90d INTEGER, exec_buy_ge1_count_90d INTEGER,
@@ -87,21 +92,48 @@ def load_price_panel(mkt_conn, start_date: str) -> pd.DataFrame:
 
 
 def compute_pillar_b(df: pd.DataFrame) -> pd.DataFrame:
-    """价量因子. 输入 price panel DataFrame."""
+    """价量因子. 基础 Pillar B + Alpha158-inspired K 线形态 + 滚动统计."""
     df = df.sort_values(['stock_code', 'date']).reset_index(drop=True)
     g = df.groupby('stock_code', sort=False)
 
-    df['ret_1d']  = g['close'].pct_change(1)
-    df['ret_5d']  = g['close'].pct_change(5)
-    df['ret_20d'] = g['close'].pct_change(20)
-    df['ret_60d'] = g['close'].pct_change(60)
-    df['vol_z20d'] = (
-        df.groupby('stock_code')['volume']
-          .transform(lambda s: (s - s.rolling(20).mean()) / s.rolling(20).std())
+    # 基础收益率
+    for n in [1, 5, 20, 60]:
+        df[f'ret_{n}d'] = g['close'].pct_change(n)
+
+    # K 线形态 (Alpha158 核心)
+    df['kmid'] = (df['close'] - df['open']) / df['open'].replace(0, np.nan)
+    df['klen'] = (df['high'] - df['low']) / df['open'].replace(0, np.nan)
+    df['kup']  = (df['high'] - df[['open', 'close']].max(axis=1)) / df['open'].replace(0, np.nan)
+    df['klow'] = (df[['open', 'close']].min(axis=1) - df['low']) / df['open'].replace(0, np.nan)
+    df['ksft'] = (2 * df['close'] - df['high'] - df['low']) / df['open'].replace(0, np.nan)
+
+    # 量价
+    df['vol_z20d'] = g['volume'].transform(
+        lambda s: (s - s.rolling(20).mean()) / s.rolling(20).std()
     )
+    df['vol_ratio_5_20'] = g['volume'].transform(lambda s: s.rolling(5).mean() / s.rolling(20).mean())
+
+    # 均线比
     for n in [5, 20, 60, 250]:
         df[f'ma_{n}'] = g['close'].transform(lambda s: s.rolling(n, min_periods=max(2, n//5)).mean())
         df[f'ma_ratio_{n}'] = df['close'] / df[f'ma_{n}'] - 1
+
+    # 波动率 (滚动收益率 std)
+    for n in [5, 20]:
+        df[f'vol_std_{n}d'] = g['close'].transform(lambda s: s.pct_change().rolling(n).std())
+
+    # N 日区间位置 (当前收盘在 N 日 high-low 中的位置)
+    for n in [20, 60]:
+        high_n = g['high'].transform(lambda s: s.rolling(n).max())
+        low_n = g['low'].transform(lambda s: s.rolling(n).min())
+        df[f'range_pos_{n}'] = (df['close'] - low_n) / (high_n - low_n).replace(0, np.nan)
+
+    # 动量反转 (ret_5d - ret_20d 表示短期超跌)
+    df['momentum_diff'] = df['ret_5d'] - df['ret_20d']
+
+    # 成交额变化
+    df['amount_chg_5d'] = g['amount'].pct_change(5)
+
     df.drop(columns=[f'ma_{n}' for n in [5, 20, 60, 250]], inplace=True)
     return df
 
@@ -365,6 +397,10 @@ def main():
         'ret_1d', 'ret_5d', 'ret_20d', 'ret_60d',
         'vol_z20d', 'ma_ratio_5', 'ma_ratio_20', 'ma_ratio_60', 'ma_ratio_250',
         'rz_balance', 'rz_chg_5d_pct',
+        'kmid', 'klen', 'kup', 'klow', 'ksft',
+        'vol_ratio_5_20', 'vol_std_5d', 'vol_std_20d',
+        'range_pos_20', 'range_pos_60',
+        'momentum_diff', 'amount_chg_5d',
         'inst_event_count_30d', 'inst_event_count_60d',
         'exec_buy_count_90d', 'exec_buy_ge1_count_90d',
         'lhb_inst_buy_count_30d', 'lhb_inst_buy_count_60d',

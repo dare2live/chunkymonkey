@@ -101,6 +101,9 @@ app.include_router(screening_router, prefix="/api/screening", tags=["screening"]
 from routers.signals import router as signals_router
 app.include_router(signals_router, prefix="/api/signals", tags=["signals"])
 
+from routers.recommendation import router as recommendation_router
+app.include_router(recommendation_router, prefix="/api/rec", tags=["recommendation"])
+
 # 初始化 signals_v2 默认配置（幂等）
 try:
     _conn = get_conn()
