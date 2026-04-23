@@ -2745,7 +2745,7 @@ Layer C 落地 31 372 事件 × 39 列，IC 给出明确优先序：F7 机构业
 
 ### 31.4 落库
 
-`qlib_event_prediction`（29 685 行）：
+`qlib_event_prediction`（本次 baseline 模型新增 29 685 行；表按 `model_id` 累积，不代表当前库总量）：
 
 | 列 | 说明 |
 | --- | --- |
@@ -2756,7 +2756,7 @@ Layer C 落地 31 372 事件 × 39 列，IC 给出明确优先序：F7 机构业
 | shap_top5_json | 每条事件的 Top 5 特征贡献明细（非黑盒关键）|
 | split | train / holdout |
 
-`qlib_model_evaluation`（2 行：train + holdout）：
+`qlib_model_evaluation`（本次 baseline 模型新增 2 行：train + holdout）：
 - 每行含 ic / rank_ic / ks_statistic / auc_roc / auc_pr / feature_importance_json
 
 ### 31.5 Holdout 高分样本（score ≥ 95）
@@ -2982,3 +2982,384 @@ PSI Top 4 严重漂移特征：
 ### 33.8 一句话
 
 W1-W6 六周路线完成，**从"堆指标"到"可解释 AI 评级"的研究工作流完整贯通**：用户能在机构详情页看到该机构 Top 10 预测事件及 SHAP 归因；在股票详情页看到该股五维画像 + 持仓机构 + AI 评分 + 相似历史；PSI 发现 premium_pct 等 4 个特征在熊牛市之间分布爆表漂移，提示生产化必须定期重训。非黑盒兑现，四层金字塔贯通。
+
+## 34. 独立复核：当前已验证结论、边界与建议（2026-04-23）
+
+这一节只写我本轮**实际核验过**的内容，不继续扩设计。
+
+### 34.1 本轮独立核验通过的三件事
+
+1. **§26 / §28 的 Layer B 不是停留在文档里。** 当前库里 `v_institution_l2_score` 实际存在，行数 `135`，`verdict` 分布为 `stable 12 / weak_positive 80 / neutral 12 / overfit 31`。同时，机构详情路由 `/api/inst/profiles/detail/{inst_id}` 已经实际读取 `v_institution_l2_score`，`inst_ubs_ag` 的 `layer_b_summary` 也能对上：`stable_l2_count = 3`、`total_l2_with_score = 30`，前 3 个 stable L2 分别是电气设备、化工、通信设备。
+2. **§32 / §33 的最新模型状态在数据库里确实落了。** 当前最新 `model_id` 是 `lgb_event_tuned_20260423_070326`；最新 holdout 指标为：`IC 0.1727`、`RankIC 0.1916`、`AUC-ROC 0.5891`、`KS 0.1297`。W6 补充的健康指标也已落库：`calibration_ece = 0.1912`、`lift_top_decile = 1.28`，`psi_json` 可解析，且 `PSI > 0.2` 的特征有 4 个。
+3. **W5 的相似事件链路也已经形成闭环。** `fact_similar_events` 当前存在且有 `29 685` 行；`/api/inst/event-predictions` 路由会自动选择最新 holdout 模型，而不是让前端显式传 `model_id`。这说明 §32 的"最新模型 + SHAP + 相似事件"路径目前确实可用。
+
+### 34.2 需要收紧的两个表述边界
+
+1. **§31 应被明确看作 baseline 历史快照，而不是当前最新模型状态。** 当前 `qlib_event_prediction` 表总行数已经是 `89 055`，`qlib_model_evaluation` 总行数是 `6`。这说明 §31 写的 `29 685` 行和 `2` 行，描述的是那一次 baseline 训练新增结果，不是当前库的累计状态。后面读文档的人如果不看到这层边界，很容易把历史快照误读成当前总量。
+2. **当前 API 是 latest-model 语义，不是 audit-pinned 语义。** `/api/inst/event-predictions` 由后端自动选择最新 `model_id`。这对日常使用很方便，但对复盘和截图留档不够稳，因为重训后同一个机构/股票请求会自动切到新模型。文档里凡是引用 AI 预测页面、SHAP 样例、相似事件样例的地方，最好同步写出对应 `model_id`，否则后面无法严格复现。
+
+### 34.3 我的独立判断
+
+1. **现在可以说“研究与验证链路已经贯通”，但还不能说“AI 主动作引擎已经成熟”。** 原因不是它没用，而是当前 holdout `AUC 0.589`、`lift 1.28` 仍然偏中等；同时 `premium_pct` 等 4 个关键特征存在明显 PSI 漂移，说明 regime shift 还会持续影响泛化。
+2. **因此，AI 事件评分当前最合适的定位仍然是“独立证据卡片”，而不是替换 MCR gate / legacy gate / signals_v2 的主结论链。** 这与 §21、§25 的秩序原则并不冲突，反而被本轮核验再次支持。
+
+### 34.4 我建议写清楚的后续动作
+
+1. **把 `model_id` 升级成文档里的审计锚点。** 从 §31 起，凡是出现模型指标、SHAP 样例、相似事件样例，都应明确绑定 `model_id`，区分 baseline、tuned、latest。
+2. **把“训练 → 相似事件召回 → health 评估”写成一个原子步骤。** 因为当前 `fact_similar_events` 只覆盖最新模型；如果后续只重训模型、不刷新 recall 和 health，前端会出现“最新预测配旧召回或旧健康评估”的语义错位。
+3. **在 Lift 和 PSI 改善前，不要把 `event_action_score` 升级成任何 stock_gate / primary_action 主字段。** 当前最合理的用法，仍然是让用户在机构详情页和股票详情页把它当成第四条证据链来读。
+
+### 34.5 一句话
+
+这份讨论文档到 §33 为止，已经把研究工作流真正跑通了；我这轮独立复核的核心建议不是再扩方案，而是**把 baseline、latest、累计库状态、API latest-model 语义这几层边界写清楚**，这样这份文档才既能指导继续开发，也能经得住后续复盘。
+
+## 35. 独立复核：变量加工与模型训练参数是否合理（2026-04-23）
+
+这一节只回答三个问题：当前变量加工是否合理；当前模型训练参数是否合理；从当前性能验证结果出发，下一步应不应该继续优化模型、优先优化什么。
+
+### 35.1 总判断
+
+我的结论可以先写成一句话：**变量方向基本合理，模型参数也不离谱，但当前最主要的问题不是“参数还没调好”，而是“特征时间口径不严格 + 验证框架已经消费掉 holdout”，因此现在继续加大超参搜索的收益会明显小于先修数据与验证。**
+
+### 35.2 哪些变量加工是合理的
+
+从当前最新 tuned 模型的特征重要性和前面 §30 的单特征 IC 看，下面几族变量方向上是成立的：
+
+1. **事件属性**：`premium_pct`、`change_amount`、`hold_amount` 仍然位于当前模型的重要特征前列，说明“这笔披露本身发生在什么价位、加了多少、持了多少”确实带信息。
+2. **机构历史业绩**：`inst_buy_avg_gain_60d`、`inst_buy_win_rate_60d`、`inst_quality_score` 一直稳定进入重要特征前列，这和 §15 “业绩实证比加工分数更重要”的判断一致。
+3. **阶段动量**：`stage_return_3m`、`stage_dist_ma250_pct`、`stage_return_6m` 仍然是有效特征，说明当前市场里“趋势延续”至少在样本内是真信号。
+4. **两融余额**：`margin_rz_balance` 仍然有中等强度的重要性，说明它不是噪声变量，可以保留在特征矩阵中。
+
+从这个角度看，当前特征表不是“乱堆字段”；它已经能抽出一组有业务含义、也有统计信号的核心变量。
+
+### 35.3 当前变量加工最不合理的地方
+
+真正需要收紧的不是“用了哪些变量”，而是“这些变量在时间上是不是 event-day 可见”。当前 `build_event_features.py` 顶部已经明写两件事：
+
+1. `fact_stock_stage_features`、`fact_stock_forecast_features`、`mart_stock_survey_activity`、`raw_margin_daily` 现在取的是**最新快照**，不是事件日最近可见快照。
+2. 脚本自己承认这是**接受 lookahead bias** 的 POC 口径。
+
+这意味着当前模型虽然学到了信号，但其中一部分信号并不是“当时真实可用信息”，而是“后来回头看时知道的信息”。因此：
+
+1. 当前 IC / AUC / KS 结果只能看成**研究上限**，不能看成严格可交易性能。
+2. `stage_*`、`forecast_*`、`survey_*`、`margin_*` 这些变量在进入下一轮模型优化前，都应该改成 `<= notice_date` 的 point-in-time 取值。
+3. `report_to_notice_lag_days` 已经在 W4 被判定为疑似泄漏并移除，这反过来也证明：当前框架对时间泄漏非常敏感，不能再把“最新快照”当作可以长期接受的近似。
+
+### 35.4 当前训练参数是否合理
+
+当前最新 tuned 模型 `lgb_event_tuned_20260423_070326` 的最佳参数为：
+
+- `learning_rate = 0.0794`
+- `num_leaves = 56`
+- `min_data_in_leaf = 290`
+- `max_depth = 7`
+- `feature_fraction = 0.826`
+- `bagging_fraction = 0.530`
+- `lambda_l1 = 0.563`
+- `lambda_l2 = 0.889`
+- `num_boost_round = 372`
+
+这组参数的总体特征是：**树有一定容量，但正则很重、叶子很大、bagging 较强**。我的判断是：
+
+1. 这组参数本身是合理的，不属于“过于激进”的配置。
+2. 它也符合前文已经观察到的事实：金融时序噪声很大，需要靠大 `min_data_in_leaf` 和较强 L1/L2 压住过拟合。
+3. 因此当前瓶颈已经不再是“LightGBM 参数完全不会调”，而是“在一个时间口径仍不严格、验证集已被重复消费的框架里继续调参”。
+
+换句话说，**现在再把主要精力放在调 `num_leaves`、`learning_rate`、`bagging_fraction` 上，性价比已经明显下降。**
+
+### 35.5 为什么当前验证结果不足以支持“继续深调参”
+
+当前最新模型的 holdout 指标是：
+
+- `IC = 0.1727`
+- `RankIC = 0.1916`
+- `AUC-ROC = 0.5891`
+- `KS = 0.1297`
+- `calibration_ece = 0.1912`
+- `lift_top_decile = 1.28`
+
+这些指标说明两件事同时成立：
+
+1. **模型有信号。** 它已经不是随机分数；IC 和 RankIC 都明显大于 0，说明继续做这条线是值得的。
+2. **模型还远没到可以稳定接主动作链的程度。** AUC 仍然偏中等，Top decile lift 只有 1.28，说明“挑最看好的 10% 样本”虽然优于全体，但优势还不够强。
+
+更关键的是，当前 tuned 流程本身还存在两层验证污染：
+
+1. **Optuna 直接用 holdout IC 做目标函数。** 这意味着现在最漂亮的那组 holdout 指标已经不是独立样本外验证，而是“被用于选参后的最佳表现”。
+2. **`event_action_score` 现在只是训练集预测分位，不是真概率。** 但 W6 的 Calibration ECE 和 Lift 又把它近似当概率来评估，所以这两类指标目前只能当“近似治理指标”，不能当严格概率质量证明。
+
+因此，当前最合理的结论不是“模型调参已经基本结束”，而是：**模型已经证明了方向正确，但当前验证框架还不足以支持进一步精细调参结论。**
+
+### 35.6 还能不能继续优化模型
+
+可以继续优化，而且值得继续，但**优先级不应该是继续扩大超参搜索空间**。更合理的顺序是：
+
+1. **先修 point-in-time 特征。** 把阶段、研报、调研、两融改成事件日可见快照，并给稀疏特征加 missing flag。
+2. **再修验证框架。** 从当前 `train / holdout` 两段，升级为 `train / validation / final test`，或者 rolling walk-forward。Optuna 只能看 validation，final test 必须完全不参与选参。
+3. **然后才继续调参。** 到那时再比较 baseline 与 tuned 的 IC、RankIC、KS、Lift，才有真正可复用的意义。
+4. **最后再考虑模型头部升级。** 如果后续要把 `event_action_score` 当作更接近概率的量来使用，那么应考虑分类头或校准层，而不是继续把回归分位硬解释成概率。
+
+### 35.7 我的执行建议
+
+如果只选一条最重要建议，我会选：
+
+**暂停把主要精力继续投入 Optuna 扩空间，先把 `fact_event_features` 改成严格 point-in-time，再把训练流程拆成 `train / validation / test`。**
+
+原因很直接：
+
+1. 现在变量集合已经足够强，继续加变量不是第一优先级。
+2. 现在参数也已经不差，继续深调不是第一优先级。
+3. 现在最不可信的地方恰恰是“这些指标到底有多真实”，而这只能靠时间口径和验证框架来解决。
+
+### 35.8 一句话
+
+当前模型不是“没信号”，而是“信号已经出现，但证据链还不够干净”。**下一步最该优化的不是参数，而是 point-in-time 特征和独立样本外验证框架；在这之前，继续深调参的收益会小于先把数据口径和验证口径修正。**
+
+---
+
+## 34. 独立评估 §15-§33：十个隐患 + 后续执行方案（2026-04-23）
+
+这一节是 W1-W6 六周路线完成后的独立挑刺，类似 §20 / §25 但针对的是 §29-§33 这轮建模落地。目标：找出**我自己写的代码里未被验证的前提**，不宽容评估。
+
+### 34.1 十个隐患
+
+**H1. Optuna 在 holdout 上直接调参 —— holdout IC 0.173 是"被偷看过的"**
+
+§32.1 的 Optuna `objective(trial)` 直接返回 holdout IC，TPE 100 次 trial 本质是 "在 holdout 上搜最优参数"。最终报的 0.173 不是真·out-of-sample，是 Optuna 意义上的"验证集最优"。
+
+严格做法：**三段切分 train / valid / holdout**，Optuna 只在 valid 上调，holdout 只在最终报告一次。
+
+未修正前，对外宣称 holdout IC 0.173 有**夸大风险**。
+
+**H2. fact_event_features 用"最新快照"制造 lookahead bias**
+
+§30.1 明写"首版简化：各股票特征用最新快照而非事件日最近快照"。
+
+这意味着：
+
+- 2023-04 的事件被赋予 2026-04 的 stage_dist_ma250_pct
+- inst_buy_avg_gain_60d 对 2023 年事件用的是包含未来收益的机构画像（该字段基于全历史事件）
+
+**所有 train 期样本的特征值都被未来信息污染**。W4 train IC 0.404 → holdout IC -0.069 的灾难，很大一部分来自这里；W5 holdout IC 0.173 也不是干净数据。
+
+严格做法：对每条事件用 `snapshot_date < notice_date` 的最近快照。当前 stage/quality/forecast 快照密度只有 5-9 天（§30），回溯到事件日会大量 miss——要么扩快照密度，要么从 raw 层回算。
+
+这是**最严重的隐患**，所有"信号 0.173"的评估都被这个问题腐蚀。
+
+**H3. stage_score 公式反直觉但前端仍显示错误数字**
+
+§30.5 实测 `stage_dist_ma250_pct` 与 gain_60d IC=+0.131（追高反而赚）；但前端 §28 的 `renderMultidimScoreCard` 仍用 §29.4 的"低位加分追高扣分"公式。
+
+用户看到的 stage_score 数字方向是错的。我只加了"首版未经校准"标注没改公式——这是**已知 bug 挂着不修**，违背 CLAUDE.md "不删旧代码就写新代码"。
+
+**H4. event_action_score 的 confidence 名不符实**
+
+§31.1 `confidence = 2 * |score − 50| / 100`——这是"预测偏离中值的距离"，**不是统计置信度**。
+
+- UBS AG 20250430 事件被展示 confidence=0.98
+- 实际该事件的特征值可能是模型从没见过的异常点（高不确定）
+- 异常点反而应该 confidence 低
+
+严格做法：quantile regression 或 bootstrap 得到预测区间，或在 LightGBM 上用多次 bagging 的预测方差。
+
+当前 UI 的"置信度 0.98"数字**在误导用户**。
+
+**H5. 相似事件召回展示的 gain 均值是训练集后验**
+
+§32.5 的前端卡片展示"类似历史 5 事件均值 +48.8%"。这个 48.8% 来自 **train 集**——模型正是被这些事件训练出来的，召回它们的 label 等于展示训练数据。
+
+用户看到的 "+48.8% 均值" 容易被误读为"未来期望收益"。实际上：
+
+- 对 train 事件的召回：完全 circular（模型已知）
+- 对 holdout 事件的召回到 train 事件：部分 circular（train 事件的 label 是模型训练目标）
+
+严格做法：用 **holdout-to-holdout 的相似事件**（但 holdout 太小）或 **生产推理时的 holdout 作为召回源**。或至少 UI 明确标注"基于训练期样本"。
+
+**H6. Layer B cohort 不可比（时段混淆）**
+
+§26 walk-forward 对每个 (institution, L2) cohort 独立切 80/20——但不同 cohort 的事件起止日不同：
+
+- UBS 电气设备 train 可能 2023-01→2025-04，holdout 2025-05→2026-01
+- 中信证券化工 train 可能 2022-07→2024-12，holdout 2025-01→2026-03
+
+直接比较"UBS 电气设备 stable_score 100" vs "中信证券化工 80"有**时段可比性问题**——可能一个 cohort 的 holdout 碰上行情好、一个碰上行情差。
+
+严格做法：固定全局时窗（如 2023-01 → 2025-06 train / 2025-07 → 2026-04 holdout），不足样本 cohort 舍弃。
+
+**H7. 没有生产化重训机制，PSI 爆表后模型持续使用**
+
+§33.3 发现 `premium_pct` PSI=0.864，明显漂移。当前：
+
+- `qlib_event_prediction` 表仅对应一次 W5 训练
+- 新事件进入 `fact_institution_event` 后**没有任何自动化推理流水线**
+- 前端展示的"AI 预测"永远基于 2026-04-23 的冻结模型
+
+这意味着**系统上线后会自然变烂**，且没有报警。W8 的"生产化 cron" 不是 nice-to-have，是防止系统自毁的必需品。
+
+**H8. 三可原则在 AI 评级上没满足**
+
+§14.5 的三可原则：可见、可追溯、可复核。
+
+event_action_score:
+- 可见 ✓（前端展示）
+- 可追溯 ✓（SHAP top-5）
+- **可复核 ✗**（380 棵 LightGBM 树的加权和，用户手工复算不可能）
+
+这和 §15.4 批评的"quality_score 可见但不可复核"是同一个病。Qlib 比加权评分卡更黑盒。
+
+§29.6 我写了"非黑盒五件套"但没明确承认：这五件减少了黑盒程度，**不等于可复核**。用户能看到"为什么"但没法"自己算一遍验证"。
+
+**H9. 数据库快照依赖严重，没有增量流水线**
+
+当前系统运行依赖：
+
+1. `fact_event_features` 全量 10 分钟重建（§30.6）
+2. `v_institution_l2_score` 依赖 `fact_institution_follow_backtest` 的一次性 walk-forward 跑
+3. `qlib_event_prediction` 是 W5 一次训练的快照
+
+没有任何"新数据进入后自动更新"的机制。每次想要最新预测，要手工跑：
+
+```
+run_follow_backtest.py → build_event_features.py → tune_event_qlib.py → recall_similar_events.py → evaluate_model_health.py
+```
+
+单次全量约 20+ 分钟。生产化前必须流水线化。
+
+**H10. 代码越堆越多，没有 ARCHITECTURE 文档**
+
+W1-W6 新增：
+
+- 6 个 Python 脚本（run_follow_backtest / build_event_features / train_event_qlib / tune_event_qlib / recall_similar_events / evaluate_model_health）
+- 7 张新表（fact_institution_follow_backtest / fact_event_features / qlib_event_prediction / qlib_model_evaluation / fact_similar_events / v_institution_l2_score / v_l2_profile）
+- 3 个新 API + 2 个前端卡片组件
+
+新人接手**必须先读 2900 行讨论文档才能理解整体架构**。需要一页纸 ARCHITECTURE.md 描述"表/脚本/API/前端"的依赖图，以及"怎么从 0 跑到出结果"的流程。
+
+### 34.2 按优先级排序的后续方案
+
+#### P0（必须做，否则系统是定时炸弹或伪造指标）
+
+**P0.1 修 lookahead bias（H2）**——这是评估指标可信的前提
+
+- 在 `build_event_features.py` 的特征抽取里，对 stage/quality/forecast/survey/margin，按 `snapshot_date < notice_date` 取最近可用快照
+- inst_profile 字段（F7）要在"事件日之前"的窗口计算，不能用全量 quality_score
+- 预估缺失率：stage 和 quality 只有 5-9 个快照日，回溯到事件日大量 miss。折中：**对历史事件 F1/F5/F7 用 null，只保留 F3/F4/F6（这些表有完整历史）**
+- 重跑 W3/W4/W5 后对比：**如果修正后 holdout IC < 0.05，前面四周的所有评估都要标注"原数据含 lookahead，仅供参考"**
+
+工作量：3-5 人日（含数据层回算 + 脚本重写）。
+
+**P0.2 三段切分（H1）**
+
+- train/valid/holdout 切 70/15/15（按 notice_date 严格切）
+- Optuna 在 valid 上调参
+- holdout 只作为**最终评估且永不重新调参**
+- 如果修正后 holdout IC 显著低于 valid IC，说明 W5 的 0.173 有夸大
+
+工作量：0.5 人日（改 tune_event_qlib.py）。
+
+**P0.3 stage_score 公式同步修正（H3）**
+
+- 删除 §29.4 的人工公式
+- 前端 `renderMultidimScoreCard` 改为"阶段特征原始值展示"或用 Qlib 的 stage 部分贡献代替
+- 或者干脆 W7 把"五维画像"整体替换为 event_action_score 分解
+
+工作量：0.5 人日。
+
+**P0 小计：4-6 人日。完成这三件后文档里所有 "holdout IC 0.X" 数字才可信。**
+
+#### P1（治理必须补）
+
+**P1.1 生产化流水线（H7/H9）**
+
+- 写 cron 脚本：每日跑 updater 后，自动接 `build_event_features.py --days 7`（增量）+ `recall_similar_events.py --only-new`
+- 每月第一天跑完整重训 + Calibration/Lift/PSI 评估
+- PSI > 0.25 的特征触发邮件/Slack 报警
+
+工作量：3-5 人日（含 scheduler + 监控接入）。
+
+**P1.2 confidence 改真置信度（H4）**
+
+- 最简：LightGBM 用 5 个不同 seed 训练 bagging，取预测 std 作为 uncertainty
+- 进阶：quantile regression objective，输出 [pred_low, pred_center, pred_high]
+- UI 上 confidence 改名"预测稳定度"或用区间显示
+
+工作量：1-2 人日。
+
+**P1.3 相似召回增加 "holdout-to-holdout" 视图（H5）**
+
+- 在 `fact_similar_events` 加 `source_split`：'train' 或 'holdout'
+- UI 上对 holdout 事件默认展示 "train 召回（历史参考）" + "holdout 召回（同期验证）" 两种
+- 标注"类似事件 label 来自训练期，仅作历史参考"
+
+工作量：1 人日。
+
+**P1 小计：5-8 人日。**
+
+#### P2（业务增强，不做不炸但价值高）
+
+**P2.1 多目标 Optuna（IC + portfolio Sharpe）**
+
+- 先搭 portfolio-level 回测（事件级仿真器扩成"按 event_action_score 持仓 topk"）
+- Optuna 切 NSGA-II 多目标采样器
+- 选 Pareto 前沿上 sharpe/IC 权衡
+
+工作量：5-7 人日。
+
+**P2.2 Layer B cohort 固定时窗（H6）**
+
+- 重跑 `run_follow_backtest.py` 用全局切分 2023-01 → 2025-06 / 2025-07 → 2026-04
+- 样本不足（< 100）的 cohort 舍弃
+- 可能从 135 cohort 缩减到 50-70，但可比性大幅提高
+
+工作量：1-2 人日。
+
+**P2.3 ARCHITECTURE.md（H10）**
+
+- 一页纸图：表/脚本/API/前端 依赖关系
+- 一个 "from-zero-to-prediction" 的命令序列
+- 更新 CLAUDE.md 指向 ARCHITECTURE
+
+工作量：1 人日。
+
+**P2 小计：7-10 人日。**
+
+#### P3（长期，可选）
+
+**P3.1 真·可复核设计（H8）**
+
+思路：对每个预测，生成"人类可读版 SHAP 说明"+"类似情况 5 条+统计"+"决策树路径"（LightGBM 可以输出主导路径）。不追求手工复算 380 棵树，追求"决策链可说清"。
+
+工作量：3-5 人日。
+
+**P3.2 Layer B 扩覆盖（从 20% 到 40%+）**
+
+- 样本阈值降到 15 或用 multi-resolution（L1+L2 混合）
+- 接入外部数据源扩机构维度
+
+工作量：不定。
+
+### 34.3 三周推进计划（仅 P0+P1）
+
+| 周 | 任务 | 验收 |
+| --- | --- | --- |
+| **Next-W1** | P0.1 修 lookahead（含数据回算）+ P0.2 三段切分 | 新 holdout IC 数字落表；如果 < 0.05 要公开承认 W1-W6 评估含夸大 |
+| **Next-W2** | P0.3 stage 公式修 + P1.2 confidence 改 + P1.3 召回 split 标注 | 前端数字诚实；preview 验证通过 |
+| **Next-W3** | P1.1 生产化 cron + PSI 报警 | 首次跑完自动化流程，落"模型健康日报" |
+
+完成这三周后，§33 "六周路线已完成"的结论才真正稳固。现在的版本是 **demo-grade**，不是 **production-grade**。
+
+### 34.4 对用户的直接建议
+
+如果是我，会**立即停下 W7+ 新功能**，先做 P0 三件事，即：
+
+1. 修 lookahead bias
+2. 三段切分重新评估
+3. 前端 stage 和 confidence 数字同步修正
+
+这三件 5-7 人日，完成后系统才进入"可信 demo"状态。然后再谈生产化、多目标、扩 cohort。
+
+**不建议继续扩 Qlib 功能**（多目标、RL、transformer），因为底层评估数字还未被严格验证。底层不实的情况下上层越复杂风险越大。
+
+### 34.5 一句话
+
+W1-W6 做出了**能演示的可解释评级系统**，但底层有 lookahead + Optuna 偷看 holdout + 已知 stage 公式错 + confidence 误导等**至少 10 处隐患**，其中 3 处（H2/H1/H3）直接影响评估数字可信度。**先花 5-7 人日把底层修实，再继续新功能**——这比画 Next-W4+ 的蓝图更重要。
