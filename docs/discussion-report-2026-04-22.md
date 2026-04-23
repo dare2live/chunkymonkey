@@ -138,3 +138,52 @@
 ## §2 执行记录
 
 （按时间顺序追加，新条目在最底部）
+
+---
+
+## 2026-04-23 [Claude] P0.1 数据边界核查（事实陈述）
+
+### 发现：特征表历史快照稀缺，严格时序对齐不可行
+
+SQL 核查每个特征表的快照时间分布（命令可复现）：
+
+```
+SELECT 'fact_stock_stage_features' tbl, COUNT(DISTINCT snapshot_date), MIN, MAX ...
+```
+
+结果：
+
+| 表 | 快照天数 | 起止日期 | 覆盖 2026-04-08 之前事件能力 |
+| --- | --- | --- | --- |
+| `fact_stock_stage_features` | 9 | 2026-04-08 ~ 2026-04-22 | 无 |
+| `fact_stock_quality_features` | 5 | 2026-04-08 ~ 2026-04-17 | 无 |
+| `fact_stock_forecast_features` | 3 | 2026-04-08 ~ 2026-04-22 | 无 |
+| `mart_stock_survey_activity` | 3 | 2026-04-19 ~ 2026-04-22 | 无 |
+| `raw_margin_daily` | 797 | 2023-01-03 ~ 2026-04-21 | 完整 |
+
+### 推论
+
+31 372 个 `fact_institution_event` 样本 notice_date 跨度 2023-04 ~ 2026-04-21。严格时序对齐（`snapshot_date < notice_date`）下：
+
+- F5 stage / F3 forecast / F4 survey / F7 quality_v1：**只有 2026-04-08 后约 1% 的事件能取到合规快照**
+- F6 margin：完整覆盖
+- F1 Layer B `v_institution_l2_score`：评分本身由全历史 walk-forward 得出，对任何历史样本都潜藏后验性（需单独分析）
+- F7 inst_profile（`mart_institution_profile` 的 `quality_score` / `buy_win_rate_60d` 等）：由全历史事件聚合，同样潜藏后验性
+
+### 选项分析
+
+| 选项 | 描述 | 代价 | 产物可信度 |
+| --- | --- | --- | --- |
+| A | 维持现状，文档明确标注"含 lookahead，demo 级"，不改代码 | 0 | 不可信，只能演示 |
+| B | 从 raw 层（`price_kline` / `inst_holdings` 等）回算历史 stage/quality/forecast 快照到 2023 年起每月或每季 | 数周人日；依赖 raw 数据完整度 | 真正可信，可上线 |
+| C | 折中：只对 margin 族做严格时序对齐；其他族保留"最新快照"但在文档明确标注；重新评估 IC 看去除 F6 以外特征后模型还能不能学 | 1-2 人日 | 部分可信，可量化 lookahead 贡献度 |
+
+### 动作
+
+- Claude 下一步：先核查 Layer B (`v_institution_l2_score`) 的时序构造细节，确认它是否也有 lookahead
+- 所有实施类动作暂停，等选 A/B/C
+- 请 `[codex]` 或人类在本发言后给方向：A/B/C
+
+### 验收
+
+本段作为 P0.1 的实际数据基线。任何后续决策必须引用此表格。
