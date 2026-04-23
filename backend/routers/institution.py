@@ -4,6 +4,7 @@
 跟踪机构的 CRUD、简称映射、排除管理。
 """
 
+import json
 import logging
 import time
 from datetime import datetime
@@ -1629,6 +1630,88 @@ async def get_l2_profile(l2_name: str):
             "summary": summary,
             "institutions": institutions,
             "stocks": stocks,
+        }
+    finally:
+        conn.close()
+
+
+# ============================================================
+# §32 W5: event_action_score / SHAP / 相似事件 查询端点
+# ============================================================
+
+def _latest_model_id(conn) -> Optional[str]:
+    row = conn.execute(
+        "SELECT model_id FROM qlib_model_evaluation WHERE eval_dataset='holdout' "
+        "ORDER BY created_at DESC LIMIT 1"
+    ).fetchone()
+    return row["model_id"] if row else None
+
+
+@router.get("/event-predictions")
+async def list_event_predictions(
+    inst_id: str = None, stock_code: str = None, limit: int = 20, min_score: float = 0.0,
+):
+    """§29.5 Layer D 预测查询：按机构或股票筛选 Top event_action_score 事件。
+
+    返回 list of { institution_id, stock_code, notice_date, event_action_score,
+                  predicted_gain, confidence, shap_top5, similar_events }.
+    """
+    if not inst_id and not stock_code:
+        return {"ok": False, "message": "需要 inst_id 或 stock_code 至少一个"}
+    conn = get_conn()
+    try:
+        model_id = _latest_model_id(conn)
+        if not model_id:
+            return {"ok": False, "message": "尚无已训练的 Qlib 事件模型"}
+
+        where = ["model_id = ?"]
+        params: list = [model_id]
+        if inst_id:
+            where.append("institution_id = ?"); params.append(inst_id)
+        if stock_code:
+            where.append("stock_code = ?"); params.append(stock_code)
+        where.append("event_action_score >= ?"); params.append(min_score)
+
+        rows = conn.execute(
+            f"SELECT institution_id, stock_code, notice_date, report_date, "
+            f"       event_action_score, predicted_gain, confidence, shap_top5_json, split, predict_date "
+            f"FROM qlib_event_prediction WHERE {' AND '.join(where)} "
+            f"ORDER BY event_action_score DESC LIMIT ?",
+            params + [limit],
+        ).fetchall()
+        items = []
+        for r in rows:
+            try:
+                shap = json.loads(r["shap_top5_json"]) if r["shap_top5_json"] else None
+            except Exception:
+                shap = None
+            # 相似事件 from fact_similar_events
+            sim_rows = conn.execute(
+                "SELECT rank, similarity, similar_institution, similar_stock, similar_notice_date, "
+                "       similar_gain_60d, similar_maxdd_60d "
+                "FROM fact_similar_events "
+                "WHERE model_id=? AND query_institution=? AND query_stock=? AND query_notice_date=? AND query_report_date=? "
+                "ORDER BY rank",
+                (model_id, r["institution_id"], r["stock_code"], r["notice_date"], r["report_date"]),
+            ).fetchall()
+            items.append({
+                **dict(r),
+                "shap_top5": shap,
+                "similar_events": [dict(s) for s in sim_rows],
+            })
+
+        # 全局评估指标
+        eval_rows = conn.execute(
+            "SELECT eval_dataset, n_samples, ic, rank_ic, auc_roc, ks_statistic "
+            "FROM qlib_model_evaluation WHERE model_id = ?",
+            (model_id,),
+        ).fetchall()
+        return {
+            "ok": True,
+            "model_id": model_id,
+            "evaluation": [dict(r) for r in eval_rows],
+            "items": items,
+            "count": len(items),
         }
     finally:
         conn.close()

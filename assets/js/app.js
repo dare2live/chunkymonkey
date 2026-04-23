@@ -3593,8 +3593,9 @@
     Promise.all([
       api('/api/inst/stocks/detail/' + encodeURIComponent(stockCode)),
       api('/api/inst/stocks/multidim/' + encodeURIComponent(stockCode)).catch(function () { return null; }),
+      api('/api/inst/event-predictions?stock_code=' + encodeURIComponent(stockCode) + '&limit=10').catch(function () { return null; }),
     ]).then(function (results) {
-      var r = results[0], md = results[1];
+      var r = results[0], md = results[1], ep = results[2];
       if (!r || !r.ok) { panel.innerHTML = '<div class="detail-loading">加载失败: ' + esc(r && r.detail || '未知') + '</div>'; return; }
       try {
       var insts = r.institutions || [];
@@ -3605,6 +3606,8 @@
       html += renderStockReportHero(detailPayload);
       // §29.4 W2 五维画像评分（在 hero 之后立即展示，视觉突出）
       html += renderMultidimScoreCard(md && md.multidim_score);
+      // §29.5 W5 AI 事件评分 + SHAP + 相似事件召回（Layer D Qlib 输出）
+      html += renderEventPredictionCard(ep, stockCode);
       html += renderStockInstitutionCoverageSection(detailPayload, insts);
       html += renderStockEvidenceTimeline(detailPayload);
       html += renderSetupBlock(r.setup, insts, detailPayload);
@@ -3612,6 +3615,63 @@
       panel.innerHTML = html;
       } catch (e) { panel.innerHTML = '<div class="detail-loading">渲染出错: ' + esc(String(e)) + '</div>'; }
     }).catch(function (e) { panel.innerHTML = '<div class="detail-loading">请求出错: ' + esc(String(e)) + '</div>'; });
+  }
+
+  function renderEventPredictionCard(ep, stockCode) {
+    // §29.5 W5 Layer D：AI 事件评分 / SHAP / 相似事件召回
+    if (!ep || !ep.ok || !ep.items || ep.items.length === 0) return '';
+    var evalSet = ep.evaluation || [];
+    var hold = evalSet.find(function (e) { return e.eval_dataset === 'holdout'; });
+    var evalLine = hold
+      ? '样本外评估: IC ' + Number(hold.ic).toFixed(3) + ' / RankIC ' + Number(hold.rank_ic).toFixed(3) +
+        ' / AUC ' + Number(hold.auc_roc).toFixed(2) + ' / KS ' + Number(hold.ks_statistic).toFixed(2)
+      : '';
+
+    var html = '<div style="margin:10px 0;border:1px solid #d1fae5;border-radius:6px;padding:12px;background:linear-gradient(180deg,#f0fdf4 0%,#fff 100%)">';
+    html += '<div style="display:flex;align-items:baseline;margin-bottom:8px;gap:10px;flex-wrap:wrap">' +
+      '<b style="font-size:13px;color:#047857">AI 事件评分（§29.5 Layer D）</b>' +
+      '<span style="font-size:11px;color:#6b7280">model: ' + esc(ep.model_id || '-') + '</span>' +
+      (evalLine ? '<span style="font-size:11px;color:#4b5563">' + evalLine + '</span>' : '') +
+      '</div>';
+
+    html += '<table class="data-table" style="font-size:12px;width:100%"><thead><tr>' +
+      '<th style="text-align:left">机构</th><th>披露日</th><th>score</th><th>预测 60d</th>' +
+      '<th>置信度</th><th>split</th><th style="text-align:left">主推动因子（SHAP）</th>' +
+      '<th style="text-align:left">类似历史（5）</th></tr></thead><tbody>';
+
+    ep.items.forEach(function (it) {
+      var score = Number(it.event_action_score);
+      var scoreColor = score >= 70 ? '#10b981' : score >= 40 ? '#f59e0b' : '#ef4444';
+      var pg = Number(it.predicted_gain);
+      var pgColor = pg >= 0 ? '#10b981' : '#ef4444';
+      var shap = (it.shap_top5 || []).slice(0, 3).map(function (s) {
+        var c = Number(s.contribution);
+        var dirColor = c >= 0 ? '#047857' : '#b91c1c';
+        var sign = c >= 0 ? '+' : '';
+        return '<span style="color:' + dirColor + ';margin-right:6px">' + esc(s.feature) + ' ' + sign + c.toFixed(2) + '</span>';
+      }).join('');
+      var sims = it.similar_events || [];
+      var simGains = sims.map(function (s) { return s.similar_gain_60d; }).filter(function (v) { return v != null; });
+      var simAvg = simGains.length > 0 ? (simGains.reduce(function (a, b) { return a + b; }, 0) / simGains.length) : null;
+      var simDisplay = sims.length === 0 ? '-' :
+        '<span style="font-size:11px">均值 ' + (simAvg != null ? '<b style="color:' + (simAvg >= 0 ? '#047857' : '#b91c1c') + '">' + (simAvg >= 0 ? '+' : '') + simAvg.toFixed(1) + '%</b>' : '-') +
+        '；分布 ' + simGains.map(function (v) { var c = v >= 0 ? '#047857' : '#b91c1c'; return '<span style="color:' + c + '">' + (v >= 0 ? '+' : '') + v.toFixed(0) + '</span>'; }).join('/') + '</span>';
+
+      html += '<tr>' +
+        '<td><span style="font-size:11px">' + esc(it.institution_id || '') + '</span></td>' +
+        '<td style="font-size:11px">' + esc(it.notice_date || '') + '</td>' +
+        '<td><span style="background:' + scoreColor + ';color:white;padding:2px 8px;border-radius:3px;font-weight:600">' + score.toFixed(1) + '</span></td>' +
+        '<td style="color:' + pgColor + ';font-weight:600">' + (pg >= 0 ? '+' : '') + pg.toFixed(2) + '%</td>' +
+        '<td style="text-align:center">' + Number(it.confidence).toFixed(2) + '</td>' +
+        '<td style="font-size:10px;color:#6b7280">' + esc(it.split || '') + '</td>' +
+        '<td style="font-size:11px">' + shap + '</td>' +
+        '<td>' + simDisplay + '</td>' +
+        '</tr>';
+    });
+    html += '</tbody></table>';
+    html += '<div style="margin-top:6px;font-size:10px;color:#6b7280">score: 预测 60d 收益在训练分布的分位（0-100）· split=holdout 表示事件落在样本外验证集</div>';
+    html += '</div>';
+    return html;
   }
 
   // ============================================================
