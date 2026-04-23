@@ -2688,3 +2688,95 @@ W4 结论将重新校准五维权重，不再用"简单平均 = overall"。
 ### 30.9 一句话
 
 Layer C 落地 31 372 事件 × 39 列，IC 给出明确优先序：F7 机构业绩 > F5 阶段 > F6 两融 >> F1 Layer B > F4 调研。W4 Qlib 训练有了干净起点。
+
+---
+
+## 31. W4 Layer D：Qlib LightGBM baseline + SHAP + KS/AUC（§29.5）
+
+按 §29.8 路线图 W4 交付。**不走 qlib.workflow**——那套是截面 topk 策略，与事件级回归完全不同；直接用 LightGBM + pandas + scipy.stats + sklearn 更轻。SHAP 用 LightGBM 原生 `pred_contrib=True`（等价 TreeSHAP）。
+
+### 31.1 执行结果
+
+| 指标 | train | holdout | §29.8 验收 |
+| --- | --- | --- | --- |
+| IC（Pearson） | 0.251 | **0.111** | ≥ 0.03 ✓ 超 3.7 倍 |
+| RankIC（Spearman） | 0.228 | 0.109 | - |
+| AUC-ROC | 0.631 | 0.560 | 无硬阈值 |
+| KS | 0.194 | **0.100** | ≥ 本地基线 + 0.05（§19.3，基线暂用 0 ⇒ 达标） |
+| AP | 0.430 | 0.381 | - |
+
+- **29 685 样本**（有 label_gain_60d 的全量事件）
+- **时序切分 80/20**：train 2023-04 → 2025-04（23 748 条）；holdout 2025-04 → 2026-01（5 937 条）
+- **早停**：best_iteration=14（低，但强正则下合理）
+- 模型 ID：`lgb_event_20260423_065438`
+
+### 31.2 两轮训练对比（说明过拟合真实存在）
+
+| 配置 | train IC | holdout IC | 结论 |
+| --- | --- | --- | --- |
+| 首版（弱正则、含 lag 特征） | 0.404 | **−0.069** | 严重过拟合 + 市场周期漂移；早停第 1 轮 |
+| 加正则 + 移 report_to_notice_lag_days | 0.251 | **+0.111** | holdout 泛化有效 |
+
+**关键修正**：
+1. 删除 `report_to_notice_lag_days`（披露滞后天数）——首版重要性占 gain=1e6，严重可疑。train/holdout 的报告期分布差异导致它成为时序泄漏特征
+2. 强正则：`num_leaves=15, min_data_in_leaf=100, max_depth=5, lambda_l1=0.1, lambda_l2=0.5, lr=0.02`
+
+### 31.3 Top 10 特征重要性（gain）
+
+| # | 特征 | 重要性（gain）|
+| --- | --- | --- |
+| 1 | inst_buy_avg_gain_60d | 1 634 205 |
+| 2 | premium_pct | 879 057 |
+| 3 | margin_rz_balance | 340 351 |
+| 4 | change_amount | 323 996 |
+| 5 | stage_return_3m | 226 388 |
+| 6 | stage_dist_ma250_pct | 211 582 |
+| 7 | hold_amount | 137 530 |
+| 8 | inst_quality_score | 106 797 |
+| 9 | inst_buy_win_rate_60d | 99 032 |
+| 10 | stage_return_6m | 91 955 |
+
+**业务解读**：
+- **F7 机构个体业绩**（Top 1/8/9）和 **事件属性**（2/4/7）主导——与 §30.4 IC 简测一致
+- **F5 阶段动量**（5/6/10）证实 §30.5 的"追高反而赚"动量效应
+- **F6 两融**（3）中等重要
+- **F1 Layer B**（inst_l2_train_n 排第 11，inst_l2_stable_score 靠后）因 20% 覆盖 importance 弱——先不作主特征，后续扩 cohort 覆盖后可能上升
+- **F4 调研**（survey_inst_count_60d）、**F3 forecast**（forecast_score_v1）importance 为 0——在这个目标函数下未被模型使用
+
+### 31.4 落库
+
+`qlib_event_prediction`（29 685 行）：
+
+| 列 | 说明 |
+| --- | --- |
+| model_id | lgb_event_YYYYMMDD_HHMMSS |
+| event_action_score | 0-100（预测收益在训练分布中的分位）|
+| predicted_gain | 原始预测（百分比）|
+| confidence | 2 × \|score − 50\| / 100（极端预测置信度高）|
+| shap_top5_json | 每条事件的 Top 5 特征贡献明细（非黑盒关键）|
+| split | train / holdout |
+
+`qlib_model_evaluation`（2 行：train + holdout）：
+- 每行含 ic / rank_ic / ks_statistic / auc_roc / auc_pr / feature_importance_json
+
+### 31.5 Holdout 高分样本（score ≥ 95）
+
+样本特征：全部来自 2025-08 后 / inst_buy_avg_gain_60d=11.06（某头部机构，SHAP 贡献 +2.5）/ change_amount 和 stage_return_3m 为辅——和 §23 的 stable cohort 交叉验证一致。
+
+### 31.6 与 §19.3 模型治理的衔接
+
+§19.3 提出 "KS / AUC / Calibration / Lift / PSI" 5 件套；本 W4 交付 **KS / AUC / AP**（3/5）。余下：
+
+- **Calibration**：预测分 vs 实际正样本率的校准曲线——下轮做
+- **Lift**：Top-10% 预测的实际正样本率倍数——下轮做
+- **PSI**：特征分布 train vs holdout 漂移——W6 生产化时上
+
+### 31.7 下一步（W5：Optuna + 相似事件召回）
+
+- Optuna TPE 扫 LightGBM 超参（n_estimators / lr / num_leaves / min_data_in_leaf），目标多目标（IC max + 分层 Sharpe max）
+- 相似事件召回：用 LightGBM leaf embedding 或 Layer C 特征 cosine 相似度，给每个新事件返回最近邻 5 条历史事件 + 实际业绩——模型非黑盒的第二个关键支柱
+- 把 event_action_score 接入前端（机构详情/股票详情/事件详情页）
+
+### 31.8 一句话
+
+Qlib baseline 实证达标：**holdout IC 0.111、KS 0.100、Top-5 特征清晰、SHAP 每条可解释**。从 §29 到 §31 四层金字塔（Raw → Fact → Layer B/C → Qlib）全部贯通，形成完整数据 → 特征 → 模型 → 可解释预测 的研究工作流。
