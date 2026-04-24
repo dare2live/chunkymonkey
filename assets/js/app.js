@@ -215,8 +215,14 @@
   var _stocksLoaded = false;
   function loadStocks() {
     if (window.StockView) {
-      if (!_stocksLoaded) { _stocksLoaded = true; window.StockView.load(); }
-      else { window.StockView.reload(); }
+      var p;
+      if (!_stocksLoaded) { _stocksLoaded = true; p = window.StockView.load(); }
+      else { p = window.StockView.reload(); }
+      // banner 在 StockView 渲染完成后注入, 避免被 renderRoot 清空
+      if (p && p.then) p.then(function () { renderAITopKBanner({ limit: 20 }); });
+      else renderAITopKBanner({ limit: 20 });
+    } else {
+      renderAITopKBanner({ limit: 20 });
     }
   }
 
@@ -7325,27 +7331,62 @@
   // 模型监控页面 (Phase 5)
   // ============================================================
 
+  // 全局 labels 缓存（英文 → 中文）
+  window.FeatureLabels = window.FeatureLabels || { features: {}, models: {}, loaded: false };
+
+  async function ensureFeatureLabels() {
+    if (window.FeatureLabels.loaded) return window.FeatureLabels;
+    try {
+      var res = await api('/api/rec/labels');
+      if (res && res.ok) {
+        window.FeatureLabels.features = res.features || {};
+        window.FeatureLabels.models = res.models || {};
+        window.FeatureLabels.loaded = true;
+      }
+    } catch (e) {}
+    return window.FeatureLabels;
+  }
+
+  function labelFeature(name) {
+    var zh = window.FeatureLabels.features[name];
+    return zh ? name + '（' + zh + '）' : name;
+  }
+
+  function labelModelId(mid) {
+    if (!mid) return '-';
+    for (var prefix in window.FeatureLabels.models) {
+      if (mid.indexOf(prefix + '_') === 0) {
+        var tail = mid.slice(prefix.length + 1);
+        if (tail.length >= 13 && /^\d{8}/.test(tail)) {
+          return window.FeatureLabels.models[prefix] + ' · ' +
+            tail.slice(0, 4) + '-' + tail.slice(4, 6) + '-' + tail.slice(6, 8) + ' ' +
+            tail.slice(9, 11) + ':' + tail.slice(11, 13);
+        }
+        return window.FeatureLabels.models[prefix] + ' · ' + tail;
+      }
+    }
+    return mid;
+  }
+
   var modelMonitorState = { modelId: null, regime: '' };
 
   async function loadModelMonitor() {
-    if (modelMonitorState._bound) {
-      // already bound; just refresh
-      return renderModelMonitor();
-    }
+    await ensureFeatureLabels();
+    if (modelMonitorState._bound) return renderModelMonitor();
     modelMonitorState._bound = true;
     var sel = el('mm-model-select'), regSel = el('mm-regime-select'), btn = el('mm-refresh');
     if (sel) sel.addEventListener('change', function () { modelMonitorState.modelId = sel.value; renderModelMonitor(); });
-    if (regSel) regSel.addEventListener('change', function () { modelMonitorState.regime = regSel.value; renderTopK(); });
+    if (regSel) regSel.addEventListener('change', function () { modelMonitorState.regime = regSel.value; });
     if (btn) btn.addEventListener('click', renderModelMonitor);
 
-    // load model history to fill dropdown
+    // 加载模型历史填下拉 (中文名 + 综合评级标签)
     try {
       var res = await api('/api/rec/model-history?limit=20');
       if (res && res.ok) {
         sel.innerHTML = (res.items || []).map(function (m) {
-          var ic = m.holdout_ic == null ? '-' : m.holdout_ic.toFixed(3);
-          var ric = m.holdout_rank_ic == null ? '-' : m.holdout_rank_ic.toFixed(3);
-          return '<option value="' + m.model_id + '">' + m.model_id + '  IC ' + ic + ' / RankIC ' + ric + '</option>';
+          var cname = m.model_name_cn || m.model_id;
+          var grade = m.composite_grade && m.composite_grade.grade || '-';
+          return '<option value="' + m.model_id + '">' + cname + '  · 综合：' + grade + '</option>';
         }).join('');
         if (res.items && res.items[0]) modelMonitorState.modelId = res.items[0].model_id;
       }
@@ -7356,31 +7397,50 @@
   }
 
   async function renderModelMonitor() {
-    await Promise.all([renderMetricsCards(), renderDailyChart(), renderRegimeChart(), renderFeatureImportance(), renderTopK()]);
+    await Promise.all([renderMetricsCards(), renderDailyChart(), renderRegimeChart(), renderFeatureImportance()]);
   }
 
   async function renderMetricsCards() {
-    var box = el('mm-metrics'); if (!box) return;
+    var box = el('mm-metrics');
+    var cbox = el('mm-composite');
+    if (!box) return;
     var mid = modelMonitorState.modelId;
-    if (!mid) { box.innerHTML = '<div class="muted" style="padding:20px">无已训练模型</div>'; return; }
+    if (!mid) { box.innerHTML = '<div class="muted" style="padding:20px">无已训练模型</div>'; if (cbox) cbox.innerHTML = ''; return; }
     try {
       var res = await api('/api/rec/model-performance?model_id=' + encodeURIComponent(mid));
       if (!res || !res.ok) { box.innerHTML = '<div class="muted">' + (res && res.message || 'load err') + '</div>'; return; }
       var m = res.meta || {};
       function fmt(v, d) { return v == null ? '-' : Number(v).toFixed(d == null ? 3 : d); }
       function pct(v) { return v == null ? '-' : (Number(v) * 100).toFixed(2) + '%'; }
-      var icGood = (m.holdout_ic || 0) > 0.03;
-      var rkGood = (m.holdout_rank_ic || 0) > 0.05;
-      var wrGood = (m.holdout_winrate_top || 0) > 0.55;
-      function chip(pass) {
-        return '<div class="wb-card-chip" style="background:' + (pass ? '#dcfce7' : '#fee2e2') + ';color:' + (pass ? '#166534' : '#991b1b') + '">' + (pass ? '✓ 过' : '✗ 未过') + '</div>';
+
+      // 综合评级卡 (置顶大卡)
+      var comp = m.composite_grade || {};
+      if (cbox) {
+        cbox.innerHTML =
+          '<div class="panel" style="padding:14px;display:flex;gap:18px;align-items:center;background:linear-gradient(90deg,' +
+          (comp.color || '#94a3b8') + '22,#fff)">' +
+          '<div style="font-size:28px;font-weight:700;color:' + (comp.color || '#94a3b8') + ';min-width:120px">' +
+          (comp.grade || '-') + '</div>' +
+          '<div style="flex:1">' +
+          '<div style="font-size:12px;color:#64748b">综合评级（5 档：差/较差/一般/良好/优秀）· ' +
+          (m.model_name_cn || mid) + '</div>' +
+          '<div style="font-size:11px;color:#64748b;margin-top:2px">平均档位 ' + (comp.avg_index == null ? '-' : comp.avg_index.toFixed(2)) + ' / 4 · 特征数 ' + (m.n_features || '-') + ' · 创建 ' + (m.created_at ? m.created_at.slice(0, 19) : '-') + '</div>' +
+          '</div>' +
+          '</div>';
+      }
+
+      // 5 个指标卡 (各自带档位 chip)
+      var mg = m.metric_grades || {};
+      function gradeChip(g) {
+        if (!g || g.index < 0) return '<div class="wb-card-chip" style="background:#f1f5f9;color:#64748b">-</div>';
+        return '<div class="wb-card-chip" style="background:' + g.color + '22;color:' + g.color + ';font-weight:600">' + g.grade + '</div>';
       }
       box.innerHTML =
-        '<div class="wb-card"><div class="wb-card-label">Holdout IC</div><div class="wb-card-value">' + fmt(m.holdout_ic, 3) + '</div><div class="wb-card-sub">门槛 > 0.03</div>' + chip(icGood) + '</div>' +
-        '<div class="wb-card"><div class="wb-card-label">Holdout RankIC</div><div class="wb-card-value">' + fmt(m.holdout_rank_ic, 3) + '</div><div class="wb-card-sub">门槛 > 0.05</div>' + chip(rkGood) + '</div>' +
-        '<div class="wb-card"><div class="wb-card-label">Top decile 20d avg</div><div class="wb-card-value">' + pct(m.holdout_top_decile_avg) + '</div><div class="wb-card-sub">L-S spread ' + pct(m.holdout_long_short_spread) + '</div></div>' +
-        '<div class="wb-card"><div class="wb-card-label">Top decile WR</div><div class="wb-card-value">' + pct(m.holdout_winrate_top) + '</div><div class="wb-card-sub">门槛 > 55%</div>' + chip(wrGood) + '</div>' +
-        '<div class="wb-card"><div class="wb-card-label">特征数</div><div class="wb-card-value">' + (m.n_features || '-') + '</div><div class="wb-card-sub">' + (m.created_at ? m.created_at.slice(0, 19) : '-') + '</div></div>';
+        '<div class="wb-card"><div class="wb-card-label">holdout_ic（持出期·IC）</div><div class="wb-card-value">' + fmt(m.holdout_ic, 3) + '</div><div class="wb-card-sub">门槛 优秀>0.05 良好>0.03</div>' + gradeChip(mg.holdout_ic) + '</div>' +
+        '<div class="wb-card"><div class="wb-card-label">holdout_rank_ic（持出期·Rank IC）</div><div class="wb-card-value">' + fmt(m.holdout_rank_ic, 3) + '</div><div class="wb-card-sub">门槛 优秀>0.08 良好>0.06</div>' + gradeChip(mg.holdout_rank_ic) + '</div>' +
+        '<div class="wb-card"><div class="wb-card-label">holdout_top_decile_avg（Top 10% 平均20日收益）</div><div class="wb-card-value">' + pct(m.holdout_top_decile_avg) + '</div><div class="wb-card-sub">门槛 优秀>3% 良好>2%</div>' + gradeChip(mg.holdout_top_decile_avg) + '</div>' +
+        '<div class="wb-card"><div class="wb-card-label">holdout_long_short_spread（多空价差）</div><div class="wb-card-value">' + pct(m.holdout_long_short_spread) + '</div><div class="wb-card-sub">门槛 优秀>4% 良好>2%</div>' + gradeChip(mg.holdout_long_short_spread) + '</div>' +
+        '<div class="wb-card"><div class="wb-card-label">holdout_winrate_top（Top 10% 胜率）</div><div class="wb-card-value">' + pct(m.holdout_winrate_top) + '</div><div class="wb-card-sub">门槛 优秀>60% 良好>56%</div>' + gradeChip(mg.holdout_winrate_top) + '</div>';
     } catch (e) {
       box.innerHTML = '<div class="muted">error: ' + e.message + '</div>';
     }
@@ -7467,9 +7527,11 @@
       var html = '<div style="display:grid;grid-template-columns:auto 1fr auto;gap:4px 10px;font-size:12px;align-items:center">';
       fi.forEach(function (x, i) {
         var pct = (x.importance / maxV) * 100;
+        var zh = x.label_cn || window.FeatureLabels.features[x.name] || '';
         html += '<div class="muted">#' + (i + 1) + '</div>';
         html += '<div style="display:flex;align-items:center;gap:8px">' +
-          '<div style="font-weight:500;white-space:nowrap">' + x.name + '</div>' +
+          '<div style="font-weight:500;white-space:nowrap;min-width:240px"><span style="color:#0f172a">' + x.name + '</span>' +
+          (zh ? '<span style="color:#64748b;font-weight:400;margin-left:6px">（' + zh + '）</span>' : '') + '</div>' +
           '<div style="flex:1;background:#f1f5f9;height:14px;border-radius:3px;overflow:hidden">' +
           '<div style="width:' + pct.toFixed(1) + '%;height:100%;background:linear-gradient(90deg,#3b82f6,#6366f1)"></div>' +
           '</div></div>';
@@ -7482,37 +7544,64 @@
     }
   }
 
-  async function renderTopK() {
-    var box = el('mm-topk-table'); var dateEl = el('mm-topk-date');
-    if (!box) return;
+  // AI 多维评分 Top 推荐 (股票视图顶部 banner)
+  async function renderAITopKBanner(opts) {
+    opts = opts || {};
+    var box = el('stocks-ai-topk');
+    if (!box) {
+      // StockView.renderRoot 会重建 view-stocks, 需动态创建/插入 banner
+      var root = el('view-stocks');
+      if (!root) return;
+      box = document.createElement('div');
+      box.id = 'stocks-ai-topk';
+      box.style.cssText = 'margin:12px 0 0';
+      // 放在 .sv-root 内第一个 panel 之前, 保证顶部可见
+      var svRoot = root.querySelector('.sv-root');
+      if (svRoot && svRoot.firstChild) svRoot.insertBefore(box, svRoot.firstChild);
+      else root.insertBefore(box, root.firstChild);
+    }
+    await ensureFeatureLabels();
     try {
-      var q = 'limit=50';
-      if (modelMonitorState.regime) q += '&regime=' + encodeURIComponent(modelMonitorState.regime);
+      var q = 'limit=' + (opts.limit || 20);
+      if (opts.regime) q += '&regime=' + encodeURIComponent(opts.regime);
       var res = await api('/api/rec/daily-topk?' + q);
-      if (!res || !res.ok) { box.innerHTML = '<div class="muted">' + (res && res.message || 'load err') + '</div>'; return; }
-      if (dateEl) dateEl.textContent = '(' + res.snapshot_date + ' · model ' + (res.model_id || '-') + ')';
+      if (!res || !res.ok) { box.innerHTML = ''; return; }
       var items = res.items || [];
-      if (!items.length) { box.innerHTML = '<div class="muted">无推荐数据</div>'; return; }
-      var rows = items.map(function (it) {
-        var name = it.stock_name || '-';
-        var regimeTag = it.regime_flag ?
-          '<span style="background:' + (it.regime_flag === 'up' ? '#dcfce7' : it.regime_flag === 'down' ? '#fee2e2' : '#f1f5f9') +
-          ';padding:1px 6px;border-radius:3px;font-size:10px;color:' + (it.regime_flag === 'up' ? '#166534' : it.regime_flag === 'down' ? '#991b1b' : '#475569') + '">' + it.regime_flag + '</span>' : '-';
-        return '<tr>' +
-          '<td style="font-variant-numeric:tabular-nums;color:#64748b">#' + it.rank + '</td>' +
-          '<td><b>' + it.stock_code + '</b></td>' +
-          '<td>' + name + '</td>' +
-          '<td style="color:#64748b;font-size:11px">' + (it.l2 || it.l1 || '-') + '</td>' +
-          '<td style="font-variant-numeric:tabular-nums">' + it.pred_score.toFixed(4) + '</td>' +
-          '<td style="font-variant-numeric:tabular-nums">' + (it.percentile * 100).toFixed(1) + '%</td>' +
-          '<td>' + regimeTag + '</td>' +
-          '</tr>';
+      if (!items.length) { box.innerHTML = ''; return; }
+      var modelName = (res.model_meta && res.model_meta.model_id) || '';
+      var cn = labelModelId(res.model_id || modelName);
+      var regimeTag = items[0] && items[0].regime_flag || 'n/a';
+      var regimeCn = { up: '上涨', flat: '震荡', down: '下跌' }[regimeTag] || regimeTag;
+      var chips = items.slice(0, opts.limit || 20).map(function (it) {
+        var name = it.stock_name || '';
+        var color = it.regime_flag === 'down' ? '#991b1b' : (it.regime_flag === 'up' ? '#166534' : '#475569');
+        return '<a href="#" class="ai-topk-chip" data-code="' + it.stock_code +
+          '" style="display:inline-flex;align-items:center;gap:4px;padding:4px 8px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:4px;text-decoration:none;color:#0f172a;font-size:12px;margin:2px">' +
+          '<span style="color:#94a3b8;font-size:10px">#' + it.rank + '</span>' +
+          '<b>' + it.stock_code + '</b>' +
+          '<span style="color:#64748b">' + name + '</span>' +
+          '<span style="color:' + color + ';font-family:monospace;font-size:10px">' + it.pred_score.toFixed(3) + '</span>' +
+          '</a>';
       }).join('');
-      box.innerHTML = '<table class="cm-table" style="width:100%;font-size:12px">' +
-        '<thead><tr><th>Rank</th><th>代码</th><th>名称</th><th>L2</th><th>Score</th><th>Percentile</th><th>Regime</th></tr></thead>' +
-        '<tbody>' + rows + '</tbody></table>';
+      box.innerHTML =
+        '<div class="panel" style="padding:10px 14px;background:linear-gradient(90deg,#eff6ff,#fff)">' +
+        '<div style="display:flex;align-items:center;margin-bottom:6px;flex-wrap:wrap;gap:8px">' +
+        '<b style="font-size:13px;color:#1e40af">🎯 AI 多维评分·今日 Top ' + (opts.limit || 20) + '</b>' +
+        '<span class="muted" style="font-size:11px">' + (res.snapshot_date || '-') + ' · ' + cn + ' · 市场状态：' + regimeCn + '</span>' +
+        '<span style="margin-left:auto;font-size:11px;color:#64748b">研究参考，非交易建议。点击代码打开股票详情</span>' +
+        '</div>' +
+        '<div>' + chips + '</div>' +
+        '</div>';
+      // 绑定点击 → 打开股票详情
+      box.querySelectorAll('.ai-topk-chip').forEach(function (a) {
+        a.addEventListener('click', function (e) {
+          e.preventDefault();
+          var code = a.dataset.code;
+          if (window.App && window.App.toggleStockDetail) window.App.toggleStockDetail(code);
+        });
+      });
     } catch (e) {
-      box.innerHTML = '<div class="muted">error: ' + e.message + '</div>';
+      box.innerHTML = '';
     }
   }
 

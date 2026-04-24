@@ -7,9 +7,23 @@ from datetime import datetime
 
 from fastapi import APIRouter, Query
 from services.db import get_conn
+from services.feature_labels import (
+    FEATURE_LABELS, MODEL_NAME_LABELS,
+    format_model_id, composite_grade, grade_metric,
+)
 
 logger = logging.getLogger("cm-api")
 router = APIRouter()
+
+
+@router.get("/labels")
+async def get_labels():
+    """全局英文→中文字段映射 (前端一次加载后缓存)"""
+    return {
+        "ok": True,
+        "features": FEATURE_LABELS,
+        "models": MODEL_NAME_LABELS,
+    }
 
 
 @router.get("/daily-topk")
@@ -27,8 +41,17 @@ async def get_daily_topk(
         if not date:
             return {"ok": False, "message": "尚未生成每日推荐, 请先运行 run_daily_topk"}
 
+        # 取最新 model_id (不含 join 避免被大表拖慢)
+        latest_mid = conn.execute(
+            "SELECT model_id FROM mart_multidim_model ORDER BY created_at DESC LIMIT 1"
+        ).fetchone()
+        latest_mid = latest_mid[0] if latest_mid else None
+
         where = ["r.snapshot_date = ?"]
         params = [date]
+        if latest_mid:
+            where.append("r.model_id = ?")
+            params.append(latest_mid)
         if regime:
             where.append("r.regime_flag = ?")
             params.append(regime)
@@ -131,6 +154,19 @@ async def get_model_performance(
         best_params = meta.pop("best_params_json", None)
         meta["best_params"] = json.loads(best_params) if best_params else {}
 
+        # 附加中文名 + 综合评级 + 单指标评级
+        meta["model_name_cn"] = format_model_id(model_id)
+        meta["composite_grade"] = composite_grade(meta)
+        meta["metric_grades"] = {
+            k: grade_metric(k, meta.get(k)) for k in [
+                "holdout_ic", "holdout_rank_ic", "holdout_top_decile_avg",
+                "holdout_long_short_spread", "holdout_winrate_top",
+            ]
+        }
+        # feature importance 附加中文
+        for fi in meta.get("feature_importance", []):
+            fi["label_cn"] = FEATURE_LABELS.get(fi["name"], "")
+
         # 2. 每日实际表现 (topK 事后追踪)
         # 对 mart_multidim_prediction 里 holdout 期的 top-decile, 查 fact_feature_panel
         # 看 forward_ret_20d 实测 vs 预测
@@ -193,10 +229,12 @@ async def list_model_history(limit: int = Query(20, ge=1, le=100)):
             FROM mart_multidim_model
             ORDER BY created_at DESC LIMIT ?
         """, (limit,)).fetchall()
-        return {
-            "ok": True,
-            "count": len(rows),
-            "items": [dict(r) for r in rows],
-        }
+        items = []
+        for r in rows:
+            d = dict(r)
+            d["model_name_cn"] = format_model_id(d["model_id"])
+            d["composite_grade"] = composite_grade(d)
+            items.append(d)
+        return {"ok": True, "count": len(items), "items": items}
     finally:
         conn.close()

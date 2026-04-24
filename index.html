@@ -73,7 +73,8 @@
           </select>
           <button class="chip chip-outline" id="mm-refresh" style="margin-left:12px">刷新</button>
         </div>
-        <!-- 指标卡片 -->
+        <!-- 综合评级 + 指标卡片 -->
+        <div id="mm-composite" style="margin-bottom:10px"></div>
         <div id="mm-metrics" class="workbench-health" style="margin-bottom:14px">
           <div class="muted" style="padding:20px">加载中…</div>
         </div>
@@ -92,13 +93,9 @@
         </div>
         <!-- Feature importance -->
         <div class="panel" style="padding:12px;margin-bottom:14px">
-          <h4 style="margin:0 0 8px;font-size:13px">Feature Importance (top 30, gain)</h4>
+          <h4 style="margin:0 0 8px;font-size:13px">特征重要性 Feature Importance（top 30, gain 归一化）</h4>
+          <p class="muted" style="font-size:11px;margin:0 0 8px">英文为字段名，括号内为对应中文标签；每日 topK 推荐已集成到"股票"视图顶部</p>
           <div id="mm-chart-fi" style="min-height:300px"></div>
-        </div>
-        <!-- Top 50 推荐表 -->
-        <div class="panel" style="padding:12px">
-          <h4 style="margin:0 0 8px;font-size:13px">每日 Top 推荐 <span class="muted" style="font-size:11px;font-weight:400" id="mm-topk-date"></span></h4>
-          <div id="mm-topk-table">加载中…</div>
         </div>
       </div>
     </section>
