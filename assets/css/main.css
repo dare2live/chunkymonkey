@@ -6679,3 +6679,150 @@ tr.detail-row>td>.detail-panel {
   border: 1px dashed var(--cm-ink-100);
   border-radius: var(--cm-r-lg);
 }
+
+/* ============================================================
+   ETF Strategy Compare (ETFStrategyCompareWidget)
+   ============================================================ */
+.esc-panel {
+  background: var(--cm-surface);
+  border: 1px solid var(--cm-brand-100);
+  border-radius: var(--cm-r-xl);
+  padding: var(--cm-sp-4);
+}
+.esc-panel-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: var(--cm-sp-2);
+  margin-bottom: var(--cm-sp-3);
+}
+.esc-title {
+  font-weight: 700;
+  font-size: var(--cm-fs-14);
+  color: var(--cm-brand-700);
+}
+.esc-meta {
+  font-size: var(--cm-fs-11);
+  color: var(--cm-ink-500);
+}
+.esc-tabs {
+  display: flex;
+  gap: var(--cm-sp-2);
+  margin-bottom: var(--cm-sp-3);
+  border-bottom: 1px solid var(--cm-ink-100);
+  padding-bottom: var(--cm-sp-2);
+}
+.esc-tab {
+  padding: 6px 16px;
+  border: 1px solid var(--cm-ink-100);
+  border-radius: var(--cm-r-pill);
+  background: var(--cm-surface);
+  color: var(--cm-ink-700);
+  font-size: var(--cm-fs-12);
+  font-weight: 600;
+  cursor: pointer;
+  transition: all var(--cm-motion-fast);
+}
+.esc-tab:hover {
+  border-color: var(--cm-brand-400);
+}
+.esc-tab--active {
+  background: var(--cm-brand-500);
+  color: var(--cm-surface);
+  border-color: var(--cm-brand-500);
+}
+.esc-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: var(--cm-sp-2);
+  margin-bottom: var(--cm-sp-3);
+}
+.esc-period-label {
+  font-size: var(--cm-fs-12);
+  color: var(--cm-ink-700);
+}
+.esc-edge {
+  padding: 2px 10px;
+  border-radius: var(--cm-r-pill);
+  font-size: var(--cm-fs-11);
+  font-weight: 700;
+}
+.esc-edge--pos {
+  background: var(--cm-ok-100);
+  color: var(--cm-ok-500);
+}
+.esc-edge--neg {
+  background: var(--cm-bad-100);
+  color: var(--cm-bad-500);
+}
+.esc-metric-row {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: var(--cm-sp-3);
+  margin-bottom: var(--cm-sp-3);
+}
+.esc-metric-card {
+  border-radius: var(--cm-r-lg);
+  padding: var(--cm-sp-3);
+  border: 1px solid var(--cm-ink-100);
+  background: var(--cm-surface);
+}
+.esc-metric-card--win {
+  background: var(--cm-gradient-nature);
+  border-color: var(--cm-leaf-500);
+}
+.esc-metric-card--neutral {
+  background: var(--cm-brand-50);
+  border-color: var(--cm-brand-100);
+}
+.esc-metric-card--muted {
+  background: var(--cm-ink-50);
+}
+.esc-metric-head {
+  font-weight: 700;
+  font-size: var(--cm-fs-13);
+  color: var(--cm-ink-900);
+  margin-bottom: var(--cm-sp-2);
+}
+.esc-metric-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: var(--cm-sp-2);
+}
+.esc-metric-grid > div {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.esc-k {
+  font-size: var(--cm-fs-10);
+  color: var(--cm-ink-500);
+}
+.esc-v {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-weight: 700;
+  font-size: var(--cm-fs-13);
+  color: var(--cm-ink-900);
+}
+.esc-chart {
+  width: 100%;
+  height: auto;
+  background: var(--cm-surface);
+  border: 1px solid var(--cm-ink-100);
+  border-radius: var(--cm-r-lg);
+}
+.esc-empty,
+.esc-loading {
+  padding: var(--cm-sp-4);
+  text-align: center;
+  color: var(--cm-ink-500);
+  background: var(--cm-surface);
+  border: 1px dashed var(--cm-ink-100);
+  border-radius: var(--cm-r-lg);
+}
+@media (max-width: 640px) {
+  .esc-metric-row { grid-template-columns: 1fr; }
+}

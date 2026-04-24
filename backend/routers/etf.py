@@ -273,6 +273,103 @@ async def get_etf_mining(
         conn.close()
 
 
+@router.get("/strategy-comparison/{code}")
+async def get_strategy_comparison(code: str) -> Dict[str, Any]:
+    """单只 ETF 在 1Y/3Y/5Y 三周期的 grid vs buy-and-hold 对比
+
+    同时返回窗口内的日线收益序列 (用于前端画双线曲线)
+    """
+    import re
+    if not re.match(r"^\d{6}$", code):
+        raise HTTPException(status_code=400, detail="ETF 代码必须为 6 位数字")
+
+    conn = get_etf_conn()
+    try:
+        # 取 ETF 基本信息
+        info_row = conn.execute(
+            "SELECT code, name, category FROM etf_asset_universe WHERE code = ?",
+            [code],
+        ).fetchone()
+        if not info_row:
+            return {"status": "not_found", "message": f"ETF {code} 不存在"}
+        info = {"code": info_row[0], "name": info_row[1], "category": info_row[2]}
+
+        # 取最新 snapshot_date
+        snap_row = conn.execute(
+            "SELECT MAX(snapshot_date) FROM mart_etf_strategy_comparison WHERE code = ?",
+            [code],
+        ).fetchone()
+        snapshot = str(snap_row[0]) if snap_row and snap_row[0] else None
+        if not snapshot:
+            return {
+                "status": "empty",
+                "message": f"ETF {code} 无回测数据, 请运行 scripts/backtest_etf_strategies.py",
+                "info": info,
+            }
+
+        rows = conn.execute(
+            """
+            SELECT period, lookback_days, strategy, return_pct, annualized_return_pct,
+                   max_drawdown_pct, sharpe, trade_count, win_rate, best_step_pct, edge_pct,
+                   data_from, data_to
+            FROM mart_etf_strategy_comparison
+            WHERE snapshot_date = ? AND code = ?
+            ORDER BY lookback_days, strategy
+            """,
+            [snapshot, code],
+        ).fetchall()
+
+        # 按 period 分组
+        periods: Dict[str, Any] = {}
+        for r in rows:
+            p = r[0]
+            if p not in periods:
+                periods[p] = {
+                    "period": p,
+                    "lookback_days": r[1],
+                    "data_from": str(r[11]) if r[11] else None,
+                    "data_to": str(r[12]) if r[12] else None,
+                    "strategies": {},
+                }
+            periods[p]["strategies"][r[2]] = {
+                "return_pct": r[3],
+                "annualized_return_pct": r[4],
+                "max_drawdown_pct": r[5],
+                "sharpe": r[6],
+                "trade_count": r[7],
+                "win_rate": r[8],
+                "best_step_pct": r[9],
+                "edge_pct": r[10],
+            }
+
+        # 补 equity curve (用最长窗口的价格) — 只取 5Y 的收盘价, 前端自己截窗口
+        max_days = max([p["lookback_days"] for p in periods.values()], default=1260)
+        price_rows = conn.execute(
+            """
+            SELECT date, close
+            FROM etf_price_kline
+            WHERE code = ? AND freq='daily' AND adjust='qfq'
+            ORDER BY date DESC LIMIT ?
+            """,
+            [code, max_days + 5],
+        ).fetchall()
+        price_series = [
+            {"date": str(r[0]), "close": float(r[1]) if r[1] is not None else None}
+            for r in reversed(price_rows)
+            if r[1] is not None
+        ]
+
+        return {
+            "status": "ok",
+            "snapshot_date": snapshot,
+            "info": info,
+            "periods": list(periods.values()),
+            "price_series": price_series,
+        }
+    finally:
+        conn.close()
+
+
 @router.get("/grid/optimize")
 async def optimize_grid(
     code: str = Query(..., description="ETF 代码, 6 位数字"),

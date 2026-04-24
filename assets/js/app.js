@@ -6194,14 +6194,21 @@
         '</div>';
     }
 
+    var strategyCompareMountId = panelId + '-strategy-compare';
     panel.innerHTML = '<div class="panel" style="margin-top:14px">' +
       '<div class="panel-head" style="justify-content:space-between">' +
       '<span style="font-weight:600">深度量化分析</span>' +
       '<button class="chip chip-ghost chip-sm" onclick="document.getElementById(\'' + panelId + '\').innerHTML=\'\'">关闭</button>' +
       '</div>' +
-      headerHtml + issueHtml + optimizerHtml + comparisonHtml + ledgerHtml + curveHtml + tradeTimelineHtml + stepsHtml + periodHtml + verdictHtml +
+      headerHtml + issueHtml +
+      '<div id="' + strategyCompareMountId + '" style="margin-bottom:14px"></div>' +
+      optimizerHtml + comparisonHtml + ledgerHtml + curveHtml + tradeTimelineHtml + stepsHtml + periodHtml + verdictHtml +
       '</div>';
     scheduleSortableTables(panel);
+    // 挂载 1Y/3Y/5Y 策略对比 widget
+    if (window.ETFStrategyCompareWidget) {
+      window.ETFStrategyCompareWidget.mount(strategyCompareMountId, { code: code });
+    }
     panel.scrollIntoView({ behavior: 'smooth', block: 'start' });
   }
 
