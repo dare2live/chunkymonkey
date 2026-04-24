@@ -55,8 +55,7 @@ def migrate_db(src: str, dst: str, skip: set[str]) -> dict:
 
     con = duckdb.connect(dst)
     con.execute("INSTALL sqlite; LOAD sqlite;")
-    # all_varchar=true 让 SQLite scanner 把所有列当字符串读, 避免类型冲突 (如 int 列里混 float)
-    con.execute("SET GLOBAL sqlite_all_varchar=true")
+    # 默认类型推断 (不用 all_varchar). 个别列类型不一致的表 fallback 到 all_varchar
     con.execute(f"ATTACH '{src}' AS src (TYPE SQLITE, READ_ONLY)")
 
     results = {}
@@ -64,16 +63,29 @@ def migrate_db(src: str, dst: str, skip: set[str]) -> dict:
         if t in skip:
             logger.info("  [skip] %s", t)
             continue
+        t0 = time.time()
         try:
-            t0 = time.time()
             con.execute(f'CREATE TABLE "{t}" AS SELECT * FROM src."{t}"')
-            n = con.execute(f'SELECT COUNT(*) FROM "{t}"').fetchone()[0]
-            dt = time.time() - t0
-            results[t] = n
-            logger.info("  ✓ %-50s rows=%-10d %.1fs", t, n, dt)
-        except Exception as e:
-            logger.error("  ✗ %s: %s", t, e)
-            results[t] = None
+        except Exception as e1:
+            # 类型冲突 fallback: 整表 VARCHAR
+            logger.warning("  ⚠ %s 类型冲突, 回退 VARCHAR: %s", t, str(e1)[:80])
+            try:
+                con.execute(f'DROP TABLE IF EXISTS "{t}"')
+                con.execute(f"DETACH src")
+                con.execute("SET GLOBAL sqlite_all_varchar=true")
+                con.execute(f"ATTACH '{src}' AS src (TYPE SQLITE, READ_ONLY)")
+                con.execute(f'CREATE TABLE "{t}" AS SELECT * FROM src."{t}"')
+                con.execute(f"DETACH src")
+                con.execute("SET GLOBAL sqlite_all_varchar=false")
+                con.execute(f"ATTACH '{src}' AS src (TYPE SQLITE, READ_ONLY)")
+            except Exception as e2:
+                logger.error("  ✗ %s fallback 也失败: %s", t, e2)
+                results[t] = None
+                continue
+        n = con.execute(f'SELECT COUNT(*) FROM "{t}"').fetchone()[0]
+        dt = time.time() - t0
+        results[t] = n
+        logger.info("  ✓ %-50s rows=%-10d %.1fs", t, n, dt)
 
     con.execute("DETACH src")
     # 建议索引

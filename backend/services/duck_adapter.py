@@ -95,20 +95,42 @@ class DuckCursor:
 
 
 # SQLite-only 语法 → DuckDB 改写 / no-op
+_PRAGMA_TABLE_INFO_RE = re.compile(r"^\s*PRAGMA\s+table_info\s*\(\s*([\w_]+)\s*\)\s*;?\s*$", re.IGNORECASE)
 _PRAGMA_RE = re.compile(r"^\s*PRAGMA\s+", re.IGNORECASE)
 _AUTOINCREMENT_RE = re.compile(r"\bINTEGER\s+PRIMARY\s+KEY\s+AUTOINCREMENT\b", re.IGNORECASE)
 _AUTOINCREMENT2_RE = re.compile(r"\bAUTOINCREMENT\b", re.IGNORECASE)
+_SQLITE_NOW_RE = re.compile(r"datetime\(\s*['\"]now['\"]\s*\)", re.IGNORECASE)
+_SQLITE_MASTER_RE = re.compile(r"\bsqlite_master\b", re.IGNORECASE)
 
 
 def _normalize_sql(sql: str) -> Optional[str]:
-    """return None 表示整条语句 no-op; 否则返回规范化 SQL"""
+    """return None 表示 no-op; 否则返回规范化 SQL (SQLite 语法 → DuckDB).
+    特殊: PRAGMA table_info(x) → SELECT * FROM (DESCRIBE x)"""
     stripped = sql.lstrip()
+    m = _PRAGMA_TABLE_INFO_RE.match(stripped)
+    if m:
+        tbl = m.group(1)
+        # DuckDB DESCRIBE 返回 column_name/column_type/null/key/default/extra
+        # 转成 SQLite PRAGMA table_info 兼容列序: cid, name, type, notnull, dflt_value, pk
+        return (
+            f"SELECT 0 AS cid, column_name AS name, column_type AS type, "
+            f"CASE WHEN \"null\"='YES' THEN 0 ELSE 1 END AS notnull, "
+            f"NULL AS dflt_value, "
+            f"CASE WHEN key='PRI' THEN 1 ELSE 0 END AS pk "
+            f"FROM (DESCRIBE {tbl})"
+        )
     if _PRAGMA_RE.match(stripped):
-        # PRAGMA 全部 no-op (journal_mode / busy_timeout / foreign_keys 等)
         return None
-    # AUTOINCREMENT: DuckDB 用 sequence 或 IDENTITY
     s = _AUTOINCREMENT_RE.sub("INTEGER PRIMARY KEY", sql)
     s = _AUTOINCREMENT2_RE.sub("", s)
+    # datetime('now') → current_timestamp
+    s = _SQLITE_NOW_RE.sub("current_timestamp", s)
+    # sqlite_master → information_schema.tables
+    # 保守: 只在无歧义时替换
+    s = _SQLITE_MASTER_RE.sub(
+        "(SELECT table_name as name, 'table' as type FROM information_schema.tables)",
+        s,
+    )
     return s
 
 
@@ -241,6 +263,20 @@ class DuckConn:
     @property
     def raw(self):
         return self._con
+
+    # pandas df.to_sql 兼容: pandas 调用 conn.execute(...), 返回 Cursor; 我们已实现
+    # 但 pandas >= 2.0 会探测 driver, 可能需要 .cursor()
+    def cursor(self):
+        return DuckCursor(self._con.cursor())
+
+    # sqlite3 兼容属性
+    @property
+    def isolation_level(self):
+        return None
+
+    @isolation_level.setter
+    def isolation_level(self, v):
+        pass  # DuckDB MVCC, 忽略
 
 
 def connect(db_path: str, timeout: int = 30, read_only: bool = False, attach: dict = None) -> DuckConn:

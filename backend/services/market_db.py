@@ -5,25 +5,23 @@ market_db.py — 独立行情数据库 (market_data.db)
 与业务库 smartmoney.db 完全解耦，业务层只通过本模块读写行情数据。
 """
 
-import sqlite3
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
 
+from services.duck_adapter import connect as _duck_connect, DuckConn
+
 _DB_DIR = Path(__file__).resolve().parent.parent.parent / "data"
-_DB_PATH = _DB_DIR / "market_data.db"
+# Phase 7: DuckDB 主库
+_DB_PATH = _DB_DIR / "market.duckdb"
 
 # ---------------------------------------------------------------------------
 # Connection
 # ---------------------------------------------------------------------------
 
-def get_market_conn(timeout: int = 30) -> sqlite3.Connection:
-    """获取 market_data.db 连接"""
-    conn = sqlite3.connect(str(_DB_PATH), timeout=timeout)
-    conn.execute("PRAGMA journal_mode=WAL")
-    conn.execute("PRAGMA foreign_keys=ON")
-    conn.row_factory = sqlite3.Row
-    return conn
+def get_market_conn(timeout: int = 30) -> DuckConn:
+    """获取 market DB 连接 (DuckDB via duck_adapter)."""
+    return _duck_connect(str(_DB_PATH), timeout=timeout)
 
 
 # ---------------------------------------------------------------------------

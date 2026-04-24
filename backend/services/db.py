@@ -9,24 +9,23 @@
   系统层: sys_schema_version, excluded_stocks, exclusion_categories, app_settings
 """
 
-import sqlite3
 import logging
 from datetime import datetime
 from pathlib import Path
 
+from services.duck_adapter import connect as _duck_connect, DuckConn
+
 logger = logging.getLogger("cm-api")
 
 DB_DIR = Path(__file__).resolve().parent.parent.parent / "data"
-DB_PATH = DB_DIR / "smartmoney.db"
+# Phase 7 切换: DuckDB 为唯一主库
+DB_PATH = DB_DIR / "smartmoney.duckdb"
 
 
-def get_conn(timeout: int = 30) -> sqlite3.Connection:
+def get_conn(timeout: int = 30) -> DuckConn:
+    """返回 DuckDB 连接 (duck_adapter.DuckConn 兼容 sqlite3.Connection API)."""
     DB_DIR.mkdir(parents=True, exist_ok=True)
-    conn = sqlite3.connect(str(DB_PATH), timeout=timeout)
-    conn.row_factory = sqlite3.Row
-    conn.execute("PRAGMA journal_mode=WAL")
-    conn.execute("PRAGMA busy_timeout=10000")
-    return conn
+    return _duck_connect(str(DB_PATH), timeout=timeout)
 
 
 def init_db():

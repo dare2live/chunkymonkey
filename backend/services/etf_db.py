@@ -8,28 +8,27 @@ ETF 运行时只通过本模块读写，不再复用股票侧业务库与行情�
 from __future__ import annotations
 
 import logging
-import sqlite3
 from datetime import datetime, timezone
 from pathlib import Path
+
+from services.duck_adapter import connect as _duck_connect, DuckConn
 
 
 logger = logging.getLogger("cm-api")
 
 _DB_DIR = Path(__file__).resolve().parent.parent.parent / "data"
-_DB_PATH = _DB_DIR / "etf.db"
+# Phase 7: DuckDB 主库
+_DB_PATH = _DB_DIR / "etf.duckdb"
 
 
 def _now_iso() -> str:
     return datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
 
 
-def get_etf_conn(timeout: int = 30) -> sqlite3.Connection:
-    """获取 etf.db 连接，并确保 ETF 专用 schema 已准备好。"""
+def get_etf_conn(timeout: int = 30) -> DuckConn:
+    """获取 ETF DuckDB 连接, 确保 schema 存在."""
     _DB_DIR.mkdir(parents=True, exist_ok=True)
-    conn = sqlite3.connect(str(_DB_PATH), timeout=timeout)
-    conn.execute("PRAGMA journal_mode=WAL")
-    conn.execute("PRAGMA foreign_keys=ON")
-    conn.row_factory = sqlite3.Row
+    conn = _duck_connect(str(_DB_PATH), timeout=timeout)
     _ensure_schema(conn)
     return conn
 
