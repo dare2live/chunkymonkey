@@ -387,6 +387,7 @@
         <span><span class="muted">平均溢价</span> ${s.premiumAvg != null ? fmtPct(s.premiumAvg) : '-'}</span>
         <span><span class="muted">最佳长期EV</span> ${s.longEVBest != null ? fmtPct(s.longEVBest) : '-'}</span>
         <span><span class="muted">最近事件</span> ${fmtDate(s.latestNotice)}</span>
+        <span id="sv-drawer-multidim-badge"></span>
       </div>
       <div class="sv-drawer-tabs">${tabBtns}</div>
       <div id="sv-drawer-content" class="sv-drawer-content"></div>
@@ -419,6 +420,10 @@
         area.querySelectorAll('[data-svtab]').forEach(b => b.classList.toggle('sv-tab-active', b.dataset.svtab === state.drawerTab));
       });
     });
+    // AI 多维评分徽章 (异步, 不阻塞主渲染)
+    if (global.MultidimBadgeWidget) {
+      global.MultidimBadgeWidget.mount('sv-drawer-multidim-badge', { stockCode: code });
+    }
 
     renderDrawerContent(s);
   }
@@ -534,6 +539,7 @@
           <strong>画像边界</strong>：这里是"机构覆盖股票画像"，不是全市场画像。只覆盖近期进入机构关系层的 A 股（当前 ~3285/5507 只 active A 股）。
         </div>
       </div>
+      <div id="sv-topk-strip" style="margin-bottom:14px"></div>
       <div id="sv-filter-area">${renderFilterBar(state.byStock)}</div>
       <div id="sv-list-root"></div>
       <div id="sv-drawer-area"></div>
@@ -549,6 +555,13 @@
     bindFilterEvents();
     bindAuxSections();
     renderList();
+    // AI 多维评分 Top K 条带 (异步, 不阻塞主渲染)
+    if (global.TopKStripWidget) {
+      global.TopKStripWidget.mount('sv-topk-strip', {
+        limit: 20,
+        onPick: function (code) { openDrawer(code); }
+      });
+    }
   }
 
   function bindAuxSections() {

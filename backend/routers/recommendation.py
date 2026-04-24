@@ -118,6 +118,51 @@ async def get_daily_topk(
         conn.close()
 
 
+@router.get("/stock-prediction")
+async def get_stock_prediction(
+    code: str = Query(..., description="股票代码"),
+    model_id: str = Query(None, description="指定 model_id, 默认最新"),
+):
+    """单只股票在最新模型下的最近预测 (按日期 DESC, 取最新一天)"""
+    conn = get_conn()
+    try:
+        if not model_id:
+            row = conn.execute(
+                "SELECT model_id FROM mart_multidim_model ORDER BY created_at DESC LIMIT 1"
+            ).fetchone()
+            model_id = row[0] if row else None
+        if not model_id:
+            return {"ok": False, "message": "尚无训练好的模型"}
+
+        row = conn.execute("""
+            SELECT stock_code, date, pred_score, rank_in_date, percentile
+            FROM mart_multidim_prediction
+            WHERE stock_code = ? AND model_id = ?
+            ORDER BY date DESC LIMIT 1
+        """, (code, model_id)).fetchone()
+        if not row:
+            return {"ok": True, "model_id": model_id, "has_prediction": False}
+
+        meta = conn.execute(
+            "SELECT holdout_ic, holdout_rank_ic FROM mart_multidim_model WHERE model_id = ?",
+            (model_id,)
+        ).fetchone()
+        return {
+            "ok": True,
+            "model_id": model_id,
+            "has_prediction": True,
+            "stock_code": row["stock_code"],
+            "date": row["date"],
+            "pred_score": float(row["pred_score"]),
+            "rank_in_date": int(row["rank_in_date"]),
+            "percentile": float(row["percentile"]),
+            "model_ic": float(meta["holdout_ic"]) if meta and meta["holdout_ic"] else None,
+            "model_rank_ic": float(meta["holdout_rank_ic"]) if meta and meta["holdout_rank_ic"] else None,
+        }
+    finally:
+        conn.close()
+
+
 @router.get("/model-performance")
 async def get_model_performance(
     model_id: str = Query(None, description="指定 model_id, 默认最新"),

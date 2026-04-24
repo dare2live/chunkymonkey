@@ -6208,3 +6208,474 @@ tr.detail-row>td>.detail-panel {
   border-bottom: 1px solid var(--cm-ink-50);
   align-items: flex-start;
 }
+
+/* ============================================================
+   Top K 条带 (AI 多维评分 · 今日 topK)
+   ============================================================ */
+.topk-strip {
+  background: var(--cm-gradient-soft);
+  border: 1px solid var(--cm-brand-100);
+  border-radius: var(--cm-r-xl);
+  padding: var(--cm-sp-3) var(--cm-sp-4);
+  box-shadow: var(--cm-shadow-sm);
+}
+.topk-strip-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--cm-sp-2);
+  margin-bottom: var(--cm-sp-3);
+  flex-wrap: wrap;
+}
+.topk-strip-title {
+  font-size: var(--cm-fs-14);
+  font-weight: 700;
+  color: var(--cm-brand-700);
+}
+.topk-strip-meta {
+  display: flex;
+  gap: var(--cm-sp-2);
+  flex-wrap: wrap;
+}
+.topk-pill {
+  font-size: var(--cm-fs-10);
+  padding: 2px var(--cm-sp-2);
+  border-radius: var(--cm-r-pill);
+  background: var(--cm-surface);
+  color: var(--cm-brand-700);
+  font-weight: 600;
+  border: 1px solid var(--cm-brand-100);
+}
+.topk-pill--muted {
+  background: transparent;
+  color: var(--cm-ink-500);
+  border-color: var(--cm-ink-100);
+  font-weight: 500;
+}
+.topk-strip-scroll {
+  display: flex;
+  gap: var(--cm-sp-2);
+  overflow-x: auto;
+  padding-bottom: var(--cm-sp-2);
+  scrollbar-width: thin;
+}
+.topk-strip-scroll::-webkit-scrollbar { height: 6px; }
+.topk-strip-scroll::-webkit-scrollbar-thumb { background: var(--cm-brand-100); border-radius: 3px; }
+.topk-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--cm-sp-2);
+  padding: var(--cm-sp-2) var(--cm-sp-3);
+  background: var(--cm-surface);
+  border: 1px solid var(--cm-brand-100);
+  border-radius: var(--cm-r-lg);
+  cursor: pointer;
+  font-size: var(--cm-fs-11);
+  white-space: nowrap;
+  flex-shrink: 0;
+  transition: transform var(--cm-motion-fast), border-color var(--cm-motion-fast), box-shadow var(--cm-motion-fast);
+}
+.topk-chip:hover {
+  transform: translateY(-1px);
+  border-color: var(--cm-brand-500);
+  box-shadow: var(--cm-shadow-sm);
+}
+.topk-chip-rank {
+  font-weight: 800;
+  color: var(--cm-brand-500);
+  font-size: var(--cm-fs-12);
+}
+.topk-chip-code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  color: var(--cm-ink-700);
+}
+.topk-chip-name {
+  font-weight: 600;
+  color: var(--cm-ink-900);
+}
+.topk-chip-sector {
+  color: var(--cm-ink-500);
+  font-size: var(--cm-fs-10);
+}
+.topk-chip-score {
+  padding: 1px var(--cm-sp-2);
+  border-radius: var(--cm-r-pill);
+  background: var(--cm-brand-50);
+  color: var(--cm-brand-700);
+  font-weight: 700;
+  font-size: var(--cm-fs-10);
+}
+.topk-chip--gold .topk-chip-rank { color: var(--cm-accent-vivid); }
+.topk-chip--gold .topk-chip-score {
+  background: var(--cm-accent-warm-100);
+  color: var(--cm-accent-vivid);
+}
+.topk-chip--silver .topk-chip-rank { color: var(--cm-brand-500); }
+/* AI 多维评分徽章 (股票详情 / list 内嵌) */
+.multidim-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--cm-sp-2);
+  padding: 2px var(--cm-sp-2);
+  border-radius: var(--cm-r-pill);
+  font-size: var(--cm-fs-11);
+  font-weight: 600;
+  border: 1px solid var(--cm-brand-100);
+  background: var(--cm-brand-50);
+  color: var(--cm-brand-700);
+  white-space: nowrap;
+}
+.multidim-badge--loading,
+.multidim-badge--empty {
+  color: var(--cm-ink-500);
+  background: transparent;
+  border-style: dashed;
+  font-weight: 500;
+}
+.multidim-badge--gold {
+  background: var(--cm-accent-warm-100);
+  border-color: var(--cm-accent-warm);
+  color: var(--cm-accent-vivid);
+}
+.multidim-badge--good {
+  background: var(--cm-ok-100);
+  border-color: var(--cm-leaf-300);
+  color: var(--cm-ok-500);
+}
+.multidim-badge--weak {
+  background: var(--cm-ink-50);
+  border-color: var(--cm-ink-100);
+  color: var(--cm-ink-500);
+}
+.multidim-badge-label {
+  font-size: var(--cm-fs-10);
+  opacity: 0.8;
+}
+.multidim-badge-score {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-weight: 800;
+}
+.multidim-badge-pct,
+.multidim-badge-rank {
+  font-size: var(--cm-fs-10);
+  padding: 1px 6px;
+  border-radius: var(--cm-r-pill);
+  background: var(--cm-surface);
+  color: inherit;
+  opacity: 0.9;
+}
+
+.topk-strip-empty,
+.topk-strip-loading {
+  padding: var(--cm-sp-3);
+  font-size: var(--cm-fs-12);
+  color: var(--cm-ink-500);
+  text-align: center;
+  background: var(--cm-surface);
+  border: 1px dashed var(--cm-ink-100);
+  border-radius: var(--cm-r-lg);
+}
+
+/* ============================================================
+   ETF 板块轮动 (ETFSectorRotationWidget)
+   ============================================================ */
+.esr-panel {
+  background: var(--cm-surface);
+  border: 1px solid var(--cm-brand-100);
+  border-radius: var(--cm-r-xl);
+  padding: var(--cm-sp-4);
+}
+.esr-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: var(--cm-sp-3);
+  margin-bottom: var(--cm-sp-2);
+  flex-wrap: wrap;
+}
+.esr-title {
+  font-weight: 700;
+  font-size: var(--cm-fs-14);
+  color: var(--cm-brand-700);
+}
+.esr-meta {
+  font-size: var(--cm-fs-11);
+  color: var(--cm-ink-500);
+}
+.esr-legend {
+  display: flex;
+  gap: var(--cm-sp-2);
+  margin-bottom: var(--cm-sp-3);
+  flex-wrap: wrap;
+}
+.esr-legend-chip {
+  font-size: var(--cm-fs-10);
+  padding: 1px var(--cm-sp-2);
+  border-radius: var(--cm-r-pill);
+  font-weight: 600;
+}
+.esr-legend-chip--leader {
+  background: var(--cm-ok-100);
+  color: var(--cm-ok-500);
+}
+.esr-legend-chip--observer {
+  background: var(--cm-brand-50);
+  color: var(--cm-brand-700);
+}
+.esr-legend-chip--laggard {
+  background: var(--cm-bad-100);
+  color: var(--cm-bad-500);
+}
+.esr-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--cm-sp-1);
+}
+.esr-row {
+  display: grid;
+  grid-template-columns: 40px minmax(100px, 1.2fr) 54px minmax(160px, 2fr) 60px 74px minmax(140px, 1.4fr);
+  align-items: center;
+  gap: var(--cm-sp-2);
+  padding: var(--cm-sp-2) var(--cm-sp-3);
+  border-radius: var(--cm-r-md);
+  border: 1px solid var(--cm-ink-100);
+  background: var(--cm-surface);
+  font-size: var(--cm-fs-12);
+}
+.esr-row--leader {
+  border-left: 3px solid var(--cm-ok-500);
+  background: var(--cm-ok-100);
+}
+.esr-row--observer {
+  border-left: 3px solid var(--cm-brand-400);
+}
+.esr-row--laggard {
+  border-left: 3px solid var(--cm-bad-500);
+  background: var(--cm-bad-100);
+}
+.esr-rank {
+  font-weight: 800;
+  color: var(--cm-brand-500);
+}
+.esr-sector {
+  font-weight: 600;
+  color: var(--cm-ink-900);
+}
+.esr-count {
+  font-size: var(--cm-fs-10);
+  color: var(--cm-ink-500);
+}
+.esr-bar-wrap {
+  position: relative;
+  background: var(--cm-ink-50);
+  border-radius: var(--cm-r-pill);
+  height: 14px;
+  overflow: hidden;
+}
+.esr-bar {
+  background: var(--cm-gradient-deep);
+  height: 100%;
+  border-radius: var(--cm-r-pill);
+}
+.esr-row--leader .esr-bar { background: var(--cm-gradient-nature); }
+.esr-row--laggard .esr-bar { background: linear-gradient(90deg, var(--cm-bad-100), var(--cm-bad-500)); }
+.esr-bar-value {
+  position: absolute;
+  top: 50%;
+  right: 8px;
+  transform: translateY(-50%);
+  font-size: var(--cm-fs-10);
+  font-weight: 700;
+  color: var(--cm-surface);
+  text-shadow: 0 1px 2px rgba(0,0,0,.35);
+}
+.esr-metric {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  text-align: right;
+  color: var(--cm-ink-700);
+  font-size: var(--cm-fs-11);
+}
+.esr-metric--muted { color: var(--cm-ink-500); }
+.esr-leader {
+  padding: 2px var(--cm-sp-2);
+  border: 1px solid var(--cm-brand-100);
+  border-radius: var(--cm-r-md);
+  background: var(--cm-brand-50);
+  color: var(--cm-brand-700);
+  font-size: var(--cm-fs-11);
+  font-weight: 600;
+  cursor: pointer;
+  text-align: left;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.esr-leader:hover {
+  border-color: var(--cm-brand-500);
+  background: var(--cm-brand-100);
+}
+.esr-leader--none {
+  color: var(--cm-ink-300);
+  background: transparent;
+  cursor: default;
+}
+.esr-loading,
+.esr-empty {
+  padding: var(--cm-sp-4);
+  text-align: center;
+  color: var(--cm-ink-500);
+  background: var(--cm-surface);
+  border: 1px dashed var(--cm-ink-100);
+  border-radius: var(--cm-r-lg);
+}
+@media (max-width: 900px) {
+  .esr-row {
+    grid-template-columns: 36px minmax(90px, 1fr) 44px minmax(120px, 2fr) 56px 70px;
+  }
+  .esr-leader {
+    grid-column: 1 / -1;
+    margin-top: var(--cm-sp-1);
+  }
+}
+
+/* ============================================================
+   Grid Optimizer (GridOptimizerWidget)
+   ============================================================ */
+.grid-opt-form {
+  display: flex;
+  gap: var(--cm-sp-3);
+  align-items: flex-end;
+  flex-wrap: wrap;
+  padding: var(--cm-sp-3);
+  background: var(--cm-brand-50);
+  border: 1px solid var(--cm-brand-100);
+  border-radius: var(--cm-r-lg);
+  margin-bottom: var(--cm-sp-3);
+}
+.grid-opt-form label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: var(--cm-fs-11);
+  color: var(--cm-ink-700);
+}
+.grid-opt-input {
+  padding: 6px 10px;
+  border: 1px solid var(--cm-ink-100);
+  border-radius: var(--cm-r-md);
+  font-size: var(--cm-fs-12);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  min-width: 140px;
+  background: var(--cm-surface);
+}
+.grid-opt-note {
+  font-size: var(--cm-fs-11);
+  color: var(--cm-ink-500);
+  margin-left: auto;
+}
+.grid-opt-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: var(--cm-sp-3);
+  margin-bottom: var(--cm-sp-3);
+  flex-wrap: wrap;
+}
+.grid-opt-etf-title {
+  font-weight: 700;
+  font-size: var(--cm-fs-14);
+  color: var(--cm-brand-700);
+  display: flex;
+  gap: var(--cm-sp-2);
+  align-items: center;
+  flex-wrap: wrap;
+}
+.grid-opt-etf-code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  background: var(--cm-brand-100);
+  color: var(--cm-brand-700);
+  padding: 2px 8px;
+  border-radius: var(--cm-r-pill);
+  font-size: var(--cm-fs-11);
+  font-weight: 600;
+}
+.grid-opt-etf-cat {
+  font-size: var(--cm-fs-11);
+  color: var(--cm-ink-500);
+  font-weight: 500;
+}
+.grid-opt-etf-meta {
+  font-size: var(--cm-fs-11);
+  color: var(--cm-ink-500);
+}
+.grid-opt-best {
+  background: var(--cm-gradient-nature);
+  border-radius: var(--cm-r-lg);
+  padding: var(--cm-sp-4);
+  margin-bottom: var(--cm-sp-3);
+  color: var(--cm-ink-900);
+}
+.grid-opt-best-head {
+  font-weight: 700;
+  font-size: var(--cm-fs-13);
+  margin-bottom: var(--cm-sp-3);
+  color: var(--cm-brand-700);
+}
+.grid-opt-best-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(110px, 1fr));
+  gap: var(--cm-sp-2);
+}
+.grid-opt-metric {
+  background: var(--cm-surface);
+  border-radius: var(--cm-r-md);
+  padding: var(--cm-sp-2);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  box-shadow: var(--cm-shadow-sm);
+}
+.grid-opt-metric-label {
+  font-size: var(--cm-fs-10);
+  color: var(--cm-ink-500);
+}
+.grid-opt-metric-value {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-weight: 700;
+  font-size: var(--cm-fs-14);
+  color: var(--cm-ink-900);
+}
+.grid-opt-baseline {
+  margin-top: var(--cm-sp-2);
+  font-size: var(--cm-fs-11);
+  color: var(--cm-ink-700);
+  font-weight: 500;
+}
+.grid-opt-chart {
+  width: 100%;
+  height: auto;
+  margin-bottom: var(--cm-sp-3);
+  background: var(--cm-surface);
+  border-radius: var(--cm-r-lg);
+  border: 1px solid var(--cm-ink-100);
+  padding: var(--cm-sp-2);
+}
+.grid-opt-table-wrap {
+  max-height: 300px;
+  overflow-y: auto;
+  border: 1px solid var(--cm-ink-100);
+  border-radius: var(--cm-r-md);
+}
+.grid-opt-table .mono {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+.grid-opt-row--pass { background: var(--cm-ok-100); }
+.grid-opt-row--fail { color: var(--cm-ink-500); }
+.grid-opt-empty {
+  padding: var(--cm-sp-4);
+  text-align: center;
+  color: var(--cm-ink-500);
+  background: var(--cm-surface);
+  border: 1px dashed var(--cm-ink-100);
+  border-radius: var(--cm-r-lg);
+}

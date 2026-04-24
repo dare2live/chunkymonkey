@@ -118,14 +118,33 @@ def main():
         target_date = row[0]
     logger.info("target_date=%s", target_date)
 
-    df = pd.read_sql_query(
-        "SELECT * FROM fact_feature_panel WHERE date = ?",
-        conn, params=(target_date,),
-    )
+    # DuckDB 原生读取 + ATTACH alpha158 (对齐训练时 110 特征)
+    duck = conn.raw if hasattr(conn, 'raw') else conn
+    from pathlib import Path as _Path
+    alpha158_db = _Path(__file__).resolve().parent.parent.parent / "data" / "alpha158.duckdb"
+    a158_cols = []
+    if alpha158_db.exists():
+        try:
+            duck.execute(f"ATTACH IF NOT EXISTS '{alpha158_db}' AS a158 (READ_ONLY)")
+            a158_cols = [r[0] for r in duck.execute(
+                "SELECT column_name FROM information_schema.columns "
+                "WHERE table_catalog='a158' AND table_name='fact_alpha158_panel' "
+                "AND column_name LIKE 'a158_%'"
+            ).fetchall()]
+        except Exception as e:
+            logger.warning("Alpha158 attach failed: %s", e)
+
+    a158_sel = (", " + ", ".join(f"CAST(a.{c} AS FLOAT) AS {c}" for c in a158_cols)) if a158_cols else ""
+    a158_join = "LEFT JOIN a158.fact_alpha158_panel a ON a.stock_code = p.stock_code AND a.date = CAST(p.date AS DATE)" if a158_cols else ""
+
+    df = duck.execute(
+        f"SELECT p.*{a158_sel} FROM fact_feature_panel p {a158_join} WHERE p.date = ?",
+        [target_date],
+    ).df()
     if df.empty:
         logger.error("fact_feature_panel 里没有 %s 的行", target_date)
         return
-    logger.info("panel rows %d for %s", len(df), target_date)
+    logger.info("panel rows %d for %s (+ %d Alpha158 cols)", len(df), target_date, len(a158_cols))
 
     # 训练使用了 regime-aware (one-hot), 评分需对齐
     if 'regime_flag' in df.columns:

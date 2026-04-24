@@ -193,15 +193,10 @@
   // ── 股票视图（C6g 主入口）─────────────────────────────────────
   var _stocksLoaded = false;
   function loadStocks() {
+    // TopK 条带由 stock-view 自己挂 TopKStripWidget, app.js 不重复注入
     if (window.StockView) {
-      var p;
-      if (!_stocksLoaded) { _stocksLoaded = true; p = window.StockView.load(); }
-      else { p = window.StockView.reload(); }
-      // banner 在 StockView 渲染完成后注入, 避免被 renderRoot 清空
-      if (p && p.then) p.then(function () { renderAITopKBanner({ limit: 20 }); });
-      else renderAITopKBanner({ limit: 20 });
-    } else {
-      renderAITopKBanner({ limit: 20 });
+      if (!_stocksLoaded) { _stocksLoaded = true; window.StockView.load(); }
+      else { window.StockView.reload(); }
     }
   }
 
@@ -249,6 +244,15 @@
       screenSection.addEventListener('toggle', function () {
         if (screenSection.open && window.ScreeningPanelWidget) {
           window.ScreeningPanelWidget.mount('wb-screening-container');
+        }
+      }, { once: true });
+    }
+    // ETF 网格自寻优 widget — 展开时挂载
+    var gridOptSection = document.getElementById('wb-grid-opt-section');
+    if (gridOptSection) {
+      gridOptSection.addEventListener('toggle', function () {
+        if (gridOptSection.open && window.GridOptimizerWidget) {
+          window.GridOptimizerWidget.mount('wb-grid-opt-container');
         }
       }, { once: true });
     }
@@ -5769,8 +5773,15 @@
 
     bindEtfActionLinks(opportunityBox, 'opportunityDeepPanel');
 
-    // 加载挖掘建议（异步插入）
+    // 加载挖掘建议 (grid / trend top5)
     _loadEtfOpportunityMining();
+    // 加载板块轮动 widget (新 mart_etf_sector_rotation 数据源)
+    if (window.ETFSectorRotationWidget) {
+      window.ETFSectorRotationWidget.mount('opportunityRotationSection', {
+        limit: 15,
+        onPickETF: function (code) { loadEtfDeepAnalysis(code, 'opportunityDeepPanel'); }
+      });
+    }
   }
 
   // 机会发现页 — 挖掘建议 + 轮动预测
@@ -5834,78 +5845,8 @@
         loadEtfDeepAnalysis(card.dataset.etfAnalyze, 'opportunityDeepPanel');
       });
     });
-
-    // --- 轮动预测 ---
-    if (!rotationBox) return;
-    var list = d.next_rotation_watchlist || [];
-    if (!list.length) {
-      rotationBox.innerHTML = '<div class="panel" style="padding:14px"><div style="font-weight:700;font-size:13px;margin-bottom:8px">行业轮动预测</div><div class="muted" style="font-size:12px">暂无可用的 ETF 原生因子轮动结果</div></div>';
-      return;
-    }
-    var top5 = list.slice(0, 5);
-    var maxScore = Math.max.apply(null, top5.map(function (x) { return x.next_rotation_score || 0; }));
-    if (maxScore <= 0) maxScore = 100;
-    var barH = 32, gap = 6, padL = 110, padR = 50, svgW = 560;
-    var svgH = top5.length * (barH + gap) + gap;
-    var barColors = ['var(--cm-ok-500)', 'var(--cm-ok-500)', 'var(--cm-ok-500)', 'var(--cm-ok-100)', 'var(--cm-ok-100)'];
-
-    var svgBars = top5.map(function (item, i) {
-      var score = item.next_rotation_score || 0;
-      var barW = Math.max(4, (score / maxScore) * (svgW - padL - padR));
-      var y = gap + i * (barH + gap);
-      var bucket = item.avg_rotation_score != null && item.avg_rotation_score >= 70 ? '前排' : item.avg_rotation_score != null && item.avg_rotation_score <= 30 ? '回避' : '观察';
-      return '<g>' +
-        '<text x="' + (padL - 6) + '" y="' + (y + barH / 2 + 4) + '" text-anchor="end" font-size="11" font-weight="600" fill="var(--cm-ink-900)">' + esc(item.sector_name || '-') + '</text>' +
-        '<rect x="' + padL + '" y="' + y + '" width="' + barW + '" height="' + barH + '" rx="5" fill="' + (barColors[i] || 'var(--cm-ok-100)') + '"/>' +
-        '<text x="' + (padL + barW + 5) + '" y="' + (y + barH / 2 + 4) + '" font-size="10" font-weight="700" fill="var(--cm-ink-700)">' + etfNum(score, 1) + '</text>' +
-        '<text x="' + (padL + 6) + '" y="' + (y + barH / 2 + 4) + '" font-size="9" fill="var(--cm-surface)" font-weight="600">' +
-        '因子 ' + etfNum(item.avg_factor_score, 1) + ' · 前排ETF ' + fmt(item.leader_etf_count || 0) + ' · ' + esc(bucket) +
-        '</text>' +
-        '</g>';
-    }).join('');
-
-    var detailCards = top5.map(function (item) {
-      var evidenceChips = [
-        '<span style="padding:3px 8px;border-radius:999px;background:var(--cm-ok-100);color:var(--cm-ok-500);font-size:11px;font-weight:700">因子 ' + etfNum(item.avg_factor_score, 1) + '</span>',
-        '<span style="padding:3px 8px;border-radius:999px;background:var(--cm-brand-100);color:var(--cm-brand-500);font-size:11px;font-weight:700">轮动 ' + etfNum(item.avg_rotation_score, 1) + '</span>',
-        '<span style="padding:3px 8px;border-radius:999px;background:var(--cm-warn-100);color:var(--cm-warn-500);font-size:11px;font-weight:700">4周相强 ' + signedPct(item.avg_relative_strength_4w || 0) + '</span>',
-        '<span style="padding:3px 8px;border-radius:999px;background:var(--cm-ink-50);color:var(--cm-ink-700);font-size:11px;font-weight:700">12周相强 ' + signedPct(item.avg_relative_strength_12w || 0) + '</span>',
-        '<span style="padding:3px 8px;border-radius:999px;background:var(--cm-accent-warm-100);color:var(--cm-accent-vivid);font-size:11px;font-weight:700">前排ETF ' + fmt(item.leader_etf_count || 0) + '</span>',
-        '<span style="padding:3px 8px;border-radius:999px;background:var(--cm-warn-100);color:var(--cm-warn-500);font-size:11px;font-weight:700">持有 ' + fmt(item.buy_hold_count || 0) + ' / 网格 ' + fmt(item.grid_count || 0) + '</span>'
-      ].join('');
-      var topReturnRows = (item.top_return_etfs || []).map(function (etf, index) {
-        var strategyMeta = recommendedStrategySummary(etf);
-        return '<tr>' +
-          '<td>#' + (index + 1) + '</td>' +
-          '<td><div data-etf-analyze="' + esc(etf.code || '') + '" style="cursor:pointer">' + securityIdentityBlock(etf.code, etf.name || etf.code || '-', { wrapperClass: 'security-identity', nameClass: 'etf-inline-name', includeCodeTag: true, includeXueqiuPill: true }) + '</div></td>' +
-          '<td><span style="display:inline-flex;align-items:center;padding:2px 8px;border-radius:999px;background:' + strategyMeta.tone.bg + ';color:' + strategyMeta.tone.fg + ';font-size:10px;font-weight:700">' + esc(strategyMeta.label) + '</span></td>' +
-          '<td>' + (strategyMeta.recommendedReturn != null ? signedPct(strategyMeta.recommendedReturn) : '<span class="muted">-</span>') + '</td>' +
-          '<td>' + (strategyMeta.comparisonReturn != null ? ('<span title="' + esc(strategyMeta.comparisonLabel || '对照') + '">' + signedPct(strategyMeta.comparisonReturn) + '</span>') : '<span class="muted">-</span>') + '</td>' +
-          '<td>' + (strategyMeta.edge != null ? signedPct(strategyMeta.edge) : '<span class="muted">-</span>') + '</td>' +
-          '</tr>';
-      }).join('') || '<tr><td colspan="6" class="muted">暂无收益率样本</td></tr>';
-      return '<div class="finance-rotation-card">' +
-        '<div style="display:flex;align-items:flex-start;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-bottom:10px">' +
-        '<div><div style="font-weight:700;font-size:14px;color:var(--cm-ink-900)">' + esc(item.sector_name || '-') + '</div><div class="muted" style="font-size:11px;margin-top:4px">预轮动分 ' + etfNum(item.next_rotation_score, 1) + '</div></div>' +
-        '<div style="display:flex;gap:6px;flex-wrap:wrap">' + evidenceChips + '</div>' +
-        '</div>' +
-        '<div style="font-size:12px;line-height:1.7;color:var(--cm-ink-700);margin-bottom:10px">' + esc(item.rotation_reason || '暂无轮动证据说明。') + '</div>' +
-        '<div style="display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;margin-bottom:8px"><div style="font-size:12px;font-weight:700;color:var(--cm-ink-900)">该行业收益率 Top 5 ETF</div><span class="finance-note">按当前推荐策略收益排序，右侧展示对照策略</span></div>' +
-        '<div style="overflow-x:auto"><table class="data-table finance-compare-table" style="font-size:11px;margin-bottom:0"><thead><tr><th>排名</th><th>ETF</th><th>推荐策略</th><th>策略收益</th><th>对照收益</th><th>优势</th></tr></thead><tbody>' + topReturnRows + '</tbody></table></div>' +
-        '</div>';
-    }).join('');
-
-    var modelNote = d.factor_snapshot_id
-      ? '<span class="muted" style="font-size:10px;margin-left:12px">快照: ' + esc(d.factor_snapshot_id) + '</span>'
-      : '';
-
-    rotationBox.innerHTML =
-      '<div class="panel finance-surface-panel" style="padding:14px">' +
-      '<div style="font-weight:700;font-size:13px;margin-bottom:10px">行业轮动预测 Top 5' + modelNote + '</div>' +
-      '<div style="overflow-x:auto"><svg viewBox="0 0 ' + svgW + ' ' + svgH + '" style="width:100%;max-width:680px;height:auto">' + svgBars + '</svg></div>' +
-      '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:12px;margin-top:14px">' + detailCards + '</div>' +
-      '</div>';
-    bindEtfActionLinks(rotationBox, 'opportunityDeepPanel');
+    // 轮动预测已迁到 ETFSectorRotationWidget (mart_etf_sector_rotation 数据源)
+    // 在 loadEtfOpportunity 里另行挂载, 本函数不再渲染 rotationBox
   }
 
   function loadEtfList() {
@@ -6685,67 +6626,6 @@
       box.innerHTML = html;
     } catch (e) {
       box.innerHTML = '<div class="muted">error: ' + e.message + '</div>';
-    }
-  }
-
-  // AI 多维评分 Top 推荐 (股票视图顶部 banner)
-  async function renderAITopKBanner(opts) {
-    opts = opts || {};
-    var box = el('stocks-ai-topk');
-    if (!box) {
-      // StockView.renderRoot 会重建 view-stocks, 需动态创建/插入 banner
-      var root = el('view-stocks');
-      if (!root) return;
-      box = document.createElement('div');
-      box.id = 'stocks-ai-topk';
-      box.style.cssText = 'margin:12px 0 0';
-      // 放在 .sv-root 内第一个 panel 之前, 保证顶部可见
-      var svRoot = root.querySelector('.sv-root');
-      if (svRoot && svRoot.firstChild) svRoot.insertBefore(box, svRoot.firstChild);
-      else root.insertBefore(box, root.firstChild);
-    }
-    await ensureFeatureLabels();
-    try {
-      var q = 'limit=' + (opts.limit || 20);
-      if (opts.regime) q += '&regime=' + encodeURIComponent(opts.regime);
-      var res = await api('/api/rec/daily-topk?' + q);
-      if (!res || !res.ok) { box.innerHTML = ''; return; }
-      var items = res.items || [];
-      if (!items.length) { box.innerHTML = ''; return; }
-      var modelName = (res.model_meta && res.model_meta.model_id) || '';
-      var cn = labelModelId(res.model_id || modelName);
-      var regimeTag = items[0] && items[0].regime_flag || 'n/a';
-      var regimeCn = { up: '上涨', flat: '震荡', down: '下跌' }[regimeTag] || regimeTag;
-      var chips = items.slice(0, opts.limit || 20).map(function (it) {
-        var name = it.stock_name || '';
-        var color = it.regime_flag === 'down' ? 'var(--cm-bad-500)' : (it.regime_flag === 'up' ? 'var(--cm-ok-500)' : 'var(--cm-ink-700)');
-        return '<a href="#" class="ai-topk-chip" data-code="' + it.stock_code +
-          '" style="display:inline-flex;align-items:center;gap:4px;padding:4px 8px;background:var(--cm-bg);border:1px solid var(--cm-ink-100);border-radius:4px;text-decoration:none;color:var(--cm-ink-900);font-size:12px;margin:2px">' +
-          '<span style="color:var(--cm-ink-300);font-size:10px">#' + it.rank + '</span>' +
-          '<b>' + it.stock_code + '</b>' +
-          '<span style="color:var(--cm-ink-500)">' + name + '</span>' +
-          '<span style="color:' + color + ';font-family:monospace;font-size:10px">' + it.pred_score.toFixed(3) + '</span>' +
-          '</a>';
-      }).join('');
-      box.innerHTML =
-        '<div class="panel" style="padding:10px 14px;background:linear-gradient(90deg,var(--cm-brand-50),var(--cm-surface))">' +
-        '<div style="display:flex;align-items:center;margin-bottom:6px;flex-wrap:wrap;gap:8px">' +
-        '<b style="font-size:13px;color:var(--cm-brand-500)">AI 多维评分 · 今日 Top ' + (opts.limit || 20) + '</b>' +
-        '<span class="muted" style="font-size:11px">' + (res.snapshot_date || '-') + ' · ' + cn + ' · 市场状态：' + regimeCn + '</span>' +
-        '<span style="margin-left:auto;font-size:11px;color:var(--cm-ink-500)">研究参考，非交易建议。点击代码打开股票详情</span>' +
-        '</div>' +
-        '<div>' + chips + '</div>' +
-        '</div>';
-      // 绑定点击 → 打开股票详情
-      box.querySelectorAll('.ai-topk-chip').forEach(function (a) {
-        a.addEventListener('click', function (e) {
-          e.preventDefault();
-          var code = a.dataset.code;
-          if (window.App && window.App.toggleStockDetail) window.App.toggleStockDetail(code);
-        });
-      });
-    } catch (e) {
-      box.innerHTML = '';
     }
   }
 

@@ -99,6 +99,12 @@ class DuckCursor:
         for row in self._cur.fetchall():
             yield Row(row, self._cols)
 
+    def close(self):
+        try:
+            self._cur.close()
+        except Exception:
+            pass
+
     @property
     def description(self):
         return self._cur.description

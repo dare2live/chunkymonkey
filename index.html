@@ -7,7 +7,7 @@
   <title>Chunky Monkey v2</title>
   <link rel="stylesheet" href="https://rsms.me/inter/inter.css">
   <script>
-    window.CM_ASSET_VERSION = '3.0.0';
+    window.CM_ASSET_VERSION = '3.1.1';
     (function (version) {
       var link = document.createElement('link');
       link.rel = 'stylesheet';
@@ -214,6 +214,12 @@
         <div id="wb-screening-container" style="padding:10px 0"></div>
       </details>
 
+      <!-- ETF 网格自寻优 widget -->
+      <details class="workbench-section" id="wb-grid-opt-section">
+        <summary><span class="workbench-section-title">ETF 网格自寻优</span><span class="muted" style="font-size:11px;font-weight:400">输入 ETF 代码扫描 0.5%-4.5% 步长空间</span></summary>
+        <div id="wb-grid-opt-container" style="padding:10px 0"></div>
+      </details>
+
       <div class="wb-group-header">系统设置</div>
 
       <details class="workbench-section workbench-danger">
@@ -377,6 +383,10 @@
        'assets/js/widgets/cohort-card.js',
        'assets/js/widgets/backtest-panel.js',
        'assets/js/widgets/screening-panel.js',
+       'assets/js/widgets/topk-strip.js',
+       'assets/js/widgets/multidim-badge.js',
+       'assets/js/widgets/etf-sector-rotation.js',
+       'assets/js/widgets/grid-optimizer.js',
        'assets/js/stock-view.js',
        'assets/js/app.js'].forEach(function (src) {
         document.write('<script src="' + src + '?v=' + version + '"><\/script>');

@@ -247,10 +247,15 @@ def main():
                         help='加入 regime one-hot 作为特征')
     args = parser.parse_args()
 
+    # 训练分两阶段释放 DuckDB 写锁, 让前端期间可读:
+    # 1) 先用 writable 连接确保 DDL + 读 panel, 立即 close 释放锁
+    # 2) 训练/调参/评估期间无 DB 连接
+    # 3) 最后落库时重新打开 writable connection, 写完 close
     conn = get_conn()
     conn.executescript(MODEL_DDL)
-
     df = load_panel(conn, args.start, args.end)
+    conn.close()
+    logger.info("数据加载完成, DuckDB 写锁已释放, 训练期间前端可正常读")
     if df.empty:
         logger.error("fact_feature_panel 空或无 label; 先跑 build_feature_panel.py")
         sys.exit(1)
@@ -302,7 +307,9 @@ def main():
     fi_sorted = sorted(fi.items(), key=lambda x: x[1], reverse=True)
     logger.info("top 10 特征: %s", fi_sorted[:10])
 
-    # 落库
+    # 落库: 训练完毕, 重新打开 writable connection
+    logger.info("训练完成, 重新打开 DuckDB (writable) 落库...")
+    conn = get_conn()
     model_id = f"multidim_v1_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
     conn.execute(
         """INSERT INTO mart_multidim_model VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
