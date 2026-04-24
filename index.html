@@ -43,7 +43,6 @@
       <button class="nav-btn active" data-view="etf" data-etftab="workbench">工作台</button>
       <button class="nav-btn" data-view="etf" data-etftab="opportunity">机会发现</button>
       <button class="nav-btn" data-view="etf" data-etftab="list">全量筛选</button>
-      <button class="nav-btn" id="nav-etf-factors" data-view="etf" data-etftab="factors">因子验证</button>
     </div>
   </div>
 
@@ -217,14 +216,6 @@
 
       <div class="wb-group-header">系统设置</div>
 
-      <details class="workbench-section">
-        <summary><span class="workbench-section-title">模块开关</span><span class="muted" style="font-size:11px;font-weight:400">ETF 启用</span></summary>
-        <div class="module-toggles" style="display:flex;gap:16px;font-size:13px;padding:10px 0;align-items:center;flex-wrap:wrap">
-          <label><input type="checkbox" id="chkModuleEtf"> 启用 ETF 量化</label>
-          <button class="chip chip-outline chip-sm" onclick="App.saveModuleSettings()">保存配置并重启</button>
-        </div>
-      </details>
-
       <details class="workbench-section workbench-danger">
         <summary><span class="workbench-section-title" style="color:#b91c1c">全量重算派生数据</span><span class="muted" style="font-size:11px;font-weight:400">危险操作，二次确认</span></summary>
         <div style="padding:10px 0">
@@ -359,13 +350,6 @@
         </div>
       </div>
 
-      <!-- ETF 因子验证 -->
-      <div class="etf-tab-content" id="etftab-factors">
-        <div id="etfFactorsContainer">
-          <div class="muted" style="padding:20px;text-align:center">加载中...</div>
-        </div>
-        <div id="etfFactorsDeepPanel"></div>
-      </div>
     </section>
 
   </main>

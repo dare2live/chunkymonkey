@@ -319,15 +319,17 @@ def main():
          f"Optuna {args.trials} trials, regime_aware={args.regime_aware}"),
     )
 
-    # 落 predictions
+    # 落 predictions — DuckDB 原生 register + INSERT FROM SELECT (避过 pandas.to_sql 的 sqlite 协议探测)
     pred_df = holdout[['stock_code', 'date']].copy()
     pred_df['model_id'] = model_id
     pred_df['pred_score'] = pred_ho
     pred_df['rank_in_date'] = pred_df.groupby('date')['pred_score'].rank(ascending=False, method='min').astype(int)
     pred_df['percentile'] = pred_df.groupby('date')['pred_score'].rank(pct=True)
-    pred_df[['model_id', 'stock_code', 'date', 'pred_score', 'rank_in_date', 'percentile']].to_sql(
-        'mart_multidim_prediction', conn, if_exists='append', index=False, method='multi', chunksize=1000,
-    )
+    pred_df = pred_df[['model_id', 'stock_code', 'date', 'pred_score', 'rank_in_date', 'percentile']]
+    duck = conn.raw if hasattr(conn, 'raw') else conn
+    duck.register('_pred_df', pred_df)
+    duck.execute("INSERT INTO mart_multidim_prediction SELECT * FROM _pred_df")
+    duck.unregister('_pred_df')
     conn.commit()
 
     # 保存 model pkl

@@ -71,6 +71,16 @@ class DuckCursor:
         self.rowcount = -1
         self.lastrowid = None
 
+    def execute(self, sql, params=None):
+        """pandas.to_sql 会在 cursor 上调 .execute(); 透传到 duckdb cursor 并刷新列名"""
+        if params is None:
+            self._cur = self._cur.execute(sql)
+        else:
+            self._cur = self._cur.execute(sql, params if isinstance(params, (list, tuple)) else (params,))
+        desc = getattr(self._cur, 'description', None)
+        self._cols = [d[0] for d in desc] if desc else []
+        return self
+
     def fetchone(self):
         row = self._cur.fetchone()
         if row is None:

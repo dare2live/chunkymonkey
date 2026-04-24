@@ -132,7 +132,6 @@
     }
     if (tabName === 'opportunity') loadEtfOpportunity();
     if (tabName === 'list') loadEtfList();
-    if (tabName === 'factors') loadEtfFactors();
   }
 
   // 顶层板块切换
@@ -182,26 +181,8 @@
       var modules = r.enabled_modules || [];
       var navGroupEtf = el('nav-group-etf');
       if (navGroupEtf) navGroupEtf.style.display = modules.includes('etf') ? '' : 'none';
-
-      // Update checkboxes in settings
-      var chkEtf = el('chkModuleEtf');
-      if (chkEtf) chkEtf.checked = modules.includes('etf');
     }
     else { badge.textContent = 'Offline'; badge.className = 'logo-status'; }
-  }
-
-  async function saveModuleSettings() {
-    if (!confirm('保存模块配置后，后端可能需要重启以重新注册路由。继续吗？')) return;
-    var settings = {
-      etf: el('chkModuleEtf')?.checked
-    };
-    var r = await api('/api/settings/modules', { method: 'POST', body: JSON.stringify(settings) });
-    if (r && r.status === 'ok') {
-      alert(r.message);
-      checkHealth();
-    } else {
-      alert('保存失败: ' + (r?.message || '未知错误'));
-    }
   }
 
   // ============================================================
@@ -5584,7 +5565,6 @@
   // 主入口：加载 ETF 数据并分别渲染各子标签
   async function loadEtf(forceRefresh) {
     if (etfState.currentTab === 'workbench') return loadEtfWorkbench(forceRefresh);
-    if (etfState.currentTab === 'factors') return loadEtfFactors(forceRefresh);
 
     var path = '/api/etf/list';
     if (forceRefresh) path += '?force_refresh=true';
@@ -5726,7 +5706,6 @@
       '<div style="display:flex;gap:12px;flex-wrap:wrap">' +
       workbenchLinkCard('机会发现', '查看市场判断、网格候选、买入持有和下一轮动观察。', '判断', 'opportunity') +
       workbenchLinkCard('全量筛选', '按分类、策略、动量与回测结果筛选 ETF，并进入单只深度分析。', '筛选', 'list') +
-      workbenchLinkCard('因子验证', '查看 ETF 因子领先名单、类别轮动和当前快照解释。', '验证', 'factors') +
       '</div>' +
       '</div>';
 
@@ -6457,13 +6436,6 @@
       '</svg>';
   }
 
-  // ETF 因子验证页面（已下线）
-  async function loadEtfFactors() {
-    var box = el('etfFactorsContainer');
-    if (!box) return;
-    box.innerHTML = '<div class="panel" style="padding:20px"><div class="muted" style="padding:20px;text-align:center">ETF 因子验证功能已下线。</div></div>';
-  }
-
   // ============================================================
   // Lifeboat
   // ============================================================
@@ -6776,7 +6748,7 @@
     }
   }
 
-  window.App = { saveModuleSettings, showView, setAlias, setType, toggleBlack, deleteInst, restoreInst, toggleInstDetail, toggleInstBreakdown, showL2Profile, toggleStockDetail, switchInstDim, switchStockDim, runSingleStep, loadWatchlist, loadExclusions, refreshNetwork, _api: api };
+  window.App = { showView, setAlias, setType, toggleBlack, deleteInst, restoreInst, toggleInstDetail, toggleInstBreakdown, showL2Profile, toggleStockDetail, switchInstDim, switchStockDim, runSingleStep, loadWatchlist, loadExclusions, refreshNetwork, _api: api };
   if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', startInit, { once: true });
   } else {
