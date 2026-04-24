@@ -97,6 +97,8 @@ class DuckCursor:
 # SQLite-only 语法 → DuckDB 改写 / no-op
 _PRAGMA_TABLE_INFO_RE = re.compile(r"^\s*PRAGMA\s+table_info\s*\(\s*([\w_]+)\s*\)\s*;?\s*$", re.IGNORECASE)
 _PRAGMA_RE = re.compile(r"^\s*PRAGMA\s+", re.IGNORECASE)
+# SQLite BEGIN IMMEDIATE / DEFERRED / EXCLUSIVE 在 DuckDB 里统一为 BEGIN
+_BEGIN_MODE_RE = re.compile(r"^\s*BEGIN\s+(IMMEDIATE|DEFERRED|EXCLUSIVE)\s*;?\s*$", re.IGNORECASE)
 _AUTOINCREMENT_RE = re.compile(r"\bINTEGER\s+PRIMARY\s+KEY\s+AUTOINCREMENT\b", re.IGNORECASE)
 _AUTOINCREMENT2_RE = re.compile(r"\bAUTOINCREMENT\b", re.IGNORECASE)
 _SQLITE_NOW_RE = re.compile(r"datetime\(\s*['\"]now['\"]\s*\)", re.IGNORECASE)
@@ -121,6 +123,9 @@ def _normalize_sql(sql: str) -> Optional[str]:
         )
     if _PRAGMA_RE.match(stripped):
         return None
+    if _BEGIN_MODE_RE.match(stripped):
+        # SQLite BEGIN IMMEDIATE → DuckDB BEGIN TRANSACTION (MVCC, 模式参数无效)
+        return "BEGIN TRANSACTION"
     s = _AUTOINCREMENT_RE.sub("INTEGER PRIMARY KEY", sql)
     s = _AUTOINCREMENT2_RE.sub("", s)
     # datetime('now') → current_timestamp

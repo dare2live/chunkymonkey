@@ -1,26 +1,27 @@
 import sys
 from pathlib import Path
-import sqlite3
 from tempfile import TemporaryDirectory
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from services import db
 from services.db import get_enabled_modules
+from services.duck_adapter import connect as duck_connect
+
 
 def test_get_enabled_modules():
-    conn = sqlite3.connect(":memory:")
-    conn.row_factory = sqlite3.Row
+    # 内存 DuckDB, 模拟 app_settings 配置
+    conn = duck_connect(":memory:")
     conn.execute("CREATE TABLE app_settings (key TEXT, value TEXT, updated_at TEXT)")
     conn.execute("INSERT INTO app_settings VALUES ('module_qlib_enabled', '1', '2026')")
     conn.execute("INSERT INTO app_settings VALUES ('module_akquant_enabled', '0', '2026')")
     conn.execute("INSERT INTO app_settings VALUES ('module_etf_enabled', '0', '2026')")
-    
+
     modules = get_enabled_modules(conn)
     assert modules["qlib"] is True
     assert modules["akquant"] is False
     assert modules["etf"] is False
-    
+
     conn.close()
 
 
@@ -30,11 +31,11 @@ def test_init_db_sets_module_defaults_without_legacy_migration_marker():
 
     with TemporaryDirectory() as tmpdir:
         db.DB_DIR = Path(tmpdir)
-        db.DB_PATH = db.DB_DIR / "smartmoney.db"
+        db.DB_PATH = db.DB_DIR / "smartmoney.duckdb"
         try:
             db.init_db()
 
-            conn = sqlite3.connect(str(db.DB_PATH))
+            conn = duck_connect(str(db.DB_PATH))
             try:
                 rows = conn.execute(
                     "SELECT key, value FROM app_settings WHERE key IN ("

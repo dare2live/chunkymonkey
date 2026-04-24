@@ -93,28 +93,61 @@ FEATURE_COLS = [
 ]
 
 
-def load_panel(conn, start_date: str, end_date: str) -> pd.DataFrame:
-    """DuckDB 加载: 只读 LightGBM 需要的列, float32 降内存 (vs pandas 3GB → 1.3GB, 90x 快)"""
-    from services.analytics import get_duck
-    duck = get_duck()
-    logger.info("DuckDB 加载 fact_feature_panel %s ~ %s", start_date, end_date)
-    # 列出训练需要的特征列 (FEATURE_COLS) + 基础键 + label
-    select_cols = ["stock_code", "date", "regime_flag", "forward_ret_20d"] + [
-        f"CAST({c} AS FLOAT) AS {c}" for c in FEATURE_COLS
-    ]
-    query = f"""
-        SELECT {', '.join(select_cols)}
-        FROM smart.fact_feature_panel
-        WHERE date >= ? AND date <= ? AND forward_ret_20d IS NOT NULL
+def load_panel(conn, start_date: str, end_date: str, with_alpha158: bool = True) -> pd.DataFrame:
+    """DuckDB 加载: 只读 LightGBM 需要的列, float32 降内存
+    Phase 8: 可选 LEFT JOIN alpha158.duckdb 的 fact_alpha158_panel 增补 64 Alpha158 因子
+
+    用 conn.raw (duckdb 原生) 执行, 避免重复打开 smartmoney.duckdb.
     """
-    df = duck.execute(query, (start_date, end_date)).df()
-    logger.info("rows=%d codes=%d dates=%d",
-                len(df), df['stock_code'].nunique(), df['date'].nunique())
+    from pathlib import Path
+    duck = conn.raw if hasattr(conn, 'raw') else conn
+    logger.info("DuckDB 加载 fact_feature_panel %s ~ %s", start_date, end_date)
+
+    # Alpha158 ATTACH (数据库连接上挂其它 DuckDB 文件, READ_ONLY 避免冲突)
+    alpha158_db = Path(__file__).resolve().parent.parent.parent / "data" / "alpha158.duckdb"
+    a158_col_list: list[str] = []
+    if with_alpha158 and alpha158_db.exists():
+        try:
+            duck.execute(f"ATTACH IF NOT EXISTS '{alpha158_db}' AS a158 (READ_ONLY)")
+            a158_col_list = [r[0] for r in duck.execute(
+                "SELECT column_name FROM information_schema.columns "
+                "WHERE table_catalog='a158' AND table_name='fact_alpha158_panel' "
+                "AND column_name LIKE 'a158_%'"
+            ).fetchall()]
+            logger.info("Alpha158 join 启用, 增补 %d 列", len(a158_col_list))
+        except Exception as e:
+            logger.warning("Alpha158 attach failed: %s", e)
+
+    select_cols = ["p.stock_code", "p.date", "p.regime_flag", "p.forward_ret_20d"] + [
+        f"CAST(p.{c} AS FLOAT) AS {c}" for c in FEATURE_COLS
+    ]
+    alpha158_cols_sql = ""
+    alpha158_join = ""
+    if a158_col_list:
+        alpha158_cols_sql = ", " + ", ".join(f"CAST(a.{c} AS FLOAT) AS {c}" for c in a158_col_list)
+        alpha158_join = "LEFT JOIN a158.fact_alpha158_panel a ON a.stock_code = p.stock_code AND a.date = CAST(p.date AS DATE)"
+
+    query = f"""
+        SELECT {', '.join(select_cols)}{alpha158_cols_sql}
+        FROM fact_feature_panel p
+        {alpha158_join}
+        WHERE p.date >= ? AND p.date <= ? AND p.forward_ret_20d IS NOT NULL
+    """
+    df = duck.execute(query, [start_date, end_date]).df()
+    logger.info("rows=%d codes=%d dates=%d total_cols=%d",
+                len(df), df['stock_code'].nunique(), df['date'].nunique(), df.shape[1])
+    # 扩展全局特征列表 (用于 FEATURE_COLS 动态扩展 — 但保留原序)
+    if a158_col_list:
+        global _ADDED_A158
+        _ADDED_A158 = a158_col_list
     # regime_flag one-hot
     if 'regime_flag' in df.columns:
         for flag in ['up', 'flat', 'down']:
             df[f'regime_{flag}'] = (df['regime_flag'] == flag).astype('int8')
     return df
+
+
+_ADDED_A158: list[str] = []
 
 
 def split_time_series(df: pd.DataFrame, train_ratio: float = 0.7, valid_ratio: float = 0.15):
@@ -207,7 +240,7 @@ def make_objective(train_df, valid_df, feature_cols):
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument('--start', default='2020-01-01')
+    parser.add_argument('--start', default='2023-01-01')
     parser.add_argument('--end', default=datetime.now().strftime('%Y-%m-%d'))
     parser.add_argument('--trials', type=int, default=50, help='Optuna 搜参次数')
     parser.add_argument('--regime-aware', action='store_true',
@@ -223,6 +256,10 @@ def main():
         sys.exit(1)
 
     feature_cols = [c for c in FEATURE_COLS if c in df.columns]
+    # Phase 8: 动态加入 Alpha158 列
+    if _ADDED_A158:
+        feature_cols += [c for c in _ADDED_A158 if c in df.columns]
+        logger.info("特征总数 含 Alpha158 = %d", len(feature_cols))
     if args.regime_aware:
         for f in ['regime_up', 'regime_flat', 'regime_down']:
             if f in df.columns:

@@ -66,7 +66,7 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--skip-wait', action='store_true')
     parser.add_argument('--min-codes', type=int, default=5000)
-    parser.add_argument('--feature-start', default='2020-01-01')
+    parser.add_argument('--feature-start', default='2023-01-01')
     parser.add_argument('--trials', type=int, default=50)
     parser.add_argument('--top-k', type=int, default=100)
     args = parser.parse_args()

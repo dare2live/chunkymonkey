@@ -140,7 +140,7 @@ def parse_one_quarter(tmpdir: str, filename: str) -> pd.DataFrame:
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument('--start', default='20200301',
+    parser.add_argument('--start', default='20230101',
                         help='只入库 report_date >= 此值的季度 (默认 2020-03 起)')
     parser.add_argument('--end', default='',
                         help='报告期上限 (默认不限)')

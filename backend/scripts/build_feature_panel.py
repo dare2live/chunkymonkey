@@ -356,7 +356,7 @@ def compute_regime(mkt_conn) -> pd.DataFrame:
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument('--start', default='2020-01-01', help='Panel 起始日期')
+    parser.add_argument('--start', default='2023-01-01', help='Panel 起始日期')
     parser.add_argument('--limit-codes', type=int, default=0,
                         help='调试: 只处理前 N 只股')
     args = parser.parse_args()

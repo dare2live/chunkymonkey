@@ -330,7 +330,7 @@ def build_panel(start_date: str) -> pd.DataFrame:
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument('--start', default='2020-01-01')
+    parser.add_argument('--start', default='2023-01-01')
     args = parser.parse_args()
 
     panel = build_panel(args.start)
