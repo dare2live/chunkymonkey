@@ -3442,7 +3442,7 @@
     ];
     var overall = m.overall_score;
     var ovColor = overall == null ? 'var(--cm-ink-300)' : overall >= 60 ? 'var(--stock-down)' : overall >= 40 ? 'var(--cm-warn-500)' : 'var(--stock-up)';
-    var html = '<div style="margin:10px 0;border:1px solid var(--cm-accent-warm);border-radius:6px;padding:12px;background:linear-gradient(180deg,var(--cm-accent-warm-100) 0%,var(--cm-surface) 100%)">' +
+    var html = '<div style="margin:10px 0;border:1px solid var(--cm-accent-warm);border-radius:6px;padding:12px;background:var(--cm-macaron-lilac)">' +
       '<div style="background:var(--cm-warn-100);border:1px solid var(--cm-warn-500);color:var(--cm-warn-500);padding:6px 10px;border-radius:4px;font-size:12px;margin-bottom:10px;font-weight:600">' +
       '研究参考画像，非可交易评分（§2 2026-04-23 收口段）' +
       '</div>' +
@@ -6090,7 +6090,7 @@
 
     var optimizerHtml = '';
     if (optimizerSummary.candidate_step_count != null) {
-      optimizerHtml = '<div style="margin-bottom:14px;padding:12px;border:1px solid var(--line);border-radius:var(--radius);background:linear-gradient(135deg,var(--cm-bg) 0%,var(--cm-brand-50) 100%)">' +
+      optimizerHtml = '<div style="margin-bottom:14px;padding:12px;border:1px solid var(--line);border-radius:var(--radius);background:var(--cm-macaron-cream)">' +
         '<div style="font-weight:700;font-size:13px;margin-bottom:8px">寻优模型约束</div>' +
         '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px">' +
         '<span style="padding:2px 8px;border-radius:999px;background:var(--cm-brand-100);color:var(--cm-brand-700);font-size:11px;font-weight:700">候选步长 ' + fmt(optimizerSummary.candidate_step_count || 0) + '</span>' +
@@ -6509,8 +6509,8 @@
       var comp = m.composite_grade || {};
       if (cbox) {
         cbox.innerHTML =
-          '<div class="panel" style="padding:14px;display:flex;gap:18px;align-items:center;background:linear-gradient(90deg,' +
-          (comp.color || 'var(--cm-ink-300)') + '22,var(--cm-surface))">' +
+          '<div class="panel" style="padding:14px;display:flex;gap:18px;align-items:center;background:var(--cm-macaron-cream);border-left:4px solid ' +
+          (comp.color || 'var(--cm-ink-300)') + '">' +
           '<div style="font-size:28px;font-weight:700;color:' + (comp.color || 'var(--cm-ink-300)') + ';min-width:120px">' +
           (comp.grade || '-') + '</div>' +
           '<div style="flex:1">' +
@@ -6625,7 +6625,7 @@
           '<div style="font-weight:500;white-space:nowrap;min-width:240px"><span style="color:var(--cm-ink-900)">' + x.name + '</span>' +
           (zh ? '<span style="color:var(--cm-ink-500);font-weight:400;margin-left:6px">（' + zh + '）</span>' : '') + '</div>' +
           '<div style="flex:1;background:var(--cm-ink-50);height:14px;border-radius:3px;overflow:hidden">' +
-          '<div style="width:' + pct.toFixed(1) + '%;height:100%;background:linear-gradient(90deg,var(--cm-brand-400),var(--cm-brand-500))"></div>' +
+          '<div style="width:' + pct.toFixed(1) + '%;height:100%;background:var(--cm-brand-500)"></div>' +
           '</div></div>';
         html += '<div style="color:var(--cm-ink-500);font-family:monospace">' + Math.round(x.importance) + '</div>';
       });

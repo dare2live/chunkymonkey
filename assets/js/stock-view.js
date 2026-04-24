@@ -420,7 +420,7 @@
         area.querySelectorAll('[data-svtab]').forEach(b => b.classList.toggle('sv-tab-active', b.dataset.svtab === state.drawerTab));
       });
     });
-    // AI 多维评分徽章 (异步, 不阻塞主渲染)
+    // 多维量化评分徽章 (异步, 不阻塞主渲染)
     if (global.MultidimBadgeWidget) {
       global.MultidimBadgeWidget.mount('sv-drawer-multidim-badge', { stockCode: code });
     }
@@ -555,7 +555,7 @@
     bindFilterEvents();
     bindAuxSections();
     renderList();
-    // AI 多维评分 Top K 条带 (异步, 不阻塞主渲染)
+    // 多维量化评分 Top K 条带 (异步, 不阻塞主渲染)
     if (global.TopKStripWidget) {
       global.TopKStripWidget.mount('sv-topk-strip', {
         limit: 20,

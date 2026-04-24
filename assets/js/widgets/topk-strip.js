@@ -35,12 +35,14 @@
       ? 'IC ' + (meta.holdout_ic * 100).toFixed(2) + '% · RankIC ' + ((meta.holdout_rank_ic || 0) * 100).toFixed(2) + '% · L-S ' + ((meta.holdout_long_short_spread || 0) * 100).toFixed(2) + '%'
       : '模型元数据未到';
     return '<div class="topk-strip-head">' +
-      '<div class="topk-strip-title">AI 多维评分 · 今日 Top ' + count + '</div>' +
+      '<div class="topk-strip-title">多维量化评分 · 今日 Top ' + count + '</div>' +
       '<div class="topk-strip-meta">' +
         '<span class="topk-pill">' + esc(snapshot || '-') + '</span>' +
         '<span class="topk-pill topk-pill--muted">' + esc(model || '-') + '</span>' +
         '<span class="topk-pill topk-pill--muted">' + esc(grade) + '</span>' +
-      '</div></div>';
+      '</div>' +
+      '<div class="topk-strip-caveat">研究辅助池 · 非交易建议 · 模型 IC 偏弱 (~0.02), 需结合其它维度验证</div>' +
+      '</div>';
   }
 
   function renderChip(item) {

@@ -1,5 +1,5 @@
 /* ============================================================
-   multidim-badge.js — 股票详情顶部 AI 多维评分徽章
+   multidim-badge.js — 股票详情顶部多维量化评分徽章
    数据源: /api/rec/stock-prediction?code=xxx
    API: window.MultidimBadgeWidget.mount(containerId, { stockCode })
    ============================================================ */
@@ -27,18 +27,19 @@
 
   function render(payload) {
     if (!payload || !payload.ok) {
-      return '<div class="multidim-badge multidim-badge--empty">AI 预测不可用</div>';
+      return '<div class="multidim-badge multidim-badge--empty">多维分不可用</div>';
     }
     if (!payload.has_prediction) {
-      return '<div class="multidim-badge multidim-badge--empty" title="模型 ' + esc(payload.model_id || '-') + ' 不覆盖此股">AI 预测无覆盖</div>';
+      return '<div class="multidim-badge multidim-badge--empty" title="模型 ' + esc(payload.model_id || '-') + ' 不覆盖此股">多维分无覆盖</div>';
     }
     var pct = payload.percentile;
     var score = payload.pred_score;
     var t = tone(pct);
     return '<div class="multidim-badge multidim-badge--' + t + '" ' +
       'title="模型 ' + esc(payload.model_id || '-') + ' · 日期 ' + esc(payload.date || '-') +
-      ' · IC ' + (payload.model_ic != null ? (payload.model_ic * 100).toFixed(2) + '%' : '-') + '">' +
-      '<span class="multidim-badge-label">AI 多维分</span>' +
+      ' · IC ' + (payload.model_ic != null ? (payload.model_ic * 100).toFixed(2) + '%' : '-') +
+      ' · 模型 IC ~0.02 属研究辅助, 请结合其它维度">' +
+      '<span class="multidim-badge-label">多维分</span>' +
       '<span class="multidim-badge-score">' + (score != null ? (score * 100).toFixed(1) : '-') + '</span>' +
       '<span class="multidim-badge-pct">Top ' + (pct != null ? ((1 - pct) * 100).toFixed(1) + '%' : '-') + '</span>' +
       (payload.rank_in_date ? '<span class="multidim-badge-rank">#' + payload.rank_in_date + '</span>' : '') +
