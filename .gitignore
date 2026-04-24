@@ -22,3 +22,7 @@ node_modules/
 .env
 logs/
 backend/forecast_sample.csv
+.duckdb
+.duckdb-wal
+*.duckdb
+*.duckdb.wal
