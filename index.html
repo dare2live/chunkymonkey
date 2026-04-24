@@ -59,7 +59,7 @@
         <div class="section-kicker">Model Monitoring</div>
         <h2 style="margin:4px 0 8px">多维评分 · 模型监控</h2>
         <p class="muted" style="font-size:12px;margin-bottom:14px">
-          基于 fact_feature_panel 的每日 topK 推荐与模型性能追踪。数据源：tdxhub + akshare + qlib。研究参考，非可交易建议。
+          基于 fact_feature_panel 的每日 topK 推荐与模型性能追踪。数据源：tdxhub + akshare。研究参考，非可交易建议。
         </p>
         <div id="mm-controls" style="display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap;align-items:center">
           <label style="font-size:12px;color:#64748b">模型</label>
@@ -218,75 +218,10 @@
       <div class="wb-group-header">系统设置</div>
 
       <details class="workbench-section">
-        <summary><span class="workbench-section-title">模块开关</span><span class="muted" style="font-size:11px;font-weight:400">Qlib / ETF 启用</span></summary>
+        <summary><span class="workbench-section-title">模块开关</span><span class="muted" style="font-size:11px;font-weight:400">ETF 启用</span></summary>
         <div class="module-toggles" style="display:flex;gap:16px;font-size:13px;padding:10px 0;align-items:center;flex-wrap:wrap">
-          <label><input type="checkbox" id="chkModuleQlib"> 启用 Qlib（需后端支持）</label>
           <label><input type="checkbox" id="chkModuleEtf"> 启用 ETF 量化</label>
           <button class="chip chip-outline chip-sm" onclick="App.saveModuleSettings()">保存配置并重启</button>
-        </div>
-      </details>
-
-      <details class="workbench-section">
-        <summary><span class="workbench-section-title">Qlib 模型实验室</span><span class="muted" style="font-size:11px;font-weight:400">封存中（Phase A 结论：Valid IC ≈ 0）</span></summary>
-        <div class="workbench-qlib">
-          <div class="stats-row" style="margin-top:10px">
-            <div class="stat-card"><div class="stat-value" id="qlibStatStatus">-</div><div class="stat-label">模型状态</div></div>
-            <div class="stat-card"><div class="stat-value" id="qlibStatFinished">-</div><div class="stat-label">最后训练</div></div>
-            <div class="stat-card"><div class="stat-value" id="qlibStatStocks">-</div><div class="stat-label">覆盖股票</div></div>
-            <div class="stat-card"><div class="stat-value" id="qlibStatFactors">-</div><div class="stat-label">总因子</div></div>
-            <div class="stat-card"><div class="stat-value" id="qlibStatWindow">-</div><div class="stat-label">样本窗口</div></div>
-          </div>
-          <div class="panel" style="margin-top:14px">
-            <div class="panel-head">
-              <span style="font-weight:600">训练控制台</span>
-              <div class="panel-actions">
-                <button class="chip chip-outline" id="btnQlibResetParams">恢复默认</button>
-                <button class="chip chip-primary" id="btnQlibTrain">重新训练</button>
-              </div>
-            </div>
-            <div class="qlib-params-grid">
-              <section class="qlib-param-card">
-                <div class="qlib-param-title">样本区间</div>
-                <div class="qlib-param-fields">
-                  <label class="qlib-param-field"><span>训练起点</span><input type="date" id="qlibTrainStart"></label>
-                  <label class="qlib-param-field"><span>训练终点</span><input type="date" id="qlibTrainEnd"></label>
-                  <label class="qlib-param-field"><span>验证终点</span><input type="date" id="qlibValidEnd"></label>
-                  <label class="qlib-param-field"><span>测试终点</span><input type="date" id="qlibTestEnd"></label>
-                  <label class="qlib-param-field"><span>样本上限</span><input type="number" id="qlibSampleLimit" min="0" step="50" placeholder="0=全量"></label>
-                </div>
-              </section>
-              <section class="qlib-param-card">
-                <div class="qlib-param-title">LightGBM 超参</div>
-                <div class="qlib-param-fields">
-                  <label class="qlib-param-field"><span>迭代轮数</span><input type="number" id="qlibBoostRounds" min="50" step="10"></label>
-                  <label class="qlib-param-field"><span>提前停止</span><input type="number" id="qlibEarlyStop" min="10" step="5"></label>
-                  <label class="qlib-param-field"><span>叶子数</span><input type="number" id="qlibLeaves" min="8" step="4"></label>
-                  <label class="qlib-param-field"><span>学习率</span><input type="number" id="qlibLearningRate" min="0.001" max="1" step="0.01"></label>
-                  <label class="qlib-param-field"><span>subsample</span><input type="number" id="qlibSubsample" min="0.1" max="1" step="0.05"></label>
-                  <label class="qlib-param-field"><span>colsample</span><input type="number" id="qlibColsample" min="0.1" max="1" step="0.05"></label>
-                </div>
-              </section>
-              <section class="qlib-param-card">
-                <div class="qlib-param-title">特征开关</div>
-                <div class="qlib-toggle-list">
-                  <label><input type="checkbox" id="qlibUseAlpha158"> Alpha158 量价因子</label>
-                  <label><input type="checkbox" id="qlibUseFinancial"> 财务因子</label>
-                  <label><input type="checkbox" id="qlibUseInstitution"> 机构行为因子</label>
-                  <label><input type="checkbox" id="qlibUseTurtle"> 海龟执行因子</label>
-                  <label><input type="checkbox" id="qlibUseQuality"> 质量因子</label>
-                  <label><input type="checkbox" id="qlibUseStage"> 阶段因子</label>
-                  <label><input type="checkbox" id="qlibUseBehavior"> 行为因子（两融+龙虎榜+QFII）</label>
-                  <label><input type="checkbox" id="qlibUseSupply"> 供给因子（解禁+回购）</label>
-                </div>
-              </section>
-            </div>
-            <div id="qlibTrainMsg" class="muted" style="font-size:12px;margin-top:8px"></div>
-            <div id="qlibParamSummary" class="muted" style="font-size:11px;margin-top:6px"></div>
-          </div>
-          <div class="panel" style="margin-top:14px">
-            <div class="panel-head"><span style="font-weight:600">因子重要性 Top 20</span></div>
-            <div id="qlibFactorChart" style="min-height:200px">未训练</div>
-          </div>
         </div>
       </details>
 

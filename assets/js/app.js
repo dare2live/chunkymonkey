@@ -178,14 +178,13 @@
     if (r && r.status === 'ok') {
       badge.textContent = 'Online'; badge.className = 'logo-status online';
 
-      // Update dynamic modules nav（Step 5d：Qlib 一级入口下线，仅保留 ETF group 动态显示）
+      // Update dynamic modules nav（仅保留 ETF group 动态显示）
       var modules = r.enabled_modules || [];
       var navGroupEtf = el('nav-group-etf');
       if (navGroupEtf) navGroupEtf.style.display = modules.includes('etf') ? '' : 'none';
 
       // Update checkboxes in settings
-      var chkQlib = el('chkModuleQlib'), chkEtf = el('chkModuleEtf');
-      if (chkQlib) chkQlib.checked = modules.includes('qlib');
+      var chkEtf = el('chkModuleEtf');
       if (chkEtf) chkEtf.checked = modules.includes('etf');
     }
     else { badge.textContent = 'Offline'; badge.className = 'logo-status'; }
@@ -194,7 +193,6 @@
   async function saveModuleSettings() {
     if (!confirm('保存模块配置后，后端可能需要重启以重新注册路由。继续吗？')) return;
     var settings = {
-      qlib: el('chkModuleQlib')?.checked,
       etf: el('chkModuleEtf')?.checked
     };
     var r = await api('/api/settings/modules', { method: 'POST', body: JSON.stringify(settings) });
@@ -472,55 +470,6 @@
     return '<span class="summary-chip summary-chip--' + tone + '">' + esc(label) + ' ' + fmt(count) + '</span>';
   }
 
-  function hasQlibSectorFocus(sectorSummary) {
-    return !!(sectorSummary && Array.isArray(sectorSummary.sector_focus) && sectorSummary.sector_focus.length);
-  }
-
-  function sectorFocusItems(summary, sectorSummary) {
-    if (hasQlibSectorFocus(sectorSummary)) {
-      return sectorSummary.sector_focus.map(function (item) {
-        return {
-          label: item.sector_name || '-',
-          value: item.next_rotation_score,
-          metric: 'score',
-          sub: item.next_rotation_label || item.next_rotation_reason || '',
-          stockCount: item.stock_count || 0
-        };
-      });
-    }
-    return (summary.topIndustries || []).map(function (item) {
-      return {
-        label: item.key,
-        value: item.count,
-        metric: 'count',
-        sub: fmt(item.count) + ' 只',
-        stockCount: item.count || 0
-      };
-    });
-  }
-
-  function renderSectorFocusChip(item) {
-    if (!item) return '';
-    if (item.metric !== 'score') return summaryChip(item.label, item.value, 'neutral');
-    return '<span class="summary-chip summary-chip--neutral">' + esc(item.label) + ' ' + esc(fmtScore(item.value)) + '</span>';
-  }
-
-  function sectorFocusLeadSub(item) {
-    if (!item) return '暂无';
-    if (item.metric === 'score') {
-      return 'Qlib前瞻 ' + fmtScore(item.value) + (item.sub ? ' · ' + item.sub : '');
-    }
-    return fmt(item.value) + ' 只';
-  }
-
-  function sectorFocusSubtitle(summary, sectorSummary, focusItems) {
-    if (hasQlibSectorFocus(sectorSummary)) {
-      var lead = focusItems && focusItems[0];
-      return 'Qlib前瞻：' + (lead && lead.sub ? lead.sub : '行业动量已纳入聚合');
-    }
-    return '来源集中：' + (summary.topSources.length ? summary.topSources.map(function (item) { return item.key + ' ' + fmt(item.count); }).join(' · ') : '暂无');
-  }
-
   function hasAttentionCoverage(s) {
     return !!(s && (
       s.external_attention_signal ||
@@ -580,7 +529,6 @@
     if (dimension === 'discovery') return s.discovery_score;
     if (dimension === 'quality') return s.company_quality_score;
     if (dimension === 'stage') return s.stage_score;
-    if (dimension === 'forecast') return s.forecast_score_effective != null ? s.forecast_score_effective : s.forecast_score;
     return null;
   }
 
@@ -595,10 +543,6 @@
       strong = 70;
       mid = 55;
       watch = 40;
-    } else if (dimension === 'forecast') {
-      strong = 70;
-      mid = 55;
-      watch = 35;
     }
     if (score >= strong) return { key: 'strong', label: '强', tone: 'good' };
     if (score >= mid) return { key: 'mid', label: '中', tone: 'accent' };
@@ -611,7 +555,6 @@
     if (dimension === 'discovery') return s.display_inst_name || s.setup_inst_name || preferredIndustryLabel(s) || '机构发现';
     if (dimension === 'quality') return s.stock_archetype || '公司质量';
     if (dimension === 'stage') return s.path_state || s.stage_reason || '阶段过滤';
-    if (dimension === 'forecast') return s.forecast_reason || s.forecast_model_id || '排序增强';
     return '';
   }
 
@@ -1348,7 +1291,7 @@
 
   function validationStockTable(rows, reasonField) {
     if (!rows || !rows.length) return '<div class="muted" style="font-size:12px">暂无样本。</div>';
-    return '<table class="data-table data-table-compact"><thead><tr><th>股票</th><th>池子</th><th>综合 / 原始</th><th>质量 / 阶段 / 预测</th><th>原因</th></tr></thead><tbody>' +
+    return '<table class="data-table data-table-compact"><thead><tr><th>股票</th><th>池子</th><th>综合 / 原始</th><th>质量 / 阶段</th><th>原因</th></tr></thead><tbody>' +
       rows.map(function (item) {
         var reason = item[reasonField] || item.priority_pool_reason || item.composite_cap_reason || '-';
         var qualityMeta = [item.stock_archetype || '待分类'];
@@ -1358,7 +1301,7 @@
           '<td>' + stockCell(item.stock_code, item.stock_name) + '</td>' +
           '<td>' + priorityPoolTag(item.priority_pool) + '</td>' +
           '<td><div style="font-size:12px;color:#0f172a;font-weight:600">综合 ' + scoreNum(item.composite_priority_score) + '</div><div class="muted" style="font-size:10px">原始 ' + scoreNum(item.raw_composite_priority_score) + '</div></td>' +
-          '<td><div style="font-size:12px;color:#0f172a">质 ' + scoreNum(item.company_quality_score) + ' · 阶 ' + scoreNum(item.stage_score) + ' · 测 ' + scoreNum(item.forecast_score) + '</div><div class="muted" style="font-size:10px">' + esc(qualityMeta.join(' · ')) + '</div></td>' +
+          '<td><div style="font-size:12px;color:#0f172a">质 ' + scoreNum(item.company_quality_score) + ' · 阶 ' + scoreNum(item.stage_score) + '</div><div class="muted" style="font-size:10px">' + esc(qualityMeta.join(' · ')) + '</div></td>' +
           '<td><div style="font-size:11px;color:#475569;line-height:1.5">' + esc(reason) + '</div></td>' +
           '</tr>';
       }).join('') +
@@ -1606,7 +1549,7 @@
     var bands = turtle && turtle.score_bands || [];
     var hints = turtle && turtle.hints || [];
     var methodology = turtle && turtle.methodology || '';
-    var stateTable = '<table class="data-table data-table-compact"><thead><tr><th>状态</th><th>样本</th><th>执行分</th><th>突破分</th><th>风险分</th><th>阶段分</th><th>预测分</th><th>近20日</th><th>A池</th><th>D池</th></tr></thead><tbody>' +
+    var stateTable = '<table class="data-table data-table-compact"><thead><tr><th>状态</th><th>样本</th><th>执行分</th><th>突破分</th><th>风险分</th><th>阶段分</th><th>近20日</th><th>A池</th><th>D池</th></tr></thead><tbody>' +
       (states.length ? states.map(function (item) {
         return '<tr>' +
           '<td>' + turtleStateTag(item.turtle_setup_state) + '</td>' +
@@ -1615,12 +1558,11 @@
           '<td>' + scoreNum(item.avg_breakout_score) + '</td>' +
           '<td>' + scoreNum(item.avg_risk_score) + '</td>' +
           '<td>' + scoreNum(item.avg_stage_score) + '</td>' +
-          '<td>' + scoreNum(item.avg_forecast_score) + '</td>' +
           '<td>' + fmtGain(item.avg_price_20d_pct) + '</td>' +
           '<td>' + fmt(item.a_pool_count) + '</td>' +
           '<td>' + fmt(item.d_pool_count) + '</td>' +
           '</tr>';
-      }).join('') : '<tr><td class="empty-row" colspan="10">暂无海龟状态样本</td></tr>') +
+      }).join('') : '<tr><td class="empty-row" colspan="9">暂无海龟状态样本</td></tr>') +
       '</tbody></table>';
     var systemTable = '<table class="data-table data-table-compact"><thead><tr><th>系统</th><th>样本</th><th>执行分</th><th>突破分</th><th>风险分</th><th>近20日</th></tr></thead><tbody>' +
       (systems.length ? systems.map(function (item) {
@@ -1751,28 +1693,6 @@
   var _activeRunContext = null;
   var _lastRunContext = null;
   var _stopRequestedUi = false;
-  var QLIB_DEFAULT_PARAMS = {
-    train_start: '2023-01-01',
-    train_end: '2025-03-31',
-    valid_end: '2025-09-30',
-    test_end: '2026-01-31',
-    sample_stock_limit: 0,
-    num_boost_round: 500,
-    early_stopping_rounds: 50,
-    num_leaves: 64,
-    learning_rate: 0.05,
-    subsample: 0.8,
-    colsample_bytree: 0.8,
-    use_alpha158: true,
-    use_financial: true,
-    use_institution: true,
-    use_turtle: true,
-    use_quality: true,
-    use_stage: true,
-    use_behavior: false,
-    use_supply: false
-  };
-  var _qlibDefaultParamsPromise = null;
 
   var DOWNSTREAM_LABELS = {
     sync_market_data: ['计算收益', '构建当前关系', '机构画像', '行业统计', '生成股票列表', 'TDX选股筛选', '板块动量分析', '机构评分', '股票评分'],
@@ -2306,7 +2226,6 @@
     } else if (stepId === 'build_forecast_features') {
       var forecastBase = sectorMom.stage_feature_count || 0;
       if (typeof sectorMom.forecast_feature_count === 'number') addNote('审计 ' + fmt(sectorMom.forecast_feature_count) + ' 只股票已有预测特征');
-      if (typeof sectorMom.sector_forecast_count === 'number') addNote('行业级 Qlib 快照 ' + fmt(sectorMom.sector_forecast_count) + ' 个');
       if (forecastBase > 0) addNote('阶段特征底座 ' + fmt(forecastBase) + ' 只');
       hasData = forecastBase === 0 || (sectorMom.forecast_feature_count || 0) > 0;
       actionable = ['failed', 'skipped', 'stopped'].includes(status);
@@ -3515,7 +3434,7 @@
   }
 
   function renderMultidimScoreCard(m) {
-    // §29.4 W2：股票五维画像评分卡片
+    // §29.4 W2：股票三维画像评分卡片
     if (!m || !m.n_dimensions_available) return '';
     var c = m.components || {};
     function detail(key) {
@@ -3525,9 +3444,6 @@
       if (key === 'margin' && c.margin && c.margin.rz_balance_yuan != null) {
         return '融资余额 ' + (c.margin.rz_balance_yuan / 1e8).toFixed(2) + ' 亿 · 市场分位 ' + (c.margin.market_percentile != null ? c.margin.market_percentile.toFixed(0) : '-');
       }
-      if (key === 'forecast' && c.forecast) {
-        return '行业分位 ' + (c.forecast.industry_qlib_percentile != null ? Number(c.forecast.industry_qlib_percentile).toFixed(0) + '%' : '-');
-      }
       if (key === 'survey' && c.survey) {
         return '近 60 天 ' + (c.survey.inst_count_60d || 0) + ' 家调研';
       }
@@ -3536,7 +3452,6 @@
     var dims = [
       { key: 'resonance', score: m.resonance_score, label: '机构共振' },
       { key: 'margin',    score: m.margin_score,    label: '两融情绪' },
-      { key: 'forecast',  score: m.forecast_score,  label: '研报预期' },
       { key: 'survey',    score: m.survey_score,    label: '调研热度' },
     ];
     var overall = m.overall_score;
@@ -3547,12 +3462,12 @@
       '</div>' +
       '<div style="display:flex;align-items:center;margin-bottom:10px">' +
       '<b style="font-size:13px;color:#4c1d95">画像评分（研究参考）</b>' +
-      '<span style="margin-left:10px;font-size:11px;color:#64748b">四维平均，未经 PIT 校准</span>';
+      '<span style="margin-left:10px;font-size:11px;color:#64748b">三维平均，未经 PIT 校准</span>';
     if (overall != null) {
       html += '<span style="margin-left:auto;background:' + ovColor + ';color:white;padding:4px 14px;border-radius:4px;font-weight:600;font-size:13px">综合 ' + overall.toFixed(1) + '</span>';
     }
     html += '</div>';
-    html += '<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;font-size:12px">';
+    html += '<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;font-size:12px">';
     dims.forEach(function (d) {
       var s = d.score;
       var display = s != null ? Number(s).toFixed(1) : '-';
@@ -4237,43 +4152,6 @@
       }).join('');
       return renderStockReportModule('TDX 板块归属', note, body, 'stock-report-module--table');
     }
-    function renderStockQlibAssociationModule(association) {
-      var preferredLabels = ['股东人数', '机构总量', '融资余额', '融券余额', '近180天增持', '近180天减持'];
-      var rows = association && Array.isArray(association.rows) ? association.rows.slice() : [];
-      if (!rows.length) return '';
-      var rowMap = {};
-      rows.forEach(function (item) {
-        if (item && item.label && !rowMap[item.label]) rowMap[item.label] = item;
-      });
-      var filteredRows = preferredLabels.map(function (label) {
-        return rowMap[label] || null;
-      }).filter(Boolean);
-      if (filteredRows.length) rows = filteredRows;
-      var note = [
-        association.model_id ? ('模型 ' + association.model_id) : '',
-        association.predict_date ? ('预测 ' + fmtDate(association.predict_date)) : '',
-        association.report_date ? ('结构快照 ' + fmtDate(association.report_date)) : '',
-        association.sample_count != null ? ('样本 ' + fmt(association.sample_count)) : '',
-        association.sample_breakdown && association.sample_breakdown.length ? association.sample_breakdown.join(' · ') : ''
-      ].filter(Boolean).join(' · ');
-      var summaryHtml = (association.summary || []).length
-        ? '<div class="stock-report-inline-note">' + esc((association.summary || []).join('；')) + '</div>'
-        : '';
-      var tableHtml = '<div class="stock-report-table-wrap"><table class="data-table data-table-compact stock-report-trajectory-table"><thead><tr><th>信号维度</th><th>当前值</th><th>近阶段变化</th><th>Qlib 关联</th><th>当前位置</th></tr></thead><tbody>' + rows.map(function (item) {
-        var assocText = item.corr != null ? (item.association + ' (' + Number(item.corr).toFixed(2) + ')') : item.association;
-        return '<tr>' +
-          '<td>' + esc(item.label || '-') + '</td>' +
-          '<td>' + esc(item.value_text || '-') + '</td>' +
-          '<td>' + esc(item.delta_text || '-') + '</td>' +
-          '<td>' + esc(assocText || '-') + '</td>' +
-          '<td>' + esc(item.position_text || '-') + '</td>' +
-          '</tr>';
-      }).join('') + '</tbody></table></div>';
-      var limitationHtml = (association.limitations || []).length
-        ? '<div class="stock-report-inline-note stock-report-inline-note--muted">' + esc((association.limitations || []).join(' ')) + '</div>'
-        : '';
-      return renderStockReportModule('Qlib 联动摘要', note, summaryHtml + tableHtml + limitationHtml, 'stock-report-module--table');
-    }
   function attentionSignalMeta(signal) {
     return {
       '外部确认增强': { label: '外部确认增强', tone: 'good' },
@@ -4645,8 +4523,7 @@
     var overlayModule = renderStockTrajectoryOverlayModule(base.tdx_quarterly_overlay || null);
     var marketSignalModule = renderStockMarketSignalModule(base.margin_balance_overlay || null, base.shareholder_change_summary || null);
     var blockModule = renderStockTdxBlockModule(base.tdx_blocks || null);
-    var associationModule = renderStockQlibAssociationModule(base.qlib_tdx_association || null);
-    var moduleGrid = [overlayModule, marketSignalModule, blockModule, associationModule].filter(Boolean).join('');
+    var moduleGrid = [overlayModule, marketSignalModule, blockModule].filter(Boolean).join('');
     if (!points.length && !signalSeries.length && !condensedEvents.length && !moduleGrid) return '';
     var holderSeries = stockTrajectorySeriesByKey(signalSeries, 'holder_count');
     var instSeries = stockTrajectorySeriesByKey(signalSeries, 'inst_total_count');
@@ -4713,13 +4590,6 @@
         risk: base.stage_reason || base.composite_cap_reason || '观察阶段约束'
       },
       {
-        dim: '预测',
-        score: scoreNum(base.forecast_score_effective != null ? base.forecast_score_effective : base.forecast_score),
-        status: base.qlib_rank != null ? ('AI #' + fmt(base.qlib_rank)) : (base.forecast_industry_relative_group || '模型待刷新'),
-        signal: [base.qlib_percentile != null ? ('市场分位 ' + pct(base.qlib_percentile)) : '', (base.forecast_cross_section_score != null ? base.forecast_cross_section_score : base.forecast_20d_score) != null ? ('Qlib截面 ' + scoreNum(base.forecast_cross_section_score != null ? base.forecast_cross_section_score : base.forecast_20d_score)) : '', (base.forecast_industry_relative_score != null ? base.forecast_industry_relative_score : base.forecast_60d_excess_score) != null ? ('行业相对 ' + scoreNum(base.forecast_industry_relative_score != null ? base.forecast_industry_relative_score : base.forecast_60d_excess_score)) : ''].filter(Boolean).join(' · ') || '等待模型覆盖',
-        risk: base.forecast_reason || (base.forecast_score_effective != null && base.forecast_score != null && Number(base.forecast_score_effective) < Number(base.forecast_score) ? '阶段过滤压缩了预测分' : '模型暂无额外说明')
-      },
-      {
         dim: '外部',
         score: scoreNum(base.external_attention_score),
         statusHtml: attentionSignalTag(base.external_attention_signal) || '<span class="stock-attention-pill stock-attention-pill--neutral">中性</span>',
@@ -4734,7 +4604,7 @@
         risk: base.turtle_reason || '执行层暂未给出额外说明'
       }
     ];
-    return renderStockReportSection('评分与判断框架', '把发现、质量、阶段、预测、外部和海龟放回同一张研究判断表。', renderStockReportMatrixTable(rows));
+    return renderStockReportSection('评分与判断框架', '把发现、质量、阶段、外部和海龟放回同一张研究判断表。', renderStockReportMatrixTable(rows));
   }
   function renderStockReportDataSection(base) {
     var attention = base.attention || {};
@@ -4779,14 +4649,7 @@
       stockReportHeroMetric('通用阶段', base.generic_stage_raw != null ? scoreNum(base.generic_stage_raw) : '-'),
       stockReportHeroMetric('类型修正', base.stage_type_adjust_raw != null ? signedScore(base.stage_type_adjust_raw) : '-')
     ];
-    var modelRows = [
-      stockReportHeroMetric('模型ID', base.forecast_model_id || '-', base.forecast_predict_date ? ('预测日 ' + fmtDate(base.forecast_predict_date)) : ''),
-      stockReportHeroMetric('AI排行', base.qlib_rank != null ? ('#' + fmt(base.qlib_rank)) : '-'),
-      stockReportHeroMetric('市场分位', base.qlib_percentile != null ? pct(base.qlib_percentile) : '-'),
-      stockReportHeroMetric('行业分位', base.industry_qlib_percentile != null ? pct(base.industry_qlib_percentile) : '-'),
-      stockReportHeroMetric('Qlib截面', (base.forecast_cross_section_score != null ? base.forecast_cross_section_score : base.forecast_20d_score) != null ? scoreNum(base.forecast_cross_section_score != null ? base.forecast_cross_section_score : base.forecast_20d_score) : '-'),
-      stockReportHeroMetric('行业相对', (base.forecast_industry_relative_score != null ? base.forecast_industry_relative_score : base.forecast_60d_excess_score) != null ? scoreNum(base.forecast_industry_relative_score != null ? base.forecast_industry_relative_score : base.forecast_60d_excess_score) : '-'),
-      stockReportHeroMetric('风险收益', base.forecast_risk_adjusted_score != null ? scoreNum(base.forecast_risk_adjusted_score) : '-'),
+    var attentionRows = [
       stockReportHeroMetric('关注指数', base.attention_focus_index != null ? scoreNum(base.attention_focus_index) : (snapshot.focus_index != null ? scoreNum(snapshot.focus_index) : '-')),
       stockReportHeroMetric('综合关注分', base.attention_composite_score != null ? scoreNum(base.attention_composite_score) : (snapshot.composite_score != null ? scoreNum(snapshot.composite_score) : '-')),
       stockReportHeroMetric('机构参与', base.attention_institution_participation != null ? pct(base.attention_institution_participation) : (snapshot.institution_participation != null ? pct(snapshot.institution_participation) : '-')),
@@ -4803,16 +4666,15 @@
     ];
     var noteCallouts = [
       base.stage_reason ? { label: '阶段判断', text: base.stage_reason, tone: 'neutral' } : null,
-      base.forecast_reason ? { label: '预测判断', text: base.forecast_reason, tone: 'info' } : null,
       base.turtle_reason ? { label: '海龟说明', text: base.turtle_reason, tone: 'neutral' } : null
     ].filter(Boolean);
     return renderStockReportSection(
       '研究底稿',
-      '把列表里省掉的财务、路径、模型和执行细节都压回到表格里，展开就是一页研报。',
+      '把列表里省掉的财务、路径和执行细节都压回到表格里，展开就是一页研报。',
       '<div class="stock-report-data-grid">' +
       renderStockReportSubtable('公司质量', qualityRows, 2) +
       renderStockReportSubtable('阶段与交易位置', stageRows, 2) +
-      renderStockReportSubtable('模型排序与外部热度', modelRows, 2) +
+      renderStockReportSubtable('外部热度', attentionRows, 2) +
       renderStockReportSubtable('海龟执行参考', turtleRows, 1) +
       '</div>' +
       renderStockReportCallouts(noteCallouts)
@@ -4837,8 +4699,7 @@
     return [
       '发' + scoreNum(s.discovery_score),
       '质' + scoreNum(s.company_quality_score),
-      '阶' + scoreNum(s.stage_score),
-      '测' + scoreNum(s.forecast_score)
+      '阶' + scoreNum(s.stage_score)
     ].join(' / ');
   }
   function stockCompositeCell(s) {
@@ -4853,7 +4714,7 @@
     var gate = stockGateInfo(s);
     var tone = gate.key === 'follow' ? 'good' : gate.key === 'watch' ? 'accent' : gate.key === 'observe' ? 'warn' : 'neutral';
     var label = gate.label || '待验证';
-    var tooltip = gate.reason || s.setup_reason || s.priority_pool_reason || s.stage_reason || s.forecast_reason || '展开详情查看完整研报';
+    var tooltip = gate.reason || s.setup_reason || s.priority_pool_reason || s.stage_reason || '展开详情查看完整研报';
     return '<div class="stock-research-cell">' +
       '<span class="stock-research-status stock-research-status--' + tone + '" title="' + esc(tooltip) + '">' + esc(label) + '</span>' +
       '</div>';
@@ -4905,7 +4766,6 @@
   function stockSignalCell(s) {
     var scoreText = s.score_highlights ? '加分：' + s.score_highlights : (s.discovery_score != null ? '发现层 ' + scoreNum(s.discovery_score) : '发现层 -');
     if (s.score_risks) scoreText += ' · 风险：' + s.score_risks;
-    else if (s.qlib_rank != null) scoreText += ' · AI排行 #' + s.qlib_rank;
     if (!s || !s.setup_tag) {
       return '<div class="stock-signal-cell"><div class="stock-signal-title">暂无当前核心信号</div><div class="stock-signal-sub">' + esc(s.path_state || s.price_trend || '等待新的机构动作') + '</div><div class="stock-signal-meta">' + esc(scoreText) + '</div></div>';
     }
@@ -5337,119 +5197,11 @@
       '<div class="score-rule-grid" style="margin-top:12px">' + penaltyBandTable + '</div>';
   }
 
-  function renderQlibFeatureStackLabel(params) {
-    if (!params) return '-';
-    var parts = [];
-    if (params.use_alpha158) parts.push('Alpha158');
-    if (params.use_financial) parts.push('financial');
-    if (params.use_institution) parts.push('institution');
-    if (params.use_turtle) parts.push('turtle');
-    return parts.length ? parts.join(' + ') : '-';
-  }
-
-  function renderQlibFactorGroupSummary(groups) {
-    if (!groups || !groups.length) return '<div class="muted" style="font-size:12px">暂无因子组摘要。</div>';
-    return '<div class="score-rule-list">' + groups.map(function (item) {
-      return '<div class="score-rule-item"><b>' + esc(item.factor_group || 'unknown') + '</b> · 因子 ' +
-        fmt(item.factor_count || 0) + ' · 总重要性 ' + scoreNum(item.total_importance) +
-        ' · 均值 ' + scoreNum(item.avg_importance) + '</div>';
-    }).join('') + '</div>';
-  }
-
-  function renderQlibTopFactors(topFactors) {
-    if (!topFactors || !topFactors.length) return '<div class="muted" style="font-size:12px">暂无 Top 因子。</div>';
-    return '<div class="score-rule-list">' + topFactors.map(function (item) {
-      return '<div class="score-rule-item">' + esc(item.factor_name || '-') + ' · ' +
-        esc(item.factor_group || 'unknown') + ' · ' + scoreNum(item.importance) + '</div>';
-    }).join('') + '</div>';
-  }
-
-  function qlibBacktestStatusLabel(status) {
-    if (status === 'success') return '已写入';
-    if (status === 'failed') return '失败';
-    if (status === 'running' || status === 'pending') return '生成中';
-    if (status === 'missing') return '未写入';
-    return '未知';
-  }
-
-  function qlibBacktestRuntimeNote(summary) {
-    if (!summary) return '';
-    var parts = [];
-    var backtestStatus = summary.backtest_status || (summary.latest_backtest ? 'success' : 'missing');
-    parts.push('回测' + qlibBacktestStatusLabel(backtestStatus));
-    if (summary.train_params && summary.train_params.use_benchmark === false) parts.push('基准关闭');
-    else if (summary.backtest_benchmark) parts.push('基准 ' + summary.backtest_benchmark);
-    if (backtestStatus === 'failed' && summary.backtest_error) parts.push(summary.backtest_error);
-    if (backtestStatus === 'missing') parts.push('当前模型未写入独立回测结果');
-    return parts.join(' · ');
-  }
-
-  function renderQlibSummaryBlock(summary, opts) {
-    if (!summary || !summary.model_id) {
-      return '<div class="score-rule-card">' +
-        '<div class="score-rule-title">Qlib 模型摘要</div>' +
-        '<div class="scorecard-note">当前还没有可复用的 Qlib 训练模型，Forecast 会退回基础排序增强。</div>' +
-        '</div>';
-    }
-    opts = opts || {};
-    var latestBacktest = summary.latest_backtest || null;
-    var backtestStatus = summary.backtest_status || (latestBacktest ? 'success' : 'missing');
-    var title = opts.title || 'Qlib 模型摘要';
-    var note = opts.note || '评分和验证里与预测相关的部分，优先直接复用完整版 Qlib 的真实训练产物，而不是再造一套并行预测体系。';
-    var metricGrid = '<div class="scorecard-stats-grid">' +
-      renderScorecardMiniCard('模型', esc(summary.model_id), esc(fmtDate(summary.predict_date))) +
-      renderScorecardMiniCard('预测覆盖', fmt(summary.prediction_count || 0), '训练股票 ' + fmt(summary.stock_count || 0)) +
-      renderScorecardMiniCard('IC', scoreNum(summary.ic_mean), 'RankIC ' + scoreNum(summary.rank_ic_mean)) +
-      renderScorecardMiniCard('Top50测试', fmtGain(summary.test_top50_avg_return != null ? summary.test_top50_avg_return * 100 : null), renderQlibFeatureStackLabel(summary.train_params)) +
-      renderScorecardMiniCard('因子数', fmt(summary.factor_count || 0), esc((summary.factor_groups || []).length + ' 个因子组')) +
-      renderScorecardMiniCard('完成时间', esc(fmtDate(summary.finished_at)), esc(summary.status || '-')) +
-      '</div>';
-    var ruleGrid = '<div class="score-rule-grid" style="margin-top:12px">' +
-      '<div class="score-rule-card">' +
-      '<div class="score-rule-title">训练窗口</div>' +
-      '<div class="score-rule-list">' +
-      '<div class="score-rule-item"><b>Train</b>：' + esc(summary.train_start || '-') + ' ~ ' + esc(summary.train_end || '-') + '</div>' +
-      '<div class="score-rule-item"><b>Valid</b>：' + esc(summary.valid_start || '-') + ' ~ ' + esc(summary.valid_end || '-') + '</div>' +
-      '<div class="score-rule-item"><b>Test</b>：' + esc(summary.test_start || '-') + ' ~ ' + esc(summary.test_end || '-') + '</div>' +
-      '</div>' +
-      '</div>' +
-      '<div class="score-rule-card">' +
-      '<div class="score-rule-title">因子组重要性</div>' +
-      renderQlibFactorGroupSummary(summary.factor_group_top || summary.factor_groups || []) +
-      '</div>' +
-      '</div>';
-    var factorCard = '<div class="score-rule-card" style="margin-top:12px">' +
-      '<div class="score-rule-title">Top 因子</div>' +
-      renderQlibTopFactors(summary.top_factors || []) +
-      '</div>';
-    var backtestCard = latestBacktest
-      ? '<div class="score-rule-card" style="margin-top:12px">' +
-      '<div class="score-rule-title">最近回测</div>' +
-      '<div class="score-rule-list">' +
-      '<div class="score-rule-item"><b>状态</b>：' + esc(qlibBacktestStatusLabel(backtestStatus)) + ' · <b>基准</b>：' + esc(latestBacktest.benchmark || summary.backtest_benchmark || (summary.train_params && summary.train_params.use_benchmark === false ? '关闭' : '-')) + '</div>' +
-      '<div class="score-rule-item"><b>策略</b>：' + esc(latestBacktest.strategy || '-') + '</div>' +
-      '<div class="score-rule-item"><b>Sharpe</b>：' + scoreNum(latestBacktest.sharpe_ratio) + ' · <b>Calmar</b>：' + scoreNum(latestBacktest.calmar_ratio) + '</div>' +
-      '<div class="score-rule-item"><b>年化</b>：' + fmtGain(latestBacktest.annual_return != null ? latestBacktest.annual_return * 100 : null) + ' · <b>回撤</b>：' + fmtGain(latestBacktest.max_drawdown != null ? -latestBacktest.max_drawdown * 100 : null) + ' · <b>换手</b>：' + scoreNum(latestBacktest.turnover) + '</div>' +
-      '<div class="score-rule-item"><b>写回时间</b>：' + esc(fmtDate(latestBacktest.created_at)) + '</div>' +
-      '</div>' +
-      '</div>'
-      : '<div class="score-rule-card" style="margin-top:12px">' +
-      '<div class="score-rule-title">最近回测</div>' +
-      '<div class="scorecard-note">' + esc(qlibBacktestRuntimeNote(summary)) + '。验证页暂时直接使用 Qlib 模型指标、预测覆盖和快照后验。</div>' +
-      '</div>';
-    return '<div class="score-rule-card" style="margin-bottom:12px">' +
-      '<div class="score-rule-title">' + esc(title) + '</div>' +
-      '<div class="scorecard-note">' + esc(note) + '</div>' +
-      '</div>' +
-      metricGrid + ruleGrid + factorCard + backtestCard;
-  }
-
   function renderStockScorecardStats(stats) {
     if (!stats) return '';
     var summary = stats.summary || {};
     var currentPools = Array.isArray(stats.current_pools) ? stats.current_pools : [];
     var archetypes = Array.isArray(stats.archetypes) ? stats.archetypes : [];
-    var qlibSummary = stats.qlib_summary || {};
     var attentionCalibration = stats.attention_calibration || null;
     var qualitySourceSummary = stats.quality_source_summary || {};
     var replay = stats.snapshot_replay || {};
@@ -5560,7 +5312,6 @@
       '</div>' +
       summaryCards +
       (attentionCalibration ? renderStockAttentionCalibration(attentionCalibration) : '') +
-      '<div style="margin-top:12px">' + renderQlibSummaryBlock(qlibSummary, { title: 'Qlib 真实模型摘要' }) + '</div>' +
       '<div class="score-rule-grid" style="margin-top:12px">' + poolTable + archetypeTable + '</div>' +
       replayTable;
   }
@@ -5647,18 +5398,6 @@
         }
       });
     });
-    // 工作台折叠区首次展开时延迟加载内容（自选股/排除规则已移至股票页面）
-    var qlibLoaded = false;
-    document.querySelectorAll('.workbench-section').forEach(function (det) {
-      det.addEventListener('toggle', function () {
-        if (!det.open) return;
-        var title = (det.querySelector('.workbench-section-title')?.textContent || '').trim();
-        if (title.indexOf('Qlib 模型实验室') >= 0 && !qlibLoaded) {
-          qlibLoaded = true;
-          loadQlib && loadQlib();
-        }
-      });
-    });
     el('btnReset')?.addEventListener('click', resetDerivedData);
     el('btnSearchInst')?.addEventListener('click', searchInst);
     el('btnImportChecked')?.addEventListener('click', importChecked);
@@ -5671,8 +5410,6 @@
     el('stockSearch')?.addEventListener('input', handleStockSearchInput);
     el('instSearch')?.addEventListener('input', filterInstList);
     el('btnLifeboat')?.addEventListener('click', runLifeboat);
-    el('btnQlibTrain')?.addEventListener('click', startQlibTrain);
-    el('btnQlibResetParams')?.addEventListener('click', resetQlibParams);
     el('btnEtfSync')?.addEventListener('click', async function () {
       var btn = this;
       btn.disabled = true; btn.textContent = '同步中...';
@@ -6250,7 +5987,7 @@
     if (etfState.categoryFilter !== 'all') filtered = filtered.filter(function (e) { return e.category === etfState.categoryFilter; });
     if (etfState.strategyFilter !== 'all') filtered = filtered.filter(function (e) { return e.strategy_type === etfState.strategyFilter; });
 
-    var head = '<table class="data-table"><thead><tr><th>名称</th><th>代码</th><th>分类</th><th>4周相强</th><th>12周相强</th><th>轮动分</th><th>网格收益</th><th>持有收益</th><th>超额</th><th>Qlib共识</th><th>日线结构</th><th>策略类型</th><th>参考步长</th><th>趋势</th></tr></thead><tbody>';
+    var head = '<table class="data-table"><thead><tr><th>名称</th><th>代码</th><th>分类</th><th>4周相强</th><th>12周相强</th><th>轮动分</th><th>网格收益</th><th>持有收益</th><th>超额</th><th>日线结构</th><th>策略类型</th><th>参考步长</th><th>趋势</th></tr></thead><tbody>';
     var body = filtered.map(function (e) {
       var catColor = etfCatColor(e.category);
       var trendColor = e.trend_status === '多头' ? '#ef4444' : (e.trend_status === '空头' ? '#10b981' : '#64748b');
@@ -6258,11 +5995,6 @@
       var setupTone = etfSetupTone(e.setup_state);
       var rotationText = e.rotation_score != null ? etfNum(e.rotation_score, 1) + (e.rotation_bucket === 'leader' ? ' · 前排' : e.rotation_bucket === 'blacklist' ? ' · 回避' : '') : '—';
       var excessColor = e.backtest_excess_pct == null ? '#64748b' : (e.backtest_excess_pct >= 0 ? '#166534' : '#991b1b');
-      var qlibTone = e.qlib_consensus_score == null ? { bg: '#f8fafc', fg: '#64748b' } : Number(e.qlib_consensus_score) >= 70 ? { bg: '#dcfce7', fg: '#166534' } : Number(e.qlib_consensus_score) >= 55 ? { bg: '#dbeafe', fg: '#1d4ed8' } : { bg: '#fef3c7', fg: '#b45309' };
-      var qlibText = e.qlib_consensus_score != null ? etfNum(e.qlib_consensus_score, 1) + (e.qlib_consensus_factor_group ? ' · ' + e.qlib_consensus_factor_group : '') : '暂无';
-      var qlibTitle = e.qlib_consensus_score != null
-        ? '模型状态 ' + (e.qlib_model_status || '-') + '；高置信 ' + fmt(e.qlib_high_conviction_count || 0)
-        : '当前分类暂无可用 Qlib 共识';
       return '<tr style="cursor:pointer" data-etf-code="' + esc(e.code) + '">' +
         '<td style="font-weight:600">' + esc(e.name) + '</td>' +
         '<td>' + xueqiuPillLink(e.code, e.code, true) + '</td>' +
@@ -6273,7 +6005,6 @@
         '<td>' + (e.backtest_return_pct != null ? signedPct(e.backtest_return_pct) : '<span class="muted">-</span>') + '</td>' +
         '<td>' + (e.buy_hold_return_pct != null ? signedPct(e.buy_hold_return_pct) : '<span class="muted">-</span>') + '</td>' +
         '<td style="color:' + excessColor + ';font-weight:700">' + (e.backtest_excess_pct != null ? signedPct(e.backtest_excess_pct) : '<span class="muted">-</span>') + '</td>' +
-        '<td><span title="' + esc(qlibTitle) + '" style="padding:2px 8px;border-radius:999px;background:' + qlibTone.bg + ';color:' + qlibTone.fg + ';font-size:11px;font-weight:700">' + esc(qlibText) + '</span></td>' +
         '<td><span style="padding:2px 8px;border-radius:999px;background:' + setupTone.bg + ';color:' + setupTone.fg + ';font-size:11px;font-weight:600">' + esc(e.setup_state || '-') + '</span></td>' +
         '<td><span style="padding:2px 8px;border-radius:999px;background:' + strategyTone.bg + ';color:' + strategyTone.fg + ';font-size:11px;font-weight:600" title="' + esc(e.strategy_reason || '') + '">' + esc(e.strategy_type || '-') + '</span></td>' +
         '<td>' + (e.grid_step_pct != null ? esc(etfNum(e.grid_step_pct, 1) + '%') : '<span class="muted">-</span>') + '</td>' +
@@ -6293,7 +6024,7 @@
         var analysisRow = document.createElement('tr');
         analysisRow.className = 'etf-analysis-row';
         var td = document.createElement('td');
-        td.colSpan = 14;
+        td.colSpan = 13;
         td.id = 'etfListAnalysisPanel';
         td.style.padding = '0';
         td.style.background = 'var(--bg-subtle)';
@@ -6347,30 +6078,6 @@
       (info.strategy_type ? '<span style="padding:2px 8px;border-radius:var(--radius-pill);background:var(--primary-light);color:var(--primary);font-size:11px;font-weight:600">' + esc(info.strategy_type) + '</span>' : '') +
       (info.setup_state ? '<span style="padding:2px 8px;border-radius:var(--radius-pill);background:var(--line-light);color:var(--text-2);font-size:11px;font-weight:600">' + esc(info.setup_state) + '</span>' : '') +
       '</div>';
-
-    var qlibHtml = '';
-    if (info.qlib_model_status || info.qlib_consensus_score != null) {
-      var qlibTone = info.qlib_consensus_score == null ? { bg: '#f8fafc', fg: '#64748b' } : Number(info.qlib_consensus_score) >= 70 ? { bg: '#dcfce7', fg: '#166534' } : Number(info.qlib_consensus_score) >= 55 ? { bg: '#dbeafe', fg: '#1d4ed8' } : { bg: '#fef3c7', fg: '#b45309' };
-      qlibHtml = '<div style="margin-bottom:14px;padding:12px;border:1px solid var(--line);border-radius:var(--radius);background:linear-gradient(135deg,#f8fafc 0%,#f5f3ff 100%)">' +
-        '<div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-bottom:10px">' +
-        '<div><div style="font-weight:700;font-size:13px">ETF-only Qlib 策略预测</div><div class="muted" style="font-size:11px;margin-top:3px">仅基于 ETF 自身特征预测持有收益、网格收益和最优步长，不再使用股票侧映射。</div></div>' +
-        '<div style="display:flex;gap:6px;flex-wrap:wrap">' +
-        '<span style="padding:2px 8px;border-radius:999px;background:' + qlibTone.bg + ';color:' + qlibTone.fg + ';font-size:11px;font-weight:700">' + esc(info.qlib_consensus_score != null ? ('共识 ' + etfNum(info.qlib_consensus_score, 1)) : '暂无共识') + '</span>' +
-        '<span style="padding:2px 8px;border-radius:999px;background:#e2e8f0;color:#334155;font-size:11px;font-weight:700">模型 ' + esc(info.qlib_model_status || 'none') + '</span>' +
-        (info.qlib_consensus_factor_group ? '<span style="padding:2px 8px;border-radius:999px;background:#ede9fe;color:#6d28d9;font-size:11px;font-weight:700">因子组 ' + esc(info.qlib_consensus_factor_group) + '</span>' : '') +
-        '</div>' +
-        '</div>' +
-        '<div style="display:flex;gap:12px;flex-wrap:wrap">' +
-        ledgerMetric('分类分位', pct(info.qlib_consensus_percentile), '聚合后平均分位') +
-        ledgerMetric('推荐策略', info.qlib_preferred_strategy || '-', 'ETF-only 模型当前偏好') +
-        ledgerMetric('预测持有', info.qlib_predicted_buy_hold_return_pct != null ? signedPct(Number(info.qlib_predicted_buy_hold_return_pct)) : '-', '未来窗口持有收益预测') +
-        ledgerMetric('预测网格', info.qlib_predicted_grid_return_pct != null ? signedPct(Number(info.qlib_predicted_grid_return_pct)) : '-', '未来窗口网格收益预测') +
-        ledgerMetric('预测步长', info.qlib_predicted_best_step_pct != null ? Number(info.qlib_predicted_best_step_pct).toFixed(2) + '%' : '-', 'ETF-only 参数寻优步长') +
-        ledgerMetric('策略优势', info.qlib_strategy_edge_pct != null ? signedPct(Number(info.qlib_strategy_edge_pct)) : '-', '推荐策略相对对照的优势') +
-        ledgerMetric('策略测试', info.qlib_test_top50_avg_return != null ? signedPct(Number(info.qlib_test_top50_avg_return)) : '-', 'ETF-only 测试摘要') +
-        '</div>' +
-        '</div>';
-    }
 
     // --- 2. 核心指标对比卡 ---
     function metricCard(label, gridVal, bhVal, unit, better) {
@@ -6571,7 +6278,7 @@
       '<span style="font-weight:600">深度量化分析</span>' +
       '<button class="chip chip-ghost chip-sm" onclick="document.getElementById(\'' + panelId + '\').innerHTML=\'\'">关闭</button>' +
       '</div>' +
-      headerHtml + issueHtml + qlibHtml + optimizerHtml + comparisonHtml + ledgerHtml + curveHtml + tradeTimelineHtml + stepsHtml + periodHtml + verdictHtml +
+      headerHtml + issueHtml + optimizerHtml + comparisonHtml + ledgerHtml + curveHtml + tradeTimelineHtml + stepsHtml + periodHtml + verdictHtml +
       '</div>';
     scheduleSortableTables(panel);
     panel.scrollIntoView({ behavior: 'smooth', block: 'start' });
@@ -6750,547 +6457,11 @@
       '</svg>';
   }
 
-  // ETF 因子验证页面
-  async function loadEtfFactors(forceRefresh) {
+  // ETF 因子验证页面（已下线）
+  async function loadEtfFactors() {
     var box = el('etfFactorsContainer');
     if (!box) return;
-    box.innerHTML = '<div class="muted" style="padding:40px;text-align:center">加载 ETF 因子验证快照...</div>';
-
-    var path = '/api/etf/qlib-summary';
-    if (forceRefresh) path += '?force_refresh=true';
-    var consensusPath = '/api/etf/qlib-consensus?topk=50';
-    if (forceRefresh) consensusPath += '&force_refresh=true';
-    var responses = await Promise.all([
-      api(path),
-      api(consensusPath)
-    ]);
-    var r = responses[0];
-    var consensusResp = responses[1];
-    if (r?.status !== 'ok' || !r?.data) {
-      box.innerHTML = '<div class="panel" style="padding:20px"><div class="muted">加载失败: ' + esc(r?.message || '未知错误') + '</div></div>';
-      return;
-    }
-    var data = r.data;
-    var model = data.model;
-    var leaders = data.leaders || [];
-    var factorCategories = data.categories || [];
-    var snapshotMeta = r.snapshot || {};
-    var consensus = consensusResp?.status === 'ok' && consensusResp?.data ? consensusResp.data : {};
-    var qlibCategories = consensus.categories || [];
-    var topHoldPredictions = consensus.top_hold_predictions || [];
-    var topGridPredictions = consensus.top_grid_predictions || [];
-    var topStrategyPredictions = consensus.top_strategy_predictions || [];
-
-    // 快照信息
-    var modelHtml = '';
-    if (!model) {
-      modelHtml = '<div class="panel" style="padding:20px"><div class="muted">暂无 ETF 因子快照。请先同步 ETF 数据。</div></div>';
-      box.innerHTML = modelHtml;
-      return;
-    }
-    modelHtml =
-      '<div class="panel" style="margin-bottom:14px">' +
-      '<div class="panel-head"><span style="font-weight:600">ETF 因子验证面板</span></div>' +
-      '<div style="display:flex;gap:16px;flex-wrap:wrap;font-size:12px">' +
-      '<div>快照: <strong>' + esc(model.snapshot_id) + '</strong></div>' +
-      '<div>覆盖ETF: <strong>' + fmt(model.etf_count) + '</strong></div>' +
-      '<div>因子数: <strong>' + fmt(model.factor_count) + '</strong></div>' +
-      '<div>历史区间: <strong>' + esc((model.history_start || '-') + ' ~ ' + (model.history_end || '-')) + '</strong></div>' +
-      '</div>' +
-      '<div class="muted" style="font-size:12px;margin-top:10px;line-height:1.7">最近缓存：' + esc(fmtDateTime(snapshotMeta.computed_at)) + (snapshotMeta.is_stale ? ' · 当前展示的是最近一次缓存结果' : ' · 当前快照与缓存一致') + '</div>' +
-      '<div class="muted" style="font-size:12px;margin-top:10px;line-height:1.7">' + esc(model.basis || '') + '</div>' +
-      '</div>';
-
-    var statusCardHtml = '';
-    var predictionHtml = '';
-    if (consensus.isolation_mode === 'etf_only') {
-      var capabilityRows = (consensus.capability_matrix || []).map(function (item) {
-        var tone = item.status === 'ready'
-          ? { bg: '#dcfce7', fg: '#166534' }
-          : item.status === 'partial'
-            ? { bg: '#dbeafe', fg: '#1d4ed8' }
-            : { bg: '#fef3c7', fg: '#92400e' };
-        return '<tr>' +
-          '<td style="font-weight:600">' + esc(item.label || '-') + '</td>' +
-          '<td><span style="display:inline-flex;align-items:center;padding:2px 8px;border-radius:999px;background:' + tone.bg + ';color:' + tone.fg + ';font-size:10px;font-weight:700">' + esc(item.status_label || item.status || '-') + '</span></td>' +
-          '<td>' + esc(item.detail || '-') + '</td>' +
-          '</tr>';
-      }).join('') || '<tr><td colspan="3" class="muted">暂无状态明细</td></tr>';
-      var roadmapHtml = (consensus.roadmap || []).map(function (item, index) {
-        return '<li style="margin-bottom:6px">' + (index + 1) + '. ' + esc(item) + '</li>';
-      }).join('') || '<li class="muted">暂无迁移计划</li>';
-      var warningHtml = (consensus.warnings || []).map(function (item) {
-        return '<div class="muted" style="font-size:12px;line-height:1.7">' + esc(item) + '</div>';
-      }).join('');
-      var runtimeStatusHtml = '<div style="display:flex;gap:16px;flex-wrap:wrap;font-size:12px;line-height:1.8;margin-bottom:10px">' +
-        '<div>模型状态: <strong>' + esc(consensus.model_status_label || consensus.model_status || '-') + '</strong></div>' +
-        '<div>最近完成: <strong>' + esc(fmtDateTime(consensus.model_finished_at)) + '</strong></div>' +
-        '<div>样本数: <strong>' + fmt(consensus.model_sample_count || 0) + '</strong></div>' +
-        '<div>模型特征: <strong>' + fmt(consensus.model_feature_count || 0) + '</strong></div>' +
-        '<div>预测行数: <strong>' + fmt(consensus.prediction_row_count || consensus.prediction_count || 0) + '</strong></div>' +
-        '</div>' +
-        '<div style="display:flex;gap:16px;flex-wrap:wrap;font-size:12px;line-height:1.8;margin-bottom:10px">' +
-        '<div>特征行数: <strong>' + fmt(consensus.feature_store_row_count || 0) + '</strong></div>' +
-        '<div>标签行数: <strong>' + fmt(consensus.label_store_row_count || 0) + '</strong></div>' +
-        '<div>回测行数: <strong>' + fmt(consensus.backtest_row_count || 0) + '</strong></div>' +
-        '<div>参数寻优: <strong>' + fmt(consensus.param_search_row_count || 0) + '</strong></div>' +
-        '<div>模型覆盖ETF: <strong>' + fmt(consensus.model_etf_count || 0) + '</strong></div>' +
-        '</div>';
-      statusCardHtml = '<div class="panel" style="margin-bottom:14px">' +
-        '<div class="panel-head"><span style="font-weight:600">ETF-only Qlib 迁移状态</span> <span class="muted" style="font-size:11px">已停止股票侧映射</span></div>' +
-        '<div style="font-size:12px;line-height:1.8;margin-bottom:10px;color:#0f172a">' + esc(consensus.message || '') + '</div>' +
-        '<div style="display:flex;gap:16px;flex-wrap:wrap;font-size:12px;line-height:1.8;margin-bottom:10px">' +
-        '<div>隔离模式: <strong>ETF-only</strong></div>' +
-        '<div>状态: <strong>' + esc(consensus.pipeline_status_label || consensus.pipeline_status || '-') + '</strong></div>' +
-        '<div>ETF 覆盖: <strong>' + fmt(consensus.etf_universe_count || 0) + '</strong></div>' +
-        '<div>已建表: <strong>' + fmt(consensus.existing_table_count || 0) + '/' + fmt(consensus.required_table_count || 0) + '</strong></div>' +
-        '</div>' +
-        runtimeStatusHtml +
-        '<div style="margin-bottom:10px;font-size:12px;color:#0f172a"><strong>缺失表：</strong> ' + esc((consensus.missing_tables || []).join('，') || '无') + '</div>' +
-        '<div style="overflow-x:auto;margin-bottom:12px"><table class="data-table" style="font-size:12px"><thead><tr><th>能力</th><th>状态</th><th>说明</th></tr></thead><tbody>' + capabilityRows + '</tbody></table></div>' +
-        '<div style="font-size:12px;color:#0f172a;margin-bottom:6px"><strong>后续阶段</strong></div>' +
-        '<ol style="margin:0 0 12px 18px;padding:0;font-size:12px;line-height:1.7;color:#334155">' + roadmapHtml + '</ol>' +
-        warningHtml +
-        '</div>';
-    }
-
-    if (consensus.available && topStrategyPredictions.length) {
-      function qlibPredictionRows(items) {
-        return items.slice(0, 8).map(function (item, index) {
-          var stratTone = etfStrategyTone(item.preferred_strategy || '买入持有');
-          return '<tr style="cursor:pointer" data-etf-analyze="' + esc(item.code || '') + '">' +
-            '<td>#' + (index + 1) + '</td>' +
-            '<td>' + securityIdentityBlock(item.code, item.name || item.code || '-', { wrapperClass: 'security-identity', includeCodeTag: true, includeXueqiuPill: true }) + '</td>' +
-            '<td>' + (item.predicted_buy_hold_return_pct != null ? signedPct(Number(item.predicted_buy_hold_return_pct)) : '<span class="muted">-</span>') + '</td>' +
-            '<td>' + (item.predicted_grid_return_pct != null ? signedPct(Number(item.predicted_grid_return_pct)) : '<span class="muted">-</span>') + '</td>' +
-            '<td>' + (item.predicted_grid_excess_pct != null ? signedPct(Number(item.predicted_grid_excess_pct)) : '<span class="muted">-</span>') + '</td>' +
-            '<td>' + (item.predicted_best_step_pct != null ? Number(item.predicted_best_step_pct).toFixed(2) + '%' : '-') + '</td>' +
-            '<td><span style="display:inline-flex;align-items:center;padding:2px 8px;border-radius:999px;background:' + stratTone.bg + ';color:' + stratTone.fg + ';font-size:10px;font-weight:700">' + esc(item.preferred_strategy || '-') + '</span></td>' +
-            '<td>' + (item.strategy_edge_pct != null ? signedPct(Number(item.strategy_edge_pct)) : '<span class="muted">-</span>') + '</td>' +
-            '</tr>';
-        }).join('') || '<tr><td colspan="8" class="muted">暂无预测样本</td></tr>';
-      }
-
-      var qlibCategoryRows = qlibCategories.slice(0, 10).map(function (item) {
-        var topEtfs = (item.top_etfs || []).map(function (etf) {
-          var stepText = etf.predicted_best_step_pct != null ? ' · 步长 ' + Number(etf.predicted_best_step_pct).toFixed(2) + '%' : '';
-          return (etf.name || etf.code || '-') + ' · ' + (etf.preferred_strategy || '-') + stepText;
-        }).join('，') || '-';
-        return '<tr>' +
-          '<td style="font-weight:600">' + esc(item.category || '-') + '</td>' +
-          '<td>' + etfNum(item.avg_consensus_score, 2) + '</td>' +
-          '<td>' + (item.avg_hold_return_pct != null ? signedPct(Number(item.avg_hold_return_pct)) : '<span class="muted">-</span>') + '</td>' +
-          '<td>' + (item.avg_grid_return_pct != null ? signedPct(Number(item.avg_grid_return_pct)) : '<span class="muted">-</span>') + '</td>' +
-          '<td>' + (item.avg_strategy_edge_pct != null ? signedPct(Number(item.avg_strategy_edge_pct)) : '<span class="muted">-</span>') + '</td>' +
-          '<td>' + fmt(item.hold_count || 0) + '</td>' +
-          '<td>' + fmt(item.grid_count || 0) + '</td>' +
-          '<td>' + esc(topEtfs) + '</td>' +
-          '</tr>';
-      }).join('') || '<tr><td colspan="8" class="muted">暂无分类预测样本</td></tr>';
-
-      predictionHtml =
-        '<div class="panel" style="margin-bottom:14px">' +
-        '<div class="panel-head"><span style="font-weight:600">ETF-only Qlib 预测验证</span> <span class="muted" style="font-size:11px">仅使用 ETF 自身数据</span></div>' +
-        '<div style="display:flex;gap:16px;flex-wrap:wrap;font-size:12px;line-height:1.8;margin-bottom:10px">' +
-        '<div>模型: <strong>' + esc(consensus.model_id || '-') + '</strong></div>' +
-        '<div>状态: <strong>' + esc(consensus.model_status || '-') + '</strong></div>' +
-        '<div>信号日期: <strong>' + esc(fmtDate(consensus.signal_date)) + '</strong></div>' +
-        '<div>预测覆盖: <strong>' + fmt(consensus.prediction_count || 0) + '</strong></div>' +
-        '<div>样本数: <strong>' + fmt(consensus.sample_count || 0) + '</strong></div>' +
-        '<div>特征数: <strong>' + fmt(consensus.feature_count || 0) + '</strong></div>' +
-        '</div>' +
-        '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin-bottom:12px">' +
-        '<div class="stat-card" style="padding:12px 14px;margin-bottom:0"><div class="muted" style="font-size:11px">持有 IC</div><div style="font-size:18px;font-weight:700;margin-top:6px">' + etfNum(consensus.hold_ic_mean, 4) + '</div></div>' +
-        '<div class="stat-card" style="padding:12px 14px;margin-bottom:0"><div class="muted" style="font-size:11px">网格 IC</div><div style="font-size:18px;font-weight:700;margin-top:6px">' + etfNum(consensus.grid_ic_mean, 4) + '</div></div>' +
-        '<div class="stat-card" style="padding:12px 14px;margin-bottom:0"><div class="muted" style="font-size:11px">超额 IC</div><div style="font-size:18px;font-weight:700;margin-top:6px">' + etfNum(consensus.excess_ic_mean, 4) + '</div></div>' +
-        '<div class="stat-card" style="padding:12px 14px;margin-bottom:0"><div class="muted" style="font-size:11px">步长 MAE</div><div style="font-size:18px;font-weight:700;margin-top:6px">' + etfNum(consensus.step_mae, 4) + '</div></div>' +
-        '<div class="stat-card" style="padding:12px 14px;margin-bottom:0"><div class="muted" style="font-size:11px">策略准确率</div><div style="font-size:18px;font-weight:700;margin-top:6px">' + pct(consensus.strategy_accuracy != null ? Number(consensus.strategy_accuracy) * 100 : null) + '</div></div>' +
-        '<div class="stat-card" style="padding:12px 14px;margin-bottom:0"><div class="muted" style="font-size:11px">Top20策略收益</div><div style="font-size:18px;font-weight:700;margin-top:6px">' + (consensus.test_top20_strategy_return != null ? signedPct(Number(consensus.test_top20_strategy_return)) : '-') + '</div></div>' +
-        '</div>' +
-        '<div style="overflow-x:auto;margin-bottom:12px"><table class="data-table" style="font-size:12px"><thead><tr><th>排名</th><th>ETF</th><th>持有预测</th><th>网格预测</th><th>网格超额</th><th>预测步长</th><th>推荐策略</th><th>优势</th></tr></thead><tbody>' + qlibPredictionRows(topStrategyPredictions) + '</tbody></table></div>' +
-        '<div class="finance-module-grid" style="margin-bottom:12px">' +
-        '<div class="finance-module-card"><div style="font-weight:700;font-size:12px;margin-bottom:8px">持有收益 Top 8</div><div style="overflow-x:auto"><table class="data-table" style="font-size:11px;margin-bottom:0"><thead><tr><th>排名</th><th>ETF</th><th>持有预测</th><th>网格预测</th><th>策略</th></tr></thead><tbody>' + topHoldPredictions.slice(0, 8).map(function (item, index) { return '<tr style="cursor:pointer" data-etf-analyze="' + esc(item.code || '') + '"><td>#' + (index + 1) + '</td><td>' + esc(item.name || item.code || '-') + '</td><td>' + (item.predicted_buy_hold_return_pct != null ? signedPct(Number(item.predicted_buy_hold_return_pct)) : '<span class="muted">-</span>') + '</td><td>' + (item.predicted_grid_return_pct != null ? signedPct(Number(item.predicted_grid_return_pct)) : '<span class="muted">-</span>') + '</td><td>' + esc(item.preferred_strategy || '-') + '</td></tr>'; }).join('') + '</tbody></table></div></div>' +
-        '<div class="finance-module-card"><div style="font-weight:700;font-size:12px;margin-bottom:8px">网格收益 Top 8</div><div style="overflow-x:auto"><table class="data-table" style="font-size:11px;margin-bottom:0"><thead><tr><th>排名</th><th>ETF</th><th>网格预测</th><th>步长</th><th>策略优势</th></tr></thead><tbody>' + topGridPredictions.slice(0, 8).map(function (item, index) { return '<tr style="cursor:pointer" data-etf-analyze="' + esc(item.code || '') + '"><td>#' + (index + 1) + '</td><td>' + esc(item.name || item.code || '-') + '</td><td>' + (item.predicted_grid_return_pct != null ? signedPct(Number(item.predicted_grid_return_pct)) : '<span class="muted">-</span>') + '</td><td>' + (item.predicted_best_step_pct != null ? Number(item.predicted_best_step_pct).toFixed(2) + '%' : '-') + '</td><td>' + (item.strategy_edge_pct != null ? signedPct(Number(item.strategy_edge_pct)) : '<span class="muted">-</span>') + '</td></tr>'; }).join('') + '</tbody></table></div></div>' +
-        '</div>' +
-        '<div style="overflow-x:auto"><table class="data-table" style="font-size:12px"><thead><tr><th>分类</th><th>平均共识</th><th>平均持有预测</th><th>平均网格预测</th><th>平均优势</th><th>持有数</th><th>网格数</th><th>代表 ETF</th></tr></thead><tbody>' + qlibCategoryRows + '</tbody></table></div>' +
-        '</div>';
-    }
-
-    var leaderHtml = '';
-    if (leaders.length) {
-      leaderHtml = '<div class="panel" style="margin-bottom:14px">' +
-        '<div class="panel-head"><span style="font-weight:600">ETF 因子领先名单</span> <span class="muted" style="font-size:11px">按因子分降序</span></div>' +
-        '<div style="overflow-x:auto"><table class="data-table" style="font-size:12px"><thead><tr>' +
-        '<th>排名</th><th>ETF</th><th>分类</th><th>因子分</th><th>4周相强</th><th>12周相强</th><th>轮动分</th><th>策略</th><th>网格超额</th>' +
-        '</tr></thead><tbody>';
-      leaders.forEach(function (item) {
-        var nameHtml = item.code
-          ? securityIdentityBlock(item.code, item.name || item.code, { wrapperClass: 'security-identity', includeCodeTag: true, includeXueqiuPill: true })
-          : esc(item.name || '-');
-        var stratTone = etfStrategyTone(item.strategy_type);
-        leaderHtml += '<tr style="cursor:pointer" data-etf-analyze="' + esc(item.code || '') + '">' +
-          '<td>#' + esc(fmt(item.factor_rank || '-')) + '</td>' +
-          '<td>' + nameHtml + '</td>' +
-          '<td>' + esc(item.category || '-') + '</td>' +
-          '<td style="font-weight:700">' + etfNum(item.factor_score, 1) + '</td>' +
-          '<td>' + etfPctCell(item.relative_strength_4w, false) + '</td>' +
-          '<td>' + etfPctCell(item.relative_strength_12w, false) + '</td>' +
-          '<td>' + (item.rotation_score != null ? item.rotation_score.toFixed(1) : '-') + '</td>' +
-          '<td><span style="padding:2px 8px;border-radius:999px;background:' + stratTone.bg + ';color:' + stratTone.fg + ';font-size:10px;font-weight:600" title="' + esc(item.strategy_reason || '') + '">' + esc(item.strategy_type || '-') + '</span></td>' +
-          '<td>' + (item.backtest_excess_pct != null ? signedPct(item.backtest_excess_pct) : '<span class="muted">-</span>') + '</td>' +
-          '</tr>';
-      });
-      leaderHtml += '</tbody></table></div></div>';
-    }
-
-    var categoryHtml = '';
-    if (factorCategories.length) {
-      categoryHtml = '<div class="panel">' +
-        '<div class="panel-head"><span style="font-weight:600">类别轮动与因子概览</span> <span class="muted" style="font-size:11px">按预轮动分降序</span></div>' +
-        '<div style="overflow-x:auto"><table class="data-table" style="font-size:12px"><thead><tr>' +
-        '<th>类别</th><th>预轮动分</th><th>平均因子分</th><th>平均轮动分</th><th>前排ETF数</th><th>买入持有</th><th>网格交易</th><th>代表ETF</th>' +
-        '</tr></thead><tbody>';
-      factorCategories.forEach(function (item) {
-        var topEtfs = (item.top_etfs || []).map(function (etf) {
-          return esc((etf.name || etf.code || '-') + ' ' + etfNum(etf.factor_score, 1));
-        }).join('，') || '-';
-        categoryHtml += '<tr style="cursor:pointer" data-etf-category="' + esc(item.category || '') + '">' +
-          '<td style="font-weight:600">' + esc(item.category || '-') + '</td>' +
-          '<td>' + etfNum(item.next_rotation_score, 1) + '</td>' +
-          '<td>' + etfNum(item.avg_factor_score, 1) + '</td>' +
-          '<td>' + (item.avg_rotation_score != null ? item.avg_rotation_score.toFixed(1) : '-') + '</td>' +
-          '<td>' + fmt(item.leader_etf_count || 0) + '</td>' +
-          '<td>' + fmt(item.buy_hold_count || 0) + '</td>' +
-          '<td>' + fmt(item.grid_count || 0) + '</td>' +
-          '<td>' + topEtfs + '</td>' +
-          '</tr>';
-      });
-      categoryHtml += '</tbody></table></div></div>';
-    }
-
-    box.innerHTML = modelHtml + statusCardHtml + predictionHtml + leaderHtml + categoryHtml;
-    bindEtfActionLinks(box, 'etfFactorsDeepPanel');
-    scheduleSortableTables(box);
-  }
-
-  // ============================================================
-  // Qlib AI Tab
-  // ============================================================
-  async function loadQlibDefaultParams(forceRefresh) {
-    if (_qlibDefaultParamsPromise && !forceRefresh) return _qlibDefaultParamsPromise;
-    _qlibDefaultParamsPromise = (async function () {
-      var response = await api('/api/qlib/date-range');
-      var data = response && response.ok ? response.data : null;
-      if (data) {
-        QLIB_DEFAULT_PARAMS.train_start = data.train_start || QLIB_DEFAULT_PARAMS.train_start;
-        QLIB_DEFAULT_PARAMS.train_end = data.train_end || QLIB_DEFAULT_PARAMS.train_end;
-        QLIB_DEFAULT_PARAMS.valid_start = data.valid_start || QLIB_DEFAULT_PARAMS.valid_start;
-        QLIB_DEFAULT_PARAMS.valid_end = data.valid_end || QLIB_DEFAULT_PARAMS.valid_end;
-        QLIB_DEFAULT_PARAMS.test_start = data.test_start || QLIB_DEFAULT_PARAMS.test_start;
-        QLIB_DEFAULT_PARAMS.test_end = data.test_end || QLIB_DEFAULT_PARAMS.test_end;
-      }
-      return Object.assign({}, QLIB_DEFAULT_PARAMS);
-    })();
-    return _qlibDefaultParamsPromise;
-  }
-
-  function normalizeQlibModelParams(params) {
-    if (!params) return Object.assign({}, QLIB_DEFAULT_PARAMS);
-    var normalized = Object.assign({}, QLIB_DEFAULT_PARAMS, params);
-    ['use_quality', 'use_stage'].forEach(function (key) {
-      if (!Object.prototype.hasOwnProperty.call(params, key)) normalized[key] = false;
-    });
-    return normalized;
-  }
-
-  function normalizeQlibFormParams(params) {
-    if (!params) return Object.assign({}, QLIB_DEFAULT_PARAMS);
-    return Object.assign({}, QLIB_DEFAULT_PARAMS, params);
-  }
-
-  function setQlibForm(params) {
-    var cfg = normalizeQlibFormParams(params);
-    el('qlibTrainStart').value = cfg.train_start || QLIB_DEFAULT_PARAMS.train_start;
-    el('qlibTrainEnd').value = cfg.train_end || QLIB_DEFAULT_PARAMS.train_end;
-    el('qlibValidEnd').value = cfg.valid_end || QLIB_DEFAULT_PARAMS.valid_end;
-    el('qlibTestEnd').value = cfg.test_end || QLIB_DEFAULT_PARAMS.test_end;
-    el('qlibSampleLimit').value = cfg.sample_stock_limit != null ? cfg.sample_stock_limit : QLIB_DEFAULT_PARAMS.sample_stock_limit;
-    el('qlibBoostRounds').value = cfg.num_boost_round != null ? cfg.num_boost_round : QLIB_DEFAULT_PARAMS.num_boost_round;
-    el('qlibEarlyStop').value = cfg.early_stopping_rounds != null ? cfg.early_stopping_rounds : QLIB_DEFAULT_PARAMS.early_stopping_rounds;
-    el('qlibLeaves').value = cfg.num_leaves != null ? cfg.num_leaves : QLIB_DEFAULT_PARAMS.num_leaves;
-    el('qlibLearningRate').value = cfg.learning_rate != null ? cfg.learning_rate : QLIB_DEFAULT_PARAMS.learning_rate;
-    el('qlibSubsample').value = cfg.subsample != null ? cfg.subsample : QLIB_DEFAULT_PARAMS.subsample;
-    el('qlibColsample').value = cfg.colsample_bytree != null ? cfg.colsample_bytree : QLIB_DEFAULT_PARAMS.colsample_bytree;
-    el('qlibUseAlpha158').checked = cfg.use_alpha158 !== false;
-    el('qlibUseFinancial').checked = cfg.use_financial !== false;
-    el('qlibUseInstitution').checked = cfg.use_institution !== false;
-    el('qlibUseTurtle').checked = cfg.use_turtle !== false;
-    el('qlibUseQuality').checked = cfg.use_quality !== false;
-    el('qlibUseStage').checked = cfg.use_stage !== false;
-    var behEl = el('qlibUseBehavior');
-    if (behEl) behEl.checked = !!cfg.use_behavior;
-    var supEl = el('qlibUseSupply');
-    if (supEl) supEl.checked = !!cfg.use_supply;
-  }
-
-  function getQlibTrainParams() {
-    return {
-      train_start: el('qlibTrainStart')?.value || QLIB_DEFAULT_PARAMS.train_start,
-      train_end: el('qlibTrainEnd')?.value || QLIB_DEFAULT_PARAMS.train_end,
-      valid_end: el('qlibValidEnd')?.value || QLIB_DEFAULT_PARAMS.valid_end,
-      test_end: el('qlibTestEnd')?.value || QLIB_DEFAULT_PARAMS.test_end,
-      sample_stock_limit: Number(el('qlibSampleLimit')?.value || QLIB_DEFAULT_PARAMS.sample_stock_limit),
-      num_boost_round: Number(el('qlibBoostRounds')?.value || QLIB_DEFAULT_PARAMS.num_boost_round),
-      early_stopping_rounds: Number(el('qlibEarlyStop')?.value || QLIB_DEFAULT_PARAMS.early_stopping_rounds),
-      num_leaves: Number(el('qlibLeaves')?.value || QLIB_DEFAULT_PARAMS.num_leaves),
-      learning_rate: Number(el('qlibLearningRate')?.value || QLIB_DEFAULT_PARAMS.learning_rate),
-      subsample: Number(el('qlibSubsample')?.value || QLIB_DEFAULT_PARAMS.subsample),
-      colsample_bytree: Number(el('qlibColsample')?.value || QLIB_DEFAULT_PARAMS.colsample_bytree),
-      use_alpha158: !!el('qlibUseAlpha158')?.checked,
-      use_financial: !!el('qlibUseFinancial')?.checked,
-      use_institution: !!el('qlibUseInstitution')?.checked,
-      use_turtle: !!el('qlibUseTurtle')?.checked,
-      use_quality: !!el('qlibUseQuality')?.checked,
-      use_stage: !!el('qlibUseStage')?.checked,
-      use_behavior: !!el('qlibUseBehavior')?.checked,
-      use_supply: !!el('qlibUseSupply')?.checked
-    };
-  }
-
-  function qlibWindowText(model) {
-    if (!model) return '-';
-    var start = fmtDate(model.train_start);
-    var end = fmtDate(model.test_end || model.train_end);
-    if (start === '-' || end === '-') return '-';
-    return start + ' ~ ' + end;
-  }
-
-  function qlibParamSummaryText(params) {
-    if (!params) return '当前使用默认训练参数。';
-    var toggles = [];
-    var sampleLimit = Number(params.sample_stock_limit || 0);
-    if (params.use_alpha158) toggles.push('Alpha158');
-    else toggles.push('轻量OHLCV');
-    if (params.use_financial) toggles.push('财务因子');
-    if (params.use_institution) toggles.push('机构因子');
-    if (params.use_turtle) toggles.push('海龟因子');
-    if (params.use_quality) toggles.push('质量因子');
-    if (params.use_stage) toggles.push('阶段因子');
-    return [
-      sampleLimit > 0 ? ('样本上限 ' + sampleLimit) : '样本 全量',
-      '轮数 ' + params.num_boost_round,
-      '早停 ' + params.early_stopping_rounds,
-      '叶子 ' + params.num_leaves,
-      '学习率 ' + params.learning_rate,
-      toggles.length ? ('特征 ' + toggles.join(' + ')) : '特征 全关'
-    ].join(' · ');
-  }
-
-  function qlibCoverageHint(model, params) {
-    var sampleLimit = Number((params && params.sample_stock_limit) || 0);
-    var stockCount = Number((model && model.stock_count) || 0);
-    if (sampleLimit > 0) {
-      return '当前模型启用了样本上限 ' + sampleLimit + '，实际仅覆盖 ' + fmt(stockCount) + ' 只股票；如需全量覆盖，请将样本上限设为 0 后重新训练。';
-    }
-    return '';
-  }
-
-  async function resetQlibParams() {
-    await loadQlibDefaultParams(true);
-    setQlibForm(QLIB_DEFAULT_PARAMS);
-    el('qlibParamSummary').textContent = qlibParamSummaryText(QLIB_DEFAULT_PARAMS);
-  }
-
-  async function startQlibTrain() {
-    var btn = el('btnQlibTrain');
-    if (!btn) return;
-    await loadQlibDefaultParams();
-    var params = getQlibTrainParams();
-    btn.disabled = true;
-    btn.textContent = '训练中...';
-    el('qlibTrainMsg').textContent = '正在提交训练任务，Qlib 结果会同步到股票研究列表。';
-    el('qlibParamSummary').textContent = qlibParamSummaryText(params);
-    var r = await api('/api/qlib/train', { method: 'POST', body: JSON.stringify(params) });
-    if (!r?.ok) {
-      btn.disabled = false;
-      btn.textContent = '重新计算评分';
-      el('qlibTrainMsg').textContent = r?.message || '启动失败';
-      return;
-    }
-    el('qlibTrainMsg').textContent = r.message || '训练任务已启动';
-    var poll = setInterval(async function () {
-      var s = await api('/api/qlib/status');
-      if (s && !s.training) {
-        clearInterval(poll);
-        clearStockResearchCaches();
-        loadQlib();
-      }
-    }, 5000);
-  }
-
-  async function loadQlib() {
-    await loadQlibDefaultParams();
-    var status = await api('/api/qlib/status');
-    if (!status) return;
-    el('qlibStatStatus').style.color = '';
-    var model = status.model || null;
-    var params = null;
-    var formParams = null;
-    if (model && model.train_params_json) {
-      try {
-        var parsedParams = JSON.parse(model.train_params_json);
-        params = normalizeQlibModelParams(parsedParams);
-        formParams = normalizeQlibFormParams(parsedParams);
-      } catch (e) {
-        params = null;
-        formParams = null;
-      }
-    }
-    setQlibForm(formParams || QLIB_DEFAULT_PARAMS);
-    el('qlibParamSummary').textContent = qlibParamSummaryText(params || QLIB_DEFAULT_PARAMS);
-
-    // 依赖检查
-    if (!status.available) {
-      el('qlibStatStatus').textContent = '不可用';
-      el('qlibStatFinished').textContent = '-';
-      el('qlibStatStocks').textContent = '-';
-      el('qlibStatFactors').textContent = '-';
-      el('qlibStatWindow').textContent = '-';
-      el('qlibTrainMsg').innerHTML = '<span style="color:#ef4444">依赖未安装: ' + esc(status.dependency_error || '') + '</span><br>请运行: pip3 install lightgbm scikit-learn';
-      el('btnQlibTrain').disabled = true;
-      el('btnQlibTrain').textContent = '重新计算评分';
-      el('qlibFactorChart').innerHTML = '<div class="muted">Qlib 依赖不可用</div>';
-      return;
-    }
-
-    if (status.training) {
-      el('qlibStatStatus').textContent = '训练中...';
-      el('qlibStatFinished').textContent = fmtDate(model?.finished_at);
-      el('qlibStatStocks').textContent = fmt(model?.stock_count || 0);
-      el('qlibStatFactors').textContent = fmt(model?.factor_count || 0);
-      el('qlibStatWindow').textContent = qlibWindowText(model);
-      el('btnQlibTrain').disabled = true;
-      el('btnQlibTrain').textContent = '训练中...';
-      el('qlibTrainMsg').textContent = '模型训练中，完成后会自动刷新最新因子和股票研究列表。';
-      setTimeout(loadQlib, 5000);
-      return;
-    }
-
-    if (!model || model.status !== 'trained') {
-      el('qlibStatStatus').textContent = model?.status === 'failed' ? '失败' : '未训练';
-      el('qlibStatFinished').textContent = fmtDate(model?.finished_at);
-      el('qlibStatStocks').textContent = fmt(model?.stock_count || 0);
-      el('qlibStatFactors').textContent = fmt(model?.factor_count || 0);
-      el('qlibStatWindow').textContent = qlibWindowText(model);
-      var failedBacktestHint = qlibBacktestRuntimeNote(model);
-      el('qlibTrainMsg').textContent = (status.train_error || model?.error || '调整参数后点击“重新计算评分”，训练完成后会回写到股票研究列表。') + (failedBacktestHint ? ' · ' + failedBacktestHint : '');
-      el('btnQlibTrain').disabled = false;
-      el('btnQlibTrain').textContent = '重新计算评分';
-      el('qlibFactorChart').innerHTML = '<div class="muted">暂无因子数据</div>';
-      return;
-    }
-
-    // 已训练
-    el('qlibStatStatus').textContent = '已训练';
-    el('qlibStatStatus').style.color = '#10b981';
-    el('qlibStatFinished').textContent = fmtDate(model.finished_at);
-    el('qlibStatStocks').textContent = fmt(model.stock_count || 0);
-    el('qlibStatFactors').textContent = fmt(model.factor_count || 0);
-    el('qlibStatWindow').textContent = qlibWindowText(model);
-    var coverageHint = qlibCoverageHint(model, params || QLIB_DEFAULT_PARAMS);
-    var backtestHint = qlibBacktestRuntimeNote(model);
-    var trainErrorHint = status.train_error ? (' · 最近一次训练失败: ' + status.train_error) : '';
-    el('qlibTrainMsg').textContent = '模型ID: ' + (model.model_id || '-') + ' · 训练完成后已同步最新 Qlib 排名到股票研究列表。' + (coverageHint ? ' · ' + coverageHint : '') + (backtestHint ? ' · ' + backtestHint : '') + trainErrorHint;
-    el('btnQlibTrain').disabled = false;
-    el('btnQlibTrain').textContent = '重新计算评分';
-
-    var factors = await api('/api/qlib/factors');
-    if (factors?.data) renderQlibFactorChart(factors.data, params || QLIB_DEFAULT_PARAMS);
-    else el('qlibFactorChart').innerHTML = '<div class="muted">暂无因子数据</div>';
-  }
-
-  function renderQlibFactorChart(factors, params) {
-    var top = factors.slice(0, 20);
-    if (!top.length) { el('qlibFactorChart').innerHTML = '<div class="muted">无因子数据</div>'; return; }
-    var maxImp = Math.max.apply(null, top.map(function (f) { return f.importance || 0 }));
-    if (maxImp <= 0) maxImp = 1;
-    var barH = 18, gap = 4, pad = 120, w = 400, h = top.length * (barH + gap) + 10;
-    var groupMeta = {
-      alpha158: { label: 'Alpha158', color: '#3b82f6' },
-      financial: { label: '财务因子', color: '#f59e0b' },
-      institution: { label: '机构因子', color: '#10b981' },
-      turtle: { label: '海龟因子', color: '#ef4444' },
-      quality: { label: '质量因子', color: '#14b8a6' },
-      stage: { label: '阶段因子', color: '#f97316' },
-      behavior: { label: '行为因子', color: '#0ea5e9' },
-      supply: { label: '供给因子', color: '#a855f7' }
-    };
-    var groupTotals = {};
-    var totalImportance = 0;
-    factors.forEach(function (f) {
-      var group = f.factor_group || 'alpha158';
-      var importance = Number(f.importance || 0);
-      if (!groupTotals[group]) groupTotals[group] = { total: 0, count: 0 };
-      groupTotals[group].total += importance;
-      groupTotals[group].count += 1;
-      totalImportance += importance;
-    });
-    var groups = Object.keys(groupTotals).map(function (group) {
-      var meta = groupMeta[group] || { label: group, color: '#64748b' };
-      return {
-        key: group,
-        label: meta.label,
-        color: meta.color,
-        total: groupTotals[group].total,
-        count: groupTotals[group].count,
-        share: totalImportance > 0 ? groupTotals[group].total / totalImportance * 100 : 0,
-      };
-    }).sort(function (a, b) { return b.total - a.total; });
-    var enabledGroups = [
-      params?.use_alpha158 !== false ? 'alpha158' : null,
-      params?.use_financial ? 'financial' : null,
-      params?.use_institution ? 'institution' : null,
-      params?.use_turtle ? 'turtle' : null,
-      params?.use_quality ? 'quality' : null,
-      params?.use_stage ? 'stage' : null,
-      params?.use_behavior ? 'behavior' : null,
-      params?.use_supply ? 'supply' : null,
-    ].filter(Boolean);
-    var missingEnabled = enabledGroups.filter(function (group) {
-      return !groupTotals[group];
-    }).map(function (group) {
-      return (groupMeta[group] || { label: group }).label;
-    });
-    var summaryNotes = [];
-    if (groups.length === 1) summaryNotes.push('当前最新模型的重要性仍集中在 ' + groups[0].label + '。');
-    if (missingEnabled.length) summaryNotes.push('已启用但未进入重要性表：' + missingEnabled.join('、') + '。');
-    var summaryCards = groups.map(function (group) {
-      return '<div class="score-rule-card" style="padding:12px">' +
-        '<div class="score-rule-title" style="display:flex;align-items:center;gap:8px">' +
-        '<span style="display:inline-block;width:10px;height:10px;border-radius:999px;background:' + group.color + '"></span>' + esc(group.label) + '</div>' +
-        '<div style="font-size:22px;font-weight:700;color:#0f172a;margin:6px 0 2px">' + fmtScore(group.share) + '%</div>' +
-        '<div class="muted" style="font-size:12px">总重要性 ' + fmtScore(group.total) + ' · 因子数 ' + fmt(group.count) + '</div>' +
-        '</div>';
-    }).join('');
-    var bars = top.map(function (f, i) {
-      var y = i * (barH + gap) + 5;
-      var barW = Math.max(2, (f.importance || 0) / maxImp * (w - pad - 20));
-      var color = (groupMeta[f.factor_group] || groupMeta.alpha158).color;
-      var label = (f.factor_name || '').replace('inst_', '机构_');
-      return '<text x="' + (pad - 4) + '" y="' + (y + barH - 4) + '" text-anchor="end" font-size="10" fill="#475569">' + esc(label) + '</text>' +
-        '<rect x="' + pad + '" y="' + y + '" width="' + barW + '" height="' + barH + '" rx="3" fill="' + color + '" opacity="0.8"/>' +
-        '<text x="' + (pad + barW + 4) + '" y="' + (y + barH - 4) + '" font-size="9" fill="#94a3b8">' + Number(f.importance).toFixed(0) + '</text>';
-    }).join('');
-    var legend = Object.keys(groupMeta).map(function (group) {
-      var meta = groupMeta[group];
-      return '<span style="display:inline-block;width:10px;height:10px;background:' + meta.color + ';border-radius:2px;margin-right:4px"></span><span style="font-size:11px;color:#64748b;margin-right:12px">' + meta.label + '</span>';
-    }).join('');
-    el('qlibFactorChart').innerHTML =
-      '<div class="score-rule-grid" style="margin-bottom:10px">' + summaryCards + '</div>' +
-      (summaryNotes.length ? '<div style="margin-bottom:8px;padding:10px 12px;border-radius:10px;background:#f8fafc;border:1px solid #e2e8f0;font-size:12px;color:#475569;line-height:1.6">' + esc(summaryNotes.join(' ')) + '</div>' : '') +
-      '<div style="margin-bottom:6px">' + legend + '</div>' +
-      '<div style="font-size:12px;font-weight:600;color:#0f172a;margin-bottom:6px">Top 20 因子</div>' +
-      '<svg viewBox="0 0 ' + w + ' ' + h + '" style="width:100%;height:' + h + 'px">' + bars + '</svg>';
+    box.innerHTML = '<div class="panel" style="padding:20px"><div class="muted" style="padding:20px;text-align:center">ETF 因子验证功能已下线。</div></div>';
   }
 
   // ============================================================
