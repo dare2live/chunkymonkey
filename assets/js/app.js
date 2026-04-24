@@ -109,7 +109,8 @@
       });
     }
     // C6g: stocks 为主入口，signals-v2 tab 下线
-    ({ stocks: loadStocks, dashboard: loadWorkbench, research: loadResearch, etf: loadEtf })[name]?.();
+    ({ stocks: loadStocks, dashboard: loadWorkbench, research: loadResearch, etf: loadEtf,
+       'model-monitor': loadModelMonitor })[name]?.();
   }
 
   function showEtfTab(tabName) {
@@ -7319,6 +7320,202 @@
       if (polls > 120) { clearInterval(timer); btn.disabled = false; btn.textContent = '救生艇'; }
     }, 3000);
   }
+
+  // ============================================================
+  // 模型监控页面 (Phase 5)
+  // ============================================================
+
+  var modelMonitorState = { modelId: null, regime: '' };
+
+  async function loadModelMonitor() {
+    if (modelMonitorState._bound) {
+      // already bound; just refresh
+      return renderModelMonitor();
+    }
+    modelMonitorState._bound = true;
+    var sel = el('mm-model-select'), regSel = el('mm-regime-select'), btn = el('mm-refresh');
+    if (sel) sel.addEventListener('change', function () { modelMonitorState.modelId = sel.value; renderModelMonitor(); });
+    if (regSel) regSel.addEventListener('change', function () { modelMonitorState.regime = regSel.value; renderTopK(); });
+    if (btn) btn.addEventListener('click', renderModelMonitor);
+
+    // load model history to fill dropdown
+    try {
+      var res = await api('/api/rec/model-history?limit=20');
+      if (res && res.ok) {
+        sel.innerHTML = (res.items || []).map(function (m) {
+          var ic = m.holdout_ic == null ? '-' : m.holdout_ic.toFixed(3);
+          var ric = m.holdout_rank_ic == null ? '-' : m.holdout_rank_ic.toFixed(3);
+          return '<option value="' + m.model_id + '">' + m.model_id + '  IC ' + ic + ' / RankIC ' + ric + '</option>';
+        }).join('');
+        if (res.items && res.items[0]) modelMonitorState.modelId = res.items[0].model_id;
+      }
+    } catch (e) {
+      sel.innerHTML = '<option value="">(加载失败)</option>';
+    }
+    renderModelMonitor();
+  }
+
+  async function renderModelMonitor() {
+    await Promise.all([renderMetricsCards(), renderDailyChart(), renderRegimeChart(), renderFeatureImportance(), renderTopK()]);
+  }
+
+  async function renderMetricsCards() {
+    var box = el('mm-metrics'); if (!box) return;
+    var mid = modelMonitorState.modelId;
+    if (!mid) { box.innerHTML = '<div class="muted" style="padding:20px">无已训练模型</div>'; return; }
+    try {
+      var res = await api('/api/rec/model-performance?model_id=' + encodeURIComponent(mid));
+      if (!res || !res.ok) { box.innerHTML = '<div class="muted">' + (res && res.message || 'load err') + '</div>'; return; }
+      var m = res.meta || {};
+      function fmt(v, d) { return v == null ? '-' : Number(v).toFixed(d == null ? 3 : d); }
+      function pct(v) { return v == null ? '-' : (Number(v) * 100).toFixed(2) + '%'; }
+      var icGood = (m.holdout_ic || 0) > 0.03;
+      var rkGood = (m.holdout_rank_ic || 0) > 0.05;
+      var wrGood = (m.holdout_winrate_top || 0) > 0.55;
+      function chip(pass) {
+        return '<div class="wb-card-chip" style="background:' + (pass ? '#dcfce7' : '#fee2e2') + ';color:' + (pass ? '#166534' : '#991b1b') + '">' + (pass ? '✓ 过' : '✗ 未过') + '</div>';
+      }
+      box.innerHTML =
+        '<div class="wb-card"><div class="wb-card-label">Holdout IC</div><div class="wb-card-value">' + fmt(m.holdout_ic, 3) + '</div><div class="wb-card-sub">门槛 > 0.03</div>' + chip(icGood) + '</div>' +
+        '<div class="wb-card"><div class="wb-card-label">Holdout RankIC</div><div class="wb-card-value">' + fmt(m.holdout_rank_ic, 3) + '</div><div class="wb-card-sub">门槛 > 0.05</div>' + chip(rkGood) + '</div>' +
+        '<div class="wb-card"><div class="wb-card-label">Top decile 20d avg</div><div class="wb-card-value">' + pct(m.holdout_top_decile_avg) + '</div><div class="wb-card-sub">L-S spread ' + pct(m.holdout_long_short_spread) + '</div></div>' +
+        '<div class="wb-card"><div class="wb-card-label">Top decile WR</div><div class="wb-card-value">' + pct(m.holdout_winrate_top) + '</div><div class="wb-card-sub">门槛 > 55%</div>' + chip(wrGood) + '</div>' +
+        '<div class="wb-card"><div class="wb-card-label">特征数</div><div class="wb-card-value">' + (m.n_features || '-') + '</div><div class="wb-card-sub">' + (m.created_at ? m.created_at.slice(0, 19) : '-') + '</div></div>';
+    } catch (e) {
+      box.innerHTML = '<div class="muted">error: ' + e.message + '</div>';
+    }
+  }
+
+  function svgLine(series, w, h, pad) {
+    pad = pad || 30;
+    if (!series.length) return '<text x="' + (w / 2) + '" y="' + (h / 2) + '" text-anchor="middle" fill="#94a3b8" font-size="12">无数据</text>';
+    var vals = series.map(function (d) { return d.v; }).filter(function (v) { return v != null && !isNaN(v); });
+    if (!vals.length) return '<text x="' + (w / 2) + '" y="' + (h / 2) + '" text-anchor="middle" fill="#94a3b8" font-size="12">无数值</text>';
+    var minV = Math.min.apply(null, vals), maxV = Math.max.apply(null, vals);
+    var range = maxV - minV || 0.01;
+    var W = w - pad * 2, H = h - pad * 2;
+    var pts = series.map(function (d, i) {
+      var x = pad + (series.length === 1 ? W / 2 : i / (series.length - 1) * W);
+      var y = pad + H - (d.v == null || isNaN(d.v) ? 0 : (d.v - minV) / range * H);
+      return x.toFixed(1) + ',' + y.toFixed(1);
+    }).join(' ');
+    var zeroY = pad + H - (0 - minV) / range * H;
+    var zeroLine = minV < 0 && maxV > 0 ? '<line x1="' + pad + '" x2="' + (w - pad) + '" y1="' + zeroY + '" y2="' + zeroY + '" stroke="#e2e8f0" stroke-dasharray="3,3"/>' : '';
+    return zeroLine +
+      '<polyline points="' + pts + '" fill="none" stroke="#3b82f6" stroke-width="1.5"/>' +
+      '<text x="' + pad + '" y="' + (pad - 6) + '" fill="#64748b" font-size="10">max ' + maxV.toFixed(3) + '</text>' +
+      '<text x="' + pad + '" y="' + (h - 8) + '" fill="#64748b" font-size="10">min ' + minV.toFixed(3) + '</text>' +
+      '<text x="' + (w - pad) + '" y="' + (h - 8) + '" fill="#64748b" font-size="10" text-anchor="end">n=' + series.length + '</text>';
+  }
+
+  async function renderDailyChart() {
+    var box = el('mm-chart-daily'); if (!box) return;
+    var mid = modelMonitorState.modelId; if (!mid) { box.innerHTML = ''; return; }
+    try {
+      var res = await api('/api/rec/model-performance?model_id=' + encodeURIComponent(mid));
+      if (!res || !res.ok) { box.innerHTML = '<div class="muted">load err</div>'; return; }
+      var series = (res.daily_series || []).map(function (d) { return { t: d.date, v: d.spread }; });
+      box.innerHTML = '<svg viewBox="0 0 600 220" style="width:100%;height:100%">' + svgLine(series, 600, 220, 30) + '</svg>';
+    } catch (e) {
+      box.innerHTML = '<div class="muted">error: ' + e.message + '</div>';
+    }
+  }
+
+  async function renderRegimeChart() {
+    var box = el('mm-chart-regime'); if (!box) return;
+    var mid = modelMonitorState.modelId; if (!mid) { box.innerHTML = ''; return; }
+    try {
+      var res = await api('/api/rec/model-performance?model_id=' + encodeURIComponent(mid));
+      if (!res || !res.ok) { box.innerHTML = '<div class="muted">load err</div>'; return; }
+      var rows = (res.regime_breakdown || []).filter(function (r) { return r.regime_flag; });
+      if (!rows.length) { box.innerHTML = '<div class="muted" style="text-align:center;padding:40px">holdout 期无分组数据</div>'; return; }
+      var w = 600, h = 220, pad = 40;
+      var barW = (w - pad * 2) / (rows.length * 2 + rows.length);
+      var allV = rows.flatMap(function (r) { return [r.top_avg || 0, r.bot_avg || 0]; });
+      var maxAbs = Math.max.apply(null, allV.map(Math.abs)) || 0.01;
+      var midY = h / 2;
+      var svg = '<line x1="' + pad + '" x2="' + (w - pad) + '" y1="' + midY + '" y2="' + midY + '" stroke="#e2e8f0"/>';
+      rows.forEach(function (r, i) {
+        var x = pad + i * barW * 3;
+        var hTop = Math.abs(r.top_avg || 0) / maxAbs * (h / 2 - pad);
+        var hBot = Math.abs(r.bot_avg || 0) / maxAbs * (h / 2 - pad);
+        var topY = (r.top_avg || 0) >= 0 ? midY - hTop : midY;
+        var botY = (r.bot_avg || 0) >= 0 ? midY - hBot : midY;
+        svg += '<rect x="' + x + '" y="' + topY + '" width="' + barW + '" height="' + hTop + '" fill="#10b981"/>';
+        svg += '<rect x="' + (x + barW) + '" y="' + botY + '" width="' + barW + '" height="' + hBot + '" fill="#ef4444"/>';
+        svg += '<text x="' + (x + barW) + '" y="' + (h - pad / 2) + '" text-anchor="middle" font-size="11" fill="#334155">' + r.regime_flag + '</text>';
+        svg += '<text x="' + (x + barW / 2) + '" y="' + (topY - 2) + '" text-anchor="middle" font-size="9" fill="#065f46">' + ((r.top_avg || 0) * 100).toFixed(1) + '%</text>';
+        svg += '<text x="' + (x + barW * 1.5) + '" y="' + (botY + hBot + 10) + '" text-anchor="middle" font-size="9" fill="#7f1d1d">' + ((r.bot_avg || 0) * 100).toFixed(1) + '%</text>';
+      });
+      svg += '<text x="' + pad + '" y="' + (pad / 2) + '" font-size="10" fill="#065f46">■ top-decile</text>';
+      svg += '<text x="' + (pad + 80) + '" y="' + (pad / 2) + '" font-size="10" fill="#7f1d1d">■ bot-decile</text>';
+      box.innerHTML = '<svg viewBox="0 0 ' + w + ' ' + h + '" style="width:100%;height:100%">' + svg + '</svg>';
+    } catch (e) {
+      box.innerHTML = '<div class="muted">error: ' + e.message + '</div>';
+    }
+  }
+
+  async function renderFeatureImportance() {
+    var box = el('mm-chart-fi'); if (!box) return;
+    var mid = modelMonitorState.modelId; if (!mid) { box.innerHTML = ''; return; }
+    try {
+      var res = await api('/api/rec/model-performance?model_id=' + encodeURIComponent(mid));
+      if (!res || !res.ok) { box.innerHTML = '<div class="muted">load err</div>'; return; }
+      var fi = (res.meta && res.meta.feature_importance) || [];
+      if (!fi.length) { box.innerHTML = '<div class="muted">无 feature importance 数据</div>'; return; }
+      var maxV = Math.max.apply(null, fi.map(function (x) { return x.importance || 0; })) || 1;
+      var html = '<div style="display:grid;grid-template-columns:auto 1fr auto;gap:4px 10px;font-size:12px;align-items:center">';
+      fi.forEach(function (x, i) {
+        var pct = (x.importance / maxV) * 100;
+        html += '<div class="muted">#' + (i + 1) + '</div>';
+        html += '<div style="display:flex;align-items:center;gap:8px">' +
+          '<div style="font-weight:500;white-space:nowrap">' + x.name + '</div>' +
+          '<div style="flex:1;background:#f1f5f9;height:14px;border-radius:3px;overflow:hidden">' +
+          '<div style="width:' + pct.toFixed(1) + '%;height:100%;background:linear-gradient(90deg,#3b82f6,#6366f1)"></div>' +
+          '</div></div>';
+        html += '<div style="color:#64748b;font-family:monospace">' + Math.round(x.importance) + '</div>';
+      });
+      html += '</div>';
+      box.innerHTML = html;
+    } catch (e) {
+      box.innerHTML = '<div class="muted">error: ' + e.message + '</div>';
+    }
+  }
+
+  async function renderTopK() {
+    var box = el('mm-topk-table'); var dateEl = el('mm-topk-date');
+    if (!box) return;
+    try {
+      var q = 'limit=50';
+      if (modelMonitorState.regime) q += '&regime=' + encodeURIComponent(modelMonitorState.regime);
+      var res = await api('/api/rec/daily-topk?' + q);
+      if (!res || !res.ok) { box.innerHTML = '<div class="muted">' + (res && res.message || 'load err') + '</div>'; return; }
+      if (dateEl) dateEl.textContent = '(' + res.snapshot_date + ' · model ' + (res.model_id || '-') + ')';
+      var items = res.items || [];
+      if (!items.length) { box.innerHTML = '<div class="muted">无推荐数据</div>'; return; }
+      var rows = items.map(function (it) {
+        var name = it.stock_name || '-';
+        var regimeTag = it.regime_flag ?
+          '<span style="background:' + (it.regime_flag === 'up' ? '#dcfce7' : it.regime_flag === 'down' ? '#fee2e2' : '#f1f5f9') +
+          ';padding:1px 6px;border-radius:3px;font-size:10px;color:' + (it.regime_flag === 'up' ? '#166534' : it.regime_flag === 'down' ? '#991b1b' : '#475569') + '">' + it.regime_flag + '</span>' : '-';
+        return '<tr>' +
+          '<td style="font-variant-numeric:tabular-nums;color:#64748b">#' + it.rank + '</td>' +
+          '<td><b>' + it.stock_code + '</b></td>' +
+          '<td>' + name + '</td>' +
+          '<td style="color:#64748b;font-size:11px">' + (it.l2 || it.l1 || '-') + '</td>' +
+          '<td style="font-variant-numeric:tabular-nums">' + it.pred_score.toFixed(4) + '</td>' +
+          '<td style="font-variant-numeric:tabular-nums">' + (it.percentile * 100).toFixed(1) + '%</td>' +
+          '<td>' + regimeTag + '</td>' +
+          '</tr>';
+      }).join('');
+      box.innerHTML = '<table class="cm-table" style="width:100%;font-size:12px">' +
+        '<thead><tr><th>Rank</th><th>代码</th><th>名称</th><th>L2</th><th>Score</th><th>Percentile</th><th>Regime</th></tr></thead>' +
+        '<tbody>' + rows + '</tbody></table>';
+    } catch (e) {
+      box.innerHTML = '<div class="muted">error: ' + e.message + '</div>';
+    }
+  }
+
   window.App = { saveModuleSettings, showView, setAlias, setType, toggleBlack, deleteInst, restoreInst, toggleInstDetail, toggleInstBreakdown, showL2Profile, toggleStockDetail, switchInstDim, switchStockDim, runSingleStep, loadWatchlist, loadExclusions, refreshNetwork, _api: api };
   if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', startInit, { once: true });
