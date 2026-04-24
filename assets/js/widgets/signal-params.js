@@ -41,7 +41,7 @@
         <div class="sig-config-cohort-cell">
           <div class="muted">Follow</div><b>${fmtPct(f.ev_pct)}</b>
           <div class="muted">n=${f.n} · 胜 ${fmtWinRate(f.win_rate)}</div>
-          <div style="color:${(ef.ev_diff_pct||0)>0?'#16a34a':'#dc2626'}">vs Blind ${fmtPct(ef.ev_diff_pct)}</div>
+          <div style="color:${(ef.ev_diff_pct||0)>0?'var(--cm-ok-500)':'var(--cm-bad-500)'}">vs Blind ${fmtPct(ef.ev_diff_pct)}</div>
         </div>
         <div class="sig-config-cohort-cell">
           <div class="muted">Blind</div><b>${fmtPct(b.ev_pct)}</b>
@@ -51,7 +51,7 @@
         <div class="sig-config-cohort-cell">
           <div class="muted">Skip</div><b>${fmtPct(s.ev_pct)}</b>
           <div class="muted">n=${s.n} · 胜 ${fmtWinRate(s.win_rate)}</div>
-          <div style="color:${(es.ev_diff_pct||0)<0?'#16a34a':'#dc2626'}">vs Blind ${fmtPct(es.ev_diff_pct)}</div>
+          <div style="color:${(es.ev_diff_pct||0)<0?'var(--cm-ok-500)':'var(--cm-bad-500)'}">vs Blind ${fmtPct(es.ev_diff_pct)}</div>
         </div>
       </div>
     </div>`;
@@ -172,7 +172,7 @@
     }).join('');
     area.innerHTML = `<details style="font-size:12px">
       <summary class="muted" style="cursor:pointer;padding:4px 0">参数变更历史（最近 ${history.length} 次）</summary>
-      <div style="padding:8px 0;border-top:1px solid #e2e8f0;margin-top:6px">${rows}</div>
+      <div style="padding:8px 0;border-top:1px solid var(--cm-ink-100);margin-top:6px">${rows}</div>
     </details>`;
   }
 

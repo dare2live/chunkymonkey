@@ -166,8 +166,8 @@
   function renderStockRow(s) {
     const inWl = state.watchlistSet.has(s.stockCode);
     const star = inWl
-      ? `<button class="sig-star sig-star-on" data-sv-unwatch="${esc(s.stockCode)}" title="移出自选">★</button>`
-      : `<button class="sig-star sig-star-off" data-sv-watch="${esc(s.stockCode)}" data-sv-name="${esc(s.stockName || '')}" title="加入自选">☆</button>`;
+      ? `<button class="sig-star sig-star-on" data-sv-unwatch="${esc(s.stockCode)}" title="移出自选">已选</button>`
+      : `<button class="sig-star sig-star-off" data-sv-watch="${esc(s.stockCode)}" data-sv-name="${esc(s.stockName || '')}" title="加入自选">+自选</button>`;
     const da = daysAgo(s.latestNotice);
     const daLabel = da == null ? fmtDate(s.latestNotice) : da === 0 ? '今天' : da + '天前';
     const indLabel = TDX_L1_NAMES[s.industry] || s.industry || '—';
@@ -375,7 +375,7 @@
         </div>
         <div style="display:flex;gap:8px;align-items:center">
           <button class="chip ${inWl ? 'chip-primary' : 'chip-outline'} chip-sm" id="svDrawerStar">
-            ${inWl ? '★ 自选' : '☆ 自选'}
+            ${inWl ? '已选' : '+自选'}
           </button>
           <button class="chip chip-ghost chip-sm" id="svDrawerClose">关闭</button>
         </div>
@@ -495,7 +495,7 @@
       content.innerHTML = '<div class="sig-empty">无 follow/watch 事件，无法展示证据链</div>';
       return;
     }
-    const statusIcon = { pass: '✓', fail: '✗', unknown: '—' };
+    const statusIcon = { pass: 'OK', fail: 'X', unknown: '—' };
     const statusWord = { pass: '通过', fail: '不通过', unknown: '未采集' };
     const blocks = candidates.map(ev => {
       const checks = ev.ruleChecks || [];
@@ -513,7 +513,7 @@
           ${actionBadge(ev.action)}
           <b>${esc(ev.institutionName || ev.institutionId || '-')}</b>
           <span class="muted sv-sub">${fmtDate(ev.noticeDate)}</span>
-          ${ev.ruleTriggered ? `<span style="color:#b91c1c;font-size:11px">触发: ${esc(ev.ruleTriggered)}</span>` : ''}
+          ${ev.ruleTriggered ? `<span style="color:var(--cm-bad-500);font-size:11px">触发: ${esc(ev.ruleTriggered)}</span>` : ''}
         </div>
         <div class="sv-evidence-grid">${chips}</div>
       </div>`;
@@ -530,8 +530,8 @@
         <div class="section-kicker">Stock Research</div>
         <h2 class="workbench-title">股票 · 信号汇总</h2>
         <p class="muted workbench-tagline">信号是股票的属性。以下为近 <span id="svFreshnessLabel">${state.freshnessDays}</span> 天内有机构 buy 事件的股票，按 follow 数排序。</p>
-        <div style="font-size:11px;color:#64748b;background:#f1f5f9;padding:6px 10px;border-radius:4px;margin-top:6px">
-          📊 <strong>画像边界</strong>：这里是"机构覆盖股票画像"，不是全市场画像。只覆盖近期进入机构关系层的 A 股（当前 ~3285/5507 只 active A 股）。
+        <div style="font-size:11px;color:var(--cm-ink-500);background:var(--cm-ink-50);padding:6px 10px;border-radius:4px;margin-top:6px">
+          <strong>画像边界</strong>：这里是"机构覆盖股票画像"，不是全市场画像。只覆盖近期进入机构关系层的 A 股（当前 ~3285/5507 只 active A 股）。
         </div>
       </div>
       <div id="sv-filter-area">${renderFilterBar(state.byStock)}</div>

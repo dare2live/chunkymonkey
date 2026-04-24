@@ -61,10 +61,10 @@
           基于 fact_feature_panel 的每日 topK 推荐与模型性能追踪。数据源：tdxhub + akshare。研究参考，非可交易建议。
         </p>
         <div id="mm-controls" style="display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap;align-items:center">
-          <label style="font-size:12px;color:#64748b">模型</label>
-          <select id="mm-model-select" style="padding:6px 10px;border:1px solid #ddd;border-radius:6px;font-size:13px;min-width:260px"></select>
-          <label style="font-size:12px;color:#64748b;margin-left:12px">regime 筛选</label>
-          <select id="mm-regime-select" style="padding:6px 10px;border:1px solid #ddd;border-radius:6px;font-size:13px">
+          <label style="font-size:12px;color:var(--cm-ink-500)">模型</label>
+          <select id="mm-model-select" style="padding:6px 10px;border:1px solid var(--cm-ink-100);border-radius:6px;font-size:13px;min-width:260px"></select>
+          <label style="font-size:12px;color:var(--cm-ink-500);margin-left:12px">regime 筛选</label>
+          <select id="mm-regime-select" style="padding:6px 10px;border:1px solid var(--cm-ink-100);border-radius:6px;font-size:13px">
             <option value="">全部</option>
             <option value="up">up</option>
             <option value="flat">flat</option>
@@ -158,7 +158,7 @@
             <span id="sourcePillHoldings" class="source-pill"><span class="source-pill-dot"></span><span class="source-pill-text">股东源</span></span>
             <span id="sourcePillKline" class="source-pill"><span class="source-pill-dot"></span><span class="source-pill-text">K线源</span></span>
             <span id="sourcePillIndustry" class="source-pill"><span class="source-pill-dot"></span><span class="source-pill-text">行业源</span></span>
-            <button class="chip chip-sm chip-outline" onclick="App.refreshNetwork()" title="强制重新探测数据源（绕过 5 分钟缓存）" style="padding:2px 8px;font-size:11px">🔄</button>
+            <button class="chip chip-sm chip-outline" onclick="App.refreshNetwork()" title="强制重新探测数据源（绕过 5 分钟缓存）" style="padding:2px 8px;font-size:11px">刷新</button>
           </div>
         </div>
         <aside class="workbench-ops-log panel">
@@ -217,7 +217,7 @@
       <div class="wb-group-header">系统设置</div>
 
       <details class="workbench-section workbench-danger">
-        <summary><span class="workbench-section-title" style="color:#b91c1c">全量重算派生数据</span><span class="muted" style="font-size:11px;font-weight:400">危险操作，二次确认</span></summary>
+        <summary><span class="workbench-section-title" style="color:var(--cm-bad-500)">全量重算派生数据</span><span class="muted" style="font-size:11px;font-weight:400">危险操作，二次确认</span></summary>
         <div style="padding:10px 0">
           <p class="muted" style="font-size:12px;margin-bottom:10px">清空事件、收益、画像和趋势派生层（raw 层保留），从原始数据重新计算。预计 10-20 分钟。</p>
           <button class="chip chip-danger" id="btnReset">重算全部派生数据</button>
@@ -240,8 +240,8 @@
             <div class="section-kicker">Institution Research</div>
             <h2 class="research-title">机构 track record</h2>
             <p class="muted research-tagline">把每家机构过去几年每次 buy 事件的 60 日跟随收益摊开，让用户自己挑可跟的机构。</p>
-            <div style="font-size:11px;color:#64748b;background:#f1f5f9;padding:6px 10px;border-radius:4px;margin-top:6px">
-              📊 <strong>研究边界</strong>：事件来源是<strong>十大股东披露差分</strong>（持仓报告期之间的变化推断），不是机构的真实盘中交易行为。
+            <div style="font-size:11px;color:var(--cm-ink-500);background:var(--cm-ink-50);padding:6px 10px;border-radius:4px;margin-top:6px">
+              <strong>研究边界</strong>：事件来源是<strong>十大股东披露差分</strong>（持仓报告期之间的变化推断），不是机构的真实盘中交易行为。
             </div>
           </div>
           <input type="text" class="search-input" id="instSearch" placeholder="搜索机构名/别名" style="width:240px">
@@ -265,7 +265,7 @@
             <h4 style="margin-bottom:8px;font-size:13px">搜索并添加机构</h4>
             <p class="muted" style="font-size:12px;margin-bottom:10px">逗号分隔 = 搜多个机构（OR）；空格分隔 = 名称同时包含（AND）。</p>
             <div style="display:flex;gap:8px;align-items:center;margin-bottom:10px;flex-wrap:wrap">
-              <select id="searchHolderType" style="padding:6px 10px;border:1px solid #ddd;border-radius:6px;font-size:13px">
+              <select id="searchHolderType" style="padding:6px 10px;border:1px solid var(--cm-ink-100);border-radius:6px;font-size:13px">
                 <option value="">全部分类</option>
                 <option value="QFII">QFII</option><option value="社保">社保</option>
                 <option value="保险">保险</option><option value="国家队">国家队</option>
@@ -279,7 +279,7 @@
             <div id="searchResultArea" style="display:none">
               <div style="display:flex;gap:8px;align-items:center;margin-bottom:10px;flex-wrap:wrap">
                 <span style="font-size:13px;white-space:nowrap">本地标签：</span>
-                <select id="addInstType" style="padding:6px 10px;border:1px solid #ddd;border-radius:6px;font-size:13px">
+                <select id="addInstType" style="padding:6px 10px;border:1px solid var(--cm-ink-100);border-radius:6px;font-size:13px">
                   <option value="">-- 请选择标签（必填） --</option>
                   <option value="QFII">QFII</option><option value="社保">社保</option>
                   <option value="保险">保险</option><option value="国家队">国家队</option>
@@ -323,7 +323,7 @@
         </div>
         <div id="etfMsg" class="muted" style="font-size:12px">数据可能非最新，请先点击同步。</div>
         <div id="etfLogBox"
-          style="margin-top:8px;max-height:160px;overflow:auto;background:#0f172a08;border:1px solid #e2e8f0;border-radius:6px;padding:8px;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:11px;line-height:1.5">
+          style="margin-top:8px;max-height:160px;overflow:auto;background:color-mix(in srgb, var(--cm-ink-900) 3%, transparent);border:1px solid var(--cm-ink-100);border-radius:6px;padding:8px;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:11px;line-height:1.5">
         </div>
       </div>
 
@@ -358,7 +358,7 @@
   <div id="modalOverlay"
     style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.35);z-index:1000;align-items:center;justify-content:center">
     <div
-      style="background:#fff;border-radius:12px;padding:24px 28px;max-width:420px;width:90%;box-shadow:0 8px 30px rgba(0,0,0,0.15)">
+      style="background:var(--cm-surface);border-radius:12px;padding:24px 28px;max-width:420px;width:90%;box-shadow:0 8px 30px rgba(0,0,0,0.15)">
       <div id="modalBody" style="font-size:14px;line-height:1.6;margin-bottom:18px"></div>
       <div style="display:flex;gap:8px;justify-content:flex-end">
         <button id="modalCancel" class="chip chip-outline" style="display:none">取消</button>
@@ -370,7 +370,8 @@
   <script>
     // 动态注入 JS 脚本，版本号跟 CM_ASSET_VERSION 绑定，避免浏览器缓存旧版 app.js
     (function (version) {
-      ['assets/js/app-cache.js', 'assets/js/app-nav.js', 'assets/js/app-list-state.js',
+      ['assets/js/style-tokens.js',
+       'assets/js/app-cache.js', 'assets/js/app-nav.js', 'assets/js/app-list-state.js',
        'assets/js/signal-adapter.js',
        'assets/js/widgets/signal-params.js',
        'assets/js/widgets/cohort-card.js',

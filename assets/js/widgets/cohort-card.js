@@ -82,9 +82,9 @@
       </div>
       <div class="muted sig-cohort-hint">
         ${followOk && skipOk
-          ? '✓ Follow 优于盲跟、Skip 劣于盲跟——筛选能力有效'
-          : '⚠ 筛选方向与预期不一致，可能样本量不足或市场风格偏离'}
-        ${isConcentrated ? ` · <b style="color:#b45309">Follow 样本 ${Math.round(concentrationPct)}% 集中于 ${esc(concentrationQ)}</b>` : ''}
+          ? 'Follow 优于盲跟、Skip 劣于盲跟——筛选能力有效'
+          : '筛选方向与预期不一致，可能样本量不足或市场风格偏离'}
+        ${isConcentrated ? ` · <b style="color:var(--cm-warn-500)">Follow 样本 ${Math.round(concentrationPct)}% 集中于 ${esc(concentrationQ)}</b>` : ''}
       </div>
     </div>`;
   }
