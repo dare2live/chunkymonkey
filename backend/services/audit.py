@@ -428,7 +428,6 @@ def _needs_stock_score_recalc(planned_steps: list[str]) -> bool:
             "calc_inst_scores",
             "build_trends",
             "build_stage_features",
-            "build_forecast_features",
             "build_external_attention",
         ]
     )
@@ -999,16 +998,12 @@ def run_quality_audit(conn, use_cache: bool = True) -> dict:
         dual_confirm_count = _scalar(conn, "SELECT COUNT(*) FROM mart_dual_confirm WHERE dual_confirm = 1")
         industry_context_count = _scalar(conn, "SELECT COUNT(*) FROM dim_stock_industry_context_latest")
         stage_feature_count = _scalar(conn, "SELECT COUNT(*) FROM dim_stock_stage_latest")
-        forecast_feature_count = _scalar(conn, "SELECT COUNT(*) FROM dim_stock_forecast_latest")
-        sector_forecast_count = _scalar(conn, "SELECT COUNT(*) FROM dim_sector_forecast_latest")
         turtle_feature_count = _scalar(conn, "SELECT COUNT(*) FROM dim_stock_turtle_latest")
     except Exception:
         sector_count = 0
         dual_confirm_count = 0
         industry_context_count = 0
         stage_feature_count = 0
-        forecast_feature_count = 0
-        sector_forecast_count = 0
         turtle_feature_count = 0
 
     attention = _summarize_external_attention(
@@ -1202,8 +1197,6 @@ def run_quality_audit(conn, use_cache: bool = True) -> dict:
                 "dual_confirm_count": dual_confirm_count,
                 "industry_context_count": industry_context_count,
                 "stage_feature_count": stage_feature_count,
-                "forecast_feature_count": forecast_feature_count,
-                "sector_forecast_count": sector_forecast_count,
                 "turtle_feature_count": turtle_feature_count,
             },
             "current_relationship": {
@@ -1256,7 +1249,7 @@ def build_smart_plan(conn, force_all=False, *, audit: Optional[dict] = None, use
         "calc_financial_derived",
         "build_current_rel", "build_profiles", "build_industry_stat", "build_trends",
         "calc_screening", "calc_sector_momentum", "build_external_attention",
-        "build_stage_features", "build_forecast_features", "build_turtle_features",
+        "build_stage_features", "build_turtle_features",
         "calc_inst_scores", "calc_stock_scores",
     ]
 
@@ -1575,52 +1568,6 @@ def build_smart_plan(conn, force_all=False, *, audit: Optional[dict] = None, use
                 plan["skip_reasons"]["build_stage_features"] = "上游未变更，阶段特征已是最新"
         except Exception:
             plan["skip_reasons"]["build_stage_features"] = "阶段特征表不存在"
-
-    # 10. 预测特征层
-    try:
-        # 审计新报告 3.5 整改：优先 is_active=1（可能最新一次训练退化，被性能评分排除）；
-        # 退回取最新 trained 仅当无 active 模型时。
-        trained_model_row = conn.execute(
-            """
-            SELECT model_id FROM qlib_model_state
-            WHERE status='trained'
-            ORDER BY is_active DESC, created_at DESC LIMIT 1
-            """
-        ).fetchone()
-        forecast_model_row = conn.execute(
-            "SELECT model_id FROM dim_stock_forecast_latest LIMIT 1"
-        ).fetchone()
-        sector_forecast_model_row = conn.execute(
-            "SELECT model_id FROM dim_sector_forecast_latest LIMIT 1"
-        ).fetchone()
-        sector_forecast_count = _scalar(conn, "SELECT COUNT(*) FROM dim_sector_forecast_latest")
-        trained_model_id = trained_model_row[0] if trained_model_row else None
-        forecast_model_id = forecast_model_row[0] if forecast_model_row else None
-        sector_forecast_model_id = sector_forecast_model_row[0] if sector_forecast_model_row else None
-    except Exception:
-        trained_model_id = None
-        forecast_model_id = None
-        sector_forecast_model_id = None
-        sector_forecast_count = 0
-    if any(s in plan["steps"] for s in ["build_stage_features"]):
-        plan["steps"].append("build_forecast_features")
-        plan["reason"].append("阶段特征变更后重算预测特征")
-    elif trained_model_id and trained_model_id != forecast_model_id:
-        plan["steps"].append("build_forecast_features")
-        plan["reason"].append("Qlib 最新模型尚未回流预测特征层")
-    elif trained_model_id and trained_model_id != sector_forecast_model_id:
-        plan["steps"].append("build_forecast_features")
-        plan["reason"].append("行业级 Qlib 快照尚未回流最新模型")
-    elif trained_model_id and not forecast_model_id:
-        plan["steps"].append("build_forecast_features")
-        plan["reason"].append("无预测特征中间层")
-    elif trained_model_id and not sector_forecast_count:
-        plan["steps"].append("build_forecast_features")
-        plan["reason"].append("无行业级 Qlib 快照")
-    elif not trained_model_id:
-        plan["skip_reasons"]["build_forecast_features"] = "无已训练 Qlib 模型"
-    else:
-        plan["skip_reasons"]["build_forecast_features"] = "预测特征已是最新"
 
     # 10a. 海龟执行特征层 —— 已迁出智能更新，转独立"选股模块"手动触发，不再随智能更新自动重算
     plan["skip_reasons"]["build_turtle_features"] = "已迁出智能更新，请用工作台·选股扫描手动触发"

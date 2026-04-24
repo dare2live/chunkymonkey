@@ -256,9 +256,6 @@ def _score_grid_backtest(
     setup_state = row.get("setup_state") or ""
     momentum_20d = abs(_safe_float(row.get("momentum_20d")) or 0.0)
     rotation_bucket = row.get("rotation_bucket") or ""
-    qlib_score = _safe_float(row.get("qlib_consensus_score"))
-    qlib_model_status = row.get("qlib_model_status") or ""
-    qlib_factor_group = row.get("qlib_consensus_factor_group") or ""
 
     if trend == "震荡":
         regime_score += 10.0
@@ -284,16 +281,6 @@ def _score_grid_backtest(
     elif rotation_bucket == "blacklist":
         regime_score -= 6.0
 
-    qlib_bonus = 0.0
-    if qlib_model_status == "trained" and qlib_score is not None:
-        qlib_bonus += _clamp((qlib_score - 55.0) * 0.18, -4.0, 8.0)
-        if qlib_factor_group == "institution":
-            qlib_bonus += 1.5
-        elif qlib_factor_group == "financial":
-            qlib_bonus += 1.0
-        elif qlib_factor_group == "alpha158":
-            qlib_bonus += 1.2
-
     raw_candidate_score = round(
         _clamp(
             excess_score * 0.34
@@ -303,8 +290,7 @@ def _score_grid_backtest(
             + _clamp(regime_score, 0.0, 100.0) * 0.12,
             0.0,
             100.0,
-        )
-        + qlib_bonus,
+        ),
         1,
     )
     raw_candidate_score = round(_clamp(raw_candidate_score, 0.0, 100.0), 1)
@@ -314,7 +300,6 @@ def _score_grid_backtest(
     scored.update({
         "candidate_score": candidate_score,
         "raw_candidate_score": raw_candidate_score,
-        "qlib_bonus": round(qlib_bonus, 1),
         "backtest_excess_pct": excess,
         "trade_quality_score": round(trade_quality_score, 1),
         "regime_score": round(_clamp(regime_score, 0.0, 100.0), 1),
@@ -931,10 +916,6 @@ def _build_strategy_decision(
     volatility_20d = _safe_float(row.get("volatility_20d"))
     momentum_20d = _safe_float(row.get("momentum_20d")) or 0.0
     rel_12w = _safe_float(row.get("relative_strength_12w")) or 0.0
-    qlib_score = _safe_float(row.get("qlib_consensus_score"))
-    qlib_model_status = row.get("qlib_model_status") or ""
-    qlib_factor_group = row.get("qlib_consensus_factor_group") or ""
-    qlib_support = qlib_model_status == "trained" and qlib_score is not None and qlib_score >= 68.0
 
     if category in ("债券", "货币") and (volatility_20d is None or volatility_20d <= 12):
         return {
@@ -997,7 +978,7 @@ def _build_strategy_decision(
         and rel_12w > 0
         and setup_state in ("收敛待发", "趋势跟随")
     )
-    completed_grid_trades = (best.get("sell_count") or 0) >= (2 if qlib_support else 3)
+    completed_grid_trades = (best.get("sell_count") or 0) >= 3
     sharpe_ok = (
         grid_sharpe is not None
         and buy_hold_sharpe is not None
@@ -1008,34 +989,25 @@ def _build_strategy_decision(
         and buy_hold_dd is not None
         and grid_dd <= buy_hold_dd * 0.9
     ) or (grid_dd is not None and buy_hold_dd is None)
-    stability_ok = mp_total == 0 or mp_wins >= max(1, math.ceil(mp_total * (0.25 if qlib_support else (1 / 3))))
+    stability_ok = mp_total == 0 or mp_wins >= max(1, math.ceil(mp_total * (1 / 3)))
     risk_ok = sharpe_ok or dd_ok
     excess_ok = grid_excess >= 0.0
 
-    if mean_reversion_profile and completed_grid_trades and risk_ok and stability_ok and excess_ok and grid_candidate_score >= (54 if qlib_support else 58):
-        qlib_suffix = ""
-        if qlib_support:
-            qlib_detail = f"Qlib 共识 {qlib_score:.1f} 分"
-            if qlib_factor_group:
-                qlib_detail += f"，领先因子组为 {qlib_factor_group}"
-            qlib_suffix = f" {qlib_detail}，允许对边界信号做更积极的网格判定。"
+    if mean_reversion_profile and completed_grid_trades and risk_ok and stability_ok and excess_ok and grid_candidate_score >= 58:
         return {
             "strategy_type": "网格交易",
             "strategy_reason": (
                 f"近 {best.get('days') or '-'} 天网格收益 {grid_ret:.2f}% 对比持有 {buy_hold_ret:.2f}% ，"
-                f"综合评分 {grid_candidate_score:.1f} 分，{mp_wins}/{mp_total} 个窗口占优，保留网格标签。{qlib_suffix}"
+                f"综合评分 {grid_candidate_score:.1f} 分，{mp_wins}/{mp_total} 个窗口占优，保留网格标签。"
             ),
         }
 
-    if completed_grid_trades and risk_ok and stability_ok and grid_candidate_score >= (62 if qlib_support else 66) and excess_ok and not strong_trend_profile:
-        qlib_suffix = ""
-        if qlib_support:
-            qlib_suffix = f" Qlib 共识 {qlib_score:.1f} 分，对震荡区间判断提供额外支持。"
+    if completed_grid_trades and risk_ok and stability_ok and grid_candidate_score >= 66 and excess_ok and not strong_trend_profile:
         return {
             "strategy_type": "网格交易",
             "strategy_reason": (
                 f"最优步长 {best.get('step_pct')}% 的综合评分 {grid_candidate_score:.1f} 分，"
-                f"回测超额 {grid_excess:.2f}%，当前更适合做区间交易。{qlib_suffix}"
+                f"回测超额 {grid_excess:.2f}%，当前更适合做区间交易。"
             ),
         }
 

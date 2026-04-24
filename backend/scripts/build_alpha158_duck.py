@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Phase 8.1: Alpha158 因子库 DuckDB SQL 版
 
-qlib 的 Alpha158 共 158 个价量因子, 本实现取核心 ~80 个高影响因子 (其余可迭代补)
+Alpha158 共 158 个价量因子, 本实现取核心 ~80 个高影响因子 (其余可迭代补)
 输出到独立文件 data/alpha158.duckdb, 训练时通过 ATTACH 联表, 与主库解耦.
 
 覆盖因子组:

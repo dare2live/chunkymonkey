@@ -228,7 +228,6 @@ def test_load_stock_detail_context_builds_canonical_payload(monkeypatch):
             "updated_at": "2026-04-17T09:00:00",
         },
     )
-    monkeypatch.setattr(stock_detail_read, "load_stock_qlib_tdx_association", lambda *_args, **_kwargs: {"summary": ["ok"]})
     monkeypatch.setattr(
         stock_detail_read,
         "enrich_stock_institutions",
@@ -241,7 +240,6 @@ def test_load_stock_detail_context_builds_canonical_payload(monkeypatch):
         lambda _setup, institutions: {
             "setup": {"setup_inst_id": "inst_a", "institution_count": len(institutions)},
             "stage": {"path_state": "突破准备"},
-            "forecast": {"forecast_cross_section_score": 82},
             "turtle": {"turtle_setup_state": "S1待突破"},
         },
     )
@@ -356,58 +354,8 @@ def test_load_stock_setup_row_uses_shared_detail_query():
     assert conn.params == ("600519",)
     assert "FROM mart_stock_trend t" in conn.sql
     assert "LEFT JOIN dim_stock_stage_latest st" in conn.sql
-    assert "LEFT JOIN dim_stock_forecast_latest ff" in conn.sql
     assert "LEFT JOIN dim_stock_quality_latest q" in conn.sql
     assert "LEFT JOIN dim_stock_turtle_latest tf" in conn.sql
-
-
-def test_load_stock_qlib_tdx_association_builds_canonical_payload(monkeypatch):
-    class _DummyCursor:
-        def __init__(self, one=None, rows=None):
-            self._one = one
-            self._rows = rows or []
-
-        def fetchone(self):
-            return self._one
-
-        def fetchall(self):
-            return self._rows
-
-    class _DummyConn:
-        def execute(self, sql, params=()):
-            if "ORDER BY predict_date DESC" in sql:
-                return _DummyCursor(one={"model_id": "model-x", "predict_date": "2024-04-12"})
-            if "SELECT stock_code, qlib_percentile FROM qlib_predictions" in sql:
-                return _DummyCursor(rows=[{"stock_code": "600519", "qlib_percentile": 98.2}])
-            raise AssertionError(sql)
-
-    monkeypatch.setattr(stock_detail_read, "_load_gpcw_report_coverage", lambda _conn, limit=12: [])
-    monkeypatch.setattr(market_signals, "load_shareholder_change_universe_summary", lambda days: {"stocks": {}})
-
-    payload = stock_detail_read.load_stock_qlib_tdx_association(
-        _DummyConn(),
-        "600519",
-        {"capability_note": "tdx note"},
-        None,
-        {
-            "note": "holder note",
-            "recent_180d": {
-                "event_count": 3,
-                "increase_count": 2,
-                "decrease_count": 1,
-                "net_event_count": 1,
-            },
-        },
-    )
-
-    assert payload["model_id"] == "model-x"
-    assert payload["sample_count"] == 1
-    assert payload["sample_breakdown"] == ["增减持 1"]
-    assert payload["coverage_note"] == "tdx note holder note"
-    assert payload["summary"] == ["当前样本不足以给出稳定的 Qlib 联动结论"]
-    assert [row["label"] for row in payload["rows"]] == ["近180天增持", "近180天减持"]
-    assert payload["rows"][0]["position_text"] == "位于最高分位"
-    assert payload["rows"][0]["delta_text"] == "净方向 +1次"
 
 
 def test_build_stock_setup_payload_normalizes_setup_and_child_payloads():
@@ -419,8 +367,6 @@ def test_build_stock_setup_payload_normalizes_setup_and_child_payloads():
             "quality_score_v1": 88.0,
             "company_quality_score": 88.0,
             "path_state": "未充分演绎",
-            "forecast_20d_score": 83.0,
-            "forecast_reason": "Qlib 截面较强",
             "turtle_setup_state": "S1待突破",
             "turtle_execution_score": 66.0,
         },
@@ -441,5 +387,4 @@ def test_build_stock_setup_payload_normalizes_setup_and_child_payloads():
     assert payload["setup"]["setup_follow_gate"] == "follow"
     assert payload["setup"]["setup_report_return_to_now"] == 8.8
     assert payload["stage"]["path_state"] == "未充分演绎"
-    assert payload["forecast"]["forecast_cross_section_score"] == 83.0
     assert payload["turtle"]["turtle_setup_state"] == "S1待突破"

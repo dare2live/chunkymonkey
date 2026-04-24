@@ -140,12 +140,6 @@ def _classify_etf_strategy(row: Dict) -> tuple[str, str, Optional[float], float]
     volatility_20d = _safe_float(row.get("volatility_20d"))
     amplitude_20d = _safe_float(row.get("amplitude_20d"))
     drawdown_60d = _safe_float(row.get("max_drawdown_60d"))
-    qlib_score = _safe_float(row.get("qlib_consensus_score"))
-    qlib_model_status = row.get("qlib_model_status") or ""
-    qlib_factor_group = row.get("qlib_consensus_factor_group") or ""
-    qlib_preferred_strategy = row.get("qlib_preferred_strategy") or ""
-    qlib_predicted_best_step = _safe_float(row.get("qlib_predicted_best_step_pct"))
-    qlib_consensus_ok = qlib_model_status == "trained" and qlib_score is not None and qlib_score >= 65.0
 
     grid_score = 0.0
     if cat == "宽基" or is_industry_like:
@@ -170,14 +164,6 @@ def _classify_etf_strategy(row: Dict) -> tuple[str, str, Optional[float], float]
         grid_score -= 26
     if drawdown_60d is not None and -18 <= drawdown_60d <= -4:
         grid_score += 10
-    if qlib_consensus_ok:
-        grid_score += 10
-        if qlib_preferred_strategy == "网格交易":
-            grid_score += 6
-        elif qlib_preferred_strategy == "买入持有":
-            grid_score -= 4
-        elif qlib_factor_group == "etf_grid":
-            grid_score += 4
     grid_score = round(_clamp(grid_score, 0, 100), 1)
 
     suggested_step = None
@@ -189,36 +175,15 @@ def _classify_etf_strategy(row: Dict) -> tuple[str, str, Optional[float], float]
         # 兜底：数据不足时给行业 ETF 典型步长，避免前端空白
         suggested_step = 1.5
 
-    if qlib_predicted_best_step is not None:
-        suggested_step = round(_clamp(qlib_predicted_best_step, 0.8, 4.5), 1)
-
-    if qlib_consensus_ok and suggested_step is not None and (amplitude_20d is None or amplitude_20d <= 20):
-        suggested_step = round(min(suggested_step, 2.6), 1)
-
     if cat in ("债券", "货币") and (volatility_20d is None or volatility_20d <= 12):
         return "防守停泊", "低波动资产，更适合防守配置和资金停泊。", None, grid_score
     if rotation_bucket == "blacklist" or (trend == "空头" and rel_12w < 0):
         return "暂不参与", "相对宽基偏弱或日线结构破坏，先回避等待轮动改善。", suggested_step, grid_score
     if (cat == "宽基" or is_industry_like) and trend == "多头" and rel_12w > 0 and setup_state in ("收敛待发", "趋势跟随"):
         return "趋势持有", "相对宽基走强且日线结构健康，更适合买入持有或趋势跟随。", suggested_step, grid_score
-    threshold = 54 if qlib_consensus_ok else 60
-    if grid_score >= threshold:
-        reason = "波动和振幅适中，趋势不过热，更适合区间网格。"
-        if qlib_consensus_ok:
-            reason += f" Qlib 共识 {qlib_score:.1f} 分提供辅助支持。"
-        return "网格候选", reason, suggested_step, grid_score
+    if grid_score >= 60:
+        return "网格候选", "波动和振幅适中，趋势不过热，更适合区间网格。", suggested_step, grid_score
     return "观察池", "当前轮动或结构都未完全到位，继续观察更合适。", suggested_step, grid_score
-
-
-def _load_qlib_consensus_snapshot() -> dict:
-    from services.etf_db import get_etf_conn
-    from services.etf_qlib_engine import get_latest_etf_qlib_signal_snapshot
-
-    etf_conn = get_etf_conn()
-    try:
-        return get_latest_etf_qlib_signal_snapshot(etf_conn, topk=50)
-    finally:
-        etf_conn.close()
 
 
 def _rotation_eligible(row: Dict) -> bool:
@@ -434,15 +399,6 @@ def calc_etf_momentum(etf_conn, etf_price_conn) -> List[Dict]:
         "SELECT code, name, category FROM etf_asset_universe WHERE is_active = 1"
     ).fetchall()
     results = []
-    qlib_consensus = {}
-    qlib_signal_map = {}
-    try:
-        qlib_consensus = _load_qlib_consensus_snapshot()
-        qlib_signal_map = qlib_consensus.get("prediction_map") or {}
-    except Exception as exc:
-        logger.warning("[ETF] 加载 Qlib ETF 共识失败: %s", exc)
-        qlib_consensus = {"model_status": "error"}
-        qlib_signal_map = {}
 
     for row in etfs:
         code = row["code"]
@@ -450,7 +406,6 @@ def calc_etf_momentum(etf_conn, etf_price_conn) -> List[Dict]:
         if not is_supported_exchange_etf_code(code):
             continue
         cat = row["category"] or _infer_etf_category(code, name)
-        qlib_signal = qlib_signal_map.get(code) or {}
         prices_60 = etf_price_conn.execute("""
             SELECT date, high, low, close, amount FROM etf_price_kline
             WHERE code = ? AND freq = 'daily' ORDER BY date DESC LIMIT 60
@@ -527,18 +482,6 @@ def calc_etf_momentum(etf_conn, etf_price_conn) -> List[Dict]:
             "code": code,
             "name": name,
             "category": cat,
-            "qlib_consensus_score": qlib_signal.get("consensus_score"),
-            "qlib_consensus_percentile": qlib_signal.get("consensus_percentile"),
-            "qlib_consensus_factor_group": qlib_signal.get("leading_factor_group"),
-            "qlib_high_conviction_count": qlib_signal.get("high_conviction_count"),
-            "qlib_model_status": qlib_signal.get("model_status") or qlib_consensus.get("model_status") or "none",
-            "qlib_test_top50_avg_return": qlib_signal.get("test_top50_avg_return") or qlib_consensus.get("test_top20_strategy_return"),
-            "qlib_preferred_strategy": qlib_signal.get("preferred_strategy"),
-            "qlib_predicted_buy_hold_return_pct": qlib_signal.get("predicted_buy_hold_return_pct"),
-            "qlib_predicted_grid_return_pct": qlib_signal.get("predicted_grid_return_pct"),
-            "qlib_predicted_grid_excess_pct": qlib_signal.get("predicted_grid_excess_pct"),
-            "qlib_predicted_best_step_pct": qlib_signal.get("predicted_best_step_pct"),
-            "qlib_strategy_edge_pct": qlib_signal.get("strategy_edge_pct"),
             "momentum_20d": round(momentum, 2),
             "momentum_60d": round(momentum_60d, 2),
             "volatility_20d": volatility_20d,

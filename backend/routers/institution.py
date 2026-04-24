@@ -45,13 +45,11 @@ from services.institution_write import (
     upsert_watchlist_entry,
 )
 from services.stock_detail_read import (
-    extract_forecast_payload,
     extract_stage_payload,
     extract_turtle_payload,
     load_stock_attention_payload,
     load_stock_detail_context,
     load_stock_detail_timeline,
-    load_stock_qlib_tdx_association,
 )
 from services.stock_watchlist_read import load_candidate_setup_rows, load_manual_stock_blacklist_rows, load_watchlist_rows
 from services.stock_trends_read import (
@@ -320,8 +318,6 @@ async def list_stock_trends():
                    t.discovery_score,
                    t.company_quality_score,
                    t.stage_score,
-                   t.forecast_score,
-                   t.forecast_score_effective,
                    t.raw_composite_priority_score,
                    t.composite_priority_score,
                    t.composite_cap_score,
@@ -344,7 +340,6 @@ async def list_stock_trends():
                    t.external_attention_signal,
                    t.score_highlights,
                    t.score_risks,
-                   t.qlib_rank,
                    COALESCE(
                        ii_setup.display_name,
                        ii_leader.display_name,
@@ -359,19 +354,11 @@ async def list_stock_trends():
                    st.path_max_drawdown_pct,
                    st.max_drawdown_60d,
                    st.dist_ma250_pct,
-                   st.above_ma250,
-                   ff.forecast_20d_score,
-                   ff.forecast_60d_excess_score,
-                   ff.forecast_risk_adjusted_score,
-                   ff.forecast_reason,
-                   ff.model_id            AS forecast_model_id,
-                   ff.predict_date        AS forecast_predict_date,
-                   ff.industry_relative_group AS forecast_industry_relative_group
+                   st.above_ma250
             FROM mart_stock_trend t
             LEFT JOIN inst_institutions ii_setup  ON ii_setup.id  = t.setup_inst_id
             LEFT JOIN inst_institutions ii_leader ON ii_leader.id = t.leader_inst
             LEFT JOIN dim_stock_stage_latest st ON st.stock_code = t.stock_code
-            LEFT JOIN dim_stock_forecast_latest ff ON ff.stock_code = t.stock_code
             ORDER BY
                 CASE COALESCE(t.priority_pool, '')
                     WHEN 'A池' THEN 0
@@ -483,8 +470,6 @@ async def list_stock_trends():
                 "discovery_score": None,
                 "company_quality_score": None,
                 "stage_score": None,
-                "forecast_score": None,
-                "forecast_score_effective": None,
                 "raw_composite_priority_score": None,
                 "composite_priority_score": None,
                 "composite_cap_score": None,
@@ -515,13 +500,6 @@ async def list_stock_trends():
                 "max_drawdown_60d": None,
                 "dist_ma250_pct": None,
                 "above_ma250": None,
-                "forecast_20d_score": None,
-                "forecast_60d_excess_score": None,
-                "forecast_risk_adjusted_score": None,
-                "forecast_reason": None,
-                "forecast_model_id": None,
-                "forecast_predict_date": None,
-                "forecast_industry_relative_group": None,
                 "tdx_l1": industry.get("tdx_l1"),
                 "tdx_l2": industry.get("tdx_l2"),
                 "tdx_l3": industry.get("tdx_l3"),
@@ -577,7 +555,6 @@ async def list_candidate_setups(limit: int = Query(200, ge=1, le=1000)):
                    followability_grade, premium_grade, report_recency_grade,
                    reliability_grade, report_age_days,
                    discovery_score, company_quality_score, stage_score,
-                   forecast_score, forecast_score_effective,
                    raw_composite_priority_score, composite_priority_score,
                    composite_cap_score, composite_cap_reason,
                    stock_archetype, priority_pool, priority_pool_reason,
@@ -585,7 +562,7 @@ async def list_candidate_setups(limit: int = Query(200, ge=1, le=1000)):
                    crowding_bucket, crowding_yield_raw, crowding_yield_grade,
                    crowding_stability_raw, crowding_stability_grade,
                    crowding_fit_raw, crowding_fit_grade, crowding_fit_sample,
-                   crowding_fit_source, qlib_rank
+                   crowding_fit_source
             FROM mart_stock_trend
             WHERE setup_tag IS NOT NULL
             ORDER BY
@@ -866,18 +843,18 @@ async def get_institution_detail(inst_id: str):
 
 
 def compute_stock_multidim_score(conn, stock_code: str) -> dict:
-    """四维研究画像（研究参考，非可交易评分）。
+    """三维研究画像（研究参考，非可交易评分）。
 
     维度：
       F1 resonance  持仓机构在该股 L2 的 stable_score 平均
       F2 margin     最新 rz_balance 全市场分位
-      F3 forecast   fact_stock_forecast_features.forecast_score_v1（已是 0-100）
-      F4 survey     近 60 天 inst_count 线性归一（50 家 = 满分）
+      F3 survey     近 60 天 inst_count 线性归一（50 家 = 满分）
     overall = 有值维度的简单平均。stage 维度已移除（2026-04-23 M1）：
     公式方向反 + 历史未回填快照，属 P0.1 污染源之一。
+    forecast 维度已移除（2026-04-24 Phase 10 qlib 清理）。
     """
     result = {
-        "resonance_score": None, "margin_score": None, "forecast_score": None,
+        "resonance_score": None, "margin_score": None,
         "survey_score": None, "overall_score": None,
         "components": {}, "notes": "研究参考画像，非可交易评分",
     }
@@ -921,24 +898,7 @@ def compute_stock_multidim_score(conn, stock_code: str) -> dict:
             "market_percentile": round(pct, 1),
         }
 
-    # F3 研报/预测
-    frow = conn.execute("""
-        SELECT forecast_score_v1, forecast_20d_score, industry_qlib_percentile, snapshot_date
-        FROM fact_stock_forecast_features
-        WHERE stock_code = ?
-        ORDER BY snapshot_date DESC LIMIT 1
-    """, (stock_code,)).fetchone()
-    if frow and frow["forecast_score_v1"] is not None:
-        fs = frow["forecast_score_v1"]
-        result["forecast_score"] = round(fs, 1)
-        result["components"]["forecast"] = {
-            "forecast_score_v1": round(fs, 1),
-            "forecast_20d_score": frow["forecast_20d_score"],
-            "industry_qlib_percentile": frow["industry_qlib_percentile"],
-            "snapshot_date": frow["snapshot_date"],
-        }
-
-    # F4 调研热度
+    # F3 调研热度
     srow = conn.execute("""
         SELECT survey_count_60d, inst_count_60d, latest_survey_date
         FROM mart_stock_survey_activity WHERE stock_code = ?
@@ -954,7 +914,7 @@ def compute_stock_multidim_score(conn, stock_code: str) -> dict:
         }
 
     scores = [v for v in [result["resonance_score"], result["margin_score"],
-              result["forecast_score"], result["survey_score"]]
+              result["survey_score"]]
               if v is not None]
     if scores:
         result["overall_score"] = round(sum(scores) / len(scores), 1)
@@ -1195,7 +1155,6 @@ STOCK_SCORING_FRAMEWORK = {
         {"key": "composite_discovery_weight", "label": "发现层权重", "description": "控制机构发现层对综合分的贡献", "source": "mart_stock_trend.discovery_score"},
         {"key": "composite_quality_weight", "label": "质量层权重", "description": "控制公司质量层对综合分的贡献", "source": "mart_stock_trend.company_quality_score"},
         {"key": "composite_stage_weight", "label": "阶段层权重", "description": "控制买入阶段层对综合分的贡献", "source": "mart_stock_trend.stage_score"},
-        {"key": "composite_forecast_weight", "label": "预测层权重", "description": "控制 Qlib 预测层对综合分的贡献", "source": "mart_stock_trend.forecast_score_effective"},
         {"key": "attention_composite_weight", "label": "评论综合分权重", "description": "控制外部关注层中评论综合分的权重", "source": "attention_composite_score"},
         {"key": "attention_focus_weight", "label": "关注指数权重", "description": "控制外部关注层中关注指数的权重", "source": "attention_focus_index"},
         {"key": "attention_participation_weight", "label": "机构参与度权重", "description": "控制外部关注层中机构参与度的权重", "source": "attention_institution_participation"},
@@ -1391,7 +1350,6 @@ async def scoring_breakdown(card_type: str, object_id: str):
                        t.discovery_score, t.company_quality_score,
                        t.company_quality_score_source, t.quality_feature_snapshot_date,
                        t.stage_score,
-                       t.forecast_score, t.forecast_score_effective,
                        t.raw_composite_priority_score, t.composite_priority_score,
                        t.composite_cap_score, t.composite_cap_reason,
                        t.priority_pool_reason,
@@ -1410,11 +1368,6 @@ async def scoring_breakdown(card_type: str, object_id: str):
                        st.path_max_gain_pct, st.path_max_drawdown_pct,
                        st.generic_stage_raw, st.stage_type_adjust_raw, st.stage_reason,
                        st.max_drawdown_60d, st.dist_ma250_pct, st.above_ma250,
-                       ff.forecast_20d_score, ff.forecast_60d_excess_score,
-                       ff.forecast_risk_adjusted_score, ff.forecast_reason,
-                       ff.model_id AS forecast_model_id,
-                       ff.predict_date AS forecast_predict_date,
-                       ff.industry_relative_group AS forecast_industry_relative_group,
                        t.turtle_execution_score, t.turtle_breakout_score, t.turtle_risk_score,
                        t.turtle_score_delta, t.turtle_setup_state, t.turtle_preferred_system, t.turtle_reason,
                        m.tdx_l2, m.notice_age_days, m.price_entry, m.return_to_now,
@@ -1422,7 +1375,6 @@ async def scoring_breakdown(card_type: str, object_id: str):
                        m.premium_pct, m.premium_bucket, m.follow_gate
                 FROM mart_stock_trend t
                 LEFT JOIN dim_stock_stage_latest st ON st.stock_code = t.stock_code
-                LEFT JOIN dim_stock_forecast_latest ff ON ff.stock_code = t.stock_code
                 LEFT JOIN mart_current_relationship m ON t.stock_code = m.stock_code
                 WHERE t.stock_code = ?
                 LIMIT 1
@@ -1438,8 +1390,6 @@ async def scoring_breakdown(card_type: str, object_id: str):
                 "quality_feature_snapshot_date": s.get("quality_feature_snapshot_date"),
                 "quality_snapshot_date": s.get("quality_feature_snapshot_date"),
                 "stage_score": s.get("stage_score"),
-                "forecast_score": s.get("forecast_score"),
-                "forecast_score_effective": s.get("forecast_score_effective"),
                 "raw_composite_priority_score": s.get("raw_composite_priority_score"),
                 "composite_priority_score": s.get("composite_priority_score"),
                 "composite_cap_score": s.get("composite_cap_score"),
@@ -1452,9 +1402,8 @@ async def scoring_breakdown(card_type: str, object_id: str):
                 "path_state": s.get("path_state"),
                 "data_completeness": s.get("data_completeness"),
                 "stage": extract_stage_payload(s),
-                "forecast": extract_forecast_payload(s),
                 "turtle": extract_turtle_payload(s),
-                "formula": "Composite = 发现35% + 质量30% + 阶段20% + 生效预测15%；Stage<40 封顶69；Quality<45 且非周期/事件型封顶64；A池要求 Composite≥75 且 Stage≥50 且 Quality≥55 且 Discovery≥50",
+                "formula": "Composite = 发现35% + 质量30% + 阶段20%；Stage<40 封顶69；Quality<45 且非周期/事件型封顶64；A池要求 Composite≥75 且 Stage≥50 且 Quality≥55 且 Discovery≥50",
                 "factors": {
                     "quality": {
                         "score": s.get("company_quality_score"),

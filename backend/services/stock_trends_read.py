@@ -8,7 +8,6 @@ from typing import Optional
 
 from services.industry import attach_industry_aliases
 from services.scoring import derive_stock_gate_from_priority
-from services.stock_forecast_engine import apply_forecast_score_aliases
 
 
 def _top_count_entries(counter: dict, limit: int) -> list[dict]:
@@ -112,8 +111,6 @@ def load_stock_trends_payload(conn) -> dict:
                t.discovery_score,
                t.company_quality_score,
                t.stage_score,
-               t.forecast_score,
-               t.forecast_score_effective,
                t.raw_composite_priority_score,
                t.composite_priority_score,
                t.composite_cap_score,
@@ -143,7 +140,6 @@ def load_stock_trends_payload(conn) -> dict:
                t.turtle_reason,
                t.score_highlights,
                t.score_risks,
-               t.qlib_rank,
                COALESCE(
                    ii_setup.display_name,
                    ii_leader.display_name,
@@ -158,19 +154,11 @@ def load_stock_trends_payload(conn) -> dict:
                st.path_max_drawdown_pct,
                st.max_drawdown_60d,
                st.dist_ma250_pct,
-               st.above_ma250,
-               ff.forecast_20d_score,
-               ff.forecast_60d_excess_score,
-               ff.forecast_risk_adjusted_score,
-               ff.forecast_reason,
-               ff.model_id AS forecast_model_id,
-               ff.predict_date AS forecast_predict_date,
-               ff.industry_relative_group AS forecast_industry_relative_group
+               st.above_ma250
         FROM mart_stock_trend t
         LEFT JOIN inst_institutions ii_setup ON ii_setup.id = t.setup_inst_id
         LEFT JOIN inst_institutions ii_leader ON ii_leader.id = t.leader_inst
         LEFT JOIN dim_stock_stage_latest st ON st.stock_code = t.stock_code
-        LEFT JOIN dim_stock_forecast_latest ff ON ff.stock_code = t.stock_code
         ORDER BY
             CASE COALESCE(t.priority_pool, '')
                 WHEN 'A池' THEN 0
@@ -265,7 +253,7 @@ def build_stock_trend_item(
     screening: Optional[dict] = None,
     dual_confirm: Optional[dict] = None,
 ) -> dict:
-    base = apply_forecast_score_aliases(dict(row))
+    base = dict(row)
     industry = industry or {}
     coverage = coverage or {}
     dual_confirm = dual_confirm or {}
@@ -326,8 +314,6 @@ def build_blacklisted_stock_trend_item(stock_code: str, blacklist: Optional[dict
         "discovery_score": None,
         "company_quality_score": None,
         "stage_score": None,
-        "forecast_score": None,
-        "forecast_score_effective": None,
         "raw_composite_priority_score": None,
         "composite_priority_score": None,
         "composite_cap_score": None,
@@ -365,15 +351,6 @@ def build_blacklisted_stock_trend_item(stock_code: str, blacklist: Optional[dict
         "max_drawdown_60d": None,
         "dist_ma250_pct": None,
         "above_ma250": None,
-        "forecast_cross_section_score": None,
-        "forecast_20d_score": None,
-        "forecast_industry_relative_score": None,
-        "forecast_60d_excess_score": None,
-        "forecast_risk_adjusted_score": None,
-        "forecast_reason": None,
-        "forecast_model_id": None,
-        "forecast_predict_date": None,
-        "forecast_industry_relative_group": None,
         "_sort_blacklisted": 1,
     }
     return attach_industry_aliases(item, industry)

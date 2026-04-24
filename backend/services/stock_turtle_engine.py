@@ -189,15 +189,10 @@ def build_stock_turtle_features(conn, mkt_conn, snapshot_date: Optional[str] = N
     stocks = conn.execute(
         """
         SELECT t.stock_code, t.stock_name, t.latest_notice_date, t.latest_report_date,
-               f.model_id,
-               f.tdx_l1_name,
-               f.tdx_l2_name,
                s.path_state, s.stock_gate,
-               s.amount_ratio_20_120, s.volatility_20d, s.amplitude_20d, s.stage_score_v1,
-               f.forecast_score_v1, f.qlib_score, f.qlib_percentile
+               s.amount_ratio_20_120, s.volatility_20d, s.amplitude_20d, s.stage_score_v1
         FROM mart_stock_trend t
         LEFT JOIN dim_stock_stage_latest s ON s.stock_code = t.stock_code
-        LEFT JOIN dim_stock_forecast_latest f ON f.stock_code = t.stock_code
         WHERE t.stock_code IS NOT NULL
         ORDER BY t.stock_code
         """
@@ -213,8 +208,8 @@ def build_stock_turtle_features(conn, mkt_conn, snapshot_date: Optional[str] = N
     stock_rows = [dict(row) for row in stocks]
     for row in stock_rows:
         industry = industry_map.get(row["stock_code"]) or {}
-        row["tdx_l1_name"] = row.get("tdx_l1_name") or industry.get("tdx_l1_name")
-        row["tdx_l2_name"] = row.get("tdx_l2_name") or industry.get("tdx_l2_name")
+        row["tdx_l1_name"] = industry.get("tdx_l1_name")
+        row["tdx_l2_name"] = industry.get("tdx_l2_name")
     price_history = _load_price_history(mkt_conn, [row["stock_code"] for row in stock_rows])
 
     inserted = 0
@@ -312,9 +307,6 @@ def build_stock_turtle_features(conn, mkt_conn, snapshot_date: Optional[str] = N
         volatility_20d = _safe_float(row.get("volatility_20d"))
         amplitude_20d = _safe_float(row.get("amplitude_20d"))
         stage_score_v1 = _safe_float(row.get("stage_score_v1"))
-        forecast_score_v1 = _safe_float(row.get("forecast_score_v1"))
-        qlib_score = _safe_float(row.get("qlib_score"))
-        qlib_percentile = _safe_float(row.get("qlib_percentile"))
 
         breakout_score, breakout_reasons = _score_breakout(
             entry_signal_20,
@@ -331,10 +323,9 @@ def build_stock_turtle_features(conn, mkt_conn, snapshot_date: Optional[str] = N
             stage_score_v1,
         )
         turtle_execution_score_v1 = _clamp_score(
-            breakout_score * 0.45
-            + risk_score * 0.25
-            + (stage_score_v1 if stage_score_v1 is not None else 50.0) * 0.15
-            + (forecast_score_v1 if forecast_score_v1 is not None else 50.0) * 0.15
+            breakout_score * 0.50
+            + risk_score * 0.30
+            + (stage_score_v1 if stage_score_v1 is not None else 50.0) * 0.20
         )
 
         reason_parts: list[str] = []
@@ -350,7 +341,7 @@ def build_stock_turtle_features(conn, mkt_conn, snapshot_date: Optional[str] = N
             """
             INSERT OR REPLACE INTO fact_stock_turtle_features (
                 snapshot_date, stock_code, stock_name, latest_trade_date,
-                latest_notice_date, latest_report_date, model_id, tdx_l1_name, tdx_l2_name,
+                latest_notice_date, latest_report_date, tdx_l1_name, tdx_l2_name,
                 path_state, stock_gate, close_price, atr_14, atr_14_pct,
                 entry_level_20, entry_level_55, exit_level_10, exit_level_20,
                 breakout_dist_20_pct, breakout_dist_55_pct, exit_dist_10_pct, exit_dist_20_pct,
@@ -359,12 +350,12 @@ def build_stock_turtle_features(conn, mkt_conn, snapshot_date: Optional[str] = N
                 add_level_55_1, add_level_55_2, add_level_55_3,
                 entry_signal_20, entry_signal_55, exit_signal_10, exit_signal_20,
                 amount_ratio_20_120, volatility_20d, amplitude_20d,
-                stage_score_v1, forecast_score_v1, qlib_score, qlib_percentile,
+                stage_score_v1,
                 preferred_system, turtle_setup_state,
                 turtle_breakout_score, turtle_risk_score, turtle_execution_score_v1,
                 turtle_reason, schema_version, updated_at
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 snapshot_date,
@@ -373,7 +364,6 @@ def build_stock_turtle_features(conn, mkt_conn, snapshot_date: Optional[str] = N
                 latest_trade_date,
                 row.get("latest_notice_date"),
                 row.get("latest_report_date"),
-                row.get("model_id"),
                 row.get("tdx_l1_name"),
                 row.get("tdx_l2_name"),
                 row.get("path_state"),
@@ -405,9 +395,6 @@ def build_stock_turtle_features(conn, mkt_conn, snapshot_date: Optional[str] = N
                 volatility_20d,
                 amplitude_20d,
                 stage_score_v1,
-                forecast_score_v1,
-                qlib_score,
-                qlib_percentile,
                 preferred_system,
                 turtle_setup_state,
                 breakout_score,
@@ -425,7 +412,7 @@ def build_stock_turtle_features(conn, mkt_conn, snapshot_date: Optional[str] = N
         """
         INSERT INTO dim_stock_turtle_latest (
             stock_code, snapshot_date, stock_name, latest_trade_date,
-            latest_notice_date, latest_report_date, model_id, tdx_l1_name, tdx_l2_name,
+            latest_notice_date, latest_report_date, tdx_l1_name, tdx_l2_name,
             path_state, stock_gate, close_price, atr_14, atr_14_pct,
             entry_level_20, entry_level_55, exit_level_10, exit_level_20,
             breakout_dist_20_pct, breakout_dist_55_pct, exit_dist_10_pct, exit_dist_20_pct,
@@ -434,13 +421,13 @@ def build_stock_turtle_features(conn, mkt_conn, snapshot_date: Optional[str] = N
             add_level_55_1, add_level_55_2, add_level_55_3,
             entry_signal_20, entry_signal_55, exit_signal_10, exit_signal_20,
             amount_ratio_20_120, volatility_20d, amplitude_20d,
-            stage_score_v1, forecast_score_v1, qlib_score, qlib_percentile,
+            stage_score_v1,
             preferred_system, turtle_setup_state,
             turtle_breakout_score, turtle_risk_score, turtle_execution_score_v1,
             turtle_reason, schema_version, updated_at
         )
         SELECT stock_code, snapshot_date, stock_name, latest_trade_date,
-               latest_notice_date, latest_report_date, model_id, tdx_l1_name, tdx_l2_name,
+               latest_notice_date, latest_report_date, tdx_l1_name, tdx_l2_name,
                path_state, stock_gate, close_price, atr_14, atr_14_pct,
                entry_level_20, entry_level_55, exit_level_10, exit_level_20,
                breakout_dist_20_pct, breakout_dist_55_pct, exit_dist_10_pct, exit_dist_20_pct,
@@ -449,7 +436,7 @@ def build_stock_turtle_features(conn, mkt_conn, snapshot_date: Optional[str] = N
                add_level_55_1, add_level_55_2, add_level_55_3,
                entry_signal_20, entry_signal_55, exit_signal_10, exit_signal_20,
                amount_ratio_20_120, volatility_20d, amplitude_20d,
-               stage_score_v1, forecast_score_v1, qlib_score, qlib_percentile,
+               stage_score_v1,
                preferred_system, turtle_setup_state,
                turtle_breakout_score, turtle_risk_score, turtle_execution_score_v1,
                turtle_reason, schema_version, updated_at
@@ -473,7 +460,6 @@ def ensure_tables(conn):
             latest_trade_date             TEXT,
             latest_notice_date            TEXT,
             latest_report_date            TEXT,
-            model_id                      TEXT,
             tdx_l1_name                   TEXT,
             tdx_l2_name                   TEXT,
             path_state                    TEXT,
@@ -505,9 +491,6 @@ def ensure_tables(conn):
             volatility_20d                REAL,
             amplitude_20d                 REAL,
             stage_score_v1                REAL,
-            forecast_score_v1             REAL,
-            qlib_score                    REAL,
-            qlib_percentile               REAL,
             preferred_system              TEXT,
             turtle_setup_state            TEXT,
             turtle_breakout_score         REAL,
@@ -529,7 +512,6 @@ def ensure_tables(conn):
             latest_trade_date             TEXT,
             latest_notice_date            TEXT,
             latest_report_date            TEXT,
-            model_id                      TEXT,
             tdx_l1_name                   TEXT,
             tdx_l2_name                   TEXT,
             path_state                    TEXT,
@@ -561,9 +543,6 @@ def ensure_tables(conn):
             volatility_20d                REAL,
             amplitude_20d                 REAL,
             stage_score_v1                REAL,
-            forecast_score_v1             REAL,
-            qlib_score                    REAL,
-            qlib_percentile               REAL,
             preferred_system              TEXT,
             turtle_setup_state            TEXT,
             turtle_breakout_score         REAL,

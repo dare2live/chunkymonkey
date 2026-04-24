@@ -146,33 +146,9 @@ def _make_conn():
     return conn
 
 
-def test_get_industry_overview_payload_keeps_summary_and_sorting(monkeypatch):
+def test_get_industry_overview_payload_keeps_summary_and_sorting():
     conn = _make_conn()
     try:
-        monkeypatch.setattr(
-            industry_overview_read,
-            "get_latest_sector_forecast_snapshot",
-            lambda _conn, **_kwargs: [
-                {
-                    "sector_name": "汽车",
-                    "model_id": "model_auto",
-                    "snapshot_date": "2026-04-15",
-                    "stock_count": 12,
-                    "avg_qlib_score": 0.91,
-                    "avg_qlib_percentile": 0.85,
-                    "avg_forecast_cross_section_score": 78.0,
-                    "avg_forecast_20d_score": 76.0,
-                    "avg_forecast_industry_relative_score": 74.0,
-                    "avg_forecast_60d_excess_score": 73.0,
-                    "avg_forecast_risk_adjusted_score": 71.0,
-                    "high_conviction_count": 3,
-                    "next_rotation_score": 83.0,
-                    "next_rotation_label": "强轮动",
-                    "next_rotation_reason": "Qlib 前瞻领先",
-                }
-            ],
-        )
-
         payload = industry_overview_read.get_industry_overview_payload(conn, topn=2)
 
         assert payload["ok"] is True
@@ -180,69 +156,19 @@ def test_get_industry_overview_payload_keeps_summary_and_sorting(monkeypatch):
         assert payload["data"][0]["sector_name"] == "汽车"
         assert payload["data"][0]["top_stocks"][0]["stock_code"] == "600001"
         assert payload["summary"]["strongest_sector"] == "汽车"
-        assert payload["summary"]["strongest_sector_source"] == "qlib_sector_forecast"
-        assert payload["summary"]["strongest_sector_note"] == "按 Qlib 行业前瞻排序"
-        assert payload["summary"]["sector_focus"][0]["sector_name"] == "汽车"
-        assert payload["summary"]["snapshot_feedback_ready_total"] == 1
-        assert payload["summary"]["feedback_ready_total"] == 2
     finally:
         conn.close()
 
 
-def test_get_industry_overview_payload_falls_back_to_sector_momentum(monkeypatch):
+def test_get_industry_overview_payload_falls_back_to_sector_momentum():
     conn = _make_conn()
     try:
-        monkeypatch.setattr(
-            industry_overview_read,
-            "get_latest_sector_forecast_snapshot",
-            lambda _conn, **_kwargs: [],
-        )
-
         payload = industry_overview_read.get_industry_overview_payload(conn, topn=1)
 
         assert payload["ok"] is True
         assert payload["summary"]["strongest_sector"] == "汽车"
         assert payload["summary"]["strongest_sector_source"] == "sector_momentum"
         assert payload["summary"]["strongest_sector_note"] == "按行业动量排序"
-        assert payload["summary"]["sector_focus"] == []
         assert payload["data"][0]["sector_name"] == "汽车"
-    finally:
-        conn.close()
-
-
-def test_get_industry_overview_payload_includes_forecast_only_sector(monkeypatch):
-    conn = _make_conn()
-    try:
-        monkeypatch.setattr(
-            industry_overview_read,
-            "get_latest_sector_forecast_snapshot",
-            lambda _conn, **_kwargs: [
-                {
-                    "sector_name": "机器人",
-                    "model_id": "model_robot",
-                    "snapshot_date": "2026-04-15",
-                    "stock_count": 6,
-                    "avg_qlib_score": 0.95,
-                    "avg_qlib_percentile": 0.91,
-                    "avg_forecast_cross_section_score": 81.0,
-                    "avg_forecast_20d_score": 79.0,
-                    "avg_forecast_industry_relative_score": 76.0,
-                    "avg_forecast_60d_excess_score": 75.0,
-                    "avg_forecast_risk_adjusted_score": 74.0,
-                    "high_conviction_count": 2,
-                    "next_rotation_score": 88.0,
-                    "next_rotation_label": "下一个轮动候选",
-                    "next_rotation_reason": "Qlib 行业前瞻领先",
-                }
-            ],
-        )
-
-        payload = industry_overview_read.get_industry_overview_payload(conn, topn=1)
-
-        assert payload["count"] == 3
-        assert payload["data"][0]["sector_name"] == "机器人"
-        assert payload["data"][0]["candidate_count"] == 0
-        assert payload["summary"]["strongest_sector"] == "机器人"
-        assert payload["summary"]["sector_focus"][0]["sector_name"] == "机器人"
     finally:
         conn.close()

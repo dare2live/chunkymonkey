@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Phase 2: 特征工程 → fact_feature_panel (daily panel, stock × date × features)
 
-三 Pillar + regime + 标签的统一组装, 供 Phase 3 qlib+optuna 建模.
+三 Pillar + regime + 标签的统一组装, 供 Phase 3 LightGBM+Optuna 建模.
 
 Pillars
   A 事件 (rolling count + days_since):

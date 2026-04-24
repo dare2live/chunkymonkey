@@ -39,7 +39,6 @@ def load_candidate_setup_rows(conn, limit: int = 200) -> list[dict]:
                followability_grade, premium_grade, report_recency_grade,
                reliability_grade, report_age_days,
                discovery_score, company_quality_score, stage_score,
-               forecast_score, forecast_score_effective,
                raw_composite_priority_score, composite_priority_score,
                composite_cap_score, composite_cap_reason,
                stock_archetype, priority_pool, priority_pool_reason,
@@ -47,7 +46,7 @@ def load_candidate_setup_rows(conn, limit: int = 200) -> list[dict]:
                crowding_bucket, crowding_yield_raw, crowding_yield_grade,
                crowding_stability_raw, crowding_stability_grade,
                crowding_fit_raw, crowding_fit_grade, crowding_fit_sample,
-               crowding_fit_source, qlib_rank
+               crowding_fit_source
         FROM mart_stock_trend
         WHERE setup_tag IS NOT NULL
         ORDER BY
@@ -92,7 +91,7 @@ def load_watchlist_rows(conn) -> list[dict]:
                t.company_quality_score_source,
                t.quality_feature_snapshot_date,
                t.stage_score,
-               t.forecast_score, t.raw_composite_priority_score, t.composite_priority_score, t.priority_pool,
+               t.raw_composite_priority_score, t.composite_priority_score, t.priority_pool,
                t.priority_pool_reason, t.composite_cap_reason,
                t.external_attention_score, t.external_crowding_penalty, t.external_attention_signal,
                t.score_highlights, t.score_risks

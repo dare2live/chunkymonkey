@@ -139,7 +139,7 @@ def macd(close: pd.Series, fast: int = 12, slow: int = 26, signal: int = 9):
 
 
 # ============================================================
-# Qlib Alpha 因子（原 qlib_engine._compute_factors_for_df 迁移）
+# Alpha 技术因子
 # ============================================================
 
 def compute_alpha_factors(df: pd.DataFrame) -> pd.DataFrame:

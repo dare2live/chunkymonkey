@@ -92,8 +92,6 @@ def test_build_stock_trends_payload_enriches_rows_and_blacklist_fallbacks():
                 "setup_priority": 3,
                 "setup_score_raw": 80.0,
                 "discovery_score": 74.0,
-                "forecast_20d_score": 63.0,
-                "forecast_60d_excess_score": 58.0,
                 "external_attention_signal": "关注抬升",
                 "turtle_setup_state": "S1待突破",
             }
@@ -125,8 +123,6 @@ def test_build_stock_trends_payload_enriches_rows_and_blacklist_fallbacks():
     assert active["stock_code"] == "600001"
     assert active["tdx_l2"] == "T1001"
     assert active["holder_follow_count"] == 2
-    assert active["forecast_cross_section_score"] == 63.0
-    assert active["forecast_industry_relative_score"] == 58.0
     assert active["stock_gate"] == "follow"
     assert active["dual_confirm_count"] == 2
     assert active["dual_confirm_latest_report_date"] == "2026-04-15"
@@ -171,8 +167,6 @@ def test_load_stock_trends_payload_queries_and_assembles(monkeypatch):
                         "setup_priority": 3,
                         "setup_score_raw": 80.0,
                         "discovery_score": 74.0,
-                        "forecast_20d_score": 63.0,
-                        "forecast_60d_excess_score": 58.0,
                         "external_attention_signal": "关注抬升",
                         "turtle_setup_state": "S1待突破",
                         "display_inst_name": "机构甲",
@@ -205,7 +199,6 @@ def test_load_stock_trends_payload_queries_and_assembles(monkeypatch):
     assert rows[0]["stock_code"] == "600001"
     assert rows[0]["tdx_l2"] == "T1001"
     assert rows[0]["holder_follow_count"] == 2
-    assert rows[0]["forecast_cross_section_score"] == 63.0
     assert rows[0]["stock_gate"] == "follow"
     assert rows[1]["stock_code"] == "600999"
     assert rows[1]["stock_gate_reason"] == "已拉黑"

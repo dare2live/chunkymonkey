@@ -13,7 +13,6 @@ from typing import Optional
 
 from services.industry import resolve_industry, with_industry_aliases
 from services.market_signals import load_margin_balance_overlay
-from services.stock_forecast_engine import apply_forecast_score_aliases
 
 
 logger = logging.getLogger("cm-api")
@@ -206,13 +205,6 @@ async def load_stock_detail_context(
     tdx_quarterly_overlay = detail_timeline.get("tdx_quarterly_overlay") or {}
     tdx_blocks = load_stock_tdx_block_memberships(conn, stock_code)
     margin_balance_overlay = load_margin_balance_overlay(stock_code)
-    qlib_tdx_association = load_stock_qlib_tdx_association(
-        conn,
-        stock_code,
-        tdx_quarterly_overlay,
-        margin_balance_overlay,
-        shareholder_change_payload,
-    )
     enriched_institutions = enrich_stock_institutions(institutions, latest_close_row)
     setup_row = load_stock_setup_row(conn, stock_code)
     setup_payload = build_stock_setup_payload(setup_row, enriched_institutions)
@@ -230,7 +222,6 @@ async def load_stock_detail_context(
         "institutions": enriched_institutions,
         "setup": setup_payload["setup"],
         "stage": setup_payload["stage"],
-        "forecast": setup_payload["forecast"],
         "turtle": setup_payload["turtle"],
         "attention": attention,
         "price_timeline": price_timeline,
@@ -239,7 +230,6 @@ async def load_stock_detail_context(
         "tdx_blocks": tdx_blocks,
         "margin_balance_overlay": margin_balance_overlay,
         "shareholder_change_summary": (shareholder_change_payload or {}).get("recent_180d"),
-        "qlib_tdx_association": qlib_tdx_association,
         "latest_close_date": latest_close_row["date"] if latest_close_row else None,
         "latest_notice_date": latest_notice_date or None,
     }
@@ -333,7 +323,7 @@ def load_stock_setup_row(conn, stock_code: str):
                t.crowding_fit_source, t.report_age_days,
                t.path_state, t.latest_report_date, t.latest_notice_date,
                t.discovery_score, t.company_quality_score, t.stage_score,
-               t.forecast_score, t.forecast_score_effective, t.raw_composite_priority_score,
+               t.raw_composite_priority_score,
                t.composite_priority_score, t.composite_cap_score, t.composite_cap_reason,
                t.stock_archetype, t.priority_pool, t.priority_pool_reason,
                t.attention_comment_trade_date, t.attention_focus_index, t.attention_composite_score,
@@ -358,11 +348,6 @@ def load_stock_setup_row(conn, stock_code: str):
                st.stage_cycle_recovery_raw, st.stage_cycle_realization_penalty,
                st.stage_cycle_uncertainty_penalty,
                st.max_drawdown_60d, st.dist_ma250_pct, st.above_ma250,
-               ff.forecast_20d_score, ff.forecast_60d_excess_score,
-               ff.forecast_risk_adjusted_score, ff.forecast_reason,
-               ff.snapshot_date AS forecast_snapshot_date,
-               ff.qlib_score, ff.qlib_rank, ff.qlib_percentile,
-               ff.industry_qlib_percentile, ff.volatility_rank, ff.drawdown_rank,
                q.snapshot_date AS quality_snapshot_date,
                q.latest_financial_report_date AS quality_latest_financial_report_date,
                q.latest_indicator_report_date AS quality_latest_indicator_report_date,
@@ -377,9 +362,6 @@ def load_stock_setup_row(conn, stock_code: str):
                q.quality_margin_raw, q.quality_contract_raw, q.quality_freshness_raw,
                q.quality_capital_raw, q.quality_efficiency_raw, q.quality_growth_raw,
                q.quality_score_v1,
-               ff.model_id AS forecast_model_id,
-               ff.predict_date AS forecast_predict_date,
-               ff.industry_relative_group AS forecast_industry_relative_group,
                tf.snapshot_date AS turtle_snapshot_date,
                tf.latest_trade_date, tf.close_price, tf.atr_14, tf.atr_14_pct,
                tf.entry_level_20, tf.entry_level_55, tf.exit_level_10, tf.exit_level_20,
@@ -391,7 +373,6 @@ def load_stock_setup_row(conn, stock_code: str):
                tf.entry_signal_20, tf.entry_signal_55, tf.exit_signal_10, tf.exit_signal_20
         FROM mart_stock_trend t
         LEFT JOIN dim_stock_stage_latest st ON st.stock_code = t.stock_code
-        LEFT JOIN dim_stock_forecast_latest ff ON ff.stock_code = t.stock_code
         LEFT JOIN dim_stock_quality_latest q ON q.stock_code = t.stock_code
         LEFT JOIN dim_stock_turtle_latest tf ON tf.stock_code = t.stock_code
         WHERE t.stock_code = ?
@@ -403,9 +384,9 @@ def load_stock_setup_row(conn, stock_code: str):
 
 def build_stock_setup_payload(setup_row: Optional[dict], institutions: list[dict]) -> dict:
     if not setup_row:
-        return {"setup": None, "stage": None, "forecast": None, "turtle": None}
+        return {"setup": None, "stage": None, "turtle": None}
 
-    setup = apply_forecast_score_aliases(dict(setup_row))
+    setup = dict(setup_row)
     quality_report_date = str(setup.get("quality_latest_financial_report_date") or "").strip()
     stock_report_date = str(setup.get("latest_report_date") or "").strip()
     quality_score_v1 = _safe_number(setup.get("quality_score_v1"))
@@ -434,7 +415,6 @@ def build_stock_setup_payload(setup_row: Optional[dict], institutions: list[dict
     return {
         "setup": setup,
         "stage": extract_stage_payload(setup),
-        "forecast": extract_forecast_payload(setup),
         "turtle": extract_turtle_payload(setup),
     }
 
@@ -448,352 +428,6 @@ def _format_money_amount(value: object) -> str:
     if abs(number) >= 1e4:
         return f"{number / 1e4:.1f}万"
     return f"{number:.0f}"
-
-
-def _qlib_position_text(percentile: Optional[float]) -> str:
-    if percentile is None:
-        return "-"
-    if percentile >= 99.5:
-        return "位于最高分位"
-    if percentile <= 0.5:
-        return "位于最低分位"
-    rounded = max(0, min(100, int(round(percentile))))
-    return f"高于 {rounded}% 股票"
-
-
-def _qlib_association_label(corr: Optional[float]) -> str:
-    if corr is None:
-        return "样本不足"
-    strength = abs(corr)
-    if strength >= 0.28:
-        prefix = "较强"
-    elif strength >= 0.18:
-        prefix = "中等"
-    elif strength >= 0.08:
-        prefix = "轻度"
-    else:
-        prefix = "弱"
-    direction = "正相关" if corr >= 0 else "负相关"
-    return prefix + direction
-
-
-def _pearson_corr(values: list[tuple[float, float]]) -> Optional[float]:
-    if len(values) < 12:
-        return None
-    x_values = [item[0] for item in values]
-    y_values = [item[1] for item in values]
-    x_mean = sum(x_values) / len(x_values)
-    y_mean = sum(y_values) / len(y_values)
-    numerator = sum((x - x_mean) * (y - y_mean) for x, y in values)
-    x_var = sum((x - x_mean) ** 2 for x in x_values)
-    y_var = sum((y - y_mean) ** 2 for y in y_values)
-    if x_var <= 0 or y_var <= 0:
-        return None
-    return round(numerator / math.sqrt(x_var * y_var), 4)
-
-
-def _percentile_rank(values: list[float], target: Optional[float]) -> Optional[float]:
-    if target is None:
-        return None
-    clean_values = sorted(value for value in values if value is not None)
-    if not clean_values:
-        return None
-    lower_or_equal = sum(1 for value in clean_values if value <= target)
-    return round(lower_or_equal / len(clean_values) * 100, 1)
-
-
-def _build_mapping_association_row(
-    qlib_percentile_map: dict[str, float],
-    data_map: dict[str, dict],
-    stock_code: str,
-    *,
-    metric_key: str,
-    label: str,
-    group: str,
-    value_text_fn,
-    delta_text_fn=None,
-    include_missing_zero: bool = False,
-):
-    current_payload = data_map.get(stock_code) or {}
-    current_value = _safe_number(current_payload.get(metric_key))
-    if include_missing_zero and current_value is None:
-        current_value = 0.0
-        current_payload = {**current_payload, metric_key: current_value}
-    if current_value is None:
-        return None
-
-    universe_pairs = []
-    universe_values = []
-    iterable = qlib_percentile_map.items() if include_missing_zero else ((code, qlib_percentile_map.get(code)) for code in data_map.keys())
-    for code, qlib_percentile in iterable:
-        payload = data_map.get(code) or {}
-        metric_value = _safe_number(payload.get(metric_key))
-        if include_missing_zero and metric_value is None:
-            metric_value = 0.0
-        if metric_value is not None:
-            universe_values.append(metric_value)
-        if metric_value is not None and qlib_percentile is not None:
-            universe_pairs.append((metric_value, qlib_percentile))
-
-    corr = _pearson_corr(universe_pairs)
-    return {
-        "group": group,
-        "label": label,
-        "value": current_value,
-        "value_text": value_text_fn(current_payload, current_value),
-        "delta": None,
-        "delta_text": delta_text_fn(current_payload) if delta_text_fn else "-",
-        "corr": corr,
-        "association": _qlib_association_label(corr),
-        "percentile": _percentile_rank(universe_values, current_value),
-    }
-
-
-def load_stock_qlib_tdx_association(
-    conn,
-    stock_code: str,
-    overlay: Optional[dict],
-    margin_overlay: Optional[dict],
-    shareholder_change_payload: Optional[dict],
-) -> Optional[dict]:
-    from services.market_signals import load_margin_market_snapshot, load_shareholder_change_universe_summary
-
-    latest_model = conn.execute(
-        "SELECT model_id, predict_date FROM qlib_predictions ORDER BY predict_date DESC, model_id DESC LIMIT 1"
-    ).fetchone()
-    if not latest_model:
-        return None
-
-    qlib_rows = conn.execute(
-        "SELECT stock_code, qlib_percentile FROM qlib_predictions WHERE model_id = ? AND qlib_percentile IS NOT NULL",
-        (latest_model["model_id"],),
-    ).fetchall()
-    qlib_percentile_map = {
-        str(row["stock_code"]): _safe_number(row["qlib_percentile"])
-        for row in qlib_rows
-        if row["stock_code"] and _safe_number(row["qlib_percentile"]) is not None
-    }
-    if not qlib_percentile_map:
-        return None
-
-    report_coverage = _load_gpcw_report_coverage(conn, limit=12)
-    complete_reports = [
-        item for item in report_coverage if int(item.get("stock_count") or 0) >= _GPCW_COMPLETE_REPORT_MIN_STOCKS
-    ]
-
-    result_rows = []
-
-    current_report_date = None
-    previous_report_date = None
-    tdx_sample_count = None
-    if len(complete_reports) >= 2:
-        current_report_date = complete_reports[0]["report_date"]
-        previous_report_date = complete_reports[1]["report_date"]
-        rows = conn.execute(
-            """
-            WITH current_snap AS (
-                SELECT stock_code,
-                       holder_count,
-                       inst_total_count,
-                       fund_count,
-                       insurance_count,
-                       qfii_count,
-                       national_team_shares_wan
-                FROM raw_gpcw_detail
-                WHERE report_date = ?
-            ),
-            previous_snap AS (
-                SELECT stock_code,
-                       holder_count,
-                       inst_total_count,
-                       fund_count,
-                       insurance_count,
-                       qfii_count,
-                       national_team_shares_wan
-                FROM raw_gpcw_detail
-                WHERE report_date = ?
-            )
-            SELECT p.stock_code,
-                   p.qlib_percentile,
-                   c.holder_count,
-                   c.inst_total_count,
-                   c.fund_count,
-                   c.insurance_count,
-                   c.qfii_count,
-                   c.national_team_shares_wan,
-                   CASE WHEN prev.holder_count IS NOT NULL AND prev.holder_count != 0
-                        THEN (c.holder_count - prev.holder_count) / prev.holder_count * 100 END AS holder_count_delta_pct,
-                   c.inst_total_count - prev.inst_total_count AS inst_total_count_delta,
-                   c.fund_count - prev.fund_count AS fund_count_delta,
-                   c.insurance_count - prev.insurance_count AS insurance_count_delta,
-                   c.qfii_count - prev.qfii_count AS qfii_count_delta,
-                   c.national_team_shares_wan - prev.national_team_shares_wan AS national_team_shares_wan_delta
-            FROM qlib_predictions p
-            INNER JOIN current_snap c ON c.stock_code = p.stock_code
-            LEFT JOIN previous_snap prev ON prev.stock_code = p.stock_code
-            WHERE p.model_id = ?
-              AND p.qlib_percentile IS NOT NULL
-            """,
-            (current_report_date, previous_report_date, latest_model["model_id"]),
-        ).fetchall()
-        stock_row = next((row for row in rows if row["stock_code"] == stock_code), None)
-        tdx_sample_count = len(rows)
-        metric_defs = [
-            {"key": "holder_count", "label": "股东人数", "value_text": _format_household_count, "delta_key": "holder_count_delta_pct", "delta_suffix": "%", "delta_decimals": 1},
-            {"key": "inst_total_count", "label": "机构总量", "value_text": lambda value: f"{int(round(value))}家" if value is not None else "-", "delta_key": "inst_total_count_delta", "delta_suffix": "家", "delta_decimals": 0},
-            {"key": "fund_count", "label": "基金机构数", "value_text": lambda value: f"{int(round(value))}家" if value is not None else "-", "delta_key": "fund_count_delta", "delta_suffix": "家", "delta_decimals": 0},
-            {"key": "insurance_count", "label": "保险机构数", "value_text": lambda value: f"{int(round(value))}家" if value is not None else "-", "delta_key": "insurance_count_delta", "delta_suffix": "家", "delta_decimals": 0},
-            {"key": "qfii_count", "label": "QFII机构数", "value_text": lambda value: f"{int(round(value))}家" if value is not None else "-", "delta_key": "qfii_count_delta", "delta_suffix": "家", "delta_decimals": 0},
-            {"key": "national_team_shares_wan", "label": "国家队持股", "value_text": _format_wan_shares, "delta_key": "national_team_shares_wan_delta", "delta_suffix": "万股", "delta_decimals": 0},
-        ]
-        for metric in metric_defs:
-            universe_pairs = []
-            universe_values = []
-            for row in rows:
-                metric_value = _safe_number(row[metric["key"]])
-                qlib_percentile = _safe_number(row["qlib_percentile"])
-                if metric_value is not None:
-                    universe_values.append(metric_value)
-                if metric_value is not None and qlib_percentile is not None:
-                    universe_pairs.append((metric_value, qlib_percentile))
-            current_value = _safe_number(stock_row[metric["key"]]) if stock_row else None
-            delta_value = _safe_number(stock_row[metric["delta_key"]]) if stock_row else None
-            if current_value is None:
-                continue
-            corr = _pearson_corr(universe_pairs)
-            result_rows.append({
-                "group": "TDX季度",
-                "label": metric["label"],
-                "value": current_value,
-                "value_text": metric["value_text"](current_value),
-                "delta": delta_value,
-                "delta_text": _signed_text(delta_value, metric["delta_decimals"], metric["delta_suffix"]) if delta_value is not None else "-",
-                "corr": corr,
-                "association": _qlib_association_label(corr),
-                "percentile": _percentile_rank(universe_values, current_value),
-            })
-
-    margin_snapshot_sample_count = None
-    if margin_overlay and margin_overlay.get("latest_trade_date"):
-        margin_snapshot = load_margin_market_snapshot(margin_overlay["latest_trade_date"])
-        margin_snapshot_sample_count = len(margin_snapshot)
-        fin_row = _build_mapping_association_row(
-            qlib_percentile_map,
-            margin_snapshot,
-            stock_code,
-            metric_key="fin_balance_ratio",
-            label="融资余额",
-            group="两融",
-            value_text_fn=lambda payload, _value: (
-                f"{_format_money_amount(payload.get('fin_balance'))} ({payload['fin_balance_ratio']:.2f}%)"
-                if payload.get("fin_balance") is not None and payload.get("fin_balance_ratio") is not None
-                else _format_money_amount(payload.get("fin_balance"))
-            ),
-            delta_text_fn=lambda _payload: _signed_text(_safe_number(margin_overlay.get("fin_balance_change_60d_pct")), 1, "%") if margin_overlay else "-",
-        )
-        loan_row = _build_mapping_association_row(
-            qlib_percentile_map,
-            margin_snapshot,
-            stock_code,
-            metric_key="loan_balance_ratio",
-            label="融券余额",
-            group="两融",
-            value_text_fn=lambda payload, _value: (
-                f"{_format_money_amount(payload.get('loan_balance'))} ({payload['loan_balance_ratio']:.3f}%)"
-                if payload.get("loan_balance") is not None and payload.get("loan_balance_ratio") is not None
-                else _format_money_amount(payload.get("loan_balance"))
-            ),
-            delta_text_fn=lambda _payload: _signed_text(_safe_number(margin_overlay.get("loan_balance_change_60d_pct")), 1, "%") if margin_overlay else "-",
-        )
-        if fin_row:
-            result_rows.append(fin_row)
-        if loan_row:
-            result_rows.append(loan_row)
-
-    holder_change_summary = load_shareholder_change_universe_summary(180)
-    holder_recent_map = holder_change_summary.get("stocks") or {}
-    holder_payload_recent = (shareholder_change_payload or {}).get("recent_180d") or {}
-    if stock_code not in holder_recent_map:
-        holder_recent_map[stock_code] = {
-            "event_count": _safe_number(holder_payload_recent.get("event_count")) or 0,
-            "increase_count": _safe_number(holder_payload_recent.get("increase_count")) or 0,
-            "decrease_count": _safe_number(holder_payload_recent.get("decrease_count")) or 0,
-            "net_event_count": _safe_number(holder_payload_recent.get("net_event_count")) or 0,
-            "net_change_num": _safe_number(holder_payload_recent.get("net_change_num")) or 0,
-        }
-
-    increase_row = _build_mapping_association_row(
-        qlib_percentile_map,
-        holder_recent_map,
-        stock_code,
-        metric_key="increase_count",
-        label="近180天增持",
-        group="增减持",
-        value_text_fn=lambda payload, value: f"{int(round(value))}次",
-        delta_text_fn=lambda payload: f"净方向 {_signed_text(_safe_number(payload.get('net_event_count')), 0, '次')}",
-        include_missing_zero=True,
-    )
-    decrease_row = _build_mapping_association_row(
-        qlib_percentile_map,
-        holder_recent_map,
-        stock_code,
-        metric_key="decrease_count",
-        label="近180天减持",
-        group="增减持",
-        value_text_fn=lambda payload, value: f"{int(round(value))}次",
-        delta_text_fn=lambda payload: f"总事件 {int(round(_safe_number(payload.get('event_count')) or 0))}次",
-        include_missing_zero=True,
-    )
-    if increase_row:
-        result_rows.append(increase_row)
-    if decrease_row:
-        result_rows.append(decrease_row)
-
-    if not result_rows:
-        return None
-
-    ranked_rows = [row for row in result_rows if row.get("corr") is not None]
-    ranked_rows.sort(key=lambda item: abs(item["corr"]), reverse=True)
-    summary = []
-    for item in ranked_rows[:3]:
-        summary.append(f"{item['label']} 与 Qlib 分位呈{item['association']}")
-    if not summary:
-        summary.append("当前样本不足以给出稳定的 Qlib 联动结论")
-
-    coverage_notes = [
-        (overlay or {}).get("capability_note"),
-        (margin_overlay or {}).get("note"),
-        (shareholder_change_payload or {}).get("note"),
-    ]
-    sample_breakdown = []
-    if tdx_sample_count:
-        sample_breakdown.append(f"TDX {tdx_sample_count}")
-    if margin_snapshot_sample_count:
-        sample_breakdown.append(f"两融 {margin_snapshot_sample_count}")
-    if holder_recent_map:
-        sample_breakdown.append(f"增减持 {len(holder_recent_map)}")
-
-    return {
-        "model_id": latest_model["model_id"],
-        "predict_date": latest_model["predict_date"],
-        "report_date": current_report_date,
-        "previous_report_date": previous_report_date,
-        "sample_count": len(qlib_percentile_map),
-        "sample_breakdown": sample_breakdown,
-        "coverage_note": " ".join(note for note in coverage_notes if note),
-        "summary": summary,
-        "limitations": [
-            "这是最新模型横截面的关联摘要，不等同于前瞻因果回测。",
-            "TDX 维度优先使用完整季度口径；两融使用最新交易日横截面；增减持使用最近180天事件。",
-        ],
-        "rows": [
-            {
-                **row,
-                "position_text": _qlib_position_text(row.get("percentile")),
-            }
-            for row in result_rows
-        ],
-    }
 
 
 def extract_stage_payload(row: Optional[dict]) -> Optional[dict]:
@@ -810,32 +444,6 @@ def extract_stage_payload(row: Optional[dict]) -> Optional[dict]:
         "max_drawdown_60d",
         "dist_ma250_pct",
         "above_ma250",
-    ]
-    payload = {field: row.get(field) for field in fields if field in row}
-    return payload if any(value is not None for value in payload.values()) else None
-
-
-def extract_forecast_payload(row: Optional[dict]) -> Optional[dict]:
-    if not row:
-        return None
-    row = apply_forecast_score_aliases(row)
-    fields = [
-        "forecast_snapshot_date",
-        "qlib_score",
-        "qlib_rank",
-        "qlib_percentile",
-        "industry_qlib_percentile",
-        "volatility_rank",
-        "drawdown_rank",
-        "forecast_cross_section_score",
-        "forecast_20d_score",
-        "forecast_industry_relative_score",
-        "forecast_60d_excess_score",
-        "forecast_risk_adjusted_score",
-        "forecast_reason",
-        "forecast_model_id",
-        "forecast_predict_date",
-        "forecast_industry_relative_group",
     ]
     payload = {field: row.get(field) for field in fields if field in row}
     return payload if any(value is not None for value in payload.values()) else None

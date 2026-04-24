@@ -11,7 +11,10 @@ pydantic>=2.0
 # 使用自维护 fork (tdxhub)，修复服务器列表和 server 参数 bug
 mootdx @ git+https://github.com/dare2live/tdxhub.git@master
 
-# AI 模型（可选：缺失时 Qlib 功能降级但系统可用）
+# AI 模型 (LightGBM + Optuna 多维评分)
 lightgbm
-# pyqlib>=0.9.7         # 完整 Qlib 框架，需手动安装
+optuna
+duckdb
+scipy
+scikit-learn
 pytest-asyncio

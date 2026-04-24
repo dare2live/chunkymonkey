@@ -10,13 +10,6 @@ from services.etf_grid_engine import is_supported_exchange_etf_code
 
 ETF_SNAPSHOT_SCHEMA_VERSION = 6
 _REQUIRED_SNAPSHOT_ROW_FIELDS = (
-    "qlib_consensus_score",
-    "qlib_model_status",
-    "qlib_consensus_factor_group",
-    "qlib_preferred_strategy",
-    "qlib_predicted_best_step_pct",
-    "qlib_predicted_buy_hold_return_pct",
-    "qlib_predicted_grid_return_pct",
     "strategy_reason",
     "backtest_hard_gate_passed",
     "tradeability_status",

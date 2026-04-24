@@ -13,7 +13,6 @@ from services.industry import (
     industry_level_nonempty_condition,
     industry_level_select,
 )
-from services.sector_forecast_engine import get_latest_sector_forecast_snapshot
 
 
 SECTOR_LEVEL = 1
@@ -52,18 +51,6 @@ def load_sector_momentum_map(conn) -> dict[str, dict]:
         ORDER BY momentum_score DESC, sector_name
         """,
     )
-
-
-def load_sector_forecast_map(conn, sector_count: int) -> dict[str, dict]:
-    try:
-        rows = get_latest_sector_forecast_snapshot(
-            conn,
-            limit=max(int(sector_count or 0), 64),
-            auto_build=True,
-        )
-    except Exception:
-        return {}
-    return {row["sector_name"]: row for row in rows}
 
 
 def load_sector_active_map(conn) -> dict[str, dict]:
@@ -270,7 +257,6 @@ def build_sector_overview_item(
     sector_name: str,
     *,
     sector_map: dict[str, dict],
-    sector_forecast_map: dict[str, dict],
     active_map: dict[str, dict],
     candidate_map: dict[str, dict],
     snapshot_feedback_map: dict[str, dict],
@@ -279,7 +265,6 @@ def build_sector_overview_item(
     top_stock_map: dict[str, list[dict]],
 ) -> dict:
     sector = sector_map.get(sector_name) or {}
-    sector_forecast = sector_forecast_map.get(sector_name) or {}
     active = active_map.get(sector_name) or {}
     candidate = candidate_map.get(sector_name) or {}
     snapshot_feedback = snapshot_feedback_map.get(sector_name) or {}
@@ -306,20 +291,6 @@ def build_sector_overview_item(
         "rotation_rank_3m": sector.get("rotation_rank_3m"),
         "rotation_bucket": sector.get("rotation_bucket"),
         "rotation_blacklisted": sector.get("rotation_blacklisted", 0),
-        "qlib_sector_model_id": sector_forecast.get("model_id"),
-        "qlib_sector_snapshot_date": sector_forecast.get("snapshot_date"),
-        "qlib_stock_count": sector_forecast.get("stock_count"),
-        "avg_qlib_score": sector_forecast.get("avg_qlib_score"),
-        "avg_qlib_percentile": sector_forecast.get("avg_qlib_percentile"),
-        "avg_forecast_cross_section_score": sector_forecast.get("avg_forecast_cross_section_score") if sector_forecast.get("avg_forecast_cross_section_score") is not None else sector_forecast.get("avg_forecast_20d_score"),
-        "avg_forecast_20d_score": sector_forecast.get("avg_forecast_20d_score"),
-        "avg_forecast_industry_relative_score": sector_forecast.get("avg_forecast_industry_relative_score") if sector_forecast.get("avg_forecast_industry_relative_score") is not None else sector_forecast.get("avg_forecast_60d_excess_score"),
-        "avg_forecast_60d_excess_score": sector_forecast.get("avg_forecast_60d_excess_score"),
-        "avg_forecast_risk_adjusted_score": sector_forecast.get("avg_forecast_risk_adjusted_score"),
-        "high_conviction_count": sector_forecast.get("high_conviction_count", 0),
-        "next_rotation_score": sector_forecast.get("next_rotation_score"),
-        "next_rotation_label": sector_forecast.get("next_rotation_label"),
-        "next_rotation_reason": sector_forecast.get("next_rotation_reason"),
         "active_institution_count": active.get("active_institution_count", 0),
         "current_stock_count": active.get("current_stock_count", 0),
         "recent_new_entry_count": recent.get("recent_new_entry_count", 0),
@@ -402,8 +373,6 @@ def _sector_names(*maps: dict[str, object]) -> list[str]:
 
 def _sector_sort_key(item: dict) -> tuple:
     return (
-        0 if item.get("next_rotation_score") is not None else 1,
-        -(item.get("next_rotation_score") or 0),
         -(item.get("a_pool_count") or 0),
         -(item.get("avg_composite_score") or 0),
         -(item.get("momentum_score") or 0),
@@ -424,36 +393,14 @@ def _strongest_sector_name(data: list[dict], metric_key: str) -> Optional[str]:
     return strongest_name
 
 
-def _build_sector_focus(data: list[dict]) -> list[dict]:
-    return [
-        {
-            "sector_name": item.get("sector_name"),
-            "next_rotation_score": item.get("next_rotation_score"),
-            "next_rotation_label": item.get("next_rotation_label"),
-            "next_rotation_reason": item.get("next_rotation_reason"),
-            "stock_count": item.get("qlib_stock_count"),
-            "sector_momentum_score": item.get("momentum_score"),
-            "source": "qlib_sector_forecast",
-        }
-        for item in data
-        if item.get("next_rotation_score") is not None
-    ][:4]
-
-
 def build_industry_overview_summary(data: list[dict]) -> dict:
-    sector_focus = _build_sector_focus(data)
     strongest_sector = _strongest_sector_name(data, "momentum_score")
-    strongest_qlib_sector = _strongest_sector_name(data, "next_rotation_score")
-    strongest_sector_source = "qlib_sector_forecast" if sector_focus else "sector_momentum"
-    strongest_sector_note = "按 Qlib 行业前瞻排序" if sector_focus else "按行业动量排序"
 
     return {
         "sector_count": len(data),
-        "strongest_sector": strongest_qlib_sector or strongest_sector,
-        "strongest_sector_source": strongest_sector_source,
-        "strongest_sector_note": strongest_sector_note,
-        "sector_focus": sector_focus,
-        "qlib_sector_count": sum(1 for item in data if item.get("next_rotation_score") is not None),
+        "strongest_sector": strongest_sector,
+        "strongest_sector_source": "sector_momentum",
+        "strongest_sector_note": "按行业动量排序",
         "a_pool_total": sum(item.get("a_pool_count") or 0 for item in data),
         "setup_total": sum(item.get("setup_candidate_count") or 0 for item in data),
         "dual_confirm_total": sum(item.get("dual_confirm_stock_count") or 0 for item in data),
@@ -468,7 +415,6 @@ def build_industry_overview_summary(data: list[dict]) -> dict:
 
 def get_industry_overview_payload(conn, *, topn: int = 3) -> dict:
     sector_map = load_sector_momentum_map(conn)
-    sector_forecast_map = load_sector_forecast_map(conn, len(sector_map))
     active_map = load_sector_active_map(conn)
     candidate_map = load_sector_candidate_map(conn)
     snapshot_feedback_map = load_sector_snapshot_feedback_map(conn)
@@ -483,7 +429,6 @@ def get_industry_overview_payload(conn, *, topn: int = 3) -> dict:
         build_sector_overview_item(
             sector_name,
             sector_map=sector_map,
-            sector_forecast_map=sector_forecast_map,
             active_map=active_map,
             candidate_map=candidate_map,
             snapshot_feedback_map=snapshot_feedback_map,
@@ -493,7 +438,6 @@ def get_industry_overview_payload(conn, *, topn: int = 3) -> dict:
         )
         for sector_name in _sector_names(
             sector_map,
-            sector_forecast_map,
             active_map,
             candidate_map,
             snapshot_feedback_map,

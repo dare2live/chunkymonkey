@@ -4,7 +4,7 @@
 架构分工
 - DuckDB SQL: 所有 panel 级聚合 / 窗口函数 / ASOF JOIN (替代 pandas groupby rolling)
 - pandas: 最终 DataFrame -> SQLite 写入 (to_sql)
-- qlib Alpha158: 由独立脚本 build_alpha158_features.py 产出, 本脚本以 LEFT JOIN 挂上
+- Alpha158 因子: 由独立脚本 build_alpha158_duck.py 产出, 本脚本以 LEFT JOIN 挂上
 
 Pillar 分工同原版 (A/B/C + regime). DuckDB 把 27 min pandas 压到 <5 min.
 """

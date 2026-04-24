@@ -10,27 +10,27 @@ from services.scoring import (
 
 class TestCompositeComputation:
     def test_basic_weights(self):
-        raw, final = compute_composite_priority(100, 100, 100, 100)
+        raw, final = compute_composite_priority(100, 100, 100)
         assert raw == 100.0
         assert final == 100.0
 
     def test_weights_sum_to_expected(self):
-        raw, final = compute_composite_priority(50, 50, 50, 50)
+        raw, final = compute_composite_priority(50, 50, 50)
         assert raw == 50.0
         assert final == 50.0
 
     def test_attention_boost(self):
-        raw, final = compute_composite_priority(70, 70, 70, 70, attention_boost=10)
+        raw, final = compute_composite_priority(70, 70, 70, attention_boost=10)
         assert final == raw + 10
 
     def test_crowding_penalty(self):
-        raw, final = compute_composite_priority(70, 70, 70, 70, crowding_penalty=5)
+        raw, final = compute_composite_priority(70, 70, 70, crowding_penalty=5)
         assert final == raw - 5
 
     def test_clamped_to_0_100(self):
-        raw, final = compute_composite_priority(0, 0, 0, 0, crowding_penalty=50)
+        raw, final = compute_composite_priority(0, 0, 0, crowding_penalty=50)
         assert final == 0.0
-        raw2, final2 = compute_composite_priority(100, 100, 100, 100, attention_boost=50)
+        raw2, final2 = compute_composite_priority(100, 100, 100, attention_boost=50)
         assert final2 == 100.0
 
 

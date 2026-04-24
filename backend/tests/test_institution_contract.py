@@ -16,23 +16,23 @@ from services.db import get_conn
 client = TestClient(app)
 
 
-def _has_stage_forecast_tables():
-    """Step 5 任务 A：数据端点依赖 dim_stock_stage_latest / dim_stock_forecast_latest，
+def _has_stage_tables():
+    """Step 5 任务 A：数据端点依赖 dim_stock_stage_latest，
     空 DB（data/ 未 symlink）时这些表不存在，跳过测试避免误报。"""
     conn = get_conn()
     try:
         row = conn.execute(
             "SELECT name FROM sqlite_master WHERE type='table' "
-            "AND name IN ('dim_stock_stage_latest','dim_stock_forecast_latest','mart_stock_trend')"
+            "AND name IN ('dim_stock_stage_latest','mart_stock_trend')"
         ).fetchall()
-        return len(row) >= 3
+        return len(row) >= 2
     finally:
         conn.close()
 
 
-def test_stock_scoring_breakdown_exposes_shared_stage_forecast_turtle_payloads():
-    if not _has_stage_forecast_tables():
-        pytest.skip("dim_stock_stage_latest / dim_stock_forecast_latest 不存在（空 DB）")
+def test_stock_scoring_breakdown_exposes_shared_stage_turtle_payloads():
+    if not _has_stage_tables():
+        pytest.skip("dim_stock_stage_latest 不存在（空 DB）")
     response = client.get("/api/inst/scoring/breakdown/stock/603899")
 
     assert response.status_code == 200
@@ -42,7 +42,6 @@ def test_stock_scoring_breakdown_exposes_shared_stage_forecast_turtle_payloads()
     assert payload["card_type"] == "stock"
     assert payload["object_id"] == "603899"
     assert payload["stage"] is not None
-    assert payload["forecast"] is not None
     assert payload["turtle"] is not None
 
 

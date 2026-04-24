@@ -27,23 +27,6 @@ from services.constants import (
 logger = logging.getLogger("cm-api")
 
 
-def _forecast_cross_section_score(forecast_row: Optional[dict]) -> Optional[float]:
-    if not forecast_row:
-        return None
-    score = _safe_float(forecast_row.get("forecast_cross_section_score"))
-    if score is not None:
-        return score
-    return _safe_float(forecast_row.get("forecast_20d_score"))
-
-
-def _forecast_industry_relative_score(forecast_row: Optional[dict]) -> Optional[float]:
-    if not forecast_row:
-        return None
-    score = _safe_float(forecast_row.get("forecast_industry_relative_score"))
-    if score is not None:
-        return score
-    return _safe_float(forecast_row.get("forecast_60d_excess_score"))
-
 # ============================================================
 # 默认评分配置
 # ============================================================
@@ -86,7 +69,6 @@ STOCK_SCORE_DEFAULTS = {
     "composite_discovery_weight": round(COMPOSITE_WEIGHTS["discovery"] * 100, 2),
     "composite_quality_weight": round(COMPOSITE_WEIGHTS["quality"] * 100, 2),
     "composite_stage_weight": round(COMPOSITE_WEIGHTS["stage"] * 100, 2),
-    "composite_forecast_weight": round(COMPOSITE_WEIGHTS["forecast"] * 100, 2),
     # 外部确认层权重（评分卡可调）
     "attention_composite_weight": round(ATTENTION_WEIGHTS["composite"] * 100, 2),
     "attention_focus_weight": round(ATTENTION_WEIGHTS["focus"] * 100, 2),
@@ -169,7 +151,6 @@ def stock_composite_weight_map(config: Optional[dict] = None) -> dict[str, float
         "discovery": STOCK_SCORE_DEFAULTS["composite_discovery_weight"],
         "quality": STOCK_SCORE_DEFAULTS["composite_quality_weight"],
         "stage": STOCK_SCORE_DEFAULTS["composite_stage_weight"],
-        "forecast": STOCK_SCORE_DEFAULTS["composite_forecast_weight"],
     })
 
 
@@ -1404,7 +1385,7 @@ def _external_attention_signal(
 # ============================================================
 
 def compute_composite_priority(
-    discovery: float, quality: float, stage: float, forecast_effective: float,
+    discovery: float, quality: float, stage: float,
     attention_boost: float = 0.0, crowding_penalty: float = 0.0,
     weights: Optional[dict[str, float]] = None,
 ) -> Tuple[float, float]:
@@ -1412,18 +1393,17 @@ def compute_composite_priority(
     计算原始/最终复合优先分。
 
     返回 (raw_score, final_score)。
-    权重来自评分卡配置，默认：发现 35 + 质量 30 + 阶段 20 + 预测 15。
+    权重来自评分卡配置，默认：发现 35 + 质量 30 + 阶段 20（保持原权重，不补位）。
     """
     cw = weights or COMPOSITE_WEIGHTS
-    total_weight = sum(max(float(cw.get(key) or 0.0), 0.0) for key in ("discovery", "quality", "stage", "forecast"))
+    total_weight = sum(max(float(cw.get(key) or 0.0), 0.0) for key in ("discovery", "quality", "stage"))
     if total_weight <= 0:
         cw = COMPOSITE_WEIGHTS
-        total_weight = sum(float(COMPOSITE_WEIGHTS[key]) for key in ("discovery", "quality", "stage", "forecast"))
+        total_weight = sum(float(COMPOSITE_WEIGHTS[key]) for key in ("discovery", "quality", "stage"))
     raw = (
         discovery * max(float(cw.get("discovery") or 0.0), 0.0)
         + quality * max(float(cw.get("quality") or 0.0), 0.0)
         + stage * max(float(cw.get("stage") or 0.0), 0.0)
-        + forecast_effective * max(float(cw.get("forecast") or 0.0), 0.0)
     ) / total_weight
     raw = round(max(0.0, min(100.0, raw)), 2)
     final = round(max(0.0, min(100.0, raw + attention_boost - crowding_penalty)), 2)
@@ -1525,7 +1505,6 @@ def apply_turtle_execution_overlay(
     *,
     turtle_row: Optional[dict],
     stage: float,
-    forecast_effective: float,
 ) -> Tuple[float, float, Optional[str]]:
     """海龟执行特征已迁出股票评分体系。
 
@@ -1635,124 +1614,6 @@ def _score_discovery(
     return score, discovery_skill, discovery_fresh, discovery_strength
 
 
-def _build_highlight_risk_reasons(
-    discovery_score: float, discovery_skill: float,
-    company_quality_score: float, stage_score: float,
-    composite_priority_score: float, composite_cap_reason: Optional[str],
-    stock_archetype: str, archetype_row: dict, stage_row: dict,
-    forecast_row: dict, industry_ctx: dict, attention_row: dict,
-    external_attention_score: Optional[float], external_crowding_penalty: float,
-    external_attention_signal: Optional[str],
-    attention_survey_count_30d: int, attention_survey_count_90d: int,
-    path_state: str, stock_gate: Optional[str], has_conflict: bool,
-    qlib_percentile: Optional[float],
-    quality_capital: float, quality_efficiency: float,
-    price_20d: Optional[float], price_1m: Optional[float],
-    unlock_ratio_180d: Optional[float],
-    dividend_financing_ratio: Optional[float], financing_count: Optional[float],
-    net_profit_growth_yoy_ak: Optional[float],
-) -> Tuple[str, str]:
-    """
-    根据各维度子分构建 highlights / risks 文案。
-
-    返回 (highlights_text, risks_text)。
-    """
-    highlight_reasons = []
-    risk_reasons = []
-
-    if discovery_skill >= 28:
-        highlight_reasons.append("机构行业能力较强")
-    if stage_row.get("stage_type_adjust_raw") is not None and _safe_float(stage_row.get("stage_type_adjust_raw")) is not None:
-        pass  # checked below
-    if company_quality_score >= 70:
-        highlight_reasons.append("公司质量稳健")
-    elif company_quality_score >= 55:
-        highlight_reasons.append("财务体质中上")
-    if (_safe_float(archetype_row.get("archetype_confidence")) or 0) >= 70:
-        highlight_reasons.append(f"{stock_archetype}特征清晰")
-    if (_safe_float(stage_row.get("stage_type_adjust_raw")) or 0) >= 5:
-        highlight_reasons.append("阶段结构较优")
-    if quality_capital >= 4:
-        highlight_reasons.append("资本纪律较好")
-    if quality_efficiency >= 10:
-        highlight_reasons.append("经营效率较强")
-    if (_safe_float(industry_ctx.get("industry_tailwind_score")) or 0) >= 75:
-        highlight_reasons.append("行业背景顺风")
-    elif (_safe_float(industry_ctx.get("sector_excess_3m")) or 0) >= 8:
-        highlight_reasons.append("行业近3月相对走强")
-    elif (_safe_float(industry_ctx.get("dual_confirm_recent_180d")) or 0) >= 2:
-        highlight_reasons.append("行业双重确认活跃")
-    if external_attention_signal == "外部确认增强":
-        highlight_reasons.append("外部确认增强")
-    elif external_attention_signal == "关注度抬升":
-        highlight_reasons.append("市场关注度抬升")
-    elif external_attention_signal == "调研活跃":
-        highlight_reasons.append("近期机构调研活跃")
-    if attention_survey_count_30d >= 2:
-        highlight_reasons.append("近30天机构调研活跃")
-    elif attention_survey_count_90d >= 4:
-        highlight_reasons.append("近90天持续有机构调研")
-    if stage_score >= 65:
-        highlight_reasons.append("阶段位置友好")
-    if (_forecast_cross_section_score(forecast_row) or 0) >= 75:
-        highlight_reasons.append("Qlib 截面排序较强")
-    elif (_forecast_industry_relative_score(forecast_row) or 0) >= 70:
-        highlight_reasons.append("行业内相对排序较强")
-    elif (_safe_float(forecast_row.get("forecast_risk_adjusted_score")) or 0) >= 70:
-        highlight_reasons.append("波动收益性价比较好")
-    elif qlib_percentile is not None and qlib_percentile >= 75:
-        highlight_reasons.append("Qlib 排名靠前")
-
-    if company_quality_score < 45:
-        risk_reasons.append("公司质量偏弱")
-    elif company_quality_score < 55 and composite_priority_score >= 75:
-        risk_reasons.append("质量分未达A池门槛")
-    if path_state == "已充分演绎":
-        risk_reasons.append("价格已充分演绎")
-    elif path_state == "失效破坏":
-        risk_reasons.append("价格路径转坏")
-    if stage_score < 40:
-        risk_reasons.append("阶段分低于D池阈值")
-    elif stage_score < 50 and composite_priority_score >= 75:
-        risk_reasons.append("阶段分未达A池门槛")
-    if external_crowding_penalty >= 7:
-        risk_reasons.append("外部热度拥挤")
-    elif external_crowding_penalty >= 4.5:
-        risk_reasons.append("短期外部热度偏高")
-    if composite_priority_score >= 75 and external_attention_score is not None and external_attention_score < 45:
-        risk_reasons.append("外部确认偏弱")
-    if has_conflict:
-        risk_reasons.append("同股存在方向冲突")
-    if not forecast_row and qlib_percentile is None:
-        risk_reasons.append("Qlib 结果未覆盖")
-    elif (_safe_float(forecast_row.get("forecast_risk_adjusted_score")) or 100) <= 35:
-        risk_reasons.append("预测性价比偏弱")
-    if unlock_ratio_180d is not None and unlock_ratio_180d > 0.05:
-        risk_reasons.append("近180天解禁压力偏大")
-    if dividend_financing_ratio is not None and dividend_financing_ratio < 0.2 and (financing_count or 0) >= 2:
-        risk_reasons.append("融资约束偏强")
-    if net_profit_growth_yoy_ak is not None and net_profit_growth_yoy_ak < 0:
-        risk_reasons.append("利润增速偏弱")
-    if (_safe_float(industry_ctx.get("industry_tailwind_score")) or 0) <= 30 and industry_ctx:
-        risk_reasons.append("行业背景偏弱")
-    elif (_safe_float(industry_ctx.get("sector_excess_3m")) or 0) <= -8 and industry_ctx:
-        risk_reasons.append("行业近3月相对偏弱")
-    if archetype_row and (_safe_float(archetype_row.get("archetype_confidence")) or 0) < 40:
-        risk_reasons.append("股票类型置信偏低")
-    if (_safe_float(stage_row.get("stage_type_adjust_raw")) or 0) <= -6:
-        risk_reasons.append("阶段惩罚项偏重")
-    if discovery_score < 50:
-        risk_reasons.append("发现分不足A池门槛")
-    if composite_cap_reason:
-        risk_reasons.append(composite_cap_reason)
-    if stock_archetype == "成长兑现型" and (
-        (price_20d is not None and price_20d > 20) or (price_1m is not None and price_1m > 25)
-    ):
-        risk_reasons.append("短期走势偏热")
-
-    return _top_reasons(highlight_reasons), _top_reasons(risk_reasons)
-
-
 # ============================================================
 # 股票评分
 # ============================================================
@@ -1808,8 +1669,7 @@ def calculate_stock_scores(conn) -> int:
     # 加载股票趋势数据
     stocks = conn.execute("""
         SELECT stock_code, stock_name, latest_notice_date, latest_events,
-               latest_report_date, price_1m_pct, price_20d_pct, price_trend,
-               qlib_rank, qlib_score, qlib_percentile
+               latest_report_date, price_1m_pct, price_20d_pct, price_trend
         FROM mart_stock_trend
     """).fetchall()
 
@@ -2056,20 +1916,6 @@ def calculate_stock_scores(conn) -> int:
     except Exception:
         stage_feature_by_stock = {}
 
-    forecast_feature_by_stock = {}
-    try:
-        forecast_rows = conn.execute("""
-            SELECT stock_code, model_id, qlib_score, qlib_rank, qlib_percentile,
-                   industry_qlib_percentile, forecast_20d_score,
-                   forecast_60d_excess_score, forecast_risk_adjusted_score,
-                   forecast_score_v1, forecast_reason
-            FROM dim_stock_forecast_latest
-        """).fetchall()
-        for row in forecast_rows:
-            forecast_feature_by_stock[row["stock_code"]] = dict(row)
-    except Exception:
-        forecast_feature_by_stock = {}
-
     turtle_feature_by_stock = {}
     try:
         turtle_rows = conn.execute("""
@@ -2150,7 +1996,6 @@ def calculate_stock_scores(conn) -> int:
         quality_threshold = all_scores_sorted[min(idx, len(all_scores_sorted) - 1)]
 
     now = datetime.now().isoformat()
-    max_qlib_rank = max((_safe_float(s["qlib_rank"]) or 0 for s in stocks), default=0)
     results = []
     scored = 0
 
@@ -2221,7 +2066,7 @@ def calculate_stock_scores(conn) -> int:
         holder_count = len(holders)
         confidence_norm = min(holder_count / 5.0 * 100, 100) if holder_count > 0 else 0
 
-        # --- 旧行动分：作为 Setup / Qlib 因子兼容层继续保留 ---
+        # --- 旧行动分：作为 Setup 因子兼容层继续保留 ---
         parts = [
             (leader_quality_norm, config.get("leader_quality_weight", 0)),
             (industry_match_score, config.get("industry_match_weight", 0)),
@@ -2521,22 +2366,6 @@ def calculate_stock_scores(conn) -> int:
                 stage_score -= 8
             stage_score = _clamp_score(stage_score)
 
-        # 5) Forecast Score（Qlib 只作为排序增强）
-        forecast_row = forecast_feature_by_stock.get(sc) or {}
-        qlib_percentile = _safe_float(forecast_row.get("qlib_percentile"))
-        qlib_rank = _safe_float(forecast_row.get("qlib_rank"))
-        if qlib_percentile is None:
-            qlib_percentile = _safe_float(stock.get("qlib_percentile"))
-            qlib_rank = _safe_float(stock.get("qlib_rank"))
-        if qlib_percentile is None and qlib_rank is not None and max_qlib_rank and max_qlib_rank > 1:
-            qlib_percentile = round((1 - (qlib_rank - 1) / (max_qlib_rank - 1)) * 100, 2)
-        forecast_score = _safe_float(forecast_row.get("forecast_score_v1"))
-        if forecast_score is None:
-            forecast_score = _clamp_score(qlib_percentile if qlib_percentile is not None else 50.0)
-        else:
-            forecast_score = _clamp_score(forecast_score)
-        forecast_score_effective = forecast_score
-
         attention_row = attention_by_stock.get(sc) or {}
         attention_comment_trade_date = attention_row.get("comment_trade_date")
         attention_focus_index = _safe_float(attention_row.get("focus_index"))
@@ -2577,7 +2406,7 @@ def calculate_stock_scores(conn) -> int:
         turtle_reason = turtle_row.get("turtle_reason")
 
         raw_composite_priority_score, composite_priority_score = compute_composite_priority(
-            discovery_score, company_quality_score, stage_score, forecast_score_effective,
+            discovery_score, company_quality_score, stage_score,
             external_attention_boost, external_crowding_penalty,
             weights=composite_weights,
         )
@@ -2591,7 +2420,6 @@ def calculate_stock_scores(conn) -> int:
             composite_priority_score,
             turtle_row=turtle_row,
             stage=stage_score,
-            forecast_effective=forecast_score_effective,
         )
         composite_priority_score, composite_cap_score, composite_cap_reason = apply_composite_ceiling(
             composite_priority_score, stage_score, company_quality_score,
@@ -2647,14 +2475,6 @@ def calculate_stock_scores(conn) -> int:
             highlight_reasons.append("近90天持续有机构调研")
         if stage_score >= 65:
             highlight_reasons.append("阶段位置友好")
-        if (_forecast_cross_section_score(forecast_row) or 0) >= 75:
-            highlight_reasons.append("Qlib 截面排序较强")
-        elif (_forecast_industry_relative_score(forecast_row) or 0) >= 70:
-            highlight_reasons.append("行业内相对排序较强")
-        elif (_safe_float(forecast_row.get("forecast_risk_adjusted_score")) or 0) >= 70:
-            highlight_reasons.append("波动收益性价比较好")
-        elif qlib_percentile is not None and qlib_percentile >= 75:
-            highlight_reasons.append("Qlib 排名靠前")
         if turtle_score_delta > 0 and turtle_setup_state in {"S1突破触发", "S2突破触发"}:
             highlight_reasons.insert(0, turtle_execution_overlay_reason or "海龟突破触发")
         elif turtle_score_delta > 0 and turtle_setup_state in {"S1待突破", "S2待突破"}:
@@ -2682,10 +2502,6 @@ def calculate_stock_scores(conn) -> int:
             risk_reasons.append("外部确认偏弱")
         if has_conflict:
             risk_reasons.append("同股存在方向冲突")
-        if not forecast_row and qlib_percentile is None:
-            risk_reasons.append("Qlib 结果未覆盖")
-        elif (_safe_float(forecast_row.get("forecast_risk_adjusted_score")) or 100) <= 35:
-            risk_reasons.append("预测性价比偏弱")
         if unlock_ratio_180d is not None and unlock_ratio_180d > 0.05:
             risk_reasons.append("近180天解禁压力偏大")
         if dividend_financing_ratio is not None and dividend_financing_ratio < 0.2 and (financing_count or 0) >= 2:
@@ -2748,8 +2564,8 @@ def calculate_stock_scores(conn) -> int:
             best_setup.get("crowding_fit_source") if best_setup else None,
             best_setup.get("report_age_days") if best_setup else None,
             discovery_score, company_quality_score, company_quality_score_source,
-            quality_feature_snapshot_date, stage_score, forecast_score,
-            forecast_score_effective, raw_composite_priority_score,
+            quality_feature_snapshot_date, stage_score,
+            raw_composite_priority_score,
             composite_priority_score, composite_cap_score, composite_cap_reason,
             stock_archetype, priority_pool, priority_pool_reason,
             stock_gate, stock_gate_reason,
@@ -2782,8 +2598,8 @@ def calculate_stock_scores(conn) -> int:
                 crowding_fit_raw = ?, crowding_fit_grade = ?, crowding_fit_sample = ?,
                 crowding_fit_source = ?, report_age_days = ?,
                 discovery_score = ?, company_quality_score = ?, company_quality_score_source = ?,
-                quality_feature_snapshot_date = ?, stage_score = ?, forecast_score = ?,
-                forecast_score_effective = ?, raw_composite_priority_score = ?,
+                quality_feature_snapshot_date = ?, stage_score = ?,
+                raw_composite_priority_score = ?,
                 composite_priority_score = ?, composite_cap_score = ?, composite_cap_reason = ?,
                 stock_archetype = ?, priority_pool = ?, priority_pool_reason = ?,
                 stock_gate = ?, stock_gate_reason = ?,

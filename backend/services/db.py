@@ -266,8 +266,6 @@ def init_db():
                 company_quality_score_source TEXT,
                 quality_feature_snapshot_date TEXT,
                 stage_score           REAL,
-                forecast_score        REAL,
-                forecast_score_effective REAL,
                 raw_composite_priority_score REAL,
                 composite_priority_score REAL,
                 composite_cap_score   REAL,
@@ -465,16 +463,11 @@ def init_db():
                 crowding_fit_sample INTEGER,
                 crowding_fit_source TEXT,
                 report_age_days    INTEGER,
-                qlib_rank          INTEGER,
-                qlib_score         REAL,
-                qlib_percentile    REAL,
                 discovery_score    REAL,
                 company_quality_score REAL,
                 company_quality_score_source TEXT,
                 quality_feature_snapshot_date TEXT,
                 stage_score        REAL,
-                forecast_score     REAL,
-                forecast_score_effective REAL,
                 raw_composite_priority_score REAL,
                 composite_priority_score REAL,
                 composite_cap_score REAL,
@@ -649,12 +642,11 @@ def init_db():
                      "crowding_stability_raw REAL", "crowding_stability_grade INTEGER",
                      "crowding_fit_raw REAL", "crowding_fit_grade INTEGER",
                      "crowding_fit_sample INTEGER", "crowding_fit_source TEXT",
-                     "report_age_days INTEGER", "qlib_rank INTEGER",
-                     "qlib_score REAL", "qlib_percentile REAL",
+                     "report_age_days INTEGER",
                      "discovery_score REAL", "company_quality_score REAL",
                      "company_quality_score_source TEXT", "quality_feature_snapshot_date TEXT",
-                     "stage_score REAL", "forecast_score REAL",
-                     "forecast_score_effective REAL", "raw_composite_priority_score REAL",
+                     "stage_score REAL",
+                     "raw_composite_priority_score REAL",
                      "composite_priority_score REAL", "composite_cap_score REAL",
                      "composite_cap_reason TEXT", "stock_archetype TEXT",
                      "priority_pool TEXT", "priority_pool_reason TEXT",
@@ -718,8 +710,6 @@ def init_db():
             "company_quality_score_source TEXT",
             "quality_feature_snapshot_date TEXT",
             "stage_score REAL",
-            "forecast_score REAL",
-            "forecast_score_effective REAL",
             "raw_composite_priority_score REAL",
             "composite_priority_score REAL",
             "composite_cap_score REAL",
@@ -889,18 +879,6 @@ def init_db():
             except Exception:
                 pass
 
-        # Phase 3d-3: forecast 表列名正名 (实际存 TDX 中文名)
-        forecast_tables = ("fact_stock_forecast_features", "dim_stock_forecast_latest")
-        for table in forecast_tables:
-            try:
-                cols = {r[1] for r in conn.execute(f"PRAGMA table_info({table})").fetchall()}
-                if "sw_level1" in cols and "tdx_l1_name" not in cols:
-                    conn.execute(f"ALTER TABLE {table} RENAME COLUMN sw_level1 TO tdx_l1_name")
-                if "sw_level2" in cols and "tdx_l2_name" not in cols:
-                    conn.execute(f"ALTER TABLE {table} RENAME COLUMN sw_level2 TO tdx_l2_name")
-            except Exception:
-                pass
-
         # Phase 1: mart_institution_profile 买入类评分字段 + 评分元数据
         for col in ["score_basis TEXT", "score_confidence TEXT",
                      "historical_median_holding_days INTEGER",
@@ -1007,7 +985,6 @@ def init_db():
             "fact_stock_archetype", "dim_stock_archetype_latest",
             "fact_stock_quality_features", "dim_stock_quality_latest",
             "fact_stock_turtle_features", "dim_stock_turtle_latest",
-            "fact_stock_forecast_features", "dim_stock_forecast_latest",
         ):
             try:
                 cols = {r[1] for r in conn.execute(f"PRAGMA table_info({tbl})").fetchall()}
@@ -1082,7 +1059,7 @@ def init_db():
             logger.info(f"[DB] 初始化 {len(categories)} 个排除类别")
 
         # ============================================================
-        # Phase 2: 新增表 — 财务/选股/资产/Qlib
+        # Phase 2: 新增表 — 财务/选股/资产
         # ============================================================
 
         # 财务数据表（由 financial_client.py ensure_tables 管理，此处确保存在）
@@ -1104,10 +1081,6 @@ def init_db():
         # 选股结果表（由 screening_engine.py ensure_tables 管理）
         from services.screening_engine import ensure_tables as _ensure_screen_tables
         _ensure_screen_tables(conn)
-
-        # Qlib 完整版表（由 qlib_full_engine.py ensure_tables 管理）
-        from services.qlib_full_engine import ensure_tables as _ensure_qlib_full_tables
-        _ensure_qlib_full_tables(conn)
 
         # 板块动量表（由 sector_momentum.py ensure_tables 管理）
         from services.sector_momentum import ensure_tables as _ensure_sector_tables
@@ -1176,8 +1149,7 @@ def init_db():
         conn.commit()
         conn.execute("""
             INSERT OR IGNORE INTO app_settings (key, value, updated_at)
-            VALUES ('module_qlib_enabled', '1', CURRENT_TIMESTAMP),
-                   ('module_etf_enabled', '1', CURRENT_TIMESTAMP),
+            VALUES ('module_etf_enabled', '1', CURRENT_TIMESTAMP),
                    ('module_akquant_enabled', '0', CURRENT_TIMESTAMP)
         """)
 
@@ -1194,7 +1166,7 @@ def init_db():
 
 def get_enabled_modules(conn) -> dict:
     rows = conn.execute("SELECT key, value FROM app_settings WHERE key LIKE 'module_%_enabled'").fetchall()
-    modules = {"qlib": True, "etf": True, "akquant": False}
+    modules = {"etf": True, "akquant": False}
     for r in rows:
         key = r["key"].replace("module_", "").replace("_enabled", "")
         modules[key] = str(r["value"]) == "1"

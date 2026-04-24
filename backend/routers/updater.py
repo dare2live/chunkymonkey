@@ -323,12 +323,9 @@ _INDUSTRY_RESET_TABLES = [
     ("industry_context_latest", "dim_stock_industry_context_latest"),
     ("quality_latest", "dim_stock_quality_latest"),
     ("stage_latest", "dim_stock_stage_latest"),
-    ("forecast_latest", "dim_stock_forecast_latest"),
     ("turtle_latest", "dim_stock_turtle_latest"),
     ("stock_archetype_fact", "fact_stock_archetype"),
     ("stock_archetype_latest", "dim_stock_archetype_latest"),
-    ("sector_forecast_fact", "fact_sector_forecast_features"),
-    ("sector_forecast_latest", "dim_sector_forecast_latest"),
     ("steps", "step_status"),
 ]
 
@@ -1654,25 +1651,6 @@ def _step_build_trends_sync(conn) -> int:
             WHERE stock_code IS NOT NULL
         """).fetchall()
 
-        # 加载最新的 Qlib rank
-        try:
-            latest_model = conn.execute(
-                "SELECT model_id FROM qlib_model_state WHERE status='trained' ORDER BY created_at DESC LIMIT 1"
-            ).fetchone()
-            qlib_map = {}
-            if latest_model:
-                preds = conn.execute(
-                    "SELECT stock_code, qlib_rank, qlib_score, qlib_percentile "
-                    "FROM qlib_predictions WHERE model_id = ?",
-                    (latest_model[0],)
-                ).fetchall()
-                qlib_map = {
-                    p[0]: {"qlib_rank": p[1], "qlib_score": p[2], "qlib_percentile": p[3]}
-                    for p in preds
-                }
-        except Exception:
-            qlib_map = {}
-
         # 批量预聚合 1：每股近 3 期机构家数 + 合计持仓（取代 N+1 的 stock_periods + inst_counts/caps）
         # 一次性 aggregate：(code, report_date) → (n_inst, sum_cap)
         # 然后 Python 侧按 code 取最近 3 期
@@ -1783,12 +1761,6 @@ def _step_build_trends_sync(conn) -> int:
             latest_rd = latest_ev[0][4] if latest_ev else None
             latest_nd = latest_ev[0][5] if latest_ev else None
 
-            # AI 评分排名
-            qlib_info = qlib_map.get(code) or {}
-            qlib_rank = qlib_info.get("qlib_rank")
-            qlib_score = qlib_info.get("qlib_score")
-            qlib_percentile = qlib_info.get("qlib_percentile")
-
             # 股价趋势（从预加载的 per_stock_monthly/daily 取）
             monthly_closes = per_stock_monthly.get(code, [])  # 已按 DESC
             daily_closes = per_stock_daily.get(code, [])       # 已按 DESC
@@ -1819,8 +1791,7 @@ def _step_build_trends_sync(conn) -> int:
                 code, name, inst_counts[0], inst_counts[1], inst_counts[2],
                 inst_caps[0], inst_caps[1], inst_caps[2], inst_trend, cap_trend,
                 latest_events_json, latest_rd, latest_nd,
-                price_1m, price_20d, price_trend, qlib_rank,
-                qlib_score, qlib_percentile, now
+                price_1m, price_20d, price_trend, now
             ))
             count += 1
 
@@ -1830,9 +1801,8 @@ def _step_build_trends_sync(conn) -> int:
             (stock_code, stock_name, inst_count_t0, inst_count_t1, inst_count_t2,
              inst_cap_t0, inst_cap_t1, inst_cap_t2, inst_trend, cap_trend,
              latest_events, latest_report_date, latest_notice_date,
-             price_1m_pct, price_20d_pct, price_trend, qlib_rank,
-             qlib_score, qlib_percentile, updated_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+             price_1m_pct, price_20d_pct, price_trend, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """, insert_batch)
 
         _mkt.close()
@@ -2898,21 +2868,6 @@ async def _step_build_stage_features(conn) -> int:
     return await _run_blocking_market_db_task(build_stock_stage_features)
 
 
-async def _step_build_forecast_features(conn) -> int:
-    """预测特征构建"""
-    from services.sector_forecast_engine import build_sector_forecast_features
-    from services.stock_forecast_engine import build_stock_forecast_features
-
-    def _worker(worker_conn):
-        stock_count = build_stock_forecast_features(worker_conn)
-        sector_count = build_sector_forecast_features(worker_conn)
-        return stock_count, sector_count
-
-    stock_count, sector_count = await _run_blocking_db_task(_worker)
-    logger.info(f"[预测特征] 股票 {stock_count} 只 · 行业 {sector_count} 个")
-    return stock_count + sector_count
-
-
 async def _step_build_turtle_features(conn) -> int:
     """海龟特征构建"""
     from services.stock_turtle_engine import build_stock_turtle_features
@@ -2952,7 +2907,6 @@ RUNNERS = {
     "calc_sector_momentum": _step_calc_sector_momentum,
     "build_external_attention": _step_build_external_attention,
     "build_stage_features": _step_build_stage_features,
-    "build_forecast_features": _step_build_forecast_features,
     "build_turtle_features": _step_build_turtle_features,
     "calc_inst_scores": _step_calc_inst_scores,
     "calc_stock_scores": _step_calc_stock_scores,
@@ -3311,7 +3265,6 @@ async def reset_industry_derived(restart_smart: bool = True):
             "market_kline_daily",
             "raw_gpcw_financial",
             "fact_financial_derived",
-            "qlib_predictions",
         ],
     }
     if not restart_smart:

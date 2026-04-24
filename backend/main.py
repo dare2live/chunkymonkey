@@ -73,7 +73,6 @@ app.include_router(market_router, prefix="/api/inst", tags=["market"])
 app.include_router(institution_router, prefix="/api/inst", tags=["institution"])
 app.include_router(updater_router, prefix="/api/inst", tags=["updater"])
 
-from routers.qlib import router as qlib_router
 from routers.etf import router as etf_router
 
 # 模块化路由注册
@@ -84,13 +83,11 @@ def register_modules(app):
         modules = get_enabled_modules(conn)
         conn.close()
     except Exception:
-        modules = {"qlib": False, "etf": True, "akquant": False}
+        modules = {"etf": True, "akquant": False}
 
-    if modules.get("qlib"):
-        app.include_router(qlib_router, prefix="/api/qlib", tags=["qlib"])
     if modules.get("etf"):
         app.include_router(etf_router, prefix="/api/etf", tags=["etf"])
-    
+
     return modules
 
 app_modules = register_modules(app)
@@ -121,7 +118,7 @@ async def toggle_modules(settings: dict):
     try:
         conn = get_conn()
         for k, v in settings.items():
-            if k in ["qlib", "etf", "akquant"]:
+            if k in ["etf", "akquant"]:
                 val = "1" if v else "0"
                 conn.execute(
                     "INSERT OR REPLACE INTO app_settings (key, value, updated_at) VALUES (?, ?, CURRENT_TIMESTAMP)",
@@ -148,8 +145,8 @@ async def health():
     return {
         "status": "ok",
         "enabled_modules": enabled,
-        "available_modules": ["qlib", "etf", "akquant"],
-        "module_deps": {"qlib": "需 pyqlib>=0.9.7", "akquant": "远期规划"}
+        "available_modules": ["etf", "akquant"],
+        "module_deps": {"akquant": "远期规划"}
     }
 
 

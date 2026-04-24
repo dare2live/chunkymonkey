@@ -4,7 +4,7 @@
 输入
   - fact_feature_panel (features for scoring, 最新一天)
   - mart_multidim_model (best model_id from last training run)
-  - data/qlib_follow_models/<model_id>.pkl
+  - data/multidim_models/<model_id>.pkl
 
 输出
   - mart_daily_recommendation (snapshot_date, stock_code, rank, pred_score, percentile,
@@ -70,7 +70,7 @@ FEATURE_COLS = [
 
 
 def load_model(model_id: str):
-    model_dir = Path(__file__).resolve().parent.parent.parent / "data" / "qlib_follow_models"
+    model_dir = Path(__file__).resolve().parent.parent.parent / "data" / "multidim_models"
     path = model_dir / f"{model_id}.pkl"
     if not path.exists():
         raise FileNotFoundError(path)

@@ -24,12 +24,9 @@ INDUSTRY_RESET_TABLES = [
     "dim_stock_industry_context_latest",
     "dim_stock_quality_latest",
     "dim_stock_stage_latest",
-    "dim_stock_forecast_latest",
     "dim_stock_turtle_latest",
     "fact_stock_archetype",
     "dim_stock_archetype_latest",
-    "fact_sector_forecast_features",
-    "dim_sector_forecast_latest",
     "step_status",
 ]
 
@@ -70,7 +67,6 @@ def test_reset_industry_derived_clears_industry_dependent_tables(tmp_path, monke
     payload = response.json()
     assert payload["ok"] is True
     assert payload["counts"]["profiles"] == 1
-    assert payload["counts"]["sector_forecast_latest"] == 1
     assert payload["missing_tables"] == []
 
     conn = sqlite3.connect(db_path)

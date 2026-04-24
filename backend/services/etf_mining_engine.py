@@ -267,18 +267,6 @@ def analyze_etf_deep(conn, mkt_conn, code: str) -> Optional[dict]:
                 "code": etf_info.get("code"),
                 "name": name,
                 "category": etf_info.get("category"),
-                "qlib_consensus_score": etf_info.get("qlib_consensus_score"),
-                "qlib_consensus_percentile": etf_info.get("qlib_consensus_percentile"),
-                "qlib_consensus_factor_group": etf_info.get("qlib_consensus_factor_group"),
-                "qlib_high_conviction_count": etf_info.get("qlib_high_conviction_count"),
-                "qlib_model_status": etf_info.get("qlib_model_status"),
-                "qlib_test_top50_avg_return": etf_info.get("qlib_test_top50_avg_return"),
-                "qlib_preferred_strategy": etf_info.get("qlib_preferred_strategy"),
-                "qlib_predicted_buy_hold_return_pct": etf_info.get("qlib_predicted_buy_hold_return_pct"),
-                "qlib_predicted_grid_return_pct": etf_info.get("qlib_predicted_grid_return_pct"),
-                "qlib_predicted_grid_excess_pct": etf_info.get("qlib_predicted_grid_excess_pct"),
-                "qlib_predicted_best_step_pct": etf_info.get("qlib_predicted_best_step_pct"),
-                "qlib_strategy_edge_pct": etf_info.get("qlib_strategy_edge_pct"),
                 "setup_state": etf_info.get("setup_state"),
                 "strategy_type": "暂不参与",
                 "strategy_reason": reason,
@@ -368,18 +356,6 @@ def analyze_etf_deep(conn, mkt_conn, code: str) -> Optional[dict]:
             "code": etf_info.get("code"),
             "name": etf_info.get("name"),
             "category": etf_info.get("category"),
-            "qlib_consensus_score": etf_info.get("qlib_consensus_score"),
-            "qlib_consensus_percentile": etf_info.get("qlib_consensus_percentile"),
-            "qlib_consensus_factor_group": etf_info.get("qlib_consensus_factor_group"),
-            "qlib_high_conviction_count": etf_info.get("qlib_high_conviction_count"),
-            "qlib_model_status": etf_info.get("qlib_model_status"),
-            "qlib_test_top50_avg_return": etf_info.get("qlib_test_top50_avg_return"),
-            "qlib_preferred_strategy": etf_info.get("qlib_preferred_strategy"),
-            "qlib_predicted_buy_hold_return_pct": etf_info.get("qlib_predicted_buy_hold_return_pct"),
-            "qlib_predicted_grid_return_pct": etf_info.get("qlib_predicted_grid_return_pct"),
-            "qlib_predicted_grid_excess_pct": etf_info.get("qlib_predicted_grid_excess_pct"),
-            "qlib_predicted_best_step_pct": etf_info.get("qlib_predicted_best_step_pct"),
-            "qlib_strategy_edge_pct": etf_info.get("qlib_strategy_edge_pct"),
             "setup_state": etf_info.get("setup_state"),
             "strategy_type": etf_info.get("strategy_type"),
             "strategy_reason": etf_info.get("strategy_reason"),
@@ -429,9 +405,6 @@ def _build_verdict(info: dict, best: Optional[dict], bh: Optional[dict],
     strategy = info.get("strategy_type") or "买入持有"
     name = info.get("name") or info.get("code") or "-"
     feasible_steps = [step for step in all_steps if step.get("hard_gate_passed")]
-    qlib_score = _safe_float(info.get("qlib_consensus_score"))
-    qlib_factor_group = info.get("qlib_consensus_factor_group") or ""
-    qlib_model_status = info.get("qlib_model_status") or ""
 
     # 策略适配性
     if strategy == "网格交易":
@@ -444,10 +417,6 @@ def _build_verdict(info: dict, best: Optional[dict], bh: Optional[dict],
         lines.append(f"{name} 结构偏弱，建议回避等待趋势修复后再介入。")
     else:
         lines.append(f"{name} 当前处于 {strategy} 状态。")
-
-    if qlib_model_status == "trained" and qlib_score is not None:
-        factor_text = f"，领先因子组 {qlib_factor_group}" if qlib_factor_group else ""
-        lines.append(f"ETF-only Qlib 共识 {qlib_score:.1f} 分{factor_text}。")
 
     if all_steps and not feasible_steps:
         lines.append("候选步长均未通过实盘硬约束或未形成有效卖出回笼，因此本轮不保留网格策略。")

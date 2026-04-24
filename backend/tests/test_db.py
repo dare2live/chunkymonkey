@@ -39,15 +39,13 @@ def test_init_db_sets_module_defaults_without_legacy_migration_marker():
             try:
                 rows = conn.execute(
                     "SELECT key, value FROM app_settings WHERE key IN ("
-                    "'module_qlib_enabled', 'module_etf_enabled', 'module_akquant_enabled', '_migration_qlib_default_v1'"
+                    "'module_etf_enabled', 'module_akquant_enabled'"
                     ")"
                 ).fetchall()
                 settings = {row[0]: row[1] for row in rows}
 
-                assert settings["module_qlib_enabled"] == "1"
                 assert settings["module_etf_enabled"] == "1"
                 assert settings["module_akquant_enabled"] == "0"
-                assert "_migration_qlib_default_v1" not in settings
             finally:
                 conn.close()
         finally:

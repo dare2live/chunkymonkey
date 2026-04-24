@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Phase 3: qlib + optuna 多维评分建模 (基于 fact_feature_panel)
+"""Phase 3: LightGBM + Optuna 多维评分建模 (基于 fact_feature_panel)
 
 管道
   1. 从 fact_feature_panel 读 panel (stock × date × 36 features + label)
@@ -332,7 +332,7 @@ def main():
 
     # 保存 model pkl
     import pickle
-    model_dir = Path(__file__).resolve().parent.parent.parent / "data" / "qlib_follow_models"
+    model_dir = Path(__file__).resolve().parent.parent.parent / "data" / "multidim_models"
     model_dir.mkdir(parents=True, exist_ok=True)
     with open(model_dir / f"{model_id}.pkl", 'wb') as f:
         pickle.dump(final_model, f)
