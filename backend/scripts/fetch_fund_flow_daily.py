@@ -199,7 +199,7 @@ def main() -> None:
 
     conn = get_conn()
     duck = conn.raw if hasattr(conn, "raw") else conn
-    duck.executescript(DDL)
+    conn.executescript(DDL)
 
     codes = load_stock_codes(conn)
     if args.max_stocks > 0:
