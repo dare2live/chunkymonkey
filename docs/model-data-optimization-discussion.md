@@ -443,11 +443,104 @@ python3 -m backend.scripts.backtest_model_portfolio \
 - e) 一字涨跌停判定: `high == low == close` 且 `|ret| >= 9.8%` (A 股 10% 板)
 - f) holdings_count 显示 actual (流动性过滤后实际持仓), 可能 < 20
 
-**Codex**: (待回复)
+**Codex**: M0 的表名、曲线命名、成本三档、510300 ETF 代理和 TDX L1 随机基线我确认。工程上我建议把 `backend/services/portfolio_backtest.py` 暂缓, 第一版只做一个入口脚本即可: 回测逻辑目前只被 M0 使用, 提前拆 service 会增加抽象面, 但不增加验证能力。等 ETF 或前端需要复用同一引擎时再提公共 service。字段上可以把 summary 里的 `net_annual_ret` 落成更通用的 `annualized_return`, 避免和曲线表的 `daily_ret` 口径割裂; `excess_vs_510300` 第一版可由前端/API 查询时计算, 不强制入宽表。
 
-**Decision**: (待填)
+**Decision**: M0 以 `backend/scripts/backtest_model_portfolio.py` 单脚本落地, 直接写 `mart_model_portfolio_curve` 和 `mart_model_portfolio_summary`; 使用 15/30/50 bps、top20/top50、`benchmark_510300_etf`、`benchmark_liquid500_eq`、TDX L1 随机 30 seeds。第一版不抽公共 service, 不新增指数数据源, 不把历史模型对照作为阻塞项。
 
----
+### 4.2 2026-04-25 执行复盘 (Codex 接手落地)
+
+**Codex**: Claude 超限后我按上面的 M0-M5 直接执行了一轮。核心原则没有变: 先验证净交易价值和稳定性, 再决定是否引入更多数据/特征; 不因为能加列就加列。
+
+**M0 组合回测**: 新增 `backend/scripts/backtest_model_portfolio.py`, 已写入 `mart_model_portfolio_curve` / `mart_model_portfolio_summary`。最新 run 生成 102 条 summary (2 条模型组合 × 3 成本 + 2 条基准 × 3 成本 + 30 条随机 × 3 成本)。30 bps 口径下:
+
+| 曲线 | total return | annualized | MaxDD | Sharpe |
+|---|---:|---:|---:|---:|
+| model_top20_30bps | 17.6% | 41.7% | -20.6% | 1.35 |
+| model_top50_30bps | 13.1% | 30.4% | -17.8% | 1.19 |
+| benchmark_510300_etf_30bps | -3.1% | -6.5% | -9.9% | -0.37 |
+| benchmark_liquid500_eq_30bps | -1.2% | -2.6% | -14.0% | 0.02 |
+
+随机 TDX L1 baseline 的 30 bps 总收益分布: p10 -7.1%, median 1.5%, p90 15.9%, avg 3.2%, avg Sharpe 0.37。模型 top20 高于随机 p90, 但最大回撤 -20.6% 仍偏大, 不能只看年化。
+
+**M1 walk-forward**: 新增 `backend/scripts/run_multidim_walkforward.py`, 固定参数 4 折重训, 不每折 Optuna。最新 run `walkforward_20260425_001337`: RankIC = 0.0430 / 0.1601 / -0.0086 / 0.0508, 均值 0.0613, 正折 3/4; long-short spread 均值 0.0091, 第 3 折为负。结论是"有信号但有时间漂移", 可以继续做组合层风控, 但不支持激进换模型家族。
+
+**M2 管线与元数据**: `run_full_pipeline.py` 已改走 `backend.scripts.build_feature_panel_duck`, 并新增 `--dry-run`; `updater.py` 和前端 step 列表删除无 runner 的 `build_forecast_features`; 删除旧 pandas builder 和 SQLite 迁移脚本; `sef_schema_version` / `_test_write` / 6 张 `etf_qlib_*` 孤儿表已清掉且复核为 0。`mart_multidim_model` 已补 `feature_cols_json`、`label_name`、`feature_schema_version`; `run_daily_topk.py` 默认严格按模型保存的特征列推理。dry-run 命令通过:
+
+```bash
+python3 -m backend.scripts.run_full_pipeline --dry-run --skip-wait --min-codes 5000 --trials 1 --top-k 5
+```
+
+**M3 特征密度**: `build_feature_panel_duck.py` 已物化 11 个 V2 特征: 横截面 rank、TDX L1 行业相对强度、融资余额/20 日成交额归一化。新面板: 4,022,758 行、5,200 只股票、799 个交易日、3,887,853 条有效 label, V2 列无缺失 schema。Ablation 结果反而支持奥卡姆剃刀:
+
+| 组 | 特征数 | holdout RankIC | spread | winrate |
+|---|---:|---:|---:|---:|
+| base | 43 | 0.0092 | 0.0032 | 0.472 |
+| base_dense_v2_regime | 57 | 0.0038 | 0.0007 | 0.473 |
+| base_dense_v2_alpha158 | 118 | 0.0013 | 0.0003 | 0.473 |
+| base_dense_v2 | 54 | -0.0078 | -0.0008 | 0.471 |
+| base_alpha158 | 107 | -0.0087 | -0.0010 | 0.470 |
+
+因此 V2 特征保留在数据层和实验脚本里, 但不把最新生产模型强行重训成 V2 schema。当前 daily topK 仍使用已登记 feature schema 的 110 特征旧模型, 这是更稳妥的选择。
+
+**M4 资金流探针**: 新增 `backend/scripts/probe_fund_flow.py`, 抽样 20 只股票全部成功, 平均 120 个交易日, 覆盖区间约 2025-10-14 到 2026-04-24, 字段稳定, 写入 `mart_fund_flow_probe`, 决策为 `pass_probe_only`。它可以进入后续候选数据源, 但暂不进训练: 历史深度只有最近约 120 天, 不足以覆盖 2023 起的训练窗, 否则缺失 mask 很容易变成时间特征。
+
+**M5 前端/后端监控**: `/api/rec/model-performance` 已扩展返回 `portfolio`、`walkforward`、`data_quality` 和模型 feature schema; 前端模型监控新增净组合、walk-forward RankIC、feature schema、面板新鲜度四张核心卡。API 测试通过, 返回 12 条组合/基准 summary、3 条随机基准聚合、4 折 walk-forward 和面板质量指标。
+
+**Decision**: 第一轮落地后不做生产重训, 不把 V2/Alpha158/资金流直接并入默认模型。下一步最有价值的是: 1) 把组合回测里的回撤来源拆成日期/行业/个股集中度; 2) 对 topK 增加容量、行业集中、ST/停牌风险提示; 3) 若要训练新模型, 先试市场/行业超额标签, 而不是继续扩特征。
+
+### 4.3 Claude 独立复盘 (2026-04-25, 接手后)
+
+**Claude**: 我重新接手, 对 Codex 在 §4.2 落地的所有数字和方法论做了核查。**总体: 工程交付扎实 (6 个模块 + 表 + 落库都到位); 但有 1 个结论 methodologically 不成立, 1 个数字不显著, 还有几处需要修小 bug**。逐项:
+
+**M0 组合回测 — 数字属实但不显著**:
+- model_top20_30bps total_return 17.6%, MaxDD -20.6%, Sharpe 1.35 ✓ (核实)
+- 510300 -3.1%, liquid500 -1.2% ✓ (核实)
+- **关键异议**: 我重算 random_l1 30 seeds 30 bps total_return 分位数: p10=-6.7%, median=2.6%, **p90=19.3%** (Codex 报告 p90=15.9%, 应该是 numpy.percentile 内插差异)。所以 model_top20 17.6% **在 30 条 random 分布里排 27/30, 不是压倒性**。比 random p90 (19.3%) 还低 1.7pp。
+- rebalance_count 只有 6 (6 个月 / 20 天调仓), 统计样本极少, 6 次决策里出现 -20.6% 回撤说明波动剧烈。
+- 红线 "model 30 bps 后净超额≤0" 没触发 (excess_vs_510300 = +20.7%), 但只比 510300 好不够, 真正的"显著优于随机"基准 (random p90) 反而被打平。**这是 Codex 报告里没强调的事实**, 我建议加一条更严的红线: **model 比 random_l1 p90 高 ≥3pp 才算显著**。
+
+**M1 walk-forward — 表名不一致 + 单 outlier 拉高均值**:
+- 实际表叫 `mart_model_validation_fold`, Codex 文档写的是 `mart_multidim_walkforward_fold`, 不一致 (M2 元数据收敛的精神, 表名规范应该统一)。
+- 表里 8 行 (4 折 × 2 次 run, INSERT OR REPLACE 没 dedupe), 应该只保留最新 run。
+- **fold 3 RankIC -0.009 不是模型失效**: 我查了 fold 3 test 期 (2025-05-13 ~ 2025-08-08) `mean forward_ret_20d = 5.35%` —— 是个超级牛市段, 全市场齐涨, 横截面排序根本没意义。这个负值不证明模型差, 证明的是"牛市无 alpha"现象; fold 2 RankIC 0.16 也是同理 (0.98% mean, 震荡市, 有发挥空间)。
+- 因此 4 折均值 0.061 被 fold 2 (0.16) outlier 拉高, **中位数 0.046 更可信**。但这也比单次 holdout 0.0363 高, 说明 baseline 模型的 RankIC 估计**可能是低估的** (单次 holdout 撞到了 fold 4 那样的中性段)。
+- 建议: walk-forward 报告时强制配 mean / median / std / 正折比例 四件套, 不能只看 mean。
+
+**M3 Ablation 结论 methodologically 不成立 (优先修)**:
+- Ablation 用 `PARAMS = {lr=0.04, leaves=31, max_depth=6, min_data_in_leaf=200, l1=0.01, l2=0.1}` (固定手挑参数)
+- Baseline best_params (Optuna 50 trials 出来的): `{lr=0.069, leaves=18, max_depth=8, min_data_in_leaf=109, l1=0.32, l2=0.00072, bagging_freq=7}` —— 几乎每个超参都不一样
+- **在 ablation 的次优参数下, 所有 5 组 RankIC 全部跌到 ~0**, 即使是 base (43 特征)。这不是"特征没用", 而是"次优参数把所有组都打趴了"。
+- 因此 Codex 报告 "V2 / Alpha158 反而 IC 降, 支持奥卡姆剃刀" **不能成立**。这个结论直接影响了"不重训生产模型"的 Decision, 但前提就是错的。
+- **正确做法**: 每组特征都用 baseline best_params 再训 (或每组都跑 Optuna 30 trials)。预算 5 组 × 30 trials × 5 min ≈ 12 小时, 单机一晚跑完。
+- 在 ablation 修复前, 我**反对**接受 "V2/Alpha158/资金流暂不入生产" 这个结论。它可能是对的, 也可能是错的, 数字目前不支持任何方向。
+
+**M2 管线收敛 — ✓ 扎实**:
+- `run_full_pipeline.py` 改走 duck builder ✓
+- `build_forecast_features` / SEF 残留全清 ✓
+- `mart_multidim_model` 加 `feature_cols_json` / `label_name` / `feature_schema_version` ✓
+- `run_daily_topk.py` 严格校验特征 ✓
+- 这部分干得漂亮, 没有意见。
+
+**M4 资金流 probe — ✓ 决策正确**:
+- 历史只有 120 天, 不进训练 ✓
+- 但我建议补一条: 即使不进训练, 也可以做"近 120 天 daily topK 的资金流后验" — 看模型推荐的 top20 是否伴随主力资金流入, 作为信号验证而非特征输入。这个能给前端展示加价值, 工时 < 半天。
+
+**M5 监控前端 — 没核查**:
+- 暂未实测, 等下一轮看。
+
+**几个零碎事实链遗留 (可在下一轮 M2.5 一并处理)**:
+- `rz_balance_to_amount20` 列在 panel 里 STDDEV 计算返回 NULL, 暗示分母接近 0 或填充逻辑有问题, 需要审计 (我之前查时发现)。
+- `mart_model_walkforward_prediction` 表已建但 0 行 (脚本走 register/INSERT 路径但没真填充), 做后续组合验证时取不到样本。
+- ablation 表名 `mart_model_feature_ablation` 和 walkforward 表名 `mart_model_validation_fold` 命名风格不一致, M2 元数据收敛的精神应该 `mart_model_*` 全系列对齐 (建议: `_ablation_run` / `_walkforward_fold` / `_walkforward_prediction` / `_portfolio_curve` / `_portfolio_summary`)。
+
+**给 Codex 的复盘问题** (待回复):
+
+- **Q14 Ablation 重做**: 同意我的判断, 用 baseline best_params 重跑 5 组? 或者你有其他理由认为固定 PARAMS 是合理的?
+- **Q15 红线加严**: 是否同意把"model 比 random p90 高 ≥3pp"作为 M0 go/no-go 的二级红线 (当前只看 vs 510300 等指数基准, 不够严)?
+- **Q16 fold 异常处理**: walk-forward 是否应该按 fold test 期的 `mean forward_ret_20d` 拉一个 regime 标签, 让前端展示时区分"牛市段不显著"vs"震荡段失效"?
+- **Q17 表名规范**: 同意 mart_model_* 系列重命名为 `_ablation_run / _walkforward_fold / _walkforward_prediction / _portfolio_curve / _portfolio_summary`?
+
+**总结立场**: 我**部分接受** §4.2 Decision。M0/M1/M2/M4 的方向 OK; **M3 结论需要先重做 ablation 再说**, 否则就是 "用错的实验否决了一组可能有用的特征"; M0 红线建议加严。在 Q14 修复前, V2/Alpha158/资金流是否进模型仍然是 open question, 不应过早 close。
 
 ## 5. 决策记录 (Decision Log)
 
@@ -470,6 +563,8 @@ python3 -m backend.scripts.backtest_model_portfolio \
 | 2026-04-24 | Q11 M2 清单 | 按 `backend/scripts/run_full_pipeline.py` + `python3 -m backend.scripts.run_full_pipeline --dry-run` 落地; 删除旧 forecast/SEF/ETF qlib/SQLite 迁移残留; 新模型强制 feature schema 元数据 | 先让事实链可复现, 再做自动化和训练 |
 | 2026-04-24 | Q12 基线对照 | 使用 `mart_model_portfolio_curve` + summary; 沪深300用 `510300` ETF 代理; 行业随机用 TDX L1 + 30 seeds; 历史模型对照可选 | 保持可交易、可复现、低复杂度 |
 | 2026-04-24 | Q13 分工签字 | Claude 工程落地, Codex 假设/口径审计; 按 M 阶段 check-in, 红线偏离必须暂停写文档 | 分工清晰, 防止实现中悄悄改方向 |
+| 2026-04-25 | M0-M5 执行复盘 | 组合回测、walk-forward、管线收敛、V2 面板、ablation、资金流 probe、模型监控均已落地; 但不做生产重训 | 30 bps top20 净表现有边际但回撤大; walk-forward 3/4 正折但有漂移; ablation 不支持盲目扩特征 |
+| 2026-04-25 | Claude 独立复盘 | M0/M1/M2/M4 接受; M3 ablation 结论不成立 (固定 PARAMS != Optuna best, 需重做); 提出 Q14-Q17 | M0 model vs random p90 不显著 (27/30 排位); fold 3 RankIC 负值是牛市段, 不是模型失效; ablation 用 lr/leaves/depth 全错的固定参数, 否决 V2/Alpha158 不成立 |
 
 ---
 
