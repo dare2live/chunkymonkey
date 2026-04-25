@@ -181,6 +181,7 @@ STEPS = [
     {"id": "sync_qfii",             "name": "QFII 季报",       "group": "data", "order": 7.6},
     {"id": "sync_margin",           "name": "融资融券",        "group": "data", "order": 7.7},
     {"id": "sync_lhb",              "name": "龙虎榜",          "group": "data", "order": 7.8},
+    {"id": "sync_fund_flow",        "name": "主力资金流",      "group": "data", "order": 7.9},
     {"id": "calc_financial_derived","name": "计算财务指标",    "group": "calc", "order": 8},
     {"id": "build_current_rel",     "name": "构建当前关系",    "group": "mart", "order": 9},
     {"id": "build_profiles",        "name": "机构画像",        "group": "mart", "order": 10},
@@ -208,6 +209,7 @@ HARD_DEPS = {
     "sync_qfii": [],
     "sync_margin": [],
     "sync_lhb": [],
+    "sync_fund_flow": [],
     "calc_financial_derived": ["sync_financial"],
     "build_current_rel": ["gen_events"],
     "build_profiles": ["build_current_rel"],
@@ -2826,6 +2828,83 @@ async def _step_sync_lhb(conn) -> int:
     return int(result.get("written_rows") or 0)
 
 
+async def _step_sync_fund_flow(conn) -> int:
+    """M9.5: 主力资金流 daily 累积 (Codex §4.21).
+
+    数据源: eastmoney push2delay (`https://push2delay.eastmoney.com`),
+    显式 `requests.Session(trust_env=False)` 避开 macOS 系统代理 fake-ip。
+    每次只能拿"最新交易日"一行/票, 用 INSERT OR REPLACE 累积到
+    `raw_fund_flow_daily`。当 DB 里已有 latest_completed_trade_date
+    的票, resume 跳过。
+
+    成本: 5500 票 × ~0.3s = ~28 分钟. 失败/空返回的票不阻塞下一只。
+    依赖: 无. 不进 model training, 仅 raw 累积 + 监控用。
+    """
+    from scripts.fetch_fund_flow_daily import (
+        DDL,
+        fetch_delay_fund_flow,
+        normalize_df,
+        write_batch,
+        load_stock_codes,
+        latest_per_stock,
+    )
+    import asyncio
+
+    conn.executescript(DDL)
+    duck = conn.raw if hasattr(conn, "raw") else conn
+
+    target_date = latest_completed_trade_date(conn)
+    if not target_date:
+        logger.warning("[资金流] 未找到最新交易日, 跳过")
+        return 0
+
+    codes_all = load_stock_codes(conn)
+    last_dates = latest_per_stock(duck)
+    todo = [(c, m) for (c, m) in codes_all if last_dates.get(c, "") < target_date]
+    logger.info(
+        f"[资金流] target={target_date}, total={len(codes_all)}, "
+        f"todo={len(todo)} (skip {len(codes_all) - len(todo)} 已有最新)"
+    )
+
+    n_success = n_failed = n_empty = 0
+    rows_written = 0
+    rate_limit = 0.3
+    log_every = 200
+
+    for i, (code, market) in enumerate(todo):
+        try:
+            df = await asyncio.to_thread(fetch_delay_fund_flow, code, market)
+        except Exception as exc:
+            n_failed += 1
+            if n_failed <= 5:
+                logger.warning(f"[资金流] {code}.{market} fail: {str(exc)[:120]}")
+            await asyncio.sleep(rate_limit)
+            continue
+        if df is None or df.empty:
+            n_empty += 1
+            await asyncio.sleep(rate_limit)
+            continue
+        try:
+            norm = normalize_df(df, code, market, source="eastmoney_push2delay_latest")
+            rows_written += write_batch(duck, norm)
+            conn.commit()
+            n_success += 1
+        except Exception as exc:
+            n_failed += 1
+            logger.warning(f"[资金流] {code} normalize/write fail: {str(exc)[:120]}")
+        if (i + 1) % log_every == 0:
+            logger.info(
+                f"[资金流] [{i+1}/{len(todo)}] ok={n_success} empty={n_empty} fail={n_failed}"
+            )
+        await asyncio.sleep(rate_limit)
+
+    logger.info(
+        f"[资金流] 完成: ok={n_success} empty={n_empty} fail={n_failed} "
+        f"rows_written={rows_written} target={target_date}"
+    )
+    return rows_written
+
+
 async def _step_sync_qfii(conn) -> int:
     """QFII 季度持股同步（北向陆股通退役后的外资维度替代）。
 
@@ -2895,6 +2974,7 @@ RUNNERS = {
     "sync_qfii": _step_sync_qfii,
     "sync_margin": _step_sync_margin,
     "sync_lhb": _step_sync_lhb,
+    "sync_fund_flow": _step_sync_fund_flow,
     "calc_financial_derived": _step_calc_financial_derived,
     "build_current_rel": _step_build_current_rel,
     "build_profiles": _step_build_profiles,
