@@ -16,6 +16,21 @@ logger = logging.getLogger("cm-api")
 router = APIRouter()
 
 
+def _table_exists(conn, table: str) -> bool:
+    row = conn.execute(
+        "SELECT COUNT(*) FROM information_schema.tables WHERE table_name = ?",
+        (table,),
+    ).fetchone()
+    return bool(row and row[0])
+
+
+def _safe_json(raw, default):
+    try:
+        return json.loads(raw) if raw else default
+    except Exception:
+        return default
+
+
 @router.get("/labels")
 async def get_labels():
     """全局英文→中文字段映射 (前端一次加载后缓存)"""
@@ -198,6 +213,7 @@ async def get_model_performance(
 
         best_params = meta.pop("best_params_json", None)
         meta["best_params"] = json.loads(best_params) if best_params else {}
+        meta["feature_cols"] = _safe_json(meta.get("feature_cols_json"), [])
 
         # 附加中文名 + 综合评级 + 单指标评级
         meta["model_name_cn"] = format_model_id(model_id)
@@ -250,12 +266,106 @@ async def get_model_performance(
         """, (model_id,)).fetchall()
         regime = [dict(r) for r in regime_stats]
 
+        portfolio = {"latest_run_id": None, "items": [], "random_l1": []}
+        if _table_exists(conn, "mart_model_portfolio_summary"):
+            prow = conn.execute(
+                """
+                SELECT run_id FROM mart_model_portfolio_summary
+                WHERE model_id = ?
+                ORDER BY built_at DESC LIMIT 1
+                """,
+                (model_id,),
+            ).fetchone()
+            if prow:
+                portfolio["latest_run_id"] = prow["run_id"]
+                rows = conn.execute(
+                    """
+                    SELECT curve_id, curve_type, model_id, benchmark_id, cost_bps,
+                           final_nav, total_return, annualized_return, max_drawdown,
+                           sharpe, avg_turnover, rebalance_count, start_date, end_date
+                    FROM mart_model_portfolio_summary
+                    WHERE run_id = ? AND curve_type != 'random'
+                    ORDER BY cost_bps, curve_type, curve_id
+                    """,
+                    (prow["run_id"],),
+                ).fetchall()
+                portfolio["items"] = [dict(r) for r in rows]
+                random_rows = conn.execute(
+                    """
+                    SELECT cost_bps,
+                           COUNT(*) n,
+                           AVG(total_return) avg_total_return,
+                           QUANTILE_CONT(total_return, 0.1) p10_total_return,
+                           QUANTILE_CONT(total_return, 0.5) median_total_return,
+                           QUANTILE_CONT(total_return, 0.9) p90_total_return,
+                           AVG(sharpe) avg_sharpe
+                    FROM mart_model_portfolio_summary
+                    WHERE run_id = ? AND curve_type = 'random'
+                    GROUP BY cost_bps ORDER BY cost_bps
+                    """,
+                    (prow["run_id"],),
+                ).fetchall()
+                portfolio["random_l1"] = [dict(r) for r in random_rows]
+
+        walkforward = {"latest_run_id": None, "summary": None, "folds": []}
+        if _table_exists(conn, "mart_model_validation_fold"):
+            wfrow = conn.execute(
+                """
+                SELECT run_id FROM mart_model_validation_fold
+                WHERE model_id = ? OR model_id IS NULL
+                ORDER BY built_at DESC LIMIT 1
+                """,
+                (model_id,),
+            ).fetchone()
+            if wfrow:
+                walkforward["latest_run_id"] = wfrow["run_id"]
+                folds = conn.execute(
+                    """
+                    SELECT fold_id, train_start, train_end, valid_start, valid_end,
+                           test_start, test_end, n_features, test_ic, test_rank_ic,
+                           test_long_short_spread, test_winrate_top
+                    FROM mart_model_validation_fold
+                    WHERE run_id = ? ORDER BY fold_id
+                    """,
+                    (wfrow["run_id"],),
+                ).fetchall()
+                fold_items = [dict(r) for r in folds]
+                walkforward["folds"] = fold_items
+                if fold_items:
+                    rank_vals = [r["test_rank_ic"] for r in fold_items if r["test_rank_ic"] is not None]
+                    spread_vals = [r["test_long_short_spread"] for r in fold_items if r["test_long_short_spread"] is not None]
+                    walkforward["summary"] = {
+                        "fold_count": len(fold_items),
+                        "rank_ic_mean": sum(rank_vals) / len(rank_vals) if rank_vals else None,
+                        "rank_ic_positive_ratio": sum(1 for v in rank_vals if v > 0) / len(rank_vals) if rank_vals else None,
+                        "spread_mean": sum(spread_vals) / len(spread_vals) if spread_vals else None,
+                    }
+
+        data_quality = {}
+        if _table_exists(conn, "fact_feature_panel"):
+            dq = conn.execute(
+                """
+                SELECT MAX(date) latest_panel_date,
+                       COUNT(*) AS row_count,
+                       COUNT(DISTINCT stock_code) AS codes,
+                       COUNT(DISTINCT date) AS dates,
+                       SUM(CASE WHEN forward_ret_20d IS NOT NULL THEN 1 ELSE 0 END) label_rows
+                FROM fact_feature_panel
+                """
+            ).fetchone()
+            if dq:
+                data_quality = dict(dq)
+                data_quality["rows"] = data_quality.pop("row_count", None)
+
         return {
             "ok": True,
             "model_id": model_id,
             "meta": meta,
             "daily_series": daily_series,
             "regime_breakdown": regime,
+            "portfolio": portfolio,
+            "walkforward": walkforward,
+            "data_quality": data_quality,
         }
     finally:
         conn.close()

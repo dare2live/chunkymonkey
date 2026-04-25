@@ -26,6 +26,11 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 import pandas as pd
 
 from services.db import get_conn
+from services.model_feature_schema import (
+    REGIME_FEATURE_COLS,
+    feature_cols_from_json,
+    ordered_feature_cols,
+)
 
 logger = logging.getLogger("daily_topk")
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s | %(message)s")
@@ -49,24 +54,7 @@ CREATE INDEX IF NOT EXISTS idx_dr_rank ON mart_daily_recommendation(snapshot_dat
 """
 
 
-FEATURE_COLS = [
-    'ret_1d', 'ret_5d', 'ret_20d', 'ret_60d',
-    'vol_z20d', 'ma_ratio_5', 'ma_ratio_20', 'ma_ratio_60', 'ma_ratio_250',
-    'rz_balance', 'rz_chg_5d_pct',
-    'kmid', 'klen', 'kup', 'klow', 'ksft',
-    'vol_ratio_5_20', 'vol_std_5d', 'vol_std_20d',
-    'range_pos_20', 'range_pos_60',
-    'momentum_diff', 'amount_chg_5d',
-    'inst_event_count_30d', 'inst_event_count_60d',
-    'exec_buy_count_90d', 'exec_buy_ge1_count_90d',
-    'lhb_inst_buy_count_30d', 'lhb_inst_buy_count_60d',
-    'jgdy_count_60d', 'dzjy_count_60d',
-    'days_since_exec_buy', 'days_since_lhb',
-    'shareholder_count_qoq', 'inst_count_qoq',
-    'fund_count_qoq', 'qfii_count_qoq',
-    'yjyg_lower_pct', 'yjyg_upper_pct', 'roe', 'eps_basic',
-    'hs300_ret_20d', 'hs300_ret_60d',
-]
+FEATURE_COLS = ordered_feature_cols(include_dense_v2=True)
 
 
 def load_model(model_id: str):
@@ -88,6 +76,24 @@ def load_latest_model_id(conn) -> str:
     return row[0]
 
 
+def load_model_feature_cols(conn, model_id: str, *, allow_legacy: bool) -> list[str]:
+    cols = {r[1] for r in conn.execute("PRAGMA table_info(mart_multidim_model)").fetchall()}
+    if "feature_cols_json" in cols:
+        row = conn.execute(
+            "SELECT feature_cols_json FROM mart_multidim_model WHERE model_id = ?",
+            (model_id,),
+        ).fetchone()
+        feature_cols = feature_cols_from_json(row["feature_cols_json"] if row else None)
+        if feature_cols:
+            return feature_cols
+    if not allow_legacy:
+        raise RuntimeError(
+            f"模型 {model_id} 缺少 feature_cols_json; 如需兼容旧模型, 显式加 --allow-legacy-feature-order"
+        )
+    logger.warning("兼容旧模型: 使用代码内 FEATURE_COLS 顺序推理")
+    return []
+
+
 def get_top_features(model, feature_cols: list[str], top_k: int = 5) -> list[tuple[str, float]]:
     imp = model.feature_importance(importance_type='gain')
     pairs = sorted(zip(feature_cols, imp.tolist()), key=lambda x: x[1], reverse=True)
@@ -101,6 +107,8 @@ def main():
     parser.add_argument('--top-k', type=int, default=50)
     parser.add_argument('--by-regime', action='store_true',
                         help='按 regime_flag 分组各出 top-K')
+    parser.add_argument('--allow-legacy-feature-order', action='store_true',
+                        help='兼容 feature_cols_json 缺失的旧模型')
     args = parser.parse_args()
 
     conn = get_conn()
@@ -109,6 +117,11 @@ def main():
     model_id = args.model_id or load_latest_model_id(conn)
     logger.info("使用模型 %s", model_id)
     model = load_model(model_id)
+    stored_feature_cols = load_model_feature_cols(
+        conn,
+        model_id,
+        allow_legacy=args.allow_legacy_feature_order,
+    )
 
     # 取 panel 的目标日期
     if args.date:
@@ -151,16 +164,16 @@ def main():
         for flag in ['up', 'flat', 'down']:
             df[f'regime_{flag}'] = (df['regime_flag'] == flag).astype(int)
 
-    # 按训练时的固定顺序构造 X (LightGBM 若用 ndarray 训练,
-    # feature_name 会是 Column_0..N, 无法回推真实列名, 只能按 train 顺序)
     n_trained = model.num_feature() if hasattr(model, 'num_feature') else None
-    trained_feat_names = list(model.feature_name()) if hasattr(model, 'feature_name') else []
-    is_generic_names = all(n.startswith('Column_') for n in trained_feat_names) if trained_feat_names else True
-
-    if is_generic_names:
+    if stored_feature_cols:
+        missing = [c for c in stored_feature_cols if c not in df.columns]
+        if missing:
+            raise RuntimeError(f"模型 {model_id} 需要的特征在 panel 中缺失: {missing}")
+        feature_cols = stored_feature_cols
+    else:
         # 训练时的顺序: FEATURE_COLS (按存在性过滤) + regime one-hot (如训练用了 regime_aware)
         candidate = [c for c in FEATURE_COLS if c in df.columns]
-        regime_onehot = [f for f in ['regime_up', 'regime_flat', 'regime_down'] if f in df.columns]
+        regime_onehot = [f for f in REGIME_FEATURE_COLS if f in df.columns]
         # 先不加 one-hot; 对齐训练时特征数
         if n_trained == len(candidate):
             feature_cols = candidate
@@ -169,10 +182,10 @@ def main():
         else:
             logger.warning("训练特征数 %s ≠ 候选 %d (含 regime %d)", n_trained, len(candidate), len(regime_onehot))
             feature_cols = candidate + regime_onehot
-    else:
-        feature_cols = trained_feat_names
 
     logger.info("使用 %d 特征评分 (model n_feat=%s)", len(feature_cols), n_trained)
+    if n_trained is not None and len(feature_cols) != n_trained:
+        raise RuntimeError(f"特征数不匹配: model={n_trained}, panel={len(feature_cols)}")
     X = df[feature_cols].values
     # LightGBM 对 Column_N 模型 predict 时忽略 feature_name, 按顺序吃 X
     df['pred_score'] = model.predict(X, predict_disable_shape_check=False)
@@ -196,8 +209,7 @@ def main():
     if not args.by_regime:
         output = output.head(args.top_k)
     else:
-        by_reg = output.groupby('regime_flag', group_keys=False).apply(lambda g: g.head(args.top_k))
-        output = by_reg.reset_index(drop=True)
+        output = output.groupby('regime_flag', group_keys=False).head(args.top_k).reset_index(drop=True)
 
     logger.info("写入 %d 条推荐", len(output))
     # INSERT OR REPLACE

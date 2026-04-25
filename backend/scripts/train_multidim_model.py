@@ -33,6 +33,13 @@ import optuna
 from scipy.stats import spearmanr
 
 from services.db import get_conn
+from services.model_feature_schema import (
+    DEFAULT_LABEL_NAME,
+    FEATURE_SCHEMA_VERSION,
+    REGIME_FEATURE_COLS,
+    feature_cols_to_json,
+    ordered_feature_cols,
+)
 
 logger = logging.getLogger("train_multidim")
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s | %(message)s")
@@ -53,6 +60,9 @@ CREATE TABLE IF NOT EXISTS mart_multidim_model (
     holdout_long_short_spread REAL,
     holdout_winrate_top REAL,
     feature_importance_json TEXT,
+    feature_cols_json TEXT,
+    label_name TEXT,
+    feature_schema_version TEXT,
     notes TEXT
 );
 
@@ -68,32 +78,26 @@ CREATE TABLE IF NOT EXISTS mart_multidim_prediction (
 """
 
 
-FEATURE_COLS = [
-    # Pillar B 基础
-    'ret_1d', 'ret_5d', 'ret_20d', 'ret_60d',
-    'vol_z20d', 'ma_ratio_5', 'ma_ratio_20', 'ma_ratio_60', 'ma_ratio_250',
-    'rz_balance', 'rz_chg_5d_pct',
-    # Pillar B Alpha158-inspired
-    'kmid', 'klen', 'kup', 'klow', 'ksft',
-    'vol_ratio_5_20', 'vol_std_5d', 'vol_std_20d',
-    'range_pos_20', 'range_pos_60',
-    'momentum_diff', 'amount_chg_5d',
-    # Pillar A 事件
-    'inst_event_count_30d', 'inst_event_count_60d',
-    'exec_buy_count_90d', 'exec_buy_ge1_count_90d',
-    'lhb_inst_buy_count_30d', 'lhb_inst_buy_count_60d',
-    'jgdy_count_60d', 'dzjy_count_60d',
-    'days_since_exec_buy', 'days_since_lhb',
-    # Pillar C 基本面
-    'shareholder_count_qoq', 'inst_count_qoq',
-    'fund_count_qoq', 'qfii_count_qoq',
-    'yjyg_lower_pct', 'yjyg_upper_pct', 'roe', 'eps_basic',
-    # Regime
-    'hs300_ret_20d', 'hs300_ret_60d',
-]
+FEATURE_COLS = ordered_feature_cols(include_dense_v2=True)
 
 
-def load_panel(conn, start_date: str, end_date: str, with_alpha158: bool = True) -> pd.DataFrame:
+def ensure_model_schema(conn) -> None:
+    conn.executescript(MODEL_DDL)
+    cols = {r[1] for r in conn.execute("PRAGMA table_info(mart_multidim_model)").fetchall()}
+    for col in ("feature_cols_json", "label_name", "feature_schema_version"):
+        if col not in cols:
+            conn.execute(f"ALTER TABLE mart_multidim_model ADD COLUMN {col} TEXT")
+    conn.commit()
+
+
+def load_panel(
+    conn,
+    start_date: str,
+    end_date: str,
+    *,
+    label_name: str = DEFAULT_LABEL_NAME,
+    with_alpha158: bool = True,
+) -> pd.DataFrame:
     """DuckDB 加载: 只读 LightGBM 需要的列, float32 降内存
     Phase 8: 可选 LEFT JOIN alpha158.duckdb 的 fact_alpha158_panel 增补 64 Alpha158 因子
 
@@ -118,9 +122,22 @@ def load_panel(conn, start_date: str, end_date: str, with_alpha158: bool = True)
         except Exception as e:
             logger.warning("Alpha158 attach failed: %s", e)
 
-    select_cols = ["p.stock_code", "p.date", "p.regime_flag", "p.forward_ret_20d"] + [
-        f"CAST(p.{c} AS FLOAT) AS {c}" for c in FEATURE_COLS
-    ]
+    panel_cols = {
+        r[0] for r in duck.execute(
+            "SELECT column_name FROM information_schema.columns WHERE table_name='fact_feature_panel'"
+        ).fetchall()
+    }
+    if label_name not in panel_cols:
+        raise RuntimeError(f"fact_feature_panel 缺少 label 列: {label_name}")
+    base_cols = [c for c in FEATURE_COLS if c in panel_cols]
+    missing_cols = [c for c in FEATURE_COLS if c not in panel_cols]
+    if missing_cols:
+        logger.warning("fact_feature_panel 缺少 %d 个 schema 特征, 本次跳过: %s", len(missing_cols), missing_cols)
+
+    select_cols = [
+        "p.stock_code", "p.date", "p.regime_flag",
+        f"p.{label_name} AS label_value",
+    ] + [f"CAST(p.{c} AS FLOAT) AS {c}" for c in base_cols]
     alpha158_cols_sql = ""
     alpha158_join = ""
     if a158_col_list:
@@ -131,7 +148,7 @@ def load_panel(conn, start_date: str, end_date: str, with_alpha158: bool = True)
         SELECT {', '.join(select_cols)}{alpha158_cols_sql}
         FROM fact_feature_panel p
         {alpha158_join}
-        WHERE p.date >= ? AND p.date <= ? AND p.forward_ret_20d IS NOT NULL
+        WHERE p.date >= ? AND p.date <= ? AND p.{label_name} IS NOT NULL
     """
     df = duck.execute(query, [start_date, end_date]).df()
     logger.info("rows=%d codes=%d dates=%d total_cols=%d",
@@ -168,8 +185,8 @@ def split_time_series(df: pd.DataFrame, train_ratio: float = 0.7, valid_ratio: f
 def compute_ic(y_true: np.ndarray, y_pred: np.ndarray, dates: np.ndarray) -> tuple[float, float]:
     """daily cross-sectional pearson + spearman IC 平均"""
     daily = pd.DataFrame({'y': y_true, 'yhat': y_pred, 'd': dates})
-    pearson = daily.groupby('d').apply(lambda g: g['y'].corr(g['yhat'])).dropna()
-    spearman = daily.groupby('d').apply(lambda g: spearmanr(g['y'], g['yhat']).correlation).dropna()
+    pearson = daily.groupby('d')[['y', 'yhat']].apply(lambda g: g['y'].corr(g['yhat'])).dropna()
+    spearman = daily.groupby('d')[['y', 'yhat']].apply(lambda g: spearmanr(g['y'], g['yhat']).correlation).dropna()
     return float(pearson.mean()), float(spearman.mean())
 
 
@@ -183,12 +200,12 @@ def decile_metrics(y_true: np.ndarray, y_pred: np.ndarray, dates: np.ndarray) ->
         top = g[g['yhat'] >= q[0.9]]['y'].mean()
         bot = g[g['yhat'] <= q[0.1]]['y'].mean()
         return pd.Series({'top_avg': top, 'bot_avg': bot})
-    per_day = df.groupby('d').apply(_decile)
+    per_day = df.groupby('d')[['y', 'yhat']].apply(_decile)
     top = float(per_day['top_avg'].mean())
     bot = float(per_day['bot_avg'].mean())
     spread = top - bot
     # winrate: top decile 样本里正收益比例
-    daily_top_wr = df.groupby('d').apply(
+    daily_top_wr = df.groupby('d')[['y', 'yhat']].apply(
         lambda g: ((g[g['yhat'] >= g['yhat'].quantile(0.9)]['y']) > 0).mean()
     ).dropna()
     wr = float(daily_top_wr.mean())
@@ -225,9 +242,9 @@ def make_objective(train_df, valid_df, feature_cols):
             'verbose': -1,
         }
         X_train = train_df[feature_cols].values
-        y_train = train_df['forward_ret_20d'].values
+        y_train = train_df['label_value'].values
         X_valid = valid_df[feature_cols].values
-        y_valid = valid_df['forward_ret_20d'].values
+        y_valid = valid_df['label_value'].values
 
         model = train_lgb(X_train, y_train, X_valid, y_valid, params, num_round=400,
                           feature_name=feature_cols)
@@ -243,6 +260,8 @@ def main():
     parser.add_argument('--start', default='2023-01-01')
     parser.add_argument('--end', default=datetime.now().strftime('%Y-%m-%d'))
     parser.add_argument('--trials', type=int, default=50, help='Optuna 搜参次数')
+    parser.add_argument('--label-name', default=DEFAULT_LABEL_NAME,
+                        help='训练标签列名, 默认 forward_ret_20d')
     parser.add_argument('--regime-aware', action='store_true',
                         help='加入 regime one-hot 作为特征')
     args = parser.parse_args()
@@ -252,12 +271,12 @@ def main():
     # 2) 训练/调参/评估期间无 DB 连接
     # 3) 最后落库时重新打开 writable connection, 写完 close
     conn = get_conn()
-    conn.executescript(MODEL_DDL)
-    df = load_panel(conn, args.start, args.end)
+    ensure_model_schema(conn)
+    df = load_panel(conn, args.start, args.end, label_name=args.label_name)
     conn.close()
     logger.info("数据加载完成, DuckDB 写锁已释放, 训练期间前端可正常读")
     if df.empty:
-        logger.error("fact_feature_panel 空或无 label; 先跑 build_feature_panel.py")
+        logger.error("fact_feature_panel 空或无 label; 先跑 build_feature_panel_duck.py")
         sys.exit(1)
 
     feature_cols = [c for c in FEATURE_COLS if c in df.columns]
@@ -266,7 +285,7 @@ def main():
         feature_cols += [c for c in _ADDED_A158 if c in df.columns]
         logger.info("特征总数 含 Alpha158 = %d", len(feature_cols))
     if args.regime_aware:
-        for f in ['regime_up', 'regime_flat', 'regime_down']:
+        for f in REGIME_FEATURE_COLS:
             if f in df.columns:
                 feature_cols.append(f)
     logger.info("使用 %d 特征: %s", len(feature_cols), feature_cols)
@@ -282,13 +301,17 @@ def main():
 
     # 用 best params 重训 (train + valid 合并) + holdout 评估
     best = dict(study.best_params)
-    best.update({'objective': 'regression', 'metric': 'rmse', 'verbose': -1})
+    best.update({
+        'objective': 'regression', 'metric': 'rmse', 'verbose': -1,
+        'seed': 42, 'feature_fraction_seed': 42, 'bagging_seed': 42,
+        'data_random_seed': 42,
+    })
     train_valid = pd.concat([train, valid], ignore_index=True)
 
     X_tv = train_valid[feature_cols].values
-    y_tv = train_valid['forward_ret_20d'].values
+    y_tv = train_valid['label_value'].values
     X_ho = holdout[feature_cols].values
-    y_ho = holdout['forward_ret_20d'].values
+    y_ho = holdout['label_value'].values
 
     # no early_stopping in final fit — use fixed num_round
     final_model = lgb.train(best, lgb.Dataset(X_tv, label=y_tv, feature_name=feature_cols),
@@ -310,9 +333,21 @@ def main():
     # 落库: 训练完毕, 重新打开 writable connection
     logger.info("训练完成, 重新打开 DuckDB (writable) 落库...")
     conn = get_conn()
+    ensure_model_schema(conn)
     model_id = f"multidim_v1_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
     conn.execute(
-        """INSERT INTO mart_multidim_model VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+        """
+        INSERT INTO mart_multidim_model (
+            model_id, created_at,
+            train_start, train_end, valid_start, valid_end, holdout_start, holdout_end,
+            n_features, best_params_json,
+            holdout_ic, holdout_rank_ic,
+            holdout_top_decile_avg, holdout_bottom_decile_avg,
+            holdout_long_short_spread, holdout_winrate_top,
+            feature_importance_json, feature_cols_json, label_name, feature_schema_version,
+            notes
+        ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+        """,
         (model_id, datetime.utcnow().isoformat(),
          str(train['date'].min()), str(train['date'].max()),
          str(valid['date'].min()), str(valid['date'].max()),
@@ -323,6 +358,9 @@ def main():
          dec['top_avg'], dec['bot_avg'], dec['spread'],
          dec['winrate_top'],
          json.dumps(fi),
+         feature_cols_to_json(feature_cols),
+         args.label_name,
+         FEATURE_SCHEMA_VERSION,
          f"Optuna {args.trials} trials, regime_aware={args.regime_aware}"),
     )
 

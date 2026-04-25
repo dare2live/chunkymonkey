@@ -18,7 +18,7 @@
  14. calc_sector_momentum     — 板块动量分析
  15. build_external_attention — 外部关注快照
  16. build_stage_features     — 阶段特征构建
- 17. build_forecast_features  — 预测特征构建
+ 17. build_turtle_features    — 海龟执行特征
  18. calc_inst_scores         — 机构评分
  19. calc_stock_scores        — 股票评分
 """
@@ -190,7 +190,6 @@ STEPS = [
     {"id": "calc_sector_momentum",  "name": "板块动量分析",    "group": "mart", "order": 14},
     {"id": "build_external_attention","name": "外部关注快照",  "group": "mart", "order": 15},
     {"id": "build_stage_features",  "name": "阶段特征构建",    "group": "mart", "order": 16},
-    {"id": "build_forecast_features","name": "预测特征构建",   "group": "mart", "order": 17},
     {"id": "build_turtle_features", "name": "海龟执行特征",    "group": "mart", "order": 17.5},
     {"id": "calc_inst_scores",      "name": "机构评分",        "group": "mart", "order": 18},
     {"id": "calc_stock_scores",     "name": "股票评分",        "group": "mart", "order": 19},
@@ -218,10 +217,9 @@ HARD_DEPS = {
     "calc_sector_momentum": ["sync_market_data", "sync_industry"],
     "build_external_attention": [],
     "build_stage_features": ["build_trends", "calc_sector_momentum"],
-    "build_forecast_features": ["build_stage_features"],
     "build_turtle_features": ["build_stage_features"],
     "calc_inst_scores": ["build_profiles", "build_industry_stat"],
-    "calc_stock_scores": ["calc_inst_scores", "build_stage_features", "build_forecast_features"],
+    "calc_stock_scores": ["calc_inst_scores", "build_stage_features"],
 }
 
 # 软依赖：failed/skipped → 继续执行但标注 data_completeness='partial'
@@ -235,8 +233,7 @@ SOFT_DEPS = {
     "calc_sector_momentum": ["build_trends"],
     "build_external_attention": [],
     "build_stage_features": ["calc_financial_derived"],
-    "build_forecast_features": [],
-    "build_turtle_features": ["build_forecast_features"],
+    "build_turtle_features": [],
     "calc_inst_scores": ["calc_returns"],
     "calc_stock_scores": ["calc_returns", "build_external_attention"],
 }

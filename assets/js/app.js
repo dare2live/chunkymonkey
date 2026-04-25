@@ -1689,12 +1689,11 @@
     build_current_rel: ['机构画像', '行业统计', '生成股票列表', '机构评分', '股票评分'],
     build_profiles: ['机构评分', '股票评分'],
     build_industry_stat: ['机构评分', '股票评分'],
-    build_trends: ['阶段特征构建', '预测特征构建', '股票评分'],
+    build_trends: ['阶段特征构建', '股票评分'],
     calc_screening: ['股票评分'],
-    calc_sector_momentum: ['阶段特征构建', '预测特征构建', '股票评分'],
+    calc_sector_momentum: ['阶段特征构建', '股票评分'],
     build_external_attention: ['股票评分'],
-    build_stage_features: ['预测特征构建', '股票评分'],
-    build_forecast_features: ['股票评分'],
+    build_stage_features: ['股票评分'],
     calc_inst_scores: ['股票评分'],
   };
   var STEP_DEFAULTS = [
@@ -1718,7 +1717,6 @@
     { step_id: 'calc_sector_momentum', step_name: '板块动量分析', status: 'idle', desc: '计算板块技术态势与双重确认信号' },
     { step_id: 'build_external_attention', step_name: '外部关注快照', status: 'idle', desc: '同步千股千评与调研统计，更新外部关注快照' },
     { step_id: 'build_stage_features', step_name: '阶段特征构建', status: 'idle', desc: '汇总趋势、行业与财务上下文，生成阶段特征' },
-    { step_id: 'build_forecast_features', step_name: '预测特征构建', status: 'idle', desc: '把最新阶段特征回流到预测特征层' },
     { step_id: 'build_turtle_features', step_name: '海龟执行特征', status: 'idle', desc: '基于阶段特征构建海龟执行因子' },
     { step_id: 'calc_inst_scores', step_name: '机构评分', status: 'idle', desc: '多维度评分机构实力、胜率、稳定性' },
     { step_id: 'calc_stock_scores', step_name: '股票评分', status: 'idle', desc: '综合评分每只股票的行动价值' }
@@ -2208,13 +2206,6 @@
       issueCount = stageGap;
       actionable = stageGap > 0 || ['failed', 'skipped', 'stopped'].includes(status);
       actionLabel = stageGap > 0 ? '补齐阶段特征' : '重算阶段特征';
-    } else if (stepId === 'build_forecast_features') {
-      var forecastBase = sectorMom.stage_feature_count || 0;
-      if (typeof sectorMom.forecast_feature_count === 'number') addNote('审计 ' + fmt(sectorMom.forecast_feature_count) + ' 只股票已有预测特征');
-      if (forecastBase > 0) addNote('阶段特征底座 ' + fmt(forecastBase) + ' 只');
-      hasData = forecastBase === 0 || (sectorMom.forecast_feature_count || 0) > 0;
-      actionable = ['failed', 'skipped', 'stopped'].includes(status);
-      actionLabel = '重算预测特征';
     } else if (stepId === 'calc_inst_scores') {
       if (typeof profiles.scored === 'number') addNote('审计 ' + fmt(profiles.scored) + '/' + fmt(profiles.count || institutions.tracked || 0) + ' 家机构已评分');
       if (Math.max((profiles.count || 0) - (profiles.scored || 0), 0) > 0) addIssue('仍缺 ' + fmt(Math.max((profiles.count || 0) - (profiles.scored || 0), 0)) + ' 家机构评分');
@@ -2448,12 +2439,12 @@
       sync_raw: 'data', match_inst: 'data', sync_market_data: 'data', sync_financial: 'data', sync_surveys: 'data', sync_qfii: 'data', sync_margin: 'data', sync_lhb: 'data', sync_industry: 'data',
       build_turtle_features: 'mart',
       gen_events: 'calc', calc_returns: 'calc', calc_financial_derived: 'calc',
-      build_current_rel: 'mart', build_profiles: 'mart', build_industry_stat: 'mart', build_trends: 'mart', calc_screening: 'mart', calc_sector_momentum: 'mart', build_external_attention: 'mart', build_stage_features: 'mart', build_forecast_features: 'mart', calc_inst_scores: 'mart', calc_stock_scores: 'mart'
+      build_current_rel: 'mart', build_profiles: 'mart', build_industry_stat: 'mart', build_trends: 'mart', calc_screening: 'mart', calc_sector_momentum: 'mart', build_external_attention: 'mart', build_stage_features: 'mart', calc_inst_scores: 'mart', calc_stock_scores: 'mart'
     };
     var GROUP_DEF = {
       data: { name: '数据获取', verb: '重新同步', count: 9, badge: '①' },
       calc: { name: '事实计算', verb: '全量计算', count: 3, badge: '②' },
-      mart: { name: '集市构建', verb: '重构集市', count: 12, badge: '③' }
+      mart: { name: '集市构建', verb: '重构集市', count: 11, badge: '③' }
     };
     var grouped = { data: [], calc: [], mart: [] };
     steps.forEach(function (s) {
@@ -6527,7 +6518,18 @@
         if (!g || g.index < 0) return '<div class="wb-card-chip" style="background:var(--cm-ink-50);color:var(--cm-ink-500)">-</div>';
         return '<div class="wb-card-chip" style="background:' + g.color + '22;color:' + g.color + ';font-weight:600">' + g.grade + '</div>';
       }
+      var portfolioItems = (res.portfolio && res.portfolio.items) || [];
+      var p30 = portfolioItems.find(function (x) { return x.curve_type === 'model_top20' && Number(x.cost_bps) === 30; }) ||
+        portfolioItems.find(function (x) { return x.curve_type === 'model_top20'; }) || {};
+      var wf = (res.walkforward && res.walkforward.summary) || {};
+      var dq = res.data_quality || {};
+      var liveCards =
+        '<div class="wb-card"><div class="wb-card-label">net top20（组合·扣成本）</div><div class="wb-card-value">' + pct(p30.annualized_return) + '</div><div class="wb-card-sub">MaxDD ' + pct(p30.max_drawdown) + ' · Sharpe ' + fmt(p30.sharpe, 2) + '</div><div class="wb-card-chip">30bps</div></div>' +
+        '<div class="wb-card"><div class="wb-card-label">walk-forward RankIC</div><div class="wb-card-value">' + fmt(wf.rank_ic_mean, 3) + '</div><div class="wb-card-sub">正折率 ' + pct(wf.rank_ic_positive_ratio) + ' · 折数 ' + (wf.fold_count || '-') + '</div><div class="wb-card-chip">稳定性</div></div>' +
+        '<div class="wb-card"><div class="wb-card-label">feature schema</div><div class="wb-card-value">' + (m.feature_schema_version || '-') + '</div><div class="wb-card-sub">label ' + (m.label_name || '-') + ' · ' + ((m.feature_cols || []).length || m.n_features || '-') + ' 列</div><div class="wb-card-chip">schema</div></div>' +
+        '<div class="wb-card"><div class="wb-card-label">panel freshness</div><div class="wb-card-value">' + (dq.latest_panel_date || '-') + '</div><div class="wb-card-sub">' + (dq.codes || '-') + ' 股 · ' + (dq.dates || '-') + ' 日 · label ' + (dq.label_rows || '-') + '</div><div class="wb-card-chip">data</div></div>';
       box.innerHTML =
+        liveCards +
         '<div class="wb-card"><div class="wb-card-label">holdout_ic（持出期·IC）</div><div class="wb-card-value">' + fmt(m.holdout_ic, 3) + '</div><div class="wb-card-sub">门槛 优秀>0.05 良好>0.03</div>' + gradeChip(mg.holdout_ic) + '</div>' +
         '<div class="wb-card"><div class="wb-card-label">holdout_rank_ic（持出期·Rank IC）</div><div class="wb-card-value">' + fmt(m.holdout_rank_ic, 3) + '</div><div class="wb-card-sub">门槛 优秀>0.08 良好>0.06</div>' + gradeChip(mg.holdout_rank_ic) + '</div>' +
         '<div class="wb-card"><div class="wb-card-label">holdout_top_decile_avg（Top 10% 平均20日收益）</div><div class="wb-card-value">' + pct(m.holdout_top_decile_avg) + '</div><div class="wb-card-sub">门槛 优秀>3% 良好>2%</div>' + gradeChip(mg.holdout_top_decile_avg) + '</div>' +

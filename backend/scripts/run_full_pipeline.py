@@ -2,7 +2,7 @@
 """Phase 2-4 全量 orchestrator
 
 等 price_kline_tdxhub 回填完成 (轮询 row 数稳定 > 3min), 然后串联
-  1. build_feature_panel (全市场)
+  1. build_feature_panel_duck (全市场)
   2. train_multidim_model (Optuna 50 trials)
   3. run_daily_topk (最新日 top-100)
 """
@@ -10,7 +10,6 @@ from __future__ import annotations
 
 import argparse
 import logging
-import sqlite3
 import subprocess
 import sys
 import time
@@ -18,6 +17,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from services.market_db import get_market_conn
+from services.db import get_conn
 
 logger = logging.getLogger("orchestrator")
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s | %(message)s")
@@ -49,10 +49,13 @@ def wait_for_price_kline(min_codes: int = 5000, stable_seconds: int = 180) -> No
         time.sleep(60)
 
 
-def run_step(cmd: list[str], name: str):
+def run_step(cmd: list[str], name: str, *, dry_run: bool = False):
     logger.info("=" * 60)
     logger.info("▶ %s:  %s", name, " ".join(cmd))
     logger.info("=" * 60)
+    if dry_run:
+        logger.info("dry-run: 跳过执行 %s", name)
+        return
     t0 = time.time()
     ret = subprocess.run(cmd, capture_output=False)
     dt = (time.time() - t0) / 60
@@ -62,6 +65,35 @@ def run_step(cmd: list[str], name: str):
     logger.info("✓ %s 完成 (耗时 %.1f min)", name, dt)
 
 
+def dry_run_checks(min_codes: int) -> None:
+    logger.info("dry-run: 检查输入表、模块和输出目录")
+    mkt = get_market_conn()
+    try:
+        rows, codes = mkt.execute(
+            "SELECT COUNT(*), COUNT(DISTINCT code) FROM price_kline_tdxhub WHERE freq='daily' AND adjust='qfq'"
+        ).fetchone()
+        if codes < min_codes:
+            raise RuntimeError(f"price_kline_tdxhub code 覆盖不足: {codes} < {min_codes}")
+        logger.info("market.price_kline_tdxhub rows=%d codes=%d", rows, codes)
+    finally:
+        mkt.close()
+
+    conn = get_conn()
+    try:
+        for table in ("fact_feature_panel", "mart_multidim_model"):
+            exists = conn.execute(
+                "SELECT COUNT(*) FROM information_schema.tables WHERE table_name = ?",
+                (table,),
+            ).fetchone()[0]
+            logger.info("smart.%s exists=%s", table, bool(exists))
+    finally:
+        conn.close()
+
+    model_dir = Path(__file__).resolve().parent.parent.parent / "data" / "multidim_models"
+    model_dir.mkdir(parents=True, exist_ok=True)
+    logger.info("model_dir 可写: %s", model_dir)
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--skip-wait', action='store_true')
@@ -69,16 +101,22 @@ def main():
     parser.add_argument('--feature-start', default='2023-01-01')
     parser.add_argument('--trials', type=int, default=50)
     parser.add_argument('--top-k', type=int, default=100)
+    parser.add_argument('--dry-run', action='store_true',
+                        help='只检查依赖和将执行的命令, 不写库、不训练')
     args = parser.parse_args()
 
-    if not args.skip_wait:
+    if args.dry_run:
+        dry_run_checks(args.min_codes)
+
+    if not args.skip_wait and not args.dry_run:
         wait_for_price_kline(min_codes=args.min_codes, stable_seconds=180)
 
     # Step 1: feature panel
     run_step(
-        ["python3", "-m", "backend.scripts.build_feature_panel",
+        ["python3", "-m", "backend.scripts.build_feature_panel_duck",
          "--start", args.feature_start],
         "feature_panel",
+        dry_run=args.dry_run,
     )
 
     # Step 2: train + Optuna
@@ -88,6 +126,7 @@ def main():
          "--trials", str(args.trials),
          "--regime-aware"],
         "train_multidim",
+        dry_run=args.dry_run,
     )
 
     # Step 3: daily topK
@@ -96,6 +135,7 @@ def main():
          "--top-k", str(args.top_k),
          "--by-regime"],
         "run_daily_topk",
+        dry_run=args.dry_run,
     )
 
     logger.info("━" * 60)

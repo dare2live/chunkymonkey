@@ -3,7 +3,7 @@
 
 架构分工
 - DuckDB SQL: 所有 panel 级聚合 / 窗口函数 / ASOF JOIN (替代 pandas groupby rolling)
-- pandas: 最终 DataFrame -> SQLite 写入 (to_sql)
+- pandas: 最终 DataFrame 暂存到 DuckDB register 后批量写入主库
 - Alpha158 因子: 由独立脚本 build_alpha158_duck.py 产出, 本脚本以 LEFT JOIN 挂上
 
 Pillar 分工同原版 (A/B/C + regime). DuckDB 把 27 min pandas 压到 <5 min.
@@ -20,7 +20,6 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 import pandas as pd
-from services.db import get_conn
 from services.analytics import get_duck
 
 logger = logging.getLogger("feature_panel_duck")
@@ -42,6 +41,12 @@ CREATE TABLE fact_feature_panel (
     vol_ratio_5_20 REAL, vol_std_5d REAL, vol_std_20d REAL,
     range_pos_20 REAL, range_pos_60 REAL,
     momentum_diff REAL, amount_chg_5d REAL,
+    -- V2 dense cross-sectional / industry-relative features
+    ret_20d_rank REAL, ret_60d_rank REAL, vol_z20d_rank REAL, amount_chg_5d_rank REAL,
+    rz_balance_rank REAL, rz_chg_5d_pct_rank REAL,
+    ret_20d_tdx_l1_rel REAL, ret_60d_tdx_l1_rel REAL,
+    vol_z20d_tdx_l1_rel REAL, amount_chg_5d_tdx_l1_rel REAL,
+    rz_balance_to_amount20 REAL,
     -- Pillar A 事件
     inst_event_count_30d INTEGER, inst_event_count_60d INTEGER,
     exec_buy_count_90d INTEGER, exec_buy_ge1_count_90d INTEGER,
@@ -64,12 +69,19 @@ CREATE TABLE fact_feature_panel (
 CREATE INDEX IF NOT EXISTS idx_fp_code ON fact_feature_panel(stock_code);
 CREATE INDEX IF NOT EXISTS idx_fp_date ON fact_feature_panel(date);
 CREATE INDEX IF NOT EXISTS idx_fp_date_label ON fact_feature_panel(date, forward_ret_20d);
-CREATE INDEX IF NOT EXISTS idx_fp_label ON fact_feature_panel(forward_ret_20d) WHERE forward_ret_20d IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_fp_label ON fact_feature_panel(forward_ret_20d);
 """
 
 
+def execute_script(duck, sql: str) -> None:
+    for stmt in sql.split(";"):
+        stmt = stmt.strip()
+        if stmt:
+            duck.execute(stmt)
+
+
 def build_panel(start_date: str) -> pd.DataFrame:
-    duck = get_duck()
+    duck = get_duck(writable=True)
     t0 = time.time()
 
     logger.info("Step 1: Pillar B 价量 + Alpha158-inspired 特征 (DuckDB window)")
@@ -111,7 +123,8 @@ def build_panel(start_date: str) -> pd.DataFrame:
                 / NULLIF(MAX(high) OVER (PARTITION BY stock_code ORDER BY date ROWS 59 PRECEDING)
                          - MIN(low) OVER (PARTITION BY stock_code ORDER BY date ROWS 59 PRECEDING), 0) AS range_pos_60,
             NULL AS momentum_diff,
-            (amount / NULLIF(LAG(amount, 5) OVER w, 0) - 1) AS amount_chg_5d
+            (amount / NULLIF(LAG(amount, 5) OVER w, 0) - 1) AS amount_chg_5d,
+            AVG(amount) OVER (PARTITION BY stock_code ORDER BY date ROWS 19 PRECEDING) AS amount_ma20
         FROM px
         WINDOW w AS (PARTITION BY stock_code ORDER BY date)
     """).df()
@@ -127,7 +140,7 @@ def build_panel(start_date: str) -> pd.DataFrame:
         WITH margin AS (
             SELECT stock_code, trade_date, rz_balance,
                    (rz_balance / NULLIF(LAG(rz_balance, 5) OVER (PARTITION BY stock_code ORDER BY trade_date), 0) - 1) AS rz_chg_5d_pct
-            FROM smart.raw_margin_daily
+            FROM smartmoney.raw_margin_daily
         )
         SELECT p.*,
                m.rz_balance, m.rz_chg_5d_pct
@@ -193,26 +206,26 @@ def build_panel(start_date: str) -> pd.DataFrame:
     _rolling_event_count(
         "SELECT stock_code, "
         "SUBSTR(notice_date,1,4) || '-' || SUBSTR(notice_date,5,2) || '-' || SUBSTR(notice_date,7,2) AS event_date "
-        "FROM smart.fact_institution_event",
+        "FROM smartmoney.fact_institution_event",
         "inst_event_count", [30, 60],
     )
     # executive buy all
     _rolling_event_count(
         "SELECT stock_code, notice_date AS event_date "
-        "FROM smart.fact_executive_trade_event WHERE direction='buy'",
+        "FROM smartmoney.fact_executive_trade_event WHERE direction='buy'",
         "exec_buy_count", [90],
     )
     # executive buy ≥1%
     _rolling_event_count(
         "SELECT stock_code, notice_date AS event_date "
-        "FROM smart.fact_executive_trade_event "
+        "FROM smartmoney.fact_executive_trade_event "
         "WHERE direction='buy' AND total_change_pct_total >= 1.0",
         "exec_buy_ge1_count", [90],
     )
     # LHB 机构买
     _rolling_event_count(
         "SELECT stock_code, trade_date AS event_date "
-        "FROM smart.fact_lhb_event WHERE is_inst_net_buy=1",
+        "FROM smartmoney.fact_lhb_event WHERE is_inst_net_buy=1",
         "lhb_inst_buy_count", [30, 60],
     )
     # 机构调研 (jgdy)
@@ -220,7 +233,7 @@ def build_panel(start_date: str) -> pd.DataFrame:
         _rolling_event_count(
             "SELECT stock_code, "
             "SUBSTR(notice_date,1,4) || '-' || SUBSTR(notice_date,5,2) || '-' || SUBSTR(notice_date,7,2) AS event_date "
-            "FROM smart.fact_jgdy_event",
+            "FROM smartmoney.fact_jgdy_event",
             "jgdy_count", [60],
         )
     except Exception as e:
@@ -231,7 +244,7 @@ def build_panel(start_date: str) -> pd.DataFrame:
         _rolling_event_count(
             "SELECT stock_code, "
             "SUBSTR(trade_date,1,4) || '-' || SUBSTR(trade_date,5,2) || '-' || SUBSTR(trade_date,7,2) AS event_date "
-            "FROM smart.fact_dzjy_event",
+            "FROM smartmoney.fact_dzjy_event",
             "dzjy_count", [60],
         )
     except Exception as e:
@@ -247,9 +260,9 @@ def build_panel(start_date: str) -> pd.DataFrame:
     # 高管增持最近日期
     for ev_sql, col in [
         ("SELECT stock_code, notice_date AS event_date "
-         "FROM smart.fact_executive_trade_event WHERE direction='buy'", "exec_buy"),
+         "FROM smartmoney.fact_executive_trade_event WHERE direction='buy'", "exec_buy"),
         ("SELECT stock_code, trade_date AS event_date "
-         "FROM smart.fact_lhb_event WHERE is_inst_net_buy=1", "lhb"),
+         "FROM smartmoney.fact_lhb_event WHERE is_inst_net_buy=1", "lhb"),
     ]:
         try:
             ds = duck.execute(f"""
@@ -287,7 +300,7 @@ def build_panel(start_date: str) -> pd.DataFrame:
                    (inst_count / NULLIF(LAG(inst_count) OVER w, 0) - 1) AS inst_count_qoq,
                    (fund_count / NULLIF(LAG(fund_count) OVER w, 0) - 1) AS fund_count_qoq,
                    (qfii_count / NULLIF(LAG(qfii_count) OVER w, 0) - 1) AS qfii_count_qoq
-            FROM smart.fact_fundamental_quarterly
+            FROM smartmoney.fact_fundamental_quarterly
             WINDOW w AS (PARTITION BY stock_code ORDER BY report_date)
         )
         SELECT p.*,
@@ -320,11 +333,43 @@ def build_panel(start_date: str) -> pd.DataFrame:
     pillar_b = pillar_b.merge(regime_df, on='date', how='left')
     logger.info("Regime done: %.1fs", time.time() - t6)
 
+    # V2: dense cross-sectional ranks and industry-relative features.
+    t7 = time.time()
+    logger.info("Step 8: V2 横截面 rank / 行业相对 / 融资归一化")
+    duck.register('current_panel', pillar_b)
+    pillar_b = duck.execute("""
+        WITH ind AS (
+            SELECT stock_code, tdx_l1 FROM smartmoney.dim_stock_tdx_industry
+        ),
+        joined AS (
+            SELECT p.*, ind.tdx_l1
+            FROM current_panel p
+            LEFT JOIN ind ON ind.stock_code = p.stock_code
+        )
+        SELECT *,
+               CASE WHEN ret_20d IS NULL THEN NULL ELSE PERCENT_RANK() OVER (PARTITION BY date ORDER BY ret_20d NULLS LAST) END AS ret_20d_rank,
+               CASE WHEN ret_60d IS NULL THEN NULL ELSE PERCENT_RANK() OVER (PARTITION BY date ORDER BY ret_60d NULLS LAST) END AS ret_60d_rank,
+               CASE WHEN vol_z20d IS NULL THEN NULL ELSE PERCENT_RANK() OVER (PARTITION BY date ORDER BY vol_z20d NULLS LAST) END AS vol_z20d_rank,
+               CASE WHEN amount_chg_5d IS NULL THEN NULL ELSE PERCENT_RANK() OVER (PARTITION BY date ORDER BY amount_chg_5d NULLS LAST) END AS amount_chg_5d_rank,
+               CASE WHEN rz_balance IS NULL THEN NULL ELSE PERCENT_RANK() OVER (PARTITION BY date ORDER BY rz_balance NULLS LAST) END AS rz_balance_rank,
+               CASE WHEN rz_chg_5d_pct IS NULL THEN NULL ELSE PERCENT_RANK() OVER (PARTITION BY date ORDER BY rz_chg_5d_pct NULLS LAST) END AS rz_chg_5d_pct_rank,
+               ret_20d - AVG(ret_20d) OVER (PARTITION BY date, tdx_l1) AS ret_20d_tdx_l1_rel,
+               ret_60d - AVG(ret_60d) OVER (PARTITION BY date, tdx_l1) AS ret_60d_tdx_l1_rel,
+               vol_z20d - AVG(vol_z20d) OVER (PARTITION BY date, tdx_l1) AS vol_z20d_tdx_l1_rel,
+               amount_chg_5d - AVG(amount_chg_5d) OVER (PARTITION BY date, tdx_l1) AS amount_chg_5d_tdx_l1_rel,
+               rz_balance / NULLIF(amount_ma20, 0) AS rz_balance_to_amount20
+        FROM joined
+    """).df()
+    logger.info("V2 dense features done: %.1fs", time.time() - t7)
+
     logger.info("TOTAL build_panel: %d rows, %.1f min", len(pillar_b), (time.time() - t0) / 60)
     # 列去重
     pillar_b = pillar_b.loc[:, ~pillar_b.columns.duplicated()]
     if '_date_dt' in pillar_b.columns:
         pillar_b = pillar_b.drop(columns=['_date_dt'])
+    for col in ['tdx_l1', 'amount_ma20']:
+        if col in pillar_b.columns:
+            pillar_b = pillar_b.drop(columns=[col])
     return pillar_b
 
 
@@ -335,7 +380,7 @@ def main():
 
     panel = build_panel(args.start)
 
-    logger.info("Panel shape %s, 准备写入 SQLite (DuckDB INSERT FROM SELECT)", panel.shape)
+    logger.info("Panel shape %s, 准备写入 DuckDB (INSERT FROM SELECT)", panel.shape)
     panel['built_at'] = datetime.utcnow().isoformat()
 
     keep_cols = [
@@ -347,6 +392,11 @@ def main():
         'vol_ratio_5_20', 'vol_std_5d', 'vol_std_20d',
         'range_pos_20', 'range_pos_60',
         'momentum_diff', 'amount_chg_5d',
+        'ret_20d_rank', 'ret_60d_rank', 'vol_z20d_rank', 'amount_chg_5d_rank',
+        'rz_balance_rank', 'rz_chg_5d_pct_rank',
+        'ret_20d_tdx_l1_rel', 'ret_60d_tdx_l1_rel',
+        'vol_z20d_tdx_l1_rel', 'amount_chg_5d_tdx_l1_rel',
+        'rz_balance_to_amount20',
         'inst_event_count_30d', 'inst_event_count_60d',
         'exec_buy_count_90d', 'exec_buy_ge1_count_90d',
         'lhb_inst_buy_count_30d', 'lhb_inst_buy_count_60d',
@@ -361,31 +411,23 @@ def main():
     keep = [c for c in keep_cols if c in panel.columns]
     panel_out = panel[keep].reset_index(drop=True)
 
-    # Step 7: 用 DuckDB 直接写 SQLite (INSERT FROM SELECT)
-    # 先通过 pandas 建表结构 (DDL), 再用 DuckDB 批量灌数据
+    # Step 7: 用同一个 writable DuckDB 连接建表并批量灌数据。
     t_w0 = time.time()
-    smart = get_conn()
-    smart.executescript(PANEL_DDL)
-    smart.execute("PRAGMA synchronous=NORMAL")
-    smart.execute("PRAGMA cache_size=-524288")  # 512 MB
-    smart.close()
-
-    duck = get_duck()
+    duck = get_duck(writable=True)
+    execute_script(duck, PANEL_DDL)
     duck.register('panel_out', panel_out)
-    logger.info("DuckDB INSERT INTO smart.fact_feature_panel SELECT * FROM panel_out ...")
-    duck.execute(f"INSERT INTO smart.fact_feature_panel ({', '.join(keep)}) SELECT * FROM panel_out")
+    logger.info("DuckDB INSERT INTO smartmoney.fact_feature_panel SELECT * FROM panel_out ...")
+    duck.execute(f"INSERT INTO smartmoney.fact_feature_panel ({', '.join(keep)}) SELECT * FROM panel_out")
     logger.info("写入完成: %.1fs", time.time() - t_w0)
 
     # 验证写入
-    smart = get_conn()
-    row = smart.execute("""
+    row = duck.execute("""
         SELECT COUNT(*), COUNT(DISTINCT stock_code), COUNT(DISTINCT date),
                SUM(CASE WHEN forward_ret_20d IS NOT NULL THEN 1 ELSE 0 END)
-        FROM fact_feature_panel
+        FROM smartmoney.fact_feature_panel
     """).fetchone()
     logger.info("fact_feature_panel: rows=%d codes=%d dates=%d label_non_null=%d",
                 row[0], row[1], row[2], row[3])
-    smart.close()
 
 
 if __name__ == "__main__":
