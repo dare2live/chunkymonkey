@@ -255,6 +255,47 @@ def make_objective(train_df, valid_df, feature_cols):
     return objective
 
 
+def resolve_feature_group(name: str, df, *, regime_aware: bool) -> tuple[list[str], str]:
+    """M7: feature group 显式选择. 返回 (feature_cols, schema_version_tag).
+    base                     - 43 特征 (BASE_FEATURE_COLS)
+    base_dense_v2            - 54 特征 (BASE + DENSE_V2)
+    base_alpha158            - 107 特征 (BASE + a158_*) (实验对照)
+    base_dense_v2_alpha158   - 118 特征 (BASE + DENSE_V2 + a158_*) (实验对照)
+    legacy_full              - 旧默认 (BASE + DENSE_V2 + a158_*), 兼容 history
+    """
+    from services.model_feature_schema import BASE_FEATURE_COLS, DENSE_V2_FEATURE_COLS
+    a158 = [c for c in df.columns if c.startswith("a158_")]
+    base = [c for c in BASE_FEATURE_COLS if c in df.columns]
+    v2 = [c for c in DENSE_V2_FEATURE_COLS if c in df.columns]
+
+    if name == "base":
+        cols = list(base)
+        tag = "m7_base_v1"
+    elif name == "base_dense_v2":
+        cols = base + v2
+        tag = "m7_base_dense_v2_v1"
+    elif name == "base_alpha158":
+        cols = base + a158
+        tag = "m7_base_alpha158_v1"
+    elif name == "base_dense_v2_alpha158":
+        cols = base + v2 + a158
+        tag = "m7_base_dense_v2_alpha158_v1"
+    elif name == "legacy_full":
+        cols = [c for c in FEATURE_COLS if c in df.columns]
+        if a158:
+            cols += a158
+        tag = "legacy_v0"
+    else:
+        raise ValueError(f"未知 feature group: {name}")
+
+    if regime_aware:
+        for f in REGIME_FEATURE_COLS:
+            if f in df.columns and f not in cols:
+                cols.append(f)
+        tag = tag + "_regime"
+    return cols, tag
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--start', default='2023-01-01')
@@ -264,6 +305,13 @@ def main():
                         help='训练标签列名, 默认 forward_ret_20d')
     parser.add_argument('--regime-aware', action='store_true',
                         help='加入 regime one-hot 作为特征')
+    parser.add_argument('--feature-group',
+                        choices=['base', 'base_dense_v2', 'base_alpha158', 'base_dense_v2_alpha158', 'legacy_full'],
+                        default='legacy_full',
+                        help='M7: 显式特征组. 默认 legacy_full 保持旧行为兼容')
+    parser.add_argument('--num-round', type=int, default=400, help='final fit 轮数')
+    parser.add_argument('--model-id-prefix', default='multidim_v1',
+                        help='模型 ID 前缀, M7 候选可用 multidim_v2_base / multidim_v2_dense 区分')
     args = parser.parse_args()
 
     # 训练分两阶段释放 DuckDB 写锁, 让前端期间可读:
@@ -279,16 +327,11 @@ def main():
         logger.error("fact_feature_panel 空或无 label; 先跑 build_feature_panel_duck.py")
         sys.exit(1)
 
-    feature_cols = [c for c in FEATURE_COLS if c in df.columns]
-    # Phase 8: 动态加入 Alpha158 列
-    if _ADDED_A158:
-        feature_cols += [c for c in _ADDED_A158 if c in df.columns]
-        logger.info("特征总数 含 Alpha158 = %d", len(feature_cols))
-    if args.regime_aware:
-        for f in REGIME_FEATURE_COLS:
-            if f in df.columns:
-                feature_cols.append(f)
-    logger.info("使用 %d 特征: %s", len(feature_cols), feature_cols)
+    feature_cols, schema_tag = resolve_feature_group(
+        args.feature_group, df, regime_aware=args.regime_aware
+    )
+    logger.info("feature_group=%s schema_tag=%s 特征数=%d",
+                args.feature_group, schema_tag, len(feature_cols))
 
     train, valid, holdout = split_time_series(df)
 
@@ -315,7 +358,7 @@ def main():
 
     # no early_stopping in final fit — use fixed num_round
     final_model = lgb.train(best, lgb.Dataset(X_tv, label=y_tv, feature_name=feature_cols),
-                             num_boost_round=400)
+                             num_boost_round=args.num_round)
     pred_ho = final_model.predict(X_ho)
 
     ic, rank_ic = compute_ic(y_ho, pred_ho, holdout['date'].values)
@@ -334,7 +377,7 @@ def main():
     logger.info("训练完成, 重新打开 DuckDB (writable) 落库...")
     conn = get_conn()
     ensure_model_schema(conn)
-    model_id = f"multidim_v1_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+    model_id = f"{args.model_id_prefix}_{args.feature_group}_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
     conn.execute(
         """
         INSERT INTO mart_multidim_model (
@@ -360,8 +403,8 @@ def main():
          json.dumps(fi),
          feature_cols_to_json(feature_cols),
          args.label_name,
-         FEATURE_SCHEMA_VERSION,
-         f"Optuna {args.trials} trials, regime_aware={args.regime_aware}"),
+         schema_tag,
+         f"M7 candidate · feature_group={args.feature_group} · Optuna {args.trials} trials · regime_aware={args.regime_aware} · num_round={args.num_round}"),
     )
 
     # 落 predictions — DuckDB 原生 register + INSERT FROM SELECT (避过 pandas.to_sql 的 sqlite 协议探测)

@@ -202,6 +202,12 @@ def main() -> None:
     parser.add_argument("--regime-aware", action="store_true")
     parser.add_argument("--save-predictions", action="store_true")
     parser.add_argument("--dry-run", action="store_true")
+    parser.add_argument(
+        "--feature-group",
+        choices=["base", "base_dense_v2", "base_alpha158", "base_dense_v2_alpha158", "legacy_full"],
+        default="legacy_full",
+        help="M7: 显式特征组, 与 train_multidim_model 同名同义",
+    )
     args = parser.parse_args()
 
     conn = get_conn()
@@ -223,11 +229,15 @@ def main() -> None:
             return
 
         # df is loaded above in non-dry-run branch.
-        feature_cols = [c for c in FEATURE_COLS if c in df.columns]
-        if _ADDED := [c for c in df.columns if c.startswith("a158_")]:
-            feature_cols += _ADDED
-        if args.regime_aware:
-            feature_cols += [c for c in REGIME_FEATURE_COLS if c in df.columns]
+        # M7: 显式 feature group, legacy_full = 旧默认 (BASE+a158+regime), 与原 walkforward 一致
+        from scripts.train_multidim_model import resolve_feature_group  # 复用同一定义, 避免漂移
+        feature_cols, schema_tag = resolve_feature_group(
+            args.feature_group, df, regime_aware=args.regime_aware
+        )
+        logger.info(
+            "walkforward feature_group=%s schema_tag=%s 特征数=%d",
+            args.feature_group, schema_tag, len(feature_cols),
+        )
 
         run_id = f"walkforward_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
         built_at = datetime.utcnow().isoformat()
@@ -252,7 +262,7 @@ def main() -> None:
                 "run_id": run_id,
                 "fold_id": fold["fold_id"],
                 "model_id": source_model_id,
-                "feature_schema_version": "walkforward_fixed_params",
+                "feature_schema_version": f"walkforward_{schema_tag}",
                 "label_name": args.label_name,
                 "train_start": fold["train"][0], "train_end": fold["train"][1],
                 "valid_start": fold["valid"][0], "valid_end": fold["valid"][1],

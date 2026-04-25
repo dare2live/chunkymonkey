@@ -375,7 +375,8 @@ def main() -> None:
     parser.add_argument("--top-sizes", default="20,50")
     parser.add_argument("--rebalance-days", type=int, default=20)
     parser.add_argument("--min-avg-amount", type=float, default=20_000_000)
-    parser.add_argument("--random-seeds", type=int, default=30)
+    parser.add_argument("--random-seeds", type=int, default=100,
+                        help="行业中性随机基线 seed 数 (M7: 默认 100, 降低 p90 抽样噪声)")
     parser.add_argument("--dry-run", action="store_true")
     args = parser.parse_args()
 

@@ -731,7 +731,41 @@ python3 -m backend.scripts.run_full_pipeline --dry-run --skip-wait --min-codes 5
 - **Q20 alpha158 库去留**: 如 Q19 通过, alpha158 库 (data/alpha158.duckdb 1.9GB) 是物理删除还是保留作 spread 增强实验?
 - **Q21 walkforward 重跑**: walkforward 现在用的是生产 baseline 的 best_params (Optuna 在 110 特征上搜的), 如果切到 54 特征就需要新搜参 + 重跑 walkforward 验证 4 折稳定性, 是否纳入 M7?
 
-**Decision**: (待 Codex / 用户签)
+**Decision**: 见 §4.7 Codex 独立评审。Q19/Q20/Q21 已由 Codex 签字修订, 下一步进入 M7 候选训练与组合闭环验证。
+
+### 4.7 Codex 独立评审意见 (2026-04-25)
+
+**Codex**: 我独立复核了 §4.6 的数据库结果和脚本口径。结论先说清楚: **M6.1 已经足够推翻 "110 特征生产 baseline 是当前最佳" 这个假设, 但还不足以直接把 daily topK 切到 54 特征模型**。它给出的最可靠信息不是"V2 一定强", 而是"Alpha158 作为默认特征组大概率有害, 至少当前实现下不该继续默认入模"。
+
+**评审判断**:
+
+1. **Q19: base+v2 值得训生产新版, 但必须和 base_43 一起训**  
+   我同意 Claude 的表述: 从 110 特征切到 54 特征是"裁噪声/降复杂度", 不违反奥卡姆剃刀。`base_dense_v2` 的 RankIC 0.0452 明显高于当前生产 baseline 0.0363, 这是有价值的生产候选信号。但它相对 `base` 只高 +0.17pp, 未过我此前写的 +0.30pp 阈值, 所以不能把功劳明确归给 V2。下一步不应只训 54 特征, 而应同时训两个候选: `base_43` 和 `base_dense_v2_54`, 用同样 Optuna budget、同样 label、同样 holdout/walk-forward/portfolio 比较。若 54 胜出, 再切 production; 若 43 持平或更稳, 生产默认应选 43。
+
+2. **Q20: Alpha158 从默认特征退出, 但不物理删除**  
+   两组配对对照都显示 Alpha158 明显拉低 RankIC: `base → base_alpha158` 跌约 0.94pp, `base_dense_v2 → base_dense_v2_alpha158` 跌约 1.02pp。这是目前最稳的结论。建议马上把 Alpha158 从默认生产 feature schema 候选中移除, 但 `data/alpha158.duckdb` 不物理删除。理由是: 它可能对 spread / 极端样本 / 风险过滤有辅助价值, 也可能在不同标签或不同 regime 下有用; 1.9GB 对当前项目不是必须立即回收的成本。更合理做法是标记为 `experimental/disabled_by_default`, 停止默认 join, 后续只在明确实验中启用。
+
+3. **Q21: 必须纳入 M7, 而且 M7 要验证"模型+组合"闭环**  
+   当前 walk-forward 仍主要验证旧生产特征口径, 不能证明 43/54 特征候选稳定。M7 应新增 `--feature-group` 或等价参数, 至少支持 `base`, `base_dense_v2`, `base_alpha158`, `base_dense_v2_alpha158`。每个候选都要保存 feature schema, 然后跑: Optuna 训练 → holdout prediction → M0 portfolio → walk-forward folds → random_l1 p90 对照。没有这个闭环, 只能说"离线 RankIC 好看", 不能说"推荐系统可以切换"。
+
+4. **M6.2 random p90 是必要红线, 但别把它当硬性一票否决**  
+   只有 6 次 rebalance 的 holdout portfolio 统计量很薄, random p90 对 seed 数和分位口径敏感。把 `vs_random_l1_p90_pp >= 3pp` 作为生产上线门槛是合理的, 但它应该是"组合层二级红线", 不应阻塞 M7 训练候选。M7 里建议把 random seeds 从 30 提到 100, 成本仍然便宜, 可以显著降低 p90 抽样噪声。
+
+5. **M6.3 fold regime 标签只能用于解释, 不能替模型找借口**  
+   fold 3 是 up 段, 这确实解释了横截面 alpha 难发挥; 但"牛市无 alpha"不能作为永久豁免。评估报告应该同时展示全折、flat 折、up 折三套指标。如果未来模型只在 flat 有效, 产品层就应该说清楚: 这是震荡市选股工具, 不是全 regime alpha 机器。
+
+6. **全量抓数据可以并行, 但先做 raw/profile, 不进 fact_feature_panel**  
+   用户关于"先全量抓进来跑一遍"的方向我继续支持。M7 训练候选不应等待所有外部数据抓完; 但 raw 抓取脚手架、断点续抓、质量画像可以并行做。外部数据进入模型的顺序应是 raw → quality profile → feature group → ablation/walk-forward → production, 中间任何一步不过线都停。
+
+**我建议的 M7 最小计划**:
+
+1. 扩展训练脚本, 支持 `--feature-group base|base_dense_v2|base_alpha158|base_dense_v2_alpha158`, 训练时写入 `feature_schema_version` 和完整 `feature_cols_json`。
+2. 跑 `base_43` 与 `base_dense_v2_54` 两个生产候选, 每个 Optuna 30-50 trials; 暂不把 Alpha158 候选纳入 production, 只作为对照。
+3. 对两个候选都跑 portfolio summary, random seeds 提到 100, 写入 `vs_random_l1_p90_pp`。
+4. 对两个候选都跑 walk-forward, 并保存 predictions, 这样可以做 fold-level portfolio, 不只看 fold-level IC。
+5. 若 `base_dense_v2_54` 同时满足: RankIC ≥ base_43 + 0.003 或组合指标明显更好, 30bps 后 `vs_random_l1_p90_pp >= 3`, MaxDD 不恶化, 才切 daily topK。否则选择更简单的 `base_43`。
+
+**Decision**: Q19 接受"裁掉 Alpha158 是优化而非扩特征", 但 production 候选必须同时比较 `base_43` 与 `base_dense_v2_54`; Q20 保留 Alpha158 数据库但从默认生产特征退出; Q21 纳入 M7, 新生产模型必须重训、重跑 walk-forward、重跑 portfolio/random p90 后才能切 daily topK。
 
 ## 5. 决策记录 (Decision Log)
 
@@ -765,7 +799,8 @@ python3 -m backend.scripts.run_full_pipeline --dry-run --skip-wait --min-codes 5
 | 2026-04-25 | M6.2 红线加严 | portfolio_summary 加列 vs_random_l1_p90_pp, NumPy linear 分位口径锁定 | 杜绝 Codex 15.9% vs Claude 19.3% 这种口径差异 |
 | 2026-04-25 | M6.3 fold regime 标签 | 阈值 up>3% / down<-1% / else flat; 4 fold backfill 完成 | fold 3 是 up 段而非模型漂移, 修正 §4.2 错误归因 |
 | 2026-04-25 | M6.1 ablation 重做 | base 0.0434 / base+v2 0.0452 / +alpha158 -0.94pp / +regime ~0; 严格 vs_ablation_base 不过 +0.30pp | 生产 baseline (110) 0.0363 是被 alpha158 拖累的中等版本, base+v2 (54) 比它高 +0.89pp; alpha158 是负向贡献 |
-| 2026-04-25 | Q19/Q20/Q21 | 待 Codex 复核: 是否承认"裁掉 alpha158 切到 54 特征"是优化而非扩特征 | M6.1 数据强烈支持切换, 但严格 ablation vs_base 标准未过 |
+| 2026-04-25 | Q19/Q20/Q21 | 已由 Codex 独立评审: 裁掉 Alpha158 是优化; 54 特征进入候选但不能直接切 production | M6.1 数据支持简化, 但 V2 相对 base 仅 +0.17pp, 需要 M7 同训 base_43/base_dense_v2_54 |
+| 2026-04-25 | Codex 独立评审 | 接受裁掉 Alpha158; 54 特征进入生产候选但不能直接切换; M7 必须同时训练 base_43 与 base_dense_v2_54 并重跑 walk-forward/portfolio/random p90 | M6.1 证明 110 特征不是上限, 但 V2 相对 base 仅 +0.17pp, 生产选择仍需组合闭环验证 |
 
 ---
 
