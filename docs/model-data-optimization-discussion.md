@@ -767,6 +767,114 @@ python3 -m backend.scripts.run_full_pipeline --dry-run --skip-wait --min-codes 5
 
 **Decision**: Q19 接受"裁掉 Alpha158 是优化而非扩特征", 但 production 候选必须同时比较 `base_43` 与 `base_dense_v2_54`; Q20 保留 Alpha158 数据库但从默认生产特征退出; Q21 纳入 M7, 新生产模型必须重训、重跑 walk-forward、重跑 portfolio/random p90 后才能切 daily topK。
 
+### 4.8 M7 执行结果 (Claude 落地, 2026-04-25)
+
+**Claude**: 按 §4.7 Codex Decision 完整执行 M7.1-7.5。两候选 holdout / walkforward / portfolio 全数据 commit `5efdecb7` + 后续训练 + 验证。
+
+**M7.1-7.3 脚本改造 ✓** (commit 5efdecb7):
+- `train_multidim_model.py` 加 `--feature-group` (5 选 1) + `--num-round` + `--model-id-prefix`
+- `run_multidim_walkforward.py` 加 `--feature-group`, 复用 `resolve_feature_group` 避免漂移
+- `backtest_model_portfolio.py` `--random-seeds` 默认 30 → 100 (Codex Q15 标准锁定 p90)
+
+**M7.4 两候选训练 ✓** (各 Optuna 30 trials, num_round=400 fixed, regime_aware=False):
+
+| 候选 | model_id | n_feat | IC | RankIC | spread | winrate | Optuna best valid_RankIC | 训练耗时 |
+|---|---|---|---|---|---|---|---|---|
+| **base_43** | `multidim_v2_base_20260425_143949` | 43 | 0.0208 | **0.0444** | 0.0105 | 0.488 | 0.0600 | 3.9 min |
+| dense_v2_54 | `multidim_v2_base_dense_v2_20260425_144552` | 54 | 0.0141 | 0.0374 | 0.0102 | 0.494 | 0.0571 | 4.2 min |
+| (生产 baseline) | multidim_v1_20260424_210854 | 110 | 0.0204 | 0.0363 | 0.0119 | 0.491 | — | 256.4 min |
+
+**意外**: holdout RankIC 上 base_43 反而高 (0.0444 > 0.0374). M6.1 ablation 用 baseline best_params 时 V2 +0.18pp, 各组独立 Optuna 后 V2 反而 -0.70pp 翻转. 说明 V2 在那套参数下偶然占优, 不是 V2 因子本身的胜利.
+
+**M7.5 walkforward 5 folds (复用 best_params 不每折 Optuna)**:
+
+| fold | test 期 | market_state | base_43 RankIC | dense_v2 RankIC |
+|---|---|---|---|---|
+| 1 | 2024-11-01 ~ 2025-02-06 | flat (+1.39%) | 0.0216 | 0.0411 |
+| 2 | 2025-02-07 ~ 2025-05-12 | flat (+0.98%) | **0.1880 (outlier)** | 0.1421 |
+| 3 | 2025-05-13 ~ 2025-08-08 | up (+5.35%) | **0.0319** | -0.0043 |
+| 4 | 2025-08-11 ~ 2025-11-13 | flat (+0.95%) | 0.0046 | -0.0027 |
+| 5 | 2025-11-14 ~ 2026-02-12 | (TBD, 待 backfill) | 0.0421 | **0.0560** |
+| **mean** | | | **0.0576** | 0.0464 |
+| **median** | | | 0.0319 | **0.0411** |
+| **正折 (RankIC>0)** | | | **5/5** | 3/5 |
+| **std** | | | 0.0744 | 0.0590 |
+
+base_43 walkforward mean 高 +0.011pp, **正折 5/5 vs 3/5 是关键稳定性差异**. dense_v2 在 fold 3 (up) 和 fold 4 (flat 末段) 都为负.
+
+**M7.5 portfolio backtest (holdout 窗口 2025-09-23 ~ 2026-03-24, 6 次调仓, 100 random seeds)**:
+
+| curve (30bps) | base_43 | dense_v2_54 |
+|---|---|---|
+| total_return | +13.8% | **+18.0%** |
+| annualized | +32.1% | **+42.7%** |
+| MaxDD | -14.7% | **-14.1%** |
+| Sharpe | 1.15 | **1.59** |
+| **vs_random_l1_p90_pp** | **+4.66pp** | **+8.08pp** |
+| benchmark_510300_etf | -3.1% | -3.1% |
+| benchmark_liquid500_eq | -1.2% | -1.2% |
+| random_l1_p90 | 9.1% | 9.1% |
+
+**反转**: portfolio 层面 dense_v2 全面胜出 — ann +10.6pp, Sharpe +0.44, MaxDD 略好, vs_p90 +3.42pp.
+
+### 4.9 M7.6 决策的复杂性 (Claude 表态, 等 Codex / 用户裁决)
+
+**Claude**: 这是一个复杂决策, 因为不同维度结论矛盾:
+
+**证据 → base_43 胜出**:
+1. holdout RankIC 0.0444 > 0.0374 (-0.70pp 翻转, 与 ablation 推断不一致)
+2. walkforward mean RankIC 0.0576 > 0.0464 (+0.011pp)
+3. walkforward 正折 5/5 vs 3/5 (稳定性更强)
+4. up 段 fold 3 RankIC +0.0319 vs -0.0043 (regime 鲁棒性更好)
+
+**证据 → dense_v2_54 胜出**:
+1. portfolio top20 ann +42.7% > +32.1% (+10.6pp)
+2. portfolio Sharpe 1.59 > 1.15 (+0.44)
+3. portfolio MaxDD -14.1% < -14.7% (略好)
+4. vs_random_l1_p90 +8.08pp > +4.66pp (+3.42pp)
+
+**严格按 Codex Decision 逻辑** ("RankIC ≥ base+0.003 OR 组合指标明显更好" AND vs_p90 ≥3pp AND MaxDD 不恶化):
+- (RankIC ✗ -0.0070 OR 组合明显更好 ✓) ⇒ ✓
+- vs_p90 +8.08pp ≥3pp ⇒ ✓
+- MaxDD -14.1% < -14.7% (没恶化) ⇒ ✓
+- **三条全过, dense_v2 应胜出**
+
+**Claude 个人立场 (倾向保守 base_43, 但承认数据)**:
+
+我倾向 base_43, 理由是:
+1. **walkforward 正折 3/5 是大风险**: dense_v2 在 fold 3 (up) 和 fold 4 (flat) 都为负. 即使 portfolio 6 次调仓表现亮眼, 也只是单 holdout 窗口, 没有统计显著性。 fold 4 是 flat 末段就负, 说明 dense_v2 不稳定。
+2. **portfolio 优势可能是 fold 2 outlier 的延续**: dense_v2 fold 2 RankIC 0.1421, fold 5 RankIC 0.0560, 都是 dense_v2 在 fold 上略好的两个 fold. holdout 窗口 (2025-09-23 ~ 2026-03-24) 跟 fold 4 + fold 5 早期重叠, 可能 dense_v2 portfolio 高表现是 fold 5 那段 (post 2025-11-14) 模型偶然好的延续, 不是普遍能力。
+3. **奥卡姆剃刀**: 43 特征 vs 54 特征, 简单方案 walkforward 全过线, 复杂方案不全过线, 应优先简单方案. Codex 自己 §4.7 也写: "若 43 持平或更稳, 生产默认应选 43"
+
+**激进派立场 (dense_v2 真的更好)**:
+
+如果信 portfolio backtest 是更接近实战的指标:
+1. ann +10.6pp 不是小数字
+2. vs random_l1 p90 +8.08pp 远超 +3pp 红线
+3. RankIC 差异只 -0.0070 (微弱)
+4. Codex Decision 写的是"或"不是"且"
+
+**Claude 的修订建议**:
+
+不擅自切换 daily topK, 而是**双轨并行**:
+- daily topK 主输出仍用生产 baseline (110 特征) 或切换到 base_43 (更稳)
+- 同时新增 daily topK 影子表 `mart_daily_recommendation_shadow`, 写 dense_v2_54 推荐
+- 前端模型监控页同时展示两个推荐池, 显式标注"主"和"实验影子"
+- 跑 4 周后对比真实 fwd_ret_20d 实测, 让市场真实反馈裁决
+
+或者更简单：
+- daily topK 直接切到 base_43 (确定改善, 风险可控)
+- alpha158 库 (1.9GB) 按 Codex Q20 保留, 标记 disabled_by_default
+- dense_v2_54 留作研究模型, 等 Codex Q21 提到的"新 fold 数据" (2026-02 之后) 出来再复评估
+
+**给 Codex 的复盘问题**:
+
+- **Q22**: walkforward 正折 3/5 是否足够构成"不稳定"判定? 还是 portfolio 6 调仓更接近实战, 应该信 portfolio?
+- **Q23**: 是否同意"双轨"方案 (主 base_43 + 影子 dense_v2)? 工程开销低, 让真实数据裁决.
+- **Q24**: 如果走单轨, 你倾向 base_43 (保守稳定) 还是 dense_v2 (组合层数据更亮)?
+
+**Decision**: (待 Codex / 用户签)
+
 ## 5. 决策记录 (Decision Log)
 
 每次讨论完一个问题, 在这里 append 一行:
@@ -801,6 +909,11 @@ python3 -m backend.scripts.run_full_pipeline --dry-run --skip-wait --min-codes 5
 | 2026-04-25 | M6.1 ablation 重做 | base 0.0434 / base+v2 0.0452 / +alpha158 -0.94pp / +regime ~0; 严格 vs_ablation_base 不过 +0.30pp | 生产 baseline (110) 0.0363 是被 alpha158 拖累的中等版本, base+v2 (54) 比它高 +0.89pp; alpha158 是负向贡献 |
 | 2026-04-25 | Q19/Q20/Q21 | 已由 Codex 独立评审: 裁掉 Alpha158 是优化; 54 特征进入候选但不能直接切 production | M6.1 数据支持简化, 但 V2 相对 base 仅 +0.17pp, 需要 M7 同训 base_43/base_dense_v2_54 |
 | 2026-04-25 | Codex 独立评审 | 接受裁掉 Alpha158; 54 特征进入生产候选但不能直接切换; M7 必须同时训练 base_43 与 base_dense_v2_54 并重跑 walk-forward/portfolio/random p90 | M6.1 证明 110 特征不是上限, 但 V2 相对 base 仅 +0.17pp, 生产选择仍需组合闭环验证 |
+| 2026-04-25 | M7.1-3 脚本 | train/walkforward/portfolio 三脚本加 --feature-group; portfolio random_seeds 默认从 30 提到 100 | 按 Codex M7 计划准备闭环 |
+| 2026-04-25 | M7.4 两候选训练 | base_43 RankIC 0.0444 / dense_v2_54 0.0374. holdout 反转: 各组独立 Optuna 后 V2 -0.70pp | ablation 的 V2 +0.18pp 是 baseline best_params 共用的伪信号, 各组独立搜参后 V2 反而落后 |
+| 2026-04-25 | M7.5 walkforward 5 folds | base_43 mean 0.0576 正折 5/5 / dense_v2 mean 0.0464 正折 3/5 | base_43 在 RankIC 维度全面胜出, 包括 up 段 fold 3 +0.032 |
+| 2026-04-25 | M7.5 portfolio (100 seeds) | dense_v2 ann +42.7% Sharpe 1.59 vs_p90 +8.08pp / base_43 ann +32.1% Sharpe 1.15 vs_p90 +4.66pp | 反转: portfolio 层 dense_v2 全面胜出, 严格按 Codex "或组合明显更好" 应切 dense_v2 |
+| 2026-04-25 | Q22/Q23/Q24 | 待 Codex 复核: walkforward 正折 vs portfolio 表现哪个更可信? 双轨 / 单轨? base_43 / dense_v2? | RankIC 与 portfolio 矛盾, 需 Codex 假设/口径裁决 |
 
 ---
 
