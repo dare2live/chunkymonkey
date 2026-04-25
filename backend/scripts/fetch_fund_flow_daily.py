@@ -1,7 +1,9 @@
 #!/usr/bin/env python3
 """M9.2 主力资金流 daily ingestion (akshare → raw_fund_flow_daily).
 
-数据源: akshare ak.stock_individual_fund_flow (eastmoney 后台).
+数据源:
+  1) akshare ak.stock_individual_fund_flow (eastmoney push2his 后台, 历史 120-250 日)
+  2) eastmoney push2delay 直接接口 (只返回最新交易日, 用作网络受限时的 daily fallback)
 说明: eastmoney 接口默认返回最多 120-250 个交易日历史. 这是已知限制,
 本脚本只拉它能给的, 不假设覆盖到 2023.
 
@@ -11,6 +13,7 @@
     python3 -m scripts.fetch_fund_flow_daily --resume   # 跳过已有最新数据的票
     python3 -m scripts.fetch_fund_flow_daily --since 2025-10-01  # 增量
     python3 -m scripts.fetch_fund_flow_daily --max-stocks 100 --rate-limit 0.5  # debug
+    python3 -m scripts.fetch_fund_flow_daily --source delay  # push2delay 最新日 fallback
 
 字段映射 (akshare 中文 → 英文):
   日期            → trade_date
@@ -47,6 +50,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 import pandas as pd
+import requests
 
 from services.db import get_conn
 
@@ -141,7 +145,13 @@ def latest_per_stock(duck) -> dict[str, str]:
         return {}
 
 
-def normalize_df(df: pd.DataFrame, stock_code: str, market: str) -> pd.DataFrame:
+def normalize_df(
+    df: pd.DataFrame,
+    stock_code: str,
+    market: str,
+    *,
+    source: str = "akshare_eastmoney",
+) -> pd.DataFrame:
     """akshare DataFrame → 标准化, 返回与 raw_fund_flow_daily 列对齐的 DataFrame."""
     out = df.rename(columns=COL_MAP).copy()
     keep_cols = list(COL_MAP.values())
@@ -159,7 +169,7 @@ def normalize_df(df: pd.DataFrame, stock_code: str, market: str) -> pd.DataFrame
         out[c] = pd.to_numeric(out[c], errors="coerce")
     out["stock_code"] = stock_code
     out["market"] = market
-    out["source"] = "akshare_eastmoney"
+    out["source"] = source
     out["ingested_at"] = datetime.utcnow().isoformat()
     return out[
         [
@@ -170,6 +180,75 @@ def normalize_df(df: pd.DataFrame, stock_code: str, market: str) -> pd.DataFrame
             "medium_net_amount", "medium_net_pct",
             "small_net_amount", "small_net_pct",
             "source", "ingested_at",
+        ]
+    ]
+
+
+def fetch_delay_fund_flow(stock_code: str, market: str) -> pd.DataFrame:
+    """Eastmoney push2delay fallback: 只返回最新交易日资金流.
+
+    这是显式 fallback, 不是 monkey-patch akshare。用于 fake-ip/代理导致
+    push2his 历史接口不可达时, 先把 daily raw 数据拉起来。
+    """
+    market_map = {"sh": 1, "sz": 0, "bj": 0}
+    url = "https://push2delay.eastmoney.com/api/qt/stock/fflow/daykline/get"
+    params = {
+        "lmt": "0",
+        "klt": "101",
+        "secid": f"{market_map.get(market, 0)}.{stock_code}",
+        "fields1": "f1,f2,f3,f7",
+        "fields2": "f51,f52,f53,f54,f55,f56,f57,f58,f59,f60,f61,f62,f63,f64,f65",
+        "ut": "b2884a393a59ad64002292a3e90d46a5",
+        "_": int(time.time() * 1000),
+    }
+    headers = {
+        "User-Agent": (
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+            "(KHTML, like Gecko) Chrome/120.0 Safari/537.36"
+        ),
+        "Referer": "https://data.eastmoney.com/zjlx/detail.html",
+    }
+    session = requests.Session()
+    session.trust_env = False
+    resp = session.get(url, params=params, headers=headers, timeout=15)
+    resp.raise_for_status()
+    data = resp.json()
+    klines = ((data or {}).get("data") or {}).get("klines") or []
+    if not klines:
+        return pd.DataFrame(columns=list(COL_MAP.keys()))
+    temp_df = pd.DataFrame([item.split(",") for item in klines])
+    temp_df.columns = [
+        "日期",
+        "主力净流入-净额",
+        "小单净流入-净额",
+        "中单净流入-净额",
+        "大单净流入-净额",
+        "超大单净流入-净额",
+        "主力净流入-净占比",
+        "小单净流入-净占比",
+        "中单净流入-净占比",
+        "大单净流入-净占比",
+        "超大单净流入-净占比",
+        "收盘价",
+        "涨跌幅",
+        "-",
+        "--",
+    ]
+    return temp_df[
+        [
+            "日期",
+            "收盘价",
+            "涨跌幅",
+            "主力净流入-净额",
+            "主力净流入-净占比",
+            "超大单净流入-净额",
+            "超大单净流入-净占比",
+            "大单净流入-净额",
+            "大单净流入-净占比",
+            "中单净流入-净额",
+            "中单净流入-净占比",
+            "小单净流入-净额",
+            "小单净流入-净占比",
         ]
     ]
 
@@ -196,14 +275,24 @@ def main() -> None:
                         help="每只票之间 sleep 秒数, 默认 0.3, 礼貌 eastmoney")
     parser.add_argument("--retry", type=int, default=2,
                         help="单只票失败重试次数")
+    parser.add_argument("--source", choices=["auto", "akshare", "delay"], default="auto",
+                        help="auto=先 akshare 历史接口, 失败后 delay 最新日; delay=只拉 push2delay 最新日")
     args = parser.parse_args()
 
-    try:
-        import akshare as ak
-    except ImportError:
-        logger.error("akshare 未安装. pip install akshare")
-        sys.exit(1)
-    logger.info("akshare version: %s", ak.__version__)
+    ak = None
+    if args.source in ("auto", "akshare"):
+        try:
+            import akshare as ak
+        except ImportError:
+            if args.source == "akshare":
+                logger.error("akshare 未安装. pip install akshare")
+                sys.exit(1)
+            logger.warning("akshare 未安装, 自动切到 push2delay fallback")
+            args.source = "delay"
+        else:
+            logger.info("akshare version: %s", ak.__version__)
+    if args.source == "delay":
+        logger.info("使用 eastmoney push2delay fallback: 仅返回最新交易日资金流")
 
     conn = get_conn()
     duck = conn.raw if hasattr(conn, "raw") else conn
@@ -235,15 +324,30 @@ def main() -> None:
 
         df = None
         last_err = None
+        source_used = "akshare_eastmoney"
         for attempt in range(args.retry + 1):
             try:
-                df = ak.stock_individual_fund_flow(stock=code, market=market)
+                if args.source == "delay":
+                    df = fetch_delay_fund_flow(code, market)
+                    source_used = "eastmoney_push2delay_latest"
+                else:
+                    df = ak.stock_individual_fund_flow(stock=code, market=market)
+                    source_used = "akshare_eastmoney"
                 break
             except Exception as exc:
                 last_err = str(exc)[:200]
                 if attempt < args.retry:
                     time.sleep(1.5 + attempt)
                     continue
+                df = None
+
+        if df is None and args.source == "auto":
+            try:
+                df = fetch_delay_fund_flow(code, market)
+                source_used = "eastmoney_push2delay_latest"
+                last_err = None
+            except Exception as exc:
+                last_err = f"akshare failed; delay fallback failed: {str(exc)[:160]}"
                 df = None
 
         if df is None:
@@ -259,7 +363,7 @@ def main() -> None:
             continue
 
         try:
-            norm = normalize_df(df, code, market)
+            norm = normalize_df(df, code, market, source=source_used)
             if args.since:
                 norm = norm[norm["trade_date"] >= args.since]
             n = write_batch(duck, norm)
@@ -283,7 +387,7 @@ def main() -> None:
 
     finished_at = datetime.utcnow().isoformat()
     elapsed = time.time() - t0
-    notes = f"全 A 股资金流首次拉取, eastmoney akshare 接口"
+    notes = f"全 A 股资金流拉取, source={args.source}"
 
     import json
     duck.execute(

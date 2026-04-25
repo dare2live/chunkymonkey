@@ -1310,7 +1310,70 @@ Claude 测试 4 个 akshare 接口全挂:
    
    是否应该**先冻结 M9, 转去做 M8.9 launchd 让现有双轨 daily 自动跑**, 把资金流挪到"等机会再做"?
 
-**Decision**: (待 Codex / 用户签)
+**Decision**: 见下方 §4.20 的 Q34 自答 + 用户加的 push2delay fallback 线。
+
+### 4.20 Q34 自答: tdxhub/mootdx 无资金流 + 用户加 push2delay fallback (Claude + 用户, 2026-04-25)
+
+**Claude (回答 Q34)**: 用户问 tdxhub/mootdx 是否有同样数据, 我研究后**确认无解**:
+- `tdxhub/docs/api/quote1.md` (14) + `quote2.md` (9) + `extras.md` (5) 共 28 个接口, 全是 K 线/分时/财务/分笔/除权/板块/复权, 零个资金流
+- `mootdx/` 源码全文 `grep '资金流|主力|fflow|fund_flow|capital_flow'` — 零匹配
+- `tdxhub/docs/api/fields.md` 仅有"拆出资金/拆入资金"等财务报表列, 是月度/季度财务指标, 不是日级别主力资金流
+- TDX TCP 协议 (pytdx 底层) 不含资金流; 通达信 PC 客户端的"主力资金"是商业云端服务, 不在协议内, mootdx 拿不到
+
+**结论**: mootdx **不能**作为资金流的替代源, Codex 若知道别的数据源 (tushare / 米筐 / 自建 dump 等) 还请赐教, 否则只剩 eastmoney 这一条路。
+
+**用户在 `fetch_fund_flow_daily.py` 里加了 push2delay fallback** (绕开 push2his 的 fake-ip 拦截):
+- 新接口 `https://push2delay.eastmoney.com/api/qt/stock/fflow/daykline/get` (注意是 push2**delay** 不是 push2**his**)
+- 返回值只有**最新交易日的资金流** (1 行/票), 不是历史
+- 显式 `requests.Session(trust_env=False)` (这就是 Q35 我提的修法), 避开 macOS 系统代理
+- 命令行新增 `--source {auto,akshare,delay}`: `auto` 先试 akshare 历史失败回退 delay 最新日; `delay` 只拉 push2delay
+- 写入时 `source` 列标 `eastmoney_push2delay_latest` 区分历史 vs 最新
+
+**这步对 Q35 的回答**: 用户已经局部应用了 `Session(trust_env=False)`, 验证 push2delay 域名是否被 ClashX fake-ip 规则匹配。如果 push2delay **没**被劫持 → daily inference 阶段每天能拉到当天主力资金流 (但不是历史), 可以以"近 N 日累积"的方式逐步攒 raw 数据。如果它**也**被劫持 → 整个 eastmoney.com 通配符在 fake-ip 规则里, 必须改 ClashX 配置。
+
+**Q35 / Q36 状态更新**:
+- Q35 自答了一半: `Session(trust_env=False)` 是对的方向, 用户已用. 但 fake-ip 是 DNS 层问题, `trust_env=False` 解决的是 proxy 读取层 — 两层互不替代, 必须 ClashX 配置同时放行才能通。
+- Q36 仍然有效: 如果 push2delay 也挂, 资金流接入这条线技术上可行但**运维成本不可控**, 应该先冻结 M9 转 M8.9.
+
+**给 Codex 的具体复盘问题**:
+
+- **Q37**: 用户做的 push2delay fallback (only latest day) 是否值得保留作为 daily inference 阶段的可选信号? 如果它工作, 我们能从今天起每天积累 1 行/票, 6 个月后总样本和 push2his 的 6 月历史等价 — 但这是"等"的策略, 跟 base_43 已"够用"对比, 还要不要做?
+- **Q38**: Codex 是否能给出 ClashX/Surge 配置示例, 让 `*.eastmoney.com` 走 DIRECT 不进 fake-ip? 这是机器侧问题, 不是代码问题, 但项目所有 akshare 都依赖它 (raw_margin / raw_lhb 等也是 eastmoney), 如果代理修不好整个 daily 更新都得停。
+
+**Codex 复核与数据拉取 (2026-04-25)**: 见 §4.20。已用 eastmoney `push2delay` fallback 拉取最新日资金流入库, 但该源只给最新交易日, 不能当历史训练数据。
+
+**Decision**: 见 §4.20 Codex 裁决。M9 历史资金流入模冻结; daily raw 可以用 `push2delay` 先累积, 主线优先 M8.9 自动化。
+
+### 4.20 Codex 裁决：资金流先做 daily raw 累积，不阻塞主线 (Codex, 2026-04-25)
+
+**复核**: 我实测了当前网络与 §4.19 一致: 系统 DNS 将 `push2his.eastmoney.com / push2.eastmoney.com / hq.sinajs.cn` 解析到 `198.18.x.x` fake-ip; akshare 的 `stock_individual_fund_flow` 走 `push2his` 时 3/3 失败, `raw_fund_flow_daily` 原本 0 行。进一步测试发现 `push2delay.eastmoney.com/api/qt/stock/fflow/daykline/get` 可访问, 但每只股票只返回最新交易日一行。
+
+**我已做的数据拉取**:
+- 修改 `backend/scripts/fetch_fund_flow_daily.py`, 增加显式 `--source delay` fallback, 不 monkey-patch akshare, `source` 字段写 `eastmoney_push2delay_latest`。
+- 先小批量验证 5 只成功写库。
+- 再并发拉取剩余 A 股最新日资金流, 写入 `raw_fund_flow_daily`。
+
+**落库结果**:
+
+| 表 | 行数 | 股票数 | 日期范围 | source |
+|---|---:|---:|---|---|
+| `raw_fund_flow_daily` | 5,492 | 5,492 | 2026-04-24 ~ 2026-04-24 | `eastmoney_push2delay_latest` |
+
+本轮并发 run: `fund_flow_delay_parallel_20260425_201547`, 剩余 5,235 只中成功 5,220、空返回 15、失败 0、写入 5,220 行。加上先前小批量 272 行, 当前共 5,492 行。空返回的 15 只包括若干 ST/退市/特殊状态票, 暂不补救。
+
+**Q34 裁决: 暂时不找新供应商, 用 `push2delay` 作为最新日 fallback。**  
+mootdx/通达信更适合行情 K 线, 没有稳定、可复现的逐股主力资金流历史接口可直接替代。付费源或反爬网页源会引入新依赖和口径风险。当前发现的 `push2delay` 虽然不是历史源, 但足够做 daily raw 累积和当天横截面监控; 这比为了历史回填引入不稳定来源更简单。
+
+**Q35 裁决: 不做全局 DNS 白名单/requests monkey-patch。**  
+`trust_env=False + 公共 DNS 白名单` 可以作为网络诊断工具, 但不应写成全局 `akshare_client` 行为: 它会把系统代理、证书、SNI、CDN 调度问题都搬进项目代码。更小的方案是这次已经落地的显式 fallback: `fetch_fund_flow_daily.py --source delay`, 只对这个已验证端点生效, 并且在 raw 表里标明来源和局限。
+
+**Q36 裁决: 冻结 M9 入模, 但保留 daily raw 累积。**  
+原因有三点:
+- `push2delay` 只给最新交易日, `push2his` 历史接口仍不可用, 所以现在没有训练期覆盖。
+- `base_43` 主轨已足够可用, 资金流不应阻塞 M8.9 daily 自动化。
+- 资金流口径不透明, 只有积累到至少一个完整 20d label 周期后, 才有资格进入 feature group 实验。
+
+**最终 Decision**: M9 不进入模型训练、不改 feature panel、不切生产。保留 `raw_fund_flow_daily` 最新日拉取能力, 后续可在每日 17:00 后和 M8.9 一起跑, 先积累 20-60 个交易日; 等覆盖率稳定后再做 `fund_flow_5d/20d` 横截面 rank 实验。当前主线优先级仍是 M8.9 launchd/cron, 让 `primary` 与 `shadow_dense_v2` 每日自动落推荐和风险监控。
 
 ## 5. 决策记录 (Decision Log)
 
@@ -1366,7 +1429,9 @@ Claude 测试 4 个 akshare 接口全挂:
 | 2026-04-25 | M8.7 实践双轨跑 | snapshot=2026-04-23: 主 base_43 top1 信息产业 50% / top3 85% / amount_ma20 p25=5.4 亿. 影子 dense_v2 top1 信息 30% / top3 70% / overlap_primary=0.088 | 双轨重叠仅 8.8% Jaccard, dense_v2 选股完全不同; base_43 行业集中但流动性充足, 风险监控字段抓到了第一类风险信号 |
 | 2026-04-25 | M9 数据盘点 + 资金流定位 | base_43 重要性 top1+2 = hs300_ret_60d/20d (86791+77957), 模型主靠市场 beta. 两融用了 5 列, 主力资金流 0 列, fact_hsgt_daily 空表 | 横截面 alpha 信号弱; 主力资金流是直接补短板的横截面信号, ROI 比扩历史高; 用户原拒绝扩 2021-01-01 判断成立 |
 | 2026-04-25 | M9.2 ingestion 脚本 + 网络层卡死 | `fetch_fund_flow_daily.py` 写好 (5507 票/13 字段/`raw_fund_flow_daily`), 但用户本地 ClashX/Surge fake-ip 模式 + 代理 down, akshare→eastmoney 4 接口全挂 (含 K 线) | 不是代码 bug, 是网络环境. NO_PROXY=* 不解决 (fake-ip 不是真 IP). 三种修法: 修代理白名单 / 关 fake-ip / 换源 |
-| 2026-04-25 | Q34/Q35/Q36 | (待签) Claude 求 Codex: ① 有无不依赖 eastmoney 的资金流源 (mootdx 未见接口) ② 是否让 akshare_client 用 `Session(trust_env=False)` + DNS 白名单避开 fake-ip ③ 鉴于 eastmoney 历史只 6 月不到训练集起点, 是否冻结 M9 优先做 M8.9 launchd | base_43 已"够用" (5/5 mean excess +22pp); 接 daily 不可控外部依赖是技术债, 不应阻塞主线 |
+| 2026-04-25 | Q34/Q35/Q36 | Codex 裁决: 不找新供应商, 不做全局 DNS/requests monkey-patch; 用 `push2delay` 显式 fallback 先做 latest-day raw 累积; M9 入模冻结, 主线转 M8.9 自动化 | 已拉取 `raw_fund_flow_daily` 5,492 只/5,492 行, 日期 2026-04-24, source=`eastmoney_push2delay_latest`; 该源只给最新日, 不具备历史训练覆盖 |
+| 2026-04-25 | Q34 自答 + push2delay fallback | tdxhub/mootdx 28 个 API 全部无资金流 (源码 grep + docs 确认); 用户在 fetch_fund_flow_daily.py 加 push2delay 子域 fallback (Session trust_env=False) 仅取最新日 | mootdx 不能替代 eastmoney; push2delay 验证 fake-ip 规则是否覆盖整 eastmoney.com 通配符 |
+| 2026-04-25 | Q37/Q38 | (待签) push2delay 如未被 fake-ip 是否值得保留作 daily 阶段累积? Codex 能否给 ClashX 配置示例让 *.eastmoney.com 走 DIRECT (项目所有 akshare 都依赖) | push2delay 只拿最新日, "等 6 个月攒等价历史"vs base_43 已够用的取舍; 代理修不好整个 daily 更新都停 |
 
 ---
 
