@@ -15,6 +15,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
+import lightgbm as lgb
 import pandas as pd
 
 from services.db import get_conn
@@ -24,7 +25,7 @@ from services.model_feature_schema import (
     DENSE_V2_FEATURE_COLS,
     REGIME_FEATURE_COLS,
 )
-from scripts.train_multidim_model import compute_ic, decile_metrics, load_panel, split_time_series, train_lgb
+from scripts.train_multidim_model import compute_ic, decile_metrics, load_panel, split_time_series
 
 
 logger = logging.getLogger("feature_ablation")
@@ -173,17 +174,12 @@ def main() -> None:
             if not cols:
                 continue
             logger.info("=== 训练 %s (n_feat=%d) ===", name, len(cols))
-            model = train_lgb(
-                train_valid[cols].values,
-                train_valid["label_value"].values,
-                holdout[cols].values,
-                holdout["label_value"].values,
-                params,
-                num_round=args.num_round,
-                feature_name=cols,
-            )
-            best_iter = getattr(model, "best_iteration", None) or args.num_round
-            pred = model.predict(holdout[cols].values, num_iteration=best_iter)
+            # 与 baseline final fit 对齐: train+valid 合并 fit, num_round=400 固定, 不 early_stopping
+            # 不能把 holdout 当 valid_sets, 否则有 lookahead bias 且 LightGBM 会在 holdout 上早停
+            dt = lgb.Dataset(train_valid[cols].values, label=train_valid["label_value"].values, feature_name=cols)
+            model = lgb.train(params, dt, num_boost_round=args.num_round)
+            best_iter = args.num_round  # 固定轮数, 无 early_stopping
+            pred = model.predict(holdout[cols].values)
             ic, rank_ic = compute_ic(
                 holdout["label_value"].values, pred, holdout["date"].values
             )

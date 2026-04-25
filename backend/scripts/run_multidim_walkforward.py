@@ -31,7 +31,7 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name
 
 
 DDL = """
-CREATE TABLE IF NOT EXISTS mart_model_validation_fold (
+CREATE TABLE IF NOT EXISTS mart_model_walkforward_fold (
     run_id TEXT NOT NULL,
     fold_id INTEGER NOT NULL,
     model_id TEXT,
@@ -51,6 +51,8 @@ CREATE TABLE IF NOT EXISTS mart_model_validation_fold (
     test_bottom_decile_avg REAL,
     test_long_short_spread REAL,
     test_winrate_top REAL,
+    test_market_state TEXT,
+    test_mean_forward_ret REAL,
     best_iteration INTEGER,
     built_at TEXT,
     PRIMARY KEY (run_id, fold_id)
@@ -151,6 +153,18 @@ def _slice(df: pd.DataFrame, bounds: tuple) -> pd.DataFrame:
     return df[(df["date"] >= bounds[0]) & (df["date"] <= bounds[1])].copy()
 
 
+def classify_market_state(mean_ret: float | None) -> str | None:
+    """M6.3: 按 fold test 期 mean forward_ret_20d 分 up/flat/down.
+    阈值: > 3% = up, < -1% = down, else flat (与 §4.5 M6.3 一致)."""
+    if mean_ret is None:
+        return None
+    if mean_ret > 0.03:
+        return "up"
+    if mean_ret < -0.01:
+        return "down"
+    return "flat"
+
+
 def write_fold(conn, row: dict, pred_df: pd.DataFrame | None) -> None:
     conn.executescript(DDL)
     cols = [
@@ -158,10 +172,12 @@ def write_fold(conn, row: dict, pred_df: pd.DataFrame | None) -> None:
         "train_start", "train_end", "valid_start", "valid_end", "test_start", "test_end",
         "n_train", "n_valid", "n_test", "n_features", "params_json",
         "test_ic", "test_rank_ic", "test_top_decile_avg", "test_bottom_decile_avg",
-        "test_long_short_spread", "test_winrate_top", "best_iteration", "built_at",
+        "test_long_short_spread", "test_winrate_top",
+        "test_market_state", "test_mean_forward_ret",
+        "best_iteration", "built_at",
     ]
     conn.execute(
-        f"INSERT OR REPLACE INTO mart_model_validation_fold ({', '.join(cols)}) VALUES ({', '.join(['?'] * len(cols))})",
+        f"INSERT OR REPLACE INTO mart_model_walkforward_fold ({', '.join(cols)}) VALUES ({', '.join(['?'] * len(cols))})",
         tuple(row.get(c) for c in cols),
     )
     if pred_df is not None and not pred_df.empty:
@@ -231,6 +247,7 @@ def main() -> None:
             pred = model.predict(test[feature_cols].values, num_iteration=model.best_iteration)
             ic, rank_ic = compute_ic(test["label_value"].values, pred, test["date"].values)
             dec = decile_metrics(test["label_value"].values, pred, test["date"].values)
+            test_mean_ret = float(test["label_value"].mean()) if len(test) else None
             row = {
                 "run_id": run_id,
                 "fold_id": fold["fold_id"],
@@ -248,6 +265,8 @@ def main() -> None:
                 "test_bottom_decile_avg": dec["bot_avg"],
                 "test_long_short_spread": dec["spread"],
                 "test_winrate_top": dec["winrate_top"],
+                "test_mean_forward_ret": test_mean_ret,
+                "test_market_state": classify_market_state(test_mean_ret),
                 "best_iteration": int(model.best_iteration or 0),
                 "built_at": built_at,
             }

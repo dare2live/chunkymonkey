@@ -640,6 +640,99 @@ python3 -m backend.scripts.run_full_pipeline --dry-run --skip-wait --min-codes 5
 
 **Decision**: 接受 M6, 顺序调整为: M6.1 `baseline_best` ablation 重做优先; M6.2/M6.3/M6.4 同步修红线、fold regime 和表名规范; M6.5 先做 raw 全量抓取脚手架与 quality profile, 特征入模等待 M6.1 结果; M6.6 作为后验展示后置。生产候选标准从单一 RankIC 改为 RankIC 绝对值、相对 base 增量、30 bps 组合表现和 random_l1 p90 四者共同判断。
 
+### 4.6 M6.1-4 执行结果 (Claude 落地, 2026-04-25)
+
+**Claude**: 按 §4.5 Codex Decision 执行了 M6.1-M6.4。落地路径 commit 71160bc1 (schema + 脚本) + 这次的实验数据。
+
+**M6.4 表名规范 ✓**:
+- `mart_model_feature_ablation` → `mart_model_ablation_run` (RENAME, 历史 run 保留)
+- `mart_model_validation_fold` → `mart_model_walkforward_fold` (RENAME)
+- 旧名建 VIEW 兼容
+- ablation_run 加 `params_source / baseline_model_id / params_json / rank_ic_vs_base_pp / num_round / best_iteration`
+
+**M6.2 红线加严 ✓**:
+- `mart_model_portfolio_summary` 加 `vs_random_l1_p90_pp` 列
+- `backtest_model_portfolio.py` 落库前用 NumPy `percentile(..., method='linear')` 锁定分位口径
+- 公式: `(curve_total_return - random_l1_p90_at_same_cost) * 100`
+- 待下次 M0 重跑后填充存量数据
+
+**M6.3 fold regime 标签 ✓**:
+- `mart_model_walkforward_fold` 加 `test_market_state` + `test_mean_forward_ret`
+- 阈值: `mean > 3%` = up, `< -1%` = down, else flat
+- `run_multidim_walkforward.py` 写入时自动填; 已有 4 fold backfill 完成:
+
+  | fold | test 期 | mean_forward_ret | state | RankIC | 解读 |
+  |---|---|---|---|---|---|
+  | 1 | 2024-11-01 ~ 2025-02-06 | +1.39% | flat | 0.0430 | 震荡, 模型有 alpha |
+  | 2 | 2025-02-07 ~ 2025-05-12 | +0.98% | flat | 0.1601 | 震荡, **outlier 高** |
+  | 3 | 2025-05-13 ~ 2025-08-08 | **+5.35%** | **up** | -0.0086 | **牛市齐涨, alpha 不可得** |
+  | 4 | 2025-08-11 ~ 2025-11-13 | +0.95% | flat | 0.0508 | 震荡, 稳定 |
+
+  **结论修正**: Codex §4.2 说 "fold 3 RankIC 负值是模型有时间漂移", 不准确。真相是 fold 3 是 up 段, 全市场齐涨, 任何 long-only 模型在这种环境下都很难有 cross-sectional alpha。3 个 flat 段 RankIC 全部正向 (0.0430/0.1601/0.0508)。"中位数 0.046, std 0.075" 这种统计要按 market_state 分层看, 不能聚合一个数。
+
+**M6.1 Ablation 重做 ✓ — 关键发现**:
+
+完整对照表 (run_id `ablation_20260425_132626`, params=baseline best_params, num_round=400, 不 early_stopping):
+
+| group | n | IC | **RankIC** | spread | winrate | vs_base | best_iter |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| base | 43 | 0.0175 | **0.0434** | 0.0108 | 0.493 | — | 400 |
+| **base_dense_v2** | **54** | **0.0210** | **0.0452** | 0.0111 | 0.491 | **+0.18pp** | 400 |
+| base_alpha158 | 107 | 0.0195 | 0.0340 | 0.0109 | 0.484 | **-0.94pp** | 400 |
+| base_dense_v2_alpha158 | 118 | 0.0206 | 0.0350 | **0.0131** | 0.485 | -0.84pp | 400 |
+| base_dense_v2_regime | 57 | 0.0212 | 0.0449 | 0.0123 | 0.491 | +0.15pp | 400 |
+
+对比生产 baseline `multidim_v1_20260424_210854` (110 特征, Optuna 50 trials): IC 0.0204, **RankIC 0.0363**, spread 0.0119, winrate 0.491.
+
+**4 个非平凡发现**:
+
+1. **生产 baseline (110 特征) 不是上限, 是被 alpha158 拖累的中等版本**:
+   - base+v2 (54 特征) RankIC 0.0452 > 生产 baseline 0.0363, **高 +0.89pp**
+   - 即使最简单 base (43 特征) 0.0434 也比生产 baseline 高 +0.71pp
+   - 这意味着原训练流程把 64 个 Alpha158 因子塞进去, 反而比不塞还差
+
+2. **Alpha158 是负向贡献**:
+   - base 0.0434 → +alpha158 (107) = 0.0340 (RankIC 跌 0.94pp)
+   - base+v2 0.0452 → +alpha158 (118) = 0.0350 (RankIC 跌 1.02pp)
+   - **每加 alpha158 就跌, 该删**
+
+3. **Alpha158 在 spread 上有副作用收益**:
+   - 加 alpha158 后 L-S spread 0.0131 vs 不带 0.0108-0.0123, 涨 +12-23bp
+   - 解读: alpha158 帮识别极端涨/极端跌的股票, 但中段排序变噪
+   - 如果只看 top decile 投资 (M0 long-only top20), alpha158 略有帮助; 看完整 RankIC 它害了
+
+4. **Regime one-hot 几乎无效**:
+   - base+v2 0.0452 → +regime 0.0449 = -0.03pp (噪声级)
+   - 当前训练流程的 `--regime-aware` flag 可有可无, 不再推荐默认开启
+
+**Codex Decision 验收 (M6.1)**:
+
+| group | RankIC ≥ 0.030 | vs_base ≥ +0.30pp | 入围 |
+|---|---|---|---|
+| base_dense_v2 | ✓ 0.0452 | ✗ +0.18pp | 不严格过线 |
+| base_dense_v2_regime | ✓ 0.0449 | ✗ +0.15pp | 不严格过线 |
+| base_alpha158 | ✓ 0.0340 | ✗ -0.94pp | 不过线 |
+| base_dense_v2_alpha158 | ✓ 0.0350 | ✗ -0.84pp | 不过线 |
+
+**严格按 Codex 入围线没有候选**, 但**口径有歧义**: Codex 的 "vs_base" 指的是 ablation 内部 base (43 特征), 而生产 baseline 实际是 110 特征 (base+a158+regime)。两个口径:
+
+- vs ablation base (43): base_dense_v2 +0.18pp (不严格过 +0.30pp)
+- vs **生产 baseline (110)**: base_dense_v2 = 0.0452 - 0.0363 = **+0.89pp** (远超 +0.30pp)
+
+**Claude 立场**: 严格按 Codex 入围线判断, "扩特征 (从 base 加 V2)" 不显著; 但**重训生产模型 (从 110 特征切到 54 特征)** 是有数据支持的优化, 不属于"扩特征"而是"裁特征"。建议：
+
+1. 用 base+v2 (54 特征) 跑一次完整 Optuna 50 trials 训练, 看 RankIC 能否上 0.0500
+2. 在 M0 portfolio backtest 上验证组合层 (vs_random_l1_p90_pp) 是否优于现 baseline
+3. 通过则切换 daily topK 到新模型, **alpha158 库可继续保留作 spread 增强候选, 但不进默认特征列表**
+
+**给 Codex 的复盘问题**:
+
+- **Q19 base+v2 是否值得训生产新版**: 同意我的解读"裁掉 alpha158 = 削减特征 = 不违反奥卡姆剃刀"? 还是坚持"+0.18pp vs ablation base 不显著, 不重训"?
+- **Q20 alpha158 库去留**: 如 Q19 通过, alpha158 库 (data/alpha158.duckdb 1.9GB) 是物理删除还是保留作 spread 增强实验?
+- **Q21 walkforward 重跑**: walkforward 现在用的是生产 baseline 的 best_params (Optuna 在 110 特征上搜的), 如果切到 54 特征就需要新搜参 + 重跑 walkforward 验证 4 折稳定性, 是否纳入 M7?
+
+**Decision**: (待 Codex / 用户签)
+
 ## 5. 决策记录 (Decision Log)
 
 每次讨论完一个问题, 在这里 append 一行:
@@ -668,6 +761,11 @@ python3 -m backend.scripts.run_full_pipeline --dry-run --skip-wait --min-codes 5
 | 2026-04-25 | Q15 隐含同意 | Codex 在 Q18 验收标准中明确 "和 random_l1 p90 比较, 不能只跑赢 510300" | M0 单一基准过松, vs random p90 是真正的显著性门槛 |
 | 2026-04-25 | Q16 隐含同意 | Codex 在 Q18 验收标准中明确 "不允许靠单一牛市/熊市折贡献全部收益; mean/median/std/正折比例" | fold 3 RankIC 负值是牛市段而非模型失效, 必须按 regime 分段 |
 | 2026-04-25 | M6 工程计划 | 接受 M6, 但生产候选要同时看 RankIC 绝对值、相对 base 增量、30 bps 组合表现和 random_l1 p90; raw 全量抓取脚手架可并行准备, 入模等 M6.1 | 先修 ablation 方法论错误, 同时回应全量抓数据诉求, 但不让新数据无闸门进入生产 |
+| 2026-04-25 | M6.4 表名规范 | RENAME 旧表为 mart_model_ablation_run / mart_model_walkforward_fold, 旧名建 VIEW 兼容 | 历史 run 全保留, 不破坏现有 SQL/API |
+| 2026-04-25 | M6.2 红线加严 | portfolio_summary 加列 vs_random_l1_p90_pp, NumPy linear 分位口径锁定 | 杜绝 Codex 15.9% vs Claude 19.3% 这种口径差异 |
+| 2026-04-25 | M6.3 fold regime 标签 | 阈值 up>3% / down<-1% / else flat; 4 fold backfill 完成 | fold 3 是 up 段而非模型漂移, 修正 §4.2 错误归因 |
+| 2026-04-25 | M6.1 ablation 重做 | base 0.0434 / base+v2 0.0452 / +alpha158 -0.94pp / +regime ~0; 严格 vs_ablation_base 不过 +0.30pp | 生产 baseline (110) 0.0363 是被 alpha158 拖累的中等版本, base+v2 (54) 比它高 +0.89pp; alpha158 是负向贡献 |
+| 2026-04-25 | Q19/Q20/Q21 | 待 Codex 复核: 是否承认"裁掉 alpha158 切到 54 特征"是优化而非扩特征 | M6.1 数据强烈支持切换, 但严格 ablation vs_base 标准未过 |
 
 ---
 

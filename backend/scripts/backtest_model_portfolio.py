@@ -303,10 +303,46 @@ def benchmark_510300_curve(
     ]]
 
 
+def _annotate_vs_random_p90(summaries: list[dict]) -> None:
+    """M6.2 (Q15): 为每条 summary 计算 vs_random_l1_p90_pp = total_return - random_l1 p90.
+    仅对 model_* 和 benchmark_510300_*/benchmark_liquid500_* 填充; random 自身不填.
+    p90 用 NumPy linear 内插, 固定口径避免 15.9 vs 19.3 这种差异.
+    """
+    import numpy as _np
+    # 按 cost_bps 分桶, 每桶取 random_l1 的 total_return 列表
+    by_cost: dict[float, list[float]] = {}
+    for s in summaries:
+        cid = (s.get("curve_id") or "")
+        if not cid.startswith("benchmark_random_l1_seed_"):
+            continue
+        ret = s.get("total_return")
+        if ret is None:
+            continue
+        by_cost.setdefault(float(s["cost_bps"]), []).append(float(ret))
+    p90: dict[float, float] = {}
+    for cost, vals in by_cost.items():
+        if vals:
+            p90[cost] = float(_np.percentile(vals, 90, method="linear"))
+    # 填充
+    for s in summaries:
+        cid = (s.get("curve_id") or "")
+        if cid.startswith("benchmark_random_l1_seed_"):
+            s["vs_random_l1_p90_pp"] = None
+            continue
+        ret = s.get("total_return")
+        cost = s.get("cost_bps")
+        if ret is None or cost is None or cost not in p90:
+            s["vs_random_l1_p90_pp"] = None
+            continue
+        s["vs_random_l1_p90_pp"] = (float(ret) - p90[cost]) * 100.0
+
+
 def write_results(conn, run_id: str, curves: list[pd.DataFrame], summaries: list[dict], dry_run: bool) -> None:
     if dry_run:
         logger.info("dry-run: 不写 mart_model_portfolio_*")
         return
+    # M6.2: 落库前先计算 vs_random_l1_p90_pp (固定 NumPy linear 分位口径)
+    _annotate_vs_random_p90(summaries)
     duck = conn.raw if hasattr(conn, "raw") else conn
     conn.executescript(DDL)
     conn.execute("DELETE FROM mart_model_portfolio_curve WHERE run_id = ?", (run_id,))
@@ -323,6 +359,7 @@ def write_results(conn, run_id: str, curves: list[pd.DataFrame], summaries: list
             "start_date", "end_date", "cost_bps", "rebalance_days",
             "final_nav", "total_return", "annualized_return", "max_drawdown",
             "sharpe", "avg_turnover", "rebalance_count", "notes", "built_at",
+            "vs_random_l1_p90_pp",
         ]
         conn.execute(
             f"INSERT INTO mart_model_portfolio_summary ({', '.join(cols)}) VALUES ({', '.join(['?'] * len(cols))})",
