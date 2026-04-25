@@ -1040,9 +1040,9 @@ def build_today_signals(
                       THEN substr(e.notice_date,1,4) || '-' || substr(e.notice_date,5,2) || '-' || substr(e.notice_date,7,2)
                   ELSE e.notice_date
               END
-          ) >= date('now', ?)
+          ) >= CAST(CURRENT_DATE - INTERVAL (?) DAY AS VARCHAR)
         ORDER BY e.notice_date DESC, e.institution_id
-    """, (f"-{fresh_days} days",)).fetchall()
+    """, (fresh_days,)).fetchall()
 
     if not rows:
         return []

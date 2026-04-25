@@ -198,38 +198,24 @@ def _normalize_sz(df: pd.DataFrame, trade_date: str) -> list[dict]:
 # Upsert
 # ─────────────────────────────────────────────────────────────────────
 
-def _upsert_rows(conn: sqlite3.Connection, rows: list[dict]) -> int:
+def _upsert_rows(conn, rows: list[dict]) -> int:
+    """DuckDB 上 INSERT OR REPLACE; PK = (trade_date, stock_code, market)."""
     if not rows:
         return 0
-    conn.executemany(
-        """
-        INSERT INTO raw_margin_daily (
-            trade_date, stock_code, market, stock_name,
-            rz_balance, rz_buy, rz_repay,
-            rq_balance, rq_shares, rq_sell, rq_repay,
-            rzrq_balance, source
-        )
-        VALUES (
-            :trade_date, :stock_code, :market, :stock_name,
-            :rz_balance, :rz_buy, :rz_repay,
-            :rq_balance, :rq_shares, :rq_sell, :rq_repay,
-            :rzrq_balance, :source
-        )
-        ON CONFLICT(trade_date, stock_code, market) DO UPDATE SET
-            stock_name   = excluded.stock_name,
-            rz_balance   = excluded.rz_balance,
-            rz_buy       = excluded.rz_buy,
-            rz_repay     = excluded.rz_repay,
-            rq_balance   = excluded.rq_balance,
-            rq_shares    = excluded.rq_shares,
-            rq_sell      = excluded.rq_sell,
-            rq_repay     = excluded.rq_repay,
-            rzrq_balance = excluded.rzrq_balance,
-            source       = excluded.source,
-            ingested_at  = CURRENT_TIMESTAMP
-        """,
-        rows,
+    cols = [
+        "trade_date", "stock_code", "market", "stock_name",
+        "rz_balance", "rz_buy", "rz_repay",
+        "rq_balance", "rq_shares", "rq_sell", "rq_repay",
+        "rzrq_balance", "source",
+    ]
+    placeholders = ", ".join(["?"] * (len(cols) + 1))  # +1 for ingested_at
+    sql = (
+        f"INSERT OR REPLACE INTO raw_margin_daily "
+        f"({', '.join(cols)}, ingested_at) VALUES ({placeholders})"
     )
+    now_iso = datetime.now().isoformat()
+    payload = [tuple(r.get(c) for c in cols) + (now_iso,) for r in rows]
+    conn.executemany(sql, payload)
     conn.commit()
     return len(rows)
 

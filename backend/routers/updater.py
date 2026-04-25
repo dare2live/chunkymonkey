@@ -1147,12 +1147,14 @@ def _step_match_inst_sync(conn) -> int:
                     if r["stock_code"] in excluded_codes:
                         continue
                     try:
+                        # DuckDB: INSERT OR IGNORE 在仅 UNIQUE 约束 (无 PK) 表上要求显式 ON CONFLICT 列
                         conn.execute("""
-                            INSERT OR IGNORE INTO inst_holdings
+                            INSERT INTO inst_holdings
                             (institution_id, holder_name, holder_type, stock_code, stock_name,
                              report_date, notice_date, holder_rank, hold_amount, hold_market_cap,
                              hold_ratio, hold_change, hold_change_num, created_at)
                             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                            ON CONFLICT (holder_name, stock_code, report_date) DO NOTHING
                         """, (
                             inst_id, r["holder_name"], r["holder_type"],
                             r["stock_code"], r["stock_name"],

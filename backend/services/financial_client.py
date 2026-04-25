@@ -1031,13 +1031,13 @@ def _select_history_candidates(conn, stock_codes: Optional[list] = None, limit: 
         GROUP BY a.stock_code
         ORDER BY
             CASE
-                WHEN m.stock_code IS NOT NULL THEN 0
-                WHEN t.stock_code IS NOT NULL THEN 1
+                WHEN ANY_VALUE(m.stock_code) IS NOT NULL THEN 0
+                WHEN ANY_VALUE(t.stock_code) IS NOT NULL THEN 1
                 ELSE 2
             END,
-            COALESCE(f.history_rows, 0) ASC,
-            CASE WHEN s.last_history_at IS NULL THEN 0 ELSE 1 END,
-            COALESCE(s.last_history_at, ''),
+            COALESCE(ANY_VALUE(f.history_rows), 0) ASC,
+            CASE WHEN ANY_VALUE(s.last_history_at) IS NULL THEN 0 ELSE 1 END,
+            COALESCE(ANY_VALUE(s.last_history_at), ''),
             a.stock_code
         LIMIT ?
         """,

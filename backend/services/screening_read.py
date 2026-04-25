@@ -121,10 +121,11 @@ def list_turtle_states(conn) -> list[dict]:
 
 def get_screening_summary(conn) -> dict:
     total = conn.execute("SELECT COUNT(*) FROM mart_stock_screening").fetchone()[0]
-    f1 = conn.execute("SELECT COUNT(*) FROM mart_stock_screening WHERE f1_hit = 1").fetchone()[0]
-    f3 = conn.execute("SELECT COUNT(*) FROM mart_stock_screening WHERE f3_hit = 1").fetchone()[0]
-    f5 = conn.execute("SELECT COUNT(*) FROM mart_stock_screening WHERE f5_hit = 1").fetchone()[0]
-    any_hit = conn.execute("SELECT COUNT(*) FROM mart_stock_screening WHERE hit_count > 0").fetchone()[0]
+    # DuckDB: 列可能是 VARCHAR (历史 SQLite 写入), 显式 CAST 比较
+    f1 = conn.execute("SELECT COUNT(*) FROM mart_stock_screening WHERE TRY_CAST(f1_hit AS INTEGER) = 1").fetchone()[0]
+    f3 = conn.execute("SELECT COUNT(*) FROM mart_stock_screening WHERE TRY_CAST(f3_hit AS INTEGER) = 1").fetchone()[0]
+    f5 = conn.execute("SELECT COUNT(*) FROM mart_stock_screening WHERE TRY_CAST(f5_hit AS INTEGER) = 1").fetchone()[0]
+    any_hit = conn.execute("SELECT COUNT(*) FROM mart_stock_screening WHERE TRY_CAST(hit_count AS INTEGER) > 0").fetchone()[0]
 
     screen_date = None
     row = conn.execute("SELECT screen_date FROM mart_stock_screening LIMIT 1").fetchone()

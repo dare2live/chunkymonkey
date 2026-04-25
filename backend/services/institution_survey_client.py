@@ -224,17 +224,18 @@ def rebuild_survey_mart(
 
     # 用单条 SQL 按 survey_date 到 as_of_date 窗口聚合
     # 注意：判空比较用 BETWEEN '(as_of - 90d)' AND as_of
+    # DuckDB: julianday() 不存在; DATE 减法直接得 INTEGER 天数
     sql = """
         WITH windowed AS (
             SELECT
                 stock_code,
                 survey_date,
                 COALESCE(inst_count, 0) AS inst_count,
-                julianday(?) - julianday(survey_date) AS days_ago
+                CAST(CAST(? AS DATE) - CAST(survey_date AS DATE) AS INTEGER) AS days_ago
             FROM raw_institution_surveys
             WHERE survey_date <= ?
-              AND julianday(?) - julianday(survey_date) <= 90
-              AND julianday(?) - julianday(survey_date) >= 0
+              AND CAST(CAST(? AS DATE) - CAST(survey_date AS DATE) AS INTEGER) <= 90
+              AND CAST(CAST(? AS DATE) - CAST(survey_date AS DATE) AS INTEGER) >= 0
         )
         SELECT
             stock_code,

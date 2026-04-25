@@ -221,23 +221,18 @@ def sync_tdx_industry(conn: sqlite3.Connection) -> dict:
     result["l2_count"] = len(l2_set)
     result["l3_count"] = len(l3_set)
 
+    # DuckDB: ON CONFLICT DO UPDATE SET 内 CURRENT_TIMESTAMP 会被当作列名 binder
+    # 错误, 改为 INSERT OR REPLACE + now() 函数避开.
     upsert_sql = """
-        INSERT INTO dim_stock_tdx_industry
+        INSERT OR REPLACE INTO dim_stock_tdx_industry
           (stock_code, tdx_l1, tdx_l2, tdx_l3,
            tdx_l1_name, tdx_l2_name, tdx_l3_name,
            sw_x_legacy, updated_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
-        ON CONFLICT(stock_code) DO UPDATE SET
-          tdx_l1      = excluded.tdx_l1,
-          tdx_l2      = excluded.tdx_l2,
-          tdx_l3      = excluded.tdx_l3,
-          tdx_l1_name = excluded.tdx_l1_name,
-          tdx_l2_name = excluded.tdx_l2_name,
-          tdx_l3_name = excluded.tdx_l3_name,
-          sw_x_legacy = excluded.sw_x_legacy,
-          updated_at  = CURRENT_TIMESTAMP
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
     """
-    conn.executemany(upsert_sql, parsed)
+    now_ts = datetime.now()
+    parsed_with_ts = [tuple(row) + (now_ts,) for row in parsed]
+    conn.executemany(upsert_sql, parsed_with_ts)
 
     # 审计 4.4 整改 (Phase V)：每次同步追加一份"当日行业快照"到 history 表，
     # 以便未来 event-time 行业归因可以 JOIN 到事件发生时的行业分类，

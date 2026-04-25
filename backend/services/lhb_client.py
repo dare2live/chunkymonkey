@@ -195,48 +195,26 @@ def _normalize_rows(df: pd.DataFrame) -> list[dict]:
     return out
 
 
-def _upsert_rows(conn: sqlite3.Connection, rows: list[dict]) -> int:
+def _upsert_rows(conn, rows: list[dict]) -> int:
+    """DuckDB 上 INSERT OR REPLACE; PK = (trade_date, stock_code, rank_reason)."""
     if not rows:
         return 0
-    conn.executemany(
-        """
-        INSERT INTO raw_lhb_daily (
-            trade_date, stock_code, rank_reason,
-            stock_name, interpretation, close_price, change_pct,
-            net_buy, buy_amount, sell_amount, turnover, market_turnover,
-            net_buy_pct, turnover_pct, turnover_rate, float_cap,
-            post_1d, post_2d, post_5d, post_10d, source
-        )
-        VALUES (
-            :trade_date, :stock_code, :rank_reason,
-            :stock_name, :interpretation, :close_price, :change_pct,
-            :net_buy, :buy_amount, :sell_amount, :turnover, :market_turnover,
-            :net_buy_pct, :turnover_pct, :turnover_rate, :float_cap,
-            :post_1d, :post_2d, :post_5d, :post_10d, :source
-        )
-        ON CONFLICT(trade_date, stock_code, rank_reason) DO UPDATE SET
-            stock_name      = excluded.stock_name,
-            interpretation  = excluded.interpretation,
-            close_price     = excluded.close_price,
-            change_pct      = excluded.change_pct,
-            net_buy         = excluded.net_buy,
-            buy_amount      = excluded.buy_amount,
-            sell_amount     = excluded.sell_amount,
-            turnover        = excluded.turnover,
-            market_turnover = excluded.market_turnover,
-            net_buy_pct     = excluded.net_buy_pct,
-            turnover_pct    = excluded.turnover_pct,
-            turnover_rate   = excluded.turnover_rate,
-            float_cap       = excluded.float_cap,
-            post_1d         = excluded.post_1d,
-            post_2d         = excluded.post_2d,
-            post_5d         = excluded.post_5d,
-            post_10d        = excluded.post_10d,
-            source          = excluded.source,
-            ingested_at     = CURRENT_TIMESTAMP
-        """,
-        [dict(r, source=LHB_SOURCE) for r in rows],
+    cols = [
+        "trade_date", "stock_code", "rank_reason",
+        "stock_name", "interpretation", "close_price", "change_pct",
+        "net_buy", "buy_amount", "sell_amount", "turnover", "market_turnover",
+        "net_buy_pct", "turnover_pct", "turnover_rate", "float_cap",
+        "post_1d", "post_2d", "post_5d", "post_10d", "source",
+    ]
+    placeholders = ", ".join(["?"] * (len(cols) + 1))  # +1 for ingested_at
+    sql = (
+        f"INSERT OR REPLACE INTO raw_lhb_daily "
+        f"({', '.join(cols)}, ingested_at) VALUES ({placeholders})"
     )
+    now_iso = datetime.now().isoformat()
+    enriched = [dict(r, source=LHB_SOURCE) for r in rows]
+    payload = [tuple(r.get(c) for c in cols) + (now_iso,) for r in enriched]
+    conn.executemany(sql, payload)
     conn.commit()
     return len(rows)
 

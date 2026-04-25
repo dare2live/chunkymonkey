@@ -635,7 +635,7 @@ def build_capital_behavior_latest(conn, as_of_date: Optional[str] = None) -> int
             b.stock_code,
             b.stock_name,
             b.listed_date,
-            CAST(julianday(?) - julianday(b.listed_date) AS INTEGER) AS listed_days,
+            CAST(CAST(? AS DATE) - CAST(b.listed_date AS DATE) AS INTEGER) AS listed_days,
             b.cumulative_dividend,
             b.avg_annual_dividend,
             b.dividend_count,
