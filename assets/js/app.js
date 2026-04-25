@@ -2435,22 +2435,28 @@
   function renderStepGrid(steps) {
     if (!steps || !steps.length) { el('stepGrid').innerHTML = ''; return; }
 
+    // M9.5: 优先用后端 step.group_name (新增 step 自动归组), 旧 step_id 没 group_name 时回退硬编码映射.
     var GROUP_MAP = {
-      sync_raw: 'data', match_inst: 'data', sync_market_data: 'data', sync_financial: 'data', sync_surveys: 'data', sync_qfii: 'data', sync_margin: 'data', sync_lhb: 'data', sync_industry: 'data',
+      sync_raw: 'data', match_inst: 'data', sync_market_data: 'data', sync_financial: 'data', sync_surveys: 'data', sync_qfii: 'data', sync_margin: 'data', sync_lhb: 'data', sync_fund_flow: 'data', sync_industry: 'data',
       build_turtle_features: 'mart',
       gen_events: 'calc', calc_returns: 'calc', calc_financial_derived: 'calc',
       build_current_rel: 'mart', build_profiles: 'mart', build_industry_stat: 'mart', build_trends: 'mart', calc_screening: 'mart', calc_sector_momentum: 'mart', build_external_attention: 'mart', build_stage_features: 'mart', calc_inst_scores: 'mart', calc_stock_scores: 'mart'
     };
     var GROUP_DEF = {
-      data: { name: '数据获取', verb: '重新同步', count: 9, badge: '①' },
-      calc: { name: '事实计算', verb: '全量计算', count: 3, badge: '②' },
-      mart: { name: '集市构建', verb: '重构集市', count: 11, badge: '③' }
+      data: { name: '数据获取', verb: '重新同步', badge: '①' },
+      calc: { name: '事实计算', verb: '全量计算', badge: '②' },
+      mart: { name: '集市构建', verb: '重构集市', badge: '③' }
     };
     var grouped = { data: [], calc: [], mart: [] };
     steps.forEach(function (s) {
-      var g = GROUP_MAP[s.step_id] || 'mart';
+      var g = s.group_name || GROUP_MAP[s.step_id] || 'mart';
+      if (!grouped[g]) grouped[g] = [];
       grouped[g].push(s);
     });
+    // M9.5: count 改为动态 (按实际 grouped 长度), 避免硬编码与新 step 不一致
+    GROUP_DEF.data.count = grouped.data.length;
+    GROUP_DEF.calc.count = grouped.calc.length;
+    GROUP_DEF.mart.count = grouped.mart.length;
 
     // 保留用户手动展开状态（每次重渲染时读取 <details open>）
     var prevOpen = {};
