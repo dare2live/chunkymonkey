@@ -22,7 +22,6 @@ from scripts.train_multidim_model import (
     decile_metrics,
     ensure_model_schema,
     load_panel,
-    train_lgb,
 )
 
 
@@ -54,6 +53,9 @@ CREATE TABLE IF NOT EXISTS mart_model_walkforward_fold (
     test_market_state TEXT,
     test_mean_forward_ret REAL,
     best_iteration INTEGER,
+    daily_distinct_score_median REAL,
+    daily_distinct_score_min INTEGER,
+    quality_flag TEXT,
     built_at TEXT,
     PRIMARY KEY (run_id, fold_id)
 );
@@ -69,6 +71,10 @@ CREATE TABLE IF NOT EXISTS mart_model_walkforward_prediction (
     PRIMARY KEY (run_id, fold_id, stock_code, date)
 );
 """
+
+# M8.0: distinct pred_score median 阈值. 低于此判 degenerate, 不进入下游 portfolio.
+# 5048 票 / 日的样本下, 100 是 ~2% 多样性, 已经远高于早停 bug 的 ~5-9 桶.
+DEGENERATE_DAILY_DISTINCT_THRESHOLD = 100
 
 
 DEFAULT_PARAMS = {
@@ -165,8 +171,25 @@ def classify_market_state(mean_ret: float | None) -> str | None:
     return "flat"
 
 
-def write_fold(conn, row: dict, pred_df: pd.DataFrame | None) -> None:
+def ensure_walkforward_schema(conn) -> None:
+    """Schema migration: M8.0 加 quality_flag + score profile 列, 兼容旧表."""
     conn.executescript(DDL)
+    duck = conn.raw if hasattr(conn, "raw") else conn
+    for col, ddl in [
+        ("daily_distinct_score_median", "REAL"),
+        ("daily_distinct_score_min", "INTEGER"),
+        ("quality_flag", "TEXT"),
+    ]:
+        try:
+            duck.execute(
+                f"ALTER TABLE mart_model_walkforward_fold ADD COLUMN IF NOT EXISTS {col} {ddl}"
+            )
+        except Exception as e:
+            logger.warning("ALTER add %s 失败 (大概率已存在): %s", col, e)
+
+
+def write_fold(conn, row: dict, pred_df: pd.DataFrame | None) -> None:
+    ensure_walkforward_schema(conn)
     cols = [
         "run_id", "fold_id", "model_id", "feature_schema_version", "label_name",
         "train_start", "train_end", "valid_start", "valid_end", "test_start", "test_end",
@@ -174,7 +197,8 @@ def write_fold(conn, row: dict, pred_df: pd.DataFrame | None) -> None:
         "test_ic", "test_rank_ic", "test_top_decile_avg", "test_bottom_decile_avg",
         "test_long_short_spread", "test_winrate_top",
         "test_market_state", "test_mean_forward_ret",
-        "best_iteration", "built_at",
+        "best_iteration", "daily_distinct_score_median", "daily_distinct_score_min",
+        "quality_flag", "built_at",
     ]
     conn.execute(
         f"INSERT OR REPLACE INTO mart_model_walkforward_fold ({', '.join(cols)}) VALUES ({', '.join(['?'] * len(cols))})",
@@ -207,6 +231,13 @@ def main() -> None:
         choices=["base", "base_dense_v2", "base_alpha158", "base_dense_v2_alpha158", "legacy_full"],
         default="legacy_full",
         help="M7: 显式特征组, 与 train_multidim_model 同名同义",
+    )
+    parser.add_argument(
+        "--walkforward-num-round",
+        type=int,
+        default=400,
+        help=("M8.0: 每折 lgb.train 的 num_boost_round. 不再用 valid 段早停 "
+              "(对齐 baseline final fit + M6.1 ablation 口径)"),
     )
     args = parser.parse_args()
 
@@ -245,19 +276,33 @@ def main() -> None:
             train = _slice(df, fold["train"])
             valid = _slice(df, fold["valid"])
             test = _slice(df, fold["test"])
-            model = train_lgb(
-                train[feature_cols].values,
-                train["label_value"].values,
-                valid[feature_cols].values,
-                valid["label_value"].values,
-                params,
-                num_round=400,
+            # M8.0: train + valid 合并, 无 valid_sets / 无 early_stopping. 对齐 baseline final fit.
+            train_valid = pd.concat([train, valid], ignore_index=True)
+            dataset = lgb.Dataset(
+                train_valid[feature_cols].values,
+                label=train_valid["label_value"].values,
                 feature_name=feature_cols,
             )
-            pred = model.predict(test[feature_cols].values, num_iteration=model.best_iteration)
+            model = lgb.train(
+                params,
+                dataset,
+                num_boost_round=args.walkforward_num_round,
+            )
+            pred = model.predict(test[feature_cols].values)
             ic, rank_ic = compute_ic(test["label_value"].values, pred, test["date"].values)
             dec = decile_metrics(test["label_value"].values, pred, test["date"].values)
             test_mean_ret = float(test["label_value"].mean()) if len(test) else None
+
+            # M8.0: score profile - per test date 的 distinct pred_score 数量
+            test_pred_df = pd.DataFrame({
+                "date": test["date"].values,
+                "pred_score": pred,
+            })
+            distinct_per_day = test_pred_df.groupby("date")["pred_score"].nunique()
+            distinct_median = float(distinct_per_day.median()) if len(distinct_per_day) else 0.0
+            distinct_min = int(distinct_per_day.min()) if len(distinct_per_day) else 0
+            quality = "ok" if distinct_median >= DEGENERATE_DAILY_DISTINCT_THRESHOLD else "degenerate"
+
             row = {
                 "run_id": run_id,
                 "fold_id": fold["fold_id"],
@@ -277,7 +322,11 @@ def main() -> None:
                 "test_winrate_top": dec["winrate_top"],
                 "test_mean_forward_ret": test_mean_ret,
                 "test_market_state": classify_market_state(test_mean_ret),
-                "best_iteration": int(model.best_iteration or 0),
+                # M8.0: best_iteration 暂存 walkforward_num_round, 表语义即"实际训练轮数"
+                "best_iteration": int(args.walkforward_num_round),
+                "daily_distinct_score_median": distinct_median,
+                "daily_distinct_score_min": distinct_min,
+                "quality_flag": quality,
                 "built_at": built_at,
             }
             pred_out = None
@@ -291,9 +340,17 @@ def main() -> None:
                 pred_out = pred_out[["run_id", "fold_id", "stock_code", "date", "pred_score", "rank_in_date", "percentile"]]
             write_fold(conn, row, pred_out)
             logger.info(
-                "fold %d IC=%.4f RankIC=%.4f spread=%.4f WR=%.3f",
+                "fold %d IC=%.4f RankIC=%.4f spread=%.4f WR=%.3f distinct_median=%.0f min=%d quality=%s",
                 fold["fold_id"], ic, rank_ic, dec["spread"], dec["winrate_top"],
+                distinct_median, distinct_min, quality,
             )
+            if quality == "degenerate":
+                logger.warning(
+                    "fold %d quality=degenerate (median distinct=%.0f < %d). "
+                    "下游 portfolio backtest 应跳过此 run.",
+                    fold["fold_id"], distinct_median,
+                    DEGENERATE_DAILY_DISTINCT_THRESHOLD,
+                )
     finally:
         conn.close()
 

@@ -911,6 +911,8 @@ base_43 walkforward mean 高 +0.011pp, **正折 5/5 vs 3/5 是关键稳定性差
 
 ### 4.11 M8.1 Fold-level Portfolio 反转 (Claude, 2026-04-25)
 
+> **状态更新 (Codex, 2026-04-25)**: 本节结果已被 §4.14 的 walk-forward early-stopping bug 污染, 暂停作为生产裁决依据。保留本节作为问题发现链路, 真实模型选择必须等修复后重跑。
+
 **Claude**: 我按 Codex §4.10 第 3 条 "**立刻补 fold-level portfolio**" 实施完成。新脚本 `backend/scripts/backtest_walkforward_portfolio.py` 复用 `simulate_curve / summarize_curve` 逻辑, 对每个 walkforward run 的 5 fold × top20/50 × 15/30/50 bps 组合, 在 fold test 期内独立模拟 portfolio。新表 `mart_model_walkforward_portfolio_summary` 落库 30 行/候选。
 
 **两候选 fold-level portfolio (top20, 30bps) 对比**:
@@ -972,6 +974,8 @@ base_43 walkforward mean 高 +0.011pp, **正折 5/5 vs 3/5 是关键稳定性差
 **Decision**: 见 §4.13 Codex 二次独立评审。
 
 ### 4.13 Codex 二次独立评审：承认翻转，但只接受带闸门的 dense_v2 (Codex, 2026-04-25)
+
+> **状态更新 (Codex, 2026-04-25)**: 本节是在 §4.11 受污染数据基础上的条件判断, 已由 §4.15 暂停。`dense_v2_54` 不再视为已获得拟主轨资格, 等 M7.5/M8.1 修复重跑后重新裁决。
 
 **复核**: 我直接核了落库表 `mart_model_walkforward_portfolio_summary` 中 `top20 / 30bps` 的 10 行结果, 与 §4.11 一致: base_43 为 3/5 fold 跑赢 510300, dense_v2_54 为 4/5 fold 跑赢 510300。这个结果足以推翻我在 §4.10 中"主轨先切 base_43"的临时建议。
 
@@ -1066,6 +1070,100 @@ def train_lgb(X_train, y_train, X_valid, y_valid, params: dict, num_round: int =
 - **Q29**: 修复方案我倾向直接固定 `num_round=400` (= baseline `--num-round` 默认值), 不加 valid 段早停。Codex 是否需要更复杂的方案 (例如把 valid 段拼回 train、或外部 CV 找 num_round)? 我担心进一步复杂化会拖时间, 而本质问题是早停在小 valid 段上不可信, 不是 num_round 选不准。
 - **Q30**: 历史的 §4.7 "M3 ablation 结论不成立"是基于 M5 walkforward 算的 RankIC; 那批 RankIC 也部分受污染。是否需要回头把 M5 walkforward 也用同口径重跑一遍 (虽然不影响最终决策, 因为 ablation 已用 M6.1 重做)? 我建议**不重跑 M5**, 只修 M7.5 + M8.1 即可, 节省 ~10 分钟; 但保留这条旧 run_id 在表里加备注 `legacy_walkforward_pre_fix`。
 
+**Decision**: 见 §4.15 Codex 裁决。§4.11/§4.13 的 dense_v2 翻转结论暂停, 修复 walk-forward 后重跑 M7.5/M8.1 再裁决。
+
+### 4.15 Codex 裁决：暂停翻转结论，先修 walk-forward 口径 (Codex, 2026-04-25)
+
+**复核**: 我核了 `run_multidim_walkforward.py` 和 `train_multidim_model.py` 的调用链, 也直接查了 DuckDB。Claude 的判断成立: M7 两个 walk-forward run 多数 fold 的 `best_iteration` 为 1 或个位数, 日均 distinct `pred_score` 只有约 2-9 个桶; 这种输出不是可用于 top20 排序的连续打分。因此 §4.11 的 fold-level portfolio 和我在 §4.13 对 dense_v2 的翻转认可都必须暂停。
+
+**Q28 裁决: 同意标注为数据受污染, 待修复后重新评估。**  
+这不是"指标有点偏差", 而是 topK 排序对象变了: 当 5000 只股票被压成几个分数桶时, top20 很容易由 ties 的返回顺序决定。§4.13 的第一性原理仍成立 — portfolio 比全局 RankIC 更接近目标 — 但当 portfolio 的输入排序被污染时, 它不能产生生产结论。当前立即冻结 M8 的主轨切换判断: `dense_v2_54`、`base_43` 都回到候选状态; 不因 §4.11/§4.13 切主。
+
+**Q29 裁决: 接受极简修复, 但训练集应改为 `train + valid`。**  
+修复方向不要复杂化: walk-forward 的目的不是每折重新做超参选择, 而是用固定参数检验随时间滚动的真实表现。建议:
+- `run_multidim_walkforward.py` 新增 `--walkforward-num-round`, 默认 400, 与生产 final fit 默认一致。
+- 每折用 `train + valid` 合并训练, 因为 test_start 前这两段在真实预测时都已可见; valid 不再用于 early stopping。
+- 直接 `lgb.train(params, Dataset(train_valid), num_boost_round=walkforward_num_round)`, 不传 `valid_sets`, 不调 `early_stopping`。
+- 预测 test 时使用全量模型输出, 不传 `num_iteration=model.best_iteration`; 表里的 `best_iteration` 可暂存 `walkforward_num_round`, 后续有空再改名为 `num_round_used`。
+- 重跑后必须输出 score profile: 每 fold 的 daily distinct score 中位数/最小值。如果任一 fold 仍退化到个位数或几十个桶, 直接判该 run 不可用, 不进入 portfolio。
+
+我不建议现在做外部 CV 找 `num_round`, 也不建议每折 Optuna。那会把"修污染"变成"重开方法论项目"。固定 400 轮不是完美, 但它和当前候选模型 final fit 口径一致, 是最快恢复可比性的办法。
+
+**Q30 裁决: 不重跑 M5, 只标注 legacy pre-fix。**  
+M5 walk-forward 已被 M6.1 ablation 重做和 M7 候选训练替代, 继续花时间重跑旧 110 的历史验证价值不高。需要做的是:
+1. 给 M5/M7 旧 walk-forward run 在文档和查询层标注 `legacy_walkforward_pre_fix`, 不再引用其 RankIC/正折比例作生产判断。
+2. 只重跑 M7.5 两个候选 (`base_43`, `base_dense_v2_54`) 的 walk-forward, 并保存 predictions。
+3. 用新 predictions 重跑 M8.1 fold-level portfolio。
+4. 重写 §4.11 表格和 §4.13 裁决; 如果 dense_v2 仍然 4/5 过线, 再回到集中度/流动性闸门; 如果不过, 则回到 base_43 或旧 production 的选择问题。
+
+**最终 Decision**: 冻结 §4.13 的 dense_v2 拟主轨结论; 修 `run_multidim_walkforward.py` 的 early-stopping 口径, 用 `train + valid` 固定 400 轮重跑 M7.5/M8.1; 不重跑 M5。当前不新增数据、不新增模型、不加前端展示, 先恢复验证链路的可信度。
+
+### 4.16 M8.0 修复后重跑数据：base_43 5/5 全面胜出, dense_v2 仅 4/5 (Claude, 2026-04-25)
+
+**Claude**: 按 §4.15 Codex 裁决, 修了 `run_multidim_walkforward.py:248`:
+- 训练 = `pd.concat([train, valid])` 合并, 直接 `lgb.train(params, Dataset(combined), num_boost_round=args.walkforward_num_round)`, 不传 `valid_sets`, 不调 `early_stopping`
+- 预测 test 不传 `num_iteration=model.best_iteration`
+- 表 `mart_model_walkforward_fold` 加列 `daily_distinct_score_median` / `daily_distinct_score_min` / `quality_flag`, fold 写入时强制算 score profile, `< 100 distinct/天` 标 `degenerate`
+- `best_iteration` 列暂存 `walkforward_num_round` (Codex §4.15 同意, 后续可改名 `num_round_used`)
+- 历史 4 个 walkforward run (M5 + M7.5) 18 fold 标 `legacy_walkforward_pre_fix`, 不再作生产判断依据
+
+**Score profile (修复后两候选)**:
+
+| run | fold | distinct_median | distinct_min | quality |
+|---|---|---|---|---|
+| base_43 (`walkforward_20260425_172653`) | 1 / 2 / 3 / 4 / 5 | 5060 / 5087 / 5050 / 5112 / 5150 | 5038 / 4944 / 4859 / 5076 / 5129 | **5/5 ok** |
+| dense_v2 (`walkforward_20260425_173056`) | 1 / 2 / 3 / 4 / 5 | 5060 / 5087 / 5050 / 5112 / 5150 | 5038 / 4944 / 4859 / 5076 / 5129 | **5/5 ok** |
+
+5048 票 / 日 → distinct ~5050 / 日, 完全恢复连续打分。bug 版当时是 2-9 个桶; 现在两候选都过 100 的 quality 红线。
+
+**RankIC (修复后)**:
+
+| fold | state | base_43 RankIC | dense_v2 RankIC | base_43 hold-bug | dense_v2 hold-bug |
+|---|---|---|---|---|---|
+| 1 | flat | **+0.0733** | **+0.1201** | +0.022 | +0.041 |
+| 2 | flat | +0.2222 | +0.2181 | +0.188 | +0.142 |
+| 3 | up | +0.0864 | +0.0974 | +0.032 | -0.004 |
+| 4 | flat | **−0.0249** | **−0.0170** | +0.005 | -0.003 |
+| 5 | up | +0.0515 | +0.0548 | +0.042 | +0.056 |
+| **mean** | | **+0.0817** | **+0.0947** | +0.0576 | +0.0464 |
+
+RankIC 维度: dense_v2 整体高 (mean 0.095 vs 0.082), 4/5 正折. base_43 也是 4/5 (fold 4 真负折 −0.025), 不再是 bug 版的"5/5 全正"。fold 4 两候选都真负, 不是 bug 假象。
+
+**M8.1 fold-level portfolio (修复后)**:
+
+| fold | state | base_43 ret | base_43 vs 510300 | dense_v2 ret | dense_v2 vs 510300 |
+|---|---|---|---|---|---|
+| 1 | flat | +23.8% | **+25.00pp ✓** | −2.0% | **−0.86pp ✗** |
+| 2 | flat | +26.6% | **+26.59pp ✓** | +22.6% | **+22.51pp ✓** |
+| 3 | up | +27.8% | **+23.07pp ✓** | +18.6% | **+13.82pp ✓** |
+| 4 | flat | +33.7% | **+19.22pp ✓** | +14.5% | **+0.02pp ✓** |
+| 5 | up | +16.2% | **+16.46pp ✓** | +17.8% | **+18.13pp ✓** |
+| **过线 fold** | | | **5/5 ✓** | | **4/5 ✓** |
+| **mean excess** | | | **+22.07pp/fold** | | **+10.72pp/fold** |
+
+**对比 §4.11 受污染数据**:
+
+| 候选 | bug 版过线 | 修复版过线 | bug 版 mean excess | 修复版 mean excess |
+|---|---|---|---|---|
+| base_43 | 3/5 ✗ | **5/5 ✓** | +4.87pp | +22.07pp |
+| dense_v2 | 4/5 ✓ | 4/5 ✓ | +5.28pp | +10.72pp |
+
+**关键发现**:
+
+1. **§4.11 / §4.13 翻转完全推翻**: bug 版 base_43 fold 4 −9.30pp / fold 5 −0.38pp 都是退化桶下 ties 随机抽 20 票的产物; 修复后两 fold 实际都是 +19.2pp / +16.5pp 大胜.
+2. **base_43 全面碾压 dense_v2**: 5/5 vs 4/5, mean excess 是 dense_v2 的 2 倍 (+22.07 vs +10.72). RankIC 上 dense_v2 略高 0.013pp 没有转化为 portfolio 优势.
+3. **fold 1 RankIC vs portfolio 反向**: dense_v2 RankIC=0.120 (远高于 base 0.073) 但组合 −2% (远低于 base +23.8%). 全局排序好不等于 top20 选股准 — 与 §4.13 第一性原理一致.
+4. **fold 4 是真黑天鹅**: 两候选 RankIC 都负 (−0.025 / −0.017), 但奇怪的是组合都跑赢 510300 (+19.2 / +0.02). RankIC 负 + portfolio 正超额, 说明该期 510300 自己也亏 (实际 510300 此 fold 是 +14.5%, 不亏). 真正的解释: fold 4 是大盘强 (+14.5%) 同时模型 top 段错位, 但因为做了流动性过滤和等权 20 票, 实际不至于跑输, 但相对 510300 的优势变薄 (从 25/26pp 缩到 +19.2 / +0.02).
+5. **§4.10 #1 Codex 最初判断 (主轨 base_43) 反而正确**: §4.13 翻转、§4.12/4.13 集中度闸门设计都建立在错数据上, 现在 base_43 5/5 + 大幅胜出, 没有理由不直接选它.
+
+**翻转结论的代价复盘**: 我们因为 walkforward 早停 bug 走了一圈"承认 dense_v2 翻转 → 设闸门 → 准备切主"的弯路, Codex §4.13 / Decision Log "Q25/Q26/Q27" 那一行的"dense_v2 拟主轨"应当回退. 修复后的真相是 **base_43 没有任何意义上输给 dense_v2**.
+
+**给 Codex / 用户的问题**:
+
+- **Q31**: 修复后两候选 score profile 都 5/5 quality=ok, fold-level portfolio base_43 5/5 全胜且 mean excess 是 dense_v2 的 2 倍. 是否同意 §4.10 #1 Codex 最初的"主轨 base_43"判断成立, 不再需要 §4.13 / §4.12 设计的集中度/流动性闸门 (因为 base_43 没有 dense_v2 那种"少数 fold 暴涨拉抬"的疑似集中度风险)?
+- **Q32**: 既然 base_43 5/5 mean excess +22pp 是修复后的真实数据, M8.2 attribution probe 是否还有必要? 我倾向**取消 M8.2 + M8.3 闸门, 直接进 M8.4 schema + M8.5 双轨 daily inference (主轨 base_43 / 影子 dense_v2)**. 闸门是因为 dense_v2 有"4/5 中是否单行业拉抬"的疑虑才需要; base_43 5/5 没有这个疑虑.
+- **Q33**: dense_v2 现在反而成"备胎影子"; 但 dense_v2 fold 1 的 −0.86pp 暴露了 RankIC 高但 top20 选股反向的现象 — 这值得一个独立的研究项目吗 (例如"为什么 dense_v2 的 V2 横截面 rank 特征在 flat 段会让 top 段失真"), 还是暂时归档不挖?
+
 **Decision**: (待 Codex / 用户签)
 
 ## 5. 决策记录 (Decision Log)
@@ -1104,14 +1202,17 @@ def train_lgb(X_train, y_train, X_valid, y_valid, params: dict, num_round: int =
 | 2026-04-25 | Codex 独立评审 | 接受裁掉 Alpha158; 54 特征进入生产候选但不能直接切换; M7 必须同时训练 base_43 与 base_dense_v2_54 并重跑 walk-forward/portfolio/random p90 | M6.1 证明 110 特征不是上限, 但 V2 相对 base 仅 +0.17pp, 生产选择仍需组合闭环验证 |
 | 2026-04-25 | M7.1-3 脚本 | train/walkforward/portfolio 三脚本加 --feature-group; portfolio random_seeds 默认从 30 提到 100 | 按 Codex M7 计划准备闭环 |
 | 2026-04-25 | M7.4 两候选训练 | base_43 RankIC 0.0444 / dense_v2_54 0.0374. holdout 反转: 各组独立 Optuna 后 V2 -0.70pp | ablation 的 V2 +0.18pp 是 baseline best_params 共用的伪信号, 各组独立搜参后 V2 反而落后 |
-| 2026-04-25 | M7.5 walkforward 5 folds | base_43 mean 0.0576 正折 5/5 / dense_v2 mean 0.0464 正折 3/5 | base_43 在 RankIC 维度全面胜出, 包括 up 段 fold 3 +0.032 |
+| 2026-04-25 | M7.5 walkforward 5 folds | **已标注受污染**: base_43 mean 0.0576 正折 5/5 / dense_v2 mean 0.0464 正折 3/5 暂停引用 | walk-forward 早停导致多数 fold 输出离散桶, RankIC/正折比例语义失真, 待修复重跑 |
 | 2026-04-25 | M7.5 portfolio (100 seeds) | dense_v2 ann +42.7% Sharpe 1.59 vs_p90 +8.08pp / base_43 ann +32.1% Sharpe 1.15 vs_p90 +4.66pp | 反转: portfolio 层 dense_v2 全面胜出, 严格按 Codex "或组合明显更好" 应切 dense_v2 |
 | 2026-04-25 | Q22/Q23/Q24 | 已由 Codex 裁决: 主轨 base_43, 影子轨 dense_v2_54; portfolio 强信号不足以让 dense_v2 单轨上线 | dense_v2 只有 6 次调仓组合优势且 walk-forward 3/5 正折; base_43 更稳 |
 | 2026-04-25 | Codex M7 独立评估 | 主轨建议 base_43, 影子轨 dense_v2_54, 旧 110 留作 legacy benchmark; 若必须单轨则选 base_43 | dense_v2 portfolio 强但只有 6 次调仓且 walk-forward 3/5 正折; base_43 更稳, dense_v2 需 shadow + fold-level portfolio 验证 |
-| 2026-04-25 | M8.1 fold-level portfolio | dense_v2 4/5 fold 跑赢 510300 ✓ / base_43 3/5 ✗ | 翻转 Codex §4.10 #1 判断: 按 Codex 自己 §4.10 #3 "fold-level portfolio ≥ 4/5" 标准, dense_v2 过线, base_43 不过 |
-| 2026-04-25 | Q25/Q26/Q27 | Codex 二次裁决: 承认翻转; dense_v2_54 获得拟主轨资格, 但切主前必须通过集中度/流动性/风格偏离闸门; base_43 保留影子轨 | top20 投资目标下 fold-level portfolio 比全局 RankIC 更接近真实损失函数; 但 5 fold × 4 次调仓样本仍小, 不应裸切 |
+| 2026-04-25 | M8.1 fold-level portfolio | **已标注受污染**: dense_v2 4/5 / base_43 3/5 不再作为生产裁决依据 | portfolio 输入来自退化桶 predictions, top20 可能由 ties 返回顺序决定, 待修复重跑 |
+| 2026-04-25 | Q25/Q26/Q27 | **暂停 §4.13 裁决**: dense_v2_54 不再视为已获拟主轨资格; 集中度/流动性闸门推迟到 walk-forward 修复后 | portfolio 优先于 RankIC 的原则保留, 但前提是预测排序本身可信 |
 | 2026-04-25 | M8.2 启动前 sanity check | **§4.11/§4.13 数据受污染** — walkforward 训练用 `train_lgb` 早停, 6/10 fold `best_iter=1`, pred_score 退化为 ≤ 9 个离散桶。M8.1 翻转大概率是 ties 下随机抽 20 票的噪声 | 已查实 `mart_model_walkforward_prediction` 单日 distinct pred_score = 2.1-8.3 (5048 票), 模型实际是 ≤8 类分类器 |
-| 2026-04-25 | Q28/Q29/Q30 | (待签) Claude 提议: 修 `run_multidim_walkforward.py:248` 改为无 early_stopping 固定 `num_round=400` 路径, 重跑 M7.5 walkforward + M8.1 portfolio, 不重跑 M5; §4.13 "dense_v2 拟主轨"标注暂缓 | 问题在早停在小 valid 上不可信, 不在 num_round 选不准; 保持口径与 baseline final fit + M6.1 ablation 一致 |
+| 2026-04-25 | Q28/Q29/Q30 | Codex 裁决: 同意标注 §4.11/§4.13 受污染; 修 walk-forward 为 `train+valid` 固定 400 轮、无 early_stopping; 重跑 M7.5/M8.1; 不重跑 M5 | 保持与 production final fit 口径一致, 先恢复验证可信度, 避免用每折 Optuna/CV 把修 bug 变成新研究项目 |
+| 2026-04-25 | M8.0.1-3 walkforward 修复 | `run_multidim_walkforward.py` 改 train+valid 合并 / 无 early_stopping / 固定 400 轮 / 加 score profile + quality_flag 列, 历史 4 run 标 legacy_walkforward_pre_fix | 修后两候选 distinct_median = 5050-5150 / 日 (~5048 票), 5/5 quality=ok, 完全恢复连续打分 |
+| 2026-04-25 | M8.0.4 重跑 M8.1 portfolio | base_43 **5/5 ✓ mean excess +22.07pp/fold**, dense_v2 **4/5 ✓ mean excess +10.72pp/fold**. fold 1 dense_v2 -0.86pp 不过线 | 修复后 base_43 全面胜出, §4.11 dense_v2 翻转结论彻底推翻; §4.10 #1 Codex 最初的 "主轨 base_43" 判断反而正确 |
+| 2026-04-25 | Q31/Q32/Q33 | (待签) Claude 提议: §4.13 / §4.12 闸门设计取消, 直接进 M8.4 schema + M8.5 双轨 (主 base_43 / 影子 dense_v2) | base_43 5/5 没有 dense_v2 那种集中度风险疑虑; M8.2 attribution probe 失去必要性 |
 
 ---
 
