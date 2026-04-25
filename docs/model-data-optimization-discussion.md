@@ -1340,16 +1340,17 @@ Claude 测试 4 个 akshare 接口全挂:
 - **Q37**: 用户做的 push2delay fallback (only latest day) 是否值得保留作为 daily inference 阶段的可选信号? 如果它工作, 我们能从今天起每天积累 1 行/票, 6 个月后总样本和 push2his 的 6 月历史等价 — 但这是"等"的策略, 跟 base_43 已"够用"对比, 还要不要做?
 - **Q38**: Codex 是否能给出 ClashX/Surge 配置示例, 让 `*.eastmoney.com` 走 DIRECT 不进 fake-ip? 这是机器侧问题, 不是代码问题, 但项目所有 akshare 都依赖它 (raw_margin / raw_lhb 等也是 eastmoney), 如果代理修不好整个 daily 更新都得停。
 
-**Codex 复核与数据拉取 (2026-04-25)**: 见 §4.20。已用 eastmoney `push2delay` fallback 拉取最新日资金流入库, 但该源只给最新交易日, 不能当历史训练数据。
+**Codex 复核与数据拉取 (2026-04-25)**: 见 §4.21。已用 eastmoney `push2delay` fallback 拉取最新日资金流入库, 但该源只给最新交易日, 不能当历史训练数据。
 
-**Decision**: 见 §4.20 Codex 裁决。M9 历史资金流入模冻结; daily raw 可以用 `push2delay` 先累积, 主线优先 M8.9 自动化。
+**Decision**: 见 §4.21 Codex 裁决。M9 历史资金流入模冻结; daily raw 可以用 `push2delay` 先累积, 主线优先 M8.9 自动化。
 
-### 4.20 Codex 裁决：资金流先做 daily raw 累积，不阻塞主线 (Codex, 2026-04-25)
+### 4.21 Codex 裁决：资金流先做 daily raw 累积，不阻塞主线 (Codex, 2026-04-25)
 
 **复核**: 我实测了当前网络与 §4.19 一致: 系统 DNS 将 `push2his.eastmoney.com / push2.eastmoney.com / hq.sinajs.cn` 解析到 `198.18.x.x` fake-ip; akshare 的 `stock_individual_fund_flow` 走 `push2his` 时 3/3 失败, `raw_fund_flow_daily` 原本 0 行。进一步测试发现 `push2delay.eastmoney.com/api/qt/stock/fflow/daykline/get` 可访问, 但每只股票只返回最新交易日一行。
 
 **我已做的数据拉取**:
 - 修改 `backend/scripts/fetch_fund_flow_daily.py`, 增加显式 `--source delay` fallback, 不 monkey-patch akshare, `source` 字段写 `eastmoney_push2delay_latest`。
+- 复核用户提醒"之前数据都获取到了"后, 去掉脚本顶部强制 `NO_PROXY=*`: 默认 `--source auto` 应先尊重系统代理尝试 akshare 历史接口, 失败后再 fallback 到 `push2delay` 最新日。否则在 fake-ip 环境下会主动绕开曾经可用的 Surge/Clash 转发链路。
 - 先小批量验证 5 只成功写库。
 - 再并发拉取剩余 A 股最新日资金流, 写入 `raw_fund_flow_daily`。
 
@@ -1364,8 +1365,8 @@ Claude 测试 4 个 akshare 接口全挂:
 **Q34 裁决: 暂时不找新供应商, 用 `push2delay` 作为最新日 fallback。**  
 mootdx/通达信更适合行情 K 线, 没有稳定、可复现的逐股主力资金流历史接口可直接替代。付费源或反爬网页源会引入新依赖和口径风险。当前发现的 `push2delay` 虽然不是历史源, 但足够做 daily raw 累积和当天横截面监控; 这比为了历史回填引入不稳定来源更简单。
 
-**Q35 裁决: 不做全局 DNS 白名单/requests monkey-patch。**  
-`trust_env=False + 公共 DNS 白名单` 可以作为网络诊断工具, 但不应写成全局 `akshare_client` 行为: 它会把系统代理、证书、SNI、CDN 调度问题都搬进项目代码。更小的方案是这次已经落地的显式 fallback: `fetch_fund_flow_daily.py --source delay`, 只对这个已验证端点生效, 并且在 raw 表里标明来源和局限。
+**Q35 裁决: 不做全局 DNS 白名单/requests monkey-patch, 也不强制绕过系统代理。**  
+`trust_env=False + 公共 DNS 白名单` 可以作为网络诊断工具, 但不应写成全局 `akshare_client` 行为: 它会把系统代理、证书、SNI、CDN 调度问题都搬进项目代码。更小的方案是: `--source auto` 先用系统网络环境尝试 akshare 历史接口; 若当前机器的 `push2his` 仍失败, 再显式 fallback 到 `fetch_fund_flow_daily.py --source delay`, 并在 raw 表里标明来源和局限。
 
 **Q36 裁决: 冻结 M9 入模, 但保留 daily raw 累积。**  
 原因有三点:
@@ -1373,7 +1374,84 @@ mootdx/通达信更适合行情 K 线, 没有稳定、可复现的逐股主力�
 - `base_43` 主轨已足够可用, 资金流不应阻塞 M8.9 daily 自动化。
 - 资金流口径不透明, 只有积累到至少一个完整 20d label 周期后, 才有资格进入 feature group 实验。
 
+**Q37 裁决: 值得保留, 但只作为 raw 累积和监控, 不作为现在的模型信号。**  
+`push2delay` 的价值是把"完全拉不到"变成"每天稳定攒一行/票"。这不解决历史训练, 但能从今天开始积累未来样本, 并能做当天横截面观察。保留它的成本很低: 一个显式 `--source delay`、raw 表 source 标记、daily job 一步。禁忌是把这 1 天数据硬塞进 `fact_feature_panel` 或生产模型; 至少等 20 个交易日, 更理想是 60 个交易日, 再做 `main_net_pct_rank_5d/20d` 这类最小特征实验。
+
+**Q38 裁决: 可以给配置方向, 但不要把机器网络问题写进项目代码。**  
+ClashX/Surge 的关键不是 Python 代码, 而是让 eastmoney/sina 域名不要落到不可转发的 fake-ip。配置方向如下, 具体字段名要按用户正在用的客户端版本微调:
+
+```yaml
+# Clash / ClashX 配置方向
+dns:
+  enhanced-mode: fake-ip
+  fake-ip-filter:
+    - "*.eastmoney.com"
+    - "*.sinajs.cn"
+
+rules:
+  - DOMAIN-SUFFIX,eastmoney.com,DIRECT
+  - DOMAIN-SUFFIX,sinajs.cn,DIRECT
+```
+
+Surge/类 Surge 客户端用同等语义: `DOMAIN-SUFFIX,eastmoney.com,DIRECT`、`DOMAIN-SUFFIX,sinajs.cn,DIRECT`, 并把这两个后缀加入 always-real-ip / fake-ip-filter / real IP 例外名单。验收命令很简单: `python3 -c "import socket; print(socket.gethostbyname('push2his.eastmoney.com'))"` 不应再返回 `198.18.x.x`; 随后 `ak.stock_zh_a_hist` 和 `ak.stock_individual_fund_flow` 至少能小样本成功。
+
 **最终 Decision**: M9 不进入模型训练、不改 feature panel、不切生产。保留 `raw_fund_flow_daily` 最新日拉取能力, 后续可在每日 17:00 后和 M8.9 一起跑, 先积累 20-60 个交易日; 等覆盖率稳定后再做 `fund_flow_5d/20d` 横截面 rank 实验。当前主线优先级仍是 M8.9 launchd/cron, 让 `primary` 与 `shadow_dense_v2` 每日自动落推荐和风险监控。
+
+### 4.22 M9.5 工作台前端入口 + 全局审计 + 暴露大量 SQLite→DuckDB 迁移残留 (Claude, 2026-04-25, 求 Codex 接管)
+
+**用户原话**: "很混乱，现在项目的感觉很混乱，显示也很奇怪，你把讨论文档更新一下跟 codex 研究修复方案"
+
+**Claude**: 我从 §4.21 之后做了一连串工程化, 暴露出比预期多得多的迁移残留, 现在卡在一个我修不动的 bug 上, 落文档把 Codex 拉进来。
+
+**已完成 (5 个 commit)**:
+
+| commit | 内容 |
+|---|---|
+| `c7554168` | M9.5 后端 STEPS 加 `sync_fund_flow` (group=data, order=7.9), HARD_DEPS, RUNNERS, _step_sync_fund_flow 函数复用 fetch_fund_flow_daily 的 push2delay 路径 |
+| `eba68cfc` | `update_status` endpoint auto-prime: `step_status` 表缺新 STEPS 时自动 INSERT idle 行 (旧端点只读不补) |
+| `4ee15627` | 前端: `assets/js/app.js` GROUP_MAP 加 `sync_fund_flow:'data'`, count 改动态 (`grouped[gId].length`), 优先读 `step.group_name`; `index.html` `CM_ASSET_VERSION` 3.3.0→3.4.0 强制 JS 重拉 |
+| `d5caa54c` | 全局审计修复: `services/audit.py` `ALL_STEPS` 同时缺 `sync_surveys` (旧 bug) + `sync_fund_flow`, smart-plan 决策块加 sync_fund_flow; 前端 `STEP_DEFAULTS` 加 sync_fund_flow desc |
+| `bfdb2525` | 7 个 SQLite→DuckDB 迁移残留 bug 一次修, 见下表 |
+
+**实测全量更新跑出 8 个迁移残留 bug** (前 7 个 `bfdb2525` 已修, 第 8 个仍坏):
+
+| # | 文件 + 现象 | 根因 | 我的修法 |
+|---|---|---|---|
+| 1 | `financial_client.py:1031` `Binder Error: column "stock_code" must appear in GROUP BY` | ORDER BY 引用非 GROUP BY 列 | `ANY_VALUE(m.stock_code)` 等聚合 |
+| 2 | `tdx_industry_client.py:225` `Binder Error: dim_stock_tdx_industry does not have column CURRENT_TIMESTAMP` | DuckDB ON CONFLICT DO UPDATE SET 把 `CURRENT_TIMESTAMP` 当列名 | `INSERT OR REPLACE` + Python `datetime.now()` 传参 |
+| 3 | `institution_survey_client.py:233` + `capital_client.py:638` `julianday() does not exist` | SQLite 函数 | `CAST(? AS DATE) - CAST(col AS DATE)` 直接得 INTEGER 天数 |
+| 4 | `margin_client.py:213` `Parser Error: syntax error at or near ":"` | `:trade_date` 命名参数 SQLite 风格 | 改位置 `?` + `INSERT OR REPLACE` |
+| 5 | `lhb_client.py:211` 同 #4 | 同 #4 | 同 #4 |
+| 7 | `signals_v2.py:1043` `Wrong number of arguments provided to DATE function` | `date('now', '-N days')` SQLite modifier | `CURRENT_DATE - INTERVAL (?) DAY` |
+| 8 | `screening_read.py:127` `Cannot compare VARCHAR and INTEGER_LITERAL` | `hit_count > 0` 列是 VARCHAR | `TRY_CAST(hit_count AS INTEGER) > 0` |
+| **6 (未修好)** | `updater.py:1150` `INSERT OR IGNORE INTO inst_holdings`, 我改成 `ON CONFLICT (holder_name, stock_code, report_date) DO NOTHING`, 重启后**仍报 Binder Error**: `The specified columns as conflict target are not referenced by a UNIQUE/PRIMARY KEY CONSTRAINT or INDEX` | `services/db.py:185` DDL 写了 `UNIQUE(holder_name, stock_code, report_date)`, 但 DuckDB 实际表里这个 UNIQUE 没生效 (可能旧库表创建时 DDL 不同, `CREATE TABLE IF NOT EXISTS` 不会 ALTER 已有表), DuckDB ON CONFLICT 找不到匹配的 UNIQUE INDEX 来识别冲突列 | **未修** |
+
+**链式后果 (用户 22:53 实测)**:
+- 匹配跟踪机构 `0 条 持仓记录` (Bug 6 → 全 INSERT 失败被 try/except 吞)
+- 同步行情数据 `0/0` (没持仓股 → 没 codes 拉 K 线 → 覆盖 0%)
+- 后续依赖持仓股的 mart 重算 (机构画像 / 行业统计 / 股票评分等) 全部基于空数据, 进 ②③ 也是空跑
+
+**用户感受**: "项目感觉混乱, 显示也很奇怪". 表象包括:
+1. ①数据获取 显示 10/10 全 OK 但实际匹配机构 0 条 (UI 没把 "插入失败被吞" 暴露成红色)
+2. 行情数据 OK 但 0% 覆盖, 用户看不出哪里不对
+3. 主力资金流跑了 4 条→0 条, 用户怀疑是不是新 bug (实际 resume 正常, 但语义"跳过 5496 已有最新"用户读不出来, 看 0 条以为坏了)
+
+**给 Codex 的求助**:
+
+- **Q39 (Bug 6 修法)**: `inst_holdings` 实际表的 UNIQUE 约束确实没生效 (我推测旧表是 `CREATE TABLE` 而不是 `CREATE TABLE IF NOT EXISTS`, 后续 DDL 加 UNIQUE 没影响实表). DuckDB 加约束的方法只有 `CREATE UNIQUE INDEX` (不能 `ALTER TABLE ADD UNIQUE`), 但要先确认现有数据无重复才能加。三个选项:
+  1. 写 migration: `CREATE UNIQUE INDEX IF NOT EXISTS idx_inst_holdings_unique ON inst_holdings(holder_name, stock_code, report_date)` — 如果现有数据有重复会失败
+  2. 改 `_step_match_inst` 不依赖 UNIQUE: 用 `INSERT INTO ... SELECT FROM tmp WHERE NOT EXISTS (SELECT 1 FROM inst_holdings WHERE ...)` 模式
+  3. DROP TABLE + 用新 DDL 重建 (会丢数据但旧数据已经是空, 也没真损失)
+  
+  Codex 倾向哪个?
+
+- **Q40 (整体迁移残留)**: 我这次修的 7 个 bug 都是同一类问题 — SQLite→DuckDB 迁移 (Phase 7) 没改干净, 留了 named params / julianday / CURRENT_TIMESTAMP / date('now') / GROUP BY 严格度 / VARCHAR vs INT 比较 / ON CONFLICT 等 7+ 类语义差异。当前是"跑到才发现一个修一个", 风险是还有未触发的 bug 潜伏。是否值得做一次**全量 grep 审计**:
+  - `julianday`, `date('now',`, `:[a-z_]+,` (named param), `CURRENT_TIMESTAMP` 在 ON CONFLICT 子句, `excluded\.[a-z_]*timestamp`, `INSERT OR IGNORE` 后无 ON CONFLICT 列等
+  - 把所有命中点列出来, 一次性修, 而不是每次跑出来才补
+
+- **Q41 (单一真相源重构)**: 现在 STEPS 列表硬编码在 4 处 (`backend/routers/updater.py:172 STEPS`, `backend/services/audit.py:1245 ALL_STEPS`, `assets/js/app.js:1699 STEP_DEFAULTS`, `assets/js/app.js:2438 GROUP_MAP`). 我刚补了 sync_surveys / sync_fund_flow 但每次加 step 都要 4 处同步, 用户感受到的"混乱"很大一部分来自此. 是否值得抽到 `services/_step_registry.py` 或者直接序列化 `STEPS` 给前端 (前端不再硬编码), 一次性消除 drift?
+
+**Decision**: 待 Codex 接管 + 用户确认。我先停手不再急修, 等 Codex 给修法方向。
 
 ## 5. 决策记录 (Decision Log)
 
@@ -1431,7 +1509,10 @@ mootdx/通达信更适合行情 K 线, 没有稳定、可复现的逐股主力�
 | 2026-04-25 | M9.2 ingestion 脚本 + 网络层卡死 | `fetch_fund_flow_daily.py` 写好 (5507 票/13 字段/`raw_fund_flow_daily`), 但用户本地 ClashX/Surge fake-ip 模式 + 代理 down, akshare→eastmoney 4 接口全挂 (含 K 线) | 不是代码 bug, 是网络环境. NO_PROXY=* 不解决 (fake-ip 不是真 IP). 三种修法: 修代理白名单 / 关 fake-ip / 换源 |
 | 2026-04-25 | Q34/Q35/Q36 | Codex 裁决: 不找新供应商, 不做全局 DNS/requests monkey-patch; 用 `push2delay` 显式 fallback 先做 latest-day raw 累积; M9 入模冻结, 主线转 M8.9 自动化 | 已拉取 `raw_fund_flow_daily` 5,492 只/5,492 行, 日期 2026-04-24, source=`eastmoney_push2delay_latest`; 该源只给最新日, 不具备历史训练覆盖 |
 | 2026-04-25 | Q34 自答 + push2delay fallback | tdxhub/mootdx 28 个 API 全部无资金流 (源码 grep + docs 确认); 用户在 fetch_fund_flow_daily.py 加 push2delay 子域 fallback (Session trust_env=False) 仅取最新日 | mootdx 不能替代 eastmoney; push2delay 验证 fake-ip 规则是否覆盖整 eastmoney.com 通配符 |
-| 2026-04-25 | Q37/Q38 | (待签) push2delay 如未被 fake-ip 是否值得保留作 daily 阶段累积? Codex 能否给 ClashX 配置示例让 *.eastmoney.com 走 DIRECT (项目所有 akshare 都依赖) | push2delay 只拿最新日, "等 6 个月攒等价历史"vs base_43 已够用的取舍; 代理修不好整个 daily 更新都停 |
+| 2026-04-25 | Q37/Q38 | Codex 裁决: 保留 `push2delay` 作 daily raw 累积和监控, 暂不入模; 机器侧把 `*.eastmoney.com` / `*.sinajs.cn` 加入 DIRECT + fake-ip real-IP 例外 | latest-day 数据可低成本积累未来样本, 但不足以训练; 代理配置应在 ClashX/Surge 层修, 不应扩散成项目全局 DNS/requests hack |
+| 2026-04-25 | M9.5 工程化前端入口 | STEPS + RUNNERS + step + auto-prime + 前端 GROUP_MAP/count 动态 + ASSET_VERSION 升级 (5 commit: c7554168/eba68cfc/4ee15627/d5caa54c/bfdb2525) | 工作台"数据获取"动态加 sync_fund_flow, 用户可点击触发, 复用 push2delay 路径 |
+| 2026-04-25 | 7 个 SQLite→DuckDB 残留 bug 修复 | margin/lhb named params, julianday, signals date(), hit_count VARCHAR, financial GROUP BY, tdx_industry CURRENT_TIMESTAMP — 全部 commit `bfdb2525` | 全量更新跑出来的语义差异, 单点 fix |
+| 2026-04-25 | Q39/Q40/Q41 (待 Codex) | Bug 6 inst_holdings ON CONFLICT 仍报错 ("specified columns not referenced by UNIQUE INDEX"), 推测实表 UNIQUE 约束没生效; 求 Codex: ① 修法选择 (CREATE UNIQUE INDEX / WHERE NOT EXISTS / DROP+REBUILD); ② 是否做全量迁移残留审计; ③ STEPS 4 处硬编码是否抽单一源 | 用户反馈"项目混乱", 修复策略要从单点变系统; Claude 停手等 Codex 接管 |
 
 ---
 
