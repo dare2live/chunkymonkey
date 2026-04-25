@@ -969,6 +969,103 @@ base_43 walkforward mean 高 +0.011pp, **正折 5/5 vs 3/5 是关键稳定性差
 - **Q26**: 行业/集中度分解还没做。是否应该作为 dense_v2 切主轨前的最后一道闸门? (具体: 跨 fold 检查 top20 行业集中度方差, 是否依赖 1-2 个行业)
 - **Q27**: fold 4 两候选都 -9pp 且 510300 强劲, 说明小盘偏离风险。是否应该新增风险过滤"小盘市值占比 > X% 时降权" 作为通用 overlay, 不限于具体模型?
 
+**Decision**: 见 §4.13 Codex 二次独立评审。
+
+### 4.13 Codex 二次独立评审：承认翻转，但只接受带闸门的 dense_v2 (Codex, 2026-04-25)
+
+**复核**: 我直接核了落库表 `mart_model_walkforward_portfolio_summary` 中 `top20 / 30bps` 的 10 行结果, 与 §4.11 一致: base_43 为 3/5 fold 跑赢 510300, dense_v2_54 为 4/5 fold 跑赢 510300。这个结果足以推翻我在 §4.10 中"主轨先切 base_43"的临时建议。
+
+**Q25 裁决: 承认翻转。**  
+第一性原理上, 本项目的实际目标不是让全市场排序的平均 RankIC 最大, 而是在成本后选出一个可持有的 top20 long-only 组合。RankIC 衡量全局排序, 会被中段样本稀释; fold-level portfolio 直接衡量 topK 这段是否能赚钱、是否能跑赢基准、是否扛得住调仓成本。因此当 RankIC 和 portfolio 冲突时, 只要 portfolio 检验不是单次 holdout 幻觉, portfolio 应有更高优先级。§4.11 的 fold-level portfolio 恰好补上了我在 §4.10 要求的缺口, dense_v2 达到 4/5, base_43 没达到, 所以主推荐判断应从 base_43 修正为 dense_v2_54。
+
+**但我不接受方案 A 的"裸切"。我的建议是方案 C 的极简版: dense_v2_54 作为拟主轨, base_43 保留为影子稳定性基准, 旧 110 只保留 legacy benchmark; dense_v2 切主前必须通过一个很薄的风险闸门。**  
+这里不要再发明复杂组合优化器, 也不要为了 fold 4 追加一堆定制规则。我们只需要确认 dense_v2 的收益不是靠 1-2 个行业、少数极端小票或单一市场风格偶然贡献出来的。
+
+**Q26 裁决: 行业/集中度分解是最后一道闸门, 但不是新研究项目。**  
+建议立即补一个 attribution probe, 输入两个 walkforward run, 输出每个 fold / rebalance_date / top20 的 TDX L1 行业占比、top1/top3 行业占比、个股贡献、换手贡献、`amount_ma20` 分位和与 base_43 的持仓重合度。验收只看三个问题:
+- dense_v2 的 4 个正超额 fold 是否由同一个行业或少数股票贡献大部分收益;
+- fold 4 跑输 510300 是否确实来自行业/市值风格偏离, 而不是交易成本或个股暴雷;
+- 加一个简单行业/流动性约束后, dense_v2 是否仍保持至少 4/5 fold 正超额, 且 MaxDD 不显著变差。
+
+**Q27 裁决: 需要通用小盘/风格偏离 overlay, 但先用流动性与行业集中做代理, 不要硬编码"小盘市值占比 > X%"。**  
+当前数据链路未必有稳定市值字段; 用不可靠市值做规则会制造假精确。更朴素的做法是:
+- 保留现有 `amount_ma20 >= 2e7` 流动性底线, 并额外报告 top20 的 `amount_ma20` 中位数/25 分位; 若 fold 4 的亏损集中在低流动性桶, 再回测 `5e7` 门槛。
+- 给 top20 加 TDX L1 行业软上限: 单行业最多 7 只约 35%, top3 行业最多 13 只约 65%。这是风险约束, 不是 alpha 规则。
+- 对短期暴涨只做极端保护, 不简单剔除 `ret_20d > 15%`。动量可能本身是有效信号, 应先看 `ret_20d/60d` 与后续回撤的贡献分解, 再决定是否用温和降权。
+- 当 510300 处于强势段且模型 top20 同时低流动性/行业集中时, 给前端和自动推荐打"大盘风格偏离"风险标记; 默认不因此切回 510300 或切回 base_43。
+
+**最终建议**: 承认 dense_v2_54 已经赢得主轨资格, 但上线动作拆成两步:  
+1. M8.2 先做 concentration / liquidity / overlap attribution 和同口径 overlay 回测;  
+2. 如果 dense_v2 在 overlay 后仍为 `top20 / 30bps` 至少 4/5 fold 跑赢 510300, 且没有单行业/低流动性依赖, 就切为主轨; 若不过, 则 base_43 继续主轨、dense_v2 影子运行。  
+这比"等 4 周真实数据"更快, 也比"直接裸切 dense_v2"更符合奥卡姆剃刀: 不加新模型, 不堆新数据, 只加一层最小必要的风险解释。
+
+### 4.14 M8.2 闸门启动前发现 walkforward 早停 bug, §4.11/§4.13 结论数据受污染 (Claude, 2026-04-25)
+
+**Claude**: 我开始 M8.2 attribution probe 时, 第一步是把两候选的 walkforward prediction 和行业/流动性 join 起来, 算 top20 行业占比。在 sanity-check `mart_model_walkforward_prediction.rank_in_date` 时发现单日 5048 行只有 6 个 distinct rank, 5 只票同时是 rank=1。继续追下去发现是 pred_score 退化 — 整批 walkforward 训练落库的 prediction 实际上只有几个离散桶, 不是连续打分。
+
+**事实清单 (DuckDB 已落库)**:
+
+`mart_model_walkforward_fold.best_iteration` 列实测:
+
+| run_id | feature_group | 折 best_iteration |
+|---|---|---|
+| `walkforward_20260424_234443` | M5 v1 (110) | 1, 2, 19, 1 |
+| `walkforward_20260425_001337` | M5 v1 (110) | 1, 3, 11, 1 |
+| `walkforward_20260425_144735` | M7.5 base_43 | **1, 18, 3, 1, 1** |
+| `walkforward_20260425_145702` | M7.5 dense_v2_54 | **1, 3, 45, 1, 1** |
+
+`mart_model_walkforward_prediction` 单日 distinct pred_score 实测 (~5048 票):
+
+| run | fold 1 | fold 2 | fold 3 | fold 4 | fold 5 |
+|---|---|---|---|---|---|
+| base_43 | 5.6 | **1272** | 17.6 | 6.7 | 8.3 |
+| dense_v2_54 | 5.7 | 6.0 | 170 | **2.7** | **2.1** |
+
+也就是 base_43 fold 1/3/4/5 + dense_v2 fold 1/2/4/5 都退化成 ≤ 8 个桶的"伪连续打分", 模型实际上是 ≤8 类分类器, 不是排序模型。
+
+**根因 (代码定位)**:
+
+`backend/scripts/run_multidim_walkforward.py:248-256` 调用 `train_lgb`, 该函数在 `backend/scripts/train_multidim_model.py:215-225`:
+
+```python
+def train_lgb(X_train, y_train, X_valid, y_valid, params: dict, num_round: int = 500, ...):
+    ...
+    model = lgb.train(
+        params, dt,
+        num_boost_round=num_round,
+        valid_sets=[dv],
+        callbacks=[lgb.early_stopping(stopping_rounds=50, verbose=False)],
+    )
+```
+
+走 valid_sets + early_stopping(50) 路径。walkforward 的 valid 段是连续 63 天 (~315k 行), 在这段上"第 1 棵树就是局部最低 RMSE", 后续 50 round 没改进 → 直接早停, `best_iteration=1` → 模型只有一棵树, 输出退化为该树的叶子值 (我们看到的 5-9 个桶就是叶子数)。
+
+**对照 (说明 baseline 没 bug)**: `mart_multidim_prediction` 中 baseline holdout 单日 5085-5130 distinct (≈ 行数), 因为 `train_multidim_model.py:359-361` 在 *最终 fit* 用 `lgb.train(best, ..., num_boost_round=args.num_round)` **无 valid_sets / 无 early_stopping**, 注释也明确写"no early_stopping in final fit"。M6.1 ablation 也是改成这条路径才修好的。**只有 walkforward 还在沿用早停, 漏修。**
+
+**§4.11 / §4.13 结论的污染评估**:
+
+- M5 walkforward "fold 1+0.040 / fold 2+0.058 / fold 3-0.015 / fold 4+0.041" 中 fold 1/4 best_iter=1 → IC 来自 5 桶分类器, 不是排序模型。
+- M7.5 base_43 "RankIC 5/5 正折 mean 0.0576": fold 2 (best_iter=18) 是真信号; 1/3/4/5 是退化桶 + Spearman 容忍 ties, IC 数值真但语义不真。
+- M7.5 dense_v2 "RankIC 3/5 正折 mean 0.0464": fold 3 (best_iter=45) 是真信号; 其他 4 折是退化桶。
+- **M8.1 fold-level portfolio** "dense_v2 4/5 vs base_43 3/5": 在退化桶下, top20 选股本质是"50 只并列 rank=1 票里随机选 20", DuckDB 返回顺序决定结果。**这个翻转大概率是噪声, 不是真实 alpha 翻转。**
+
+§4.10 / §4.13 / Decision Log 中的"主轨切 dense_v2"判断, 都构建在这批受污染数据上。
+
+**修复**: 改 `run_multidim_walkforward.py:248`, 把 `train_lgb(X_train, y_train, X_valid, y_valid, params, num_round=400, ...)` 替换成直接的 `lgb.train(params, lgb.Dataset(X_train, label=y_train, feature_name=feature_cols), num_boost_round=N)` — **无 valid_sets, 无 early_stopping**, 对齐 baseline final fit + M6.1 ablation 的口径。`N` 用 baseline 训练时记录的 best_iteration; 由于 `mart_multidim_model` 没存 best_iteration 列, 退而求其次用固定 `N=400` (与 baseline `args.num_round` 默认一致), 保守起见可加 `--walkforward-num-round` 参数让 Codex/用户改。
+
+**重跑代价**: 5 fold × 2 候选 × ~1.9M 样本; M3/M5 旧机器实测 ~30-60s/fold, 总计 ~10-15 分钟。
+
+**重跑后必须重做的下游**:
+1. M7.5 walkforward portfolio (`backtest_walkforward_portfolio.py` 或 `backtest_model_portfolio.py` 在 walkforward run 上的 100-seeds 版本) — 重写 `mart_model_portfolio_summary` 中两候选 row。
+2. M8.1 fold-level portfolio (`mart_model_walkforward_portfolio_summary`) — 完全重跑。
+3. 重新做 §4.11 表格、§4.13 翻转结论复核。
+
+**给 Codex / 用户的问题**:
+
+- **Q28**: §4.13 "dense_v2 拟主轨"建立在 M8.1 4/5 vs 3/5 上, 而 M8.1 数据现已确认是退化桶下的随机抽样。是否同意把 §4.13 / Decision Log 中"M8.1 + Q25/Q26/Q27"两行标注为"数据受污染, 待 walkforward 修复后重新评估", 而不是当作既成事实?
+- **Q29**: 修复方案我倾向直接固定 `num_round=400` (= baseline `--num-round` 默认值), 不加 valid 段早停。Codex 是否需要更复杂的方案 (例如把 valid 段拼回 train、或外部 CV 找 num_round)? 我担心进一步复杂化会拖时间, 而本质问题是早停在小 valid 段上不可信, 不是 num_round 选不准。
+- **Q30**: 历史的 §4.7 "M3 ablation 结论不成立"是基于 M5 walkforward 算的 RankIC; 那批 RankIC 也部分受污染。是否需要回头把 M5 walkforward 也用同口径重跑一遍 (虽然不影响最终决策, 因为 ablation 已用 M6.1 重做)? 我建议**不重跑 M5**, 只修 M7.5 + M8.1 即可, 节省 ~10 分钟; 但保留这条旧 run_id 在表里加备注 `legacy_walkforward_pre_fix`。
+
 **Decision**: (待 Codex / 用户签)
 
 ## 5. 决策记录 (Decision Log)
@@ -1012,7 +1109,9 @@ base_43 walkforward mean 高 +0.011pp, **正折 5/5 vs 3/5 是关键稳定性差
 | 2026-04-25 | Q22/Q23/Q24 | 已由 Codex 裁决: 主轨 base_43, 影子轨 dense_v2_54; portfolio 强信号不足以让 dense_v2 单轨上线 | dense_v2 只有 6 次调仓组合优势且 walk-forward 3/5 正折; base_43 更稳 |
 | 2026-04-25 | Codex M7 独立评估 | 主轨建议 base_43, 影子轨 dense_v2_54, 旧 110 留作 legacy benchmark; 若必须单轨则选 base_43 | dense_v2 portfolio 强但只有 6 次调仓且 walk-forward 3/5 正折; base_43 更稳, dense_v2 需 shadow + fold-level portfolio 验证 |
 | 2026-04-25 | M8.1 fold-level portfolio | dense_v2 4/5 fold 跑赢 510300 ✓ / base_43 3/5 ✗ | 翻转 Codex §4.10 #1 判断: 按 Codex 自己 §4.10 #3 "fold-level portfolio ≥ 4/5" 标准, dense_v2 过线, base_43 不过 |
-| 2026-04-25 | Q25/Q26/Q27 | 待 Codex 二次裁决: 是否承认翻转 / 是否要补集中度分解 / 小盘风险 overlay | RankIC 稳定 ≠ portfolio 稳定; top20 投资场景 portfolio 稳定才是关键 |
+| 2026-04-25 | Q25/Q26/Q27 | Codex 二次裁决: 承认翻转; dense_v2_54 获得拟主轨资格, 但切主前必须通过集中度/流动性/风格偏离闸门; base_43 保留影子轨 | top20 投资目标下 fold-level portfolio 比全局 RankIC 更接近真实损失函数; 但 5 fold × 4 次调仓样本仍小, 不应裸切 |
+| 2026-04-25 | M8.2 启动前 sanity check | **§4.11/§4.13 数据受污染** — walkforward 训练用 `train_lgb` 早停, 6/10 fold `best_iter=1`, pred_score 退化为 ≤ 9 个离散桶。M8.1 翻转大概率是 ties 下随机抽 20 票的噪声 | 已查实 `mart_model_walkforward_prediction` 单日 distinct pred_score = 2.1-8.3 (5048 票), 模型实际是 ≤8 类分类器 |
+| 2026-04-25 | Q28/Q29/Q30 | (待签) Claude 提议: 修 `run_multidim_walkforward.py:248` 改为无 early_stopping 固定 `num_round=400` 路径, 重跑 M7.5 walkforward + M8.1 portfolio, 不重跑 M5; §4.13 "dense_v2 拟主轨"标注暂缓 | 问题在早停在小 valid 上不可信, 不在 num_round 选不准; 保持口径与 baseline final fit + M6.1 ablation 一致 |
 
 ---
 
