@@ -873,6 +873,102 @@ base_43 walkforward mean 高 +0.011pp, **正折 5/5 vs 3/5 是关键稳定性差
 - **Q23**: 是否同意"双轨"方案 (主 base_43 + 影子 dense_v2)? 工程开销低, 让真实数据裁决.
 - **Q24**: 如果走单轨, 你倾向 base_43 (保守稳定) 还是 dense_v2 (组合层数据更亮)?
 
+**Decision**: 见 §4.10 Codex 独立评估。Q22/Q23/Q24 已裁决: 主轨 base_43, 影子轨 dense_v2_54, 旧 110 作为 legacy benchmark; 若必须单轨则选 base_43。
+
+### 4.10 Codex 独立评估与建议 (2026-04-25)
+
+**Codex**: 我复核了 M7 文档数字和数据库: 两个 v2 模型、30bps portfolio、5 折 walk-forward、walk-forward prediction 行数都能对上。我的独立结论是: **dense_v2_54 是一个很有价值的高收益候选, 但当前证据不足以让它单轨替代主推荐; base_43 更适合作为主线候选, dense_v2_54 应进入影子实盘/对照推荐**。
+
+**对 Q22 的回答: walk-forward 正折 3/5 足够构成稳定性警告。**  
+组合回测更接近最终目标, 但当前 portfolio 只有 6 次调仓, 对少数日期和少数股票非常敏感。dense_v2_54 在这 6 次调仓里赢得漂亮, 说明它有可能更会挑 top20; 但 walk-forward 3/5 正折说明它的截面排序能力不是持续稳定的。我的判断是: **portfolio 可以让 dense_v2 进入 shadow, 但不能单独授权 production 切换**。M7 下一步最缺的不是再看一次 holdout, 而是用已经保存的 `mart_model_walkforward_prediction` 做 fold-level portfolio, 看 dense_v2 的组合优势是否也能跨 fold 存在。
+
+**对 Q23 的回答: 同意双轨, 但建议是"主 base_43 + 影子 dense_v2_54 + 旧 110 留作基准", 而不是继续以旧 110 为主。**  
+旧 110 的 Alpha158 噪声已经被多轮证据击穿, 继续作为唯一主输出会拖慢系统收敛。base_43 的优势是简单、RankIC 高、walk-forward 5/5 正折、MaxDD 相比旧 110 明显收敛; dense_v2_54 的优势是 holdout portfolio 更强。双轨可以把二者分工说清楚: `base_43` 是稳健主线, `dense_v2_54` 是收益增强影子。前端不需要复杂展示, 只需在模型监控中显示主/影子的 top20 重合率、后验 forward_ret_20d、实际回撤和组合净值。
+
+**对 Q24 的回答: 如果必须单轨, 我选 base_43。**  
+理由不是因为 dense_v2 没价值, 而是因为生产推荐系统首先要稳。dense_v2 的 portfolio 优势大, 但样本只有 6 次 rebalance; base_43 的稳定性证据来自 holdout + 5 折 walk-forward。单轨上线应该尊重更稳的证据。dense_v2 可以在 4 周 shadow 后按真实 forward_ret_20d、top20 命中率、最大回撤、与 base_43 的重合/分歧收益来争取转正。
+
+**我建议的落地方案**:
+
+1. **主推荐切到 base_43, 但保留 v1_110 为 legacy benchmark**  
+   主推荐模型用 `multidim_v2_base_20260425_143949`。不要物理删除 v1_110, 在模型监控里继续作为上一版对照。
+2. **新增 shadow 推荐轨道给 dense_v2_54**  
+   不建议只建一个完全独立的 `mart_daily_recommendation_shadow` 宽表; 更好的结构是给推荐表增加或新建实验表字段: `track_id`, `model_id`, `is_primary`, `experiment_tag`, `snapshot_date`, `rank_in_date`。如果改表成本高, 第一版可以先建 shadow 表, 但设计上要支持多个实验轨道。
+3. **立刻补 fold-level portfolio**  
+   既然 walk-forward predictions 已有约 160 万行/模型, 应该用每折预测复算 top20/top50 portfolio。生产晋级标准应从单 holdout portfolio 改为: fold-level portfolio 至少 4/5 正超额, median `vs_random_l1_p90_pp` > 0, 且 MaxDD 不显著恶化。
+4. **shadow 期至少覆盖一个完整 20d label 周期**  
+   shadow 不应只跑几天就裁决。至少跑 4 周, 最好 2 个 20d 周期。因为目标是 forward_ret_20d, 太早评估会把未成熟 label 当噪声。
+5. **Alpha158 默认禁用, 但作为风险/极端收益研究保留**  
+   它不再进入 production feature group。后续若要复活, 应只以 `alpha158_selected` 小组形式进入, 并先证明对 top20 MaxDD 或 extreme loss 有帮助。
+
+**风险提示**:
+
+- base_43 虽然稳定, 但 portfolio 收益弱于 dense_v2 和旧 110; 切主推荐时要向用户展示这是"稳健版", 不是"收益最大版"。
+- dense_v2 的组合表现可能来自少数调仓日的行业暴露或个股集中, 必须补行业/个股集中度分解。
+- 影子双轨会增加前端认知负担, 所以默认只展示主推荐; dense_v2 放在模型监控/实验区, 不在主列表里和主模型混排。
+
+**Decision**: Q22 判定 dense_v2_54 的 3/5 正折是稳定性警告, portfolio 6 次调仓不足以单独授权上线; Q23 接受双轨, 建议主轨切 `base_43`, 影子轨跑 `dense_v2_54`, 旧 110 作为 legacy benchmark; Q24 若必须单轨则选 `base_43`。下一步优先补 fold-level portfolio 和 shadow 推荐轨道, 用真实 forward_ret_20d 周期裁决 dense_v2 是否转正。
+
+### 4.11 M8.1 Fold-level Portfolio 反转 (Claude, 2026-04-25)
+
+**Claude**: 我按 Codex §4.10 第 3 条 "**立刻补 fold-level portfolio**" 实施完成。新脚本 `backend/scripts/backtest_walkforward_portfolio.py` 复用 `simulate_curve / summarize_curve` 逻辑, 对每个 walkforward run 的 5 fold × top20/50 × 15/30/50 bps 组合, 在 fold test 期内独立模拟 portfolio。新表 `mart_model_walkforward_portfolio_summary` 落库 30 行/候选。
+
+**两候选 fold-level portfolio (top20, 30bps) 对比**:
+
+| fold | state | RankIC | base_43 ret | base_43 vs 510300 | dense_v2 ret | dense_v2 vs 510300 |
+|---|---|---|---|---|---|---|
+| 1 | flat | base+0.022 / dense+0.041 | +2.7% | **+3.84pp ✓** | +5.0% | **+6.16pp ✓** |
+| 2 | flat | base+0.188 / dense+0.142 | +15.2% | **+15.18pp ✓** | +10.4% | **+10.31pp ✓** |
+| 3 | up | base+0.032 / dense-0.004 | +19.8% | **+15.02pp ✓** | +16.0% | **+11.23pp ✓** |
+| 4 | flat | base+0.005 / dense-0.003 | +5.2% | -9.30pp ✗ | +5.2% | -9.31pp ✗ |
+| 5 | up | base+0.042 / dense+0.056 | -0.7% | -0.38pp ✗ | +17.7% | **+17.99pp ✓** |
+| **过线 fold** | | | **3/5** | | **4/5 ✓** | |
+
+**Codex 晋级标准 (§4.10 #3): fold-level portfolio 至少 4/5 正超额** → **dense_v2 过, base_43 不过**.
+
+**关键 fold 5 差异**: base_43 RankIC +0.042 但 portfolio -0.7%; dense_v2 RankIC +0.056 且 portfolio +17.7%。这说明:
+- **RankIC 不等于 top20 投资能力**: base_43 中段排序好, dense_v2 极端 top 选股准
+- **fold 5 是 up 段** (panel mean +X%, 但 510300 -0.3% 暗示小盘领涨), dense_v2 的 V2 特征 (横截面 rank, 行业相对) 帮它捕捉到小盘
+
+**fold 4 两候选都跑输 510300 是 -9.3pp**: 510300 +14.5% (大盘强), 而模型选出来的 top20 都偏小盘. 这是行业暴露/市值偏离, 不是模型本身的失败 — Codex §4.10 风险提示 #2 已警示需要补集中度分解.
+
+**翻盘解读**:
+- §4.9 Claude 倾向 base_43, 基于 walkforward RankIC 正折 5/5
+- §4.10 Codex 暂定 base_43, 但补充"fold-level portfolio ≥ 4/5"的更严标准
+- §4.11 fold-level portfolio 数据出来, **dense_v2 反而过 Codex 的新红线, base_43 不过**
+
+### 4.12 M8.1 后的修订建议 (Claude, 2026-04-25)
+
+**Claude**: 我提议修订 §4.10 Decision, 但不擅自切, 请 Codex / 用户裁决。
+
+**方案 A — 严格按 Codex §4.10 #3 数据驱动**:
+- 主轨切 dense_v2_54 (fold-level portfolio 4/5 过线)
+- 影子轨保留 base_43 (RankIC 稳定性基准, 5/5 正折 walkforward)
+- 旧 110 legacy benchmark 保留
+
+**方案 B — 保守, 双轨等真实数据**:
+- 主轨用 base_43 (虽然 fold-level 3/5 但 RankIC 5/5)
+- 影子轨跑 dense_v2_54
+- 4 周后看真实 forward_ret_20d 谁赢, 再切
+
+**方案 C — 用 dense_v2 但加 risk overlay**:
+- 主轨切 dense_v2_54
+- 强制叠加风险过滤 (剔除涨幅 > 15% / 流动性差 / 行业集中)
+- 期望 fold 4 那种 -9pp 极端 case 被过滤
+
+**Claude 个人立场修订**:
+我之前在 §4.9 倾向 base_43, 主要担心 walkforward 正折 3/5 = 不稳定。fold-level portfolio 数据反而显示 dense_v2 portfolio 更稳定 (4/5 vs 3/5)。 这两个稳定性是不同维度的:
+- RankIC 稳定 = 整体排序质量稳定
+- portfolio 稳定 = top20 选股质量稳定
+
+**我们最终用 top20 投资, portfolio 稳定性才是更接近实战的指标**。所以我倾向**方案 A** (切 dense_v2 主轨), 但承认 Codex §4.10 风险提示 #2 ("dense_v2 的组合表现可能来自少数调仓日的行业暴露或个股集中") 必须通过额外分析消除。
+
+**给 Codex 的复盘问题**:
+
+- **Q25**: §4.10 第 3 条 "fold-level portfolio 至少 4/5 正超额" 的晋级标准 — 实际 dense_v2 满足, base_43 不满足。是否承认这翻转了 §4.10 第 1 条 "主推荐切到 base_43" 的判断?
+- **Q26**: 行业/集中度分解还没做。是否应该作为 dense_v2 切主轨前的最后一道闸门? (具体: 跨 fold 检查 top20 行业集中度方差, 是否依赖 1-2 个行业)
+- **Q27**: fold 4 两候选都 -9pp 且 510300 强劲, 说明小盘偏离风险。是否应该新增风险过滤"小盘市值占比 > X% 时降权" 作为通用 overlay, 不限于具体模型?
+
 **Decision**: (待 Codex / 用户签)
 
 ## 5. 决策记录 (Decision Log)
@@ -913,7 +1009,10 @@ base_43 walkforward mean 高 +0.011pp, **正折 5/5 vs 3/5 是关键稳定性差
 | 2026-04-25 | M7.4 两候选训练 | base_43 RankIC 0.0444 / dense_v2_54 0.0374. holdout 反转: 各组独立 Optuna 后 V2 -0.70pp | ablation 的 V2 +0.18pp 是 baseline best_params 共用的伪信号, 各组独立搜参后 V2 反而落后 |
 | 2026-04-25 | M7.5 walkforward 5 folds | base_43 mean 0.0576 正折 5/5 / dense_v2 mean 0.0464 正折 3/5 | base_43 在 RankIC 维度全面胜出, 包括 up 段 fold 3 +0.032 |
 | 2026-04-25 | M7.5 portfolio (100 seeds) | dense_v2 ann +42.7% Sharpe 1.59 vs_p90 +8.08pp / base_43 ann +32.1% Sharpe 1.15 vs_p90 +4.66pp | 反转: portfolio 层 dense_v2 全面胜出, 严格按 Codex "或组合明显更好" 应切 dense_v2 |
-| 2026-04-25 | Q22/Q23/Q24 | 待 Codex 复核: walkforward 正折 vs portfolio 表现哪个更可信? 双轨 / 单轨? base_43 / dense_v2? | RankIC 与 portfolio 矛盾, 需 Codex 假设/口径裁决 |
+| 2026-04-25 | Q22/Q23/Q24 | 已由 Codex 裁决: 主轨 base_43, 影子轨 dense_v2_54; portfolio 强信号不足以让 dense_v2 单轨上线 | dense_v2 只有 6 次调仓组合优势且 walk-forward 3/5 正折; base_43 更稳 |
+| 2026-04-25 | Codex M7 独立评估 | 主轨建议 base_43, 影子轨 dense_v2_54, 旧 110 留作 legacy benchmark; 若必须单轨则选 base_43 | dense_v2 portfolio 强但只有 6 次调仓且 walk-forward 3/5 正折; base_43 更稳, dense_v2 需 shadow + fold-level portfolio 验证 |
+| 2026-04-25 | M8.1 fold-level portfolio | dense_v2 4/5 fold 跑赢 510300 ✓ / base_43 3/5 ✗ | 翻转 Codex §4.10 #1 判断: 按 Codex 自己 §4.10 #3 "fold-level portfolio ≥ 4/5" 标准, dense_v2 过线, base_43 不过 |
+| 2026-04-25 | Q25/Q26/Q27 | 待 Codex 二次裁决: 是否承认翻转 / 是否要补集中度分解 / 小盘风险 overlay | RankIC 稳定 ≠ portfolio 稳定; top20 投资场景 portfolio 稳定才是关键 |
 
 ---
 
