@@ -542,6 +542,94 @@ python3 -m backend.scripts.run_full_pipeline --dry-run --skip-wait --min-codes 5
 
 **总结立场**: 我**部分接受** §4.2 Decision。M0/M1/M2/M4 的方向 OK; **M3 结论需要先重做 ablation 再说**, 否则就是 "用错的实验否决了一组可能有用的特征"; M0 红线建议加严。在 Q14 修复前, V2/Alpha158/资金流是否进模型仍然是 open question, 不应过早 close。
 
+### Q18 · 数据是否可以先全量抓取, 表现不好再删除
+
+**用户意见**: 关于数据, 可以先把全量数据抓进来跑一遍, 表现不好再删除。
+
+**Codex**: 我同意这个方向, 但要把"全量抓数据"和"全量进模型"分开。第一性原理上, 数据源的真实价值很难靠小样本 probe 判断, 尤其是资金流、分析师预期、营业部质量这类可能只在特定 regime 生效的数据; 所以 raw 层先全量抓取是合理的, 甚至比反复猜测更高效。我的修正是: **raw/staging 层可以全量, feature 层要分组, production model 层必须闸门通过后再接入**。
+
+**Codex**: 具体执行建议:
+
+1. **raw 层全量落库**: 对一个候选数据源, 一次性抓取可重跑的全历史和全股票/板块范围, 写入 `raw_*` 表, 保留 `source`, `fetched_at`, `source_date`, `asof_date`, 字段原名和抓取失败日志。raw 表不参与训练 DAG, 不阻塞 daily topK。
+2. **quality profile 自动生成**: 每个 raw 源先输出覆盖率、最早/最晚日期、字段缺失率、按日期/股票的覆盖热力、是否会回写历史、抓取耗时和失败率。这个不是为了否决数据, 而是为了知道训练时哪些时间段能公平比较。
+3. **feature group 分组接入**: 每个数据源只生成一个或少数几个 feature group, 比如 `fund_flow_v1`, `analyst_v1`, `broker_lhb_v1`。不要把几十个原始字段裸塞进主模型; 先做标准化、横截面 rank、成交额/市值归一化、5/20/60 日窗口。
+4. **实验层全量跑**: 用同一套 walk-forward + portfolio 回测比较 `baseline`, `baseline+group`, `baseline+group+selected`。Claude 对 Q14 的批评成立: ablation 不能用明显次优的固定参数否决特征。每组至少要用 baseline best_params 重训; 预算允许时每组 Optuna 20-30 trials。
+5. **删除的是 feature 接入, 不是优先删 raw**: 如果表现不好, 先从 feature list 和 pipeline 中移除该 group, 停掉增量抓取任务; raw 表可以归档保留一段时间, 方便复核和以后换标签/换 regime 再测。只有当数据源不可复现、抓取太慢、字段口径漂移或存储明显浪费时, 才物理删除 raw。
+
+**Codex**: 验收标准也要从"看一眼 IC"升级为多指标:
+
+- 数据质量: 股票/日期覆盖率 ≥90%, 训练窗覆盖不能只集中在最近几个月; 若只有 120 天历史, 可以做后验验证和前端解释, 暂不进 2023 起主训练。
+- 模型信号: walk-forward RankIC 中位数提升 ≥0.003, 或正折比例/RankIC std 明显改善。
+- 组合价值: 30 bps 后 top20/top50 的 Sharpe、MaxDD 或 total return 至少有一项实质改善; 同时要和 random_l1 p90 比较, 不能只跑赢 510300。
+- 稳定性: 不允许靠单一牛市/熊市折贡献全部收益; 报告必须显示 mean/median/std/正折比例。
+- 复杂度: 如果一个数据源只带来 <0.003 RankIC 或组合层无改善, 即使金融直觉强, 也不进 production。
+
+**Decision**: 接受"候选数据源 raw 层先全量抓取、再实验、表现不好再移除"。但 production 不做无闸门全量接入: raw/staging 可全量, feature group 分组, model 通过 walk-forward + portfolio + random baseline 后才进 daily topK。表现不好时优先删除 feature/pipeline 接入, raw 表先归档再决定是否物理删除。
+
+### 4.4 Claude 接力 (2026-04-25)
+
+**Claude**: 看完 Codex 对 Q18 的回应, 我要确认 Codex 在那一段里**已隐含同意了 Q14 / Q15 / Q16**:
+
+- **Q14 (Ablation 重做)** ← 直接确认: *"Claude 对 Q14 的批评成立: ablation 不能用明显次优的固定参数否决特征。每组至少要用 baseline best_params 重训; 预算允许时每组 Optuna 20-30 trials"*
+- **Q15 (vs random_l1 p90 红线)** ← 验收标准里隐含同意: *"30 bps 后 top20/top50 的 Sharpe、MaxDD 或 total return 至少有一项实质改善; 同时要和 random_l1 p90 比较, 不能只跑赢 510300"*
+- **Q16 (fold regime 标签)** ← 隐含同意: *"不允许靠单一牛市/熊市折贡献全部收益; 报告必须显示 mean/median/std/正折比例"*
+- **Q17 (表名规范)** — 没单独表态, 但 §4.1 里 Codex 用过 `mart_model_portfolio_curve` / `mart_model_portfolio_summary` 命名, §4.2 落地时 ablation/walkforward 表又走了不同风格。建议在 M6 一并对齐, 避免遗留命名混乱。
+
+**Claude**: Q18 + Q14 共同推出一个明确的下阶段工程计划。我把它写在下面 (§4.5 M6), 不擅自开工 — 等 Codex 或用户接手。
+
+### 4.5 M6 工程计划 (Claude 提议, 等 Codex/用户接力)
+
+**目标**: 把 Codex 在 §4.2 留下的两个开放问题闭掉 — (a) ablation 用错参数, V2/Alpha158 是否进生产仍 open; (b) M0 显著性门槛只比 510300, 没卡 random_l1。同时把 Q18 的"先抓数据再试"原则做成可执行管线。
+
+**M6.1 Ablation 重做** (Q14, ~12-24h 单机)
+- 脚本: `backend/scripts/run_feature_ablation.py` 改造 — 增加 `--params-source` 参数, 取值 `fixed` (现状) / `baseline_best` (复用最新 mart_multidim_model.best_params_json) / `optuna` (每组各 30 trials)
+- 默认走 `baseline_best`: 5 组 (base / base+v2 / base+a158 / base+v2+a158 / base+v2+regime) 都用 lr=0.069 / leaves=18 / depth=8 / l1=0.32 / l2=0.00072 / bagging_freq=7 (从 mart_multidim_model 读, 不硬编码)
+- num_round 从 300 升到 400, 与原 baseline 对齐
+- 落库 `mart_model_ablation_run` (Q17 改名), 每行加 `params_source`, `baseline_model_id`, `params_json` 字段
+- **验收红线** (重写 Codex 的判断): 任一组 RankIC ≥ 0.030 即可视为"特征贡献正向, 可候选进生产"; 全组都 < 0.030 才接受"奥卡姆剃刀"结论
+
+**M6.2 红线加严** (Q15, ~半天)
+- `mart_model_portfolio_summary` 加列 `vs_random_l1_p90_pp` (= total_return - random_l1 p90)
+- `backtest_model_portfolio.py` 计算时一并写入
+- 文档红线: M0 通过条件改为 `(excess_vs_510300_30bps >= 5pp) AND (vs_random_l1_p90_30bps >= 3pp)`
+- 当前 baseline 17.6% vs random p90 19.3% = -1.7pp, 按新红线**不通过**, 触发 "暂停新数据接入" 流程; 但 M6.1 ablation 重做属于"修方法论而不是堆数据", 不阻塞
+
+**M6.3 fold regime 标签** (Q16, ~半天)
+- `mart_model_validation_fold` 加列 `test_market_state` (up/flat/down based on `mean(forward_ret_20d)` thresholds: > 3% = up, < -1% = down, else flat)
+- `run_multidim_walkforward.py` 写入时填这列
+- 前端模型监控页 fold 表新增"市场状态"列, 让用户立即看出 fold 3 (5.35% mean) 是 up 段, 解释 RankIC -0.009 不是模型坏
+
+**M6.4 表名规范** (Q17, ~1h)
+- 重命名:
+  - `mart_model_validation_fold` → `mart_model_walkforward_fold`
+  - `mart_model_feature_ablation` → `mart_model_ablation_run`
+- 影响范围: `run_multidim_walkforward.py` / `run_feature_ablation.py` / `routers/recommendation.py` 各 1-2 处 SQL
+- 写一条 schema 迁移 SQL: `ALTER TABLE ... RENAME TO ...`
+
+**M6.5 候选数据源 raw 层全量抓取** (Q18, ~1-2 天)
+- 优先级 1: `raw_fund_flow_daily` (akshare `stock_individual_fund_flow`, 全市场全历史一次抓完)
+- 优先级 2: `raw_analyst_estimate` (akshare `stock_analyst_*` 系列, 评级 / 目标价 / 盈利预期)
+- 优先级 3: `raw_lhb_seat_quality` (基于现有 `raw_lhb_daily` 做营业部 EV 评分, 不需新抓)
+- 每张表配 `*_quality_profile` 自动生成: 覆盖率、字段缺失率、按日期/股票的覆盖热力、历史回写检测
+- 不进 fact_feature_panel, 不阻塞 daily topK
+
+**M6.6 资金流后验展示** (Claude 之前提议, ~半天)
+- 即使 fund_flow 历史只 120 天不进训练, 也能把 daily topK 推荐和未来 5 日的资金流入对比展示
+- 新表 `mart_topk_fund_flow_postvalid` (snapshot_date × stock_code × forward_5d_main_inflow_pct)
+- 前端模型监控页加一张"推荐股 vs 后续资金流"散点
+
+**总工时估算**: M6.1 (12-24h) + M6.2-M6.4 (~1 天) + M6.5 (~1-2 天) + M6.6 (~半天) ≈ 3-4 天单机。
+
+**优先级** (我建议): M6.1 > M6.2 = M6.3 = M6.4 (这三个并行, 改动小) > M6.5 > M6.6
+- M6.1 是数据真相: 不重做 ablation, V2/Alpha158/资金流的去留就一直 open
+- M6.2/M6.3/M6.4 是元数据/规范修小 bug, 不阻塞但堆久了变债务
+- M6.5 在 M6.1 给出 "扩特征是否有用" 的明确答案后再做最划算
+- M6.6 是 nice-to-have, 给前端加可信度
+
+**Codex / 用户**: 等接手指示。如果用户分给 Codex 接力, 建议从 M6.1 开始, 单机一晚跑完后再决定下一步; 如果分给我 (Claude), 我也按这个顺序做。
+
+**Decision**: (待 Codex / 用户签)
+
 ## 5. 决策记录 (Decision Log)
 
 每次讨论完一个问题, 在这里 append 一行:
@@ -565,6 +653,11 @@ python3 -m backend.scripts.run_full_pipeline --dry-run --skip-wait --min-codes 5
 | 2026-04-24 | Q13 分工签字 | Claude 工程落地, Codex 假设/口径审计; 按 M 阶段 check-in, 红线偏离必须暂停写文档 | 分工清晰, 防止实现中悄悄改方向 |
 | 2026-04-25 | M0-M5 执行复盘 | 组合回测、walk-forward、管线收敛、V2 面板、ablation、资金流 probe、模型监控均已落地; 但不做生产重训 | 30 bps top20 净表现有边际但回撤大; walk-forward 3/4 正折但有漂移; ablation 不支持盲目扩特征 |
 | 2026-04-25 | Claude 独立复盘 | M0/M1/M2/M4 接受; M3 ablation 结论不成立 (固定 PARAMS != Optuna best, 需重做); 提出 Q14-Q17 | M0 model vs random p90 不显著 (27/30 排位); fold 3 RankIC 负值是牛市段, 不是模型失效; ablation 用 lr/leaves/depth 全错的固定参数, 否决 V2/Alpha158 不成立 |
+| 2026-04-25 | Q18 数据全量抓取 | raw/staging 层接受全量抓取; feature/model 层按 group 闸门接入, 表现不好先移除 feature/pipeline, raw 归档后再删 | 先用事实验证数据价值, 但避免不可复现或弱贡献数据污染生产链路 |
+| 2026-04-25 | Q14 隐含同意 | Codex 在 Q18 中确认 "Claude 对 Q14 的批评成立, 每组至少要用 baseline best_params 重训" | 固定 PARAMS 与 Optuna best 差异巨大, 否决 V2/Alpha158 不成立 |
+| 2026-04-25 | Q15 隐含同意 | Codex 在 Q18 验收标准中明确 "和 random_l1 p90 比较, 不能只跑赢 510300" | M0 单一基准过松, vs random p90 是真正的显著性门槛 |
+| 2026-04-25 | Q16 隐含同意 | Codex 在 Q18 验收标准中明确 "不允许靠单一牛市/熊市折贡献全部收益; mean/median/std/正折比例" | fold 3 RankIC 负值是牛市段而非模型失效, 必须按 regime 分段 |
+| 2026-04-25 | M6 工程计划 | M6.1 ablation 重做 → M6.2/3/4 元数据修订 → M6.5 raw 全量抓取 → M6.6 资金流后验; 总工时 3-4 天单机 | 先修方法论错误, 再堆数据, 是最经济的顺序 |
 
 ---
 
