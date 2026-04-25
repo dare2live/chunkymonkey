@@ -46,11 +46,30 @@ CREATE TABLE IF NOT EXISTS mart_daily_recommendation (
     percentile    REAL,
     regime_flag   TEXT,
     key_features_json TEXT,
+    track_id      TEXT,
+    is_primary    BOOLEAN,
     built_at      TEXT,
     PRIMARY KEY (snapshot_date, stock_code, model_id)
 );
 CREATE INDEX IF NOT EXISTS idx_dr_date ON mart_daily_recommendation(snapshot_date);
 CREATE INDEX IF NOT EXISTS idx_dr_rank ON mart_daily_recommendation(snapshot_date, rank_in_date);
+
+-- M8.5b: snapshot 级风险摘要 (top20). 不阻塞主轨上线, 只用于监控.
+CREATE TABLE IF NOT EXISTS mart_daily_recommendation_risk (
+    snapshot_date TEXT NOT NULL,
+    model_id      TEXT NOT NULL,
+    track_id      TEXT,
+    is_primary    BOOLEAN,
+    top_size      INTEGER,
+    top1_industry         TEXT,
+    top1_industry_share   REAL,
+    top3_industry_share   REAL,
+    top20_amount_ma20_p25     REAL,
+    top20_amount_ma20_median  REAL,
+    overlap_with_primary  REAL,  -- Jaccard with track_id='primary' (NULL if self is primary)
+    built_at      TEXT,
+    PRIMARY KEY (snapshot_date, model_id)
+);
 """
 
 
@@ -66,13 +85,24 @@ def load_model(model_id: str):
         return pickle.load(f)
 
 
-def load_latest_model_id(conn) -> str:
-    row = conn.execute("""
-        SELECT model_id FROM mart_multidim_model
-        ORDER BY created_at DESC LIMIT 1
-    """).fetchone()
+def load_latest_model_id(conn, *, include_disabled: bool = False) -> str:
+    """M8.6: 默认排除 disabled_by_default=true 的模型 (alpha158 / legacy 110).
+    显式传 --model-id 不走这条路, 不受影响."""
+    cols = {r[1] for r in conn.execute("PRAGMA table_info(mart_multidim_model)").fetchall()}
+    has_flag = "disabled_by_default" in cols
+    if has_flag and not include_disabled:
+        row = conn.execute("""
+            SELECT model_id FROM mart_multidim_model
+            WHERE COALESCE(disabled_by_default, false) = false
+            ORDER BY created_at DESC LIMIT 1
+        """).fetchone()
+    else:
+        row = conn.execute("""
+            SELECT model_id FROM mart_multidim_model
+            ORDER BY created_at DESC LIMIT 1
+        """).fetchone()
     if not row:
-        raise RuntimeError("mart_multidim_model 无记录, 请先训练")
+        raise RuntimeError("mart_multidim_model 无可用记录 (启用 --include-disabled-models 兼容旧 model)")
     return row[0]
 
 
@@ -109,12 +139,19 @@ def main():
                         help='按 regime_flag 分组各出 top-K')
     parser.add_argument('--allow-legacy-feature-order', action='store_true',
                         help='兼容 feature_cols_json 缺失的旧模型')
+    parser.add_argument('--track-id', default=None,
+                        help='M8.5: 写入 mart_daily_recommendation 的 track_id 标签 '
+                             '(e.g. primary / shadow_dense_v2 / legacy_v1_110)')
+    parser.add_argument('--is-primary', action='store_true',
+                        help='M8.5: 标记为主推荐轨道, 前端默认展示这一轨')
+    parser.add_argument('--include-disabled-models', action='store_true',
+                        help='M8.6: 选最新模型时纳入 disabled_by_default=true (alpha158/legacy 110)')
     args = parser.parse_args()
 
     conn = get_conn()
     conn.executescript(DDL)
 
-    model_id = args.model_id or load_latest_model_id(conn)
+    model_id = args.model_id or load_latest_model_id(conn, include_disabled=args.include_disabled_models)
     logger.info("使用模型 %s", model_id)
     model = load_model(model_id)
     stored_feature_cols = load_model_feature_cols(
@@ -203,7 +240,10 @@ def main():
     output['snapshot_date'] = target_date
     output['model_id'] = model_id
     output['key_features_json'] = features_json
-    output['built_at'] = datetime.utcnow().isoformat()
+    output['track_id'] = args.track_id
+    output['is_primary'] = bool(args.is_primary)
+    built_at = datetime.utcnow().isoformat()
+    output['built_at'] = built_at
 
     # 限制 top_k
     if not args.by_regime:
@@ -211,19 +251,34 @@ def main():
     else:
         output = output.groupby('regime_flag', group_keys=False).head(args.top_k).reset_index(drop=True)
 
-    logger.info("写入 %d 条推荐", len(output))
+    logger.info("写入 %d 条推荐 (track_id=%s, is_primary=%s)",
+                len(output), args.track_id, args.is_primary)
     # INSERT OR REPLACE
     for _, r in output.iterrows():
         conn.execute(
             """INSERT OR REPLACE INTO mart_daily_recommendation
                (snapshot_date, stock_code, model_id, rank_in_date, pred_score, percentile,
-                regime_flag, key_features_json, built_at)
-               VALUES (?,?,?,?,?,?,?,?,?)""",
+                regime_flag, key_features_json, track_id, is_primary, built_at)
+               VALUES (?,?,?,?,?,?,?,?,?,?,?)""",
             (r['snapshot_date'], r['stock_code'], r['model_id'],
              int(r['rank_in_date']), float(r['pred_score']), float(r['percentile']),
-             r.get('regime_flag'), r['key_features_json'], r['built_at']),
+             r.get('regime_flag'), r['key_features_json'],
+             r['track_id'], bool(r['is_primary']),
+             r['built_at']),
         )
     conn.commit()
+
+    # M8.5b/c: 算并写 snapshot 级风险摘要 (top20 / top_k 取较小, 默认 20)
+    risk_top_size = min(20, args.top_k)
+    write_risk_summary(
+        conn, duck,
+        snapshot_date=target_date,
+        model_id=model_id,
+        track_id=args.track_id,
+        is_primary=bool(args.is_primary),
+        top_size=risk_top_size,
+        built_at=built_at,
+    )
 
     # 输出 top-20 预览
     logger.info("=" * 60)
@@ -235,6 +290,113 @@ def main():
                     r['pred_score'], r['percentile'], r.get('regime_flag') or '-')
 
     conn.close()
+
+
+def write_risk_summary(conn, duck, *, snapshot_date: str, model_id: str,
+                        track_id: str | None, is_primary: bool,
+                        top_size: int, built_at: str) -> None:
+    """M8.5b/c: 计算并落 mart_daily_recommendation_risk.
+
+    字段: top1/top3 行业占比 (TDX L1) + amount_ma20 中位数/25 分位 +
+    与主轨 top20 的 Jaccard overlap. 仅用于监控, 不阻塞推荐。
+    """
+    # 取本轨 top20 stock_codes
+    top_codes = [r[0] for r in duck.execute("""
+        SELECT stock_code FROM mart_daily_recommendation
+        WHERE snapshot_date = ? AND model_id = ?
+        ORDER BY rank_in_date LIMIT ?
+    """, [snapshot_date, model_id, top_size]).fetchall()]
+    if not top_codes:
+        logger.warning("write_risk_summary: top_codes 为空, 跳过")
+        return
+
+    placeholders = ",".join(["?"] * len(top_codes))
+    # ATTACH market.duckdb 取 amount + amount_ma20
+    from pathlib import Path as _Path
+    market_db = _Path(__file__).resolve().parent.parent.parent / "data" / "market.duckdb"
+    if market_db.exists():
+        try:
+            duck.execute(f"ATTACH IF NOT EXISTS '{market_db}' AS market (READ_ONLY)")
+        except Exception:
+            pass
+
+    # 行业占比 + amount_ma20 分位
+    rows = duck.execute(f"""
+        WITH px AS (
+            SELECT code AS stock_code,
+                   AVG(amount) OVER (PARTITION BY code ORDER BY date ROWS 19 PRECEDING) AS amount_ma20
+            FROM market.price_kline_tdxhub
+            WHERE freq='daily' AND adjust='qfq'
+              AND code IN ({placeholders})
+              AND date <= ?
+        ),
+        latest_px AS (
+            SELECT stock_code, MAX_BY(amount_ma20, amount_ma20) AS amount_ma20
+            FROM px GROUP BY stock_code
+        )
+        SELECT t.stock_code, ind.tdx_l1, ind.tdx_l1_name, lp.amount_ma20
+        FROM (SELECT UNNEST([{placeholders}]) AS stock_code) t
+        LEFT JOIN dim_stock_tdx_industry ind ON ind.stock_code = t.stock_code
+        LEFT JOIN latest_px lp ON lp.stock_code = t.stock_code
+    """, [*top_codes, snapshot_date, *top_codes]).fetchall()
+
+    industry_counts: dict[str, int] = {}
+    industry_l1_lookup: dict[str, str] = {}
+    amounts: list[float] = []
+    for r in rows:
+        l1 = r[1] or "UNK"
+        industry_counts[l1] = industry_counts.get(l1, 0) + 1
+        if r[2]:
+            industry_l1_lookup[l1] = r[2]
+        if r[3] is not None:
+            amounts.append(float(r[3]))
+
+    n = len(rows) or 1
+    sorted_inds = sorted(industry_counts.items(), key=lambda x: -x[1])
+    top1_industry = sorted_inds[0][0] if sorted_inds else None
+    top1_industry_name = industry_l1_lookup.get(top1_industry) if top1_industry else None
+    top1_share = (sorted_inds[0][1] / n) if sorted_inds else 0.0
+    top3_share = (sum(c for _, c in sorted_inds[:3]) / n) if sorted_inds else 0.0
+
+    import numpy as np
+    if amounts:
+        amt_p25 = float(np.percentile(amounts, 25, method="linear"))
+        amt_p50 = float(np.percentile(amounts, 50, method="linear"))
+    else:
+        amt_p25 = amt_p50 = None
+
+    # 与主轨 overlap (若自己是主轨, NULL)
+    overlap = None
+    if not is_primary:
+        primary_codes_rows = duck.execute("""
+            SELECT stock_code FROM mart_daily_recommendation
+            WHERE snapshot_date = ? AND is_primary = true
+            ORDER BY rank_in_date LIMIT ?
+        """, [snapshot_date, top_size]).fetchall()
+        if primary_codes_rows:
+            primary_set = {r[0] for r in primary_codes_rows}
+            self_set = set(top_codes)
+            inter = len(primary_set & self_set)
+            union = len(primary_set | self_set)
+            overlap = (inter / union) if union else None
+
+    duck.execute("""
+        INSERT OR REPLACE INTO mart_daily_recommendation_risk
+        (snapshot_date, model_id, track_id, is_primary, top_size,
+         top1_industry, top1_industry_share, top3_industry_share,
+         top20_amount_ma20_p25, top20_amount_ma20_median,
+         overlap_with_primary, built_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    """, [snapshot_date, model_id, track_id, is_primary, top_size,
+          top1_industry_name, top1_share, top3_share,
+          amt_p25, amt_p50, overlap, built_at])
+    conn.commit()
+    logger.info(
+        "risk summary: top1=%s(%.1f%%), top3=%.1f%%, amount_ma20 p25=%.0f p50=%.0f, overlap_primary=%s",
+        top1_industry_name, top1_share * 100, top3_share * 100,
+        amt_p25 or 0, amt_p50 or 0,
+        f"{overlap:.3f}" if overlap is not None else "n/a (self is primary)",
+    )
 
 
 if __name__ == "__main__":

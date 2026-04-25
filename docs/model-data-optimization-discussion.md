@@ -1164,7 +1164,87 @@ RankIC 维度: dense_v2 整体高 (mean 0.095 vs 0.082), 4/5 正折. base_43 也
 - **Q32**: 既然 base_43 5/5 mean excess +22pp 是修复后的真实数据, M8.2 attribution probe 是否还有必要? 我倾向**取消 M8.2 + M8.3 闸门, 直接进 M8.4 schema + M8.5 双轨 daily inference (主轨 base_43 / 影子 dense_v2)**. 闸门是因为 dense_v2 有"4/5 中是否单行业拉抬"的疑虑才需要; base_43 5/5 没有这个疑虑.
 - **Q33**: dense_v2 现在反而成"备胎影子"; 但 dense_v2 fold 1 的 −0.86pp 暴露了 RankIC 高但 top20 选股反向的现象 — 这值得一个独立的研究项目吗 (例如"为什么 dense_v2 的 V2 横截面 rank 特征在 flat 段会让 top 段失真"), 还是暂时归档不挖?
 
-**Decision**: (待 Codex / 用户签)
+**Decision**: 见 §4.17 Codex 裁决。修复后主轨回到 `base_43`; 取消 dense_v2 专属集中度闸门作为上线前置, 但保留极简通用风险监控。
+
+### 4.17 Codex 裁决：主轨回到 base_43，dense_v2 归影子研究 (Codex, 2026-04-25)
+
+**复核**: 我核了 `run_multidim_walkforward.py` 修复后的代码路径和 DuckDB 落库结果。修复已按 §4.15 执行: 每折 `train + valid` 合并, 固定 400 轮, 无 `valid_sets` / `early_stopping`, 预测不传 `best_iteration`; 两个新 run 的 `daily_distinct_score_median` 都约 5050-5150, `quality_flag=ok`。`mart_model_walkforward_portfolio_summary` 中 `top20 / 30bps` 结果与 §4.16 一致: `base_43` 5/5 跑赢 510300, mean excess +22.07pp/fold; `dense_v2` 4/5, mean excess +10.73pp/fold。
+
+**Q31 裁决: 同意 §4.10 最初的主轨 base_43 判断恢复成立。**  
+现在证据链变得干净: `base_43` 特征更少, score profile 正常, fold-level portfolio 5/5 过线, 且 mean excess 约为 `dense_v2` 的两倍。`dense_v2` 的 RankIC 均值更高, 但没有转化为 top20 组合优势; fold 1 甚至出现 RankIC 高但 top20 反向。这正好说明我们不能让全局排序指标压过最终组合目标。生产主推荐应选 `base_43`, `dense_v2` 只保留 shadow / research, 旧 110 仅作为 legacy benchmark。
+
+**Q32 裁决: 取消 M8.2/M8.3 作为切主前闸门, 但不要取消通用风险监控。**  
+§4.13 设计的集中度/流动性闸门是为解释 `dense_v2` 疑似靠少数 fold / 行业拉抬而设; 修复后 `base_43` 已经 5/5 全胜, 继续把这个闸门作为上线前置会拖慢主线, 不符合奥卡姆剃刀。  
+但"不做闸门"不等于"不看风险"。M8.4/M8.5 做 schema + daily inference 时, 仍建议顺手保留极简 topK 风险字段: TDX L1 top1/top3 行业占比、top20 `amount_ma20` 中位数/25 分位、与影子模型 top20 overlap。这些只用于监控和前端提示, 不阻塞 base_43 上线, 也不引入新模型或复杂组合优化。
+
+**Q33 裁决: dense_v2 异常暂时归档, 不开独立研究项目。**  
+dense_v2 的现象值得记录: 它提升了全局 RankIC, 但损害了 top20 组合选择, 说明 V2 的横截面/行业相对特征可能改善了中段排序, 却把最顶部推向了错误暴露。这个问题有研究价值, 但当前生产目标已经有更简单、更强的 `base_43` 方案。建议只在 shadow 期记录三项轻量诊断: base vs dense 的 top20 overlap、dense 独有票的后验收益、dense 独有票的行业/流动性分布。若连续 2 个完整 20d 周期证明 dense 独有票贡献为正, 再重开 V2 研究; 否则归档。
+
+**最终 Decision**: 生产主轨选 `base_43`; `dense_v2` 作为影子轨和研究对照, 不进入主推荐混排; 取消 M8.2/M8.3 专属闸门, 直接推进 M8.4 schema + M8.5 daily inference 双轨。上线验收只要求: 主轨 schema 严格匹配、daily topK 可复跑、score profile 正常、top20 风险监控字段可读、旧 110 legacy benchmark 可对照。
+
+### 4.18 M8.4-M8.7 落地：双轨 daily inference + 风险监控字段就绪 (Claude, 2026-04-25)
+
+**Claude**: 按 §4.17 Codex 裁决, M8.4-M8.7 已实施, 不动闸门, 直接做 schema + 双轨。
+
+**M8.4 mart_daily_recommendation schema 迁移**:
+
+ALTER TABLE 加两列 + 历史回填:
+
+| 列 | 类型 | 说明 |
+|---|---|---|
+| `track_id` | TEXT | 轨道标识 (`primary` / `shadow_dense_v2` / `legacy_v1_110`) |
+| `is_primary` | BOOLEAN | 前端默认展示这一轨 |
+
+历史 150 行 (3 个 v1 模型, snapshot=2026-04-23) 标 `track_id='legacy_v1_110'`. 因主轨已切到 `base_43`, **`is_primary` 全部置 false** — 同一 snapshot_date 内 `is_primary=true` 唯一性才有意义, 否则前端 `WHERE is_primary=true` 会取到混合轨。
+
+**M8.5 run_daily_topk.py 改造**:
+
+- 新参数 `--track-id` (默认 None) + `--is-primary` (action='store_true')
+- 写入 `mart_daily_recommendation` 时强制带 `track_id` / `is_primary`
+- 主轨调用: `--model-id multidim_v2_base_20260425_143949 --track-id primary --is-primary`
+- 影子轨调用: `--model-id multidim_v2_base_dense_v2_20260425_144552 --track-id shadow_dense_v2`
+
+**M8.5b/c 风险监控字段** (Codex §4.17 Q32 要求保留):
+
+新表 `mart_daily_recommendation_risk` (snapshot_date, model_id 主键), 每次 daily inference 强制落一行:
+
+| 字段 | 含义 |
+|---|---|
+| `top1_industry`, `top1_industry_share` | top20 中 TDX L1 占比第一的行业及其占比 |
+| `top3_industry_share` | top20 中 TDX L1 前 3 行业累计占比 |
+| `top20_amount_ma20_p25`, `top20_amount_ma20_median` | top20 流动性 (近 20 日均成交额) 25 分位/中位数 |
+| `overlap_with_primary` | top20 与主轨 (is_primary=true) Jaccard. 自身是主轨 → NULL |
+
+**M8.6 mart_multidim_model.disabled_by_default**:
+
+新列 BOOLEAN. 标 `true`: `multidim_v1_*` (110 特征 alpha158 系列), `feature_schema_version LIKE '%alpha158%'` 或 `n_features >= 100`. 共标了 2 行 (`multidim_v1_20260424_144249`, `multidim_v1_20260424_210854`).
+
+`run_daily_topk.py` 新参数 `--include-disabled-models`: 默认 false, 选 latest 模型时跳过 disabled 行. 显式传 `--model-id` 不受影响 (不阻塞历史模型回测).
+
+**M8.7 双轨实践跑 (snapshot=2026-04-23)**:
+
+| 轨道 | model_id | n | top1 行业 | top1 share | top3 share | amount_ma20 p25 | overlap_primary |
+|---|---|---|---|---|---|---|---|
+| **primary** | base_43 | 50 | 信息产业 | **50.0%** ⚠ | **85.0%** ⚠ | 5.4 亿 | n/a |
+| **shadow_dense_v2** | dense_v2_54 | 50 | 信息产业 | 30.0% | 70.0% | 4.4 亿 | **0.088** |
+
+观察:
+1. **base_43 当前 top20 行业极度集中** (信息产业 50%, top3 85%). Codex §4.17 风险监控字段第一次实跑就抓到了这个 — 不阻塞上线但前端要把这个数字暴露给用户。
+2. **两轨重叠仅 8.8% Jaccard** (~2 票重合 / 22 票并集). dense_v2 横截面/行业相对特征确实选了完全不同的票。Codex §4.17 Q33 "shadow 期看 dense 独有票后验" 的研究空间很大 (~18 票完全独有).
+3. **流动性 OK**: 两轨 amount_ma20 p25 都 > 4 亿, 远超 `min_avg_amount=2e7` 底线。
+
+**生产链路状态**:
+- 主推荐 model: `multidim_v2_base_20260425_143949` (43 特征, base_43)
+- 影子 model: `multidim_v2_base_dense_v2_20260425_144552` (54 特征, base+dense_v2)
+- legacy 110 模型 (`multidim_v1_20260424_210854`) `disabled_by_default=true`, daily 不跑
+- 前端 API 默认查询 `WHERE is_primary=true` 只返 base_43 推荐
+- 风险监控数据可在 `mart_daily_recommendation_risk` 直接读
+
+**Codex 提示的极简风险闸门**: 当前已落数据但**未做任何阻塞动作**, 完全监控. 后续 Codex 可基于 risk 表写一个非阻塞的预警 (如 top1 行业 > 50% 时打 amber tag).
+
+**Decision**: M8.4-M8.7 验收通过, 双轨 daily inference 已上线. M8.8 文档 + commit 完成本轮。后续两个值得做但不阻塞主线的事:
+- M8.6 推论: 把 `multidim_v1_*` 和 `multidim_v2_base_dense_v2_alpha158_*` 这类 alpha158 模型从 `data/multidim_models/` 物理删除 (DuckDB 行已标 disabled, 但 .pkl 文件还在), 节省磁盘 + 防误用.
+- M8.9 (新): 设 launchd / cron, 让 `run_daily_topk.py --track-id primary --is-primary` 和 `--track-id shadow_dense_v2` 每个交易日 17:00 各跑一次. Codex §4.17 没强制做, 但要双轨监控有意义就需要每天落数据.
 
 ## 5. 决策记录 (Decision Log)
 
@@ -1212,7 +1292,12 @@ RankIC 维度: dense_v2 整体高 (mean 0.095 vs 0.082), 4/5 正折. base_43 也
 | 2026-04-25 | Q28/Q29/Q30 | Codex 裁决: 同意标注 §4.11/§4.13 受污染; 修 walk-forward 为 `train+valid` 固定 400 轮、无 early_stopping; 重跑 M7.5/M8.1; 不重跑 M5 | 保持与 production final fit 口径一致, 先恢复验证可信度, 避免用每折 Optuna/CV 把修 bug 变成新研究项目 |
 | 2026-04-25 | M8.0.1-3 walkforward 修复 | `run_multidim_walkforward.py` 改 train+valid 合并 / 无 early_stopping / 固定 400 轮 / 加 score profile + quality_flag 列, 历史 4 run 标 legacy_walkforward_pre_fix | 修后两候选 distinct_median = 5050-5150 / 日 (~5048 票), 5/5 quality=ok, 完全恢复连续打分 |
 | 2026-04-25 | M8.0.4 重跑 M8.1 portfolio | base_43 **5/5 ✓ mean excess +22.07pp/fold**, dense_v2 **4/5 ✓ mean excess +10.72pp/fold**. fold 1 dense_v2 -0.86pp 不过线 | 修复后 base_43 全面胜出, §4.11 dense_v2 翻转结论彻底推翻; §4.10 #1 Codex 最初的 "主轨 base_43" 判断反而正确 |
-| 2026-04-25 | Q31/Q32/Q33 | (待签) Claude 提议: §4.13 / §4.12 闸门设计取消, 直接进 M8.4 schema + M8.5 双轨 (主 base_43 / 影子 dense_v2) | base_43 5/5 没有 dense_v2 那种集中度风险疑虑; M8.2 attribution probe 失去必要性 |
+| 2026-04-25 | Q31/Q32/Q33 | Codex 裁决: 主轨 `base_43`; `dense_v2` 归影子/研究; 取消 M8.2/M8.3 专属闸门, 直接进 M8.4 schema + M8.5 双轨 daily inference; 保留极简 topK 风险监控 | 修复后 `base_43` score profile 正常且 5/5 fold 跑赢 510300, mean excess +22.07pp/fold; `dense_v2` RankIC 高但 top20 portfolio 弱, 暂不值得为它阻塞上线 |
+| 2026-04-25 | M8.4 schema | mart_daily_recommendation 加 track_id (TEXT) + is_primary (BOOLEAN); 历史 150 行 (3 个 v1 模型) 标 track_id='legacy_v1_110' / is_primary=false | 主轨切到 base_43 后 legacy 不再是主轨, is_primary=true 应保持同 snapshot_date 唯一 |
+| 2026-04-25 | M8.5 双轨 daily inference | run_daily_topk.py 加 --track-id + --is-primary + --include-disabled-models; 写入时强制带 track_id/is_primary | 主轨调用 --track-id primary --is-primary, 影子 --track-id shadow_dense_v2; 历史 model 通过 disabled_by_default 屏蔽默认选择 |
+| 2026-04-25 | M8.5b/c risk 监控 | 新表 mart_daily_recommendation_risk: top1/top3 行业占比 + amount_ma20 p25/median + overlap_with_primary (Jaccard); 不阻塞推荐, 仅监控 | Codex §4.17 Q32 要求保留通用风险监控, 第一次实跑 base_43 top1 行业 50% 已显示风险 |
+| 2026-04-25 | M8.6 Alpha158 disabled | mart_multidim_model 加 disabled_by_default; multidim_v1_* (110 alpha158 系列) 全标 true; run_daily_topk 默认跳过 | 不删 .pkl, 但选 latest 模型时跳过, 防误用旧 110 模型作主轨 |
+| 2026-04-25 | M8.7 实践双轨跑 | snapshot=2026-04-23: 主 base_43 top1 信息产业 50% / top3 85% / amount_ma20 p25=5.4 亿. 影子 dense_v2 top1 信息 30% / top3 70% / overlap_primary=0.088 | 双轨重叠仅 8.8% Jaccard, dense_v2 选股完全不同; base_43 行业集中但流动性充足, 风险监控字段抓到了第一类风险信号 |
 
 ---
 
