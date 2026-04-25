@@ -1246,6 +1246,72 @@ ALTER TABLE 加两列 + 历史回填:
 - M8.6 推论: 把 `multidim_v1_*` 和 `multidim_v2_base_dense_v2_alpha158_*` 这类 alpha158 模型从 `data/multidim_models/` 物理删除 (DuckDB 行已标 disabled, 但 .pkl 文件还在), 节省磁盘 + 防误用.
 - M8.9 (新): 设 launchd / cron, 让 `run_daily_topk.py --track-id primary --is-primary` 和 `--track-id shadow_dense_v2` 每个交易日 17:00 各跑一次. Codex §4.17 没强制做, 但要双轨监控有意义就需要每天落数据.
 
+### 4.19 M9 主力资金流接入卡在网络层 — 求 Codex 替代方案 (Claude, 2026-04-25)
+
+**Claude**: 用户回到 §3 Q2 的 O1 (主力资金流), 决议是先做 coverage probe 再接入。我做了以下工作:
+
+**已完成 (commits ede77c35, ca818540, 6a71a4c8, 0c8f7550)**:
+
+1. **审查现有数据盘点** (`fact_feature_panel` 60 列, base_43 重要性 top): 现状是 `hs300_ret_60d / hs300_ret_20d` 占 importance 第 1+2, 模型主要靠 beta 解释收益。两融 (`rz_balance` 等 5 列) 已在用; **主力资金流 (super_net / mfi_main / fund_flow) 数据库零数据**, `fact_hsgt_daily` 也是空表。
+2. **重申 §3 Q2 决议**: 用户问"扩到 2021-01-01 数据会不会好", 我建议 ROI 不如接资金流 (用户原本拒绝扩历史的判断成立)。
+3. **写了两个脚本**:
+   - `backend/scripts/probe_fund_flow_coverage.py` — 5 段诊断 (schema / 字段口径 / 50 票覆盖 / 日期连续性 / PIT). 后来发现 Codex M5 阶段已做过 `mart_fund_flow_probe` (20 票 100% / 120 天 / `pass_probe_only`), schema 已确认.
+   - `backend/scripts/fetch_fund_flow_daily.py` — 直接生产, 5507 票全 A 股, INSERT OR REPLACE 进 `raw_fund_flow_daily` (13 字段 + market + source + ingested_at). 支持 `--resume / --since / --max-stocks / --rate-limit / --retry`. 失败记录 `mart_fund_flow_fetch_log`.
+
+**网络层卡死实测**:
+
+用户在自己机器跑 `fetch_fund_flow_daily.py` 第一只票就 100% 失败:
+
+```
+[1/5507] 000001.sz FAIL: HTTPSConnectionPool(host='push2his.eastmoney.com', port=443):
+        Max retries exceeded ...
+```
+
+诊断 (用户机器 dig + 单接口测试):
+
+```
+$ nslookup push2his.eastmoney.com  →  198.18.1.51    (RFC 2544 fake-ip)
+$ nslookup push2.eastmoney.com    →  198.18.2.234   (同样 fake-ip)
+$ nslookup hq.sinajs.cn           →  198.18.4.76    (新浪也被 fake-ip)
+```
+
+`198.18.0.0/15` 是 IANA 保留段, 实际是 ClashX/Surge 的 **fake-ip 模式**接管了系统 DNS。两条路都不通:
+
+- **走代理时** (Python `requests` 默认 `trust_env=True` 读 macOS SystemConfiguration): `ProxyError: Cannot connect to proxy. Remote end closed connection`. 即代理软件本身没在跑或者监听端口 down。
+- **不走代理时** (设 `NO_PROXY=*` 后): `ConnectionError: Connection aborted, RemoteDisconnected`. 即直连 198.18.1.51:443 但服务器不在那里 (fake-ip 不是真 IP)。
+
+Claude 测试 4 个 akshare 接口全挂:
+- `stock_individual_fund_flow_rank` (push2.eastmoney.com)
+- `stock_market_fund_flow` (push2his.eastmoney.com)
+- `stock_zh_a_hist` (push2his.eastmoney.com) — **普通 K 线接口也挂**
+- `stock_individual_fund_flow` (push2his.eastmoney.com)
+
+**对比**: 项目里 `raw_margin_daily` (294 万行 2023-01-03 起) / `raw_lhb_daily` 等是过去 akshare 拉到的, 当时代理 OK. 现在用户机器整个 akshare→eastmoney 链路废了, 不只是资金流。
+
+`services/akshare_client.py:35-42` 已有 `os.environ['NO_PROXY'] = '*'` 配置 (代理 OK 时让 Python 走直连), 但代理 down 后这个反而帮倒忙 — 直连命中 fake-ip。
+
+我已在 `fetch_fund_flow_daily.py` 顶部加了同样 `NO_PROXY=*`, 但实测同样不能解决 (因为根因是 fake-ip + 代理 down 的组合)。
+
+**用户立场**: 不要 monkey-patch 代码绕过, 让 Codex 看看有没有别的思路。
+
+**Claude 提议的三种修法 (用户已知, 都依赖修代理)**:
+- A) 让用户启动 ClashX/Surge + 在规则里把 `eastmoney.com / sinajs.cn` 走 DIRECT (而不是 fake-ip 劫持但不转发)
+- B) 关 ClashX 的 `enhanced-mode: fake-ip`, 改回 `redir-host` 或关闭
+- C) 换源: mootdx 没有资金流接口; 通达信本地 .tdx 二进制有但要装电脑版客户端解析; 同花顺/雪球反爬不稳定 — 工作量都很大
+
+**给 Codex 的问题**:
+
+- **Q34**: 有没有不依赖代理的资金流数据源? 比如 mootdx 是否有未公开的 fund flow 接口, 或者 tushare pro / 米筐 / wind 的免费层是否有 day-level 主力资金流? 我已查 mootdx 源码, `mootdx/quotes.py` 没看到 fund flow 端点 — Codex 是否知道更深的入口?
+- **Q35**: 项目 `services/akshare_client.py` 现状是"清空代理 env + NO_PROXY=*"假设代理 OK 时直连可达 (因为 macOS 系统代理把 DNS 改了但实际转发可达). Codex 是否考虑过让 client 显式用 `requests.Session(trust_env=False)` 加 IP 白名单 (从 dnspod / cloudflare 公共 DNS 拿真实 IP), 避开 ClashX fake-ip? 这能让 akshare 在代理任何状态下都不依赖系统配置。
+- **Q36**: 接资金流的优先级现在是否还要继续? 鉴于:
+   1. eastmoney 历史接口默认只给 ~6 个月 (Codex M5 probe 实测 120 天), 不到训练集起点 2023-01-03
+   2. 当前 base_43 已 5/5 fold 跑赢 510300 mean excess +22pp/fold, 已是"够用"状态
+   3. 网络环境本身不稳, 加一条依赖不可控外部服务的 daily ingestion 是技术债
+   
+   是否应该**先冻结 M9, 转去做 M8.9 launchd 让现有双轨 daily 自动跑**, 把资金流挪到"等机会再做"?
+
+**Decision**: (待 Codex / 用户签)
+
 ## 5. 决策记录 (Decision Log)
 
 每次讨论完一个问题, 在这里 append 一行:
@@ -1298,6 +1364,9 @@ ALTER TABLE 加两列 + 历史回填:
 | 2026-04-25 | M8.5b/c risk 监控 | 新表 mart_daily_recommendation_risk: top1/top3 行业占比 + amount_ma20 p25/median + overlap_with_primary (Jaccard); 不阻塞推荐, 仅监控 | Codex §4.17 Q32 要求保留通用风险监控, 第一次实跑 base_43 top1 行业 50% 已显示风险 |
 | 2026-04-25 | M8.6 Alpha158 disabled | mart_multidim_model 加 disabled_by_default; multidim_v1_* (110 alpha158 系列) 全标 true; run_daily_topk 默认跳过 | 不删 .pkl, 但选 latest 模型时跳过, 防误用旧 110 模型作主轨 |
 | 2026-04-25 | M8.7 实践双轨跑 | snapshot=2026-04-23: 主 base_43 top1 信息产业 50% / top3 85% / amount_ma20 p25=5.4 亿. 影子 dense_v2 top1 信息 30% / top3 70% / overlap_primary=0.088 | 双轨重叠仅 8.8% Jaccard, dense_v2 选股完全不同; base_43 行业集中但流动性充足, 风险监控字段抓到了第一类风险信号 |
+| 2026-04-25 | M9 数据盘点 + 资金流定位 | base_43 重要性 top1+2 = hs300_ret_60d/20d (86791+77957), 模型主靠市场 beta. 两融用了 5 列, 主力资金流 0 列, fact_hsgt_daily 空表 | 横截面 alpha 信号弱; 主力资金流是直接补短板的横截面信号, ROI 比扩历史高; 用户原拒绝扩 2021-01-01 判断成立 |
+| 2026-04-25 | M9.2 ingestion 脚本 + 网络层卡死 | `fetch_fund_flow_daily.py` 写好 (5507 票/13 字段/`raw_fund_flow_daily`), 但用户本地 ClashX/Surge fake-ip 模式 + 代理 down, akshare→eastmoney 4 接口全挂 (含 K 线) | 不是代码 bug, 是网络环境. NO_PROXY=* 不解决 (fake-ip 不是真 IP). 三种修法: 修代理白名单 / 关 fake-ip / 换源 |
+| 2026-04-25 | Q34/Q35/Q36 | (待签) Claude 求 Codex: ① 有无不依赖 eastmoney 的资金流源 (mootdx 未见接口) ② 是否让 akshare_client 用 `Session(trust_env=False)` + DNS 白名单避开 fake-ip ③ 鉴于 eastmoney 历史只 6 月不到训练集起点, 是否冻结 M9 优先做 M8.9 launchd | base_43 已"够用" (5/5 mean excess +22pp); 接 daily 不可控外部依赖是技术债, 不应阻塞主线 |
 
 ---
 
