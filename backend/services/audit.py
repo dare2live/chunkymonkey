@@ -1242,10 +1242,13 @@ def build_smart_plan(conn, force_all=False, *, audit: Optional[dict] = None, use
     - skip_reasons: {step_id: "具体跳过原因"} — 用于前端展示
     """
     # 所有可能的步骤 ID
+    # TODO(M9.5+): 改为从 routers.updater.STEPS 动态拉取, 避免新加 step 时漏这里.
+    # 暂时手动同步 — 必须跟 backend/routers/updater.py:STEPS 对齐.
     ALL_STEPS = [
         "sync_raw", "match_inst", "sync_market_data",
         "gen_events", "calc_returns", "sync_industry",
-        "sync_financial", "sync_qfii", "sync_margin", "sync_lhb",
+        "sync_financial", "sync_surveys", "sync_qfii", "sync_margin", "sync_lhb",
+        "sync_fund_flow",
         "calc_financial_derived",
         "build_current_rel", "build_profiles", "build_industry_stat", "build_trends",
         "calc_screening", "calc_sector_momentum", "build_external_attention",
@@ -1442,6 +1445,24 @@ def build_smart_plan(conn, force_all=False, *, audit: Optional[dict] = None, use
             plan["reason"].append(f"龙虎榜尚未接入（目标 {target_trade}）")
     elif target_trade:
         plan["skip_reasons"]["sync_lhb"] = f"龙虎榜已是最新（{lhb_latest}）"
+
+    # 6a-5. 主力资金流 (M9.5, push2delay 仅最新交易日, daily 累积)
+    try:
+        ff_row = conn.execute(
+            "SELECT MAX(trade_date) FROM raw_fund_flow_daily"
+        ).fetchone()
+        ff_latest = (ff_row[0] or "")[:10] if ff_row else ""
+    except Exception:
+        ff_latest = ""
+
+    if target_trade and ff_latest < target_trade:
+        plan["steps"].append("sync_fund_flow")
+        if ff_latest:
+            plan["reason"].append(f"主力资金流落后于 {target_trade}（当前 {ff_latest}）")
+        else:
+            plan["reason"].append(f"主力资金流尚未接入（目标 {target_trade}）")
+    elif target_trade:
+        plan["skip_reasons"]["sync_fund_flow"] = f"主力资金流已是最新（{ff_latest}）"
 
     # 6b. 财务数据是否需要同步
     try:

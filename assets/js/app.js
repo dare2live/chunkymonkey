@@ -1707,6 +1707,7 @@
     { step_id: 'sync_qfii', step_name: 'QFII 季报', status: 'idle', desc: '季度末 +30 天后同步 QFII 十大股东持仓（外资维度）' },
     { step_id: 'sync_margin', step_name: '融资融券', status: 'idle', desc: '每日同步 SH+SZ 融资买入/余额/融券数据' },
     { step_id: 'sync_lhb', step_name: '龙虎榜', status: 'idle', desc: '每日同步龙虎榜上榜明细（机构/游资短线痕迹）' },
+    { step_id: 'sync_fund_flow', step_name: '主力资金流', status: 'idle', desc: '每日同步主力/超大单/大单/中单/小单净流入 (eastmoney push2delay, 仅最新交易日)' },
     { step_id: 'sync_industry', step_name: '通达信行业', status: 'idle', desc: '给持仓股补充通达信三级行业分类' },
     { step_id: 'calc_financial_derived', step_name: '计算财务指标', status: 'idle', desc: '计算 ROE、毛利率等财务派生指标' },
     { step_id: 'build_current_rel', step_name: '构建当前关系', status: 'idle', desc: '构建“机构→股票”当前持仓关系' },
