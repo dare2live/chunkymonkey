@@ -3266,6 +3266,19 @@ async def update_status():
 
     conn = get_conn()
     try:
+        # M9.5: 若 STEPS 中存在但 step_status 没有 (新增 step 后第一次读), 自动 prime 一行 idle
+        existing = {r[0] for r in conn.execute("SELECT step_id FROM step_status").fetchall()}
+        missing = [s for s in STEPS if s["id"] not in existing]
+        if missing:
+            for spec in missing:
+                conn.execute(
+                    """INSERT OR IGNORE INTO step_status
+                       (step_id, group_name, step_name, step_order, status, error, records, started_at, finished_at)
+                       VALUES (?, ?, ?, ?, 'idle', NULL, 0, NULL, NULL)""",
+                    (spec["id"], spec["group"], spec["name"], spec["order"]),
+                )
+            conn.commit()
+
         rows = conn.execute("SELECT * FROM step_status ORDER BY step_order").fetchall()
         steps = []
         for row in rows:
