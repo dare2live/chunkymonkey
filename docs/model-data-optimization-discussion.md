@@ -510,3 +510,92 @@ datacenter-web.eastmoney.com  → 198.18.1.50   [fake-ip]  (虽是 fake-ip 但�
 - (c) 暂缓, 走路线 D (M8.9 daily 自然累积 60 天后再说)
 
 等用户选定.
+
+### 7.8 (2026-04-26 ~ 04-27 工作进展: 资金流 step 解锁 + 路线 A 复验失败)
+
+距上次讨论 (§7.7 决策树) 后做了这些工作:
+
+#### 7.8.1 工程改造 (Claude, commit `d467f79c`)
+
+发现并修复一个隐藏问题: **资金流 step 一直锁死在 push2delay**, 即使关掉 Surge 也只拿当日 1 行/票. 旧代码 `_step_sync_fund_flow` 只 import `fetch_delay_fund_flow`, source 写死 `eastmoney_push2delay_latest`.
+
+改造内容:
+
+1. `backend/scripts/fetch_fund_flow_daily.py`: 新增通用 `_fetch_eastmoney_fund_flow(base_url=...)`,
+   - `fetch_his_fund_flow` → push2his (~250 天历史)
+   - `fetch_delay_fund_flow` → push2delay (1 行)
+2. `backend/routers/updater.py _step_sync_fund_flow`: 改预探针 + 整 run 单一 source 模式
+   - 第一只票试 push2his, 通就整 run 走历史模式 (mode=his, ~28 分钟落 ~138 万行)
+   - 失败 fallback 到 push2delay 当日模式 (mode=delay, 当前路径)
+   - 探针结果复用, 第一只票不重复请求
+3. `assets/js/app.js startUpdate`: 加 `window.confirm` 弹窗提示关 Surge, sessionStorage 一会话一次
+4. CM_ASSET_VERSION 3.5.0 → 3.6.0 强制 JS 缓存刷新
+
+#### 7.8.2 用户实测 (2026-04-27 早间)
+
+按 §7.4 改 Surge config (skip-proxy / always-real-ip / [Host] server:223.5.5.5), 彻底退出 Surge, 重启 backend, 清空 raw_fund_flow_daily, 浏览器刷新点智能更新. 关键日志:
+
+```
+DNS 验证: push2his.eastmoney.com → 117.184.40.129  (中国移动 CDN, 真实 IP, 不再 198.18.x.x)
+
+22:27:50 [资金流] 探针失败: push2his 不可达 (000001:
+    ('Connection aborted.', RemoteDisconnected('Remote end closed connection without response'))),
+    切到 push2delay 当日模式 — 提示: 关闭 Surge 或加 eastmoney 白名单可拿历史
+
+23:17:37 [资金流] 完成: mode=delay ok=5496 empty=14 fail=0 rows_written=5496 target=2026-04-24
+```
+
+#### 7.8.3 关键判断: 路线 A 真死路, 是服务端拒绝
+
+完全符合 §7.4 末尾 Codex 预警的"出口 IP 链路问题"场景:
+
+| 检查项 | 结果 | 说明 |
+|---|---|---|
+| 系统 DNS 解析 push2his | ✅ 真实 CDN IP | Surge 配置已生效 |
+| HTTPS TLS 握手 | ✅ 成功建联 | 不是 DNS / SNI 拦截 |
+| HTTP GET response | ❌ 远端立即关闭 | 连接成功后服务端 RST |
+| 同 IP 段访问 datacenter-web | ✅ 调研/龙虎榜/QFII 全通 | 不是整个 eastmoney 不可达 |
+
+**结论**: 用户家宽出口 IP 在 eastmoney 的 push2his 反爬规则黑名单。这条线路不是本机可解的, 不是 Surge / DNS / 代理 / akshare 任何一层的问题. **不再耗时间在网络规则**, 严格按 Codex §7.4 末尾决策切 Tushare Pro 或维持 push2delay daily 累积。
+
+#### 7.8.4 当前数据状态 (2026-04-27)
+
+```sql
+SELECT COUNT(*), MIN(trade_date), MAX(trade_date), source FROM raw_fund_flow_daily;
+-- 5496 行 / 1 天 / 2026-04-24 / eastmoney_push2delay_latest
+```
+
+虽然历史拿不到, 但 step 解锁本身有价值: M8.9 launchd 跑起来后**每个交易日自动 +1 行/票**, 60 天后 (~2026-07) 会有 60 天 daily 横截面, 可以做 5d/20d rank 实验, 比 §4.21 决策时的"等积累"路径仍然有效。
+
+#### 7.8.5 UI 显示 bug (待修, 低优先)
+
+工作台主力资金流行显示 `NaN 条 · 4-26 23:17` 而不是 `[当日模式] 写入 5496 · 已最新 0 · 空返回 14 · 失败 0`. 后端 detail.message 字段返回正确, 前端 renderStepGrid 应优先读 detail.message. 推测是浏览器缓存 / fmt(s.records) 处理 NaN 路径有 bug. 数据本身完整 (DB 5496 行已落). 此 bug 不影响数据正确性, 优先级低于资金流主线决策.
+
+#### 7.8.6 路线决策 (二选一)
+
+经过路线 A 复验失败, 严格按 §7.4 + §7.6 共识:
+
+**路线 B: Tushare Pro moneyflow** (脚手架已就位 commit `170590bc`)
+
+```bash
+# 用户提供 token
+echo 'xxxxxxxxxxxx' > ~/.tushare_token && chmod 600 ~/.tushare_token
+pip3 install tushare
+
+# Claude 跑
+cd /Users/dp/Documents/M/stock/backend
+python3 -m scripts.fetch_fund_flow_tushare --start 20250101 --end 20260427
+```
+
+预估: ~1 分钟拉 ~250 天 × 5500 票, 落 ~138 万行 + push2delay 当日 5496 行 (INSERT OR REPLACE 覆盖). 成本 ¥200/年 token + 接口稳定, 完全脱离代理网络。
+
+**路线 D: 维持现状, M8.9 自然累积**
+
+- 不付费, 不写代码
+- 每日 17:30 launchd 自动 +1 行/票 (5500 行/日)
+- 60 个交易日后 (~2026-07) 重新评估是否做 5d/20d rank 实验
+- 主轨 base_43 +22pp/fold 不依赖资金流, 不阻塞 alpha
+
+**Claude 推荐**: D — 主轨已能跑, 资金流是锦上添花. 等 60 天数据自然累积成本最低, 期间可以推进跟投系统改造 (memory 里 `project_followup_alpha_redesign.md` 列的: 完整周期收益 / qlib 信号接入 / 三档信号重构) 这些 ROI 更高的事。
+
+等用户决定 B 或 D。
