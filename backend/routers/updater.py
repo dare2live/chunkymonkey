@@ -2880,8 +2880,13 @@ async def _step_build_current_rel(conn) -> int:
     return await _run_blocking_db_task(build_current_relationship)
 
 
-async def _step_sync_financial(conn) -> int:
-    """同步财务数据（mootdx finance）"""
+async def _step_sync_financial(conn) -> dict:
+    """同步财务数据（mootdx finance）.
+
+    §4.25 #4: 返回 dict 含 partial 语义 — 当 5 个子阶段
+    (history/snapshot/capital/indicator/gpcw) 中部分失败但部分成功时,
+    status='partial', 让 UI 显示有缺口而非误报 completed.
+    """
     import json as _json
     from services.financial_client import sync_financial_data
     from services.tdx_affair_client import sync_gpcw_files
@@ -2930,13 +2935,54 @@ async def _step_sync_financial(conn) -> int:
 
     merged_progress = dict(last_progress or {})
     merged_progress["gpcw_history"] = gpcw_progress
+
+    # 子阶段状态聚合: 任一 failed/error → partial (除非全失败)
+    sub_status_map = {
+        "history": (merged_progress.get("history_backfill") or {}).get("status"),
+        "snapshot": (merged_progress.get("snapshot_sync") or {}).get("status"),
+        "capital": (merged_progress.get("capital_behavior") or {}).get("status"),
+        "indicator": (merged_progress.get("financial_indicator") or {}).get("status"),
+        "gpcw": gpcw_progress.get("status"),
+    }
+    failed_subs = [k for k, v in sub_status_map.items() if v in ("failed", "error")]
+    partial_subs = [k for k, v in sub_status_map.items() if v == "partial"]
+    success_count = sum(1 for v in sub_status_map.values() if v == "success")
+
+    history_rows = int((merged_progress.get("history_backfill") or {}).get("rows") or 0)
+    snapshot_rows = int((merged_progress.get("snapshot_sync") or {}).get("rows") or 0)
+    capital_rows = int((merged_progress.get("capital_behavior") or {}).get("rows") or 0)
+    indicator_rows = int((merged_progress.get("financial_indicator") or {}).get("rows") or 0)
+    gpcw_rows = int(gpcw_progress.get("rows_upserted") or 0)
+
+    base_msg = (
+        f"历史 {history_rows} / 最新 {snapshot_rows} / "
+        f"资本 {capital_rows} / 指标 {indicator_rows} / GPCW {gpcw_rows}"
+    )
+    if failed_subs and success_count == 0:
+        agg_status = "failed"
+        message = f"{base_msg} · 全部子阶段失败"
+    elif failed_subs:
+        agg_status = "partial"
+        message = f"{base_msg} · {'/'.join(failed_subs)} 失败"
+    elif partial_subs:
+        agg_status = "partial"
+        message = f"{base_msg} · {'/'.join(partial_subs)} 部分"
+    else:
+        agg_status = "completed"
+        message = base_msg
+
+    # 写最终 detail (含子阶段 + message + status), 供前端 renderFinancialSyncDetail 渲染
+    detail_payload = dict(merged_progress)
+    detail_payload["message"] = message
+    detail_payload["status"] = agg_status
+    detail_payload["count"] = int(total)
     _update_step(
         conn,
         "sync_financial",
-        error=_json.dumps(merged_progress, ensure_ascii=False),
+        error=_json.dumps(detail_payload, ensure_ascii=False),
         records=progress_records,
     )
-    return total
+    return detail_payload
 
 
 async def _step_calc_financial_derived(conn) -> int:
