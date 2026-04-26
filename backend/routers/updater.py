@@ -331,7 +331,12 @@ _INDUSTRY_RESET_TABLES = [
 
 def _table_exists(conn, table_name: str) -> bool:
     row = conn.execute(
-        "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ? LIMIT 1",
+        """
+        SELECT 1
+        FROM information_schema.tables
+        WHERE table_schema = 'main' AND table_name = ?
+        LIMIT 1
+        """,
         (table_name,),
     ).fetchone()
     return bool(row)
@@ -1097,6 +1102,7 @@ def _build_exclusion_set(conn) -> set:
 
 def _step_match_inst_sync(conn) -> int:
     """匹配跟踪机构持仓"""
+    _step_match_inst_sync._insert_errors = 0
     institutions = conn.execute(
         "SELECT id, name, aliases FROM inst_institutions WHERE enabled = 1 AND blacklisted = 0 AND merged_into IS NULL"
     ).fetchall()
@@ -1110,67 +1116,96 @@ def _step_match_inst_sync(conn) -> int:
     # 构建排除集合
     excluded_codes = _build_exclusion_set(conn)
 
+    match_rows = []
+    seq = 0
+    for inst in institutions:
+        inst_id = inst["id"]
+        inst_name = inst["name"]
+        names = [inst_name]
+        try:
+            aliases = json.loads(inst["aliases"] or "[]")
+            names.extend([a for a in aliases if a])
+        except Exception as e:
+            logger.warning(f"[匹配] 机构 {inst_id} 别名解析失败: {e}")
+
+        seen_names = set()
+        for name in names:
+            normalized = str(name or "").strip()
+            if not normalized or normalized in seen_names:
+                continue
+            match_rows.append((seq, inst_id, normalized))
+            seen_names.add(normalized)
+            seq += 1
+
+    if not match_rows:
+        logger.warning("[匹配] 无可用机构名称/别名")
+        return 0
+
+    conn.execute("DROP TABLE IF EXISTS tmp_inst_match_names")
+    conn.execute("""
+        CREATE TEMP TABLE tmp_inst_match_names (
+            seq INTEGER,
+            institution_id TEXT,
+            holder_name TEXT
+        )
+    """)
+    conn.executemany(
+        "INSERT INTO tmp_inst_match_names VALUES (?, ?, ?)",
+        match_rows,
+    )
+
+    conn.execute("DROP TABLE IF EXISTS tmp_inst_excluded_codes")
+    conn.execute("CREATE TEMP TABLE tmp_inst_excluded_codes (stock_code TEXT)")
+    if excluded_codes:
+        conn.executemany(
+            "INSERT INTO tmp_inst_excluded_codes VALUES (?)",
+            [(code,) for code in sorted(excluded_codes)],
+        )
+
     # 清空旧匹配结果并重建（事务保护）
     now = datetime.now().isoformat()
-    total = 0
 
     conn.execute("BEGIN IMMEDIATE")
     try:
         conn.execute("DELETE FROM inst_holdings")
+        conn.execute("""
+            INSERT INTO inst_holdings
+            (institution_id, holder_name, holder_type, stock_code, stock_name,
+             report_date, notice_date, holder_rank, hold_amount, hold_market_cap,
+             hold_ratio, hold_change, hold_change_num, created_at)
+            SELECT institution_id, holder_name, holder_type, stock_code, stock_name,
+                   report_date, notice_date, holder_rank, hold_amount, hold_market_cap,
+                   hold_ratio, hold_change, hold_change_num, ?
+            FROM (
+                SELECT
+                    m.institution_id,
+                    r.holder_name,
+                    r.holder_type,
+                    r.stock_code,
+                    r.stock_name,
+                    r.report_date,
+                    r.notice_date,
+                    r.holder_rank,
+                    r.hold_amount,
+                    r.hold_market_cap,
+                    r.hold_ratio,
+                    r.hold_change,
+                    r.hold_change_num,
+                    ROW_NUMBER() OVER (
+                        PARTITION BY r.holder_name, r.stock_code, r.report_date
+                        ORDER BY m.seq
+                    ) AS rn
+                FROM market_raw_holdings r
+                JOIN tmp_inst_match_names m ON r.holder_name = m.holder_name
+                LEFT JOIN tmp_inst_excluded_codes x ON r.stock_code = x.stock_code
+                WHERE x.stock_code IS NULL
+            ) matched
+            WHERE rn = 1
+        """, (now,))
 
-        for inst in institutions:
-            _raise_if_stop()
-            inst_id = inst["id"]
-            inst_name = inst["name"]
-
-            # 构建匹配名单（主名 + 别名）
-            names = [inst_name]
-            try:
-                aliases = json.loads(inst["aliases"] or "[]")
-                names.extend([a for a in aliases if a])
-            except Exception as e:
-                logger.warning(f"[匹配] 机构 {inst_id} 别名解析失败: {e}")
-
-            # 在 market_raw_holdings 中匹配
-            for name in names:
-                _raise_if_stop()
-                rows = conn.execute("""
-                    SELECT holder_name, stock_code, stock_name, report_date, notice_date,
-                           holder_rank, hold_amount, hold_market_cap, hold_ratio,
-                           hold_change, hold_change_num, holder_type
-                    FROM market_raw_holdings
-                    WHERE holder_name = ?
-                """, (name,)).fetchall()
-
-                for r in rows:
-                    # 排除过滤
-                    if r["stock_code"] in excluded_codes:
-                        continue
-                    try:
-                        # DuckDB: INSERT OR IGNORE 在仅 UNIQUE 约束 (无 PK) 表上要求显式 ON CONFLICT 列
-                        conn.execute("""
-                            INSERT INTO inst_holdings
-                            (institution_id, holder_name, holder_type, stock_code, stock_name,
-                             report_date, notice_date, holder_rank, hold_amount, hold_market_cap,
-                             hold_ratio, hold_change, hold_change_num, created_at)
-                            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                            ON CONFLICT (holder_name, stock_code, report_date) DO NOTHING
-                        """, (
-                            inst_id, r["holder_name"], r["holder_type"],
-                            r["stock_code"], r["stock_name"],
-                            r["report_date"], r["notice_date"],
-                            r["holder_rank"], r["hold_amount"], r["hold_market_cap"],
-                            r["hold_ratio"], r["hold_change"], r["hold_change_num"],
-                            now
-                        ))
-                        total += 1
-                    except Exception as e:
-                        _insert_errors = getattr(_step_match_inst_sync, '_insert_errors', 0) + 1
-                        _step_match_inst_sync._insert_errors = _insert_errors
-                        if _insert_errors <= 3:
-                            logger.warning(f"[匹配] 持仓插入失败 inst={inst_id} stock={r['stock_code']}: {e}")
-                        elif _insert_errors == 4:
-                            logger.warning("[匹配] 后续持仓插入错误将不再逐条打印")
+        total = conn.execute("SELECT COUNT(*) FROM inst_holdings").fetchone()[0]
+        if total == 0:
+            raise RuntimeError("[匹配] 已尝试写入持仓但最终表为空，已回滚")
 
         conn.commit()
     except Exception:
@@ -1333,7 +1368,7 @@ def _step_build_profiles_sync(conn) -> int:
                 WHERE e.institution_id = ? AND e.gain_30d IS NOT NULL
             """, (inst_id,)).fetchone()
 
-            # 回撤中位数（Python 端计算，SQLite 无原生 MEDIAN）
+            # 回撤中位数在 Python 端计算，避免依赖数据库方言。
             # 审计 2.2.2 整改：偶数样本取 (a[n//2-1]+a[n//2])/2，严格 median
             dd_all_rows = conn.execute("""
                 SELECT max_drawdown_30d, max_drawdown_60d FROM fact_institution_event
@@ -1670,7 +1705,7 @@ def _step_build_trends_sync(conn) -> int:
             v.sort(key=lambda t: t[0], reverse=True)
 
         # 批量预聚合 2：每股最近 3 个事件（取代 fact_institution_event N+1）
-        # 用 window function；SQLite 3.25+ 支持 ROW_NUMBER
+                # 用 window function 处理同组排序。
         ev_rows = conn.execute("""
             SELECT stock_code, event_type, holder_name, change_pct, report_date, notice_date
             FROM (
@@ -1857,7 +1892,7 @@ async def _step_sync_industry(conn) -> int:
 
     _raise_if_stop()
     # sync_tdx_industry 是同步函数（TDX 服务器下载 + 本地解析 + executemany），
-    # 放到线程池避免阻塞事件循环。SQLite 连接不能跨线程传递，在 executor 内
+    # 放到线程池避免阻塞事件循环。DuckDB 连接不跨线程传递，在 executor 内
     # 单独开一个连接，写完后主线程的 conn 无需感知（写入同一个 DB 文件）。
     def _run_in_thread():
         thread_conn = get_conn(timeout=120)
@@ -1931,7 +1966,7 @@ def _step_build_industry_stat_sync(conn) -> int:
     这意味着：股票被行业重分类时，历史事件会被映射到最新行业，
     机构过去在某一行业积累的真实能力会被后来的行业映射改写。
 
-    后续 SEF Phase V 计划支持 event-time 行业快照
+    支持 event-time 行业快照
     (fact_institution_event_industry_snapshot)，届时可平滑切换。
     前端/解释层请明确标注"当前行业口径"。
     """
@@ -2005,7 +2040,7 @@ async def _step_build_industry_stat(conn) -> int:
 
 
 async def _step_sync_market_data(conn) -> int:
-    """同步行情数据：合并原 kline_monthly + kline_daily，写入 market_data.db"""
+    """同步行情数据：合并原 kline_monthly + kline_daily，写入 market.duckdb"""
     import json as _json
     from services.market_db import (
         get_market_conn, upsert_price_rows, update_sync_state,
@@ -2755,7 +2790,7 @@ async def _step_build_external_attention(conn) -> int:
     return await _run_blocking_db_task(sync_external_attention_snapshot)
 
 
-async def _step_sync_surveys(conn) -> int:
+async def _step_sync_surveys(conn) -> dict:
     """机构调研同步（D8 数据源）"""
     from services.institution_survey_client import sync_institution_surveys
 
@@ -2766,13 +2801,19 @@ async def _step_sync_surveys(conn) -> int:
     errors = result.get("errors") or []
     if errors:
         logger.warning(f"[机构调研] 同步错误: {errors}")
-    logger.info(
-        f"[机构调研] raw={result.get('rows_upserted', 0)} · mart={result.get('mart_rows', 0)}"
-    )
-    return int(result.get("rows_upserted") or 0)
+    written = int(result.get("rows_upserted") or 0)
+    mart_rows = int(result.get("mart_rows") or 0)
+    logger.info(f"[机构调研] raw={written} · mart={mart_rows}")
+    return {
+        "count": written,
+        "status": "completed",
+        "written": written,
+        "mart_rows": mart_rows,
+        "message": f"原始 {written} 条 · 聚合 {mart_rows} 条",
+    }
 
 
-async def _step_sync_margin(conn) -> int:
+async def _step_sync_margin(conn) -> dict:
     """融资融券日度同步（外资退役后最有信息量的杠杆资金维度）。
 
     同步最近一个交易日的 SH+SZ 明细；如果 DB 里已有该日，则跳过。
@@ -2785,7 +2826,7 @@ async def _step_sync_margin(conn) -> int:
     trade_date = latest_completed_trade_date(conn)
     if not trade_date:
         logger.warning("[两融] 未找到最近完成交易日，跳过同步")
-        return 0
+        return {"count": 0, "status": "skipped", "message": "未找到最近完成交易日"}
 
     row = conn.execute(
         "SELECT COUNT(*) FROM raw_margin_daily WHERE trade_date = ?",
@@ -2794,7 +2835,13 @@ async def _step_sync_margin(conn) -> int:
     existing = int(row[0] or 0) if row else 0
     if existing > 0:
         logger.info(f"[两融] 交易日 {trade_date} 已有 {existing} 条，跳过")
-        return 0
+        return {
+            "count": 0,
+            "status": "skipped",
+            "existing": existing,
+            "trade_date": trade_date,
+            "message": f"{trade_date} 已有 {existing} 条, 跳过",
+        }
 
     logger.info(f"[两融] 开始同步交易日 {trade_date}（允许 T-1/T-2 降级）")
     result = await sync_margin_day(conn, trade_date, fallback_days=2)
@@ -2804,10 +2851,21 @@ async def _step_sync_margin(conn) -> int:
             f"（原请求 {result.get('requested_date')}），"
             f"written={result.get('written_rows')}"
         )
-    return int(result.get("written_rows") or 0)
+    written = int(result.get("written_rows") or 0)
+    msg = f"写入 {written} 条 ({result.get('trade_date') or trade_date})"
+    if result.get("fallback_used"):
+        msg += f" [fallback from {result.get('requested_date')}]"
+    return {
+        "count": written,
+        "status": "completed" if written > 0 else "skipped",
+        "written": written,
+        "trade_date": result.get("trade_date") or trade_date,
+        "fallback_used": bool(result.get("fallback_used")),
+        "message": msg if written > 0 else f"{result.get('trade_date') or trade_date} 源未披露/无新数据",
+    }
 
 
-async def _step_sync_lhb(conn) -> int:
+async def _step_sync_lhb(conn) -> dict:
     """龙虎榜日度同步（短线机构与游资痕迹）。
 
     每次拉取最近 5 天区间 upsert；已入库自然不重复计。
@@ -2818,7 +2876,7 @@ async def _step_sync_lhb(conn) -> int:
     trade_date = latest_completed_trade_date(conn)
     if not trade_date:
         logger.warning("[龙虎榜] 未找到最近完成交易日，跳过同步")
-        return 0
+        return {"count": 0, "status": "skipped", "message": "未找到最近完成交易日"}
 
     end_dt = datetime.strptime(trade_date, "%Y-%m-%d")
     start_dt = end_dt - timedelta(days=5)
@@ -2827,10 +2885,17 @@ async def _step_sync_lhb(conn) -> int:
     result = await sync_lhb_range(conn, start_str, trade_date)
     if result.get("status") == "source_unavailable":
         raise RuntimeError(f"lhb_source_failed:{result.get('error')}")
-    return int(result.get("written_rows") or 0)
+    written = int(result.get("written_rows") or 0)
+    return {
+        "count": written,
+        "status": "completed",
+        "written": written,
+        "range": f"{start_str} ~ {trade_date}",
+        "message": f"写入 {written} 条 ({start_str} ~ {trade_date})",
+    }
 
 
-async def _step_sync_fund_flow(conn) -> int:
+async def _step_sync_fund_flow(conn) -> dict:
     """M9.5: 主力资金流 daily 累积 (Codex §4.21).
 
     数据源: eastmoney push2delay (`https://push2delay.eastmoney.com`),
@@ -2858,14 +2923,15 @@ async def _step_sync_fund_flow(conn) -> int:
     target_date = latest_completed_trade_date(conn)
     if not target_date:
         logger.warning("[资金流] 未找到最新交易日, 跳过")
-        return 0
+        return {"count": 0, "status": "skipped", "message": "未找到最新交易日"}
 
     codes_all = load_stock_codes(conn)
     last_dates = latest_per_stock(duck)
     todo = [(c, m) for (c, m) in codes_all if last_dates.get(c, "") < target_date]
+    n_skip = len(codes_all) - len(todo)
     logger.info(
         f"[资金流] target={target_date}, total={len(codes_all)}, "
-        f"todo={len(todo)} (skip {len(codes_all) - len(todo)} 已有最新)"
+        f"todo={len(todo)} (skip {n_skip} 已有最新)"
     )
 
     n_success = n_failed = n_empty = 0
@@ -2904,10 +2970,29 @@ async def _step_sync_fund_flow(conn) -> int:
         f"[资金流] 完成: ok={n_success} empty={n_empty} fail={n_failed} "
         f"rows_written={rows_written} target={target_date}"
     )
-    return rows_written
+    # 语义: 全部 skip = skipped 状态 (resume 已最新); 否则 completed
+    if rows_written == 0 and n_success == 0 and n_skip == len(codes_all):
+        status = "skipped"
+        msg = f"全部 {n_skip} 只已有 {target_date} 最新数据, 跳过"
+    elif rows_written == 0 and n_skip > 0 and n_empty > 0:
+        status = "skipped"
+        msg = f"已最新 {n_skip} · 空返回 {n_empty} · 失败 {n_failed} (target={target_date})"
+    else:
+        status = "completed"
+        msg = f"写入 {rows_written} 条 · 已最新 {n_skip} · 空返回 {n_empty} · 失败 {n_failed} (target={target_date})"
+    return {
+        "count": rows_written,
+        "status": status,
+        "written": rows_written,
+        "skipped": n_skip,
+        "empty": n_empty,
+        "failed": n_failed,
+        "target_date": target_date,
+        "message": msg,
+    }
 
 
-async def _step_sync_qfii(conn) -> int:
+async def _step_sync_qfii(conn) -> dict:
     """QFII 季度持股同步（北向陆股通退役后的外资维度替代）。
 
     只同步"最近一个已披露季度末"：距今至少 30 天且 DB 里还没有该季度数据时才请求。
@@ -2922,7 +3007,7 @@ async def _step_sync_qfii(conn) -> int:
     target = latest_plannable_report_date()
     if not target:
         logger.info("[QFII] 尚无可同步的季度末")
-        return 0
+        return {"count": 0, "status": "skipped", "message": "尚无可同步季度末 (距今 < 30 天)"}
 
     row = conn.execute(
         "SELECT COUNT(*) FROM raw_qfii_holding_quarterly WHERE report_date = ?",
@@ -2931,13 +3016,26 @@ async def _step_sync_qfii(conn) -> int:
     existing = int(row[0] or 0) if row else 0
     if existing > 0:
         logger.info(f"[QFII] 季度 {target} 已有 {existing} 条，跳过")
-        return 0
+        return {
+            "count": 0,
+            "status": "skipped",
+            "existing": existing,
+            "report_date": target,
+            "message": f"季度 {target} 已有 {existing} 条, 跳过",
+        }
 
     logger.info(f"[QFII] 开始同步季度 {target}")
     result = await sync_qfii_quarter(conn, target)
     if result.get("status") == "source_unavailable":
         raise RuntimeError(f"qfii_source_failed:{result.get('error')}")
-    return int(result.get("written_rows") or 0)
+    written = int(result.get("written_rows") or 0)
+    return {
+        "count": written,
+        "status": "completed",
+        "written": written,
+        "report_date": target,
+        "message": f"写入 {written} 条 (季度 {target})",
+    }
 
 
 async def _step_build_stage_features(conn) -> int:
@@ -3093,6 +3191,24 @@ def _update_step(conn, step_id, **kwargs):
     conn.commit()
 
 
+def _resolve_step_result(result):
+    """规范化 runner 返回值为 (status, count, detail_json_or_skip_text).
+
+    支持三种返回:
+    - str  : 旧 skipped 接口, status='skipped', error_text = skip 原因
+    - dict : 详细状态. 必含 count; 可含 status (completed/skipped), message, written, skipped, empty, failed
+             序列化整体 JSON 写到 error 字段 (作为 detail, 由 _normalize_update_step_detail 解析)
+    - int / None : 旧 completed 接口, status='completed', records=int
+    """
+    if isinstance(result, str):
+        return "skipped", 0, result
+    if isinstance(result, dict):
+        count = int(result.get("count") or 0)
+        status = result.get("status") or "completed"
+        return status, count, json.dumps(result, ensure_ascii=False)
+    return "completed", int(result or 0), None
+
+
 @router.post("/update/all")
 async def update_all():
     """一键更新全部（当前主 DAG）"""
@@ -3201,17 +3317,19 @@ async def update_all():
                     finally:
                         step_conn.close()
 
-                    # calc_returns 可能返回字符串表示 skipped
-                    if isinstance(result, str):
+                    status, count, error_text = _resolve_step_result(result)
+                    finished_at = datetime.now().isoformat()
+                    if status == "skipped":
                         _update_step(conn, sid, status="skipped",
-                                     finished_at=datetime.now().isoformat(), error=result)
+                                     finished_at=finished_at, error=error_text)
                         skipped.add(sid)
-                        logger.warning(f"[更新] 跳过: {step['name']}: {result}")
+                        logger.warning(f"[更新] 跳过: {step['name']}: {error_text}")
                         continue
 
-                    count = result or 0
-                    _update_step(conn, sid, status="completed",
-                                 finished_at=datetime.now().isoformat(), records=count)
+                    update_kwargs = {"status": status, "finished_at": finished_at, "records": count}
+                    if error_text is not None:
+                        update_kwargs["error"] = error_text
+                    _update_step(conn, sid, **update_kwargs)
                     completed.add(sid)
 
                     # Phase 1: data_completeness 校准
@@ -3533,16 +3651,19 @@ async def smart_update():
                     finally:
                         step_conn.close()
 
-                    if isinstance(result, str):
+                    status, count, error_text = _resolve_step_result(result)
+                    finished_at = datetime.now().isoformat()
+                    if status == "skipped":
                         _update_step(conn, sid, status="skipped",
-                                     finished_at=datetime.now().isoformat(), error=result)
+                                     finished_at=finished_at, error=error_text)
                         skipped.add(sid)
-                        logger.warning(f"[智能更新] 跳过: {step['name']}: {result}")
+                        logger.warning(f"[智能更新] 跳过: {step['name']}: {error_text}")
                         continue
 
-                    count = result or 0
-                    _update_step(conn, sid, status="completed",
-                                 finished_at=datetime.now().isoformat(), records=count)
+                    update_kwargs = {"status": status, "finished_at": finished_at, "records": count}
+                    if error_text is not None:
+                        update_kwargs["error"] = error_text
+                    _update_step(conn, sid, **update_kwargs)
                     completed.add(sid)
                     _calibrate_data_completeness(conn, sid, skipped, failed)
                 except _RunStopped as e:
@@ -3687,16 +3808,20 @@ async def run_single_step(step_id: str):
                     logger.info(f"[单步续跑] 开始: {step_label}")
 
                 try:
-                    count = await RUNNERS[sid](conn)
-                    if isinstance(count, str):
+                    result = await RUNNERS[sid](conn)
+                    status, count, error_text = _resolve_step_result(result)
+                    finished_at = datetime.now().isoformat()
+                    if status == "skipped":
                         _update_step(conn, sid, status="skipped",
-                                     finished_at=datetime.now().isoformat(), error=count)
+                                     finished_at=finished_at, error=error_text)
                         skipped.add(sid)
-                        logger.warning(f"[单步{'续跑' if sid != step_id else ''}] 跳过: {step_label}: {count}")
+                        logger.warning(f"[单步{'续跑' if sid != step_id else ''}] 跳过: {step_label}: {error_text}")
                         continue
 
-                    _update_step(conn, sid, status="completed",
-                                 finished_at=datetime.now().isoformat(), records=count or 0)
+                    update_kwargs = {"status": status, "finished_at": finished_at, "records": count}
+                    if error_text is not None:
+                        update_kwargs["error"] = error_text
+                    _update_step(conn, sid, **update_kwargs)
                     completed.add(sid)
                     _calibrate_data_completeness(conn, sid, skipped, failed)
                     logger.info(f"[单步{'续跑' if sid != step_id else ''}] 完成: {step_label}: {count}")

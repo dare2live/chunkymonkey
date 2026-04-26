@@ -2257,6 +2257,9 @@
     if (rawStatus === 'failed' && !hasData) return 'failed';
     if (rawStatus === 'stopped' && !hasData) return 'stopped';
     if (blocked && !hasData) return 'blocked';
+    // 已经跑完且后端明确返回 skipped (跳过 / 已最新), 保留 skipped 状态;
+    // 否则会被下面 hasData/idle 分支吞成 idle, UI 不显示图标和文案语义.
+    if (rawStatus === 'skipped' && (step.finished_at || step.detail)) return 'skipped';
     if (issueCount > 0) return 'partial';
     if (hasData) return 'completed';
     return 'idle';
@@ -2495,7 +2498,16 @@
         var label = STEP_STATUS_LABEL[st] || '';
         if (_stopRequestedUi && st === 'running') label = '停止中';
         var timeStr = fmtTime(s.finished_at || s.started_at);
-        var recordStr = s.records ? fmt(s.records) + ' 条' : '';
+        // 行展示文案优先级: detail.message > '写入 N 条' > '' (idle)
+        var recordStr = '';
+        if (s.detail && s.detail.message) {
+          recordStr = String(s.detail.message);
+        } else if (s.records) {
+          recordStr = fmt(s.records) + ' 条';
+        } else if (st === 'skipped') {
+          // skipped 但无 message 时, 至少给个 "已跳过" 占位, 避免空行
+          recordStr = '已跳过';
+        }
         var detailHtml = s.step_id === 'sync_market_data'
           ? renderMarketSyncDetail(s)
           : (s.step_id === 'sync_industry' ? renderIndustrySyncDetail(s)
