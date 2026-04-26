@@ -22,9 +22,8 @@ from __future__ import annotations
 
 import asyncio
 import logging
-import sqlite3
 from datetime import date, datetime, timedelta
-from typing import Optional
+from typing import Any, Optional
 
 import pandas as pd
 
@@ -40,7 +39,7 @@ QFII_NOTICE_LAG_DAYS = 30  # 报告期末 +30 天后才大概率有足量披露
 # Schema
 # ─────────────────────────────────────────────────────────────────────
 
-def ensure_tables(conn: sqlite3.Connection) -> None:
+def ensure_tables(conn: Any) -> None:
     conn.executescript("""
         CREATE TABLE IF NOT EXISTS raw_qfii_holding_quarterly (
             report_date            TEXT NOT NULL,
@@ -240,7 +239,7 @@ def _normalize_rows(df: pd.DataFrame) -> list[dict]:
     return out
 
 
-def _upsert_rows(conn: sqlite3.Connection, rows: list[dict]) -> int:
+def _upsert_rows(conn: Any, rows: list[dict]) -> int:
     if not rows:
         return 0
     cur = conn.executemany(
@@ -250,11 +249,7 @@ def _upsert_rows(conn: sqlite3.Connection, rows: list[dict]) -> int:
             hold_shares, hold_shares_change, hold_shares_change_pct,
             change_type, hold_market_cap, holder_rank, notice_date, source
         )
-        VALUES (
-            :report_date, :stock_code, :holder_name, :stock_name, :holder_type,
-            :hold_shares, :hold_shares_change, :hold_shares_change_pct,
-            :change_type, :hold_market_cap, :holder_rank, :notice_date, :source
-        )
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ON CONFLICT(report_date, stock_code, holder_name) DO UPDATE SET
             stock_name             = excluded.stock_name,
             holder_type            = excluded.holder_type,
@@ -268,10 +263,19 @@ def _upsert_rows(conn: sqlite3.Connection, rows: list[dict]) -> int:
             source                 = excluded.source,
             ingested_at            = CURRENT_TIMESTAMP
         """,
-        [dict(r, source=QFII_SOURCE) for r in rows],
+        [
+            (
+                r.get("report_date"), r.get("stock_code"), r.get("holder_name"),
+                r.get("stock_name"), r.get("holder_type"), r.get("hold_shares"),
+                r.get("hold_shares_change"), r.get("hold_shares_change_pct"),
+                r.get("change_type"), r.get("hold_market_cap"), r.get("holder_rank"),
+                r.get("notice_date"), QFII_SOURCE,
+            )
+            for r in rows
+        ],
     )
     conn.commit()
-    return cur.rowcount if cur.rowcount is not None else len(rows)
+    return cur.rowcount if cur.rowcount is not None and cur.rowcount >= 0 else len(rows)
 
 
 # ─────────────────────────────────────────────────────────────────────
@@ -279,7 +283,7 @@ def _upsert_rows(conn: sqlite3.Connection, rows: list[dict]) -> int:
 # ─────────────────────────────────────────────────────────────────────
 
 async def sync_qfii_quarter(
-    conn: sqlite3.Connection,
+    conn: Any,
     report_date: str,
 ) -> dict:
     """同步指定季度的 QFII 持股。report_date 形如 '2025-12-31'。"""
@@ -311,7 +315,7 @@ async def sync_qfii_quarter(
 
 
 async def backfill_qfii_history(
-    conn: sqlite3.Connection,
+    conn: Any,
     start_date: str,
     end_date: Optional[str] = None,
 ) -> dict:

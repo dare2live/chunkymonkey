@@ -12,15 +12,14 @@ institution_survey_client.py — 机构调研数据同步（D8 维度数据源�
   survey_date  接待日期（调研当天）
   notice_date  公告日期（披露日期，一般晚于 survey_date）
   inst_count   接待机构数量
-  Qlib 特征 survey_count_90d 用点位时间查询（raw 表直接 count）以避免 look-ahead。
+  多维模型特征 survey_count_90d 用点位时间查询（raw 表直接 count）以避免 look-ahead。
 """
 
 from __future__ import annotations
 
 import logging
-import sqlite3
 from datetime import date, datetime, timedelta
-from typing import Optional
+from typing import Any, Optional
 
 import pandas as pd
 
@@ -31,7 +30,7 @@ logger = logging.getLogger("cm-api")
 # Schema
 # ─────────────────────────────────────────────────────────────────────
 
-def _ensure_tables(conn: sqlite3.Connection) -> None:
+def _ensure_tables(conn: Any) -> None:
     conn.executescript("""
         CREATE TABLE IF NOT EXISTS raw_institution_surveys (
             stock_code          TEXT NOT NULL,
@@ -134,7 +133,7 @@ def _fetch_from_akshare(start_date: str) -> pd.DataFrame:
 # ─────────────────────────────────────────────────────────────────────
 
 def sync_institution_surveys(
-    conn: sqlite3.Connection,
+    conn: Any,
     days_back: int = 180,
 ) -> dict:
     """
@@ -142,7 +141,7 @@ def sync_institution_surveys(
 
     Parameters
     ----------
-    conn : smartmoney.db 连接
+    conn : 当前 DuckDB 业务库连接
     days_back : 回溯天数，默认 180（6 个月）。akshare 一次调用返回全量。
 
     Returns
@@ -211,7 +210,7 @@ def sync_institution_surveys(
 
 
 def rebuild_survey_mart(
-    conn: sqlite3.Connection,
+    conn: Any,
     as_of_date: Optional[str] = None,
 ) -> int:
     """按 as_of_date（默认今天）聚合出每股当前调研活跃度，upsert 到 mart。"""
@@ -224,7 +223,7 @@ def rebuild_survey_mart(
 
     # 用单条 SQL 按 survey_date 到 as_of_date 窗口聚合
     # 注意：判空比较用 BETWEEN '(as_of - 90d)' AND as_of
-    # DuckDB: julianday() 不存在; DATE 减法直接得 INTEGER 天数
+    # DuckDB DATE 减法直接得 INTEGER 天数。
     sql = """
         WITH windowed AS (
             SELECT

@@ -851,7 +851,7 @@ def compute_stock_multidim_score(conn, stock_code: str) -> dict:
       F3 survey     近 60 天 inst_count 线性归一（50 家 = 满分）
     overall = 有值维度的简单平均。stage 维度已移除（2026-04-23 M1）：
     公式方向反 + 历史未回填快照，属 P0.1 污染源之一。
-    forecast 维度已移除（2026-04-24 Phase 10 qlib 清理）。
+    forecast 维度已移除（2026-04-24 旧预测链路清理）。
     """
     result = {
         "resonance_score": None, "margin_score": None,
@@ -1038,7 +1038,7 @@ async def get_exclusion_categories():
 
 STOCK_SCORING_FRAMEWORK = {
     "title": "四层研究 + 海龟执行框架",
-    "summary": "系统先按 发现 -> 质量 -> 阶段 -> 预测 得到研究原始分 Raw，再叠加外部关注确认与热度拥挤裁决，最后用海龟执行层做小幅执行加减分；四层与外部关注证据权重都支持评分卡热更新，Qlib 仍只承担排序增强，不替代研究逻辑本身。",
+    "summary": "系统先按 发现 -> 质量 -> 阶段 -> 预测 得到研究原始分 Raw，再叠加外部关注确认与热度拥挤裁决，最后用海龟执行层做小幅执行加减分；四层与外部关注证据权重都支持评分卡热更新，预测层只承担排序增强，不替代研究逻辑本身。",
     "formula": "Raw = (Discovery×W1 + Quality×W2 + Stage×W3 + Forecast_effective×W4) / (W1+W2+W3+W4)；Composite_base = clamp(Raw + ExternalBoost - CrowdingPenalty)；Composite = clamp(Composite_base + TurtleDelta)",
     "layers": [
         {
@@ -1086,9 +1086,9 @@ STOCK_SCORING_FRAMEWORK = {
             "label": "预测层 Forecast",
             "weight": 15,
             "role": "排序增强",
-            "summary": "Qlib 只做同等条件下的排序增强，不直接覆盖前三层研究判断。",
+            "summary": "预测层只做同等条件下的排序增强，不直接覆盖前三层研究判断。",
             "items": [
-                "20日收益概率分：来自最新 Qlib 排名和分位",
+                "20日收益概率分：来自最新多维模型排名和分位",
                 "60日相对行业分：优先 SW2，再回退 SW1 / 全市场",
                 "波动收益性价比分：结合波动率和 60 日回撤",
                 "最终只使用生效预测分进入综合分"
@@ -1110,7 +1110,7 @@ STOCK_SCORING_FRAMEWORK = {
     "effective_forecast": {
         "label": "生效预测分",
         "formula": "Forecast_effective = Forecast × max(Stage / 60, 0.5)",
-        "meaning": "阶段差时自动压缩 Qlib 影响力，避免预测分在错误阶段把总分顶上去。",
+        "meaning": "阶段差时自动压缩预测层影响力，避免预测分在错误阶段把总分顶上去。",
     },
     "external_overlay": {
         "label": "外部关注叠加层",
@@ -1431,7 +1431,7 @@ async def scoring_breakdown(card_type: str, object_id: str):
                                    "follow_gate": s.get("follow_gate"),
                                    "return_to_now": s.get("return_to_now"),
                                    "path_state": s.get("path_state"),
-                                   "source": "market_data.db 日K线计算"},
+                                   "source": "market.duckdb 日K线计算"},
                     "setup": {
                         "tag": s.get("setup_tag"),
                         "priority": s.get("setup_priority"),

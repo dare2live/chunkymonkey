@@ -1018,7 +1018,7 @@ def build_today_signals(
     fresh_days = freshness_days or cfg.signal_freshness_days
 
     # 最近 N 天新 buy 事件。notice_date 在库里是 YYYYMMDD 无分隔符，
-    # SQLite date() 函数对这种格式无法解析，需在查询端重新拼接。
+    # 查询端统一重拼成 YYYY-MM-DD 后再做日期比较。
     rows = conn.execute(f"""
         SELECT
             e.institution_id, i.display_name AS institution_name, i.type AS inst_type,

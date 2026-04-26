@@ -16,9 +16,8 @@ from __future__ import annotations
 
 import asyncio
 import logging
-import sqlite3
 from datetime import date, datetime, timedelta
-from typing import Optional
+from typing import Any, Optional
 
 import pandas as pd
 
@@ -31,7 +30,7 @@ LHB_SOURCE = "akshare_stock_lhb_detail_em"
 # Schema
 # ─────────────────────────────────────────────────────────────────────
 
-def ensure_tables(conn: sqlite3.Connection) -> None:
+def ensure_tables(conn: Any) -> None:
     conn.executescript("""
         CREATE TABLE IF NOT EXISTS raw_lhb_daily (
             trade_date       TEXT NOT NULL,
@@ -224,7 +223,7 @@ def _upsert_rows(conn, rows: list[dict]) -> int:
 # ─────────────────────────────────────────────────────────────────────
 
 async def sync_lhb_range(
-    conn: sqlite3.Connection,
+    conn: Any,
     start_date: str,
     end_date: str,
 ) -> dict:
@@ -279,7 +278,7 @@ def _iter_monthly_windows(start_date: str, end_date: str) -> list[tuple[str, str
 
 
 async def backfill_lhb_history(
-    conn: sqlite3.Connection,
+    conn: Any,
     start_date: str,
     end_date: Optional[str] = None,
 ) -> dict:

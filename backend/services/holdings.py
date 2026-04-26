@@ -82,8 +82,9 @@ def _ensure_cache(conn):
     """确保缓存表存在（如果不存在则创建）"""
     exists = conn.execute("""
         SELECT COUNT(*)
-        FROM sqlite_master
-        WHERE type='table' AND name IN ('_cache_stock_latest_rd', '_cache_holder_search')
+        FROM information_schema.tables
+        WHERE table_schema='main'
+          AND table_name IN ('_cache_stock_latest_rd', '_cache_holder_search')
     """).fetchone()[0]
     if exists < 2:
         refresh_stock_latest_cache(conn)

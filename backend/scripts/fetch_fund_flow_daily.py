@@ -32,14 +32,6 @@
 """
 from __future__ import annotations
 
-import os
-
-# M9.2: 强制 Python requests 跳过 macOS 系统代理 (ClashX/Surge 等 fake-ip 模式
-# 会让 push2his.eastmoney.com 解析到 198.18.x.x, Python urllib3 直连失败).
-# 必须在 import requests / akshare 之前设置.
-os.environ["NO_PROXY"] = "*"
-os.environ["no_proxy"] = "*"
-
 import argparse
 import logging
 import sys

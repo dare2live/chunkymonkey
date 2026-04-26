@@ -17,9 +17,8 @@ from __future__ import annotations
 
 import asyncio
 import logging
-import sqlite3
 from datetime import date, datetime
-from typing import Optional
+from typing import Any, Optional
 
 import pandas as pd
 
@@ -33,7 +32,7 @@ MARGIN_SOURCE_SZ = "akshare_stock_margin_detail_szse"
 # Schema
 # ─────────────────────────────────────────────────────────────────────
 
-def ensure_tables(conn: sqlite3.Connection) -> None:
+def ensure_tables(conn: Any) -> None:
     conn.executescript("""
         CREATE TABLE IF NOT EXISTS raw_margin_daily (
             trade_date       TEXT NOT NULL,
@@ -225,7 +224,7 @@ def _upsert_rows(conn, rows: list[dict]) -> int:
 # ─────────────────────────────────────────────────────────────────────
 
 async def sync_margin_day(
-    conn: sqlite3.Connection,
+    conn: Any,
     trade_date: str,
     *,
     fallback_days: int = 0,
@@ -266,7 +265,7 @@ async def sync_margin_day(
 
 
 def _previous_trading_day(
-    conn: sqlite3.Connection,
+    conn: Any,
     trade_date: str,
 ) -> Optional[str]:
     """按 dim_trading_calendar 返回 trade_date 之前最近的交易日，找不到返回 None。"""
@@ -282,7 +281,7 @@ def _previous_trading_day(
 
 
 def _trading_days_between(
-    conn: sqlite3.Connection,
+    conn: Any,
     start_date: str,
     end_date: str,
 ) -> list[str]:
@@ -299,7 +298,7 @@ def _trading_days_between(
 
 
 async def backfill_margin_history(
-    conn: sqlite3.Connection,
+    conn: Any,
     start_date: str,
     end_date: Optional[str] = None,
     skip_existing: bool = True,

@@ -121,7 +121,7 @@ def list_turtle_states(conn) -> list[dict]:
 
 def get_screening_summary(conn) -> dict:
     total = conn.execute("SELECT COUNT(*) FROM mart_stock_screening").fetchone()[0]
-    # DuckDB: 列可能是 VARCHAR (历史 SQLite 写入), 显式 CAST 比较
+    # 旧数据中这些命中列可能是 VARCHAR，显式 CAST 比较。
     f1 = conn.execute("SELECT COUNT(*) FROM mart_stock_screening WHERE TRY_CAST(f1_hit AS INTEGER) = 1").fetchone()[0]
     f3 = conn.execute("SELECT COUNT(*) FROM mart_stock_screening WHERE TRY_CAST(f3_hit AS INTEGER) = 1").fetchone()[0]
     f5 = conn.execute("SELECT COUNT(*) FROM mart_stock_screening WHERE TRY_CAST(f5_hit AS INTEGER) = 1").fetchone()[0]

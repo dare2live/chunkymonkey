@@ -5,7 +5,7 @@ fill_missing_market_kline.py
 补齐 claude 项目当前 tracked 股票缺失的 K 线数据。
 
 策略：
-- missing-only：仅处理 market_data.db 中缺日 K 的 tracked 股票
+- missing-only：仅处理 market.duckdb 中缺日 K 的 tracked 股票
 - 日 K：从 2023-01-01 开始拉全历史，优先东财，失败回退新浪 / 腾讯
 - 月 K：从日 K 聚合派生
 """

@@ -1453,6 +1453,176 @@ Surge/类 Surge 客户端用同等语义: `DOMAIN-SUFFIX,eastmoney.com,DIRECT`�
 
 **Decision**: 待 Codex 接管 + 用户确认。我先停手不再急修, 等 Codex 给修法方向。
 
+### 4.23 Codex 复核数据更新日志：不是数据没到，而是匹配落库与状态语义同时失真 (Codex, 2026-04-25)
+
+**用户日志复核**: 22:50-22:54 的数据获取组不是“全部数据源不可用”。十大股东、财务历史、通达信行业、机构调研、龙虎榜都实际有数据写入或确认已有最新数据；主力资金流 `0` 也不是全失败，而是 `5496` 只已有 2026-04-24 最新日，剩余 `14` 只为空返回。真正的硬错误是 `匹配跟踪机构`: DuckDB 报 `ON CONFLICT` 找不到唯一约束，插入失败被逐条吞掉，最终页面把核心表空跑显示成“完成 0 条”。
+
+**根因拆分**:
+- `inst_holdings` 的 DDL 已写 `UNIQUE(holder_name, stock_code, report_date)`, 但当前 DuckDB 文件是旧表，`CREATE TABLE IF NOT EXISTS` 不会给已有表补约束。
+- 旧实现一行行插入并捕获异常，导致 Binder Error 没有让步骤失败；下游 `sync_market_data` 因为持仓为空，合理地变成 `0/0`。
+- 补上唯一索引后，原一行一插的大事务又在 8GB 机器上触发 DuckDB OOM；这说明该步骤应改成集合式 SQL，不应该靠增大内存硬扛。
+
+**已执行修复**:
+- `backend/services/db.py`: 初始化时补 `CREATE UNIQUE INDEX IF NOT EXISTS idx_ih_unique_holder_stock_report ON inst_holdings(holder_name, stock_code, report_date)`, 让旧库也具备 `ON CONFLICT` 所需约束。
+- `backend/routers/updater.py`: 将 `_step_match_inst_sync` 改为临时匹配表 + `JOIN + INSERT SELECT + ROW_NUMBER()` 的集合式重建，不再逐行插入；最终若 `inst_holdings` 为空直接失败并回滚。
+- `backend/services/duck_adapter.py`: 补 `executemany`, 供批量写临时表使用。
+- 当前库已创建唯一索引并重跑匹配: `inst_holdings = 55,791` 条，覆盖 `4,612` 只股票、`225` 家机构，唯一键重复组 `0`。
+- `backend/scripts/fetch_fund_flow_daily.py`: 移除强制 `NO_PROXY=*`。默认网络应先尊重系统代理尝试历史接口，失败再 fallback 到 `push2delay` 最新日；否则会主动绕开用户原先可能可用的 Surge/Clash 转发链路。
+
+**Q39 裁决**: 选方案 1 但要工程化补强。当前表为空，补唯一索引没有重复冲突；重建表没有必要，手写 `WHERE NOT EXISTS` 会把约束事实藏进查询逻辑。唯一索引是最小、最清楚的事实修复；配合集合式重建，性能和内存也更稳。
+
+**Q40 裁决**: 值得做全量 grep 审计，而且应该立即做第一轮。已清掉本轮发现的活跃 DuckDB 残留:
+- `sector_momentum.py`: 移除 `date('now', ...)`, 用 Python cutoff 字符串兼容 SQLite 测试和 DuckDB 实库。
+- `stock_turtle_engine.py` / `stock_stage_engine.py`: 移除 `date('now', ?)` 参数化 SQLite 写法。
+- `qfii_client.py`: 移除 named params `:report_date` 等，改为位置参数批量 upsert。
+
+剩余 grep 命中主要是 Python 切片、注释、或已兼容的 `CURRENT_TIMESTAMP`; 但后续仍应把这类审计固化成开发检查，而不是靠用户跑全量更新时暴露。
+
+**Q41 裁决**: 单一真相源值得做，但不应压过数据正确性。优先级是:
+1. 先让数据步骤失败时真的失败，且关键表非空。
+2. 再把 `STEPS` 抽到后端单一 registry, `audit.py` 与前端从同一元数据生成，消除 4 处硬编码漂移。
+3. 前端展示不再只显示 `records=0`, 而应展示 `written / skipped / empty / failed`。像主力资金流本轮应显示“已有最新 5496、空返回 14、失败 0”，而不是一个误导性的 `0 条`。
+
+**对本次日志的判定**:
+- `下载十大股东 +0`: 正常，抓到 37,137 条增量候选但和现有唯一键去重后无新增；UI 应写“候选/去重/新增”。
+- `匹配跟踪机构 0`: 严重故障，已修复为 55,791 条。
+- `同步行情数据 0/0`: 上游持仓为空导致，不是行情源本身的结论；匹配修复后需要重跑。
+- `财务 最新 0 / 失败 6`: 小范围增量失败，应显示失败股票列表或错误摘要，但不阻塞历史财务和资本行为。
+- `主力资金流 0`: 不是全失败，是最新日大部分已存在 + 少量空返回；UI 语义需要改。
+
+**验证**:
+- `PYTHONPATH=backend python3 -m pytest -q backend/tests/test_qfii_client.py backend/tests/test_stock_turtle_engine.py backend/tests/test_sector_momentum.py` → 15 passed。
+- `py_compile` 覆盖本轮修改文件通过。
+- 当前库校验: `inst_holdings 55,791 / 4,612 stocks / 225 institutions`, `raw_fund_flow_daily 5,496 / 5,496 stocks / 2026-04-24`。
+
+**Next**: 重启服务后，重跑 `同步行情数据` 及其下游事实计算；随后做 `STEPS` registry 和状态展示语义改造。不要再把“0 条”默认为成功，除非该步骤明确是 skip/no-op 并写出原因。
+
+### 4.24 SQLite / qlib / SEF 退出审计：生产路径已清零，测试夹具仍需迁移 (Codex, 2026-04-25)
+
+**用户追问**: “这些是应该删除的残留吗？不应该存在隐藏或者注释掉的代码，应该全部是当前的新代码；sqlite 不是应该彻底退出了么已经？”
+
+**Codex 更正**: 用户这个质疑成立。§4.23 中我写“兼容 SQLite/DuckDB”不够准确。当前项目如果已经决策 DuckDB 主库 + LightGBM/规则引擎，那么生产代码里不应该继续把 SQLite / qlib 当作可运行对象、注释里的默认语境或隐藏兜底路径。
+
+**审计范围**:
+- 生产代码/脚本/前端: `backend/ scripts/ assets/ index.html`，排除 `backend/tests/**`。
+- 文档当前总览: `docs/system-overview.md`。
+- 数据库实表: `data/smartmoney.duckdb` 与 `data/etf.duckdb` 的 `information_schema.tables`。
+- 文件资产: `find . -maxdepth 4 '*qlib*' '*sqlite*' '*sef*'`，排除 `.git` 与 `docs/archive`。
+
+**发现的真实残留**:
+- `scripts/sef/` 目录仍在，且引用已不存在的 `services.sef.*`，属于死代码。
+- `scripts/train_phase3a.py` 仍引用已删除的 `services.qlib_full_engine`，属于不可运行旧训练脚本。
+- `backend/scripts/migrate_market_data.py` 仍按旧 `smartmoney.db.stock_kline` 做迁移，属于历史迁移脚本。
+- `backend/scripts/import_chatgpt_price_history.py` 从外部 SQLite 库导行情，属于历史补数工具。
+- git 跟踪的 `data/qlib_data/calendars/day.txt` / `data/qlib_data/instruments/all.txt` 以及本地生成的 `data/qlib_*` 目录仍在。
+- 服务层若干文件只把 `sqlite3.Connection` 当类型标注，且一些注释仍写 `market_data.db` / `smartmoney.db` / “Qlib 排序增强”。
+- `docs/system-overview.md` 还写着旧 SQLite/qlib 清理状态，且提到 ETF 空壳表“待清理”，和当前事实不一致。
+
+**已执行清理**:
+- 删除死代码/旧脚本: `scripts/sef/`, `scripts/train_phase3a.py`, `backend/scripts/migrate_market_data.py`, `backend/scripts/import_chatgpt_price_history.py`。
+- 删除 qlib 数据资产: git 跟踪的 `data/qlib_data/*` 文件，以及本地生成的 `data/qlib_data`, `data/qlib_alpha158`, `data/qlib_etf_data`, `data/qlib_etf_models`, `data/qlib_etf_runs`, `data/qlib_models`, `data/qlib_runs`。
+- 生产服务层移除 `sqlite3` 类型标注/import，改为 `Any` 或 `DuckConn`。
+- 把生产路径中的 `sqlite_master` 查询改为 `information_schema.tables`。
+- 清理用户可见评分卡与代码注释中的旧 qlib/SQLite 表述，改成“预测层/多维模型/market.duckdb/smartmoney.duckdb”。
+- `build_alpha158_duck.py` 移除 `INSTALL sqlite; LOAD sqlite;`，因为当前只 ATTACH DuckDB 文件。
+- `docs/system-overview.md` 已同步更新为当前口径: DuckDB DB-API 适配、旧预测框架已清理、smart/etf 库无旧预测/实验框架残留表。
+
+**审计结果**:
+- 生产代码/脚本/前端 grep 结果: `pyqlib | qlib | SEF | sqlite | sqlite_master | smartmoney.db | market_data.db` 命中为 0。
+- 文件路径审计: `.git` 和 `docs/archive` 之外，`*qlib* / *sqlite* / *sef*` 文件路径命中为 0。
+- 数据库表审计: smart 库 `114` 张表、etf 库 `8` 张表，`qlib / forecast / sef / sqlite` 命中均为 `[]`。
+- 当前仍保留 `data/alpha158.duckdb`: 这是独立 DuckDB 因子实验资产，不依赖 pyqlib；但默认生产模型已禁用 legacy/alpha158 旧模型，后续若用户希望“连 Alpha158 命名也退出”，应单独做重命名或归档，而不是混同为 qlib 运行时。
+
+**仍未清理的范围**:
+- `backend/tests/**` 仍有 `33` 个文件使用 `sqlite3` 内存夹具，`6` 个文件有 qlib 命名夹具。这些不是生产运行残留，但确实不是“全项目新口径”。建议下一步单独做测试迁移: 新建 DuckDB 测试 fixture，删除 qlib 命名字段/旧评分断言，再把 grep 红线加入 CI。
+- `docs/archive/**` 保留历史讨论，不纳入清理范围。
+
+**Decision**: 生产路径必须零旧框架残留；测试残留不再被解释为“兼容需求”，而是独立技术债。下一步若继续推进，应先迁移测试夹具和加 grep 红线，再做 STEPS 单一 registry。
+
+### 4.25 Codex 跟跑智能更新：主链路已绿，剩余瓶颈是过度计划与收益逐事件循环 (Codex, 2026-04-26)
+
+**复跑范围**:
+- 先单跑 `build_trends` 续跑链路，验证上次 OOM 卡点: `build_trends 3285`、`calc_sector_momentum 15461`、`build_stage_features 3285`、`calc_stock_scores 3285`，4/4 成功。
+- 再跑完整 `POST /api/inst/update/smart`: 2026-04-26 11:05:43 开始，11:42:04 结束；计划内 17 个步骤全部成功，0 失败；手动迁出的 `calc_screening` / `build_turtle_features` 等保持跳过。
+- 刷新后审计分 `94`; 核心覆盖: `inst_holdings 55,791`、`events 56,965`、`returns 56,951`、`current_relationship 5,104`、`mart_stock_trend 3,285`、`stock_scores 3,285`。
+
+**本轮确认已修复的卡点**:
+- `updater.py` 里的 `datetime('now','-1 hour')` 已换成 DuckDB `CURRENT_TIMESTAMP - INTERVAL 1 HOUR`; 后台异常时 pending/running 步骤会被 `_fail_unfinished_steps` 标失败，不再 UI 假完成。
+- `inst_holdings` 旧库唯一约束缺失 + 同事务 delete/insert 冲突已收敛: 现在先建临时重建表、去重校验，再删除旧表并批量插入。
+- DuckDB 语义残留继续清掉: `DATE()` modifier、`[field]` 标识符、无 PK 表 `INSERT OR REPLACE`、嵌套聚合 `MAX(COUNT(*),1)` 都已换成当前 DuckDB 写法。
+- `build_trends` OOM 卡点已消失: 不再全表 delete/reinsert 宽表，而是分批读取必要价格行、关闭 market 连接、更新已有 `mart_stock_trend` 行并只插新增行。
+- 智能更新不再自动拉起手动选股模块: `calc_screening`、`build_turtle_features` 已排除出普通下游续跑。
+- 审计里的 K 线 `delisted_stocks=-17` 旧算法已修正为不再用 `stale - suspended` 生成负数。
+
+**仍然暴露的真实瓶颈**:
+- `sync_raw` 本轮扫了 `2026-04-21` 之后 75 页，候选 37,137 条，实际 `+0`; 但旧智能计划仍把 `match_inst -> gen_events -> calc_returns -> mart -> score` 全链路带起来。这不是数据取不到，而是“源头最大日期滞后 + 无新增也级联重算”的计划问题。
+- `calc_returns` 是最大耗时: 11:09:31 到 11:40:06，约 30 分 35 秒，计算 `56,951` 条，跳过 `14` 条停牌等待。当前算法逐事件多次查交易日历、日线、月线、未来 N 日、回撤和路径，正确但 N+1 查询太重。
+- `sync_financial` 仍会显示“最新快照 6 只失败”，但同一步里历史财报 `288`、资本行为 `56`、扩展指标 `144` 都成功。前端不应把它理解成“财务失败”，而应展示子任务 partial。
+- UI 总进度在 `calc_returns` 期间长期停在步骤级 `29%`，虽然日志里有内部 0-99% 进度。应把长任务内部进度接入 summary，否则用户会误判为卡死。
+- 财务历史回填每次只推进 24 只，审计从 `2541` 缺口降到 `2517`。这是可接受的渐进补数，但计划文案要明确“继续小批量回填”，不要让用户以为这 2517 是新故障。
+
+**已执行的最小优化**:
+- `_step_sync_raw` 现在返回 `written/total` 细节，保留 UI 总量同时暴露实际新增量。
+- `build_smart_plan` 增加 3 小时源头重查冷却: `sync_raw` 和 `sync_surveys` 如果刚成功检查过，即使源头最大日期仍旧，也先跳过等待刷新。
+- 重启后复查 `smart-plan`: 已从 17 步降到 4 步，只剩 `sync_financial -> calc_financial_derived -> build_stage_features -> calc_stock_scores`; `sync_raw/match_inst/sync_market_data/gen_events/calc_returns/sync_surveys` 均被正确跳过。
+
+**下一步建议，按收益/复杂度排序**:
+1. 收益计算批处理: 一次性加载交易日历；按股票批量加载日线/月线到内存；同一股票的事件共用价格序列。这个比加队列/新服务更直接，预期把 30 分钟级降到分钟级。
+2. 事件生成幂等化: 如果 `inst_holdings` 重建后 `(institution_id, stock_code, report_date, event_type, hold_amount...)` 签名没变，就不要删除重建 `fact_institution_event`，从源头避免收益全重算。
+3. 智能计划引入“步骤产物变化”语义: `sync_raw written=0`、`sync_market_data rows=0` 这类 no-op 不应触发下游硬重算；现在的 3 小时冷却只是低成本止血。
+4. 状态展示改为 `candidate / written / skipped / empty / failed / partial`，并把 `calc_returns` 内部进度接入 summary。
+5. 暂不加新数据源、任务队列或复杂调度器。当前主链路已经能跑完，最大收益来自减少无效重算和批量化已有计算。
+
+**Decision**: 智能更新主链路当前无硬阻塞；上线前的优先级不是继续堆数据和组件，而是把 no-op 级联、收益逐事件循环、UI 状态语义三处收敛。保留 raw 全量/增量抓取能力，但 feature/model 层只消费通过审计且能高效更新的数据。
+
+### 4.26 接力 §4.25：UI 状态语义 + Codex 51 文件改动整合 commit (Claude, 2026-04-26)
+
+**Claude**: Codex 在 §4.25 写完跑完但**额度超限没 commit**。本轮我接力做两件事:
+
+**1. UI 状态语义改造** (Codex §4.23 Q41 #3 + §4.25 #4 落地, 我的 commit `dffd6452`):
+
+- `backend/routers/updater.py`:
+  - 新 helper `_resolve_step_result()`: runner 返 dict 时含 `status / count / written / skipped / empty / failed / message`, 序列化 JSON 写 `step_status.error` 字段作 detail (复用 `_normalize_update_step_detail` 解析路径, 不动 schema)
+  - 主循环 3 处 (update_all / update_sync_group / update_step) 抽 helper, 行为统一
+  - 5 runner 返 dict: `sync_qfii / sync_margin / sync_lhb / sync_surveys / sync_fund_flow`
+- `assets/js/app.js`:
+  - `renderStepGrid` 文案优先级: `detail.message` > `N 条` > `已跳过`
+  - `deriveDisplayStatus` 修 bug: skipped + (`finished_at|detail`) 保留 skipped (之前 fall through 到 idle 失图标)
+- `index.html`: `CM_ASSET_VERSION 3.4.0 → 3.5.0` 强制 JS 重拉
+
+Preview 实测:
+```
+/ 主力资金流 本轮跳过  已最新 5496 · 空返回 14 · 失败 0 (target=2026-04-24)
+OK QFII 季报 完成 季度 2025-12-31 已有 895 条, 跳过
+```
+
+**2. 整合 Codex 51 文件改动** (覆盖 §4.23/§4.24/§4.25 主体, 本 commit `<TBD>`):
+
+51 个文件 / +631 / -8875 行 (qlib_data + sef/ 大批删除占多数). 经 Claude 验证:
+- `import` 测试: 27 个核心模块 (services + routers) 全部 import OK
+- 关键改动确认:
+  - `_fail_unfinished_steps` (line 674): 后台异常时 pending/running 标失败, 不再 UI 假完成
+  - `_is_recent_successful_sync` (line 707): 3 小时冷却函数已落地
+  - `_step_build_trends_sync` (line 1722): build_trends OOM 修复在 (分批读 + 关 market 连接)
+  - `_step_match_inst_sync` (Codex §4.23): 集合式 SQL 重建在
+  - 4 处 `_fail_unfinished_steps` 调用 (3512/3855/4017/4233): 各 endpoint 异常路径都接
+
+**当前生产链路状态 (用 §4.25 实测数据)**:
+- inst_holdings: **55,791 条** / 4,612 股 / 225 机构
+- events: 56,965 / returns: 56,951
+- mart_stock_trend: 3,285 / stock_scores: 3,285
+- 智能更新主链路: 17 步全过 (耗时 37 分钟, calc_returns 占 30 分钟)
+- 重跑 smart-plan: 3 小时冷却生效后从 17 步降到 4 步
+
+**§4.25 提的 5 个下一步建议未实施**, 优先级仍按 Codex 排:
+1. 收益批处理 (一次加载 calendar / per-stock K 线缓存 / 同股事件共用) — 预期 30 分钟 → 分钟级
+2. 事件生成幂等化 (`fact_institution_event` 签名不变就不删, 避免 returns 全重算)
+3. no-op 级联收敛 (`sync_raw written=0` / `sync_market_data rows=0` 不应触发下游硬重算; 当前 3 小时冷却是低成本止血)
+4. UI 状态枚举升级 `candidate / written / skipped / empty / failed / partial` + `calc_returns` 内部进度接 summary (本轮已落 `written/skipped/empty/failed`, 还差 `candidate/partial` 和长任务进度)
+5. 不加新数据源/队列/调度器 — 主链路能跑完, 收益来自减少无效重算
+
+**Decision**: §4.25 工程主体合入 main, 主链路无硬阻塞. 下一步等用户/Codex 决定是否上 #1 (收益批处理) 这条 ROI 最高的优化, 还是先做 launchd 自动化 + 监控页 (M8.9) 让现状稳定运行一段。
+
 ## 5. 决策记录 (Decision Log)
 
 每次讨论完一个问题, 在这里 append 一行:
@@ -1513,6 +1683,11 @@ Surge/类 Surge 客户端用同等语义: `DOMAIN-SUFFIX,eastmoney.com,DIRECT`�
 | 2026-04-25 | M9.5 工程化前端入口 | STEPS + RUNNERS + step + auto-prime + 前端 GROUP_MAP/count 动态 + ASSET_VERSION 升级 (5 commit: c7554168/eba68cfc/4ee15627/d5caa54c/bfdb2525) | 工作台"数据获取"动态加 sync_fund_flow, 用户可点击触发, 复用 push2delay 路径 |
 | 2026-04-25 | 7 个 SQLite→DuckDB 残留 bug 修复 | margin/lhb named params, julianday, signals date(), hit_count VARCHAR, financial GROUP BY, tdx_industry CURRENT_TIMESTAMP — 全部 commit `bfdb2525` | 全量更新跑出来的语义差异, 单点 fix |
 | 2026-04-25 | Q39/Q40/Q41 (待 Codex) | Bug 6 inst_holdings ON CONFLICT 仍报错 ("specified columns not referenced by UNIQUE INDEX"), 推测实表 UNIQUE 约束没生效; 求 Codex: ① 修法选择 (CREATE UNIQUE INDEX / WHERE NOT EXISTS / DROP+REBUILD); ② 是否做全量迁移残留审计; ③ STEPS 4 处硬编码是否抽单一源 | 用户反馈"项目混乱", 修复策略要从单点变系统; Claude 停手等 Codex 接管 |
+| 2026-04-25 | Q39/Q40/Q41 Codex 接管 | 选补唯一索引 + 集合式重建 `inst_holdings`; 同步做 DuckDB 残留 grep 第一轮; STEPS 单一 registry 放下一步 | 当前库已从 0 修复到 55,791 条机构持仓; 真问题是步骤吞错和 UI 状态语义失真, 不是全部数据源不可用 |
+| 2026-04-25 | SQLite / qlib / SEF 退出复核 | 生产代码、脚本、前端、当前总览文档、数据表与文件路径残留已清零；测试夹具仍有 33 个 sqlite / 6 个 qlib 命名文件待迁移 | 用户指出“兼容 SQLite/DuckDB”表述不应存在；旧框架不能藏在注释、死脚本、数据目录或用户可见说明里 |
+| 2026-04-26 | §4.25 智能更新跟跑 | 17 步主链路全过 (37 分钟, calc_returns 占 30 分); 3 小时冷却生效后 smart-plan 17→4 步; build_trends OOM 修复; _fail_unfinished_steps 异常路径补 | inst_holdings 55791 / events 56965 / returns 56951 / trend 3285 / score 3285 |
+| 2026-04-26 | UI 状态语义改造 | Claude 落地 5 runner 返 dict + 主循环 helper + 前端 message 优先 + skipped 状态保留 (commit dffd6452) | "/ 主力资金流 本轮跳过 已最新 5496·空返回 14" 完整可读 |
+| 2026-04-26 | Codex §4.23/4.24/4.25 整合 commit | 51 文件 (+631 -8875) 一次合入 main, 27 个核心模块 import 全过, 主链路稳定 | Codex 额度超限未 commit, Claude 接力做总核对 + 写 §4.26 总结 |
 
 ---
 

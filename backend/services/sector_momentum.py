@@ -19,7 +19,7 @@ sector_momentum.py — 板块动量模块
 
 import json
 import logging
-from datetime import datetime
+from datetime import date, datetime, timedelta
 
 import numpy as np
 import pandas as pd
@@ -344,12 +344,13 @@ def calc_sector_momentum(smart_conn, mkt_conn) -> int:
     all_codes = sorted({code for codes in industry_stocks.values() for code in codes})
     if all_codes:
         try:
+            benchmark_cutoff = (date.today() - timedelta(days=420)).strftime("%Y-%m-%d")
             placeholders = ",".join("?" for _ in all_codes)
             benchmark_rows = mkt_conn.execute(
                 f"SELECT code, date, close FROM price_kline "
                 f"WHERE code IN ({placeholders}) AND freq='daily' AND adjust='qfq' "
-                f"AND date >= date('now', '-420 day') ORDER BY date",
-                all_codes
+                f"AND date >= ? ORDER BY date",
+                (*all_codes, benchmark_cutoff)
             ).fetchall()
             if benchmark_rows:
                 bdf = pd.DataFrame([dict(r) for r in benchmark_rows])
@@ -532,16 +533,17 @@ def calc_dual_confirm(smart_conn) -> int:
         return 0
 
     # 获取最近的机构 new_entry/increase 事件
+    event_cutoff = (date.today() - timedelta(days=183)).strftime("%Y-%m-%d")
     events = smart_conn.execute(f"""
         SELECT e.stock_code, e.institution_id, e.event_type, e.report_date,
                si.tdx_l1_name as sector_name
         FROM fact_institution_event e
         LEFT JOIN dim_stock_tdx_industry si ON e.stock_code = si.stock_code
         WHERE e.event_type IN ('new_entry', 'increase')
-          AND e.report_date >= date('now', '-6 months')
+          AND e.report_date >= ?
           AND si.tdx_l1_name IS NOT NULL
         ORDER BY e.report_date DESC
-        """).fetchall()
+        """, (event_cutoff,)).fetchall()
 
     if not events:
         logger.info("[双重确认] 无符合条件的事件")

@@ -23,7 +23,7 @@ DB_PATH = DB_DIR / "smartmoney.duckdb"
 
 
 def get_conn(timeout: int = 30) -> DuckConn:
-    """返回 DuckDB 连接 (duck_adapter.DuckConn 兼容 sqlite3.Connection API)."""
+    """返回 DuckDB 连接。"""
     DB_DIR.mkdir(parents=True, exist_ok=True)
     return _duck_connect(str(DB_PATH), timeout=timeout)
 
@@ -59,7 +59,7 @@ def init_db():
             CREATE INDEX IF NOT EXISTS idx_mrh_holder ON market_raw_holdings(holder_name);
             CREATE INDEX IF NOT EXISTS idx_mrh_stock_report ON market_raw_holdings(stock_code, report_date);
 
-            -- K线已迁移到独立的 market_data.db.price_kline
+            -- K线已迁移到独立的 market.duckdb.price_kline
 
             CREATE TABLE IF NOT EXISTS raw_fetch_batch (
                 batch_id        TEXT PRIMARY KEY,
@@ -187,6 +187,10 @@ def init_db():
             CREATE INDEX IF NOT EXISTS idx_ih_inst ON inst_holdings(institution_id);
             CREATE INDEX IF NOT EXISTS idx_ih_stock ON inst_holdings(stock_code);
             CREATE INDEX IF NOT EXISTS idx_ih_report ON inst_holdings(report_date);
+            -- Older DuckDB files may have been created before the UNIQUE clause above existed.
+            -- ON CONFLICT needs an actual unique index on existing databases too.
+            CREATE UNIQUE INDEX IF NOT EXISTS idx_ih_unique_holder_stock_report
+                ON inst_holdings(holder_name, stock_code, report_date);
 
             CREATE TABLE IF NOT EXISTS fact_institution_event (
                 institution_id    TEXT NOT NULL,
@@ -576,7 +580,7 @@ def init_db():
         """)
         conn.commit()
 
-        # 增量添加新列（SQLite 不支持 ADD COLUMN IF NOT EXISTS）
+        # 增量添加新列。
         # 收益字段已直接维护在 fact_institution_event 上
         try:
             conn.execute("ALTER TABLE mart_institution_profile ADD COLUMN win_rate_90d REAL")
@@ -819,7 +823,7 @@ def init_db():
 
         # Phase 3b-2: mart_institution_industry_stat.sw_level → industry_level
         # 原列名在 Phase 2 申万退役后语义已漂移 (值仍是 level1/level2/level3),
-        # 重命名以解除 "sw" 字面与 TDX 真相源的混淆。SQLite 3.25+ 支持 RENAME COLUMN。
+        # 重命名以解除 "sw" 字面与 TDX 真相源的混淆。
         try:
             cols = {r[1] for r in conn.execute("PRAGMA table_info(mart_institution_industry_stat)").fetchall()}
             if "sw_level" in cols and "industry_level" not in cols:

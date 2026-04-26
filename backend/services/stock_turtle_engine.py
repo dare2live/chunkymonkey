@@ -2,14 +2,14 @@
 stock_turtle_engine.py — 海龟执行特征中间层
 
 把 Donchian 突破、ATR 风险、参考止损和参考加仓位统一沉成结构化特征，
-供验证、Qlib 特征注入、评分解释和后续交易仿真共享。
+供验证、多维模型特征注入、评分解释和后续交易仿真共享。
 
 这一层只存“可观察的执行准备度”，不直接持有组合仓位状态。
 真实持仓、加仓步数和交易日志由后续验证/回测层维护。
 """
 
 import logging
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from typing import Optional
 
 import pandas as pd
@@ -42,6 +42,7 @@ def _dist_pct(close_price: Optional[float], level: Optional[float]) -> Optional[
 def _load_price_history(mkt_conn, codes: list[str], since_days: int = 320) -> dict[str, list[dict]]:
     history = {code: [] for code in codes}
     chunk_size = 400
+    cutoff = (date.today() - timedelta(days=since_days)).strftime("%Y-%m-%d")
     for idx in range(0, len(codes), chunk_size):
         chunk = codes[idx:idx + chunk_size]
         placeholders = ",".join("?" for _ in chunk)
@@ -49,8 +50,8 @@ def _load_price_history(mkt_conn, codes: list[str], since_days: int = 320) -> di
             f"SELECT code, date, open, high, low, close, volume, amount "
             f"FROM price_kline "
             f"WHERE code IN ({placeholders}) AND freq='daily' AND adjust='qfq' "
-            f"AND date >= date('now', ?) ORDER BY code, date",
-            (*chunk, f"-{since_days} day"),
+            f"AND date >= ? ORDER BY code, date",
+            (*chunk, cutoff),
         ).fetchall()
         for row in rows:
             history.setdefault(row["code"], []).append(dict(row))

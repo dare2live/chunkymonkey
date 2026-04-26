@@ -27,9 +27,8 @@ tdx_industry_client.py — 通达信行业分类同步（取代申万 SW 三级�
 from __future__ import annotations
 
 import logging
-import sqlite3
 from datetime import datetime
-from typing import Optional
+from typing import Any, Optional
 
 logger = logging.getLogger("cm-api")
 
@@ -41,7 +40,7 @@ _ONE_CHUNK = 0x7530  # 30000 bytes per chunk (TDX protocol limit)
 # Schema
 # ─────────────────────────────────────────────────────────────────────
 
-def _ensure_table(conn: sqlite3.Connection) -> None:
+def _ensure_table(conn: Any) -> None:
     conn.executescript("""
         CREATE TABLE IF NOT EXISTS dim_stock_tdx_industry (
             stock_code    TEXT PRIMARY KEY,
@@ -168,7 +167,7 @@ def _parse_tdxhy(data: bytes) -> list[_ParsedRow]:
 # Sync
 # ─────────────────────────────────────────────────────────────────────
 
-def sync_tdx_industry(conn: sqlite3.Connection) -> dict:
+def sync_tdx_industry(conn: Any) -> dict:
     """拉取 tdxhy.cfg 并全量 upsert 到 dim_stock_tdx_industry。
 
     Returns
@@ -284,7 +283,7 @@ def sync_tdx_industry(conn: sqlite3.Connection) -> dict:
 # ─────────────────────────────────────────────────────────────────────
 
 def get_tdx_industry_at(
-    conn: sqlite3.Connection, stock_code: str, event_date: str
+    conn: Any, stock_code: str, event_date: str
 ) -> Optional[dict]:
     """审计 4.4 / Phase V：返回 ``event_date`` 时点该股所属的 TDX 行业（event-time 口径）。
 
@@ -301,7 +300,7 @@ def get_tdx_industry_at(
             """,
             (stock_code, event_date),
         ).fetchone()
-    except sqlite3.OperationalError:
+    except Exception:
         row = None
     if row:
         return {
@@ -313,7 +312,7 @@ def get_tdx_industry_at(
     return get_tdx_industry(conn, stock_code)
 
 
-def get_tdx_industry(conn: sqlite3.Connection, stock_code: str) -> Optional[dict]:
+def get_tdx_industry(conn: Any, stock_code: str) -> Optional[dict]:
     """查询单只股票的通达信行业三级代码（含中文名）。"""
     row = conn.execute(
         """SELECT tdx_l1, tdx_l2, tdx_l3,
@@ -334,7 +333,7 @@ def get_tdx_industry(conn: sqlite3.Connection, stock_code: str) -> Optional[dict
     }
 
 
-def load_tdx_industry_map(conn: sqlite3.Connection) -> dict[str, dict]:
+def load_tdx_industry_map(conn: Any) -> dict[str, dict]:
     """批量加载全量股票→行业映射（含中文名）。"""
     rows = conn.execute(
         """SELECT stock_code, tdx_l1, tdx_l2, tdx_l3,

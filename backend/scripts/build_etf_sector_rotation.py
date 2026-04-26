@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""ETF B3: 板块轮动分析 — 基于 ETF 自身动量, 不依赖 qlib
+"""ETF B3: 板块轮动分析 — 基于 ETF 自身动量
 
 输入:
   data/etf.duckdb

@@ -1,8 +1,8 @@
 """
-market_db.py — 独立行情数据库 (market_data.db)
+market_db.py — 独立行情数据库 (market.duckdb)
 
 职责：K 线存储、同步状态、导入批次管理。
-与业务库 smartmoney.db 完全解耦，业务层只通过本模块读写行情数据。
+与业务库 smartmoney.duckdb 完全解耦，业务层只通过本模块读写行情数据。
 """
 
 from datetime import datetime, timezone
@@ -123,11 +123,21 @@ def init_market_db():
 # Read Functions
 # ---------------------------------------------------------------------------
 
+_PRICE_FIELDS = {"open", "high", "low", "close", "volume", "amount"}
+
+
+def _quote_price_field(field: str) -> str:
+    if field not in _PRICE_FIELDS:
+        raise ValueError(f"unsupported price field: {field}")
+    return f'"{field}"'
+
+
 def get_kline(conn, code: str, date: str, freq: str = "daily",
               field: str = "open") -> Optional[float]:
     """单点价格查询：取指定日期的指定字段值"""
+    col = _quote_price_field(field)
     row = conn.execute(
-        f"SELECT [{field}] FROM price_kline "
+        f"SELECT {col} FROM price_kline "
         "WHERE code=? AND date=? AND freq=? AND adjust='qfq'",
         (code, date, freq)
     ).fetchone()
@@ -136,7 +146,7 @@ def get_kline(conn, code: str, date: str, freq: str = "daily",
     # daily 回退到 monthly close
     if freq == "daily":
         row = conn.execute(
-            "SELECT [close] FROM price_kline "
+            "SELECT \"close\" FROM price_kline "
             "WHERE code=? AND date<=? AND freq='monthly' AND adjust='qfq' "
             "ORDER BY date DESC LIMIT 1",
             (code, date)

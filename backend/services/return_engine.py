@@ -3,7 +3,7 @@
 
 以公告日后下一交易日开盘为锚点，计算事件后的收益和回撤。
 结果直接回写 fact_institution_event（不再写 fact_event_return）。
-K 线数据从 market_data.db 读取。
+K 线数据从 market.duckdb 读取。
 """
 
 import logging
@@ -196,10 +196,20 @@ def _suggest_follow_gate(event_type: Optional[str], premium_pct: Optional[float]
     return "avoid", "high_premium"
 
 
+_PRICE_FIELDS = {"open", "high", "low", "close", "volume", "amount"}
+
+
+def _quote_price_field(field: str) -> str:
+    if field not in _PRICE_FIELDS:
+        raise ValueError(f"unsupported price field: {field}")
+    return f'"{field}"'
+
+
 def _get_exact_daily_field(mkt_conn, code: str, date: str, field: str) -> Optional[float]:
     """读取日K字段。精确匹配不到时，取该日期起最近的有效交易日（停牌/假期容错）。"""
+    col = _quote_price_field(field)
     row = mkt_conn.execute(
-        f"SELECT [{field}] FROM price_kline "
+        f"SELECT {col} FROM price_kline "
         "WHERE code=? AND date=? AND freq='daily' AND adjust='qfq'",
         (code, date),
     ).fetchone()
@@ -207,8 +217,9 @@ def _get_exact_daily_field(mkt_conn, code: str, date: str, field: str) -> Option
         return row[0]
     # 回退：取 date 起 10 天内最近的有效记录
     row = mkt_conn.execute(
-        f"SELECT [{field}] FROM price_kline "
-        "WHERE code=? AND date>=? AND date<=date(?,'+10 days') AND freq='daily' AND adjust='qfq' "
+        f"SELECT {col} FROM price_kline "
+        "WHERE code=? AND date>=? AND TRY_CAST(date AS DATE) <= TRY_CAST(? AS DATE) + INTERVAL 10 DAY "
+        "AND freq='daily' AND adjust='qfq' "
         "ORDER BY date LIMIT 1",
         (code, date, date),
     ).fetchone()
@@ -350,7 +361,7 @@ def calculate_returns(biz_conn, *, full_rescan: bool = False) -> int:
               AND NOT (
                 calc_version = ?
                 AND tradable_date IS NOT NULL AND tradable_date != ''
-                AND date(tradable_date, '+180 days') < date(?)
+                AND TRY_CAST(tradable_date AS DATE) + INTERVAL 180 DAY < TRY_CAST(? AS DATE)
               )
             """,
             (CALC_VERSION, today),
@@ -361,7 +372,7 @@ def calculate_returns(biz_conn, *, full_rescan: bool = False) -> int:
             WHERE notice_date IS NOT NULL AND notice_date != ''
               AND calc_version = ?
               AND tradable_date IS NOT NULL AND tradable_date != ''
-              AND date(tradable_date, '+180 days') < date(?)
+              AND TRY_CAST(tradable_date AS DATE) + INTERVAL 180 DAY < TRY_CAST(? AS DATE)
             """,
             (CALC_VERSION, today),
         ).fetchone()[0]
@@ -374,6 +385,12 @@ def calculate_returns(biz_conn, *, full_rescan: bool = False) -> int:
     # 覆盖率检查：批量检查待计算事件对应股票是否有日 K
     mkt_conn = get_market_conn()
     try:
+        try:
+            mkt_conn.execute("SET preserve_insertion_order=false")
+            mkt_conn.execute("SET threads=1")
+            mkt_conn.execute("SET memory_limit='2GB'")
+        except Exception:
+            pass
         stock_codes = set(ev["stock_code"] for ev in events)
         kline_code_rows = mkt_conn.execute(
             "SELECT DISTINCT code FROM price_kline WHERE freq='daily'"

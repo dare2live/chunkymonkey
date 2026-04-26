@@ -1,8 +1,8 @@
 """DuckDB 分析引擎
 
-定位: 列式 OLAP 查询引擎, 读挂载的 SQLite 作 source of truth. 零存储迁移.
+定位: 列式 OLAP 查询引擎, 直接读取 DuckDB 主库并挂载 market/etf 库.
 用途: feature_panel 构建 / 训练数据加载 / topK 排名 / cross-source ASOF JOIN.
-不变: SQLite 原始存储, pandas API 解析, LightGBM 模型层.
+不变: pandas API 解析与 LightGBM 模型层.
 """
 from __future__ import annotations
 

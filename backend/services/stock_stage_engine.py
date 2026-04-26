@@ -6,7 +6,7 @@ stock_stage_engine.py — 股票阶段特征中间事实层
 """
 
 import logging
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from statistics import pstdev
 from typing import Optional
 
@@ -245,6 +245,7 @@ def ensure_tables(conn):
 def _load_price_history(mkt_conn, codes: list[str], since_days: int = 420) -> dict[str, list[dict]]:
     history = {code: [] for code in codes}
     chunk_size = 400
+    cutoff = (date.today() - timedelta(days=since_days)).strftime("%Y-%m-%d")
     for idx in range(0, len(codes), chunk_size):
         chunk = codes[idx:idx + chunk_size]
         placeholders = ",".join("?" for _ in chunk)
@@ -252,8 +253,8 @@ def _load_price_history(mkt_conn, codes: list[str], since_days: int = 420) -> di
             f"SELECT code, date, high, low, close, amount "
             f"FROM price_kline "
             f"WHERE code IN ({placeholders}) AND freq='daily' AND adjust='qfq' "
-            f"AND date >= date('now', ?) ORDER BY code, date",
-            (*chunk, f"-{since_days} day"),
+            f"AND date >= ? ORDER BY code, date",
+            (*chunk, cutoff),
         ).fetchall()
         for row in rows:
             history.setdefault(row["code"], []).append(dict(row))

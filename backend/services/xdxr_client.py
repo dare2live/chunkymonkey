@@ -3,7 +3,7 @@
 职责：
 - 通过共享 tdxhub / mootdx 入口抓取除权除息与股本变动事件
 - 规范化为项目内统一字段
-- 按股票全量替换写入 market_data.db.price_xdxr
+- 按股票全量替换写入 market.duckdb.price_xdxr
 """
 
 import asyncio
@@ -140,7 +140,7 @@ async def sync_xdxr_for_codes(mkt_conn, codes: list[str], *,
                               progress_callback=None,
                               concurrency: Optional[int] = None,
                               progress_every: Optional[int] = None) -> dict:
-    """同步 tracked 股票的 xdxr 事件到 market_data.db。"""
+    """同步 tracked 股票的 xdxr 事件到 market.duckdb。"""
     existing = {row["code"]: row for row in get_all_xdxr_sync_states(mkt_conn)}
     to_fetch = [
         code for code in codes

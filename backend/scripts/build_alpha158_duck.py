@@ -124,7 +124,6 @@ def build(output_db: str, start_date: str):
     logger.info("构造 Alpha158 panel (windows=%s, start=%s)", windows, start_date)
 
     con = duckdb.connect(output_db)
-    con.execute("INSTALL sqlite; LOAD sqlite;")
     con.execute(f"ATTACH '{market_db}' AS mkt (READ_ONLY)")
 
     # 目标表

@@ -3,12 +3,12 @@
 职责：
   - 给定一批机构披露事件 + 策略参数（entry_lag / max_hold_days / stop_loss / take_profit），
     按参数模拟跟投，返回业绩指标。
-  - 纯 pandas，不走 Qlib backtest。
+  - 纯 pandas，不走外部回测框架。
   - 服务于 §18 单 cohort Grid 验证与跟投回测表 fact_institution_follow_backtest 构造。
 
 数据依赖：
-  - 事件：smartmoney.db / fact_institution_event（调用方传入 DataFrame）
-  - 价格：market_data.db / price_kline（daily + qfq）
+  - 事件：smartmoney.duckdb / fact_institution_event（调用方传入 DataFrame）
+  - 价格：market.duckdb / price_kline（daily + qfq）
 
 参数语义：
   - entry_lag：披露日 D 起多少个交易日后开仓（0 = 当日收盘买入，1 = 次日收盘）

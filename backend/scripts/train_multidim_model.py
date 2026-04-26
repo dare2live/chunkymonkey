@@ -407,7 +407,7 @@ def main():
          f"M7 candidate · feature_group={args.feature_group} · Optuna {args.trials} trials · regime_aware={args.regime_aware} · num_round={args.num_round}"),
     )
 
-    # 落 predictions — DuckDB 原生 register + INSERT FROM SELECT (避过 pandas.to_sql 的 sqlite 协议探测)
+    # 落 predictions — DuckDB 原生 register + INSERT FROM SELECT
     pred_df = holdout[['stock_code', 'date']].copy()
     pred_df['model_id'] = model_id
     pred_df['pred_score'] = pred_ho

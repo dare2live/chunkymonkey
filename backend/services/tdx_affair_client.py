@@ -12,9 +12,8 @@ tdx_affair_client.py — 通达信 gpcw 财务文件同步
 
 import logging
 import os
-import sqlite3
 import tempfile
-from typing import Optional
+from typing import Any, Optional
 
 from services.tdx_source import get_tdx_affair_class
 
@@ -139,7 +138,7 @@ _DB_COLUMNS = ["stock_code TEXT NOT NULL", "report_date TEXT NOT NULL"] + \
               ["ingested_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP"]
 
 
-def _ensure_table(conn: sqlite3.Connection):
+def _ensure_table(conn: Any):
     cols_sql = ",\n    ".join(_DB_COLUMNS)
     conn.execute(f"""
         CREATE TABLE IF NOT EXISTS raw_gpcw_detail (
@@ -200,7 +199,7 @@ def _pick_first_numeric_value(row, source_names: tuple[str, ...]) -> Optional[fl
 
 
 def sync_gpcw_files(
-    conn: sqlite3.Connection,
+    conn: Any,
     quarters: int = 4,
     downdir: Optional[str] = None,
     force_resync: bool = False,
@@ -210,7 +209,7 @@ def sync_gpcw_files(
 
     Parameters
     ----------
-    conn : 数据库连接（smartmoney.db）
+    conn : 当前 DuckDB 业务库连接
     quarters : 要同步的最近季度数，默认 4（一年）
     downdir : gpcw 文件下载目录，默认系统临时目录
     force_resync : True 时忽略 existing_dates 跳过逻辑，对所有 target 季度重新下载并
@@ -307,7 +306,7 @@ def sync_gpcw_files(
 
 
 def get_latest_institutional_holdings(
-    conn: sqlite3.Connection,
+    conn: Any,
     stock_codes: Optional[list] = None,
 ) -> dict:
     """
@@ -361,7 +360,7 @@ def get_latest_institutional_holdings(
 
 
 def get_gpcw_financial_snapshot(
-    conn: sqlite3.Connection,
+    conn: Any,
     stock_code: str,
     limit: int = 8,
 ) -> list[dict]:

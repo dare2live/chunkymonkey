@@ -80,7 +80,7 @@ def generate_events(conn) -> int:
     try:
         conn.execute("DELETE FROM fact_institution_event")
         conn.executemany("""
-            INSERT OR REPLACE INTO fact_institution_event
+            INSERT INTO fact_institution_event
             (institution_id, holder_name, stock_code, stock_name,
              report_date, notice_date, event_type,
              hold_amount, prev_hold_amount, change_amount, change_pct, created_at)
@@ -175,7 +175,7 @@ def generate_exit_events(conn) -> int:
 
     if exits:
         conn.executemany("""
-            INSERT OR REPLACE INTO fact_institution_event
+            INSERT INTO fact_institution_event
             (institution_id, holder_name, stock_code, stock_name,
              report_date, notice_date, event_type,
              hold_amount, prev_hold_amount, change_amount, change_pct, created_at)

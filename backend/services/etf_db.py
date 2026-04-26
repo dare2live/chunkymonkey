@@ -33,7 +33,7 @@ def get_etf_conn(timeout: int = 30) -> DuckConn:
     return conn
 
 
-def _ensure_schema(conn: sqlite3.Connection) -> None:
+def _ensure_schema(conn: DuckConn) -> None:
     conn.executescript(
         """
         CREATE TABLE IF NOT EXISTS etf_asset_universe (
@@ -130,7 +130,7 @@ def _ensure_schema(conn: sqlite3.Connection) -> None:
     conn.commit()
 
 
-def upsert_price_rows(conn: sqlite3.Connection, rows: list[dict], source: str,
+def upsert_price_rows(conn: DuckConn, rows: list[dict], source: str,
                       batch_id: str | None = None) -> int:
     if not rows:
         return 0
@@ -153,7 +153,7 @@ def upsert_price_rows(conn: sqlite3.Connection, rows: list[dict], source: str,
     return len(rows)
 
 
-def update_sync_state(conn: sqlite3.Connection, code: str, freq: str, *,
+def update_sync_state(conn: DuckConn, code: str, freq: str, *,
                       source: str | None = None,
                       min_date: str | None = None,
                       max_date: str | None = None,

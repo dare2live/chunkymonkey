@@ -2,7 +2,7 @@
 signals_v2 HTTP 路由
 
 前缀：/api/signals
-所有路由只读 SQLite + 调 signals_v2.py 服务，不触发任何 recompute。
+所有路由只读 DuckDB + 调 signals_v2.py 服务，不触发任何 recompute。
 """
 
 import logging

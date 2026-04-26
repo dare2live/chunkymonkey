@@ -345,7 +345,7 @@ ETF 研究
 ### 7.1 技术栈
 
 - FastAPI + Uvicorn (端口 8002 for main, 8001 for worktree)
-- DuckDB 作主数据库 (services/duck_adapter.py 模拟 sqlite3.Connection API)
+- DuckDB 作主数据库 (`services/duck_adapter.py` 提供轻量 DB-API 适配)
 - pandas + NumPy + LightGBM + Optuna + SciPy + scikit-learn
 - 无 Celery/Redis/队列: 长任务走 nohup + 简单文件状态
 
@@ -354,10 +354,10 @@ ETF 研究
 ```
 backend/
 ├── main.py                         (FastAPI entry, 路由注册)
-├── requirements.txt                (pyqlib 已卸, 保留 lightgbm/optuna/duckdb)
+├── requirements.txt                (lightgbm/optuna/duckdb 等核心依赖)
 ├── services/
 │   ├── db.py                       (主连接 + init_db)
-│   ├── duck_adapter.py             (sqlite3.Connection 兼容层)
+│   ├── duck_adapter.py             (DuckDB DB-API 适配层)
 │   ├── market_db.py                (market.duckdb 连接)
 │   ├── etf_db.py                   (etf.duckdb 连接)
 │   ├── analytics.py                (OLAP 查询, ATTACH 多库)
@@ -417,7 +417,6 @@ scripts/
 ├── backtest_etf_strategies.py      (ETF Grid vs Buy-hold 批量回测, ~1 分钟)
 ├── run_backtest.py                 (签名回测)
 ├── run_follow_backtest.py          (follow 策略回测)
-├── migrate_sqlite_to_duckdb.py     (历史迁移, 已执行)
 └── build_akshare_panel.py          (akshare 因子面板)
 ```
 
@@ -491,8 +490,8 @@ scripts/
 ### 10.5 数据陷阱 (已知)
 - `rz_balance` 原先 100% NULL, 是两融日期格式 bug, 现已修 (Phase G)
 - pre-2023 数据已全量物理删除 (用户明确要求 "直接清空")
-- qlib 子系统 + 其 mart 表全删 (Phase 10)
-- ETF `etf_qlib_*` 6 张表是空壳子 (DROP 后 schema 未重建), 待最后清理
+- 旧预测/外部框架子系统及其 mart 表已清理；当前生产链路只保留 DuckDB + LightGBM/规则引擎
+- 2026-04-25 复核: smart/etf 库中无旧预测/实验框架残留表
 
 ### 10.6 量级问题
 - `fact_feature_panel` 4M 行其实很小, LightGBM 能轻松吃到 40M
@@ -501,14 +500,13 @@ scripts/
 
 ---
 
-## 11. Phase 10 qlib 清理后的系统变更 (2026-04-24)
+## 11. 旧预测框架清理后的系统变更 (2026-04-24 / 2026-04-25 复核)
 
-- 删除 qlib 子系统: qlib_full_engine.py / qlib_data_handler.py / etf_qlib_engine.py / routers/qlib.py + 6 个测试
-- 删除 stock_forecast_engine.py / sector_forecast_engine.py (它们依赖 qlib_predictions)
-- DROP 12 张 qlib_* 表 + 4 张 forecast_* 表 (smart 库)
-- DROP 6 张 etf_qlib_* 表 (etf 库) — 注: schema DDL 已删但空壳子尚在, 需最终清理
-- mart_stock_trend 删 qlib_rank/score/percentile 列 + forecast_score/forecast_score_effective 列
-- 卸 pyqlib, 换用 optuna + duckdb + scipy + scikit-learn
+- 删除旧外部预测子系统及其路由、数据处理器、ETF 预测引擎
+- 删除 `stock_forecast_engine.py` / `sector_forecast_engine.py`
+- DROP 旧预测表与空壳 ETF 预测表；2026-04-25 复核 smart/etf 库均无残留表
+- `mart_stock_trend` 删旧预测排名/分位列与 forecast 派生列
+- 依赖收敛到 optuna + duckdb + scipy + scikit-learn；生产路径不再依赖外部预测框架
 - 评分体系从 4 档 (discovery/quality/stage/forecast) 降到 3 档 (weights 35/30/20)
 - 全局无 emoji (原 📊🔄🎯🔷🟢 + ✓✗⚠★☆ 全清)
 - 配色 tokens 换为 2 palette + 马卡龙纯色 (去 linear-gradient)
@@ -554,7 +552,7 @@ python3 scripts/backtest_etf_strategies.py
 7. 训练脚本必须分两阶段释放 DuckDB 写锁 (见 `train_multidim_model.py` 范例)
 
 **不要做的事**:
-- 不要再引入 qlib / 任何 AI 包装品牌语
+- 不要再引入外部预测框架 / 任何 AI 包装品牌语
 - 不要用 linear-gradient (除骨架屏 shimmer)
 - 不要硬编码颜色 (走 `var(--cm-*)` 或 `CMTokens.color('xxx')`)
 - 不要写 `AI 分析 / AI 推荐 / 智能选股` 等误导性词 (用户明确拒绝)

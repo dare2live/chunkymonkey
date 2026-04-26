@@ -1114,7 +1114,7 @@ def classify_price_path(conn, stock_code: str, notice_date: str, *, mkt_conn=Non
     根据 K线数据计算总涨幅、最大涨幅、最大回撤，
     返回: "未充分演绎" | "温和验证" | "震荡待定" | "已充分演绎" | "失效破坏"
 
-    mkt_conn: 外部传入的 market_data.db 连接，避免在循环中重复打开。
+    mkt_conn: 外部传入的 market.duckdb 连接，避免在循环中重复打开。
     """
     thresholds = PATH_THRESHOLDS
 
@@ -1999,7 +1999,7 @@ def calculate_stock_scores(conn) -> int:
     results = []
     scored = 0
 
-    # 共享 market_data.db 连接，避免 classify_price_path 在循环中重复打开
+    # 共享 market.duckdb 连接，避免 classify_price_path 在循环中重复打开
     from services.market_db import get_market_conn as _get_mkt
     _shared_mkt = _get_mkt()
 

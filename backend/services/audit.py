@@ -46,6 +46,7 @@ _AUDIT_TTL_SECONDS = 8.0  # 工作台轮询节奏 1-2s，8s 内复用
 _TFP_TTL_SECONDS = 1800   # 停牌列表 30 分钟刷新一次
 _AUDIT_SNAPSHOT_KEY = "holder_workbench"
 _AUDIT_SNAPSHOT_SCHEMA_VERSION = 5
+_SOURCE_RECHECK_COOLDOWN_HOURS = 3.0
 
 
 def _json_dumps(payload) -> str:
@@ -70,6 +71,27 @@ def _attach_snapshot_meta(payload: dict, *, computed_at: Optional[str], source: 
         "source": source or "",
     }
     return result
+
+
+def _recent_completed_step(conn, step_id: str, max_age_hours: float = _SOURCE_RECHECK_COOLDOWN_HOURS) -> Optional[str]:
+    """Return finished_at when a source step completed recently enough to avoid repeat polling."""
+    try:
+        row = conn.execute(
+            "SELECT status, finished_at FROM step_status WHERE step_id = ?",
+            (step_id,),
+        ).fetchone()
+    except Exception:
+        return None
+    if not row or row["status"] != "completed" or not row["finished_at"]:
+        return None
+    try:
+        finished_at = datetime.fromisoformat(str(row["finished_at"])[:26])
+    except (TypeError, ValueError):
+        return None
+    age_hours = (datetime.now() - finished_at).total_seconds() / 3600.0
+    if age_hours <= max_age_hours:
+        return str(row["finished_at"])
+    return None
 
 
 def _days_lag(start_date: Optional[str], end_date: Optional[str]) -> Optional[int]:
@@ -698,7 +720,7 @@ def run_quality_audit(conn, use_cache: bool = True) -> dict:
     returns_not_ready = returns_not_ready_future + returns_not_ready_path
     returns_coverage = _pct(returns_count, returns_mature_total)
 
-    # K线层 — 优先从 market_data.db 读取
+    # K线层 — 优先从 market.duckdb 读取
     # 用 market_sync_state 代替 SELECT DISTINCT code FROM price_kline 节省 ~2.5s
     # （前者每只股票一行 ~6k 行，后者要扫数百万行 K 线）
     try:
@@ -713,7 +735,7 @@ def run_quality_audit(conn, use_cache: bool = True) -> dict:
         }
         mkt_conn.close()
     except Exception:
-        daily_codes = set()  # market_data.db 不可用
+        daily_codes = set()  # market.duckdb 不可用
 
     holding_code_rows = conn.execute(
         "SELECT DISTINCT stock_code FROM inst_holdings "
@@ -1114,7 +1136,7 @@ def run_quality_audit(conn, use_cache: bool = True) -> dict:
                 "coverage": kline_coverage,
                 "stale_stocks": kline_stale_count,
                 "suspended_stocks": kline_suspended_count,
-                "delisted_stocks": kline_stale_count - kline_suspended_count,
+                "delisted_stocks": 0,
                 "latest_trade_date": kline_latest_trade,
             },
             "industry": {
@@ -1286,8 +1308,14 @@ def build_smart_plan(conn, force_all=False, *, audit: Optional[dict] = None, use
         try:
             latest_dt = datetime.strptime(raw_latest[:8], "%Y%m%d")
             if (datetime.now() - latest_dt).days > 1:
-                plan["steps"].append("sync_raw")
-                plan["reason"].append(f"原始数据最后更新: {raw_latest}，已过期")
+                recent_sync = _recent_completed_step(conn, "sync_raw")
+                if recent_sync:
+                    plan["skip_reasons"]["sync_raw"] = (
+                        f"原始数据最后更新: {raw_latest}，但 {recent_sync[:19]} 已检查过，等待源头刷新"
+                    )
+                else:
+                    plan["steps"].append("sync_raw")
+                    plan["reason"].append(f"原始数据最后更新: {raw_latest}，已过期")
             else:
                 plan["skip_reasons"]["sync_raw"] = f"原始数据已是最新（{raw_latest}）"
         except (ValueError, TypeError):
@@ -1375,8 +1403,14 @@ def build_smart_plan(conn, force_all=False, *, audit: Optional[dict] = None, use
             survey_lag = (datetime.now() - latest_survey_dt).days
             # 调研公告通常隔 1-2 个工作日才到位，超过 2 天才视为陈旧
             if survey_lag >= 2:
-                plan["steps"].append("sync_surveys")
-                plan["reason"].append(f"机构调研已 {survey_lag} 天未更新（最新 {latest_survey_str}）")
+                recent_sync = _recent_completed_step(conn, "sync_surveys")
+                if recent_sync:
+                    plan["skip_reasons"]["sync_surveys"] = (
+                        f"机构调研最新 {latest_survey_str}，但 {recent_sync[:19]} 已检查过，等待源头刷新"
+                    )
+                else:
+                    plan["steps"].append("sync_surveys")
+                    plan["reason"].append(f"机构调研已 {survey_lag} 天未更新（最新 {latest_survey_str}）")
             else:
                 plan["skip_reasons"]["sync_surveys"] = f"机构调研已是最新（{latest_survey_str}）"
         except (ValueError, TypeError):

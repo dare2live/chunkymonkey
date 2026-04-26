@@ -2,7 +2,7 @@
 ta_lib.py — 共享技术指标计算库
 
 纯计算模块，零数据库依赖。输入 pandas Series/DataFrame，输出 Series/DataFrame。
-Qlib 因子引擎和 TDX 选股引擎共用此库，确保"单点计算、多处复用"。
+多维模型特征和 TDX 选股引擎共用此库，确保"单点计算、多处复用"。
 
 通达信函数对照：
     MA → ma()          EMA → ema()

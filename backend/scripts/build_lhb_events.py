@@ -8,7 +8,7 @@ Schema 设计：
   PK (trade_date, stock_code) —— 同一股票同日多 rank_reason 去重（取 max net_buy）
   inst_buy_seats  从 interpretation 解析 "N家机构买入"（N 为整数），无匹配则 0
   is_inst_net_buy is_inst_net_buy = (net_buy > 0 AND inst_buy_seats >= 1)
-  gain_20d/60d    从 market_data.db price_kline qfq 重算（不信任 raw.post_* 字段）
+  gain_20d/60d    从 market.duckdb price_kline qfq 重算（不信任 raw.post_* 字段）
   max_drawdown_*  同 fact_institution_event 口径
 
 PIT：本脚本每次重建全量 fact_lhb_event；forward return 只在价量已覆盖的窗口有值。

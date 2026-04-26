@@ -240,6 +240,8 @@ SOFT_DEPS = {
     "calc_stock_scores": ["calc_returns", "build_external_attention"],
 }
 
+MANUAL_ONLY_STEPS = {"calc_screening", "build_turtle_features"}
+
 _is_running = False
 _stop_requested = False
 _run_context = None
@@ -669,6 +671,27 @@ def _mark_steps_status(conn, step_ids, status: str, error: str, *,
     conn.commit()
 
 
+def _fail_unfinished_steps(conn, step_ids, error: str):
+    ids = [sid for sid in (step_ids or []) if sid]
+    if not ids:
+        return
+    now = datetime.now().isoformat()
+    placeholders = ",".join("?" * len(ids))
+    conn.execute(
+        f"""
+        UPDATE step_status
+        SET status = 'failed',
+            error = ?,
+            started_at = COALESCE(started_at, ?),
+            finished_at = ?
+        WHERE step_id IN ({placeholders})
+          AND (status IS NULL OR status IN ('pending', 'running'))
+        """,
+        [str(error)[:200], now, now, *ids],
+    )
+    conn.commit()
+
+
 def _parse_sync_time(value: str):
     if not value:
         return None
@@ -727,6 +750,8 @@ def _collect_downstream_steps(start_step_id):
                 seen.add(nxt)
                 queue.append(nxt)
 
+    if start_step_id not in MANUAL_ONLY_STEPS:
+        seen -= MANUAL_ONLY_STEPS
     return [s["id"] for s in STEPS if s["id"] in seen]
 
 # ============================================================
@@ -1009,7 +1034,12 @@ async def _step_sync_raw(conn) -> int:
 
     final = conn.execute("SELECT COUNT(*) FROM market_raw_holdings").fetchone()[0]
     logger.info(f"[下载] 完成: +{total_inserted}, 总{final}")
-    return final
+    return {
+        "status": "completed",
+        "count": final,
+        "written": total_inserted,
+        "total": final,
+    }
 
 
 def _build_exclusion_set(conn) -> set:
@@ -1165,9 +1195,59 @@ def _step_match_inst_sync(conn) -> int:
     # 清空旧匹配结果并重建（事务保护）
     now = datetime.now().isoformat()
 
-    conn.execute("BEGIN IMMEDIATE")
+    conn.execute("DROP TABLE IF EXISTS tmp_inst_holdings_rebuild")
+    conn.execute("""
+        CREATE TEMP TABLE tmp_inst_holdings_rebuild AS
+        SELECT institution_id, holder_name, holder_type, stock_code, stock_name,
+               report_date, notice_date, holder_rank, hold_amount, hold_market_cap,
+               hold_ratio, hold_change, hold_change_num, ? AS created_at
+        FROM (
+            SELECT
+                m.institution_id,
+                r.holder_name,
+                r.holder_type,
+                r.stock_code,
+                r.stock_name,
+                r.report_date,
+                r.notice_date,
+                r.holder_rank,
+                r.hold_amount,
+                r.hold_market_cap,
+                r.hold_ratio,
+                r.hold_change,
+                r.hold_change_num,
+                ROW_NUMBER() OVER (
+                    PARTITION BY r.holder_name, r.stock_code, r.report_date
+                    ORDER BY m.seq, TRY_CAST(r.holder_rank AS INTEGER), r.notice_date DESC
+                ) AS rn
+            FROM market_raw_holdings r
+            JOIN tmp_inst_match_names m ON r.holder_name = m.holder_name
+            LEFT JOIN tmp_inst_excluded_codes x ON r.stock_code = x.stock_code
+            WHERE x.stock_code IS NULL
+        ) matched
+        WHERE rn = 1
+    """, (now,))
+
+    total = conn.execute("SELECT COUNT(*) FROM tmp_inst_holdings_rebuild").fetchone()[0]
+    if total == 0:
+        raise RuntimeError("[匹配] 已尝试写入持仓但重建结果为空")
+
+    duplicate = conn.execute("""
+        SELECT holder_name, stock_code, report_date, COUNT(*) AS cnt
+        FROM tmp_inst_holdings_rebuild
+        GROUP BY holder_name, stock_code, report_date
+        HAVING COUNT(*) > 1
+        LIMIT 1
+    """).fetchone()
+    if duplicate:
+        raise RuntimeError(
+            "[匹配] 重建结果存在重复键: "
+            f"{duplicate['holder_name']} {duplicate['stock_code']} {duplicate['report_date']}"
+        )
+
+    conn.execute("DELETE FROM inst_holdings")
+    conn.commit()
     try:
-        conn.execute("DELETE FROM inst_holdings")
         conn.execute("""
             INSERT INTO inst_holdings
             (institution_id, holder_name, holder_type, stock_code, stock_name,
@@ -1175,38 +1255,9 @@ def _step_match_inst_sync(conn) -> int:
              hold_ratio, hold_change, hold_change_num, created_at)
             SELECT institution_id, holder_name, holder_type, stock_code, stock_name,
                    report_date, notice_date, holder_rank, hold_amount, hold_market_cap,
-                   hold_ratio, hold_change, hold_change_num, ?
-            FROM (
-                SELECT
-                    m.institution_id,
-                    r.holder_name,
-                    r.holder_type,
-                    r.stock_code,
-                    r.stock_name,
-                    r.report_date,
-                    r.notice_date,
-                    r.holder_rank,
-                    r.hold_amount,
-                    r.hold_market_cap,
-                    r.hold_ratio,
-                    r.hold_change,
-                    r.hold_change_num,
-                    ROW_NUMBER() OVER (
-                        PARTITION BY r.holder_name, r.stock_code, r.report_date
-                        ORDER BY m.seq
-                    ) AS rn
-                FROM market_raw_holdings r
-                JOIN tmp_inst_match_names m ON r.holder_name = m.holder_name
-                LEFT JOIN tmp_inst_excluded_codes x ON r.stock_code = x.stock_code
-                WHERE x.stock_code IS NULL
-            ) matched
-            WHERE rn = 1
-        """, (now,))
-
-        total = conn.execute("SELECT COUNT(*) FROM inst_holdings").fetchone()[0]
-        if total == 0:
-            raise RuntimeError("[匹配] 已尝试写入持仓但最终表为空，已回滚")
-
+                   hold_ratio, hold_change, hold_change_num, created_at
+            FROM tmp_inst_holdings_rebuild
+        """)
         conn.commit()
     except Exception:
         conn.rollback()
@@ -1406,9 +1457,9 @@ def _step_build_profiles_sync(conn) -> int:
             buy_stats = conn.execute("""
                 SELECT COUNT(*) as cnt,
                        AVG(e.gain_30d) as avg30, AVG(e.gain_60d) as avg60, AVG(e.gain_120d) as avg120,
-                       COUNT(CASE WHEN e.gain_30d > 0 THEN 1 END) * 100.0 / MAX(COUNT(*), 1) as wr30,
-                       COUNT(CASE WHEN e.gain_60d > 0 THEN 1 END) * 100.0 / MAX(COUNT(*), 1) as wr60,
-                       COUNT(CASE WHEN e.gain_120d > 0 THEN 1 END) * 100.0 / MAX(COUNT(*), 1) as wr120
+                       SUM(CASE WHEN e.gain_30d > 0 THEN 1 ELSE 0 END) * 100.0 / NULLIF(COUNT(*), 0) as wr30,
+                       SUM(CASE WHEN e.gain_60d > 0 THEN 1 ELSE 0 END) * 100.0 / NULLIF(COUNT(*), 0) as wr60,
+                       SUM(CASE WHEN e.gain_120d > 0 THEN 1 ELSE 0 END) * 100.0 / NULLIF(COUNT(*), 0) as wr120
                 FROM fact_institution_event e
                 WHERE e.institution_id = ?
                   AND e.event_type IN ('new_entry', 'increase')
@@ -1460,52 +1511,57 @@ def _step_build_profiles_sync(conn) -> int:
                     AVG(CASE
                         WHEN e.event_type IN ('new_entry', 'increase') AND e.premium_pct <= 5
                         THEN e.max_drawdown_30d END) as safe_dd30,
-                    COUNT(CASE
-                        WHEN e.event_type IN ('new_entry', 'increase') AND e.premium_pct <= 5 AND e.gain_30d > 0
-                        THEN 1 END) * 100.0 /
-                        MAX(COUNT(CASE
+                    COALESCE(
+                        SUM(CASE
+                            WHEN e.event_type IN ('new_entry', 'increase') AND e.premium_pct <= 5 AND e.gain_30d > 0
+                            THEN 1 ELSE 0 END) * 100.0 /
+                        NULLIF(SUM(CASE
                             WHEN e.event_type IN ('new_entry', 'increase') AND e.premium_pct <= 5
-                            THEN 1 END), 1) as safe_wr30,
+                            THEN 1 ELSE 0 END), 0), 0) as safe_wr30,
 
                     COUNT(CASE
                         WHEN e.event_type IN ('new_entry', 'increase') AND e.premium_bucket = 'discount'
                         THEN 1 END) as discount_cnt,
-                    COUNT(CASE
-                        WHEN e.event_type IN ('new_entry', 'increase') AND e.premium_bucket = 'discount' AND e.gain_30d > 0
-                        THEN 1 END) * 100.0 /
-                        MAX(COUNT(CASE
+                    COALESCE(
+                        SUM(CASE
+                            WHEN e.event_type IN ('new_entry', 'increase') AND e.premium_bucket = 'discount' AND e.gain_30d > 0
+                            THEN 1 ELSE 0 END) * 100.0 /
+                        NULLIF(SUM(CASE
                             WHEN e.event_type IN ('new_entry', 'increase') AND e.premium_bucket = 'discount'
-                            THEN 1 END), 1) as discount_wr30,
+                            THEN 1 ELSE 0 END), 0), 0) as discount_wr30,
 
                     COUNT(CASE
                         WHEN e.event_type IN ('new_entry', 'increase') AND e.premium_bucket = 'near_cost'
                         THEN 1 END) as near_cnt,
-                    COUNT(CASE
-                        WHEN e.event_type IN ('new_entry', 'increase') AND e.premium_bucket = 'near_cost' AND e.gain_30d > 0
-                        THEN 1 END) * 100.0 /
-                        MAX(COUNT(CASE
+                    COALESCE(
+                        SUM(CASE
+                            WHEN e.event_type IN ('new_entry', 'increase') AND e.premium_bucket = 'near_cost' AND e.gain_30d > 0
+                            THEN 1 ELSE 0 END) * 100.0 /
+                        NULLIF(SUM(CASE
                             WHEN e.event_type IN ('new_entry', 'increase') AND e.premium_bucket = 'near_cost'
-                            THEN 1 END), 1) as near_wr30,
+                            THEN 1 ELSE 0 END), 0), 0) as near_wr30,
 
                     COUNT(CASE
                         WHEN e.event_type IN ('new_entry', 'increase') AND e.premium_bucket = 'premium'
                         THEN 1 END) as premium_cnt,
-                    COUNT(CASE
-                        WHEN e.event_type IN ('new_entry', 'increase') AND e.premium_bucket = 'premium' AND e.gain_30d > 0
-                        THEN 1 END) * 100.0 /
-                        MAX(COUNT(CASE
+                    COALESCE(
+                        SUM(CASE
+                            WHEN e.event_type IN ('new_entry', 'increase') AND e.premium_bucket = 'premium' AND e.gain_30d > 0
+                            THEN 1 ELSE 0 END) * 100.0 /
+                        NULLIF(SUM(CASE
                             WHEN e.event_type IN ('new_entry', 'increase') AND e.premium_bucket = 'premium'
-                            THEN 1 END), 1) as premium_wr30,
+                            THEN 1 ELSE 0 END), 0), 0) as premium_wr30,
 
                     COUNT(CASE
                         WHEN e.event_type IN ('new_entry', 'increase') AND e.premium_bucket = 'high_premium'
                         THEN 1 END) as high_cnt,
-                    COUNT(CASE
-                        WHEN e.event_type IN ('new_entry', 'increase') AND e.premium_bucket = 'high_premium' AND e.gain_30d > 0
-                        THEN 1 END) * 100.0 /
-                        MAX(COUNT(CASE
+                    COALESCE(
+                        SUM(CASE
+                            WHEN e.event_type IN ('new_entry', 'increase') AND e.premium_bucket = 'high_premium' AND e.gain_30d > 0
+                            THEN 1 ELSE 0 END) * 100.0 /
+                        NULLIF(SUM(CASE
                             WHEN e.event_type IN ('new_entry', 'increase') AND e.premium_bucket = 'high_premium'
-                            THEN 1 END), 1) as high_wr30
+                            THEN 1 ELSE 0 END), 0), 0) as high_wr30
                 FROM fact_institution_event e
                 WHERE e.institution_id = ?
                   AND e.event_type IN ('new_entry', 'increase')
@@ -1673,12 +1729,16 @@ def _step_build_trends_sync(conn) -> int:
     from collections import defaultdict
 
     from services.holdings import refresh_stock_latest_cache
+    try:
+        conn.execute("SET preserve_insertion_order=false")
+        conn.execute("SET threads=2")
+    except Exception:
+        pass
     refresh_stock_latest_cache(conn)
     now = datetime.now().isoformat()
-    conn.execute("BEGIN IMMEDIATE")
+    _mkt = None
+    transaction_started = False
     try:
-        conn.execute("DELETE FROM mart_stock_trend")
-
         # 股票列表骨架以 mart_current_relationship 为真相源，
         # 历史机构数/资金趋势再回看 inst_holdings 的近3期数据。
         stocks = conn.execute("""
@@ -1686,6 +1746,7 @@ def _step_build_trends_sync(conn) -> int:
             FROM mart_current_relationship
             WHERE stock_code IS NOT NULL
         """).fetchall()
+        logger.info(f"[趋势] 股票范围: {len(stocks)} 只")
 
         # 批量预聚合 1：每股近 3 期机构家数 + 合计持仓（取代 N+1 的 stock_periods + inst_counts/caps）
         # 一次性 aggregate：(code, report_date) → (n_inst, sum_cap)
@@ -1698,6 +1759,7 @@ def _step_build_trends_sync(conn) -> int:
             WHERE stock_code IS NOT NULL
             GROUP BY stock_code, report_date
         """).fetchall()
+        logger.info(f"[趋势] 持仓期数聚合: {len(agg_rows)} 行")
         per_stock_periods: dict[str, list[tuple[str, int, float]]] = defaultdict(list)
         for r in agg_rows:
             per_stock_periods[r[0]].append((r[1], r[2] or 0, r[3] or 0))
@@ -1718,43 +1780,88 @@ def _step_build_trends_sync(conn) -> int:
             )
             WHERE rn <= 3
         """).fetchall()
+        logger.info(f"[趋势] 最新事件聚合: {len(ev_rows)} 行")
         per_stock_events: dict[str, list] = defaultdict(list)
         for r in ev_rows:
             per_stock_events[r[0]].append(r)
 
-        # 批量预聚合 3：每股最近 3 个月 K 线 + 最近 21 日 K 线
-        # 用简单 SELECT + ORDER + Python 侧取 top N；比 window function 快 2×。
+        # 批量预聚合 3：每股最近 3 个月 K 线 + 最近 21 日 K 线。
+        # 不在 DuckDB 里做全表 ORDER/window，避免中间排序把内存顶满；这里读必要列后按股票本地取 Top N。
         from services.market_db import get_market_conn as _get_mkt_conn
         _mkt = _get_mkt_conn()
-        monthly_rows = _mkt.execute(
-            """
-            SELECT code, date, close FROM price_kline
-            WHERE freq='monthly' AND adjust='qfq'
-            ORDER BY code, date DESC
-            """
-        ).fetchall()
+        try:
+            _mkt.execute("SET preserve_insertion_order=false")
+            _mkt.execute("SET threads=2")
+            _mkt.execute("SET memory_limit='2GB'")
+        except Exception:
+            pass
+        trend_code_set = {stock["stock_code"] for stock in stocks if stock["stock_code"]}
+
+        def _fetch_price_rows(freq: str, *, min_date: Optional[str] = None, batch_size: int = 200):
+            rows = []
+            codes = sorted(trend_code_set)
+            def _append_plain(batch_rows):
+                for row in batch_rows:
+                    rows.append((row[0], row[1], row[2]))
+
+            for i in range(0, len(codes), batch_size):
+                batch = codes[i:i + batch_size]
+                if not batch:
+                    continue
+                placeholders = ",".join("?" * len(batch))
+                if min_date:
+                    _append_plain(_mkt.execute(
+                        f"""
+                        SELECT code, date, close
+                        FROM price_kline
+                        WHERE freq=? AND adjust='qfq' AND date >= ?
+                          AND code IN ({placeholders})
+                        """,
+                        [freq, min_date, *batch],
+                    ).fetchall())
+                else:
+                    _append_plain(_mkt.execute(
+                        f"""
+                        SELECT code, date, close
+                        FROM price_kline
+                        WHERE freq=? AND adjust='qfq'
+                          AND code IN ({placeholders})
+                        """,
+                        [freq, *batch],
+                    ).fetchall())
+            return rows
+
+        monthly_rows = _fetch_price_rows("monthly")
+        logger.info(f"[趋势] 月线读取: {len(monthly_rows)} 行")
         per_stock_monthly: dict[str, list] = defaultdict(list)
-        for code, _d, close in monthly_rows:
-            lst = per_stock_monthly[code]
-            if len(lst) < 3:
-                lst.append(close)
+        for code, trade_date, close in monthly_rows:
+            if code in trend_code_set:
+                per_stock_monthly[code].append((trade_date, close))
+        for code, values in list(per_stock_monthly.items()):
+            per_stock_monthly[code] = [
+                close for _, close in sorted(values, key=lambda item: item[0], reverse=True)[:3]
+            ]
+        del monthly_rows
 
         # daily 限定近 45 天（21 交易日 + 缓冲），避免全表扫
         from datetime import timedelta
         cutoff_daily = (datetime.now() - timedelta(days=45)).strftime("%Y-%m-%d")
-        daily_rows = _mkt.execute(
-            """
-            SELECT code, close FROM price_kline
-            WHERE freq='daily' AND adjust='qfq' AND date >= ?
-            ORDER BY code, date DESC
-            """,
-            (cutoff_daily,),
-        ).fetchall()
+        daily_rows = _fetch_price_rows("daily", min_date=cutoff_daily)
+        logger.info(f"[趋势] 日线读取: {len(daily_rows)} 行")
+        if _mkt is not None:
+            _mkt.close()
+            _mkt = None
         per_stock_daily: dict[str, list] = defaultdict(list)
-        for code, close in daily_rows:
-            lst = per_stock_daily[code]
-            if len(lst) < 21:
-                lst.append(close)
+        for code, trade_date, close in daily_rows:
+            if code in trend_code_set:
+                per_stock_daily[code].append((trade_date, close))
+        for code, values in list(per_stock_daily.items()):
+            per_stock_daily[code] = [
+                close for _, close in sorted(values, key=lambda item: item[0], reverse=True)[:21]
+            ]
+        del daily_rows
+        import gc
+        gc.collect()
 
         count = 0
         insert_batch = []
@@ -1831,21 +1938,61 @@ def _step_build_trends_sync(conn) -> int:
             ))
             count += 1
 
-        # 批量 insert (取代 3285 次 execute)
-        conn.executemany("""
-            INSERT OR REPLACE INTO mart_stock_trend
+        logger.info(f"[趋势] 准备写入: {len(insert_batch)} 行")
+        existing_codes = {
+            r[0] for r in conn.execute("SELECT stock_code FROM mart_stock_trend").fetchall()
+            if r[0]
+        }
+        expected_codes = {row[0] for row in insert_batch if row[0]}
+        extra_codes = sorted(existing_codes - expected_codes)
+        for i in range(0, len(extra_codes), 200):
+            batch = extra_codes[i:i + 200]
+            placeholders = ",".join("?" * len(batch))
+            conn.execute(f"DELETE FROM mart_stock_trend WHERE stock_code IN ({placeholders})", batch)
+
+        update_sql = """
+            UPDATE mart_stock_trend SET
+                stock_name=?,
+                inst_count_t0=?, inst_count_t1=?, inst_count_t2=?,
+                inst_cap_t0=?, inst_cap_t1=?, inst_cap_t2=?,
+                inst_trend=?, cap_trend=?,
+                latest_events=?, latest_report_date=?, latest_notice_date=?,
+                price_1m_pct=?, price_20d_pct=?, price_trend=?,
+                updated_at=?
+            WHERE stock_code=?
+        """
+        update_batch = [
+            (
+                row[1], row[2], row[3], row[4], row[5], row[6], row[7],
+                row[8], row[9], row[10], row[11], row[12], row[13],
+                row[14], row[15], row[16], row[0],
+            )
+            for row in insert_batch
+            if row[0] in existing_codes
+        ]
+        for i in range(0, len(update_batch), 500):
+            conn.executemany(update_sql, update_batch[i:i + 500])
+
+        # 对新增股票补 insert；常规路径大多只有 update。
+        insert_sql = """
+            INSERT INTO mart_stock_trend
             (stock_code, stock_name, inst_count_t0, inst_count_t1, inst_count_t2,
              inst_cap_t0, inst_cap_t1, inst_cap_t2, inst_trend, cap_trend,
              latest_events, latest_report_date, latest_notice_date,
              price_1m_pct, price_20d_pct, price_trend, updated_at)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        """, insert_batch)
+        """
+        new_batch = [row for row in insert_batch if row[0] not in existing_codes]
+        for i in range(0, len(new_batch), 500):
+            conn.executemany(insert_sql, new_batch[i:i + 500])
 
-        _mkt.close()
         conn.commit()
+        transaction_started = False
     except Exception:
-        _mkt.close()
-        conn.rollback()
+        if _mkt is not None:
+            _mkt.close()
+        if transaction_started:
+            conn.rollback()
         raise
     logger.info(f"[趋势] 完成: {count} 只股票")
     return count
@@ -1998,10 +2145,10 @@ def _step_build_industry_stat_sync(conn) -> int:
                            COUNT(*) as cnt,
                            AVG(e.gain_30d) as avg30, AVG(e.gain_60d) as avg60,
                            AVG(e.gain_90d) as avg90, AVG(e.gain_120d) as avg120,
-                           COUNT(CASE WHEN e.gain_30d > 0 THEN 1 END) * 100.0 / MAX(COUNT(*), 1) as wr30,
-                           COUNT(CASE WHEN e.gain_60d > 0 THEN 1 END) * 100.0 / MAX(COUNT(*), 1) as wr60,
-                           COUNT(CASE WHEN e.gain_90d > 0 THEN 1 END) * 100.0 / MAX(COUNT(*), 1) as wr90,
-                           COUNT(CASE WHEN e.gain_30d > 0 OR e.gain_60d > 0 THEN 1 END) * 100.0 / MAX(COUNT(*), 1) as wr_total,
+                           SUM(CASE WHEN e.gain_30d > 0 THEN 1 ELSE 0 END) * 100.0 / NULLIF(COUNT(*), 0) as wr30,
+                           SUM(CASE WHEN e.gain_60d > 0 THEN 1 ELSE 0 END) * 100.0 / NULLIF(COUNT(*), 0) as wr60,
+                           SUM(CASE WHEN e.gain_90d > 0 THEN 1 ELSE 0 END) * 100.0 / NULLIF(COUNT(*), 0) as wr90,
+                           SUM(CASE WHEN e.gain_30d > 0 OR e.gain_60d > 0 THEN 1 ELSE 0 END) * 100.0 / NULLIF(COUNT(*), 0) as wr_total,
                            AVG(e.max_drawdown_30d) as dd30, AVG(e.max_drawdown_60d) as dd60
                     FROM fact_institution_event e
                     INNER JOIN dim_stock_tdx_industry i ON i.stock_code = e.stock_code
@@ -3228,7 +3375,8 @@ async def update_all():
             # Reset any stuck "running" steps from previous crashed runs
             conn.execute("""
                 UPDATE step_status SET status = 'failed', error = '上次运行异常中断'
-                WHERE status = 'running' AND started_at < datetime('now', '-1 hour')
+                WHERE status = 'running'
+                  AND TRY_CAST(started_at AS TIMESTAMP) < CURRENT_TIMESTAMP - INTERVAL 1 HOUR
             """)
             conn.commit()
 
@@ -3273,9 +3421,13 @@ async def update_all():
                 hard = HARD_DEPS.get(sid, [])
                 soft = SOFT_DEPS.get(sid, [])
 
-                # 硬依赖 failed → 跳过
-                if any(d in failed for d in hard):
-                    _update_step(conn, sid, status="skipped", error="硬依赖步骤失败")
+                selected = {s["id"] for s in STEPS}
+                hard_blocked = any(
+                    d in failed or d in stopped or (d in skipped and d in selected)
+                    for d in hard
+                )
+                if hard_blocked:
+                    _update_step(conn, sid, status="skipped", error="硬依赖步骤未完成")
                     skipped.add(sid)
                     continue
 
@@ -3357,6 +3509,7 @@ async def update_all():
 
             logger.info(f"[更新] 全部完成: {len(completed)} 成功, {len(failed)} 失败, {len(skipped)} 跳过, {len(stopped)} 停止")
         except Exception as e:
+            _fail_unfinished_steps(conn, [s["id"] for s in STEPS], f"运行异常: {e}")
             logger.error(f"[更新] 异常: {e}")
         finally:
             conn.close()
@@ -3573,7 +3726,8 @@ async def smart_update():
             # Reset stuck steps
             conn.execute("""
                 UPDATE step_status SET status = 'failed', error = '上次运行异常中断'
-                WHERE status = 'running' AND started_at < datetime('now', '-1 hour')
+                WHERE status = 'running'
+                  AND TRY_CAST(started_at AS TIMESTAMP) < CURRENT_TIMESTAMP - INTERVAL 1 HOUR
             """)
             conn.commit()
 
@@ -3610,9 +3764,13 @@ async def smart_update():
                 hard = HARD_DEPS.get(sid, [])
                 soft = SOFT_DEPS.get(sid, [])
 
-                # 硬依赖 failed → 跳过
-                if any(d in failed for d in hard):
-                    _update_step(conn, sid, status="skipped", error="硬依赖步骤失败")
+                selected = set(steps_to_run)
+                hard_blocked = any(
+                    d in failed or d in stopped or (d in skipped and d in selected)
+                    for d in hard
+                )
+                if hard_blocked:
+                    _update_step(conn, sid, status="skipped", error="硬依赖步骤未完成")
                     skipped.add(sid)
                     continue
 
@@ -3694,6 +3852,7 @@ async def smart_update():
             }
             logger.info(f"[智能更新] 完成: {len(completed)} 成功, {len(failed)} 失败, {len(skipped)} 跳过, {len(stopped)} 停止")
         except Exception as e:
+            _fail_unfinished_steps(conn, steps_to_run, f"运行异常: {e}")
             logger.error(f"[智能更新] 异常: {e}")
         finally:
             conn.close()
@@ -3763,12 +3922,16 @@ async def run_single_step(step_id: str):
                 step_label = (step or {}).get("name", sid)
                 hard = [d for d in HARD_DEPS.get(sid, []) if d in selected]
 
-                if any(d in failed for d in hard):
+                hard_blocked = any(
+                    d in failed or d in stopped or (d in skipped and d in selected)
+                    for d in hard
+                )
+                if hard_blocked:
                     _update_step(conn, sid, status="skipped",
                                  finished_at=datetime.now().isoformat(),
-                                 error="上游步骤失败，已跳过")
+                                 error="硬依赖步骤未完成")
                     skipped.add(sid)
-                    logger.warning(f"[单步] 跳过: {step_label}: 上游步骤失败")
+                    logger.warning(f"[单步] 跳过: {step_label}: 硬依赖步骤未完成")
                     continue
 
                 if sid == "sync_market_data" and not kline_available:
@@ -3851,8 +4014,7 @@ async def run_single_step(step_id: str):
             }
             logger.info(f"[单步] 链路完成: {len(completed)} 成功, {len(failed)} 失败, {len(skipped)} 跳过, {len(stopped)} 停止")
         except Exception as e:
-            _update_step(conn, step_id, status="failed",
-                         finished_at=datetime.now().isoformat(), error=str(e)[:200])
+            _fail_unfinished_steps(conn, step_ids, f"运行异常: {e}")
             logger.error(f"[单步] {step_name} 失败: {e}")
         finally:
             conn.close()
@@ -4001,10 +4163,14 @@ async def _run_group_pipeline(run_mode: str, run_name: str, group_id: str):
 
                 hard = [d for d in HARD_DEPS.get(sid, []) if d in selected]
 
-                if any(d in failed for d in hard):
+                hard_blocked = any(
+                    d in failed or d in stopped or (d in skipped and d in selected)
+                    for d in hard
+                )
+                if hard_blocked:
                     _update_step(conn, sid, status="skipped",
                                  finished_at=datetime.now().isoformat(),
-                                 error="上游步骤失败，已跳过")
+                                 error="硬依赖步骤未完成")
                     skipped.add(sid)
                     continue
 
@@ -4064,6 +4230,7 @@ async def _run_group_pipeline(run_mode: str, run_name: str, group_id: str):
                 "stopped": len(stopped),
             }
         except Exception as e:
+            _fail_unfinished_steps(conn, step_ids, f"运行异常: {e}")
             logger.error(f"[{run_name}] 异常: {e}")
         finally:
             conn.close()
