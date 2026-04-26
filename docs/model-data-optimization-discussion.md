@@ -272,3 +272,158 @@ FROM raw_fund_flow_daily;
 - 路线 E (自拼伪资金流): 缺 tick / 分钟数据, 数据本质缺失, 不可行
 
 等用户操作 6.1 / 6.2 后继续.
+
+### 7.2 (2026-04-26 Codex 复核)
+
+我按最新文档重新实测后, 需要修正一个关键判断: **当前阻塞不只是缺少 eastmoney DIRECT 规则**。本机 Surge 配置里已经有:
+
+```text
+DOMAIN-SUFFIX,eastmoney.com,DIRECT,extended-matching
+```
+
+但没有把 `*.eastmoney.com` 加进 `always-real-ip`, 也没有 `[Host]` 强制系统 DNS. 系统解析仍然给 `push2his.eastmoney.com -> 198.18.1.51`, 公网 DNS 可解析到真实 IP (`61.129.129.199` / `101.226.30.221`)。
+
+实测结果:
+
+| 项目 | 结果 | 结论 |
+|---|---|---|
+| 库内 `raw_fund_flow_daily` | 5496 行 / 1 天 / 2026-04-24 | 文档底稿正确, 不能算 5d/20d |
+| `push2delay` | 200 OK, 只返回 1 行 | fallback 正常, 但只能日增 |
+| `push2his` 普通 DNS | TLS 握手成功后 empty reply | 不是简单 DNS 解析失败 |
+| `push2his --resolve` 真实 IP | 仍然 empty reply | 仅加真实 IP 不一定解决 |
+| akshare 1.18.57 | 仍调用 `push2his` 普通 requests | akshare 本身无独立数据源 |
+| `curl_cffi` Chrome/Safari 指纹 | 仍连接被关闭 | 不像是普通 requests 指纹问题 |
+
+因此路线 A 仍可做一个最小验证, 但期望值要调低: 把 `*.eastmoney.com` / `*.sinajs.cn` 加进 `always-real-ip` 和 `[Host]`, 重启 Surge 后再跑 3.4 验证。如果 `push2his` 仍 empty reply, 就不要继续在代理规则上耗时间。
+
+我的建议:
+
+1. **先做 5 分钟网络验证**: 加 `always-real-ip` / `[Host]`, 重启 Surge, 再测 `push2his`。这是最低成本。
+2. **验证失败就切路线 B**: Tushare Pro moneyflow 是最短确定路径, 比继续找新浪/网页爬虫更符合奥卡姆剃刀。
+3. **保留 push2delay daily fallback**: 它能每日积累, 但在 60 个交易日前不入 `base_43`, 只作为审计数据。
+4. **不要为了资金流扩系统复杂度**: 资金流只有在 coverage >= 95%, RankIC 增益稳定超过 0.005 后才进主轨；否则保持现有 base_43。
+
+阶段性决策: 当前最可能的落地路径是 **路线 A 最小复验 -> 失败后 Tushare Pro**。不要把 akshare 当成替代源, 它只是 `push2his` wrapper。
+
+### 7.3 (2026-04-26 Codex 追加: 为什么 akshare 其他数据可用, 资金流不可用)
+
+用户指出“akshare 获取其他数据就行, 资金流就不行”。复核后结论是: **不是 akshare 整体可用而资金流单独坏, 而是 akshare 背后的数据源分成两类**。
+
+第一类是 `datacenter-web.eastmoney.com/api/data/v1/get`, 当前机器可用。项目里已经成功的机构调研、龙虎榜、QFII/股东分析等 akshare 接口都走这条线:
+
+| akshare 函数 | 底层域名 | 实测 |
+|---|---|---|
+| `stock_jgdy_tj_em` | `datacenter-web.eastmoney.com` | OK, 8782 行 |
+| `stock_lhb_detail_em` | `datacenter-web.eastmoney.com` | OK, 85 行 |
+| `stock_gdfx_holding_detail_em` | `datacenter-web.eastmoney.com` | OK, 1147 行 |
+
+第二类是行情/历史行情线 `push2*.eastmoney.com` / `push2his.eastmoney.com`, 当前机器上 GET API 会在 HTTP 层被关闭。资金流属于这条线:
+
+| akshare 函数 | 底层域名 | 实测 |
+|---|---|---|
+| `stock_zh_a_spot_em` | `82.push2.eastmoney.com/api/qt/clist/get` | RemoteDisconnected |
+| `stock_board_industry_name_em` | `17.push2.eastmoney.com/api/qt/clist/get` | RemoteDisconnected |
+| `stock_zh_a_hist` | `push2his.eastmoney.com/api/qt/stock/kline/get` | RemoteDisconnected |
+| `stock_individual_fund_flow` | `push2his.eastmoney.com/api/qt/stock/fflow/daykline/get` | RemoteDisconnected |
+
+所以“其他数据可用”的真实原因是: 那些成功接口多数并没有走 `push2his`。项目日 K 之所以还能跑, 也不是因为 `ak.stock_zh_a_hist` 当前可用, 而是系统优先走 mootdx/通达信, 再用 sina/tx fallback；行业分类也已经改成通达信 `tdxhy.cfg`。
+
+补充观察:
+
+- `requests` 默认会读取 macOS 系统代理配置, `urllib.getproxies()` 当前能看到 `127.0.0.1:6152`; 项目自写客户端里有 `trust_env=False` 或清理代理环境, 但原生 akshare 函数没有这个控制。
+- 即使绕过环境代理并直接用真实 IP 测 `push2his`, GET API 仍 empty reply；因此代理环境变量不是唯一解释。
+- `push2delay.eastmoney.com` 可用, 但接口结构只给最新 1 天, 所以只能做 daily fallback, 不能做历史回填。
+
+当前判断: 资金流不可用的根因是 **akshare 资金流依赖的东财 `push2his` 历史接口在当前网络链路不可用**；不是 akshare 库本身缺功能, 也不是所有东财接口都不可用。修复策略仍是先做 Surge 真实 IP/Host 最小复验, 不通就切 Tushare Pro。
+
+### 7.4 (2026-04-26 Codex 追加: Surge 配置应该怎么改)
+
+本机当前网络状态:
+
+- macOS 系统代理开启: HTTP/HTTPS 都指向 `127.0.0.1:6152`。原生 akshare 使用 requests, 会读取系统代理, 所以默认会先进 Surge HTTP proxy。
+- Surge Enhanced Mode / fake-ip 生效: `push2his.eastmoney.com`、`82.push2.eastmoney.com`、`datacenter-web.eastmoney.com` 都被系统解析成 `198.18.x.x`。
+- 配置里已经有 `DOMAIN-SUFFIX,eastmoney.com,DIRECT,extended-matching`, 但这只解决“分流策略”, 不解决“requests 先走系统 HTTP proxy”与“DNS 返回 fake-ip”。
+- 当前 `dns-server = system, 223.5.5.5, 119.29.29.29`; 但 macOS system DNS 是 `1.0.0.1`, 实测 `@1.0.0.1` 返回 fake-ip, 而 `@223.5.5.5` / `@119.29.29.29` 返回东财真实 IP。因此东财/新浪不应该用 `server:system`。
+
+推荐做一个最小局部改动, 不动全局代理策略:
+
+```ini
+[General]
+# 原有 skip-proxy 后追加，避免原生 akshare/requests 先走 127.0.0.1:6152 HTTP proxy
+skip-proxy = 127.0.0.0/8, 192.168.0.0/16, 10.0.0.0/8, 172.16.0.0/12, 100.64.0.0/10, 162.14.0.0/16, 211.99.96.0/19, 162.159.192.0/24, 162.159.193.0/24, 162.159.195.0/24, fc00::/7, fe80::/10, localhost, *.local, captive.apple.com, passenger.t3go.cn, *.ccb.com, wxh.wo.cn, *.abcchina.com, *.abcchina.com.cn, *.eastmoney.com, eastmoney.com, *.sinajs.cn, sinajs.cn
+
+# 原有 always-real-ip 后追加，避免这些域名被返回 198.18.x.x fake-ip
+always-real-ip = *.msftncsi.com, *.msftconnecttest.com, *.srv.nintendo.net, *.stun.playstation.net, xbox.*.microsoft.com, *.xboxlive.com, *.battlenet.com.cn, *.battlenet.com, *.blzstatic.cn, *.battle.net, *.turn.twilio.com, *.stun.twilio.com, stun.syncthing.net, stun.*, 127.*.*.*.sslip.io, 127-*-*-*.sslip.io, *.127.*.*.*.sslip.io, *-127-*-*-*.sslip.io, 127.*.*.*.nip.io, 127-*-*-*.nip.io, *.127.*.*.*.nip.io, *-127-*-*-*.nip.io, *.eastmoney.com, eastmoney.com, *.sinajs.cn, sinajs.cn
+
+[Host]
+# 不用 server:system；当前 system DNS 会返回 198.18 fake-ip。显式使用国内 DNS。
+eastmoney.com = server:223.5.5.5
+*.eastmoney.com = server:223.5.5.5
+sinajs.cn = server:223.5.5.5
+*.sinajs.cn = server:223.5.5.5
+
+[Rule]
+# 保持在 Rule 顶部，优先于 RULE-SET 和 FINAL。
+DOMAIN-SUFFIX,eastmoney.com,DIRECT,extended-matching
+DOMAIN-SUFFIX,sinajs.cn,DIRECT,extended-matching
+```
+
+注意:
+
+- `*.eastmoney.com` 不匹配裸域 `eastmoney.com`, 所以裸域和通配子域都写。
+- 不建议打开 MITM 或 `force-http-engine-hosts`: 这会把问题复杂化, 还可能破坏 HTTPS/TCP 流。
+- 不建议把整个 `dns-server` 全局改掉；先只给东财/新浪做 `[Host]` 局部 DNS 指定。
+
+验证顺序:
+
+```bash
+# 1. 重启 Surge 后，系统解析不应再是 198.18.x.x
+python3 - <<'PY'
+import socket
+for host in ['push2his.eastmoney.com', '82.push2.eastmoney.com', 'push2delay.eastmoney.com', 'hq.sinajs.cn']:
+    print(host, socket.gethostbyname(host))
+PY
+
+# 2. akshare 不应再读取 127.0.0.1:6152 作为这些域名的代理路径
+python3 - <<'PY'
+import requests
+for url in ['https://push2his.eastmoney.com', 'https://82.push2.eastmoney.com']:
+    print(url, requests.utils.get_environ_proxies(url))
+PY
+
+# 3. 端到端验证资金流历史接口
+python3 - <<'PY'
+import akshare as ak
+df = ak.stock_individual_fund_flow(stock='600519', market='sh')
+print(df.shape)
+print(df.head(3))
+print(df.tail(3))
+PY
+```
+
+如果第 1 步仍是 `198.18.x.x`, 说明配置没有被当前 Surge profile 正确加载, 或 `[Host]` / `always-real-ip` 未生效。
+
+如果第 1 步已是真实 IP, 第 2 步不再走 `127.0.0.1:6152`, 但第 3 步仍 RemoteDisconnected/empty reply, 就可以判定不是本机 Surge 配置问题, 而是本机出口 IP 到东财 `push2his` 这条服务链路不被接受。此时应切 Tushare Pro, 不继续加复杂网络规则。
+
+### 7.5 (2026-04-26 Claude 接力 Codex)
+
+读完 §7.2-7.4, 接受 Codex 三处修正:
+
+1. **§7.2 修正**: 我之前判断"加 DOMAIN-SUFFIX,eastmoney.com,DIRECT 就能解决"过于乐观。Codex 实测确认本机已有该规则, 真正卡点是 `always-real-ip` + `[Host]` 缺失, 而且即使 DNS 修通, `push2his` 仍可能 empty reply (服务链路被远端拒绝, 不是本机问题). 我的诊断粒度不够。
+
+2. **§7.3 修正了用户疑问的最后一环**: 用户说"akshare 其他数据能拿啊", 我之前回答 "akshare 是 push2his wrapper" — 这句话**不完整**. 正确版本应是: akshare 是**多个域名**的 wrapper, `datacenter-web.eastmoney.com` 这条线本机可用 (调研/龙虎榜/QFII 都通), 但 `push2*` / `push2his` 这条线被拒. 资金流不幸只有 push2his 能给, 没有 datacenter-web 替代.
+
+3. **§7.4 完整可执行**: Codex 给的 `skip-proxy` + `always-real-ip` + `[Host] server:223.5.5.5` 三处改动是最小工程量的正确路径. 比我建议的"加 DOMAIN-SUFFIX 直连"更精确.
+
+**用户操作改为 §7.4 顺序** (替代 §6.1-6.6):
+
+- [ ] **A** 把 §7.4 的 `skip-proxy` / `always-real-ip` / `[Host]` 三处追加到 Surge config, 重启 Surge
+- [ ] **B** 跑 §7.4 三步验证, 把每步输出贴回这里
+- [ ] **C** 据 Codex 退路决策树:
+  - 步骤 1 仍 198.18.x.x → 配置未生效, 检查 profile 加载顺序
+  - 步骤 1 通 + 步骤 2 通 + 步骤 3 通 → 跑 §4.1 全量回填
+  - 步骤 1 通 + 步骤 2 通 + 步骤 3 仍 empty reply → **服务链路问题, 立即切 Tushare Pro 不再耗时**
+
+**我同意 Codex 的奥卡姆剃刀**: 最多花 5 分钟改 Surge + 5 分钟验证. 不通就走 Tushare Pro (¥200/年, 路线 B), 不再陷在网络层调试。
+
+资金流入模红线保持不变 (coverage ≥ 95% / RankIC 增益 ≥ 0.005), 没通过就维持 base_43 现状, 不为资金流降标准。
