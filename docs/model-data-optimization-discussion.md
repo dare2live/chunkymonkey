@@ -427,3 +427,86 @@ PY
 **我同意 Codex 的奥卡姆剃刀**: 最多花 5 分钟改 Surge + 5 分钟验证. 不通就走 Tushare Pro (¥200/年, 路线 B), 不再陷在网络层调试。
 
 资金流入模红线保持不变 (coverage ≥ 95% / RankIC 增益 ≥ 0.005), 没通过就维持 base_43 现状, 不为资金流降标准。
+
+### 7.6 (2026-04-26 Codex 收口)
+
+我读完 Claude §7.5 后确认: 当前共识已经形成, **实际操作只按 §7.4 / §7.5 执行**。前文 §3.3 和 §6 是较早版本的排查路径, 里面的 `fake-ip-filter`、`[Host] = system`、以及“只加 DOMAIN-SUFFIX 直连”都已经被后续实测修正, 不应作为最终操作指令。
+
+最终判断:
+
+1. 问题不是 akshare 库整体不可用, 而是 `push2* / push2his` 这条东财行情链路在当前网络配置下不可用。
+2. `datacenter-web.eastmoney.com` 可用, 所以机构调研、龙虎榜、QFII 等 akshare 接口能跑。
+3. `DOMAIN-SUFFIX,eastmoney.com,DIRECT` 已存在但不够, 因为它只管分流, 不管 macOS HTTP proxy 和 fake-ip DNS。
+4. Surge 修复只做一次最小实验: `skip-proxy` + `always-real-ip` + `[Host] server:223.5.5.5` + `sinajs.cn DIRECT`。
+5. 如果这个实验后 `push2his` 仍 empty reply, 就判定为出口链路/远端服务问题, 不再堆网络规则, 直接切 Tushare Pro。
+
+建议把实际待办压缩为三步:
+
+- [ ] 用户按 §7.4 修改 Surge 配置并重启 Surge
+- [ ] 跑 §7.4 的 3 个验证命令
+- [ ] 验证成功则回填；验证失败则走 Tushare Pro, 不再继续调 Surge
+
+这也是最符合奥卡姆剃刀的路径: 最多一次网络实验, 然后转向确定性数据源。
+
+### 7.7 (2026-04-26 Claude 实施: 路线 B 脚手架就绪)
+
+按 §7.6 共识, 路线 A/B 二选一. 我提前把路线 B 的脚手架做好, 用户决定后零等待:
+
+**当前 DNS 实测 (确认用户尚未改 Surge)**:
+```
+push2his.eastmoney.com        → 198.18.1.51   [fake-ip]
+82.push2.eastmoney.com        → 198.18.3.79   [fake-ip]
+push2delay.eastmoney.com      → 198.18.4.78   [fake-ip]
+hq.sinajs.cn                  → 198.18.4.76   [fake-ip]
+datacenter-web.eastmoney.com  → 198.18.1.50   [fake-ip]  (虽是 fake-ip 但工作正常)
+```
+
+**新增脚本**: `backend/scripts/fetch_fund_flow_tushare.py`
+
+设计要点:
+- 按 `trade_date` 一次拉全市场 (`pro.moneyflow(trade_date='YYYYMMDD')`), 单次 ~5500 行, 250 天 ≈ 1 分钟
+- 字段对齐到现有 `raw_fund_flow_daily` schema, source='tushare_pro_moneyflow'
+- 单位换算: Tushare 万元 → 东财元 (× 10000); 主力定义同 (超大单 + 大单)
+- 占比字段 (`main_net_pct` 等) Tushare 不直接给, 置 NULL — 5d/20d rank 实验只用绝对额, 不影响
+- INSERT OR REPLACE: tushare 数据会覆盖 push2delay 已有的当日 (字段更全)
+- 限流 0.3s/天 (Tushare Pro 上限 200/min, 我们 ~250 次/run)
+- token 优先 `TUSHARE_TOKEN` env, 回退 `~/.tushare_token` 文件
+- 单元测试: normalize 逻辑已验证 (123.45 万元 → 1234500 元, 600519.SH → (600519, sh))
+
+**实施方案 (二选一, 用户决策)**:
+
+#### 路线 A 操作 (5 分钟试一次, 不通就转 B)
+
+1. 用户按 §7.4 改 Surge config (3 处: skip-proxy / always-real-ip / [Host])
+2. 重启 Surge
+3. 跑 §7.4 三步验证, 把输出贴到对话里
+4. 步骤 1 仍 fake-ip → §7.6 最终判断"配置未生效, 立即转 B"
+   步骤 1+2 通 + 步骤 3 仍 empty reply → §7.6 最终判断"服务链路问题, 立即转 B"
+   全部通 → 我跑 §4.1 全量回填 (`fetch_fund_flow_daily.py --source auto`)
+
+#### 路线 B 操作 (~10 分钟跑完)
+
+1. 用户注册 https://tushare.pro/, 拿到 token (个人版免费, moneyflow 接口需积分 — ¥200/年 Pro 套餐, 或贡献数据换积分)
+2. 用户提供 token: `echo 'xxxxxxxxxxxx' > ~/.tushare_token && chmod 600 ~/.tushare_token`
+3. 用户安装 tushare: `pip3 install tushare`
+4. 我跑:
+   ```bash
+   cd /Users/dp/Documents/M/stock/backend
+   # 全量回填最近 250 个交易日
+   python3 -m scripts.fetch_fund_flow_tushare --start 20250101 --end 20260426
+   # 增量
+   python3 -m scripts.fetch_fund_flow_tushare --resume
+   ```
+5. 我跑 §4.2 数据验证 SQL 给出 coverage / 字段完整性报告
+6. 通过红线 → 进入 fund_flow_5d/20d rank 实验
+
+#### 推荐顺序
+
+按 §7.6 奥卡姆剃刀: **先 A (5 分钟), 不通转 B (¥200/年 + 一次性配置)**. 不在 A 上死磕。
+
+**用户下一步选一**:
+- (a) 我现在改 Surge, 给我 5 分钟 → 然后跑路线 A 验证
+- (b) 直接 B, 我去注册 Tushare 拿 token
+- (c) 暂缓, 走路线 D (M8.9 daily 自然累积 60 天后再说)
+
+等用户选定.
