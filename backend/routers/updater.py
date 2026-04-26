@@ -1275,14 +1275,49 @@ async def _step_match_inst(conn) -> int:
 # [Phase 5 已删除] _step_kline_monthly 和 _step_kline_daily 已被 _step_sync_market_data 替代
 
 
-async def _step_gen_events(conn) -> int:
-    """生成机构事件"""
-    from services.event_engine import generate_events, generate_exit_events
+async def _step_gen_events(conn) -> dict:
+    """生成机构事件 (§4.25 #2 幂等化: 输入签名不变就跳过 DELETE+INSERT)."""
+    from services.event_engine import (
+        generate_events, generate_exit_events,
+        compute_gen_events_input_signature,
+        get_last_step_fingerprint,
+        update_step_fingerprint,
+    )
 
     def _worker(worker_conn):
+        new_fp, n_holdings = compute_gen_events_input_signature(worker_conn)
+        last_fp, last_count = get_last_step_fingerprint(worker_conn, "gen_events")
+        # 当前事件总数
+        current_total = worker_conn.execute(
+            "SELECT COUNT(*) FROM fact_institution_event"
+        ).fetchone()[0]
+
+        if last_fp and new_fp == last_fp and current_total > 0:
+            logger.info(
+                f"[事件] 输入签名未变 ({new_fp[:12]}...), 持仓 {n_holdings} 行, "
+                f"跳过重建 ({current_total} 条事件保留, calc_returns 不需重算)"
+            )
+            return {
+                "count": current_total,
+                "status": "skipped",
+                "skipped": current_total,
+                "message": f"输入签名未变, 保留 {current_total} 条事件 (持仓 {n_holdings} 行)",
+            }
+
+        # 签名变化 → 重建
+        if last_fp:
+            logger.info(f"[事件] 输入签名变化 (旧 {last_fp[:12]}... → 新 {new_fp[:12]}...), 重建事件表")
+        else:
+            logger.info(f"[事件] 首次记录签名 ({new_fp[:12]}...), 生成事件")
         count = generate_events(worker_conn)
         count += generate_exit_events(worker_conn)
-        return count
+        update_step_fingerprint(worker_conn, "gen_events", new_fp, count)
+        return {
+            "count": count,
+            "status": "completed",
+            "written": count,
+            "message": f"重建 {count} 条事件 (输入持仓 {n_holdings} 行)",
+        }
 
     return await _run_blocking_db_task(_worker)
 

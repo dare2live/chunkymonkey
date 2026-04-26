@@ -1623,6 +1623,33 @@ OK QFII 季报 完成 季度 2025-12-31 已有 895 条, 跳过
 
 **Decision**: §4.25 工程主体合入 main, 主链路无硬阻塞. 下一步等用户/Codex 决定是否上 #1 (收益批处理) 这条 ROI 最高的优化, 还是先做 launchd 自动化 + 监控页 (M8.9) 让现状稳定运行一段。
 
+### 4.27 §4.25 #1 calc_returns 批处理优化: 24.5× 加速实测 (Claude, 2026-04-26)
+
+**Claude**: 用户决定按 §4.25 计划推进, 我先做 ROI 最高的 #1 收益批处理。
+
+**问题定位**: 原 `calculate_returns` 30 分 35 秒 (56,951 事件), 每事件 ~19 次 DB query, 总 ~108 万次, IO 受限。
+
+**实施** (commit `2f497802`, `services/return_engine.py` +414/-139):
+- `_TradingCalendarCache`: 整个 `dim_trading_calendar` 一次性加载, `bisect` 索引代替 SQL OFFSET/ORDER BY (节省 ~36 万次 biz_conn 查询)
+- `_StockKlineCache`: 单股 daily/monthly K 线一次加载到 `dict[date]`, `field_at` / `daily_range` 内存查找 (forward 10 天容错保留原行为)
+- 主循环按 `stock_code` 分组事件 (5,188 股 × 平均 11 事件/股), per-stock lazy 加载 K 线后释放 (内存峰值 ~50KB/股)
+- 补救扫描同样 batch + per-stock cache
+
+**实测** (本机 8GB M3, 56,965 事件 / 5,188 股):
+
+| 模式 | 原版 | 批处理 | 加速 |
+|---|---|---|---|
+| `full_rescan=True` | **1835s** (30 分 35 秒) | **75.2s** | **24.5×** |
+| `full_rescan=False` (8,290 待算) | ~262s 推算 | **30s** | ~9× |
+
+数据一致性 spot check: 56,964/56,965 status=`ok`, 1 个 `suspended_waiting` (符合预期); gain_60d / max_drawdown_60d / path_state 数值范围正常 (茅台 002410 2023Q1 -24%/-20% 与市场一致).
+
+**意义**:
+- `calc_returns` 从 30 分钟 → 1 分 15 秒, 不再是智能更新主链路 UI 卡顿瓶颈
+- 后续即使做 §4.25 #3 no-op 级联升级失败, 全量重算也只多 1 分钟代价
+
+**下一步**: 继续 §4.25 #2 事件生成幂等化 — `fact_institution_event` 在 `inst_holdings` 重建后, 若签名 `(institution_id, stock_code, report_date, event_type, hold_amount, ...)` 没变, 不删不重建, 避免 `calc_returns` 完全重新跑一遍。
+
 ## 5. 决策记录 (Decision Log)
 
 每次讨论完一个问题, 在这里 append 一行:
@@ -1688,6 +1715,7 @@ OK QFII 季报 完成 季度 2025-12-31 已有 895 条, 跳过
 | 2026-04-26 | §4.25 智能更新跟跑 | 17 步主链路全过 (37 分钟, calc_returns 占 30 分); 3 小时冷却生效后 smart-plan 17→4 步; build_trends OOM 修复; _fail_unfinished_steps 异常路径补 | inst_holdings 55791 / events 56965 / returns 56951 / trend 3285 / score 3285 |
 | 2026-04-26 | UI 状态语义改造 | Claude 落地 5 runner 返 dict + 主循环 helper + 前端 message 优先 + skipped 状态保留 (commit dffd6452) | "/ 主力资金流 本轮跳过 已最新 5496·空返回 14" 完整可读 |
 | 2026-04-26 | Codex §4.23/4.24/4.25 整合 commit | 51 文件 (+631 -8875) 一次合入 main, 27 个核心模块 import 全过, 主链路稳定 | Codex 额度超限未 commit, Claude 接力做总核对 + 写 §4.26 总结 |
+| 2026-04-26 | §4.25 #1 calc_returns 批处理 | 1835s → 75.2s (24.5× 加速); _TradingCalendarCache + _StockKlineCache + 按 stock_code 分组 (commit 2f497802) | calc_returns 不再是主链路 UI 卡顿瓶颈; 即使 #3 no-op 失败, 全量重算也只多 1 分钟代价 |
 
 ---
 

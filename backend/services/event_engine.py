@@ -3,14 +3,118 @@
 
 优先使用东财原始数据中的 hold_change 字段（新进/加仓/减仓），
 退出事件通过对比每只股票最新两个报告期推算。
+
+§4.25 #2 幂等化 (2026-04-26):
+- 引入 mart_step_fingerprint KV 表存上次 gen_events 时的输入签名
+- 每次跑前先算当前 inst_holdings 签名, 跟上次比对
+- 一致 → 跳过 DELETE+INSERT, 保留 fact_institution_event.calc_version 等
+  下游 calc_returns 已算字段, 避免无变化触发全量重算
 """
 
+import hashlib
 import logging
 from datetime import datetime
 
 from services.constants import CHANGE_MAP as _CHANGE_MAP
 
 logger = logging.getLogger("cm-api")
+
+
+# ---------------------------------------------------------------------------
+# 幂等化: 输入签名 + KV 存储 (§4.25 #2)
+# ---------------------------------------------------------------------------
+
+_STEP_FP_DDL = """
+CREATE TABLE IF NOT EXISTS mart_step_fingerprint (
+    step_id      TEXT PRIMARY KEY,
+    fingerprint  TEXT,
+    row_count    INTEGER,
+    computed_at  TEXT
+);
+"""
+
+
+def _ensure_fingerprint_table(conn):
+    conn.executescript(_STEP_FP_DDL)
+
+
+def compute_gen_events_input_signature(conn) -> tuple[str, int]:
+    """计算 gen_events 输入 (inst_holdings + market_raw_holdings 最新两期 + 跟踪机构集合) 的签名.
+
+    覆盖三类输入:
+    - inst_holdings 全表 (count + sum(hold_amount) + (inst_id, stock_code, report_date) 三元组数)
+    - market_raw_holdings 最新两期 (用于 generate_exit_events)
+    - 跟踪机构 enabled 集合 (退出事件需要)
+
+    返回 (fingerprint_hex, total_holdings_rows).
+    """
+    h = hashlib.sha256()
+
+    # 1. inst_holdings 主签名
+    row = conn.execute("""
+        SELECT
+            COUNT(*) AS n_rows,
+            COALESCE(SUM(hold_amount), 0) AS sum_amount,
+            COUNT(DISTINCT (institution_id || '|' || stock_code || '|' || report_date)) AS n_keys,
+            MAX(report_date) AS max_rd
+        FROM inst_holdings
+        WHERE institution_id IS NOT NULL AND stock_code IS NOT NULL
+    """).fetchone()
+    holdings_part = f"holdings|{row['n_rows']}|{row['sum_amount']:.2f}|{row['n_keys']}|{row['max_rd']}"
+    h.update(holdings_part.encode("utf-8"))
+    n_rows = int(row["n_rows"] or 0)
+
+    # 2. market_raw_holdings 最新两期: generate_exit_events 用 (stock_code, report_date) 序列
+    try:
+        rows = conn.execute("""
+            SELECT stock_code, report_date
+            FROM (
+                SELECT stock_code, report_date,
+                       ROW_NUMBER() OVER (PARTITION BY stock_code ORDER BY report_date DESC) AS rn
+                FROM (SELECT DISTINCT stock_code, report_date FROM market_raw_holdings
+                      WHERE stock_code IS NOT NULL)
+            )
+            WHERE rn <= 2
+            ORDER BY stock_code, report_date DESC
+        """).fetchall()
+        for r in rows:
+            h.update(f"|{r['stock_code']}:{r['report_date']}".encode("utf-8"))
+    except Exception:
+        # 旧库可能没 market_raw_holdings, 忽略
+        pass
+
+    # 3. 跟踪机构集合
+    try:
+        ids = conn.execute(
+            "SELECT id FROM inst_institutions WHERE enabled=1 AND blacklisted=0 AND merged_into IS NULL ORDER BY id"
+        ).fetchall()
+        for r in ids:
+            h.update(f"|inst:{r['id']}".encode("utf-8"))
+    except Exception:
+        pass
+
+    return h.hexdigest(), n_rows
+
+
+def get_last_step_fingerprint(conn, step_id: str) -> "tuple[str | None, int | None]":
+    _ensure_fingerprint_table(conn)
+    row = conn.execute(
+        "SELECT fingerprint, row_count FROM mart_step_fingerprint WHERE step_id = ?",
+        (step_id,),
+    ).fetchone()
+    if not row:
+        return None, None
+    return row["fingerprint"], int(row["row_count"] or 0)
+
+
+def update_step_fingerprint(conn, step_id: str, fingerprint: str, row_count: int) -> None:
+    _ensure_fingerprint_table(conn)
+    conn.execute(
+        "INSERT OR REPLACE INTO mart_step_fingerprint (step_id, fingerprint, row_count, computed_at) "
+        "VALUES (?, ?, ?, ?)",
+        (step_id, fingerprint, int(row_count), datetime.now().isoformat()),
+    )
+    conn.commit()
 
 
 
