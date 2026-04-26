@@ -2605,6 +2605,20 @@
   var _lastStepGridSig = '';
   var _lastWorkbenchSummarySig = '';
   async function startUpdate() {
+    // §7.7 资金流接入: 提示用户关闭 Surge 以拿 push2his 历史 (本会话只提示一次)
+    var SURGE_HINT_KEY = 'cm.fundflow.surge_hint_dismissed';
+    if (!sessionStorage.getItem(SURGE_HINT_KEY)) {
+      var ok = window.confirm(
+        '即将启动智能更新.\n\n' +
+        '资金流 step 会先尝试 push2his 历史接口 (~250 天历史).\n' +
+        '该域名默认被 Surge fake-ip 挡 → 只能拿当日 1 行/票.\n\n' +
+        '✓ 关闭 Surge (推荐, 5 秒) 或加 eastmoney 白名单 → 拿 ~250 天历史\n' +
+        '✗ 不关 Surge → 只拿当日 1 行 (M8.9 daily 自然累积)\n\n' +
+        '点 [确定] 继续 (本会话不再提示), 点 [取消] 先关 Surge 再点更新.'
+      );
+      if (!ok) return;
+      sessionStorage.setItem(SURGE_HINT_KEY, '1');
+    }
     _activeRunContext = null;
     _lastRunContext = null;
     _uiRunning = true;

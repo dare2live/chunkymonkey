@@ -3124,19 +3124,21 @@ async def _step_sync_lhb(conn) -> dict:
 
 
 async def _step_sync_fund_flow(conn) -> dict:
-    """M9.5: 主力资金流 daily 累积 (Codex §4.21).
+    """M9.5 + §7.7: 主力资金流 daily 累积, 优先拉历史.
 
-    数据源: eastmoney push2delay (`https://push2delay.eastmoney.com`),
-    显式 `requests.Session(trust_env=False)` 避开 macOS 系统代理 fake-ip。
-    每次只能拿"最新交易日"一行/票, 用 INSERT OR REPLACE 累积到
-    `raw_fund_flow_daily`。当 DB 里已有 latest_completed_trade_date
-    的票, resume 跳过。
+    数据源策略 (预探针 + 整 run 单一 source):
+      1. 第一只票尝试 push2his (历史 ~250 天)
+         - 通: 整个 run 走 push2his, 拿全历史 (Surge 关闭/eastmoney 直连时)
+         - 不通: 整个 run 走 push2delay (1 行/票, 当 fake-ip 仍接管时)
+      2. 主循环用确定的 source 拉所有票, 不再混用
+      3. INSERT OR REPLACE 主键 (trade_date, stock_code), source 字段记录来源
 
-    成本: 5500 票 × ~0.3s = ~28 分钟. 失败/空返回的票不阻塞下一只。
-    依赖: 无. 不进 model training, 仅 raw 累积 + 监控用。
+    依赖: 无. 失败/空返回的票不阻塞下一只.
+    成本估算: 5500 票 × 0.3s ≈ 28 分钟 (历史模式 = 28 分钟, daily 模式同).
     """
     from scripts.fetch_fund_flow_daily import (
         DDL,
+        fetch_his_fund_flow,
         fetch_delay_fund_flow,
         normalize_df,
         write_batch,
@@ -3162,26 +3164,63 @@ async def _step_sync_fund_flow(conn) -> dict:
         f"todo={len(todo)} (skip {n_skip} 已有最新)"
     )
 
+    if not todo:
+        return {
+            "count": 0,
+            "status": "skipped",
+            "message": f"全部 {n_skip} 只已有 {target_date} 最新数据, 跳过",
+            "target_date": target_date,
+        }
+
+    # ----- 预探针: 决定 source mode -----
+    probe_code, probe_market = todo[0]
+    mode = "delay"  # 默认 fallback
+    fetch_func = fetch_delay_fund_flow
+    source_label = "eastmoney_push2delay_latest"
+    probe_df = None
+    try:
+        probe_df = await asyncio.to_thread(fetch_his_fund_flow, probe_code, probe_market)
+        if probe_df is not None and not probe_df.empty:
+            mode = "his"
+            fetch_func = fetch_his_fund_flow
+            source_label = "eastmoney_push2his_history"
+            logger.info(
+                f"[资金流] 探针成功: push2his 通 (探针 {probe_code} 拿 {len(probe_df)} 行), "
+                f"整个 run 走历史模式"
+            )
+        else:
+            logger.info(
+                f"[资金流] 探针: push2his 返回空 (探针 {probe_code}), 切到 push2delay 当日模式"
+            )
+    except Exception as exc:
+        logger.info(
+            f"[资金流] 探针失败: push2his 不可达 ({probe_code}: {str(exc)[:100]}), "
+            f"切到 push2delay 当日模式 — 提示: 关闭 Surge 或加 eastmoney 白名单可拿历史"
+        )
+
     n_success = n_failed = n_empty = 0
     rows_written = 0
     rate_limit = 0.3
     log_every = 200
 
     for i, (code, market) in enumerate(todo):
-        try:
-            df = await asyncio.to_thread(fetch_delay_fund_flow, code, market)
-        except Exception as exc:
-            n_failed += 1
-            if n_failed <= 5:
-                logger.warning(f"[资金流] {code}.{market} fail: {str(exc)[:120]}")
-            await asyncio.sleep(rate_limit)
-            continue
+        # 复用探针结果, 避免第一只票重复请求
+        df = probe_df if (i == 0 and mode == "his" and probe_df is not None) else None
+        if df is None:
+            try:
+                df = await asyncio.to_thread(fetch_func, code, market)
+            except Exception as exc:
+                n_failed += 1
+                if n_failed <= 5:
+                    logger.warning(f"[资金流] {code}.{market} fail: {str(exc)[:120]}")
+                await asyncio.sleep(rate_limit)
+                continue
         if df is None or df.empty:
             n_empty += 1
             await asyncio.sleep(rate_limit)
             continue
         try:
-            norm = normalize_df(df, code, market, source="eastmoney_push2delay_latest")
+            norm = normalize_df(df, code, market, source=source_label)
             rows_written += write_batch(duck, norm)
             conn.commit()
             n_success += 1
@@ -3190,27 +3229,28 @@ async def _step_sync_fund_flow(conn) -> dict:
             logger.warning(f"[资金流] {code} normalize/write fail: {str(exc)[:120]}")
         if (i + 1) % log_every == 0:
             logger.info(
-                f"[资金流] [{i+1}/{len(todo)}] ok={n_success} empty={n_empty} fail={n_failed}"
+                f"[资金流] [{i+1}/{len(todo)}] mode={mode} ok={n_success} empty={n_empty} fail={n_failed}"
             )
         await asyncio.sleep(rate_limit)
 
     logger.info(
-        f"[资金流] 完成: ok={n_success} empty={n_empty} fail={n_failed} "
+        f"[资金流] 完成: mode={mode} ok={n_success} empty={n_empty} fail={n_failed} "
         f"rows_written={rows_written} target={target_date}"
     )
-    # 语义: 全部 skip = skipped 状态 (resume 已最新); 否则 completed
+    mode_tag = "历史模式" if mode == "his" else "当日模式"
     if rows_written == 0 and n_success == 0 and n_skip == len(codes_all):
         status = "skipped"
         msg = f"全部 {n_skip} 只已有 {target_date} 最新数据, 跳过"
     elif rows_written == 0 and n_skip > 0 and n_empty > 0:
         status = "skipped"
-        msg = f"已最新 {n_skip} · 空返回 {n_empty} · 失败 {n_failed} (target={target_date})"
+        msg = f"[{mode_tag}] 已最新 {n_skip} · 空返回 {n_empty} · 失败 {n_failed} (target={target_date})"
     else:
         status = "completed"
-        msg = f"写入 {rows_written} 条 · 已最新 {n_skip} · 空返回 {n_empty} · 失败 {n_failed} (target={target_date})"
+        msg = f"[{mode_tag}] 写入 {rows_written} · 已最新 {n_skip} · 空返回 {n_empty} · 失败 {n_failed} (target={target_date})"
     return {
         "count": rows_written,
         "status": status,
+        "mode": mode,
         "written": rows_written,
         "skipped": n_skip,
         "empty": n_empty,

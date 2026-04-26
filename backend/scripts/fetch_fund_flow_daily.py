@@ -176,14 +176,20 @@ def normalize_df(
     ]
 
 
-def fetch_delay_fund_flow(stock_code: str, market: str) -> pd.DataFrame:
-    """Eastmoney push2delay fallback: 只返回最新交易日资金流.
+def _fetch_eastmoney_fund_flow(
+    stock_code: str,
+    market: str,
+    *,
+    base_url: str,
+    timeout: int = 15,
+) -> pd.DataFrame:
+    """通用东财资金流拉取. base_url 决定历史深度:
+    - push2his.eastmoney.com  → 历史 ~250 个交易日
+    - push2delay.eastmoney.com → 仅最新交易日 1 行 (接口设计上限)
 
-    这是显式 fallback, 不是 monkey-patch akshare。用于 fake-ip/代理导致
-    push2his 历史接口不可达时, 先把 daily raw 数据拉起来。
+    其他参数完全相同, 仅 URL 子域不同.
     """
     market_map = {"sh": 1, "sz": 0, "bj": 0}
-    url = "https://push2delay.eastmoney.com/api/qt/stock/fflow/daykline/get"
     params = {
         "lmt": "0",
         "klt": "101",
@@ -202,7 +208,7 @@ def fetch_delay_fund_flow(stock_code: str, market: str) -> pd.DataFrame:
     }
     session = requests.Session()
     session.trust_env = False
-    resp = session.get(url, params=params, headers=headers, timeout=15)
+    resp = session.get(base_url, params=params, headers=headers, timeout=timeout)
     resp.raise_for_status()
     data = resp.json()
     klines = ((data or {}).get("data") or {}).get("klines") or []
@@ -243,6 +249,22 @@ def fetch_delay_fund_flow(stock_code: str, market: str) -> pd.DataFrame:
             "小单净流入-净占比",
         ]
     ]
+
+
+def fetch_his_fund_flow(stock_code: str, market: str) -> pd.DataFrame:
+    """push2his: 历史资金流, ~250 个交易日. Surge fake-ip 通常会挡这个域名."""
+    return _fetch_eastmoney_fund_flow(
+        stock_code, market,
+        base_url="https://push2his.eastmoney.com/api/qt/stock/fflow/daykline/get",
+    )
+
+
+def fetch_delay_fund_flow(stock_code: str, market: str) -> pd.DataFrame:
+    """push2delay: 仅最新交易日 1 行. 接口设计上限, 不能拉历史."""
+    return _fetch_eastmoney_fund_flow(
+        stock_code, market,
+        base_url="https://push2delay.eastmoney.com/api/qt/stock/fflow/daykline/get",
+    )
 
 
 def write_batch(duck, df: pd.DataFrame) -> int:
