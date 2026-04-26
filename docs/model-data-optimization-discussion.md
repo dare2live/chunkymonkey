@@ -1650,6 +1650,33 @@ OK QFII 季报 完成 季度 2025-12-31 已有 895 条, 跳过
 
 **下一步**: 继续 §4.25 #2 事件生成幂等化 — `fact_institution_event` 在 `inst_holdings` 重建后, 若签名 `(institution_id, stock_code, report_date, event_type, hold_amount, ...)` 没变, 不删不重建, 避免 `calc_returns` 完全重新跑一遍。
 
+### 4.28 §4.25 #2/#4 落地: gen_events 幂等化 + sync_financial partial 状态 (Claude, 2026-04-26)
+
+**Claude**: 接力 §4.27, 把 §4.25 计划剩下的高 ROI 项做完。#3 no-op 级联升级被 §4.25 Codex 3h 冷却 + 我的 #2 fingerprint short-circuit 大部分覆盖, 不再单独做。
+
+**#2 gen_events 幂等化** (commit `a0158d0d`, `services/event_engine.py` + `routers/updater.py`):
+- 新建 `mart_step_fingerprint` KV 表存上次输入签名
+- `compute_gen_events_input_signature` 用 SHA256 覆盖三类输入:
+  1. `inst_holdings` 全表 `(count, sum(hold_amount), distinct (inst_id, stock, date), max(report_date))`
+  2. `market_raw_holdings` 最新两期 `(stock, date)` 序列 (`generate_exit_events` 用)
+  3. 跟踪机构 enabled 集合 (退出事件需要)
+- `_step_gen_events` 跑前先比对: 一致 → 跳过 DELETE+INSERT, 保留 `fact_institution_event.calc_version` 等下游 `calc_returns` 已算字段, 避免无变化触发全量重算
+
+**实测**: inst_holdings 不变时 gen_events 0.0s 跳过, 整条链路不再触发 calc_returns 全量重算.
+
+**#4 sync_financial partial 状态** (commit `39d0d73e`):
+- `_step_sync_financial` 由 `int total` 改为 dict, 5 个子阶段聚合:
+  - 全 `success` → `completed`
+  - 任一 `failed/error` 但仍有 `success` → `partial`
+  - 任一 `partial` → `partial`
+  - 全 `failed` → `failed`
+- detail 同时含子阶段 (renderFinancialSyncDetail 已支持) 和 `message` (step row 单行)
+- 解决 §4.25 用户实测的"历史 24/24 ok / 最新 6/6 失败"场景显示成 `completed` 的语义错误
+
+**§4.25 5 项进度**: #1 ✓ #2 ✓ #3 (覆盖) #4 ✓ #5 (用户决定不上). 计划全部消化完成。
+
+**下一步**: 等用户决定是否启动 launchd 自动化 + 监控页 (M8.9), 让现状稳定运行一段后再开新工程。
+
 ## 5. 决策记录 (Decision Log)
 
 每次讨论完一个问题, 在这里 append 一行:
@@ -1716,6 +1743,9 @@ OK QFII 季报 完成 季度 2025-12-31 已有 895 条, 跳过
 | 2026-04-26 | UI 状态语义改造 | Claude 落地 5 runner 返 dict + 主循环 helper + 前端 message 优先 + skipped 状态保留 (commit dffd6452) | "/ 主力资金流 本轮跳过 已最新 5496·空返回 14" 完整可读 |
 | 2026-04-26 | Codex §4.23/4.24/4.25 整合 commit | 51 文件 (+631 -8875) 一次合入 main, 27 个核心模块 import 全过, 主链路稳定 | Codex 额度超限未 commit, Claude 接力做总核对 + 写 §4.26 总结 |
 | 2026-04-26 | §4.25 #1 calc_returns 批处理 | 1835s → 75.2s (24.5× 加速); _TradingCalendarCache + _StockKlineCache + 按 stock_code 分组 (commit 2f497802) | calc_returns 不再是主链路 UI 卡顿瓶颈; 即使 #3 no-op 失败, 全量重算也只多 1 分钟代价 |
+| 2026-04-26 | §4.25 #2 gen_events 幂等化 | mart_step_fingerprint KV + SHA256 输入签名 (inst_holdings + market_raw_holdings 两期 + 跟踪机构集); 不变时 0.0s 跳过 (commit a0158d0d) | inst_holdings 重建即使无内容变化也会 wipe fact_institution_event 触发 calc_returns 全量重算; 现按签名 short-circuit |
+| 2026-04-26 | §4.25 #3 no-op 级联升级 | 不单独做; 被 §4.25 Codex 3h 冷却 + #2 fingerprint short-circuit 覆盖 | 同效果且无新表/新调度器, 符合 §4.25 #5 不加新基础设施约束 |
+| 2026-04-26 | §4.25 #4 sync_financial partial | 5 个子阶段聚合: success/partial/failed → completed/partial/failed (commit 39d0d73e) | "历史 24/24 ok / 最新 6/6 失败" 之前误报 completed, 现 partial 让 UI 警示 |
 
 ---
 
