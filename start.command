@@ -71,6 +71,24 @@ cd "$BACKEND_DIR"
 stop_project_server
 check_port_conflict
 
+# ---- akshare 自动升级 (官方建议每次使用前升级, 避免接口变动) ----
+# 跳过: CM_SKIP_UPGRADE=1 ./start.command
+# 失败不阻塞启动 (网络问题、超时、pip 缺失都继续走)
+if [[ "${CM_SKIP_UPGRADE:-0}" != "1" ]]; then
+  echo "检查 akshare 版本（akshare 官方建议每次启动前升级；CM_SKIP_UPGRADE=1 跳过）..."
+  if command -v pip3 >/dev/null 2>&1; then
+    if pip3 install --upgrade akshare --quiet --upgrade-strategy only-if-needed --timeout 20 2>/dev/null; then
+      v="$(pip3 show akshare 2>/dev/null | awk '/^Version:/ {print $2}')"
+      echo "akshare = ${v:-unknown}"
+    else
+      v="$(pip3 show akshare 2>/dev/null | awk '/^Version:/ {print $2}')"
+      echo "akshare 升级跳过 (网络/超时/pip 异常), 沿用现有版本 ${v:-unknown}"
+    fi
+  else
+    echo "pip3 未安装, 跳过 akshare 升级检查"
+  fi
+fi
+
 echo "========================================"
 echo "  Chunky Monkey v2 启动中..."
 echo "  地址: http://localhost:$PORT"
