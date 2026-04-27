@@ -8,6 +8,7 @@
 
 import json
 import logging
+import os
 import time
 from datetime import date, datetime
 from typing import Optional
@@ -1480,23 +1481,68 @@ def build_smart_plan(conn, force_all=False, *, audit: Optional[dict] = None, use
     elif target_trade:
         plan["skip_reasons"]["sync_lhb"] = f"龙虎榜已是最新（{lhb_latest}）"
 
-    # 6a-5. 主力资金流 (M9.5, push2delay 仅最新交易日, daily 累积)
+    # 6a-5. 主力资金流
+    # 资金流历史接口一次会返回每只票可拿到的完整历史；不能只看 MAX(trade_date)，
+    # 否则 push2delay 写入 1 天后会误判为“已最新”，历史缺口永远补不上。
     try:
+        min_ff_days = int(os.environ.get("CM_FUND_FLOW_MIN_DAYS", "60") or 60)
+    except Exception:
+        min_ff_days = 60
+    try:
+        ff_coverage_pct = float(os.environ.get("CM_FUND_FLOW_COVERAGE_PCT", "80") or 80)
+    except Exception:
+        ff_coverage_pct = 80.0
+    try:
+        active_stock_count = int(_scalar(conn, "SELECT COUNT(*) FROM dim_active_a_stock") or 0)
+        coverage_threshold = max(1, int(active_stock_count * ff_coverage_pct / 100)) if active_stock_count else 1
         ff_row = conn.execute(
-            "SELECT MAX(trade_date) FROM raw_fund_flow_daily"
+            """
+            SELECT MAX(trade_date),
+                   COUNT(DISTINCT trade_date),
+                   COUNT(DISTINCT stock_code)
+            FROM raw_fund_flow_daily
+            """
         ).fetchone()
         ff_latest = (ff_row[0] or "")[:10] if ff_row else ""
+        ff_days = int(ff_row[1] or 0) if ff_row else 0
+        ff_stocks = int(ff_row[2] or 0) if ff_row else 0
+        covered_row = conn.execute(
+            """
+            SELECT COUNT(*)
+            FROM (
+                SELECT trade_date, COUNT(DISTINCT stock_code) AS n
+                FROM raw_fund_flow_daily
+                GROUP BY trade_date
+                HAVING n >= ?
+            ) t
+            """,
+            (coverage_threshold,),
+        ).fetchone()
+        ff_covered_days = int(covered_row[0] or 0) if covered_row else 0
     except Exception:
         ff_latest = ""
+        ff_days = 0
+        ff_stocks = 0
+        active_stock_count = 0
+        coverage_threshold = 1
+        ff_covered_days = 0
 
-    if target_trade and ff_latest < target_trade:
+    if target_trade and (ff_latest < target_trade or ff_covered_days < min_ff_days):
         plan["steps"].append("sync_fund_flow")
-        if ff_latest:
+        if ff_covered_days < min_ff_days:
+            plan["reason"].append(
+                f"主力资金流历史覆盖不足（有效 {ff_covered_days}/{min_ff_days} 个交易日，"
+                f"阈值 {coverage_threshold}/{active_stock_count or '未知'} 只/日，"
+                f"全表 {ff_days} 日/{ff_stocks} 只）"
+            )
+        elif ff_latest:
             plan["reason"].append(f"主力资金流落后于 {target_trade}（当前 {ff_latest}）")
         else:
             plan["reason"].append(f"主力资金流尚未接入（目标 {target_trade}）")
     elif target_trade:
-        plan["skip_reasons"]["sync_fund_flow"] = f"主力资金流已是最新（{ff_latest}）"
+        plan["skip_reasons"]["sync_fund_flow"] = (
+            f"主力资金流有效覆盖 {ff_covered_days} 个交易日，最新 {ff_latest}"
+        )
 
     # 6b. 财务数据是否需要同步
     try:

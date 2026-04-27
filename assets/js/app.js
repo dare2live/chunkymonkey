@@ -1707,7 +1707,7 @@
     { step_id: 'sync_qfii', step_name: 'QFII 季报', status: 'idle', desc: '季度末 +30 天后同步 QFII 十大股东持仓（外资维度）' },
     { step_id: 'sync_margin', step_name: '融资融券', status: 'idle', desc: '每日同步 SH+SZ 融资买入/余额/融券数据' },
     { step_id: 'sync_lhb', step_name: '龙虎榜', status: 'idle', desc: '每日同步龙虎榜上榜明细（机构/游资短线痕迹）' },
-    { step_id: 'sync_fund_flow', step_name: '主力资金流', status: 'idle', desc: '每日同步主力/超大单/大单/中单/小单净流入 (eastmoney push2delay, 仅最新交易日)' },
+    { step_id: 'sync_fund_flow', step_name: '主力资金流', status: 'idle', desc: '用 akshare 历史接口逐股拉取可返回的完整主力资金流' },
     { step_id: 'sync_industry', step_name: '通达信行业', status: 'idle', desc: '给持仓股补充通达信三级行业分类' },
     { step_id: 'calc_financial_derived', step_name: '计算财务指标', status: 'idle', desc: '计算 ROE、毛利率等财务派生指标' },
     { step_id: 'build_current_rel', step_name: '构建当前关系', status: 'idle', desc: '构建“机构→股票”当前持仓关系' },
@@ -2246,21 +2246,27 @@
     var issueCount = meta.issue_count || 0;
     var hasData = !!meta.has_data;
     var blocked = isBlockedStep(step);
+    var recordNum = Number(step.records);
+    var hasStepResult = !!step.finished_at || !!step.detail || (Number.isFinite(recordNum) && recordNum > 0);
 
     if (_uiRunning) {
-      if (rawStatus === 'running' || rawStatus === 'pending' || rawStatus === 'failed' || rawStatus === 'stopped') return rawStatus;
+      if (rawStatus === 'running' || rawStatus === 'pending' || rawStatus === 'failed' || rawStatus === 'blocked' || rawStatus === 'stopped') return rawStatus;
       if (rawStatus === 'skipped' && blocked) return 'blocked';
+      if (rawStatus === 'partial') return 'partial';
       if (rawStatus === 'completed' && issueCount > 0) return 'partial';
       return rawStatus;
     }
 
     if (rawStatus === 'failed' && !hasData) return 'failed';
+    if (rawStatus === 'blocked') return 'blocked';
     if (rawStatus === 'stopped' && !hasData) return 'stopped';
     if (blocked && !hasData) return 'blocked';
+    if (rawStatus === 'partial') return 'partial';
     // 已经跑完且后端明确返回 skipped (跳过 / 已最新), 保留 skipped 状态;
     // 否则会被下面 hasData/idle 分支吞成 idle, UI 不显示图标和文案语义.
     if (rawStatus === 'skipped' && (step.finished_at || step.detail)) return 'skipped';
     if (issueCount > 0) return 'partial';
+    if (rawStatus === 'completed' && hasStepResult) return 'completed';
     if (hasData) return 'completed';
     return 'idle';
   }
@@ -2319,7 +2325,8 @@
       return [
         s.step_id,
         s.display_status || s.status || '',
-        s.records || 0,
+        Number.isFinite(Number(s.records)) ? Number(s.records) : 0,
+        s.detail?.message || '',
         s.started_at || '',
         s.finished_at || '',
         s.error || '',
@@ -2429,11 +2436,11 @@
   /* 用首字母英文缩写做占位, 未来图标替换时改 step-icon--X 的 CSS background / mask 即可 */
   var STEP_STATUS_ICON = {
     completed: 'OK',  partial: '!',  failed: 'X',  blocked: '-',
-    running:   '...', pending: '·',  skipped: '/', stopped: '■', idle: '·'
+    running:   '...', pending: '·',  skipped: 'OK', stopped: '■', idle: '·'
   };
   var STEP_STATUS_LABEL = {
     completed: '完成', partial: '有缺口', failed: '失败', blocked: '阻断',
-    running: '运行中', pending: '等待执行', skipped: '本轮跳过', stopped: '已停止', idle: ''
+    running: '运行中', pending: '等待执行', skipped: '已最新', stopped: '已停止', idle: ''
   };
 
   function renderStepGrid(steps) {
@@ -2473,9 +2480,12 @@
       var groupSteps = grouped[gId];
       var def = GROUP_DEF[gId];
       var counts = { completed: 0, failed: 0, partial: 0, running: 0, skipped: 0, stopped: 0, blocked: 0, pending: 0, idle: 0 };
-      groupSteps.forEach(function (s) { counts[s.status || 'idle'] = (counts[s.status || 'idle'] || 0) + 1; });
+      groupSteps.forEach(function (s) {
+        var ds = s.display_status || s.status || 'idle';
+        counts[ds] = (counts[ds] || 0) + 1;
+      });
       var total = def.count;
-      var completedN = counts.completed;
+      var completedN = counts.completed + counts.skipped;
       var failedN = counts.failed + counts.partial + counts.blocked;
       var runningN = counts.running;
 
@@ -2489,7 +2499,7 @@
       summaryBits.push(completedN + '/' + total);
       if (runningN > 0) summaryBits.push(runningN + ' 运行中');
       if (failedN > 0) summaryBits.push(failedN + ' 需关注');
-      if (counts.skipped > 0) summaryBits.push(counts.skipped + ' 跳过');
+      if (counts.skipped > 0) summaryBits.push(counts.skipped + ' 已最新');
 
       var rowsHtml = groupSteps.map(function (s) {
         var st = s.display_status || s.status || 'idle';
@@ -2500,13 +2510,14 @@
         var timeStr = fmtTime(s.finished_at || s.started_at);
         // 行展示文案优先级: detail.message > '写入 N 条' > '' (idle)
         var recordStr = '';
+        var recordNum = Number(s.records);
         if (s.detail && s.detail.message) {
           recordStr = String(s.detail.message);
-        } else if (s.records) {
-          recordStr = fmt(s.records) + ' 条';
+        } else if (Number.isFinite(recordNum) && recordNum > 0) {
+          recordStr = fmt(recordNum) + ' 条';
         } else if (st === 'skipped') {
-          // skipped 但无 message 时, 至少给个 "已跳过" 占位, 避免空行
-          recordStr = '已跳过';
+          // skipped 但无 message 时, 至少给个 "已最新" 占位, 避免空行
+          recordStr = '已最新';
         }
         var detailHtml = s.step_id === 'sync_market_data'
           ? renderMarketSyncDetail(s)
@@ -2605,20 +2616,6 @@
   var _lastStepGridSig = '';
   var _lastWorkbenchSummarySig = '';
   async function startUpdate() {
-    // §7.7 资金流接入: 提示用户关闭 Surge 以拿 push2his 历史 (本会话只提示一次)
-    var SURGE_HINT_KEY = 'cm.fundflow.surge_hint_dismissed';
-    if (!sessionStorage.getItem(SURGE_HINT_KEY)) {
-      var ok = window.confirm(
-        '即将启动智能更新.\n\n' +
-        '资金流 step 会先尝试 push2his 历史接口 (~250 天历史).\n' +
-        '该域名默认被 Surge fake-ip 挡 → 只能拿当日 1 行/票.\n\n' +
-        '✓ 关闭 Surge (推荐, 5 秒) 或加 eastmoney 白名单 → 拿 ~250 天历史\n' +
-        '✗ 不关 Surge → 只拿当日 1 行 (M8.9 daily 自然累积)\n\n' +
-        '点 [确定] 继续 (本会话不再提示), 点 [取消] 先关 Surge 再点更新.'
-      );
-      if (!ok) return;
-      sessionStorage.setItem(SURGE_HINT_KEY, '1');
-    }
     _activeRunContext = null;
     _lastRunContext = null;
     _uiRunning = true;

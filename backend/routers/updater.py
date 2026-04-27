@@ -26,6 +26,7 @@
 import asyncio
 import json
 import logging
+import re
 import time
 from datetime import datetime, timedelta
 from typing import Optional
@@ -164,6 +165,129 @@ def _normalize_update_step_detail(detail: Optional[dict]) -> Optional[dict]:
         normalized["daily_sync"] = normalized_daily_sync
 
     return normalized
+
+
+def _coerce_step_record_count(value) -> Optional[int]:
+    """Return a numeric step record count from clean or legacy status values."""
+    if value is None:
+        return None
+    if isinstance(value, bool):
+        return int(value)
+    if isinstance(value, (int, float)):
+        try:
+            return int(value)
+        except Exception:
+            return None
+    text = str(value).strip()
+    if not text:
+        return None
+    try:
+        return int(float(text))
+    except Exception:
+        pass
+    match = re.search(r"""['"]?count['"]?\s*:\s*([0-9]+)""", text)
+    if match:
+        try:
+            return int(match.group(1))
+        except Exception:
+            return None
+    return None
+
+
+def _extract_legacy_step_field(raw: str, key: str) -> Optional[str]:
+    text = str(raw or "")
+    match = re.search(rf"""['"]?{re.escape(key)}['"]?\s*:\s*('([^']*)'|"([^"]*)"|[^,}}]+)""", text)
+    if not match:
+        return None
+    value = match.group(2) if match.group(2) is not None else (
+        match.group(3) if match.group(3) is not None else match.group(1)
+    )
+    value = str(value).strip().strip("'\"")
+    return value or None
+
+
+def _parse_step_detail(raw) -> Optional[dict]:
+    if not raw or not isinstance(raw, str):
+        return None
+    text = raw.strip()
+    if not text.startswith("{"):
+        return None
+    try:
+        parsed = json.loads(text)
+    except Exception:
+        return None
+    return _normalize_update_step_detail(parsed)
+
+
+def _legacy_step_detail_from_records(raw) -> Optional[dict]:
+    """Recover detail from old rows where a whole dict was written into records."""
+    text = str(raw or "").strip()
+    if not text.startswith("{"):
+        return None
+    detail: dict = {}
+    count = _coerce_step_record_count(text)
+    if count is not None:
+        detail["count"] = count
+    for key in ("status", "mode", "message", "target_date", "range", "report_date", "trade_date"):
+        value = _extract_legacy_step_field(text, key)
+        if value:
+            detail[key] = value
+    for key in ("written", "skipped", "empty", "failed", "total", "existing", "mart_rows"):
+        value = _extract_legacy_step_field(text, key)
+        if value is None:
+            continue
+        try:
+            detail[key] = int(float(value))
+        except Exception:
+            detail[key] = value
+    return _normalize_update_step_detail(detail) if detail else None
+
+
+def _sanitize_step_status_item(item: dict) -> dict:
+    """Normalize legacy step_status rows before sending them to the UI."""
+    cleaned = dict(item)
+    detail = _parse_step_detail(cleaned.get("error"))
+    if detail is None:
+        detail = _legacy_step_detail_from_records(cleaned.get("records"))
+    if detail is not None:
+        cleaned["detail"] = detail
+
+    count = _coerce_step_record_count(cleaned.get("records"))
+    cleaned["records"] = count if count is not None else 0
+    if detail and detail.get("status") and cleaned.get("status") not in {"failed", "stopped", "running", "pending"}:
+        cleaned["status"] = _normalize_step_status(detail.get("status"))
+    return cleaned
+
+
+def _normalize_step_status(status) -> str:
+    text = str(status or "completed").strip().lower()
+    return {
+        "success": "completed",
+        "done": "completed",
+        "ok": "completed",
+        "complete": "completed",
+        "skip": "skipped",
+        "warning": "partial",
+        "partial_success": "partial",
+        "error": "failed",
+    }.get(text, text if text in {"completed", "partial", "failed", "blocked", "skipped", "stopped", "running", "pending"} else "completed")
+
+
+def _format_step_result_for_log(status: str, count: int, detail_text: Optional[str]) -> str:
+    detail = _parse_step_detail(detail_text)
+    if detail and detail.get("message"):
+        return str(detail["message"])
+    if detail:
+        for key in ("written", "count", "total", "existing"):
+            if detail.get(key) is not None:
+                return f"{detail.get(key)}"
+    if status == "skipped":
+        return str(detail_text or "已是最新，无需更新")
+    if status == "blocked":
+        return str(detail_text or "阻断")
+    if status == "partial":
+        return f"{count} 条，有缺口"
+    return f"{count}"
 
 # ============================================================
 # 步骤定义
@@ -456,7 +580,9 @@ def _summarize_rows(rows):
         "total": len(rows),
         "done": 0,
         "completed": 0,
+        "partial": 0,
         "failed": 0,
+        "blocked": 0,
         "skipped": 0,
         "stopped": 0,
         "running": 0,
@@ -466,12 +592,16 @@ def _summarize_rows(rows):
     latest_ms = 0
     for row in rows:
         status = row.get("status")
-        if status in {"completed", "failed", "skipped", "stopped"}:
+        if status in {"completed", "partial", "failed", "blocked", "skipped", "stopped"}:
             summary["done"] += 1
         if status == "completed":
             summary["completed"] += 1
+        elif status == "partial":
+            summary["partial"] += 1
         elif status == "failed":
             summary["failed"] += 1
+        elif status == "blocked":
+            summary["blocked"] += 1
         elif status == "skipped":
             summary["skipped"] += 1
         elif status == "stopped":
@@ -497,7 +627,7 @@ def _is_blocking_upstream_state(conn, step_id: str) -> bool:
         return False
     status = row["status"] if isinstance(row, dict) or hasattr(row, "__getitem__") else row[0]
     error = (row["error"] if isinstance(row, dict) or hasattr(row, "__getitem__") else row[1]) or ""
-    if status in {"failed", "stopped"}:
+    if status in {"failed", "blocked", "stopped"}:
         return True
     if status != "skipped":
         return False
@@ -515,6 +645,19 @@ def _mode_label(mode: Optional[str]) -> str:
 
 def _build_status_summary(rows, running: bool, stop_requested: bool,
                           run_context: Optional[dict], last_run_context: Optional[dict]):
+    def _format_done_counts(stat: dict) -> str:
+        parts = [f"{stat.get('completed', 0)}成功"]
+        if stat.get("partial", 0):
+            parts.append(f"{stat.get('partial', 0)}有缺口")
+        parts.append(f"{stat.get('failed', 0)}失败")
+        if stat.get("blocked", 0):
+            parts.append(f"{stat.get('blocked', 0)}阻断")
+        if stat.get("skipped", 0):
+            parts.append(f"{stat.get('skipped', 0)}已最新")
+        else:
+            parts.append("0已最新")
+        return " · ".join(parts)
+
     def _active_rows(items):
         return [row for row in items if row.get("status") == "running"]
 
@@ -581,7 +724,9 @@ def _build_status_summary(rows, running: bool, stop_requested: bool,
                 "total": 0,
                 "done": 0,
                 "completed": 0,
+                "partial": 0,
                 "failed": 0,
+                "blocked": 0,
                 "skipped": 0,
                 "stopped": 0,
                 "latest_at": last_run_context.get("finished_at") or "",
@@ -600,18 +745,15 @@ def _build_status_summary(rows, running: bool, stop_requested: bool,
             title = (context or {}).get("step_name") or label
             if stat["total"] > 1:
                 message = (
-                    f"上次续跑 {title} · {stat['completed']}成功"
-                    f" · {stat['failed']}失败 · {stat['skipped']}跳过"
+                    f"上次续跑 {title} · {_format_done_counts(stat)}"
                 )
             else:
                 message = (
-                    f"上次单步 {title} · {stat['completed']}成功"
-                    f" · {stat['failed']}失败 · {stat['skipped']}跳过"
+                    f"上次单步 {title} · {_format_done_counts(stat)}"
                 )
         else:
             message = (
-                f"上次{label} {stat['completed']}成功"
-                f" · {stat['failed']}失败 · {stat['skipped']}跳过"
+                f"上次{label} {_format_done_counts(stat)}"
             )
         if stat["stopped"]:
             message += f" · {stat['stopped']}停止"
@@ -635,7 +777,9 @@ def _build_status_summary(rows, running: bool, stop_requested: bool,
             "total": 0,
             "done": 0,
             "completed": 0,
+            "partial": 0,
             "failed": 0,
+            "blocked": 0,
             "skipped": 0,
             "stopped": 0,
             "running": 0,
@@ -3124,18 +3268,17 @@ async def _step_sync_lhb(conn) -> dict:
 
 
 async def _step_sync_fund_flow(conn) -> dict:
-    """M9.5 + §7.7: 主力资金流 daily 累积, 优先拉历史.
+    """主力资金流历史同步.
 
-    数据源策略 (预探针 + 整 run 单一 source):
-      1. 第一只票尝试 push2his (历史 ~250 天)
-         - 通: 整个 run 走 push2his, 拿全历史 (Surge 关闭/eastmoney 直连时)
-         - 不通: 整个 run 走 push2delay (1 行/票, 当 fake-ip 仍接管时)
-      2. 主循环用确定的 source 拉所有票, 不再混用
-      3. INSERT OR REPLACE 主键 (trade_date, stock_code), source 字段记录来源
-
-    依赖: 无. 失败/空返回的票不阻塞下一只.
-    成本估算: 5500 票 × 0.3s ≈ 28 分钟 (历史模式 = 28 分钟, daily 模式同).
+    默认直接调用 akshare 的历史资金流接口逐股拉取可返回的完整历史,
+    不再按 latest_completed_trade_date 只补一天, 也不再先探针后静默退到
+    push2delay 单日模式。若要显式调试单日兜底, 可设置
+    CM_FUND_FLOW_SOURCE=auto 或 delay。
     """
+    import asyncio
+    import os
+
+    target_date = latest_completed_trade_date(conn)
     from scripts.fetch_fund_flow_daily import (
         DDL,
         fetch_his_fund_flow,
@@ -3143,78 +3286,108 @@ async def _step_sync_fund_flow(conn) -> dict:
         normalize_df,
         write_batch,
         load_stock_codes,
-        latest_per_stock,
     )
-    import asyncio
 
     conn.executescript(DDL)
     duck = conn.raw if hasattr(conn, "raw") else conn
 
-    target_date = latest_completed_trade_date(conn)
-    if not target_date:
-        logger.warning("[资金流] 未找到最新交易日, 跳过")
-        return {"count": 0, "status": "skipped", "message": "未找到最新交易日"}
-
     codes_all = load_stock_codes(conn)
-    last_dates = latest_per_stock(duck)
-    todo = [(c, m) for (c, m) in codes_all if last_dates.get(c, "") < target_date]
+    try:
+        max_stocks = int(os.environ.get("CM_FUND_FLOW_MAX_STOCKS", "0") or 0)
+    except Exception:
+        max_stocks = 0
+    todo = codes_all[:max_stocks] if max_stocks > 0 else codes_all
     n_skip = len(codes_all) - len(todo)
+
+    source_mode = os.environ.get("CM_FUND_FLOW_SOURCE", "akshare").strip().lower()
+    if source_mode not in {"akshare", "his", "auto", "delay"}:
+        source_mode = "akshare"
+    try:
+        retry = max(0, int(os.environ.get("CM_FUND_FLOW_RETRY", "2") or 2))
+    except Exception:
+        retry = 2
+    try:
+        rate_limit = max(0.0, float(os.environ.get("CM_FUND_FLOW_RATE_LIMIT", "0.3") or 0.3))
+    except Exception:
+        rate_limit = 0.3
+
+    ak = None
+    if source_mode in {"akshare", "auto"}:
+        try:
+            import akshare as ak  # type: ignore
+            logger.info(f"[资金流] akshare version: {getattr(ak, '__version__', 'unknown')}")
+        except Exception as exc:
+            reason = str(exc)[:180]
+            if source_mode == "akshare":
+                logger.warning(f"[资金流] akshare 不可用: {reason}")
+                return {
+                    "count": 0,
+                    "status": "failed",
+                    "mode": source_mode,
+                    "target_date": target_date,
+                    "message": f"akshare 不可用，无法拉取资金流历史: {reason}",
+                    "error": reason,
+                }
+            logger.warning(f"[资金流] akshare 不可用，auto 模式将尝试 delay 单日兜底: {reason}")
+            source_mode = "delay"
+
     logger.info(
-        f"[资金流] target={target_date}, total={len(codes_all)}, "
-        f"todo={len(todo)} (skip {n_skip} 已有最新)"
+        f"[资金流] source={source_mode}, total={len(codes_all)}, todo={len(todo)}, "
+        f"target={target_date or '-'}；不按 target_date 限制，逐股拉取可返回历史"
     )
 
     if not todo:
         return {
             "count": 0,
             "status": "skipped",
-            "message": f"全部 {n_skip} 只已有 {target_date} 最新数据, 跳过",
+            "message": "股票池为空，跳过资金流同步",
             "target_date": target_date,
         }
 
-    # ----- 预探针: 决定 source mode -----
-    probe_code, probe_market = todo[0]
-    mode = "delay"  # 默认 fallback
-    fetch_func = fetch_delay_fund_flow
-    source_label = "eastmoney_push2delay_latest"
-    probe_df = None
-    try:
-        probe_df = await asyncio.to_thread(fetch_his_fund_flow, probe_code, probe_market)
-        if probe_df is not None and not probe_df.empty:
-            mode = "his"
-            fetch_func = fetch_his_fund_flow
-            source_label = "eastmoney_push2his_history"
-            logger.info(
-                f"[资金流] 探针成功: push2his 通 (探针 {probe_code} 拿 {len(probe_df)} 行), "
-                f"整个 run 走历史模式"
-            )
-        else:
-            logger.info(
-                f"[资金流] 探针: push2his 返回空 (探针 {probe_code}), 切到 push2delay 当日模式"
-            )
-    except Exception as exc:
-        logger.info(
-            f"[资金流] 探针失败: push2his 不可达 ({probe_code}: {str(exc)[:100]}), "
-            f"切到 push2delay 当日模式 — 提示: 关闭 Surge 或加 eastmoney 白名单可拿历史"
-        )
-
     n_success = n_failed = n_empty = 0
     rows_written = 0
-    rate_limit = 0.3
+    fallback_delay = 0
     log_every = 200
+    failures: list[dict] = []
+
+    async def _fetch_one(code: str, market: str):
+        if source_mode == "delay":
+            return await asyncio.to_thread(fetch_delay_fund_flow, code, market), "eastmoney_push2delay_latest"
+        if source_mode == "his":
+            return await asyncio.to_thread(fetch_his_fund_flow, code, market), "eastmoney_push2his_history"
+        if ak is None:
+            raise RuntimeError("akshare is not available")
+        try:
+            df = await asyncio.to_thread(ak.stock_individual_fund_flow, stock=code, market=market)
+            return df, "akshare_eastmoney_history"
+        except Exception:
+            if source_mode != "auto":
+                raise
+            df = await asyncio.to_thread(fetch_delay_fund_flow, code, market)
+            return df, "eastmoney_push2delay_latest"
 
     for i, (code, market) in enumerate(todo):
-        # 复用探针结果, 避免第一只票重复请求
-        df = probe_df if (i == 0 and mode == "his" and probe_df is not None) else None
-        if df is None:
+        df = None
+        source_label = "akshare_eastmoney_history"
+        last_err = None
+        for attempt in range(retry + 1):
             try:
-                df = await asyncio.to_thread(fetch_func, code, market)
+                df, source_label = await _fetch_one(code, market)
+                break
             except Exception as exc:
-                n_failed += 1
-                if n_failed <= 5:
-                    logger.warning(f"[资金流] {code}.{market} fail: {str(exc)[:120]}")
-                await asyncio.sleep(rate_limit)
-                continue
+                last_err = str(exc)[:200]
+                if attempt < retry:
+                    await asyncio.sleep(1.5 + attempt)
+                    continue
+
+        if df is None:
+            n_failed += 1
+            failures.append({"code": code, "market": market, "error": last_err})
+            if n_failed <= 20:
+                logger.warning(f"[资金流] [{i+1}/{len(todo)}] {code}.{market} fail: {last_err}")
+            await asyncio.sleep(rate_limit)
+            continue
+
         if df is None or df.empty:
             n_empty += 1
             await asyncio.sleep(rate_limit)
@@ -3224,39 +3397,66 @@ async def _step_sync_fund_flow(conn) -> dict:
             rows_written += write_batch(duck, norm)
             conn.commit()
             n_success += 1
+            if source_label == "eastmoney_push2delay_latest":
+                fallback_delay += 1
         except Exception as exc:
             n_failed += 1
+            failures.append({"code": code, "market": market, "error": f"normalize/write: {str(exc)[:160]}"})
             logger.warning(f"[资金流] {code} normalize/write fail: {str(exc)[:120]}")
         if (i + 1) % log_every == 0:
             logger.info(
-                f"[资金流] [{i+1}/{len(todo)}] mode={mode} ok={n_success} empty={n_empty} fail={n_failed}"
+                f"[资金流] [{i+1}/{len(todo)}] mode={source_mode} ok={n_success} "
+                f"empty={n_empty} fail={n_failed} rows={rows_written}"
             )
         await asyncio.sleep(rate_limit)
 
     logger.info(
-        f"[资金流] 完成: mode={mode} ok={n_success} empty={n_empty} fail={n_failed} "
+        f"[资金流] 完成: mode={source_mode} ok={n_success} empty={n_empty} fail={n_failed} "
         f"rows_written={rows_written} target={target_date}"
     )
-    mode_tag = "历史模式" if mode == "his" else "当日模式"
-    if rows_written == 0 and n_success == 0 and n_skip == len(codes_all):
-        status = "skipped"
-        msg = f"全部 {n_skip} 只已有 {target_date} 最新数据, 跳过"
-    elif rows_written == 0 and n_skip > 0 and n_empty > 0:
-        status = "skipped"
-        msg = f"[{mode_tag}] 已最新 {n_skip} · 空返回 {n_empty} · 失败 {n_failed} (target={target_date})"
+    if source_mode == "delay":
+        mode_tag = "当日兜底"
+    elif source_mode == "his":
+        mode_tag = "东财历史"
+    elif source_mode == "auto":
+        mode_tag = "akshare历史+兜底"
     else:
+        mode_tag = "akshare历史"
+
+    if rows_written > 0 and n_failed > 0:
+        status = "partial"
+    elif rows_written > 0:
         status = "completed"
-        msg = f"[{mode_tag}] 写入 {rows_written} · 已最新 {n_skip} · 空返回 {n_empty} · 失败 {n_failed} (target={target_date})"
+    elif n_failed > 0:
+        status = "failed"
+    elif n_empty > 0:
+        status = "partial"
+    else:
+        status = "skipped"
+
+    msg = (
+        f"[{mode_tag}] 写入 {rows_written} · 成功 {n_success}/{len(todo)} · "
+        f"空返回 {n_empty} · 失败 {n_failed}"
+    )
+    if fallback_delay:
+        msg += f" · 单日兜底 {fallback_delay}"
+    if n_skip:
+        msg += f" · 调试限量跳过 {n_skip}"
+    if target_date:
+        msg += f" · target={target_date} 仅作审计参考"
     return {
         "count": rows_written,
         "status": status,
-        "mode": mode,
+        "mode": source_mode,
         "written": rows_written,
         "skipped": n_skip,
         "empty": n_empty,
         "failed": n_failed,
+        "success": n_success,
+        "fallback_delay": fallback_delay,
         "target_date": target_date,
         "message": msg,
+        "failures": failures[:20],
     }
 
 
@@ -3450,6 +3650,10 @@ def _update_step(conn, step_id, **kwargs):
     sets = []
     vals = []
     for k, v in kwargs.items():
+        if k == "records":
+            v = _coerce_step_record_count(v) or 0
+        elif k == "error" and isinstance(v, (dict, list)):
+            v = json.dumps(v, ensure_ascii=False)
         sets.append(f"{k} = ?")
         vals.append(v)
     if not sets:
@@ -3472,7 +3676,7 @@ def _resolve_step_result(result):
         return "skipped", 0, result
     if isinstance(result, dict):
         count = int(result.get("count") or 0)
-        status = result.get("status") or "completed"
+        status = _normalize_step_status(result.get("status") or "completed")
         return status, count, json.dumps(result, ensure_ascii=False)
     return "completed", int(result or 0), None
 
@@ -3594,21 +3798,28 @@ async def update_all():
                     finished_at = datetime.now().isoformat()
                     if status == "skipped":
                         _update_step(conn, sid, status="skipped",
-                                     finished_at=finished_at, error=error_text)
+                                     finished_at=finished_at, records=count, error=error_text)
                         skipped.add(sid)
-                        logger.warning(f"[更新] 跳过: {step['name']}: {error_text}")
+                        outcome = _format_step_result_for_log(status, count, error_text)
+                        logger.info(f"[更新] 已最新: {step['name']} ({outcome})")
                         continue
 
                     update_kwargs = {"status": status, "finished_at": finished_at, "records": count}
                     if error_text is not None:
                         update_kwargs["error"] = error_text
                     _update_step(conn, sid, **update_kwargs)
+                    if status in {"failed", "blocked"}:
+                        failed.add(sid)
+                        outcome = _format_step_result_for_log(status, count, error_text)
+                        logger.error(f"[更新] 失败: {step['name']}: {outcome}")
+                        continue
                     completed.add(sid)
 
                     # Phase 1: data_completeness 校准
                     _calibrate_data_completeness(conn, sid, skipped, failed)
 
-                    logger.info(f"[更新] 完成: {step['name']} ({count})")
+                    outcome = _format_step_result_for_log(status, count, error_text)
+                    logger.info(f"[更新] 完成: {step['name']} ({outcome})")
                 except _RunStopped as e:
                     _update_step(conn, sid, status="stopped",
                                  finished_at=datetime.now().isoformat(), error=str(e)[:200])
@@ -3646,18 +3857,6 @@ async def update_all():
 @router.get("/update/status")
 async def update_status():
     """更新状态"""
-    def _parse_detail(raw):
-        if not raw or not isinstance(raw, str):
-            return None
-        raw = raw.strip()
-        if not raw.startswith("{"):
-            return None
-        try:
-            parsed = json.loads(raw)
-        except Exception:
-            return None
-        return _normalize_update_step_detail(parsed)
-
     conn = get_conn()
     try:
         # M9.5: 若 STEPS 中存在但 step_status 没有 (新增 step 后第一次读), 自动 prime 一行 idle
@@ -3676,10 +3875,7 @@ async def update_status():
         rows = conn.execute("SELECT * FROM step_status ORDER BY step_order").fetchall()
         steps = []
         for row in rows:
-            item = dict(row)
-            detail = _parse_detail(item.get("error"))
-            if detail is not None:
-                item["detail"] = detail
+            item = _sanitize_step_status_item(dict(row))
             steps.append(item)
         summary = _build_status_summary(steps, _is_running, _stop_requested, _run_context, _last_run_context)
         return {
@@ -3934,15 +4130,21 @@ async def smart_update():
                     finished_at = datetime.now().isoformat()
                     if status == "skipped":
                         _update_step(conn, sid, status="skipped",
-                                     finished_at=finished_at, error=error_text)
+                                     finished_at=finished_at, records=count, error=error_text)
                         skipped.add(sid)
-                        logger.warning(f"[智能更新] 跳过: {step['name']}: {error_text}")
+                        outcome = _format_step_result_for_log(status, count, error_text)
+                        logger.info(f"[智能更新] 已最新: {step['name']} ({outcome})")
                         continue
 
                     update_kwargs = {"status": status, "finished_at": finished_at, "records": count}
                     if error_text is not None:
                         update_kwargs["error"] = error_text
                     _update_step(conn, sid, **update_kwargs)
+                    if status in {"failed", "blocked"}:
+                        failed.add(sid)
+                        outcome = _format_step_result_for_log(status, count, error_text)
+                        logger.error(f"[智能更新] 失败: {step['name']}: {outcome}")
+                        continue
                     completed.add(sid)
                     _calibrate_data_completeness(conn, sid, skipped, failed)
                 except _RunStopped as e:
@@ -4097,18 +4299,25 @@ async def run_single_step(step_id: str):
                     finished_at = datetime.now().isoformat()
                     if status == "skipped":
                         _update_step(conn, sid, status="skipped",
-                                     finished_at=finished_at, error=error_text)
+                                     finished_at=finished_at, records=count, error=error_text)
                         skipped.add(sid)
-                        logger.warning(f"[单步{'续跑' if sid != step_id else ''}] 跳过: {step_label}: {error_text}")
+                        outcome = _format_step_result_for_log(status, count, error_text)
+                        logger.info(f"[单步{'续跑' if sid != step_id else ''}] 已最新: {step_label} ({outcome})")
                         continue
 
                     update_kwargs = {"status": status, "finished_at": finished_at, "records": count}
                     if error_text is not None:
                         update_kwargs["error"] = error_text
                     _update_step(conn, sid, **update_kwargs)
+                    if status in {"failed", "blocked"}:
+                        failed.add(sid)
+                        outcome = _format_step_result_for_log(status, count, error_text)
+                        logger.error(f"[单步{'续跑' if sid != step_id else ''}] 失败: {step_label}: {outcome}")
+                        continue
                     completed.add(sid)
                     _calibrate_data_completeness(conn, sid, skipped, failed)
-                    logger.info(f"[单步{'续跑' if sid != step_id else ''}] 完成: {step_label}: {count}")
+                    outcome = _format_step_result_for_log(status, count, error_text)
+                    logger.info(f"[单步{'续跑' if sid != step_id else ''}] 完成: {step_label}: {outcome}")
                 except _RunStopped as e:
                     _update_step(conn, sid, status="stopped",
                                  finished_at=datetime.now().isoformat(), error=str(e)[:200])
@@ -4311,21 +4520,28 @@ async def _run_group_pipeline(run_mode: str, run_name: str, group_id: str):
                     finally:
                         step_conn.close()
 
-                    if isinstance(result, str):
-                        _update_step(conn, sid, status="skipped",
-                                     finished_at=datetime.now().isoformat(), error=result)
+                    status, count, error_text = _resolve_step_result(result)
+                    finished_at = datetime.now().isoformat()
+                    update_kwargs = {"status": status, "finished_at": finished_at, "records": count}
+                    if error_text is not None:
+                        update_kwargs["error"] = error_text
+                    _update_step(conn, sid, **update_kwargs)
+                    outcome = _format_step_result_for_log(status, count, error_text)
+
+                    if status == "skipped":
                         skipped.add(sid)
-                        logger.warning(f"[{run_name}] 跳过: {step['name']}: {result}")
+                        logger.info(f"[{run_name}] 已最新: {step['name']} ({outcome})")
+                        continue
+                    if status in {"failed", "blocked"}:
+                        failed.add(sid)
+                        logger.error(f"[{run_name}] 失败: {step['name']}: {outcome}")
                         continue
 
-                    count = result or 0
-                    _update_step(conn, sid, status="completed",
-                                 finished_at=datetime.now().isoformat(), records=count)
                     completed.add(sid)
 
                     _calibrate_data_completeness(conn, sid, skipped, failed)
 
-                    logger.info(f"[{run_name}] 完成: {step['name']} ({count})")
+                    logger.info(f"[{run_name}] 完成: {step['name']} ({outcome})")
                 except _RunStopped as e:
                     _update_step(conn, sid, status="stopped",
                                  finished_at=datetime.now().isoformat(), error=str(e)[:200])

@@ -219,13 +219,9 @@ FROM raw_fund_flow_daily;
 
 ## 5. 备选方案 (路线 A 失败时启动)
 
-### 5.1 路线 B: Tushare Pro moneyflow
+### 5.1 (作废: Tushare Pro 路线 已弃)
 
-- 历史完整 (10+ 年), ¥200/年 token
-- 工程量: 1-2 天写 `services/tushare_fund_flow_client.py`
-- 优势: 完全脱离代理网络, 接口稳定
-- 劣势: 字段口径需对齐 (Tushare 主力定义 vs Eastmoney 可能差异)
-- 启动条件: Surge 改完仍卡 push2his (例如东财服务端封 IP), 或者用户希望覆盖 2023 年以前历史
+2026-04-27 用户决定: **不使用 Tushare**, 删除全部 Tushare 流程与脚手架. 备选方向改为东财官方接口 (妙想 F10 / 东财 Choice / 东财 skill 自封装) — 详见 §8.
 
 ### 5.2 路线 D: 接受现状
 
@@ -255,7 +251,7 @@ FROM raw_fund_flow_daily;
 
 - [ ] **6.5** 如验证通过, 我跑 4.1 全量回填 + 4.2 数据验证
 
-- [ ] **6.6** 如 push2his 仍不通, 决定路线 B (Tushare Pro 付费 ¥200) 还是路线 D (接受现状)
+- [ ] **6.6** 如 push2his 仍不通, 走路线 D (接受现状, M8.9 自然累积) + 推进 §8 东财 skill 调研 (替代 akshare 直连东财 API)
 
 ---
 
@@ -265,7 +261,7 @@ FROM raw_fund_flow_daily;
 
 我的建议是先做 6.1 / 6.2 — 拿到 Surge 的实际路由路径, 再决定是改规则还是换源. 大概率是 Surge 配置里有一条 RULE-SET 把 eastmoney 误归到代理组, 加显式 DIRECT 规则 5 分钟解决.
 
-**关键风险点**: 即使修通 push2his, eastmoney 接口本身设计上限 ~250 个交易日 (大约 1 年). 想覆盖更长历史只能走路线 B (Tushare Pro). 但 250 天足够做横截面 rank 实验, 也足够算 fund_flow_5d/20d.
+**关键风险点**: 即使修通 push2his, eastmoney 接口本身设计上限 ~250 个交易日 (大约 1 年). 想覆盖更长历史只能换源 (~~Tushare 已弃, 见 §5.1/§8~~). 但 250 天足够做横截面 rank 实验, 也足够算 fund_flow_5d/20d.
 
 **我不建议**:
 - 路线 C (新浪爬虫): 反爬不稳定, 维护负担重
@@ -299,11 +295,11 @@ DOMAIN-SUFFIX,eastmoney.com,DIRECT,extended-matching
 我的建议:
 
 1. **先做 5 分钟网络验证**: 加 `always-real-ip` / `[Host]`, 重启 Surge, 再测 `push2his`。这是最低成本。
-2. **验证失败就切路线 B**: Tushare Pro moneyflow 是最短确定路径, 比继续找新浪/网页爬虫更符合奥卡姆剃刀。
+2. **验证失败就走路线 D**: 维持 push2delay daily 累积 + 推进东财 skill 自封装方案 (§8). ~~Tushare Pro 路线已弃 (§5.1)~~
 3. **保留 push2delay daily fallback**: 它能每日积累, 但在 60 个交易日前不入 `base_43`, 只作为审计数据。
 4. **不要为了资金流扩系统复杂度**: 资金流只有在 coverage >= 95%, RankIC 增益稳定超过 0.005 后才进主轨；否则保持现有 base_43。
 
-阶段性决策: 当前最可能的落地路径是 **路线 A 最小复验 -> 失败后 Tushare Pro**。不要把 akshare 当成替代源, 它只是 `push2his` wrapper。
+阶段性决策: 当前最可能的落地路径是 **路线 A 最小复验 -> 失败后切到 ~~Tushare Pro~~**. (~~Tushare 路线已于 2026-04-27 弃用, 见 §5.1/§8.~~) 不要把 akshare 当成替代源, 它只是 `push2his` wrapper.
 
 ### 7.3 (2026-04-26 Codex 追加: 为什么 akshare 其他数据可用, 资金流不可用)
 
@@ -334,7 +330,7 @@ DOMAIN-SUFFIX,eastmoney.com,DIRECT,extended-matching
 - 即使绕过环境代理并直接用真实 IP 测 `push2his`, GET API 仍 empty reply；因此代理环境变量不是唯一解释。
 - `push2delay.eastmoney.com` 可用, 但接口结构只给最新 1 天, 所以只能做 daily fallback, 不能做历史回填。
 
-当前判断: 资金流不可用的根因是 **akshare 资金流依赖的东财 `push2his` 历史接口在当前网络链路不可用**；不是 akshare 库本身缺功能, 也不是所有东财接口都不可用。修复策略仍是先做 Surge 真实 IP/Host 最小复验, 不通就切 Tushare Pro。
+当前判断: 资金流不可用的根因是 **akshare 资金流依赖的东财 `push2his` 历史接口在当前网络链路不可用**；不是 akshare 库本身缺功能, 也不是所有东财接口都不可用。修复策略仍是先做 Surge 真实 IP/Host 最小复验, 不通就走路线 D (M8.9 累积) + 推进 §8 东财 skill。
 
 ### 7.4 (2026-04-26 Codex 追加: Surge 配置应该怎么改)
 
@@ -403,7 +399,7 @@ PY
 
 如果第 1 步仍是 `198.18.x.x`, 说明配置没有被当前 Surge profile 正确加载, 或 `[Host]` / `always-real-ip` 未生效。
 
-如果第 1 步已是真实 IP, 第 2 步不再走 `127.0.0.1:6152`, 但第 3 步仍 RemoteDisconnected/empty reply, 就可以判定不是本机 Surge 配置问题, 而是本机出口 IP 到东财 `push2his` 这条服务链路不被接受。此时应切 Tushare Pro, 不继续加复杂网络规则。
+如果第 1 步已是真实 IP, 第 2 步不再走 `127.0.0.1:6152`, 但第 3 步仍 RemoteDisconnected/empty reply, 就可以判定不是本机 Surge 配置问题, 而是本机出口 IP 到东财 `push2his` 这条服务链路不被接受。此时应走路线 D (M8.9 daily 累积) + §8 东财 skill 自封装, 不继续加复杂网络规则。
 
 ### 7.5 (2026-04-26 Claude 接力 Codex)
 
@@ -422,9 +418,9 @@ PY
 - [ ] **C** 据 Codex 退路决策树:
   - 步骤 1 仍 198.18.x.x → 配置未生效, 检查 profile 加载顺序
   - 步骤 1 通 + 步骤 2 通 + 步骤 3 通 → 跑 §4.1 全量回填
-  - 步骤 1 通 + 步骤 2 通 + 步骤 3 仍 empty reply → **服务链路问题, 立即切 Tushare Pro 不再耗时**
+  - 步骤 1 通 + 步骤 2 通 + 步骤 3 仍 empty reply → **服务链路问题, 立即走路线 D + §8 东财 skill, 不再耗时**
 
-**我同意 Codex 的奥卡姆剃刀**: 最多花 5 分钟改 Surge + 5 分钟验证. 不通就走 Tushare Pro (¥200/年, 路线 B), 不再陷在网络层调试。
+**我同意 Codex 的奥卡姆剃刀**: 最多花 5 分钟改 Surge + 5 分钟验证. 不通就走路线 D + 推进 §8 东财 skill, 不再陷在网络层调试。
 
 资金流入模红线保持不变 (coverage ≥ 95% / RankIC 增益 ≥ 0.005), 没通过就维持 base_43 现状, 不为资金流降标准。
 
@@ -438,78 +434,19 @@ PY
 2. `datacenter-web.eastmoney.com` 可用, 所以机构调研、龙虎榜、QFII 等 akshare 接口能跑。
 3. `DOMAIN-SUFFIX,eastmoney.com,DIRECT` 已存在但不够, 因为它只管分流, 不管 macOS HTTP proxy 和 fake-ip DNS。
 4. Surge 修复只做一次最小实验: `skip-proxy` + `always-real-ip` + `[Host] server:223.5.5.5` + `sinajs.cn DIRECT`。
-5. 如果这个实验后 `push2his` 仍 empty reply, 就判定为出口链路/远端服务问题, 不再堆网络规则, 直接切 Tushare Pro。
+5. 如果这个实验后 `push2his` 仍 empty reply, 就判定为出口链路/远端服务问题, 不再堆网络规则, 走路线 D + §8 东财 skill 自封装。
 
 建议把实际待办压缩为三步:
 
 - [ ] 用户按 §7.4 修改 Surge 配置并重启 Surge
 - [ ] 跑 §7.4 的 3 个验证命令
-- [ ] 验证成功则回填；验证失败则走 Tushare Pro, 不再继续调 Surge
+- [ ] 验证成功则回填；验证失败则走路线 D + 推进 §8 东财 skill, 不再继续调 Surge
 
 这也是最符合奥卡姆剃刀的路径: 最多一次网络实验, 然后转向确定性数据源。
 
-### 7.7 (2026-04-26 Claude 实施: 路线 B 脚手架就绪)
+### 7.7 (2026-04-26, 已作废)
 
-按 §7.6 共识, 路线 A/B 二选一. 我提前把路线 B 的脚手架做好, 用户决定后零等待:
-
-**当前 DNS 实测 (确认用户尚未改 Surge)**:
-```
-push2his.eastmoney.com        → 198.18.1.51   [fake-ip]
-82.push2.eastmoney.com        → 198.18.3.79   [fake-ip]
-push2delay.eastmoney.com      → 198.18.4.78   [fake-ip]
-hq.sinajs.cn                  → 198.18.4.76   [fake-ip]
-datacenter-web.eastmoney.com  → 198.18.1.50   [fake-ip]  (虽是 fake-ip 但工作正常)
-```
-
-**新增脚本**: `backend/scripts/fetch_fund_flow_tushare.py`
-
-设计要点:
-- 按 `trade_date` 一次拉全市场 (`pro.moneyflow(trade_date='YYYYMMDD')`), 单次 ~5500 行, 250 天 ≈ 1 分钟
-- 字段对齐到现有 `raw_fund_flow_daily` schema, source='tushare_pro_moneyflow'
-- 单位换算: Tushare 万元 → 东财元 (× 10000); 主力定义同 (超大单 + 大单)
-- 占比字段 (`main_net_pct` 等) Tushare 不直接给, 置 NULL — 5d/20d rank 实验只用绝对额, 不影响
-- INSERT OR REPLACE: tushare 数据会覆盖 push2delay 已有的当日 (字段更全)
-- 限流 0.3s/天 (Tushare Pro 上限 200/min, 我们 ~250 次/run)
-- token 优先 `TUSHARE_TOKEN` env, 回退 `~/.tushare_token` 文件
-- 单元测试: normalize 逻辑已验证 (123.45 万元 → 1234500 元, 600519.SH → (600519, sh))
-
-**实施方案 (二选一, 用户决策)**:
-
-#### 路线 A 操作 (5 分钟试一次, 不通就转 B)
-
-1. 用户按 §7.4 改 Surge config (3 处: skip-proxy / always-real-ip / [Host])
-2. 重启 Surge
-3. 跑 §7.4 三步验证, 把输出贴到对话里
-4. 步骤 1 仍 fake-ip → §7.6 最终判断"配置未生效, 立即转 B"
-   步骤 1+2 通 + 步骤 3 仍 empty reply → §7.6 最终判断"服务链路问题, 立即转 B"
-   全部通 → 我跑 §4.1 全量回填 (`fetch_fund_flow_daily.py --source auto`)
-
-#### 路线 B 操作 (~10 分钟跑完)
-
-1. 用户注册 https://tushare.pro/, 拿到 token (个人版免费, moneyflow 接口需积分 — ¥200/年 Pro 套餐, 或贡献数据换积分)
-2. 用户提供 token: `echo 'xxxxxxxxxxxx' > ~/.tushare_token && chmod 600 ~/.tushare_token`
-3. 用户安装 tushare: `pip3 install tushare`
-4. 我跑:
-   ```bash
-   cd /Users/dp/Documents/M/stock/backend
-   # 全量回填最近 250 个交易日
-   python3 -m scripts.fetch_fund_flow_tushare --start 20250101 --end 20260426
-   # 增量
-   python3 -m scripts.fetch_fund_flow_tushare --resume
-   ```
-5. 我跑 §4.2 数据验证 SQL 给出 coverage / 字段完整性报告
-6. 通过红线 → 进入 fund_flow_5d/20d rank 实验
-
-#### 推荐顺序
-
-按 §7.6 奥卡姆剃刀: **先 A (5 分钟), 不通转 B (¥200/年 + 一次性配置)**. 不在 A 上死磕。
-
-**用户下一步选一**:
-- (a) 我现在改 Surge, 给我 5 分钟 → 然后跑路线 A 验证
-- (b) 直接 B, 我去注册 Tushare 拿 token
-- (c) 暂缓, 走路线 D (M8.9 daily 自然累积 60 天后再说)
-
-等用户选定.
+原内容: Claude 实施"路线 B Tushare Pro moneyflow 脚手架就绪"和路线 A/B/C 决策树. 2026-04-27 用户决定不用 Tushare, 整段方案废止. 仅保留路线 A (Surge 修 + push2his) 和路线 D (M8.9 自然累积) 二选一; 替代源研究移到 §8 东财 skill 自封装方向.
 
 ### 7.8 (2026-04-26 ~ 04-27 工作进展: 资金流 step 解锁 + 路线 A 复验失败)
 
@@ -556,7 +493,7 @@ DNS 验证: push2his.eastmoney.com → 117.184.40.129  (中国移动 CDN, 真实
 | HTTP GET response | ❌ 远端立即关闭 | 连接成功后服务端 RST |
 | 同 IP 段访问 datacenter-web | ✅ 调研/龙虎榜/QFII 全通 | 不是整个 eastmoney 不可达 |
 
-**结论**: 用户家宽出口 IP 在 eastmoney 的 push2his 反爬规则黑名单。这条线路不是本机可解的, 不是 Surge / DNS / 代理 / akshare 任何一层的问题. **不再耗时间在网络规则**, 严格按 Codex §7.4 末尾决策切 Tushare Pro 或维持 push2delay daily 累积。
+**结论**: 用户家宽出口 IP 在 eastmoney 的 push2his 反爬规则黑名单。这条线路不是本机可解的, 不是 Surge / DNS / 代理 / akshare 任何一层的问题. **不再耗时间在网络规则**, 走路线 D (维持 push2delay daily 累积 + M8.9 自然累积 60 天) + 推进 §8 东财 skill (替代 akshare 直连东财)。
 
 #### 7.8.4 当前数据状态 (2026-04-27)
 
@@ -571,31 +508,107 @@ SELECT COUNT(*), MIN(trade_date), MAX(trade_date), source FROM raw_fund_flow_dai
 
 工作台主力资金流行显示 `NaN 条 · 4-26 23:17` 而不是 `[当日模式] 写入 5496 · 已最新 0 · 空返回 14 · 失败 0`. 后端 detail.message 字段返回正确, 前端 renderStepGrid 应优先读 detail.message. 推测是浏览器缓存 / fmt(s.records) 处理 NaN 路径有 bug. 数据本身完整 (DB 5496 行已落). 此 bug 不影响数据正确性, 优先级低于资金流主线决策.
 
-#### 7.8.6 路线决策 (二选一)
+#### 7.8.6 路线决策 (Tushare 已弃)
 
 经过路线 A 复验失败, 严格按 §7.4 + §7.6 共识:
 
-**路线 B: Tushare Pro moneyflow** (脚手架已就位 commit `170590bc`)
-
-```bash
-# 用户提供 token
-echo 'xxxxxxxxxxxx' > ~/.tushare_token && chmod 600 ~/.tushare_token
-pip3 install tushare
-
-# Claude 跑
-cd /Users/dp/Documents/M/stock/backend
-python3 -m scripts.fetch_fund_flow_tushare --start 20250101 --end 20260427
-```
-
-预估: ~1 分钟拉 ~250 天 × 5500 票, 落 ~138 万行 + push2delay 当日 5496 行 (INSERT OR REPLACE 覆盖). 成本 ¥200/年 token + 接口稳定, 完全脱离代理网络。
-
-**路线 D: 维持现状, M8.9 自然累积**
+**路线 D: 维持现状, M8.9 自然累积** (主路线)
 
 - 不付费, 不写代码
 - 每日 17:30 launchd 自动 +1 行/票 (5500 行/日)
 - 60 个交易日后 (~2026-07) 重新评估是否做 5d/20d rank 实验
 - 主轨 base_43 +22pp/fold 不依赖资金流, 不阻塞 alpha
 
-**Claude 推荐**: D — 主轨已能跑, 资金流是锦上添花. 等 60 天数据自然累积成本最低, 期间可以推进跟投系统改造 (memory 里 `project_followup_alpha_redesign.md` 列的: 完整周期收益 / qlib 信号接入 / 三档信号重构) 这些 ROI 更高的事。
+**§8 方向: 东财 skill 自封装** (中长期替代源)
 
-等用户决定 B 或 D。
+- 见 §8: 妙想 F10 + 东财直连接口 wrapper (替代 akshare 对东财部分)
+- 不依赖第三方 (Tushare 已弃), 不依赖 akshare 对 push2his 的间接调用
+- 与 路线 D 并行推进, 后续 wrapper 成熟后可一次性替换 akshare 资金流路径
+
+**Claude 推荐**: D + §8 并行 — 主轨已能跑, 资金流是锦上添花. 等 60 天数据自然累积成本最低, 期间可以推进跟投系统改造 (memory 里 `project_followup_alpha_redesign.md` 列的: 完整周期收益 / qlib 信号接入 / 三档信号重构) 这些 ROI 更高的事。
+
+等用户决定 D 或 §8 推进节奏。
+
+### 7.9 (2026-04-27 Codex 方案: 停止网络排查, 分层解决) — Tushare 部分已废止
+
+读完 §7.8 后, Codex 把问题拆成三层 (网络/工程/数据). 数据层原方案为 Tushare Pro, **2026-04-27 用户决定不用 Tushare, 数据层方案改为路线 D + §8 东财 skill 自封装**.
+
+保留下来的工程修复项 (P0/P1):
+
+**P0: 修复工作台 `主力资金流 NaN 条`**
+
+实测发现 `step_status.records` 当前存的是整段 dict 字符串而不是数值 `5496`. 所以 UI `NaN 条` 不只是前端缓存问题, 后端状态表也需要清理.
+
+处理方案:
+1. 后端保证 `_resolve_step_result(dict)` 后只把 `count` 写入 `records`, 详细 dict 只写入 `error` JSON.
+2. 做一次性修复 SQL: 对 `sync_fund_flow` 当前异常 records 行, 把 `records` 改为 `5496`, `error` 补成合法 JSON detail.
+3. 前端 `renderStepGrid` 做防御: `Number.isFinite(Number(s.records))` 才显示 `N 条`; `detail.message` 优先显示.
+4. 验收: 工作台显示 `[当日模式] 写入 5496 · 已最新 0 · 空返回 14 · 失败 0`, 不再出现 `NaN 条`.
+
+**P1: 给 push2his 探针加失败冷却**
+
+既然路线 A 已判死, 每次智能更新都探一次 push2his 没价值. 建议记录最近一次 `push2his` 探针失败时间, 24 小时内直接走 push2delay, 减少日志噪声和启动等待. 用户手动点击”强制历史探针”时再重试.
+
+**P1: 确认 M8.9 daily 自动累积真的在跑**
+
+D 路线依赖 daily 累积. 需要检查 launchd/智能更新是否每天收盘后跑 `sync_fund_flow`:
+
+```sql
+SELECT COUNT(DISTINCT trade_date), MIN(trade_date), MAX(trade_date)
+FROM raw_fund_flow_daily
+WHERE source='eastmoney_push2delay_latest';
+```
+
+验收: 每个新交易日新增约 5500 行.
+
+#### 7.9.4 入模方案 (用户决定数据来源后)
+
+不要把原始资金流直接塞进主模型. 先做两个简单、可解释的横截面特征:
+
+1. `fund_flow_5d_rank`: 近 5 日 `main_net_amount` 累计额 / 当日横截面 rank
+2. `fund_flow_20d_rank`: 近 20 日 `main_net_amount` 累计额 / 当日横截面 rank
+
+先做独立评估 (coverage / quality / RankIC), 通过红线 (RankIC 提升 ≥ 0.005, 分层收益稳定改善) 才入主轨.
+
+#### 7.9.5 结论
+
+1. 先修 `NaN 条` 状态显示和 records 落库清理.
+2. 短期: 走 D 自然累积 (60 个交易日后做初步 5d/20d 实验), 同时把研发精力转回 base_43 / 跟投系统主线.
+3. 中期: 推进 §8 东财 skill 自封装, 替代 akshare 对 push2his 的间接调用 + 拓展妙想 F10 数据维度.
+
+### 7.10 (2026-04-27, 已作废)
+
+原内容: “Tushare 全源替换评估”, 详见原 `docs/tushare-source-strategy.md` (已删除). 2026-04-27 用户决定不用 Tushare, 评估废止. 替代源方向改为 §8 东财 skill 自封装.
+
+### 7.11 (2026-04-27 Codex 追加: 智能更新状态与资金流入口修复)
+
+本次复查 2026-04-27 08:33 智能更新日志后确认两个工程问题:
+
+1. **数据获取组 runner 没有统一解析 dict 返回值**。`机构调研`、`QFII`、`两融`、`龙虎榜`、`主力资金流` 已经返回了 `{status,count,message}`，但分组管线仍把整个 dict 当作 records 写入，导致前端只能靠审计层猜状态；没有审计层的资金流会被显示成 idle，出现“有 OK 有空白”的不规范结果。
+2. **资金流步骤被 `latest_completed_trade_date` 间接锁成单日补齐**。`raw_fund_flow_daily` 只要已有 `target_date` 的 push2delay 单日记录，智能更新就会认为该票“已最新”并跳过，导致历史缺口永远不会被 akshare/push2his 回填。
+
+修复决策:
+
+- 后端统一 `_resolve_step_result()`，数据获取组也按 `status/count/message` 落库；`partial` 进入终态统计，`skipped` 用“已最新”而非空白跳过表达。
+- 前端 `deriveDisplayStatus()` 不再只依赖审计层判断完成；只要后端有 `finished_at/detail/records`，就展示终态。`skipped` 行显示 `OK 已最新`，阻断类原因仍显示 `阻断`。
+- `sync_fund_flow` 主入口按用户最新要求改回 akshare 历史拉取：默认 `CM_FUND_FLOW_SOURCE=akshare`，逐股调用 `stock_individual_fund_flow`，不再按 `target_date` 跳过，也不再默认静默退到 push2delay 单日模式。
+- `target_date` 只保留为审计参考；状态文案会明确显示“akshare历史 / 东财历史 / 当日兜底”，避免再把单日 fallback 误看成完整资金流历史。
+- 智能审计不再只看 `MAX(trade_date)`，而是统计“达到覆盖阈值的交易日数”；当前默认少于 60 个有效资金流交易日就继续把 `sync_fund_flow` 放进智能更新计划。
+
+可选调试开关:
+
+```bash
+# 默认: akshare 历史接口, 不做单日兜底
+CM_FUND_FLOW_SOURCE=akshare ./start.command
+
+# 显式只测东财 push2his 直连历史接口
+CM_FUND_FLOW_SOURCE=his ./start.command
+
+# 显式允许 akshare 失败后落到 push2delay 单日兜底
+CM_FUND_FLOW_SOURCE=auto ./start.command
+
+# 调试小样本, 默认不限制股票数
+CM_FUND_FLOW_MAX_STOCKS=50 ./start.command
+```
+
+`start.command` 只保留 akshare 自动升级检查. **Tushare 脚本与方案已于 2026-04-27 删除**, 不再保留.
