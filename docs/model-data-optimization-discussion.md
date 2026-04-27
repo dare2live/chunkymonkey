@@ -612,3 +612,179 @@ CM_FUND_FLOW_MAX_STOCKS=50 ./start.command
 ```
 
 `start.command` 只保留 akshare 自动升级检查. **Tushare 脚本与方案已于 2026-04-27 删除**, 不再保留.
+
+---
+
+## 8. 东财 skill 自封装调研 (2026-04-27)
+
+**触发问题**: 用户问"东方财富的妙想似乎可以脱离 akshare 并且更稳定" + "把妙想 F10 和东财 skill 做成一个类似 akshare 的项目放在 github 上".
+
+### 8.1 为什么"akshare 包装东财"不稳
+
+实测看 [`akshare.stock_individual_fund_flow`](https://github.com/akfamily/akshare) 源码 (`stock_fund_em.py:20-48`), 它的实现非常薄:
+
+```python
+def stock_individual_fund_flow(stock="600094", market="sh"):
+    url = "https://push2his.eastmoney.com/api/qt/stock/fflow/daykline/get"
+    headers = {"User-Agent": "Mozilla/5.0 ..."}
+    params = {"lmt": "0", "klt": "101", "secid": f"{1}.{stock}", ...}
+    r = requests.get(url, params=params, headers=headers)  # ← 没 timeout!
+    return parse(r.json())
+```
+
+工程问题:
+- **没设 `timeout`** → 网络抖动时 socket 默认无超时, 一卡几分钟
+- **没用 `Session(trust_env=False)`** → 受系统代理 (Surge / ClashX) 影响
+- **没 retry** → 单次失败直接抛
+- **没 Referer 头** → 部分东财接口要 Referer 才放行
+- **没 rate-limit** → 大批量调用容易被反爬
+
+我们项目里的 `backend/scripts/fetch_fund_flow_daily.py` 已经手动实现了:
+- `_fetch_eastmoney_fund_flow(base_url=...)` 通用底层
+- `Session(trust_env=False)` 避代理
+- `timeout=15`
+- 显式 User-Agent + Referer
+- 上层 retry (在 main 里 retry 3 次)
+
+这个**已经是东财 skill 的雏形**. 但它只覆盖资金流一条线, 其他东财接口仍走 akshare.
+
+### 8.2 东财数据接口实地分布 (从 akshare 源码统计)
+
+akshare 包装东财时使用了 **123 个文件 / 50+ 个子域名**. 按调用频次排序:
+
+| 子域名 | 频次 | 用途 |
+|---|---|---|
+| `data.eastmoney.com` | 338 | F10 数据中心网页 |
+| `datacenter-web.eastmoney.com` | 175 | 数据中心 API (调研 / QFII / 龙虎榜 等) |
+| `quote.eastmoney.com` | 123 | 行情看盘 |
+| `fund.eastmoney.com` | 79 | 基金主站 |
+| `emweb.securities.eastmoney.com` | 57 | 个股 F10 网页 |
+| `push2his.eastmoney.com` | 32 | **资金流/K线 历史** (用户 IP 反爬黑名单) |
+| `fundf10.eastmoney.com` | 32 | 基金 F10 |
+| `datacenter.eastmoney.com` | 29 | 数据中心 (老版) |
+| `push2.eastmoney.com` 及 `*.push2.eastmoney.com` | 27+50 | 实时行情快照 |
+| `aif10.eastmoney.com` | 0 (akshare 没包装) | **妙想 F10**, AI 投研 (新) |
+
+**关键观察**:
+- 用户 IP 在 `push2*` 反爬黑名单 (§7.8 已确认), 但 `datacenter-web` 全通
+- akshare 没包装 `aif10.eastmoney.com` (妙想), 这是 2024-2025 后东财新出的 AI 投研入口
+- `data.eastmoney.com` / `datacenter-web` / `emweb` 三条线都能拿 F10 数据, 字段口径有差异
+
+### 8.3 妙想 F10 (`aif10.eastmoney.com`) 初探
+
+用户给的 URL: https://aif10.eastmoney.com/pc_extendf10/choicef10.html
+
+实地探测 (Surge 开):
+```
+HTTP 200, response: <html>...redirect to /other.html?type=web&color=w</html>
+```
+
+页面是 SPA, 数据通过 XHR 调 `aif10.eastmoney.com/api/...` 的 endpoint 拿. 推测特征:
+- AI 包装层, 提供"研报问答 / 财务智能解读 / 多空观点聚合"等
+- 后端可能复用 datacenter-web 的数据 + AI 摘要
+- **公开访问要求**: 妙想内测期间可能需要登录, 但 aif10 子域的纯 F10 端点 (财务/估值/股东) 大概率不需要 (沿用 emweb F10 模式)
+
+**待验证** (需要用户机器实地抓包):
+1. 浏览器打开 https://aif10.eastmoney.com/pc_extendf10/choicef10.html?ts=600519, 看 Network 标签下的 XHR 请求
+2. 找形如 `aif10.eastmoney.com/api/...?secid=1.600519` 的 endpoint
+3. 看 response 字段 (财务/估值/股东/AI 摘要)
+4. 判断是否需要登录 token
+
+如果妙想 F10 接口无需 token + 字段稳定, 这条线**比 akshare 包装的 emweb F10 数据更新更快, 更适合我们项目用**.
+
+### 8.4 东财 skill 项目设计 (GitHub 开源候选)
+
+参考 akshare 的多文件结构, 但只覆盖 eastmoney 一家, 工程可控:
+
+```
+eastmoney-py/                       # 或 cm-em-skill (chunky-monkey eastmoney skill)
+├── README.md
+├── setup.py / pyproject.toml
+├── eastmoney/
+│   ├── __init__.py
+│   ├── client.py                   # 通用 BaseClient
+│   │   - Session(trust_env=False)
+│   │   - 默认 UA + Referer
+│   │   - 内置 retry (exp backoff)
+│   │   - rate-limit (每秒 N 次, 滑动窗口)
+│   │   - timeout 默认 15s
+│   ├── endpoints/
+│   │   ├── datacenter.py           # datacenter-web (调研/QFII/龙虎榜/十大股东/财务)
+│   │   ├── quote.py                # push2/push2his/quote (行情/资金流)
+│   │   ├── f10.py                  # emweb F10 (公司基本面)
+│   │   ├── aif10.py                # 妙想 F10 (新, 待 8.3 实测后定 spec)
+│   │   ├── fund.py                 # fund/fundf10 (基金)
+│   │   └── search.py               # search-api (公司搜索)
+│   ├── models/                     # DataClass / Pydantic 返回
+│   │   ├── stock.py
+│   │   ├── fund_flow.py
+│   │   ├── institution.py
+│   │   └── financial.py
+│   └── utils/
+│       ├── code_norm.py            # 600519/000001/300xxx 自动判市场
+│       ├── date_norm.py
+│       └── retry.py
+├── tests/
+│   ├── test_datacenter.py          # mock requests
+│   └── test_quote.py
+└── examples/
+    ├── fund_flow_history.py        # 替代 akshare.stock_individual_fund_flow
+    └── institution_survey.py       # 替代 akshare.stock_jgdy_tj_em
+```
+
+**与 akshare 的差异**:
+
+| 维度 | akshare | eastmoney-py (我们的) |
+|---|---|---|
+| 数据源覆盖 | 全网 (东财/同花顺/新浪/雪球...) | 仅东财 (含 datacenter / push2 / aif10) |
+| 网络层 | 直接 requests.get, 无 timeout/retry | Session(trust_env=False) + retry + timeout + rate-limit |
+| 返回类型 | `pandas.DataFrame` (强依赖 pandas) | DataClass + 可选 to_pandas() |
+| 反爬策略 | 默认 UA, 无 Referer | 默认 UA + Referer + 限流 |
+| 字段命名 | 中文列名 (如 `主力净流入-净额`) | 英文 + 中文映射 |
+| 包大小 | 50+ MB (含全部第三方) | 5 MB 内 (仅 requests + pydantic 可选) |
+
+**优势**:
+- 单一数据源 (东财), 字段口径一致, 不需要在多个 wrapper 间挑选
+- 工程化的网络层, 解决 akshare "薄包装" 不稳的问题
+- 妙想 F10 (`aif10.eastmoney.com`) 是新数据维度, akshare 还没覆盖, 我们抢一手
+
+**风险**:
+- 东财反爬规则变 (User-Agent / Referer / token 的轮换), 维护成本约每月 0.5 天
+- 部分接口需要登录 token (如妙想完整功能, 待 8.3 实测确认), 这部分需要"携带用户 cookie"的可选模式
+- 不像 akshare 有社区贡献, 维护责任在我们
+
+### 8.5 落地步骤 (按 ROI 排)
+
+**Phase 1 (本仓库内, ~1 天)**: 把现有 `fetch_fund_flow_daily.py` 提炼成内部 `eastmoney_skill/` 模块
+- 把 `_fetch_eastmoney_fund_flow` → `eastmoney_skill.client.BaseClient`
+- 加 `endpoints/quote.py` (push2his / push2delay / push2)
+- 加 `endpoints/datacenter.py` (替换 akshare 调用 datacenter-web 的 step: 调研 / QFII / 龙虎榜 / 十大股东)
+- 移除项目对 akshare 的部分依赖 (财务历史 / 调研 仍可保留 akshare 暂时)
+
+**Phase 2 (本仓库内, ~2-3 天)**: 妙想 F10 实地探查
+- 用户机器抓包 https://aif10.eastmoney.com/pc_extendf10/choicef10.html?ts=600519 的 XHR
+- 整理 endpoint + 字段 spec
+- 写 `endpoints/aif10.py`
+- 决定是否需要 cookie 登录模式
+
+**Phase 3 (开源到 GitHub, ~3-5 天)**: 把 `eastmoney_skill/` 提取成独立项目
+- 重命名为 `eastmoney-py`
+- README + 文档 (英文/中文双语)
+- pytest + GitHub Actions CI
+- 发 PyPI (`pip install eastmoney-py`)
+- 主仓库改用 PyPI 包
+
+**优先级建议**: **Phase 1 优先** (本仓库内不动结构, 只提炼网络层 + 替换关键 step). Phase 2/3 等用户决定开源时机。
+
+### 8.6 决策点
+
+需要用户确认:
+
+- [ ] **8.6.1 是否启动 Phase 1**: 把现有 `fetch_fund_flow_daily.py` 改造成 `eastmoney_skill/` 内部模块, 替换调研/QFII/龙虎榜的 akshare 调用?
+- [ ] **8.6.2 是否做 Phase 2**: 用户机器实地抓包妙想 F10? (需要用户操作浏览器 DevTools)
+- [ ] **8.6.3 是否做 Phase 3**: 提取成开源 GitHub 项目? (耗时 3-5 天, 长期维护成本约每月 0.5 天)
+
+我推荐:
+- Phase 1: 本仓库受益最大, 花费最少, 立即可见 — **强烈推荐**
+- Phase 2: ROI 高 (妙想是 akshare 没覆盖的新维度), 工作量小 — 推荐, 等用户有时间抓包
+- Phase 3: 长期收益, 短期成本高 — **暂缓**, 等 Phase 1+2 跑通确认价值再说
