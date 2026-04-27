@@ -101,6 +101,10 @@ app.include_router(signals_router, prefix="/api/signals", tags=["signals"])
 from routers.recommendation import router as recommendation_router
 app.include_router(recommendation_router, prefix="/api/rec", tags=["recommendation"])
 
+# 数据源 registry (P1)
+from routers.data_sources import router as data_sources_router
+app.include_router(data_sources_router, prefix="/api/data_sources", tags=["data_sources"])
+
 # 初始化 signals_v2 默认配置（幂等）
 try:
     _conn = get_conn()
