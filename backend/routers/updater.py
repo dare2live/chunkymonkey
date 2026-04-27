@@ -1133,10 +1133,19 @@ async def _step_sync_raw(conn) -> int:
             since = row[0] if row and row[0] else "20230101"
             if len(since) == 8 and "-" not in since:
                 since = f"{since[:4]}-{since[4:6]}-{since[6:8]}"
-            # 严格 > 避免每次重拉边界日 ~41000 条 (notice_date 列实际存的是 UPDATE_DATE,
-            # 用 >= 会把 since 当天所有记录全部重新 INSERT OR REPLACE 一遍, 浪费带宽).
-            filter_str = f"(UPDATE_DATE>'{since}')"
-            logger.info(f"[下载] 增量 (> {since})...")
+            # 关键: eastmoney 的 UPDATE_DATE 字段格式是 '2026-04-21 00:00:00' (带时间).
+            # 用 (UPDATE_DATE>'{since}') 即 '> 2026-04-21' 字符串比较时,
+            # '2026-04-21 00:00:00' > '2026-04-21' = TRUE (后面有空格), 所以 since 当天的
+            # 所有 ~3500 条仍会全部返回, 没真正增量.
+            # 修复: 用 since 的次日 ISO date 作为 >= 边界, 严格排除 since 当天.
+            try:
+                _since_dt = datetime.strptime(since, "%Y-%m-%d")
+                _next = (_since_dt + timedelta(days=1)).strftime("%Y-%m-%d")
+                filter_str = f"(UPDATE_DATE>='{_next}')"
+                logger.info(f"[下载] 增量 (>= {_next}, since={since})...")
+            except ValueError:
+                filter_str = f"(UPDATE_DATE>'{since}')"
+                logger.info(f"[下载] 增量 (> {since})...")
 
         total_inserted += await _download_with_filter(conn, client, filter_str)
 
