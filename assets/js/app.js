@@ -109,8 +109,17 @@
       });
     }
     // C6g: stocks 为主入口，signals-v2 tab 下线
-    ({ stocks: loadStocks, dashboard: loadWorkbench, research: loadResearch, etf: loadEtf,
-       'model-monitor': loadModelMonitor })[name]?.();
+    // P2-P5: 新增 data / strategy / settings 三个独立页, 通过 window.XxxView.show() 接入
+    ({
+      stocks: loadStocks,
+      dashboard: loadWorkbench,
+      research: loadResearch,
+      etf: loadEtf,
+      'model-monitor': loadModelMonitor,
+      data: function () { window.DataView && window.DataView.show(); },
+      strategy: function () { window.StrategyView && window.StrategyView.show(); },
+      settings: function () { window.SettingsView && window.SettingsView.show(); },
+    })[name]?.();
   }
 
   function showEtfTab(tabName) {

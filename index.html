@@ -31,12 +31,18 @@
     </nav>
   </header>
   <div class="sub-bar" id="subBar">
-    <!-- 股东挖掘二级导航（C6g：信号 tab 下线，股票为主入口） -->
+    <!-- 股东挖掘二级导航（业务区 + 运维区, P1-P5 重设计后）-->
     <div class="nav-sub-bar" id="nav-sub-holder">
+      <!-- 业务 -->
       <button class="nav-btn active" data-view="stocks">股票</button>
       <button class="nav-btn" data-view="research">机构</button>
       <button class="nav-btn" data-view="model-monitor">模型监控</button>
-      <button class="nav-btn" data-view="dashboard">工作台</button>
+      <span style="display:inline-block;width:1px;height:18px;background:var(--cm-ink-100);margin:0 4px;vertical-align:middle"></span>
+      <!-- 运维 -->
+      <button class="nav-btn" data-view="data" title="数据源 + 数据更新 + 字段映射">数据</button>
+      <button class="nav-btn" data-view="dashboard" title="事实计算 + 集市构建">工作台</button>
+      <button class="nav-btn" data-view="strategy" title="信号参数 / Cohort / 回测 / 选股">策略</button>
+      <button class="nav-btn" data-view="settings" title="数据源参数 / 派生层版本 / 危险操作">系统</button>
     </div>
     <!-- ETF研究二级导航 -->
     <div class="nav-sub-bar" id="nav-sub-etf" style="display:none">
@@ -95,6 +101,130 @@
           <h4 style="margin:0 0 8px;font-size:13px">特征重要性 Feature Importance（top 30, gain 归一化）</h4>
           <p class="muted" style="font-size:11px;margin:0 0 8px">英文为字段名，括号内为对应中文标签；每日 topK 推荐已集成到"股票"视图顶部</p>
           <div id="mm-chart-fi" style="min-height:300px"></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ==================== 数据 (新增 P2: data_sources registry UI) ==================== -->
+    <section class="view" id="view-data">
+      <div class="panel panel-hero" style="margin-bottom:14px;padding:18px">
+        <div class="section-kicker">Data Console</div>
+        <h2 style="margin:4px 0 6px">数据 · 数据源 + 更新调度</h2>
+        <p class="muted" style="font-size:12px;margin:0">
+          tdxhub > 妙想 > 东财 datacenter-web > akshare 优先级链路。每个 capability 走自动 fallback。
+        </p>
+      </div>
+
+      <!-- 顶: 4 张数据源卡 -->
+      <div id="ds-source-cards" class="data-source-grid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:12px;margin-bottom:14px">
+        <div class="muted" style="padding:24px;text-align:center;grid-column:1/-1">加载数据源中…</div>
+      </div>
+
+      <!-- 中: capability → 源 映射表 -->
+      <div class="panel" style="padding:14px;margin-bottom:14px">
+        <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:8px">
+          <h3 style="margin:0;font-size:14px">数据 → 数据源 映射</h3>
+          <div style="display:flex;gap:8px;align-items:center">
+            <input type="text" id="ds-cap-filter" placeholder="筛选 capability…" style="padding:4px 8px;border:1px solid var(--cm-ink-100);border-radius:4px;font-size:12px;width:180px">
+            <button class="chip chip-outline" id="ds-refresh-caps">刷新</button>
+          </div>
+        </div>
+        <div id="ds-capability-table" style="overflow-x:auto;max-height:380px;overflow-y:auto">
+          <div class="muted" style="padding:20px;text-align:center">加载中…</div>
+        </div>
+      </div>
+
+      <!-- 下: 数据更新调度 + 实时日志 -->
+      <div style="display:grid;grid-template-columns:1.4fr 1fr;gap:14px">
+        <div class="panel" style="padding:14px">
+          <h3 style="margin:0 0 8px;font-size:14px">数据更新</h3>
+          <p class="muted" style="font-size:11px;margin:0 0 10px">
+            智能更新会按依赖顺序跑 sync_raw 系列 step. 单步触发用于补跑.
+          </p>
+          <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px">
+            <button class="chip" id="ds-smart-update">智能更新</button>
+            <button class="chip chip-outline" id="ds-data-only">仅 data 组</button>
+            <button class="chip chip-outline" id="ds-stop-update">停止</button>
+          </div>
+          <div id="ds-step-grid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:6px">
+            <div class="muted" style="grid-column:1/-1;padding:14px;text-align:center;font-size:11px">加载 step 列表…</div>
+          </div>
+        </div>
+        <div class="panel" style="padding:14px;display:flex;flex-direction:column">
+          <h3 style="margin:0 0 8px;font-size:14px">实时日志</h3>
+          <pre id="ds-live-log" style="flex:1;min-height:300px;max-height:480px;overflow-y:auto;background:var(--cm-bg-50);padding:8px;border-radius:4px;font-family:monospace;font-size:11px;margin:0">数据页就绪。点"智能更新"或单步 step 后会显示日志。</pre>
+        </div>
+      </div>
+    </section>
+
+    <!-- ==================== 策略 (新增 P4: signal/cohort/backtest/screening) ==================== -->
+    <section class="view" id="view-strategy">
+      <div class="panel panel-hero" style="margin-bottom:14px;padding:18px">
+        <div class="section-kicker">Strategy Console</div>
+        <h2 style="margin:4px 0 6px">策略 · 参数 + 回测</h2>
+        <div style="display:flex;gap:10px;align-items:center;margin-top:8px;flex-wrap:wrap">
+          <label class="muted" style="font-size:12px">当前预设</label>
+          <select id="strategy-preset-select" style="padding:5px 8px;border:1px solid var(--cm-ink-100);border-radius:4px;font-size:12px;min-width:180px"></select>
+          <button class="chip" id="strategy-preset-save">保存</button>
+          <button class="chip chip-outline" id="strategy-preset-new">新建</button>
+          <button class="chip chip-outline" id="strategy-preset-delete">删除</button>
+        </div>
+      </div>
+      <div style="display:flex;gap:8px;border-bottom:1px solid var(--cm-ink-100);margin-bottom:12px">
+        <button class="strategy-tab active" data-strategy-tab="signals">信号参数</button>
+        <button class="strategy-tab" data-strategy-tab="cohort">Cohort 闭环</button>
+        <button class="strategy-tab" data-strategy-tab="backtest">回测</button>
+        <button class="strategy-tab" data-strategy-tab="screening">选股</button>
+      </div>
+      <div id="strategy-tab-signals" class="strategy-tab-pane active">
+        <div id="signals-widget-mount"><div class="muted" style="padding:20px;text-align:center">信号参数 widget 加载中…</div></div>
+      </div>
+      <div id="strategy-tab-cohort" class="strategy-tab-pane" style="display:none">
+        <div id="cohort-widget-mount"><div class="muted" style="padding:20px;text-align:center">Cohort widget 加载中…</div></div>
+      </div>
+      <div id="strategy-tab-backtest" class="strategy-tab-pane" style="display:none">
+        <div id="backtest-widget-mount"><div class="muted" style="padding:20px;text-align:center">回测 widget 加载中…</div></div>
+      </div>
+      <div id="strategy-tab-screening" class="strategy-tab-pane" style="display:none">
+        <div id="screening-widget-mount"><div class="muted" style="padding:20px;text-align:center">选股 widget 加载中…</div></div>
+      </div>
+    </section>
+
+    <!-- ==================== 系统设置 (新增 P5) ==================== -->
+    <section class="view" id="view-settings">
+      <div class="panel panel-hero" style="margin-bottom:14px;padding:18px">
+        <div class="section-kicker">System Settings</div>
+        <h2 style="margin:4px 0 6px">系统 · 配置 + 危险操作</h2>
+        <p class="muted" style="font-size:12px;margin:0">
+          数据源参数 / 派生层 schema 版本 / 危险操作 / 主题. 所有"清空 / 重算"按钮集中在此页.
+        </p>
+      </div>
+
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px">
+        <div class="panel" style="padding:14px">
+          <h3 style="margin:0 0 8px;font-size:14px">数据源参数 (运行时覆盖)</h3>
+          <div id="sys-ds-params" class="muted" style="font-size:12px">加载中…</div>
+        </div>
+        <div class="panel" style="padding:14px">
+          <h3 style="margin:0 0 8px;font-size:14px">派生层 schema 版本</h3>
+          <div id="sys-schema-versions" class="muted" style="font-size:12px">加载中…</div>
+        </div>
+      </div>
+
+      <div class="panel" style="padding:14px;margin-bottom:14px;border-left:3px solid #d33">
+        <h3 style="margin:0 0 8px;font-size:14px;color:#d33">⚠ 危险操作</h3>
+        <p class="muted" style="font-size:11px;margin:0 0 10px">下列按钮会清空或重算数据。确认后执行, 不可撤销 (raw 层除外).</p>
+        <div id="sys-danger-zone" style="display:flex;gap:8px;flex-wrap:wrap"></div>
+      </div>
+
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px">
+        <div class="panel" style="padding:14px">
+          <h3 style="margin:0 0 8px;font-size:14px">外观 / 偏好</h3>
+          <div id="sys-prefs" style="font-size:12px"></div>
+        </div>
+        <div class="panel" style="padding:14px">
+          <h3 style="margin:0 0 8px;font-size:14px">关于</h3>
+          <div id="sys-about" style="font-size:12px"></div>
         </div>
       </div>
     </section>
@@ -389,6 +519,9 @@
        'assets/js/widgets/grid-optimizer.js',
        'assets/js/widgets/etf-strategy-compare.js',
        'assets/js/stock-view.js',
+       'assets/js/data-view.js',
+       'assets/js/strategy-view.js',
+       'assets/js/settings-view.js',
        'assets/js/app.js'].forEach(function (src) {
         document.write('<script src="' + src + '?v=' + version + '"><\/script>');
       });

@@ -6834,3 +6834,54 @@ tr.detail-row>td>.detail-panel {
 @media (max-width: 640px) {
   .esc-metric-row { grid-template-columns: 1fr; }
 }
+
+/* ====== P2-P5 新页面专用 (data / strategy / settings) ====== */
+
+/* 策略 tab */
+.strategy-tab {
+  background: transparent;
+  border: 1px solid transparent;
+  border-bottom: 2px solid transparent;
+  padding: 8px 14px;
+  font-size: 13px;
+  cursor: pointer;
+  color: var(--cm-ink-500);
+  transition: all 0.15s;
+  font-family: inherit;
+}
+.strategy-tab:hover {
+  background: var(--cm-bg-50);
+  color: var(--cm-ink-900);
+}
+.strategy-tab.active {
+  color: var(--cm-ink-900);
+  font-weight: 600;
+  border-bottom-color: var(--cm-accent, #2563eb);
+  margin-bottom: -1px;
+}
+.strategy-tab-pane {
+  padding: 8px 0;
+  min-height: 320px;
+}
+
+/* 数据源卡 */
+.ds-source-card {
+  transition: box-shadow 0.15s;
+}
+.ds-source-card:hover {
+  box-shadow: var(--cm-shadow-md, 0 2px 8px rgba(0, 0, 0, 0.08));
+}
+
+/* step chip hover (data 页) */
+.ds-step-chip {
+  background: var(--cm-surface);
+  user-select: none;
+}
+.ds-step-chip:active {
+  background: var(--cm-bg-100);
+}
+
+/* 二级 nav 分隔线 */
+.nav-sub-bar > span[style*="background:var(--cm-ink-100)"] {
+  margin: 0 4px;
+}

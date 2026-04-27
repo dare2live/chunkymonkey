@@ -105,6 +105,10 @@ app.include_router(recommendation_router, prefix="/api/rec", tags=["recommendati
 from routers.data_sources import router as data_sources_router
 app.include_router(data_sources_router, prefix="/api/data_sources", tags=["data_sources"])
 
+# 策略预设 (P4)
+from routers.strategy_preset import router as strategy_preset_router
+app.include_router(strategy_preset_router, prefix="/api/inst/strategy", tags=["strategy_preset"])
+
 # 初始化 signals_v2 默认配置（幂等）
 try:
     _conn = get_conn()
