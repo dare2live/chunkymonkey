@@ -1164,6 +1164,22 @@ def init_db():
 
         conn.commit()
 
+        # 防御性: 重建可能 schema-drift 的 view (DuckDB 不允许底表加列后查 view)
+        # 历史教训: mart_model_validation_fold view = SELECT * FROM mart_model_walkforward_fold,
+        # 底表 24→29 列后视图坏掉, 报 BinderException.
+        try:
+            tbl = conn.execute(
+                "SELECT 1 FROM information_schema.tables WHERE table_name = 'mart_model_walkforward_fold'"
+            ).fetchone()
+            if tbl:
+                conn.execute("DROP VIEW IF EXISTS mart_model_validation_fold")
+                conn.execute(
+                    "CREATE VIEW mart_model_validation_fold AS SELECT * FROM mart_model_walkforward_fold"
+                )
+                conn.commit()
+        except Exception as exc:
+            logger.warning(f"[DB] 重建 mart_model_validation_fold view 失败 (非致命): {exc}")
+
         logger.info("[DB] 数据库初始化完成")
     finally:
         conn.close()

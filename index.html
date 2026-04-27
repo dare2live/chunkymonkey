@@ -177,16 +177,16 @@
         <button class="strategy-tab" data-strategy-tab="screening">选股</button>
       </div>
       <div id="strategy-tab-signals" class="strategy-tab-pane active">
-        <div id="signals-widget-mount"><div class="muted" style="padding:20px;text-align:center">信号参数 widget 加载中…</div></div>
+        <div id="strategy-signal-params-container" style="padding:10px 0"><div class="muted" style="padding:20px;text-align:center">信号参数 widget 加载中…</div></div>
       </div>
       <div id="strategy-tab-cohort" class="strategy-tab-pane" style="display:none">
-        <div id="cohort-widget-mount"><div class="muted" style="padding:20px;text-align:center">Cohort widget 加载中…</div></div>
+        <div id="strategy-cohort-container" style="padding:10px 0"><div class="muted" style="padding:20px;text-align:center">Cohort widget 加载中…</div></div>
       </div>
       <div id="strategy-tab-backtest" class="strategy-tab-pane" style="display:none">
-        <div id="backtest-widget-mount"><div class="muted" style="padding:20px;text-align:center">回测 widget 加载中…</div></div>
+        <div id="strategy-backtest-container" style="padding:10px 0"><div class="muted" style="padding:20px;text-align:center">回测 widget 加载中…</div></div>
       </div>
       <div id="strategy-tab-screening" class="strategy-tab-pane" style="display:none">
-        <div id="screening-widget-mount"><div class="muted" style="padding:20px;text-align:center">选股 widget 加载中…</div></div>
+        <div id="strategy-screening-container" style="padding:10px 0"><div class="muted" style="padding:20px;text-align:center">选股 widget 加载中…</div></div>
       </div>
     </section>
 
@@ -271,24 +271,22 @@
         </div>
       </div>
 
-      <!-- Layer 2 · 主操作 + 数据源 + 实时日志（C4 重写：chip 按钮统一 + 日志白卡化） -->
+      <!-- Layer 2 · 主操作 + 实时日志 (P3 精简: 数据获取/数据源/策略 widget/危险操作 已迁出) -->
       <div class="workbench-ops">
         <div class="workbench-ops-left">
+          <p class="muted" style="font-size:12px;margin:0 0 10px">
+            派生层 (fact + mart) 编排. 数据获取在 <a href="#" onclick="window.App&&window.App.showView('data');return false" style="color:var(--cm-accent,#2563eb)">数据页</a>;
+            策略调参在 <a href="#" onclick="window.App&&window.App.showView('strategy');return false" style="color:var(--cm-accent,#2563eb)">策略页</a>;
+            危险操作在 <a href="#" onclick="window.App&&window.App.showView('settings');return false" style="color:var(--cm-accent,#2563eb)">系统</a>.
+          </p>
           <div class="chip-group">
-            <button class="chip chip-primary" id="btnUpdateAll">智能更新</button>
+            <button class="chip chip-primary" id="btnUpdateAll" title="按 raw → fact → mart 链路重算所有派生层 (raw 不动)">重算派生层</button>
             <button class="chip chip-outline" id="btnRefreshStatus">刷新状态</button>
             <button class="chip chip-danger chip-sm" id="btnStop" style="display:none">停止</button>
           </div>
           <div id="progressArea" style="display:none;margin-top:12px">
             <div class="progress-bar"><div class="progress-fill" id="progressFill"></div></div>
             <div class="progress-text" id="progressText">0/19 · 0%</div>
-          </div>
-          <div id="networkStatus" class="chip-group workbench-sources">
-            <span class="chip-group-label">数据源</span>
-            <span id="sourcePillHoldings" class="source-pill"><span class="source-pill-dot"></span><span class="source-pill-text">股东源</span></span>
-            <span id="sourcePillKline" class="source-pill"><span class="source-pill-dot"></span><span class="source-pill-text">K线源</span></span>
-            <span id="sourcePillIndustry" class="source-pill"><span class="source-pill-dot"></span><span class="source-pill-text">行业源</span></span>
-            <button class="chip chip-sm chip-outline" onclick="App.refreshNetwork()" title="强制重新探测数据源（绕过 5 分钟缓存）" style="padding:2px 8px;font-size:11px">刷新</button>
           </div>
         </div>
         <aside class="workbench-ops-log panel">
@@ -303,62 +301,33 @@
         </aside>
       </div>
 
-      <!-- Layer 3 · 管线步骤（默认展开） -->
+      <!-- Layer 3 · 派生层管线 (sync_* 数据获取已迁数据页, 此处仅 fact+mart) -->
       <details class="workbench-section" open>
         <summary>
-          <span class="workbench-section-title">数据管线步骤</span>
+          <span class="workbench-section-title">派生层管线</span>
           <span class="muted" id="pipelineSummary" style="font-size:11px;font-weight:400"></span>
         </summary>
         <div class="step-grid" id="stepGrid" style="margin-top:10px"></div>
       </details>
 
-      <!-- Layer 4 · 高级（默认收起，按使用频次从低到低） -->
+      <!-- Layer 4 · 数据质量审计 -->
       <details class="workbench-section">
         <summary><span class="workbench-section-title">数据质量审计</span></summary>
-        <div id="wbAuditDetail" class="muted" style="padding:10px 0;font-size:12px">智能更新后自动刷新快照。</div>
+        <div id="wbAuditDetail" class="muted" style="padding:10px 0;font-size:12px">重算派生层后自动刷新审计快照。</div>
       </details>
 
-      <div class="wb-group-header">策略参数</div>
-
-      <!-- C6f 信号参数 widget -->
-      <details class="workbench-section" id="wb-signal-params-section">
-        <summary><span class="workbench-section-title">信号参数</span><span class="muted" style="font-size:11px;font-weight:400">调参后股票列表自动刷新</span></summary>
-        <div id="wb-signal-params-container" style="padding:10px 0"></div>
-      </details>
-
-      <!-- C6f Cohort 反馈闭环 widget -->
-      <details class="workbench-section" id="wb-cohort-section">
-        <summary><span class="workbench-section-title">Cohort 反馈闭环</span><span class="muted" style="font-size:11px;font-weight:400">已成熟样本 Follow vs Blind</span></summary>
-        <div id="wb-cohort-container" data-cohort-widget style="padding:10px 0"></div>
-      </details>
-
-      <!-- C6f 历史回测 widget -->
-      <details class="workbench-section" id="wb-backtest-section">
-        <summary><span class="workbench-section-title">历史回测</span><span class="muted" style="font-size:11px;font-weight:400">按需手动触发，约 10-15 秒</span></summary>
-        <div id="wb-backtest-container" style="padding:10px 0"></div>
-      </details>
-
-      <!-- 选股扫描 widget（Phase 2：TDX 选股 + 海龟特征 解耦后手动触发） -->
-      <details class="workbench-section" id="wb-screening-section">
-        <summary><span class="workbench-section-title">选股扫描</span><span class="muted" style="font-size:11px;font-weight:400">TDX F1/F3/F5 + 海龟执行特征（手动触发）</span></summary>
-        <div id="wb-screening-container" style="padding:10px 0"></div>
-      </details>
-
-      <!-- ETF 网格自寻优 widget -->
-      <details class="workbench-section" id="wb-grid-opt-section">
-        <summary><span class="workbench-section-title">ETF 网格自寻优</span><span class="muted" style="font-size:11px;font-weight:400">输入 ETF 代码扫描 0.5%-4.5% 步长空间</span></summary>
-        <div id="wb-grid-opt-container" style="padding:10px 0"></div>
-      </details>
-
-      <div class="wb-group-header">系统设置</div>
-
-      <details class="workbench-section workbench-danger">
-        <summary><span class="workbench-section-title" style="color:var(--cm-bad-500)">全量重算派生数据</span><span class="muted" style="font-size:11px;font-weight:400">危险操作，二次确认</span></summary>
-        <div style="padding:10px 0">
-          <p class="muted" style="font-size:12px;margin-bottom:10px">清空事件、收益、画像和趋势派生层（raw 层保留），从原始数据重新计算。预计 10-20 分钟。</p>
-          <button class="chip chip-danger" id="btnReset">重算全部派生数据</button>
-        </div>
-      </details>
+      <!-- 隐藏: 老 widget mount container 保留为 stub, 让 app.js 现有 IIFE mount 不报 not-found.
+           真实 widget 视图现在在 #view-strategy 里. P6 完全删除. -->
+      <div style="display:none">
+        <div id="wb-signal-params-container"></div>
+        <div id="wb-cohort-container"></div>
+        <div id="wb-backtest-container"></div>
+        <div id="wb-screening-container"></div>
+        <div id="wb-grid-opt-container"></div>
+        <span id="sourcePillHoldings"></span><span id="sourcePillKline"></span><span id="sourcePillIndustry"></span>
+        <div id="networkStatus"></div>
+        <button id="btnReset" style="display:none"></button>
+      </div>
     </section>
 
     <!-- ==================== 机构（track record） ==================== -->

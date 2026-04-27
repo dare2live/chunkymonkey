@@ -56,23 +56,35 @@
     const el = document.getElementById('sys-danger-zone');
     if (!el) return;
     const buttons = [
-      { id: 'recompute-all', label: '🔥 全量重算派生数据', action: recomputeAll },
-      { id: 'clean-mart', label: '清空 mart_*', action: () => alert('待实现 P6') },
-      { id: 'clean-fact', label: '清空 fact_*', action: () => alert('待实现 P6') },
-      { id: 'reset-modules', label: '模块开关重置', action: () => alert('待实现 P6') },
+      { id: 'reset-derived', label: '🔥 全量重算派生数据', action: resetDerived, desc: '清空事件/收益/画像/关系派生层 + 重算 (raw 保留)' },
+      { id: 'open-data', label: '🔄 数据获取', action: () => window.App && window.App.showView('data'), desc: '跳到数据页' },
+      { id: 'open-workbench', label: '⚙ 工作台编排', action: () => window.App && window.App.showView('dashboard'), desc: '跳到工作台' },
     ];
-    el.innerHTML = buttons.map(b => `<button class="chip chip-outline" id="sys-btn-${esc(b.id)}" style="border-color:#d33;color:#d33">${esc(b.label)}</button>`).join('');
+    el.innerHTML = `
+      <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:10px">
+      ${buttons.map(b => `
+        <div style="border:1px solid var(--cm-ink-100);border-radius:6px;padding:10px;border-left:3px solid ${b.id === 'reset-derived' ? '#d33' : 'var(--cm-ink-300)'}">
+          <button class="chip chip-outline" id="sys-btn-${esc(b.id)}" style="margin-bottom:6px;${b.id === 'reset-derived' ? 'border-color:#d33;color:#d33' : ''}">${esc(b.label)}</button>
+          <div class="muted" style="font-size:11px">${esc(b.desc)}</div>
+        </div>
+      `).join('')}
+      </div>
+    `;
     buttons.forEach(b => {
       document.getElementById('sys-btn-' + b.id)?.addEventListener('click', b.action);
     });
   }
 
-  async function recomputeAll() {
-    if (!confirm('确认全量重算派生数据? 不可撤销 (raw 不动).')) return;
+  async function resetDerived() {
+    if (!confirm('确认清空事件、收益、画像、关系等派生层并重算吗?\n(raw 数据保留, 预计 10-20 分钟)')) return;
     try {
-      const r = await fetch('/api/inst/update/recompute_all', { method: 'POST' });
+      const r = await fetch('/api/inst/update/reset-derived', { method: 'POST' });
       const j = await r.json().catch(() => ({}));
-      alert(r.ok ? '已触发: ' + JSON.stringify(j).slice(0, 200) : '失败');
+      if (r.ok && j.ok !== false) {
+        alert('已触发重算: ' + (j.message || '稍后查看工作台日志'));
+      } else {
+        alert('失败: ' + (j.message || j.error || 'HTTP ' + r.status));
+      }
     } catch (e) {
       alert('失败: ' + e.message);
     }

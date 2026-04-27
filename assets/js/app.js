@@ -2414,7 +2414,7 @@
       maybeRenderWorkbenchSummary(up.summary);
       syncServerLogs(up.logs || [], true);
       el('btnUpdateAll').disabled = true;
-      el('btnUpdateAll').textContent = up.stop_requested ? '停止中...' : '更新中...';
+      el('btnUpdateAll').textContent = up.stop_requested ? '停止中...' : '重算中...';
       el('btnStop').disabled = !!up.stop_requested;
       el('btnStop').textContent = up.stop_requested ? '停止中...' : '停止';
       el('btnStop').style.display = '';
@@ -2433,7 +2433,7 @@
     syncServerLogs(up?.logs || [], true);
 
     el('btnUpdateAll').disabled = false;
-    el('btnUpdateAll').textContent = '智能更新';
+    el('btnUpdateAll').textContent = '重算派生层';
     el('btnStop').disabled = false;
     el('btnStop').textContent = '停止';
     el('btnStop').style.display = 'none';
@@ -2483,8 +2483,9 @@
       prevOpen[d.dataset.group] = d.open;
     });
 
+    // P3 (2026-04-27): 工作台只展示 calc + mart, 数据获取(data)迁去数据页
     var html = '';
-    ['data', 'calc', 'mart'].forEach(function (gId) {
+    ['calc', 'mart'].forEach(function (gId) {
       var groupSteps = grouped[gId];
       var def = GROUP_DEF[gId];
       var counts = { completed: 0, failed: 0, partial: 0, running: 0, skipped: 0, stopped: 0, blocked: 0, pending: 0, idle: 0 };
@@ -2631,9 +2632,10 @@
     el('btnUpdateAll').disabled = true; el('btnUpdateAll').textContent = '分析中...';
     el('btnStop').disabled = false; el('btnStop').textContent = '停止';
     el('btnStop').style.display = ''; el('progressArea').style.display = '';
-    el('updateLog').innerHTML = ''; _lastServerLogId = 0; addLog('正在分析数据状态...');
-    // 使用智能更新：先审计再决定跑什么
-    var r = await api('/api/inst/update/smart', { method: 'POST' });
+    el('updateLog').innerHTML = ''; _lastServerLogId = 0; addLog('正在分析派生层状态...');
+    // P3 (2026-04-27): 工作台跑 calc + mart 链路, 不再触发 data 组 (那里是数据页职责)
+    // /api/inst/update/calc 跑事实计算 → 自动续跑 mart 链路
+    var r = await api('/api/inst/update/calc', { method: 'POST' });
     if (!r || !r.ok) {
       if (r && r.message) addLog(r.message);
       else addLog('启动失败', true);
@@ -2645,7 +2647,7 @@
       _uiRunning = false;
       _activeRunContext = null;
       el('btnUpdateAll').disabled = false;
-      el('btnUpdateAll').textContent = '智能更新';
+      el('btnUpdateAll').textContent = '重算派生层';
       el('btnStop').style.display = 'none';
       await refreshDashboardStatus(true);
       addLog(r.message || '数据已是最新，无需更新');
