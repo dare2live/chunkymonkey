@@ -3605,7 +3605,12 @@
 
   function el(id) { return document.getElementById(id) }
   function esc(s) { var d = document.createElement('div'); d.textContent = s || ''; return d.innerHTML }
-  function fmt(n) { return n != null ? Number(n).toLocaleString() : '-' }
+  function fmt(n) {
+    if (n == null) return '-';
+    var num = Number(n);
+    if (!Number.isFinite(num)) return '-';   // NaN / Infinity 防御 (avoid 'NaN 条')
+    return num.toLocaleString();
+  }
   function fmtCurrency(n) {
     if (n == null) return '-';
     return '￥' + Number(n).toLocaleString('zh-CN', { maximumFractionDigits: 2 });
