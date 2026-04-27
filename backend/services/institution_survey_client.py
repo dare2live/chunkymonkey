@@ -174,12 +174,13 @@ def sync_institution_surveys(
     days_back: int = 180,
 ) -> dict:
     """
-    同步近 days_back 天的机构调研数据到 raw_institution_surveys，并重算 mart。
+    增量同步机构调研数据到 raw_institution_surveys, 并重算 mart.
 
     Parameters
     ----------
     conn : 当前 DuckDB 业务库连接
-    days_back : 回溯天数，默认 180（6 个月）。akshare 一次调用返回全量。
+    days_back : 首次回溯天数 (DB 空时), 默认 180 (6 个月).
+                有数据时按 DB MAX(notice_date) 增量, 不再全量回拉.
 
     Returns
     -------
@@ -187,8 +188,24 @@ def sync_institution_surveys(
     """
     _ensure_tables(conn)
 
-    start_date = (date.today() - timedelta(days=days_back)).strftime("%Y%m%d")
-    logger.info(f"[survey] 拉取机构调研数据 (start_date={start_date})")
+    # 增量起点: MAX(notice_date) - 1 天 (减 1 天容错避免错过当天延迟披露的记录).
+    # DB 空时回退 days_back.
+    row = conn.execute(
+        "SELECT MAX(notice_date) FROM raw_institution_surveys WHERE notice_date IS NOT NULL"
+    ).fetchone()
+    if row and row[0]:
+        latest = row[0]  # 'YYYY-MM-DD'
+        try:
+            base = datetime.strptime(latest[:10], "%Y-%m-%d").date()
+            # MAX 当天可能还在持续披露 (披露当日下午陆续上传) → 退 1 天保险
+            start_dt = base - timedelta(days=1)
+        except ValueError:
+            start_dt = date.today() - timedelta(days=days_back)
+        start_date = start_dt.strftime("%Y%m%d")
+        logger.info(f"[survey] 增量拉取 (DB 最新 notice_date={latest}, start={start_date})")
+    else:
+        start_date = (date.today() - timedelta(days=days_back)).strftime("%Y%m%d")
+        logger.info(f"[survey] 首次全量拉取 (start_date={start_date}, days_back={days_back})")
 
     result: dict = {"rows_fetched": 0, "rows_upserted": 0, "mart_rows": 0, "errors": []}
 

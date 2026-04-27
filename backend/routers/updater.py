@@ -1133,8 +1133,10 @@ async def _step_sync_raw(conn) -> int:
             since = row[0] if row and row[0] else "20230101"
             if len(since) == 8 and "-" not in since:
                 since = f"{since[:4]}-{since[4:6]}-{since[6:8]}"
-            filter_str = f"(UPDATE_DATE>='{since}')"
-            logger.info(f"[下载] 增量 (>= {since})...")
+            # 严格 > 避免每次重拉边界日 ~41000 条 (notice_date 列实际存的是 UPDATE_DATE,
+            # 用 >= 会把 since 当天所有记录全部重新 INSERT OR REPLACE 一遍, 浪费带宽).
+            filter_str = f"(UPDATE_DATE>'{since}')"
+            logger.info(f"[下载] 增量 (> {since})...")
 
         total_inserted += await _download_with_filter(conn, client, filter_str)
 
@@ -3238,9 +3240,13 @@ async def _step_sync_margin(conn) -> dict:
 
 
 async def _step_sync_lhb(conn) -> dict:
-    """龙虎榜日度同步（短线机构与游资痕迹）。
+    """龙虎榜日度同步（短线机构与游资痕迹）.
 
-    每次拉取最近 5 天区间 upsert；已入库自然不重复计。
+    增量策略 (2026-04-27 修复):
+    - DB 有数据: 起点 = MAX(trade_date) + 1 天, 终点 = latest_completed_trade_date
+      已入库的日期不再重传, 节省 ~5x 带宽.
+    - DB 空: 首次回拉 5 天兜底.
+    - 起点 > 终点: skipped (DB 已最新)
     """
     from services.lhb_client import ensure_tables, sync_lhb_range
 
@@ -3251,9 +3257,33 @@ async def _step_sync_lhb(conn) -> dict:
         return {"count": 0, "status": "skipped", "message": "未找到最近完成交易日"}
 
     end_dt = datetime.strptime(trade_date, "%Y-%m-%d")
-    start_dt = end_dt - timedelta(days=5)
+
+    # DB 已有数据 → 增量起点 = MAX(trade_date) + 1 天
+    row = conn.execute(
+        "SELECT MAX(trade_date) FROM raw_lhb_daily WHERE trade_date IS NOT NULL"
+    ).fetchone()
+    db_max = row[0] if row and row[0] else None
+    if db_max:
+        try:
+            start_dt = datetime.strptime(db_max[:10], "%Y-%m-%d") + timedelta(days=1)
+            if start_dt.date() > end_dt.date():
+                logger.info(f"[龙虎榜] DB 已是最新 (MAX={db_max} >= target={trade_date}), 跳过")
+                return {
+                    "count": 0,
+                    "status": "skipped",
+                    "existing": db_max,
+                    "trade_date": trade_date,
+                    "message": f"DB 已最新 (MAX={db_max}), 无需同步",
+                }
+        except ValueError:
+            start_dt = end_dt - timedelta(days=5)
+    else:
+        # 首次同步, 回拉 5 天作兜底
+        start_dt = end_dt - timedelta(days=5)
+        logger.info("[龙虎榜] 首次同步, 回拉 5 天")
+
     start_str = start_dt.strftime("%Y-%m-%d")
-    logger.info(f"[龙虎榜] 开始同步 {start_str} ~ {trade_date}")
+    logger.info(f"[龙虎榜] 增量同步 {start_str} ~ {trade_date}")
     result = await sync_lhb_range(conn, start_str, trade_date)
     if result.get("status") == "source_unavailable":
         raise RuntimeError(f"lhb_source_failed:{result.get('error')}")
