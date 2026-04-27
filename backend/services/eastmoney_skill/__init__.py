@@ -17,6 +17,7 @@ from .quote import (
     fetch_fund_flow_history,
     fetch_fund_flow_latest,
 )
+from . import aif10  # 妙想 F10 (Phase 2): aif10.fetch_company_type / fetch_top_holders / ...
 
 __all__ = [
     "EastMoneyClient",
@@ -26,4 +27,5 @@ __all__ = [
     "fetch_all_pages",
     "fetch_fund_flow_history",
     "fetch_fund_flow_latest",
+    "aif10",
 ]
