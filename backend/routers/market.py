@@ -1,7 +1,14 @@
 """
 全市场数据路由
 
-负责从东财 API 下载十大流通股东数据到 market_raw_holdings。
+负责下载十大流通股东数据到 market_raw_holdings。
+
+P6.1 迁移 (2026-04-27): 数据通道从 datacenter-web 直拉改走 miaoxiang
+  (aif10_scraper.AIF10Client → datacenter.eastmoney.com/securities/api/data/v1/get).
+  reportName 不变 (RPT_F10_EH_FREEHOLDERS), 字段兼容. 字段差异:
+  - 妙想没 FREE_HOLDNUM 字段 → _map_api_row 的 _first() fallback 自动用 HOLD_NUM
+  - 其他关键字段 (SECUCODE/HOLDER_NAME/HOLDER_RANK/END_DATE/UPDATE_DATE/HOLD_RATIO/
+    HOLDER_MARKET_CAP/HOLDER_NEWTYPE/HOLD_NUM_CHANGE) 全一致.
 """
 
 import asyncio
@@ -19,14 +26,21 @@ from services.utils import safe_float as _safe_float
 logger = logging.getLogger("cm-api")
 router = APIRouter()
 
-# 东财 API 配置
-EASTMONEY_ENDPOINT = "https://datacenter-web.eastmoney.com/api/data/v1/get"
+# 数据源: 走 miaoxiang/aif10-scraper. 共享一个 AIF10Client 复用 Session.
 REPORT_NAME = "RPT_F10_EH_FREEHOLDERS"
 PAGE_SIZE = 500
-_BROWSER_HEADERS = {
-    "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36",
-    "Referer": "https://data.eastmoney.com/",
-}
+
+# 兼容老代码 import: 已退役, 仅留命名占位
+EASTMONEY_ENDPOINT = "(deprecated, P6.1 迁移到 aif10_scraper)"
+_BROWSER_HEADERS = {}  # 兼容 backend/routers/updater.py 旧 import
+
+_aif10_client = None
+def _get_aif10_client():
+    global _aif10_client
+    if _aif10_client is None:
+        from aif10_scraper import AIF10Client
+        _aif10_client = AIF10Client(retry=2, timeout=20.0)
+    return _aif10_client
 
 
 def _compact_date(val) -> str:
@@ -72,43 +86,38 @@ def _map_api_row(row: dict) -> dict:
     }
 
 
-async def _fetch_page(client: httpx.AsyncClient, filter_str: str, page: int) -> dict:
-    params = {
-        "sortColumns": "UPDATE_DATE,SECURITY_CODE,HOLDER_RANK",
-        "sortTypes": "-1,1,1",
-        "pageSize": PAGE_SIZE,
-        "pageNumber": page,
-        "reportName": REPORT_NAME,
-        "columns": "ALL",
-        "source": "WEB",
-        "client": "WEB",
-        "filter": filter_str,
+async def _fetch_page(client, filter_str: str, page: int) -> dict:
+    """走 miaoxiang/aif10-scraper 拉一页 RPT_F10_EH_FREEHOLDERS.
+
+    保持原签名 (client/filter_str/page) 让 backend/routers/updater.py 不用改.
+    返回结构兼容老 datacenter-web shape: {"success": True, "result": {pages, count, data}}.
+
+    第一参数 client 已退役 (httpx.AsyncClient), 这里忽略, 走全局 AIF10Client.
+    """
+    aif = _get_aif10_client()
+    # AIF10Client.get_v1 是 sync, 用 to_thread 让 updater.py 仍能 await
+    loop = asyncio.get_event_loop()
+    result = await loop.run_in_executor(
+        None,
+        lambda: aif.get_v1(
+            REPORT_NAME,
+            page=page,
+            page_size=PAGE_SIZE,
+            sort_columns="UPDATE_DATE,SECURITY_CODE,HOLDER_RANK",
+            sort_types="-1,1,1",
+            filter_expr=filter_str if filter_str else None,
+        ),
+    )
+    # AIF10Client 返回 {"pages":..., "data":..., "count":...}
+    # 包装成 datacenter-web 兼容 shape, 上游 updater.py 不动.
+    return {
+        "success": True,
+        "result": {
+            "pages": result.get("pages", 0),
+            "count": result.get("count", 0),
+            "data": result.get("data", []),
+        },
     }
-    resp = await client.get(EASTMONEY_ENDPOINT, params=params)
-    resp.raise_for_status()
-    data = resp.json()
-    
-    from services.api_schemas import EastMoneyHoldingsResponse
-    from pydantic import ValidationError
-    
-    try:
-        valid_response = EastMoneyHoldingsResponse(**data)
-        if not valid_response.success:
-            if data.get("code") == 9201 or "返回数据为空" in str(valid_response.message or ""):
-                data["success"] = True
-                data["result"] = {"pages": 0, "count": 0, "data": []}
-                return data
-            raise RuntimeError(f"东财API错误: {valid_response.message or '未知'}")
-        
-        # Override the payload data with validated and cleanly parsed dicts if exists
-        if hasattr(valid_response, "result") and valid_response.result and "data" in valid_response.result:
-            if "result" in data and isinstance(data["result"], dict):
-                data["result"]["data"] = valid_response.get_data_items()
-    except ValidationError as e:
-        logger.error(f"东财API防腐层截断 - Schema验证失败: {e}")
-        raise ValueError(f"东财数据 Schema 校验失败 (防腐层阻断): {e}")
-        
-    return data
 
 
 def _upsert_batch(conn, rows: list) -> int:
