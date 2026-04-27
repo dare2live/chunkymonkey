@@ -75,24 +75,26 @@ check_port_conflict
 # 跳过: CM_SKIP_UPGRADE=1 ./start.command
 # 失败不阻塞启动 (网络问题、超时、pip 缺失都继续走)
 if [[ "${CM_SKIP_UPGRADE:-0}" != "1" ]]; then
-  echo "检查 akshare 版本（akshare 官方建议每次启动前升级；CM_SKIP_UPGRADE=1 跳过）..."
+  echo "akshare: 每次启动自动检查 + 落后版本自动升级 (临时跳过: 用 CM_SKIP_UPGRADE=1 ./start.command 启动)"
   if command -v pip3 >/dev/null 2>&1; then
     old_v="$(pip3 show akshare 2>/dev/null | awk '/^Version:/ {print $2}')"
     if pip3 install --upgrade akshare --quiet --upgrade-strategy only-if-needed --timeout 20 2>/dev/null; then
       new_v="$(pip3 show akshare 2>/dev/null | awk '/^Version:/ {print $2}')"
       if [[ -z "$old_v" ]]; then
-        echo "akshare 已安装 (${new_v:-unknown})"
+        echo "  → akshare 首次安装完成 (v${new_v:-unknown})"
       elif [[ "$old_v" != "$new_v" ]]; then
-        echo "akshare 已升级: ${old_v} → ${new_v}"
+        echo "  → akshare 已自动升级: v${old_v} → v${new_v}"
       else
-        echo "akshare 已是最新 (${new_v})"
+        echo "  → akshare 已是最新版 (v${new_v}), 无需升级"
       fi
     else
-      echo "akshare 升级失败 (网络/超时/pip 异常), 沿用现有版本 ${old_v:-unknown}"
+      echo "  → akshare 升级失败 (网络/超时/pip 异常), 沿用本地版本 v${old_v:-unknown}"
     fi
   else
-    echo "pip3 未安装, 跳过 akshare 升级检查"
+    echo "  → pip3 未安装, 跳过 akshare 自动升级"
   fi
+else
+  echo "akshare: 跳过自动升级检查 (CM_SKIP_UPGRADE=1 已设)"
 fi
 
 echo "========================================"
