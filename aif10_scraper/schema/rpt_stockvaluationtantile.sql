@@ -1,0 +1,17 @@
+-- ============================================================
+-- RPT_STOCKVALUATIONTANTILE
+-- trading/估值分位 (daily)
+-- PE/PB/PS/PEG 在 1Y/3Y/5Y/10Y 的 30/50/70 分位
+-- 样本行数: 100, 字段数: 7
+-- ============================================================
+
+CREATE TABLE IF NOT EXISTS rpt_stockvaluationtantile (
+  SECUCODE VARCHAR NOT NULL,
+  STATISTICS_CYCLE VARCHAR NOT NULL,
+  INDEX_TYPE VARCHAR NOT NULL,
+  PERCENTILE_THIRTY DOUBLE NOT NULL,
+  PERCENTILE_FIFTY DOUBLE NOT NULL,
+  PERCENTILE_SEVENTY DOUBLE NOT NULL,
+  SECURITY_CODE VARCHAR NOT NULL,
+  PRIMARY KEY (SECUCODE, STATISTICS_CYCLE, INDEX_TYPE)
+);

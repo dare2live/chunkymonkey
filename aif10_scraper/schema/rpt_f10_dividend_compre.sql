@@ -1,0 +1,18 @@
+-- ============================================================
+-- RPT_F10_DIVIDEND_COMPRE
+-- dividend/分红汇总 (按年) (yearly)
+-- 样本行数: 100, 字段数: 9
+-- ============================================================
+
+CREATE TABLE IF NOT EXISTS rpt_f10_dividend_compre (
+  SECUCODE VARCHAR NOT NULL,
+  SECURITY_CODE VARCHAR NOT NULL,
+  SECURITY_NAME_ABBR VARCHAR NOT NULL,
+  STATISTICS_YEAR VARCHAR NOT NULL,
+  TOTAL_DIVIDEND INTEGER NOT NULL,
+  SEO_NUM BIGINT NOT NULL,
+  ALLOTMENT_NUM INTEGER NOT NULL,
+  IPO_NUM INTEGER NOT NULL,
+  TOTAL_DIVIDEND_HYA DOUBLE NOT NULL,
+  PRIMARY KEY (SECUCODE, STATISTICS_YEAR)
+);

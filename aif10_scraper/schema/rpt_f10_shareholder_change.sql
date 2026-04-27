@@ -1,0 +1,25 @@
+-- ============================================================
+-- RPT_F10_SHAREHOLDER_CHANGE
+-- shareholder/十大股东持股变动 (季度差分) (quarterly)
+-- 样本行数: 100, 字段数: 14
+-- ============================================================
+
+CREATE TABLE IF NOT EXISTS rpt_f10_shareholder_change (
+  SECUCODE VARCHAR NOT NULL,
+  END_DATE TIMESTAMP NOT NULL,
+  HOLDER_RANK INTEGER NOT NULL,
+  HOLDER_NEW VARCHAR NOT NULL,
+  SHARES_TYPE VARCHAR NOT NULL,
+  HOLD_NUM BIGINT NOT NULL,
+  HOLD_NUM_RATIO DOUBLE NOT NULL,
+  HOLD_CHANGE VARCHAR NOT NULL,
+  CHANGE_RATIO DOUBLE NOT NULL,
+  CHANGE_REASON VARCHAR NOT NULL,
+  ORG_CODE VARCHAR NOT NULL,
+  SECURITY_CODE VARCHAR NOT NULL,
+  HOLDER_NAME VARCHAR NOT NULL,
+  HOLDER_CODE VARCHAR,
+  PRIMARY KEY (SECUCODE, END_DATE, HOLDER_RANK)
+);
+
+CREATE INDEX IF NOT EXISTS idx_rpt_f10_shareholder_change_end_date ON rpt_f10_shareholder_change(END_DATE);

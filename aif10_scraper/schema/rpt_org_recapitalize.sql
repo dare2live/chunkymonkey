@@ -1,0 +1,23 @@
+-- ============================================================
+-- RPT_ORG_RECAPITALIZE
+-- profile/资本运作 (重大重组) (event)
+-- 样本行数: 100, 字段数: 12
+-- ============================================================
+
+CREATE TABLE IF NOT EXISTS rpt_org_recapitalize (
+  SECURITY_CODE VARCHAR NOT NULL,
+  SECUCODE VARCHAR NOT NULL,
+  SECURITY_NAME_ABBR VARCHAR NOT NULL,
+  NOTICE_DATE TIMESTAMP NOT NULL,
+  RECAPITALIZE_PROFILE VARCHAR NOT NULL,
+  NEWEST_RECAPITALIZE_PROCESS VARCHAR NOT NULL,
+  SECURITY_INNER_CODE VARCHAR NOT NULL,
+  RECAPITALIZE_CODE VARCHAR,
+  UPDATE_DATE TIMESTAMP NOT NULL,
+  TRANSFER_WAY VARCHAR,
+  TARGET VARCHAR,
+  INFO_CODE VARCHAR,
+  PRIMARY KEY (SECUCODE, NOTICE_DATE)
+);
+
+CREATE INDEX IF NOT EXISTS idx_rpt_org_recapitalize_notice_date ON rpt_org_recapitalize(NOTICE_DATE);

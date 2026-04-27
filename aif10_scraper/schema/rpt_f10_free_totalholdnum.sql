@@ -1,0 +1,23 @@
+-- ============================================================
+-- RPT_F10_FREE_TOTALHOLDNUM
+-- shareholder/流通股东合计 (quarterly)
+-- 样本行数: 100, 字段数: 12
+-- ============================================================
+
+CREATE TABLE IF NOT EXISTS rpt_f10_free_totalholdnum (
+  ORG_CODE VARCHAR NOT NULL,
+  SECUCODE VARCHAR NOT NULL,
+  SECURITY_CODE VARCHAR NOT NULL,
+  END_DATE TIMESTAMP NOT NULL,
+  HOLD_NUM_COUNT BIGINT NOT NULL,
+  HOLD_RATIO_COUNT DOUBLE NOT NULL,
+  HOLD_RATIO_CHANGE DOUBLE NOT NULL,
+  LIMITED_SHARES BIGINT,
+  OTHER_UNLIMITED_SHARES BIGINT NOT NULL,
+  HOLD_NUM_RATIO DOUBLE NOT NULL,
+  LIMITED_SHARES_RATIO DOUBLE,
+  UNLIMITED_SHARES_RATIO DOUBLE NOT NULL,
+  PRIMARY KEY (SECUCODE, END_DATE)
+);
+
+CREATE INDEX IF NOT EXISTS idx_rpt_f10_free_totalholdnum_end_date ON rpt_f10_free_totalholdnum(END_DATE);
