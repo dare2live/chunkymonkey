@@ -49,6 +49,20 @@ If no type-checker is configured, state that explicitly instead of claiming succ
 
 数据分层：raw（只追加）→ dim（维度）→ fact（事实）→ mart（集市，可重算）
 
+## 三项目布局 (2026-04-27 起)
+
+`/Users/dp/Documents/M/stock/` 下三个并列项目，**各自独立 git**：
+
+| 路径 | GitHub | 角色 |
+|---|---|---|
+| `chunky-monkey-v2/` | dare2live/chunky-monkey-v2 (private) | **本项目** — 业务层 / UI / 评分 / 集市 |
+| `tdxhub/` | dare2live/tdxhub (private) | **数据源** — 通达信接口 (pytdx/mootdx 改造) + akshare 文档索引 + tdx 公式参考 |
+| `miaoxiang/` | dare2live/aif10-scraper (private) | **数据源** — 东方财富妙想 F10 解析 (72 reportName + 自动 DDL) |
+
+本项目只在 `chunky-monkey-v2/` 子目录里干活. tdxhub 和 miaoxiang 是**外部数据源**, 通过 pip install (远期发包) 或本地 pip install -e (现在) 引入. 不要在本项目里复制它们的代码.
+
+数据源优先级: tdxhub (主) > miaoxiang/妙想 (tdxhub 不覆盖时) > akshare (兜底). 详细方案见 [docs/architecture-redesign-2026-04.md](docs/architecture-redesign-2026-04.md).
+
 ## 反模式清单
 
 1. **不删旧代码就写新代码** — 新功能替代旧功能时必须删除旧代码
