@@ -1,790 +1,526 @@
-# 资金流接入专题讨论
+# 妙想 F10 数据源接入专题
 
-**起始**: 2026-04-26
-**作者**: Claude / Codex / 用户
-**目标**: 把主力资金流历史数据接入 `raw_fund_flow_daily`, 至少 250 个交易日, 让 base_43 主轨能加 `fund_flow_5d/20d` 横截面 rank 维度
+**起始**: 2026-04-27
+**作者**: 用户 + Claude
+**目标**: 把妙想 F10 (`aif10` / `datacenter.eastmoney.com/securities`) 接入项目, **专门替代 akshare 中 tdxhub 不能覆盖的部分** + **补充项目空白维度**. 范围严格限定在 akshare 替代, 不与 tdxhub 重叠.
 
----
-
-## 1. 当前事实底稿
-
-### 1.1 库内现状 (实测 2026-04-26 15:50)
-
-```sql
-SELECT COUNT(*), COUNT(DISTINCT trade_date), MIN(trade_date), MAX(trade_date)
-FROM raw_fund_flow_daily;
--- rows=5496 / days=1 / range 2026-04-24 ~ 2026-04-24
--- source=eastmoney_push2delay_latest
-```
-
-只有 1 天 (2026-04-24) × 5496 票, 全部来自 push2delay fallback. 完全不够算 5d/20d rank.
-
-### 1.2 网络解析 (用户机器, 2026-04-26 15:50)
-
-```
-push2his.eastmoney.com    → 198.18.1.51    HTTPS RemoteDisconnected
-push2.eastmoney.com       → 198.18.2.234   未测
-push2delay.eastmoney.com  → 198.18.4.78    HTTPS 200 OK (但接口只返回 1 行)
-hq.sinajs.cn              → 198.18.4.76    未测
-```
-
-198.18.x.x 是 Surge 的 fake-ip 网段 (RFC 6815 测试段). 不是真实 IP, 由 Surge 接管 OS 路由后内部 NAT 到真实节点.
-
-### 1.3 用户代理软件
-
-**Surge** (不是 ClashX). Surge 4+ 版本支持 fake-ip + 规则集路由.
+> 设计原则 (用户 2026-04-27 三次澄清):
+>
+> 1. **tdxhub 是最稳定的数据源, 不动** (K 线 / 财务 gpcw / 行业 / 板块 / 实时行情)
+> 2. **妙想 F10 主要是为了替换 akshare**, 不是替换 tdxhub
+> 3. **综合考虑的是 tdxhub 未覆盖的部分**
+> 4. **加工好的数据可以直接用**, 不必从原始数据建模
+> 5. **样本量足够支撑统计结论 + 影响股价**, 不堆砌
+> 6. **十大"流通"股东**, 不是十大股东 (流通股口径才有交易意义)
+>
+> **本专题与"东财 skill"工程整体设计是两回事**:
+> - 本专题: 单一数据源 (妙想 F10) 的接入选型与字段映射
+> - 东财 skill: 更大的工程概念 (含 datacenter-web Phase 1 / aif10 Phase 2 / 客户端 SDK 设计) — 后续单独讨论
 
 ---
 
-## 2. 用户的核心疑问: "akshare 咋就拿不到资金流呢?"
+## 1. 三层数据源定位
 
-### 2.1 关键事实 — akshare 不是数据源
-
-akshare 是 **Python HTTP wrapper**, 不是独立数据源. `ak.stock_individual_fund_flow(stock='600519', market='sh')` 内部就是 `requests.get('https://push2his.eastmoney.com/api/qt/stock/fflow/daykline/get', params={...})`.
-
-所以:
-
-```
-"akshare 拿不到资金流"
-   ↕ 等价
-"push2his.eastmoney.com 这个域名在你机器上连不通"
-   ↕ 等价
-"Surge 把 push2his.eastmoney.com 路由到了一个不可用的策略/节点"
-```
-
-把 akshare 当作"独立数据源"是常见误解 — 它只是把多个网页接口封装成 Python 函数, 数据本质还是 eastmoney/sina/tushare 的 HTTP 端点.
-
-### 2.2 实测验证 (用 trust_env=False 绕系统代理 env, 但走系统路由)
-
-| 域名 | 状态 | 行数 | 说明 |
+| 层 | 数据源 | 角色 | 行动 |
 |---|---|---|---|
-| `push2delay.eastmoney.com` | 200 OK | 1 行 | 接口设计上只给最新交易日 |
-| `push2his.eastmoney.com` | RemoteDisconnected | — | Surge 把它路由到了挂掉的代理或 Reject |
+| 1. 行情 / 板块 / 财务原始 | **tdxhub (mootdx)** | **最稳定, 主用** | 不动 |
+| 2. 公司面 / 估值 / 评级 / 事件 | **妙想 F10** (本专题) | **替代 akshare** | Phase 2.5 接入 |
+| 3. 临时备用 | akshare | 现存 15 个调用, 逐步退役 | 按本专题排期切换 |
 
-`push2delay` 通 = Surge fake-ip → 真实 IP 转换机制正常.
-`push2his` 不通 = 这个具体域名匹配到了不同的策略, 走了挂掉的节点.
+### 1.1 tdxhub 当前覆盖范围 (代码扫描确认)
 
-### 2.3 为什么 trust_env=False 不能解决?
+| 数据 | 实现位置 | 状态 |
+|---|---|---|
+| 日 K / 月 K | `services/kline_source.py` (mootdx.Quotes) | ✅ 主用 |
+| 通达信行业 `tdxhy.cfg` | `services/tdx_industry_client.py` | ✅ 主用 |
+| 财务 gpcw 季度文件 | `scripts/build_fundamental_quarterly.py` (mootdx.Affair) | ✅ 主用 |
+| 板块文件 | `services/block_client.py` | ✅ 主用 |
+| 除权除息 + 股本变动 | `services/xdxr_client.py` | ✅ 主用 |
+| 实时行情快照 | mootdx.Quotes 实时 | ✅ 主用 |
 
-`requests.Session(trust_env=False)` 只让 requests 不读 `HTTP_PROXY/HTTPS_PROXY` 环境变量, **不影响 OS 层路由**. Surge 在系统层接管所有 TCP 流量, fake-ip 是 OS-level NAT, 跟 Python 进程是否走代理 env 无关.
+**tdxhub 不覆盖** (是 akshare / 妙想 F10 的领域):
+- 公司面: 评级 / 一致预期 / 估值分位
+- 事件: 高管增减持 / 限售解禁 / 分红明细 / 股票回购 / 停复牌
+- 横截面: 同行 PE/PEG/EPS rank
+- 监管层: 两融每日明细
+- 股东: 户数变化 / 流通股东季度差分 / 机构持仓 ORG_TYPE 分桶
 
-唯一解决路径: **改 Surge 的规则集**, 让 `push2his.eastmoney.com` 走真实 DNS + DIRECT.
+### 1.2 当前 akshare 调用清单 + 替代决策
+
+代码扫描全部 akshare 函数 (`grep "ak\."`), 共 15 个不同函数:
+
+#### 类别 A — 行情 K 线类 (tdxhub 已覆盖, 不必动)
+
+| akshare 函数 | 用途 | 决策 |
+|---|---|---|
+| `ak.stock_zh_a_hist` | A 股日 K | tdxhub 已覆盖, akshare 仅作 fallback (`kline_source.py`), 保留 |
+| `ak.stock_zh_a_daily` | A 股日 K (旧) | 同上 |
+| `ak.stock_zh_a_hist_tx` | A 股 K 线 (TX 源) | 同上 |
+| `ak.fund_etf_spot_ths` | ETF 行情 (同花顺源) | ETF 业务模块用, 妙想 F10 不覆盖 ETF, 保留 |
+
+#### 类别 B — 妙想 F10 替代 (tdxhub 不覆盖, 当前走 akshare)
+
+| akshare 函数 | 当前位置 | 用途 | 妙想 F10 替代 reportName |
+|---|---|---|---|
+| `ak.stock_tfp_em` | `services/audit.py:298` | 停复牌 | `RPT_F10_REMIND_TRADESUSPEND` (待确认) |
+| `ak.stock_margin_detail_sse` | `services/margin_client.py:104` | 上交所两融明细 | `RPT_MARGIN_STATISTICS_STOCKS` (含沪深) |
+| `ak.stock_margin_detail_szse` | `services/margin_client.py:109` | 深交所两融明细 | 同上 |
+| `ak.stock_repurchase_em` | `services/capital_client.py:268` | 股票回购 | `RPT_F10_REPURCHASE` (待确认) |
+| `ak.stock_history_dividend` | `services/capital_client.py:263` | 历年分红送转汇总 | `RPT_F10_DIVIDEND_COMPRE` / `RPT_F10_DIVIDEND_3YEAR` |
+| `ak.stock_history_dividend_detail` | `services/capital_client.py:278` | 分红明细 | `RPT_F10_DIVIDEND_MAIN` |
+| `ak.stock_restricted_release_detail_em` | `services/capital_client.py:273` | 限售解禁 | `RPTA_APP_LIFTFUTURE` |
+| `ak.stock_financial_abstract` | `services/financial_indicator_client.py:181` | 扩展财务指标 | `RPT_PCF10_FINANCEMAINFINADATA` + `RPT_F10_FINANCE_DUPONT` |
+| `ak.stock_ggcg_em` | `scripts/build_executive_trade_events.py` | 高管增减持 | `RPT_EXECUTIVE_HOLD_DETAILS` / `RPT_F10_TRADE_EXCHANGEHOLD` |
+| `ak.stock_info_a_code_name` | `services/security_master.py:80` | A 股代码列表 | (mootdx 优先 / aif10 兜底) |
+
+#### 类别 C — 替代源待评估
+
+| akshare 函数 | 用途 | 评估 |
+|---|---|---|
+| `ak.tool_trade_date_hist_sina` | 交易日历 | 妙想 F10 没单独 endpoint, 项目 `dim_trading_calendar` 表已存, 保留 akshare 或迁 tdxhub |
+
+### 1.3 项目当前空白 (妙想 F10 补充, 非替代)
+
+下列维度项目当前**完全没有**, 妙想 F10 能直接拿到加工好的数据:
+
+| 维度 | reportName | 价值 |
+|---|---|---|
+| 估值分位 | `RPT_STOCKVALUATIONTANTILE` | PE/PB 在自身历史 30/50/70 分位 |
+| 卖方一致预期 | `RPT_HSF10_RES_ORGRATING` + `RES_PREDICT_STATISTICS` | 综合评级 + 各档家数 + 多年度 EPS 均值 |
+| 股东人数变化 | `RPT_F10_EH_HOLDERNUM` | 户数 / 集中度 / 人均流通股 |
+| 同行排名 | `RPT_PCF10_INDUSTRY_CVALUE` + `INDUSTRY_GROWTH` | 行业内 PE/PEG/EPS增长 RANK |
+| 机构持仓 ORG_TYPE 分桶 | `RPT_F10_MAIN_ORGHOLDDETAILS` | 基金/QFII/社保/券商/保险/信托 全维度 |
+| 主营构成 | `RPT_F10_FN_MAINOP` | 业务结构变化 (行业/产品/地区) |
+
+### 1.4 已有工程基础
+
+- **Phase 1** (commit `e74122f1`): `backend/services/eastmoney_skill/` BaseClient + datacenter-web RPC, 替代 akshare 4 处 (调研/龙虎榜/QFII/资金流底层)
+- **Phase 2** (commit `a1d473fb`): `aif10.py` 通用 RPC + 5 个 endpoint smoke test (全过). 完整 spec 见 [docs/eastmoney-aif10-spec.md](eastmoney-aif10-spec.md)
 
 ---
 
-## 3. Surge 诊断与修复方案
-
-### 3.1 Step 1: 看 Surge 实时活动确定路由路径
+## 2. 接口签名 (妙想 F10)
 
 ```
-Surge 控制台 → 实时活动 → 搜索 "push2his"
-或
-Surge 仪表板 → 网络活动 → 过滤 eastmoney
+GET https://datacenter.eastmoney.com/securities/api/data/v1/get
+    ?reportName=<逻辑表名>
+    &filter=(SECUCODE="600519.SH")(...)
+    &columns=ALL
+    &pageNumber=1&pageSize=N
+    &sortTypes=-1&sortColumns=REPORT_DATE
+    &source=HSF10&client=PC
 ```
 
-期望看到的关键字段:
-- **规则**: 命中了哪条 (DOMAIN-SUFFIX / GEOIP / FINAL / RULE-SET)
-- **策略**: 走的策略组 (DIRECT / Proxy_HK / Reject)
-- **节点**: 实际代理节点
-- **状态**: 连接是否成功, 失败原因
+主键: `SECUCODE` = 6 位 + `.SH/.SZ/.BJ/.HK`. Referer 必须 `emweb.eastmoney.com`. 单 IP ≤ 2 QPS.
 
-如果 `push2his` 被路由到一个挂掉的代理节点 → 改成 DIRECT
-如果被 REJECT/REJECT-DROP 拦截 → 移除拦截
-如果命中 GEOIP CN/Final → 加显式直连规则
-
-### 3.2 Step 2: 查 Surge 配置文件
-
-Surge 配置通常在:
-
-```
-~/Library/Application Support/Surge/Profiles/<profile>.conf
-```
-
-或 GUI 里"配置文件 → 编辑当前配置". grep `eastmoney` 看现有规则:
-
-```bash
-grep -i "eastmoney\|sinajs" ~/Library/Application\ Support/Surge/Profiles/*.conf
-```
-
-大概率没有显式规则, 而是被一条泛规则 (Final / GEOIP CN / 某个 RULE-SET) 路由错了.
-
-### 3.3 Step 3: 加显式直连规则
-
-在 Surge config 的 `[Rule]` 段顶部加 (顶部优先级最高):
-
-```
-# 资金流数据源, 强制直连
-DOMAIN-SUFFIX,eastmoney.com,DIRECT
-DOMAIN-SUFFIX,sinajs.cn,DIRECT
-```
-
-如果使用 fake-ip 模式, `[General]` 段加白名单防止 fake-ip 接管:
-
-```
-[General]
-fake-ip-filter = *.eastmoney.com, *.sinajs.cn, ...其他原有...
-```
-
-如果想让这两个域名直接走系统 DNS (不参与 Surge DNS 解析), `[Host]` 段:
-
-```
-*.eastmoney.com = system
-*.sinajs.cn = system
-```
-
-任选一种或组合使用. 最稳妥是三个都加.
-
-### 3.4 Step 4: 重启 Surge 后验证
-
-```bash
-# 1. DNS 应解析到真实 IP, 不是 198.18.x.x
-python3 -c "import socket; print(socket.gethostbyname('push2his.eastmoney.com'))"
-# 期望: 真实公网 IP (eastmoney 的 CDN 一般在 60.205.x.x / 39.106.x.x / 122.51.x.x 等)
-
-# 2. push2his 应返回历史数据
-python3 <<'PY'
-import requests
-s = requests.Session(); s.trust_env=False
-r = s.get('https://push2his.eastmoney.com/api/qt/stock/fflow/daykline/get',
-         params={'secid':'1.600519','klt':'101','fqt':'1','lmt':'10',
-                 'fields1':'f1,f2,f3,f7',
-                 'fields2':'f51,f52,f53,f54,f55,f56,f57,f58,f59,f60,f61,f62,f63,f64,f65'},
-         headers={'User-Agent':'Mozilla/5.0','Referer':'https://data.eastmoney.com/zjlx/detail.html'},
-         timeout=15)
-print('status:', r.status_code)
-print('行数:', len(r.json().get('data', {}).get('klines', [])))
-print('首行:', r.json().get('data', {}).get('klines', [''])[0][:80])
-PY
-# 期望: status=200, 行数=10, 首行包含日期+净流入字段
-
-# 3. akshare 端到端测试
-python3 -c "
-import akshare as ak
-df = ak.stock_individual_fund_flow(stock='600519', market='sh')
-print(df.shape)
-print(df.head(3))
-print('日期范围:', df['日期'].min(), '~', df['日期'].max())
-"
-# 期望: shape ~ (200-250, 14), 日期范围覆盖 ~250 个交易日
-```
+完整 16 模块 reportName 映射 + ORG_TYPE 枚举 + 各模块字段表见 [docs/eastmoney-aif10-spec.md](eastmoney-aif10-spec.md). 本文档只讨论**对项目有价值的子集**.
 
 ---
 
-## 4. 修复成功后的落地
+## 3. 项目准备使用的字段 + alpha 假设
 
-### 4.1 全量回填
+按"对股价影响 × 样本量 × 加工程度"三维度排. 每个指标都附 **alpha 假设** (为什么会影响价格), 否则不入模.
 
-```bash
-cd /Users/dp/Documents/M/stock/backend
-# auto 模式: 优先 push2his 历史接口, 失败 fallback 到 push2delay 当日
-python3 -m scripts.fetch_fund_flow_daily --source auto --rate-limit 0.3
-```
+### 3.1 P0 — 立即入信号层 (高频更新, 影响价格)
 
-预估: 5507 票 × 0.3s sleep + retry ≈ **30-50 分钟**, 落库 ~138 万行.
+#### A. 估值分位 (`RPT_STOCKVALUATIONTANTILE`)
 
-### 4.2 数据验证 SQL
+**alpha 假设**: 个股 PE/PB 在自身历史 30 分位以下 → 估值修复概率高; 70 分位以上 → 均值回归压力. 这是 ready-to-use 横截面信号.
 
-```sql
--- 覆盖天数
-SELECT COUNT(DISTINCT trade_date) AS days,
-       MIN(trade_date) AS start, MAX(trade_date) AS end
-FROM raw_fund_flow_daily
-WHERE source LIKE '%push2his%' OR source LIKE 'akshare%';
--- 期望: days >= 200, start <= 2025-06
+**字段**:
+| 字段 | 含义 | 用法 |
+|---|---|---|
+| STATISTICS_CYCLE | 周期 (1/2/3/4 = 1Y/3Y/5Y/10Y) | 用 4 (10Y) 最稳 |
+| INDEX_TYPE | 指标 (1=PE / 2=PB / 3=PS / 4=PEG / ...) | 取 PE+PB |
+| PERCENTILE_THIRTY / FIFTY / SEVENTY | 30/50/70 分位值 | 当前值 vs 这三档判位 |
 
--- 票覆盖
-SELECT COUNT(DISTINCT stock_code), COUNT(*) AS rows
-FROM raw_fund_flow_daily;
--- 期望: stocks >= 5400, rows >= 100 万
+**入模方式**:
+- 衍生特征 `pe_pos_10y`: 当前 PE 在 10Y 历史中的分位 (从分位反算)
+- 衍生特征 `pb_pos_10y`: 同上 PB
+- 当前值需从 `RPT_PCF10_FINANCEMAINFINADATA` 取 PE/PB 实时
 
--- 字段完整性 spot check
-SELECT
-    SUM(CASE WHEN main_net_amount IS NULL THEN 1 ELSE 0 END) AS null_main,
-    SUM(CASE WHEN super_large_net_pct IS NULL THEN 1 ELSE 0 END) AS null_super,
-    SUM(CASE WHEN small_net_pct IS NULL THEN 1 ELSE 0 END) AS null_small
-FROM raw_fund_flow_daily;
--- 期望: 全部 < rows 的 1%
-```
+**频率**: 日级 (每日盘后)
+**样本量**: 全市场 5500 票 × 每天一行 = 充足
 
-### 4.3 入模时机 (Codex §4.21 决策保留)
+#### B. 一致预期 (`RPT_HSF10_RES_ORGRATING` + `RPT_HSF10_RESPREDICT_STATISTICS`)
 
-拿到 250 天数据后**仍不立即入模**, 先做:
+**alpha 假设**: 卖方一致评级是机构集体观点, 上调评级 / 上修预测 EPS 是经典短期 alpha (PEAD-like 效应).
 
-1. **Coverage profile**: 每个交易日票覆盖率, 期望 > 95%
-2. **Quality profile**: main_net_amount 分布、异常值检测、与日 K 涨跌幅相关性
-3. **横截面特征实验**: `fund_flow_5d_rank` / `fund_flow_20d_rank` 加进 base_43 训练, 看 RankIC 是否提升 > 0.005
-4. **不通过红线就不入模**, 维持现状
+**字段** (`RPT_HSF10_RES_ORGRATING`):
+| 字段 | 含义 |
+|---|---|
+| RATING_RECENT_*M | 1/2/3/6/12 月窗口下评级系数 |
+| RATING_FACTOR | 综合评级 (1-5, 1=买入) |
+| BUY_NUM / OVERWEIGHT_NUM / NEUTRAL_NUM / UNDERWEIGHT_NUM / SELL_NUM | 各档家数 |
+
+**字段** (`RPT_HSF10_RESPREDICT_STATISTICS`):
+| 字段 | 含义 |
+|---|---|
+| EPS_AVG / EPS_GROWTH | 25A/26E/27E 各年度 EPS 均值 + 增速 |
+| PE_AVG | 对应 PE 均值 |
+
+**入模方式**:
+- 信号 `analyst_rating_score`: 综合评级 1-5 (1 最强), 直接 z-score
+- 信号 `eps_revision_30d`: 30 天内 EPS_AVG 变化率 (需累积入库才能算)
+- 信号 `analyst_consensus_strength`: 买入家数 / 总家数 (覆盖度 + 强度)
+
+**频率**: 周级 (机构发研报后才更新)
+**样本量**: 主流 A 股都有覆盖 (~3000-4000 只), 小盘股可能缺
+
+#### C. 股东人数变化 (`RPT_F10_EH_HOLDERNUM`)
+
+**alpha 假设**: 户数减少 = 筹码集中度上升 = 主力建仓信号 (经典中长期 alpha). 散户出货被大户接盘.
+
+**字段**:
+| 字段 | 含义 |
+|---|---|
+| HOLDER_NUM | 当前户数 |
+| HOLDER_NUM_RATIO | 期间变化率 |
+| AVG_FREESHARES | 人均流通股 |
+| AVG_HOLD_AMT | 人均持金 |
+| TOP10_HOLD_RATIO / TOP10_FREE_HOLD_RATIO | 前 10 大 / 前 10 流通合计占比 (集中度) |
+
+**入模方式**:
+- 信号 `holder_num_change_pct`: 季度环比变化率, 负数越大 = 越集中
+- 信号 `top10_concentration`: TOP10 合计 %, 直接当横截面 rank
+- 衍生 `holder_concentration_trend`: 4 季度滚动 holder_num_ratio 平均
+
+**频率**: 季度 (披露驱动)
+**样本量**: 全市场 5500 票 × 每季度一行 ≈ 22000 季观测
+
+#### D. 十大流通股东 (`RPT_F10_EH_FREEHOLDERS`)
+
+**alpha 假设**: 流通股东变动 (新进/增持) 是机构持仓变化的强信号. 与项目当前 `market_raw_holdings` 互补 (datacenter-web 已经在用).
+
+**用户明确**: 项目要的是**流通股东**, 不是全部股东. (流通股口径才有交易意义).
+
+**字段**:
+| 字段 | 含义 |
+|---|---|
+| HOLDER_RANK | 排名 1-10 |
+| HOLDER_NAME | 股东名称 |
+| HOLDER_NEWTYPE | 类型 (基金/QFII/社保/...) |
+| HOLD_NUM | 持股数 |
+| HOLD_NUM_CHANGE | 变化数 |
+| HOLDNUM_CHANGE_NAME | 变化原因 (新进/增加/减少/不变) |
+| HOLDER_MARKET_CAP | 市值 |
+| FREE_HOLD_RATIO | 占流通比 |
+
+**入模方式**:
+- 已有 (Phase 1): `market_raw_holdings.report_date` 季度更新, `fact_institution_event` 派生事件
+- 妙想补充: `RPT_F10_SHAREHOLDER_CHANGE` 直接给 **季度差分**, 比项目自己用 SQL 算更准
+
+**频率**: 季度
+**样本量**: 充足
+
+#### E. 同行估值排名 (`RPT_PCF10_INDUSTRY_CVALUE` + `RPT_PCF10_INDUSTRY_GROWTH`)
+
+**alpha 假设**: 行业内 PE/PEG 低分位 + EPS 增速高分位 = 经典 GARP 选股. 已经是 ready-to-use 排序.
+
+**字段** (CVALUE 估值):
+| 字段 | 含义 |
+|---|---|
+| PEG / PE_25A / PE_TTM / PE_26E~28E / PS | 多年度 PE / PEG / PS |
+| INDUSTRY_AVG / INDUSTRY_MEDIAN | 行业平均 / 中值 |
+| RANK | 行业内排名 |
+
+**字段** (GROWTH):
+| 字段 | 含义 |
+|---|---|
+| EPS_GROWTH_3Y / EPS_GROWTH_25A / EPS_GROWTH_TTM | EPS 多年增速 |
+| OR_GROWTH_3Y / OR_GROWTH_25A / OR_GROWTH_TTM | 营收多年增速 |
+| INDUSTRY_AVG / RANK | 同行对比 |
+
+**入模方式**:
+- 信号 `peer_pe_rank_pct`: PE 在行业内分位 (越低越好)
+- 信号 `peer_eps_growth_rank_pct`: EPS 增速分位 (越高越好)
+- 综合信号 `peer_garp_score = peer_pe_rank_pct - peer_eps_growth_rank_pct` (低 PE 高增长)
+
+**频率**: 季度
+**样本量**: 5500 票 × 每季 = 充足
+
+### 3.2 P1 — 替代/补充现有数据
+
+#### F. 机构持仓概览 (`RPT_F10_MAIN_ORGHOLDDETAILS`)
+
+**alpha 假设**: 不只跟 QFII (项目当前), 基金/社保/券商/保险全维度对比 → 形成"机构抱团度"指标.
+
+**关键字段**:
+- `ORG_TYPE`: 01 基金 / 02 QFII / 03 社保 / 04 券商 / 05 保险 / 06 信托
+- 每个 type 下的: `ORG_NUM` (家数), `TOTAL_HOLD` (合计股数), `FREE_HOLD_RATIO` (占流通%)
+
+**入模方式**:
+- 信号 `inst_holding_breadth`: 持有该股的机构家数总和 (跨类型)
+- 信号 `inst_diversity`: 多少种类型机构持有 (1-6 取值)
+- 项目当前只跟 QFII, 这里补充 5 种新维度
+
+**频率**: 季度
+**注**: 项目当前 `inst_holdings` 表是个股级别的"具体持仓 holder", 这里 `RPT_F10_MAIN_ORGHOLDDETAILS` 是"按机构类型聚合", 互补.
+
+#### G. 主营构成 (`RPT_F10_FN_MAINOP`)
+
+**alpha 假设**: 业务结构变化 (新业务比例上升 / 传统业务下降) 是中长期价值重估信号.
+
+**字段**: `MAINOP_TYPE` (1=行业 / 2=产品 / 3=地区), `ITEM_NAME`, `MAIN_BUSINESS_INCOME`, `RATIO`, `MAIN_BUSINESS_RATIO`, `GROSS_RATE`.
+
+**入模方式**:
+- 衍生特征 `main_business_concentration`: 最大主营业务收入占比 (高度集中 vs 多元化)
+- 衍生特征 `business_diversification_change_yoy`: 主营结构 HHI 同比变化
+- 这两个特征在小盘成长股切换时强 (扩品类 / 进入新赛道)
+
+**频率**: 半年报 + 年报
+**样本量**: 季度披露, 但只在年报/中报详细
+
+#### H. 限售解禁 (`RPTA_APP_LIFTFUTURE`)
+
+**alpha 假设**: 解禁日临近 → 短期股价压力 (供给冲击). 项目 `capital_client` 已有部分但口径需对齐.
+
+**字段**: `LIFT_DATE`, `LIFT_AMT`, `RATIO_PCT_TOTAL`, `RATIO_PCT_FREE`, `LIFT_TYPE` (首发/定增/股权激励).
+
+**入模方式**:
+- 衍生特征 `days_to_unlock`: 距下次解禁天数 (越近压力越大)
+- 衍生特征 `unlock_pct_total_30d`: 未来 30 天累计解禁占总股本%
+
+**频率**: 月级 (公告驱动)
+
+### 3.3 P2 — 事件驱动 (低频但精准)
+
+#### I. 高管持股变动 (`RPT_EXECUTIVE_HOLD_DETAILS` + `RPT_F10_TRADE_EXCHANGEHOLD`)
+
+**alpha 假设**: 高管 / 董事会成员增持 = 强买入信号 (insider conviction); 减持 = 卖出信号. 项目 `build_executive_trade_events` 有部分覆盖.
+
+**字段**: `CHANGE_DATE`, `CHANGE_PERSON`, `RELATION`, `CHANGE_NUM`, `AVG_PRICE`, `CHANGE_REASON`, `POSITION` (董事/独董/总经理/...).
+
+**入模方式**:
+- 事件信号 `insider_buy_30d`: 30 天内高管净买入金额
+- 事件信号 `insider_buy_breadth`: 30 天内净买入的高管人数
+- 比较项目当前 `executive_trade_events` 字段口径, 决定是否替换 / 补充
+
+**频率**: 公告驱动 (3 天内披露)
+
+#### J. 大事提醒 (`RPT_F10_REMIND_RELATIONSHIP`)
+
+**alpha 假设**: 公告事件聚合 (重组 / 业绩预告 / 业绩快报) 触发短期波动.
+
+**入模方式**: 不直接入模, 作为审计字段标记股票"近期事件密度", 在排序后给用户/模型看.
+
+**注**: 已被项目 `event_engine` 部分覆盖 (机构事件), 这里是"全公司事件" 互补.
+
+### 3.4 不接入 (用户原话: 不堆砌)
+
+| 模块 | 不入原因 |
+|---|---|
+| 财务三大表全字段 | mootdx gpcw 已结构化, 重复 |
+| 公告全文 / 经营评述 | NLP, 当前阶段不入主轨 |
+| 公司基本资料 / 高管简历 | 缓变, 不影响股价 |
+| 大宗交易个股纵向 | 已有横向 lhb_client |
+| 资本运作 / 募集资金 | 低频, 不形成 alpha |
+| 同概念 / 同地域排名 | 项目已有行业关联表 |
+| 核心题材 (概念) | NLP, 不可量化 |
+| 研究报告全文 | NLP |
 
 ---
 
-## 5. 备选方案 (路线 A 失败时启动)
+## 4. 字段标准化与建模思路
 
-### 5.1 (作废: Tushare Pro 路线 已弃)
+### 4.1 三类数据的入库与建模模式
 
-2026-04-27 用户决定: **不使用 Tushare**, 删除全部 Tushare 流程与脚手架. 备选方向改为东财官方接口 (妙想 F10 / 东财 Choice / 东财 skill 自封装) — 详见 §8.
+**(a) 时序快照型** — 估值分位 / 一致预期 / 户数 / 主营构成
 
-### 5.2 路线 D: 接受现状
+模式:
+- 表: `mart_stock_<dim>_snapshot(stock_code, snapshot_date, ...)`
+- 主键: `(stock_code, snapshot_date)`
+- 入库: 每周/每季快照, 不覆盖
+- 建模: 取 `snapshot_date <= signal_date` 的最新值, lag 1 天避未来函数
 
-- 主轨 `base_43` +22pp/fold 不依赖资金流
-- M8.9 daily 自动累积每天 +1 行/票
-- 60 个交易日后 (~2026-07) 重新评估
-- 优势: 0 工程, 0 成本
-- 劣势: 缺横截面分钟级资金流信号, alpha 上限受限
+**(b) 横截面排名型** — 同行 PE rank / 同行 EPS 增长 rank / 集中度
+
+模式:
+- 表: `mart_stock_peer_rank(stock_code, snapshot_date, dim, value, rank_pct)`
+- 入库: 每月计算一次 (慢变)
+- 建模: 直接当 feature, 不需衍生
+
+**(c) 事件型** — 解禁 / 高管增持 / 公告大事
+
+模式:
+- 表: `raw_<event>_events(stock_code, event_date, event_type, value)`
+- 主键: `(stock_code, event_date, event_type)`
+- 入库: 公告日写入, 不覆盖
+- 建模: rolling 窗口聚合 (近 30/60 日累计)
+
+### 4.2 与项目现有 fact_feature_panel 集成
+
+`fact_feature_panel` 已是横截面特征矩阵, 新增列名约定:
+- `em_pe_pos_10y` / `em_pb_pos_10y` (估值分位)
+- `em_analyst_score` / `em_eps_revision_30d` (一致预期)
+- `em_holder_num_chg_q` / `em_top10_concentration` (集中度)
+- `em_peer_pe_rank` / `em_peer_eps_growth_rank` (同行)
+- `em_inst_breadth` / `em_inst_diversity` (机构持仓)
+- `em_main_biz_concentration` (主营构成)
+- `em_days_to_unlock` / `em_unlock_pct_30d` (解禁)
+- `em_insider_buy_30d` / `em_insider_buy_breadth_30d` (高管)
+
+`em_` 前缀统一标识来自 eastmoney_skill, 跟 mootdx 字段区分.
+
+### 4.3 入模红线 (与之前 §4.21 一致)
+
+- Coverage profile: 每个 snapshot_date 票覆盖率 ≥ 95%
+- Quality profile: 极端值 winsorize, 异常率 < 1%
+- 单特征 RankIC 提升 ≥ 0.005 (vs base_43)
+- 分层收益稳定改善 (5 fold walk-forward), 不只一两个交易日贡献
+- 通不过 → 留作审计字段, 不入主轨
 
 ---
 
-## 6. 待用户操作清单
+## 5. 接入路径 (在项目内, 不做独立 SDK 项目)
 
-- [ ] **6.1** 打开 Surge 控制台 → 实时活动, 触发一次 push2his 请求 (跑下面命令), 把命中的规则 + 策略 + 节点 + 状态截图或粘贴到这里
-  ```bash
-  curl -v --max-time 5 'https://push2his.eastmoney.com/api/qt/stock/fflow/daykline/get?secid=1.600519&klt=101&fqt=1&lmt=10' 2>&1 | head -30
-  ```
+> 注: "做成 GitHub 项目 / 类 tdxhub SDK" 是更大的话题, 涉及 datacenter-web + aif10 + push2 多个东财子域统一封装. **本专题不展开**, 等 Phase 2.5/2.6 跑通再单独讨论.
 
-- [ ] **6.2** 检查 Surge config, 看是否已有 eastmoney 相关规则
-  ```bash
-  grep -in "eastmoney\|sinajs\|GEOIP\|fake-ip" ~/Library/Application\ Support/Surge/Profiles/*.conf 2>/dev/null
-  ```
+本专题的妙想 F10 接入仅在 `backend/services/eastmoney_skill/aif10.py` 内扩展 (Phase 2 已就位), 加 `reports/` 目录承载业务封装:
 
-- [ ] **6.3** 加规则 (3.3 节), 重启 Surge
+```
+backend/services/eastmoney_skill/
+├── client.py                       # ✅ Phase 1 BaseClient
+├── datacenter.py                   # ✅ Phase 1 datacenter-web RPC
+├── quote.py                        # ✅ Phase 1 push2his/push2delay
+├── aif10.py                        # ✅ Phase 2 aif10 通用 RPC + 5 个 smoke endpoint
+└── reports/                        # ⬜ Phase 2.5 待加: 业务封装
+    ├── valuation.py                # P0 估值分位 → em_pe_pos_10y/pb_pos_10y
+    ├── analyst.py                  # P0 一致预期 → em_analyst_score/eps_revision_30d
+    ├── holders.py                  # P0 户数 + 流通股东季度差分
+    ├── peer.py                     # P0 同行 PE/EPS 增长 rank
+    ├── unlock.py                   # P1 替代 ak.stock_restricted_release_detail_em
+    ├── insider.py                  # P1 替代 ak.stock_ggcg_em
+    ├── dividend.py                 # P1 替代 ak.stock_history_dividend*
+    ├── repurchase.py               # P1 替代 ak.stock_repurchase_em
+    ├── margin.py                   # P1 替代 ak.stock_margin_detail_sse/szse
+    ├── halt.py                     # P1 替代 ak.stock_tfp_em
+    ├── institution.py              # P2 ORG_TYPE 分桶机构持仓
+    └── business.py                 # P2 主营构成
+```
 
-- [ ] **6.4** 跑 3.4 节验证命令, 把输出贴回来
+### 5.1 调度桶 (与 §1.3 项目空白维度对齐)
 
-- [ ] **6.5** 如验证通过, 我跑 4.1 全量回填 + 4.2 数据验证
+| 桶 | 模块 | 调度 |
+|---|---|---|
+| 日级 | 估值分位 | 17:00 一次 |
+| 周级 | 一致预期 / 评级 | 周一 18:00 |
+| 季度 (披露驱动) | 户数 / 流通股东 / 同行 / 机构持仓 / 主营构成 | 业绩窗口轮询 |
+| 月级 | 解禁 / 分红 / 高管增减持 | 月初一次 |
 
-- [ ] **6.6** 如 push2his 仍不通, 走路线 D (接受现状, M8.9 自然累积) + 推进 §8 东财 skill 调研 (替代 akshare 直连东财 API)
+### 5.2 入 fact_feature_panel 列名约定 (em_ 前缀)
+
+新增列统一加 `em_` 前缀, 跟 mootdx 字段区分:
+
+| 特征 | 来源 reportName |
+|---|---|
+| `em_pe_pos_10y` / `em_pb_pos_10y` | RPT_STOCKVALUATIONTANTILE |
+| `em_analyst_score` / `em_buy_share` / `em_eps_revision_30d` | RPT_HSF10_RES_ORGRATING + RES_PREDICT_STATISTICS |
+| `em_holder_num_chg_q` / `em_top10_free_concentration` | RPT_F10_EH_HOLDERNUM |
+| `em_peer_pe_ttm_rank_pct` / `em_peer_eps_growth_rank_pct` / `em_garp_score` | RPT_PCF10_INDUSTRY_CVALUE/GROWTH |
+| `em_inst_breadth` / `em_inst_diversity` | RPT_F10_MAIN_ORGHOLDDETAILS |
+| `em_main_biz_concentration` | RPT_F10_FN_MAINOP |
+| `em_days_to_unlock` / `em_unlock_pct_30d` | RPTA_APP_LIFTFUTURE |
+| `em_insider_buy_30d` / `em_insider_buy_breadth_30d` | RPT_EXECUTIVE_HOLD_DETAILS |
 
 ---
 
-## 7. 讨论与决策记录
+## 6. 落地路线 (按 ROI 排)
 
-### 7.1 (2026-04-26 Claude 提议)
+### Phase 2.5 (本周 2-3 天) — 实现 P0 4 个 endpoint + 入 fact_feature_panel
 
-我的建议是先做 6.1 / 6.2 — 拿到 Surge 的实际路由路径, 再决定是改规则还是换源. 大概率是 Surge 配置里有一条 RULE-SET 把 eastmoney 误归到代理组, 加显式 DIRECT 规则 5 分钟解决.
+按 §3.1 P0 顺序:
 
-**关键风险点**: 即使修通 push2his, eastmoney 接口本身设计上限 ~250 个交易日 (大约 1 年). 想覆盖更长历史只能换源 (~~Tushare 已弃, 见 §5.1/§8~~). 但 250 天足够做横截面 rank 实验, 也足够算 fund_flow_5d/20d.
+1. **估值分位** (1 小时): `eastmoney_skill.aif10.fetch_valuation_quantile` 已有, 加 derive `pe_pos_10y/pb_pos_10y` 到 `fact_feature_panel`
+2. **一致预期** (4 小时): 实现 `RPT_HSF10_RES_ORGRATING` + `RES_PREDICT_STATISTICS`, 累积入库到 `mart_stock_consensus`, 衍生 `analyst_score / eps_revision_30d`
+3. **股东人数变化** (4 小时): 实现 `RPT_F10_EH_HOLDERNUM`, 入库 `mart_stock_holder_num`, 衍生 `holder_num_change_pct / top10_concentration`
+4. **同行估值** (4 小时): 实现 `RPT_PCF10_INDUSTRY_CVALUE/GROWTH`, 入库 `mart_stock_peer_rank`, 衍生 `peer_pe_rank / peer_eps_growth_rank`
 
-**我不建议**:
-- 路线 C (新浪爬虫): 反爬不稳定, 维护负担重
-- 路线 E (自拼伪资金流): 缺 tick / 分钟数据, 数据本质缺失, 不可行
+每个完成后跑 RankIC 评估, 通过红线才进 base_43.
 
-等用户操作 6.1 / 6.2 后继续.
+### Phase 2.6 (后续 1 周) — P1 替代 akshare (按 §1.2 类别 B 顺序)
 
-### 7.2 (2026-04-26 Codex 复核)
+| # | reports/ 模块 | 替代 akshare | 当前位置 |
+|---|---|---|---|
+| 1 | `unlock.py` | `ak.stock_restricted_release_detail_em` | capital_client |
+| 2 | `insider.py` | `ak.stock_ggcg_em` | build_executive_trade_events |
+| 3 | `dividend.py` | `ak.stock_history_dividend*` | capital_client |
+| 4 | `repurchase.py` | `ak.stock_repurchase_em` | capital_client |
+| 5 | `margin.py` | `ak.stock_margin_detail_sse/szse` | margin_client |
+| 6 | `halt.py` | `ak.stock_tfp_em` | audit |
 
-我按最新文档重新实测后, 需要修正一个关键判断: **当前阻塞不只是缺少 eastmoney DIRECT 规则**。本机 Surge 配置里已经有:
+每个替换:
+- 字段对齐验证 (老 akshare 返回 vs 新 aif10 返回, 关键字段非空率不下降)
+- 跑一次智能更新, 同 step 数据条数不变
+- 切换后保留 1 周 akshare 兜底, 验稳后删掉
 
-```text
-DOMAIN-SUFFIX,eastmoney.com,DIRECT,extended-matching
-```
+### Phase 2.7 (远期) — P2 业务结构
 
-但没有把 `*.eastmoney.com` 加进 `always-real-ip`, 也没有 `[Host]` 强制系统 DNS. 系统解析仍然给 `push2his.eastmoney.com -> 198.18.1.51`, 公网 DNS 可解析到真实 IP (`61.129.129.199` / `101.226.30.221`)。
+- `institution.py` 机构持仓 ORG_TYPE 分桶 → `em_inst_breadth` / `em_inst_diversity`
+- `business.py` 主营构成 → `em_main_biz_concentration`
 
-实测结果:
+### 待用户确认
 
-| 项目 | 结果 | 结论 |
-|---|---|---|
-| 库内 `raw_fund_flow_daily` | 5496 行 / 1 天 / 2026-04-24 | 文档底稿正确, 不能算 5d/20d |
-| `push2delay` | 200 OK, 只返回 1 行 | fallback 正常, 但只能日增 |
-| `push2his` 普通 DNS | TLS 握手成功后 empty reply | 不是简单 DNS 解析失败 |
-| `push2his --resolve` 真实 IP | 仍然 empty reply | 仅加真实 IP 不一定解决 |
-| akshare 1.18.57 | 仍调用 `push2his` 普通 requests | akshare 本身无独立数据源 |
-| `curl_cffi` Chrome/Safari 指纹 | 仍连接被关闭 | 不像是普通 requests 指纹问题 |
-
-因此路线 A 仍可做一个最小验证, 但期望值要调低: 把 `*.eastmoney.com` / `*.sinajs.cn` 加进 `always-real-ip` 和 `[Host]`, 重启 Surge 后再跑 3.4 验证。如果 `push2his` 仍 empty reply, 就不要继续在代理规则上耗时间。
-
-我的建议:
-
-1. **先做 5 分钟网络验证**: 加 `always-real-ip` / `[Host]`, 重启 Surge, 再测 `push2his`。这是最低成本。
-2. **验证失败就走路线 D**: 维持 push2delay daily 累积 + 推进东财 skill 自封装方案 (§8). ~~Tushare Pro 路线已弃 (§5.1)~~
-3. **保留 push2delay daily fallback**: 它能每日积累, 但在 60 个交易日前不入 `base_43`, 只作为审计数据。
-4. **不要为了资金流扩系统复杂度**: 资金流只有在 coverage >= 95%, RankIC 增益稳定超过 0.005 后才进主轨；否则保持现有 base_43。
-
-阶段性决策: 当前最可能的落地路径是 **路线 A 最小复验 -> 失败后切到 ~~Tushare Pro~~**. (~~Tushare 路线已于 2026-04-27 弃用, 见 §5.1/§8.~~) 不要把 akshare 当成替代源, 它只是 `push2his` wrapper.
-
-### 7.3 (2026-04-26 Codex 追加: 为什么 akshare 其他数据可用, 资金流不可用)
-
-用户指出“akshare 获取其他数据就行, 资金流就不行”。复核后结论是: **不是 akshare 整体可用而资金流单独坏, 而是 akshare 背后的数据源分成两类**。
-
-第一类是 `datacenter-web.eastmoney.com/api/data/v1/get`, 当前机器可用。项目里已经成功的机构调研、龙虎榜、QFII/股东分析等 akshare 接口都走这条线:
-
-| akshare 函数 | 底层域名 | 实测 |
-|---|---|---|
-| `stock_jgdy_tj_em` | `datacenter-web.eastmoney.com` | OK, 8782 行 |
-| `stock_lhb_detail_em` | `datacenter-web.eastmoney.com` | OK, 85 行 |
-| `stock_gdfx_holding_detail_em` | `datacenter-web.eastmoney.com` | OK, 1147 行 |
-
-第二类是行情/历史行情线 `push2*.eastmoney.com` / `push2his.eastmoney.com`, 当前机器上 GET API 会在 HTTP 层被关闭。资金流属于这条线:
-
-| akshare 函数 | 底层域名 | 实测 |
-|---|---|---|
-| `stock_zh_a_spot_em` | `82.push2.eastmoney.com/api/qt/clist/get` | RemoteDisconnected |
-| `stock_board_industry_name_em` | `17.push2.eastmoney.com/api/qt/clist/get` | RemoteDisconnected |
-| `stock_zh_a_hist` | `push2his.eastmoney.com/api/qt/stock/kline/get` | RemoteDisconnected |
-| `stock_individual_fund_flow` | `push2his.eastmoney.com/api/qt/stock/fflow/daykline/get` | RemoteDisconnected |
-
-所以“其他数据可用”的真实原因是: 那些成功接口多数并没有走 `push2his`。项目日 K 之所以还能跑, 也不是因为 `ak.stock_zh_a_hist` 当前可用, 而是系统优先走 mootdx/通达信, 再用 sina/tx fallback；行业分类也已经改成通达信 `tdxhy.cfg`。
-
-补充观察:
-
-- `requests` 默认会读取 macOS 系统代理配置, `urllib.getproxies()` 当前能看到 `127.0.0.1:6152`; 项目自写客户端里有 `trust_env=False` 或清理代理环境, 但原生 akshare 函数没有这个控制。
-- 即使绕过环境代理并直接用真实 IP 测 `push2his`, GET API 仍 empty reply；因此代理环境变量不是唯一解释。
-- `push2delay.eastmoney.com` 可用, 但接口结构只给最新 1 天, 所以只能做 daily fallback, 不能做历史回填。
-
-当前判断: 资金流不可用的根因是 **akshare 资金流依赖的东财 `push2his` 历史接口在当前网络链路不可用**；不是 akshare 库本身缺功能, 也不是所有东财接口都不可用。修复策略仍是先做 Surge 真实 IP/Host 最小复验, 不通就走路线 D (M8.9 累积) + 推进 §8 东财 skill。
-
-### 7.4 (2026-04-26 Codex 追加: Surge 配置应该怎么改)
-
-本机当前网络状态:
-
-- macOS 系统代理开启: HTTP/HTTPS 都指向 `127.0.0.1:6152`。原生 akshare 使用 requests, 会读取系统代理, 所以默认会先进 Surge HTTP proxy。
-- Surge Enhanced Mode / fake-ip 生效: `push2his.eastmoney.com`、`82.push2.eastmoney.com`、`datacenter-web.eastmoney.com` 都被系统解析成 `198.18.x.x`。
-- 配置里已经有 `DOMAIN-SUFFIX,eastmoney.com,DIRECT,extended-matching`, 但这只解决“分流策略”, 不解决“requests 先走系统 HTTP proxy”与“DNS 返回 fake-ip”。
-- 当前 `dns-server = system, 223.5.5.5, 119.29.29.29`; 但 macOS system DNS 是 `1.0.0.1`, 实测 `@1.0.0.1` 返回 fake-ip, 而 `@223.5.5.5` / `@119.29.29.29` 返回东财真实 IP。因此东财/新浪不应该用 `server:system`。
-
-推荐做一个最小局部改动, 不动全局代理策略:
-
-```ini
-[General]
-# 原有 skip-proxy 后追加，避免原生 akshare/requests 先走 127.0.0.1:6152 HTTP proxy
-skip-proxy = 127.0.0.0/8, 192.168.0.0/16, 10.0.0.0/8, 172.16.0.0/12, 100.64.0.0/10, 162.14.0.0/16, 211.99.96.0/19, 162.159.192.0/24, 162.159.193.0/24, 162.159.195.0/24, fc00::/7, fe80::/10, localhost, *.local, captive.apple.com, passenger.t3go.cn, *.ccb.com, wxh.wo.cn, *.abcchina.com, *.abcchina.com.cn, *.eastmoney.com, eastmoney.com, *.sinajs.cn, sinajs.cn
-
-# 原有 always-real-ip 后追加，避免这些域名被返回 198.18.x.x fake-ip
-always-real-ip = *.msftncsi.com, *.msftconnecttest.com, *.srv.nintendo.net, *.stun.playstation.net, xbox.*.microsoft.com, *.xboxlive.com, *.battlenet.com.cn, *.battlenet.com, *.blzstatic.cn, *.battle.net, *.turn.twilio.com, *.stun.twilio.com, stun.syncthing.net, stun.*, 127.*.*.*.sslip.io, 127-*-*-*.sslip.io, *.127.*.*.*.sslip.io, *-127-*-*-*.sslip.io, 127.*.*.*.nip.io, 127-*-*-*.nip.io, *.127.*.*.*.nip.io, *-127-*-*-*.nip.io, *.eastmoney.com, eastmoney.com, *.sinajs.cn, sinajs.cn
-
-[Host]
-# 不用 server:system；当前 system DNS 会返回 198.18 fake-ip。显式使用国内 DNS。
-eastmoney.com = server:223.5.5.5
-*.eastmoney.com = server:223.5.5.5
-sinajs.cn = server:223.5.5.5
-*.sinajs.cn = server:223.5.5.5
-
-[Rule]
-# 保持在 Rule 顶部，优先于 RULE-SET 和 FINAL。
-DOMAIN-SUFFIX,eastmoney.com,DIRECT,extended-matching
-DOMAIN-SUFFIX,sinajs.cn,DIRECT,extended-matching
-```
-
-注意:
-
-- `*.eastmoney.com` 不匹配裸域 `eastmoney.com`, 所以裸域和通配子域都写。
-- 不建议打开 MITM 或 `force-http-engine-hosts`: 这会把问题复杂化, 还可能破坏 HTTPS/TCP 流。
-- 不建议把整个 `dns-server` 全局改掉；先只给东财/新浪做 `[Host]` 局部 DNS 指定。
-
-验证顺序:
-
-```bash
-# 1. 重启 Surge 后，系统解析不应再是 198.18.x.x
-python3 - <<'PY'
-import socket
-for host in ['push2his.eastmoney.com', '82.push2.eastmoney.com', 'push2delay.eastmoney.com', 'hq.sinajs.cn']:
-    print(host, socket.gethostbyname(host))
-PY
-
-# 2. akshare 不应再读取 127.0.0.1:6152 作为这些域名的代理路径
-python3 - <<'PY'
-import requests
-for url in ['https://push2his.eastmoney.com', 'https://82.push2.eastmoney.com']:
-    print(url, requests.utils.get_environ_proxies(url))
-PY
-
-# 3. 端到端验证资金流历史接口
-python3 - <<'PY'
-import akshare as ak
-df = ak.stock_individual_fund_flow(stock='600519', market='sh')
-print(df.shape)
-print(df.head(3))
-print(df.tail(3))
-PY
-```
-
-如果第 1 步仍是 `198.18.x.x`, 说明配置没有被当前 Surge profile 正确加载, 或 `[Host]` / `always-real-ip` 未生效。
-
-如果第 1 步已是真实 IP, 第 2 步不再走 `127.0.0.1:6152`, 但第 3 步仍 RemoteDisconnected/empty reply, 就可以判定不是本机 Surge 配置问题, 而是本机出口 IP 到东财 `push2his` 这条服务链路不被接受。此时应走路线 D (M8.9 daily 累积) + §8 东财 skill 自封装, 不继续加复杂网络规则。
-
-### 7.5 (2026-04-26 Claude 接力 Codex)
-
-读完 §7.2-7.4, 接受 Codex 三处修正:
-
-1. **§7.2 修正**: 我之前判断"加 DOMAIN-SUFFIX,eastmoney.com,DIRECT 就能解决"过于乐观。Codex 实测确认本机已有该规则, 真正卡点是 `always-real-ip` + `[Host]` 缺失, 而且即使 DNS 修通, `push2his` 仍可能 empty reply (服务链路被远端拒绝, 不是本机问题). 我的诊断粒度不够。
-
-2. **§7.3 修正了用户疑问的最后一环**: 用户说"akshare 其他数据能拿啊", 我之前回答 "akshare 是 push2his wrapper" — 这句话**不完整**. 正确版本应是: akshare 是**多个域名**的 wrapper, `datacenter-web.eastmoney.com` 这条线本机可用 (调研/龙虎榜/QFII 都通), 但 `push2*` / `push2his` 这条线被拒. 资金流不幸只有 push2his 能给, 没有 datacenter-web 替代.
-
-3. **§7.4 完整可执行**: Codex 给的 `skip-proxy` + `always-real-ip` + `[Host] server:223.5.5.5` 三处改动是最小工程量的正确路径. 比我建议的"加 DOMAIN-SUFFIX 直连"更精确.
-
-**用户操作改为 §7.4 顺序** (替代 §6.1-6.6):
-
-- [ ] **A** 把 §7.4 的 `skip-proxy` / `always-real-ip` / `[Host]` 三处追加到 Surge config, 重启 Surge
-- [ ] **B** 跑 §7.4 三步验证, 把每步输出贴回这里
-- [ ] **C** 据 Codex 退路决策树:
-  - 步骤 1 仍 198.18.x.x → 配置未生效, 检查 profile 加载顺序
-  - 步骤 1 通 + 步骤 2 通 + 步骤 3 通 → 跑 §4.1 全量回填
-  - 步骤 1 通 + 步骤 2 通 + 步骤 3 仍 empty reply → **服务链路问题, 立即走路线 D + §8 东财 skill, 不再耗时**
-
-**我同意 Codex 的奥卡姆剃刀**: 最多花 5 分钟改 Surge + 5 分钟验证. 不通就走路线 D + 推进 §8 东财 skill, 不再陷在网络层调试。
-
-资金流入模红线保持不变 (coverage ≥ 95% / RankIC 增益 ≥ 0.005), 没通过就维持 base_43 现状, 不为资金流降标准。
-
-### 7.6 (2026-04-26 Codex 收口)
-
-我读完 Claude §7.5 后确认: 当前共识已经形成, **实际操作只按 §7.4 / §7.5 执行**。前文 §3.3 和 §6 是较早版本的排查路径, 里面的 `fake-ip-filter`、`[Host] = system`、以及“只加 DOMAIN-SUFFIX 直连”都已经被后续实测修正, 不应作为最终操作指令。
-
-最终判断:
-
-1. 问题不是 akshare 库整体不可用, 而是 `push2* / push2his` 这条东财行情链路在当前网络配置下不可用。
-2. `datacenter-web.eastmoney.com` 可用, 所以机构调研、龙虎榜、QFII 等 akshare 接口能跑。
-3. `DOMAIN-SUFFIX,eastmoney.com,DIRECT` 已存在但不够, 因为它只管分流, 不管 macOS HTTP proxy 和 fake-ip DNS。
-4. Surge 修复只做一次最小实验: `skip-proxy` + `always-real-ip` + `[Host] server:223.5.5.5` + `sinajs.cn DIRECT`。
-5. 如果这个实验后 `push2his` 仍 empty reply, 就判定为出口链路/远端服务问题, 不再堆网络规则, 走路线 D + §8 东财 skill 自封装。
-
-建议把实际待办压缩为三步:
-
-- [ ] 用户按 §7.4 修改 Surge 配置并重启 Surge
-- [ ] 跑 §7.4 的 3 个验证命令
-- [ ] 验证成功则回填；验证失败则走路线 D + 推进 §8 东财 skill, 不再继续调 Surge
-
-这也是最符合奥卡姆剃刀的路径: 最多一次网络实验, 然后转向确定性数据源。
-
-### 7.7 (2026-04-26, 已作废)
-
-原内容: Claude 实施"路线 B Tushare Pro moneyflow 脚手架就绪"和路线 A/B/C 决策树. 2026-04-27 用户决定不用 Tushare, 整段方案废止. 仅保留路线 A (Surge 修 + push2his) 和路线 D (M8.9 自然累积) 二选一; 替代源研究移到 §8 东财 skill 自封装方向.
-
-### 7.8 (2026-04-26 ~ 04-27 工作进展: 资金流 step 解锁 + 路线 A 复验失败)
-
-距上次讨论 (§7.7 决策树) 后做了这些工作:
-
-#### 7.8.1 工程改造 (Claude, commit `d467f79c`)
-
-发现并修复一个隐藏问题: **资金流 step 一直锁死在 push2delay**, 即使关掉 Surge 也只拿当日 1 行/票. 旧代码 `_step_sync_fund_flow` 只 import `fetch_delay_fund_flow`, source 写死 `eastmoney_push2delay_latest`.
-
-改造内容:
-
-1. `backend/scripts/fetch_fund_flow_daily.py`: 新增通用 `_fetch_eastmoney_fund_flow(base_url=...)`,
-   - `fetch_his_fund_flow` → push2his (~250 天历史)
-   - `fetch_delay_fund_flow` → push2delay (1 行)
-2. `backend/routers/updater.py _step_sync_fund_flow`: 改预探针 + 整 run 单一 source 模式
-   - 第一只票试 push2his, 通就整 run 走历史模式 (mode=his, ~28 分钟落 ~138 万行)
-   - 失败 fallback 到 push2delay 当日模式 (mode=delay, 当前路径)
-   - 探针结果复用, 第一只票不重复请求
-3. `assets/js/app.js startUpdate`: 加 `window.confirm` 弹窗提示关 Surge, sessionStorage 一会话一次
-4. CM_ASSET_VERSION 3.5.0 → 3.6.0 强制 JS 缓存刷新
-
-#### 7.8.2 用户实测 (2026-04-27 早间)
-
-按 §7.4 改 Surge config (skip-proxy / always-real-ip / [Host] server:223.5.5.5), 彻底退出 Surge, 重启 backend, 清空 raw_fund_flow_daily, 浏览器刷新点智能更新. 关键日志:
-
-```
-DNS 验证: push2his.eastmoney.com → 117.184.40.129  (中国移动 CDN, 真实 IP, 不再 198.18.x.x)
-
-22:27:50 [资金流] 探针失败: push2his 不可达 (000001:
-    ('Connection aborted.', RemoteDisconnected('Remote end closed connection without response'))),
-    切到 push2delay 当日模式 — 提示: 关闭 Surge 或加 eastmoney 白名单可拿历史
-
-23:17:37 [资金流] 完成: mode=delay ok=5496 empty=14 fail=0 rows_written=5496 target=2026-04-24
-```
-
-#### 7.8.3 关键判断: 路线 A 真死路, 是服务端拒绝
-
-完全符合 §7.4 末尾 Codex 预警的"出口 IP 链路问题"场景:
-
-| 检查项 | 结果 | 说明 |
-|---|---|---|
-| 系统 DNS 解析 push2his | ✅ 真实 CDN IP | Surge 配置已生效 |
-| HTTPS TLS 握手 | ✅ 成功建联 | 不是 DNS / SNI 拦截 |
-| HTTP GET response | ❌ 远端立即关闭 | 连接成功后服务端 RST |
-| 同 IP 段访问 datacenter-web | ✅ 调研/龙虎榜/QFII 全通 | 不是整个 eastmoney 不可达 |
-
-**结论**: 用户家宽出口 IP 在 eastmoney 的 push2his 反爬规则黑名单。这条线路不是本机可解的, 不是 Surge / DNS / 代理 / akshare 任何一层的问题. **不再耗时间在网络规则**, 走路线 D (维持 push2delay daily 累积 + M8.9 自然累积 60 天) + 推进 §8 东财 skill (替代 akshare 直连东财)。
-
-#### 7.8.4 当前数据状态 (2026-04-27)
-
-```sql
-SELECT COUNT(*), MIN(trade_date), MAX(trade_date), source FROM raw_fund_flow_daily;
--- 5496 行 / 1 天 / 2026-04-24 / eastmoney_push2delay_latest
-```
-
-虽然历史拿不到, 但 step 解锁本身有价值: M8.9 launchd 跑起来后**每个交易日自动 +1 行/票**, 60 天后 (~2026-07) 会有 60 天 daily 横截面, 可以做 5d/20d rank 实验, 比 §4.21 决策时的"等积累"路径仍然有效。
-
-#### 7.8.5 UI 显示 bug (待修, 低优先)
-
-工作台主力资金流行显示 `NaN 条 · 4-26 23:17` 而不是 `[当日模式] 写入 5496 · 已最新 0 · 空返回 14 · 失败 0`. 后端 detail.message 字段返回正确, 前端 renderStepGrid 应优先读 detail.message. 推测是浏览器缓存 / fmt(s.records) 处理 NaN 路径有 bug. 数据本身完整 (DB 5496 行已落). 此 bug 不影响数据正确性, 优先级低于资金流主线决策.
-
-#### 7.8.6 路线决策 (Tushare 已弃)
-
-经过路线 A 复验失败, 严格按 §7.4 + §7.6 共识:
-
-**路线 D: 维持现状, M8.9 自然累积** (主路线)
-
-- 不付费, 不写代码
-- 每日 17:30 launchd 自动 +1 行/票 (5500 行/日)
-- 60 个交易日后 (~2026-07) 重新评估是否做 5d/20d rank 实验
-- 主轨 base_43 +22pp/fold 不依赖资金流, 不阻塞 alpha
-
-**§8 方向: 东财 skill 自封装** (中长期替代源)
-
-- 见 §8: 妙想 F10 + 东财直连接口 wrapper (替代 akshare 对东财部分)
-- 不依赖第三方 (Tushare 已弃), 不依赖 akshare 对 push2his 的间接调用
-- 与 路线 D 并行推进, 后续 wrapper 成熟后可一次性替换 akshare 资金流路径
-
-**Claude 推荐**: D + §8 并行 — 主轨已能跑, 资金流是锦上添花. 等 60 天数据自然累积成本最低, 期间可以推进跟投系统改造 (memory 里 `project_followup_alpha_redesign.md` 列的: 完整周期收益 / qlib 信号接入 / 三档信号重构) 这些 ROI 更高的事。
-
-等用户决定 D 或 §8 推进节奏。
-
-### 7.9 (2026-04-27 Codex 方案: 停止网络排查, 分层解决) — Tushare 部分已废止
-
-读完 §7.8 后, Codex 把问题拆成三层 (网络/工程/数据). 数据层原方案为 Tushare Pro, **2026-04-27 用户决定不用 Tushare, 数据层方案改为路线 D + §8 东财 skill 自封装**.
-
-保留下来的工程修复项 (P0/P1):
-
-**P0: 修复工作台 `主力资金流 NaN 条`**
-
-实测发现 `step_status.records` 当前存的是整段 dict 字符串而不是数值 `5496`. 所以 UI `NaN 条` 不只是前端缓存问题, 后端状态表也需要清理.
-
-处理方案:
-1. 后端保证 `_resolve_step_result(dict)` 后只把 `count` 写入 `records`, 详细 dict 只写入 `error` JSON.
-2. 做一次性修复 SQL: 对 `sync_fund_flow` 当前异常 records 行, 把 `records` 改为 `5496`, `error` 补成合法 JSON detail.
-3. 前端 `renderStepGrid` 做防御: `Number.isFinite(Number(s.records))` 才显示 `N 条`; `detail.message` 优先显示.
-4. 验收: 工作台显示 `[当日模式] 写入 5496 · 已最新 0 · 空返回 14 · 失败 0`, 不再出现 `NaN 条`.
-
-**P1: 给 push2his 探针加失败冷却**
-
-既然路线 A 已判死, 每次智能更新都探一次 push2his 没价值. 建议记录最近一次 `push2his` 探针失败时间, 24 小时内直接走 push2delay, 减少日志噪声和启动等待. 用户手动点击”强制历史探针”时再重试.
-
-**P1: 确认 M8.9 daily 自动累积真的在跑**
-
-D 路线依赖 daily 累积. 需要检查 launchd/智能更新是否每天收盘后跑 `sync_fund_flow`:
-
-```sql
-SELECT COUNT(DISTINCT trade_date), MIN(trade_date), MAX(trade_date)
-FROM raw_fund_flow_daily
-WHERE source='eastmoney_push2delay_latest';
-```
-
-验收: 每个新交易日新增约 5500 行.
-
-#### 7.9.4 入模方案 (用户决定数据来源后)
-
-不要把原始资金流直接塞进主模型. 先做两个简单、可解释的横截面特征:
-
-1. `fund_flow_5d_rank`: 近 5 日 `main_net_amount` 累计额 / 当日横截面 rank
-2. `fund_flow_20d_rank`: 近 20 日 `main_net_amount` 累计额 / 当日横截面 rank
-
-先做独立评估 (coverage / quality / RankIC), 通过红线 (RankIC 提升 ≥ 0.005, 分层收益稳定改善) 才入主轨.
-
-#### 7.9.5 结论
-
-1. 先修 `NaN 条` 状态显示和 records 落库清理.
-2. 短期: 走 D 自然累积 (60 个交易日后做初步 5d/20d 实验), 同时把研发精力转回 base_43 / 跟投系统主线.
-3. 中期: 推进 §8 东财 skill 自封装, 替代 akshare 对 push2his 的间接调用 + 拓展妙想 F10 数据维度.
-
-### 7.10 (2026-04-27, 已作废)
-
-原内容: “Tushare 全源替换评估”, 详见原 `docs/tushare-source-strategy.md` (已删除). 2026-04-27 用户决定不用 Tushare, 评估废止. 替代源方向改为 §8 东财 skill 自封装.
-
-### 7.11 (2026-04-27 Codex 追加: 智能更新状态与资金流入口修复)
-
-本次复查 2026-04-27 08:33 智能更新日志后确认两个工程问题:
-
-1. **数据获取组 runner 没有统一解析 dict 返回值**。`机构调研`、`QFII`、`两融`、`龙虎榜`、`主力资金流` 已经返回了 `{status,count,message}`，但分组管线仍把整个 dict 当作 records 写入，导致前端只能靠审计层猜状态；没有审计层的资金流会被显示成 idle，出现“有 OK 有空白”的不规范结果。
-2. **资金流步骤被 `latest_completed_trade_date` 间接锁成单日补齐**。`raw_fund_flow_daily` 只要已有 `target_date` 的 push2delay 单日记录，智能更新就会认为该票“已最新”并跳过，导致历史缺口永远不会被 akshare/push2his 回填。
-
-修复决策:
-
-- 后端统一 `_resolve_step_result()`，数据获取组也按 `status/count/message` 落库；`partial` 进入终态统计，`skipped` 用“已最新”而非空白跳过表达。
-- 前端 `deriveDisplayStatus()` 不再只依赖审计层判断完成；只要后端有 `finished_at/detail/records`，就展示终态。`skipped` 行显示 `OK 已最新`，阻断类原因仍显示 `阻断`。
-- `sync_fund_flow` 主入口按用户最新要求改回 akshare 历史拉取：默认 `CM_FUND_FLOW_SOURCE=akshare`，逐股调用 `stock_individual_fund_flow`，不再按 `target_date` 跳过，也不再默认静默退到 push2delay 单日模式。
-- `target_date` 只保留为审计参考；状态文案会明确显示“akshare历史 / 东财历史 / 当日兜底”，避免再把单日 fallback 误看成完整资金流历史。
-- 智能审计不再只看 `MAX(trade_date)`，而是统计“达到覆盖阈值的交易日数”；当前默认少于 60 个有效资金流交易日就继续把 `sync_fund_flow` 放进智能更新计划。
-
-可选调试开关:
-
-```bash
-# 默认: akshare 历史接口, 不做单日兜底
-CM_FUND_FLOW_SOURCE=akshare ./start.command
-
-# 显式只测东财 push2his 直连历史接口
-CM_FUND_FLOW_SOURCE=his ./start.command
-
-# 显式允许 akshare 失败后落到 push2delay 单日兜底
-CM_FUND_FLOW_SOURCE=auto ./start.command
-
-# 调试小样本, 默认不限制股票数
-CM_FUND_FLOW_MAX_STOCKS=50 ./start.command
-```
-
-`start.command` 只保留 akshare 自动升级检查. **Tushare 脚本与方案已于 2026-04-27 删除**, 不再保留.
+- [ ] **6.1** 同意按 P0 1→2→3→4 顺序做? 或先做某一个 (如先估值分位最快)?
+- [ ] **6.2** 入模红线 RankIC ≥ 0.005 是否合适? (base_43 已 +22pp/fold, 这个门槛低)
+- [ ] **6.3** mart 表 schema 写代码前要不要 SQL 草案先讨论?
+- [ ] **6.4** Phase 2.6 的 6 个 akshare 替代是否一起做? 还是先验 P0 再说?
 
 ---
 
-## 8. 东财 skill 自封装调研 (2026-04-27)
+## 7. 风险与边界
 
-**触发问题**: 用户问"东方财富的妙想似乎可以脱离 akshare 并且更稳定" + "把妙想 F10 和东财 skill 做成一个类似 akshare 的项目放在 github 上".
+### 7.1 反爬
 
-### 8.1 为什么"akshare 包装东财"不稳
+- `datacenter.eastmoney.com/securities/` 子域跟 `datacenter-web.eastmoney.com` 一样, 用户 IP 全通 (实测).
+- 但跟 `push2his` / `push2.eastmoney.com` 不同, 后者用户 IP 在反爬黑名单.
+- 单 IP ≤ 2 QPS, 夜间批量是底线.
 
-实测看 [`akshare.stock_individual_fund_flow`](https://github.com/akfamily/akshare) 源码 (`stock_fund_em.py:20-48`), 它的实现非常薄:
+### 7.2 接口稳定性
 
-```python
-def stock_individual_fund_flow(stock="600094", market="sh"):
-    url = "https://push2his.eastmoney.com/api/qt/stock/fflow/daykline/get"
-    headers = {"User-Agent": "Mozilla/5.0 ..."}
-    params = {"lmt": "0", "klt": "101", "secid": f"{1}.{stock}", ...}
-    r = requests.get(url, params=params, headers=headers)  # ← 没 timeout!
-    return parse(r.json())
-```
+- 妙想 F10 接口是东财对内 F10, 没有公开 SLA.
+- 历史看 reportName 偶有迭代 (v0/v1 共存就是证据).
+- **必须做 schema 校验**: 每张逻辑表配 expected_fields, 缺失/新增告警.
 
-工程问题:
-- **没设 `timeout`** → 网络抖动时 socket 默认无超时, 一卡几分钟
-- **没用 `Session(trust_env=False)`** → 受系统代理 (Surge / ClashX) 影响
-- **没 retry** → 单次失败直接抛
-- **没 Referer 头** → 部分东财接口要 Referer 才放行
-- **没 rate-limit** → 大批量调用容易被反爬
+### 7.3 字段语义
 
-我们项目里的 `backend/scripts/fetch_fund_flow_daily.py` 已经手动实现了:
-- `_fetch_eastmoney_fund_flow(base_url=...)` 通用底层
-- `Session(trust_env=False)` 避代理
-- `timeout=15`
-- 显式 User-Agent + Referer
-- 上层 retry (在 main 里 retry 3 次)
+- 财报模板 `RPT_F10_PUBLIC_COMPANYTPYE` 必查, 一般/银行/保险/券商字段集差异大.
+- 单位混乱: 主营收入"万元", 持股"股", 市值"元". 必须 `unit_norm.py` 统一.
+- 时间字段格式: REPORT_DATE='2026-03-31 00:00:00' 含时间, NOTICE_DATE='2026-04-27' 不含 — 这跟 sync_raw 之前的 bug 同源.
 
-这个**已经是东财 skill 的雏形**. 但它只覆盖资金流一条线, 其他东财接口仍走 akshare.
+### 7.4 与 mootdx 重叠时优先 tdxhub
 
-### 8.2 东财数据接口实地分布 (从 akshare 源码统计)
+- K 线 / 通达信行业 / 财务主指标 (gpcw): mootdx 已稳定, 不动.
+- eastmoney_skill 只填**项目当前缺**的字段, 不替换稳定数据源.
 
-akshare 包装东财时使用了 **123 个文件 / 50+ 个子域名**. 按调用频次排序:
+---
 
-| 子域名 | 频次 | 用途 |
-|---|---|---|
-| `data.eastmoney.com` | 338 | F10 数据中心网页 |
-| `datacenter-web.eastmoney.com` | 175 | 数据中心 API (调研 / QFII / 龙虎榜 等) |
-| `quote.eastmoney.com` | 123 | 行情看盘 |
-| `fund.eastmoney.com` | 79 | 基金主站 |
-| `emweb.securities.eastmoney.com` | 57 | 个股 F10 网页 |
-| `push2his.eastmoney.com` | 32 | **资金流/K线 历史** (用户 IP 反爬黑名单) |
-| `fundf10.eastmoney.com` | 32 | 基金 F10 |
-| `datacenter.eastmoney.com` | 29 | 数据中心 (老版) |
-| `push2.eastmoney.com` 及 `*.push2.eastmoney.com` | 27+50 | 实时行情快照 |
-| `aif10.eastmoney.com` | 0 (akshare 没包装) | **妙想 F10**, AI 投研 (新) |
+## 8. 决策记录
 
-**关键观察**:
-- 用户 IP 在 `push2*` 反爬黑名单 (§7.8 已确认), 但 `datacenter-web` 全通
-- akshare 没包装 `aif10.eastmoney.com` (妙想), 这是 2024-2025 后东财新出的 AI 投研入口
-- `data.eastmoney.com` / `datacenter-web` / `emweb` 三条线都能拿 F10 数据, 字段口径有差异
+### 8.1 (2026-04-27 用户三次澄清)
 
-### 8.3 妙想 F10 (`aif10.eastmoney.com`) 初探
+1. tdxhub 是最稳定数据源, 不动
+2. 妙想 F10 主要为了替换 akshare, 不是替换 tdxhub
+3. 综合考虑 tdxhub 未覆盖的部分
+4. 加工好的数据可以直接用, 不必从原始数据建模
+5. 样本量足够支撑结论 + 影响股价, 不堆砌
+6. 十大流通股东, 不是十大股东
+7. 妙想 F10 接入与"东财 skill 整体设计"是两回事, 后者后续单独讨论
 
-用户给的 URL: https://aif10.eastmoney.com/pc_extendf10/choicef10.html
+### 8.2 (2026-04-27 Claude 提议, 待用户审阅)
 
-实地探测 (Surge 开):
-```
-HTTP 200, response: <html>...redirect to /other.html?type=web&color=w</html>
-```
+**项目空白 (P0 优先)**:
+- 估值分位 / 一致预期 / 股东人数 / 同行 PE-EPS 排名 — 4 个全是项目当前没有的维度
 
-页面是 SPA, 数据通过 XHR 调 `aif10.eastmoney.com/api/...` 的 endpoint 拿. 推测特征:
-- AI 包装层, 提供"研报问答 / 财务智能解读 / 多空观点聚合"等
-- 后端可能复用 datacenter-web 的数据 + AI 摘要
-- **公开访问要求**: 妙想内测期间可能需要登录, 但 aif10 子域的纯 F10 端点 (财务/估值/股东) 大概率不需要 (沿用 emweb F10 模式)
+**akshare 替代 (P1, tdxhub 不能替代的)**:
+- 限售解禁 / 高管增减持 / 分红明细 / 股票回购 / 两融日明细 / 停复牌 — 6 个
 
-**待验证** (需要用户机器实地抓包):
-1. 浏览器打开 https://aif10.eastmoney.com/pc_extendf10/choicef10.html?ts=600519, 看 Network 标签下的 XHR 请求
-2. 找形如 `aif10.eastmoney.com/api/...?secid=1.600519` 的 endpoint
-3. 看 response 字段 (财务/估值/股东/AI 摘要)
-4. 判断是否需要登录 token
+**业务结构 (P2)**:
+- 机构持仓 ORG_TYPE 分桶 / 主营构成 — 2 个
 
-如果妙想 F10 接口无需 token + 字段稳定, 这条线**比 akshare 包装的 emweb F10 数据更新更快, 更适合我们项目用**.
+**不入** (tdxhub 已覆盖 / NLP / 缓变 / 已有横向):
+- K 线 / 通达信行业 / 财报全字段 / 公告全文 / 高管简历 / 大宗交易个股纵向 / 龙虎榜 (Phase 1) / 调研 (Phase 1) / QFII (Phase 1) / 同概念地域 / 资本运作 / 核心题材
 
-### 8.4 东财 skill 项目设计 (GitHub 开源候选)
+**接入路径**: 选项 C — 现在内嵌 `eastmoney_skill/reports/`, 不做 GitHub 独立项目. 后者属于"东财 skill"专题, 等本专题跑通再开.
 
-参考 akshare 的多文件结构, 但只覆盖 eastmoney 一家, 工程可控:
-
-```
-eastmoney-py/                       # 或 cm-em-skill (chunky-monkey eastmoney skill)
-├── README.md
-├── setup.py / pyproject.toml
-├── eastmoney/
-│   ├── __init__.py
-│   ├── client.py                   # 通用 BaseClient
-│   │   - Session(trust_env=False)
-│   │   - 默认 UA + Referer
-│   │   - 内置 retry (exp backoff)
-│   │   - rate-limit (每秒 N 次, 滑动窗口)
-│   │   - timeout 默认 15s
-│   ├── endpoints/
-│   │   ├── datacenter.py           # datacenter-web (调研/QFII/龙虎榜/十大股东/财务)
-│   │   ├── quote.py                # push2/push2his/quote (行情/资金流)
-│   │   ├── f10.py                  # emweb F10 (公司基本面)
-│   │   ├── aif10.py                # 妙想 F10 (新, 待 8.3 实测后定 spec)
-│   │   ├── fund.py                 # fund/fundf10 (基金)
-│   │   └── search.py               # search-api (公司搜索)
-│   ├── models/                     # DataClass / Pydantic 返回
-│   │   ├── stock.py
-│   │   ├── fund_flow.py
-│   │   ├── institution.py
-│   │   └── financial.py
-│   └── utils/
-│       ├── code_norm.py            # 600519/000001/300xxx 自动判市场
-│       ├── date_norm.py
-│       └── retry.py
-├── tests/
-│   ├── test_datacenter.py          # mock requests
-│   └── test_quote.py
-└── examples/
-    ├── fund_flow_history.py        # 替代 akshare.stock_individual_fund_flow
-    └── institution_survey.py       # 替代 akshare.stock_jgdy_tj_em
-```
-
-**与 akshare 的差异**:
-
-| 维度 | akshare | eastmoney-py (我们的) |
-|---|---|---|
-| 数据源覆盖 | 全网 (东财/同花顺/新浪/雪球...) | 仅东财 (含 datacenter / push2 / aif10) |
-| 网络层 | 直接 requests.get, 无 timeout/retry | Session(trust_env=False) + retry + timeout + rate-limit |
-| 返回类型 | `pandas.DataFrame` (强依赖 pandas) | DataClass + 可选 to_pandas() |
-| 反爬策略 | 默认 UA, 无 Referer | 默认 UA + Referer + 限流 |
-| 字段命名 | 中文列名 (如 `主力净流入-净额`) | 英文 + 中文映射 |
-| 包大小 | 50+ MB (含全部第三方) | 5 MB 内 (仅 requests + pydantic 可选) |
-
-**优势**:
-- 单一数据源 (东财), 字段口径一致, 不需要在多个 wrapper 间挑选
-- 工程化的网络层, 解决 akshare "薄包装" 不稳的问题
-- 妙想 F10 (`aif10.eastmoney.com`) 是新数据维度, akshare 还没覆盖, 我们抢一手
-
-**风险**:
-- 东财反爬规则变 (User-Agent / Referer / token 的轮换), 维护成本约每月 0.5 天
-- 部分接口需要登录 token (如妙想完整功能, 待 8.3 实测确认), 这部分需要"携带用户 cookie"的可选模式
-- 不像 akshare 有社区贡献, 维护责任在我们
-
-### 8.5 落地步骤 (按 ROI 排)
-
-**Phase 1 (本仓库内, ~1 天)**: 把现有 `fetch_fund_flow_daily.py` 提炼成内部 `eastmoney_skill/` 模块
-- 把 `_fetch_eastmoney_fund_flow` → `eastmoney_skill.client.BaseClient`
-- 加 `endpoints/quote.py` (push2his / push2delay / push2)
-- 加 `endpoints/datacenter.py` (替换 akshare 调用 datacenter-web 的 step: 调研 / QFII / 龙虎榜 / 十大股东)
-- 移除项目对 akshare 的部分依赖 (财务历史 / 调研 仍可保留 akshare 暂时)
-
-**Phase 2 (本仓库内, ~2-3 天)**: 妙想 F10 实地探查
-- 用户机器抓包 https://aif10.eastmoney.com/pc_extendf10/choicef10.html?ts=600519 的 XHR
-- 整理 endpoint + 字段 spec
-- 写 `endpoints/aif10.py`
-- 决定是否需要 cookie 登录模式
-
-**Phase 3 (开源到 GitHub, ~3-5 天)**: 把 `eastmoney_skill/` 提取成独立项目
-- 重命名为 `eastmoney-py`
-- README + 文档 (英文/中文双语)
-- pytest + GitHub Actions CI
-- 发 PyPI (`pip install eastmoney-py`)
-- 主仓库改用 PyPI 包
-
-**优先级建议**: **Phase 1 优先** (本仓库内不动结构, 只提炼网络层 + 替换关键 step). Phase 2/3 等用户决定开源时机。
-
-### 8.6 决策点
-
-需要用户确认:
-
-- [ ] **8.6.1 是否启动 Phase 1**: 把现有 `fetch_fund_flow_daily.py` 改造成 `eastmoney_skill/` 内部模块, 替换调研/QFII/龙虎榜的 akshare 调用?
-- [ ] **8.6.2 是否做 Phase 2**: 用户机器实地抓包妙想 F10? (需要用户操作浏览器 DevTools)
-- [ ] **8.6.3 是否做 Phase 3**: 提取成开源 GitHub 项目? (耗时 3-5 天, 长期维护成本约每月 0.5 天)
-
-我推荐:
-- Phase 1: 本仓库受益最大, 花费最少, 立即可见 — **强烈推荐**
-- Phase 2: ROI 高 (妙想是 akshare 没覆盖的新维度), 工作量小 — 推荐, 等用户有时间抓包
-- Phase 3: 长期收益, 短期成本高 — **暂缓**, 等 Phase 1+2 跑通确认价值再说
+等用户审阅 §6 决策点 6.1/6.2/6.3/6.4.
