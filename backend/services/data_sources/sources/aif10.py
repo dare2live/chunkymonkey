@@ -23,9 +23,15 @@ CAPABILITY_TO_REPORT = {
     "top_holders":              "RPT_F10_EH_HOLDERS",           # 十大股东
     "holder_count":             "RPT_F10_EH_HOLDERNUM",         # 股东人数 (独家)
     "shareholder_change":       "RPT_F10_SHAREHOLDER_CHANGE",   # 持股变动 (季差分)
-    "main_org_holding":         "RPT_F10_MAIN_ORGHOLDDETAILS",  # 机构持仓 ORG_TYPE 分桶
+    "main_org_holding":         "RPT_F10_MAIN_ORGHOLDDETAILS",  # 机构持仓 ORG_TYPE 分桶 (含 QFII=02)
     "fund_org_holding":         "RPT_MAIN_ORGHOLDDETAIL",       # 基金/机构持仓明细
     "northbound_holding":       "RPT_MUTUAL_STOCK_HOLDRANKN_NEW",  # 沪深港通持股
+    # ===== 替代 datacenter-web 直连 (P6 迁移目标) =====
+    "lhb_daily":                "RPT_BILLBOARD_DAILYDETAILS",   # 龙虎榜 (P6: 替代 lhb_client datacenter-web)
+    "lhb_operatedept":          "RPT_OPERATEDEPT_TRADE",        # 龙虎榜营业部
+    "block_trade":              "RPT_DATA_BLOCKTRADE",          # 大宗交易
+    "margin_stocks":            "RPT_MARGIN_STATISTICS_STOCKS", # 融资融券 (P6: 替代 margin_client)
+    "margin_trend":             "RPT_STOCK_MARGINTRENDEXPLAIN", # 融券趋势
 
     # ===== 估值/同行 (peer_snapshot) =====
     "valuation_quantile":       "RPT_STOCKVALUATIONTANTILE",    # PE/PB/PEG 分位 (独家)

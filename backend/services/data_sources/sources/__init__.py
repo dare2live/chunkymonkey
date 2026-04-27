@@ -1,8 +1,8 @@
-"""4 个内置 source adapter.
+"""3 个内置 source adapter.
 
-加载顺序按 priority:
-- tdxhub (10): 通达信主源
-- aif10 (20): 妙想 F10 datacenter
-- em_datacenter (30): 东财 datacenter-web (lhb/qfii/margin/survey/money_flow)
-- akshare (99): 兜底 (trading_calendar / etf_spot)
+按 priority 顺序:
+- tdxhub  (10) 主源: 通达信 K 线/财务/行业/板块
+- aif10   (20) 妙想: tdxhub 没的 (估值分位/股东户数/同行排名/一致预期 等)
+- akshare (99) 兜底: 含真 ak.X (交易日历/ETF) + 东财 datacenter-web 直连
+              (替代 ak.stock_lhb/qfii/margin/jgdy 等反爬高发接口)
 """

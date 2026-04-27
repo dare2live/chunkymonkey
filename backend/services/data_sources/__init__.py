@@ -17,7 +17,7 @@ from .registry import (
 )
 
 # 模块加载时自动注册 4 个内置 source
-from .sources import tdxhub, aif10, em_datacenter, akshare  # noqa: F401
+from .sources import tdxhub, aif10, akshare  # noqa: F401
 
 __all__ = [
     "BaseDataSource",

@@ -134,14 +134,15 @@
     }
   }
 
-  // ---- 业务数据 → 通道表 (主表, 来自 data_routes endpoint) ----
+  // ---- 业务数据 → 通道表 (主表, current + target 双列) ----
   function renderRoutesTable() {
     const root = qs('ds-routes-table');
     if (!root) return;
     const list = _state.routes.filter(r => {
       if (!_state.routeFilter) return true;
       const f = _state.routeFilter.toLowerCase();
-      return [r.data_name, r.source, r.protocol, r.raw_table, r.step_id, r.notes].some(
+      const cur = r.current || {};
+      return [r.data_name, cur.source, cur.protocol, r.raw_table, r.step_id, r.notes].some(
         v => (v || '').toLowerCase().includes(f)
       );
     });
@@ -149,35 +150,43 @@
       root.innerHTML = '<div class="muted" style="padding:14px;text-align:center;font-size:12px">无匹配</div>';
       return;
     }
-    const SRC_COLOR = { tdxhub: '#0a7', aif10: '#26b', em_datacenter: '#a40', akshare: '#888' };
+    const SRC_COLOR = { tdxhub: '#0a7', aif10: '#26b', akshare: '#888', datacenter_web: '#a40' };
+    const STATUS_BADGE = {
+      connected: '<span style="color:#0a7;font-weight:600">✓ 已接</span>',
+      transitional: '<span style="color:#a40;font-weight:600" title="datacenter-web 直连过渡, P6 计划迁妙想">⚠ 过渡</span>',
+      pending: '<span style="color:#888" title="registry 声明, 待接通">⏳ pending</span>',
+    };
     root.innerHTML = `
       <table style="width:100%;font-size:12px;border-collapse:collapse">
         <thead style="position:sticky;top:0;background:var(--cm-surface);z-index:1">
           <tr style="border-bottom:1px solid var(--cm-ink-100);color:var(--cm-ink-500);font-size:11px">
             <th style="text-align:left;padding:6px 8px">业务数据</th>
             <th style="text-align:left;padding:6px 8px">表</th>
-            <th style="text-align:left;padding:6px 8px">数据源</th>
-            <th style="text-align:left;padding:6px 8px">协议 / endpoint</th>
-            <th style="text-align:left;padding:6px 8px">频率</th>
-            <th style="text-align:left;padding:6px 8px">step_id</th>
+            <th style="text-align:left;padding:6px 8px">当前通道</th>
             <th style="text-align:left;padding:6px 8px">状态</th>
+            <th style="text-align:left;padding:6px 8px">迁移目标</th>
+            <th style="text-align:left;padding:6px 8px">频率</th>
           </tr>
         </thead>
         <tbody>
         ${list.map(r => {
-          const color = SRC_COLOR[r.source] || '#666';
-          const statusBadge = r.status === 'connected'
-            ? '<span style="color:#0a7;font-weight:600">✓ 已接</span>'
-            : `<span style="color:#888" title="registry 声明但未接通">⏳ pending</span>`;
+          const cur = r.current || {};
+          const tgt = r.target;
+          const color = SRC_COLOR[cur.source] || '#666';
+          const targetCell = tgt
+            ? `<span style="color:${SRC_COLOR[tgt.source] || '#666'}">→ ${esc(tgt.source)}</span> <small class="muted">${esc(tgt.phase || '')}</small>`
+            : '<span class="muted" style="font-size:11px">—</span>';
           return `
             <tr style="border-bottom:1px dotted var(--cm-bg-100)" title="${esc(r.notes || '')}">
-              <td style="padding:5px 8px;font-weight:600">${esc(r.data_name)}</td>
+              <td style="padding:5px 8px;font-weight:600">${esc(r.data_name)}<br><small class="muted" style="font-weight:400;font-size:10px">${esc(r.step_id || '')}</small></td>
               <td style="padding:5px 8px;color:var(--cm-ink-500);font-size:11px"><code>${esc(r.raw_table)}</code></td>
-              <td style="padding:5px 8px"><span style="color:${color};font-weight:600">${esc(r.source)}</span></td>
-              <td style="padding:5px 8px;font-size:11px;color:var(--cm-ink-500)"><code>${esc(r.protocol)}</code></td>
+              <td style="padding:5px 8px">
+                <span style="color:${color};font-weight:600">${esc(cur.source)}</span><br>
+                <small class="muted" style="font-size:10px"><code>${esc(cur.protocol)}</code></small>
+              </td>
+              <td style="padding:5px 8px;font-size:11px">${STATUS_BADGE[cur.status] || cur.status || ''}</td>
+              <td style="padding:5px 8px;font-size:11px">${targetCell}</td>
               <td style="padding:5px 8px;color:var(--cm-ink-500);font-size:11px">${esc(r.freshness)}</td>
-              <td style="padding:5px 8px;font-size:11px"><code>${esc(r.step_id)}</code></td>
-              <td style="padding:5px 8px;font-size:11px">${statusBadge}</td>
             </tr>
           `;
         }).join('')}
@@ -366,9 +375,11 @@
         const stats = r.stats || {};
         const statsEl = qs('ds-route-stats');
         if (statsEl) {
-          const c = stats.by_status?.connected || 0;
-          const p = stats.by_status?.pending || 0;
-          statsEl.textContent = `共 ${stats.total || 0} 类: ${c} 已接 / ${p} 待接 (P6)`;
+          const bs = stats.by_status || {};
+          const ok = bs.connected || 0;
+          const tr = bs.transitional || 0;
+          const pd = bs.pending || 0;
+          statsEl.textContent = `共 ${stats.total || 0}: ✓${ok} 已接 · ⚠${tr} 过渡 · ⏳${pd} 待接`;
         }
         logLine(`数据通道加载: ${_state.routes.length} 类`, 'ok');
         renderRoutesTable();

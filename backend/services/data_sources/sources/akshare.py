@@ -1,6 +1,8 @@
-"""akshare 兜底 source — 仅留 tdxhub/妙想/东财都没有的 2 类.
+"""akshare source — 真兜底, 仅保留 tdxhub 和妙想都没有的 2 类.
 
-经过 P1-P3 退役后, akshare 在 chunky-monkey-v2 里只剩这两个角色.
+注意: lhb / qfii / margin / 机构调研 / 资金流 这些"项目自建 datacenter-web 直连"
+是过渡产物, 不归入此 source. 见 data_routes.py 中 status='transitional' 的条目,
+P6 迁移目标是 miaoxiang (妙想 RPT_BILLBOARD_DAILYDETAILS 等已能覆盖).
 """
 from __future__ import annotations
 
@@ -11,7 +13,7 @@ from ..base import BaseDataSource, Capability, Health, register_source
 
 
 @register_source
-class AkshareFallbackSource(BaseDataSource):
+class AkshareSource(BaseDataSource):
     name = "akshare"
     display_name = "akshare (兜底)"
     priority = 99
@@ -24,13 +26,13 @@ class AkshareFallbackSource(BaseDataSource):
                 "trading_calendar",
                 description="A 股交易日历 (新浪源)",
                 freshness="static",
-                notes="ak.tool_trade_date_hist_sina, 项目 dim_trading_calendar 用",
+                notes="ak.tool_trade_date_hist_sina, dim_trading_calendar 唯一来源",
             ),
             Capability(
                 "etf_spot_ths",
-                description="ETF 实时行情 (同花顺源, 唯一)",
+                description="ETF 实时行情 (同花顺源)",
                 freshness="t-0",
-                notes="ak.fund_etf_spot_ths",
+                notes="ak.fund_etf_spot_ths, ETF 模块独家",
             ),
         ]
 
@@ -54,12 +56,10 @@ class AkshareFallbackSource(BaseDataSource):
     def healthcheck(self) -> Health:
         try:
             import akshare as ak  # noqa: F401
-        except ImportError:
-            return Health(state="down", notes="akshare 未安装")
-
-        # 只检 import 通, 不真实调用 (akshare 第一次调用很慢, 影响 UI)
+        except ImportError as exc:
+            return Health(state="down", notes=f"akshare 未安装: {exc}")
         return Health(
             state="ok",
             last_check_ts=time.time(),
-            notes="import 通, 兜底用, 未实测网络",
+            notes="兜底用, 仅 trading_calendar + etf_spot_ths",
         )

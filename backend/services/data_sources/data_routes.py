@@ -1,226 +1,233 @@
-"""data_routes — 真实业务数据 → 通道 映射.
+"""data_routes — 真实业务数据 → 通道 映射 + 迁移目标.
 
-这是从 chunky-monkey-v2 现有代码反推出来的"实际跑什么", 不是 registry 的声明.
-更新此文件: 当 backend 加新 sync step / 改通道时同步更新.
-
-每条:
-  data_name: 业务数据名 (UI 展示)
-  raw_table: 写入的 raw / dim / 直接 mart 表
-  source: 数据源名 (跟 registry source.name 对齐)
-  protocol: 实际协议 / endpoint
-  freshness: T-0 / T-1 / 季 / 静态 / 事件
-  step_id: updater.py 里对应的 step
+每条记录:
+  data_name:     业务数据名 (UI 展示)
+  raw_table:     写入的 raw / dim / 直接 mart 表
+  current:       当前实际通道
+                 - source: tdxhub / aif10 / akshare / datacenter_web (过渡)
+                 - protocol: 协议 / endpoint
+                 - status: connected (已接) / pending (registry 声明未接) / transitional (datacenter-web 过渡)
+  target:        长期迁移目标 (空 = 当前就是终态)
+                 - source / protocol / 计划阶段 (P6 等)
+  freshness:     T-0 / T-1 / 季 / 静态
+  step_id:       updater.py 里对应的 step
   client_module: backend/services/ 里的实际 client 文件
-  notes: 字段口径 / 反爬 / 速度等备注
-  status: connected / pending (registry 声明但还没接通)
+  notes:         备注
+
+设计原则 (来自用户要求):
+- 数据源只 3 个: tdxhub (主) / aif10 妙想 (备) / akshare (兜底)
+- "datacenter-web 直连" 不是独立 source, 是过渡产物
+  → tdxhub 没有 + 妙想能拉的 → 迁妙想 (P6)
+  → 妙想也没有的 → 走 akshare ak.X (容忍反爬, 用户接受)
 """
 from __future__ import annotations
 
+
 DATA_ROUTES = [
-    # ---------- tdxhub (通达信) ----------
+    # =================================================================
+    # tdxhub 通道 (主源, 已稳定)
+    # =================================================================
     {
         "data_name": "日 K 线",
         "raw_table": "market.duckdb#price_kline",
-        "source": "tdxhub",
-        "protocol": "TdxHq_API.get_security_bars",
+        "current": {"source": "tdxhub", "protocol": "TdxHq_API.get_security_bars", "status": "connected"},
+        "target": None,
         "freshness": "T-0",
         "step_id": "sync_market_data",
-        "client_module": "services/akshare_client.py",
-        "notes": "tdxhub 主, akshare 兜底 (东财→新浪→腾讯)",
-        "status": "connected",
+        "client_module": "services/akshare_client.py (内部转 tdxhub)",
+        "notes": "tdxhub 主, akshare 3 源 (东财/新浪/腾讯) 兜底",
     },
     {
         "data_name": "月 K 线",
         "raw_table": "market.duckdb#price_kline_monthly",
-        "source": "tdxhub",
-        "protocol": "TdxHq_API.get_security_bars (freq=10)",
+        "current": {"source": "tdxhub", "protocol": "TdxHq_API.get_security_bars (freq=10)", "status": "connected"},
+        "target": None,
         "freshness": "月",
         "step_id": "sync_market_data",
         "client_module": "services/akshare_client.py",
         "notes": "增量, 月底新增 1 行",
-        "status": "connected",
     },
     {
         "data_name": "申万行业",
         "raw_table": "dim_stock_tdx_industry",
-        "source": "tdxhub",
-        "protocol": "TdxHq_API.get_block_info (tdxhy.cfg)",
+        "current": {"source": "tdxhub", "protocol": "TdxHq_API.get_block_info (tdxhy.cfg)", "status": "connected"},
+        "target": None,
         "freshness": "静态",
         "step_id": "sync_industry",
         "client_module": "services/tdx_industry_client.py",
         "notes": "5607 行 L1=13/L2=56/L3=76, 历史快照入 dim",
-        "status": "connected",
     },
     {
         "data_name": "板块/概念",
         "raw_table": "dim_stock_tdx_block",
-        "source": "tdxhub",
-        "protocol": "TdxHq_API.get_block_info (block_zhishu)",
+        "current": {"source": "tdxhub", "protocol": "TdxHq_API.get_block_info (block_zhishu)", "status": "connected"},
+        "target": None,
         "freshness": "静态",
         "step_id": "sync_industry",
         "client_module": "services/block_client.py",
         "notes": "概念板块归属",
-        "status": "connected",
     },
     {
         "data_name": "财务 gpcw (8 期)",
         "raw_table": "raw_gpcw_financial",
-        "source": "tdxhub",
-        "protocol": "Affair.parse (二进制)",
+        "current": {"source": "tdxhub", "protocol": "Affair.parse (二进制)", "status": "connected"},
+        "target": None,
         "freshness": "季",
         "step_id": "sync_financial",
-        "client_module": "services/financial_client.py + services/tdx_affair_client.py",
+        "client_module": "services/financial_client.py + tdx_affair_client.py",
         "notes": "tdxhub 独家, gpcw 文件解析 585 字段",
-        "status": "connected",
     },
     {
         "data_name": "除权除息",
         "raw_table": "raw_xdxr",
-        "source": "tdxhub",
-        "protocol": "TdxHq_API.get_xdxr_info",
+        "current": {"source": "tdxhub", "protocol": "TdxHq_API.get_xdxr_info", "status": "connected"},
+        "target": None,
         "freshness": "T-1",
         "step_id": "sync_market_data (复权)",
         "client_module": "services/xdxr_client.py",
-        "notes": "送转配权利登记日, 用于 K 线复权",
-        "status": "connected",
+        "notes": "送转配权利登记日, K 线复权用",
     },
 
-    # ---------- em_datacenter (东财 datacenter-web) ----------
+    # =================================================================
+    # aif10 (妙想) — 已能调通的 (registry 声明), 但 chunky-monkey-v2 还没接通到 sync step
+    # =================================================================
     {
         "data_name": "十大流通股东 ⭐",
         "raw_table": "market_raw_holdings",
-        "source": "em_datacenter",
-        "protocol": "datacenter-web RPT_F10_EH_FREEHOLDERS",
+        "current": {"source": "datacenter_web", "protocol": "datacenter-web RPT_F10_EH_FREEHOLDERS", "status": "transitional"},
+        "target": {"source": "aif10", "protocol": "RPT_F10_EH_FREEHOLDERS (走 miaoxiang 包)", "phase": "P6"},
         "freshness": "事件 (季报披露驱动)",
         "step_id": "sync_raw",
         "client_module": "routers/market.py",
-        "notes": "项目核心数据, 增量 filter UPDATE_DATE>=下一日",
-        "status": "connected",
+        "notes": "项目核心数据. 当前直拉 datacenter-web; P6 迁去 miaoxiang fetch_report (统一通道)",
     },
-    {
-        "data_name": "龙虎榜",
-        "raw_table": "raw_lhb_daily",
-        "source": "em_datacenter",
-        "protocol": "datacenter-web RPT_DAILYBILLBOARD_DETAILSNEW",
-        "freshness": "T-0",
-        "step_id": "sync_lhb",
-        "client_module": "services/lhb_client.py",
-        "notes": "增量按 trade_date",
-        "status": "connected",
-    },
-    {
-        "data_name": "QFII 季度持仓",
-        "raw_table": "raw_qfii_holding_quarterly",
-        "source": "em_datacenter",
-        "protocol": "datacenter-web RPT_DMSK_HOLDERS",
-        "freshness": "季",
-        "step_id": "sync_qfii",
-        "client_module": "services/qfii_client.py",
-        "notes": "替代 akshare.stock_qfii_*",
-        "status": "connected",
-    },
-    {
-        "data_name": "融资融券",
-        "raw_table": "raw_margin_daily",
-        "source": "em_datacenter",
-        "protocol": "datacenter-web RPT_MARGIN_*",
-        "freshness": "T-0",
-        "step_id": "sync_margin",
-        "client_module": "services/margin_client.py",
-        "notes": "日明细",
-        "status": "connected",
-    },
-    {
-        "data_name": "机构调研事件",
-        "raw_table": "mart_stock_survey_activity",
-        "source": "em_datacenter",
-        "protocol": "datacenter-web RPT_RESEARCH_*",
-        "freshness": "T-0",
-        "step_id": "sync_surveys",
-        "client_module": "services/institution_survey_client.py",
-        "notes": "替代 akshare.stock_jgdy_tj_em",
-        "status": "connected",
-    },
-
-    # ---------- aif10 (妙想 F10) — 全部 pending, P6 接通 ----------
     {
         "data_name": "股东人数 (深历史)",
         "raw_table": "(待建)",
-        "source": "aif10",
-        "protocol": "RPT_F10_EH_HOLDERNUM",
+        "current": {"source": "aif10", "protocol": "RPT_F10_EH_HOLDERNUM", "status": "pending"},
+        "target": None,
         "freshness": "季",
         "step_id": "(待加 sync_aif10_holder_count)",
-        "client_module": "services/data_sources/sources/aif10.py",
-        "notes": "妙想独家, registry 已声明, 实际未调用",
-        "status": "pending",
+        "client_module": "data_sources/sources/aif10.py",
+        "notes": "妙想独家 (tdxhub 没户数), registry 已声明等接通",
     },
     {
-        "data_name": "估值分位 (PE/PB/PS PEG 历史)",
+        "data_name": "估值分位 PE/PB/PS PEG (历史)",
         "raw_table": "(待建)",
-        "source": "aif10",
-        "protocol": "RPT_STOCKVALUATIONTANTILE",
+        "current": {"source": "aif10", "protocol": "RPT_STOCKVALUATIONTANTILE", "status": "pending"},
+        "target": None,
         "freshness": "T-0",
         "step_id": "(待加 sync_aif10_valuation)",
-        "client_module": "services/data_sources/sources/aif10.py",
+        "client_module": "data_sources/sources/aif10.py",
         "notes": "妙想独家",
-        "status": "pending",
     },
     {
         "data_name": "同行排名 (估值/成长)",
         "raw_table": "(待建)",
-        "source": "aif10",
-        "protocol": "RPT_PCF10_INDUSTRY_CVALUE / RPT_PCF10_INDUSTRY_GROWTH",
+        "current": {"source": "aif10", "protocol": "RPT_PCF10_INDUSTRY_CVALUE / RPT_PCF10_INDUSTRY_GROWTH", "status": "pending"},
+        "target": None,
         "freshness": "季",
         "step_id": "(待加)",
-        "client_module": "services/data_sources/sources/aif10.py",
+        "client_module": "data_sources/sources/aif10.py",
         "notes": "妙想独家",
-        "status": "pending",
     },
     {
         "data_name": "卖方一致预期",
         "raw_table": "(待建)",
-        "source": "aif10",
-        "protocol": "RPT_HSF10_RES_ORGRATING",
+        "current": {"source": "aif10", "protocol": "RPT_HSF10_RES_ORGRATING", "status": "pending"},
+        "target": None,
         "freshness": "周",
         "step_id": "(待加)",
-        "client_module": "services/data_sources/sources/aif10.py",
+        "client_module": "data_sources/sources/aif10.py",
         "notes": "妙想独家",
-        "status": "pending",
     },
     {
         "data_name": "财务历史 200 期",
         "raw_table": "(待建)",
-        "source": "aif10",
-        "protocol": "RPT_F10_FINANCE_MAINFINADATA (v0)",
+        "current": {"source": "aif10", "protocol": "RPT_F10_FINANCE_MAINFINADATA (v0)", "status": "pending"},
+        "target": None,
         "freshness": "季",
         "step_id": "(待加)",
-        "client_module": "services/data_sources/sources/aif10.py",
-        "notes": "比 tdxhub 8 期更深, 接通后可替代/补充",
-        "status": "pending",
+        "client_module": "data_sources/sources/aif10.py",
+        "notes": "比 tdxhub 8 期更深, 接通后可补充",
     },
 
-    # ---------- akshare (兜底) ----------
+    # =================================================================
+    # 过渡通道 (datacenter-web 直连) — 用户希望少用, P6 迁妙想
+    # =================================================================
+    {
+        "data_name": "龙虎榜",
+        "raw_table": "raw_lhb_daily",
+        "current": {"source": "datacenter_web", "protocol": "datacenter-web RPT_DAILYBILLBOARD_DETAILSNEW", "status": "transitional"},
+        "target": {"source": "aif10", "protocol": "RPT_BILLBOARD_DAILYDETAILS + RPT_OPERATEDEPT_TRADE", "phase": "P6"},
+        "freshness": "T-0",
+        "step_id": "sync_lhb",
+        "client_module": "services/lhb_client.py",
+        "notes": "妙想已能拉, 待 P6 改 lhb_client 走 aif10_scraper",
+    },
+    {
+        "data_name": "QFII 持仓 (季)",
+        "raw_table": "raw_qfii_holding_quarterly",
+        "current": {"source": "datacenter_web", "protocol": "datacenter-web RPT_DMSK_HOLDERS", "status": "transitional"},
+        "target": {"source": "aif10", "protocol": "RPT_F10_MAIN_ORGHOLDDETAILS (ORG_TYPE=02)", "phase": "P6"},
+        "freshness": "季",
+        "step_id": "sync_qfii",
+        "client_module": "services/qfii_client.py",
+        "notes": "妙想机构持仓接口 ORG_TYPE=02 即 QFII, 比直拉 datacenter-web 字段更全",
+    },
+    {
+        "data_name": "融资融券",
+        "raw_table": "raw_margin_daily",
+        "current": {"source": "datacenter_web", "protocol": "datacenter-web RPT_MARGIN_*", "status": "transitional"},
+        "target": {"source": "aif10", "protocol": "RPT_MARGIN_STATISTICS_STOCKS + RPT_STOCK_MARGINTRENDEXPLAIN", "phase": "P6"},
+        "freshness": "T-0",
+        "step_id": "sync_margin",
+        "client_module": "services/margin_client.py",
+        "notes": "妙想已能拉, P6 迁",
+    },
+    {
+        "data_name": "机构调研事件",
+        "raw_table": "mart_stock_survey_activity",
+        "current": {"source": "datacenter_web", "protocol": "datacenter-web (替代 ak.stock_jgdy_tj_em)", "status": "transitional"},
+        "target": {"source": "akshare", "protocol": "ak.stock_jgdy_tj_em (容忍反爬)", "phase": "P6 评估"},
+        "freshness": "T-0",
+        "step_id": "sync_surveys",
+        "client_module": "services/institution_survey_client.py",
+        "notes": "妙想没明确 endpoint. P6 评估迁回 ak.X 或保持 datacenter-web 过渡",
+    },
+    {
+        "data_name": "个股资金流",
+        "raw_table": "raw_fund_flow_*",
+        "current": {"source": "datacenter_web", "protocol": "datacenter-web (历史) / push2his (反爬高发)", "status": "transitional"},
+        "target": {"source": "akshare", "protocol": "ak.stock_individual_fund_flow_em", "phase": "P6 评估"},
+        "freshness": "T-0",
+        "step_id": "(资金流模块独立)",
+        "client_module": "(已下架 fetch_fund_flow_daily.py 等)",
+        "notes": "妙想/tdxhub 都没. 项目曾有自建 datacenter-web 拉历史; 用户希望 P6 决策: 接受 ak.X 反爬 / deprecate 资金流 / 保留过渡",
+    },
+
+    # =================================================================
+    # akshare (真兜底)
+    # =================================================================
     {
         "data_name": "交易日历",
         "raw_table": "dim_trading_calendar",
-        "source": "akshare",
-        "protocol": "ak.tool_trade_date_hist_sina",
+        "current": {"source": "akshare", "protocol": "ak.tool_trade_date_hist_sina", "status": "connected"},
+        "target": None,
         "freshness": "静态",
         "step_id": "(启动时初始化)",
         "client_module": "services/security_master.py",
         "notes": "唯一兜底, 无替代源",
-        "status": "connected",
     },
     {
         "data_name": "ETF 行情",
         "raw_table": "etf.duckdb",
-        "source": "akshare",
-        "protocol": "ak.fund_etf_spot_ths (同花顺源)",
+        "current": {"source": "akshare", "protocol": "ak.fund_etf_spot_ths (同花顺源)", "status": "connected"},
+        "target": None,
         "freshness": "T-0",
         "step_id": "(ETF 模块独立)",
         "client_module": "services/etf_engine.py",
         "notes": "唯一兜底, 同花顺源",
-        "status": "connected",
     },
 ]
 
@@ -230,22 +237,30 @@ def get_routes() -> list[dict]:
     return DATA_ROUTES
 
 
-def routes_by_source() -> dict[str, list[dict]]:
-    """按 source 聚合."""
+def routes_by_status() -> dict[str, list[dict]]:
+    """按 current.status 聚合."""
     out: dict[str, list[dict]] = {}
     for r in DATA_ROUTES:
-        out.setdefault(r["source"], []).append(r)
+        s = r.get("current", {}).get("status", "unknown")
+        out.setdefault(s, []).append(r)
     return out
 
 
 def stats() -> dict:
     """聚合统计."""
-    by_source = routes_by_source()
-    by_status = {"connected": 0, "pending": 0}
+    by_status = {"connected": 0, "transitional": 0, "pending": 0}
+    by_source = {}
+    has_target = 0
     for r in DATA_ROUTES:
-        by_status[r["status"]] = by_status.get(r["status"], 0) + 1
+        s = r.get("current", {}).get("status", "unknown")
+        by_status[s] = by_status.get(s, 0) + 1
+        src = r.get("current", {}).get("source", "?")
+        by_source[src] = by_source.get(src, 0) + 1
+        if r.get("target"):
+            has_target += 1
     return {
         "total": len(DATA_ROUTES),
-        "by_source_count": {k: len(v) for k, v in by_source.items()},
         "by_status": by_status,
+        "by_current_source": by_source,
+        "with_migration_target": has_target,
     }
