@@ -187,51 +187,38 @@ def _fetch_eastmoney_fund_flow(
     - push2his.eastmoney.com  → 历史 ~250 个交易日
     - push2delay.eastmoney.com → 仅最新交易日 1 行 (接口设计上限)
 
-    其他参数完全相同, 仅 URL 子域不同.
+    Phase 1 改造 (2026-04-27): 底层网络层换成 eastmoney_skill.quote (BaseClient 统一处理
+    Session(trust_env=False) + retry + timeout + UA + Referer). 字段语义不变, 上层
+    normalize_df 仍按中文列名工作.
     """
-    market_map = {"sh": 1, "sz": 0, "bj": 0}
-    params = {
-        "lmt": "0",
-        "klt": "101",
-        "secid": f"{market_map.get(market, 0)}.{stock_code}",
-        "fields1": "f1,f2,f3,f7",
-        "fields2": "f51,f52,f53,f54,f55,f56,f57,f58,f59,f60,f61,f62,f63,f64,f65",
-        "ut": "b2884a393a59ad64002292a3e90d46a5",
-        "_": int(time.time() * 1000),
-    }
-    headers = {
-        "User-Agent": (
-            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
-            "(KHTML, like Gecko) Chrome/120.0 Safari/537.36"
-        ),
-        "Referer": "https://data.eastmoney.com/zjlx/detail.html",
-    }
-    session = requests.Session()
-    session.trust_env = False
-    resp = session.get(base_url, params=params, headers=headers, timeout=timeout)
-    resp.raise_for_status()
-    data = resp.json()
-    klines = ((data or {}).get("data") or {}).get("klines") or []
-    if not klines:
+    from services.eastmoney_skill.quote import _fetch_fflow
+    from services.eastmoney_skill import default_client
+
+    rows = _fetch_fflow(
+        stock_code, market,
+        base_url=base_url, client=default_client, timeout=timeout,
+    )
+    if not rows:
         return pd.DataFrame(columns=list(COL_MAP.keys()))
-    temp_df = pd.DataFrame([item.split(",") for item in klines])
-    temp_df.columns = [
-        "日期",
-        "主力净流入-净额",
-        "小单净流入-净额",
-        "中单净流入-净额",
-        "大单净流入-净额",
-        "超大单净流入-净额",
-        "主力净流入-净占比",
-        "小单净流入-净占比",
-        "中单净流入-净占比",
-        "大单净流入-净占比",
-        "超大单净流入-净占比",
-        "收盘价",
-        "涨跌幅",
-        "-",
-        "--",
-    ]
+    # eastmoney_skill 返回英文键 (trade_date / main_net_amount 等).
+    # 这里转成 normalize_df 期望的中文列名, 保持上下游兼容.
+    en_to_zh = {
+        "trade_date": "日期",
+        "main_net_amount": "主力净流入-净额",
+        "small_net_amount": "小单净流入-净额",
+        "medium_net_amount": "中单净流入-净额",
+        "large_net_amount": "大单净流入-净额",
+        "super_large_net_amount": "超大单净流入-净额",
+        "main_net_pct": "主力净流入-净占比",
+        "small_net_pct": "小单净流入-净占比",
+        "medium_net_pct": "中单净流入-净占比",
+        "large_net_pct": "大单净流入-净占比",
+        "super_large_net_pct": "超大单净流入-净占比",
+        "close_price": "收盘价",
+        "pct_change": "涨跌幅",
+    }
+    zh_rows = [{en_to_zh[k]: v for k, v in r.items() if k in en_to_zh} for r in rows]
+    temp_df = pd.DataFrame(zh_rows)
     return temp_df[
         [
             "日期",

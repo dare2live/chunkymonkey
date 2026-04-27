@@ -118,14 +118,51 @@ def _normalize_date(val) -> Optional[str]:
         return None
 
 
-def _fetch_from_akshare(start_date: str) -> pd.DataFrame:
-    """调用 akshare.stock_jgdy_tj_em，返回从 start_date 起的累计调研记录。"""
-    import akshare as ak
+def _fetch_from_eastmoney_skill(start_date: str) -> pd.DataFrame:
+    """调用 eastmoney_skill datacenter-web (替代 akshare.stock_jgdy_tj_em).
 
-    df = ak.stock_jgdy_tj_em(date=start_date)
-    if df is None or df.empty:
+    start_date: YYYYMMDD, 返回从该日起的累计调研记录 (按 NOTICE_DATE 排序).
+    返回的 DataFrame 字段名兼容旧版 (中文): 代码 / 名称 / 公告日期 / 接待日期 /
+    接待方式 / 接待人员 / 接待地点 / 接待机构数量, 这样下游 _normalize* 不需改.
+    """
+    from services.eastmoney_skill import fetch_all_pages
+
+    # YYYYMMDD → YYYY-MM-DD (datacenter-web 用 dash 格式)
+    if len(start_date) == 8 and start_date.isdigit():
+        start_iso = f"{start_date[:4]}-{start_date[4:6]}-{start_date[6:]}"
+    else:
+        start_iso = start_date
+
+    rows = fetch_all_pages(
+        report_name="RPT_ORG_SURVEYNEW",
+        page_size=500,
+        sort_columns="NOTICE_DATE,SECURITY_CODE",
+        sort_types="-1,1",
+        # 注意: datacenter-web filter 用单引号 + 严格 > (不支持 >=)
+        filter_expr=f"(NOTICE_DATE>'{start_iso}')",
+    )
+    if not rows:
         return pd.DataFrame()
-    return df
+
+    # datacenter-web → 旧 akshare 中文列名
+    # 字段映射经 2026-04-27 实地探查 (RPT_ORG_SURVEYNEW)
+    norm: list[dict] = []
+    for r in rows:
+        norm.append({
+            "代码": r.get("SECURITY_CODE"),
+            "名称": r.get("SECURITY_NAME_ABBR"),
+            "公告日期": r.get("NOTICE_DATE"),
+            "接待日期": r.get("RECEIVE_START_DATE"),
+            "接待机构数量": r.get("NUMBERNEW"),
+            "接待方式": r.get("RECEIVE_WAY_EXPLAIN"),
+            "接待人员": r.get("RECEPTIONIST"),
+            "接待地点": r.get("RECEIVE_PLACE"),
+        })
+    return pd.DataFrame(norm)
+
+
+# 兼容别名: 老代码可能仍引用此名 (虽然只在本文件用)
+_fetch_from_akshare = _fetch_from_eastmoney_skill
 
 
 # ─────────────────────────────────────────────────────────────────────
@@ -156,14 +193,14 @@ def sync_institution_surveys(
     result: dict = {"rows_fetched": 0, "rows_upserted": 0, "mart_rows": 0, "errors": []}
 
     try:
-        df = _fetch_from_akshare(start_date)
+        df = _fetch_from_eastmoney_skill(start_date)
     except Exception as exc:
-        logger.error(f"[survey] akshare 拉取失败: {exc}")
+        logger.error(f"[survey] eastmoney_skill 拉取失败: {exc}")
         result["errors"].append(f"fetch failed: {exc}")
         return result
 
     if df.empty:
-        logger.warning("[survey] akshare 返回空")
+        logger.warning("[survey] eastmoney_skill 返回空")
         return result
 
     result["rows_fetched"] = len(df)

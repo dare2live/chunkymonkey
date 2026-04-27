@@ -165,10 +165,44 @@ def latest_plannable_report_date(today: Optional[date] = None) -> Optional[str]:
 # ─────────────────────────────────────────────────────────────────────
 
 def _fetch_qfii_by_symbol(report_date_yyyymmdd: str, symbol: str):
-    import akshare as ak
-    return ak.stock_gdfx_holding_detail_em(
-        date=report_date_yyyymmdd, indicator="QFII", symbol=symbol,
+    """QFII 季度持股 datacenter-web RPT_DMSK_HOLDERS (替代 akshare.stock_gdfx_holding_detail_em).
+
+    report_date_yyyymmdd: 季度末日期 YYYYMMDD (如 20251231).
+    symbol: 持股变动 {"新进", "增加", "不变", "减少"}.
+    """
+    from services.eastmoney_skill import fetch_all_pages
+    import pandas as _pd
+
+    end_iso = f"{report_date_yyyymmdd[:4]}-{report_date_yyyymmdd[4:6]}-{report_date_yyyymmdd[6:]}"
+    rows = fetch_all_pages(
+        report_name="RPT_DMSK_HOLDERS",
+        page_size=50,
+        sort_columns="NOTICE_DATE,SECURITY_CODE,RANK",
+        sort_types="-1,1,1",
+        filter_expr=(
+            f'(HOLDER_NEWTYPE="QFII")'
+            f'(HOLDNUM_CHANGE_NAME="{symbol}")'
+            f"(END_DATE='{end_iso}')"
+        ),
     )
+    if not rows:
+        return _pd.DataFrame()
+    df = _pd.DataFrame(rows)
+    df.rename(columns={
+        "HOLDER_NAME": "股东名称",
+        "HOLDER_NEWTYPE": "股东类型",
+        "RANK": "股东排名",
+        "SECURITY_CODE": "股票代码",
+        "SECURITY_NAME_ABBR": "股票简称",
+        "END_DATE": "报告期",
+        "HOLD_NUM": "期末持股-数量",
+        "HOLD_NUM_CHANGE": "期末持股-数量变化",
+        "HOLD_RATIO_CHANGE": "期末持股-数量变化比例",
+        "HOLDNUM_CHANGE_NAME": "期末持股-持股变动",
+        "HOLDER_MARKET_CAP": "期末持股-流通市值",
+        "NOTICE_DATE": "公告日",
+    }, inplace=True)
+    return df
 
 
 async def fetch_qfii_quarter(report_date: str, retries: int = 3) -> pd.DataFrame:

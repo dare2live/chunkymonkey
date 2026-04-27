@@ -123,8 +123,54 @@ def _normalize_stock_code(value) -> Optional[str]:
 # ─────────────────────────────────────────────────────────────────────
 
 def _fetch_lhb(start_date: str, end_date: str):
-    import akshare as ak
-    return ak.stock_lhb_detail_em(start_date=start_date, end_date=end_date)
+    """龙虎榜 datacenter-web RPT_DAILYBILLBOARD_DETAILSNEW (替代 akshare.stock_lhb_detail_em).
+
+    start_date / end_date: YYYYMMDD, 返回 DataFrame (列名兼容旧 akshare 版).
+    """
+    from services.eastmoney_skill import fetch_all_pages
+    import pandas as _pd
+
+    start_iso = f"{start_date[:4]}-{start_date[4:6]}-{start_date[6:]}"
+    end_iso = f"{end_date[:4]}-{end_date[4:6]}-{end_date[6:]}"
+    rows = fetch_all_pages(
+        report_name="RPT_DAILYBILLBOARD_DETAILSNEW",
+        page_size=5000,
+        sort_columns="SECURITY_CODE,TRADE_DATE",
+        sort_types="1,-1",
+        columns=(
+            "SECURITY_CODE,SECUCODE,SECURITY_NAME_ABBR,TRADE_DATE,EXPLAIN,CLOSE_PRICE,CHANGE_RATE,"
+            "BILLBOARD_NET_AMT,BILLBOARD_BUY_AMT,BILLBOARD_SELL_AMT,BILLBOARD_DEAL_AMT,ACCUM_AMOUNT,"
+            "DEAL_NET_RATIO,DEAL_AMOUNT_RATIO,TURNOVERRATE,FREE_MARKET_CAP,EXPLANATION,D1_CLOSE_ADJCHRATE,"
+            "D2_CLOSE_ADJCHRATE,D5_CLOSE_ADJCHRATE,D10_CLOSE_ADJCHRATE,SECURITY_TYPE_CODE"
+        ),
+        filter_expr=f"(TRADE_DATE<='{end_iso}')(TRADE_DATE>='{start_iso}')",
+    )
+    if not rows:
+        return _pd.DataFrame()
+    df = _pd.DataFrame(rows)
+    df.rename(columns={
+        "SECURITY_CODE": "代码",
+        "SECURITY_NAME_ABBR": "名称",
+        "TRADE_DATE": "上榜日",
+        "EXPLAIN": "解读",
+        "CLOSE_PRICE": "收盘价",
+        "CHANGE_RATE": "涨跌幅",
+        "BILLBOARD_NET_AMT": "龙虎榜净买额",
+        "BILLBOARD_BUY_AMT": "龙虎榜买入额",
+        "BILLBOARD_SELL_AMT": "龙虎榜卖出额",
+        "BILLBOARD_DEAL_AMT": "龙虎榜成交额",
+        "ACCUM_AMOUNT": "市场总成交额",
+        "DEAL_NET_RATIO": "净买额占总成交比",
+        "DEAL_AMOUNT_RATIO": "成交额占总成交比",
+        "TURNOVERRATE": "换手率",
+        "FREE_MARKET_CAP": "流通市值",
+        "EXPLANATION": "上榜原因",
+        "D1_CLOSE_ADJCHRATE": "上榜后1日",
+        "D2_CLOSE_ADJCHRATE": "上榜后2日",
+        "D5_CLOSE_ADJCHRATE": "上榜后5日",
+        "D10_CLOSE_ADJCHRATE": "上榜后10日",
+    }, inplace=True)
+    return df
 
 
 async def fetch_lhb_range(start_date: str, end_date: str, retries: int = 3) -> pd.DataFrame:
