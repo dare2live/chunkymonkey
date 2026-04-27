@@ -120,19 +120,34 @@
         <div class="muted" style="padding:24px;text-align:center;grid-column:1/-1">加载数据源中…</div>
       </div>
 
-      <!-- 中: capability → 源 映射表 -->
+      <!-- 中: 业务数据 → 实际通道 (从代码反推, 比 registry 声明更可信) -->
       <div class="panel" style="padding:14px;margin-bottom:14px">
         <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:8px">
-          <h3 style="margin:0;font-size:14px">数据 → 数据源 映射</h3>
+          <h3 style="margin:0;font-size:14px">业务数据 → 实际通道</h3>
           <div style="display:flex;gap:8px;align-items:center">
-            <input type="text" id="ds-cap-filter" placeholder="筛选 capability…" style="padding:4px 8px;border:1px solid var(--cm-ink-100);border-radius:4px;font-size:12px;width:180px">
-            <button class="chip chip-outline" id="ds-refresh-caps">刷新</button>
+            <input type="text" id="ds-route-filter" placeholder="筛选数据/源/协议…" style="padding:4px 8px;border:1px solid var(--cm-ink-100);border-radius:4px;font-size:12px;width:200px">
+            <span class="muted" style="font-size:11px" id="ds-route-stats"></span>
           </div>
         </div>
-        <div id="ds-capability-table" style="overflow-x:auto;max-height:380px;overflow-y:auto">
+        <div id="ds-routes-table" style="overflow-x:auto;max-height:420px;overflow-y:auto">
           <div class="muted" style="padding:20px;text-align:center">加载中…</div>
         </div>
+        <div class="muted" style="font-size:11px;margin-top:8px;padding-top:8px;border-top:1px dashed var(--cm-ink-100)">
+          <strong>说明</strong>: 这张表来自代码反推 (services/data_sources/data_routes.py), 反映 chunky-monkey-v2 实际跑什么. 跟数据源卡片上的 "声明 capability 数" 是两回事 — registry 是 source 自己声明能干什么, data_routes 是真在跑.
+        </div>
       </div>
+
+      <details style="margin-bottom:14px;background:var(--cm-bg-50);border-radius:6px;padding:6px 14px">
+        <summary style="cursor:pointer;font-size:13px;font-weight:600;padding:6px 0">📋 高级: registry capability 声明 (诊断用)</summary>
+        <div style="padding:8px 0">
+          <div class="muted" style="font-size:11px;margin-bottom:8px">每个 source 在 registry 里声明自己能拉的 capability. 对比上表可以看出 "声明了但未真实接通" 的部分.</div>
+          <input type="text" id="ds-cap-filter" placeholder="筛选 capability…" style="padding:4px 8px;border:1px solid var(--cm-ink-100);border-radius:4px;font-size:12px;width:180px;margin-bottom:8px">
+          <button class="chip chip-outline" id="ds-refresh-caps" style="margin-left:6px">刷新</button>
+          <div id="ds-capability-table" style="overflow-x:auto;max-height:300px;overflow-y:auto">
+            <div class="muted" style="padding:20px;text-align:center">加载中…</div>
+          </div>
+        </div>
+      </details>
 
       <!-- 下: 数据更新调度 + 实时日志 -->
       <div style="display:grid;grid-template-columns:1.4fr 1fr;gap:14px">
@@ -275,12 +290,10 @@
       <div class="workbench-ops">
         <div class="workbench-ops-left">
           <p class="muted" style="font-size:12px;margin:0 0 10px">
-            派生层 (fact + mart) 编排. 数据获取在 <a href="#" onclick="window.App&&window.App.showView('data');return false" style="color:var(--cm-accent,#2563eb)">数据页</a>;
-            策略调参在 <a href="#" onclick="window.App&&window.App.showView('strategy');return false" style="color:var(--cm-accent,#2563eb)">策略页</a>;
-            危险操作在 <a href="#" onclick="window.App&&window.App.showView('settings');return false" style="color:var(--cm-accent,#2563eb)">系统</a>.
+            派生层 (fact + mart) <strong>增量计算</strong>. 数据获取在数据页, 全量清空+重建在系统页.
           </p>
           <div class="chip-group">
-            <button class="chip chip-primary" id="btnUpdateAll" title="按 raw → fact → mart 链路重算所有派生层 (raw 不动)">重算派生层</button>
+            <button class="chip chip-primary" id="btnUpdateAll" title="增量算 fact + mart, 不动 raw 也不清空 (raw 在数据页)">计算派生层 (增量)</button>
             <button class="chip chip-outline" id="btnRefreshStatus">刷新状态</button>
             <button class="chip chip-danger chip-sm" id="btnStop" style="display:none">停止</button>
           </div>

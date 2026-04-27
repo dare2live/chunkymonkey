@@ -60,6 +60,21 @@ def list_data_sources():
     return {"sources": out, "total": len(out)}
 
 
+@router.get("/data_routes")
+def list_data_routes():
+    """业务数据 → 实际通道 映射 (从代码反推, 不是 registry 声明).
+
+    每条记录:
+      - 业务名 (e.g. "日 K 线")
+      - 实际写入表 (e.g. "market.duckdb#price_kline")
+      - 实际数据源 + 协议 endpoint
+      - 对应 sync step
+      - status: connected (跑通) / pending (registry 声明但未接)
+    """
+    from services.data_sources.data_routes import get_routes, stats
+    return {"routes": get_routes(), "stats": stats()}
+
+
 @router.get("/capabilities")
 def list_capabilities():
     """capability → 提供它的 source 列表 (按 priority).

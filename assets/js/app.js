@@ -2433,7 +2433,7 @@
     syncServerLogs(up?.logs || [], true);
 
     el('btnUpdateAll').disabled = false;
-    el('btnUpdateAll').textContent = '重算派生层';
+    el('btnUpdateAll').textContent = '计算派生层 (增量)';
     el('btnStop').disabled = false;
     el('btnStop').textContent = '停止';
     el('btnStop').style.display = 'none';
@@ -2647,7 +2647,7 @@
       _uiRunning = false;
       _activeRunContext = null;
       el('btnUpdateAll').disabled = false;
-      el('btnUpdateAll').textContent = '重算派生层';
+      el('btnUpdateAll').textContent = '计算派生层 (增量)';
       el('btnStop').style.display = 'none';
       await refreshDashboardStatus(true);
       addLog(r.message || '数据已是最新，无需更新');

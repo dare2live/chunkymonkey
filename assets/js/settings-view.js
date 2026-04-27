@@ -55,19 +55,26 @@
   function renderDangerZone() {
     const el = document.getElementById('sys-danger-zone');
     if (!el) return;
+    // 系统页只放真正的"破坏性 + 全局"操作. 跳转/导航交给二级 nav.
     const buttons = [
-      { id: 'reset-derived', label: '🔥 全量重算派生数据', action: resetDerived, desc: '清空事件/收益/画像/关系派生层 + 重算 (raw 保留)' },
-      { id: 'open-data', label: '🔄 数据获取', action: () => window.App && window.App.showView('data'), desc: '跳到数据页' },
-      { id: 'open-workbench', label: '⚙ 工作台编排', action: () => window.App && window.App.showView('dashboard'), desc: '跳到工作台' },
+      {
+        id: 'reset-derived',
+        label: '🔥 清空并重算派生层',
+        action: resetDerived,
+        desc: '清空 fact_* + mart_* 全部派生表, 从 raw 重算. 不可撤销 (raw 保留). 预计 10-20 分钟.',
+      },
     ];
     el.innerHTML = `
-      <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:10px">
+      <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:12px">
       ${buttons.map(b => `
-        <div style="border:1px solid var(--cm-ink-100);border-radius:6px;padding:10px;border-left:3px solid ${b.id === 'reset-derived' ? '#d33' : 'var(--cm-ink-300)'}">
-          <button class="chip chip-outline" id="sys-btn-${esc(b.id)}" style="margin-bottom:6px;${b.id === 'reset-derived' ? 'border-color:#d33;color:#d33' : ''}">${esc(b.label)}</button>
-          <div class="muted" style="font-size:11px">${esc(b.desc)}</div>
+        <div style="border:1px solid #d33;border-radius:6px;padding:12px;border-left:4px solid #d33;background:rgba(221,51,51,0.03)">
+          <button class="chip" id="sys-btn-${esc(b.id)}" style="margin-bottom:8px;background:#fff;border:1px solid #d33;color:#d33;font-weight:600">${esc(b.label)}</button>
+          <div class="muted" style="font-size:11px;line-height:1.5">${esc(b.desc)}</div>
         </div>
       `).join('')}
+      </div>
+      <div class="muted" style="font-size:11px;margin-top:10px;padding-top:8px;border-top:1px dashed var(--cm-ink-100)">
+        <strong>区别于工作台 "计算派生层 (增量)"</strong>: 那个只对新增/变更样本算; 这里是 <strong>全量清空再重算</strong>, 用在 schema 升级 / 数据口径变化 / 修复异常之后.
       </div>
     `;
     buttons.forEach(b => {

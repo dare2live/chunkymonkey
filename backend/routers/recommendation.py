@@ -308,10 +308,10 @@ async def get_model_performance(
                 portfolio["random_l1"] = [dict(r) for r in random_rows]
 
         walkforward = {"latest_run_id": None, "summary": None, "folds": []}
-        if _table_exists(conn, "mart_model_validation_fold"):
+        if _table_exists(conn, "mart_model_walkforward_fold"):
             wfrow = conn.execute(
                 """
-                SELECT run_id FROM mart_model_validation_fold
+                SELECT run_id FROM mart_model_walkforward_fold
                 WHERE model_id = ? OR model_id IS NULL
                 ORDER BY built_at DESC LIMIT 1
                 """,
@@ -324,7 +324,7 @@ async def get_model_performance(
                     SELECT fold_id, train_start, train_end, valid_start, valid_end,
                            test_start, test_end, n_features, test_ic, test_rank_ic,
                            test_long_short_spread, test_winrate_top
-                    FROM mart_model_validation_fold
+                    FROM mart_model_walkforward_fold
                     WHERE run_id = ? ORDER BY fold_id
                     """,
                     (wfrow["run_id"],),

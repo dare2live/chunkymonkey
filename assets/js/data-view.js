@@ -15,11 +15,14 @@
   let _state = {
     sources: [],
     capabilities: [],
+    routes: [],
     capFilter: '',
+    routeFilter: '',
   };
   let _initialized = false;
   let _logBuffer = [];
   let _pollTimer = null;
+  let _lastLogId = 0;
 
   // ---- helpers ----
   function esc(s) {
@@ -41,9 +44,18 @@
   }
 
   async function fetchJSON(url, options) {
-    const r = await fetch(url, options);
-    if (!r.ok) throw new Error(`${url} -> HTTP ${r.status}`);
-    return r.json();
+    options = options || {};
+    // 默认 8s timeout, 防 hang
+    const ctrl = new AbortController();
+    const tid = setTimeout(() => ctrl.abort(), options.timeout || 8000);
+    options.signal = ctrl.signal;
+    try {
+      const r = await fetch(url, options);
+      if (!r.ok) throw new Error(`${url} -> HTTP ${r.status}`);
+      return await r.json();
+    } finally {
+      clearTimeout(tid);
+    }
   }
 
   // ---- 数据源 卡 ----
@@ -122,7 +134,59 @@
     }
   }
 
-  // ---- capability 表 ----
+  // ---- 业务数据 → 通道表 (主表, 来自 data_routes endpoint) ----
+  function renderRoutesTable() {
+    const root = qs('ds-routes-table');
+    if (!root) return;
+    const list = _state.routes.filter(r => {
+      if (!_state.routeFilter) return true;
+      const f = _state.routeFilter.toLowerCase();
+      return [r.data_name, r.source, r.protocol, r.raw_table, r.step_id, r.notes].some(
+        v => (v || '').toLowerCase().includes(f)
+      );
+    });
+    if (!list.length) {
+      root.innerHTML = '<div class="muted" style="padding:14px;text-align:center;font-size:12px">无匹配</div>';
+      return;
+    }
+    const SRC_COLOR = { tdxhub: '#0a7', aif10: '#26b', em_datacenter: '#a40', akshare: '#888' };
+    root.innerHTML = `
+      <table style="width:100%;font-size:12px;border-collapse:collapse">
+        <thead style="position:sticky;top:0;background:var(--cm-surface);z-index:1">
+          <tr style="border-bottom:1px solid var(--cm-ink-100);color:var(--cm-ink-500);font-size:11px">
+            <th style="text-align:left;padding:6px 8px">业务数据</th>
+            <th style="text-align:left;padding:6px 8px">表</th>
+            <th style="text-align:left;padding:6px 8px">数据源</th>
+            <th style="text-align:left;padding:6px 8px">协议 / endpoint</th>
+            <th style="text-align:left;padding:6px 8px">频率</th>
+            <th style="text-align:left;padding:6px 8px">step_id</th>
+            <th style="text-align:left;padding:6px 8px">状态</th>
+          </tr>
+        </thead>
+        <tbody>
+        ${list.map(r => {
+          const color = SRC_COLOR[r.source] || '#666';
+          const statusBadge = r.status === 'connected'
+            ? '<span style="color:#0a7;font-weight:600">✓ 已接</span>'
+            : `<span style="color:#888" title="registry 声明但未接通">⏳ pending</span>`;
+          return `
+            <tr style="border-bottom:1px dotted var(--cm-bg-100)" title="${esc(r.notes || '')}">
+              <td style="padding:5px 8px;font-weight:600">${esc(r.data_name)}</td>
+              <td style="padding:5px 8px;color:var(--cm-ink-500);font-size:11px"><code>${esc(r.raw_table)}</code></td>
+              <td style="padding:5px 8px"><span style="color:${color};font-weight:600">${esc(r.source)}</span></td>
+              <td style="padding:5px 8px;font-size:11px;color:var(--cm-ink-500)"><code>${esc(r.protocol)}</code></td>
+              <td style="padding:5px 8px;color:var(--cm-ink-500);font-size:11px">${esc(r.freshness)}</td>
+              <td style="padding:5px 8px;font-size:11px"><code>${esc(r.step_id)}</code></td>
+              <td style="padding:5px 8px;font-size:11px">${statusBadge}</td>
+            </tr>
+          `;
+        }).join('')}
+        </tbody>
+      </table>
+    `;
+  }
+
+  // ---- capability 表 (高级/诊断用) ----
   function renderCapTable() {
     const root = qs('ds-capability-table');
     if (!root) return;
@@ -245,27 +309,32 @@
     } catch (e) { logLine('停止失败: ' + e.message, 'err'); }
   }
 
-  // 轮询更新进度
+  // 轮询更新进度 (只在用户触发更新后开)
   function startPolling() {
     if (_pollTimer) return;
+    logLine('开始监听后端日志…');
     _pollTimer = setInterval(async () => {
       try {
-        const j = await fetchJSON('/api/inst/update/status');
-        if (j && j.last_log_lines) {
-          // 拿后端最近日志, 选只属于"已运行" 的进度
-          j.last_log_lines.forEach(line => {
-            if (!_logBuffer.some(b => b.endsWith(line))) {
-              _logBuffer.push('  ' + line);
+        const j = await fetchJSON('/api/inst/update/status', { timeout: 5000 });
+        // logs 是 [{id, ts, msg}, ...] (递增 id)
+        if (Array.isArray(j.logs)) {
+          j.logs.forEach(item => {
+            const id = item.id || 0;
+            if (id > _lastLogId) {
+              _lastLogId = id;
+              const ts = item.ts ? new Date(item.ts).toLocaleTimeString() : '';
+              _logBuffer.push(`[${ts}] ${item.msg || ''}`);
+              if (_logBuffer.length > 500) _logBuffer.shift();
             }
           });
           const el = qs('ds-live-log');
           if (el) { el.textContent = _logBuffer.slice(-200).join('\n'); el.scrollTop = el.scrollHeight; }
         }
-        if (j && (!j.running || j.finished)) {
+        if (j && j.running === false) {
           stopPolling();
-          logLine('更新完成 (轮询结束)', 'ok');
+          logLine('更新完成 (后端 running=false)', 'ok');
         }
-      } catch (e) { /* silent */ }
+      } catch (e) { /* silent, polling 容错 */ }
     }, 3000);
   }
   function stopPolling() {
@@ -280,33 +349,47 @@
     // 立刻渲染 step grid (不依赖网络)
     renderStepGrid();
 
-    // 并行拉两个 endpoint
-    let listOk = false, capOk = false;
-    try {
-      const listResp = await fetchJSON('/api/data_sources/list');
-      _state.sources = listResp.sources || [];
-      listOk = true;
-      logLine(`数据源加载: ${_state.sources.length} 个`, 'ok');
-    } catch (e) {
-      console.error('[DataView] list fetch fail', e);
-      logLine('加载数据源列表失败: ' + e.message, 'err');
-      const root = qs('ds-source-cards');
-      if (root) root.innerHTML = `<div class="panel" style="padding:18px;grid-column:1/-1;border-left:4px solid #d33"><strong>加载失败</strong><br><code style="font-size:11px">${esc(e.message)}</code><br><small class="muted">检查后端是否启动 + /api/data_sources/list 可达</small></div>`;
-    }
-    try {
-      const capsResp = await fetchJSON('/api/data_sources/capabilities');
-      _state.capabilities = capsResp.capabilities || [];
-      capOk = true;
-      logLine(`capability 加载: ${_state.capabilities.length} 个`, 'ok');
-    } catch (e) {
-      console.error('[DataView] caps fetch fail', e);
-      logLine('加载 capability 表失败: ' + e.message, 'err');
-    }
-
-    if (listOk) renderSourceCards();
-    if (capOk) renderCapTable();
+    // 并行拉 3 个 endpoint (list / capabilities / data_routes)
+    const tasks = [
+      fetchJSON('/api/data_sources/list').then(r => {
+        _state.sources = r.sources || [];
+        logLine(`数据源加载: ${_state.sources.length} 个`, 'ok');
+        renderSourceCards();
+      }).catch(e => {
+        console.error('[DataView] list fetch fail', e);
+        logLine('加载数据源列表失败: ' + e.message, 'err');
+        const root = qs('ds-source-cards');
+        if (root) root.innerHTML = `<div class="panel" style="padding:18px;grid-column:1/-1;border-left:4px solid #d33"><strong>加载失败</strong><br><code style="font-size:11px">${esc(e.message)}</code></div>`;
+      }),
+      fetchJSON('/api/data_sources/data_routes').then(r => {
+        _state.routes = r.routes || [];
+        const stats = r.stats || {};
+        const statsEl = qs('ds-route-stats');
+        if (statsEl) {
+          const c = stats.by_status?.connected || 0;
+          const p = stats.by_status?.pending || 0;
+          statsEl.textContent = `共 ${stats.total || 0} 类: ${c} 已接 / ${p} 待接 (P6)`;
+        }
+        logLine(`数据通道加载: ${_state.routes.length} 类`, 'ok');
+        renderRoutesTable();
+      }).catch(e => {
+        console.error('[DataView] routes fetch fail', e);
+        logLine('加载数据通道失败: ' + e.message, 'err');
+        const root = qs('ds-routes-table');
+        if (root) root.innerHTML = `<div class="muted" style="padding:18px;color:#d33"><strong>加载失败</strong>: ${esc(e.message)}</div>`;
+      }),
+      fetchJSON('/api/data_sources/capabilities').then(r => {
+        _state.capabilities = r.capabilities || [];
+        renderCapTable();
+      }).catch(e => {
+        console.error('[DataView] caps fetch fail', e);
+      }),
+    ];
+    await Promise.allSettled(tasks);
 
     // 绑事件 (幂等)
+    const routeFilterEl = qs('ds-route-filter');
+    if (routeFilterEl) routeFilterEl.oninput = e => { _state.routeFilter = e.target.value || ''; renderRoutesTable(); };
     const filterEl = qs('ds-cap-filter');
     if (filterEl) filterEl.oninput = e => { _state.capFilter = e.target.value || ''; renderCapTable(); };
     const refreshCaps = qs('ds-refresh-caps');
@@ -315,7 +398,6 @@
         const r = await fetchJSON('/api/data_sources/capabilities');
         _state.capabilities = r.capabilities || [];
         renderCapTable();
-        logLine('已刷新 capability 列表', 'ok');
       } catch (e) { logLine('刷新失败: ' + e.message, 'err'); }
     };
     const smart = qs('ds-smart-update'); if (smart) smart.onclick = smartUpdate;
