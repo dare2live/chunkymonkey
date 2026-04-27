@@ -2,7 +2,7 @@
 tdx_industry_names.py — 通达信行业代码 → 中文名字典（静态常量）
 
 数据来源：通达信官方 incon.dat 文件的 #TDXNHY 章节
-  (mootdx/tests/fixtures/incon.dat，即通达信客户端的常量表)
+  (tdxhub/tests/fixtures/incon.dat，即通达信客户端的常量表)
 
 为什么静态嵌入不是"自己编"：
   远程 TDX 行情服务器对 incon.dat 返回 size=0，不可下载；

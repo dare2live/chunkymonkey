@@ -161,7 +161,7 @@ async def api_sync_etf(
     kline_days: int = Query(120, description="旧参数：仅当未提供起始日期时回退使用"),
     max_etfs: int = Query(None, description="限制 ETF 数量（调试用）"),
 ) -> Dict[str, Any]:
-    """触发 ETF 资产池 + K 线同步（mootdx）
+    """触发 ETF 资产池 + K 线同步（tdxhub）
 
     异步执行：立即返回，前端通过 GET /api/etf/status 轮询进度与日志。
     """

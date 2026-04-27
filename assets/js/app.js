@@ -1707,7 +1707,6 @@
     { step_id: 'sync_qfii', step_name: 'QFII 季报', status: 'idle', desc: '季度末 +30 天后同步 QFII 十大股东持仓（外资维度）' },
     { step_id: 'sync_margin', step_name: '融资融券', status: 'idle', desc: '每日同步 SH+SZ 融资买入/余额/融券数据' },
     { step_id: 'sync_lhb', step_name: '龙虎榜', status: 'idle', desc: '每日同步龙虎榜上榜明细（机构/游资短线痕迹）' },
-    { step_id: 'sync_fund_flow', step_name: '主力资金流', status: 'idle', desc: '用 akshare 历史接口逐股拉取可返回的完整主力资金流' },
     { step_id: 'sync_industry', step_name: '通达信行业', status: 'idle', desc: '给持仓股补充通达信三级行业分类' },
     { step_id: 'calc_financial_derived', step_name: '计算财务指标', status: 'idle', desc: '计算 ROE、毛利率等财务派生指标' },
     { step_id: 'build_current_rel', step_name: '构建当前关系', status: 'idle', desc: '构建“机构→股票”当前持仓关系' },
@@ -2448,7 +2447,7 @@
 
     // M9.5: 优先用后端 step.group_name (新增 step 自动归组), 旧 step_id 没 group_name 时回退硬编码映射.
     var GROUP_MAP = {
-      sync_raw: 'data', match_inst: 'data', sync_market_data: 'data', sync_financial: 'data', sync_surveys: 'data', sync_qfii: 'data', sync_margin: 'data', sync_lhb: 'data', sync_fund_flow: 'data', sync_industry: 'data',
+      sync_raw: 'data', match_inst: 'data', sync_market_data: 'data', sync_financial: 'data', sync_surveys: 'data', sync_qfii: 'data', sync_margin: 'data', sync_lhb: 'data', sync_industry: 'data',
       build_turtle_features: 'mart',
       gen_events: 'calc', calc_returns: 'calc', calc_financial_derived: 'calc',
       build_current_rel: 'mart', build_profiles: 'mart', build_industry_stat: 'mart', build_trends: 'mart', calc_screening: 'mart', calc_sector_momentum: 'mart', build_external_attention: 'mart', build_stage_features: 'mart', calc_inst_scores: 'mart', calc_stock_scores: 'mart'
@@ -4898,8 +4897,8 @@
     s = s.split(/[\s(（]/)[0];                 // 去掉括号说明
     s = s.replace(/_[\d.]+:\d+$/, '');         // tdxhub_218.6.170.47:7709 → tdxhub
     s = s.replace(/:\d+$/, '');                // host:port → host
-    // 项目自维护 tdxhub 源统一展示为 tdxhub（底层 python 包名仍为 mootdx）
-    if (/^mootdx$/i.test(s)) s = 'tdxhub';
+    // 项目自维护 tdxhub 源统一展示为 tdxhub（底层 python 包名仍为 tdxhub）
+    if (/^tdxhub$/i.test(s)) s = 'tdxhub';
     return s || fallback;
   }
   function setSourcePill(id, name, online, detail, pending) {

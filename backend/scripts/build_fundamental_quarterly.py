@@ -26,7 +26,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 sys.path.insert(0, '/Users/dp/Documents/M/tdxhub')
 
 import pandas as pd
-from mootdx.affair import Affair
+from tdxhub.affair import Affair
 
 from services.db import get_conn
 

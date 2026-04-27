@@ -1,8 +1,7 @@
 #!/usr/bin/env python3
 """Phase 1 子任务 5: akshare 面板 + 事件数据拉取 (6 个接口)
 
-全部走 akshare. 未用 stock_cyq_em (py_mini_racer 本地库缺失) 和
-stock_individual_fund_flow (push2 代理不稳), 这两项归 Phase 2.
+全部走 akshare. 未用 stock_cyq_em (py_mini_racer 本地库缺失).
 
 接口清单
   1. stock_jgdy_tj_em         机构调研事件流 → fact_jgdy_event

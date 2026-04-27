@@ -1,7 +1,7 @@
 """
 tdx_source.py - shared tdxhub runtime helpers.
 
-The Python import path remains `mootdx` for compatibility, but the project
+The Python import path remains `tdxhub` for compatibility, but the project
 expects that package to be provided by the dare2live/tdxhub fork.
 """
 
@@ -27,45 +27,45 @@ DEFAULT_TDX_SERVERS: tuple[tuple[str, int], ...] = (
     ("116.205.163.254", 7709),
 )
 
-_mootdx_runtime_state_lock = threading.Lock()
-_mootdx_runtime_state: dict[str, object] = {
+_tdxhub_runtime_state_lock = threading.Lock()
+_tdxhub_runtime_state: dict[str, object] = {
     "until": 0.0,
     "summary": "",
     "attempts": [],
 }
 
 
-def mootdx_circuit_open() -> bool:
-    with _mootdx_runtime_state_lock:
-        return time.time() < float(_mootdx_runtime_state.get("until") or 0.0)
+def tdxhub_circuit_open() -> bool:
+    with _tdxhub_runtime_state_lock:
+        return time.time() < float(_tdxhub_runtime_state.get("until") or 0.0)
 
 
-def get_mootdx_unavailable_state() -> dict[str, object]:
-    with _mootdx_runtime_state_lock:
+def get_tdxhub_unavailable_state() -> dict[str, object]:
+    with _tdxhub_runtime_state_lock:
         return {
-            "until": float(_mootdx_runtime_state.get("until") or 0.0),
-            "summary": str(_mootdx_runtime_state.get("summary") or ""),
-            "attempts": list(_mootdx_runtime_state.get("attempts") or []),
+            "until": float(_tdxhub_runtime_state.get("until") or 0.0),
+            "summary": str(_tdxhub_runtime_state.get("summary") or ""),
+            "attempts": list(_tdxhub_runtime_state.get("attempts") or []),
         }
 
 
-def mark_mootdx_unavailable(
+def mark_tdxhub_unavailable(
     summary: str,
     attempts: list[dict],
     *,
     cooldown_seconds: int = _MOOTDX_CIRCUIT_BREAKER_SECONDS,
 ) -> None:
-    with _mootdx_runtime_state_lock:
-        _mootdx_runtime_state["until"] = time.time() + cooldown_seconds
-        _mootdx_runtime_state["summary"] = summary
-        _mootdx_runtime_state["attempts"] = list(attempts)
+    with _tdxhub_runtime_state_lock:
+        _tdxhub_runtime_state["until"] = time.time() + cooldown_seconds
+        _tdxhub_runtime_state["summary"] = summary
+        _tdxhub_runtime_state["attempts"] = list(attempts)
 
 
-def clear_mootdx_unavailable() -> None:
-    with _mootdx_runtime_state_lock:
-        _mootdx_runtime_state["until"] = 0.0
-        _mootdx_runtime_state["summary"] = ""
-        _mootdx_runtime_state["attempts"] = []
+def clear_tdxhub_unavailable() -> None:
+    with _tdxhub_runtime_state_lock:
+        _tdxhub_runtime_state["until"] = 0.0
+        _tdxhub_runtime_state["summary"] = ""
+        _tdxhub_runtime_state["attempts"] = []
 
 
 def parse_tdx_server_string(value: str) -> Optional[tuple[str, int]]:
@@ -80,11 +80,11 @@ def parse_tdx_server_string(value: str) -> Optional[tuple[str, int]]:
 
 def _load_hq_hosts() -> tuple[tuple[str, int], ...]:
     try:
-        from mootdx.consts import HQ_HOSTS as hosts
+        from tdxhub.consts import HQ_HOSTS as hosts
 
         return tuple((host, port) for _name, host, port in hosts)
     except ImportError:
-        logger.warning("[tdxhub] 无法导入 mootdx.consts.HQ_HOSTS，使用内置后备服务器列表")
+        logger.warning("[tdxhub] 无法导入 tdxhub.consts.HQ_HOSTS，使用内置后备服务器列表")
         return DEFAULT_TDX_SERVERS
 
 
@@ -104,7 +104,7 @@ def iter_tdx_servers() -> tuple[tuple[str, int], ...]:
 
 def get_tdx_quotes_class():
     try:
-        from mootdx.quotes import Quotes
+        from tdxhub.quotes import Quotes
 
         return Quotes
     except ImportError:
@@ -113,7 +113,7 @@ def get_tdx_quotes_class():
 
 def get_tdx_affair_class():
     try:
-        from mootdx.affair import Affair
+        from tdxhub.affair import Affair
 
         return Affair
     except ImportError:
@@ -289,7 +289,7 @@ def call_tdx_quotes_with_retry(operation, *, action_name: str = "quotes", collec
     """Run a Quotes operation with server retry and pooled client reuse."""
     Quotes = get_tdx_quotes_class()
     if Quotes is None:
-        raise ImportError("tdxhub/mootdx 未安装，无法执行 Quotes 调用")
+        raise ImportError("tdxhub 未安装，无法执行 Quotes 调用")
 
     attempts: list[str] = []
     attempt_details: list[dict[str, object]] = []

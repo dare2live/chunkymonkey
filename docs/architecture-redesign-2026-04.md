@@ -11,7 +11,7 @@
 
 1. **三项目布局**:
    - `chunky-monkey-v2/` (本项目) = 业务/UI/评分/集市
-   - `tdxhub/` (兄弟项目, dare2live 私有) = 通达信数据源, mootdx fork, 已包 43 个 pytdx/tdxpy API
+   - `tdxhub/` (兄弟项目, dare2live 私有) = 通达信数据源, 自维护的 mootdx fork (已 vendor tdxpy), 已包 43 个 pytdx/tdxpy API
    - `miaoxiang/` (= dare2live/aif10-scraper) = 妙想 F10 数据源, 72 reportName + 自动 DDL
 2. **后端建 `data_sources/` registry**: 每个 client 自我注册 + 声明 capability + 优先级 + 健康状态. 任何"数据需求 X" 按 `tdxhub > 妙想 > akshare` 自动 failover.
 3. **tdxhub 还能从 pytdx 多吃一些**: 债券 / 基金场内 / 期权 / 期货主力连续合约. 但**龙虎榜 / 资金流 / 融资融券 / QFII / 调研 这 5 类 pytdx 没有**, 必须保留东财 datacenter-web 路径.
@@ -29,11 +29,11 @@
 /Users/dp/Documents/M/stock/
 ├── chunky-monkey-v2/    业务层 (本项目)
 │   └── backend/services/tdx_source.py   ← 唯一入口, 包了 tdxhub 6 个 client
-├── tdxhub/              通达信数据源 (mootdx fork)
-│   ├── mootdx/quotes.py        ← 25.5KB, 16 个标准行情 API
-│   ├── mootdx/affair.py        ← gpcw 财务文件 (585 字段)
-│   ├── mootdx/reader.py        ← 离线 .day/.lc1/.lc5 读取
-│   └── mootdx/financial/       ← 二进制解析三大报表
+├── tdxhub/              通达信数据源 (自维护, mootdx fork + vendored tdxpy)
+│   ├── tdxhub/quotes.py        ← 25.5KB, 16 个标准行情 API
+│   ├── tdxhub/affair.py        ← gpcw 财务文件 (585 字段)
+│   ├── tdxhub/reader.py        ← 离线 .day/.lc1/.lc5 读取
+│   └── tdxhub/financial/       ← 二进制解析三大报表
 └── miaoxiang/           妙想 F10 数据源 (= dare2live/aif10-scraper)
     └── aif10_scraper/   ← 72 reportName + DDL 自动生成
 ```
@@ -69,7 +69,7 @@
 | Client | 数据来源 | 主要拉的数据 | 失败处理 |
 |---|---|---|---|
 | `akshare_client.py` (kline_source.py) | 东财/新浪/腾讯 | 日 K 线 / 月 K 线 / 交易日历 | ✅ 3 源 failover (硬编码) **可被 tdxhub 替代** |
-| `financial_client.py` | mootdx + akshare | 财务快照 / 历史 8 期 | ThreadPool 并发, 无 failover **mootdx 部分等于 tdxhub** |
+| `financial_client.py` | tdxhub + akshare | 财务快照 / 历史 8 期 | ThreadPool 并发, 无 failover **tdxhub 部分等于 tdxhub** |
 | `capital_client.py` | 东财 datacenter-web | 股票回购 / 历年分红 | 无 |
 | `lhb_client.py` | 东财 push2his | 龙虎榜 | 无, 反爬卡死会 hang **tdxhub 没有, 留着** |
 | `qfii_client.py` | 东财 datacenter-web | QFII 持仓 | 无 **tdxhub 没有, 留着** |
@@ -87,7 +87,7 @@
 东财 → 新浪 → 腾讯, 失败原因记 diagnostics
 ```
 
-mootdx 有 circuit breaker (180s 冷却), 但是**全局共享**, 任何 client 触发都会让其他 client 跟着断电.
+tdxhub 有 circuit breaker (180s 冷却), 但是**全局共享**, 任何 client 触发都会让其他 client 跟着断电.
 
 其他 11 个数据源**没有 failover**. 如果 push2his 反爬, lhb_client 直接 hang. 如果 datacenter-web 4xx, qfii_client 直接报错回 500.
 
@@ -179,7 +179,7 @@ Layer 4: 数据质量审计 (折叠)
 @register_source
 class TdxhubSource(BaseDataSource):
     name = "tdxhub"
-    display_name = "通达信 (mootdx)"
+    display_name = "通达信 (tdxhub)"
     priority = 10                        # 数字越小优先级越高
     capabilities = [
         Capability("kline_daily",   freshness="t-0",  cost="low"),
@@ -520,14 +520,14 @@ ETF 区:    ETF 工作台 / 机会 / 列表  (保持原样)
 
 ## 6. 两个外部数据源接入路径
 
-### 6.1 tdxhub (现状: 已通过 mootdx 路径接入, 待规范化)
+### 6.1 tdxhub (现状: 已通过 tdxhub 路径接入, 待规范化)
 
-**当前现状**: chunky-monkey-v2 通过 `tdx_source.py` 的 `call_tdx_quotes_with_retry()` 调用 tdxhub. 但 tdxhub 项目代码现在在 `/stock/tdxhub/`, **chunky-monkey-v2 的 import 仍然写的是 `import mootdx`** — 因为 tdxhub 内部 package 名就叫 mootdx (它是 mootdx 的 fork). 实际链路:
+**当前现状**: chunky-monkey-v2 通过 `tdx_source.py` 的 `call_tdx_quotes_with_retry()` 调用 tdxhub. 但 tdxhub 项目代码现在在 `/stock/tdxhub/`, **chunky-monkey-v2 的 import 仍然写的是 `import tdxhub`** — 因为 tdxhub 内部 package 名就叫 tdxhub (它是 tdxhub 的 fork). 实际链路:
 
 ```
 chunky-monkey-v2/backend/services/tdx_source.py
-  → from mootdx.quotes import Quotes        ← Python 实际加载的是哪个 mootdx?
-  → 如果 pip 装了官方 mootdx, 走官方
+  → from tdxhub.quotes import Quotes        ← Python 实际加载的是哪个 tdxhub?
+  → 如果 pip 装了官方 tdxhub, 走官方
   → 如果 pip install -e /stock/tdxhub, 走 tdxhub 改的版本
 ```
 
@@ -543,8 +543,8 @@ chunky-monkey-v2/backend/services/tdx_source.py
 `backend/services/data_sources/sources/tdxhub.py` 适配层:
 
 ```python
-from mootdx.quotes import Quotes        # 仍然 import "mootdx", 但 pip 链接到 tdxhub
-from mootdx.affair import Affair
+from tdxhub.quotes import Quotes        # 仍然 import "tdxhub", 但 pip 链接到 tdxhub
+from tdxhub.affair import Affair
 from ..base import BaseDataSource, Capability, register_source
 
 @register_source
@@ -571,7 +571,7 @@ class TdxhubSource(BaseDataSource):
         ...
 
     def healthcheck(self):
-        # 检查 mootdx best_ip + 简单连通性测试
+        # 检查 tdxhub best_ip + 简单连通性测试
         ...
 ```
 
@@ -641,7 +641,7 @@ class Aif10Source(BaseDataSource):
 [详情] [查看 GitHub] [查看 schema]
 ```
 
-点开详情看到 capability → 字段映射. 妙想引用 `aif10_scraper/schema/<reportName>.sql` 自动生成的 DDL. tdxhub 引用 `mootdx.capabilities.summary()` 输出.
+点开详情看到 capability → 字段映射. 妙想引用 `aif10_scraper/schema/<reportName>.sql` 自动生成的 DDL. tdxhub 引用 `tdxhub.capabilities.summary()` 输出.
 
 ---
 
@@ -651,7 +651,7 @@ tdxhub 现有 43 API, chunky-monkey-v2 用了 6 类. 还有 7 类**已实现但�
 
 ### 7.1 已实现但 chunky-monkey-v2 未用的 (零工程量, 直接用)
 
-| capability | 当前 mootdx API | 项目能拿来干什么 |
+| capability | 当前 tdxhub API | 项目能拿来干什么 |
 |---|---|---|
 | 实时行情 (五档盘口) | `quotes()` | 实时刷新工作台股票列表的最新价 / 涨跌幅 |
 | 当日分时 | `minute()` | 个股详情页的分时走势图 |
@@ -681,12 +681,12 @@ pytdx/tdxpy 原生支持但 tdxhub 还没包装的:
 
 ### 7.3 pytdx 已 archive 的影响
 
-pytdx 仓 2020 已 archive, **tdxhub (mootdx fork) 实际依赖的是 tdxpy** (mootdx 的活跃 fork, 由 mootdx 作者 fork).
+pytdx 仓 2020 已 archive, **tdxhub (tdxhub fork) 实际依赖的是 tdxpy** (tdxhub 的活跃 fork, 由 tdxhub 作者 fork).
 
 ```
 pytdx (rainx, 2020 archive)
-   └── tdxpy (mootdx 团队 fork, 持续维护)
-           └── mootdx
+   └── tdxpy (tdxhub 团队 fork, 持续维护)
+           └── tdxhub
                   └── tdxhub (我们 fork)
                          └── chunky-monkey-v2 调用
 ```

@@ -17,7 +17,7 @@ from services.constants import (
 logger = logging.getLogger("cm-api")
 
 # ETF 引擎：独立模块，不依赖 scoring.py
-# 数据源：mootdx（通达信）→ akshare_client.fetch_etf_list / fetch_etf_kline
+# 数据源：tdxhub（通达信）→ akshare_client.fetch_etf_list / fetch_etf_kline
 # 写入：etf_asset_universe + etf_price_kline（etf.db）
 
 # 进度回调签名：fn(stage: str, current: int, total: int, message: str)
@@ -217,7 +217,7 @@ async def sync_etf_universe(etf_conn, etf_price_conn, sync_kline: bool = True,
                             max_etfs: int = None,
                             progress_cb: ProgressCb = None) -> Dict[str, int]:
     """
-    从 mootdx 拉取 ETF 列表写入 etf_asset_universe，并可选地同步 K 线。
+    从 tdxhub 拉取 ETF 列表写入 etf_asset_universe，并可选地同步 K 线。
 
     progress_cb(stage, current, total, message) 在关键节点回调，让前端能展示进度条。
 

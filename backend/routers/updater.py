@@ -305,7 +305,6 @@ STEPS = [
     {"id": "sync_qfii",             "name": "QFII 季报",       "group": "data", "order": 7.6},
     {"id": "sync_margin",           "name": "融资融券",        "group": "data", "order": 7.7},
     {"id": "sync_lhb",              "name": "龙虎榜",          "group": "data", "order": 7.8},
-    {"id": "sync_fund_flow",        "name": "主力资金流",      "group": "data", "order": 7.9},
     {"id": "calc_financial_derived","name": "计算财务指标",    "group": "calc", "order": 8},
     {"id": "build_current_rel",     "name": "构建当前关系",    "group": "mart", "order": 9},
     {"id": "build_profiles",        "name": "机构画像",        "group": "mart", "order": 10},
@@ -333,7 +332,6 @@ HARD_DEPS = {
     "sync_qfii": [],
     "sync_margin": [],
     "sync_lhb": [],
-    "sync_fund_flow": [],
     "calc_financial_derived": ["sync_financial"],
     "build_current_rel": ["gen_events"],
     "build_profiles": ["build_current_rel"],
@@ -942,7 +940,7 @@ async def _compute_connectivity() -> dict:
             payload = {"kline_source": bool(probe.get("available"))}
             payload["kline_source_degraded"] = bool(
                 probe.get("available")
-                and (probe.get("effective_source") or "") != "mootdx"
+                and (probe.get("effective_source") or "") != "tdxhub"
             )
             if probe.get("detail"):
                 payload["kline_source_detail"] = probe.get("detail")
@@ -1082,6 +1080,9 @@ async def _download_with_filter(conn, client, filter_str, label="") -> int:
     result = first.get("result", {})
     total_pages = int(result.get("pages", 1)) or 1
     total_count = int(result.get("count", 0))
+    if total_count <= 0:
+        logger.info(f"[下载{label}] 无新增数据")
+        return 0
     logger.info(f"[下载{label}] 共 {total_count} 条, {total_pages} 页")
 
     total_inserted = 0
@@ -1303,6 +1304,7 @@ def _step_match_inst_sync(conn) -> int:
 
     match_rows = []
     seq = 0
+    global_seen_names = set()
     for inst in institutions:
         inst_id = inst["id"]
         inst_name = inst["name"]
@@ -1316,10 +1318,11 @@ def _step_match_inst_sync(conn) -> int:
         seen_names = set()
         for name in names:
             normalized = str(name or "").strip()
-            if not normalized or normalized in seen_names:
+            if not normalized or normalized in seen_names or normalized in global_seen_names:
                 continue
             match_rows.append((seq, inst_id, normalized))
             seen_names.add(normalized)
+            global_seen_names.add(normalized)
             seq += 1
 
     if not match_rows:
@@ -1358,28 +1361,34 @@ def _step_match_inst_sync(conn) -> int:
                hold_ratio, hold_change, hold_change_num, ? AS created_at
         FROM (
             SELECT
-                m.institution_id,
-                r.holder_name,
-                r.holder_type,
-                r.stock_code,
-                r.stock_name,
-                r.report_date,
-                r.notice_date,
-                r.holder_rank,
-                r.hold_amount,
-                r.hold_market_cap,
-                r.hold_ratio,
-                r.hold_change,
-                r.hold_change_num,
+                candidate.*,
                 ROW_NUMBER() OVER (
-                    PARTITION BY r.holder_name, r.stock_code, r.report_date
-                    ORDER BY m.seq, TRY_CAST(r.holder_rank AS INTEGER), r.notice_date DESC
+                    PARTITION BY holder_name, stock_code, report_date
+                    ORDER BY match_seq, holder_rank_sort, notice_date DESC, institution_id
                 ) AS rn
-            FROM market_raw_holdings r
-            JOIN tmp_inst_match_names m ON r.holder_name = m.holder_name
-            LEFT JOIN tmp_inst_excluded_codes x ON r.stock_code = x.stock_code
-            WHERE x.stock_code IS NULL
-        ) matched
+            FROM (
+                SELECT
+                    m.seq AS match_seq,
+                    m.institution_id,
+                    TRIM(r.holder_name) AS holder_name,
+                    r.holder_type,
+                    TRIM(r.stock_code) AS stock_code,
+                    r.stock_name,
+                    TRIM(r.report_date) AS report_date,
+                    r.notice_date,
+                    r.holder_rank,
+                    COALESCE(TRY_CAST(r.holder_rank AS INTEGER), 999999) AS holder_rank_sort,
+                    r.hold_amount,
+                    r.hold_market_cap,
+                    r.hold_ratio,
+                    r.hold_change,
+                    r.hold_change_num
+                FROM market_raw_holdings r
+                JOIN tmp_inst_match_names m ON TRIM(r.holder_name) = m.holder_name
+                LEFT JOIN tmp_inst_excluded_codes x ON TRIM(r.stock_code) = x.stock_code
+                WHERE x.stock_code IS NULL
+            ) candidate
+        ) deduped
         WHERE rn = 1
     """, (now,))
 
@@ -1400,18 +1409,39 @@ def _step_match_inst_sync(conn) -> int:
             f"{duplicate['holder_name']} {duplicate['stock_code']} {duplicate['report_date']}"
         )
 
-    conn.execute("DELETE FROM inst_holdings")
-    conn.commit()
     try:
+        for index_name in (
+            "idx_ih_inst",
+            "idx_ih_stock",
+            "idx_ih_report",
+            "idx_ih_unique_holder_stock_report",
+        ):
+            conn.execute(f"DROP INDEX IF EXISTS {index_name}")
         conn.execute("""
-            INSERT INTO inst_holdings
-            (institution_id, holder_name, holder_type, stock_code, stock_name,
-             report_date, notice_date, holder_rank, hold_amount, hold_market_cap,
-             hold_ratio, hold_change, hold_change_num, created_at)
-            SELECT institution_id, holder_name, holder_type, stock_code, stock_name,
-                   report_date, notice_date, holder_rank, hold_amount, hold_market_cap,
-                   hold_ratio, hold_change, hold_change_num, created_at
+            CREATE OR REPLACE TABLE inst_holdings AS
+            SELECT
+                CAST(institution_id AS TEXT) AS institution_id,
+                CAST(holder_name AS TEXT) AS holder_name,
+                CAST(holder_type AS TEXT) AS holder_type,
+                CAST(stock_code AS TEXT) AS stock_code,
+                CAST(stock_name AS TEXT) AS stock_name,
+                CAST(report_date AS TEXT) AS report_date,
+                CAST(notice_date AS TEXT) AS notice_date,
+                CAST(holder_rank AS INTEGER) AS holder_rank,
+                CAST(hold_amount AS DOUBLE) AS hold_amount,
+                CAST(hold_market_cap AS DOUBLE) AS hold_market_cap,
+                CAST(hold_ratio AS DOUBLE) AS hold_ratio,
+                CAST(hold_change AS TEXT) AS hold_change,
+                CAST(hold_change_num AS DOUBLE) AS hold_change_num,
+                CAST(created_at AS TEXT) AS created_at
             FROM tmp_inst_holdings_rebuild
+        """)
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_ih_inst ON inst_holdings(institution_id)")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_ih_stock ON inst_holdings(stock_code)")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_ih_report ON inst_holdings(report_date)")
+        conn.execute("""
+            CREATE UNIQUE INDEX IF NOT EXISTS idx_ih_unique_holder_stock_report
+            ON inst_holdings(holder_name, stock_code, report_date)
         """)
         conn.commit()
     except Exception:
@@ -2705,7 +2735,7 @@ async def _step_sync_market_data(conn) -> int:
                     "elapsed_sec": 0.0,
                     "timeout_failures": 0,
                 }
-                logger.warning(f"[行情同步] 日K预检失败，继续默认 mootdx 首选: {e}")
+                logger.warning(f"[行情同步] 日K预检失败，继续默认 tdxhub 首选: {e}")
 
         sub_status["daily_sync"] = {
             "status": "running" if to_fetch_d else "skipped",
@@ -3036,7 +3066,7 @@ async def _step_build_current_rel(conn) -> int:
 
 
 async def _step_sync_financial(conn) -> dict:
-    """同步财务数据（mootdx finance）.
+    """同步财务数据（tdxhub finance）.
 
     §4.25 #4: 返回 dict 含 partial 语义 — 当 5 个子阶段
     (history/snapshot/capital/indicator/gpcw) 中部分失败但部分成功时,
@@ -3306,199 +3336,6 @@ async def _step_sync_lhb(conn) -> dict:
     }
 
 
-async def _step_sync_fund_flow(conn) -> dict:
-    """主力资金流历史同步.
-
-    默认直接调用 akshare 的历史资金流接口逐股拉取可返回的完整历史,
-    不再按 latest_completed_trade_date 只补一天, 也不再先探针后静默退到
-    push2delay 单日模式。若要显式调试单日兜底, 可设置
-    CM_FUND_FLOW_SOURCE=auto 或 delay。
-    """
-    import asyncio
-    import os
-
-    target_date = latest_completed_trade_date(conn)
-    from scripts.fetch_fund_flow_daily import (
-        DDL,
-        fetch_his_fund_flow,
-        fetch_delay_fund_flow,
-        normalize_df,
-        write_batch,
-        load_stock_codes,
-    )
-
-    conn.executescript(DDL)
-    duck = conn.raw if hasattr(conn, "raw") else conn
-
-    codes_all = load_stock_codes(conn)
-    try:
-        max_stocks = int(os.environ.get("CM_FUND_FLOW_MAX_STOCKS", "0") or 0)
-    except Exception:
-        max_stocks = 0
-    todo = codes_all[:max_stocks] if max_stocks > 0 else codes_all
-    n_skip = len(codes_all) - len(todo)
-
-    source_mode = os.environ.get("CM_FUND_FLOW_SOURCE", "akshare").strip().lower()
-    if source_mode not in {"akshare", "his", "auto", "delay"}:
-        source_mode = "akshare"
-    try:
-        retry = max(0, int(os.environ.get("CM_FUND_FLOW_RETRY", "2") or 2))
-    except Exception:
-        retry = 2
-    try:
-        rate_limit = max(0.0, float(os.environ.get("CM_FUND_FLOW_RATE_LIMIT", "0.3") or 0.3))
-    except Exception:
-        rate_limit = 0.3
-
-    ak = None
-    if source_mode in {"akshare", "auto"}:
-        try:
-            import akshare as ak  # type: ignore
-            logger.info(f"[资金流] akshare version: {getattr(ak, '__version__', 'unknown')}")
-        except Exception as exc:
-            reason = str(exc)[:180]
-            if source_mode == "akshare":
-                logger.warning(f"[资金流] akshare 不可用: {reason}")
-                return {
-                    "count": 0,
-                    "status": "failed",
-                    "mode": source_mode,
-                    "target_date": target_date,
-                    "message": f"akshare 不可用，无法拉取资金流历史: {reason}",
-                    "error": reason,
-                }
-            logger.warning(f"[资金流] akshare 不可用，auto 模式将尝试 delay 单日兜底: {reason}")
-            source_mode = "delay"
-
-    logger.info(
-        f"[资金流] source={source_mode}, total={len(codes_all)}, todo={len(todo)}, "
-        f"target={target_date or '-'}；不按 target_date 限制，逐股拉取可返回历史"
-    )
-
-    if not todo:
-        return {
-            "count": 0,
-            "status": "skipped",
-            "message": "股票池为空，跳过资金流同步",
-            "target_date": target_date,
-        }
-
-    n_success = n_failed = n_empty = 0
-    rows_written = 0
-    fallback_delay = 0
-    log_every = 200
-    failures: list[dict] = []
-
-    async def _fetch_one(code: str, market: str):
-        if source_mode == "delay":
-            return await asyncio.to_thread(fetch_delay_fund_flow, code, market), "eastmoney_push2delay_latest"
-        if source_mode == "his":
-            return await asyncio.to_thread(fetch_his_fund_flow, code, market), "eastmoney_push2his_history"
-        if ak is None:
-            raise RuntimeError("akshare is not available")
-        try:
-            df = await asyncio.to_thread(ak.stock_individual_fund_flow, stock=code, market=market)
-            return df, "akshare_eastmoney_history"
-        except Exception:
-            if source_mode != "auto":
-                raise
-            df = await asyncio.to_thread(fetch_delay_fund_flow, code, market)
-            return df, "eastmoney_push2delay_latest"
-
-    for i, (code, market) in enumerate(todo):
-        df = None
-        source_label = "akshare_eastmoney_history"
-        last_err = None
-        for attempt in range(retry + 1):
-            try:
-                df, source_label = await _fetch_one(code, market)
-                break
-            except Exception as exc:
-                last_err = str(exc)[:200]
-                if attempt < retry:
-                    await asyncio.sleep(1.5 + attempt)
-                    continue
-
-        if df is None:
-            n_failed += 1
-            failures.append({"code": code, "market": market, "error": last_err})
-            if n_failed <= 20:
-                logger.warning(f"[资金流] [{i+1}/{len(todo)}] {code}.{market} fail: {last_err}")
-            await asyncio.sleep(rate_limit)
-            continue
-
-        if df is None or df.empty:
-            n_empty += 1
-            await asyncio.sleep(rate_limit)
-            continue
-        try:
-            norm = normalize_df(df, code, market, source=source_label)
-            rows_written += write_batch(duck, norm)
-            conn.commit()
-            n_success += 1
-            if source_label == "eastmoney_push2delay_latest":
-                fallback_delay += 1
-        except Exception as exc:
-            n_failed += 1
-            failures.append({"code": code, "market": market, "error": f"normalize/write: {str(exc)[:160]}"})
-            logger.warning(f"[资金流] {code} normalize/write fail: {str(exc)[:120]}")
-        if (i + 1) % log_every == 0:
-            logger.info(
-                f"[资金流] [{i+1}/{len(todo)}] mode={source_mode} ok={n_success} "
-                f"empty={n_empty} fail={n_failed} rows={rows_written}"
-            )
-        await asyncio.sleep(rate_limit)
-
-    logger.info(
-        f"[资金流] 完成: mode={source_mode} ok={n_success} empty={n_empty} fail={n_failed} "
-        f"rows_written={rows_written} target={target_date}"
-    )
-    if source_mode == "delay":
-        mode_tag = "当日兜底"
-    elif source_mode == "his":
-        mode_tag = "东财历史"
-    elif source_mode == "auto":
-        mode_tag = "akshare历史+兜底"
-    else:
-        mode_tag = "akshare历史"
-
-    if rows_written > 0 and n_failed > 0:
-        status = "partial"
-    elif rows_written > 0:
-        status = "completed"
-    elif n_failed > 0:
-        status = "failed"
-    elif n_empty > 0:
-        status = "partial"
-    else:
-        status = "skipped"
-
-    msg = (
-        f"[{mode_tag}] 写入 {rows_written} · 成功 {n_success}/{len(todo)} · "
-        f"空返回 {n_empty} · 失败 {n_failed}"
-    )
-    if fallback_delay:
-        msg += f" · 单日兜底 {fallback_delay}"
-    if n_skip:
-        msg += f" · 调试限量跳过 {n_skip}"
-    if target_date:
-        msg += f" · target={target_date} 仅作审计参考"
-    return {
-        "count": rows_written,
-        "status": status,
-        "mode": source_mode,
-        "written": rows_written,
-        "skipped": n_skip,
-        "empty": n_empty,
-        "failed": n_failed,
-        "success": n_success,
-        "fallback_delay": fallback_delay,
-        "target_date": target_date,
-        "message": msg,
-        "failures": failures[:20],
-    }
-
-
 async def _step_sync_qfii(conn) -> dict:
     """QFII 季度持股同步（北向陆股通退役后的外资维度替代）。
 
@@ -3581,7 +3418,6 @@ RUNNERS = {
     "sync_qfii": _step_sync_qfii,
     "sync_margin": _step_sync_margin,
     "sync_lhb": _step_sync_lhb,
-    "sync_fund_flow": _step_sync_fund_flow,
     "calc_financial_derived": _step_calc_financial_derived,
     "build_current_rel": _step_build_current_rel,
     "build_profiles": _step_build_profiles,
@@ -3898,6 +3734,15 @@ async def update_status():
     """更新状态"""
     conn = get_conn()
     try:
+        valid_ids = {s["id"] for s in STEPS}
+        if valid_ids:
+            conn.execute(
+                "DELETE FROM step_status WHERE step_id NOT IN ({})".format(
+                    ",".join("?" * len(valid_ids))
+                ),
+                list(valid_ids),
+            )
+            conn.commit()
         # M9.5: 若 STEPS 中存在但 step_status 没有 (新增 step 后第一次读), 自动 prime 一行 idle
         existing = {r[0] for r in conn.execute("SELECT step_id FROM step_status").fetchall()}
         missing = [s for s in STEPS if s["id"] not in existing]

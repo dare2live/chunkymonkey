@@ -56,7 +56,7 @@ If no type-checker is configured, state that explicitly instead of claiming succ
 | 路径 | GitHub | 角色 |
 |---|---|---|
 | `chunky-monkey-v2/` | dare2live/chunky-monkey-v2 (private) | **本项目** — 业务层 / UI / 评分 / 集市 |
-| `tdxhub/` | dare2live/tdxhub (private) | **数据源** — 通达信接口 (pytdx/mootdx 改造) + akshare 文档索引 + tdx 公式参考 |
+| `tdxhub/` | dare2live/tdxhub (private) | **数据源** — 通达信接口 (pytdx/mootdx 改造的自维护 fork) + akshare 文档索引 + tdx 公式参考 |
 | `miaoxiang/` | dare2live/aif10-scraper (private) | **数据源** — 东方财富妙想 F10 解析 (72 reportName + 自动 DDL) |
 
 本项目只在 `chunky-monkey-v2/` 子目录里干活. tdxhub 和 miaoxiang 是**外部数据源**, 通过 pip install (远期发包) 或本地 pip install -e (现在) 引入. 不要在本项目里复制它们的代码.

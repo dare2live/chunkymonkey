@@ -15,7 +15,7 @@
 两条产品线:
 
 - **股东挖掘**: 机构 track record + 股票信号 + 多维量化 topK 推荐
-- **ETF 研究**: 网格交易自动寻优 / 对比长期持有 / 板块轮动预测 (纯量价 + 资金流, 不依赖 ML)
+- **ETF 研究**: 网格交易自动寻优 / 对比长期持有 / 板块轮动预测 (纯量价, 不依赖 ML)
 
 不做的事:
 - 不是实盘交易系统, 不接券商
@@ -142,8 +142,8 @@ mart_*  集市层 (派生, 可重算, 带 schema 版本)
 ## 4. 数据来源与更新链路
 
 ```
-tdxhub (mootdx fork)   → price_kline_tdxhub (日线、分钟线)
-                       → financial raw (财务三张表 via python-mootdx)
+tdxhub (tdxhub fork)   → price_kline_tdxhub (日线、分钟线)
+                       → financial raw (财务三张表 via python-tdxhub)
 akshare               → market_raw_holdings (十大股东)
                        → raw_lhb_daily / raw_executive_trade / raw_margin_daily
                        → raw_gpcw_* / raw_institution_surveys / raw_qfii_*
@@ -456,7 +456,6 @@ scripts/
 - 风格切换时模型可能完全失效
 
 ### 9.7 特征层面
-- 缺资金流 (主力净流入、超大单)
 - 缺龙虎榜营业部实盘买入行为解析 (只有 count, 没有营业部质量评分)
 - 缺融资余额变化的细粒度特征 (只有 rz_balance + 5d_pct, 缺加速度)
 - 缺宏观 / 利率 / 板块资金轮动

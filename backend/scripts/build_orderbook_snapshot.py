@@ -27,7 +27,7 @@ sys.path.insert(0, '/Users/dp/Documents/M/tdxhub')
 
 import pandas as pd
 import numpy as np
-from mootdx.quotes import Quotes
+from tdxhub.quotes import Quotes
 
 from services.market_db import get_market_conn
 

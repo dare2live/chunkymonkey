@@ -2,11 +2,11 @@
 financial_client.py — 财务数据同步与计算
 
 当前财务底座分为两层：
-1. mootdx finance() 提供最新一期稳定快照
+1. tdxhub finance() 提供最新一期稳定快照
 2. AKShare/Sina 财报接口提供历史报表序列
 
 数据流：
-    mootdx + akshare/sina
+    tdxhub + akshare/sina
         -> raw_gpcw_financial
         -> fact_financial_derived
         -> dim_financial_latest
@@ -333,11 +333,11 @@ def _safe_div(a, b):
 
 
 # ============================================================
-# mootdx 最新快照
+# tdxhub 最新快照
 # ============================================================
 
 def _parse_finance_record(fin_row: dict) -> dict:
-    """从 mootdx client.finance() 的单行结果提取关键字段。"""
+    """从 tdxhub client.finance() 的单行结果提取关键字段。"""
     return {
         "total_assets": _parse_float(fin_row.get("zongzichan")),
         "total_liabilities": (_parse_float(fin_row.get("liudongfuzhai")) or 0) + (_parse_float(fin_row.get("changqifuzhai")) or 0),
@@ -761,7 +761,7 @@ def _fetch_latest_snapshot_batch(codes):
         )
         return results
     except ImportError:
-        logger.warning("[财务] mootdx 未安装，跳过最新快照同步")
+        logger.warning("[财务] tdxhub 未安装，跳过最新快照同步")
     except Exception as exc:
         logger.error(f"[财务] 最新快照同步失败: {exc}")
     return {}
@@ -1377,7 +1377,7 @@ async def sync_financial_data(
                         "gross_profit": parsed.get("gross_profit"),
                         "inventory": parsed.get("inventory"),
                         "undistributed_profit": parsed.get("undistributed_profit"),
-                        "source_file": "mootdx_finance",
+                        "source_file": "tdxhub_finance",
                         "ingested_at": batch_synced_at,
                     }
                     _upsert_raw_financial(conn, record)

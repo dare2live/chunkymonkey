@@ -94,6 +94,10 @@ async def _fetch_page(client: httpx.AsyncClient, filter_str: str, page: int) -> 
     try:
         valid_response = EastMoneyHoldingsResponse(**data)
         if not valid_response.success:
+            if data.get("code") == 9201 or "返回数据为空" in str(valid_response.message or ""):
+                data["success"] = True
+                data["result"] = {"pages": 0, "count": 0, "data": []}
+                return data
             raise RuntimeError(f"东财API错误: {valid_response.message or '未知'}")
         
         # Override the payload data with validated and cleanly parsed dicts if exists
@@ -108,13 +112,28 @@ async def _fetch_page(client: httpx.AsyncClient, filter_str: str, page: int) -> 
 
 
 def _upsert_batch(conn, rows: list) -> int:
-    """批量 UPSERT 到 market_raw_holdings，返回插入数"""
+    """批量写入 market_raw_holdings，返回成功写入/更新行数.
+
+    DuckDB 早期迁移过来的 market_raw_holdings 可能没有真实 UNIQUE 约束，
+    此时 ON CONFLICT 会逐行 BinderException。这里显式按业务键删除再插入，
+    避免“分页完成但 0 行落库”的静默失败。
+    """
     now = datetime.now().isoformat()
-    inserted = 0
+    written = 0
+    errors = 0
     for r in rows:
         try:
             rank_val = r["holder_rank"]
             if rank_val is not None:
+                conn.execute("""
+                    DELETE FROM market_raw_holdings
+                    WHERE holder_name = ? AND stock_code = ? AND report_date = ? AND holder_rank IS NULL
+                """, (r["holder_name"], r["stock_code"], r["report_date"]))
+                conn.execute("""
+                    DELETE FROM market_raw_holdings
+                    WHERE holder_name = ? AND stock_code = ? AND report_date = ? AND holder_rank = ?
+                """, (r["holder_name"], r["stock_code"], r["report_date"], rank_val))
+            else:
                 conn.execute("""
                     DELETE FROM market_raw_holdings
                     WHERE holder_name = ? AND stock_code = ? AND report_date = ? AND holder_rank IS NULL
@@ -126,16 +145,6 @@ def _upsert_batch(conn, rows: list) -> int:
                      holder_rank, hold_amount, hold_market_cap, hold_ratio,
                      holder_type, hold_change, hold_change_num, raw_json, created_at)
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                ON CONFLICT(holder_name, stock_code, report_date, holder_rank) DO UPDATE SET
-                    stock_name=excluded.stock_name,
-                    notice_date=excluded.notice_date,
-                    hold_amount=excluded.hold_amount,
-                    hold_market_cap=excluded.hold_market_cap,
-                    hold_ratio=excluded.hold_ratio,
-                    holder_type=excluded.holder_type,
-                    hold_change=excluded.hold_change,
-                    hold_change_num=excluded.hold_change_num,
-                    raw_json=excluded.raw_json
             """, (
                 r["holder_name"], r["stock_code"], r["stock_name"],
                 r["report_date"], r["notice_date"],
@@ -143,10 +152,20 @@ def _upsert_batch(conn, rows: list) -> int:
                 r["holder_type"], r["hold_change"], r["hold_change_num"],
                 r["raw_json"], now
             ))
-            inserted += 1
+            written += 1
         except Exception as e:
-            logger.debug(f"[upsert] skip: {e}")
-    return inserted
+            errors += 1
+            if errors <= 3:
+                logger.warning(
+                    "[upsert] 写入失败 %s/%s/%s/%s: %s",
+                    r.get("stock_code"), r.get("report_date"),
+                    r.get("holder_rank"), r.get("holder_name"), e,
+                )
+            else:
+                logger.debug("[upsert] skip: %s", e)
+    if errors:
+        logger.warning("[upsert] 本批次 %d/%d 行写入失败", errors, len(rows))
+    return written
 
 
 @router.get("/market/status")

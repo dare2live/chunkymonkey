@@ -12,7 +12,7 @@ tdx_industry_client.py — 通达信行业分类同步（取代申万 SW 三级�
 
 拉取方式：
   走 `call_tdx_quotes_with_retry` 自动重试 117 台服务器。
-  mootdx 的 `.block()` 只支持 block_*.dat，拉不到 .cfg，
+  tdxhub 的 `.block()` 只支持 block_*.dat，拉不到 .cfg，
   必须直接调底层 `client.get_block_info_meta()` + `client.get_block_info()`。
 
 表：dim_stock_tdx_industry（PK: stock_code）

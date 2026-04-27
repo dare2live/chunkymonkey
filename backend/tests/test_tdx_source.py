@@ -208,7 +208,7 @@ def test_fetch_latest_snapshot_batch_returns_empty_when_pool_fails(monkeypatch):
     assert financial_client._fetch_latest_snapshot_batch(["000001"]) == {}
 
 
-def test_fetch_etf_list_mootdx_uses_shared_quotes_pool(monkeypatch):
+def test_fetch_etf_list_tdxhub_uses_shared_quotes_pool(monkeypatch):
     mocked_call = mock.Mock(
         return_value=([
             {"code": "159695", "name": "通信ETF", "market": "sz", "asset_type": "etf"},
@@ -216,9 +216,9 @@ def test_fetch_etf_list_mootdx_uses_shared_quotes_pool(monkeypatch):
         ], "tdxhub_1.1.1.1:7709")
     )
     monkeypatch.setattr(akshare_client, "call_tdx_quotes_with_retry", mocked_call)
-    akshare_client._clear_mootdx_unavailable()
+    akshare_client._clear_tdxhub_unavailable()
 
-    result = asyncio.run(akshare_client._fetch_etf_list_mootdx())
+    result = asyncio.run(akshare_client._fetch_etf_list_tdxhub())
 
     assert [row["code"] for row in result] == ["159695", "512010"]
     assert mocked_call.call_args.kwargs["action_name"] == "stocks[etf-list]"
@@ -237,13 +237,13 @@ def test_fetch_index_kline_uses_shared_quotes_pool(monkeypatch):
 
     result_df, source = asyncio.run(akshare_client.fetch_index_kline("000001", "20260410", "20260413"))
 
-    assert source == "mootdx_index"
+    assert source == "tdxhub_index"
     assert list(result_df["date"]) == ["2026-04-10", "2026-04-13"]
     assert list(result_df["volume"]) == [12345.0, 22345.0]
     assert mocked_call.call_args.kwargs["action_name"] == "index_bars[000001]"
 
 
-def test_fetch_daily_mootdx_with_diagnostics_uses_shared_quotes_pool(monkeypatch):
+def test_fetch_daily_tdxhub_with_diagnostics_uses_shared_quotes_pool(monkeypatch):
     frame = pd.DataFrame(
         [
             {"open": 10.0, "high": 10.5, "low": 9.8, "close": 10.2, "volume": 12345.0, "amount": 67890.0, "date": "2026-04-10"},
@@ -252,13 +252,13 @@ def test_fetch_daily_mootdx_with_diagnostics_uses_shared_quotes_pool(monkeypatch
     attempts = [{"server": ("1.1.1.1", 7709), "ok": True, "rows": 1, "elapsed_sec": 0.01}]
     mocked_call = mock.Mock(return_value=(frame, "tdxhub_1.1.1.1:7709", attempts))
     monkeypatch.setattr(akshare_client, "call_tdx_quotes_with_retry", mocked_call)
-    akshare_client._clear_mootdx_unavailable()
+    akshare_client._clear_tdxhub_unavailable()
 
     result_df, source, diagnostics = asyncio.run(
-        akshare_client._fetch_daily_mootdx_with_diagnostics("159695", "20260410", "20260410")
+        akshare_client._fetch_daily_tdxhub_with_diagnostics("159695", "20260410", "20260410")
     )
 
-    assert source == "mootdx"
+    assert source == "tdxhub"
     assert list(result_df["date"]) == ["2026-04-10"]
     assert diagnostics["ok"] is True
     assert diagnostics["attempts"] == attempts
@@ -266,7 +266,7 @@ def test_fetch_daily_mootdx_with_diagnostics_uses_shared_quotes_pool(monkeypatch
     assert mocked_call.call_args.kwargs["collect_attempts"] is True
 
 
-def test_fetch_daily_mootdx_with_diagnostics_marks_timeout_heavy_success_as_degraded(monkeypatch):
+def test_fetch_daily_tdxhub_with_diagnostics_marks_timeout_heavy_success_as_degraded(monkeypatch):
     frame = pd.DataFrame(
         [
             {"open": 10.0, "high": 10.5, "low": 9.8, "close": 10.2, "volume": 12345.0, "amount": 67890.0, "date": "2026-04-10"},
@@ -279,22 +279,22 @@ def test_fetch_daily_mootdx_with_diagnostics_marks_timeout_heavy_success_as_degr
     ]
     mocked_call = mock.Mock(return_value=(frame, "tdxhub_3.3.3.3:7709", attempts))
     monkeypatch.setattr(akshare_client, "call_tdx_quotes_with_retry", mocked_call)
-    akshare_client._clear_mootdx_unavailable()
+    akshare_client._clear_tdxhub_unavailable()
 
     try:
         result_df, source, diagnostics = asyncio.run(
-            akshare_client._fetch_daily_mootdx_with_diagnostics("159695", "20260410", "20260410")
+            akshare_client._fetch_daily_tdxhub_with_diagnostics("159695", "20260410", "20260410")
         )
-        state = akshare_client._get_mootdx_unavailable_state()
+        state = akshare_client._get_tdxhub_unavailable_state()
     finally:
-        akshare_client._clear_mootdx_unavailable()
+        akshare_client._clear_tdxhub_unavailable()
 
-    assert source == "mootdx"
+    assert source == "tdxhub"
     assert list(result_df["date"]) == ["2026-04-10"]
     assert diagnostics["ok"] is True
     assert diagnostics["timeout_failures"] == 2
     assert diagnostics["fallback_recommended"] is True
-    assert state["summary"] == "mootdx timeout x2，切换 fallback"
+    assert state["summary"] == "tdxhub timeout x2，切换 fallback"
     assert state["until"] > 0
 
 

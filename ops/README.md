@@ -54,14 +54,10 @@ tail -f ~/Library/Logs/chunky-monkey/daily-$(date +%Y-%m-%d).log  # 看实时日
 ## 调度细节
 
 - **触发时间**: Mon-Fri 17:30 (`StartCalendarInterval` × 5 块)
-- **周末/节假日**: wrapper 内 `DOW>=6` 跳过周末; 节假日仍可能跑空但不报错 (push2delay/sync_market 自然返回空)
+- **周末/节假日**: wrapper 内 `DOW>=6` 跳过周末; 节假日仍可能跑空但不报错
 - **错过触发不补跑**: `StartCalendarIntervalRunAtLoad=false`, 避免开机回灌一周积压
 - **超时**: wrapper 60 分钟封顶 + plist `ExitTimeOut=5400` 即 90 分钟硬限
 - **优先级**: `Nice=5` 让 launchd 任务低于交互进程
-
-## 与 §4.21 资金流累积的关系
-
-`sync_fund_flow` 已在智能更新 17 步内 (order=7.9). M8.9 跑起来后, 每个交易日自动 push2delay 抓最新一天进 `raw_fund_flow_daily`. 累积到 20-60 个交易日后, 才有资格做 `fund_flow_5d/20d` 横截面 rank 实验 (§4.21 Codex 决策).
 
 ## 与监控页的关系
 

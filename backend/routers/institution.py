@@ -1059,7 +1059,7 @@ STOCK_SCORING_FRAMEWORK = {
             "label": "质量层 Quality",
             "weight": 30,
             "role": "公司确认",
-            "summary": "回答“机构买的是不是值得长期研究的公司”，当前优先使用 mootdx 基础财务 + AKShare 增强指标。",
+            "summary": "回答“机构买的是不是值得长期研究的公司”，当前优先使用 tdxhub 基础财务 + AKShare 增强指标。",
             "items": [
                 "收入质量：连续性、中位增速、行业相对、库存匹配",
                 "利润质量：营业利润/净利润同步改善、利润率、波动约束",

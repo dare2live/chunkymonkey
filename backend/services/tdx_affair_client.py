@@ -1,7 +1,7 @@
 """
 tdx_affair_client.py — 通达信 gpcw 财务文件同步
 
-数据源：mootdx Affair (gpcw 二进制财务文件)
+数据源：tdxhub Affair (gpcw 二进制财务文件)
 内容：每季度全 A 股的 585 字段财务数据（三大报表 + 机构持仓 + 业绩预告）
 存储：raw_gpcw_detail（只追加，按 report_date 分期）
 
@@ -221,8 +221,8 @@ def sync_gpcw_files(
     """
     Affair = get_tdx_affair_class()
     if Affair is None:
-        logger.error("[gpcw] mootdx 未安装，无法同步 gpcw 数据")
-        return {"files_synced": 0, "rows_upserted": 0, "errors": ["mootdx not installed"]}
+        logger.error("[gpcw] tdxhub 未安装，无法同步 gpcw 数据")
+        return {"files_synced": 0, "rows_upserted": 0, "errors": ["tdxhub not installed"]}
 
     _ensure_table(conn)
 

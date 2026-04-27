@@ -26,7 +26,7 @@ sys.path.insert(0, '/Users/dp/Documents/M/tdxhub')
 warnings.filterwarnings('ignore')
 
 import pandas as pd
-from mootdx.quotes import Quotes
+from tdxhub.quotes import Quotes
 
 from services.market_db import get_market_conn
 

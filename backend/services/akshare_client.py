@@ -23,10 +23,10 @@ from services.kline_source import aggregate_monthly_from_daily as _aggregate_mon
 from services.kline_source import fetch_daily_akshare_fallbacks as _fetch_daily_akshare_fallbacks
 from services.kline_source import normalize_price_frame as _normalize_price_frame
 from services.tdx_source import call_tdx_quotes_with_retry
-from services.tdx_source import clear_mootdx_unavailable as _clear_shared_mootdx_unavailable
-from services.tdx_source import get_mootdx_unavailable_state as _get_shared_mootdx_unavailable_state
-from services.tdx_source import mark_mootdx_unavailable as _mark_shared_mootdx_unavailable
-from services.tdx_source import mootdx_circuit_open as _shared_mootdx_circuit_open
+from services.tdx_source import clear_tdxhub_unavailable as _clear_shared_tdxhub_unavailable
+from services.tdx_source import get_tdxhub_unavailable_state as _get_shared_tdxhub_unavailable_state
+from services.tdx_source import mark_tdxhub_unavailable as _mark_shared_tdxhub_unavailable
+from services.tdx_source import tdxhub_circuit_open as _shared_tdxhub_circuit_open
 
 logger = logging.getLogger("cm-api")
 _MOOTDX_DEGRADED_TIMEOUT_THRESHOLD = 2
@@ -46,16 +46,16 @@ class NetworkError(Exception):
     pass
 
 
-def _summarize_mootdx_attempts(attempts: list[dict]) -> str:
+def _summarize_tdxhub_attempts(attempts: list[dict]) -> str:
     failed = [item for item in attempts if not item.get("ok")]
     if not failed:
-        return "mootdx 正常"
+        return "tdxhub 正常"
     error_types = []
     for item in failed:
         error_type = item.get("error_type") or "error"
         if error_type not in error_types:
             error_types.append(error_type)
-    return f"mootdx {'/'.join(error_types)} ({len(failed)}服)"
+    return f"tdxhub {'/'.join(error_types)} ({len(failed)}服)"
 
 
 def _normalize_fetch_date(value: Optional[str]) -> Optional[str]:
@@ -117,26 +117,26 @@ def _normalize_etf_spot_frame(df: pd.DataFrame) -> list[dict]:
     return results
 
 
-def _get_mootdx_unavailable_state() -> dict[str, object]:
-    return _get_shared_mootdx_unavailable_state()
+def _get_tdxhub_unavailable_state() -> dict[str, object]:
+    return _get_shared_tdxhub_unavailable_state()
 
 
-def _mark_mootdx_unavailable(summary: str, attempts: list[dict], *, cooldown_seconds: Optional[int] = None) -> None:
+def _mark_tdxhub_unavailable(summary: str, attempts: list[dict], *, cooldown_seconds: Optional[int] = None) -> None:
     if cooldown_seconds is None:
-        _mark_shared_mootdx_unavailable(summary, attempts)
+        _mark_shared_tdxhub_unavailable(summary, attempts)
         return
-    _mark_shared_mootdx_unavailable(summary, attempts, cooldown_seconds=cooldown_seconds)
+    _mark_shared_tdxhub_unavailable(summary, attempts, cooldown_seconds=cooldown_seconds)
 
 
-def _clear_mootdx_unavailable() -> None:
-    _clear_shared_mootdx_unavailable()
+def _clear_tdxhub_unavailable() -> None:
+    _clear_shared_tdxhub_unavailable()
 
 
-def _mootdx_circuit_open() -> bool:
-    return _shared_mootdx_circuit_open()
+def _tdxhub_circuit_open() -> bool:
+    return _shared_tdxhub_circuit_open()
 
 
-def _count_mootdx_timeout_failures(attempts: list[dict]) -> int:
+def _count_tdxhub_timeout_failures(attempts: list[dict]) -> int:
     total = 0
     for item in attempts or []:
         if item.get("ok"):
@@ -147,24 +147,24 @@ def _count_mootdx_timeout_failures(attempts: list[dict]) -> int:
     return total
 
 
-async def _fetch_daily_mootdx_with_diagnostics(code: str, start_date: str, end_date: str):
-    """用 mootdx 从通达信服务器获取日K线，并返回逐服务器诊断。"""
-    if _mootdx_circuit_open():
-        state = _get_mootdx_unavailable_state()
+async def _fetch_daily_tdxhub_with_diagnostics(code: str, start_date: str, end_date: str):
+    """用 tdxhub 从通达信服务器获取日K线，并返回逐服务器诊断。"""
+    if _tdxhub_circuit_open():
+        state = _get_tdxhub_unavailable_state()
         cached_attempts = list(state.get("attempts") or [])
         return None, None, {
             "ok": False,
             "cached": True,
             "attempts": cached_attempts,
-            "summary": state.get("summary") or "mootdx circuit open",
-            "timeout_failures": _count_mootdx_timeout_failures(cached_attempts),
+            "summary": state.get("summary") or "tdxhub circuit open",
+            "timeout_failures": _count_tdxhub_timeout_failures(cached_attempts),
             "fallback_recommended": True,
         }
 
     diagnostics = {
         "ok": False,
         "attempts": [],
-        "summary": "mootdx 未执行",
+        "summary": "tdxhub 未执行",
         "timeout_failures": 0,
         "fallback_recommended": False,
     }
@@ -209,31 +209,31 @@ async def _fetch_daily_mootdx_with_diagnostics(code: str, start_date: str, end_d
         diagnostics["ok"] = True
         diagnostics["server"] = attempts[-1]["server"] if attempts else None
         diagnostics["elapsed_sec"] = round(sum(float(item.get("elapsed_sec") or 0.0) for item in attempts), 3)
-        diagnostics["timeout_failures"] = _count_mootdx_timeout_failures(attempts)
+        diagnostics["timeout_failures"] = _count_tdxhub_timeout_failures(attempts)
         diagnostics["fallback_recommended"] = diagnostics["timeout_failures"] >= _MOOTDX_DEGRADED_TIMEOUT_THRESHOLD
-        diagnostics["summary"] = f"mootdx {diagnostics['server']}"
+        diagnostics["summary"] = f"tdxhub {diagnostics['server']}"
         if diagnostics["fallback_recommended"]:
             diagnostics["summary"] = (
-                f"mootdx {diagnostics['server']} · timeout x{diagnostics['timeout_failures']}"
+                f"tdxhub {diagnostics['server']} · timeout x{diagnostics['timeout_failures']}"
             )
-            _mark_mootdx_unavailable(
-                f"mootdx timeout x{diagnostics['timeout_failures']}，切换 fallback",
+            _mark_tdxhub_unavailable(
+                f"tdxhub timeout x{diagnostics['timeout_failures']}，切换 fallback",
                 attempts,
                 cooldown_seconds=_MOOTDX_DEGRADED_COOLDOWN_SECONDS,
             )
         else:
-            _clear_mootdx_unavailable()
-        return df, "mootdx", diagnostics
+            _clear_tdxhub_unavailable()
+        return df, "tdxhub", diagnostics
     except ImportError:
-        diagnostics["summary"] = "mootdx 未安装"
+        diagnostics["summary"] = "tdxhub 未安装"
         return None, None, diagnostics
     except Exception as e:
         diagnostics["attempts"] = list(getattr(e, "tdx_attempts", []) or [])
-        diagnostics["timeout_failures"] = _count_mootdx_timeout_failures(diagnostics["attempts"])
+        diagnostics["timeout_failures"] = _count_tdxhub_timeout_failures(diagnostics["attempts"])
         diagnostics["fallback_recommended"] = True
-        diagnostics["summary"] = _summarize_mootdx_attempts(diagnostics["attempts"]) if diagnostics["attempts"] else str(e)
-        _mark_mootdx_unavailable(diagnostics["summary"], diagnostics["attempts"])
-        logger.debug(f"[mootdx] {code} 失败: {e}")
+        diagnostics["summary"] = _summarize_tdxhub_attempts(diagnostics["attempts"]) if diagnostics["attempts"] else str(e)
+        _mark_tdxhub_unavailable(diagnostics["summary"], diagnostics["attempts"])
+        logger.debug(f"[tdxhub] {code} 失败: {e}")
         return None, None, diagnostics
 
 
@@ -324,9 +324,9 @@ def _aggregate_monthly_from_daily(df: pd.DataFrame):
     return pd.DataFrame(rows)
 
 
-async def _fetch_daily_mootdx(code: str, start_date: str, end_date: str):
-    """用 mootdx 从通达信服务器获取日K线（首选数据源）"""
-    df, source, _ = await _fetch_daily_mootdx_with_diagnostics(code, start_date, end_date)
+async def _fetch_daily_tdxhub(code: str, start_date: str, end_date: str):
+    """用 tdxhub 从通达信服务器获取日K线（首选数据源）"""
+    df, source, _ = await _fetch_daily_tdxhub_with_diagnostics(code, start_date, end_date)
     return df, source
 
 
@@ -374,13 +374,13 @@ async def _fetch_daily_with_fallback(
         if _is_frame_fresh_enough(df_fb, end_date):
             return df_fb, src_fb
 
-    # 优先级1: mootdx（通达信服务器，Mac原生）
-    df_m, src_m, diagnostics_m = await _fetch_daily_mootdx_with_diagnostics(code, start_date, end_date)
+    # 优先级1: tdxhub（通达信服务器，Mac原生）
+    df_m, src_m, diagnostics_m = await _fetch_daily_tdxhub_with_diagnostics(code, start_date, end_date)
     if df_m is not None and not df_m.empty:
         _remember_result(df_m, src_m)
         if diagnostics_m.get("fallback_recommended"):
             logger.warning(
-                f"[日K] {code} mootdx 连续超时，后续短时回退 fallback（{diagnostics_m.get('summary') or 'mootdx degraded'}）"
+                f"[日K] {code} tdxhub 连续超时，后续短时回退 fallback（{diagnostics_m.get('summary') or 'tdxhub degraded'}）"
             )
         if _is_frame_fresh_enough(df_m, end_date):
             return df_m, src_m
@@ -405,7 +405,7 @@ async def _fetch_daily_with_fallback(
 
 
 async def probe_stock_kline_fallback_preference(code: str, start_date: str, end_date: str) -> dict:
-    _, _, diagnostics = await _fetch_daily_mootdx_with_diagnostics(code, start_date, end_date)
+    _, _, diagnostics = await _fetch_daily_tdxhub_with_diagnostics(code, start_date, end_date)
     prefer_fallback = (
         not diagnostics.get("ok")
         or bool(diagnostics.get("cached"))
@@ -414,7 +414,7 @@ async def probe_stock_kline_fallback_preference(code: str, start_date: str, end_
     return {
         "sample_code": code,
         "prefer_fallback": prefer_fallback,
-        "reason": diagnostics.get("summary") or ("mootdx unavailable" if prefer_fallback else "mootdx healthy"),
+        "reason": diagnostics.get("summary") or ("tdxhub unavailable" if prefer_fallback else "tdxhub healthy"),
         "elapsed_sec": float(diagnostics.get("elapsed_sec") or 0.0),
         "timeout_failures": int(diagnostics.get("timeout_failures") or 0),
     }
@@ -485,7 +485,7 @@ async def fetch_stock_kline_daily(code: str, days: int = 150,
 
 
 async def test_kline_availability(sample_code: str = "000001") -> dict:
-    """测试 K 线源可用性，并区分 mootdx 失效与 fallback 可用。"""
+    """测试 K 线源可用性，并区分 tdxhub 失效与 fallback 可用。"""
     end_date = datetime.now().strftime("%Y%m%d")
     start_date = (datetime.now() - timedelta(days=15)).strftime("%Y%m%d")
     started_at = time.time()
@@ -496,15 +496,15 @@ async def test_kline_availability(sample_code: str = "000001") -> dict:
         "sample_code": sample_code,
     }
 
-    mootdx_task = asyncio.create_task(_fetch_daily_mootdx_with_diagnostics(sample_code, start_date, end_date))
+    tdxhub_task = asyncio.create_task(_fetch_daily_tdxhub_with_diagnostics(sample_code, start_date, end_date))
     fallback_task = asyncio.create_task(_fetch_daily_akshare_fallbacks(
         sample_code,
         start_date,
         end_date,
         safe_call=_safe_akshare_call,
     ))
-    (df_m, src_m, mootdx_diag), (df_fb, src_fb, fallback_diag) = await asyncio.gather(mootdx_task, fallback_task)
-    result["mootdx"] = mootdx_diag
+    (df_m, src_m, tdxhub_diag), (df_fb, src_fb, fallback_diag) = await asyncio.gather(tdxhub_task, fallback_task)
+    result["tdxhub"] = tdxhub_diag
     if df_m is not None and not df_m.empty and src_m:
         result["available"] = True
         result["effective_source"] = src_m
@@ -516,19 +516,19 @@ async def test_kline_availability(sample_code: str = "000001") -> dict:
     if df_fb is not None and not df_fb.empty and src_fb:
         result["available"] = True
         result["effective_source"] = src_fb
-        result["detail"] = f"{src_fb} fallback · {_summarize_mootdx_attempts(mootdx_diag.get('attempts') or [])}"
+        result["detail"] = f"{src_fb} fallback · {_summarize_tdxhub_attempts(tdxhub_diag.get('attempts') or [])}"
     else:
-        result["detail"] = _summarize_mootdx_attempts(mootdx_diag.get("attempts") or [])
+        result["detail"] = _summarize_tdxhub_attempts(tdxhub_diag.get("attempts") or [])
         if fallback_diag.get("last_error"):
             result["detail"] += f" · fallback {fallback_diag['last_error']}"
     result["elapsed_sec"] = round(time.time() - started_at, 3)
     return result
 
 
-async def _fetch_etf_list_mootdx() -> list[dict]:
-    if _mootdx_circuit_open():
-        state = _get_mootdx_unavailable_state()
-        logger.warning(f"[ETF] 跳过 mootdx ETF 列表探测：{state.get('summary') or 'mootdx circuit open'}")
+async def _fetch_etf_list_tdxhub() -> list[dict]:
+    if _tdxhub_circuit_open():
+        state = _get_tdxhub_unavailable_state()
+        logger.warning(f"[ETF] 跳过 tdxhub ETF 列表探测：{state.get('summary') or 'tdxhub circuit open'}")
         return []
 
     def _fetch_on_client(client):
@@ -556,14 +556,14 @@ async def _fetch_etf_list_mootdx() -> list[dict]:
                 action_name="stocks[etf-list]",
             ),
         )
-        _clear_mootdx_unavailable()
+        _clear_tdxhub_unavailable()
         logger.info(f"[ETF] ETF 列表来自 {source}: {len(results)} 只")
         return results
     except ImportError:
         return []
     except Exception as e:
-        logger.warning(f"[ETF] mootdx ETF 列表失败: {e}")
-        _mark_mootdx_unavailable(f"mootdx stocks failed: {e}", [])
+        logger.warning(f"[ETF] tdxhub ETF 列表失败: {e}")
+        _mark_tdxhub_unavailable(f"tdxhub stocks failed: {e}", [])
 
     return []
 
@@ -575,7 +575,7 @@ async def _fetch_etf_list_ths() -> list[dict]:
         df = await _safe_akshare_call(ak.fund_etf_spot_ths, timeout=25, retries=0)
         results = _normalize_etf_spot_frame(df)
         if results:
-            logger.warning(f"[ETF] mootdx ETF 列表不可用，已回退同花顺 ETF 列表源: {len(results)} 只")
+            logger.warning(f"[ETF] tdxhub ETF 列表不可用，已回退同花顺 ETF 列表源: {len(results)} 只")
         return results
     except Exception as e:
         logger.warning(f"[ETF] 同花顺 ETF 列表回退失败: {e}")
@@ -596,7 +596,7 @@ def _coerce_etf_list_result(payload, default_source: str) -> tuple[list[dict], s
 
 async def fetch_etf_list_with_source() -> tuple[list[dict], str]:
     """获取 ETF 列表，并显式返回本次有效数据源。"""
-    rows, source = _coerce_etf_list_result(await _fetch_etf_list_mootdx(), "mootdx")
+    rows, source = _coerce_etf_list_result(await _fetch_etf_list_tdxhub(), "tdxhub")
     if rows:
         return rows, source
 
@@ -604,14 +604,14 @@ async def fetch_etf_list_with_source() -> tuple[list[dict], str]:
     return rows, source
 
 async def fetch_etf_list() -> list[dict]:
-    """获取 ETF 列表，优先 mootdx，失败后回退同花顺 ETF 列表源。"""
+    """获取 ETF 列表，优先 tdxhub，失败后回退同花顺 ETF 列表源。"""
     results, _source = await fetch_etf_list_with_source()
     return results
 
 
 async def fetch_etf_kline(code: str, start_date: str, end_date: str):
-    """获取 ETF K 线，优先 mootdx，失败后回退股票 K 线降级链。"""
-    df, source, mootdx_diag = await _fetch_daily_mootdx_with_diagnostics(code, start_date, end_date)
+    """获取 ETF K 线，优先 tdxhub，失败后回退股票 K 线降级链。"""
+    df, source, tdxhub_diag = await _fetch_daily_tdxhub_with_diagnostics(code, start_date, end_date)
     if df is not None and not df.empty:
         return df, source
 
@@ -623,7 +623,7 @@ async def fetch_etf_kline(code: str, start_date: str, end_date: str):
     )
     if df_fb is not None and not df_fb.empty:
         logger.debug(
-            f"[ETF] {code} mootdx 不可用，回退 {source_fb}（{mootdx_diag.get('summary') or _summarize_mootdx_attempts(mootdx_diag.get('attempts') or [])}）"
+            f"[ETF] {code} tdxhub 不可用，回退 {source_fb}（{tdxhub_diag.get('summary') or _summarize_tdxhub_attempts(tdxhub_diag.get('attempts') or [])}）"
         )
         return df_fb, source_fb
 
@@ -633,7 +633,7 @@ async def fetch_etf_kline(code: str, start_date: str, end_date: str):
 
 
 async def fetch_index_kline(code: str, start_date: str, end_date: str):
-    """获取指数 K 线（通过 mootdx index_bars）"""
+    """获取指数 K 线（通过 tdxhub index_bars）"""
     try:
         from datetime import datetime
 
@@ -675,7 +675,7 @@ async def fetch_index_kline(code: str, start_date: str, end_date: str):
         for col in ["open", "high", "low", "close", "volume", "amount"]:
             if col not in df.columns:
                 df[col] = None
-        return df[["date", "open", "high", "low", "close", "volume", "amount"]], "mootdx_index"
+        return df[["date", "open", "high", "low", "close", "volume", "amount"]], "tdxhub_index"
     except Exception as e:
         logger.debug(f"[指数] {code} 失败: {e}")
         return None, None

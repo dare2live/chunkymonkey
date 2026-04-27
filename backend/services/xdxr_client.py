@@ -1,7 +1,7 @@
 """TDX xdxr 同步客户端。
 
 职责：
-- 通过共享 tdxhub / mootdx 入口抓取除权除息与股本变动事件
+- 通过共享 tdxhub / tdxhub 入口抓取除权除息与股本变动事件
 - 规范化为项目内统一字段
 - 按股票全量替换写入 market.duckdb.price_xdxr
 """
