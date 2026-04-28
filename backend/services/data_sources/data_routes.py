@@ -93,13 +93,13 @@ DATA_ROUTES = [
     # =================================================================
     {
         "data_name": "十大流通股东 ⭐",
-        "raw_table": "market_raw_holdings",
-        "current": {"source": "aif10", "protocol": "miaoxiang RPT_F10_EH_FREEHOLDERS (datacenter)", "status": "connected"},
+        "raw_table": "fact_top10_holder_period (raw 层: raw_tdx_f10_holder_research)",
+        "current": {"source": "tdxhub", "protocol": "tdxhub.holders.HolderFetcher (F10 股东研究 双格式解析)", "status": "connected"},
         "target": None,
         "freshness": "事件 (季报披露驱动)",
         "step_id": "sync_raw",
-        "client_module": "routers/market.py (P6.1 已迁 aif10)",
-        "notes": "P6.1 (2026-04-27): 从 datacenter-web 迁去 miaoxiang. 字段兼容 (HOLD_NUM/FREE_HOLDNUM_RATIO/HOLDER_NEWTYPE 等), 全市场 UPDATE_DATE filter 工作正常.",
+        "client_module": "scripts/ingest_holders_tdxhub.py",
+        "notes": "P7 (2026-04-28): retired miaoxiang RPT_F10_EH_FREEHOLDERS, switched to tdxhub.holders. 99.6% universe coverage, A/H 拆分, 含退出表.",
     },
     {
         "data_name": "股东人数 (深历史)",

@@ -48,28 +48,10 @@ def init_db():
             -- 原始层（只追加不改）
             -- ============================================================
 
-            CREATE TABLE IF NOT EXISTS market_raw_holdings (
-                holder_name     TEXT NOT NULL,
-                stock_code      TEXT NOT NULL,
-                stock_name      TEXT,
-                report_date     TEXT NOT NULL,
-                notice_date     TEXT,
-                holder_rank     INTEGER,
-                hold_amount     REAL,
-                hold_market_cap REAL,
-                hold_ratio      REAL,
-                holder_type     TEXT,
-                hold_change     TEXT,
-                hold_change_num REAL,
-                raw_json        TEXT,
-                created_at      TEXT,
-                UNIQUE(holder_name, stock_code, report_date, holder_rank)
-            );
-            CREATE INDEX IF NOT EXISTS idx_mrh_stock ON market_raw_holdings(stock_code);
-            CREATE INDEX IF NOT EXISTS idx_mrh_report ON market_raw_holdings(report_date);
-            CREATE INDEX IF NOT EXISTS idx_mrh_notice ON market_raw_holdings(notice_date);
-            CREATE INDEX IF NOT EXISTS idx_mrh_holder ON market_raw_holdings(holder_name);
-            CREATE INDEX IF NOT EXISTS idx_mrh_stock_report ON market_raw_holdings(stock_code, report_date);
+            -- P7/P8 (2026-04-28): market_raw_holdings 整表退役.
+            -- 数据已迁移至 fact_top10_holder_period (A/H 拆分 + source_tier).
+            -- 老表 + 5 个旧索引一并删除.
+            DROP TABLE IF EXISTS market_raw_holdings;
 
             -- ============================================================
             -- 原始层 (新): tdxhub F10 「股东研究」 原文
@@ -101,7 +83,7 @@ def init_db():
             -- ============================================================
             -- fact_top10_holder_period: tdxhub.holders 解析后的 canonical 事实.
             -- 每行 = 一只股票 × 报告期 × holder_set × holder_rank × share_class.
-            -- 替代 market_raw_holdings (后者会在 P8 删除, 当前并存以便平滑切换).
+            -- 替代 market_raw_holdings (P7/P8 已删除).
             --
             -- 关键 schema 决策:
             --  1. holder_set ∈ ('free','all') 显式区分流通 vs 全量 (老表只覆盖 free).
@@ -1380,11 +1362,10 @@ def init_db():
         conn.commit()
 
         # P3.10 (2026-04-28): 关键大表索引 (DuckDB 用得着)
+        # P7 (2026-04-28): 老 idx_mrh_* 索引随 market_raw_holdings 退役一并删除.
         try:
             for sql in (
-                # market_raw_holdings 757k 行, 已有 (holder_name, stock_code, report_date)
-                "CREATE INDEX IF NOT EXISTS idx_mrh_secucode ON market_raw_holdings(stock_code, report_date DESC)",
-                "CREATE INDEX IF NOT EXISTS idx_mrh_holder_recent ON market_raw_holdings(holder_name, report_date DESC)",
+                # fact_top10_holder_period 替代旧 mrh, 索引在 init_db 主块已建.
                 # fact_institution_event 高频查 by stock_code + holder_name
                 "CREATE INDEX IF NOT EXISTS idx_fie_stock ON fact_institution_event(stock_code, report_date DESC)",
                 "CREATE INDEX IF NOT EXISTS idx_fie_holder ON fact_institution_event(holder_name, report_date DESC)",

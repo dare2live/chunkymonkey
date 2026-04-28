@@ -61,8 +61,11 @@ def load_stock_name(conn, stock_code: str) -> str:
             ),
             (
                 SELECT NULLIF(stock_name, '')
-                FROM market_raw_holdings
+                FROM fact_top10_holder_period
                 WHERE stock_code = ?
+                  AND holder_set = 'free'
+                  AND NOT is_secondary_class
+                  AND NOT is_exit_row
                 LIMIT 1
             ),
             ?

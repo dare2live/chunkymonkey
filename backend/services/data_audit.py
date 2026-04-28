@@ -66,15 +66,30 @@ AUDIT_RULES: dict[str, dict] = {
             ("rq_balance IS NULL OR rq_balance >= 0", "融券余额 >= 0"),
         ],
     },
-    "market_raw_holdings": {
-        "pk": ["holder_name", "stock_code", "report_date", "holder_rank"],
-        "not_null": ["holder_name", "stock_code", "report_date"],
+    # P7 (2026-04-28): market_raw_holdings 整表退役.
+    # 新 canonical fact_top10_holder_period 由 tdxhub.holders 写入,
+    # A/H 拆分 + holder_set + is_exit_row + source_tier; 审计规则相应升级.
+    "fact_top10_holder_period": {
+        "pk": ["stock_code", "report_date", "holder_set", "source",
+               "is_exit_row", "holder_rank", "row_seq", "share_class"],
+        "not_null": ["stock_code", "report_date", "holder_set",
+                     "holder_rank", "holder_name", "source", "source_tier"],
         "date_field": "report_date",
         "date_min_distinct_90d": 0,  # 季报
         "value_checks": [
-            ("holder_rank IS NULL OR holder_rank BETWEEN 1 AND 20", "股东排名 1-20"),
-            ("hold_amount IS NULL OR hold_amount >= 0", "持股数 >= 0"),
+            ("holder_rank BETWEEN 1 AND 20", "股东排名 1-20"),
+            ("shares_approx IS NULL OR shares_approx >= 0", "持股数 >= 0"),
+            ("hold_ratio_float IS NULL OR hold_ratio_float BETWEEN 0 AND 105",
+             "占流通股比 0-105% (>100% 仅 A/H 边界容忍)"),
+            ("source_tier IN (1, 2, 3)", "source_tier 合法"),
+            ("holder_set IN ('free', 'all')", "holder_set 合法"),
         ],
+    },
+    "raw_tdx_f10_holder_research": {
+        "pk": ["stock_code", "raw_hash"],
+        "not_null": ["stock_code", "raw_hash", "raw_text", "fetched_at"],
+        "date_field": "fetched_at",
+        "date_min_distinct_90d": 0,  # raw 层不保证均匀分布
     },
     "raw_gpcw_financial": {
         "pk": ["stock_code", "report_date"],
@@ -339,7 +354,7 @@ def summary() -> dict:
     return {
         "n_rules": len(AUDIT_RULES),
         "rules_by_layer": {
-            "raw": sum(1 for k in AUDIT_RULES if k.startswith("raw_") or k == "market_raw_holdings"),
+            "raw": sum(1 for k in AUDIT_RULES if k.startswith("raw_")),
             "fact": sum(1 for k in AUDIT_RULES if k.startswith("fact_")),
             "mart": sum(1 for k in AUDIT_RULES if k.startswith("mart_")),
             "dim": sum(1 for k in AUDIT_RULES if k.startswith("dim_")),

@@ -134,7 +134,11 @@ def test_current_relationship_symmetry():
         FROM mart_current_relationship m
         LEFT JOIN (
             SELECT stock_code, MAX(report_date) AS max_rd
-            FROM market_raw_holdings GROUP BY stock_code
+            FROM fact_top10_holder_period
+            WHERE holder_set = 'free'
+              AND NOT is_secondary_class
+              AND NOT is_exit_row
+            GROUP BY stock_code
         ) l ON m.stock_code = l.stock_code
         WHERE m.report_date != l.max_rd
         LIMIT 5

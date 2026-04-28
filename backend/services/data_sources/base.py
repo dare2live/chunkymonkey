@@ -21,7 +21,7 @@ Freshness = Literal["t-0", "t-1", "daily", "weekly", "quarterly", "yearly", "sta
 class Capability:
     """单个数据能力的元数据.
 
-    name: 业务名 (kline_daily / top_free_holders 等), 全局唯一标识
+    name: 业务名 (kline_daily / holders_top10_float 等), 全局唯一标识
     description: 一句话说明
     freshness: 更新粒度
     cost: low / medium / high (调用一次的耗时/资源)

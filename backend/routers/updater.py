@@ -909,7 +909,9 @@ def _collect_downstream_steps(start_step_id):
 # ============================================================
 
 _CONNECTIVITY_TARGETS = {
-    "holdings_source": "https://datacenter.eastmoney.com/securities/api/data/v1/get",  # P6 (2026-04-28): miaoxiang datacenter 子域
+    # P7 (2026-04-28): 股东源切到 tdxhub. 这里 ping 一个 tdxhub 服务器列表里
+    # 较稳定的端点, 仅作连通性指示 (实际抓取走 HolderFetcher 自带的池).
+    "holdings_source": "http://gw.tdx.com.cn:7708/",
 }
 
 _CONNECTIVITY_LABELS = {
@@ -1068,141 +1070,76 @@ def _should_stop():
 # 步骤执行函数
 # ============================================================
 
-async def _download_with_filter(conn, client, filter_str, label="") -> int:
-    """通用分页下载，返回插入条数"""
-    from routers.market import _fetch_page, _map_api_row, _upsert_batch
+# P7 (2026-04-28): 老的 _download_with_filter / 分页逻辑随同 miaoxiang
+# RPT_F10_EH_FREEHOLDERS 一并下架. 抓取迁到 backend/scripts/ingest_holders_tdxhub.py
+# (tdxhub.holders.HolderFetcher), 结果直接落 fact_top10_holder_period.
 
-    first = None
-    for attempt in range(3):
-        try:
-            first = await _fetch_page(client, filter_str, 1)
-            break
-        except Exception as e:
-            logger.warning(f"[下载{label}] 首页失败 ({attempt+1}/3): {e}")
-            if attempt < 2:
-                await asyncio.sleep(2)
-    if not first:
-        logger.warning(f"[下载{label}] 首页请求失败，跳过")
-        return 0
 
-    result = first.get("result", {})
-    total_pages = int(result.get("pages", 1)) or 1
-    total_count = int(result.get("count", 0))
-    if total_count <= 0:
-        logger.info(f"[下载{label}] 无新增数据")
-        return 0
-    logger.info(f"[下载{label}] 共 {total_count} 条, {total_pages} 页")
+async def _step_sync_raw(conn) -> dict:
+    """十大流通股东 — 调 tdxhub 抓取脚本.
 
-    total_inserted = 0
-    page_data = result.get("data", [])
-    if page_data:
-        mapped = [_map_api_row(r) for r in page_data]
-        total_inserted += _upsert_batch(conn, mapped)
+    P7 起 canonical 表是 fact_top10_holder_period (替代 market_raw_holdings).
+    抓取逻辑封装在 backend/scripts/ingest_holders_tdxhub.py 里, 这里通过
+    子进程调用; 保持 sync_raw step 接口不变.
+    """
+    canonical_where = (
+        "holder_set = 'free' AND NOT is_secondary_class AND NOT is_exit_row"
+    )
+    before = conn.execute(
+        f"SELECT COUNT(*) FROM fact_top10_holder_period WHERE {canonical_where}"
+    ).fetchone()[0]
+    logger.info(f"[下载/tdxhub] 现有 {before} 条 (fact_top10_holder_period free)")
+
+    # 释放数据库连接, 让子进程独占 DuckDB 写入
+    try:
         conn.commit()
+    except Exception:
+        pass
 
-    for page in range(2, total_pages + 1):
-        if _should_stop():
-            logger.info(f"[下载{label}] 用户停止 ({page-1}/{total_pages})")
-            raise _RunStopped("用户已停止")
-        try:
-            await asyncio.sleep(1.5)
-            data = await _fetch_page(client, filter_str, page)
-            pd = data.get("result", {}).get("data", [])
-            if pd:
-                mapped = [_map_api_row(r) for r in pd]
-                total_inserted += _upsert_batch(conn, mapped)
-                conn.commit()
-            if page % 50 == 0:
-                logger.info(f"[下载{label}] {page}/{total_pages} ({total_inserted})")
-        except Exception as e:
-            logger.warning(f"[下载{label}] 第{page}页失败: {e}")
-            await asyncio.sleep(3)
+    import os
+    import subprocess
+    from pathlib import Path
 
-    return total_inserted
+    repo_root = Path(__file__).resolve().parents[2]
+    script = repo_root / "backend" / "scripts" / "ingest_holders_tdxhub.py"
+    if not script.exists():
+        raise RuntimeError(f"[下载/tdxhub] 抓取脚本缺失: {script}")
 
+    cmd = ["python3", str(script)]
+    logger.info(f"[下载/tdxhub] 调用 {' '.join(cmd)}")
 
-async def _step_sync_raw(conn) -> int:
-    """从东财下载十大流通股东（含缺口自动补齐）"""
-    from routers.market import _BROWSER_HEADERS
+    loop = asyncio.get_event_loop()
 
-    count = conn.execute("SELECT COUNT(*) FROM market_raw_holdings").fetchone()[0]
-    logger.info(f"[下载] 现有 {count} 条")
+    def _run() -> int:
+        proc = subprocess.run(
+            cmd,
+            cwd=str(repo_root),
+            env=os.environ.copy(),
+            capture_output=True,
+            text=True,
+        )
+        if proc.stdout:
+            for line in proc.stdout.splitlines()[-30:]:
+                logger.info(f"[tdxhub] {line}")
+        if proc.stderr:
+            for line in proc.stderr.splitlines()[-30:]:
+                logger.warning(f"[tdxhub:err] {line}")
+        return proc.returncode
 
-    total_inserted = 0
+    rc = await loop.run_in_executor(None, _run)
+    if rc != 0:
+        raise RuntimeError(f"[下载/tdxhub] ingest_holders_tdxhub.py exit={rc}")
 
-    async with httpx.AsyncClient(timeout=30.0, trust_env=False, headers=_BROWSER_HEADERS) as client:
-        # --- 主下载（全量或增量） ---
-        if count == 0:
-            filter_str = "(END_DATE>='2023-01-01')"
-            logger.info("[下载] 全量下载 (2023-01-01 起)...")
-        else:
-            row = conn.execute(
-                "SELECT MAX(notice_date) FROM market_raw_holdings WHERE notice_date IS NOT NULL AND notice_date != ''"
-            ).fetchone()
-            since = row[0] if row and row[0] else "20230101"
-            if len(since) == 8 and "-" not in since:
-                since = f"{since[:4]}-{since[4:6]}-{since[6:8]}"
-            # 关键: eastmoney 的 UPDATE_DATE 字段格式是 '2026-04-21 00:00:00' (带时间).
-            # 用 (UPDATE_DATE>'{since}') 即 '> 2026-04-21' 字符串比较时,
-            # '2026-04-21 00:00:00' > '2026-04-21' = TRUE (后面有空格), 所以 since 当天的
-            # 所有 ~3500 条仍会全部返回, 没真正增量.
-            # 修复: 用 since 的次日 ISO date 作为 >= 边界, 严格排除 since 当天.
-            try:
-                _since_dt = datetime.strptime(since, "%Y-%m-%d")
-                _next = (_since_dt + timedelta(days=1)).strftime("%Y-%m-%d")
-                filter_str = f"(UPDATE_DATE>='{_next}')"
-                logger.info(f"[下载] 增量 (>= {_next}, since={since})...")
-            except ValueError:
-                filter_str = f"(UPDATE_DATE>'{since}')"
-                logger.info(f"[下载] 增量 (> {since})...")
-
-        total_inserted += await _download_with_filter(conn, client, filter_str)
-
-        _raise_if_stop()
-
-        # --- 缺口检测与补齐 ---
-        # 检查所有历史季度是否完整（最新季度除外，可能还在披露中）
-        gap_quarters = []
-        all_quarters = []
-        for y in range(2023, datetime.now().year + 1):
-            for q in ["0331", "0630", "0930", "1231"]:
-                all_quarters.append(f"{y}{q}")
-        # 排除未来和最近一个季度（可能还在披露中）
-        latest_full = conn.execute(
-            "SELECT report_date FROM market_raw_holdings GROUP BY report_date HAVING COUNT(*) > 50000 ORDER BY report_date DESC LIMIT 1"
-        ).fetchone()
-        cutoff = latest_full[0] if latest_full else "20260101"
-        for qdate in all_quarters:
-            if qdate > cutoff:
-                continue
-            cnt = conn.execute(
-                "SELECT COUNT(*) FROM market_raw_holdings WHERE report_date = ?", (qdate,)
-            ).fetchone()[0]
-            # 正常季度应有 50000+ 条记录（十大股东 × 全市场约 5000+ 股票）
-            if cnt < 50000:
-                gap_quarters.append((qdate, cnt))
-
-        if gap_quarters:
-            logger.info(f"[下载] 检测到 {len(gap_quarters)} 个缺口季度: {[(q,c) for q,c in gap_quarters]}")
-            for qdate, existing in gap_quarters:
-                _raise_if_stop()
-                fmt_date = f"{qdate[:4]}-{qdate[4:6]}-{qdate[6:8]}"
-                gap_filter = f"(END_DATE='{fmt_date}')"
-                logger.info(f"[下载] 补齐 {qdate} (现有 {existing} 条)...")
-                inserted = await _download_with_filter(conn, client, gap_filter, label=f"-补齐{qdate}")
-                total_inserted += inserted
-                new_cnt = conn.execute(
-                    "SELECT COUNT(*) FROM market_raw_holdings WHERE report_date = ?", (qdate,)
-                ).fetchone()[0]
-                logger.info(f"[下载] {qdate} 补齐后: {new_cnt} 条 (+{inserted})")
-
-    final = conn.execute("SELECT COUNT(*) FROM market_raw_holdings").fetchone()[0]
-    logger.info(f"[下载] 完成: +{total_inserted}, 总{final}")
+    after = conn.execute(
+        f"SELECT COUNT(*) FROM fact_top10_holder_period WHERE {canonical_where}"
+    ).fetchone()[0]
+    written = max(0, after - before)
+    logger.info(f"[下载/tdxhub] 完成: +{written}, 总 {after}")
     return {
         "status": "completed",
-        "count": final,
-        "written": total_inserted,
-        "total": final,
+        "count": after,
+        "written": written,
+        "total": after,
     }
 
 
@@ -1230,9 +1167,17 @@ def _build_exclusion_set(conn) -> set:
     ).fetchall()
     enabled_cats = {r["category"] for r in categories}
 
-    # 从 market_raw_holdings 获取所有唯一的 (stock_code, stock_name)
+    # 从 fact_top10_holder_period (canonical, 替代 market_raw_holdings) 获取
+    # 所有唯一的 (stock_code, stock_name).
     all_stocks = conn.execute(
-        "SELECT DISTINCT stock_code, stock_name FROM market_raw_holdings WHERE stock_code IS NOT NULL"
+        """
+        SELECT DISTINCT stock_code, stock_name
+          FROM fact_top10_holder_period
+         WHERE stock_code IS NOT NULL
+           AND holder_set = 'free'
+           AND NOT is_secondary_class
+           AND NOT is_exit_row
+        """
     ).fetchall()
 
     for row in all_stocks:
@@ -1391,10 +1336,13 @@ def _step_match_inst_sync(conn) -> int:
                     r.hold_ratio,
                     r.hold_change,
                     r.hold_change_num
-                FROM market_raw_holdings r
+                FROM fact_top10_holder_period r
                 JOIN tmp_inst_match_names m ON TRIM(r.holder_name) = m.holder_name
                 LEFT JOIN tmp_inst_excluded_codes x ON TRIM(r.stock_code) = x.stock_code
                 WHERE x.stock_code IS NULL
+                  AND r.holder_set = 'free'
+                  AND NOT r.is_secondary_class
+                  AND NOT r.is_exit_row
             ) candidate
         ) deduped
         WHERE rn = 1

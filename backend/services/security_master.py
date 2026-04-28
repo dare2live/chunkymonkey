@@ -7,7 +7,7 @@
 - 为更新链路提供统一的“有效股票宇宙”入口
 
 设计原则：
-- 历史公告 market_raw_holdings 只代表“曾经出现过的代码”
+- 历史十大流通股东 fact_top10_holder_period (替代 P7 退役的 market_raw_holdings) 只代表"曾经出现过的代码"
 - 可跟踪/可同步行情的股票，必须再经过“当前有效 A 股主数据”校验
 - 退市、失效、非股票代码不应进入 inst_holdings / K 线同步主链路
 """

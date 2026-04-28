@@ -169,7 +169,10 @@ def _load_expected_current_snapshot(conn) -> dict:
     base_sql = """
         WITH latest AS (
             SELECT stock_code, MAX(report_date) AS max_rd
-            FROM market_raw_holdings
+            FROM fact_top10_holder_period
+            WHERE holder_set = 'free'
+              AND NOT is_secondary_class
+              AND NOT is_exit_row
             GROUP BY stock_code
         ),
         expected AS (
@@ -467,7 +470,8 @@ def _summarize_current_relationship_freshness(conn) -> dict:
 
     try:
         raw_row = conn.execute(
-            "SELECT MAX(report_date) AS report_date FROM market_raw_holdings"
+            "SELECT MAX(report_date) AS report_date FROM fact_top10_holder_period "
+            "WHERE holder_set = 'free' AND NOT is_secondary_class AND NOT is_exit_row"
         ).fetchone()
         current_row = conn.execute(
             "SELECT MAX(report_date) AS report_date FROM mart_current_relationship"
@@ -488,7 +492,10 @@ def _summarize_current_relationship_freshness(conn) -> dict:
                 ) current_latest
                 LEFT JOIN (
                     SELECT stock_code, MAX(report_date) AS max_rd
-                    FROM market_raw_holdings
+                    FROM fact_top10_holder_period
+                    WHERE holder_set = 'free'
+                      AND NOT is_secondary_class
+                      AND NOT is_exit_row
                     GROUP BY stock_code
                 ) raw_latest
                   ON raw_latest.stock_code = current_latest.stock_code
@@ -509,7 +516,10 @@ def _summarize_current_relationship_freshness(conn) -> dict:
             ) current_latest
             LEFT JOIN (
                 SELECT stock_code, MAX(report_date) AS max_rd
-                FROM market_raw_holdings
+                FROM fact_top10_holder_period
+                WHERE holder_set = 'free'
+                  AND NOT is_secondary_class
+                  AND NOT is_exit_row
                 GROUP BY stock_code
             ) raw_latest
               ON raw_latest.stock_code = current_latest.stock_code
@@ -580,13 +590,14 @@ def run_quality_audit(conn, use_cache: bool = True) -> dict:
     except Exception:
         latest_market_date = None
 
-    # RAW 层 — 用 MAX(rowid) 代替 COUNT(*) 节省 ~580ms（market_raw_holdings 是 append-only）
-    raw_count = _scalar(conn, "SELECT MAX(rowid) FROM market_raw_holdings")
-    raw_stocks = _scalar(conn, "SELECT COUNT(DISTINCT stock_code) FROM market_raw_holdings")
-    raw_latest = conn.execute("SELECT MAX(notice_date) FROM market_raw_holdings").fetchone()[0]
-    raw_total_periods = _scalar(conn, "SELECT COUNT(DISTINCT report_date) FROM market_raw_holdings")
+    # RAW 层 — 流通股东全集口径（free / 非二级类别 / 非退出行），fact_top10_holder_period
+    _raw_filter = "holder_set = 'free' AND NOT is_secondary_class AND NOT is_exit_row"
+    raw_count = _scalar(conn, f"SELECT COUNT(*) FROM fact_top10_holder_period WHERE {_raw_filter}")
+    raw_stocks = _scalar(conn, f"SELECT COUNT(DISTINCT stock_code) FROM fact_top10_holder_period WHERE {_raw_filter}")
+    raw_latest = conn.execute(f"SELECT MAX(notice_date) FROM fact_top10_holder_period WHERE {_raw_filter}").fetchone()[0]
+    raw_total_periods = _scalar(conn, f"SELECT COUNT(DISTINCT report_date) FROM fact_top10_holder_period WHERE {_raw_filter}")
     raw_periods = conn.execute(
-        "SELECT DISTINCT report_date FROM market_raw_holdings ORDER BY report_date DESC LIMIT 5"
+        f"SELECT DISTINCT report_date FROM fact_top10_holder_period WHERE {_raw_filter} ORDER BY report_date DESC LIMIT 5"
     ).fetchall()
 
     # 机构层

@@ -67,8 +67,11 @@ def load_stock_trends_payload(conn) -> dict:
                    d.stock_name,
                    (
                        SELECT mr.stock_name
-                       FROM market_raw_holdings mr
+                       FROM fact_top10_holder_period mr
                        WHERE mr.stock_code = e.stock_code
+                         AND mr.holder_set = 'free'
+                         AND NOT mr.is_secondary_class
+                         AND NOT mr.is_exit_row
                        ORDER BY mr.report_date DESC, mr.notice_date DESC
                        LIMIT 1
                    ),

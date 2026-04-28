@@ -41,7 +41,10 @@ def refresh_stock_latest_cache(conn):
     conn.execute("""
         CREATE TABLE _cache_stock_latest_rd AS
         SELECT stock_code, MAX(report_date) as max_rd
-        FROM market_raw_holdings
+        FROM fact_top10_holder_period
+        WHERE holder_set = 'free'
+          AND NOT is_secondary_class
+          AND NOT is_exit_row
         GROUP BY stock_code
     """)
     conn.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_cache_slr ON _cache_stock_latest_rd(stock_code)")
@@ -57,10 +60,13 @@ def refresh_stock_latest_cache(conn):
                        PARTITION BY m.holder_name
                        ORDER BY COALESCE(m.notice_date, '') DESC, m.stock_code
                    ) AS rn
-            FROM market_raw_holdings m
+            FROM fact_top10_holder_period m
             INNER JOIN _cache_stock_latest_rd latest
                 ON m.stock_code = latest.stock_code
                AND m.report_date = latest.max_rd
+            WHERE m.holder_set = 'free'
+              AND NOT m.is_secondary_class
+              AND NOT m.is_exit_row
         )
         SELECT holder_name,
                MAX(CASE WHEN rn = 1 THEN holder_type END) AS holder_type,
@@ -140,14 +146,22 @@ def get_inst_exits(conn, inst_id):
         FROM inst_holdings h
         INNER JOIN (
             SELECT stock_code, MAX(report_date) as max_rd
-            FROM market_raw_holdings GROUP BY stock_code
+            FROM fact_top10_holder_period
+            WHERE holder_set = 'free'
+              AND NOT is_secondary_class
+              AND NOT is_exit_row
+            GROUP BY stock_code
         ) lat ON h.stock_code = lat.stock_code
         WHERE h.institution_id = ?
           AND h.report_date = (
               -- 该股票倒数第二个报告期
               SELECT report_date FROM (
                   SELECT DISTINCT report_date
-                  FROM market_raw_holdings WHERE stock_code = h.stock_code
+                  FROM fact_top10_holder_period
+                  WHERE stock_code = h.stock_code
+                    AND holder_set = 'free'
+                    AND NOT is_secondary_class
+                    AND NOT is_exit_row
                   ORDER BY report_date DESC LIMIT 1 OFFSET 1
               )
           )
@@ -246,7 +260,10 @@ def build_current_relationship(conn) -> int:
         INNER JOIN (
             -- 每只股票全市场最新报告期（per-stock latest，不是 per-inst-stock latest）
             SELECT stock_code, MAX(report_date) AS max_rd
-            FROM market_raw_holdings
+            FROM fact_top10_holder_period
+            WHERE holder_set = 'free'
+              AND NOT is_secondary_class
+              AND NOT is_exit_row
             GROUP BY stock_code
         ) latest ON h.stock_code = latest.stock_code
                AND h.report_date = latest.max_rd

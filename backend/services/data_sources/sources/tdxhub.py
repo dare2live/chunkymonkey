@@ -1,7 +1,10 @@
-"""tdxhub source adapter — 包装 dare2live/tdxhub 的 13 类 capability.
+"""tdxhub source adapter — 包装 dare2live/tdxhub 的 14 类 capability.
 
 tdxhub 已通过 `pip install -e ../tdxhub` 引入, 入口 `import tdxhub.X`.
 chunky-monkey-v2 的 tdx_source.py 已封了连接池/circuit breaker, 我们继续走它.
+
+P7 (2026-04-28): 新增 holders_top10_float — F10「股东研究」结构化解析,
+99.6% 全市场覆盖, A/H 拆分, 含退出表. 替代 miaoxiang RPT_F10_EH_FREEHOLDERS.
 """
 from __future__ import annotations
 
@@ -81,6 +84,26 @@ class TdxhubSource(BaseDataSource):
                 description="全市场代码列表 (沪/深/北)",
                 freshness="static",
                 notes="tdxhub.quotes.stocks(market=0/1/2)",
+            ),
+            Capability(
+                "holders_top10_float",
+                description="十大流通股东 + 十大股东 + 退出表 (A/H 拆分 + 控股股东 + 增减持计划 + 单笔变动)",
+                freshness="quarterly",
+                fields=[
+                    "stock_code", "report_date", "holder_set", "holder_rank",
+                    "holder_name", "share_class", "shares_approx",
+                    "hold_ratio_float", "hold_ratio_total",
+                    "change_status", "is_exit_row", "is_secondary_class",
+                    "raw_hash", "fetched_at",
+                ],
+                cost="low",
+                notes=(
+                    "tdxhub.holders.HolderFetcher: 解析 F10 「股东研究」 段 1-4, "
+                    "返回 fact_top10_holder_period / fact_controlling_shareholder / "
+                    "fact_shareholder_plan / fact_shareholder_trade. "
+                    "Format A (灵通V9.0) + Format B (通达信沪深京F10) 双格式. "
+                    "替代 miaoxiang RPT_F10_EH_FREEHOLDERS (P7 起退役)."
+                ),
             ),
 
             # ===== 已实现可用但 chunky-monkey 暂未接 (5 类) =====
@@ -186,6 +209,29 @@ class TdxhubSource(BaseDataSource):
                 lambda c: c.stocks(market=market),
                 action_name=f"tdxhub.stock_list({market})",
             )
+
+        if capability == "holders_top10_float":
+            # 走 tdxhub.holders.HolderFetcher (cooldown 软挂起 + HQ_HOSTS 自动 resync).
+            # 不复用 services/tdx_source 的 quotes 池, 因为 holders 用的是
+            # company_info_category/content 协议, 由 HolderFetcher 自己管.
+            from tdxhub.holders import HolderFetcher, parse_research
+
+            symbol = kwargs.get("code") or kwargs.get("symbol")
+            stock_name = kwargs.get("stock_name", "")
+            if not symbol:
+                raise ValueError("holders_top10_float requires symbol/code")
+            fetcher = kwargs.get("_shared_fetcher")
+            owns_fetcher = fetcher is None
+            if owns_fetcher:
+                fetcher = HolderFetcher(timeout=15, max_attempts_per_call=6)
+            try:
+                text = fetcher.fetch_text(symbol)
+                if not text:
+                    return None
+                return parse_research(text, symbol=symbol, stock_name=stock_name)
+            finally:
+                if owns_fetcher:
+                    fetcher.close()
 
         if capability == "quote_realtime":
             symbols = kwargs.get("symbols") or kwargs.get("code") or kwargs.get("symbol")

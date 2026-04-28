@@ -38,9 +38,16 @@ def _make_conn():
             report_date TEXT
         );
 
-        CREATE TABLE market_raw_holdings (
-            stock_code TEXT,
-            report_date TEXT
+        CREATE TABLE fact_top10_holder_period (
+            stock_code TEXT NOT NULL,
+            report_date TEXT NOT NULL,
+            holder_set TEXT NOT NULL,
+            holder_rank INTEGER NOT NULL,
+            holder_name TEXT NOT NULL,
+            is_secondary_class INTEGER DEFAULT 0,
+            is_exit_row INTEGER DEFAULT 0,
+            source TEXT NOT NULL,
+            source_tier INTEGER NOT NULL
         );
 
         CREATE TABLE excluded_stocks (
@@ -360,7 +367,10 @@ class ExternalAttentionSyncPlanTests(unittest.TestCase):
         conn = _make_conn()
 
         conn.executemany(
-            "INSERT INTO market_raw_holdings (stock_code, report_date) VALUES (?, ?)",
+            "INSERT INTO fact_top10_holder_period "
+            "(stock_code, report_date, holder_set, holder_rank, holder_name, "
+            " is_secondary_class, is_exit_row, source, source_tier) "
+            "VALUES (?, ?, 'free', 1, 'TestHolder', 0, 0, 'tdx_f10', 1)",
             [
                 ("000001", "2026-03-31"),
                 ("000002", "2026-03-31"),

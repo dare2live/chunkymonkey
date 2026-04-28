@@ -242,7 +242,9 @@ def _load_stock_name_map(conn) -> dict[str, str]:
         return mapping
 
     fallback_rows = conn.execute(
-        "SELECT DISTINCT stock_code, stock_name FROM market_raw_holdings WHERE stock_code IS NOT NULL"
+        "SELECT DISTINCT stock_code, stock_name FROM fact_top10_holder_period "
+        "WHERE stock_code IS NOT NULL "
+        "AND holder_set = 'free' AND NOT is_secondary_class AND NOT is_exit_row"
     ).fetchall()
     return {
         _normalize_stock_code(row["stock_code"]): _safe_text(row["stock_name"]) or ""

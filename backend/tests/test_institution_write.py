@@ -42,11 +42,18 @@ def _make_conn():
             stock_code TEXT,
             stock_name TEXT
         );
-        CREATE TABLE market_raw_holdings (
-            stock_code TEXT,
+        CREATE TABLE fact_top10_holder_period (
+            stock_code TEXT NOT NULL,
             stock_name TEXT,
-            report_date TEXT,
-            notice_date TEXT
+            report_date TEXT NOT NULL,
+            notice_date TEXT,
+            holder_set TEXT NOT NULL,
+            holder_rank INTEGER NOT NULL,
+            holder_name TEXT NOT NULL,
+            is_secondary_class INTEGER DEFAULT 0,
+            is_exit_row INTEGER DEFAULT 0,
+            source TEXT NOT NULL,
+            source_tier INTEGER NOT NULL
         );
         """
     )
@@ -113,7 +120,10 @@ def test_blacklist_write_helpers_resolve_name_and_defaults():
     conn = _make_conn()
     conn.execute("INSERT INTO dim_active_a_stock (stock_code, stock_name) VALUES (?, ?)", ("600519", ""))
     conn.execute(
-        "INSERT INTO market_raw_holdings (stock_code, stock_name, report_date, notice_date) VALUES (?, ?, ?, ?)",
+        "INSERT INTO fact_top10_holder_period "
+        "(stock_code, stock_name, report_date, notice_date, holder_set, holder_rank, "
+        " holder_name, is_secondary_class, is_exit_row, source, source_tier) "
+        "VALUES (?, ?, ?, ?, 'free', 1, 'TestHolder', 0, 0, 'tdx_f10', 1)",
         ("600519", "贵州茅台", "20260331", "20260410"),
     )
     conn.commit()

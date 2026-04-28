@@ -19,7 +19,8 @@ from ..base import BaseDataSource, Capability, Health, register_source
 # capability_name → reportName (项目实际用得到的)
 CAPABILITY_TO_REPORT = {
     # ===== 股东周期 (shareholder_period) =====
-    "top_free_holders":         "RPT_F10_EH_FREEHOLDERS",       # 十大流通股东 ⭐ 项目主用
+    # 注: 十大流通股东 (原走妙想) 于 P7 (2026-04-28) 退役,
+    # 整盘改走 tdxhub.holders → fact_top10_holder_period (raw_tdx_f10_holder_research).
     "top_holders":              "RPT_F10_EH_HOLDERS",           # 十大股东
     "holder_count":             "RPT_F10_EH_HOLDERNUM",         # 股东人数 (独家)
     "shareholder_change":       "RPT_F10_SHAREHOLDER_CHANGE",   # 持股变动 (季差分)

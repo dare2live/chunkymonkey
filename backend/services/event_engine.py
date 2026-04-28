@@ -39,11 +39,11 @@ def _ensure_fingerprint_table(conn):
 
 
 def compute_gen_events_input_signature(conn) -> tuple[str, int]:
-    """计算 gen_events 输入 (inst_holdings + market_raw_holdings 最新两期 + 跟踪机构集合) 的签名.
+    """计算 gen_events 输入 (inst_holdings + fact_top10_holder_period 最新两期 + 跟踪机构集合) 的签名.
 
     覆盖三类输入:
     - inst_holdings 全表 (count + sum(hold_amount) + (inst_id, stock_code, report_date) 三元组数)
-    - market_raw_holdings 最新两期 (用于 generate_exit_events)
+    - fact_top10_holder_period 最新两期 流通股东切片 (用于 generate_exit_events)
     - 跟踪机构 enabled 集合 (退出事件需要)
 
     返回 (fingerprint_hex, total_holdings_rows).
@@ -64,15 +64,18 @@ def compute_gen_events_input_signature(conn) -> tuple[str, int]:
     h.update(holdings_part.encode("utf-8"))
     n_rows = int(row["n_rows"] or 0)
 
-    # 2. market_raw_holdings 最新两期: generate_exit_events 用 (stock_code, report_date) 序列
+    # 2. fact_top10_holder_period 最新两期 (free/非二级/非退出): generate_exit_events 用 (stock_code, report_date) 序列
     try:
         rows = conn.execute("""
             SELECT stock_code, report_date
             FROM (
                 SELECT stock_code, report_date,
                        ROW_NUMBER() OVER (PARTITION BY stock_code ORDER BY report_date DESC) AS rn
-                FROM (SELECT DISTINCT stock_code, report_date FROM market_raw_holdings
-                      WHERE stock_code IS NOT NULL)
+                FROM (SELECT DISTINCT stock_code, report_date FROM fact_top10_holder_period
+                      WHERE stock_code IS NOT NULL
+                        AND holder_set = 'free'
+                        AND NOT is_secondary_class
+                        AND NOT is_exit_row)
             )
             WHERE rn <= 2
             ORDER BY stock_code, report_date DESC
@@ -80,7 +83,7 @@ def compute_gen_events_input_signature(conn) -> tuple[str, int]:
         for r in rows:
             h.update(f"|{r['stock_code']}:{r['report_date']}".encode("utf-8"))
     except Exception:
-        # 旧库可能没 market_raw_holdings, 忽略
+        # 旧库可能没 fact_top10_holder_period, 忽略
         pass
 
     # 3. 跟踪机构集合
@@ -210,8 +213,11 @@ def generate_exit_events(conn) -> int:
     stock_periods = conn.execute("""
         SELECT stock_code, report_date,
                ROW_NUMBER() OVER (PARTITION BY stock_code ORDER BY report_date DESC) as rn
-        FROM (SELECT DISTINCT stock_code, report_date FROM market_raw_holdings
-              WHERE stock_code IS NOT NULL)
+        FROM (SELECT DISTINCT stock_code, report_date FROM fact_top10_holder_period
+              WHERE stock_code IS NOT NULL
+                AND holder_set = 'free'
+                AND NOT is_secondary_class
+                AND NOT is_exit_row)
     """).fetchall()
 
     # 按股票分组，取最新两期
@@ -244,8 +250,11 @@ def generate_exit_events(conn) -> int:
     notice_map = {}  # (stock_code, report_date) -> notice_date
     for r in conn.execute("""
         SELECT stock_code, report_date, MAX(notice_date) AS notice_date
-        FROM market_raw_holdings
+        FROM fact_top10_holder_period
         WHERE stock_code IS NOT NULL AND notice_date IS NOT NULL AND notice_date != ''
+          AND holder_set = 'free'
+          AND NOT is_secondary_class
+          AND NOT is_exit_row
         GROUP BY stock_code, report_date
     """).fetchall():
         notice_map[(r["stock_code"], r["report_date"])] = r["notice_date"]

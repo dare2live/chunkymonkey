@@ -28,16 +28,36 @@ def test_load_stock_name_prefers_dim_active_then_market_raw_then_code():
             stock_code TEXT PRIMARY KEY,
             stock_name TEXT
         );
-        CREATE TABLE market_raw_holdings (
-            stock_code TEXT,
-            stock_name TEXT
+        CREATE TABLE fact_top10_holder_period (
+            stock_code TEXT NOT NULL,
+            stock_name TEXT,
+            report_date TEXT NOT NULL,
+            holder_set TEXT NOT NULL,
+            holder_rank INTEGER NOT NULL,
+            holder_name TEXT NOT NULL,
+            is_secondary_class INTEGER DEFAULT 0,
+            is_exit_row INTEGER DEFAULT 0,
+            source TEXT NOT NULL,
+            source_tier INTEGER NOT NULL
         );
         """
     )
     try:
         conn.execute("INSERT INTO dim_active_a_stock VALUES (?, ?)", ("600001", "平安银行A"))
-        conn.execute("INSERT INTO market_raw_holdings VALUES (?, ?)", ("600001", "平安银行B"))
-        conn.execute("INSERT INTO market_raw_holdings VALUES (?, ?)", ("600002", "万科A"))
+        conn.execute(
+            "INSERT INTO fact_top10_holder_period "
+            "(stock_code, stock_name, report_date, holder_set, holder_rank, holder_name, "
+            " is_secondary_class, is_exit_row, source, source_tier) "
+            "VALUES (?, ?, '2026-03-31', 'free', 1, 'TestHolder', 0, 0, 'tdx_f10', 1)",
+            ("600001", "平安银行B"),
+        )
+        conn.execute(
+            "INSERT INTO fact_top10_holder_period "
+            "(stock_code, stock_name, report_date, holder_set, holder_rank, holder_name, "
+            " is_secondary_class, is_exit_row, source, source_tier) "
+            "VALUES (?, ?, '2026-03-31', 'free', 1, 'TestHolder', 0, 0, 'tdx_f10', 1)",
+            ("600002", "万科A"),
+        )
         conn.execute("INSERT INTO dim_active_a_stock VALUES (?, ?)", ("600003", ""))
         conn.commit()
 
