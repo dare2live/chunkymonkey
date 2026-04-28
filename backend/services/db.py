@@ -304,6 +304,59 @@ def init_db():
                 PRIMARY KEY (alias)
             );
 
+            -- ============================================================
+            -- 维度层 (新, W0): 数据资产注册表 dim_data_asset
+            -- ============================================================
+            -- 项目里所有 132 张 (含未来新增) 表的"声明"层. 每张表必须能
+            -- 从这里查到: 来源 / 备用源 / 写者 / 读者 / 期望刷新频率 / SLA /
+            -- 哪些前端 view 用它. 是 mart_data_health 派生健康度的唯一依据.
+            -- 详见 /stock/end_to_end_data_flow_design.md §7.
+            CREATE TABLE IF NOT EXISTS dim_data_asset (
+                table_name        TEXT PRIMARY KEY,
+                layer             TEXT NOT NULL,              -- raw / dim / fact / mart / sys / cache / other
+                purpose           TEXT,                       -- 一句话用途 (manual fill 推荐)
+                writer_module     TEXT,                       -- 写者文件路径, e.g. backend/scripts/ingest_holders_tdxhub.py
+                reader_modules    TEXT,                       -- JSON 数组: 读者文件列表
+                upstream_source   TEXT,                       -- 'tdxhub.holders' / 'akshare.X' / 'derived'
+                source_tier       SMALLINT,                   -- 1=主, 2=备, 3=兜底, NULL=派生
+                fallback_chain    TEXT,                       -- JSON 数组: [{tier, source, trigger}]
+                expected_freshness TEXT,                      -- 't+0' / 't+1' / 'quarterly' / 'event' / 'static'
+                sla_hours         INTEGER,                    -- 数据延迟超过 N 小时算 yellow
+                consumed_by_views TEXT,                       -- JSON 数组: ['view-stocks', 'view-research']
+                is_append_only    BOOLEAN DEFAULT FALSE,
+                schema_version    TEXT DEFAULT 'v1',
+                notes             TEXT,
+                auto_discovered   BOOLEAN DEFAULT TRUE,       -- TRUE=auto-seed, FALSE=人工补
+                last_updated_at   TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            );
+            CREATE INDEX IF NOT EXISTS idx_dim_data_asset_layer
+                ON dim_data_asset(layer);
+
+            -- ============================================================
+            -- 集市层 (新, W0): 数据健康快照 mart_data_health
+            -- ============================================================
+            -- 每天 09:30 由 backend/scripts/data_health_snapshot.py 写入.
+            -- (table_name, snapshot_at) 作为 PK 保留每天一份历史.
+            -- 同表最近一行 = 当前健康状态.
+            CREATE TABLE IF NOT EXISTS mart_data_health (
+                table_name         TEXT NOT NULL,
+                snapshot_at        TIMESTAMP NOT NULL,
+                row_count          BIGINT,
+                last_data_date     TEXT,                      -- MAX(date_column) 实测
+                last_writer_at     TIMESTAMP,                 -- 最近 writer 成功时间 (推: step_status)
+                null_rate_pct      DOUBLE,                    -- 关键字段 NULL 比例
+                source_tier_dist   TEXT,                      -- JSON: {1: 5179, 2: 21, 3: 0}
+                freshness_hours    DOUBLE,                    -- 数据距 now() 时长
+                freshness_ok       BOOLEAN,                   -- 是否在 SLA 内
+                severity           TEXT NOT NULL,             -- 'green' / 'yellow' / 'red'
+                issue_summary      TEXT,                      -- 红/黄时填具体原因
+                PRIMARY KEY (table_name, snapshot_at)
+            );
+            CREATE INDEX IF NOT EXISTS idx_mart_data_health_snapshot
+                ON mart_data_health(snapshot_at DESC);
+            CREATE INDEX IF NOT EXISTS idx_mart_data_health_severity
+                ON mart_data_health(severity, snapshot_at DESC);
+
             -- K线已迁移到独立的 market.duckdb.price_kline
 
             CREATE TABLE IF NOT EXISTS raw_fetch_batch (

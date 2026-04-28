@@ -1,0 +1,348 @@
+"""自动发现并 seed dim_data_asset.
+
+工作流:
+  1. 从 information_schema 拉所有表名 + 行数
+  2. 按前缀 (raw_/dim_/fact_/mart_/sys_) 分层
+  3. grep backend/ 找 writer (INSERT INTO X / CREATE TABLE X / UPDATE X)
+  4. grep backend/ 找 reader (FROM X / JOIN X), 排除自引用
+  5. UPSERT 到 dim_data_asset, auto_discovered=TRUE
+
+人工补字段 (用 services/data_asset_curator.py 单独维护或直接 SQL UPDATE):
+  - purpose (一句话用途)
+  - upstream_source / source_tier / fallback_chain
+  - expected_freshness / sla_hours
+  - consumed_by_views (前端 view-* 引用)
+
+可重复运行: 对已存在的行只更新 auto-discovered 字段, 不覆盖人工补的部分.
+"""
+
+from __future__ import annotations
+
+import argparse
+import json
+import logging
+import re
+import sys
+from collections import defaultdict
+from pathlib import Path
+
+logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
+log = logging.getLogger("seed-dim-data-asset")
+
+REPO = Path(__file__).resolve().parent.parent.parent
+BACKEND = REPO / "backend"
+sys.path.insert(0, str(REPO / "backend"))
+from services.db import get_conn  # noqa: E402
+
+
+# 表前缀 → layer
+PREFIX_LAYER = {
+    "raw": "raw",
+    "dim": "dim",
+    "fact": "fact",
+    "mart": "mart",
+    "sys": "sys",
+    "_cache": "cache",
+    "research": "research",
+    "step": "sys",
+    "app": "sys",
+    "exclude": "sys",
+    "exclusion": "sys",
+    "scan": "sys",
+    "v": "view",
+}
+
+
+def detect_layer(table_name: str) -> str:
+    if table_name.startswith("_cache"):
+        return "cache"
+    prefix = table_name.split("_", 1)[0]
+    return PREFIX_LAYER.get(prefix, "other")
+
+
+# 几个常见的 known upstream — 以表名前缀做粗推断
+KNOWN_UPSTREAM_BY_TABLE = {
+    "raw_tdx_f10_holder_research": ("tdxhub.holders", 1),
+    "fact_top10_holder_period":     ("tdxhub.holders (via resolver tier 1-2)", 1),
+    "fact_holder_event":            ("derived from fact_top10_holder_period", None),
+    "fact_controlling_shareholder": ("tdxhub.holders", 1),
+    "fact_shareholder_plan":        ("tdxhub.holders", 1),
+    "fact_shareholder_trade":       ("tdxhub.holders", 1),
+    "raw_lhb_daily":                ("aif10 RPT_DAILYBILLBOARD_DETAILSNEW (akshare fallback)", 2),
+    "fact_lhb_event":               ("derived from raw_lhb_daily", None),
+    "raw_qfii_holding_quarterly":   ("aif10 RPT_DMSK_HOLDERS (akshare fallback)", 2),
+    "raw_institution_surveys":      ("aif10 RPT_ORG_SURVEYNEW (akshare fallback)", 2),
+    "raw_margin_daily":             ("akshare stock_margin_detail_sse/szse", 3),
+    "raw_capital_dividend_detail":  ("akshare", 3),
+    "raw_capital_repurchase":       ("akshare", 3),
+    "raw_capital_lockup":           ("akshare", 3),
+    "raw_capital_sub_holder":       ("akshare", 3),
+    "raw_capital_alloc_share":      ("akshare", 3),
+    "raw_executive_trade":          ("aif10 / akshare", 2),
+    "raw_gpcw_financial":           ("tdxhub.affair (gpcw)", 1),
+    "raw_gpcw_detail":              ("tdxhub.affair (gpcw)", 1),
+    "raw_gpcw_dividend":            ("tdxhub.affair (gpcw)", 1),
+    "raw_fund_flow_daily":          ("[orphan] no active writer", None),
+    "dim_active_a_stock":           ("akshare tool_trade_date_hist + curated", 3),
+    "dim_stock_tdx_industry":       ("tdxhub.block (行业对照)", 1),
+    "dim_stock_tdx_block":          ("tdxhub.block (板块归属)", 1),
+    "dim_trading_calendar":         ("akshare tool_trade_date_hist_sina", 3),
+    "dim_holder_alias":             ("manual seed", None),
+    "fact_feature_panel":           ("derived (build_feature_panel_duck.py)", None),
+    "fact_institution_event":       ("derived (gen_events + return_engine)", None),
+    "fact_fundamental_quarterly":   ("derived from raw_gpcw_*", None),
+    "mart_daily_recommendation":    ("derived (run_daily_topk.py = LightGBM inference)", None),
+    "mart_multidim_model":          ("derived (train_multidim_model.py)", None),
+    "mart_multidim_prediction":     ("derived (train_multidim_model.py holdout)", None),
+    "mart_model_walkforward_fold":  ("derived (run_multidim_walkforward.py)", None),
+    "mart_model_walkforward_prediction": ("derived (run_multidim_walkforward.py)", None),
+    "mart_current_relationship":    ("derived (build_current_relationship)", None),
+    "mart_stock_trend":             ("derived (build_trends step)", None),
+    "mart_stock_screening":         ("derived (calc_screening manual step)", None),
+    "mart_data_health":             ("derived (data_health_snapshot.py)", None),
+}
+
+
+# 期望刷新频率推断 (粗略)
+def infer_freshness(table_name: str, layer: str) -> tuple[str, int]:
+    """Returns (expected_freshness, sla_hours)."""
+    name = table_name.lower()
+    if "kline" in name or "_daily" in name:
+        return ("t+0", 24)
+    if "quarterly" in name:
+        return ("quarterly", 24 * 95)  # ~3 个月
+    if name.startswith("dim_") and ("calendar" in name or "industry" in name or "block" in name or "alias" in name):
+        return ("static", 24 * 30)
+    if name.startswith("mart_data_health"):
+        return ("t+0", 25)  # 每天 09:30 + 1h
+    if name.startswith("fact_feature_panel"):
+        return ("t+1", 36)
+    if name.startswith("mart_daily_recommendation"):
+        return ("t+0", 25)
+    if name.startswith("mart_multidim_model"):
+        return ("on-demand", 24 * 7 * 4)  # 训练 ~4 周
+    if name.startswith("fact_") and "event" in name:
+        return ("event", 48)
+    if layer == "raw":
+        return ("t+0", 30)
+    if layer in ("fact", "mart"):
+        return ("t+1", 48)
+    return ("on-demand", 24 * 30)
+
+
+def grep_writer(table_name: str) -> str | None:
+    """全仓 grep, 找真 writer (INSERT/UPDATE 优先于 CREATE TABLE).
+
+    db.py 里的 CREATE TABLE IF NOT EXISTS 是 schema 声明, 不是 writer.
+    所以分两轮: 先找 INSERT/UPDATE, 找不到再退回到 CREATE.
+    """
+
+    # 表名前可能有 schema 前缀 (如 smartmoney.fact_feature_panel) 或反引号
+    name_pat = rf"(?:[\w.]+\.)?{re.escape(table_name)}"
+    pat_write = [
+        # 含 INSERT OR REPLACE/IGNORE INTO X 等所有 INSERT 变体
+        re.compile(rf"\bINSERT\s+(?:OR\s+(?:REPLACE|IGNORE)\s+)?INTO\s+{name_pat}\b", re.IGNORECASE),
+        re.compile(rf"\bUPDATE\s+{name_pat}\b", re.IGNORECASE),
+        re.compile(rf"\bDELETE\s+FROM\s+{name_pat}\b", re.IGNORECASE),
+        re.compile(rf"\bCREATE\s+(?:OR\s+REPLACE\s+)?(?:TABLE|TEMP\s+TABLE).*?\b{name_pat}\b\s+AS\b", re.IGNORECASE),
+        re.compile(rf'register\(["\']{re.escape(table_name)}["\']', re.IGNORECASE),
+        re.compile(rf'COPY\s+{name_pat}\b', re.IGNORECASE),
+    ]
+    pat_schema = [
+        re.compile(rf"\bCREATE\s+(?:OR\s+REPLACE\s+)?(?:TABLE|TEMP\s+TABLE)(?:\s+IF\s+NOT\s+EXISTS)?\s+{re.escape(table_name)}\b", re.IGNORECASE),
+    ]
+
+    def _scan(patterns):
+        out = []
+        for f in BACKEND.rglob("*.py"):
+            rel = str(f.relative_to(REPO))
+            if ("/tests/" in rel
+                or "audit_stale_references" in rel
+                or "seed_dim_data_asset" in rel
+                or "data_health_snapshot" in rel):
+                continue
+            try:
+                text = f.read_text(encoding="utf-8", errors="ignore")
+                if any(p.search(text) for p in patterns):
+                    out.append(rel)
+            except Exception:
+                pass
+        return out
+
+    def _rank(rel: str) -> tuple:
+        # scripts/ 优先, 其次 services/<not db.py>, 最后 services/db.py / routers
+        if "scripts/" in rel:
+            tier = 0
+        elif rel.endswith("services/db.py"):
+            tier = 3  # db.py 通常只是 schema 声明
+        elif "services/" in rel:
+            tier = 1
+        elif "routers/" in rel:
+            tier = 2
+        else:
+            tier = 4
+        return (tier, len(rel))
+
+    write_hits = _scan(pat_write)
+    if write_hits:
+        write_hits.sort(key=_rank)
+        return write_hits[0]
+    schema_hits = _scan(pat_schema)
+    if schema_hits:
+        # 仅 schema 声明, 没真 writer → 返 None 或带提示
+        # 这是 orphan_no_writer 候选
+        return None
+    return None
+
+
+def grep_readers(table_name: str) -> list[str]:
+    """全仓 grep, 找 FROM X / JOIN X / SELECT...X 命中的所有 .py 文件."""
+
+    patterns = [
+        re.compile(rf"\bFROM\s+{re.escape(table_name)}\b", re.IGNORECASE),
+        re.compile(rf"\bJOIN\s+{re.escape(table_name)}\b", re.IGNORECASE),
+    ]
+    readers = []
+    for f in BACKEND.rglob("*.py"):
+        rel = str(f.relative_to(REPO))
+        if "/tests/" in rel or "audit_stale_references" in rel or "seed_dim_data_asset" in rel:
+            continue
+        try:
+            text = f.read_text(encoding="utf-8", errors="ignore")
+            if any(p.search(text) for p in patterns):
+                readers.append(rel)
+        except Exception:
+            pass
+    return readers
+
+
+def get_all_tables(con) -> list[tuple[str, int]]:
+    rows = con.execute(
+        "SELECT table_name FROM information_schema.tables "
+        "WHERE table_schema='main' AND table_type='BASE TABLE' "
+        "ORDER BY table_name"
+    ).fetchall()
+    out = []
+    for r in rows:
+        name = r[0]
+        try:
+            cnt = con.execute(f'SELECT COUNT(*) FROM "{name}"').fetchone()[0]
+        except Exception:
+            cnt = 0
+        out.append((name, cnt))
+    return out
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--dry-run", action="store_true", help="只打印, 不写库")
+    parser.add_argument("--force-overwrite", action="store_true",
+                        help="覆盖已有行的人工补字段 (默认保留)")
+    args = parser.parse_args()
+
+    con = get_conn()
+    log.info("scanning all tables...")
+    tables = get_all_tables(con)
+    log.info("total tables: %d", len(tables))
+
+    # 拿当前已注册的, 区分 auto vs manual
+    existing = {}
+    try:
+        for r in con.execute(
+            "SELECT table_name, auto_discovered, purpose, upstream_source, "
+            "       source_tier, fallback_chain, expected_freshness, sla_hours, "
+            "       consumed_by_views, notes "
+            "FROM dim_data_asset"
+        ).fetchall():
+            existing[r["table_name"]] = r
+    except Exception:
+        pass
+    log.info("existing dim_data_asset rows: %d", len(existing))
+
+    upserted = 0
+    skipped = 0
+    for tbl, row_count in tables:
+        if tbl == "dim_data_asset" or tbl == "mart_data_health":
+            # 自身不在自审计内 (避免循环)
+            continue
+        layer = detect_layer(tbl)
+        writer = grep_writer(tbl)
+        readers = grep_readers(tbl)
+        # 排除自引用
+        readers = [r for r in readers if r != writer]
+        upstream, source_tier = KNOWN_UPSTREAM_BY_TABLE.get(tbl, (None, None))
+        # 派生表: writer 是脚本 + readers 多, upstream 通常是 derived
+        if upstream is None:
+            if layer in ("fact", "mart") and writer is not None:
+                upstream = f"derived (writer: {writer})"
+        freshness, sla = infer_freshness(tbl, layer)
+        purpose = None  # 留给人工补
+
+        prev = existing.get(tbl)
+        # 人工补的字段 (除非 --force-overwrite) 保留
+        if prev is not None and not args.force_overwrite:
+            if prev.get("purpose"):
+                purpose = prev["purpose"]
+            if prev.get("upstream_source"):
+                upstream = prev["upstream_source"]
+            if prev.get("source_tier") is not None:
+                source_tier = prev["source_tier"]
+            if prev.get("expected_freshness"):
+                freshness = prev["expected_freshness"]
+            if prev.get("sla_hours") is not None:
+                sla = prev["sla_hours"]
+
+        readers_json = json.dumps(readers, ensure_ascii=False)
+        # consumed_by_views: 简单 grep frontend 找 fetch('/api/...) 含表名 (粗略)
+        # 留给后续, 当前先空
+        consumed_by_views = "[]"
+
+        if args.dry_run:
+            log.info("[dry] %s | layer=%s | writer=%s | readers=%d | upstream=%s | tier=%s | freshness=%s",
+                     tbl, layer, writer, len(readers), upstream, source_tier, freshness)
+            continue
+
+        # DuckDB binder 在 DO UPDATE SET 上下文里把 CURRENT_TIMESTAMP 当列名;
+        # 用 now() 等价替换 (规则参见 CLAUDE.md #11/#12 + qfii_client.py:319 已有先例).
+        con.execute("""
+            INSERT INTO dim_data_asset (
+                table_name, layer, purpose, writer_module, reader_modules,
+                upstream_source, source_tier, expected_freshness, sla_hours,
+                consumed_by_views, auto_discovered, last_updated_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, TRUE, now())
+            ON CONFLICT (table_name) DO UPDATE SET
+                layer = EXCLUDED.layer,
+                writer_module = EXCLUDED.writer_module,
+                reader_modules = EXCLUDED.reader_modules,
+                purpose = COALESCE(dim_data_asset.purpose, EXCLUDED.purpose),
+                upstream_source = COALESCE(dim_data_asset.upstream_source, EXCLUDED.upstream_source),
+                source_tier = COALESCE(dim_data_asset.source_tier, EXCLUDED.source_tier),
+                expected_freshness = COALESCE(dim_data_asset.expected_freshness, EXCLUDED.expected_freshness),
+                sla_hours = COALESCE(dim_data_asset.sla_hours, EXCLUDED.sla_hours),
+                last_updated_at = now()
+        """, (
+            tbl, layer, purpose, writer, readers_json,
+            upstream, source_tier, freshness, sla,
+            consumed_by_views,
+        ))
+        upserted += 1
+
+    if not args.dry_run:
+        con.commit()
+        log.info("upserted %d rows into dim_data_asset", upserted)
+    else:
+        log.info("dry-run: would upsert %d rows", len(tables))
+
+    # 摘要
+    by_layer = defaultdict(int)
+    for tbl, _ in tables:
+        by_layer[detect_layer(tbl)] += 1
+    log.info("=== layer summary ===")
+    for k, v in sorted(by_layer.items(), key=lambda x: -x[1]):
+        log.info("  %s: %d", k, v)
+    con.close()
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
