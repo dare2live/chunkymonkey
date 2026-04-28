@@ -387,6 +387,53 @@ def init_db():
             CREATE INDEX IF NOT EXISTS idx_mart_lineage_status
                 ON mart_lineage(last_status, last_run_at DESC);
 
+            -- ============================================================
+            -- 集市层 (新, W4): 模型生命周期 mart_model_lifecycle
+            -- ============================================================
+            -- 显式追踪每个 model_id 在生产中的状态: champion (当前对外服务) /
+            -- challenger (并行评估) / retired (淘汰). 同一时间只有一个 champion.
+            -- 详见 end_to_end_data_flow_design.md §8.
+            CREATE TABLE IF NOT EXISTS mart_model_lifecycle (
+                model_id              TEXT PRIMARY KEY,
+                status                TEXT NOT NULL,            -- 'champion' / 'challenger' / 'retired'
+                deployed_at           TIMESTAMP,                -- 进入 champion 时间
+                retired_at            TIMESTAMP,
+                promoted_from         TEXT,                     -- 上一个 champion model_id
+                ic_holdout            DOUBLE,                   -- holdout 段 RankIC
+                ic_walkforward_avg    DOUBLE,                   -- walkforward 平均 RankIC
+                ic_walkforward_std    DOUBLE,                   -- walkforward 稳定性
+                drift_score           DOUBLE,                   -- 平均 PSI (越大越漂)
+                deploy_decision_notes TEXT,                     -- 部署决策原因
+                training_config       TEXT,                     -- JSON: {n_features, optuna_trials, ...}
+                created_at            TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at            TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            );
+            CREATE INDEX IF NOT EXISTS idx_mart_model_lifecycle_status
+                ON mart_model_lifecycle(status, deployed_at DESC);
+
+            -- ============================================================
+            -- 集市层 (新, W4): 特征漂移 mart_feature_drift
+            -- ============================================================
+            -- 每天对 top-N 特征算 PSI (Population Stability Index).
+            -- 训练分布 (train baseline) vs 最近 N 天分布 = PSI.
+            -- PSI < 0.1 ok / 0.1 ~ 0.25 warn / > 0.25 critical.
+            CREATE TABLE IF NOT EXISTS mart_feature_drift (
+                snapshot_at      TIMESTAMP NOT NULL,
+                model_id         TEXT,                          -- 关联 mart_model_lifecycle (可空 = 全局基线)
+                feature          TEXT NOT NULL,
+                psi              DOUBLE,                        -- Population Stability Index
+                n_train          BIGINT,
+                n_recent         BIGINT,
+                window_days      INTEGER,                       -- 最近 N 天作为 recent 样本
+                severity         TEXT NOT NULL,                 -- 'ok' / 'warn' / 'critical'
+                notes            TEXT,
+                PRIMARY KEY (snapshot_at, model_id, feature)
+            );
+            CREATE INDEX IF NOT EXISTS idx_mart_feature_drift_snapshot
+                ON mart_feature_drift(snapshot_at DESC);
+            CREATE INDEX IF NOT EXISTS idx_mart_feature_drift_severity
+                ON mart_feature_drift(severity, psi DESC);
+
             -- K线已迁移到独立的 market.duckdb.price_kline
 
             -- raw_fetch_batch 已退役 (W1, 2026-04-28): 无写入器无读取器, 退役清理

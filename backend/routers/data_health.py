@@ -324,6 +324,62 @@ def get_lineage_registry() -> dict[str, Any]:
         con.close()
 
 
+@router.get("/models")
+def get_model_lifecycle() -> dict[str, Any]:
+    """模型生命周期 (W4): champion / challenger / retired 状态全部列出.
+
+    用于 UI Tab 7 (模型生命周期). 单一真相源: mart_model_lifecycle.
+    """
+    from services.ml_lifecycle.registry import list_models, GATE_THRESHOLDS
+
+    models = list_models()
+    return {
+        "champion": next((m for m in models if m["status"] == "champion"), None),
+        "challengers": [m for m in models if m["status"] == "challenger"],
+        "retired": [m for m in models if m["status"] == "retired"],
+        "gate_thresholds": GATE_THRESHOLDS,
+    }
+
+
+@router.get("/drift")
+def get_feature_drift() -> dict[str, Any]:
+    """特征漂移最新快照 (W4): 每个特征的 PSI + severity.
+
+    用于 UI Tab 5 (Drift). 单一真相源: mart_feature_drift.
+    """
+    con = get_conn()
+    try:
+        # 最新快照时间
+        last_at_row = con.execute(
+            "SELECT MAX(snapshot_at) FROM mart_feature_drift"
+        ).fetchone()
+        last_at = last_at_row[0] if last_at_row else None
+        if last_at is None:
+            return {
+                "snapshot_at": None,
+                "items": [],
+                "summary": {"ok": 0, "warn": 0, "critical": 0, "unknown": 0},
+                "note": "no drift snapshot yet — run backend/scripts/compute_feature_drift.py",
+            }
+        rows = con.execute("""
+            SELECT model_id, feature, psi, n_train, n_recent, window_days, severity
+              FROM mart_feature_drift
+             WHERE snapshot_at = ?
+             ORDER BY psi DESC NULLS LAST
+        """, (last_at,)).fetchall()
+        items = [dict(r) for r in rows]
+        summary = {"ok": 0, "warn": 0, "critical": 0, "unknown": 0}
+        for r in items:
+            summary[r["severity"]] = summary.get(r["severity"], 0) + 1
+        return {
+            "snapshot_at": last_at,
+            "items": items,
+            "summary": summary,
+        }
+    finally:
+        con.close()
+
+
 @router.get("/clients")
 def get_clients_registry() -> dict[str, Any]:
     """数据写入客户端登记表 (W2): 一个客户端 = 一组 (raw/dim/fact/mart) 表的写入器.
