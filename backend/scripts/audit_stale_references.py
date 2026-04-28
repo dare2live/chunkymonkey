@@ -325,6 +325,142 @@ def tier4_test_prod_parity(files: list[Path]) -> dict[str, list[Hit]]:
 
 
 # ─────────────────────────────────────────────────────────────────────
+# Tier 5 — commented-out code blocks
+# ─────────────────────────────────────────────────────────────────────
+
+# 注释掉的 Python 代码模式. 排除中文注释/TODO/section 分隔符.
+_COMMENTED_CODE_PATTERNS = [
+    # 注释掉的赋值: `# foo = bar` (变量名 + = + 不是 ==)
+    re.compile(r"^\s*#\s+([a-zA-Z_]\w*)\s*=\s*[^=]"),
+    # 注释掉的函数调用: `# foo(...)`
+    re.compile(r"^\s*#\s+[a-zA-Z_]\w*\s*\("),
+    # 注释掉的关键字语句: import / from / def / class / if / for / while / return / raise / yield
+    re.compile(r"^\s*#\s+(import|from\s+\w|def\s|class\s|if\s+\w|elif\s|else\s*:|for\s+\w|while\s+\w|return\b|raise\s|yield\s|with\s+\w|try\s*:|except\b)"),
+    # 注释掉的常量赋值: `# CONST_X = ...`
+    re.compile(r"^\s*#\s+([A-Z_][A-Z0-9_]+)\s*=\s*"),
+    # 注释掉的 SQL: `# SELECT/INSERT/UPDATE/DELETE/CREATE/DROP/ALTER`
+    re.compile(r"^\s*#\s+(SELECT|INSERT|UPDATE|DELETE|CREATE|DROP|ALTER)\s+", re.IGNORECASE),
+    # 注释掉的 print/log 调用 (常见 debug 残留)
+    re.compile(r"^\s*#\s+(print|logger\.\w+|log\.\w+|console\.\w+)\s*\("),
+]
+
+# 排除模式: 这些 # 行不算 commented-out code
+_COMMENT_ALLOWLIST_PATTERNS = [
+    re.compile(r"^\s*#\s*$"),  # 空注释
+    re.compile(r"^\s*#\s*[=\-#*]{3,}"),  # section 分隔符 # === / # --- / # ###
+    re.compile(r"^\s*#!"),  # shebang or magic
+    re.compile(r"^\s*#\s*(TODO|FIXME|XXX|HACK|NOTE|BUG)\b", re.IGNORECASE),
+    re.compile(r"^\s*#\s*type:"),  # type comment
+    re.compile(r"^\s*#\s*pylint:"),
+    re.compile(r"^\s*#\s*noqa"),
+    re.compile(r"^\s*#\s*pragma:"),
+]
+
+
+def _has_chinese(s: str) -> bool:
+    return any("一" <= c <= "鿿" for c in s)
+
+
+def tier5_commented_out_code(files: list[Path]) -> list[Hit]:
+    """检测 # 注释掉的 Python 代码 (不是说明性中文注释)."""
+
+    hits: list[Hit] = []
+    for f in files:
+        rel = str(f.relative_to(REPO))
+        if any(rel.startswith(ep) for ep in SELF_EXCLUDE_PATHS):
+            continue
+        if not rel.endswith(".py"):
+            continue
+        try:
+            for i, line in enumerate(
+                f.read_text(encoding="utf-8", errors="ignore").splitlines(), 1
+            ):
+                if any(p.search(line) for p in _COMMENT_ALLOWLIST_PATTERNS):
+                    continue
+                # 含中文 → 是说明性注释, 排除
+                if _has_chinese(line):
+                    continue
+                # 匹配任一 commented-code 模式
+                if any(p.match(line) for p in _COMMENTED_CODE_PATTERNS):
+                    hits.append(Hit(file=rel, line=i, text=line.strip()[:140], kind="dead_code"))
+        except Exception:
+            pass
+    return hits
+
+
+# ─────────────────────────────────────────────────────────────────────
+# Tier 6 — dead branches (if False / if 0)
+# ─────────────────────────────────────────────────────────────────────
+
+_DEAD_BRANCH_PATTERNS = [
+    re.compile(r"^\s*if\s+False\s*:"),
+    re.compile(r"^\s*if\s+0\s*:"),
+    re.compile(r"^\s*elif\s+False\s*:"),
+    re.compile(r"^\s*while\s+False\s*:"),
+    re.compile(r"^\s*if\s+__name__\s*==\s*['\"]__never__['\"]"),
+]
+
+
+def tier6_dead_branches(files: list[Path]) -> list[Hit]:
+    """检测 if False / if 0 / while False 这些永远不执行的死分支."""
+
+    hits: list[Hit] = []
+    for f in files:
+        rel = str(f.relative_to(REPO))
+        if any(rel.startswith(ep) for ep in SELF_EXCLUDE_PATHS):
+            continue
+        if not rel.endswith(".py"):
+            continue
+        try:
+            for i, line in enumerate(
+                f.read_text(encoding="utf-8", errors="ignore").splitlines(), 1
+            ):
+                for p in _DEAD_BRANCH_PATTERNS:
+                    if p.match(line):
+                        hits.append(Hit(file=rel, line=i, text=line.strip()[:140], kind="dead_branch"))
+                        break
+        except Exception:
+            pass
+    return hits
+
+
+# ─────────────────────────────────────────────────────────────────────
+# Tier 7 — file-level retirement markers
+# ─────────────────────────────────────────────────────────────────────
+
+# 文件头几行如果出现强烈的 "本文件/本模块已退役" 标记, 整个文件是删除候选
+_FILE_RETIRED_MARKERS = [
+    re.compile(r"^[\"#'*\s]*(.*)(本文件|本模块|本表|This\s+(?:file|module))(.*)(已退役|deprecat|retired|不再使用|不再维护)", re.IGNORECASE | re.MULTILINE),
+    re.compile(r"^[\"#'*\s]*(.*)整体退役", re.MULTILINE),
+    re.compile(r"^[\"#'*\s]*(.*)(整表|整段|整体)退役", re.MULTILINE),
+]
+
+
+def tier7_retired_files(files: list[Path]) -> list[Hit]:
+    """检测自我标记为退役的文件 (整文件级删除候选)."""
+
+    hits: list[Hit] = []
+    for f in files:
+        rel = str(f.relative_to(REPO))
+        if any(rel.startswith(ep) for ep in SELF_EXCLUDE_PATHS):
+            continue
+        if not rel.endswith((".py", ".md")):
+            continue
+        try:
+            text = f.read_text(encoding="utf-8", errors="ignore")
+            head = "\n".join(text.splitlines()[:30])
+            for p in _FILE_RETIRED_MARKERS:
+                m = p.search(head)
+                if m:
+                    line_no = head[: m.start()].count("\n") + 1
+                    hits.append(Hit(file=rel, line=line_no, text=m.group(0).strip()[:140], kind="retired_file"))
+                    break
+        except Exception:
+            pass
+    return hits
+
+
+# ─────────────────────────────────────────────────────────────────────
 # main
 # ─────────────────────────────────────────────────────────────────────
 
@@ -335,6 +471,9 @@ def main() -> int:
     tier1 = tier1_marker_scan(files)
     tier3 = tier3_known_retired_scan(files)
     tier4 = tier4_test_prod_parity(files)
+    tier5 = tier5_commented_out_code(files)
+    tier6 = tier6_dead_branches(files)
+    tier7 = tier7_retired_files(files)
 
     # ── 输出摘要 ──
     print("\n=== Tier 1: retirement markers in source ===")
@@ -366,6 +505,23 @@ def main() -> int:
         print(f"  🟡 {label}: {len(hits)} hits")
         for h in hits[:5]:
             print(f"     {h.file}:{h.line}")
+
+    print(f"\n=== Tier 5: commented-out code ({len(tier5)} hits) ===")
+    by_file = defaultdict(list)
+    for h in tier5:
+        by_file[h.file].append(h)
+    for fn, hits in sorted(by_file.items(), key=lambda x: -len(x[1]))[:15]:
+        print(f"  🟠 {fn}: {len(hits)} commented-code lines")
+        for h in hits[:3]:
+            print(f"     L{h.line}: {h.text[:90]}")
+
+    print(f"\n=== Tier 6: dead branches if False / if 0 ({len(tier6)} hits) ===")
+    for h in tier6[:20]:
+        print(f"  🟠 {h.file}:{h.line}  {h.text[:90]}")
+
+    print(f"\n=== Tier 7: retired files ({len(tier7)} hits) ===")
+    for h in tier7[:20]:
+        print(f"  🔴 {h.file}:{h.line}  {h.text[:120]}")
 
     # ── JSON 报告 ──
     report = {

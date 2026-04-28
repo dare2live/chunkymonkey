@@ -253,7 +253,6 @@ def main():
 
     logger.info("写入 %d 条推荐 (track_id=%s, is_primary=%s)",
                 len(output), args.track_id, args.is_primary)
-    # INSERT OR REPLACE
     for _, r in output.iterrows():
         conn.execute(
             """INSERT OR REPLACE INTO mart_daily_recommendation

@@ -240,6 +240,8 @@ def build_holding_chains(conn) -> dict:
                 "l1": ev["tdx_l1"], "l2": ev["tdx_l2"], "l3": ev["tdx_l3"],
             }
         elif et == "exit":
+            # Orphan exits (no preceding open chain) are intentionally dropped:
+            # they reflect a holder leaving without ever showing as new_entry.
             if current_chain and current_chain["status"] == "open":
                 current_chain["end_date"] = ev["notice_date"] or ev["report_date"]
                 current_chain["status"] = "closed"
@@ -247,7 +249,6 @@ def build_holding_chains(conn) -> dict:
                 current_chain["events"].append(et)
                 chains.append(current_chain)
                 current_chain = None
-            # else: orphan exit, ignore
         else:
             # increase / unchanged / decrease — extend chain
             if current_chain and current_chain["status"] == "open":

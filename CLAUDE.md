@@ -60,12 +60,29 @@ If no type-checker is configured, state that explicitly instead of claiming succ
     并把新退役项加到脚本顶部的 `KNOWN_RETIRED` 清单. 脚本逻辑:
     - Tier 1: 全仓 grep 退役标记 (退役/废弃/deprecated/replaced/Phase X 等)
     - Tier 3: 对每条 KNOWN_RETIRED 反向搜索, 区分 comment/code/test/doc/retirement_action
+    - Tier 5: # 注释掉的代码 (`# foo()`, `# x = ...` 等)
+    - Tier 6: 死分支 (`if False:`, `if 0:`, `while False:`)
+    - Tier 7: 自标记为已退役的整文件
     - 仅当出现非 comment 的 code 引用时返回 critical
     退役 PR 必须把 audit 输出降到 "no critical" 才能合.
 
     **教训**: 单纯改代码不删旧引用 = 定时炸弹. sqlite3 / market_raw_holdings /
     RPT_F10_EH_FREEHOLDERS 这些都因"退役不彻底"在 PR 后埋下隐患;
     审计脚本是定期清理工具, 也是 CI 守门人.
+
+14. DELETE, DON'T COMMENT OUT: 确认不再使用的功能 / 代码 / 注释 / 配置 / 文档,
+    **直接删除**, 不要:
+    - 注释掉留着 (`# old_func()`)
+    - `if False:` 包住
+    - 移到底部当 "历史保留"
+    - 加 "TODO: remove later" 然后忘了
+    - 用 docstring 说明 "this used to do X"
+
+    Git 已经保留历史; 注释掉的代码污染当前可见面, 让人猜"这是要恢复吗".
+    退役动作的合法痕迹 = `DROP TABLE IF EXISTS X` / 删文件本身; 不是 `# X` 注释.
+
+    **例外**: `DROP TABLE IF EXISTS` / `DROP INDEX IF EXISTS` 这种 idempotent
+    迁移 SQL 是合法的 retirement_action, 因为它在新建库时也要执行.
 
 ## 项目架构
 
@@ -85,7 +102,7 @@ If no type-checker is configured, state that explicitly instead of claiming succ
 
 本项目只在 `chunky-monkey-v2/` 子目录里干活. tdxhub 和 miaoxiang 是**外部数据源**, 通过 pip install (远期发包) 或本地 pip install -e (现在) 引入. 不要在本项目里复制它们的代码.
 
-数据源优先级: tdxhub (主) > miaoxiang/妙想 (tdxhub 不覆盖时) > akshare (兜底). 详细方案见 [docs/architecture-redesign-2026-04.md](docs/architecture-redesign-2026-04.md).
+数据源优先级: tdxhub (主) > miaoxiang/妙想 (tdxhub 不覆盖时) > akshare (兜底). 详细方案见顶层设计 [system_design_holistic.md](../system_design_holistic.md) (在 /stock 根).
 
 ## 反模式清单
 
