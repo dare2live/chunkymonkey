@@ -1,13 +1,17 @@
-"""每日增量抓取 tdxhub F10 「股东研究」 → 新 canonical 表.
+"""每日增量抓取 F10 「股东研究」 → 新 canonical 表.
 
-替代旧的 miaoxiang RPT_F10_EH_FREEHOLDERS → market_raw_holdings 路径
-(后者将在 P8 删除).
+数据通道走 services.holders_resolver.HolderResolver, 按 source_tier
+顺序 fallback:
+  tier 1: tdxhub.holders.HolderFetcher (117 服务器池自动轮询)
+  tier 2: miaoxiang aif10 RPT_F10_EH_FREEHOLDERS (备源, 仅 tier 1 失败时用)
+  tier 3: akshare (兜底, 当前未启用; 见 holders_resolver.AkshareHolderSource)
 
-本脚本按 5200 只非北交 A 股遍历, 每只:
-  1. fetch_text via tdxhub.holders.HolderFetcher (服务器池自动轮询)
-  2. 计算 raw_hash; 若 raw_tdx_f10_holder_research 已有相同 (stock, raw_hash) 则跳过
-  3. 否则 parse_research → 写 raw + fact_top10_holder_period +
+每只股票:
+  1. resolver.fetch(symbol) → 按 tier 顺序拿数据, 第一个返回非空的 source 中签
+  2. 计算 raw_hash; 若 raw_tdx_f10_holder_research 已有相同 (stock, raw_hash) 跳过
+  3. 否则写 raw (仅 tdxhub 路径有原文) + fact_top10_holder_period +
      fact_controlling_shareholder + fact_shareholder_plan + fact_shareholder_trade
+     (后三表仅 tdxhub 路径填充; fallback 路径为空)
   4. 应用 dim_holder_alias 解析 holder_name_norm
 
 使用:
@@ -19,6 +23,9 @@
 
     # 限速 / 调小并发
     python backend/scripts/ingest_holders_tdxhub.py --workers 2
+
+    # 关掉 fallback (仅 tdxhub, 不试 miaoxiang)
+    python backend/scripts/ingest_holders_tdxhub.py --no-fallback
 
 每日定时调度建议:
     crontab: 0 9 * * * cd /path && python backend/scripts/ingest_holders_tdxhub.py >> log 2>&1
@@ -46,7 +53,13 @@ sys.path.insert(0, str(REPO / "backend"))
 sys.path.insert(0, "/Users/dp/Documents/M/stock/tdxhub")  # editable install
 
 from services.db import DB_PATH, init_db  # noqa: E402
-from tdxhub.holders import HolderFetcher, parse_research, _hash  # noqa: E402
+from services.holders_resolver import (  # noqa: E402
+    HolderResolver,
+    TdxhubHolderSource,
+    MiaoxiangHolderSource,
+    ResolverResult,
+)
+from tdxhub.holders import _hash  # noqa: E402
 
 
 CHANGE_STATUS_TO_LEGACY = {
@@ -95,18 +108,21 @@ def load_alias_map(con: duckdb.DuckDBPyConnection) -> dict[str, str]:
 
 
 def write_one(con: duckdb.DuckDBPyConnection, *, stock_code: str, stock_name: str,
-              market: str, text: str, server: str | None,
+              market: str, result: ResolverResult,
               alias_map: dict[str, str], lock: threading.Lock) -> dict:
-    """Parse text and write all 5 tables under a single connection-level lock."""
+    """Persist a ResolverResult into raw + 4 fact tables under a connection lock.
 
-    raw_hash = _hash(text)
-    fetched_at = datetime.utcnow().isoformat(timespec="seconds")
-    res = parse_research(text, symbol=stock_code, stock_name=stock_name)
-    holders = res["holders"].copy()
-    periods = res["periods"]
-    ctrl = res["controlling"]
-    plans = res["plans"].copy()
-    trades = res["trades"].copy()
+    raw_text + 段 1/2/3 仅 tdxhub 路径有 (result.source_tier=1).
+    fallback 源 (miaoxiang/akshare) 只填 fact_top10_holder_period.
+    """
+
+    raw_hash = result.raw_hash
+    fetched_at = result.fetched_at
+    holders = result.holders_df.copy() if not result.holders_df.empty else result.holders_df
+    periods = result.periods_df
+    ctrl = result.controlling
+    plans = (result.plans_df.copy() if result.plans_df is not None and not result.plans_df.empty else None)
+    trades = (result.trades_df.copy() if result.trades_df is not None and not result.trades_df.empty else None)
 
     # back-compat columns
     if not holders.empty:
@@ -128,71 +144,76 @@ def write_one(con: duckdb.DuckDBPyConnection, *, stock_code: str, stock_name: st
         holders["notice_date"] = None
         holders["effective_date"] = None
         holders["created_at"] = holders["fetched_at"]
-        holders["source_tier"] = 1
+        holders["source_tier"] = result.source_tier
         holders["holder_name_norm"] = holders["holder_name"].map(
             lambda n: alias_map.get(n, n)
         )
         holders["is_secondary_class"] = holders["is_secondary_class"].astype(bool)
         holders["is_exit_row"] = holders["is_exit_row"].astype(bool)
 
-    if not plans.empty:
-        plans["source_tier"] = 1
+    if plans is not None and not plans.empty:
+        plans["source_tier"] = result.source_tier
         plans["plan_seq"] = plans.groupby(["stock_code", "raw_hash"]).cumcount() + 1
-    if not trades.empty:
-        trades["source_tier"] = 1
+    if trades is not None and not trades.empty:
+        trades["source_tier"] = result.source_tier
         trades["holder_name_norm"] = trades["holder_name"].map(
             lambda n: alias_map.get(n, n)
         )
         trades["trade_seq"] = trades.groupby(["stock_code", "raw_hash"]).cumcount() + 1
 
-    f10_format = "unknown"
-    if "灵通V9.0" in text:
-        f10_format = "a_lingtong"
-    elif "通达信沪深京F10" in text:
-        f10_format = "b_shsjz"
-    elif "港澳资讯" in text:
-        f10_format = "a_other"
-
-    raw_row = pd.DataFrame([{
-        "stock_code": stock_code,
-        "stock_name": stock_name or (res["page"].get("stock_name") or ""),
-        "market": market or res["page"].get("market") or "",
-        "fetched_at": fetched_at,
-        "page_update_date": res["page"].get("page_update_date"),
-        "raw_text": text,
-        "raw_hash": raw_hash,
-        "bytes_len": len(text),
-        "server": server,
-        "f10_format": f10_format,
-        "parser_version": "v1",
-    }])
+    # Raw text 仅 tdxhub 路径有; fallback 不写 raw_tdx_f10_holder_research
+    raw_row = None
+    if result.raw_text and result.raw_hash:
+        f10_format = "unknown"
+        if "灵通V9.0" in result.raw_text:
+            f10_format = "a_lingtong"
+        elif "通达信沪深京F10" in result.raw_text:
+            f10_format = "b_shsjz"
+        elif "港澳资讯" in result.raw_text:
+            f10_format = "a_other"
+        raw_row = pd.DataFrame([{
+            "stock_code": stock_code,
+            "stock_name": stock_name,
+            "market": market,
+            "fetched_at": fetched_at,
+            "page_update_date": result.page_update_date,
+            "raw_text": result.raw_text,
+            "raw_hash": result.raw_hash,
+            "bytes_len": len(result.raw_text),
+            "server": result.server_or_endpoint,
+            "f10_format": f10_format,
+            "parser_version": "v1",
+        }])
 
     out = {
         "stock_code": stock_code,
         "raw_hash": raw_hash,
+        "source": result.source,
+        "source_tier": result.source_tier,
         "n_holders": len(holders),
         "n_periods": len(periods),
-        "n_plans": len(plans),
-        "n_trades": len(trades),
+        "n_plans": (len(plans) if plans is not None else 0),
+        "n_trades": (len(trades) if trades is not None else 0),
         "has_controlling": ctrl is not None,
     }
 
     with lock:
-        con.register("raw_in", raw_row)
-        con.execute("""
-            insert into raw_tdx_f10_holder_research(
-              stock_code, stock_name, market, fetched_at, page_update_date,
-              raw_text, raw_hash, bytes_len, server, f10_format, parser_version
-            )
-            select stock_code, stock_name, market,
-                   cast(fetched_at as timestamp), page_update_date,
-                   raw_text, raw_hash, bytes_len, server, f10_format, parser_version
-            from raw_in
-            where (stock_code, raw_hash) not in (
-              select stock_code, raw_hash from raw_tdx_f10_holder_research
-            )
-        """)
-        con.unregister("raw_in")
+        if raw_row is not None:
+            con.register("raw_in", raw_row)
+            con.execute("""
+                insert into raw_tdx_f10_holder_research(
+                  stock_code, stock_name, market, fetched_at, page_update_date,
+                  raw_text, raw_hash, bytes_len, server, f10_format, parser_version
+                )
+                select stock_code, stock_name, market,
+                       cast(fetched_at as timestamp), page_update_date,
+                       raw_text, raw_hash, bytes_len, server, f10_format, parser_version
+                from raw_in
+                where (stock_code, raw_hash) not in (
+                  select stock_code, raw_hash from raw_tdx_f10_holder_research
+                )
+            """)
+            con.unregister("raw_in")
 
         if not holders.empty:
             con.register("h_in", holders)
@@ -267,7 +288,7 @@ def write_one(con: duckdb.DuckDBPyConnection, *, stock_code: str, stock_name: st
             """)
             con.unregister("ctrl_in")
 
-        if not plans.empty:
+        if plans is not None and not plans.empty:
             con.register("p_in", plans)
             con.execute("""
                 insert into fact_shareholder_plan(
@@ -294,7 +315,7 @@ def write_one(con: duckdb.DuckDBPyConnection, *, stock_code: str, stock_name: st
             """)
             con.unregister("p_in")
 
-        if not trades.empty:
+        if trades is not None and not trades.empty:
             con.register("t_in", trades)
             con.execute("""
                 insert into fact_shareholder_trade(
@@ -324,11 +345,19 @@ def write_one(con: duckdb.DuckDBPyConnection, *, stock_code: str, stock_name: st
     return out
 
 
+def _make_resolver(*, enable_fallback: bool) -> HolderResolver:
+    sources = [TdxhubHolderSource(timeout=15, max_attempts_per_call=6)]
+    if enable_fallback:
+        sources.append(MiaoxiangHolderSource())
+    return HolderResolver(sources)
+
+
 def worker(name: str, job_q: queue.Queue, con: duckdb.DuckDBPyConnection,
            con_lock: threading.Lock, alias_map: dict[str, str],
            progress: dict, progress_lock: threading.Lock,
-           seen_hashes: set, seen_lock: threading.Lock) -> None:
-    fetcher = HolderFetcher(timeout=15, max_attempts_per_call=6)
+           seen_hashes: set, seen_lock: threading.Lock,
+           *, enable_fallback: bool = True) -> None:
+    resolver = _make_resolver(enable_fallback=enable_fallback)
     while True:
         item = job_q.get()
         if item is None:
@@ -336,38 +365,41 @@ def worker(name: str, job_q: queue.Queue, con: duckdb.DuckDBPyConnection,
         idx, total, code, stock_name, market = item
         t0 = time.time()
         try:
-            text = fetcher.fetch_text(code)
-            if not text:
+            result = resolver.fetch(code, stock_name=stock_name)
+            if result is None or not result.has_data():
                 with progress_lock:
                     progress["skipped_no_f10"] += 1
                     progress["done"] += 1
                 job_q.task_done()
                 continue
-            raw_hash = _hash(text)
-            with seen_lock:
-                if (code, raw_hash) in seen_hashes:
-                    with progress_lock:
-                        progress["skipped_unchanged"] += 1
-                        progress["done"] += 1
-                    job_q.task_done()
-                    continue
-                seen_hashes.add((code, raw_hash))
-            server = str(fetcher.stats().get("active_server"))
+            # 仅 tdxhub 路径有 raw_hash; fallback 路径没有, 不能跳过
+            if result.raw_hash:
+                with seen_lock:
+                    if (code, result.raw_hash) in seen_hashes:
+                        with progress_lock:
+                            progress["skipped_unchanged"] += 1
+                            progress["done"] += 1
+                        job_q.task_done()
+                        continue
+                    seen_hashes.add((code, result.raw_hash))
             stats = write_one(
                 con, stock_code=code, stock_name=stock_name, market=market,
-                text=text, server=server, alias_map=alias_map, lock=con_lock,
+                result=result, alias_map=alias_map, lock=con_lock,
             )
             elapsed = time.time() - t0
             with progress_lock:
                 progress["ok"] += 1
                 progress["done"] += 1
+                progress.setdefault(f"src_{result.source}", 0)
+                progress[f"src_{result.source}"] += 1
                 if progress["done"] % 50 == 0:
                     rate = progress["done"] / max(time.time() - progress["t0"], 1e-3)
                     log.info(
-                        "[%4d/%d] %s %s rows=%d periods=%d plans=%d trades=%d  %.1fs  rate=%.1f/s  server=%s",
+                        "[%4d/%d] %s %s [%s/tier=%d] rows=%d periods=%d plans=%d trades=%d  %.1fs  rate=%.1f/s",
                         progress["done"], total, code, name,
+                        stats["source"], stats["source_tier"],
                         stats["n_holders"], stats["n_periods"], stats["n_plans"],
-                        stats["n_trades"], elapsed, rate, server,
+                        stats["n_trades"], elapsed, rate,
                     )
         except Exception as e:
             with progress_lock:
@@ -375,7 +407,7 @@ def worker(name: str, job_q: queue.Queue, con: duckdb.DuckDBPyConnection,
                 progress["done"] += 1
                 log.warning("[%s] %s ERROR %s: %s", name, code, type(e).__name__, e)
         job_q.task_done()
-    fetcher.close()
+    resolver.close()
 
 
 def main() -> int:
@@ -385,7 +417,10 @@ def main() -> int:
     p.add_argument("--symbols", default="")
     p.add_argument("--force", action="store_true",
                    help="忽略 raw_hash 缓存, 强制重抓所有股票")
+    p.add_argument("--no-fallback", action="store_true",
+                   help="关闭 miaoxiang fallback (仅试 tdxhub)")
     args = p.parse_args()
+    enable_fallback = not args.no_fallback
 
     init_db()
     con = duckdb.connect(str(DB_PATH))
@@ -419,6 +454,7 @@ def main() -> int:
             target=worker,
             args=(f"w{i+1}", job_q, con, con_lock, alias_map,
                   progress, progress_lock, seen, seen_lock),
+            kwargs={"enable_fallback": enable_fallback},
             name=f"holder-worker-{i+1}",
         )
         t.start()

@@ -89,24 +89,17 @@ KNOWN_RETIRED = [
         "search": [r"\bmarket_raw_holdings\b"],
         # 注释里的退役说明允许; 真 SQL 引用即定时炸弹.
     },
-    {
-        "name": "RPT_F10_EH_FREEHOLDERS",
-        "kind": "external_api",
-        "replaced_by": "tdxhub.holders.HolderFetcher",
-        "search": [r"\bRPT_F10_EH_FREEHOLDERS\b"],
-    },
+    # P12 (2026-04-28): RPT_F10_EH_FREEHOLDERS 不是完全退役, 而是从 primary
+    # 降级为 tier-2 fallback (HolderResolver 兜底; 99.6% 不会触发).
+    # 因此不在 KNOWN_RETIRED 里追踪 — 真的有 stale 引用应该手工 grep.
     {
         "name": "top_free_holders",
         "kind": "capability",
         "replaced_by": "holders_top10_float",
         "search": [r'"top_free_holders"', r"'top_free_holders'"],
     },
-    {
-        "name": "datacenter-web",
-        "kind": "url_root",
-        "replaced_by": "miaoxiang aif10 / tdxhub",
-        "search": [r"datacenter[-.]web", r"datacenter[.]eastmoney"],
-    },
+    # datacenter-web 是 eastmoney 的后端域名, akshare/miaoxiang 都用,
+    # 不是项目自身 artifact, 不在 retire 范畴.
     {
         "name": "dim_stock (deprecated 2026-04-08)",
         "kind": "db_table",
