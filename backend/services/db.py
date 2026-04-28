@@ -2,11 +2,23 @@
 数据库服务 — Chunky Monkey v2
 
 数据分层：
-  原始层（只追加）: market_raw_holdings, raw_fetch_batch
-  维度层: dim_active_a_stock, dim_stock_tdx_industry, dim_trading_calendar, inst_institutions, inst_name_aliases
-  事实层: inst_holdings, fact_institution_event, stock_watchlist
+  原始层（只追加）: raw_tdx_f10_holder_research, raw_fetch_batch
+  维度层: dim_active_a_stock, dim_stock_tdx_industry, dim_trading_calendar,
+          inst_institutions, inst_name_aliases, dim_holder_alias
+  事实层: fact_top10_holder_period (替代 market_raw_holdings, A/H 强制拆分),
+          fact_shareholder_plan, fact_shareholder_trade,
+          fact_controlling_shareholder,
+          inst_holdings, fact_institution_event, stock_watchlist
   集市层（可重算）: mart_institution_profile, mart_institution_industry_stat, mart_stock_trend
   系统层: sys_schema_version, excluded_stocks, exclusion_categories, app_settings
+
+退役路径（2026-04-28 起）：
+  market_raw_holdings → fact_top10_holder_period
+  - market_raw_holdings 由 miaoxiang RPT_F10_EH_FREEHOLDERS 写入 (源 P6.1)；
+    A+H 持仓被合并、缺 share_class、缺 source_tier。
+  - fact_top10_holder_period 由 tdxhub.holders 写入 (源 P7+)，A/H 严格拆分，
+    带 source_tier (1=tdxhub primary / 2=miaoxiang fallback) + raw_hash 链回。
+  - 老表保留为只读兼容层 (P8 之后删除)。
 """
 
 import logging
@@ -58,6 +70,209 @@ def init_db():
             CREATE INDEX IF NOT EXISTS idx_mrh_notice ON market_raw_holdings(notice_date);
             CREATE INDEX IF NOT EXISTS idx_mrh_holder ON market_raw_holdings(holder_name);
             CREATE INDEX IF NOT EXISTS idx_mrh_stock_report ON market_raw_holdings(stock_code, report_date);
+
+            -- ============================================================
+            -- 原始层 (新): tdxhub F10 「股东研究」 原文
+            -- ============================================================
+            -- raw_tdx_f10_holder_research: 每只股票每次抓取的 F10 GBK 文本.
+            -- raw_hash 唯一约束保证同一文本只入库一次, fetched_at 用于回溯.
+            -- 解析层 (fact_top10_holder_period 等) 通过 raw_hash 链回此处.
+            CREATE TABLE IF NOT EXISTS raw_tdx_f10_holder_research (
+                stock_code       TEXT NOT NULL,
+                stock_name       TEXT,
+                market           TEXT,
+                fetched_at       TIMESTAMP NOT NULL,
+                page_update_date DATE,
+                raw_text         TEXT NOT NULL,
+                raw_hash         VARCHAR(64) NOT NULL,
+                bytes_len        INTEGER,
+                server           TEXT,
+                f10_format       TEXT,
+                parser_version   TEXT DEFAULT 'v1',
+                PRIMARY KEY (stock_code, raw_hash)
+            );
+            CREATE INDEX IF NOT EXISTS idx_raw_tdx_f10_fetched
+                ON raw_tdx_f10_holder_research(fetched_at);
+            CREATE INDEX IF NOT EXISTS idx_raw_tdx_f10_stock
+                ON raw_tdx_f10_holder_research(stock_code, fetched_at DESC);
+
+            -- ============================================================
+            -- 事实层 (新): 十大流通股东 / 十大股东 (A/H 拆分版)
+            -- ============================================================
+            -- fact_top10_holder_period: tdxhub.holders 解析后的 canonical 事实.
+            -- 每行 = 一只股票 × 报告期 × holder_set × holder_rank × share_class.
+            -- 替代 market_raw_holdings (后者会在 P8 删除, 当前并存以便平滑切换).
+            --
+            -- 关键 schema 决策:
+            --  1. holder_set ∈ ('free','all') 显式区分流通 vs 全量 (老表只覆盖 free).
+            --  2. share_class ∈ ('A','H','B',NULL) — A/H 双重上市股票分两行,
+            --     by is_secondary_class=TRUE 标记副 leg.
+            --  3. is_exit_row=TRUE 表示来自 "退出前十大" 表 — 老表无此能力.
+            --  4. source_tier 1=tdxhub primary, 2=miaoxiang fallback, 3=akshare.
+            --  5. 老字段 (hold_amount/hold_ratio/hold_change/hold_change_num/
+            --     raw_json/created_at/notice_date) 保留为 back-compat 别名,
+            --     让现存 SQL 能通过 sed 替换表名平滑切换.
+            CREATE TABLE IF NOT EXISTS fact_top10_holder_period (
+                -- entity / period keys
+                stock_code        TEXT NOT NULL,
+                stock_name        TEXT,
+                market            TEXT,
+                report_date       TEXT NOT NULL,
+                holder_set        TEXT NOT NULL,            -- 'free' | 'all'
+                holder_rank       INTEGER NOT NULL,
+                row_seq           INTEGER NOT NULL DEFAULT 1,
+
+                -- holder identity
+                holder_name       TEXT NOT NULL,
+                holder_name_norm  TEXT,                      -- alias-resolved (汇金公司→中央汇金投资有限责任公司)
+                share_class       TEXT,                      -- 'A' | 'H' | 'B' | NULL
+                is_secondary_class BOOLEAN DEFAULT FALSE,    -- TRUE = A/H 双重上市的副 leg
+                is_exit_row       BOOLEAN DEFAULT FALSE,     -- TRUE = 来自 "退出前十大" 表
+
+                -- shares
+                shares_text       TEXT,                       -- raw "6.8128亿"
+                shares_approx     BIGINT,                     -- 681282900
+                shares_precision  TEXT,                       -- '亿' | '万' | '股'
+                hold_amount       REAL,                       -- back-compat: == shares_approx (REAL)
+
+                -- ratio (双口径并存, 模型层选)
+                hold_ratio_float  DOUBLE,                     -- 占流通股比 % (free 表)
+                hold_ratio_total  DOUBLE,                     -- 占总股本比 % (all 表)
+                hold_ratio        REAL,                       -- back-compat: holder_set='free'→float, 'all'→total
+
+                -- derived
+                hold_market_cap   REAL,                       -- shares × period-end close
+                holder_type       TEXT,                       -- raw display
+                share_nature      TEXT,                       -- '无限售A股/...'
+
+                -- change
+                change_status     TEXT,                       -- 新进/增持/减持/不变/退出
+                change_shares_text TEXT,
+                change_shares_approx BIGINT,
+                hold_change       TEXT,                       -- back-compat: ''/新进/加仓/减仓
+                hold_change_num   REAL,                       -- back-compat: signed shares delta
+
+                -- temporal
+                notice_date       TEXT,
+                effective_date    TEXT,                       -- 公告日 + 1 交易日 (回测 PIT)
+                page_update_date  TEXT,                       -- F10 页头 "更新日期"
+
+                -- provenance
+                source            TEXT NOT NULL,              -- 'tdx_f10' | 'miaoxiang' | 'akshare'
+                source_tier       SMALLINT NOT NULL,          -- 1 / 2 / 3
+                raw_hash          TEXT,                       -- → raw_tdx_f10_holder_research.raw_hash
+                fetched_at        TEXT,
+                created_at        TEXT,                       -- back-compat
+
+                UNIQUE(stock_code, report_date, holder_set, source, is_exit_row,
+                       holder_rank, row_seq, share_class)
+            );
+            CREATE INDEX IF NOT EXISTS idx_t10_stock
+                ON fact_top10_holder_period(stock_code, report_date DESC);
+            CREATE INDEX IF NOT EXISTS idx_t10_holder
+                ON fact_top10_holder_period(holder_name);
+            CREATE INDEX IF NOT EXISTS idx_t10_holder_norm
+                ON fact_top10_holder_period(holder_name_norm);
+            CREATE INDEX IF NOT EXISTS idx_t10_effective
+                ON fact_top10_holder_period(effective_date);
+            CREATE INDEX IF NOT EXISTS idx_t10_set_class
+                ON fact_top10_holder_period(holder_set, share_class);
+
+            -- ============================================================
+            -- 事实层 (新): 控股股东 / 增减持计划 / 单笔变动
+            -- ============================================================
+            CREATE TABLE IF NOT EXISTS fact_controlling_shareholder (
+                stock_code       TEXT NOT NULL,
+                stock_name       TEXT,
+                market           TEXT,
+                primary_label    TEXT,                       -- '控股股东' | '第一大股东'
+                primary_name     TEXT,
+                primary_ratio    DOUBLE,
+                primary_raw      TEXT,
+                actual_name      TEXT,
+                actual_ratio     DOUBLE,
+                actual_raw       TEXT,
+                page_update_date TEXT,
+                source           TEXT NOT NULL,
+                source_tier      SMALLINT NOT NULL,
+                raw_hash         TEXT,
+                fetched_at       TEXT,
+                PRIMARY KEY (stock_code, source)
+            );
+
+            -- fact_shareholder_plan 不设 UNIQUE: F10 同一公告日同股东可能列出多条
+            -- progress 更新 (预案 → 部分实施 → 完成), target_shares 也会变动.
+            -- 幂等性靠 (stock_code, raw_hash) 在 ingest 时检查.
+            CREATE TABLE IF NOT EXISTS fact_shareholder_plan (
+                stock_code       TEXT NOT NULL,
+                stock_name       TEXT,
+                market           TEXT,
+                announce_date    TEXT,
+                subject          TEXT,
+                direction        TEXT,                       -- 增持计划 / 减持计划
+                progress         TEXT,                       -- 预案 / 实施 / 完成
+                start_date       TEXT,
+                end_date         TEXT,
+                target_shares_text TEXT,
+                target_shares    BIGINT,
+                target_ratio_text TEXT,
+                target_ratio     DOUBLE,
+                reason           TEXT,
+                narrative        TEXT,
+                page_update_date TEXT,
+                source           TEXT NOT NULL,
+                source_tier      SMALLINT NOT NULL,
+                raw_hash         TEXT,
+                fetched_at       TEXT,
+                plan_seq         INTEGER                     -- F10 内出现序号
+            );
+            CREATE INDEX IF NOT EXISTS idx_plan_stock_announce
+                ON fact_shareholder_plan(stock_code, announce_date DESC);
+            CREATE INDEX IF NOT EXISTS idx_plan_raw_hash
+                ON fact_shareholder_plan(stock_code, raw_hash);
+
+            -- fact_shareholder_trade 不设 UNIQUE: 同日同股东可能多笔交易 (拆单).
+            -- 幂等性靠 (stock_code, raw_hash) 在 ingest 时检查.
+            CREATE TABLE IF NOT EXISTS fact_shareholder_trade (
+                stock_code       TEXT NOT NULL,
+                stock_name       TEXT,
+                market           TEXT,
+                change_date      TEXT,
+                holder_name      TEXT,
+                holder_name_norm TEXT,
+                shares_before_text TEXT,
+                shares_before    BIGINT,
+                shares_change_text TEXT,
+                shares_change    BIGINT,                     -- 带符号
+                shares_after_text TEXT,
+                shares_after     BIGINT,
+                ratio_after      DOUBLE,
+                change_type      TEXT,                       -- 二级市场买入/二级市场卖出/员工持股计划/...
+                page_update_date TEXT,
+                source           TEXT NOT NULL,
+                source_tier      SMALLINT NOT NULL,
+                raw_hash         TEXT,
+                fetched_at       TEXT,
+                trade_seq        INTEGER
+            );
+            CREATE INDEX IF NOT EXISTS idx_trade_stock_date
+                ON fact_shareholder_trade(stock_code, change_date DESC);
+            CREATE INDEX IF NOT EXISTS idx_trade_raw_hash
+                ON fact_shareholder_trade(stock_code, raw_hash);
+
+            -- ============================================================
+            -- 维度层 (新): 股东别名映射
+            -- ============================================================
+            -- TDX F10 用简称 (汇金公司 / 财政部 / 社保基金会 等),
+            -- miaoxiang / akshare 用全称. dim_holder_alias 让跨源 join 名一致.
+            CREATE TABLE IF NOT EXISTS dim_holder_alias (
+                alias            TEXT NOT NULL,              -- TDX 简称 / 别名
+                canonical_name   TEXT NOT NULL,              -- 工商全称
+                category         TEXT,                       -- '国家队/央企/外资/...' (可选)
+                note             TEXT,
+                created_at       TEXT,
+                PRIMARY KEY (alias)
+            );
 
             -- K线已迁移到独立的 market.duckdb.price_kline
 
