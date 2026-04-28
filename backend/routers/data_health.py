@@ -266,3 +266,46 @@ def get_by_layer() -> dict[str, Any]:
         return {"snapshot_at": snap_at, "by_layer": dict(by_layer)}
     finally:
         con.close()
+
+
+@router.get("/clients")
+def get_clients_registry() -> dict[str, Any]:
+    """数据写入客户端登记表 (W2): 一个客户端 = 一组 (raw/dim/fact/mart) 表的写入器.
+
+    用于 UI Tab 2 (clients): 列出所有 client + 它们写哪些表 + freshness/sla.
+    单一真相源在 services/data_sources/clients_registry.py.
+    """
+    from services.data_sources.clients_registry import to_dicts, all_clients
+
+    con = get_conn()
+    try:
+        snap_at = _latest_snapshot_at(con)
+        # 把每张表的最新 severity 拼到 client 视图里
+        sev_by_table: dict[str, str] = {}
+        if snap_at:
+            rows = con.execute(
+                "SELECT table_name, severity FROM mart_data_health WHERE snapshot_at = ?",
+                (snap_at,),
+            ).fetchall()
+            sev_by_table = {r["table_name"]: r["severity"] for r in rows}
+
+        clients = to_dicts()
+        for c in clients:
+            agg = {"green": 0, "yellow": 0, "red": 0, "unknown": 0}
+            for w in c["writes"]:
+                sev = sev_by_table.get(w["table"], "unknown")
+                agg[sev] = agg.get(sev, 0) + 1
+                w["severity"] = sev
+            c["health_summary"] = agg
+            c["worst_severity"] = (
+                "red"   if agg["red"]    > 0 else
+                "yellow" if agg["yellow"] > 0 else
+                "green" if agg["green"]  > 0 else "unknown"
+            )
+        return {
+            "snapshot_at": snap_at,
+            "client_count": len(clients),
+            "clients": clients,
+        }
+    finally:
+        con.close()

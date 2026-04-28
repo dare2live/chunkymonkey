@@ -60,52 +60,54 @@ def detect_layer(table_name: str) -> str:
     return PREFIX_LAYER.get(prefix, "other")
 
 
-# 几个常见的 known upstream — 以表名前缀做粗推断
-KNOWN_UPSTREAM_BY_TABLE = {
+# 客户端写入元数据从 services/data_sources/clients_registry.py 单一真相源读取.
+# 这里仅保留 *registry 没覆盖* 的额外补丁 (派生层散落表 + 极少数特殊源).
+from services.data_sources.clients_registry import (
+    upstream_for_table as _registry_upstream,
+    freshness_for_table as _registry_freshness,
+)
+
+EXTRA_UPSTREAM_BY_TABLE = {
+    # 多个 client 链回写, 在 registry 内不太适合归到单一 client
     "raw_tdx_f10_holder_research": ("tdxhub.holders", 1),
-    "fact_top10_holder_period":     ("tdxhub.holders (via resolver tier 1-2)", 1),
-    "fact_holder_event":            ("derived from fact_top10_holder_period", None),
+    "fact_top10_holder_period":     ("tdxhub.holders (via HolderResolver tier 1-2)", 1),
     "fact_controlling_shareholder": ("tdxhub.holders", 1),
     "fact_shareholder_plan":        ("tdxhub.holders", 1),
     "fact_shareholder_trade":       ("tdxhub.holders", 1),
-    "raw_lhb_daily":                ("aif10 RPT_DAILYBILLBOARD_DETAILSNEW (akshare fallback)", 2),
-    "fact_lhb_event":               ("derived from raw_lhb_daily", None),
-    "raw_qfii_holding_quarterly":   ("aif10 RPT_DMSK_HOLDERS (akshare fallback)", 2),
-    "raw_institution_surveys":      ("aif10 RPT_ORG_SURVEYNEW (akshare fallback)", 2),
-    "raw_margin_daily":             ("akshare stock_margin_detail_sse/szse", 3),
-    "raw_capital_dividend_detail":  ("akshare", 3),
-    "raw_capital_repurchase":       ("akshare", 3),
-    "raw_capital_lockup":           ("akshare", 3),
-    "raw_capital_sub_holder":       ("akshare", 3),
-    "raw_capital_alloc_share":      ("akshare", 3),
     "raw_executive_trade":          ("aif10 / akshare", 2),
-    "raw_gpcw_financial":           ("tdxhub.affair (gpcw)", 1),
-    "raw_gpcw_detail":              ("tdxhub.affair (gpcw)", 1),
     "raw_gpcw_dividend":            ("tdxhub.affair (gpcw)", 1),
-    "raw_fund_flow_daily":          ("[orphan] no active writer", None),
     "dim_active_a_stock":           ("akshare tool_trade_date_hist + curated", 3),
-    "dim_stock_tdx_industry":       ("tdxhub.block (行业对照)", 1),
-    "dim_stock_tdx_block":          ("tdxhub.block (板块归属)", 1),
     "dim_trading_calendar":         ("akshare tool_trade_date_hist_sina", 3),
     "dim_holder_alias":             ("manual seed", None),
-    "fact_feature_panel":           ("derived (build_feature_panel_duck.py)", None),
+    # derived (多源派生, 不是单 client 写)
+    "fact_holder_event":            ("derived from fact_top10_holder_period", None),
+    "fact_lhb_event":               ("derived from raw_lhb_daily", None),
     "fact_institution_event":       ("derived (gen_events + return_engine)", None),
     "fact_fundamental_quarterly":   ("derived from raw_gpcw_*", None),
-    "mart_daily_recommendation":    ("derived (run_daily_topk.py = LightGBM inference)", None),
-    "mart_multidim_model":          ("derived (train_multidim_model.py)", None),
-    "mart_multidim_prediction":     ("derived (train_multidim_model.py holdout)", None),
-    "mart_model_walkforward_fold":  ("derived (run_multidim_walkforward.py)", None),
-    "mart_model_walkforward_prediction": ("derived (run_multidim_walkforward.py)", None),
     "mart_current_relationship":    ("derived (build_current_relationship)", None),
     "mart_stock_trend":             ("derived (build_trends step)", None),
     "mart_stock_screening":         ("derived (calc_screening manual step)", None),
-    "mart_data_health":             ("derived (data_health_snapshot.py)", None),
 }
 
 
-# 期望刷新频率推断 (粗略)
+def known_upstream(table: str) -> tuple[object, object]:
+    """先查 client 注册表, 再查补丁. 返回 (upstream_source, source_tier)."""
+    via_registry = _registry_upstream(table)
+    if via_registry[0] is not None:
+        return via_registry
+    return EXTRA_UPSTREAM_BY_TABLE.get(table, (None, None))
+
+
+# 期望刷新频率推断 (粗略, 仅作为 client_registry 没覆盖时的兜底)
 def infer_freshness(table_name: str, layer: str) -> tuple[str, int]:
-    """Returns (expected_freshness, sla_hours)."""
+    """Returns (expected_freshness, sla_hours).
+
+    优先级: 1) clients_registry 显式声明  2) 表名启发式  3) layer 默认值
+    """
+    via_registry = _registry_freshness(table_name)
+    if via_registry is not None:
+        return via_registry
+
     name = table_name.lower()
     if "kline" in name or "_daily" in name:
         return ("t+0", 24)
@@ -275,7 +277,7 @@ def main() -> int:
         readers = grep_readers(tbl)
         # 排除自引用
         readers = [r for r in readers if r != writer]
-        upstream, source_tier = KNOWN_UPSTREAM_BY_TABLE.get(tbl, (None, None))
+        upstream, source_tier = known_upstream(tbl)
         # 派生表: writer 是脚本 + readers 多, upstream 通常是 derived
         if upstream is None:
             if layer in ("fact", "mart") and writer is not None:
@@ -309,13 +311,22 @@ def main() -> int:
 
         # DuckDB binder 在 DO UPDATE SET 上下文里把 CURRENT_TIMESTAMP 当列名;
         # 用 now() 等价替换 (规则参见 CLAUDE.md #11/#12 + qfii_client.py:319 已有先例).
-        con.execute("""
-            INSERT INTO dim_data_asset (
-                table_name, layer, purpose, writer_module, reader_modules,
-                upstream_source, source_tier, expected_freshness, sla_hours,
-                consumed_by_views, auto_discovered, last_updated_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, TRUE, now())
-            ON CONFLICT (table_name) DO UPDATE SET
+        # --force-overwrite: 用 EXCLUDED.X 直写 (registry 是真相源)
+        # 否则: COALESCE 保留人工补字段
+        if args.force_overwrite:
+            update_clause = """
+                layer = EXCLUDED.layer,
+                writer_module = EXCLUDED.writer_module,
+                reader_modules = EXCLUDED.reader_modules,
+                purpose = COALESCE(EXCLUDED.purpose, dim_data_asset.purpose),
+                upstream_source = EXCLUDED.upstream_source,
+                source_tier = EXCLUDED.source_tier,
+                expected_freshness = EXCLUDED.expected_freshness,
+                sla_hours = EXCLUDED.sla_hours,
+                last_updated_at = now()
+            """
+        else:
+            update_clause = """
                 layer = EXCLUDED.layer,
                 writer_module = EXCLUDED.writer_module,
                 reader_modules = EXCLUDED.reader_modules,
@@ -325,6 +336,15 @@ def main() -> int:
                 expected_freshness = COALESCE(dim_data_asset.expected_freshness, EXCLUDED.expected_freshness),
                 sla_hours = COALESCE(dim_data_asset.sla_hours, EXCLUDED.sla_hours),
                 last_updated_at = now()
+            """
+        con.execute(f"""
+            INSERT INTO dim_data_asset (
+                table_name, layer, purpose, writer_module, reader_modules,
+                upstream_source, source_tier, expected_freshness, sla_hours,
+                consumed_by_views, auto_discovered, last_updated_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, TRUE, now())
+            ON CONFLICT (table_name) DO UPDATE SET
+                {update_clause}
         """, (
             tbl, layer, purpose, writer, readers_json,
             upstream, source_tier, freshness, sla,

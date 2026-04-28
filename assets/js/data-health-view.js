@@ -20,7 +20,9 @@
       snapshot: null,           // /snapshot 返回
       sources: null,            // /sources 返回 (缓存)
       sourcesAt: 0,             // sources 拉取时间
-      activeTab: 'health',      // 'health' | 'sources'
+      clients: null,            // /clients 返回 (缓存)
+      clientsAt: 0,
+      activeTab: 'health',      // 'health' | 'sources' | 'clients'
       filter: { layer: '', severity: '', search: '' },
     },
 
@@ -221,16 +223,65 @@
       });
       const panelHealth = document.getElementById('dh-panel-health');
       const panelSources = document.getElementById('dh-panel-sources');
+      const panelClients = document.getElementById('dh-panel-clients');
       if (panelHealth) panelHealth.style.display = tab === 'health' ? '' : 'none';
       if (panelSources) panelSources.style.display = tab === 'sources' ? '' : 'none';
+      if (panelClients) panelClients.style.display = tab === 'clients' ? '' : 'none';
       if (tab === 'sources' && !this.state.sources) {
-        // lazy load sources
         fetch('/api/data_health/sources').then((r) => r.json()).then((data) => {
           this.state.sources = data;
           this.state.sourcesAt = Date.now();
           this.renderSourcesTable();
         });
       }
+      if (tab === 'clients' && !this.state.clients) {
+        fetch('/api/data_health/clients').then((r) => r.json()).then((data) => {
+          this.state.clients = data;
+          this.state.clientsAt = Date.now();
+          this.renderClientsTable();
+        });
+      }
+    },
+
+    renderClientsTable() {
+      const data = this.state.clients;
+      const tbody = document.getElementById('dh-clients-tbody');
+      if (!tbody || !data) return;
+      const clients = (data.clients || []).slice().sort((a, b) => {
+        if (a.source_tier !== b.source_tier) return a.source_tier - b.source_tier;
+        return (a.client_id || '').localeCompare(b.client_id || '');
+      });
+      if (clients.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="7" style="padding:30px;text-align:center" class="muted">空</td></tr>';
+        return;
+      }
+      tbody.innerHTML = clients.map((c) => {
+        const tier = c.source_tier;
+        const tierBadge = tier === 1 ? '<span style="padding:2px 6px;background:#e8f4ec;color:#1f7a3a;border-radius:3px;font-size:11px">tier 1 主</span>'
+          : tier === 2 ? '<span style="padding:2px 6px;background:#fff4d4;color:#a67c00;border-radius:3px;font-size:11px">tier 2 备</span>'
+          : tier === 3 ? '<span style="padding:2px 6px;background:#fde8e8;color:#a02a2a;border-radius:3px;font-size:11px">tier 3 兜底</span>'
+          : '<span class="muted" style="font-size:11px">派生</span>';
+        const hs = c.health_summary || {};
+        const healthHtml = `
+          <span style="color:#2a7a2a">🟢 ${hs.green || 0}</span>
+          <span style="color:#a67c00;margin-left:4px">🟡 ${hs.yellow || 0}</span>
+          <span style="color:#c33;margin-left:4px">🔴 ${hs.red || 0}</span>`;
+        const writes = (c.writes || []).map((w) => {
+          const sev = w.severity || 'unknown';
+          const dot = sev === 'red' ? '🔴' : sev === 'yellow' ? '🟡' : sev === 'green' ? '🟢' : '⚪';
+          return `<div style="margin:2px 0">${dot} <code style="font-size:11px">${this.esc(w.table)}</code> <span class="muted" style="font-size:10px">· ${this.esc(w.purpose || '')} · ${this.esc(w.freshness)}/${w.sla_hours}h</span></div>`;
+        }).join('');
+        const fb = (c.fallback_chain || []).join(' → ') || '—';
+        return `<tr style="border-bottom:1px solid var(--cm-ink-50,#f0f0f0);vertical-align:top">
+          <td style="padding:6px 12px">${tierBadge}</td>
+          <td style="padding:6px 12px"><code style="font-size:12px;font-weight:600">${this.esc(c.client_id)}</code><br><span class="muted" style="font-size:10px">${this.esc(c.description)}</span></td>
+          <td style="padding:6px 12px">${writes}</td>
+          <td style="padding:6px 12px;font-size:11px" class="muted">${this.esc(fb)}</td>
+          <td style="padding:6px 12px;text-align:right">${(c.writes || []).length}</td>
+          <td style="padding:6px 12px;text-align:right;font-size:11px">${healthHtml}</td>
+          <td style="padding:6px 12px;font-size:11px" class="muted"><code>${this.esc(c.sync_step_id || '—')}</code></td>
+        </tr>`;
+      }).join('');
     },
 
     async openAssetDrawer(tableName) {
