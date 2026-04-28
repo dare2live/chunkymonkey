@@ -3,7 +3,14 @@
 **起始**: 2026-04-27
 **最后更新**: 2026-04-27 (v2: 加入 pytdx/tdxhub 扩展路径 + 三项目布局)
 **目标**: 从第一性原理重新设计数据层 + UI 层, 让数据源接入、数据管理、策略调参、系统设置各司其职.
-**状态**: 设计稿, **未实现**, 待 review.
+
+> **[2026-04-28 状态更新]** 本文档已部分实施 (P5-P8). 文中提到的 `top_free_holders` /
+> `RPT_F10_EH_FREEHOLDERS` 已在 P7 退役, 替代为 tdxhub.holders.HolderFetcher (capability
+> 名 `holders_top10_float`, 写表 `fact_top10_holder_period`). 下文相关章节内容仅保留为
+> 设计历史, 不代表当前状态. 当前架构请以 `docs/system-overview.md` + 各 service 实际代码
+> 为准.
+
+**状态**: 设计稿 (已部分实施, 标注见上).
 
 ---
 

@@ -1,4 +1,3 @@
-import sqlite3
 import sys
 from pathlib import Path
 from unittest.mock import AsyncMock
@@ -8,6 +7,7 @@ from fastapi.testclient import TestClient
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
+from services.duck_adapter import connect as duck_connect
 from main import app
 
 
@@ -37,7 +37,7 @@ PRESERVED_TABLES = [
 
 
 def _prepare_test_db(db_path: Path) -> None:
-    conn = sqlite3.connect(db_path)
+    conn = duck_connect(str(db_path))
     try:
         for table_name in INDUSTRY_RESET_TABLES + PRESERVED_TABLES:
             conn.execute(f"CREATE TABLE {table_name} (id INTEGER)")
@@ -49,13 +49,13 @@ def _prepare_test_db(db_path: Path) -> None:
 
 def _conn_factory(db_path: Path):
     def _open_conn(timeout: int = 120):
-        return sqlite3.connect(db_path, timeout=timeout)
+        return duck_connect(str(db_path), timeout=timeout)
 
     return _open_conn
 
 
 def test_reset_industry_derived_clears_industry_dependent_tables(tmp_path, monkeypatch):
-    db_path = tmp_path / "industry-reset.sqlite3"
+    db_path = tmp_path / "industry-reset.duckdb"
     _prepare_test_db(db_path)
 
     monkeypatch.setattr("routers.updater.get_conn", _conn_factory(db_path))
@@ -69,7 +69,7 @@ def test_reset_industry_derived_clears_industry_dependent_tables(tmp_path, monke
     assert payload["counts"]["profiles"] == 1
     assert payload["missing_tables"] == []
 
-    conn = sqlite3.connect(db_path)
+    conn = duck_connect(str(db_path))
     try:
         for table_name in INDUSTRY_RESET_TABLES:
             remaining = conn.execute(f"SELECT COUNT(*) FROM {table_name}").fetchone()[0]
@@ -83,7 +83,7 @@ def test_reset_industry_derived_clears_industry_dependent_tables(tmp_path, monke
 
 
 def test_reset_industry_derived_can_chain_to_smart_update(tmp_path, monkeypatch):
-    db_path = tmp_path / "industry-reset-smart.sqlite3"
+    db_path = tmp_path / "industry-reset-smart.duckdb"
     _prepare_test_db(db_path)
 
     monkeypatch.setattr("routers.updater.get_conn", _conn_factory(db_path))

@@ -316,7 +316,7 @@ def _upsert_rows(conn: Any, rows: list[dict]) -> int:
             holder_rank            = excluded.holder_rank,
             notice_date            = excluded.notice_date,
             source                 = excluded.source,
-            ingested_at            = CURRENT_TIMESTAMP
+            ingested_at            = now()
         """,
         [
             (

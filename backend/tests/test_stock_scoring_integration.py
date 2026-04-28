@@ -1,4 +1,3 @@
-import sqlite3
 import sys
 from datetime import date, timedelta
 from pathlib import Path
@@ -8,13 +7,13 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
+from conftest import duck_mem
 from services import market_db
 from services.scoring import calculate_stock_scores
 
 
 def _make_conn():
-    conn = sqlite3.connect(":memory:")
-    conn.row_factory = sqlite3.Row
+    conn = duck_mem()
     conn.executescript(
         """
         CREATE TABLE app_settings (
@@ -269,8 +268,7 @@ def _make_conn():
 
 
 def _make_market_conn():
-    conn = sqlite3.connect(":memory:")
-    conn.row_factory = sqlite3.Row
+    conn = duck_mem()
     conn.execute(
         """
         CREATE TABLE price_kline (

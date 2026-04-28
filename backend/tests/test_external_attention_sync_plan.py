@@ -1,4 +1,3 @@
-import sqlite3
 import sys
 import unittest
 from datetime import date, datetime, timedelta
@@ -6,6 +5,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
+from conftest import duck_mem  # noqa: E402
 from routers.updater import _collect_downstream_steps  # noqa: E402
 from services.audit import (  # noqa: E402
     _classify_plannable_stale_kline_codes,
@@ -20,8 +20,7 @@ from services.utils import latest_completed_trade_date  # noqa: E402
 
 
 def _make_conn():
-    conn = sqlite3.connect(":memory:")
-    conn.row_factory = sqlite3.Row
+    conn = duck_mem()
     conn.executescript(
         """
         CREATE TABLE dim_stock_attention_latest (

@@ -1,7 +1,6 @@
 """QFII 季度持股同步测试。"""
 
 import asyncio
-import sqlite3
 import sys
 from datetime import date
 from pathlib import Path
@@ -11,6 +10,7 @@ import pandas as pd
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
+from conftest import duck_mem
 from services import qfii_client
 
 
@@ -90,8 +90,7 @@ def test_normalize_rows_raises_on_missing_column():
 
 
 def test_sync_qfii_quarter_upserts_all_symbols(monkeypatch):
-    conn = sqlite3.connect(":memory:")
-    conn.row_factory = sqlite3.Row
+    conn = duck_mem()
     qfii_client.ensure_tables(conn)
 
     calls = []
@@ -123,8 +122,7 @@ def test_sync_qfii_quarter_upserts_all_symbols(monkeypatch):
 
 
 def test_sync_qfii_quarter_is_idempotent(monkeypatch):
-    conn = sqlite3.connect(":memory:")
-    conn.row_factory = sqlite3.Row
+    conn = duck_mem()
     qfii_client.ensure_tables(conn)
 
     async def _fake_fetch(report_date: str, retries: int = 3):
@@ -140,8 +138,7 @@ def test_sync_qfii_quarter_is_idempotent(monkeypatch):
 
 
 def test_sync_qfii_quarter_handles_source_failure(monkeypatch):
-    conn = sqlite3.connect(":memory:")
-    conn.row_factory = sqlite3.Row
+    conn = duck_mem()
     qfii_client.ensure_tables(conn)
 
     async def _fake_fetch(report_date: str, retries: int = 3):
@@ -156,8 +153,7 @@ def test_sync_qfii_quarter_handles_source_failure(monkeypatch):
 
 
 def test_backfill_iterates_quarters(monkeypatch):
-    conn = sqlite3.connect(":memory:")
-    conn.row_factory = sqlite3.Row
+    conn = duck_mem()
     qfii_client.ensure_tables(conn)
 
     async def _fake_fetch(report_date: str, retries: int = 3):

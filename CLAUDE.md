@@ -43,6 +43,30 @@ If no type-checker is configured, state that explicitly instead of claiming succ
     - Test files and mocks
     Do not assume a single grep caught everything.
 
+11. TEST ENGINE PARITY: 测试必须用与生产一致的 DB 引擎. 本项目生产是 DuckDB,
+    测试也必须用 DuckDB (走 `services.duck_adapter.connect(':memory:')` 或
+    `duckdb.connect(':memory:')`). **禁止 import sqlite3** — 它会让 DuckDB-only 的
+    SQL 特性 (ANY_VALUE / information_schema / DROP TABLE IF EXISTS chained /
+    DuckDB UPSERT 语法等) 在测试中静默失败, 在生产中又工作正常, 形成定时炸弹.
+    新写测试默认走内存 DuckDB; 修老测试时顺手把 sqlite3 替换掉.
+
+12. NO SQL DIALECT POLYFILLS: 看到 "在 sqlite3 中找不到这个函数" 这类报错,
+    不要把生产 SQL 改成可移植的 (例如 ANY_VALUE→MAX, EPOCH→strftime).
+    要做的是把那条测试切到 DuckDB. 生产引擎的高级特性是优势, 不是包袱;
+    为了迁就测试桩降级生产 SQL = 把生产能力给削了.
+
+13. STALE REFERENCE AUDIT: 退役一个东西 (表/包/接口/库) 后, **必须** 跑
+    `python3 backend/scripts/audit_stale_references.py` 确认全仓没有活引用,
+    并把新退役项加到脚本顶部的 `KNOWN_RETIRED` 清单. 脚本逻辑:
+    - Tier 1: 全仓 grep 退役标记 (退役/废弃/deprecated/replaced/Phase X 等)
+    - Tier 3: 对每条 KNOWN_RETIRED 反向搜索, 区分 comment/code/test/doc/retirement_action
+    - 仅当出现非 comment 的 code 引用时返回 critical
+    退役 PR 必须把 audit 输出降到 "no critical" 才能合.
+
+    **教训**: 单纯改代码不删旧引用 = 定时炸弹. sqlite3 / market_raw_holdings /
+    RPT_F10_EH_FREEHOLDERS 这些都因"退役不彻底"在 PR 后埋下隐患;
+    审计脚本是定期清理工具, 也是 CI 守门人.
+
 ## 项目架构
 
 机构事件研究系统。机构是主角，股票是机构行为的载体。

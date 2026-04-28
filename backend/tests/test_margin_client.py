@@ -1,7 +1,6 @@
 """融资融券日度同步测试。"""
 
 import asyncio
-import sqlite3
 import sys
 from pathlib import Path
 
@@ -9,6 +8,7 @@ import pandas as pd
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
+from conftest import duck_mem
 from services import margin_client
 
 
@@ -66,8 +66,7 @@ def test_normalize_sz_maps_fields_and_computes_rzrq_when_missing():
 
 
 def test_sync_margin_day_upserts_both_markets(monkeypatch):
-    conn = sqlite3.connect(":memory:")
-    conn.row_factory = sqlite3.Row
+    conn = duck_mem()
     margin_client.ensure_tables(conn)
 
     async def _fake_fetch(yyyymmdd: str, retries: int = 3):
@@ -93,8 +92,7 @@ def test_sync_margin_day_upserts_both_markets(monkeypatch):
 
 
 def test_sync_margin_day_is_idempotent(monkeypatch):
-    conn = sqlite3.connect(":memory:")
-    conn.row_factory = sqlite3.Row
+    conn = duck_mem()
     margin_client.ensure_tables(conn)
 
     async def _fake_fetch(yyyymmdd: str, retries: int = 3):
@@ -108,8 +106,7 @@ def test_sync_margin_day_is_idempotent(monkeypatch):
 
 
 def test_sync_margin_day_survives_single_market_failure(monkeypatch):
-    conn = sqlite3.connect(":memory:")
-    conn.row_factory = sqlite3.Row
+    conn = duck_mem()
     margin_client.ensure_tables(conn)
 
     async def _fake_fetch(yyyymmdd: str, retries: int = 3):
@@ -126,8 +123,7 @@ def test_sync_margin_day_survives_single_market_failure(monkeypatch):
 
 
 def test_backfill_margin_skips_existing_and_honors_calendar(monkeypatch):
-    conn = sqlite3.connect(":memory:")
-    conn.row_factory = sqlite3.Row
+    conn = duck_mem()
     margin_client.ensure_tables(conn)
     conn.executescript(
         """
@@ -171,10 +167,9 @@ def test_updater_registers_sync_margin():
     assert updater.RUNNERS["sync_margin"] is updater._step_sync_margin
 
 
-def _conn_with_calendar() -> sqlite3.Connection:
+def _conn_with_calendar():
     """创建带 dim_trading_calendar 的 in-memory conn，供 fallback 链路测试使用。"""
-    conn = sqlite3.connect(":memory:")
-    conn.row_factory = sqlite3.Row
+    conn = duck_mem()
     margin_client.ensure_tables(conn)
     conn.executescript(
         """

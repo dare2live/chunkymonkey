@@ -1,16 +1,15 @@
-import sqlite3
 import sys
 from pathlib import Path
 
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
+from conftest import duck_mem
 import services.industry_context_engine as industry_context_engine
 
 
 def test_build_stock_industry_context_reads_from_tdx_industry():
-    conn = sqlite3.connect(":memory:")
-    conn.row_factory = sqlite3.Row
+    conn = duck_mem()
     conn.executescript(
         """
         CREATE TABLE mart_sector_momentum (

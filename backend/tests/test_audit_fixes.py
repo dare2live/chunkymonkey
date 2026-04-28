@@ -9,13 +9,13 @@
 
 from __future__ import annotations
 
-import sqlite3
 import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 import pytest
+from conftest import duck_mem
 from services.signals_v2 import PolicyConfig
 
 
@@ -128,11 +128,9 @@ def test_scoring_uses_per_institution_has_buy():
 
 def test_tdx_industry_history_table_created_and_written(tmp_path, monkeypatch):
     """sync_tdx_industry 应追加 dim_stock_tdx_industry_history 快照."""
-    import sqlite3
     from services import tdx_industry_client as tic
 
-    conn = sqlite3.connect(":memory:")
-    conn.row_factory = sqlite3.Row
+    conn = duck_mem()
     conn.executescript(
         """
         CREATE TABLE dim_stock_tdx_industry (
@@ -166,11 +164,9 @@ def test_tdx_industry_history_table_created_and_written(tmp_path, monkeypatch):
 
 def test_get_tdx_industry_at_event_time_fallback():
     """历史快照为空时 get_tdx_industry_at 应 fallback 到当前行业."""
-    import sqlite3
     from services import tdx_industry_client as tic
 
-    conn = sqlite3.connect(":memory:")
-    conn.row_factory = sqlite3.Row
+    conn = duck_mem()
     conn.executescript(
         """
         CREATE TABLE dim_stock_tdx_industry (
@@ -186,7 +182,7 @@ def test_get_tdx_industry_at_event_time_fallback():
             PRIMARY KEY(stock_code, snapshot_date)
         );
         INSERT INTO dim_stock_tdx_industry
-            VALUES('600519','T02','T0202','T020201','消费','饮料','白酒',NULL,'now');
+            VALUES('600519','T02','T0202','T020201','消费','饮料','白酒',NULL,CURRENT_TIMESTAMP);
         """
     )
     # 无 history，应回退当前（get_tdx_industry 返回 dict 无 source 字段）

@@ -1,4 +1,3 @@
-import sqlite3
 import sys
 import types
 from datetime import datetime
@@ -11,6 +10,7 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
+from conftest import duck_mem
 from services import financial_client
 
 
@@ -103,8 +103,7 @@ def _create_history_candidate_tables(conn):
 
 
 def test_resolve_history_candidate_limit_caps_large_backlogs_to_safe_batch():
-    conn = sqlite3.connect(":memory:")
-    conn.row_factory = sqlite3.Row
+    conn = duck_mem()
     financial_client.ensure_tables(conn)
     try:
         conn.execute("CREATE TABLE mart_stock_trend (stock_code TEXT PRIMARY KEY)")
@@ -123,8 +122,7 @@ def test_resolve_history_candidate_limit_caps_large_backlogs_to_safe_batch():
 
 
 def test_resolve_history_candidate_limit_keeps_small_explicit_batches():
-    conn = sqlite3.connect(":memory:")
-    conn.row_factory = sqlite3.Row
+    conn = duck_mem()
     financial_client.ensure_tables(conn)
     try:
         limit = financial_client._resolve_history_candidate_limit(conn, ["000001", "000002", "000003"])
@@ -134,8 +132,7 @@ def test_resolve_history_candidate_limit_keeps_small_explicit_batches():
 
 
 def test_select_history_candidates_skips_recent_history_cooldown():
-    conn = sqlite3.connect(":memory:")
-    conn.row_factory = sqlite3.Row
+    conn = duck_mem()
     financial_client.ensure_tables(conn)
     try:
         _create_history_candidate_tables(conn)
@@ -172,8 +169,7 @@ def test_select_history_candidates_skips_recent_history_cooldown():
 
 
 def test_snapshot_state_update_preserves_history_phase_status():
-    conn = sqlite3.connect(":memory:")
-    conn.row_factory = sqlite3.Row
+    conn = duck_mem()
     financial_client.ensure_tables(conn)
     try:
         financial_client._apply_history_backfill(
@@ -273,8 +269,7 @@ def test_fetch_sina_history_batch_keeps_partial_rows_when_one_statement_fails():
 
 @pytest.mark.asyncio
 async def test_sync_financial_data_skips_recent_snapshot_successes():
-    conn = sqlite3.connect(":memory:")
-    conn.row_factory = sqlite3.Row
+    conn = duck_mem()
     financial_client.ensure_tables(conn)
     try:
         financial_client._upsert_raw_financial(conn, _build_raw_record("000001", "2025-12-31"))
@@ -301,8 +296,7 @@ async def test_sync_financial_data_skips_recent_snapshot_successes():
 
 @pytest.mark.asyncio
 async def test_sync_financial_data_marks_missing_report_date_as_failed():
-    conn = sqlite3.connect(":memory:")
-    conn.row_factory = sqlite3.Row
+    conn = duck_mem()
     financial_client.ensure_tables(conn)
     try:
         snapshot_payload = {
@@ -348,8 +342,7 @@ async def test_sync_financial_data_marks_missing_report_date_as_failed():
 
 @pytest.mark.asyncio
 async def test_sync_financial_data_reports_progress_snapshots():
-    conn = sqlite3.connect(":memory:")
-    conn.row_factory = sqlite3.Row
+    conn = duck_mem()
     financial_client.ensure_tables(conn)
     progress = []
     try:

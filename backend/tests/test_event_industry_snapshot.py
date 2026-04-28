@@ -7,19 +7,18 @@ Phase 3b-1: 事件行业聚合口径迁移测试
   dim_stock_tdx_industry 聚合, 写入 tdx_code + industry_name.
 """
 
-import sqlite3
 import sys
 from pathlib import Path
 
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
+from conftest import duck_mem
 from routers import updater
 
 
 def _make_conn():
-    conn = sqlite3.connect(":memory:")
-    conn.row_factory = sqlite3.Row
+    conn = duck_mem()
     conn.executescript(
         """
         CREATE TABLE fact_institution_event (

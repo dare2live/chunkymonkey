@@ -1,16 +1,15 @@
-import sqlite3
 import sys
 from pathlib import Path
 
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
+from conftest import duck_mem
 import services.holdings as holdings
 
 
 def test_get_inst_current_holdings_adds_industry_aliases_and_other_institutions():
-    conn = sqlite3.connect(":memory:")
-    conn.row_factory = sqlite3.Row
+    conn = duck_mem()
     conn.executescript(
         """
         CREATE TABLE mart_current_relationship (

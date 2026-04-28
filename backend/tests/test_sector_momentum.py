@@ -1,4 +1,3 @@
-import sqlite3
 import sys
 from datetime import date, timedelta
 from pathlib import Path
@@ -6,12 +5,12 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
+from conftest import duck_mem
 import services.sector_momentum as sector_momentum
 
 
 def _make_smart_conn():
-    conn = sqlite3.connect(":memory:")
-    conn.row_factory = sqlite3.Row
+    conn = duck_mem()
     conn.executescript(
         """
         CREATE TABLE dim_stock_tdx_industry (
@@ -36,8 +35,7 @@ def _make_smart_conn():
 
 
 def _make_market_conn():
-    conn = sqlite3.connect(":memory:")
-    conn.row_factory = sqlite3.Row
+    conn = duck_mem()
     conn.executescript(
         """
         CREATE TABLE price_kline (

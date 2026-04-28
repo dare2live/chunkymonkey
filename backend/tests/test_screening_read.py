@@ -1,11 +1,11 @@
 import asyncio
-import sqlite3
 import sys
 from pathlib import Path
 
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
+from conftest import duck_mem
 from routers import screening as screening_router
 from services.screening_read import (
     get_screening_detail,
@@ -28,8 +28,7 @@ class _SharedConnProxy:
 
 
 def _make_conn():
-    conn = sqlite3.connect(":memory:")
-    conn.row_factory = sqlite3.Row
+    conn = duck_mem()
     conn.executescript(
         """
         CREATE TABLE mart_stock_screening (

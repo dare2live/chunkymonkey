@@ -58,7 +58,8 @@ mart_*  集市层 (派生, 可重算, 带 schema 版本)
 
 | 表 | 说明 | 行数 | 来源 |
 |---|---|---|---|
-| `market_raw_holdings` | 十大股东全量快照 | 719k | akshare (stock_gdfx_free_holding_detail) |
+| `fact_top10_holder_period` | 十大流通股东 / 十大股东 (A/H 拆分 + holder_set + is_exit_row + source_tier) | 474k | tdxhub.holders.HolderFetcher (P7 起替代 market_raw_holdings) |
+| `raw_tdx_f10_holder_research` | F10 「股东研究」原文 (raw_hash 链回 fact_top10_holder_period) | 5.2k | tdxhub F10 |
 | `raw_executive_trade` | 高管股份变动 | 144k | akshare (stock_ggcg) |
 | `raw_lhb_daily` | 龙虎榜明细 | 62k | akshare (stock_lhb_detail_em) |
 | `raw_margin_daily` | 两融余额明细 | 2.9M | akshare (stock_margin_detail_szse/sse) |
@@ -144,8 +145,9 @@ mart_*  集市层 (派生, 可重算, 带 schema 版本)
 ```
 tdxhub (tdxhub fork)   → price_kline_tdxhub (日线、分钟线)
                        → financial raw (财务三张表 via python-tdxhub)
-akshare               → market_raw_holdings (十大股东)
-                       → raw_lhb_daily / raw_executive_trade / raw_margin_daily
+                       → fact_top10_holder_period + raw_tdx_f10_holder_research
+                         (P7 替代 miaoxiang RPT_F10_EH_FREEHOLDERS, 99.6% 全市场覆盖)
+akshare               → raw_lhb_daily / raw_executive_trade / raw_margin_daily
                        → raw_gpcw_* / raw_institution_surveys / raw_qfii_*
                        → raw_capital_* (分红/解禁/回购)
 本地计算               → fact_institution_event (raw 差分)

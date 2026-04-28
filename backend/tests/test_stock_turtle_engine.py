@@ -1,17 +1,18 @@
-import sqlite3
 import sys
 from datetime import date, timedelta
 from pathlib import Path
 
+import pytest
+
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
+from conftest import duck_mem
 from services.stock_turtle_engine import build_stock_turtle_features, ensure_tables
 
 
 def _make_conn():
-    conn = sqlite3.connect(":memory:")
-    conn.row_factory = sqlite3.Row
+    conn = duck_mem()
     conn.executescript(
         """
         CREATE TABLE mart_stock_trend (
@@ -56,8 +57,7 @@ def _make_conn():
 
 
 def _make_market_conn():
-    conn = sqlite3.connect(":memory:")
-    conn.row_factory = sqlite3.Row
+    conn = duck_mem()
     conn.executescript(
         """
         CREATE TABLE price_kline (
@@ -156,10 +156,11 @@ def test_build_stock_turtle_features_materializes_breakout_and_reference_levels(
         assert row["breakout_dist_20_pct"] > 0
         assert row["breakout_dist_55_pct"] > 0
         assert row["atr_14"] is not None and row["atr_14"] > 0
-        assert row["stop_level_55_2n"] == round(row["entry_level_55"] - 2 * row["atr_14"], 4)
-        assert row["add_level_55_1"] == round(row["entry_level_55"] + 0.5 * row["atr_14"], 4)
-        assert row["add_level_55_2"] == round(row["entry_level_55"] + 1.0 * row["atr_14"], 4)
-        assert row["add_level_55_3"] == round(row["entry_level_55"] + 1.5 * row["atr_14"], 4)
+        # DuckDB REAL = FLOAT32; 与 Python float64 复算后用 approx 比较.
+        assert row["stop_level_55_2n"] == pytest.approx(row["entry_level_55"] - 2 * row["atr_14"], abs=1e-3)
+        assert row["add_level_55_1"] == pytest.approx(row["entry_level_55"] + 0.5 * row["atr_14"], abs=1e-3)
+        assert row["add_level_55_2"] == pytest.approx(row["entry_level_55"] + 1.0 * row["atr_14"], abs=1e-3)
+        assert row["add_level_55_3"] == pytest.approx(row["entry_level_55"] + 1.5 * row["atr_14"], abs=1e-3)
         assert row["turtle_execution_score_v1"] >= 65
     finally:
         mkt_conn.close()

@@ -1,16 +1,15 @@
-import sqlite3
 import sys
 from pathlib import Path
 
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
+from conftest import duck_mem
 import services.institution_write as institution_write
 
 
 def _make_conn():
-    conn = sqlite3.connect(":memory:")
-    conn.row_factory = sqlite3.Row
+    conn = duck_mem()
     conn.executescript(
         """
         CREATE TABLE inst_institutions (
@@ -32,11 +31,12 @@ def _make_conn():
         CREATE TABLE mart_institution_profile (institution_id TEXT);
         CREATE TABLE mart_institution_industry_stat (institution_id TEXT);
         CREATE TABLE excluded_stocks (
-            stock_code TEXT,
-            category TEXT,
+            stock_code TEXT NOT NULL,
+            category TEXT NOT NULL,
             stock_name TEXT,
             reason TEXT,
-            created_at TEXT
+            created_at TEXT,
+            PRIMARY KEY (stock_code, category)
         );
         CREATE TABLE dim_active_a_stock (
             stock_code TEXT,

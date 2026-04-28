@@ -1,7 +1,6 @@
 """龙虎榜日度同步测试。"""
 
 import asyncio
-import sqlite3
 import sys
 from pathlib import Path
 
@@ -9,6 +8,7 @@ import pandas as pd
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
+from conftest import duck_mem
 from services import lhb_client
 
 
@@ -63,8 +63,7 @@ def test_normalize_rows_raises_on_missing_column():
 
 
 def test_sync_lhb_range_upserts_rows(monkeypatch):
-    conn = sqlite3.connect(":memory:")
-    conn.row_factory = sqlite3.Row
+    conn = duck_mem()
     lhb_client.ensure_tables(conn)
 
     async def _fake_fetch(s, e, retries: int = 3):
@@ -86,8 +85,7 @@ def test_sync_lhb_range_upserts_rows(monkeypatch):
 
 
 def test_sync_lhb_is_idempotent(monkeypatch):
-    conn = sqlite3.connect(":memory:")
-    conn.row_factory = sqlite3.Row
+    conn = duck_mem()
     lhb_client.ensure_tables(conn)
 
     async def _fake_fetch(s, e, retries: int = 3):
@@ -101,8 +99,7 @@ def test_sync_lhb_is_idempotent(monkeypatch):
 
 
 def test_sync_lhb_range_handles_source_failure(monkeypatch):
-    conn = sqlite3.connect(":memory:")
-    conn.row_factory = sqlite3.Row
+    conn = duck_mem()
     lhb_client.ensure_tables(conn)
 
     async def _fake_fetch(s, e, retries: int = 3):
@@ -126,8 +123,7 @@ def test_monthly_windows_split_correctly():
 
 
 def test_backfill_iterates_months(monkeypatch):
-    conn = sqlite3.connect(":memory:")
-    conn.row_factory = sqlite3.Row
+    conn = duck_mem()
     lhb_client.ensure_tables(conn)
 
     calls = []

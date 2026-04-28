@@ -1,4 +1,3 @@
-import sqlite3
 import sys
 from datetime import datetime
 from pathlib import Path
@@ -6,6 +5,7 @@ from pathlib import Path
 # Add backend directory to Python path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
+from conftest import duck_mem
 from services.utils import (
     clamp,
     clamp_score,
@@ -58,8 +58,7 @@ def test_parse_any_date():
 
 
 def test_latest_completed_trade_date_before_close_uses_previous_trade_day():
-    conn = sqlite3.connect(":memory:")
-    conn.row_factory = sqlite3.Row
+    conn = duck_mem()
     conn.execute("CREATE TABLE dim_trading_calendar (trade_date TEXT PRIMARY KEY, is_trading INTEGER NOT NULL)")
     conn.executemany(
         "INSERT INTO dim_trading_calendar(trade_date, is_trading) VALUES (?, ?)",
@@ -70,8 +69,7 @@ def test_latest_completed_trade_date_before_close_uses_previous_trade_day():
 
 
 def test_latest_completed_trade_date_after_close_can_use_same_day():
-    conn = sqlite3.connect(":memory:")
-    conn.row_factory = sqlite3.Row
+    conn = duck_mem()
     conn.execute("CREATE TABLE dim_trading_calendar (trade_date TEXT PRIMARY KEY, is_trading INTEGER NOT NULL)")
     conn.executemany(
         "INSERT INTO dim_trading_calendar(trade_date, is_trading) VALUES (?, ?)",

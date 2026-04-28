@@ -85,8 +85,10 @@ def build_inst_industry_performance(conn) -> dict:
         rows = conn.execute(f"""
             SELECT
                 e.institution_id,
-                COALESCE(NULLIF(i.display_name,''), i.name) as inst_name,
-                i.type as inst_type,
+                -- DuckDB GROUP BY 严格: 非聚合列必须 in GROUP BY 或 ANY_VALUE 包.
+                -- (institution_id, industry) 是 1:N -> 1:1 与 i 表 join, 同组 i 列恒等.
+                ANY_VALUE(COALESCE(NULLIF(i.display_name,''), i.name)) as inst_name,
+                ANY_VALUE(i.type) as inst_type,
                 industry_dim.{level_col} as industry,
                 -- 买入事件数
                 SUM(CASE WHEN e.event_type IN ('new_entry','increase') THEN 1 ELSE 0 END) as buy_cnt,
@@ -98,13 +100,13 @@ def build_inst_industry_performance(conn) -> dict:
                 AVG(CASE WHEN e.event_type IN ('new_entry','increase') THEN e.gain_120d END) as ag120,
                 -- 胜率
                 SUM(CASE WHEN e.event_type IN ('new_entry','increase') AND e.gain_10d>0 THEN 1 ELSE 0 END)*100.0/
-                    MAX(SUM(CASE WHEN e.event_type IN ('new_entry','increase') AND e.gain_10d IS NOT NULL THEN 1 ELSE 0 END),1) as wr10,
+                    GREATEST(SUM(CASE WHEN e.event_type IN ('new_entry','increase') AND e.gain_10d IS NOT NULL THEN 1 ELSE 0 END),1) as wr10,
                 SUM(CASE WHEN e.event_type IN ('new_entry','increase') AND e.gain_30d>0 THEN 1 ELSE 0 END)*100.0/
-                    MAX(SUM(CASE WHEN e.event_type IN ('new_entry','increase') AND e.gain_30d IS NOT NULL THEN 1 ELSE 0 END),1) as wr30,
+                    GREATEST(SUM(CASE WHEN e.event_type IN ('new_entry','increase') AND e.gain_30d IS NOT NULL THEN 1 ELSE 0 END),1) as wr30,
                 SUM(CASE WHEN e.event_type IN ('new_entry','increase') AND e.gain_60d>0 THEN 1 ELSE 0 END)*100.0/
-                    MAX(SUM(CASE WHEN e.event_type IN ('new_entry','increase') AND e.gain_60d IS NOT NULL THEN 1 ELSE 0 END),1) as wr60,
+                    GREATEST(SUM(CASE WHEN e.event_type IN ('new_entry','increase') AND e.gain_60d IS NOT NULL THEN 1 ELSE 0 END),1) as wr60,
                 SUM(CASE WHEN e.event_type IN ('new_entry','increase') AND e.gain_120d>0 THEN 1 ELSE 0 END)*100.0/
-                    MAX(SUM(CASE WHEN e.event_type IN ('new_entry','increase') AND e.gain_120d IS NOT NULL THEN 1 ELSE 0 END),1) as wr120,
+                    GREATEST(SUM(CASE WHEN e.event_type IN ('new_entry','increase') AND e.gain_120d IS NOT NULL THEN 1 ELSE 0 END),1) as wr120,
                 -- 回撤
                 AVG(CASE WHEN e.event_type IN ('new_entry','increase') THEN e.max_drawdown_30d END) as dd30,
                 AVG(CASE WHEN e.event_type IN ('new_entry','increase') THEN e.max_drawdown_60d END) as dd60,
@@ -113,10 +115,10 @@ def build_inst_industry_performance(conn) -> dict:
                 AVG(e.premium_pct) as avg_prem,
                 -- 低溢价胜率
                 SUM(CASE WHEN e.event_type IN ('new_entry','increase') AND e.premium_pct<=5 AND e.gain_30d>0 THEN 1 ELSE 0 END)*100.0/
-                    MAX(SUM(CASE WHEN e.event_type IN ('new_entry','increase') AND e.premium_pct<=5 AND e.gain_30d IS NOT NULL THEN 1 ELSE 0 END),1) as lp_wr30,
+                    GREATEST(SUM(CASE WHEN e.event_type IN ('new_entry','increase') AND e.premium_pct<=5 AND e.gain_30d IS NOT NULL THEN 1 ELSE 0 END),1) as lp_wr30,
                 -- 高溢价胜率
                 SUM(CASE WHEN e.event_type IN ('new_entry','increase') AND e.premium_pct>20 AND e.gain_30d>0 THEN 1 ELSE 0 END)*100.0/
-                    MAX(SUM(CASE WHEN e.event_type IN ('new_entry','increase') AND e.premium_pct>20 AND e.gain_30d IS NOT NULL THEN 1 ELSE 0 END),1) as hp_wr30
+                    GREATEST(SUM(CASE WHEN e.event_type IN ('new_entry','increase') AND e.premium_pct>20 AND e.gain_30d IS NOT NULL THEN 1 ELSE 0 END),1) as hp_wr30
             FROM fact_institution_event e
             JOIN inst_institutions i ON e.institution_id = i.id
             {industry_join}
@@ -332,7 +334,7 @@ def build_cross_factor_analysis(conn) -> dict:
             SELECT i.type as fa, industry_dim.tdx_l1 as fb,
                 COUNT(*) as n, AVG(e.gain_30d) as g30, AVG(e.gain_60d) as g60, AVG(e.gain_120d) as g120,
                 SUM(CASE WHEN e.gain_30d>0 THEN 1 ELSE 0 END)*100.0/COUNT(*) as wr30,
-                SUM(CASE WHEN e.gain_60d>0 THEN 1 ELSE 0 END)*100.0/MAX(SUM(CASE WHEN e.gain_60d IS NOT NULL THEN 1 ELSE 0 END),1) as wr60,
+                SUM(CASE WHEN e.gain_60d>0 THEN 1 ELSE 0 END)*100.0/GREATEST(SUM(CASE WHEN e.gain_60d IS NOT NULL THEN 1 ELSE 0 END),1) as wr60,
                 AVG(e.max_drawdown_30d) as dd30
             FROM fact_institution_event e
             JOIN inst_institutions i ON e.institution_id=i.id
@@ -351,7 +353,7 @@ def build_cross_factor_analysis(conn) -> dict:
             END as fa, industry_dim.tdx_l1 as fb,
                 COUNT(*) as n, AVG(e.gain_30d) as g30, AVG(e.gain_60d) as g60, AVG(e.gain_120d) as g120,
                 SUM(CASE WHEN e.gain_30d>0 THEN 1 ELSE 0 END)*100.0/COUNT(*) as wr30,
-                SUM(CASE WHEN e.gain_60d>0 THEN 1 ELSE 0 END)*100.0/MAX(SUM(CASE WHEN e.gain_60d IS NOT NULL THEN 1 ELSE 0 END),1) as wr60,
+                SUM(CASE WHEN e.gain_60d>0 THEN 1 ELSE 0 END)*100.0/GREATEST(SUM(CASE WHEN e.gain_60d IS NOT NULL THEN 1 ELSE 0 END),1) as wr60,
                 AVG(e.max_drawdown_30d) as dd30
             FROM fact_institution_event e
             {industry_join}
@@ -369,7 +371,7 @@ def build_cross_factor_analysis(conn) -> dict:
             END as fa, i.type as fb,
                 COUNT(*) as n, AVG(e.gain_30d) as g30, AVG(e.gain_60d) as g60, AVG(e.gain_120d) as g120,
                 SUM(CASE WHEN e.gain_30d>0 THEN 1 ELSE 0 END)*100.0/COUNT(*) as wr30,
-                SUM(CASE WHEN e.gain_60d>0 THEN 1 ELSE 0 END)*100.0/MAX(SUM(CASE WHEN e.gain_60d IS NOT NULL THEN 1 ELSE 0 END),1) as wr60,
+                SUM(CASE WHEN e.gain_60d>0 THEN 1 ELSE 0 END)*100.0/GREATEST(SUM(CASE WHEN e.gain_60d IS NOT NULL THEN 1 ELSE 0 END),1) as wr60,
                 AVG(e.max_drawdown_30d) as dd30
             FROM fact_institution_event e
             JOIN inst_institutions i ON e.institution_id=i.id
@@ -385,7 +387,7 @@ def build_cross_factor_analysis(conn) -> dict:
             END as fa, industry_dim.tdx_l1 as fb,
                 COUNT(*) as n, AVG(e.gain_30d) as g30, AVG(e.gain_60d) as g60, AVG(e.gain_120d) as g120,
                 SUM(CASE WHEN e.gain_30d>0 THEN 1 ELSE 0 END)*100.0/COUNT(*) as wr30,
-                SUM(CASE WHEN e.gain_60d>0 THEN 1 ELSE 0 END)*100.0/MAX(SUM(CASE WHEN e.gain_60d IS NOT NULL THEN 1 ELSE 0 END),1) as wr60,
+                SUM(CASE WHEN e.gain_60d>0 THEN 1 ELSE 0 END)*100.0/GREATEST(SUM(CASE WHEN e.gain_60d IS NOT NULL THEN 1 ELSE 0 END),1) as wr60,
                 AVG(e.max_drawdown_30d) as dd30
             FROM fact_institution_event e
             {industry_join}
@@ -411,7 +413,7 @@ def build_cross_factor_analysis(conn) -> dict:
             END as fb,
                 COUNT(*) as n, AVG(e.gain_30d) as g30, AVG(e.gain_60d) as g60, AVG(e.gain_120d) as g120,
                 SUM(CASE WHEN e.gain_30d>0 THEN 1 ELSE 0 END)*100.0/COUNT(*) as wr30,
-                SUM(CASE WHEN e.gain_60d>0 THEN 1 ELSE 0 END)*100.0/MAX(SUM(CASE WHEN e.gain_60d IS NOT NULL THEN 1 ELSE 0 END),1) as wr60,
+                SUM(CASE WHEN e.gain_60d>0 THEN 1 ELSE 0 END)*100.0/GREATEST(SUM(CASE WHEN e.gain_60d IS NOT NULL THEN 1 ELSE 0 END),1) as wr60,
                 AVG(e.max_drawdown_30d) as dd30
             FROM fact_institution_event e
             JOIN stock_inst s ON e.stock_code=s.stock_code AND e.report_date=s.report_date

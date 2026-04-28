@@ -5,10 +5,10 @@ import asyncio
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
+from conftest import duck_mem
 import services.market_signals as market_signals
 import services.market_db as market_db
 import services.stock_detail_read as stock_detail_read
-import sqlite3
 
 
 class _DummyMarketConn:
@@ -20,8 +20,7 @@ class _DummyMarketConn:
 
 
 def test_load_stock_name_prefers_dim_active_then_market_raw_then_code():
-    conn = sqlite3.connect(":memory:")
-    conn.row_factory = sqlite3.Row
+    conn = duck_mem()
     conn.executescript(
         """
         CREATE TABLE dim_active_a_stock (
@@ -166,8 +165,7 @@ def test_load_stock_detail_timeline_falls_back_without_market_data(monkeypatch):
 
 
 def test_load_stock_tdx_block_memberships_groups_by_category():
-    conn = sqlite3.connect(":memory:")
-    conn.row_factory = sqlite3.Row
+    conn = duck_mem()
     conn.executescript(
         """
         CREATE TABLE dim_stock_tdx_block (

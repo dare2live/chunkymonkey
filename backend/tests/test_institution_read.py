@@ -1,16 +1,15 @@
-import sqlite3
 import sys
 from pathlib import Path
 
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
+from conftest import duck_mem
 import services.institution_read as institution_read
 
 
 def test_load_tracked_institution_names_merges_aliases_and_ignores_bad_json():
-    conn = sqlite3.connect(":memory:")
-    conn.row_factory = sqlite3.Row
+    conn = duck_mem()
     conn.executescript(
         """
         CREATE TABLE inst_institutions (
@@ -39,8 +38,7 @@ def test_load_tracked_institution_names_merges_aliases_and_ignores_bad_json():
 
 
 def test_search_institution_candidates_requires_keywords(monkeypatch):
-    conn = sqlite3.connect(":memory:")
-    conn.row_factory = sqlite3.Row
+    conn = duck_mem()
     conn.executescript(
         """
         CREATE TABLE inst_institutions (
@@ -67,8 +65,7 @@ def test_search_institution_candidates_requires_keywords(monkeypatch):
 
 
 def test_search_institution_candidates_supports_or_and_and_alias_tracking(monkeypatch):
-    conn = sqlite3.connect(":memory:")
-    conn.row_factory = sqlite3.Row
+    conn = duck_mem()
     conn.executescript(
         """
         CREATE TABLE inst_institutions (
@@ -114,8 +111,7 @@ def test_search_institution_candidates_supports_or_and_and_alias_tracking(monkey
 
 
 def test_search_institution_candidates_filters_holder_type_on_cache_table(monkeypatch):
-    conn = sqlite3.connect(":memory:")
-    conn.row_factory = sqlite3.Row
+    conn = duck_mem()
     conn.executescript(
         """
         CREATE TABLE inst_institutions (
@@ -152,8 +148,7 @@ def test_search_institution_candidates_filters_holder_type_on_cache_table(monkey
 
 
 def test_load_tracked_institutions_filters_and_sorts(monkeypatch):
-    conn = sqlite3.connect(":memory:")
-    conn.row_factory = sqlite3.Row
+    conn = duck_mem()
     conn.executescript(
         """
         CREATE TABLE inst_institutions (
@@ -214,8 +209,7 @@ def test_load_tracked_institutions_filters_and_sorts(monkeypatch):
 
 
 def test_load_institution_profiles_uses_live_display_name_and_type():
-    conn = sqlite3.connect(":memory:")
-    conn.row_factory = sqlite3.Row
+    conn = duck_mem()
     conn.executescript(
         """
         CREATE TABLE mart_institution_profile (
@@ -266,8 +260,7 @@ def test_load_institution_profiles_uses_live_display_name_and_type():
 
 
 def test_load_institution_profile_detail_appends_exits_and_builds_industry_summary(monkeypatch):
-    conn = sqlite3.connect(":memory:")
-    conn.row_factory = sqlite3.Row
+    conn = duck_mem()
     conn.executescript(
         """
         CREATE TABLE mart_institution_industry_stat (
@@ -326,8 +319,7 @@ def test_load_institution_profile_detail_appends_exits_and_builds_industry_summa
 
 
 def test_load_institution_returns_history_calculates_extremes():
-    conn = sqlite3.connect(":memory:")
-    conn.row_factory = sqlite3.Row
+    conn = duck_mem()
     conn.executescript(
         """
         CREATE TABLE fact_institution_event (

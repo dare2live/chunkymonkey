@@ -1,17 +1,18 @@
 import math
-import sqlite3
 import sys
 from pathlib import Path
+
+import pytest
 
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
+from conftest import duck_mem
 from services.scoring import calculate_institution_scores
 
 
 def _make_conn():
-    conn = sqlite3.connect(":memory:")
-    conn.row_factory = sqlite3.Row
+    conn = duck_mem()
     conn.executescript(
         """
         CREATE TABLE app_settings (
@@ -83,33 +84,33 @@ def _make_conn():
 
 
 def _insert_profile(conn, institution_id, **values):
-    payload = {
-        "institution_id": institution_id,
-        "total_events": values.get("total_events", 0),
-        "avg_gain_30d": values.get("avg_gain_30d"),
-        "avg_gain_60d": values.get("avg_gain_60d"),
-        "avg_gain_120d": values.get("avg_gain_120d"),
-        "win_rate_30d": values.get("win_rate_30d"),
-        "win_rate_60d": values.get("win_rate_60d"),
-        "win_rate_90d": values.get("win_rate_90d"),
-        "win_rate_120d": values.get("win_rate_120d"),
-        "median_gain_30d": values.get("median_gain_30d"),
-        "median_max_drawdown_30d": values.get("median_max_drawdown_30d"),
-        "buy_event_count": values.get("buy_event_count"),
-        "buy_avg_gain_30d": values.get("buy_avg_gain_30d"),
-        "buy_avg_gain_60d": values.get("buy_avg_gain_60d"),
-        "buy_avg_gain_120d": values.get("buy_avg_gain_120d"),
-        "buy_win_rate_30d": values.get("buy_win_rate_30d"),
-        "buy_win_rate_60d": values.get("buy_win_rate_60d"),
-        "buy_win_rate_120d": values.get("buy_win_rate_120d"),
-        "buy_median_max_drawdown_30d": values.get("buy_median_max_drawdown_30d"),
-        "avg_premium_pct": values.get("avg_premium_pct", 0.0),
-        "safe_follow_event_count": values.get("safe_follow_event_count", 0),
-        "safe_follow_win_rate_30d": values.get("safe_follow_win_rate_30d", 0.0),
-        "safe_follow_avg_gain_30d": values.get("safe_follow_avg_gain_30d", 0.0),
-        "safe_follow_avg_drawdown_30d": values.get("safe_follow_avg_drawdown_30d", 0.0),
-        "signal_transfer_efficiency_30d": values.get("signal_transfer_efficiency_30d", 0.0),
-    }
+    payload = (
+        institution_id,
+        values.get("total_events", 0),
+        values.get("avg_gain_30d"),
+        values.get("avg_gain_60d"),
+        values.get("avg_gain_120d"),
+        values.get("win_rate_30d"),
+        values.get("win_rate_60d"),
+        values.get("win_rate_90d"),
+        values.get("win_rate_120d"),
+        values.get("median_gain_30d"),
+        values.get("median_max_drawdown_30d"),
+        values.get("buy_event_count"),
+        values.get("buy_avg_gain_30d"),
+        values.get("buy_avg_gain_60d"),
+        values.get("buy_avg_gain_120d"),
+        values.get("buy_win_rate_30d"),
+        values.get("buy_win_rate_60d"),
+        values.get("buy_win_rate_120d"),
+        values.get("buy_median_max_drawdown_30d"),
+        values.get("avg_premium_pct", 0.0),
+        values.get("safe_follow_event_count", 0),
+        values.get("safe_follow_win_rate_30d", 0.0),
+        values.get("safe_follow_avg_gain_30d", 0.0),
+        values.get("safe_follow_avg_drawdown_30d", 0.0),
+        values.get("signal_transfer_efficiency_30d", 0.0),
+    )
     conn.execute(
         """
         INSERT INTO mart_institution_profile (
@@ -138,33 +139,7 @@ def _insert_profile(conn, institution_id, **values):
             safe_follow_avg_gain_30d,
             safe_follow_avg_drawdown_30d,
             signal_transfer_efficiency_30d
-        ) VALUES (
-            :institution_id,
-            :total_events,
-            :avg_gain_30d,
-            :avg_gain_60d,
-            :avg_gain_120d,
-            :win_rate_30d,
-            :win_rate_60d,
-            :win_rate_90d,
-            :win_rate_120d,
-            :median_gain_30d,
-            :median_max_drawdown_30d,
-            :buy_event_count,
-            :buy_avg_gain_30d,
-            :buy_avg_gain_60d,
-            :buy_avg_gain_120d,
-            :buy_win_rate_30d,
-            :buy_win_rate_60d,
-            :buy_win_rate_120d,
-            :buy_median_max_drawdown_30d,
-            :avg_premium_pct,
-            :safe_follow_event_count,
-            :safe_follow_win_rate_30d,
-            :safe_follow_avg_gain_30d,
-            :safe_follow_avg_drawdown_30d,
-            :signal_transfer_efficiency_30d
-        )
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
         payload,
     )
@@ -307,10 +282,13 @@ def test_buy_sample_confidence_dampens_small_sample_and_fills_industries():
         assert elite["best_industry_1"] == "半导体"
         assert elite["concentration"] == 100.0
         assert elite["quality_score"] < 55.0
-        assert elite["quality_score"] == round(
-            elite["quality_score"] / min(1.0, math.sqrt(3 / 10.0))
-            * min(1.0, math.sqrt(3 / 10.0)),
-            2,
+        assert elite["quality_score"] == pytest.approx(
+            round(
+                elite["quality_score"] / min(1.0, math.sqrt(3 / 10.0))
+                * min(1.0, math.sqrt(3 / 10.0)),
+                2,
+            ),
+            abs=1e-3,
         )
     finally:
         conn.close()

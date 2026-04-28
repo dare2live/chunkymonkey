@@ -1,14 +1,15 @@
-import sqlite3
 import sys
 import asyncio
 from pathlib import Path
 from unittest import mock
 
 import pandas as pd
+import pytest
 
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
+from conftest import duck_mem
 import services.akshare_client as akshare_client
 import services.financial_client as financial_client
 import services.tdx_affair_client as tdx_affair_client
@@ -299,7 +300,7 @@ def test_fetch_daily_tdxhub_with_diagnostics_marks_timeout_heavy_success_as_degr
 
 
 def test_sync_gpcw_files_uses_shared_affair_loader(monkeypatch, tmp_path):
-    conn = sqlite3.connect(":memory:")
+    conn = duck_mem()
     try:
         class FakeAffair:
             @staticmethod
@@ -343,16 +344,26 @@ def test_sync_gpcw_files_uses_shared_affair_loader(monkeypatch, tmp_path):
 
         assert result["files_synced"] == 1
         assert result["rows_upserted"] == 2
-        assert rows == [
-            ("000001", "2026-03-31", 1.23, 11.0, 45.6, 7.8),
-            ("000002", "2026-03-31", 2.34, 22.0, None, None),
-        ]
+        assert len(rows) == 2
+        # DuckDB REAL = FLOAT32, 与 sqlite3 REAL=DOUBLE 不同, 故用近似比较.
+        assert rows[0]["stock_code"] == "000001"
+        assert rows[0]["report_date"] == "2026-03-31"
+        assert rows[0]["eps"] == pytest.approx(1.23, rel=1e-5)
+        assert rows[0]["contract_liabilities"] == pytest.approx(11.0)
+        assert rows[0]["operating_cost"] == pytest.approx(45.6, rel=1e-5)
+        assert rows[0]["operating_cost_single_quarter"] == pytest.approx(7.8, rel=1e-5)
+        assert rows[1]["stock_code"] == "000002"
+        assert rows[1]["report_date"] == "2026-03-31"
+        assert rows[1]["eps"] == pytest.approx(2.34, rel=1e-5)
+        assert rows[1]["contract_liabilities"] == pytest.approx(22.0)
+        assert rows[1]["operating_cost"] is None
+        assert rows[1]["operating_cost_single_quarter"] is None
     finally:
         conn.close()
 
 
 def test_ensure_table_adds_missing_gpcw_columns():
-    conn = sqlite3.connect(":memory:")
+    conn = duck_mem()
     try:
         conn.execute(
             """

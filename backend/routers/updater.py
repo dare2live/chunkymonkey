@@ -2289,9 +2289,10 @@ def _step_build_industry_stat_sync(conn) -> int:
     这意味着：股票被行业重分类时，历史事件会被映射到最新行业，
     机构过去在某一行业积累的真实能力会被后来的行业映射改写。
 
-    支持 event-time 行业快照
-    (fact_institution_event_industry_snapshot)，届时可平滑切换。
-    前端/解释层请明确标注"当前行业口径"。
+    Phase 3b-3 之前曾用 fact_institution_event_industry_snapshot 表存事件时点的
+    行业快照, 已合并入 fact_institution_event 主表 (sw_level* 字段); 行业重分类
+    历史影响请改读 fact_institution_event 内的 sw_level 字段或 dim_stock_tdx_industry.
+    前端/解释层请明确标注"当前行业口径".
     """
     now = datetime.now().isoformat()
     conn.execute("BEGIN IMMEDIATE")

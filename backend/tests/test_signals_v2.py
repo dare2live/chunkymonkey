@@ -9,11 +9,11 @@ signals_v2 单元测试
     - 历史严格左切（no look-ahead）
 """
 
-import sqlite3
 from datetime import datetime
 
 import pytest
 
+from conftest import duck_mem
 from services.signals_v2 import (
     DEFAULT_CONFIG,
     PolicyConfig,
@@ -39,8 +39,7 @@ from services.signals_v2 import (
 @pytest.fixture
 def memdb():
     """In-memory DB with minimal schema + sample events."""
-    conn = sqlite3.connect(":memory:")
-    conn.row_factory = sqlite3.Row
+    conn = duck_mem()
     conn.executescript("""
         CREATE TABLE app_settings (
             key TEXT PRIMARY KEY, value TEXT, updated_at TEXT
@@ -413,20 +412,25 @@ def test_cohort_follow_quarterly_breakdown(memdb):
 def test_cohort_dual_window_divergence(memdb):
     """短口径样本不足时应降档为 watch（不再是老的单一 follow 决策）"""
     from datetime import datetime, timedelta
-    target_date = (datetime.now() - timedelta(days=120)).strftime("%Y%m%d")
-    hist_base = (datetime.now() - timedelta(days=720)).strftime("%Y%m%d")  # 远超 365
+    base_now = datetime.now()
+    # 用真实日历算术生成 notice_date, 避免 int(YYYYMMDD)+i 跨月时产出非法日期 (如 20251232).
+    # 非法日期会让 _shift_date 返回 None, 短窗口 fallback 为全历史, 测试逻辑被破坏.
+    target_anchor = base_now - timedelta(days=120)
+    hist_anchor = base_now - timedelta(days=720)  # 远超 365
 
     events = []
     for i in range(15):
+        nd = (hist_anchor + timedelta(days=i)).strftime("%Y%m%d")
         events.append((
             "inst1", f"HIST{i:03d}", "hist",
-            f"{int(hist_base) + i}",
+            nd,
             "new_entry", 0.0, 15.0, "医药"
         ))
     for i in range(5):
+        nd = (target_anchor + timedelta(days=i)).strftime("%Y%m%d")
         events.append((
             "inst1", f"COHORT{i:03d}", "cohort",
-            str(int(target_date) + i),
+            nd,
             "new_entry", 0.0, 10.0, "医药"
         ))
     _seed_events(memdb, events)

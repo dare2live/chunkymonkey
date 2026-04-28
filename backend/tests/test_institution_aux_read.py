@@ -1,16 +1,15 @@
-import sqlite3
 import sys
 from pathlib import Path
 
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
+from conftest import duck_mem
 import services.institution_aux_read as institution_aux_read
 
 
 def test_load_holdings_rows_filters_and_orders():
-    conn = sqlite3.connect(":memory:")
-    conn.row_factory = sqlite3.Row
+    conn = duck_mem()
     conn.executescript(
         """
         CREATE TABLE inst_holdings (
@@ -48,8 +47,7 @@ def test_load_holdings_rows_filters_and_orders():
 
 
 def test_load_event_rows_returns_filtered_rows_and_total():
-    conn = sqlite3.connect(":memory:")
-    conn.row_factory = sqlite3.Row
+    conn = duck_mem()
     conn.executescript(
         """
         CREATE TABLE fact_institution_event (
@@ -96,8 +94,7 @@ def test_load_event_rows_returns_filtered_rows_and_total():
 
 
 def test_load_industry_stat_rows_filters_institution():
-    conn = sqlite3.connect(":memory:")
-    conn.row_factory = sqlite3.Row
+    conn = duck_mem()
     conn.executescript(
         """
         CREATE TABLE mart_institution_industry_stat (
@@ -126,8 +123,7 @@ def test_load_industry_stat_rows_filters_institution():
 
 
 def test_load_exclusion_categories_orders_by_category():
-    conn = sqlite3.connect(":memory:")
-    conn.row_factory = sqlite3.Row
+    conn = duck_mem()
     conn.executescript(
         """
         CREATE TABLE exclusion_categories (

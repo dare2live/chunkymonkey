@@ -5,19 +5,18 @@ Phase 3b-3: backtest_engine / scoring 口径迁移测试
 - 本文件覆盖迁移后的直连口径: 当前 dim_stock_tdx_industry + tdx_l1/2/3
 """
 
-import sqlite3
 import sys
 from pathlib import Path
 
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
+from conftest import duck_mem
 from services import backtest_engine, scoring
 
 
 def _make_conn():
-    conn = sqlite3.connect(":memory:")
-    conn.row_factory = sqlite3.Row
+    conn = duck_mem()
     return conn
 
 

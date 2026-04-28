@@ -1,16 +1,15 @@
-import sqlite3
 import sys
 from pathlib import Path
 
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
+from conftest import duck_mem
 import services.stock_watchlist_read as stock_watchlist_read
 
 
 def test_load_manual_stock_blacklist_rows_returns_sorted_dicts():
-    conn = sqlite3.connect(":memory:")
-    conn.row_factory = sqlite3.Row
+    conn = duck_mem()
     conn.executescript(
         """
         CREATE TABLE excluded_stocks (
@@ -54,8 +53,7 @@ def test_load_manual_stock_blacklist_rows_returns_sorted_dicts():
 
 
 def test_load_candidate_setup_rows_filters_manual_exclusions_and_adds_stock_gate(monkeypatch):
-    conn = sqlite3.connect(":memory:")
-    conn.row_factory = sqlite3.Row
+    conn = duck_mem()
     conn.executescript(
         """
         CREATE TABLE excluded_stocks (
@@ -169,8 +167,7 @@ def test_load_candidate_setup_rows_filters_manual_exclusions_and_adds_stock_gate
 
 
 def test_load_watchlist_rows_keeps_missing_trend_null_and_defaults_quality_source():
-    conn = sqlite3.connect(":memory:")
-    conn.row_factory = sqlite3.Row
+    conn = duck_mem()
     conn.executescript(
         """
         CREATE TABLE stock_watchlist (

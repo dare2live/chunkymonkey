@@ -1,19 +1,18 @@
 import asyncio
-import sqlite3
 import sys
 from pathlib import Path
 
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
+from conftest import duck_mem
 import routers.institution as institution_router
 import services.scoring as scoring
 import services.institution_scoring_read as institution_scoring_read
 
 
 def _make_scorecard_stats_conn():
-    conn = sqlite3.connect(":memory:")
-    conn.row_factory = sqlite3.Row
+    conn = duck_mem()
     conn.executescript(
         """
         CREATE TABLE mart_institution_profile (
@@ -35,8 +34,7 @@ def _make_scorecard_stats_conn():
 
 
 def _make_breakdown_conn():
-    conn = sqlite3.connect(":memory:")
-    conn.row_factory = sqlite3.Row
+    conn = duck_mem()
     conn.executescript(
         """
         CREATE TABLE mart_institution_profile (
@@ -251,8 +249,7 @@ def test_institution_scoring_breakdown_route_uses_shared_service(monkeypatch):
 
 
 def test_delete_scoring_config_removes_only_requested_prefix():
-    conn = sqlite3.connect(":memory:")
-    conn.row_factory = sqlite3.Row
+    conn = duck_mem()
     conn.executescript(
         """
         CREATE TABLE app_settings (

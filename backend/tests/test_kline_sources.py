@@ -1,4 +1,3 @@
-import sqlite3
 import sys
 import unittest
 from pathlib import Path
@@ -7,6 +6,8 @@ from unittest.mock import AsyncMock, patch
 import pandas as pd
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+
+from conftest import duck_mem  # noqa: E402
 
 import services.akshare_client as akshare_client  # noqa: E402
 import services.etf_db as etf_db  # noqa: E402
@@ -214,8 +215,7 @@ class KlineSourceFallbackTests(unittest.IsolatedAsyncioTestCase):
     @patch("services.akshare_client.fetch_etf_kline", new_callable=AsyncMock)
     @patch("services.akshare_client.fetch_etf_list_with_source", new_callable=AsyncMock)
     async def test_sync_etf_universe_records_list_and_kline_sources(self, list_mock, kline_mock):
-        conn = sqlite3.connect(":memory:")
-        conn.row_factory = sqlite3.Row
+        conn = duck_mem()
         etf_db._ensure_schema(conn)
         try:
             list_mock.return_value = (
