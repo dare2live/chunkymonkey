@@ -22,6 +22,7 @@ class AkshareSource(BaseDataSource):
     @property
     def capabilities(self) -> list[Capability]:
         return [
+            # ===== akshare 唯一来源 (没替代源) =====
             Capability(
                 "trading_calendar",
                 description="A 股交易日历 (新浪源)",
@@ -33,6 +34,26 @@ class AkshareSource(BaseDataSource):
                 description="ETF 实时行情 (同花顺源)",
                 freshness="t-0",
                 notes="ak.fund_etf_spot_ths, ETF 模块独家",
+            ),
+
+            # ===== 妙想故障时 fallback (P0.3) =====
+            Capability(
+                "lhb_daily",
+                description="龙虎榜 (fallback)",
+                freshness="daily",
+                notes="ak.stock_lhb_detail_em — 仅当妙想故障时 fallback, 接受反爬风险",
+            ),
+            Capability(
+                "qfii_holding_quarterly",
+                description="QFII 持仓 (fallback)",
+                freshness="quarterly",
+                notes="ak.stock_gdfx_holding_detail_em — fallback only",
+            ),
+            Capability(
+                "institution_survey",
+                description="机构调研 (fallback)",
+                freshness="daily",
+                notes="ak.stock_jgdy_tj_em — fallback only",
             ),
         ]
 
@@ -50,6 +71,27 @@ class AkshareSource(BaseDataSource):
             except ImportError as exc:
                 raise RuntimeError(f"akshare 未安装: {exc}")
             return ak.fund_etf_spot_ths()
+
+        # fallback 路径 (P0.3): 妙想主源故障时来这里
+        if capability == "lhb_daily":
+            import akshare as ak
+            start = kwargs.get("start_date") or kwargs.get("start")
+            end = kwargs.get("end_date") or kwargs.get("end")
+            df = ak.stock_lhb_detail_em(start_date=start, end_date=end)
+            return df.to_dict("records") if df is not None and not df.empty else []
+
+        if capability == "qfii_holding_quarterly":
+            import akshare as ak
+            report_date = kwargs.get("report_date")
+            symbol = kwargs.get("symbol", "QFII")
+            df = ak.stock_gdfx_holding_detail_em(date=report_date, indicator=symbol)
+            return df.to_dict("records") if df is not None and not df.empty else []
+
+        if capability == "institution_survey":
+            import akshare as ak
+            date_str = kwargs.get("date") or kwargs.get("start_date")
+            df = ak.stock_jgdy_tj_em(date=date_str)
+            return df.to_dict("records") if df is not None and not df.empty else []
 
         raise NotImplementedError(f"akshare 不实现 capability '{capability}'")
 

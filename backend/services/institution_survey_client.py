@@ -118,17 +118,10 @@ def _normalize_date(val) -> Optional[str]:
         return None
 
 
-def _fetch_from_eastmoney_skill(start_date: str) -> pd.DataFrame:
-    """调用 eastmoney_skill datacenter-web (替代 akshare.stock_jgdy_tj_em).
-
-    start_date: YYYYMMDD, 返回从该日起的累计调研记录 (按 NOTICE_DATE 排序).
-    返回的 DataFrame 字段名兼容旧版 (中文): 代码 / 名称 / 公告日期 / 接待日期 /
-    接待方式 / 接待人员 / 接待地点 / 接待机构数量, 这样下游 _normalize* 不需改.
-    """
-    # P6.4 (2026-04-28): datacenter-web → miaoxiang. reportName / 字段全兼容.
+def _fetch_survey_aif10(start_date: str) -> list[dict]:
+    """主源: 妙想 RPT_ORG_SURVEYNEW (P6.4 已迁), 返回中文列名 list[dict]."""
     from aif10_scraper import fetch_all_pages
 
-    # YYYYMMDD → YYYY-MM-DD
     if len(start_date) == 8 and start_date.isdigit():
         start_iso = f"{start_date[:4]}-{start_date[4:6]}-{start_date[6:]}"
     else:
@@ -139,16 +132,10 @@ def _fetch_from_eastmoney_skill(start_date: str) -> pd.DataFrame:
         page_size=500,
         sort_columns="NOTICE_DATE,SECURITY_CODE",
         sort_types="-1,1",
-        # 注意: filter 用单引号 + 严格 > (不支持 >=)
         extra_filters=[f"(NOTICE_DATE>'{start_iso}')"],
     )
-    if not rows:
-        return pd.DataFrame()
-
-    # datacenter-web → 旧 akshare 中文列名
-    # 字段映射经 2026-04-27 实地探查 (RPT_ORG_SURVEYNEW)
     norm: list[dict] = []
-    for r in rows:
+    for r in rows or []:
         norm.append({
             "代码": r.get("SECURITY_CODE"),
             "名称": r.get("SECURITY_NAME_ABBR"),
@@ -159,7 +146,39 @@ def _fetch_from_eastmoney_skill(start_date: str) -> pd.DataFrame:
             "接待人员": r.get("RECEPTIONIST"),
             "接待地点": r.get("RECEIVE_PLACE"),
         })
-    return pd.DataFrame(norm)
+    return norm
+
+
+def _fetch_survey_akshare(start_date: str) -> list[dict]:
+    """Fallback: ak.stock_jgdy_tj_em — 妙想故障时容忍."""
+    import akshare as ak
+    if len(start_date) == 8 and start_date.isdigit():
+        date_str = start_date
+    else:
+        date_str = start_date.replace("-", "")
+    df = ak.stock_jgdy_tj_em(date=date_str)
+    if df is None or df.empty:
+        return []
+    return df.to_dict("records")
+
+
+def _fetch_from_eastmoney_skill(start_date: str) -> pd.DataFrame:
+    """机构调研: 主源 妙想 + fallback ak.stock_jgdy_tj_em (P0.3).
+
+    start_date: YYYYMMDD, 返回中文列名 DataFrame (代码/名称/公告日期/接待日期 等).
+    """
+    from services.data_sources.fallback import with_fallback
+
+    rows, _ = with_fallback(
+        "institution_survey",
+        primary_fn=lambda: _fetch_survey_aif10(start_date),
+        fallback_fn=lambda: _fetch_survey_akshare(start_date),
+        primary_label="aif10",
+        fallback_label="akshare",
+    )
+    if not rows:
+        return pd.DataFrame()
+    return pd.DataFrame(rows)
 
 
 # 兼容别名: 老代码可能仍引用此名 (虽然只在本文件用)

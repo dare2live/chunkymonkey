@@ -122,21 +122,13 @@ def _normalize_stock_code(value) -> Optional[str]:
 # Fetch
 # ─────────────────────────────────────────────────────────────────────
 
-def _fetch_lhb(start_date: str, end_date: str):
-    """龙虎榜 (P6.2 2026-04-28 迁): 走 miaoxiang/aif10-scraper 的同名 reportName.
-
-    reportName 不变 (RPT_DAILYBILLBOARD_DETAILSNEW), 字段全兼容
-    (BILLBOARD_NET_AMT/BUY_AMT/SELL_AMT/DEAL_AMT, DEAL_NET_RATIO,
-    TURNOVERRATE, FREE_MARKET_CAP, D1-D10 全有), 迁 fetch 层即可.
-
-    start_date / end_date: YYYYMMDD, 返回 DataFrame (列名兼容旧 akshare 版).
-    """
+def _fetch_lhb_aif10(start_date: str, end_date: str):
+    """主源: 妙想 RPT_DAILYBILLBOARD_DETAILSNEW (P6.2 已迁)."""
     from aif10_scraper import fetch_all_pages
-    import pandas as _pd
 
     start_iso = f"{start_date[:4]}-{start_date[4:6]}-{start_date[6:]}"
     end_iso = f"{end_date[:4]}-{end_date[4:6]}-{end_date[6:]}"
-    rows = fetch_all_pages(
+    return fetch_all_pages(
         report_name="RPT_DAILYBILLBOARD_DETAILSNEW",
         page_size=5000,
         sort_columns="SECURITY_CODE,TRADE_DATE",
@@ -151,6 +143,36 @@ def _fetch_lhb(start_date: str, end_date: str):
             f"(TRADE_DATE<='{end_iso}')",
             f"(TRADE_DATE>='{start_iso}')",
         ],
+    )
+
+
+def _fetch_lhb_akshare(start_date: str, end_date: str):
+    """Fallback: ak.stock_lhb_detail_em — 反爬概率低于妙想故障时容忍.
+
+    返回 list[dict], 字段名是中文 ("代码"/"名称"/"上榜日"等), 跟妙想字段名不同
+    但 _normalize_rows 已支持中文列名 fallback.
+    """
+    import akshare as ak
+    df = ak.stock_lhb_detail_em(start_date=start_date, end_date=end_date)
+    if df is None or df.empty:
+        return []
+    return df.to_dict("records")
+
+
+def _fetch_lhb(start_date: str, end_date: str):
+    """龙虎榜: 主源 妙想 + fallback ak.stock_lhb_detail_em (P0.3 2026-04-28).
+
+    start_date / end_date: YYYYMMDD, 返回 DataFrame.
+    """
+    import pandas as _pd
+    from services.data_sources.fallback import with_fallback
+
+    rows, _ = with_fallback(
+        "lhb_daily",
+        primary_fn=lambda: _fetch_lhb_aif10(start_date, end_date),
+        fallback_fn=lambda: _fetch_lhb_akshare(start_date, end_date),
+        primary_label="aif10",
+        fallback_label="akshare",
     )
     if not rows:
         return _pd.DataFrame()

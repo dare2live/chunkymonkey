@@ -164,18 +164,11 @@ def latest_plannable_report_date(today: Optional[date] = None) -> Optional[str]:
 # Fetch
 # ─────────────────────────────────────────────────────────────────────
 
-def _fetch_qfii_by_symbol(report_date_yyyymmdd: str, symbol: str):
-    """QFII 季度持股 datacenter-web RPT_DMSK_HOLDERS (替代 akshare.stock_gdfx_holding_detail_em).
-
-    report_date_yyyymmdd: 季度末日期 YYYYMMDD (如 20251231).
-    symbol: 持股变动 {"新进", "增加", "不变", "减少"}.
-    """
-    # P6.3 (2026-04-28): datacenter-web → miaoxiang. reportName / 字段全兼容.
+def _fetch_qfii_aif10(report_date_yyyymmdd: str, symbol: str):
+    """主源: 妙想 RPT_DMSK_HOLDERS (P6.3 已迁)."""
     from aif10_scraper import fetch_all_pages
-    import pandas as _pd
-
     end_iso = f"{report_date_yyyymmdd[:4]}-{report_date_yyyymmdd[4:6]}-{report_date_yyyymmdd[6:]}"
-    rows = fetch_all_pages(
+    return fetch_all_pages(
         report_name="RPT_DMSK_HOLDERS",
         page_size=50,
         sort_columns="NOTICE_DATE,SECURITY_CODE,RANK",
@@ -185,6 +178,33 @@ def _fetch_qfii_by_symbol(report_date_yyyymmdd: str, symbol: str):
             f'(HOLDNUM_CHANGE_NAME="{symbol}")',
             f"(END_DATE='{end_iso}')",
         ],
+    )
+
+
+def _fetch_qfii_akshare(report_date_yyyymmdd: str, symbol: str):
+    """Fallback: ak.stock_gdfx_holding_detail_em — 妙想故障时容忍."""
+    import akshare as ak
+    df = ak.stock_gdfx_holding_detail_em(date=report_date_yyyymmdd, indicator="QFII", symbol=symbol)
+    if df is None or df.empty:
+        return []
+    return df.to_dict("records")
+
+
+def _fetch_qfii_by_symbol(report_date_yyyymmdd: str, symbol: str):
+    """QFII 季度持股: 主源 妙想 + fallback ak.stock_gdfx_holding_detail_em (P0.3).
+
+    report_date_yyyymmdd: 季度末日期 YYYYMMDD (如 20251231).
+    symbol: 持股变动 {"新进", "增加", "不变", "减少"}.
+    """
+    import pandas as _pd
+    from services.data_sources.fallback import with_fallback
+
+    rows, _ = with_fallback(
+        "qfii_holding_quarterly",
+        primary_fn=lambda: _fetch_qfii_aif10(report_date_yyyymmdd, symbol),
+        fallback_fn=lambda: _fetch_qfii_akshare(report_date_yyyymmdd, symbol),
+        primary_label="aif10",
+        fallback_label="akshare",
     )
     if not rows:
         return _pd.DataFrame()
