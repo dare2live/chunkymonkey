@@ -94,6 +94,7 @@ MART_VERSIONS = {
     "mart_stock_survey_activity": "v1",      # 调研活动
     "mart_stock_trend": "v1",                # 股票趋势 ⭐
     "mart_prediction_outcome": "v1",         # P2.8 预测 outcome tracker
+    "mart_ensemble_signals": "v1",           # P3.11 多策略 ensemble
 }
 
 # dim_* 派生类 (静态/缓存型, 不含 raw dim, 12 张)

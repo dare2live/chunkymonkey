@@ -98,6 +98,35 @@ def record_baseline_endpoint():
         conn.close()
 
 
+@router.post("/ensemble/run")
+def run_ensemble_endpoint(body: dict | None = None):
+    """跑多策略 ensemble (P3.11)."""
+    from services.db import get_conn
+    from services.strategy_ensemble import compute_ensemble
+    body = body or {}
+    conn = get_conn()
+    try:
+        return compute_ensemble(conn, snapshot_date=body.get("snapshot_date"))
+    finally:
+        conn.close()
+
+
+@router.get("/ensemble/topk")
+def ensemble_topk(snapshot_date: str | None = None, k: int = 30):
+    """读 ensemble topK."""
+    from services.db import get_conn
+    from services.strategy_ensemble import topk_ensemble
+    conn = get_conn()
+    try:
+        return {
+            "snapshot_date": snapshot_date,
+            "k": k,
+            "topk": topk_ensemble(conn, snapshot_date=snapshot_date, k=k),
+        }
+    finally:
+        conn.close()
+
+
 @router.get("/cache_stats")
 def cache_stats():
     """API cache 命中率 (P3.10)."""
