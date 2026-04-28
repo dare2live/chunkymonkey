@@ -98,6 +98,18 @@ def record_baseline_endpoint():
         conn.close()
 
 
+@router.get("/prediction_outcomes/summary")
+def prediction_outcomes_summary(model_id: str | None = None, lookback_days: int = 90):
+    """模型 outcome 表现汇总 (P2.8). hit_rate / avg_ret / IC."""
+    from services.db import get_conn
+    from services.prediction_outcome import model_performance_summary
+    conn = get_conn()
+    try:
+        return model_performance_summary(conn, model_id=model_id, lookback_days=lookback_days)
+    finally:
+        conn.close()
+
+
 @router.post("/portfolio_backtest/run")
 def run_portfolio_backtest_endpoint(body: dict):
     """组合回测 endpoint (P2.7).

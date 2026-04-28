@@ -321,6 +321,7 @@ STEPS = [
     {"id": "build_external_attention","name": "外部关注快照",  "group": "mart", "order": 15},
     {"id": "build_stage_features",  "name": "阶段特征构建",    "group": "mart", "order": 16},
     {"id": "calc_risk_factors",     "name": "风险因子",        "group": "mart", "order": 16.5},
+    {"id": "calc_prediction_outcomes","name": "预测 outcome", "group": "mart", "order": 16.6},
     {"id": "build_turtle_features", "name": "海龟执行特征",    "group": "mart", "order": 17.5},
     {"id": "calc_inst_scores",      "name": "机构评分",        "group": "mart", "order": 18},
     {"id": "calc_stock_scores",     "name": "股票评分",        "group": "mart", "order": 19},
@@ -3448,6 +3449,23 @@ async def _step_sync_aif10_forecast_consensus(conn) -> dict:
     return await _step_sync_aif10_capability(conn, "forecast_consensus")
 
 
+async def _step_calc_prediction_outcomes(conn) -> dict:
+    """P2.8: 算近 90 天预测的 forward return + IC tracking."""
+    from services.prediction_outcome import calc_outcomes
+    try:
+        result = calc_outcomes(conn)
+        return {
+            "count": result.get("n_written", 0),
+            "status": result.get("status", "ok"),
+            "n_candidates": result.get("n_candidates"),
+            "n_skipped": result.get("n_skipped"),
+            "elapsed_s": result.get("elapsed_s"),
+        }
+    except Exception as exc:
+        logger.warning(f"[预测outcome] 失败: {exc}")
+        return {"count": 0, "status": "failed", "error": str(exc)[:200]}
+
+
 async def _step_calc_risk_factors(conn) -> dict:
     """计算全市场风险因子 (P1.6). vol/sharpe/dd/mom/skew/kurt."""
     from services.risk_factors import calc_risk_factors
@@ -3508,6 +3526,7 @@ RUNNERS = {
     "build_external_attention": _step_build_external_attention,
     "build_stage_features": _step_build_stage_features,
     "calc_risk_factors": _step_calc_risk_factors,  # P1.6
+    "calc_prediction_outcomes": _step_calc_prediction_outcomes,  # P2.8
     "build_turtle_features": _step_build_turtle_features,
     "calc_inst_scores": _step_calc_inst_scores,
     "calc_stock_scores": _step_calc_stock_scores,
