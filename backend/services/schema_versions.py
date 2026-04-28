@@ -62,6 +62,7 @@ FACT_VERSIONS = {
     "fact_stock_quality_features": "v1",     # 质量特征
     "fact_stock_stage_features": "v1",       # 阶段特征
     "fact_stock_turtle_features": "v1",      # 海龟特征
+    "fact_risk_factors": "v1",               # P1.6 风险因子 (vol/sharpe/dd/mom/skew/kurt)
 }
 
 # mart_* (集市层, 可重算, 28 张)

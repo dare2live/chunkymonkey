@@ -320,6 +320,7 @@ STEPS = [
     {"id": "calc_sector_momentum",  "name": "板块动量分析",    "group": "mart", "order": 14},
     {"id": "build_external_attention","name": "外部关注快照",  "group": "mart", "order": 15},
     {"id": "build_stage_features",  "name": "阶段特征构建",    "group": "mart", "order": 16},
+    {"id": "calc_risk_factors",     "name": "风险因子",        "group": "mart", "order": 16.5},
     {"id": "build_turtle_features", "name": "海龟执行特征",    "group": "mart", "order": 17.5},
     {"id": "calc_inst_scores",      "name": "机构评分",        "group": "mart", "order": 18},
     {"id": "calc_stock_scores",     "name": "股票评分",        "group": "mart", "order": 19},
@@ -3447,6 +3448,22 @@ async def _step_sync_aif10_forecast_consensus(conn) -> dict:
     return await _step_sync_aif10_capability(conn, "forecast_consensus")
 
 
+async def _step_calc_risk_factors(conn) -> dict:
+    """计算全市场风险因子 (P1.6). vol/sharpe/dd/mom/skew/kurt."""
+    from services.risk_factors import calc_risk_factors
+    try:
+        result = calc_risk_factors(conn)
+        return {
+            "count": result.get("n_written", 0),
+            "status": result.get("status", "ok"),
+            "calc_date": result.get("calc_date"),
+            "elapsed_s": result.get("elapsed_s"),
+        }
+    except Exception as exc:
+        logger.warning(f"[风险因子] 失败: {exc}")
+        return {"count": 0, "status": "failed", "error": str(exc)[:200]}
+
+
 async def _step_sync_aif10_financial_history(conn) -> dict:
     """v0 接口, 按单股拉. 默认 50 只活跃股 (避免一次跑太久)."""
     from services.aif10_capability_client import sync_financial_history_200q
@@ -3490,6 +3507,7 @@ RUNNERS = {
     "calc_sector_momentum": _step_calc_sector_momentum,
     "build_external_attention": _step_build_external_attention,
     "build_stage_features": _step_build_stage_features,
+    "calc_risk_factors": _step_calc_risk_factors,  # P1.6
     "build_turtle_features": _step_build_turtle_features,
     "calc_inst_scores": _step_calc_inst_scores,
     "calc_stock_scores": _step_calc_stock_scores,
