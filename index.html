@@ -208,6 +208,7 @@
         <button class="dh-tab-btn active" data-dh-tab="health">健康看板 (Tab 4)</button>
         <button class="dh-tab-btn" data-dh-tab="sources">数据源总览 (Tab 1)</button>
         <button class="dh-tab-btn" data-dh-tab="clients">写入器 (Tab 2)</button>
+        <button class="dh-tab-btn" data-dh-tab="lineage">派生 Pipeline (Tab 3)</button>
       </div>
 
       <!-- Tab 1: 健康看板 (table) -->
@@ -305,6 +306,33 @@
             </thead>
             <tbody id="dh-clients-tbody">
               <tr><td colspan="7" style="padding:30px;text-align:center" class="muted">加载中...</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- Tab 3: 派生 Pipeline (lineage) -->
+      <div class="dh-tab-panel" id="dh-panel-lineage" style="display:none">
+        <div class="panel" style="margin-bottom:10px;padding:12px 14px">
+          <div class="muted" style="font-size:12px">每行 = 一条派生 lineage (services/data_lineage/registry.py). last_status 来自 mart_lineage 运行时状态. <strong>sql_hash_changed</strong> = 当前声明的 SQL 跟上次跑的 sql_hash 不一致 (代码改了但还没重算).</div>
+        </div>
+        <div class="panel" style="padding:0;overflow-x:auto;max-height:62vh;overflow-y:auto">
+          <table id="dh-lineage-table" style="width:100%;border-collapse:collapse;font-size:12px">
+            <thead style="position:sticky;top:0;background:var(--cm-bg,#fff);z-index:1">
+              <tr style="border-bottom:1px solid var(--cm-ink-100,#e2e2e2)">
+                <th style="text-align:left;padding:8px 12px;width:40px">⬢</th>
+                <th style="text-align:left;padding:8px 12px">lineage_id</th>
+                <th style="text-align:left;padding:8px 12px;width:200px">输出表</th>
+                <th style="text-align:left;padding:8px 12px">输入表</th>
+                <th style="text-align:left;padding:8px 12px;width:80px">schedule</th>
+                <th style="text-align:left;padding:8px 12px;width:90px">status</th>
+                <th style="text-align:right;padding:8px 12px;width:90px">last 行数</th>
+                <th style="text-align:right;padding:8px 12px;width:80px">runtime</th>
+                <th style="text-align:left;padding:8px 12px;width:140px">last_run_at</th>
+              </tr>
+            </thead>
+            <tbody id="dh-lineage-tbody">
+              <tr><td colspan="9" style="padding:30px;text-align:center" class="muted">加载中...</td></tr>
             </tbody>
           </table>
         </div>

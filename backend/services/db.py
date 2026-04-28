@@ -357,6 +357,36 @@ def init_db():
             CREATE INDEX IF NOT EXISTS idx_mart_data_health_severity
                 ON mart_data_health(severity, snapshot_at DESC);
 
+            -- ============================================================
+            -- 派生层 (新, W3): 派生 SQL 谱系 mart_lineage
+            -- ============================================================
+            -- 把 scoring/build_*/calc_* 等派生计算的输入/输出/SQL 登记下来,
+            -- 让下游 (UI/血缘图/调度) 可以查询: "X 这张 mart 表怎么算出来的".
+            -- 一条 lineage = 一个具名派生 (lineage_id). 同一个 output_table
+            -- 可以对应多条 lineage (不同口径, 通过 lineage_id 区分).
+            -- 详见 end_to_end_data_flow_design.md §6.
+            CREATE TABLE IF NOT EXISTS mart_lineage (
+                lineage_id         TEXT PRIMARY KEY,            -- e.g. 'mart_daily_recommendation/topk_v1'
+                output_table       TEXT NOT NULL,
+                input_tables       TEXT,                        -- JSON 数组
+                sql_text           TEXT,                        -- 完整 SQL (或脚本入口)
+                sql_hash           TEXT,                        -- sha256(sql_text)[:16] — 变更检测
+                version            TEXT DEFAULT 'v1',
+                owner              TEXT,                        -- 模块路径或责任人
+                description        TEXT,
+                last_run_at        TIMESTAMP,
+                last_row_count     BIGINT,
+                last_status        TEXT,                        -- 'ok' / 'failed' / 'pending'
+                last_error         TEXT,
+                last_runtime_s     DOUBLE,
+                created_at         TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at         TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            );
+            CREATE INDEX IF NOT EXISTS idx_mart_lineage_output
+                ON mart_lineage(output_table);
+            CREATE INDEX IF NOT EXISTS idx_mart_lineage_status
+                ON mart_lineage(last_status, last_run_at DESC);
+
             -- K线已迁移到独立的 market.duckdb.price_kline
 
             -- raw_fetch_batch 已退役 (W1, 2026-04-28): 无写入器无读取器, 退役清理

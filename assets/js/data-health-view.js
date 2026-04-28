@@ -22,7 +22,9 @@
       sourcesAt: 0,             // sources 拉取时间
       clients: null,            // /clients 返回 (缓存)
       clientsAt: 0,
-      activeTab: 'health',      // 'health' | 'sources' | 'clients'
+      lineage: null,            // /lineage 返回 (缓存)
+      lineageAt: 0,
+      activeTab: 'health',      // 'health' | 'sources' | 'clients' | 'lineage'
       filter: { layer: '', severity: '', search: '' },
     },
 
@@ -224,9 +226,11 @@
       const panelHealth = document.getElementById('dh-panel-health');
       const panelSources = document.getElementById('dh-panel-sources');
       const panelClients = document.getElementById('dh-panel-clients');
+      const panelLineage = document.getElementById('dh-panel-lineage');
       if (panelHealth) panelHealth.style.display = tab === 'health' ? '' : 'none';
       if (panelSources) panelSources.style.display = tab === 'sources' ? '' : 'none';
       if (panelClients) panelClients.style.display = tab === 'clients' ? '' : 'none';
+      if (panelLineage) panelLineage.style.display = tab === 'lineage' ? '' : 'none';
       if (tab === 'sources' && !this.state.sources) {
         fetch('/api/data_health/sources').then((r) => r.json()).then((data) => {
           this.state.sources = data;
@@ -241,6 +245,55 @@
           this.renderClientsTable();
         });
       }
+      if (tab === 'lineage' && !this.state.lineage) {
+        fetch('/api/data_health/lineage').then((r) => r.json()).then((data) => {
+          this.state.lineage = data;
+          this.state.lineageAt = Date.now();
+          this.renderLineageTable();
+        });
+      }
+    },
+
+    renderLineageTable() {
+      const data = this.state.lineage;
+      const tbody = document.getElementById('dh-lineage-tbody');
+      if (!tbody || !data) return;
+      const items = (data.lineages || []).slice().sort((a, b) =>
+        (a.output_table || '').localeCompare(b.output_table || '')
+      );
+      if (items.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="9" style="padding:30px;text-align:center" class="muted">空</td></tr>';
+        return;
+      }
+      tbody.innerHTML = items.map((l) => {
+        const sevDot = l.output_severity === 'red' ? '🔴' :
+                       l.output_severity === 'yellow' ? '🟡' :
+                       l.output_severity === 'green' ? '🟢' : '⚪';
+        const status = l.last_status || 'pending';
+        const statusBadge =
+          status === 'ok'      ? '<span style="padding:2px 6px;background:#e8f4ec;color:#1f7a3a;border-radius:3px;font-size:11px">ok</span>' :
+          status === 'failed'  ? '<span style="padding:2px 6px;background:#fde8e8;color:#a02a2a;border-radius:3px;font-size:11px">failed</span>' :
+                                  '<span style="padding:2px 6px;background:#f0f0f0;color:#666;border-radius:3px;font-size:11px">pending</span>';
+        const inputs = (l.input_tables || []).map((t) => `<code style="font-size:10px;color:#666">${this.esc(t)}</code>`).join(' · ');
+        const lastRun = l.last_run_at ? this.fmtDateTime(l.last_run_at) : '<span class="muted">未跑</span>';
+        const runtimeStr = l.last_runtime_s != null ? `${l.last_runtime_s.toFixed(1)}s` : '—';
+        const rowsStr = l.last_row_count != null ? this.fmtNum(l.last_row_count) : '—';
+        const hashChange = l.sql_hash_changed
+          ? ' <span style="padding:1px 4px;background:#fff4d4;color:#a67c00;border-radius:3px;font-size:10px" title="SQL 已变更, 上次运行的 hash 跟当前不一致">SQL 变更</span>'
+          : '';
+        const errorTooltip = l.last_error ? ` title="${this.esc(l.last_error)}"` : '';
+        return `<tr style="border-bottom:1px solid var(--cm-ink-50,#f0f0f0)"${errorTooltip}>
+          <td style="padding:6px 12px">${sevDot}</td>
+          <td style="padding:6px 12px"><code style="font-size:11px;font-weight:600">${this.esc(l.lineage_id)}</code><br><span class="muted" style="font-size:10px">${this.esc(l.description || '')}</span></td>
+          <td style="padding:6px 12px"><code style="font-size:11px">${this.esc(l.output_table)}</code>${hashChange}</td>
+          <td style="padding:6px 12px">${inputs}</td>
+          <td style="padding:6px 12px;font-size:11px" class="muted">${this.esc(l.schedule || 'on-demand')}</td>
+          <td style="padding:6px 12px">${statusBadge}</td>
+          <td style="padding:6px 12px;text-align:right;font-family:monospace">${rowsStr}</td>
+          <td style="padding:6px 12px;text-align:right;font-size:11px" class="muted">${runtimeStr}</td>
+          <td style="padding:6px 12px;font-size:11px" class="muted">${lastRun}</td>
+        </tr>`;
+      }).join('');
     },
 
     renderClientsTable() {

@@ -268,6 +268,62 @@ def get_by_layer() -> dict[str, Any]:
         con.close()
 
 
+@router.get("/lineage")
+def get_lineage_registry() -> dict[str, Any]:
+    """派生 SQL 谱系 (W3): 每个 mart_*/fact_* 派生表的输入/SQL/状态.
+
+    用于 UI Tab 3 (派生层 / Pipeline 监视). 单一真相源:
+    services/data_lineage/registry.py + mart_lineage 表 (运行时状态).
+    """
+    from services.data_lineage.registry import to_dicts
+
+    con = get_conn()
+    try:
+        snap_at = _latest_snapshot_at(con)
+        # 拉运行时状态
+        runtime_rows = con.execute("""
+            SELECT lineage_id, last_run_at, last_row_count, last_status,
+                   last_error, last_runtime_s, sql_hash, updated_at
+            FROM mart_lineage
+        """).fetchall()
+        runtime_by_id = {r["lineage_id"]: dict(r) for r in runtime_rows}
+
+        # 输出表的最新 severity
+        sev_by_table: dict[str, str] = {}
+        if snap_at:
+            for r in con.execute(
+                "SELECT table_name, severity FROM mart_data_health WHERE snapshot_at = ?",
+                (snap_at,),
+            ).fetchall():
+                sev_by_table[r["table_name"]] = r["severity"]
+
+        out = []
+        for spec_dict in to_dicts():
+            lid = spec_dict["lineage_id"]
+            rt = runtime_by_id.get(lid, {})
+            out.append({
+                **spec_dict,
+                "output_severity": sev_by_table.get(spec_dict["output_table"], "unknown"),
+                "last_run_at": rt.get("last_run_at"),
+                "last_row_count": rt.get("last_row_count"),
+                "last_status": rt.get("last_status") or "pending",
+                "last_error": rt.get("last_error"),
+                "last_runtime_s": rt.get("last_runtime_s"),
+                "sql_hash_committed": rt.get("sql_hash"),
+                "sql_hash_changed": (
+                    rt.get("sql_hash") is not None
+                    and rt.get("sql_hash") != spec_dict["sql_hash"]
+                ),
+            })
+        return {
+            "snapshot_at": snap_at,
+            "lineage_count": len(out),
+            "lineages": out,
+        }
+    finally:
+        con.close()
+
+
 @router.get("/clients")
 def get_clients_registry() -> dict[str, Any]:
     """数据写入客户端登记表 (W2): 一个客户端 = 一组 (raw/dim/fact/mart) 表的写入器.
