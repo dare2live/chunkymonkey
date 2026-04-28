@@ -243,6 +243,54 @@ def init_db():
                 ON fact_shareholder_trade(stock_code, raw_hash);
 
             -- ============================================================
+            -- ============================================================
+            -- 事实层 (新): 股东事件流 (从 fact_top10_holder_period 派生)
+            -- ============================================================
+            -- fact_holder_event: 全市场每只股票每报告期, 每个股东的状态变化.
+            -- 由 services.holders_event.rebuild_holder_events 用 lag() 派生.
+            -- 五种 event_type:
+            --   new_entry  — 上一期不在 top10, 本期在
+            --   increase   — 两期都在, 本期持股 > 上期 (超过 tolerance)
+            --   decrease   — 两期都在, 本期持股 < 上期
+            --   unchanged  — 两期都在, 持股几乎不变
+            --   exit       — 上一期在 top10, 本期退出 (来自 is_exit_row 行)
+            -- 与已有 fact_institution_event 的关系:
+            --   fact_institution_event 仅覆盖 tracked 机构 (inst_institutions),
+            --   附带 gain_60d / premium_pct / inst_ref_cost 等回测增强字段.
+            --   fact_holder_event 覆盖全市场每个 holder, 字段较瘦, 是模型层
+            --   "机构跟投族" 特征的主输入. 派生层, 可重算.
+            CREATE TABLE IF NOT EXISTS fact_holder_event (
+                stock_code        TEXT NOT NULL,
+                stock_name        TEXT,
+                holder_name       TEXT NOT NULL,
+                holder_name_norm  TEXT NOT NULL,
+                share_class       TEXT,                       -- 'A' | 'H' | 'B' | NULL
+                report_date       TEXT NOT NULL,              -- 本期报告期
+                prev_report_date  TEXT,                       -- 上一期 (new_entry/exit 可空)
+                event_type        TEXT NOT NULL,              -- new_entry / increase / decrease / unchanged / exit
+                shares_before     BIGINT,
+                shares_after      BIGINT,
+                shares_delta      BIGINT,                     -- after - before (带符号)
+                ratio_float_before DOUBLE,
+                ratio_float_after  DOUBLE,
+                ratio_total_before DOUBLE,
+                ratio_total_after  DOUBLE,
+                holder_type       TEXT,
+                holder_set        TEXT NOT NULL,              -- 'free' | 'all'
+                source            TEXT NOT NULL,
+                source_tier       SMALLINT NOT NULL,
+                raw_hash          TEXT,
+                created_at        TEXT,
+                PRIMARY KEY (stock_code, holder_name_norm, share_class, report_date, event_type, holder_set)
+            );
+            CREATE INDEX IF NOT EXISTS idx_he_stock
+                ON fact_holder_event(stock_code, report_date DESC);
+            CREATE INDEX IF NOT EXISTS idx_he_holder
+                ON fact_holder_event(holder_name_norm);
+            CREATE INDEX IF NOT EXISTS idx_he_event_type
+                ON fact_holder_event(event_type);
+
+            -- ============================================================
             -- 维度层 (新): 股东别名映射
             -- ============================================================
             -- TDX F10 用简称 (汇金公司 / 财政部 / 社保基金会 等),
