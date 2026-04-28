@@ -98,6 +98,71 @@ def record_baseline_endpoint():
         conn.close()
 
 
+@router.post("/parallel_sync")
+async def parallel_sync_endpoint(body: dict | None = None):
+    """并行跑数据获取 group (P2.9).
+
+    body 例: {"steps": ["sync_qfii", "sync_margin", "sync_lhb"]}
+            (不传则跑所有 HARD_DEPS=[] 的 sync_* step)
+    """
+    from services.db import get_conn
+    from services.dag_planner import topological_waves, run_waves_parallel, estimate_speedup
+    from routers.updater import RUNNERS, HARD_DEPS, STEPS
+
+    body = body or {}
+    requested = body.get("steps")
+    if not requested:
+        # 自动选: HARD_DEPS=[] 的所有 sync step
+        requested = [
+            s["id"] for s in STEPS
+            if s["id"].startswith("sync_") and not HARD_DEPS.get(s["id"])
+        ]
+
+    waves = topological_waves(requested, HARD_DEPS)
+    speedup = estimate_speedup(waves)
+
+    async def _runner(sid: str):
+        runner = RUNNERS.get(sid)
+        if not runner:
+            raise RuntimeError(f"unknown step: {sid}")
+        conn = get_conn(timeout=120)
+        try:
+            return await runner(conn)
+        finally:
+            conn.close()
+
+    results = await run_waves_parallel(waves, _runner)
+    n_ok = sum(1 for r in results if r["status"] == "ok")
+    n_fail = sum(1 for r in results if r["status"] != "ok")
+    return {
+        "ok": True,
+        "waves": waves,
+        "speedup_estimate": speedup,
+        "n_ok": n_ok,
+        "n_fail": n_fail,
+        "results": results,
+    }
+
+
+@router.get("/dag_plan")
+def dag_plan_endpoint(steps: str | None = None):
+    """规划 DAG wave (干跑, 不真执行)."""
+    from services.dag_planner import topological_waves, estimate_speedup
+    from routers.updater import HARD_DEPS, STEPS
+
+    if steps:
+        step_ids = [s.strip() for s in steps.split(",") if s.strip()]
+    else:
+        step_ids = [s["id"] for s in STEPS]
+
+    waves = topological_waves(step_ids, HARD_DEPS)
+    return {
+        "n_steps": len(step_ids),
+        "waves": waves,
+        "speedup": estimate_speedup(waves),
+    }
+
+
 @router.get("/prediction_outcomes/summary")
 def prediction_outcomes_summary(model_id: str | None = None, lookback_days: int = 90):
     """模型 outcome 表现汇总 (P2.8). hit_rate / avg_ret / IC."""
