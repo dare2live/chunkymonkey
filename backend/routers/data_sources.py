@@ -99,7 +99,7 @@ def record_baseline_endpoint():
 
 
 @router.post("/ensemble/run")
-def run_ensemble_endpoint(body: dict | None = None):
+def run_ensemble_endpoint(body: Optional[dict] = None):
     """跑多策略 ensemble (P3.11)."""
     from services.db import get_conn
     from services.strategy_ensemble import compute_ensemble
@@ -112,7 +112,7 @@ def run_ensemble_endpoint(body: dict | None = None):
 
 
 @router.get("/ensemble/topk")
-def ensemble_topk(snapshot_date: str | None = None, k: int = 30):
+def ensemble_topk(snapshot_date: Optional[str] = None, k: int = 30):
     """读 ensemble topK."""
     from services.db import get_conn
     from services.strategy_ensemble import topk_ensemble
@@ -135,7 +135,7 @@ def cache_stats():
 
 
 @router.post("/cache_invalidate")
-def cache_invalidate_endpoint(body: dict | None = None):
+def cache_invalidate_endpoint(body: Optional[dict] = None):
     """清 cache. body 例: {prefix: 'list_data_sources'}."""
     from services.api_cache import invalidate
     body = body or {}
@@ -144,7 +144,7 @@ def cache_invalidate_endpoint(body: dict | None = None):
 
 
 @router.post("/parallel_sync")
-async def parallel_sync_endpoint(body: dict | None = None):
+async def parallel_sync_endpoint(body: Optional[dict] = None):
     """并行跑数据获取 group (P2.9).
 
     body 例: {"steps": ["sync_qfii", "sync_margin", "sync_lhb"]}
@@ -190,7 +190,7 @@ async def parallel_sync_endpoint(body: dict | None = None):
 
 
 @router.get("/dag_plan")
-def dag_plan_endpoint(steps: str | None = None):
+def dag_plan_endpoint(steps: Optional[str] = None):
     """规划 DAG wave (干跑, 不真执行)."""
     from services.dag_planner import topological_waves, estimate_speedup
     from routers.updater import HARD_DEPS, STEPS
@@ -209,7 +209,7 @@ def dag_plan_endpoint(steps: str | None = None):
 
 
 @router.get("/prediction_outcomes/summary")
-def prediction_outcomes_summary(model_id: str | None = None, lookback_days: int = 90):
+def prediction_outcomes_summary(model_id: Optional[str] = None, lookback_days: int = 90):
     """模型 outcome 表现汇总 (P2.8). hit_rate / avg_ret / IC."""
     from services.db import get_conn
     from services.prediction_outcome import model_performance_summary
