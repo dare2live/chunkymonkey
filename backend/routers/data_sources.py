@@ -98,6 +98,54 @@ def record_baseline_endpoint():
         conn.close()
 
 
+@router.post("/data_audit/run")
+def run_data_audit():
+    """跑表级数据完整性审计 (P0.2). 返回 + 落库 mart_data_audit_report."""
+    from services.db import get_conn
+    from services.data_audit import audit_all, save_audit_report, summary
+    conn = get_conn()
+    try:
+        results = audit_all(conn)
+        run_id = save_audit_report(conn, results)
+        n_ok = sum(1 for r in results if not r.get("issues"))
+        n_error = sum(1 for r in results if any(i["level"] == "error" for i in r.get("issues", [])))
+        n_warn = sum(
+            1 for r in results
+            if any(i["level"] == "warn" for i in r.get("issues", []))
+            and not any(i["level"] == "error" for i in r.get("issues", []))
+        )
+        return {
+            "ok": True,
+            "run_id": run_id,
+            "summary": {
+                **summary(),
+                "n_tables": len(results),
+                "n_ok": n_ok,
+                "n_warn": n_warn,
+                "n_error": n_error,
+            },
+            "results": results,
+        }
+    finally:
+        conn.close()
+
+
+@router.get("/data_audit/last")
+def last_data_audit():
+    """最近一次表级审计报告."""
+    from services.db import get_conn
+    from services.data_audit import load_last_audit_report, summary
+    conn = get_conn()
+    try:
+        last = load_last_audit_report(conn)
+        return {
+            "summary": summary(),
+            "last": last,
+        }
+    finally:
+        conn.close()
+
+
 @router.get("/data_routes")
 def list_data_routes():
     """业务数据 → 实际通道 映射 (从代码反推, 不是 registry 声明).

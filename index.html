@@ -137,6 +137,20 @@
         </div>
       </div>
 
+      <!-- 数据完整性审计 (P0.2) -->
+      <div class="panel" style="padding:14px;margin-bottom:14px">
+        <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:8px">
+          <h3 style="margin:0;font-size:14px">数据完整性审计</h3>
+          <div style="display:flex;gap:8px;align-items:center">
+            <span class="muted" style="font-size:11px" id="ds-audit-stats"></span>
+            <button class="chip chip-outline" id="ds-audit-run">立即跑</button>
+          </div>
+        </div>
+        <div id="ds-audit-results" style="font-size:12px">
+          <div class="muted" style="padding:10px 0">点"立即跑"或加载最近一次结果</div>
+        </div>
+      </div>
+
       <details style="margin-bottom:14px;background:var(--cm-bg-50);border-radius:6px;padding:6px 14px">
         <summary style="cursor:pointer;font-size:13px;font-weight:600;padding:6px 0">📋 高级: registry capability 声明 (诊断用)</summary>
         <div style="padding:8px 0">

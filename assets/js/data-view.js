@@ -121,6 +121,53 @@
     }
   }
 
+  // ---- 数据审计渲染 ----
+  function renderAuditResults(data) {
+    const el = qs('ds-audit-results');
+    const statsEl = qs('ds-audit-stats');
+    if (!el) return;
+    const details = data.details || [];
+    if (statsEl) {
+      const errMark = data.n_error > 0 ? `<span style="color:#d33">⚠${data.n_error} error</span> · ` : '';
+      const warnMark = data.n_warn > 0 ? `<span style="color:#a40">${data.n_warn} warn</span> · ` : '';
+      statsEl.innerHTML = `${errMark}${warnMark}<span style="color:#0a7">${data.n_ok} ok</span> / ${data.n_tables} 张 · ${esc(data.run_at || '').slice(0, 16)}`;
+    }
+    const issues = details.filter(r => (r.issues || []).length > 0);
+    const okList = details.filter(r => !(r.issues || []).length);
+    if (!issues.length && !okList.length) {
+      el.innerHTML = '<div class="muted" style="padding:10px 0">无审计结果</div>';
+      return;
+    }
+    el.innerHTML = `
+      ${issues.length > 0 ? `
+        <div style="border-left:3px solid #a40;padding:6px 10px;background:rgba(170,68,0,0.05);border-radius:4px;margin-bottom:8px">
+          <div style="font-weight:600;font-size:12px;margin-bottom:6px">${issues.length} 张表有问题</div>
+          ${issues.map(r => `
+            <div style="padding:4px 0;border-bottom:1px dotted var(--cm-bg-100)">
+              <code style="font-size:11px">${esc(r.table)}</code>
+              <span class="muted" style="font-size:10px"> · rows=${r.n_rows}</span>
+              ${(r.issues || []).map(i => {
+                const c = i.level === 'error' ? '#d33' : i.level === 'warn' ? '#a40' : 'var(--cm-ink-500)';
+                return `<div style="font-size:10px;color:${c};padding-left:14px">[${esc(i.level)}] ${esc(i.msg)}</div>`;
+              }).join('')}
+            </div>
+          `).join('')}
+        </div>
+      ` : ''}
+      <details style="font-size:11px">
+        <summary style="cursor:pointer;font-size:12px;font-weight:600;padding:4px 0">已通过 ${okList.length} 张</summary>
+        <div style="max-height:240px;overflow-y:auto;margin-top:4px">
+          ${okList.map(r => `
+            <div style="padding:2px 0;font-size:11px;font-family:monospace">
+              <code>${esc(r.table)}</code>
+              <span class="muted" style="float:right">${r.n_rows} rows</span>
+            </div>
+          `).join('')}
+        </div>
+      </details>
+    `;
+  }
+
   async function doHealthcheck(name) {
     logLine(`healthcheck: ${name} ...`);
     try {
@@ -398,7 +445,32 @@
     ];
     await Promise.allSettled(tasks);
 
+    // 加载最近一次审计 (启动不阻塞主路径)
+    fetchJSON('/api/data_sources/data_audit/last').then(r => {
+      if (r.last) renderAuditResults(r.last);
+    }).catch(() => {});
+
     // 绑事件 (幂等)
+    const auditBtn = qs('ds-audit-run');
+    if (auditBtn) auditBtn.onclick = async () => {
+      auditBtn.disabled = true; auditBtn.textContent = '审计中…';
+      try {
+        const r = await fetchJSON('/api/data_sources/data_audit/run', { method: 'POST', timeout: 30000 });
+        renderAuditResults({
+          run_at: new Date().toISOString().slice(0, 19),
+          n_tables: r.summary.n_tables,
+          n_ok: r.summary.n_ok,
+          n_warn: r.summary.n_warn,
+          n_error: r.summary.n_error,
+          details: r.results,
+        });
+        logLine(`审计完成: ${r.summary.n_ok} ok / ${r.summary.n_warn} warn / ${r.summary.n_error} error`, 'ok');
+      } catch (e) {
+        logLine('审计失败: ' + e.message, 'err');
+      } finally {
+        auditBtn.disabled = false; auditBtn.textContent = '立即跑';
+      }
+    };
     const routeFilterEl = qs('ds-route-filter');
     if (routeFilterEl) routeFilterEl.oninput = e => { _state.routeFilter = e.target.value || ''; renderRoutesTable(); };
     const filterEl = qs('ds-cap-filter');
