@@ -305,6 +305,12 @@ STEPS = [
     {"id": "sync_qfii",             "name": "QFII 季报",       "group": "data", "order": 7.6},
     {"id": "sync_margin",           "name": "融资融券",        "group": "data", "order": 7.7},
     {"id": "sync_lhb",              "name": "龙虎榜",          "group": "data", "order": 7.8},
+    # P1.5 (2026-04-28): 5 个妙想独家 capability sync step
+    {"id": "sync_aif10_holder_count",     "name": "妙想股东人数",     "group": "data", "order": 7.81},
+    {"id": "sync_aif10_valuation_quantile", "name": "妙想估值分位",   "group": "data", "order": 7.82},
+    {"id": "sync_aif10_peer_valuation",    "name": "妙想同行估值",   "group": "data", "order": 7.83},
+    {"id": "sync_aif10_forecast_consensus","name": "妙想一致预期",   "group": "data", "order": 7.84},
+    {"id": "sync_aif10_financial_history","name": "妙想财务 200 期", "group": "data", "order": 7.85},
     {"id": "calc_financial_derived","name": "计算财务指标",    "group": "calc", "order": 8},
     {"id": "build_current_rel",     "name": "构建当前关系",    "group": "mart", "order": 9},
     {"id": "build_profiles",        "name": "机构画像",        "group": "mart", "order": 10},
@@ -3406,6 +3412,57 @@ async def _step_calc_stock_scores(conn) -> int:
     return await _run_blocking_db_task(calculate_stock_scores)
 
 
+# P1.5 (2026-04-28): 5 个妙想独家 capability sync step
+async def _step_sync_aif10_capability(conn, capability_name: str) -> dict:
+    """通用妙想 capability sync step. 失败不阻塞主流程."""
+    from services.aif10_capability_client import sync_capability
+    try:
+        result = sync_capability(capability_name)
+        rows = result.get("rows", 0)
+        return {
+            "count": rows,
+            "status": "ok" if rows > 0 else "empty",
+            "report_name": result.get("report_name"),
+            "raw_table": result.get("raw_table"),
+            "elapsed_s": result.get("elapsed_s"),
+        }
+    except Exception as exc:
+        logger.warning(f"[aif10/{capability_name}] 同步失败: {type(exc).__name__}: {str(exc)[:120]}")
+        return {"count": 0, "status": "failed", "error": str(exc)[:200]}
+
+
+async def _step_sync_aif10_holder_count(conn) -> dict:
+    return await _step_sync_aif10_capability(conn, "holder_count")
+
+
+async def _step_sync_aif10_valuation_quantile(conn) -> dict:
+    return await _step_sync_aif10_capability(conn, "valuation_quantile")
+
+
+async def _step_sync_aif10_peer_valuation(conn) -> dict:
+    return await _step_sync_aif10_capability(conn, "peer_valuation")
+
+
+async def _step_sync_aif10_forecast_consensus(conn) -> dict:
+    return await _step_sync_aif10_capability(conn, "forecast_consensus")
+
+
+async def _step_sync_aif10_financial_history(conn) -> dict:
+    """v0 接口, 按单股拉. 默认 50 只活跃股 (避免一次跑太久)."""
+    from services.aif10_capability_client import sync_financial_history_200q
+    try:
+        result = sync_financial_history_200q(limit=50)
+        return {
+            "count": result.get("rows", 0),
+            "status": "ok" if result.get("rows", 0) > 0 else "empty",
+            "secucodes": result.get("secucodes"),
+            "elapsed_s": result.get("elapsed_s"),
+        }
+    except Exception as exc:
+        logger.warning(f"[aif10/financial_history] 失败: {exc}")
+        return {"count": 0, "status": "failed", "error": str(exc)[:200]}
+
+
 RUNNERS = {
     "sync_raw": _step_sync_raw,
     "match_inst": _step_match_inst,
@@ -3418,6 +3475,12 @@ RUNNERS = {
     "sync_qfii": _step_sync_qfii,
     "sync_margin": _step_sync_margin,
     "sync_lhb": _step_sync_lhb,
+    # P1.5 妙想独家 capability
+    "sync_aif10_holder_count": _step_sync_aif10_holder_count,
+    "sync_aif10_valuation_quantile": _step_sync_aif10_valuation_quantile,
+    "sync_aif10_peer_valuation": _step_sync_aif10_peer_valuation,
+    "sync_aif10_forecast_consensus": _step_sync_aif10_forecast_consensus,
+    "sync_aif10_financial_history": _step_sync_aif10_financial_history,
     "calc_financial_derived": _step_calc_financial_derived,
     "build_current_rel": _step_build_current_rel,
     "build_profiles": _step_build_profiles,
