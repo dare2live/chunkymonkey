@@ -1164,21 +1164,46 @@ def init_db():
 
         conn.commit()
 
-        # 防御性: 重建可能 schema-drift 的 view (DuckDB 不允许底表加列后查 view)
-        # 历史教训: mart_model_validation_fold view = SELECT * FROM mart_model_walkforward_fold,
-        # 底表 24→29 列后视图坏掉, 报 BinderException.
+        # P0.1 (2026-04-28): 派生层 schema 版本管理
+        # - 建 dim_schema_version 单点元数据表
+        # - 重建所有 view (防底表 schema drift, 含历史踩雷的 mart_model_validation_fold)
+        # - 检测 expected != actual 的派生表, 启动时 log WARN
+        # - 首次启动把所有现存表的 actual 设为 expected (建立 baseline)
         try:
-            tbl = conn.execute(
-                "SELECT 1 FROM information_schema.tables WHERE table_name = 'mart_model_walkforward_fold'"
-            ).fetchone()
-            if tbl:
-                conn.execute("DROP VIEW IF EXISTS mart_model_validation_fold")
-                conn.execute(
-                    "CREATE VIEW mart_model_validation_fold AS SELECT * FROM mart_model_walkforward_fold"
+            from services.schema_versions import (
+                ensure_schema_version_table,
+                recreate_views,
+                detect_drift,
+                record_all_baselines,
+            )
+            ensure_schema_version_table(conn)
+            view_results = recreate_views(conn)
+            for view_name, result in view_results.items():
+                if result != "ok":
+                    logger.warning(f"[schema] view {view_name}: {result}")
+
+            # 看 dim_schema_version 是否为空 (首次启动)
+            n_recorded = conn.execute(
+                "SELECT COUNT(*) FROM dim_schema_version"
+            ).fetchone()[0]
+            if n_recorded == 0:
+                n_baseline = record_all_baselines(conn)
+                logger.info(f"[schema] 首次启动 baseline: {n_baseline} 张派生表标记为当前期望版本")
+
+            drifts = detect_drift(conn)
+            if drifts:
+                logger.warning(
+                    f"[schema] 检测到 {len(drifts)} 张派生表 schema drift (启动后请去系统页 → 派生层版本 查看):"
                 )
-                conn.commit()
+                for d in drifts[:5]:  # 头 5 个详细打
+                    logger.warning(
+                        f"  - {d['table_name']}: expected={d['expected']} "
+                        f"actual={d['actual']} ({d['drift_type']})"
+                    )
+                if len(drifts) > 5:
+                    logger.warning(f"  ... 及 {len(drifts) - 5} 张其他")
         except Exception as exc:
-            logger.warning(f"[DB] 重建 mart_model_validation_fold view 失败 (非致命): {exc}")
+            logger.warning(f"[DB] schema_versions 初始化失败 (非致命): {exc}")
 
         logger.info("[DB] 数据库初始化完成")
     finally:

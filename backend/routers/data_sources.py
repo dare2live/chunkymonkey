@@ -60,6 +60,44 @@ def list_data_sources():
     return {"sources": out, "total": len(out)}
 
 
+@router.get("/schema_versions")
+def list_schema_versions_endpoint():
+    """派生层 schema_version 状态 (P0.1).
+
+    返回:
+      - 总数 / drift 数量 / 各 layer 分布
+      - 每张表的 expected_version / actual_version / rebuilt_at / drift 标记
+    """
+    from services.db import get_conn
+    from services.schema_versions import list_all_versions, summary
+    conn = get_conn()
+    try:
+        versions = list_all_versions(conn)
+        drift_count = sum(1 for v in versions if v["drift"])
+        return {
+            "summary": {
+                **summary(),
+                "drift_count": drift_count,
+            },
+            "versions": versions,
+        }
+    finally:
+        conn.close()
+
+
+@router.post("/schema_versions/record_baseline")
+def record_baseline_endpoint():
+    """把所有派生表的 actual_version 设为 expected (用户重算后用)."""
+    from services.db import get_conn
+    from services.schema_versions import record_all_baselines
+    conn = get_conn()
+    try:
+        n = record_all_baselines(conn)
+        return {"ok": True, "recorded": n}
+    finally:
+        conn.close()
+
+
 @router.get("/data_routes")
 def list_data_routes():
     """业务数据 → 实际通道 映射 (从代码反推, 不是 registry 声明).

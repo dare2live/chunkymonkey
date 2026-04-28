@@ -32,24 +32,69 @@
   async function renderSchemaVersions() {
     const el = document.getElementById('sys-schema-versions');
     if (!el) return;
-    // 占位: 项目目前没有 schema_version 列, 后续 (P6) 加. 这里展示已知派生层表
-    el.innerHTML = `
-      <div style="padding:5px 0;border-bottom:1px dotted var(--cm-bg-100)">
-        <code>fact_institution_event</code>
-        <span style="color:var(--cm-ink-500);float:right">v?? (未跟踪)</span>
-      </div>
-      <div style="padding:5px 0;border-bottom:1px dotted var(--cm-bg-100)">
-        <code>fact_setup_snapshot</code>
-        <span style="color:var(--cm-ink-500);float:right">v?? (未跟踪)</span>
-      </div>
-      <div style="padding:5px 0;border-bottom:1px dotted var(--cm-bg-100)">
-        <code>mart_*</code>
-        <span style="color:var(--cm-ink-500);float:right">v?? (未跟踪)</span>
-      </div>
-      <div class="muted" style="padding-top:6px;font-size:11px">
-        TODO P6: 给派生层加 _schema_version 列 + UI 跟踪.
-      </div>
-    `;
+    el.innerHTML = '<div class="muted" style="padding:8px 0">加载中…</div>';
+    try {
+      const r = await fetch('/api/data_sources/schema_versions');
+      if (!r.ok) throw new Error('HTTP ' + r.status);
+      const data = await r.json();
+      const summary = data.summary || {};
+      const versions = data.versions || [];
+      const driftCount = summary.drift_count || 0;
+      const byLayer = { fact: 0, mart: 0, dim_derived: 0 };
+      versions.forEach(v => { byLayer[v.layer] = (byLayer[v.layer] || 0) + 1; });
+
+      const driftRows = versions.filter(v => v.drift);
+      const okRows = versions.filter(v => !v.drift);
+
+      // 顶部摘要 + drift 列表 + ok 折叠
+      el.innerHTML = `
+        <div style="font-size:12px;margin-bottom:10px">
+          <strong>${summary.total || 0}</strong> 张派生表
+          (fact ${byLayer.fact} / mart ${byLayer.mart} / dim ${byLayer.dim_derived})
+          + <strong>${summary.n_views || 0}</strong> view
+          ${driftCount > 0
+            ? `<span style="color:#d33;margin-left:10px">⚠ ${driftCount} 张漂移</span>`
+            : '<span style="color:#0a7;margin-left:10px">✓ 全部 actual = expected</span>'}
+        </div>
+        ${driftCount > 0 ? `
+          <div style="background:rgba(221,51,51,0.05);border-left:3px solid #d33;padding:8px 12px;margin-bottom:10px;border-radius:4px">
+            <div style="font-size:12px;font-weight:600;margin-bottom:6px">漂移派生表 (建议重算或标记 baseline)</div>
+            ${driftRows.map(v => `
+              <div style="padding:3px 0;font-size:11px;font-family:monospace">
+                <code>${esc(v.table_name)}</code>
+                <span style="color:var(--cm-ink-500)"> code=${esc(v.expected_version)} db=${esc(v.actual_version || 'never_recorded')}</span>
+              </div>
+            `).join('')}
+            <button class="chip chip-outline" style="margin-top:8px;font-size:11px" id="sys-schema-baseline-btn">标记当前 DB 为 baseline (假定 v1 数据正确)</button>
+          </div>
+        ` : ''}
+        <details style="font-size:11px">
+          <summary style="cursor:pointer;font-size:12px;font-weight:600">已对齐 ${okRows.length} 张 (展开看清单)</summary>
+          <div style="margin-top:6px;max-height:300px;overflow-y:auto">
+            ${okRows.map(v => `
+              <div style="padding:3px 0;border-bottom:1px dotted var(--cm-bg-100);font-family:monospace;font-size:11px">
+                <code>${esc(v.table_name)}</code>
+                <span style="color:var(--cm-ink-500);float:right">${esc(v.expected_version)} ${v.rebuilt_at ? '@ ' + esc(v.rebuilt_at.slice(0, 16)) : ''}</span>
+              </div>
+            `).join('')}
+          </div>
+        </details>
+      `;
+
+      // 绑 baseline 按钮
+      const btn = document.getElementById('sys-schema-baseline-btn');
+      if (btn) btn.addEventListener('click', async () => {
+        if (!confirm('把当前 DB 中所有派生表的 actual 标为 expected? 仅在你确认数据是按当前 schema 跑出来的时候用 (e.g. 刚跑过全量重算).')) return;
+        try {
+          const r = await fetch('/api/data_sources/schema_versions/record_baseline', { method: 'POST' });
+          const j = await r.json();
+          alert('已标 baseline: ' + (j.recorded || 0) + ' 张表');
+          renderSchemaVersions();
+        } catch (e) { alert('失败: ' + e.message); }
+      });
+    } catch (e) {
+      el.innerHTML = '<div class="muted" style="color:#d33;padding:8px 0;font-size:12px">加载失败: ' + esc(e.message) + '</div>';
+    }
   }
 
   function renderDangerZone() {
