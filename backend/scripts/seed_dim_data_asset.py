@@ -147,6 +147,11 @@ def grep_writer(table_name: str) -> str | None:
         re.compile(rf"\bCREATE\s+(?:OR\s+REPLACE\s+)?(?:TABLE|TEMP\s+TABLE).*?\b{name_pat}\b\s+AS\b", re.IGNORECASE),
         re.compile(rf'register\(["\']{re.escape(table_name)}["\']', re.IGNORECASE),
         re.compile(rf'COPY\s+{name_pat}\b', re.IGNORECASE),
+        # pandas: df.to_sql("table_name", ...)
+        re.compile(rf'\.to_sql\(\s*["\']{re.escape(table_name)}["\']', re.IGNORECASE),
+        # SQLAlchemy 风格: con.execute(text("INSERT INTO X ..."))
+        # 已被前面的 INSERT INTO 模式覆盖
+        # f-string 拼接的写: f"INSERT INTO {var}" 用变量名 — 这种情况一定漏, 留 manual fix
     ]
     pat_schema = [
         re.compile(rf"\bCREATE\s+(?:OR\s+REPLACE\s+)?(?:TABLE|TEMP\s+TABLE)(?:\s+IF\s+NOT\s+EXISTS)?\s+{re.escape(table_name)}\b", re.IGNORECASE),

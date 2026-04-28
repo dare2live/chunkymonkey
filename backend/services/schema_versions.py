@@ -74,12 +74,8 @@ MART_VERSIONS = {
     "mart_dual_confirm": "v1",               # 双重确认
     "mart_etf_snapshot_latest": "v1",
     "mart_etf_snapshot_state": "v1",
-    "mart_fund_flow_fetch_log": "v1",
-    "mart_fund_flow_probe": "v1",
-    "mart_institution_capability": "v1",
     "mart_institution_industry_stat": "v1",  # 机构行业统计
     "mart_institution_profile": "v1",        # 机构画像 ⭐
-    "mart_institution_style": "v1",
     "mart_model_ablation_run": "v1",
     "mart_model_portfolio_curve": "v1",
     "mart_model_portfolio_summary": "v1",    # 模型组合表现 (cost/return/sharpe)

@@ -2,9 +2,9 @@
 数据库服务 — Chunky Monkey v2
 
 数据分层：
-  原始层（只追加）: raw_tdx_f10_holder_research, raw_fetch_batch
+  原始层（只追加）: raw_tdx_f10_holder_research
   维度层: dim_active_a_stock, dim_stock_tdx_industry, dim_trading_calendar,
-          inst_institutions, inst_name_aliases, dim_holder_alias
+          inst_institutions, dim_holder_alias
   事实层: fact_top10_holder_period (替代 market_raw_holdings, A/H 强制拆分),
           fact_shareholder_plan, fact_shareholder_trade,
           fact_controlling_shareholder,
@@ -359,18 +359,8 @@ def init_db():
 
             -- K线已迁移到独立的 market.duckdb.price_kline
 
-            CREATE TABLE IF NOT EXISTS raw_fetch_batch (
-                batch_id        TEXT PRIMARY KEY,
-                source          TEXT,
-                fetch_type      TEXT,
-                status          TEXT DEFAULT 'running',
-                started_at      TEXT,
-                finished_at     TEXT,
-                rows_fetched    INTEGER DEFAULT 0,
-                data_range_from TEXT,
-                data_range_to   TEXT,
-                error           TEXT
-            );
+            -- raw_fetch_batch 已退役 (W1, 2026-04-28): 无写入器无读取器, 退役清理
+            DROP TABLE IF EXISTS raw_fetch_batch;
 
             -- ============================================================
             -- 维度层
@@ -454,12 +444,8 @@ def init_db():
             CREATE INDEX IF NOT EXISTS idx_inst_type ON inst_institutions(type);
             CREATE INDEX IF NOT EXISTS idx_inst_enabled ON inst_institutions(enabled);
 
-            CREATE TABLE IF NOT EXISTS inst_name_aliases (
-                institution_id TEXT PRIMARY KEY,
-                aliases        TEXT,
-                created_at     TEXT,
-                updated_at     TEXT
-            );
+            -- inst_name_aliases 已退役 (W1, 2026-04-28): 无写入器无读取器, 退役清理
+            DROP TABLE IF EXISTS inst_name_aliases;
 
             -- ============================================================
             -- 事实层
@@ -1388,26 +1374,8 @@ def init_db():
         from services.sector_momentum import ensure_tables as _ensure_sector_tables
         _ensure_sector_tables(conn)
 
-        # 资产池维度表（ETF / 指数 / 股票统一管理）
-        conn.execute("""
-            CREATE TABLE IF NOT EXISTS dim_asset_universe (
-                code        TEXT PRIMARY KEY,
-                name        TEXT,
-                asset_type  TEXT DEFAULT 'stock',
-                market      TEXT,
-                category    TEXT,
-                list_date   TEXT,
-                is_active   INTEGER DEFAULT 1,
-                updated_at  TEXT
-            )
-        """)
-        try:
-            conn.execute("ALTER TABLE dim_asset_universe ADD COLUMN category TEXT")
-        except Exception:
-            pass
-        conn.execute(
-            "CREATE INDEX IF NOT EXISTS idx_dau_type ON dim_asset_universe(asset_type)"
-        )
+        # dim_asset_universe 已退役 (W1, 2026-04-28): 无写入器, ETF 走独立 etf_asset_universe
+        conn.execute("DROP TABLE IF EXISTS dim_asset_universe")
         conn.execute("""
             CREATE TABLE IF NOT EXISTS mart_etf_snapshot_latest (
                 code            TEXT PRIMARY KEY,
