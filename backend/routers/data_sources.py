@@ -98,6 +98,49 @@ def record_baseline_endpoint():
         conn.close()
 
 
+@router.post("/portfolio_backtest/run")
+def run_portfolio_backtest_endpoint(body: dict):
+    """组合回测 endpoint (P2.7).
+
+    body 例:
+    {
+        "signals": [{"date": "2026-01-15", "stock_code": "000001", "target_weight": 0.05}, ...],
+        "initial_capital": 1000000,
+        "slippage": {"type": "fixed_bps", "fixed_bps": 5},
+        "constraint": {"max_position_pct": 0.1, "max_n_holdings": 30}
+    }
+    """
+    from services.portfolio_backtest import (
+        run_portfolio_backtest, SlippageModel, PositionConstraint, make_default_price_fn,
+    )
+    signals = body.get("signals") or []
+    if not signals:
+        return {"ok": False, "message": "signals 为空"}
+
+    slippage_cfg = body.get("slippage") or {}
+    constraint_cfg = body.get("constraint") or {}
+    slippage = SlippageModel(**{k: v for k, v in slippage_cfg.items() if k in ("type", "fixed_bps", "impact_coef", "bid_ask_spread_bps")})
+    constraint = PositionConstraint(**{k: v for k, v in constraint_cfg.items() if k in (
+        "max_position_pct", "max_n_holdings", "max_industry_pct", "cash_reserve_pct", "min_position_pct",
+    )})
+
+    result = run_portfolio_backtest(
+        signals,
+        price_fn=make_default_price_fn(),
+        initial_capital=body.get("initial_capital", 1_000_000),
+        slippage=slippage,
+        constraint=constraint,
+    )
+    return {
+        "ok": True,
+        "metrics": result.metrics,
+        "equity_curve_head": result.equity_curve[:5],
+        "equity_curve_tail": result.equity_curve[-5:],
+        "trades_head": result.trades[:10],
+        "n_trades": len(result.trades),
+    }
+
+
 @router.post("/data_audit/run")
 def run_data_audit():
     """跑表级数据完整性审计 (P0.2). 返回 + 落库 mart_data_audit_report."""
