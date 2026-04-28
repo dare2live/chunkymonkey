@@ -122,11 +122,22 @@ def phase_lineage() -> dict:
         return {"phase": "lineage", "status": "failed", "reason": str(exc)}
 
 
+def _run_with_clean_argv(fn, fake_argv: list[str]):
+    """子任务内部 argparse 会读 sys.argv. 暂时替换 sys.argv 防 cron_daily 自己的
+    flag 透传过去 (此前导致 drift/health 静默 SystemExit rc=2)."""
+    saved = sys.argv
+    try:
+        sys.argv = fake_argv
+        return fn()
+    finally:
+        sys.argv = saved
+
+
 def phase_health() -> dict:
     """Phase 3: data_health_snapshot 写一份每日快照."""
     try:
         from scripts.data_health_snapshot import main as health_main
-        rc = health_main()  # 0/1/2
+        rc = _run_with_clean_argv(health_main, ["data_health_snapshot.py"])  # 0/1/2
         return {"phase": "health", "status": "ok" if rc == 0 else "warn", "rc": rc}
     except SystemExit as exc:
         return {"phase": "health", "status": "ok" if exc.code == 0 else "warn", "rc": exc.code}
@@ -139,7 +150,7 @@ def phase_drift() -> dict:
     """Phase 4: 算特征 drift, 写 mart_feature_drift."""
     try:
         from scripts.compute_feature_drift import main as drift_main
-        rc = drift_main()
+        rc = _run_with_clean_argv(drift_main, ["compute_feature_drift.py"])
         return {"phase": "drift", "status": "ok" if rc == 0 else "warn", "rc": rc}
     except SystemExit as exc:
         return {"phase": "drift", "status": "ok" if exc.code == 0 else "warn", "rc": exc.code}
