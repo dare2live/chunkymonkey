@@ -6885,3 +6885,47 @@ tr.detail-row>td>.detail-panel {
 .nav-sub-bar > span[style*="background:var(--cm-ink-100)"] {
   margin: 0 4px;
 }
+
+/* ==================== view-data-health (W0) ==================== */
+.dh-pill {
+  padding: 4px 10px;
+  border-radius: 12px;
+  font-size: 12px;
+  white-space: nowrap;
+}
+.dh-pill-green { background: #e6f7e6; color: #2a8a2a; }
+.dh-pill-yellow { background: #fff4d4; color: #a67c00; }
+.dh-pill-red { background: #fde8e8; color: #a02a2a; }
+.dh-pill-info { background: #e8f0ff; color: #2563eb; }
+
+.dh-tab-btn {
+  background: transparent;
+  border: none;
+  border-bottom: 2px solid transparent;
+  padding: 10px 16px;
+  font-size: 13px;
+  color: var(--cm-text-muted, #888);
+  cursor: pointer;
+  transition: color 0.15s, border-color 0.15s;
+  margin-bottom: -1px;
+}
+.dh-tab-btn:hover { color: var(--cm-text, #333); }
+.dh-tab-btn.active {
+  color: var(--cm-accent, #2563eb);
+  border-bottom-color: var(--cm-accent, #2563eb);
+  font-weight: 600;
+}
+
+#dh-health-table tbody tr.dh-row:hover {
+  background: var(--cm-bg-50, #f8f9fa);
+}
+
+/* layer 颜色徽章 */
+.dh-layer-raw { padding: 2px 6px; background: #fff4d4; color: #8a6800; border-radius: 3px; font-size: 11px; }
+.dh-layer-dim { padding: 2px 6px; background: #e6f0ff; color: #1d4ed8; border-radius: 3px; font-size: 11px; }
+.dh-layer-fact { padding: 2px 6px; background: #e6f7e6; color: #2a7a2a; border-radius: 3px; font-size: 11px; }
+.dh-layer-mart { padding: 2px 6px; background: #f3e8ff; color: #6b21a8; border-radius: 3px; font-size: 11px; }
+.dh-layer-research { padding: 2px 6px; background: #fce7f3; color: #be185d; border-radius: 3px; font-size: 11px; }
+.dh-layer-cache { padding: 2px 6px; background: #f4f4f5; color: #525252; border-radius: 3px; font-size: 11px; }
+.dh-layer-sys { padding: 2px 6px; background: #fef3c7; color: #92400e; border-radius: 3px; font-size: 11px; }
+.dh-layer-other { padding: 2px 6px; background: #e7e5e4; color: #44403c; border-radius: 3px; font-size: 11px; }

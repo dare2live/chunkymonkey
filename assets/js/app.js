@@ -117,6 +117,7 @@
       etf: loadEtf,
       'model-monitor': loadModelMonitor,
       data: function () { window.DataView && window.DataView.show(); },
+      'data-health': function () { window.DataHealthView && window.DataHealthView.show(); },
       strategy: function () { window.StrategyView && window.StrategyView.show(); },
       settings: function () { window.SettingsView && window.SettingsView.show(); },
     })[name]?.();
