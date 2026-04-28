@@ -8,7 +8,7 @@ import httpx
 
 logger = logging.getLogger("cm-api")
 
-_EM_ENDPOINT = "https://datacenter-web.eastmoney.com/api/data/v1/get"
+_EM_ENDPOINT = "(deprecated, P6.5 走 aif10_scraper)"
 _CACHE_TTL_SEC = 600
 _CACHE: dict[tuple, tuple[float, object]] = {}
 _FETCH_RETRY_DELAYS_SEC = (0.6, 1.2)
@@ -117,47 +117,39 @@ def _eastmoney_rows(
         page_size,
         max_pages,
     )
+    # P6.5 (2026-04-28): 走 miaoxiang/aif10-scraper, 替代 httpx 直拉 datacenter-web.
+    # source/client 参数通过 extra_params 传, 兼容 reportName 对协议参数的需求差异.
     cached = _cache_get(cache_key)
     if cached is not None:
         return cached
     stale_cached = _cache_get(cache_key, allow_stale=True)
 
-    headers = {
-        "Referer": "https://data.eastmoney.com/",
-        "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 "
-        "(KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
-    }
-    params = {
-        "reportName": report_name,
-        "columns": columns,
-        "pageNumber": "1",
-        "pageSize": str(page_size),
-        "sortColumns": sort_columns,
-        "sortTypes": sort_types,
-        "source": source,
-        "client": client_name,
-    }
-    if filter_expr:
-        params["filter"] = filter_expr
+    from aif10_scraper import AIF10Client
 
     last_error = None
     for attempt in range(len(_FETCH_RETRY_DELAYS_SEC) + 1):
         rows: list[dict] = []
         try:
-            with httpx.Client(timeout=20.0, headers=headers, follow_redirects=True) as client:
+            cli = AIF10Client(retry=1, timeout=20.0)
+            try:
                 page = 1
                 total_pages = 1
                 while page <= total_pages:
-                    params["pageNumber"] = str(page)
-                    response = client.get(_EM_ENDPOINT, params=params)
-                    response.raise_for_status()
-                    payload = response.json()
-                    result = payload.get("result") or {}
-                    page_rows = result.get("data") or []
+                    result_obj = cli.get_v1(
+                        report_name,
+                        page=page,
+                        page_size=page_size,
+                        sort_columns=sort_columns,
+                        sort_types=sort_types,
+                        columns=columns,
+                        filter_expr=filter_expr if filter_expr else None,
+                        extra_params={"source": source, "client": client_name},
+                    )
+                    page_rows = result_obj.get("data") or []
                     if page == 1:
-                        total_pages = int(result.get("pages") or 0)
+                        total_pages = int(result_obj.get("pages") or 0)
                         if not total_pages:
-                            count = int(result.get("count") or 0)
+                            count = int(result_obj.get("count") or 0)
                             total_pages = max(1, math.ceil(count / page_size)) if count else 1
                         if max_pages:
                             total_pages = min(total_pages, max_pages)
@@ -165,6 +157,8 @@ def _eastmoney_rows(
                     if not page_rows:
                         break
                     page += 1
+            finally:
+                cli.close()
             return _cache_put(cache_key, rows)
         except Exception as exc:
             last_error = exc
@@ -172,10 +166,10 @@ def _eastmoney_rows(
                 time.sleep(_FETCH_RETRY_DELAYS_SEC[attempt])
 
     if stale_cached is not None:
-        logger.warning("eastmoney fetch failed for %s after retries, using stale cache: %s", report_name, last_error)
+        logger.warning("aif10 fetch failed for %s after retries, using stale cache: %s", report_name, last_error)
         return stale_cached
 
-    logger.warning("eastmoney fetch failed for %s after retries: %s", report_name, last_error)
+    logger.warning("aif10 fetch failed for %s after retries: %s", report_name, last_error)
     return []
 
 

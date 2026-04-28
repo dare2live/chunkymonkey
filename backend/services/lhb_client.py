@@ -23,7 +23,7 @@ import pandas as pd
 
 logger = logging.getLogger("cm-api")
 
-LHB_SOURCE = "akshare_stock_lhb_detail_em"
+LHB_SOURCE = "miaoxiang_RPT_DAILYBILLBOARD_DETAILSNEW"  # P6.2 迁: datacenter-web → miaoxiang
 
 
 # ─────────────────────────────────────────────────────────────────────
@@ -123,11 +123,15 @@ def _normalize_stock_code(value) -> Optional[str]:
 # ─────────────────────────────────────────────────────────────────────
 
 def _fetch_lhb(start_date: str, end_date: str):
-    """龙虎榜 datacenter-web RPT_DAILYBILLBOARD_DETAILSNEW (替代 akshare.stock_lhb_detail_em).
+    """龙虎榜 (P6.2 2026-04-28 迁): 走 miaoxiang/aif10-scraper 的同名 reportName.
+
+    reportName 不变 (RPT_DAILYBILLBOARD_DETAILSNEW), 字段全兼容
+    (BILLBOARD_NET_AMT/BUY_AMT/SELL_AMT/DEAL_AMT, DEAL_NET_RATIO,
+    TURNOVERRATE, FREE_MARKET_CAP, D1-D10 全有), 迁 fetch 层即可.
 
     start_date / end_date: YYYYMMDD, 返回 DataFrame (列名兼容旧 akshare 版).
     """
-    from services.eastmoney_skill import fetch_all_pages
+    from aif10_scraper import fetch_all_pages
     import pandas as _pd
 
     start_iso = f"{start_date[:4]}-{start_date[4:6]}-{start_date[6:]}"
@@ -143,7 +147,10 @@ def _fetch_lhb(start_date: str, end_date: str):
             "DEAL_NET_RATIO,DEAL_AMOUNT_RATIO,TURNOVERRATE,FREE_MARKET_CAP,EXPLANATION,D1_CLOSE_ADJCHRATE,"
             "D2_CLOSE_ADJCHRATE,D5_CLOSE_ADJCHRATE,D10_CLOSE_ADJCHRATE,SECURITY_TYPE_CODE"
         ),
-        filter_expr=f"(TRADE_DATE<='{end_iso}')(TRADE_DATE>='{start_iso}')",
+        extra_filters=[
+            f"(TRADE_DATE<='{end_iso}')",
+            f"(TRADE_DATE>='{start_iso}')",
+        ],
     )
     if not rows:
         return _pd.DataFrame()

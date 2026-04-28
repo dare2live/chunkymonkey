@@ -901,7 +901,7 @@ def _collect_downstream_steps(start_step_id):
 # ============================================================
 
 _CONNECTIVITY_TARGETS = {
-    "holdings_source": "https://datacenter-web.eastmoney.com",
+    "holdings_source": "https://datacenter.eastmoney.com/securities/api/data/v1/get",  # P6 (2026-04-28): miaoxiang datacenter 子域
 }
 
 _CONNECTIVITY_LABELS = {

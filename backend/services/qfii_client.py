@@ -170,7 +170,8 @@ def _fetch_qfii_by_symbol(report_date_yyyymmdd: str, symbol: str):
     report_date_yyyymmdd: 季度末日期 YYYYMMDD (如 20251231).
     symbol: 持股变动 {"新进", "增加", "不变", "减少"}.
     """
-    from services.eastmoney_skill import fetch_all_pages
+    # P6.3 (2026-04-28): datacenter-web → miaoxiang. reportName / 字段全兼容.
+    from aif10_scraper import fetch_all_pages
     import pandas as _pd
 
     end_iso = f"{report_date_yyyymmdd[:4]}-{report_date_yyyymmdd[4:6]}-{report_date_yyyymmdd[6:]}"
@@ -179,11 +180,11 @@ def _fetch_qfii_by_symbol(report_date_yyyymmdd: str, symbol: str):
         page_size=50,
         sort_columns="NOTICE_DATE,SECURITY_CODE,RANK",
         sort_types="-1,1,1",
-        filter_expr=(
-            f'(HOLDER_NEWTYPE="QFII")'
-            f'(HOLDNUM_CHANGE_NAME="{symbol}")'
-            f"(END_DATE='{end_iso}')"
-        ),
+        extra_filters=[
+            f'(HOLDER_NEWTYPE="QFII")',
+            f'(HOLDNUM_CHANGE_NAME="{symbol}")',
+            f"(END_DATE='{end_iso}')",
+        ],
     )
     if not rows:
         return _pd.DataFrame()

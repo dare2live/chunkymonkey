@@ -125,9 +125,10 @@ def _fetch_from_eastmoney_skill(start_date: str) -> pd.DataFrame:
     返回的 DataFrame 字段名兼容旧版 (中文): 代码 / 名称 / 公告日期 / 接待日期 /
     接待方式 / 接待人员 / 接待地点 / 接待机构数量, 这样下游 _normalize* 不需改.
     """
-    from services.eastmoney_skill import fetch_all_pages
+    # P6.4 (2026-04-28): datacenter-web → miaoxiang. reportName / 字段全兼容.
+    from aif10_scraper import fetch_all_pages
 
-    # YYYYMMDD → YYYY-MM-DD (datacenter-web 用 dash 格式)
+    # YYYYMMDD → YYYY-MM-DD
     if len(start_date) == 8 and start_date.isdigit():
         start_iso = f"{start_date[:4]}-{start_date[4:6]}-{start_date[6:]}"
     else:
@@ -138,8 +139,8 @@ def _fetch_from_eastmoney_skill(start_date: str) -> pd.DataFrame:
         page_size=500,
         sort_columns="NOTICE_DATE,SECURITY_CODE",
         sort_types="-1,1",
-        # 注意: datacenter-web filter 用单引号 + 严格 > (不支持 >=)
-        filter_expr=f"(NOTICE_DATE>'{start_iso}')",
+        # 注意: filter 用单引号 + 严格 > (不支持 >=)
+        extra_filters=[f"(NOTICE_DATE>'{start_iso}')"],
     )
     if not rows:
         return pd.DataFrame()
