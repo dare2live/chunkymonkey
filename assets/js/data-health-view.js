@@ -17,14 +17,18 @@
 
   const DataHealthView = {
     state: {
-      snapshot: null,           // /snapshot 返回
-      sources: null,            // /sources 返回 (缓存)
-      sourcesAt: 0,             // sources 拉取时间
-      clients: null,            // /clients 返回 (缓存)
+      snapshot: null,
+      sources: null,            // /sources (缓存)
+      sourcesAt: 0,
+      clients: null,            // /clients (缓存)
       clientsAt: 0,
-      lineage: null,            // /lineage 返回 (缓存)
+      lineage: null,            // /lineage (缓存)
       lineageAt: 0,
-      activeTab: 'health',      // 'health' | 'sources' | 'clients' | 'lineage'
+      drift: null,              // /drift (缓存)
+      driftAt: 0,
+      models: null,             // /models (缓存)
+      modelsAt: 0,
+      activeTab: 'health',      // health | sources | clients | lineage | drift | cleanup | models
       filter: { layer: '', severity: '', search: '' },
     },
 
@@ -223,14 +227,19 @@
       document.querySelectorAll('.dh-tab-btn').forEach((btn) => {
         btn.classList.toggle('active', btn.getAttribute('data-dh-tab') === tab);
       });
-      const panelHealth = document.getElementById('dh-panel-health');
-      const panelSources = document.getElementById('dh-panel-sources');
-      const panelClients = document.getElementById('dh-panel-clients');
-      const panelLineage = document.getElementById('dh-panel-lineage');
-      if (panelHealth) panelHealth.style.display = tab === 'health' ? '' : 'none';
-      if (panelSources) panelSources.style.display = tab === 'sources' ? '' : 'none';
-      if (panelClients) panelClients.style.display = tab === 'clients' ? '' : 'none';
-      if (panelLineage) panelLineage.style.display = tab === 'lineage' ? '' : 'none';
+      const panels = {
+        health:   document.getElementById('dh-panel-health'),
+        sources:  document.getElementById('dh-panel-sources'),
+        clients:  document.getElementById('dh-panel-clients'),
+        lineage:  document.getElementById('dh-panel-lineage'),
+        drift:    document.getElementById('dh-panel-drift'),
+        cleanup:  document.getElementById('dh-panel-cleanup'),
+        models:   document.getElementById('dh-panel-models'),
+      };
+      Object.entries(panels).forEach(([key, el]) => {
+        if (el) el.style.display = tab === key ? '' : 'none';
+      });
+
       if (tab === 'sources' && !this.state.sources) {
         fetch('/api/data_health/sources').then((r) => r.json()).then((data) => {
           this.state.sources = data;
@@ -251,6 +260,168 @@
           this.state.lineageAt = Date.now();
           this.renderLineageTable();
         });
+      }
+      if (tab === 'drift' && !this.state.drift) {
+        fetch('/api/data_health/drift').then((r) => r.json()).then((data) => {
+          this.state.drift = data;
+          this.state.driftAt = Date.now();
+          this.renderDriftTable();
+        });
+      }
+      if (tab === 'cleanup') {
+        // cleanup 直接复用 snapshot 的 red_list, 不需要单独 fetch
+        this.renderCleanupTable();
+      }
+      if (tab === 'models' && !this.state.models) {
+        fetch('/api/data_health/models').then((r) => r.json()).then((data) => {
+          this.state.models = data;
+          this.state.modelsAt = Date.now();
+          this.renderModelsPanel();
+        });
+      }
+    },
+
+    renderDriftTable() {
+      const data = this.state.drift;
+      const tbody = document.getElementById('dh-drift-tbody');
+      if (!tbody || !data) return;
+      const items = (data.items || []);
+      const summary = data.summary || {};
+      const set = (id, v) => { const el = document.getElementById(id); if (el) el.textContent = v != null ? v : '--'; };
+      set('dh-drift-cnt-ok', summary.ok || 0);
+      set('dh-drift-cnt-warn', summary.warn || 0);
+      set('dh-drift-cnt-critical', summary.critical || 0);
+      set('dh-drift-snap', data.snapshot_at ? this.fmtDateTime(data.snapshot_at) : (data.note || '无快照'));
+      if (items.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="7" style="padding:30px;text-align:center" class="muted">' + (data.note || '空') + '</td></tr>';
+        return;
+      }
+      tbody.innerHTML = items.map((r) => {
+        const sev = r.severity || 'unknown';
+        const dot = sev === 'critical' ? '🔴' : sev === 'warn' ? '🟡' : sev === 'ok' ? '🟢' : '⚪';
+        const psi = r.psi != null ? r.psi.toFixed(4) : '—';
+        const psiColor = sev === 'critical' ? '#c33' : sev === 'warn' ? '#a67c00' : '#2a7a2a';
+        return `<tr style="border-bottom:1px solid var(--cm-ink-50,#f0f0f0)">
+          <td style="padding:6px 12px">${dot}</td>
+          <td style="padding:6px 12px"><code style="font-size:12px">${this.esc(r.feature)}</code></td>
+          <td style="padding:6px 12px;text-align:right;font-family:monospace;color:${psiColor};font-weight:600">${psi}</td>
+          <td style="padding:6px 12px;text-align:right;font-family:monospace">${this.fmtNum(r.n_train)}</td>
+          <td style="padding:6px 12px;text-align:right;font-family:monospace">${this.fmtNum(r.n_recent)}</td>
+          <td style="padding:6px 12px;text-align:right;font-size:11px" class="muted">${r.window_days || '—'}d</td>
+          <td style="padding:6px 12px;font-size:10px" class="muted">${this.esc(r.model_id || '—')}</td>
+        </tr>`;
+      }).join('');
+    },
+
+    renderCleanupTable() {
+      const tbody = document.getElementById('dh-cleanup-tbody');
+      if (!tbody) return;
+      const s = this.state.snapshot;
+      const reds = (s && s.red_list) || [];
+      if (reds.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="8" style="padding:30px;text-align:center" class="muted">没有 red 表 ✓</td></tr>';
+        return;
+      }
+      // 按 layer + freshness 排序 (最旧的最先看到)
+      const sorted = reds.slice().sort((a, b) => {
+        if (a.layer !== b.layer) return (a.layer || '').localeCompare(b.layer || '');
+        return (b.freshness_hours || 0) - (a.freshness_hours || 0);
+      });
+      tbody.innerHTML = sorted.map((r) => {
+        const issue = r.issue_summary || '—';
+        const isOrphan = issue.includes('orphan_no_writer');
+        const isEmpty = issue.includes('stale_empty');
+        const writer = r.writer_module ? `<code style="font-size:10px">${this.esc(this.shortPath(r.writer_module))}</code>` : '<span class="muted" style="font-size:11px">—</span>';
+        const layerBadge = r.layer ? `<span class="dh-layer-${r.layer}">${r.layer}</span>` : '';
+        return `<tr style="border-bottom:1px solid var(--cm-ink-50,#f0f0f0)">
+          <td style="padding:6px 12px">🔴</td>
+          <td style="padding:6px 12px"><a href="javascript:DataHealthView.openAssetDrawer('${this.esc(r.table_name)}')" style="text-decoration:none;color:var(--cm-link,#0a6cb3)"><code style="font-size:11px">${this.esc(r.table_name)}</code></a></td>
+          <td style="padding:6px 12px">${layerBadge}</td>
+          <td style="padding:6px 12px;text-align:right;font-family:monospace">${this.fmtNum(r.row_count)}</td>
+          <td style="padding:6px 12px;font-size:11px">${this.esc(r.last_data_date || '—')}</td>
+          <td style="padding:6px 12px;text-align:right;font-size:11px" class="muted">${r.freshness_hours != null ? r.freshness_hours.toFixed(1) + 'h' : '—'}</td>
+          <td style="padding:6px 12px">${writer}</td>
+          <td style="padding:6px 12px;font-size:11px;color:${isOrphan || isEmpty ? '#a02a2a' : '#666'}">${this.esc(issue)}</td>
+        </tr>`;
+      }).join('');
+    },
+
+    renderModelsPanel() {
+      const data = this.state.models;
+      const champBox = document.getElementById('dh-model-champion-card');
+      const chBox = document.getElementById('dh-model-challengers');
+      const rtBox = document.getElementById('dh-model-retired');
+      if (!data || !champBox) return;
+
+      // Champion 大卡
+      const champ = data.champion;
+      if (champ) {
+        const ic = champ.ic_holdout != null ? champ.ic_holdout.toFixed(4) : '—';
+        const drift = champ.drift_score != null ? champ.drift_score.toFixed(3) : '—';
+        const deployed = champ.deployed_at ? this.fmtDateTime(champ.deployed_at) : '—';
+        champBox.innerHTML = `
+          <div class="panel" style="padding:14px 18px;border-left:4px solid #2a7a2a;background:linear-gradient(90deg,#e8f4ec 0%,transparent 100%)">
+            <div style="display:flex;align-items:center;gap:10px;margin-bottom:6px">
+              <span class="dh-pill dh-pill-green" style="font-size:13px">👑 CHAMPION</span>
+              <code style="font-size:13px;font-weight:600">${this.esc(champ.model_id)}</code>
+            </div>
+            <div style="display:flex;gap:24px;flex-wrap:wrap;font-size:12px">
+              <div><span class="muted">IC holdout</span> <strong>${ic}</strong></div>
+              <div><span class="muted">drift score</span> <strong>${drift}</strong></div>
+              <div><span class="muted">deployed</span> ${deployed}</div>
+              <div><span class="muted">promoted from</span> ${this.esc(champ.promoted_from || '初始')}</div>
+            </div>
+            ${champ.deploy_decision_notes ? `<div class="muted" style="margin-top:6px;font-size:11px">📝 ${this.esc(champ.deploy_decision_notes)}</div>` : ''}
+          </div>`;
+      } else {
+        champBox.innerHTML = '<div class="panel" style="padding:14px;text-align:center" class="muted">没有 champion. 先跑 <code>backend/scripts/bootstrap_model_lifecycle.py</code></div>';
+      }
+
+      // Challengers
+      const challengers = data.challengers || [];
+      if (challengers.length > 0) {
+        chBox.innerHTML = `
+          <div class="panel" style="padding:12px 14px">
+            <div style="font-size:13px;font-weight:600;margin-bottom:8px">⚔ Challengers (${challengers.length})</div>
+            ${challengers.map((m) => {
+              const ic = m.ic_holdout != null ? m.ic_holdout.toFixed(4) : '—';
+              return `<div style="margin:4px 0;font-size:12px">
+                <code>${this.esc(m.model_id)}</code>
+                <span class="muted" style="margin-left:8px">IC=${ic}</span>
+              </div>`;
+            }).join('')}
+          </div>`;
+      } else {
+        chBox.innerHTML = '<div class="muted" style="font-size:12px;padding:6px 14px">⚔ 没有正在评估的 challenger</div>';
+      }
+
+      // Retired
+      const retired = data.retired || [];
+      if (retired.length > 0) {
+        rtBox.innerHTML = `
+          <details>
+            <summary style="cursor:pointer;font-size:12px;padding:6px 14px" class="muted">📦 Retired models (${retired.length}) — 点击展开</summary>
+            <div class="panel" style="padding:0;overflow-x:auto;margin-top:6px">
+              <table style="width:100%;border-collapse:collapse;font-size:11px">
+                <thead style="background:var(--cm-ink-50,#f6f6f6)">
+                  <tr>
+                    <th style="text-align:left;padding:6px 10px">model_id</th>
+                    <th style="text-align:right;padding:6px 10px">IC holdout</th>
+                    <th style="text-align:left;padding:6px 10px">retired_at</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  ${retired.map((m) => `<tr style="border-top:1px solid var(--cm-ink-50,#f0f0f0)">
+                    <td style="padding:6px 10px"><code>${this.esc(m.model_id)}</code></td>
+                    <td style="padding:6px 10px;text-align:right;font-family:monospace">${m.ic_holdout != null ? m.ic_holdout.toFixed(4) : '—'}</td>
+                    <td style="padding:6px 10px" class="muted">${m.retired_at ? this.fmtDateTime(m.retired_at) : '—'}</td>
+                  </tr>`).join('')}
+                </tbody>
+              </table>
+            </div>
+          </details>`;
+      } else {
+        rtBox.innerHTML = '';
       }
     },
 

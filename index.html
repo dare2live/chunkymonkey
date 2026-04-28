@@ -204,11 +204,14 @@
       </div>
 
       <!-- Tab 切换 -->
-      <div class="panel" style="margin-bottom:14px;padding:0 14px;display:flex;gap:0;border-bottom:1px solid var(--cm-ink-100,#e2e2e2)">
+      <div class="panel" style="margin-bottom:14px;padding:0 14px;display:flex;gap:0;border-bottom:1px solid var(--cm-ink-100,#e2e2e2);flex-wrap:wrap">
         <button class="dh-tab-btn active" data-dh-tab="health">健康看板 (Tab 4)</button>
         <button class="dh-tab-btn" data-dh-tab="sources">数据源总览 (Tab 1)</button>
         <button class="dh-tab-btn" data-dh-tab="clients">写入器 (Tab 2)</button>
         <button class="dh-tab-btn" data-dh-tab="lineage">派生 Pipeline (Tab 3)</button>
+        <button class="dh-tab-btn" data-dh-tab="drift">特征漂移 (Tab 5)</button>
+        <button class="dh-tab-btn" data-dh-tab="cleanup">清理 Backlog (Tab 6)</button>
+        <button class="dh-tab-btn" data-dh-tab="models">模型生命周期 (Tab 7)</button>
       </div>
 
       <!-- Tab 1: 健康看板 (table) -->
@@ -336,6 +339,68 @@
             </tbody>
           </table>
         </div>
+      </div>
+
+      <!-- Tab 5: 特征漂移 (drift) -->
+      <div class="dh-tab-panel" id="dh-panel-drift" style="display:none">
+        <div class="panel" style="margin-bottom:10px;padding:12px 14px;display:flex;gap:14px;flex-wrap:wrap;align-items:center">
+          <span class="muted" style="font-size:12px">PSI = Population Stability Index. <strong>&lt; 0.10 ok</strong> · 0.10–0.25 warn · <strong>≥ 0.25 critical</strong>. 重新跑: <code>backend/scripts/compute_feature_drift.py</code></span>
+          <span class="dh-pill dh-pill-green" style="margin-left:auto">ok <span id="dh-drift-cnt-ok">--</span></span>
+          <span class="dh-pill dh-pill-yellow">warn <span id="dh-drift-cnt-warn">--</span></span>
+          <span class="dh-pill dh-pill-red">critical <span id="dh-drift-cnt-critical">--</span></span>
+          <span class="muted" style="font-size:11px">snapshot: <span id="dh-drift-snap">--</span></span>
+        </div>
+        <div class="panel" style="padding:0;overflow-x:auto;max-height:62vh;overflow-y:auto">
+          <table style="width:100%;border-collapse:collapse;font-size:12px">
+            <thead style="position:sticky;top:0;background:var(--cm-bg,#fff);z-index:1">
+              <tr style="border-bottom:1px solid var(--cm-ink-100,#e2e2e2)">
+                <th style="text-align:left;padding:8px 12px;width:40px"></th>
+                <th style="text-align:left;padding:8px 12px">feature</th>
+                <th style="text-align:right;padding:8px 12px;width:90px">PSI</th>
+                <th style="text-align:right;padding:8px 12px;width:90px">n_train</th>
+                <th style="text-align:right;padding:8px 12px;width:90px">n_recent</th>
+                <th style="text-align:right;padding:8px 12px;width:80px">window</th>
+                <th style="text-align:left;padding:8px 12px;width:200px">model_id</th>
+              </tr>
+            </thead>
+            <tbody id="dh-drift-tbody">
+              <tr><td colspan="7" style="padding:30px;text-align:center" class="muted">加载中...</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- Tab 6: 清理 Backlog (orphan + red + stale 候选) -->
+      <div class="dh-tab-panel" id="dh-panel-cleanup" style="display:none">
+        <div class="panel" style="margin-bottom:10px;padding:12px 14px">
+          <div class="muted" style="font-size:12px">所有 <strong>red</strong> 表 (来自当前快照). orphan_no_writer / stale_empty 是优先清理候选. 真正 drop 走 <code>backend/scripts/cleanup_orphan_tables_w1.py</code> 模式.</div>
+        </div>
+        <div class="panel" style="padding:0;overflow-x:auto;max-height:62vh;overflow-y:auto">
+          <table style="width:100%;border-collapse:collapse;font-size:12px">
+            <thead style="position:sticky;top:0;background:var(--cm-bg,#fff);z-index:1">
+              <tr style="border-bottom:1px solid var(--cm-ink-100,#e2e2e2)">
+                <th style="text-align:left;padding:8px 12px;width:40px"></th>
+                <th style="text-align:left;padding:8px 12px">表名</th>
+                <th style="text-align:left;padding:8px 12px;width:64px">layer</th>
+                <th style="text-align:right;padding:8px 12px;width:90px">行数</th>
+                <th style="text-align:left;padding:8px 12px;width:110px">最新数据</th>
+                <th style="text-align:right;padding:8px 12px;width:80px">freshness</th>
+                <th style="text-align:left;padding:8px 12px">writer</th>
+                <th style="text-align:left;padding:8px 12px">问题</th>
+              </tr>
+            </thead>
+            <tbody id="dh-cleanup-tbody">
+              <tr><td colspan="8" style="padding:30px;text-align:center" class="muted">加载中...</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- Tab 7: 模型生命周期 -->
+      <div class="dh-tab-panel" id="dh-panel-models" style="display:none">
+        <div id="dh-model-champion-card" style="margin-bottom:14px"></div>
+        <div id="dh-model-challengers" style="margin-bottom:14px"></div>
+        <div id="dh-model-retired"></div>
       </div>
 
       <!-- 单表详情抽屉 (复用 .drawer 样式) -->
