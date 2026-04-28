@@ -98,6 +98,22 @@ def record_baseline_endpoint():
         conn.close()
 
 
+@router.get("/cache_stats")
+def cache_stats():
+    """API cache 命中率 (P3.10)."""
+    from services.api_cache import get_cache_stats
+    return get_cache_stats()
+
+
+@router.post("/cache_invalidate")
+def cache_invalidate_endpoint(body: dict | None = None):
+    """清 cache. body 例: {prefix: 'list_data_sources'}."""
+    from services.api_cache import invalidate
+    body = body or {}
+    invalidate(body.get("prefix"))
+    return {"ok": True}
+
+
 @router.post("/parallel_sync")
 async def parallel_sync_endpoint(body: dict | None = None):
     """并行跑数据获取 group (P2.9).

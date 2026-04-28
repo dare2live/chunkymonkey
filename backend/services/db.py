@@ -1164,6 +1164,30 @@ def init_db():
 
         conn.commit()
 
+        # P3.10 (2026-04-28): 关键大表索引 (DuckDB 用得着)
+        try:
+            for sql in (
+                # market_raw_holdings 757k 行, 已有 (holder_name, stock_code, report_date)
+                "CREATE INDEX IF NOT EXISTS idx_mrh_secucode ON market_raw_holdings(stock_code, report_date DESC)",
+                "CREATE INDEX IF NOT EXISTS idx_mrh_holder_recent ON market_raw_holdings(holder_name, report_date DESC)",
+                # fact_institution_event 高频查 by stock_code + holder_name
+                "CREATE INDEX IF NOT EXISTS idx_fie_stock ON fact_institution_event(stock_code, report_date DESC)",
+                "CREATE INDEX IF NOT EXISTS idx_fie_holder ON fact_institution_event(holder_name, report_date DESC)",
+                # mart_daily_recommendation 按日期查 topK
+                "CREATE INDEX IF NOT EXISTS idx_mdr_date_rank ON mart_daily_recommendation(snapshot_date DESC, rank_in_date)",
+                # fact_risk_factors P1.6
+                "CREATE INDEX IF NOT EXISTS idx_rf_calc_date ON fact_risk_factors(calc_date DESC)",
+                # mart_prediction_outcome P2.8
+                "CREATE INDEX IF NOT EXISTS idx_po_snap_model ON mart_prediction_outcome(snapshot_date DESC, model_id)",
+            ):
+                try:
+                    conn.execute(sql)
+                except Exception as exc:
+                    logger.debug(f"[index] 跳过 {sql[:60]}...: {exc}")
+            conn.commit()
+        except Exception as exc:
+            logger.warning(f"[DB] 关键索引创建失败 (非致命): {exc}")
+
         # P0.1 (2026-04-28): 派生层 schema 版本管理
         # - 建 dim_schema_version 单点元数据表
         # - 重建所有 view (防底表 schema drift, 含历史踩雷的 mart_model_validation_fold)
