@@ -348,7 +348,7 @@ ETF 研究
 
 - FastAPI + Uvicorn (端口 8002 for main, 8001 for worktree)
 - DuckDB 作主数据库 (`services/duck_adapter.py` 提供轻量 DB-API 适配)
-- pandas + NumPy + LightGBM + Optuna + SciPy + scikit-learn
+- Records/native Python + NumPy + LightGBM + Optuna + SciPy + scikit-learn
 - 无 Celery/Redis/队列: 长任务走 nohup + 简单文件状态
 
 ### 7.2 文件布局

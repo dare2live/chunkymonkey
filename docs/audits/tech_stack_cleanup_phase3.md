@@ -36,6 +36,9 @@ crawler conversion helpers to records while keeping the old method name as a
 compatibility shim.
 The holder-parser loop moved the F10 holder parser, holder fixture tests, and
 universe utility scripts to records-native list/dict handling.
+The dependency-metadata loop removed retired tabular samples, regenerated
+tdxhub's Poetry lock/exported requirements without the old transitive tabular
+dependency, and refreshed stale records documentation.
 
 ## Current tdxhub Call Map
 
@@ -82,6 +85,8 @@ universe utility scripts to records-native list/dict handling.
   `113da7d79bdc255e6e6bea8b724b76f608cba2b3`.
 - Updated ChunkyMonkey's tdxhub pin again to
   `45c805a464b59e58f09e4dc2b055f80d488a21f6`.
+- Updated ChunkyMonkey's tdxhub pin again to
+  `4f723e7f6fe63b6a0a602866fd7dd02f39a30213`.
 - Converted the core quote API helpers and capability catalog to records
   output.
 - Converted local day/minute/extended-market bar readers to records output and
@@ -95,6 +100,13 @@ universe utility scripts to records-native list/dict handling.
   to records output.
 - Converted the tdxhub holder parser and holder universe scripts to records
   output and direct DuckDB record writes.
+- Removed retired tdxhub tabular samples and refreshed tdxhub Poetry lock /
+  exported requirements so the old tabular dependency is no longer installed
+  through metadata.
+- Cleaned the Phase 0 scanner's own denylist literals out of direct text
+  scans while preserving the emitted summary keys.
+- Classified vendored/generated tdxhub documentation assets as docs in the
+  Phase 0 scan and removed the stale explicit tabular install from CI.
 - Kept the remaining legacy parser modules isolated behind lazy imports for
   later records-native conversion.
 - Switched ChunkyMonkey's holder source and data source adapter to consume
@@ -117,6 +129,25 @@ rg -n "client\.(bars|index_bars|stocks|xdxr|finance|block|quotes|minute|minutes|
 ## Validation
 
 ```bash
+cd /Users/dp/Documents/M/stock/tdxhub
+python -m pytest tests/test_holders.py tests/test_affairs.py tests/utils/test_holiday_dependency.py tests/utils/test_holiday.py tests/utils/test_utils.py tests/utils/test_timer.py tests/test_quotes_utils.py tests/reader/test_reader_std.py tests/reader/test_reader_ext.py tests/reader/test_reader_base.py tests/reader/test_reader_no_tabular_import.py tests/reader/test_reader_block.py tests/reader/test_reader_blocknew.py tests/reader/test_reader_parse.py tests/tools/test_customize.py tests/tools/test_tdx2csv.py -q
+# 130 passed, 4 skipped
+
+poetry check --lock
+# All set!
+
+cd /Users/dp/Documents/M/stock/chunky-monkey-v2
+python3 -m pytest backend/tests -q
+# 363 passed
+
+python3 backend/scripts/data_health_snapshot.py --dry-run
+# green=147/yellow=0/red=0
+
+python3 backend/scripts/audit_stale_references.py --phase0-only --output /tmp/phase3_final_scan2.json
+# pandas_runtime=0, pandas_test=0
+# old_db_path=0, old_external_link=0, old_source_route=0
+# sqlite_runtime=0, sqlite_test=0, sqlite_docs=0
+
 cd /Users/dp/Documents/M/stock/tdxhub
 python3 -m pytest tests/test_holders.py -q
 # 46 passed

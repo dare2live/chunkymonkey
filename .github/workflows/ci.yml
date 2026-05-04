@@ -27,7 +27,7 @@ jobs:
           python -m pip install --upgrade pip
           # 核心依赖 (跳过 mootdx/tdxhub - 私有 repo, CI 不需要)
           # akshare 是公开依赖；离线测试不访问网络，但 fallback 路径需要 import。
-          pip install fastapi uvicorn duckdb pandas numpy httpx pydantic pytest pytest-asyncio anyio akshare
+          pip install fastapi uvicorn duckdb numpy httpx pydantic pytest pytest-asyncio anyio akshare
 
       - name: Lint (ruff)
         continue-on-error: true  # 不阻塞 (项目历史代码 lint warnings 多)

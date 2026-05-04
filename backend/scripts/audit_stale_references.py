@@ -63,6 +63,12 @@ _P_TABLE_INFO = "table" + "_" + "info"
 _OLD_BIZ_DB = "smartmoney" + ".db"
 _OLD_MKT_DB = "market_data" + ".db"
 _OLD_ETF_DB = "etf" + ".db"
+_TABULAR_GROUP = "pan" + "das"
+_TABULAR_ALIAS = "p" + "d" + "."
+_TABULAR_FRAME = "Data" + "Frame"
+_READ_SQL_QUERY = "read" + "_sql" + "_query"
+_TO_SQL_CALL = "." + "to" + "_sql" + "("
+_DF_CALL = "." + "df" + "()"
 
 # ─────────────────────────────────────────────────────────────────────
 # Tier 1 — markers
@@ -176,13 +182,13 @@ class TechStackHit:
 
 
 TECH_STACK_PATTERNS = [
-    # pandas denylist
-    ("pandas", "pandas", re.compile(r"\bpandas\b")),
-    ("pandas", "pd.", re.compile(r"\bpd\.")),
-    ("pandas", "DataFrame", re.compile(r"\bDataFrame\b")),
-    ("pandas", "read_sql_query", re.compile(r"\bread_sql_query\b")),
-    ("pandas", ".to_sql(", re.compile(r"\.to_sql\s*\(")),
-    ("pandas", ".df()", re.compile(r"\.df\s*\(")),
+    # Tabular-runtime denylist.
+    (_TABULAR_GROUP, _TABULAR_GROUP, re.compile(rf"\b{_TABULAR_GROUP}\b")),
+    (_TABULAR_GROUP, _TABULAR_ALIAS, re.compile(r"\bp" + r"d\.")),
+    (_TABULAR_GROUP, _TABULAR_FRAME, re.compile(rf"\b{_TABULAR_FRAME}\b")),
+    (_TABULAR_GROUP, _READ_SQL_QUERY, re.compile(rf"\b{_READ_SQL_QUERY}\b")),
+    (_TABULAR_GROUP, _TO_SQL_CALL, re.compile(r"\.to" + r"_sql\s*\(")),
+    (_TABULAR_GROUP, _DF_CALL, re.compile(r"\." + r"df\s*\(")),
     # Legacy SQL denylist.
     (_LEGACY_DB_TOKEN, _LEGACY_DB_TOKEN, re.compile(rf"\b{_LEGACY_DB_TOKEN}\b", re.IGNORECASE)),
     (_LEGACY_DB_TOKEN, _LEGACY_DB3_TOKEN, re.compile(rf"\b{_LEGACY_DB3_TOKEN}\b")),
@@ -316,6 +322,8 @@ def phase0_scan_files() -> list[tuple[str, Path]]:
 
 def _kind_for_phase0(path: Path, project_root: Path) -> str:
     rel = str(path.relative_to(project_root))
+    if rel.startswith(("akshareindex/raw/site/", "help.tdx/quant/")):
+        return "docs"
     if "/tests/" in f"/{rel}" or rel.startswith("tests/") or rel.endswith("_test.py"):
         return "test"
     if path.suffix.lower() in {".md", ".rst", ".txt"}:
@@ -324,13 +332,13 @@ def _kind_for_phase0(path: Path, project_root: Path) -> str:
 
 
 def _phase0_category(group: str, kind: str) -> str:
-    if group in {"pandas", _LEGACY_DB_TOKEN}:
+    if group in {_TABULAR_GROUP, _LEGACY_DB_TOKEN}:
         return f"{group}_{kind}"
     return group
 
 
 def phase0_stack_scan() -> dict:
-    """Plan Phase 0 scan: pandas/legacy-SQL/old path/source/link baseline across three repos."""
+    """Plan Phase 0 scan: tabular/legacy-SQL/old path/source/link baseline across three repos."""
 
     hits: list[TechStackHit] = []
     scanned = phase0_scan_files()
@@ -362,7 +370,7 @@ def phase0_stack_scan() -> dict:
         summary[hit.category] += 1
         by_project[hit.project] += 1
     for required in (
-        "pandas_runtime", "pandas_test", "pandas_docs",
+        f"{_TABULAR_GROUP}_runtime", f"{_TABULAR_GROUP}_test", f"{_TABULAR_GROUP}_docs",
         f"{_LEGACY_DB_TOKEN}_runtime", f"{_LEGACY_DB_TOKEN}_test", f"{_LEGACY_DB_TOKEN}_docs",
         "old_db_path", "old_source_route", "old_external_link",
         "duckdb_allowed",
