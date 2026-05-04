@@ -9,16 +9,16 @@ external_attention.py — 外部关注事实层（Phase 1）
 """
 
 import logging
+import math
 import time
 from collections import Counter
+from collections.abc import Mapping, Sequence
 from datetime import date, datetime, timedelta
 from typing import Optional
 
-import pandas as pd
-
 logger = logging.getLogger("cm-api")
 _AKSHARE_CACHE_TTL_SEC = 300
-_AKSHARE_CACHE: dict[tuple, tuple[float, pd.DataFrame]] = {}
+_AKSHARE_CACHE: dict[tuple, tuple[float, list[dict]]] = {}
 
 
 def ensure_tables(conn):
@@ -100,14 +100,10 @@ def _safe_float(value) -> Optional[float]:
     if value in (None, "", "None"):
         return None
     try:
-        if pd.isna(value):
-            return None
-    except Exception:
-        pass
-    try:
-        return float(value)
-    except Exception:
+        number = float(value)
+    except (TypeError, ValueError):
         return None
+    return None if math.isnan(number) else number
 
 
 def _safe_int(value) -> Optional[int]:
@@ -130,15 +126,44 @@ def _safe_text(value) -> Optional[str]:
 def _coerce_datetime(value) -> Optional[datetime]:
     if value in (None, ""):
         return None
+    if hasattr(value, "to_pydatetime"):
+        try:
+            value = value.to_pydatetime()
+        except Exception:
+            return None
+    if isinstance(value, datetime):
+        return value
+    if isinstance(value, date):
+        return datetime.combine(value, datetime.min.time())
+    text = str(value).strip()
+    if not text or text.lower() in {"nat", "nan", "none"}:
+        return None
+    text = (
+        text.replace("年", "-")
+        .replace("月", "-")
+        .replace("日", "")
+        .replace("/", "-")
+    )
+    if text.endswith(".0") and text[:-2].isdigit():
+        text = text[:-2]
+    if text.isdigit() and len(text) == 8:
+        formats = ("%Y%m%d",)
+    else:
+        formats = (
+            "%Y-%m-%d %H:%M:%S",
+            "%Y-%m-%d %H:%M",
+            "%Y-%m-%d",
+            "%Y%m%d%H%M%S",
+        )
+    for fmt in formats:
+        try:
+            return datetime.strptime(text, fmt)
+        except ValueError:
+            continue
     try:
-        ts = pd.to_datetime(value, errors="coerce")
-    except Exception:
+        return datetime.fromisoformat(text)
+    except ValueError:
         return None
-    if ts is None or pd.isna(ts):
-        return None
-    if hasattr(ts, "to_pydatetime"):
-        return ts.to_pydatetime()
-    return ts
 
 
 def _fmt_date(value) -> Optional[str]:
@@ -165,24 +190,52 @@ def _akshare_cache_key(func_name: str, args: tuple, kwargs: dict) -> tuple:
     )
 
 
-def _akshare_cache_get(cache_key: tuple, *, allow_stale: bool = False) -> Optional[pd.DataFrame]:
+def _copy_records(rows: list[dict]) -> list[dict]:
+    return [dict(row) for row in rows]
+
+
+def _records_from_result(result) -> list[dict]:
+    if result is None:
+        return []
+    if hasattr(result, "to_dict"):
+        try:
+            rows = result.to_dict("records")
+            return [dict(row) for row in rows]
+        except Exception:
+            return []
+    if isinstance(result, Mapping):
+        return [dict(result)]
+    if isinstance(result, Sequence) and not isinstance(result, (str, bytes)):
+        rows = []
+        for item in result:
+            if isinstance(item, Mapping):
+                rows.append(dict(item))
+        return rows
+    return []
+
+
+def _has_records(rows: Optional[list[dict]]) -> bool:
+    return bool(rows)
+
+
+def _akshare_cache_get(cache_key: tuple, *, allow_stale: bool = False) -> Optional[list[dict]]:
     cached = _AKSHARE_CACHE.get(cache_key)
     if not cached:
         return None
     cached_at, value = cached
     if allow_stale or time.time() - cached_at <= _AKSHARE_CACHE_TTL_SEC:
-        return value.copy()
+        return _copy_records(value)
     _AKSHARE_CACHE.pop(cache_key, None)
     return None
 
 
-def _akshare_cache_put(cache_key: tuple, value: pd.DataFrame) -> pd.DataFrame:
-    cached_value = value.copy()
+def _akshare_cache_put(cache_key: tuple, value: list[dict]) -> list[dict]:
+    cached_value = _copy_records(value)
     _AKSHARE_CACHE[cache_key] = (time.time(), cached_value)
-    return cached_value.copy()
+    return _copy_records(cached_value)
 
 
-def _call_akshare_df(func_name: str, *args, retries: int = 2, retry_wait: float = 0.8, **kwargs) -> Optional[pd.DataFrame]:
+def _call_akshare_records(func_name: str, *args, retries: int = 2, retry_wait: float = 0.8, **kwargs) -> list[dict]:
     cache_key = _akshare_cache_key(func_name, args, kwargs)
     cached = _akshare_cache_get(cache_key)
     if cached is not None:
@@ -192,12 +245,12 @@ def _call_akshare_df(func_name: str, *args, retries: int = 2, retry_wait: float 
         import akshare as ak
     except Exception as exc:
         logger.warning(f"[外部关注] akshare 不可用: {exc}")
-        return None
+        return []
 
     func = getattr(ak, func_name, None)
     if func is None:
         logger.warning(f"[外部关注] akshare 缺少接口: {func_name}")
-        return None
+        return []
 
     last_error = None
     for attempt in range(retries + 1):
@@ -212,21 +265,14 @@ def _call_akshare_df(func_name: str, *args, retries: int = 2, retry_wait: float 
                     logger.warning(f"[外部关注] {func_name} 调用失败，回退到进程缓存: {exc}")
                     return stale_cached
                 logger.warning(f"[外部关注] {func_name} 调用失败: {exc}")
-                return None
+                return []
             time.sleep(retry_wait * (attempt + 1))
     else:
         if last_error is not None:
             logger.warning(f"[外部关注] {func_name} 调用失败: {last_error}")
-        return None
+        return []
 
-    if result is None:
-        return None
-    if isinstance(result, pd.DataFrame):
-        return _akshare_cache_put(cache_key, result)
-    try:
-        return _akshare_cache_put(cache_key, pd.DataFrame(result))
-    except Exception:
-        return None
+    return _akshare_cache_put(cache_key, _records_from_result(result))
 
 
 def _load_stock_name_map(conn) -> dict[str, str]:
@@ -253,12 +299,12 @@ def _load_stock_name_map(conn) -> dict[str, str]:
     }
 
 
-def _normalize_comment_snapshot(df: Optional[pd.DataFrame]) -> dict[str, dict]:
-    if df is None or df.empty:
+def _normalize_comment_snapshot(rows: list[dict]) -> dict[str, dict]:
+    if not rows:
         return {}
 
     results = {}
-    for _, row in df.iterrows():
+    for row in rows:
         code = _normalize_stock_code(row.get("代码"))
         if not code:
             continue
@@ -280,8 +326,8 @@ def _normalize_comment_snapshot(df: Optional[pd.DataFrame]) -> dict[str, dict]:
     return results
 
 
-def _aggregate_survey_snapshot(df: Optional[pd.DataFrame]) -> dict[str, dict]:
-    if df is None or df.empty:
+def _aggregate_survey_snapshot(rows: list[dict]) -> dict[str, dict]:
+    if not rows:
         return {}
 
     today = date.today()
@@ -289,7 +335,7 @@ def _aggregate_survey_snapshot(df: Optional[pd.DataFrame]) -> dict[str, dict]:
     cutoff_90 = today - timedelta(days=90)
     results = {}
 
-    for _, row in df.iterrows():
+    for row in rows:
         code = _normalize_stock_code(row.get("代码"))
         if not code:
             continue
@@ -344,8 +390,8 @@ def sync_external_attention_snapshot(conn) -> int:
     stock_name_map = _load_stock_name_map(conn)
     survey_start = (date.today() - timedelta(days=90)).strftime("%Y%m%d")
 
-    comment_map = _normalize_comment_snapshot(_call_akshare_df("stock_comment_em"))
-    survey_map = _aggregate_survey_snapshot(_call_akshare_df("stock_jgdy_tj_em", date=survey_start))
+    comment_map = _normalize_comment_snapshot(_call_akshare_records("stock_comment_em"))
+    survey_map = _aggregate_survey_snapshot(_call_akshare_records("stock_jgdy_tj_em", date=survey_start))
 
     codes = sorted(set(stock_name_map) | set(comment_map) | set(survey_map))
     if not codes:
@@ -464,12 +510,12 @@ def get_latest_stock_attention(conn, stock_code: str) -> Optional[dict]:
     return dict(row) if row else None
 
 
-def _build_series(df: Optional[pd.DataFrame], value_columns: tuple[str, ...], date_columns: tuple[str, ...]) -> list[dict]:
-    if df is None or df.empty:
+def _build_series(rows: list[dict], value_columns: tuple[str, ...], date_columns: tuple[str, ...]) -> list[dict]:
+    if not rows:
         return []
 
     points = []
-    for _, row in df.iterrows():
+    for row in rows:
         dt = None
         for column in date_columns:
             dt = _coerce_datetime(row.get(column))
@@ -506,11 +552,11 @@ def _summarize_series(points: list[dict]) -> Optional[dict]:
     }
 
 
-def _pivot_basic_info(df: Optional[pd.DataFrame]) -> dict:
-    if df is None or df.empty:
+def _pivot_basic_info(rows: list[dict]) -> dict:
+    if not rows:
         return {}
     result = {}
-    for _, row in df.iterrows():
+    for row in rows:
         key = _safe_text(row.get("item"))
         value = row.get("value")
         if key:
@@ -518,8 +564,8 @@ def _pivot_basic_info(df: Optional[pd.DataFrame]) -> dict:
     return result
 
 
-def _summarize_research_reports(df: Optional[pd.DataFrame]) -> dict:
-    if df is None or df.empty:
+def _summarize_research_reports(rows: list[dict]) -> dict:
+    if not rows:
         return {
             "count_total": 0,
             "count_30d": 0,
@@ -540,7 +586,7 @@ def _summarize_research_reports(df: Optional[pd.DataFrame]) -> dict:
     latest_date = None
     monthly_hint = None
 
-    for _, row in df.iterrows():
+    for row in rows:
         row_dt = _coerce_datetime(row.get("日期"))
         if row_dt:
             row_day = row_dt.date()
@@ -558,7 +604,7 @@ def _summarize_research_reports(df: Optional[pd.DataFrame]) -> dict:
         monthly_hint = monthly_hint or _safe_int(row.get("近一月个股研报数"))
 
     return {
-        "count_total": int(len(df)),
+        "count_total": int(len(rows)),
         "count_30d": count_30d,
         "count_90d": count_90d,
         "latest_date": latest_date.strftime("%Y-%m-%d") if latest_date else None,
@@ -574,8 +620,8 @@ def _summarize_research_reports(df: Optional[pd.DataFrame]) -> dict:
     }
 
 
-def _summarize_news(df: Optional[pd.DataFrame]) -> dict:
-    if df is None or df.empty:
+def _summarize_news(rows: list[dict]) -> dict:
+    if not rows:
         return {
             "count_total": 0,
             "count_7d": 0,
@@ -592,7 +638,7 @@ def _summarize_news(df: Optional[pd.DataFrame]) -> dict:
     latest_dt = None
     source_counter = Counter()
 
-    for _, row in df.iterrows():
+    for row in rows:
         published_at = _coerce_datetime(row.get("发布时间"))
         source = _safe_text(row.get("文章来源"))
         if source:
@@ -606,7 +652,7 @@ def _summarize_news(df: Optional[pd.DataFrame]) -> dict:
             count_7d += 1
 
     return {
-        "count_total": int(len(df)),
+        "count_total": int(len(rows)),
         "count_7d": count_7d,
         "count_30d": count_30d,
         "latest_time": latest_dt.strftime("%Y-%m-%d %H:%M:%S") if latest_dt else None,
@@ -643,13 +689,13 @@ def _spread_timeline_events(items: list[dict], max_items: int = 10) -> list[dict
     return [items[index] for index in deduped_indexes]
 
 
-def _build_research_timeline(df: Optional[pd.DataFrame], max_items: int = 10) -> list[dict]:
-    if df is None or df.empty:
+def _build_research_timeline(rows: list[dict], max_items: int = 10) -> list[dict]:
+    if not rows:
         return []
 
     items = []
     seen = set()
-    for _, row in df.iterrows():
+    for row in rows:
         row_dt = _coerce_datetime(row.get("日期"))
         if not row_dt:
             continue
@@ -685,13 +731,13 @@ def _build_research_timeline(df: Optional[pd.DataFrame], max_items: int = 10) ->
     return _spread_timeline_events(items, max_items=max_items)
 
 
-def _build_news_timeline(df: Optional[pd.DataFrame], max_items: int = 10) -> list[dict]:
-    if df is None or df.empty:
+def _build_news_timeline(rows: list[dict], max_items: int = 10) -> list[dict]:
+    if not rows:
         return []
 
     items = []
     seen = set()
-    for _, row in df.iterrows():
+    for row in rows:
         row_dt = _coerce_datetime(row.get("发布时间"))
         if not row_dt:
             continue
@@ -728,44 +774,44 @@ def fetch_stock_attention_detail(stock_code: str) -> dict:
     code = _normalize_stock_code(stock_code)
     diagnostics = {}
 
-    basic_df = _call_akshare_df("stock_individual_info_em", symbol=code)
-    diagnostics["basic_info"] = {"ok": basic_df is not None and not basic_df.empty}
-    basic_info = _pivot_basic_info(basic_df)
+    basic_rows = _call_akshare_records("stock_individual_info_em", symbol=code)
+    diagnostics["basic_info"] = {"ok": _has_records(basic_rows)}
+    basic_info = _pivot_basic_info(basic_rows)
 
-    jgcyd_df = _call_akshare_df("stock_comment_detail_zlkp_jgcyd_em", symbol=code)
-    diagnostics["institution_participation"] = {"ok": jgcyd_df is not None and not jgcyd_df.empty}
+    jgcyd_rows = _call_akshare_records("stock_comment_detail_zlkp_jgcyd_em", symbol=code)
+    diagnostics["institution_participation"] = {"ok": _has_records(jgcyd_rows)}
 
-    rating_df = _call_akshare_df("stock_comment_detail_zhpj_lspf_em", symbol=code)
-    diagnostics["rating_score"] = {"ok": rating_df is not None and not rating_df.empty}
+    rating_rows = _call_akshare_records("stock_comment_detail_zhpj_lspf_em", symbol=code)
+    diagnostics["rating_score"] = {"ok": _has_records(rating_rows)}
 
-    focus_df = _call_akshare_df("stock_comment_detail_scrd_focus_em", symbol=code)
-    diagnostics["focus_index"] = {"ok": focus_df is not None and not focus_df.empty}
+    focus_rows = _call_akshare_records("stock_comment_detail_scrd_focus_em", symbol=code)
+    diagnostics["focus_index"] = {"ok": _has_records(focus_rows)}
 
-    desire_df = _call_akshare_df("stock_comment_detail_scrd_desire_em", symbol=code)
-    diagnostics["desire_index"] = {"ok": desire_df is not None and not desire_df.empty}
+    desire_rows = _call_akshare_records("stock_comment_detail_scrd_desire_em", symbol=code)
+    diagnostics["desire_index"] = {"ok": _has_records(desire_rows)}
 
-    research_df = _call_akshare_df("stock_research_report_em", symbol=code)
-    diagnostics["research_report"] = {"ok": research_df is not None and not research_df.empty}
+    research_rows = _call_akshare_records("stock_research_report_em", symbol=code)
+    diagnostics["research_report"] = {"ok": _has_records(research_rows)}
 
-    news_df = _call_akshare_df("stock_news_em", symbol=code)
-    diagnostics["news"] = {"ok": news_df is not None and not news_df.empty}
+    news_rows = _call_akshare_records("stock_news_em", symbol=code)
+    diagnostics["news"] = {"ok": _has_records(news_rows)}
 
     institution_participation = _summarize_series(
-        _build_series(jgcyd_df, ("机构参与度",), ("交易日", "日期"))
+        _build_series(jgcyd_rows, ("机构参与度",), ("交易日", "日期"))
     )
     rating_score = _summarize_series(
-        _build_series(rating_df, ("评分",), ("交易日", "日期"))
+        _build_series(rating_rows, ("评分",), ("交易日", "日期"))
     )
     focus_index = _summarize_series(
-        _build_series(focus_df, ("用户关注指数", "关注指数"), ("交易日", "日期"))
+        _build_series(focus_rows, ("用户关注指数", "关注指数"), ("交易日", "日期"))
     )
     desire_index = _summarize_series(
-        _build_series(desire_df, ("市场参与意愿", "参与意愿"), ("交易日", "日期"))
+        _build_series(desire_rows, ("市场参与意愿", "参与意愿"), ("交易日", "日期"))
     )
 
     stock_name = _safe_text(basic_info.get("股票简称")) or _safe_text(basic_info.get("名称"))
-    research_timeline = _build_research_timeline(research_df)
-    news_timeline = _build_news_timeline(news_df)
+    research_timeline = _build_research_timeline(research_rows)
+    news_timeline = _build_news_timeline(news_rows)
     return {
         "stock_code": code,
         "stock_name": stock_name,
@@ -776,8 +822,8 @@ def fetch_stock_attention_detail(stock_code: str) -> dict:
             "focus_index": focus_index,
             "desire_index": desire_index,
         },
-        "research": _summarize_research_reports(research_df),
-        "news": _summarize_news(news_df),
+        "research": _summarize_research_reports(research_rows),
+        "news": _summarize_news(news_rows),
         "timeline_events": sorted(
             research_timeline + news_timeline,
             key=lambda item: item.get("date") or "",

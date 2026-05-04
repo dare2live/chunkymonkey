@@ -15,6 +15,8 @@ plain sequence inputs.
 The next service loop converted the small analytics and drift helpers so
 service-level query convenience and PSI drift checks no longer require
 pandas/numpy.
+The external-attention loop then moved the akshare table boundary to cached
+records and removed table-object assumptions from snapshot/detail helpers.
 
 ## Change
 
@@ -84,6 +86,10 @@ pandas/numpy.
 - Converted PSI quantile, histogram, finite-value filtering, and severity checks
   to native Python math.
 - Added `backend/tests/test_analytics.py` and `backend/tests/test_drift.py`.
+- Removed pandas from `backend/services/external_attention.py`.
+- Converted akshare calls, cache entries, snapshot normalization, detail series,
+  research/news summaries, and timeline builders to records/native helpers.
+- Added `backend/tests/test_external_attention.py`.
 
 ## Validation
 
@@ -241,8 +247,25 @@ python3 -m pytest backend/tests -q
 
 python3 backend/scripts/data_health_snapshot.py --dry-run
 # green=147/yellow=0/red=0
+
+rg -n "pandas|pd\.|DataFrame|numpy|np\.|_call_akshare_df|iterrows\(|\.empty" backend/services/external_attention.py backend/tests/test_external_attention.py -S
+# 0 matches
+
+python3 -m py_compile backend/services/external_attention.py backend/tests/test_external_attention.py
+# passed
+
+python3 -m pytest backend/tests/test_external_attention.py backend/tests/test_external_attention_sync_plan.py backend/tests/test_stock_detail_read.py -q
+# 26 passed
+
+python3 -m pytest backend/tests -q
+# 317 passed
+
+python3 backend/scripts/data_health_snapshot.py --dry-run
+# green=147/yellow=0/red=0
 ```
 
 ## Remaining Phase 4 Targets
 
+- `backend/services/holders_resolver.py` together with
+  `backend/scripts/ingest_holders_tdxhub.py`.
 - pandas usage in scripts and model/backtest layers.
