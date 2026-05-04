@@ -20,6 +20,8 @@ records and removed table-object assumptions from snapshot/detail helpers.
 The holder loop completed service-level pandas removal by converting resolver
 results to records and rewriting the holder ingest writer to use DuckDB
 `executemany` instead of table-object registration.
+The first standalone script loop converted tdxhub price K-line backfill to
+records from pull through normalization and DuckDB writes.
 
 ## Change
 
@@ -101,6 +103,10 @@ results to records and rewriting the holder ingest writer to use DuckDB
   `executemany` paths and preserved duplicate-write idempotency.
 - Updated `backend/tests/test_holders_resolver.py` and added
   `backend/tests/test_ingest_holders_tdxhub.py`.
+- Removed pandas from `backend/scripts/build_price_kline_tdxhub.py`.
+- Converted tdxhub K-line pull, dedupe/normalization, and
+  `price_kline_tdxhub` writes to records and direct DuckDB `executemany`.
+- Added `backend/tests/test_build_price_kline_tdxhub.py`.
 
 ## Validation
 
@@ -288,6 +294,21 @@ python3 -m pytest backend/tests/test_holders_resolver.py backend/tests/test_inge
 
 python3 -m pytest backend/tests -q
 # 318 passed
+
+python3 backend/scripts/data_health_snapshot.py --dry-run
+# green=147/yellow=0/red=0
+
+rg -n "pandas|pd\.|DataFrame|read_sql_query|\.to_sql\(|\.df\(|register\(" backend/scripts/build_price_kline_tdxhub.py backend/tests/test_build_price_kline_tdxhub.py -S
+# 0 matches
+
+python3 -m py_compile backend/scripts/build_price_kline_tdxhub.py backend/tests/test_build_price_kline_tdxhub.py
+# passed
+
+python3 -m pytest backend/tests/test_build_price_kline_tdxhub.py backend/tests/test_holders_resolver.py backend/tests/test_ingest_holders_tdxhub.py -q
+# 13 passed
+
+python3 -m pytest backend/tests -q
+# 320 passed
 
 python3 backend/scripts/data_health_snapshot.py --dry-run
 # green=147/yellow=0/red=0

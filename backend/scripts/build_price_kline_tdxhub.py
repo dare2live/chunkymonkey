@@ -26,7 +26,6 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 sys.path.insert(0, str(STOCK_ROOT / "tdxhub"))
 warnings.filterwarnings('ignore')
 
-import pandas as pd
 from tdxhub.quotes import Quotes
 
 from services.market_db import get_market_conn
@@ -84,54 +83,94 @@ def load_a_stock_list(client) -> list[tuple[str, int]]:
     return codes
 
 
-def pull_one_stock(client, code: str, pages: int = 2) -> pd.DataFrame:
-    """拉 `pages` 页 qfq bars, 每页 800 根. 返回聚合后的 DataFrame."""
+def _safe_float(value) -> float | None:
+    if value in (None, ""):
+        return None
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _date_text(row: dict) -> str:
+    value = row.get("datetime") or row.get("date")
+    return str(value or "")[:10]
+
+
+def pull_one_stock(client, code: str, pages: int = 2) -> list[dict]:
+    """拉 `pages` 页 qfq bars, 每页 800 根. 返回聚合后的 records."""
     parts = []
     for start in range(0, pages * 800, 800):
         try:
             records = client.bars_records(symbol=code, frequency=9, start=start, offset=800, adjust='qfq')
-            df = pd.DataFrame.from_records(records)
         except Exception as e:
             logger.warning("code=%s start=%d ERR: %s", code, start, e)
             continue
-        if df is None or df.empty:
+        if not records:
             break
-        parts.append(df)
-        if len(df) < 800:
+        parts.extend(dict(row) for row in records)
+        if len(records) < 800:
             break
     if not parts:
-        return pd.DataFrame()
-    full = pd.concat(parts, ignore_index=False)
-    full['code'] = code
-    return full
+        return []
+    for row in parts:
+        row["code"] = code
+    return parts
 
 
-def normalize(df: pd.DataFrame, batch_id: str) -> pd.DataFrame:
-    if df.empty:
-        return df
-    out = df.copy()
-    if "datetime" in out.columns:
-        out['date'] = out["datetime"].astype(str).str.slice(0, 10)
-    else:
-        out['date'] = out.index.astype(str).str.slice(0, 10)
-    # 去掉日内分钟重复
-    out = out.drop_duplicates(subset=['code', 'date'])
-    out['freq'] = 'daily'
-    out['adjust'] = 'qfq'
-    out['volume'] = out['vol'].astype(float)
-    out['source'] = 'tdxhub'
-    out['batch_id'] = batch_id
-    cols = ['code', 'date', 'freq', 'adjust', 'open', 'high', 'low', 'close',
-            'volume', 'amount', 'factor', 'source', 'batch_id']
-    return out[cols].reset_index(drop=True)
+def normalize(rows: list[dict], batch_id: str) -> list[dict]:
+    if not rows:
+        return []
+    out = []
+    seen = set()
+    for row in rows:
+        code = str(row.get("code") or "").zfill(6)
+        day = _date_text(row)
+        if not code or not day:
+            continue
+        key = (code, day)
+        if key in seen:
+            continue
+        seen.add(key)
+        out.append({
+            "code": code,
+            "date": day,
+            "freq": "daily",
+            "adjust": "qfq",
+            "open": _safe_float(row.get("open")),
+            "high": _safe_float(row.get("high")),
+            "low": _safe_float(row.get("low")),
+            "close": _safe_float(row.get("close")),
+            "volume": _safe_float(row.get("vol", row.get("volume"))),
+            "amount": _safe_float(row.get("amount")),
+            "factor": _safe_float(row.get("factor")),
+            "source": "tdxhub",
+            "batch_id": batch_id,
+        })
+    return out
 
 
-def write_batch(conn, df: pd.DataFrame) -> int:
-    if df.empty:
+def write_batch(conn, rows: list[dict]) -> int:
+    if not rows:
         return 0
-    df.to_sql('price_kline_tdxhub', conn, if_exists='append', index=False,
-              method='multi', chunksize=500)
-    return len(df)
+    conn.executemany(
+        """
+        INSERT OR REPLACE INTO price_kline_tdxhub (
+            code, date, freq, adjust, open, high, low, close,
+            volume, amount, factor, source, batch_id
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        [
+            (
+                row["code"], row["date"], row["freq"], row["adjust"],
+                row["open"], row["high"], row["low"], row["close"],
+                row["volume"], row["amount"], row["factor"], row["source"],
+                row["batch_id"],
+            )
+            for row in rows
+        ],
+    )
+    return len(rows)
 
 
 def main():
@@ -175,11 +214,11 @@ def main():
     for i, (code, _market) in enumerate(stock_list):
         if code in done_codes:
             continue
-        df = pull_one_stock(client, code, pages=args.pages)
-        if df.empty:
+        records = pull_one_stock(client, code, pages=args.pages)
+        if not records:
             n_failed.append(code)
             continue
-        norm = normalize(df, batch_id)
+        norm = normalize(records, batch_id)
         try:
             n = write_batch(conn, norm)
             n_rows_written += n
@@ -207,7 +246,10 @@ def main():
         logger.info("前 20 个失败 code: %s", n_failed[:20])
 
     # 全局范围
-    row = conn.execute("SELECT MIN(date), MAX(date), COUNT(DISTINCT date), COUNT(DISTINCT code) FROM price_kline_tdxhub").fetchone()
+    row = conn.execute(
+        "SELECT MIN(date), MAX(date), COUNT(DISTINCT date), COUNT(DISTINCT code) "
+        "FROM price_kline_tdxhub"
+    ).fetchone()
     logger.info("price_kline_tdxhub 整体: %s ~ %s, 交易日 %d, 股票 %d", *row)
 
     conn.close()
