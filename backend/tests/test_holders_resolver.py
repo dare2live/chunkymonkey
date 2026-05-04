@@ -14,7 +14,6 @@ import sys
 from datetime import datetime
 from pathlib import Path
 
-import pandas as pd
 import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
@@ -30,12 +29,12 @@ from services.holders_resolver import (  # noqa: E402
 
 def _make_result(source: str, source_tier: int) -> ResolverResult:
     return ResolverResult(
-        holders_df=pd.DataFrame([{
+        holders=[{
             "stock_code": "600519", "report_date": "20260331",
             "holder_set": "free", "holder_rank": 1,
             "holder_name": "X", "shares_approx": 1000,
-        }]),
-        periods_df=pd.DataFrame(),
+        }],
+        periods=[],
         raw_text=None, raw_hash=None,
         page_update_date=None,
         server_or_endpoint=f"mock-{source}",
@@ -61,7 +60,7 @@ class _MockSource(HolderSource):
             return None
         if self._returns == "empty":
             r = _make_result(self.name, self.source_tier)
-            r.holders_df = pd.DataFrame()  # has_data() 返回 False
+            r.holders = []  # has_data() 返回 False
             return r
         return _make_result(self.name, self.source_tier)
 
@@ -99,12 +98,12 @@ def test_tdxhub_source_accepts_records_payload_from_tdxhub():
 
     assert result is not None
     assert result.source == "tdx_f10"
-    assert not result.holders_df.empty
-    assert not result.periods_df.empty
-    assert "holder_name" in result.holders_df.columns
+    assert result.holders
+    assert result.periods
+    assert "holder_name" in result.holders[0]
     assert result.raw_hash
-    assert result.plans_df is not None
-    assert result.trades_df is not None
+    assert result.plans is not None
+    assert result.trades is not None
 
 
 def test_first_source_succeeds_no_fallback():
@@ -134,7 +133,7 @@ def test_first_source_returns_none_falls_to_second():
 
 
 def test_first_source_returns_empty_falls_to_second():
-    """tier=1 返回 ResolverResult 但 holders_df 是空 → 走 tier=2."""
+    """tier=1 返回 ResolverResult 但 holders 是空 → 走 tier=2."""
 
     s1 = _MockSource("s1", 1, returns="empty")
     s2 = _MockSource("s2", 2, returns="ok")

@@ -43,7 +43,6 @@ from datetime import datetime
 from pathlib import Path
 
 import duckdb
-import pandas as pd
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 log = logging.getLogger("ingest-holders")
@@ -60,7 +59,6 @@ from services.holders_resolver import (  # noqa: E402
     MiaoxiangHolderSource,
     ResolverResult,
 )
-from tdxhub.holders import _hash  # noqa: E402
 
 
 CHANGE_STATUS_TO_LEGACY = {
@@ -108,6 +106,127 @@ def load_alias_map(con: duckdb.DuckDBPyConnection) -> dict[str, str]:
     ).fetchall())
 
 
+def _copy_rows(rows: list[dict] | None) -> list[dict]:
+    return [dict(row) for row in (rows or [])]
+
+
+def _safe_float(value) -> float | None:
+    if value in (None, ""):
+        return None
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _safe_bool(value) -> bool:
+    if isinstance(value, str):
+        return value.strip().lower() in {"1", "true", "t", "yes", "y"}
+    return bool(value)
+
+
+def _seq_rows(rows: list[dict], key_fields: tuple[str, ...], seq_field: str) -> list[dict]:
+    counters: dict[tuple, int] = {}
+    out = []
+    for row in rows:
+        item = dict(row)
+        key = tuple(item.get(field) for field in key_fields)
+        counters[key] = counters.get(key, 0) + 1
+        item[seq_field] = counters[key]
+        out.append(item)
+    return out
+
+
+def _prepare_holders(
+    result: ResolverResult,
+    *,
+    stock_code: str,
+    stock_name: str,
+    market: str,
+    alias_map: dict[str, str],
+) -> list[dict]:
+    holders = _copy_rows(result.holders)
+    for row in holders:
+        row["stock_code"] = row.get("stock_code") or stock_code
+        row["stock_name"] = row.get("stock_name") or stock_name
+        row["market"] = row.get("market") or market
+        row["row_seq"] = row.get("row_seq") or 1
+        row["holder_name_norm"] = alias_map.get(row.get("holder_name"), row.get("holder_name"))
+        row["share_class"] = row.get("share_class")
+        row["is_secondary_class"] = _safe_bool(row.get("is_secondary_class"))
+        row["is_exit_row"] = _safe_bool(row.get("is_exit_row"))
+        row["hold_amount"] = _safe_float(row.get("shares_approx"))
+
+        holder_set = row.get("holder_set")
+        hold_ratio = _safe_float(row.get("hold_ratio"))
+        row["hold_ratio_float"] = (
+            _safe_float(row.get("hold_ratio_float"))
+            if row.get("hold_ratio_float") is not None
+            else hold_ratio if holder_set == "free" else None
+        )
+        row["hold_ratio_total"] = (
+            _safe_float(row.get("hold_ratio_total"))
+            if row.get("hold_ratio_total") is not None
+            else hold_ratio if holder_set == "all" else None
+        )
+        row["hold_ratio_legacy"] = hold_ratio
+        row["hold_change"] = CHANGE_STATUS_TO_LEGACY.get(row.get("change_status") or "", "")
+        row["hold_change_num"] = _safe_float(row.get("change_shares_approx"))
+        row["hold_market_cap"] = row.get("hold_market_cap")
+        holder_type = row.get("holder_type_or_nature") or row.get("holder_type")
+        row["holder_type"] = row.get("holder_type") or holder_type
+        row["share_nature"] = row.get("share_nature") or holder_type
+        row["notice_date"] = row.get("notice_date")
+        row["effective_date"] = row.get("effective_date")
+        row["created_at"] = row.get("created_at") or row.get("fetched_at") or result.fetched_at
+        row["source"] = row.get("source") or result.source
+        row["source_tier"] = row.get("source_tier") or result.source_tier
+        row["raw_hash"] = row.get("raw_hash") or result.raw_hash
+        row["fetched_at"] = row.get("fetched_at") or result.fetched_at
+        row["page_update_date"] = row.get("page_update_date") or result.page_update_date
+    return holders
+
+
+def _holder_tuple(row: dict) -> tuple:
+    return (
+        row.get("stock_code"),
+        row.get("stock_name"),
+        row.get("market"),
+        row.get("report_date"),
+        row.get("holder_set"),
+        row.get("holder_rank"),
+        row.get("row_seq"),
+        row.get("holder_name"),
+        row.get("holder_name_norm"),
+        row.get("share_class"),
+        row.get("is_secondary_class"),
+        row.get("is_exit_row"),
+        row.get("shares_text"),
+        row.get("shares_approx"),
+        row.get("shares_precision"),
+        row.get("hold_amount"),
+        row.get("hold_ratio_float"),
+        row.get("hold_ratio_total"),
+        row.get("hold_ratio_legacy"),
+        row.get("hold_market_cap"),
+        row.get("holder_type"),
+        row.get("share_nature"),
+        row.get("change_status"),
+        row.get("change_shares_text"),
+        row.get("change_shares_approx"),
+        row.get("hold_change"),
+        row.get("hold_change_num"),
+        row.get("notice_date"),
+        row.get("effective_date"),
+        row.get("page_update_date"),
+        row.get("source"),
+        row.get("source_tier"),
+        row.get("raw_hash"),
+        row.get("fetched_at"),
+        row.get("created_at"),
+    )
+
+
 def write_one(con: duckdb.DuckDBPyConnection, *, stock_code: str, stock_name: str,
               market: str, result: ResolverResult,
               alias_map: dict[str, str], lock: threading.Lock) -> dict:
@@ -119,48 +238,34 @@ def write_one(con: duckdb.DuckDBPyConnection, *, stock_code: str, stock_name: st
 
     raw_hash = result.raw_hash
     fetched_at = result.fetched_at
-    holders = result.holders_df.copy() if not result.holders_df.empty else result.holders_df
-    periods = result.periods_df
+    holders = _prepare_holders(
+        result,
+        stock_code=stock_code,
+        stock_name=stock_name,
+        market=market,
+        alias_map=alias_map,
+    )
+    periods = result.periods
     ctrl = result.controlling
-    plans = (result.plans_df.copy() if result.plans_df is not None and not result.plans_df.empty else None)
-    trades = (result.trades_df.copy() if result.trades_df is not None and not result.trades_df.empty else None)
-
-    # back-compat columns
-    if not holders.empty:
-        holders["hold_amount"] = holders["shares_approx"].astype("float64")
-        holders["hold_ratio_float"] = holders.apply(
-            lambda r: r["hold_ratio"] if r["holder_set"] == "free" else None, axis=1
-        )
-        holders["hold_ratio_total"] = holders.apply(
-            lambda r: r["hold_ratio"] if r["holder_set"] == "all" else None, axis=1
-        )
-        holders["hold_ratio_legacy"] = holders["hold_ratio"]
-        holders["hold_change"] = holders["change_status"].map(
-            lambda s: CHANGE_STATUS_TO_LEGACY.get(s or "", "")
-        )
-        holders["hold_change_num"] = holders["change_shares_approx"].astype("float64")
-        holders["hold_market_cap"] = None
-        holders["holder_type"] = holders["holder_type_or_nature"]
-        holders["share_nature"] = holders["holder_type_or_nature"]
-        holders["notice_date"] = None
-        holders["effective_date"] = None
-        holders["created_at"] = holders["fetched_at"]
-        holders["source_tier"] = result.source_tier
-        holders["holder_name_norm"] = holders["holder_name"].map(
-            lambda n: alias_map.get(n, n)
-        )
-        holders["is_secondary_class"] = holders["is_secondary_class"].astype(bool)
-        holders["is_exit_row"] = holders["is_exit_row"].astype(bool)
-
-    if plans is not None and not plans.empty:
-        plans["source_tier"] = result.source_tier
-        plans["plan_seq"] = plans.groupby(["stock_code", "raw_hash"]).cumcount() + 1
-    if trades is not None and not trades.empty:
-        trades["source_tier"] = result.source_tier
-        trades["holder_name_norm"] = trades["holder_name"].map(
-            lambda n: alias_map.get(n, n)
-        )
-        trades["trade_seq"] = trades.groupby(["stock_code", "raw_hash"]).cumcount() + 1
+    plans = _seq_rows(_copy_rows(result.plans), ("stock_code", "raw_hash"), "plan_seq")
+    trades = _seq_rows(_copy_rows(result.trades), ("stock_code", "raw_hash"), "trade_seq")
+    for row in plans:
+        row["stock_code"] = row.get("stock_code") or stock_code
+        row["stock_name"] = row.get("stock_name") or stock_name
+        row["market"] = row.get("market") or market
+        row["source"] = row.get("source") or result.source
+        row["source_tier"] = result.source_tier
+        row["raw_hash"] = row.get("raw_hash") or result.raw_hash
+        row["fetched_at"] = row.get("fetched_at") or result.fetched_at
+    for row in trades:
+        row["stock_code"] = row.get("stock_code") or stock_code
+        row["stock_name"] = row.get("stock_name") or stock_name
+        row["market"] = row.get("market") or market
+        row["source"] = row.get("source") or result.source
+        row["source_tier"] = result.source_tier
+        row["raw_hash"] = row.get("raw_hash") or result.raw_hash
+        row["fetched_at"] = row.get("fetched_at") or result.fetched_at
+        row["holder_name_norm"] = alias_map.get(row.get("holder_name"), row.get("holder_name"))
 
     # Raw text 仅 tdxhub 路径有; fallback 不写 raw_tdx_f10_holder_research
     raw_row = None
@@ -172,7 +277,7 @@ def write_one(con: duckdb.DuckDBPyConnection, *, stock_code: str, stock_name: st
             f10_format = "b_shsjz"
         elif "港澳资讯" in result.raw_text:
             f10_format = "a_other"
-        raw_row = pd.DataFrame([{
+        raw_row = {
             "stock_code": stock_code,
             "stock_name": stock_name,
             "market": market,
@@ -184,7 +289,7 @@ def write_one(con: duckdb.DuckDBPyConnection, *, stock_code: str, stock_name: st
             "server": result.server_or_endpoint,
             "f10_format": f10_format,
             "parser_version": "v1",
-        }])
+        }
 
     out = {
         "stock_code": stock_code,
@@ -193,33 +298,28 @@ def write_one(con: duckdb.DuckDBPyConnection, *, stock_code: str, stock_name: st
         "source_tier": result.source_tier,
         "n_holders": len(holders),
         "n_periods": len(periods),
-        "n_plans": (len(plans) if plans is not None else 0),
-        "n_trades": (len(trades) if trades is not None else 0),
+        "n_plans": len(plans),
+        "n_trades": len(trades),
         "has_controlling": ctrl is not None,
     }
 
     with lock:
         if raw_row is not None:
-            con.register("raw_in", raw_row)
             con.execute("""
-                insert into raw_tdx_f10_holder_research(
+                INSERT OR IGNORE INTO raw_tdx_f10_holder_research(
                   stock_code, stock_name, market, fetched_at, page_update_date,
                   raw_text, raw_hash, bytes_len, server, f10_format, parser_version
-                )
-                select stock_code, stock_name, market,
-                       cast(fetched_at as timestamp), page_update_date,
-                       raw_text, raw_hash, bytes_len, server, f10_format, parser_version
-                from raw_in
-                where (stock_code, raw_hash) not in (
-                  select stock_code, raw_hash from raw_tdx_f10_holder_research
-                )
-            """)
-            con.unregister("raw_in")
+                ) VALUES (?, ?, ?, cast(? as timestamp), ?, ?, ?, ?, ?, ?, ?)
+            """, (
+                raw_row["stock_code"], raw_row["stock_name"], raw_row["market"],
+                raw_row["fetched_at"], raw_row["page_update_date"], raw_row["raw_text"],
+                raw_row["raw_hash"], raw_row["bytes_len"], raw_row["server"],
+                raw_row["f10_format"], raw_row["parser_version"],
+            ))
 
-        if not holders.empty:
-            con.register("h_in", holders)
-            con.execute("""
-                insert into fact_top10_holder_period(
+        if holders:
+            con.executemany("""
+                INSERT OR IGNORE INTO fact_top10_holder_period(
                   stock_code, stock_name, market, report_date, holder_set,
                   holder_rank, row_seq, holder_name, holder_name_norm, share_class,
                   is_secondary_class, is_exit_row,
@@ -230,69 +330,38 @@ def write_one(con: duckdb.DuckDBPyConnection, *, stock_code: str, stock_name: st
                   hold_change, hold_change_num,
                   notice_date, effective_date, page_update_date,
                   source, source_tier, raw_hash, fetched_at, created_at
+                ) VALUES (
+                  ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
+                  ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
                 )
-                select stock_code, stock_name, market, report_date, holder_set,
-                       holder_rank, row_seq, holder_name, holder_name_norm, share_class,
-                       is_secondary_class, is_exit_row,
-                       shares_text, shares_approx, shares_precision, hold_amount,
-                       hold_ratio_float, hold_ratio_total, hold_ratio_legacy,
-                       hold_market_cap, holder_type, share_nature,
-                       change_status, change_shares_text, change_shares_approx,
-                       hold_change, hold_change_num,
-                       notice_date, effective_date, page_update_date,
-                       source, source_tier, raw_hash, fetched_at, created_at
-                from h_in
-                where (stock_code, report_date, holder_set, source, is_exit_row,
-                       holder_rank, row_seq, share_class)
-                  not in (
-                    select stock_code, report_date, holder_set, source, is_exit_row,
-                           holder_rank, row_seq, share_class
-                    from fact_top10_holder_period
-                )
-            """)
-            con.unregister("h_in")
+            """, [_holder_tuple(row) for row in holders])
 
         if ctrl is not None:
-            ctrl_row = pd.DataFrame([{
-                "stock_code": ctrl["stock_code"],
-                "stock_name": ctrl.get("stock_name") or "",
-                "market": ctrl.get("market") or "",
-                "primary_label": ctrl["primary_shareholder_label"],
-                "primary_name": ctrl["primary_shareholder_name"],
-                "primary_ratio": ctrl["primary_shareholder_ratio"],
-                "primary_raw": ctrl["primary_shareholder_raw"],
-                "actual_name": ctrl.get("actual_controller_name"),
-                "actual_ratio": ctrl.get("actual_controller_ratio"),
-                "actual_raw": ctrl.get("actual_controller_raw"),
-                "page_update_date": ctrl.get("page_update_date"),
-                "source": ctrl.get("source", "tdx_f10"),
-                "source_tier": 1,
-                "raw_hash": ctrl.get("raw_hash"),
-                "fetched_at": ctrl.get("fetched_at"),
-            }])
-            con.register("ctrl_in", ctrl_row)
             con.execute("""
-                insert into fact_controlling_shareholder(
+                INSERT OR IGNORE INTO fact_controlling_shareholder(
                   stock_code, stock_name, market,
                   primary_label, primary_name, primary_ratio, primary_raw,
                   actual_name, actual_ratio, actual_raw,
                   page_update_date, source, source_tier, raw_hash, fetched_at
-                )
-                select stock_code, stock_name, market,
-                       primary_label, primary_name, primary_ratio, primary_raw,
-                       actual_name, actual_ratio, actual_raw,
-                       page_update_date, source, source_tier, raw_hash, fetched_at
-                from ctrl_in
-                where (stock_code, source) not in (
-                  select stock_code, source from fact_controlling_shareholder
-                )
-            """)
-            con.unregister("ctrl_in")
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """, (
+                ctrl["stock_code"], ctrl.get("stock_name") or "", ctrl.get("market") or "",
+                ctrl["primary_shareholder_label"], ctrl["primary_shareholder_name"],
+                ctrl["primary_shareholder_ratio"], ctrl["primary_shareholder_raw"],
+                ctrl.get("actual_controller_name"), ctrl.get("actual_controller_ratio"),
+                ctrl.get("actual_controller_raw"), ctrl.get("page_update_date"),
+                ctrl.get("source", "tdx_f10"), 1, ctrl.get("raw_hash"),
+                ctrl.get("fetched_at"),
+            ))
 
-        if plans is not None and not plans.empty:
-            con.register("p_in", plans)
-            con.execute("""
-                insert into fact_shareholder_plan(
+        if plans and not (
+            raw_hash and con.execute(
+                "SELECT 1 FROM fact_shareholder_plan WHERE stock_code = ? AND raw_hash = ? LIMIT 1",
+                (stock_code, raw_hash),
+            ).fetchone()
+        ):
+            con.executemany("""
+                INSERT INTO fact_shareholder_plan(
                   stock_code, stock_name, market,
                   announce_date, subject, direction, progress,
                   start_date, end_date,
@@ -300,26 +369,29 @@ def write_one(con: duckdb.DuckDBPyConnection, *, stock_code: str, stock_name: st
                   target_ratio_text, target_ratio,
                   reason, narrative,
                   page_update_date, source, source_tier, raw_hash, fetched_at, plan_seq
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """, [
+                (
+                    row.get("stock_code"), row.get("stock_name"), row.get("market"),
+                    row.get("announce_date"), row.get("subject"), row.get("direction"),
+                    row.get("progress"), row.get("start_date"), row.get("end_date"),
+                    row.get("target_shares_text"), row.get("target_shares"),
+                    row.get("target_ratio_text"), row.get("target_ratio"),
+                    row.get("reason"), row.get("narrative"), row.get("page_update_date"),
+                    row.get("source"), row.get("source_tier"), row.get("raw_hash"),
+                    row.get("fetched_at"), row.get("plan_seq"),
                 )
-                select stock_code, stock_name, market,
-                       announce_date, subject, direction, progress,
-                       start_date, end_date,
-                       target_shares_text, target_shares,
-                       target_ratio_text, target_ratio,
-                       reason, narrative,
-                       page_update_date, source, source_tier, raw_hash, fetched_at, plan_seq
-                from p_in
-                where (stock_code, raw_hash) not in (
-                  select distinct stock_code, raw_hash from fact_shareholder_plan
-                  where raw_hash is not null
-                )
-            """)
-            con.unregister("p_in")
+                for row in plans
+            ])
 
-        if trades is not None and not trades.empty:
-            con.register("t_in", trades)
-            con.execute("""
-                insert into fact_shareholder_trade(
+        if trades and not (
+            raw_hash and con.execute(
+                "SELECT 1 FROM fact_shareholder_trade WHERE stock_code = ? AND raw_hash = ? LIMIT 1",
+                (stock_code, raw_hash),
+            ).fetchone()
+        ):
+            con.executemany("""
+                INSERT INTO fact_shareholder_trade(
                   stock_code, stock_name, market,
                   change_date, holder_name, holder_name_norm,
                   shares_before_text, shares_before,
@@ -327,21 +399,20 @@ def write_one(con: duckdb.DuckDBPyConnection, *, stock_code: str, stock_name: st
                   shares_after_text, shares_after,
                   ratio_after, change_type,
                   page_update_date, source, source_tier, raw_hash, fetched_at, trade_seq
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """, [
+                (
+                    row.get("stock_code"), row.get("stock_name"), row.get("market"),
+                    row.get("change_date"), row.get("holder_name"), row.get("holder_name_norm"),
+                    row.get("shares_before_text"), row.get("shares_before"),
+                    row.get("shares_change_text"), row.get("shares_change"),
+                    row.get("shares_after_text"), row.get("shares_after"),
+                    row.get("ratio_after"), row.get("change_type"), row.get("page_update_date"),
+                    row.get("source"), row.get("source_tier"), row.get("raw_hash"),
+                    row.get("fetched_at"), row.get("trade_seq"),
                 )
-                select stock_code, stock_name, market,
-                       change_date, holder_name, holder_name_norm,
-                       shares_before_text, shares_before,
-                       shares_change_text, shares_change,
-                       shares_after_text, shares_after,
-                       ratio_after, change_type,
-                       page_update_date, source, source_tier, raw_hash, fetched_at, trade_seq
-                from t_in
-                where (stock_code, raw_hash) not in (
-                  select distinct stock_code, raw_hash from fact_shareholder_trade
-                  where raw_hash is not null
-                )
-            """)
-            con.unregister("t_in")
+                for row in trades
+            ])
 
     return out
 

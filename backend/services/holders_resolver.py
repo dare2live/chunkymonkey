@@ -16,7 +16,7 @@
   tier=3 akshare  ──> 兜底, 批量按报告期 (per-stock 拿不动, 暂占位)
 
 返回值统一 ResolverResult, 包含已规整成 fact_top10_holder_period schema 的
-DataFrame + 用了哪个 source.
+records + 用了哪个 source.
 """
 
 from __future__ import annotations
@@ -29,8 +29,6 @@ from datetime import datetime
 from pathlib import Path
 from typing import Optional
 
-import pandas as pd
-
 logger = logging.getLogger("cm-api")
 
 # tdxhub.holders 通过同级 checkout 或 pip install -e ../tdxhub 引入.
@@ -40,15 +38,15 @@ sys.path.insert(0, str(STOCK_ROOT / "tdxhub"))
 
 @dataclass
 class ResolverResult:
-    """resolver 返回: 已规整成 fact_top10_holder_period 行的 DataFrame + 元数据.
+    """resolver 返回: 已规整成 fact_top10_holder_period 行的 records + 元数据.
 
-    holders_df + periods_df 是所有 source 都返回的核心数据.
+    holders + periods 是所有 source 都返回的核心数据.
     controlling / plans / trades 仅 tdxhub 有 (来自段 1/2/3 解析); fallback
-    源为 None / 空 DataFrame.
+    源为 None / 空列表.
     """
 
-    holders_df: pd.DataFrame
-    periods_df: pd.DataFrame
+    holders: list[dict]
+    periods: list[dict]
     raw_text: Optional[str]               # tdxhub 才有原文; miaoxiang/akshare 为 None
     raw_hash: Optional[str]
     page_update_date: Optional[str]
@@ -58,11 +56,11 @@ class ResolverResult:
     fetched_at: str
     # 仅 tdxhub 解析填充; 其他源为 None / 空
     controlling: Optional[dict] = None
-    plans_df: Optional[pd.DataFrame] = None
-    trades_df: Optional[pd.DataFrame] = None
+    plans: Optional[list[dict]] = None
+    trades: Optional[list[dict]] = None
 
     def has_data(self) -> bool:
-        return not self.holders_df.empty
+        return bool(self.holders)
 
 
 class SourceExhausted(RuntimeError):
@@ -119,8 +117,8 @@ class TdxhubHolderSource(HolderSource):
         res = parse_research_records(text, symbol=symbol, stock_name=stock_name)
         page = res["page"]
         return ResolverResult(
-            holders_df=pd.DataFrame.from_records(res.get("holders") or []),
-            periods_df=pd.DataFrame.from_records(res.get("periods") or []),
+            holders=[dict(row) for row in (res.get("holders") or [])],
+            periods=[dict(row) for row in (res.get("periods") or [])],
             raw_text=text,
             raw_hash=_hash(text),
             page_update_date=page.get("page_update_date"),
@@ -129,8 +127,8 @@ class TdxhubHolderSource(HolderSource):
             source_tier=self.source_tier,
             fetched_at=datetime.utcnow().isoformat(timespec="seconds"),
             controlling=res.get("controlling"),
-            plans_df=pd.DataFrame.from_records(res.get("plans") or []),
-            trades_df=pd.DataFrame.from_records(res.get("trades") or []),
+            plans=[dict(row) for row in (res.get("plans") or [])],
+            trades=[dict(row) for row in (res.get("trades") or [])],
         )
 
     def close(self) -> None:
@@ -161,6 +159,45 @@ _MIAOXIANG_FIELD_MAP = {
     "HOLDER_NEWTYPE": "holder_type",
     "IS_HOLDORG": "is_org",
 }
+
+
+def _safe_text(value) -> Optional[str]:
+    if value in (None, ""):
+        return None
+    text = str(value).strip()
+    return text or None
+
+
+def _safe_float(value) -> Optional[float]:
+    if value in (None, ""):
+        return None
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _safe_int(value) -> Optional[int]:
+    number = _safe_float(value)
+    if number is None:
+        return None
+    return int(round(number))
+
+
+def _compact_date(value) -> Optional[str]:
+    text = _safe_text(value)
+    if not text:
+        return None
+    digits = "".join(ch for ch in text if ch.isdigit())
+    return digits[:8] if len(digits) >= 8 else None
+
+
+def _first_value(row: dict, *keys: str):
+    for key in keys:
+        value = row.get(key)
+        if value not in (None, ""):
+            return value
+    return None
 
 
 class MiaoxiangHolderSource(HolderSource):
@@ -205,18 +242,17 @@ class MiaoxiangHolderSource(HolderSource):
             return None
 
         # 规整到 fact_top10_holder_period schema
-        df = pd.DataFrame(rows)
-        df = self._normalize(df, symbol)
-        if df.empty:
+        holders = self._normalize(rows, symbol)
+        if not holders:
             return None
         # period 元信息: miaoxiang 没给累计统计, 留空
-        periods = pd.DataFrame([{
-            "stock_code": symbol, "report_date": rd,
+        periods = [{
+            "stock_code": symbol, "report_date": report_date,
             "holder_set": "free", "source": self.name,
-        } for rd in df["report_date"].unique()])
+        } for report_date in sorted({row["report_date"] for row in holders})]
         return ResolverResult(
-            holders_df=df,
-            periods_df=periods,
+            holders=holders,
+            periods=periods,
             raw_text=None,
             raw_hash=None,
             page_update_date=None,
@@ -235,31 +271,59 @@ class MiaoxiangHolderSource(HolderSource):
         return f"{symbol}.SZ"
 
     @staticmethod
-    def _normalize(df: pd.DataFrame, symbol: str) -> pd.DataFrame:
+    def _normalize(rows: list[dict], symbol: str) -> list[dict]:
         """把妙想列名映射到 fact_top10_holder_period schema."""
 
-        out = pd.DataFrame()
-        out["stock_code"] = df.get("SECURITY_CODE") or symbol
-        out["stock_name"] = df.get("SECURITY_NAME_ABBR")
-        out["report_date"] = df.get("REPORT_DATE", "").str.replace("-", "").str.slice(0, 8)
-        out["notice_date"] = df.get("NOTICE_DATE", "").str.replace("-", "").str.slice(0, 8)
-        out["holder_rank"] = df.get("HOLDER_RANK")
-        out["row_seq"] = 1
-        out["holder_name"] = df.get("HOLDER_NAME")
-        out["holder_name_norm"] = df.get("HOLDER_NAME")
-        out["share_class"] = "_"  # 妙想不区分; 占位
-        out["is_secondary_class"] = False
-        out["is_exit_row"] = False
-        out["shares_approx"] = (df.get("FREE_HOLDNUM") or df.get("HOLD_NUM")).astype("Int64")
-        out["hold_amount"] = out["shares_approx"].astype("float64")
-        out["hold_ratio_float"] = df.get("FREE_HOLDNUM_RATIO")
-        out["holder_type"] = df.get("HOLDER_NEWTYPE")
-        out["change_shares_approx"] = df.get("HOLD_NUM_CHANGE")
-        out["change_status"] = "未知"  # 妙想给的是数值, 上层下游应基于 lag 自己推
-        out["holder_set"] = "free"
-        out["source"] = MiaoxiangHolderSource.name
-        out["source_tier"] = 2
-        return out
+        normalized = []
+        fetched_at = datetime.utcnow().isoformat(timespec="seconds")
+        for idx, row in enumerate(rows, start=1):
+            stock_code = _safe_text(row.get("SECURITY_CODE")) or symbol
+            report_date = _compact_date(row.get("REPORT_DATE"))
+            holder_name = _safe_text(row.get("HOLDER_NAME"))
+            if not report_date or not holder_name:
+                continue
+            shares = _safe_int(_first_value(row, "FREE_HOLDNUM", "HOLD_NUM"))
+            ratio = _safe_float(row.get("FREE_HOLDNUM_RATIO"))
+            change_shares = _safe_int(row.get("HOLD_NUM_CHANGE"))
+            holder_type = _safe_text(row.get("HOLDER_NEWTYPE"))
+            normalized.append({
+                "stock_code": stock_code,
+                "stock_name": _safe_text(row.get("SECURITY_NAME_ABBR")) or "",
+                "market": "",
+                "report_date": report_date,
+                "notice_date": _compact_date(row.get("NOTICE_DATE")),
+                "holder_rank": _safe_int(row.get("HOLDER_RANK")) or idx,
+                "row_seq": 1,
+                "holder_name": holder_name,
+                "holder_name_norm": holder_name,
+                "share_class": "_",
+                "is_secondary_class": False,
+                "is_exit_row": False,
+                "shares_text": None,
+                "shares_approx": shares,
+                "shares_precision": None,
+                "hold_amount": float(shares) if shares is not None else None,
+                "hold_ratio_float": ratio,
+                "hold_ratio_total": None,
+                "hold_ratio": ratio,
+                "hold_market_cap": None,
+                "holder_type": holder_type,
+                "holder_type_or_nature": holder_type,
+                "share_nature": holder_type,
+                "change_status": "未知",
+                "change_shares_text": None,
+                "change_shares_approx": change_shares,
+                "hold_change": "",
+                "hold_change_num": float(change_shares) if change_shares is not None else None,
+                "effective_date": None,
+                "page_update_date": None,
+                "source": MiaoxiangHolderSource.name,
+                "source_tier": 2,
+                "raw_hash": None,
+                "fetched_at": fetched_at,
+                "created_at": fetched_at,
+            })
+        return normalized
 
     def close(self) -> None:
         if self._client is not None:

@@ -17,6 +17,9 @@ service-level query convenience and PSI drift checks no longer require
 pandas/numpy.
 The external-attention loop then moved the akshare table boundary to cached
 records and removed table-object assumptions from snapshot/detail helpers.
+The holder loop completed service-level pandas removal by converting resolver
+results to records and rewriting the holder ingest writer to use DuckDB
+`executemany` instead of table-object registration.
 
 ## Change
 
@@ -90,6 +93,14 @@ records and removed table-object assumptions from snapshot/detail helpers.
 - Converted akshare calls, cache entries, snapshot normalization, detail series,
   research/news summaries, and timeline builders to records/native helpers.
 - Added `backend/tests/test_external_attention.py`.
+- Removed pandas from `backend/services/holders_resolver.py`.
+- Converted `ResolverResult` holders, periods, plans, and trades payloads to
+  records.
+- Removed pandas/register usage from `backend/scripts/ingest_holders_tdxhub.py`.
+- Converted holder raw/fact/control/plan/trade writes to direct DuckDB
+  `executemany` paths and preserved duplicate-write idempotency.
+- Updated `backend/tests/test_holders_resolver.py` and added
+  `backend/tests/test_ingest_holders_tdxhub.py`.
 
 ## Validation
 
@@ -262,10 +273,26 @@ python3 -m pytest backend/tests -q
 
 python3 backend/scripts/data_health_snapshot.py --dry-run
 # green=147/yellow=0/red=0
+
+rg -n "pandas|pd\.|DataFrame|read_sql_query|\.to_sql\(|\.df\(|register\(" backend/services/holders_resolver.py backend/scripts/ingest_holders_tdxhub.py backend/tests/test_holders_resolver.py backend/tests/test_ingest_holders_tdxhub.py -S
+# 0 matches
+
+rg -n "import pandas|from pandas|pd\.|DataFrame|import numpy|from numpy|np\." backend/services -S
+# 0 matches
+
+python3 -m py_compile backend/services/holders_resolver.py backend/scripts/ingest_holders_tdxhub.py backend/tests/test_holders_resolver.py backend/tests/test_ingest_holders_tdxhub.py
+# passed
+
+python3 -m pytest backend/tests/test_holders_resolver.py backend/tests/test_ingest_holders_tdxhub.py -q
+# 11 passed
+
+python3 -m pytest backend/tests -q
+# 318 passed
+
+python3 backend/scripts/data_health_snapshot.py --dry-run
+# green=147/yellow=0/red=0
 ```
 
 ## Remaining Phase 4 Targets
 
-- `backend/services/holders_resolver.py` together with
-  `backend/scripts/ingest_holders_tdxhub.py`.
 - pandas usage in scripts and model/backtest layers.
