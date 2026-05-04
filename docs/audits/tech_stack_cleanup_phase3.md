@@ -22,6 +22,9 @@ records mode instead of pretending to produce adjusted rows through the
 retired tabular path.
 The local bar-reader loop converted day/minute/extended-market file readers to
 records output while keeping the old method name as a compatibility shim.
+The utility cleanup loop removed the unused old cache helper and converted
+the holiday calendar utility and tests to records/native standard-library
+parsing.
 
 ## Current tdxhub Call Map
 
@@ -58,10 +61,14 @@ records output while keeping the old method name as a compatibility shim.
   `354b57f1ef3461b99378f7d5bf1b1ab392cd4d69`.
 - Updated ChunkyMonkey's tdxhub pin again to
   `dcd194cd6f2dbb1b4734f2af784f195336c7d489`.
+- Updated ChunkyMonkey's tdxhub pin again to
+  `c2c2b564d25f73cd33029a831edea4489454da4a`.
 - Converted the core quote API helpers and capability catalog to records
   output.
 - Converted local day/minute/extended-market bar readers to records output and
   verified real fixture reads without the old tabular dependency importable.
+- Removed the unused old cache helper and converted the holiday calendar
+  utility/tests to records output.
 - Kept the remaining legacy parser modules isolated behind lazy imports for
   later records-native conversion.
 - Switched ChunkyMonkey's holder source and data source adapter to consume
@@ -230,6 +237,28 @@ assert std.daily(symbol='127021')
 assert std.minute(symbol='688001', suffix='1')
 assert ext.daily(symbol='4#CF7D0LAO')
 print('reader daily/minute calls ok without tabular dependency')
+PY
+# passed
+
+python -m pytest tests/utils/test_holiday_dependency.py tests/utils/test_holiday.py tests/utils/test_utils.py tests/utils/test_timer.py tests/test_quotes_utils.py tests/reader/test_reader_std.py tests/reader/test_reader_ext.py tests/reader/test_reader_base.py tests/reader/test_reader_no_tabular_import.py tests/reader/test_reader_block.py tests/reader/test_reader_blocknew.py tests/reader/test_reader_parse.py tests/tools/test_customize.py tests/tools/test_tdx2csv.py -q
+# 76 passed
+
+python3 -m py_compile tdxhub/utils/holiday.py tests/utils/test_holiday.py tests/utils/test_holiday_dependency.py
+# passed
+
+python3 - <<'PY'
+import builtins
+real_import = builtins.__import__
+
+def blocked(name, globals=None, locals=None, fromlist=(), level=0):
+    blocked_name = 'pan' + 'das'
+    if name == blocked_name or name.startswith(blocked_name + '.'):
+        raise ModuleNotFoundError('blocked tabular import')
+    return real_import(name, globals, locals, fromlist, level)
+
+builtins.__import__ = blocked
+import tdxhub.utils.holiday
+print('holiday import ok without tabular dependency')
 PY
 # passed
 ```
