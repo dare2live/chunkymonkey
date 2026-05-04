@@ -31,6 +31,9 @@ The daily TopK loop converted recommendation scoring and risk-summary
 percentiles to records/native helpers.
 The LHB event loop converted raw event aggregation, forward-return labeling,
 and fact writes to records/native helpers.
+The executive-trade event loop converted akshare payload normalization,
+shareholder aggregation, forward-return labeling, and raw/fact writes to
+records/native helpers.
 
 ## Change
 
@@ -135,6 +138,12 @@ and fact writes to records/native helpers.
 - Converted LHB raw reads, event dedupe/aggregation, forward-return labels, and
   fact writes to records/native helpers.
 - Added `backend/tests/test_build_lhb_events.py`.
+- Removed pandas/numpy and DuckDB DataFrame registration from
+  `backend/scripts/build_executive_trade_events.py`.
+- Converted executive-trade akshare payload normalization, shareholder
+  aggregation, forward-return labels, and raw/fact writes to records/native
+  helpers.
+- Added `backend/tests/test_build_executive_trade_events.py`.
 
 ## Validation
 
@@ -403,6 +412,24 @@ python3 backend/scripts/build_lhb_events.py --dry-run
 
 python3 -m pytest backend/tests -q
 # 328 passed
+
+python3 backend/scripts/data_health_snapshot.py --dry-run
+# green=147/yellow=0/red=0
+
+rg -n "import pandas|from pandas|pd\.|DataFrame|read_sql_query|\.to_sql\(|\.df\(|register\(|import numpy|from numpy|np\." backend/scripts/build_executive_trade_events.py backend/tests/test_build_executive_trade_events.py -S
+# 0 matches
+
+python3 -m py_compile backend/scripts/build_executive_trade_events.py backend/tests/test_build_executive_trade_events.py
+# passed
+
+python3 -m pytest backend/tests/test_build_executive_trade_events.py -q
+# 4 passed
+
+python3 backend/scripts/build_executive_trade_events.py --dry-run
+# raw=143825, events=68281, forward_coverage_20d=82.3%, forward_coverage_60d=82.3%
+
+python3 -m pytest backend/tests -q
+# 332 passed
 
 python3 backend/scripts/data_health_snapshot.py --dry-run
 # green=147/yellow=0/red=0
