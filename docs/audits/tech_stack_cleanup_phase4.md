@@ -60,6 +60,9 @@ feature resolution, Optuna objective inputs, and prediction writes.
 The multidim walk-forward loop removed its dependency on the shared DataFrame
 training helpers by adding records/native panel loading, feature group
 resolution, fold slicing, score profiling, and prediction writes.
+The model-portfolio backtest loop converted prediction, price, benchmark,
+curve simulation, random baseline, summary, and curve writes to records/native
+helpers and fixed the missing `vs_random_l1_p90_pp` summary schema column.
 
 ## Change
 
@@ -213,6 +216,14 @@ resolution, fold slicing, score profiling, and prediction writes.
   fold slicing, LightGBM inputs, score-profile checks, and prediction writes
   to records/native helpers.
 - Added `backend/tests/test_run_multidim_walkforward.py`.
+- Removed pandas and DuckDB table registration from
+  `backend/scripts/backtest_model_portfolio.py`.
+- Converted model portfolio input loading, curve simulation, 510300 benchmark,
+  liquid500 benchmark, TDX L1-neutral random baseline, summary math, and
+  curve writes to records/native helpers.
+- Added idempotent schema maintenance for `vs_random_l1_p90_pp` in
+  `mart_model_portfolio_summary`.
+- Added `backend/tests/test_backtest_model_portfolio.py`.
 
 ## Validation
 
@@ -620,8 +631,23 @@ python3 -m pytest backend/tests/test_run_multidim_walkforward.py -q
 python3 backend/scripts/run_multidim_walkforward.py --help
 # import/CLI smoke passed
 
+rg -n "import pandas|from pandas|pd\.|DataFrame|read_sql_query|\.to_sql\(|\.df\(|register\(" backend/scripts/backtest_model_portfolio.py backend/tests/test_backtest_model_portfolio.py -S
+# 0 matches
+
+python3 -m py_compile backend/scripts/backtest_model_portfolio.py backend/tests/test_backtest_model_portfolio.py
+# passed
+
+python3 -m pytest backend/tests/test_backtest_model_portfolio.py -q
+# 3 passed
+
+python3 backend/scripts/backtest_model_portfolio.py --help
+# import/CLI smoke passed
+
+python3 backend/scripts/backtest_model_portfolio.py --dry-run --random-seeds 2 --cost-bps 15 --top-sizes 20
+# records/native dry-run passed (curves=5 summaries=5)
+
 python3 -m pytest backend/tests -q
-# 347 passed
+# 350 passed
 
 python3 backend/scripts/data_health_snapshot.py --dry-run
 # green=147/yellow=0/red=0
