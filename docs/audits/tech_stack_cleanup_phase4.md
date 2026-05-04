@@ -66,6 +66,9 @@ helpers and fixed the missing `vs_random_l1_p90_pp` summary schema column.
 The walk-forward portfolio loop then converted fold/prediction/price loads,
 fold simulation, benchmark comparison, reporting, and summary writes to
 records/native helpers.
+The AkShare panel loop converted external table payloads at the fetch boundary
+to records and replaced pandas normalization, date arithmetic, dedupe, and
+`to_sql` writes with records/native helpers and direct `executemany` writes.
 
 ## Change
 
@@ -234,6 +237,13 @@ records/native helpers.
   records/native helpers.
 - Added an empty-result guard before walk-forward summary writes.
 - Added `backend/tests/test_backtest_walkforward_portfolio.py`.
+- Removed pandas from `backend/scripts/build_akshare_panel.py`.
+- Converted AkShare table payload handling, field mapping, date/code
+  normalization, duplicate filtering, and fact writes to records/native
+  helpers.
+- Replaced pandas `Timedelta` date windows with standard-library
+  `datetime.timedelta`.
+- Added `backend/tests/test_build_akshare_panel.py`.
 
 ## Validation
 
@@ -671,8 +681,20 @@ python3 backend/scripts/backtest_walkforward_portfolio.py --help
 python3 backend/scripts/backtest_walkforward_portfolio.py --walkforward-run-id walkforward_20260504_110546 --dry-run --cost-bps 15 --top-sizes 20
 # records/native dry-run passed (5 folds)
 
+rg -n "import pandas|from pandas|pd\.|DataFrame|read_sql_query|\.to_sql\(|\.df\(|register\(|\.empty|concat\(|Timedelta|drop_duplicates|astype|fillna|str\." backend/scripts/build_akshare_panel.py backend/tests/test_build_akshare_panel.py -S
+# 0 matches
+
+python3 -m py_compile backend/scripts/build_akshare_panel.py backend/tests/test_build_akshare_panel.py
+# passed
+
+python3 -m pytest backend/tests/test_build_akshare_panel.py -q
+# 3 passed
+
+python3 backend/scripts/build_akshare_panel.py --help
+# import/CLI smoke passed
+
 python3 -m pytest backend/tests -q
-# 353 passed
+# 356 passed
 
 python3 backend/scripts/data_health_snapshot.py --dry-run
 # green=147/yellow=0/red=0

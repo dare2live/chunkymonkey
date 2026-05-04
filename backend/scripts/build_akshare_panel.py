@@ -17,15 +17,16 @@ from __future__ import annotations
 
 import argparse
 import logging
+import math
 import sys
 import time
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
+from typing import Any
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 import akshare as ak
-import pandas as pd
 
 from services.db import get_conn
 
@@ -37,13 +38,97 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name
 # 1. 机构调研事件流
 # ═══════════════════════════════════════════════════════════════════════
 
-def _insert_ignore(conn, table: str, df: pd.DataFrame, cols: list[str]):
+def _is_missing(value: Any) -> bool:
+    if value is None:
+        return True
+    try:
+        if isinstance(value, float) and math.isnan(value):
+            return True
+    except Exception:
+        pass
+    try:
+        return value != value
+    except Exception:
+        return False
+
+
+def _clean(value: Any) -> Any:
+    return None if _is_missing(value) else value
+
+
+def _records_from_table(table: Any) -> list[dict[str, Any]]:
+    if table is None:
+        return []
+    if isinstance(table, list):
+        return [dict(row) for row in table if isinstance(row, dict)]
+    if hasattr(table, "to_dict"):
+        try:
+            return [dict(row) for row in table.to_dict("records")]
+        except Exception:
+            logger.warning("akshare table to_dict(records) failed", exc_info=True)
+            return []
+    if hasattr(table, "to_pylist"):
+        return [dict(row) for row in table.to_pylist()]
+    return []
+
+
+def _map_row(row: dict[str, Any], cols_map: dict[str, str]) -> dict[str, Any]:
+    out: dict[str, Any] = {}
+    for src, target in cols_map.items():
+        if src in row and target not in out:
+            out[target] = row[src]
+    return out
+
+
+def _date_key(value: Any) -> str:
+    if _is_missing(value):
+        return ""
+    if hasattr(value, "strftime"):
+        return value.strftime("%Y%m%d")
+    text = str(value).strip()
+    if " " in text:
+        text = text.split(" ", 1)[0]
+    return text.replace("-", "").replace("/", "")
+
+
+def _stock_code(value: Any) -> str:
+    if _is_missing(value):
+        return ""
+    if isinstance(value, (int, float)) and not isinstance(value, bool):
+        return str(int(value)).zfill(6)
+    text = str(value).strip()
+    if text.endswith(".0") and text[:-2].isdigit():
+        text = text[:-2]
+    return text.zfill(6)[-6:]
+
+
+def _text(value: Any, max_len: int | None = None, default: str = "") -> str:
+    if _is_missing(value):
+        text = default
+    else:
+        text = str(value)
+    return text[:max_len] if max_len is not None else text
+
+
+def _dedupe(rows: list[dict[str, Any]], keys: list[str]) -> list[dict[str, Any]]:
+    seen: set[tuple[Any, ...]] = set()
+    out: list[dict[str, Any]] = []
+    for row in rows:
+        key = tuple(row.get(col) for col in keys)
+        if key in seen:
+            continue
+        seen.add(key)
+        out.append(row)
+    return out
+
+
+def _insert_ignore(conn, table: str, rows: list[dict[str, Any]], cols: list[str]):
     """INSERT OR IGNORE 批量写入 (避免 UNIQUE 冲突)."""
-    if df.empty:
+    if not rows:
         return 0
     placeholders = ','.join(['?'] * len(cols))
     sql = f"INSERT OR IGNORE INTO {table} ({','.join(cols)}) VALUES ({placeholders})"
-    data = df[cols].where(pd.notnull(df[cols]), None).values.tolist()
+    data = [tuple(_clean(row.get(col)) for col in cols) for row in rows]
     conn.executemany(sql, data)
     return len(data)
 
@@ -69,29 +154,31 @@ def build_jgdy_events(conn, dates: list[str]) -> int:
     built_at = datetime.utcnow().isoformat()
     for d in dates:
         try:
-            df = ak.stock_jgdy_tj_em(date=d)
+            records = _records_from_table(ak.stock_jgdy_tj_em(date=d))
         except Exception as e:
             logger.warning("jgdy %s: %s", d, e)
             continue
-        if df is None or df.empty:
+        if not records:
             continue
         # 东财字段: 代码 / 名称 / 接待机构数量 / 调研家数 / 公告日期
         cols_map = {'代码': 'stock_code', '名称': 'stock_name',
                     '接待机构数量': 'inst_count', '公告日期': 'notice_date'}
-        present = {k: v for k, v in cols_map.items() if k in df.columns}
-        if 'stock_code' not in present.values():
-            continue
-        df2 = df[list(present.keys())].rename(columns=present).copy()
-        df2['stock_code'] = df2['stock_code'].astype(str).str.zfill(6)
-        df2['notice_date'] = df2['notice_date'].astype(str).str.replace('-', '', regex=False)
-        df2['visit_count'] = df2.get('visit_count', 1)
-        df2['built_at'] = built_at
-        df2 = df2.drop_duplicates(subset=['notice_date', 'stock_code'], keep='first')
+        rows = []
+        for record in records:
+            row = _map_row(record, cols_map)
+            stock_code = _stock_code(row.get("stock_code"))
+            if not stock_code:
+                continue
+            row["stock_code"] = stock_code
+            row["notice_date"] = _date_key(row.get("notice_date"))
+            row["visit_count"] = row.get("visit_count") or 1
+            row["built_at"] = built_at
+            rows.append(row)
+        rows = _dedupe(rows, ['notice_date', 'stock_code'])
         cols = ['notice_date', 'stock_code', 'stock_name', 'inst_count', 'visit_count', 'built_at']
-        have = [c for c in cols if c in df2.columns]
         # 用 INSERT OR IGNORE 处理跨批重复
-        _insert_ignore(conn, 'fact_jgdy_event', df2, have)
-        total += len(df2)
+        _insert_ignore(conn, 'fact_jgdy_event', rows, cols)
+        total += len(rows)
         conn.commit()  # 每日 commit 避免长事务锁 db
     logger.info("fact_jgdy_event %d 条", total)
     return total
@@ -124,11 +211,11 @@ def build_dzjy_events(conn, date_windows: list[tuple[str, str]]) -> int:
     built_at = datetime.utcnow().isoformat()
     for start, end in date_windows:
         try:
-            df = ak.stock_dzjy_mrmx(symbol='A股', start_date=start, end_date=end)
+            records = _records_from_table(ak.stock_dzjy_mrmx(symbol='A股', start_date=start, end_date=end))
         except Exception as e:
             logger.warning("dzjy %s~%s: %s", start, end, e)
             continue
-        if df is None or df.empty:
+        if not records:
             continue
         # 东财字段常见: 交易日期 / 证券代码 / 证券简称 / 成交价 / 折溢率 / 成交量 / 成交额 / 买方营业部 / 卖方营业部
         cols_map = {
@@ -137,21 +224,23 @@ def build_dzjy_events(conn, date_windows: list[tuple[str, str]]) -> int:
             '成交量': 'volume_wan', '成交额': 'amount_wan',
             '买方营业部': 'buyer_name', '卖方营业部': 'seller_name',
         }
-        present = {k: v for k, v in cols_map.items() if k in df.columns}
-        df2 = df[list(present.keys())].rename(columns=present).copy()
-        if 'trade_date' in df2:
-            df2['trade_date'] = df2['trade_date'].astype(str).str.replace('-', '', regex=False)
-        if 'stock_code' in df2:
-            df2['stock_code'] = df2['stock_code'].astype(str).str.zfill(6)
-        df2['buyer_name'] = df2.get('buyer_name', '').astype(str).fillna('').str.slice(0, 60)
-        df2['seller_name'] = df2.get('seller_name', '').astype(str).fillna('').str.slice(0, 60)
-        df2['built_at'] = built_at
-        df2 = df2.drop_duplicates(subset=['trade_date', 'stock_code', 'buyer_name', 'seller_name'], keep='first')
+        rows = []
+        for record in records:
+            row = _map_row(record, cols_map)
+            stock_code = _stock_code(row.get("stock_code"))
+            if not stock_code:
+                continue
+            row["trade_date"] = _date_key(row.get("trade_date"))
+            row["stock_code"] = stock_code
+            row["buyer_name"] = _text(row.get("buyer_name"), 60)
+            row["seller_name"] = _text(row.get("seller_name"), 60)
+            row["built_at"] = built_at
+            rows.append(row)
+        rows = _dedupe(rows, ['trade_date', 'stock_code', 'buyer_name', 'seller_name'])
         cols = ['trade_date', 'stock_code', 'stock_name', 'price', 'prem_pct',
                 'volume_wan', 'amount_wan', 'buyer_name', 'seller_name', 'built_at']
-        have = [c for c in cols if c in df2.columns]
-        _insert_ignore(conn, 'fact_dzjy_event', df2, have)
-        total += len(df2)
+        _insert_ignore(conn, 'fact_dzjy_event', rows, cols)
+        total += len(rows)
         conn.commit()
     logger.info("fact_dzjy_event %d 条", total)
     return total
@@ -180,21 +269,17 @@ def build_hsgt_daily(conn, today_only: bool = True) -> int:
     built_at = datetime.utcnow().isoformat()
     today = datetime.now().strftime('%Y%m%d')
     try:
-        df = ak.stock_hsgt_hold_stock_em(market='沪股通', indicator='今日排行')
+        sh_rows = _records_from_table(ak.stock_hsgt_hold_stock_em(market='沪股通', indicator='今日排行'))
     except Exception as e:
         logger.warning("hsgt sh: %s", e)
         return 0
     try:
-        df2 = ak.stock_hsgt_hold_stock_em(market='深股通', indicator='今日排行')
+        sz_rows = _records_from_table(ak.stock_hsgt_hold_stock_em(market='深股通', indicator='今日排行'))
     except Exception as e:
         logger.warning("hsgt sz: %s", e)
-        df2 = pd.DataFrame()
-    if not df.empty and not df2.empty:
-        full = pd.concat([df, df2], ignore_index=True)
-    else:
-        full = df if not df.empty else df2
-
-    if full.empty:
+        sz_rows = []
+    records = sh_rows + sz_rows
+    if not records:
         return 0
 
     cols_map = {'代码': 'stock_code', '股票代码': 'stock_code',
@@ -204,27 +289,22 @@ def build_hsgt_daily(conn, today_only: bool = True) -> int:
                 '今日持股-占流通股比': 'hold_pct_of_float',
                 '持股数量占发行股百分比': 'hold_pct_of_float',
                 '日期': 'snapshot_date'}
-    # 当一个目标列有多个候选源列时，取第一个有值的
-    mapped = {}
-    for src, tgt in cols_map.items():
-        if src in full.columns and tgt not in mapped:
-            mapped[src] = tgt
-    full2 = full[list(mapped.keys())].rename(columns=mapped).copy()
-    # 用文件里的 `日期` 作为 snapshot 更准确
-    if 'snapshot_date' in full2.columns:
-        full2['snapshot_date'] = full2['snapshot_date'].astype(str).str.replace('-', '', regex=False)
-    else:
-        full2['snapshot_date'] = today
-    full2['stock_code'] = full2['stock_code'].astype(str).str.zfill(6)
-    full2['built_at'] = built_at
-    full2 = full2.drop_duplicates(subset=['snapshot_date', 'stock_code'], keep='first')
+    rows = []
+    for record in records:
+        row = _map_row(record, cols_map)
+        stock_code = _stock_code(row.get("stock_code"))
+        if not stock_code:
+            continue
+        row["snapshot_date"] = _date_key(row.get("snapshot_date")) or today
+        row["stock_code"] = stock_code
+        row["built_at"] = built_at
+        rows.append(row)
+    rows = _dedupe(rows, ['snapshot_date', 'stock_code'])
     cols = ['snapshot_date', 'stock_code', 'stock_name', 'hold_shares',
             'hold_market_value', 'hold_pct_of_float', 'built_at']
-    have = [c for c in cols if c in full2.columns]
-    full2[have].to_sql('fact_hsgt_daily', conn, if_exists='append', index=False,
-                       method='multi', chunksize=500)
+    _insert_ignore(conn, 'fact_hsgt_daily', rows, cols)
     conn.commit()
-    total = len(full2)
+    total = len(rows)
     logger.info("fact_hsgt_daily +%d 条 (snapshot=%s)", total, today)
     return total
 
@@ -249,27 +329,30 @@ def build_hot_rank_daily(conn) -> int:
     today = datetime.now().strftime('%Y%m%d')
     built_at = datetime.utcnow().isoformat()
     try:
-        df = ak.stock_hot_rank_em()
+        records = _records_from_table(ak.stock_hot_rank_em())
     except Exception as e:
         logger.warning("hot_rank: %s", e)
         return 0
-    if df is None or df.empty:
+    if not records:
         return 0
     cols_map = {'当前排名': 'rank_value', '代码': 'stock_code',
                 '股票名称': 'stock_name', '最新价': 'hot_score'}
-    present = {k: v for k, v in cols_map.items() if k in df.columns}
-    df2 = df[list(present.keys())].rename(columns=present).copy()
-    df2['stock_code'] = df2['stock_code'].astype(str).str.zfill(6).str.slice(-6)
-    df2['snapshot_date'] = today
-    df2['built_at'] = built_at
-    df2 = df2.drop_duplicates(subset=['snapshot_date', 'stock_code'], keep='first')
+    rows = []
+    for record in records:
+        row = _map_row(record, cols_map)
+        stock_code = _stock_code(row.get("stock_code"))
+        if not stock_code:
+            continue
+        row["stock_code"] = stock_code
+        row["snapshot_date"] = today
+        row["built_at"] = built_at
+        rows.append(row)
+    rows = _dedupe(rows, ['snapshot_date', 'stock_code'])
     cols = ['snapshot_date', 'stock_code', 'stock_name', 'rank_value', 'hot_score', 'built_at']
-    have = [c for c in cols if c in df2.columns]
-    df2[have].to_sql('fact_hot_rank_daily', conn, if_exists='append', index=False,
-                     method='multi', chunksize=500)
+    _insert_ignore(conn, 'fact_hot_rank_daily', rows, cols)
     conn.commit()
-    logger.info("fact_hot_rank_daily +%d 条 (snapshot=%s)", len(df2), today)
-    return len(df2)
+    logger.info("fact_hot_rank_daily +%d 条 (snapshot=%s)", len(rows), today)
+    return len(rows)
 
 
 # ═══════════════════════════════════════════════════════════════════════
@@ -298,30 +381,30 @@ def build_research_report(conn, top_stocks: list[str]) -> int:
     total = 0
     for i, code in enumerate(top_stocks):
         try:
-            df = ak.stock_research_report_em(symbol=code)
+            records = _records_from_table(ak.stock_research_report_em(symbol=code))
         except Exception as e:
             logger.warning("rr %s: %s", code, e)
             continue
-        if df is None or df.empty:
+        if not records:
             continue
         # 东财字段: 报告日期 / 标题 / 机构 / 评级变动 / 目标价等
         cols_map = {'日期': 'report_date', '报告标题': 'title',
                     '研报机构': 'institution', '评级': 'rating',
                     '最新评级': 'rating', '最新目标价': 'target_price'}
-        present = {k: v for k, v in cols_map.items() if k in df.columns}
-        df2 = df[list(present.keys())].rename(columns=present).copy()
-        df2['stock_code'] = code
-        if 'report_date' in df2:
-            df2['report_date'] = df2['report_date'].astype(str).str.replace('-', '', regex=False)
-        df2['institution'] = df2.get('institution', '').astype(str).fillna('').str.slice(0, 60)
-        df2['title'] = df2.get('title', '').astype(str).fillna('').str.slice(0, 120)
-        df2['built_at'] = built_at
-        df2 = df2.drop_duplicates(subset=['report_date', 'stock_code', 'institution', 'title'], keep='first')
+        rows = []
+        for record in records:
+            row = _map_row(record, cols_map)
+            row["stock_code"] = _stock_code(code)
+            row["report_date"] = _date_key(row.get("report_date"))
+            row["institution"] = _text(row.get("institution"), 60)
+            row["title"] = _text(row.get("title"), 120)
+            row["built_at"] = built_at
+            rows.append(row)
+        rows = _dedupe(rows, ['report_date', 'stock_code', 'institution', 'title'])
         cols = ['report_date', 'stock_code', 'title', 'institution', 'rating',
                 'target_price', 'built_at']
-        have = [c for c in cols if c in df2.columns]
-        _insert_ignore(conn, 'fact_research_report', df2, have)
-        total += len(df2)
+        _insert_ignore(conn, 'fact_research_report', rows, cols)
+        total += len(rows)
         if (i + 1) % 100 == 0:
             conn.commit()
             logger.info("rr 进度 %d/%d 累计 %d", i + 1, len(top_stocks), total)
@@ -352,32 +435,35 @@ def build_profit_forecast(conn) -> int:
     built_at = datetime.utcnow().isoformat()
     today = datetime.now().strftime('%Y%m%d')
     try:
-        df = ak.stock_profit_forecast_em(symbol='')
+        records = _records_from_table(ak.stock_profit_forecast_em(symbol=''))
     except Exception as e:
         logger.warning("profit_forecast: %s", e)
         return 0
-    if df is None or df.empty:
+    if not records:
         return 0
     # 东财字段: 代码 / 名称 / 研报数 / 每股收益 等 (名称随版本变)
     cols_map = {'代码': 'stock_code', '名称': 'stock_name', '研报数': 'forecast_inst_count',
                 '每股收益': 'eps_forecast_this_year'}
-    present = {k: v for k, v in cols_map.items() if k in df.columns}
-    if 'stock_code' not in present.values():
+    rows = []
+    for record in records:
+        row = _map_row(record, cols_map)
+        stock_code = _stock_code(row.get("stock_code"))
+        if not stock_code:
+            continue
+        row["stock_code"] = stock_code
+        row["snapshot_date"] = today
+        row["built_at"] = built_at
+        rows.append(row)
+    if not rows:
         logger.warning("profit_forecast: 字段命名异常, 跳过")
         return 0
-    df2 = df[list(present.keys())].rename(columns=present).copy()
-    df2['stock_code'] = df2['stock_code'].astype(str).str.zfill(6)
-    df2['snapshot_date'] = today
-    df2['built_at'] = built_at
-    df2 = df2.drop_duplicates(subset=['snapshot_date', 'stock_code'], keep='first')
+    rows = _dedupe(rows, ['snapshot_date', 'stock_code'])
     cols = ['snapshot_date', 'stock_code', 'stock_name', 'forecast_inst_count',
             'eps_forecast_this_year', 'built_at']
-    have = [c for c in cols if c in df2.columns]
-    df2[have].to_sql('fact_profit_forecast_daily', conn, if_exists='append', index=False,
-                     method='multi', chunksize=500)
+    _insert_ignore(conn, 'fact_profit_forecast_daily', rows, cols)
     conn.commit()
-    logger.info("fact_profit_forecast_daily +%d 条 (snapshot=%s)", len(df2), today)
-    return len(df2)
+    logger.info("fact_profit_forecast_daily +%d 条 (snapshot=%s)", len(rows), today)
+    return len(rows)
 
 
 # ═══════════════════════════════════════════════════════════════════════
@@ -392,8 +478,7 @@ def _date_range(start: str, end: str):
     cur = s
     while cur <= e:
         out.append(cur.strftime('%Y%m%d'))
-        cur = cur.replace(day=cur.day) if cur.day < 28 else cur  # placeholder
-        cur += pd.Timedelta(days=1)
+        cur += timedelta(days=1)
     return out
 
 
@@ -428,9 +513,9 @@ def main():
         e = datetime.strptime(args.dzjy_end, '%Y%m%d')
         cur = s
         while cur <= e:
-            nxt = min(cur + pd.Timedelta(days=30), e)
+            nxt = min(cur + timedelta(days=30), e)
             windows.append((cur.strftime('%Y%m%d'), nxt.strftime('%Y%m%d')))
-            cur = nxt + pd.Timedelta(days=1)
+            cur = nxt + timedelta(days=1)
         logger.info("dzjy 月窗口数 %d", len(windows))
         build_dzjy_events(conn, windows)
         logger.info("dzjy 耗时 %.1fs", time.time() - t0)
