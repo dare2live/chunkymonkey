@@ -46,6 +46,11 @@ Phase 4.2 then started with the standalone neutralization helpers.
 - Converted neutralization helpers to return plain dicts for keyed inputs and
   lists for positional inputs.
 - Added `backend/tests/test_neutralize.py`.
+- Removed pandas from `backend/services/portfolio_backtest.py`.
+- Converted portfolio backtest signal normalization to records.
+- Fixed zero-target reductions so a fully sold position is removed from the
+  open-position state.
+- Added `backend/tests/test_portfolio_backtest.py`.
 
 ## Validation
 
@@ -128,6 +133,18 @@ python3 -m pytest backend/tests/test_neutralize.py -q
 
 python3 -m pytest backend/tests/test_neutralize.py backend/tests/test_kline_sources.py backend/tests/test_tdx_source.py backend/tests/test_institution_survey_client.py backend/tests/test_qfii_client.py backend/tests/test_lhb_client.py backend/tests/test_margin_client.py backend/tests/test_xdxr_client.py backend/tests/test_block_client.py -q
 # 65 passed
+
+rg -n "pandas|pd\.|DataFrame" backend/services/portfolio_backtest.py backend/tests/test_portfolio_backtest.py -S
+# 0 matches
+
+python3 -m py_compile backend/services/portfolio_backtest.py backend/tests/test_portfolio_backtest.py
+# passed
+
+python3 -m pytest backend/tests/test_portfolio_backtest.py -q
+# 2 passed
+
+python3 -m pytest backend/tests/test_portfolio_backtest.py backend/tests/test_neutralize.py backend/tests/test_kline_sources.py backend/tests/test_tdx_source.py backend/tests/test_institution_survey_client.py backend/tests/test_qfii_client.py backend/tests/test_lhb_client.py backend/tests/test_margin_client.py backend/tests/test_xdxr_client.py backend/tests/test_block_client.py -q
+# 67 passed
 ```
 
 ## Remaining Phase 4 Targets
@@ -136,6 +153,5 @@ python3 -m pytest backend/tests/test_neutralize.py backend/tests/test_kline_sour
 - `backend/services/screening_engine.py`
 - `backend/services/sector_momentum.py`
 - `backend/services/stock_turtle_engine.py`
-- `backend/services/portfolio_backtest.py`
 - `backend/services/event_simulator.py`
 - pandas usage in scripts and model/backtest layers.

@@ -10,20 +10,22 @@
 3. run_portfolio_backtest(signals, ...) → equity curve + sharpe + dd + turnover
 
 设计:
-- signals: pd.DataFrame columns=[date, stock_code, action, weight]
+- signals: records with columns=[date, stock_code, action, weight]
   action ∈ {'buy','sell','hold'}, weight 是目标权重 [0,1]
 - 简化: 日频再平衡, 不考虑日内冲击 (T+1 收盘价成交)
 - 滑点应用在每笔成交的成交价上
 - 约束在每次再平衡时强制 (违反则截断或拒绝)
 - 输出 equity curve + 交易明细
 
-不依赖外部库 (numpy 已有, pandas 已有). statsmodels / vectorbt 不引入.
+不依赖外部库. statsmodels / vectorbt 不引入.
 """
 from __future__ import annotations
 
 import logging
 from dataclasses import dataclass, field
-from typing import Any, Callable, Literal
+from collections import defaultdict
+from collections.abc import Mapping
+from typing import Callable, Literal
 
 logger = logging.getLogger("cm-api.portfolio_backtest")
 
@@ -128,8 +130,54 @@ class BacktestResult:
     metrics: dict = field(default_factory=dict)              # {total_return, sharpe, max_dd, turnover, n_trades}
 
 
+def _records_from_signals(signals) -> list[dict]:
+    if signals is None:
+        return []
+    to_dict = getattr(signals, "to_dict", None)
+    if callable(to_dict):
+        try:
+            return [dict(row) for row in to_dict("records")]
+        except TypeError:
+            pass
+    if isinstance(signals, Mapping):
+        return [dict(signals)]
+    rows = []
+    try:
+        iterator = iter(signals)
+    except TypeError:
+        return []
+    for row in iterator:
+        if isinstance(row, Mapping):
+            rows.append(dict(row))
+            continue
+        try:
+            rows.append(dict(row))
+        except Exception:
+            continue
+    return rows
+
+
+def _normalize_signal_rows(signals) -> list[dict]:
+    rows = []
+    for row in _records_from_signals(signals):
+        date = str(row.get("date") or "").strip()[:10]
+        stock_code = str(row.get("stock_code") or row.get("code") or "").strip()
+        if not date or not stock_code:
+            continue
+        try:
+            target_weight = float(row.get("target_weight", row.get("weight", 0.0)) or 0.0)
+        except (TypeError, ValueError):
+            continue
+        rows.append({
+            "date": date,
+            "stock_code": stock_code,
+            "target_weight": target_weight,
+        })
+    return rows
+
+
 def run_portfolio_backtest(
-    signals,                                # pd.DataFrame [date, stock_code, target_weight]
+    signals,
     *,
     price_fn: Callable[[str, str], float | None],  # (stock_code, date) → close
     initial_capital: float = 1_000_000,
@@ -147,20 +195,14 @@ def run_portfolio_backtest(
     industry_fn: 可选, 用于行业约束.
     adv_fn: (sc, date) → adv (近 20 日均额), linear/sqrt/impact 滑点模式必传.
     """
-    import pandas as pd
-
     if slippage is None:
         slippage = SlippageModel()
     if constraint is None:
         constraint = PositionConstraint()
 
-    # signals 按日 group
-    if not isinstance(signals, pd.DataFrame):
-        signals = pd.DataFrame(signals)
-    if signals.empty:
+    signal_rows = _normalize_signal_rows(signals)
+    if not signal_rows:
         return BacktestResult(metrics={"error": "empty signals"})
-    signals = signals.copy()
-    signals["date"] = signals["date"].astype(str).str[:10]
 
     # 状态: 持仓 + 现金
     cash = initial_capital
@@ -168,13 +210,19 @@ def run_portfolio_backtest(
     equity_curve = []
     trades = []
 
-    dates = sorted(signals["date"].unique())
+    signals_by_date: dict[str, list[dict]] = defaultdict(list)
+    for row in signal_rows:
+        signals_by_date[row["date"]].append(row)
+    dates = sorted(signals_by_date)
     last_total = initial_capital
 
     for date in dates:
         # 当日信号
-        day_signals = signals[signals["date"] == date]
-        target_weights = dict(zip(day_signals["stock_code"], day_signals["target_weight"]))
+        day_signals = signals_by_date[date]
+        target_weights = {
+            row["stock_code"]: row["target_weight"]
+            for row in day_signals
+        }
 
         # 应用约束
         industry_map = {sc: industry_fn(sc) for sc in target_weights} if industry_fn else None
@@ -237,6 +285,8 @@ def run_portfolio_backtest(
                     proceeds = qty_sell * exec_price
                     cash += proceeds
                     positions[sc]["qty"] -= qty_sell
+                    if positions[sc]["qty"] <= 1e-9:
+                        del positions[sc]
                     trades.append({
                         "date": date, "stock_code": sc, "side": "sell",
                         "qty": round(qty_sell, 0), "price": p, "exec_price": round(exec_price, 4),
