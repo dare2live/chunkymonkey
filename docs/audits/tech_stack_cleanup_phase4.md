@@ -46,6 +46,8 @@ helpers.
 The follow-backtest loop converted cohort loading, top-cohort ranking,
 walk-forward slicing, simulator inputs, and result writes to records/native
 helpers.
+The fundamental-quarterly loop converted tdxhub gpcw table payload handling,
+quarter-row normalization, dedupe, and writes to records/native helpers.
 
 ## Change
 
@@ -176,6 +178,10 @@ helpers.
 - Converted cohort SQL reads, cohort-key grouping, event split handling, and
   `fact_institution_follow_backtest` writes to records/native helpers.
 - Added `backend/tests/test_run_follow_backtest.py`.
+- Removed pandas from `backend/scripts/build_fundamental_quarterly.py`.
+- Converted gpcw parse payload normalization, quarter row dedupe, and
+  `fact_fundamental_quarterly` writes to records/native helpers.
+- Added `backend/tests/test_build_fundamental_quarterly.py`.
 
 ## Validation
 
@@ -523,8 +529,20 @@ python3 -m pytest backend/tests/test_run_follow_backtest.py -q
 python3 backend/scripts/run_follow_backtest.py --help
 # import/CLI smoke passed
 
+rg -n "pandas|pd\.|DataFrame|read_sql_query|\.to_sql\(|\.df\(|register\(" backend/scripts/build_fundamental_quarterly.py backend/tests/test_build_fundamental_quarterly.py -S
+# 0 matches
+
+python3 -m py_compile backend/scripts/build_fundamental_quarterly.py backend/tests/test_build_fundamental_quarterly.py
+# passed
+
+python3 -m pytest backend/tests/test_build_fundamental_quarterly.py -q
+# 2 passed
+
+python3 backend/scripts/build_fundamental_quarterly.py --help
+# import/CLI smoke passed
+
 python3 -m pytest backend/tests -q
-# 338 passed
+# 340 passed
 
 python3 backend/scripts/data_health_snapshot.py --dry-run
 # green=147/yellow=0/red=0

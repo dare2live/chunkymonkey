@@ -26,7 +26,6 @@ STOCK_ROOT = Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 sys.path.insert(0, str(STOCK_ROOT / "tdxhub"))
 
-import pandas as pd
 from tdxhub.affair import Affair
 
 from services.db import get_conn
@@ -109,34 +108,108 @@ def build_ddl() -> str:
     return DDL.format(extra_cols=extra + ",\n    ")
 
 
-def parse_one_quarter(tmpdir: str, filename: str) -> pd.DataFrame:
+def _is_missing(value) -> bool:
+    if value is None:
+        return True
+    try:
+        return value != value
+    except Exception:
+        return False
+
+
+def _to_float(value) -> float | None:
+    if _is_missing(value) or value == "":
+        return None
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _records_from_table(payload) -> list[dict]:
+    if payload is None or bool(getattr(payload, "empty", False)):
+        return []
+    to_dict = getattr(payload, "to_dict", None)
+    if callable(to_dict):
+        try:
+            rows_by_index = to_dict("index")
+        except TypeError:
+            rows_by_index = None
+        if isinstance(rows_by_index, dict):
+            return [
+                {"__index__": index, **dict(row)}
+                for index, row in rows_by_index.items()
+            ]
+        try:
+            return [dict(row) for row in to_dict("records")]
+        except TypeError:
+            pass
+    try:
+        return [dict(row) for row in payload]
+    except TypeError:
+        return []
+
+
+def _normalize_quarter_rows(payload, report_date: str) -> list[dict]:
+    rows = []
+    seen: set[tuple[str, str]] = set()
+    for source_row in _records_from_table(payload):
+        raw_code = source_row.get("__index__") or source_row.get("stock_code")
+        if raw_code in (None, ""):
+            continue
+        code = str(raw_code).zfill(6)
+        row = {"stock_code": code, "report_date": report_date}
+        for source_col, target_col in CORE_FIELDS.items():
+            if source_col in source_row:
+                row[target_col] = _to_float(source_row.get(source_col))
+        key = (row["stock_code"], row["report_date"])
+        if key in seen:
+            continue
+        seen.add(key)
+        rows.append(row)
+    return rows
+
+
+def parse_one_quarter(tmpdir: str, filename: str) -> list[dict]:
     try:
         Affair.fetch(downdir=tmpdir, filename=filename)
     except Exception as e:
         logger.warning("fetch %s 失败: %s", filename, e)
-        return pd.DataFrame()
+        return []
     path = os.path.join(tmpdir, filename)
     if not os.path.exists(path) or os.path.getsize(path) < 10_000:  # 占位或空文件
-        return pd.DataFrame()
+        return []
     try:
-        df = Affair.parse(downdir=tmpdir, filename=filename)
+        table = Affair.parse(downdir=tmpdir, filename=filename)
     except Exception as e:
         logger.warning("parse %s 失败: %s", filename, e)
-        return pd.DataFrame()
-    if df.empty:
-        return df
-
-    # 只保留关心的核心列（缺失列跳过）
-    have = [c for c in CORE_FIELDS if c in df.columns]
-    df2 = df[have].copy()
-    df2 = df2.rename(columns={k: CORE_FIELDS[k] for k in have})
-    df2['stock_code'] = df2.index.astype(str).str.zfill(6)
-    df2['report_date'] = filename[4:12]  # YYYYMMDD
-    # 同一 (stock_code, report_date) 偶见重复行 (数据源 artifact)
-    df2 = df2.drop_duplicates(subset=['stock_code', 'report_date'], keep='first')
+        return []
+    rows = _normalize_quarter_rows(table, filename[4:12])
     # 清理
     os.remove(path)
-    return df2
+    return rows
+
+
+def insert_quarter_rows(conn, rows: list[dict], built_at: str) -> int:
+    if not rows:
+        return 0
+    cols = ['stock_code', 'report_date'] + list(CORE_FIELDS.values()) + ['built_at']
+    placeholders = ", ".join("?" for _ in cols)
+    conn.executemany(
+        f"""
+        INSERT OR REPLACE INTO fact_fundamental_quarterly
+        ({', '.join(cols)})
+        VALUES ({placeholders})
+        """,
+        [
+            tuple(
+                built_at if col == "built_at" else row.get(col)
+                for col in cols
+            )
+            for row in rows
+        ],
+    )
+    return len(rows)
 
 
 def main():
@@ -182,17 +255,13 @@ def main():
     t0 = time.time()
     n_total = 0
     for i, fname in enumerate(queue):
-        df = parse_one_quarter(tmpdir, fname)
-        if df.empty:
+        rows = parse_one_quarter(tmpdir, fname)
+        if not rows:
             logger.info("%s 无数据或 fetch/parse 失败", fname)
             continue
-        df['built_at'] = built_at
-        cols = ['stock_code', 'report_date'] + list(CORE_FIELDS.values()) + ['built_at']
-        have_cols = [c for c in cols if c in df.columns]
-        df[have_cols].to_sql('fact_fundamental_quarterly', conn, if_exists='append',
-                              index=False, method='multi', chunksize=500)
-        n_total += len(df)
-        logger.info("[%d/%d] %s rows=%d  累计 %d", i + 1, len(queue), fname, len(df), n_total)
+        inserted = insert_quarter_rows(conn, rows, built_at)
+        n_total += inserted
+        logger.info("[%d/%d] %s rows=%d  累计 %d", i + 1, len(queue), fname, inserted, n_total)
         conn.commit()
 
     dt = time.time() - t0
