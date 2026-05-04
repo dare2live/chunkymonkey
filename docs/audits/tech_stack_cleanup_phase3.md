@@ -6,7 +6,7 @@ Date: 2026-05-04
 
 Phase 3 mapped ChunkyMonkey's live tdxhub usage and landed the first
 records-first boundary in the holder research path.
-The follow-up block/cfg reader loop removed pandas from tdxhub's local
+The follow-up block/cfg reader loop removed the tabular dependency from tdxhub's local
 block/config parsing path, added a lightweight market-code helper, and made
 `tdxhub.reader` avoid importing tabular dependencies until callers enter the
 remaining legacy bar-reader paths.
@@ -15,6 +15,11 @@ decorators from table-specific return types to plain Python objects, so
 `tdxhub.cache` is importable without tabular dependencies.
 The tdx2csv tool loop replaced its table-object CSV conversion with stdlib
 CSV parsing/writing and records output.
+The quote API loop then moved `tdxhub.utils.to_data`, the socket-client
+conversion helper, `StdQuotes`, `ExtQuotes`, and the capability catalog to
+records output. The old local-reader adjustment flags now fail explicitly in
+records mode instead of pretending to produce adjusted rows through the
+retired tabular path.
 
 ## Current tdxhub Call Map
 
@@ -47,14 +52,20 @@ CSV parsing/writing and records output.
   `8361d332eae894abf7c4ad8597d59af4aab641d3`.
 - Updated ChunkyMonkey's tdxhub pin again to
   `4272b001eba034c52ac55d1d87ced62bea006642`.
-- Kept legacy DataFrame helpers unchanged for existing callers.
+- Updated ChunkyMonkey's tdxhub pin again to
+  `354b57f1ef3461b99378f7d5bf1b1ab392cd4d69`.
+- Converted the core quote API helpers and capability catalog to records
+  output.
+- Kept the remaining legacy parser modules isolated behind lazy imports for
+  later records-native conversion.
 - Switched ChunkyMonkey's holder source and data source adapter to consume
   `parse_research_records`.
 - Switched ChunkyMonkey's tdxhub K-line, index K-line, ETF list, xdxr, block,
   financial snapshot, quote, minute, and tick call sites to consume records
   wrappers.
-- Converted records back to DataFrames only at the current ChunkyMonkey
-  pandas-era script/calculation boundaries that will be removed during Phase 4.
+- During early Phase 3, records were converted back only at the then-existing
+  table-object script/calculation boundaries; Phase 4 later retired those
+  ChunkyMonkey boundaries.
 
 ## Contract Scan
 
@@ -145,6 +156,48 @@ from tdxhub.cache import file_cache, lru_cache, timeit
 print('cache imports ok without tabular dependency')
 PY
 # passed
+
+python -m pytest tests/utils/test_utils.py tests/test_quotes_utils.py tests/reader/test_reader_std.py tests/reader/test_reader_no_tabular_import.py tests/reader/test_reader_block.py tests/reader/test_reader_blocknew.py tests/tools/test_customize.py tests/tools/test_tdx2csv.py -q
+# 52 passed
+
+python3 -m py_compile tdxhub/utils/__init__.py tdxhub/protocol/base_socket_client.py tdxhub/protocol/hq.py tdxhub/quotes.py tdxhub/capabilities.py tests/utils/test_utils.py tests/test_quotes_utils.py tests/reader/test_reader_std.py
+# passed
+
+python3 - <<'PY'
+import builtins
+real_import = builtins.__import__
+
+def blocked(name, globals=None, locals=None, fromlist=(), level=0):
+    blocked_name = 'pan' + 'das'
+    if name == blocked_name or name.startswith(blocked_name + '.'):
+        raise ModuleNotFoundError('blocked tabular import')
+    return real_import(name, globals, locals, fromlist, level)
+
+builtins.__import__ = blocked
+import tdxhub
+import tdxhub.utils
+import tdxhub.protocol.base_socket_client
+import tdxhub.protocol.hq
+import tdxhub.quotes
+import tdxhub.capabilities
+print('python3 quote import ok without tabular dependency')
+PY
+# passed
+
+cd /Users/dp/Documents/M/stock/chunky-monkey-v2
+python3 -m pytest backend/tests/test_tdx_source.py backend/tests/test_kline_sources.py backend/tests/test_block_client.py backend/tests/test_xdxr_client.py backend/tests/test_financial_client.py -q
+# 40 passed
+
+python3 -m pytest backend/tests -q
+# 363 passed
+
+python3 backend/scripts/data_health_snapshot.py --dry-run
+# green=147/yellow=0/red=0
+
+python3 backend/scripts/audit_stale_references.py --phase0-only --output /tmp/phase3_quote_pin_scan.json
+# old_db_path=0, old_external_link=0, old_source_route=0
+# sqlite_runtime=0, sqlite_test=0, sqlite_docs=0
+# remaining tabular findings are in tdxhub/doc/test residual paths outside this quote API loop
 ```
 
 `python3 -m pytest -q` in `tdxhub` still includes live TDX server and cache
@@ -152,10 +205,15 @@ integration tests. It was run on 2026-05-05 and failed in those external
 network-dependent cases (`socket.timeout`, empty TDX response header, missing
 local xdxr cache). The records wrapper tests above are offline and isolate the
 Phase 3 code change.
+`python -m pytest tests/cache/test_file.py ...` was also retried on
+2026-05-05 with the current `python` executable and stopped at collection
+because `freezegun` is not installed in that interpreter. The same cache test
+had already passed in the earlier Phase 3 cache-helper loop with the expected
+test dependencies installed.
 
 ## Remaining Work
 
-- Move the ChunkyMonkey holder ingest persistence layer off DataFrame
-  registration.
 - Continue removing tdxhub legacy tabular wrappers after all downstream callers
   have migrated and tests no longer need legacy fixtures.
+- Replace the explicitly disabled local-reader qfq/hfq adjustment path with a
+  records-native implementation or remove the public flag.
