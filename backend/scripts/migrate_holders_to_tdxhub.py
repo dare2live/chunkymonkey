@@ -26,7 +26,6 @@ from datetime import datetime
 from pathlib import Path
 
 import duckdb
-import pandas as pd
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 log = logging.getLogger("migrate-holders")
@@ -81,16 +80,269 @@ CHANGE_STATUS_TO_LEGACY = {
 }
 
 
-def _to_legacy_change(row: pd.Series) -> str:
-    return CHANGE_STATUS_TO_LEGACY.get(row.get("change_status") or "", "")
+def _sql_string(value: str) -> str:
+    return "'" + value.replace("'", "''") + "'"
 
 
-def _to_legacy_ratio(row: pd.Series) -> float | None:
-    """当 holder_set='free' 用 hold_ratio_float, 否则 total."""
+def _limit_clause(limit: int) -> str:
+    return f" LIMIT {int(limit)}" if limit and int(limit) > 0 else ""
 
-    if row.get("holder_set") == "free":
-        return row.get("hold_ratio")  # parser already filled this
-    return row.get("hold_ratio")
+
+def _change_status_sql(expr: str = "change_status") -> str:
+    cases = " ".join(
+        f"WHEN {expr} = {_sql_string(status)} THEN {_sql_string(legacy)}"
+        for status, legacy in CHANGE_STATUS_TO_LEGACY.items()
+    )
+    return f"CASE {cases} ELSE '' END"
+
+
+def _source_table_exists(conn: duckdb.DuckDBPyConnection, table_name: str) -> bool:
+    return table_name in {
+        row[0]
+        for row in conn.execute("SHOW TABLES FROM src_db").fetchall()
+    }
+
+
+def _insert_alias_seed(conn: duckdb.DuckDBPyConnection, now_iso: str) -> int:
+    before = conn.execute("SELECT COUNT(*) FROM dim_holder_alias").fetchone()[0]
+    conn.executemany(
+        """
+        INSERT INTO dim_holder_alias(alias, canonical_name, category, note, created_at)
+        SELECT ?, ?, ?, ?, ?
+        WHERE NOT EXISTS (
+            SELECT 1 FROM dim_holder_alias WHERE alias = ?
+        )
+        """,
+        [(alias, canon, cat, None, now_iso, alias) for alias, canon, cat in ALIAS_SEED],
+    )
+    after = conn.execute("SELECT COUNT(*) FROM dim_holder_alias").fetchone()[0]
+    return after - before
+
+
+def run_migration(source: str, target: str, *, limit: int = 0) -> dict[str, int]:
+    init_db()
+    tgt = duckdb.connect(target)
+    counts: dict[str, int] = {}
+    limit_sql = _limit_clause(limit)
+    try:
+        tgt.execute(f"ATTACH {_sql_string(source)} AS src_db (READ_ONLY)")
+
+        # ----- 1. raw_tdx_f10_holder_research -----
+        log.info("step 1: raw_tdx_f10_holder_research")
+        n_before = tgt.execute("select count(*) from raw_tdx_f10_holder_research").fetchone()[0]
+        tgt.execute(f"""
+            INSERT INTO raw_tdx_f10_holder_research(
+              stock_code, stock_name, market, fetched_at, page_update_date,
+              raw_text, raw_hash, bytes_len, server, f10_format, parser_version
+            )
+            SELECT stock_code, stock_name, market,
+                   cast(fetched_at as timestamp), NULL AS page_update_date,
+                   raw_text, raw_hash, bytes_len, server, f10_format, parser_version
+            FROM (
+              SELECT stock_code, stock_name, market, fetched_at, raw_len as bytes_len,
+                     raw_hash, server, raw_text,
+                     CASE
+                       WHEN raw_text like '%灵通V9.0%' THEN 'a_lingtong'
+                       WHEN raw_text like '%通达信沪深京F10%' THEN 'b_shsjz'
+                       WHEN raw_text like '%港澳资讯%' THEN 'a_other'
+                       ELSE 'unknown'
+                     END as f10_format,
+                     'v1' as parser_version
+              FROM src_db.raw_text
+              {limit_sql}
+            ) raw_in
+            WHERE (stock_code, raw_hash) NOT IN (
+              SELECT stock_code, raw_hash FROM raw_tdx_f10_holder_research
+            )
+        """)
+        n_after = tgt.execute("select count(*) from raw_tdx_f10_holder_research").fetchone()[0]
+        counts["raw"] = n_after - n_before
+        log.info("  inserted %d (total %d)", counts["raw"], n_after)
+
+        # ----- 2. dim_holder_alias seed -----
+        log.info("step 2: dim_holder_alias seed (%d entries)", len(ALIAS_SEED))
+        now_iso = datetime.utcnow().isoformat(timespec="seconds")
+        counts["alias"] = _insert_alias_seed(tgt, now_iso)
+        alias_count = tgt.execute("select count(*) from dim_holder_alias").fetchone()[0]
+        log.info("  dim_holder_alias rows now: %d", alias_count)
+
+        # ----- 3. fact_top10_holder_period -----
+        log.info("step 3: fact_top10_holder_period")
+        n_before = tgt.execute("select count(*) from fact_top10_holder_period").fetchone()[0]
+        change_sql = _change_status_sql("h.change_status")
+        tgt.execute(f"""
+            INSERT INTO fact_top10_holder_period(
+              stock_code, stock_name, market, report_date, holder_set,
+              holder_rank, row_seq,
+              holder_name, holder_name_norm, share_class,
+              is_secondary_class, is_exit_row,
+              shares_text, shares_approx, shares_precision, hold_amount,
+              hold_ratio_float, hold_ratio_total, hold_ratio,
+              hold_market_cap, holder_type, share_nature,
+              change_status, change_shares_text, change_shares_approx,
+              hold_change, hold_change_num,
+              notice_date, effective_date, page_update_date,
+              source, source_tier, raw_hash, fetched_at, created_at
+            )
+            SELECT h.stock_code, h.stock_name, h.market, h.report_date, h.holder_set,
+                   h.holder_rank, h.row_seq,
+                   h.holder_name, COALESCE(a.canonical_name, h.holder_name), h.share_class,
+                   CAST(h.is_secondary_class AS BOOLEAN), CAST(h.is_exit_row AS BOOLEAN),
+                   h.shares_text, h.shares_approx, h.shares_precision,
+                   CAST(h.shares_approx AS DOUBLE),
+                   CASE WHEN h.holder_set = 'free' THEN h.hold_ratio ELSE NULL END,
+                   CASE WHEN h.holder_set = 'all' THEN h.hold_ratio ELSE NULL END,
+                   h.hold_ratio,
+                   NULL, h.holder_type_or_nature, h.holder_type_or_nature,
+                   h.change_status, h.change_shares_text, h.change_shares_approx,
+                   {change_sql}, CAST(h.change_shares_approx AS DOUBLE),
+                   NULL, NULL, h.page_update_date,
+                   h.source, 1, h.raw_hash, h.fetched_at, h.fetched_at
+            FROM (
+              SELECT * FROM src_db.holders
+              {limit_sql}
+            ) h
+            LEFT JOIN dim_holder_alias a ON a.alias = h.holder_name
+            WHERE (
+              h.stock_code, h.report_date, h.holder_set, h.source,
+              h.is_exit_row, h.holder_rank, h.row_seq, h.share_class
+            ) NOT IN (
+              SELECT stock_code, report_date, holder_set, source,
+                     is_exit_row, holder_rank, row_seq, share_class
+              FROM fact_top10_holder_period
+            )
+        """)
+        n_after = tgt.execute("select count(*) from fact_top10_holder_period").fetchone()[0]
+        counts["holders"] = n_after - n_before
+        log.info("  fact_top10_holder_period: inserted %d (total %d)", counts["holders"], n_after)
+
+        # ----- 4. fact_controlling_shareholder -----
+        counts["controlling"] = 0
+        if _source_table_exists(tgt, "controlling"):
+            log.info("step 4: fact_controlling_shareholder")
+            n_before = tgt.execute("select count(*) from fact_controlling_shareholder").fetchone()[0]
+            tgt.execute(f"""
+                INSERT INTO fact_controlling_shareholder(
+                  stock_code, stock_name, market,
+                  primary_label, primary_name, primary_ratio, primary_raw,
+                  actual_name, actual_ratio, actual_raw,
+                  page_update_date, source, source_tier, raw_hash, fetched_at
+                )
+                SELECT c.stock_code, c.stock_name, c.market,
+                       c.primary_shareholder_label, c.primary_shareholder_name,
+                       c.primary_shareholder_ratio, c.primary_shareholder_raw,
+                       c.actual_controller_name, c.actual_controller_ratio,
+                       c.actual_controller_raw,
+                       c.page_update_date, c.source, 1, c.raw_hash, c.fetched_at
+                FROM (
+                  SELECT * FROM src_db.controlling
+                  {limit_sql}
+                ) c
+                WHERE (c.stock_code, c.source) NOT IN (
+                  SELECT stock_code, source FROM fact_controlling_shareholder
+                )
+            """)
+            n_after = tgt.execute("select count(*) from fact_controlling_shareholder").fetchone()[0]
+            counts["controlling"] = n_after - n_before
+            log.info("  inserted %d (total %d)", counts["controlling"], n_after)
+
+        # ----- 5. fact_shareholder_plan -----
+        log.info("step 5: fact_shareholder_plan")
+        n_before = tgt.execute("select count(*) from fact_shareholder_plan").fetchone()[0]
+        tgt.execute(f"""
+            INSERT INTO fact_shareholder_plan(
+              stock_code, stock_name, market,
+              announce_date, subject, direction, progress,
+              start_date, end_date,
+              target_shares_text, target_shares,
+              target_ratio_text, target_ratio,
+              reason, narrative,
+              page_update_date, source, source_tier, raw_hash, fetched_at, plan_seq
+            )
+            SELECT p.stock_code, p.stock_name, p.market,
+                   p.announce_date, p.subject, p.direction, p.progress,
+                   p.start_date, p.end_date,
+                   p.target_shares_text, p.target_shares,
+                   p.target_ratio_text, p.target_ratio,
+                   p.reason, p.narrative,
+                   p.page_update_date, p.source, 1, p.raw_hash, p.fetched_at,
+                   ROW_NUMBER() OVER (
+                     PARTITION BY stock_code, raw_hash
+                     ORDER BY announce_date, subject, direction, progress,
+                              start_date, end_date, target_shares_text, reason, narrative
+                   ) AS plan_seq
+            FROM (
+              SELECT * FROM src_db.plans
+              {limit_sql}
+            ) p
+            WHERE (p.stock_code, p.raw_hash) NOT IN (
+              SELECT DISTINCT stock_code, raw_hash FROM fact_shareholder_plan
+              WHERE raw_hash IS NOT NULL
+            )
+        """)
+        n_after = tgt.execute("select count(*) from fact_shareholder_plan").fetchone()[0]
+        counts["plans"] = n_after - n_before
+        log.info("  inserted %d (total %d)", counts["plans"], n_after)
+
+        # ----- 6. fact_shareholder_trade -----
+        log.info("step 6: fact_shareholder_trade")
+        n_before = tgt.execute("select count(*) from fact_shareholder_trade").fetchone()[0]
+        tgt.execute(f"""
+            INSERT INTO fact_shareholder_trade(
+              stock_code, stock_name, market,
+              change_date, holder_name, holder_name_norm,
+              shares_before_text, shares_before,
+              shares_change_text, shares_change,
+              shares_after_text, shares_after,
+              ratio_after, change_type,
+              page_update_date, source, source_tier, raw_hash, fetched_at, trade_seq
+            )
+            SELECT t.stock_code, t.stock_name, t.market,
+                   t.change_date, t.holder_name,
+                   COALESCE(a.canonical_name, t.holder_name),
+                   t.shares_before_text, t.shares_before,
+                   t.shares_change_text, t.shares_change,
+                   t.shares_after_text, t.shares_after,
+                   t.ratio_after, t.change_type,
+                   t.page_update_date, t.source, 1, t.raw_hash, t.fetched_at,
+                   ROW_NUMBER() OVER (
+                     PARTITION BY t.stock_code, t.raw_hash
+                     ORDER BY t.change_date, t.holder_name, t.change_type,
+                              t.shares_change_text, t.ratio_after
+                   ) AS trade_seq
+            FROM (
+              SELECT * FROM src_db.trades
+              {limit_sql}
+            ) t
+            LEFT JOIN dim_holder_alias a ON a.alias = t.holder_name
+            WHERE (t.stock_code, t.raw_hash) NOT IN (
+              SELECT DISTINCT stock_code, raw_hash FROM fact_shareholder_trade
+              WHERE raw_hash IS NOT NULL
+            )
+        """)
+        n_after = tgt.execute("select count(*) from fact_shareholder_trade").fetchone()[0]
+        counts["trades"] = n_after - n_before
+        log.info("  inserted %d (total %d)", counts["trades"], n_after)
+
+        # ----- summary -----
+        log.info("=== summary ===")
+        for tbl in ["raw_tdx_f10_holder_research", "fact_top10_holder_period",
+                    "fact_controlling_shareholder", "fact_shareholder_plan",
+                    "fact_shareholder_trade", "dim_holder_alias"]:
+            n = tgt.execute(f"select count(*) from {tbl}").fetchone()[0]
+            n_stocks = tgt.execute(
+                f"select count(distinct stock_code) from {tbl}"
+                if tbl != "dim_holder_alias"
+                else f"select count(*) from {tbl}"
+            ).fetchone()[0]
+            if tbl == "dim_holder_alias":
+                log.info("  %s: %d aliases", tbl, n)
+            else:
+                log.info("  %s: %d rows / %d stocks", tbl, n, n_stocks)
+        tgt.commit()
+        return counts
+    finally:
+        tgt.close()
 
 
 def main() -> int:
@@ -105,297 +357,7 @@ def main() -> int:
 
     log.info("source: %s", args.source)
     log.info("target: %s", args.target)
-    init_db()
-    src = duckdb.connect(args.source, read_only=True)
-
-    # ----- 1. raw_tdx_f10_holder_research -----
-    log.info("step 1: raw_tdx_f10_holder_research")
-    raw_df = src.execute("""
-        select stock_code, stock_name, market, fetched_at, raw_len as bytes_len,
-               raw_hash, server, raw_text,
-               case
-                 when raw_text like '%灵通V9.0%' then 'a_lingtong'
-                 when raw_text like '%通达信沪深京F10%' then 'b_shsjz'
-                 when raw_text like '%港澳资讯%' then 'a_other'
-                 else 'unknown'
-               end as f10_format
-        from raw_text
-    """).fetchdf()
-    raw_df["page_update_date"] = None  # could regex out of raw_text later
-    raw_df["parser_version"] = "v1"
-    if args.limit:
-        raw_df = raw_df.head(args.limit)
-    log.info("  raw rows: %d", len(raw_df))
-
-    tgt = duckdb.connect(args.target)
-    tgt.register("raw_in", raw_df)
-    n_before = tgt.execute("select count(*) from raw_tdx_f10_holder_research").fetchone()[0]
-    tgt.execute("""
-        insert into raw_tdx_f10_holder_research(
-          stock_code, stock_name, market, fetched_at, page_update_date,
-          raw_text, raw_hash, bytes_len, server, f10_format, parser_version
-        )
-        select stock_code, stock_name, market,
-               cast(fetched_at as timestamp), page_update_date,
-               raw_text, raw_hash, bytes_len, server, f10_format, parser_version
-        from raw_in
-        where (stock_code, raw_hash) not in (
-          select stock_code, raw_hash from raw_tdx_f10_holder_research
-        )
-    """)
-    tgt.unregister("raw_in")
-    n_after = tgt.execute("select count(*) from raw_tdx_f10_holder_research").fetchone()[0]
-    log.info("  inserted %d (total %d)", n_after - n_before, n_after)
-
-    # ----- 2. dim_holder_alias seed -----
-    log.info("step 2: dim_holder_alias seed (%d entries)", len(ALIAS_SEED))
-    now_iso = datetime.utcnow().isoformat(timespec="seconds")
-    alias_df = pd.DataFrame(
-        [{"alias": a, "canonical_name": c, "category": cat, "note": None,
-          "created_at": now_iso} for a, c, cat in ALIAS_SEED]
-    )
-    tgt.register("alias_in", alias_df)
-    tgt.execute("""
-        insert into dim_holder_alias(alias, canonical_name, category, note, created_at)
-        select alias, canonical_name, category, note, created_at from alias_in
-        where alias not in (select alias from dim_holder_alias)
-    """)
-    tgt.unregister("alias_in")
-    alias_count = tgt.execute("select count(*) from dim_holder_alias").fetchone()[0]
-    log.info("  dim_holder_alias rows now: %d", alias_count)
-
-    # ----- 3. fact_top10_holder_period -----
-    log.info("step 3: fact_top10_holder_period (此步是大头, ~474k 行)")
-    holders_df = src.execute("""
-        select stock_code, stock_name, market, report_date, holder_set,
-               holder_rank, row_seq, holder_name, share_class,
-               shares_text, shares_approx, shares_precision, hold_ratio,
-               holder_type_or_nature, change_status, change_shares_text,
-               change_shares_approx, is_exit_row, is_secondary_class,
-               page_update_date, source, raw_hash, fetched_at
-        from holders
-    """).fetchdf()
-    if args.limit:
-        holders_df = holders_df.head(args.limit)
-    log.info("  source holders rows: %d", len(holders_df))
-
-    # back-compat 列
-    holders_df["hold_amount"] = holders_df["shares_approx"].astype("float64")
-    holders_df["hold_ratio_float"] = holders_df.apply(
-        lambda r: r["hold_ratio"] if r["holder_set"] == "free" else None, axis=1
-    )
-    holders_df["hold_ratio_total"] = holders_df.apply(
-        lambda r: r["hold_ratio"] if r["holder_set"] == "all" else None, axis=1
-    )
-    holders_df["hold_ratio_legacy"] = holders_df["hold_ratio"]
-    holders_df["hold_change"] = holders_df.apply(_to_legacy_change, axis=1)
-    holders_df["hold_change_num"] = holders_df["change_shares_approx"].astype("float64")
-    holders_df["hold_market_cap"] = None
-    holders_df["holder_type"] = holders_df["holder_type_or_nature"]
-    holders_df["share_nature"] = holders_df["holder_type_or_nature"]
-    holders_df["notice_date"] = None  # tdxhub F10 不直接给; 留空
-    holders_df["effective_date"] = None  # 由后续 mart 层补
-    holders_df["created_at"] = holders_df["fetched_at"]
-    holders_df["source_tier"] = 1
-    # alias 解析
-    alias_map = dict(tgt.execute(
-        "select alias, canonical_name from dim_holder_alias"
-    ).fetchall())
-    holders_df["holder_name_norm"] = holders_df["holder_name"].map(
-        lambda n: alias_map.get(n, n)
-    )
-    # is_secondary_class 可能是 numpy bool; 转 python bool
-    holders_df["is_secondary_class"] = holders_df["is_secondary_class"].astype(bool)
-    holders_df["is_exit_row"] = holders_df["is_exit_row"].astype(bool)
-
-    tgt.register("holders_in", holders_df)
-    n_before = tgt.execute("select count(*) from fact_top10_holder_period").fetchone()[0]
-    tgt.execute("""
-        insert into fact_top10_holder_period(
-          stock_code, stock_name, market, report_date, holder_set,
-          holder_rank, row_seq,
-          holder_name, holder_name_norm, share_class,
-          is_secondary_class, is_exit_row,
-          shares_text, shares_approx, shares_precision, hold_amount,
-          hold_ratio_float, hold_ratio_total, hold_ratio,
-          hold_market_cap, holder_type, share_nature,
-          change_status, change_shares_text, change_shares_approx,
-          hold_change, hold_change_num,
-          notice_date, effective_date, page_update_date,
-          source, source_tier, raw_hash, fetched_at, created_at
-        )
-        select stock_code, stock_name, market, report_date, holder_set,
-               holder_rank, row_seq,
-               holder_name, holder_name_norm, share_class,
-               is_secondary_class, is_exit_row,
-               shares_text, shares_approx, shares_precision, hold_amount,
-               hold_ratio_float, hold_ratio_total, hold_ratio_legacy,
-               hold_market_cap, holder_type, share_nature,
-               change_status, change_shares_text, change_shares_approx,
-               hold_change, hold_change_num,
-               notice_date, effective_date, page_update_date,
-               source, source_tier, raw_hash, fetched_at, created_at
-        from holders_in
-        where (stock_code, report_date, holder_set, source, is_exit_row, holder_rank, row_seq, share_class)
-          not in (
-            select stock_code, report_date, holder_set, source, is_exit_row, holder_rank, row_seq, share_class
-            from fact_top10_holder_period
-        )
-    """)
-    tgt.unregister("holders_in")
-    n_after = tgt.execute("select count(*) from fact_top10_holder_period").fetchone()[0]
-    log.info("  fact_top10_holder_period: inserted %d (total %d)", n_after - n_before, n_after)
-
-    # ----- 4. fact_controlling_shareholder -----
-    log.info("step 4: fact_controlling_shareholder")
-    if "controlling" in [t[0] for t in src.execute("show tables").fetchall()]:
-        ctrl_df = src.execute("""
-            select stock_code, stock_name, market,
-                   primary_shareholder_label as primary_label,
-                   primary_shareholder_name as primary_name,
-                   primary_shareholder_ratio as primary_ratio,
-                   primary_shareholder_raw as primary_raw,
-                   actual_controller_name as actual_name,
-                   actual_controller_ratio as actual_ratio,
-                   actual_controller_raw as actual_raw,
-                   page_update_date, source, raw_hash, fetched_at
-            from controlling
-        """).fetchdf()
-        ctrl_df["source_tier"] = 1
-        tgt.register("ctrl_in", ctrl_df)
-        n_before = tgt.execute("select count(*) from fact_controlling_shareholder").fetchone()[0]
-        tgt.execute("""
-            insert into fact_controlling_shareholder(
-              stock_code, stock_name, market,
-              primary_label, primary_name, primary_ratio, primary_raw,
-              actual_name, actual_ratio, actual_raw,
-              page_update_date, source, source_tier, raw_hash, fetched_at
-            )
-            select stock_code, stock_name, market,
-                   primary_label, primary_name, primary_ratio, primary_raw,
-                   actual_name, actual_ratio, actual_raw,
-                   page_update_date, source, source_tier, raw_hash, fetched_at
-            from ctrl_in
-            where (stock_code, source) not in (
-              select stock_code, source from fact_controlling_shareholder
-            )
-        """)
-        tgt.unregister("ctrl_in")
-        n_after = tgt.execute("select count(*) from fact_controlling_shareholder").fetchone()[0]
-        log.info("  inserted %d (total %d)", n_after - n_before, n_after)
-
-    # ----- 5. fact_shareholder_plan -----
-    log.info("step 5: fact_shareholder_plan")
-    plans_df = src.execute("""
-        select stock_code, stock_name, market,
-               announce_date, subject, direction, progress,
-               start_date, end_date,
-               target_shares_text, target_shares,
-               target_ratio_text, target_ratio,
-               reason, narrative,
-               page_update_date, source, raw_hash, fetched_at
-        from plans
-    """).fetchdf()
-    plans_df["source_tier"] = 1
-    plans_df["plan_seq"] = (
-        plans_df.groupby(["stock_code", "raw_hash"]).cumcount() + 1
-    )
-    tgt.register("plans_in", plans_df)
-    n_before = tgt.execute("select count(*) from fact_shareholder_plan").fetchone()[0]
-    # 幂等: 跳过 (stock_code, raw_hash) 已存在的批次
-    tgt.execute("""
-        insert into fact_shareholder_plan(
-          stock_code, stock_name, market,
-          announce_date, subject, direction, progress,
-          start_date, end_date,
-          target_shares_text, target_shares,
-          target_ratio_text, target_ratio,
-          reason, narrative,
-          page_update_date, source, source_tier, raw_hash, fetched_at, plan_seq
-        )
-        select stock_code, stock_name, market,
-               announce_date, subject, direction, progress,
-               start_date, end_date,
-               target_shares_text, target_shares,
-               target_ratio_text, target_ratio,
-               reason, narrative,
-               page_update_date, source, source_tier, raw_hash, fetched_at, plan_seq
-        from plans_in
-        where (stock_code, raw_hash) not in (
-          select distinct stock_code, raw_hash from fact_shareholder_plan
-          where raw_hash is not null
-        )
-    """)
-    tgt.unregister("plans_in")
-    n_after = tgt.execute("select count(*) from fact_shareholder_plan").fetchone()[0]
-    log.info("  inserted %d (total %d)", n_after - n_before, n_after)
-
-    # ----- 6. fact_shareholder_trade -----
-    log.info("step 6: fact_shareholder_trade")
-    trades_df = src.execute("""
-        select stock_code, stock_name, market,
-               change_date, holder_name,
-               shares_before_text, shares_before,
-               shares_change_text, shares_change,
-               shares_after_text, shares_after,
-               ratio_after, change_type,
-               page_update_date, source, raw_hash, fetched_at
-        from trades
-    """).fetchdf()
-    trades_df["source_tier"] = 1
-    trades_df["holder_name_norm"] = trades_df["holder_name"].map(
-        lambda n: alias_map.get(n, n)
-    )
-    trades_df["trade_seq"] = (
-        trades_df.groupby(["stock_code", "raw_hash"]).cumcount() + 1
-    )
-    tgt.register("trades_in", trades_df)
-    n_before = tgt.execute("select count(*) from fact_shareholder_trade").fetchone()[0]
-    # 幂等: 跳过 (stock_code, raw_hash) 已存在的批次
-    tgt.execute("""
-        insert into fact_shareholder_trade(
-          stock_code, stock_name, market,
-          change_date, holder_name, holder_name_norm,
-          shares_before_text, shares_before,
-          shares_change_text, shares_change,
-          shares_after_text, shares_after,
-          ratio_after, change_type,
-          page_update_date, source, source_tier, raw_hash, fetched_at, trade_seq
-        )
-        select stock_code, stock_name, market,
-               change_date, holder_name, holder_name_norm,
-               shares_before_text, shares_before,
-               shares_change_text, shares_change,
-               shares_after_text, shares_after,
-               ratio_after, change_type,
-               page_update_date, source, source_tier, raw_hash, fetched_at, trade_seq
-        from trades_in
-        where (stock_code, raw_hash) not in (
-          select distinct stock_code, raw_hash from fact_shareholder_trade
-          where raw_hash is not null
-        )
-    """)
-    tgt.unregister("trades_in")
-    n_after = tgt.execute("select count(*) from fact_shareholder_trade").fetchone()[0]
-    log.info("  inserted %d (total %d)", n_after - n_before, n_after)
-
-    # ----- 收尾 -----
-    log.info("=== summary ===")
-    for tbl in ["raw_tdx_f10_holder_research", "fact_top10_holder_period",
-                "fact_controlling_shareholder", "fact_shareholder_plan",
-                "fact_shareholder_trade", "dim_holder_alias"]:
-        n = tgt.execute(f"select count(*) from {tbl}").fetchone()[0]
-        n_stocks = tgt.execute(
-            f"select count(distinct stock_code) from {tbl}"
-            if tbl != "dim_holder_alias"
-            else f"select count(*) from {tbl}"
-        ).fetchone()[0]
-        if tbl == "dim_holder_alias":
-            log.info("  %s: %d aliases", tbl, n)
-        else:
-            log.info("  %s: %d rows / %d stocks", tbl, n, n_stocks)
-    src.close()
-    tgt.close()
+    run_migration(args.source, args.target, limit=args.limit)
     return 0
 
 

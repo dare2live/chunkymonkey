@@ -48,6 +48,9 @@ walk-forward slicing, simulator inputs, and result writes to records/native
 helpers.
 The fundamental-quarterly loop converted tdxhub gpcw table payload handling,
 quarter-row normalization, dedupe, and writes to records/native helpers.
+The holder migration loop converted the one-time tdxhub holder migration to
+direct DuckDB SQL between source/target databases, preserving alias normalization
+and idempotent fact writes without pandas registration.
 
 ## Change
 
@@ -182,6 +185,11 @@ quarter-row normalization, dedupe, and writes to records/native helpers.
 - Converted gpcw parse payload normalization, quarter row dedupe, and
   `fact_fundamental_quarterly` writes to records/native helpers.
 - Added `backend/tests/test_build_fundamental_quarterly.py`.
+- Removed pandas and DuckDB table registration from
+  `backend/scripts/migrate_holders_to_tdxhub.py`.
+- Converted raw holder research, holder periods, controlling shareholder,
+  shareholder plans, and shareholder trades migration to direct DuckDB SQL.
+- Added `backend/tests/test_migrate_holders_to_tdxhub.py`.
 
 ## Validation
 
@@ -541,8 +549,20 @@ python3 -m pytest backend/tests/test_build_fundamental_quarterly.py -q
 python3 backend/scripts/build_fundamental_quarterly.py --help
 # import/CLI smoke passed
 
+rg -n "pandas|pd\.|DataFrame|read_sql_query|\.to_sql\(|\.df\(|register\(" backend/scripts/migrate_holders_to_tdxhub.py backend/tests/test_migrate_holders_to_tdxhub.py -S
+# 0 matches
+
+python3 -m py_compile backend/scripts/migrate_holders_to_tdxhub.py backend/tests/test_migrate_holders_to_tdxhub.py
+# passed
+
+python3 -m pytest backend/tests/test_migrate_holders_to_tdxhub.py -q
+# 1 passed
+
+python3 backend/scripts/migrate_holders_to_tdxhub.py --help
+# import/CLI smoke passed
+
 python3 -m pytest backend/tests -q
-# 340 passed
+# 341 passed
 
 python3 backend/scripts/data_health_snapshot.py --dry-run
 # green=147/yellow=0/red=0
