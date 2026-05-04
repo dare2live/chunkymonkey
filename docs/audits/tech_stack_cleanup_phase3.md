@@ -34,6 +34,8 @@ directly.
 The financial-reader loop moved the historical gpcw parser and legacy history
 crawler conversion helpers to records while keeping the old method name as a
 compatibility shim.
+The holder-parser loop moved the F10 holder parser, holder fixture tests, and
+universe utility scripts to records-native list/dict handling.
 
 ## Current tdxhub Call Map
 
@@ -78,6 +80,8 @@ compatibility shim.
   `d76527dd62c8d9f3c08fb06ecdcd8d3a130ae4d8`.
 - Updated ChunkyMonkey's tdxhub pin again to
   `113da7d79bdc255e6e6bea8b724b76f608cba2b3`.
+- Updated ChunkyMonkey's tdxhub pin again to
+  `45c805a464b59e58f09e4dc2b055f80d488a21f6`.
 - Converted the core quote API helpers and capability catalog to records
   output.
 - Converted local day/minute/extended-market bar readers to records output and
@@ -89,6 +93,8 @@ compatibility shim.
 - Removed the remaining table-specific capability probe summary branch.
 - Converted tdxhub historical financial readers and crawler conversion helpers
   to records output.
+- Converted the tdxhub holder parser and holder universe scripts to records
+  output and direct DuckDB record writes.
 - Kept the remaining legacy parser modules isolated behind lazy imports for
   later records-native conversion.
 - Switched ChunkyMonkey's holder source and data source adapter to consume
