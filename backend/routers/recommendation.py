@@ -148,11 +148,15 @@ async def get_daily_topk(
             items.append({
                 "rank": r["rank_in_date"],
                 "stock_code": r["stock_code"],
+                "snapshot_date": r["snapshot_date"],
+                "model_id": r["model_id"],
                 "stock_name": r["stock_name_via_event"],
                 "pred_score": round(float(r["pred_score"]), 4),
                 "percentile": round(float(r["percentile"]), 3),
                 "regime_flag": r["regime_flag"],
                 "run_mode": r["run_mode"],
+                "track_id": r["track_id"],
+                "is_primary": bool(r["is_primary"]),
                 "l1": r["l1"],
                 "l2": r["l2"],
             })

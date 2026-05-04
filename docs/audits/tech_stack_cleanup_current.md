@@ -12,7 +12,8 @@ Date: 2026-05-05
 
 ## Verified Gates
 
-- ChunkyMonkey backend tests: 363 passed.
+- ChunkyMonkey backend tests: 364 passed.
+- API smoke on local port 8000 passes for data routes, source health, data health, daily recommendations, model comparison, and feature validation.
 - tdxhub offline subset: 130 passed, 4 skipped.
 - tdxhub lock check: all set.
 - Phase 0 stack scan: tabular runtime/test buckets are zero; legacy SQL runtime/test/docs buckets are zero; old route/path/link buckets are zero.
