@@ -28,6 +28,9 @@ parsing.
 The adjustment cleanup loop removed the retired factor/adjust/reversion
 helpers and their network-shaped tests after confirming ChunkyMonkey and
 miaoxiang no longer import them.
+The capability probe loop removed script-side table-specific result
+summarization so records, dicts, lists, and scalar results are handled
+directly.
 
 ## Current tdxhub Call Map
 
@@ -68,6 +71,8 @@ miaoxiang no longer import them.
   `c2c2b564d25f73cd33029a831edea4489454da4a`.
 - Updated ChunkyMonkey's tdxhub pin again to
   `038dcc1b225236f741a81ba9c8bbc01ab11bf8b1`.
+- Updated ChunkyMonkey's tdxhub pin again to
+  `d76527dd62c8d9f3c08fb06ecdcd8d3a130ae4d8`.
 - Converted the core quote API helpers and capability catalog to records
   output.
 - Converted local day/minute/extended-market bar readers to records output and
@@ -76,6 +81,7 @@ miaoxiang no longer import them.
   utility/tests to records output.
 - Removed the retired factor/adjust/reversion helpers and their old external
   network tests.
+- Removed the remaining table-specific capability probe summary branch.
 - Kept the remaining legacy parser modules isolated behind lazy imports for
   later records-native conversion.
 - Switched ChunkyMonkey's holder source and data source adapter to consume
@@ -271,6 +277,26 @@ PY
 
 rg -n "tdxhub\\.utils\\.(factor|adjust)|tdxhub\\.tools\\.reversion|tdxhub\\.contrib\\.adjust|from tdxhub\\.utils import factor|from tdxhub\\.utils import adjust|fq_factor|to_adjust|get_xdxr|reversion\\(" tdxhub tests scripts -S
 # no active retired-adjustment imports remain
+
+python3 -m py_compile scripts/probe_capabilities.py
+# passed
+
+python3 - <<'PY'
+from scripts.probe_capabilities import _summarize
+ok, info = _summarize([{"code": "000001", "price": 1.23, "name": "sample"}])
+assert ok is True
+assert info["count"] == 1
+assert info["keys"] == ["code", "price", "name"]
+assert info["sample_first_row"]["code"] == "000001"
+ok, info = _summarize([])
+assert ok is False
+assert info["count"] == 0
+ok, info = _summarize({"a": 1})
+assert ok is True
+assert info["keys"] == ["a"]
+print("probe summarize ok")
+PY
+# passed
 ```
 
 `python3 -m pytest -q` in `tdxhub` still includes live TDX server and cache
