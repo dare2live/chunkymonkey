@@ -7,7 +7,7 @@
 //   C. 数据更新 (智能更新 + 9 个 sync_* step) + 实时日志
 
 (function () {
-  if (window.DataView) return;
+  if (window.CMDataView) return;
 
   const STATE_DOTS = { ok: '🟢', degraded: '🟡', down: '🔴', unknown: '⚪' };
   const STATE_COLORS = { ok: '#0a0', degraded: '#d80', down: '#d33', unknown: '#888' };
@@ -16,6 +16,9 @@
     sources: [],
     capabilities: [],
     routes: [],
+    health: null,
+    sourceHealth: null,
+    tdxValidation: null,
     capFilter: '',
     routeFilter: '',
   };
@@ -43,11 +46,65 @@
     }
   }
 
+  function statusFromCounts(summary) {
+    summary = summary || {};
+    if ((summary.red || 0) > 0) return 'bad';
+    if ((summary.yellow || 0) > 0 || (summary.unknown || 0) > 0) return 'warn';
+    if ((summary.green || 0) > 0) return 'ok';
+    return 'info';
+  }
+
+  function renderLinkOverview() {
+    const root = qs('ds-link-overview');
+    if (!root) return;
+    const health = _state.health || {};
+    const summary = health.summary || {};
+    const tdx = _state.tdxValidation || {};
+    const manual = tdx.manual || [];
+    const keep = manual.filter(r => r.decision === 'keep').length;
+    const watch = manual.filter(r => r.decision === 'watch').length;
+    const drop = manual.filter(r => r.decision === 'drop').length;
+    const pit = (tdx.pit && tdx.pit.tdx_f10_gpcw_v1 && tdx.pit.tdx_f10_gpcw_v1.violation_rows) || 0;
+    const sourceRows = (_state.sourceHealth && _state.sourceHealth.sources) || [];
+    const sourceLabel = sourceRows.length
+      ? sourceRows.slice(0, 4).map(s => `${s.upstream_source}:${s.green_count || 0}/${s.asset_count || 0}`).join(' · ')
+      : '待加载';
+    const nodes = [
+      ['tdxhub', '主供 K线/复权/gpcw/F10', 'ok', 'miaoxiang 补源；akshare 兜底'],
+      ['raw', '原始层', statusFromCounts(summary), `${summary.green || 0} green / ${summary.yellow || 0} yellow / ${summary.red || 0} red`],
+      ['fact', '事实层', statusFromCounts((health.by_layer || {}).fact), '机构、行情、财务派生'],
+      ['feature panel', '特征面板', keep >= 5 && pit === 0 ? 'ok' : 'warn', `keep ${keep} / watch ${watch} / drop ${drop} · PIT ${pit}`],
+      ['model', '模型', 'info', 'champion 默认；challenger shadow'],
+      ['recommendation', '推荐', 'info', '正式 TopK 不混入 shadow'],
+    ];
+    root.innerHTML = `<div class="cm-section-head">
+      <div>
+        <h3>数据链路总览</h3>
+        <p class="muted">tdxhub -> raw -> fact -> feature panel -> model -> recommendation</p>
+      </div>
+      <span class="cm-muted-note">快照 ${esc(health.snapshot_at || '--')}</span>
+    </div>
+    <div class="cm-stepper">
+      ${nodes.map(n => `<div class="cm-step cm-step-${n[2]}">
+        <span>${esc(n[0])}</span>
+        <b>${esc(n[1])}</b>
+        <small>${esc(n[3])}</small>
+      </div>`).join('')}
+    </div>
+    <div class="cm-status-strip" style="margin-top:12px">
+      <div class="cm-status-item cm-status-ok"><span>tdxhub 主供</span><b>K线 / 复权 / gpcw / 股东 F10</b></div>
+      <div class="cm-status-item cm-status-info"><span>miaoxiang 补源</span><b>主营 / 估值 / 一致预期 / 调研 / 复杂事件</b></div>
+      <div class="cm-status-item"><span>akshare 兜底</span><b>临时不可用和未迁出接口</b></div>
+      <div class="cm-status-item"><span>数据源健康</span><b>${esc(sourceLabel)}</b></div>
+    </div>`;
+  }
+
   async function fetchJSON(url, options) {
     options = options || {};
-    // 默认 8s timeout, 防 hang
+    // 数据链路页会并发拉健康快照、source 聚合和 routes；本地 DuckDB
+    // 冷启动或浏览器 QA 并发时 8s 偶发过短，保留超时但放宽到 20s。
     const ctrl = new AbortController();
-    const tid = setTimeout(() => ctrl.abort(), options.timeout || 8000);
+    const tid = setTimeout(() => ctrl.abort(), options.timeout || 20000);
     options.signal = ctrl.signal;
     try {
       const r = await fetch(url, options);
@@ -213,15 +270,16 @@
       pending: '<span style="color:#888" title="registry 声明, 待接通">⏳ pending</span>',
     };
     root.innerHTML = `
-      <table style="width:100%;font-size:12px;border-collapse:collapse">
+      <div class="cm-table-scroll">
+      <table style="width:100%;min-width:760px;font-size:12px;border-collapse:collapse">
         <thead style="position:sticky;top:0;background:var(--cm-surface);z-index:1">
           <tr style="border-bottom:1px solid var(--cm-ink-100);color:var(--cm-ink-500);font-size:11px">
-            <th style="text-align:left;padding:6px 8px">业务数据</th>
-            <th style="text-align:left;padding:6px 8px">表</th>
-            <th style="text-align:left;padding:6px 8px">当前通道</th>
+            <th style="text-align:left;padding:6px 8px">数据域</th>
+            <th style="text-align:left;padding:6px 8px">落库表</th>
+            <th style="text-align:left;padding:6px 8px">当前主源</th>
+            <th style="text-align:left;padding:6px 8px">协议</th>
+            <th style="text-align:left;padding:6px 8px">fallback</th>
             <th style="text-align:left;padding:6px 8px">状态</th>
-            <th style="text-align:left;padding:6px 8px">迁移目标</th>
-            <th style="text-align:left;padding:6px 8px">频率</th>
           </tr>
         </thead>
         <tbody>
@@ -237,17 +295,17 @@
               <td style="padding:5px 8px;font-weight:600">${esc(r.data_name)}<br><small class="muted" style="font-weight:400;font-size:10px">${esc(r.step_id || '')}</small></td>
               <td style="padding:5px 8px;color:var(--cm-ink-500);font-size:11px"><code>${esc(r.raw_table)}</code></td>
               <td style="padding:5px 8px">
-                <span style="color:${color};font-weight:600">${esc(cur.source)}</span><br>
-                <small class="muted" style="font-size:10px"><code>${esc(cur.protocol)}</code></small>
+                <span style="color:${color};font-weight:600">${esc(cur.source)}</span>
               </td>
-              <td style="padding:5px 8px;font-size:11px">${STATUS_BADGE[cur.status] || cur.status || ''}</td>
+              <td style="padding:5px 8px"><code>${esc(cur.protocol)}</code></td>
               <td style="padding:5px 8px;font-size:11px">${targetCell}</td>
-              <td style="padding:5px 8px;color:var(--cm-ink-500);font-size:11px">${esc(r.freshness)}</td>
+              <td style="padding:5px 8px;font-size:11px">${STATUS_BADGE[cur.status] || cur.status || ''}</td>
             </tr>
           `;
         }).join('')}
         </tbody>
       </table>
+      </div>
     `;
   }
 
@@ -413,9 +471,28 @@
 
     // 立刻渲染 step grid (不依赖网络)
     renderStepGrid();
+    renderLinkOverview();
 
-    // 并行拉 3 个 endpoint (list / capabilities / data_routes)
+    // 并行拉 endpoint，顶部总览失败不阻塞原数据页。
     const tasks = [
+      fetchJSON('/api/data_health/snapshot').then(r => {
+        _state.health = r;
+        renderLinkOverview();
+      }).catch(e => {
+        console.error('[DataView] health snapshot fail', e);
+      }),
+      fetchJSON('/api/data_health/sources').then(r => {
+        _state.sourceHealth = r;
+        renderLinkOverview();
+      }).catch(e => {
+        console.error('[DataView] source health fail', e);
+      }),
+      fetchJSON('/api/rec/tdx-feature-validation').then(r => {
+        _state.tdxValidation = r && r.ok ? r : null;
+        renderLinkOverview();
+      }).catch(e => {
+        console.error('[DataView] tdx validation fail', e);
+      }),
       fetchJSON('/api/data_sources/list').then(r => {
         _state.sources = r.sources || [];
         logLine(`数据源加载: ${_state.sources.length} 个`, 'ok');
@@ -499,13 +576,11 @@
     console.log('[DataView] init done');
   }
 
-  window.DataView = {
+  window.CMDataView = {
     show() {
-      if (!_initialized) {
-        _initialized = true;
-        // setTimeout 让 DOM 切换 view 后再 init, 防止 active class 还没切到 view-data 上
-        setTimeout(() => { init().catch(e => console.error('[DataView] init err', e)); }, 0);
-      }
+      _initialized = true;
+      // setTimeout 让 DOM 切换 view 后再 init；重复进入时刷新轻量状态，避免一次失败后卡在加载态。
+      setTimeout(() => { init().catch(e => console.error('[DataView] init err', e)); }, 0);
     },
     refresh: init,
   };

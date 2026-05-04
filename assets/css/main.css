@@ -450,7 +450,7 @@ select {
   font-size: 20px;
   font-weight: 700;
   color: var(--text);
-  letter-spacing: -0.3px;
+  letter-spacing: 0;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -3333,7 +3333,7 @@ tr.detail-row>td>.detail-panel {
   font-size: 14px;
   font-weight: 700;
   color: var(--cm-ink-900);
-  letter-spacing: -0.02em;
+  letter-spacing: 0;
 }
 
 .stock-score-pill {
@@ -3693,7 +3693,7 @@ tr.detail-row>td>.detail-panel {
 .stock-report-hero .security-identity--hero .security-identity-name {
   font-size: 20px;
   font-weight: 800;
-  letter-spacing: -0.02em;
+  letter-spacing: 0;
 }
 
 .stock-report-hero .security-identity-meta {
@@ -4935,7 +4935,7 @@ tr.detail-row>td>.detail-panel {
 .dashboard-hero-copy h1 {
   font-size: 32px;
   line-height: 1.08;
-  letter-spacing: -0.704px;
+  letter-spacing: 0;
   font-weight: 510;
   color: var(--cm-ink-900);
   margin-bottom: 10px;
@@ -5006,7 +5006,7 @@ tr.detail-row>td>.detail-panel {
 .hero-metric-card strong {
   font-size: 24px;
   line-height: 1;
-  letter-spacing: -0.32px;
+  letter-spacing: 0;
   color: var(--cm-ink-900);
   font-weight: 590;
 }
@@ -5051,7 +5051,7 @@ tr.detail-row>td>.detail-panel {
 .summary-card-head strong {
   font-size: 16px;
   line-height: 1.25;
-  letter-spacing: -0.16px;
+  letter-spacing: 0;
   color: var(--cm-ink-900);
   font-weight: 590;
 }
@@ -5199,7 +5199,7 @@ tr.detail-row>td>.detail-panel {
 .stock-banner-head h2 {
   font-size: 24px;
   line-height: 1.1;
-  letter-spacing: -0.288px;
+  letter-spacing: 0;
   color: var(--cm-ink-900);
   font-weight: 510;
   margin-bottom: 6px;
@@ -5326,7 +5326,7 @@ tr.detail-row>td>.detail-panel {
   color: var(--cm-ink-900);
   font-size: 16px;
   font-weight: 590;
-  letter-spacing: -0.16px;
+  letter-spacing: 0;
 }
 
 .candidate-card-code {
@@ -5694,10 +5694,197 @@ tr.detail-row>td>.detail-panel {
 .sig-win-cell .muted { font-size: 10px; }
 
 /* ============================================================
+   Decision workflow MVP
+   ============================================================ */
+.cm-page-head {
+  margin-bottom: 14px;
+  padding: 16px 0 4px;
+}
+.cm-page-head h2 {
+  margin: 4px 0 6px;
+  font-size: 24px;
+  line-height: 1.15;
+  font-weight: 600;
+  letter-spacing: 0;
+  color: var(--cm-ink-900);
+}
+.cm-page-head p {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.55;
+  max-width: 900px;
+}
+.cm-section-head {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 8px;
+}
+.cm-section-head h3 {
+  margin: 0 0 3px;
+  font-size: 14px;
+  line-height: 1.25;
+  letter-spacing: 0;
+}
+.cm-section-head p {
+  margin: 0;
+  font-size: 12px;
+}
+.cm-status-strip {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 8px;
+}
+.cm-status-item {
+  min-width: 0;
+  padding: 10px 12px;
+  border: 1px solid var(--cm-ink-100);
+  border-left: 3px solid var(--cm-ink-300);
+  border-radius: 8px;
+  background: var(--cm-surface);
+}
+.cm-status-item span {
+  display: block;
+  color: var(--cm-ink-500);
+  font-size: 11px;
+  line-height: 1.25;
+}
+.cm-status-item b {
+  display: block;
+  margin-top: 3px;
+  color: var(--cm-ink-900);
+  font-size: 12px;
+  line-height: 1.35;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.cm-status-ok { border-left-color: var(--cm-ok-500); }
+.cm-status-warn { border-left-color: var(--cm-warn-500); }
+.cm-status-bad { border-left-color: var(--cm-bad-500); }
+.cm-status-info { border-left-color: var(--cm-brand-500); }
+.cm-action-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 10px;
+}
+.cm-action-grid-tight {
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+}
+.cm-action-card {
+  padding: 12px;
+  border: 1px solid var(--cm-ink-100);
+  border-radius: 8px;
+  background: var(--cm-surface);
+}
+.cm-action-title {
+  margin-bottom: 6px;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--cm-ink-900);
+}
+.cm-action-card p {
+  margin: 0 0 8px;
+  font-size: 12px;
+  line-height: 1.45;
+}
+.cm-stepper {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(120px, 1fr));
+  gap: 8px;
+}
+.cm-step {
+  min-width: 0;
+  padding: 10px;
+  border: 1px solid var(--cm-ink-100);
+  border-top: 3px solid var(--cm-ink-300);
+  border-radius: 8px;
+  background: var(--cm-surface);
+}
+.cm-step span {
+  display: block;
+  color: var(--cm-ink-500);
+  font-size: 11px;
+}
+.cm-step b {
+  display: block;
+  margin: 3px 0;
+  font-size: 12px;
+  line-height: 1.3;
+}
+.cm-step small {
+  display: block;
+  color: var(--cm-ink-500);
+  font-size: 11px;
+  line-height: 1.35;
+}
+.cm-step-ok { border-top-color: var(--cm-ok-500); }
+.cm-step-warn { border-top-color: var(--cm-warn-500); }
+.cm-step-bad { border-top-color: var(--cm-bad-500); }
+.cm-step-info { border-top-color: var(--cm-brand-500); }
+.cm-table-scroll {
+  overflow-x: auto;
+  max-width: 100%;
+  border: 1px solid var(--cm-ink-100);
+  border-radius: 8px;
+  background: var(--cm-surface);
+}
+.cm-compact-table {
+  width: 100%;
+  min-width: 680px;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+.cm-compact-table th,
+.cm-compact-table td {
+  padding: 7px 9px;
+  border-bottom: 1px solid var(--cm-ink-100);
+  text-align: left;
+  white-space: nowrap;
+}
+.cm-compact-table th {
+  color: var(--cm-ink-500);
+  font-size: 11px;
+  font-weight: 600;
+  background: var(--cm-ink-50);
+}
+.cm-compact-table tr:last-child td {
+  border-bottom: none;
+}
+.cm-muted-note {
+  padding: 8px 10px;
+  border: 1px solid var(--cm-ink-100);
+  border-radius: 8px;
+  background: var(--cm-ink-50);
+  color: var(--cm-ink-500);
+  font-size: 12px;
+  line-height: 1.4;
+}
+.sv-ai-cell {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  line-height: 1.2;
+}
+.sv-ai-rank-cell {
+  white-space: nowrap;
+}
+
+@media (max-width: 960px) {
+  .cm-section-head {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+  .cm-stepper {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* ============================================================
    工作台（Operations Console）· Step 5d 重塑
    ============================================================ */
 .workbench-hero { padding: 18px 22px 16px; }
-.workbench-title { font-size: 26px; line-height: 1.1; font-weight: 520; letter-spacing: -0.3px; color: var(--cm-ink-900); margin: 4px 0 8px; }
+.workbench-title { font-size: 26px; line-height: 1.1; font-weight: 520; letter-spacing: 0; color: var(--cm-ink-900); margin: 4px 0 8px; }
 .workbench-tagline { font-size: 13px; line-height: 1.6; max-width: 900px; margin: 0; }
 
 /* Layer 1 · 健康摘要带 */
@@ -5707,12 +5894,13 @@ tr.detail-row>td>.detail-panel {
 }
 .wb-card {
   padding: 14px 16px; background: var(--cm-surface); border: 1px solid var(--cm-ink-100);
-  border-radius: 10px; display: flex; flex-direction: column; gap: 4px;
+  border-radius: 8px; display: flex; flex-direction: column; gap: 4px;
   min-height: 100px;
+  min-width: 0;
 }
-.wb-card-label { font-size: 11px; font-weight: 600; color: var(--cm-ink-500); letter-spacing: 0.2px; text-transform: uppercase; }
-.wb-card-value { font-size: 22px; font-weight: 700; color: var(--cm-ink-900); line-height: 1.1; margin-top: 4px; font-variant-numeric: tabular-nums; }
-.wb-card-sub { font-size: 12px; color: var(--cm-ink-700); line-height: 1.35; }
+.wb-card-label { font-size: 11px; font-weight: 600; color: var(--cm-ink-500); letter-spacing: 0.2px; text-transform: uppercase; overflow-wrap: anywhere; }
+.wb-card-value { font-size: 22px; font-weight: 700; color: var(--cm-ink-900); line-height: 1.1; margin-top: 4px; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+.wb-card-sub { font-size: 12px; color: var(--cm-ink-700); line-height: 1.35; overflow-wrap: anywhere; }
 .wb-card-chip {
   margin-top: auto; align-self: flex-start; font-size: 10px; font-weight: 600;
   padding: 2px 8px; border-radius: 9999px;
@@ -5807,6 +5995,29 @@ tr.detail-row>td>.detail-panel {
   .workbench-ops-log { max-height: 180px; }
 }
 
+.mm-validation-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.3fr) minmax(0, 1fr);
+  gap: 12px;
+}
+.mm-validation-grid .mini-table {
+  width: 100%;
+  min-width: 360px;
+}
+
+@media (max-width: 640px) {
+  #view-data,
+  #view-model-monitor {
+    overflow-x: hidden;
+  }
+  .workbench-health {
+    grid-template-columns: 1fr;
+  }
+  .mm-validation-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
 /* ============================================================
    机构 track record 视图
    ============================================================ */
@@ -5815,7 +6026,7 @@ tr.detail-row>td>.detail-panel {
   margin-bottom: 14px; flex-wrap: wrap;
 }
 .research-header-title { flex: 1; min-width: 300px; }
-.research-title { font-size: 24px; line-height: 1.1; font-weight: 520; letter-spacing: -0.3px; color: var(--cm-ink-900); margin: 4px 0 8px; }
+.research-title { font-size: 24px; line-height: 1.1; font-weight: 520; letter-spacing: 0; color: var(--cm-ink-900); margin: 4px 0 8px; }
 .research-tagline { font-size: 13px; line-height: 1.6; max-width: 720px; margin: 0; }
 .inst-dim-switch {
   display: flex; align-items: center; gap: 6px; margin-bottom: 12px;
@@ -6850,7 +7061,7 @@ tr.detail-row>td>.detail-panel {
   font-family: inherit;
 }
 .strategy-tab:hover {
-  background: var(--cm-bg-50);
+  background: var(--cm-ink-50);
   color: var(--cm-ink-900);
 }
 .strategy-tab.active {
@@ -6878,7 +7089,7 @@ tr.detail-row>td>.detail-panel {
   user-select: none;
 }
 .ds-step-chip:active {
-  background: var(--cm-bg-100);
+  background: var(--cm-ink-100);
 }
 
 /* 二级 nav 分隔线 */

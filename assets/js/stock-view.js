@@ -22,14 +22,19 @@
     filterIndustry: '',
     filterInstType: '',
     filterMinInst: 0,
+    filterAiTop: '',
     filterWatchlistOnly: false,
     filterScreening: new Set(),   // 多选：'f1' / 'f3' / 'f5'
     filterTurtle: new Set(),      // 多选：'breakout' / 'pre' / 'exit' / 'wait'
+    topkItems: [],
+    topkMap: new Map(),
+    topkMeta: null,
+    topkLoading: false,
     screeningMap: new Map(),      // stock_code → mart_stock_screening 行
     turtleMap: new Map(),         // stock_code → dim_stock_turtle_latest 行
     loading: false,
     drawerStock: null,     // 当前打开的股票 code
-    drawerTab: 'events',   // events | timeline | evidence
+    drawerTab: 'conclusion',   // conclusion | data | model | timeline | rules
     freshnessDays: 90,
   };
 
@@ -74,6 +79,49 @@
     };
     return map[action] || `<span class="sig-badge sig-badge-skip">${esc(action)}</span>`;
   }
+  function normalizeTopkItem(item, idx) {
+    const code = item.stock_code || item.code || '';
+    const rank = item.rank || item.rank_in_date || idx + 1;
+    return {
+      ...item,
+      stock_code: code,
+      rank: Number(rank),
+      percentile: item.percentile == null ? null : Number(item.percentile),
+    };
+  }
+  function parseTopkPayload(payload) {
+    const items = ((payload && payload.items) || []).map(normalizeTopkItem);
+    state.topkItems = items;
+    state.topkMap = new Map(items.map(x => [x.stock_code, x]));
+    state.topkMeta = payload ? {
+      model_id: payload.model_id || null,
+      model_role: payload.model_role || null,
+      snapshot_date: payload.snapshot_date || null,
+      selection_fallback: !!payload.selection_fallback,
+      is_default_champion: !!payload.is_default_champion,
+      run_mode: payload.run_mode || null,
+      count: payload.count || items.length,
+    } : null;
+  }
+  function topPercent(item) {
+    if (!item || item.percentile == null || isNaN(item.percentile)) return null;
+    return Math.max(0.1, (1 - Number(item.percentile)) * 100);
+  }
+  function renderAiCell(stockCode) {
+    const item = state.topkMap.get(stockCode);
+    if (!item) return '<span class="muted sv-sub">--</span>';
+    const top = topPercent(item);
+    return `<div class="sv-ai-cell">
+      <b>#${esc(item.rank || '-')}</b>
+      <span class="muted sv-sub">${top == null ? 'Top --' : 'Top ' + top.toFixed(top < 10 ? 1 : 0) + '%'}</span>
+    </div>`;
+  }
+  function modelRoleText(meta) {
+    if (!meta) return '未加载';
+    if (meta.selection_fallback) return 'fallback';
+    if (meta.is_default_champion || meta.model_role === 'champion') return 'champion';
+    return meta.model_role || 'explicit';
+  }
 
   // ── 胶囊筛选选项收集 ─────────────────────────────────────────────
   function collectOptions(byStock) {
@@ -101,6 +149,12 @@
       if (state.filterInstType) {
         const it = (s.topEvent?.ruleChecks || []).find(c => c.key === 'inst_type')?.raw;
         if (it == null || String(it) !== state.filterInstType) return false;
+      }
+      if (state.filterAiTop) {
+        const topk = state.topkMap.get(s.stockCode);
+        if (!topk) return false;
+        if (state.filterAiTop === 'top20' && Number(topk.rank) > 20) return false;
+        if (state.filterAiTop === 'top50' && Number(topk.rank) > 50) return false;
       }
       if (state.filterMinInst > 0 && s.instCount < state.filterMinInst) return false;
       if (state.filterWatchlistOnly && !state.watchlistSet.has(s.stockCode)) return false;
@@ -176,6 +230,7 @@
         <div class="sv-stock-name"><b>${esc(s.stockCode)}</b> ${esc(s.stockName || '')}</div>
         <div class="muted sv-industry">${esc(indLabel)}</div>
       </td>
+      <td class="sv-ai-rank-cell">${renderAiCell(s.stockCode)}</td>
       <td class="sv-signal-cell">
         ${actionBadge(s.bestAction)}
       </td>
@@ -231,6 +286,12 @@
     const actionBtns = actions.map(a =>
       `<button class="chip ${state.filterAction === a ? 'chip-primary' : 'chip-outline'} chip-sm sv-filter-action" data-action="${a}">${actionLabels[a]}</button>`
     ).join('');
+    const aiBtns = [
+      ['top20', 'AI Top20'],
+      ['top50', 'AI Top50'],
+    ].map(([k, label]) =>
+      `<button class="chip ${state.filterAiTop === k ? 'chip-primary' : 'chip-outline'} chip-sm sv-filter-ai" data-ai-top="${k}">${label}</button>`
+    ).join('');
 
     const indOptions = `<option value="">全部行业</option>` +
       industries.map(([code, n]) =>
@@ -266,6 +327,7 @@
 
     return `<div class="sv-filter-bar">
       <div class="chip-group">${actionBtns}</div>
+      <div class="chip-group">${aiBtns}</div>
       <select class="sv-select" id="svIndFilter">${indOptions}</select>
       <select class="sv-select" id="svItFilter">${itOptions}</select>
       <label class="sv-filter-wl">
@@ -299,6 +361,7 @@
         <thead>
           <tr>
             <th>股票</th>
+            <th style="width:90px">AI</th>
             <th style="width:70px">当期信号</th>
             <th style="width:160px">共识</th>
             <th style="width:90px" title="TDX 选股命中：F1 长期低位 / F3 多级回撤 / F5 连跌反转">TDX</th>
@@ -346,7 +409,7 @@
 
   function openDrawer(stockCode) {
     state.drawerStock = stockCode;
-    state.drawerTab = 'events';
+    state.drawerTab = 'conclusion';
     renderDrawer();
   }
 
@@ -360,9 +423,11 @@
     const inWl = state.watchlistSet.has(code);
     const indLabel = TDX_L1_NAMES[s.industry] || s.industry || '—';
     const tabs = [
-      { key: 'events', label: '机构持仓' },
+      { key: 'conclusion', label: '结论' },
+      { key: 'data', label: '数据证据' },
+      { key: 'model', label: '模型解释' },
       { key: 'timeline', label: '事件时间线' },
-      { key: 'evidence', label: '信号证据链' },
+      { key: 'rules', label: '规则证据' },
     ];
     const tabBtns = tabs.map(t =>
       `<button class="sv-tab-btn ${state.drawerTab === t.key ? 'sv-tab-active' : ''}" data-svtab="${t.key}">${t.label}</button>`
@@ -387,6 +452,7 @@
         <span><span class="muted">平均溢价</span> ${s.premiumAvg != null ? fmtPct(s.premiumAvg) : '-'}</span>
         <span><span class="muted">最佳长期EV</span> ${s.longEVBest != null ? fmtPct(s.longEVBest) : '-'}</span>
         <span><span class="muted">最近事件</span> ${fmtDate(s.latestNotice)}</span>
+        <span><span class="muted">AI</span> ${renderAiCell(code)}</span>
         <span id="sv-drawer-multidim-badge"></span>
       </div>
       <div class="sv-drawer-tabs">${tabBtns}</div>
@@ -431,9 +497,71 @@
   function renderDrawerContent(s) {
     const content = el('sv-drawer-content');
     if (!content) return;
-    if (state.drawerTab === 'events') renderTabEvents(content, s);
+    if (state.drawerTab === 'conclusion') renderTabConclusion(content, s);
+    else if (state.drawerTab === 'data') renderTabDataEvidence(content, s);
+    else if (state.drawerTab === 'model') renderTabModelExplain(content, s);
     else if (state.drawerTab === 'timeline') renderTabTimeline(content, s);
-    else if (state.drawerTab === 'evidence') renderTabEvidence(content, s);
+    else if (state.drawerTab === 'rules') renderTabEvidence(content, s);
+  }
+
+  function renderTabConclusion(content, s) {
+    const topk = state.topkMap.get(s.stockCode);
+    const top = topPercent(topk);
+    content.innerHTML = `<div class="cm-action-grid cm-action-grid-tight">
+      <div class="cm-action-card">
+        <div class="cm-action-title">当前结论</div>
+        <p>${actionBadge(s.bestAction)}</p>
+        <p class="muted">机构共识 <b class="sig-pos">${s.actionCounts.follow}</b> 可跟 · ${s.actionCounts.watch} 观察 · ${s.actionCounts.skip} 不跟。</p>
+      </div>
+      <div class="cm-action-card">
+        <div class="cm-action-title">AI 分位</div>
+        <p><b>${topk ? '#' + esc(topk.rank) : '无模型覆盖'}</b></p>
+        <p class="muted">${top == null ? '当前 champion 推荐未覆盖该股。' : 'Top ' + top.toFixed(top < 10 ? 1 : 0) + '% · ' + esc(state.topkMeta?.model_id || '')}</p>
+      </div>
+      <div class="cm-action-card">
+        <div class="cm-action-title">机构事件</div>
+        <p><b>${s.instCount}</b> 机构 · <b>${s.eventCount}</b> 事件</p>
+        <p class="muted">最近事件 ${fmtDate(s.latestNotice)} · 平均溢价 ${s.premiumAvg != null ? fmtPct(s.premiumAvg) : '-'}</p>
+      </div>
+    </div>`;
+  }
+
+  function renderTabDataEvidence(content, s) {
+    const tdx = renderScreeningChips(s.stockCode);
+    const turtle = renderTurtleBadge(s.stockCode);
+    const eventHtml = document.createElement('div');
+    renderTabEvents(eventHtml, s);
+    content.innerHTML = `<div class="cm-status-strip" style="margin-bottom:12px">
+      <div class="cm-status-item"><span>TDX 公式</span><b>${tdx}</b></div>
+      <div class="cm-status-item"><span>海龟状态</span><b>${turtle}</b></div>
+      <div class="cm-status-item"><span>数据边界</span><b>机构覆盖股票</b></div>
+    </div>${eventHtml.innerHTML}`;
+  }
+
+  function renderTabModelExplain(content, s) {
+    const topk = state.topkMap.get(s.stockCode);
+    const top = topPercent(topk);
+    content.innerHTML = `<div class="cm-action-grid cm-action-grid-tight">
+      <div class="cm-action-card">
+        <div class="cm-action-title">Champion 推荐</div>
+        <p><b>${topk ? '#' + esc(topk.rank) : '无覆盖'}</b></p>
+        <p class="muted">${top == null ? '该股不在当前推荐快照中。' : 'AI 分位 Top ' + top.toFixed(top < 10 ? 1 : 0) + '%'}</p>
+      </div>
+      <div class="cm-action-card">
+        <div class="cm-action-title">模型</div>
+        <p><b>${esc(state.topkMeta?.model_id || '--')}</b></p>
+        <p class="muted">角色 ${esc(modelRoleText(state.topkMeta))} · 日期 ${esc(state.topkMeta?.snapshot_date || '--')}</p>
+      </div>
+      <div class="cm-action-card">
+        <div class="cm-action-title">TDX Keep Challenger</div>
+        <p><b>Shadow / Not promoted</b></p>
+        <p class="muted">实验推荐需要在模型实验室显式查看，不混入正式 TopK。</p>
+      </div>
+    </div>
+    <div id="sv-drawer-model-badge" style="margin-top:12px"></div>`;
+    if (global.MultidimBadgeWidget) {
+      global.MultidimBadgeWidget.mount('sv-drawer-model-badge', { stockCode: s.stockCode });
+    }
   }
 
   // Tab1: 机构持仓（该股涉及的机构列表）
@@ -526,20 +654,106 @@
     content.innerHTML = `<div class="sv-evidence-wrap">${blocks}</div>`;
   }
 
+  function renderResearchStatus() {
+    const root = el('sv-status-area');
+    if (!root) return;
+    const meta = state.topkMeta || {};
+    const role = modelRoleText(meta);
+    const healthTone = state.topkLoading ? 'warn' : state.topkItems.length ? 'ok' : 'warn';
+    root.innerHTML = `<div class="cm-status-strip">
+      <div class="cm-status-item">
+        <span>推荐日期</span>
+        <b>${esc(meta.snapshot_date || '--')}</b>
+      </div>
+      <div class="cm-status-item">
+        <span>champion 模型</span>
+        <b title="${esc(meta.model_id || '')}">${esc(meta.model_id || '--')}</b>
+      </div>
+      <div class="cm-status-item cm-status-${role === 'fallback' ? 'warn' : 'ok'}">
+        <span>模型角色</span>
+        <b>${esc(role)}</b>
+      </div>
+      <div class="cm-status-item cm-status-ok">
+        <span>tdxhub 状态</span>
+        <b>主供已接入</b>
+      </div>
+      <div class="cm-status-item cm-status-info">
+        <span>TDX keep challenger</span>
+        <b>Shadow 实验中</b>
+      </div>
+      <div class="cm-status-item cm-status-${healthTone}">
+        <span>画像边界</span>
+        <b>机构覆盖股票</b>
+      </div>
+    </div>`;
+  }
+
+  function renderTopkSummary() {
+    const root = el('sv-topk-summary');
+    if (!root) return;
+    if (state.topkLoading) {
+      root.innerHTML = '<div class="cm-muted-note">AI TopK 加载中...</div>';
+      return;
+    }
+    if (!state.topkItems.length) {
+      root.innerHTML = '<div class="cm-muted-note">暂无 AI TopK；机构事件列表仍可继续使用。</div>';
+      return;
+    }
+    const stockMap = new Map(state.byStock.map(s => [s.stockCode, s]));
+    const rows = state.topkItems.slice(0, 10).map(item => {
+      const s = stockMap.get(item.stock_code);
+      const name = item.stock_name || s?.stockName || '';
+      const industry = s ? (TDX_L1_NAMES[s.industry] || s.industry || '--') : (item.l2 || item.l1 || '--');
+      const top = topPercent(item);
+      const covered = !!s;
+      return `<tr>
+        <td>#${esc(item.rank || '-')}</td>
+        <td><b>${esc(item.stock_code)}</b> ${esc(name || '')}</td>
+        <td>${top == null ? '--' : 'Top ' + top.toFixed(top < 10 ? 1 : 0) + '%'}</td>
+        <td>${esc(industry)}</td>
+        <td>${covered ? '是' : '否'}</td>
+        <td><button class="chip chip-outline chip-sm" data-ai-pick="${esc(item.stock_code)}">${covered ? '打开' : '提示'}</button></td>
+      </tr>`;
+    }).join('');
+    root.innerHTML = `<div class="cm-section-head">
+      <div>
+        <h3>AI 推荐摘要</h3>
+        <p class="muted">默认正式 champion 推荐；用于和机构事件、TDX 公式、海龟信号交叉验证。</p>
+      </div>
+      <span class="cm-muted-note">${esc(state.topkMeta?.count || state.topkItems.length)} 条</span>
+    </div>
+    <div class="cm-table-scroll">
+      <table class="cm-compact-table">
+        <thead><tr><th>#</th><th>股票</th><th>AI分位</th><th>行业</th><th>机构列表</th><th>操作</th></tr></thead>
+        <tbody>${rows}</tbody>
+      </table>
+    </div>`;
+    root.querySelectorAll('[data-ai-pick]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const code = btn.dataset.aiPick;
+        if (state.byStock.some(s => s.stockCode === code)) openDrawer(code);
+        else alert('该股在 AI TopK 中，但当前机构事件画像未覆盖。');
+      });
+    });
+  }
+
+  function refreshResearchPanels() {
+    renderResearchStatus();
+    renderTopkSummary();
+  }
+
   // ── 主视图渲染 ───────────────────────────────────────────────────
   function renderRoot() {
     const root = el('view-stocks');
     if (!root) return;
     root.innerHTML = `<div class="sv-root">
-      <div class="panel panel-hero workbench-hero" style="margin-bottom:14px">
-        <div class="section-kicker">Stock Research</div>
-        <h2 class="workbench-title">股票 · 信号汇总</h2>
-        <p class="muted workbench-tagline">信号是股票的属性。以下为近 <span id="svFreshnessLabel">${state.freshnessDays}</span> 天内有机构 buy 事件的股票，按 follow 数排序。</p>
-        <div style="font-size:11px;color:var(--cm-ink-500);background:var(--cm-ink-50);padding:6px 10px;border-radius:4px;margin-top:6px">
-          <strong>画像边界</strong>：这里是"机构覆盖股票画像"，不是全市场画像。只覆盖近期进入机构关系层的 A 股（当前 ~3285/5507 只 active A 股）。
-        </div>
+      <div class="cm-page-head">
+        <div class="section-kicker">Research Today</div>
+        <h2>今日研究</h2>
+        <p class="muted">Champion 推荐、机构共识、TDX 信号、海龟状态和数据边界集中在同一页。</p>
       </div>
-      <div id="sv-topk-strip" style="margin-bottom:14px"></div>
+      <div id="sv-status-area" style="margin-bottom:14px"></div>
+      <div id="sv-topk-summary" style="margin-bottom:14px"></div>
       <div id="sv-filter-area">${renderFilterBar(state.byStock)}</div>
       <div id="sv-list-root"></div>
       <div id="sv-drawer-area"></div>
@@ -554,14 +768,8 @@
     </div>`;
     bindFilterEvents();
     bindAuxSections();
+    refreshResearchPanels();
     renderList();
-    // 多维量化评分 Top K 条带 (异步, 不阻塞主渲染)
-    if (global.TopKStripWidget) {
-      global.TopKStripWidget.mount('sv-topk-strip', {
-        limit: 20,
-        onPick: function (code) { openDrawer(code); }
-      });
-    }
   }
 
   function bindAuxSections() {
@@ -579,6 +787,13 @@
     document.querySelectorAll('.sv-filter-action').forEach(btn => {
       btn.addEventListener('click', () => {
         state.filterAction = btn.dataset.action;
+        refreshFilter();
+      });
+    });
+    document.querySelectorAll('.sv-filter-ai').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const k = btn.dataset.aiTop;
+        state.filterAiTop = state.filterAiTop === k ? '' : k;
         refreshFilter();
       });
     });
@@ -624,24 +839,31 @@
   // ── 数据加载 ─────────────────────────────────────────────────────
   async function reload() {
     state.loading = true;
+    state.topkLoading = true;
+    refreshResearchPanels();
     renderList();
     try {
-      const [result, wl, enrich] = await Promise.all([
+      const [result, wl, enrich, topk] = await Promise.all([
         global.SignalAdapter.fetchSignals(state.freshnessDays),
         fetch('/api/inst/watchlist').then(r => r.ok ? r.json() : null).catch(() => null),
         global.SignalAdapter.fetchScreeningEnrichment().catch(() => null),
+        fetch('/api/rec/daily-topk?limit=80').then(r => r.ok ? r.json() : null).catch(() => null),
       ]);
       state.byStock = result.byStock || [];
       state.rawEvents = result.events || [];
       state.watchlistSet = new Set(((wl && wl.data) || []).map(w => w.stock_code));
       state.screeningMap = (enrich && enrich.screening) || new Map();
       state.turtleMap = (enrich && enrich.turtle) || new Map();
+      parseTopkPayload(topk);
     } catch (e) {
       console.error('StockView reload failed', e);
       state.byStock = [];
       state.rawEvents = [];
+      parseTopkPayload(null);
     }
     state.loading = false;
+    state.topkLoading = false;
+    refreshResearchPanels();
     refreshFilter();
     // 如果有打开的抽屉，数据已刷新，重新渲染抽屉内容
     if (state.drawerStock) renderDrawer();
@@ -659,5 +881,5 @@
     });
   }
 
-  global.StockView = { load, reload };
+  global.StockView = { load, reload, openDrawer };
 })(window);

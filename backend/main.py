@@ -174,9 +174,16 @@ INDEX_HTML = PROJECT_ROOT / "index.html"
 INDEX_ASSET_FILES = [
     INDEX_HTML,
     ASSETS_DIR / "css" / "main.css",
+    ASSETS_DIR / "js" / "style-tokens.js",
     ASSETS_DIR / "js" / "app-cache.js",
     ASSETS_DIR / "js" / "app-nav.js",
     ASSETS_DIR / "js" / "app-list-state.js",
+    ASSETS_DIR / "js" / "signal-adapter.js",
+    ASSETS_DIR / "js" / "stock-view.js",
+    ASSETS_DIR / "js" / "data-view.js",
+    ASSETS_DIR / "js" / "data-health-view.js",
+    ASSETS_DIR / "js" / "strategy-view.js",
+    ASSETS_DIR / "js" / "settings-view.js",
     ASSETS_DIR / "js" / "app.js",
 ]
 INDEX_ASSET_VERSION_PATTERN = re.compile(

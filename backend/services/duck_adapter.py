@@ -14,11 +14,13 @@ from __future__ import annotations
 
 import logging
 import re
+import threading
 from typing import Any, Iterable, Optional, Sequence
 
 import duckdb
 
 logger = logging.getLogger("cm-api")
+_CONNECT_LOCK = threading.Lock()
 
 
 class Row:
@@ -145,7 +147,11 @@ class DuckConn:
     """DuckDB 连接包装器。"""
 
     def __init__(self, db_path: str, read_only: bool = False, attach: dict = None):
-        self._con = duckdb.connect(db_path, read_only=read_only)
+        # FastAPI opens short-lived DuckDB connections from multiple worker
+        # threads. Serializing connection creation avoids transient unique
+        # file-handle conflicts while keeping each request on its own handle.
+        with _CONNECT_LOCK:
+            self._con = duckdb.connect(db_path, read_only=read_only)
         self._row_factory = None
         self.in_transaction = False
         # 可选 ATTACH 其它 DuckDB

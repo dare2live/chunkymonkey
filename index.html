@@ -7,7 +7,7 @@
   <title>Chunky Monkey v2</title>
   <link rel="stylesheet" href="https://rsms.me/inter/inter.css">
   <script>
-    window.CM_ASSET_VERSION = '3.6.2';
+    window.CM_ASSET_VERSION = '3.7.0';
     (function (version) {
       var link = document.createElement('link');
       link.rel = 'stylesheet';
@@ -31,19 +31,12 @@
     </nav>
   </header>
   <div class="sub-bar" id="subBar">
-    <!-- 股东挖掘二级导航（业务区 + 运维区, P1-P5 重设计后）-->
+    <!-- 股东挖掘主导航：研究决策链路 -->
     <div class="nav-sub-bar" id="nav-sub-holder">
-      <!-- 业务 -->
-      <button class="nav-btn active" data-view="stocks">股票</button>
-      <button class="nav-btn" data-view="research">机构</button>
-      <button class="nav-btn" data-view="model-monitor">模型监控</button>
-      <span style="display:inline-block;width:1px;height:18px;background:var(--cm-ink-100);margin:0 4px;vertical-align:middle"></span>
-      <!-- 运维 -->
-      <button class="nav-btn" data-view="data" title="数据源 + 数据更新 + 字段映射">数据</button>
-      <button class="nav-btn" data-view="data-health" title="W0: 数据资产注册表 + 健康快照 + 数据源总览">数据健康</button>
-      <button class="nav-btn" data-view="dashboard" title="事实计算 + 集市构建">工作台</button>
-      <button class="nav-btn" data-view="strategy" title="信号参数 / Cohort / 回测 / 选股">策略</button>
-      <button class="nav-btn" data-view="settings" title="数据源参数 / 派生层版本 / 危险操作">系统</button>
+      <button class="nav-btn active" data-view="stocks">今日研究</button>
+      <button class="nav-btn" data-view="data">数据链路</button>
+      <button class="nav-btn" data-view="model-monitor">模型实验室</button>
+      <button class="nav-btn" data-view="dashboard">系统运维</button>
     </div>
     <!-- ETF研究二级导航 -->
     <div class="nav-sub-bar" id="nav-sub-etf" style="display:none">
@@ -62,11 +55,11 @@
     <!-- ==================== 模型监控（Phase 5 多维评分）==================== -->
     <section class="view" id="view-model-monitor">
       <div style="padding:16px">
-        <div class="section-kicker">Model Monitoring</div>
-        <h2 style="margin:4px 0 8px">多维评分 · 模型监控</h2>
-        <p class="muted" style="font-size:12px;margin-bottom:14px">
-          默认展示 lifecycle champion；TDX keep challenger 只做 shadow 展示，不自动替换正式推荐。
-        </p>
+        <div class="cm-page-head">
+          <div class="section-kicker">Model Lab</div>
+          <h2>模型实验室</h2>
+          <p class="muted">Champion 正式推荐 vs TDX Keep Challenger shadow 实验。</p>
+        </div>
         <div id="mm-controls" style="display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap;align-items:center">
           <label style="font-size:12px;color:var(--cm-ink-500)">模型</label>
           <select id="mm-model-select" style="padding:6px 10px;border:1px solid var(--cm-ink-100);border-radius:6px;font-size:13px;min-width:260px"></select>
@@ -80,12 +73,12 @@
           <button class="chip chip-outline" id="mm-refresh" style="margin-left:12px">刷新</button>
         </div>
         <div id="mm-comparison" style="margin-bottom:14px"></div>
-        <div id="mm-tdx-validation" style="margin-bottom:14px"></div>
-        <!-- 综合评级 + 指标卡片 -->
+        <div id="mm-promotion-gate" style="margin-bottom:14px"></div>
         <div id="mm-composite" style="margin-bottom:10px"></div>
         <div id="mm-metrics" class="workbench-health" style="margin-bottom:14px">
           <div class="muted" style="padding:20px">加载中…</div>
         </div>
+        <div id="mm-tdx-validation" style="margin-bottom:14px"></div>
         <!-- 每日实测 IC / L-S spread 图 + regime 分解图 两图并列 -->
         <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:14px;margin-bottom:14px">
           <div class="panel" style="padding:12px">
@@ -110,13 +103,13 @@
 
     <!-- ==================== 数据 (新增 P2: data_sources registry UI) ==================== -->
     <section class="view" id="view-data">
-      <div class="panel panel-hero" style="margin-bottom:14px;padding:18px">
-        <div class="section-kicker">Data Console</div>
-        <h2 style="margin:4px 0 6px">数据 · 数据源 + 更新调度</h2>
-        <p class="muted" style="font-size:12px;margin:0">
-          tdxhub > 妙想 > 东财 datacenter-web > akshare 优先级链路。每个 capability 走自动 fallback。
-        </p>
+      <div class="cm-page-head">
+        <div class="section-kicker">Data Lineage</div>
+        <h2>数据链路</h2>
+        <p class="muted">tdxhub 主供、miaoxiang 补源、akshare 兜底；从 raw 到 recommendation 的可用性视图。</p>
       </div>
+
+      <div id="ds-link-overview" style="margin-bottom:14px"></div>
 
       <!-- 顶: 4 张数据源卡 -->
       <div id="ds-source-cards" class="data-source-grid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:12px;margin-bottom:14px">
@@ -492,10 +485,37 @@
 
     <!-- ==================== 工作台（运维控制台） ==================== -->
     <section class="view" id="view-dashboard">
-      <div class="panel panel-hero workbench-hero" style="margin-bottom:14px">
-        <div class="section-kicker">Operations Console</div>
-        <h2 class="workbench-title">工作台 · 数据与管线</h2>
-        <p class="muted workbench-tagline">数据更新（管线 / 补跑）· 策略参数（信号 / 回测）· 系统设置（模块 / 重算）</p>
+      <div class="cm-page-head">
+        <div class="section-kicker">Operations</div>
+        <h2>系统运维</h2>
+        <p class="muted">补跑、重算、监控和危险操作集中入口。</p>
+      </div>
+
+      <div class="cm-action-grid" style="margin-bottom:14px">
+        <div class="cm-action-card">
+          <div class="cm-action-title">数据更新</div>
+          <p class="muted">raw 数据补拉、单步数据源同步和实时日志。</p>
+          <button class="chip chip-outline" onclick="window.App.showView('data')">进入数据链路</button>
+        </div>
+        <div class="cm-action-card">
+          <div class="cm-action-title">派生层计算</div>
+          <p class="muted">fact 与 mart 增量计算，保留当前工作台按钮。</p>
+          <button class="chip chip-primary" id="btnUpdateAllShortcut">计算派生层</button>
+        </div>
+        <div class="cm-action-card">
+          <div class="cm-action-title">模型与推荐</div>
+          <p class="muted">查看 champion、challenger、TopK 生成和推广门槛。</p>
+          <button class="chip chip-outline" onclick="window.App.showView('model-monitor')">进入模型实验室</button>
+        </div>
+        <div class="cm-action-card">
+          <div class="cm-action-title">高级诊断</div>
+          <p class="muted">低频健康、策略参数、系统设置和危险操作。</p>
+          <div class="chip-group">
+            <button class="chip chip-outline" onclick="window.App.showView('data-health')">高级数据健康</button>
+            <button class="chip chip-outline" onclick="window.App.showView('strategy')">策略参数/回测</button>
+            <button class="chip chip-outline" onclick="window.App.showView('settings')">系统设置</button>
+          </div>
+        </div>
       </div>
 
       <!-- Layer 1 · 健康摘要带 -->

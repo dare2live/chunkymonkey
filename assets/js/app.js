@@ -116,7 +116,7 @@
       research: loadResearch,
       etf: loadEtf,
       'model-monitor': loadModelMonitor,
-      data: function () { window.DataView && window.DataView.show(); },
+      data: function () { window.CMDataView && window.CMDataView.show(); },
       'data-health': function () { window.DataHealthView && window.DataHealthView.show(); },
       strategy: function () { window.StrategyView && window.StrategyView.show(); },
       settings: function () { window.SettingsView && window.SettingsView.show(); },
@@ -214,6 +214,12 @@
     await refreshDashboardStatus(true, true);
     refreshWorkbenchHealthBar();
     _mountWorkbenchWidgets();
+    var shortcut = el('btnUpdateAllShortcut');
+    var mainBtn = el('btnUpdateAll');
+    if (shortcut && mainBtn && !shortcut.dataset.bound) {
+      shortcut.dataset.bound = '1';
+      shortcut.addEventListener('click', function () { mainBtn.click(); });
+    }
   }
 
   // 工作台 widget 懒挂载（只挂一次）
@@ -6535,6 +6541,7 @@
   async function renderModelMonitor() {
     await Promise.all([
       renderModelComparison(),
+      renderPromotionGate(),
       renderTdxValidation(),
       renderMetricsCards(),
       renderDailyChart(),
@@ -6550,20 +6557,41 @@
       if (!res || !res.ok) { box.innerHTML = ''; return; }
       function fmt(v, d) { return v == null ? '-' : Number(v).toFixed(d == null ? 3 : d); }
       function pct(v) { return v == null ? '-' : (Number(v) * 100).toFixed(2) + '%'; }
-      var c = res.champion || {}, ch = res.challenger || {}, gate = res.promotion_gate || {};
+      var c = res.champion || {}, ch = res.challenger || {};
       var shadow = res.shadow_topk || {};
       box.innerHTML =
-        '<div class="panel" style="padding:12px;display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;align-items:stretch">' +
-        '<div><div class="section-kicker">Champion</div><div style="font-weight:700;font-size:13px">' + esc(labelModelId(c.model_id || '-')) + '</div>' +
-        '<div class="muted" style="font-size:11px;margin-top:4px">正式默认推荐 · RankIC ' + fmt(c.holdout_rank_ic) + ' · L/S ' + pct(c.holdout_long_short_spread) + '</div></div>' +
-        '<div><div class="section-kicker">TDX Keep Challenger</div><div style="font-weight:700;font-size:13px">' + esc(labelModelId(ch.model_id || '尚未训练')) + '</div>' +
-        '<div class="muted" style="font-size:11px;margin-top:4px">Shadow / Not promoted · RankIC ' + fmt(ch.holdout_rank_ic) + ' · L/S ' + pct(ch.holdout_long_short_spread) + '</div>' +
+        '<div class="cm-action-grid cm-action-grid-tight">' +
+        '<div class="cm-action-card"><div class="cm-action-title">Champion · 正式推荐</div><div style="font-weight:700;font-size:13px">' + esc(labelModelId(c.model_id || '-')) + '</div>' +
+        '<div class="muted" style="font-size:11px;margin-top:4px">默认推荐只取 lifecycle champion · RankIC ' + fmt(c.holdout_rank_ic) + ' · L/S ' + pct(c.holdout_long_short_spread) + '</div></div>' +
+        '<div class="cm-action-card"><div class="cm-action-title">TDX Keep Challenger · Shadow 实验</div><div style="font-weight:700;font-size:13px">' + esc(labelModelId(ch.model_id || '尚未训练 challenger')) + '</div>' +
+        '<div class="muted" style="font-size:11px;margin-top:4px">Not promoted · RankIC ' + fmt(ch.holdout_rank_ic) + ' · L/S ' + pct(ch.holdout_long_short_spread) + '</div>' +
         '<div class="muted" style="font-size:11px;margin-top:2px">shadow topK ' + (shadow.rows || shadow.row_count || 0) + ' rows · ' + (shadow.snapshot_date || shadow.latest_snapshot || '-') + '</div></div>' +
-        '<div><div class="section-kicker">Promotion Gate</div><div style="font-weight:700;font-size:13px">' + esc(gate.promotion_status || 'WAIT') + ' · ' + esc(gate.decision || 'keep_shadow') + '</div>' +
-        '<div class="muted" style="font-size:11px;margin-top:4px">默认选择 ' + (res.selection_fallback ? 'fallback' : 'champion-only') + '；即使 PASS 也只标记 promote-ready</div></div>' +
         '</div>';
     } catch (e) {
       box.innerHTML = '<div class="muted">model comparison error: ' + esc(e.message) + '</div>';
+    }
+  }
+
+  async function renderPromotionGate() {
+    var box = el('mm-promotion-gate'); if (!box) return;
+    try {
+      var res = await api('/api/rec/model-comparison');
+      if (!res || !res.ok) { box.innerHTML = ''; return; }
+      var gate = res.promotion_gate || {};
+      var status = gate.promotion_status || 'WAIT';
+      var tone = status === 'PASS' ? 'ok' : status === 'FAIL' ? 'bad' : 'warn';
+      var blockers = gate.blockers || gate.reasons || gate.reason || '';
+      if (Array.isArray(blockers)) blockers = blockers.join('；');
+      box.innerHTML =
+        '<div class="cm-status-strip">' +
+        '<div class="cm-status-item cm-status-' + tone + '"><span>Promotion Gate</span><b>' + esc(status) + '</b></div>' +
+        '<div class="cm-status-item"><span>Decision</span><b>' + esc(gate.decision || 'keep_shadow') + '</b></div>' +
+        '<div class="cm-status-item"><span>默认推荐</span><b>' + (res.selection_fallback ? 'fallback' : 'champion-only') + '</b></div>' +
+        '<div class="cm-status-item"><span>发布规则</span><b>PASS 也只标记 promote-ready</b></div>' +
+        (blockers ? '<div class="cm-status-item cm-status-warn"><span>阻塞项</span><b>' + esc(String(blockers).slice(0, 120)) + '</b></div>' : '') +
+        '</div>';
+    } catch (e) {
+      box.innerHTML = '<div class="muted">promotion gate error: ' + esc(e.message) + '</div>';
     }
   }
 
@@ -6593,9 +6621,9 @@
         '<h4 style="margin:0;font-size:13px">TDX keep 特征验证与数据源切换</h4>' +
         '<span class="muted" style="font-size:11px">PIT violations: manual ' + ((res.pit && res.pit.tdx_f10_gpcw_v1 && res.pit.tdx_f10_gpcw_v1.violation_rows) || 0) + '</span></div>' +
         '<div style="margin-bottom:8px">' + sources + '</div>' +
-        '<div style="display:grid;grid-template-columns:1.3fr 1fr;gap:12px">' +
-        '<table class="mini-table"><thead><tr><th>keep feature</th><th>RankIC</th><th>same sign</th><th>coverage</th><th>PIT</th></tr></thead><tbody>' + keepRows + '</tbody></table>' +
-        '<table class="mini-table"><thead><tr><th>decision</th><th>feature</th><th>reason</th></tr></thead><tbody>' + wdRows + '</tbody></table>' +
+        '<div class="mm-validation-grid">' +
+        '<div class="cm-table-scroll"><table class="mini-table"><thead><tr><th>keep feature</th><th>RankIC</th><th>same sign</th><th>coverage</th><th>PIT</th></tr></thead><tbody>' + keepRows + '</tbody></table></div>' +
+        '<div class="cm-table-scroll"><table class="mini-table"><thead><tr><th>decision</th><th>feature</th><th>reason</th></tr></thead><tbody>' + wdRows + '</tbody></table></div>' +
         '</div></div>';
     } catch (e) {
       box.innerHTML = '<div class="muted">tdx validation error: ' + esc(e.message) + '</div>';
