@@ -16,19 +16,22 @@ from typing import Any
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-import pandas as pd
-import numpy as np
-
 from services.db import get_conn  # noqa: E402
 from scripts.build_candidate_feature_panel import (  # noqa: E402
     CANDIDATE_FEATURE_SET_ID,
-    CANDIDATE_FEATURES,
 )
 from scripts.run_feature_group_ablation import (  # noqa: E402
     FEATURE_GROUPS,
     LABEL_COLUMNS,
     _candidate_features_for_set,
     _feature_group_map_for_set,
+    _group_by_date,
+    _load_candidate_panel,
+    _mean_rank_ic,
+    _pearson,
+    _rank_percentiles,
+    _score_panel,
+    _to_float,
 )
 
 logger = logging.getLogger("optuna_feature_elimination")
@@ -127,26 +130,6 @@ def ensure_tables(conn: Any) -> None:
             conn.execute(stmt)
 
 
-def _load_candidate_panel_df(conn: Any, feature_set_id: str) -> pd.DataFrame:
-    table_cols = {row[0] for row in conn.execute("DESCRIBE fact_feature_panel_candidate").fetchall()}
-    labels = [label for label in LABEL_COLUMNS if label in table_cols]
-    if "forward_ret_20d" not in labels:
-        labels.append("forward_ret_20d")
-    features = _candidate_features_for_set(conn, feature_set_id)
-    cols = ["stock_code", "date", *labels, *features]
-    sql = (
-        f"SELECT {', '.join(cols)} FROM fact_feature_panel_candidate "
-        "WHERE feature_set_id = ? AND forward_ret_20d IS NOT NULL"
-    )
-    cursor = conn.execute(sql, (feature_set_id,))
-    if hasattr(cursor, "df"):
-        return cursor.df()
-    rows = cursor.fetchall()
-    desc = getattr(cursor, "description", None) or []
-    names = [d[0] for d in desc]
-    return pd.DataFrame([tuple(row) for row in rows], columns=names)
-
-
 def _feature_group(feature: str) -> str:
     for group, features in FEATURE_GROUPS.items():
         if feature in features:
@@ -154,36 +137,8 @@ def _feature_group(feature: str) -> str:
     return "other"
 
 
-def _mean_rank_ic_df(df: pd.DataFrame, score_col: str, label_col: str = "forward_ret_20d") -> float | None:
-    vals = []
-    for _, part in df[[score_col, label_col, "date"]].dropna().groupby("date"):
-        if len(part) < 3:
-            continue
-        if part[score_col].nunique() < 2 or part[label_col].nunique() < 2:
-            continue
-        corr = part[score_col].rank().corr(part[label_col].rank())
-        if pd.notna(corr):
-            vals.append(float(corr))
-    if not vals:
-        return None
-    return float(sum(vals) / len(vals))
-
-
-def _score_panel_df(df: pd.DataFrame, features: list[str], signs: dict[str, int], out_col: str) -> pd.DataFrame:
-    scored = df.copy()
-    rank_cols = []
-    for feature in features:
-        if feature not in scored.columns:
-            continue
-        col = f"__rank_{feature}"
-        scored[col] = scored.groupby("date")[feature].rank(pct=True) * signs.get(feature, 1)
-        rank_cols.append(col)
-    scored[out_col] = scored[rank_cols].mean(axis=1) if rank_cols else None
-    return scored
-
-
 def _score_subset(
-    df,
+    rows: list[dict[str, Any]],
     features: list[str],
     signs: dict[str, int],
     *,
@@ -191,81 +146,16 @@ def _score_subset(
 ) -> float | None:
     if not features:
         return None
-    scored = _score_panel_df(df, features, signs, "__subset_score")
-    return _mean_rank_ic_df(scored, "__subset_score", label_col=label_col)
+    scored = _score_panel(rows, features, signs, "__subset_score")
+    return _mean_rank_ic(scored, "__subset_score", label_col=label_col)
 
 
 def _rank_col(feature: str) -> str:
     return f"__rank_{feature}"
 
 
-def _ranked_feature_panel(df, features: list[str], signs: dict[str, int]):
-    cols = ["date", *[label for label in LABEL_COLUMNS if label in df.columns]]
-    ranked = df[cols].copy()
-    for feature in features:
-        ranked[_rank_col(feature)] = df.groupby("date")[feature].rank(pct=True) * signs.get(feature, 1)
-    return ranked
-
-
-def _score_ranked_subset(ranked, features: list[str], *, label_col: str = "forward_ret_20d") -> float | None:
-    if not features or label_col not in ranked.columns:
-        return None
-    rank_cols = [_rank_col(feature) for feature in features if _rank_col(feature) in ranked.columns]
-    if not rank_cols:
-        return None
-    scored = ranked[["date", label_col, *rank_cols]].copy()
-    scored["__subset_score"] = scored[rank_cols].mean(axis=1)
-    return _mean_rank_ic_df(scored, "__subset_score", label_col=label_col)
-
-
-def _daily_rank_array(df, column: str) -> np.ndarray:
-    return df.groupby("date")[column].rank(pct=True).to_numpy(dtype=np.float32)
-
-
-def _mean_rank_ic_array(
-    score: np.ndarray,
-    label_rank: np.ndarray,
-    date_codes: np.ndarray,
-    n_dates: int,
-) -> float | None:
-    valid = np.isfinite(score) & np.isfinite(label_rank) & (date_codes >= 0)
-    if not np.any(valid):
-        return None
-    codes = date_codes[valid]
-    x = score[valid].astype(np.float64, copy=False)
-    y = label_rank[valid].astype(np.float64, copy=False)
-    count = np.bincount(codes, minlength=n_dates).astype(np.float64)
-    sum_x = np.bincount(codes, weights=x, minlength=n_dates)
-    sum_y = np.bincount(codes, weights=y, minlength=n_dates)
-    sum_x2 = np.bincount(codes, weights=x * x, minlength=n_dates)
-    sum_y2 = np.bincount(codes, weights=y * y, minlength=n_dates)
-    sum_xy = np.bincount(codes, weights=x * y, minlength=n_dates)
-
-    with np.errstate(divide="ignore", invalid="ignore"):
-        cov_xy = sum_xy - (sum_x * sum_y / count)
-        var_x = sum_x2 - (sum_x * sum_x / count)
-        var_y = sum_y2 - (sum_y * sum_y / count)
-        corr = cov_xy / np.sqrt(var_x * var_y)
-    usable = (count >= 3) & np.isfinite(corr)
-    if not np.any(usable):
-        return None
-    return float(np.mean(corr[usable]))
-
-
-def _build_rank_cache(df, features: list[str]) -> dict[str, Any]:
-    date_codes, _ = pd.factorize(df["date"].astype(str), sort=True)
-    labels = {
-        label: _daily_rank_array(df, label)
-        for label in LABEL_COLUMNS
-        if label in df.columns
-    }
-    feature_ranks = {feature: _daily_rank_array(df, feature) for feature in features}
-    return {
-        "date_codes": date_codes.astype(np.int32, copy=False),
-        "n_dates": int(date_codes.max() + 1) if len(date_codes) else 0,
-        "labels": labels,
-        "features": feature_ranks,
-    }
+def _build_rank_cache(rows: list[dict[str, Any]], features: list[str]) -> dict[str, Any]:
+    return {"rows": rows, "features": set(features)}
 
 
 def _score_cached_subset(
@@ -275,38 +165,21 @@ def _score_cached_subset(
     *,
     label_col: str = "forward_ret_20d",
 ) -> float | None:
-    label_rank = rank_cache["labels"].get(label_col)
-    if label_rank is None or not features:
+    if not features:
         return None
-    score_sum = np.zeros_like(label_rank, dtype=np.float32)
-    score_count = np.zeros(label_rank.shape, dtype=np.int16)
-    for feature in features:
-        ranks = rank_cache["features"].get(feature)
-        if ranks is None:
-            continue
-        valid = np.isfinite(ranks)
-        score_sum[valid] += ranks[valid] * signs.get(feature, 1)
-        score_count[valid] += 1
-    score = np.full(label_rank.shape, np.nan, dtype=np.float32)
-    valid_score = score_count > 0
-    score[valid_score] = score_sum[valid_score] / score_count[valid_score]
-    return _mean_rank_ic_array(
-        score,
-        label_rank,
-        rank_cache["date_codes"],
-        rank_cache["n_dates"],
-    )
+    usable = [feature for feature in features if feature in rank_cache["features"]]
+    return _score_subset(rank_cache["rows"], usable, signs, label_col=label_col)
 
 
 def _fold_rank_ics(
-    df,
+    rows: list[dict[str, Any]],
     score_col: str,
     *,
     label_col: str = "forward_ret_20d",
     folds: int = 4,
 ) -> list[float | None]:
-    dates = sorted(str(d) for d in df["date"].dropna().unique())
-    if not dates or label_col not in df.columns:
+    dates = sorted({str(row.get("date")) for row in rows if row.get("date") is not None})
+    if not dates or not any(label_col in row for row in rows):
         return []
     n_folds = min(max(int(folds), 1), len(dates))
     values: list[float | None] = []
@@ -316,8 +189,8 @@ def _fold_rank_ics(
         fold_dates = set(dates[start:end])
         if not fold_dates:
             continue
-        part = df[df["date"].astype(str).isin(fold_dates)]
-        values.append(_mean_rank_ic_df(part, score_col, label_col=label_col))
+        part = [row for row in rows if str(row.get("date")) in fold_dates]
+        values.append(_mean_rank_ic(part, score_col, label_col=label_col))
     return values
 
 
@@ -340,8 +213,24 @@ def _filter_rejection_reason(stat: dict[str, Any], min_coverage: float, min_abs_
     return None
 
 
+def _spearman_feature_corr(rows: list[dict[str, Any]], left: str, right: str) -> float | None:
+    pairs = [
+        (left_value, right_value)
+        for row in rows
+        if (left_value := _to_float(row.get(left))) is not None
+        if (right_value := _to_float(row.get(right))) is not None
+    ]
+    if len(pairs) < 3:
+        return None
+    left_values = [value for value, _ in pairs]
+    right_values = [value for _, value in pairs]
+    if len(set(left_values)) < 2 or len(set(right_values)) < 2:
+        return None
+    return _pearson(_rank_percentiles(left_values), _rank_percentiles(right_values))
+
+
 def _correlation_rejections(
-    df,
+    rows: list[dict[str, Any]],
     selected_features: list[str],
     feature_stats: dict[str, dict[str, Any]],
     *,
@@ -351,8 +240,6 @@ def _correlation_rejections(
     rejected: dict[str, str] = {}
     if len(selected) < 2:
         return selected, rejected
-
-    corr = df[selected].corr(method="spearman").abs()
 
     def quality(feature: str) -> tuple[float, float]:
         stat = feature_stats[feature]
@@ -364,8 +251,8 @@ def _correlation_rejections(
         for right in selected_features[idx + 1:]:
             if right not in selected:
                 continue
-            value = corr.loc[left, right]
-            if pd.isna(value) or float(value) < threshold:
+            value = _spearman_feature_corr(rows, left, right)
+            if value is None or abs(float(value)) < threshold:
                 continue
             keep, drop = (left, right) if quality(left) >= quality(right) else (right, left)
             if drop in selected:
@@ -628,39 +515,36 @@ def run_optuna_feature_elimination(
             min_abs_ic=min_abs_ic,
             run_id=run_id,
         )
-    df = _load_candidate_panel_df(conn, feature_set_id)
-    if df.empty:
+    records = _load_candidate_panel(conn, feature_set_id)
+    if not records:
         raise RuntimeError(f"fact_feature_panel_candidate empty for feature_set_id={feature_set_id}")
 
     feature_group_map = _feature_group_map_for_set(conn, feature_set_id)
     candidate_features = _candidate_features_for_set(conn, feature_set_id)
-    usable = [f for f in candidate_features if f in df.columns and df[f].notna().any()]
+    panel_cols = set(records[0].keys())
+    usable = [
+        feature for feature in candidate_features
+        if feature in panel_cols and any(_to_float(row.get(feature)) is not None for row in records)
+    ]
     if not usable:
         raise RuntimeError("candidate panel has no non-null candidate features")
 
-    n = len(df)
-    rank_cache = _build_rank_cache(df, usable)
+    n = len(records)
+    rank_cache = _build_rank_cache(records, usable)
     feature_stats = {}
     for feature in usable:
-        coverage = float(df[feature].notna().sum() / max(n, 1) * 100)
-        feature_df = df.rename(columns={feature: "__score"})
-        feature_rank = rank_cache["features"][feature]
-        rank_ic = _mean_rank_ic_array(
-            feature_rank,
-            rank_cache["labels"]["forward_ret_20d"],
-            rank_cache["date_codes"],
-            rank_cache["n_dates"],
+        coverage = float(
+            sum(1 for row in records if _to_float(row.get(feature)) is not None)
+            / max(n, 1)
+            * 100
         )
-        fold_ics = _fold_rank_ics(feature_df, "__score")
+        feature_rows = [{**row, "__score": row.get(feature)} for row in records]
+        rank_ic = _mean_rank_ic(feature_rows, "__score")
+        fold_ics = _fold_rank_ics(feature_rows, "__score")
         sensitivity = {
-            label: _mean_rank_ic_array(
-                feature_rank,
-                rank_cache["labels"][label],
-                rank_cache["date_codes"],
-                rank_cache["n_dates"],
-            )
+            label: _mean_rank_ic(feature_rows, "__score", label_col=label)
             for label in LABEL_COLUMNS
-            if label in rank_cache["labels"] and label != "forward_ret_20d"
+            if label in panel_cols and label != "forward_ret_20d"
         }
         feature_stats[feature] = {
             "coverage_pct": coverage,
@@ -711,12 +595,12 @@ def run_optuna_feature_elimination(
     else:
         selected_features = deterministic_candidates
 
-    selected_features, correlation_rejected = _correlation_rejections(df, selected_features, feature_stats)
+    selected_features, correlation_rejected = _correlation_rejections(records, selected_features, feature_stats)
     objective_score = _score_cached_subset(rank_cache, selected_features, signs)
     label_sensitivity = {
         label: _score_cached_subset(rank_cache, selected_features, signs, label_col=label)
         for label in LABEL_COLUMNS
-        if label in df.columns
+        if label in panel_cols
     }
 
     rejected = [f for f in usable if f not in selected_features]

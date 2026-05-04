@@ -37,9 +37,9 @@ records/native helpers.
 The TDX challenger report loop converted rank-ensemble scoring and holdout
 metrics to records/native helpers and removed an indirect pandas import through
 feature-group ablation.
-The feature-group ablation loop converted candidate-panel loading, rank IC,
-and grouped score ablation to records/native helpers while keeping the still
-pandas-backed Optuna script isolated on its own legacy loader.
+The feature evaluation loop converted feature-group ablation and Optuna-style
+feature elimination to records/native ranking, scoring, fold, and correlation
+helpers.
 
 ## Change
 
@@ -159,8 +159,9 @@ pandas-backed Optuna script isolated on its own legacy loader.
 - Removed pandas from `backend/scripts/run_feature_group_ablation.py`.
 - Converted candidate-panel loading, rank percentiles, Spearman RankIC, and
   feature-group score ablation to records/native helpers.
-- Updated `backend/scripts/run_optuna_feature_elimination.py` to keep its
-  pandas-backed candidate-panel loader local until that script is converted.
+- Removed pandas/numpy from `backend/scripts/run_optuna_feature_elimination.py`.
+- Converted deterministic and Optuna subset scoring, fold stability checks,
+  horizon sensitivity, and correlation pruning to records/native helpers.
 
 ## Validation
 
@@ -469,7 +470,7 @@ python3 -m pytest backend/tests -q
 python3 backend/scripts/data_health_snapshot.py --dry-run
 # green=147/yellow=0/red=0
 
-rg -n "import pandas|from pandas|pd\.|DataFrame|read_sql_query|\.to_sql\(|\.df\(|register\(" backend/scripts/run_feature_group_ablation.py -S
+rg -n "import pandas|from pandas|pd\.|DataFrame|read_sql_query|\.to_sql\(|\.df\(|register\(|import numpy|from numpy|np\." backend/scripts/run_feature_group_ablation.py backend/scripts/run_optuna_feature_elimination.py -S
 # 0 matches
 
 python3 -m py_compile backend/scripts/run_feature_group_ablation.py backend/scripts/run_optuna_feature_elimination.py
@@ -479,6 +480,9 @@ python3 -m pytest backend/tests/test_candidate_feature_pipeline.py -q
 # 2 passed
 
 python3 backend/scripts/run_feature_group_ablation.py --help
+# import/CLI smoke passed
+
+python3 backend/scripts/run_optuna_feature_elimination.py --help
 # import/CLI smoke passed
 
 python3 -m pytest backend/tests -q
