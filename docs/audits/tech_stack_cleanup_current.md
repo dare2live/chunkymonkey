@@ -5,7 +5,7 @@ Date: 2026-05-05
 ## Current Facts
 
 - Main backend uses DuckDB plus records/native rows for project-owned data flow.
-- tdxhub integration is pinned to `75d84b0b7a8824b956e01e1949816f0110ec9333`, and ChunkyMonkey consumes records-first wrappers on the used paths.
+- tdxhub integration is pinned to `b039d8c68fb21543a9ff041f004d75113b5a4e3d`, and ChunkyMonkey consumes records-first wrappers on the used paths.
 - miaoxiang public DDL path no longer exposes the retired dialect.
 - Data health dry run currently reports 147 green assets and no warn/fail assets.
 - GitHub Actions run `25344161174` passed both Python matrix jobs.
