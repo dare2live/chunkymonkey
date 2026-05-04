@@ -51,6 +51,9 @@ quarter-row normalization, dedupe, and writes to records/native helpers.
 The holder migration loop converted the one-time tdxhub holder migration to
 direct DuckDB SQL between source/target databases, preserving alias normalization
 and idempotent fact writes without pandas registration.
+The multidim feature-ablation loop removed its dependency on the shared
+DataFrame training helpers by adding records/native panel loading, date splits,
+IC/RankIC, decile metrics, and LightGBM matrix preparation.
 
 ## Change
 
@@ -190,6 +193,10 @@ and idempotent fact writes without pandas registration.
 - Converted raw holder research, holder periods, controlling shareholder,
   shareholder plans, and shareholder trades migration to direct DuckDB SQL.
 - Added `backend/tests/test_migrate_holders_to_tdxhub.py`.
+- Removed pandas from `backend/scripts/run_feature_ablation.py`.
+- Converted multidim ablation panel loading, time splits, IC/RankIC,
+  decile metrics, and LightGBM inputs to records/native helpers.
+- Added `backend/tests/test_run_feature_ablation.py`.
 
 ## Validation
 
@@ -561,8 +568,20 @@ python3 -m pytest backend/tests/test_migrate_holders_to_tdxhub.py -q
 python3 backend/scripts/migrate_holders_to_tdxhub.py --help
 # import/CLI smoke passed
 
+rg -n "pandas|pd\.|DataFrame|read_sql_query|\.to_sql\(|\.df\(|register\(" backend/scripts/run_feature_ablation.py backend/tests/test_run_feature_ablation.py -S
+# 0 matches
+
+python3 -m py_compile backend/scripts/run_feature_ablation.py backend/tests/test_run_feature_ablation.py
+# passed
+
+python3 -m pytest backend/tests/test_run_feature_ablation.py -q
+# 2 passed
+
+python3 backend/scripts/run_feature_ablation.py --help
+# import/CLI smoke passed
+
 python3 -m pytest backend/tests -q
-# 341 passed
+# 343 passed
 
 python3 backend/scripts/data_health_snapshot.py --dry-run
 # green=147/yellow=0/red=0

@@ -9,14 +9,15 @@ from __future__ import annotations
 import argparse
 import json
 import logging
+import math
 import sys
 from datetime import datetime
 from pathlib import Path
+from typing import Any
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 import lightgbm as lgb
-import pandas as pd
 
 from services.db import get_conn
 from services.model_feature_schema import (
@@ -25,7 +26,6 @@ from services.model_feature_schema import (
     DENSE_V2_FEATURE_COLS,
     REGIME_FEATURE_COLS,
 )
-from scripts.train_multidim_model import compute_ic, decile_metrics, load_panel, split_time_series
 
 
 logger = logging.getLogger("feature_ablation")
@@ -76,8 +76,282 @@ LEGACY_FIXED_PARAMS = {
 }
 
 
-def _existing(cols: list[str], df: pd.DataFrame) -> list[str]:
-    return [c for c in cols if c in df.columns]
+def _records_from_cursor(cursor: Any) -> list[dict[str, Any]]:
+    names = [desc[0] for desc in (cursor.description or [])]
+    return [
+        {name: value for name, value in zip(names, row)}
+        for row in cursor.fetchall()
+    ]
+
+
+def _is_missing(value: Any) -> bool:
+    if value is None:
+        return True
+    try:
+        return value != value
+    except Exception:
+        return False
+
+
+def _to_float(value: Any) -> float | None:
+    if _is_missing(value):
+        return None
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _quote_ident(name: str) -> str:
+    return '"' + name.replace('"', '""') + '"'
+
+
+def _existing(cols: list[str], rows: list[dict[str, Any]]) -> list[str]:
+    if not rows:
+        return []
+    panel_cols = set(rows[0].keys())
+    return [c for c in cols if c in panel_cols]
+
+
+def _rank_percentiles(values: list[float]) -> list[float]:
+    n = len(values)
+    if n == 0:
+        return []
+    indexed = sorted(enumerate(values), key=lambda item: item[1])
+    ranks = [0.0] * n
+    pos = 0
+    while pos < n:
+        end = pos + 1
+        while end < n and indexed[end][1] == indexed[pos][1]:
+            end += 1
+        avg_rank = ((pos + 1) + end) / 2.0
+        percentile = avg_rank / n
+        for idx in range(pos, end):
+            ranks[indexed[idx][0]] = percentile
+        pos = end
+    return ranks
+
+
+def _pearson(xs: list[float], ys: list[float]) -> float | None:
+    n = len(xs)
+    if n == 0 or n != len(ys):
+        return None
+    mean_x = sum(xs) / n
+    mean_y = sum(ys) / n
+    dx = [value - mean_x for value in xs]
+    dy = [value - mean_y for value in ys]
+    denom_x = sum(value * value for value in dx)
+    denom_y = sum(value * value for value in dy)
+    if denom_x <= 0 or denom_y <= 0:
+        return None
+    return sum(x * y for x, y in zip(dx, dy)) / ((denom_x * denom_y) ** 0.5)
+
+
+def _mean(values: list[float]) -> float:
+    return sum(values) / len(values) if values else math.nan
+
+
+def _quantile(values: list[float], q: float) -> float | None:
+    if not values:
+        return None
+    ordered = sorted(values)
+    if len(ordered) == 1:
+        return ordered[0]
+    pos = (len(ordered) - 1) * q
+    low = math.floor(pos)
+    high = math.ceil(pos)
+    if low == high:
+        return ordered[low]
+    weight = pos - low
+    return ordered[low] * (1 - weight) + ordered[high] * weight
+
+
+def _group_by_date(rows: list[dict[str, Any]]) -> dict[str, list[dict[str, Any]]]:
+    groups: dict[str, list[dict[str, Any]]] = {}
+    for row in rows:
+        groups.setdefault(str(row.get("date")), []).append(row)
+    return groups
+
+
+def load_panel_records(
+    conn,
+    start_date: str,
+    end_date: str,
+    *,
+    label_name: str = DEFAULT_LABEL_NAME,
+) -> list[dict[str, Any]]:
+    duck = conn.raw if hasattr(conn, "raw") else conn
+    panel_cols = {
+        row[0]
+        for row in duck.execute(
+            "SELECT column_name FROM information_schema.columns WHERE table_name = 'fact_feature_panel'"
+        ).fetchall()
+    }
+    if label_name not in panel_cols:
+        raise RuntimeError(f"fact_feature_panel 缺少 label 列: {label_name}")
+    alpha158_cols: list[str] = []
+    alpha158_join = ""
+    alpha158_db = Path(__file__).resolve().parent.parent.parent / "data" / "alpha158.duckdb"
+    if alpha158_db.exists():
+        try:
+            duck.execute(f"ATTACH IF NOT EXISTS '{alpha158_db}' AS a158 (READ_ONLY)")
+            alpha158_cols = [
+                row[0]
+                for row in duck.execute(
+                    """
+                    SELECT column_name
+                    FROM information_schema.columns
+                    WHERE table_catalog='a158'
+                      AND table_name='fact_alpha158_panel'
+                      AND column_name LIKE 'a158_%'
+                    """
+                ).fetchall()
+            ]
+            alpha158_join = (
+                "LEFT JOIN a158.fact_alpha158_panel a "
+                "ON a.stock_code = p.stock_code AND a.date = CAST(p.date AS DATE)"
+            )
+            logger.info("Alpha158 join 启用, 增补 %d 列", len(alpha158_cols))
+        except Exception as exc:
+            logger.warning("Alpha158 attach failed: %s", exc)
+
+    feature_candidates = [
+        *BASE_FEATURE_COLS,
+        *DENSE_V2_FEATURE_COLS,
+    ]
+    select_features = []
+    seen = set()
+    for col in feature_candidates:
+        if col in panel_cols and col not in seen:
+            select_features.append(col)
+            seen.add(col)
+    select_cols = [
+        "p.stock_code",
+        "p.date",
+        "p.regime_flag",
+        f"p.{_quote_ident(label_name)} AS label_value",
+        *[f"CAST(p.{_quote_ident(col)} AS DOUBLE) AS {_quote_ident(col)}" for col in select_features],
+        *[f"CAST(a.{_quote_ident(col)} AS DOUBLE) AS {_quote_ident(col)}" for col in alpha158_cols],
+    ]
+    rows = _records_from_cursor(
+        duck.execute(
+            f"""
+            SELECT {', '.join(select_cols)}
+            FROM fact_feature_panel p
+            {alpha158_join}
+            WHERE p.date >= ? AND p.date <= ? AND p.{_quote_ident(label_name)} IS NOT NULL
+            """,
+            (start_date, end_date),
+        )
+    )
+    for row in rows:
+        regime = row.get("regime_flag")
+        row["regime_up"] = 1 if regime == "up" else 0
+        row["regime_flat"] = 1 if regime == "flat" else 0
+        row["regime_down"] = 1 if regime == "down" else 0
+    logger.info(
+        "rows=%d codes=%d dates=%d total_cols=%d",
+        len(rows),
+        len({row.get("stock_code") for row in rows}),
+        len({row.get("date") for row in rows}),
+        len(rows[0]) if rows else 0,
+    )
+    return rows
+
+
+def split_time_series_records(
+    rows: list[dict[str, Any]],
+    train_ratio: float = 0.7,
+    valid_ratio: float = 0.15,
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]], list[dict[str, Any]]]:
+    dates = sorted({row["date"] for row in rows})
+    n = len(dates)
+    t_end = dates[int(n * train_ratio)]
+    v_end = dates[int(n * (train_ratio + valid_ratio))]
+    train = [row for row in rows if row["date"] < t_end]
+    valid = [row for row in rows if t_end <= row["date"] < v_end]
+    holdout = [row for row in rows if row["date"] >= v_end]
+    logger.info(
+        "split: train %s ~ %s (%d)  valid %s ~ %s (%d)  holdout %s ~ %s (%d)",
+        min((row["date"] for row in train), default=None),
+        max((row["date"] for row in train), default=None),
+        len(train),
+        min((row["date"] for row in valid), default=None),
+        max((row["date"] for row in valid), default=None),
+        len(valid),
+        min((row["date"] for row in holdout), default=None),
+        max((row["date"] for row in holdout), default=None),
+        len(holdout),
+    )
+    return train, valid, holdout
+
+
+def _matrix(rows: list[dict[str, Any]], cols: list[str]) -> list[list[float]]:
+    return [
+        [_to_float(row.get(col)) or 0.0 for col in cols]
+        for row in rows
+    ]
+
+
+def _values(rows: list[dict[str, Any]], col: str) -> list[float]:
+    return [_to_float(row.get(col)) or 0.0 for row in rows]
+
+
+def _dates(rows: list[dict[str, Any]]) -> list[str]:
+    return [str(row.get("date")) for row in rows]
+
+
+def compute_ic(y_true: list[float], y_pred, dates: list[str]) -> tuple[float, float]:
+    pearson_values = []
+    spearman_values = []
+    grouped: dict[str, list[tuple[float, float]]] = {}
+    for y, pred, date in zip(y_true, y_pred, dates):
+        grouped.setdefault(str(date), []).append((float(y), float(pred)))
+    for pairs in grouped.values():
+        if len(pairs) < 2:
+            continue
+        ys = [y for y, _ in pairs]
+        preds = [pred for _, pred in pairs]
+        if len(set(ys)) < 2 or len(set(preds)) < 2:
+            continue
+        pearson = _pearson(ys, preds)
+        spearman = _pearson(_rank_percentiles(ys), _rank_percentiles(preds))
+        if pearson is not None:
+            pearson_values.append(float(pearson))
+        if spearman is not None:
+            spearman_values.append(float(spearman))
+    return _mean(pearson_values), _mean(spearman_values)
+
+
+def decile_metrics(y_true: list[float], y_pred, dates: list[str]) -> dict[str, float]:
+    top_avgs = []
+    bottom_avgs = []
+    top_winrates = []
+    grouped: dict[str, list[tuple[float, float]]] = {}
+    for y, pred, date in zip(y_true, y_pred, dates):
+        grouped.setdefault(str(date), []).append((float(y), float(pred)))
+    for pairs in grouped.values():
+        if len(pairs) < 10:
+            continue
+        preds = [pred for _, pred in pairs]
+        q10 = _quantile(preds, 0.1)
+        q90 = _quantile(preds, 0.9)
+        if q10 is None or q90 is None:
+            continue
+        top = [y for y, pred in pairs if pred >= q90]
+        bottom = [y for y, pred in pairs if pred <= q10]
+        if top and bottom:
+            top_avgs.append(sum(top) / len(top))
+            bottom_avgs.append(sum(bottom) / len(bottom))
+            top_winrates.append(sum(1 for value in top if value > 0) / len(top))
+    top_avg = _mean(top_avgs)
+    bot_avg = _mean(bottom_avgs)
+    return {
+        "top_avg": top_avg,
+        "bot_avg": bot_avg,
+        "spread": top_avg - bot_avg,
+        "winrate_top": _mean(top_winrates),
+    }
 
 
 def load_baseline_params(conn, model_id: str | None) -> tuple[str, dict]:
@@ -141,17 +415,20 @@ def main() -> None:
             params = dict(LEGACY_FIXED_PARAMS)
             logger.info("params_source=fixed, 使用 LEGACY_FIXED_PARAMS")
 
-        df = load_panel(conn, args.start, args.end, label_name=args.label_name)
-        train, valid, holdout = split_time_series(df)
-        train_valid = pd.concat([train, valid], ignore_index=True)
-        a158 = [c for c in df.columns if c.startswith("a158_")]
+        records = load_panel_records(conn, args.start, args.end, label_name=args.label_name)
+        if not records:
+            raise RuntimeError("fact_feature_panel 空或无 label; 先跑 build_feature_panel_duck.py")
+        train, valid, holdout = split_time_series_records(records)
+        train_valid = [*train, *valid]
+        panel_cols = set(records[0].keys())
+        a158 = [c for c in panel_cols if c.startswith("a158_")]
         groups = {
-            "base": _existing(BASE_FEATURE_COLS, df),
-            "base_dense_v2": _existing(BASE_FEATURE_COLS + DENSE_V2_FEATURE_COLS, df),
-            "base_alpha158": _existing(BASE_FEATURE_COLS, df) + a158,
-            "base_dense_v2_alpha158": _existing(BASE_FEATURE_COLS + DENSE_V2_FEATURE_COLS, df) + a158,
+            "base": _existing(BASE_FEATURE_COLS, records),
+            "base_dense_v2": _existing(BASE_FEATURE_COLS + DENSE_V2_FEATURE_COLS, records),
+            "base_alpha158": _existing(BASE_FEATURE_COLS, records) + a158,
+            "base_dense_v2_alpha158": _existing(BASE_FEATURE_COLS + DENSE_V2_FEATURE_COLS, records) + a158,
             "base_dense_v2_regime": _existing(
-                BASE_FEATURE_COLS + DENSE_V2_FEATURE_COLS + REGIME_FEATURE_COLS, df
+                BASE_FEATURE_COLS + DENSE_V2_FEATURE_COLS + REGIME_FEATURE_COLS, records
             ),
         }
         for name, cols in groups.items():
@@ -176,15 +453,19 @@ def main() -> None:
             logger.info("=== 训练 %s (n_feat=%d) ===", name, len(cols))
             # 与 baseline final fit 对齐: train+valid 合并 fit, num_round=400 固定, 不 early_stopping
             # 不能把 holdout 当 valid_sets, 否则有 lookahead bias 且 LightGBM 会在 holdout 上早停
-            dt = lgb.Dataset(train_valid[cols].values, label=train_valid["label_value"].values, feature_name=cols)
+            dt = lgb.Dataset(
+                _matrix(train_valid, cols),
+                label=_values(train_valid, "label_value"),
+                feature_name=cols,
+            )
             model = lgb.train(params, dt, num_boost_round=args.num_round)
             best_iter = args.num_round  # 固定轮数, 无 early_stopping
-            pred = model.predict(holdout[cols].values)
+            pred = model.predict(_matrix(holdout, cols))
             ic, rank_ic = compute_ic(
-                holdout["label_value"].values, pred, holdout["date"].values
+                _values(holdout, "label_value"), pred, _dates(holdout)
             )
             dec = decile_metrics(
-                holdout["label_value"].values, pred, holdout["date"].values
+                _values(holdout, "label_value"), pred, _dates(holdout)
             )
             results[name] = {
                 "n_features": len(cols),
