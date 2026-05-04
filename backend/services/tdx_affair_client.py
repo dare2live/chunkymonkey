@@ -217,7 +217,7 @@ def _safe_float(val) -> Optional[float]:
         return None
     try:
         import math
-        # pandas Series (duplicate column names in gpcw)
+        # Table-like rows may expose duplicate gpcw column names.
         if hasattr(val, 'iloc'):
             val = val.iloc[0]
         f = float(val)

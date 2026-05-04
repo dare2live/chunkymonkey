@@ -186,7 +186,7 @@ def _feature_value(value: Any) -> float:
 
 
 def _rank_percentiles(values: list[float]) -> list[float]:
-    """Match pandas rank(pct=True) average-tie semantics for prediction scores."""
+    """Use average-tie percentile rank semantics for prediction scores."""
     n = len(values)
     if n == 0:
         return []

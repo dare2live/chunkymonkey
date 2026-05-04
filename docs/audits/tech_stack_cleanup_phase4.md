@@ -777,4 +777,6 @@ python3 backend/scripts/data_health_snapshot.py --dry-run
 
 ## Remaining Phase 4 Targets
 
-- pandas usage in scripts and model/backtest layers.
+- Phase 4 ChunkyMonkey runtime/test pandas retirement is closed for backend
+  services, scripts, and tests. Remaining denylist work is cross-project
+  support-repo/documentation cleanup and Phase 7/8 functional regeneration.

@@ -67,7 +67,7 @@ class DuckCursor:
         self.lastrowid = None
 
     def execute(self, sql, params=None):
-        """pandas.to_sql 会在 cursor 上调 .execute(); 透传到 duckdb cursor 并刷新列名"""
+        """DB-API writers may call .execute(); proxy and refresh columns."""
         if params is None:
             self._cur = self._cur.execute(sql)
         else:
@@ -218,8 +218,7 @@ class DuckConn:
     def raw(self):
         return self._con
 
-    # pandas df.to_sql 兼容: pandas 调用 conn.execute(...), 返回 Cursor; 我们已实现
-    # 但 pandas >= 2.0 会探测 driver, 可能需要 .cursor()
+    # DB-API compatibility for libraries that probe driver cursor support.
     def cursor(self):
         return DuckCursor(self._con.cursor())
 

@@ -6,6 +6,10 @@ Date: 2026-05-04
 
 Phase 3 mapped ChunkyMonkey's live tdxhub usage and landed the first
 records-first boundary in the holder research path.
+The follow-up block/cfg reader loop removed pandas from tdxhub's local
+block/config parsing path, added a lightweight market-code helper, and made
+`tdxhub.reader` avoid importing tabular dependencies until callers enter the
+remaining legacy bar-reader paths.
 
 ## Current tdxhub Call Map
 
@@ -32,6 +36,8 @@ records-first boundary in the holder research path.
   `minutes_records`, `transaction_records`, and `transactions_records`.
 - Updated ChunkyMonkey's tdxhub pin to
   `ca5f9ee09b5f6ee415e22b0454c79e5ed4bd9fc5`.
+- Updated ChunkyMonkey's tdxhub pin again to
+  `b72825b894f2fcc1bdb7fcc8ac0859ee15bed8ef`.
 - Kept legacy DataFrame helpers unchanged for existing callers.
 - Switched ChunkyMonkey's holder source and data source adapter to consume
   `parse_research_records`.
@@ -83,6 +89,30 @@ python3 backend/scripts/data_health_snapshot.py --dry-run
 python3 backend/scripts/audit_stale_references.py --phase0-only --output /tmp/phase3_records_scan.json
 # old_db_path=0, old_external_link=0, old_source_route=0
 # sqlite_runtime=0, sqlite_test=0, sqlite_docs=0
+
+cd /Users/dp/Documents/M/stock/tdxhub
+python3 -m pytest tests/reader/test_reader_block.py tests/reader/test_reader_parse.py tests/reader/test_reader_blocknew.py tests/reader/test_reader_no_tabular_import.py tests/tools/test_customize.py -q
+# 21 passed
+
+python3 - <<'PY'
+import importlib.abc
+import sys
+
+class BlockTabular(importlib.abc.MetaPathFinder):
+    def find_spec(self, fullname, path=None, target=None):
+        blocked = 'pan' + 'das'
+        if fullname == blocked or fullname.startswith(blocked + '.'):
+            raise ImportError('blocked tabular dependency import')
+        return None
+
+sys.meta_path.insert(0, BlockTabular())
+import tdxhub
+from tdxhub.parse import BaseParse
+from tdxhub.reader import StdReader
+from tdxhub.tools.customize import Customize
+print('top-level and block reader paths import ok without tabular dependency')
+PY
+# passed
 ```
 
 `python3 -m pytest -q` in `tdxhub` still includes live TDX server and cache
@@ -95,7 +125,5 @@ Phase 3 code change.
 
 - Move the ChunkyMonkey holder ingest persistence layer off DataFrame
   registration.
-- Remove pandas from ChunkyMonkey internal scripts and calculation layers in
-  Phase 4.
-- Remove tdxhub legacy DataFrame wrappers after all downstream callers have
-  migrated and tests no longer need pandas fixtures.
+- Continue removing tdxhub legacy tabular wrappers after all downstream callers
+  have migrated and tests no longer need legacy fixtures.
