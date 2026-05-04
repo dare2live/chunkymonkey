@@ -24,6 +24,7 @@ from services.holders_resolver import (  # noqa: E402
     HolderSource,
     ResolverResult,
     SourceExhausted,
+    TdxhubHolderSource,
 )
 
 
@@ -63,6 +64,47 @@ class _MockSource(HolderSource):
             r.holders_df = pd.DataFrame()  # has_data() 返回 False
             return r
         return _make_result(self.name, self.source_tier)
+
+
+class _FakeTdxhubFetcher:
+    def __init__(self, text: str) -> None:
+        self._text = text
+        self.closed = False
+
+    def fetch_text(self, symbol: str) -> str:
+        assert symbol == "600519"
+        return self._text
+
+    def stats(self) -> dict:
+        return {"active_server": ("fixture", 7709)}
+
+    def close(self) -> None:
+        self.closed = True
+
+
+def test_tdxhub_source_accepts_records_payload_from_tdxhub():
+    fixture = (
+        Path(__file__).resolve().parents[2].parent
+        / "tdxhub"
+        / "tests"
+        / "fixtures"
+        / "holders"
+        / "sh_main_moutai_600519.txt"
+    )
+    source = TdxhubHolderSource(
+        fetcher=_FakeTdxhubFetcher(fixture.read_text(encoding="utf-8"))
+    )
+
+    result = source.fetch("600519", stock_name="贵州茅台")
+
+    assert result is not None
+    assert result.source == "tdx_f10"
+    assert not result.holders_df.empty
+    assert not result.periods_df.empty
+    assert "holder_name" in result.holders_df.columns
+    assert result.raw_hash
+    assert result.plans_df is not None
+    assert result.trades_df is not None
 
 
 def test_first_source_succeeds_no_fallback():

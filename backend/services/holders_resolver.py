@@ -110,26 +110,27 @@ class TdxhubHolderSource(HolderSource):
         self._fetcher = fetcher
 
     def fetch(self, symbol: str, *, stock_name: str = "") -> Optional[ResolverResult]:
-        from tdxhub.holders import parse_research, _hash  # noqa: WPS433
+        from tdxhub.holders import parse_research_records, _hash  # noqa: WPS433
 
         text = self._fetcher.fetch_text(symbol)
         if not text:
             # 北交所 / 无 F10 → tdxhub 不覆盖, 返回 None 让 resolver 走 fallback
             return None
-        res = parse_research(text, symbol=symbol, stock_name=stock_name)
+        res = parse_research_records(text, symbol=symbol, stock_name=stock_name)
+        page = res["page"]
         return ResolverResult(
-            holders_df=res["holders"],
-            periods_df=res["periods"],
+            holders_df=pd.DataFrame.from_records(res.get("holders") or []),
+            periods_df=pd.DataFrame.from_records(res.get("periods") or []),
             raw_text=text,
             raw_hash=_hash(text),
-            page_update_date=res["page"].get("page_update_date"),
+            page_update_date=page.get("page_update_date"),
             server_or_endpoint=str(self._fetcher.stats().get("active_server")),
             source=self.name,
             source_tier=self.source_tier,
             fetched_at=datetime.utcnow().isoformat(timespec="seconds"),
             controlling=res.get("controlling"),
-            plans_df=res.get("plans"),
-            trades_df=res.get("trades"),
+            plans_df=pd.DataFrame.from_records(res.get("plans") or []),
+            trades_df=pd.DataFrame.from_records(res.get("trades") or []),
         )
 
     def close(self) -> None:

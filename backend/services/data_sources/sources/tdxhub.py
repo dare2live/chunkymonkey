@@ -214,7 +214,7 @@ class TdxhubSource(BaseDataSource):
             # 走 tdxhub.holders.HolderFetcher (cooldown 软挂起 + HQ_HOSTS 自动 resync).
             # 不复用 services/tdx_source 的 quotes 池, 因为 holders 用的是
             # company_info_category/content 协议, 由 HolderFetcher 自己管.
-            from tdxhub.holders import HolderFetcher, parse_research
+            from tdxhub.holders import HolderFetcher, parse_research_records
 
             symbol = kwargs.get("code") or kwargs.get("symbol")
             stock_name = kwargs.get("stock_name", "")
@@ -228,7 +228,7 @@ class TdxhubSource(BaseDataSource):
                 text = fetcher.fetch_text(symbol)
                 if not text:
                     return None
-                return parse_research(text, symbol=symbol, stock_name=stock_name)
+                return parse_research_records(text, symbol=symbol, stock_name=stock_name)
             finally:
                 if owns_fetcher:
                     fetcher.close()
