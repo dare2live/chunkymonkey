@@ -14,20 +14,22 @@ from __future__ import annotations
 
 import argparse
 import logging
-import math
 import sys
 from datetime import datetime
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-import numpy as np
-import pandas as pd
-
 from services.db import get_conn
 from scripts.backtest_model_portfolio import (
-    ensure_attached, simulate_curve, summarize_curve,
-    _parse_csv_floats, _parse_csv_ints, _next_trading_date,
+    ensure_attached,
+    simulate_curve,
+    _group_by,
+    _parse_csv_floats,
+    _parse_csv_ints,
+    _rank_sort_key,
+    _records_from_cursor,
+    _to_float,
 )
 
 
@@ -69,7 +71,7 @@ def load_fold_inputs(conn, walkforward_run_id: str, min_avg_amount: float):
     duck = conn.raw if hasattr(conn, "raw") else conn
     ensure_attached(duck)
 
-    folds = duck.execute(
+    folds = _records_from_cursor(duck.execute(
         """
         SELECT run_id, fold_id, model_id, test_start, test_end,
                test_market_state, test_rank_ic
@@ -78,15 +80,15 @@ def load_fold_inputs(conn, walkforward_run_id: str, min_avg_amount: float):
         ORDER BY fold_id
         """,
         [walkforward_run_id],
-    ).df()
-    if folds.empty:
+    ))
+    if not folds:
         raise RuntimeError(f"walkforward_run_id={walkforward_run_id} 无 fold 记录")
-    logger.info("加载 %d folds, model_id=%s", len(folds), folds.iloc[0]["model_id"])
+    logger.info("加载 %d folds, model_id=%s", len(folds), folds[0]["model_id"])
 
-    test_start = str(folds["test_start"].min())
-    test_end = str(folds["test_end"].max())
+    test_start = min(str(row["test_start"]) for row in folds)
+    test_end = max(str(row["test_end"]) for row in folds)
 
-    preds = duck.execute(
+    preds = _records_from_cursor(duck.execute(
         """
         SELECT run_id, fold_id, stock_code, date, pred_score, rank_in_date, percentile
         FROM mart_model_walkforward_prediction
@@ -94,13 +96,15 @@ def load_fold_inputs(conn, walkforward_run_id: str, min_avg_amount: float):
         ORDER BY fold_id, date, rank_in_date
         """,
         [walkforward_run_id],
-    ).df()
-    if preds.empty:
+    ))
+    if not preds:
         raise RuntimeError(f"walkforward_run_id={walkforward_run_id} 无 prediction")
     logger.info("加载 prediction %d 行 / %d codes / %d 天",
-                len(preds), preds["stock_code"].nunique(), preds["date"].nunique())
+                len(preds),
+                len({row["stock_code"] for row in preds}),
+                len({row["date"] for row in preds}))
 
-    candidates_with_meta = duck.execute(
+    candidates_with_meta = _records_from_cursor(duck.execute(
         """
         WITH px AS (
             SELECT code, date, close, amount,
@@ -118,27 +122,37 @@ def load_fold_inputs(conn, walkforward_run_id: str, min_avg_amount: float):
         ORDER BY p.fold_id, p.date, p.rank_in_date
         """,
         [test_start, test_end, walkforward_run_id, min_avg_amount],
-    ).df()
-    if candidates_with_meta.empty:
+    ))
+    if not candidates_with_meta:
         raise RuntimeError("流动性过滤后无候选股票 (检查 min_avg_amount)")
 
-    codes = candidates_with_meta["stock_code"].dropna().unique().tolist()
-    duck.register("_wf_codes", pd.DataFrame({"code": codes}))
-    prices = duck.execute(
+    prices = _records_from_cursor(duck.execute(
         """
+        WITH px_base AS (
+            SELECT code, date, close, amount,
+                   AVG(amount) OVER (PARTITION BY code ORDER BY date ROWS 19 PRECEDING) AS amount_ma20
+            FROM market.price_kline_tdxhub
+            WHERE freq='daily' AND adjust='qfq'
+              AND date >= ? AND date <= ?
+        ),
+        candidate_codes AS (
+            SELECT DISTINCT p.stock_code AS code
+            FROM mart_model_walkforward_prediction p
+            JOIN px_base px ON px.code = p.stock_code AND px.date = p.date
+            WHERE p.run_id = ? AND px.amount_ma20 >= ?
+        )
         SELECT p.code, p.date, p.close,
                p.close / NULLIF(LAG(p.close) OVER (PARTITION BY p.code ORDER BY p.date), 0) - 1 AS ret_1d
         FROM market.price_kline_tdxhub p
-        JOIN _wf_codes c ON c.code = p.code
+        JOIN candidate_codes c ON c.code = p.code
         WHERE p.freq='daily' AND p.adjust='qfq'
           AND p.date >= ? AND p.date <= ?
         ORDER BY p.date, p.code
         """,
-        [test_start, test_end],
-    ).df()
-    duck.unregister("_wf_codes")
+        [test_start, test_end, walkforward_run_id, min_avg_amount, test_start, test_end],
+    ))
 
-    benchmark = duck.execute(
+    benchmark = _records_from_cursor(duck.execute(
         """
         WITH src AS (
             SELECT date, close FROM market.price_kline_tdxhub
@@ -148,52 +162,60 @@ def load_fold_inputs(conn, walkforward_run_id: str, min_avg_amount: float):
         SELECT date, close FROM src ORDER BY date
         """,
         [test_start, test_end],
-    ).df()
+    ))
 
     return folds, candidates_with_meta, prices, benchmark
 
 
-def build_returns_by_date(prices: pd.DataFrame) -> dict[str, dict[str, float]]:
-    out: dict[str, dict[str, float]] = {}
-    for date, sub in prices.groupby("date"):
-        out[str(date)] = dict(zip(sub["code"], sub["ret_1d"].fillna(0.0)))
-    return out
+def build_returns_by_date(prices: list[dict]) -> dict[str, dict[str, float]]:
+    return {
+        date: {
+            str(row.get("code")): (_to_float(row.get("ret_1d")) or 0.0)
+            for row in rows
+            if row.get("code")
+        }
+        for date, rows in _group_by(prices, "date").items()
+    }
 
 
 def fold_portfolio(
     *,
-    fold_row: pd.Series,
-    candidates_fold: pd.DataFrame,
+    fold_row: dict,
+    candidates_fold: list[dict],
     returns_by_date: dict,
     cost_bps: float,
     top_size: int,
     rebalance_days: int,
     built_at: str,
-) -> tuple[pd.DataFrame, dict]:
+) -> tuple[list[dict], dict]:
     """对单 fold 跑 portfolio."""
     test_start = str(fold_row["test_start"])
     test_end = str(fold_row["test_end"])
 
     # 限定到 fold test 窗口
-    fold_dates = sorted(candidates_fold["date"].astype(str).unique())
+    fold_dates = sorted({str(row.get("date")) for row in candidates_fold})
     fold_dates = [d for d in fold_dates if test_start <= d <= test_end]
     if not fold_dates:
-        return pd.DataFrame(), {}
+        return [], {}
 
     # 调仓日 = 每 rebalance_days 取一次
     signal_dates = fold_dates[::rebalance_days]
 
     # select_codes: 按 signal_date 取 top-N
-    cand_by_date = {str(d): sub for d, sub in candidates_fold.groupby("date")}
+    cand_by_date = _group_by(candidates_fold, "date")
 
     def select(signal_date, _i):
-        sub = cand_by_date.get(str(signal_date))
-        if sub is None or sub.empty:
+        rows = cand_by_date.get(str(signal_date), [])
+        if not rows:
             return []
-        sub = sub.sort_values("rank_in_date").head(top_size)
-        return sub["stock_code"].astype(str).tolist()
+        return [
+            str(row.get("stock_code"))
+            for row in sorted(rows, key=_rank_sort_key)[:top_size]
+            if row.get("stock_code")
+        ]
 
-    curve_id = f"fold{fold_row['fold_id']:02d}_top{top_size}_{int(cost_bps)}bps"
+    fold_id = int(fold_row["fold_id"])
+    curve_id = f"fold{fold_id:02d}_top{top_size}_{int(cost_bps)}bps"
     curve, summary = simulate_curve(
         curve_id=curve_id,
         curve_type=f"walkforward_fold_top{top_size}",
@@ -210,12 +232,26 @@ def fold_portfolio(
     return curve, summary
 
 
-def benchmark_total_return(benchmark: pd.DataFrame, test_start: str, test_end: str) -> float | None:
-    sub = benchmark[(benchmark["date"].astype(str) >= test_start) &
-                    (benchmark["date"].astype(str) <= test_end)].sort_values("date")
-    if len(sub) < 2:
+def benchmark_total_return(benchmark: list[dict], test_start: str, test_end: str) -> float | None:
+    rows = [
+        row for row in benchmark
+        if test_start <= str(row.get("date")) <= test_end and _to_float(row.get("close")) is not None
+    ]
+    rows.sort(key=lambda row: str(row.get("date")))
+    if len(rows) < 2:
         return None
-    return float(sub["close"].iloc[-1] / sub["close"].iloc[0] - 1.0)
+    first = _to_float(rows[0].get("close"))
+    last = _to_float(rows[-1].get("close"))
+    if first is None or last is None or first <= 0:
+        return None
+    return float(last / first - 1.0)
+
+
+def _fmt_float(value, spec: str, *, default: str = "-") -> str:
+    number = _to_float(value)
+    if number is None:
+        return default
+    return format(number, spec)
 
 
 def main() -> None:
@@ -251,8 +287,8 @@ def main() -> None:
         built_at = datetime.utcnow().isoformat()
         rows: list[dict] = []
 
-        for _, fold in folds.iterrows():
-            cands_fold = cands[cands["fold_id"] == fold["fold_id"]]
+        for fold in folds:
+            cands_fold = [row for row in cands if str(row.get("fold_id")) == str(fold["fold_id"])]
             bench_ret = benchmark_total_return(
                 bench, str(fold["test_start"]), str(fold["test_end"]),
             )
@@ -295,6 +331,10 @@ def main() -> None:
                         "built_at": built_at,
                     })
 
+        if not rows:
+            logger.warning("no walkforward portfolio rows generated, run_id=%s", run_id)
+            return
+
         # 写库
         conn.executescript(DDL)
         cols = list(rows[0].keys())
@@ -313,9 +353,11 @@ def main() -> None:
                     len(rows), run_id)
 
         # 验收摘要: 30bps × top20
-        report = pd.DataFrame(rows)
-        sub = report[(report["cost_bps"] == 30) & (report["top_size"] == 20)].copy()
-        sub.sort_values("fold_id", inplace=True)
+        sub = [
+            row for row in rows
+            if row["cost_bps"] == 30 and row["top_size"] == 20
+        ]
+        sub.sort(key=lambda row: row["fold_id"])
         logger.info("=" * 78)
         logger.info("Fold-level portfolio (top20, 30bps):")
         logger.info(
@@ -323,17 +365,21 @@ def main() -> None:
             f"{'ann':>7s} {'MaxDD':>7s} {'Sharpe':>6s} {'510300':>7s} {'excess':>8s}"
         )
         positive = 0
-        for _, r in sub.iterrows():
+        for r in sub:
             tag = ""
-            if r["excess_vs_510300_pp"] is not None and r["excess_vs_510300_pp"] > 0:
+            excess = _to_float(r["excess_vs_510300_pp"])
+            if excess is not None and excess > 0:
                 positive += 1
                 tag = " ✓"
             logger.info(
-                f"  {int(r['fold_id']):>4d} {(r['test_market_state'] or '-'):>4s} "
-                f"{r['test_rank_ic']:>+7.4f} {r['total_return']:>+9.3f} "
-                f"{(r['annualized_return'] or 0):>+7.3f} {(r['max_drawdown'] or 0):>+7.3f} "
-                f"{(r['sharpe'] or 0):>+6.2f} {(r['benchmark_510300_total_return'] or 0):>+7.3f} "
-                f"{(r['excess_vs_510300_pp'] or 0):>+7.2f}pp{tag}"
+                f"  {int(r['fold_id']):>4d} {str(r.get('test_market_state') or '-'):>4s} "
+                f"{_fmt_float(r.get('test_rank_ic'), '+7.4f', default='      -')} "
+                f"{_fmt_float(r.get('total_return'), '+9.3f', default='        -')} "
+                f"{_fmt_float(r.get('annualized_return'), '+7.3f', default='      -')} "
+                f"{_fmt_float(r.get('max_drawdown'), '+7.3f', default='      -')} "
+                f"{_fmt_float(r.get('sharpe'), '+6.2f', default='     -')} "
+                f"{_fmt_float(r.get('benchmark_510300_total_return'), '+7.3f', default='      -')} "
+                f"{_fmt_float(r.get('excess_vs_510300_pp'), '+7.2f', default='      -')}pp{tag}"
             )
         logger.info(
             "Codex 晋级标准: 5 fold 至少 4/5 跑赢 510300. 当前: %d/%d %s",

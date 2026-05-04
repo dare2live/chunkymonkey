@@ -63,6 +63,9 @@ resolution, fold slicing, score profiling, and prediction writes.
 The model-portfolio backtest loop converted prediction, price, benchmark,
 curve simulation, random baseline, summary, and curve writes to records/native
 helpers and fixed the missing `vs_random_l1_p90_pp` summary schema column.
+The walk-forward portfolio loop then converted fold/prediction/price loads,
+fold simulation, benchmark comparison, reporting, and summary writes to
+records/native helpers.
 
 ## Change
 
@@ -224,6 +227,13 @@ helpers and fixed the missing `vs_random_l1_p90_pp` summary schema column.
 - Added idempotent schema maintenance for `vs_random_l1_p90_pp` in
   `mart_model_portfolio_summary`.
 - Added `backend/tests/test_backtest_model_portfolio.py`.
+- Removed pandas and DuckDB table registration from
+  `backend/scripts/backtest_walkforward_portfolio.py`.
+- Converted walk-forward fold portfolio inputs, returns mapping, fold
+  portfolio simulation, benchmark total return, and reporting to
+  records/native helpers.
+- Added an empty-result guard before walk-forward summary writes.
+- Added `backend/tests/test_backtest_walkforward_portfolio.py`.
 
 ## Validation
 
@@ -646,8 +656,23 @@ python3 backend/scripts/backtest_model_portfolio.py --help
 python3 backend/scripts/backtest_model_portfolio.py --dry-run --random-seeds 2 --cost-bps 15 --top-sizes 20
 # records/native dry-run passed (curves=5 summaries=5)
 
+rg -n "import pandas|from pandas|pd\.|DataFrame|read_sql_query|\.to_sql\(|\.df\(|register\(|iterrows|groupby\(|sort_values|iloc|astype|unique|tolist|\.empty" backend/scripts/backtest_walkforward_portfolio.py backend/tests/test_backtest_walkforward_portfolio.py -S
+# 0 matches
+
+python3 -m py_compile backend/scripts/backtest_walkforward_portfolio.py backend/tests/test_backtest_walkforward_portfolio.py
+# passed
+
+python3 -m pytest backend/tests/test_backtest_walkforward_portfolio.py -q
+# 3 passed
+
+python3 backend/scripts/backtest_walkforward_portfolio.py --help
+# import/CLI smoke passed
+
+python3 backend/scripts/backtest_walkforward_portfolio.py --walkforward-run-id walkforward_20260504_110546 --dry-run --cost-bps 15 --top-sizes 20
+# records/native dry-run passed (5 folds)
+
 python3 -m pytest backend/tests -q
-# 350 passed
+# 353 passed
 
 python3 backend/scripts/data_health_snapshot.py --dry-run
 # green=147/yellow=0/red=0
