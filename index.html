@@ -24,7 +24,7 @@
       <span class="logo-text">Chunky Monkey<small>机构事件研究系统</small></span>
     </div>
     <nav class="main-nav" id="mainNav">
-      <div class="nav-top-bar">
+      <div class="nav-top-bar" style="display:none">
         <button class="nav-group-btn active" data-group="holder">股东挖掘</button>
         <button class="nav-group-btn" id="nav-group-etf" data-group="etf" style="display:none">ETF研究</button>
       </div>
@@ -110,6 +110,10 @@
       </div>
 
       <div id="ds-link-overview" style="margin-bottom:14px"></div>
+      <div id="ds-health-heatmap" style="margin-bottom:14px"></div>
+      <div id="ds-source-priority" style="margin-bottom:14px"></div>
+      <div id="ds-fallback-panel" style="margin-bottom:14px"></div>
+      <div id="ds-drift-queue" style="margin-bottom:14px"></div>
 
       <!-- 顶: 4 张数据源卡 -->
       <div id="ds-source-cards" class="data-source-grid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:12px;margin-bottom:14px">
@@ -148,7 +152,7 @@
       </div>
 
       <details style="margin-bottom:14px;background:var(--cm-bg-50);border-radius:6px;padding:6px 14px">
-        <summary style="cursor:pointer;font-size:13px;font-weight:600;padding:6px 0">📋 高级: registry capability 声明 (诊断用)</summary>
+        <summary style="cursor:pointer;font-size:13px;font-weight:600;padding:6px 0">高级: registry capability 声明 (诊断用)</summary>
         <div style="padding:8px 0">
           <div class="muted" style="font-size:11px;margin-bottom:8px">每个 source 在 registry 里声明自己能拉的 capability. 对比上表可以看出 "声明了但未真实接通" 的部分.</div>
           <input type="text" id="ds-cap-filter" placeholder="筛选 capability…" style="padding:4px 8px;border:1px solid var(--cm-ink-100);border-radius:4px;font-size:12px;width:180px;margin-bottom:8px">
@@ -188,11 +192,11 @@
     <section class="view" id="view-data-health">
       <!-- 全局健康条 (永远顶置) -->
       <div class="panel" id="dh-global-bar" style="margin-bottom:14px;padding:14px 18px;display:flex;gap:18px;align-items:center;flex-wrap:wrap">
-        <strong style="font-size:14px">📊 数据健康</strong>
-        <span class="dh-pill dh-pill-green">🟢 alive <span id="dh-cnt-green">--</span></span>
-        <span class="dh-pill dh-pill-yellow">🟡 stale <span id="dh-cnt-yellow">--</span></span>
-        <span class="dh-pill dh-pill-red">🔴 broken <span id="dh-cnt-red">--</span></span>
-        <span class="dh-pill dh-pill-info">📡 fallback <span id="dh-cnt-fallback">--</span></span>
+        <strong style="font-size:14px">数据健康</strong>
+        <span class="dh-pill dh-pill-green">alive <span id="dh-cnt-green">--</span></span>
+        <span class="dh-pill dh-pill-yellow">stale <span id="dh-cnt-yellow">--</span></span>
+        <span class="dh-pill dh-pill-red">broken <span id="dh-cnt-red">--</span></span>
+        <span class="dh-pill dh-pill-info">fallback <span id="dh-cnt-fallback">--</span></span>
         <span class="muted" style="font-size:12px;margin-left:auto">最近快照: <span id="dh-snapshot-at">--</span></span>
         <button class="chip chip-outline" id="dh-refresh">刷新</button>
         <button class="chip chip-outline" id="dh-run-snapshot" title="立即重跑 data_health_snapshot.py">立即重跑</button>
@@ -228,9 +232,9 @@
           <label style="font-size:12px">severity:
             <select id="dh-filter-severity" style="padding:4px 8px;border:1px solid var(--cm-ink-100);border-radius:4px;font-size:12px">
               <option value="">全部</option>
-              <option value="red">🔴 red</option>
-              <option value="yellow">🟡 yellow</option>
-              <option value="green">🟢 green</option>
+              <option value="red">red</option>
+              <option value="yellow">yellow</option>
+              <option value="green">green</option>
             </select>
           </label>
           <input type="text" id="dh-filter-search" placeholder="搜表名 / writer / upstream..." style="padding:4px 8px;border:1px solid var(--cm-ink-100);border-radius:4px;font-size:12px;width:240px">
@@ -271,9 +275,9 @@
                 <th style="text-align:left;padding:8px 12px">upstream_source</th>
                 <th style="text-align:right;padding:8px 12px;width:90px">资产数</th>
                 <th style="text-align:right;padding:8px 12px;width:120px">总行数</th>
-                <th style="text-align:right;padding:8px 12px;width:80px">🟢</th>
-                <th style="text-align:right;padding:8px 12px;width:80px">🟡</th>
-                <th style="text-align:right;padding:8px 12px;width:80px">🔴</th>
+                <th style="text-align:right;padding:8px 12px;width:80px">OK</th>
+                <th style="text-align:right;padding:8px 12px;width:80px">WARN</th>
+                <th style="text-align:right;padding:8px 12px;width:80px">FAIL</th>
                 <th style="text-align:right;padding:8px 12px;width:120px">最大延迟 (h)</th>
               </tr>
             </thead>
@@ -466,7 +470,7 @@
       </div>
 
       <div class="panel" style="padding:14px;margin-bottom:14px;border-left:3px solid #d33">
-        <h3 style="margin:0 0 8px;font-size:14px;color:#d33">⚠ 危险操作</h3>
+        <h3 style="margin:0 0 8px;font-size:14px;color:#d33">危险操作</h3>
         <p class="muted" style="font-size:11px;margin:0 0 10px">下列按钮会清空或重算数据。确认后执行, 不可撤销 (raw 层除外).</p>
         <div id="sys-danger-zone" style="display:flex;gap:8px;flex-wrap:wrap"></div>
       </div>
@@ -757,6 +761,8 @@
       ['assets/js/style-tokens.js',
        'assets/js/app-cache.js', 'assets/js/app-nav.js', 'assets/js/app-list-state.js',
        'assets/js/signal-adapter.js',
+       'assets/js/security-identity.js',
+       'assets/js/viz-primitives.js',
        'assets/js/widgets/signal-params.js',
        'assets/js/widgets/cohort-card.js',
        'assets/js/widgets/backtest-panel.js',

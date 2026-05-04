@@ -113,7 +113,7 @@
       sel.innerHTML = '<option value="">(无预设)</option>';
       return;
     }
-    sel.innerHTML = presets.map(p => `<option value="${esc(p.name)}">${esc(p.name)}${p.is_default ? ' ★' : ''}</option>`).join('');
+    sel.innerHTML = presets.map(p => `<option value="${esc(p.name)}">${esc(p.name)}${p.is_default ? ' (默认)' : ''}</option>`).join('');
   }
 
   async function applyPreset(name) {

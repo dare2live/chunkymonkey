@@ -53,6 +53,31 @@
     d.textContent = s == null ? '' : String(s);
     return d.innerHTML;
   }
+  function securityIdentity(item, opts) {
+    opts = opts || {};
+    const payload = {
+      stock_code: item?.stock_code || item?.stockCode || item?.code || '',
+      stock_name: item?.stock_name || item?.stockName || item?.name || '',
+      market: item?.market || '',
+    };
+    if (global.SecurityIdentity && typeof global.SecurityIdentity.renderSecurityIdentity === 'function') {
+      return global.SecurityIdentity.renderSecurityIdentity(payload, opts);
+    }
+    const name = payload.stock_name || '名称待补';
+    const code = payload.stock_code || '--';
+    const prefix = code.startsWith('6') ? 'SH' : code.startsWith('8') || code.startsWith('4') ? 'BJ' : 'SZ';
+    return `<div class="${esc(opts.className || 'cm-security-identity')}">
+      <span class="cm-security-name">${esc(name)}</span>
+      <span class="cm-security-meta"><a class="cm-security-code" href="https://xueqiu.com/S/${prefix}${esc(code)}" target="_blank" rel="noopener">${esc(prefix)}: ${esc(code)}</a></span>
+    </div>`;
+  }
+  function stockIdentityPayload(s) {
+    const topk = s ? state.topkMap.get(s.stockCode) : null;
+    return {
+      stock_code: s?.stockCode || topk?.stock_code || '',
+      stock_name: s?.stockName || topk?.stock_name || '',
+    };
+  }
   function fmtPct(v, digits = 1) {
     if (v == null) return '-';
     const n = Number(v);
@@ -219,15 +244,16 @@
   // ── 渲染列表行 ───────────────────────────────────────────────────
   function renderStockRow(s) {
     const inWl = state.watchlistSet.has(s.stockCode);
+    const identity = stockIdentityPayload(s);
     const star = inWl
       ? `<button class="sig-star sig-star-on" data-sv-unwatch="${esc(s.stockCode)}" title="移出自选">已选</button>`
-      : `<button class="sig-star sig-star-off" data-sv-watch="${esc(s.stockCode)}" data-sv-name="${esc(s.stockName || '')}" title="加入自选">+自选</button>`;
+      : `<button class="sig-star sig-star-off" data-sv-watch="${esc(s.stockCode)}" data-sv-name="${esc(identity.stock_name || '')}" title="加入自选">+自选</button>`;
     const da = daysAgo(s.latestNotice);
     const daLabel = da == null ? fmtDate(s.latestNotice) : da === 0 ? '今天' : da + '天前';
     const indLabel = TDX_L1_NAMES[s.industry] || s.industry || '—';
     return `<tr class="sv-row" data-sv-code="${esc(s.stockCode)}">
       <td>
-        <div class="sv-stock-name"><b>${esc(s.stockCode)}</b> ${esc(s.stockName || '')}</div>
+        <div class="sv-stock-name">${securityIdentity(identity, { className: 'cm-security-identity cm-security-identity--stock-cell' })}</div>
         <div class="muted sv-industry">${esc(indLabel)}</div>
       </td>
       <td class="sv-ai-rank-cell">${renderAiCell(s.stockCode)}</td>
@@ -422,6 +448,7 @@
     if (!s) { area.innerHTML = ''; return; }
     const inWl = state.watchlistSet.has(code);
     const indLabel = TDX_L1_NAMES[s.industry] || s.industry || '—';
+    const identity = stockIdentityPayload(s);
     const tabs = [
       { key: 'conclusion', label: '结论' },
       { key: 'data', label: '数据证据' },
@@ -436,7 +463,10 @@
     area.innerHTML = `<div class="sig-drawer sv-drawer">
       <div class="sig-drawer-head">
         <div>
-          <h3>${esc(code)} ${esc(s.stockName || '')} <span class="muted" style="font-weight:400">· ${esc(indLabel)}</span></h3>
+          <div class="sv-drawer-title">
+            ${securityIdentity(identity, { className: 'cm-security-identity cm-security-identity--inline cm-security-identity--drawer' })}
+            <span class="muted" style="font-weight:400">· ${esc(indLabel)}</span>
+          </div>
         </div>
         <div style="display:flex;gap:8px;align-items:center">
           <button class="chip ${inWl ? 'chip-primary' : 'chip-outline'} chip-sm" id="svDrawerStar">
@@ -471,7 +501,7 @@
         try {
           await fetch('/api/inst/watchlist', {
             method: 'POST', headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ stock_code: code, stock_name: s.stockName || '' }),
+            body: JSON.stringify({ stock_code: code, stock_name: identity.stock_name || '' }),
           });
           state.watchlistSet.add(code);
         } catch (err) { alert('加入自选失败: ' + err.message); return; }
@@ -703,12 +733,13 @@
     const rows = state.topkItems.slice(0, 10).map(item => {
       const s = stockMap.get(item.stock_code);
       const name = item.stock_name || s?.stockName || '';
+      const identity = { stock_code: item.stock_code, stock_name: name };
       const industry = s ? (TDX_L1_NAMES[s.industry] || s.industry || '--') : (item.l2 || item.l1 || '--');
       const top = topPercent(item);
       const covered = !!s;
       return `<tr>
         <td>#${esc(item.rank || '-')}</td>
-        <td><b>${esc(item.stock_code)}</b> ${esc(name || '')}</td>
+        <td>${securityIdentity(identity, { className: 'cm-security-identity cm-security-identity--inline' })}</td>
         <td>${top == null ? '--' : 'Top ' + top.toFixed(top < 10 ? 1 : 0) + '%'}</td>
         <td>${esc(industry)}</td>
         <td>${covered ? '是' : '否'}</td>

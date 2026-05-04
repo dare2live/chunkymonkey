@@ -53,8 +53,8 @@
           (fact ${byLayer.fact} / mart ${byLayer.mart} / dim ${byLayer.dim_derived})
           + <strong>${summary.n_views || 0}</strong> view
           ${driftCount > 0
-            ? `<span style="color:#d33;margin-left:10px">⚠ ${driftCount} 张漂移</span>`
-            : '<span style="color:#0a7;margin-left:10px">✓ 全部 actual = expected</span>'}
+            ? `<span style="color:#d33;margin-left:10px">WARN ${driftCount} 张漂移</span>`
+            : '<span style="color:#0a7;margin-left:10px">OK 全部 actual = expected</span>'}
         </div>
         ${driftCount > 0 ? `
           <div style="background:rgba(221,51,51,0.05);border-left:3px solid #d33;padding:8px 12px;margin-bottom:10px;border-radius:4px">
@@ -104,7 +104,7 @@
     const buttons = [
       {
         id: 'reset-derived',
-        label: '🔥 清空并重算派生层',
+        label: '清空并重算派生层',
         action: resetDerived,
         desc: '清空 fact_* + mart_* 全部派生表, 从 raw 重算. 不可撤销 (raw 保留). 预计 10-20 分钟.',
       },

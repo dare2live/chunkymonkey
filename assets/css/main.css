@@ -11,12 +11,12 @@
      ============================================================ */
 
   /* —— 品牌主色阶 (purple family) —— */
-  --cm-brand-700: #112F4B;   /* P2 深墨蓝 — 最深 hover/active */
-  --cm-brand-500: #60569A;   /* P1 紫 — 主品牌 */
-  --cm-brand-400: #7AB2D4;   /* P1 天蓝 — 交互强调 */
-  --cm-brand-300: #B3CEAB;   /* P2 sage — 柔和强调 */
-  --cm-brand-100: #dde7f1;   /* 天蓝 14% tint */
-  --cm-brand-50:  #EEEBE6;   /* P1 奶白 */
+  --cm-brand-700: #233c9f;
+  --cm-brand-500: #3657D8;
+  --cm-brand-400: #5b73e5;
+  --cm-brand-300: #9aa8f3;
+  --cm-brand-100: #dfe5ff;
+  --cm-brand-50:  #EEF2FF;
 
   /* —— 暖色强调 (warm accent, 装饰/hero) —— */
   --cm-accent-warm:     #EAABBC;   /* P1 粉玫瑰 */
@@ -30,22 +30,22 @@
 
   /* —— 表面与背景 —— */
   --cm-surface:      #ffffff;   /* 主卡片底 */
-  --cm-surface-warm: #F9F9F9;   /* P2 近白 — 二级卡片 */
-  --cm-bg:           #F9F9F9;   /* 页面底 — 改用 P2 近白，更温和 */
+  --cm-surface-warm: #FAFAFA;
+  --cm-bg:           #FAFAFA;
 
   /* —— 中性色阶 —— */
-  --cm-ink-900: #0f172a;
-  --cm-ink-700: #334155;
-  --cm-ink-500: #64748b;
-  --cm-ink-300: #94a3b8;
-  --cm-ink-100: #e2e8f0;
-  --cm-ink-50:  #f1f5f9;
+  --cm-ink-900: #111827;
+  --cm-ink-700: #374151;
+  --cm-ink-500: #6B7280;
+  --cm-ink-300: #9CA3AF;
+  --cm-ink-100: #E5E7EB;
+  --cm-ink-50:  #F3F4F6;
 
   /* —— 语义色 (红涨绿跌不冲突; ok 用 palette 翠绿) —— */
   --cm-ok-500:   #0B9D6A;   --cm-ok-100:   #dcf4e7;
   --cm-warn-500: #d97706;   --cm-warn-100: #fef3c7;
   --cm-bad-500:  #dc2626;   --cm-bad-100:  #fee2e2;
-  --cm-info-500: #7AB2D4;   --cm-info-100: #e4f0f7;
+  --cm-info-500: #2563EB;   --cm-info-100: #DBEAFE;
 
   /* —— 图表色板 (JS 通过 style-tokens.js 读取, 不硬编码) —— */
   --cm-chart-1: #60569A;    /* 紫 */
@@ -128,10 +128,7 @@
 body {
   font-family: "Inter Variable", "Inter", -apple-system, system-ui, sans-serif;
   font-feature-settings: "cv01", "ss03";
-  background:
-    radial-gradient(circle at top left, rgba(94, 106, 210, 0.12), transparent 24%),
-    radial-gradient(circle at 85% 0%, rgba(113, 112, 255, 0.08), transparent 18%),
-    var(--cm-surface-warm);
+  background: var(--cm-bg);
   color: var(--text);
   font-size: 13px;
   line-height: 1.6;
@@ -6335,6 +6332,12 @@ tr.detail-row>td>.detail-panel {
 /* sv-drawer 继承 .sig-drawer 基础样式，加品牌色顶边作为区分标识 */
 .sv-drawer { border-top: 3px solid var(--cm-brand-400); }
 .sv-drawer .sig-drawer-head { background: var(--cm-brand-50); border-bottom-color: var(--cm-brand-100); }
+.sv-drawer-title {
+  display: flex;
+  align-items: center;
+  gap: var(--cm-sp-2);
+  flex-wrap: wrap;
+}
 .sv-drawer-kpis {
   display: flex;
   flex-wrap: wrap;
@@ -6498,6 +6501,10 @@ tr.detail-row>td>.detail-panel {
   border-color: var(--cm-brand-500);
   box-shadow: var(--cm-shadow-sm);
 }
+.topk-chip:focus-visible {
+  outline: 2px solid var(--cm-brand-400);
+  outline-offset: 2px;
+}
 .topk-chip-rank {
   font-weight: 800;
   color: var(--cm-brand-500);
@@ -6529,6 +6536,15 @@ tr.detail-row>td>.detail-panel {
   color: var(--cm-accent-vivid);
 }
 .topk-chip--silver .topk-chip-rank { color: var(--cm-brand-500); }
+.cm-security-identity--topk-chip {
+  min-width: 96px;
+}
+.cm-security-identity--topk-chip .cm-security-name {
+  max-width: 116px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 /* AI 多维评分徽章 (股票详情 / list 内嵌) */
 .multidim-badge {
   display: inline-flex;
@@ -7157,6 +7173,218 @@ tr.detail-row>td>.detail-panel {
 
 #dh-health-table tbody tr.dh-row:hover {
   background: var(--cm-bg-50, #f8f9fa);
+}
+
+/* Shared ChunkyMonkey primitives */
+.cm-dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  vertical-align: middle;
+  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.08);
+}
+.cm-dot-ok,
+.cm-dot-green { background: var(--cm-ok-500); }
+.cm-dot-warn,
+.cm-dot-yellow { background: var(--cm-warn-500); }
+.cm-dot-bad,
+.cm-dot-red,
+.cm-dot-critical { background: var(--cm-bad-500); }
+.cm-dot-info,
+.cm-dot-unknown { background: var(--cm-ink-300); }
+
+.cm-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 22px;
+  padding: 2px 8px;
+  border-radius: var(--cm-r-pill);
+  border: 1px solid var(--cm-ink-100);
+  background: var(--cm-surface);
+  color: var(--cm-ink-700);
+  font-size: var(--cm-fs-11);
+  font-weight: 700;
+  white-space: nowrap;
+}
+.cm-pill-ok,
+.cm-pill-green { border-color: var(--cm-ok-100); background: var(--cm-ok-100); color: var(--cm-ok-500); }
+.cm-pill-warn,
+.cm-pill-yellow { border-color: var(--cm-warn-100); background: var(--cm-warn-100); color: var(--cm-warn-500); }
+.cm-pill-bad,
+.cm-pill-red,
+.cm-pill-critical { border-color: var(--cm-bad-100); background: var(--cm-bad-100); color: var(--cm-bad-500); }
+.cm-pill-info,
+.cm-pill-unknown { border-color: var(--cm-brand-100); background: var(--cm-brand-50); color: var(--cm-brand-500); }
+
+.cm-security-identity,
+.security-identity {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+.cm-security-name,
+.security-identity-name {
+  color: var(--cm-ink-900);
+  font-weight: 700;
+  line-height: 1.2;
+  overflow-wrap: anywhere;
+}
+.cm-security-meta,
+.security-identity-meta {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+.cm-security-code,
+.xq-link,
+.security-code-tag {
+  display: inline-flex;
+  align-items: center;
+  min-height: 18px;
+  padding: 1px 6px;
+  border-radius: 5px;
+  border: 1px solid var(--cm-brand-100);
+  background: var(--cm-brand-50);
+  color: var(--cm-brand-500);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: var(--cm-fs-11);
+  font-weight: 700;
+  line-height: 1.2;
+  text-decoration: none;
+  white-space: nowrap;
+}
+.cm-security-code:hover,
+.xq-link:hover {
+  border-color: var(--cm-brand-400);
+  color: var(--cm-brand-600);
+}
+.cm-security-identity--inline,
+.security-identity--inline {
+  display: inline-flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 8px;
+}
+
+.cm-mini-bar {
+  position: relative;
+  width: 100%;
+  min-width: 70px;
+  height: 7px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: var(--cm-ink-100);
+}
+.cm-mini-bar-fill {
+  height: 100%;
+  border-radius: inherit;
+  background: var(--cm-brand-500);
+}
+.cm-stacked-bar {
+  display: flex;
+  width: 100%;
+  min-width: 120px;
+  height: 8px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: var(--cm-ink-100);
+}
+.cm-stacked-bar-seg {
+  height: 100%;
+  min-width: 1px;
+}
+.cm-timeline {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-height: 18px;
+}
+.cm-timeline-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  background: var(--cm-ink-300);
+}
+.cm-timeline-dot-red,
+.cm-timeline-dot-bad { background: var(--cm-bad-500); }
+.cm-timeline-dot-yellow,
+.cm-timeline-dot-warn { background: var(--cm-warn-500); }
+.cm-timeline-dot-green,
+.cm-timeline-dot-ok { background: var(--cm-ok-500); }
+
+.cm-health-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: var(--cm-sp-3);
+}
+.cm-health-card {
+  padding: var(--cm-sp-3);
+  border: 1px solid var(--cm-ink-100);
+  border-radius: var(--cm-r-md);
+  background: var(--cm-surface);
+}
+.cm-health-card h4 {
+  margin: 0 0 var(--cm-sp-2);
+  font-size: var(--cm-fs-13);
+}
+.cm-health-row {
+  display: grid;
+  grid-template-columns: 76px 1fr auto;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 0;
+  font-size: var(--cm-fs-12);
+}
+.cm-health-row code,
+.cm-route-table code {
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+.cm-route-table {
+  width: 100%;
+  min-width: 1120px;
+  border-collapse: collapse;
+  font-size: var(--cm-fs-12);
+}
+.cm-route-table th,
+.cm-route-table td {
+  padding: 7px 8px;
+  border-bottom: 1px dotted var(--cm-bg-100);
+  text-align: left;
+  vertical-align: top;
+}
+.cm-route-table thead {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: var(--cm-surface);
+  color: var(--cm-ink-500);
+  font-size: var(--cm-fs-11);
+}
+.cm-repair-btn {
+  font-size: var(--cm-fs-11);
+  padding: 3px 8px;
+}
+
+@media (max-width: 640px) {
+  .cm-health-row {
+    grid-template-columns: 64px 1fr;
+  }
+  .cm-health-row > :last-child {
+    grid-column: 2;
+    justify-self: start;
+  }
+  .cm-security-identity--inline,
+  .security-identity--inline {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 3px;
+  }
 }
 
 /* layer 颜色徽章 */

@@ -509,7 +509,7 @@ scripts/
 - `mart_stock_trend` 删旧预测排名/分位列与 forecast 派生列
 - 依赖收敛到 optuna + duckdb + scipy + scikit-learn；生产路径不再依赖外部预测框架
 - 评分体系从 4 档 (discovery/quality/stage/forecast) 降到 3 档 (weights 35/30/20)
-- 全局无 emoji (原 📊🔄🎯🔷🟢 + ✓✗⚠★☆ 全清)
+- 全局无 emoji (旧图标和符号已清理)
 - 配色 tokens 换为 2 palette + 马卡龙纯色 (去 linear-gradient)
 
 ---

@@ -23,6 +23,22 @@
     if (pct >= 0.85) return 'topk-chip--silver';
     return 'topk-chip--default';
   }
+  function renderIdentity(item) {
+    var payload = {
+      stock_code: item.stock_code || item.code || '',
+      stock_name: item.stock_name || '',
+      market: item.market || ''
+    };
+    if (global.SecurityIdentity && typeof global.SecurityIdentity.renderSecurityIdentity === 'function') {
+      return global.SecurityIdentity.renderSecurityIdentity(payload, {
+        className: 'cm-security-identity cm-security-identity--topk-chip'
+      });
+    }
+    var code = payload.stock_code || '--';
+    var prefix = code.indexOf('6') === 0 ? 'SH' : (code.indexOf('8') === 0 || code.indexOf('4') === 0 ? 'BJ' : 'SZ');
+    return '<span class="cm-security-name">' + esc(payload.stock_name || '名称待补') + '</span>' +
+      '<a class="cm-security-code" href="https://xueqiu.com/S/' + prefix + esc(code) + '" target="_blank" rel="noopener">' + prefix + ': ' + esc(code) + '</a>';
+  }
 
   async function api(path) {
     var r = await fetch(path);
@@ -47,18 +63,17 @@
 
   function renderChip(item) {
     var pct = item.percentile;
-    var name = item.stock_name || item.stock_code;
+    var name = item.stock_name || '名称待补';
     var sector = item.l2 || item.l1 || '';
-    return '<button class="topk-chip ' + gradeClass(pct) + '" ' +
+    return '<div class="topk-chip ' + gradeClass(pct) + '" role="button" tabindex="0" ' +
       'data-topk-pick="' + esc(item.stock_code) + '" ' +
       'data-topk-name="' + esc(name) + '" ' +
       'title="score ' + fmtScore(item.pred_score) + ' · percentile ' + (pct != null ? (pct * 100).toFixed(1) : '-') + '%">' +
       '<span class="topk-chip-rank">#' + item.rank + '</span>' +
-      '<span class="topk-chip-code">' + esc(item.stock_code) + '</span>' +
-      '<span class="topk-chip-name">' + esc(name) + '</span>' +
+      renderIdentity(item) +
       (sector ? '<span class="topk-chip-sector">' + esc(sector) + '</span>' : '') +
       '<span class="topk-chip-score">' + fmtScore(item.pred_score) + '</span>' +
-      '</button>';
+      '</div>';
   }
 
   function renderEmpty(message) {
@@ -86,7 +101,7 @@
         '</div>';
 
       container.querySelectorAll('[data-topk-pick]').forEach(function (btn) {
-        btn.addEventListener('click', function () {
+        var activate = function () {
           var code = btn.getAttribute('data-topk-pick');
           var name = btn.getAttribute('data-topk-name');
           if (typeof opts.onPick === 'function') {
@@ -94,6 +109,15 @@
           } else if (global.StockView && typeof global.StockView.openDrawer === 'function') {
             global.StockView.openDrawer(code);
           }
+        };
+        btn.addEventListener('click', function (ev) {
+          if (ev.target && ev.target.closest && ev.target.closest('a')) return;
+          activate();
+        });
+        btn.addEventListener('keydown', function (ev) {
+          if (ev.key !== 'Enter' && ev.key !== ' ') return;
+          ev.preventDefault();
+          activate();
         });
       });
     } catch (e) {

@@ -136,7 +136,7 @@ RECREATE_VIEWS = {
 # DB 操作
 # ===========================================================================
 
-def ensure_schema_version_table(conn) -> None:
+def ensure_schema_version_table(conn, commit: bool = True) -> None:
     """幂等建 dim_schema_version 表."""
     conn.execute("""
         CREATE TABLE IF NOT EXISTS dim_schema_version (
@@ -147,7 +147,8 @@ def ensure_schema_version_table(conn) -> None:
             notes             TEXT
         )
     """)
-    conn.commit()
+    if commit:
+        conn.commit()
 
 
 def recreate_views(conn) -> dict[str, str]:
@@ -172,6 +173,7 @@ def record_actual_version(conn, table_name: str, version: str | None = None) -> 
     """
     expected = SCHEMA_VERSIONS.get(table_name, "v1")
     actual = version or expected
+    ensure_schema_version_table(conn, commit=False)
     conn.execute("""
         INSERT INTO dim_schema_version (table_name, expected_version, actual_version, rebuilt_at)
         VALUES (?, ?, ?, CURRENT_TIMESTAMP)

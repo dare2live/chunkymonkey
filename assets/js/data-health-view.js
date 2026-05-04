@@ -32,6 +32,24 @@
       filter: { layer: '', severity: '', search: '' },
     },
 
+    statusDot(severity) {
+      const sev = severity || 'unknown';
+      const tone = sev === 'green' || sev === 'ok' ? 'ok'
+        : sev === 'yellow' || sev === 'warn' ? 'warn'
+        : sev === 'red' || sev === 'critical' ? 'bad'
+        : 'info';
+      return `<span class="cm-dot cm-dot-${tone}" title="${this.esc(sev)}"></span>`;
+    },
+
+    statusPill(label, severity) {
+      const sev = severity || label || 'unknown';
+      const tone = sev === 'green' || sev === 'ok' ? 'ok'
+        : sev === 'yellow' || sev === 'warn' ? 'warn'
+        : sev === 'red' || sev === 'critical' || sev === 'failed' ? 'bad'
+        : 'info';
+      return `<span class="cm-pill cm-pill-${tone}">${this.statusDot(sev)}${this.esc(label || sev)}</span>`;
+    },
+
     init() {
       // 不在 init 时立刻 fetch — 等 view 真切到 data-health 才加载
       this.bindUI();
@@ -159,17 +177,13 @@
         return;
       }
       tbody.innerHTML = filtered.map((it) => {
-        const dot = it.severity === 'red' ? '🔴'
-          : it.severity === 'yellow' ? '🟡'
-          : it.severity === 'green' ? '🟢'
-          : '⚪';
         const fresh = (it.freshness_hours != null) ? `${it.freshness_hours.toFixed(1)}h` : '—';
         const freshClass = (it.freshness_ok === false) ? 'style="color:#c33"' : '';
         const writer = it.writer_module ? `<code style="font-size:11px">${this.shortPath(it.writer_module)}</code>`
           : `<span class="muted" style="font-style:italic">无 writer</span>`;
         const issue = it.issue_summary || '';
         return `<tr class="dh-row" data-table="${this.esc(it.table_name)}" style="cursor:pointer;border-bottom:1px solid var(--cm-ink-50,#f0f0f0)">
-          <td style="padding:6px 12px;font-size:14px">${dot}</td>
+          <td style="padding:6px 12px;font-size:14px">${this.statusDot(it.severity)}</td>
           <td style="padding:6px 12px"><strong>${this.esc(it.table_name)}</strong></td>
           <td style="padding:6px 12px"><span class="dh-layer-${it.layer}">${it.layer}</span></td>
           <td style="padding:6px 12px;text-align:right">${this.fmtNum(it.row_count)}</td>
@@ -311,11 +325,10 @@
       }
       tbody.innerHTML = items.map((r) => {
         const sev = r.severity || 'unknown';
-        const dot = sev === 'critical' ? '🔴' : sev === 'warn' ? '🟡' : sev === 'ok' ? '🟢' : '⚪';
         const psi = r.psi != null ? r.psi.toFixed(4) : '—';
         const psiColor = sev === 'critical' ? '#c33' : sev === 'warn' ? '#a67c00' : '#2a7a2a';
         return `<tr style="border-bottom:1px solid var(--cm-ink-50,#f0f0f0)">
-          <td style="padding:6px 12px">${dot}</td>
+          <td style="padding:6px 12px">${this.statusDot(sev)}</td>
           <td style="padding:6px 12px"><code style="font-size:12px">${this.esc(r.feature)}</code></td>
           <td style="padding:6px 12px;text-align:right;font-family:monospace;color:${psiColor};font-weight:600">${psi}</td>
           <td style="padding:6px 12px;text-align:right;font-family:monospace">${this.fmtNum(r.n_train)}</td>
@@ -332,7 +345,7 @@
       const s = this.state.snapshot;
       const reds = (s && s.red_list) || [];
       if (reds.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="8" style="padding:30px;text-align:center" class="muted">没有 red 表 ✓</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="8" style="padding:30px;text-align:center" class="muted">没有 red 表</td></tr>';
         return;
       }
       // 按 layer + freshness 排序 (最旧的最先看到)
@@ -347,7 +360,7 @@
         const writer = r.writer_module ? `<code style="font-size:10px">${this.esc(this.shortPath(r.writer_module))}</code>` : '<span class="muted" style="font-size:11px">—</span>';
         const layerBadge = r.layer ? `<span class="dh-layer-${r.layer}">${r.layer}</span>` : '';
         return `<tr style="border-bottom:1px solid var(--cm-ink-50,#f0f0f0)">
-          <td style="padding:6px 12px">🔴</td>
+          <td style="padding:6px 12px">${this.statusDot('red')}</td>
           <td style="padding:6px 12px"><a href="javascript:DataHealthView.openAssetDrawer('${this.esc(r.table_name)}')" style="text-decoration:none;color:var(--cm-link,#0a6cb3)"><code style="font-size:11px">${this.esc(r.table_name)}</code></a></td>
           <td style="padding:6px 12px">${layerBadge}</td>
           <td style="padding:6px 12px;text-align:right;font-family:monospace">${this.fmtNum(r.row_count)}</td>
@@ -375,7 +388,7 @@
         champBox.innerHTML = `
           <div class="panel" style="padding:14px 18px;border-left:4px solid #2a7a2a;background:linear-gradient(90deg,#e8f4ec 0%,transparent 100%)">
             <div style="display:flex;align-items:center;gap:10px;margin-bottom:6px">
-              <span class="dh-pill dh-pill-green" style="font-size:13px">👑 CHAMPION</span>
+              <span class="dh-pill dh-pill-green" style="font-size:13px">CHAMPION</span>
               <code style="font-size:13px;font-weight:600">${this.esc(champ.model_id)}</code>
             </div>
             <div style="display:flex;gap:24px;flex-wrap:wrap;font-size:12px">
@@ -384,7 +397,7 @@
               <div><span class="muted">deployed</span> ${deployed}</div>
               <div><span class="muted">promoted from</span> ${this.esc(champ.promoted_from || '初始')}</div>
             </div>
-            ${champ.deploy_decision_notes ? `<div class="muted" style="margin-top:6px;font-size:11px">📝 ${this.esc(champ.deploy_decision_notes)}</div>` : ''}
+            ${champ.deploy_decision_notes ? `<div class="muted" style="margin-top:6px;font-size:11px">${this.esc(champ.deploy_decision_notes)}</div>` : ''}
           </div>`;
       } else {
         champBox.innerHTML = '<div class="panel" style="padding:14px;text-align:center" class="muted">没有 champion. 先跑 <code>backend/scripts/bootstrap_model_lifecycle.py</code></div>';
@@ -395,7 +408,7 @@
       if (challengers.length > 0) {
         chBox.innerHTML = `
           <div class="panel" style="padding:12px 14px">
-            <div style="font-size:13px;font-weight:600;margin-bottom:8px">⚔ Challengers (${challengers.length})</div>
+            <div style="font-size:13px;font-weight:600;margin-bottom:8px">Challengers (${challengers.length})</div>
             ${challengers.map((m) => {
               const ic = m.ic_holdout != null ? m.ic_holdout.toFixed(4) : '—';
               return `<div style="margin:4px 0;font-size:12px">
@@ -405,7 +418,7 @@
             }).join('')}
           </div>`;
       } else {
-        chBox.innerHTML = '<div class="muted" style="font-size:12px;padding:6px 14px">⚔ 没有正在评估的 challenger</div>';
+        chBox.innerHTML = '<div class="muted" style="font-size:12px;padding:6px 14px">没有正在评估的 challenger</div>';
       }
 
       // Retired
@@ -413,7 +426,7 @@
       if (retired.length > 0) {
         rtBox.innerHTML = `
           <details>
-            <summary style="cursor:pointer;font-size:12px;padding:6px 14px" class="muted">📦 Retired models (${retired.length}) — 点击展开</summary>
+            <summary style="cursor:pointer;font-size:12px;padding:6px 14px" class="muted">Retired models (${retired.length}) — 点击展开</summary>
             <div class="panel" style="padding:0;overflow-x:auto;margin-top:6px">
               <table style="width:100%;border-collapse:collapse;font-size:11px">
                 <thead style="background:var(--cm-ink-50,#f6f6f6)">
@@ -450,9 +463,6 @@
         return;
       }
       tbody.innerHTML = items.map((l) => {
-        const sevDot = l.output_severity === 'red' ? '🔴' :
-                       l.output_severity === 'yellow' ? '🟡' :
-                       l.output_severity === 'green' ? '🟢' : '⚪';
         const status = l.last_status || 'pending';
         const statusBadge =
           status === 'ok'      ? '<span style="padding:2px 6px;background:#e8f4ec;color:#1f7a3a;border-radius:3px;font-size:11px">ok</span>' :
@@ -467,7 +477,7 @@
           : '';
         const errorTooltip = l.last_error ? ` title="${this.esc(l.last_error)}"` : '';
         return `<tr style="border-bottom:1px solid var(--cm-ink-50,#f0f0f0)"${errorTooltip}>
-          <td style="padding:6px 12px">${sevDot}</td>
+          <td style="padding:6px 12px">${this.statusDot(l.output_severity)}</td>
           <td style="padding:6px 12px"><code style="font-size:11px;font-weight:600">${this.esc(l.lineage_id)}</code><br><span class="muted" style="font-size:10px">${this.esc(l.description || '')}</span></td>
           <td style="padding:6px 12px"><code style="font-size:11px">${this.esc(l.output_table)}</code>${hashChange}</td>
           <td style="padding:6px 12px">${inputs}</td>
@@ -500,13 +510,12 @@
           : '<span class="muted" style="font-size:11px">派生</span>';
         const hs = c.health_summary || {};
         const healthHtml = `
-          <span style="color:#2a7a2a">🟢 ${hs.green || 0}</span>
-          <span style="color:#a67c00;margin-left:4px">🟡 ${hs.yellow || 0}</span>
-          <span style="color:#c33;margin-left:4px">🔴 ${hs.red || 0}</span>`;
+          <span style="color:#2a7a2a">OK ${hs.green || 0}</span>
+          <span style="color:#a67c00;margin-left:4px">WARN ${hs.yellow || 0}</span>
+          <span style="color:#c33;margin-left:4px">FAIL ${hs.red || 0}</span>`;
         const writes = (c.writes || []).map((w) => {
           const sev = w.severity || 'unknown';
-          const dot = sev === 'red' ? '🔴' : sev === 'yellow' ? '🟡' : sev === 'green' ? '🟢' : '⚪';
-          return `<div style="margin:2px 0">${dot} <code style="font-size:11px">${this.esc(w.table)}</code> <span class="muted" style="font-size:10px">· ${this.esc(w.purpose || '')} · ${this.esc(w.freshness)}/${w.sla_hours}h</span></div>`;
+          return `<div style="margin:2px 0">${this.statusDot(sev)} <code style="font-size:11px">${this.esc(w.table)}</code> <span class="muted" style="font-size:10px">· ${this.esc(w.purpose || '')} · ${this.esc(w.freshness)}/${w.sla_hours}h</span></div>`;
         }).join('');
         const fb = (c.fallback_chain || []).join(' → ') || '—';
         return `<tr style="border-bottom:1px solid var(--cm-ink-50,#f0f0f0);vertical-align:top">
@@ -543,7 +552,6 @@
       const a = d.asset || {};
       const ls = d.latest_snapshot || {};
       const trend = d.trend || [];
-      const sevDot = ls.severity === 'red' ? '🔴' : ls.severity === 'yellow' ? '🟡' : ls.severity === 'green' ? '🟢' : '⚪';
       const readers = Array.isArray(a.reader_modules) ? a.reader_modules : [];
       const readersHtml = readers.length === 0
         ? '<span class="muted">无读者 (orphan_no_reader 候选)</span>'
@@ -552,13 +560,12 @@
       if (trend.length > 0) {
         trendHtml = '<div style="font-size:11px" class="muted">最近 ' + trend.length + ' 次快照: ' +
           trend.slice(0, 7).map((t) => {
-            const dot = t.severity === 'red' ? '🔴' : t.severity === 'yellow' ? '🟡' : '🟢';
-            return `<span title="${t.snapshot_at}">${dot}</span>`;
+            return `<span title="${t.snapshot_at}">${this.statusDot(t.severity)}</span>`;
           }).join(' ') + '</div>';
       }
       return `
         <div style="font-size:14px;margin-bottom:14px">
-          ${sevDot} <strong>${this.esc(a.table_name)}</strong>
+          ${this.statusDot(ls.severity)} <strong>${this.esc(a.table_name)}</strong>
           <span class="muted" style="margin-left:8px">layer=<code>${a.layer || '—'}</code> · schema_version=<code>${a.schema_version || 'v1'}</code></span>
         </div>
 

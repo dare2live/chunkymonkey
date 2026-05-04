@@ -3779,20 +3779,46 @@
       .replace('monthly_close_mean_qfq', '月线均价')
       .replace(/_/g, ' ');
   }
-  function securityMarketPrefix(code) { if (!code) return ''; return code.startsWith('6') ? 'SH' : 'SZ'; }
-  function xqLink(code) { if (!code) return ''; var p = securityMarketPrefix(code); return '<a class="xq-link" href="https://xueqiu.com/S/' + p + code + '" target="_blank">' + p + ':' + esc(code) + '</a>' }
+  function securityMarketPrefix(code) {
+    if (window.SecurityIdentity) return window.SecurityIdentity.marketPrefix({ stock_code: code });
+    if (!code) return '';
+    if (String(code).startsWith('6')) return 'SH';
+    if (String(code).startsWith('8') || String(code).startsWith('4')) return 'BJ';
+    return 'SZ';
+  }
+  function xqLink(code) {
+    if (!code) return '';
+    if (window.SecurityIdentity) {
+      return window.SecurityIdentity.renderCodeLink({ stock_code: code });
+    }
+    var p = securityMarketPrefix(code);
+    return '<a class="xq-link" href="https://xueqiu.com/S/' + p + esc(code) + '" target="_blank" rel="noopener">' + p + ': ' + esc(code) + '</a>';
+  }
   function xueqiuPillLink(code, label, stopPropagation) {
     if (!code) return '';
-    var prefix = code.startsWith('1') || code.startsWith('0') || code.startsWith('3') ? 'SZ' : securityMarketPrefix(code);
-    var text = label || code;
+    var identity = { stock_code: code };
+    var prefix = securityMarketPrefix(code);
+    var text = label || (window.SecurityIdentity ? window.SecurityIdentity.formatMarketCode(identity) : (prefix + ': ' + code));
     var clickAttr = stopPropagation ? ' onclick="event.stopPropagation()"' : '';
-    return '<a href="https://xueqiu.com/S/' + prefix + esc(code) + '" target="_blank" rel="noopener"' + clickAttr + ' style="display:inline-flex;align-items:center;padding:3px 10px;border-radius:999px;background:var(--cm-brand-50);color:var(--cm-brand-500);font-size:11px;font-weight:700;border:1px solid var(--cm-brand-100);text-decoration:none">' + esc(text) + '</a>';
+    var href = window.SecurityIdentity ? window.SecurityIdentity.xueqiuUrl(identity) : ('https://xueqiu.com/S/' + prefix + code);
+    return '<a class="cm-security-code" href="' + esc(href) + '" target="_blank" rel="noopener"' + clickAttr + '>' + esc(text) + '</a>';
   }
   function securityIdentityBlock(code, name, opts) {
     opts = opts || {};
+    if (window.SecurityIdentity) {
+      return window.SecurityIdentity.renderSecurityIdentity({
+        stock_code: code,
+        stock_name: name
+      }, {
+        className: opts.wrapperClass || 'security-identity',
+        nameClass: opts.nameClass || '',
+        clickAction: opts.clickAction || '',
+        stopPropagation: true
+      });
+    }
     var wrapperClass = opts.wrapperClass || 'security-identity';
     var metaClass = opts.metaClass || '';
-    var label = name || code || '-';
+    var label = name || '名称待补';
     var nameClasses = ['security-identity-name'];
     if (opts.nameClass) nameClasses.push(opts.nameClass);
     if (opts.clickAction) nameClasses.push('clickable-name');
@@ -3800,7 +3826,7 @@
       ? '<span class="' + nameClasses.join(' ') + '" onclick="' + opts.clickAction + '">' + esc(label) + '</span>'
       : '<span class="' + nameClasses.join(' ') + '">' + esc(label) + '</span>';
     var metaParts = [];
-    if (opts.includeCodeTag && code) metaParts.push('<span class="security-code-tag">' + esc(opts.codeLabel || code) + '</span>');
+    if (opts.includeCodeTag && code) metaParts.push('<span class="security-code-tag">' + esc(opts.codeLabel || (securityMarketPrefix(code) + ': ' + code)) + '</span>');
     if (opts.includeMarketLink && code) metaParts.push(xqLink(code));
     if (opts.includeXueqiuPill && code) metaParts.push(xueqiuPillLink(code, opts.xueqiuLabel || '雪球', true));
     return '<div class="' + wrapperClass + '"><div class="security-identity-main">' + nameHtml + '</div>' +

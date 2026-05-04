@@ -9,7 +9,8 @@
 (function () {
   if (window.CMDataView) return;
 
-  const STATE_DOTS = { ok: '🟢', degraded: '🟡', down: '🔴', unknown: '⚪' };
+  const global = typeof window !== 'undefined' ? window : globalThis;
+  const STATE_LABELS = { ok: 'OK', degraded: 'DEGRADED', down: 'DOWN', unknown: 'UNKNOWN' };
   const STATE_COLORS = { ok: '#0a0', degraded: '#d80', down: '#d33', unknown: '#888' };
 
   let _state = {
@@ -18,6 +19,7 @@
     routes: [],
     health: null,
     sourceHealth: null,
+    schemaVersions: null,
     tdxValidation: null,
     capFilter: '',
     routeFilter: '',
@@ -35,7 +37,7 @@
   function qs(id) { return document.getElementById(id); }
   function logLine(msg, level) {
     const ts = new Date().toLocaleTimeString();
-    const prefix = level === 'err' ? '❌ ' : level === 'ok' ? '✓ ' : '';
+    const prefix = level === 'err' ? 'FAIL ' : level === 'ok' ? 'OK ' : '';
     const line = `[${ts}] ${prefix}${msg}`;
     _logBuffer.push(line);
     if (_logBuffer.length > 500) _logBuffer.shift();
@@ -52,6 +54,49 @@
     if ((summary.yellow || 0) > 0 || (summary.unknown || 0) > 0) return 'warn';
     if ((summary.green || 0) > 0) return 'ok';
     return 'info';
+  }
+  function dotHtml(tone) {
+    return `<span class="cm-dot cm-dot-${esc(tone || 'info')}"></span>`;
+  }
+  function pillHtml(label, tone, title) {
+    return `<span class="cm-pill cm-pill-${esc(tone || 'info')}"${title ? ` title="${esc(title)}"` : ''}>${dotHtml(tone)}${esc(label)}</span>`;
+  }
+  function sourcePill(source) {
+    const s = source || 'unknown';
+    const tone = s.startsWith('tdxhub') || s.startsWith('miaoxiang') || s.startsWith('aif10') ? 'ok'
+      : s.startsWith('akshare') || s.startsWith('datacenter_web') || s.startsWith('em_datacenter') ? 'warn'
+      : 'info';
+    return `<span class="cm-pill cm-pill-${tone}">${esc(s)}</span>`;
+  }
+  function severityTone(sev) {
+    if (sev === 'green' || sev === 'ok') return 'ok';
+    if (sev === 'yellow' || sev === 'warn') return 'warn';
+    if (sev === 'red' || sev === 'critical' || sev === 'down') return 'bad';
+    return 'info';
+  }
+  function severityLabel(sev) {
+    return (sev || 'unknown').toUpperCase();
+  }
+  function findAssetHealth(tableName) {
+    if (!tableName || !_state.health || !Array.isArray(_state.health.items)) return null;
+    return _state.health.items.find(x => x.table_name === tableName) || null;
+  }
+  function routeHealth(route) {
+    const asset = findAssetHealth(route && route.raw_table);
+    if (!asset) return { label: 'UNKNOWN', tone: 'info', title: 'health snapshot 未覆盖' };
+    return {
+      label: severityLabel(asset.severity),
+      tone: severityTone(asset.severity),
+      title: asset.issue_summary || '',
+      freshness: asset.freshness_hours != null ? `${asset.freshness_hours.toFixed(1)}h` : '—',
+    };
+  }
+  function fallbackStatus(route) {
+    const cur = (route && route.current) || {};
+    if (cur.status === 'connected' && !route.target) return { label: '未启用', tone: 'ok' };
+    if (route.target) return { label: '迁移/兜底可用', tone: 'warn' };
+    if (cur.status === 'pending') return { label: '待接通', tone: 'info' };
+    return { label: '按链路兜底', tone: 'info' };
   }
 
   function renderLinkOverview() {
@@ -134,7 +179,7 @@
       </div>`;
     root.innerHTML = tdxPriority + _state.sources.map(src => {
       const h = src.health || {};
-      const dot = STATE_DOTS[h.state || 'unknown'];
+      const tone = h.state === 'ok' ? 'ok' : h.state === 'degraded' ? 'warn' : h.state === 'down' ? 'bad' : 'info';
       const color = STATE_COLORS[h.state || 'unknown'];
       const repoLink = src.repo_url
         ? `<a href="${esc(src.repo_url)}" target="_blank" style="color:var(--cm-ink-500);font-size:11px;text-decoration:none">repo↗</a>`
@@ -147,13 +192,13 @@
       return `
         <div class="panel ds-source-card" data-source="${esc(src.name)}" style="padding:14px;border-left:4px solid ${color}">
           <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
-            <div style="font-weight:700;font-size:14px">${dot} ${esc(src.display_name || src.name)}</div>
+            <div style="display:flex;align-items:center;gap:7px;font-weight:700;font-size:14px">${dotHtml(tone)} ${esc(src.display_name || src.name)}</div>
             <span style="font-size:11px;color:var(--cm-ink-500)">优先 ${src.priority}</span>
           </div>
           <div style="font-size:11px;color:var(--cm-ink-500);margin-bottom:6px">
             <strong>${src.capabilities.length}</strong> 类数据 · ${esc(teleLine)}
           </div>
-          <div style="font-size:11px;color:${color};margin-bottom:8px;min-height:14px">${esc(h.notes || '未检')}</div>
+          <div style="font-size:11px;color:${color};margin-bottom:8px;min-height:14px">${esc(STATE_LABELS[h.state || 'unknown'] || 'UNKNOWN')} · ${esc(h.notes || '未检')}</div>
           <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
             <button class="chip chip-outline ds-detail-btn" data-source="${esc(src.name)}" style="font-size:11px;padding:3px 8px">详情</button>
             <button class="chip chip-outline ds-health-btn" data-source="${esc(src.name)}" style="font-size:11px;padding:3px 8px">healthcheck</button>
@@ -194,7 +239,7 @@
     if (!el) return;
     const details = data.details || [];
     if (statsEl) {
-      const errMark = data.n_error > 0 ? `<span style="color:#d33">⚠${data.n_error} error</span> · ` : '';
+      const errMark = data.n_error > 0 ? `<span style="color:#d33">${data.n_error} error</span> · ` : '';
       const warnMark = data.n_warn > 0 ? `<span style="color:#a40">${data.n_warn} warn</span> · ` : '';
       statsEl.innerHTML = `${errMark}${warnMark}<span style="color:#0a7">${data.n_ok} ok</span> / ${data.n_tables} 张 · ${esc(data.run_at || '').slice(0, 16)}`;
     }
@@ -263,43 +308,49 @@
       root.innerHTML = '<div class="muted" style="padding:14px;text-align:center;font-size:12px">无匹配</div>';
       return;
     }
-    const SRC_COLOR = { tdxhub: '#0a7', aif10: '#26b', akshare: '#888', datacenter_web: '#a40' };
     const STATUS_BADGE = {
-      connected: '<span style="color:#0a7;font-weight:600">✓ 已接</span>',
-      transitional: '<span style="color:#a40;font-weight:600" title="datacenter-web 直连过渡, P6 计划迁妙想">⚠ 过渡</span>',
-      pending: '<span style="color:#888" title="registry 声明, 待接通">⏳ pending</span>',
+      connected: pillHtml('CONNECTED', 'ok'),
+      transitional: pillHtml('TRANSITIONAL', 'warn', 'datacenter-web 直连过渡, P6 计划迁妙想'),
+      pending: pillHtml('PENDING', 'info', 'registry 声明, 待接通'),
     };
     root.innerHTML = `
       <div class="cm-table-scroll">
-      <table style="width:100%;min-width:760px;font-size:12px;border-collapse:collapse">
-        <thead style="position:sticky;top:0;background:var(--cm-surface);z-index:1">
-          <tr style="border-bottom:1px solid var(--cm-ink-100);color:var(--cm-ink-500);font-size:11px">
-            <th style="text-align:left;padding:6px 8px">数据域</th>
-            <th style="text-align:left;padding:6px 8px">落库表</th>
-            <th style="text-align:left;padding:6px 8px">当前主源</th>
-            <th style="text-align:left;padding:6px 8px">协议</th>
-            <th style="text-align:left;padding:6px 8px">fallback</th>
-            <th style="text-align:left;padding:6px 8px">状态</th>
+      <table class="cm-route-table">
+        <thead>
+          <tr>
+            <th>业务数据</th>
+            <th>落库表</th>
+            <th>当前源</th>
+            <th>协议</th>
+            <th>连接</th>
+            <th>fallback 源</th>
+            <th>fallback 状态</th>
+            <th>健康</th>
+            <th>刷新步骤</th>
+            <th>修复入口</th>
           </tr>
         </thead>
         <tbody>
         ${list.map(r => {
           const cur = r.current || {};
-          const tgt = r.target;
-          const color = SRC_COLOR[cur.source] || '#666';
-          const targetCell = tgt
-            ? `<span style="color:${SRC_COLOR[tgt.source] || '#666'}">→ ${esc(tgt.source)}</span> <small class="muted">${esc(tgt.phase || '')}</small>`
-            : '<span class="muted" style="font-size:11px">—</span>';
+          const tgt = r.target || {};
+          const health = routeHealth(r);
+          const fb = fallbackStatus(r);
+          const asset = findAssetHealth(r.raw_table);
+          const freshness = health.freshness || (asset && asset.freshness_hours != null ? `${asset.freshness_hours.toFixed(1)}h` : '—');
+          const repairLabel = r.step_id ? '运行 step' : '查看资产';
           return `
             <tr style="border-bottom:1px dotted var(--cm-bg-100)" title="${esc(r.notes || '')}">
-              <td style="padding:5px 8px;font-weight:600">${esc(r.data_name)}<br><small class="muted" style="font-weight:400;font-size:10px">${esc(r.step_id || '')}</small></td>
-              <td style="padding:5px 8px;color:var(--cm-ink-500);font-size:11px"><code>${esc(r.raw_table)}</code></td>
-              <td style="padding:5px 8px">
-                <span style="color:${color};font-weight:600">${esc(cur.source)}</span>
-              </td>
-              <td style="padding:5px 8px"><code>${esc(cur.protocol)}</code></td>
-              <td style="padding:5px 8px;font-size:11px">${targetCell}</td>
-              <td style="padding:5px 8px;font-size:11px">${STATUS_BADGE[cur.status] || cur.status || ''}</td>
+              <td><strong>${esc(r.data_name)}</strong><br><small class="muted">${esc(r.notes || '')}</small></td>
+              <td><code>${esc(r.raw_table)}</code></td>
+              <td>${sourcePill(cur.source)}</td>
+              <td><code>${esc(cur.protocol || '—')}</code></td>
+              <td>${STATUS_BADGE[cur.status] || esc(cur.status || '—')}</td>
+              <td>${tgt.source ? `${sourcePill(tgt.source)}<br><small class="muted">${esc(tgt.phase || '')}</small>` : '<span class="muted">—</span>'}</td>
+              <td>${pillHtml(fb.label, fb.tone)}</td>
+              <td>${pillHtml(health.label, health.tone, health.title)}<br><small class="muted">fresh ${esc(freshness)}</small></td>
+              <td><code>${esc(r.step_id || '—')}</code></td>
+              <td><button class="chip chip-outline chip-sm cm-repair-btn" data-route-repair="${esc(r.step_id || '')}" data-route-table="${esc(r.raw_table || '')}">${repairLabel}</button></td>
             </tr>
           `;
         }).join('')}
@@ -307,6 +358,178 @@
       </table>
       </div>
     `;
+    root.querySelectorAll('[data-route-repair]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const step = btn.dataset.routeRepair;
+        if (step) triggerStep(step, btn);
+        else logLine(`查看资产: ${btn.dataset.routeTable || ''}`);
+      });
+    });
+  }
+
+  function renderHealthHeatmap() {
+    const root = qs('ds-health-heatmap');
+    if (!root) return;
+    const health = _state.health || {};
+    const summary = health.summary || {};
+    const byLayer = health.by_layer || {};
+    const total = (summary.green || 0) + (summary.yellow || 0) + (summary.red || 0) + (summary.unknown || 0);
+    const layers = Object.keys(byLayer).sort();
+    const bar = global.CMViz && global.CMViz.stackedBar
+      ? global.CMViz.stackedBar([
+        { value: summary.green || 0, color: 'var(--cm-ok-500)', label: `green ${summary.green || 0}` },
+        { value: summary.yellow || 0, color: 'var(--cm-warn-500)', label: `yellow ${summary.yellow || 0}` },
+        { value: summary.red || 0, color: 'var(--cm-bad-500)', label: `red ${summary.red || 0}` },
+        { value: summary.unknown || 0, color: 'var(--cm-ink-300)', label: `unknown ${summary.unknown || 0}` },
+      ])
+      : '';
+    root.innerHTML = `<div class="cm-section-head">
+      <div>
+        <h3>资产健康热力</h3>
+        <p class="muted">按层展示 green/yellow/red/unknown 分布，优先暴露阻塞刷新链路的资产。</p>
+      </div>
+      <span class="cm-muted-note">${esc(total || 0)} assets</span>
+    </div>
+    <div class="cm-health-grid">
+      <div class="cm-health-card">
+        <h4>全局</h4>
+        ${bar}
+        <div class="cm-health-row"><span>green</span>${global.CMViz ? global.CMViz.miniBar(summary.green || 0, total || 1, { color: 'var(--cm-ok-500)' }) : ''}<b>${summary.green || 0}</b></div>
+        <div class="cm-health-row"><span>yellow</span>${global.CMViz ? global.CMViz.miniBar(summary.yellow || 0, total || 1, { color: 'var(--cm-warn-500)' }) : ''}<b>${summary.yellow || 0}</b></div>
+        <div class="cm-health-row"><span>red</span>${global.CMViz ? global.CMViz.miniBar(summary.red || 0, total || 1, { color: 'var(--cm-bad-500)' }) : ''}<b>${summary.red || 0}</b></div>
+      </div>
+      ${layers.map(layer => {
+        const row = byLayer[layer] || {};
+        const layerTotal = (row.green || 0) + (row.yellow || 0) + (row.red || 0) + (row.unknown || 0);
+        return `<div class="cm-health-card">
+          <h4>${esc(layer)}</h4>
+          <div class="cm-health-row"><span>green</span>${global.CMViz ? global.CMViz.miniBar(row.green || 0, layerTotal || 1, { color: 'var(--cm-ok-500)' }) : ''}<b>${row.green || 0}</b></div>
+          <div class="cm-health-row"><span>yellow</span>${global.CMViz ? global.CMViz.miniBar(row.yellow || 0, layerTotal || 1, { color: 'var(--cm-warn-500)' }) : ''}<b>${row.yellow || 0}</b></div>
+          <div class="cm-health-row"><span>red</span>${global.CMViz ? global.CMViz.miniBar(row.red || 0, layerTotal || 1, { color: 'var(--cm-bad-500)' }) : ''}<b>${row.red || 0}</b></div>
+        </div>`;
+      }).join('')}
+    </div>`;
+  }
+
+  function renderSourcePriority() {
+    const root = qs('ds-source-priority');
+    if (!root) return;
+    const data = _state.sourceHealth || {};
+    const rows = data.sources || data.source_priorities || [];
+    root.innerHTML = `<div class="cm-section-head">
+      <div>
+        <h3>源优先级与连通性</h3>
+        <p class="muted">展示每个上游当前承载的资产健康分布，用于判断主源和补源是否符合预期。</p>
+      </div>
+      <span class="cm-muted-note">${rows.length || 0} sources</span>
+    </div>
+    <div class="cm-table-scroll">
+      <table class="cm-compact-table" style="min-width:760px">
+        <thead><tr><th>源</th><th>资产数</th><th>green</th><th>yellow</th><th>red</th><th>健康占比</th></tr></thead>
+        <tbody>${rows.length ? rows.map(r => {
+          const source = r.upstream_source || r.source || r.client_id || 'unknown';
+          const green = r.green_count ?? r.green ?? 0;
+          const yellow = r.yellow_count ?? r.yellow ?? 0;
+          const red = r.red_count ?? r.red ?? 0;
+          const total = r.asset_count ?? r.total ?? (green + yellow + red);
+          return `<tr>
+            <td>${sourcePill(source)}</td>
+            <td>${esc(total)}</td>
+            <td>${green}</td>
+            <td>${yellow}</td>
+            <td>${red}</td>
+            <td>${global.CMViz ? global.CMViz.stackedBar([
+              { value: green, color: 'var(--cm-ok-500)', label: 'green' },
+              { value: yellow, color: 'var(--cm-warn-500)', label: 'yellow' },
+              { value: red, color: 'var(--cm-bad-500)', label: 'red' },
+            ]) : ''}</td>
+          </tr>`;
+        }).join('') : '<tr><td colspan="6" class="muted" style="padding:16px;text-align:center">源健康聚合待加载</td></tr>'}</tbody>
+      </table>
+    </div>`;
+  }
+
+  function renderFallbackPanel() {
+    const root = qs('ds-fallback-panel');
+    if (!root) return;
+    const health = _state.health || {};
+    const sourceHealth = _state.sourceHealth || {};
+    const active = health.fallback_active || sourceHealth.fallback_active || [];
+    const tiers = health.source_tier_distribution || sourceHealth.source_tier_distribution || {};
+    const tierEntries = Object.entries(tiers);
+    const routeFallbacks = _state.routes.filter(r => r.target || (r.current && r.current.status !== 'connected')).slice(0, 8);
+    root.innerHTML = `<div class="cm-section-head">
+      <div>
+        <h3>Fallback 状态</h3>
+        <p class="muted">正式链路优先使用主源；fallback 只作为可解释的兜底或迁移过渡。</p>
+      </div>
+      <span class="cm-muted-note">${active.length || routeFallbacks.length || 0} active/transition</span>
+    </div>
+    <div class="cm-health-grid">
+      <div class="cm-health-card">
+        <h4>Tier 分布</h4>
+        ${tierEntries.length ? tierEntries.map(([tier, count]) => `
+          <div class="cm-health-row"><span>${esc(tier)}</span>${global.CMViz ? global.CMViz.miniBar(count || 0, Math.max(...tierEntries.map(x => Number(x[1]) || 0), 1), { color: 'var(--cm-brand-500)' }) : ''}<b>${esc(count)}</b></div>
+        `).join('') : '<div class="muted" style="font-size:12px">暂无 tier 聚合</div>'}
+      </div>
+      <div class="cm-health-card">
+        <h4>过渡队列</h4>
+        ${(active.length ? active : routeFallbacks).slice(0, 8).map(x => {
+          const dataName = x.data_name || x.table_name || x.asset || x.raw_table || 'unknown';
+          const source = (x.current && x.current.source) || x.source || x.upstream_source || 'unknown';
+          const target = (x.target && x.target.source) || x.fallback_source || x.target_source || '';
+          return `<div style="padding:5px 0;border-bottom:1px dotted var(--cm-bg-100);font-size:12px">
+            <strong>${esc(dataName)}</strong>
+            <span class="muted"> ${sourcePill(source)} ${target ? '-> ' + sourcePill(target) : ''}</span>
+          </div>`;
+        }).join('') || '<div class="muted" style="font-size:12px">暂无 fallback 触发</div>'}
+      </div>
+    </div>`;
+  }
+
+  function renderDriftQueue() {
+    const root = qs('ds-drift-queue');
+    if (!root) return;
+    const data = _state.schemaVersions || {};
+    const summary = data.summary || {};
+    const versions = data.versions || [];
+    const driftRows = versions.filter(v => v.drift);
+    root.innerHTML = `<div class="cm-section-head">
+      <div>
+        <h3>Schema Drift 队列</h3>
+        <p class="muted">派生/实验表 drift 会影响 data_health_snapshot 的资产级 red/yellow，优先在这里收口。</p>
+      </div>
+      <span class="cm-muted-note">${summary.drift_count || driftRows.length || 0} drift</span>
+    </div>
+    <div class="cm-table-scroll">
+      <table class="cm-compact-table" style="min-width:760px">
+        <thead><tr><th>表</th><th>层</th><th>expected</th><th>actual</th><th>最近重算</th><th>处理</th></tr></thead>
+        <tbody>${driftRows.length ? driftRows.slice(0, 12).map(v => `
+          <tr>
+            <td><code>${esc(v.table_name)}</code></td>
+            <td>${esc(v.layer || '—')}</td>
+            <td><code>${esc(v.expected_version || '—')}</code></td>
+            <td><code>${esc(v.actual_version || 'never_recorded')}</code></td>
+            <td class="muted">${esc(v.rebuilt_at ? v.rebuilt_at.slice(0, 16) : '—')}</td>
+            <td><button class="chip chip-outline chip-sm" data-drift-table="${esc(v.table_name)}">查看设置</button></td>
+          </tr>
+        `).join('') : '<tr><td colspan="6" class="muted" style="padding:16px;text-align:center">schema versions 已对齐</td></tr>'}</tbody>
+      </table>
+    </div>`;
+    root.querySelectorAll('[data-drift-table]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        if (window.App && typeof window.App.showView === 'function') window.App.showView('settings');
+        logLine(`schema drift: ${btn.dataset.driftTable || ''}`);
+      });
+    });
+  }
+
+  function renderDataCockpitPanels() {
+    renderHealthHeatmap();
+    renderSourcePriority();
+    renderFallbackPanel();
+    renderDriftQueue();
+    renderRoutesTable();
   }
 
   // ---- capability 表 (高级/诊断用) ----
@@ -478,12 +701,14 @@
       fetchJSON('/api/data_health/snapshot').then(r => {
         _state.health = r;
         renderLinkOverview();
+        renderDataCockpitPanels();
       }).catch(e => {
         console.error('[DataView] health snapshot fail', e);
       }),
       fetchJSON('/api/data_health/sources').then(r => {
         _state.sourceHealth = r;
         renderLinkOverview();
+        renderDataCockpitPanels();
       }).catch(e => {
         console.error('[DataView] source health fail', e);
       }),
@@ -512,10 +737,10 @@
           const ok = bs.connected || 0;
           const tr = bs.transitional || 0;
           const pd = bs.pending || 0;
-          statsEl.textContent = `共 ${stats.total || 0}: ✓${ok} 已接 · ⚠${tr} 过渡 · ⏳${pd} 待接`;
+          statsEl.textContent = `共 ${stats.total || 0}: ${ok} 已接 · ${tr} 过渡 · ${pd} 待接`;
         }
         logLine(`数据通道加载: ${_state.routes.length} 类`, 'ok');
-        renderRoutesTable();
+        renderDataCockpitPanels();
       }).catch(e => {
         console.error('[DataView] routes fetch fail', e);
         logLine('加载数据通道失败: ' + e.message, 'err');
@@ -527,6 +752,12 @@
         renderCapTable();
       }).catch(e => {
         console.error('[DataView] caps fetch fail', e);
+      }),
+      fetchJSON('/api/data_sources/schema_versions').then(r => {
+        _state.schemaVersions = r;
+        renderDataCockpitPanels();
+      }).catch(e => {
+        console.error('[DataView] schema versions fail', e);
       }),
     ];
     await Promise.allSettled(tasks);
