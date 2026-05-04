@@ -4,9 +4,9 @@
   data_name:     业务数据名 (UI 展示)
   raw_table:     写入的 raw / dim / 直接 mart 表
   current:       当前实际通道
-                 - source: tdxhub / aif10 / akshare / datacenter_web (过渡)
+                 - source: tdxhub / aif10 / akshare / retired
                  - protocol: 协议 / endpoint
-                 - status: connected (已接) / pending (registry 声明未接) / transitional (datacenter-web 过渡)
+                 - status: connected (已接) / pending (registry 声明未接) / transitional (已下架/评估)
   target:        长期迁移目标 (空 = 当前就是终态)
                  - source / protocol / 计划阶段 (P6 等)
   freshness:     T-0 / T-1 / 季 / 静态
@@ -16,9 +16,7 @@
 
 设计原则 (来自用户要求):
 - 数据源只 3 个: tdxhub (主) / aif10 妙想 (备) / akshare (兜底)
-- "datacenter-web 直连" 不是独立 source, 是过渡产物
-  → tdxhub 没有 + 妙想能拉的 → 迁妙想 (P6)
-  → 妙想也没有的 → 走 akshare ak.X (容忍反爬, 用户接受)
+- 直连抓取不是独立 source; 当前只展示 tdxhub / aif10 / akshare / retired.
 """
 from __future__ import annotations
 
@@ -153,7 +151,7 @@ DATA_ROUTES = [
     },
 
     # =================================================================
-    # 过渡通道 (datacenter-web 直连) — 用户希望少用, P6 迁妙想
+    # 已迁移或已下架通道
     # =================================================================
     {
         "data_name": "龙虎榜",
@@ -183,7 +181,7 @@ DATA_ROUTES = [
         "freshness": "T-0",
         "step_id": "sync_margin",
         "client_module": "services/margin_client.py",
-        "notes": "走 akshare 库 (沪市+深市两个独立接口), 不走 datacenter-web. 没有迁移需求.",
+        "notes": "走 akshare 库 (沪市+深市两个独立接口). 没有迁移需求.",
     },
     {
         "data_name": "机构调研事件",
@@ -203,17 +201,17 @@ DATA_ROUTES = [
         "freshness": "T-0 (10min cache)",
         "step_id": "(详情页 lazy)",
         "client_module": "services/market_signals.py (P6.5 已迁)",
-        "notes": "P6.5 (2026-04-28): _eastmoney_rows 把 httpx 直拉 datacenter-web 改为 AIF10Client.get_v1, 保留 cache 逻辑.",
+        "notes": "P6.5 (2026-04-28): _eastmoney_rows 已改为 AIF10Client.get_v1, 保留 cache 逻辑.",
     },
     {
         "data_name": "个股资金流",
         "raw_table": "raw_fund_flow_*",
-        "current": {"source": "(已下架)", "protocol": "(2026-04 下架, 反爬高发)", "status": "transitional"},
+        "current": {"source": "retired", "protocol": "(2026-04 下架, 反爬高发)", "status": "transitional"},
         "target": {"source": "(评估)", "protocol": "ak.stock_individual_fund_flow_em / 妙想 push2 / deprecate", "phase": "未定"},
         "freshness": "—",
         "step_id": "(模块停用)",
         "client_module": "(fetch_fund_flow_daily.py 已删, 见 git 历史 491072d1)",
-        "notes": "项目曾走 datacenter-web 拉历史 + push2his 实时, 反爬卡死. 用户已确认整体下架资金流模块.",
+        "notes": "用户已确认整体下架资金流模块.",
     },
 
     # =================================================================

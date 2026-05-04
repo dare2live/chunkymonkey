@@ -23,7 +23,7 @@ import pandas as pd
 
 logger = logging.getLogger("cm-api")
 
-LHB_SOURCE = "miaoxiang_RPT_DAILYBILLBOARD_DETAILSNEW"  # P6.2 迁: datacenter-web → miaoxiang
+LHB_SOURCE = "miaoxiang_RPT_DAILYBILLBOARD_DETAILSNEW"
 
 
 # ─────────────────────────────────────────────────────────────────────

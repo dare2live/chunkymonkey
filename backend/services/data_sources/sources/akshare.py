@@ -1,10 +1,4 @@
-"""akshare source — 真兜底, 仅保留 tdxhub 和妙想都没有的 2 类.
-
-注意 (历史/退役说明): lhb / qfii / margin / 机构调研 / 资金流 这些"项目自建
-datacenter-web 直连"是过渡产物, 不归入此 source. 见 data_routes.py 中
-status='transitional' 的条目, P6 迁移目标是 miaoxiang (妙想
-RPT_DAILYBILLBOARD_DETAILSNEW / RPT_DMSK_HOLDERS / RPT_ORG_SURVEYNEW 等已能覆盖).
-"""
+"""akshare source — 真兜底, 仅保留 tdxhub 和妙想都没有的能力."""
 from __future__ import annotations
 
 import time

@@ -264,7 +264,7 @@ REQUIRED_BASE_COLUMNS = {
 
 
 def _feature_rows(conn: Any, profile_run_id: str, max_base_fields: int) -> list[dict[str, Any]]:
-    raw_cols = {row[1] for row in conn.execute("PRAGMA table_info(raw_gpcw_detail)").fetchall()}
+    raw_cols = {row[0] for row in conn.execute("DESCRIBE raw_gpcw_detail").fetchall()}
     rows = conn.execute(
         """
         SELECT s.field_key, s.zh_name, s.db_column, s.field_family, s.value_type,

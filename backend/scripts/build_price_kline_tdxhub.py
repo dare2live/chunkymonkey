@@ -21,8 +21,9 @@ import time
 import warnings
 from pathlib import Path
 
+STOCK_ROOT = Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-sys.path.insert(0, '/Users/dp/Documents/M/tdxhub')
+sys.path.insert(0, str(STOCK_ROOT / "tdxhub"))
 warnings.filterwarnings('ignore')
 
 import pandas as pd

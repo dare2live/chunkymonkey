@@ -66,7 +66,7 @@ class BaseDataSource:
     """所有 source 继承此类.
 
     子类声明:
-        name: 全局唯一标识 (tdxhub / aif10 / em_datacenter / akshare)
+        name: 全局唯一标识 (tdxhub / aif10 / akshare)
         display_name: UI 显示名
         priority: 数字越小优先级越高 (10/20/30/99)
         capabilities: list[Capability]

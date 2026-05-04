@@ -49,8 +49,9 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(mess
 log = logging.getLogger("ingest-holders")
 
 REPO = Path(__file__).resolve().parent.parent.parent
+STOCK_ROOT = REPO.parent
 sys.path.insert(0, str(REPO / "backend"))
-sys.path.insert(0, "/Users/dp/Documents/M/stock/tdxhub")  # editable install
+sys.path.insert(0, str(STOCK_ROOT / "tdxhub"))  # sibling editable checkout
 
 from services.db import DB_PATH, init_db  # noqa: E402
 from services.holders_resolver import (  # noqa: E402

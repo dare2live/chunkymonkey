@@ -150,7 +150,7 @@ def train_tdx_challenger_model(
     candidate_features = _candidate_features_for_set(conn, feature_set_id)
     baseline_features = [f for f in CANDIDATE_FEATURES if f in candidate_features] or candidate_features[:20]
     cols = ["stock_code", "date", "forward_ret_20d", *selected, *baseline_features]
-    table_cols = {row[1] for row in conn.execute("PRAGMA table_info(fact_feature_panel_candidate)").fetchall()}
+    table_cols = {row[0] for row in conn.execute("DESCRIBE fact_feature_panel_candidate").fetchall()}
     cols = list(dict.fromkeys([col for col in cols if col in table_cols]))
     cursor = conn.execute(
         f"SELECT {', '.join(cols)} FROM fact_feature_panel_candidate WHERE feature_set_id = ? AND forward_ret_20d IS NOT NULL",

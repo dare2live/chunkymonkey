@@ -37,13 +37,20 @@ import os
 import re
 import subprocess
 import sys
+import argparse
 from collections import defaultdict
 from dataclasses import dataclass, field, asdict
 from pathlib import Path
 from typing import Optional
 
 REPO = Path(__file__).resolve().parent.parent.parent
+ROOT = REPO.parent
 BACKEND = REPO / "backend"
+PROJECT_ROOTS = {
+    "chunky-monkey-v2": REPO,
+    "tdxhub": ROOT / "tdxhub",
+    "miaoxiang": ROOT / "miaoxiang",
+}
 
 # ─────────────────────────────────────────────────────────────────────
 # Tier 1 — markers
@@ -146,6 +153,50 @@ class Finding:
         return all(h.kind in ("comment", "docstring") for h in self.hits)
 
 
+@dataclass
+class TechStackHit:
+    project: str
+    category: str
+    file: str
+    line: int
+    marker: str
+    text: str
+
+
+TECH_STACK_PATTERNS = [
+    # pandas denylist
+    ("pandas", "pandas", re.compile(r"\bpandas\b")),
+    ("pandas", "pd.", re.compile(r"\bpd\.")),
+    ("pandas", "DataFrame", re.compile(r"\bDataFrame\b")),
+    ("pandas", "read_sql_query", re.compile(r"\bread_sql_query\b")),
+    ("pandas", ".to_sql(", re.compile(r"\.to_sql\s*\(")),
+    ("pandas", ".df()", re.compile(r"\.df\s*\(")),
+    # SQLite denylist
+    ("sqlite", "sqlite", re.compile(r"\bsqlite\b", re.IGNORECASE)),
+    ("sqlite", "sqlite3", re.compile(r"\bsqlite3\b")),
+    ("sqlite", "sqlite_master", re.compile(r"\bsqlite_master\b")),
+    ("sqlite", "AUTOINCREMENT", re.compile(r"\bAUTOINCREMENT\b", re.IGNORECASE)),
+    ("sqlite", "BEGIN IMMEDIATE", re.compile(r"\bBEGIN\s+IMMEDIATE\b", re.IGNORECASE)),
+    ("sqlite", "row_factory", re.compile(r"\brow_factory\b")),
+    ("sqlite", "PRAGMA", re.compile(r"\bPRAGMA\s+(?:table_info|foreign_keys|journal_mode|synchronous|cache_size|wal_checkpoint)\b", re.IGNORECASE)),
+    ("old_db_path", "smartmoney.db", re.compile(r"\bsmartmoney\.db\b")),
+    ("old_db_path", "market_data.db", re.compile(r"\bmarket_data\.db\b")),
+    ("old_db_path", "etf.db", re.compile(r"\betf\.db\b")),
+    ("old_db_path", ".sqlite", re.compile(r"\.sqlite\b", re.IGNORECASE)),
+    # Source/link drift candidates. These are review queues, not automatic failures.
+    ("old_source_route", "datacenter-web", re.compile(r"datacenter[-_]web", re.IGNORECASE)),
+    ("old_source_route", "top_free_holders", re.compile(r"\btop_free_holders\b")),
+    ("old_external_link", "github branch URL", re.compile(r"https?://[^\\s'\"<>]+/(?:tree|blob)/(?:master|main)\b")),
+    # Allowed current fact bucket.
+    ("duckdb_allowed", "duckdb", re.compile(r"\bduckdb\b", re.IGNORECASE)),
+]
+
+PHASE0_EXCLUDE_PARTS = {
+    ".git", "__pycache__", ".pytest_cache", ".ruff_cache", ".mypy_cache",
+    "data", "logs", "mlruns", ".venv", "venv", "dist", "build",
+}
+
+
 # ─────────────────────────────────────────────────────────────────────
 # helpers
 # ─────────────────────────────────────────────────────────────────────
@@ -211,6 +262,108 @@ def scan_files() -> list[Path]:
     # 排除 __pycache__, .pytest_cache, data/, mlruns/
     return [p for p in out if not any(s in str(p) for s in (
         "__pycache__", ".pytest_cache", "/data/", "/mlruns/", ".git/"))]
+
+
+def _phase0_skip(path: Path) -> bool:
+    parts = set(path.parts)
+    if parts & PHASE0_EXCLUDE_PARTS:
+        return True
+    if path.name in {".DS_Store"}:
+        return True
+    try:
+        rel_repo = str(path.relative_to(REPO))
+        if rel_repo in SELF_EXCLUDE_PATHS:
+            return True
+        if rel_repo.startswith("docs/audits/"):
+            return True
+    except ValueError:
+        pass
+    return False
+
+
+def phase0_scan_files() -> list[tuple[str, Path]]:
+    """Files scanned by the cross-project technical-stack audit."""
+
+    allowed_ext = {
+        ".py", ".pyi", ".js", ".jsx", ".ts", ".tsx", ".html", ".css",
+        ".md", ".rst", ".txt", ".sql", ".yaml", ".yml", ".json",
+        ".toml", ".lock", ".cfg", ".ini", ".sh", ".command",
+    }
+    out: list[tuple[str, Path]] = []
+    for project, root in PROJECT_ROOTS.items():
+        if not root.exists():
+            continue
+        for path in root.rglob("*"):
+            if not path.is_file() or _phase0_skip(path):
+                continue
+            if path.suffix not in allowed_ext and path.name not in {"requirements.txt", "Dockerfile", "Makefile"}:
+                continue
+            out.append((project, path))
+    return out
+
+
+def _kind_for_phase0(path: Path, project_root: Path) -> str:
+    rel = str(path.relative_to(project_root))
+    if "/tests/" in f"/{rel}" or rel.startswith("tests/") or rel.endswith("_test.py"):
+        return "test"
+    if path.suffix.lower() in {".md", ".rst", ".txt"}:
+        return "docs"
+    return "runtime"
+
+
+def _phase0_category(group: str, kind: str) -> str:
+    if group in {"pandas", "sqlite"}:
+        return f"{group}_{kind}"
+    return group
+
+
+def phase0_stack_scan() -> dict:
+    """Plan Phase 0 scan: pandas/SQLite/old path/source/link baseline across three repos."""
+
+    hits: list[TechStackHit] = []
+    scanned = phase0_scan_files()
+    for project, path in scanned:
+        root = PROJECT_ROOTS[project]
+        kind = _kind_for_phase0(path, root)
+        try:
+            lines = path.read_text(encoding="utf-8", errors="ignore").splitlines()
+        except Exception:
+            continue
+        rel = str(path.relative_to(ROOT))
+        for line_no, line in enumerate(lines, 1):
+            for group, marker, pattern in TECH_STACK_PATTERNS:
+                if not pattern.search(line):
+                    continue
+                category = _phase0_category(group, kind)
+                hits.append(TechStackHit(
+                    project=project,
+                    category=category,
+                    file=rel,
+                    line=line_no,
+                    marker=marker,
+                    text=line.strip()[:180],
+                ))
+
+    summary: dict[str, int] = defaultdict(int)
+    by_project: dict[str, int] = defaultdict(int)
+    for hit in hits:
+        summary[hit.category] += 1
+        by_project[hit.project] += 1
+    for required in (
+        "pandas_runtime", "pandas_test", "pandas_docs",
+        "sqlite_runtime", "sqlite_test", "sqlite_docs",
+        "old_db_path", "old_source_route", "old_external_link",
+        "duckdb_allowed",
+    ):
+        summary.setdefault(required, 0)
+
+    return {
+        "project_roots": {k: str(v) for k, v in PROJECT_ROOTS.items() if v.exists()},
+        "scanned_files": len(scanned),
+        "summary": dict(sorted(summary.items())),
+        "by_project": dict(sorted(by_project.items())),
+        "hits": [asdict(h) for h in hits],
+    }
 
 
 # 自审计脚本本身需排除 (它包含所有退役 item 名作为 registry 数据).
@@ -465,7 +618,42 @@ def tier7_retired_files(files: list[Path]) -> list[Hit]:
 # main
 # ─────────────────────────────────────────────────────────────────────
 
-def main() -> int:
+def _build_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(description="Audit stale references and technical-stack denylist hits.")
+    parser.add_argument(
+        "--output",
+        default="/tmp/stale_audit.json",
+        help="JSON report path. Default: /tmp/stale_audit.json",
+    )
+    parser.add_argument(
+        "--phase0-only",
+        action="store_true",
+        help="Only run the cross-project Phase 0 technical-stack scan.",
+    )
+    parser.add_argument(
+        "--no-fail",
+        action="store_true",
+        help="Always exit 0 after writing the report. Useful for first-pass baselines.",
+    )
+    return parser
+
+
+def main(argv: Optional[list[str]] = None) -> int:
+    args = _build_parser().parse_args(argv)
+    phase0 = phase0_stack_scan()
+    print(f"[SRA] phase0 stack scan: {phase0['scanned_files']} files across {len(phase0['project_roots'])} repos")
+    for category, count in phase0["summary"].items():
+        print(f"  {category}: {count}")
+
+    if args.phase0_only:
+        report = {"phase0_stack_scan": phase0}
+        out_path = args.output
+        Path(out_path).parent.mkdir(parents=True, exist_ok=True)
+        with open(out_path, "w") as f:
+            json.dump(report, f, ensure_ascii=False, indent=2, default=str)
+        print(f"\nfull JSON report: {out_path}")
+        return 0
+
     files = scan_files()
     print(f"[SRA] scanning {len(files)} files...")
 
@@ -527,6 +715,7 @@ def main() -> int:
     # ── JSON 报告 ──
     report = {
         "scanned_files": len(files),
+        "phase0_stack_scan": phase0,
         "tier1_markers": {
             label: [asdict(h) for h in hits]
             for label, hits in tier1.items()
@@ -537,12 +726,16 @@ def main() -> int:
             for label, hits in tier4.items()
         },
     }
-    out_path = "/tmp/stale_audit.json"
+    out_path = args.output
+    Path(out_path).parent.mkdir(parents=True, exist_ok=True)
     with open(out_path, "w") as f:
         json.dump(report, f, ensure_ascii=False, indent=2, default=str)
     print(f"\nfull JSON report: {out_path}")
 
     # 退出码: 有 critical 时非零 (适合 CI)
+    if args.no_fail:
+        print("\nno-fail mode: report-only baseline written.")
+        return 0
     if critical:
         print(f"\n❌ {len(critical)} critical stale references found. Fix before shipping.")
         return 1

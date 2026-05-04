@@ -183,7 +183,7 @@ def generate_events(conn) -> int:
                 cur, prev, change, round(pct, 2), now
             ))
 
-    conn.execute("BEGIN IMMEDIATE")
+    conn.execute("BEGIN TRANSACTION")
     try:
         conn.execute("DELETE FROM fact_institution_event")
         conn.executemany("""

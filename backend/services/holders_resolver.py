@@ -33,8 +33,9 @@ import pandas as pd
 
 logger = logging.getLogger("cm-api")
 
-# tdxhub.holders 通过 pip install -e ../tdxhub 引入
-sys.path.insert(0, "/Users/dp/Documents/M/stock/tdxhub")
+# tdxhub.holders 通过同级 checkout 或 pip install -e ../tdxhub 引入.
+STOCK_ROOT = Path(__file__).resolve().parents[3]
+sys.path.insert(0, str(STOCK_ROOT / "tdxhub"))
 
 
 @dataclass

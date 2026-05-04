@@ -22,8 +22,11 @@ def _has_stage_tables():
     conn = get_conn()
     try:
         row = conn.execute(
-            "SELECT name FROM sqlite_master WHERE type='table' "
-            "AND name IN ('dim_stock_stage_latest','mart_stock_trend')"
+            """
+            SELECT table_name
+              FROM information_schema.tables
+             WHERE table_name IN ('dim_stock_stage_latest','mart_stock_trend')
+            """
         ).fetchall()
         return len(row) >= 2
     finally:

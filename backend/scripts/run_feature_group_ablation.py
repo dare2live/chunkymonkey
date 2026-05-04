@@ -116,7 +116,7 @@ def _auto_source_feature_set_id(feature_set_id: str) -> str:
 
 
 def _candidate_features_for_set(conn: Any, feature_set_id: str) -> list[str]:
-    table_cols = {row[1] for row in conn.execute("PRAGMA table_info(fact_feature_panel_candidate)").fetchall()}
+    table_cols = {row[0] for row in conn.execute("DESCRIBE fact_feature_panel_candidate").fetchall()}
     if feature_set_id.startswith("tdx_gpcw_auto"):
         source_feature_set_id = _auto_source_feature_set_id(feature_set_id)
         rows = conn.execute(
@@ -154,7 +154,7 @@ def _feature_group_map_for_set(conn: Any, feature_set_id: str) -> dict[str, str]
 
 
 def _load_candidate_panel(conn: Any, feature_set_id: str) -> pd.DataFrame:
-    table_cols = {row[1] for row in conn.execute("PRAGMA table_info(fact_feature_panel_candidate)").fetchall()}
+    table_cols = {row[0] for row in conn.execute("DESCRIBE fact_feature_panel_candidate").fetchall()}
     labels = [label for label in LABEL_COLUMNS if label in table_cols]
     if "forward_ret_20d" not in labels:
         labels.append("forward_ret_20d")

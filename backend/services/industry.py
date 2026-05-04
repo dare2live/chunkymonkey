@@ -32,16 +32,10 @@ def _validate_industry_level(level: int) -> int:
 
 def _table_columns(conn, table_name: str) -> set[str]:
     try:
-        rows = conn.execute(f"PRAGMA table_info({table_name})").fetchall()
+        rows = conn.execute(f"DESCRIBE {table_name}").fetchall()
     except Exception:
         return set()
-    result = set()
-    for row in rows:
-        if hasattr(row, "keys"):
-            result.add(row["name"])
-        else:
-            result.add(row[1])
-    return result
+    return {row["column_name"] if hasattr(row, "keys") else row[0] for row in rows}
 
 
 # ─── 列名 / 表达式 helper ─────────────────────────────────────────────

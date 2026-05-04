@@ -64,7 +64,7 @@
   function sourcePill(source) {
     const s = source || 'unknown';
     const tone = s.startsWith('tdxhub') || s.startsWith('miaoxiang') || s.startsWith('aif10') ? 'ok'
-      : s.startsWith('akshare') || s.startsWith('datacenter_web') || s.startsWith('em_datacenter') ? 'warn'
+      : s.startsWith('akshare') ? 'warn'
       : 'info';
     return `<span class="cm-pill cm-pill-${tone}">${esc(s)}</span>`;
   }
@@ -310,7 +310,7 @@
     }
     const STATUS_BADGE = {
       connected: pillHtml('CONNECTED', 'ok'),
-      transitional: pillHtml('TRANSITIONAL', 'warn', 'datacenter-web 直连过渡, P6 计划迁妙想'),
+      transitional: pillHtml('TRANSITIONAL', 'warn', '已下架或迁移评估中'),
       pending: pillHtml('PENDING', 'info', 'registry 声明, 待接通'),
     };
     root.innerHTML = `
@@ -576,15 +576,15 @@
   // ---- 数据更新调度 (从工作台搬来的智能更新 + 9 sync 单步) ----
   // step 元数据: id 必须跟 backend updater step_id 完全一致
   const SYNC_STEPS = [
-    { id: 'sync_raw', name: '十大流通股东', cap: 'top_free_holders', source: 'em_datacenter' },
+    { id: 'sync_raw', name: '十大流通股东', cap: 'tdx_f10_holders', source: 'tdxhub' },
     { id: 'match_inst', name: '匹配跟踪机构', cap: '(派生)', source: '内部' },
     { id: 'sync_market_data', name: 'K 线日/月', cap: 'kline_daily', source: 'tdxhub' },
-    { id: 'sync_industry', name: '行业 (申万)', cap: 'industry_sw', source: 'tdxhub' },
+    { id: 'sync_industry', name: '行业 (TDX)', cap: 'tdx_industry', source: 'tdxhub' },
     { id: 'sync_financial', name: '财务 (gpcw)', cap: 'financial_gpcw_8q', source: 'tdxhub' },
-    { id: 'sync_qfii', name: 'QFII 持仓', cap: 'qfii_holding_quarterly', source: 'em_datacenter' },
-    { id: 'sync_margin', name: '融资融券', cap: 'margin_daily', source: 'em_datacenter' },
-    { id: 'sync_surveys', name: '机构调研', cap: 'institution_survey', source: 'em_datacenter' },
-    { id: 'sync_lhb', name: '龙虎榜', cap: 'lhb_daily', source: 'em_datacenter' },
+    { id: 'sync_qfii', name: 'QFII 持仓', cap: 'qfii_holding_quarterly', source: 'aif10' },
+    { id: 'sync_margin', name: '融资融券', cap: 'margin_daily', source: 'akshare' },
+    { id: 'sync_surveys', name: '机构调研', cap: 'institution_survey', source: 'aif10' },
+    { id: 'sync_lhb', name: '龙虎榜', cap: 'lhb_daily', source: 'aif10' },
   ];
 
   function renderStepGrid() {

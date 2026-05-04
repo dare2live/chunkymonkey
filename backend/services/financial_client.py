@@ -74,8 +74,8 @@ RAW_FINANCIAL_COLUMNS = [
 
 
 def _table_columns(conn, table_name: str) -> set[str]:
-    rows = conn.execute(f"PRAGMA table_info({table_name})").fetchall()
-    return {row[1] for row in rows}
+    rows = conn.execute(f"DESCRIBE {table_name}").fetchall()
+    return {row["column_name"] if hasattr(row, "keys") else row[0] for row in rows}
 
 
 def _ensure_columns(conn, table_name: str, columns: dict[str, str]) -> None:

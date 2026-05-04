@@ -85,7 +85,7 @@ FEATURE_COLS = ordered_feature_cols(include_dense_v2=True)
 
 def ensure_model_schema(conn) -> None:
     conn.executescript(MODEL_DDL)
-    cols = {r[1] for r in conn.execute("PRAGMA table_info(mart_multidim_model)").fetchall()}
+    cols = {r[0] for r in conn.execute("DESCRIBE mart_multidim_model").fetchall()}
     for col in ("feature_cols_json", "label_name", "feature_schema_version"):
         if col not in cols:
             conn.execute(f"ALTER TABLE mart_multidim_model ADD COLUMN {col} TEXT")

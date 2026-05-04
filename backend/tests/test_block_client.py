@@ -36,7 +36,7 @@ async def test_fetch_tdx_block_file_uses_shared_quotes_pool():
 async def test_sync_tdx_blocks_persists_catalog_and_members():
     with TemporaryDirectory() as tmpdir:
         data_dir = Path(tmpdir)
-        db_path = data_dir / "smartmoney.db"
+        db_path = data_dir / "business.duckdb"
 
         with mock.patch.object(db, "DB_DIR", data_dir), mock.patch.object(db, "DB_PATH", db_path):
             db.init_db()
@@ -113,7 +113,7 @@ async def test_sync_tdx_blocks_persists_catalog_and_members():
 async def test_sync_tdx_blocks_replaces_previous_snapshot():
     with TemporaryDirectory() as tmpdir:
         data_dir = Path(tmpdir)
-        db_path = data_dir / "smartmoney.db"
+        db_path = data_dir / "business.duckdb"
 
         with mock.patch.object(db, "DB_DIR", data_dir), mock.patch.object(db, "DB_PATH", db_path):
             db.init_db()

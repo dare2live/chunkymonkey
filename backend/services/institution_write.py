@@ -87,7 +87,7 @@ def update_institution_record(conn, inst_id: str, body: dict, *, now: Optional[s
 
 
 def delete_institution_record(conn, inst_id: str) -> None:
-    conn.execute("BEGIN IMMEDIATE")
+    conn.execute("BEGIN TRANSACTION")
     try:
         conn.execute("DELETE FROM inst_institutions WHERE id = ?", (inst_id,))
         conn.execute("DELETE FROM inst_holdings WHERE institution_id = ?", (inst_id,))

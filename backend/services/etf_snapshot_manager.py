@@ -297,7 +297,7 @@ def persist_latest_etf_snapshot(conn, mkt_conn, *, connectivity: Optional[dict] 
     )
 
     try:
-        conn.execute("BEGIN IMMEDIATE")
+        conn.execute("BEGIN TRANSACTION")
         conn.execute("DELETE FROM mart_etf_snapshot_latest")
         for row in rows:
             conn.execute(

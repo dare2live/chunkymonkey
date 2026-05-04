@@ -179,7 +179,7 @@ async def sync_tdx_blocks(conn, *, active_codes: set[str],
 
     catalog_rows = _build_catalog_rows(all_member_rows, source=source, updated_at=now)
 
-    conn.execute("BEGIN IMMEDIATE")
+    conn.execute("BEGIN TRANSACTION")
     try:
         conn.execute("DELETE FROM dim_stock_tdx_block")
         conn.execute("DELETE FROM dim_tdx_block_catalog")

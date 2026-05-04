@@ -367,7 +367,6 @@ def main() -> int:
     snapshots: list[dict] = []
     severity_count = {"green": 0, "yellow": 0, "red": 0}
     for asset_row in rows:
-        # row_factory 默认返 Row
         asset = dict(asset_row)
         snap = compute_health_for_table(con, asset, now)
         snap["snapshot_at"] = now.isoformat(timespec="seconds")

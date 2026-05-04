@@ -779,7 +779,7 @@ def calculate_returns(biz_conn, *, full_rescan: bool = False) -> int:
                 )
 
         # 批量回写 fact_institution_event
-        biz_conn.execute("BEGIN IMMEDIATE")
+        biz_conn.execute("BEGIN TRANSACTION")
         try:
             for i in range(0, len(updates), 500):
                 batch = updates[i:i + 500]
@@ -842,7 +842,7 @@ def calculate_returns(biz_conn, *, full_rescan: bool = False) -> int:
                     if status == "ok":
                         fix_updates.append(update_tuple)
             if fix_updates:
-                biz_conn.execute("BEGIN IMMEDIATE")
+                biz_conn.execute("BEGIN TRANSACTION")
                 try:
                     for i in range(0, len(fix_updates), 500):
                         batch = fix_updates[i:i + 500]

@@ -14,7 +14,7 @@ class EtfDbTests(unittest.TestCase):
     def test_get_etf_conn_initializes_schema_without_legacy_bootstrap(self):
         with TemporaryDirectory() as tmpdir:
             data_dir = Path(tmpdir)
-            db_path = data_dir / "etf.db"
+            db_path = data_dir / "etf.duckdb"
 
             with mock.patch.object(etf_db, "_DB_DIR", data_dir), mock.patch.object(etf_db, "_DB_PATH", db_path), mock.patch(
                 "services.db.get_conn",
@@ -26,8 +26,15 @@ class EtfDbTests(unittest.TestCase):
                 conn = etf_db.get_etf_conn()
                 try:
                     tables = {
-                        row["name"]
-                        for row in conn.execute("SELECT name FROM sqlite_master WHERE type = 'table'")
+                        row["table_name"]
+                        for row in conn.execute(
+                            """
+                            SELECT table_name
+                              FROM information_schema.tables
+                             WHERE table_schema = 'main'
+                               AND table_type = 'BASE TABLE'
+                            """
+                        )
                     }
 
                     self.assertTrue(

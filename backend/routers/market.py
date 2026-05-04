@@ -1,8 +1,8 @@
 """市场层只读路由 (P7 退役 miaoxiang 分支后).
 
 历史背景:
-  P6.1 (2026-04-27) 把十大流通股东抓取从 datacenter-web 直拉迁到 miaoxiang
-  RPT_F10_EH_FREEHOLDERS. P7 (2026-04-28) 整体下架 miaoxiang holders 通道,
+  P6.1 (2026-04-27) 十大流通股东迁到 canonical holder fact.
+  P7 (2026-04-28) 整体下架 miaoxiang holders 通道,
   全量改走 tdxhub.holders.HolderFetcher → fact_top10_holder_period (canonical).
 
   抓取入口:

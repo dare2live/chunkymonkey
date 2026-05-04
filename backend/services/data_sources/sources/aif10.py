@@ -27,8 +27,8 @@ CAPABILITY_TO_REPORT = {
     "main_org_holding":         "RPT_F10_MAIN_ORGHOLDDETAILS",  # 机构持仓 ORG_TYPE 分桶 (含 QFII=02)
     "fund_org_holding":         "RPT_MAIN_ORGHOLDDETAIL",       # 基金/机构持仓明细
     "northbound_holding":       "RPT_MUTUAL_STOCK_HOLDRANKN_NEW",  # 沪深港通持股
-    # ===== 替代 datacenter-web 直连 (P6 迁移目标) =====
-    "lhb_daily":                "RPT_DAILYBILLBOARD_DETAILSNEW", # 龙虎榜 (P6: 替代 lhb_client datacenter-web)
+    # ===== 妙想/aif10 当前接入能力 =====
+    "lhb_daily":                "RPT_DAILYBILLBOARD_DETAILSNEW", # 龙虎榜
     "lhb_operatedept":          "RPT_OPERATEDEPT_TRADE",        # 龙虎榜营业部
     "block_trade":              "RPT_DATA_BLOCKTRADE",          # 大宗交易
     "margin_stocks":            "RPT_MARGIN_STATISTICS_STOCKS", # 融资融券 (P6: 替代 margin_client)

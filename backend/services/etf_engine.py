@@ -18,7 +18,7 @@ logger = logging.getLogger("cm-api")
 
 # ETF 引擎：独立模块，不依赖 scoring.py
 # 数据源：tdxhub（通达信）→ akshare_client.fetch_etf_list / fetch_etf_kline
-# 写入：etf_asset_universe + etf_price_kline（etf.db）
+# 写入：etf_asset_universe + etf_price_kline（etf.duckdb）
 
 # 进度回调签名：fn(stage: str, current: int, total: int, message: str)
 ProgressCb = Optional[Callable[[str, int, int, str], None]]
@@ -221,7 +221,7 @@ async def sync_etf_universe(etf_conn, etf_price_conn, sync_kline: bool = True,
 
     progress_cb(stage, current, total, message) 在关键节点回调，让前端能展示进度条。
 
-    注意：当前 ETF 资产池和 ETF K 线都落在 etf.db，调用方通常传入同一个连接。
+    注意：当前 ETF 资产池和 ETF K 线都落在 etf.duckdb，调用方通常传入同一个连接。
 
     返回 {"etf_count": N, "kline_etf_count": M, "kline_rows": K, ...}
     """
@@ -267,7 +267,7 @@ async def sync_etf_universe(etf_conn, etf_price_conn, sync_kline: bool = True,
 
     # 1) 写入 etf_asset_universe
     etf_count = 0
-    etf_conn.execute("BEGIN IMMEDIATE")
+    etf_conn.execute("BEGIN TRANSACTION")
     try:
         etf_conn.execute("DELETE FROM etf_asset_universe")
         for e in etf_list:
@@ -390,7 +390,7 @@ async def sync_etf_universe(etf_conn, etf_price_conn, sync_kline: bool = True,
 
 def calc_etf_momentum(etf_conn, etf_price_conn) -> List[Dict]:
     """
-    基于 etf.db 的 ETF 专属 K 线计算 ETF 动量指标。
+    基于 etf.duckdb 的 ETF 专属 K 线计算 ETF 动量指标。
     当前 ETF 资产池与 ETF K 线都在同一个库里；第二个连接参数保留是为了兼容既有调用。
 
     简单口径：20 日收益率 → 转 0~100 分；趋势状态由动量分档。

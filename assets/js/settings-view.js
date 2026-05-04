@@ -172,7 +172,7 @@
       <div>chunky-monkey-v2</div>
       <div style="color:var(--cm-ink-500);font-size:11px;margin-top:4px">
         后端: ${esc(backend)}<br>
-        架构方案: <a href="https://github.com/dare2live/chunky-monkey-v2/blob/main/docs/architecture-redesign-2026-04.md" target="_blank">docs/architecture-redesign-2026-04.md</a><br>
+        架构方案: docs/architecture-redesign-2026-04.md<br>
         数据源: <a href="https://github.com/dare2live/tdxhub" target="_blank">tdxhub</a> + <a href="https://github.com/dare2live/aif10-scraper" target="_blank">aif10-scraper</a>
       </div>
     `;

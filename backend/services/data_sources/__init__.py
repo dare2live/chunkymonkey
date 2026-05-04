@@ -2,7 +2,7 @@
 
 设计目标:
 - 调用方走 resolve('kline_daily', code='600519') 而不是直接 import client
-- 优先级: tdxhub > 妙想 > em_datacenter > akshare (兜底)
+- 优先级: tdxhub > 妙想/aif10 > akshare (兜底)
 - 每个 source 自我注册, 不动 updater.py 也能加新源
 """
 from .base import BaseDataSource, Capability, Health, register_source, SourceState

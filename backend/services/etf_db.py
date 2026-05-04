@@ -1,5 +1,5 @@
 """
-etf_db.py — ETF 独立数据库 (etf.db)
+etf_db.py — ETF 独立 DuckDB 数据库
 
 职责：ETF 资产池、ETF 行情、ETF 快照与同步状态。
 ETF 运行时只通过本模块读写，不再复用股票侧业务库与行情库。

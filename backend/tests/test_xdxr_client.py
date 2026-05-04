@@ -61,7 +61,7 @@ class _DummyXdxrClient:
 async def test_sync_xdxr_for_codes_persists_rows_and_state():
     with TemporaryDirectory() as tmpdir:
         data_dir = Path(tmpdir)
-        db_path = data_dir / "market_data.db"
+        db_path = data_dir / "market.duckdb"
 
         with mock.patch.object(market_db, "_DB_DIR", data_dir), mock.patch.object(market_db, "_DB_PATH", db_path):
             market_db.init_market_db()
@@ -97,7 +97,7 @@ async def test_sync_xdxr_for_codes_persists_rows_and_state():
 async def test_sync_xdxr_skips_recent_successful_codes():
     with TemporaryDirectory() as tmpdir:
         data_dir = Path(tmpdir)
-        db_path = data_dir / "market_data.db"
+        db_path = data_dir / "market.duckdb"
 
         with mock.patch.object(market_db, "_DB_DIR", data_dir), mock.patch.object(market_db, "_DB_PATH", db_path):
             market_db.init_market_db()
@@ -130,7 +130,7 @@ async def test_sync_xdxr_skips_recent_successful_codes():
 async def test_sync_xdxr_reports_progress_snapshots():
     with TemporaryDirectory() as tmpdir:
         data_dir = Path(tmpdir)
-        db_path = data_dir / "market_data.db"
+        db_path = data_dir / "market.duckdb"
 
         with mock.patch.object(market_db, "_DB_DIR", data_dir), mock.patch.object(market_db, "_DB_PATH", db_path):
             market_db.init_market_db()

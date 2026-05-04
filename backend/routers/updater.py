@@ -478,7 +478,7 @@ def _reset_tables(conn, tables):
     counts = {}
     missing_tables = []
     existing_tables = []
-    conn.execute("BEGIN IMMEDIATE")
+    conn.execute("BEGIN TRANSACTION")
     try:
         for key, table_name in tables:
             if not _table_exists(conn, table_name):
@@ -1594,7 +1594,7 @@ def _step_build_profiles_sync(conn) -> int:
 
     refresh_stock_latest_cache(conn)
     now = datetime.now().isoformat()
-    conn.execute("BEGIN IMMEDIATE")
+    conn.execute("BEGIN TRANSACTION")
     try:
         conn.execute("DELETE FROM mart_institution_profile")
 
@@ -2340,7 +2340,7 @@ def _step_build_industry_stat_sync(conn) -> int:
     前端/解释层请明确标注"当前行业口径".
     """
     now = datetime.now().isoformat()
-    conn.execute("BEGIN IMMEDIATE")
+    conn.execute("BEGIN TRANSACTION")
     try:
         conn.execute("DELETE FROM mart_institution_industry_stat")
 

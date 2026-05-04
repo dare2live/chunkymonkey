@@ -392,8 +392,8 @@ def test_ensure_table_adds_missing_gpcw_columns():
         tdx_affair_client._ensure_table(conn)
 
         columns = {
-            row[1]
-            for row in conn.execute("PRAGMA table_info(raw_gpcw_detail)").fetchall()
+            row[0]
+            for row in conn.execute("DESCRIBE raw_gpcw_detail").fetchall()
         }
 
         assert "contract_liabilities" in columns

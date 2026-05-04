@@ -182,7 +182,7 @@ def _run_auto_sql_walkforward(
     folds: int,
     run_id: str | None,
 ) -> dict[str, Any]:
-    table_cols = {row[1] for row in conn.execute("PRAGMA table_info(fact_feature_panel_candidate)").fetchall()}
+    table_cols = {row[0] for row in conn.execute("DESCRIBE fact_feature_panel_candidate").fetchall()}
     usable_features = [
         feature for feature in _candidate_features_for_set(conn, feature_set_id)
         if feature in table_cols

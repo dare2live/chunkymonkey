@@ -154,7 +154,10 @@ def _ensure_table(conn: Any):
     """)
     # 前向兼容：如果 _FIELD_MAP / _FIELD_ALIASES_BY_DB_COLUMN 新增了字段但表已存在，
     # 自动 ALTER TABLE ADD COLUMN (覆盖全部 DB 列, 不只 _FIELD_MAP.values())
-    existing = {row[1] for row in conn.execute("PRAGMA table_info(raw_gpcw_detail)").fetchall()}
+    existing = {
+        row["column_name"] if hasattr(row, "keys") else row[0]
+        for row in conn.execute("DESCRIBE raw_gpcw_detail").fetchall()
+    }
     for col in _NUMERIC_DB_COLUMNS:
         if col not in existing:
             conn.execute(f"ALTER TABLE raw_gpcw_detail ADD COLUMN {col} REAL")

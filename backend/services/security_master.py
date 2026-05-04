@@ -96,7 +96,7 @@ def refresh_active_a_stock_master(conn) -> int:
         for _, row in frame.iterrows()
     ]
 
-    conn.execute("BEGIN IMMEDIATE")
+    conn.execute("BEGIN TRANSACTION")
     try:
         conn.execute("DELETE FROM dim_active_a_stock")
         conn.executemany(

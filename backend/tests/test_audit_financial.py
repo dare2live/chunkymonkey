@@ -12,8 +12,8 @@ from services import audit, db, financial_client, market_db
 def test_run_quality_audit_uses_financial_universe_for_latest_snapshot_coverage():
     with TemporaryDirectory() as tmpdir:
         data_dir = Path(tmpdir)
-        business_db_path = data_dir / "smartmoney.db"
-        market_db_path = data_dir / "market_data.db"
+        business_db_path = data_dir / "business.duckdb"
+        market_db_path = data_dir / "market.duckdb"
 
         with mock.patch.object(db, "DB_DIR", data_dir), mock.patch.object(db, "DB_PATH", business_db_path), mock.patch.object(market_db, "_DB_DIR", data_dir), mock.patch.object(market_db, "_DB_PATH", market_db_path):
             db.init_db()

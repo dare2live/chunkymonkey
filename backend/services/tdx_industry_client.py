@@ -57,7 +57,10 @@ def _ensure_table(conn: Any) -> None:
         CREATE INDEX IF NOT EXISTS idx_tdx_industry_l2 ON dim_stock_tdx_industry(tdx_l2);
         CREATE INDEX IF NOT EXISTS idx_tdx_industry_l3 ON dim_stock_tdx_industry(tdx_l3);
     """)
-    existing = {row[1] for row in conn.execute("PRAGMA table_info(dim_stock_tdx_industry)").fetchall()}
+    existing = {
+        row["column_name"] if hasattr(row, "keys") else row[0]
+        for row in conn.execute("DESCRIBE dim_stock_tdx_industry").fetchall()
+    }
     for col in ("tdx_l1_name", "tdx_l2_name", "tdx_l3_name"):
         if col not in existing:
             conn.execute(f"ALTER TABLE dim_stock_tdx_industry ADD COLUMN {col} TEXT")

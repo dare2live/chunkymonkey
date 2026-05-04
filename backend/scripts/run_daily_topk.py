@@ -117,7 +117,7 @@ def load_latest_model_id(conn, *, include_disabled: bool = False) -> str:
 
     # M8.6 legacy fallback: 默认排除 disabled_by_default=true 的模型 (alpha158 / legacy 110).
     # 显式传 --model-id 不走这条路, 不受影响.
-    cols = {r[1] for r in conn.execute("PRAGMA table_info(mart_multidim_model)").fetchall()}
+    cols = {r[0] for r in conn.execute("DESCRIBE mart_multidim_model").fetchall()}
     has_flag = "disabled_by_default" in cols
     if has_flag and not include_disabled:
         row = conn.execute("""
@@ -145,7 +145,7 @@ def _table_columns(duck, table: str) -> set[str]:
 
 
 def load_model_feature_cols(conn, model_id: str, *, allow_legacy: bool) -> list[str]:
-    cols = {r[1] for r in conn.execute("PRAGMA table_info(mart_multidim_model)").fetchall()}
+    cols = {r[0] for r in conn.execute("DESCRIBE mart_multidim_model").fetchall()}
     if "feature_cols_json" in cols:
         row = conn.execute(
             "SELECT feature_cols_json FROM mart_multidim_model WHERE model_id = ?",

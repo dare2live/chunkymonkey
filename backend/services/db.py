@@ -40,6 +40,11 @@ def get_conn(timeout: int = 30) -> DuckConn:
     return _duck_connect(str(DB_PATH), timeout=timeout)
 
 
+def _table_columns(conn: DuckConn, table_name: str) -> set[str]:
+    rows = conn.execute(f"DESCRIBE {table_name}").fetchall()
+    return {row["column_name"] if hasattr(row, "keys") else row[0] for row in rows}
+
+
 def init_db():
     conn = get_conn()
     try:
@@ -1546,7 +1551,7 @@ def init_db():
 
             -- 抓取日志
             CREATE TABLE IF NOT EXISTS scan_log (
-                id               INTEGER PRIMARY KEY AUTOINCREMENT,
+                id               INTEGER PRIMARY KEY,
                 scan_type        TEXT,
                 update_date_from TEXT,
                 update_date_to   TEXT,
@@ -1825,7 +1830,7 @@ def init_db():
         # 原列名在 Phase 2 申万退役后语义已漂移 (值仍是 level1/level2/level3),
         # 重命名以解除 "sw" 字面与 TDX 真相源的混淆。
         try:
-            cols = {r[1] for r in conn.execute("PRAGMA table_info(mart_institution_industry_stat)").fetchall()}
+            cols = _table_columns(conn, "mart_institution_industry_stat")
             if "sw_level" in cols and "industry_level" not in cols:
                 conn.execute(
                     "ALTER TABLE mart_institution_industry_stat RENAME COLUMN sw_level TO industry_level"
@@ -1850,7 +1855,7 @@ def init_db():
         # 字面上与 TDX 真相源冲突, 重命名为 tdx_l1_name/tdx_l2_name 消歧。
         for table in ("fact_stock_archetype", "dim_stock_archetype_latest"):
             try:
-                cols = {r[1] for r in conn.execute(f"PRAGMA table_info({table})").fetchall()}
+                cols = _table_columns(conn, table)
                 if "sw_level1" in cols and "tdx_l1_name" not in cols:
                     conn.execute(f"ALTER TABLE {table} RENAME COLUMN sw_level1 TO tdx_l1_name")
                 if "sw_level2" in cols and "tdx_l2_name" not in cols:
@@ -1865,7 +1870,7 @@ def init_db():
         quality_tables = ("fact_stock_quality_features", "dim_stock_quality_latest")
         for table in quality_tables:
             try:
-                cols = {r[1] for r in conn.execute(f"PRAGMA table_info({table})").fetchall()}
+                cols = _table_columns(conn, table)
                 if "sw_level1" in cols and "tdx_l1" not in cols:
                     conn.execute(f"ALTER TABLE {table} RENAME COLUMN sw_level1 TO tdx_l1")
                 if "sw_level2" in cols and "tdx_l2" not in cols:
@@ -1875,7 +1880,7 @@ def init_db():
         turtle_tables = ("fact_stock_turtle_features", "dim_stock_turtle_latest")
         for table in turtle_tables:
             try:
-                cols = {r[1] for r in conn.execute(f"PRAGMA table_info({table})").fetchall()}
+                cols = _table_columns(conn, table)
                 if "sw_level1" in cols and "tdx_l1_name" not in cols:
                     conn.execute(f"ALTER TABLE {table} RENAME COLUMN sw_level1 TO tdx_l1_name")
                 if "sw_level2" in cols and "tdx_l2_name" not in cols:
@@ -1991,7 +1996,7 @@ def init_db():
             "fact_stock_turtle_features", "dim_stock_turtle_latest",
         ):
             try:
-                cols = {r[1] for r in conn.execute(f"PRAGMA table_info({tbl})").fetchall()}
+                cols = _table_columns(conn, tbl)
             except Exception:
                 continue
             for old, new in (
@@ -2007,7 +2012,7 @@ def init_db():
                         pass
 
         try:
-            cols = {r[1] for r in conn.execute("PRAGMA table_info(mart_institution_industry_stat)").fetchall()}
+            cols = _table_columns(conn, "mart_institution_industry_stat")
             if "industry_code" in cols and "tdx_code" in cols:
                 conn.execute(
                     "UPDATE mart_institution_industry_stat "

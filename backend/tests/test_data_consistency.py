@@ -40,7 +40,7 @@ def test_migration_consistency():
 
     # 如果旧表还在，做行数对比
     old_exists = biz.execute(
-        "SELECT COUNT(*) FROM sqlite_master WHERE name='stock_kline'"
+        "SELECT COUNT(*) FROM information_schema.tables WHERE table_name='stock_kline'"
     ).fetchone()[0]
     if old_exists:
         old_count = biz.execute("SELECT COUNT(*) FROM stock_kline").fetchone()[0]
@@ -159,7 +159,7 @@ def test_event_return_single_source():
     conn = get_conn()
 
     # 检查增强列是否存在
-    cols = [r[1] for r in conn.execute("PRAGMA table_info(fact_institution_event)").fetchall()]
+    cols = [r[0] for r in conn.execute("DESCRIBE fact_institution_event").fetchall()]
     assert "gain_30d" in cols, "fact_institution_event missing gain_30d column"
     assert "calc_version" in cols, "fact_institution_event missing calc_version column"
     print("  fact_institution_event enhanced columns exist ✓")

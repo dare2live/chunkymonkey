@@ -117,7 +117,7 @@ def _eastmoney_rows(
         page_size,
         max_pages,
     )
-    # P6.5 (2026-04-28): 走 miaoxiang/aif10-scraper, 替代 httpx 直拉 datacenter-web.
+    # P6.5 (2026-04-28): 走 miaoxiang/aif10-scraper, 不保留直连抓取路径.
     # source/client 参数通过 extra_params 传, 兼容 reportName 对协议参数的需求差异.
     cached = _cache_get(cache_key)
     if cached is not None:
