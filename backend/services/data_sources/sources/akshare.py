@@ -3,7 +3,7 @@
 注意 (历史/退役说明): lhb / qfii / margin / 机构调研 / 资金流 这些"项目自建
 datacenter-web 直连"是过渡产物, 不归入此 source. 见 data_routes.py 中
 status='transitional' 的条目, P6 迁移目标是 miaoxiang (妙想
-RPT_BILLBOARD_DAILYDETAILS 等已能覆盖).
+RPT_DAILYBILLBOARD_DETAILSNEW / RPT_DMSK_HOLDERS / RPT_ORG_SURVEYNEW 等已能覆盖).
 """
 from __future__ import annotations
 

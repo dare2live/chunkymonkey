@@ -1,12 +1,10 @@
 """派生 SQL / 派生脚本登记表 — 单一真相源.
 
-每个 LineageSpec = 一个派生过程.
-分两类:
-  1) sql_text 存完整可执行 SQL — 由 run_lineage() 直接 execute, 适合纯 SQL 派生
-  2) entry_point 存 'module:function' — 由 run_lineage() 反射调用, 适合脚本派生 (build_*.py)
+每个 LineageSpec = 一个派生过程的声明.
 
-不强求把整个 scoring.py 改写; 而是登记每条派生路径的入口 + 输入表 + 输出表,
-让外部 (UI / 调度) 看到血缘. 重写工作可以渐进推进.
+当前 registry 默认是 metadata-only: 登记输入/输出/owner/说明, 供 UI、健康检查和
+审计使用, 不作为 cron 可执行编排。若后续某条 lineage 要由 run_lineage() 调度,
+必须显式设置 metadata_only=False, 并提供可直接调用的 sql_text 或 entry_point。
 """
 from __future__ import annotations
 
@@ -30,6 +28,7 @@ class LineageSpec:
     sql_text: Optional[str] = None         # 纯 SQL 派生, 直接 execute
     entry_point: Optional[str] = None      # 脚本派生, 反射 module:function
     schedule: str = "on-demand"            # 't+0' / 'event' / 'on-demand' / 'cron'
+    metadata_only: bool = True             # Phase 0: registry 不是可执行编排
 
     def sql_hash(self) -> str:
         return _sql_hash((self.sql_text or "") + (self.entry_point or ""))
@@ -87,6 +86,89 @@ LINEAGES: list[LineageSpec] = [
         owner="scripts.build_feature_panel_duck",
         entry_point="scripts.build_feature_panel_duck:build",
         schedule="t+1",
+    ),
+    LineageSpec(
+        lineage_id="fact_feature_panel_candidate/tdx_f10_gpcw_v1",
+        output_table="fact_feature_panel_candidate",
+        input_tables=[
+            "fact_feature_panel",
+            "fact_holder_count_period",
+            "fact_top10_holder_period",
+            "fact_common_major_holder_stock",
+            "fact_fund_holding_tdx_f10",
+            "raw_gpcw_detail",
+        ],
+        description="候选 TDX F10/gpcw 特征面板; 不替换生产 champion",
+        owner="scripts.build_candidate_feature_panel",
+        entry_point="scripts.build_candidate_feature_panel:build_candidate_feature_panel",
+        schedule="on-demand",
+    ),
+    LineageSpec(
+        lineage_id="mart_feature_group_ablation/candidate_v1",
+        output_table="mart_feature_group_ablation",
+        input_tables=["fact_feature_panel_candidate"],
+        description="候选特征分组消融记录",
+        owner="scripts.run_feature_group_ablation",
+        entry_point="scripts.run_feature_group_ablation:run_group_ablation",
+        schedule="on-demand",
+    ),
+    LineageSpec(
+        lineage_id="mart_model_selection_run/candidate_reduction_v1",
+        output_table="mart_model_selection_run",
+        input_tables=["fact_feature_panel_candidate"],
+        description="候选特征 Optuna/确定性减法记录; 不自动提升 champion",
+        owner="scripts.run_optuna_feature_elimination",
+        entry_point="scripts.run_optuna_feature_elimination:run_optuna_feature_elimination",
+        schedule="on-demand",
+    ),
+    LineageSpec(
+        lineage_id="mart_feature_pit_audit/tdx_candidate_v1",
+        output_table="mart_feature_pit_audit",
+        input_tables=[
+            "fact_feature_panel_candidate",
+            "fact_holder_count_period",
+            "fact_top10_holder_period",
+            "fact_common_major_holder_stock",
+            "fact_fund_holding_tdx_f10",
+            "raw_gpcw_detail",
+        ],
+        description="候选 TDX F10/gpcw 特征 PIT 审计; 检查信号日不早于可用源日期",
+        owner="scripts.validate_tdx_feature_pit",
+        entry_point="scripts.validate_tdx_feature_pit:validate_tdx_feature_pit",
+        schedule="on-demand",
+    ),
+    LineageSpec(
+        lineage_id="mart_candidate_walkforward_eval/tdx_candidate_v1",
+        output_table="mart_candidate_walkforward_eval",
+        input_tables=["fact_feature_panel_candidate"],
+        description="候选特征 walk-forward 单特征评估; 不替换生产 champion",
+        owner="scripts.run_walkforward_feature_eval",
+        entry_point="scripts.run_walkforward_feature_eval:run_walkforward_feature_eval",
+        schedule="on-demand",
+    ),
+    LineageSpec(
+        lineage_id="mart_feature_retention_decision/tdx_candidate_v1",
+        output_table="mart_feature_retention_decision",
+        input_tables=[
+            "fact_feature_panel_candidate",
+            "mart_feature_pit_audit",
+            "mart_candidate_walkforward_eval",
+            "mart_feature_group_ablation",
+            "mart_model_selection_run",
+        ],
+        description="整合 PIT、walk-forward、消融、减法实验的候选特征保留决策",
+        owner="scripts.build_feature_retention_decisions",
+        entry_point="scripts.build_feature_retention_decisions:build_feature_retention_decisions",
+        schedule="on-demand",
+    ),
+    LineageSpec(
+        lineage_id="mart_tdx_challenger_report/retained_rank_ensemble_v1",
+        output_table="mart_tdx_challenger_report",
+        input_tables=["fact_feature_panel_candidate", "mart_feature_retention_decision"],
+        description="基于保留 TDX 特征生成 challenger-only rank ensemble 报告; 不提升 champion",
+        owner="scripts.train_tdx_challenger_model",
+        entry_point="scripts.train_tdx_challenger_model:train_tdx_challenger_model",
+        schedule="on-demand",
     ),
 
     # ── 推荐 / 模型 ──────────────────────────────────────────────────

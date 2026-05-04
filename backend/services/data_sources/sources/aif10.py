@@ -28,11 +28,13 @@ CAPABILITY_TO_REPORT = {
     "fund_org_holding":         "RPT_MAIN_ORGHOLDDETAIL",       # 基金/机构持仓明细
     "northbound_holding":       "RPT_MUTUAL_STOCK_HOLDRANKN_NEW",  # 沪深港通持股
     # ===== 替代 datacenter-web 直连 (P6 迁移目标) =====
-    "lhb_daily":                "RPT_BILLBOARD_DAILYDETAILS",   # 龙虎榜 (P6: 替代 lhb_client datacenter-web)
+    "lhb_daily":                "RPT_DAILYBILLBOARD_DETAILSNEW", # 龙虎榜 (P6: 替代 lhb_client datacenter-web)
     "lhb_operatedept":          "RPT_OPERATEDEPT_TRADE",        # 龙虎榜营业部
     "block_trade":              "RPT_DATA_BLOCKTRADE",          # 大宗交易
     "margin_stocks":            "RPT_MARGIN_STATISTICS_STOCKS", # 融资融券 (P6: 替代 margin_client)
     "margin_trend":             "RPT_STOCK_MARGINTRENDEXPLAIN", # 融券趋势
+    "qfii_holding_quarterly":   "RPT_DMSK_HOLDERS",             # QFII 持仓 (special report)
+    "institution_survey":       "RPT_ORG_SURVEYNEW",            # 机构调研 (special report)
 
     # ===== 估值/同行 (peer_snapshot) =====
     "valuation_quantile":       "RPT_STOCKVALUATIONTANTILE",    # PE/PB/PEG 分位 (独家)
@@ -80,6 +82,13 @@ class Aif10Source(BaseDataSource):
     _FRESHNESS_MAP = {
         "valuation_quantile": "daily",
         "northbound_holding": "daily",
+        "qfii_holding_quarterly": "quarterly",
+        "institution_survey": "daily",
+        "lhb_daily": "daily",
+        "lhb_operatedept": "daily",
+        "block_trade": "daily",
+        "margin_stocks": "daily",
+        "margin_trend": "daily",
         "forecast_consensus": "weekly",
         "forecast_predict_avg": "weekly",
         "shareholder_change": "weekly",

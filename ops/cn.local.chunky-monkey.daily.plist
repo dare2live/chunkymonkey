@@ -8,11 +8,11 @@
     <key>ProgramArguments</key>
     <array>
         <string>/bin/bash</string>
-        <string>/Users/dp/Documents/M/stock/ops/run_daily.sh</string>
+        <string>/Users/dp/Documents/M/stock/chunky-monkey-v2/ops/run_daily.sh</string>
     </array>
 
     <key>WorkingDirectory</key>
-    <string>/Users/dp/Documents/M/stock</string>
+    <string>/Users/dp/Documents/M/stock/chunky-monkey-v2</string>
 
     <key>EnvironmentVariables</key>
     <dict>

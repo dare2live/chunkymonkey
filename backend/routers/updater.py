@@ -1076,11 +1076,12 @@ def _should_stop():
 
 
 async def _step_sync_raw(conn) -> dict:
-    """十大流通股东 — 调 tdxhub 抓取脚本.
+    """十大流通股东 — 调 tdxhub 抓取 (in-process, 避免 DuckDB 跨进程写锁冲突).
 
     P7 起 canonical 表是 fact_top10_holder_period (替代 market_raw_holdings).
-    抓取逻辑封装在 backend/scripts/ingest_holders_tdxhub.py 里, 这里通过
-    子进程调用; 保持 sync_raw step 接口不变.
+    抓取逻辑封装在 backend/scripts/ingest_holders_tdxhub.py:run(), 这里直接
+    in-process 调用 — 复用 backend 的 conn, DuckDB 内部 mutex 保线程安全.
+    (此前用 subprocess + 子进程自开 connection, 触发 IO Error: Could not set lock.)
     """
     canonical_where = (
         "holder_set = 'free' AND NOT is_secondary_class AND NOT is_exit_row"
@@ -1090,56 +1091,100 @@ async def _step_sync_raw(conn) -> dict:
     ).fetchone()[0]
     logger.info(f"[下载/tdxhub] 现有 {before} 条 (fact_top10_holder_period free)")
 
-    # 释放数据库连接, 让子进程独占 DuckDB 写入
-    try:
-        conn.commit()
-    except Exception:
-        pass
+    # in-process 调用. ingest 脚本里 4 个 worker thread 用 con_lock 串行写, 安全.
+    # 解包 DuckConn 拿原生 duckdb connection (脚本里的 SQL 是原生写法).
+    raw_con = conn._con if hasattr(conn, "_con") else conn
 
-    import os
-    import subprocess
-    from pathlib import Path
-
-    repo_root = Path(__file__).resolve().parents[2]
-    script = repo_root / "backend" / "scripts" / "ingest_holders_tdxhub.py"
-    if not script.exists():
-        raise RuntimeError(f"[下载/tdxhub] 抓取脚本缺失: {script}")
-
-    cmd = ["python3", str(script)]
-    logger.info(f"[下载/tdxhub] 调用 {' '.join(cmd)}")
+    from scripts.ingest_holders_tdxhub import run as ingest_run
 
     loop = asyncio.get_event_loop()
 
-    def _run() -> int:
-        proc = subprocess.run(
-            cmd,
-            cwd=str(repo_root),
-            env=os.environ.copy(),
-            capture_output=True,
-            text=True,
-        )
-        if proc.stdout:
-            for line in proc.stdout.splitlines()[-30:]:
-                logger.info(f"[tdxhub] {line}")
-        if proc.stderr:
-            for line in proc.stderr.splitlines()[-30:]:
-                logger.warning(f"[tdxhub:err] {line}")
-        return proc.returncode
+    def _do() -> dict:
+        return ingest_run(workers=4, con=raw_con)
 
-    rc = await loop.run_in_executor(None, _run)
-    if rc != 0:
-        raise RuntimeError(f"[下载/tdxhub] ingest_holders_tdxhub.py exit={rc}")
+    progress = await loop.run_in_executor(None, _do)
+    attempted = int(progress.get("done") or 0)
+    ok_count = int(progress.get("ok") or 0)
+    err_count = int(progress.get("err") or 0)
+    skipped_unchanged = int(progress.get("skipped_unchanged") or 0)
+    skipped_no_f10 = int(progress.get("skipped_no_f10") or 0)
+    err_rate = (err_count / attempted) if attempted else 0.0
+
+    result_status = "completed"
+    if err_count > 0 and ok_count == 0:
+        result_status = "failed"
+    elif err_rate >= 0.20:
+        result_status = "failed"
+    elif err_count > 0:
+        result_status = "partial"
 
     after = conn.execute(
         f"SELECT COUNT(*) FROM fact_top10_holder_period WHERE {canonical_where}"
     ).fetchone()[0]
     written = max(0, after - before)
-    logger.info(f"[下载/tdxhub] 完成: +{written}, 总 {after}")
+
+    from services.tdx_f10_extra_client import sync_tdx_f10_extra_facts
+
+    try:
+        extra_stats = await loop.run_in_executor(
+            None,
+            lambda: sync_tdx_f10_extra_facts(raw_con),
+        )
+    except Exception as exc:
+        logger.warning("[下载/tdxhub] F10 extra parse failed: %s", exc)
+        extra_stats = {
+            "status": "failed",
+            "raw_rows": 0,
+            "holder_count_rows": 0,
+            "trade_b_rows": 0,
+            "control_rows": 0,
+            "common_major_holder_rows": 0,
+            "fund_holding_rows": 0,
+            "fund_holding_rejected_rows": 0,
+            "skipped_non_format_b": 0,
+            "skipped_no_extra_section": 0,
+            "errors": [str(exc)],
+        }
+    if (
+        (
+            extra_stats.get("errors")
+            or extra_stats.get("fund_holding_rejected_rows")
+            or extra_stats.get("status") == "completed_with_rejections"
+        )
+        and result_status == "completed"
+    ):
+        result_status = "partial"
+    message = (
+        f"attempted={attempted}, ok={ok_count}, err={err_count}, "
+        f"unchanged={skipped_unchanged}, no_f10={skipped_no_f10}, "
+        f"err_rate={err_rate:.1%}, written={written}, "
+        f"extra_holder_count={int(extra_stats.get('holder_count_rows') or 0)}, "
+        f"extra_trade_b={int(extra_stats.get('trade_b_rows') or 0)}, "
+        f"extra_common_major={int(extra_stats.get('common_major_holder_rows') or 0)}, "
+        f"extra_fund_holding={int(extra_stats.get('fund_holding_rows') or 0)}, "
+        f"extra_fund_rejected={int(extra_stats.get('fund_holding_rejected_rows') or 0)}, "
+        f"extra_skip_non_b={int(extra_stats.get('skipped_non_format_b') or 0)}, "
+        f"extra_skip_empty={int(extra_stats.get('skipped_no_extra_section') or 0)}"
+    )
+    if result_status == "failed":
+        logger.error(f"[下载/tdxhub] 失败: {message}")
+    elif result_status == "partial":
+        logger.warning(f"[下载/tdxhub] 部分失败: {message}")
+    else:
+        logger.info(f"[下载/tdxhub] 完成: +{written}, 总 {after}, 失败 {err_count}")
     return {
-        "status": "completed",
+        "status": result_status,
         "count": after,
         "written": written,
         "total": after,
+        "attempted": attempted,
+        "ok": ok_count,
+        "err": err_count,
+        "err_rate": round(err_rate, 4),
+        "skipped_unchanged": skipped_unchanged,
+        "skipped_no_f10": skipped_no_f10,
+        "tdx_f10_extra": extra_stats,
+        "message": message,
     }
 
 
@@ -3063,6 +3108,7 @@ async def _step_sync_financial(conn) -> dict:
             "quarters": 12,
             "files_synced": int(gpcw_result.get("files_synced") or 0),
             "rows_upserted": int(gpcw_result.get("rows_upserted") or 0),
+            "wide_rows_upserted": int(gpcw_result.get("wide_rows_upserted") or 0),
             "errors": list(gpcw_result.get("errors") or []),
         }
     except Exception as exc:
@@ -3072,6 +3118,7 @@ async def _step_sync_financial(conn) -> dict:
             "quarters": 12,
             "files_synced": 0,
             "rows_upserted": 0,
+            "wide_rows_upserted": 0,
             "errors": [str(exc)],
         }
 

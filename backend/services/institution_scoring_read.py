@@ -70,17 +70,31 @@ def load_institution_scorecard_stats(conn) -> dict:
 
     confidence_rows = conn.execute(
         """
-        SELECT 'quality' AS metric,
-               COALESCE(score_confidence, '未标注') AS confidence,
-               COUNT(*) AS total
-        FROM mart_institution_profile
-        GROUP BY COALESCE(score_confidence, '未标注')
-        UNION ALL
-        SELECT 'followability' AS metric,
-               COALESCE(followability_confidence, '未标注') AS confidence,
-               COUNT(*) AS total
-        FROM mart_institution_profile
-        GROUP BY COALESCE(followability_confidence, '未标注')
+        WITH confidence_dist AS (
+            SELECT 'quality' AS metric,
+                   COALESCE(score_confidence, '未标注') AS confidence,
+                   COUNT(*) AS total
+            FROM mart_institution_profile
+            GROUP BY COALESCE(score_confidence, '未标注')
+            UNION ALL
+            SELECT 'followability' AS metric,
+                   COALESCE(followability_confidence, '未标注') AS confidence,
+                   COUNT(*) AS total
+            FROM mart_institution_profile
+            GROUP BY COALESCE(followability_confidence, '未标注')
+        )
+        SELECT metric, confidence, total
+        FROM confidence_dist
+        ORDER BY metric,
+                 total DESC,
+                 CASE confidence
+                     WHEN 'high' THEN 1
+                     WHEN 'medium' THEN 2
+                     WHEN 'low' THEN 3
+                     WHEN '未标注' THEN 4
+                     ELSE 5
+                 END,
+                 confidence
         """
     ).fetchall()
 

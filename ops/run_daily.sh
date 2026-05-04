@@ -4,8 +4,8 @@
 # 触发: launchd (cn.local.chunky-monkey.daily.plist) Mon-Fri 17:30
 # 流程:
 #   1. 等 backend daemon 就绪 (uvicorn @ localhost:8000)
-#   2. POST /api/update/all 启动智能更新 (17 步主链路)
-#   3. 轮询 /api/update/status 直到 running=false (超时 60 分钟)
+#   2. POST /api/inst/update/all 启动智能更新 (主链路)
+#   3. 轮询 /api/inst/update/status 直到 running=false (超时 60 分钟)
 #   4. 跑 daily topK 双轨 (primary + shadow_dense_v2)
 # 日志: ~/Library/Logs/chunky-monkey/daily-{YYYY-MM-DD}.log
 # 退出码: 0=成功, 1=网络/超时, 2=topK 失败, 3=update 失败
@@ -13,7 +13,7 @@
 set -u  # 不 set -e, 让流程能记录失败再退出
 
 # ----- 配置 -----
-PROJECT_ROOT="/Users/dp/Documents/M/stock"
+PROJECT_ROOT="/Users/dp/Documents/M/stock/chunky-monkey-v2"
 BACKEND_URL="http://127.0.0.1:8000"
 API_BASE="$BACKEND_URL/api/inst"   # updater router 挂在 /api/inst
 LOG_DIR="$HOME/Library/Logs/chunky-monkey"
@@ -103,15 +103,26 @@ if [[ -z "$final_status" ]]; then
     exit 3
 fi
 
-# 解析 summary 看有没有 failed step
+# 解析 summary 看有没有 failed/blocked/stopped step
 failed_count=$(echo "$final_status" | $PYTHON_BIN -c "
 import sys, json
 d = json.load(sys.stdin)
 steps = d.get('steps', [])
-failed = [s for s in steps if (s.get('status') or '') == 'failed']
+failed = [s for s in steps if (s.get('status') or '') in ('failed', 'blocked', 'stopped')]
 print(len(failed))
 " 2>/dev/null || echo "0")
-log "智能更新结束, 失败步骤数=$failed_count"
+partial_count=$(echo "$final_status" | $PYTHON_BIN -c "
+import sys, json
+d = json.load(sys.stdin)
+steps = d.get('steps', [])
+partial = [s for s in steps if (s.get('status') or '') == 'partial']
+print(len(partial))
+" 2>/dev/null || echo "0")
+log "智能更新结束, 失败/阻断/停止步骤数=$failed_count, 部分完成步骤数=$partial_count"
+if [[ "$failed_count" != "0" ]]; then
+    log "ERROR: 智能更新存在失败步骤, 中止 topK"
+    exit 3
+fi
 
 # ----- 5. Daily topK 双轨 -----
 cd "$PROJECT_ROOT/backend" || { log "ERROR: cd backend 失败"; exit 2; }

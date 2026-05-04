@@ -1,8 +1,10 @@
-"""派生 lineage 执行 + 状态写回 mart_lineage.
+"""派生 lineage 元数据同步 + 可选执行状态写回 mart_lineage.
 
 run_lineage(lineage_id) — 单条执行 (适合 cron / 手动重算)
 refresh_all_lineage_state() — 把 LINEAGES 里的所有声明同步到 mart_lineage 表
                               (新增 / 更新 sql_hash; 不改 last_run 状态)
+
+Phase 0 约束: registry 默认是 metadata-only, 不能作为 cron 可执行编排。
 """
 from __future__ import annotations
 
@@ -29,7 +31,12 @@ def refresh_all_lineage_state() -> int:
         for spec in all_lineages():
             sql_hash = spec.sql_hash()
             input_json = json.dumps(spec.input_tables, ensure_ascii=False)
-            sql_text = spec.sql_text or f"# entry_point: {spec.entry_point}"
+            if spec.sql_text:
+                sql_text = spec.sql_text
+            elif spec.entry_point:
+                sql_text = f"# metadata-only entry_point: {spec.entry_point}"
+            else:
+                sql_text = "# metadata-only lineage"
             conn.execute("""
                 INSERT INTO mart_lineage (
                     lineage_id, output_table, input_tables, sql_text, sql_hash,
@@ -77,6 +84,31 @@ def run_lineage(lineage_id: str, *, dry_run: bool = False) -> dict:
     status = "ok"
     err: Optional[str] = None
     row_count: Optional[int] = None
+
+    if spec.metadata_only:
+        status = "skipped"
+        err = "metadata-only lineage; use the owning updater step or script entrypoint"
+        runtime_s = time.time() - t0
+        if not dry_run:
+            with get_conn() as conn:
+                conn.execute("""
+                    UPDATE mart_lineage
+                       SET last_run_at    = now(),
+                           last_row_count = ?,
+                           last_status    = ?,
+                           last_error     = ?,
+                           last_runtime_s = ?,
+                           updated_at     = now()
+                     WHERE lineage_id = ?
+                """, (row_count, status, err, runtime_s, lineage_id))
+                conn.commit()
+        return {
+            "lineage_id": lineage_id,
+            "status": status,
+            "runtime_s": runtime_s,
+            "row_count": row_count,
+            "error": err,
+        }
 
     try:
         if spec.sql_text:

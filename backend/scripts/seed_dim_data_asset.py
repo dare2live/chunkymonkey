@@ -84,6 +84,7 @@ EXTRA_UPSTREAM_BY_TABLE = {
     "fact_lhb_event":               ("derived from raw_lhb_daily", None),
     "fact_institution_event":       ("derived (gen_events + return_engine)", None),
     "fact_fundamental_quarterly":   ("derived from raw_gpcw_*", None),
+    "mart_tdx_gpcw_field_profile":  ("derived from raw_tdx_gpcw_wide", None),
     "mart_current_relationship":    ("derived (build_current_relationship)", None),
     "mart_stock_trend":             ("derived (build_trends step)", None),
     "mart_stock_screening":         ("derived (calc_screening manual step)", None),

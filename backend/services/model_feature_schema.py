@@ -41,6 +41,20 @@ DENSE_V2_FEATURE_COLS = [
 REGIME_FEATURE_COLS = ["regime_up", "regime_flat", "regime_down"]
 
 
+TDX_CANDIDATE_FEATURE_COLS = [
+    "holder_count_change_pct_tdx",
+    "avg_float_shares_change_pct_tdx",
+    "top10_concentration_change",
+    "tdx_inst_total_shares_qoq",
+    "national_team_shares_qoq",
+    "qfii_shares_qoq",
+    "fund_shares_qoq",
+    "contract_liabilities_to_revenue",
+    "ocf_to_profit_tdx",
+    "forecast_profit_yoy_mid",
+]
+
+
 def ordered_feature_cols(*, include_dense_v2: bool = True) -> list[str]:
     cols = list(BASE_FEATURE_COLS)
     if include_dense_v2:

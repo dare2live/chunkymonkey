@@ -14,6 +14,7 @@ import services.akshare_client as akshare_client
 import services.financial_client as financial_client
 import services.tdx_affair_client as tdx_affair_client
 import services.tdx_source as tdx_source
+from scripts.profile_tdx_gpcw_fields import profile_tdx_gpcw_fields
 
 
 def test_iter_tdx_servers_prefers_custom_and_deduplicates(monkeypatch):
@@ -311,7 +312,7 @@ def test_sync_gpcw_files_uses_shared_affair_loader(monkeypatch, tmp_path):
             def parse(*, downdir, filename, columns):
                 assert Path(downdir) == tmp_path
                 assert filename == "gpcw20260331.zip"
-                assert columns == tdx_affair_client._SELECTED_GPCW_COLUMNS
+                assert columns is None
                 return pd.DataFrame(
                     [
                         {
@@ -341,10 +342,21 @@ def test_sync_gpcw_files_uses_shared_affair_loader(monkeypatch, tmp_path):
             ORDER BY stock_code
             """
         ).fetchall()
+        wide_rows = conn.execute(
+            "SELECT stock_code, report_date, field_values_json FROM raw_tdx_gpcw_wide ORDER BY stock_code"
+        ).fetchall()
+        field_row = conn.execute(
+            "SELECT db_column, model_candidate FROM dim_tdx_gpcw_field WHERE zh_name = '合同负债(万元)'"
+        ).fetchone()
 
         assert result["files_synced"] == 1
         assert result["rows_upserted"] == 2
+        assert result["wide_rows_upserted"] == 2
         assert len(rows) == 2
+        assert len(wide_rows) == 2
+        assert "合同负债(万元)" in wide_rows[0]["field_values_json"]
+        assert field_row["db_column"] == "contract_liabilities"
+        assert field_row["model_candidate"] is True
         # DuckDB REAL = FLOAT32, 与 sqlite3 REAL=DOUBLE 不同, 故用近似比较.
         assert rows[0]["stock_code"] == "000001"
         assert rows[0]["report_date"] == "2026-03-31"
@@ -387,5 +399,52 @@ def test_ensure_table_adds_missing_gpcw_columns():
         assert "contract_liabilities" in columns
         assert "operating_cost" in columns
         assert "operating_cost_single_quarter" in columns
+    finally:
+        conn.close()
+
+
+def test_profile_tdx_gpcw_fields_records_candidate_and_rejections():
+    conn = duck_mem()
+    try:
+        tdx_affair_client._ensure_table(conn)
+        conn.executemany(
+            """
+            INSERT INTO raw_tdx_gpcw_wide
+            (stock_code, report_date, source_file, field_values_json)
+            VALUES (?, ?, ?, ?)
+            """,
+            [
+                (
+                    "000001",
+                    "2026-03-31",
+                    "gpcw20260331.zip",
+                    '{"合同负债(万元)": 11.0, "营业收入": 100.0, "col999": 1.0}',
+                ),
+                (
+                    "000002",
+                    "2026-03-31",
+                    "gpcw20260331.zip",
+                    '{"合同负债(万元)": 22.0, "营业收入": 200.0, "col999": 1.0}',
+                ),
+            ],
+        )
+
+        result = profile_tdx_gpcw_fields(conn, profile_run_id="test_profile")
+        rows = conn.execute(
+            """
+            SELECT zh_name, coverage_pct, p50, model_candidate, rejection_reason
+            FROM mart_tdx_gpcw_field_profile
+            WHERE profile_run_id = 'test_profile'
+            ORDER BY zh_name
+            """
+        ).fetchall()
+        by_name = {r["zh_name"]: r for r in rows}
+
+        assert result["field_count"] == 3
+        assert by_name["合同负债(万元)"]["coverage_pct"] == 100.0
+        assert by_name["合同负债(万元)"]["p50"] == 16.5
+        assert by_name["合同负债(万元)"]["model_candidate"] is True
+        assert by_name["col999"]["model_candidate"] is False
+        assert by_name["col999"]["rejection_reason"] == "unnamed_col"
     finally:
         conn.close()

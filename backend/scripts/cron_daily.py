@@ -1,7 +1,7 @@
 """每日单入口编排 (W5).
 
 Phase 拆分:
-  1) sync       — 调 /api/update/all (HTTP, 让 backend DAG 跑); 跳过若 --skip-sync
+  1) sync       — 调 /api/inst/update/all (HTTP, 让 backend DAG 跑); 跳过若 --skip-sync
   2) lineage    — refresh_all_lineage_state(); 同步 registry 声明到 mart_lineage
   3) health     — scripts/data_health_snapshot.py main(); 写 mart_data_health
   4) drift      — scripts/compute_feature_drift.py main(); 写 mart_feature_drift
@@ -43,13 +43,80 @@ sys.path.insert(0, str(BACKEND))
 DEFAULT_API = os.environ.get("CM_API", "http://127.0.0.1:8000")
 
 
+def _coerce_bool(value) -> bool:
+    if isinstance(value, bool):
+        return value
+    if value is None:
+        return False
+    if isinstance(value, (int, float)):
+        return bool(value)
+    text = str(value).strip().lower()
+    return text in {"1", "true", "yes", "y", "on", "running"}
+
+
+def _phase_status_from_rc(phase: str, rc) -> dict:
+    """Normalize child-script return codes into cron phase status.
+
+    data_health_snapshot returns 1 for red tables. compute_feature_drift
+    returns 2 for critical drift and 1 when drift could not be computed.
+    """
+    try:
+        rc_int = int(rc or 0)
+    except Exception:
+        rc_int = 1
+    if rc_int == 0:
+        return {"phase": phase, "status": "ok", "rc": 0}
+    if phase == "health" or (phase == "drift" and rc_int >= 2):
+        return {"phase": phase, "status": "critical", "rc": rc_int}
+    return {"phase": phase, "status": "warn", "rc": rc_int}
+
+
+def _phase_exit_severity(result: dict) -> int:
+    """0=success/skipped, 1=ordinary issue, 2=critical issue."""
+    status = str(result.get("status") or "").lower()
+    if status in {"ok", "skipped"}:
+        return 0
+    if status == "critical":
+        return 2
+    return 1
+
+
+def _sync_status_from_backend(status: Optional[dict]) -> tuple[str, Optional[str]]:
+    if not isinstance(status, dict):
+        return "failed", "backend 未返回有效 status"
+    steps = status.get("steps") or []
+    if not isinstance(steps, list):
+        return "ok", None
+    bad = [
+        s for s in steps
+        if isinstance(s, dict) and (s.get("status") or "") in {"failed", "blocked", "stopped"}
+    ]
+    if bad:
+        labels = [
+            f"{s.get('step_id') or s.get('step_name')}: {s.get('status')}"
+            for s in bad[:5]
+        ]
+        return "failed", "; ".join(labels)
+    partial = [
+        s for s in steps
+        if isinstance(s, dict) and (s.get("status") or "") == "partial"
+    ]
+    if partial:
+        labels = [
+            f"{s.get('step_id') or s.get('step_name')}: partial"
+            for s in partial[:5]
+        ]
+        return "warn", "; ".join(labels)
+    return "ok", None
+
+
 # ─────────────────────────────────────────────────────────────────────
 # Phase 实现
 # ─────────────────────────────────────────────────────────────────────
 
 
 def phase_sync(*, api: str, timeout_s: int = 3600) -> dict:
-    """Phase 1: HTTP POST /api/update/all + 轮询 status 直到 done.
+    """Phase 1: HTTP POST /api/inst/update/all + 轮询 status 直到 done.
 
     依赖 backend server 运行 (start.command 启动). 若 server down,
     跳过 (返回 status='skipped' 不报错).
@@ -62,7 +129,7 @@ def phase_sync(*, api: str, timeout_s: int = 3600) -> dict:
 
     # 探测 server
     try:
-        with urllib.request.urlopen(f"{api}/api/update/status", timeout=3) as r:
+        with urllib.request.urlopen(f"{api}/api/inst/update/status", timeout=3) as r:
             r.read()
     except Exception as exc:
         log.warning(f"[sync] backend server 不可达 ({api}): {exc}")
@@ -70,7 +137,7 @@ def phase_sync(*, api: str, timeout_s: int = 3600) -> dict:
 
     # 触发更新
     try:
-        req = urllib.request.Request(f"{api}/api/update/all", method="POST", data=b"")
+        req = urllib.request.Request(f"{api}/api/inst/update/all", method="POST", data=b"")
         with urllib.request.urlopen(req, timeout=10) as r:
             result = json.loads(r.read())
         if not result.get("ok", True):
@@ -88,9 +155,9 @@ def phase_sync(*, api: str, timeout_s: int = 3600) -> dict:
     last_summary = None
     while time.time() - t0 < timeout_s:
         try:
-            with urllib.request.urlopen(f"{api}/api/update/status", timeout=10) as r:
+            with urllib.request.urlopen(f"{api}/api/inst/update/status", timeout=10) as r:
                 status = json.loads(r.read())
-            running = status.get("is_running", False)
+            running = _coerce_bool(status.get("running", status.get("is_running", False)))
             last_summary = status
             if not running:
                 break
@@ -102,11 +169,13 @@ def phase_sync(*, api: str, timeout_s: int = 3600) -> dict:
         return {"phase": "sync", "status": "timeout", "elapsed_s": time.time() - t0}
 
     elapsed = time.time() - t0
-    log.info(f"[sync] done in {elapsed:.0f}s")
+    final_status, final_reason = _sync_status_from_backend(last_summary)
+    log.info(f"[sync] done in {elapsed:.0f}s status={final_status}")
     return {
-        "phase": "sync", "status": "ok",
+        "phase": "sync", "status": final_status,
         "elapsed_s": elapsed,
         "last_summary": last_summary,
+        "reason": final_reason,
     }
 
 
@@ -138,9 +207,9 @@ def phase_health() -> dict:
     try:
         from scripts.data_health_snapshot import main as health_main
         rc = _run_with_clean_argv(health_main, ["data_health_snapshot.py"])  # 0/1/2
-        return {"phase": "health", "status": "ok" if rc == 0 else "warn", "rc": rc}
+        return _phase_status_from_rc("health", rc)
     except SystemExit as exc:
-        return {"phase": "health", "status": "ok" if exc.code == 0 else "warn", "rc": exc.code}
+        return _phase_status_from_rc("health", exc.code)
     except Exception as exc:
         log.exception("[health] failed")
         return {"phase": "health", "status": "failed", "reason": str(exc)}
@@ -151,9 +220,9 @@ def phase_drift() -> dict:
     try:
         from scripts.compute_feature_drift import main as drift_main
         rc = _run_with_clean_argv(drift_main, ["compute_feature_drift.py"])
-        return {"phase": "drift", "status": "ok" if rc == 0 else "warn", "rc": rc}
+        return _phase_status_from_rc("drift", rc)
     except SystemExit as exc:
-        return {"phase": "drift", "status": "ok" if exc.code == 0 else "warn", "rc": exc.code}
+        return _phase_status_from_rc("drift", exc.code)
     except Exception as exc:
         log.exception("[drift] failed")
         return {"phase": "drift", "status": "failed", "reason": str(exc)}
@@ -167,10 +236,10 @@ def phase_audit() -> dict:
             capture_output=True, text=True, timeout=120,
         )
         ok = result.returncode == 0
-        # audit 退出码: 0=clean / 1=warn-only / 2=critical
+        # audit_stale_references.py 目前 0=clean/warn-only, 1=critical.
         return {
             "phase": "audit",
-            "status": "ok" if ok else ("warn" if result.returncode == 1 else "failed"),
+            "status": "ok" if ok else "critical",
             "rc": result.returncode,
             "stdout_tail": result.stdout.splitlines()[-3:] if result.stdout else [],
         }
@@ -202,7 +271,7 @@ def main() -> int:
     log.info(f"=== cron_daily 开始 phases={selected} ===")
     t0 = time.time()
     results = []
-    has_critical = False
+    exit_severity = 0
 
     for phase in selected:
         log.info(f"--- phase: {phase} ---")
@@ -222,17 +291,18 @@ def main() -> int:
 
         results.append(r)
         log.info(f"--- {phase}: {r.get('status')} ---")
-        if r.get("status") == "failed":
-            has_critical = True
+        phase_severity = _phase_exit_severity(r)
+        exit_severity = max(exit_severity, phase_severity)
+        if phase_severity:
             if args.strict:
-                log.error(f"strict 模式 — phase {phase} 失败, 立刻退出")
+                log.error(f"strict 模式 — phase {phase} 状态 {r.get('status')}, 立刻退出")
                 break
 
     elapsed = time.time() - t0
     log.info(f"=== cron_daily 结束 ({elapsed:.0f}s) ===")
     log.info(json.dumps({"phases": results, "elapsed_s": elapsed}, indent=2, ensure_ascii=False))
 
-    return 2 if has_critical else 0
+    return 2 if exit_severity >= 2 else (1 if exit_severity else 0)
 
 
 if __name__ == "__main__":

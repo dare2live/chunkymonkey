@@ -66,8 +66,8 @@ If no type-checker is configured, state that explicitly instead of claiming succ
     - 仅当出现非 comment 的 code 引用时返回 critical
     退役 PR 必须把 audit 输出降到 "no critical" 才能合.
 
-    **教训**: 单纯改代码不删旧引用 = 定时炸弹. sqlite3 / market_raw_holdings /
-    RPT_F10_EH_FREEHOLDERS 这些都因"退役不彻底"在 PR 后埋下隐患;
+    **教训**: 单纯改代码不删旧引用 = 定时炸弹. 旧存储引擎 / 旧持仓中间表 /
+    旧 F10 自由流通股东源这些都因"退役不彻底"在 PR 后埋下隐患;
     审计脚本是定期清理工具, 也是 CI 守门人.
 
 14. DELETE, DON'T COMMENT OUT: 确认不再使用的功能 / 代码 / 注释 / 配置 / 文档,

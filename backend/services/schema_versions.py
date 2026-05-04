@@ -43,6 +43,7 @@ FACT_VERSIONS = {
     "fact_setup_snapshot": "v1",             # setup 快照
     "fact_chain_alpha_truth": "v1",          # 链路 alpha 真值
     "fact_feature_panel": "v1",              # 特征面板 (Qlib alpha158)
+    "fact_feature_panel_candidate": "v1",    # 候选特征面板 (不替换 champion)
     "fact_dzjy_event": "v1",                 # 大宗交易事件
     "fact_executive_trade_event": "v1",      # 高管交易事件
     "fact_jgdy_event": "v1",                 # 机构调研事件
@@ -65,7 +66,7 @@ FACT_VERSIONS = {
     "fact_risk_factors": "v1",               # P1.6 风险因子 (vol/sharpe/dd/mom/skew/kurt)
 }
 
-# mart_* (集市层, 可重算, 28 张)
+# mart_* (集市层, 可重算, 32 张)
 MART_VERSIONS = {
     "mart_audit_snapshot_state": "v1",
     "mart_current_relationship": "v1",       # 当前持仓关系 ⭐
@@ -77,6 +78,14 @@ MART_VERSIONS = {
     "mart_institution_industry_stat": "v1",  # 机构行业统计
     "mart_institution_profile": "v1",        # 机构画像 ⭐
     "mart_model_ablation_run": "v1",
+    "mart_feature_candidate_score": "v1",
+    "mart_feature_group_ablation": "v1",
+    "mart_feature_pit_audit": "v1",
+    "mart_candidate_walkforward_eval": "v1",
+    "mart_feature_retention_decision": "v1",
+    "mart_model_selection_run": "v1",
+    "mart_tdx_challenger_report": "v1",
+    "mart_data_deprecation_record": "v1",
     "mart_model_portfolio_curve": "v1",
     "mart_model_portfolio_summary": "v1",    # 模型组合表现 (cost/return/sharpe)
     "mart_model_walkforward_fold": "v1",     # walkforward 切分 ⭐

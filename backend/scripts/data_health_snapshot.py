@@ -41,13 +41,15 @@ from services.db import get_conn  # noqa: E402
 DATE_COLUMN_CANDIDATES = [
     "report_date", "trade_date", "notice_date", "change_date",
     "snapshot_date", "as_of_date", "effective_date",
-    "fetched_at", "page_update_date", "created_at", "updated_at",
+    "fetched_at", "page_update_date", "profiled_at", "parsed_at",
+    "recorded_at", "audited_at", "built_at", "created_at", "updated_at",
     "last_data_at", "last_writer_at", "snapshot_at",
     "date", "ts",
 ]
 
 # 看 source_tier 列是否存在的统一名
 SOURCE_TIER_COL = "source_tier"
+OPTIONAL_EMPTY_FRESHNESS = {"static", "on-demand", "derived"}
 
 
 def get_table_columns(con, table: str) -> list[str]:
@@ -65,6 +67,19 @@ def find_date_column(columns: list[str]) -> Optional[str]:
             # 找回原始大小写
             return columns[cols_lower.index(c)]
     return None
+
+
+def ensure_asset_deprecation_columns(con) -> None:
+    for ddl in (
+        "ALTER TABLE dim_data_asset ADD COLUMN deprecation_status TEXT DEFAULT 'active'",
+        "ALTER TABLE dim_data_asset ADD COLUMN replacement_table TEXT",
+    ):
+        try:
+            con.execute(ddl)
+        except Exception as exc:
+            msg = str(exc).lower()
+            if "duplicate" not in msg and "already exists" not in msg:
+                raise
 
 
 def parse_date_value(raw) -> Optional[datetime]:
@@ -97,6 +112,23 @@ def compute_health_for_table(con, asset: dict, now: datetime) -> dict:
     layer = asset["layer"]
     expected_freshness = asset.get("expected_freshness") or "on-demand"
     sla_hours = asset.get("sla_hours") or 48
+
+    if asset.get("deprecation_status") == "deprecated":
+        row_count = None
+        try:
+            row_count = con.execute(f'SELECT COUNT(*) FROM "{table}"').fetchone()[0]
+        except Exception:
+            pass
+        replacement = asset.get("replacement_table")
+        suffix = f"; replacement={replacement}" if replacement else ""
+        return {
+            "table_name": table, "row_count": row_count,
+            "last_data_date": None, "last_writer_at": None,
+            "null_rate_pct": None, "source_tier_dist": None,
+            "freshness_hours": None, "freshness_ok": True,
+            "severity": "green",
+            "issue_summary": f"deprecated asset{suffix}",
+        }
 
     # 安全的表名引用
     quoted = f'"{table}"'
@@ -157,7 +189,7 @@ def compute_health_for_table(con, asset: dict, now: datetime) -> dict:
     # severity 判定
     issues = []
     severity = "green"
-    if row_count == 0 and expected_freshness != "static":
+    if row_count == 0 and expected_freshness not in OPTIONAL_EMPTY_FRESHNESS:
         severity = "red"
         issues.append("0 rows but expected to be populated")
     elif freshness_hours is not None:
@@ -178,7 +210,11 @@ def compute_health_for_table(con, asset: dict, now: datetime) -> dict:
         issues.append("orphan_no_writer (data but no active writer)")
 
     # writer 存在但 0 行 = stale_empty
-    if asset.get("writer_module") is not None and row_count == 0 and expected_freshness != "static":
+    if (
+        asset.get("writer_module") is not None
+        and row_count == 0
+        and expected_freshness not in OPTIONAL_EMPTY_FRESHNESS
+    ):
         severity = "red"
         issues.append("stale_empty (writer registered but never produced rows)")
 
@@ -205,12 +241,13 @@ def main() -> int:
 
     con = get_conn()
     now = datetime.utcnow()
+    ensure_asset_deprecation_columns(con)
 
     # 拉所有登记的资产
     rows = con.execute("""
         SELECT table_name, layer, purpose, writer_module, reader_modules,
                upstream_source, source_tier, expected_freshness, sla_hours,
-               consumed_by_views
+               consumed_by_views, deprecation_status, replacement_table
         FROM dim_data_asset
         ORDER BY layer, table_name
     """).fetchall()

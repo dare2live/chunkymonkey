@@ -13,6 +13,7 @@ tdx_affair_client.py — 通达信 gpcw 财务文件同步
 import logging
 import os
 import tempfile
+import json
 from typing import Any, Optional
 
 from services.tdx_source import get_tdx_affair_class
@@ -119,6 +120,7 @@ _FIELD_ALIASES_BY_DB_COLUMN = {
 }
 _FIELD_ALIASES_BY_DB_COLUMN.update({
     "contract_liabilities": ("合同负债(万元)", "预收款项"),
+    "revenue": ("营业收入", "其中：营业收入"),
     "operating_cost": ("其中：营业成本",),
     "operating_cost_single_quarter": ("col328",),
 })
@@ -157,6 +159,36 @@ def _ensure_table(conn: Any):
         if col not in existing:
             conn.execute(f"ALTER TABLE raw_gpcw_detail ADD COLUMN {col} REAL")
             logger.info(f"[gpcw] ALTER TABLE: 新增字段 {col}")
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS raw_tdx_gpcw_wide (
+            stock_code TEXT NOT NULL,
+            report_date TEXT NOT NULL,
+            source_file TEXT,
+            field_values_json TEXT NOT NULL,
+            parser_version TEXT DEFAULT 'tdxhub_gpcw_v1',
+            ingested_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            PRIMARY KEY (stock_code, report_date)
+        )
+    """)
+    conn.execute("""
+        CREATE INDEX IF NOT EXISTS idx_raw_tdx_gpcw_wide_report
+        ON raw_tdx_gpcw_wide(report_date)
+    """)
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS dim_tdx_gpcw_field (
+            field_key TEXT PRIMARY KEY,
+            field_index INTEGER,
+            zh_name TEXT NOT NULL,
+            db_column TEXT,
+            unit TEXT,
+            field_family TEXT,
+            model_candidate BOOLEAN DEFAULT FALSE,
+            verified BOOLEAN DEFAULT FALSE,
+            notes TEXT,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+    """)
+    _upsert_gpcw_field_dict(conn)
     conn.commit()
 
 
@@ -198,11 +230,192 @@ def _pick_first_numeric_value(row, source_names: tuple[str, ...]) -> Optional[fl
     return None
 
 
+def _load_financial_columns() -> list[str]:
+    try:
+        from tdxhub.financial.columns import columns as financial_columns
+
+        return list(financial_columns)
+    except Exception:
+        return list(_SELECTED_GPCW_COLUMNS)
+
+
+def _unit_for_field(name: str) -> Optional[str]:
+    if "%" in name:
+        return "%"
+    if "万元" in name:
+        return "万元"
+    if "万股" in name:
+        return "万股"
+    if "股" in name or "股本" in name or "持股量" in name:
+        return "股"
+    if "人" in name or "户" in name or "家" in name:
+        return "count"
+    return None
+
+
+def _family_for_field(name: str) -> str:
+    if any(k in name for k in ("股东", "持股", "机构", "QFII", "基金", "社保", "国家队")):
+        return "ownership"
+    if any(k in name for k in ("预告", "快报")):
+        return "forecast_express"
+    if any(k in name for k in ("现金流", "合同", "应收", "存货", "负债", "资产")):
+        return "fundamental_quality"
+    if any(k in name for k in ("收入", "利润", "收益", "ROE", "净资产收益率")):
+        return "profit_growth"
+    return "other"
+
+
+_STRONG_MODEL_FIELDS = {
+    "股东人数(户)",
+    "十大流通股东持股数量合计(股)",
+    "十大股东持股数量合计(股)",
+    "机构持股总量(股)",
+    "国家队持股数量（万股)",
+    "QFII持股量",
+    "基金持股量",
+    "合同负债(万元)",
+    "预收款项",
+    "营业收入",
+    "其中：营业收入",
+    "经营活动产生的现金流量净额",
+    "归属于母公司所有者的净利润",
+    "业绩预告-本期净利润同比增幅下限%",
+    "业绩预告-本期净利润同比增幅上限%",
+}
+
+
+def _upsert_gpcw_field_dict(conn: Any) -> None:
+    mapped_by_source = dict(_FIELD_MAP)
+    for db_col, source_names in _FIELD_ALIASES_BY_DB_COLUMN.items():
+        for source_name in source_names:
+            mapped_by_source[source_name] = db_col
+
+    rows = []
+    for idx, name in enumerate(_load_financial_columns()):
+        if name == "report_date":
+            continue
+        rows.append((
+            f"f{idx:03d}",
+            idx,
+            name,
+            mapped_by_source.get(name),
+            _unit_for_field(name),
+            _family_for_field(name),
+            name in _STRONG_MODEL_FIELDS,
+            name in mapped_by_source,
+            "tdxhub financial.columns",
+        ))
+    if not rows:
+        return
+    conn.executemany(
+        """
+        INSERT OR REPLACE INTO dim_tdx_gpcw_field
+        (field_key, field_index, zh_name, db_column, unit, field_family,
+         model_candidate, verified, notes)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        rows,
+    )
+
+
+def _jsonable_value(value: Any) -> Any:
+    numeric = _safe_float(value)
+    if numeric is not None:
+        return numeric
+    if value is None:
+        return None
+    try:
+        if value != value:
+            return None
+    except Exception:
+        pass
+    if hasattr(value, "iloc"):
+        value = value.iloc[0]
+    text = str(value).strip()
+    return text or None
+
+
+def _insert_wide_rows(conn: Any, df: Any, filename: str, fallback_report_date: Optional[str]) -> int:
+    if df is None or df.empty:
+        return 0
+    rows = []
+    for code in df.index:
+        row = df.loc[code]
+        rd = _normalize_report_date(row.get("report_date")) or fallback_report_date
+        if not rd:
+            continue
+        payload = {}
+        for col in df.columns:
+            if col == "report_date":
+                continue
+            val = _jsonable_value(row.get(col))
+            if val is not None:
+                payload[str(col)] = val
+        rows.append((
+            str(code),
+            rd,
+            filename,
+            json.dumps(payload, ensure_ascii=False, sort_keys=True),
+        ))
+    if rows:
+        conn.executemany(
+            """
+            INSERT OR REPLACE INTO raw_tdx_gpcw_wide
+            (stock_code, report_date, source_file, field_values_json)
+            VALUES (?, ?, ?, ?)
+            """,
+            rows,
+        )
+    return len(rows)
+
+
+def backfill_gpcw_wide_from_detail(conn: Any) -> dict:
+    """Populate raw_tdx_gpcw_wide from existing raw_gpcw_detail without network IO.
+
+    This is a compatibility backfill. Future ``sync_gpcw_files`` calls store the
+    wider TDX parse payload directly.
+    """
+
+    _ensure_table(conn)
+    cols = ["stock_code", "report_date", *list(_NUMERIC_DB_COLUMNS)]
+    cursor = conn.execute(f"SELECT {', '.join(cols)} FROM raw_gpcw_detail")
+    rows = cursor.fetchall()
+    payload_rows = []
+    for row in rows:
+        if hasattr(row, "keys"):
+            rec = {k: row[k] for k in row.keys()}
+        else:
+            rec = dict(zip(cols, row))
+        payload = {
+            col: _jsonable_value(rec.get(col))
+            for col in cols[2:]
+            if _jsonable_value(rec.get(col)) is not None
+        }
+        payload_rows.append((
+            rec["stock_code"],
+            rec["report_date"],
+            "raw_gpcw_detail_backfill",
+            json.dumps(payload, ensure_ascii=False, sort_keys=True),
+        ))
+    if payload_rows:
+        conn.executemany(
+            """
+            INSERT OR REPLACE INTO raw_tdx_gpcw_wide
+            (stock_code, report_date, source_file, field_values_json)
+            VALUES (?, ?, ?, ?)
+            """,
+            payload_rows,
+        )
+        conn.commit()
+    return {"rows_upserted": len(payload_rows), "source": "raw_gpcw_detail_backfill"}
+
+
 def sync_gpcw_files(
     conn: Any,
     quarters: int = 4,
     downdir: Optional[str] = None,
     force_resync: bool = False,
+    persist_wide: bool = True,
 ) -> dict:
     """
     同步最近 N 个季度的 gpcw 文件到 raw_gpcw_detail 表。
@@ -257,7 +470,7 @@ def sync_gpcw_files(
         VALUES ({placeholders})
     """
 
-    result = {"files_synced": 0, "rows_upserted": 0, "errors": []}
+    result = {"files_synced": 0, "rows_upserted": 0, "wide_rows_upserted": 0, "errors": []}
 
     for file_info in target_files:
         filename = file_info["filename"]
@@ -274,7 +487,7 @@ def sync_gpcw_files(
             df = Affair.parse(
                 downdir=downdir,
                 filename=filename,
-                columns=_SELECTED_GPCW_COLUMNS,
+                columns=None if persist_wide else _SELECTED_GPCW_COLUMNS,
             )
 
             if df is None or df.empty:
@@ -292,6 +505,10 @@ def sync_gpcw_files(
                 rows_batch.append(tuple(values))
 
             conn.executemany(upsert_sql, rows_batch)
+            if persist_wide:
+                result["wide_rows_upserted"] += _insert_wide_rows(
+                    conn, df, filename, report_date
+                )
             conn.commit()
 
             result["files_synced"] += 1

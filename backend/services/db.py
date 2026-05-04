@@ -242,6 +242,176 @@ def init_db():
             CREATE INDEX IF NOT EXISTS idx_trade_raw_hash
                 ON fact_shareholder_trade(stock_code, raw_hash);
 
+            -- Format B 专用: 段 3 重要股东持股变动. 先与旧 fact_shareholder_trade
+            -- 分表保存, 验证稳定后再考虑并入口径.
+            CREATE TABLE IF NOT EXISTS fact_shareholder_trade_tdx_b (
+                stock_code       TEXT NOT NULL,
+                stock_name       TEXT,
+                market           TEXT,
+                change_period_text TEXT,
+                change_start_date TEXT,
+                change_end_date   TEXT,
+                change_date      TEXT,
+                holder_name      TEXT,
+                holder_name_norm TEXT,
+                shares_change_text TEXT,
+                shares_change    BIGINT,
+                average_price_text TEXT,
+                average_price    DOUBLE,
+                shares_after_text TEXT,
+                shares_after     BIGINT,
+                change_method    TEXT,
+                page_update_date TEXT,
+                source           TEXT NOT NULL,
+                source_tier      SMALLINT NOT NULL DEFAULT 1,
+                raw_hash         TEXT,
+                fetched_at       TEXT,
+                trade_seq        INTEGER NOT NULL DEFAULT 1,
+                PRIMARY KEY (stock_code, raw_hash, trade_seq)
+            );
+            CREATE INDEX IF NOT EXISTS idx_trade_b_stock_date
+                ON fact_shareholder_trade_tdx_b(stock_code, change_date DESC);
+            CREATE INDEX IF NOT EXISTS idx_trade_b_holder
+                ON fact_shareholder_trade_tdx_b(holder_name_norm);
+
+            -- Format B 专用: 段 5 股东人数变化 raw/canonical 双层.
+            CREATE TABLE IF NOT EXISTS raw_tdx_f10_holder_count_history (
+                stock_code       TEXT NOT NULL,
+                stock_name       TEXT,
+                market           TEXT,
+                report_date      TEXT,
+                report_date_text TEXT,
+                holder_count_text TEXT,
+                holder_count     BIGINT,
+                holder_count_change_text TEXT,
+                holder_count_change BIGINT,
+                holder_count_change_pct_text TEXT,
+                holder_count_change_pct DOUBLE,
+                avg_float_shares_text TEXT,
+                avg_float_shares BIGINT,
+                avg_float_shares_change_pct_text TEXT,
+                avg_float_shares_change_pct DOUBLE,
+                close_price_text TEXT,
+                close_price      DOUBLE,
+                page_update_date TEXT,
+                source           TEXT NOT NULL,
+                raw_hash         TEXT NOT NULL,
+                fetched_at       TEXT,
+                row_seq          INTEGER NOT NULL DEFAULT 1,
+                PRIMARY KEY (stock_code, raw_hash, row_seq)
+            );
+            CREATE INDEX IF NOT EXISTS idx_raw_holder_count_stock_date
+                ON raw_tdx_f10_holder_count_history(stock_code, report_date DESC);
+
+            CREATE TABLE IF NOT EXISTS fact_holder_count_period (
+                stock_code       TEXT NOT NULL,
+                stock_name       TEXT,
+                market           TEXT,
+                report_date      TEXT NOT NULL,
+                holder_count     BIGINT,
+                holder_count_change BIGINT,
+                holder_count_change_pct DOUBLE,
+                avg_float_shares BIGINT,
+                avg_float_shares_change_pct DOUBLE,
+                close_price      DOUBLE,
+                page_update_date TEXT,
+                source           TEXT NOT NULL,
+                source_tier      SMALLINT NOT NULL DEFAULT 1,
+                raw_hash         TEXT,
+                fetched_at       TEXT,
+                updated_at       TEXT,
+                PRIMARY KEY (stock_code, report_date, source)
+            );
+            CREATE INDEX IF NOT EXISTS idx_fact_holder_count_stock_date
+                ON fact_holder_count_period(stock_code, report_date DESC);
+
+            -- Format B 后续段落的落库壳: Phase 2 先登记健康与 schema, 解析器后续补齐.
+            CREATE TABLE IF NOT EXISTS fact_common_major_holder_stock (
+                stock_code       TEXT NOT NULL,
+                stock_name       TEXT,
+                market           TEXT,
+                report_date      TEXT,
+                report_date_text TEXT,
+                major_holder_name TEXT NOT NULL,
+                peer_stock_code  TEXT NOT NULL,
+                peer_stock_name  TEXT,
+                shares_text      TEXT,
+                shares           BIGINT,
+                hold_ratio_text  TEXT,
+                hold_ratio       DOUBLE,
+                change_text      TEXT,
+                change_shares    BIGINT,
+                net_profit_parent_text TEXT,
+                net_profit_parent DOUBLE,
+                net_profit_deducted_text TEXT,
+                net_profit_deducted DOUBLE,
+                page_update_date TEXT,
+                source           TEXT NOT NULL,
+                source_tier      SMALLINT NOT NULL DEFAULT 1,
+                raw_hash         TEXT,
+                fetched_at       TEXT,
+                row_seq          INTEGER NOT NULL DEFAULT 1,
+                PRIMARY KEY (stock_code, major_holder_name, peer_stock_code, row_seq)
+            );
+            CREATE INDEX IF NOT EXISTS idx_common_holder_name
+                ON fact_common_major_holder_stock(major_holder_name);
+            ALTER TABLE fact_common_major_holder_stock ADD COLUMN IF NOT EXISTS report_date_text TEXT;
+            ALTER TABLE fact_common_major_holder_stock ADD COLUMN IF NOT EXISTS hold_ratio_text TEXT;
+            ALTER TABLE fact_common_major_holder_stock ADD COLUMN IF NOT EXISTS change_shares BIGINT;
+            ALTER TABLE fact_common_major_holder_stock ADD COLUMN IF NOT EXISTS net_profit_parent_text TEXT;
+            ALTER TABLE fact_common_major_holder_stock ADD COLUMN IF NOT EXISTS net_profit_deducted_text TEXT;
+
+            CREATE TABLE IF NOT EXISTS fact_fund_holding_tdx_f10 (
+                stock_code       TEXT NOT NULL,
+                stock_name       TEXT,
+                market           TEXT,
+                report_date      TEXT,
+                report_date_text TEXT,
+                fund_name        TEXT NOT NULL,
+                shares_text      TEXT,
+                shares           BIGINT,
+                float_a_ratio_text TEXT,
+                float_a_ratio    DOUBLE,
+                market_value_text TEXT,
+                market_value     DOUBLE,
+                page_update_date TEXT,
+                source           TEXT NOT NULL,
+                source_tier      SMALLINT NOT NULL DEFAULT 1,
+                raw_hash         TEXT,
+                fetched_at       TEXT,
+                row_seq          INTEGER NOT NULL DEFAULT 1,
+                PRIMARY KEY (stock_code, fund_name, report_date, row_seq)
+            );
+            CREATE INDEX IF NOT EXISTS idx_fund_holding_name
+                ON fact_fund_holding_tdx_f10(fund_name);
+            ALTER TABLE fact_fund_holding_tdx_f10 ADD COLUMN IF NOT EXISTS report_date_text TEXT;
+            ALTER TABLE fact_fund_holding_tdx_f10 ADD COLUMN IF NOT EXISTS float_a_ratio_text TEXT;
+            ALTER TABLE fact_fund_holding_tdx_f10 ADD COLUMN IF NOT EXISTS market_value_text TEXT;
+
+            CREATE TABLE IF NOT EXISTS raw_tdx_f10_extra_parse_status (
+                stock_code       TEXT NOT NULL,
+                raw_hash         TEXT NOT NULL,
+                parsed_at        TEXT,
+                holder_count_rows INTEGER DEFAULT 0,
+                trade_b_rows     INTEGER DEFAULT 0,
+                control_rows     INTEGER DEFAULT 0,
+                common_major_holder_rows INTEGER DEFAULT 0,
+                fund_holding_rows INTEGER DEFAULT 0,
+                fund_holding_rejected_rows INTEGER DEFAULT 0,
+                status           TEXT NOT NULL,
+                status_reason    TEXT,
+                parser_version   TEXT,
+                error            TEXT,
+                PRIMARY KEY (stock_code, raw_hash)
+            );
+            CREATE INDEX IF NOT EXISTS idx_f10_extra_status_status
+                ON raw_tdx_f10_extra_parse_status(status);
+            ALTER TABLE raw_tdx_f10_extra_parse_status ADD COLUMN IF NOT EXISTS fund_holding_rejected_rows INTEGER DEFAULT 0;
+            ALTER TABLE raw_tdx_f10_extra_parse_status ADD COLUMN IF NOT EXISTS status_reason TEXT;
+            ALTER TABLE raw_tdx_f10_extra_parse_status ADD COLUMN IF NOT EXISTS parser_version TEXT;
+
+            ALTER TABLE fact_controlling_shareholder ADD COLUMN control_chain_text TEXT;
+
             -- ============================================================
             -- ============================================================
             -- 事实层 (新): 股东事件流 (从 fact_top10_holder_period 派生)
@@ -324,6 +494,10 @@ def init_db():
                 sla_hours         INTEGER,                    -- 数据延迟超过 N 小时算 yellow
                 consumed_by_views TEXT,                       -- JSON 数组: ['view-stocks', 'view-research']
                 is_append_only    BOOLEAN DEFAULT FALSE,
+                deprecation_status TEXT DEFAULT 'active',
+                deprecated_at     TEXT,
+                deprecated_reason TEXT,
+                replacement_table TEXT,
                 schema_version    TEXT DEFAULT 'v1',
                 notes             TEXT,
                 auto_discovered   BOOLEAN DEFAULT TRUE,       -- TRUE=auto-seed, FALSE=人工补
@@ -331,6 +505,10 @@ def init_db():
             );
             CREATE INDEX IF NOT EXISTS idx_dim_data_asset_layer
                 ON dim_data_asset(layer);
+            ALTER TABLE dim_data_asset ADD COLUMN deprecation_status TEXT DEFAULT 'active';
+            ALTER TABLE dim_data_asset ADD COLUMN deprecated_at TEXT;
+            ALTER TABLE dim_data_asset ADD COLUMN deprecated_reason TEXT;
+            ALTER TABLE dim_data_asset ADD COLUMN replacement_table TEXT;
 
             -- ============================================================
             -- 集市层 (新, W0): 数据健康快照 mart_data_health
@@ -356,6 +534,33 @@ def init_db():
                 ON mart_data_health(snapshot_at DESC);
             CREATE INDEX IF NOT EXISTS idx_mart_data_health_severity
                 ON mart_data_health(severity, snapshot_at DESC);
+
+            -- TDX gpcw 宽字段保留层: raw_gpcw_detail 继续承载稳定业务列,
+            -- 此表保留每期解析出的更宽字段 JSON 与源文件, 便于后续字段验证.
+            CREATE TABLE IF NOT EXISTS raw_tdx_gpcw_wide (
+                stock_code       TEXT NOT NULL,
+                report_date      TEXT NOT NULL,
+                source_file      TEXT,
+                field_values_json TEXT NOT NULL,
+                parser_version   TEXT DEFAULT 'tdxhub_gpcw_v1',
+                ingested_at      TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                PRIMARY KEY (stock_code, report_date)
+            );
+            CREATE INDEX IF NOT EXISTS idx_raw_tdx_gpcw_wide_report
+                ON raw_tdx_gpcw_wide(report_date);
+
+            CREATE TABLE IF NOT EXISTS dim_tdx_gpcw_field (
+                field_key        TEXT PRIMARY KEY,
+                field_index      INTEGER,
+                zh_name          TEXT NOT NULL,
+                db_column        TEXT,
+                unit             TEXT,
+                field_family     TEXT,
+                model_candidate  BOOLEAN DEFAULT FALSE,
+                verified         BOOLEAN DEFAULT FALSE,
+                notes            TEXT,
+                updated_at       TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            );
 
             -- ============================================================
             -- 派生层 (新, W3): 派生 SQL 谱系 mart_lineage
@@ -433,6 +638,349 @@ def init_db():
                 ON mart_feature_drift(snapshot_at DESC);
             CREATE INDEX IF NOT EXISTS idx_mart_feature_drift_severity
                 ON mart_feature_drift(severity, psi DESC);
+
+            CREATE TABLE IF NOT EXISTS mart_tdx_data_need_coverage (
+                need_id TEXT PRIMARY KEY,
+                need_name TEXT NOT NULL,
+                consumer TEXT,
+                current_source TEXT,
+                tdxhub_capability TEXT,
+                tdx_coverage_level TEXT,
+                preferred_source TEXT NOT NULL,
+                fallback_source TEXT,
+                action TEXT NOT NULL,
+                notes TEXT,
+                built_at TEXT
+            );
+
+            CREATE TABLE IF NOT EXISTS dim_data_source_priority (
+                data_domain TEXT PRIMARY KEY,
+                preferred_source TEXT NOT NULL,
+                fallback_1 TEXT,
+                fallback_2 TEXT,
+                reason TEXT,
+                updated_at TEXT
+            );
+
+            CREATE TABLE IF NOT EXISTS dim_tdx_gpcw_field_semantic (
+                field_key TEXT PRIMARY KEY,
+                zh_name TEXT,
+                db_column TEXT,
+                field_index INTEGER,
+                unit TEXT,
+                field_family TEXT,
+                semantic_role TEXT,
+                value_type TEXT,
+                scale_rule TEXT,
+                pit_date_field TEXT,
+                candidate_priority TEXT,
+                exclude_reason TEXT,
+                source_profile_run_id TEXT,
+                mapped_status TEXT,
+                updated_at TEXT
+            );
+
+            CREATE TABLE IF NOT EXISTS fact_tdx_gpcw_auto_feature_quarterly (
+                feature_set_id TEXT NOT NULL,
+                stock_code TEXT NOT NULL,
+                report_date TEXT NOT NULL,
+                available_date TEXT NOT NULL,
+                field_key TEXT NOT NULL,
+                feature_name TEXT NOT NULL,
+                feature_family TEXT,
+                transform TEXT NOT NULL,
+                feature_value DOUBLE,
+                source_value DOUBLE,
+                coverage_group TEXT,
+                built_at TEXT,
+                PRIMARY KEY (feature_set_id, stock_code, report_date, feature_name)
+            );
+            CREATE INDEX IF NOT EXISTS idx_tdx_gpcw_auto_quarterly_feature
+                ON fact_tdx_gpcw_auto_feature_quarterly(feature_set_id, feature_name);
+            CREATE INDEX IF NOT EXISTS idx_tdx_gpcw_auto_quarterly_asof
+                ON fact_tdx_gpcw_auto_feature_quarterly(feature_set_id, stock_code, available_date);
+
+            CREATE TABLE IF NOT EXISTS mart_tdx_gpcw_auto_pit_audit (
+                audit_run_id TEXT NOT NULL,
+                feature_set_id TEXT NOT NULL,
+                feature_name TEXT NOT NULL,
+                checked_rows INTEGER,
+                violation_rows INTEGER,
+                status TEXT NOT NULL,
+                notes TEXT,
+                built_at TEXT,
+                PRIMARY KEY (audit_run_id, feature_set_id, feature_name)
+            );
+
+            CREATE TABLE IF NOT EXISTS mart_tdx_gpcw_auto_feature_score (
+                run_id TEXT NOT NULL,
+                feature_set_id TEXT NOT NULL,
+                feature_name TEXT NOT NULL,
+                feature_family TEXT,
+                coverage_pct DOUBLE,
+                rank_ic DOUBLE,
+                fold_same_sign_rate DOUBLE,
+                horizon_sensitivity TEXT,
+                selected BOOLEAN DEFAULT FALSE,
+                rejection_reason TEXT,
+                built_at TEXT,
+                PRIMARY KEY (run_id, feature_name)
+            );
+
+            CREATE TABLE IF NOT EXISTS mart_tdx_gpcw_auto_feature_cluster (
+                run_id TEXT NOT NULL,
+                feature_set_id TEXT NOT NULL,
+                cluster_id TEXT NOT NULL,
+                feature_name TEXT NOT NULL,
+                representative_feature TEXT,
+                corr_to_representative DOUBLE,
+                built_at TEXT,
+                PRIMARY KEY (run_id, feature_name)
+            );
+
+            CREATE TABLE IF NOT EXISTS mart_tdx_gpcw_auto_optuna_run (
+                run_id TEXT PRIMARY KEY,
+                feature_set_id TEXT NOT NULL,
+                trials INTEGER,
+                objective_score DOUBLE,
+                selected_features_json TEXT,
+                rejected_features_json TEXT,
+                promote_to_champion BOOLEAN DEFAULT FALSE,
+                notes TEXT,
+                built_at TEXT
+            );
+
+            CREATE TABLE IF NOT EXISTS mart_tdx_gpcw_auto_retention_decision (
+                decision_run_id TEXT NOT NULL,
+                feature_set_id TEXT NOT NULL,
+                feature_name TEXT NOT NULL,
+                feature_family TEXT,
+                decision TEXT NOT NULL,
+                primary_reason TEXT,
+                coverage_pct DOUBLE,
+                pit_violation_rows INTEGER,
+                mean_rank_ic DOUBLE,
+                fold_same_sign_rate DOUBLE,
+                notes TEXT,
+                built_at TEXT,
+                PRIMARY KEY (decision_run_id, feature_set_id, feature_name)
+            );
+
+            CREATE TABLE IF NOT EXISTS mart_data_source_reassignment_proposal (
+                table_name TEXT PRIMARY KEY,
+                current_source TEXT,
+                proposed_primary_source TEXT NOT NULL,
+                fallback_source TEXT,
+                migration_required BOOLEAN DEFAULT FALSE,
+                risk TEXT,
+                reason TEXT,
+                built_at TEXT
+            );
+
+            CREATE TABLE IF NOT EXISTS mart_tdx_gpcw_auto_challenger_report (
+                challenger_run_id TEXT PRIMARY KEY,
+                feature_set_id TEXT NOT NULL,
+                decision_run_id TEXT NOT NULL,
+                n_features INTEGER,
+                rank_ic DOUBLE,
+                long_short_return DOUBLE,
+                max_drawdown DOUBLE,
+                turnover DOUBLE,
+                top_features_json TEXT,
+                promote_to_champion BOOLEAN DEFAULT FALSE,
+                built_at TEXT
+            );
+
+            -- 候选特征面板: 不替换 fact_feature_panel/champion, 仅承载 Phase 3 减法实验.
+            CREATE TABLE IF NOT EXISTS fact_feature_panel_candidate (
+                feature_set_id   TEXT NOT NULL,
+                stock_code       TEXT NOT NULL,
+                date             TEXT NOT NULL,
+                forward_ret_5d   REAL,
+                forward_ret_10d  REAL,
+                forward_ret_20d  REAL,
+                forward_ret_60d  REAL,
+                common_holder_network_count REAL,
+                fund_holding_shares_tdx_f10 REAL,
+                fund_holding_float_a_ratio_tdx_f10 REAL,
+                fund_holding_market_value_tdx_f10 REAL,
+                holder_count_change_pct_tdx REAL,
+                avg_float_shares_change_pct_tdx REAL,
+                holder_count_acceleration_tdx REAL,
+                top10_concentration_change REAL,
+                tdx_inst_total_shares_qoq REAL,
+                national_team_shares_qoq REAL,
+                qfii_shares_qoq REAL,
+                fund_shares_qoq REAL,
+                social_security_shares_qoq REAL,
+                contract_liabilities_to_revenue REAL,
+                ocf_to_profit_tdx REAL,
+                receivables_to_revenue REAL,
+                inventory_to_revenue REAL,
+                forecast_profit_yoy_mid REAL,
+                forecast_range_width REAL,
+                express_net_profit_yoy REAL,
+                built_at         TEXT,
+                PRIMARY KEY (feature_set_id, stock_code, date)
+            );
+            CREATE INDEX IF NOT EXISTS idx_feature_candidate_date
+                ON fact_feature_panel_candidate(feature_set_id, date);
+            ALTER TABLE fact_feature_panel_candidate ADD COLUMN IF NOT EXISTS forward_ret_5d REAL;
+            ALTER TABLE fact_feature_panel_candidate ADD COLUMN IF NOT EXISTS forward_ret_10d REAL;
+            ALTER TABLE fact_feature_panel_candidate ADD COLUMN IF NOT EXISTS forward_ret_60d REAL;
+            ALTER TABLE fact_feature_panel_candidate ADD COLUMN IF NOT EXISTS common_holder_network_count REAL;
+            ALTER TABLE fact_feature_panel_candidate ADD COLUMN IF NOT EXISTS fund_holding_shares_tdx_f10 REAL;
+            ALTER TABLE fact_feature_panel_candidate ADD COLUMN IF NOT EXISTS fund_holding_float_a_ratio_tdx_f10 REAL;
+            ALTER TABLE fact_feature_panel_candidate ADD COLUMN IF NOT EXISTS fund_holding_market_value_tdx_f10 REAL;
+            ALTER TABLE fact_feature_panel_candidate ADD COLUMN IF NOT EXISTS holder_count_acceleration_tdx REAL;
+            ALTER TABLE fact_feature_panel_candidate ADD COLUMN IF NOT EXISTS social_security_shares_qoq REAL;
+            ALTER TABLE fact_feature_panel_candidate ADD COLUMN IF NOT EXISTS receivables_to_revenue REAL;
+            ALTER TABLE fact_feature_panel_candidate ADD COLUMN IF NOT EXISTS inventory_to_revenue REAL;
+            ALTER TABLE fact_feature_panel_candidate ADD COLUMN IF NOT EXISTS forecast_range_width REAL;
+            ALTER TABLE fact_feature_panel_candidate ADD COLUMN IF NOT EXISTS express_net_profit_yoy REAL;
+
+            CREATE TABLE IF NOT EXISTS mart_feature_candidate_score (
+                run_id           TEXT NOT NULL,
+                feature_set_id   TEXT NOT NULL,
+                feature_name     TEXT NOT NULL,
+                feature_group    TEXT,
+                coverage_pct     DOUBLE,
+                missing_pct      DOUBLE,
+                rank_ic          DOUBLE,
+                fold_same_sign_rate DOUBLE,
+                fold_count       INTEGER,
+                sensitivity_json TEXT,
+                selected         BOOLEAN DEFAULT FALSE,
+                rejection_reason TEXT,
+                built_at         TEXT,
+                PRIMARY KEY (run_id, feature_name)
+            );
+            ALTER TABLE mart_feature_candidate_score ADD COLUMN IF NOT EXISTS fold_same_sign_rate DOUBLE;
+            ALTER TABLE mart_feature_candidate_score ADD COLUMN IF NOT EXISTS fold_count INTEGER;
+            ALTER TABLE mart_feature_candidate_score ADD COLUMN IF NOT EXISTS sensitivity_json TEXT;
+
+            CREATE TABLE IF NOT EXISTS mart_feature_group_ablation (
+                run_id           TEXT NOT NULL,
+                feature_set_id   TEXT NOT NULL,
+                group_name       TEXT NOT NULL,
+                n_features       INTEGER,
+                rank_ic_full     DOUBLE,
+                rank_ic_without_group DOUBLE,
+                rank_ic_delta    DOUBLE,
+                rank_ic_5d       DOUBLE,
+                rank_ic_10d      DOUBLE,
+                rank_ic_60d      DOUBLE,
+                feature_cols_json TEXT,
+                built_at         TEXT,
+                PRIMARY KEY (run_id, group_name)
+            );
+            ALTER TABLE mart_feature_group_ablation ADD COLUMN IF NOT EXISTS rank_ic_5d DOUBLE;
+            ALTER TABLE mart_feature_group_ablation ADD COLUMN IF NOT EXISTS rank_ic_10d DOUBLE;
+            ALTER TABLE mart_feature_group_ablation ADD COLUMN IF NOT EXISTS rank_ic_60d DOUBLE;
+
+            CREATE TABLE IF NOT EXISTS mart_model_selection_run (
+                run_id           TEXT PRIMARY KEY,
+                feature_set_id   TEXT NOT NULL,
+                method           TEXT NOT NULL,
+                label_name       TEXT,
+                objective_score  DOUBLE,
+                selected_features_json TEXT,
+                rejected_features_json TEXT,
+                trials           INTEGER,
+                promote_to_champion BOOLEAN DEFAULT FALSE,
+                notes            TEXT,
+                built_at         TEXT
+            );
+
+            CREATE TABLE IF NOT EXISTS mart_feature_pit_audit (
+                audit_run_id TEXT NOT NULL,
+                feature_set_id TEXT NOT NULL,
+                feature_name TEXT NOT NULL,
+                source_table TEXT NOT NULL,
+                sample_rows INTEGER,
+                checked_rows INTEGER,
+                violation_rows INTEGER,
+                max_source_available_date TEXT,
+                max_signal_date TEXT,
+                status TEXT NOT NULL,
+                notes TEXT,
+                audited_at TEXT,
+                PRIMARY KEY (audit_run_id, feature_set_id, feature_name, source_table)
+            );
+
+            CREATE TABLE IF NOT EXISTS mart_candidate_walkforward_eval (
+                run_id TEXT NOT NULL,
+                feature_set_id TEXT NOT NULL,
+                fold_id TEXT NOT NULL,
+                train_start TEXT,
+                train_end TEXT,
+                valid_start TEXT,
+                valid_end TEXT,
+                holdout_start TEXT,
+                holdout_end TEXT,
+                feature_name TEXT NOT NULL,
+                feature_group TEXT,
+                rank_ic DOUBLE,
+                icir DOUBLE,
+                same_sign BOOLEAN,
+                long_short_return DOUBLE,
+                turnover DOUBLE,
+                turnover_adjusted_return DOUBLE,
+                max_drawdown DOUBLE,
+                label_name TEXT NOT NULL,
+                built_at TEXT,
+                PRIMARY KEY (run_id, fold_id, feature_name, label_name)
+            );
+
+            CREATE TABLE IF NOT EXISTS mart_feature_retention_decision (
+                decision_run_id TEXT NOT NULL,
+                feature_set_id TEXT NOT NULL,
+                feature_name TEXT NOT NULL,
+                feature_group TEXT,
+                decision TEXT NOT NULL,
+                primary_reason TEXT,
+                coverage_pct DOUBLE,
+                pit_violation_rows INTEGER,
+                mean_rank_ic DOUBLE,
+                fold_same_sign_rate DOUBLE,
+                group_ablation_delta DOUBLE,
+                max_corr_with_kept_feature DOUBLE,
+                corr_peer_feature TEXT,
+                drift_status TEXT,
+                notes TEXT,
+                built_at TEXT,
+                PRIMARY KEY (decision_run_id, feature_set_id, feature_name)
+            );
+
+            CREATE TABLE IF NOT EXISTS mart_tdx_challenger_report (
+                challenger_run_id TEXT PRIMARY KEY,
+                feature_set_id TEXT NOT NULL,
+                decision_run_id TEXT NOT NULL,
+                model_type TEXT NOT NULL,
+                selected_features_json TEXT,
+                train_window_json TEXT,
+                valid_window_json TEXT,
+                holdout_window_json TEXT,
+                rank_ic DOUBLE,
+                long_short_return DOUBLE,
+                turnover_adjusted_return DOUBLE,
+                max_drawdown DOUBLE,
+                baseline_rank_ic DOUBLE,
+                baseline_long_short_return DOUBLE,
+                promote_to_champion BOOLEAN DEFAULT FALSE,
+                notes TEXT,
+                built_at TEXT
+            );
+
+            CREATE TABLE IF NOT EXISTS mart_data_deprecation_record (
+                record_id        TEXT PRIMARY KEY,
+                table_name       TEXT NOT NULL,
+                deprecation_status TEXT NOT NULL,
+                replacement_table TEXT,
+                reason           TEXT,
+                recorded_at      TEXT NOT NULL,
+                dry_run          BOOLEAN DEFAULT FALSE
+            );
 
             -- K线已迁移到独立的 market.duckdb.price_kline
 

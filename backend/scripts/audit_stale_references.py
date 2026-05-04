@@ -218,6 +218,12 @@ SELF_EXCLUDE_PATHS = (
     "backend/scripts/audit_stale_references.py",
 )
 
+# Registry files whose purpose is to name retired assets and their replacements.
+# Literal retired table names here are retirement metadata, not live references.
+RETIREMENT_METADATA_PATHS = (
+    "backend/scripts/mark_deprecated_data_assets.py",
+)
+
 # 合法的退役 DDL/SQL 模式: DROP TABLE 删旧表, ALTER TABLE 改造, 等.
 # 这些模式与 "RETIRED" 是配合关系, 不是定时炸弹.
 _LEGITIMATE_RETIREMENT_PATTERNS = (
@@ -240,7 +246,9 @@ def grep(pattern: re.Pattern, files: list[Path], *, exclude_paths: Optional[list
             for i, line in enumerate(f.read_text(encoding="utf-8", errors="ignore").splitlines(), 1):
                 if pattern.search(line):
                     # 合法的退役 DDL: 算 retirement-action, 不是 stale ref
-                    if any(p.search(line) for p in _LEGITIMATE_RETIREMENT_PATTERNS):
+                    if rel in RETIREMENT_METADATA_PATHS:
+                        kind = "retirement_action"
+                    elif any(p.search(line) for p in _LEGITIMATE_RETIREMENT_PATTERNS):
                         kind = "retirement_action"
                     elif is_comment_or_docstring(line):
                         kind = "comment"

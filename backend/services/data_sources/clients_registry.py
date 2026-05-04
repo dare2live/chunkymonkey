@@ -86,8 +86,26 @@ CLIENTS: list[ClientSpec] = [
         fallback_chain=["tdxhub"],
         writes=[
             TableWriteSpec("raw_gpcw_detail", "财务报表原始 (季频)", "quarterly", 24*95),
+            TableWriteSpec("raw_tdx_gpcw_wide", "TDX gpcw 宽字段保留", "quarterly", 24*95),
+            TableWriteSpec("dim_tdx_gpcw_field", "TDX gpcw 字段字典", "static", 24*365),
         ],
         sync_step_id="sync_gpcw_data",
+    ),
+    ClientSpec(
+        client_id="tdx_f10_extra_client",
+        module="services.tdx_f10_extra_client",
+        description="通达信 F10 Format B 补充解析",
+        upstream_source="tdxhub.holders raw_tdx_f10_holder_research",
+        source_tier=1,
+        fallback_chain=["tdxhub"],
+        writes=[
+            TableWriteSpec("raw_tdx_f10_holder_count_history", "F10 股东人数变化 raw", "quarterly", 24*95),
+            TableWriteSpec("fact_holder_count_period", "F10 股东人数变化 canonical", "quarterly", 24*95),
+            TableWriteSpec("fact_shareholder_trade_tdx_b", "F10 B 重要股东变动", "event", 24*95),
+            TableWriteSpec("fact_common_major_holder_stock", "F10 同大股东个股 schema", "static", 24*365),
+            TableWriteSpec("fact_fund_holding_tdx_f10", "F10 基金持股 schema", "static", 24*365),
+        ],
+        sync_step_id="sync_raw",
     ),
     ClientSpec(
         client_id="xdxr_client",
@@ -138,7 +156,7 @@ CLIENTS: list[ClientSpec] = [
             TableWriteSpec("raw_institution_surveys", "机构调研原始", "t+1", 48),
             TableWriteSpec("mart_stock_survey_activity", "调研活动派生", "t+1", 48),
         ],
-        sync_step_id="sync_institution_surveys",
+        sync_step_id="sync_surveys",
     ),
     ClientSpec(
         client_id="aif10_capability_client",
@@ -297,6 +315,78 @@ DERIVED_WRITERS: list[ClientSpec] = [
         source_tier=99,
         writes=[
             TableWriteSpec("mart_data_health", "数据健康快照", "t+0", 25),
+        ],
+    ),
+    ClientSpec(
+        client_id="build_candidate_feature_panel",
+        module="scripts.build_candidate_feature_panel",
+        description="候选特征面板 (不替换 champion)",
+        upstream_source="derived: fact_feature_panel + fact_common_major_holder_stock + fact_fund_holding_tdx_f10 + raw_gpcw_detail",
+        source_tier=99,
+        writes=[
+            TableWriteSpec("fact_feature_panel_candidate", "候选特征面板", "on-demand", 24*30),
+        ],
+    ),
+    ClientSpec(
+        client_id="feature_selection_experiments",
+        module="scripts.run_feature_group_ablation / scripts.run_optuna_feature_elimination",
+        description="候选特征消融与 Optuna 减法记录",
+        upstream_source="derived: fact_feature_panel_candidate",
+        source_tier=99,
+        writes=[
+            TableWriteSpec("mart_feature_candidate_score", "候选特征评分", "on-demand", 24*30),
+            TableWriteSpec("mart_feature_group_ablation", "特征组消融", "on-demand", 24*30),
+            TableWriteSpec("mart_model_selection_run", "模型选择实验记录", "on-demand", 24*30),
+        ],
+    ),
+    ClientSpec(
+        client_id="validate_tdx_feature_pit",
+        module="scripts.validate_tdx_feature_pit",
+        description="候选 TDX 特征 PIT 审计",
+        upstream_source="derived: fact_feature_panel_candidate + TDX source facts",
+        source_tier=99,
+        writes=[
+            TableWriteSpec("mart_feature_pit_audit", "候选特征 PIT 审计", "on-demand", 24*30),
+        ],
+    ),
+    ClientSpec(
+        client_id="run_candidate_walkforward_eval",
+        module="scripts.run_walkforward_feature_eval",
+        description="候选特征 walk-forward 评估",
+        upstream_source="derived: fact_feature_panel_candidate",
+        source_tier=99,
+        writes=[
+            TableWriteSpec("mart_candidate_walkforward_eval", "候选特征 walk-forward 评估", "on-demand", 24*30),
+        ],
+    ),
+    ClientSpec(
+        client_id="build_feature_retention_decisions",
+        module="scripts.build_feature_retention_decisions",
+        description="候选特征保留 / 观察 / 剔除决策",
+        upstream_source="derived: candidate feature eval marts",
+        source_tier=99,
+        writes=[
+            TableWriteSpec("mart_feature_retention_decision", "候选特征保留决策", "on-demand", 24*30),
+        ],
+    ),
+    ClientSpec(
+        client_id="train_tdx_challenger_model",
+        module="scripts.train_tdx_challenger_model",
+        description="TDX 保留特征 challenger 报告 (不替换 champion)",
+        upstream_source="derived: fact_feature_panel_candidate + mart_feature_retention_decision",
+        source_tier=99,
+        writes=[
+            TableWriteSpec("mart_tdx_challenger_report", "TDX challenger 模型报告", "on-demand", 24*30),
+        ],
+    ),
+    ClientSpec(
+        client_id="mark_deprecated_data_assets",
+        module="scripts.mark_deprecated_data_assets",
+        description="数据资产退役标记记录 (不删表)",
+        upstream_source="derived: dim_data_asset + stale reference audit",
+        source_tier=99,
+        writes=[
+            TableWriteSpec("mart_data_deprecation_record", "数据资产退役记录", "on-demand", 24*30),
         ],
     ),
 ]

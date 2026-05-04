@@ -410,6 +410,78 @@ def worker(name: str, job_q: queue.Queue, con: duckdb.DuckDBPyConnection,
     resolver.close()
 
 
+def run(
+    *,
+    workers: int = 4,
+    limit: int = 0,
+    symbols: str = "",
+    force: bool = False,
+    no_fallback: bool = False,
+    con: duckdb.DuckDBPyConnection | None = None,
+) -> dict:
+    """实际执行入口. 可被 in-process 调用 (传 con 不开新连接).
+
+    传 con: 用调用方的 connection (避免 DuckDB 跨进程锁冲突).
+    不传 con: 自己 init_db + duckdb.connect (CLI 独立运行模式).
+    """
+    enable_fallback = not no_fallback
+
+    own_con = con is None
+    if own_con:
+        init_db()
+        con = duckdb.connect(str(DB_PATH))
+    con_lock = threading.Lock()
+
+    try:
+        explicit = [s.strip() for s in symbols.split(",") if s.strip()] or None
+        universe = load_universe(con, limit=limit, explicit=explicit)
+        log.info("universe: %d stocks", len(universe))
+
+        alias_map = load_alias_map(con)
+        log.info("alias map: %d entries", len(alias_map))
+
+        seen = set() if force else existing_hashes(con)
+        seen_lock = threading.Lock()
+        log.info("existing raw_hash cache: %d entries (force=%s)", len(seen), force)
+
+        job_q: queue.Queue = queue.Queue()
+        for i, (code, name, market) in enumerate(universe, 1):
+            job_q.put((i, len(universe), code, name, market))
+        for _ in range(workers):
+            job_q.put(None)
+
+        progress = {"done": 0, "ok": 0, "err": 0, "skipped_unchanged": 0,
+                    "skipped_no_f10": 0, "t0": time.time()}
+        progress_lock = threading.Lock()
+
+        ths = []
+        for i in range(workers):
+            t = threading.Thread(
+                target=worker,
+                args=(f"w{i+1}", job_q, con, con_lock, alias_map,
+                      progress, progress_lock, seen, seen_lock),
+                kwargs={"enable_fallback": enable_fallback},
+                name=f"holder-worker-{i+1}",
+            )
+            t.start()
+            ths.append(t)
+        for t in ths:
+            t.join()
+
+        elapsed = time.time() - progress["t0"]
+        log.info("=== ingest complete in %.1fs ===", elapsed)
+        log.info("  total      : %d", progress["done"])
+        log.info("  ok         : %d", progress["ok"])
+        log.info("  unchanged  : %d (raw_hash already in DB)", progress["skipped_unchanged"])
+        log.info("  no F10     : %d", progress["skipped_no_f10"])
+        log.info("  errors     : %d", progress["err"])
+        progress["elapsed_s"] = elapsed
+        return progress
+    finally:
+        if own_con:
+            con.close()
+
+
 def main() -> int:
     p = argparse.ArgumentParser()
     p.add_argument("--workers", type=int, default=4)
@@ -420,56 +492,11 @@ def main() -> int:
     p.add_argument("--no-fallback", action="store_true",
                    help="关闭 miaoxiang fallback (仅试 tdxhub)")
     args = p.parse_args()
-    enable_fallback = not args.no_fallback
 
-    init_db()
-    con = duckdb.connect(str(DB_PATH))
-    con_lock = threading.Lock()
-
-    explicit = [s.strip() for s in args.symbols.split(",") if s.strip()] or None
-    universe = load_universe(con, limit=args.limit, explicit_symbols=explicit) \
-        if False else load_universe(con, limit=args.limit, explicit=explicit)
-    log.info("universe: %d stocks", len(universe))
-
-    alias_map = load_alias_map(con)
-    log.info("alias map: %d entries", len(alias_map))
-
-    seen = set() if args.force else existing_hashes(con)
-    seen_lock = threading.Lock()
-    log.info("existing raw_hash cache: %d entries (force=%s)", len(seen), args.force)
-
-    job_q: queue.Queue = queue.Queue()
-    for i, (code, name, market) in enumerate(universe, 1):
-        job_q.put((i, len(universe), code, name, market))
-    for _ in range(args.workers):
-        job_q.put(None)
-
-    progress = {"done": 0, "ok": 0, "err": 0, "skipped_unchanged": 0,
-                "skipped_no_f10": 0, "t0": time.time()}
-    progress_lock = threading.Lock()
-
-    workers = []
-    for i in range(args.workers):
-        t = threading.Thread(
-            target=worker,
-            args=(f"w{i+1}", job_q, con, con_lock, alias_map,
-                  progress, progress_lock, seen, seen_lock),
-            kwargs={"enable_fallback": enable_fallback},
-            name=f"holder-worker-{i+1}",
-        )
-        t.start()
-        workers.append(t)
-    for t in workers:
-        t.join()
-
-    elapsed = time.time() - progress["t0"]
-    log.info("=== ingest complete in %.1fs ===", elapsed)
-    log.info("  total      : %d", progress["done"])
-    log.info("  ok         : %d", progress["ok"])
-    log.info("  unchanged  : %d (raw_hash already in DB)", progress["skipped_unchanged"])
-    log.info("  no F10     : %d", progress["skipped_no_f10"])
-    log.info("  errors     : %d", progress["err"])
-    con.close()
+    progress = run(
+        workers=args.workers, limit=args.limit, symbols=args.symbols,
+        force=args.force, no_fallback=args.no_fallback,
+    )
     return 0 if progress["err"] == 0 else 1
 
 
