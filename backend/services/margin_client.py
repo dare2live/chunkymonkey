@@ -20,8 +20,6 @@ import logging
 from datetime import date, datetime
 from typing import Any, Optional
 
-import pandas as pd
-
 logger = logging.getLogger("cm-api")
 
 MARGIN_SOURCE_SH = "akshare_stock_margin_detail_sse"
@@ -101,16 +99,26 @@ def _iso_date(yyyymmdd: str) -> str:
 
 def _fetch_sh(date_yyyymmdd: str):
     import akshare as ak
-    return ak.stock_margin_detail_sse(date=date_yyyymmdd)
+    return _source_rows(ak.stock_margin_detail_sse(date=date_yyyymmdd))
 
 
 def _fetch_sz(date_yyyymmdd: str):
     import akshare as ak
-    return ak.stock_margin_detail_szse(date=date_yyyymmdd)
+    return _source_rows(ak.stock_margin_detail_szse(date=date_yyyymmdd))
+
+
+def _source_rows(payload) -> list[dict]:
+    if payload is None:
+        return []
+    if hasattr(payload, "empty") and payload.empty:
+        return []
+    if hasattr(payload, "to_dict"):
+        return payload.to_dict("records")
+    return list(payload or [])
 
 
 async def fetch_margin_day(date_yyyymmdd: str, retries: int = 3) -> dict:
-    """一日拉 SH+SZ，返回 {'sh': df, 'sz': df}（单边失败不阻塞另一边）。"""
+    """一日拉 SH+SZ，返回 records dict（单边失败不阻塞另一边）。"""
     loop = asyncio.get_running_loop()
     out: dict = {}
     for market, fn in (("sh", _fetch_sh), ("sz", _fetch_sz)):
@@ -136,11 +144,11 @@ async def fetch_margin_day(date_yyyymmdd: str, retries: int = 3) -> dict:
 # Normalize
 # ─────────────────────────────────────────────────────────────────────
 
-def _normalize_sh(df: pd.DataFrame, trade_date: str) -> list[dict]:
-    if df is None or df.empty:
+def _normalize_sh(rows: list[dict] | None, trade_date: str) -> list[dict]:
+    if not rows:
         return []
     out: list[dict] = []
-    for r in df.to_dict("records"):
+    for r in rows:
         stock_code = _normalize_stock_code(r.get("标的证券代码"))
         if not stock_code:
             continue
@@ -162,11 +170,11 @@ def _normalize_sh(df: pd.DataFrame, trade_date: str) -> list[dict]:
     return out
 
 
-def _normalize_sz(df: pd.DataFrame, trade_date: str) -> list[dict]:
-    if df is None or df.empty:
+def _normalize_sz(rows: list[dict] | None, trade_date: str) -> list[dict]:
+    if not rows:
         return []
     out: list[dict] = []
-    for r in df.to_dict("records"):
+    for r in rows:
         stock_code = _normalize_stock_code(r.get("证券代码"))
         if not stock_code:
             continue

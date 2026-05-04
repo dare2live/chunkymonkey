@@ -4,16 +4,14 @@ import asyncio
 import sys
 from pathlib import Path
 
-import pandas as pd
-
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from conftest import duck_mem
 from services import margin_client
 
 
-def _sh_df():
-    return pd.DataFrame([{
+def _sh_rows():
+    return [{
         "信用交易日期": "20260421",
         "标的证券代码": "600519",
         "标的证券简称": "贵州茅台",
@@ -23,11 +21,11 @@ def _sh_df():
         "融券余量": 1000,
         "融券卖出量": 500,
         "融券偿还量": 200,
-    }])
+    }]
 
 
-def _sz_df():
-    return pd.DataFrame([{
+def _sz_rows():
+    return [{
         "证券代码": "000001",
         "证券简称": "平安银行",
         "融资买入额": 84_840_010,
@@ -36,11 +34,11 @@ def _sz_df():
         "融券余量": 1_241_560,
         "融券余额": 13_756_485,
         "融资融券余额": 5_410_135_934,
-    }])
+    }]
 
 
 def test_normalize_sh_maps_fields():
-    rows = margin_client._normalize_sh(_sh_df(), "2026-04-21")
+    rows = margin_client._normalize_sh(_sh_rows(), "2026-04-21")
     assert len(rows) == 1
     r = rows[0]
     assert r["market"] == "SH"
@@ -54,9 +52,9 @@ def test_normalize_sh_maps_fields():
 
 
 def test_normalize_sz_maps_fields_and_computes_rzrq_when_missing():
-    df = _sz_df().copy()
-    df.loc[0, "融资融券余额"] = None
-    rows = margin_client._normalize_sz(df, "2026-04-21")
+    source_rows = [dict(_sz_rows()[0])]
+    source_rows[0]["融资融券余额"] = None
+    rows = margin_client._normalize_sz(source_rows, "2026-04-21")
     assert len(rows) == 1
     r = rows[0]
     assert r["market"] == "SZ"
@@ -71,7 +69,7 @@ def test_sync_margin_day_upserts_both_markets(monkeypatch):
 
     async def _fake_fetch(yyyymmdd: str, retries: int = 3):
         assert yyyymmdd == "20260421"
-        return {"sh": _sh_df(), "sz": _sz_df()}
+        return {"sh": _sh_rows(), "sz": _sz_rows()}
 
     monkeypatch.setattr(margin_client, "fetch_margin_day", _fake_fetch)
 
@@ -96,7 +94,7 @@ def test_sync_margin_day_is_idempotent(monkeypatch):
     margin_client.ensure_tables(conn)
 
     async def _fake_fetch(yyyymmdd: str, retries: int = 3):
-        return {"sh": _sh_df(), "sz": _sz_df()}
+        return {"sh": _sh_rows(), "sz": _sz_rows()}
 
     monkeypatch.setattr(margin_client, "fetch_margin_day", _fake_fetch)
     asyncio.run(margin_client.sync_margin_day(conn, "2026-04-21"))
@@ -111,7 +109,7 @@ def test_sync_margin_day_survives_single_market_failure(monkeypatch):
 
     async def _fake_fetch(yyyymmdd: str, retries: int = 3):
         # SH 失败（返回 None），SZ 正常
-        return {"sh": None, "sz": _sz_df()}
+        return {"sh": None, "sz": _sz_rows()}
 
     monkeypatch.setattr(margin_client, "fetch_margin_day", _fake_fetch)
     result = asyncio.run(margin_client.sync_margin_day(conn, "2026-04-21"))
@@ -145,7 +143,7 @@ def test_backfill_margin_skips_existing_and_honors_calendar(monkeypatch):
 
     async def _fake_fetch(yyyymmdd: str, retries: int = 3):
         calls.append(yyyymmdd)
-        return {"sh": _sh_df(), "sz": _sz_df()}
+        return {"sh": _sh_rows(), "sz": _sz_rows()}
 
     monkeypatch.setattr(margin_client, "fetch_margin_day", _fake_fetch)
 
@@ -213,7 +211,7 @@ def test_fallback_walks_back_until_data_found(monkeypatch):
         call_log.append(yyyymmdd)
         # T (04-22) 和 T-1 (04-21) 源未披露，T-2 (04-20) 有数据
         if yyyymmdd == "20260420":
-            return {"sh": _sh_df(), "sz": _sz_df()}
+            return {"sh": _sh_rows(), "sz": _sz_rows()}
         return {"sh": None, "sz": None}
 
     monkeypatch.setattr(margin_client, "fetch_margin_day", _fake_fetch)
