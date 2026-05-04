@@ -69,6 +69,9 @@ records/native helpers.
 The AkShare panel loop converted external table payloads at the fetch boundary
 to records and replaced pandas normalization, date arithmetic, dedupe, and
 `to_sql` writes with records/native helpers and direct `executemany` writes.
+The multidim training loop removed the original DataFrame training path by
+reusing the records/native loading, split, metric, matrix, and prediction
+ranking helpers already used by the ablation and challenger scripts.
 
 ## Change
 
@@ -244,6 +247,12 @@ to records and replaced pandas normalization, date arithmetic, dedupe, and
 - Replaced pandas `Timedelta` date windows with standard-library
   `datetime.timedelta`.
 - Added `backend/tests/test_build_akshare_panel.py`.
+- Removed pandas, scipy RankIC helpers, and DuckDB table registration from
+  `backend/scripts/train_multidim_model.py`.
+- Converted multidim model panel loading, time split, Optuna objective inputs,
+  holdout metrics, feature group resolution, final LightGBM matrices, model
+  metadata writes, and prediction writes to records/native helpers.
+- Added `backend/tests/test_train_multidim_model.py`.
 
 ## Validation
 
@@ -693,8 +702,20 @@ python3 -m pytest backend/tests/test_build_akshare_panel.py -q
 python3 backend/scripts/build_akshare_panel.py --help
 # import/CLI smoke passed
 
+rg -n "import pandas|from pandas|pd\.|DataFrame|read_sql_query|\.to_sql\(|\.df\(|register\(|concat\(|groupby\(|\.empty|\.values|np\.|spearmanr" backend/scripts/train_multidim_model.py backend/tests/test_train_multidim_model.py -S
+# 0 matches
+
+python3 -m py_compile backend/scripts/train_multidim_model.py backend/tests/test_train_multidim_model.py
+# passed
+
+python3 -m pytest backend/tests/test_train_multidim_model.py -q
+# 3 passed
+
+python3 backend/scripts/train_multidim_model.py --help
+# import/CLI smoke passed
+
 python3 -m pytest backend/tests -q
-# 356 passed
+# 359 passed
 
 python3 backend/scripts/data_health_snapshot.py --dry-run
 # green=147/yellow=0/red=0
