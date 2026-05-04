@@ -6,15 +6,13 @@ from datetime import date
 from pathlib import Path
 from unittest import mock
 
-import pandas as pd
-
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from conftest import duck_mem
 from services import qfii_client
 
 
-def _make_df(symbol: str) -> pd.DataFrame:
+def _make_rows(symbol: str) -> list[dict]:
     """构造 stock_gdfx_holding_detail_em 单 symbol 的返回，模拟 UBS/摩根士丹利的 2025Q4 持仓。"""
     base = {
         "新进": {
@@ -48,7 +46,7 @@ def _make_df(symbol: str) -> pd.DataFrame:
             "股东排名": 10,
         },
     }
-    return pd.DataFrame([base.get(symbol, base["新进"])])
+    return [dict(base.get(symbol, base["新进"]))]
 
 
 def test_enumerate_quarter_ends_basic():
@@ -67,8 +65,7 @@ def test_latest_plannable_lag_honored():
 
 
 def test_normalize_rows_parses_required_columns():
-    df = pd.concat([_make_df("新进"), _make_df("增加")], ignore_index=True)
-    rows = qfii_client._normalize_rows(df)
+    rows = qfii_client._normalize_rows(_make_rows("新进") + _make_rows("增加"))
     assert len(rows) == 2
     first = rows[0]
     assert first["stock_code"] == "000411"
@@ -80,9 +77,8 @@ def test_normalize_rows_parses_required_columns():
 
 
 def test_normalize_rows_raises_on_missing_column():
-    df = pd.DataFrame([{"股东名称": "UBS"}])
     try:
-        qfii_client._normalize_rows(df)
+        qfii_client._normalize_rows([{"股东名称": "UBS"}])
     except RuntimeError as exc:
         assert "qfii_columns_missing" in str(exc)
     else:
@@ -97,10 +93,7 @@ def test_sync_qfii_quarter_upserts_all_symbols(monkeypatch):
 
     async def _fake_fetch(report_date: str, retries: int = 3):
         calls.append(report_date)
-        return pd.concat(
-            [_make_df(s) for s in qfii_client.QFII_SYMBOLS[:2]],
-            ignore_index=True,
-        )
+        return _make_rows(qfii_client.QFII_SYMBOLS[0]) + _make_rows(qfii_client.QFII_SYMBOLS[1])
 
     monkeypatch.setattr(qfii_client, "fetch_qfii_quarter", _fake_fetch)
 
@@ -126,7 +119,7 @@ def test_sync_qfii_quarter_is_idempotent(monkeypatch):
     qfii_client.ensure_tables(conn)
 
     async def _fake_fetch(report_date: str, retries: int = 3):
-        return _make_df("新进")
+        return _make_rows("新进")
 
     monkeypatch.setattr(qfii_client, "fetch_qfii_quarter", _fake_fetch)
 
@@ -158,10 +151,10 @@ def test_backfill_iterates_quarters(monkeypatch):
 
     async def _fake_fetch(report_date: str, retries: int = 3):
         # 每个季度返回一个不同的 holder 以避免主键冲突
-        df = _make_df("新进").copy()
-        df.loc[0, "报告期"] = report_date
-        df.loc[0, "股东名称"] = f"UBS AG {report_date}"
-        return df
+        rows = _make_rows("新进")
+        rows[0]["报告期"] = report_date
+        rows[0]["股东名称"] = f"UBS AG {report_date}"
+        return rows
 
     monkeypatch.setattr(qfii_client, "fetch_qfii_quarter", _fake_fetch)
 

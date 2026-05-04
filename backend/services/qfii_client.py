@@ -25,8 +25,6 @@ import logging
 from datetime import date, datetime, timedelta
 from typing import Any, Optional
 
-import pandas as pd
-
 logger = logging.getLogger("cm-api")
 
 QFII_SOURCE = "akshare_stock_gdfx_holding_detail_em"
@@ -196,7 +194,6 @@ def _fetch_qfii_by_symbol(report_date_yyyymmdd: str, symbol: str):
     report_date_yyyymmdd: 季度末日期 YYYYMMDD (如 20251231).
     symbol: 持股变动 {"新进", "增加", "不变", "减少"}.
     """
-    import pandas as _pd
     from services.data_sources.fallback import with_fallback
 
     rows, _ = with_fallback(
@@ -207,9 +204,8 @@ def _fetch_qfii_by_symbol(report_date_yyyymmdd: str, symbol: str):
         fallback_label="akshare",
     )
     if not rows:
-        return _pd.DataFrame()
-    df = _pd.DataFrame(rows)
-    df.rename(columns={
+        return []
+    rename_map = {
         "HOLDER_NAME": "股东名称",
         "HOLDER_NEWTYPE": "股东类型",
         "RANK": "股东排名",
@@ -222,23 +218,26 @@ def _fetch_qfii_by_symbol(report_date_yyyymmdd: str, symbol: str):
         "HOLDNUM_CHANGE_NAME": "期末持股-持股变动",
         "HOLDER_MARKET_CAP": "期末持股-流通市值",
         "NOTICE_DATE": "公告日",
-    }, inplace=True)
-    return df
+    }
+    return [
+        {rename_map.get(key, key): value for key, value in row.items()}
+        for row in rows
+    ]
 
 
-async def fetch_qfii_quarter(report_date: str, retries: int = 3) -> pd.DataFrame:
-    """拉取某季度末的 4 个变动类型，合并为一个 DataFrame。"""
+async def fetch_qfii_quarter(report_date: str, retries: int = 3) -> list[dict]:
+    """拉取某季度末的 4 个变动类型，合并为 records。"""
     loop = asyncio.get_running_loop()
     yyyymmdd = _report_date_yyyymmdd(report_date)
-    frames: list[pd.DataFrame] = []
+    records: list[dict] = []
     for symbol in QFII_SYMBOLS:
         last_error: Optional[Exception] = None
         for attempt in range(retries):
             try:
-                df = await loop.run_in_executor(None, _fetch_qfii_by_symbol, yyyymmdd, symbol)
-                if df is None or df.empty:
+                rows = await loop.run_in_executor(None, _fetch_qfii_by_symbol, yyyymmdd, symbol)
+                if not rows:
                     break
-                frames.append(df)
+                records.extend(rows)
                 break
             except Exception as exc:
                 last_error = exc
@@ -248,9 +247,7 @@ async def fetch_qfii_quarter(report_date: str, retries: int = 3) -> pd.DataFrame
                 await asyncio.sleep(1.5 * (attempt + 1))
         else:
             raise RuntimeError(f"qfii_source_failed:{report_date}:{symbol}:{last_error}")
-    if not frames:
-        return pd.DataFrame()
-    return pd.concat(frames, ignore_index=True)
+    return records
 
 
 # ─────────────────────────────────────────────────────────────────────
@@ -264,14 +261,15 @@ _COL_REQUIRED = (
 )
 
 
-def _normalize_rows(df: pd.DataFrame) -> list[dict]:
-    if df is None or df.empty:
+def _normalize_rows(rows: list[dict] | None) -> list[dict]:
+    if not rows:
         return []
-    missing = [c for c in _COL_REQUIRED if c not in df.columns]
+    available = set().union(*(row.keys() for row in rows))
+    missing = [c for c in _COL_REQUIRED if c not in available]
     if missing:
         raise RuntimeError(f"qfii_columns_missing:{missing}")
     out: list[dict] = []
-    for r in df.to_dict("records"):
+    for r in rows:
         stock_code = _normalize_stock_code(r.get("股票代码"))
         holder_name = str(r.get("股东名称") or "").strip()
         report_date = _normalize_date(r.get("报告期"))
@@ -344,7 +342,7 @@ async def sync_qfii_quarter(
     """同步指定季度的 QFII 持股。report_date 形如 '2025-12-31'。"""
     ensure_tables(conn)
     try:
-        df = await fetch_qfii_quarter(report_date)
+        source_rows = await fetch_qfii_quarter(report_date)
     except Exception as exc:
         logger.warning(f"[QFII] 季度 {report_date} 拉取失败: {exc}")
         return {
@@ -355,17 +353,17 @@ async def sync_qfii_quarter(
             "written_rows": 0,
         }
 
-    rows = _normalize_rows(df)
+    rows = _normalize_rows(source_rows)
     written = _upsert_rows(conn, rows)
     logger.info(
-        f"[QFII] 季度 {report_date} 同步完成: raw={len(df)} 行, written={written} 条"
+        f"[QFII] 季度 {report_date} 同步完成: raw={len(source_rows)} 行, written={written} 条"
     )
     return {
         "source": QFII_SOURCE,
         "report_date": report_date,
         "status": "ok" if written > 0 else "empty",
         "written_rows": written,
-        "raw_rows": int(len(df)),
+        "raw_rows": int(len(source_rows)),
     }
 
 
