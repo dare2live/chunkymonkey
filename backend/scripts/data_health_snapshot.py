@@ -38,18 +38,24 @@ from services.db import get_conn  # noqa: E402
 
 
 # 日期列优先级 (从前到后查, 第一个存在的用作 last_data_date)
-DATE_COLUMN_CANDIDATES = [
+DATA_DATE_COLUMN_CANDIDATES = [
     "report_date", "trade_date", "notice_date", "change_date",
     "snapshot_date", "as_of_date", "effective_date",
-    "fetched_at", "page_update_date", "profiled_at", "parsed_at",
-    "recorded_at", "audited_at", "built_at", "created_at", "updated_at",
-    "last_data_at", "last_writer_at", "snapshot_at",
+    "page_update_date", "last_data_at",
     "date", "ts",
+]
+
+WRITER_DATE_COLUMN_CANDIDATES = [
+    "last_writer_at", "ingested_at", "fetched_at", "built_at",
+    "parsed_at", "profiled_at", "recorded_at", "audited_at",
+    "updated_at", "created_at", "snapshot_at",
 ]
 
 # 看 source_tier 列是否存在的统一名
 SOURCE_TIER_COL = "source_tier"
-OPTIONAL_EMPTY_FRESHNESS = {"static", "on-demand", "derived"}
+NON_EXPIRING_FRESHNESS = {"static", "on-demand", "derived"}
+OPTIONAL_EMPTY_FRESHNESS = NON_EXPIRING_FRESHNESS
+TRADING_CADENCE_FRESHNESS = {"t+0", "t+1", "event"}
 
 
 def get_table_columns(con, table: str) -> list[str]:
@@ -60,13 +66,21 @@ def get_table_columns(con, table: str) -> list[str]:
         return []
 
 
-def find_date_column(columns: list[str]) -> Optional[str]:
+def _find_column(columns: list[str], candidates: list[str]) -> Optional[str]:
     cols_lower = [c.lower() for c in columns]
-    for c in DATE_COLUMN_CANDIDATES:
+    for c in candidates:
         if c in cols_lower:
             # 找回原始大小写
             return columns[cols_lower.index(c)]
     return None
+
+
+def find_date_column(columns: list[str]) -> Optional[str]:
+    return _find_column(columns, DATA_DATE_COLUMN_CANDIDATES)
+
+
+def find_writer_date_column(columns: list[str]) -> Optional[str]:
+    return _find_column(columns, WRITER_DATE_COLUMN_CANDIDATES)
 
 
 def ensure_asset_deprecation_columns(con) -> None:
@@ -105,6 +119,85 @@ def parse_date_value(raw) -> Optional[datetime]:
         return None
 
 
+def _normalize_date_key(dt: datetime) -> str:
+    return dt.strftime("%Y-%m-%d")
+
+
+def latest_required_trade_date(con, now: datetime) -> Optional[str]:
+    """Return the last completed market date from the local trading calendar.
+
+    This keeps daily source health stable during weekends and exchange holidays.
+    If the calendar is missing, callers fall back to wall-clock age.
+    """
+
+    anchor = now.strftime("%Y-%m-%d")
+    try:
+        row = con.execute(
+            """
+            SELECT MAX(trade_date) AS d
+              FROM dim_trading_calendar
+             WHERE is_trading = 1
+               AND trade_date <= ?
+            """,
+            (anchor,),
+        ).fetchone()
+    except Exception:
+        return None
+    if not row:
+        return None
+    try:
+        return row["d"]
+    except Exception:
+        return row[0]
+
+
+def trading_lag_hours(con, last_dt: datetime, required_trade_date: Optional[str]) -> Optional[float]:
+    if required_trade_date is None:
+        return None
+    last_key = _normalize_date_key(last_dt)
+    if last_key >= required_trade_date:
+        return 0.0
+    try:
+        row = con.execute(
+            """
+            SELECT COUNT(*) AS n
+              FROM dim_trading_calendar
+             WHERE is_trading = 1
+               AND trade_date > ?
+               AND trade_date <= ?
+            """,
+            (last_key, required_trade_date),
+        ).fetchone()
+    except Exception:
+        return None
+    try:
+        lag_days = int(row["n"] or 0)
+    except Exception:
+        lag_days = int(row[0] or 0)
+    return float(lag_days * 24)
+
+
+def _max_column_datetime(con, table: str, column: Optional[str]) -> tuple[Optional[str], Optional[datetime]]:
+    if not column:
+        return None, None
+    try:
+        row = con.execute(f'SELECT MAX("{column}") FROM "{table}"').fetchone()
+    except Exception:
+        return None, None
+    if not row or row[0] is None:
+        return None, None
+    raw = row[0]
+    return str(raw), parse_date_value(raw)
+
+
+def _severity_rank(severity: str) -> int:
+    return {"green": 0, "yellow": 1, "red": 2}.get(severity, 0)
+
+
+def _max_severity(left: str, right: str) -> str:
+    return left if _severity_rank(left) >= _severity_rank(right) else right
+
+
 def compute_health_for_table(con, asset: dict, now: datetime) -> dict:
     """对单表计算健康指标. asset 是 dim_data_asset 行 dict."""
 
@@ -112,6 +205,7 @@ def compute_health_for_table(con, asset: dict, now: datetime) -> dict:
     layer = asset["layer"]
     expected_freshness = asset.get("expected_freshness") or "on-demand"
     sla_hours = asset.get("sla_hours") or 48
+    non_expiring = expected_freshness in NON_EXPIRING_FRESHNESS
 
     if asset.get("deprecation_status") == "deprecated":
         row_count = None
@@ -148,18 +242,11 @@ def compute_health_for_table(con, asset: dict, now: datetime) -> dict:
 
     columns = get_table_columns(con, table)
 
-    # last_data_date
+    # last_data_date: event/report/trading date. last_writer_at: ingest/build time.
     date_col = find_date_column(columns)
-    last_data_date = None
-    last_data_dt = None
-    if date_col and row_count > 0:
-        try:
-            row = con.execute(f"SELECT MAX({date_col}) FROM {quoted}").fetchone()
-            if row and row[0] is not None:
-                last_data_date = str(row[0])
-                last_data_dt = parse_date_value(row[0])
-        except Exception:
-            pass
+    writer_date_col = find_writer_date_column(columns)
+    last_data_date, last_data_dt = _max_column_datetime(con, table, date_col) if row_count > 0 else (None, None)
+    last_writer_at, last_writer_dt = _max_column_datetime(con, table, writer_date_col) if row_count > 0 else (None, None)
 
     # source_tier 分布
     source_tier_dist = None
@@ -175,15 +262,37 @@ def compute_health_for_table(con, asset: dict, now: datetime) -> dict:
         except Exception:
             pass
 
-    # freshness
+    # freshness. Raw/event source tables should be judged by writer recency
+    # because "no new event rows" is not a stale-source signal by itself.
     freshness_hours = None
     freshness_ok = None
-    if last_data_dt is not None:
+    freshness_dt = last_data_dt
+    freshness_basis = "data"
+    prefer_writer = (
+        last_writer_dt is not None
+        and (
+            layer == "raw"
+            or expected_freshness == "event"
+            or last_data_dt is None
+        )
+    )
+    if prefer_writer:
+        freshness_dt = last_writer_dt
+        freshness_basis = "writer"
+
+    if freshness_dt is not None and not non_expiring:
         # 如果 last_data_dt 是 naive, 当作 UTC 比较
-        if last_data_dt.tzinfo is None:
-            last_data_dt = last_data_dt.replace(tzinfo=timezone.utc)
-        delta = now.replace(tzinfo=timezone.utc) - last_data_dt
-        freshness_hours = round(delta.total_seconds() / 3600, 2)
+        comparable_dt = freshness_dt
+        if comparable_dt.tzinfo is None:
+            comparable_dt = comparable_dt.replace(tzinfo=timezone.utc)
+        trade_hours = None
+        if expected_freshness in TRADING_CADENCE_FRESHNESS:
+            trade_hours = trading_lag_hours(con, comparable_dt, latest_required_trade_date(con, now))
+        if trade_hours is not None:
+            freshness_hours = round(trade_hours, 2)
+        else:
+            delta = now.replace(tzinfo=timezone.utc) - comparable_dt
+            freshness_hours = round(delta.total_seconds() / 3600, 2)
         freshness_ok = freshness_hours <= sla_hours
 
     # severity 判定
@@ -195,18 +304,20 @@ def compute_health_for_table(con, asset: dict, now: datetime) -> dict:
     elif freshness_hours is not None:
         if freshness_hours > sla_hours * 2:
             severity = "red"
-            issues.append(f"data is {freshness_hours:.1f}h old (SLA {sla_hours}h)")
+            issues.append(f"{freshness_basis} is {freshness_hours:.1f}h old (SLA {sla_hours}h)")
         elif freshness_hours > sla_hours:
             severity = "yellow"
-            issues.append(f"data is {freshness_hours:.1f}h old (SLA {sla_hours}h)")
-    elif row_count > 0 and date_col is None:
+            issues.append(f"{freshness_basis} is {freshness_hours:.1f}h old (SLA {sla_hours}h)")
+    elif row_count > 0 and date_col is None and writer_date_col is None and not non_expiring:
         # 有数据但找不到日期列 — 无法判 freshness, 留 yellow 提示
         severity = "yellow"
         issues.append("no date column found for freshness check")
 
-    # writer 缺失 + 有数据 = orphan_no_writer (致命)
-    if asset.get("writer_module") is None and row_count > 0:
-        severity = "red"
+    # writer 缺失 + 有数据 = registry metadata issue. It is critical only for
+    # active, freshness-governed external assets; static/on-demand/research
+    # artifacts should not turn source health red.
+    if asset.get("writer_module") is None and row_count > 0 and not non_expiring:
+        severity = _max_severity(severity, "yellow")
         issues.append("orphan_no_writer (data but no active writer)")
 
     # writer 存在但 0 行 = stale_empty
@@ -222,7 +333,7 @@ def compute_health_for_table(con, asset: dict, now: datetime) -> dict:
         "table_name": table,
         "row_count": row_count,
         "last_data_date": last_data_date,
-        "last_writer_at": None,  # TODO: 接 step_status 推
+        "last_writer_at": last_writer_at,
         "null_rate_pct": None,   # TODO: 关键字段采样
         "source_tier_dist": source_tier_dist,
         "freshness_hours": freshness_hours,

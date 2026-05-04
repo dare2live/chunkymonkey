@@ -45,7 +45,7 @@ def _insert_ignore(conn, table: str, df: pd.DataFrame, cols: list[str]):
     sql = f"INSERT OR IGNORE INTO {table} ({','.join(cols)}) VALUES ({placeholders})"
     data = df[cols].where(pd.notnull(df[cols]), None).values.tolist()
     conn.executemany(sql, data)
-    return conn.total_changes  # 不精确, 但能告诉插入了多少
+    return len(data)
 
 
 def build_jgdy_events(conn, dates: list[str]) -> int:

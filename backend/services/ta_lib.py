@@ -157,8 +157,8 @@ def compute_alpha_factors(df: pd.DataFrame) -> pd.DataFrame:
 
     # --- 动量 ---
     for n in [5, 10, 20, 60]:
-        factors[f"ROC_{n}"] = c.pct_change(n)
-    factors["MOM_5_20"] = c.pct_change(5) - c.pct_change(20)
+        factors[f"ROC_{n}"] = c.pct_change(n, fill_method=None)
+    factors["MOM_5_20"] = c.pct_change(5, fill_method=None) - c.pct_change(20, fill_method=None)
 
     # --- 均线 ---
     for n in [5, 10, 20, 60]:
@@ -167,7 +167,7 @@ def compute_alpha_factors(df: pd.DataFrame) -> pd.DataFrame:
 
     # --- 波动率 ---
     for n in [5, 20]:
-        factors[f"STD_{n}"] = c.pct_change().rolling(n, min_periods=n).std()
+        factors[f"STD_{n}"] = c.pct_change(fill_method=None).rolling(n, min_periods=n).std()
     factors["ATR_14"] = pd.concat([
         h - l_,
         (h - c.shift(1)).abs(),
@@ -176,7 +176,7 @@ def compute_alpha_factors(df: pd.DataFrame) -> pd.DataFrame:
 
     # --- 量价 ---
     for n in [5, 20]:
-        factors[f"VROC_{n}"] = v.pct_change(n)
+        factors[f"VROC_{n}"] = v.pct_change(n, fill_method=None)
     v_ma20 = v.rolling(20, min_periods=20).mean()
     factors["VOL_RATIO_20"] = v / v_ma20.replace(0, np.nan)
 

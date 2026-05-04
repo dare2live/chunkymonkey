@@ -19,6 +19,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
+import numpy as np
 import pandas as pd
 from services.analytics import get_duck
 
@@ -72,6 +73,23 @@ CREATE INDEX IF NOT EXISTS idx_fp_date_label ON fact_feature_panel(date, forward
 CREATE INDEX IF NOT EXISTS idx_fp_label ON fact_feature_panel(forward_ret_20d);
 """
 
+KLINE_DAILY_QFQ_SQL = """
+SELECT code, date, open, high, low, close, volume, amount
+FROM market.price_kline_tdxhub
+WHERE freq='daily' AND adjust='qfq'
+UNION ALL
+SELECT code, date, open, high, low, close, volume, amount
+FROM market.price_kline
+WHERE freq='daily' AND adjust='qfq'
+  AND date > (
+      SELECT COALESCE(MAX(date), '1900-01-01')
+      FROM market.price_kline_tdxhub
+      WHERE freq='daily' AND adjust='qfq'
+  )
+"""
+
+REAL_ABS_LIMIT = 1e30
+
 
 def execute_script(duck, sql: str) -> None:
     for stmt in sql.split(";"):
@@ -91,8 +109,8 @@ def build_panel(start_date: str) -> pd.DataFrame:
             SELECT code as stock_code, date,
                    open, high, low, close, volume, amount,
                    (close / NULLIF(LAG(close, 1) OVER (PARTITION BY code ORDER BY date), 0) - 1) AS close_ret_1d
-            FROM market.price_kline_tdxhub
-            WHERE freq='daily' AND adjust='qfq' AND date >= '{start_date}'
+            FROM ({KLINE_DAILY_QFQ_SQL}) AS kline
+            WHERE date >= '{start_date}'
         )
         SELECT
             stock_code, date, close,
@@ -316,12 +334,12 @@ def build_panel(start_date: str) -> pd.DataFrame:
     # Regime
     t6 = time.time()
     logger.info("Step 7: Regime 市场状态")
-    regime_df = duck.execute("""
+    regime_df = duck.execute(f"""
         SELECT date,
                (close / NULLIF(LAG(close, 20) OVER (ORDER BY date), 0) - 1) AS hs300_ret_20d,
                (close / NULLIF(LAG(close, 60) OVER (ORDER BY date), 0) - 1) AS hs300_ret_60d
-        FROM market.price_kline_tdxhub
-        WHERE code='510300' AND freq='daily' AND adjust='qfq'
+        FROM ({KLINE_DAILY_QFQ_SQL}) AS kline
+        WHERE code='510300'
         ORDER BY date
     """).df()
     def _regime(r):
@@ -410,6 +428,13 @@ def main():
     ]
     keep = [c for c in keep_cols if c in panel.columns]
     panel_out = panel[keep].reset_index(drop=True)
+    float_cols = [
+        col for col in panel_out.select_dtypes(include=["number"]).columns
+        if pd.api.types.is_float_dtype(panel_out[col])
+    ]
+    for col in float_cols:
+        values = panel_out[col]
+        panel_out[col] = values.mask(~np.isfinite(values) | (values.abs() > REAL_ABS_LIMIT))
 
     # Step 7: 用同一个 writable DuckDB 连接建表并批量灌数据。
     t_w0 = time.time()

@@ -245,6 +245,34 @@ CLIENTS: list[ClientSpec] = [
         ],
         sync_step_id="sync_kline",
     ),
+    ClientSpec(
+        client_id="akshare_panel_client",
+        module="scripts.build_akshare_panel",
+        description="akshare 事件与日度面板",
+        upstream_source="akshare:stock_jgdy_tj_em/stock_dzjy_mrmx/stock_hsgt_hold_stock_em",
+        source_tier=3,
+        fallback_chain=["akshare"],
+        writes=[
+            TableWriteSpec("fact_jgdy_event", "机构调研事件流", "event", 48),
+            TableWriteSpec("fact_dzjy_event", "大宗交易事件流", "event", 48),
+            TableWriteSpec("fact_hsgt_daily", "陆股通持股日度面板", "t+0", 24),
+            TableWriteSpec("fact_hot_rank_daily", "股票热度日度面板", "t+0", 24),
+            TableWriteSpec("fact_research_report", "个股研报事件流", "event", 48),
+            TableWriteSpec("fact_profit_forecast_daily", "分析师盈利预测快照", "t+0", 24),
+        ],
+    ),
+    ClientSpec(
+        client_id="executive_trade_client",
+        module="scripts.build_executive_trade_events",
+        description="东方财富高管/股东增减持事件",
+        upstream_source="akshare:stock_ggcg_em",
+        source_tier=3,
+        fallback_chain=["akshare"],
+        writes=[
+            TableWriteSpec("raw_executive_trade", "高管/股东增减持原始记录", "t+1", 48),
+            TableWriteSpec("fact_executive_trade_event", "高管/股东增减持聚合事件", "event", 48),
+        ],
+    ),
 ]
 
 
@@ -262,6 +290,16 @@ DERIVED_WRITERS: list[ClientSpec] = [
         source_tier=99,
         writes=[
             TableWriteSpec("fact_holder_event", "持仓事件 (lag 派生)", "derived", 48),
+        ],
+    ),
+    ClientSpec(
+        client_id="build_lhb_events",
+        module="scripts.build_lhb_events",
+        description="龙虎榜事件特征派生",
+        upstream_source="derived: raw_lhb_daily",
+        source_tier=99,
+        writes=[
+            TableWriteSpec("fact_lhb_event", "龙虎榜事件特征", "event", 48),
         ],
     ),
     ClientSpec(

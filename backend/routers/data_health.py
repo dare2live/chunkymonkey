@@ -165,7 +165,9 @@ def get_red_list() -> dict[str, Any]:
 def get_sources_overview() -> dict[str, Any]:
     """数据源总览 (Tab 1): 按 upstream_source + source_tier 聚合.
 
-    用 dim_data_asset 注册的声明 + mart_data_health 最新数据.
+    用 dim_data_asset 注册的声明 + mart_data_health 最新数据. 这里只展示
+    active 的外部接入源 (tier 1-3); 派生/实验/已退役资产仍保留在
+    snapshot 和 asset 视图里, 但不作为 source status 参与汇总.
     """
 
     con = get_conn()
@@ -185,6 +187,8 @@ def get_sources_overview() -> dict[str, Any]:
               ON m.table_name = d.table_name
              AND m.snapshot_at = COALESCE(?, m.snapshot_at)
             WHERE d.upstream_source IS NOT NULL
+              AND d.source_tier IN (1, 2, 3)
+              AND COALESCE(d.deprecation_status, 'active') = 'active'
             GROUP BY d.upstream_source, d.source_tier
             ORDER BY d.source_tier, d.upstream_source
         """, (snap_at,)).fetchall()

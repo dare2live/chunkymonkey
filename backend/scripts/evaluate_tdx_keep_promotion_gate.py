@@ -84,6 +84,22 @@ def _model_metrics(conn, model_id: str | None) -> dict:
     return dict(row) if row else {}
 
 
+def _model_feature_cols(conn, model_id: str | None) -> list[str]:
+    if not model_id or not _has_column(conn, "mart_multidim_model", "feature_cols_json"):
+        return []
+    row = conn.execute(
+        "SELECT feature_cols_json FROM mart_multidim_model WHERE model_id = ?",
+        (model_id,),
+    ).fetchone()
+    if not row or not row["feature_cols_json"]:
+        return []
+    try:
+        data = json.loads(row["feature_cols_json"])
+    except Exception:
+        return []
+    return [str(v) for v in data] if isinstance(data, list) else []
+
+
 def _latest_portfolio(conn, model_id: str | None) -> dict:
     if not model_id or not _table_exists(conn, "mart_model_portfolio_summary"):
         return {}
@@ -103,11 +119,11 @@ def _latest_portfolio(conn, model_id: str | None) -> dict:
 
 def _latest_drift(conn, model_id: str | None) -> dict:
     if not model_id or not _table_exists(conn, "mart_feature_drift"):
-        return {"rows": 0, "critical": 0, "warn": 0, "ok": 0, "unknown": 0}
+        return {"rows": 0, "critical": 0, "warn": 0, "ok": 0, "unknown": 0, "features": []}
     row = conn.execute("SELECT MAX(snapshot_at) FROM mart_feature_drift WHERE model_id = ?", (model_id,)).fetchone()
     snap = row[0] if row else None
     if not snap:
-        return {"rows": 0, "critical": 0, "warn": 0, "ok": 0, "unknown": 0}
+        return {"rows": 0, "critical": 0, "warn": 0, "ok": 0, "unknown": 0, "features": []}
     rows = conn.execute(
         """
         SELECT severity, COUNT(*) n
@@ -121,7 +137,81 @@ def _latest_drift(conn, model_id: str | None) -> dict:
     for r in rows:
         out[r["severity"]] = r["n"]
         out["rows"] += r["n"]
+    feature_rows = conn.execute(
+        """
+        SELECT feature, severity, psi, n_train, n_recent
+          FROM mart_feature_drift
+         WHERE model_id = ? AND snapshot_at = ?
+         ORDER BY CASE severity WHEN 'critical' THEN 0 WHEN 'warn' THEN 1
+                                WHEN 'unknown' THEN 2 ELSE 3 END,
+                  feature
+        """,
+        (model_id, snap),
+    ).fetchall()
+    out["features"] = [dict(r) for r in feature_rows]
     return out
+
+
+def _rank_ic_gate(c_rank: float | None, h_rank: float | None) -> tuple[bool, dict, str | None]:
+    if c_rank is None or h_rank is None:
+        return False, {"champion": c_rank, "challenger": h_rank}, "missing rank IC comparison"
+    relative_required = c_rank * 1.05 if c_rank > 0 else c_rank + 0.001
+    absolute_required = c_rank + 0.005
+    ok = h_rank >= relative_required or h_rank >= absolute_required
+    detail = {
+        "champion": c_rank,
+        "challenger": h_rank,
+        "relative_required": relative_required,
+        "absolute_required": absolute_required,
+        "uplift_abs": h_rank - c_rank,
+        "uplift_pct": ((h_rank / c_rank) - 1.0) if c_rank else None,
+        "pass_rule": "relative_5pct_or_absolute_0.005",
+    }
+    reason = (
+        f"challenger rank_ic {h_rank:.6f} < relative {relative_required:.6f} "
+        f"and absolute {absolute_required:.6f}"
+        if not ok else None
+    )
+    return ok, detail, reason
+
+
+def _drift_gate(champion: dict, challenger: dict, champion_cols: list[str], challenger_cols: list[str]) -> tuple[str, dict, str | None]:
+    if challenger["rows"] == 0:
+        return "WAIT", challenger, "no drift snapshot for challenger"
+
+    champion_feature_map = {r["feature"]: r for r in champion.get("features", [])}
+    champion_feature_set = set(champion_cols)
+    challenger_only = set(challenger_cols) - champion_feature_set
+    critical_features = [r for r in challenger.get("features", []) if r.get("severity") == "critical"]
+    challenger_only_critical = [r for r in critical_features if r.get("feature") in challenger_only]
+    inherited_critical = [r for r in critical_features if r.get("feature") not in challenger_only]
+    inherited_worse = [
+        r for r in inherited_critical
+        if (champion_feature_map.get(r.get("feature")) or {}).get("severity") not in {"critical", "warn"}
+    ]
+    status = "PASS"
+    blocker = None
+    if challenger_only_critical:
+        status = "FAIL"
+        blocker = "critical drift exists in challenger-only features"
+    elif inherited_worse and champion.get("rows", 0) > 0:
+        status = "FAIL"
+        blocker = "challenger inherited features drift worse than champion"
+    elif champion.get("rows", 0) == 0 and critical_features:
+        status = "FAIL"
+        blocker = "critical drift exists and champion drift baseline is missing"
+
+    detail = {
+        **{k: v for k, v in challenger.items() if k != "features"},
+        "champion_snapshot_at": champion.get("snapshot_at"),
+        "champion_critical": champion.get("critical", 0),
+        "challenger_only_feature_count": len(challenger_only),
+        "challenger_only_critical": challenger_only_critical,
+        "inherited_critical": inherited_critical,
+        "inherited_worse_than_champion": inherited_worse,
+        "scope": "block only challenger-only critical drift or inherited drift worse than champion",
+    }
+    return status, detail, blocker
 
 
 def evaluate_gate(
@@ -179,17 +269,13 @@ def evaluate_gate(
     challenger = _model_metrics(conn, challenger_model_id)
     c_rank = champion.get("holdout_rank_ic")
     h_rank = challenger.get("holdout_rank_ic")
-    if c_rank is None or h_rank is None:
-        gate("rank_ic", "WAIT", {"champion": c_rank, "challenger": h_rank}, "missing rank IC comparison")
-    else:
-        required = max(c_rank * 1.05, c_rank + 0.005)
-        ok = h_rank >= required
-        gate(
-            "rank_ic",
-            "PASS" if ok else "FAIL",
-            {"champion": c_rank, "challenger": h_rank, "required": required},
-            f"challenger rank_ic {h_rank:.6f} < required {required:.6f}" if not ok else None,
-        )
+    rank_ok, rank_detail, rank_blocker = _rank_ic_gate(c_rank, h_rank)
+    gate(
+        "rank_ic",
+        "PASS" if rank_ok else ("WAIT" if c_rank is None or h_rank is None else "FAIL"),
+        rank_detail,
+        rank_blocker,
+    )
 
     c_ls = champion.get("holdout_long_short_spread")
     h_ls = challenger.get("holdout_long_short_spread")
@@ -220,11 +306,15 @@ def evaluate_gate(
             f"challenger drawdown {h_dd:.6f} worse than champion tolerance" if not ok else None,
         )
 
-    drift = _latest_drift(conn, challenger_model_id)
-    if drift["rows"] == 0:
-        gate("drift", "WAIT", drift, "no drift snapshot for challenger")
-    else:
-        gate("drift", "PASS" if drift["critical"] == 0 else "FAIL", drift, "critical drift exists" if drift["critical"] else None)
+    champion_drift = _latest_drift(conn, champion_model_id)
+    challenger_drift = _latest_drift(conn, challenger_model_id)
+    drift_status, drift_detail, drift_blocker = _drift_gate(
+        champion_drift,
+        challenger_drift,
+        _model_feature_cols(conn, champion_model_id),
+        _model_feature_cols(conn, challenger_model_id),
+    )
+    gate("drift", drift_status, drift_detail, drift_blocker)
 
     if _table_exists(conn, "mart_daily_recommendation"):
         shadow_filter = "AND COALESCE(run_mode, '') = 'shadow'" if _has_column(conn, "mart_daily_recommendation", "run_mode") else ""

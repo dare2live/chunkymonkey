@@ -78,6 +78,21 @@ CREATE TABLE IF NOT EXISTS mart_daily_recommendation_risk (
 );
 """
 
+KLINE_DAILY_QFQ_SQL = """
+SELECT code, date, amount
+FROM market.price_kline_tdxhub
+WHERE freq='daily' AND adjust='qfq'
+UNION ALL
+SELECT code, date, amount
+FROM market.price_kline
+WHERE freq='daily' AND adjust='qfq'
+  AND date > (
+      SELECT COALESCE(MAX(date), '1900-01-01')
+      FROM market.price_kline_tdxhub
+      WHERE freq='daily' AND adjust='qfq'
+  )
+"""
+
 
 FEATURE_COLS = ordered_feature_cols(include_dense_v2=True)
 
@@ -389,14 +404,14 @@ def write_risk_summary(conn, duck, *, snapshot_date: str, model_id: str,
     rows = duck.execute(f"""
         WITH px AS (
             SELECT code AS stock_code,
+                   date,
                    AVG(amount) OVER (PARTITION BY code ORDER BY date ROWS 19 PRECEDING) AS amount_ma20
-            FROM market.price_kline_tdxhub
-            WHERE freq='daily' AND adjust='qfq'
-              AND code IN ({placeholders})
+            FROM ({KLINE_DAILY_QFQ_SQL}) AS kline
+            WHERE code IN ({placeholders})
               AND date <= ?
         ),
         latest_px AS (
-            SELECT stock_code, MAX_BY(amount_ma20, amount_ma20) AS amount_ma20
+            SELECT stock_code, MAX_BY(amount_ma20, date) AS amount_ma20
             FROM px GROUP BY stock_code
         )
         SELECT t.stock_code, ind.tdx_l1, ind.tdx_l1_name, lp.amount_ma20

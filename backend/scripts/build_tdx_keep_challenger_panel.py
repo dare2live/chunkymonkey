@@ -44,6 +44,28 @@ def _label_expr(label: str, base_cols: set[str], candidate_cols: set[str]) -> st
     raise RuntimeError(f"缺少 label 列: {label}")
 
 
+def _rank_feature_expr(feature: str) -> str:
+    """Use daily cross-sectional ranks for TDX overlays.
+
+    Raw forecast/fundamental magnitudes are seasonal around earnings windows.
+    The model consumes cross-sectional ordering, so ranking keeps the signal
+    while making train/recent PSI comparable.
+    """
+
+    non_null_count = f"COUNT(c.{feature}) OVER (PARTITION BY p.date)"
+    row_number = (
+        "ROW_NUMBER() OVER ("
+        f"PARTITION BY p.date ORDER BY CASE WHEN c.{feature} IS NULL THEN 1 ELSE 0 END, "
+        f"c.{feature}, p.stock_code)"
+    )
+    return (
+        f"CASE WHEN c.{feature} IS NULL THEN NULL "
+        f"WHEN {non_null_count} <= 1 THEN 0.5 ELSE "
+        f"CAST(({row_number} - 1) AS REAL) / CAST(({non_null_count} - 1) AS REAL) "
+        f"END AS {feature}"
+    )
+
+
 def build_panel(
     conn,
     *,
@@ -66,7 +88,7 @@ def build_panel(
         "p.regime_flag" if "regime_flag" in base_cols else "NULL AS regime_flag",
         *label_exprs,
         *[f"CAST(p.{c} AS REAL) AS {c}" for c in baseline_features],
-        *[f"CAST(c.{c} AS REAL) AS {c}" for c in TDX_KEEP_FEATURE_COLS],
+        *[_rank_feature_expr(c) for c in TDX_KEEP_FEATURE_COLS],
         f"'{datetime.utcnow().isoformat()}' AS built_at",
     ]
     conn.execute(
@@ -118,6 +140,7 @@ def build_panel(
         "source_feature_set_id": source_feature_set_id,
         "baseline_features": len(baseline_features),
         "keep_features": list(TDX_KEEP_FEATURE_COLS),
+        "tdx_keep_transform": "daily_cross_sectional_percent_rank",
         "rows": dict(row),
         "coverage_pct": coverage,
     }

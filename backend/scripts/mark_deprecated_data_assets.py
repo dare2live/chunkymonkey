@@ -39,6 +39,41 @@ DEPRECATED_ASSETS = [
         "reason": "Industry snapshot was replaced by direct TDX industry joins.",
     },
     {
+        "table_name": "fact_chain_alpha_truth",
+        "replacement_table": None,
+        "reason": "Legacy chain-alpha experiment table has no active writer or reader.",
+    },
+    {
+        "table_name": "raw_fund_flow_daily",
+        "replacement_table": None,
+        "reason": "Legacy fund-flow raw table is no longer connected; data route marks this source as undecided/deprecated.",
+    },
+    {
+        "table_name": "fact_hsgt_daily",
+        "replacement_table": None,
+        "reason": "akshare HSGT endpoint currently returns stale 2024 holdings and no active reader consumes this legacy panel.",
+    },
+    {
+        "table_name": "fact_regime_state",
+        "replacement_table": "fact_feature_panel",
+        "reason": "Legacy regime snapshot has no active writer or reader; regime features now live on fact_feature_panel.",
+    },
+    {
+        "table_name": "fact_setup_snapshot",
+        "replacement_table": "services.signals_v2.build_today_signals",
+        "reason": "Legacy setup snapshot is empty and superseded by signals_v2 today-signal generation.",
+    },
+    {
+        "table_name": "fact_stock_archetype",
+        "replacement_table": "mart_stock_trend",
+        "reason": "Legacy stock archetype snapshot has no active writer or reader; stock scoring now lives on mart_stock_trend.",
+    },
+    {
+        "table_name": "fact_stock_quality_features",
+        "replacement_table": "mart_stock_trend",
+        "reason": "Legacy quality feature snapshot has no active writer or reader; current quality scoring is materialized on mart_stock_trend.",
+    },
+    {
         "table_name": "dim_stock_industry",
         "replacement_table": "dim_stock_tdx_industry",
         "reason": "Legacy SW industry table was replaced by TDX industry mapping.",

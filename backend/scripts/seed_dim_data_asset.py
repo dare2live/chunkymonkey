@@ -63,6 +63,7 @@ def detect_layer(table_name: str) -> str:
 # 客户端写入元数据从 services/data_sources/clients_registry.py 单一真相源读取.
 # 这里仅保留 *registry 没覆盖* 的额外补丁 (派生层散落表 + 极少数特殊源).
 from services.data_sources.clients_registry import (
+    get_table_metadata as _registry_table_metadata,
     upstream_for_table as _registry_upstream,
     freshness_for_table as _registry_freshness,
 )
@@ -90,6 +91,39 @@ EXTRA_UPSTREAM_BY_TABLE = {
     "mart_stock_screening":         ("derived (calc_screening manual step)", None),
 }
 
+EXTRA_FRESHNESS_BY_TABLE = {
+    "raw_tdx_f10_holder_research": ("t+1", 48),
+    "fact_top10_holder_period": ("t+1", 48),
+    "fact_shareholder_plan": ("event", 48),
+    "fact_shareholder_trade": ("event", 48),
+    "mart_current_relationship": ("event", 48),
+    "mart_dual_confirm": ("event", 48),
+    # Backtests, audits, model diagnostics, and fingerprints are generated on
+    # demand. Their rows remain useful historical artifacts, but they are not
+    # daily freshness obligations.
+    "fact_institution_follow_backtest": ("on-demand", 24 * 30),
+    "fact_policy_equity_curve": ("on-demand", 24 * 30),
+    "fact_policy_eval": ("on-demand", 24 * 30),
+    "fact_policy_trade": ("on-demand", 24 * 30),
+    "mart_audit_snapshot_state": ("on-demand", 24 * 30),
+    "mart_data_audit_report": ("on-demand", 24 * 30),
+    "mart_etf_snapshot_latest": ("on-demand", 24 * 30),
+    "mart_etf_snapshot_state": ("on-demand", 24 * 30),
+    "mart_model_ablation_run": ("on-demand", 24 * 30),
+    "mart_model_portfolio_curve": ("on-demand", 24 * 30),
+    "mart_model_walkforward_portfolio_summary": ("on-demand", 24 * 30),
+    "mart_prediction_outcome": ("on-demand", 24 * 30),
+    "mart_step_fingerprint": ("on-demand", 24 * 30),
+}
+
+
+def registry_writer(table: str) -> str | None:
+    found = _registry_table_metadata(table)
+    if found is None:
+        return None
+    client, _ = found
+    return client.module.replace(".", "/") + ".py"
+
 
 def known_upstream(table: str) -> tuple[object, object]:
     """先查 client 注册表, 再查补丁. 返回 (upstream_source, source_tier)."""
@@ -108,6 +142,8 @@ def infer_freshness(table_name: str, layer: str) -> tuple[str, int]:
     via_registry = _registry_freshness(table_name)
     if via_registry is not None:
         return via_registry
+    if table_name in EXTRA_FRESHNESS_BY_TABLE:
+        return EXTRA_FRESHNESS_BY_TABLE[table_name]
 
     name = table_name.lower()
     if "kline" in name or "_daily" in name:
@@ -274,7 +310,7 @@ def main() -> int:
             # 自身不在自审计内 (避免循环)
             continue
         layer = detect_layer(tbl)
-        writer = grep_writer(tbl)
+        writer = registry_writer(tbl) or grep_writer(tbl)
         readers = grep_readers(tbl)
         # 排除自引用
         readers = [r for r in readers if r != writer]

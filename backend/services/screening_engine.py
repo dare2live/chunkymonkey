@@ -367,14 +367,17 @@ def run_all_screens(smart_conn, mkt_conn) -> int:
         r3 = _formula_3(df)
         r5 = _formula_5(df)
 
-        hit_count = sum([r1["hit"], r3["hit"], r5["hit"]])
+        r1_hit = bool(r1["hit"])
+        r3_hit = bool(r3["hit"])
+        r5_hit = bool(r5["hit"])
+        hit_count = int(sum([r1_hit, r3_hit, r5_hit]))
 
         results.append((
-            code, stock_map.get(code, ""), screen_date,
-            1 if r1["hit"] else 0, json.dumps(r1.get("detail", {}), ensure_ascii=False),
-            1 if r3["hit"] else 0, json.dumps(r3.get("detail", {}), ensure_ascii=False),
-            1 if r5["hit"] else 0, json.dumps(r5.get("detail", {}), ensure_ascii=False),
-            hit_count, flt_mcap, now,
+            str(code), stock_map.get(code, ""), screen_date,
+            int(r1_hit), json.dumps(r1.get("detail", {}), ensure_ascii=False),
+            int(r3_hit), json.dumps(r3.get("detail", {}), ensure_ascii=False),
+            int(r5_hit), json.dumps(r5.get("detail", {}), ensure_ascii=False),
+            hit_count, float(flt_mcap), now,
         ))
 
     # 5. 写入结果

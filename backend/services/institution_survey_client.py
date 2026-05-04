@@ -268,8 +268,9 @@ def sync_institution_surveys(
     upsert_sql = """
         INSERT OR REPLACE INTO raw_institution_surveys
           (stock_code, survey_date, notice_date, inst_count,
-           reception_type, reception_personnel, reception_location, stock_name)
-        VALUES (?,?,?,?,?,?,?,?)
+           reception_type, reception_personnel, reception_location, stock_name,
+           ingested_at)
+        VALUES (?,?,?,?,?,?,?,?,CURRENT_TIMESTAMP)
     """
     conn.executemany(upsert_sql, rows)
     conn.commit()

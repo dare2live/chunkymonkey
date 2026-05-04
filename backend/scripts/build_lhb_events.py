@@ -205,6 +205,26 @@ def compute_forward_returns(events: pd.DataFrame) -> pd.DataFrame:
     return out
 
 
+def _quote_ident(name: str) -> str:
+    return '"' + name.replace('"', '""') + '"'
+
+
+def _insert_frame(conn, table_name: str, df: pd.DataFrame) -> None:
+    if df.empty:
+        return
+    duck = conn.raw if hasattr(conn, "raw") else conn
+    temp_name = f"_{table_name}_insert"
+    duck.register(temp_name, df)
+    try:
+        columns = ", ".join(_quote_ident(col) for col in df.columns)
+        duck.execute(
+            f"INSERT INTO {_quote_ident(table_name)} ({columns}) "
+            f"SELECT {columns} FROM {_quote_ident(temp_name)}"
+        )
+    finally:
+        duck.unregister(temp_name)
+
+
 def write_fact(conn, events: pd.DataFrame) -> None:
     conn.executescript(FACT_LHB_EVENT_DDL)
     events = events.copy()
@@ -217,7 +237,7 @@ def write_fact(conn, events: pd.DataFrame) -> None:
         "gain_20d", "gain_60d", "max_drawdown_20d", "max_drawdown_60d",
         "built_at",
     ]
-    events[cols].to_sql("fact_lhb_event", conn, if_exists="append", index=False)
+    _insert_frame(conn, "fact_lhb_event", events[cols])
     conn.commit()
     logger.info("写入 fact_lhb_event %d 行", len(events))
 
