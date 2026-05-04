@@ -57,6 +57,9 @@ IC/RankIC, decile metrics, and LightGBM matrix preparation.
 The TDX keep challenger loop removed its dependency on the shared DataFrame
 training helpers by adding records/native panel loading, deterministic sampling,
 feature resolution, Optuna objective inputs, and prediction writes.
+The multidim walk-forward loop removed its dependency on the shared DataFrame
+training helpers by adding records/native panel loading, feature group
+resolution, fold slicing, score profiling, and prediction writes.
 
 ## Change
 
@@ -205,6 +208,11 @@ feature resolution, Optuna objective inputs, and prediction writes.
   LightGBM/Optuna inputs, holdout metrics, and prediction writes to
   records/native helpers.
 - Added `backend/tests/test_train_tdx_keep_challenger_model.py`.
+- Removed pandas from `backend/scripts/run_multidim_walkforward.py`.
+- Converted multidim walk-forward panel loading, feature group resolution,
+  fold slicing, LightGBM inputs, score-profile checks, and prediction writes
+  to records/native helpers.
+- Added `backend/tests/test_run_multidim_walkforward.py`.
 
 ## Validation
 
@@ -600,8 +608,20 @@ python3 -m pytest backend/tests/test_train_tdx_keep_challenger_model.py -q
 python3 backend/scripts/train_tdx_keep_challenger_model.py --help
 # import/CLI smoke passed
 
+rg -n "pandas|pd\.|DataFrame|read_sql_query|\.to_sql\(|\.df\(|register\(|train_multidim_model" backend/scripts/run_multidim_walkforward.py backend/tests/test_run_multidim_walkforward.py -S
+# 0 matches
+
+python3 -m py_compile backend/scripts/run_multidim_walkforward.py backend/tests/test_run_multidim_walkforward.py
+# passed
+
+python3 -m pytest backend/tests/test_run_multidim_walkforward.py -q
+# 2 passed
+
+python3 backend/scripts/run_multidim_walkforward.py --help
+# import/CLI smoke passed
+
 python3 -m pytest backend/tests -q
-# 345 passed
+# 347 passed
 
 python3 backend/scripts/data_health_snapshot.py --dry-run
 # green=147/yellow=0/red=0

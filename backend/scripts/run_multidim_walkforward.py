@@ -8,21 +8,32 @@ import logging
 import sys
 from datetime import datetime
 from pathlib import Path
+from typing import Any
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 import lightgbm as lgb
-import pandas as pd
 
 from services.db import get_conn
-from services.model_feature_schema import DEFAULT_LABEL_NAME, REGIME_FEATURE_COLS
+from services.model_feature_schema import (
+    BASE_FEATURE_COLS,
+    DEFAULT_LABEL_NAME,
+    DENSE_V2_FEATURE_COLS,
+    REGIME_FEATURE_COLS,
+    TDX_KEEP_CHALLENGER_SCHEMA_VERSION,
+    TDX_KEEP_FEATURE_COLS,
+    ordered_feature_cols,
+)
 from services.ml_lifecycle.registry import select_default_model_id
-from scripts.train_multidim_model import (
-    FEATURE_COLS,
+from scripts.run_feature_ablation import (
     compute_ic,
     decile_metrics,
-    ensure_model_schema,
-    load_panel,
+    _dates,
+    _matrix,
+    _quote_ident,
+    _rank_percentiles,
+    _records_from_cursor,
+    _values,
 )
 
 
@@ -98,6 +109,50 @@ DEFAULT_PARAMS = {
 }
 
 
+FEATURE_COLS = ordered_feature_cols(include_dense_v2=True)
+
+
+MODEL_DDL = """
+CREATE TABLE IF NOT EXISTS mart_multidim_model (
+    model_id TEXT PRIMARY KEY,
+    created_at TEXT,
+    train_start TEXT, train_end TEXT,
+    valid_start TEXT, valid_end TEXT,
+    holdout_start TEXT, holdout_end TEXT,
+    n_features INTEGER,
+    best_params_json TEXT,
+    holdout_ic REAL, holdout_rank_ic REAL,
+    holdout_top_decile_avg REAL, holdout_bottom_decile_avg REAL,
+    holdout_long_short_spread REAL,
+    holdout_winrate_top REAL,
+    feature_importance_json TEXT,
+    feature_cols_json TEXT,
+    label_name TEXT,
+    feature_schema_version TEXT,
+    notes TEXT
+);
+
+CREATE TABLE IF NOT EXISTS mart_multidim_prediction (
+    model_id TEXT,
+    stock_code TEXT,
+    date TEXT,
+    pred_score REAL,
+    rank_in_date INTEGER,
+    percentile REAL,
+    PRIMARY KEY (model_id, stock_code, date)
+);
+"""
+
+
+def ensure_model_schema(conn) -> None:
+    conn.executescript(MODEL_DDL)
+    cols = {row[0] for row in conn.execute("DESCRIBE mart_multidim_model").fetchall()}
+    for col in ("feature_cols_json", "label_name", "feature_schema_version"):
+        if col not in cols:
+            conn.execute(f"ALTER TABLE mart_multidim_model ADD COLUMN {col} TEXT")
+    conn.commit()
+
+
 def latest_params(conn, model_id: str | None) -> tuple[str | None, dict]:
     if model_id:
         row = conn.execute(
@@ -146,6 +201,17 @@ def build_folds(dates: list, train_days: int, valid_days: int, test_days: int, s
     return folds
 
 
+def _table_columns(conn, table: str) -> set[str]:
+    duck = conn.raw if hasattr(conn, "raw") else conn
+    return {
+        row[0]
+        for row in duck.execute(
+            "SELECT column_name FROM information_schema.columns WHERE table_name = ?",
+            (table,),
+        ).fetchall()
+    }
+
+
 def load_label_dates(
     conn,
     start: str,
@@ -169,7 +235,7 @@ def load_label_dates(
     rows = conn.execute(
         f"""
         SELECT DISTINCT date
-        FROM {feature_table}
+        FROM {_quote_ident(feature_table)}
         WHERE {' AND '.join(where)}
         ORDER BY date
         """,
@@ -178,8 +244,169 @@ def load_label_dates(
     return [r[0] for r in rows]
 
 
-def _slice(df: pd.DataFrame, bounds: tuple) -> pd.DataFrame:
-    return df[(df["date"] >= bounds[0]) & (df["date"] <= bounds[1])].copy()
+def load_panel_records(
+    conn,
+    start: str,
+    end: str,
+    *,
+    label_name: str,
+    feature_table: str,
+    feature_set_id: str | None,
+) -> list[dict[str, Any]]:
+    duck = conn.raw if hasattr(conn, "raw") else conn
+    panel_cols = _table_columns(conn, feature_table)
+    if label_name not in panel_cols:
+        raise RuntimeError(f"{feature_table} 缺少 label 列: {label_name}")
+
+    alpha158_cols: list[str] = []
+    alpha158_join = ""
+    alpha158_db = Path(__file__).resolve().parent.parent.parent / "data" / "alpha158.duckdb"
+    if feature_table == "fact_feature_panel" and alpha158_db.exists():
+        try:
+            duck.execute(f"ATTACH IF NOT EXISTS '{alpha158_db}' AS a158 (READ_ONLY)")
+            alpha158_cols = [
+                row[0]
+                for row in duck.execute(
+                    """
+                    SELECT column_name
+                    FROM information_schema.columns
+                    WHERE table_catalog='a158'
+                      AND table_name='fact_alpha158_panel'
+                      AND column_name LIKE 'a158_%'
+                    """
+                ).fetchall()
+            ]
+            alpha158_join = (
+                "LEFT JOIN a158.fact_alpha158_panel a "
+                "ON a.stock_code = p.stock_code AND a.date = CAST(p.date AS DATE)"
+            )
+            logger.info("Alpha158 join 启用, 增补 %d 列", len(alpha158_cols))
+        except Exception as exc:
+            logger.warning("Alpha158 attach failed: %s", exc)
+
+    schema_feature_cols = list(FEATURE_COLS)
+    for col in TDX_KEEP_FEATURE_COLS:
+        if col not in schema_feature_cols:
+            schema_feature_cols.append(col)
+    feature_cols = [col for col in schema_feature_cols if col in panel_cols]
+    regime_expr = "p.regime_flag" if "regime_flag" in panel_cols else "NULL AS regime_flag"
+    select_cols = [
+        "p.stock_code",
+        "p.date",
+        regime_expr,
+        f"p.{_quote_ident(label_name)} AS label_value",
+        *[f"CAST(p.{_quote_ident(col)} AS DOUBLE) AS {_quote_ident(col)}" for col in feature_cols],
+        *[f"CAST(a.{_quote_ident(col)} AS DOUBLE) AS {_quote_ident(col)}" for col in alpha158_cols],
+    ]
+    where = [f"p.date >= ? AND p.date <= ? AND p.{_quote_ident(label_name)} IS NOT NULL"]
+    params: list[Any] = [start, end]
+    if feature_set_id and "feature_set_id" in panel_cols:
+        where.append("p.feature_set_id = ?")
+        params.append(feature_set_id)
+    rows = _records_from_cursor(
+        duck.execute(
+            f"""
+            SELECT {', '.join(select_cols)}
+            FROM {_quote_ident(feature_table)} p
+            {alpha158_join}
+            WHERE {' AND '.join(where)}
+            """,
+            params,
+        )
+    )
+    for row in rows:
+        regime = row.get("regime_flag")
+        row["regime_up"] = 1 if regime == "up" else 0
+        row["regime_flat"] = 1 if regime == "flat" else 0
+        row["regime_down"] = 1 if regime == "down" else 0
+    return rows
+
+
+def resolve_feature_group(name: str, rows: list[dict[str, Any]], *, regime_aware: bool) -> tuple[list[str], str]:
+    panel_cols = set(rows[0].keys()) if rows else set()
+    a158 = [col for col in panel_cols if col.startswith("a158_")]
+    base = [col for col in BASE_FEATURE_COLS if col in panel_cols]
+    dense = [col for col in DENSE_V2_FEATURE_COLS if col in panel_cols]
+    if name == "base":
+        cols = list(base)
+        tag = "m7_base_v1"
+    elif name == "base_dense_v2":
+        cols = base + dense
+        tag = "m7_base_dense_v2_v1"
+    elif name == "base_alpha158":
+        cols = base + a158
+        tag = "m7_base_alpha158_v1"
+    elif name == "base_dense_v2_alpha158":
+        cols = base + dense + a158
+        tag = "m7_base_dense_v2_alpha158_v1"
+    elif name == "tdx_keep_v1":
+        keep = [col for col in TDX_KEEP_FEATURE_COLS if col in panel_cols]
+        missing = [col for col in TDX_KEEP_FEATURE_COLS if col not in panel_cols]
+        if missing:
+            raise RuntimeError(f"tdx_keep_v1 缺少 keep 特征: {missing}")
+        cols = base + dense + keep
+        tag = TDX_KEEP_CHALLENGER_SCHEMA_VERSION
+    elif name == "legacy_full":
+        cols = [col for col in FEATURE_COLS if col in panel_cols]
+        if a158:
+            cols += a158
+        tag = "legacy_v0"
+    else:
+        raise ValueError(f"未知 feature group: {name}")
+    if regime_aware:
+        for col in REGIME_FEATURE_COLS:
+            if col in panel_cols and col not in cols:
+                cols.append(col)
+        tag = tag + "_regime"
+    return cols, tag
+
+
+def _slice(rows: list[dict[str, Any]], bounds: tuple) -> list[dict[str, Any]]:
+    return [row for row in rows if bounds[0] <= row["date"] <= bounds[1]]
+
+
+def _date_bounds(rows: list[dict[str, Any]]) -> tuple[str | None, str | None]:
+    dates = [str(row.get("date")) for row in rows if row.get("date") is not None]
+    return (min(dates), max(dates)) if dates else (None, None)
+
+
+def _mean_label(rows: list[dict[str, Any]]) -> float | None:
+    values = _values(rows, "label_value")
+    return float(sum(values) / len(values)) if values else None
+
+
+def _score_profile(pred_rows: list[tuple]) -> tuple[float, int]:
+    by_date: dict[str, set[float]] = {}
+    for row in pred_rows:
+        by_date.setdefault(str(row[3]), set()).add(float(row[4]))
+    counts = sorted(len(values) for values in by_date.values())
+    if not counts:
+        return 0.0, 0
+    mid = len(counts) // 2
+    median = counts[mid] if len(counts) % 2 else (counts[mid - 1] + counts[mid]) / 2.0
+    return float(median), int(counts[0])
+
+
+def _prediction_rows(run_id: str, fold_id: int, test_rows: list[dict[str, Any]], pred) -> list[tuple]:
+    rows = []
+    grouped: dict[str, list[tuple[dict[str, Any], float]]] = {}
+    for row, score in zip(test_rows, pred):
+        grouped.setdefault(str(row.get("date")), []).append((row, float(score)))
+    for date, items in grouped.items():
+        scores = [score for _, score in items]
+        percentiles = _rank_percentiles(scores)
+        for idx, (row, score) in enumerate(items):
+            rank_in_date = 1 + sum(1 for other in scores if other > score)
+            rows.append((
+                run_id,
+                fold_id,
+                row.get("stock_code"),
+                date,
+                score,
+                rank_in_date,
+                percentiles[idx],
+            ))
+    return rows
 
 
 def classify_market_state(mean_ret: float | None) -> str | None:
@@ -211,7 +438,7 @@ def ensure_walkforward_schema(conn) -> None:
             logger.warning("ALTER add %s 失败 (大概率已存在): %s", col, e)
 
 
-def write_fold(conn, row: dict, pred_df: pd.DataFrame | None) -> None:
+def write_fold(conn, row: dict, pred_rows: list[tuple] | None) -> None:
     ensure_walkforward_schema(conn)
     cols = [
         "run_id", "fold_id", "model_id", "feature_schema_version", "label_name",
@@ -227,11 +454,15 @@ def write_fold(conn, row: dict, pred_df: pd.DataFrame | None) -> None:
         f"INSERT OR REPLACE INTO mart_model_walkforward_fold ({', '.join(cols)}) VALUES ({', '.join(['?'] * len(cols))})",
         tuple(row.get(c) for c in cols),
     )
-    if pred_df is not None and not pred_df.empty:
-        duck = conn.raw if hasattr(conn, "raw") else conn
-        duck.register("_wf_pred", pred_df)
-        duck.execute("INSERT OR REPLACE INTO mart_model_walkforward_prediction SELECT * FROM _wf_pred")
-        duck.unregister("_wf_pred")
+    if pred_rows:
+        conn.executemany(
+            """
+            INSERT OR REPLACE INTO mart_model_walkforward_prediction
+            (run_id, fold_id, stock_code, date, pred_score, rank_in_date, percentile)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+            """,
+            pred_rows,
+        )
     conn.commit()
 
 
@@ -253,7 +484,7 @@ def main() -> None:
         "--feature-group",
         choices=["base", "base_dense_v2", "base_alpha158", "base_dense_v2_alpha158", "tdx_keep_v1", "legacy_full"],
         default="legacy_full",
-        help="M7: 显式特征组, 与 train_multidim_model 同名同义",
+        help="M7: 显式特征组, 与主训练入口同名同义",
     )
     parser.add_argument("--feature-table", default="fact_feature_panel")
     parser.add_argument("--feature-set-id", default=None)
@@ -280,7 +511,7 @@ def main() -> None:
                 feature_set_id=args.feature_set_id,
             )
         else:
-            df = load_panel(
+            records = load_panel_records(
                 conn,
                 args.start,
                 args.end,
@@ -288,7 +519,7 @@ def main() -> None:
                 feature_table=args.feature_table,
                 feature_set_id=args.feature_set_id,
             )
-            dates = sorted(df["date"].unique())
+            dates = sorted({row["date"] for row in records})
         folds = build_folds(dates, args.train_days, args.valid_days, args.test_days, args.step_days)
         if args.max_folds > 0:
             folds = folds[:args.max_folds]
@@ -298,11 +529,10 @@ def main() -> None:
         if args.dry_run:
             return
 
-        # df is loaded above in non-dry-run branch.
+        # records is loaded above in non-dry-run branch.
         # M7: 显式 feature group, legacy_full = 旧默认 (BASE+a158+regime), 与原 walkforward 一致
-        from scripts.train_multidim_model import resolve_feature_group  # 复用同一定义, 避免漂移
         feature_cols, schema_tag = resolve_feature_group(
-            args.feature_group, df, regime_aware=args.regime_aware
+            args.feature_group, records, regime_aware=args.regime_aware
         )
         logger.info(
             "walkforward feature_group=%s schema_tag=%s 特征数=%d",
@@ -312,14 +542,14 @@ def main() -> None:
         run_id = f"walkforward_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
         built_at = datetime.utcnow().isoformat()
         for fold in folds:
-            train = _slice(df, fold["train"])
-            valid = _slice(df, fold["valid"])
-            test = _slice(df, fold["test"])
+            train = _slice(records, fold["train"])
+            valid = _slice(records, fold["valid"])
+            test = _slice(records, fold["test"])
             # M8.0: train + valid 合并, 无 valid_sets / 无 early_stopping. 对齐 baseline final fit.
-            train_valid = pd.concat([train, valid], ignore_index=True)
+            train_valid = [*train, *valid]
             dataset = lgb.Dataset(
-                train_valid[feature_cols].values,
-                label=train_valid["label_value"].values,
+                _matrix(train_valid, feature_cols),
+                label=_values(train_valid, "label_value"),
                 feature_name=feature_cols,
             )
             model = lgb.train(
@@ -327,20 +557,18 @@ def main() -> None:
                 dataset,
                 num_boost_round=args.walkforward_num_round,
             )
-            pred = model.predict(test[feature_cols].values)
-            ic, rank_ic = compute_ic(test["label_value"].values, pred, test["date"].values)
-            dec = decile_metrics(test["label_value"].values, pred, test["date"].values)
-            test_mean_ret = float(test["label_value"].mean()) if len(test) else None
+            pred = model.predict(_matrix(test, feature_cols))
+            ic, rank_ic = compute_ic(_values(test, "label_value"), pred, _dates(test))
+            dec = decile_metrics(_values(test, "label_value"), pred, _dates(test))
+            test_mean_ret = _mean_label(test)
 
             # M8.0: score profile - per test date 的 distinct pred_score 数量
-            test_pred_df = pd.DataFrame({
-                "date": test["date"].values,
-                "pred_score": pred,
-            })
-            distinct_per_day = test_pred_df.groupby("date")["pred_score"].nunique()
-            distinct_median = float(distinct_per_day.median()) if len(distinct_per_day) else 0.0
-            distinct_min = int(distinct_per_day.min()) if len(distinct_per_day) else 0
+            pred_out = _prediction_rows(run_id, fold["fold_id"], test, pred)
+            distinct_median, distinct_min = _score_profile(pred_out)
             quality = "ok" if distinct_median >= DEGENERATE_DAILY_DISTINCT_THRESHOLD else "degenerate"
+            train_start, train_end = _date_bounds(train)
+            valid_start, valid_end = _date_bounds(valid)
+            test_start, test_end = _date_bounds(test)
 
             row = {
                 "run_id": run_id,
@@ -348,9 +576,9 @@ def main() -> None:
                 "model_id": source_model_id,
                 "feature_schema_version": f"walkforward_{schema_tag}",
                 "label_name": args.label_name,
-                "train_start": fold["train"][0], "train_end": fold["train"][1],
-                "valid_start": fold["valid"][0], "valid_end": fold["valid"][1],
-                "test_start": fold["test"][0], "test_end": fold["test"][1],
+                "train_start": train_start, "train_end": train_end,
+                "valid_start": valid_start, "valid_end": valid_end,
+                "test_start": test_start, "test_end": test_end,
                 "n_train": len(train), "n_valid": len(valid), "n_test": len(test),
                 "n_features": len(feature_cols),
                 "params_json": json.dumps(params, ensure_ascii=False),
@@ -368,16 +596,7 @@ def main() -> None:
                 "quality_flag": quality,
                 "built_at": built_at,
             }
-            pred_out = None
-            if args.save_predictions:
-                pred_out = test[["stock_code", "date"]].copy()
-                pred_out.insert(0, "fold_id", fold["fold_id"])
-                pred_out.insert(0, "run_id", run_id)
-                pred_out["pred_score"] = pred
-                pred_out["rank_in_date"] = pred_out.groupby("date")["pred_score"].rank(ascending=False, method="min").astype(int)
-                pred_out["percentile"] = pred_out.groupby("date")["pred_score"].rank(pct=True)
-                pred_out = pred_out[["run_id", "fold_id", "stock_code", "date", "pred_score", "rank_in_date", "percentile"]]
-            write_fold(conn, row, pred_out)
+            write_fold(conn, row, pred_out if args.save_predictions else None)
             logger.info(
                 "fold %d IC=%.4f RankIC=%.4f spread=%.4f WR=%.3f distinct_median=%.0f min=%d quality=%s",
                 fold["fold_id"], ic, rank_ic, dec["spread"], dec["winrate_top"],
