@@ -29,6 +29,8 @@ teaching F10 extra and gpcw ingestion boundaries to consume records payloads
 while preserving duck-typed table compatibility.
 The daily TopK loop converted recommendation scoring and risk-summary
 percentiles to records/native helpers.
+The LHB event loop converted raw event aggregation, forward-return labeling,
+and fact writes to records/native helpers.
 
 ## Change
 
@@ -128,6 +130,11 @@ percentiles to records/native helpers.
 - Converted TopK scoring input, rank percentiles, per-regime truncation, and
   risk amount percentiles to records/native helpers.
 - Added `backend/tests/test_run_daily_topk.py`.
+- Removed pandas/numpy and DuckDB DataFrame registration from
+  `backend/scripts/build_lhb_events.py`.
+- Converted LHB raw reads, event dedupe/aggregation, forward-return labels, and
+  fact writes to records/native helpers.
+- Added `backend/tests/test_build_lhb_events.py`.
 
 ## Validation
 
@@ -378,6 +385,24 @@ python3 -m pytest backend/tests/test_run_daily_topk.py backend/tests/test_tdx_ke
 
 python3 -m pytest backend/tests -q
 # 325 passed
+
+python3 backend/scripts/data_health_snapshot.py --dry-run
+# green=147/yellow=0/red=0
+
+rg -n "import pandas|from pandas|pd\.|DataFrame|read_sql_query|\.to_sql\(|\.df\(|register\(|import numpy|from numpy|np\." backend/scripts/build_lhb_events.py backend/tests/test_build_lhb_events.py -S
+# 0 matches
+
+python3 -m py_compile backend/scripts/build_lhb_events.py backend/tests/test_build_lhb_events.py
+# passed
+
+python3 -m pytest backend/tests/test_build_lhb_events.py -q
+# 3 passed
+
+python3 backend/scripts/build_lhb_events.py --dry-run
+# raw=62301, deduped_events=52550, forward_coverage_20d=73.4%, forward_coverage_60d=73.4%
+
+python3 -m pytest backend/tests -q
+# 328 passed
 
 python3 backend/scripts/data_health_snapshot.py --dry-run
 # green=147/yellow=0/red=0

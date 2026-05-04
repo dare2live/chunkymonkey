@@ -21,12 +21,9 @@ import re
 import sys
 from datetime import datetime
 from pathlib import Path
-from typing import Optional
+from typing import Any, Optional
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-
-import numpy as np
-import pandas as pd
 
 from services.db import get_conn
 from services.market_db import get_market_conn
@@ -82,68 +79,166 @@ def _parse_inst_seats(interp: Optional[str]) -> int:
         return 0
 
 
-def load_raw_lhb(conn) -> pd.DataFrame:
+def _records_from_cursor(cursor: Any) -> list[dict[str, Any]]:
+    names = [desc[0] for desc in (cursor.description or [])]
+    return [
+        {name: value for name, value in zip(names, row)}
+        for row in cursor.fetchall()
+    ]
+
+
+def _is_missing(value: Any) -> bool:
+    if value is None:
+        return True
+    try:
+        return value != value
+    except Exception:
+        return False
+
+
+def _to_float(value: Any) -> float | None:
+    if _is_missing(value):
+        return None
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _max_number(values: list[Any]) -> float | None:
+    numbers = [_to_float(value) for value in values]
+    numbers = [value for value in numbers if value is not None]
+    return max(numbers) if numbers else None
+
+
+def _first_present(rows: list[dict[str, Any]], key: str) -> Any:
+    for row in rows:
+        value = row.get(key)
+        if not _is_missing(value):
+            return value
+    return None
+
+
+def _coverage(rows: list[dict[str, Any]], key: str) -> float:
+    if not rows:
+        return 0.0
+    return sum(1 for row in rows if row.get(key) is not None) / len(rows)
+
+
+def load_raw_lhb(conn) -> list[dict[str, Any]]:
     logger.info("加载 raw_lhb_daily")
-    df = pd.read_sql_query(
+    rows = _records_from_cursor(conn.execute(
         """
         SELECT trade_date, stock_code, rank_reason, interpretation,
                close_price, change_pct, net_buy, buy_amount, sell_amount,
                turnover, turnover_rate, float_cap, net_buy_pct
         FROM raw_lhb_daily
-        """,
-        conn,
-    )
-    logger.info("raw 行数 %d", len(df))
-    return df
+        """
+    ))
+    logger.info("raw 行数 %d", len(rows))
+    return rows
 
 
-def dedup_and_parse(df: pd.DataFrame) -> pd.DataFrame:
+def dedup_and_parse(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
     """按 (trade_date, stock_code) 去重：
     - net_buy/buy_amount/sell_amount 取 max（不同 rank_reason 理论上值一致，max 保险）
     - rank_reasons 拼接，interpretation 取 net_buy 最大那行的
     - inst_buy_seats 取所有 rank_reason 中的最大值
     """
-    df = df.copy()
-    df["inst_buy_seats_per_row"] = df["interpretation"].apply(_parse_inst_seats)
+    groups: dict[tuple[str, str], list[dict[str, Any]]] = {}
+    for row in rows:
+        trade_date = str(row.get("trade_date") or "")
+        stock_code = str(row.get("stock_code") or "").zfill(6)
+        groups.setdefault((trade_date, stock_code), []).append({**row, "stock_code": stock_code})
 
-    # 按每组 max net_buy 排序，再 groupby
-    df["_net_buy_fillna"] = df["net_buy"].fillna(-1)
-    df = df.sort_values(
-        ["trade_date", "stock_code", "_net_buy_fillna"],
-        ascending=[True, True, False],
-    )
-
-    agg = (
-        df.groupby(["trade_date", "stock_code"], sort=False)
-        .agg(
-            n_rank_reasons=("rank_reason", "count"),
-            rank_reasons=("rank_reason", lambda s: "|".join(sorted(set(s)))),
-            close_price=("close_price", "first"),
-            change_pct=("change_pct", "first"),
-            net_buy=("net_buy", "max"),
-            buy_amount=("buy_amount", "max"),
-            sell_amount=("sell_amount", "max"),
-            turnover=("turnover", "max"),
-            turnover_rate=("turnover_rate", "max"),
-            float_cap=("float_cap", "first"),
-            net_buy_pct=("net_buy_pct", "max"),
-            interpretation=("interpretation", "first"),
-            inst_buy_seats=("inst_buy_seats_per_row", "max"),
+    agg = []
+    for (trade_date, stock_code), group_rows in sorted(groups.items()):
+        ordered = sorted(
+            group_rows,
+            key=lambda row: _to_float(row.get("net_buy")) if _to_float(row.get("net_buy")) is not None else -1.0,
+            reverse=True,
         )
-        .reset_index()
-    )
-    agg["is_inst_net_buy"] = (
-        (agg["net_buy"].fillna(0) > 0) & (agg["inst_buy_seats"] >= 1)
-    ).astype(int)
+        rank_reasons = sorted({
+            str(row.get("rank_reason")).strip()
+            for row in group_rows
+            if not _is_missing(row.get("rank_reason")) and str(row.get("rank_reason")).strip()
+        })
+        inst_buy_seats = max((_parse_inst_seats(row.get("interpretation")) for row in group_rows), default=0)
+        net_buy = _max_number([row.get("net_buy") for row in group_rows])
+        agg.append({
+            "trade_date": trade_date,
+            "stock_code": stock_code,
+            "n_rank_reasons": len(rank_reasons),
+            "rank_reasons": "|".join(rank_reasons),
+            "close_price": _first_present(ordered, "close_price"),
+            "change_pct": _first_present(ordered, "change_pct"),
+            "net_buy": net_buy,
+            "buy_amount": _max_number([row.get("buy_amount") for row in group_rows]),
+            "sell_amount": _max_number([row.get("sell_amount") for row in group_rows]),
+            "turnover": _max_number([row.get("turnover") for row in group_rows]),
+            "turnover_rate": _max_number([row.get("turnover_rate") for row in group_rows]),
+            "float_cap": _first_present(ordered, "float_cap"),
+            "net_buy_pct": _max_number([row.get("net_buy_pct") for row in group_rows]),
+            "interpretation": _first_present(ordered, "interpretation"),
+            "inst_buy_seats": inst_buy_seats,
+            "is_inst_net_buy": 1 if (net_buy or 0) > 0 and inst_buy_seats >= 1 else 0,
+        })
     logger.info(
         "去重后 %d 事件; is_inst_net_buy=1: %d",
         len(agg),
-        int(agg["is_inst_net_buy"].sum()),
+        sum(int(row.get("is_inst_net_buy") or 0) for row in agg),
     )
     return agg
 
 
-def compute_forward_returns(events: pd.DataFrame) -> pd.DataFrame:
+def _apply_forward_returns(
+    events: list[dict[str, Any]],
+    prices: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    grouped: dict[str, list[dict[str, Any]]] = {}
+    for row in prices:
+        code = str(row.get("code") or "").zfill(6)
+        if not code:
+            continue
+        grouped.setdefault(code, []).append(row)
+    for code in grouped:
+        grouped[code].sort(key=lambda row: str(row.get("date") or ""))
+
+    out = []
+    for event in events:
+        row = dict(event)
+        row["gain_20d"] = None
+        row["gain_60d"] = None
+        row["max_drawdown_20d"] = None
+        row["max_drawdown_60d"] = None
+
+        code = str(row.get("stock_code") or "").zfill(6)
+        trade_date = str(row.get("trade_date") or "")
+        price_rows = grouped.get(code) or []
+        after = [price for price in price_rows if str(price.get("date") or "") > trade_date]
+        if not after:
+            out.append(row)
+            continue
+        entry_price = _to_float(after[0].get("close"))
+        if entry_price is None or entry_price <= 0:
+            out.append(row)
+            continue
+        for n, col_gain, col_mdd in [
+            (20, "gain_20d", "max_drawdown_20d"),
+            (60, "gain_60d", "max_drawdown_60d"),
+        ]:
+            window = after[1 : 1 + n]
+            closes = [_to_float(price.get("close")) for price in window]
+            closes = [close for close in closes if close is not None]
+            if not closes:
+                continue
+            row[col_gain] = closes[-1] / entry_price - 1
+            row[col_mdd] = min(close / entry_price - 1 for close in closes)
+        out.append(row)
+    return out
+
+
+def compute_forward_returns(events: list[dict[str, Any]]) -> list[dict[str, Any]]:
     """对每个事件计算 gain_20d / gain_60d / max_drawdown_20d/60d。
 
     entry_price = trade_date 后第 1 个交易日收盘（T+1 open 近似为 close）
@@ -151,56 +246,30 @@ def compute_forward_returns(events: pd.DataFrame) -> pd.DataFrame:
     max_drawdown_Nd = min(close_t / entry_price - 1) over t in [T+1, T+N]
     """
     logger.info("加载 price_kline（用于 forward return）")
-    codes = sorted(events["stock_code"].astype(str).unique())
+    codes = sorted({str(row.get("stock_code") or "").zfill(6) for row in events if row.get("stock_code")})
+    if not codes:
+        return _apply_forward_returns(events, [])
+    placeholders = ",".join(["?"] * len(codes))
     mkt = get_market_conn()
-    px = pd.read_sql_query(
-        f"""
-        SELECT code, date, close
-        FROM price_kline
-        WHERE freq='daily' AND adjust='qfq'
-          AND code IN ({','.join(['?']*len(codes))})
-        """,
-        mkt,
-        params=codes,
-    )
-    mkt.close()
-    logger.info("price_kline 行 %d", len(px))
+    try:
+        prices = _records_from_cursor(mkt.execute(
+            f"""
+            SELECT code, date, close
+            FROM price_kline
+            WHERE freq='daily' AND adjust='qfq'
+              AND code IN ({placeholders})
+            """,
+            codes,
+        ))
+    finally:
+        mkt.close()
+    logger.info("price_kline 行 %d", len(prices))
 
-    px = px.sort_values(["code", "date"])
-    # 每 code -> date -> close 的 dict 便于按索引定位
-    grouped = {c: g.reset_index(drop=True) for c, g in px.groupby("code", sort=False)}
-
-    out = events.copy()
-    out["gain_20d"] = np.nan
-    out["gain_60d"] = np.nan
-    out["max_drawdown_20d"] = np.nan
-    out["max_drawdown_60d"] = np.nan
-
-    for idx, row in out.iterrows():
-        code = str(row["stock_code"])
-        trade_date = row["trade_date"]
-        g = grouped.get(code)
-        if g is None or g.empty:
-            continue
-        after = g[g["date"] > trade_date]
-        if after.empty:
-            continue
-        entry_price = float(after.iloc[0]["close"])
-        if entry_price <= 0 or pd.isna(entry_price):
-            continue
-        for n, col_gain, col_mdd in [(20, "gain_20d", "max_drawdown_20d"),
-                                      (60, "gain_60d", "max_drawdown_60d")]:
-            window = after.iloc[1 : 1 + n]  # 从 T+2 交易日开始到 T+N+1
-            if window.empty:
-                continue
-            exit_price = float(window.iloc[-1]["close"])
-            out.at[idx, col_gain] = exit_price / entry_price - 1
-            path_ret = window["close"].astype(float) / entry_price - 1
-            out.at[idx, col_mdd] = float(path_ret.min())
+    out = _apply_forward_returns(events, prices)
     logger.info(
         "forward return 覆盖率 20d=%.1f%%, 60d=%.1f%%",
-        100 * out["gain_20d"].notna().mean(),
-        100 * out["gain_60d"].notna().mean(),
+        100 * _coverage(out, "gain_20d"),
+        100 * _coverage(out, "gain_60d"),
     )
     return out
 
@@ -209,26 +278,20 @@ def _quote_ident(name: str) -> str:
     return '"' + name.replace('"', '""') + '"'
 
 
-def _insert_frame(conn, table_name: str, df: pd.DataFrame) -> None:
-    if df.empty:
+def _insert_rows(conn, table_name: str, rows: list[dict[str, Any]], cols: list[str]) -> None:
+    if not rows:
         return
-    duck = conn.raw if hasattr(conn, "raw") else conn
-    temp_name = f"_{table_name}_insert"
-    duck.register(temp_name, df)
-    try:
-        columns = ", ".join(_quote_ident(col) for col in df.columns)
-        duck.execute(
-            f"INSERT INTO {_quote_ident(table_name)} ({columns}) "
-            f"SELECT {columns} FROM {_quote_ident(temp_name)}"
-        )
-    finally:
-        duck.unregister(temp_name)
+    columns = ", ".join(_quote_ident(col) for col in cols)
+    placeholders = ", ".join(["?"] * len(cols))
+    conn.executemany(
+        f"INSERT INTO {_quote_ident(table_name)} ({columns}) VALUES ({placeholders})",
+        [tuple(row.get(col) for col in cols) for row in rows],
+    )
 
 
-def write_fact(conn, events: pd.DataFrame) -> None:
+def write_fact(conn, events: list[dict[str, Any]]) -> None:
     conn.executescript(FACT_LHB_EVENT_DDL)
-    events = events.copy()
-    events["built_at"] = datetime.utcnow().isoformat()
+    built_at = datetime.utcnow().isoformat()
     cols = [
         "trade_date", "stock_code", "n_rank_reasons", "rank_reasons",
         "close_price", "change_pct", "net_buy", "buy_amount", "sell_amount",
@@ -237,7 +300,8 @@ def write_fact(conn, events: pd.DataFrame) -> None:
         "gain_20d", "gain_60d", "max_drawdown_20d", "max_drawdown_60d",
         "built_at",
     ]
-    _insert_frame(conn, "fact_lhb_event", events[cols])
+    out = [{**row, "built_at": built_at} for row in events]
+    _insert_rows(conn, "fact_lhb_event", out, cols)
     conn.commit()
     logger.info("写入 fact_lhb_event %d 行", len(events))
 
