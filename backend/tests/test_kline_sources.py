@@ -3,8 +3,6 @@ import unittest
 from pathlib import Path
 from unittest.mock import AsyncMock, patch
 
-import pandas as pd
-
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from conftest import duck_mem  # noqa: E402
@@ -17,8 +15,8 @@ from services.kline_source import aggregate_monthly_from_daily  # noqa: E402
 from services.etf_snapshot_manager import _build_etf_source_status  # noqa: E402
 
 
-def _kline_df(date: str = "2026-04-01"):
-    return pd.DataFrame([
+def _kline_rows(date: str = "2026-04-01"):
+    return [
         {
             "date": date,
             "open": 1.0,
@@ -28,7 +26,7 @@ def _kline_df(date: str = "2026-04-01"):
             "volume": 1000.0,
             "amount": 1200.0,
         }
-    ])
+    ]
 
 
 class KlineSourceFallbackTests(unittest.IsolatedAsyncioTestCase):
@@ -45,7 +43,7 @@ class KlineSourceFallbackTests(unittest.IsolatedAsyncioTestCase):
             },
         )
         fallback_mock.return_value = (
-            _kline_df(),
+            _kline_rows(),
             "tx",
             {"ok": True, "attempts": [{"source": "tx", "ok": True}]},
         )
@@ -70,53 +68,50 @@ class KlineSourceFallbackTests(unittest.IsolatedAsyncioTestCase):
             },
         )
         fallback_mock.return_value = (
-            _kline_df(),
+            _kline_rows(),
             "tx",
             {"ok": True, "attempts": [{"source": "tx", "ok": True}]},
         )
 
-        df, source = await fetch_etf_kline("159695", "20260320", "20260410")
+        rows, source = await fetch_etf_kline("159695", "20260320", "20260410")
 
-        self.assertIsNotNone(df)
-        self.assertFalse(df.empty)
+        self.assertTrue(rows)
         self.assertEqual(source, "tx")
 
     @patch("services.akshare_client._fetch_daily_akshare_fallbacks", new_callable=AsyncMock)
     async def test_fetch_daily_with_fallback_skips_tdxhub_when_circuit_is_open(self, fallback_mock):
         fallback_mock.return_value = (
-            _kline_df(),
+            _kline_rows(),
             "tx",
             {"ok": True, "attempts": [{"source": "tx", "ok": True}]},
         )
         akshare_client._mark_tdxhub_unavailable("tdxhub timeout x2，切换 fallback", [], cooldown_seconds=180)
 
         try:
-            df, source = await akshare_client._fetch_daily_with_fallback("000001", "20260401", "20260410")
+            rows, source = await akshare_client._fetch_daily_with_fallback("000001", "20260401", "20260410")
         finally:
             akshare_client._clear_tdxhub_unavailable()
 
-        self.assertIsNotNone(df)
-        self.assertFalse(df.empty)
+        self.assertTrue(rows)
         self.assertEqual(source, "tx")
 
     @patch("services.akshare_client._fetch_daily_akshare_fallbacks", new_callable=AsyncMock)
     @patch("services.akshare_client._fetch_daily_tdxhub_with_diagnostics", new_callable=AsyncMock)
     async def test_fetch_daily_with_fallback_prefers_akshare_before_tdxhub(self, tdxhub_mock, fallback_mock):
         fallback_mock.return_value = (
-            _kline_df("2026-04-10"),
+            _kline_rows("2026-04-10"),
             "tx",
             {"ok": True, "attempts": [{"source": "tx", "ok": True}]},
         )
 
-        df, source = await akshare_client._fetch_daily_with_fallback(
+        rows, source = await akshare_client._fetch_daily_with_fallback(
             "000001",
             "20260401",
             "20260410",
             prefer_fallback=True,
         )
 
-        self.assertIsNotNone(df)
-        self.assertFalse(df.empty)
+        self.assertTrue(rows)
         self.assertEqual(source, "tx")
         tdxhub_mock.assert_not_awaited()
 
@@ -124,36 +119,36 @@ class KlineSourceFallbackTests(unittest.IsolatedAsyncioTestCase):
     @patch("services.akshare_client._fetch_daily_tdxhub_with_diagnostics", new_callable=AsyncMock)
     async def test_fetch_daily_with_fallback_prefers_fresher_fallback_result(self, tdxhub_mock, fallback_mock):
         tdxhub_mock.return_value = (
-            _kline_df("2026-04-03"),
+            _kline_rows("2026-04-03"),
             "tdxhub",
             {"ok": True, "summary": "tdxhub stale", "fallback_recommended": False},
         )
         fallback_mock.return_value = (
-            _kline_df("2026-04-10"),
+            _kline_rows("2026-04-10"),
             "tx",
             {"ok": True, "attempts": [{"source": "tx", "ok": True}]},
         )
 
-        df, source = await akshare_client._fetch_daily_with_fallback("000001", "20260401", "20260410")
+        rows, source = await akshare_client._fetch_daily_with_fallback("000001", "20260401", "20260410")
 
         self.assertEqual(source, "tx")
-        self.assertEqual(str(df["date"].max())[:10], "2026-04-10")
+        self.assertEqual(max(row["date"] for row in rows), "2026-04-10")
 
     @patch("services.akshare_client._fetch_daily_akshare_fallbacks", new_callable=AsyncMock)
     @patch("services.akshare_client._fetch_daily_tdxhub_with_diagnostics", new_callable=AsyncMock)
     async def test_fetch_daily_with_fallback_prefers_fresher_tdxhub_result_after_fallback_probe(self, tdxhub_mock, fallback_mock):
         fallback_mock.return_value = (
-            _kline_df("2026-04-03"),
+            _kline_rows("2026-04-03"),
             "tx",
             {"ok": True, "attempts": [{"source": "tx", "ok": True}]},
         )
         tdxhub_mock.return_value = (
-            _kline_df("2026-04-10"),
+            _kline_rows("2026-04-10"),
             "tdxhub",
             {"ok": True, "summary": "tdxhub healthy", "fallback_recommended": False},
         )
 
-        df, source = await akshare_client._fetch_daily_with_fallback(
+        rows, source = await akshare_client._fetch_daily_with_fallback(
             "000001",
             "20260401",
             "20260410",
@@ -161,12 +156,12 @@ class KlineSourceFallbackTests(unittest.IsolatedAsyncioTestCase):
         )
 
         self.assertEqual(source, "tdxhub")
-        self.assertEqual(str(df["date"].max())[:10], "2026-04-10")
+        self.assertEqual(max(row["date"] for row in rows), "2026-04-10")
 
     @patch("services.akshare_client._fetch_daily_tdxhub_with_diagnostics", new_callable=AsyncMock)
     async def test_probe_stock_kline_fallback_preference_marks_degraded_tdxhub(self, tdxhub_mock):
         tdxhub_mock.return_value = (
-            _kline_df(),
+            _kline_rows(),
             "tdxhub",
             {
                 "ok": True,
@@ -222,7 +217,7 @@ class KlineSourceFallbackTests(unittest.IsolatedAsyncioTestCase):
                 [{"code": "159695", "name": "通信ETF", "market": "sz", "asset_type": "etf"}],
                 "tdxhub_1.1.1.1:7709",
             )
-            kline_mock.return_value = (_kline_df(), "tx")
+            kline_mock.return_value = (_kline_rows(), "tx")
 
             result = await sync_etf_universe(
                 conn,
@@ -243,19 +238,19 @@ class KlineSourceFallbackTests(unittest.IsolatedAsyncioTestCase):
 
 class KlineSourceHelperTests(unittest.TestCase):
     def test_aggregate_monthly_from_daily_rolls_up_ohlcv(self):
-        monthly = aggregate_monthly_from_daily(pd.DataFrame([
+        monthly = aggregate_monthly_from_daily([
             {"date": "2026-03-03", "open": 1.0, "high": 1.3, "low": 0.9, "close": 1.2, "volume": 100.0, "amount": 110.0},
             {"date": "2026-03-28", "open": 1.2, "high": 1.4, "low": 1.1, "close": 1.35, "volume": 120.0, "amount": 125.0},
             {"date": "2026-04-02", "open": 1.35, "high": 1.5, "low": 1.3, "close": 1.45, "volume": 90.0, "amount": 98.0},
-        ]))
+        ])
 
-        self.assertEqual(list(monthly["date"]), ["2026-03-01", "2026-04-01"])
-        self.assertEqual(monthly.iloc[0]["open"], 1.0)
-        self.assertEqual(monthly.iloc[0]["close"], 1.35)
-        self.assertEqual(monthly.iloc[0]["high"], 1.4)
-        self.assertEqual(monthly.iloc[0]["low"], 0.9)
-        self.assertEqual(monthly.iloc[0]["volume"], 220.0)
-        self.assertEqual(monthly.iloc[0]["amount"], 235.0)
+        self.assertEqual([row["date"] for row in monthly], ["2026-03-01", "2026-04-01"])
+        self.assertEqual(monthly[0]["open"], 1.0)
+        self.assertEqual(monthly[0]["close"], 1.35)
+        self.assertEqual(monthly[0]["high"], 1.4)
+        self.assertEqual(monthly[0]["low"], 0.9)
+        self.assertEqual(monthly[0]["volume"], 220.0)
+        self.assertEqual(monthly[0]["amount"], 235.0)
 
 
 if __name__ == "__main__":

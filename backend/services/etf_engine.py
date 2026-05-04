@@ -323,14 +323,14 @@ async def sync_etf_universe(etf_conn, etf_price_conn, sync_kline: bool = True,
             if not code:
                 continue
             try:
-                df, src = await fetch_etf_kline(code, start_date, end_date)
-                if df is None or df.empty:
+                kline_records, src = await fetch_etf_kline(code, start_date, end_date)
+                if not kline_records:
                     continue
                 rows = []
-                for _, r in df.iterrows():
+                for r in kline_records:
                     rows.append({
                         "code": code,
-                        "date": r["date"],
+                        "date": str(r["date"])[:10],
                         "freq": "daily",
                         "adjust": "qfq",
                         "open": float(r["open"]) if r.get("open") is not None else None,

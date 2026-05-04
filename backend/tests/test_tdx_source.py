@@ -237,11 +237,11 @@ def test_fetch_index_kline_uses_shared_quotes_pool(monkeypatch):
     mocked_call = mock.Mock(return_value=(frame, "tdxhub_1.1.1.1:7709"))
     monkeypatch.setattr(akshare_client, "call_tdx_quotes_with_retry", mocked_call)
 
-    result_df, source = asyncio.run(akshare_client.fetch_index_kline("000001", "20260410", "20260413"))
+    result_rows, source = asyncio.run(akshare_client.fetch_index_kline("000001", "20260410", "20260413"))
 
     assert source == "tdxhub_index"
-    assert list(result_df["date"]) == ["2026-04-10", "2026-04-13"]
-    assert list(result_df["volume"]) == [12345.0, 22345.0]
+    assert [row["date"] for row in result_rows] == ["2026-04-10", "2026-04-13"]
+    assert [row["volume"] for row in result_rows] == [12345.0, 22345.0]
     assert mocked_call.call_args.kwargs["action_name"] == "index_bars[000001]"
 
 
@@ -256,12 +256,12 @@ def test_fetch_daily_tdxhub_with_diagnostics_uses_shared_quotes_pool(monkeypatch
     monkeypatch.setattr(akshare_client, "call_tdx_quotes_with_retry", mocked_call)
     akshare_client._clear_tdxhub_unavailable()
 
-    result_df, source, diagnostics = asyncio.run(
+    result_rows, source, diagnostics = asyncio.run(
         akshare_client._fetch_daily_tdxhub_with_diagnostics("159695", "20260410", "20260410")
     )
 
     assert source == "tdxhub"
-    assert list(result_df["date"]) == ["2026-04-10"]
+    assert [row["date"] for row in result_rows] == ["2026-04-10"]
     assert diagnostics["ok"] is True
     assert diagnostics["attempts"] == attempts
     assert mocked_call.call_args.kwargs["action_name"] == "bars[159695]"
@@ -284,7 +284,7 @@ def test_fetch_daily_tdxhub_with_diagnostics_marks_timeout_heavy_success_as_degr
     akshare_client._clear_tdxhub_unavailable()
 
     try:
-        result_df, source, diagnostics = asyncio.run(
+        result_rows, source, diagnostics = asyncio.run(
             akshare_client._fetch_daily_tdxhub_with_diagnostics("159695", "20260410", "20260410")
         )
         state = akshare_client._get_tdxhub_unavailable_state()
@@ -292,7 +292,7 @@ def test_fetch_daily_tdxhub_with_diagnostics_marks_timeout_heavy_success_as_degr
         akshare_client._clear_tdxhub_unavailable()
 
     assert source == "tdxhub"
-    assert list(result_df["date"]) == ["2026-04-10"]
+    assert [row["date"] for row in result_rows] == ["2026-04-10"]
     assert diagnostics["ok"] is True
     assert diagnostics["timeout_failures"] == 2
     assert diagnostics["fallback_recommended"] is True

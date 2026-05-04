@@ -6,7 +6,8 @@ Date: 2026-05-05
 
 Phase 4 starts with the data-source adapter layer. The first closed loops
 removed pandas from xdxr, margin, LHB, QFII, and institution survey sync
-clients after their fetch boundaries were reduced to records.
+clients after their fetch boundaries were reduced to records. The next loop
+converted the K-line source boundary and akshare K-line adapter to records.
 
 ## Change
 
@@ -31,6 +32,15 @@ clients after their fetch boundaries were reduced to records.
 - Removed `import pandas` from `backend/services/institution_survey_client.py`.
 - Converted institution survey fetch and write preparation to records.
 - Added `backend/tests/test_institution_survey_client.py`.
+- Removed `import pandas` from `backend/services/kline_source.py` and
+  `backend/services/akshare_client.py`.
+- Converted stock, ETF, and index K-line fetchers to return records instead of
+  DataFrames.
+- Converted K-line monthly aggregation to a records-native helper.
+- Updated ETF sync, market sync, and gap-fill script call sites to consume
+  records directly.
+- Updated `backend/tests/test_kline_sources.py` K-line fixtures from DataFrame
+  to records.
 
 ## Validation
 
@@ -83,10 +93,26 @@ python3 -m pytest backend/tests/test_institution_survey_client.py -q
 
 python3 -m pytest backend/tests/test_institution_survey_client.py backend/tests/test_qfii_client.py backend/tests/test_lhb_client.py backend/tests/test_margin_client.py backend/tests/test_xdxr_client.py backend/tests/test_block_client.py -q
 # 36 passed
+
+rg -n "import pandas|from pandas|pd\.|DataFrame" backend/services/kline_source.py backend/services/akshare_client.py backend/tests/test_kline_sources.py backend/scripts/fill_missing_market_kline.py -S
+# 0 code matches
+
+python3 -m py_compile backend/services/kline_source.py backend/services/akshare_client.py backend/services/etf_engine.py backend/routers/updater.py backend/scripts/fill_missing_market_kline.py backend/tests/test_kline_sources.py backend/tests/test_tdx_source.py
+# passed
+
+python3 -m pytest backend/tests/test_kline_sources.py backend/tests/test_tdx_source.py -q
+# 25 passed
+
+python3 -m pytest backend/tests/test_kline_sources.py backend/tests/test_tdx_source.py backend/tests/test_data_health_snapshot.py -q
+# 29 passed
+
+python3 -m pytest backend/tests/test_kline_sources.py backend/tests/test_tdx_source.py backend/tests/test_institution_survey_client.py backend/tests/test_qfii_client.py backend/tests/test_lhb_client.py backend/tests/test_margin_client.py backend/tests/test_xdxr_client.py backend/tests/test_block_client.py -q
+# 61 passed
+
+python3 backend/scripts/data_health_snapshot.py --dry-run
+# green=147/yellow=0/red=0
 ```
 
 ## Remaining Phase 4 Targets
 
-- `backend/services/akshare_client.py`
-- `backend/services/kline_source.py`
 - pandas usage in scripts and model/backtest layers.

@@ -17,11 +17,12 @@ import time
 from datetime import datetime, timedelta
 from typing import Optional
 
-import pandas as pd
-
 from services.kline_source import aggregate_monthly_from_daily as _aggregate_monthly_from_daily
 from services.kline_source import fetch_daily_akshare_fallbacks as _fetch_daily_akshare_fallbacks
-from services.kline_source import normalize_price_frame as _normalize_price_frame
+from services.kline_source import normalize_date_value as _normalize_date_value
+from services.kline_source import normalize_price_rows as _normalize_price_rows
+from services.kline_source import payload_is_empty as _payload_is_empty
+from services.kline_source import records_from_payload as _records_from_payload
 from services.tdx_source import call_tdx_quotes_with_retry
 from services.tdx_source import clear_tdxhub_unavailable as _clear_shared_tdxhub_unavailable
 from services.tdx_source import get_tdxhub_unavailable_state as _get_shared_tdxhub_unavailable_state
@@ -59,29 +60,24 @@ def _summarize_tdxhub_attempts(attempts: list[dict]) -> str:
 
 
 def _normalize_fetch_date(value: Optional[str]) -> Optional[str]:
-    text = str(value or "").strip()
-    if not text:
-        return None
-    digits = "".join(ch for ch in text if ch.isdigit())
-    if len(digits) >= 8:
-        digits = digits[:8]
-        return f"{digits[:4]}-{digits[4:6]}-{digits[6:8]}"
-    if len(text) >= 10 and "-" in text:
-        return text[:10]
-    return None
+    return _normalize_date_value(value)
 
 
-def _frame_latest_date(df: Optional[pd.DataFrame]) -> Optional[str]:
-    if df is None or df.empty or "date" not in df.columns:
+def _rows_latest_date(rows) -> Optional[str]:
+    records = _records_from_payload(rows)
+    if not records:
         return None
-    normalized = [_normalize_fetch_date(value) for value in df["date"].tolist()]
+    normalized = [
+        _normalize_fetch_date(row.get("date") or row.get("datetime"))
+        for row in records
+    ]
     normalized = [value for value in normalized if value]
     return max(normalized) if normalized else None
 
 
-def _is_frame_fresh_enough(df: Optional[pd.DataFrame], expected_end_date: Optional[str]) -> bool:
+def _is_rows_fresh_enough(rows, expected_end_date: Optional[str]) -> bool:
     expected = _normalize_fetch_date(expected_end_date)
-    latest = _frame_latest_date(df)
+    latest = _rows_latest_date(rows)
     if not latest or not expected:
         return bool(latest)
     return latest >= expected
@@ -96,13 +92,10 @@ def _infer_etf_market(code: str) -> str:
     return ""
 
 
-def _normalize_etf_spot_frame(df: pd.DataFrame) -> list[dict]:
-    if df is None or df.empty:
-        return []
-    frame = df.copy()
-    frame.columns = [str(col).replace(" ", "") for col in frame.columns]
+def _normalize_etf_spot_rows(payload) -> list[dict]:
     results = []
-    for _, row in frame.iterrows():
+    for raw in _records_from_payload(payload):
+        row = {str(key).replace(" ", ""): value for key, value in raw.items()}
         code = str(row.get("基金代码") or "").strip()
         name = str(row.get("基金名称") or "").strip()
         market = _infer_etf_market(code)
@@ -117,10 +110,12 @@ def _normalize_etf_spot_frame(df: pd.DataFrame) -> list[dict]:
     return results
 
 
-def _tdx_payload_to_frame(payload) -> pd.DataFrame:
-    if isinstance(payload, pd.DataFrame):
-        return payload.copy()
-    return pd.DataFrame.from_records(payload or [])
+def _tdx_payload_to_kline_rows(payload, start_fmt: str, end_fmt: str) -> list[dict]:
+    rows = _normalize_price_rows(payload, "tdxhub")
+    return [
+        row for row in rows
+        if start_fmt <= row["date"] <= end_fmt
+    ]
 
 
 def _get_tdxhub_unavailable_state() -> dict[str, object]:
@@ -190,24 +185,13 @@ async def _fetch_daily_tdxhub_with_diagnostics(code: str, start_date: str, end_d
         if not records:
             raise ValueError("empty")
 
-        df = _tdx_payload_to_frame(records)
-        df = df.rename(columns={"vol": "volume"})
-        df = df.loc[:, ~df.columns.duplicated()]
-        if "datetime" in df.columns:
-            df["date"] = df["datetime"].astype(str).str[:10]
-        else:
-            df["date"] = df.index.strftime("%Y-%m-%d") if hasattr(df.index, "strftime") else ""
-        df = df[(df["date"] >= start_fmt) & (df["date"] <= end_fmt)]
-        if df.empty:
+        rows = _tdx_payload_to_kline_rows(records, start_fmt, end_fmt)
+        if not rows:
             raise ValueError("empty_after_filter")
-
-        for col in ["open", "high", "low", "close", "volume", "amount"]:
-            if col not in df.columns:
-                df[col] = None
-        return df[["date", "open", "high", "low", "close", "volume", "amount"]]
+        return rows
 
     try:
-        df, _source, attempts = await asyncio.get_event_loop().run_in_executor(
+        payload, _source, attempts = await asyncio.get_event_loop().run_in_executor(
             None,
             lambda: call_tdx_quotes_with_retry(
                 _fetch_on_client,
@@ -215,6 +199,9 @@ async def _fetch_daily_tdxhub_with_diagnostics(code: str, start_date: str, end_d
                 collect_attempts=True,
             ),
         )
+        rows = _tdx_payload_to_kline_rows(payload, start_fmt, end_fmt)
+        if not rows:
+            raise ValueError("empty_after_filter")
         diagnostics["attempts"] = attempts
         diagnostics["ok"] = True
         diagnostics["server"] = attempts[-1]["server"] if attempts else None
@@ -233,7 +220,7 @@ async def _fetch_daily_tdxhub_with_diagnostics(code: str, start_date: str, end_d
             )
         else:
             _clear_tdxhub_unavailable()
-        return df, "tdxhub", diagnostics
+        return rows, "tdxhub", diagnostics
     except ImportError:
         diagnostics["summary"] = "tdxhub 未安装"
         return None, None, diagnostics
@@ -256,7 +243,7 @@ async def _safe_akshare_call(func, *args, timeout=30, retries=2, **kwargs):
                 asyncio.get_event_loop().run_in_executor(None, lambda: func(*args, **kwargs)),
                 timeout=timeout
             )
-            if result is None or (isinstance(result, pd.DataFrame) and result.empty):
+            if _payload_is_empty(result):
                 return None
             return result
         except asyncio.TimeoutError:
@@ -277,67 +264,10 @@ async def _safe_akshare_call(func, *args, timeout=30, retries=2, **kwargs):
     return None
 
 
-def _normalize_price_frame(df, source: str):
-    """统一 K 线 DataFrame 列名为 date/open/high/low/close/volume/amount"""
-    if df is None or df.empty:
-        return None
-    frame = df.copy()
-
-    if source == "eastmoney":
-        frame = frame.rename(columns={
-            "日期": "date",
-            "开盘": "open",
-            "最高": "high",
-            "最低": "low",
-            "收盘": "close",
-            "成交量": "volume",
-            "成交额": "amount",
-        })
-    elif source == "sina":
-        pass
-    elif source == "tx":
-        # 腾讯接口通常只有 amount，无 volume
-        if "volume" not in frame.columns:
-            frame["volume"] = None
-    required = ["date", "open", "high", "low", "close"]
-    if not all(col in frame.columns for col in required):
-        return None
-    for col in ["volume", "amount"]:
-        if col not in frame.columns:
-            frame[col] = None
-    frame = frame[["date", "open", "high", "low", "close", "volume", "amount"]].copy()
-    frame["date"] = frame["date"].astype(str).str[:10]
-    return frame
-
-
-def _aggregate_monthly_from_daily(df: pd.DataFrame):
-    """从日 K 聚合月 K"""
-    if df is None or df.empty:
-        return None
-    frame = df.copy()
-    frame["date"] = pd.to_datetime(frame["date"])
-    frame = frame.sort_values("date")
-    frame["month"] = frame["date"].dt.to_period("M")
-
-    rows = []
-    for _, group in frame.groupby("month", sort=True):
-        group = group.sort_values("date")
-        rows.append({
-            "date": group.iloc[0]["date"].strftime("%Y-%m-01"),
-            "open": group.iloc[0]["open"],
-            "high": group["high"].max(),
-            "low": group["low"].min(),
-            "close": group.iloc[-1]["close"],
-            "volume": group["volume"].sum(min_count=1),
-            "amount": group["amount"].sum(min_count=1),
-        })
-    return pd.DataFrame(rows)
-
-
 async def _fetch_daily_tdxhub(code: str, start_date: str, end_date: str):
     """用 tdxhub 从通达信服务器获取日K线（首选数据源）"""
-    df, source, _ = await _fetch_daily_tdxhub_with_diagnostics(code, start_date, end_date)
-    return df, source
+    rows, source, _ = await _fetch_daily_tdxhub_with_diagnostics(code, start_date, end_date)
+    return rows, source
 
 
 def _raise_daily_fallback_error(diagnostics: dict) -> None:
@@ -354,61 +284,59 @@ async def _fetch_daily_with_fallback(
     *,
     prefer_fallback: bool = False,
 ):
-    import akshare as ak
-
-    best_df = None
+    best_rows = []
     best_source = ""
     best_latest = None
     fallback_diagnostics = None
 
-    def _remember_result(df, source):
-        nonlocal best_df, best_source, best_latest
-        latest = _frame_latest_date(df)
-        if df is None or df.empty or not latest:
+    def _remember_result(rows, source):
+        nonlocal best_rows, best_source, best_latest
+        latest = _rows_latest_date(rows)
+        if not rows or not latest:
             return latest
-        if best_df is None or best_latest is None or latest > best_latest:
-            best_df = df
+        if not best_rows or best_latest is None or latest > best_latest:
+            best_rows = rows
             best_source = source
             best_latest = latest
         return latest
 
     if prefer_fallback:
-        df_fb, src_fb, fallback_diagnostics = await _fetch_daily_akshare_fallbacks(
+        rows_fb, src_fb, fallback_diagnostics = await _fetch_daily_akshare_fallbacks(
             code,
             start_date,
             end_date,
             safe_call=_safe_akshare_call,
         )
-        if df_fb is not None and not df_fb.empty:
-            _remember_result(df_fb, src_fb)
-        if _is_frame_fresh_enough(df_fb, end_date):
-            return df_fb, src_fb
+        if rows_fb:
+            _remember_result(rows_fb, src_fb)
+        if _is_rows_fresh_enough(rows_fb, end_date):
+            return rows_fb, src_fb
 
     # 优先级1: tdxhub（通达信服务器，Mac原生）
-    df_m, src_m, diagnostics_m = await _fetch_daily_tdxhub_with_diagnostics(code, start_date, end_date)
-    if df_m is not None and not df_m.empty:
-        _remember_result(df_m, src_m)
+    rows_m, src_m, diagnostics_m = await _fetch_daily_tdxhub_with_diagnostics(code, start_date, end_date)
+    if rows_m:
+        _remember_result(rows_m, src_m)
         if diagnostics_m.get("fallback_recommended"):
             logger.warning(
                 f"[日K] {code} tdxhub 连续超时，后续短时回退 fallback（{diagnostics_m.get('summary') or 'tdxhub degraded'}）"
             )
-        if _is_frame_fresh_enough(df_m, end_date):
-            return df_m, src_m
+        if _is_rows_fresh_enough(rows_m, end_date):
+            return rows_m, src_m
 
     if fallback_diagnostics is None:
-        df_fb, src_fb, fallback_diagnostics = await _fetch_daily_akshare_fallbacks(
+        rows_fb, src_fb, fallback_diagnostics = await _fetch_daily_akshare_fallbacks(
             code,
             start_date,
             end_date,
             safe_call=_safe_akshare_call,
         )
-        if df_fb is not None and not df_fb.empty:
-            _remember_result(df_fb, src_fb)
-        if _is_frame_fresh_enough(df_fb, end_date):
-            return df_fb, src_fb
+        if rows_fb:
+            _remember_result(rows_fb, src_fb)
+        if _is_rows_fresh_enough(rows_fb, end_date):
+            return rows_fb, src_fb
 
-    if best_df is not None and not best_df.empty:
-        return best_df, best_source
+    if best_rows:
+        return best_rows, best_source
 
     _raise_daily_fallback_error(fallback_diagnostics or {})
     return None, ""
@@ -439,7 +367,7 @@ async def fetch_stock_kline_monthly(code: str, limit: int = 36,
     end_date = end_date or datetime.now().strftime("%Y%m%d")
 
     try:
-        df = await _safe_akshare_call(
+        payload = await _safe_akshare_call(
             ak.stock_zh_a_hist,
             symbol=code,
             period="monthly",
@@ -448,14 +376,14 @@ async def fetch_stock_kline_monthly(code: str, limit: int = 36,
             adjust="qfq",
             timeout=30,
         )
-        norm = _normalize_price_frame(df, "eastmoney")
-        if norm is not None and not norm.empty:
+        rows = _normalize_price_rows(payload, "eastmoney")
+        if rows:
             from services.api_schemas import KLineDailyRow
             from pydantic import TypeAdapter, ValidationError
             try:
-                tail_df = norm.tail(limit)
-                TypeAdapter(list[KLineDailyRow]).validate_python(tail_df.to_dict('records'))
-                return tail_df, "eastmoney"
+                tail_rows = rows[-limit:]
+                TypeAdapter(list[KLineDailyRow]).validate_python(tail_rows)
+                return tail_rows, "eastmoney"
             except ValidationError as e:
                 logger.error(f"[月K] eastmoney 防腐层截断 - Schema校验失败: {e}")
                 # Fall back implicitly
@@ -463,10 +391,10 @@ async def fetch_stock_kline_monthly(code: str, limit: int = 36,
         logger.debug(f"[月K] {code} eastmoney 失败: {e}")
 
     try:
-        daily_df, source = await _fetch_daily_with_fallback(code, start_date, end_date)
-        monthly = _aggregate_monthly_from_daily(daily_df)
-        if monthly is not None and not monthly.empty:
-            return monthly.tail(limit), f"{source}_derived_monthly"
+        daily_rows, source = await _fetch_daily_with_fallback(code, start_date, end_date)
+        monthly = _aggregate_monthly_from_daily(daily_rows)
+        if monthly:
+            return monthly[-limit:], f"{source}_derived_monthly"
     except Exception as e:
         logger.warning(f"[月K] {code}: {e}")
     return None, ""
@@ -481,14 +409,14 @@ async def fetch_stock_kline_daily(code: str, days: int = 150,
     start = start_date or (datetime.now() - timedelta(days=days)).strftime("%Y%m%d")
 
     try:
-        df, source = await _fetch_daily_with_fallback(
+        rows, source = await _fetch_daily_with_fallback(
             code,
             start,
             end_date,
             prefer_fallback=prefer_fallback,
         )
-        if df is not None and not df.empty:
-            return df, source
+        if rows:
+            return rows, source
     except Exception as e:
         logger.warning(f"[日K] {code}: {e}")
     return None, ""
@@ -513,9 +441,9 @@ async def test_kline_availability(sample_code: str = "000001") -> dict:
         end_date,
         safe_call=_safe_akshare_call,
     ))
-    (df_m, src_m, tdxhub_diag), (df_fb, src_fb, fallback_diag) = await asyncio.gather(tdxhub_task, fallback_task)
+    (rows_m, src_m, tdxhub_diag), (rows_fb, src_fb, fallback_diag) = await asyncio.gather(tdxhub_task, fallback_task)
     result["tdxhub"] = tdxhub_diag
-    if df_m is not None and not df_m.empty and src_m:
+    if rows_m and src_m:
         result["available"] = True
         result["effective_source"] = src_m
         result["detail"] = src_m
@@ -523,7 +451,7 @@ async def test_kline_availability(sample_code: str = "000001") -> dict:
         return result
 
     result["fallback"] = fallback_diag
-    if df_fb is not None and not df_fb.empty and src_fb:
+    if rows_fb and src_fb:
         result["available"] = True
         result["effective_source"] = src_fb
         result["detail"] = f"{src_fb} fallback · {_summarize_tdxhub_attempts(tdxhub_diag.get('attempts') or [])}"
@@ -544,9 +472,7 @@ async def _fetch_etf_list_tdxhub() -> list[dict]:
     def _fetch_on_client(client):
         results = []
         for market in [0, 1]:
-            stocks = client.stocks_records(market=market)
-            if isinstance(stocks, pd.DataFrame):
-                stocks = stocks.to_dict("records")
+            stocks = _records_from_payload(client.stocks_records(market=market))
             if not stocks:
                 continue
             for row in stocks:
@@ -584,8 +510,8 @@ async def _fetch_etf_list_ths() -> list[dict]:
     import akshare as ak
 
     try:
-        df = await _safe_akshare_call(ak.fund_etf_spot_ths, timeout=25, retries=0)
-        results = _normalize_etf_spot_frame(df)
+        payload = await _safe_akshare_call(ak.fund_etf_spot_ths, timeout=25, retries=0)
+        results = _normalize_etf_spot_rows(payload)
         if results:
             logger.warning(f"[ETF] tdxhub ETF 列表不可用，已回退同花顺 ETF 列表源: {len(results)} 只")
         return results
@@ -623,21 +549,21 @@ async def fetch_etf_list() -> list[dict]:
 
 async def fetch_etf_kline(code: str, start_date: str, end_date: str):
     """获取 ETF K 线，优先 tdxhub，失败后回退股票 K 线降级链。"""
-    df, source, tdxhub_diag = await _fetch_daily_tdxhub_with_diagnostics(code, start_date, end_date)
-    if df is not None and not df.empty:
-        return df, source
+    rows, source, tdxhub_diag = await _fetch_daily_tdxhub_with_diagnostics(code, start_date, end_date)
+    if rows:
+        return rows, source
 
-    df_fb, source_fb, diagnostics = await _fetch_daily_akshare_fallbacks(
+    rows_fb, source_fb, diagnostics = await _fetch_daily_akshare_fallbacks(
         code,
         start_date,
         end_date,
         safe_call=_safe_akshare_call,
     )
-    if df_fb is not None and not df_fb.empty:
+    if rows_fb:
         logger.debug(
             f"[ETF] {code} tdxhub 不可用，回退 {source_fb}（{tdxhub_diag.get('summary') or _summarize_tdxhub_attempts(tdxhub_diag.get('attempts') or [])}）"
         )
-        return df_fb, source_fb
+        return rows_fb, source_fb
 
     if diagnostics.get("last_error"):
         logger.warning(f"[ETF] {code} ETF K 线回退失败: {diagnostics['last_error']}")
@@ -662,7 +588,7 @@ async def fetch_index_kline(code: str, start_date: str, end_date: str):
         else:
             mkt = 0  # 深市指数
 
-        df, _source = await asyncio.get_event_loop().run_in_executor(
+        payload, _source = await asyncio.get_event_loop().run_in_executor(
             None,
             lambda: call_tdx_quotes_with_retry(
                 lambda client: client.index_bars_records(
@@ -674,24 +600,15 @@ async def fetch_index_kline(code: str, start_date: str, end_date: str):
                 action_name=f"index_bars[{code}]",
             ),
         )
-        if df is None or (not isinstance(df, pd.DataFrame) and not df):
+        if _payload_is_empty(payload):
             return None, None
 
-        df = _tdx_payload_to_frame(df)
-        df = df.rename(columns={"vol": "volume"})
         start_fmt = f"{start_date[:4]}-{start_date[4:6]}-{start_date[6:8]}"
         end_fmt = f"{end_date[:4]}-{end_date[4:6]}-{end_date[6:8]}"
-        if "datetime" in df.columns:
-            df["date"] = df["datetime"].astype(str).str[:10]
-        else:
-            df["date"] = df.index.strftime("%Y-%m-%d") if hasattr(df.index, 'strftime') else ""
-        df = df[(df["date"] >= start_fmt) & (df["date"] <= end_fmt)]
-        if df.empty:
+        rows = _tdx_payload_to_kline_rows(payload, start_fmt, end_fmt)
+        if not rows:
             return None, None
-        for col in ["open", "high", "low", "close", "volume", "amount"]:
-            if col not in df.columns:
-                df[col] = None
-        return df[["date", "open", "high", "low", "close", "volume", "amount"]], "tdxhub_index"
+        return rows, "tdxhub_index"
     except Exception as e:
         logger.debug(f"[指数] {code} 失败: {e}")
         return None, None
@@ -702,11 +619,21 @@ async def fetch_trading_calendar():
     import akshare as ak
     import datetime
 
-    df = await _safe_akshare_call(ak.tool_trade_date_hist_sina, timeout=15)
-    if df is None:
+    payload = await _safe_akshare_call(ak.tool_trade_date_hist_sina, timeout=15)
+    if _payload_is_empty(payload):
         return []
 
     cutoff = datetime.date(2023, 1, 1)
-    df = df[df['trade_date'] >= cutoff]
-    return [d.strftime('%Y-%m-%d') if hasattr(d, 'strftime') else str(d)[:10]
-            for d in df['trade_date']]
+    results = []
+    for row in _records_from_payload(payload):
+        value = row.get("trade_date")
+        normalized = _normalize_fetch_date(value)
+        if not normalized:
+            continue
+        try:
+            if datetime.date.fromisoformat(normalized) < cutoff:
+                continue
+        except ValueError:
+            continue
+        results.append(normalized)
+    return results

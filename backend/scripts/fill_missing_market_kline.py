@@ -18,12 +18,11 @@ from collections import defaultdict
 from datetime import datetime
 from pathlib import Path
 
-import pandas as pd
-
 _ROOT = Path(__file__).resolve().parent.parent.parent
 sys.path.insert(0, str(_ROOT / "backend"))
 
 from services.akshare_client import fetch_stock_kline_daily
+from services.kline_source import aggregate_monthly_from_daily
 from services.db import get_conn
 from services.market_db import (
     get_market_conn,
@@ -79,26 +78,21 @@ def derive_monthly_from_daily(mkt_conn, codes: list[str]) -> tuple[int, int]:
         if not rows:
             continue
 
-        frame = pd.DataFrame([dict(r) for r in rows])
-        frame["date"] = pd.to_datetime(frame["date"])
-        frame["month"] = frame["date"].dt.to_period("M")
-        monthly_rows = []
-        for _, group in frame.groupby("month", sort=True):
-            group = group.sort_values("date")
-            monthly_rows.append(
-                {
-                    "code": code,
-                    "date": group.iloc[0]["date"].strftime("%Y-%m-01"),
-                    "freq": "monthly",
-                    "adjust": "qfq",
-                    "open": group.iloc[0]["open"],
-                    "high": group["high"].max(),
-                    "low": group["low"].min(),
-                    "close": group.iloc[-1]["close"],
-                    "volume": group["volume"].sum(min_count=1),
-                    "amount": group["amount"].sum(min_count=1),
-                }
-            )
+        monthly_rows = [
+            {
+                "code": code,
+                "date": row["date"],
+                "freq": "monthly",
+                "adjust": "qfq",
+                "open": row["open"],
+                "high": row["high"],
+                "low": row["low"],
+                "close": row["close"],
+                "volume": row.get("volume"),
+                "amount": row.get("amount"),
+            }
+            for row in aggregate_monthly_from_daily(rows)
+        ]
 
         if not monthly_rows:
             continue
@@ -161,12 +155,12 @@ async def main():
     async def fetch_one(code: str):
         async with sem:
             try:
-                df, source = await fetch_stock_kline_daily(
+                kline_records, source = await fetch_stock_kline_daily(
                     code,
                     start_date=args.start_date,
                     end_date=datetime.now().strftime("%Y%m%d"),
                 )
-                return code, df, source, None
+                return code, kline_records, source, None
             except Exception as exc:
                 return code, None, "", str(exc)
 
@@ -174,8 +168,8 @@ async def main():
     total = len(tasks)
 
     for idx, task in enumerate(asyncio.as_completed(tasks), start=1):
-        code, df, source, error = await task
-        if df is None or df.empty:
+        code, kline_records, source, error = await task
+        if not kline_records:
             failed_codes.append({"code": code, "error": error or "empty"})
         else:
             rows = [
@@ -191,7 +185,7 @@ async def main():
                     "volume": r.get("volume"),
                     "amount": r.get("amount"),
                 }
-                for _, r in df.iterrows()
+                for r in kline_records
             ]
             write_source = f"akshare_{source}" if source else "akshare_unknown"
             upsert_price_rows(mkt_conn, rows, source=write_source, batch_id=batch_id)

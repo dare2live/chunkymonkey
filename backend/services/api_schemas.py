@@ -10,7 +10,7 @@ from pydantic import BaseModel, ConfigDict
 
 
 # ==========================================
-# AKShare DataFrame Schemas (Row Level Validations)
+# AKShare records schemas (row-level validations)
 # ==========================================
 
 class KLineDailyRow(BaseModel):

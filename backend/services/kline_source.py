@@ -1,7 +1,8 @@
 import logging
 import time
+from datetime import datetime
+from typing import Optional
 
-import pandas as pd
 from pydantic import TypeAdapter, ValidationError
 
 from services.api_schemas import KLineDailyRow
@@ -26,14 +27,101 @@ def market_symbol(code: str) -> str:
     return f"sh{text}" if text.startswith("6") else f"sz{text}"
 
 
-def normalize_price_frame(df, source: str):
-    """Normalize upstream price frames into the shared daily schema."""
-    if df is None or df.empty:
-        return None
-    frame = df.copy()
+def payload_is_empty(payload) -> bool:
+    if payload is None:
+        return True
+    empty = getattr(payload, "empty", None)
+    if empty is not None:
+        try:
+            return bool(empty)
+        except Exception:
+            pass
+    try:
+        return len(payload) == 0
+    except Exception:
+        return False
 
+
+def records_from_payload(payload) -> list[dict]:
+    """Convert tabular or records-like payloads into plain dict rows."""
+    if payload is None:
+        return []
+    if isinstance(payload, dict):
+        return [dict(payload)]
+
+    to_dict = getattr(payload, "to_dict", None)
+    if callable(to_dict):
+        try:
+            records = to_dict("records")
+        except TypeError:
+            records = None
+        if records is not None:
+            index_values = []
+            try:
+                index_attr = getattr(payload, "index", None)
+                index_values = list(index_attr) if index_attr is not None else []
+            except Exception:
+                index_values = []
+            rows = []
+            for idx, row in enumerate(records):
+                item = dict(row)
+                if "date" not in item and "datetime" not in item and idx < len(index_values):
+                    item["datetime"] = index_values[idx]
+                rows.append(item)
+            return rows
+
+    if isinstance(payload, (str, bytes)):
+        return []
+
+    try:
+        iterator = iter(payload)
+    except TypeError:
+        return []
+
+    rows = []
+    for row in iterator:
+        if isinstance(row, dict):
+            rows.append(dict(row))
+            continue
+        if hasattr(row, "_asdict"):
+            rows.append(dict(row._asdict()))
+            continue
+        try:
+            rows.append(dict(row))
+        except Exception:
+            continue
+    return rows
+
+
+def normalize_date_value(value) -> Optional[str]:
+    if value is None:
+        return None
+    if hasattr(value, "strftime") and not isinstance(value, str):
+        try:
+            return value.strftime("%Y-%m-%d")
+        except Exception:
+            pass
+    text = str(value).strip()
+    if not text or text.lower() in {"none", "nan", "nat"}:
+        return None
+    if len(text) >= 10 and text[4] in {"-", "/"}:
+        return text[:10].replace("/", "-")
+    digits = "".join(ch for ch in text if ch.isdigit())
+    if len(digits) >= 8:
+        return f"{digits[:4]}-{digits[4:6]}-{digits[6:8]}"
+    return None
+
+
+def _compact_keys(row: dict) -> dict:
+    return {str(key).replace(" ", ""): value for key, value in row.items()}
+
+
+def normalize_price_rows(payload, source: str) -> list[dict]:
+    """Normalize upstream price payloads into shared daily-schema records."""
+    source = str(source or "")
+    column_map = {}
     if source == "eastmoney":
-        frame = frame.rename(columns={
+        column_map = {
             "日期": "date",
             "开盘": "open",
             "最高": "high",
@@ -41,46 +129,86 @@ def normalize_price_frame(df, source: str):
             "收盘": "close",
             "成交量": "volume",
             "成交额": "amount",
-        })
-    elif source == "tx":
-        if "volume" not in frame.columns:
-            frame["volume"] = None
-
-    required = ["date", "open", "high", "low", "close"]
-    if not all(col in frame.columns for col in required):
-        return None
-
-    for col in ["volume", "amount"]:
-        if col not in frame.columns:
-            frame[col] = None
-
-    frame = frame[["date", "open", "high", "low", "close", "volume", "amount"]].copy()
-    frame["date"] = frame["date"].astype(str).str[:10]
-    return frame
-
-
-def aggregate_monthly_from_daily(df: pd.DataFrame):
-    """Aggregate daily rows into monthly OHLCV rows."""
-    if df is None or df.empty:
-        return None
-    frame = df.copy()
-    frame["date"] = pd.to_datetime(frame["date"])
-    frame = frame.sort_values("date")
-    frame["month"] = frame["date"].dt.to_period("M")
+        }
 
     rows = []
-    for _, group in frame.groupby("month", sort=True):
-        group = group.sort_values("date")
+    for raw in records_from_payload(payload):
+        compact = _compact_keys(raw)
+        row = {column_map.get(key, key): value for key, value in compact.items()}
+        if "volume" not in row and "vol" in row:
+            row["volume"] = row["vol"]
+
+        date = normalize_date_value(row.get("date") or row.get("datetime"))
+        if not date or not all(key in row for key in ("open", "high", "low", "close")):
+            continue
+
         rows.append({
-            "date": group.iloc[0]["date"].strftime("%Y-%m-01"),
-            "open": group.iloc[0]["open"],
-            "high": group["high"].max(),
-            "low": group["low"].min(),
-            "close": group.iloc[-1]["close"],
-            "volume": group["volume"].sum(min_count=1),
-            "amount": group["amount"].sum(min_count=1),
+            "date": date,
+            "open": row.get("open"),
+            "high": row.get("high"),
+            "low": row.get("low"),
+            "close": row.get("close"),
+            "volume": row.get("volume"),
+            "amount": row.get("amount"),
         })
-    return pd.DataFrame(rows)
+    return rows
+
+
+def _number_or_none(value):
+    if value is None:
+        return None
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _sum_or_none(values):
+    numbers = [_number_or_none(value) for value in values]
+    numbers = [value for value in numbers if value is not None]
+    return sum(numbers) if numbers else None
+
+
+def _max_or_none(values):
+    numbers = [_number_or_none(value) for value in values]
+    numbers = [value for value in numbers if value is not None]
+    return max(numbers) if numbers else None
+
+
+def _min_or_none(values):
+    numbers = [_number_or_none(value) for value in values]
+    numbers = [value for value in numbers if value is not None]
+    return min(numbers) if numbers else None
+
+
+def aggregate_monthly_from_daily(rows) -> list[dict]:
+    """Aggregate daily records into monthly OHLCV records."""
+    normalized = normalize_price_rows(rows, "normalized")
+    if not normalized:
+        return []
+
+    normalized.sort(key=lambda row: row["date"])
+    groups: dict[str, list[dict]] = {}
+    for row in normalized:
+        try:
+            datetime.strptime(row["date"], "%Y-%m-%d")
+        except ValueError:
+            continue
+        groups.setdefault(row["date"][:7], []).append(row)
+
+    monthly = []
+    for month in sorted(groups):
+        group = groups[month]
+        monthly.append({
+            "date": f"{month}-01",
+            "open": group[0].get("open"),
+            "high": _max_or_none(row.get("high") for row in group),
+            "low": _min_or_none(row.get("low") for row in group),
+            "close": group[-1].get("close"),
+            "volume": _sum_or_none(row.get("volume") for row in group),
+            "amount": _sum_or_none(row.get("amount") for row in group),
+        })
+    return monthly
 
 
 async def fetch_daily_akshare_fallbacks(code: str, start_date: str, end_date: str, *, safe_call):
@@ -133,18 +261,18 @@ async def fetch_daily_akshare_fallbacks(code: str, start_date: str, end_date: st
         attempt = {"source": source, "ok": False}
         started_at = time.time()
         try:
-            df = await safe_call(func, timeout=30, retries=1, **kwargs)
-            norm = normalize_price_frame(df, source)
-            if norm is not None and not norm.empty:
+            payload = await safe_call(func, timeout=30, retries=1, **kwargs)
+            rows = normalize_price_rows(payload, source)
+            if rows:
                 try:
-                    TypeAdapter(list[KLineDailyRow]).validate_python(norm.to_dict("records"))
+                    TypeAdapter(list[KLineDailyRow]).validate_python(rows)
                     attempt["ok"] = True
-                    attempt["rows"] = len(norm)
+                    attempt["rows"] = len(rows)
                     attempt["elapsed_sec"] = round(time.time() - started_at, 3)
                     diagnostics["attempts"].append(attempt)
                     diagnostics["ok"] = True
                     diagnostics["effective_source"] = source
-                    return norm, source, diagnostics
+                    return rows, source, diagnostics
                 except ValidationError as err:
                     logger.error(f"[日K fallback] {source} 防腐层截断 - Schema校验失败: {err}")
                     last_err = ValueError(f"{source}: schema validation failed")

@@ -2509,14 +2509,14 @@ async def _step_sync_market_data(conn) -> int:
                         reason="正在尝试补齐月K",
                         commit=False,
                     )
-                df, source = await fetch_stock_kline_monthly(code, limit=36, start_date="20230101")
-                if df is not None and not df.empty:
+                kline_records, source = await fetch_stock_kline_monthly(code, limit=36, start_date="20230101")
+                if kline_records:
                     rows_data = [
                         {"code": code, "date": str(r["date"])[:10], "freq": "monthly",
                          "adjust": "qfq", "open": r["open"], "high": r["high"],
                          "low": r["low"], "close": r["close"],
                          "volume": r.get("volume"), "amount": r.get("amount")}
-                        for _, r in df.iterrows()
+                        for r in kline_records
                     ]
                     write_source = f"akshare_{source}" if source else "akshare_unknown"
                     upsert_price_rows(mkt_conn, rows_data, source=write_source)
@@ -2791,20 +2791,20 @@ async def _step_sync_market_data(conn) -> int:
                         )
                     start_date = _daily_fetch_start_date(code)
 
-                    df, source = await fetch_stock_kline_daily(
+                    kline_records, source = await fetch_stock_kline_daily(
                         code,
                         days=150,
                         start_date=start_date,
                         end_date=daily_end_date,
                         prefer_fallback=daily_prefer_fallback,
                     )
-                    if df is not None and not df.empty:
+                    if kline_records:
                         rows_data = [
                             {"code": code, "date": str(r["date"])[:10], "freq": "daily",
                              "adjust": "qfq", "open": r["open"], "high": r["high"],
                              "low": r["low"], "close": r["close"],
                              "volume": r.get("volume"), "amount": r.get("amount")}
-                            for _, r in df.iterrows()
+                            for r in kline_records
                         ]
                         rows_written = len(rows_data)
                         write_source = f"akshare_{source}" if source else "akshare_unknown"
