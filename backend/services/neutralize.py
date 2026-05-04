@@ -1,85 +1,195 @@
-"""中性化 — P1.6 (2026-04-28).
+"""Neutralization helpers for alpha scores.
 
-把"裸 alpha"剥离行业/市值红利, 得到"纯 alpha":
-- neutralize_by_group(scores, group): 减组均值 (行业中性化)
-- neutralize_by_quintile(scores, x, n_bins=5): x 分箱后组内减均值 (市值中性化)
-- neutralize(scores, industry, market_cap): 串联 industry → market_cap
-
-数据流:
-- 输入: pd.Series (index=stock_code, value=raw_score)
-- 输出: pd.Series (index=stock_code, value=neutral_score)
-
-简化版 (不引入 statsmodels OLS):
-- 行业中性化 = group_by(industry).demean
-- 市值中性化 = pd.qcut(market_cap, 5).groupby.demean
-- 同时去做 = 先行业 demean, 再市值 demean
-
-后续可改 OLS regression (alpha ~ industry_dummies + log(market_cap)).
+The public helpers accept mappings, sequences, or Series-like objects that
+expose ``items()``. Return values are plain dicts for keyed inputs and lists
+for positional inputs.
 """
 from __future__ import annotations
 
-import logging
+import math
+from collections import defaultdict
+from collections.abc import Mapping, Sequence
 from typing import Any
 
-logger = logging.getLogger("cm-api.neutralize")
+
+def _is_missing(value: Any) -> bool:
+    if value is None:
+        return True
+    try:
+        return math.isnan(float(value))
+    except (TypeError, ValueError):
+        return False
+
+
+def _coerce_indexed(values) -> tuple[list[Any], dict[Any, Any], str]:
+    if values is None:
+        return [], {}, "list"
+    if isinstance(values, Mapping):
+        return list(values.keys()), dict(values), "dict"
+    if isinstance(values, (str, bytes)):
+        return [0], {0: values}, "list"
+
+    items = getattr(values, "items", None)
+    if callable(items):
+        pairs = list(items())
+        return [key for key, _value in pairs], dict(pairs), "dict"
+
+    if isinstance(values, Sequence):
+        keys = list(range(len(values)))
+        return keys, {idx: values[idx] for idx in keys}, "list"
+
+    try:
+        rows = list(values)
+    except TypeError:
+        return [0], {0: values}, "list"
+    keys = list(range(len(rows)))
+    return keys, {idx: rows[idx] for idx in keys}, "list"
+
+
+def _coerce_by_key(values, default_keys: list[Any]) -> dict[Any, Any]:
+    _keys, indexed, kind = _coerce_indexed(values)
+    if kind == "dict":
+        return indexed
+    return {
+        key: indexed.get(pos)
+        for pos, key in enumerate(default_keys)
+    }
+
+
+def _format_result(keys: list[Any], values_by_key: dict[Any, Any], kind: str):
+    if kind == "dict":
+        return {key: values_by_key[key] for key in keys if key in values_by_key}
+    return [values_by_key.get(key) for key in keys]
 
 
 def neutralize_by_group(scores, groups):
-    """按 groups 分组, 减组均值. scores/groups 都是 pd.Series, index 一致."""
-    import pandas as pd
-    if not isinstance(scores, pd.Series):
-        scores = pd.Series(scores)
-    if not isinstance(groups, pd.Series):
-        groups = pd.Series(groups)
-    aligned = pd.DataFrame({"score": scores, "group": groups}).dropna(subset=["score"])
-    if aligned.empty:
-        return pd.Series(dtype=float)
-    group_mean = aligned.groupby("group")["score"].transform("mean")
-    return aligned["score"] - group_mean
+    """Subtract the within-group mean from each non-missing score."""
+    keys, score_by_key, kind = _coerce_indexed(scores)
+    group_by_key = _coerce_by_key(groups, keys)
+    values_by_group: dict[Any, list[float]] = defaultdict(list)
+
+    for key in keys:
+        score = score_by_key.get(key)
+        group = group_by_key.get(key)
+        if _is_missing(score) or _is_missing(group):
+            continue
+        values_by_group[group].append(float(score))
+
+    means = {
+        group: sum(values) / len(values)
+        for group, values in values_by_group.items()
+        if values
+    }
+    result = {}
+    for key in keys:
+        score = score_by_key.get(key)
+        group = group_by_key.get(key)
+        if _is_missing(score) or group not in means:
+            continue
+        result[key] = float(score) - means[group]
+    return _format_result(keys, result, kind)
+
+
+def _quantile_bins(items: list[tuple[Any, float]], n_bins: int) -> dict[Any, int]:
+    if not items:
+        return {}
+    bins = max(1, int(n_bins or 1))
+    sorted_items = sorted(items, key=lambda item: (item[1], str(item[0])))
+    if sorted_items[0][1] == sorted_items[-1][1]:
+        return {key: 0 for key, _value in sorted_items}
+    total = len(sorted_items)
+    return {
+        key: min(int(pos * bins / total), bins - 1)
+        for pos, (key, _value) in enumerate(sorted_items)
+    }
 
 
 def neutralize_by_quintile(scores, x, n_bins: int = 5):
-    """按 x 分 n_bins 个分位组, 组内减均值."""
-    import pandas as pd
-    if not isinstance(scores, pd.Series):
-        scores = pd.Series(scores)
-    if not isinstance(x, pd.Series):
-        x = pd.Series(x)
-    aligned = pd.DataFrame({"score": scores, "x": x}).dropna()
-    if aligned.empty:
-        return pd.Series(dtype=float)
-    try:
-        # qcut 失败 (重复值多) → cut 等距
-        bins = pd.qcut(aligned["x"], q=n_bins, labels=False, duplicates="drop")
-    except Exception:
-        bins = pd.cut(aligned["x"], bins=n_bins, labels=False)
-    aligned["bin"] = bins
-    group_mean = aligned.groupby("bin")["score"].transform("mean")
-    return aligned["score"] - group_mean
+    """Bucket by x rank and subtract the within-bucket mean."""
+    keys, score_by_key, kind = _coerce_indexed(scores)
+    x_by_key = _coerce_by_key(x, keys)
+
+    scored_items = []
+    for key in keys:
+        score = score_by_key.get(key)
+        x_value = x_by_key.get(key)
+        if _is_missing(score) or _is_missing(x_value):
+            continue
+        scored_items.append((key, float(x_value)))
+
+    bins_by_key = _quantile_bins(scored_items, n_bins)
+    values_by_bin: dict[int, list[float]] = defaultdict(list)
+    for key, bin_id in bins_by_key.items():
+        values_by_bin[bin_id].append(float(score_by_key[key]))
+
+    means = {
+        bin_id: sum(values) / len(values)
+        for bin_id, values in values_by_bin.items()
+        if values
+    }
+    result = {
+        key: float(score_by_key[key]) - means[bin_id]
+        for key, bin_id in bins_by_key.items()
+        if bin_id in means
+    }
+    return _format_result(keys, result, kind)
 
 
 def neutralize(scores, industry=None, market_cap=None, market_cap_bins: int = 5):
-    """组合中性化: 先行业 demean, 再市值 quintile demean. 任一缺失则跳过该步."""
-    import pandas as pd
-    if not isinstance(scores, pd.Series):
-        scores = pd.Series(scores)
-    out = scores.copy()
+    """Apply industry de-mean first, then market-cap bucket de-mean."""
+    keys, _score_by_key, kind = _coerce_indexed(scores)
+    out = scores
     if industry is not None:
-        out = neutralize_by_group(out, industry).reindex(out.index, fill_value=None)
+        out = neutralize_by_group(out, industry)
     if market_cap is not None:
-        out = neutralize_by_quintile(out, market_cap, n_bins=market_cap_bins).reindex(out.index, fill_value=None)
-    return out
+        out = neutralize_by_quintile(out, market_cap, n_bins=market_cap_bins)
+
+    _out_keys, out_by_key, out_kind = _coerce_indexed(out)
+    if kind == "dict" and out_kind != "dict":
+        out_by_key = {key: out_by_key.get(pos) for pos, key in enumerate(keys)}
+    elif kind == "list" and out_kind == "dict":
+        out_by_key = {key: out_by_key.get(key) for key in keys}
+    return _format_result(keys, out_by_key, kind)
 
 
 def standardize(scores):
-    """z-score 标准化. (x - mean) / std."""
-    import pandas as pd
-    if not isinstance(scores, pd.Series):
-        scores = pd.Series(scores)
-    s = scores.dropna()
-    if s.empty:
-        return scores
-    sd = s.std(ddof=1)
-    if not sd or sd == 0:
-        return scores - s.mean()
-    return (scores - s.mean()) / sd
+    """Sample z-score standardization for non-missing scores."""
+    keys, score_by_key, kind = _coerce_indexed(scores)
+    values = [
+        float(score_by_key[key])
+        for key in keys
+        if not _is_missing(score_by_key.get(key))
+    ]
+    if not values:
+        return _format_result(keys, score_by_key, kind)
+
+    mean = sum(values) / len(values)
+    if len(values) < 2:
+        return _format_result(
+            keys,
+            {
+                key: None if _is_missing(score_by_key.get(key)) else float(score_by_key[key]) - mean
+                for key in keys
+            },
+            kind,
+        )
+
+    variance = sum((value - mean) ** 2 for value in values) / (len(values) - 1)
+    sd = math.sqrt(variance)
+    if not sd:
+        return _format_result(
+            keys,
+            {
+                key: None if _is_missing(score_by_key.get(key)) else float(score_by_key[key]) - mean
+                for key in keys
+            },
+            kind,
+        )
+    return _format_result(
+        keys,
+        {
+            key: None if _is_missing(score_by_key.get(key)) else (float(score_by_key[key]) - mean) / sd
+            for key in keys
+        },
+        kind,
+    )
