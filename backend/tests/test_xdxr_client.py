@@ -3,7 +3,6 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 from unittest import mock
 
-import pandas as pd
 import pytest
 
 
@@ -13,48 +12,46 @@ from services import market_db, xdxr_client
 
 
 class _DummyXdxrClient:
-    def xdxr(self, symbol: str):
+    def xdxr_records(self, symbol: str):
         assert symbol == "600036"
-        return pd.DataFrame(
-            [
-                {
-                    "year": 2024,
-                    "month": 6,
-                    "day": 18,
-                    "category": 1,
-                    "name": "除权除息",
-                    "fenhong": 1.25,
-                    "peigujia": None,
-                    "songzhuangu": 0.5,
-                    "peigu": 0.0,
-                    "suogu": None,
-                    "panqianliutong": 1000.0,
-                    "panhouliutong": 1500.0,
-                    "qianzongguben": 2000.0,
-                    "houzongguben": 2500.0,
-                    "fenshu": None,
-                    "xingquanjia": None,
-                },
-                {
-                    "year": 2025,
-                    "month": 1,
-                    "day": 10,
-                    "category": 5,
-                    "name": "股本变化",
-                    "fenhong": None,
-                    "peigujia": None,
-                    "songzhuangu": None,
-                    "peigu": None,
-                    "suogu": None,
-                    "panqianliutong": 1500.0,
-                    "panhouliutong": 1800.0,
-                    "qianzongguben": 2500.0,
-                    "houzongguben": 2800.0,
-                    "fenshu": None,
-                    "xingquanjia": None,
-                },
-            ]
-        )
+        return [
+            {
+                "year": 2024,
+                "month": 6,
+                "day": 18,
+                "category": 1,
+                "name": "除权除息",
+                "fenhong": 1.25,
+                "peigujia": None,
+                "songzhuangu": 0.5,
+                "peigu": 0.0,
+                "suogu": None,
+                "panqianliutong": 1000.0,
+                "panhouliutong": 1500.0,
+                "qianzongguben": 2000.0,
+                "houzongguben": 2500.0,
+                "fenshu": None,
+                "xingquanjia": None,
+            },
+            {
+                "year": 2025,
+                "month": 1,
+                "day": 10,
+                "category": 5,
+                "name": "股本变化",
+                "fenhong": None,
+                "peigujia": None,
+                "songzhuangu": None,
+                "peigu": None,
+                "suogu": None,
+                "panqianliutong": 1500.0,
+                "panhouliutong": 1800.0,
+                "qianzongguben": 2500.0,
+                "houzongguben": 2800.0,
+                "fenshu": None,
+                "xingquanjia": None,
+            },
+        ]
 
 
 @pytest.mark.asyncio
@@ -70,7 +67,10 @@ async def test_sync_xdxr_for_codes_persists_rows_and_state():
                 with mock.patch.object(
                     xdxr_client,
                     "call_tdx_quotes_with_retry",
-                    return_value=(_DummyXdxrClient().xdxr("600036"), "tdxhub_1.2.3.4:7709"),
+                    return_value=(
+                        _DummyXdxrClient().xdxr_records("600036"),
+                        "tdxhub_1.2.3.4:7709",
+                    ),
                 ):
                     result = await xdxr_client.sync_xdxr_for_codes(conn, ["600036"])
 

@@ -12,8 +12,6 @@ import logging
 from datetime import datetime, timedelta
 from typing import Optional
 
-import pandas as pd
-
 from services.market_db import (
     get_all_xdxr_sync_states,
     replace_xdxr_rows,
@@ -69,8 +67,13 @@ def _is_recent_successful_sync(state: dict, cooldown_hours: int = 24) -> bool:
 
 
 def _optional_float(value):
-    if value is None or pd.isna(value):
+    if value is None:
         return None
+    try:
+        if value != value:
+            return None
+    except Exception:
+        pass
     try:
         return float(value)
     except Exception:
@@ -83,8 +86,6 @@ def _optional_int(value):
 
 
 def _normalize_xdxr_records(code: str, records: list[dict]) -> list[dict]:
-    if isinstance(records, pd.DataFrame):
-        records = records.to_dict("records")
     if not records:
         return []
 
