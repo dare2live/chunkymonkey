@@ -20,10 +20,9 @@ import pickle
 import sys
 from datetime import datetime
 from pathlib import Path
+from typing import Any
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-
-import pandas as pd
 
 from services.db import get_conn
 from services.model_feature_schema import (
@@ -164,8 +163,72 @@ def load_model_feature_cols(conn, model_id: str, *, allow_legacy: bool) -> list[
 
 def get_top_features(model, feature_cols: list[str], top_k: int = 5) -> list[tuple[str, float]]:
     imp = model.feature_importance(importance_type='gain')
-    pairs = sorted(zip(feature_cols, imp.tolist()), key=lambda x: x[1], reverse=True)
+    importances = imp.tolist() if hasattr(imp, "tolist") else list(imp)
+    pairs = sorted(zip(feature_cols, importances), key=lambda x: x[1], reverse=True)
     return pairs[:top_k]
+
+
+def _records_from_cursor(cursor: Any) -> list[dict[str, Any]]:
+    names = [desc[0] for desc in (cursor.description or [])]
+    return [
+        {name: value for name, value in zip(names, row)}
+        for row in cursor.fetchall()
+    ]
+
+
+def _feature_value(value: Any) -> float:
+    if value is None:
+        return float("nan")
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return float("nan")
+
+
+def _rank_percentiles(values: list[float]) -> list[float]:
+    """Match pandas rank(pct=True) average-tie semantics for prediction scores."""
+    n = len(values)
+    if n == 0:
+        return []
+    indexed = sorted(enumerate(values), key=lambda item: item[1])
+    ranks = [0.0] * n
+    pos = 0
+    while pos < n:
+        end = pos + 1
+        while end < n and indexed[end][1] == indexed[pos][1]:
+            end += 1
+        avg_rank = ((pos + 1) + end) / 2.0
+        pct = avg_rank / n
+        for idx in range(pos, end):
+            ranks[indexed[idx][0]] = pct
+        pos = end
+    return ranks
+
+
+def _percentile_linear(values: list[float], percentile: float) -> float | None:
+    if not values:
+        return None
+    ordered = sorted(values)
+    if len(ordered) == 1:
+        return float(ordered[0])
+    position = (len(ordered) - 1) * percentile / 100.0
+    lower = int(position)
+    upper = min(lower + 1, len(ordered) - 1)
+    weight = position - lower
+    return float(ordered[lower] * (1.0 - weight) + ordered[upper] * weight)
+
+
+def _top_by_regime(rows: list[dict[str, Any]], top_k: int) -> list[dict[str, Any]]:
+    counts: dict[str, int] = {}
+    selected = []
+    for row in rows:
+        regime = str(row.get("regime_flag") or "")
+        count = counts.get(regime, 0)
+        if count >= top_k:
+            continue
+        selected.append(row)
+        counts[regime] = count + 1
+    return selected
 
 
 def main():
@@ -257,30 +320,33 @@ def main():
     if has_feature_set_id and args.feature_set_id:
         where.append("p.feature_set_id = ?")
         params.append(args.feature_set_id)
-    df = duck.execute(
+    records = _records_from_cursor(duck.execute(
         f"SELECT p.*{a158_sel} FROM {args.feature_table} p {a158_join} WHERE {' AND '.join(where)}",
         params,
-    ).df()
-    if df.empty:
+    ))
+    if not records:
         logger.error("fact_feature_panel 里没有 %s 的行", target_date)
         return
-    logger.info("panel rows %d for %s (+ %d Alpha158 cols)", len(df), target_date, len(a158_cols))
+    panel_cols = set(records[0].keys())
+    logger.info("panel rows %d for %s (+ %d Alpha158 cols)", len(records), target_date, len(a158_cols))
 
     # 训练使用了 regime-aware (one-hot), 评分需对齐
-    if 'regime_flag' in df.columns:
-        for flag in ['up', 'flat', 'down']:
-            df[f'regime_{flag}'] = (df['regime_flag'] == flag).astype(int)
+    if 'regime_flag' in panel_cols:
+        for row in records:
+            for flag in ['up', 'flat', 'down']:
+                row[f'regime_{flag}'] = 1 if row.get('regime_flag') == flag else 0
+        panel_cols.update(REGIME_FEATURE_COLS)
 
     n_trained = model.num_feature() if hasattr(model, 'num_feature') else None
     if stored_feature_cols:
-        missing = [c for c in stored_feature_cols if c not in df.columns]
+        missing = [c for c in stored_feature_cols if c not in panel_cols]
         if missing:
             raise RuntimeError(f"模型 {model_id} 需要的特征在 panel 中缺失: {missing}")
         feature_cols = stored_feature_cols
     else:
         # 训练时的顺序: FEATURE_COLS (按存在性过滤) + regime one-hot (如训练用了 regime_aware)
-        candidate = [c for c in FEATURE_COLS if c in df.columns]
-        regime_onehot = [f for f in REGIME_FEATURE_COLS if f in df.columns]
+        candidate = [c for c in FEATURE_COLS if c in panel_cols]
+        regime_onehot = [f for f in REGIME_FEATURE_COLS if f in panel_cols]
         # 先不加 one-hot; 对齐训练时特征数
         if n_trained == len(candidate):
             feature_cols = candidate
@@ -293,12 +359,17 @@ def main():
     logger.info("使用 %d 特征评分 (model n_feat=%s)", len(feature_cols), n_trained)
     if n_trained is not None and len(feature_cols) != n_trained:
         raise RuntimeError(f"特征数不匹配: model={n_trained}, panel={len(feature_cols)}")
-    X = df[feature_cols].values
+    X = [[_feature_value(row.get(col)) for col in feature_cols] for row in records]
     # LightGBM 对 Column_N 模型 predict 时忽略 feature_name, 按顺序吃 X
-    df['pred_score'] = model.predict(X, predict_disable_shape_check=False)
-    df = df.sort_values('pred_score', ascending=False).reset_index(drop=True)
-    df['rank_in_date'] = df.index + 1
-    df['percentile'] = df['pred_score'].rank(pct=True)
+    predictions = model.predict(X, predict_disable_shape_check=False)
+    pred_scores = [float(value) for value in predictions]
+    percentiles = _rank_percentiles(pred_scores)
+    for idx, row in enumerate(records):
+        row['pred_score'] = pred_scores[idx]
+        row['percentile'] = percentiles[idx]
+    records.sort(key=lambda row: row['pred_score'], reverse=True)
+    for idx, row in enumerate(records, 1):
+        row['rank_in_date'] = idx
 
     # top features (模型级, 所有股共享)
     top_feats = get_top_features(model, feature_cols, top_k=8)
@@ -306,31 +377,40 @@ def main():
                                  ensure_ascii=False)
 
     # 写入
-    output = df[['stock_code', 'rank_in_date', 'pred_score', 'percentile', 'regime_flag']].copy()
-    output['snapshot_date'] = target_date
-    output['model_id'] = model_id
-    output['key_features_json'] = features_json
     track_id = args.track_id
     if not track_id:
         track_id = 'primary' if args.mode == 'champion' else f"shadow_{model_id}"
     is_primary = bool(args.is_primary) or (args.mode == 'champion' and model_id == champion_id)
     if args.mode == 'shadow':
         is_primary = False
-    output['track_id'] = track_id
-    output['is_primary'] = is_primary
-    output['run_mode'] = args.mode
     built_at = datetime.utcnow().isoformat()
-    output['built_at'] = built_at
+    output = [
+        {
+            'stock_code': row.get('stock_code'),
+            'rank_in_date': row['rank_in_date'],
+            'pred_score': row['pred_score'],
+            'percentile': row['percentile'],
+            'regime_flag': row.get('regime_flag'),
+            'snapshot_date': target_date,
+            'model_id': model_id,
+            'key_features_json': features_json,
+            'track_id': track_id,
+            'is_primary': is_primary,
+            'run_mode': args.mode,
+            'built_at': built_at,
+        }
+        for row in records
+    ]
 
     # 限制 top_k
     if not args.by_regime:
-        output = output.head(args.top_k)
+        output = output[:args.top_k]
     else:
-        output = output.groupby('regime_flag', group_keys=False).head(args.top_k).reset_index(drop=True)
+        output = _top_by_regime(output, args.top_k)
 
     logger.info("写入 %d 条推荐 (track_id=%s, is_primary=%s)",
                 len(output), track_id, is_primary)
-    for _, r in output.iterrows():
+    for r in output:
         conn.execute(
             """INSERT OR REPLACE INTO mart_daily_recommendation
                (snapshot_date, stock_code, model_id, rank_in_date, pred_score, percentile,
@@ -358,9 +438,12 @@ def main():
 
     # 输出 top-20 预览
     logger.info("=" * 60)
-    logger.info("Top 20 推荐 (snapshot=%s, regime=%s):", target_date,
-                df['regime_flag'].iloc[0] if 'regime_flag' in df.columns else 'n/a')
-    for i, r in output.head(20).iterrows():
+    logger.info(
+        "Top 20 推荐 (snapshot=%s, regime=%s):",
+        target_date,
+        records[0].get('regime_flag') if records and 'regime_flag' in panel_cols else 'n/a',
+    )
+    for r in output[:20]:
         logger.info("  [%d] %s  score=%.4f  pct=%.3f  regime=%s",
                     r['rank_in_date'], r['stock_code'],
                     r['pred_score'], r['percentile'], r.get('regime_flag') or '-')
@@ -438,10 +521,9 @@ def write_risk_summary(conn, duck, *, snapshot_date: str, model_id: str,
     top1_share = (sorted_inds[0][1] / n) if sorted_inds else 0.0
     top3_share = (sum(c for _, c in sorted_inds[:3]) / n) if sorted_inds else 0.0
 
-    import numpy as np
     if amounts:
-        amt_p25 = float(np.percentile(amounts, 25, method="linear"))
-        amt_p50 = float(np.percentile(amounts, 50, method="linear"))
+        amt_p25 = _percentile_linear(amounts, 25)
+        amt_p50 = _percentile_linear(amounts, 50)
     else:
         amt_p25 = amt_p50 = None
 

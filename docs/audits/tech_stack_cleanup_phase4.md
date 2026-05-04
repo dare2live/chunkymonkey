@@ -27,6 +27,8 @@ records/native feature math and direct DuckDB writes.
 The TDX boundary loop removed the remaining pandas-backed test fixtures by
 teaching F10 extra and gpcw ingestion boundaries to consume records payloads
 while preserving duck-typed table compatibility.
+The daily TopK loop converted recommendation scoring and risk-summary
+percentiles to records/native helpers.
 
 ## Change
 
@@ -122,6 +124,10 @@ while preserving duck-typed table compatibility.
   addition to duck-typed table payloads.
 - Converted gpcw sync row extraction and wide-row writes to a records adapter
   that keeps existing tdxhub table compatibility.
+- Removed pandas/numpy from `backend/scripts/run_daily_topk.py`.
+- Converted TopK scoring input, rank percentiles, per-regime truncation, and
+  risk amount percentiles to records/native helpers.
+- Added `backend/tests/test_run_daily_topk.py`.
 
 ## Validation
 
@@ -357,6 +363,21 @@ python3 -m pytest backend/tests/test_tdx_source.py backend/tests/test_tdx_f10_ex
 
 python3 -m pytest backend/tests -q
 # 322 passed
+
+python3 backend/scripts/data_health_snapshot.py --dry-run
+# green=147/yellow=0/red=0
+
+rg -n "import pandas|from pandas|pd\.|DataFrame|read_sql_query|\.to_sql\(|\.df\(|register\(|import numpy|from numpy|np\." backend/scripts/run_daily_topk.py backend/tests/test_run_daily_topk.py -S
+# 0 matches
+
+python3 -m py_compile backend/scripts/run_daily_topk.py backend/tests/test_run_daily_topk.py
+# passed
+
+python3 -m pytest backend/tests/test_run_daily_topk.py backend/tests/test_tdx_keep_productionization.py -q
+# 8 passed
+
+python3 -m pytest backend/tests -q
+# 325 passed
 
 python3 backend/scripts/data_health_snapshot.py --dry-run
 # green=147/yellow=0/red=0
