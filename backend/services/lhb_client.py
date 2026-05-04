@@ -19,8 +19,6 @@ import logging
 from datetime import date, datetime, timedelta
 from typing import Any, Optional
 
-import pandas as pd
-
 logger = logging.getLogger("cm-api")
 
 LHB_SOURCE = "miaoxiang_RPT_DAILYBILLBOARD_DETAILSNEW"
@@ -162,9 +160,8 @@ def _fetch_lhb_akshare(start_date: str, end_date: str):
 def _fetch_lhb(start_date: str, end_date: str):
     """龙虎榜: 主源 妙想 + fallback ak.stock_lhb_detail_em (P0.3 2026-04-28).
 
-    start_date / end_date: YYYYMMDD, 返回 DataFrame.
+    start_date / end_date: YYYYMMDD, 返回中文标准字段 records.
     """
-    import pandas as _pd
     from services.data_sources.fallback import with_fallback
 
     rows, _ = with_fallback(
@@ -175,9 +172,8 @@ def _fetch_lhb(start_date: str, end_date: str):
         fallback_label="akshare",
     )
     if not rows:
-        return _pd.DataFrame()
-    df = _pd.DataFrame(rows)
-    df.rename(columns={
+        return []
+    rename_map = {
         "SECURITY_CODE": "代码",
         "SECURITY_NAME_ABBR": "名称",
         "TRADE_DATE": "上榜日",
@@ -198,18 +194,21 @@ def _fetch_lhb(start_date: str, end_date: str):
         "D2_CLOSE_ADJCHRATE": "上榜后2日",
         "D5_CLOSE_ADJCHRATE": "上榜后5日",
         "D10_CLOSE_ADJCHRATE": "上榜后10日",
-    }, inplace=True)
-    return df
+    }
+    return [
+        {rename_map.get(key, key): value for key, value in row.items()}
+        for row in rows
+    ]
 
 
-async def fetch_lhb_range(start_date: str, end_date: str, retries: int = 3) -> pd.DataFrame:
+async def fetch_lhb_range(start_date: str, end_date: str, retries: int = 3) -> list[dict]:
     """区间拉取，start/end 格式 YYYYMMDD。"""
     loop = asyncio.get_running_loop()
     last_error: Optional[Exception] = None
     for attempt in range(retries):
         try:
-            df = await loop.run_in_executor(None, _fetch_lhb, start_date, end_date)
-            return df if df is not None else pd.DataFrame()
+            rows = await loop.run_in_executor(None, _fetch_lhb, start_date, end_date)
+            return rows or []
         except Exception as exc:
             last_error = exc
             logger.warning(
@@ -231,14 +230,15 @@ _COL_REQUIRED = (
 )
 
 
-def _normalize_rows(df: pd.DataFrame) -> list[dict]:
-    if df is None or df.empty:
+def _normalize_rows(rows: list[dict] | None) -> list[dict]:
+    if not rows:
         return []
-    missing = [c for c in _COL_REQUIRED if c not in df.columns]
+    available = set().union(*(row.keys() for row in rows))
+    missing = [c for c in _COL_REQUIRED if c not in available]
     if missing:
         raise RuntimeError(f"lhb_columns_missing:{missing}")
     out: list[dict] = []
-    for r in df.to_dict("records"):
+    for r in rows:
         stock_code = _normalize_stock_code(r.get("代码"))
         trade_date = _normalize_date(r.get("上榜日"))
         rank_reason = str(r.get("上榜原因") or "").strip()
@@ -307,7 +307,7 @@ async def sync_lhb_range(
     s = start_date.replace("-", "")
     e = end_date.replace("-", "")
     try:
-        df = await fetch_lhb_range(s, e)
+        source_rows = await fetch_lhb_range(s, e)
     except Exception as exc:
         logger.warning(f"[龙虎榜] {start_date}~{end_date} 拉取失败: {exc}")
         return {
@@ -319,10 +319,10 @@ async def sync_lhb_range(
             "written_rows": 0,
         }
 
-    rows = _normalize_rows(df)
+    rows = _normalize_rows(source_rows)
     written = _upsert_rows(conn, rows)
     logger.info(
-        f"[龙虎榜] {start_date}~{end_date} 同步完成: raw={len(df)} 行 written={written}"
+        f"[龙虎榜] {start_date}~{end_date} 同步完成: raw={len(source_rows)} 行 written={written}"
     )
     return {
         "source": LHB_SOURCE,
@@ -330,7 +330,7 @@ async def sync_lhb_range(
         "end_date": end_date,
         "status": "ok" if written > 0 else "empty",
         "written_rows": written,
-        "raw_rows": int(len(df)),
+        "raw_rows": int(len(source_rows)),
     }
 
 

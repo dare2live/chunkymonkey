@@ -5,8 +5,8 @@ Date: 2026-05-05
 ## Scope
 
 Phase 4 starts with the data-source adapter layer. The first closed loops
-removed pandas from xdxr and margin sync clients after their fetch boundaries
-were reduced to records.
+removed pandas from xdxr, margin, and LHB sync clients after their fetch
+boundaries were reduced to records.
 
 ## Change
 
@@ -19,6 +19,10 @@ were reduced to records.
   boundary.
 - Updated `backend/tests/test_margin_client.py` fixtures from DataFrame to
   records.
+- Removed `import pandas` from `backend/services/lhb_client.py`.
+- Converted LHB source fetch and canonical field mapping to records.
+- Updated `backend/tests/test_lhb_client.py` fixtures from DataFrame to
+  records.
 
 ## Validation
 
@@ -28,6 +32,9 @@ rg -n "import pandas|from pandas|pd\.|DataFrame" backend/services/xdxr_client.py
 # 0 matches
 
 rg -n "import pandas|from pandas|pd\.|DataFrame" backend/services/margin_client.py backend/tests/test_margin_client.py -S
+# 0 matches
+
+rg -n "import pandas|from pandas|pd\.|DataFrame" backend/services/lhb_client.py backend/tests/test_lhb_client.py -S
 # 0 matches
 
 python3 -m py_compile backend/services/xdxr_client.py backend/tests/test_xdxr_client.py
@@ -44,13 +51,18 @@ python3 -m pytest backend/tests/test_margin_client.py -q
 
 python3 -m pytest backend/tests/test_margin_client.py backend/tests/test_xdxr_client.py backend/tests/test_block_client.py -q
 # 17 passed
+
+python3 -m pytest backend/tests/test_lhb_client.py -q
+# 8 passed
+
+python3 -m pytest backend/tests/test_lhb_client.py backend/tests/test_margin_client.py backend/tests/test_xdxr_client.py backend/tests/test_block_client.py -q
+# 25 passed
 ```
 
 ## Remaining Phase 4 Targets
 
 - `backend/services/akshare_client.py`
 - `backend/services/kline_source.py`
-- `backend/services/lhb_client.py`
 - `backend/services/qfii_client.py`
 - `backend/services/institution_survey_client.py`
 - pandas usage in scripts and model/backtest layers.

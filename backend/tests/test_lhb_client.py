@@ -4,16 +4,14 @@ import asyncio
 import sys
 from pathlib import Path
 
-import pandas as pd
-
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from conftest import duck_mem
 from services import lhb_client
 
 
-def _lhb_df():
-    return pd.DataFrame([
+def _lhb_rows():
+    return [
         {
             "序号": 1, "代码": "000657", "名称": "中钨高新",
             "上榜日": "2026-04-20", "解读": "3家机构买入",
@@ -36,11 +34,11 @@ def _lhb_df():
             "上榜原因": "日换手率达到20%的前5只证券",
             "上榜后1日": None, "上榜后2日": None, "上榜后5日": None, "上榜后10日": None,
         },
-    ])
+    ]
 
 
 def test_normalize_rows_splits_by_rank_reason():
-    rows = lhb_client._normalize_rows(_lhb_df())
+    rows = lhb_client._normalize_rows(_lhb_rows())
     assert len(rows) == 2
     reasons = {r["rank_reason"] for r in rows}
     assert reasons == {
@@ -55,7 +53,7 @@ def test_normalize_rows_splits_by_rank_reason():
 
 def test_normalize_rows_raises_on_missing_column():
     try:
-        lhb_client._normalize_rows(pd.DataFrame([{"代码": "000001"}]))
+        lhb_client._normalize_rows([{"代码": "000001"}])
     except RuntimeError as exc:
         assert "lhb_columns_missing" in str(exc)
     else:
@@ -69,7 +67,7 @@ def test_sync_lhb_range_upserts_rows(monkeypatch):
     async def _fake_fetch(s, e, retries: int = 3):
         assert s == "20260418"
         assert e == "20260421"
-        return _lhb_df()
+        return _lhb_rows()
 
     monkeypatch.setattr(lhb_client, "fetch_lhb_range", _fake_fetch)
 
@@ -89,7 +87,7 @@ def test_sync_lhb_is_idempotent(monkeypatch):
     lhb_client.ensure_tables(conn)
 
     async def _fake_fetch(s, e, retries: int = 3):
-        return _lhb_df()
+        return _lhb_rows()
 
     monkeypatch.setattr(lhb_client, "fetch_lhb_range", _fake_fetch)
     asyncio.run(lhb_client.sync_lhb_range(conn, "2026-04-18", "2026-04-21"))
@@ -130,11 +128,12 @@ def test_backfill_iterates_months(monkeypatch):
 
     async def _fake_fetch(s, e, retries: int = 3):
         calls.append((s, e))
-        df = _lhb_df().copy()
+        rows = [dict(row) for row in _lhb_rows()]
         # 让每个月的 trade_date 落在当月，避免不同月份主键冲突
-        df.loc[:, "上榜日"] = f"{s[:4]}-{s[4:6]}-15"
+        for row in rows:
+            row["上榜日"] = f"{s[:4]}-{s[4:6]}-15"
         # 让 reason 在不同月也不冲突（同原因但不同日期会自然区分）
-        return df
+        return rows
 
     monkeypatch.setattr(lhb_client, "fetch_lhb_range", _fake_fetch)
 
