@@ -406,20 +406,12 @@ def test_capability(body: TestCapabilityIn):
     except Exception as exc:
         raise HTTPException(500, f"{type(exc).__name__}: {exc}")
 
-    # 简化输出 (DataFrame / list / dict 都能展示)
+    # 简化输出，兼容 records / list / dict / table-like objects.
     preview: Any
     try:
-        import pandas as pd
-        if isinstance(data, pd.DataFrame):
+        if isinstance(data, list):
             preview = {
-                "type": "DataFrame",
-                "shape": list(data.shape),
-                "columns": list(data.columns),
-                "head": data.head(5).to_dict(orient="records"),
-            }
-        elif isinstance(data, list):
-            preview = {
-                "type": "list",
+                "type": "records" if data and isinstance(data[0], dict) else "list",
                 "len": len(data),
                 "head": data[:5],
             }
@@ -428,6 +420,15 @@ def test_capability(body: TestCapabilityIn):
                 "type": "dict",
                 "keys": list(data.keys())[:20],
                 "head": {k: data[k] for k in list(data.keys())[:5]},
+            }
+        elif hasattr(data, "to_dict"):
+            try:
+                records = data.to_dict("records")
+            except TypeError:
+                records = data.to_dict()
+            preview = {
+                "type": type(data).__name__,
+                "head": records[:5] if isinstance(records, list) else records,
             }
         else:
             preview = {"type": type(data).__name__, "value": str(data)[:300]}
