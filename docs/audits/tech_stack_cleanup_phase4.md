@@ -37,6 +37,9 @@ records/native helpers.
 The TDX challenger report loop converted rank-ensemble scoring and holdout
 metrics to records/native helpers and removed an indirect pandas import through
 feature-group ablation.
+The feature-group ablation loop converted candidate-panel loading, rank IC,
+and grouped score ablation to records/native helpers while keeping the still
+pandas-backed Optuna script isolated on its own legacy loader.
 
 ## Change
 
@@ -153,6 +156,11 @@ feature-group ablation.
 - Removed the indirect pandas import from `run_feature_group_ablation.py` by
   localizing the candidate-feature lookup used by the challenger report.
 - Added `backend/tests/test_train_tdx_challenger_model.py`.
+- Removed pandas from `backend/scripts/run_feature_group_ablation.py`.
+- Converted candidate-panel loading, rank percentiles, Spearman RankIC, and
+  feature-group score ablation to records/native helpers.
+- Updated `backend/scripts/run_optuna_feature_elimination.py` to keep its
+  pandas-backed candidate-panel loader local until that script is converted.
 
 ## Validation
 
@@ -453,6 +461,24 @@ python3 -m pytest backend/tests/test_train_tdx_challenger_model.py -q
 # 4 passed
 
 python3 backend/scripts/train_tdx_challenger_model.py --help
+# import/CLI smoke passed
+
+python3 -m pytest backend/tests -q
+# 336 passed
+
+python3 backend/scripts/data_health_snapshot.py --dry-run
+# green=147/yellow=0/red=0
+
+rg -n "import pandas|from pandas|pd\.|DataFrame|read_sql_query|\.to_sql\(|\.df\(|register\(" backend/scripts/run_feature_group_ablation.py -S
+# 0 matches
+
+python3 -m py_compile backend/scripts/run_feature_group_ablation.py backend/scripts/run_optuna_feature_elimination.py
+# passed
+
+python3 -m pytest backend/tests/test_candidate_feature_pipeline.py -q
+# 2 passed
+
+python3 backend/scripts/run_feature_group_ablation.py --help
 # import/CLI smoke passed
 
 python3 -m pytest backend/tests -q

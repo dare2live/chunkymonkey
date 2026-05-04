@@ -29,9 +29,6 @@ from scripts.run_feature_group_ablation import (  # noqa: E402
     LABEL_COLUMNS,
     _candidate_features_for_set,
     _feature_group_map_for_set,
-    _load_candidate_panel,
-    _mean_rank_ic,
-    _score_panel,
 )
 
 logger = logging.getLogger("optuna_feature_elimination")
@@ -130,11 +127,59 @@ def ensure_tables(conn: Any) -> None:
             conn.execute(stmt)
 
 
+def _load_candidate_panel_df(conn: Any, feature_set_id: str) -> pd.DataFrame:
+    table_cols = {row[0] for row in conn.execute("DESCRIBE fact_feature_panel_candidate").fetchall()}
+    labels = [label for label in LABEL_COLUMNS if label in table_cols]
+    if "forward_ret_20d" not in labels:
+        labels.append("forward_ret_20d")
+    features = _candidate_features_for_set(conn, feature_set_id)
+    cols = ["stock_code", "date", *labels, *features]
+    sql = (
+        f"SELECT {', '.join(cols)} FROM fact_feature_panel_candidate "
+        "WHERE feature_set_id = ? AND forward_ret_20d IS NOT NULL"
+    )
+    cursor = conn.execute(sql, (feature_set_id,))
+    if hasattr(cursor, "df"):
+        return cursor.df()
+    rows = cursor.fetchall()
+    desc = getattr(cursor, "description", None) or []
+    names = [d[0] for d in desc]
+    return pd.DataFrame([tuple(row) for row in rows], columns=names)
+
+
 def _feature_group(feature: str) -> str:
     for group, features in FEATURE_GROUPS.items():
         if feature in features:
             return group
     return "other"
+
+
+def _mean_rank_ic_df(df: pd.DataFrame, score_col: str, label_col: str = "forward_ret_20d") -> float | None:
+    vals = []
+    for _, part in df[[score_col, label_col, "date"]].dropna().groupby("date"):
+        if len(part) < 3:
+            continue
+        if part[score_col].nunique() < 2 or part[label_col].nunique() < 2:
+            continue
+        corr = part[score_col].rank().corr(part[label_col].rank())
+        if pd.notna(corr):
+            vals.append(float(corr))
+    if not vals:
+        return None
+    return float(sum(vals) / len(vals))
+
+
+def _score_panel_df(df: pd.DataFrame, features: list[str], signs: dict[str, int], out_col: str) -> pd.DataFrame:
+    scored = df.copy()
+    rank_cols = []
+    for feature in features:
+        if feature not in scored.columns:
+            continue
+        col = f"__rank_{feature}"
+        scored[col] = scored.groupby("date")[feature].rank(pct=True) * signs.get(feature, 1)
+        rank_cols.append(col)
+    scored[out_col] = scored[rank_cols].mean(axis=1) if rank_cols else None
+    return scored
 
 
 def _score_subset(
@@ -146,8 +191,8 @@ def _score_subset(
 ) -> float | None:
     if not features:
         return None
-    scored = _score_panel(df, features, signs, "__subset_score")
-    return _mean_rank_ic(scored, "__subset_score", label_col=label_col)
+    scored = _score_panel_df(df, features, signs, "__subset_score")
+    return _mean_rank_ic_df(scored, "__subset_score", label_col=label_col)
 
 
 def _rank_col(feature: str) -> str:
@@ -170,7 +215,7 @@ def _score_ranked_subset(ranked, features: list[str], *, label_col: str = "forwa
         return None
     scored = ranked[["date", label_col, *rank_cols]].copy()
     scored["__subset_score"] = scored[rank_cols].mean(axis=1)
-    return _mean_rank_ic(scored, "__subset_score", label_col=label_col)
+    return _mean_rank_ic_df(scored, "__subset_score", label_col=label_col)
 
 
 def _daily_rank_array(df, column: str) -> np.ndarray:
@@ -272,7 +317,7 @@ def _fold_rank_ics(
         if not fold_dates:
             continue
         part = df[df["date"].astype(str).isin(fold_dates)]
-        values.append(_mean_rank_ic(part, score_col, label_col=label_col))
+        values.append(_mean_rank_ic_df(part, score_col, label_col=label_col))
     return values
 
 
@@ -583,7 +628,7 @@ def run_optuna_feature_elimination(
             min_abs_ic=min_abs_ic,
             run_id=run_id,
         )
-    df = _load_candidate_panel(conn, feature_set_id)
+    df = _load_candidate_panel_df(conn, feature_set_id)
     if df.empty:
         raise RuntimeError(f"fact_feature_panel_candidate empty for feature_set_id={feature_set_id}")
 

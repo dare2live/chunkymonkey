@@ -12,8 +12,6 @@ from typing import Any
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-import pandas as pd
-
 from services.db import get_conn  # noqa: E402
 from scripts.build_candidate_feature_panel import (  # noqa: E402
     CANDIDATE_FEATURE_SET_ID,
@@ -96,15 +94,99 @@ def _feature_group(feature: str) -> str:
     return "other"
 
 
-def _mean_rank_ic(df: pd.DataFrame, score_col: str, label_col: str = "forward_ret_20d") -> float | None:
+def _records_from_cursor(cursor: Any) -> list[dict[str, Any]]:
+    names = [desc[0] for desc in (cursor.description or [])]
+    return [
+        {name: value for name, value in zip(names, row)}
+        for row in cursor.fetchall()
+    ]
+
+
+def _is_missing(value: Any) -> bool:
+    if value is None:
+        return True
+    try:
+        return value != value
+    except Exception:
+        return False
+
+
+def _to_float(value: Any) -> float | None:
+    if _is_missing(value):
+        return None
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _rank_percentiles(values: list[float]) -> list[float]:
+    n = len(values)
+    if n == 0:
+        return []
+    indexed = sorted(enumerate(values), key=lambda item: item[1])
+    ranks = [0.0] * n
+    pos = 0
+    while pos < n:
+        end = pos + 1
+        while end < n and indexed[end][1] == indexed[pos][1]:
+            end += 1
+        avg_rank = ((pos + 1) + end) / 2.0
+        percentile = avg_rank / n
+        for idx in range(pos, end):
+            ranks[indexed[idx][0]] = percentile
+        pos = end
+    return ranks
+
+
+def _pearson(xs: list[float], ys: list[float]) -> float | None:
+    n = len(xs)
+    if n == 0 or n != len(ys):
+        return None
+    mean_x = sum(xs) / n
+    mean_y = sum(ys) / n
+    dx = [value - mean_x for value in xs]
+    dy = [value - mean_y for value in ys]
+    denom_x = sum(value * value for value in dx)
+    denom_y = sum(value * value for value in dy)
+    if denom_x <= 0 or denom_y <= 0:
+        return None
+    return sum(x * y for x, y in zip(dx, dy)) / ((denom_x * denom_y) ** 0.5)
+
+
+def _mean(values: list[float]) -> float | None:
+    return sum(values) / len(values) if values else None
+
+
+def _group_by_date(rows: list[dict[str, Any]]) -> dict[str, list[dict[str, Any]]]:
+    groups: dict[str, list[dict[str, Any]]] = {}
+    for row in rows:
+        date = str(row.get("date") or "")
+        groups.setdefault(date, []).append(row)
+    return groups
+
+
+def _mean_rank_ic(
+    rows: list[dict[str, Any]],
+    score_col: str,
+    label_col: str = "forward_ret_20d",
+) -> float | None:
     vals = []
-    for _, part in df[[score_col, label_col, "date"]].dropna().groupby("date"):
-        if len(part) < 3:
+    for part in _group_by_date(rows).values():
+        pairs = [
+            (score, label)
+            for row in part
+            if (score := _to_float(row.get(score_col))) is not None
+            if (label := _to_float(row.get(label_col))) is not None
+        ]
+        if len(pairs) < 3:
             continue
-        if part[score_col].nunique() < 2 or part[label_col].nunique() < 2:
+        scores = [score for score, _ in pairs]
+        labels = [label for _, label in pairs]
+        if len(set(scores)) < 2 or len(set(labels)) < 2:
             continue
-        corr = part[score_col].rank().corr(part[label_col].rank())
-        if pd.notna(corr):
+        corr = _pearson(_rank_percentiles(scores), _rank_percentiles(labels))
+        if corr is not None:
             vals.append(float(corr))
     if not vals:
         return None
@@ -153,7 +235,7 @@ def _feature_group_map_for_set(conn: Any, feature_set_id: str) -> dict[str, str]
     }
 
 
-def _load_candidate_panel(conn: Any, feature_set_id: str) -> pd.DataFrame:
+def _load_candidate_panel(conn: Any, feature_set_id: str) -> list[dict[str, Any]]:
     table_cols = {row[0] for row in conn.execute("DESCRIBE fact_feature_panel_candidate").fetchall()}
     labels = [label for label in LABEL_COLUMNS if label in table_cols]
     if "forward_ret_20d" not in labels:
@@ -165,24 +247,31 @@ def _load_candidate_panel(conn: Any, feature_set_id: str) -> pd.DataFrame:
         "WHERE feature_set_id = ? AND forward_ret_20d IS NOT NULL"
     )
     cursor = conn.execute(sql, (feature_set_id,))
-    if hasattr(cursor, "df"):
-        return cursor.df()
-    rows = cursor.fetchall()
-    desc = getattr(cursor, "description", None) or []
-    names = [d[0] for d in desc]
-    return pd.DataFrame([tuple(r) for r in rows], columns=names)
+    return _records_from_cursor(cursor)
 
 
-def _score_panel(df: pd.DataFrame, features: list[str], signs: dict[str, int], out_col: str) -> pd.DataFrame:
-    scored = df.copy()
-    rank_cols = []
+def _score_panel(
+    rows: list[dict[str, Any]],
+    features: list[str],
+    signs: dict[str, int],
+    out_col: str,
+) -> list[dict[str, Any]]:
+    scored = [dict(row) for row in rows]
+    groups = _group_by_date(scored)
     for feature in features:
-        if feature not in scored.columns:
-            continue
-        col = f"__rank_{feature}"
-        scored[col] = scored.groupby("date")[feature].rank(pct=True) * signs.get(feature, 1)
-        rank_cols.append(col)
-    scored[out_col] = scored[rank_cols].mean(axis=1) if rank_cols else None
+        sign = signs.get(feature, 1)
+        for group_rows in groups.values():
+            indexed_values = [
+                (idx, value)
+                for idx, row in enumerate(group_rows)
+                if (value := _to_float(row.get(feature))) is not None
+            ]
+            ranks = _rank_percentiles([value for _, value in indexed_values])
+            for rank_idx, (row_idx, _) in enumerate(indexed_values):
+                group_rows[row_idx].setdefault("__rank_values", []).append(ranks[rank_idx] * sign)
+    for row in scored:
+        ranks = row.pop("__rank_values", [])
+        row[out_col] = _mean(ranks)
     return scored
 
 
@@ -282,24 +371,34 @@ def run_group_ablation(
             "groups": results,
             "method": "walkforward_sql_auto",
         }
-    df = _load_candidate_panel(conn, feature_set_id)
-    if df.empty:
+    records = _load_candidate_panel(conn, feature_set_id)
+    if not records:
         raise RuntimeError(f"fact_feature_panel_candidate empty for feature_set_id={feature_set_id}")
 
     feature_group_map = _feature_group_map_for_set(conn, feature_set_id)
     candidate_features = _candidate_features_for_set(conn, feature_set_id)
-    usable = [f for f in candidate_features if f in df.columns and df[f].notna().any()]
+    panel_cols = set(records[0].keys())
+    usable = [
+        feature for feature in candidate_features
+        if feature in panel_cols and any(_to_float(row.get(feature)) is not None for row in records)
+    ]
     if not usable:
         raise RuntimeError("candidate panel has no non-null candidate features")
 
-    individual_ic = {f: _mean_rank_ic(df.rename(columns={f: "__score"}), "__score") for f in usable}
+    individual_ic = {
+        feature: _mean_rank_ic(
+            [{**row, "__score": row.get(feature)} for row in records],
+            "__score",
+        )
+        for feature in usable
+    }
     signs = {f: (-1 if (individual_ic.get(f) or 0) < 0 else 1) for f in usable}
-    full = _score_panel(df, usable, signs, "__score_full")
+    full = _score_panel(records, usable, signs, "__score_full")
     rank_ic_full = _mean_rank_ic(full, "__score_full")
     label_sensitivity = {
         label: _mean_rank_ic(full, "__score_full", label_col=label)
         for label in LABEL_COLUMNS
-        if label in full.columns
+        if label in panel_cols
     }
 
     run_id = run_id or f"group_ablation_{datetime.utcnow().strftime('%Y%m%d_%H%M%S')}"
@@ -317,7 +416,7 @@ def run_group_ablation(
     for group_name, group_features in grouped_features.items():
         group_existing = [f for f in group_features if f in usable]
         remaining = [f for f in usable if f not in group_existing]
-        without = _score_panel(df, remaining, signs, "__score_without")
+        without = _score_panel(records, remaining, signs, "__score_without")
         rank_ic_without = _mean_rank_ic(without, "__score_without")
         delta = (
             None
