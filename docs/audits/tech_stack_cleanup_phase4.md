@@ -54,6 +54,9 @@ and idempotent fact writes without pandas registration.
 The multidim feature-ablation loop removed its dependency on the shared
 DataFrame training helpers by adding records/native panel loading, date splits,
 IC/RankIC, decile metrics, and LightGBM matrix preparation.
+The TDX keep challenger loop removed its dependency on the shared DataFrame
+training helpers by adding records/native panel loading, deterministic sampling,
+feature resolution, Optuna objective inputs, and prediction writes.
 
 ## Change
 
@@ -197,6 +200,11 @@ IC/RankIC, decile metrics, and LightGBM matrix preparation.
 - Converted multidim ablation panel loading, time splits, IC/RankIC,
   decile metrics, and LightGBM inputs to records/native helpers.
 - Added `backend/tests/test_run_feature_ablation.py`.
+- Removed pandas from `backend/scripts/train_tdx_keep_challenger_model.py`.
+- Converted TDX keep challenger panel loading, sampling, feature resolution,
+  LightGBM/Optuna inputs, holdout metrics, and prediction writes to
+  records/native helpers.
+- Added `backend/tests/test_train_tdx_keep_challenger_model.py`.
 
 ## Validation
 
@@ -580,8 +588,20 @@ python3 -m pytest backend/tests/test_run_feature_ablation.py -q
 python3 backend/scripts/run_feature_ablation.py --help
 # import/CLI smoke passed
 
+rg -n "pandas|pd\.|DataFrame|read_sql_query|\.to_sql\(|\.df\(|register\(|train_multidim_model" backend/scripts/train_tdx_keep_challenger_model.py backend/tests/test_train_tdx_keep_challenger_model.py -S
+# 0 matches
+
+python3 -m py_compile backend/scripts/train_tdx_keep_challenger_model.py backend/tests/test_train_tdx_keep_challenger_model.py
+# passed
+
+python3 -m pytest backend/tests/test_train_tdx_keep_challenger_model.py -q
+# 2 passed
+
+python3 backend/scripts/train_tdx_keep_challenger_model.py --help
+# import/CLI smoke passed
+
 python3 -m pytest backend/tests -q
-# 343 passed
+# 345 passed
 
 python3 backend/scripts/data_health_snapshot.py --dry-run
 # green=147/yellow=0/red=0

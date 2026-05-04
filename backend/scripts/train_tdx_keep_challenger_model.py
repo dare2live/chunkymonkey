@@ -6,32 +6,38 @@ import argparse
 import json
 import logging
 import pickle
+import random
 import sys
 import time
 from datetime import datetime
 from pathlib import Path
+from typing import Any
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 import lightgbm as lgb
 import optuna
-import pandas as pd
 
 from services.db import get_conn
 from services.ml_lifecycle.registry import propose_challenger
 from services.model_feature_schema import (
+    BASE_FEATURE_COLS,
     DEFAULT_LABEL_NAME,
+    DENSE_V2_FEATURE_COLS,
     TDX_KEEP_CHALLENGER_SCHEMA_VERSION,
+    TDX_KEEP_FEATURE_COLS,
     feature_cols_to_json,
 )
-from scripts.train_multidim_model import (
+from scripts.run_feature_ablation import (
     compute_ic,
     decile_metrics,
-    ensure_model_schema,
-    load_panel,
-    make_objective,
-    resolve_feature_group,
-    split_time_series,
+    _dates,
+    _matrix,
+    _quote_ident,
+    _rank_percentiles,
+    _records_from_cursor,
+    _values,
+    split_time_series_records,
 )
 
 
@@ -60,10 +66,200 @@ DEFAULT_PARAMS = {
 }
 
 
-def _sample(df: pd.DataFrame, max_rows: int) -> pd.DataFrame:
-    if max_rows <= 0 or len(df) <= max_rows:
-        return df
-    return df.sample(n=max_rows, random_state=42).sort_values(["date", "stock_code"])
+MODEL_DDL = """
+CREATE TABLE IF NOT EXISTS mart_multidim_model (
+    model_id TEXT PRIMARY KEY,
+    created_at TEXT,
+    train_start TEXT, train_end TEXT,
+    valid_start TEXT, valid_end TEXT,
+    holdout_start TEXT, holdout_end TEXT,
+    n_features INTEGER,
+    best_params_json TEXT,
+    holdout_ic REAL, holdout_rank_ic REAL,
+    holdout_top_decile_avg REAL, holdout_bottom_decile_avg REAL,
+    holdout_long_short_spread REAL,
+    holdout_winrate_top REAL,
+    feature_importance_json TEXT,
+    feature_cols_json TEXT,
+    label_name TEXT,
+    feature_schema_version TEXT,
+    notes TEXT
+);
+
+CREATE TABLE IF NOT EXISTS mart_multidim_prediction (
+    model_id TEXT,
+    stock_code TEXT,
+    date TEXT,
+    pred_score REAL,
+    rank_in_date INTEGER,
+    percentile REAL,
+    PRIMARY KEY (model_id, stock_code, date)
+);
+"""
+
+
+def ensure_model_schema(conn) -> None:
+    conn.executescript(MODEL_DDL)
+    cols = {row[0] for row in conn.execute("DESCRIBE mart_multidim_model").fetchall()}
+    for col in ("feature_cols_json", "label_name", "feature_schema_version"):
+        if col not in cols:
+            conn.execute(f"ALTER TABLE mart_multidim_model ADD COLUMN {col} TEXT")
+    conn.commit()
+
+
+def _sample(rows: list[dict[str, Any]], max_rows: int) -> list[dict[str, Any]]:
+    if max_rows <= 0 or len(rows) <= max_rows:
+        return rows
+    picked = random.Random(42).sample(rows, max_rows)
+    return sorted(picked, key=lambda row: (str(row.get("date")), str(row.get("stock_code"))))
+
+
+def _table_columns(conn, table: str) -> set[str]:
+    duck = conn.raw if hasattr(conn, "raw") else conn
+    return {
+        row[0]
+        for row in duck.execute(
+            "SELECT column_name FROM information_schema.columns WHERE table_name = ?",
+            (table,),
+        ).fetchall()
+    }
+
+
+def load_panel_records(
+    conn,
+    start_date: str,
+    end_date: str,
+    *,
+    feature_table: str,
+    feature_set_id: str | None,
+) -> list[dict[str, Any]]:
+    duck = conn.raw if hasattr(conn, "raw") else conn
+    panel_cols = _table_columns(conn, feature_table)
+    if DEFAULT_LABEL_NAME not in panel_cols:
+        raise RuntimeError(f"{feature_table} 缺少 label 列: {DEFAULT_LABEL_NAME}")
+    feature_cols = []
+    seen = set()
+    for col in [*BASE_FEATURE_COLS, *DENSE_V2_FEATURE_COLS, *TDX_KEEP_FEATURE_COLS]:
+        if col in panel_cols and col not in seen:
+            feature_cols.append(col)
+            seen.add(col)
+    regime_expr = "p.regime_flag" if "regime_flag" in panel_cols else "NULL AS regime_flag"
+    select_cols = [
+        "p.stock_code",
+        "p.date",
+        regime_expr,
+        f"p.{_quote_ident(DEFAULT_LABEL_NAME)} AS label_value",
+        *[f"CAST(p.{_quote_ident(col)} AS DOUBLE) AS {_quote_ident(col)}" for col in feature_cols],
+    ]
+    where = [
+        f"p.date >= ? AND p.date <= ? AND p.{_quote_ident(DEFAULT_LABEL_NAME)} IS NOT NULL"
+    ]
+    params: list[Any] = [start_date, end_date]
+    if feature_set_id and "feature_set_id" in panel_cols:
+        where.append("p.feature_set_id = ?")
+        params.append(feature_set_id)
+    return _records_from_cursor(
+        duck.execute(
+            f"""
+            SELECT {', '.join(select_cols)}
+            FROM {_quote_ident(feature_table)} p
+            WHERE {' AND '.join(where)}
+            """,
+            params,
+        )
+    )
+
+
+def resolve_tdx_keep_features(rows: list[dict[str, Any]]) -> tuple[list[str], str]:
+    panel_cols = set(rows[0].keys()) if rows else set()
+    missing = [col for col in TDX_KEEP_FEATURE_COLS if col not in panel_cols]
+    if missing:
+        raise RuntimeError(f"tdx_keep_v1 缺少 keep 特征: {missing}")
+    cols = [
+        col for col in [*BASE_FEATURE_COLS, *DENSE_V2_FEATURE_COLS, *TDX_KEEP_FEATURE_COLS]
+        if col in panel_cols
+    ]
+    return cols, TDX_KEEP_CHALLENGER_SCHEMA_VERSION
+
+
+def train_lgb(
+    train_rows: list[dict[str, Any]],
+    valid_rows: list[dict[str, Any]],
+    feature_cols: list[str],
+    params: dict,
+    *,
+    num_round: int = 400,
+) -> lgb.Booster:
+    dt = lgb.Dataset(
+        _matrix(train_rows, feature_cols),
+        label=_values(train_rows, "label_value"),
+        feature_name=feature_cols,
+    )
+    dv = lgb.Dataset(
+        _matrix(valid_rows, feature_cols),
+        label=_values(valid_rows, "label_value"),
+        reference=dt,
+        feature_name=feature_cols,
+    )
+    return lgb.train(
+        params,
+        dt,
+        num_boost_round=num_round,
+        valid_sets=[dv],
+        callbacks=[lgb.early_stopping(stopping_rounds=50, verbose=False)],
+    )
+
+
+def make_objective(train_rows, valid_rows, feature_cols):
+    def objective(trial):
+        params = {
+            "objective": "regression",
+            "metric": "rmse",
+            "learning_rate": trial.suggest_float("learning_rate", 0.01, 0.2, log=True),
+            "num_leaves": trial.suggest_int("num_leaves", 15, 127),
+            "min_data_in_leaf": trial.suggest_int("min_data_in_leaf", 50, 500),
+            "feature_fraction": trial.suggest_float("feature_fraction", 0.6, 1.0),
+            "bagging_fraction": trial.suggest_float("bagging_fraction", 0.6, 1.0),
+            "bagging_freq": trial.suggest_int("bagging_freq", 0, 10),
+            "lambda_l1": trial.suggest_float("lambda_l1", 1e-4, 1.0, log=True),
+            "lambda_l2": trial.suggest_float("lambda_l2", 1e-4, 1.0, log=True),
+            "max_depth": trial.suggest_int("max_depth", 4, 10),
+            "verbose": -1,
+        }
+        model = train_lgb(train_rows, valid_rows, feature_cols, params, num_round=400)
+        pred = model.predict(
+            _matrix(valid_rows, feature_cols),
+            num_iteration=model.best_iteration,
+        )
+        _, rank_ic = compute_ic(_values(valid_rows, "label_value"), pred, _dates(valid_rows))
+        return rank_ic
+    return objective
+
+
+def _date_bounds(rows: list[dict[str, Any]]) -> tuple[str | None, str | None]:
+    dates = [str(row.get("date")) for row in rows if row.get("date") is not None]
+    return (min(dates), max(dates)) if dates else (None, None)
+
+
+def _prediction_rows(model_id: str, holdout: list[dict[str, Any]], pred) -> list[tuple]:
+    rows = []
+    grouped: dict[str, list[tuple[dict[str, Any], float]]] = {}
+    for row, score in zip(holdout, pred):
+        grouped.setdefault(str(row.get("date")), []).append((row, float(score)))
+    for date, items in grouped.items():
+        scores = [score for _, score in items]
+        percentiles = _rank_percentiles(scores)
+        for idx, (row, score) in enumerate(items):
+            rank_in_date = 1 + sum(1 for other in scores if other > score)
+            rows.append((
+                model_id,
+                row.get("stock_code"),
+                date,
+                score,
+                rank_in_date,
+                percentiles[idx],
+            ))
+    return rows
 
 
 def train_tdx_keep_challenger(
@@ -81,24 +277,26 @@ def train_tdx_keep_challenger(
     t0 = time.time()
     conn = get_conn()
     ensure_model_schema(conn)
-    df = load_panel(
+    records = load_panel_records(
         conn,
         start,
         end,
-        label_name=DEFAULT_LABEL_NAME,
-        with_alpha158=False,
         feature_table=feature_table,
         feature_set_id=feature_set_id,
     )
     conn.close()
-    if df.empty:
+    if not records:
         raise RuntimeError(f"{feature_table} 无可训练数据")
 
-    feature_cols, resolved_schema = resolve_feature_group("tdx_keep_v1", df, regime_aware=False)
+    feature_cols, resolved_schema = resolve_tdx_keep_features(records)
     if schema_version != resolved_schema:
-        logger.warning("requested schema=%s resolved=%s; using requested in registry", schema_version, resolved_schema)
+        logger.warning(
+            "requested schema=%s resolved=%s; using requested in registry",
+            schema_version,
+            resolved_schema,
+        )
 
-    train, valid, holdout = split_time_series(df)
+    train, valid, holdout = split_time_series_records(records)
     train_opt = _sample(train, optuna_max_rows)
     valid_opt = _sample(valid, max(1, optuna_max_rows // 4))
     if trials > 0:
@@ -118,18 +316,25 @@ def train_tdx_keep_challenger(
     params.update({"objective": "regression", "metric": "rmse", "verbose": -1})
     best = params
 
-    train_valid = pd.concat([train, valid], ignore_index=True)
+    train_valid = [*train, *valid]
     model = lgb.train(
         best,
-        lgb.Dataset(train_valid[feature_cols].values, label=train_valid["label_value"].values, feature_name=feature_cols),
+        lgb.Dataset(
+            _matrix(train_valid, feature_cols),
+            label=_values(train_valid, "label_value"),
+            feature_name=feature_cols,
+        ),
         num_boost_round=num_round,
     )
-    pred = model.predict(holdout[feature_cols].values)
-    ic, rank_ic = compute_ic(holdout["label_value"].values, pred, holdout["date"].values)
-    dec = decile_metrics(holdout["label_value"].values, pred, holdout["date"].values)
+    pred = model.predict(_matrix(holdout, feature_cols))
+    ic, rank_ic = compute_ic(_values(holdout, "label_value"), pred, _dates(holdout))
+    dec = decile_metrics(_values(holdout, "label_value"), pred, _dates(holdout))
     fi = dict(zip(feature_cols, model.feature_importance(importance_type="gain").tolist()))
     model_id = f"{model_prefix}_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
     created_at = datetime.utcnow().isoformat()
+    train_start, train_end = _date_bounds(train)
+    valid_start, valid_end = _date_bounds(valid)
+    holdout_start, holdout_end = _date_bounds(holdout)
 
     conn = get_conn()
     ensure_model_schema(conn)
@@ -149,12 +354,12 @@ def train_tdx_keep_challenger(
         (
             model_id,
             created_at,
-            str(train["date"].min()),
-            str(train["date"].max()),
-            str(valid["date"].min()),
-            str(valid["date"].max()),
-            str(holdout["date"].min()),
-            str(holdout["date"].max()),
+            train_start,
+            train_end,
+            valid_start,
+            valid_end,
+            holdout_start,
+            holdout_end,
             len(feature_cols),
             json.dumps(best, ensure_ascii=False),
             ic,
@@ -180,16 +385,14 @@ def train_tdx_keep_challenger(
             ),
         ),
     )
-    pred_df = holdout[["stock_code", "date"]].copy()
-    pred_df["model_id"] = model_id
-    pred_df["pred_score"] = pred
-    pred_df["rank_in_date"] = pred_df.groupby("date")["pred_score"].rank(ascending=False, method="min").astype(int)
-    pred_df["percentile"] = pred_df.groupby("date")["pred_score"].rank(pct=True)
-    pred_df = pred_df[["model_id", "stock_code", "date", "pred_score", "rank_in_date", "percentile"]]
-    duck = conn.raw if hasattr(conn, "raw") else conn
-    duck.register("_tdx_keep_pred", pred_df)
-    duck.execute("INSERT INTO mart_multidim_prediction SELECT * FROM _tdx_keep_pred")
-    duck.unregister("_tdx_keep_pred")
+    conn.executemany(
+        """
+        INSERT INTO mart_multidim_prediction
+        (model_id, stock_code, date, pred_score, rank_in_date, percentile)
+        VALUES (?, ?, ?, ?, ?, ?)
+        """,
+        _prediction_rows(model_id, holdout, pred),
+    )
     conn.commit()
     conn.close()
 
