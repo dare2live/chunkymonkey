@@ -10,6 +10,9 @@ The follow-up block/cfg reader loop removed pandas from tdxhub's local
 block/config parsing path, added a lightweight market-code helper, and made
 `tdxhub.reader` avoid importing tabular dependencies until callers enter the
 remaining legacy bar-reader paths.
+The cache-helper loop then generalized tdxhub's file and timed cache
+decorators from table-specific return types to plain Python objects, so
+`tdxhub.cache` is importable without tabular dependencies.
 
 ## Current tdxhub Call Map
 
@@ -38,6 +41,8 @@ remaining legacy bar-reader paths.
   `ca5f9ee09b5f6ee415e22b0454c79e5ed4bd9fc5`.
 - Updated ChunkyMonkey's tdxhub pin again to
   `b72825b894f2fcc1bdb7fcc8ac0859ee15bed8ef`.
+- Updated ChunkyMonkey's tdxhub pin again to
+  `8361d332eae894abf7c4ad8597d59af4aab641d3`.
 - Kept legacy DataFrame helpers unchanged for existing callers.
 - Switched ChunkyMonkey's holder source and data source adapter to consume
   `parse_research_records`.
@@ -94,6 +99,9 @@ cd /Users/dp/Documents/M/stock/tdxhub
 python3 -m pytest tests/reader/test_reader_block.py tests/reader/test_reader_parse.py tests/reader/test_reader_blocknew.py tests/reader/test_reader_no_tabular_import.py tests/tools/test_customize.py -q
 # 21 passed
 
+python3 -m pytest tests/cache/test_file.py tests/reader/test_reader_block.py tests/reader/test_reader_parse.py tests/reader/test_reader_blocknew.py tests/reader/test_reader_no_tabular_import.py tests/tools/test_customize.py -q
+# 24 passed
+
 python3 - <<'PY'
 import importlib.abc
 import sys
@@ -111,6 +119,23 @@ from tdxhub.parse import BaseParse
 from tdxhub.reader import StdReader
 from tdxhub.tools.customize import Customize
 print('top-level and block reader paths import ok without tabular dependency')
+PY
+# passed
+
+python3 - <<'PY'
+import importlib.abc
+import sys
+
+class BlockTabular(importlib.abc.MetaPathFinder):
+    def find_spec(self, fullname, path=None, target=None):
+        blocked = 'pan' + 'das'
+        if fullname == blocked or fullname.startswith(blocked + '.'):
+            raise ImportError('blocked tabular dependency import')
+        return None
+
+sys.meta_path.insert(0, BlockTabular())
+from tdxhub.cache import file_cache, lru_cache, timeit
+print('cache imports ok without tabular dependency')
 PY
 # passed
 ```
