@@ -13,6 +13,8 @@ remaining legacy bar-reader paths.
 The cache-helper loop then generalized tdxhub's file and timed cache
 decorators from table-specific return types to plain Python objects, so
 `tdxhub.cache` is importable without tabular dependencies.
+The tdx2csv tool loop replaced its table-object CSV conversion with stdlib
+CSV parsing/writing and records output.
 
 ## Current tdxhub Call Map
 
@@ -43,6 +45,8 @@ decorators from table-specific return types to plain Python objects, so
   `b72825b894f2fcc1bdb7fcc8ac0859ee15bed8ef`.
 - Updated ChunkyMonkey's tdxhub pin again to
   `8361d332eae894abf7c4ad8597d59af4aab641d3`.
+- Updated ChunkyMonkey's tdxhub pin again to
+  `4272b001eba034c52ac55d1d87ced62bea006642`.
 - Kept legacy DataFrame helpers unchanged for existing callers.
 - Switched ChunkyMonkey's holder source and data source adapter to consume
   `parse_research_records`.
@@ -101,6 +105,9 @@ python3 -m pytest tests/reader/test_reader_block.py tests/reader/test_reader_par
 
 python3 -m pytest tests/cache/test_file.py tests/reader/test_reader_block.py tests/reader/test_reader_parse.py tests/reader/test_reader_blocknew.py tests/reader/test_reader_no_tabular_import.py tests/tools/test_customize.py -q
 # 24 passed
+
+python3 -m pytest tests/tools/test_tdx2csv.py tests/cache/test_file.py tests/reader/test_reader_block.py tests/reader/test_reader_parse.py tests/reader/test_reader_blocknew.py tests/reader/test_reader_no_tabular_import.py tests/tools/test_customize.py -q
+# 26 passed
 
 python3 - <<'PY'
 import importlib.abc
