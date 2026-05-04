@@ -280,13 +280,14 @@ def run_group_ablation(
     *,
     feature_set_id: str = CANDIDATE_FEATURE_SET_ID,
     run_id: str | None = None,
+    method: str = "full",
 ) -> dict:
     ensure_tables(conn)
-    if feature_set_id.startswith("tdx_gpcw_auto"):
+    if method == "walkforward" or feature_set_id.startswith("tdx_gpcw_auto"):
         feature_group_map = _feature_group_map_for_set(conn, feature_set_id)
         usable = _candidate_features_for_set(conn, feature_set_id)
         if not usable:
-            raise RuntimeError(f"no auto features registered for feature_set_id={feature_set_id}")
+            raise RuntimeError(f"no features registered for feature_set_id={feature_set_id}")
         run_id = run_id or f"group_ablation_{datetime.utcnow().strftime('%Y%m%d_%H%M%S')}"
         built_at = datetime.utcnow().isoformat(timespec="seconds")
         wf_rows = conn.execute(
@@ -369,7 +370,7 @@ def run_group_ablation(
             "rank_ic_full": rank_ic_full,
             "label_sensitivity": label_sensitivity,
             "groups": results,
-            "method": "walkforward_sql_auto",
+            "method": "walkforward_sql",
         }
     records = _load_candidate_panel(conn, feature_set_id)
     if not records:
@@ -472,11 +473,12 @@ def run_group_ablation(
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--feature-set-id", default=CANDIDATE_FEATURE_SET_ID)
+    parser.add_argument("--method", choices=["full", "walkforward"], default="full")
     args = parser.parse_args()
 
     conn = get_conn()
     try:
-        result = run_group_ablation(conn, feature_set_id=args.feature_set_id)
+        result = run_group_ablation(conn, feature_set_id=args.feature_set_id, method=args.method)
         logger.info("group ablation: %s", result)
         return 0
     finally:

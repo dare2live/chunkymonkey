@@ -242,7 +242,7 @@ def _fold_ranges(dates: list[str], folds: int) -> list[dict[str, str]]:
     return ranges
 
 
-def _run_auto_sql_walkforward(
+def _run_sql_walkforward(
     conn: Any,
     *,
     feature_set_id: str,
@@ -337,7 +337,7 @@ def _run_auto_sql_walkforward(
         "features": len(usable_features),
         "labels": labels,
         "rows": len(rows),
-        "method": "sql_corr_auto",
+        "method": "sql_corr",
     }
 
 
@@ -347,10 +347,11 @@ def run_walkforward_feature_eval(
     feature_set_id: str = CANDIDATE_FEATURE_SET_ID,
     folds: int = 4,
     run_id: str | None = None,
+    method: str = "full",
 ) -> dict[str, Any]:
     ensure_tables(conn)
-    if feature_set_id.startswith("tdx_gpcw_auto"):
-        return _run_auto_sql_walkforward(
+    if method == "sql" or feature_set_id.startswith("tdx_gpcw_auto"):
+        return _run_sql_walkforward(
             conn,
             feature_set_id=feature_set_id,
             folds=folds,
@@ -440,6 +441,7 @@ def main() -> int:
     parser.add_argument("--feature-set-id", default=CANDIDATE_FEATURE_SET_ID)
     parser.add_argument("--folds", type=int, default=4)
     parser.add_argument("--run-id", default=None)
+    parser.add_argument("--method", choices=["full", "sql"], default="full")
     args = parser.parse_args()
 
     conn = get_conn()
@@ -449,6 +451,7 @@ def main() -> int:
             feature_set_id=args.feature_set_id,
             folds=args.folds,
             run_id=args.run_id,
+            method=args.method,
         )
         logger.info("walk-forward feature eval: %s", result)
         return 0

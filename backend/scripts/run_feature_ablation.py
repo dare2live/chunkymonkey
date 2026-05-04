@@ -18,6 +18,7 @@ from typing import Any
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 import lightgbm as lgb
+import numpy as np
 
 from services.db import get_conn
 from services.model_feature_schema import (
@@ -286,11 +287,12 @@ def split_time_series_records(
     return train, valid, holdout
 
 
-def _matrix(rows: list[dict[str, Any]], cols: list[str]) -> list[list[float]]:
-    return [
-        [_to_float(row.get(col)) or 0.0 for col in cols]
-        for row in rows
-    ]
+def _matrix(rows: list[dict[str, Any]], cols: list[str]) -> np.ndarray:
+    matrix = np.empty((len(rows), len(cols)), dtype=np.float32)
+    for row_idx, row in enumerate(rows):
+        for col_idx, col in enumerate(cols):
+            matrix[row_idx, col_idx] = _to_float(row.get(col)) or 0.0
+    return matrix
 
 
 def _values(rows: list[dict[str, Any]], col: str) -> list[float]:

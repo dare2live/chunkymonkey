@@ -338,16 +338,22 @@ def build_panel(start_date: str) -> dict[str, int]:
         "current_panel",
         """
         WITH margin AS (
-            SELECT stock_code, trade_date, rz_balance,
-                   (rz_balance / NULLIF(LAG(rz_balance, 5) OVER (PARTITION BY stock_code ORDER BY trade_date), 0) - 1) AS rz_chg_5d_pct
+            SELECT stock_code,
+                   {margin_date} AS date,
+                   rz_balance,
+                   (
+                       rz_balance
+                       / NULLIF(LAG(rz_balance, 5) OVER (PARTITION BY stock_code ORDER BY {margin_date}), 0)
+                       - 1
+                   ) AS rz_chg_5d_pct
             FROM smartmoney.raw_margin_daily
         )
         SELECT p.*, m.rz_balance, m.rz_chg_5d_pct
         FROM current_panel p
         LEFT JOIN margin m
           ON p.stock_code = m.stock_code
-         AND p.date = STRFTIME(STRPTIME(m.trade_date, '%Y%m%d'), '%Y-%m-%d')
-        """,
+         AND p.date = STRFTIME(m.date, '%Y-%m-%d')
+        """.format(margin_date=_date_expr("trade_date")),
     )
 
     logger.info("Step 3: forward_ret_20d label")

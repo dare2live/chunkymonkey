@@ -31,6 +31,20 @@ def test_compute_ic_and_decile_metrics_use_daily_cross_sections():
     assert decile["winrate_top"] == pytest.approx(1.0)
 
 
+def test_matrix_constructs_lightgbm_compatible_ndarray():
+    rows = [
+        {"a": 1, "b": None},
+        {"a": "2.5", "b": 3},
+    ]
+
+    matrix = subject._matrix(rows, ["a", "b"])
+
+    assert matrix.shape == (2, 2)
+    assert matrix.dtype.name == "float32"
+    dataset = subject.lgb.Dataset(matrix, label=[0.1, 0.2])
+    dataset.construct()
+
+
 def test_load_panel_records_adds_regime_flags_and_splits_dates():
     conn = duck_mem()
     feature = BASE_FEATURE_COLS[0]

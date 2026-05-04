@@ -176,6 +176,13 @@ def test_candidate_feature_panel_ablation_and_elimination_records():
         walkforward = run_walkforward_feature_eval(conn, folds=2, run_id="test_walkforward")
         ablation = run_group_ablation(conn)
         elimination = run_optuna_feature_elimination(conn, trials=0, min_abs_ic=0.0)
+        elimination_sql = run_optuna_feature_elimination(
+            conn,
+            trials=0,
+            min_abs_ic=0.0,
+            run_id="test_sql_elimination",
+            method="sql",
+        )
         pit = validate_tdx_feature_pit(conn, audit_run_id="test_pit")
         score_count = conn.execute(
             "SELECT COUNT(*) FROM mart_feature_candidate_score"
@@ -212,6 +219,7 @@ def test_candidate_feature_panel_ablation_and_elimination_records():
         assert ablation["feature_set_id"] == "tdx_f10_gpcw_v1"
         assert len(ablation["groups"]) == 5
         assert elimination["promote_to_champion"] is False
+        assert elimination_sql["method"] == "sql_walkforward_deterministic"
         assert score_count >= 1
         assert pit["status"] == "passed"
         assert pit_rows["n"] >= 1

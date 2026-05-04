@@ -93,7 +93,8 @@ def _seed_minimal_sources(con):
                 "qfq",
             ))
             if code != "510300":
-                margin_rows.append((code, _yyyymmdd(day), 1000.0 + idx * 5 + offset))
+                margin_day = day if idx % 2 else _yyyymmdd(day)
+                margin_rows.append((code, margin_day, 1000.0 + idx * 5 + offset))
     con.executemany("INSERT INTO market.price_kline_tdxhub VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", kline_rows)
     con.executemany("INSERT INTO smartmoney.raw_margin_daily VALUES (?, ?, ?)", margin_rows)
     con.executemany(
@@ -132,11 +133,10 @@ def test_build_panel_writes_fact_feature_panel_without_dataframe(monkeypatch):
             """
             SELECT stock_code, ret_5d, ret_20d, momentum_diff,
                    inst_event_count_30d, exec_buy_ge1_count_90d,
-                   days_since_exec_buy, regime_flag, forward_ret_20d
+                   days_since_exec_buy, regime_flag, forward_ret_20d, rz_balance
             FROM fact_feature_panel
             WHERE stock_code = '000001'
-            ORDER BY date
-            LIMIT 1
+              AND date = '2026-01-02'
             """
         ).fetchone()
 
@@ -147,5 +147,6 @@ def test_build_panel_writes_fact_feature_panel_without_dataframe(monkeypatch):
         assert sample[5] >= 0
         assert sample[6] >= -1
         assert sample[7] in {"na", "up", "down", "flat", None}
+        assert sample[9] is not None
     finally:
         con.close()

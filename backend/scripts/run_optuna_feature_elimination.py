@@ -265,7 +265,7 @@ def _quote_ident(name: str) -> str:
     return '"' + name.replace('"', '""') + '"'
 
 
-def _run_auto_sql_reduction(
+def _run_sql_reduction(
     conn: Any,
     *,
     feature_set_id: str,
@@ -274,10 +274,11 @@ def _run_auto_sql_reduction(
     min_abs_ic: float,
     run_id: str | None,
 ) -> dict[str, Any]:
+    is_auto_feature_set = feature_set_id.startswith("tdx_gpcw_auto")
     feature_group_map = _feature_group_map_for_set(conn, feature_set_id)
     features = _candidate_features_for_set(conn, feature_set_id)
     if not features:
-        raise RuntimeError(f"no auto features for feature_set_id={feature_set_id}")
+        raise RuntimeError(f"no features for feature_set_id={feature_set_id}")
     count_exprs = ", ".join(
         f"SUM(CASE WHEN {_quote_ident(feature)} IS NOT NULL THEN 1 ELSE 0 END) AS {_quote_ident(feature)}"
         for feature in features
@@ -407,7 +408,7 @@ def _run_auto_sql_reduction(
         (
             run_id,
             feature_set_id,
-            "sql_auto_deterministic",
+            "sql_walkforward_deterministic",
             "forward_ret_20d",
             objective_score,
             json.dumps(selected_features, ensure_ascii=False),
@@ -416,7 +417,7 @@ def _run_auto_sql_reduction(
             False,
             json.dumps(
                 {
-                    "message": "auto gpcw SQL reduction; production champion untouched",
+                    "message": "walk-forward SQL reduction; production champion untouched",
                     "label_sensitivity": label_sensitivity,
                 },
                 ensure_ascii=False,
@@ -424,62 +425,63 @@ def _run_auto_sql_reduction(
             built_at,
         ),
     )
-    conn.executemany(
-        """
-        INSERT OR REPLACE INTO mart_tdx_gpcw_auto_feature_score
-        (run_id, feature_set_id, feature_name, feature_family, coverage_pct,
-         rank_ic, fold_same_sign_rate, horizon_sensitivity, selected,
-         rejection_reason, built_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        """,
-        [
-            (
-                row[0], row[1], row[2], row[3], row[4], row[6], row[7],
-                row[9], row[10], row[11], row[12],
-            )
-            for row in score_rows
-        ],
-    )
-    conn.execute(
-        """
-        INSERT OR REPLACE INTO mart_tdx_gpcw_auto_optuna_run
-        (run_id, feature_set_id, trials, objective_score,
-         selected_features_json, rejected_features_json,
-         promote_to_champion, notes, built_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-        """,
-        (
-            run_id,
-            feature_set_id,
-            int(trials),
-            objective_score,
-            json.dumps(selected_features, ensure_ascii=False),
-            json.dumps(rejected, ensure_ascii=False),
-            False,
-            json.dumps({"label_sensitivity": label_sensitivity}, ensure_ascii=False),
-            built_at,
-        ),
-    )
-    conn.executemany(
-        """
-        INSERT OR REPLACE INTO mart_tdx_gpcw_auto_feature_cluster
-        (run_id, feature_set_id, cluster_id, feature_name,
-         representative_feature, corr_to_representative, built_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?)
-        """,
-        [
+    if is_auto_feature_set:
+        conn.executemany(
+            """
+            INSERT OR REPLACE INTO mart_tdx_gpcw_auto_feature_score
+            (run_id, feature_set_id, feature_name, feature_family, coverage_pct,
+             rank_ic, fold_same_sign_rate, horizon_sensitivity, selected,
+             rejection_reason, built_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            [
+                (
+                    row[0], row[1], row[2], row[3], row[4], row[6], row[7],
+                    row[9], row[10], row[11], row[12],
+                )
+                for row in score_rows
+            ],
+        )
+        conn.execute(
+            """
+            INSERT OR REPLACE INTO mart_tdx_gpcw_auto_optuna_run
+            (run_id, feature_set_id, trials, objective_score,
+             selected_features_json, rejected_features_json,
+             promote_to_champion, notes, built_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
             (
                 run_id,
                 feature_set_id,
-                feature_group_map.get(feature, _feature_group(feature)),
-                feature,
-                feature,
-                1.0,
+                int(trials),
+                objective_score,
+                json.dumps(selected_features, ensure_ascii=False),
+                json.dumps(rejected, ensure_ascii=False),
+                False,
+                json.dumps({"label_sensitivity": label_sensitivity}, ensure_ascii=False),
                 built_at,
-            )
-            for feature in features
-        ],
-    )
+            ),
+        )
+        conn.executemany(
+            """
+            INSERT OR REPLACE INTO mart_tdx_gpcw_auto_feature_cluster
+            (run_id, feature_set_id, cluster_id, feature_name,
+             representative_feature, corr_to_representative, built_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+            """,
+            [
+                (
+                    run_id,
+                    feature_set_id,
+                    feature_group_map.get(feature, _feature_group(feature)),
+                    feature,
+                    feature,
+                    1.0,
+                    built_at,
+                )
+                for feature in features
+            ],
+        )
     from services.schema_versions import record_actual_version
     record_actual_version(conn, "mart_feature_candidate_score")
     record_actual_version(conn, "mart_model_selection_run")
@@ -487,7 +489,7 @@ def _run_auto_sql_reduction(
     return {
         "run_id": run_id,
         "feature_set_id": feature_set_id,
-        "method": "sql_auto_deterministic",
+        "method": "sql_walkforward_deterministic",
         "objective_score": objective_score,
         "selected_features": selected_features,
         "rejected_features": rejected,
@@ -504,10 +506,11 @@ def run_optuna_feature_elimination(
     min_coverage: float = 30.0,
     min_abs_ic: float = 0.005,
     run_id: str | None = None,
+    method: str = "full",
 ) -> dict:
     ensure_tables(conn)
-    if feature_set_id.startswith("tdx_gpcw_auto"):
-        return _run_auto_sql_reduction(
+    if method == "sql" or feature_set_id.startswith("tdx_gpcw_auto"):
+        return _run_sql_reduction(
             conn,
             feature_set_id=feature_set_id,
             trials=trials,
@@ -756,6 +759,7 @@ def main() -> int:
     parser.add_argument("--trials", type=int, default=64)
     parser.add_argument("--min-coverage", type=float, default=30.0)
     parser.add_argument("--min-abs-ic", type=float, default=0.005)
+    parser.add_argument("--method", choices=["full", "sql"], default="full")
     args = parser.parse_args()
 
     conn = get_conn()
@@ -766,6 +770,7 @@ def main() -> int:
             trials=args.trials,
             min_coverage=args.min_coverage,
             min_abs_ic=args.min_abs_ic,
+            method=args.method,
         )
         logger.info("feature elimination: %s", result)
         return 0
