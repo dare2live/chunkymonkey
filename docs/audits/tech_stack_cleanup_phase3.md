@@ -25,6 +25,9 @@ records output while keeping the old method name as a compatibility shim.
 The utility cleanup loop removed the unused old cache helper and converted
 the holiday calendar utility and tests to records/native standard-library
 parsing.
+The adjustment cleanup loop removed the retired factor/adjust/reversion
+helpers and their network-shaped tests after confirming ChunkyMonkey and
+miaoxiang no longer import them.
 
 ## Current tdxhub Call Map
 
@@ -63,12 +66,16 @@ parsing.
   `dcd194cd6f2dbb1b4734f2af784f195336c7d489`.
 - Updated ChunkyMonkey's tdxhub pin again to
   `c2c2b564d25f73cd33029a831edea4489454da4a`.
+- Updated ChunkyMonkey's tdxhub pin again to
+  `038dcc1b225236f741a81ba9c8bbc01ab11bf8b1`.
 - Converted the core quote API helpers and capability catalog to records
   output.
 - Converted local day/minute/extended-market bar readers to records output and
   verified real fixture reads without the old tabular dependency importable.
 - Removed the unused old cache helper and converted the holiday calendar
   utility/tests to records output.
+- Removed the retired factor/adjust/reversion helpers and their old external
+  network tests.
 - Kept the remaining legacy parser modules isolated behind lazy imports for
   later records-native conversion.
 - Switched ChunkyMonkey's holder source and data source adapter to consume
@@ -261,6 +268,9 @@ import tdxhub.utils.holiday
 print('holiday import ok without tabular dependency')
 PY
 # passed
+
+rg -n "tdxhub\\.utils\\.(factor|adjust)|tdxhub\\.tools\\.reversion|tdxhub\\.contrib\\.adjust|from tdxhub\\.utils import factor|from tdxhub\\.utils import adjust|fq_factor|to_adjust|get_xdxr|reversion\\(" tdxhub tests scripts -S
+# no active retired-adjustment imports remain
 ```
 
 `python3 -m pytest -q` in `tdxhub` still includes live TDX server and cache

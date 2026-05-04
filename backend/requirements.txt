@@ -8,7 +8,7 @@ pydantic>=2.0
 
 # 数据源（必需：tdxhub 是 K 线/财务数据的主数据源）
 # 使用自维护 fork (tdxhub)，修复服务器列表和 server 参数 bug
-tdxhub @ git+https://github.com/dare2live/tdxhub.git@c2c2b564d25f73cd33029a831edea4489454da4a
+tdxhub @ git+https://github.com/dare2live/tdxhub.git@038dcc1b225236f741a81ba9c8bbc01ab11bf8b1
 
 # AI 模型 (LightGBM + Optuna 多维评分)
 lightgbm
