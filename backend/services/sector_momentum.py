@@ -19,10 +19,10 @@ sector_momentum.py — 板块动量模块
 
 import json
 import logging
+import math
+from collections import defaultdict
 from datetime import date, datetime, timedelta
-
-import numpy as np
-import pandas as pd
+from typing import Optional
 
 from services.industry import (
     industry_join_clause,
@@ -31,7 +31,6 @@ from services.industry import (
     industry_level_select,
     load_industry_map,
 )
-from services.ta_lib import ma, macd, cross, hhv, llv, barslast
 
 logger = logging.getLogger("cm-api")
 
@@ -125,44 +124,133 @@ def ensure_tables(conn):
 # 板块技术状态计算
 # ============================================================
 
-def _calc_sector_state(df: pd.DataFrame) -> dict:
+def _safe_float(value) -> Optional[float]:
+    if value is None:
+        return None
+    try:
+        number = float(value)
+    except (TypeError, ValueError):
+        return None
+    return None if math.isnan(number) else number
+
+
+def _mean(values: list[float]) -> float:
+    return sum(values) / len(values) if values else 0.0
+
+
+def _rolling_mean(values: list[Optional[float]], window: int) -> list[Optional[float]]:
+    out = []
+    for idx in range(len(values)):
+        chunk = values[idx - window + 1:idx + 1]
+        valid = [value for value in chunk if value is not None]
+        out.append(_mean(valid) if len(valid) == window else None)
+    return out
+
+
+def _ema(values: list[Optional[float]], span: int) -> list[Optional[float]]:
+    alpha = 2 / (span + 1)
+    out = []
+    ema_value = None
+    valid_count = 0
+    for value in values:
+        if value is None:
+            out.append(None)
+            continue
+        valid_count += 1
+        ema_value = value if ema_value is None else alpha * value + (1 - alpha) * ema_value
+        out.append(ema_value if valid_count >= span else None)
+    return out
+
+
+def _macd(
+    values: list[Optional[float]],
+) -> tuple[list[Optional[float]], list[Optional[float]], list[Optional[float]]]:
+    fast = _ema(values, 12)
+    slow = _ema(values, 26)
+    dif = [
+        (fast_value - slow_value) if fast_value is not None and slow_value is not None else None
+        for fast_value, slow_value in zip(fast, slow)
+    ]
+    dea = _ema(dif, 9)
+    hist = [
+        (dif_value - dea_value) * 2 if dif_value is not None and dea_value is not None else None
+        for dif_value, dea_value in zip(dif, dea)
+    ]
+    return dif, dea, hist
+
+
+def _cross(left: list[Optional[float]], right: list[Optional[float]]) -> list[bool]:
+    out = [False]
+    for idx in range(1, len(left)):
+        prev_left = left[idx - 1]
+        prev_right = right[idx - 1]
+        cur_left = left[idx]
+        cur_right = right[idx]
+        out.append(
+            cur_left is not None
+            and cur_right is not None
+            and prev_left is not None
+            and prev_right is not None
+            and cur_left > cur_right
+            and prev_left <= prev_right
+        )
+    return out
+
+
+def _barslast(condition: list[bool]) -> list[Optional[int]]:
+    out = []
+    counter = None
+    for value in condition:
+        if value:
+            counter = 0
+        elif counter is not None:
+            counter += 1
+        out.append(counter)
+    return out
+
+
+def _rolling_extreme(values: list[Optional[float]], window: int, *, fn) -> list[Optional[float]]:
+    out = []
+    for idx in range(len(values)):
+        chunk = values[idx - window + 1:idx + 1]
+        valid = [value for value in chunk if value is not None]
+        out.append(fn(valid) if len(valid) == window else None)
+    return out
+
+
+def _calc_sector_state(rows: list[dict]) -> dict:
     """计算单个板块的技术状态。
-    输入：按日期排序的 OHLCV DataFrame。
+    输入：按日期排序的 OHLCV records。
     """
-    if len(df) < 60:
+    if len(rows) < 60:
         return {"trend_state": "unknown", "momentum_score": 0}
 
-    c = df["close"]
-    h = df["high"]
-    l_ = df["low"]
+    closes = [_safe_float(row.get("close")) for row in rows]
+    highs = [_safe_float(row.get("high")) for row in rows]
+    lows = [_safe_float(row.get("low")) for row in rows]
 
-    # 均线
-    ma20 = ma(c, 20)
-    ma60 = ma(c, 60)
-
-    # MACD
-    dif, dea, hist = macd(c)
-
-    # MACD 金叉
-    macd_golden = cross(dif, dea)
-    macd_cross_bl = barslast(macd_golden)
+    ma20 = _rolling_mean(closes, 20)
+    ma60 = _rolling_mean(closes, 60)
+    dif, dea, hist = _macd(closes)
+    macd_golden = _cross(dif, dea)
+    macd_cross_bl = _barslast(macd_golden)
 
     # 趋势状态判定
-    last = len(df) - 1
-    last_close = float(c.iloc[last])
-    last_ma20 = float(ma20.iloc[last]) if not pd.isna(ma20.iloc[last]) else last_close
-    last_ma60 = float(ma60.iloc[last]) if not pd.isna(ma60.iloc[last]) else last_close
-    last_dif = float(dif.iloc[last]) if not pd.isna(dif.iloc[last]) else 0
-    last_dea = float(dea.iloc[last]) if not pd.isna(dea.iloc[last]) else 0
-    last_hist = float(hist.iloc[last]) if not pd.isna(hist.iloc[last]) else 0
-    last_macd_cross = bool(macd_golden.iloc[last]) if last < len(macd_golden) else False
-    cross_days = int(macd_cross_bl.iloc[last]) if not pd.isna(macd_cross_bl.iloc[last]) else -1
+    last = len(rows) - 1
+    last_close = closes[last] or 0.0
+    last_ma20 = ma20[last] if ma20[last] is not None else last_close
+    last_ma60 = ma60[last] if ma60[last] is not None else last_close
+    last_dif = dif[last] if dif[last] is not None else 0.0
+    last_dea = dea[last] if dea[last] is not None else 0.0
+    last_hist = hist[last] if hist[last] is not None else 0.0
+    last_macd_cross = bool(macd_golden[last]) if last < len(macd_golden) else False
+    cross_days = int(macd_cross_bl[last]) if macd_cross_bl[last] is not None else -1
 
     # 高低点
-    _hhv60 = hhv(h, 60)
-    _llv60 = llv(l_, 60)
-    high_60 = float(_hhv60.iloc[last]) if not pd.isna(_hhv60.iloc[last]) else last_close
-    low_60 = float(_llv60.iloc[last]) if not pd.isna(_llv60.iloc[last]) else last_close
+    hhv60 = _rolling_extreme(highs, 60, fn=max)
+    llv60 = _rolling_extreme(lows, 60, fn=min)
+    high_60 = hhv60[last] if hhv60[last] is not None else last_close
+    low_60 = llv60[last] if llv60[last] is not None else last_close
 
     pullback = (high_60 - last_close) / high_60 if high_60 > 0 else 0
     rally = (last_close - low_60) / low_60 if low_60 > 0 else 0
@@ -235,14 +323,70 @@ def _calc_sector_state(df: pd.DataFrame) -> dict:
     }
 
 
-def _calc_window_return(series: pd.Series, window: int) -> float:
-    if series is None or len(series) <= window:
+def _calc_window_return(values: list[float], window: int) -> float:
+    if not values or len(values) <= window:
         return 0.0
-    last = float(series.iloc[-1])
-    prev = float(series.iloc[-window - 1])
+    last = float(values[-1])
+    prev = float(values[-window - 1])
     if prev == 0:
         return 0.0
     return round((last / prev - 1) * 100, 2)
+
+
+def _equal_weight_index(rows, value_col: str) -> list[dict]:
+    by_code: dict[str, list[dict]] = defaultdict(list)
+    all_dates = set()
+    for raw in rows:
+        row = dict(raw)
+        value = _safe_float(row.get(value_col))
+        if value is None:
+            continue
+        date_value = str(row.get("date") or "").strip()[:10]
+        code = str(row.get("code") or "").strip()
+        if not date_value or not code:
+            continue
+        by_code[code].append({"date": date_value, "value": value})
+        all_dates.add(date_value)
+
+    returns_by_date: dict[str, list[float]] = defaultdict(list)
+    for code_rows in by_code.values():
+        code_rows.sort(key=lambda item: item["date"])
+        prev = None
+        for item in code_rows:
+            if prev not in (None, 0):
+                returns_by_date[item["date"]].append(item["value"] / prev - 1)
+            prev = item["value"]
+
+    index_value = 1000.0
+    series = []
+    for date_value in sorted(all_dates):
+        daily_ret = _mean(returns_by_date[date_value]) if returns_by_date[date_value] else 0.0
+        index_value *= (1 + daily_ret)
+        series.append({"date": date_value, "value": index_value})
+    return series
+
+
+def _series_map(series: list[dict]) -> dict[str, float]:
+    return {row["date"]: row["value"] for row in series}
+
+
+def _sector_index_rows(kline_rows) -> list[dict]:
+    close_series = _equal_weight_index(kline_rows, "close")
+    high_series = _equal_weight_index(kline_rows, "high")
+    low_series = _equal_weight_index(kline_rows, "low")
+    close_map = _series_map(close_series)
+    high_map = _series_map(high_series)
+    low_map = _series_map(low_series)
+    dates = sorted(set(close_map) & set(high_map) & set(low_map))
+    return [
+        {
+            "date": date_value,
+            "close": close_map[date_value],
+            "high": high_map[date_value],
+            "low": low_map[date_value],
+        }
+        for date_value in dates
+    ]
 
 
 def _rank_sector_rotation(rows: list[dict]) -> list[dict]:
@@ -353,12 +497,9 @@ def calc_sector_momentum(smart_conn, mkt_conn) -> int:
                 (*all_codes, benchmark_cutoff)
             ).fetchall()
             if benchmark_rows:
-                bdf = pd.DataFrame([dict(r) for r in benchmark_rows])
-                bpivot = bdf.pivot(index="date", columns="code", values="close")
-                if len(bpivot) >= 60:
-                    daily_ret = bpivot.pct_change(fill_method=None)
-                    bench_ret = daily_ret.mean(axis=1).fillna(0)
-                    benchmark_close = (1 + bench_ret).cumprod() * 1000
+                benchmark_close = _equal_weight_index(benchmark_rows, "close")
+                if len(benchmark_close) < 60:
+                    benchmark_close = None
         except Exception as e:
             logger.warning(f"[板块动量] 市场等权基线计算失败: {e}")
             benchmark_close = None
@@ -388,46 +529,25 @@ def calc_sector_momentum(smart_conn, mkt_conn) -> int:
             if not kline_rows:
                 continue
 
-            kdf = pd.DataFrame([dict(r) for r in kline_rows])
-            # 等权指数：用日收益率均值反推指数，避免高价股主导
-            pivot = kdf.pivot(index="date", columns="code", values="close")
-            if len(pivot) < 60:
+            sector_rows = _sector_index_rows(kline_rows)
+            if len(sector_rows) < 60:
                 continue
 
-            # 日收益率 → 等权平均收益率 → 指数值（基准1000点）
-            daily_ret = pivot.pct_change(fill_method=None)
-            idx_ret = daily_ret.mean(axis=1).fillna(0)
-            idx_close = (1 + idx_ret).cumprod() * 1000
-
-            pivot_h = kdf.pivot(index="date", columns="code", values="high")
-            pivot_l = kdf.pivot(index="date", columns="code", values="low")
-            idx_high_ret = pivot_h.pct_change(fill_method=None).mean(axis=1).fillna(0)
-            idx_low_ret = pivot_l.pct_change(fill_method=None).mean(axis=1).fillna(0)
-            idx_high = (1 + idx_high_ret).cumprod() * 1000
-            idx_low = (1 + idx_low_ret).cumprod() * 1000
-
-            # 对齐索引
-            common_idx = idx_close.index.intersection(idx_high.index).intersection(idx_low.index)
-            sector_close_series = idx_close.loc[common_idx].sort_index()
-            sector_high_series = idx_high.loc[common_idx].sort_index()
-            sector_low_series = idx_low.loc[common_idx].sort_index()
-            sector_df = pd.DataFrame({
-                "close": sector_close_series,
-                "high": sector_high_series,
-                "low": sector_low_series,
-            }).reset_index(drop=True)
-
-            if len(sector_df) < 60:
-                continue
-
-            state = _calc_sector_state(sector_df)
-            return_1m = _calc_window_return(sector_df["close"], 20)
-            return_3m = _calc_window_return(sector_df["close"], 60)
-            return_6m = _calc_window_return(sector_df["close"], 120)
-            return_12m = _calc_window_return(sector_df["close"], 240)
+            sector_close_values = [row["close"] for row in sector_rows]
+            sector_dates = [row["date"] for row in sector_rows]
+            state = _calc_sector_state(sector_rows)
+            return_1m = _calc_window_return(sector_close_values, 20)
+            return_3m = _calc_window_return(sector_close_values, 60)
+            return_6m = _calc_window_return(sector_close_values, 120)
+            return_12m = _calc_window_return(sector_close_values, 240)
             excess_1m = excess_3m = excess_6m = excess_12m = 0.0
             if benchmark_close is not None:
-                aligned_bench = benchmark_close.reindex(sector_close_series.index).dropna()
+                benchmark_map = _series_map(benchmark_close)
+                aligned_bench = [
+                    benchmark_map[date_value]
+                    for date_value in sector_dates
+                    if date_value in benchmark_map
+                ]
                 if len(aligned_bench) >= 60:
                     bench_1m = _calc_window_return(aligned_bench, 20)
                     bench_3m = _calc_window_return(aligned_bench, 60)

@@ -57,6 +57,10 @@ Phase 4.2 then started with the standalone neutralization helpers.
 - Converted event simulation inputs, price panels, position details, and
   summary statistics to records/native math.
 - Added `backend/tests/test_event_simulator.py`.
+- Removed pandas/numpy and direct `ta_lib` dependency from
+  `backend/services/sector_momentum.py`.
+- Converted sector technical state and equal-weight index synthesis to
+  records/native math.
 
 ## Validation
 
@@ -175,11 +179,22 @@ python3 -m pytest backend/tests/test_event_simulator.py -q
 
 python3 -m pytest backend/tests/test_event_simulator.py backend/tests/test_stock_turtle_engine.py backend/tests/test_portfolio_backtest.py backend/tests/test_neutralize.py backend/tests/test_kline_sources.py backend/tests/test_tdx_source.py backend/tests/test_institution_survey_client.py backend/tests/test_qfii_client.py backend/tests/test_lhb_client.py backend/tests/test_margin_client.py backend/tests/test_xdxr_client.py backend/tests/test_block_client.py -q
 # 74 passed
+
+rg -n "pandas|pd\.|DataFrame|numpy|np\." backend/services/sector_momentum.py backend/tests/test_sector_momentum.py -S
+# 0 matches
+
+python3 -m py_compile backend/services/sector_momentum.py backend/tests/test_sector_momentum.py
+# passed
+
+python3 -m pytest backend/tests/test_sector_momentum.py -q
+# 2 passed
+
+python3 -m pytest backend/tests/test_sector_momentum.py backend/tests/test_event_simulator.py backend/tests/test_stock_turtle_engine.py backend/tests/test_portfolio_backtest.py backend/tests/test_neutralize.py backend/tests/test_kline_sources.py backend/tests/test_tdx_source.py backend/tests/test_institution_survey_client.py backend/tests/test_qfii_client.py backend/tests/test_lhb_client.py backend/tests/test_margin_client.py backend/tests/test_xdxr_client.py backend/tests/test_block_client.py -q
+# 76 passed
 ```
 
 ## Remaining Phase 4 Targets
 
 - `backend/services/ta_lib.py`
 - `backend/services/screening_engine.py`
-- `backend/services/sector_momentum.py`
 - pandas usage in scripts and model/backtest layers.
