@@ -21,8 +21,6 @@ import logging
 from datetime import date, datetime, timedelta
 from typing import Any, Optional
 
-import pandas as pd
-
 logger = logging.getLogger("cm-api")
 
 
@@ -85,8 +83,13 @@ _COL_MAP = {
 
 
 def _safe_int(val) -> Optional[int]:
-    if val is None or (isinstance(val, float) and pd.isna(val)):
+    if val is None:
         return None
+    try:
+        if val != val:
+            return None
+    except Exception:
+        pass
     try:
         return int(val)
     except (ValueError, TypeError):
@@ -94,17 +97,24 @@ def _safe_int(val) -> Optional[int]:
 
 
 def _safe_str(val) -> Optional[str]:
-    if val is None or (isinstance(val, float) and pd.isna(val)):
+    if val is None:
         return None
+    try:
+        if val != val:
+            return None
+    except Exception:
+        pass
     s = str(val).strip()
     return s if s else None
 
 
 def _normalize_date(val) -> Optional[str]:
-    """把 '2026-04-16' / datetime / pandas Timestamp 统一成 'YYYY-MM-DD'。"""
-    if val is None or (isinstance(val, float) and pd.isna(val)):
+    """把 '2026-04-16' / datetime-like 值统一成 'YYYY-MM-DD'。"""
+    if val is None:
         return None
     try:
+        if val != val:
+            return None
         if isinstance(val, (datetime, date)):
             return val.strftime("%Y-%m-%d")
         s = str(val).strip()
@@ -162,10 +172,10 @@ def _fetch_survey_akshare(start_date: str) -> list[dict]:
     return df.to_dict("records")
 
 
-def _fetch_from_eastmoney_skill(start_date: str) -> pd.DataFrame:
+def _fetch_from_eastmoney_skill(start_date: str) -> list[dict]:
     """机构调研: 主源 妙想 + fallback ak.stock_jgdy_tj_em (P0.3).
 
-    start_date: YYYYMMDD, 返回中文列名 DataFrame (代码/名称/公告日期/接待日期 等).
+    start_date: YYYYMMDD, 返回中文列名 records (代码/名称/公告日期/接待日期 等).
     """
     from services.data_sources.fallback import with_fallback
 
@@ -176,9 +186,7 @@ def _fetch_from_eastmoney_skill(start_date: str) -> pd.DataFrame:
         primary_label="aif10",
         fallback_label="akshare",
     )
-    if not rows:
-        return pd.DataFrame()
-    return pd.DataFrame(rows)
+    return rows or []
 
 
 # 兼容别名: 老代码可能仍引用此名 (虽然只在本文件用)
@@ -230,21 +238,21 @@ def sync_institution_surveys(
     result: dict = {"rows_fetched": 0, "rows_upserted": 0, "mart_rows": 0, "errors": []}
 
     try:
-        df = _fetch_from_eastmoney_skill(start_date)
+        source_rows = _fetch_from_eastmoney_skill(start_date)
     except Exception as exc:
         logger.error(f"[survey] eastmoney_skill 拉取失败: {exc}")
         result["errors"].append(f"fetch failed: {exc}")
         return result
 
-    if df.empty:
+    if not source_rows:
         logger.warning("[survey] eastmoney_skill 返回空")
         return result
 
-    result["rows_fetched"] = len(df)
-    logger.info(f"[survey] 获取 {len(df)} 条原始记录，准备写库")
+    result["rows_fetched"] = len(source_rows)
+    logger.info(f"[survey] 获取 {len(source_rows)} 条原始记录，准备写库")
 
     rows = []
-    for _, row in df.iterrows():
+    for row in source_rows:
         stock_code = _safe_str(row.get("代码"))
         survey_date = _normalize_date(row.get("接待日期"))
         notice_date = _normalize_date(row.get("公告日期"))

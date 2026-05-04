@@ -5,8 +5,8 @@ Date: 2026-05-05
 ## Scope
 
 Phase 4 starts with the data-source adapter layer. The first closed loops
-removed pandas from xdxr, margin, LHB, and QFII sync clients after their fetch
-boundaries were reduced to records.
+removed pandas from xdxr, margin, LHB, QFII, and institution survey sync
+clients after their fetch boundaries were reduced to records.
 
 ## Change
 
@@ -28,6 +28,9 @@ boundaries were reduced to records.
   to records.
 - Updated `backend/tests/test_qfii_client.py` fixtures from DataFrame to
   records.
+- Removed `import pandas` from `backend/services/institution_survey_client.py`.
+- Converted institution survey fetch and write preparation to records.
+- Added `backend/tests/test_institution_survey_client.py`.
 
 ## Validation
 
@@ -43,6 +46,9 @@ rg -n "import pandas|from pandas|pd\.|DataFrame" backend/services/lhb_client.py 
 # 0 matches
 
 rg -n "import pandas|from pandas|pd\.|DataFrame" backend/services/qfii_client.py backend/tests/test_qfii_client.py -S
+# 0 matches
+
+rg -n "import pandas|from pandas|pd\.|DataFrame" backend/services/institution_survey_client.py backend/tests/test_institution_survey_client.py -S
 # 0 matches
 
 python3 -m py_compile backend/services/xdxr_client.py backend/tests/test_xdxr_client.py
@@ -71,11 +77,16 @@ python3 -m pytest backend/tests/test_qfii_client.py -q
 
 python3 -m pytest backend/tests/test_qfii_client.py backend/tests/test_lhb_client.py backend/tests/test_margin_client.py backend/tests/test_xdxr_client.py backend/tests/test_block_client.py -q
 # 34 passed
+
+python3 -m pytest backend/tests/test_institution_survey_client.py -q
+# 2 passed
+
+python3 -m pytest backend/tests/test_institution_survey_client.py backend/tests/test_qfii_client.py backend/tests/test_lhb_client.py backend/tests/test_margin_client.py backend/tests/test_xdxr_client.py backend/tests/test_block_client.py -q
+# 36 passed
 ```
 
 ## Remaining Phase 4 Targets
 
 - `backend/services/akshare_client.py`
 - `backend/services/kline_source.py`
-- `backend/services/institution_survey_client.py`
 - pandas usage in scripts and model/backtest layers.
