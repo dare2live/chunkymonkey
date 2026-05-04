@@ -34,6 +34,9 @@ and fact writes to records/native helpers.
 The executive-trade event loop converted akshare payload normalization,
 shareholder aggregation, forward-return labeling, and raw/fact writes to
 records/native helpers.
+The TDX challenger report loop converted rank-ensemble scoring and holdout
+metrics to records/native helpers and removed an indirect pandas import through
+feature-group ablation.
 
 ## Change
 
@@ -144,6 +147,12 @@ records/native helpers.
   aggregation, forward-return labels, and raw/fact writes to records/native
   helpers.
 - Added `backend/tests/test_build_executive_trade_events.py`.
+- Removed pandas from `backend/scripts/train_tdx_challenger_model.py`.
+- Converted TDX challenger rank scoring, rank IC, long-short spread, and
+  candidate feature selection to records/native helpers.
+- Removed the indirect pandas import from `run_feature_group_ablation.py` by
+  localizing the candidate-feature lookup used by the challenger report.
+- Added `backend/tests/test_train_tdx_challenger_model.py`.
 
 ## Validation
 
@@ -430,6 +439,24 @@ python3 backend/scripts/build_executive_trade_events.py --dry-run
 
 python3 -m pytest backend/tests -q
 # 332 passed
+
+python3 backend/scripts/data_health_snapshot.py --dry-run
+# green=147/yellow=0/red=0
+
+rg -n "import pandas|from pandas|pd\.|DataFrame|read_sql_query|\.to_sql\(|\.df\(|register\(" backend/scripts/train_tdx_challenger_model.py backend/tests/test_train_tdx_challenger_model.py -S
+# 0 matches
+
+python3 -m py_compile backend/scripts/train_tdx_challenger_model.py backend/tests/test_train_tdx_challenger_model.py
+# passed
+
+python3 -m pytest backend/tests/test_train_tdx_challenger_model.py -q
+# 4 passed
+
+python3 backend/scripts/train_tdx_challenger_model.py --help
+# import/CLI smoke passed
+
+python3 -m pytest backend/tests -q
+# 336 passed
 
 python3 backend/scripts/data_health_snapshot.py --dry-run
 # green=147/yellow=0/red=0

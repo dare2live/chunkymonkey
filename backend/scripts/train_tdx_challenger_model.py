@@ -12,11 +12,8 @@ from typing import Any
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-import pandas as pd
-
 from services.db import get_conn  # noqa: E402
 from scripts.build_candidate_feature_panel import CANDIDATE_FEATURE_SET_ID, CANDIDATE_FEATURES  # noqa: E402
-from scripts.run_feature_group_ablation import _candidate_features_for_set  # noqa: E402
 
 logger = logging.getLogger("tdx_challenger")
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s | %(message)s")
@@ -69,40 +66,145 @@ def ensure_tables(conn: Any) -> None:
                 conn.execute(stmt)
 
 
-def _rank_score(df: pd.DataFrame, features: list[str], out_col: str) -> pd.DataFrame:
-    scored = df.copy()
-    rank_cols = []
+def _records_from_cursor(cursor: Any) -> list[dict[str, Any]]:
+    names = [desc[0] for desc in (cursor.description or [])]
+    return [
+        {name: value for name, value in zip(names, row)}
+        for row in cursor.fetchall()
+    ]
+
+
+def _is_missing(value: Any) -> bool:
+    if value is None:
+        return True
+    try:
+        return value != value
+    except Exception:
+        return False
+
+
+def _to_float(value: Any) -> float | None:
+    if _is_missing(value):
+        return None
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _rank_percentiles(values: list[float]) -> list[float]:
+    n = len(values)
+    if n == 0:
+        return []
+    indexed = sorted(enumerate(values), key=lambda item: item[1])
+    ranks = [0.0] * n
+    pos = 0
+    while pos < n:
+        end = pos + 1
+        while end < n and indexed[end][1] == indexed[pos][1]:
+            end += 1
+        avg_rank = ((pos + 1) + end) / 2.0
+        percentile = avg_rank / n
+        for idx in range(pos, end):
+            ranks[indexed[idx][0]] = percentile
+        pos = end
+    return ranks
+
+
+def _pearson(xs: list[float], ys: list[float]) -> float | None:
+    n = len(xs)
+    if n == 0 or n != len(ys):
+        return None
+    mean_x = sum(xs) / n
+    mean_y = sum(ys) / n
+    dx = [value - mean_x for value in xs]
+    dy = [value - mean_y for value in ys]
+    denom_x = sum(value * value for value in dx)
+    denom_y = sum(value * value for value in dy)
+    if denom_x <= 0 or denom_y <= 0:
+        return None
+    return sum(x * y for x, y in zip(dx, dy)) / ((denom_x * denom_y) ** 0.5)
+
+
+def _mean(values: list[float]) -> float | None:
+    return sum(values) / len(values) if values else None
+
+
+def _group_by_date(rows: list[dict[str, Any]]) -> dict[str, list[dict[str, Any]]]:
+    groups: dict[str, list[dict[str, Any]]] = {}
+    for row in rows:
+        date = str(row.get("date") or "")
+        groups.setdefault(date, []).append(row)
+    return groups
+
+
+def _rank_score(rows: list[dict[str, Any]], features: list[str], out_col: str) -> list[dict[str, Any]]:
+    scored = [dict(row) for row in rows]
+    groups = _group_by_date(scored)
     for feature in features:
-        if feature not in scored.columns:
-            continue
-        col = f"__rank_{feature}"
-        scored[col] = scored.groupby("date")[feature].rank(pct=True)
-        rank_cols.append(col)
-    scored[out_col] = scored[rank_cols].mean(axis=1) if rank_cols else None
+        for group_rows in groups.values():
+            indexed_values = [
+                (idx, value)
+                for idx, row in enumerate(group_rows)
+                if (value := _to_float(row.get(feature))) is not None
+            ]
+            ranks = _rank_percentiles([value for _, value in indexed_values])
+            for rank_idx, (row_idx, _) in enumerate(indexed_values):
+                group_rows[row_idx].setdefault("__rank_values", []).append(ranks[rank_idx])
+    for row in scored:
+        ranks = row.pop("__rank_values", [])
+        row[out_col] = _mean(ranks)
     return scored
 
 
-def _mean_rank_ic(df: pd.DataFrame, score_col: str, label_col: str = "forward_ret_20d") -> float | None:
+def _mean_rank_ic(
+    rows: list[dict[str, Any]],
+    score_col: str,
+    label_col: str = "forward_ret_20d",
+) -> float | None:
     vals = []
-    for _, part in df[[score_col, label_col, "date"]].dropna().groupby("date"):
-        if len(part) < 10 or part[score_col].nunique() < 2 or part[label_col].nunique() < 2:
+    for part in _group_by_date(rows).values():
+        pairs = [
+            (score, label)
+            for row in part
+            if (score := _to_float(row.get(score_col))) is not None
+            if (label := _to_float(row.get(label_col))) is not None
+        ]
+        if len(pairs) < 10:
             continue
-        corr = part[score_col].rank().corr(part[label_col].rank())
-        if pd.notna(corr):
+        scores = [score for score, _ in pairs]
+        labels = [label for _, label in pairs]
+        if len(set(scores)) < 2 or len(set(labels)) < 2:
+            continue
+        corr = _pearson(_rank_percentiles(scores), _rank_percentiles(labels))
+        if corr is not None:
             vals.append(float(corr))
     return float(sum(vals) / len(vals)) if vals else None
 
 
-def _long_short(df: pd.DataFrame, score_col: str, label_col: str = "forward_ret_20d") -> tuple[float | None, float | None]:
+def _long_short(
+    rows: list[dict[str, Any]],
+    score_col: str,
+    label_col: str = "forward_ret_20d",
+) -> tuple[float | None, float | None]:
     spreads = []
-    for _, part in df[["date", score_col, label_col]].dropna().groupby("date"):
-        if len(part) < 20 or part[score_col].nunique() < 2:
+    for part in _group_by_date(rows).values():
+        pairs = [
+            (score, label)
+            for row in part
+            if (score := _to_float(row.get(score_col))) is not None
+            if (label := _to_float(row.get(label_col))) is not None
+        ]
+        if len(pairs) < 20:
             continue
-        ranked = part.assign(__rank=part[score_col].rank(pct=True))
-        top = ranked[ranked["__rank"] >= 0.9]
-        bottom = ranked[ranked["__rank"] <= 0.1]
-        if not top.empty and not bottom.empty:
-            spreads.append(float(top[label_col].mean() - bottom[label_col].mean()))
+        scores = [score for score, _ in pairs]
+        if len(set(scores)) < 2:
+            continue
+        ranks = _rank_percentiles(scores)
+        top = [pairs[idx][1] for idx, rank in enumerate(ranks) if rank >= 0.9]
+        bottom = [pairs[idx][1] for idx, rank in enumerate(ranks) if rank <= 0.1]
+        if top and bottom:
+            spreads.append(float((sum(top) / len(top)) - (sum(bottom) / len(bottom))))
     if not spreads:
         return None, None
     long_short = float(sum(spreads) / len(spreads))
@@ -114,6 +216,29 @@ def _long_short(df: pd.DataFrame, score_col: str, label_col: str = "forward_ret_
         peak = max(peak, equity)
         max_dd = min(max_dd, equity / peak - 1.0)
     return long_short, float(max_dd)
+
+
+def _auto_source_feature_set_id(feature_set_id: str) -> str:
+    return feature_set_id[:-4] if feature_set_id.endswith("_pit") else feature_set_id
+
+
+def _candidate_features_for_set(conn: Any, feature_set_id: str) -> list[str]:
+    table_cols = {row[0] for row in conn.execute("DESCRIBE fact_feature_panel_candidate").fetchall()}
+    if feature_set_id.startswith("tdx_gpcw_auto"):
+        rows = conn.execute(
+            """
+            SELECT feature_name, COUNT(feature_value) AS n
+            FROM fact_tdx_gpcw_auto_feature_quarterly
+            WHERE feature_set_id = ?
+            GROUP BY feature_name
+            ORDER BY n DESC, feature_name
+            """,
+            (_auto_source_feature_set_id(feature_set_id),),
+        ).fetchall()
+        features = [row["feature_name"] for row in rows if row["feature_name"] in table_cols]
+        if features:
+            return features
+    return [feature for feature in CANDIDATE_FEATURES if feature in table_cols]
 
 
 def _date_windows(dates: list[str]) -> tuple[dict[str, str], dict[str, str], dict[str, str]]:
@@ -153,15 +278,28 @@ def train_tdx_challenger_model(
     table_cols = {row[0] for row in conn.execute("DESCRIBE fact_feature_panel_candidate").fetchall()}
     cols = list(dict.fromkeys([col for col in cols if col in table_cols]))
     cursor = conn.execute(
-        f"SELECT {', '.join(cols)} FROM fact_feature_panel_candidate WHERE feature_set_id = ? AND forward_ret_20d IS NOT NULL",
+        f"""
+        SELECT {', '.join(cols)}
+        FROM fact_feature_panel_candidate
+        WHERE feature_set_id = ? AND forward_ret_20d IS NOT NULL
+        """,
         (feature_set_id,),
     )
-    df = cursor.df() if hasattr(cursor, "df") else pd.DataFrame(cursor.fetchall(), columns=[d[0] for d in cursor.description])
-    dates = sorted(str(d) for d in df["date"].dropna().unique())
+    records = _records_from_cursor(cursor)
+    dates = sorted({str(row.get("date")) for row in records if not _is_missing(row.get("date"))})
+    if not dates:
+        raise RuntimeError(f"fact_feature_panel_candidate has no scored rows for feature_set_id={feature_set_id}")
     train_window, valid_window, holdout_window = _date_windows(dates)
-    holdout = df[(df["date"].astype(str) >= holdout_window["start"]) & (df["date"].astype(str) <= holdout_window["end"])]
+    holdout = [
+        row for row in records
+        if holdout_window["start"] <= str(row.get("date")) <= holdout_window["end"]
+    ]
     challenger = _rank_score(holdout, selected, "__challenger_score")
-    baseline = _rank_score(challenger, [f for f in baseline_features if f in challenger.columns], "__baseline_score")
+    baseline = _rank_score(
+        challenger,
+        [feature for feature in baseline_features if feature in table_cols],
+        "__baseline_score",
+    )
     rank_ic = _mean_rank_ic(baseline, "__challenger_score")
     baseline_rank_ic = _mean_rank_ic(baseline, "__baseline_score")
     long_short_return, max_drawdown = _long_short(baseline, "__challenger_score")
