@@ -287,6 +287,8 @@ def build_candidate_feature_panel(
         """,
         insert_params,
     )
+    from services.schema_versions import record_actual_version
+    record_actual_version(conn, "fact_feature_panel_candidate")
     conn.commit()
     row = conn.execute(
         """

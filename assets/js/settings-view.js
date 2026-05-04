@@ -159,7 +159,7 @@
     if (!el) return;
     let backend = '加载中…';
     try {
-      const r = await fetch('/api/inst/health/summary');
+      const r = await fetch('/health');
       if (r.ok) backend = 'OK';
     } catch { backend = '不可达'; }
     el.innerHTML = `

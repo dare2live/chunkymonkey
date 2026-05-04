@@ -189,6 +189,8 @@ def build_tdx_gpcw_auto_feature_panel(
         """,
         [*params, feature_set_id, built_at],
     )
+    from services.schema_versions import record_actual_version
+    record_actual_version(conn, "fact_feature_panel_candidate")
     conn.commit()
     summary = conn.execute(
         """

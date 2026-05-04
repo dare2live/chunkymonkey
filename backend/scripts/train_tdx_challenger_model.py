@@ -263,6 +263,8 @@ def train_tdx_challenger_model(
                 built_at,
             ),
         )
+    from services.schema_versions import record_actual_version
+    record_actual_version(conn, "mart_tdx_challenger_report")
     conn.commit()
     return {
         "challenger_run_id": run_id,

@@ -358,6 +358,8 @@ def run_group_ablation(
             for r in results
         ],
     )
+    from services.schema_versions import record_actual_version
+    record_actual_version(conn, "mart_feature_group_ablation")
     conn.commit()
     return {
         "run_id": run_id,

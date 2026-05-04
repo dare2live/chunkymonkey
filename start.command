@@ -71,11 +71,13 @@ cd "$BACKEND_DIR"
 stop_project_server
 check_port_conflict
 
-# ---- akshare 自动升级 (官方建议每次使用前升级, 避免接口变动) ----
-# 跳过: CM_SKIP_UPGRADE=1 ./start.command
-# 失败不阻塞启动 (网络问题、超时、pip 缺失都继续走)
-if [[ "${CM_SKIP_UPGRADE:-0}" != "1" ]]; then
-  echo "akshare: 每次启动自动检查 + 落后版本自动升级 (临时跳过: 用 CM_SKIP_UPGRADE=1 ./start.command 启动)"
+# ---- akshare 版本检查 / 显式升级 ----
+# 默认启动不访问网络，避免网络/超时导致无意义的启动告警。
+# 需要升级时显式执行: CM_AUTO_UPGRADE_AKSHARE=1 ./start.command
+if [[ "${CM_SKIP_UPGRADE:-0}" == "1" ]]; then
+  echo "akshare: 跳过版本检查 (CM_SKIP_UPGRADE=1 已设)"
+elif [[ "${CM_AUTO_UPGRADE_AKSHARE:-0}" == "1" ]]; then
+  echo "akshare: 显式升级检查 (CM_AUTO_UPGRADE_AKSHARE=1)"
   if command -v pip3 >/dev/null 2>&1; then
     old_v="$(pip3 show akshare 2>/dev/null | awk '/^Version:/ {print $2}')"
     if pip3 install --upgrade akshare --quiet --upgrade-strategy only-if-needed --timeout 20 2>/dev/null; then
@@ -94,7 +96,19 @@ if [[ "${CM_SKIP_UPGRADE:-0}" != "1" ]]; then
     echo "  → pip3 未安装, 跳过 akshare 自动升级"
   fi
 else
-  echo "akshare: 跳过自动升级检查 (CM_SKIP_UPGRADE=1 已设)"
+  current_v="$(python3 - <<'PY' 2>/dev/null || true
+try:
+    import akshare as ak
+    print(getattr(ak, "__version__", "unknown"))
+except Exception:
+    print("")
+PY
+)"
+  if [[ -n "$current_v" ]]; then
+    echo "akshare: 使用本地版本 v${current_v} (如需升级: CM_AUTO_UPGRADE_AKSHARE=1 ./start.command)"
+  else
+    echo "akshare: 本地未安装或无法导入 (如需安装/升级: CM_AUTO_UPGRADE_AKSHARE=1 ./start.command)"
+  fi
 fi
 
 echo "========================================"

@@ -257,6 +257,8 @@ def _run_auto_sql_walkforward(
         """,
         rows,
     )
+    from services.schema_versions import record_actual_version
+    record_actual_version(conn, "mart_candidate_walkforward_eval")
     conn.commit()
     return {
         "run_id": run_id,

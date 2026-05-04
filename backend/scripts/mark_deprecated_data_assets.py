@@ -173,6 +173,8 @@ def mark_deprecated_assets(conn: Any, *, dry_run: bool = False) -> dict:
             """,
             rows,
         )
+        from services.schema_versions import record_actual_version
+        record_actual_version(conn, "mart_data_deprecation_record")
         conn.commit()
 
     return {

@@ -329,6 +329,8 @@ def build_feature_retention_decisions(
                 for row in output_rows
             ],
         )
+    from services.schema_versions import record_actual_version
+    record_actual_version(conn, "mart_feature_retention_decision")
     conn.commit()
     counts = {}
     for row in output_rows:

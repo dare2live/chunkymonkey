@@ -548,6 +548,9 @@ def _run_auto_sql_reduction(
             for feature in features
         ],
     )
+    from services.schema_versions import record_actual_version
+    record_actual_version(conn, "mart_feature_candidate_score")
+    record_actual_version(conn, "mart_model_selection_run")
     conn.commit()
     return {
         "run_id": run_id,

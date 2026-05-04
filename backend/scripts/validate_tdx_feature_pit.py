@@ -193,6 +193,8 @@ def validate_tdx_feature_pit(
         """,
         rows,
     )
+    from services.schema_versions import record_actual_version
+    record_actual_version(conn, "mart_feature_pit_audit")
     conn.commit()
     violation_rows = sum(int(r["violation_rows"] or 0) for r in results)
     return {

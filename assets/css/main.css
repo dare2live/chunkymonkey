@@ -7092,6 +7092,34 @@ tr.detail-row>td>.detail-panel {
   background: var(--cm-ink-100);
 }
 
+#sys-schema-versions,
+#sys-schema-versions * {
+  min-width: 0;
+}
+
+#sys-schema-versions code {
+  white-space: normal;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+#sys-schema-versions span[style*="float:right"] {
+  max-width: 100%;
+  overflow-wrap: anywhere;
+}
+
+@media (max-width: 640px) {
+  #view-settings > div[style*="grid-template-columns:1fr 1fr"] {
+    grid-template-columns: 1fr !important;
+  }
+
+  #sys-schema-versions span[style*="float:right"] {
+    float: none !important;
+    display: block;
+    margin-top: 2px;
+  }
+}
+
 /* 二级 nav 分隔线 */
 .nav-sub-bar > span[style*="background:var(--cm-ink-100)"] {
   margin: 0 4px;
