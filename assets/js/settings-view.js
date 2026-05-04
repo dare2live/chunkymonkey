@@ -159,8 +159,14 @@
     if (!el) return;
     let backend = '加载中…';
     try {
-      const r = await fetch('/health');
-      if (r.ok) backend = 'OK';
+      const r = await fetch('/api/inst/health/summary');
+      const j = await r.json().catch(() => ({}));
+      if (r.ok && j.status === 'ok') {
+        const enabled = Array.isArray(j.enabled_modules) ? j.enabled_modules.join(', ') : '';
+        backend = enabled ? `OK (${enabled})` : 'OK';
+      } else {
+        backend = j.status || '异常';
+      }
     } catch { backend = '不可达'; }
     el.innerHTML = `
       <div>chunky-monkey-v2</div>

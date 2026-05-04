@@ -142,9 +142,7 @@ async def toggle_modules(settings: dict):
     except Exception as e:
         return {"status": "error", "message": str(e)}
 
-# 健康检查
-@app.get("/health")
-async def health():
+def build_health_payload() -> dict:
     try:
         conn = get_conn()
         from services.db import get_enabled_modules
@@ -152,7 +150,7 @@ async def health():
         conn.close()
     except Exception:
         current_modules = app_modules
-        
+
     enabled = [k for k, v in current_modules.items() if v]
     return {
         "status": "ok",
@@ -160,6 +158,17 @@ async def health():
         "available_modules": ["etf", "akquant"],
         "module_deps": {"akquant": "远期规划"}
     }
+
+
+# 健康检查
+@app.get("/health")
+async def health():
+    return build_health_payload()
+
+
+@app.get("/api/inst/health/summary")
+async def inst_health_summary():
+    return build_health_payload()
 
 
 @app.get("/favicon.ico")
