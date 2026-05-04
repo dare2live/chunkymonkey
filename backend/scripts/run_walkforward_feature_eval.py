@@ -12,8 +12,6 @@ from typing import Any
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-import pandas as pd
-
 from services.db import get_conn  # noqa: E402
 from scripts.build_candidate_feature_panel import CANDIDATE_FEATURE_SET_ID  # noqa: E402
 from scripts.run_feature_group_ablation import (  # noqa: E402
@@ -21,7 +19,11 @@ from scripts.run_feature_group_ablation import (  # noqa: E402
     LABEL_COLUMNS,
     _candidate_features_for_set,
     _feature_group_map_for_set,
+    _group_by_date,
     _load_candidate_panel,
+    _pearson,
+    _rank_percentiles,
+    _to_float,
 )
 
 logger = logging.getLogger("walkforward_feature_eval")
@@ -76,32 +78,71 @@ def _feature_group(feature: str) -> str:
     return "other"
 
 
-def _daily_rank_ics(part: pd.DataFrame, feature: str, label: str) -> list[float]:
+def _mean(values: list[float]) -> float | None:
+    return sum(values) / len(values) if values else None
+
+
+def _sample_std(values: list[float]) -> float | None:
+    if len(values) < 2:
+        return None
+    mean = sum(values) / len(values)
+    return (sum((value - mean) ** 2 for value in values) / (len(values) - 1)) ** 0.5
+
+
+def _daily_rank_ics(part: list[dict[str, Any]], feature: str, label: str) -> list[float]:
     vals: list[float] = []
-    for _, by_date in part[["date", feature, label]].dropna().groupby("date"):
-        if len(by_date) < 10:
+    for by_date in _group_by_date(part).values():
+        pairs = [
+            (feature_value, label_value)
+            for row in by_date
+            if (feature_value := _to_float(row.get(feature))) is not None
+            if (label_value := _to_float(row.get(label))) is not None
+        ]
+        if len(pairs) < 10:
             continue
-        if by_date[feature].nunique() < 2 or by_date[label].nunique() < 2:
+        feature_values = [feature_value for feature_value, _ in pairs]
+        label_values = [label_value for _, label_value in pairs]
+        if len(set(feature_values)) < 2 or len(set(label_values)) < 2:
             continue
-        corr = by_date[feature].rank().corr(by_date[label].rank())
-        if pd.notna(corr):
+        corr = _pearson(_rank_percentiles(feature_values), _rank_percentiles(label_values))
+        if corr is not None:
             vals.append(float(corr))
     return vals
 
 
-def _long_short_and_turnover(part: pd.DataFrame, feature: str, label: str) -> tuple[float | None, float | None, float | None]:
+def _long_short_and_turnover(
+    part: list[dict[str, Any]],
+    feature: str,
+    label: str,
+) -> tuple[float | None, float | None, float | None]:
     spreads: list[float] = []
     top_sets: list[set[str]] = []
-    for _, by_date in part[["stock_code", "date", feature, label]].dropna().groupby("date"):
-        if len(by_date) < 20 or by_date[feature].nunique() < 2:
+    for by_date in _group_by_date(part).values():
+        rows = [
+            (str(row.get("stock_code") or ""), feature_value, label_value)
+            for row in by_date
+            if (feature_value := _to_float(row.get(feature))) is not None
+            if (label_value := _to_float(row.get(label))) is not None
+        ]
+        if len(rows) < 20:
             continue
-        ranked = by_date.assign(__rank=by_date[feature].rank(pct=True))
-        top = ranked[ranked["__rank"] >= 0.9]
-        bottom = ranked[ranked["__rank"] <= 0.1]
-        if top.empty or bottom.empty:
+        feature_values = [feature_value for _, feature_value, _ in rows]
+        if len(set(feature_values)) < 2:
             continue
-        spreads.append(float(top[label].mean() - bottom[label].mean()))
-        top_sets.append(set(str(code) for code in top["stock_code"]))
+        ranked = [
+            (rows[idx][0], rows[idx][2], rank)
+            for idx, rank in enumerate(_rank_percentiles(feature_values))
+        ]
+        top = [(code, label_value) for code, label_value, rank in ranked if rank >= 0.9]
+        bottom = [label_value for _, label_value, rank in ranked if rank <= 0.1]
+        if not top or not bottom:
+            continue
+        top_mean = _mean([label_value for _, label_value in top])
+        bottom_mean = _mean(bottom)
+        if top_mean is None or bottom_mean is None:
+            continue
+        spreads.append(float(top_mean - bottom_mean))
+        top_sets.append({code for code, _ in top})
     if not spreads:
         return None, None, None
     turnovers = []
@@ -109,8 +150,10 @@ def _long_short_and_turnover(part: pd.DataFrame, feature: str, label: str) -> tu
         union = prev | cur
         if union:
             turnovers.append(1.0 - len(prev & cur) / len(union))
-    turnover = float(sum(turnovers) / len(turnovers)) if turnovers else 0.0
-    long_short = float(sum(spreads) / len(spreads))
+    turnover = _mean(turnovers) if turnovers else 0.0
+    long_short = _mean(spreads)
+    if long_short is None:
+        return None, turnover, None
     return long_short, turnover, long_short - 0.001 * turnover
 
 
@@ -127,24 +170,48 @@ def _max_drawdown(returns: list[float]) -> float | None:
     return float(max_dd)
 
 
-def _fold_rank_ic_fast(part: pd.DataFrame, feature: str, label: str) -> float | None:
-    values = part[[feature, label]].dropna()
-    if len(values) < 50 or values[feature].nunique() < 2 or values[label].nunique() < 2:
+def _fold_rank_ic_fast(part: list[dict[str, Any]], feature: str, label: str) -> float | None:
+    pairs = [
+        (feature_value, label_value)
+        for row in part
+        if (feature_value := _to_float(row.get(feature))) is not None
+        if (label_value := _to_float(row.get(label))) is not None
+    ]
+    if len(pairs) < 50:
         return None
-    corr = values[feature].rank().corr(values[label].rank())
-    return float(corr) if pd.notna(corr) else None
+    feature_values = [feature_value for feature_value, _ in pairs]
+    label_values = [label_value for _, label_value in pairs]
+    if len(set(feature_values)) < 2 or len(set(label_values)) < 2:
+        return None
+    corr = _pearson(_rank_percentiles(feature_values), _rank_percentiles(label_values))
+    return float(corr) if corr is not None else None
 
 
-def _long_short_fast(part: pd.DataFrame, feature: str, label: str) -> tuple[float | None, float | None, float | None]:
-    values = part[[feature, label]].dropna()
-    if len(values) < 100 or values[feature].nunique() < 2:
+def _long_short_fast(
+    part: list[dict[str, Any]],
+    feature: str,
+    label: str,
+) -> tuple[float | None, float | None, float | None]:
+    pairs = [
+        (feature_value, label_value)
+        for row in part
+        if (feature_value := _to_float(row.get(feature))) is not None
+        if (label_value := _to_float(row.get(label))) is not None
+    ]
+    if len(pairs) < 100:
         return None, None, None
-    ranked = values.assign(__rank=values[feature].rank(pct=True))
-    top = ranked[ranked["__rank"] >= 0.9]
-    bottom = ranked[ranked["__rank"] <= 0.1]
-    if top.empty or bottom.empty:
+    feature_values = [feature_value for feature_value, _ in pairs]
+    if len(set(feature_values)) < 2:
         return None, None, None
-    long_short = float(top[label].mean() - bottom[label].mean())
+    ranked = [
+        (pairs[idx][1], rank)
+        for idx, rank in enumerate(_rank_percentiles(feature_values))
+    ]
+    top = [label_value for label_value, rank in ranked if rank >= 0.9]
+    bottom = [label_value for label_value, rank in ranked if rank <= 0.1]
+    if not top or not bottom:
+        return None, None, None
+    long_short = (_mean(top) or 0.0) - (_mean(bottom) or 0.0)
     return long_short, None, None if long_short is None else long_short - 0.001
 
 
@@ -182,7 +249,10 @@ def _run_auto_sql_walkforward(
     folds: int,
     run_id: str | None,
 ) -> dict[str, Any]:
-    table_cols = {row[0] for row in conn.execute("DESCRIBE fact_feature_panel_candidate").fetchall()}
+    table_cols = {
+        row[0]
+        for row in conn.execute("DESCRIBE fact_feature_panel_candidate").fetchall()
+    }
     usable_features = [
         feature for feature in _candidate_features_for_set(conn, feature_set_id)
         if feature in table_cols
@@ -223,7 +293,7 @@ def _run_auto_sql_walkforward(
                 (feature_set_id, fold["holdout_start"], fold["holdout_end"]),
             ).fetchone()
             for feature in usable_features:
-                rank_ic = corr_row[feature] if corr_row else None
+                rank_ic = _to_float(corr_row[feature]) if corr_row else None
                 rows.append((
                     run_id,
                     feature_set_id,
@@ -236,9 +306,9 @@ def _run_auto_sql_walkforward(
                     fold["holdout_end"],
                     feature,
                     feature_group_map.get(feature, _feature_group(feature)),
-                    None if rank_ic is None or pd.isna(rank_ic) else float(rank_ic),
+                    rank_ic,
                     None,
-                    None if rank_ic is None or pd.isna(rank_ic) else bool(rank_ic > 0),
+                    None if rank_ic is None else bool(rank_ic > 0),
                     None,
                     None,
                     None,
@@ -286,23 +356,27 @@ def run_walkforward_feature_eval(
             folds=folds,
             run_id=run_id,
         )
-    df = _load_candidate_panel(conn, feature_set_id)
-    if df.empty:
+    records = _load_candidate_panel(conn, feature_set_id)
+    if not records:
         raise RuntimeError(f"candidate panel empty for feature_set_id={feature_set_id}")
-    dates = sorted(str(d) for d in df["date"].dropna().unique())
+    dates = sorted({str(row.get("date")) for row in records if row.get("date") is not None})
     ranges = _fold_ranges(dates, folds)
     feature_group_map = _feature_group_map_for_set(conn, feature_set_id)
+    panel_cols = set(records[0].keys())
     usable_features = [
         f for f in _candidate_features_for_set(conn, feature_set_id)
-        if f in df.columns and df[f].notna().any()
+        if f in panel_cols and any(_to_float(row.get(f)) is not None for row in records)
     ]
-    labels = [label for label in LABEL_COLUMNS if label in df.columns]
+    labels = [label for label in LABEL_COLUMNS if label in panel_cols]
     run_id = run_id or f"wf_{datetime.utcnow().strftime('%Y%m%d_%H%M%S')}"
     built_at = datetime.utcnow().isoformat(timespec="seconds")
     rows = []
     fast_auto = feature_set_id.startswith("tdx_gpcw_auto")
     for fold in ranges:
-        part = df[(df["date"].astype(str) >= fold["holdout_start"]) & (df["date"].astype(str) <= fold["holdout_end"])]
+        part = [
+            row for row in records
+            if fold["holdout_start"] <= str(row.get("date")) <= fold["holdout_end"]
+        ]
         for feature in usable_features:
             for label in labels:
                 if fast_auto:
@@ -314,8 +388,8 @@ def run_walkforward_feature_eval(
                     rank_ic = float(sum(ics) / len(ics)) if ics else None
                     icir = None
                     if ics and len(ics) > 1:
-                        std = pd.Series(ics).std()
-                        icir = float(rank_ic / std * math.sqrt(252)) if std and not pd.isna(std) else None
+                        std = _sample_std(ics)
+                        icir = float(rank_ic / std * math.sqrt(252)) if std else None
                     long_short, turnover, adjusted = _long_short_and_turnover(part, feature, label)
                 rows.append((
                     run_id,

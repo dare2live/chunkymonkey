@@ -40,6 +40,9 @@ feature-group ablation.
 The feature evaluation loop converted feature-group ablation and Optuna-style
 feature elimination to records/native ranking, scoring, fold, and correlation
 helpers.
+The walk-forward feature evaluation loop converted the remaining candidate
+panel fold metrics to records/native ranking, ICIR, long-short, and turnover
+helpers.
 
 ## Change
 
@@ -162,6 +165,10 @@ helpers.
 - Removed pandas/numpy from `backend/scripts/run_optuna_feature_elimination.py`.
 - Converted deterministic and Optuna subset scoring, fold stability checks,
   horizon sensitivity, and correlation pruning to records/native helpers.
+- Removed pandas from `backend/scripts/run_walkforward_feature_eval.py`.
+- Converted candidate-panel walk-forward fold slicing, daily RankIC, ICIR,
+  long-short, turnover, and SQL-corr null handling to records/native helpers.
+- Extended the candidate feature pipeline test to cover walk-forward writes.
 
 ## Validation
 
@@ -483,6 +490,18 @@ python3 backend/scripts/run_feature_group_ablation.py --help
 # import/CLI smoke passed
 
 python3 backend/scripts/run_optuna_feature_elimination.py --help
+# import/CLI smoke passed
+
+rg -n "import pandas|from pandas|pd\.|DataFrame|read_sql_query|\.to_sql\(|\.df\(|register\(" backend/scripts/run_walkforward_feature_eval.py -S
+# 0 matches
+
+python3 -m py_compile backend/scripts/run_walkforward_feature_eval.py backend/tests/test_candidate_feature_pipeline.py
+# passed
+
+python3 -m pytest backend/tests/test_candidate_feature_pipeline.py -q
+# 2 passed
+
+python3 backend/scripts/run_walkforward_feature_eval.py --help
 # import/CLI smoke passed
 
 python3 -m pytest backend/tests -q

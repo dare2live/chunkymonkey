@@ -10,6 +10,7 @@ from scripts.build_candidate_feature_panel import build_candidate_feature_panel
 from scripts.mark_deprecated_data_assets import mark_deprecated_assets
 from scripts.run_feature_group_ablation import run_group_ablation
 from scripts.run_optuna_feature_elimination import run_optuna_feature_elimination
+from scripts.run_walkforward_feature_eval import run_walkforward_feature_eval
 from scripts.validate_tdx_feature_pit import validate_tdx_feature_pit
 
 
@@ -172,10 +173,16 @@ def test_candidate_feature_panel_ablation_and_elimination_records():
             WHERE stock_code = '000001' AND date = '2026-04-01'
             """
         ).fetchone()
+        walkforward = run_walkforward_feature_eval(conn, folds=2, run_id="test_walkforward")
         ablation = run_group_ablation(conn)
         elimination = run_optuna_feature_elimination(conn, trials=0, min_abs_ic=0.0)
         pit = validate_tdx_feature_pit(conn, audit_run_id="test_pit")
-        score_count = conn.execute("SELECT COUNT(*) FROM mart_feature_candidate_score").fetchone()[0]
+        score_count = conn.execute(
+            "SELECT COUNT(*) FROM mart_feature_candidate_score"
+        ).fetchone()[0]
+        walkforward_count = conn.execute(
+            "SELECT COUNT(*) FROM mart_candidate_walkforward_eval WHERE run_id = 'test_walkforward'"
+        ).fetchone()[0]
         pit_rows = conn.execute(
             "SELECT COUNT(*) AS n, SUM(violation_rows) AS violations FROM mart_feature_pit_audit"
         ).fetchone()
@@ -197,6 +204,11 @@ def test_candidate_feature_panel_ablation_and_elimination_records():
         assert sample["forecast_profit_yoy_mid"] == 30.0
         assert sample["forecast_range_width"] == 20.0
         assert sample["express_net_profit_yoy"] == pytest.approx(0.25)
+        assert walkforward["feature_set_id"] == "tdx_f10_gpcw_v1"
+        assert walkforward["rows"] == (
+            walkforward["folds"] * walkforward["features"] * len(walkforward["labels"])
+        )
+        assert walkforward_count == walkforward["rows"]
         assert ablation["feature_set_id"] == "tdx_f10_gpcw_v1"
         assert len(ablation["groups"]) == 5
         assert elimination["promote_to_champion"] is False
