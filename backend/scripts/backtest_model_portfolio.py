@@ -6,6 +6,7 @@ import argparse
 import json
 import logging
 import math
+import random
 import sys
 from collections import Counter
 from datetime import datetime
@@ -13,8 +14,6 @@ from pathlib import Path
 from typing import Any
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-
-import numpy as np
 
 from services.db import get_conn
 from services.ml_lifecycle.registry import select_default_model_id
@@ -400,12 +399,26 @@ def benchmark_510300_curve(
     return rows
 
 
+def _linear_percentile(values: list[float], q: float) -> float:
+    if not values:
+        raise ValueError("percentile requires at least one value")
+    ordered = sorted(values)
+    if len(ordered) == 1:
+        return ordered[0]
+    position = (len(ordered) - 1) * q / 100.0
+    lower = math.floor(position)
+    upper = math.ceil(position)
+    if lower == upper:
+        return ordered[int(position)]
+    weight = position - lower
+    return ordered[lower] * (1.0 - weight) + ordered[upper] * weight
+
+
 def _annotate_vs_random_p90(summaries: list[dict]) -> None:
     """M6.2 (Q15): 为每条 summary 计算 vs_random_l1_p90_pp = total_return - random_l1 p90.
     仅对 model_* 和 benchmark_510300_*/benchmark_liquid500_* 填充; random 自身不填.
-    p90 用 NumPy linear 内插, 固定口径避免 15.9 vs 19.3 这种差异.
+    p90 用 linear 内插, 固定口径避免 15.9 vs 19.3 这种差异.
     """
-    import numpy as _np
     # 按 cost_bps 分桶, 每桶取 random_l1 的 total_return 列表
     by_cost: dict[float, list[float]] = {}
     for s in summaries:
@@ -419,7 +432,7 @@ def _annotate_vs_random_p90(summaries: list[dict]) -> None:
     p90: dict[float, float] = {}
     for cost, vals in by_cost.items():
         if vals:
-            p90[cost] = float(_np.percentile(vals, 90, method="linear"))
+            p90[cost] = _linear_percentile(vals, 90.0)
     # 填充
     for s in summaries:
         cid = (s.get("curve_id") or "")
@@ -438,7 +451,7 @@ def write_results(conn, run_id: str, curves: list[list[dict]], summaries: list[d
     if dry_run:
         logger.info("dry-run: 不写 mart_model_portfolio_*")
         return
-    # M6.2: 落库前先计算 vs_random_l1_p90_pp (固定 NumPy linear 分位口径)
+    # M6.2: 落库前先计算 vs_random_l1_p90_pp (固定 linear 分位口径)
     _annotate_vs_random_p90(summaries)
     conn.executescript(DDL)
     conn.execute("DELETE FROM mart_model_portfolio_curve WHERE run_id = ?", (run_id,))
@@ -614,7 +627,7 @@ def main() -> None:
                 })
 
             for seed in range(args.random_seeds):
-                rng = np.random.default_rng(seed)
+                rng = random.Random(seed)
 
                 def select_random(signal_date: str, idx: int, rng=rng) -> list[str]:
                     rows = cand_by_date.get(signal_date, [])
@@ -630,10 +643,7 @@ def main() -> None:
                             if _industry_key(row) == industry and row.get("stock_code")
                         ]
                         if pool:
-                            picks.extend(
-                                str(code)
-                                for code in rng.choice(pool, size=min(count, len(pool)), replace=False).tolist()
-                            )
+                            picks.extend(rng.sample(pool, min(count, len(pool))))
                     if len(picks) < 20:
                         rest = [
                             str(row.get("stock_code"))
@@ -641,10 +651,7 @@ def main() -> None:
                             if row.get("stock_code") and str(row.get("stock_code")) not in picks
                         ]
                         if rest:
-                            picks.extend(
-                                str(code)
-                                for code in rng.choice(rest, size=min(20 - len(picks), len(rest)), replace=False).tolist()
-                            )
+                            picks.extend(rng.sample(rest, min(20 - len(picks), len(rest))))
                     return picks[:20]
 
                 curve_id = f"benchmark_random_l1_seed_{seed:02d}_{int(cost_bps)}bps"

@@ -63,6 +63,9 @@ resolution, fold slicing, score profiling, and prediction writes.
 The model-portfolio backtest loop converted prediction, price, benchmark,
 curve simulation, random baseline, summary, and curve writes to records/native
 helpers and fixed the missing `vs_random_l1_p90_pp` summary schema column.
+The model-portfolio follow-up removed its residual NumPy usage by replacing
+linear percentile and deterministic random baseline sampling with standard
+library helpers.
 The walk-forward portfolio loop then converted fold/prediction/price loads,
 fold simulation, benchmark comparison, reporting, and summary writes to
 records/native helpers.
@@ -75,6 +78,9 @@ ranking helpers already used by the ablation and challenger scripts.
 The feature-panel DuckDB loop removed the large DataFrame staging path by
 keeping all panel transformations inside DuckDB temp tables and writing
 `fact_feature_panel` directly from relations.
+The portfolio MVP loop removed the remaining standalone pandas/numpy path by
+converting event loads, price histories, simulation, evaluation, benchmarks,
+and policy-result writes to records/native helpers.
 
 ## Change
 
@@ -235,6 +241,8 @@ keeping all panel transformations inside DuckDB temp tables and writing
   curve writes to records/native helpers.
 - Added idempotent schema maintenance for `vs_random_l1_p90_pp` in
   `mart_model_portfolio_summary`.
+- Removed residual numpy usage from model portfolio random baseline sampling
+  and `vs_random_l1_p90_pp` p90 calculation.
 - Added `backend/tests/test_backtest_model_portfolio.py`.
 - Removed pandas and DuckDB table registration from
   `backend/scripts/backtest_walkforward_portfolio.py`.
@@ -264,6 +272,14 @@ keeping all panel transformations inside DuckDB temp tables and writing
 - Fixed temp-table replacement so each panel step builds a replacement table
   before swapping it into `current_panel`.
 - Added `backend/tests/test_build_feature_panel_duck.py`.
+- Removed pandas/numpy and DataFrame SQL reads/writes from
+  `backend/scripts/run_portfolio_mvp.py`.
+- Converted portfolio MVP event source loading, PIT cohort loading, market
+  price histories, daily simulation, metric evaluation, HS300 benchmark, and
+  fact table writes to records/native helpers.
+- Fixed `--help` formatting for the cost-bps help text after import smoke
+  became reachable without pandas.
+- Added `backend/tests/test_run_portfolio_mvp.py`.
 
 ## Validation
 
@@ -671,7 +687,7 @@ python3 -m pytest backend/tests/test_run_multidim_walkforward.py -q
 python3 backend/scripts/run_multidim_walkforward.py --help
 # import/CLI smoke passed
 
-rg -n "import pandas|from pandas|pd\.|DataFrame|read_sql_query|\.to_sql\(|\.df\(|register\(" backend/scripts/backtest_model_portfolio.py backend/tests/test_backtest_model_portfolio.py -S
+rg -n "import pandas|from pandas|pd\.|DataFrame|read_sql_query|\.to_sql\(|\.df\(|register\(|import numpy|from numpy|np\." backend/scripts/backtest_model_portfolio.py backend/tests/test_backtest_model_portfolio.py -S
 # 0 matches
 
 python3 -m py_compile backend/scripts/backtest_model_portfolio.py backend/tests/test_backtest_model_portfolio.py
@@ -737,8 +753,23 @@ python3 -m pytest backend/tests/test_build_feature_panel_duck.py -q
 python3 backend/scripts/build_feature_panel_duck.py --help
 # import/CLI smoke passed
 
+rg -n "import pandas|from pandas|pd\.|DataFrame|read_sql_query|\.to_sql\(|\.df\(|register\(|import numpy|from numpy|np\." backend/scripts/run_portfolio_mvp.py backend/tests/test_run_portfolio_mvp.py -S
+# 0 matches
+
+python3 -m py_compile backend/scripts/run_portfolio_mvp.py backend/tests/test_run_portfolio_mvp.py
+# passed
+
+python3 -m pytest backend/tests/test_run_portfolio_mvp.py -q
+# 3 passed
+
+python3 backend/scripts/run_portfolio_mvp.py --help
+# import/CLI smoke passed
+
+python3 backend/scripts/run_portfolio_mvp.py --dry-run --top-n 5
+# records/native dry-run passed (7092 candidate events, 374 trading days)
+
 python3 -m pytest backend/tests -q
-# 360 passed
+# 363 passed
 
 python3 backend/scripts/data_health_snapshot.py --dry-run
 # green=147/yellow=0/red=0

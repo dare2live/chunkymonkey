@@ -186,7 +186,7 @@ def grep_writer(table_name: str) -> str | None:
         re.compile(rf"\bCREATE\s+(?:OR\s+REPLACE\s+)?(?:TABLE|TEMP\s+TABLE).*?\b{name_pat}\b\s+AS\b", re.IGNORECASE),
         re.compile(rf'register\(["\']{re.escape(table_name)}["\']', re.IGNORECASE),
         re.compile(rf'COPY\s+{name_pat}\b', re.IGNORECASE),
-        # pandas: df.to_sql("table_name", ...)
+        # Legacy table-helper writes by table name.
         re.compile(rf'\.to_sql\(\s*["\']{re.escape(table_name)}["\']', re.IGNORECASE),
         # SQLAlchemy 风格: con.execute(text("INSERT INTO X ..."))
         # 已被前面的 INSERT INTO 模式覆盖
