@@ -43,6 +43,9 @@ helpers.
 The walk-forward feature evaluation loop converted the remaining candidate
 panel fold metrics to records/native ranking, ICIR, long-short, and turnover
 helpers.
+The follow-backtest loop converted cohort loading, top-cohort ranking,
+walk-forward slicing, simulator inputs, and result writes to records/native
+helpers.
 
 ## Change
 
@@ -169,6 +172,10 @@ helpers.
 - Converted candidate-panel walk-forward fold slicing, daily RankIC, ICIR,
   long-short, turnover, and SQL-corr null handling to records/native helpers.
 - Extended the candidate feature pipeline test to cover walk-forward writes.
+- Removed pandas from `backend/scripts/run_follow_backtest.py`.
+- Converted cohort SQL reads, cohort-key grouping, event split handling, and
+  `fact_institution_follow_backtest` writes to records/native helpers.
+- Added `backend/tests/test_run_follow_backtest.py`.
 
 ## Validation
 
@@ -504,8 +511,20 @@ python3 -m pytest backend/tests/test_candidate_feature_pipeline.py -q
 python3 backend/scripts/run_walkforward_feature_eval.py --help
 # import/CLI smoke passed
 
+rg -n "pandas|pd\.|DataFrame|read_sql_query|\.to_sql\(|\.df\(|register\(" backend/scripts/run_follow_backtest.py backend/tests/test_run_follow_backtest.py -S
+# 0 matches
+
+python3 -m py_compile backend/scripts/run_follow_backtest.py backend/tests/test_run_follow_backtest.py
+# passed
+
+python3 -m pytest backend/tests/test_run_follow_backtest.py -q
+# 2 passed
+
+python3 backend/scripts/run_follow_backtest.py --help
+# import/CLI smoke passed
+
 python3 -m pytest backend/tests -q
-# 336 passed
+# 338 passed
 
 python3 backend/scripts/data_health_snapshot.py --dry-run
 # green=147/yellow=0/red=0

@@ -20,13 +20,12 @@ from __future__ import annotations
 
 import argparse
 import itertools
+import json
 import logging
 import sys
 from datetime import datetime
 from pathlib import Path
 from typing import Optional
-
-import pandas as pd
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
@@ -86,13 +85,54 @@ def ensure_table(conn):
     conn.commit()
 
 
+def _records_from_cursor(cursor) -> list[dict]:
+    names = [desc[0] for desc in (cursor.description or [])]
+    return [
+        {name: value for name, value in zip(names, row)}
+        for row in cursor.fetchall()
+    ]
+
+
+def _cohort_key(row: dict, scheme: str) -> str:
+    institution_id = str(row.get("institution_id"))
+    inst_type = str(row.get("inst_type"))
+    l1 = str(row.get("l1"))
+    l2 = str(row.get("l2"))
+    if scheme == "institution":
+        return institution_id
+    if scheme == "institution_L1":
+        return f"{institution_id}|{l1}"
+    if scheme == "institution_L2":
+        return f"{institution_id}|{l2}"
+    if scheme == "L2":
+        return l2
+    if scheme == "inst_type_L1":
+        return f"{inst_type}|{l1}"
+    if scheme == "L1_instgroup":
+        return f"{_inst_type_to_group(inst_type)}|{l1}"
+    if scheme == "L1":
+        return l1
+    if scheme == "inst_group":
+        return _inst_type_to_group(inst_type)
+    if scheme == "all":
+        return "all"
+    raise ValueError(f"未知 cohort_scheme: {scheme}")
+
+
+def _event_range(events: list[dict]) -> tuple[str | None, str | None]:
+    dates = [str(row.get("notice_date")) for row in events if row.get("notice_date")]
+    if not dates:
+        return None, None
+    return min(dates), max(dates)
+
+
 def load_cohort_events(
     conn,
     cohort_scheme: str,
     cohort_key: str,
     exclude_north: bool = True,
     event_cutoff: Optional[str] = None,
-) -> pd.DataFrame:
+) -> list[dict]:
     """按 cohort 方案加载事件。返回列：institution_id, stock_code, notice_date
 
     event_cutoff：YYYYMMDD 格式；若给定，只加载 notice_date <= cutoff 的事件（§1 P1.A PIT 截断）
@@ -118,34 +158,20 @@ def load_cohort_events(
     if event_cutoff:
         base_sql += " AND fe.notice_date <= ? "
         params.append(event_cutoff)
-    df = pd.read_sql_query(base_sql, conn, params=params if params else None)
-    if df.empty:
-        return df
-
-    if cohort_scheme == "institution":
-        df = df[df["institution_id"] == cohort_key]
-    elif cohort_scheme == "institution_L1":
-        df = df[df["institution_id"].astype(str) + "|" + df["l1"].astype(str) == cohort_key]
-    elif cohort_scheme == "institution_L2":
-        df = df[df["institution_id"].astype(str) + "|" + df["l2"].astype(str) == cohort_key]
-    elif cohort_scheme == "L2":
-        df = df[df["l2"].astype(str) == cohort_key]
-    elif cohort_scheme == "inst_type_L1":
-        df = df[df["inst_type"].astype(str) + "|" + df["l1"].astype(str) == cohort_key]
-    elif cohort_scheme == "L1_instgroup":
-        df["inst_group"] = df["inst_type"].map(_inst_type_to_group)
-        df = df[df["inst_group"] + "|" + df["l1"].astype(str) == cohort_key]
-    elif cohort_scheme == "L1":
-        df = df[df["l1"].astype(str) == cohort_key]
-    elif cohort_scheme == "inst_group":
-        df["inst_group"] = df["inst_type"].map(_inst_type_to_group)
-        df = df[df["inst_group"] == cohort_key]
-    elif cohort_scheme == "all":
-        pass
+    base_sql += " ORDER BY fe.notice_date, fe.institution_id, fe.stock_code "
+    rows = _records_from_cursor(conn.execute(base_sql, params))
+    if cohort_scheme == "all":
+        filtered = rows
     else:
-        raise ValueError(f"未知 cohort_scheme: {cohort_scheme}")
-
-    return df[["institution_id", "stock_code", "notice_date"]].reset_index(drop=True)
+        filtered = [row for row in rows if _cohort_key(row, cohort_scheme) == cohort_key]
+    return [
+        {
+            "institution_id": row.get("institution_id"),
+            "stock_code": row.get("stock_code"),
+            "notice_date": row.get("notice_date"),
+        }
+        for row in filtered
+    ]
 
 
 def list_top_cohorts(
@@ -177,32 +203,16 @@ def list_top_cohorts(
     if event_cutoff:
         base_sql += " AND fe.notice_date <= ? "
         params.append(event_cutoff)
-    df = pd.read_sql_query(base_sql, conn, params=params if params else None)
-
-    if scheme == "institution":
-        df["cohort_key"] = df["institution_id"].astype(str)
-    elif scheme == "institution_L1":
-        df["cohort_key"] = df["institution_id"].astype(str) + "|" + df["l1"].astype(str)
-    elif scheme == "institution_L2":
-        df["cohort_key"] = df["institution_id"].astype(str) + "|" + df["l2"].astype(str)
-    elif scheme == "L2":
-        df["cohort_key"] = df["l2"].astype(str)
-    elif scheme == "inst_type_L1":
-        df["cohort_key"] = df["inst_type"].astype(str) + "|" + df["l1"].astype(str)
-    elif scheme == "L1_instgroup":
-        df["inst_group"] = df["inst_type"].map(_inst_type_to_group)
-        df["cohort_key"] = df["inst_group"] + "|" + df["l1"].astype(str)
-    elif scheme == "L1":
-        df["cohort_key"] = df["l1"].astype(str)
-    elif scheme == "inst_group":
-        df["inst_group"] = df["inst_type"].map(_inst_type_to_group)
-        df["cohort_key"] = df["inst_group"]
-    else:
-        raise ValueError(f"未知 scheme: {scheme}")
-
-    counts = df.groupby("cohort_key").size().reset_index(name="n")
-    counts = counts[counts["n"] >= min_samples].sort_values("n", ascending=False).head(top)
-    return list(counts.itertuples(index=False, name=None))
+    base_sql += " ORDER BY fe.notice_date, fe.institution_id, fe.stock_code "
+    counts: dict[str, int] = {}
+    for row in _records_from_cursor(conn.execute(base_sql, params)):
+        key = _cohort_key(row, scheme)
+        counts[key] = counts.get(key, 0) + 1
+    ranked = sorted(
+        ((key, n) for key, n in counts.items() if n >= min_samples),
+        key=lambda item: (-item[1], item[0]),
+    )
+    return ranked[:top]
 
 
 # 默认 Grid 参数空间（§20 修正版 3x3x2）
@@ -215,17 +225,17 @@ DEFAULT_GRID = {
 
 
 def _row_for_split(
-    events: pd.DataFrame,
+    events: list[dict],
     params: dict,
     split: str,
     cohort_scheme: str,
     cohort_key: str,
     run_at: str,
 ) -> Optional[dict]:
-    import json
     result = simulate_events(events, params)
     if result.get("n_filled", 0) == 0:
         return None
+    event_date_min, event_date_max = _event_range(events)
     return {
         "cohort_scheme": cohort_scheme,
         "cohort_key": cohort_key,
@@ -245,8 +255,8 @@ def _row_for_split(
         "avg_position_maxdd": result["avg_position_maxdd"],
         "p95_position_maxdd": result["p95_position_maxdd"],
         "exit_reasons_json": json.dumps(result.get("exit_reason_counts", {}), ensure_ascii=False),
-        "event_date_min": str(events["notice_date"].min()),
-        "event_date_max": str(events["notice_date"].max()),
+        "event_date_min": event_date_min,
+        "event_date_max": event_date_max,
     }
 
 
@@ -259,16 +269,22 @@ def run_backtest_for_cohort(
     dry_run: bool = False,
     exclude_north: bool = True,
     event_cutoff: Optional[str] = None,
-) -> pd.DataFrame:
+) -> list[dict]:
     """参数 walk_forward：None 表示全样本；float in (0,1) 表示按 notice_date 切分，前占 ratio 为 train，后为 holdout。
 
     cohort_scheme 可含 `_pit_YYYYMMDD` 后缀（用于落表区分）；内部 routing 剥掉后缀使用 base scheme。
     """
     base_scheme = cohort_scheme.split("_pit_")[0] if "_pit_" in cohort_scheme else cohort_scheme
-    events = load_cohort_events(conn, base_scheme, cohort_key, exclude_north=exclude_north, event_cutoff=event_cutoff)
-    if events.empty:
+    events = load_cohort_events(
+        conn,
+        base_scheme,
+        cohort_key,
+        exclude_north=exclude_north,
+        event_cutoff=event_cutoff,
+    )
+    if not events:
         logger.warning("[%s | %s] 无事件，跳过", cohort_scheme, cohort_key)
-        return pd.DataFrame()
+        return []
     logger.info("[%s | %s] 加载事件 %d 条", cohort_scheme, cohort_key, len(events))
 
     run_at = datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%S")
@@ -279,17 +295,26 @@ def run_backtest_for_cohort(
     logger.info("  Grid 组合 %d", len(param_combos))
 
     if walk_forward is not None:
-        sorted_ev = events.sort_values("notice_date").reset_index(drop=True)
+        sorted_ev = sorted(events, key=lambda row: str(row.get("notice_date") or ""))
         cut = int(len(sorted_ev) * walk_forward)
-        train_ev = sorted_ev.iloc[:cut].reset_index(drop=True)
-        hold_ev = sorted_ev.iloc[cut:].reset_index(drop=True)
-        logger.info("  walk-forward: train=%d holdout=%d (cut at %s)", len(train_ev), len(hold_ev), train_ev["notice_date"].max())
+        train_ev = sorted_ev[:cut]
+        hold_ev = sorted_ev[cut:]
+        train_end = _event_range(train_ev)[1]
+        logger.info(
+            "  walk-forward: train=%d holdout=%d (cut at %s)",
+            len(train_ev), len(hold_ev), train_end,
+        )
         split_pairs = [("train", train_ev), ("holdout", hold_ev)]
     else:
         split_pairs = [("all", events)]
 
     for entry_lag, max_hold, sl, tp in param_combos:
-        params = {"entry_lag": entry_lag, "max_hold_days": max_hold, "stop_loss": sl, "take_profit": tp}
+        params = {
+            "entry_lag": entry_lag,
+            "max_hold_days": max_hold,
+            "stop_loss": sl,
+            "take_profit": tp,
+        }
         for split, ev in split_pairs:
             row = _row_for_split(ev, params, split, cohort_scheme, cohort_key, run_at)
             if row is None:
@@ -302,14 +327,36 @@ def run_backtest_for_cohort(
                     row["win_rate"] * 100, row["avg_pnl"] * 100, row["sharpe"],
                 )
 
-    df = pd.DataFrame(results)
-    if df.empty:
-        return df
+    if not results:
+        return []
     if not dry_run:
-        df.to_sql("fact_institution_follow_backtest", conn, if_exists="append", index=False)
+        conn.executemany(
+            """
+            INSERT INTO fact_institution_follow_backtest
+            (cohort_scheme, cohort_key, backtest_run_at, split, entry_lag,
+             max_hold_days, stop_loss, take_profit, n_events, n_filled,
+             avg_pnl, avg_hold_days, win_rate, annual_return, sharpe,
+             avg_position_maxdd, p95_position_maxdd, exit_reasons_json,
+             event_date_min, event_date_max)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            [
+                (
+                    row["cohort_scheme"], row["cohort_key"], row["backtest_run_at"],
+                    row["split"], row["entry_lag"], row["max_hold_days"],
+                    row["stop_loss"], row["take_profit"], row["n_events"],
+                    row["n_filled"], row["avg_pnl"], row["avg_hold_days"],
+                    row["win_rate"], row["annual_return"], row["sharpe"],
+                    row["avg_position_maxdd"], row["p95_position_maxdd"],
+                    row["exit_reasons_json"], row["event_date_min"],
+                    row["event_date_max"],
+                )
+                for row in results
+            ],
+        )
         conn.commit()
-        logger.info("  写入 %d 行", len(df))
-    return df
+        logger.info("  写入 %d 行", len(results))
+    return results
 
 
 def main():
