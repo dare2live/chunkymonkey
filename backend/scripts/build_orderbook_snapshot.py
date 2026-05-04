@@ -26,8 +26,6 @@ STOCK_ROOT = Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 sys.path.insert(0, str(STOCK_ROOT / "tdxhub"))
 
-import pandas as pd
-import numpy as np
 from tdxhub.quotes import Quotes
 
 from services.market_db import get_market_conn
@@ -82,21 +80,99 @@ def load_a_stock_list(client) -> list[str]:
     return codes
 
 
-def compute_derived_features(df: pd.DataFrame) -> pd.DataFrame:
+def _safe_float(value) -> float | None:
+    if value in (None, ""):
+        return None
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _ratio(numerator: float | None, denominator: float | None) -> float | None:
+    if numerator is None or denominator in (None, 0):
+        return None
+    return numerator / denominator
+
+
+def compute_derived_features(rows: list[dict]) -> list[dict]:
     """从原始 quotes 输出衍生出我们关心的因子."""
-    df = df.copy()
+    out = []
+    for row in rows:
+        item = dict(row)
+        for key in (
+            "price", "last_close", "bid1", "ask1", "bid_vol1", "ask_vol1",
+            "bid2", "ask2", "bid_vol2", "ask_vol2", "bid3", "ask3",
+            "bid_vol3", "ask_vol3", "bid4", "ask4", "bid_vol4", "ask_vol4",
+            "bid5", "ask5", "bid_vol5", "ask_vol5", "vol", "amount",
+            "cur_vol", "b_vol", "s_vol",
+        ):
+            item[key] = _safe_float(item.get(key))
+        bid_total = sum(item.get(f"bid_vol{idx}") or 0 for idx in range(1, 6))
+        ask_total = sum(item.get(f"ask_vol{idx}") or 0 for idx in range(1, 6))
+        total_bid_ask = bid_total + ask_total
+        item["imbalance_1"] = _ratio(
+            (item["bid_vol1"] or 0) - (item["ask_vol1"] or 0),
+            (item["bid_vol1"] or 0) + (item["ask_vol1"] or 0),
+        )
+        item["imbalance_5"] = _ratio(bid_total - ask_total, total_bid_ask)
+        spread = (
+            item["ask1"] - item["bid1"]
+            if item["ask1"] is not None and item["bid1"] is not None
+            else None
+        )
+        spread_ratio = _ratio(spread, item["price"])
+        item["spread_bps"] = spread_ratio * 10000 if spread_ratio is not None else None
+        item["active_buy_ratio"] = _ratio(item["cur_vol"], item["vol"])
+        item["inside_outside_ratio"] = _ratio(item["b_vol"], item["s_vol"])
+        out.append(item)
+    return out
 
-    bid_total = df[['bid_vol1', 'bid_vol2', 'bid_vol3', 'bid_vol4', 'bid_vol5']].sum(axis=1)
-    ask_total = df[['ask_vol1', 'ask_vol2', 'ask_vol3', 'ask_vol4', 'ask_vol5']].sum(axis=1)
-    total_bid_ask = bid_total + ask_total
 
-    df['imbalance_1'] = (df['bid_vol1'] - df['ask_vol1']) / df[['bid_vol1', 'ask_vol1']].sum(axis=1).replace(0, np.nan)
-    df['imbalance_5'] = (bid_total - ask_total) / total_bid_ask.replace(0, np.nan)
-    df['spread_bps'] = (df['ask1'] - df['bid1']) / df['price'].replace(0, np.nan) * 10000
-    df['active_buy_ratio'] = df['cur_vol'] / df['vol'].replace(0, np.nan)
-    df['inside_outside_ratio'] = df['b_vol'] / df['s_vol'].replace(0, np.nan)
+CORE_COLS = [
+    'price', 'last_close',
+    'bid1', 'ask1', 'bid_vol1', 'ask_vol1',
+    'bid2', 'ask2', 'bid_vol2', 'ask_vol2',
+    'bid3', 'ask3', 'bid_vol3', 'ask_vol3',
+    'bid4', 'ask4', 'bid_vol4', 'ask_vol4',
+    'bid5', 'ask5', 'bid_vol5', 'ask_vol5',
+    'vol', 'amount', 'cur_vol', 'b_vol', 's_vol',
+    'imbalance_1', 'imbalance_5', 'spread_bps',
+    'active_buy_ratio', 'inside_outside_ratio',
+]
 
-    return df
+
+def normalize_snapshot_rows(rows: list[dict], snapshot_date: str) -> list[dict]:
+    out = []
+    seen = set()
+    for row in rows:
+        stock_code = str(row.get("code") or "").zfill(6)
+        if not stock_code:
+            continue
+        key = (snapshot_date, stock_code)
+        if key in seen:
+            continue
+        seen.add(key)
+        item = {"snapshot_date": snapshot_date, "stock_code": stock_code}
+        for col in CORE_COLS:
+            item[col] = row.get(col)
+        out.append(item)
+    return out
+
+
+def write_batch(conn, rows: list[dict]) -> int:
+    if not rows:
+        return 0
+    columns = ["snapshot_date", "stock_code"] + CORE_COLS
+    placeholders = ", ".join("?" for _ in columns)
+    conn.executemany(
+        f"""
+        INSERT OR REPLACE INTO fact_orderbook_snapshot ({", ".join(columns)})
+        VALUES ({placeholders})
+        """,
+        [tuple(row.get(column) for column in columns) for row in rows],
+    )
+    return len(rows)
 
 
 def main():
@@ -126,37 +202,15 @@ def main():
         batch = codes[i:i + args.batch_size]
         try:
             records = client.quotes_records(symbol=batch)
-            df = pd.DataFrame.from_records(records)
         except Exception as e:
             logger.warning("批 %d ERR: %s", i // args.batch_size, e)
             n_failed += len(batch)
             continue
-        if df is None or df.empty:
+        if not records:
             n_failed += len(batch)
             continue
-        df = compute_derived_features(df)
-
-        # 取所需列
-        core_cols = ['code', 'price', 'last_close',
-                     'bid1', 'ask1', 'bid_vol1', 'ask_vol1',
-                     'bid2', 'ask2', 'bid_vol2', 'ask_vol2',
-                     'bid3', 'ask3', 'bid_vol3', 'ask_vol3',
-                     'bid4', 'ask4', 'bid_vol4', 'ask_vol4',
-                     'bid5', 'ask5', 'bid_vol5', 'ask_vol5',
-                     'vol', 'amount', 'cur_vol', 'b_vol', 's_vol',
-                     'imbalance_1', 'imbalance_5', 'spread_bps',
-                     'active_buy_ratio', 'inside_outside_ratio']
-        have = [c for c in core_cols if c in df.columns]
-        df2 = df[have].copy()
-        df2 = df2.rename(columns={'code': 'stock_code'})
-        df2['stock_code'] = df2['stock_code'].astype(str).str.zfill(6)
-        df2['snapshot_date'] = snapshot_date
-        df2 = df2.drop_duplicates(subset=['snapshot_date', 'stock_code'], keep='first')
-
-        cols = ['snapshot_date', 'stock_code'] + [c for c in have if c != 'code']
-        df2[cols].to_sql('fact_orderbook_snapshot', conn, if_exists='append',
-                         index=False, method='multi', chunksize=500)
-        total_written += len(df2)
+        snapshot_rows = normalize_snapshot_rows(compute_derived_features(records), snapshot_date)
+        total_written += write_batch(conn, snapshot_rows)
         if (i // args.batch_size + 1) % 20 == 0:
             conn.commit()
             rate = (i + len(batch)) / max(1, time.time() - t0)

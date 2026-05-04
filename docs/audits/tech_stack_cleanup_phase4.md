@@ -22,6 +22,8 @@ results to records and rewriting the holder ingest writer to use DuckDB
 `executemany` instead of table-object registration.
 The first standalone script loop converted tdxhub price K-line backfill to
 records from pull through normalization and DuckDB writes.
+The next standalone script loop converted tdxhub order-book snapshots to
+records/native feature math and direct DuckDB writes.
 
 ## Change
 
@@ -107,6 +109,10 @@ records from pull through normalization and DuckDB writes.
 - Converted tdxhub K-line pull, dedupe/normalization, and
   `price_kline_tdxhub` writes to records and direct DuckDB `executemany`.
 - Added `backend/tests/test_build_price_kline_tdxhub.py`.
+- Removed pandas/numpy from `backend/scripts/build_orderbook_snapshot.py`.
+- Converted order-book imbalance/spread/ratio calculations to native math and
+  `fact_orderbook_snapshot` writes to direct DuckDB `executemany`.
+- Added `backend/tests/test_build_orderbook_snapshot.py`.
 
 ## Validation
 
@@ -309,6 +315,21 @@ python3 -m pytest backend/tests/test_build_price_kline_tdxhub.py backend/tests/t
 
 python3 -m pytest backend/tests -q
 # 320 passed
+
+python3 backend/scripts/data_health_snapshot.py --dry-run
+# green=147/yellow=0/red=0
+
+rg -n "pandas|pd\.|DataFrame|numpy|np\.|read_sql_query|\.to_sql\(|\.df\(|register\(" backend/scripts/build_orderbook_snapshot.py backend/tests/test_build_orderbook_snapshot.py -S
+# 0 matches
+
+python3 -m py_compile backend/scripts/build_orderbook_snapshot.py backend/tests/test_build_orderbook_snapshot.py
+# passed
+
+python3 -m pytest backend/tests/test_build_orderbook_snapshot.py backend/tests/test_build_price_kline_tdxhub.py -q
+# 4 passed
+
+python3 -m pytest backend/tests -q
+# 322 passed
 
 python3 backend/scripts/data_health_snapshot.py --dry-run
 # green=147/yellow=0/red=0
