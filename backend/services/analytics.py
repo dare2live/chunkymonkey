@@ -2,7 +2,6 @@
 
 定位: 列式 OLAP 查询引擎, 直接读取 DuckDB 主库并挂载 market/etf 库.
 用途: feature_panel 构建 / 训练数据加载 / topK 排名 / cross-source ASOF JOIN.
-不变: pandas API 解析与 LightGBM 模型层.
 """
 from __future__ import annotations
 
@@ -11,7 +10,6 @@ from pathlib import Path
 from typing import Optional
 
 import duckdb
-import pandas as pd
 
 logger = logging.getLogger("cm-api")
 
@@ -50,10 +48,14 @@ def get_duck(writable: bool = False) -> duckdb.DuckDBPyConnection:
     return _con
 
 
-def sql(query: str, params: tuple = ()) -> pd.DataFrame:
-    """简便执行, 返回 pandas DataFrame."""
+def sql(query: str, params: tuple = ()) -> list[dict]:
+    """简便执行, 返回 records."""
     con = get_duck()
-    return con.execute(query, params).df()
+    cursor = con.execute(query, params)
+    if cursor.description is None:
+        return []
+    columns = [desc[0] for desc in cursor.description]
+    return [dict(zip(columns, row)) for row in cursor.fetchall()]
 
 
 def reattach():

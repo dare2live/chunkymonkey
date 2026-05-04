@@ -12,6 +12,9 @@ Phase 4.2 then started with the standalone neutralization helpers.
 The latest Phase 4.2 loop removed the last screening-engine dependency on
 pandas/numpy and kept the shared technical indicator module importable with
 plain sequence inputs.
+The next service loop converted the small analytics and drift helpers so
+service-level query convenience and PSI drift checks no longer require
+pandas/numpy.
 
 ## Change
 
@@ -74,6 +77,13 @@ plain sequence inputs.
   in numeric helpers and false in condition helpers.
 - Added `backend/tests/test_screening_engine.py` and
   `backend/tests/test_ta_lib.py`.
+- Removed pandas from `backend/services/analytics.py`.
+- Converted `analytics.sql()` to return records and handle statements without
+  result sets.
+- Removed numpy from `backend/services/ml_lifecycle/drift.py`.
+- Converted PSI quantile, histogram, finite-value filtering, and severity checks
+  to native Python math.
+- Added `backend/tests/test_analytics.py` and `backend/tests/test_drift.py`.
 
 ## Validation
 
@@ -216,6 +226,18 @@ python3 -m pytest backend/tests/test_ta_lib.py backend/tests/test_screening_engi
 
 python3 -m pytest backend/tests/test_ta_lib.py backend/tests/test_screening_engine.py backend/tests/test_sector_momentum.py backend/tests/test_event_simulator.py backend/tests/test_stock_turtle_engine.py backend/tests/test_portfolio_backtest.py backend/tests/test_neutralize.py backend/tests/test_kline_sources.py backend/tests/test_tdx_source.py backend/tests/test_institution_survey_client.py backend/tests/test_qfii_client.py backend/tests/test_lhb_client.py backend/tests/test_margin_client.py backend/tests/test_xdxr_client.py backend/tests/test_block_client.py -q
 # 79 passed
+
+rg -n "pandas|pd\.|DataFrame|numpy|np\." backend/services/analytics.py backend/services/ml_lifecycle/drift.py backend/tests/test_analytics.py backend/tests/test_drift.py -S
+# 0 matches
+
+python3 -m py_compile backend/services/analytics.py backend/services/ml_lifecycle/drift.py backend/tests/test_analytics.py backend/tests/test_drift.py
+# passed
+
+python3 -m pytest backend/tests/test_analytics.py backend/tests/test_drift.py backend/tests/test_ta_lib.py backend/tests/test_screening_engine.py -q
+# 7 passed
+
+python3 -m pytest backend/tests -q
+# 314 passed
 
 python3 backend/scripts/data_health_snapshot.py --dry-run
 # green=147/yellow=0/red=0

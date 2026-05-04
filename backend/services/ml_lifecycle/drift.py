@@ -16,14 +16,67 @@ import logging
 import math
 from typing import Iterable, Optional
 
-import numpy as np
-
 from services.db import get_conn
 
 logger = logging.getLogger("cm-drift")
 
 PSI_OK_THRESHOLD = 0.10
 PSI_WARN_THRESHOLD = 0.25
+
+
+def _finite_values(values: Iterable[float]) -> list[float]:
+    out = []
+    for value in values:
+        try:
+            number = float(value)
+        except (TypeError, ValueError):
+            continue
+        if math.isfinite(number):
+            out.append(number)
+    return out
+
+
+def _linear_quantile(sorted_values: list[float], q: float) -> float:
+    if not sorted_values:
+        return float("nan")
+    if len(sorted_values) == 1:
+        return sorted_values[0]
+    pos = (len(sorted_values) - 1) * q
+    lower = math.floor(pos)
+    upper = math.ceil(pos)
+    if lower == upper:
+        return sorted_values[int(pos)]
+    weight = pos - lower
+    return sorted_values[lower] * (1 - weight) + sorted_values[upper] * weight
+
+
+def _unique_sorted(values: Iterable[float]) -> list[float]:
+    out = []
+    previous = None
+    for value in values:
+        if previous is None or value != previous:
+            out.append(value)
+            previous = value
+    return out
+
+
+def _histogram(values: list[float], edges: list[float]) -> list[int]:
+    counts = [0 for _ in range(len(edges) - 1)]
+    if not counts:
+        return counts
+    first = edges[0]
+    last = edges[-1]
+    for value in values:
+        if value < first or value > last:
+            continue
+        for idx in range(len(edges) - 1):
+            left = edges[idx]
+            right = edges[idx + 1]
+            is_last_bin = idx == len(edges) - 2
+            if left <= value < right or (is_last_bin and value == right):
+                counts[idx] += 1
+                break
+    return counts
 
 
 def compute_psi(
@@ -36,33 +89,34 @@ def compute_psi(
 
     用 train_values 的分位数 (q0,q10,...,q100) 切桶, 然后比较两组在每个桶里的占比.
     """
-    t = np.asarray(list(train_values), dtype=float)
-    r = np.asarray(list(recent_values), dtype=float)
-    t = t[np.isfinite(t)]
-    r = r[np.isfinite(r)]
+    t = _finite_values(train_values)
+    r = _finite_values(recent_values)
 
     n_t, n_r = len(t), len(r)
     if n_t < n_bins or n_r < n_bins:
         return float("nan"), n_t, n_r
 
     # 按 train 的分位数切桶
-    qs = np.linspace(0.0, 1.0, n_bins + 1)
-    edges = np.quantile(t, qs)
+    sorted_train = sorted(t)
+    qs = [idx / n_bins for idx in range(n_bins + 1)]
+    edges = [_linear_quantile(sorted_train, q) for q in qs]
     # 微小扰动避免边界相等
-    edges = np.unique(edges)
+    edges = _unique_sorted(edges)
     if len(edges) < 3:
         return float("nan"), n_t, n_r
 
     # bin 计数
-    t_counts, _ = np.histogram(t, bins=edges)
-    r_counts, _ = np.histogram(r, bins=edges)
+    t_counts = _histogram(t, edges)
+    r_counts = _histogram(r, edges)
 
     # 防 0
     eps = 1e-6
-    p_t = (t_counts + eps) / (t_counts.sum() + eps * len(edges))
-    p_r = (r_counts + eps) / (r_counts.sum() + eps * len(edges))
+    t_total = sum(t_counts)
+    r_total = sum(r_counts)
+    p_t = [(count + eps) / (t_total + eps * len(edges)) for count in t_counts]
+    p_r = [(count + eps) / (r_total + eps * len(edges)) for count in r_counts]
 
-    psi = float(np.sum((p_r - p_t) * np.log(p_r / p_t)))
+    psi = sum((recent - train) * math.log(recent / train) for train, recent in zip(p_t, p_r))
     return psi, n_t, n_r
 
 
