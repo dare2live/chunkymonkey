@@ -41,6 +41,62 @@ def get_champion() -> Optional[dict]:
         return dict(row) if row else None
 
 
+def get_default_champion_model_id(conn=None) -> Optional[str]:
+    """Return the lifecycle champion model id used by default-facing APIs.
+
+    This is intentionally lifecycle-first. New rows in mart_multidim_model must
+    not become default recommendations merely because their created_at is newer.
+    """
+    def _query(c):
+        row = c.execute("""
+            SELECT model_id
+              FROM mart_model_lifecycle
+             WHERE status = 'champion'
+             ORDER BY deployed_at DESC NULLS LAST, updated_at DESC NULLS LAST
+             LIMIT 1
+        """).fetchone()
+        return row["model_id"] if row else None
+
+    if conn is not None:
+        return _query(conn)
+    with get_conn() as owned:
+        return _query(owned)
+
+
+def select_default_model_id(conn=None) -> tuple[Optional[str], bool]:
+    """Return (model_id, selection_fallback).
+
+    Fallback is only used for legacy databases without a lifecycle champion.
+    Callers must surface selection_fallback=true in API/script output.
+    """
+    def _query(c):
+        champion = get_default_champion_model_id(c)
+        if champion:
+            return champion, False
+        row = c.execute("""
+            SELECT model_id
+              FROM mart_multidim_model
+             ORDER BY created_at DESC
+             LIMIT 1
+        """).fetchone()
+        return (row["model_id"] if row else None), True
+
+    if conn is not None:
+        return _query(conn)
+    with get_conn() as owned:
+        return _query(owned)
+
+
+def get_model_status(conn, model_id: str | None) -> Optional[str]:
+    if not model_id:
+        return None
+    row = conn.execute(
+        "SELECT status FROM mart_model_lifecycle WHERE model_id = ?",
+        (model_id,),
+    ).fetchone()
+    return row["status"] if row else None
+
+
 def list_models(status_filter: Optional[str] = None) -> list[dict]:
     with get_conn() as conn:
         if status_filter:

@@ -74,6 +74,20 @@ FEATURE_LABELS = {
     "regime_flag": "市场状态",
     # Label
     "forward_ret_20d": "前向20日收益率",
+    # TDX keep challenger
+    "forecast_profit_yoy_mid": "TDX业绩预告利润同比中值",
+    "avg_float_shares_change_pct_tdx": "TDX户均流通股变化率",
+    "ocf_to_profit_tdx": "TDX经营现金流/净利润",
+    "fund_shares_qoq": "TDX基金持股季度变化",
+    "forecast_range_width": "TDX业绩预告区间宽度",
+    "auto_general_corp_count_event_nonzero": "TDX一般法人户数事件",
+    "auto_general_corp_shares_event_nonzero": "TDX一般法人持股事件",
+    "auto_general_corp_count_level": "TDX一般法人户数水平",
+    "auto_top10_float_holder_shares_event_nonzero": "TDX十大流通股东持股事件",
+    "auto_top1_holder_shares_event_nonzero": "TDX第一大股东持股事件",
+    "auto_top10_holder_shares_event_nonzero": "TDX十大股东持股事件",
+    "auto_holder_count_event_nonzero": "TDX股东户数事件",
+    "auto_private_equity_shares_level": "TDX私募持股水平",
     # 回测派生
     "holdout_ic": "持出期·IC",
     "holdout_rank_ic": "持出期·Rank IC",
@@ -92,6 +106,7 @@ FEATURE_LABELS = {
 MODEL_NAME_LABELS = {
     "multidim_v1": "多维评分 v1",
     "multidim_v2": "多维评分 v2",
+    "tdx_keep_challenger": "TDX keep challenger",
     "lgb": "LightGBM 基线",
 }
 

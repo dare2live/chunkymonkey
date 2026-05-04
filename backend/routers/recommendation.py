@@ -11,6 +11,10 @@ from services.feature_labels import (
     FEATURE_LABELS, MODEL_NAME_LABELS,
     format_model_id, composite_grade, grade_metric,
 )
+from services.ml_lifecycle.registry import (
+    get_model_status,
+    select_default_model_id,
+)
 
 logger = logging.getLogger("cm-api")
 router = APIRouter()
@@ -24,11 +28,31 @@ def _table_exists(conn, table: str) -> bool:
     return bool(row and row[0])
 
 
+def _has_column(conn, table: str, column: str) -> bool:
+    row = conn.execute(
+        """
+        SELECT COUNT(*)
+          FROM information_schema.columns
+         WHERE table_name = ? AND column_name = ?
+        """,
+        (table, column),
+    ).fetchone()
+    return bool(row and row[0])
+
+
 def _safe_json(raw, default):
     try:
         return json.loads(raw) if raw else default
     except Exception:
         return default
+
+
+def _resolve_model_id(conn, requested_model_id: str | None) -> tuple[str | None, bool, str | None]:
+    """Resolve default model safely through lifecycle champion."""
+    if requested_model_id:
+        return requested_model_id, False, get_model_status(conn, requested_model_id)
+    model_id, fallback = select_default_model_id(conn)
+    return model_id, fallback, get_model_status(conn, model_id)
 
 
 @router.get("/labels")
@@ -46,34 +70,60 @@ async def get_daily_topk(
     date: str = Query(None, description="YYYY-MM-DD, 默认最新"),
     limit: int = Query(50, ge=1, le=500),
     regime: str = Query(None, description="up/flat/down 过滤"),
+    model_id: str = Query(None, description="显式 model_id; 默认 lifecycle champion"),
+    run_mode: str = Query(None, description="champion/shadow 过滤; 默认正式推荐"),
 ):
     """返回最新一天的 topK 推荐 + model_id + key features"""
     conn = get_conn()
     try:
+        requested_model_id = model_id
+        model_id, selection_fallback, model_role = _resolve_model_id(conn, requested_model_id)
+        if not model_id:
+            return {"ok": False, "message": "尚无训练好的模型"}
+
+        has_run_mode = _has_column(conn, "mart_daily_recommendation", "run_mode")
         if not date:
-            row = conn.execute("SELECT MAX(snapshot_date) FROM mart_daily_recommendation").fetchone()
+            date_where = ["model_id = ?"]
+            date_params = [model_id]
+            if has_run_mode:
+                if run_mode:
+                    date_where.append("run_mode = ?")
+                    date_params.append(run_mode)
+                elif not requested_model_id:
+                    date_where.append("COALESCE(run_mode, 'champion') != 'shadow'")
+            row = conn.execute(
+                f"SELECT MAX(snapshot_date) FROM mart_daily_recommendation WHERE {' AND '.join(date_where)}",
+                date_params,
+            ).fetchone()
             date = row[0] if row and row[0] else None
         if not date:
-            return {"ok": False, "message": "尚未生成每日推荐, 请先运行 run_daily_topk"}
-
-        # 取最新 model_id (不含 join 避免被大表拖慢)
-        latest_mid = conn.execute(
-            "SELECT model_id FROM mart_multidim_model ORDER BY created_at DESC LIMIT 1"
-        ).fetchone()
-        latest_mid = latest_mid[0] if latest_mid else None
+            return {
+                "ok": False,
+                "message": "尚未生成该模型每日推荐, 请先运行 run_daily_topk",
+                "model_id": model_id,
+                "model_role": model_role,
+                "selection_fallback": selection_fallback,
+            }
 
         where = ["r.snapshot_date = ?"]
         params = [date]
-        if latest_mid:
-            where.append("r.model_id = ?")
-            params.append(latest_mid)
+        where.append("r.model_id = ?")
+        params.append(model_id)
+        if has_run_mode:
+            if run_mode:
+                where.append("r.run_mode = ?")
+                params.append(run_mode)
+            elif not requested_model_id:
+                where.append("COALESCE(r.run_mode, 'champion') != 'shadow'")
         if regime:
             where.append("r.regime_flag = ?")
             params.append(regime)
 
+        run_mode_select = "r.run_mode," if has_run_mode else "NULL AS run_mode,"
         sql = f"""
             SELECT r.snapshot_date, r.stock_code, r.model_id, r.rank_in_date,
-                   r.pred_score, r.percentile, r.regime_flag, r.key_features_json,
+                   r.pred_score, r.percentile, r.regime_flag, {run_mode_select}
+                   r.key_features_json, r.track_id, r.is_primary,
                    ii.name stock_name_via_event,
                    ind.tdx_l1_name l1, ind.tdx_l2_name l2
             FROM mart_daily_recommendation r
@@ -102,6 +152,7 @@ async def get_daily_topk(
                 "pred_score": round(float(r["pred_score"]), 4),
                 "percentile": round(float(r["percentile"]), 3),
                 "regime_flag": r["regime_flag"],
+                "run_mode": r["run_mode"],
                 "l1": r["l1"],
                 "l2": r["l2"],
             })
@@ -123,6 +174,11 @@ async def get_daily_topk(
             "ok": True,
             "snapshot_date": date,
             "model_id": model_id,
+            "requested_model_id": requested_model_id,
+            "model_role": model_role,
+            "selection_fallback": selection_fallback,
+            "run_mode": run_mode or (rows[0]["run_mode"] if rows else None),
+            "is_default_champion": (not requested_model_id and model_role == "champion"),
             "model_meta": model_meta,
             "top_features": key_features_cache or [],
             "regime_filter": regime,
@@ -136,16 +192,13 @@ async def get_daily_topk(
 @router.get("/stock-prediction")
 async def get_stock_prediction(
     code: str = Query(..., description="股票代码"),
-    model_id: str = Query(None, description="指定 model_id, 默认最新"),
+    model_id: str = Query(None, description="指定 model_id, 默认 lifecycle champion"),
 ):
     """单只股票在最新模型下的最近预测 (按日期 DESC, 取最新一天)"""
     conn = get_conn()
     try:
-        if not model_id:
-            row = conn.execute(
-                "SELECT model_id FROM mart_multidim_model ORDER BY created_at DESC LIMIT 1"
-            ).fetchone()
-            model_id = row[0] if row else None
+        requested_model_id = model_id
+        model_id, selection_fallback, model_role = _resolve_model_id(conn, requested_model_id)
         if not model_id:
             return {"ok": False, "message": "尚无训练好的模型"}
 
@@ -156,7 +209,13 @@ async def get_stock_prediction(
             ORDER BY date DESC LIMIT 1
         """, (code, model_id)).fetchone()
         if not row:
-            return {"ok": True, "model_id": model_id, "has_prediction": False}
+            return {
+                "ok": True,
+                "model_id": model_id,
+                "model_role": model_role,
+                "selection_fallback": selection_fallback,
+                "has_prediction": False,
+            }
 
         meta = conn.execute(
             "SELECT holdout_ic, holdout_rank_ic FROM mart_multidim_model WHERE model_id = ?",
@@ -165,6 +224,9 @@ async def get_stock_prediction(
         return {
             "ok": True,
             "model_id": model_id,
+            "requested_model_id": requested_model_id,
+            "model_role": model_role,
+            "selection_fallback": selection_fallback,
             "has_prediction": True,
             "stock_code": row["stock_code"],
             "date": row["date"],
@@ -180,20 +242,16 @@ async def get_stock_prediction(
 
 @router.get("/model-performance")
 async def get_model_performance(
-    model_id: str = Query(None, description="指定 model_id, 默认最新"),
+    model_id: str = Query(None, description="指定 model_id, 默认 lifecycle champion"),
 ):
     """模型性能监测: 历史 holdout 指标 + 每日 top-decile 实际表现 (若已过 20 交易日)"""
     conn = get_conn()
     try:
         # 1. 模型元数据
+        requested_model_id = model_id
+        model_id, selection_fallback, model_role = _resolve_model_id(conn, requested_model_id)
         if not model_id:
-            row = conn.execute("""
-                SELECT model_id FROM mart_multidim_model
-                ORDER BY created_at DESC LIMIT 1
-            """).fetchone()
-            if not row:
-                return {"ok": False, "message": "尚无训练好的模型"}
-            model_id = row[0]
+            return {"ok": False, "message": "尚无训练好的模型"}
 
         mrow = conn.execute("""
             SELECT * FROM mart_multidim_model WHERE model_id = ?
@@ -360,12 +418,183 @@ async def get_model_performance(
         return {
             "ok": True,
             "model_id": model_id,
+            "requested_model_id": requested_model_id,
+            "model_role": model_role,
+            "selection_fallback": selection_fallback,
             "meta": meta,
             "daily_series": daily_series,
             "regime_breakdown": regime,
             "portfolio": portfolio,
             "walkforward": walkforward,
             "data_quality": data_quality,
+        }
+    finally:
+        conn.close()
+
+
+@router.get("/tdx-feature-validation")
+async def get_tdx_feature_validation():
+    """TDX keep/watch/drop validation summary for frontend display."""
+    conn = get_conn()
+    try:
+        manual_run = "retention_tdx_f10_gpcw_v1"
+        auto_run = "retention_tdx_gpcw_auto_v1"
+        manual = conn.execute("""
+            SELECT feature_name, decision, primary_reason, coverage_pct,
+                   pit_violation_rows, mean_rank_ic, fold_same_sign_rate,
+                   group_ablation_delta
+              FROM mart_feature_retention_decision
+             WHERE feature_set_id='tdx_f10_gpcw_v1'
+               AND decision_run_id=?
+             ORDER BY CASE decision WHEN 'keep' THEN 0 WHEN 'watch' THEN 1 ELSE 2 END,
+                      ABS(COALESCE(mean_rank_ic, 0)) DESC
+        """, (manual_run,)).fetchall()
+        auto = conn.execute("""
+            SELECT feature_name, decision, primary_reason, coverage_pct,
+                   pit_violation_rows, mean_rank_ic, fold_same_sign_rate
+              FROM mart_feature_retention_decision
+             WHERE feature_set_id='tdx_gpcw_auto_v1_pit'
+               AND decision_run_id=?
+             ORDER BY CASE decision WHEN 'keep' THEN 0 WHEN 'watch' THEN 1 ELSE 2 END,
+                      ABS(COALESCE(mean_rank_ic, 0)) DESC
+             LIMIT 40
+        """, (auto_run,)).fetchall()
+        source_rows = conn.execute("""
+            SELECT data_domain, preferred_source, fallback_1, fallback_2, reason
+              FROM dim_data_source_priority
+             ORDER BY data_domain
+        """).fetchall()
+        pit_manual = conn.execute("""
+            SELECT COALESCE(SUM(violation_rows), 0)
+              FROM mart_feature_pit_audit
+             WHERE audit_run_id='pit_tdx_f10_gpcw_v1'
+        """).fetchone()[0]
+        pit_auto = conn.execute("""
+            SELECT COALESCE(SUM(violation_rows), 0)
+              FROM mart_tdx_gpcw_auto_pit_audit
+             WHERE audit_run_id='pit_tdx_gpcw_auto_v1'
+        """).fetchone()[0]
+        return {
+            "ok": True,
+            "manual_feature_set_id": "tdx_f10_gpcw_v1",
+            "manual_decision_run_id": manual_run,
+            "manual": [dict(r) for r in manual],
+            "auto_feature_set_id": "tdx_gpcw_auto_v1_pit",
+            "auto_decision_run_id": auto_run,
+            "auto_optional_watch_pool": [dict(r) for r in auto],
+            "pit": {
+                "tdx_f10_gpcw_v1": {"violation_rows": pit_manual},
+                "tdx_gpcw_auto_v1": {"violation_rows": pit_auto},
+            },
+            "sources": [dict(r) for r in source_rows],
+        }
+    finally:
+        conn.close()
+
+
+@router.get("/model-comparison")
+async def get_model_comparison(
+    challenger_model_id: str = Query(None, description="指定 challenger; 默认最新 TDX keep challenger"),
+):
+    """Champion vs challenger comparison with gate and shadow evidence."""
+    conn = get_conn()
+    try:
+        champion_id, selection_fallback = select_default_model_id(conn)
+        if not challenger_model_id:
+            row = conn.execute("""
+                SELECT model_id
+                  FROM mart_model_lifecycle
+                 WHERE status='challenger'
+                   AND model_id LIKE 'tdx_keep_challenger%'
+                 ORDER BY updated_at DESC
+                 LIMIT 1
+            """).fetchone()
+            challenger_model_id = row["model_id"] if row else None
+
+        def model_meta(mid):
+            if not mid:
+                return None
+            row = conn.execute("""
+                SELECT model_id, feature_schema_version, n_features,
+                       holdout_ic, holdout_rank_ic,
+                       holdout_top_decile_avg, holdout_long_short_spread,
+                       holdout_winrate_top, created_at, feature_cols_json
+                  FROM mart_multidim_model
+                 WHERE model_id = ?
+            """, (mid,)).fetchone()
+            if not row:
+                return None
+            d = dict(row)
+            d["feature_cols"] = _safe_json(d.pop("feature_cols_json", None), [])
+            d["status"] = get_model_status(conn, mid)
+            return d
+
+        def latest_portfolio(mid):
+            if not mid or not _table_exists(conn, "mart_model_portfolio_summary"):
+                return None
+            row = conn.execute("""
+                SELECT run_id, curve_id, curve_type, total_return, annualized_return,
+                       max_drawdown, sharpe, avg_turnover, cost_bps, rebalance_days
+                  FROM mart_model_portfolio_summary
+                 WHERE model_id = ? AND curve_type = 'model_top20'
+                 ORDER BY built_at DESC, cost_bps
+                 LIMIT 1
+            """, (mid,)).fetchone()
+            return dict(row) if row else None
+
+        def latest_walkforward(mid):
+            if not mid or not _table_exists(conn, "mart_model_walkforward_fold"):
+                return None
+            row = conn.execute("""
+                SELECT run_id, COUNT(*) fold_count,
+                       AVG(test_rank_ic) rank_ic_mean,
+                       AVG(test_long_short_spread) long_short_mean,
+                       SUM(CASE WHEN quality_flag='ok' THEN 1 ELSE 0 END) ok_folds
+                  FROM mart_model_walkforward_fold
+                 WHERE model_id = ?
+                 GROUP BY run_id
+                 ORDER BY MAX(built_at) DESC
+                 LIMIT 1
+            """, (mid,)).fetchone()
+            return dict(row) if row else None
+
+        gate = None
+        if _table_exists(conn, "mart_tdx_keep_promotion_gate"):
+            row = conn.execute("""
+                SELECT *
+                  FROM mart_tdx_keep_promotion_gate
+                 WHERE challenger_model_id = ?
+                 ORDER BY evaluated_at DESC LIMIT 1
+            """, (challenger_model_id,)).fetchone()
+            gate = dict(row) if row else None
+
+        shadow = None
+        if challenger_model_id:
+            run_mode_filter = "AND COALESCE(run_mode, '') = 'shadow'" if _has_column(conn, "mart_daily_recommendation", "run_mode") else ""
+            row = conn.execute(f"""
+                SELECT MAX(snapshot_date) snapshot_date, COUNT(*) row_count
+                  FROM mart_daily_recommendation
+                 WHERE model_id = ? {run_mode_filter}
+            """, (challenger_model_id,)).fetchone()
+            shadow = dict(row) if row else None
+            if shadow is not None:
+                shadow["rows"] = shadow.get("row_count")
+
+        return {
+            "ok": True,
+            "selection_fallback": selection_fallback,
+            "champion": model_meta(champion_id),
+            "challenger": model_meta(challenger_model_id),
+            "walkforward": {
+                "champion": latest_walkforward(champion_id),
+                "challenger": latest_walkforward(challenger_model_id),
+            },
+            "portfolio": {
+                "champion": latest_portfolio(champion_id),
+                "challenger": latest_portfolio(challenger_model_id),
+            },
+            "shadow_topk": shadow,
+            "promotion_gate": gate,
         }
     finally:
         conn.close()

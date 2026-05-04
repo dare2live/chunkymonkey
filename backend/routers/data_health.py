@@ -188,9 +188,23 @@ def get_sources_overview() -> dict[str, Any]:
             GROUP BY d.upstream_source, d.source_tier
             ORDER BY d.source_tier, d.upstream_source
         """, (snap_at,)).fetchall()
+        priorities = []
+        try:
+            priorities = [
+                dict(r) for r in con.execute(
+                    """
+                    SELECT data_domain, preferred_source, fallback_1, fallback_2, reason
+                      FROM dim_data_source_priority
+                     ORDER BY data_domain
+                    """
+                ).fetchall()
+            ]
+        except Exception:
+            priorities = []
         return {
             "snapshot_at": snap_at,
             "sources": [dict(r) for r in rows],
+            "source_priorities": priorities,
         }
     finally:
         con.close()

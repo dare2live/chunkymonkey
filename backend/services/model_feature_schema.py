@@ -7,6 +7,7 @@ from typing import Iterable
 
 FEATURE_SCHEMA_VERSION = "multidim_v2_rank_industry_margin"
 DEFAULT_LABEL_NAME = "forward_ret_20d"
+TDX_KEEP_CHALLENGER_SCHEMA_VERSION = "m8_tdx_keep_challenger_v1"
 
 
 BASE_FEATURE_COLS = [
@@ -55,11 +56,37 @@ TDX_CANDIDATE_FEATURE_COLS = [
 ]
 
 
+TDX_KEEP_FEATURE_COLS = [
+    "forecast_profit_yoy_mid",
+    "avg_float_shares_change_pct_tdx",
+    "ocf_to_profit_tdx",
+    "fund_shares_qoq",
+    "forecast_range_width",
+]
+
+
+TDX_KEEP_OPTIONAL_WATCH_FEATURE_COLS = [
+    "auto_general_corp_count_event_nonzero",
+    "auto_general_corp_shares_event_nonzero",
+    "auto_general_corp_count_level",
+    "auto_top10_float_holder_shares_event_nonzero",
+    "auto_top1_holder_shares_event_nonzero",
+    "auto_top10_holder_shares_event_nonzero",
+    "auto_holder_count_event_nonzero",
+    "auto_private_equity_shares_level",
+]
+
+
 def ordered_feature_cols(*, include_dense_v2: bool = True) -> list[str]:
     cols = list(BASE_FEATURE_COLS)
     if include_dense_v2:
         cols.extend(DENSE_V2_FEATURE_COLS)
     return cols
+
+
+def tdx_keep_challenger_feature_cols(*, include_dense_v2: bool = True) -> list[str]:
+    """Baseline production features plus the five validated TDX keep overlays."""
+    return normalize_feature_cols(ordered_feature_cols(include_dense_v2=include_dense_v2) + TDX_KEEP_FEATURE_COLS)
 
 
 def normalize_feature_cols(cols: Iterable[str]) -> list[str]:

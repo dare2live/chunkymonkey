@@ -239,3 +239,7 @@ chunky:
 - miaoxiang 仓库当前没有 pytest 用例，只有 schema validate 和 P6 probe 作为可执行验收。
 - 自动 gpcw 集合的整体 rank_ic 明显弱于手工集合，保留的自动特征主要是 ownership event/level 类；暂不建议替换生产特征，只作为候选扩展和 watch pool。
 - 所有相关性均为历史统计相关，不解释为因果。
+
+## Productionization Follow-up
+
+本轮后续生产化结果见 [tdx_keep_productionization_report.md](tdx_keep_productionization_report.md)。TDX keep 五特征已进入独立 challenger schema 和 shadow 推荐链路，但截至 2026-05-04 的 promotion gate 结果为 `FAIL / reject`：rank IC uplift 未达阈值且存在 critical drift，因此不替换 lifecycle champion。

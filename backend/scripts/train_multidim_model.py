@@ -37,6 +37,8 @@ from services.model_feature_schema import (
     DEFAULT_LABEL_NAME,
     FEATURE_SCHEMA_VERSION,
     REGIME_FEATURE_COLS,
+    TDX_KEEP_CHALLENGER_SCHEMA_VERSION,
+    TDX_KEEP_FEATURE_COLS,
     feature_cols_to_json,
     ordered_feature_cols,
 )
@@ -97,6 +99,8 @@ def load_panel(
     *,
     label_name: str = DEFAULT_LABEL_NAME,
     with_alpha158: bool = True,
+    feature_table: str = "fact_feature_panel",
+    feature_set_id: str | None = None,
 ) -> pd.DataFrame:
     """DuckDB 加载: 只读 LightGBM 需要的列, float32 降内存
     Phase 8: 可选 LEFT JOIN alpha158.duckdb 的 fact_alpha158_panel 增补 64 Alpha158 因子
@@ -105,17 +109,17 @@ def load_panel(
     """
     from pathlib import Path
     duck = conn.raw if hasattr(conn, 'raw') else conn
-    logger.info("DuckDB 加载 fact_feature_panel %s ~ %s", start_date, end_date)
+    logger.info("DuckDB 加载 %s %s ~ %s", feature_table, start_date, end_date)
 
     # Alpha158 ATTACH (数据库连接上挂其它 DuckDB 文件, READ_ONLY 避免冲突)
     alpha158_db = Path(__file__).resolve().parent.parent.parent / "data" / "alpha158.duckdb"
     a158_col_list: list[str] = []
-    if with_alpha158 and alpha158_db.exists():
+    if with_alpha158 and feature_table == "fact_feature_panel" and alpha158_db.exists():
         try:
             duck.execute(f"ATTACH IF NOT EXISTS '{alpha158_db}' AS a158 (READ_ONLY)")
             a158_col_list = [r[0] for r in duck.execute(
                 "SELECT column_name FROM information_schema.columns "
-                "WHERE table_catalog='a158' AND table_name='fact_alpha158_panel' "
+            "WHERE table_catalog='a158' AND table_name='fact_alpha158_panel' "
                 "AND column_name LIKE 'a158_%'"
             ).fetchall()]
             logger.info("Alpha158 join 启用, 增补 %d 列", len(a158_col_list))
@@ -124,12 +128,17 @@ def load_panel(
 
     panel_cols = {
         r[0] for r in duck.execute(
-            "SELECT column_name FROM information_schema.columns WHERE table_name='fact_feature_panel'"
+            "SELECT column_name FROM information_schema.columns WHERE table_name = ?",
+            [feature_table],
         ).fetchall()
     }
     if label_name not in panel_cols:
         raise RuntimeError(f"fact_feature_panel 缺少 label 列: {label_name}")
-    base_cols = [c for c in FEATURE_COLS if c in panel_cols]
+    schema_feature_cols = list(FEATURE_COLS)
+    for c in TDX_KEEP_FEATURE_COLS:
+        if c not in schema_feature_cols:
+            schema_feature_cols.append(c)
+    base_cols = [c for c in schema_feature_cols if c in panel_cols]
     missing_cols = [c for c in FEATURE_COLS if c not in panel_cols]
     if missing_cols:
         logger.warning("fact_feature_panel 缺少 %d 个 schema 特征, 本次跳过: %s", len(missing_cols), missing_cols)
@@ -144,13 +153,19 @@ def load_panel(
         alpha158_cols_sql = ", " + ", ".join(f"CAST(a.{c} AS FLOAT) AS {c}" for c in a158_col_list)
         alpha158_join = "LEFT JOIN a158.fact_alpha158_panel a ON a.stock_code = p.stock_code AND a.date = CAST(p.date AS DATE)"
 
+    where = [f"p.date >= ? AND p.date <= ? AND p.{label_name} IS NOT NULL"]
+    params = [start_date, end_date]
+    if feature_set_id and "feature_set_id" in panel_cols:
+        where.append("p.feature_set_id = ?")
+        params.append(feature_set_id)
+
     query = f"""
         SELECT {', '.join(select_cols)}{alpha158_cols_sql}
-        FROM fact_feature_panel p
+        FROM {feature_table} p
         {alpha158_join}
-        WHERE p.date >= ? AND p.date <= ? AND p.{label_name} IS NOT NULL
+        WHERE {' AND '.join(where)}
     """
-    df = duck.execute(query, [start_date, end_date]).df()
+    df = duck.execute(query, params).df()
     logger.info("rows=%d codes=%d dates=%d total_cols=%d",
                 len(df), df['stock_code'].nunique(), df['date'].nunique(), df.shape[1])
     # 扩展全局特征列表 (用于 FEATURE_COLS 动态扩展 — 但保留原序)
@@ -259,6 +274,7 @@ def resolve_feature_group(name: str, df, *, regime_aware: bool) -> tuple[list[st
     """M7: feature group 显式选择. 返回 (feature_cols, schema_version_tag).
     base                     - 43 特征 (BASE_FEATURE_COLS)
     base_dense_v2            - 54 特征 (BASE + DENSE_V2)
+    tdx_keep_v1              - BASE + DENSE_V2 + 5 validated TDX keep features
     base_alpha158            - 107 特征 (BASE + a158_*) (实验对照)
     base_dense_v2_alpha158   - 118 特征 (BASE + DENSE_V2 + a158_*) (实验对照)
     legacy_full              - 旧默认 (BASE + DENSE_V2 + a158_*), 兼容 history
@@ -280,6 +296,13 @@ def resolve_feature_group(name: str, df, *, regime_aware: bool) -> tuple[list[st
     elif name == "base_dense_v2_alpha158":
         cols = base + v2 + a158
         tag = "m7_base_dense_v2_alpha158_v1"
+    elif name == "tdx_keep_v1":
+        keep = [c for c in TDX_KEEP_FEATURE_COLS if c in df.columns]
+        missing = [c for c in TDX_KEEP_FEATURE_COLS if c not in df.columns]
+        if missing:
+            raise RuntimeError(f"tdx_keep_v1 缺少 keep 特征: {missing}")
+        cols = base + v2 + keep
+        tag = TDX_KEEP_CHALLENGER_SCHEMA_VERSION
     elif name == "legacy_full":
         cols = [c for c in FEATURE_COLS if c in df.columns]
         if a158:
@@ -306,9 +329,13 @@ def main():
     parser.add_argument('--regime-aware', action='store_true',
                         help='加入 regime one-hot 作为特征')
     parser.add_argument('--feature-group',
-                        choices=['base', 'base_dense_v2', 'base_alpha158', 'base_dense_v2_alpha158', 'legacy_full'],
+                        choices=['base', 'base_dense_v2', 'base_alpha158', 'base_dense_v2_alpha158', 'tdx_keep_v1', 'legacy_full'],
                         default='legacy_full',
                         help='M7: 显式特征组. 默认 legacy_full 保持旧行为兼容')
+    parser.add_argument('--feature-table', default='fact_feature_panel',
+                        help='训练使用的 feature table')
+    parser.add_argument('--feature-set-id', default=None,
+                        help='feature_table 有 feature_set_id 列时过滤')
     parser.add_argument('--num-round', type=int, default=400, help='final fit 轮数')
     parser.add_argument('--model-id-prefix', default='multidim_v1',
                         help='模型 ID 前缀, M7 候选可用 multidim_v2_base / multidim_v2_dense 区分')
@@ -320,7 +347,14 @@ def main():
     # 3) 最后落库时重新打开 writable connection, 写完 close
     conn = get_conn()
     ensure_model_schema(conn)
-    df = load_panel(conn, args.start, args.end, label_name=args.label_name)
+    df = load_panel(
+        conn,
+        args.start,
+        args.end,
+        label_name=args.label_name,
+        feature_table=args.feature_table,
+        feature_set_id=args.feature_set_id,
+    )
     conn.close()
     logger.info("数据加载完成, DuckDB 写锁已释放, 训练期间前端可正常读")
     if df.empty:
@@ -404,7 +438,9 @@ def main():
          feature_cols_to_json(feature_cols),
          args.label_name,
          schema_tag,
-         f"M7 candidate · feature_group={args.feature_group} · Optuna {args.trials} trials · regime_aware={args.regime_aware} · num_round={args.num_round}"),
+         f"M7/M8 candidate · feature_group={args.feature_group} · feature_table={args.feature_table} · "
+         f"feature_set_id={args.feature_set_id} · Optuna {args.trials} trials · "
+         f"regime_aware={args.regime_aware} · num_round={args.num_round}"),
     )
 
     # 落 predictions — DuckDB 原生 register + INSERT FROM SELECT

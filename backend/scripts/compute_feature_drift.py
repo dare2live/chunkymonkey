@@ -18,22 +18,40 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from services.ml_lifecycle.drift import compute_feature_drift, write_drift_snapshot
 from services.ml_lifecycle.registry import get_champion
+from services.db import get_conn
+
+
+def _model_feature_cols(model_id: str | None) -> list[str] | None:
+    if not model_id:
+        return None
+    with get_conn() as conn:
+        row = conn.execute(
+            "SELECT feature_cols_json FROM mart_multidim_model WHERE model_id = ?",
+            (model_id,),
+        ).fetchone()
+        if not row or not row["feature_cols_json"]:
+            return None
+        import json
+        return [str(v) for v in json.loads(row["feature_cols_json"])]
 
 
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--feature-table", default="fact_feature_panel")
+    parser.add_argument("--model-id", default=None, help="显式模型; 默认 lifecycle champion")
     parser.add_argument("--train-days", type=int, default=365)
     parser.add_argument("--recent-days", type=int, default=30)
     parser.add_argument("--top-n", type=int, default=30, help="只算前 N 个特征 (按列序)")
     args = parser.parse_args()
 
     champ = get_champion()
-    model_id = champ["model_id"] if champ else None
+    model_id = args.model_id or (champ["model_id"] if champ else None)
     log.info(f"computing drift for model_id={model_id} feature_table={args.feature_table}")
+    feature_cols = _model_feature_cols(model_id)
 
     drift = compute_feature_drift(
         feature_table=args.feature_table,
+        feature_columns=feature_cols,
         train_window_days=args.train_days,
         recent_window_days=args.recent_days,
         model_id=model_id,
@@ -46,6 +64,28 @@ def main() -> int:
     drift = drift[: args.top_n]
     n = write_drift_snapshot(drift, window_days=args.recent_days)
     log.info(f"wrote {n} feature drift rows")
+    if model_id and n:
+        with get_conn() as conn:
+            conn.execute(
+                """
+                UPDATE mart_model_lifecycle
+                   SET drift_score = (
+                       SELECT AVG(psi)
+                         FROM mart_feature_drift
+                        WHERE model_id = ?
+                          AND snapshot_at = (
+                              SELECT MAX(snapshot_at)
+                                FROM mart_feature_drift
+                               WHERE model_id = ?
+                          )
+                          AND psi IS NOT NULL
+                   ),
+                       updated_at = now()
+                 WHERE model_id = ?
+                """,
+                (model_id, model_id, model_id),
+            )
+            conn.commit()
 
     sev_counts = {"ok": 0, "warn": 0, "critical": 0, "unknown": 0}
     for r in drift:

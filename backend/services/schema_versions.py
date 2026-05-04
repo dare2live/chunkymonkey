@@ -44,6 +44,7 @@ FACT_VERSIONS = {
     "fact_chain_alpha_truth": "v1",          # 链路 alpha 真值
     "fact_feature_panel": "v1",              # 特征面板 (Qlib alpha158)
     "fact_feature_panel_candidate": "v1",    # 候选特征面板 (不替换 champion)
+    "fact_feature_panel_tdx_keep_challenger": "v1",  # TDX keep challenger 面板
     "fact_dzjy_event": "v1",                 # 大宗交易事件
     "fact_executive_trade_event": "v1",      # 高管交易事件
     "fact_jgdy_event": "v1",                 # 机构调研事件
@@ -85,6 +86,7 @@ MART_VERSIONS = {
     "mart_feature_retention_decision": "v1",
     "mart_model_selection_run": "v1",
     "mart_tdx_challenger_report": "v1",
+    "mart_tdx_keep_promotion_gate": "v1",
     "mart_data_deprecation_record": "v1",
     "mart_model_portfolio_curve": "v1",
     "mart_model_portfolio_summary": "v1",    # 模型组合表现 (cost/return/sharpe)

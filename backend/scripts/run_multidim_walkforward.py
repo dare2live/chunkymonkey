@@ -16,6 +16,7 @@ import pandas as pd
 
 from services.db import get_conn
 from services.model_feature_schema import DEFAULT_LABEL_NAME, REGIME_FEATURE_COLS
+from services.ml_lifecycle.registry import select_default_model_id
 from scripts.train_multidim_model import (
     FEATURE_COLS,
     compute_ic,
@@ -104,9 +105,17 @@ def latest_params(conn, model_id: str | None) -> tuple[str | None, dict]:
             (model_id,),
         ).fetchone()
     else:
-        row = conn.execute(
-            "SELECT model_id, best_params_json FROM mart_multidim_model ORDER BY created_at DESC LIMIT 1"
-        ).fetchone()
+        default_model_id, _fallback = select_default_model_id(conn)
+        row = None
+        if default_model_id:
+            row = conn.execute(
+                "SELECT model_id, best_params_json FROM mart_multidim_model WHERE model_id = ?",
+                (default_model_id,),
+            ).fetchone()
+        if row is None:
+            row = conn.execute(
+                "SELECT model_id, best_params_json FROM mart_multidim_model ORDER BY created_at DESC LIMIT 1"
+            ).fetchone()
     if not row:
         return None, dict(DEFAULT_PARAMS)
     params = json.loads(row["best_params_json"] or "{}")
@@ -137,20 +146,34 @@ def build_folds(dates: list, train_days: int, valid_days: int, test_days: int, s
     return folds
 
 
-def load_label_dates(conn, start: str, end: str, label_name: str) -> list[str]:
+def load_label_dates(
+    conn,
+    start: str,
+    end: str,
+    label_name: str,
+    *,
+    feature_table: str = "fact_feature_panel",
+    feature_set_id: str | None = None,
+) -> list[str]:
     cols = {r[0] for r in conn.execute(
-        "SELECT column_name FROM information_schema.columns WHERE table_name='fact_feature_panel'"
+        "SELECT column_name FROM information_schema.columns WHERE table_name = ?",
+        (feature_table,),
     ).fetchall()}
     if label_name not in cols:
-        raise RuntimeError(f"fact_feature_panel 缺少 label 列: {label_name}")
+        raise RuntimeError(f"{feature_table} 缺少 label 列: {label_name}")
+    where = [f"date >= ? AND date <= ? AND {label_name} IS NOT NULL"]
+    params = [start, end]
+    if feature_set_id and "feature_set_id" in cols:
+        where.append("feature_set_id = ?")
+        params.append(feature_set_id)
     rows = conn.execute(
         f"""
         SELECT DISTINCT date
-        FROM fact_feature_panel
-        WHERE date >= ? AND date <= ? AND {label_name} IS NOT NULL
+        FROM {feature_table}
+        WHERE {' AND '.join(where)}
         ORDER BY date
         """,
-        (start, end),
+        params,
     ).fetchall()
     return [r[0] for r in rows]
 
@@ -228,10 +251,12 @@ def main() -> None:
     parser.add_argument("--dry-run", action="store_true")
     parser.add_argument(
         "--feature-group",
-        choices=["base", "base_dense_v2", "base_alpha158", "base_dense_v2_alpha158", "legacy_full"],
+        choices=["base", "base_dense_v2", "base_alpha158", "base_dense_v2_alpha158", "tdx_keep_v1", "legacy_full"],
         default="legacy_full",
         help="M7: 显式特征组, 与 train_multidim_model 同名同义",
     )
+    parser.add_argument("--feature-table", default="fact_feature_panel")
+    parser.add_argument("--feature-set-id", default=None)
     parser.add_argument(
         "--walkforward-num-round",
         type=int,
@@ -246,9 +271,23 @@ def main() -> None:
         ensure_model_schema(conn)
         source_model_id, params = latest_params(conn, args.model_id)
         if args.dry_run:
-            dates = load_label_dates(conn, args.start, args.end, args.label_name)
+            dates = load_label_dates(
+                conn,
+                args.start,
+                args.end,
+                args.label_name,
+                feature_table=args.feature_table,
+                feature_set_id=args.feature_set_id,
+            )
         else:
-            df = load_panel(conn, args.start, args.end, label_name=args.label_name)
+            df = load_panel(
+                conn,
+                args.start,
+                args.end,
+                label_name=args.label_name,
+                feature_table=args.feature_table,
+                feature_set_id=args.feature_set_id,
+            )
             dates = sorted(df["date"].unique())
         folds = build_folds(dates, args.train_days, args.valid_days, args.test_days, args.step_days)
         if args.max_folds > 0:
@@ -351,6 +390,26 @@ def main() -> None:
                     fold["fold_id"], distinct_median,
                     DEGENERATE_DAILY_DISTINCT_THRESHOLD,
                 )
+        if source_model_id:
+            conn.execute(
+                """
+                UPDATE mart_model_lifecycle
+                   SET ic_walkforward_avg = (
+                       SELECT AVG(test_rank_ic)
+                         FROM mart_model_walkforward_fold
+                        WHERE run_id = ?
+                   ),
+                       ic_walkforward_std = (
+                       SELECT STDDEV(test_rank_ic)
+                         FROM mart_model_walkforward_fold
+                        WHERE run_id = ?
+                   ),
+                       updated_at = now()
+                 WHERE model_id = ?
+                """,
+                (run_id, run_id, source_model_id),
+            )
+            conn.commit()
     finally:
         conn.close()
 

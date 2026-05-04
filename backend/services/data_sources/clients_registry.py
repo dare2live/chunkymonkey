@@ -380,6 +380,19 @@ DERIVED_WRITERS: list[ClientSpec] = [
         ],
     ),
     ClientSpec(
+        client_id="tdx_keep_challenger_productionization",
+        module="scripts.build_tdx_keep_challenger_panel / scripts.train_tdx_keep_challenger_model / scripts.evaluate_tdx_keep_promotion_gate",
+        description="TDX keep productionized challenger: 面板、训练、shadow、promotion gate",
+        upstream_source="derived: fact_feature_panel + fact_feature_panel_candidate + lifecycle",
+        source_tier=99,
+        writes=[
+            TableWriteSpec("fact_feature_panel_tdx_keep_challenger", "TDX keep challenger 面板", "on-demand", 24*30),
+            TableWriteSpec("mart_multidim_model", "TDX keep challenger 模型注册", "on-demand", 24*30),
+            TableWriteSpec("mart_multidim_prediction", "TDX keep challenger 预测", "on-demand", 24*30),
+            TableWriteSpec("mart_tdx_keep_promotion_gate", "TDX keep promotion gate", "on-demand", 24*30),
+        ],
+    ),
+    ClientSpec(
         client_id="mark_deprecated_data_assets",
         module="scripts.mark_deprecated_data_assets",
         description="数据资产退役标记记录 (不删表)",

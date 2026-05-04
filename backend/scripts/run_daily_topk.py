@@ -31,6 +31,10 @@ from services.model_feature_schema import (
     feature_cols_from_json,
     ordered_feature_cols,
 )
+from services.ml_lifecycle.registry import (
+    get_default_champion_model_id,
+    select_default_model_id,
+)
 
 logger = logging.getLogger("daily_topk")
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s | %(message)s")
@@ -48,11 +52,13 @@ CREATE TABLE IF NOT EXISTS mart_daily_recommendation (
     key_features_json TEXT,
     track_id      TEXT,
     is_primary    BOOLEAN,
+    run_mode      TEXT DEFAULT 'champion',
     built_at      TEXT,
     PRIMARY KEY (snapshot_date, stock_code, model_id)
 );
 CREATE INDEX IF NOT EXISTS idx_dr_date ON mart_daily_recommendation(snapshot_date);
 CREATE INDEX IF NOT EXISTS idx_dr_rank ON mart_daily_recommendation(snapshot_date, rank_in_date);
+ALTER TABLE mart_daily_recommendation ADD COLUMN IF NOT EXISTS run_mode TEXT DEFAULT 'champion';
 
 -- M8.5b: snapshot 级风险摘要 (top20). 不阻塞主轨上线, 只用于监控.
 CREATE TABLE IF NOT EXISTS mart_daily_recommendation_risk (
@@ -86,8 +92,16 @@ def load_model(model_id: str):
 
 
 def load_latest_model_id(conn, *, include_disabled: bool = False) -> str:
-    """M8.6: 默认排除 disabled_by_default=true 的模型 (alpha158 / legacy 110).
-    显式传 --model-id 不走这条路, 不受影响."""
+    """Default to lifecycle champion, never newest created_at challenger."""
+    if not include_disabled:
+        model_id, fallback = select_default_model_id(conn)
+        if model_id:
+            if fallback:
+                logger.warning("lifecycle champion 缺失, fallback 到 mart_multidim_model 最新: %s", model_id)
+            return model_id
+
+    # M8.6 legacy fallback: 默认排除 disabled_by_default=true 的模型 (alpha158 / legacy 110).
+    # 显式传 --model-id 不走这条路, 不受影响.
     cols = {r[1] for r in conn.execute("PRAGMA table_info(mart_multidim_model)").fetchall()}
     has_flag = "disabled_by_default" in cols
     if has_flag and not include_disabled:
@@ -104,6 +118,15 @@ def load_latest_model_id(conn, *, include_disabled: bool = False) -> str:
     if not row:
         raise RuntimeError("mart_multidim_model 无可用记录 (启用 --include-disabled-models 兼容旧 model)")
     return row[0]
+
+
+def _table_columns(duck, table: str) -> set[str]:
+    return {
+        r[0] for r in duck.execute(
+            "SELECT column_name FROM information_schema.columns WHERE table_name = ?",
+            [table],
+        ).fetchall()
+    }
 
 
 def load_model_feature_cols(conn, model_id: str, *, allow_legacy: bool) -> list[str]:
@@ -134,7 +157,13 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--model-id', default=None, help='指定 model_id (默认取最新)')
     parser.add_argument('--date', default=None, help='YYYY-MM-DD, 默认 panel 最新')
-    parser.add_argument('--top-k', type=int, default=50)
+    parser.add_argument('--top-k', '--limit', dest='top_k', type=int, default=50)
+    parser.add_argument('--mode', choices=['champion', 'shadow'], default='champion',
+                        help='champion 写正式推荐; shadow 写影子推荐, 不作为默认推荐')
+    parser.add_argument('--feature-table', default='fact_feature_panel',
+                        help='评分使用的特征表, challenger 可用 fact_feature_panel_tdx_keep_challenger')
+    parser.add_argument('--feature-set-id', default=None,
+                        help='feature_table 有 feature_set_id 列时用于过滤')
     parser.add_argument('--by-regime', action='store_true',
                         help='按 regime_flag 分组各出 top-K')
     parser.add_argument('--allow-legacy-feature-order', action='store_true',
@@ -151,7 +180,16 @@ def main():
     conn = get_conn()
     conn.executescript(DDL)
 
+    if args.mode == 'shadow' and not args.model_id:
+        raise RuntimeError("shadow 模式必须显式传 --model-id, 防止误用 champion")
+
     model_id = args.model_id or load_latest_model_id(conn, include_disabled=args.include_disabled_models)
+    champion_id = get_default_champion_model_id(conn)
+    selection_fallback = args.model_id is None and champion_id is None
+    if args.mode == 'shadow' and champion_id and model_id == champion_id:
+        raise RuntimeError("shadow 模式不能写 lifecycle champion, 避免覆盖正式推荐")
+    if args.mode == 'champion' and champion_id and model_id != champion_id:
+        raise RuntimeError("champion 模式只能写 lifecycle champion; challenger 请使用 --mode shadow")
     logger.info("使用模型 %s", model_id)
     model = load_model(model_id)
     stored_feature_cols = load_model_feature_cols(
@@ -161,15 +199,24 @@ def main():
     )
 
     # 取 panel 的目标日期
+    duck = conn.raw if hasattr(conn, 'raw') else conn
+    feature_table_cols = _table_columns(duck, args.feature_table)
+    has_feature_set_id = "feature_set_id" in feature_table_cols
+    table_where = []
+    table_params = []
+    if has_feature_set_id and args.feature_set_id:
+        table_where.append("feature_set_id = ?")
+        table_params.append(args.feature_set_id)
+
     if args.date:
         target_date = args.date
     else:
-        row = conn.execute("SELECT MAX(date) FROM fact_feature_panel").fetchone()
+        where_sql = (" WHERE " + " AND ".join(table_where)) if table_where else ""
+        row = duck.execute(f"SELECT MAX(date) FROM {args.feature_table}{where_sql}", table_params).fetchone()
         target_date = row[0]
     logger.info("target_date=%s", target_date)
 
     # DuckDB 原生读取 + ATTACH alpha158 (对齐训练时 110 特征)
-    duck = conn.raw if hasattr(conn, 'raw') else conn
     from pathlib import Path as _Path
     alpha158_db = _Path(__file__).resolve().parent.parent.parent / "data" / "alpha158.duckdb"
     a158_cols = []
@@ -184,12 +231,20 @@ def main():
         except Exception as e:
             logger.warning("Alpha158 attach failed: %s", e)
 
-    a158_sel = (", " + ", ".join(f"CAST(a.{c} AS FLOAT) AS {c}" for c in a158_cols)) if a158_cols else ""
-    a158_join = "LEFT JOIN a158.fact_alpha158_panel a ON a.stock_code = p.stock_code AND a.date = CAST(p.date AS DATE)" if a158_cols else ""
+    a158_sel = ""
+    a158_join = ""
+    if args.feature_table == "fact_feature_panel" and a158_cols:
+        a158_sel = ", " + ", ".join(f"CAST(a.{c} AS FLOAT) AS {c}" for c in a158_cols)
+        a158_join = "LEFT JOIN a158.fact_alpha158_panel a ON a.stock_code = p.stock_code AND a.date = CAST(p.date AS DATE)"
 
+    where = ["p.date = ?"]
+    params = [target_date]
+    if has_feature_set_id and args.feature_set_id:
+        where.append("p.feature_set_id = ?")
+        params.append(args.feature_set_id)
     df = duck.execute(
-        f"SELECT p.*{a158_sel} FROM fact_feature_panel p {a158_join} WHERE p.date = ?",
-        [target_date],
+        f"SELECT p.*{a158_sel} FROM {args.feature_table} p {a158_join} WHERE {' AND '.join(where)}",
+        params,
     ).df()
     if df.empty:
         logger.error("fact_feature_panel 里没有 %s 的行", target_date)
@@ -240,8 +295,15 @@ def main():
     output['snapshot_date'] = target_date
     output['model_id'] = model_id
     output['key_features_json'] = features_json
-    output['track_id'] = args.track_id
-    output['is_primary'] = bool(args.is_primary)
+    track_id = args.track_id
+    if not track_id:
+        track_id = 'primary' if args.mode == 'champion' else f"shadow_{model_id}"
+    is_primary = bool(args.is_primary) or (args.mode == 'champion' and model_id == champion_id)
+    if args.mode == 'shadow':
+        is_primary = False
+    output['track_id'] = track_id
+    output['is_primary'] = is_primary
+    output['run_mode'] = args.mode
     built_at = datetime.utcnow().isoformat()
     output['built_at'] = built_at
 
@@ -252,17 +314,17 @@ def main():
         output = output.groupby('regime_flag', group_keys=False).head(args.top_k).reset_index(drop=True)
 
     logger.info("写入 %d 条推荐 (track_id=%s, is_primary=%s)",
-                len(output), args.track_id, args.is_primary)
+                len(output), track_id, is_primary)
     for _, r in output.iterrows():
         conn.execute(
             """INSERT OR REPLACE INTO mart_daily_recommendation
                (snapshot_date, stock_code, model_id, rank_in_date, pred_score, percentile,
-                regime_flag, key_features_json, track_id, is_primary, built_at)
-               VALUES (?,?,?,?,?,?,?,?,?,?,?)""",
+                regime_flag, key_features_json, track_id, is_primary, run_mode, built_at)
+               VALUES (?,?,?,?,?,?,?,?,?,?,?,?)""",
             (r['snapshot_date'], r['stock_code'], r['model_id'],
              int(r['rank_in_date']), float(r['pred_score']), float(r['percentile']),
              r.get('regime_flag'), r['key_features_json'],
-             r['track_id'], bool(r['is_primary']),
+             r['track_id'], bool(r['is_primary']), r['run_mode'],
              r['built_at']),
         )
     conn.commit()
@@ -273,8 +335,8 @@ def main():
         conn, duck,
         snapshot_date=target_date,
         model_id=model_id,
-        track_id=args.track_id,
-        is_primary=bool(args.is_primary),
+        track_id=track_id,
+        is_primary=is_primary,
         top_size=risk_top_size,
         built_at=built_at,
     )
@@ -289,6 +351,10 @@ def main():
                     r['pred_score'], r['percentile'], r.get('regime_flag') or '-')
 
     conn.close()
+    logger.info(
+        "daily topK done model=%s mode=%s feature_table=%s feature_set_id=%s selection_fallback=%s",
+        model_id, args.mode, args.feature_table, args.feature_set_id, selection_fallback,
+    )
 
 
 def write_risk_summary(conn, duck, *, snapshot_date: str, model_id: str,

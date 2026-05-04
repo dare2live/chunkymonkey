@@ -65,7 +65,7 @@
         <div class="section-kicker">Model Monitoring</div>
         <h2 style="margin:4px 0 8px">多维评分 · 模型监控</h2>
         <p class="muted" style="font-size:12px;margin-bottom:14px">
-          基于 fact_feature_panel 的每日 topK 推荐与模型性能追踪。数据源：tdxhub + akshare。研究参考，非可交易建议。
+          默认展示 lifecycle champion；TDX keep challenger 只做 shadow 展示，不自动替换正式推荐。
         </p>
         <div id="mm-controls" style="display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap;align-items:center">
           <label style="font-size:12px;color:var(--cm-ink-500)">模型</label>
@@ -79,6 +79,8 @@
           </select>
           <button class="chip chip-outline" id="mm-refresh" style="margin-left:12px">刷新</button>
         </div>
+        <div id="mm-comparison" style="margin-bottom:14px"></div>
+        <div id="mm-tdx-validation" style="margin-bottom:14px"></div>
         <!-- 综合评级 + 指标卡片 -->
         <div id="mm-composite" style="margin-bottom:10px"></div>
         <div id="mm-metrics" class="workbench-health" style="margin-bottom:14px">

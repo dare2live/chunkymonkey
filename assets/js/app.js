@@ -6518,6 +6518,13 @@
           return '<option value="' + m.model_id + '">' + cname + '  · 综合：' + grade + '</option>';
         }).join('');
         if (res.items && res.items[0]) modelMonitorState.modelId = res.items[0].model_id;
+        try {
+          var cmp = await api('/api/rec/model-comparison');
+          if (cmp && cmp.ok && cmp.champion && cmp.champion.model_id) {
+            modelMonitorState.modelId = cmp.champion.model_id;
+            sel.value = modelMonitorState.modelId;
+          }
+        } catch (e) {}
       }
     } catch (e) {
       sel.innerHTML = '<option value="">(加载失败)</option>';
@@ -6526,7 +6533,73 @@
   }
 
   async function renderModelMonitor() {
-    await Promise.all([renderMetricsCards(), renderDailyChart(), renderRegimeChart(), renderFeatureImportance()]);
+    await Promise.all([
+      renderModelComparison(),
+      renderTdxValidation(),
+      renderMetricsCards(),
+      renderDailyChart(),
+      renderRegimeChart(),
+      renderFeatureImportance()
+    ]);
+  }
+
+  async function renderModelComparison() {
+    var box = el('mm-comparison'); if (!box) return;
+    try {
+      var res = await api('/api/rec/model-comparison');
+      if (!res || !res.ok) { box.innerHTML = ''; return; }
+      function fmt(v, d) { return v == null ? '-' : Number(v).toFixed(d == null ? 3 : d); }
+      function pct(v) { return v == null ? '-' : (Number(v) * 100).toFixed(2) + '%'; }
+      var c = res.champion || {}, ch = res.challenger || {}, gate = res.promotion_gate || {};
+      var shadow = res.shadow_topk || {};
+      box.innerHTML =
+        '<div class="panel" style="padding:12px;display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;align-items:stretch">' +
+        '<div><div class="section-kicker">Champion</div><div style="font-weight:700;font-size:13px">' + esc(labelModelId(c.model_id || '-')) + '</div>' +
+        '<div class="muted" style="font-size:11px;margin-top:4px">正式默认推荐 · RankIC ' + fmt(c.holdout_rank_ic) + ' · L/S ' + pct(c.holdout_long_short_spread) + '</div></div>' +
+        '<div><div class="section-kicker">TDX Keep Challenger</div><div style="font-weight:700;font-size:13px">' + esc(labelModelId(ch.model_id || '尚未训练')) + '</div>' +
+        '<div class="muted" style="font-size:11px;margin-top:4px">Shadow / Not promoted · RankIC ' + fmt(ch.holdout_rank_ic) + ' · L/S ' + pct(ch.holdout_long_short_spread) + '</div>' +
+        '<div class="muted" style="font-size:11px;margin-top:2px">shadow topK ' + (shadow.rows || shadow.row_count || 0) + ' rows · ' + (shadow.snapshot_date || shadow.latest_snapshot || '-') + '</div></div>' +
+        '<div><div class="section-kicker">Promotion Gate</div><div style="font-weight:700;font-size:13px">' + esc(gate.promotion_status || 'WAIT') + ' · ' + esc(gate.decision || 'keep_shadow') + '</div>' +
+        '<div class="muted" style="font-size:11px;margin-top:4px">默认选择 ' + (res.selection_fallback ? 'fallback' : 'champion-only') + '；即使 PASS 也只标记 promote-ready</div></div>' +
+        '</div>';
+    } catch (e) {
+      box.innerHTML = '<div class="muted">model comparison error: ' + esc(e.message) + '</div>';
+    }
+  }
+
+  async function renderTdxValidation() {
+    var box = el('mm-tdx-validation'); if (!box) return;
+    try {
+      var res = await api('/api/rec/tdx-feature-validation');
+      if (!res || !res.ok) { box.innerHTML = ''; return; }
+      function fmt(v) { return v == null ? '-' : Number(v).toFixed(3); }
+      var keep = (res.manual || []).filter(function (r) { return r.decision === 'keep'; });
+      var watchDrop = (res.manual || []).filter(function (r) { return r.decision !== 'keep'; }).slice(0, 8);
+      var sources = (res.sources || []).map(function (s) {
+        return '<span style="display:inline-block;margin:2px 6px 2px 0;padding:3px 7px;border:1px solid var(--cm-ink-100);border-radius:4px;font-size:11px">' +
+          esc(s.data_domain) + ': <b>' + esc(s.preferred_source) + '</b>' +
+          (s.fallback_1 ? ' / ' + esc(s.fallback_1) : '') +
+          (s.fallback_2 ? ' / ' + esc(s.fallback_2) : '') + '</span>';
+      }).join('');
+      var keepRows = keep.map(function (r) {
+        return '<tr><td>' + esc(labelFeature(r.feature_name)) + '</td><td>' + fmt(r.mean_rank_ic) + '</td><td>' + fmt(r.fold_same_sign_rate) + '</td><td>' + fmt(r.coverage_pct) + '%</td><td>' + (r.pit_violation_rows || 0) + '</td></tr>';
+      }).join('');
+      var wdRows = watchDrop.map(function (r) {
+        return '<tr><td>' + esc(r.decision) + '</td><td>' + esc(labelFeature(r.feature_name)) + '</td><td>' + esc(r.primary_reason || '-') + '</td></tr>';
+      }).join('');
+      box.innerHTML =
+        '<div class="panel" style="padding:12px">' +
+        '<div style="display:flex;justify-content:space-between;gap:12px;align-items:baseline;margin-bottom:8px">' +
+        '<h4 style="margin:0;font-size:13px">TDX keep 特征验证与数据源切换</h4>' +
+        '<span class="muted" style="font-size:11px">PIT violations: manual ' + ((res.pit && res.pit.tdx_f10_gpcw_v1 && res.pit.tdx_f10_gpcw_v1.violation_rows) || 0) + '</span></div>' +
+        '<div style="margin-bottom:8px">' + sources + '</div>' +
+        '<div style="display:grid;grid-template-columns:1.3fr 1fr;gap:12px">' +
+        '<table class="mini-table"><thead><tr><th>keep feature</th><th>RankIC</th><th>same sign</th><th>coverage</th><th>PIT</th></tr></thead><tbody>' + keepRows + '</tbody></table>' +
+        '<table class="mini-table"><thead><tr><th>decision</th><th>feature</th><th>reason</th></tr></thead><tbody>' + wdRows + '</tbody></table>' +
+        '</div></div>';
+    } catch (e) {
+      box.innerHTML = '<div class="muted">tdx validation error: ' + esc(e.message) + '</div>';
+    }
   }
 
   async function renderMetricsCards() {

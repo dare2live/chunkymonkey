@@ -202,7 +202,19 @@
         tbody.innerHTML = '<tr><td colspan="8" style="padding:30px;text-align:center" class="muted">尚未注册任何 upstream_source</td></tr>';
         return;
       }
-      tbody.innerHTML = ss.sources.map((s) => {
+      const priorityRows = (ss.source_priorities || []).map((p) => {
+        return `<tr style="background:var(--cm-brand-50,#eef6ff);border-bottom:1px solid var(--cm-ink-50,#f0f0f0)">
+          <td style="padding:6px 12px"><span style="padding:2px 6px;background:#e6f7e6;color:#2a8a2a;border-radius:3px;font-size:11px">业务分工</span></td>
+          <td style="padding:6px 12px" colspan="7">
+            <b>${this.esc(p.data_domain)}</b>:
+            主供 <code>${this.esc(p.preferred_source || '-')}</code>
+            ${p.fallback_1 ? ` / 补源 <code>${this.esc(p.fallback_1)}</code>` : ''}
+            ${p.fallback_2 ? ` / 兜底 <code>${this.esc(p.fallback_2)}</code>` : ''}
+            <span class="muted" style="margin-left:8px;font-size:11px">${this.esc(p.reason || '')}</span>
+          </td>
+        </tr>`;
+      }).join('');
+      const sourceRows = ss.sources.map((s) => {
         const tier = s.source_tier;
         const tierBadge = tier === 1 ? '<span style="padding:2px 6px;background:#e6f7e6;color:#2a8a2a;border-radius:3px;font-size:11px">tier 1 主</span>'
           : tier === 2 ? '<span style="padding:2px 6px;background:#fff4d4;color:#a67c00;border-radius:3px;font-size:11px">tier 2 备</span>'
@@ -220,6 +232,7 @@
           <td style="padding:6px 12px;text-align:right;font-size:11px" class="muted">${maxFresh}</td>
         </tr>`;
       }).join('');
+      tbody.innerHTML = priorityRows + sourceRows;
     },
 
     switchTab(tab) {

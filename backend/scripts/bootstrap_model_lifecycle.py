@@ -1,7 +1,8 @@
 """一次性引导脚本: 从 mart_multidim_model 同步到 mart_model_lifecycle.
 
 策略:
-  - 最新一条 → champion (deployed_at = created_at)
+  - 默认保留已有 champion, 避免新 challenger 因 created_at 最新被误提升
+  - 无 champion 时, 最新非 tdx_keep_challenger 模型 → champion
   - 其他 → retired
   - holdout_rank_ic → ic_holdout
   - 没有 walkforward 信息时 ic_walkforward_avg/std = NULL (后续 walkforward
@@ -14,6 +15,7 @@ from __future__ import annotations
 import json
 import logging
 import sys
+import argparse
 from pathlib import Path
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
@@ -25,6 +27,13 @@ from services.db import get_conn
 
 
 def main() -> int:
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "--reset",
+        action="store_true",
+        help="危险操作: 删除并重建 lifecycle; 仍不会把 tdx_keep_challenger 设为 champion",
+    )
+    args = parser.parse_args()
     with get_conn() as conn:
         rows = conn.execute("""
             SELECT model_id, created_at, holdout_rank_ic, n_features,
@@ -48,11 +57,29 @@ def main() -> int:
         except Exception:
             wf_row = None
 
-        # 覆盖式重置 (一次性引导)
-        conn.execute("DELETE FROM mart_model_lifecycle")
+        existing_champion = conn.execute(
+            "SELECT model_id FROM mart_model_lifecycle WHERE status='champion' LIMIT 1"
+        ).fetchone()
+        existing_champion_id = existing_champion["model_id"] if existing_champion else None
+        if args.reset:
+            conn.execute("DELETE FROM mart_model_lifecycle")
+            existing_champion_id = None
 
-        for i, r in enumerate(rows):
+        champion_candidate = existing_champion_id
+        if not champion_candidate:
+            for r in rows:
+                if not str(r["model_id"]).startswith("tdx_keep_challenger"):
+                    champion_candidate = r["model_id"]
+                    break
+
+        for r in rows:
             model_id = r["model_id"]
+            current = conn.execute(
+                "SELECT status FROM mart_model_lifecycle WHERE model_id = ?",
+                (model_id,),
+            ).fetchone()
+            if current and not args.reset:
+                continue
             ic_holdout = r["holdout_rank_ic"]
             cfg = {
                 "n_features": r["n_features"],
@@ -63,7 +90,9 @@ def main() -> int:
                 cfg["best_params"] = json.loads(r["best_params_json"]) if r["best_params_json"] else {}
             except Exception:
                 cfg["best_params"] = {}
-            status = "champion" if i == 0 else "retired"
+            status = "champion" if model_id == champion_candidate else (
+                "challenger" if str(model_id).startswith("tdx_keep_challenger") else "retired"
+            )
             deployed_at = r["created_at"] if status == "champion" else None
             retired_at = r["created_at"] if status == "retired" else None
             notes = "auto-bootstrap from mart_multidim_model" if status == "champion" else None
@@ -82,7 +111,7 @@ def main() -> int:
                 json.dumps(cfg, ensure_ascii=False),
             ))
         conn.commit()
-        log.info(f"bootstrapped {len(rows)} models — 1 champion + {len(rows)-1} retired")
+        log.info("bootstrapped/synced %d models — champion=%s", len(rows), champion_candidate)
 
         # 总结
         for r in conn.execute(

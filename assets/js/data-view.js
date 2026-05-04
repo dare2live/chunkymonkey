@@ -66,7 +66,16 @@
       root.innerHTML = '<div class="muted" style="padding:24px;text-align:center;grid-column:1/-1;font-size:12px">没有注册的数据源 (后端 data_sources/ registry 未加载?)</div>';
       return;
     }
-    root.innerHTML = _state.sources.map(src => {
+    const tdxPriority = `
+      <div class="panel" style="padding:12px;grid-column:1/-1;border-left:4px solid var(--cm-brand-500)">
+        <div style="font-weight:700;font-size:13px;margin-bottom:6px">TDX-first 数据源分工</div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;font-size:11px;color:var(--cm-ink-700)">
+          <span style="padding:3px 8px;border:1px solid var(--cm-ink-100);border-radius:4px"><b>tdxhub 主供</b>: K线、复权、gpcw、股东 F10</span>
+          <span style="padding:3px 8px;border:1px solid var(--cm-ink-100);border-radius:4px"><b>miaoxiang 保留</b>: 主营构成、估值/同行、一致预期、调研、复杂事件</span>
+          <span style="padding:3px 8px;border:1px solid var(--cm-ink-100);border-radius:4px"><b>akshare 兜底</b>: 临时不可用和未迁出历史接口</span>
+        </div>
+      </div>`;
+    root.innerHTML = tdxPriority + _state.sources.map(src => {
       const h = src.health || {};
       const dot = STATE_DOTS[h.state || 'unknown'];
       const color = STATE_COLORS[h.state || 'unknown'];

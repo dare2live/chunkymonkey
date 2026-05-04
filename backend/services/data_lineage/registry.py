@@ -170,6 +170,31 @@ LINEAGES: list[LineageSpec] = [
         entry_point="scripts.train_tdx_challenger_model:train_tdx_challenger_model",
         schedule="on-demand",
     ),
+    LineageSpec(
+        lineage_id="fact_feature_panel_tdx_keep_challenger/tdx_keep_v1",
+        output_table="fact_feature_panel_tdx_keep_challenger",
+        input_tables=["fact_feature_panel", "fact_feature_panel_candidate", "mart_feature_retention_decision"],
+        description="TDX keep production challenger 面板; baseline 特征 + 5 个 keep overlay, 不替换 champion panel",
+        owner="scripts.build_tdx_keep_challenger_panel",
+        entry_point="scripts.build_tdx_keep_challenger_panel:build_panel",
+        schedule="on-demand",
+    ),
+    LineageSpec(
+        lineage_id="mart_tdx_keep_promotion_gate/gated_shadow_v1",
+        output_table="mart_tdx_keep_promotion_gate",
+        input_tables=[
+            "mart_multidim_model",
+            "mart_model_lifecycle",
+            "mart_model_portfolio_summary",
+            "mart_feature_drift",
+            "mart_daily_recommendation",
+            "mart_feature_pit_audit",
+        ],
+        description="TDX keep challenger promotion gate; 只输出 promote_ready/keep_shadow/reject, 不自动替换 champion",
+        owner="scripts.evaluate_tdx_keep_promotion_gate",
+        entry_point="scripts.evaluate_tdx_keep_promotion_gate:evaluate_gate",
+        schedule="on-demand",
+    ),
 
     # ── 推荐 / 模型 ──────────────────────────────────────────────────
     LineageSpec(

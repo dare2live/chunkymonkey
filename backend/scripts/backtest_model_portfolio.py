@@ -17,6 +17,7 @@ import numpy as np
 import pandas as pd
 
 from services.db import get_conn
+from services.ml_lifecycle.registry import select_default_model_id
 
 
 logger = logging.getLogger("model_portfolio_backtest")
@@ -80,6 +81,9 @@ def _parse_csv_floats(raw: str) -> list[float]:
 
 
 def latest_model_id(conn) -> str:
+    model_id, _fallback = select_default_model_id(conn)
+    if model_id:
+        return model_id
     row = conn.execute("SELECT model_id FROM mart_multidim_model ORDER BY created_at DESC LIMIT 1").fetchone()
     if not row:
         raise RuntimeError("mart_multidim_model 无记录")
