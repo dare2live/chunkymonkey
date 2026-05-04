@@ -3,7 +3,6 @@ import asyncio
 from pathlib import Path
 from unittest import mock
 
-import pandas as pd
 import pytest
 
 
@@ -189,9 +188,9 @@ def test_call_tdx_quotes_with_retry_deprioritizes_recent_timeout_server(monkeypa
 
 
 def test_fetch_latest_snapshot_batch_uses_shared_quotes_pool(monkeypatch):
-    result_frame = pd.DataFrame([{"updated_date": "2026-04-13", "zongzichan": 100.0}])
-
-    mocked_call = mock.Mock(return_value=({"000001": result_frame.iloc[0].to_dict()}, "tdxhub_1.1.1.1:7709"))
+    mocked_call = mock.Mock(
+        return_value=({"000001": {"updated_date": "2026-04-13", "zongzichan": 100.0}}, "tdxhub_1.1.1.1:7709")
+    )
     monkeypatch.setattr(financial_client, "call_tdx_quotes_with_retry", mocked_call)
 
     result = financial_client._fetch_latest_snapshot_batch(["000001"])
@@ -227,14 +226,28 @@ def test_fetch_etf_list_tdxhub_uses_shared_quotes_pool(monkeypatch):
 
 
 def test_fetch_index_kline_uses_shared_quotes_pool(monkeypatch):
-    frame = pd.DataFrame(
-        [
-            {"open": 10.0, "high": 10.5, "low": 9.8, "close": 10.2, "vol": 12345.0, "amount": 67890.0},
-            {"open": 10.2, "high": 10.6, "low": 10.0, "close": 10.4, "vol": 22345.0, "amount": 77890.0},
-        ],
-        index=pd.to_datetime(["2026-04-10", "2026-04-13"]),
+    mocked_call = mock.Mock(
+        return_value=([
+            {
+                "date": "2026-04-10",
+                "open": 10.0,
+                "high": 10.5,
+                "low": 9.8,
+                "close": 10.2,
+                "vol": 12345.0,
+                "amount": 67890.0,
+            },
+            {
+                "date": "2026-04-13",
+                "open": 10.2,
+                "high": 10.6,
+                "low": 10.0,
+                "close": 10.4,
+                "vol": 22345.0,
+                "amount": 77890.0,
+            },
+        ], "tdxhub_1.1.1.1:7709")
     )
-    mocked_call = mock.Mock(return_value=(frame, "tdxhub_1.1.1.1:7709"))
     monkeypatch.setattr(akshare_client, "call_tdx_quotes_with_retry", mocked_call)
 
     result_rows, source = asyncio.run(akshare_client.fetch_index_kline("000001", "20260410", "20260413"))
@@ -246,13 +259,20 @@ def test_fetch_index_kline_uses_shared_quotes_pool(monkeypatch):
 
 
 def test_fetch_daily_tdxhub_with_diagnostics_uses_shared_quotes_pool(monkeypatch):
-    frame = pd.DataFrame(
-        [
-            {"open": 10.0, "high": 10.5, "low": 9.8, "close": 10.2, "volume": 12345.0, "amount": 67890.0, "date": "2026-04-10"},
-        ]
-    )
     attempts = [{"server": ("1.1.1.1", 7709), "ok": True, "rows": 1, "elapsed_sec": 0.01}]
-    mocked_call = mock.Mock(return_value=(frame, "tdxhub_1.1.1.1:7709", attempts))
+    mocked_call = mock.Mock(
+        return_value=([
+            {
+                "open": 10.0,
+                "high": 10.5,
+                "low": 9.8,
+                "close": 10.2,
+                "volume": 12345.0,
+                "amount": 67890.0,
+                "date": "2026-04-10",
+            },
+        ], "tdxhub_1.1.1.1:7709", attempts)
+    )
     monkeypatch.setattr(akshare_client, "call_tdx_quotes_with_retry", mocked_call)
     akshare_client._clear_tdxhub_unavailable()
 
@@ -269,17 +289,24 @@ def test_fetch_daily_tdxhub_with_diagnostics_uses_shared_quotes_pool(monkeypatch
 
 
 def test_fetch_daily_tdxhub_with_diagnostics_marks_timeout_heavy_success_as_degraded(monkeypatch):
-    frame = pd.DataFrame(
-        [
-            {"open": 10.0, "high": 10.5, "low": 9.8, "close": 10.2, "volume": 12345.0, "amount": 67890.0, "date": "2026-04-10"},
-        ]
-    )
     attempts = [
         {"server": ("1.1.1.1", 7709), "ok": False, "error_type": "timeout", "error": "timed out", "elapsed_sec": 5.0},
         {"server": ("2.2.2.2", 7709), "ok": False, "error_type": "timeout", "error": "timed out", "elapsed_sec": 5.0},
         {"server": ("3.3.3.3", 7709), "ok": True, "rows": 1, "elapsed_sec": 0.4},
     ]
-    mocked_call = mock.Mock(return_value=(frame, "tdxhub_3.3.3.3:7709", attempts))
+    mocked_call = mock.Mock(
+        return_value=([
+            {
+                "open": 10.0,
+                "high": 10.5,
+                "low": 9.8,
+                "close": 10.2,
+                "volume": 12345.0,
+                "amount": 67890.0,
+                "date": "2026-04-10",
+            },
+        ], "tdxhub_3.3.3.3:7709", attempts)
+    )
     monkeypatch.setattr(akshare_client, "call_tdx_quotes_with_retry", mocked_call)
     akshare_client._clear_tdxhub_unavailable()
 
@@ -313,24 +340,23 @@ def test_sync_gpcw_files_uses_shared_affair_loader(monkeypatch, tmp_path):
                 assert Path(downdir) == tmp_path
                 assert filename == "gpcw20260331.zip"
                 assert columns is None
-                return pd.DataFrame(
-                    [
-                        {
-                            "report_date": 20260331.0,
-                            "基本每股收益": 1.23,
-                            "合同负债(万元)": 11.0,
-                            "预收款项": 99.0,
-                            "其中：营业成本": 45.6,
-                            "col328": 7.8,
-                        },
-                        {
-                            "report_date": 20260331.0,
-                            "基本每股收益": 2.34,
-                            "预收款项": 22.0,
-                        },
-                    ],
-                    index=["000001", "000002"],
-                )
+                return [
+                    {
+                        "stock_code": "000001",
+                        "report_date": 20260331.0,
+                        "基本每股收益": 1.23,
+                        "合同负债(万元)": 11.0,
+                        "预收款项": 99.0,
+                        "其中：营业成本": 45.6,
+                        "col328": 7.8,
+                    },
+                    {
+                        "stock_code": "000002",
+                        "report_date": 20260331.0,
+                        "基本每股收益": 2.34,
+                        "预收款项": 22.0,
+                    },
+                ]
 
         monkeypatch.setattr(tdx_affair_client, "get_tdx_affair_class", lambda: FakeAffair)
 

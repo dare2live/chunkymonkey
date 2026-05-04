@@ -2,8 +2,6 @@ from pathlib import Path
 
 import sys
 
-import pandas as pd
-
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from conftest import duck_mem
@@ -305,39 +303,37 @@ def test_sync_tdx_f10_extra_surfaces_fund_rejections(monkeypatch):
         monkeypatch.setattr(
             extra_client,
             "parse_fund_holdings_format_b",
-            lambda *_args, **_kwargs: pd.DataFrame(
-                [
-                        {
-                            "stock_code": "688809",
-                            "report_date": "2025-12-31",
-                            "report_date_text": "2025-12-31",
-                            "fund_name": "1、本公司力求但不保证提供的任何信息",
-                        "shares_text": "息的真实性、准确",
-                        "shares": None,
-                        "float_a_ratio_text": "性、完整性及原创",
-                        "market_value_text": "性等，投资者使",
-                        "market_value": None,
-                        "source": "tdx_f10",
-                        "raw_hash": "reject_hash",
-                        "row_seq": 1,
-                    },
-                        {
-                            "stock_code": "688809",
-                            "report_date": "2025-12-31",
-                            "report_date_text": "2025-12-31",
-                            "fund_name": "华夏中证1000交易型开放式指数证券投资基金",
-                        "shares_text": "0.97",
-                        "shares": 9700,
-                        "float_a_ratio_text": "0.02",
-                        "float_a_ratio": 0.02,
-                        "market_value_text": "30.99",
-                        "market_value": 309900,
-                        "source": "tdx_f10",
-                        "raw_hash": "reject_hash",
-                        "row_seq": 2,
-                    },
-                ]
-            ),
+            lambda *_args, **_kwargs: [
+                {
+                    "stock_code": "688809",
+                    "report_date": "2025-12-31",
+                    "report_date_text": "2025-12-31",
+                    "fund_name": "1、本公司力求但不保证提供的任何信息",
+                    "shares_text": "息的真实性、准确",
+                    "shares": None,
+                    "float_a_ratio_text": "性、完整性及原创",
+                    "market_value_text": "性等，投资者使",
+                    "market_value": None,
+                    "source": "tdx_f10",
+                    "raw_hash": "reject_hash",
+                    "row_seq": 1,
+                },
+                {
+                    "stock_code": "688809",
+                    "report_date": "2025-12-31",
+                    "report_date_text": "2025-12-31",
+                    "fund_name": "华夏中证1000交易型开放式指数证券投资基金",
+                    "shares_text": "0.97",
+                    "shares": 9700,
+                    "float_a_ratio_text": "0.02",
+                    "float_a_ratio": 0.02,
+                    "market_value_text": "30.99",
+                    "market_value": 309900,
+                    "source": "tdx_f10",
+                    "raw_hash": "reject_hash",
+                    "row_seq": 2,
+                },
+            ],
         )
 
         result = sync_tdx_f10_extra_facts(conn)

@@ -24,6 +24,9 @@ The first standalone script loop converted tdxhub price K-line backfill to
 records from pull through normalization and DuckDB writes.
 The next standalone script loop converted tdxhub order-book snapshots to
 records/native feature math and direct DuckDB writes.
+The TDX boundary loop removed the remaining pandas-backed test fixtures by
+teaching F10 extra and gpcw ingestion boundaries to consume records payloads
+while preserving duck-typed table compatibility.
 
 ## Change
 
@@ -113,6 +116,12 @@ records/native feature math and direct DuckDB writes.
 - Converted order-book imbalance/spread/ratio calculations to native math and
   `fact_orderbook_snapshot` writes to direct DuckDB `executemany`.
 - Added `backend/tests/test_build_orderbook_snapshot.py`.
+- Removed pandas from `backend/tests/test_tdx_source.py` and
+  `backend/tests/test_tdx_f10_extra_client.py`.
+- Converted TDX F10 extra parser normalization to accept records payloads in
+  addition to duck-typed table payloads.
+- Converted gpcw sync row extraction and wide-row writes to a records adapter
+  that keeps existing tdxhub table compatibility.
 
 ## Validation
 
@@ -327,6 +336,24 @@ python3 -m py_compile backend/scripts/build_orderbook_snapshot.py backend/tests/
 
 python3 -m pytest backend/tests/test_build_orderbook_snapshot.py backend/tests/test_build_price_kline_tdxhub.py -q
 # 4 passed
+
+python3 -m pytest backend/tests -q
+# 322 passed
+
+python3 backend/scripts/data_health_snapshot.py --dry-run
+# green=147/yellow=0/red=0
+
+rg -n "import pandas|from pandas|pd\.|DataFrame" backend/tests/test_tdx_source.py backend/tests/test_tdx_f10_extra_client.py backend/services/tdx_affair_client.py backend/services/tdx_f10_extra_client.py -S
+# 0 matches
+
+rg -n "import pandas|from pandas|pd\.|DataFrame" backend/tests -S
+# 0 matches
+
+python3 -m py_compile backend/services/tdx_f10_extra_client.py backend/services/tdx_affair_client.py backend/tests/test_tdx_source.py backend/tests/test_tdx_f10_extra_client.py
+# passed
+
+python3 -m pytest backend/tests/test_tdx_source.py backend/tests/test_tdx_f10_extra_client.py -q
+# 18 passed
 
 python3 -m pytest backend/tests -q
 # 322 passed

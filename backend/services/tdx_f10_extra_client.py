@@ -309,11 +309,46 @@ def _clean(value: Any) -> Any:
     return value
 
 
-def _records_from_df(df: Any, fallback: dict[str, Any]) -> list[dict[str, Any]]:
-    if df is None or getattr(df, "empty", True):
+def _records_from_payload(payload: Any, fallback: dict[str, Any]) -> list[dict[str, Any]]:
+    if payload is None:
         return []
+
+    empty = getattr(payload, "empty", None)
+    if empty is not None:
+        try:
+            if bool(empty):
+                return []
+        except Exception:
+            pass
+
+    raw_rows = None
+    to_dict = getattr(payload, "to_dict", None)
+    if callable(to_dict):
+        try:
+            raw_rows = to_dict("records")
+        except TypeError:
+            raw_rows = None
+    if raw_rows is None:
+        if isinstance(payload, dict):
+            raw_rows = [payload]
+        elif isinstance(payload, (str, bytes)):
+            raw_rows = []
+        else:
+            try:
+                raw_rows = list(payload)
+            except TypeError:
+                raw_rows = []
+
     records: list[dict[str, Any]] = []
-    for idx, raw in enumerate(df.to_dict("records"), 1):
+    for idx, raw in enumerate(raw_rows, 1):
+        if not isinstance(raw, dict):
+            if hasattr(raw, "_asdict"):
+                raw = raw._asdict()
+            else:
+                try:
+                    raw = dict(raw)
+                except Exception:
+                    continue
         rec = {k: _clean(v) for k, v in raw.items()}
         for key in ("stock_code", "stock_name", "market"):
             if not rec.get(key):
@@ -622,7 +657,7 @@ def sync_tdx_f10_extra_facts(
                 )
                 stats["skipped_non_format_b"] += 1
                 continue
-            holder_records = _records_from_df(
+            holder_records = _records_from_payload(
                 parse_holder_count_history_format_b(
                     text,
                     symbol=fallback["stock_code"] or "",
@@ -630,7 +665,7 @@ def sync_tdx_f10_extra_facts(
                 ),
                 fallback,
             )
-            trade_records = _records_from_df(
+            trade_records = _records_from_payload(
                 parse_shareholder_trades_format_b(
                     text,
                     symbol=fallback["stock_code"] or "",
@@ -638,7 +673,7 @@ def sync_tdx_f10_extra_facts(
                 ),
                 fallback,
             )
-            common_records = _records_from_df(
+            common_records = _records_from_payload(
                 parse_common_major_holder_stocks_format_b(
                     text,
                     symbol=fallback["stock_code"] or "",
@@ -646,7 +681,7 @@ def sync_tdx_f10_extra_facts(
                 ),
                 fallback,
             )
-            fund_records = _records_from_df(
+            fund_records = _records_from_payload(
                 parse_fund_holdings_format_b(
                     text,
                     symbol=fallback["stock_code"] or "",

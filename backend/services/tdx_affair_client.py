@@ -199,6 +199,9 @@ def _normalize_report_date(val) -> Optional[str]:
     """将 gpcw 的 report_date (float like 20250930.0) 转为 '2025-09-30' 格式."""
     if val is None:
         return None
+    text = str(val).strip()
+    if len(text) >= 10 and text[4] in {"-", "/"} and text[7] in {"-", "/"}:
+        return text[:10].replace("/", "-")
     try:
         s = str(int(float(val)))
         if len(s) == 8:
@@ -223,6 +226,78 @@ def _safe_float(val) -> Optional[float]:
         return f
     except (ValueError, TypeError):
         return None
+
+
+def _dict_from_row(raw: Any) -> Optional[dict[str, Any]]:
+    if isinstance(raw, dict):
+        return dict(raw)
+    if hasattr(raw, "_asdict"):
+        return dict(raw._asdict())
+    try:
+        return dict(raw)
+    except Exception:
+        return None
+
+
+def _gpcw_row_items_from_payload(payload: Any) -> list[tuple[str, dict[str, Any]]]:
+    if payload is None:
+        return []
+
+    empty = getattr(payload, "empty", None)
+    if empty is not None:
+        try:
+            if bool(empty):
+                return []
+        except Exception:
+            pass
+
+    index_values = getattr(payload, "index", None)
+    loc = getattr(payload, "loc", None)
+    columns = getattr(payload, "columns", None)
+    if index_values is not None and loc is not None and columns is not None:
+        items: list[tuple[str, dict[str, Any]]] = []
+        for code in index_values:
+            row = loc[code]
+            record = {"stock_code": str(code)}
+            for col in columns:
+                if hasattr(row, "get"):
+                    record[str(col)] = row.get(col)
+            items.append((str(code), record))
+        return items
+
+    rows: list[dict[str, Any]] = []
+    to_dict = getattr(payload, "to_dict", None)
+    if callable(to_dict):
+        try:
+            rows = [dict(row) for row in to_dict("records")]
+        except TypeError:
+            rows = []
+    elif isinstance(payload, dict):
+        if any(key in payload for key in ("stock_code", "code", "symbol")):
+            rows = [dict(payload)]
+        else:
+            for code, row in payload.items():
+                record = _dict_from_row(row)
+                if record is None:
+                    continue
+                record.setdefault("stock_code", str(code))
+                rows.append(record)
+    elif not isinstance(payload, (str, bytes)):
+        try:
+            for row in payload:
+                record = _dict_from_row(row)
+                if record is not None:
+                    rows.append(record)
+        except TypeError:
+            rows = []
+
+    items = []
+    for row in rows:
+        code = row.get("stock_code") or row.get("code") or row.get("symbol")
+        if not code:
+            continue
+        items.append((str(code), row))
+    return items
 
 
 def _pick_first_numeric_value(row, source_names: tuple[str, ...]) -> Optional[float]:
@@ -338,20 +413,24 @@ def _jsonable_value(value: Any) -> Any:
     return text or None
 
 
-def _insert_wide_rows(conn: Any, df: Any, filename: str, fallback_report_date: Optional[str]) -> int:
-    if df is None or df.empty:
+def _insert_wide_rows(
+    conn: Any,
+    row_items: list[tuple[str, dict[str, Any]]],
+    filename: str,
+    fallback_report_date: Optional[str],
+) -> int:
+    if not row_items:
         return 0
     rows = []
-    for code in df.index:
-        row = df.loc[code]
+    for code, row in row_items:
         rd = _normalize_report_date(row.get("report_date")) or fallback_report_date
         if not rd:
             continue
         payload = {}
-        for col in df.columns:
-            if col == "report_date":
+        for col, raw_value in row.items():
+            if col in {"stock_code", "code", "symbol", "report_date"}:
                 continue
-            val = _jsonable_value(row.get(col))
+            val = _jsonable_value(raw_value)
             if val is not None:
                 payload[str(col)] = val
         rows.append((
@@ -487,20 +566,20 @@ def sync_gpcw_files(
 
         try:
             logger.info(f"[gpcw] 下载并解析 {filename} ...")
-            df = Affair.parse(
+            payload = Affair.parse(
                 downdir=downdir,
                 filename=filename,
                 columns=None if persist_wide else _SELECTED_GPCW_COLUMNS,
             )
 
-            if df is None or df.empty:
+            row_items = _gpcw_row_items_from_payload(payload)
+            if not row_items:
                 logger.warning(f"[gpcw] {filename} 解析为空")
                 result["errors"].append(f"{filename}: empty")
                 continue
 
             rows_batch = []
-            for code in df.index:
-                row = df.loc[code]
+            for code, row in row_items:
                 rd = _normalize_report_date(row.get("report_date")) or report_date
                 values = [str(code), rd]
                 for source_names in _FIELD_ALIASES_BY_DB_COLUMN.values():
@@ -510,7 +589,7 @@ def sync_gpcw_files(
             conn.executemany(upsert_sql, rows_batch)
             if persist_wide:
                 result["wide_rows_upserted"] += _insert_wide_rows(
-                    conn, df, filename, report_date
+                    conn, row_items, filename, report_date
                 )
             conn.commit()
 
