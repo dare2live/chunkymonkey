@@ -72,6 +72,9 @@ to records and replaced pandas normalization, date arithmetic, dedupe, and
 The multidim training loop removed the original DataFrame training path by
 reusing the records/native loading, split, metric, matrix, and prediction
 ranking helpers already used by the ablation and challenger scripts.
+The feature-panel DuckDB loop removed the large DataFrame staging path by
+keeping all panel transformations inside DuckDB temp tables and writing
+`fact_feature_panel` directly from relations.
 
 ## Change
 
@@ -253,6 +256,14 @@ ranking helpers already used by the ablation and challenger scripts.
   holdout metrics, feature group resolution, final LightGBM matrices, model
   metadata writes, and prediction writes to records/native helpers.
 - Added `backend/tests/test_train_multidim_model.py`.
+- Removed pandas/numpy and DuckDB DataFrame registration from
+  `backend/scripts/build_feature_panel_duck.py`.
+- Converted feature-panel price/volume features, margin joins, event rolling
+  counts, days-since features, fundamental ASOF joins, regime labels,
+  cross-sectional ranks, cleaning, and fact writes to DuckDB temp-table SQL.
+- Fixed temp-table replacement so each panel step builds a replacement table
+  before swapping it into `current_panel`.
+- Added `backend/tests/test_build_feature_panel_duck.py`.
 
 ## Validation
 
@@ -714,8 +725,20 @@ python3 -m pytest backend/tests/test_train_multidim_model.py -q
 python3 backend/scripts/train_multidim_model.py --help
 # import/CLI smoke passed
 
+rg -n "pandas|pd\.|DataFrame|read_sql_query|\.to_sql\(|\.df\(|register\(|np\." backend/scripts/build_feature_panel_duck.py backend/tests/test_build_feature_panel_duck.py -S
+# 0 matches
+
+python3 -m py_compile backend/scripts/build_feature_panel_duck.py backend/tests/test_build_feature_panel_duck.py
+# passed
+
+python3 -m pytest backend/tests/test_build_feature_panel_duck.py -q
+# 1 passed
+
+python3 backend/scripts/build_feature_panel_duck.py --help
+# import/CLI smoke passed
+
 python3 -m pytest backend/tests -q
-# 359 passed
+# 360 passed
 
 python3 backend/scripts/data_health_snapshot.py --dry-run
 # green=147/yellow=0/red=0

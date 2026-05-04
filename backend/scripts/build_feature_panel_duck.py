@@ -1,12 +1,8 @@
 #!/usr/bin/env python3
-"""Phase 6 DuckDB 版: 特征面板构建
+"""Phase 6 DuckDB feature-panel build.
 
-架构分工
-- DuckDB SQL: 所有 panel 级聚合 / 窗口函数 / ASOF JOIN (替代 pandas groupby rolling)
-- pandas: 最终 DataFrame 暂存到 DuckDB register 后批量写入主库
-- Alpha158 因子: 由独立脚本 build_alpha158_duck.py 产出, 本脚本以 LEFT JOIN 挂上
-
-Pillar 分工同原版 (A/B/C + regime). DuckDB 把 27 min pandas 压到 <5 min.
+All large panel operations stay inside DuckDB temp tables. The script writes the
+4M+ row feature panel directly from DuckDB relations.
 """
 from __future__ import annotations
 
@@ -19,8 +15,6 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-import numpy as np
-import pandas as pd
 from services.analytics import get_duck
 
 logger = logging.getLogger("feature_panel_duck")
@@ -90,6 +84,43 @@ WHERE freq='daily' AND adjust='qfq'
 
 REAL_ABS_LIMIT = 1e30
 
+KEEP_COLS = [
+    "stock_code", "date", "close",
+    "ret_1d", "ret_5d", "ret_20d", "ret_60d",
+    "vol_z20d", "ma_ratio_5", "ma_ratio_20", "ma_ratio_60", "ma_ratio_250",
+    "rz_balance", "rz_chg_5d_pct",
+    "kmid", "klen", "kup", "klow", "ksft",
+    "vol_ratio_5_20", "vol_std_5d", "vol_std_20d",
+    "range_pos_20", "range_pos_60",
+    "momentum_diff", "amount_chg_5d",
+    "ret_20d_rank", "ret_60d_rank", "vol_z20d_rank", "amount_chg_5d_rank",
+    "rz_balance_rank", "rz_chg_5d_pct_rank",
+    "ret_20d_tdx_l1_rel", "ret_60d_tdx_l1_rel",
+    "vol_z20d_tdx_l1_rel", "amount_chg_5d_tdx_l1_rel",
+    "rz_balance_to_amount20",
+    "inst_event_count_30d", "inst_event_count_60d",
+    "exec_buy_count_90d", "exec_buy_ge1_count_90d",
+    "lhb_inst_buy_count_30d", "lhb_inst_buy_count_60d",
+    "jgdy_count_60d", "dzjy_count_60d",
+    "days_since_exec_buy", "days_since_lhb",
+    "shareholder_count_qoq", "inst_count_qoq",
+    "fund_count_qoq", "qfii_count_qoq",
+    "yjyg_lower_pct", "yjyg_upper_pct", "roe", "eps_basic",
+    "hs300_ret_20d", "hs300_ret_60d", "regime_flag",
+    "forward_ret_20d", "built_at",
+]
+
+INTEGER_COLS = {
+    "inst_event_count_30d", "inst_event_count_60d",
+    "exec_buy_count_90d", "exec_buy_ge1_count_90d",
+    "lhb_inst_buy_count_30d", "lhb_inst_buy_count_60d",
+    "jgdy_count_60d", "dzjy_count_60d",
+    "days_since_exec_buy", "days_since_lhb",
+}
+
+TEXT_COLS = {"stock_code", "date", "regime_flag", "built_at"}
+REAL_COLS = set(KEEP_COLS) - INTEGER_COLS - TEXT_COLS
+
 
 def execute_script(duck, sql: str) -> None:
     for stmt in sql.split(";"):
@@ -98,220 +129,299 @@ def execute_script(duck, sql: str) -> None:
             duck.execute(stmt)
 
 
-def build_panel(start_date: str) -> pd.DataFrame:
+def _quote_ident(name: str) -> str:
+    return '"' + name.replace('"', '""') + '"'
+
+
+def _date_expr(expr: str) -> str:
+    """Normalize YYYYMMDD and ISO-ish date strings to DATE."""
+    return (
+        f"CASE "
+        f"WHEN {expr} IS NULL THEN NULL "
+        f"WHEN REGEXP_MATCHES(CAST({expr} AS VARCHAR), '^\\d{{8}}$') "
+        f"THEN STRPTIME(CAST({expr} AS VARCHAR), '%Y%m%d')::DATE "
+        f"ELSE CAST({expr} AS DATE) END"
+    )
+
+
+def _date_text(expr: str) -> str:
+    return f"STRFTIME({_date_expr(expr)}, '%Y-%m-%d')"
+
+
+def _replace_temp_table(duck, name: str, select_sql: str, params: list | tuple | None = None) -> None:
+    temp_name = f"__tmp_replace_{name}"
+    duck.execute(f"DROP TABLE IF EXISTS {_quote_ident(temp_name)}")
+    duck.execute(f"CREATE TEMP TABLE {_quote_ident(temp_name)} AS {select_sql}", params or [])
+    duck.execute(f"DROP TABLE IF EXISTS {_quote_ident(name)}")
+    duck.execute(f"ALTER TABLE {_quote_ident(temp_name)} RENAME TO {_quote_ident(name)}")
+
+
+def _table_columns(duck, table: str) -> list[str]:
+    return [row[0] for row in duck.execute(f"DESCRIBE {_quote_ident(table)}").fetchall()]
+
+
+def _row_count(duck, table: str) -> int:
+    return int(duck.execute(f"SELECT COUNT(*) FROM {_quote_ident(table)}").fetchone()[0])
+
+
+def _add_literal_columns(duck, definitions: dict[str, str]) -> None:
+    additions = ", ".join(f"{expr} AS {_quote_ident(col)}" for col, expr in definitions.items())
+    _replace_temp_table(duck, "current_panel", f"SELECT *, {additions} FROM current_panel")
+
+
+def _rolling_event_count(duck, evt_sql: str, count_col: str, windows: list[int]) -> None:
+    select_cols = ", ".join(
+        f"COALESCE(r.{_quote_ident(count_col + '_' + str(w) + 'd')}, 0)::INTEGER "
+        f"AS {_quote_ident(count_col + '_' + str(w) + 'd')}"
+        for w in windows
+    )
+    rolled_cols = ", ".join(
+        f"SUM(n) OVER (PARTITION BY stock_code ORDER BY date ROWS {w - 1} PRECEDING) "
+        f"AS {_quote_ident(count_col + '_' + str(w) + 'd')}"
+        for w in windows
+    )
+    _replace_temp_table(
+        duck,
+        "current_panel",
+        f"""
+        WITH ev_raw AS ({evt_sql}),
+        ev_daily AS (
+            SELECT stock_code, {_date_text('event_date')} AS date, COUNT(*)::INTEGER AS n
+            FROM ev_raw
+            WHERE stock_code IS NOT NULL AND event_date IS NOT NULL
+            GROUP BY stock_code, {_date_text('event_date')}
+        ),
+        panel_ev AS (
+            SELECT p.stock_code, p.date, COALESCE(e.n, 0) AS n
+            FROM current_panel p
+            LEFT JOIN ev_daily e ON e.stock_code = p.stock_code AND e.date = p.date
+        ),
+        rolled AS (
+            SELECT stock_code, date, {rolled_cols}
+            FROM panel_ev
+        )
+        SELECT p.*, {select_cols}
+        FROM current_panel p
+        LEFT JOIN rolled r ON r.stock_code = p.stock_code AND r.date = p.date
+        """,
+    )
+
+
+def _days_since_event(duck, ev_sql: str, suffix: str) -> None:
+    col = f"days_since_{suffix}"
+    _replace_temp_table(
+        duck,
+        "current_panel",
+        f"""
+        WITH ev AS ({ev_sql}),
+        ds AS (
+            SELECT p.stock_code, p.date, {_date_expr('p.date')} AS date_dt,
+                   MAX(CASE WHEN {_date_expr('e.event_date')} <= {_date_expr('p.date')}
+                            THEN {_date_expr('e.event_date')} END) AS last_ev
+            FROM current_panel p
+            LEFT JOIN ev e ON e.stock_code = p.stock_code
+            GROUP BY p.stock_code, p.date
+        )
+        SELECT p.*,
+               COALESCE(CASE WHEN ds.last_ev IS NULL THEN -1
+                             ELSE (ds.date_dt - ds.last_ev)::INTEGER END, -1) AS {_quote_ident(col)}
+        FROM current_panel p
+        LEFT JOIN ds ON ds.stock_code = p.stock_code AND ds.date = p.date
+        """,
+    )
+
+
+def _clean_select_expr(col: str, params: list[str]) -> str:
+    q = _quote_ident(col)
+    if col == "built_at":
+        params.append(datetime.utcnow().isoformat())
+        return "? AS built_at"
+    if col in REAL_COLS:
+        return (
+            f"CASE WHEN {q} IS NULL OR NOT ISFINITE(CAST({q} AS DOUBLE)) "
+            f"OR ABS(CAST({q} AS DOUBLE)) > {REAL_ABS_LIMIT} "
+            f"THEN NULL ELSE CAST({q} AS DOUBLE) END AS {q}"
+        )
+    if col in INTEGER_COLS:
+        return f"CAST({q} AS INTEGER) AS {q}"
+    return q
+
+
+def _insert_fact_panel(duck) -> dict[str, int]:
+    panel_cols = set(_table_columns(duck, "current_panel"))
+    keep = [col for col in KEEP_COLS if col == "built_at" or col in panel_cols]
+    params: list[str] = []
+    select_exprs = [_clean_select_expr(col, params) for col in keep]
+    execute_script(duck, PANEL_DDL)
+    logger.info("DuckDB INSERT INTO fact_feature_panel SELECT FROM current_panel ...")
+    duck.execute(
+        f"""
+        INSERT INTO fact_feature_panel ({', '.join(_quote_ident(col) for col in keep)})
+        SELECT {', '.join(select_exprs)}
+        FROM current_panel
+        """,
+        params,
+    )
+    row = duck.execute("""
+        SELECT COUNT(*), COUNT(DISTINCT stock_code), COUNT(DISTINCT date),
+               SUM(CASE WHEN forward_ret_20d IS NOT NULL THEN 1 ELSE 0 END)
+        FROM fact_feature_panel
+    """).fetchone()
+    return {
+        "rows": int(row[0] or 0),
+        "codes": int(row[1] or 0),
+        "dates": int(row[2] or 0),
+        "label_non_null": int(row[3] or 0),
+    }
+
+
+def build_panel(start_date: str) -> dict[str, int]:
     duck = get_duck(writable=True)
     t0 = time.time()
 
-    logger.info("Step 1: Pillar B 价量 + Alpha158-inspired 特征 (DuckDB window)")
-    # Step 1a: 先算每日 pct_change (供 vol_std 使用)
-    pillar_b = duck.execute(f"""
+    logger.info("Step 1: Pillar B price/volume + Alpha158-inspired features")
+    _replace_temp_table(
+        duck,
+        "current_panel",
+        f"""
         WITH px AS (
             SELECT code as stock_code, date,
                    open, high, low, close, volume, amount,
                    (close / NULLIF(LAG(close, 1) OVER (PARTITION BY code ORDER BY date), 0) - 1) AS close_ret_1d
             FROM ({KLINE_DAILY_QFQ_SQL}) AS kline
-            WHERE date >= '{start_date}'
+            WHERE date >= ?
+        ),
+        features AS (
+            SELECT
+                stock_code, date, close,
+                close_ret_1d AS ret_1d,
+                (close / NULLIF(LAG(close, 5) OVER w, 0) - 1) AS ret_5d,
+                (close / NULLIF(LAG(close, 20) OVER w, 0) - 1) AS ret_20d,
+                (close / NULLIF(LAG(close, 60) OVER w, 0) - 1) AS ret_60d,
+                (volume - AVG(volume) OVER (PARTITION BY stock_code ORDER BY date ROWS 19 PRECEDING))
+                    / NULLIF(STDDEV_SAMP(volume) OVER (PARTITION BY stock_code ORDER BY date ROWS 19 PRECEDING), 0)
+                    AS vol_z20d,
+                (close / NULLIF(AVG(close) OVER (PARTITION BY stock_code ORDER BY date ROWS 4 PRECEDING), 0) - 1) AS ma_ratio_5,
+                (close / NULLIF(AVG(close) OVER (PARTITION BY stock_code ORDER BY date ROWS 19 PRECEDING), 0) - 1) AS ma_ratio_20,
+                (close / NULLIF(AVG(close) OVER (PARTITION BY stock_code ORDER BY date ROWS 59 PRECEDING), 0) - 1) AS ma_ratio_60,
+                (close / NULLIF(AVG(close) OVER (PARTITION BY stock_code ORDER BY date ROWS 249 PRECEDING), 0) - 1) AS ma_ratio_250,
+                ((close - open) / NULLIF(open, 0)) AS kmid,
+                ((high - low) / NULLIF(open, 0)) AS klen,
+                ((high - GREATEST(open, close)) / NULLIF(open, 0)) AS kup,
+                ((LEAST(open, close) - low) / NULLIF(open, 0)) AS klow,
+                ((2 * close - high - low) / NULLIF(open, 0)) AS ksft,
+                (AVG(volume) OVER (PARTITION BY stock_code ORDER BY date ROWS 4 PRECEDING)
+                 / NULLIF(AVG(volume) OVER (PARTITION BY stock_code ORDER BY date ROWS 19 PRECEDING), 0)) AS vol_ratio_5_20,
+                STDDEV_SAMP(close_ret_1d) OVER (PARTITION BY stock_code ORDER BY date ROWS 4 PRECEDING) AS vol_std_5d,
+                STDDEV_SAMP(close_ret_1d) OVER (PARTITION BY stock_code ORDER BY date ROWS 19 PRECEDING) AS vol_std_20d,
+                (close - MIN(low) OVER (PARTITION BY stock_code ORDER BY date ROWS 19 PRECEDING))
+                    / NULLIF(MAX(high) OVER (PARTITION BY stock_code ORDER BY date ROWS 19 PRECEDING)
+                             - MIN(low) OVER (PARTITION BY stock_code ORDER BY date ROWS 19 PRECEDING), 0) AS range_pos_20,
+                (close - MIN(low) OVER (PARTITION BY stock_code ORDER BY date ROWS 59 PRECEDING))
+                    / NULLIF(MAX(high) OVER (PARTITION BY stock_code ORDER BY date ROWS 59 PRECEDING)
+                             - MIN(low) OVER (PARTITION BY stock_code ORDER BY date ROWS 59 PRECEDING), 0) AS range_pos_60,
+                (amount / NULLIF(LAG(amount, 5) OVER w, 0) - 1) AS amount_chg_5d,
+                AVG(amount) OVER (PARTITION BY stock_code ORDER BY date ROWS 19 PRECEDING) AS amount_ma20
+            FROM px
+            WINDOW w AS (PARTITION BY stock_code ORDER BY date)
         )
-        SELECT
-            stock_code, date, close,
-            close_ret_1d AS ret_1d,
-            (close / NULLIF(LAG(close, 5) OVER w, 0) - 1) AS ret_5d,
-            (close / NULLIF(LAG(close, 20) OVER w, 0) - 1) AS ret_20d,
-            (close / NULLIF(LAG(close, 60) OVER w, 0) - 1) AS ret_60d,
-            (volume - AVG(volume) OVER (PARTITION BY stock_code ORDER BY date ROWS 19 PRECEDING))
-                / NULLIF(STDDEV_SAMP(volume) OVER (PARTITION BY stock_code ORDER BY date ROWS 19 PRECEDING), 0)
-                AS vol_z20d,
-            (close / NULLIF(AVG(close) OVER (PARTITION BY stock_code ORDER BY date ROWS 4 PRECEDING), 0) - 1) AS ma_ratio_5,
-            (close / NULLIF(AVG(close) OVER (PARTITION BY stock_code ORDER BY date ROWS 19 PRECEDING), 0) - 1) AS ma_ratio_20,
-            (close / NULLIF(AVG(close) OVER (PARTITION BY stock_code ORDER BY date ROWS 59 PRECEDING), 0) - 1) AS ma_ratio_60,
-            (close / NULLIF(AVG(close) OVER (PARTITION BY stock_code ORDER BY date ROWS 249 PRECEDING), 0) - 1) AS ma_ratio_250,
-            ((close - open) / NULLIF(open, 0)) AS kmid,
-            ((high - low) / NULLIF(open, 0)) AS klen,
-            ((high - GREATEST(open, close)) / NULLIF(open, 0)) AS kup,
-            ((LEAST(open, close) - low) / NULLIF(open, 0)) AS klow,
-            ((2 * close - high - low) / NULLIF(open, 0)) AS ksft,
-            (AVG(volume) OVER (PARTITION BY stock_code ORDER BY date ROWS 4 PRECEDING)
-             / NULLIF(AVG(volume) OVER (PARTITION BY stock_code ORDER BY date ROWS 19 PRECEDING), 0)) AS vol_ratio_5_20,
-            STDDEV_SAMP(close_ret_1d) OVER (PARTITION BY stock_code ORDER BY date ROWS 4 PRECEDING) AS vol_std_5d,
-            STDDEV_SAMP(close_ret_1d) OVER (PARTITION BY stock_code ORDER BY date ROWS 19 PRECEDING) AS vol_std_20d,
-            (close - MIN(low) OVER (PARTITION BY stock_code ORDER BY date ROWS 19 PRECEDING))
-                / NULLIF(MAX(high) OVER (PARTITION BY stock_code ORDER BY date ROWS 19 PRECEDING)
-                         - MIN(low) OVER (PARTITION BY stock_code ORDER BY date ROWS 19 PRECEDING), 0) AS range_pos_20,
-            (close - MIN(low) OVER (PARTITION BY stock_code ORDER BY date ROWS 59 PRECEDING))
-                / NULLIF(MAX(high) OVER (PARTITION BY stock_code ORDER BY date ROWS 59 PRECEDING)
-                         - MIN(low) OVER (PARTITION BY stock_code ORDER BY date ROWS 59 PRECEDING), 0) AS range_pos_60,
-            NULL AS momentum_diff,
-            (amount / NULLIF(LAG(amount, 5) OVER w, 0) - 1) AS amount_chg_5d,
-            AVG(amount) OVER (PARTITION BY stock_code ORDER BY date ROWS 19 PRECEDING) AS amount_ma20
-        FROM px
-        WINDOW w AS (PARTITION BY stock_code ORDER BY date)
-    """).df()
-    pillar_b['momentum_diff'] = pillar_b['ret_5d'] - pillar_b['ret_20d']
-    logger.info("Pillar B done: %d rows, %.1fs", len(pillar_b), time.time() - t0)
+        SELECT *, ret_5d - ret_20d AS momentum_diff
+        FROM features
+        """,
+        [start_date],
+    )
+    logger.info("Pillar B done: %d rows, %.1fs", _row_count(duck, "current_panel"), time.time() - t0)
 
-    t1 = time.time()
-    logger.info("Step 2: Pillar B 两融 (ASOF JOIN)")
-    # 两融 merge
-    pillar_b['_date_dt'] = pd.to_datetime(pillar_b['date'])
-    duck.register('panel_b', pillar_b)
-    margin_joined = duck.execute("""
+    logger.info("Step 2: margin join")
+    _replace_temp_table(
+        duck,
+        "current_panel",
+        """
         WITH margin AS (
             SELECT stock_code, trade_date, rz_balance,
                    (rz_balance / NULLIF(LAG(rz_balance, 5) OVER (PARTITION BY stock_code ORDER BY trade_date), 0) - 1) AS rz_chg_5d_pct
             FROM smartmoney.raw_margin_daily
         )
-        SELECT p.*,
-               m.rz_balance, m.rz_chg_5d_pct
-        FROM panel_b p
+        SELECT p.*, m.rz_balance, m.rz_chg_5d_pct
+        FROM current_panel p
         LEFT JOIN margin m
           ON p.stock_code = m.stock_code
-         AND p.date = SUBSTR(m.trade_date, 1, 4) || '-' || SUBSTR(m.trade_date, 5, 2) || '-' || SUBSTR(m.trade_date, 7, 2)
-    """).df()
-    logger.info("Pillar B margin merge done: %d rows, %.1fs", len(margin_joined), time.time() - t1)
-    pillar_b = margin_joined
+         AND p.date = STRFTIME(STRPTIME(m.trade_date, '%Y%m%d'), '%Y-%m-%d')
+        """,
+    )
 
-    # 添加 label forward_ret_20d = close[t+21] / close[t+1] - 1
-    t2 = time.time()
     logger.info("Step 3: forward_ret_20d label")
-    duck.register('panel_b2', pillar_b)
-    pillar_b = duck.execute("""
+    _replace_temp_table(
+        duck,
+        "current_panel",
+        """
         SELECT *,
                (LEAD(close, 21) OVER w / NULLIF(LEAD(close, 1) OVER w, 0) - 1) AS forward_ret_20d
-        FROM panel_b2
+        FROM current_panel
         WINDOW w AS (PARTITION BY stock_code ORDER BY date)
-    """).df()
-    logger.info("label done: %.1fs", time.time() - t2)
+        """,
+    )
 
-    # Pillar A 事件 rolling counts
-    t3 = time.time()
-    logger.info("Step 4: Pillar A 事件 rolling counts (DuckDB SQL)")
-
-    def _rolling_event_count(evt_sql: str, count_col: str, windows: list[int]) -> None:
-        """对每个 event 源表生成 rolling count 列, 合并到 pillar_b."""
-        nonlocal pillar_b
-        # 先注册 pillar 以便 join
-        duck.register('current_panel', pillar_b)
-        # 事件按 (stock_code, event_date) group COUNT → panel 做 left join + window sum
-        query = f"""
-            WITH ev_raw AS ({evt_sql}),
-            ev_daily AS (
-                SELECT stock_code, event_date AS date, COUNT(*)::INT AS n
-                FROM ev_raw GROUP BY stock_code, event_date
-            ),
-            panel_ev AS (
-                SELECT p.stock_code, p.date,
-                       COALESCE(e.n, 0) AS n
-                FROM current_panel p
-                LEFT JOIN ev_daily e ON e.stock_code = p.stock_code AND e.date = p.date
-            )
-            SELECT stock_code, date,
-                   {', '.join(
-                       f"SUM(n) OVER (PARTITION BY stock_code ORDER BY date ROWS {w-1} PRECEDING) AS {count_col}_{w}d"
-                       for w in windows
-                   )}
-            FROM panel_ev
-        """
-        ev_df = duck.execute(query).df()
-        for w in windows:
-            col = f"{count_col}_{w}d"
-            pillar_b = pillar_b.merge(
-                ev_df[['stock_code', 'date', col]],
-                on=['stock_code', 'date'], how='left',
-            )
-            pillar_b[col] = pillar_b[col].fillna(0).astype('int32')
-
-    # institution event
+    logger.info("Step 4: event rolling counts")
     _rolling_event_count(
-        "SELECT stock_code, "
-        "SUBSTR(notice_date,1,4) || '-' || SUBSTR(notice_date,5,2) || '-' || SUBSTR(notice_date,7,2) AS event_date "
-        "FROM smartmoney.fact_institution_event",
+        duck,
+        "SELECT stock_code, notice_date AS event_date FROM smartmoney.fact_institution_event",
         "inst_event_count", [30, 60],
     )
-    # executive buy all
     _rolling_event_count(
-        "SELECT stock_code, notice_date AS event_date "
-        "FROM smartmoney.fact_executive_trade_event WHERE direction='buy'",
+        duck,
+        "SELECT stock_code, notice_date AS event_date FROM smartmoney.fact_executive_trade_event WHERE direction='buy'",
         "exec_buy_count", [90],
     )
-    # executive buy ≥1%
     _rolling_event_count(
-        "SELECT stock_code, notice_date AS event_date "
-        "FROM smartmoney.fact_executive_trade_event "
+        duck,
+        "SELECT stock_code, notice_date AS event_date FROM smartmoney.fact_executive_trade_event "
         "WHERE direction='buy' AND total_change_pct_total >= 1.0",
         "exec_buy_ge1_count", [90],
     )
-    # LHB 机构买
     _rolling_event_count(
-        "SELECT stock_code, trade_date AS event_date "
-        "FROM smartmoney.fact_lhb_event WHERE is_inst_net_buy=1",
+        duck,
+        "SELECT stock_code, trade_date AS event_date FROM smartmoney.fact_lhb_event WHERE is_inst_net_buy=1",
         "lhb_inst_buy_count", [30, 60],
     )
-    # 机构调研 (jgdy)
     try:
         _rolling_event_count(
-            "SELECT stock_code, "
-            "SUBSTR(notice_date,1,4) || '-' || SUBSTR(notice_date,5,2) || '-' || SUBSTR(notice_date,7,2) AS event_date "
-            "FROM smartmoney.fact_jgdy_event",
+            duck,
+            "SELECT stock_code, notice_date AS event_date FROM smartmoney.fact_jgdy_event",
             "jgdy_count", [60],
         )
     except Exception as e:
         logger.warning("jgdy rolling skip: %s", e)
-        pillar_b['jgdy_count_60d'] = 0
-    # 大宗交易 (dzjy)
+        _add_literal_columns(duck, {"jgdy_count_60d": "0::INTEGER"})
     try:
         _rolling_event_count(
-            "SELECT stock_code, "
-            "SUBSTR(trade_date,1,4) || '-' || SUBSTR(trade_date,5,2) || '-' || SUBSTR(trade_date,7,2) AS event_date "
-            "FROM smartmoney.fact_dzjy_event",
+            duck,
+            "SELECT stock_code, trade_date AS event_date FROM smartmoney.fact_dzjy_event",
             "dzjy_count", [60],
         )
     except Exception as e:
         logger.warning("dzjy rolling skip: %s", e)
-        pillar_b['dzjy_count_60d'] = 0
+        _add_literal_columns(duck, {"dzjy_count_60d": "0::INTEGER"})
 
-    logger.info("Pillar A rolling counts done: %.1fs", time.time() - t3)
-
-    # days_since
-    t4 = time.time()
-    logger.info("Step 5: days_since 特征")
-    duck.register('current_panel', pillar_b)
-    # 高管增持最近日期
-    for ev_sql, col in [
-        ("SELECT stock_code, notice_date AS event_date "
-         "FROM smartmoney.fact_executive_trade_event WHERE direction='buy'", "exec_buy"),
-        ("SELECT stock_code, trade_date AS event_date "
-         "FROM smartmoney.fact_lhb_event WHERE is_inst_net_buy=1", "lhb"),
+    logger.info("Step 5: days_since features")
+    for ev_sql, suffix in [
+        ("SELECT stock_code, notice_date AS event_date FROM smartmoney.fact_executive_trade_event WHERE direction='buy'", "exec_buy"),
+        ("SELECT stock_code, trade_date AS event_date FROM smartmoney.fact_lhb_event WHERE is_inst_net_buy=1", "lhb"),
     ]:
         try:
-            ds = duck.execute(f"""
-                WITH ev AS ({ev_sql}),
-                panel_ev AS (
-                    SELECT p.stock_code, p.date, p.date::DATE AS date_dt,
-                           MAX(CASE WHEN e.event_date::DATE <= p.date::DATE THEN e.event_date::DATE END) AS last_ev
-                    FROM current_panel p
-                    LEFT JOIN ev e ON e.stock_code = p.stock_code
-                    GROUP BY p.stock_code, p.date
-                )
-                SELECT stock_code, date,
-                       CASE WHEN last_ev IS NULL THEN -1
-                            ELSE (date_dt - last_ev)::INT END AS days_since_{col}
-                FROM panel_ev
-            """).df()
-            pillar_b = pillar_b.merge(ds, on=['stock_code', 'date'], how='left')
-            pillar_b[f'days_since_{col}'] = pillar_b[f'days_since_{col}'].fillna(-1).astype('int32')
+            _days_since_event(duck, ev_sql, suffix)
         except Exception as e:
-            logger.warning("days_since %s ERR: %s", col, e)
-            pillar_b[f'days_since_{col}'] = -1
-    logger.info("days_since done: %.1fs", time.time() - t4)
+            logger.warning("days_since %s skip: %s", suffix, e)
+            _add_literal_columns(duck, {f"days_since_{suffix}": "-1::INTEGER"})
 
-    # Pillar C 基本面 (ASOF JOIN 季度 forward-fill)
-    t5 = time.time()
-    logger.info("Step 6: Pillar C 基本面 (ASOF JOIN)")
-    duck.register('current_panel', pillar_b)
-    pillar_c_joined = duck.execute("""
+    logger.info("Step 6: fundamentals ASOF join")
+    _replace_temp_table(
+        duck,
+        "current_panel",
+        """
         WITH ffq AS (
             SELECT stock_code,
-                   SUBSTR(report_date,1,4) || '-' || SUBSTR(report_date,5,2) || '-' || SUBSTR(report_date,7,2) AS date,
+                   STRFTIME(STRPTIME(report_date, '%Y%m%d'), '%Y-%m-%d') AS date,
                    shareholder_count, inst_count, fund_count, qfii_count,
                    yjyg_lower_pct, yjyg_upper_pct, roe, eps_basic,
                    (shareholder_count / NULLIF(LAG(shareholder_count) OVER w, 0) - 1) AS shareholder_count_qoq,
@@ -327,35 +437,42 @@ def build_panel(start_date: str) -> pd.DataFrame:
         FROM current_panel p
         ASOF LEFT JOIN ffq f
           ON p.stock_code = f.stock_code AND p.date >= f.date
-    """).df()
-    logger.info("Pillar C done: %.1fs", time.time() - t5)
-    pillar_b = pillar_c_joined
+        """,
+    )
 
-    # Regime
-    t6 = time.time()
-    logger.info("Step 7: Regime 市场状态")
-    regime_df = duck.execute(f"""
-        SELECT date,
-               (close / NULLIF(LAG(close, 20) OVER (ORDER BY date), 0) - 1) AS hs300_ret_20d,
-               (close / NULLIF(LAG(close, 60) OVER (ORDER BY date), 0) - 1) AS hs300_ret_60d
-        FROM ({KLINE_DAILY_QFQ_SQL}) AS kline
-        WHERE code='510300'
-        ORDER BY date
-    """).df()
-    def _regime(r):
-        if pd.isna(r): return 'na'
-        if r > 0.03: return 'up'
-        if r < -0.03: return 'down'
-        return 'flat'
-    regime_df['regime_flag'] = regime_df['hs300_ret_20d'].apply(_regime)
-    pillar_b = pillar_b.merge(regime_df, on='date', how='left')
-    logger.info("Regime done: %.1fs", time.time() - t6)
+    logger.info("Step 7: market regime")
+    _replace_temp_table(
+        duck,
+        "current_panel",
+        f"""
+        WITH regime AS (
+            SELECT date,
+                   (close / NULLIF(LAG(close, 20) OVER (ORDER BY date), 0) - 1) AS hs300_ret_20d,
+                   (close / NULLIF(LAG(close, 60) OVER (ORDER BY date), 0) - 1) AS hs300_ret_60d
+            FROM ({KLINE_DAILY_QFQ_SQL}) AS kline
+            WHERE code='510300'
+        ),
+        regime_labeled AS (
+            SELECT *,
+                   CASE
+                     WHEN hs300_ret_20d IS NULL THEN 'na'
+                     WHEN hs300_ret_20d > 0.03 THEN 'up'
+                     WHEN hs300_ret_20d < -0.03 THEN 'down'
+                     ELSE 'flat'
+                   END AS regime_flag
+            FROM regime
+        )
+        SELECT p.*, r.hs300_ret_20d, r.hs300_ret_60d, r.regime_flag
+        FROM current_panel p
+        LEFT JOIN regime_labeled r ON r.date = p.date
+        """,
+    )
 
-    # V2: dense cross-sectional ranks and industry-relative features.
-    t7 = time.time()
-    logger.info("Step 8: V2 横截面 rank / 行业相对 / 融资归一化")
-    duck.register('current_panel', pillar_b)
-    pillar_b = duck.execute("""
+    logger.info("Step 8: cross-sectional rank / industry-relative / margin normalization")
+    _replace_temp_table(
+        duck,
+        "current_panel",
+        """
         WITH ind AS (
             SELECT stock_code, tdx_l1 FROM smartmoney.dim_stock_tdx_industry
         ),
@@ -377,82 +494,24 @@ def build_panel(start_date: str) -> pd.DataFrame:
                amount_chg_5d - AVG(amount_chg_5d) OVER (PARTITION BY date, tdx_l1) AS amount_chg_5d_tdx_l1_rel,
                rz_balance / NULLIF(amount_ma20, 0) AS rz_balance_to_amount20
         FROM joined
-    """).df()
-    logger.info("V2 dense features done: %.1fs", time.time() - t7)
+        """,
+    )
 
-    logger.info("TOTAL build_panel: %d rows, %.1f min", len(pillar_b), (time.time() - t0) / 60)
-    # 列去重
-    pillar_b = pillar_b.loc[:, ~pillar_b.columns.duplicated()]
-    if '_date_dt' in pillar_b.columns:
-        pillar_b = pillar_b.drop(columns=['_date_dt'])
-    for col in ['tdx_l1', 'amount_ma20']:
-        if col in pillar_b.columns:
-            pillar_b = pillar_b.drop(columns=[col])
-    return pillar_b
+    logger.info("Step 9: write fact_feature_panel")
+    summary = _insert_fact_panel(duck)
+    logger.info(
+        "fact_feature_panel: rows=%d codes=%d dates=%d label_non_null=%d elapsed=%.1f min",
+        summary["rows"], summary["codes"], summary["dates"], summary["label_non_null"],
+        (time.time() - t0) / 60,
+    )
+    return summary
 
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument('--start', default='2023-01-01')
+    parser.add_argument("--start", default="2023-01-01")
     args = parser.parse_args()
-
-    panel = build_panel(args.start)
-
-    logger.info("Panel shape %s, 准备写入 DuckDB (INSERT FROM SELECT)", panel.shape)
-    panel['built_at'] = datetime.utcnow().isoformat()
-
-    keep_cols = [
-        'stock_code', 'date', 'close',
-        'ret_1d', 'ret_5d', 'ret_20d', 'ret_60d',
-        'vol_z20d', 'ma_ratio_5', 'ma_ratio_20', 'ma_ratio_60', 'ma_ratio_250',
-        'rz_balance', 'rz_chg_5d_pct',
-        'kmid', 'klen', 'kup', 'klow', 'ksft',
-        'vol_ratio_5_20', 'vol_std_5d', 'vol_std_20d',
-        'range_pos_20', 'range_pos_60',
-        'momentum_diff', 'amount_chg_5d',
-        'ret_20d_rank', 'ret_60d_rank', 'vol_z20d_rank', 'amount_chg_5d_rank',
-        'rz_balance_rank', 'rz_chg_5d_pct_rank',
-        'ret_20d_tdx_l1_rel', 'ret_60d_tdx_l1_rel',
-        'vol_z20d_tdx_l1_rel', 'amount_chg_5d_tdx_l1_rel',
-        'rz_balance_to_amount20',
-        'inst_event_count_30d', 'inst_event_count_60d',
-        'exec_buy_count_90d', 'exec_buy_ge1_count_90d',
-        'lhb_inst_buy_count_30d', 'lhb_inst_buy_count_60d',
-        'jgdy_count_60d', 'dzjy_count_60d',
-        'days_since_exec_buy', 'days_since_lhb',
-        'shareholder_count_qoq', 'inst_count_qoq',
-        'fund_count_qoq', 'qfii_count_qoq',
-        'yjyg_lower_pct', 'yjyg_upper_pct', 'roe', 'eps_basic',
-        'hs300_ret_20d', 'hs300_ret_60d', 'regime_flag',
-        'forward_ret_20d', 'built_at',
-    ]
-    keep = [c for c in keep_cols if c in panel.columns]
-    panel_out = panel[keep].reset_index(drop=True)
-    float_cols = [
-        col for col in panel_out.select_dtypes(include=["number"]).columns
-        if pd.api.types.is_float_dtype(panel_out[col])
-    ]
-    for col in float_cols:
-        values = panel_out[col]
-        panel_out[col] = values.mask(~np.isfinite(values) | (values.abs() > REAL_ABS_LIMIT))
-
-    # Step 7: 用同一个 writable DuckDB 连接建表并批量灌数据。
-    t_w0 = time.time()
-    duck = get_duck(writable=True)
-    execute_script(duck, PANEL_DDL)
-    duck.register('panel_out', panel_out)
-    logger.info("DuckDB INSERT INTO smartmoney.fact_feature_panel SELECT * FROM panel_out ...")
-    duck.execute(f"INSERT INTO smartmoney.fact_feature_panel ({', '.join(keep)}) SELECT * FROM panel_out")
-    logger.info("写入完成: %.1fs", time.time() - t_w0)
-
-    # 验证写入
-    row = duck.execute("""
-        SELECT COUNT(*), COUNT(DISTINCT stock_code), COUNT(DISTINCT date),
-               SUM(CASE WHEN forward_ret_20d IS NOT NULL THEN 1 ELSE 0 END)
-        FROM smartmoney.fact_feature_panel
-    """).fetchone()
-    logger.info("fact_feature_panel: rows=%d codes=%d dates=%d label_non_null=%d",
-                row[0], row[1], row[2], row[3])
+    build_panel(args.start)
 
 
 if __name__ == "__main__":
