@@ -3,7 +3,6 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 from unittest import mock
 
-import pandas as pd
 import pytest
 
 
@@ -14,21 +13,19 @@ from services import block_client, db
 
 @pytest.mark.asyncio
 async def test_fetch_tdx_block_file_uses_shared_quotes_pool():
-    frame = pd.DataFrame(
-        [
-            {"blockname": "沪深300", "block_type": 2, "code_index": 0, "code": "600036"},
-        ]
-    )
+    records = [
+        {"blockname": "沪深300", "block_type": 2, "code_index": 0, "code": "600036"},
+    ]
 
     with mock.patch.object(
         block_client,
         "call_tdx_quotes_with_retry",
-        return_value=(frame, "tdxhub_1.2.3.4:7709"),
+        return_value=(records, "tdxhub_1.2.3.4:7709"),
     ) as mocked_call:
-        result_frame, source = await block_client.fetch_tdx_block_file("block_zs.dat")
+        result_records, source = await block_client.fetch_tdx_block_file("block_zs.dat")
 
     assert source == "tdxhub_1.2.3.4:7709"
-    assert result_frame.equals(frame)
+    assert result_records == records
     assert mocked_call.call_args.kwargs["action_name"] == "block[block_zs.dat]"
 
 
@@ -52,26 +49,20 @@ async def test_sync_tdx_blocks_persists_catalog_and_members():
                 conn.commit()
 
                 fixtures = {
-                    "block_zs.dat": pd.DataFrame(
-                        [
-                            {"blockname": "沪深300", "block_type": 2, "code_index": 0, "code": "600036"},
-                            {"blockname": "沪深300", "block_type": 2, "code_index": 1, "code": "300750"},
-                            {"blockname": "沪深300", "block_type": 2, "code_index": 2, "code": "399001"},
-                        ]
-                    ),
-                    "block_fg.dat": pd.DataFrame(
-                        [
-                            {"blockname": "融资融券", "block_type": 2, "code_index": 10, "code": "600036"},
-                            {"blockname": "\x00600113\x006", "block_type": 12593, "code_index": 11, "code": "300750"},
-                        ]
-                    ),
-                    "block_gn.dat": pd.DataFrame(
-                        [
-                            {"blockname": "新能源车", "block_type": 2, "code_index": 20, "code": "300750"},
-                            {"blockname": "一带一路", "block_type": 2, "code_index": 21, "code": "600036"},
-                            {"blockname": "一带一路", "block_type": 2, "code_index": 22, "code": "159001"},
-                        ]
-                    ),
+                    "block_zs.dat": [
+                        {"blockname": "沪深300", "block_type": 2, "code_index": 0, "code": "600036"},
+                        {"blockname": "沪深300", "block_type": 2, "code_index": 1, "code": "300750"},
+                        {"blockname": "沪深300", "block_type": 2, "code_index": 2, "code": "399001"},
+                    ],
+                    "block_fg.dat": [
+                        {"blockname": "融资融券", "block_type": 2, "code_index": 10, "code": "600036"},
+                        {"blockname": "\x00600113\x006", "block_type": 12593, "code_index": 11, "code": "300750"},
+                    ],
+                    "block_gn.dat": [
+                        {"blockname": "新能源车", "block_type": 2, "code_index": 20, "code": "300750"},
+                        {"blockname": "一带一路", "block_type": 2, "code_index": 21, "code": "600036"},
+                        {"blockname": "一带一路", "block_type": 2, "code_index": 22, "code": "159001"},
+                    ],
                 }
 
                 async def _fake_fetch(block_file: str):
@@ -130,13 +121,11 @@ async def test_sync_tdx_blocks_replaces_previous_snapshot():
                 conn.commit()
 
                 fixtures = {
-                    "block_zs.dat": pd.DataFrame([], columns=["blockname", "block_type", "code_index", "code"]),
-                    "block_fg.dat": pd.DataFrame([], columns=["blockname", "block_type", "code_index", "code"]),
-                    "block_gn.dat": pd.DataFrame(
-                        [
-                            {"blockname": "数字经济", "block_type": 2, "code_index": 0, "code": "600036"},
-                        ]
-                    ),
+                    "block_zs.dat": [],
+                    "block_fg.dat": [],
+                    "block_gn.dat": [
+                        {"blockname": "数字经济", "block_type": 2, "code_index": 0, "code": "600036"},
+                    ],
                 }
 
                 async def _fake_fetch(block_file: str):

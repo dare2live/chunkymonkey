@@ -77,27 +77,29 @@ def _optional_float(value):
         return None
 
 
-def _normalize_xdxr_frame(code: str, frame: pd.DataFrame) -> list[dict]:
-    if frame is None or frame.empty:
+def _optional_int(value):
+    parsed = _optional_float(value)
+    return int(parsed) if parsed is not None else None
+
+
+def _normalize_xdxr_records(code: str, records: list[dict]) -> list[dict]:
+    if isinstance(records, pd.DataFrame):
+        records = records.to_dict("records")
+    if not records:
         return []
 
-    data = frame.copy()
-    for column in _XDXR_COLUMNS:
-        if column not in data.columns:
-            data[column] = None
-
-    data["date"] = pd.to_datetime(
-        data[["year", "month", "day"]],
-        errors="coerce",
-    ).dt.strftime("%Y-%m-%d")
-    data = data.dropna(subset=["date", "category"])
-
     rows = []
-    for _, row in data.iterrows():
+    for row in records:
+        year = _optional_int(row.get("year"))
+        month = _optional_int(row.get("month"))
+        day = _optional_int(row.get("day"))
+        category = _optional_int(row.get("category"))
+        if year is None or month is None or day is None or category is None:
+            continue
         rows.append({
             "code": code,
-            "date": row["date"],
-            "category": int(row["category"]),
+            "date": f"{year:04d}-{month:02d}-{day:02d}",
+            "category": category,
             "name": str(row.get("name") or "").strip() or None,
             "fenhong": _optional_float(row.get("fenhong")),
             "peigujia": _optional_float(row.get("peigujia")),
@@ -120,10 +122,10 @@ async def fetch_stock_xdxr(code: str) -> tuple[list[dict], str]:
     """从共享 TDX 入口抓取单只股票的 xdxr 事件。"""
     try:
         loop = asyncio.get_running_loop()
-        frame, source = await loop.run_in_executor(
+        records, source = await loop.run_in_executor(
             _XDXR_EXECUTOR,
             lambda: call_tdx_quotes_with_retry(
-                lambda client: client.xdxr(symbol=code),
+                lambda client: client.xdxr_records(symbol=code),
                 action_name=f"xdxr[{code}]",
             ),
         )
@@ -131,7 +133,7 @@ async def fetch_stock_xdxr(code: str) -> tuple[list[dict], str]:
         logger.debug(f"[xdxr] {code} 失败: {exc}")
         raise
 
-    return _normalize_xdxr_frame(code, frame), source
+    return _normalize_xdxr_records(code, records), source
 
 
 async def sync_xdxr_for_codes(mkt_conn, codes: list[str], *,

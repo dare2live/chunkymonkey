@@ -7,8 +7,6 @@ import logging
 import re
 from datetime import datetime
 
-import pandas as pd
-
 from services.tdx_source import call_tdx_quotes_with_retry
 
 
@@ -41,25 +39,32 @@ def _is_readable_block_name(value: object) -> bool:
     return True
 
 
-async def fetch_tdx_block_file(block_file: str) -> tuple[pd.DataFrame, str]:
+def _optional_int(value: object) -> int:
+    try:
+        return int(float(value))
+    except Exception:
+        return 0
+
+
+async def fetch_tdx_block_file(block_file: str) -> tuple[list[dict], str]:
     """从共享 tdxhub 入口抓取单个 block 文件。"""
-    frame, source = await asyncio.get_event_loop().run_in_executor(
+    records, source = await asyncio.get_event_loop().run_in_executor(
         None,
         lambda: call_tdx_quotes_with_retry(
-            lambda client: client.block(tofile=block_file),
+            lambda client: client.block_records(tofile=block_file),
             action_name=f"block[{block_file}]",
         ),
     )
-    if frame is None or frame.empty:
+    if not records:
         raise ValueError(f"{block_file} empty")
-    return frame, source
+    return records, source
 
 
-def _normalize_block_frame(frame: pd.DataFrame, *, block_category: str,
-                           block_file: str, active_codes: set[str],
-                           excluded_codes: set[str] | None = None) -> tuple[list[dict], dict]:
+def _normalize_block_records(records: list[dict], *, block_category: str,
+                             block_file: str, active_codes: set[str],
+                             excluded_codes: set[str] | None = None) -> tuple[list[dict], dict]:
     excluded = excluded_codes or set()
-    if frame is None or frame.empty:
+    if not records:
         return [], {
             "raw_rows": 0,
             "kept_rows": 0,
@@ -69,50 +74,43 @@ def _normalize_block_frame(frame: pd.DataFrame, *, block_category: str,
             "skipped_invalid_name": 0,
         }
 
-    data = frame.loc[:, ["blockname", "block_type", "code_index", "code"]].copy()
-    data["stock_code"] = data["code"].astype(str).str.extract(r"(\d{6})", expand=False)
-    data["block_name"] = data["blockname"].map(_clean_block_name)
-    raw_rows = len(data)
-
-    invalid_code_mask = data["stock_code"].isna() | ~data["stock_code"].isin(active_codes)
-    excluded_mask = data["stock_code"].isin(excluded)
-    invalid_name_mask = ~data["block_name"].map(_is_readable_block_name)
-
-    kept = data.loc[~invalid_code_mask & ~excluded_mask & ~invalid_name_mask].copy()
-    if kept.empty:
-        return [], {
-            "raw_rows": raw_rows,
-            "kept_rows": 0,
-            "unique_blocks": 0,
-            "skipped_non_active": int(invalid_code_mask.sum()),
-            "skipped_excluded": int(excluded_mask.sum()),
-            "skipped_invalid_name": int(invalid_name_mask.sum()),
-        }
-
-    kept["block_category"] = block_category
-    kept["block_file"] = block_file
-    kept["block_type"] = pd.to_numeric(kept["block_type"], errors="coerce").fillna(0).astype(int)
-    kept["code_index"] = pd.to_numeric(kept["code_index"], errors="coerce").fillna(0).astype(int)
-    kept = kept.drop_duplicates(subset=["stock_code", "block_category", "block_name"])
-
-    rows = [
-        {
-            "stock_code": row.stock_code,
-            "block_category": row.block_category,
-            "block_name": row.block_name,
-            "block_file": row.block_file,
-            "block_type": int(row.block_type),
-            "code_index": int(row.code_index),
-        }
-        for row in kept.itertuples(index=False)
-    ]
+    rows = []
+    seen: set[tuple[str, str, str]] = set()
+    skipped_non_active = 0
+    skipped_excluded = 0
+    skipped_invalid_name = 0
+    for record in records:
+        code_match = re.search(r"(\d{6})", str(record.get("code") or ""))
+        stock_code = code_match.group(1) if code_match else None
+        block_name = _clean_block_name(record.get("blockname"))
+        if not stock_code or stock_code not in active_codes:
+            skipped_non_active += 1
+            continue
+        if stock_code in excluded:
+            skipped_excluded += 1
+            continue
+        if not _is_readable_block_name(block_name):
+            skipped_invalid_name += 1
+            continue
+        key = (stock_code, block_category, block_name)
+        if key in seen:
+            continue
+        seen.add(key)
+        rows.append({
+            "stock_code": stock_code,
+            "block_category": block_category,
+            "block_name": block_name,
+            "block_file": block_file,
+            "block_type": _optional_int(record.get("block_type")),
+            "code_index": _optional_int(record.get("code_index")),
+        })
     stats = {
-        "raw_rows": raw_rows,
+        "raw_rows": len(records),
         "kept_rows": len(rows),
-        "unique_blocks": kept[["block_category", "block_name"]].drop_duplicates().shape[0],
-        "skipped_non_active": int(invalid_code_mask.sum()),
-        "skipped_excluded": int(excluded_mask.sum()),
-        "skipped_invalid_name": int(invalid_name_mask.sum()),
+        "unique_blocks": len({(row["block_category"], row["block_name"]) for row in rows}),
+        "skipped_non_active": skipped_non_active,
+        "skipped_excluded": skipped_excluded,
+        "skipped_invalid_name": skipped_invalid_name,
     }
     return rows, stats
 
@@ -120,23 +118,26 @@ def _normalize_block_frame(frame: pd.DataFrame, *, block_category: str,
 def _build_catalog_rows(member_rows: list[dict], *, source: str, updated_at: str) -> list[dict]:
     if not member_rows:
         return []
-    frame = pd.DataFrame(member_rows)
-    grouped = (
-        frame.groupby(["block_category", "block_name", "block_file", "block_type"], as_index=False)
-        .size()
-        .rename(columns={"size": "member_count"})
-    )
+    grouped: dict[tuple[str, str, str, int], int] = {}
+    for row in member_rows:
+        key = (
+            row["block_category"],
+            row["block_name"],
+            row["block_file"],
+            int(row["block_type"]),
+        )
+        grouped[key] = grouped.get(key, 0) + 1
     return [
         {
-            "block_category": row.block_category,
-            "block_name": row.block_name,
-            "block_file": row.block_file,
-            "block_type": int(row.block_type),
-            "member_count": int(row.member_count),
+            "block_category": category,
+            "block_name": name,
+            "block_file": block_file,
+            "block_type": block_type,
+            "member_count": count,
             "source": source,
             "updated_at": updated_at,
         }
-        for row in grouped.itertuples(index=False)
+        for (category, name, block_file, block_type), count in sorted(grouped.items())
     ]
 
 
@@ -161,10 +162,10 @@ async def sync_tdx_blocks(conn, *, active_codes: set[str],
     for block_category, block_file in BLOCK_FILES:
         if should_stop:
             should_stop()
-        frame, fetch_source = await fetch_tdx_block_file(block_file)
+        records, fetch_source = await fetch_tdx_block_file(block_file)
         source = fetch_source
-        rows, stats = _normalize_block_frame(
-            frame,
+        rows, stats = _normalize_block_records(
+            records,
             block_category=block_category,
             block_file=block_file,
             active_codes=active_codes,

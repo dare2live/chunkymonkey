@@ -117,6 +117,12 @@ def _normalize_etf_spot_frame(df: pd.DataFrame) -> list[dict]:
     return results
 
 
+def _tdx_payload_to_frame(payload) -> pd.DataFrame:
+    if isinstance(payload, pd.DataFrame):
+        return payload.copy()
+    return pd.DataFrame.from_records(payload or [])
+
+
 def _get_tdxhub_unavailable_state() -> dict[str, object]:
     return _get_shared_tdxhub_unavailable_state()
 
@@ -180,13 +186,17 @@ async def _fetch_daily_tdxhub_with_diagnostics(code: str, start_date: str, end_d
     end_fmt = f"{end_date[:4]}-{end_date[4:6]}-{end_date[6:8]}"
 
     def _fetch_on_client(client):
-        df = client.bars(symbol=code, frequency=9, offset=min(days_needed, 800))
-        if df is None or df.empty:
+        records = client.bars_records(symbol=code, frequency=9, offset=min(days_needed, 800))
+        if not records:
             raise ValueError("empty")
 
+        df = _tdx_payload_to_frame(records)
         df = df.rename(columns={"vol": "volume"})
         df = df.loc[:, ~df.columns.duplicated()]
-        df["date"] = df.index.strftime("%Y-%m-%d") if hasattr(df.index, "strftime") else df["datetime"].astype(str).str[:10]
+        if "datetime" in df.columns:
+            df["date"] = df["datetime"].astype(str).str[:10]
+        else:
+            df["date"] = df.index.strftime("%Y-%m-%d") if hasattr(df.index, "strftime") else ""
         df = df[(df["date"] >= start_fmt) & (df["date"] <= end_fmt)]
         if df.empty:
             raise ValueError("empty_after_filter")
@@ -534,10 +544,12 @@ async def _fetch_etf_list_tdxhub() -> list[dict]:
     def _fetch_on_client(client):
         results = []
         for market in [0, 1]:
-            stocks = client.stocks(market=market)
-            if stocks is None or stocks.empty:
+            stocks = client.stocks_records(market=market)
+            if isinstance(stocks, pd.DataFrame):
+                stocks = stocks.to_dict("records")
+            if not stocks:
                 continue
-            for _, row in stocks.iterrows():
+            for row in stocks:
                 code = str(row.get("code", "")).strip()
                 name = str(row.get("name", "")).strip()
                 if market == 0 and code.startswith("15"):
@@ -653,7 +665,7 @@ async def fetch_index_kline(code: str, start_date: str, end_date: str):
         df, _source = await asyncio.get_event_loop().run_in_executor(
             None,
             lambda: call_tdx_quotes_with_retry(
-                lambda client: client.index_bars(
+                lambda client: client.index_bars_records(
                     frequency=9,
                     market=mkt,
                     symbol=code,
@@ -662,13 +674,17 @@ async def fetch_index_kline(code: str, start_date: str, end_date: str):
                 action_name=f"index_bars[{code}]",
             ),
         )
-        if df is None or df.empty:
+        if df is None or (not isinstance(df, pd.DataFrame) and not df):
             return None, None
 
+        df = _tdx_payload_to_frame(df)
         df = df.rename(columns={"vol": "volume"})
         start_fmt = f"{start_date[:4]}-{start_date[4:6]}-{start_date[6:8]}"
         end_fmt = f"{end_date[:4]}-{end_date[4:6]}-{end_date[6:8]}"
-        df["date"] = df.index.strftime("%Y-%m-%d") if hasattr(df.index, 'strftime') else df["datetime"].astype(str).str[:10]
+        if "datetime" in df.columns:
+            df["date"] = df["datetime"].astype(str).str[:10]
+        else:
+            df["date"] = df.index.strftime("%Y-%m-%d") if hasattr(df.index, 'strftime') else ""
         df = df[(df["date"] >= start_fmt) & (df["date"] <= end_fmt)]
         if df.empty:
             return None, None

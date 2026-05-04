@@ -337,7 +337,7 @@ def _safe_div(a, b):
 # ============================================================
 
 def _parse_finance_record(fin_row: dict) -> dict:
-    """从 tdxhub client.finance() 的单行结果提取关键字段。"""
+    """从 tdxhub finance_records() 的单行结果提取关键字段。"""
     return {
         "total_assets": _parse_float(fin_row.get("zongzichan")),
         "total_liabilities": (_parse_float(fin_row.get("liudongfuzhai")) or 0) + (_parse_float(fin_row.get("changqifuzhai")) or 0),
@@ -745,9 +745,9 @@ def _fetch_latest_snapshot_batch(codes):
         results = {}
         for code in codes:
             try:
-                fin = client.finance(symbol=code)
-                if fin is not None and not fin.empty:
-                    results[code] = fin.iloc[0].to_dict()
+                records = client.finance_records(symbol=code)
+                if records:
+                    results[code] = records[0]
             except Exception:
                 continue
         if not results:

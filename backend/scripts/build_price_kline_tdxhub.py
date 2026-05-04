@@ -68,13 +68,13 @@ def _is_a_share(code: str, market: int) -> bool:
 
 
 def load_a_stock_list(client) -> list[tuple[str, int]]:
-    sh = client.stocks(market=1)
-    sz = client.stocks(market=0)
+    sh = client.stocks_records(market=1)
+    sz = client.stocks_records(market=0)
     codes = []
-    for _, row in sh.iterrows():
+    for row in sh:
         if _is_a_share(row['code'], 1):
             codes.append((str(row['code']).zfill(6), 1))
-    for _, row in sz.iterrows():
+    for row in sz:
         if _is_a_share(row['code'], 0):
             codes.append((str(row['code']).zfill(6), 0))
     logger.info("A 股代码总计 %d (沪 %d, 深 %d)",
@@ -89,7 +89,8 @@ def pull_one_stock(client, code: str, pages: int = 2) -> pd.DataFrame:
     parts = []
     for start in range(0, pages * 800, 800):
         try:
-            df = client.bars(symbol=code, frequency=9, start=start, offset=800, adjust='qfq')
+            records = client.bars_records(symbol=code, frequency=9, start=start, offset=800, adjust='qfq')
+            df = pd.DataFrame.from_records(records)
         except Exception as e:
             logger.warning("code=%s start=%d ERR: %s", code, start, e)
             continue
@@ -109,7 +110,10 @@ def normalize(df: pd.DataFrame, batch_id: str) -> pd.DataFrame:
     if df.empty:
         return df
     out = df.copy()
-    out['date'] = out.index.astype(str).str.slice(0, 10)
+    if "datetime" in out.columns:
+        out['date'] = out["datetime"].astype(str).str.slice(0, 10)
+    else:
+        out['date'] = out.index.astype(str).str.slice(0, 10)
     # 去掉日内分钟重复
     out = out.drop_duplicates(subset=['code', 'date'])
     out['freq'] = 'daily'

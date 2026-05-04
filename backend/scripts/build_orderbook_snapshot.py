@@ -75,8 +75,8 @@ def _is_a_share(code: str, market: int) -> bool:
 def load_a_stock_list(client) -> list[str]:
     codes = []
     for mkt in [1, 0]:
-        df = client.stocks(market=mkt)
-        for _, row in df.iterrows():
+        rows = client.stocks_records(market=mkt)
+        for row in rows:
             if _is_a_share(row['code'], mkt):
                 codes.append(str(row['code']).zfill(6))
     return codes
@@ -125,7 +125,8 @@ def main():
     for i in range(0, len(codes), args.batch_size):
         batch = codes[i:i + args.batch_size]
         try:
-            df = client.quotes(symbol=batch)
+            records = client.quotes_records(symbol=batch)
+            df = pd.DataFrame.from_records(records)
         except Exception as e:
             logger.warning("批 %d ERR: %s", i // args.batch_size, e)
             n_failed += len(batch)

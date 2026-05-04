@@ -155,7 +155,7 @@ class TdxhubSource(BaseDataSource):
             freq = kwargs.get("frequency", 9)  # 9=日
             offset = kwargs.get("offset", 800)
             return call_tdx_quotes_with_retry(
-                lambda c: c.bars(symbol=symbol, frequency=freq, offset=offset),
+                lambda c: c.bars_records(symbol=symbol, frequency=freq, offset=offset),
                 action_name=f"tdxhub.kline_daily({symbol})",
             )
 
@@ -163,7 +163,7 @@ class TdxhubSource(BaseDataSource):
             symbol = kwargs.get("code") or kwargs.get("symbol")
             offset = kwargs.get("offset", 800)
             return call_tdx_quotes_with_retry(
-                lambda c: c.index_bars(symbol=symbol, frequency=9, offset=offset),
+                lambda c: c.index_bars_records(symbol=symbol, frequency=9, offset=offset),
                 action_name=f"tdxhub.kline_index({symbol})",
             )
 
@@ -172,21 +172,21 @@ class TdxhubSource(BaseDataSource):
             freq = kwargs.get("frequency", 7)  # 7=1h
             offset = kwargs.get("offset", 800)
             return call_tdx_quotes_with_retry(
-                lambda c: c.bars(symbol=symbol, frequency=freq, offset=offset),
+                lambda c: c.bars_records(symbol=symbol, frequency=freq, offset=offset),
                 action_name=f"tdxhub.kline_minute({symbol},{freq})",
             )
 
         if capability == "xdxr":
             symbol = kwargs.get("code") or kwargs.get("symbol")
             return call_tdx_quotes_with_retry(
-                lambda c: c.xdxr(symbol=symbol),
+                lambda c: c.xdxr_records(symbol=symbol),
                 action_name=f"tdxhub.xdxr({symbol})",
             )
 
         if capability == "financial_summary":
             symbol = kwargs.get("code") or kwargs.get("symbol")
             return call_tdx_quotes_with_retry(
-                lambda c: c.finance(symbol=symbol),
+                lambda c: c.finance_records(symbol=symbol),
                 action_name=f"tdxhub.financial_summary({symbol})",
             )
 
@@ -199,14 +199,14 @@ class TdxhubSource(BaseDataSource):
         if capability == "industry_sw" or capability == "stock_blocks":
             group = kwargs.get("group", False)
             return call_tdx_quotes_with_retry(
-                lambda c: c.block(group=group, custom=False),
+                lambda c: c.block_records(group=group, custom=False),
                 action_name=f"tdxhub.{capability}",
             )
 
         if capability == "stock_list":
             market = kwargs.get("market", 0)
             return call_tdx_quotes_with_retry(
-                lambda c: c.stocks(market=market),
+                lambda c: c.stocks_records(market=market),
                 action_name=f"tdxhub.stock_list({market})",
             )
 
@@ -236,14 +236,14 @@ class TdxhubSource(BaseDataSource):
         if capability == "quote_realtime":
             symbols = kwargs.get("symbols") or kwargs.get("code") or kwargs.get("symbol")
             return call_tdx_quotes_with_retry(
-                lambda c: c.quotes(symbol=symbols),
+                lambda c: c.quotes_records(symbol=symbols),
                 action_name=f"tdxhub.quote_realtime",
             )
 
         if capability == "minute_today":
             symbol = kwargs.get("code") or kwargs.get("symbol")
             return call_tdx_quotes_with_retry(
-                lambda c: c.minute(symbol=symbol),
+                lambda c: c.minute_records(symbol=symbol),
                 action_name=f"tdxhub.minute_today({symbol})",
             )
 
@@ -251,14 +251,14 @@ class TdxhubSource(BaseDataSource):
             symbol = kwargs.get("code") or kwargs.get("symbol")
             date = kwargs.get("date")
             return call_tdx_quotes_with_retry(
-                lambda c: c.minutes(symbol=symbol, date=date),
+                lambda c: c.minutes_records(symbol=symbol, date=date),
                 action_name=f"tdxhub.minute_history({symbol},{date})",
             )
 
         if capability == "tick_today":
             symbol = kwargs.get("code") or kwargs.get("symbol")
             return call_tdx_quotes_with_retry(
-                lambda c: c.transaction(symbol=symbol),
+                lambda c: c.transaction_records(symbol=symbol),
                 action_name=f"tdxhub.tick_today({symbol})",
             )
 
@@ -266,7 +266,7 @@ class TdxhubSource(BaseDataSource):
             symbol = kwargs.get("code") or kwargs.get("symbol")
             date = kwargs.get("date")
             return call_tdx_quotes_with_retry(
-                lambda c: c.transactions(symbol=symbol, date=date),
+                lambda c: c.transactions_records(symbol=symbol, date=date),
                 action_name=f"tdxhub.tick_history({symbol},{date})",
             )
 
