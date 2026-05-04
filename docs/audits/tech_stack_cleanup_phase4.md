@@ -9,6 +9,9 @@ removed pandas from xdxr, margin, LHB, QFII, and institution survey sync
 clients after their fetch boundaries were reduced to records. The next loop
 converted the K-line source boundary and akshare K-line adapter to records.
 Phase 4.2 then started with the standalone neutralization helpers.
+The latest Phase 4.2 loop removed the last screening-engine dependency on
+pandas/numpy and kept the shared technical indicator module importable with
+plain sequence inputs.
 
 ## Change
 
@@ -61,6 +64,16 @@ Phase 4.2 then started with the standalone neutralization helpers.
   `backend/services/sector_momentum.py`.
 - Converted sector technical state and equal-weight index synthesis to
   records/native math.
+- Removed pandas/numpy from `backend/services/screening_engine.py`.
+- Converted TDX screening formulas 1/3/5 and K-line grouping to records/native
+  sequence helpers.
+- Removed pandas/numpy from `backend/services/ta_lib.py`.
+- Converted the shared technical indicator helpers to plain sequence inputs and
+  outputs.
+- Fixed shared indicator missing-value handling so `NaN` is treated as missing
+  in numeric helpers and false in condition helpers.
+- Added `backend/tests/test_screening_engine.py` and
+  `backend/tests/test_ta_lib.py`.
 
 ## Validation
 
@@ -191,10 +204,23 @@ python3 -m pytest backend/tests/test_sector_momentum.py -q
 
 python3 -m pytest backend/tests/test_sector_momentum.py backend/tests/test_event_simulator.py backend/tests/test_stock_turtle_engine.py backend/tests/test_portfolio_backtest.py backend/tests/test_neutralize.py backend/tests/test_kline_sources.py backend/tests/test_tdx_source.py backend/tests/test_institution_survey_client.py backend/tests/test_qfii_client.py backend/tests/test_lhb_client.py backend/tests/test_margin_client.py backend/tests/test_xdxr_client.py backend/tests/test_block_client.py -q
 # 76 passed
+
+rg -n "pandas|pd\.|DataFrame|numpy|np\.|services\.ta_lib" backend/services/screening_engine.py backend/services/ta_lib.py backend/tests/test_screening_engine.py backend/tests/test_ta_lib.py -S
+# 0 matches
+
+python3 -m py_compile backend/services/screening_engine.py backend/services/ta_lib.py backend/tests/test_screening_engine.py backend/tests/test_ta_lib.py
+# passed
+
+python3 -m pytest backend/tests/test_ta_lib.py backend/tests/test_screening_engine.py -q
+# 3 passed
+
+python3 -m pytest backend/tests/test_ta_lib.py backend/tests/test_screening_engine.py backend/tests/test_sector_momentum.py backend/tests/test_event_simulator.py backend/tests/test_stock_turtle_engine.py backend/tests/test_portfolio_backtest.py backend/tests/test_neutralize.py backend/tests/test_kline_sources.py backend/tests/test_tdx_source.py backend/tests/test_institution_survey_client.py backend/tests/test_qfii_client.py backend/tests/test_lhb_client.py backend/tests/test_margin_client.py backend/tests/test_xdxr_client.py backend/tests/test_block_client.py -q
+# 79 passed
+
+python3 backend/scripts/data_health_snapshot.py --dry-run
+# green=147/yellow=0/red=0
 ```
 
 ## Remaining Phase 4 Targets
 
-- `backend/services/ta_lib.py`
-- `backend/services/screening_engine.py`
 - pandas usage in scripts and model/backtest layers.
