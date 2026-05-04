@@ -12,10 +12,7 @@ import logging
 from datetime import date, datetime, timedelta
 from typing import Optional
 
-import pandas as pd
-
 from services.industry import load_industry_map
-from services.ta_lib import compute_alpha_factors, hhv, llv
 from services.utils import safe_float as _safe_float, clamp_score as _clamp_score
 
 logger = logging.getLogger("cm-api")
@@ -56,6 +53,53 @@ def _load_price_history(mkt_conn, codes: list[str], since_days: int = 320) -> di
         for row in rows:
             history.setdefault(row["code"], []).append(dict(row))
     return history
+
+
+def _window_values_before_latest(history: list[dict], column: str, window: int) -> list[float]:
+    if len(history) <= window:
+        return []
+    values = []
+    for row in history[-window - 1:-1]:
+        value = _safe_float(row.get(column))
+        if value is not None:
+            values.append(value)
+    return values
+
+
+def _highest_before_latest(history: list[dict], column: str, window: int) -> Optional[float]:
+    values = _window_values_before_latest(history, column, window)
+    return max(values) if values else None
+
+
+def _lowest_before_latest(history: list[dict], column: str, window: int) -> Optional[float]:
+    values = _window_values_before_latest(history, column, window)
+    return min(values) if values else None
+
+
+def _atr_ratio_latest(history: list[dict], window: int = 14) -> Optional[float]:
+    if len(history) < window:
+        return None
+    true_ranges = []
+    prev_close = None
+    for row in history:
+        high = _safe_float(row.get("high"))
+        low = _safe_float(row.get("low"))
+        close = _safe_float(row.get("close"))
+        if high is None or low is None:
+            prev_close = close
+            continue
+        candidates = [high - low]
+        if prev_close is not None:
+            candidates.append(abs(high - prev_close))
+            candidates.append(abs(low - prev_close))
+        true_ranges.append(max(candidates))
+        prev_close = close
+    if len(true_ranges) < window:
+        return None
+    close_price = _safe_float(history[-1].get("close"))
+    if close_price in (None, 0):
+        return None
+    return (sum(true_ranges[-window:]) / window) / close_price
 
 
 def _preferred_system(
@@ -244,28 +288,18 @@ def build_stock_turtle_features(conn, mkt_conn, snapshot_date: Optional[str] = N
         exit_signal_20 = 0
 
         if len(history) >= 21:
-            df = pd.DataFrame(history)
-            for col in ("open", "high", "low", "close", "volume", "amount"):
-                if col in df.columns:
-                    df[col] = pd.to_numeric(df[col], errors="coerce")
-
-            factors = compute_alpha_factors(df[["open", "high", "low", "close", "volume", "amount"]])
-            atr_ratio = _safe_float(factors["ATR_14"].iloc[-1]) if "ATR_14" in factors.columns else None
+            atr_ratio = _atr_ratio_latest(history, 14)
             if atr_ratio is not None and close_price is not None:
                 atr_14 = round(close_price * atr_ratio, 4)
                 atr_14_pct = round(atr_ratio * 100, 2)
 
-            entry_20_series = hhv(df["high"], 20).shift(1)
-            exit_10_series = llv(df["low"], 10).shift(1)
-            entry_level_20 = _round_price(entry_20_series.iloc[-1])
-            exit_level_10 = _round_price(exit_10_series.iloc[-1])
+            entry_level_20 = _round_price(_highest_before_latest(history, "high", 20))
+            exit_level_10 = _round_price(_lowest_before_latest(history, "low", 10))
 
             if len(history) >= 56:
-                entry_55_series = hhv(df["high"], 55).shift(1)
-                entry_level_55 = _round_price(entry_55_series.iloc[-1])
+                entry_level_55 = _round_price(_highest_before_latest(history, "high", 55))
             if len(history) >= 21:
-                exit_20_series = llv(df["low"], 20).shift(1)
-                exit_level_20 = _round_price(exit_20_series.iloc[-1])
+                exit_level_20 = _round_price(_lowest_before_latest(history, "low", 20))
 
             breakout_dist_20_pct = _dist_pct(close_price, entry_level_20)
             breakout_dist_55_pct = _dist_pct(close_price, entry_level_55)

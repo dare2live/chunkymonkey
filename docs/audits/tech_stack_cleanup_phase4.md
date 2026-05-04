@@ -51,6 +51,8 @@ Phase 4.2 then started with the standalone neutralization helpers.
 - Fixed zero-target reductions so a fully sold position is removed from the
   open-position state.
 - Added `backend/tests/test_portfolio_backtest.py`.
+- Removed pandas from `backend/services/stock_turtle_engine.py`.
+- Converted turtle ATR/channel calculations to records-native helpers.
 
 ## Validation
 
@@ -145,6 +147,18 @@ python3 -m pytest backend/tests/test_portfolio_backtest.py -q
 
 python3 -m pytest backend/tests/test_portfolio_backtest.py backend/tests/test_neutralize.py backend/tests/test_kline_sources.py backend/tests/test_tdx_source.py backend/tests/test_institution_survey_client.py backend/tests/test_qfii_client.py backend/tests/test_lhb_client.py backend/tests/test_margin_client.py backend/tests/test_xdxr_client.py backend/tests/test_block_client.py -q
 # 67 passed
+
+rg -n "import pandas|from pandas|pd\.|DataFrame" backend/services/stock_turtle_engine.py backend/tests/test_stock_turtle_engine.py -S
+# 0 matches
+
+python3 -m py_compile backend/services/stock_turtle_engine.py backend/tests/test_stock_turtle_engine.py
+# passed
+
+python3 -m pytest backend/tests/test_stock_turtle_engine.py -q
+# 4 passed
+
+python3 -m pytest backend/tests/test_stock_turtle_engine.py backend/tests/test_portfolio_backtest.py backend/tests/test_neutralize.py backend/tests/test_kline_sources.py backend/tests/test_tdx_source.py backend/tests/test_institution_survey_client.py backend/tests/test_qfii_client.py backend/tests/test_lhb_client.py backend/tests/test_margin_client.py backend/tests/test_xdxr_client.py backend/tests/test_block_client.py -q
+# 71 passed
 ```
 
 ## Remaining Phase 4 Targets
@@ -152,6 +166,5 @@ python3 -m pytest backend/tests/test_portfolio_backtest.py backend/tests/test_ne
 - `backend/services/ta_lib.py`
 - `backend/services/screening_engine.py`
 - `backend/services/sector_momentum.py`
-- `backend/services/stock_turtle_engine.py`
 - `backend/services/event_simulator.py`
 - pandas usage in scripts and model/backtest layers.
