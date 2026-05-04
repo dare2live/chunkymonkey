@@ -53,6 +53,10 @@ Phase 4.2 then started with the standalone neutralization helpers.
 - Added `backend/tests/test_portfolio_backtest.py`.
 - Removed pandas from `backend/services/stock_turtle_engine.py`.
 - Converted turtle ATR/channel calculations to records-native helpers.
+- Removed pandas/numpy from `backend/services/event_simulator.py`.
+- Converted event simulation inputs, price panels, position details, and
+  summary statistics to records/native math.
+- Added `backend/tests/test_event_simulator.py`.
 
 ## Validation
 
@@ -159,6 +163,18 @@ python3 -m pytest backend/tests/test_stock_turtle_engine.py -q
 
 python3 -m pytest backend/tests/test_stock_turtle_engine.py backend/tests/test_portfolio_backtest.py backend/tests/test_neutralize.py backend/tests/test_kline_sources.py backend/tests/test_tdx_source.py backend/tests/test_institution_survey_client.py backend/tests/test_qfii_client.py backend/tests/test_lhb_client.py backend/tests/test_margin_client.py backend/tests/test_xdxr_client.py backend/tests/test_block_client.py -q
 # 71 passed
+
+rg -n "pandas|pd\.|DataFrame|numpy|np\." backend/services/event_simulator.py backend/tests/test_event_simulator.py -S
+# 0 matches
+
+python3 -m py_compile backend/services/event_simulator.py backend/tests/test_event_simulator.py
+# passed
+
+python3 -m pytest backend/tests/test_event_simulator.py -q
+# 3 passed
+
+python3 -m pytest backend/tests/test_event_simulator.py backend/tests/test_stock_turtle_engine.py backend/tests/test_portfolio_backtest.py backend/tests/test_neutralize.py backend/tests/test_kline_sources.py backend/tests/test_tdx_source.py backend/tests/test_institution_survey_client.py backend/tests/test_qfii_client.py backend/tests/test_lhb_client.py backend/tests/test_margin_client.py backend/tests/test_xdxr_client.py backend/tests/test_block_client.py -q
+# 74 passed
 ```
 
 ## Remaining Phase 4 Targets
@@ -166,5 +182,4 @@ python3 -m pytest backend/tests/test_stock_turtle_engine.py backend/tests/test_p
 - `backend/services/ta_lib.py`
 - `backend/services/screening_engine.py`
 - `backend/services/sector_momentum.py`
-- `backend/services/event_simulator.py`
 - pandas usage in scripts and model/backtest layers.
