@@ -31,6 +31,9 @@ miaoxiang no longer import them.
 The capability probe loop removed script-side table-specific result
 summarization so records, dicts, lists, and scalar results are handled
 directly.
+The financial-reader loop moved the historical gpcw parser and legacy history
+crawler conversion helpers to records while keeping the old method name as a
+compatibility shim.
 
 ## Current tdxhub Call Map
 
@@ -73,6 +76,8 @@ directly.
   `038dcc1b225236f741a81ba9c8bbc01ab11bf8b1`.
 - Updated ChunkyMonkey's tdxhub pin again to
   `d76527dd62c8d9f3c08fb06ecdcd8d3a130ae4d8`.
+- Updated ChunkyMonkey's tdxhub pin again to
+  `113da7d79bdc255e6e6bea8b724b76f608cba2b3`.
 - Converted the core quote API helpers and capability catalog to records
   output.
 - Converted local day/minute/extended-market bar readers to records output and
@@ -82,6 +87,8 @@ directly.
 - Removed the retired factor/adjust/reversion helpers and their old external
   network tests.
 - Removed the remaining table-specific capability probe summary branch.
+- Converted tdxhub historical financial readers and crawler conversion helpers
+  to records output.
 - Kept the remaining legacy parser modules isolated behind lazy imports for
   later records-native conversion.
 - Switched ChunkyMonkey's holder source and data source adapter to consume
