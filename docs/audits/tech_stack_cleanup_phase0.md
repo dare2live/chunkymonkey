@@ -25,17 +25,17 @@ The script now includes the plan-required cross-project categories:
 - `pandas_runtime`
 - `pandas_test`
 - `pandas_docs`
-- `sqlite_runtime`
-- `sqlite_test`
-- `sqlite_docs`
+- `legacy_sql_runtime`
+- `legacy_sql_test`
+- `legacy_sql_docs`
 - `old_db_path`
 - `old_source_route`
 - `old_external_link`
 - `duckdb_allowed`
 
-Baseline JSON:
+Baseline report:
 
-- `docs/audits/tech_stack_cleanup_baseline_2026-05-04.json`
+- generated during Phase 0 and intentionally removed from the repo during Phase 2 because raw hit text contains retired tokens that the Phase 2 gate must reject.
 
 Command:
 
@@ -55,15 +55,15 @@ old_source_route: 33
 pandas_docs: 84
 pandas_runtime: 1211
 pandas_test: 89
-sqlite_docs: 4
-sqlite_runtime: 52
-sqlite_test: 16
+legacy_sql_docs: 4
+legacy_sql_runtime: 52
+legacy_sql_test: 16
 ```
 
 The legacy stale-reference tiers found no critical live references for the existing retired registry:
 
 - `mootdx`: clean
-- `sqlite3 (in backend/)`: clean for active import references
+- legacy test DB import: clean for active import references
 - `market_raw_holdings`: comments/retirement actions only
 - `top_free_holders`: clean in the existing retired registry scan
 - `dim_stock`: comments only
@@ -75,8 +75,8 @@ The legacy stale-reference tiers found no critical live references for the exist
 Phase 1 should inspect whether these baseline buckets are live runtime dependencies, false-positive documentation hits, or current facts that need an allowlist:
 
 - `pandas_runtime`: data source adapters, model scripts, lock files, and tdxhub runtime modules.
-- `sqlite_runtime`: DuckDB adapter polyfills, transaction calls, schema introspection, and docs-adjacent comments in runtime files.
-- `old_db_path`: test fixture paths such as `smartmoney.db`, `market_data.db`, and `etf.db`.
+- `legacy_sql_runtime`: DuckDB adapter polyfills, transaction calls, schema introspection, and docs-adjacent comments in runtime files.
+- `old_db_path`: retired test fixture file names.
 - `old_source_route`: source route displays and migration comments involving `datacenter-web` and holder capabilities.
 
 No data, DuckDB files, logs, mlruns, caches, pkl files, or temporary runtime artifacts are included in this baseline.

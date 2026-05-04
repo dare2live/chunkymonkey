@@ -357,7 +357,7 @@ def test_sync_gpcw_files_uses_shared_affair_loader(monkeypatch, tmp_path):
         assert "合同负债(万元)" in wide_rows[0]["field_values_json"]
         assert field_row["db_column"] == "contract_liabilities"
         assert field_row["model_candidate"] is True
-        # DuckDB REAL = FLOAT32, 与 sqlite3 REAL=DOUBLE 不同, 故用近似比较.
+        # DuckDB REAL = FLOAT32, 故用近似比较.
         assert rows[0]["stock_code"] == "000001"
         assert rows[0]["report_date"] == "2026-03-31"
         assert rows[0]["eps"] == pytest.approx(1.23, rel=1e-5)

@@ -1,19 +1,9 @@
 """测试公共夹具.
 
-CLAUDE.md 规则 #11: 测试必须用与生产一致的 DB 引擎 (DuckDB), 不准用 sqlite3.
+CLAUDE.md 规则 #11: 测试必须用与生产一致的 DB 引擎。
 本文件提供 ``duck_mem()`` 辅助, 内部走 ``services.duck_adapter.connect(':memory:')``,
-返回的对象 API 完全兼容 sqlite3.Connection 的常用方法 (execute/executemany/
-executescript/cursor/fetchall/fetchone/commit/rollback/close + Row dict 索引).
-
-迁移指南 (sqlite3 → DuckDB):
-- 删 ``import sqlite3``
-- ``sqlite3.connect(':memory:')`` → ``duck_mem()`` (来自本 conftest)
-- 删 ``conn.row_factory = sqlite3.Row`` (DuckConn 默认返回 Row 对象)
-- ``sqlite3.OperationalError`` → ``Exception`` 或具体的 ``duckdb.Error``
-  (大多数测试不应该 catch 这个, 让 DuckDB 真错暴露出来)
-- ``INTEGER PRIMARY KEY AUTOINCREMENT`` → ``INTEGER PRIMARY KEY`` (DuckDB 自增需 SEQUENCE)
-- 时间函数: ``datetime('now')`` → ``CURRENT_TIMESTAMP``;
-            ``julianday(x)`` → ``EXTRACT(EPOCH FROM x) / 86400``
+返回的对象支持 execute/executemany/executescript/cursor/fetchall/fetchone/
+commit/rollback/close + Row dict 索引。新测试不要引入其它内存数据库替身。
 """
 
 from __future__ import annotations
@@ -33,7 +23,7 @@ from services.duck_adapter import connect as _duck_connect, DuckConn  # noqa: E4
 
 
 def duck_mem(*, attach: dict | None = None) -> DuckConn:
-    """返回一个内存 DuckDB 连接, API 兼容旧测试中的 ``sqlite3.connect(':memory:')``."""
+    """返回一个内存 DuckDB 连接。"""
 
     return _duck_connect(":memory:", attach=attach)
 

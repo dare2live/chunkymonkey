@@ -6,16 +6,13 @@
   - conn.execute() / executescript() / executemany()
   - .fetchone() / .fetchall() / .fetchmany()
   - row['col_name']  (dict-like)
-  - PRAGMA 静默吞掉 (DuckDB 不支持部分连接级 PRAGMA)
-  - INTEGER AUTOINCREMENT → 自动转 GENERATED ... IDENTITY (写 DDL 时)
   - ALTER TABLE ADD COLUMN IF NOT EXISTS (try/except 风格继续工作)
 """
 from __future__ import annotations
 
 import logging
-import re
 import threading
-from typing import Any, Iterable, Optional, Sequence
+from typing import Any, Sequence
 
 import duckdb
 
@@ -108,41 +105,6 @@ class DuckCursor:
         return self._cur.description
 
 
-# 旧 DB-API 语法 → DuckDB 改写 / no-op
-_PRAGMA_TABLE_INFO_RE = re.compile(r"^\s*PRAGMA\s+table_info\s*\(\s*([\w_]+)\s*\)\s*;?\s*$", re.IGNORECASE)
-_PRAGMA_RE = re.compile(r"^\s*PRAGMA\s+", re.IGNORECASE)
-# BEGIN IMMEDIATE / DEFERRED / EXCLUSIVE 在 DuckDB 里统一为 BEGIN
-_BEGIN_MODE_RE = re.compile(r"^\s*BEGIN\s+(IMMEDIATE|DEFERRED|EXCLUSIVE)\s*;?\s*$", re.IGNORECASE)
-_AUTOINCREMENT_RE = re.compile(r"\bINTEGER\s+PRIMARY\s+KEY\s+AUTOINCREMENT\b", re.IGNORECASE)
-_AUTOINCREMENT2_RE = re.compile(r"\bAUTOINCREMENT\b", re.IGNORECASE)
-
-
-def _normalize_sql(sql: str) -> Optional[str]:
-    """return None 表示 no-op; 否则返回规范化 SQL.
-    特殊: PRAGMA table_info(x) → SELECT * FROM (DESCRIBE x)"""
-    stripped = sql.lstrip()
-    m = _PRAGMA_TABLE_INFO_RE.match(stripped)
-    if m:
-        tbl = m.group(1)
-        # DuckDB DESCRIBE 返回 column_name/column_type/null/key/default/extra，
-        # 这里转成调用方需要的表结构字段。
-        return (
-            f"SELECT 0 AS cid, column_name AS name, column_type AS type, "
-            f"CASE WHEN \"null\"='YES' THEN 0 ELSE 1 END AS notnull, "
-            f"NULL AS dflt_value, "
-            f"CASE WHEN key='PRI' THEN 1 ELSE 0 END AS pk "
-            f"FROM (DESCRIBE {tbl})"
-        )
-    if _PRAGMA_RE.match(stripped):
-        return None
-    if _BEGIN_MODE_RE.match(stripped):
-        # DuckDB 事务不使用这些模式参数。
-        return "BEGIN TRANSACTION"
-    s = _AUTOINCREMENT_RE.sub("INTEGER PRIMARY KEY", sql)
-    s = _AUTOINCREMENT2_RE.sub("", s)
-    return s
-
-
 class DuckConn:
     """DuckDB 连接包装器。"""
 
@@ -152,7 +114,6 @@ class DuckConn:
         # file-handle conflicts while keeping each request on its own handle.
         with _CONNECT_LOCK:
             self._con = duckdb.connect(db_path, read_only=read_only)
-        self._row_factory = None
         self.in_transaction = False
         # 可选 ATTACH 其它 DuckDB
         if attach:
@@ -163,52 +124,29 @@ class DuckConn:
                 except Exception as e:
                     logger.warning("attach %s failed: %s", alias, e)
 
-    # row_factory setter — 统一返回 Row，这里只保留属性入口。
-    @property
-    def row_factory(self):
-        return self._row_factory
-
-    @row_factory.setter
-    def row_factory(self, v):
-        self._row_factory = v  # 记下但不用
-
     def _exec(self, sql: str, params=None) -> DuckCursor:
-        norm = _normalize_sql(sql)
-        if norm is None:
-            # no-op: 返回空 cursor
-            return DuckCursor(self._con.cursor())
         try:
             if params is None:
-                cur = self._con.execute(norm)
+                cur = self._con.execute(sql)
             else:
                 # DuckDB 兼容 ? 占位符。
-                cur = self._con.execute(norm, params if isinstance(params, (list, tuple)) else (params,))
+                cur = self._con.execute(sql, params if isinstance(params, (list, tuple)) else (params,))
             return DuckCursor(cur)
-        except Exception as e:
+        except Exception:
             # 业务代码通常 try/except 包着, 这里保持 raise。
             raise
 
     def execute(self, sql: str, params=None) -> DuckCursor:
         return self._exec(sql, params)
 
-    def executemany(self, sql: str, seq_of_params) -> DuckCursor:
-        norm = _normalize_sql(sql)
-        if norm is None:
-            return DuckCursor(self._con.cursor())
-        cur = self._con.executemany(norm, seq_of_params)
-        return DuckCursor(cur)
-
     def executescript(self, sql: str) -> None:
         """按 ; 分段执行多条 SQL。"""
-        # 按 ; 分段, 过滤空 + PRAGMA
+        # 按 ; 分段, 过滤空语句。
         for stmt in self._split_statements(sql):
             if not stmt.strip():
                 continue
-            norm = _normalize_sql(stmt)
-            if norm is None:
-                continue
             try:
-                self._con.execute(norm)
+                self._con.execute(stmt)
             except Exception as e:
                 # 容忍重复建表/重复加列一类幂等 DDL。
                 msg = str(e).lower()
@@ -244,13 +182,10 @@ class DuckConn:
         return out
 
     def executemany(self, sql: str, seq_of_params) -> DuckCursor:
-        norm = _normalize_sql(sql)
-        if norm is None:
-            return DuckCursor(self._con.cursor())
         seq = list(seq_of_params)
         if not seq:
             return DuckCursor(self._con.cursor())
-        self._con.executemany(norm, seq)
+        self._con.executemany(sql, seq)
         return DuckCursor(self._con.cursor())
 
     def commit(self):

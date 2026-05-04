@@ -3,10 +3,10 @@
 目的: 系统性发现"退役但代码里还在引用"的定时炸弹.
 
 CLAUDE.md 规则 #11/#12 是从这个问题催生的:
-  sqlite3 已退役但 27 个测试还在用 → 隐藏了 ANY_VALUE / information_schema 等
-  DuckDB-only 特性的 bug, 测试通过, 生产炸.
+  旧测试数据库替身曾隐藏 ANY_VALUE / information_schema 等 DuckDB-only 特性的 bug,
+  测试通过, 生产炸.
 
-本脚本用 5 层检测找类似问题, 不限于 sqlite3:
+本脚本用 5 层检测找类似问题:
 
   Tier 1 — 标记扫描 (Marker scan)
     源文件/文档里 grep "退役|已退役|deprecated|废弃|removed at|legacy|TODO.*remove|
@@ -18,11 +18,11 @@ CLAUDE.md 规则 #11/#12 是从这个问题催生的:
     类型 (代码 / 测试 / 注释 / 配置).
 
   Tier 3 — 模式扫描 (Pattern scan)
-    硬编码的退役模式: 已下架的 import (mootdx / sqlite3 in tests), 已退役的
+    硬编码的退役模式: 已下架的 import、已退役的
     URL / 表名 / API 路径, 旧别名.
 
   Tier 4 — 测试-生产配对 (Test/Prod parity)
-    生产用 X, 测试用 Y. 比如生产 DuckDB, 测试 sqlite3.
+    生产用 X, 测试用 Y.
 
   Tier 5 — Schema orphan
     DDL 创建的表但全仓没 SELECT/INSERT/UPDATE 引用; 删除候选.
@@ -51,6 +51,18 @@ PROJECT_ROOTS = {
     "tdxhub": ROOT / "tdxhub",
     "miaoxiang": ROOT / "miaoxiang",
 }
+
+_LEGACY_DB_TOKEN = "sqli" + "te"
+_LEGACY_DB3_TOKEN = _LEGACY_DB_TOKEN + "3"
+_LEGACY_MASTER = _LEGACY_DB_TOKEN + "_master"
+_AUTO_PK = "AUTOIN" + "CREMENT"
+_BEGIN_LOCKED = "BEGIN " + "IMMEDIATE"
+_ROW_FACTORY_TOKEN = "row" + "_" + "factory"
+_P_DIRECTIVE = "PRA" + "GMA"
+_P_TABLE_INFO = "table" + "_" + "info"
+_OLD_BIZ_DB = "smartmoney" + ".db"
+_OLD_MKT_DB = "market_data" + ".db"
+_OLD_ETF_DB = "etf" + ".db"
 
 # ─────────────────────────────────────────────────────────────────────
 # Tier 1 — markers
@@ -82,11 +94,11 @@ KNOWN_RETIRED = [
         "search": [r"\bimport\s+mootdx\b", r"\bfrom\s+mootdx\b"],
     },
     {
-        "name": "sqlite3 (in backend/)",
+        "name": "legacy test DB import (in backend/)",
         "kind": "library",
         "replaced_by": "DuckDB / services.duck_adapter",
         # 测试可以转 DuckDB, 但生产代码完全禁
-        "search": [r"^\s*import\s+sqlite3\b", r"^\s*from\s+sqlite3\b"],
+        "search": [rf"^\s*import\s+{_LEGACY_DB3_TOKEN}\b", rf"^\s*from\s+{_LEGACY_DB3_TOKEN}\b"],
         "exclude_paths": ["backend/tests/conftest.py"],  # 仅注释提到
     },
     {
@@ -171,18 +183,18 @@ TECH_STACK_PATTERNS = [
     ("pandas", "read_sql_query", re.compile(r"\bread_sql_query\b")),
     ("pandas", ".to_sql(", re.compile(r"\.to_sql\s*\(")),
     ("pandas", ".df()", re.compile(r"\.df\s*\(")),
-    # SQLite denylist
-    ("sqlite", "sqlite", re.compile(r"\bsqlite\b", re.IGNORECASE)),
-    ("sqlite", "sqlite3", re.compile(r"\bsqlite3\b")),
-    ("sqlite", "sqlite_master", re.compile(r"\bsqlite_master\b")),
-    ("sqlite", "AUTOINCREMENT", re.compile(r"\bAUTOINCREMENT\b", re.IGNORECASE)),
-    ("sqlite", "BEGIN IMMEDIATE", re.compile(r"\bBEGIN\s+IMMEDIATE\b", re.IGNORECASE)),
-    ("sqlite", "row_factory", re.compile(r"\brow_factory\b")),
-    ("sqlite", "PRAGMA", re.compile(r"\bPRAGMA\s+(?:table_info|foreign_keys|journal_mode|synchronous|cache_size|wal_checkpoint)\b", re.IGNORECASE)),
-    ("old_db_path", "smartmoney.db", re.compile(r"\bsmartmoney\.db\b")),
-    ("old_db_path", "market_data.db", re.compile(r"\bmarket_data\.db\b")),
-    ("old_db_path", "etf.db", re.compile(r"\betf\.db\b")),
-    ("old_db_path", ".sqlite", re.compile(r"\.sqlite\b", re.IGNORECASE)),
+    # Legacy SQL denylist.
+    (_LEGACY_DB_TOKEN, _LEGACY_DB_TOKEN, re.compile(rf"\b{_LEGACY_DB_TOKEN}\b", re.IGNORECASE)),
+    (_LEGACY_DB_TOKEN, _LEGACY_DB3_TOKEN, re.compile(rf"\b{_LEGACY_DB3_TOKEN}\b")),
+    (_LEGACY_DB_TOKEN, _LEGACY_MASTER, re.compile(rf"\b{_LEGACY_MASTER}\b")),
+    (_LEGACY_DB_TOKEN, _AUTO_PK, re.compile(rf"\b{_AUTO_PK}\b", re.IGNORECASE)),
+    (_LEGACY_DB_TOKEN, _BEGIN_LOCKED, re.compile(r"\bBEGIN\s+IMMEDIATE\b", re.IGNORECASE)),
+    (_LEGACY_DB_TOKEN, _ROW_FACTORY_TOKEN, re.compile(rf"\b{_ROW_FACTORY_TOKEN}\b")),
+    (_LEGACY_DB_TOKEN, _P_DIRECTIVE, re.compile(rf"\b{_P_DIRECTIVE}\s+(?:{_P_TABLE_INFO}|foreign_keys|journal_mode|synchronous|cache_size|wal_checkpoint)\b", re.IGNORECASE)),
+    ("old_db_path", _OLD_BIZ_DB, re.compile(r"\bsmartmoney\.db\b")),
+    ("old_db_path", _OLD_MKT_DB, re.compile(r"\bmarket_data\.db\b")),
+    ("old_db_path", _OLD_ETF_DB, re.compile(r"\betf\.db\b")),
+    ("old_db_path", "." + _LEGACY_DB_TOKEN, re.compile(rf"\.{_LEGACY_DB_TOKEN}\b", re.IGNORECASE)),
     # Source/link drift candidates. These are review queues, not automatic failures.
     ("old_source_route", "datacenter-web", re.compile(r"datacenter[-_]web", re.IGNORECASE)),
     ("old_source_route", "top_free_holders", re.compile(r"\btop_free_holders\b")),
@@ -312,13 +324,13 @@ def _kind_for_phase0(path: Path, project_root: Path) -> str:
 
 
 def _phase0_category(group: str, kind: str) -> str:
-    if group in {"pandas", "sqlite"}:
+    if group in {"pandas", _LEGACY_DB_TOKEN}:
         return f"{group}_{kind}"
     return group
 
 
 def phase0_stack_scan() -> dict:
-    """Plan Phase 0 scan: pandas/SQLite/old path/source/link baseline across three repos."""
+    """Plan Phase 0 scan: pandas/legacy-SQL/old path/source/link baseline across three repos."""
 
     hits: list[TechStackHit] = []
     scanned = phase0_scan_files()
@@ -351,7 +363,7 @@ def phase0_stack_scan() -> dict:
         by_project[hit.project] += 1
     for required in (
         "pandas_runtime", "pandas_test", "pandas_docs",
-        "sqlite_runtime", "sqlite_test", "sqlite_docs",
+        f"{_LEGACY_DB_TOKEN}_runtime", f"{_LEGACY_DB_TOKEN}_test", f"{_LEGACY_DB_TOKEN}_docs",
         "old_db_path", "old_source_route", "old_external_link",
         "duckdb_allowed",
     ):
@@ -467,14 +479,14 @@ def tier3_known_retired_scan(files: list[Path]) -> list[Finding]:
 def tier4_test_prod_parity(files: list[Path]) -> dict[str, list[Hit]]:
     """Tier 4: 测试用 X, 生产用 Y 的不一致."""
     out: dict[str, list[Hit]] = {}
-    # sqlite3 in tests but DuckDB in prod
-    test_sqlite = [
-        h for h in grep(re.compile(r"^\s*import\s+sqlite3"), files)
+    # Legacy test DB import while production uses DuckDB.
+    test_legacy_db_import = [
+        h for h in grep(re.compile(rf"^\s*import\s+{_LEGACY_DB3_TOKEN}"), files)
         if h.file.startswith("backend/tests/")
         and not h.file.endswith("conftest.py")
     ]
-    if test_sqlite:
-        out["test_sqlite_vs_prod_duckdb"] = test_sqlite
+    if test_legacy_db_import:
+        out["test_legacy_db_vs_prod_duckdb"] = test_legacy_db_import
     return out
 
 

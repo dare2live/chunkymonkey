@@ -45,12 +45,10 @@ If no type-checker is configured, state that explicitly instead of claiming succ
 
 11. TEST ENGINE PARITY: 测试必须用与生产一致的 DB 引擎. 本项目生产是 DuckDB,
     测试也必须用 DuckDB (走 `services.duck_adapter.connect(':memory:')` 或
-    `duckdb.connect(':memory:')`). **禁止 import sqlite3** — 它会让 DuckDB-only 的
-    SQL 特性 (ANY_VALUE / information_schema / DROP TABLE IF EXISTS chained /
-    DuckDB UPSERT 语法等) 在测试中静默失败, 在生产中又工作正常, 形成定时炸弹.
-    新写测试默认走内存 DuckDB; 修老测试时顺手把 sqlite3 替换掉.
+    `duckdb.connect(':memory:')`). 不要引入其它内存数据库替身; 它会让
+    DuckDB-only 的 SQL 特性在测试中静默失败, 在生产中又工作正常, 形成定时炸弹.
 
-12. NO SQL DIALECT POLYFILLS: 看到 "在 sqlite3 中找不到这个函数" 这类报错,
+12. NO SQL DIALECT POLYFILLS: 遇到测试数据库不支持生产 SQL 的报错时,
     不要把生产 SQL 改成可移植的 (例如 ANY_VALUE→MAX, EPOCH→strftime).
     要做的是把那条测试切到 DuckDB. 生产引擎的高级特性是优势, 不是包袱;
     为了迁就测试桩降级生产 SQL = 把生产能力给削了.
