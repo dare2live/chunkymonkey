@@ -409,6 +409,14 @@ STEP_SOURCE_DOMAINS = {
     "sync_aif10_financial_history": ("aif10_financial_history", "aif10", 2),
 }
 
+DAILY_NON_CRITICAL_STEPS = {
+    "sync_surveys",
+    "calc_financial_derived",
+    "build_external_attention",
+    "build_stage_features",
+    "calc_stock_scores",
+}
+
 _is_running = False
 _stop_requested = False
 _run_context = None
@@ -436,6 +444,23 @@ def _plan_with_budgets(plan: dict) -> dict:
     out["budgets"] = budgets
     out["estimated_budget_s"] = sum(int(value or 0) for value in budgets.values())
     return out
+
+
+def _critical_daily_plan(plan: dict) -> dict:
+    out = dict(plan or {})
+    steps = list(out.get("steps") or [])
+    removed = [step for step in steps if step in DAILY_NON_CRITICAL_STEPS]
+    out["steps"] = [step for step in steps if step not in DAILY_NON_CRITICAL_STEPS]
+    skip_reasons = dict(out.get("skip_reasons") or {})
+    for step in removed:
+        skip_reasons[step] = "daily critical sync skips non-critical dashboard/research step; run full smart or nightly research"
+    out["skip_reasons"] = skip_reasons
+    if removed:
+        reasons = list(out.get("reason") or [])
+        reasons.append("daily critical_only filtered: " + ", ".join(removed))
+        out["reason"] = reasons
+        out["critical_only_removed_steps"] = removed
+    return _plan_with_budgets(out)
 
 
 def _touch_run_heartbeat(step_id: Optional[str] = None):
@@ -479,6 +504,10 @@ def _set_run_context(mode: str, step_id: Optional[str] = None, step_name: Option
         "started_at": datetime.now().isoformat(),
         "heartbeat_at": datetime.now().isoformat(),
     }
+
+
+def _is_daily_critical_context() -> bool:
+    return bool(_run_context and _run_context.get("critical_only"))
 
 
 def _set_last_noop_context(mode: str, message: str):
@@ -3173,6 +3202,7 @@ async def _step_sync_financial(conn) -> dict:
 
     progress_records = 0
     last_progress = {}
+    daily_critical = _is_daily_critical_context()
 
     def _on_progress(progress: dict):
         nonlocal progress_records, last_progress
@@ -3189,6 +3219,9 @@ async def _step_sync_financial(conn) -> dict:
         conn,
         progress_callback=_on_progress,
         should_stop=_raise_if_stop,
+        include_history=not daily_critical,
+        include_capital=not daily_critical,
+        include_indicator=not daily_critical,
     )
 
     def _sync_gpcw_and_features(worker_conn):
@@ -3216,36 +3249,47 @@ async def _step_sync_financial(conn) -> dict:
             }
         return result
 
-    try:
-        gpcw_result = await _run_blocking_db_task(
-            _sync_gpcw_and_features,
-            timeout=300,
-        )
+    if daily_critical:
         gpcw_progress = {
-            "status": "partial" if gpcw_result.get("errors") else "success",
-            "quarters": 12,
-            "files_synced": int(gpcw_result.get("files_synced") or 0),
-            "rows_upserted": int(gpcw_result.get("rows_upserted") or 0),
-            "wide_rows_upserted": int(gpcw_result.get("wide_rows_upserted") or 0),
-            "skipped_unchanged": int(gpcw_result.get("skipped_unchanged") or 0),
-            "skipped_existing": int(gpcw_result.get("skipped_existing") or 0),
-            "affected_report_dates": list(gpcw_result.get("affected_report_dates") or []),
-            "deleted_slices": dict(gpcw_result.get("deleted_slices") or {}),
-            "manifest_rows_upserted": int(gpcw_result.get("manifest_rows_upserted") or 0),
-            "field_profile": dict(gpcw_result.get("field_profile") or {}),
-            "auto_feature_rebuild": dict(gpcw_result.get("auto_feature_rebuild") or {}),
-            "errors": list(gpcw_result.get("errors") or []),
-        }
-    except Exception as exc:
-        logger.exception("[sync_financial] gpcw history backfill failed")
-        gpcw_progress = {
-            "status": "error",
+            "status": "skipped",
             "quarters": 12,
             "files_synced": 0,
             "rows_upserted": 0,
             "wide_rows_upserted": 0,
-            "errors": [str(exc)],
+            "errors": [],
+            "skip_reason": "daily critical sync skips gpcw history profiling",
         }
+    else:
+        try:
+            gpcw_result = await _run_blocking_db_task(
+                _sync_gpcw_and_features,
+                timeout=300,
+            )
+            gpcw_progress = {
+                "status": "partial" if gpcw_result.get("errors") else "success",
+                "quarters": 12,
+                "files_synced": int(gpcw_result.get("files_synced") or 0),
+                "rows_upserted": int(gpcw_result.get("rows_upserted") or 0),
+                "wide_rows_upserted": int(gpcw_result.get("wide_rows_upserted") or 0),
+                "skipped_unchanged": int(gpcw_result.get("skipped_unchanged") or 0),
+                "skipped_existing": int(gpcw_result.get("skipped_existing") or 0),
+                "affected_report_dates": list(gpcw_result.get("affected_report_dates") or []),
+                "deleted_slices": dict(gpcw_result.get("deleted_slices") or {}),
+                "manifest_rows_upserted": int(gpcw_result.get("manifest_rows_upserted") or 0),
+                "field_profile": dict(gpcw_result.get("field_profile") or {}),
+                "auto_feature_rebuild": dict(gpcw_result.get("auto_feature_rebuild") or {}),
+                "errors": list(gpcw_result.get("errors") or []),
+            }
+        except Exception as exc:
+            logger.exception("[sync_financial] gpcw history backfill failed")
+            gpcw_progress = {
+                "status": "error",
+                "quarters": 12,
+                "files_synced": 0,
+                "rows_upserted": 0,
+                "wide_rows_upserted": 0,
+                "errors": [str(exc)],
+            }
 
     merged_progress = dict(last_progress or {})
     merged_progress["gpcw_history"] = gpcw_progress
@@ -4090,19 +4134,21 @@ async def data_audit(force: bool = False):
 
 
 @router.get("/update/smart-plan", include_in_schema=False)
-async def smart_plan():
+async def smart_plan(critical_only: bool = False):
     """内部运维接口：智能更新计划（不执行，只返回建议）。"""
     from services.audit import build_smart_plan
     conn = get_conn()
     try:
         plan = build_smart_plan(conn)
+        if critical_only:
+            return {"ok": True, "plan": _critical_daily_plan(plan)}
         return {"ok": True, "plan": _plan_with_budgets(plan)}
     finally:
         conn.close()
 
 
 @router.post("/update/smart")
-async def smart_update():
+async def smart_update(critical_only: bool = False):
     """智能更新（先审计再决定跑什么）"""
     global _is_running, _stop_requested
     if _is_running:
@@ -4119,7 +4165,8 @@ async def smart_update():
         # Production cron must not reuse a stale audit snapshot: a cached raw
         # freshness miss can incorrectly expand the daily plan into a long
         # full-source sync.
-        plan = _plan_with_budgets(build_smart_plan(conn_plan, use_cache=False))
+        raw_plan = build_smart_plan(conn_plan, use_cache=False)
+        plan = _critical_daily_plan(raw_plan) if critical_only else _plan_with_budgets(raw_plan)
     finally:
         conn_plan.close()
 
@@ -4136,6 +4183,8 @@ async def smart_update():
             "noop": True,
         }
     _set_run_context("smart", step_ids=steps_to_run)
+    if critical_only and _run_context is not None:
+        _run_context["critical_only"] = True
     conn_init = get_conn(timeout=120)
     try:
         _prime_step_status_rows(
@@ -4161,8 +4210,12 @@ async def smart_update():
             conn.commit()
 
             # 预检连通性 —— 仅 K 线源 precheck，行业源放弃 precheck（sync_industry 自身兜底）
-            conn_status = await check_connectivity()
-            kline_available = conn_status.get("kline_source", False)
+            if "sync_market_data" in steps_to_run:
+                conn_status = await check_connectivity()
+                kline_available = conn_status.get("kline_source", False)
+            else:
+                conn_status = {}
+                kline_available = True
 
             completed = set()
             failed = set()

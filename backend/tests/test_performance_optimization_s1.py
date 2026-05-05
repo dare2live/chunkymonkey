@@ -7,6 +7,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from conftest import duck_mem  # noqa: E402
 from services.ml_lifecycle.drift import (  # noqa: E402
+    _histogram_counts_sql,
     compute_psi_cached,
     ensure_drift_histogram_schema,
 )
@@ -27,7 +28,7 @@ from services.pipeline_lock import (  # noqa: E402
 )
 from services.feature_retention import load_production_keep_features  # noqa: E402
 from services.model_feature_schema import BASE_FEATURE_COLS  # noqa: E402
-from routers.updater import _plan_with_budgets  # noqa: E402
+from routers.updater import _critical_daily_plan, _plan_with_budgets  # noqa: E402
 from scripts.train_multidim_model import resolve_feature_group_from_columns  # noqa: E402
 
 
@@ -46,6 +47,37 @@ def test_compute_psi_cached_exposes_reusable_histogram_state():
     assert psi > 0
     assert len(edges) == len(train_counts) + 1
     assert len(train_counts) == len(recent_counts)
+
+
+def test_histogram_counts_sql_matches_python_bucket_semantics():
+    conn = duck_mem()
+    try:
+        conn.execute("CREATE TABLE feature_panel (date TEXT, f DOUBLE)")
+        conn.executemany(
+            "INSERT INTO feature_panel VALUES (?, ?)",
+            [
+                ("2026-04-01", -1.0),
+                ("2026-04-30", 0.0),
+                ("2026-05-01", 0.5),
+                ("2026-05-02", 1.0),
+                ("2026-05-03", 2.0),
+                ("2026-05-04", 3.0),
+            ],
+        )
+
+        counts, n_recent = _histogram_counts_sql(
+            conn,
+            feature_table="feature_panel",
+            date_col="date",
+            feature="f",
+            edges=[0.0, 1.0, 2.0],
+            recent_window_days=30,
+        )
+
+        assert counts == [2, 2]
+        assert n_recent >= 5
+    finally:
+        conn.close()
 
 
 def test_drift_histogram_schema_can_be_created():
@@ -183,6 +215,19 @@ def test_smart_plan_budget_annotation_is_explicit():
     assert plan["budgets"]["sync_financial"] == 45
     assert plan["budgets"]["build_stage_features"] == 45
     assert plan["estimated_budget_s"] == 90
+
+
+def test_critical_daily_plan_filters_noncritical_dashboard_steps():
+    plan = _critical_daily_plan({
+        "steps": ["sync_financial", "calc_financial_derived", "build_stage_features", "calc_stock_scores"],
+        "reason": ["unit"],
+    })
+
+    assert plan["steps"] == ["sync_financial"]
+    assert plan["budgets"] == {"sync_financial": 45}
+    assert plan["estimated_budget_s"] == 45
+    assert "calc_financial_derived" in plan["critical_only_removed_steps"]
+    assert "calc_stock_scores" in plan["skip_reasons"]
 
 
 def test_pipeline_lock_blocks_active_holder_and_releases_stale_lock():

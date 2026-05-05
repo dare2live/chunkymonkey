@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import logging
 import math
+import re
 from datetime import datetime
 from typing import Iterable, Optional
 
@@ -23,6 +24,7 @@ logger = logging.getLogger("cm-drift")
 
 PSI_OK_THRESHOLD = 0.10
 PSI_WARN_THRESHOLD = 0.25
+IDENT_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 
 
 HISTOGRAM_DDL = """
@@ -98,6 +100,51 @@ def _histogram(values: list[float], edges: list[float]) -> list[int]:
                 counts[idx] += 1
                 break
     return counts
+
+
+def _quote_ident(name: str) -> str:
+    parts = str(name or "").split(".")
+    if not parts or any(not IDENT_RE.match(part) for part in parts):
+        raise ValueError(f"unsafe identifier: {name!r}")
+    return ".".join(f'"{part}"' for part in parts)
+
+
+def _histogram_counts_sql(
+    conn,
+    *,
+    feature_table: str,
+    date_col: str,
+    feature: str,
+    edges: list[float],
+    recent_window_days: int,
+) -> tuple[list[int], int]:
+    if len(edges) < 2:
+        return [], 0
+    table_sql = _quote_ident(feature_table)
+    date_sql = _quote_ident(date_col)
+    feature_sql = _quote_ident(feature)
+    exprs = []
+    params = []
+    for idx in range(len(edges) - 1):
+        op = "<=" if idx == len(edges) - 2 else "<"
+        exprs.append(
+            f"SUM(CASE WHEN {feature_sql} >= ? AND {feature_sql} {op} ? THEN 1 ELSE 0 END) AS b{idx}"
+        )
+        params.extend([float(edges[idx]), float(edges[idx + 1])])
+    cursor = conn.execute(
+        f"""
+        SELECT {', '.join(exprs)}, COUNT(*) AS n_recent
+          FROM {table_sql}
+         WHERE {date_sql} >= strftime(now() - INTERVAL ({recent_window_days}) DAY, '%Y-%m-%d')
+           AND {feature_sql} IS NOT NULL
+        """,
+        params,
+    )
+    row = cursor.fetchone()
+    if not row:
+        return [0 for _ in range(len(edges) - 1)], 0
+    counts = [int(row[f"b{idx}"] or 0) for idx in range(len(edges) - 1)]
+    return counts, int(row["n_recent"] or 0)
 
 
 def ensure_drift_histogram_schema(conn) -> None:
@@ -437,13 +484,14 @@ def compute_feature_drift_with_histogram_cache(
                         counts=train_counts,
                     )
 
-                r_rows = conn.execute(f"""
-                    SELECT {col} FROM {feature_table}
-                     WHERE {date_col} >= strftime(now() - INTERVAL ({recent_window_days}) DAY, '%Y-%m-%d')
-                       AND {col} IS NOT NULL
-                """).fetchall()
-                r_vals = _finite_values([r[0] for r in r_rows])
-                recent_counts = _histogram(r_vals, edges)
+                recent_counts, n_recent = _histogram_counts_sql(
+                    conn,
+                    feature_table=feature_table,
+                    date_col=date_col,
+                    feature=col,
+                    edges=edges,
+                    recent_window_days=recent_window_days,
+                )
                 _write_histogram_rows(
                     conn,
                     model_id=model_id,
@@ -460,7 +508,7 @@ def compute_feature_drift_with_histogram_cache(
                     "feature": col,
                     "psi": psi,
                     "n_train": n_t,
-                    "n_recent": len(r_vals),
+                    "n_recent": n_recent,
                     "severity": severity,
                     "model_id": model_id,
                     "drift_source": "histogram_cache",

@@ -389,3 +389,44 @@ async def test_sync_financial_data_reports_progress_snapshots():
         assert final["snapshot_sync"]["skipped_recent"] == 1
     finally:
         conn.close()
+
+
+@pytest.mark.asyncio
+async def test_sync_financial_data_daily_critical_skips_research_stages():
+    conn = duck_mem()
+    financial_client.ensure_tables(conn)
+    progress = []
+    try:
+        with mock.patch.object(
+            financial_client,
+            "_select_history_candidates",
+            side_effect=AssertionError("daily critical sync should not select history backfill"),
+        ), mock.patch.object(
+            financial_client,
+            "_select_snapshot_candidates",
+            return_value=(["000001"], 5),
+        ), mock.patch.object(
+            financial_client,
+            "_fetch_latest_snapshot_batch",
+            return_value={},
+        ):
+            total = await financial_client.sync_financial_data(
+                conn,
+                stock_codes=["000001"],
+                progress_callback=progress.append,
+                include_history=False,
+                include_capital=False,
+                include_indicator=False,
+                history_batch_limit=0,
+            )
+
+        assert total == 0
+        final = progress[-1]
+        assert final["history_backfill"]["status"] == "skipped"
+        assert final["capital_behavior"]["status"] == "skipped"
+        assert final["financial_indicator"]["status"] == "skipped"
+        assert final["snapshot_sync"]["status"] == "partial"
+        assert final["snapshot_sync"]["failed_codes"] == 1
+        assert final["snapshot_sync"]["skipped_recent"] == 5
+    finally:
+        conn.close()

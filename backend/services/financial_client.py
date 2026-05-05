@@ -1117,6 +1117,11 @@ async def sync_financial_data(
     *,
     progress_callback: Optional[Callable[[dict], None]] = None,
     should_stop=None,
+    include_history: bool = True,
+    include_snapshot: bool = True,
+    include_capital: bool = True,
+    include_indicator: bool = True,
+    history_batch_limit: Optional[int] = None,
 ) -> int:
     """同步最新快照，并增量回填历史财务序列。"""
     ensure_tables(conn)
@@ -1231,8 +1236,16 @@ async def sync_financial_data(
         return await loop.run_in_executor(None, _worker)
 
     now = datetime.now().isoformat()
-    history_batch_limit = _resolve_history_candidate_limit(conn, stock_codes)
-    history_candidates = _select_history_candidates(conn, stock_codes=stock_codes, limit=history_batch_limit)
+    resolved_history_batch_limit = (
+        min(int(history_batch_limit), FIN_HISTORY_BATCH_SIZE)
+        if history_batch_limit is not None
+        else _resolve_history_candidate_limit(conn, stock_codes)
+    )
+    history_candidates = (
+        _select_history_candidates(conn, stock_codes=stock_codes, limit=resolved_history_batch_limit)
+        if include_history and resolved_history_batch_limit > 0
+        else []
+    )
     progress["history_backfill"].update({
         "status": "running" if history_candidates else "skipped",
         "candidate_codes": len(history_candidates),
@@ -1242,7 +1255,8 @@ async def sync_financial_data(
         "failed_codes": 0,
         "rows": 0,
         "target_reports": FIN_HISTORY_FETCH_LIMIT,
-        "batch_limit": history_batch_limit,
+        "batch_limit": resolved_history_batch_limit,
+        "skip_reason": None if include_history else "daily critical sync skips historical backfill",
     })
     _emit_progress()
     history_upserts = 0
@@ -1250,7 +1264,7 @@ async def sync_financial_data(
         _check_stop()
         logger.info(
             f"[财务] 开始回填历史财报: 候选 {len(history_candidates)} 只"
-            f"（批次上限 {history_batch_limit}），目标每只最多 {FIN_HISTORY_FETCH_LIMIT} 期"
+            f"（批次上限 {resolved_history_batch_limit}），目标每只最多 {FIN_HISTORY_FETCH_LIMIT} 期"
         )
         records, states = await loop.run_in_executor(None, _fetch_sina_history_batch, history_candidates)
         _check_stop()
@@ -1273,18 +1287,25 @@ async def sync_financial_data(
             "failed_codes": failed_count,
             "rows": history_upserts,
             "target_reports": FIN_HISTORY_FETCH_LIMIT,
-            "batch_limit": history_batch_limit,
+            "batch_limit": resolved_history_batch_limit,
         })
         _emit_progress()
         logger.info(
             f"[财务] 历史回填完成: {history_upserts} 条记录, 成功 {success_count}, 未满目标 {partial_count}, 失败/空结果 {failed_count}"
         )
     else:
-        logger.info("[财务] 历史财报覆盖已达当前批次目标，无需回填")
+        if include_history:
+            logger.info("[财务] 历史财报覆盖已达当前批次目标，无需回填")
+        else:
+            logger.info("[财务] 每日关键同步跳过历史财报回填")
 
     latest_upserts = 0
     snapshot_now = datetime.now()
-    snapshot_candidates, skipped_recent = _select_snapshot_candidates(conn, stock_codes, snapshot_now)
+    snapshot_candidates, skipped_recent = (
+        _select_snapshot_candidates(conn, stock_codes, snapshot_now)
+        if include_snapshot
+        else ([], 0)
+    )
     progress["snapshot_sync"].update({
         "status": "running" if snapshot_candidates else "skipped",
         "candidate_codes": len(snapshot_candidates),
@@ -1294,6 +1315,7 @@ async def sync_financial_data(
         "rows": 0,
         "skipped_recent": skipped_recent,
         "batch_size": FIN_SNAPSHOT_BATCH_SIZE,
+        "skip_reason": None if include_snapshot else "snapshot sync disabled",
     })
     _emit_progress()
     if snapshot_candidates:
@@ -1419,12 +1441,15 @@ async def sync_financial_data(
         if latest_upserts == 0:
             logger.warning("[财务] 未获取到任何可落库的最新财务快照")
 
+    snapshot_status = _resolve_stage_status(
+        candidates=len(snapshot_candidates),
+        success=latest_upserts,
+        failed=snapshot_failures,
+    )
+    if snapshot_status == "failed" and skipped_recent > 0:
+        snapshot_status = "partial"
     progress["snapshot_sync"].update({
-        "status": _resolve_stage_status(
-            candidates=len(snapshot_candidates),
-            success=latest_upserts,
-            failed=snapshot_failures,
-        ),
+        "status": snapshot_status,
         "candidate_codes": len(snapshot_candidates),
         "done_codes": snapshot_processed,
         "success_codes": latest_upserts,
@@ -1442,43 +1467,57 @@ async def sync_financial_data(
     )
 
     capital_total = 0
-    progress["capital_behavior"]["status"] = "running"
-    _emit_progress()
-    try:
-        _check_stop()
-        from services.capital_client import sync_capital_behavior_data
-        capital_total = await sync_capital_behavior_data(conn, stock_codes=stock_codes)
+    if include_capital:
+        progress["capital_behavior"]["status"] = "running"
+        _emit_progress()
+        try:
+            _check_stop()
+            from services.capital_client import sync_capital_behavior_data
+            capital_total = await sync_capital_behavior_data(conn, stock_codes=stock_codes)
+            progress["capital_behavior"].update({
+                "status": "success",
+                "rows": capital_total,
+            })
+        except Exception as exc:
+            progress["capital_behavior"].update({
+                "status": "failed",
+                "rows": 0,
+                "error": str(exc)[:200],
+            })
+            logger.warning(f"[财务] 资本行为增强同步失败，跳过本轮: {exc}")
+    else:
         progress["capital_behavior"].update({
-            "status": "success",
-            "rows": capital_total,
-        })
-    except Exception as exc:
-        progress["capital_behavior"].update({
-            "status": "failed",
+            "status": "skipped",
             "rows": 0,
-            "error": str(exc)[:200],
+            "skip_reason": "daily critical sync skips capital behavior",
         })
-        logger.warning(f"[财务] 资本行为增强同步失败，跳过本轮: {exc}")
     _emit_progress()
 
     indicator_total = 0
-    progress["financial_indicator"]["status"] = "running"
-    _emit_progress()
-    try:
-        _check_stop()
-        from services.financial_indicator_client import sync_financial_indicator_data
-        indicator_total = await sync_financial_indicator_data(conn, stock_codes=stock_codes)
+    if include_indicator:
+        progress["financial_indicator"]["status"] = "running"
+        _emit_progress()
+        try:
+            _check_stop()
+            from services.financial_indicator_client import sync_financial_indicator_data
+            indicator_total = await sync_financial_indicator_data(conn, stock_codes=stock_codes)
+            progress["financial_indicator"].update({
+                "status": "success",
+                "rows": indicator_total,
+            })
+        except Exception as exc:
+            progress["financial_indicator"].update({
+                "status": "failed",
+                "rows": 0,
+                "error": str(exc)[:200],
+            })
+            logger.warning(f"[财务] 扩展财务指标同步失败，跳过本轮: {exc}")
+    else:
         progress["financial_indicator"].update({
-            "status": "success",
-            "rows": indicator_total,
-        })
-    except Exception as exc:
-        progress["financial_indicator"].update({
-            "status": "failed",
+            "status": "skipped",
             "rows": 0,
-            "error": str(exc)[:200],
+            "skip_reason": "daily critical sync skips extended indicators",
         })
-        logger.warning(f"[财务] 扩展财务指标同步失败，跳过本轮: {exc}")
     _emit_progress()
 
     total = latest_upserts + history_upserts

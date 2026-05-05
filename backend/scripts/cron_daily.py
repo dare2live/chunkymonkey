@@ -234,8 +234,10 @@ def phase_sync(
     api: str,
     timeout_s: int = 3600,
     full_sync: bool = False,
+    critical_sync_only: bool = True,
     stale_heartbeat_s: int = 300,
     stop_grace_s: int = 30,
+    poll_interval_s: float = 5.0,
 ) -> dict:
     """Phase 1: HTTP POST backend update endpoint + 轮询 status 直到 done.
 
@@ -279,6 +281,8 @@ def phase_sync(
         }
 
     trigger_path = "/api/inst/update/all" if full_sync else "/api/inst/update/smart"
+    if not full_sync and critical_sync_only:
+        trigger_path += "?critical_only=true"
 
     # 触发更新
     try:
@@ -305,10 +309,10 @@ def phase_sync(
             last_summary = status
             if not running:
                 break
-            time.sleep(15)
+            time.sleep(max(1.0, poll_interval_s))
         except Exception as exc:
             log.warning(f"[sync] poll failed: {exc} (重试)")
-            time.sleep(30)
+            time.sleep(max(2.0, poll_interval_s * 2))
     else:
         elapsed = time.time() - t0
         stop_result = _request_sync_stop(api, reason=f"cron_daily sync timeout after {elapsed:.0f}s")
@@ -408,14 +412,26 @@ def phase_watermarks() -> dict:
         return {"phase": "watermarks", "status": "failed", "reason": str(exc)}
 
 
-def phase_topk(*, top_k: int, shadow_model_id: str | None = None) -> dict:
+def phase_topk(
+    *,
+    top_k: int,
+    shadow_model_id: str | None = None,
+    include_risk_summary: bool = False,
+) -> dict:
     """Phase 4: 只写 lifecycle champion 到正式推荐; shadow 必须显式传模型."""
     try:
         from scripts.run_daily_topk import main as topk_main
 
         _run_with_clean_argv(
             topk_main,
-            ["run_daily_topk.py", "--top-k", str(top_k), "--track-id", "primary", "--is-primary"],
+            [
+                "run_daily_topk.py",
+                "--top-k", str(top_k),
+                "--track-id", "primary",
+                "--is-primary",
+                "--quiet-preview",
+                *(["--skip-risk-summary"] if not include_risk_summary else []),
+            ],
         )
         shadow_status = "skipped"
         if shadow_model_id:
@@ -427,6 +443,8 @@ def phase_topk(*, top_k: int, shadow_model_id: str | None = None) -> dict:
                     "--mode", "shadow",
                     "--top-k", str(top_k),
                     "--track-id", f"shadow_{shadow_model_id}",
+                    "--quiet-preview",
+                    *(["--skip-risk-summary"] if not include_risk_summary else []),
                 ],
             )
             shadow_status = "ok"
@@ -595,8 +613,11 @@ def main() -> int:
     parser.add_argument("--api", default=DEFAULT_API)
     parser.add_argument("--skip-sync", action="store_true", help="不调 backend update")
     parser.add_argument("--full-sync", action="store_true", help="非每日默认: 调 /update/all 跑完整 DAG")
+    parser.add_argument("--include-non-critical-sync", action="store_true", help="每日 smart sync 也执行 dashboard/research 派生 step")
+    parser.add_argument("--sync-poll-interval", type=float, default=5.0, help="sync status 轮询间隔秒数")
     parser.add_argument("--skip-topk", action="store_true", help="不生成每日推荐")
     parser.add_argument("--top-k", type=int, default=50, help="每日 champion TopK 数量")
+    parser.add_argument("--include-topk-risk-summary", action="store_true", help="每日 TopK 同步刷新风险摘要")
     parser.add_argument("--shadow-model-id", default=None, help="显式影子模型 ID; 不传则不写 shadow TopK")
     parser.add_argument("--only", help="逗号分隔: sync,lineage,watermarks,topk,health,drift,audit")
     parser.add_argument("--strict", action="store_true", help="任一 phase 失败即退出")
@@ -659,15 +680,21 @@ def main() -> int:
                     api=args.api,
                     timeout_s=args.sync_timeout,
                     full_sync=args.full_sync,
+                    critical_sync_only=not args.include_non_critical_sync,
                     stale_heartbeat_s=args.stale_heartbeat_seconds,
                     stop_grace_s=args.stop_grace_seconds,
+                    poll_interval_s=args.sync_poll_interval,
                 )
             elif phase == "lineage":
                 r = phase_lineage()
             elif phase == "watermarks":
                 r = phase_watermarks()
             elif phase == "topk":
-                r = phase_topk(top_k=args.top_k, shadow_model_id=args.shadow_model_id)
+                r = phase_topk(
+                    top_k=args.top_k,
+                    shadow_model_id=args.shadow_model_id,
+                    include_risk_summary=args.include_topk_risk_summary,
+                )
             elif phase == "health":
                 r = phase_health()
             elif phase == "drift":

@@ -394,6 +394,10 @@ def main():
                         help='M8.5: 标记为主推荐轨道, 前端默认展示这一轨')
     parser.add_argument('--include-disabled-models', action='store_true',
                         help='M8.6: 选最新模型时纳入 disabled_by_default=true (alpha158/legacy 110)')
+    parser.add_argument('--skip-risk-summary', action='store_true',
+                        help='跳过 mart_daily_recommendation_risk，用于每日关键链路压缩 TopK SLA')
+    parser.add_argument('--quiet-preview', action='store_true',
+                        help='不输出 Top 20 预览日志')
     args = parser.parse_args()
     run_started_at = utc_now_iso()
     run_t0 = time.perf_counter()
@@ -597,19 +601,23 @@ def main():
     conn.commit()
     timings["view_cache_write_s"] = round(time.perf_counter() - t_cache, 3)
 
-    # M8.5b/c: 算并写 snapshot 级风险摘要 (top20 / top_k 取较小, 默认 20)
-    risk_top_size = min(20, args.top_k)
-    write_risk_summary(
-        conn, duck,
-        snapshot_date=target_date,
-        model_id=model_id,
-        track_id=track_id,
-        is_primary=is_primary,
-        top_size=risk_top_size,
-        built_at=built_at,
-    )
+    if not args.skip_risk_summary:
+        # M8.5b/c: 算并写 snapshot 级风险摘要 (top20 / top_k 取较小, 默认 20)
+        t_risk = time.perf_counter()
+        risk_top_size = min(20, args.top_k)
+        write_risk_summary(
+            conn, duck,
+            snapshot_date=target_date,
+            model_id=model_id,
+            track_id=track_id,
+            is_primary=is_primary,
+            top_size=risk_top_size,
+            built_at=built_at,
+        )
+        timings["risk_summary_s"] = round(time.perf_counter() - t_risk, 3)
     record_actual_version(conn, "mart_daily_recommendation")
-    record_actual_version(conn, "mart_daily_recommendation_risk")
+    if not args.skip_risk_summary:
+        record_actual_version(conn, "mart_daily_recommendation_risk")
     record_actual_version(conn, "mart_daily_topk_view_cache")
     duration_s = time.perf_counter() - run_t0
     timings["total_s"] = round(duration_s, 3)
@@ -633,7 +641,7 @@ def main():
         ],
         output_tables=[
             "mart_daily_recommendation",
-            "mart_daily_recommendation_risk",
+            *([] if args.skip_risk_summary else ["mart_daily_recommendation_risk"]),
             "mart_daily_topk_view_cache",
         ],
         model_id=model_id,
@@ -649,6 +657,7 @@ def main():
             "track_id": track_id,
             "is_primary": is_primary,
             "selection_fallback": selection_fallback,
+            "risk_summary_skipped": bool(args.skip_risk_summary),
             "n_features": len(feature_cols),
             "needs_alpha158": needs_alpha158,
             "alpha158_cols": len(a158_cols),
@@ -656,17 +665,18 @@ def main():
         },
     )
 
-    # 输出 top-20 预览
-    logger.info("=" * 60)
-    logger.info(
-        "Top 20 推荐 (snapshot=%s, regime=%s):",
-        target_date,
-        records[0].get('regime_flag') if records and 'regime_flag' in panel_cols else 'n/a',
-    )
-    for r in output[:20]:
-        logger.info("  [%d] %s  score=%.4f  pct=%.3f  regime=%s",
-                    r['rank_in_date'], r['stock_code'],
-                    r['pred_score'], r['percentile'], r.get('regime_flag') or '-')
+    if not args.quiet_preview:
+        # 输出 top-20 预览
+        logger.info("=" * 60)
+        logger.info(
+            "Top 20 推荐 (snapshot=%s, regime=%s):",
+            target_date,
+            records[0].get('regime_flag') if records and 'regime_flag' in panel_cols else 'n/a',
+        )
+        for r in output[:20]:
+            logger.info("  [%d] %s  score=%.4f  pct=%.3f  regime=%s",
+                        r['rank_in_date'], r['stock_code'],
+                        r['pred_score'], r['percentile'], r.get('regime_flag') or '-')
 
     conn.close()
     logger.info(
