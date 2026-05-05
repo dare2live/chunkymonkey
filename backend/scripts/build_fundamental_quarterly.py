@@ -14,6 +14,7 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import logging
 import os
 import sys
@@ -102,10 +103,117 @@ CREATE INDEX IF NOT EXISTS idx_ffq_code ON fact_fundamental_quarterly(stock_code
 CREATE INDEX IF NOT EXISTS idx_ffq_date ON fact_fundamental_quarterly(report_date);
 """
 
+MANIFEST_DDL = """
+CREATE TABLE IF NOT EXISTS mart_tdx_gpcw_file_manifest (
+    filename          TEXT PRIMARY KEY,
+    report_date       TEXT,
+    source_name       TEXT DEFAULT 'tdxhub_gpcw',
+    source_tier       SMALLINT DEFAULT 1,
+    file_size         BIGINT,
+    file_list_hash    TEXT,
+    download_sha256   TEXT,
+    parser_version    TEXT DEFAULT 'tdxhub_affair_v1',
+    parse_status      TEXT,
+    row_count         INTEGER DEFAULT 0,
+    last_checked_at   TEXT,
+    downloaded_at     TEXT,
+    parsed_at         TEXT,
+    error_message     TEXT,
+    updated_at        TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_tdx_gpcw_manifest_report
+    ON mart_tdx_gpcw_file_manifest(report_date);
+CREATE INDEX IF NOT EXISTS idx_tdx_gpcw_manifest_status
+    ON mart_tdx_gpcw_file_manifest(parse_status);
+"""
+
 
 def build_ddl() -> str:
     extra = ",\n    ".join(f"{v} REAL" for v in CORE_FIELDS.values())
     return DDL.format(extra_cols=extra + ",\n    ")
+
+
+def ensure_manifest_schema(conn) -> None:
+    conn.executescript(MANIFEST_DDL)
+
+
+def _report_date_from_filename(filename: str) -> str:
+    return filename[4:12]
+
+
+def _file_list_hash(filename: str, file_size: int | None) -> str:
+    payload = f"{filename}|{int(file_size or 0)}"
+    return hashlib.sha256(payload.encode("utf-8")).hexdigest()[:16]
+
+
+def _sha256_file(path: str) -> str:
+    h = hashlib.sha256()
+    with open(path, "rb") as fh:
+        for chunk in iter(lambda: fh.read(1024 * 1024), b""):
+            h.update(chunk)
+    return h.hexdigest()
+
+
+def load_manifest(conn) -> dict[str, dict]:
+    ensure_manifest_schema(conn)
+    return {
+        row["filename"]: dict(zip(row.keys(), row))
+        for row in conn.execute("SELECT * FROM mart_tdx_gpcw_file_manifest").fetchall()
+    }
+
+
+def should_process_file(file_info: dict, manifest: dict[str, dict], *, force: bool = False) -> bool:
+    if force:
+        return True
+    filename = file_info["filename"]
+    existing = manifest.get(filename)
+    if not existing:
+        return True
+    return not (
+        existing.get("parse_status") == "success"
+        and existing.get("file_list_hash") == _file_list_hash(filename, file_info.get("filesize"))
+    )
+
+
+def upsert_manifest(
+    conn,
+    *,
+    filename: str,
+    file_size: int | None,
+    file_list_hash: str,
+    parse_status: str,
+    row_count: int = 0,
+    download_sha256: str | None = None,
+    error_message: str | None = None,
+    downloaded_at: str | None = None,
+    parsed_at: str | None = None,
+) -> None:
+    ensure_manifest_schema(conn)
+    now = datetime.utcnow().isoformat()
+    conn.execute(
+        """
+        INSERT OR REPLACE INTO mart_tdx_gpcw_file_manifest (
+            filename, report_date, source_name, source_tier, file_size,
+            file_list_hash, download_sha256, parser_version, parse_status,
+            row_count, last_checked_at, downloaded_at, parsed_at,
+            error_message, updated_at
+        ) VALUES (?, ?, 'tdxhub_gpcw', 1, ?, ?, ?, 'tdxhub_affair_v1', ?, ?, ?, ?, ?, ?, ?)
+        """,
+        (
+            filename,
+            _report_date_from_filename(filename),
+            int(file_size or 0),
+            file_list_hash,
+            download_sha256,
+            parse_status,
+            int(row_count or 0),
+            now,
+            downloaded_at,
+            parsed_at,
+            error_message,
+            now,
+        ),
+    )
 
 
 def _is_missing(value) -> bool:
@@ -170,23 +278,49 @@ def _normalize_quarter_rows(payload, report_date: str) -> list[dict]:
     return rows
 
 
-def parse_one_quarter(tmpdir: str, filename: str) -> list[dict]:
+def parse_one_quarter_with_meta(tmpdir: str, filename: str) -> tuple[list[dict], dict]:
+    meta = {
+        "filename": filename,
+        "download_sha256": None,
+        "bytes_len": 0,
+        "downloaded_at": None,
+        "parsed_at": None,
+        "status": "unknown",
+        "error": None,
+    }
     try:
         Affair.fetch(downdir=tmpdir, filename=filename)
     except Exception as e:
         logger.warning("fetch %s 失败: %s", filename, e)
-        return []
+        meta.update({"status": "fetch_failed", "error": str(e)})
+        return [], meta
     path = os.path.join(tmpdir, filename)
     if not os.path.exists(path) or os.path.getsize(path) < 10_000:  # 占位或空文件
-        return []
+        meta.update({
+            "status": "empty_or_placeholder",
+            "bytes_len": os.path.getsize(path) if os.path.exists(path) else 0,
+        })
+        return [], meta
+    meta["bytes_len"] = os.path.getsize(path)
+    meta["download_sha256"] = _sha256_file(path)
+    meta["downloaded_at"] = datetime.utcnow().isoformat()
     try:
         table = Affair.parse(downdir=tmpdir, filename=filename)
     except Exception as e:
         logger.warning("parse %s 失败: %s", filename, e)
-        return []
-    rows = _normalize_quarter_rows(table, filename[4:12])
+        meta.update({"status": "parse_failed", "error": str(e)})
+        return [], meta
+    rows = _normalize_quarter_rows(table, _report_date_from_filename(filename))
+    meta["parsed_at"] = datetime.utcnow().isoformat()
+    meta["status"] = "success" if rows else "no_rows"
     # 清理
     os.remove(path)
+    meta["row_count"] = len(rows)
+    return rows, meta
+
+
+def parse_one_quarter(tmpdir: str, filename: str) -> list[dict]:
+    rows, _meta = parse_one_quarter_with_meta(tmpdir, filename)
     return rows
 
 
@@ -222,10 +356,13 @@ def main():
                         help='清空 fact_fundamental_quarterly 后重建')
     parser.add_argument('--limit-files', type=int, default=0,
                         help='调试: 只处理前 N 份')
+    parser.add_argument('--force-changed', action='store_true',
+                        help='忽略 mart_tdx_gpcw_file_manifest, 强制重新下载/解析命中的文件')
     args = parser.parse_args()
 
     conn = get_conn()
     conn.executescript(build_ddl())
+    ensure_manifest_schema(conn)
 
     if args.truncate:
         conn.execute("DELETE FROM fact_fundamental_quarterly")
@@ -234,7 +371,9 @@ def main():
 
     files = Affair.files()
     # 只处理 gpcw<YYYYMMDD>.zip, filesize > 100KB (排除占位 164B)
+    manifest = load_manifest(conn)
     queue = []
+    skipped = 0
     for f in files:
         name = f['filename']
         if not name.startswith('gpcw'): continue
@@ -242,11 +381,14 @@ def main():
         date = name[4:12]
         if date < args.start: continue
         if args.end and date > args.end: continue
-        queue.append(name)
-    queue.sort()  # 按日期
+        if should_process_file(f, manifest, force=args.force_changed or args.truncate):
+            queue.append(f)
+        else:
+            skipped += 1
+    queue.sort(key=lambda item: item["filename"])  # 按日期
     if args.limit_files > 0:
         queue = queue[:args.limit_files]
-    logger.info("共 %d 份季报待解析 (>=%s)", len(queue), args.start)
+    logger.info("共 %d 份季报待解析 (>=%s), manifest 跳过 %d 份", len(queue), args.start, skipped)
 
     tmpdir = tempfile.mkdtemp(prefix='tdxhub_ffq_')
     logger.info("tmpdir: %s", tmpdir)
@@ -254,12 +396,39 @@ def main():
     built_at = datetime.utcnow().isoformat()
     t0 = time.time()
     n_total = 0
-    for i, fname in enumerate(queue):
-        rows = parse_one_quarter(tmpdir, fname)
+    for i, item in enumerate(queue):
+        fname = item["filename"]
+        file_size = int(item.get("filesize") or 0)
+        list_hash = _file_list_hash(fname, file_size)
+        rows, meta = parse_one_quarter_with_meta(tmpdir, fname)
         if not rows:
+            upsert_manifest(
+                conn,
+                filename=fname,
+                file_size=file_size,
+                file_list_hash=list_hash,
+                download_sha256=meta.get("download_sha256"),
+                parse_status=meta.get("status") or "no_rows",
+                row_count=0,
+                error_message=meta.get("error"),
+                downloaded_at=meta.get("downloaded_at"),
+                parsed_at=meta.get("parsed_at"),
+            )
+            conn.commit()
             logger.info("%s 无数据或 fetch/parse 失败", fname)
             continue
         inserted = insert_quarter_rows(conn, rows, built_at)
+        upsert_manifest(
+            conn,
+            filename=fname,
+            file_size=file_size,
+            file_list_hash=list_hash,
+            download_sha256=meta.get("download_sha256"),
+            parse_status="success",
+            row_count=inserted,
+            downloaded_at=meta.get("downloaded_at"),
+            parsed_at=meta.get("parsed_at"),
+        )
         n_total += inserted
         logger.info("[%d/%d] %s rows=%d  累计 %d", i + 1, len(queue), fname, inserted, n_total)
         conn.commit()

@@ -65,6 +65,28 @@ def test_parse_one_quarter_normalizes_records_and_dedupes_codes(monkeypatch, tmp
     assert not Path(tmp_path, "gpcw20260331.zip").exists()
 
 
+def test_parse_one_quarter_with_meta_records_download_hash(monkeypatch, tmp_path):
+    class _Affair:
+        @staticmethod
+        def fetch(downdir, filename):
+            Path(downdir, filename).write_bytes(b"x" * 10_001)
+
+        @staticmethod
+        def parse(downdir, filename):
+            return _QuarterTable()
+
+    monkeypatch.setattr(subject, "Affair", _Affair)
+
+    rows, meta = subject.parse_one_quarter_with_meta(str(tmp_path), "gpcw20260331.zip")
+
+    assert len(rows) == 2
+    assert meta["status"] == "success"
+    assert meta["bytes_len"] == 10_001
+    assert len(meta["download_sha256"]) == 64
+    assert meta["row_count"] == 2
+    assert not Path(tmp_path, "gpcw20260331.zip").exists()
+
+
 def test_insert_quarter_rows_upserts_without_table_payload_registration():
     conn = duck_mem()
     try:
@@ -97,5 +119,29 @@ def test_insert_quarter_rows_upserts_without_table_payload_registration():
         assert row["eps_basic"] == pytest.approx(0.6)
         assert row["net_profit_10k"] == pytest.approx(1300.0)
         assert row["built_at"] == "2026-05-05T00:00:00"
+    finally:
+        conn.close()
+
+
+def test_gpcw_manifest_skips_unchanged_successful_files():
+    conn = duck_mem()
+    file_info = {"filename": "gpcw20260331.zip", "filesize": 123456}
+    list_hash = subject._file_list_hash(file_info["filename"], file_info["filesize"])
+    try:
+        subject.ensure_manifest_schema(conn)
+        subject.upsert_manifest(
+            conn,
+            filename=file_info["filename"],
+            file_size=file_info["filesize"],
+            file_list_hash=list_hash,
+            download_sha256="abc",
+            parse_status="success",
+            row_count=2,
+        )
+        manifest = subject.load_manifest(conn)
+
+        assert subject.should_process_file(file_info, manifest) is False
+        assert subject.should_process_file({**file_info, "filesize": 999999}, manifest) is True
+        assert subject.should_process_file(file_info, manifest, force=True) is True
     finally:
         conn.close()

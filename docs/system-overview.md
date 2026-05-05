@@ -171,6 +171,7 @@ akshare               → raw_lhb_daily / raw_executive_trade / raw_margin_daily
 - `mart_data_source_watermark` 按业务域记录主源/兜底源、`source_tier`、最新数据日、fallback 状态和失败计数；数据页直接读取该表展示源健康。
 - `mart_pipeline_run_manifest` 记录训练、walk-forward、TopK、数据健康、source watermark 和 raw replay 的运行耗时、输入输出表、gate/blocker 和性能摘要。
 - `build_price_kline_tdxhub.py --skip-existing` 按每只股票 `MAX(date)` 只写新增交易日，不再因为已有 code 就整只股票跳过。
+- `build_fundamental_quarterly.py` 写 `mart_tdx_gpcw_file_manifest`, 按 `filename/filesize` hash 跳过未变化 gpcw 文件, 并记录下载 sha256、解析状态、行数和错误。
 - `ingest_holders_tdxhub.py --parse-raw-only [--replace-facts]` 可不联网重放 `raw_tdx_f10_holder_research.raw_text`，用于 parser 修复后重建 canonical 股东事实表。
 - `services.duck_adapter.connect(..., timeout=N)` 遇到 DuckDB 文件锁会按 timeout 重试，降低多个批任务同时启动时的锁冲突失败率。
 - 每日生产链路只跑增量数据、水位、champion TopK、健康和 outcome；全历史 Optuna/walk-forward/backtest 留给研究链路。
