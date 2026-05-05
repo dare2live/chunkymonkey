@@ -195,6 +195,24 @@ LINEAGES: list[LineageSpec] = [
         entry_point="scripts.evaluate_tdx_keep_promotion_gate:evaluate_gate",
         schedule="on-demand",
     ),
+    LineageSpec(
+        lineage_id="mart_model_feature_lineage/static_map_v1",
+        output_table="mart_model_feature_lineage",
+        input_tables=["mart_multidim_model"],
+        description="按模型 feature_cols_json 固化每个入模特征的源表/source_tier/可用日期/PIT 要求",
+        owner="scripts.build_model_feature_lineage",
+        entry_point="scripts.build_model_feature_lineage:main",
+        schedule="on-demand",
+    ),
+    LineageSpec(
+        lineage_id="mart_model_holding_topk_eval/holding_grid_v1",
+        output_table="mart_model_holding_topk_eval",
+        input_tables=["mart_multidim_prediction", "fact_feature_panel_candidate", "dim_stock_tdx_industry"],
+        description="按持股周期和 topK 规模评估 RankIC、TopK 超额、换手、行业集中度、回撤和成本后收益",
+        owner="scripts.evaluate_holding_topk",
+        entry_point="scripts.evaluate_holding_topk:main",
+        schedule="on-demand",
+    ),
 
     # ── 推荐 / 模型 ──────────────────────────────────────────────────
     LineageSpec(

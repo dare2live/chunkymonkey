@@ -110,6 +110,7 @@ EXTRA_FRESHNESS_BY_TABLE = {
     "mart_etf_snapshot_latest": ("on-demand", 24 * 30),
     "mart_etf_snapshot_state": ("on-demand", 24 * 30),
     "mart_model_ablation_run": ("on-demand", 24 * 30),
+    "mart_model_feature_lineage": ("on-demand", 24 * 30),
     "mart_model_holding_topk_eval": ("on-demand", 24 * 30),
     "mart_model_portfolio_curve": ("on-demand", 24 * 30),
     "mart_model_walkforward_portfolio_summary": ("on-demand", 24 * 30),

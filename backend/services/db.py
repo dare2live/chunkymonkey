@@ -1096,6 +1096,25 @@ def init_db():
             CREATE INDEX IF NOT EXISTS idx_holding_topk_model
                 ON mart_model_holding_topk_eval(model_id, label_name, top_k);
 
+            CREATE TABLE IF NOT EXISTS mart_model_feature_lineage (
+                model_id TEXT NOT NULL,
+                feature_name TEXT NOT NULL,
+                feature_group TEXT NOT NULL,
+                source_table TEXT NOT NULL,
+                upstream_source TEXT,
+                source_tier SMALLINT,
+                source_date_col TEXT,
+                available_date_col TEXT,
+                parser_version TEXT,
+                pit_required BOOLEAN,
+                lineage_status TEXT NOT NULL,
+                notes TEXT,
+                built_at TEXT NOT NULL,
+                PRIMARY KEY (model_id, feature_name)
+            );
+            CREATE INDEX IF NOT EXISTS idx_model_feature_lineage_model
+                ON mart_model_feature_lineage(model_id, lineage_status);
+
             CREATE TABLE IF NOT EXISTS mart_feature_retention_decision (
                 decision_run_id TEXT NOT NULL,
                 feature_set_id TEXT NOT NULL,

@@ -7,7 +7,8 @@ Objective: implement `../chunkymonkey_goal_plan.md` and move ChunkyMonkey toward
 ## Evidence Snapshot
 
 - Latest commits:
-  - pending: F10 raw-only ingest, source-lineage promotion gate, holding/topK evaluation artifact
+  - pending: feature-level model lineage
+  - `57214aa9 Separate holder raw ingest and add topk gates`
   - `d3f3bb97 Track incremental gpcw file manifest`
   - `03ac923f Cache walkforward matrices and guard lifecycle updates`
   - `aab876e8 Bulk insert training predictions`
@@ -35,7 +36,7 @@ Objective: implement `../chunkymonkey_goal_plan.md` and move ChunkyMonkey toward
 | Phase 1.4 raw wide affected-part rebuild | Current implementation does not yet reprocess only impacted `raw_tdx_gpcw_wide` / auto feature slices | Missing |
 | Phase 1.5 akshare dependency governance | No startup `pip install -U akshare` path found during this pass, but README/env maintenance command not fully audited | Partial |
 | Phase 2 audit coverage | Data health green and PIT scripts pass for TDX F10/GPCW paths | Partial |
-| Phase 2 per-feature lineage/source_tier | Some source_tier/manifest/watermarks exist; every model feature is not yet proven traceable to source_tier | Missing |
+| Phase 2 per-feature lineage/source_tier | `build_model_feature_lineage.py` writes `mart_model_feature_lineage` from `feature_cols_json`; champion run produced 54 feature rows, missing=0, grouped by source_tier | Done |
 | Phase 2 source drift/fallback gate | `evaluate_tdx_keep_promotion_gate.py` now blocks on holder fallback ratio, gpcw manifest source/status, and source watermark fallback/failures | Done |
 | Phase 3.1 train list[dict] removal | `train_multidim_model.py` main uses DuckDB `fetchnumpy()` + `PanelData`; full 3,910,880 row load verified: 8.8s load, 4.1s split/matrix | Done |
 | Phase 3.2 Optuna matrix reuse | Train objective uses prebuilt matrices and LightGBM datasets; timings written to manifest | Done |
@@ -52,7 +53,6 @@ Objective: implement `../chunkymonkey_goal_plan.md` and move ChunkyMonkey toward
 ## Current Blockers To Complete The Plan
 
 1. Extend gpcw incremental rebuild beyond file manifest into impacted raw wide/detail/profile/auto-feature slices.
-2. Prove or add per-feature lineage for every production feature, including `source_tier` and availability dates.
-3. Broaden Phase 5 from model-level holding/topK grid into single-feature keep/drop/watch artifacts across market regimes.
-4. Finish frontend model page audit for gate blockers, backtest, drift, and default stock code/name/link presentation.
-5. Add a centralized DuckDB writer queue/file-lock if concurrent production jobs still contend after connection retry.
+2. Broaden Phase 5 from model-level holding/topK grid into single-feature keep/drop/watch artifacts across market regimes.
+3. Finish frontend model page audit for gate blockers, backtest, drift, and default stock code/name/link presentation.
+4. Add a centralized DuckDB writer queue/file-lock if concurrent production jobs still contend after connection retry.
