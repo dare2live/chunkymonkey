@@ -209,6 +209,7 @@
         <button class="dh-tab-btn" data-dh-tab="clients">写入器 (Tab 2)</button>
         <button class="dh-tab-btn" data-dh-tab="lineage">派生 Pipeline (Tab 3)</button>
         <button class="dh-tab-btn" data-dh-tab="manifest">运行清单</button>
+        <button class="dh-tab-btn" data-dh-tab="performance">性能预算</button>
         <button class="dh-tab-btn" data-dh-tab="drift">特征漂移 (Tab 5)</button>
         <button class="dh-tab-btn" data-dh-tab="cleanup">清理 Backlog (Tab 6)</button>
         <button class="dh-tab-btn" data-dh-tab="models">模型生命周期 (Tab 7)</button>
@@ -310,6 +311,36 @@
             </thead>
             <tbody id="dh-manifest-tbody">
               <tr><td colspan="8" style="padding:30px;text-align:center" class="muted">加载中...</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- 性能预算: manifest-derived budget vs actual -->
+      <div class="dh-tab-panel" id="dh-panel-performance" style="display:none">
+        <div class="panel" style="margin-bottom:10px;padding:12px 14px">
+          <div style="display:flex;gap:14px;align-items:center;flex-wrap:wrap;font-size:12px">
+            <strong>Performance</strong>
+            <span class="muted">daily</span><code id="dh-perf-daily-run">--</code>
+            <span class="muted">benchmark</span><code id="dh-perf-benchmark-run">--</code>
+            <span class="muted">evidence</span><code id="dh-perf-evidence-run">--</code>
+          </div>
+        </div>
+        <div class="panel" style="padding:0;overflow-x:auto;max-height:62vh;overflow-y:auto">
+          <table style="width:100%;border-collapse:collapse;font-size:12px">
+            <thead style="position:sticky;top:0;background:var(--cm-bg,#fff);z-index:1">
+              <tr style="border-bottom:1px solid var(--cm-ink-100,#e2e2e2)">
+                <th style="text-align:left;padding:8px 12px;width:40px"></th>
+                <th style="text-align:left;padding:8px 12px;width:180px">scope</th>
+                <th style="text-align:left;padding:8px 12px">phase / step</th>
+                <th style="text-align:right;padding:8px 12px;width:100px">actual</th>
+                <th style="text-align:right;padding:8px 12px;width:100px">budget</th>
+                <th style="text-align:left;padding:8px 12px;width:120px">status</th>
+                <th style="text-align:left;padding:8px 12px">detail</th>
+              </tr>
+            </thead>
+            <tbody id="dh-performance-tbody">
+              <tr><td colspan="7" style="padding:30px;text-align:center" class="muted">加载中...</td></tr>
             </tbody>
           </table>
         </div>

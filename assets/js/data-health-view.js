@@ -26,6 +26,8 @@
       lineageAt: 0,
       manifest: null,           // /pipeline-manifest (缓存)
       manifestAt: 0,
+      performance: null,        // /performance (缓存)
+      performanceAt: 0,
       drift: null,              // /drift (缓存)
       driftAt: 0,
       models: null,             // /models (缓存)
@@ -293,6 +295,7 @@
         clients:  document.getElementById('dh-panel-clients'),
         lineage:  document.getElementById('dh-panel-lineage'),
         manifest: document.getElementById('dh-panel-manifest'),
+        performance: document.getElementById('dh-panel-performance'),
         drift:    document.getElementById('dh-panel-drift'),
         cleanup:  document.getElementById('dh-panel-cleanup'),
         models:   document.getElementById('dh-panel-models'),
@@ -327,6 +330,13 @@
           this.state.manifest = data;
           this.state.manifestAt = Date.now();
           this.renderManifestTable();
+        });
+      }
+      if (tab === 'performance' && !this.state.performance) {
+        fetch('/api/data_health/performance?limit=80').then((r) => r.json()).then((data) => {
+          this.state.performance = data;
+          this.state.performanceAt = Date.now();
+          this.renderPerformanceTable();
         });
       }
       if (tab === 'drift' && !this.state.drift) {
@@ -542,6 +552,67 @@
           <td style="padding:6px 12px;font-size:11px">${this.esc(r.feature_group || r.label_name || '—')}</td>
           <td style="padding:6px 12px;font-size:11px" class="muted">${this.esc(detail || r.command || '—')}</td>
           <td style="padding:6px 12px;font-size:11px" class="muted">${r.started_at ? this.fmtDateTime(r.started_at) : '—'}</td>
+        </tr>`;
+      }).join('');
+    },
+
+    renderPerformanceTable() {
+      const data = this.state.performance;
+      const tbody = document.getElementById('dh-performance-tbody');
+      if (!tbody || !data) return;
+      const set = (id, v) => { const el = document.getElementById(id); if (el) el.textContent = v || '--'; };
+      set('dh-perf-daily-run', data.latest_daily && data.latest_daily.run_id);
+      set('dh-perf-benchmark-run', data.latest_benchmark && data.latest_benchmark.run_id);
+      set('dh-perf-evidence-run', data.latest_evidence && data.latest_evidence.run_id);
+
+      const rows = [];
+      (data.daily_phases || []).forEach((p) => {
+        rows.push({
+          scope: 'daily',
+          name: p.phase,
+          status: p.over_budget ? 'critical' : (p.status || 'ok'),
+          actual_s: p.actual_s,
+          budget_s: p.budget_s,
+          detail: p.over_budget ? 'over budget' : '',
+        });
+      });
+      (data.benchmark_steps || []).forEach((s) => {
+        rows.push({
+          scope: 'benchmark',
+          name: s.name,
+          status: s.status,
+          actual_s: s.actual_s,
+          budget_s: null,
+          detail: s.kind || '',
+        });
+      });
+      (data.evidence_steps || []).forEach((s) => {
+        rows.push({
+          scope: 'evidence',
+          name: s.name,
+          status: s.status,
+          actual_s: s.actual_s,
+          budget_s: null,
+          detail: s.returncode != null ? `rc=${s.returncode}` : '',
+        });
+      });
+
+      if (rows.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="7" style="padding:30px;text-align:center" class="muted">暂无 performance manifest</td></tr>';
+        return;
+      }
+      tbody.innerHTML = rows.map((r) => {
+        const actual = r.actual_s != null ? `${Number(r.actual_s).toFixed(3)}s` : '—';
+        const budget = r.budget_s != null ? `${Number(r.budget_s).toFixed(1)}s` : '—';
+        const isBad = r.status === 'critical' || r.status === 'failed' || r.status === 'timeout';
+        return `<tr style="border-bottom:1px solid var(--cm-ink-50,#f0f0f0)">
+          <td style="padding:6px 12px">${this.statusDot(r.status)}</td>
+          <td style="padding:6px 12px"><code style="font-size:12px">${this.esc(r.scope)}</code></td>
+          <td style="padding:6px 12px"><code style="font-size:12px">${this.esc(r.name || '—')}</code></td>
+          <td style="padding:6px 12px;text-align:right;font-family:monospace;color:${isBad ? '#c33' : '#333'}">${actual}</td>
+          <td style="padding:6px 12px;text-align:right;font-family:monospace">${budget}</td>
+          <td style="padding:6px 12px">${this.statusPill(r.status || 'unknown', r.status)}</td>
+          <td style="padding:6px 12px;font-size:11px" class="muted">${this.esc(r.detail || '')}</td>
         </tr>`;
       }).join('');
     },

@@ -309,6 +309,114 @@ def get_pipeline_manifest(limit: int = 50) -> dict[str, Any]:
         con.close()
 
 
+PERFORMANCE_BUDGETS_S = {
+    "sync": 60.0,
+    "watermarks": 5.0,
+    "topk": 1.0,
+    "health": 15.0,
+    "drift": 15.0,
+    "audit": 15.0,
+    "train_full": 60.0,
+    "walkforward_2fold": 60.0,
+    "holding_topk": 15.0,
+}
+
+
+def _load_manifest_rows(con, *, limit: int = 80) -> list[dict[str, Any]]:
+    from services.pipeline_manifest import ensure_pipeline_manifest_schema
+
+    ensure_pipeline_manifest_schema(con)
+    rows = con.execute(
+        """
+        SELECT run_id, pipeline_name, status, started_at, ended_at, duration_s,
+               model_id, feature_group, gate_result, blockers_json, perf_summary_json
+          FROM mart_pipeline_run_manifest
+         ORDER BY COALESCE(started_at, created_at) DESC
+         LIMIT ?
+        """,
+        (max(1, min(int(limit), 200)),),
+    ).fetchall()
+    out = []
+    for row in rows:
+        item = dict(row)
+        item["blockers"] = _safe_json(item.pop("blockers_json", None), [])
+        item["perf_summary"] = _safe_json(item.pop("perf_summary_json", None), {})
+        out.append(item)
+    return out
+
+
+def _phase_actual_s(phase: dict[str, Any]) -> float | None:
+    for key in ("phase_elapsed_s", "elapsed_s", "duration_s"):
+        if phase.get(key) is not None:
+            try:
+                return float(phase[key])
+            except Exception:
+                return None
+    return None
+
+
+@router.get("/performance")
+def get_performance_overview(limit: int = 80) -> dict[str, Any]:
+    """Budget vs actual performance summary from mart_pipeline_run_manifest."""
+
+    con = get_conn()
+    try:
+        rows = _load_manifest_rows(con, limit=limit)
+        latest_daily = next((r for r in rows if r["pipeline_name"] == "cron_daily"), None)
+        latest_benchmark = next((r for r in rows if r["pipeline_name"] == "benchmark_model_pipeline"), None)
+        latest_evidence = next((r for r in rows if r["pipeline_name"] == "build_challenger_evidence_bundle"), None)
+
+        phase_rows = []
+        if latest_daily:
+            for phase in (latest_daily.get("perf_summary") or {}).get("phases") or []:
+                name = phase.get("phase") or phase.get("name")
+                actual_s = _phase_actual_s(phase)
+                budget_s = PERFORMANCE_BUDGETS_S.get(str(name))
+                phase_rows.append({
+                    "phase": name,
+                    "status": phase.get("status"),
+                    "actual_s": actual_s,
+                    "budget_s": budget_s,
+                    "over_budget": bool(actual_s is not None and budget_s is not None and actual_s > budget_s),
+                })
+
+        benchmark_steps = []
+        if latest_benchmark:
+            for step in (latest_benchmark.get("perf_summary") or {}).get("steps") or []:
+                actual_s = _phase_actual_s(step)
+                benchmark_steps.append({
+                    "name": step.get("name"),
+                    "kind": step.get("kind"),
+                    "status": step.get("status"),
+                    "actual_s": actual_s,
+                    "command": step.get("command"),
+                })
+
+        evidence_steps = []
+        if latest_evidence:
+            for step in (latest_evidence.get("perf_summary") or {}).get("steps") or []:
+                actual_s = _phase_actual_s(step)
+                evidence_steps.append({
+                    "name": step.get("name"),
+                    "status": step.get("status"),
+                    "actual_s": actual_s,
+                    "returncode": step.get("returncode"),
+                })
+
+        return {
+            "budgets_s": PERFORMANCE_BUDGETS_S,
+            "latest_daily": latest_daily,
+            "daily_phases": phase_rows,
+            "latest_benchmark": latest_benchmark,
+            "benchmark_steps": benchmark_steps,
+            "latest_evidence": latest_evidence,
+            "evidence_steps": evidence_steps,
+            "recent_runs": rows[: min(20, len(rows))],
+        }
+    finally:
+        con.close()
+
+
 @router.get("/source-watermarks")
 def get_source_watermarks(refresh: bool = False) -> dict[str, Any]:
     """Source-domain freshness and fallback state."""
