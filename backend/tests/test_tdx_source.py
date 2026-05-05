@@ -1,5 +1,6 @@
 import sys
 import asyncio
+import json
 from pathlib import Path
 from unittest import mock
 
@@ -13,6 +14,7 @@ import services.akshare_client as akshare_client
 import services.financial_client as financial_client
 import services.tdx_affair_client as tdx_affair_client
 import services.tdx_source as tdx_source
+from scripts.build_tdx_gpcw_auto_features import build_tdx_gpcw_auto_features
 from scripts.profile_tdx_gpcw_fields import profile_tdx_gpcw_fields
 
 
@@ -400,6 +402,115 @@ def test_sync_gpcw_files_uses_shared_affair_loader(monkeypatch, tmp_path):
         conn.close()
 
 
+def test_sync_gpcw_files_skips_unchanged_manifest(monkeypatch, tmp_path):
+    conn = duck_mem()
+    parse_calls = []
+    try:
+        class FakeAffair:
+            @staticmethod
+            def files():
+                return [{"filename": "gpcw20260331.zip", "filesize": 120000}]
+
+            @staticmethod
+            def parse(*, downdir, filename, columns):
+                parse_calls.append(filename)
+                return [
+                    {
+                        "stock_code": "000001",
+                        "report_date": 20260331.0,
+                        "基本每股收益": 1.23,
+                    }
+                ]
+
+        monkeypatch.setattr(tdx_affair_client, "get_tdx_affair_class", lambda: FakeAffair)
+
+        first = tdx_affair_client.sync_gpcw_files(conn, quarters=1, downdir=str(tmp_path))
+        second = tdx_affair_client.sync_gpcw_files(conn, quarters=1, downdir=str(tmp_path))
+        manifest = conn.execute(
+            """
+            SELECT parse_status, row_count, file_list_hash
+            FROM mart_tdx_gpcw_file_manifest
+            WHERE filename = 'gpcw20260331.zip'
+            """
+        ).fetchone()
+
+        assert parse_calls == ["gpcw20260331.zip"]
+        assert first["files_synced"] == 1
+        assert first["affected_report_dates"] == ["2026-03-31"]
+        assert second["files_synced"] == 0
+        assert second["skipped_unchanged"] == 1
+        assert second["manifest_rows_upserted"] == 1
+        assert manifest["parse_status"] == "success"
+        assert manifest["row_count"] == 1
+        assert manifest["file_list_hash"]
+    finally:
+        conn.close()
+
+
+def test_sync_gpcw_files_rebuilds_changed_report_slice(monkeypatch, tmp_path):
+    conn = duck_mem()
+    state = {"filesize": 120000, "eps": 1.0}
+    try:
+        class FakeAffair:
+            @staticmethod
+            def files():
+                return [{"filename": "gpcw20260331.zip", "filesize": state["filesize"]}]
+
+            @staticmethod
+            def parse(*, downdir, filename, columns):
+                return [
+                    {
+                        "stock_code": "000001",
+                        "report_date": 20260331.0,
+                        "基本每股收益": state["eps"],
+                    }
+                ]
+
+        monkeypatch.setattr(tdx_affair_client, "get_tdx_affair_class", lambda: FakeAffair)
+
+        first = tdx_affair_client.sync_gpcw_files(conn, quarters=1, downdir=str(tmp_path))
+        conn.execute(
+            """
+            CREATE TABLE fact_tdx_gpcw_auto_feature_quarterly (
+                feature_set_id TEXT,
+                stock_code TEXT,
+                report_date TEXT,
+                feature_name TEXT,
+                feature_value DOUBLE
+            )
+            """
+        )
+        conn.execute(
+            """
+            INSERT INTO fact_tdx_gpcw_auto_feature_quarterly
+            VALUES ('tdx_gpcw_auto_v1', '000001', '2026-03-31', 'stale_feature', 9.9)
+            """
+        )
+        state["filesize"] = 130000
+        state["eps"] = 9.0
+
+        second = tdx_affair_client.sync_gpcw_files(conn, quarters=1, downdir=str(tmp_path))
+        row = conn.execute(
+            "SELECT stock_code, report_date, eps FROM raw_gpcw_detail"
+        ).fetchone()
+        stale_count = conn.execute(
+            "SELECT COUNT(*) FROM fact_tdx_gpcw_auto_feature_quarterly WHERE report_date = '2026-03-31'"
+        ).fetchone()[0]
+
+        assert first["rows_upserted"] == 1
+        assert second["files_synced"] == 1
+        assert second["affected_report_dates"] == ["2026-03-31"]
+        assert second["deleted_slices"]["raw_gpcw_detail"] == 1
+        assert second["deleted_slices"]["raw_tdx_gpcw_wide"] == 1
+        assert second["deleted_slices"]["fact_tdx_gpcw_auto_feature_quarterly"] == 1
+        assert row["stock_code"] == "000001"
+        assert row["report_date"] == "2026-03-31"
+        assert row["eps"] == pytest.approx(9.0)
+        assert stale_count == 0
+    finally:
+        conn.close()
+
+
 def test_ensure_table_adds_missing_gpcw_columns():
     conn = duck_mem()
     try:
@@ -425,6 +536,32 @@ def test_ensure_table_adds_missing_gpcw_columns():
         assert "contract_liabilities" in columns
         assert "operating_cost" in columns
         assert "operating_cost_single_quarter" in columns
+    finally:
+        conn.close()
+
+
+def test_ensure_table_migrates_existing_gpcw_manifest_schema():
+    conn = duck_mem()
+    try:
+        conn.execute(
+            """
+            CREATE TABLE mart_tdx_gpcw_file_manifest (
+                filename TEXT PRIMARY KEY,
+                parse_status TEXT
+            )
+            """
+        )
+
+        tdx_affair_client._ensure_table(conn)
+        columns = {
+            row[0]
+            for row in conn.execute("DESCRIBE mart_tdx_gpcw_file_manifest").fetchall()
+        }
+
+        assert "report_date" in columns
+        assert "download_sha256" in columns
+        assert "file_list_hash" in columns
+        assert "row_count" in columns
     finally:
         conn.close()
 
@@ -472,5 +609,99 @@ def test_profile_tdx_gpcw_fields_records_candidate_and_rejections():
         assert by_name["合同负债(万元)"]["model_candidate"] is True
         assert by_name["col999"]["model_candidate"] is False
         assert by_name["col999"]["rejection_reason"] == "unnamed_col"
+    finally:
+        conn.close()
+
+
+def test_build_tdx_gpcw_auto_features_partial_rebuilds_report_date_only():
+    conn = duck_mem()
+    try:
+        tdx_affair_client._ensure_table(conn)
+        raw_rows = [
+            ("000001", "2026-03-31", 10.0, 100.0),
+            ("000002", "2026-03-31", 12.0, 120.0),
+            ("000001", "2026-06-30", 20.0, 200.0),
+            ("000002", "2026-06-30", 24.0, 240.0),
+        ]
+        conn.executemany(
+            """
+            INSERT INTO raw_gpcw_detail
+            (stock_code, report_date, contract_liabilities, revenue)
+            VALUES (?, ?, ?, ?)
+            """,
+            raw_rows,
+        )
+        conn.executemany(
+            """
+            INSERT INTO raw_tdx_gpcw_wide
+            (stock_code, report_date, source_file, field_values_json)
+            VALUES (?, ?, ?, ?)
+            """,
+            [
+                (
+                    stock_code,
+                    report_date,
+                    "gpcw_test.zip",
+                    json.dumps(
+                        {"合同负债(万元)": contract_liabilities, "营业收入": revenue},
+                        ensure_ascii=False,
+                    ),
+                )
+                for stock_code, report_date, contract_liabilities, revenue in raw_rows
+            ],
+        )
+        profile_tdx_gpcw_fields(conn, profile_run_id="partial_profile", min_coverage=0.0)
+
+        full = build_tdx_gpcw_auto_features(
+            conn,
+            feature_set_id="test_auto",
+            profile_run_id="partial_profile",
+            max_base_fields=4,
+        )
+        before_0331 = conn.execute(
+            """
+            SELECT COUNT(*) FROM fact_tdx_gpcw_auto_feature_quarterly
+            WHERE feature_set_id = 'test_auto' AND report_date = '2026-03-31'
+            """
+        ).fetchone()[0]
+        conn.execute(
+            """
+            UPDATE raw_gpcw_detail
+            SET contract_liabilities = 200.0
+            WHERE stock_code = '000001' AND report_date = '2026-06-30'
+            """
+        )
+
+        partial = build_tdx_gpcw_auto_features(
+            conn,
+            feature_set_id="test_auto",
+            profile_run_id="partial_profile",
+            max_base_fields=4,
+            report_dates=["20260630"],
+        )
+        after_0331 = conn.execute(
+            """
+            SELECT COUNT(*) FROM fact_tdx_gpcw_auto_feature_quarterly
+            WHERE feature_set_id = 'test_auto' AND report_date = '2026-03-31'
+            """
+        ).fetchone()[0]
+        rebuilt_value = conn.execute(
+            """
+            SELECT feature_value
+            FROM fact_tdx_gpcw_auto_feature_quarterly
+            WHERE feature_set_id = 'test_auto'
+              AND stock_code = '000001'
+              AND report_date = '2026-06-30'
+              AND feature_name = 'auto_contract_liabilities_level'
+            """
+        ).fetchone()[0]
+
+        assert full["rows"] > 0
+        assert before_0331 > 0
+        assert partial["rebuilt_report_dates"] == ["2026-06-30"]
+        assert partial["rebuilt_rows"] > 0
+        assert partial["rebuilt_quarters"] == 1
+        assert after_0331 == before_0331
+        assert rebuilt_value == pytest.approx(200.0)
     finally:
         conn.close()

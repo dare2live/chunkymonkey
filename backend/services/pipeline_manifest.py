@@ -156,6 +156,13 @@ def record_pipeline_run(
         input_row_counts = table_row_counts(conn, input_list)
     if output_row_counts is None and output_list:
         output_row_counts = table_row_counts(conn, output_list)
+    perf_summary_out = dict(perf_summary or {})
+    duckdb_lock_wait_s = float(getattr(conn, "duckdb_lock_wait_s", 0.0) or 0.0)
+    connect_mutex_wait_s = float(getattr(conn, "connect_mutex_wait_s", 0.0) or 0.0)
+    if duckdb_lock_wait_s:
+        perf_summary_out["duckdb_lock_wait_s"] = round(duckdb_lock_wait_s, 6)
+    if connect_mutex_wait_s:
+        perf_summary_out["connect_mutex_wait_s"] = round(connect_mutex_wait_s, 6)
 
     conn.execute(
         """
@@ -188,7 +195,7 @@ def record_pipeline_run(
             holding_period,
             gate_result,
             _json(blockers),
-            _json(perf_summary),
+            _json(perf_summary_out or None),
         ),
     )
     conn.commit()

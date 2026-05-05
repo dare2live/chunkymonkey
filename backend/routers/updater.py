@@ -3105,9 +3105,34 @@ async def _step_sync_financial(conn) -> dict:
         should_stop=_raise_if_stop,
     )
 
+    def _sync_gpcw_and_features(worker_conn):
+        from scripts.profile_tdx_gpcw_fields import profile_tdx_gpcw_fields
+        from scripts.build_tdx_gpcw_auto_features import build_tdx_gpcw_auto_features
+
+        result = sync_gpcw_files(worker_conn, quarters=12)
+        affected_dates = list(result.get("affected_report_dates") or [])
+        if affected_dates:
+            profile = profile_tdx_gpcw_fields(worker_conn)
+            auto_features = build_tdx_gpcw_auto_features(
+                worker_conn,
+                profile_run_id=profile["profile_run_id"],
+                report_dates=affected_dates,
+            )
+            result["field_profile"] = {
+                "profile_run_id": profile["profile_run_id"],
+                "field_count": profile["field_count"],
+                "model_candidate_count": profile["model_candidate_count"],
+            }
+            result["auto_feature_rebuild"] = {
+                "report_dates": auto_features["rebuilt_report_dates"],
+                "rows": auto_features["rebuilt_rows"],
+                "features": auto_features["rebuilt_features"],
+            }
+        return result
+
     try:
         gpcw_result = await _run_blocking_db_task(
-            lambda worker_conn: sync_gpcw_files(worker_conn, quarters=12),
+            _sync_gpcw_and_features,
             timeout=300,
         )
         gpcw_progress = {
@@ -3116,6 +3141,13 @@ async def _step_sync_financial(conn) -> dict:
             "files_synced": int(gpcw_result.get("files_synced") or 0),
             "rows_upserted": int(gpcw_result.get("rows_upserted") or 0),
             "wide_rows_upserted": int(gpcw_result.get("wide_rows_upserted") or 0),
+            "skipped_unchanged": int(gpcw_result.get("skipped_unchanged") or 0),
+            "skipped_existing": int(gpcw_result.get("skipped_existing") or 0),
+            "affected_report_dates": list(gpcw_result.get("affected_report_dates") or []),
+            "deleted_slices": dict(gpcw_result.get("deleted_slices") or {}),
+            "manifest_rows_upserted": int(gpcw_result.get("manifest_rows_upserted") or 0),
+            "field_profile": dict(gpcw_result.get("field_profile") or {}),
+            "auto_feature_rebuild": dict(gpcw_result.get("auto_feature_rebuild") or {}),
             "errors": list(gpcw_result.get("errors") or []),
         }
     except Exception as exc:

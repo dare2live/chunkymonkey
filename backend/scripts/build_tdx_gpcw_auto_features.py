@@ -230,6 +230,30 @@ def _sql_literal(value: Any) -> str:
     return "'" + str(value).replace("'", "''") + "'"
 
 
+def _sql_in(values: list[str]) -> str:
+    return ", ".join(_sql_literal(value) for value in values)
+
+
+def _normalize_report_dates(report_dates: list[str] | tuple[str, ...] | None) -> list[str]:
+    if not report_dates:
+        return []
+    out: list[str] = []
+    seen: set[str] = set()
+    for raw in report_dates:
+        for token in str(raw).split(","):
+            text = token.strip()
+            if not text:
+                continue
+            if len(text) == 8 and text.isdigit():
+                text = f"{text[:4]}-{text[4:6]}-{text[6:8]}"
+            else:
+                text = text[:10].replace("/", "-")
+            if text not in seen:
+                out.append(text)
+                seen.add(text)
+    return out
+
+
 def _available_date_sql(date_expr: str) -> str:
     six = f"lpad(CAST(CAST({date_expr} AS BIGINT) AS VARCHAR), 6, '0')"
     parsed = (
@@ -316,6 +340,7 @@ def build_tdx_gpcw_auto_features(
     feature_set_id: str = AUTO_FEATURE_SET_ID,
     profile_run_id: str | None = None,
     max_base_fields: int = 80,
+    report_dates: list[str] | tuple[str, ...] | None = None,
 ) -> dict[str, Any]:
     ensure_tables(conn)
     semantic = refresh_semantic_dictionary(conn, profile_run_id)
@@ -327,9 +352,42 @@ def build_tdx_gpcw_auto_features(
 
     conn.execute("SET preserve_insertion_order=false")
     conn.execute("SET threads=2")
-    conn.execute("DELETE FROM fact_tdx_gpcw_auto_feature_quarterly WHERE feature_set_id = ?", (feature_set_id,))
+    normalized_report_dates = _normalize_report_dates(report_dates)
+    report_date_filter_sql = (
+        f" AND report_date IN ({_sql_in(normalized_report_dates)})"
+        if normalized_report_dates
+        else ""
+    )
+    if normalized_report_dates:
+        conn.execute(
+            f"""
+            DELETE FROM fact_tdx_gpcw_auto_feature_quarterly
+            WHERE feature_set_id = ?
+              AND report_date IN ({_sql_in(normalized_report_dates)})
+            """,
+            (feature_set_id,),
+        )
+    else:
+        conn.execute("DELETE FROM fact_tdx_gpcw_auto_feature_quarterly WHERE feature_set_id = ?", (feature_set_id,))
     generated: list[str] = []
-    selected_cols = list(dict.fromkeys(str(field["db_column"]) for field in fields))
+    raw_cols = {row[0] for row in conn.execute("DESCRIBE raw_gpcw_detail").fetchall()}
+    special_dependency_cols = [
+        "operating_cashflow",
+        "net_profit",
+        "contract_liabilities",
+        "revenue",
+        "accounts_receivable",
+        "inventory",
+        "forecast_profit_yoy_low",
+        "forecast_profit_yoy_high",
+        "holder_count",
+    ]
+    selected_cols = list(
+        dict.fromkeys(
+            [str(field["db_column"]) for field in fields]
+            + [col for col in special_dependency_cols if col in raw_cols]
+        )
+    )
     temp_cols = []
     for col in selected_cols:
         ident = _quote_ident(col)
@@ -375,6 +433,7 @@ def build_tdx_gpcw_auto_features(
                    {_sql_literal(built_at)} AS built_at
             FROM tmp_gpcw_auto_enriched
             WHERE {source_expr} IS NOT NULL
+            {report_date_filter_sql}
             """
         )
 
@@ -440,22 +499,35 @@ def build_tdx_gpcw_auto_features(
             """
         )
 
-    conn.execute(
-        """
-        DELETE FROM fact_tdx_gpcw_auto_feature_quarterly
-        WHERE feature_set_id = ?
-          AND feature_name IN (
-              SELECT feature_name
-              FROM fact_tdx_gpcw_auto_feature_quarterly
-              WHERE feature_set_id = ?
-              GROUP BY feature_name
-              HAVING COUNT(feature_value) = 0
-                 OR COUNT(DISTINCT feature_value) <= 1
-          )
-        """,
-        (feature_set_id, feature_set_id),
-    )
+    if not normalized_report_dates:
+        conn.execute(
+            """
+            DELETE FROM fact_tdx_gpcw_auto_feature_quarterly
+            WHERE feature_set_id = ?
+              AND feature_name IN (
+                  SELECT feature_name
+                  FROM fact_tdx_gpcw_auto_feature_quarterly
+                  WHERE feature_set_id = ?
+                  GROUP BY feature_name
+                  HAVING COUNT(feature_value) = 0
+                     OR COUNT(DISTINCT feature_value) <= 1
+              )
+            """,
+            (feature_set_id, feature_set_id),
+        )
     conn.commit()
+    rebuilt = conn.execute(
+        f"""
+        SELECT COUNT(*) AS rows,
+               COUNT(DISTINCT feature_name) AS features,
+               COUNT(DISTINCT stock_code) AS stocks,
+               COUNT(DISTINCT report_date) AS quarters
+        FROM fact_tdx_gpcw_auto_feature_quarterly
+        WHERE feature_set_id = ?
+        {report_date_filter_sql}
+        """,
+        (feature_set_id,),
+    ).fetchone()
     summary = conn.execute(
         """
         SELECT COUNT(*) AS rows,
@@ -478,6 +550,11 @@ def build_tdx_gpcw_auto_features(
         "features": summary["features"],
         "stocks": summary["stocks"],
         "quarters": summary["quarters"],
+        "rebuilt_report_dates": normalized_report_dates,
+        "rebuilt_rows": rebuilt["rows"],
+        "rebuilt_features": rebuilt["features"],
+        "rebuilt_stocks": rebuilt["stocks"],
+        "rebuilt_quarters": rebuilt["quarters"],
         "min_available": summary["min_available"],
         "max_available": summary["max_available"],
     }
@@ -488,7 +565,9 @@ def main() -> int:
     parser.add_argument("--feature-set-id", default=AUTO_FEATURE_SET_ID)
     parser.add_argument("--profile-run-id", default=None)
     parser.add_argument("--max-base-fields", type=int, default=60)
+    parser.add_argument("--report-dates", default=None, help="comma-separated YYYY-MM-DD or YYYYMMDD values for partial rebuild")
     args = parser.parse_args()
+    report_dates = args.report_dates.split(",") if args.report_dates else None
     conn = get_conn()
     try:
         result = build_tdx_gpcw_auto_features(
@@ -496,8 +575,11 @@ def main() -> int:
             feature_set_id=args.feature_set_id,
             profile_run_id=args.profile_run_id,
             max_base_fields=args.max_base_fields,
+            report_dates=report_dates,
         )
         logger.info("tdx gpcw auto features: %s", result)
+        if report_dates:
+            return 0 if result["rebuilt_rows"] > 0 and result["rebuilt_features"] > 0 else 1
         return 0 if result["features"] >= 150 else 1
     finally:
         conn.close()

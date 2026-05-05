@@ -63,7 +63,7 @@ mart_*  集市层 (派生, 可重算, 带 schema 版本)
 | `raw_executive_trade` | 高管股份变动 | 144k | akshare (stock_ggcg) |
 | `raw_lhb_daily` | 龙虎榜明细 | 62k | akshare (stock_lhb_detail_em) |
 | `raw_margin_daily` | 两融余额明细 | 2.9M | akshare (stock_margin_detail_szse/sse) |
-| `raw_gpcw_detail` / `raw_gpcw_financial` | 财务报表 | 62k / 17k | akshare (gpcw_*) |
+| `raw_gpcw_detail` / `raw_tdx_gpcw_wide` / `raw_gpcw_financial` | 财务报表 | 62k / 62k / 17k | tdxhub gpcw 主供；akshare 仅兜底/遗留 |
 | `raw_institution_surveys` | 机构调研 | 8.7k | akshare (stock_jgdy_*) |
 | `raw_qfii_holding_quarterly` | QFII 季报持仓 | 7.9k | akshare (qfii_*) |
 | `raw_capital_*` | 分红/解禁/回购 | ~55k | akshare |
@@ -171,9 +171,10 @@ akshare               → raw_lhb_daily / raw_executive_trade / raw_margin_daily
 - `mart_data_source_watermark` 按业务域记录主源/兜底源、`source_tier`、最新数据日、fallback 状态和失败计数；数据页直接读取该表展示源健康。
 - `mart_pipeline_run_manifest` 记录训练、walk-forward、TopK、数据健康、source watermark 和 raw replay 的运行耗时、输入输出表、gate/blocker 和性能摘要。
 - `build_price_kline_tdxhub.py --skip-existing` 按每只股票 `MAX(date)` 只写新增交易日，不再因为已有 code 就整只股票跳过。
-- `build_fundamental_quarterly.py` 写 `mart_tdx_gpcw_file_manifest`, 按 `filename/filesize` hash 跳过未变化 gpcw 文件, 并记录下载 sha256、解析状态、行数和错误。
+- `sync_gpcw_files()` / `build_fundamental_quarterly.py` 写 `mart_tdx_gpcw_file_manifest`, 按 `filename/filesize` hash 跳过未变化 gpcw 文件, 并记录下载 sha256、解析状态、行数和错误；文件变化时只重建受影响报告期的 raw/detail/wide/auto-feature 切片。
 - `ingest_holders_tdxhub.py --parse-raw-only [--replace-facts]` 可不联网重放 `raw_tdx_f10_holder_research.raw_text`，用于 parser 修复后重建 canonical 股东事实表。
-- `services.duck_adapter.connect(..., timeout=N)` 遇到 DuckDB 文件锁会按 timeout 重试，降低多个批任务同时启动时的锁冲突失败率。
+- `services.duck_adapter.connect(..., timeout=N)` 遇到 DuckDB 文件锁会按 timeout 重试，并把 `duckdb_lock_wait_s` / `connect_mutex_wait_s` 写入 pipeline manifest 性能摘要。
+- `start.command` 启动时只检查 akshare 本地版本；升级改为手动维护命令 `scripts/upgrade_akshare.sh`，避免生产启动被 pip/外网阻塞。
 - 每日生产链路只跑增量数据、水位、champion TopK、健康和 outcome；全历史 Optuna/walk-forward/backtest 留给研究链路。
 
 ---

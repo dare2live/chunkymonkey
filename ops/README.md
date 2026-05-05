@@ -14,6 +14,7 @@
 
 1. **backend 必须常驻**: `cd backend && python3 -m uvicorn main:app --port 8000` 已运行 (建议另起 launchd 守护; 本目录暂不管)
 2. **PYTHON 路径**: 默认用 `python3` (PATH 中). 如需改, 编辑 `run_daily.sh` 顶部 `PYTHON_BIN`
+3. **akshare 维护**: 启动脚本只检查本地 akshare 版本，不会自动联网升级。需要维护升级时在项目根目录手动运行 `./scripts/upgrade_akshare.sh`。
 
 ## 安装
 

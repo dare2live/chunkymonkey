@@ -113,8 +113,14 @@ class DuckConn:
         # FastAPI opens short-lived DuckDB connections from multiple worker
         # threads. Serializing connection creation avoids transient unique
         # file-handle conflicts while keeping each request on its own handle.
+        mutex_start = time.monotonic()
         with _CONNECT_LOCK:
-            self._con = self._connect_with_retry(db_path, read_only=read_only, timeout=timeout)
+            self.connect_mutex_wait_s = round(time.monotonic() - mutex_start, 6)
+            self._con, self.duckdb_lock_wait_s = self._connect_with_retry(
+                db_path,
+                read_only=read_only,
+                timeout=timeout,
+            )
         self.in_transaction = False
         # 可选 ATTACH 其它 DuckDB
         if attach:
@@ -129,9 +135,10 @@ class DuckConn:
     def _connect_with_retry(db_path: str, *, read_only: bool, timeout: int):
         deadline = time.monotonic() + max(float(timeout), 0.0)
         delay = 0.1
+        lock_wait_s = 0.0
         while True:
             try:
-                return duckdb.connect(db_path, read_only=read_only)
+                return duckdb.connect(db_path, read_only=read_only), round(lock_wait_s, 6)
             except duckdb.IOException as exc:
                 message = str(exc)
                 lock_conflict = "Could not set lock on file" in message or "Conflicting lock" in message
@@ -142,6 +149,7 @@ class DuckConn:
                     raise
                 logger.info("DuckDB busy, retrying connection in %.1fs: %s", sleep_s, db_path)
                 time.sleep(sleep_s)
+                lock_wait_s += sleep_s
                 delay = min(delay * 1.5, 1.0)
 
     def _exec(self, sql: str, params=None) -> DuckCursor:

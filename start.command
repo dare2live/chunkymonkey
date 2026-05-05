@@ -71,12 +71,10 @@ cd "$BACKEND_DIR"
 stop_project_server
 check_port_conflict
 
-# ---- akshare 启动前依赖检查 / 升级 ----
-# 默认会尝试升级，但失败不阻塞服务启动；失败摘要必须显示，不能静默隐藏。
-# 跳过升级: CM_SKIP_UPGRADE=1 ./start.command
-# 让升级失败阻塞启动: CM_AKSHARE_UPGRADE_STRICT=1 ./start.command
-if [[ "${CM_SKIP_UPGRADE:-0}" == "1" ]]; then
-  current_v="$(python3 - <<'PY' 2>/dev/null || true
+# ---- akshare 启动前依赖检查 ----
+# 生产启动只检查本地版本，不在启动链路执行 pip install/upgrade。
+# 手动维护升级请运行: ./scripts/upgrade_akshare.sh
+current_v="$(python3 - <<'PY' 2>/dev/null || true
 try:
     import akshare as ak
     print(getattr(ak, "__version__", "unknown"))
@@ -84,40 +82,11 @@ except Exception:
     print("")
 PY
 )"
-  echo "akshare: 跳过升级检查 (CM_SKIP_UPGRADE=1), 本地版本 v${current_v:-unknown}"
+if [[ -n "$current_v" ]]; then
+  echo "akshare: 本地版本 v${current_v}"
 else
-  echo "akshare: 启动前检查并尝试升级 (跳过: CM_SKIP_UPGRADE=1; 失败阻塞: CM_AKSHARE_UPGRADE_STRICT=1)"
-  if command -v pip3 >/dev/null 2>&1; then
-    old_v="$(pip3 show akshare 2>/dev/null | awk '/^Version:/ {print $2}')"
-    upgrade_log="$(mktemp -t cm-akshare-upgrade.XXXXXX)"
-    if pip3 install --upgrade akshare --quiet --upgrade-strategy only-if-needed --timeout 20 >"$upgrade_log" 2>&1; then
-      new_v="$(pip3 show akshare 2>/dev/null | awk '/^Version:/ {print $2}')"
-      if [[ -z "$old_v" ]]; then
-        echo "  → akshare 首次安装完成 (v${new_v:-unknown})"
-      elif [[ "$old_v" != "$new_v" ]]; then
-        echo "  → akshare 已自动升级: v${old_v} → v${new_v}"
-      else
-        echo "  → akshare 已是最新版 (v${new_v}), 无需升级"
-      fi
-    else
-      echo "  → akshare 升级失败 (网络/超时/pip 异常), 沿用本地版本 v${old_v:-unknown}"
-      echo "    pip 输出摘要:"
-      sed -n '1,12p' "$upgrade_log" | sed 's/^/    /'
-      rm -f "$upgrade_log"
-      if [[ "${CM_AKSHARE_UPGRADE_STRICT:-0}" == "1" ]]; then
-        echo "  → CM_AKSHARE_UPGRADE_STRICT=1, 终止启动"
-        exit 1
-      fi
-      upgrade_log=""
-    fi
-    [[ -n "${upgrade_log:-}" ]] && rm -f "$upgrade_log"
-  else
-    echo "  → pip3 未安装, 无法执行 akshare 升级检查"
-    if [[ "${CM_AKSHARE_UPGRADE_STRICT:-0}" == "1" ]]; then
-      echo "  → CM_AKSHARE_UPGRADE_STRICT=1, 终止启动"
-      exit 1
-    fi
-  fi
+  echo "akshare: 未安装或无法导入；TDX 主链路可启动，akshare 兜底接口会不可用。"
+  echo "          如需维护升级，请运行 ./scripts/upgrade_akshare.sh"
 fi
 
 echo "========================================"

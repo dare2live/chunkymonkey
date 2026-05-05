@@ -10,10 +10,14 @@ tdx_affair_client.py — 通达信 gpcw 财务文件同步
 其他模块（holdings.py、scoring.py）只读取 raw_gpcw_detail 表。
 """
 
+from __future__ import annotations
+
 import logging
 import os
 import tempfile
 import json
+import hashlib
+from datetime import datetime
 from typing import Any, Optional
 
 from services.tdx_source import get_tdx_affair_class
@@ -139,6 +143,65 @@ _DB_COLUMNS = ["stock_code TEXT NOT NULL", "report_date TEXT NOT NULL"] + \
               [f"{column} REAL" for column in _NUMERIC_DB_COLUMNS] + \
               ["ingested_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP"]
 
+GPCW_MANIFEST_TABLE_DDL = """
+CREATE TABLE IF NOT EXISTS mart_tdx_gpcw_file_manifest (
+    filename          TEXT PRIMARY KEY,
+    report_date       TEXT,
+    source_name       TEXT DEFAULT 'tdxhub_gpcw',
+    source_tier       SMALLINT DEFAULT 1,
+    file_size         BIGINT,
+    file_list_hash    TEXT,
+    download_sha256   TEXT,
+    parser_version    TEXT DEFAULT 'tdxhub_gpcw_v1',
+    parse_status      TEXT,
+    row_count         INTEGER DEFAULT 0,
+    last_checked_at   TEXT,
+    downloaded_at     TEXT,
+    parsed_at         TEXT,
+    error_message     TEXT,
+    updated_at        TEXT
+);
+"""
+
+GPCW_MANIFEST_INDEX_DDL = """
+CREATE INDEX IF NOT EXISTS idx_tdx_gpcw_manifest_report
+    ON mart_tdx_gpcw_file_manifest(report_date);
+CREATE INDEX IF NOT EXISTS idx_tdx_gpcw_manifest_status
+    ON mart_tdx_gpcw_file_manifest(parse_status);
+"""
+
+GPCW_MANIFEST_DDL = f"{GPCW_MANIFEST_TABLE_DDL}\n{GPCW_MANIFEST_INDEX_DDL}"
+
+_GPCW_MANIFEST_COLUMNS = {
+    "filename": "TEXT",
+    "report_date": "TEXT",
+    "source_name": "TEXT DEFAULT 'tdxhub_gpcw'",
+    "source_tier": "SMALLINT DEFAULT 1",
+    "file_size": "BIGINT",
+    "file_list_hash": "TEXT",
+    "download_sha256": "TEXT",
+    "parser_version": "TEXT DEFAULT 'tdxhub_gpcw_v1'",
+    "parse_status": "TEXT",
+    "row_count": "INTEGER DEFAULT 0",
+    "last_checked_at": "TEXT",
+    "downloaded_at": "TEXT",
+    "parsed_at": "TEXT",
+    "error_message": "TEXT",
+    "updated_at": "TEXT",
+}
+
+
+def _ensure_gpcw_manifest_schema(conn: Any) -> None:
+    conn.executescript(GPCW_MANIFEST_TABLE_DDL)
+    existing = {
+        row["column_name"] if hasattr(row, "keys") else row[0]
+        for row in conn.execute("DESCRIBE mart_tdx_gpcw_file_manifest").fetchall()
+    }
+    for col, ddl in _GPCW_MANIFEST_COLUMNS.items():
+        if col not in existing:
+            conn.execute(f"ALTER TABLE mart_tdx_gpcw_file_manifest ADD COLUMN {col} {ddl}")
+    conn.executescript(GPCW_MANIFEST_INDEX_DDL)
+
 
 def _ensure_table(conn: Any):
     cols_sql = ",\n    ".join(_DB_COLUMNS)
@@ -192,7 +255,111 @@ def _ensure_table(conn: Any):
         )
     """)
     _upsert_gpcw_field_dict(conn)
+    _ensure_gpcw_manifest_schema(conn)
     conn.commit()
+
+
+def _file_list_hash(filename: str, file_size: int | None) -> str:
+    payload = f"{filename}|{int(file_size or 0)}"
+    return hashlib.sha256(payload.encode("utf-8")).hexdigest()[:16]
+
+
+def _report_date_from_filename(filename: str) -> Optional[str]:
+    date_part = filename.replace("gpcw", "").replace(".zip", "").replace(".dat", "")
+    if len(date_part) != 8 or not date_part.isdigit():
+        return None
+    return f"{date_part[:4]}-{date_part[4:6]}-{date_part[6:8]}"
+
+
+def _load_gpcw_manifest(conn: Any) -> dict[str, dict[str, Any]]:
+    _ensure_gpcw_manifest_schema(conn)
+    return {
+        row["filename"]: {key: row[key] for key in row.keys()}
+        for row in conn.execute("SELECT * FROM mart_tdx_gpcw_file_manifest").fetchall()
+    }
+
+
+def _manifest_is_current(file_info: dict[str, Any], existing: dict[str, Any] | None) -> bool:
+    if not existing:
+        return False
+    return (
+        existing.get("parse_status") in {"success", "skipped_existing"}
+        and existing.get("file_list_hash") == _file_list_hash(file_info["filename"], file_info.get("filesize"))
+    )
+
+
+def _upsert_gpcw_manifest(
+    conn: Any,
+    *,
+    filename: str,
+    file_size: int | None,
+    parse_status: str,
+    row_count: int = 0,
+    error_message: str | None = None,
+    parsed_at: str | None = None,
+) -> None:
+    _ensure_gpcw_manifest_schema(conn)
+    existing = conn.execute(
+        """
+        SELECT download_sha256, downloaded_at, parsed_at
+        FROM mart_tdx_gpcw_file_manifest
+        WHERE filename = ?
+        """,
+        (filename,),
+    ).fetchone()
+    now = datetime.utcnow().isoformat(timespec="seconds")
+    conn.execute(
+        """
+        INSERT OR REPLACE INTO mart_tdx_gpcw_file_manifest (
+            filename, report_date, source_name, source_tier, file_size,
+            file_list_hash, download_sha256, parser_version, parse_status, row_count,
+            last_checked_at, downloaded_at, parsed_at, error_message, updated_at
+        ) VALUES (?, ?, 'tdxhub_gpcw', 1, ?, ?, ?, 'tdxhub_gpcw_v1', ?, ?, ?, ?, ?, ?, ?)
+        """,
+        (
+            filename,
+            _report_date_from_filename(filename),
+            int(file_size or 0),
+            _file_list_hash(filename, file_size),
+            existing["download_sha256"] if existing else None,
+            parse_status,
+            int(row_count or 0),
+            now,
+            existing["downloaded_at"] if existing else None,
+            parsed_at if parsed_at is not None else (existing["parsed_at"] if existing else None),
+            error_message,
+            now,
+        ),
+    )
+
+
+def _count_raw_gpcw_rows(conn: Any, report_date: str | None) -> int:
+    if not report_date:
+        return 0
+    return int(
+        conn.execute(
+            "SELECT COUNT(*) FROM raw_gpcw_detail WHERE report_date = ?",
+            (report_date,),
+        ).fetchone()[0]
+        or 0
+    )
+
+
+def _delete_impacted_gpcw_slices(conn: Any, report_date: str | None) -> dict[str, int]:
+    if not report_date:
+        return {}
+    deleted: dict[str, int] = {}
+    for table in ("raw_gpcw_detail", "raw_tdx_gpcw_wide", "fact_tdx_gpcw_auto_feature_quarterly"):
+        exists = conn.execute(
+            "SELECT COUNT(*) FROM information_schema.tables WHERE table_name = ?",
+            (table,),
+        ).fetchone()[0]
+        if not exists:
+            continue
+        count = int(conn.execute(f"SELECT COUNT(*) FROM {table} WHERE report_date = ?", (report_date,)).fetchone()[0] or 0)
+        conn.execute(f"DELETE FROM {table} WHERE report_date = ?", (report_date,))
+        deleted[table] = count
+    return deleted
 
 
 def _normalize_report_date(val) -> Optional[str]:
@@ -544,6 +711,7 @@ def sync_gpcw_files(
     else:
         logger.info("[gpcw] force_resync=True：将重新下载所有目标季度文件")
 
+    manifest = _load_gpcw_manifest(conn)
     db_col_names = ["stock_code", "report_date"] + list(_NUMERIC_DB_COLUMNS)
     placeholders = ",".join(["?"] * len(db_col_names))
     col_list = ",".join(db_col_names)
@@ -552,16 +720,54 @@ def sync_gpcw_files(
         VALUES ({placeholders})
     """
 
-    result = {"files_synced": 0, "rows_upserted": 0, "wide_rows_upserted": 0, "errors": []}
+    result = {
+        "files_synced": 0,
+        "rows_upserted": 0,
+        "wide_rows_upserted": 0,
+        "skipped_unchanged": 0,
+        "skipped_existing": 0,
+        "affected_report_dates": [],
+        "deleted_slices": {},
+        "manifest_rows_upserted": 0,
+        "errors": [],
+    }
+    affected_report_dates: set[str] = set()
 
     for file_info in target_files:
         filename = file_info["filename"]
-        # 从文件名推断 report_date: gpcw20250930.zip → 2025-09-30
-        date_part = filename.replace("gpcw", "").replace(".zip", "").replace(".dat", "")
-        report_date = f"{date_part[:4]}-{date_part[4:6]}-{date_part[6:8]}" if len(date_part) == 8 else None
+        file_size = file_info.get("filesize")
+        report_date = _report_date_from_filename(filename)
+        existing_manifest = manifest.get(filename)
 
-        if report_date and report_date in existing_dates:
-            logger.info(f"[gpcw] {filename} (report_date={report_date}) 已存在，跳过")
+        if not force_resync and _manifest_is_current(file_info, existing_manifest):
+            row_count = int(existing_manifest.get("row_count") or 0)
+            _upsert_gpcw_manifest(
+                conn,
+                filename=filename,
+                file_size=file_size,
+                parse_status=str(existing_manifest.get("parse_status") or "success"),
+                row_count=row_count,
+                parsed_at=existing_manifest.get("parsed_at"),
+            )
+            conn.commit()
+            result["skipped_unchanged"] += 1
+            result["manifest_rows_upserted"] += 1
+            logger.info(f"[gpcw] {filename} manifest 未变化，跳过解析")
+            continue
+
+        if not force_resync and not existing_manifest and report_date and report_date in existing_dates:
+            row_count = _count_raw_gpcw_rows(conn, report_date)
+            _upsert_gpcw_manifest(
+                conn,
+                filename=filename,
+                file_size=file_size,
+                parse_status="skipped_existing",
+                row_count=row_count,
+            )
+            conn.commit()
+            result["skipped_existing"] += 1
+            result["manifest_rows_upserted"] += 1
+            logger.info(f"[gpcw] {filename} (report_date={report_date}) raw 已存在，补写 manifest 后跳过")
             continue
 
         try:
@@ -575,32 +781,104 @@ def sync_gpcw_files(
             row_items = _gpcw_row_items_from_payload(payload)
             if not row_items:
                 logger.warning(f"[gpcw] {filename} 解析为空")
+                _upsert_gpcw_manifest(
+                    conn,
+                    filename=filename,
+                    file_size=file_size,
+                    parse_status="empty",
+                    row_count=0,
+                    error_message="parse returned no rows",
+                )
+                conn.commit()
+                result["manifest_rows_upserted"] += 1
                 result["errors"].append(f"{filename}: empty")
                 continue
 
             rows_batch = []
             for code, row in row_items:
                 rd = _normalize_report_date(row.get("report_date")) or report_date
+                if not rd:
+                    continue
                 values = [str(code), rd]
                 for source_names in _FIELD_ALIASES_BY_DB_COLUMN.values():
                     values.append(_pick_first_numeric_value(row, source_names))
                 rows_batch.append(tuple(values))
 
-            conn.executemany(upsert_sql, rows_batch)
-            if persist_wide:
-                result["wide_rows_upserted"] += _insert_wide_rows(
-                    conn, row_items, filename, report_date
+            if not rows_batch:
+                logger.warning(f"[gpcw] {filename} 无有效 report_date 行")
+                _upsert_gpcw_manifest(
+                    conn,
+                    filename=filename,
+                    file_size=file_size,
+                    parse_status="empty",
+                    row_count=0,
+                    error_message="no rows with valid report_date",
                 )
-            conn.commit()
+                conn.commit()
+                result["manifest_rows_upserted"] += 1
+                result["errors"].append(f"{filename}: no rows with valid report_date")
+                continue
+
+            impacted_dates = sorted({str(row[1]) for row in rows_batch if row[1]})
+            transaction_open = False
+            deleted_slices: dict[str, int] = {}
+            wide_rows_upserted = 0
+            try:
+                conn.execute("BEGIN TRANSACTION")
+                transaction_open = True
+                for impacted_date in impacted_dates:
+                    deleted = _delete_impacted_gpcw_slices(conn, impacted_date)
+                    for table, count in deleted.items():
+                        deleted_slices[table] = deleted_slices.get(table, 0) + count
+
+                conn.executemany(upsert_sql, rows_batch)
+                if persist_wide:
+                    wide_rows_upserted = _insert_wide_rows(
+                        conn, row_items, filename, report_date
+                    )
+                _upsert_gpcw_manifest(
+                    conn,
+                    filename=filename,
+                    file_size=file_size,
+                    parse_status="success",
+                    row_count=len(rows_batch),
+                    parsed_at=datetime.utcnow().isoformat(timespec="seconds"),
+                )
+                conn.commit()
+                transaction_open = False
+            except Exception:
+                if transaction_open:
+                    conn.rollback()
+                raise
+
+            for table, count in deleted_slices.items():
+                result["deleted_slices"][table] = result["deleted_slices"].get(table, 0) + count
+            result["wide_rows_upserted"] += wide_rows_upserted
 
             result["files_synced"] += 1
             result["rows_upserted"] += len(rows_batch)
+            result["manifest_rows_upserted"] += 1
+            affected_report_dates.update(impacted_dates)
             logger.info(f"[gpcw] {filename}: {len(rows_batch)} stocks synced")
 
         except Exception as exc:
             logger.error(f"[gpcw] {filename} 同步失败: {exc}")
+            try:
+                _upsert_gpcw_manifest(
+                    conn,
+                    filename=filename,
+                    file_size=file_size,
+                    parse_status="failed",
+                    row_count=0,
+                    error_message=str(exc)[:500],
+                )
+                conn.commit()
+                result["manifest_rows_upserted"] += 1
+            except Exception as manifest_exc:
+                logger.warning(f"[gpcw] {filename} manifest 写入失败: {manifest_exc}")
             result["errors"].append(f"{filename}: {exc}")
 
+    result["affected_report_dates"] = sorted(affected_report_dates)
     return result
 
 
