@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import logging
 import threading
+import time
 from typing import Any, Sequence
 
 import duckdb
@@ -108,12 +109,12 @@ class DuckCursor:
 class DuckConn:
     """DuckDB 连接包装器。"""
 
-    def __init__(self, db_path: str, read_only: bool = False, attach: dict = None):
+    def __init__(self, db_path: str, read_only: bool = False, attach: dict = None, timeout: int = 30):
         # FastAPI opens short-lived DuckDB connections from multiple worker
         # threads. Serializing connection creation avoids transient unique
         # file-handle conflicts while keeping each request on its own handle.
         with _CONNECT_LOCK:
-            self._con = duckdb.connect(db_path, read_only=read_only)
+            self._con = self._connect_with_retry(db_path, read_only=read_only, timeout=timeout)
         self.in_transaction = False
         # 可选 ATTACH 其它 DuckDB
         if attach:
@@ -123,6 +124,25 @@ class DuckConn:
                     self._con.execute(f"ATTACH '{path}' AS {alias} ({mode})")
                 except Exception as e:
                     logger.warning("attach %s failed: %s", alias, e)
+
+    @staticmethod
+    def _connect_with_retry(db_path: str, *, read_only: bool, timeout: int):
+        deadline = time.monotonic() + max(float(timeout), 0.0)
+        delay = 0.1
+        while True:
+            try:
+                return duckdb.connect(db_path, read_only=read_only)
+            except duckdb.IOException as exc:
+                message = str(exc)
+                lock_conflict = "Could not set lock on file" in message or "Conflicting lock" in message
+                if not lock_conflict or time.monotonic() >= deadline:
+                    raise
+                sleep_s = min(delay, max(deadline - time.monotonic(), 0.0))
+                if sleep_s <= 0:
+                    raise
+                logger.info("DuckDB busy, retrying connection in %.1fs: %s", sleep_s, db_path)
+                time.sleep(sleep_s)
+                delay = min(delay * 1.5, 1.0)
 
     def _exec(self, sql: str, params=None) -> DuckCursor:
         try:
@@ -234,4 +254,4 @@ class DuckConn:
 
 def connect(db_path: str, timeout: int = 30, read_only: bool = False, attach: dict = None) -> DuckConn:
     """统一入口: 返回 DuckConn。"""
-    return DuckConn(db_path, read_only=read_only, attach=attach)
+    return DuckConn(db_path, read_only=read_only, attach=attach, timeout=timeout)
