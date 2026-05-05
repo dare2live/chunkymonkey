@@ -6589,7 +6589,7 @@
         '<div class="cm-action-grid cm-action-grid-tight">' +
         '<div class="cm-action-card"><div class="cm-action-title">Champion · 正式推荐</div><div style="font-weight:700;font-size:13px">' + esc(labelModelId(c.model_id || '-')) + '</div>' +
         '<div class="muted" style="font-size:11px;margin-top:4px">默认推荐只取 lifecycle champion · RankIC ' + fmt(c.holdout_rank_ic) + ' · L/S ' + pct(c.holdout_long_short_spread) + '</div></div>' +
-        '<div class="cm-action-card"><div class="cm-action-title">TDX Keep Challenger · Shadow 实验</div><div style="font-weight:700;font-size:13px">' + esc(labelModelId(ch.model_id || '尚未训练 challenger')) + '</div>' +
+        '<div class="cm-action-card"><div class="cm-action-title">最新 Challenger · Shadow 实验</div><div style="font-weight:700;font-size:13px">' + esc(labelModelId(ch.model_id || '尚未训练 challenger')) + '</div>' +
         '<div class="muted" style="font-size:11px;margin-top:4px">Not promoted · RankIC ' + fmt(ch.holdout_rank_ic) + ' · L/S ' + pct(ch.holdout_long_short_spread) + '</div>' +
         '<div class="muted" style="font-size:11px;margin-top:2px">shadow topK ' + (shadow.rows || shadow.row_count || 0) + ' rows · ' + (shadow.snapshot_date || shadow.latest_snapshot || '-') + '</div></div>' +
         '</div>';
@@ -6607,7 +6607,12 @@
       var status = gate.promotion_status || 'WAIT';
       var tone = status === 'PASS' ? 'ok' : status === 'FAIL' ? 'bad' : 'warn';
       var blockers = gate.blockers || gate.reasons || gate.reason || '';
-      if (Array.isArray(blockers)) blockers = blockers.join('；');
+      if (Array.isArray(blockers)) {
+        blockers = blockers.map(function (b) {
+          if (typeof b === 'string') return b;
+          return [b.gate, b.status, b.reason].filter(Boolean).join(': ');
+        }).join('；');
+      }
       box.innerHTML =
         '<div class="cm-status-strip">' +
         '<div class="cm-status-item cm-status-' + tone + '"><span>Promotion Gate</span><b>' + esc(status) + '</b></div>' +

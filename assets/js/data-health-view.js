@@ -440,9 +440,27 @@
             <div style="font-size:13px;font-weight:600;margin-bottom:8px">Challengers (${challengers.length})</div>
             ${challengers.map((m) => {
               const ic = m.ic_holdout != null ? m.ic_holdout.toFixed(4) : '—';
-              return `<div style="margin:4px 0;font-size:12px">
-                <code>${this.esc(m.model_id)}</code>
-                <span class="muted" style="margin-left:8px">IC=${ic}</span>
+              const gate = m.promotion_gate || {};
+              const status = gate.promotion_status || 'WAIT';
+              const decision = gate.decision || 'shadow';
+              const blockersRaw = gate.blockers || [];
+              const blockers = Array.isArray(blockersRaw)
+                ? blockersRaw.map((b) => typeof b === 'string'
+                  ? b
+                  : [b.gate, b.status, b.reason].filter(Boolean).join(': ')
+                ).join('；')
+                : String(blockersRaw || '');
+              const shadow = m.shadow_topk || {};
+              const tone = status === 'PASS' ? 'green' : status === 'FAIL' ? 'red' : 'yellow';
+              return `<div style="margin:8px 0 0;padding-top:8px;border-top:1px solid var(--cm-ink-50);font-size:12px">
+                <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+                  <code>${this.esc(m.model_id)}</code>
+                  <span class="dh-pill dh-pill-${tone}" style="font-size:10px">${this.esc(status)}</span>
+                  <span class="muted">IC=${ic}</span>
+                  <span class="muted">decision=${this.esc(decision)}</span>
+                  <span class="muted">shadow topK=${this.fmtNum(shadow.row_count || 0)} rows ${shadow.snapshot_date || ''}</span>
+                </div>
+                ${blockers ? `<div class="muted" style="margin-top:4px;font-size:11px">blockers: ${this.esc(blockers.slice(0, 180))}</div>` : ''}
               </div>`;
             }).join('')}
           </div>`;

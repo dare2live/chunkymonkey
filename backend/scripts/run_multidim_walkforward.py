@@ -668,6 +668,8 @@ def main() -> None:
         run_id = f"walkforward_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
         built_at = datetime.utcnow().isoformat()
         fold_metrics: list[dict[str, Any]] = []
+        prediction_rows_written = 0
+        prediction_write_s = 0.0
         for fold in folds:
             fold_t0 = time.perf_counter()
             train_idx = _slice_indices(panel.dates, fold["train"])
@@ -738,7 +740,12 @@ def main() -> None:
                 "built_at": built_at,
             }
             should_write_predictions = args.save_predictions or args.prediction_mode in {"topk", "full"}
+            t_write = time.perf_counter()
             write_fold(conn, row, pred_columns=pred_out if should_write_predictions else None)
+            write_elapsed = time.perf_counter() - t_write
+            if should_write_predictions:
+                prediction_write_s += write_elapsed
+                prediction_rows_written += int(len(pred_out.get("pred_score", [])))
             fold_duration = time.perf_counter() - fold_t0
             fold_metrics.append({
                 "fold_id": fold["fold_id"],
@@ -791,6 +798,8 @@ def main() -> None:
             logger.info("未传 --update-lifecycle, 本次 walk-forward 不改 lifecycle 汇总")
         duration_s = time.perf_counter() - run_t0
         timings["total_s"] = round(duration_s, 3)
+        if prediction_rows_written:
+            timings["prediction_write_s"] = round(prediction_write_s, 3)
         rank_ics = [m["rank_ic"] for m in fold_metrics if m.get("rank_ic") is not None]
         avg_rank_ic = sum(rank_ics) / len(rank_ics) if rank_ics else None
         record_pipeline_run(
@@ -827,7 +836,10 @@ def main() -> None:
                 "folds": len(fold_metrics),
                 "avg_rank_ic": avg_rank_ic,
                 "n_features": len(feature_cols),
-                "prediction_mode": "full" if args.save_predictions else args.prediction_mode,
+                "prediction_mode": args.prediction_mode,
+                "save_predictions": bool(args.save_predictions),
+                "prediction_top_k": args.prediction_top_k if args.prediction_mode == "topk" else None,
+                "prediction_rows_written": prediction_rows_written,
                 "cpu_count": os.cpu_count(),
                 "timings": timings,
                 "fold_metrics": fold_metrics,

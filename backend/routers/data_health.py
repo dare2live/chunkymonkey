@@ -39,6 +39,33 @@ def _latest_snapshot_at(con) -> Optional[str]:
     return row[0] if row and row[0] else None
 
 
+def _table_exists(con, table: str) -> bool:
+    row = con.execute(
+        "SELECT COUNT(*) FROM information_schema.tables WHERE table_name = ?",
+        (table,),
+    ).fetchone()
+    return bool(row and row[0])
+
+
+def _has_column(con, table: str, column: str) -> bool:
+    row = con.execute(
+        """
+        SELECT COUNT(*)
+          FROM information_schema.columns
+         WHERE table_name = ? AND column_name = ?
+        """,
+        (table, column),
+    ).fetchone()
+    return bool(row and row[0])
+
+
+def _safe_json(raw, default):
+    try:
+        return json.loads(raw) if raw else default
+    except Exception:
+        return default
+
+
 @router.get("/snapshot")
 def get_snapshot() -> dict[str, Any]:
     """全局健康条 + Tab 4 主输入. 单端点替代 dashboard 散在 5 处的拼装."""
@@ -444,10 +471,51 @@ def get_model_lifecycle() -> dict[str, Any]:
     from services.ml_lifecycle.registry import list_models, GATE_THRESHOLDS
 
     models = list_models()
+    latest_gate = None
+    with get_conn() as con:
+        gate_by_model: dict[str, dict[str, Any]] = {}
+        if _table_exists(con, "mart_tdx_keep_promotion_gate"):
+            gate_rows = con.execute("""
+                SELECT *
+                  FROM (
+                    SELECT *,
+                           ROW_NUMBER() OVER (
+                               PARTITION BY challenger_model_id
+                               ORDER BY evaluated_at DESC
+                           ) AS rn
+                      FROM mart_tdx_keep_promotion_gate
+                  )
+                 WHERE rn = 1
+                 ORDER BY evaluated_at DESC
+            """).fetchall()
+            for row in gate_rows:
+                gate = dict(row)
+                gate.pop("rn", None)
+                gate["gate_results"] = _safe_json(gate.get("gate_results_json"), [])
+                gate["blockers"] = _safe_json(gate.get("blockers_json"), [])
+                gate_by_model[gate["challenger_model_id"]] = gate
+            latest_gate = next(iter(gate_by_model.values()), None)
+
+        has_daily_rec = _table_exists(con, "mart_daily_recommendation")
+        has_run_mode = has_daily_rec and _has_column(con, "mart_daily_recommendation", "run_mode")
+        for model in models:
+            model_id = model.get("model_id")
+            if model_id in gate_by_model:
+                model["promotion_gate"] = gate_by_model[model_id]
+            if model.get("status") != "challenger" or not has_daily_rec:
+                continue
+            shadow_filter = "AND COALESCE(run_mode, '') = 'shadow'" if has_run_mode else ""
+            row = con.execute(f"""
+                SELECT MAX(snapshot_date) AS snapshot_date, COUNT(*) AS row_count
+                  FROM mart_daily_recommendation
+                 WHERE model_id = ? {shadow_filter}
+            """, (model_id,)).fetchone()
+            model["shadow_topk"] = dict(row) if row else None
     return {
         "champion": next((m for m in models if m["status"] == "champion"), None),
         "challengers": [m for m in models if m["status"] == "challenger"],
         "retired": [m for m in models if m["status"] == "retired"],
+        "latest_gate": latest_gate,
         "gate_thresholds": GATE_THRESHOLDS,
     }
 

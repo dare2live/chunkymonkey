@@ -121,15 +121,38 @@ async def get_daily_topk(
 
         run_mode_select = "r.run_mode," if has_run_mode else "NULL AS run_mode,"
         sql = f"""
+            WITH name_ref AS (
+                SELECT stock_code, stock_name, 1 AS source_priority
+                  FROM dim_active_a_stock
+                 WHERE stock_name IS NOT NULL AND stock_name <> ''
+                UNION ALL
+                SELECT stock_code, stock_name, 2 AS source_priority
+                  FROM mart_stock_trend
+                 WHERE stock_name IS NOT NULL AND stock_name <> ''
+                UNION ALL
+                SELECT stock_code, stock_name, 3 AS source_priority
+                  FROM fact_institution_event
+                 WHERE stock_name IS NOT NULL AND stock_name <> ''
+            ),
+            stock_names AS (
+                SELECT stock_code, stock_name
+                  FROM (
+                    SELECT stock_code, stock_name,
+                           ROW_NUMBER() OVER (
+                               PARTITION BY stock_code
+                               ORDER BY source_priority
+                           ) AS rn
+                      FROM name_ref
+                  )
+                 WHERE rn = 1
+            )
             SELECT r.snapshot_date, r.stock_code, r.model_id, r.rank_in_date,
                    r.pred_score, r.percentile, r.regime_flag, {run_mode_select}
                    r.key_features_json, r.track_id, r.is_primary,
-                   ii.name stock_name_via_event,
+                   sn.stock_name,
                    ind.tdx_l1_name l1, ind.tdx_l2_name l2
             FROM mart_daily_recommendation r
-            LEFT JOIN (
-                SELECT DISTINCT stock_code, stock_name as name FROM fact_institution_event
-            ) ii ON r.stock_code = ii.stock_code
+            LEFT JOIN stock_names sn ON r.stock_code = sn.stock_code
             LEFT JOIN dim_stock_tdx_industry ind ON r.stock_code = ind.stock_code
             WHERE {' AND '.join(where)}
             ORDER BY r.rank_in_date
@@ -150,7 +173,7 @@ async def get_daily_topk(
                 "stock_code": r["stock_code"],
                 "snapshot_date": r["snapshot_date"],
                 "model_id": r["model_id"],
-                "stock_name": r["stock_name_via_event"],
+                "stock_name": r["stock_name"],
                 "pred_score": round(float(r["pred_score"]), 4),
                 "percentile": round(float(r["percentile"]), 3),
                 "regime_flag": r["regime_flag"],
@@ -441,28 +464,41 @@ async def get_tdx_feature_validation():
     """TDX keep/watch/drop validation summary for frontend display."""
     conn = get_conn()
     try:
-        manual_run = "retention_tdx_f10_gpcw_v1"
-        auto_run = "retention_tdx_gpcw_auto_v1"
+        def latest_decision_run(feature_set_id: str, fallback: str) -> str:
+            row = conn.execute("""
+                SELECT decision_run_id
+                  FROM mart_feature_retention_decision
+                 WHERE feature_set_id = ?
+                 GROUP BY decision_run_id
+                 ORDER BY MAX(built_at) DESC
+                 LIMIT 1
+            """, (feature_set_id,)).fetchone()
+            return row["decision_run_id"] if row else fallback
+
+        manual_feature_set_id = "tdx_f10_gpcw_v1"
+        auto_feature_set_id = "tdx_gpcw_auto_v1_pit"
+        manual_run = latest_decision_run(manual_feature_set_id, "retention_tdx_f10_gpcw_v1")
+        auto_run = latest_decision_run(auto_feature_set_id, "retention_tdx_gpcw_auto_v1")
         manual = conn.execute("""
             SELECT feature_name, decision, primary_reason, coverage_pct,
                    pit_violation_rows, mean_rank_ic, fold_same_sign_rate,
                    group_ablation_delta
               FROM mart_feature_retention_decision
-             WHERE feature_set_id='tdx_f10_gpcw_v1'
+             WHERE feature_set_id=?
                AND decision_run_id=?
              ORDER BY CASE decision WHEN 'keep' THEN 0 WHEN 'watch' THEN 1 ELSE 2 END,
                       ABS(COALESCE(mean_rank_ic, 0)) DESC
-        """, (manual_run,)).fetchall()
+        """, (manual_feature_set_id, manual_run)).fetchall()
         auto = conn.execute("""
             SELECT feature_name, decision, primary_reason, coverage_pct,
                    pit_violation_rows, mean_rank_ic, fold_same_sign_rate
               FROM mart_feature_retention_decision
-             WHERE feature_set_id='tdx_gpcw_auto_v1_pit'
+             WHERE feature_set_id=?
                AND decision_run_id=?
              ORDER BY CASE decision WHEN 'keep' THEN 0 WHEN 'watch' THEN 1 ELSE 2 END,
                       ABS(COALESCE(mean_rank_ic, 0)) DESC
              LIMIT 40
-        """, (auto_run,)).fetchall()
+        """, (auto_feature_set_id, auto_run)).fetchall()
         source_rows = conn.execute("""
             SELECT data_domain, preferred_source, fallback_1, fallback_2, reason
               FROM dim_data_source_priority
@@ -480,10 +516,10 @@ async def get_tdx_feature_validation():
         """).fetchone()[0]
         return {
             "ok": True,
-            "manual_feature_set_id": "tdx_f10_gpcw_v1",
+            "manual_feature_set_id": manual_feature_set_id,
             "manual_decision_run_id": manual_run,
             "manual": [dict(r) for r in manual],
-            "auto_feature_set_id": "tdx_gpcw_auto_v1_pit",
+            "auto_feature_set_id": auto_feature_set_id,
             "auto_decision_run_id": auto_run,
             "auto_optional_watch_pool": [dict(r) for r in auto],
             "pit": {
@@ -505,14 +541,25 @@ async def get_model_comparison(
     try:
         champion_id, selection_fallback = select_default_model_id(conn)
         if not challenger_model_id:
-            row = conn.execute("""
-                SELECT model_id
-                  FROM mart_model_lifecycle
-                 WHERE status='challenger'
-                   AND model_id LIKE 'tdx_keep_challenger%'
-                 ORDER BY updated_at DESC
-                 LIMIT 1
-            """).fetchone()
+            row = None
+            if _table_exists(conn, "mart_tdx_keep_promotion_gate"):
+                row = conn.execute("""
+                    SELECT g.challenger_model_id AS model_id
+                      FROM mart_tdx_keep_promotion_gate g
+                      JOIN mart_model_lifecycle l
+                        ON l.model_id = g.challenger_model_id
+                     WHERE l.status = 'challenger'
+                     ORDER BY g.evaluated_at DESC
+                     LIMIT 1
+                """).fetchone()
+            if not row:
+                row = conn.execute("""
+                    SELECT model_id
+                      FROM mart_model_lifecycle
+                     WHERE status='challenger'
+                     ORDER BY updated_at DESC
+                     LIMIT 1
+                """).fetchone()
             challenger_model_id = row["model_id"] if row else None
 
         def model_meta(mid):
@@ -571,6 +618,9 @@ async def get_model_comparison(
                  ORDER BY evaluated_at DESC LIMIT 1
             """, (challenger_model_id,)).fetchone()
             gate = dict(row) if row else None
+            if gate:
+                gate["gate_results"] = _safe_json(gate.get("gate_results_json"), [])
+                gate["blockers"] = _safe_json(gate.get("blockers_json"), [])
 
         shadow = None
         if challenger_model_id:

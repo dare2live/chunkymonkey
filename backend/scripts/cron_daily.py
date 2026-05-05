@@ -1,7 +1,7 @@
 """每日单入口编排 (W5).
 
 Phase 拆分:
-  1) sync       — 调 /api/inst/update/all (HTTP, 让 backend DAG 跑); 跳过若 --skip-sync
+  1) sync       — 默认调 /api/inst/update/smart (HTTP, 每日生产增量); 跳过若 --skip-sync
   2) lineage    — refresh_all_lineage_state(); 同步 registry 声明到 mart_lineage
   3) watermarks — 刷新源域水位 mart_data_source_watermark
   4) topk       — lifecycle champion 每日 TopK; 可选 shadow TopK
@@ -11,12 +11,15 @@ Phase 拆分:
 
 每个 phase 失败后:
   - 默认继续下一 phase (best-effort)
+  - sync 超时或被拒绝时会请求 backend stop, 并阻断后续 DuckDB phase
   - --strict: 任一失败立刻退出
   - 退出码: 0 全成功; 1 普通失败; 2 critical (drift critical / 红色等级)
 
 用法:
   # 完整一日
   python3 backend/scripts/cron_daily.py
+  # 手动全量回填 (非每日默认)
+  python3 backend/scripts/cron_daily.py --full-sync
   # 跳过 sync (sync 已经手动跑过)
   python3 backend/scripts/cron_daily.py --skip-sync
   # 只跑生产推荐与监控
@@ -32,6 +35,7 @@ import os
 import subprocess
 import sys
 import time
+from datetime import datetime
 from pathlib import Path
 from typing import Optional
 
@@ -43,6 +47,7 @@ BACKEND = REPO / "backend"
 sys.path.insert(0, str(BACKEND))
 
 DEFAULT_API = os.environ.get("CM_API", "http://127.0.0.1:8000")
+SYNC_BLOCKING_STATUSES = {"rejected", "timeout"}
 
 
 def _coerce_bool(value) -> bool:
@@ -78,9 +83,38 @@ def _phase_exit_severity(result: dict) -> int:
     status = str(result.get("status") or "").lower()
     if status in {"ok", "skipped"}:
         return 0
+    if result.get("phase") == "sync" and status in SYNC_BLOCKING_STATUSES:
+        return 2
     if status == "critical":
         return 2
     return 1
+
+
+def _sync_failure_blocks_followups(result: dict) -> bool:
+    """Whether it is unsafe to run local DB phases after sync."""
+    if result.get("phase") != "sync":
+        return False
+    return str(result.get("status") or "").lower() in SYNC_BLOCKING_STATUSES
+
+
+def _request_sync_stop(api: str, *, reason: str, timeout: int = 5) -> dict:
+    try:
+        import urllib.request
+    except ImportError:
+        return {"ok": False, "reason": "urllib missing"}
+    try:
+        payload = json.dumps({"reason": reason}).encode("utf-8")
+        req = urllib.request.Request(
+            f"{api}/api/inst/update/stop",
+            method="POST",
+            data=payload,
+            headers={"Content-Type": "application/json"},
+        )
+        with urllib.request.urlopen(req, timeout=timeout) as r:
+            body = r.read()
+        return {"ok": True, "response": body.decode("utf-8", errors="replace")[:500]}
+    except Exception as exc:
+        return {"ok": False, "reason": f"{type(exc).__name__}: {exc}"}
 
 
 def _sync_status_from_backend(status: Optional[dict]) -> tuple[str, Optional[str]]:
@@ -117,8 +151,8 @@ def _sync_status_from_backend(status: Optional[dict]) -> tuple[str, Optional[str
 # ─────────────────────────────────────────────────────────────────────
 
 
-def phase_sync(*, api: str, timeout_s: int = 3600) -> dict:
-    """Phase 1: HTTP POST /api/inst/update/all + 轮询 status 直到 done.
+def phase_sync(*, api: str, timeout_s: int = 3600, full_sync: bool = False) -> dict:
+    """Phase 1: HTTP POST backend update endpoint + 轮询 status 直到 done.
 
     依赖 backend server 运行 (start.command 启动). 若 server down,
     跳过 (返回 status='skipped' 不报错).
@@ -137,9 +171,11 @@ def phase_sync(*, api: str, timeout_s: int = 3600) -> dict:
         log.warning(f"[sync] backend server 不可达 ({api}): {exc}")
         return {"phase": "sync", "status": "skipped", "reason": str(exc)}
 
+    trigger_path = "/api/inst/update/all" if full_sync else "/api/inst/update/smart"
+
     # 触发更新
     try:
-        req = urllib.request.Request(f"{api}/api/inst/update/all", method="POST", data=b"")
+        req = urllib.request.Request(f"{api}{trigger_path}", method="POST", data=b"")
         with urllib.request.urlopen(req, timeout=10) as r:
             result = json.loads(r.read())
         if not result.get("ok", True):
@@ -168,7 +204,16 @@ def phase_sync(*, api: str, timeout_s: int = 3600) -> dict:
             log.warning(f"[sync] poll failed: {exc} (重试)")
             time.sleep(30)
     else:
-        return {"phase": "sync", "status": "timeout", "elapsed_s": time.time() - t0}
+        elapsed = time.time() - t0
+        stop_result = _request_sync_stop(api, reason=f"cron_daily sync timeout after {elapsed:.0f}s")
+        log.error("[sync] timeout after %.0fs; stop_result=%s", elapsed, stop_result)
+        return {
+            "phase": "sync",
+            "status": "timeout",
+            "elapsed_s": elapsed,
+            "trigger_path": trigger_path,
+            "stop_result": stop_result,
+        }
 
     elapsed = time.time() - t0
     final_status, final_reason = _sync_status_from_backend(last_summary)
@@ -176,6 +221,7 @@ def phase_sync(*, api: str, timeout_s: int = 3600) -> dict:
     return {
         "phase": "sync", "status": final_status,
         "elapsed_s": elapsed,
+        "trigger_path": trigger_path,
         "last_summary": last_summary,
         "reason": final_reason,
     }
@@ -319,10 +365,59 @@ def phase_audit() -> dict:
 ALL_PHASES = ["sync", "lineage", "watermarks", "topk", "health", "drift", "audit"]
 
 
+def _record_cron_manifest(*, started_at: str, elapsed_s: float, results: list[dict], exit_severity: int) -> None:
+    try:
+        from services.db import get_conn
+        from services.pipeline_manifest import git_commit_sha, record_pipeline_run, utc_now_iso
+
+        status = "success" if exit_severity == 0 else ("critical" if exit_severity >= 2 else "warn")
+        conn = get_conn()
+        try:
+            record_pipeline_run(
+                conn,
+                run_id=f"cron_daily_{datetime.utcnow().strftime('%Y%m%d_%H%M%S')}",
+                pipeline_name="cron_daily",
+                status=status,
+                started_at=started_at,
+                ended_at=utc_now_iso(),
+                duration_s=elapsed_s,
+                commit_sha=git_commit_sha(REPO),
+                input_tables=[
+                    "dim_active_a_stock",
+                    "fact_feature_panel",
+                    "mart_model_lifecycle",
+                    "mart_multidim_model",
+                ],
+                output_tables=[
+                    "mart_data_source_watermark",
+                    "mart_daily_recommendation",
+                    "mart_data_health",
+                    "mart_feature_drift",
+                ],
+                model_id=None,
+                feature_group="daily_production",
+                gate_result=status,
+                blockers=[
+                    f"{r.get('phase')}:{r.get('status')}"
+                    for r in results
+                    if _phase_exit_severity(r) > 0
+                ],
+                perf_summary={
+                    "phases": results,
+                    "exit_severity": exit_severity,
+                },
+            )
+        finally:
+            conn.close()
+    except Exception as exc:
+        log.warning("[manifest] cron_daily record failed: %s", exc)
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--api", default=DEFAULT_API)
-    parser.add_argument("--skip-sync", action="store_true", help="不调 /update/all")
+    parser.add_argument("--skip-sync", action="store_true", help="不调 backend update")
+    parser.add_argument("--full-sync", action="store_true", help="非每日默认: 调 /update/all 跑完整 DAG")
     parser.add_argument("--skip-topk", action="store_true", help="不生成每日推荐")
     parser.add_argument("--top-k", type=int, default=50, help="每日 champion TopK 数量")
     parser.add_argument("--shadow-model-id", default=None, help="显式影子模型 ID; 不传则不写 shadow TopK")
@@ -339,13 +434,15 @@ def main() -> int:
 
     log.info(f"=== cron_daily 开始 phases={selected} ===")
     t0 = time.time()
+    started_at = datetime.utcnow().isoformat(timespec="seconds")
     results = []
     exit_severity = 0
 
     for phase in selected:
         log.info(f"--- phase: {phase} ---")
+        phase_t0 = time.time()
         if phase == "sync":
-            r = phase_sync(api=args.api, timeout_s=args.sync_timeout)
+            r = phase_sync(api=args.api, timeout_s=args.sync_timeout, full_sync=args.full_sync)
         elif phase == "lineage":
             r = phase_lineage()
         elif phase == "watermarks":
@@ -362,16 +459,29 @@ def main() -> int:
             log.warning(f"unknown phase: {phase}")
             continue
 
+        r.setdefault("phase_elapsed_s", round(time.time() - phase_t0, 3))
         results.append(r)
         log.info(f"--- {phase}: {r.get('status')} ---")
         phase_severity = _phase_exit_severity(r)
         exit_severity = max(exit_severity, phase_severity)
         if phase_severity:
+            if _sync_failure_blocks_followups(r):
+                log.error(
+                    "sync 状态 %s，跳过剩余 phase，避免后台更新仍在运行时争抢 DuckDB 锁",
+                    r.get("status"),
+                )
+                break
             if args.strict:
                 log.error(f"strict 模式 — phase {phase} 状态 {r.get('status')}, 立刻退出")
                 break
 
     elapsed = time.time() - t0
+    _record_cron_manifest(
+        started_at=started_at,
+        elapsed_s=elapsed,
+        results=results,
+        exit_severity=exit_severity,
+    )
     log.info(f"=== cron_daily 结束 ({elapsed:.0f}s) ===")
     log.info(json.dumps({"phases": results, "elapsed_s": elapsed}, indent=2, ensure_ascii=False))
 

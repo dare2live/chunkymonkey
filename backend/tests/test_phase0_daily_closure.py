@@ -32,6 +32,14 @@ def test_cron_child_return_codes_preserve_critical_failures():
     assert cron_daily._phase_status_from_rc("drift", 1)["status"] == "warn"
     assert cron_daily._phase_exit_severity({"status": "critical"}) == 2
     assert cron_daily._phase_exit_severity({"status": "warn"}) == 1
+    assert cron_daily._phase_exit_severity({"phase": "sync", "status": "timeout"}) == 2
+
+
+def test_cron_blocks_followups_after_running_sync_failures():
+    assert cron_daily._sync_failure_blocks_followups({"phase": "sync", "status": "timeout"})
+    assert cron_daily._sync_failure_blocks_followups({"phase": "sync", "status": "rejected"})
+    assert not cron_daily._sync_failure_blocks_followups({"phase": "sync", "status": "skipped"})
+    assert not cron_daily._sync_failure_blocks_followups({"phase": "health", "status": "critical"})
 
 
 def test_cron_daily_includes_production_topk_and_source_watermarks():

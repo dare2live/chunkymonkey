@@ -1571,8 +1571,14 @@ def _score_discovery(
         discovery_fresh = round(discovery_fresh * 0.85, 2)
 
     # --- 持仓强度 ---
-    max_hold_ratio = max((_safe_float(h.get("hold_ratio")) for h in holders), default=None)
-    max_hold_cap = max((_safe_float(h.get("hold_market_cap")) for h in holders), default=None)
+    max_hold_ratio = max(
+        (v for h in holders if (v := _safe_float(h.get("hold_ratio"))) is not None),
+        default=None,
+    )
+    max_hold_cap = max(
+        (v for h in holders if (v := _safe_float(h.get("hold_market_cap"))) is not None),
+        default=None,
+    )
     best_rank = min((int(h.get("holder_rank")) for h in holders if h.get("holder_rank") not in (None, "")), default=None)
     hold_ratio_score = (
         8 if hold_ratio_q80 is not None and max_hold_ratio is not None and max_hold_ratio >= hold_ratio_q80 else

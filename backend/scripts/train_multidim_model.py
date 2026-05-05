@@ -947,9 +947,26 @@ def main():
             "timings": timings,
         },
     )
-    logger.info("训练总耗时 %.1f min", duration_s / 60)
-
     conn.close()
+
+    from services.ml_lifecycle.registry import propose_challenger
+
+    propose_challenger(
+        model_id,
+        training_config={
+            "feature_group": args.feature_group,
+            "feature_table": args.feature_table,
+            "feature_set_id": args.feature_set_id,
+            "label_name": args.label_name,
+            "start": args.start,
+            "end": args.end,
+            "trials": args.trials,
+            "num_round": args.num_round,
+            "objective_num_round": args.objective_num_round,
+        },
+        ic_holdout=rank_ic,
+    )
+    logger.info("训练总耗时 %.1f min", duration_s / 60)
 
 
 if __name__ == "__main__":

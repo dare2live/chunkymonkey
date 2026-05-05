@@ -42,6 +42,14 @@ def test_daily_topk_items_include_model_trace(monkeypatch):
             stock_code TEXT,
             stock_name TEXT
         );
+        CREATE TABLE dim_active_a_stock (
+            stock_code TEXT,
+            stock_name TEXT
+        );
+        CREATE TABLE mart_stock_trend (
+            stock_code TEXT,
+            stock_name TEXT
+        );
         CREATE TABLE dim_stock_tdx_industry (
             stock_code TEXT,
             tdx_l1_name TEXT,
@@ -56,6 +64,8 @@ def test_daily_topk_items_include_model_trace(monkeypatch):
             '{"model_top_features":[]}', 'primary', TRUE
         );
         INSERT INTO fact_institution_event VALUES ('000001', '平安银行');
+        INSERT INTO dim_active_a_stock VALUES ('000001', '平安银行A股');
+        INSERT INTO mart_stock_trend VALUES ('000001', '平安银行趋势');
         INSERT INTO dim_stock_tdx_industry VALUES ('000001', '金融', '银行');
         """
     )
@@ -70,5 +80,80 @@ def test_daily_topk_items_include_model_trace(monkeypatch):
     assert item["stock_code"] == "000001"
     assert item["snapshot_date"] == "2026-05-04"
     assert item["model_id"] == "model_a"
+    assert item["stock_name"] == "平安银行A股"
     assert item["track_id"] == "primary"
     assert item["is_primary"] is True
+
+
+def test_model_comparison_uses_latest_gated_challenger(monkeypatch):
+    conn = duck_mem()
+    conn.executescript(
+        """
+        CREATE TABLE mart_model_lifecycle (
+            model_id TEXT PRIMARY KEY,
+            status TEXT NOT NULL,
+            deployed_at TIMESTAMP,
+            updated_at TIMESTAMP
+        );
+        CREATE TABLE mart_multidim_model (
+            model_id TEXT,
+            feature_schema_version TEXT,
+            n_features INTEGER,
+            holdout_ic DOUBLE,
+            holdout_rank_ic DOUBLE,
+            holdout_top_decile_avg DOUBLE,
+            holdout_long_short_spread DOUBLE,
+            holdout_winrate_top DOUBLE,
+            created_at TEXT,
+            feature_cols_json TEXT
+        );
+        CREATE TABLE mart_tdx_keep_promotion_gate (
+            gate_run_id TEXT PRIMARY KEY,
+            challenger_model_id TEXT,
+            champion_model_id TEXT,
+            promotion_status TEXT,
+            decision TEXT,
+            gate_results_json TEXT,
+            blockers_json TEXT,
+            rank_ic_challenger DOUBLE,
+            rank_ic_champion DOUBLE,
+            long_short_challenger DOUBLE,
+            long_short_champion DOUBLE,
+            max_drawdown_challenger DOUBLE,
+            max_drawdown_champion DOUBLE,
+            evaluated_at TEXT
+        );
+        CREATE TABLE mart_daily_recommendation (
+            snapshot_date TEXT,
+            stock_code TEXT,
+            model_id TEXT,
+            run_mode TEXT
+        );
+        INSERT INTO mart_model_lifecycle VALUES
+            ('champion_model', 'champion', TIMESTAMP '2026-05-01 09:00:00', TIMESTAMP '2026-05-01 09:00:00'),
+            ('tdx_keep_challenger_old', 'challenger', NULL, TIMESTAMP '2026-05-02 09:00:00'),
+            ('perf_base_dense_v2_new', 'challenger', NULL, TIMESTAMP '2026-05-03 09:00:00');
+        INSERT INTO mart_multidim_model VALUES
+            ('champion_model', 'base_dense_v2', 10, 0.01, 0.02, 0.03, 0.04, 0.50, '2026-05-01', '["base"]'),
+            ('tdx_keep_challenger_old', 'tdx_keep', 12, 0.02, 0.03, 0.04, 0.05, 0.51, '2026-05-02', '["tdx"]'),
+            ('perf_base_dense_v2_new', 'base_dense_v2', 11, 0.03, 0.04, 0.05, 0.06, 0.52, '2026-05-03', '["base"]');
+        INSERT INTO mart_tdx_keep_promotion_gate VALUES
+            ('gate_old', 'tdx_keep_challenger_old', 'champion_model', 'FAIL', 'reject',
+             '{}', '[{"gate":"drift","status":"FAIL","reason":"old"}]',
+             0.03, 0.02, 0.05, 0.04, NULL, NULL, '2026-05-02T09:00:00'),
+            ('gate_new', 'perf_base_dense_v2_new', 'champion_model', 'FAIL', 'reject',
+             '{}', '[{"gate":"coverage","status":"FAIL","reason":"missing coverage"}]',
+             0.04, 0.02, 0.06, 0.04, NULL, NULL, '2026-05-03T09:00:00');
+        INSERT INTO mart_daily_recommendation VALUES ('2026-05-04', '000001', 'perf_base_dense_v2_new', 'shadow');
+        """
+    )
+    monkeypatch.setattr(recommendation, "get_conn", lambda: conn)
+
+    response = TestClient(app).get("/api/rec/model-comparison")
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["ok"] is True
+    assert payload["challenger"]["model_id"] == "perf_base_dense_v2_new"
+    assert payload["promotion_gate"]["blockers"][0]["gate"] == "coverage"
+    assert payload["shadow_topk"]["rows"] == 1

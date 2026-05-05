@@ -18,6 +18,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from services.db import get_conn
 from services.ml_lifecycle.registry import select_default_model_id
 from services.pipeline_manifest import git_commit_sha, record_pipeline_run, utc_now_iso
+from services.schema_versions import record_actual_version
 
 
 logger = logging.getLogger("holding_topk_eval")
@@ -366,6 +367,7 @@ def evaluate_grid(
 def write_results(conn, rows: list[dict[str, Any]]) -> None:
     conn.executescript(DDL)
     if not rows:
+        record_actual_version(conn, "mart_model_holding_topk_eval", "v1")
         return
     run_id = rows[0]["run_id"]
     conn.execute("DELETE FROM mart_model_holding_topk_eval WHERE run_id = ?", (run_id,))
@@ -381,6 +383,7 @@ def write_results(conn, rows: list[dict[str, Any]]) -> None:
         f"INSERT INTO mart_model_holding_topk_eval ({', '.join(cols)}) VALUES ({', '.join(['?'] * len(cols))})",
         [tuple(row.get(col) for col in cols) for row in rows],
     )
+    record_actual_version(conn, "mart_model_holding_topk_eval", "v1")
     conn.commit()
 
 

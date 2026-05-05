@@ -2374,14 +2374,18 @@ def _step_build_industry_stat_sync(conn) -> int:
                            COUNT(*) as cnt,
                            AVG(e.gain_30d) as avg30, AVG(e.gain_60d) as avg60,
                            AVG(e.gain_90d) as avg90, AVG(e.gain_120d) as avg120,
-                           SUM(CASE WHEN e.gain_30d > 0 THEN 1 ELSE 0 END) * 100.0 / NULLIF(COUNT(*), 0) as wr30,
-                           SUM(CASE WHEN e.gain_60d > 0 THEN 1 ELSE 0 END) * 100.0 / NULLIF(COUNT(*), 0) as wr60,
-                           SUM(CASE WHEN e.gain_90d > 0 THEN 1 ELSE 0 END) * 100.0 / NULLIF(COUNT(*), 0) as wr90,
-                           SUM(CASE WHEN e.gain_30d > 0 OR e.gain_60d > 0 THEN 1 ELSE 0 END) * 100.0 / NULLIF(COUNT(*), 0) as wr_total,
+                           SUM(CASE WHEN e.gain_30d > 0 THEN 1 WHEN e.gain_30d IS NOT NULL THEN 0 ELSE NULL END)
+                               * 100.0 / NULLIF(SUM(CASE WHEN e.gain_30d IS NOT NULL THEN 1 ELSE 0 END), 0) as wr30,
+                           SUM(CASE WHEN e.gain_60d > 0 THEN 1 WHEN e.gain_60d IS NOT NULL THEN 0 ELSE NULL END)
+                               * 100.0 / NULLIF(SUM(CASE WHEN e.gain_60d IS NOT NULL THEN 1 ELSE 0 END), 0) as wr60,
+                           SUM(CASE WHEN e.gain_90d > 0 THEN 1 WHEN e.gain_90d IS NOT NULL THEN 0 ELSE NULL END)
+                               * 100.0 / NULLIF(SUM(CASE WHEN e.gain_90d IS NOT NULL THEN 1 ELSE 0 END), 0) as wr90,
+                           SUM(CASE WHEN e.gain_30d > 0 OR e.gain_60d > 0 THEN 1 WHEN e.gain_30d IS NOT NULL OR e.gain_60d IS NOT NULL THEN 0 ELSE NULL END)
+                               * 100.0 / NULLIF(SUM(CASE WHEN e.gain_30d IS NOT NULL OR e.gain_60d IS NOT NULL THEN 1 ELSE 0 END), 0) as wr_total,
                            AVG(e.max_drawdown_30d) as dd30, AVG(e.max_drawdown_60d) as dd60
                     FROM fact_institution_event e
                     INNER JOIN dim_stock_tdx_industry i ON i.stock_code = e.stock_code
-                    WHERE e.institution_id = ? AND e.gain_30d IS NOT NULL
+                    WHERE e.institution_id = ?
                       AND i.{code_col} IS NOT NULL AND i.{code_col} != ''
                       AND i.{name_col} IS NOT NULL AND i.{name_col} != ''
                     GROUP BY i.{code_col}, i.{name_col}
@@ -3454,7 +3458,7 @@ async def _step_sync_aif10_capability(conn, capability_name: str) -> dict:
     """通用妙想 capability sync step. 失败不阻塞主流程."""
     from services.aif10_capability_client import sync_capability
     try:
-        result = sync_capability(capability_name)
+        result = await asyncio.to_thread(sync_capability, capability_name)
         rows = result.get("rows", 0)
         return {
             "count": rows,
@@ -4026,7 +4030,10 @@ async def smart_update():
 
     conn_plan = get_conn()
     try:
-        plan = build_smart_plan(conn_plan)
+        # Production cron must not reuse a stale audit snapshot: a cached raw
+        # freshness miss can incorrectly expand the daily plan into a long
+        # full-source sync.
+        plan = build_smart_plan(conn_plan, use_cache=False)
     finally:
         conn_plan.close()
 

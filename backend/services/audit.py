@@ -45,12 +45,13 @@ _TFP_CACHE: dict = {"date": None, "codes": None, "ts": 0.0}
 _AUDIT_TTL_SECONDS = 8.0  # 工作台轮询节奏 1-2s，8s 内复用
 _TFP_TTL_SECONDS = 1800   # 停牌列表 30 分钟刷新一次
 _AUDIT_SNAPSHOT_KEY = "holder_workbench"
-_AUDIT_SNAPSHOT_SCHEMA_VERSION = 5
+_AUDIT_SNAPSHOT_SCHEMA_VERSION = 6
 _SOURCE_RECHECK_COOLDOWN_HOURS = 3.0
+_RAW_HOLDER_REFRESH_INTERVAL_HOURS = 20.0
 
 
 def _json_dumps(payload) -> str:
-    return json.dumps(payload, ensure_ascii=False, separators=(",", ":"))
+    return json.dumps(payload, ensure_ascii=False, separators=(",", ":"), default=str)
 
 
 def _json_loads(text):
@@ -91,6 +92,19 @@ def _recent_completed_step(conn, step_id: str, max_age_hours: float = _SOURCE_RE
     age_hours = (datetime.now() - finished_at).total_seconds() / 3600.0
     if age_hours <= max_age_hours:
         return str(row["finished_at"])
+    return None
+
+
+def _recent_iso_timestamp(value: Optional[str], max_age_hours: float) -> Optional[str]:
+    if not value:
+        return None
+    try:
+        parsed = datetime.fromisoformat(str(value)[:26])
+    except (TypeError, ValueError):
+        return None
+    age_hours = (datetime.now() - parsed).total_seconds() / 3600.0
+    if age_hours <= max_age_hours:
+        return str(value)
     return None
 
 
@@ -594,7 +608,16 @@ def run_quality_audit(conn, use_cache: bool = True) -> dict:
     _raw_filter = "holder_set = 'free' AND NOT is_secondary_class AND NOT is_exit_row"
     raw_count = _scalar(conn, f"SELECT COUNT(*) FROM fact_top10_holder_period WHERE {_raw_filter}")
     raw_stocks = _scalar(conn, f"SELECT COUNT(DISTINCT stock_code) FROM fact_top10_holder_period WHERE {_raw_filter}")
-    raw_latest = conn.execute(f"SELECT MAX(notice_date) FROM fact_top10_holder_period WHERE {_raw_filter}").fetchone()[0]
+    raw_latest = conn.execute(
+        f"SELECT MAX(COALESCE(NULLIF(notice_date, ''), report_date)) "
+        f"FROM fact_top10_holder_period WHERE {_raw_filter}"
+    ).fetchone()[0]
+    try:
+        raw_latest_fetched_at = conn.execute(
+            "SELECT MAX(fetched_at) FROM raw_tdx_f10_holder_research"
+        ).fetchone()[0]
+    except Exception:
+        raw_latest_fetched_at = None
     raw_total_periods = _scalar(conn, f"SELECT COUNT(DISTINCT report_date) FROM fact_top10_holder_period WHERE {_raw_filter}")
     raw_periods = conn.execute(
         f"SELECT DISTINCT report_date FROM fact_top10_holder_period WHERE {_raw_filter} ORDER BY report_date DESC LIMIT 5"
@@ -1099,6 +1122,7 @@ def run_quality_audit(conn, use_cache: bool = True) -> dict:
                 "count": raw_count,
                 "stocks": raw_stocks,
                 "latest_notice": raw_latest or "",
+                "latest_fetched_at": raw_latest_fetched_at or "",
                 "total_periods": raw_total_periods,
                 "periods": [r[0] for r in raw_periods],
             },
@@ -1285,6 +1309,7 @@ def build_smart_plan(conn, force_all=False, *, audit: Optional[dict] = None, use
         "build_current_rel", "build_profiles", "build_industry_stat", "build_trends",
         "calc_screening", "calc_sector_momentum", "build_external_attention",
         "build_stage_features", "build_turtle_features",
+        "calc_risk_factors", "calc_prediction_outcomes",
         "calc_inst_scores", "calc_stock_scores",
     ]
 
@@ -1314,7 +1339,14 @@ def build_smart_plan(conn, force_all=False, *, audit: Optional[dict] = None, use
 
     # 1. 原始数据是否过期（> 1 天无新数据）
     raw_latest = audit["layers"]["raw"].get("latest_notice", "")
-    if raw_latest:
+    raw_latest_fetched_at = audit["layers"]["raw"].get("latest_fetched_at", "")
+    recent_raw_fetch = _recent_iso_timestamp(
+        raw_latest_fetched_at,
+        _RAW_HOLDER_REFRESH_INTERVAL_HOURS,
+    )
+    if audit["layers"]["raw"].get("count", 0) > 0 and recent_raw_fetch:
+        plan["skip_reasons"]["sync_raw"] = f"原始 F10 已在 {recent_raw_fetch[:19]} 检查过"
+    elif raw_latest:
         try:
             latest_dt = datetime.strptime(raw_latest[:8], "%Y%m%d")
             if (datetime.now() - latest_dt).days > 1:
@@ -1618,6 +1650,16 @@ def build_smart_plan(conn, force_all=False, *, audit: Optional[dict] = None, use
 
     # 10a. 海龟执行特征层 —— 已迁出智能更新，转独立"选股模块"手动触发，不再随智能更新自动重算
     plan["skip_reasons"]["build_turtle_features"] = "已迁出智能更新，请用工作台·选股扫描手动触发"
+
+    # 10a-2. 风险因子和预测 outcome 是每日生产监控，不属于研究训练链路。
+    if "sync_market_data" in plan["steps"]:
+        plan["steps"].append("calc_risk_factors")
+        plan["reason"].append("行情更新后重算风险因子")
+        plan["steps"].append("calc_prediction_outcomes")
+        plan["reason"].append("行情更新后更新预测 outcome")
+    else:
+        plan["skip_reasons"]["calc_risk_factors"] = "行情未变更，无需重算风险因子"
+        plan["skip_reasons"]["calc_prediction_outcomes"] = "行情未变更，无需更新预测 outcome"
 
     # 10b. 外部关注快照
     attention_reason = _external_attention_plan_reason(audit["layers"].get("external_attention"))

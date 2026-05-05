@@ -263,11 +263,12 @@ def _source_lineage_gate(conn, *, max_fallback_ratio: float = 0.05) -> tuple[str
         checks.append({"table": "fact_top10_holder_period", "status": "WAIT", "reason": reason})
 
     if _table_exists(conn, "mart_tdx_gpcw_file_manifest"):
+        status_col = "parse_status" if _has_column(conn, "mart_tdx_gpcw_file_manifest", "parse_status") else "status"
         row = conn.execute(
-            """
+            f"""
             SELECT COUNT(*) AS total_files,
                    SUM(CASE WHEN source_tier <> 1 THEN 1 ELSE 0 END) AS non_primary_files,
-                   SUM(CASE WHEN COALESCE(status, '') NOT IN ('success', 'skipped') THEN 1 ELSE 0 END) AS bad_status_files
+                   SUM(CASE WHEN COALESCE({status_col}, '') NOT IN ('success', 'skipped', 'skipped_existing') THEN 1 ELSE 0 END) AS bad_status_files
               FROM mart_tdx_gpcw_file_manifest
             """
         ).fetchone()
