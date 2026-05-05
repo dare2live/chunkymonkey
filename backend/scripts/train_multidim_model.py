@@ -410,23 +410,64 @@ def _prediction_rows(model_id: str, holdout: list[dict[str, Any]], pred) -> list
 
 
 def _prediction_rows_arrays(model_id: str, stock_codes: np.ndarray, dates: np.ndarray, pred) -> list[tuple]:
-    rows = []
-    scores_all = np.asarray(pred, dtype=np.float64)
+    columns = _prediction_column_arrays(model_id, stock_codes, dates, pred)
+    return list(zip(
+        columns["model_id"].tolist(),
+        columns["stock_code"].tolist(),
+        columns["date"].tolist(),
+        columns["pred_score"].tolist(),
+        columns["rank_in_date"].tolist(),
+        columns["percentile"].tolist(),
+    ))
+
+
+def _average_rank_percentiles(values: np.ndarray) -> np.ndarray:
+    n = len(values)
+    if n == 0:
+        return np.array([], dtype=np.float32)
+    order = np.argsort(values, kind="mergesort")
+    sorted_values = values[order]
+    starts = np.r_[0, np.flatnonzero(sorted_values[1:] != sorted_values[:-1]) + 1]
+    ends = np.r_[starts[1:], n]
+    out = np.empty(n, dtype=np.float32)
+    for start, end in zip(starts, ends):
+        percentile = (((start + 1) + end) / 2.0) / n
+        out[order[start:end]] = percentile
+    return out
+
+
+def _descending_competition_ranks(values: np.ndarray) -> np.ndarray:
+    n = len(values)
+    if n == 0:
+        return np.array([], dtype=np.int32)
+    order = np.argsort(-values, kind="mergesort")
+    sorted_values = values[order]
+    starts = np.r_[0, np.flatnonzero(sorted_values[1:] != sorted_values[:-1]) + 1]
+    ends = np.r_[starts[1:], n]
+    out = np.empty(n, dtype=np.int32)
+    for start, end in zip(starts, ends):
+        out[order[start:end]] = start + 1
+    return out
+
+
+def _prediction_column_arrays(model_id: str, stock_codes: np.ndarray, dates: np.ndarray, pred) -> dict[str, np.ndarray]:
+    scores = np.asarray(pred, dtype=np.float64)
+    n = len(scores)
+    ranks = np.empty(n, dtype=np.int32)
+    percentiles = np.empty(n, dtype=np.float32)
     for date in np.unique(dates):
         idxs = np.flatnonzero(dates == date)
-        scores = scores_all[idxs].tolist()
-        percentiles = _rank_percentiles(scores)
-        rank_by_idx = _rank_desc_min(scores)
-        for pos, row_idx in enumerate(idxs):
-            rows.append((
-                model_id,
-                str(stock_codes[row_idx]),
-                str(date),
-                float(scores_all[row_idx]),
-                rank_by_idx[pos],
-                percentiles[pos],
-            ))
-    return rows
+        day_scores = scores[idxs]
+        ranks[idxs] = _descending_competition_ranks(day_scores)
+        percentiles[idxs] = _average_rank_percentiles(day_scores)
+    return {
+        "model_id": np.full(n, model_id, dtype=object),
+        "stock_code": stock_codes.astype(object, copy=False),
+        "date": dates.astype(object, copy=False),
+        "pred_score": scores.astype(np.float64, copy=False),
+        "rank_in_date": ranks,
+        "percentile": percentiles,
+    }
 
 
 def _rank_desc_min(values: list[float]) -> list[int]:
@@ -521,14 +562,26 @@ def _persist_predictions(conn, model_id: str, holdout: list[dict[str, Any]], pre
 
 
 def _persist_prediction_arrays(conn, model_id: str, stock_codes: np.ndarray, dates: np.ndarray, pred) -> None:
-    conn.executemany(
-        """
-        INSERT INTO mart_multidim_prediction
-        (model_id, stock_code, date, pred_score, rank_in_date, percentile)
-        VALUES (?, ?, ?, ?, ?, ?)
-        """,
-        _prediction_rows_arrays(model_id, stock_codes, dates, pred),
-    )
+    columns = _prediction_column_arrays(model_id, stock_codes, dates, pred)
+    if len(columns["pred_score"]) == 0:
+        return
+    duck = conn.raw if hasattr(conn, "raw") else conn
+    view_name = "tmp_multidim_prediction_numpy"
+    duck.register(view_name, columns)
+    try:
+        duck.execute(
+            f"""
+            INSERT OR REPLACE INTO mart_multidim_prediction
+            (model_id, stock_code, date, pred_score, rank_in_date, percentile)
+            SELECT model_id, stock_code, date, pred_score, rank_in_date, percentile
+            FROM {view_name}
+            """
+        )
+    finally:
+        try:
+            duck.unregister(view_name)
+        except Exception:
+            pass
 
 
 def _ensure_rows(rows: list[dict[str, Any]]) -> None:

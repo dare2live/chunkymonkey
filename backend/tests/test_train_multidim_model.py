@@ -161,3 +161,43 @@ def test_prediction_rows_arrays_match_record_semantics():
     assert by_code["000002"][4] == 1
     assert by_code["000002"][5] == pytest.approx(5 / 6)
     assert by_code["000003"][4] == 1
+
+
+def test_prediction_column_arrays_and_bulk_insert():
+    columns = subject._prediction_column_arrays(
+        "model_a",
+        np.array(["000001", "000002", "000003", "000004"], dtype=object),
+        np.array(["2026-01-01", "2026-01-01", "2026-01-01", "2026-01-02"], dtype=object),
+        [0.2, 0.4, 0.4, 0.1],
+    )
+
+    assert columns["rank_in_date"].tolist() == [3, 1, 1, 1]
+    assert columns["percentile"].tolist() == pytest.approx([1 / 3, 5 / 6, 5 / 6, 1.0])
+
+    conn = duck_mem()
+    try:
+        subject.ensure_model_schema(conn)
+        subject._persist_prediction_arrays(
+            conn,
+            "model_a",
+            columns["stock_code"],
+            columns["date"],
+            columns["pred_score"],
+        )
+        stored = conn.execute(
+            """
+            SELECT stock_code, rank_in_date, percentile
+            FROM mart_multidim_prediction
+            ORDER BY stock_code
+            """
+        ).fetchall()
+
+        assert [(row[0], row[1]) for row in stored] == [
+            ("000001", 3),
+            ("000002", 1),
+            ("000003", 1),
+            ("000004", 1),
+        ]
+        assert [row[2] for row in stored] == pytest.approx([1 / 3, 5 / 6, 5 / 6, 1.0])
+    finally:
+        conn.close()
