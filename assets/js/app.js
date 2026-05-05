@@ -6585,13 +6585,15 @@
       function pct(v) { return v == null ? '-' : (Number(v) * 100).toFixed(2) + '%'; }
       var c = res.champion || {}, ch = res.challenger || {};
       var shadow = res.shadow_topk || {};
+      var evidence = res.evidence_bundle || {};
       box.innerHTML =
         '<div class="cm-action-grid cm-action-grid-tight">' +
         '<div class="cm-action-card"><div class="cm-action-title">Champion · 正式推荐</div><div style="font-weight:700;font-size:13px">' + esc(labelModelId(c.model_id || '-')) + '</div>' +
         '<div class="muted" style="font-size:11px;margin-top:4px">默认推荐只取 lifecycle champion · RankIC ' + fmt(c.holdout_rank_ic) + ' · L/S ' + pct(c.holdout_long_short_spread) + '</div></div>' +
         '<div class="cm-action-card"><div class="cm-action-title">最新 Challenger · Shadow 实验</div><div style="font-weight:700;font-size:13px">' + esc(labelModelId(ch.model_id || '尚未训练 challenger')) + '</div>' +
         '<div class="muted" style="font-size:11px;margin-top:4px">Not promoted · RankIC ' + fmt(ch.holdout_rank_ic) + ' · L/S ' + pct(ch.holdout_long_short_spread) + '</div>' +
-        '<div class="muted" style="font-size:11px;margin-top:2px">shadow topK ' + (shadow.rows || shadow.row_count || 0) + ' rows · ' + (shadow.snapshot_date || shadow.latest_snapshot || '-') + '</div></div>' +
+        '<div class="muted" style="font-size:11px;margin-top:2px">shadow topK ' + (shadow.rows || shadow.row_count || 0) + ' rows · ' + (shadow.snapshot_date || shadow.latest_snapshot || '-') + '</div>' +
+        (evidence.evidence_run_id ? '<div class="muted" style="font-size:11px;margin-top:2px">evidence ' + esc(evidence.status || '-') + ' · ' + esc(evidence.evidence_run_id) + '</div>' : '') + '</div>' +
         '</div>';
     } catch (e) {
       box.innerHTML = '<div class="muted">model comparison error: ' + esc(e.message) + '</div>';

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import json
 import logging
 import sys
 from datetime import datetime
@@ -59,6 +60,22 @@ CREATE TABLE IF NOT EXISTS mart_tdx_gpcw_auto_retention_decision (
     built_at TEXT,
     PRIMARY KEY (decision_run_id, feature_set_id, feature_name)
 );
+
+CREATE TABLE IF NOT EXISTS mart_feature_candidate_coverage (
+    audit_run_id TEXT NOT NULL,
+    feature_set_id TEXT NOT NULL,
+    feature_name TEXT NOT NULL,
+    label_name TEXT NOT NULL,
+    total_rows BIGINT,
+    non_null_rows BIGINT,
+    coverage_pct DOUBLE,
+    pit_violation_rows INTEGER,
+    production_ready BOOLEAN,
+    source_tier_distribution_json TEXT,
+    reason TEXT,
+    built_at TEXT,
+    PRIMARY KEY (audit_run_id, feature_set_id, feature_name, label_name)
+);
 """
 
 
@@ -69,6 +86,8 @@ EVENT_LIKE_FEATURES = {
     "fund_holding_market_value_tdx_f10",
     "top10_concentration_change",
 }
+
+PRODUCTION_MIN_COVERAGE_PCT = 60.0
 
 
 def ensure_tables(conn: Any) -> None:
@@ -139,6 +158,127 @@ def _corr_with_kept(conn: Any, feature_set_id: str, feature: str, kept: list[str
     return best_corr, best_peer
 
 
+def _table_columns(conn: Any, table: str) -> set[str]:
+    return {row[0] for row in conn.execute(f"DESCRIBE {table}").fetchall()}
+
+
+def build_feature_candidate_coverage(
+    conn: Any,
+    *,
+    feature_set_id: str,
+    audit_run_id: str,
+    label_name: str = "forward_ret_20d",
+    min_coverage_pct: float = PRODUCTION_MIN_COVERAGE_PCT,
+) -> dict[str, dict[str, Any]]:
+    ensure_tables(conn)
+    built_at = datetime.utcnow().isoformat(timespec="seconds")
+    table_cols = _table_columns(conn, "fact_feature_panel_candidate")
+    candidate_features = _candidate_features_for_set(conn, feature_set_id)
+    where = ["feature_set_id = ?"]
+    params: list[Any] = [feature_set_id]
+    if label_name in table_cols:
+        where.append(f"{label_name} IS NOT NULL")
+    where_sql = " AND ".join(where)
+
+    if feature_set_id.startswith("tdx_gpcw_auto"):
+        pit_rows = {
+            row["feature_name"]: int(row["violations"] or 0)
+            for row in conn.execute(
+                """
+                SELECT feature_name, SUM(violation_rows) AS violations
+                FROM mart_tdx_gpcw_auto_pit_audit
+                WHERE feature_set_id = ?
+                GROUP BY feature_name
+                """,
+                (feature_set_id.replace("_pit", ""),),
+            ).fetchall()
+        }
+    else:
+        pit_rows = {
+            row["feature_name"]: int(row["violations"] or 0)
+            for row in conn.execute(
+                """
+                SELECT feature_name, SUM(violation_rows) AS violations
+                FROM mart_feature_pit_audit
+                WHERE feature_set_id = ?
+                GROUP BY feature_name
+                """,
+                (feature_set_id,),
+            ).fetchall()
+        }
+
+    total = conn.execute(
+        f"SELECT COUNT(*) AS n FROM fact_feature_panel_candidate WHERE {where_sql}",
+        params,
+    ).fetchone()["n"]
+    source_tier_dist = None
+    if "source_tier" in table_cols:
+        rows = conn.execute(
+            f"""
+            SELECT source_tier, COUNT(*) AS n
+              FROM fact_feature_panel_candidate
+             WHERE {where_sql}
+             GROUP BY source_tier
+             ORDER BY source_tier
+            """,
+            params,
+        ).fetchall()
+        source_tier_dist = json.dumps({str(r["source_tier"]): int(r["n"] or 0) for r in rows}, ensure_ascii=False)
+
+    out: dict[str, dict[str, Any]] = {}
+    rows_to_write = []
+    for feature in candidate_features:
+        non_null = conn.execute(
+            f"""
+            SELECT COUNT({feature}) AS n
+              FROM fact_feature_panel_candidate
+             WHERE {where_sql}
+            """,
+            params,
+        ).fetchone()["n"]
+        coverage_pct = float(non_null or 0) * 100.0 / float(total or 1)
+        pit_violations = int(pit_rows.get(feature, 0))
+        production_ready = coverage_pct >= min_coverage_pct and pit_violations == 0
+        if pit_violations:
+            reason = "pit_violation"
+        elif coverage_pct < min_coverage_pct:
+            reason = "coverage_below_production_threshold"
+        else:
+            reason = "production_ready"
+        out[feature] = {
+            "coverage_pct": coverage_pct,
+            "pit_violation_rows": pit_violations,
+            "production_ready": production_ready,
+            "reason": reason,
+        }
+        rows_to_write.append((
+            audit_run_id,
+            feature_set_id,
+            feature,
+            label_name,
+            int(total or 0),
+            int(non_null or 0),
+            coverage_pct,
+            pit_violations,
+            production_ready,
+            source_tier_dist,
+            reason,
+            built_at,
+        ))
+
+    conn.executemany(
+        """
+        INSERT OR REPLACE INTO mart_feature_candidate_coverage
+        (audit_run_id, feature_set_id, feature_name, label_name, total_rows,
+         non_null_rows, coverage_pct, pit_violation_rows, production_ready,
+         source_tier_distribution_json, reason, built_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        rows_to_write,
+    )
+    return out
+
+
 def build_feature_retention_decisions(
     conn: Any,
     *,
@@ -168,6 +308,12 @@ def build_feature_retention_decisions(
     }
     candidate_features = _candidate_features_for_set(conn, feature_set_id)
     feature_group_map = _feature_group_map_for_set(conn, feature_set_id)
+    coverage_audit_run_id = f"{decision_run_id}_coverage"
+    coverage_rows = build_feature_candidate_coverage(
+        conn,
+        feature_set_id=feature_set_id,
+        audit_run_id=coverage_audit_run_id,
+    )
     wf_rows = {
         row["feature_name"]: row
         for row in conn.execute(
@@ -227,6 +373,11 @@ def build_feature_retention_decisions(
         wf = wf_rows.get(feature)
         group = feature_group_map.get(feature, _feature_group(feature))
         coverage = float(stat["coverage_pct"]) if stat and stat["coverage_pct"] is not None else 0.0
+        coverage_audit = coverage_rows.get(feature, {})
+        production_ready = bool(coverage_audit.get("production_ready"))
+        audited_coverage = coverage_audit.get("coverage_pct")
+        if audited_coverage is not None:
+            coverage = float(audited_coverage)
         mean_rank_ic = (
             float(wf["mean_rank_ic"])
             if wf and wf["mean_rank_ic"] is not None
@@ -248,6 +399,8 @@ def build_feature_retention_decisions(
         reason = "monitor"
         if pit_violations > 0:
             decision, reason = "drop", "pit_violation"
+        elif not production_ready and stat and stat["selected"]:
+            decision, reason = "watch", coverage_audit.get("reason") or "research_only_low_coverage"
         elif max_corr is not None and max_corr > 0.95 and feature not in kept_features:
             decision, reason = "drop", f"high_corr:{corr_peer}"
         elif coverage < 30.0 and feature not in EVENT_LIKE_FEATURES:
@@ -258,7 +411,7 @@ def build_feature_retention_decisions(
             decision, reason = "watch", "unstable_walkforward_sign"
         elif mean_rank_ic is None or abs(mean_rank_ic) < 0.005:
             decision, reason = "drop", "low_walkforward_rank_ic"
-        elif stat and stat["selected"] and (group_delta is None or group_delta >= 0):
+        elif stat and stat["selected"] and production_ready and (group_delta is None or group_delta >= 0):
             decision, reason = "keep", "selected_stable_positive_group"
         elif stat and not stat["selected"]:
             decision, reason = "drop", stat["rejection_reason"] or "not_selected"
@@ -278,7 +431,11 @@ def build_feature_retention_decisions(
             max_corr,
             corr_peer,
             "not_evaluated",
-            f"model_run={model_run_id}; ablation_run={ablation_run_id}",
+            (
+                f"model_run={model_run_id}; ablation_run={ablation_run_id}; "
+                f"coverage_audit_run={coverage_audit_run_id}; "
+                f"production_ready={production_ready}"
+            ),
             built_at,
         ])
 
@@ -294,12 +451,13 @@ def build_feature_retention_decisions(
         )
         promoted = 0
         for row in ranked:
-            if row[7] == 0 and row[8] is not None and promoted < 5:
+            feature_coverage = coverage_rows.get(row[2], {})
+            if row[7] == 0 and row[8] is not None and feature_coverage.get("production_ready") and promoted < 5:
                 row[4] = "keep"
                 row[5] = "selected_best_available"
                 promoted += 1
         if promoted == 0:
-            raise RuntimeError(f"no keepable features for feature_set_id={feature_set_id}")
+            logger.warning("no production-keep features for feature_set_id=%s", feature_set_id)
 
     conn.executemany(
         """
@@ -331,6 +489,7 @@ def build_feature_retention_decisions(
         )
     from services.schema_versions import record_actual_version
     record_actual_version(conn, "mart_feature_retention_decision")
+    record_actual_version(conn, "mart_feature_candidate_coverage")
     conn.commit()
     counts = {}
     for row in output_rows:

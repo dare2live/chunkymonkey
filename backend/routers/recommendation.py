@@ -119,6 +119,33 @@ async def get_daily_topk(
             where.append("r.regime_flag = ?")
             params.append(regime)
 
+        cache_available = _table_exists(conn, "mart_daily_topk_view_cache")
+        cache_rows = []
+        if cache_available:
+            cache_where = ["snapshot_date = ?", "model_id = ?"]
+            cache_params = [date, model_id]
+            if run_mode:
+                cache_where.append("run_mode = ?")
+                cache_params.append(run_mode)
+            elif not requested_model_id:
+                cache_where.append("COALESCE(run_mode, 'champion') != 'shadow'")
+            if regime:
+                cache_where.append("regime_flag = ?")
+                cache_params.append(regime)
+            cache_rows = conn.execute(
+                f"""
+                SELECT snapshot_date, stock_code, model_id, rank_in_date,
+                       pred_score, percentile, regime_flag, run_mode,
+                       key_features_json, track_id, is_primary,
+                       stock_name, tdx_l1_name AS l1, tdx_l2_name AS l2
+                  FROM mart_daily_topk_view_cache
+                 WHERE {' AND '.join(cache_where)}
+                 ORDER BY rank_in_date
+                 LIMIT ?
+                """,
+                cache_params + [limit],
+            ).fetchall()
+
         run_mode_select = "r.run_mode," if has_run_mode else "NULL AS run_mode,"
         sql = f"""
             WITH name_ref AS (
@@ -158,7 +185,7 @@ async def get_daily_topk(
             ORDER BY r.rank_in_date
             LIMIT ?
         """
-        rows = conn.execute(sql, params + [limit]).fetchall()
+        rows = cache_rows or conn.execute(sql, params + [limit]).fetchall()
         items = []
         key_features_cache = None
         for r in rows:
@@ -634,6 +661,20 @@ async def get_model_comparison(
             if shadow is not None:
                 shadow["rows"] = shadow.get("row_count")
 
+        evidence = None
+        if challenger_model_id and _table_exists(conn, "mart_challenger_evidence_bundle"):
+            row = conn.execute("""
+                SELECT evidence_run_id, status, gate_run_id, gate_status,
+                       blockers_json, started_at, ended_at, duration_s
+                  FROM mart_challenger_evidence_bundle
+                 WHERE model_id = ?
+                 ORDER BY started_at DESC
+                 LIMIT 1
+            """, (challenger_model_id,)).fetchone()
+            evidence = dict(row) if row else None
+            if evidence:
+                evidence["blockers"] = _safe_json(evidence.get("blockers_json"), [])
+
         return {
             "ok": True,
             "selection_fallback": selection_fallback,
@@ -649,6 +690,7 @@ async def get_model_comparison(
             },
             "shadow_topk": shadow,
             "promotion_gate": gate,
+            "evidence_bundle": evidence,
         }
     finally:
         conn.close()

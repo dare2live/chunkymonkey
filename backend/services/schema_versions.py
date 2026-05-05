@@ -73,6 +73,7 @@ MART_VERSIONS = {
     "mart_current_relationship": "v1",       # 当前持仓关系 ⭐
     "mart_daily_recommendation": "v1",       # 每日推荐 topK
     "mart_daily_recommendation_risk": "v1",
+    "mart_daily_topk_view_cache": "v1",
     "mart_dual_confirm": "v1",               # 双重确认
     "mart_etf_snapshot_latest": "v1",
     "mart_etf_snapshot_state": "v1",
@@ -86,6 +87,9 @@ MART_VERSIONS = {
     "mart_model_holding_topk_eval": "v1",
     "mart_model_feature_lineage": "v1",
     "mart_feature_retention_decision": "v1",
+    "mart_feature_candidate_coverage": "v1",
+    "mart_feature_drift_histogram": "v1",
+    "mart_challenger_evidence_bundle": "v1",
     "mart_model_selection_run": "v1",
     "mart_tdx_challenger_report": "v1",
     "mart_tdx_keep_promotion_gate": "v1",

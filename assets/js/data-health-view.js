@@ -451,6 +451,7 @@
                 ).join('；')
                 : String(blockersRaw || '');
               const shadow = m.shadow_topk || {};
+              const evidence = m.evidence_bundle || {};
               const tone = status === 'PASS' ? 'green' : status === 'FAIL' ? 'red' : 'yellow';
               return `<div style="margin:8px 0 0;padding-top:8px;border-top:1px solid var(--cm-ink-50);font-size:12px">
                 <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
@@ -459,6 +460,7 @@
                   <span class="muted">IC=${ic}</span>
                   <span class="muted">decision=${this.esc(decision)}</span>
                   <span class="muted">shadow topK=${this.fmtNum(shadow.row_count || 0)} rows ${shadow.snapshot_date || ''}</span>
+                  ${evidence.evidence_run_id ? `<span class="muted">evidence=${this.esc(evidence.status || 'unknown')} · ${this.esc(evidence.evidence_run_id)}</span>` : ''}
                 </div>
                 ${blockers ? `<div class="muted" style="margin-top:4px;font-size:11px">blockers: ${this.esc(blockers.slice(0, 180))}</div>` : ''}
               </div>`;

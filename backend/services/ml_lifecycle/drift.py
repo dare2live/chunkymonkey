@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import logging
 import math
+from datetime import datetime
 from typing import Iterable, Optional
 
 from services.db import get_conn
@@ -22,6 +23,26 @@ logger = logging.getLogger("cm-drift")
 
 PSI_OK_THRESHOLD = 0.10
 PSI_WARN_THRESHOLD = 0.25
+
+
+HISTOGRAM_DDL = """
+CREATE TABLE IF NOT EXISTS mart_feature_drift_histogram (
+    model_id TEXT,
+    feature_table TEXT NOT NULL,
+    feature TEXT NOT NULL,
+    window_name TEXT NOT NULL,
+    bucket_version TEXT NOT NULL,
+    bucket_id INTEGER NOT NULL,
+    bucket_left DOUBLE,
+    bucket_right DOUBLE,
+    train_count BIGINT DEFAULT 0,
+    recent_count BIGINT DEFAULT 0,
+    computed_at TEXT NOT NULL,
+    PRIMARY KEY (model_id, feature_table, feature, window_name, bucket_version, bucket_id)
+);
+CREATE INDEX IF NOT EXISTS idx_drift_hist_model_feature
+    ON mart_feature_drift_histogram(model_id, feature_table, feature, bucket_version);
+"""
 
 
 def _finite_values(values: Iterable[float]) -> list[float]:
@@ -79,6 +100,118 @@ def _histogram(values: list[float], edges: list[float]) -> list[int]:
     return counts
 
 
+def ensure_drift_histogram_schema(conn) -> None:
+    if hasattr(conn, "executescript"):
+        conn.executescript(HISTOGRAM_DDL)
+    else:
+        for stmt in HISTOGRAM_DDL.split(";"):
+            stmt = stmt.strip()
+            if stmt:
+                conn.execute(stmt)
+
+
+def _psi_from_counts(train_counts: list[int], recent_counts: list[int]) -> float:
+    eps = 1e-6
+    t_total = sum(train_counts)
+    r_total = sum(recent_counts)
+    if t_total <= 0 or r_total <= 0:
+        return float("nan")
+    bucket_count = max(len(train_counts), 1)
+    p_t = [(count + eps) / (t_total + eps * bucket_count) for count in train_counts]
+    p_r = [(count + eps) / (r_total + eps * bucket_count) for count in recent_counts]
+    return sum((recent - train) * math.log(recent / train) for train, recent in zip(p_t, p_r))
+
+
+def _histogram_edges(values: list[float], *, n_bins: int) -> list[float]:
+    if len(values) < n_bins:
+        return []
+    sorted_train = sorted(values)
+    qs = [idx / n_bins for idx in range(n_bins + 1)]
+    return _unique_sorted(_linear_quantile(sorted_train, q) for q in qs)
+
+
+def _load_cached_train_histogram(
+    conn,
+    *,
+    model_id: str | None,
+    feature_table: str,
+    feature: str,
+    bucket_version: str,
+) -> tuple[list[float], list[int]]:
+    rows = conn.execute(
+        """
+        SELECT bucket_left, bucket_right, train_count
+          FROM mart_feature_drift_histogram
+         WHERE model_id IS NOT DISTINCT FROM ?
+           AND feature_table = ?
+           AND feature = ?
+           AND window_name = 'train'
+           AND bucket_version = ?
+         ORDER BY bucket_id
+        """,
+        (model_id, feature_table, feature, bucket_version),
+    ).fetchall()
+    if not rows:
+        return [], []
+    edges = [float(rows[0]["bucket_left"])]
+    counts = []
+    for row in rows:
+        edges.append(float(row["bucket_right"]))
+        counts.append(int(row["train_count"] or 0))
+    return edges, counts
+
+
+def _write_histogram_rows(
+    conn,
+    *,
+    model_id: str | None,
+    feature_table: str,
+    feature: str,
+    window_name: str,
+    bucket_version: str,
+    edges: list[float],
+    counts: list[int],
+) -> None:
+    computed_at = datetime.utcnow().isoformat(timespec="seconds")
+    conn.execute(
+        """
+        DELETE FROM mart_feature_drift_histogram
+         WHERE model_id IS NOT DISTINCT FROM ?
+           AND feature_table = ?
+           AND feature = ?
+           AND window_name = ?
+           AND bucket_version = ?
+        """,
+        (model_id, feature_table, feature, window_name, bucket_version),
+    )
+    rows = []
+    for idx, count in enumerate(counts):
+        train_count = count if window_name == "train" else 0
+        recent_count = count if window_name == "recent" else 0
+        rows.append((
+            model_id,
+            feature_table,
+            feature,
+            window_name,
+            bucket_version,
+            idx,
+            float(edges[idx]),
+            float(edges[idx + 1]),
+            int(train_count),
+            int(recent_count),
+            computed_at,
+        ))
+    conn.executemany(
+        """
+        INSERT INTO mart_feature_drift_histogram
+        (model_id, feature_table, feature, window_name, bucket_version, bucket_id,
+         bucket_left, bucket_right, train_count, recent_count, computed_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        rows,
+    )
+
+
 def compute_psi(
     train_values: Iterable[float],
     recent_values: Iterable[float],
@@ -118,6 +251,29 @@ def compute_psi(
 
     psi = sum((recent - train) * math.log(recent / train) for train, recent in zip(p_t, p_r))
     return psi, n_t, n_r
+
+
+def compute_psi_cached(
+    train_values: Iterable[float],
+    recent_values: Iterable[float],
+    *,
+    n_bins: int = 10,
+) -> tuple[float, int, int, list[float], list[int], list[int]]:
+    """Return PSI plus reusable histogram state.
+
+    This keeps the same semantics as compute_psi but exposes bucket edges and
+    counts so callers can persist the train baseline and only recompute recent
+    counts on daily runs.
+    """
+    t = _finite_values(train_values)
+    r = _finite_values(recent_values)
+    n_t, n_r = len(t), len(r)
+    edges = _histogram_edges(t, n_bins=n_bins)
+    if len(edges) < 3 or n_r < n_bins:
+        return float("nan"), n_t, n_r, edges, [], []
+    train_counts = _histogram(t, edges)
+    recent_counts = _histogram(r, edges)
+    return _psi_from_counts(train_counts, recent_counts), n_t, n_r, edges, train_counts, recent_counts
 
 
 def severity_for_psi(psi: float) -> str:
@@ -195,6 +351,124 @@ def compute_feature_drift(
                 logger.warning(f"[drift] {col} 失败: {exc}")
                 continue
 
+        return results
+
+
+def compute_feature_drift_with_histogram_cache(
+    *,
+    feature_table: str = "fact_feature_panel",
+    feature_columns: Optional[list[str]] = None,
+    train_window_days: int = 365,
+    recent_window_days: int = 30,
+    model_id: Optional[str] = None,
+    n_bins: int = 10,
+    refresh_baseline: bool = False,
+) -> list[dict]:
+    """Compute PSI using a persistent train histogram baseline.
+
+    First run for a model/feature/window builds both train and recent
+    histograms. Later daily runs reuse the train bucket edges/counts and only
+    scan recent rows, which is the intended production path for cron_daily.
+    """
+    bucket_version = f"{feature_table}:train{train_window_days}:recent{recent_window_days}:bins{n_bins}:v1"
+    with get_conn() as conn:
+        ensure_drift_histogram_schema(conn)
+        if feature_columns is None:
+            cols = conn.execute(
+                f"SELECT column_name, data_type FROM information_schema.columns "
+                f"WHERE table_name = '{feature_table}' "
+                f"  AND data_type IN ('DOUBLE','FLOAT','REAL','BIGINT','INTEGER')"
+            ).fetchall()
+            feature_columns = [c[0] for c in cols if not c[0].startswith(('stock_', 'date', 'snapshot'))]
+
+        date_col_row = conn.execute(
+            f"SELECT column_name FROM information_schema.columns "
+            f"WHERE table_name = '{feature_table}' "
+            f"  AND column_name IN ('trade_date','date','snapshot_date','as_of_date') "
+            f"LIMIT 1"
+        ).fetchone()
+        if not date_col_row:
+            logger.warning(f"[drift] {feature_table} 没有可识别的日期列, 跳过")
+            return []
+        date_col = date_col_row[0]
+
+        results = []
+        for col in feature_columns:
+            try:
+                edges, train_counts = ([], []) if refresh_baseline else _load_cached_train_histogram(
+                    conn,
+                    model_id=model_id,
+                    feature_table=feature_table,
+                    feature=col,
+                    bucket_version=bucket_version,
+                )
+                n_t = sum(train_counts)
+                if not edges or not train_counts:
+                    t_rows = conn.execute(f"""
+                        SELECT {col} FROM {feature_table}
+                         WHERE {date_col} BETWEEN
+                               strftime(now() - INTERVAL ({train_window_days + recent_window_days}) DAY, '%Y-%m-%d')
+                           AND strftime(now() - INTERVAL ({recent_window_days}) DAY, '%Y-%m-%d')
+                           AND {col} IS NOT NULL
+                    """).fetchall()
+                    t_vals = [r[0] for r in t_rows]
+                    edges = _histogram_edges(_finite_values(t_vals), n_bins=n_bins)
+                    if len(edges) < 3:
+                        results.append({
+                            "feature": col,
+                            "psi": float("nan"),
+                            "n_train": len(t_vals),
+                            "n_recent": 0,
+                            "severity": "unknown",
+                            "model_id": model_id,
+                            "drift_source": "histogram_cache",
+                        })
+                        continue
+                    train_counts = _histogram(_finite_values(t_vals), edges)
+                    n_t = len(_finite_values(t_vals))
+                    _write_histogram_rows(
+                        conn,
+                        model_id=model_id,
+                        feature_table=feature_table,
+                        feature=col,
+                        window_name="train",
+                        bucket_version=bucket_version,
+                        edges=edges,
+                        counts=train_counts,
+                    )
+
+                r_rows = conn.execute(f"""
+                    SELECT {col} FROM {feature_table}
+                     WHERE {date_col} >= strftime(now() - INTERVAL ({recent_window_days}) DAY, '%Y-%m-%d')
+                       AND {col} IS NOT NULL
+                """).fetchall()
+                r_vals = _finite_values([r[0] for r in r_rows])
+                recent_counts = _histogram(r_vals, edges)
+                _write_histogram_rows(
+                    conn,
+                    model_id=model_id,
+                    feature_table=feature_table,
+                    feature=col,
+                    window_name="recent",
+                    bucket_version=bucket_version,
+                    edges=edges,
+                    counts=recent_counts,
+                )
+                psi = _psi_from_counts(train_counts, recent_counts)
+                severity = severity_for_psi(psi)
+                results.append({
+                    "feature": col,
+                    "psi": psi,
+                    "n_train": n_t,
+                    "n_recent": len(r_vals),
+                    "severity": severity,
+                    "model_id": model_id,
+                    "drift_source": "histogram_cache",
+                })
+            except Exception as exc:
+                logger.warning(f"[drift] {col} histogram cache 失败: {exc}")
+                continue
+        conn.commit()
         return results
 
 

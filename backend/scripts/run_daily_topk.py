@@ -36,6 +36,7 @@ from services.ml_lifecycle.registry import (
     select_default_model_id,
 )
 from services.pipeline_manifest import git_commit_sha, record_pipeline_run, utc_now_iso
+from services.schema_versions import record_actual_version
 
 logger = logging.getLogger("daily_topk")
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s | %(message)s")
@@ -60,6 +61,32 @@ CREATE TABLE IF NOT EXISTS mart_daily_recommendation (
 CREATE INDEX IF NOT EXISTS idx_dr_date ON mart_daily_recommendation(snapshot_date);
 CREATE INDEX IF NOT EXISTS idx_dr_rank ON mart_daily_recommendation(snapshot_date, rank_in_date);
 ALTER TABLE mart_daily_recommendation ADD COLUMN IF NOT EXISTS run_mode TEXT DEFAULT 'champion';
+
+CREATE TABLE IF NOT EXISTS mart_daily_topk_view_cache (
+    snapshot_date TEXT NOT NULL,
+    stock_code    TEXT NOT NULL,
+    model_id      TEXT,
+    rank_in_date  INTEGER,
+    pred_score    REAL,
+    percentile    REAL,
+    regime_flag   TEXT,
+    key_features_json TEXT,
+    track_id      TEXT,
+    is_primary    BOOLEAN,
+    run_mode      TEXT DEFAULT 'champion',
+    stock_name    TEXT,
+    xueqiu_symbol TEXT,
+    tdx_l1_name   TEXT,
+    tdx_l2_name   TEXT,
+    built_at      TEXT,
+    PRIMARY KEY (snapshot_date, stock_code, model_id)
+);
+CREATE INDEX IF NOT EXISTS idx_topk_cache_date_rank
+    ON mart_daily_topk_view_cache(snapshot_date DESC, rank_in_date);
+ALTER TABLE mart_daily_topk_view_cache ADD COLUMN IF NOT EXISTS run_mode TEXT DEFAULT 'champion';
+ALTER TABLE mart_daily_topk_view_cache ADD COLUMN IF NOT EXISTS xueqiu_symbol TEXT;
+ALTER TABLE mart_daily_topk_view_cache ADD COLUMN IF NOT EXISTS tdx_l1_name TEXT;
+ALTER TABLE mart_daily_topk_view_cache ADD COLUMN IF NOT EXISTS tdx_l2_name TEXT;
 
 -- M8.5b: snapshot 级风险摘要 (top20). 不阻塞主轨上线, 只用于监控.
 CREATE TABLE IF NOT EXISTS mart_daily_recommendation_risk (
@@ -235,6 +262,114 @@ def _top_by_regime(rows: list[dict[str, Any]], top_k: int) -> list[dict[str, Any
         selected.append(row)
         counts[regime] = count + 1
     return selected
+
+
+def _xueqiu_symbol(stock_code: str | None) -> str | None:
+    code = str(stock_code or "").strip()
+    if not code:
+        return None
+    prefix = "SH" if code[0] in {"5", "6", "9"} else "SZ"
+    return f"{prefix}{code}"
+
+
+def _stock_identity_map(conn, stock_codes: list[str]) -> dict[str, dict[str, Any]]:
+    codes = sorted({str(code) for code in stock_codes if code})
+    if not codes:
+        return {}
+    placeholders = ", ".join(["?"] * len(codes))
+    rows = conn.execute(
+        f"""
+        WITH name_ref AS (
+            SELECT stock_code, stock_name, 1 AS source_priority
+              FROM dim_active_a_stock
+             WHERE stock_code IN ({placeholders})
+               AND stock_name IS NOT NULL AND stock_name <> ''
+            UNION ALL
+            SELECT stock_code, stock_name, 2 AS source_priority
+              FROM mart_stock_trend
+             WHERE stock_code IN ({placeholders})
+               AND stock_name IS NOT NULL AND stock_name <> ''
+            UNION ALL
+            SELECT stock_code, stock_name, 3 AS source_priority
+              FROM fact_institution_event
+             WHERE stock_code IN ({placeholders})
+               AND stock_name IS NOT NULL AND stock_name <> ''
+        ),
+        stock_names AS (
+            SELECT stock_code, stock_name
+              FROM (
+                SELECT stock_code, stock_name,
+                       ROW_NUMBER() OVER (
+                           PARTITION BY stock_code
+                           ORDER BY source_priority
+                       ) AS rn
+                  FROM name_ref
+              )
+             WHERE rn = 1
+        )
+        SELECT c.stock_code, sn.stock_name, ind.tdx_l1_name, ind.tdx_l2_name
+          FROM (SELECT UNNEST(?::VARCHAR[]) AS stock_code) c
+          LEFT JOIN stock_names sn ON sn.stock_code = c.stock_code
+          LEFT JOIN dim_stock_tdx_industry ind ON ind.stock_code = c.stock_code
+        """,
+        [*codes, *codes, *codes, codes],
+    ).fetchall()
+    return {
+        row["stock_code"]: {
+            "stock_name": row["stock_name"],
+            "tdx_l1_name": row["tdx_l1_name"],
+            "tdx_l2_name": row["tdx_l2_name"],
+            "xueqiu_symbol": _xueqiu_symbol(row["stock_code"]),
+        }
+        for row in rows
+    }
+
+
+def write_topk_view_cache(conn, rows: list[dict[str, Any]]) -> int:
+    if not rows:
+        return 0
+    snapshot_date = rows[0]["snapshot_date"]
+    model_id = rows[0]["model_id"]
+    identities = _stock_identity_map(conn, [row["stock_code"] for row in rows])
+    conn.execute(
+        """
+        DELETE FROM mart_daily_topk_view_cache
+         WHERE snapshot_date = ? AND model_id = ?
+        """,
+        (snapshot_date, model_id),
+    )
+    payload = []
+    for row in rows:
+        ident = identities.get(row["stock_code"], {})
+        payload.append((
+            row["snapshot_date"],
+            row["stock_code"],
+            row["model_id"],
+            int(row["rank_in_date"]),
+            float(row["pred_score"]),
+            float(row["percentile"]),
+            row.get("regime_flag"),
+            row["key_features_json"],
+            row["track_id"],
+            bool(row["is_primary"]),
+            row["run_mode"],
+            ident.get("stock_name"),
+            ident.get("xueqiu_symbol") or _xueqiu_symbol(row["stock_code"]),
+            ident.get("tdx_l1_name"),
+            ident.get("tdx_l2_name"),
+            row["built_at"],
+        ))
+    conn.executemany(
+        """
+        INSERT OR REPLACE INTO mart_daily_topk_view_cache
+        (snapshot_date, stock_code, model_id, rank_in_date, pred_score, percentile,
+         regime_flag, key_features_json, track_id, is_primary, run_mode,
+         stock_name, xueqiu_symbol, tdx_l1_name, tdx_l2_name, built_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        payload,
+    )
+    return len(payload)
 
 
 def main():
@@ -457,6 +592,10 @@ def main():
         )
     conn.commit()
     timings["recommendation_write_s"] = round(time.perf_counter() - t_write, 3)
+    t_cache = time.perf_counter()
+    cache_rows = write_topk_view_cache(conn, output)
+    conn.commit()
+    timings["view_cache_write_s"] = round(time.perf_counter() - t_cache, 3)
 
     # M8.5b/c: 算并写 snapshot 级风险摘要 (top20 / top_k 取较小, 默认 20)
     risk_top_size = min(20, args.top_k)
@@ -469,6 +608,9 @@ def main():
         top_size=risk_top_size,
         built_at=built_at,
     )
+    record_actual_version(conn, "mart_daily_recommendation")
+    record_actual_version(conn, "mart_daily_recommendation_risk")
+    record_actual_version(conn, "mart_daily_topk_view_cache")
     duration_s = time.perf_counter() - run_t0
     timings["total_s"] = round(duration_s, 3)
     record_pipeline_run(
@@ -489,7 +631,11 @@ def main():
                 else []
             ),
         ],
-        output_tables=["mart_daily_recommendation", "mart_daily_recommendation_risk"],
+        output_tables=[
+            "mart_daily_recommendation",
+            "mart_daily_recommendation_risk",
+            "mart_daily_topk_view_cache",
+        ],
         model_id=model_id,
         feature_group="stored_feature_cols",
         label_name=None,
@@ -497,6 +643,7 @@ def main():
             "target_date": str(target_date),
             "rows": len(records),
             "output_rows": len(output),
+            "view_cache_rows": cache_rows,
             "top_k": args.top_k,
             "mode": args.mode,
             "track_id": track_id,

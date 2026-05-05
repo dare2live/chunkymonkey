@@ -16,9 +16,14 @@ log = logging.getLogger("compute-drift")
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from services.ml_lifecycle.drift import compute_feature_drift, write_drift_snapshot
+from services.ml_lifecycle.drift import (
+    compute_feature_drift,
+    compute_feature_drift_with_histogram_cache,
+    write_drift_snapshot,
+)
 from services.ml_lifecycle.registry import get_champion
 from services.db import get_conn
+from services.schema_versions import record_actual_version
 
 
 def _model_feature_cols(model_id: str | None) -> list[str] | None:
@@ -42,20 +47,28 @@ def main() -> int:
     parser.add_argument("--train-days", type=int, default=365)
     parser.add_argument("--recent-days", type=int, default=30)
     parser.add_argument("--top-n", type=int, default=30, help="只算前 N 个特征 (按列序)")
+    parser.add_argument("--no-cache", action="store_true", help="禁用 histogram cache, 执行全量 PSI 扫描")
+    parser.add_argument("--refresh-baseline", action="store_true", help="强制重建 train histogram baseline")
     args = parser.parse_args()
 
     champ = get_champion()
     model_id = args.model_id or (champ["model_id"] if champ else None)
     log.info(f"computing drift for model_id={model_id} feature_table={args.feature_table}")
     feature_cols = _model_feature_cols(model_id)
+    if feature_cols is not None and args.top_n > 0:
+        feature_cols = feature_cols[: args.top_n]
 
-    drift = compute_feature_drift(
-        feature_table=args.feature_table,
-        feature_columns=feature_cols,
-        train_window_days=args.train_days,
-        recent_window_days=args.recent_days,
-        model_id=model_id,
-    )
+    compute_fn = compute_feature_drift if args.no_cache else compute_feature_drift_with_histogram_cache
+    kwargs = {
+        "feature_table": args.feature_table,
+        "feature_columns": feature_cols,
+        "train_window_days": args.train_days,
+        "recent_window_days": args.recent_days,
+        "model_id": model_id,
+    }
+    if not args.no_cache:
+        kwargs["refresh_baseline"] = args.refresh_baseline
+    drift = compute_fn(**kwargs)
     if not drift:
         log.warning("no drift results — feature_table 可能没数据或没有日期列")
         return 1
@@ -63,6 +76,11 @@ def main() -> int:
     # 仅取 top-N (避免 mart_feature_drift 行爆炸)
     drift = drift[: args.top_n]
     n = write_drift_snapshot(drift, window_days=args.recent_days)
+    with get_conn() as conn:
+        record_actual_version(conn, "mart_feature_drift")
+        if not args.no_cache:
+            record_actual_version(conn, "mart_feature_drift_histogram")
+        conn.commit()
     log.info(f"wrote {n} feature drift rows")
     if model_id and n:
         with get_conn() as conn:

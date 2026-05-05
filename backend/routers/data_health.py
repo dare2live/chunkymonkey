@@ -498,10 +498,33 @@ def get_model_lifecycle() -> dict[str, Any]:
 
         has_daily_rec = _table_exists(con, "mart_daily_recommendation")
         has_run_mode = has_daily_rec and _has_column(con, "mart_daily_recommendation", "run_mode")
+        evidence_by_model: dict[str, dict[str, Any]] = {}
+        if _table_exists(con, "mart_challenger_evidence_bundle"):
+            evidence_rows = con.execute("""
+                SELECT *
+                  FROM (
+                    SELECT evidence_run_id, model_id, status, gate_run_id,
+                           gate_status, blockers_json, started_at, ended_at,
+                           duration_s,
+                           ROW_NUMBER() OVER (
+                               PARTITION BY model_id
+                               ORDER BY started_at DESC
+                           ) AS rn
+                      FROM mart_challenger_evidence_bundle
+                  )
+                 WHERE rn = 1
+            """).fetchall()
+            for row in evidence_rows:
+                evidence = dict(row)
+                evidence.pop("rn", None)
+                evidence["blockers"] = _safe_json(evidence.get("blockers_json"), [])
+                evidence_by_model[evidence["model_id"]] = evidence
         for model in models:
             model_id = model.get("model_id")
             if model_id in gate_by_model:
                 model["promotion_gate"] = gate_by_model[model_id]
+            if model_id in evidence_by_model:
+                model["evidence_bundle"] = evidence_by_model[model_id]
             if model.get("status") != "challenger" or not has_daily_rec:
                 continue
             shadow_filter = "AND COALESCE(run_mode, '') = 'shadow'" if has_run_mode else ""
