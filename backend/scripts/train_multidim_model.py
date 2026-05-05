@@ -22,6 +22,7 @@ import logging
 import os
 import sys
 import time
+from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 from typing import Any
@@ -29,6 +30,7 @@ from typing import Any
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 import lightgbm as lgb
+import numpy as np
 import optuna
 
 from services.db import get_conn
@@ -48,12 +50,8 @@ from services.pipeline_manifest import (
 from scripts.run_feature_ablation import (
     compute_ic,
     decile_metrics,
-    _dates,
-    _matrix,
     _quote_ident,
     _rank_percentiles,
-    _records_from_cursor,
-    _values,
     split_time_series_records,
 )
 
@@ -121,36 +119,87 @@ def _table_columns(duck, table: str) -> set[str]:
     }
 
 
-def load_panel(
-    conn,
-    start_date: str,
-    end_date: str,
+def _as_text_array(values) -> np.ndarray:
+    if np.ma.isMaskedArray(values):
+        values = values.filled("")
+    return np.asarray(["" if value is None else str(value) for value in values], dtype=object)
+
+
+def _as_float_array(values) -> np.ndarray:
+    if np.ma.isMaskedArray(values):
+        values = values.filled(np.nan)
+    arr = np.asarray(values, dtype=np.float32)
+    return np.nan_to_num(arr, nan=0.0, copy=False)
+
+
+@dataclass
+class PanelData:
+    stock_codes: np.ndarray
+    dates: np.ndarray
+    labels: np.ndarray
+    features: dict[str, np.ndarray]
+    row_count: int
+
+    @property
+    def columns(self) -> set[str]:
+        return {"stock_code", "date", "label_value", *self.features.keys()}
+
+    def matrix(self, feature_cols: list[str], indices: np.ndarray | None = None) -> np.ndarray:
+        arrays = []
+        for col in feature_cols:
+            if col not in self.features:
+                raise KeyError(f"feature column missing from panel arrays: {col}")
+            arr = self.features[col]
+            arrays.append(arr if indices is None else arr[indices])
+        if not arrays:
+            return np.empty((0 if indices is None else len(indices), 0), dtype=np.float32)
+        return np.column_stack(arrays).astype(np.float32, copy=False)
+
+    def labels_for(self, indices: np.ndarray) -> np.ndarray:
+        return self.labels[indices]
+
+    def dates_for(self, indices: np.ndarray) -> np.ndarray:
+        return self.dates[indices]
+
+    def codes_for(self, indices: np.ndarray) -> np.ndarray:
+        return self.stock_codes[indices]
+
+    def to_records(self, indices: np.ndarray | None = None) -> list[dict[str, Any]]:
+        row_indices = range(self.row_count) if indices is None else indices.tolist()
+        records: list[dict[str, Any]] = []
+        for idx in row_indices:
+            row = {
+                "stock_code": self.stock_codes[idx],
+                "date": self.dates[idx],
+                "label_value": float(self.labels[idx]),
+            }
+            for col, values in self.features.items():
+                value = values[idx]
+                row[col] = value.item() if hasattr(value, "item") else value
+            records.append(row)
+        return records
+
+
+def _panel_query_parts(
+    duck,
     *,
-    label_name: str = DEFAULT_LABEL_NAME,
-    with_alpha158: bool = True,
-    feature_table: str = "fact_feature_panel",
-    feature_set_id: str | None = None,
-) -> list[dict[str, Any]]:
-    """DuckDB 加载: 只读 LightGBM 需要的列, float32 降内存
-    Phase 8: 可选 LEFT JOIN alpha158.duckdb 的 fact_alpha158_panel 增补 64 Alpha158 因子
-
-    用 conn.raw (duckdb 原生) 执行, 避免重复打开 smartmoney.duckdb.
-    """
-    from pathlib import Path
-    duck = conn.raw if hasattr(conn, 'raw') else conn
-    logger.info("DuckDB 加载 %s %s ~ %s", feature_table, start_date, end_date)
-
-    # Alpha158 ATTACH (数据库连接上挂其它 DuckDB 文件, READ_ONLY 避免冲突)
+    label_name: str,
+    with_alpha158: bool,
+    feature_table: str,
+) -> tuple[list[str], list[str], str, set[str]]:
     alpha158_db = Path(__file__).resolve().parent.parent.parent / "data" / "alpha158.duckdb"
     a158_col_list: list[str] = []
     if with_alpha158 and feature_table == "fact_feature_panel" and alpha158_db.exists():
         try:
             duck.execute(f"ATTACH IF NOT EXISTS '{alpha158_db}' AS a158 (READ_ONLY)")
-            a158_col_list = [r[0] for r in duck.execute(
-                "SELECT column_name FROM information_schema.columns "
-            "WHERE table_catalog='a158' AND table_name='fact_alpha158_panel' "
-                "AND column_name LIKE 'a158_%'"
-            ).fetchall()]
+            a158_col_list = [
+                row[0]
+                for row in duck.execute(
+                    "SELECT column_name FROM information_schema.columns "
+                    "WHERE table_catalog='a158' AND table_name='fact_alpha158_panel' "
+                    "AND column_name LIKE 'a158_%'"
+                ).fetchall()
+            ]
             logger.info("Alpha158 join 启用, 增补 %d 列", len(a158_col_list))
         except Exception as e:
             logger.warning("Alpha158 attach failed: %s", e)
@@ -159,25 +208,48 @@ def load_panel(
     if label_name not in panel_cols:
         raise RuntimeError(f"fact_feature_panel 缺少 label 列: {label_name}")
     schema_feature_cols = list(FEATURE_COLS)
-    for c in TDX_KEEP_FEATURE_COLS:
-        if c not in schema_feature_cols:
-            schema_feature_cols.append(c)
-    base_cols = [c for c in schema_feature_cols if c in panel_cols]
-    missing_cols = [c for c in FEATURE_COLS if c not in panel_cols]
+    for col in TDX_KEEP_FEATURE_COLS:
+        if col not in schema_feature_cols:
+            schema_feature_cols.append(col)
+    base_cols = [col for col in schema_feature_cols if col in panel_cols]
+    missing_cols = [col for col in FEATURE_COLS if col not in panel_cols]
     if missing_cols:
         logger.warning("fact_feature_panel 缺少 %d 个 schema 特征, 本次跳过: %s", len(missing_cols), missing_cols)
+    return base_cols, a158_col_list, ("p.regime_flag" if "regime_flag" in panel_cols else "NULL AS regime_flag"), panel_cols
 
-    regime_expr = "p.regime_flag" if "regime_flag" in panel_cols else "NULL AS regime_flag"
+
+def load_panel_arrays(
+    conn,
+    start_date: str,
+    end_date: str,
+    *,
+    label_name: str = DEFAULT_LABEL_NAME,
+    with_alpha158: bool = True,
+    feature_table: str = "fact_feature_panel",
+    feature_set_id: str | None = None,
+) -> PanelData:
+    """Load the training panel as columnar NumPy arrays, not row dicts."""
+
+    duck = conn.raw if hasattr(conn, 'raw') else conn
+    logger.info("DuckDB NumPy 加载 %s %s ~ %s", feature_table, start_date, end_date)
+    base_cols, a158_col_list, regime_expr, panel_cols = _panel_query_parts(
+        duck,
+        label_name=label_name,
+        with_alpha158=with_alpha158,
+        feature_table=feature_table,
+    )
+    feature_cols = [*base_cols, *a158_col_list]
     select_cols = [
-        "p.stock_code", "p.date", regime_expr,
-        f"p.{_quote_ident(label_name)} AS label_value",
-    ] + [f"CAST(p.{_quote_ident(c)} AS DOUBLE) AS {_quote_ident(c)}" for c in base_cols]
-    alpha158_cols_sql = ""
+        "p.stock_code AS stock_code",
+        "CAST(p.date AS VARCHAR) AS date",
+        f"{regime_expr} AS regime_flag",
+        f"CAST(p.{_quote_ident(label_name)} AS DOUBLE) AS label_value",
+    ] + [f"CAST(p.{_quote_ident(col)} AS DOUBLE) AS {_quote_ident(col)}" for col in base_cols]
     alpha158_join = ""
     if a158_col_list:
-        alpha158_cols_sql = ", " + ", ".join(
-            f"CAST(a.{_quote_ident(c)} AS DOUBLE) AS {_quote_ident(c)}"
-            for c in a158_col_list
+        select_cols.extend(
+            f"CAST(a.{_quote_ident(col)} AS DOUBLE) AS {_quote_ident(col)}"
+            for col in a158_col_list
         )
         alpha158_join = "LEFT JOIN a158.fact_alpha158_panel a ON a.stock_code = p.stock_code AND a.date = CAST(p.date AS DATE)"
 
@@ -188,29 +260,60 @@ def load_panel(
         params.append(feature_set_id)
 
     query = f"""
-        SELECT {', '.join(select_cols)}{alpha158_cols_sql}
+        SELECT {', '.join(select_cols)}
         FROM {_quote_ident(feature_table)} p
         {alpha158_join}
         WHERE {' AND '.join(where)}
+        ORDER BY p.date, p.stock_code
     """
-    rows = _records_from_cursor(duck.execute(query, params))
-    logger.info("rows=%d codes=%d dates=%d total_cols=%d",
-                len(rows),
-                len({row.get('stock_code') for row in rows}),
-                len({row.get('date') for row in rows}),
-                len(rows[0]) if rows else 0)
-    # 扩展全局特征列表 (用于 FEATURE_COLS 动态扩展 — 但保留原序)
-    if a158_col_list:
-        global _ADDED_A158
-        _ADDED_A158 = a158_col_list
-    # regime_flag one-hot
-    if rows and 'regime_flag' in rows[0]:
-        flags = ['up', 'flat', 'down']
-        for row in rows:
-            regime = row.get('regime_flag')
-            for flag in flags:
-                row[f'regime_{flag}'] = 1 if regime == flag else 0
-    return rows
+    raw = duck.execute(query, params).fetchnumpy()
+    row_count = len(raw.get("stock_code", []))
+    stock_codes = _as_text_array(raw.get("stock_code", []))
+    dates = _as_text_array(raw.get("date", []))
+    labels = _as_float_array(raw.get("label_value", []))
+    regime_flags = _as_text_array(raw.get("regime_flag", []))
+    features = {col: _as_float_array(raw[col]) for col in feature_cols if col in raw}
+    for flag in ("up", "flat", "down"):
+        features[f"regime_{flag}"] = (regime_flags == flag).astype(np.float32)
+
+    logger.info(
+        "rows=%d codes=%d dates=%d feature_cols=%d total_cols=%d",
+        row_count,
+        len(np.unique(stock_codes)) if row_count else 0,
+        len(np.unique(dates)) if row_count else 0,
+        len(feature_cols),
+        len(raw),
+    )
+    return PanelData(
+        stock_codes=stock_codes,
+        dates=dates,
+        labels=labels,
+        features=features,
+        row_count=row_count,
+    )
+
+
+def load_panel(
+    conn,
+    start_date: str,
+    end_date: str,
+    *,
+    label_name: str = DEFAULT_LABEL_NAME,
+    with_alpha158: bool = True,
+    feature_table: str = "fact_feature_panel",
+    feature_set_id: str | None = None,
+) -> list[dict[str, Any]]:
+    """Compatibility helper for tests/debugging; production training uses arrays."""
+
+    return load_panel_arrays(
+        conn,
+        start_date,
+        end_date,
+        label_name=label_name,
+        with_alpha158=with_alpha158,
+        feature_table=feature_table,
+        feature_set_id=feature_set_id,
+    ).to_records()
 
 
 def split_time_series(rows: list[dict[str, Any]], train_ratio: float = 0.7, valid_ratio: float = 0.15):
@@ -280,6 +383,11 @@ def _date_bounds(rows: list[dict[str, Any]]) -> tuple[str | None, str | None]:
     return (min(dates), max(dates)) if dates else (None, None)
 
 
+def _date_bounds_array(dates: np.ndarray) -> tuple[str | None, str | None]:
+    values = [str(value) for value in dates if str(value)]
+    return (min(values), max(values)) if values else (None, None)
+
+
 def _prediction_rows(model_id: str, holdout: list[dict[str, Any]], pred) -> list[tuple]:
     rows = []
     grouped: dict[str, list[tuple[dict[str, Any], float]]] = {}
@@ -297,6 +405,26 @@ def _prediction_rows(model_id: str, holdout: list[dict[str, Any]], pred) -> list
                 score,
                 rank_by_idx[idx],
                 percentiles[idx],
+            ))
+    return rows
+
+
+def _prediction_rows_arrays(model_id: str, stock_codes: np.ndarray, dates: np.ndarray, pred) -> list[tuple]:
+    rows = []
+    scores_all = np.asarray(pred, dtype=np.float64)
+    for date in np.unique(dates):
+        idxs = np.flatnonzero(dates == date)
+        scores = scores_all[idxs].tolist()
+        percentiles = _rank_percentiles(scores)
+        rank_by_idx = _rank_desc_min(scores)
+        for pos, row_idx in enumerate(idxs):
+            rows.append((
+                model_id,
+                str(stock_codes[row_idx]),
+                str(date),
+                float(scores_all[row_idx]),
+                rank_by_idx[pos],
+                percentiles[pos],
             ))
     return rows
 
@@ -327,17 +455,9 @@ def _record_columns(rows: list[dict[str, Any]]) -> set[str]:
 _ADDED_A158: list[str] = []
 
 
-def resolve_feature_group(name: str, rows: list[dict[str, Any]], *, regime_aware: bool) -> tuple[list[str], str]:
-    """M7: feature group 显式选择. 返回 (feature_cols, schema_version_tag).
-    base                     - 43 特征 (BASE_FEATURE_COLS)
-    base_dense_v2            - 54 特征 (BASE + DENSE_V2)
-    tdx_keep_v1              - BASE + DENSE_V2 + 5 validated TDX keep features
-    base_alpha158            - 107 特征 (BASE + a158_*) (实验对照)
-    base_dense_v2_alpha158   - 118 特征 (BASE + DENSE_V2 + a158_*) (实验对照)
-    legacy_full              - 旧 110 特征研究对照 (BASE + DENSE_V2 + a158_*)
-    """
+def resolve_feature_group_from_columns(name: str, panel_cols: set[str], *, regime_aware: bool) -> tuple[list[str], str]:
     from services.model_feature_schema import BASE_FEATURE_COLS, DENSE_V2_FEATURE_COLS
-    panel_cols = _record_columns(rows)
+
     a158 = [c for c in panel_cols if c.startswith("a158_")]
     base = [c for c in BASE_FEATURE_COLS if c in panel_cols]
     v2 = [c for c in DENSE_V2_FEATURE_COLS if c in panel_cols]
@@ -370,11 +490,23 @@ def resolve_feature_group(name: str, rows: list[dict[str, Any]], *, regime_aware
         raise ValueError(f"未知 feature group: {name}")
 
     if regime_aware:
-        for f in REGIME_FEATURE_COLS:
-            if f in panel_cols and f not in cols:
-                cols.append(f)
+        for col in REGIME_FEATURE_COLS:
+            if col in panel_cols and col not in cols:
+                cols.append(col)
         tag = tag + "_regime"
     return cols, tag
+
+
+def resolve_feature_group(name: str, rows: list[dict[str, Any]], *, regime_aware: bool) -> tuple[list[str], str]:
+    """M7: feature group 显式选择. 返回 (feature_cols, schema_version_tag).
+    base                     - 43 特征 (BASE_FEATURE_COLS)
+    base_dense_v2            - 54 特征 (BASE + DENSE_V2)
+    tdx_keep_v1              - BASE + DENSE_V2 + 5 validated TDX keep features
+    base_alpha158            - 107 特征 (BASE + a158_*) (实验对照)
+    base_dense_v2_alpha158   - 118 特征 (BASE + DENSE_V2 + a158_*) (实验对照)
+    legacy_full              - 旧 110 特征研究对照 (BASE + DENSE_V2 + a158_*)
+    """
+    return resolve_feature_group_from_columns(name, _record_columns(rows), regime_aware=regime_aware)
 
 
 def _persist_predictions(conn, model_id: str, holdout: list[dict[str, Any]], pred) -> None:
@@ -388,28 +520,35 @@ def _persist_predictions(conn, model_id: str, holdout: list[dict[str, Any]], pre
     )
 
 
+def _persist_prediction_arrays(conn, model_id: str, stock_codes: np.ndarray, dates: np.ndarray, pred) -> None:
+    conn.executemany(
+        """
+        INSERT INTO mart_multidim_prediction
+        (model_id, stock_code, date, pred_score, rank_in_date, percentile)
+        VALUES (?, ?, ?, ?, ?, ?)
+        """,
+        _prediction_rows_arrays(model_id, stock_codes, dates, pred),
+    )
+
+
 def _ensure_rows(rows: list[dict[str, Any]]) -> None:
     if not rows:
         logger.error("fact_feature_panel 空或无 label; 先跑 build_feature_panel_duck.py")
         sys.exit(1)
 
 
+def _ensure_panel(panel: PanelData) -> None:
+    if panel.row_count == 0:
+        logger.error("fact_feature_panel 空或无 label; 先跑 build_feature_panel_duck.py")
+        sys.exit(1)
+
+
 def _holdout_metrics(holdout: list[dict[str, Any]], pred) -> tuple[float, float, dict[str, float]]:
-    ic, rank_ic = compute_ic(_values(holdout, "label_value"), pred, _dates(holdout))
-    dec = decile_metrics(_values(holdout, "label_value"), pred, _dates(holdout))
+    values = [float(row.get("label_value") or 0.0) for row in holdout]
+    dates = [str(row.get("date")) for row in holdout]
+    ic, rank_ic = compute_ic(values, pred, dates)
+    dec = decile_metrics(values, pred, dates)
     return ic, rank_ic, dec
-
-
-def _fit_final_model(train_valid: list[dict[str, Any]], feature_cols: list[str], best: dict, num_round: int):
-    return lgb.train(
-        best,
-        lgb.Dataset(
-            _matrix(train_valid, feature_cols),
-            label=_values(train_valid, "label_value"),
-            feature_name=feature_cols,
-        ),
-        num_boost_round=num_round,
-    )
 
 
 def _log_top_features(feature_cols: list[str], model: lgb.Booster) -> dict[str, float]:
@@ -467,13 +606,33 @@ def _split_bounds(train, valid, holdout):
     return train_start, train_end, valid_start, valid_end, holdout_start, holdout_end
 
 
+def split_time_series_indices(dates: np.ndarray, train_ratio: float = 0.7, valid_ratio: float = 0.15):
+    unique_dates = np.array(sorted(np.unique(dates)), dtype=object)
+    n = len(unique_dates)
+    if n == 0:
+        empty = np.array([], dtype=np.int64)
+        return empty, empty, empty
+    t_end = unique_dates[int(n * train_ratio)]
+    v_end = unique_dates[int(n * (train_ratio + valid_ratio))]
+    train_idx = np.flatnonzero(dates < t_end)
+    valid_idx = np.flatnonzero((dates >= t_end) & (dates < v_end))
+    holdout_idx = np.flatnonzero(dates >= v_end)
+    logger.info(
+        "split: train %s ~ %s (%d)  valid %s ~ %s (%d)  holdout %s ~ %s (%d)",
+        *_date_bounds_array(dates[train_idx]), len(train_idx),
+        *_date_bounds_array(dates[valid_idx]), len(valid_idx),
+        *_date_bounds_array(dates[holdout_idx]), len(holdout_idx),
+    )
+    return train_idx, valid_idx, holdout_idx
+
+
 def _insert_model(
     conn,
     *,
     model_id: str,
-    train,
-    valid,
-    holdout,
+    train_bounds: tuple[str | None, str | None],
+    valid_bounds: tuple[str | None, str | None],
+    holdout_bounds: tuple[str | None, str | None],
     feature_cols: list[str],
     best: dict,
     ic: float,
@@ -484,7 +643,9 @@ def _insert_model(
     schema_tag: str,
     notes: str,
 ) -> None:
-    train_start, train_end, valid_start, valid_end, holdout_start, holdout_end = _split_bounds(train, valid, holdout)
+    train_start, train_end = train_bounds
+    valid_start, valid_end = valid_bounds
+    holdout_start, holdout_end = holdout_bounds
     conn.execute(
         """
         INSERT INTO mart_multidim_model (
@@ -551,7 +712,7 @@ def main():
     conn = get_conn()
     ensure_model_schema(conn)
     t_load = time.perf_counter()
-    records = load_panel(
+    panel = load_panel_arrays(
         conn,
         args.start,
         args.end,
@@ -563,31 +724,32 @@ def main():
     timings["load_panel_s"] = round(time.perf_counter() - t_load, 3)
     conn.close()
     logger.info("数据加载完成, DuckDB 写锁已释放, 训练期间前端可正常读")
-    _ensure_rows(records)
+    _ensure_panel(panel)
 
-    feature_cols, schema_tag = resolve_feature_group(
-        args.feature_group, records, regime_aware=args.regime_aware
+    feature_cols, schema_tag = resolve_feature_group_from_columns(
+        args.feature_group, panel.columns, regime_aware=args.regime_aware
     )
     logger.info("feature_group=%s schema_tag=%s 特征数=%d",
                 args.feature_group, schema_tag, len(feature_cols))
 
     t_split = time.perf_counter()
-    train, valid, holdout = split_time_series(records)
+    train_idx, valid_idx, holdout_idx = split_time_series_indices(panel.dates)
     timings["split_s"] = round(time.perf_counter() - t_split, 3)
 
     # Phase 3: matrix / label / date arrays are built once and reused by all
     # Optuna trials. The old path rebuilt float32 matrices inside every trial.
     t_matrix = time.perf_counter()
-    X_train = _matrix(train, feature_cols)
-    y_train = _values(train, "label_value")
-    X_valid = _matrix(valid, feature_cols)
-    y_valid = _values(valid, "label_value")
-    valid_dates = _dates(valid)
-    X_train_valid = _matrix([*train, *valid], feature_cols)
-    y_train_valid = _values([*train, *valid], "label_value")
-    X_holdout = _matrix(holdout, feature_cols)
-    y_holdout = _values(holdout, "label_value")
-    holdout_dates = _dates(holdout)
+    train_valid_idx = np.concatenate([train_idx, valid_idx])
+    X_train = panel.matrix(feature_cols, train_idx)
+    y_train = panel.labels_for(train_idx)
+    X_valid = panel.matrix(feature_cols, valid_idx)
+    y_valid = panel.labels_for(valid_idx)
+    valid_dates = panel.dates_for(valid_idx)
+    X_train_valid = panel.matrix(feature_cols, train_valid_idx)
+    y_train_valid = panel.labels_for(train_valid_idx)
+    X_holdout = panel.matrix(feature_cols, holdout_idx)
+    y_holdout = panel.labels_for(holdout_idx)
+    holdout_dates = panel.dates_for(holdout_idx)
     train_dataset = lgb.Dataset(
         X_train,
         label=y_train,
@@ -666,9 +828,9 @@ def main():
     _insert_model(
         conn,
         model_id=model_id,
-        train=train,
-        valid=valid,
-        holdout=holdout,
+        train_bounds=_date_bounds_array(panel.dates_for(train_idx)),
+        valid_bounds=_date_bounds_array(panel.dates_for(valid_idx)),
+        holdout_bounds=_date_bounds_array(panel.dates_for(holdout_idx)),
         feature_cols=feature_cols,
         best=best,
         ic=ic,
@@ -681,7 +843,7 @@ def main():
     )
 
     # 落 predictions
-    _persist_predictions(conn, model_id, holdout, pred_ho)
+    _persist_prediction_arrays(conn, model_id, panel.codes_for(holdout_idx), panel.dates_for(holdout_idx), pred_ho)
     conn.commit()
     timings["db_write_s"] = round(time.perf_counter() - t_write, 3)
 
@@ -716,10 +878,10 @@ def main():
         label_name=args.label_name,
         holding_period=20 if args.label_name.endswith("_20d") else None,
         perf_summary={
-            "rows": len(records),
-            "n_train": len(train),
-            "n_valid": len(valid),
-            "n_holdout": len(holdout),
+            "rows": panel.row_count,
+            "n_train": int(len(train_idx)),
+            "n_valid": int(len(valid_idx)),
+            "n_holdout": int(len(holdout_idx)),
             "n_features": len(feature_cols),
             "trials": args.trials,
             "num_round": args.num_round,

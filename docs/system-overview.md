@@ -227,6 +227,8 @@ best params 在 train+valid 合并上重训, holdout 评估
 保存 data/multidim_models/{model_id}.pkl (LightGBM Booster)
 ```
 
+训练主路径已从 `list[dict]` 改为 DuckDB `fetchnumpy()` + `PanelData` 列数组。2026-05-05 本地只读验证: `2023-01-01` ~ `2026-03-31` 共 3,910,880 行、54 特征, NumPy 加载 8.8s, 日期切分和三段 `float32` 矩阵构造 4.1s。
+
 ### 5.4 当前 lifecycle champion
 
 `multidim_v2_base_dense_v2_20260425_144552` 是正式推荐 champion。`cleanup_full_multidim_v2_base_dense_v2_20260505_093800` 仍是 shadow challenger, 因 walk-forward 稳定性和 drift gate 未过, 不自动提升。
