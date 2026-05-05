@@ -41,6 +41,7 @@ import threading
 import time
 from datetime import datetime
 from pathlib import Path
+from typing import Any, Callable
 
 import duckdb
 
@@ -52,13 +53,14 @@ STOCK_ROOT = REPO.parent
 sys.path.insert(0, str(REPO / "backend"))
 sys.path.insert(0, str(STOCK_ROOT / "tdxhub"))  # sibling editable checkout
 
-from services.db import DB_PATH, init_db  # noqa: E402
+from services.db import get_conn, init_db  # noqa: E402
 from services.holders_resolver import (  # noqa: E402
     HolderResolver,
     TdxhubHolderSource,
     MiaoxiangHolderSource,
     ResolverResult,
 )
+from services.pipeline_manifest import git_commit_sha, record_pipeline_run, utc_now_iso  # noqa: E402
 
 
 CHANGE_STATUS_TO_LEGACY = {
@@ -93,11 +95,10 @@ def load_universe(con: duckdb.DuckDBPyConnection, *, limit: int = 0,
 
 
 def existing_hashes(con: duckdb.DuckDBPyConnection) -> set[tuple[str, str]]:
-    return set(
-        con.execute(
-            "select stock_code, raw_hash from raw_tdx_f10_holder_research"
-        ).fetchall()
-    )
+    rows = con.execute(
+        "select stock_code, raw_hash from raw_tdx_f10_holder_research"
+    ).fetchall()
+    return {(row[0], row[1]) for row in rows}
 
 
 def load_alias_map(con: duckdb.DuckDBPyConnection) -> dict[str, str]:
@@ -227,9 +228,39 @@ def _holder_tuple(row: dict) -> tuple:
     )
 
 
+def _delete_existing_fact_rows(
+    con: duckdb.DuckDBPyConnection,
+    *,
+    stock_code: str,
+    source: str,
+    raw_hash: str | None,
+) -> None:
+    """Remove canonical rows for a raw payload before replaying parser output."""
+
+    if not raw_hash:
+        return
+    con.execute(
+        "DELETE FROM fact_top10_holder_period WHERE stock_code = ? AND source = ? AND raw_hash = ?",
+        (stock_code, source, raw_hash),
+    )
+    con.execute(
+        "DELETE FROM fact_shareholder_plan WHERE stock_code = ? AND source = ? AND raw_hash = ?",
+        (stock_code, source, raw_hash),
+    )
+    con.execute(
+        "DELETE FROM fact_shareholder_trade WHERE stock_code = ? AND source = ? AND raw_hash = ?",
+        (stock_code, source, raw_hash),
+    )
+    con.execute(
+        "DELETE FROM fact_controlling_shareholder WHERE stock_code = ? AND source = ? AND raw_hash = ?",
+        (stock_code, source, raw_hash),
+    )
+
+
 def write_one(con: duckdb.DuckDBPyConnection, *, stock_code: str, stock_name: str,
               market: str, result: ResolverResult,
-              alias_map: dict[str, str], lock: threading.Lock) -> dict:
+              alias_map: dict[str, str], lock: threading.Lock,
+              replace_facts: bool = False) -> dict:
     """Persist a ResolverResult into raw + 4 fact tables under a connection lock.
 
     raw_text + 段 1/2/3 仅 tdxhub 路径有 (result.source_tier=1).
@@ -304,6 +335,14 @@ def write_one(con: duckdb.DuckDBPyConnection, *, stock_code: str, stock_name: st
     }
 
     with lock:
+        if replace_facts:
+            _delete_existing_fact_rows(
+                con,
+                stock_code=stock_code,
+                source=result.source,
+                raw_hash=raw_hash,
+            )
+
         if raw_row is not None:
             con.execute("""
                 INSERT OR IGNORE INTO raw_tdx_f10_holder_research(
@@ -319,7 +358,7 @@ def write_one(con: duckdb.DuckDBPyConnection, *, stock_code: str, stock_name: st
 
         if holders:
             con.executemany("""
-                INSERT OR IGNORE INTO fact_top10_holder_period(
+                INSERT OR REPLACE INTO fact_top10_holder_period(
                   stock_code, stock_name, market, report_date, holder_set,
                   holder_rank, row_seq, holder_name, holder_name_norm, share_class,
                   is_secondary_class, is_exit_row,
@@ -338,7 +377,7 @@ def write_one(con: duckdb.DuckDBPyConnection, *, stock_code: str, stock_name: st
 
         if ctrl is not None:
             con.execute("""
-                INSERT OR IGNORE INTO fact_controlling_shareholder(
+                INSERT OR REPLACE INTO fact_controlling_shareholder(
                   stock_code, stock_name, market,
                   primary_label, primary_name, primary_ratio, primary_raw,
                   actual_name, actual_ratio, actual_raw,
@@ -415,6 +454,143 @@ def write_one(con: duckdb.DuckDBPyConnection, *, stock_code: str, stock_name: st
             ])
 
     return out
+
+
+def _row_value(row: Any, key: str, index: int, default: Any = None) -> Any:
+    if hasattr(row, "get"):
+        return row.get(key, default)
+    try:
+        return row[key]
+    except Exception:
+        pass
+    try:
+        return row[index]
+    except Exception:
+        return default
+
+
+def parse_tdx_raw_row(
+    row: Any,
+    *,
+    parser: Callable[..., dict] | None = None,
+    hasher: Callable[[str], str] | None = None,
+) -> ResolverResult:
+    """Parse one raw_tdx_f10_holder_research row into canonical resolver output."""
+
+    if parser is None or hasher is None:
+        from tdxhub.holders import parse_research_records, _hash  # noqa: WPS433
+        parser = parser or parse_research_records
+        hasher = hasher or _hash
+
+    raw_text = _row_value(row, "raw_text", 3) or ""
+    stock_code = _row_value(row, "stock_code", 0) or ""
+    stock_name = _row_value(row, "stock_name", 1) or ""
+    parsed = parser(raw_text, symbol=stock_code, stock_name=stock_name)
+    page = parsed.get("page") or {}
+    raw_hash = _row_value(row, "raw_hash", 4) or hasher(raw_text)
+    fetched_at = _row_value(row, "fetched_at", 5)
+    if hasattr(fetched_at, "isoformat"):
+        fetched_at = fetched_at.isoformat(timespec="seconds")
+    return ResolverResult(
+        holders=[dict(item) for item in (parsed.get("holders") or [])],
+        periods=[dict(item) for item in (parsed.get("periods") or [])],
+        raw_text=raw_text,
+        raw_hash=raw_hash,
+        page_update_date=str(
+            _row_value(row, "page_update_date", 6)
+            or page.get("page_update_date")
+            or ""
+        ) or None,
+        server_or_endpoint=_row_value(row, "server", 7),
+        source="tdx_f10",
+        source_tier=1,
+        fetched_at=str(fetched_at or datetime.utcnow().isoformat(timespec="seconds")),
+        controlling=parsed.get("controlling"),
+        plans=[dict(item) for item in (parsed.get("plans") or [])],
+        trades=[dict(item) for item in (parsed.get("trades") or [])],
+    )
+
+
+def _raw_replay_rows(
+    con: duckdb.DuckDBPyConnection,
+    *,
+    symbols: str = "",
+    raw_hash: str = "",
+    limit: int = 0,
+) -> list:
+    clauses = []
+    params: list[Any] = []
+    explicit = [item.strip() for item in symbols.split(",") if item.strip()]
+    if explicit:
+        clauses.append(f"stock_code IN ({','.join('?' for _ in explicit)})")
+        params.extend(explicit)
+    if raw_hash:
+        clauses.append("raw_hash = ?")
+        params.append(raw_hash)
+    where_sql = "WHERE " + " AND ".join(clauses) if clauses else ""
+    limit_sql = "LIMIT ?" if limit else ""
+    if limit:
+        params.append(limit)
+    return con.execute(
+        f"""
+        SELECT stock_code, stock_name, market, raw_text, raw_hash,
+               fetched_at, page_update_date, server
+          FROM raw_tdx_f10_holder_research
+          {where_sql}
+         ORDER BY fetched_at DESC, stock_code
+         {limit_sql}
+        """,
+        params,
+    ).fetchall()
+
+
+def parse_raw_records(
+    con: duckdb.DuckDBPyConnection,
+    *,
+    symbols: str = "",
+    raw_hash: str = "",
+    limit: int = 0,
+    replace_facts: bool = False,
+    parser: Callable[..., dict] | None = None,
+    hasher: Callable[[str], str] | None = None,
+) -> dict:
+    """Replay stored TDX raw text into canonical holder fact tables."""
+
+    t0 = time.time()
+    rows = _raw_replay_rows(con, symbols=symbols, raw_hash=raw_hash, limit=limit)
+    alias_map = load_alias_map(con)
+    lock = threading.Lock()
+    stats = {
+        "raw_rows": len(rows),
+        "parsed": 0,
+        "no_data": 0,
+        "errors": 0,
+        "replace_facts": replace_facts,
+    }
+    for row in rows:
+        stock_code = _row_value(row, "stock_code", 0) or ""
+        try:
+            result = parse_tdx_raw_row(row, parser=parser, hasher=hasher)
+            if not result.has_data():
+                stats["no_data"] += 1
+                continue
+            write_one(
+                con,
+                stock_code=stock_code,
+                stock_name=_row_value(row, "stock_name", 1) or "",
+                market=_row_value(row, "market", 2) or "",
+                result=result,
+                alias_map=alias_map,
+                lock=lock,
+                replace_facts=replace_facts,
+            )
+            stats["parsed"] += 1
+        except Exception as exc:
+            stats["errors"] += 1
+            log.warning("[parse-raw] %s ERROR %s: %s", stock_code, type(exc).__name__, exc)
+    con.commit()
+    stats["elapsed_s"] = time.time() - t0
+    return stats
 
 
 def _make_resolver(*, enable_fallback: bool) -> HolderResolver:
@@ -501,7 +677,7 @@ def run(
     own_con = con is None
     if own_con:
         init_db()
-        con = duckdb.connect(str(DB_PATH))
+        con = get_conn()
     con_lock = threading.Lock()
 
     try:
@@ -563,7 +739,49 @@ def main() -> int:
                    help="忽略 raw_hash 缓存, 强制重抓所有股票")
     p.add_argument("--no-fallback", action="store_true",
                    help="关闭 miaoxiang fallback (仅试 tdxhub)")
+    p.add_argument("--parse-raw-only", action="store_true",
+                   help="不联网抓取, 只重放 raw_tdx_f10_holder_research 到 canonical fact 表")
+    p.add_argument("--raw-hash", default="",
+                   help="配合 --parse-raw-only, 只重放指定 raw_hash")
+    p.add_argument("--replace-facts", action="store_true",
+                   help="配合 --parse-raw-only, 先删除同 stock/source/raw_hash 的旧 canonical 行再写入")
     args = p.parse_args()
+
+    if args.parse_raw_only:
+        started_at = utc_now_iso()
+        init_db()
+        con = get_conn()
+        try:
+            stats = parse_raw_records(
+                con,
+                symbols=args.symbols,
+                raw_hash=args.raw_hash,
+                limit=args.limit,
+                replace_facts=args.replace_facts,
+            )
+            record_pipeline_run(
+                con,
+                run_id=f"parse_holders_raw_{started_at.replace(':', '').replace('-', '')[:15]}",
+                pipeline_name="parse_holders_raw",
+                status="success" if stats["errors"] == 0 else "failed",
+                started_at=started_at,
+                ended_at=utc_now_iso(),
+                duration_s=stats["elapsed_s"],
+                commit_sha=git_commit_sha(REPO),
+                input_tables=["raw_tdx_f10_holder_research", "dim_holder_alias"],
+                output_tables=[
+                    "fact_top10_holder_period",
+                    "fact_controlling_shareholder",
+                    "fact_shareholder_plan",
+                    "fact_shareholder_trade",
+                ],
+                blockers=[] if stats["errors"] == 0 else ["parse_errors"],
+                perf_summary=stats,
+            )
+            log.info("parse raw complete: %s", stats)
+            return 0 if stats["errors"] == 0 else 1
+        finally:
+            con.close()
 
     progress = run(
         workers=args.workers, limit=args.limit, symbols=args.symbols,

@@ -173,6 +173,32 @@ def write_batch(conn, rows: list[dict]) -> int:
     return len(rows)
 
 
+def load_latest_dates(conn) -> dict[str, str]:
+    """Return each stock's latest stored qfq daily date for incremental fills."""
+
+    rows = conn.execute(
+        """
+        SELECT code, MAX(date) AS latest_date
+          FROM price_kline_tdxhub
+         WHERE freq = 'daily' AND adjust = 'qfq'
+         GROUP BY code
+        """
+    ).fetchall()
+    return {str(row[0]).zfill(6): str(row[1]) for row in rows if row[1]}
+
+
+def filter_after_latest(rows: list[dict], latest_dates: dict[str, str]) -> list[dict]:
+    """Keep only rows newer than the per-code stored max date."""
+
+    out = []
+    for row in rows:
+        latest = latest_dates.get(row["code"])
+        if latest and row["date"] <= latest:
+            continue
+        out.append(row)
+    return out
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--pages', type=int, default=2,
@@ -180,7 +206,7 @@ def main():
     parser.add_argument('--limit', type=int, default=0,
                         help='只跑前 N 只股（调试用）, 0=全量')
     parser.add_argument('--skip-existing', action='store_true',
-                        help='若 (code, date) 已在 price_kline_tdxhub，则跳过（增量）')
+                        help='按每股 MAX(date) 只写新增日期（增量补缺口），不再整只股票跳过')
     parser.add_argument('--truncate', action='store_true',
                         help='清空 price_kline_tdxhub 后全量重拉')
     args = parser.parse_args()
@@ -205,20 +231,22 @@ def main():
     n_rows_written = 0
     n_failed = []
 
-    # 已有 code set (skip_existing)
-    done_codes = set()
+    # 已有每股 max(date), 用于增量只补新日期.
+    latest_dates = {}
     if args.skip_existing:
-        done_codes = {r[0] for r in conn.execute("SELECT DISTINCT code FROM price_kline_tdxhub").fetchall()}
-        logger.info("skip_existing: 已有 %d 只股将跳过", len(done_codes))
+        latest_dates = load_latest_dates(conn)
+        logger.info("skip_existing: 已加载 %d 只股的最新日期, 将只补新增交易日", len(latest_dates))
 
     for i, (code, _market) in enumerate(stock_list):
-        if code in done_codes:
-            continue
         records = pull_one_stock(client, code, pages=args.pages)
         if not records:
             n_failed.append(code)
             continue
         norm = normalize(records, batch_id)
+        if args.skip_existing:
+            norm = filter_after_latest(norm, latest_dates)
+            if not norm:
+                continue
         try:
             n = write_batch(conn, norm)
             n_rows_written += n

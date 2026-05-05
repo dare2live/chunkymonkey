@@ -2,7 +2,7 @@
 
 > 目标读者: Codex 或后续任何接手的 AI 协作者。写这篇不是介绍产品，而是让接手者能一口气把系统从上到下串起来。
 
-**最近一次更新**: 2026-04-24 · 对应 commit 87f5e02d 之后的状态。
+**最近一次更新**: 2026-05-05 · 对应 Phase 0/1/3/4/6/7 生产化改造后的状态。
 
 ---
 
@@ -166,6 +166,13 @@ akshare               → raw_lhb_daily / raw_executive_trade / raw_margin_daily
 - 日度 topK: 手动触发 `scripts/run_daily_topk.py` (几秒)
 
 **数据源抽象**: `services/` 下有 `akshare_client.py` / `tdxhub_client.py` 等, `services/updater_chain.py` 负责编排管线。
+
+**生产化约束 (2026-05-05 起)**:
+- `mart_data_source_watermark` 按业务域记录主源/兜底源、`source_tier`、最新数据日、fallback 状态和失败计数；数据页直接读取该表展示源健康。
+- `mart_pipeline_run_manifest` 记录训练、walk-forward、TopK、数据健康、source watermark 和 raw replay 的运行耗时、输入输出表、gate/blocker 和性能摘要。
+- `build_price_kline_tdxhub.py --skip-existing` 按每只股票 `MAX(date)` 只写新增交易日，不再因为已有 code 就整只股票跳过。
+- `ingest_holders_tdxhub.py --parse-raw-only [--replace-facts]` 可不联网重放 `raw_tdx_f10_holder_research.raw_text`，用于 parser 修复后重建 canonical 股东事实表。
+- 每日生产链路只跑增量数据、水位、champion TopK、健康和 outcome；全历史 Optuna/walk-forward/backtest 留给研究链路。
 
 ---
 

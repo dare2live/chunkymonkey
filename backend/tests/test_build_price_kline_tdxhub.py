@@ -97,3 +97,75 @@ def test_write_batch_uses_records():
         assert [tuple(row) for row in saved] == [("000001", "2026-05-04", 10.5, "tdxhub", "batch-1")]
     finally:
         conn.close()
+
+
+def test_incremental_filter_uses_per_stock_latest_date():
+    conn = duck_mem()
+    try:
+        conn.executescript(builder.TABLE_DDL)
+        existing = builder.normalize(
+            [
+                {
+                    "code": "000001",
+                    "datetime": "2026-05-03",
+                    "open": 9,
+                    "high": 10,
+                    "low": 8,
+                    "close": 9.5,
+                    "vol": 900,
+                    "amount": 9000,
+                    "factor": 1,
+                }
+            ],
+            "batch-old",
+        )
+        builder.write_batch(conn, existing)
+
+        latest = builder.load_latest_dates(conn)
+        rows = builder.normalize(
+            [
+                {
+                    "code": "000001",
+                    "datetime": "2026-05-03",
+                    "open": 9,
+                    "high": 10,
+                    "low": 8,
+                    "close": 9.5,
+                    "vol": 900,
+                    "amount": 9000,
+                    "factor": 1,
+                },
+                {
+                    "code": "000001",
+                    "datetime": "2026-05-04",
+                    "open": 10,
+                    "high": 11,
+                    "low": 9,
+                    "close": 10.5,
+                    "vol": 1000,
+                    "amount": 10500,
+                    "factor": 1,
+                },
+                {
+                    "code": "000002",
+                    "datetime": "2026-05-01",
+                    "open": 20,
+                    "high": 21,
+                    "low": 19,
+                    "close": 20.5,
+                    "vol": 2000,
+                    "amount": 41000,
+                    "factor": 1,
+                },
+            ],
+            "batch-new",
+        )
+
+        filtered = builder.filter_after_latest(rows, latest)
+
+        assert [(row["code"], row["date"]) for row in filtered] == [
+            ("000001", "2026-05-04"),
+            ("000002", "2026-05-01"),
+        ]
+    finally:
+        conn.close()
