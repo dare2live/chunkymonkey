@@ -29,6 +29,7 @@ from services.model_feature_schema import (
 )
 from services.pipeline_manifest import git_commit_sha, record_pipeline_run, utc_now_iso
 from services.ml_lifecycle.registry import select_default_model_id
+from services.feature_retention import load_production_keep_features
 from scripts.run_feature_ablation import (
     compute_ic,
     decile_metrics,
@@ -598,12 +599,17 @@ def main() -> None:
     parser.add_argument("--dry-run", action="store_true")
     parser.add_argument(
         "--feature-group",
-        choices=["base", "base_dense_v2", "base_alpha158", "base_dense_v2_alpha158", "tdx_keep_v1", "legacy_full"],
+        choices=[
+            "base", "base_dense_v2", "base_alpha158", "base_dense_v2_alpha158",
+            "tdx_keep_v1", "base_retention_keep", "legacy_full",
+        ],
         default="base_dense_v2",
         help="M7/M9: 显式特征组, 默认 base_dense_v2; legacy_full 仅显式研究使用",
     )
     parser.add_argument("--feature-table", default="fact_feature_panel")
     parser.add_argument("--feature-set-id", default=None)
+    parser.add_argument("--retention-decision-run-id", default=None)
+    parser.add_argument("--retention-feature-set-id", default=None)
     parser.add_argument(
         "--walkforward-num-round",
         type=int,
@@ -645,6 +651,21 @@ def main() -> None:
                 feature_set_id=args.feature_set_id,
                 with_alpha158=feature_group_uses_alpha158(args.feature_group),
             )
+            retention_keep_features: list[str] | None = None
+            retention_decision_run_id: str | None = None
+            if args.feature_group == "base_retention_keep":
+                retention_feature_set_id = args.retention_feature_set_id or args.feature_set_id
+                if not retention_feature_set_id:
+                    raise RuntimeError("base_retention_keep 必须指定 --feature-set-id 或 --retention-feature-set-id")
+                retention_keep_features, retention_decision_run_id = load_production_keep_features(
+                    conn,
+                    feature_set_id=retention_feature_set_id,
+                    decision_run_id=args.retention_decision_run_id,
+                )
+                if not retention_keep_features:
+                    raise RuntimeError(
+                        f"retention_feature_set_id={retention_feature_set_id} decision_run={args.retention_decision_run_id or 'latest'} 无 production keep 特征"
+                    )
             timings["load_panel_s"] = round(time.perf_counter() - t_load, 3)
             dates = sorted(np.unique(panel.dates).tolist())
         folds = build_folds(dates, args.train_days, args.valid_days, args.test_days, args.step_days)
@@ -658,7 +679,11 @@ def main() -> None:
 
         # M7/M9: production 默认走 compact base_dense_v2; Alpha158 组只在显式指定时加载。
         feature_cols, schema_tag = resolve_feature_group_from_columns(
-            args.feature_group, panel.columns, regime_aware=args.regime_aware
+            args.feature_group,
+            panel.columns,
+            regime_aware=args.regime_aware,
+            retention_keep_features=retention_keep_features,
+            retention_schema_tag=f"retention_keep_{retention_decision_run_id or 'latest'}",
         )
         logger.info(
             "walkforward feature_group=%s schema_tag=%s 特征数=%d",

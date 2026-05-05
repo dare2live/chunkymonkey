@@ -87,6 +87,8 @@ def build_evidence_bundle(
     *,
     model_id: str,
     feature_set_id: str = "tdx_f10_gpcw_v1",
+    feature_table: str = "fact_feature_panel",
+    panel_feature_set_id: str | None = None,
     top_k: int = 50,
     horizons: str = "20",
     top_sizes: str = "20,50,100,200,500",
@@ -98,22 +100,46 @@ def build_evidence_bundle(
     started = time.perf_counter()
     steps: list[dict[str, Any]] = []
     py = sys.executable
+    panel_feature_set_id = panel_feature_set_id or None
+
+    shadow_topk_cmd = [
+        py,
+        str(SCRIPT_DIR / "run_daily_topk.py"),
+        "--model-id",
+        model_id,
+        "--mode",
+        "shadow",
+        "--top-k",
+        str(top_k),
+        "--track-id",
+        f"shadow_{model_id}",
+        "--feature-table",
+        feature_table,
+    ]
+    if panel_feature_set_id:
+        shadow_topk_cmd.extend(["--feature-set-id", panel_feature_set_id])
+
+    holding_topk_cmd = [
+        py,
+        str(SCRIPT_DIR / "evaluate_holding_topk.py"),
+        "--model-id",
+        model_id,
+        "--feature-table",
+        feature_table,
+        "--horizons",
+        horizons,
+        "--top-sizes",
+        top_sizes,
+        "--cost-bps",
+        str(cost_bps),
+    ]
+    if panel_feature_set_id:
+        holding_topk_cmd.extend(["--feature-set-id", panel_feature_set_id])
 
     step_specs = [
         (
             "shadow_topk",
-            [
-                py,
-                str(SCRIPT_DIR / "run_daily_topk.py"),
-                "--model-id",
-                model_id,
-                "--mode",
-                "shadow",
-                "--top-k",
-                str(top_k),
-                "--track-id",
-                f"shadow_{model_id}",
-            ],
+            shadow_topk_cmd,
             {0},
         ),
         (
@@ -123,6 +149,8 @@ def build_evidence_bundle(
                 str(SCRIPT_DIR / "compute_feature_drift.py"),
                 "--model-id",
                 model_id,
+                "--feature-table",
+                feature_table,
                 "--top-n",
                 "30",
             ],
@@ -130,22 +158,7 @@ def build_evidence_bundle(
         ),
         (
             "holding_topk",
-            [
-                py,
-                str(SCRIPT_DIR / "evaluate_holding_topk.py"),
-                "--model-id",
-                model_id,
-                "--feature-table",
-                "fact_feature_panel",
-                "--feature-set-id",
-                feature_set_id,
-                "--horizons",
-                horizons,
-                "--top-sizes",
-                top_sizes,
-                "--cost-bps",
-                str(cost_bps),
-            ],
+            holding_topk_cmd,
             {0},
         ),
         (
@@ -172,6 +185,8 @@ def build_evidence_bundle(
                 "--model-id",
                 model_id,
                 "--feature-set-id",
+                panel_feature_set_id or feature_set_id,
+                "--retention-feature-set-id",
                 feature_set_id,
             ],
             {0},
@@ -224,7 +239,7 @@ def build_evidence_bundle(
             ended_at=ended_at,
             duration_s=duration_s,
             commit_sha=git_commit_sha(REPO),
-            input_tables=["mart_multidim_model", "fact_feature_panel"],
+            input_tables=["mart_multidim_model", feature_table],
             output_tables=[
                 "mart_daily_recommendation",
                 "mart_feature_drift",
@@ -236,7 +251,13 @@ def build_evidence_bundle(
             model_id=model_id,
             gate_result=gate.get("promotion_status") if gate else None,
             blockers=blockers,
-            perf_summary={"steps": steps, "failed_steps": [s["name"] for s in failed_steps]},
+            perf_summary={
+                "steps": steps,
+                "failed_steps": [s["name"] for s in failed_steps],
+                "feature_table": feature_table,
+                "panel_feature_set_id": panel_feature_set_id,
+                "retention_feature_set_id": feature_set_id,
+            },
         )
         conn.commit()
 
@@ -254,6 +275,8 @@ def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--model-id", required=True)
     parser.add_argument("--feature-set-id", default="tdx_f10_gpcw_v1")
+    parser.add_argument("--feature-table", default="fact_feature_panel")
+    parser.add_argument("--panel-feature-set-id", default=None)
     parser.add_argument("--top-k", type=int, default=50)
     parser.add_argument("--horizons", default="20")
     parser.add_argument("--top-sizes", default="20,50,100,200,500")
@@ -263,6 +286,8 @@ def main() -> int:
     result = build_evidence_bundle(
         model_id=args.model_id,
         feature_set_id=args.feature_set_id,
+        feature_table=args.feature_table,
+        panel_feature_set_id=args.panel_feature_set_id,
         top_k=args.top_k,
         horizons=args.horizons,
         top_sizes=args.top_sizes,

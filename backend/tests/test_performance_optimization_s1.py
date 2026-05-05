@@ -25,7 +25,10 @@ from services.pipeline_lock import (  # noqa: E402
     heartbeat_pipeline_lock,
     release_pipeline_lock,
 )
+from services.feature_retention import load_production_keep_features  # noqa: E402
+from services.model_feature_schema import BASE_FEATURE_COLS  # noqa: E402
 from routers.updater import _plan_with_budgets  # noqa: E402
+from scripts.train_multidim_model import resolve_feature_group_from_columns  # noqa: E402
 
 
 def test_compute_psi_cached_exposes_reusable_histogram_state():
@@ -216,5 +219,54 @@ def test_pipeline_lock_blocks_active_holder_and_releases_stale_lock():
         current = get_pipeline_lock(conn, lock_name="cron_daily")
         assert current["status"] == "released_success"
         assert current["released_at"] is not None
+    finally:
+        conn.close()
+
+
+def test_base_retention_keep_uses_coverage_gated_keep_features_only():
+    keep_features = ["forecast_profit_yoy_mid", "forecast_range_width"]
+    panel_cols = set(BASE_FEATURE_COLS + keep_features + ["ret_20d_rank"])
+
+    cols, tag = resolve_feature_group_from_columns(
+        "base_retention_keep",
+        panel_cols,
+        regime_aware=False,
+        retention_keep_features=keep_features,
+        retention_schema_tag="retention_keep_unit",
+    )
+
+    assert tag == "retention_keep_unit"
+    assert cols == BASE_FEATURE_COLS + keep_features
+    assert "ret_20d_rank" not in cols
+
+
+def test_load_production_keep_features_reads_latest_decision_run():
+    conn = duck_mem()
+    try:
+        conn.execute(
+            """
+            CREATE TABLE mart_feature_retention_decision (
+                decision_run_id TEXT,
+                feature_set_id TEXT,
+                feature_name TEXT,
+                feature_group TEXT,
+                decision TEXT,
+                built_at TEXT
+            )
+            """
+        )
+        conn.executemany(
+            "INSERT INTO mart_feature_retention_decision VALUES (?, ?, ?, ?, ?, ?)",
+            [
+                ("old_run", "tdx_f10_gpcw_v1", "old_feature", "tdx", "keep", "2026-05-04T00:00:00"),
+                ("new_run", "tdx_f10_gpcw_v1", "forecast_range_width", "tdx", "keep", "2026-05-05T00:00:00"),
+                ("new_run", "tdx_f10_gpcw_v1", "qfii_shares_qoq", "tdx", "drop", "2026-05-05T00:00:00"),
+            ],
+        )
+
+        features, run_id = load_production_keep_features(conn, feature_set_id="tdx_f10_gpcw_v1")
+
+        assert run_id == "new_run"
+        assert features == ["forecast_range_width"]
     finally:
         conn.close()

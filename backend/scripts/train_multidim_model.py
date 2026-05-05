@@ -42,6 +42,7 @@ from services.model_feature_schema import (
     feature_cols_to_json,
     ordered_feature_cols,
 )
+from services.feature_retention import load_production_keep_features
 from services.pipeline_manifest import (
     git_commit_sha,
     record_pipeline_run,
@@ -496,7 +497,14 @@ def _record_columns(rows: list[dict[str, Any]]) -> set[str]:
 _ADDED_A158: list[str] = []
 
 
-def resolve_feature_group_from_columns(name: str, panel_cols: set[str], *, regime_aware: bool) -> tuple[list[str], str]:
+def resolve_feature_group_from_columns(
+    name: str,
+    panel_cols: set[str],
+    *,
+    regime_aware: bool,
+    retention_keep_features: list[str] | None = None,
+    retention_schema_tag: str = "retention_keep_v1",
+) -> tuple[list[str], str]:
     from services.model_feature_schema import BASE_FEATURE_COLS, DENSE_V2_FEATURE_COLS
 
     a158 = [c for c in panel_cols if c.startswith("a158_")]
@@ -522,6 +530,16 @@ def resolve_feature_group_from_columns(name: str, panel_cols: set[str], *, regim
             raise RuntimeError(f"tdx_keep_v1 缺少 keep 特征: {missing}")
         cols = base + v2 + keep
         tag = TDX_KEEP_CHALLENGER_SCHEMA_VERSION
+    elif name == "base_retention_keep":
+        requested = list(retention_keep_features or [])
+        if not requested:
+            raise RuntimeError("base_retention_keep 需要 retention keep 特征; 请提供 --feature-set-id 和可用 decision_run")
+        keep = [c for c in requested if c in panel_cols]
+        missing = [c for c in requested if c not in panel_cols]
+        if missing:
+            raise RuntimeError(f"base_retention_keep 缺少 keep 特征: {missing}")
+        cols = base + keep
+        tag = retention_schema_tag
     elif name == "legacy_full":
         cols = [c for c in FEATURE_COLS if c in panel_cols]
         if a158:
@@ -739,13 +757,20 @@ def main():
     parser.add_argument('--regime-aware', action='store_true',
                         help='加入 regime one-hot 作为特征')
     parser.add_argument('--feature-group',
-                        choices=['base', 'base_dense_v2', 'base_alpha158', 'base_dense_v2_alpha158', 'tdx_keep_v1', 'legacy_full'],
+                        choices=[
+                            'base', 'base_dense_v2', 'base_alpha158', 'base_dense_v2_alpha158',
+                            'tdx_keep_v1', 'base_retention_keep', 'legacy_full',
+                        ],
                         default='base_dense_v2',
                         help='M7/M9: 显式特征组. 默认 base_dense_v2 为 compact production candidate; legacy_full 仅显式研究使用')
     parser.add_argument('--feature-table', default='fact_feature_panel',
                         help='训练使用的 feature table')
     parser.add_argument('--feature-set-id', default=None,
                         help='feature_table 有 feature_set_id 列时过滤')
+    parser.add_argument('--retention-decision-run-id', default=None,
+                        help='base_retention_keep 使用的 mart_feature_retention_decision.decision_run_id; 默认取最新')
+    parser.add_argument('--retention-feature-set-id', default=None,
+                        help='base_retention_keep 读取 retention decision 的 feature_set_id; 默认等于 --feature-set-id')
     parser.add_argument('--num-round', type=int, default=400, help='final fit 轮数')
     parser.add_argument('--objective-num-round', type=int, default=400,
                         help='Optuna 每次 trial 的训练轮数')
@@ -774,13 +799,32 @@ def main():
         feature_table=args.feature_table,
         feature_set_id=args.feature_set_id,
     )
+    retention_keep_features: list[str] | None = None
+    retention_decision_run_id: str | None = None
+    if args.feature_group == "base_retention_keep":
+        retention_feature_set_id = args.retention_feature_set_id or args.feature_set_id
+        if not retention_feature_set_id:
+            raise RuntimeError("base_retention_keep 必须指定 --feature-set-id 或 --retention-feature-set-id")
+        retention_keep_features, retention_decision_run_id = load_production_keep_features(
+            conn,
+            feature_set_id=retention_feature_set_id,
+            decision_run_id=args.retention_decision_run_id,
+        )
+        if not retention_keep_features:
+            raise RuntimeError(
+                f"retention_feature_set_id={retention_feature_set_id} decision_run={args.retention_decision_run_id or 'latest'} 无 production keep 特征"
+            )
     timings["load_panel_s"] = round(time.perf_counter() - t_load, 3)
     conn.close()
     logger.info("数据加载完成, DuckDB 写锁已释放, 训练期间前端可正常读")
     _ensure_panel(panel)
 
     feature_cols, schema_tag = resolve_feature_group_from_columns(
-        args.feature_group, panel.columns, regime_aware=args.regime_aware
+        args.feature_group,
+        panel.columns,
+        regime_aware=args.regime_aware,
+        retention_keep_features=retention_keep_features,
+        retention_schema_tag=f"retention_keep_{retention_decision_run_id or 'latest'}",
     )
     logger.info("feature_group=%s schema_tag=%s 特征数=%d",
                 args.feature_group, schema_tag, len(feature_cols))

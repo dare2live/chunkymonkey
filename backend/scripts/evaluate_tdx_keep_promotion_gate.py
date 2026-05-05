@@ -14,6 +14,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from services.db import get_conn
 from services.ml_lifecycle.registry import get_model_status, select_default_model_id
 from services.model_feature_schema import TDX_KEEP_FEATURE_COLS
+from services.feature_retention import load_production_keep_features
 from services.schema_versions import record_actual_version
 
 
@@ -357,6 +358,7 @@ def evaluate_gate(
     *,
     challenger_model_id: str | None = None,
     feature_set_id: str = "tdx_keep_challenger_v1",
+    retention_feature_set_id: str | None = None,
 ) -> dict:
     conn.executescript(DDL)
     challenger_model_id = challenger_model_id or _latest_model(conn, "tdx_keep_challenger")
@@ -383,9 +385,21 @@ def evaluate_gate(
     ).fetchone()[0]
     gate("PIT", "PASS" if pit == 0 else "FAIL", {"violations": pit}, f"PIT violations={pit}" if pit else None)
 
+    coverage_feature_run = None
+    coverage_features = list(TDX_KEEP_FEATURE_COLS)
+    try:
+        keep_features, coverage_feature_run = load_production_keep_features(
+            conn,
+            feature_set_id=retention_feature_set_id or feature_set_id,
+        )
+        if keep_features:
+            coverage_features = keep_features
+    except Exception as exc:
+        logger.warning("load retention keep features failed for %s: %s", feature_set_id, exc)
+
     coverage_rows = []
     if _table_exists(conn, "fact_feature_panel_tdx_keep_challenger"):
-        for f in TDX_KEEP_FEATURE_COLS:
+        for f in coverage_features:
             c = conn.execute(
                 f"""
                 SELECT COUNT({f}) * 100.0 / NULLIF(COUNT(*), 0)
@@ -396,11 +410,22 @@ def evaluate_gate(
             ).fetchone()[0]
             coverage_rows.append({"feature": f, "coverage_pct": float(c or 0)})
     pass_coverage = sum(1 for r in coverage_rows if r["coverage_pct"] >= 60.0)
+    required_coverage = len(coverage_features)
     gate(
         "coverage",
-        "PASS" if pass_coverage >= 4 else "FAIL",
-        {"features_ge_60_pct": pass_coverage, "features": coverage_rows},
-        f"only {pass_coverage}/5 keep features coverage >= 60%" if pass_coverage < 4 else None,
+        "PASS" if required_coverage > 0 and pass_coverage >= required_coverage else "FAIL",
+        {
+            "features_ge_60_pct": pass_coverage,
+            "required_features": required_coverage,
+            "decision_run_id": coverage_feature_run,
+            "panel_feature_set_id": feature_set_id,
+            "retention_feature_set_id": retention_feature_set_id or feature_set_id,
+            "features": coverage_rows,
+        },
+        (
+            f"only {pass_coverage}/{required_coverage} production keep features coverage >= 60%"
+            if pass_coverage < required_coverage else None
+        ),
     )
 
     champion = _model_metrics(conn, champion_model_id)
@@ -556,9 +581,15 @@ def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--model-id", default=None)
     parser.add_argument("--feature-set-id", default="tdx_keep_challenger_v1")
+    parser.add_argument("--retention-feature-set-id", default=None)
     args = parser.parse_args()
     with get_conn() as conn:
-        result = evaluate_gate(conn, challenger_model_id=args.model_id, feature_set_id=args.feature_set_id)
+        result = evaluate_gate(
+            conn,
+            challenger_model_id=args.model_id,
+            feature_set_id=args.feature_set_id,
+            retention_feature_set_id=args.retention_feature_set_id,
+        )
     logger.info("tdx keep promotion gate: %s", result)
     return 0
 
