@@ -15,6 +15,7 @@ from typing import Any
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 import lightgbm as lgb
+import numpy as np
 
 from services.db import get_conn
 from services.model_feature_schema import (
@@ -31,12 +32,16 @@ from services.ml_lifecycle.registry import select_default_model_id
 from scripts.run_feature_ablation import (
     compute_ic,
     decile_metrics,
-    _dates,
-    _matrix,
     _quote_ident,
     _rank_percentiles,
     _records_from_cursor,
     _values,
+)
+from scripts.train_multidim_model import (
+    _date_bounds_array,
+    _prediction_column_arrays,
+    load_panel_arrays,
+    resolve_feature_group_from_columns,
 )
 
 
@@ -374,6 +379,10 @@ def _slice(rows: list[dict[str, Any]], bounds: tuple) -> list[dict[str, Any]]:
     return [row for row in rows if bounds[0] <= row["date"] <= bounds[1]]
 
 
+def _slice_indices(dates: np.ndarray, bounds: tuple[str, str]) -> np.ndarray:
+    return np.flatnonzero((dates >= bounds[0]) & (dates <= bounds[1]))
+
+
 def _date_bounds(rows: list[dict[str, Any]]) -> tuple[str | None, str | None]:
     dates = [str(row.get("date")) for row in rows if row.get("date") is not None]
     return (min(dates), max(dates)) if dates else (None, None)
@@ -384,10 +393,26 @@ def _mean_label(rows: list[dict[str, Any]]) -> float | None:
     return float(sum(values) / len(values)) if values else None
 
 
+def _mean_label_array(values: np.ndarray) -> float | None:
+    return float(np.mean(values)) if len(values) else None
+
+
 def _score_profile(pred_rows: list[tuple]) -> tuple[float, int]:
     by_date: dict[str, set[float]] = {}
     for row in pred_rows:
         by_date.setdefault(str(row[3]), set()).add(float(row[4]))
+    counts = sorted(len(values) for values in by_date.values())
+    if not counts:
+        return 0.0, 0
+    mid = len(counts) // 2
+    median = counts[mid] if len(counts) % 2 else (counts[mid - 1] + counts[mid]) / 2.0
+    return float(median), int(counts[0])
+
+
+def _score_profile_columns(pred_columns: dict[str, np.ndarray]) -> tuple[float, int]:
+    by_date: dict[str, set[float]] = {}
+    for date, score in zip(pred_columns["date"], pred_columns["pred_score"]):
+        by_date.setdefault(str(date), set()).add(float(score))
     counts = sorted(len(values) for values in by_date.values())
     if not counts:
         return 0.0, 0
@@ -416,6 +441,40 @@ def _prediction_rows(run_id: str, fold_id: int, test_rows: list[dict[str, Any]],
                 percentiles[idx],
             ))
     return rows
+
+
+def _prediction_columns(
+    run_id: str,
+    fold_id: int,
+    stock_codes: np.ndarray,
+    dates: np.ndarray,
+    pred,
+) -> dict[str, np.ndarray]:
+    ranked = _prediction_column_arrays("_walkforward", stock_codes, dates, pred)
+    n = len(ranked["pred_score"])
+    return {
+        "run_id": np.full(n, run_id, dtype=object),
+        "fold_id": np.full(n, int(fold_id), dtype=np.int32),
+        "stock_code": ranked["stock_code"],
+        "date": ranked["date"],
+        "pred_score": ranked["pred_score"],
+        "rank_in_date": ranked["rank_in_date"],
+        "percentile": ranked["percentile"],
+    }
+
+
+def _filter_prediction_columns_topk(pred_columns: dict[str, np.ndarray], top_k: int) -> dict[str, np.ndarray]:
+    if top_k <= 0 or len(pred_columns["pred_score"]) == 0:
+        return pred_columns
+    keep: list[int] = []
+    dates = pred_columns["date"]
+    ranks = pred_columns["rank_in_date"]
+    for date in np.unique(dates):
+        idxs = np.flatnonzero(dates == date)
+        order = np.argsort(ranks[idxs], kind="mergesort")
+        keep.extend(idxs[order[:top_k]].tolist())
+    keep_idx = np.array(sorted(keep), dtype=np.int64)
+    return {key: values[keep_idx] for key, values in pred_columns.items()}
 
 
 def _rank_desc_min(values: list[float]) -> list[int]:
@@ -462,7 +521,30 @@ def ensure_walkforward_schema(conn) -> None:
             logger.warning("ALTER add %s 失败 (大概率已存在): %s", col, e)
 
 
-def write_fold(conn, row: dict, pred_rows: list[tuple] | None) -> None:
+def _insert_walkforward_prediction_columns(conn, pred_columns: dict[str, np.ndarray]) -> None:
+    if not pred_columns or len(pred_columns["pred_score"]) == 0:
+        return
+    duck = conn.raw if hasattr(conn, "raw") else conn
+    view_name = "tmp_walkforward_prediction_numpy"
+    duck.register(view_name, pred_columns)
+    try:
+        duck.execute(
+            f"""
+            INSERT OR REPLACE INTO mart_model_walkforward_prediction
+            (run_id, fold_id, stock_code, date, pred_score, rank_in_date, percentile)
+            SELECT run_id, fold_id, stock_code, date, pred_score, rank_in_date, percentile
+            FROM {view_name}
+            """
+        )
+    finally:
+        try:
+            duck.unregister(view_name)
+        except Exception:
+            pass
+
+
+def write_fold(conn, row: dict, pred_rows: list[tuple] | None = None,
+               pred_columns: dict[str, np.ndarray] | None = None) -> None:
     ensure_walkforward_schema(conn)
     cols = [
         "run_id", "fold_id", "model_id", "feature_schema_version", "label_name",
@@ -487,7 +569,10 @@ def write_fold(conn, row: dict, pred_rows: list[tuple] | None) -> None:
             """,
             pred_rows,
         )
+    if pred_columns:
+        _insert_walkforward_prediction_columns(conn, pred_columns)
     conn.commit()
+
 
 
 def main() -> None:
@@ -526,6 +611,11 @@ def main() -> None:
         help=("M8.0: 每折 lgb.train 的 num_boost_round. 不再用 valid 段早停 "
               "(对齐 baseline final fit + M6.1 ablation 口径)"),
     )
+    parser.add_argument(
+        "--update-lifecycle",
+        action="store_true",
+        help="仅正式研究 run 使用: 所有 fold quality=ok 时才把本次 walk-forward 汇总写回 lifecycle",
+    )
     args = parser.parse_args()
     run_started_at = utc_now_iso()
     run_t0 = time.perf_counter()
@@ -546,7 +636,7 @@ def main() -> None:
             )
         else:
             t_load = time.perf_counter()
-            records = load_panel_records(
+            panel = load_panel_arrays(
                 conn,
                 args.start,
                 args.end,
@@ -556,7 +646,7 @@ def main() -> None:
                 with_alpha158=feature_group_uses_alpha158(args.feature_group),
             )
             timings["load_panel_s"] = round(time.perf_counter() - t_load, 3)
-            dates = sorted({row["date"] for row in records})
+            dates = sorted(np.unique(panel.dates).tolist())
         folds = build_folds(dates, args.train_days, args.valid_days, args.test_days, args.step_days)
         if args.max_folds > 0:
             folds = folds[:args.max_folds]
@@ -566,10 +656,9 @@ def main() -> None:
         if args.dry_run:
             return
 
-        # records is loaded above in non-dry-run branch.
         # M7/M9: production 默认走 compact base_dense_v2; Alpha158 组只在显式指定时加载。
-        feature_cols, schema_tag = resolve_feature_group(
-            args.feature_group, records, regime_aware=args.regime_aware
+        feature_cols, schema_tag = resolve_feature_group_from_columns(
+            args.feature_group, panel.columns, regime_aware=args.regime_aware
         )
         logger.info(
             "walkforward feature_group=%s schema_tag=%s 特征数=%d",
@@ -581,14 +670,18 @@ def main() -> None:
         fold_metrics: list[dict[str, Any]] = []
         for fold in folds:
             fold_t0 = time.perf_counter()
-            train = _slice(records, fold["train"])
-            valid = _slice(records, fold["valid"])
-            test = _slice(records, fold["test"])
-            # M8.0: train + valid 合并, 无 valid_sets / 无 early_stopping. 对齐 baseline final fit.
-            train_valid = [*train, *valid]
+            train_idx = _slice_indices(panel.dates, fold["train"])
+            valid_idx = _slice_indices(panel.dates, fold["valid"])
+            test_idx = _slice_indices(panel.dates, fold["test"])
+            train_valid_idx = np.concatenate([train_idx, valid_idx])
+            X_train_valid = panel.matrix(feature_cols, train_valid_idx)
+            y_train_valid = panel.labels_for(train_valid_idx)
+            X_test = panel.matrix(feature_cols, test_idx)
+            y_test = panel.labels_for(test_idx)
+            test_dates = panel.dates_for(test_idx)
             dataset = lgb.Dataset(
-                _matrix(train_valid, feature_cols),
-                label=_values(train_valid, "label_value"),
+                X_train_valid,
+                label=y_train_valid,
                 feature_name=feature_cols,
             )
             model = lgb.train(
@@ -596,28 +689,27 @@ def main() -> None:
                 dataset,
                 num_boost_round=args.walkforward_num_round,
             )
-            pred = model.predict(_matrix(test, feature_cols))
-            ic, rank_ic = compute_ic(_values(test, "label_value"), pred, _dates(test))
-            dec = decile_metrics(_values(test, "label_value"), pred, _dates(test))
-            test_mean_ret = _mean_label(test)
+            pred = model.predict(X_test)
+            ic, rank_ic = compute_ic(y_test, pred, test_dates)
+            dec = decile_metrics(y_test, pred, test_dates)
+            test_mean_ret = _mean_label_array(y_test)
 
             # M8.0: score profile - per test date 的 distinct pred_score 数量
-            pred_out_all = _prediction_rows(run_id, fold["fold_id"], test, pred)
+            pred_out_all = _prediction_columns(
+                run_id,
+                fold["fold_id"],
+                panel.codes_for(test_idx),
+                panel.dates_for(test_idx),
+                pred,
+            )
             pred_out = pred_out_all
             if args.prediction_mode == "topk":
-                by_date: dict[str, list[tuple]] = {}
-                for item in pred_out_all:
-                    by_date.setdefault(str(item[3]), []).append(item)
-                pred_out = [
-                    item
-                    for items in by_date.values()
-                    for item in sorted(items, key=lambda row: row[5])[: args.prediction_top_k]
-                ]
-            distinct_median, distinct_min = _score_profile(pred_out_all)
+                pred_out = _filter_prediction_columns_topk(pred_out_all, args.prediction_top_k)
+            distinct_median, distinct_min = _score_profile_columns(pred_out_all)
             quality = "ok" if distinct_median >= DEGENERATE_DAILY_DISTINCT_THRESHOLD else "degenerate"
-            train_start, train_end = _date_bounds(train)
-            valid_start, valid_end = _date_bounds(valid)
-            test_start, test_end = _date_bounds(test)
+            train_start, train_end = _date_bounds_array(panel.dates_for(train_idx))
+            valid_start, valid_end = _date_bounds_array(panel.dates_for(valid_idx))
+            test_start, test_end = _date_bounds_array(panel.dates_for(test_idx))
 
             row = {
                 "run_id": run_id,
@@ -628,7 +720,7 @@ def main() -> None:
                 "train_start": train_start, "train_end": train_end,
                 "valid_start": valid_start, "valid_end": valid_end,
                 "test_start": test_start, "test_end": test_end,
-                "n_train": len(train), "n_valid": len(valid), "n_test": len(test),
+                "n_train": int(len(train_idx)), "n_valid": int(len(valid_idx)), "n_test": int(len(test_idx)),
                 "n_features": len(feature_cols),
                 "params_json": json.dumps(params, ensure_ascii=False),
                 "test_ic": ic, "test_rank_ic": rank_ic,
@@ -646,7 +738,7 @@ def main() -> None:
                 "built_at": built_at,
             }
             should_write_predictions = args.save_predictions or args.prediction_mode in {"topk", "full"}
-            write_fold(conn, row, pred_out if should_write_predictions else None)
+            write_fold(conn, row, pred_columns=pred_out if should_write_predictions else None)
             fold_duration = time.perf_counter() - fold_t0
             fold_metrics.append({
                 "fold_id": fold["fold_id"],
@@ -654,9 +746,9 @@ def main() -> None:
                 "ic": ic,
                 "spread": dec["spread"],
                 "quality": quality,
-                "n_train": len(train),
-                "n_valid": len(valid),
-                "n_test": len(test),
+                "n_train": int(len(train_idx)),
+                "n_valid": int(len(valid_idx)),
+                "n_test": int(len(test_idx)),
                 "duration_s": round(fold_duration, 3),
             })
             logger.info(
@@ -671,26 +763,32 @@ def main() -> None:
                     fold["fold_id"], distinct_median,
                     DEGENERATE_DAILY_DISTINCT_THRESHOLD,
                 )
-        if source_model_id:
-            conn.execute(
-                """
-                UPDATE mart_model_lifecycle
-                   SET ic_walkforward_avg = (
-                       SELECT AVG(test_rank_ic)
-                         FROM mart_model_walkforward_fold
-                        WHERE run_id = ?
-                   ),
-                       ic_walkforward_std = (
-                       SELECT STDDEV(test_rank_ic)
-                         FROM mart_model_walkforward_fold
-                        WHERE run_id = ?
-                   ),
-                       updated_at = now()
-                 WHERE model_id = ?
-                """,
-                (run_id, run_id, source_model_id),
-            )
-            conn.commit()
+        if source_model_id and args.update_lifecycle:
+            has_degenerate = any(metric.get("quality") != "ok" for metric in fold_metrics)
+            if has_degenerate:
+                logger.warning("本次 walk-forward 含 degenerate fold, 跳过 lifecycle 汇总更新")
+            elif fold_metrics:
+                conn.execute(
+                    """
+                    UPDATE mart_model_lifecycle
+                       SET ic_walkforward_avg = (
+                           SELECT AVG(test_rank_ic)
+                             FROM mart_model_walkforward_fold
+                            WHERE run_id = ? AND quality_flag = 'ok'
+                       ),
+                           ic_walkforward_std = (
+                           SELECT STDDEV(test_rank_ic)
+                             FROM mart_model_walkforward_fold
+                            WHERE run_id = ? AND quality_flag = 'ok'
+                       ),
+                           updated_at = now()
+                     WHERE model_id = ?
+                    """,
+                    (run_id, run_id, source_model_id),
+                )
+                conn.commit()
+        elif source_model_id:
+            logger.info("未传 --update-lifecycle, 本次 walk-forward 不改 lifecycle 汇总")
         duration_s = time.perf_counter() - run_t0
         timings["total_s"] = round(duration_s, 3)
         rank_ics = [m["rank_ic"] for m in fold_metrics if m.get("rank_ic") is not None]

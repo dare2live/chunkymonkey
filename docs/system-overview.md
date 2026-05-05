@@ -229,6 +229,8 @@ best params 在 train+valid 合并上重训, holdout 评估
 
 训练主路径已从 `list[dict]` 改为 DuckDB `fetchnumpy()` + `PanelData` 列数组。2026-05-05 本地只读验证: `2023-01-01` ~ `2026-03-31` 共 3,910,880 行、54 特征, NumPy 加载 8.8s, 日期切分和三段 `float32` 矩阵构造 4.1s。holdout prediction 写库改为 NumPy temp view + `INSERT OR REPLACE ... SELECT`, 不再对 `mart_multidim_prediction` 逐行 `executemany`。
 
+Walk-forward 主路径复用同一套 `PanelData` 数组，按 fold 日期边界取索引切片构造矩阵；prediction mode 保持 `metrics-only` / `topk` / `full` 分层，`mart_model_walkforward_prediction` 写库支持 NumPy temp view 批量插入。`mart_model_lifecycle` 汇总只有显式 `--update-lifecycle` 且所有 fold `quality=ok` 时才更新。
+
 ### 5.4 当前 lifecycle champion
 
 `multidim_v2_base_dense_v2_20260425_144552` 是正式推荐 champion。`cleanup_full_multidim_v2_base_dense_v2_20260505_093800` 仍是 shadow challenger, 因 walk-forward 稳定性和 drift gate 未过, 不自动提升。
