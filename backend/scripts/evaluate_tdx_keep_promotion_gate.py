@@ -214,6 +214,143 @@ def _drift_gate(champion: dict, challenger: dict, champion_cols: list[str], chal
     return status, detail, blocker
 
 
+def _source_lineage_gate(conn, *, max_fallback_ratio: float = 0.05) -> tuple[str, dict, str | None]:
+    """Gate challenger promotion on source-tier/fallback evidence."""
+
+    checks: list[dict] = []
+    blockers: list[str] = []
+    wait_reasons: list[str] = []
+
+    if _table_exists(conn, "fact_top10_holder_period"):
+        if not _has_column(conn, "fact_top10_holder_period", "source_tier"):
+            blockers.append("fact_top10_holder_period missing source_tier")
+            checks.append({"table": "fact_top10_holder_period", "status": "FAIL", "reason": "missing source_tier"})
+        else:
+            row = conn.execute(
+                """
+                SELECT COUNT(*) AS total_rows,
+                       SUM(CASE WHEN source_tier > 1 THEN 1 ELSE 0 END) AS fallback_rows
+                  FROM fact_top10_holder_period
+                """
+            ).fetchone()
+            total_rows = int(row["total_rows"] or 0) if row else 0
+            fallback_rows = int(row["fallback_rows"] or 0) if row else 0
+            fallback_ratio = (fallback_rows / total_rows) if total_rows else None
+            check_status = "PASS"
+            reason = None
+            if total_rows == 0:
+                check_status = "WAIT"
+                reason = "no holder source rows"
+                wait_reasons.append(reason)
+            elif fallback_ratio is not None and fallback_ratio > max_fallback_ratio:
+                check_status = "FAIL"
+                reason = f"holder fallback_ratio {fallback_ratio:.2%} > {max_fallback_ratio:.2%}"
+                blockers.append(reason)
+            checks.append(
+                {
+                    "table": "fact_top10_holder_period",
+                    "status": check_status,
+                    "total_rows": total_rows,
+                    "fallback_rows": fallback_rows,
+                    "fallback_ratio": fallback_ratio,
+                    "max_fallback_ratio": max_fallback_ratio,
+                    "reason": reason,
+                }
+            )
+    else:
+        reason = "missing fact_top10_holder_period source evidence"
+        wait_reasons.append(reason)
+        checks.append({"table": "fact_top10_holder_period", "status": "WAIT", "reason": reason})
+
+    if _table_exists(conn, "mart_tdx_gpcw_file_manifest"):
+        row = conn.execute(
+            """
+            SELECT COUNT(*) AS total_files,
+                   SUM(CASE WHEN source_tier <> 1 THEN 1 ELSE 0 END) AS non_primary_files,
+                   SUM(CASE WHEN COALESCE(status, '') NOT IN ('success', 'skipped') THEN 1 ELSE 0 END) AS bad_status_files
+              FROM mart_tdx_gpcw_file_manifest
+            """
+        ).fetchone()
+        total_files = int(row["total_files"] or 0) if row else 0
+        non_primary_files = int(row["non_primary_files"] or 0) if row else 0
+        bad_status_files = int(row["bad_status_files"] or 0) if row else 0
+        check_status = "PASS"
+        reason = None
+        if total_files == 0:
+            check_status = "WAIT"
+            reason = "no gpcw file manifest rows"
+            wait_reasons.append(reason)
+        elif non_primary_files or bad_status_files:
+            check_status = "FAIL"
+            reason = f"gpcw manifest non_primary={non_primary_files}, bad_status={bad_status_files}"
+            blockers.append(reason)
+        checks.append(
+            {
+                "table": "mart_tdx_gpcw_file_manifest",
+                "status": check_status,
+                "total_files": total_files,
+                "non_primary_files": non_primary_files,
+                "bad_status_files": bad_status_files,
+                "reason": reason,
+            }
+        )
+    else:
+        reason = "missing mart_tdx_gpcw_file_manifest source evidence"
+        wait_reasons.append(reason)
+        checks.append({"table": "mart_tdx_gpcw_file_manifest", "status": "WAIT", "reason": reason})
+
+    critical_domains = {"holders_top10_float", "financial_gpcw_8q"}
+    if _table_exists(conn, "mart_data_source_watermark"):
+        rows = conn.execute(
+            """
+            SELECT data_domain, source_name, source_tier,
+                   COALESCE(fallback_active, FALSE) AS fallback_active,
+                   COALESCE(consecutive_failures, 0) AS consecutive_failures
+              FROM mart_data_source_watermark
+             WHERE data_domain IN ('holders_top10_float', 'financial_gpcw_8q')
+            """
+        ).fetchall()
+        seen_domains = {r["data_domain"] for r in rows}
+        missing_domains = sorted(critical_domains - seen_domains)
+        if missing_domains:
+            reason = f"missing source watermark domains: {','.join(missing_domains)}"
+            wait_reasons.append(reason)
+        fallback_rows = [
+            dict(r) for r in rows
+            if bool(r["fallback_active"]) or int(r["source_tier"] or 0) > 1 or int(r["consecutive_failures"] or 0) > 0
+        ]
+        if fallback_rows:
+            reason = "critical source watermark indicates fallback or failures"
+            blockers.append(reason)
+            check_status = "FAIL"
+        elif missing_domains:
+            check_status = "WAIT"
+            reason = f"missing domains: {','.join(missing_domains)}"
+        else:
+            check_status = "PASS"
+            reason = None
+        checks.append(
+            {
+                "table": "mart_data_source_watermark",
+                "status": check_status,
+                "critical_domains": sorted(critical_domains),
+                "missing_domains": missing_domains,
+                "fallback_or_failure_rows": fallback_rows,
+                "reason": reason,
+            }
+        )
+    else:
+        reason = "missing mart_data_source_watermark"
+        wait_reasons.append(reason)
+        checks.append({"table": "mart_data_source_watermark", "status": "WAIT", "reason": reason})
+
+    if blockers:
+        return "FAIL", {"checks": checks, "max_fallback_ratio": max_fallback_ratio}, "; ".join(blockers)
+    if wait_reasons:
+        return "WAIT", {"checks": checks, "max_fallback_ratio": max_fallback_ratio}, "; ".join(wait_reasons)
+    return "PASS", {"checks": checks, "max_fallback_ratio": max_fallback_ratio}, None
+
+
 def evaluate_gate(
     conn,
     *,
@@ -315,6 +452,9 @@ def evaluate_gate(
         _model_feature_cols(conn, challenger_model_id),
     )
     gate("drift", drift_status, drift_detail, drift_blocker)
+
+    source_status, source_detail, source_blocker = _source_lineage_gate(conn)
+    gate("source_lineage", source_status, source_detail, source_blocker)
 
     if _table_exists(conn, "mart_daily_recommendation"):
         shadow_filter = "AND COALESCE(run_mode, '') = 'shadow'" if _has_column(conn, "mart_daily_recommendation", "run_mode") else ""

@@ -1066,6 +1066,36 @@ def init_db():
                 PRIMARY KEY (run_id, fold_id, feature_name, label_name)
             );
 
+            CREATE TABLE IF NOT EXISTS mart_model_holding_topk_eval (
+                run_id TEXT NOT NULL,
+                model_id TEXT NOT NULL,
+                feature_table TEXT NOT NULL,
+                feature_set_id TEXT,
+                label_name TEXT NOT NULL,
+                holding_period INTEGER NOT NULL,
+                top_k INTEGER NOT NULL,
+                cost_bps DOUBLE NOT NULL,
+                n_dates INTEGER,
+                n_signals INTEGER,
+                ic_mean DOUBLE,
+                rank_ic_mean DOUBLE,
+                avg_top_return DOUBLE,
+                avg_benchmark_return DOUBLE,
+                avg_excess_return DOUBLE,
+                long_short_spread DOUBLE,
+                winrate DOUBLE,
+                avg_turnover DOUBLE,
+                max_drawdown DOUBLE,
+                after_cost_return DOUBLE,
+                avg_industry_hhi DOUBLE,
+                recommendation TEXT,
+                notes TEXT,
+                built_at TEXT NOT NULL,
+                PRIMARY KEY (run_id, model_id, label_name, top_k, cost_bps)
+            );
+            CREATE INDEX IF NOT EXISTS idx_holding_topk_model
+                ON mart_model_holding_topk_eval(model_id, label_name, top_k);
+
             CREATE TABLE IF NOT EXISTS mart_feature_retention_decision (
                 decision_run_id TEXT NOT NULL,
                 feature_set_id TEXT NOT NULL,

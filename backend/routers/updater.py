@@ -1072,15 +1072,16 @@ def _should_stop():
 
 # P7 (2026-04-28): 老的 _download_with_filter / 分页逻辑随同 miaoxiang
 # RPT_F10_EH_FREEHOLDERS 一并下架. 抓取迁到 backend/scripts/ingest_holders_tdxhub.py
-# (tdxhub.holders.HolderFetcher), 结果直接落 fact_top10_holder_period.
+# (tdxhub.holders.HolderFetcher). 2026-05 起默认先落 raw, 再由 raw replay
+# 生成 fact_top10_holder_period, 避免抓取失败污染 canonical.
 
 
 async def _step_sync_raw(conn) -> dict:
-    """十大流通股东 — 调 tdxhub 抓取 (in-process, 避免 DuckDB 跨进程写锁冲突).
+    """十大流通股东 — 调 tdxhub raw→parse ingest.
 
     P7 起 canonical 表是 fact_top10_holder_period (替代 market_raw_holdings).
-    抓取逻辑封装在 backend/scripts/ingest_holders_tdxhub.py:run(), 这里直接
-    in-process 调用 — 复用 backend 的 conn, DuckDB 内部 mutex 保线程安全.
+    抓取和重放逻辑封装在 backend/scripts/ingest_holders_tdxhub.py:run(), 这里
+    直接 in-process 调用 — 复用 backend 的 conn, DuckDB 内部 mutex 保线程安全.
     (此前用 subprocess + 子进程自开 connection, 触发 IO Error: Could not set lock.)
     """
     canonical_where = (
@@ -1108,6 +1109,10 @@ async def _step_sync_raw(conn) -> dict:
     err_count = int(progress.get("err") or 0)
     skipped_unchanged = int(progress.get("skipped_unchanged") or 0)
     skipped_no_f10 = int(progress.get("skipped_no_f10") or 0)
+    raw_written = int(progress.get("raw_written") or 0)
+    parsed_count = int(progress.get("parsed") or 0)
+    tdx_err = int(progress.get("tdx_err") or err_count)
+    fallback_ok = int(progress.get("fallback_ok") or 0)
     err_rate = (err_count / attempted) if attempted else 0.0
 
     result_status = "completed"
@@ -1156,6 +1161,8 @@ async def _step_sync_raw(conn) -> dict:
         result_status = "partial"
     message = (
         f"attempted={attempted}, ok={ok_count}, err={err_count}, "
+        f"tdx_err={tdx_err}, fallback_ok={fallback_ok}, "
+        f"raw_written={raw_written}, parsed={parsed_count}, "
         f"unchanged={skipped_unchanged}, no_f10={skipped_no_f10}, "
         f"err_rate={err_rate:.1%}, written={written}, "
         f"extra_holder_count={int(extra_stats.get('holder_count_rows') or 0)}, "

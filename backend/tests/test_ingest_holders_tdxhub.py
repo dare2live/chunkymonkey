@@ -10,6 +10,24 @@ import ingest_holders_tdxhub as ingest  # noqa: E402
 from services.holders_resolver import ResolverResult  # noqa: E402
 
 
+class _FakeRawFetcher:
+    def __init__(self, texts):
+        self.texts = texts
+        self.closed = False
+
+    def fetch_text(self, symbol):
+        value = self.texts.get(symbol)
+        if isinstance(value, Exception):
+            raise value
+        return value
+
+    def stats(self):
+        return {"active_server": ("fixture", 7709)}
+
+    def close(self):
+        self.closed = True
+
+
 def _make_conn():
     con = duckdb.connect(":memory:")
     con.execute(
@@ -314,6 +332,70 @@ def test_existing_hashes_returns_tuple_keys():
         con.close()
 
 
+def test_fetch_raw_records_writes_only_raw_table():
+    con = _make_conn()
+    try:
+        raw_text = "☆股东研究☆◇600519 贵州茅台 更新日期：2026-05-04◇\n灵通V9.0 holder fixture"
+        stats = ingest.fetch_raw_records(
+            con,
+            workers=1,
+            symbols="600519",
+            fetcher_factory=lambda: _FakeRawFetcher({"600519": raw_text}),
+        )
+
+        assert stats["raw_written"] == 1
+        assert stats["ok"] == 1
+        assert con.execute("SELECT COUNT(*) FROM raw_tdx_f10_holder_research").fetchone()[0] == 1
+        assert con.execute("SELECT COUNT(*) FROM fact_top10_holder_period").fetchone()[0] == 0
+        raw_row = con.execute(
+            """
+            SELECT stock_code, CAST(page_update_date AS VARCHAR), f10_format, parser_version
+              FROM raw_tdx_f10_holder_research
+            """
+        ).fetchone()
+        assert raw_row == ("600519", "2026-05-04", "a_lingtong", "v1")
+    finally:
+        con.close()
+
+
+def test_run_fetches_raw_then_replays_new_hash(monkeypatch):
+    con = _make_conn()
+    try:
+        raw_text = "☆股东研究☆◇600519 贵州茅台 更新日期：2026-05-04◇\n灵通V9.0 holder fixture"
+        raw_hash = ingest._raw_hash(raw_text)
+        captured = {}
+
+        def fake_parse(_con, *, raw_keys=None, **_kwargs):
+            captured["raw_keys"] = raw_keys
+            return {
+                "raw_rows": len(raw_keys or []),
+                "parsed": len(raw_keys or []),
+                "no_data": 0,
+                "errors": 0,
+                "replace_facts": False,
+                "elapsed_s": 0.01,
+            }
+
+        monkeypatch.setattr(ingest, "parse_raw_records", fake_parse)
+
+        stats = ingest.run(
+            workers=1,
+            symbols="600519",
+            no_fallback=True,
+            con=con,
+            fetcher_factory=lambda: _FakeRawFetcher({"600519": raw_text}),
+        )
+
+        assert captured["raw_keys"] == [("600519", raw_hash)]
+        assert stats["raw_written"] == 1
+        assert stats["parsed"] == 1
+        assert stats["ok"] == 1
+        assert con.execute("SELECT COUNT(*) FROM raw_tdx_f10_holder_research").fetchone()[0] == 1
+        assert con.execute("SELECT COUNT(*) FROM fact_top10_holder_period").fetchone()[0] == 0
+    finally:
+        con.close()
+
+
 def test_parse_raw_records_can_replay_and_replace_canonical_rows():
     con = _make_conn()
     try:
@@ -403,5 +485,54 @@ def test_parse_raw_records_can_replay_and_replace_canonical_rows():
             "SELECT holder_rank, holder_name, hold_ratio_float FROM fact_top10_holder_period ORDER BY holder_rank"
         ).fetchall()
         assert [tuple(row) for row in rows] == [(1, "Holder A Updated", 2.0)]
+    finally:
+        con.close()
+
+
+def test_parse_raw_records_can_filter_by_raw_keys():
+    con = _make_conn()
+    try:
+        con.execute(
+            """
+            INSERT INTO raw_tdx_f10_holder_research
+            (stock_code, stock_name, market, fetched_at, page_update_date, raw_text, raw_hash, bytes_len, server, f10_format, parser_version)
+            VALUES
+            ('600519', '贵州茅台', 'SH', '2026-05-05T01:30:00', '2026-05-04', 'fixture raw a', 'hash-a', 13, 'fixture:7709', 'a_lingtong', 'v1'),
+            ('000001', '平安银行', 'SZ', '2026-05-05T01:31:00', '2026-05-04', 'fixture raw b', 'hash-b', 13, 'fixture:7709', 'a_lingtong', 'v1')
+            """
+        )
+
+        def parser(_raw_text, *, symbol, stock_name):
+            return {
+                "page": {"page_update_date": "2026-05-04"},
+                "holders": [
+                    {
+                        "stock_code": symbol,
+                        "stock_name": stock_name,
+                        "market": "SZ" if symbol == "000001" else "SH",
+                        "report_date": "20260331",
+                        "holder_set": "free",
+                        "holder_rank": 1,
+                        "row_seq": 1,
+                        "holder_name": f"Holder {symbol}",
+                        "share_class": "A",
+                        "hold_ratio": 1.0,
+                    }
+                ],
+                "periods": [{"report_date": "20260331"}],
+                "plans": [],
+                "trades": [],
+            }
+
+        stats = ingest.parse_raw_records(
+            con,
+            raw_keys=[("000001", "hash-b")],
+            parser=parser,
+            hasher=lambda text: f"unused-{text}",
+        )
+
+        assert stats["raw_rows"] == 1
+        assert stats["parsed"] == 1
+        assert con.execute("SELECT stock_code FROM fact_top10_holder_period").fetchone()[0] == "000001"
     finally:
         con.close()

@@ -52,6 +52,51 @@ def _create_lifecycle_tables(conn):
     )
 
 
+def _create_passing_source_lineage_evidence(conn):
+    conn.execute(
+        """
+        CREATE TABLE fact_top10_holder_period (
+            stock_code TEXT,
+            source_tier INTEGER
+        )
+        """
+    )
+    conn.execute(
+        """
+        INSERT INTO fact_top10_holder_period VALUES
+        ('000001', 1), ('000002', 1), ('000003', 1), ('000004', 1)
+        """
+    )
+    conn.execute(
+        """
+        CREATE TABLE mart_tdx_gpcw_file_manifest (
+            filename TEXT,
+            source_tier INTEGER,
+            status TEXT
+        )
+        """
+    )
+    conn.execute("INSERT INTO mart_tdx_gpcw_file_manifest VALUES ('gpcw20260331.dat', 1, 'success')")
+    conn.execute(
+        """
+        CREATE TABLE mart_data_source_watermark (
+            data_domain TEXT,
+            source_name TEXT,
+            source_tier INTEGER,
+            fallback_active BOOLEAN,
+            consecutive_failures INTEGER
+        )
+        """
+    )
+    conn.execute(
+        """
+        INSERT INTO mart_data_source_watermark VALUES
+        ('holders_top10_float', 'tdxhub_holders', 1, FALSE, 0),
+        ('financial_gpcw_8q', 'tdxhub_gpcw', 1, FALSE, 0)
+        """
+    )
+
+
 def test_default_model_selection_uses_lifecycle_champion_not_latest_challenger():
     conn = duck_mem()
     try:
@@ -298,6 +343,7 @@ def test_promotion_gate_passes_relative_rank_ic_and_incremental_drift_scope():
         conn.execute(
             "INSERT INTO mart_daily_recommendation VALUES ('2026-05-04', '000001', 'tdx_keep_challenger_new', 'shadow')"
         )
+        _create_passing_source_lineage_evidence(conn)
 
         result = evaluate_gate(conn, challenger_model_id="tdx_keep_challenger_new")
 
@@ -305,5 +351,112 @@ def test_promotion_gate_passes_relative_rank_ic_and_incremental_drift_scope():
         assert result["decision"] == "promote_ready"
         assert result["gates"]["rank_ic"]["status"] == "PASS"
         assert result["gates"]["drift"]["status"] == "PASS"
+        assert result["gates"]["source_lineage"]["status"] == "PASS"
+    finally:
+        conn.close()
+
+
+def test_promotion_gate_blocks_high_holder_fallback_ratio():
+    conn = duck_mem()
+    try:
+        _create_lifecycle_tables(conn)
+        conn.execute(
+            """
+            INSERT INTO mart_multidim_model VALUES
+            ('champion_model', '2026-04-01', 0.0400, 0.0100, 0.0100, 0.55,
+             'm7', 1, '["base_feature"]')
+            """
+        )
+        conn.execute(
+            """
+            INSERT INTO mart_multidim_model VALUES
+            ('tdx_keep_challenger_new', '2026-05-04', 0.0500, 0.0200, 0.0110, 0.56,
+             'm8_tdx_keep_challenger_v1', 2, '["base_feature", "forecast_profit_yoy_mid"]')
+            """
+        )
+        conn.execute(
+            "INSERT INTO mart_model_lifecycle VALUES ('champion_model', 'champion', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, NULL, NULL, NULL, NULL, '{}', NULL)"
+        )
+        conn.execute(
+            "INSERT INTO mart_model_lifecycle VALUES ('tdx_keep_challenger_new', 'challenger', NULL, CURRENT_TIMESTAMP, NULL, NULL, NULL, NULL, '{}', NULL)"
+        )
+        conn.execute("CREATE TABLE mart_feature_pit_audit (audit_run_id TEXT, violation_rows INTEGER)")
+        conn.execute("INSERT INTO mart_feature_pit_audit VALUES ('pit_tdx_f10_gpcw_v1', 0)")
+        conn.execute(
+            """
+            CREATE TABLE fact_feature_panel_tdx_keep_challenger (
+                feature_set_id TEXT,
+                forecast_profit_yoy_mid REAL,
+                avg_float_shares_change_pct_tdx REAL,
+                ocf_to_profit_tdx REAL,
+                fund_shares_qoq REAL,
+                forecast_range_width REAL
+            )
+            """
+        )
+        conn.execute(
+            """
+            INSERT INTO fact_feature_panel_tdx_keep_challenger VALUES
+            ('tdx_keep_challenger_v1', 1, 1, 1, 1, 1)
+            """
+        )
+        conn.execute(
+            """
+            CREATE TABLE mart_model_portfolio_summary (
+                run_id TEXT, curve_id TEXT, curve_type TEXT, model_id TEXT,
+                total_return DOUBLE, annualized_return DOUBLE, max_drawdown DOUBLE,
+                sharpe DOUBLE, avg_turnover DOUBLE, cost_bps DOUBLE, built_at TEXT
+            )
+            """
+        )
+        conn.execute(
+            """
+            INSERT INTO mart_model_portfolio_summary VALUES
+            ('r1', 'c1', 'model_top20', 'champion_model', 0.1, 0.1, -0.10, 1.0, 0.1, 0, '2026-05-04'),
+            ('r2', 'c2', 'model_top20', 'tdx_keep_challenger_new', 0.11, 0.11, -0.10, 1.1, 0.1, 0, '2026-05-04')
+            """
+        )
+        conn.execute(
+            """
+            CREATE TABLE mart_feature_drift (
+                snapshot_at TIMESTAMP,
+                model_id TEXT,
+                feature TEXT,
+                psi DOUBLE,
+                n_train BIGINT,
+                n_recent BIGINT,
+                window_days INTEGER,
+                severity TEXT,
+                notes TEXT
+            )
+            """
+        )
+        conn.execute(
+            """
+            INSERT INTO mart_feature_drift VALUES
+            (TIMESTAMP '2026-05-04 10:00:00', 'champion_model', 'base_feature', 0.01, 100, 20, 20, 'ok', NULL),
+            (TIMESTAMP '2026-05-04 11:00:00', 'tdx_keep_challenger_new', 'base_feature', 0.01, 100, 20, 20, 'ok', NULL),
+            (TIMESTAMP '2026-05-04 11:00:00', 'tdx_keep_challenger_new', 'forecast_profit_yoy_mid', 0.01, 100, 20, 20, 'ok', NULL)
+            """
+        )
+        conn.execute(
+            """
+            CREATE TABLE mart_daily_recommendation (
+                snapshot_date TEXT, stock_code TEXT, model_id TEXT, run_mode TEXT
+            )
+            """
+        )
+        conn.execute(
+            "INSERT INTO mart_daily_recommendation VALUES ('2026-05-04', '000001', 'tdx_keep_challenger_new', 'shadow')"
+        )
+        _create_passing_source_lineage_evidence(conn)
+        conn.execute("INSERT INTO fact_top10_holder_period VALUES ('000099', 2)")
+
+        result = evaluate_gate(conn, challenger_model_id="tdx_keep_challenger_new")
+
+        assert result["promotion_status"] == "FAIL"
+        assert result["decision"] == "reject"
+        assert result["gates"]["source_lineage"]["status"] == "FAIL"
+        assert any(item["gate"] == "source_lineage" for item in result["blockers"])
     finally:
         conn.close()

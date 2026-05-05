@@ -83,6 +83,7 @@ MART_VERSIONS = {
     "mart_feature_group_ablation": "v1",
     "mart_feature_pit_audit": "v1",
     "mart_candidate_walkforward_eval": "v1",
+    "mart_model_holding_topk_eval": "v1",
     "mart_feature_retention_decision": "v1",
     "mart_model_selection_run": "v1",
     "mart_tdx_challenger_report": "v1",

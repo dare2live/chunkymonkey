@@ -1,4 +1,4 @@
-"""每日增量抓取 F10 「股东研究」 → 新 canonical 表.
+"""每日增量抓取 F10 「股东研究」 → raw 表 → canonical 表.
 
 数据通道走 services.holders_resolver.HolderResolver, 按 source_tier
 顺序 fallback:
@@ -6,13 +6,13 @@
   tier 2: miaoxiang aif10 RPT_F10_EH_FREEHOLDERS (备源, 仅 tier 1 失败时用)
   tier 3: akshare (兜底, 当前未启用; 见 holders_resolver.AkshareHolderSource)
 
-每只股票:
-  1. resolver.fetch(symbol) → 按 tier 顺序拿数据, 第一个返回非空的 source 中签
-  2. 计算 raw_hash; 若 raw_tdx_f10_holder_research 已有相同 (stock, raw_hash) 跳过
-  3. 否则写 raw (仅 tdxhub 路径有原文) + fact_top10_holder_period +
-     fact_controlling_shareholder + fact_shareholder_plan + fact_shareholder_trade
-     (后三表仅 tdxhub 路径填充; fallback 路径为空)
-  4. 应用 dim_holder_alias 解析 holder_name_norm
+默认链路分两段:
+  1. fetch raw: 只抓 tdxhub F10 原文并写 raw_tdx_f10_holder_research.
+  2. parse canonical: 只重放新增/变化 raw_hash 到 fact_top10_holder_period +
+     fact_controlling_shareholder + fact_shareholder_plan + fact_shareholder_trade.
+
+fallback 源不写 tdxhub raw 表; 只有当 tdxhub 抓取明确失败时才尝试
+miaoxiang canonical fallback, 并通过 source/source_tier 留 lineage。
 
 使用:
     # 全量增量 (默认 4 worker)
@@ -26,6 +26,12 @@
 
     # 关掉 fallback (仅 tdxhub, 不试 miaoxiang)
     python backend/scripts/ingest_holders_tdxhub.py --no-fallback
+
+    # 只联网抓 raw, 不更新 canonical
+    python backend/scripts/ingest_holders_tdxhub.py --fetch-raw-only
+
+    # 不联网, 从 raw 重放 canonical
+    python backend/scripts/ingest_holders_tdxhub.py --parse-raw-only
 
 每日定时调度建议:
     crontab: 0 9 * * * cd /path && python backend/scripts/ingest_holders_tdxhub.py >> log 2>&1
@@ -41,7 +47,7 @@ import threading
 import time
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any, Callable, Sequence
 
 import duckdb
 
@@ -56,7 +62,6 @@ sys.path.insert(0, str(STOCK_ROOT / "tdxhub"))  # sibling editable checkout
 from services.db import get_conn, init_db  # noqa: E402
 from services.holders_resolver import (  # noqa: E402
     HolderResolver,
-    TdxhubHolderSource,
     MiaoxiangHolderSource,
     ResolverResult,
 )
@@ -99,6 +104,38 @@ def existing_hashes(con: duckdb.DuckDBPyConnection) -> set[tuple[str, str]]:
         "select stock_code, raw_hash from raw_tdx_f10_holder_research"
     ).fetchall()
     return {(row[0], row[1]) for row in rows}
+
+
+def _raw_hash(raw_text: str) -> str:
+    from tdxhub.holders import _hash  # noqa: WPS433
+
+    return _hash(raw_text)
+
+
+def _detect_f10_format_label(raw_text: str) -> str:
+    from tdxhub.holders import detect_f10_format  # noqa: WPS433
+
+    if detect_f10_format(raw_text) == "b":
+        return "b_shsjz"
+    if "灵通V9.0" in raw_text:
+        return "a_lingtong"
+    if "港澳资讯" in raw_text:
+        return "a_other"
+    return "a_unknown"
+
+
+def _extract_page_update_date(raw_text: str) -> str | None:
+    from tdxhub.holders import PAGE_HEAD_RE  # noqa: WPS433
+
+    head = PAGE_HEAD_RE.search(raw_text or "")
+    return head.group("update_date") if head else None
+
+
+def _fetcher_server(fetcher: Any) -> str | None:
+    try:
+        return str(fetcher.stats().get("active_server"))
+    except Exception:
+        return None
 
 
 def load_alias_map(con: duckdb.DuckDBPyConnection) -> dict[str, str]:
@@ -257,6 +294,59 @@ def _delete_existing_fact_rows(
     )
 
 
+def write_raw_one(
+    con: duckdb.DuckDBPyConnection,
+    *,
+    stock_code: str,
+    stock_name: str,
+    market: str,
+    raw_text: str,
+    raw_hash: str,
+    fetched_at: str,
+    page_update_date: str | None,
+    server: str | None,
+    f10_format: str,
+    parser_version: str = "v1",
+    lock: threading.Lock,
+) -> bool:
+    """Persist one fetched TDX raw page without touching canonical facts."""
+
+    with lock:
+        exists = con.execute(
+            """
+            SELECT 1
+              FROM raw_tdx_f10_holder_research
+             WHERE stock_code = ? AND raw_hash = ?
+             LIMIT 1
+            """,
+            (stock_code, raw_hash),
+        ).fetchone()
+        if exists:
+            return False
+        con.execute(
+            """
+            INSERT INTO raw_tdx_f10_holder_research(
+              stock_code, stock_name, market, fetched_at, page_update_date,
+              raw_text, raw_hash, bytes_len, server, f10_format, parser_version
+            ) VALUES (?, ?, ?, cast(? as timestamp), ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                stock_code,
+                stock_name,
+                market,
+                fetched_at,
+                page_update_date,
+                raw_text,
+                raw_hash,
+                len(raw_text),
+                server,
+                f10_format,
+                parser_version,
+            ),
+        )
+        return True
+
+
 def write_one(con: duckdb.DuckDBPyConnection, *, stock_code: str, stock_name: str,
               market: str, result: ResolverResult,
               alias_map: dict[str, str], lock: threading.Lock,
@@ -301,13 +391,6 @@ def write_one(con: duckdb.DuckDBPyConnection, *, stock_code: str, stock_name: st
     # Raw text 仅 tdxhub 路径有; fallback 不写 raw_tdx_f10_holder_research
     raw_row = None
     if result.raw_text and result.raw_hash:
-        f10_format = "unknown"
-        if "灵通V9.0" in result.raw_text:
-            f10_format = "a_lingtong"
-        elif "通达信沪深京F10" in result.raw_text:
-            f10_format = "b_shsjz"
-        elif "港澳资讯" in result.raw_text:
-            f10_format = "a_other"
         raw_row = {
             "stock_code": stock_code,
             "stock_name": stock_name,
@@ -318,7 +401,7 @@ def write_one(con: duckdb.DuckDBPyConnection, *, stock_code: str, stock_name: st
             "raw_hash": result.raw_hash,
             "bytes_len": len(result.raw_text),
             "server": result.server_or_endpoint,
-            "f10_format": f10_format,
+            "f10_format": _detect_f10_format_label(result.raw_text),
             "parser_version": "v1",
         }
 
@@ -517,7 +600,35 @@ def _raw_replay_rows(
     symbols: str = "",
     raw_hash: str = "",
     limit: int = 0,
+    raw_keys: Sequence[tuple[str, str]] | None = None,
 ) -> list:
+    if raw_keys:
+        con.execute("DROP TABLE IF EXISTS tmp_holder_raw_replay_keys")
+        con.execute(
+            "CREATE TEMP TABLE tmp_holder_raw_replay_keys(stock_code TEXT, raw_hash TEXT)"
+        )
+        con.executemany(
+            "INSERT INTO tmp_holder_raw_replay_keys VALUES (?, ?)",
+            [(code, hash_value) for code, hash_value in raw_keys],
+        )
+        limit_sql = "LIMIT ?" if limit else ""
+        params: list[Any] = [limit] if limit else []
+        try:
+            return con.execute(
+                f"""
+                SELECT r.stock_code, r.stock_name, r.market, r.raw_text, r.raw_hash,
+                       r.fetched_at, r.page_update_date, r.server
+                  FROM raw_tdx_f10_holder_research r
+                  JOIN tmp_holder_raw_replay_keys k
+                    ON r.stock_code = k.stock_code AND r.raw_hash = k.raw_hash
+                 ORDER BY r.fetched_at DESC, r.stock_code
+                 {limit_sql}
+                """,
+                params,
+            ).fetchall()
+        finally:
+            con.execute("DROP TABLE IF EXISTS tmp_holder_raw_replay_keys")
+
     clauses = []
     params: list[Any] = []
     explicit = [item.strip() for item in symbols.split(",") if item.strip()]
@@ -551,13 +662,20 @@ def parse_raw_records(
     raw_hash: str = "",
     limit: int = 0,
     replace_facts: bool = False,
+    raw_keys: Sequence[tuple[str, str]] | None = None,
     parser: Callable[..., dict] | None = None,
     hasher: Callable[[str], str] | None = None,
 ) -> dict:
     """Replay stored TDX raw text into canonical holder fact tables."""
 
     t0 = time.time()
-    rows = _raw_replay_rows(con, symbols=symbols, raw_hash=raw_hash, limit=limit)
+    rows = _raw_replay_rows(
+        con,
+        symbols=symbols,
+        raw_hash=raw_hash,
+        limit=limit,
+        raw_keys=raw_keys,
+    )
     alias_map = load_alias_map(con)
     lock = threading.Lock()
     stats = {
@@ -593,69 +711,213 @@ def parse_raw_records(
     return stats
 
 
-def _make_resolver(*, enable_fallback: bool) -> HolderResolver:
-    sources = [TdxhubHolderSource(timeout=15, max_attempts_per_call=6)]
-    if enable_fallback:
-        sources.append(MiaoxiangHolderSource())
-    return HolderResolver(sources)
+def _make_raw_fetcher():
+    from tdxhub.holders import HolderFetcher  # noqa: WPS433
+
+    return HolderFetcher(timeout=15, max_attempts_per_call=6)
 
 
-def worker(name: str, job_q: queue.Queue, con: duckdb.DuckDBPyConnection,
-           con_lock: threading.Lock, alias_map: dict[str, str],
-           progress: dict, progress_lock: threading.Lock,
-           seen_hashes: set, seen_lock: threading.Lock,
-           *, enable_fallback: bool = True) -> None:
-    resolver = _make_resolver(enable_fallback=enable_fallback)
+def raw_worker(
+    name: str,
+    job_q: queue.Queue,
+    con: duckdb.DuckDBPyConnection,
+    con_lock: threading.Lock,
+    progress: dict,
+    progress_lock: threading.Lock,
+    seen_hashes: set,
+    seen_lock: threading.Lock,
+    *,
+    fetcher_factory: Callable[[], Any] | None = None,
+) -> None:
+    fetcher = fetcher_factory() if fetcher_factory is not None else _make_raw_fetcher()
     while True:
         item = job_q.get()
         if item is None:
             break
-        idx, total, code, stock_name, market = item
+        _idx, total, code, stock_name, market = item
         t0 = time.time()
         try:
-            result = resolver.fetch(code, stock_name=stock_name)
-            if result is None or not result.has_data():
+            raw_text = fetcher.fetch_text(code)
+            if not raw_text:
                 with progress_lock:
                     progress["skipped_no_f10"] += 1
                     progress["done"] += 1
                 job_q.task_done()
                 continue
-            # 仅 tdxhub 路径有 raw_hash; fallback 路径没有, 不能跳过
-            if result.raw_hash:
-                with seen_lock:
-                    if (code, result.raw_hash) in seen_hashes:
-                        with progress_lock:
-                            progress["skipped_unchanged"] += 1
-                            progress["done"] += 1
-                        job_q.task_done()
-                        continue
-                    seen_hashes.add((code, result.raw_hash))
-            stats = write_one(
-                con, stock_code=code, stock_name=stock_name, market=market,
-                result=result, alias_map=alias_map, lock=con_lock,
+            raw_hash = _raw_hash(raw_text)
+            key = (code, raw_hash)
+            with seen_lock:
+                if key in seen_hashes:
+                    with progress_lock:
+                        progress["raw_ok"] += 1
+                        progress["skipped_unchanged"] += 1
+                        progress["done"] += 1
+                    job_q.task_done()
+                    continue
+                seen_hashes.add(key)
+            fetched_at = datetime.utcnow().isoformat(timespec="seconds")
+            inserted = write_raw_one(
+                con,
+                stock_code=code,
+                stock_name=stock_name,
+                market=market,
+                raw_text=raw_text,
+                raw_hash=raw_hash,
+                fetched_at=fetched_at,
+                page_update_date=_extract_page_update_date(raw_text),
+                server=_fetcher_server(fetcher),
+                f10_format=_detect_f10_format_label(raw_text),
+                lock=con_lock,
             )
             elapsed = time.time() - t0
             with progress_lock:
-                progress["ok"] += 1
+                progress["raw_ok"] += 1
                 progress["done"] += 1
-                progress.setdefault(f"src_{result.source}", 0)
-                progress[f"src_{result.source}"] += 1
+                if inserted:
+                    progress["raw_written"] += 1
+                    progress["raw_keys"].append(key)
+                else:
+                    progress["skipped_unchanged"] += 1
                 if progress["done"] % 50 == 0:
                     rate = progress["done"] / max(time.time() - progress["t0"], 1e-3)
                     log.info(
-                        "[%4d/%d] %s %s [%s/tier=%d] rows=%d periods=%d plans=%d trades=%d  %.1fs  rate=%.1f/s",
-                        progress["done"], total, code, name,
-                        stats["source"], stats["source_tier"],
-                        stats["n_holders"], stats["n_periods"], stats["n_plans"],
-                        stats["n_trades"], elapsed, rate,
+                        "[raw %4d/%d] %s %s inserted=%s %.1fs rate=%.1f/s",
+                        progress["done"], total, code, name, inserted, elapsed, rate,
                     )
         except Exception as e:
             with progress_lock:
                 progress["err"] += 1
                 progress["done"] += 1
-                log.warning("[%s] %s ERROR %s: %s", name, code, type(e).__name__, e)
+                progress["failed_items"].append((code, stock_name, market, str(e)))
+                log.warning("[raw %s] %s ERROR %s: %s", name, code, type(e).__name__, e)
         job_q.task_done()
-    resolver.close()
+    try:
+        fetcher.close()
+    except Exception:
+        pass
+
+
+def fetch_raw_records(
+    con: duckdb.DuckDBPyConnection,
+    *,
+    workers: int = 4,
+    limit: int = 0,
+    symbols: str = "",
+    force: bool = False,
+    fetcher_factory: Callable[[], Any] | None = None,
+) -> dict:
+    """Fetch TDX F10 raw pages only; canonical facts are updated by replay."""
+
+    explicit = [s.strip() for s in symbols.split(",") if s.strip()] or None
+    universe = load_universe(con, limit=limit, explicit=explicit)
+    log.info("raw fetch universe: %d stocks", len(universe))
+
+    seen = set() if force else existing_hashes(con)
+    seen_lock = threading.Lock()
+    log.info("existing raw_hash cache: %d entries (force=%s)", len(seen), force)
+
+    job_q: queue.Queue = queue.Queue()
+    for i, (code, stock_name, market) in enumerate(universe, 1):
+        job_q.put((i, len(universe), code, stock_name, market))
+    for _ in range(max(workers, 1)):
+        job_q.put(None)
+
+    progress = {
+        "done": 0,
+        "raw_ok": 0,
+        "raw_written": 0,
+        "err": 0,
+        "skipped_unchanged": 0,
+        "skipped_no_f10": 0,
+        "raw_keys": [],
+        "failed_items": [],
+        "t0": time.time(),
+    }
+    progress_lock = threading.Lock()
+    con_lock = threading.Lock()
+
+    ths = []
+    for i in range(max(workers, 1)):
+        t = threading.Thread(
+            target=raw_worker,
+            args=(f"raw-w{i+1}", job_q, con, con_lock, progress, progress_lock, seen, seen_lock),
+            kwargs={"fetcher_factory": fetcher_factory},
+            name=f"holder-raw-worker-{i+1}",
+        )
+        t.start()
+        ths.append(t)
+    for t in ths:
+        t.join()
+
+    try:
+        con.commit()
+    except Exception:
+        pass
+    elapsed = time.time() - progress["t0"]
+    progress["elapsed_s"] = elapsed
+    progress["ok"] = progress["raw_written"]
+    log.info("=== raw fetch complete in %.1fs ===", elapsed)
+    log.info("  total      : %d", progress["done"])
+    log.info("  raw ok     : %d", progress["raw_ok"])
+    log.info("  raw written: %d", progress["raw_written"])
+    log.info("  unchanged  : %d", progress["skipped_unchanged"])
+    log.info("  no F10     : %d", progress["skipped_no_f10"])
+    log.info("  errors     : %d", progress["err"])
+    return progress
+
+
+def _fallback_records(
+    con: duckdb.DuckDBPyConnection,
+    *,
+    failed_items: Sequence[tuple[str, str, str, str]],
+    alias_map: dict[str, str],
+    lock: threading.Lock,
+) -> dict:
+    stats = {
+        "attempted": len(failed_items),
+        "ok": 0,
+        "no_data": 0,
+        "err": 0,
+        "errors": [],
+    }
+    if not failed_items:
+        return stats
+
+    resolver = HolderResolver([MiaoxiangHolderSource()])
+    try:
+        for code, stock_name, market, tdx_error in failed_items:
+            try:
+                result = resolver.fetch(code, stock_name=stock_name)
+                if result is None or not result.has_data():
+                    stats["no_data"] += 1
+                    continue
+                write_one(
+                    con,
+                    stock_code=code,
+                    stock_name=stock_name,
+                    market=market,
+                    result=result,
+                    alias_map=alias_map,
+                    lock=lock,
+                )
+                stats["ok"] += 1
+                log.warning(
+                    "[fallback] %s used miaoxiang after tdxhub error: %s",
+                    code,
+                    tdx_error,
+                )
+            except Exception as exc:
+                stats["err"] += 1
+                stats["errors"].append(f"{code}: {type(exc).__name__}: {exc}")
+                log.warning(
+                    "[fallback] %s ERROR %s: %s",
+                    code,
+                    type(exc).__name__,
+                    exc,
+                )
+    finally:
+        resolver.close()
+    return stats
 
 
 def run(
@@ -666,8 +928,9 @@ def run(
     force: bool = False,
     no_fallback: bool = False,
     con: duckdb.DuckDBPyConnection | None = None,
+    fetcher_factory: Callable[[], Any] | None = None,
 ) -> dict:
-    """实际执行入口. 可被 in-process 调用 (传 con 不开新连接).
+    """实际执行入口: fetch raw → replay canonical, 可被 in-process 调用.
 
     传 con: 用调用方的 connection (避免 DuckDB 跨进程锁冲突).
     不传 con: 自己 init_db + duckdb.connect (CLI 独立运行模式).
@@ -681,49 +944,87 @@ def run(
     con_lock = threading.Lock()
 
     try:
-        explicit = [s.strip() for s in symbols.split(",") if s.strip()] or None
-        universe = load_universe(con, limit=limit, explicit=explicit)
-        log.info("universe: %d stocks", len(universe))
-
         alias_map = load_alias_map(con)
         log.info("alias map: %d entries", len(alias_map))
 
-        seen = set() if force else existing_hashes(con)
-        seen_lock = threading.Lock()
-        log.info("existing raw_hash cache: %d entries (force=%s)", len(seen), force)
+        t0 = time.time()
+        raw_stats = fetch_raw_records(
+            con,
+            workers=workers,
+            limit=limit,
+            symbols=symbols,
+            force=force,
+            fetcher_factory=fetcher_factory,
+        )
+        raw_keys = list(raw_stats.get("raw_keys") or [])
+        if raw_keys:
+            parse_stats = parse_raw_records(con, raw_keys=raw_keys)
+        else:
+            parse_stats = {
+                "raw_rows": 0,
+                "parsed": 0,
+                "no_data": 0,
+                "errors": 0,
+                "replace_facts": False,
+                "elapsed_s": 0.0,
+            }
 
-        job_q: queue.Queue = queue.Queue()
-        for i, (code, name, market) in enumerate(universe, 1):
-            job_q.put((i, len(universe), code, name, market))
-        for _ in range(workers):
-            job_q.put(None)
-
-        progress = {"done": 0, "ok": 0, "err": 0, "skipped_unchanged": 0,
-                    "skipped_no_f10": 0, "t0": time.time()}
-        progress_lock = threading.Lock()
-
-        ths = []
-        for i in range(workers):
-            t = threading.Thread(
-                target=worker,
-                args=(f"w{i+1}", job_q, con, con_lock, alias_map,
-                      progress, progress_lock, seen, seen_lock),
-                kwargs={"enable_fallback": enable_fallback},
-                name=f"holder-worker-{i+1}",
+        fallback_stats = {
+            "attempted": 0,
+            "ok": 0,
+            "no_data": 0,
+            "err": 0,
+            "errors": [],
+        }
+        if enable_fallback:
+            fallback_stats = _fallback_records(
+                con,
+                failed_items=raw_stats.get("failed_items") or [],
+                alias_map=alias_map,
+                lock=con_lock,
             )
-            t.start()
-            ths.append(t)
-        for t in ths:
-            t.join()
+            try:
+                con.commit()
+            except Exception:
+                pass
 
-        elapsed = time.time() - progress["t0"]
-        log.info("=== ingest complete in %.1fs ===", elapsed)
+        unresolved_tdx_errors = max(
+            0,
+            int(raw_stats.get("err") or 0) - int(fallback_stats.get("ok") or 0),
+        )
+        elapsed = time.time() - t0
+        progress = {
+            "done": int(raw_stats.get("done") or 0),
+            "ok": int(parse_stats.get("parsed") or 0) + int(fallback_stats.get("ok") or 0),
+            "err": unresolved_tdx_errors
+            + int(parse_stats.get("errors") or 0)
+            + int(fallback_stats.get("err") or 0),
+            "skipped_unchanged": int(raw_stats.get("skipped_unchanged") or 0),
+            "skipped_no_f10": int(raw_stats.get("skipped_no_f10") or 0),
+            "raw_written": int(raw_stats.get("raw_written") or 0),
+            "raw_ok": int(raw_stats.get("raw_ok") or 0),
+            "parsed": int(parse_stats.get("parsed") or 0),
+            "parse_errors": int(parse_stats.get("errors") or 0),
+            "tdx_err": int(raw_stats.get("err") or 0),
+            "fallback_ok": int(fallback_stats.get("ok") or 0),
+            "fallback_err": int(fallback_stats.get("err") or 0),
+            "elapsed_s": elapsed,
+            "raw_fetch": {
+                key: value
+                for key, value in raw_stats.items()
+                if key not in {"raw_keys", "failed_items", "t0"}
+            },
+            "parse": parse_stats,
+            "fallback": fallback_stats,
+        }
+        log.info("=== raw+parse ingest complete in %.1fs ===", elapsed)
         log.info("  total      : %d", progress["done"])
-        log.info("  ok         : %d", progress["ok"])
+        log.info("  raw written: %d", progress["raw_written"])
+        log.info("  parsed     : %d", progress["parsed"])
+        log.info("  fallback ok: %d", progress["fallback_ok"])
         log.info("  unchanged  : %d (raw_hash already in DB)", progress["skipped_unchanged"])
         log.info("  no F10     : %d", progress["skipped_no_f10"])
         log.info("  errors     : %d", progress["err"])
-        progress["elapsed_s"] = elapsed
         return progress
     finally:
         if own_con:
@@ -739,6 +1040,8 @@ def main() -> int:
                    help="忽略 raw_hash 缓存, 强制重抓所有股票")
     p.add_argument("--no-fallback", action="store_true",
                    help="关闭 miaoxiang fallback (仅试 tdxhub)")
+    p.add_argument("--fetch-raw-only", action="store_true",
+                   help="只联网抓取 raw_tdx_f10_holder_research, 不写 canonical fact 表")
     p.add_argument("--parse-raw-only", action="store_true",
                    help="不联网抓取, 只重放 raw_tdx_f10_holder_research 到 canonical fact 表")
     p.add_argument("--raw-hash", default="",
@@ -746,6 +1049,9 @@ def main() -> int:
     p.add_argument("--replace-facts", action="store_true",
                    help="配合 --parse-raw-only, 先删除同 stock/source/raw_hash 的旧 canonical 行再写入")
     args = p.parse_args()
+
+    if args.fetch_raw_only and args.parse_raw_only:
+        p.error("--fetch-raw-only and --parse-raw-only cannot be used together")
 
     if args.parse_raw_only:
         started_at = utc_now_iso()
@@ -783,10 +1089,79 @@ def main() -> int:
         finally:
             con.close()
 
+    if args.fetch_raw_only:
+        started_at = utc_now_iso()
+        init_db()
+        con = get_conn()
+        try:
+            stats = fetch_raw_records(
+                con,
+                workers=args.workers,
+                limit=args.limit,
+                symbols=args.symbols,
+                force=args.force,
+            )
+            record_pipeline_run(
+                con,
+                run_id=f"fetch_holders_raw_{started_at.replace(':', '').replace('-', '')[:15]}",
+                pipeline_name="fetch_holders_raw",
+                status="success" if stats["err"] == 0 else "failed",
+                started_at=started_at,
+                ended_at=utc_now_iso(),
+                duration_s=stats["elapsed_s"],
+                commit_sha=git_commit_sha(REPO),
+                input_tables=["dim_active_a_stock", "raw_tdx_f10_holder_research"],
+                output_tables=["raw_tdx_f10_holder_research"],
+                blockers=[] if stats["err"] == 0 else ["fetch_errors"],
+                perf_summary={
+                    key: value
+                    for key, value in stats.items()
+                    if key not in {"raw_keys", "failed_items", "t0"}
+                },
+            )
+            log.info("fetch raw complete: %s", {
+                key: value
+                for key, value in stats.items()
+                if key not in {"raw_keys", "failed_items", "t0"}
+            })
+            return 0 if stats["err"] == 0 else 1
+        finally:
+            con.close()
+
+    started_at = utc_now_iso()
     progress = run(
         workers=args.workers, limit=args.limit, symbols=args.symbols,
         force=args.force, no_fallback=args.no_fallback,
     )
+    init_db()
+    con = get_conn()
+    try:
+        record_pipeline_run(
+            con,
+            run_id=f"ingest_holders_{started_at.replace(':', '').replace('-', '')[:15]}",
+            pipeline_name="ingest_holders_tdxhub",
+            status="success" if progress["err"] == 0 else "failed",
+            started_at=started_at,
+            ended_at=utc_now_iso(),
+            duration_s=progress["elapsed_s"],
+            commit_sha=git_commit_sha(REPO),
+            input_tables=[
+                "dim_active_a_stock",
+                "dim_holder_alias",
+                "raw_tdx_f10_holder_research",
+            ],
+            output_tables=[
+                "raw_tdx_f10_holder_research",
+                "fact_top10_holder_period",
+                "fact_controlling_shareholder",
+                "fact_shareholder_plan",
+                "fact_shareholder_trade",
+            ],
+            blockers=[] if progress["err"] == 0 else ["holder_ingest_errors"],
+            perf_summary=progress,
+        )
+    finally:
+        con.close()
     return 0 if progress["err"] == 0 else 1
 
 
