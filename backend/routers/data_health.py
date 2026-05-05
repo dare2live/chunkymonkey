@@ -194,6 +194,24 @@ def get_sources_overview() -> dict[str, Any]:
         """, (snap_at,)).fetchall()
         priorities = []
         try:
+            from services.source_watermarks import ensure_source_watermark_schema
+
+            ensure_source_watermark_schema(con)
+            watermarks = [
+                dict(r) for r in con.execute(
+                    """
+                    SELECT data_domain, source_name, source_tier,
+                           last_success_at, last_data_date, last_raw_hash,
+                           next_check_at, consecutive_failures, fallback_active,
+                           fallback_reason, row_count, parser_version, updated_at
+                      FROM mart_data_source_watermark
+                     ORDER BY source_tier, data_domain, source_name
+                    """
+                ).fetchall()
+            ]
+        except Exception:
+            watermarks = []
+        try:
             priorities = [
                 dict(r) for r in con.execute(
                     """
@@ -209,7 +227,82 @@ def get_sources_overview() -> dict[str, Any]:
             "snapshot_at": snap_at,
             "sources": [dict(r) for r in rows],
             "source_priorities": priorities,
+            "watermarks": watermarks,
         }
+    finally:
+        con.close()
+
+
+@router.get("/pipeline-manifest")
+def get_pipeline_manifest(limit: int = 50) -> dict[str, Any]:
+    """Latest batch/model pipeline runs from mart_pipeline_run_manifest."""
+
+    con = get_conn()
+    try:
+        from services.pipeline_manifest import ensure_pipeline_manifest_schema
+
+        ensure_pipeline_manifest_schema(con)
+        rows = con.execute(
+            """
+            SELECT run_id, pipeline_name, status, started_at, ended_at, duration_s,
+                   commit_sha, command, cwd,
+                   input_tables_json, output_tables_json,
+                   input_row_counts_json, output_row_counts_json,
+                   model_id, feature_group, label_name, holding_period,
+                   gate_result, blockers_json, perf_summary_json, created_at
+              FROM mart_pipeline_run_manifest
+             ORDER BY COALESCE(started_at, created_at) DESC
+             LIMIT ?
+            """,
+            (max(1, min(int(limit), 200)),),
+        ).fetchall()
+        items = []
+        for row in rows:
+            item = dict(row)
+            for key in (
+                "input_tables_json",
+                "output_tables_json",
+                "input_row_counts_json",
+                "output_row_counts_json",
+                "blockers_json",
+                "perf_summary_json",
+            ):
+                if item.get(key):
+                    try:
+                        item[key[:-5] if key.endswith("_json") else key] = json.loads(item[key])
+                    except Exception:
+                        item[key[:-5] if key.endswith("_json") else key] = item[key]
+            items.append(item)
+        return {"runs": items, "count": len(items)}
+    finally:
+        con.close()
+
+
+@router.get("/source-watermarks")
+def get_source_watermarks(refresh: bool = False) -> dict[str, Any]:
+    """Source-domain freshness and fallback state."""
+
+    con = get_conn()
+    try:
+        from services.source_watermarks import (
+            ensure_source_watermark_schema,
+            refresh_known_source_watermarks,
+        )
+
+        ensure_source_watermark_schema(con)
+        if refresh:
+            refresh_known_source_watermarks(con)
+        rows = con.execute(
+            """
+            SELECT data_domain, source_name, source_tier,
+                   last_success_at, last_data_date, last_raw_hash,
+                   next_check_at, consecutive_failures, fallback_active,
+                   fallback_reason, row_count, parser_version, updated_at
+              FROM mart_data_source_watermark
+             ORDER BY source_tier, data_domain, source_name
+            """
+        ).fetchall()
+        return {"watermarks": [dict(r) for r in rows], "count": len(rows)}
     finally:
         con.close()
 

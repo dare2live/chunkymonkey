@@ -24,17 +24,19 @@
       clientsAt: 0,
       lineage: null,            // /lineage (缓存)
       lineageAt: 0,
+      manifest: null,           // /pipeline-manifest (缓存)
+      manifestAt: 0,
       drift: null,              // /drift (缓存)
       driftAt: 0,
       models: null,             // /models (缓存)
       modelsAt: 0,
-      activeTab: 'health',      // health | sources | clients | lineage | drift | cleanup | models
+      activeTab: 'health',      // health | sources | clients | lineage | manifest | drift | cleanup | models
       filter: { layer: '', severity: '', search: '' },
     },
 
     statusDot(severity) {
       const sev = severity || 'unknown';
-      const tone = sev === 'green' || sev === 'ok' ? 'ok'
+      const tone = sev === 'green' || sev === 'ok' || sev === 'success' ? 'ok'
         : sev === 'yellow' || sev === 'warn' ? 'warn'
         : sev === 'red' || sev === 'critical' ? 'bad'
         : 'info';
@@ -43,7 +45,7 @@
 
     statusPill(label, severity) {
       const sev = severity || label || 'unknown';
-      const tone = sev === 'green' || sev === 'ok' ? 'ok'
+      const tone = sev === 'green' || sev === 'ok' || sev === 'success' ? 'ok'
         : sev === 'yellow' || sev === 'warn' ? 'warn'
         : sev === 'red' || sev === 'critical' || sev === 'failed' ? 'bad'
         : 'info';
@@ -228,6 +230,25 @@
           </td>
         </tr>`;
       }).join('');
+      const watermarkRows = (ss.watermarks || []).map((w) => {
+        const tier = w.source_tier;
+        const tierBadge = tier === 1 ? '<span style="padding:2px 6px;background:#e6f7e6;color:#2a8a2a;border-radius:3px;font-size:11px">tier 1 主</span>'
+          : tier === 2 ? '<span style="padding:2px 6px;background:#fff4d4;color:#a67c00;border-radius:3px;font-size:11px">tier 2 备</span>'
+          : tier === 3 ? '<span style="padding:2px 6px;background:#fde8e8;color:#a02a2a;border-radius:3px;font-size:11px">tier 3 兜底</span>'
+          : '<span class="muted" style="font-size:11px">派生</span>';
+        const failures = Number(w.consecutive_failures || 0);
+        const warnColor = failures > 0 || w.fallback_active ? '#a67c00' : '#888';
+        return `<tr style="background:#fafafa;border-bottom:1px solid var(--cm-ink-50,#f0f0f0)">
+          <td style="padding:6px 12px">${tierBadge}</td>
+          <td style="padding:6px 12px"><code style="font-size:12px">${this.esc(w.data_domain)}</code><br><span class="muted" style="font-size:10px">${this.esc(w.source_name)}</span></td>
+          <td style="padding:6px 12px;text-align:right" class="muted">水位</td>
+          <td style="padding:6px 12px;text-align:right;font-family:monospace">${this.fmtNum(w.row_count)}</td>
+          <td style="padding:6px 12px;text-align:right;color:#2a7a2a">${w.last_success_at ? 1 : 0}</td>
+          <td style="padding:6px 12px;text-align:right;color:${warnColor}">${failures || (w.fallback_active ? 1 : 0)}</td>
+          <td style="padding:6px 12px;text-align:right;color:${failures > 0 ? '#c33' : '#888'}">${failures > 0 ? failures : 0}</td>
+          <td style="padding:6px 12px;text-align:right;font-size:11px" class="muted">${this.esc(w.last_data_date || w.fallback_reason || '—')}</td>
+        </tr>`;
+      }).join('');
       const sourceRows = ss.sources.map((s) => {
         const tier = s.source_tier;
         const tierBadge = tier === 1 ? '<span style="padding:2px 6px;background:#e6f7e6;color:#2a8a2a;border-radius:3px;font-size:11px">tier 1 主</span>'
@@ -246,7 +267,7 @@
           <td style="padding:6px 12px;text-align:right;font-size:11px" class="muted">${maxFresh}</td>
         </tr>`;
       }).join('');
-      tbody.innerHTML = priorityRows + sourceRows;
+      tbody.innerHTML = priorityRows + watermarkRows + sourceRows;
     },
 
     switchTab(tab) {
@@ -259,6 +280,7 @@
         sources:  document.getElementById('dh-panel-sources'),
         clients:  document.getElementById('dh-panel-clients'),
         lineage:  document.getElementById('dh-panel-lineage'),
+        manifest: document.getElementById('dh-panel-manifest'),
         drift:    document.getElementById('dh-panel-drift'),
         cleanup:  document.getElementById('dh-panel-cleanup'),
         models:   document.getElementById('dh-panel-models'),
@@ -286,6 +308,13 @@
           this.state.lineage = data;
           this.state.lineageAt = Date.now();
           this.renderLineageTable();
+        });
+      }
+      if (tab === 'manifest' && !this.state.manifest) {
+        fetch('/api/data_health/pipeline-manifest?limit=80').then((r) => r.json()).then((data) => {
+          this.state.manifest = data;
+          this.state.manifestAt = Date.now();
+          this.renderManifestTable();
         });
       }
       if (tab === 'drift' && !this.state.drift) {
@@ -451,6 +480,40 @@
       }
     },
 
+    renderManifestTable() {
+      const data = this.state.manifest;
+      const tbody = document.getElementById('dh-manifest-tbody');
+      if (!tbody || !data) return;
+      const runs = data.runs || [];
+      if (runs.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="8" style="padding:30px;text-align:center" class="muted">暂无 pipeline 运行清单</td></tr>';
+        return;
+      }
+      tbody.innerHTML = runs.map((r) => {
+        const status = r.status || 'unknown';
+        const duration = r.duration_s != null ? `${Number(r.duration_s).toFixed(1)}s` : '—';
+        const perf = r.perf_summary || {};
+        const blockers = r.blockers || [];
+        const perfBits = [];
+        if (perf.holdout_rank_ic != null) perfBits.push(`RankIC ${Number(perf.holdout_rank_ic).toFixed(4)}`);
+        if (perf.rows != null) perfBits.push(`rows ${this.fmtNum(perf.rows)}`);
+        if (perf.timings) perfBits.push(`timing ${this.esc(JSON.stringify(perf.timings).slice(0, 90))}`);
+        if (r.gate_result) perfBits.push(`gate ${this.esc(r.gate_result)}`);
+        const blockerText = Array.isArray(blockers) ? blockers.join(' · ') : JSON.stringify(blockers || {});
+        const detail = blockerText && blockerText !== '[]' ? blockerText : perfBits.join(' · ');
+        return `<tr style="border-bottom:1px solid var(--cm-ink-50,#f0f0f0);vertical-align:top">
+          <td style="padding:6px 12px">${this.statusDot(status)}</td>
+          <td style="padding:6px 12px"><code style="font-size:12px;font-weight:600">${this.esc(r.pipeline_name)}</code><br><span class="muted" style="font-size:10px">${this.esc(r.commit_sha || '')}</span></td>
+          <td style="padding:6px 12px"><code style="font-size:11px">${this.esc(r.run_id)}</code></td>
+          <td style="padding:6px 12px;text-align:right;font-family:monospace">${duration}</td>
+          <td style="padding:6px 12px"><code style="font-size:10px">${this.esc(r.model_id || '—')}</code></td>
+          <td style="padding:6px 12px;font-size:11px">${this.esc(r.feature_group || r.label_name || '—')}</td>
+          <td style="padding:6px 12px;font-size:11px" class="muted">${this.esc(detail || r.command || '—')}</td>
+          <td style="padding:6px 12px;font-size:11px" class="muted">${r.started_at ? this.fmtDateTime(r.started_at) : '—'}</td>
+        </tr>`;
+      }).join('');
+    },
+
     renderLineageTable() {
       const data = this.state.lineage;
       const tbody = document.getElementById('dh-lineage-tbody');
@@ -586,9 +649,9 @@
         </table>
 
         <h4 style="margin:14px 0 6px;font-size:13px">最新快照 (mart_data_health)</h4>
-        ${ls.snapshot_at ? `
+      ${ls.snapshot_at ? `
         <table style="width:100%;font-size:12px">
-          <tr><td class="muted" style="width:140px">severity</td><td>${sevDot} <strong>${ls.severity}</strong></td></tr>
+          <tr><td class="muted" style="width:140px">severity</td><td>${this.statusDot(ls.severity)} <strong>${ls.severity}</strong></td></tr>
           <tr><td class="muted">row_count</td><td>${this.fmtNum(ls.row_count)}</td></tr>
           <tr><td class="muted">last_data_date</td><td><code>${ls.last_data_date || '—'}</code></td></tr>
           <tr><td class="muted">freshness</td><td>${ls.freshness_hours != null ? ls.freshness_hours.toFixed(1) + 'h' : '—'} (SLA ${a.sla_hours || '—'}h)</td></tr>

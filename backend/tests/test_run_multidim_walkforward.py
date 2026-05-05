@@ -72,6 +72,8 @@ def test_walkforward_load_panel_records_and_feature_group_resolution():
         assert folds[0]["train"] == ("2026-04-01", "2026-04-06")
         assert folds[0]["valid"] == ("2026-04-07", "2026-04-08")
         assert folds[0]["test"] == ("2026-04-09", "2026-04-10")
+        assert subject.feature_group_uses_alpha158("base_dense_v2") is False
+        assert subject.feature_group_uses_alpha158("legacy_full") is True
     finally:
         conn.close()
 

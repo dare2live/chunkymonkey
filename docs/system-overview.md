@@ -169,15 +169,16 @@ akshare               → raw_lhb_daily / raw_executive_trade / raw_margin_daily
 
 ---
 
-## 5. 模型逻辑 (multidim_v1)
+## 5. 模型逻辑 (lifecycle champion + challengers)
 
 ### 5.1 训练数据
 
-- 特征面板: `fact_feature_panel` + `alpha158.fact_alpha158_panel`
-- 样本量: **4.02M 行, 5187 只股票, 778 个交易日 (2023-01-03 ~ 2026-04-23)**
+- 生产特征面板: `fact_feature_panel`
+- Alpha 实验面板: `alpha158.fact_alpha158_panel` 只在 `*_alpha158` / `legacy_full` 特征组显式启用
+- 样本量: 约 **4.0M 行, 5.1k 只股票**
 - 标签: `forward_ret_20d` — 20 交易日 forward return
 
-### 5.2 特征工程 (110 列)
+### 5.2 特征工程 (production compact 54 列)
 
 **43 基础特征** (fact_feature_panel):
 - Pillar B 价量: ret_1d/5d/20d/60d, vol_z20d, ma_ratio_5/20/60/250, rz_balance, rz_chg_5d_pct
@@ -186,23 +187,23 @@ akshare               → raw_lhb_daily / raw_executive_trade / raw_margin_daily
 - Pillar C 基本面: shareholder_count_qoq, inst_count_qoq, fund_count_qoq, qfii_count_qoq, yjyg_lower/upper_pct, roe, eps_basic
 - Regime: hs300_ret_20d, hs300_ret_60d
 
-**64 Alpha158 因子** (alpha158 库, 纯价量 rolling):
+**64 Alpha158 因子** (alpha158 库, 纯价量 rolling, 仅实验组):
 - KBAR (9): k 线形态
 - Price rolling (50+): ma/std/max/min/rsv/qtl/cntp/sump/roc × [5,10,20,30,60] 日
 - Volume rolling (10): vma/vstd × [5,10,20,30,60]
 
-**3 Regime one-hot**: regime_up, regime_flat, regime_down
+**3 Regime one-hot**: 仅 `--regime-aware` 显式训练时加入
 
 ### 5.3 训练流程
 
 ```
-fact_feature_panel + a158 LEFT JOIN
+fact_feature_panel (base/base_dense_v2 默认不加载 a158)
    ↓ split_time_series 70/15/15 date-ordered
    train (2023-01-03 ~ 2025-04-03)
    valid (2025-04-07 ~ 2025-09-22)
    holdout (2025-09-23 ~ 2026-03-24)
    ↓
-Optuna 50 trials 搜参 (LightGBM, objective=regression, metric=rmse)
+Optuna trials 搜参 (LightGBM, objective=regression, metric=rmse)
   - num_leaves [15, 127]
   - learning_rate [0.01, 0.2]
   - min_data_in_leaf [50, 500]
@@ -218,28 +219,28 @@ best params 在 train+valid 合并上重训, holdout 评估
 保存 data/multidim_models/{model_id}.pkl (LightGBM Booster)
 ```
 
-### 5.4 当前 baseline (multidim_v1_20260424_210854)
+### 5.4 当前 lifecycle champion
+
+`multidim_v2_base_dense_v2_20260425_144552` 是正式推荐 champion。`cleanup_full_multidim_v2_base_dense_v2_20260505_093800` 仍是 shadow challenger, 因 walk-forward 稳定性和 drift gate 未过, 不自动提升。
 
 | 指标 | 值 | 说明 |
 |---|---|---|
-| IC (Pearson) | **0.0204** | 每日截面 IC 均值 |
-| RankIC (Spearman) | **0.0363** | 排名相关性 |
-| top-decile avg | 2.11% | 20d forward return |
-| bot-decile avg | 0.92% | 底部 decile 不够"烂" |
-| L-S spread | 1.19% / 20d | 理论年化 ~18% |
-| winrate top | 49.1% | 胜负五五开, alpha 靠非对称 |
-| 特征数 | 110 | 43 base + 64 a158 + 3 regime |
-| Optuna trials | 50 | 3-4 小时训练 |
+| IC (Pearson) | **0.0141** | 每日截面 IC 均值 |
+| RankIC (Spearman) | **0.0374** | 排名相关性 |
+| L-S spread | **1.02% / 20d** | holdout long-short spread |
+| winrate top | **49.4%** | top decile winrate |
+| 特征数 | **54** | base + dense_v2, 不含 Alpha158 |
+| 推理耗时 | **约 1.3s / 4587 行** | 2026-05-05 manifest 记录 |
 
 ### 5.5 日度推理
 
 `scripts/run_daily_topk.py`:
-1. 读 `mart_multidim_model` 最新 model_id
+1. 默认读取 lifecycle champion, challenger 必须显式 `--mode shadow --model-id`
 2. 加载 `{model_id}.pkl`
-3. 从 `fact_feature_panel` 取最新一天行 + ATTACH alpha158 LEFT JOIN
+3. 从 `fact_feature_panel` 取最新一天行；仅模型 `feature_cols_json` 需要 `a158_*` 时 ATTACH Alpha158
 4. `model.predict(X)` → 得分
-5. 按 `pred_score` DESC 取 top-K
-6. 写入 `mart_daily_recommendation`
+5. 按 `pred_score` DESC 取 top-K, 写入前清理同日同模型旧快照
+6. 写入 `mart_daily_recommendation` / `mart_daily_recommendation_risk` / `mart_pipeline_run_manifest`
 
 ---
 

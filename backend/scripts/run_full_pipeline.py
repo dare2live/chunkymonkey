@@ -3,7 +3,7 @@
 
 等 price_kline_tdxhub 回填完成 (轮询 row 数稳定 > 3min), 然后串联
   1. build_feature_panel_duck (全市场)
-  2. train_multidim_model (Optuna 50 trials)
+  2. train_multidim_model (默认 compact base_dense_v2, Optuna 50 trials)
   3. run_daily_topk (最新日 top-100)
 """
 from __future__ import annotations
@@ -101,6 +101,8 @@ def main():
     parser.add_argument('--feature-start', default='2023-01-01')
     parser.add_argument('--trials', type=int, default=50)
     parser.add_argument('--top-k', type=int, default=100)
+    parser.add_argument('--feature-group', default='base_dense_v2',
+                        choices=['base', 'base_dense_v2', 'base_alpha158', 'base_dense_v2_alpha158', 'tdx_keep_v1', 'legacy_full'])
     parser.add_argument('--dry-run', action='store_true',
                         help='只检查依赖和将执行的命令, 不写库、不训练')
     args = parser.parse_args()
@@ -123,6 +125,7 @@ def main():
     run_step(
         ["python3", "-m", "backend.scripts.train_multidim_model",
          "--start", args.feature_start,
+         "--feature-group", args.feature_group,
          "--trials", str(args.trials),
          "--regime-aware"],
         "train_multidim",

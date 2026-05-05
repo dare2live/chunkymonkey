@@ -25,6 +25,7 @@ import argparse
 import json
 import logging
 import sys
+import time
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Optional
@@ -35,6 +36,7 @@ log = logging.getLogger("data-health")
 REPO = Path(__file__).resolve().parent.parent.parent
 sys.path.insert(0, str(REPO / "backend"))
 from services.db import get_conn  # noqa: E402
+from services.pipeline_manifest import git_commit_sha, record_pipeline_run, utc_now_iso  # noqa: E402
 
 
 # 日期列优先级 (从前到后查, 第一个存在的用作 last_data_date)
@@ -349,6 +351,8 @@ def main() -> int:
     parser.add_argument("--keep-history", type=int, default=30,
                         help="保留多少天历史快照 (其余删, 默认 30)")
     args = parser.parse_args()
+    run_started_at = utc_now_iso()
+    run_t0 = time.perf_counter()
 
     con = get_conn()
     now = datetime.utcnow()
@@ -378,6 +382,7 @@ def main() -> int:
         for s in snapshots:
             if s["severity"] != "green":
                 log.info("  %s %s: %s", s["severity"], s["table_name"], s["issue_summary"])
+        con.close()
         return 0
 
     # 写库
@@ -422,6 +427,29 @@ def main() -> int:
         if len(red_list) > 30:
             log.info("  ... +%d more", len(red_list) - 30)
 
+    yellow_list = [s for s in snapshots if s["severity"] == "yellow"]
+    record_pipeline_run(
+        con,
+        run_id=f"data_health_snapshot_{now.strftime('%Y%m%d_%H%M%S')}",
+        pipeline_name="data_health_snapshot",
+        status="success" if not red_list else "failed",
+        started_at=run_started_at,
+        ended_at=utc_now_iso(),
+        duration_s=time.perf_counter() - run_t0,
+        commit_sha=git_commit_sha(REPO),
+        input_tables=["dim_data_asset"],
+        output_tables=["mart_data_health"],
+        gate_result="pass" if not red_list else "fail",
+        blockers=[s["table_name"] for s in red_list],
+        perf_summary={
+            "total": len(snapshots),
+            "green": severity_count.get("green", 0),
+            "yellow": severity_count.get("yellow", 0),
+            "red": severity_count.get("red", 0),
+            "yellow_tables": [s["table_name"] for s in yellow_list[:30]],
+            "red_tables": [s["table_name"] for s in red_list[:30]],
+        },
+    )
     con.close()
     # CI 守门: 任一 red → exit 1
     return 1 if red_list else 0

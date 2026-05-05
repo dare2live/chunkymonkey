@@ -18,6 +18,7 @@ import json
 import logging
 import pickle
 import sys
+import time
 from datetime import datetime
 from pathlib import Path
 from typing import Any
@@ -34,6 +35,7 @@ from services.ml_lifecycle.registry import (
     get_default_champion_model_id,
     select_default_model_id,
 )
+from services.pipeline_manifest import git_commit_sha, record_pipeline_run, utc_now_iso
 
 logger = logging.getLogger("daily_topk")
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s | %(message)s")
@@ -141,6 +143,10 @@ def _table_columns(duck, table: str) -> set[str]:
             [table],
         ).fetchall()
     }
+
+
+def _quote_ident(name: str) -> str:
+    return '"' + name.replace('"', '""') + '"'
 
 
 def load_model_feature_cols(conn, model_id: str, *, allow_legacy: bool) -> list[str]:
@@ -254,6 +260,9 @@ def main():
     parser.add_argument('--include-disabled-models', action='store_true',
                         help='M8.6: 选最新模型时纳入 disabled_by_default=true (alpha158/legacy 110)')
     args = parser.parse_args()
+    run_started_at = utc_now_iso()
+    run_t0 = time.perf_counter()
+    timings: dict[str, float] = {}
 
     conn = get_conn()
     conn.executescript(DDL)
@@ -275,6 +284,7 @@ def main():
         model_id,
         allow_legacy=args.allow_legacy_feature_order,
     )
+    n_trained = model.num_feature() if hasattr(model, 'num_feature') else None
 
     # 取 panel 的目标日期
     duck = conn.raw if hasattr(conn, 'raw') else conn
@@ -294,11 +304,19 @@ def main():
         target_date = row[0]
     logger.info("target_date=%s", target_date)
 
-    # DuckDB 原生读取 + ATTACH alpha158 (对齐训练时 110 特征)
+    # DuckDB 原生读取 + 按模型 feature_cols_json 决定是否 ATTACH Alpha158.
+    # base/base_dense_v2/tdx_keep_v1 不能为推理无条件加载 64 个实验因子。
     from pathlib import Path as _Path
     alpha158_db = _Path(__file__).resolve().parent.parent.parent / "data" / "alpha158.duckdb"
     a158_cols = []
-    if alpha158_db.exists():
+    legacy_needs_alpha158 = (
+        not stored_feature_cols
+        and args.allow_legacy_feature_order
+        and n_trained is not None
+        and n_trained > len(FEATURE_COLS) + len(REGIME_FEATURE_COLS)
+    )
+    needs_alpha158 = any(col.startswith("a158_") for col in stored_feature_cols) or legacy_needs_alpha158
+    if needs_alpha158 and alpha158_db.exists():
         try:
             duck.execute(f"ATTACH IF NOT EXISTS '{alpha158_db}' AS a158 (READ_ONLY)")
             a158_cols = [r[0] for r in duck.execute(
@@ -312,7 +330,7 @@ def main():
     a158_sel = ""
     a158_join = ""
     if args.feature_table == "fact_feature_panel" and a158_cols:
-        a158_sel = ", " + ", ".join(f"CAST(a.{c} AS FLOAT) AS {c}" for c in a158_cols)
+        a158_sel = ", " + ", ".join(f"CAST(a.{_quote_ident(c)} AS FLOAT) AS {_quote_ident(c)}" for c in a158_cols)
         a158_join = "LEFT JOIN a158.fact_alpha158_panel a ON a.stock_code = p.stock_code AND a.date = CAST(p.date AS DATE)"
 
     where = ["p.date = ?"]
@@ -320,15 +338,21 @@ def main():
     if has_feature_set_id and args.feature_set_id:
         where.append("p.feature_set_id = ?")
         params.append(args.feature_set_id)
+    t_load = time.perf_counter()
     records = _records_from_cursor(duck.execute(
         f"SELECT p.*{a158_sel} FROM {args.feature_table} p {a158_join} WHERE {' AND '.join(where)}",
         params,
     ))
+    timings["load_panel_s"] = round(time.perf_counter() - t_load, 3)
     if not records:
         logger.error("fact_feature_panel 里没有 %s 的行", target_date)
+        conn.close()
         return
     panel_cols = set(records[0].keys())
-    logger.info("panel rows %d for %s (+ %d Alpha158 cols)", len(records), target_date, len(a158_cols))
+    logger.info(
+        "panel rows %d for %s (+ %d Alpha158 cols, needs_alpha158=%s)",
+        len(records), target_date, len(a158_cols), needs_alpha158,
+    )
 
     # 训练使用了 regime-aware (one-hot), 评分需对齐
     if 'regime_flag' in panel_cols:
@@ -337,7 +361,6 @@ def main():
                 row[f'regime_{flag}'] = 1 if row.get('regime_flag') == flag else 0
         panel_cols.update(REGIME_FEATURE_COLS)
 
-    n_trained = model.num_feature() if hasattr(model, 'num_feature') else None
     if stored_feature_cols:
         missing = [c for c in stored_feature_cols if c not in panel_cols]
         if missing:
@@ -359,6 +382,7 @@ def main():
     logger.info("使用 %d 特征评分 (model n_feat=%s)", len(feature_cols), n_trained)
     if n_trained is not None and len(feature_cols) != n_trained:
         raise RuntimeError(f"特征数不匹配: model={n_trained}, panel={len(feature_cols)}")
+    t_predict = time.perf_counter()
     X = [[_feature_value(row.get(col)) for col in feature_cols] for row in records]
     # LightGBM 对 Column_N 模型 predict 时忽略 feature_name, 按顺序吃 X
     predictions = model.predict(X, predict_disable_shape_check=False)
@@ -370,6 +394,7 @@ def main():
     records.sort(key=lambda row: row['pred_score'], reverse=True)
     for idx, row in enumerate(records, 1):
         row['rank_in_date'] = idx
+    timings["predict_rank_s"] = round(time.perf_counter() - t_predict, 3)
 
     # top features (模型级, 所有股共享)
     top_feats = get_top_features(model, feature_cols, top_k=8)
@@ -410,6 +435,14 @@ def main():
 
     logger.info("写入 %d 条推荐 (track_id=%s, is_primary=%s)",
                 len(output), track_id, is_primary)
+    t_write = time.perf_counter()
+    conn.execute(
+        """
+        DELETE FROM mart_daily_recommendation
+         WHERE snapshot_date = ? AND model_id = ?
+        """,
+        (target_date, model_id),
+    )
     for r in output:
         conn.execute(
             """INSERT OR REPLACE INTO mart_daily_recommendation
@@ -423,6 +456,7 @@ def main():
              r['built_at']),
         )
     conn.commit()
+    timings["recommendation_write_s"] = round(time.perf_counter() - t_write, 3)
 
     # M8.5b/c: 算并写 snapshot 级风险摘要 (top20 / top_k 取较小, 默认 20)
     risk_top_size = min(20, args.top_k)
@@ -434,6 +468,45 @@ def main():
         is_primary=is_primary,
         top_size=risk_top_size,
         built_at=built_at,
+    )
+    duration_s = time.perf_counter() - run_t0
+    timings["total_s"] = round(duration_s, 3)
+    record_pipeline_run(
+        conn,
+        run_id=f"daily_topk_{model_id}_{target_date}_{track_id}",
+        pipeline_name="run_daily_topk",
+        status="success",
+        started_at=run_started_at,
+        ended_at=utc_now_iso(),
+        duration_s=duration_s,
+        commit_sha=git_commit_sha(Path(__file__).resolve().parent.parent.parent),
+        input_tables=[
+            args.feature_table,
+            "mart_multidim_model",
+            *(
+                ["data/alpha158.duckdb:fact_alpha158_panel"]
+                if needs_alpha158
+                else []
+            ),
+        ],
+        output_tables=["mart_daily_recommendation", "mart_daily_recommendation_risk"],
+        model_id=model_id,
+        feature_group="stored_feature_cols",
+        label_name=None,
+        perf_summary={
+            "target_date": str(target_date),
+            "rows": len(records),
+            "output_rows": len(output),
+            "top_k": args.top_k,
+            "mode": args.mode,
+            "track_id": track_id,
+            "is_primary": is_primary,
+            "selection_fallback": selection_fallback,
+            "n_features": len(feature_cols),
+            "needs_alpha158": needs_alpha158,
+            "alpha158_cols": len(a158_cols),
+            "timings": timings,
+        },
     )
 
     # 输出 top-20 预览

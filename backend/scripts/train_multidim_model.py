@@ -19,6 +19,7 @@ from __future__ import annotations
 import argparse
 import json
 import logging
+import os
 import sys
 import time
 from datetime import datetime
@@ -38,6 +39,11 @@ from services.model_feature_schema import (
     TDX_KEEP_FEATURE_COLS,
     feature_cols_to_json,
     ordered_feature_cols,
+)
+from services.pipeline_manifest import (
+    git_commit_sha,
+    record_pipeline_run,
+    utc_now_iso,
 )
 from scripts.run_feature_ablation import (
     compute_ic,
@@ -89,6 +95,11 @@ CREATE TABLE IF NOT EXISTS mart_multidim_prediction (
 
 
 FEATURE_COLS = ordered_feature_cols(include_dense_v2=True)
+ALPHA158_FEATURE_GROUPS = {"base_alpha158", "base_dense_v2_alpha158", "legacy_full"}
+
+
+def feature_group_uses_alpha158(feature_group: str) -> bool:
+    return feature_group in ALPHA158_FEATURE_GROUPS
 
 
 def ensure_model_schema(conn) -> None:
@@ -226,7 +237,15 @@ def train_lgb(
     return model
 
 
-def make_objective(train_rows, valid_rows, feature_cols):
+def make_objective(
+    train_dataset,
+    valid_dataset,
+    X_valid,
+    y_valid: list[float],
+    valid_dates: list[str],
+    feature_cols: list[str],
+    objective_num_round: int,
+):
     def objective(trial):
         params = {
             'objective': 'regression',
@@ -242,18 +261,16 @@ def make_objective(train_rows, valid_rows, feature_cols):
             'max_depth': trial.suggest_int('max_depth', 4, 10),
             'verbose': -1,
         }
-        model = train_lgb(
-            _matrix(train_rows, feature_cols),
-            _values(train_rows, 'label_value'),
-            _matrix(valid_rows, feature_cols),
-            _values(valid_rows, 'label_value'),
+        model = lgb.train(
             params,
-            num_round=400,
-            feature_name=feature_cols,
+            train_dataset,
+            num_boost_round=objective_num_round,
+            valid_sets=[valid_dataset],
+            callbacks=[lgb.early_stopping(stopping_rounds=50, verbose=False)],
         )
-        pred = model.predict(_matrix(valid_rows, feature_cols), num_iteration=model.best_iteration)
+        pred = model.predict(X_valid, num_iteration=model.best_iteration)
         # 目标: valid RankIC (正向)
-        _, rank_ic = compute_ic(_values(valid_rows, 'label_value'), pred, _dates(valid_rows))
+        _, rank_ic = compute_ic(y_valid, pred, valid_dates)
         return rank_ic
     return objective
 
@@ -271,17 +288,33 @@ def _prediction_rows(model_id: str, holdout: list[dict[str, Any]], pred) -> list
     for date, items in grouped.items():
         scores = [score for _, score in items]
         percentiles = _rank_percentiles(scores)
+        rank_by_idx = _rank_desc_min(scores)
         for idx, (row, score) in enumerate(items):
-            rank_in_date = 1 + sum(1 for other in scores if other > score)
             rows.append((
                 model_id,
                 row.get("stock_code"),
                 date,
                 score,
-                rank_in_date,
+                rank_by_idx[idx],
                 percentiles[idx],
             ))
     return rows
+
+
+def _rank_desc_min(values: list[float]) -> list[int]:
+    """Competition rank, descending, with ties sharing the best rank."""
+    indexed = sorted(enumerate(values), key=lambda item: item[1], reverse=True)
+    ranks = [0] * len(values)
+    pos = 0
+    while pos < len(indexed):
+        end = pos + 1
+        while end < len(indexed) and indexed[end][1] == indexed[pos][1]:
+            end += 1
+        rank = pos + 1
+        for idx in range(pos, end):
+            ranks[indexed[idx][0]] = rank
+        pos = end
+    return ranks
 
 
 def _record_columns(rows: list[dict[str, Any]]) -> set[str]:
@@ -301,7 +334,7 @@ def resolve_feature_group(name: str, rows: list[dict[str, Any]], *, regime_aware
     tdx_keep_v1              - BASE + DENSE_V2 + 5 validated TDX keep features
     base_alpha158            - 107 特征 (BASE + a158_*) (实验对照)
     base_dense_v2_alpha158   - 118 特征 (BASE + DENSE_V2 + a158_*) (实验对照)
-    legacy_full              - 旧默认 (BASE + DENSE_V2 + a158_*), 兼容 history
+    legacy_full              - 旧 110 特征研究对照 (BASE + DENSE_V2 + a158_*)
     """
     from services.model_feature_schema import BASE_FEATURE_COLS, DENSE_V2_FEATURE_COLS
     panel_cols = _record_columns(rows)
@@ -493,16 +526,23 @@ def main():
                         help='加入 regime one-hot 作为特征')
     parser.add_argument('--feature-group',
                         choices=['base', 'base_dense_v2', 'base_alpha158', 'base_dense_v2_alpha158', 'tdx_keep_v1', 'legacy_full'],
-                        default='legacy_full',
-                        help='M7: 显式特征组. 默认 legacy_full 保持旧行为兼容')
+                        default='base_dense_v2',
+                        help='M7/M9: 显式特征组. 默认 base_dense_v2 为 compact production candidate; legacy_full 仅显式研究使用')
     parser.add_argument('--feature-table', default='fact_feature_panel',
                         help='训练使用的 feature table')
     parser.add_argument('--feature-set-id', default=None,
                         help='feature_table 有 feature_set_id 列时过滤')
     parser.add_argument('--num-round', type=int, default=400, help='final fit 轮数')
+    parser.add_argument('--objective-num-round', type=int, default=400,
+                        help='Optuna 每次 trial 的训练轮数')
+    parser.add_argument('--num-threads', type=int, default=0,
+                        help='LightGBM num_threads; 0 表示使用 LightGBM 默认')
     parser.add_argument('--model-id-prefix', default='multidim_v1',
                         help='模型 ID 前缀, M7 候选可用 multidim_v2_base / multidim_v2_dense 区分')
     args = parser.parse_args()
+    run_started_at = utc_now_iso()
+    run_t0 = time.perf_counter()
+    timings: dict[str, float] = {}
 
     # 训练分两阶段释放 DuckDB 写锁, 让前端期间可读:
     # 1) 先用 writable 连接确保 DDL + 读 panel, 立即 close 释放锁
@@ -510,14 +550,17 @@ def main():
     # 3) 最后落库时重新打开 writable connection, 写完 close
     conn = get_conn()
     ensure_model_schema(conn)
+    t_load = time.perf_counter()
     records = load_panel(
         conn,
         args.start,
         args.end,
         label_name=args.label_name,
+        with_alpha158=feature_group_uses_alpha158(args.feature_group),
         feature_table=args.feature_table,
         feature_set_id=args.feature_set_id,
     )
+    timings["load_panel_s"] = round(time.perf_counter() - t_load, 3)
     conn.close()
     logger.info("数据加载完成, DuckDB 写锁已释放, 训练期间前端可正常读")
     _ensure_rows(records)
@@ -528,24 +571,84 @@ def main():
     logger.info("feature_group=%s schema_tag=%s 特征数=%d",
                 args.feature_group, schema_tag, len(feature_cols))
 
+    t_split = time.perf_counter()
     train, valid, holdout = split_time_series(records)
+    timings["split_s"] = round(time.perf_counter() - t_split, 3)
+
+    # Phase 3: matrix / label / date arrays are built once and reused by all
+    # Optuna trials. The old path rebuilt float32 matrices inside every trial.
+    t_matrix = time.perf_counter()
+    X_train = _matrix(train, feature_cols)
+    y_train = _values(train, "label_value")
+    X_valid = _matrix(valid, feature_cols)
+    y_valid = _values(valid, "label_value")
+    valid_dates = _dates(valid)
+    X_train_valid = _matrix([*train, *valid], feature_cols)
+    y_train_valid = _values([*train, *valid], "label_value")
+    X_holdout = _matrix(holdout, feature_cols)
+    y_holdout = _values(holdout, "label_value")
+    holdout_dates = _dates(holdout)
+    train_dataset = lgb.Dataset(
+        X_train,
+        label=y_train,
+        feature_name=feature_cols,
+        free_raw_data=False,
+    )
+    valid_dataset = lgb.Dataset(
+        X_valid,
+        label=y_valid,
+        reference=train_dataset,
+        feature_name=feature_cols,
+        free_raw_data=False,
+    )
+    timings["matrix_precompute_s"] = round(time.perf_counter() - t_matrix, 3)
 
     # Optuna
     logger.info("Optuna 启动 %d 次 trial", args.trials)
-    t0 = time.time()
+    t_optuna = time.perf_counter()
     study = optuna.create_study(direction='maximize')
-    study.optimize(make_objective(train, valid, feature_cols), n_trials=args.trials)
+    study.optimize(
+        make_objective(
+            train_dataset,
+            valid_dataset,
+            X_valid,
+            y_valid,
+            valid_dates,
+            feature_cols,
+            args.objective_num_round,
+        ),
+        n_trials=args.trials,
+    )
+    timings["optuna_s"] = round(time.perf_counter() - t_optuna, 3)
     logger.info("Optuna 完成. best_value=%.4f params=%s", study.best_value, study.best_params)
 
     # 用 best params 重训 (train + valid 合并) + holdout 评估
     best = _best_params(study)
-    train_valid = [*train, *valid]
+    if args.num_threads > 0:
+        best["num_threads"] = int(args.num_threads)
+    logger.info("LightGBM num_threads=%s cpu_count=%s", best.get("num_threads", "default"), os.cpu_count())
 
     # no early_stopping in final fit - use fixed num_round
-    final_model = _fit_final_model(train_valid, feature_cols, best, args.num_round)
-    pred_ho = final_model.predict(_matrix(holdout, feature_cols))
+    t_fit = time.perf_counter()
+    final_model = lgb.train(
+        best,
+        lgb.Dataset(
+            X_train_valid,
+            label=y_train_valid,
+            feature_name=feature_cols,
+            free_raw_data=False,
+        ),
+        num_boost_round=args.num_round,
+    )
+    timings["final_fit_s"] = round(time.perf_counter() - t_fit, 3)
+    t_pred = time.perf_counter()
+    pred_ho = final_model.predict(X_holdout)
+    timings["holdout_predict_s"] = round(time.perf_counter() - t_pred, 3)
 
-    ic, rank_ic, dec = _holdout_metrics(holdout, pred_ho)
+    t_metrics = time.perf_counter()
+    ic, rank_ic = compute_ic(y_holdout, pred_ho, holdout_dates)
+    dec = decile_metrics(y_holdout, pred_ho, holdout_dates)
+    timings["holdout_metrics_s"] = round(time.perf_counter() - t_metrics, 3)
 
     logger.info("=" * 60)
     logger.info("Holdout: IC=%.4f RankIC=%.4f top-avg=%.4f bot-avg=%.4f spread=%.4f wr_top=%.3f",
@@ -559,6 +662,7 @@ def main():
     conn = get_conn()
     ensure_model_schema(conn)
     model_id = f"{args.model_id_prefix}_{args.feature_group}_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+    t_write = time.perf_counter()
     _insert_model(
         conn,
         model_id=model_id,
@@ -579,12 +683,56 @@ def main():
     # 落 predictions
     _persist_predictions(conn, model_id, holdout, pred_ho)
     conn.commit()
+    timings["db_write_s"] = round(time.perf_counter() - t_write, 3)
 
     # 保存 model pkl
+    t_save = time.perf_counter()
     model_path = _save_model(model_id, final_model)
+    timings["model_save_s"] = round(time.perf_counter() - t_save, 3)
 
     logger.info("模型保存: %s", model_path)
-    logger.info("训练总耗时 %.1f min", (time.time() - t0) / 60)
+    duration_s = time.perf_counter() - run_t0
+    timings["total_s"] = round(duration_s, 3)
+    record_pipeline_run(
+        conn,
+        run_id=model_id,
+        pipeline_name="train_multidim_model",
+        status="success",
+        started_at=run_started_at,
+        ended_at=utc_now_iso(),
+        duration_s=duration_s,
+        commit_sha=git_commit_sha(Path(__file__).resolve().parent.parent.parent),
+        input_tables=[
+            args.feature_table,
+            *(
+                ["data/alpha158.duckdb:fact_alpha158_panel"]
+                if feature_group_uses_alpha158(args.feature_group)
+                else []
+            ),
+        ],
+        output_tables=["mart_multidim_model", "mart_multidim_prediction"],
+        model_id=model_id,
+        feature_group=args.feature_group,
+        label_name=args.label_name,
+        holding_period=20 if args.label_name.endswith("_20d") else None,
+        perf_summary={
+            "rows": len(records),
+            "n_train": len(train),
+            "n_valid": len(valid),
+            "n_holdout": len(holdout),
+            "n_features": len(feature_cols),
+            "trials": args.trials,
+            "num_round": args.num_round,
+            "objective_num_round": args.objective_num_round,
+            "holdout_ic": ic,
+            "holdout_rank_ic": rank_ic,
+            "holdout_spread": dec["spread"],
+            "cpu_count": os.cpu_count(),
+            "num_threads": best.get("num_threads", "default"),
+            "timings": timings,
+        },
+    )
+    logger.info("训练总耗时 %.1f min", duration_s / 60)
 
     conn.close()
 

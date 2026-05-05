@@ -34,6 +34,13 @@ def test_cron_child_return_codes_preserve_critical_failures():
     assert cron_daily._phase_exit_severity({"status": "warn"}) == 1
 
 
+def test_cron_daily_includes_production_topk_and_source_watermarks():
+    assert "watermarks" in cron_daily.ALL_PHASES
+    assert "topk" in cron_daily.ALL_PHASES
+    assert cron_daily.ALL_PHASES.index("watermarks") < cron_daily.ALL_PHASES.index("topk")
+    assert cron_daily.ALL_PHASES.index("topk") < cron_daily.ALL_PHASES.index("health")
+
+
 def test_aif10_registry_matches_live_special_reports():
     assert CAPABILITY_TO_REPORT["lhb_daily"] == "RPT_DAILYBILLBOARD_DETAILSNEW"
     assert CAPABILITY_TO_REPORT["qfii_holding_quarterly"] == "RPT_DMSK_HOLDERS"

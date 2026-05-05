@@ -540,6 +540,61 @@ def init_db():
             CREATE INDEX IF NOT EXISTS idx_mart_data_health_severity
                 ON mart_data_health(severity, snapshot_at DESC);
 
+            -- ============================================================
+            -- 集市层 (P0/P1): Pipeline run manifest + 数据源水位
+            -- ============================================================
+            -- mart_pipeline_run_manifest: CLI / batch / model pipeline 的运行账本。
+            -- 目标是让每次训练、walk-forward、TopK、回测和 gate 都有可审计记录:
+            -- 运行参数、代码版本、输入输出表、行数、耗时、模型 ID、gate 结果和性能摘要。
+            CREATE TABLE IF NOT EXISTS mart_pipeline_run_manifest (
+                run_id                TEXT PRIMARY KEY,
+                pipeline_name         TEXT NOT NULL,
+                status                TEXT NOT NULL,          -- success / failed / skipped / running
+                started_at            TIMESTAMP,
+                ended_at              TIMESTAMP,
+                duration_s            DOUBLE,
+                commit_sha            TEXT,
+                command               TEXT,
+                cwd                   TEXT,
+                input_tables_json     TEXT,
+                output_tables_json    TEXT,
+                input_row_counts_json TEXT,
+                output_row_counts_json TEXT,
+                model_id              TEXT,
+                feature_group         TEXT,
+                label_name            TEXT,
+                holding_period        INTEGER,
+                gate_result           TEXT,
+                blockers_json         TEXT,
+                perf_summary_json     TEXT,
+                created_at            TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            );
+            CREATE INDEX IF NOT EXISTS idx_pipeline_manifest_started
+                ON mart_pipeline_run_manifest(started_at DESC);
+            CREATE INDEX IF NOT EXISTS idx_pipeline_manifest_name_status
+                ON mart_pipeline_run_manifest(pipeline_name, status);
+
+            -- mart_data_source_watermark: 按业务域记录主源/备源的最新成功与 fallback 状态。
+            -- 该表不替代 mart_data_health. 它是源级视角, mart_data_health 是资产级视角。
+            CREATE TABLE IF NOT EXISTS mart_data_source_watermark (
+                data_domain          TEXT NOT NULL,
+                source_name          TEXT NOT NULL,
+                source_tier          SMALLINT NOT NULL,
+                last_success_at      TIMESTAMP,
+                last_data_date       TEXT,
+                last_raw_hash        TEXT,
+                next_check_at        TIMESTAMP,
+                consecutive_failures INTEGER DEFAULT 0,
+                fallback_active      BOOLEAN DEFAULT FALSE,
+                fallback_reason      TEXT,
+                row_count            BIGINT,
+                parser_version       TEXT,
+                updated_at           TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                PRIMARY KEY (data_domain, source_name, source_tier)
+            );
+            CREATE INDEX IF NOT EXISTS idx_source_watermark_domain
+                ON mart_data_source_watermark(data_domain, source_tier);
+
             -- TDX gpcw 宽字段保留层: raw_gpcw_detail 继续承载稳定业务列,
             -- 此表保留每期解析出的更宽字段 JSON 与源文件, 便于后续字段验证.
             CREATE TABLE IF NOT EXISTS raw_tdx_gpcw_wide (

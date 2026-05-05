@@ -3,9 +3,11 @@
 Phase 拆分:
   1) sync       — 调 /api/inst/update/all (HTTP, 让 backend DAG 跑); 跳过若 --skip-sync
   2) lineage    — refresh_all_lineage_state(); 同步 registry 声明到 mart_lineage
-  3) health     — scripts/data_health_snapshot.py main(); 写 mart_data_health
-  4) drift      — scripts/compute_feature_drift.py main(); 写 mart_feature_drift
-  5) audit      — backend/scripts/audit_stale_references.py 走一遍 (CI gate)
+  3) watermarks — 刷新源域水位 mart_data_source_watermark
+  4) topk       — lifecycle champion 每日 TopK; 可选 shadow TopK
+  5) health     — scripts/data_health_snapshot.py main(); 写 mart_data_health
+  6) drift      — scripts/compute_feature_drift.py main(); 写 mart_feature_drift
+  7) audit      — backend/scripts/audit_stale_references.py 走一遍 (CI gate)
 
 每个 phase 失败后:
   - 默认继续下一 phase (best-effort)
@@ -17,8 +19,8 @@ Phase 拆分:
   python3 backend/scripts/cron_daily.py
   # 跳过 sync (sync 已经手动跑过)
   python3 backend/scripts/cron_daily.py --skip-sync
-  # 只跑后置 (健康 + drift)
-  python3 backend/scripts/cron_daily.py --only health,drift
+  # 只跑生产推荐与监控
+  python3 backend/scripts/cron_daily.py --only watermarks,topk,health,drift
 """
 from __future__ import annotations
 
@@ -228,6 +230,68 @@ def phase_drift() -> dict:
         return {"phase": "drift", "status": "failed", "reason": str(exc)}
 
 
+def phase_watermarks() -> dict:
+    """Phase 3: 源域水位 / fallback 状态."""
+    try:
+        from services.db import get_conn
+        from services.source_watermarks import refresh_known_source_watermarks
+
+        conn = get_conn()
+        try:
+            items = refresh_known_source_watermarks(conn)
+        finally:
+            conn.close()
+        fallback_active = sum(1 for item in items if item.get("fallback_active"))
+        failures = sum(1 for item in items if int(item.get("consecutive_failures") or 0) > 0)
+        status = "warn" if failures else "ok"
+        return {
+            "phase": "watermarks",
+            "status": status,
+            "domains": len(items),
+            "fallback_active": fallback_active,
+            "failures": failures,
+        }
+    except Exception as exc:
+        log.exception("[watermarks] failed")
+        return {"phase": "watermarks", "status": "failed", "reason": str(exc)}
+
+
+def phase_topk(*, top_k: int, shadow_model_id: str | None = None) -> dict:
+    """Phase 4: 只写 lifecycle champion 到正式推荐; shadow 必须显式传模型."""
+    try:
+        from scripts.run_daily_topk import main as topk_main
+
+        _run_with_clean_argv(
+            topk_main,
+            ["run_daily_topk.py", "--top-k", str(top_k), "--track-id", "primary", "--is-primary"],
+        )
+        shadow_status = "skipped"
+        if shadow_model_id:
+            _run_with_clean_argv(
+                topk_main,
+                [
+                    "run_daily_topk.py",
+                    "--model-id", shadow_model_id,
+                    "--mode", "shadow",
+                    "--top-k", str(top_k),
+                    "--track-id", f"shadow_{shadow_model_id}",
+                ],
+            )
+            shadow_status = "ok"
+        return {
+            "phase": "topk",
+            "status": "ok",
+            "top_k": top_k,
+            "shadow": shadow_status,
+            "shadow_model_id": shadow_model_id,
+        }
+    except SystemExit as exc:
+        return {"phase": "topk", "status": "failed", "rc": exc.code}
+    except Exception as exc:
+        log.exception("[topk] failed")
+        return {"phase": "topk", "status": "failed", "reason": str(exc)}
+
+
 def phase_audit() -> dict:
     """Phase 5: stale references audit. CI gate."""
     try:
@@ -252,14 +316,17 @@ def phase_audit() -> dict:
 # main
 # ─────────────────────────────────────────────────────────────────────
 
-ALL_PHASES = ["sync", "lineage", "health", "drift", "audit"]
+ALL_PHASES = ["sync", "lineage", "watermarks", "topk", "health", "drift", "audit"]
 
 
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--api", default=DEFAULT_API)
     parser.add_argument("--skip-sync", action="store_true", help="不调 /update/all")
-    parser.add_argument("--only", help="逗号分隔: sync,lineage,health,drift,audit")
+    parser.add_argument("--skip-topk", action="store_true", help="不生成每日推荐")
+    parser.add_argument("--top-k", type=int, default=50, help="每日 champion TopK 数量")
+    parser.add_argument("--shadow-model-id", default=None, help="显式影子模型 ID; 不传则不写 shadow TopK")
+    parser.add_argument("--only", help="逗号分隔: sync,lineage,watermarks,topk,health,drift,audit")
     parser.add_argument("--strict", action="store_true", help="任一 phase 失败即退出")
     parser.add_argument("--sync-timeout", type=int, default=3600)
     args = parser.parse_args()
@@ -267,6 +334,8 @@ def main() -> int:
     selected = ALL_PHASES if not args.only else [p.strip() for p in args.only.split(",")]
     if args.skip_sync and "sync" in selected:
         selected = [p for p in selected if p != "sync"]
+    if args.skip_topk and "topk" in selected:
+        selected = [p for p in selected if p != "topk"]
 
     log.info(f"=== cron_daily 开始 phases={selected} ===")
     t0 = time.time()
@@ -279,6 +348,10 @@ def main() -> int:
             r = phase_sync(api=args.api, timeout_s=args.sync_timeout)
         elif phase == "lineage":
             r = phase_lineage()
+        elif phase == "watermarks":
+            r = phase_watermarks()
+        elif phase == "topk":
+            r = phase_topk(top_k=args.top_k, shadow_model_id=args.shadow_model_id)
         elif phase == "health":
             r = phase_health()
         elif phase == "drift":

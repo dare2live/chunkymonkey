@@ -5,7 +5,9 @@ from __future__ import annotations
 import argparse
 import json
 import logging
+import os
 import sys
+import time
 from datetime import datetime
 from pathlib import Path
 from typing import Any
@@ -24,6 +26,7 @@ from services.model_feature_schema import (
     TDX_KEEP_FEATURE_COLS,
     ordered_feature_cols,
 )
+from services.pipeline_manifest import git_commit_sha, record_pipeline_run, utc_now_iso
 from services.ml_lifecycle.registry import select_default_model_id
 from scripts.run_feature_ablation import (
     compute_ic,
@@ -110,6 +113,11 @@ DEFAULT_PARAMS = {
 
 
 FEATURE_COLS = ordered_feature_cols(include_dense_v2=True)
+ALPHA158_FEATURE_GROUPS = {"base_alpha158", "base_dense_v2_alpha158", "legacy_full"}
+
+
+def feature_group_uses_alpha158(feature_group: str) -> bool:
+    return feature_group in ALPHA158_FEATURE_GROUPS
 
 
 MODEL_DDL = """
@@ -252,6 +260,7 @@ def load_panel_records(
     label_name: str,
     feature_table: str,
     feature_set_id: str | None,
+    with_alpha158: bool = True,
 ) -> list[dict[str, Any]]:
     duck = conn.raw if hasattr(conn, "raw") else conn
     panel_cols = _table_columns(conn, feature_table)
@@ -261,7 +270,7 @@ def load_panel_records(
     alpha158_cols: list[str] = []
     alpha158_join = ""
     alpha158_db = Path(__file__).resolve().parent.parent.parent / "data" / "alpha158.duckdb"
-    if feature_table == "fact_feature_panel" and alpha158_db.exists():
+    if with_alpha158 and feature_table == "fact_feature_panel" and alpha158_db.exists():
         try:
             duck.execute(f"ATTACH IF NOT EXISTS '{alpha158_db}' AS a158 (READ_ONLY)")
             alpha158_cols = [
@@ -395,18 +404,33 @@ def _prediction_rows(run_id: str, fold_id: int, test_rows: list[dict[str, Any]],
     for date, items in grouped.items():
         scores = [score for _, score in items]
         percentiles = _rank_percentiles(scores)
+        rank_by_idx = _rank_desc_min(scores)
         for idx, (row, score) in enumerate(items):
-            rank_in_date = 1 + sum(1 for other in scores if other > score)
             rows.append((
                 run_id,
                 fold_id,
                 row.get("stock_code"),
                 date,
                 score,
-                rank_in_date,
+                rank_by_idx[idx],
                 percentiles[idx],
             ))
     return rows
+
+
+def _rank_desc_min(values: list[float]) -> list[int]:
+    indexed = sorted(enumerate(values), key=lambda item: item[1], reverse=True)
+    ranks = [0] * len(values)
+    pos = 0
+    while pos < len(indexed):
+        end = pos + 1
+        while end < len(indexed) and indexed[end][1] == indexed[pos][1]:
+            end += 1
+        rank = pos + 1
+        for idx in range(pos, end):
+            ranks[indexed[idx][0]] = rank
+        pos = end
+    return ranks
 
 
 def classify_market_state(mean_ret: float | None) -> str | None:
@@ -479,12 +503,19 @@ def main() -> None:
     parser.add_argument("--max-folds", type=int, default=0)
     parser.add_argument("--regime-aware", action="store_true")
     parser.add_argument("--save-predictions", action="store_true")
+    parser.add_argument(
+        "--prediction-mode",
+        choices=["metrics-only", "topk", "full"],
+        default="metrics-only",
+        help="metrics-only 不落逐股预测; topk 每日仅落前 K; full 落全部预测",
+    )
+    parser.add_argument("--prediction-top-k", type=int, default=100)
     parser.add_argument("--dry-run", action="store_true")
     parser.add_argument(
         "--feature-group",
         choices=["base", "base_dense_v2", "base_alpha158", "base_dense_v2_alpha158", "tdx_keep_v1", "legacy_full"],
-        default="legacy_full",
-        help="M7: 显式特征组, 与主训练入口同名同义",
+        default="base_dense_v2",
+        help="M7/M9: 显式特征组, 默认 base_dense_v2; legacy_full 仅显式研究使用",
     )
     parser.add_argument("--feature-table", default="fact_feature_panel")
     parser.add_argument("--feature-set-id", default=None)
@@ -496,6 +527,9 @@ def main() -> None:
               "(对齐 baseline final fit + M6.1 ablation 口径)"),
     )
     args = parser.parse_args()
+    run_started_at = utc_now_iso()
+    run_t0 = time.perf_counter()
+    timings: dict[str, float] = {}
 
     conn = get_conn()
     try:
@@ -511,6 +545,7 @@ def main() -> None:
                 feature_set_id=args.feature_set_id,
             )
         else:
+            t_load = time.perf_counter()
             records = load_panel_records(
                 conn,
                 args.start,
@@ -518,7 +553,9 @@ def main() -> None:
                 label_name=args.label_name,
                 feature_table=args.feature_table,
                 feature_set_id=args.feature_set_id,
+                with_alpha158=feature_group_uses_alpha158(args.feature_group),
             )
+            timings["load_panel_s"] = round(time.perf_counter() - t_load, 3)
             dates = sorted({row["date"] for row in records})
         folds = build_folds(dates, args.train_days, args.valid_days, args.test_days, args.step_days)
         if args.max_folds > 0:
@@ -530,7 +567,7 @@ def main() -> None:
             return
 
         # records is loaded above in non-dry-run branch.
-        # M7: 显式 feature group, legacy_full = 旧默认 (BASE+a158+regime), 与原 walkforward 一致
+        # M7/M9: production 默认走 compact base_dense_v2; Alpha158 组只在显式指定时加载。
         feature_cols, schema_tag = resolve_feature_group(
             args.feature_group, records, regime_aware=args.regime_aware
         )
@@ -541,7 +578,9 @@ def main() -> None:
 
         run_id = f"walkforward_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
         built_at = datetime.utcnow().isoformat()
+        fold_metrics: list[dict[str, Any]] = []
         for fold in folds:
+            fold_t0 = time.perf_counter()
             train = _slice(records, fold["train"])
             valid = _slice(records, fold["valid"])
             test = _slice(records, fold["test"])
@@ -563,8 +602,18 @@ def main() -> None:
             test_mean_ret = _mean_label(test)
 
             # M8.0: score profile - per test date 的 distinct pred_score 数量
-            pred_out = _prediction_rows(run_id, fold["fold_id"], test, pred)
-            distinct_median, distinct_min = _score_profile(pred_out)
+            pred_out_all = _prediction_rows(run_id, fold["fold_id"], test, pred)
+            pred_out = pred_out_all
+            if args.prediction_mode == "topk":
+                by_date: dict[str, list[tuple]] = {}
+                for item in pred_out_all:
+                    by_date.setdefault(str(item[3]), []).append(item)
+                pred_out = [
+                    item
+                    for items in by_date.values()
+                    for item in sorted(items, key=lambda row: row[5])[: args.prediction_top_k]
+                ]
+            distinct_median, distinct_min = _score_profile(pred_out_all)
             quality = "ok" if distinct_median >= DEGENERATE_DAILY_DISTINCT_THRESHOLD else "degenerate"
             train_start, train_end = _date_bounds(train)
             valid_start, valid_end = _date_bounds(valid)
@@ -596,11 +645,24 @@ def main() -> None:
                 "quality_flag": quality,
                 "built_at": built_at,
             }
-            write_fold(conn, row, pred_out if args.save_predictions else None)
+            should_write_predictions = args.save_predictions or args.prediction_mode in {"topk", "full"}
+            write_fold(conn, row, pred_out if should_write_predictions else None)
+            fold_duration = time.perf_counter() - fold_t0
+            fold_metrics.append({
+                "fold_id": fold["fold_id"],
+                "rank_ic": rank_ic,
+                "ic": ic,
+                "spread": dec["spread"],
+                "quality": quality,
+                "n_train": len(train),
+                "n_valid": len(valid),
+                "n_test": len(test),
+                "duration_s": round(fold_duration, 3),
+            })
             logger.info(
-                "fold %d IC=%.4f RankIC=%.4f spread=%.4f WR=%.3f distinct_median=%.0f min=%d quality=%s",
+                "fold %d IC=%.4f RankIC=%.4f spread=%.4f WR=%.3f distinct_median=%.0f min=%d quality=%s duration=%.1fs",
                 fold["fold_id"], ic, rank_ic, dec["spread"], dec["winrate_top"],
-                distinct_median, distinct_min, quality,
+                distinct_median, distinct_min, quality, fold_duration,
             )
             if quality == "degenerate":
                 logger.warning(
@@ -629,6 +691,50 @@ def main() -> None:
                 (run_id, run_id, source_model_id),
             )
             conn.commit()
+        duration_s = time.perf_counter() - run_t0
+        timings["total_s"] = round(duration_s, 3)
+        rank_ics = [m["rank_ic"] for m in fold_metrics if m.get("rank_ic") is not None]
+        avg_rank_ic = sum(rank_ics) / len(rank_ics) if rank_ics else None
+        record_pipeline_run(
+            conn,
+            run_id=run_id,
+            pipeline_name="run_multidim_walkforward",
+            status="success",
+            started_at=run_started_at,
+            ended_at=utc_now_iso(),
+            duration_s=duration_s,
+            commit_sha=git_commit_sha(Path(__file__).resolve().parent.parent.parent),
+            input_tables=[
+                args.feature_table,
+                "mart_multidim_model",
+                *(
+                    ["data/alpha158.duckdb:fact_alpha158_panel"]
+                    if feature_group_uses_alpha158(args.feature_group)
+                    else []
+                ),
+            ],
+            output_tables=[
+                "mart_model_walkforward_fold",
+                *(
+                    ["mart_model_walkforward_prediction"]
+                    if (args.save_predictions or args.prediction_mode in {"topk", "full"})
+                    else []
+                ),
+            ],
+            model_id=source_model_id,
+            feature_group=args.feature_group,
+            label_name=args.label_name,
+            holding_period=20 if args.label_name.endswith("_20d") else None,
+            perf_summary={
+                "folds": len(fold_metrics),
+                "avg_rank_ic": avg_rank_ic,
+                "n_features": len(feature_cols),
+                "prediction_mode": "full" if args.save_predictions else args.prediction_mode,
+                "cpu_count": os.cpu_count(),
+                "timings": timings,
+                "fold_metrics": fold_metrics,
+            },
+        )
     finally:
         conn.close()
 

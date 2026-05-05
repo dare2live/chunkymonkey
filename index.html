@@ -208,6 +208,7 @@
         <button class="dh-tab-btn" data-dh-tab="sources">数据源总览 (Tab 1)</button>
         <button class="dh-tab-btn" data-dh-tab="clients">写入器 (Tab 2)</button>
         <button class="dh-tab-btn" data-dh-tab="lineage">派生 Pipeline (Tab 3)</button>
+        <button class="dh-tab-btn" data-dh-tab="manifest">运行清单</button>
         <button class="dh-tab-btn" data-dh-tab="drift">特征漂移 (Tab 5)</button>
         <button class="dh-tab-btn" data-dh-tab="cleanup">清理 Backlog (Tab 6)</button>
         <button class="dh-tab-btn" data-dh-tab="models">模型生命周期 (Tab 7)</button>
@@ -265,7 +266,7 @@
       <!-- Tab 2: 数据源总览 (按 upstream_source × tier 聚合) -->
       <div class="dh-tab-panel" id="dh-panel-sources" style="display:none">
         <div class="panel" style="margin-bottom:10px;padding:12px 14px">
-          <div class="muted" style="font-size:12px">每行 = 一个外部数据源 (按 source_tier 排序). tier 1 主源 / tier 2 备源 / tier 3 兜底. red/yellow 计数来自当前快照. fallback active = tier > 1 实际有数据.</div>
+          <div class="muted" style="font-size:12px">每行 = 一个外部数据源或业务域水位 (按 source_tier 排序). tier 1 主源 / tier 2 备源 / tier 3 兜底. red/yellow 计数来自当前快照. fallback active = tier > 1 实际有数据.</div>
         </div>
         <div class="panel" style="padding:0;overflow-x:auto;max-height:62vh;overflow-y:auto">
           <table id="dh-sources-table" style="width:100%;border-collapse:collapse;font-size:12px">
@@ -282,6 +283,32 @@
               </tr>
             </thead>
             <tbody id="dh-sources-tbody">
+              <tr><td colspan="8" style="padding:30px;text-align:center" class="muted">加载中...</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- 运行清单: pipeline manifest -->
+      <div class="dh-tab-panel" id="dh-panel-manifest" style="display:none">
+        <div class="panel" style="margin-bottom:10px;padding:12px 14px">
+          <div class="muted" style="font-size:12px">每行 = 一次 CLI / batch / 模型 pipeline 运行。用于审计 commit、命令、输入输出、耗时、模型、gate 和性能摘要。</div>
+        </div>
+        <div class="panel" style="padding:0;overflow-x:auto;max-height:62vh;overflow-y:auto">
+          <table style="width:100%;border-collapse:collapse;font-size:12px">
+            <thead style="position:sticky;top:0;background:var(--cm-bg,#fff);z-index:1">
+              <tr style="border-bottom:1px solid var(--cm-ink-100,#e2e2e2)">
+                <th style="text-align:left;padding:8px 12px;width:40px"></th>
+                <th style="text-align:left;padding:8px 12px;width:180px">pipeline</th>
+                <th style="text-align:left;padding:8px 12px;width:160px">run_id</th>
+                <th style="text-align:right;padding:8px 12px;width:80px">耗时</th>
+                <th style="text-align:left;padding:8px 12px;width:160px">model</th>
+                <th style="text-align:left;padding:8px 12px;width:110px">feature</th>
+                <th style="text-align:left;padding:8px 12px">perf / blockers</th>
+                <th style="text-align:left;padding:8px 12px;width:140px">started</th>
+              </tr>
+            </thead>
+            <tbody id="dh-manifest-tbody">
               <tr><td colspan="8" style="padding:30px;text-align:center" class="muted">加载中...</td></tr>
             </tbody>
           </table>

@@ -62,6 +62,15 @@ def test_resolve_feature_group_uses_record_columns():
     assert tag == "m7_base_dense_v2_alpha158_v1_regime"
 
 
+def test_alpha158_is_only_required_by_alpha_feature_groups():
+    assert subject.feature_group_uses_alpha158("base") is False
+    assert subject.feature_group_uses_alpha158("base_dense_v2") is False
+    assert subject.feature_group_uses_alpha158("tdx_keep_v1") is False
+    assert subject.feature_group_uses_alpha158("base_alpha158") is True
+    assert subject.feature_group_uses_alpha158("base_dense_v2_alpha158") is True
+    assert subject.feature_group_uses_alpha158("legacy_full") is True
+
+
 def test_prediction_rows_rank_scores_without_dataframe_registration():
     rows = subject._prediction_rows(
         "model_a",
