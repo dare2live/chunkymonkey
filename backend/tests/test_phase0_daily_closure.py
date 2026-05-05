@@ -1,4 +1,5 @@
 import sys
+from datetime import datetime, timedelta
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
@@ -38,8 +39,34 @@ def test_cron_child_return_codes_preserve_critical_failures():
 def test_cron_blocks_followups_after_running_sync_failures():
     assert cron_daily._sync_failure_blocks_followups({"phase": "sync", "status": "timeout"})
     assert cron_daily._sync_failure_blocks_followups({"phase": "sync", "status": "rejected"})
+    assert cron_daily._sync_failure_blocks_followups({"phase": "sync", "status": "stale_running"})
     assert not cron_daily._sync_failure_blocks_followups({"phase": "sync", "status": "skipped"})
     assert not cron_daily._sync_failure_blocks_followups({"phase": "health", "status": "critical"})
+
+
+def test_cron_detects_stale_backend_update_heartbeat():
+    now = datetime(2026, 5, 5, 12, 0, 0)
+    stale_status = {
+        "running": True,
+        "run_context": {
+            "step_id": "sync_financial",
+            "heartbeat_at": (now - timedelta(seconds=301)).isoformat(),
+        },
+    }
+    fresh_status = {
+        "running": True,
+        "run_context": {
+            "step_id": "sync_financial",
+            "heartbeat_at": (now - timedelta(seconds=30)).isoformat(),
+        },
+    }
+
+    reason = cron_daily._stale_running_reason(stale_status, stale_after_s=300, now=now)
+
+    assert reason is not None
+    assert "sync_financial" in reason
+    assert cron_daily._stale_running_reason(fresh_status, stale_after_s=300, now=now) is None
+    assert cron_daily._stale_running_reason({"running": False}, stale_after_s=300, now=now) is None
 
 
 def test_cron_daily_includes_production_topk_and_source_watermarks():

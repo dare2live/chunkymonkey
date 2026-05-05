@@ -372,6 +372,43 @@ SOFT_DEPS = {
 
 MANUAL_ONLY_STEPS = {"calc_screening", "build_turtle_features"}
 
+STEP_BUDGET_SECONDS = {
+    "sync_market_data": 30,
+    "sync_financial": 45,
+    "sync_raw": 45,
+    "sync_industry": 30,
+    "sync_surveys": 60,
+    "sync_qfii": 60,
+    "sync_margin": 60,
+    "sync_lhb": 60,
+    "sync_aif10_holder_count": 60,
+    "sync_aif10_valuation_quantile": 60,
+    "sync_aif10_peer_valuation": 60,
+    "sync_aif10_forecast_consensus": 60,
+    "sync_aif10_financial_history": 60,
+    "calc_financial_derived": 45,
+    "build_stage_features": 45,
+    "build_external_attention": 45,
+    "calc_stock_scores": 45,
+    "calc_inst_scores": 45,
+}
+
+STEP_SOURCE_DOMAINS = {
+    "sync_market_data": ("kline_daily", "tdxhub_quote", 1),
+    "sync_financial": ("financial_gpcw_8q", "tdxhub_gpcw", 1),
+    "sync_raw": ("holders_top10_float", "tdxhub_holders", 1),
+    "sync_industry": ("industry_sw", "tdxhub_block", 1),
+    "sync_surveys": ("institution_survey", "aif10_survey", 2),
+    "sync_qfii": ("qfii_holding_quarterly", "aif10_qfii", 2),
+    "sync_lhb": ("lhb_daily", "aif10_lhb", 2),
+    "sync_margin": ("margin_financing", "aif10_margin", 2),
+    "sync_aif10_holder_count": ("aif10_holder_count", "aif10", 2),
+    "sync_aif10_valuation_quantile": ("aif10_valuation_quantile", "aif10", 2),
+    "sync_aif10_peer_valuation": ("aif10_peer_valuation", "aif10", 2),
+    "sync_aif10_forecast_consensus": ("aif10_forecast_consensus", "aif10", 2),
+    "sync_aif10_financial_history": ("aif10_financial_history", "aif10", 2),
+}
+
 _is_running = False
 _stop_requested = False
 _run_context = None
@@ -388,6 +425,50 @@ def _raise_if_stop():
         raise _RunStopped("用户已停止")
 
 
+def _step_budget_seconds(step_id: str) -> Optional[int]:
+    return STEP_BUDGET_SECONDS.get(step_id)
+
+
+def _plan_with_budgets(plan: dict) -> dict:
+    out = dict(plan or {})
+    steps = list(out.get("steps") or [])
+    budgets = {step_id: STEP_BUDGET_SECONDS[step_id] for step_id in steps if step_id in STEP_BUDGET_SECONDS}
+    out["budgets"] = budgets
+    out["estimated_budget_s"] = sum(int(value or 0) for value in budgets.values())
+    return out
+
+
+def _touch_run_heartbeat(step_id: Optional[str] = None):
+    if not _run_context:
+        return
+    _run_context["heartbeat_at"] = datetime.now().isoformat()
+    if step_id:
+        _run_context["step_id"] = step_id
+
+
+def _record_step_source_state(conn, step_id: str, status: str, error_text: Optional[str] = None) -> None:
+    spec = STEP_SOURCE_DOMAINS.get(step_id)
+    if not spec:
+        return
+    data_domain, source_name, source_tier = spec
+    try:
+        from services.source_watermarks import record_source_failure, resolve_source_failures
+
+        if status in {"failed", "blocked", "partial"}:
+            record_source_failure(
+                conn,
+                data_domain=data_domain,
+                source_name=source_name,
+                source_tier=source_tier,
+                error_type=f"step_{status}",
+                last_error=error_text or status,
+            )
+        elif status in {"completed", "skipped"}:
+            resolve_source_failures(conn, data_domain=data_domain, source_name=source_name)
+    except Exception as exc:
+        logger.warning("[source_failure_queue] update failed for %s: %s", step_id, exc)
+
+
 def _set_run_context(mode: str, step_id: Optional[str] = None, step_name: Optional[str] = None, step_ids=None):
     global _run_context
     _run_context = {
@@ -396,6 +477,7 @@ def _set_run_context(mode: str, step_id: Optional[str] = None, step_name: Option
         "step_name": step_name,
         "step_ids": list(step_ids) if step_ids else None,
         "started_at": datetime.now().isoformat(),
+        "heartbeat_at": datetime.now().isoformat(),
     }
 
 
@@ -3798,6 +3880,7 @@ async def update_all():
                 _soft_missing = [d for d in soft if d in failed or d in skipped]
 
                 _update_step(conn, sid, status="running", started_at=datetime.now().isoformat())
+                _touch_run_heartbeat(sid)
                 logger.info(f"[更新] 开始: {step['name']}")
 
                 try:
@@ -3809,6 +3892,7 @@ async def update_all():
                         step_conn.close()
 
                     status, count, error_text = _resolve_step_result(result)
+                    _record_step_source_state(conn, sid, status, error_text)
                     finished_at = datetime.now().isoformat()
                     if status == "skipped":
                         _update_step(conn, sid, status="skipped",
@@ -3835,6 +3919,7 @@ async def update_all():
                     outcome = _format_step_result_for_log(status, count, error_text)
                     logger.info(f"[更新] 完成: {step['name']} ({outcome})")
                 except _RunStopped as e:
+                    _record_step_source_state(conn, sid, "blocked", str(e))
                     _update_step(conn, sid, status="stopped",
                                  finished_at=datetime.now().isoformat(), error=str(e)[:200])
                     stopped.add(sid)
@@ -3848,6 +3933,7 @@ async def update_all():
                     logger.info(f"[更新] 已停止: {step['name']}")
                     break
                 except Exception as e:
+                    _record_step_source_state(conn, sid, "failed", str(e))
                     _update_step(conn, sid, status="failed",
                                  finished_at=datetime.now().isoformat(), error=str(e)[:200])
                     failed.add(sid)
@@ -4010,7 +4096,7 @@ async def smart_plan():
     conn = get_conn()
     try:
         plan = build_smart_plan(conn)
-        return {"ok": True, "plan": plan}
+        return {"ok": True, "plan": _plan_with_budgets(plan)}
     finally:
         conn.close()
 
@@ -4033,7 +4119,7 @@ async def smart_update():
         # Production cron must not reuse a stale audit snapshot: a cached raw
         # freshness miss can incorrectly expand the daily plan into a long
         # full-source sync.
-        plan = build_smart_plan(conn_plan, use_cache=False)
+        plan = _plan_with_budgets(build_smart_plan(conn_plan, use_cache=False))
     finally:
         conn_plan.close()
 
@@ -4142,17 +4228,21 @@ async def smart_update():
                     skipped.add(sid)
                     continue
                 _update_step(conn, sid, status="running", started_at=datetime.now().isoformat())
+                _touch_run_heartbeat(sid)
                 logger.info(f"[智能更新] 开始: {step['name']}")
 
                 try:
                     runner = RUNNERS[sid]
+                    budget = _step_budget_seconds(sid)
                     step_conn = get_conn(timeout=120)
                     try:
-                        result = await runner(step_conn)
+                        coro = runner(step_conn)
+                        result = await asyncio.wait_for(coro, timeout=budget) if budget else await coro
                     finally:
                         step_conn.close()
 
                     status, count, error_text = _resolve_step_result(result)
+                    _record_step_source_state(conn, sid, status, error_text)
                     finished_at = datetime.now().isoformat()
                     if status == "skipped":
                         _update_step(conn, sid, status="skipped",
@@ -4174,6 +4264,7 @@ async def smart_update():
                     completed.add(sid)
                     _calibrate_data_completeness(conn, sid, skipped, failed)
                 except _RunStopped as e:
+                    _record_step_source_state(conn, sid, "blocked", str(e))
                     _update_step(conn, sid, status="stopped",
                                  finished_at=datetime.now().isoformat(), error=str(e)[:200])
                     stopped.add(sid)
@@ -4187,7 +4278,16 @@ async def smart_update():
                     stopped.update(remaining)
                     logger.info(f"[智能更新] 已停止: {step['name']}")
                     break
+                except asyncio.TimeoutError:
+                    budget = _step_budget_seconds(sid)
+                    error_text = f"step budget timeout after {budget}s"
+                    _record_step_source_state(conn, sid, "failed", error_text)
+                    _update_step(conn, sid, status="failed",
+                                 finished_at=datetime.now().isoformat(), error=error_text)
+                    failed.add(sid)
+                    logger.error(f"[智能更新] 超时: {step['name']}: {error_text}")
                 except Exception as e:
+                    _record_step_source_state(conn, sid, "failed", str(e))
                     _update_step(conn, sid, status="failed",
                                  finished_at=datetime.now().isoformat(), error=str(e)[:200])
                     failed.add(sid)

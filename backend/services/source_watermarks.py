@@ -26,6 +26,24 @@ CREATE TABLE IF NOT EXISTS mart_data_source_watermark (
 );
 CREATE INDEX IF NOT EXISTS idx_source_watermark_domain
     ON mart_data_source_watermark(data_domain, source_tier);
+
+CREATE TABLE IF NOT EXISTS mart_data_source_failure_queue (
+    failure_id TEXT PRIMARY KEY,
+    data_domain TEXT NOT NULL,
+    source_name TEXT NOT NULL,
+    source_tier SMALLINT,
+    stock_code TEXT,
+    error_type TEXT,
+    last_error TEXT,
+    status TEXT NOT NULL DEFAULT 'open',
+    first_seen_at TIMESTAMP,
+    last_seen_at TIMESTAMP,
+    retry_after TIMESTAMP,
+    occurrence_count INTEGER DEFAULT 1,
+    resolved_at TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_source_failure_open
+    ON mart_data_source_failure_queue(status, data_domain, source_name);
 """
 
 
@@ -202,6 +220,107 @@ def _stable_hash(*parts: Any) -> str:
     return hashlib.sha256(payload.encode("utf-8")).hexdigest()[:16]
 
 
+def _failure_id(data_domain: str, source_name: str, stock_code: str | None = None, error_type: str | None = None) -> str:
+    return _stable_hash(data_domain, source_name, stock_code or "", error_type or "generic")
+
+
+def record_source_failure(
+    conn,
+    *,
+    data_domain: str,
+    source_name: str,
+    source_tier: int | None = None,
+    stock_code: str | None = None,
+    error_type: str = "source_failure",
+    last_error: str | None = None,
+    retry_after: str | None = None,
+    commit: bool = False,
+) -> str:
+    ensure_source_watermark_schema(conn)
+    now = datetime.utcnow().isoformat()
+    failure_id = _failure_id(data_domain, source_name, stock_code, error_type)
+    conn.execute(
+        """
+        INSERT INTO mart_data_source_failure_queue (
+            failure_id, data_domain, source_name, source_tier, stock_code,
+            error_type, last_error, status, first_seen_at, last_seen_at,
+            retry_after, occurrence_count, resolved_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, 'open', ?, ?, ?, 1, NULL)
+        ON CONFLICT (failure_id) DO UPDATE SET
+            source_tier = EXCLUDED.source_tier,
+            last_error = EXCLUDED.last_error,
+            status = 'open',
+            last_seen_at = EXCLUDED.last_seen_at,
+            retry_after = EXCLUDED.retry_after,
+            occurrence_count = COALESCE(mart_data_source_failure_queue.occurrence_count, 0) + 1,
+            resolved_at = NULL
+        """,
+        (
+            failure_id,
+            data_domain,
+            source_name,
+            source_tier,
+            stock_code,
+            error_type,
+            (last_error or "")[:1000],
+            now,
+            now,
+            retry_after,
+        ),
+    )
+    if commit:
+        conn.commit()
+    return failure_id
+
+
+def resolve_source_failures(
+    conn,
+    *,
+    data_domain: str,
+    source_name: str,
+    stock_code: str | None = None,
+    commit: bool = False,
+) -> int:
+    ensure_source_watermark_schema(conn)
+    now = datetime.utcnow().isoformat()
+    where = ["data_domain = ?", "source_name = ?", "status = 'open'"]
+    params: list[Any] = [data_domain, source_name]
+    if stock_code is not None:
+        where.append("stock_code = ?")
+        params.append(stock_code)
+    cursor = conn.execute(
+        f"""
+        UPDATE mart_data_source_failure_queue
+           SET status = 'resolved', resolved_at = ?, last_seen_at = ?
+         WHERE {' AND '.join(where)}
+        """,
+        [now, now, *params],
+    )
+    if commit:
+        conn.commit()
+    try:
+        return int(cursor.rowcount or 0)
+    except Exception:
+        return 0
+
+
+def list_source_failures(conn, *, status: str = "open", limit: int = 200) -> list[dict[str, Any]]:
+    ensure_source_watermark_schema(conn)
+    rows = conn.execute(
+        """
+        SELECT failure_id, data_domain, source_name, source_tier, stock_code,
+               error_type, last_error, status, first_seen_at, last_seen_at,
+               retry_after, occurrence_count, resolved_at
+          FROM mart_data_source_failure_queue
+         WHERE status = ?
+         ORDER BY last_seen_at DESC
+         LIMIT ?
+        """,
+        (status, max(1, min(int(limit), 1000))),
+    ).fetchall()
+    return [dict(row) for row in rows]
+
+
 def derive_watermark(conn, spec: dict[str, Any]) -> dict[str, Any]:
     table = spec["table"]
     now = datetime.utcnow().isoformat()
@@ -285,5 +404,27 @@ def refresh_known_source_watermarks(conn) -> list[dict[str, Any]]:
     items = [derive_watermark(conn, spec) for spec in DOMAIN_SPECS]
     for item in items:
         upsert_watermark(conn, item)
+        if int(item.get("consecutive_failures") or 0) > 0:
+            record_source_failure(
+                conn,
+                data_domain=item["data_domain"],
+                source_name=item["source_name"],
+                source_tier=int(item["source_tier"]),
+                error_type="watermark_failure",
+                last_error=item.get("fallback_reason") or "no rows or table missing",
+            )
+        else:
+            resolve_source_failures(
+                conn,
+                data_domain=item["data_domain"],
+                source_name=item["source_name"],
+            )
+    try:
+        from services.schema_versions import record_actual_version
+
+        record_actual_version(conn, "mart_data_source_watermark")
+        record_actual_version(conn, "mart_data_source_failure_queue")
+    except Exception:
+        pass
     conn.commit()
     return items

@@ -12,6 +12,20 @@ from services.ml_lifecycle.drift import (  # noqa: E402
 )
 from scripts.build_feature_retention_decisions import build_feature_candidate_coverage  # noqa: E402
 from scripts.run_daily_topk import DDL as TOPK_DDL, _xueqiu_symbol, write_topk_view_cache  # noqa: E402
+from services.source_watermarks import (  # noqa: E402
+    ensure_source_watermark_schema,
+    list_source_failures,
+    record_source_failure,
+    resolve_source_failures,
+)
+from services.pipeline_lock import (  # noqa: E402
+    PipelineLockError,
+    acquire_pipeline_lock,
+    get_pipeline_lock,
+    heartbeat_pipeline_lock,
+    release_pipeline_lock,
+)
+from routers.updater import _plan_with_budgets  # noqa: E402
 
 
 def test_compute_psi_cached_exposes_reusable_histogram_state():
@@ -121,5 +135,86 @@ def test_write_topk_view_cache_materializes_identity_fields():
         assert cached["xueqiu_symbol"] == "SZ000001"
         assert cached["tdx_l1_name"] == "金融"
         assert _xueqiu_symbol("600000") == "SH600000"
+    finally:
+        conn.close()
+
+
+def test_source_failure_queue_records_and_resolves_failures():
+    conn = duck_mem()
+    try:
+        ensure_source_watermark_schema(conn)
+        failure_id = record_source_failure(
+            conn,
+            data_domain="financial_gpcw_8q",
+            source_name="tdxhub_gpcw",
+            source_tier=1,
+            stock_code="000001",
+            error_type="unit_error",
+            last_error="boom",
+        )
+        open_rows = list_source_failures(conn)
+        assert open_rows[0]["failure_id"] == failure_id
+        assert open_rows[0]["occurrence_count"] == 1
+
+        record_source_failure(
+            conn,
+            data_domain="financial_gpcw_8q",
+            source_name="tdxhub_gpcw",
+            source_tier=1,
+            stock_code="000001",
+            error_type="unit_error",
+            last_error="boom again",
+        )
+        open_rows = list_source_failures(conn)
+        assert open_rows[0]["occurrence_count"] == 2
+
+        resolve_source_failures(conn, data_domain="financial_gpcw_8q", source_name="tdxhub_gpcw", stock_code="000001")
+        assert list_source_failures(conn) == []
+    finally:
+        conn.close()
+
+
+def test_smart_plan_budget_annotation_is_explicit():
+    plan = _plan_with_budgets({"steps": ["sync_financial", "build_stage_features"], "reason": []})
+
+    assert plan["budgets"]["sync_financial"] == 45
+    assert plan["budgets"]["build_stage_features"] == 45
+    assert plan["estimated_budget_s"] == 90
+
+
+def test_pipeline_lock_blocks_active_holder_and_releases_stale_lock():
+    conn = duck_mem()
+    try:
+        first = acquire_pipeline_lock(
+            conn,
+            lock_name="cron_daily",
+            owner_run_id="run-1",
+            phase="sync",
+            stale_after_s=1,
+        )
+        assert first["owner_run_id"] == "run-1"
+
+        with pytest.raises(PipelineLockError):
+            acquire_pipeline_lock(conn, lock_name="cron_daily", owner_run_id="run-2", phase="sync", stale_after_s=1)
+
+        conn.execute("UPDATE mart_pipeline_lock SET heartbeat_at = '1970-01-01T00:00:00' WHERE lock_name = 'cron_daily'")
+        second = acquire_pipeline_lock(
+            conn,
+            lock_name="cron_daily",
+            owner_run_id="run-2",
+            phase="watermarks",
+            stale_after_s=1,
+        )
+        assert second["stale_released_previous"]
+
+        heartbeat_pipeline_lock(conn, lock_name="cron_daily", owner_run_id="run-2", phase="topk")
+        current = get_pipeline_lock(conn, lock_name="cron_daily")
+        assert current["owner_run_id"] == "run-2"
+        assert current["phase"] == "topk"
+
+        release_pipeline_lock(conn, lock_name="cron_daily", owner_run_id="run-2", status="released_success")
+        current = get_pipeline_lock(conn, lock_name="cron_daily")
+        assert current["status"] == "released_success"
+        assert current["released_at"] is not None
     finally:
         conn.close()

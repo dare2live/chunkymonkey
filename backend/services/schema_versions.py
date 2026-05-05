@@ -90,6 +90,8 @@ MART_VERSIONS = {
     "mart_feature_candidate_coverage": "v1",
     "mart_feature_drift_histogram": "v1",
     "mart_challenger_evidence_bundle": "v1",
+    "mart_data_source_failure_queue": "v1",
+    "mart_pipeline_lock": "v1",
     "mart_model_selection_run": "v1",
     "mart_tdx_challenger_report": "v1",
     "mart_tdx_keep_promotion_gate": "v1",

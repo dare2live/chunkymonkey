@@ -267,7 +267,19 @@
           <td style="padding:6px 12px;text-align:right;font-size:11px" class="muted">${maxFresh}</td>
         </tr>`;
       }).join('');
-      tbody.innerHTML = priorityRows + watermarkRows + sourceRows;
+      const failureRows = (ss.failure_queue || []).map((f) => {
+        return `<tr style="background:#fff7f7;border-bottom:1px solid var(--cm-ink-50,#f0f0f0)">
+          <td style="padding:6px 12px"><span style="padding:2px 6px;background:#fde8e8;color:#a02a2a;border-radius:3px;font-size:11px">failure</span></td>
+          <td style="padding:6px 12px"><code style="font-size:12px">${this.esc(f.data_domain)}</code><br><span class="muted" style="font-size:10px">${this.esc(f.source_name || '')}</span></td>
+          <td style="padding:6px 12px;text-align:right" class="muted">${this.esc(f.error_type || 'source')}</td>
+          <td style="padding:6px 12px;text-align:right;font-family:monospace">${this.fmtNum(f.occurrence_count || 0)}</td>
+          <td style="padding:6px 12px;text-align:right;color:#888">0</td>
+          <td style="padding:6px 12px;text-align:right;color:#a67c00">1</td>
+          <td style="padding:6px 12px;text-align:right;color:#c33">${this.esc(f.status || 'open')}</td>
+          <td style="padding:6px 12px;text-align:right;font-size:11px" class="muted">${this.esc(f.stock_code || f.last_error || '—')}</td>
+        </tr>`;
+      }).join('');
+      tbody.innerHTML = priorityRows + failureRows + watermarkRows + sourceRows;
     },
 
     switchTab(tab) {

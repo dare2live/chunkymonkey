@@ -47,7 +47,8 @@ BACKEND = REPO / "backend"
 sys.path.insert(0, str(BACKEND))
 
 DEFAULT_API = os.environ.get("CM_API", "http://127.0.0.1:8000")
-SYNC_BLOCKING_STATUSES = {"rejected", "timeout"}
+SYNC_BLOCKING_STATUSES = {"rejected", "timeout", "stale_running"}
+CRON_LOCK_NAME = "cron_daily"
 
 
 def _coerce_bool(value) -> bool:
@@ -117,6 +118,73 @@ def _request_sync_stop(api: str, *, reason: str, timeout: int = 5) -> dict:
         return {"ok": False, "reason": f"{type(exc).__name__}: {exc}"}
 
 
+def _parse_status_datetime(value: Optional[str]) -> Optional[datetime]:
+    if not value:
+        return None
+    text = str(value).strip()
+    if not text:
+        return None
+    if text.endswith("Z"):
+        text = f"{text[:-1]}+00:00"
+    try:
+        return datetime.fromisoformat(text)
+    except Exception:
+        return None
+
+
+def _seconds_since_status_time(value: Optional[str], *, now: Optional[datetime] = None) -> Optional[float]:
+    parsed = _parse_status_datetime(value)
+    if not parsed:
+        return None
+    if now is not None:
+        current = now
+    elif parsed.tzinfo:
+        current = datetime.now(parsed.tzinfo)
+    else:
+        current = datetime.now()
+    try:
+        return max(0.0, (current - parsed).total_seconds())
+    except TypeError:
+        return max(0.0, (datetime.now() - parsed.replace(tzinfo=None)).total_seconds())
+
+
+def _stale_running_reason(status: Optional[dict], *, stale_after_s: int, now: Optional[datetime] = None) -> Optional[str]:
+    if not isinstance(status, dict) or stale_after_s <= 0:
+        return None
+    if not _coerce_bool(status.get("running", status.get("is_running", False))):
+        return None
+    ctx = status.get("run_context") or {}
+    heartbeat_at = ctx.get("heartbeat_at") or ctx.get("started_at")
+    age = _seconds_since_status_time(heartbeat_at, now=now)
+    if age is None:
+        return None
+    if age > stale_after_s:
+        step_id = ctx.get("step_id") or ctx.get("step_name") or "unknown"
+        return f"backend update heartbeat stale for {age:.0f}s at step {step_id}"
+    return None
+
+
+def _fetch_update_status(api: str, *, timeout: int = 3) -> dict:
+    import urllib.request
+
+    with urllib.request.urlopen(f"{api}/api/inst/update/status", timeout=timeout) as r:
+        return json.loads(r.read())
+
+
+def _wait_backend_idle(api: str, *, timeout_s: int, poll_s: float = 2.0) -> dict:
+    deadline = time.time() + max(0, timeout_s)
+    last_status = None
+    while time.time() <= deadline:
+        try:
+            last_status = _fetch_update_status(api, timeout=3)
+            if not _coerce_bool(last_status.get("running", last_status.get("is_running", False))):
+                return {"ok": True, "status": last_status}
+        except Exception as exc:
+            last_status = {"ok": False, "reason": f"{type(exc).__name__}: {exc}"}
+        time.sleep(max(0.1, poll_s))
+    return {"ok": False, "status": last_status, "reason": f"backend still running after {timeout_s}s grace"}
+
+
 def _sync_status_from_backend(status: Optional[dict]) -> tuple[str, Optional[str]]:
     if not isinstance(status, dict):
         return "failed", "backend 未返回有效 status"
@@ -146,12 +214,29 @@ def _sync_status_from_backend(status: Optional[dict]) -> tuple[str, Optional[str
     return "ok", None
 
 
+def _json_safe(value):
+    if isinstance(value, datetime):
+        return value.isoformat()
+    if isinstance(value, dict):
+        return {str(k): _json_safe(v) for k, v in value.items()}
+    if isinstance(value, list):
+        return [_json_safe(v) for v in value]
+    return value
+
+
 # ─────────────────────────────────────────────────────────────────────
 # Phase 实现
 # ─────────────────────────────────────────────────────────────────────
 
 
-def phase_sync(*, api: str, timeout_s: int = 3600, full_sync: bool = False) -> dict:
+def phase_sync(
+    *,
+    api: str,
+    timeout_s: int = 3600,
+    full_sync: bool = False,
+    stale_heartbeat_s: int = 300,
+    stop_grace_s: int = 30,
+) -> dict:
     """Phase 1: HTTP POST backend update endpoint + 轮询 status 直到 done.
 
     依赖 backend server 运行 (start.command 启动). 若 server down,
@@ -163,13 +248,35 @@ def phase_sync(*, api: str, timeout_s: int = 3600, full_sync: bool = False) -> d
     except ImportError:
         return {"phase": "sync", "status": "failed", "reason": "urllib missing"}
 
-    # 探测 server
+    # 探测 server / 清理 stale updater
     try:
-        with urllib.request.urlopen(f"{api}/api/inst/update/status", timeout=3) as r:
-            r.read()
+        initial_status = _fetch_update_status(api, timeout=3)
     except Exception as exc:
         log.warning(f"[sync] backend server 不可达 ({api}): {exc}")
         return {"phase": "sync", "status": "skipped", "reason": str(exc)}
+
+    stale_reason = _stale_running_reason(initial_status, stale_after_s=stale_heartbeat_s)
+    if stale_reason:
+        stop_result = _request_sync_stop(api, reason=f"cron_daily stale sync guard: {stale_reason}")
+        idle_result = _wait_backend_idle(api, timeout_s=stop_grace_s)
+        if not idle_result.get("ok"):
+            log.error("[sync] stale backend update still running: %s", idle_result)
+            return {
+                "phase": "sync",
+                "status": "stale_running",
+                "reason": stale_reason,
+                "stop_result": stop_result,
+                "idle_result": idle_result,
+                "last_summary": initial_status,
+            }
+        log.warning("[sync] cleared stale backend update before starting daily sync: %s", stale_reason)
+    elif _coerce_bool(initial_status.get("running", initial_status.get("is_running", False))):
+        return {
+            "phase": "sync",
+            "status": "rejected",
+            "reason": "backend update already running",
+            "last_summary": initial_status,
+        }
 
     trigger_path = "/api/inst/update/all" if full_sync else "/api/inst/update/smart"
 
@@ -193,8 +300,7 @@ def phase_sync(*, api: str, timeout_s: int = 3600, full_sync: bool = False) -> d
     last_summary = None
     while time.time() - t0 < timeout_s:
         try:
-            with urllib.request.urlopen(f"{api}/api/inst/update/status", timeout=10) as r:
-                status = json.loads(r.read())
+            status = _fetch_update_status(api, timeout=10)
             running = _coerce_bool(status.get("running", status.get("is_running", False)))
             last_summary = status
             if not running:
@@ -365,7 +471,15 @@ def phase_audit() -> dict:
 ALL_PHASES = ["sync", "lineage", "watermarks", "topk", "health", "drift", "audit"]
 
 
-def _record_cron_manifest(*, started_at: str, elapsed_s: float, results: list[dict], exit_severity: int) -> None:
+def _record_cron_manifest(
+    *,
+    run_id: str,
+    started_at: str,
+    elapsed_s: float,
+    results: list[dict],
+    exit_severity: int,
+    lock_summary: Optional[dict] = None,
+) -> None:
     try:
         from services.db import get_conn
         from services.pipeline_manifest import git_commit_sha, record_pipeline_run, utc_now_iso
@@ -375,7 +489,7 @@ def _record_cron_manifest(*, started_at: str, elapsed_s: float, results: list[di
         try:
             record_pipeline_run(
                 conn,
-                run_id=f"cron_daily_{datetime.utcnow().strftime('%Y%m%d_%H%M%S')}",
+                run_id=run_id,
                 pipeline_name="cron_daily",
                 status=status,
                 started_at=started_at,
@@ -389,10 +503,14 @@ def _record_cron_manifest(*, started_at: str, elapsed_s: float, results: list[di
                     "mart_multidim_model",
                 ],
                 output_tables=[
+                    "mart_pipeline_lock",
                     "mart_data_source_watermark",
+                    "mart_data_source_failure_queue",
                     "mart_daily_recommendation",
+                    "mart_daily_topk_view_cache",
                     "mart_data_health",
                     "mart_feature_drift",
+                    "mart_feature_drift_histogram",
                 ],
                 model_id=None,
                 feature_group="daily_production",
@@ -403,14 +521,73 @@ def _record_cron_manifest(*, started_at: str, elapsed_s: float, results: list[di
                     if _phase_exit_severity(r) > 0
                 ],
                 perf_summary={
-                    "phases": results,
+                    "phases": _json_safe(results),
                     "exit_severity": exit_severity,
+                    "pipeline_lock": _json_safe(lock_summary),
                 },
             )
         finally:
             conn.close()
     except Exception as exc:
         log.warning("[manifest] cron_daily record failed: %s", exc)
+
+
+def _acquire_cron_pipeline_lock(*, run_id: str, stale_after_s: int, metadata: Optional[dict] = None) -> dict:
+    from services.db import get_conn
+    from services.pipeline_lock import acquire_pipeline_lock
+    from services.schema_versions import record_actual_version
+
+    conn = get_conn(timeout=30)
+    try:
+        summary = acquire_pipeline_lock(
+            conn,
+            lock_name=CRON_LOCK_NAME,
+            owner_run_id=run_id,
+            phase="startup",
+            stale_after_s=stale_after_s,
+            metadata=metadata,
+        )
+        record_actual_version(conn, "mart_pipeline_lock")
+        conn.commit()
+        return summary
+    finally:
+        conn.close()
+
+
+def _heartbeat_cron_pipeline_lock(*, run_id: str, phase: str) -> None:
+    try:
+        from services.db import get_conn
+        from services.pipeline_lock import heartbeat_pipeline_lock
+
+        conn = get_conn(timeout=30)
+        try:
+            heartbeat_pipeline_lock(conn, lock_name=CRON_LOCK_NAME, owner_run_id=run_id, phase=phase, commit=True)
+        finally:
+            conn.close()
+    except Exception as exc:
+        log.warning("[lock] heartbeat failed for phase=%s: %s", phase, exc)
+
+
+def _release_cron_pipeline_lock(*, run_id: str, status: str) -> dict:
+    try:
+        from services.db import get_conn
+        from services.pipeline_lock import release_pipeline_lock
+
+        conn = get_conn(timeout=30)
+        try:
+            released = release_pipeline_lock(
+                conn,
+                lock_name=CRON_LOCK_NAME,
+                owner_run_id=run_id,
+                status=status,
+                commit=True,
+            )
+            return {"released": released, "status": status}
+        finally:
+            conn.close()
+    except Exception as exc:
+        log.warning("[lock] release failed: %s", exc)
+        return {"released": False, "status": status, "error": str(exc)}
 
 
 def main() -> int:
@@ -424,6 +601,9 @@ def main() -> int:
     parser.add_argument("--only", help="逗号分隔: sync,lineage,watermarks,topk,health,drift,audit")
     parser.add_argument("--strict", action="store_true", help="任一 phase 失败即退出")
     parser.add_argument("--sync-timeout", type=int, default=3600)
+    parser.add_argument("--stale-heartbeat-seconds", type=int, default=300, help="backend update heartbeat 超过该秒数视为 stale")
+    parser.add_argument("--stop-grace-seconds", type=int, default=30, help="发现 stale updater 后等待停止的秒数")
+    parser.add_argument("--pipeline-lock-stale-seconds", type=int, default=600, help="cron_daily pipeline lock heartbeat 超过该秒数视为 stale")
     args = parser.parse_args()
 
     selected = ALL_PHASES if not args.only else [p.strip() for p in args.only.split(",")]
@@ -435,52 +615,100 @@ def main() -> int:
     log.info(f"=== cron_daily 开始 phases={selected} ===")
     t0 = time.time()
     started_at = datetime.utcnow().isoformat(timespec="seconds")
+    run_id = f"cron_daily_{datetime.utcnow().strftime('%Y%m%d_%H%M%S')}"
     results = []
     exit_severity = 0
+    lock_summary = None
 
-    for phase in selected:
-        log.info(f"--- phase: {phase} ---")
-        phase_t0 = time.time()
-        if phase == "sync":
-            r = phase_sync(api=args.api, timeout_s=args.sync_timeout, full_sync=args.full_sync)
-        elif phase == "lineage":
-            r = phase_lineage()
-        elif phase == "watermarks":
-            r = phase_watermarks()
-        elif phase == "topk":
-            r = phase_topk(top_k=args.top_k, shadow_model_id=args.shadow_model_id)
-        elif phase == "health":
-            r = phase_health()
-        elif phase == "drift":
-            r = phase_drift()
-        elif phase == "audit":
-            r = phase_audit()
-        else:
-            log.warning(f"unknown phase: {phase}")
-            continue
-
-        r.setdefault("phase_elapsed_s", round(time.time() - phase_t0, 3))
+    try:
+        lock_summary = _acquire_cron_pipeline_lock(
+            run_id=run_id,
+            stale_after_s=args.pipeline_lock_stale_seconds,
+            metadata={"phases": selected, "full_sync": args.full_sync},
+        )
+    except Exception as exc:
+        active_lock = _json_safe(getattr(exc, "active_lock", None))
+        r = {
+            "phase": "pipeline_lock",
+            "status": "critical",
+            "reason": str(exc),
+            "active_lock": active_lock,
+        }
         results.append(r)
-        log.info(f"--- {phase}: {r.get('status')} ---")
-        phase_severity = _phase_exit_severity(r)
-        exit_severity = max(exit_severity, phase_severity)
-        if phase_severity:
-            if _sync_failure_blocks_followups(r):
-                log.error(
-                    "sync 状态 %s，跳过剩余 phase，避免后台更新仍在运行时争抢 DuckDB 锁",
-                    r.get("status"),
+        elapsed = time.time() - t0
+        _record_cron_manifest(
+            run_id=run_id,
+            started_at=started_at,
+            elapsed_s=elapsed,
+            results=results,
+            exit_severity=2,
+            lock_summary={"acquired": False, "error": str(exc), "active_lock": active_lock},
+        )
+        log.error("[lock] cron_daily pipeline lock unavailable: %s", exc)
+        return 2
+
+    try:
+        for phase in selected:
+            log.info(f"--- phase: {phase} ---")
+            _heartbeat_cron_pipeline_lock(run_id=run_id, phase=phase)
+            if lock_summary is not None:
+                lock_summary["last_phase"] = phase
+            phase_t0 = time.time()
+            if phase == "sync":
+                r = phase_sync(
+                    api=args.api,
+                    timeout_s=args.sync_timeout,
+                    full_sync=args.full_sync,
+                    stale_heartbeat_s=args.stale_heartbeat_seconds,
+                    stop_grace_s=args.stop_grace_seconds,
                 )
-                break
-            if args.strict:
-                log.error(f"strict 模式 — phase {phase} 状态 {r.get('status')}, 立刻退出")
-                break
+            elif phase == "lineage":
+                r = phase_lineage()
+            elif phase == "watermarks":
+                r = phase_watermarks()
+            elif phase == "topk":
+                r = phase_topk(top_k=args.top_k, shadow_model_id=args.shadow_model_id)
+            elif phase == "health":
+                r = phase_health()
+            elif phase == "drift":
+                r = phase_drift()
+            elif phase == "audit":
+                r = phase_audit()
+            else:
+                log.warning(f"unknown phase: {phase}")
+                continue
+
+            r.setdefault("phase_elapsed_s", round(time.time() - phase_t0, 3))
+            results.append(r)
+            log.info(f"--- {phase}: {r.get('status')} ---")
+            phase_severity = _phase_exit_severity(r)
+            exit_severity = max(exit_severity, phase_severity)
+            if phase_severity:
+                if _sync_failure_blocks_followups(r):
+                    log.error(
+                        "sync 状态 %s，跳过剩余 phase，避免后台更新仍在运行时争抢 DuckDB 锁",
+                        r.get("status"),
+                    )
+                    break
+                if args.strict:
+                    log.error(f"strict 模式 — phase {phase} 状态 {r.get('status')}, 立刻退出")
+                    break
+    finally:
+        release_summary = _release_cron_pipeline_lock(
+            run_id=run_id,
+            status="released_success" if exit_severity == 0 else ("released_critical" if exit_severity >= 2 else "released_warn"),
+        )
+        if lock_summary is not None:
+            lock_summary = {**lock_summary, "release": release_summary}
 
     elapsed = time.time() - t0
     _record_cron_manifest(
+        run_id=run_id,
         started_at=started_at,
         elapsed_s=elapsed,
         results=results,
         exit_severity=exit_severity,
+        lock_summary=lock_summary,
     )
     log.info(f"=== cron_daily 结束 ({elapsed:.0f}s) ===")
     log.info(json.dumps({"phases": results, "elapsed_s": elapsed}, indent=2, ensure_ascii=False))

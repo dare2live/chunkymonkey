@@ -222,6 +222,7 @@ def get_sources_overview() -> dict[str, Any]:
         priorities = []
         try:
             from services.source_watermarks import ensure_source_watermark_schema
+            from services.source_watermarks import list_source_failures
 
             ensure_source_watermark_schema(con)
             watermarks = [
@@ -236,8 +237,10 @@ def get_sources_overview() -> dict[str, Any]:
                     """
                 ).fetchall()
             ]
+            failure_queue = list_source_failures(con, status="open", limit=200)
         except Exception:
             watermarks = []
+            failure_queue = []
         try:
             priorities = [
                 dict(r) for r in con.execute(
@@ -255,6 +258,7 @@ def get_sources_overview() -> dict[str, Any]:
             "sources": [dict(r) for r in rows],
             "source_priorities": priorities,
             "watermarks": watermarks,
+            "failure_queue": failure_queue,
         }
     finally:
         con.close()
