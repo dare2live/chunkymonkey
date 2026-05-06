@@ -84,6 +84,12 @@
     const cls = n >= 0 ? 'sig-pos' : 'sig-neg';
     return `<span class="${cls}">${n >= 0 ? '+' : ''}${n.toFixed(digits)}%</span>`;
   }
+  function fmtRatioPct(v, digits = 1) {
+    if (v == null || isNaN(Number(v))) return '-';
+    const n = Number(v) * 100;
+    const cls = n >= 0 ? 'sig-pos' : 'sig-neg';
+    return `<span class="${cls}">${n >= 0 ? '+' : ''}${n.toFixed(digits)}%</span>`;
+  }
   function fmtDate(d) {
     if (!d) return '-';
     const s = String(d).replace(/[^0-9]/g, '').slice(0, 8);
@@ -131,6 +137,24 @@
   function topPercent(item) {
     if (!item || item.percentile == null || isNaN(item.percentile)) return null;
     return Math.max(0.1, (1 - Number(item.percentile)) * 100);
+  }
+  function horizonEvidence(item) {
+    return item && item.horizon_evidence ? item.horizon_evidence : null;
+  }
+  function horizonLabel(item) {
+    const h = horizonEvidence(item);
+    const days = h ? h.selected_horizon_days : item?.selected_horizon_days;
+    if (!days) return '--';
+    return String(days) + 'd' + ((h && h.is_baseline) || Number(days) === 60 ? '基线' : '');
+  }
+  function horizonDetailText(item) {
+    const h = horizonEvidence(item);
+    if (!h) return '暂无个股周期证据';
+    const bits = [];
+    if (h.selected_horizon_confidence != null) bits.push('conf ' + (Number(h.selected_horizon_confidence) * 100).toFixed(0) + '%');
+    if (h.avg_return_advantage != null) bits.push('收益差 ' + (Number(h.avg_return_advantage) * 100).toFixed(1) + '%');
+    if (h.selected_max_drawdown != null) bits.push('DD ' + (Number(h.selected_max_drawdown) * 100).toFixed(1) + '%');
+    return bits.join(' · ') || '60d baseline';
   }
   function renderAiCell(stockCode) {
     const item = state.topkMap.get(stockCode);
@@ -483,6 +507,7 @@
         <span><span class="muted">最佳长期EV</span> ${s.longEVBest != null ? fmtPct(s.longEVBest) : '-'}</span>
         <span><span class="muted">最近事件</span> ${fmtDate(s.latestNotice)}</span>
         <span><span class="muted">AI</span> ${renderAiCell(code)}</span>
+        <span><span class="muted">周期</span> ${esc(horizonLabel(state.topkMap.get(code)))}</span>
         <span id="sv-drawer-multidim-badge"></span>
       </div>
       <div class="sv-drawer-tabs">${tabBtns}</div>
@@ -549,6 +574,11 @@
         <p class="muted">${top == null ? '当前 champion 推荐未覆盖该股。' : 'Top ' + top.toFixed(top < 10 ? 1 : 0) + '% · ' + esc(state.topkMeta?.model_id || '')}</p>
       </div>
       <div class="cm-action-card">
+        <div class="cm-action-title">跟随周期</div>
+        <p><b>${esc(horizonLabel(topk))}</b></p>
+        <p class="muted">${esc(horizonDetailText(topk))}</p>
+      </div>
+      <div class="cm-action-card">
         <div class="cm-action-title">机构事件</div>
         <p><b>${s.instCount}</b> 机构 · <b>${s.eventCount}</b> 事件</p>
         <p class="muted">最近事件 ${fmtDate(s.latestNotice)} · 平均溢价 ${s.premiumAvg != null ? fmtPct(s.premiumAvg) : '-'}</p>
@@ -571,6 +601,10 @@
   function renderTabModelExplain(content, s) {
     const topk = state.topkMap.get(s.stockCode);
     const top = topPercent(topk);
+    const horizon = horizonEvidence(topk);
+    const topEffects = (horizon && horizon.top_feature_effects || []).slice(0, 3).map(row =>
+      `<span><code>${esc(row.feature_name || '-')}</code> ${row.corr == null ? '' : Number(row.corr).toFixed(3)}</span>`
+    ).join('');
     content.innerHTML = `<div class="cm-action-grid cm-action-grid-tight">
       <div class="cm-action-card">
         <div class="cm-action-title">Champion 推荐</div>
@@ -583,11 +617,12 @@
         <p class="muted">角色 ${esc(modelRoleText(state.topkMeta))} · 日期 ${esc(state.topkMeta?.snapshot_date || '--')}</p>
       </div>
       <div class="cm-action-card">
-        <div class="cm-action-title">TDX Keep Challenger</div>
-        <p><b>Shadow / Not promoted</b></p>
-        <p class="muted">实验推荐需要在模型实验室显式查看，不混入正式 TopK。</p>
+        <div class="cm-action-title">个股持股周期</div>
+        <p><b>${esc(horizonLabel(topk))}</b></p>
+        <p class="muted">${horizon ? '收益优势 ' + fmtRatioPct(horizon.avg_return_advantage) + ' · 回撤 ' + fmtRatioPct(horizon.selected_max_drawdown) : '暂无个股周期证据'}</p>
       </div>
     </div>
+    ${topEffects ? '<div class="cm-muted-note" style="margin-top:10px">周期变量影响 ' + topEffects + '</div>' : ''}
     <div id="sv-drawer-model-badge" style="margin-top:12px"></div>`;
     if (global.MultidimBadgeWidget) {
       global.MultidimBadgeWidget.mount('sv-drawer-model-badge', { stockCode: s.stockCode });
@@ -741,6 +776,7 @@
         <td>#${esc(item.rank || '-')}</td>
         <td>${securityIdentity(identity, { className: 'cm-security-identity cm-security-identity--inline' })}</td>
         <td>${top == null ? '--' : 'Top ' + top.toFixed(top < 10 ? 1 : 0) + '%'}</td>
+        <td>${esc(horizonLabel(item))}</td>
         <td>${esc(industry)}</td>
         <td>${covered ? '是' : '否'}</td>
         <td><button class="chip chip-outline chip-sm" data-ai-pick="${esc(item.stock_code)}">${covered ? '打开' : '提示'}</button></td>
@@ -755,7 +791,7 @@
     </div>
     <div class="cm-table-scroll">
       <table class="cm-compact-table">
-        <thead><tr><th>#</th><th>股票</th><th>AI分位</th><th>行业</th><th>机构列表</th><th>操作</th></tr></thead>
+        <thead><tr><th>#</th><th>股票</th><th>AI分位</th><th>周期</th><th>行业</th><th>机构列表</th><th>操作</th></tr></thead>
         <tbody>${rows}</tbody>
       </table>
     </div>`;

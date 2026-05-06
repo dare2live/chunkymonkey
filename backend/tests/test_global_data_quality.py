@@ -933,7 +933,7 @@ def test_global_data_quality_gate_blocks_non_investable_primary_recommendation()
         ) in result["blockers"]
 
 
-def test_global_data_quality_gate_blocks_cleanup_backup_tables() -> None:
+def test_global_data_quality_gate_blocks_forbidden_cleanup_tables_globally() -> None:
     with duck_mem() as conn:
         _seed_calendar(conn)
         conn.executescript(
@@ -945,6 +945,12 @@ def test_global_data_quality_gate_blocks_cleanup_backup_tables() -> None:
             );
             INSERT INTO fact_feature_panel VALUES ('000001', '2026-01-02', 10.0);
             CREATE TABLE backup_storage_cleanup_unit (
+                model_id TEXT
+            );
+            CREATE TABLE archive_candidate_unit (
+                model_id TEXT
+            );
+            CREATE TABLE model_outputs_bak (
                 model_id TEXT
             );
             """
@@ -962,6 +968,9 @@ def test_global_data_quality_gate_blocks_cleanup_backup_tables() -> None:
         assert result["gate_status"] == "blocked"
         assert "cleanup_policy:direct_delete_no_archive:mart_data_deletion_record" in result["blockers"]
         assert result["evidence"]["cleanup_policy"]["backup_table_count"] == 1
+        assert result["evidence"]["cleanup_policy"]["forbidden_table_count"] == 3
+        names = {item["name"] for item in result["evidence"]["cleanup_policy"]["examples"]}
+        assert {"backup_storage_cleanup_unit", "archive_candidate_unit", "model_outputs_bak"}.issubset(names)
 
 
 def test_global_data_quality_gate_blocks_workspace_cleanup_artifacts(tmp_path, monkeypatch) -> None:

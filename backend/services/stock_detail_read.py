@@ -13,6 +13,7 @@ from typing import Optional
 
 from services.industry import resolve_industry, with_industry_aliases
 from services.market_signals import load_margin_balance_overlay
+from services.stock_horizon_read import load_stock_horizon_evidence
 
 
 logger = logging.getLogger("cm-api")
@@ -207,6 +208,7 @@ async def load_stock_detail_context(
     timeline_events = detail_timeline.get("timeline_events") or []
     tdx_quarterly_overlay = detail_timeline.get("tdx_quarterly_overlay") or {}
     tdx_blocks = load_stock_tdx_block_memberships(conn, stock_code)
+    stock_horizon = load_stock_horizon_evidence(conn, [stock_code]).get(stock_code)
     margin_balance_overlay = load_margin_balance_overlay(stock_code)
     enriched_institutions = enrich_stock_institutions(institutions, latest_close_row)
     setup_row = load_stock_setup_row(conn, stock_code)
@@ -231,6 +233,7 @@ async def load_stock_detail_context(
         "timeline_events": merged_timeline_events,
         "tdx_quarterly_overlay": tdx_quarterly_overlay,
         "tdx_blocks": tdx_blocks,
+        "stock_horizon": stock_horizon,
         "margin_balance_overlay": margin_balance_overlay,
         "shareholder_change_summary": (shareholder_change_payload or {}).get("recent_180d"),
         "latest_close_date": latest_close_row["date"] if latest_close_row else None,

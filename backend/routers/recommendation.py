@@ -15,6 +15,7 @@ from services.ml_lifecycle.registry import (
     get_model_status,
     select_default_model_id,
 )
+from services.stock_horizon_read import load_stock_horizon_evidence
 
 logger = logging.getLogger("cm-api")
 router = APIRouter()
@@ -204,9 +205,34 @@ async def get_daily_topk(
             LIMIT ?
         """
         rows = cache_rows or conn.execute(sql, params + [limit]).fetchall()
+        horizon_evidence_by_stock = load_stock_horizon_evidence(
+            conn,
+            [r["stock_code"] for r in rows],
+        )
         items = []
         key_features_cache = None
         for r in rows:
+            horizon_evidence = horizon_evidence_by_stock.get(str(r["stock_code"]))
+            baseline_horizon_days = (
+                horizon_evidence.get("baseline_horizon_days")
+                if horizon_evidence
+                else r["baseline_horizon_days"]
+            )
+            selected_horizon_days = (
+                horizon_evidence.get("selected_horizon_days")
+                if horizon_evidence
+                else r["selected_horizon_days"]
+            )
+            selected_horizon_confidence = (
+                horizon_evidence.get("selected_horizon_confidence")
+                if horizon_evidence
+                else r["selected_horizon_confidence"]
+            )
+            horizon_selection_run_id = (
+                horizon_evidence.get("run_id")
+                if horizon_evidence
+                else r["horizon_selection_run_id"]
+            )
             stock_feature_values = []
             stock_feature_contributions = []
             if key_features_cache is None:
@@ -240,10 +266,11 @@ async def get_daily_topk(
                 "is_primary": bool(r["is_primary"]),
                 "l1": r["l1"],
                 "l2": r["l2"],
-                "baseline_horizon_days": r["baseline_horizon_days"],
-                "selected_horizon_days": r["selected_horizon_days"],
-                "selected_horizon_confidence": r["selected_horizon_confidence"],
-                "horizon_selection_run_id": r["horizon_selection_run_id"],
+                "baseline_horizon_days": baseline_horizon_days,
+                "selected_horizon_days": selected_horizon_days,
+                "selected_horizon_confidence": selected_horizon_confidence,
+                "horizon_selection_run_id": horizon_selection_run_id,
+                "horizon_evidence": horizon_evidence,
                 "top_feature_values": stock_feature_values[:8] if isinstance(stock_feature_values, list) else [],
                 "top_feature_contributions": (
                     stock_feature_contributions[:8]

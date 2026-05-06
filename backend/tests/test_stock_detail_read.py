@@ -248,6 +248,17 @@ def test_load_stock_detail_context_builds_canonical_payload(monkeypatch):
     )
     monkeypatch.setattr(
         stock_detail_read,
+        "load_stock_horizon_evidence",
+        lambda _conn, codes: {
+            "600519": {
+                "selected_horizon_days": 90,
+                "baseline_horizon_days": 60,
+                "avg_return_advantage": 0.03,
+            }
+        },
+    )
+    monkeypatch.setattr(
+        stock_detail_read,
         "enrich_stock_institutions",
         lambda institutions, _latest_close_row: [dict(inst, latest_close_date="20260415") for inst in institutions],
     )
@@ -291,6 +302,7 @@ def test_load_stock_detail_context_builds_canonical_payload(monkeypatch):
     assert payload["attention"]["stock_name"] == "贵州茅台"
     assert payload["timeline_events"][-1]["title"] == "外部关注"
     assert payload["tdx_blocks"]["total_blocks"] == 1
+    assert payload["stock_horizon"]["selected_horizon_days"] == 90
     assert payload["shareholder_change_summary"] == {"event_count": 3}
     assert payload["latest_close_date"] == "20260415"
     assert payload["latest_notice_date"] == "2026-04-16"

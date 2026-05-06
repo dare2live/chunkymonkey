@@ -2875,13 +2875,42 @@ FORBIDDEN_CLEANUP_DIR_NAMES = {
 }
 FORBIDDEN_CLEANUP_MARKERS = ("archive", "backup", "quarantine", "归档", "备份", "隔离")
 FORBIDDEN_CLEANUP_SUFFIXES = (".bak", ".backup", ".orig")
+FORBIDDEN_CLEANUP_TABLE_SUFFIXES = ("_bak", "_backup", "_orig")
+
+
+def _is_forbidden_cleanup_name(name: str, *, table_name: bool = False) -> bool:
+    lowered = name.lower()
+    if any(marker in lowered for marker in FORBIDDEN_CLEANUP_MARKERS):
+        return True
+    suffixes = FORBIDDEN_CLEANUP_TABLE_SUFFIXES if table_name else FORBIDDEN_CLEANUP_SUFFIXES
+    if any(lowered.endswith(suffix) for suffix in suffixes):
+        return True
+    return (not table_name) and lowered.endswith("~")
 
 
 def _is_forbidden_cleanup_artifact(path: Path) -> bool:
-    lowered = path.name.lower()
-    if any(marker in lowered for marker in FORBIDDEN_CLEANUP_MARKERS):
-        return True
-    return path.is_file() and (lowered.endswith(FORBIDDEN_CLEANUP_SUFFIXES) or lowered.endswith("~"))
+    return _is_forbidden_cleanup_name(path.name, table_name=False)
+
+
+def _find_forbidden_cleanup_tables(conn: Any) -> list[str]:
+    try:
+        table_names = [
+            str(_row_value(row, "table_name", 0))
+            for row in conn.execute(
+                """
+                SELECT table_name
+                  FROM information_schema.tables
+                 ORDER BY table_name
+                """
+            ).fetchall()
+        ]
+    except Exception:
+        return []
+    return sorted(
+        name
+        for name in table_names
+        if _is_forbidden_cleanup_name(name, table_name=True)
+    )
 
 
 def _find_forbidden_cleanup_artifacts(root: Path, *, max_depth: int | None = None) -> list[str]:
@@ -2900,7 +2929,6 @@ def _find_forbidden_cleanup_artifacts(root: Path, *, max_depth: int | None = Non
         for child in children:
             if child.name in FORBIDDEN_CLEANUP_DIR_NAMES:
                 continue
-            lowered = child.name.lower()
             if _is_forbidden_cleanup_artifact(child):
                 forbidden.append(str(child))
                 continue
@@ -2917,21 +2945,11 @@ def _check_cleanup_policy(
     blockers: list[str],
     warnings: list[str],
 ) -> dict[str, Any]:
-    backup_tables: list[str] = [
-        str(_row_value(row, "table_name", 0))
-        for row in conn.execute(
-            """
-            SELECT table_name
-              FROM information_schema.tables
-             WHERE lower(table_name) LIKE 'backup_storage_cleanup_%'
-             ORDER BY table_name
-            """
-        ).fetchall()
-    ]
+    forbidden_tables = _find_forbidden_cleanup_tables(conn)
     forbidden_artifacts = _find_forbidden_cleanup_artifacts(WORKSPACE_ROOT)
     forbidden_dirs = [path for path in forbidden_artifacts if Path(path).is_dir()]
     forbidden_files = [path for path in forbidden_artifacts if Path(path).is_file()]
-    violation_count = len(backup_tables) + len(forbidden_artifacts)
+    violation_count = len(forbidden_tables) + len(forbidden_artifacts)
     item = _detail(
         domain="cleanup_policy",
         table_name="mart_data_deletion_record",
@@ -2942,10 +2960,10 @@ def _check_cleanup_policy(
         reason=(
             None
             if violation_count == 0
-            else "obsolete data cleanup must delete verified stale artifacts directly; backup/archive artifacts are forbidden"
+            else "obsolete data cleanup must delete verified stale artifacts directly; archive/backup/quarantine artifacts are globally forbidden"
         ),
         examples=[
-            *({"kind": "duckdb_backup_table", "name": table} for table in backup_tables[:10]),
+            *({"kind": "duckdb_forbidden_cleanup_table", "name": table} for table in forbidden_tables[:10]),
             *({"kind": "filesystem_cleanup_artifact", "path": path} for path in forbidden_artifacts[:10]),
         ],
     )
@@ -2953,7 +2971,8 @@ def _check_cleanup_policy(
     return {
         "delete_policy": DELETE_POLICY,
         "cleanup_artifact_scan_root": str(WORKSPACE_ROOT),
-        "backup_table_count": len(backup_tables),
+        "forbidden_table_count": len(forbidden_tables),
+        "backup_table_count": len([name for name in forbidden_tables if "backup" in name.lower()]),
         "forbidden_dir_count": len(forbidden_dirs),
         "forbidden_file_count": len(forbidden_files),
         "forbidden_artifact_count": len(forbidden_artifacts),

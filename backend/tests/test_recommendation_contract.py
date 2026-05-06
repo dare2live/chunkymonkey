@@ -55,6 +55,38 @@ def test_daily_topk_items_include_model_trace(monkeypatch):
             tdx_l1_name TEXT,
             tdx_l2_name TEXT
         );
+        CREATE TABLE mart_stock_horizon_selection (
+            run_id TEXT,
+            stock_code TEXT,
+            baseline_label TEXT,
+            baseline_horizon_days INTEGER,
+            selected_label TEXT,
+            selected_horizon_days INTEGER,
+            selected_horizon_confidence DOUBLE,
+            selected_horizon_score DOUBLE,
+            baseline_horizon_score DOUBLE,
+            score_advantage DOUBLE,
+            avg_return_advantage DOUBLE,
+            selected_max_drawdown DOUBLE,
+            baseline_max_drawdown DOUBLE,
+            selected_obs_count INTEGER,
+            baseline_obs_count INTEGER,
+            gate_status TEXT,
+            fallback_reason TEXT,
+            built_at TEXT
+        );
+        CREATE TABLE mart_stock_horizon_feature_effect (
+            run_id TEXT,
+            stock_code TEXT,
+            label_name TEXT,
+            horizon_days INTEGER,
+            feature_name TEXT,
+            obs_count INTEGER,
+            corr DOUBLE,
+            abs_corr_rank INTEGER,
+            effect_direction TEXT,
+            built_at TEXT
+        );
         INSERT INTO mart_model_lifecycle VALUES (
             'model_a', 'champion', TIMESTAMP '2026-05-04 09:00:00', TIMESTAMP '2026-05-04 09:00:00'
         );
@@ -68,6 +100,15 @@ def test_daily_topk_items_include_model_trace(monkeypatch):
         INSERT INTO dim_active_a_stock VALUES ('000001', '平安银行A股');
         INSERT INTO mart_stock_trend VALUES ('000001', '平安银行趋势');
         INSERT INTO dim_stock_tdx_industry VALUES ('000001', '金融', '银行');
+        INSERT INTO mart_stock_horizon_selection VALUES (
+            'stock_horizon_latest', '000001', 'follow_net_return_60d', 60,
+            'follow_net_return_90d', 90, 0.72, 0.18, 0.12, 0.06, 0.03,
+            -0.08, -0.13, 90, 90, 'selected', NULL, '2026-05-06T10:00:00'
+        );
+        INSERT INTO mart_stock_horizon_feature_effect VALUES (
+            'stock_horizon_latest', '000001', 'follow_net_return_90d', 90,
+            'ma_ratio_60', 90, -0.42, 1, 'negative', '2026-05-06T10:00:00'
+        );
         """
     )
     monkeypatch.setattr(recommendation, "get_conn", lambda: conn)
@@ -84,6 +125,10 @@ def test_daily_topk_items_include_model_trace(monkeypatch):
     assert item["stock_name"] == "平安银行A股"
     assert item["track_id"] == "primary"
     assert item["is_primary"] is True
+    assert item["selected_horizon_days"] == 90
+    assert item["horizon_selection_run_id"] == "stock_horizon_latest"
+    assert item["horizon_evidence"]["avg_return_advantage"] == 0.03
+    assert item["horizon_evidence"]["top_feature_effects"][0]["feature_name"] == "ma_ratio_60"
     assert item["top_feature_values"][0]["name"] == "ret_20d"
     assert item["top_feature_values"][0]["model_value"] == 0.12
 

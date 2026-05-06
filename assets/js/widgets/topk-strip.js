@@ -16,6 +16,21 @@
     if (v == null || isNaN(v)) return '—';
     return (Number(v) * 100).toFixed(1);
   }
+  function horizonLabel(item) {
+    var h = item && item.horizon_evidence ? item.horizon_evidence : null;
+    var days = h ? h.selected_horizon_days : (item ? item.selected_horizon_days : null);
+    if (!days) return '';
+    return String(days) + 'd' + ((h && h.is_baseline) || Number(days) === 60 ? '基线' : '');
+  }
+  function horizonTitle(item) {
+    var h = item && item.horizon_evidence ? item.horizon_evidence : null;
+    if (!h) return '';
+    var bits = [];
+    if (h.selected_horizon_confidence != null) bits.push('conf ' + (Number(h.selected_horizon_confidence) * 100).toFixed(0) + '%');
+    if (h.avg_return_advantage != null) bits.push('收益差 ' + (Number(h.avg_return_advantage) * 100).toFixed(1) + '%');
+    if (h.selected_max_drawdown != null) bits.push('DD ' + (Number(h.selected_max_drawdown) * 100).toFixed(1) + '%');
+    return bits.join(' · ');
+  }
 
   function gradeClass(pct) {
     if (pct == null) return '';
@@ -65,13 +80,16 @@
     var pct = item.percentile;
     var name = item.stock_name || '名称待补';
     var sector = item.l2 || item.l1 || '';
+    var horizon = horizonLabel(item);
+    var detail = horizonTitle(item);
     return '<div class="topk-chip ' + gradeClass(pct) + '" role="button" tabindex="0" ' +
       'data-topk-pick="' + esc(item.stock_code) + '" ' +
       'data-topk-name="' + esc(name) + '" ' +
-      'title="score ' + fmtScore(item.pred_score) + ' · percentile ' + (pct != null ? (pct * 100).toFixed(1) : '-') + '%">' +
+      'title="score ' + fmtScore(item.pred_score) + ' · percentile ' + (pct != null ? (pct * 100).toFixed(1) : '-') + '%' + (detail ? ' · ' + esc(detail) : '') + '">' +
       '<span class="topk-chip-rank">#' + item.rank + '</span>' +
       renderIdentity(item) +
       (sector ? '<span class="topk-chip-sector">' + esc(sector) + '</span>' : '') +
+      (horizon ? '<span class="topk-chip-sector">' + esc(horizon) + '</span>' : '') +
       '<span class="topk-chip-score">' + fmtScore(item.pred_score) + '</span>' +
       '</div>';
   }
