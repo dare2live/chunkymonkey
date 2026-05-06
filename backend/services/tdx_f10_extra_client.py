@@ -64,6 +64,9 @@ CREATE TABLE IF NOT EXISTS raw_tdx_f10_holder_count_history (
     close_price_text TEXT,
     close_price DOUBLE,
     page_update_date TEXT,
+    source_notice_date TEXT,
+    source_available_date TEXT,
+    source_date_quality TEXT,
     source TEXT NOT NULL,
     raw_hash TEXT NOT NULL,
     fetched_at TEXT,
@@ -113,6 +116,9 @@ CREATE TABLE IF NOT EXISTS fact_shareholder_trade_tdx_b (
     shares_after BIGINT,
     change_method TEXT,
     page_update_date TEXT,
+    source_notice_date TEXT,
+    source_available_date TEXT,
+    source_date_quality TEXT,
     source TEXT NOT NULL,
     source_tier SMALLINT NOT NULL DEFAULT 1,
     raw_hash TEXT,
@@ -186,6 +192,9 @@ CREATE TABLE IF NOT EXISTS fact_common_major_holder_stock (
     net_profit_deducted_text TEXT,
     net_profit_deducted DOUBLE,
     page_update_date TEXT,
+    source_notice_date TEXT,
+    source_available_date TEXT,
+    source_date_quality TEXT,
     source TEXT NOT NULL,
     source_tier SMALLINT NOT NULL DEFAULT 1,
     raw_hash TEXT,
@@ -200,6 +209,9 @@ ALTER TABLE fact_common_major_holder_stock ADD COLUMN IF NOT EXISTS hold_ratio_t
 ALTER TABLE fact_common_major_holder_stock ADD COLUMN IF NOT EXISTS change_shares BIGINT;
 ALTER TABLE fact_common_major_holder_stock ADD COLUMN IF NOT EXISTS net_profit_parent_text TEXT;
 ALTER TABLE fact_common_major_holder_stock ADD COLUMN IF NOT EXISTS net_profit_deducted_text TEXT;
+ALTER TABLE fact_common_major_holder_stock ADD COLUMN IF NOT EXISTS source_notice_date TEXT;
+ALTER TABLE fact_common_major_holder_stock ADD COLUMN IF NOT EXISTS source_available_date TEXT;
+ALTER TABLE fact_common_major_holder_stock ADD COLUMN IF NOT EXISTS source_date_quality TEXT;
 
 CREATE TABLE IF NOT EXISTS fact_fund_holding_tdx_f10 (
     stock_code TEXT NOT NULL,
@@ -215,6 +227,9 @@ CREATE TABLE IF NOT EXISTS fact_fund_holding_tdx_f10 (
     market_value_text TEXT,
     market_value DOUBLE,
     page_update_date TEXT,
+    source_notice_date TEXT,
+    source_available_date TEXT,
+    source_date_quality TEXT,
     source TEXT NOT NULL,
     source_tier SMALLINT NOT NULL DEFAULT 1,
     raw_hash TEXT,
@@ -227,6 +242,9 @@ CREATE INDEX IF NOT EXISTS idx_fund_holding_name
 ALTER TABLE fact_fund_holding_tdx_f10 ADD COLUMN IF NOT EXISTS report_date_text TEXT;
 ALTER TABLE fact_fund_holding_tdx_f10 ADD COLUMN IF NOT EXISTS float_a_ratio_text TEXT;
 ALTER TABLE fact_fund_holding_tdx_f10 ADD COLUMN IF NOT EXISTS market_value_text TEXT;
+ALTER TABLE fact_fund_holding_tdx_f10 ADD COLUMN IF NOT EXISTS source_notice_date TEXT;
+ALTER TABLE fact_fund_holding_tdx_f10 ADD COLUMN IF NOT EXISTS source_available_date TEXT;
+ALTER TABLE fact_fund_holding_tdx_f10 ADD COLUMN IF NOT EXISTS source_date_quality TEXT;
 
 CREATE TABLE IF NOT EXISTS raw_tdx_f10_extra_parse_status (
     stock_code TEXT NOT NULL,
@@ -269,9 +287,21 @@ CREATE TABLE IF NOT EXISTS fact_controlling_shareholder (
     raw_hash TEXT,
     fetched_at TEXT,
     control_chain_text TEXT,
+    source_notice_date TEXT,
+    source_available_date TEXT,
+    source_date_quality TEXT,
     PRIMARY KEY (stock_code, source)
 );
 ALTER TABLE fact_controlling_shareholder ADD COLUMN control_chain_text TEXT;
+ALTER TABLE fact_controlling_shareholder ADD COLUMN IF NOT EXISTS source_notice_date TEXT;
+ALTER TABLE fact_controlling_shareholder ADD COLUMN IF NOT EXISTS source_available_date TEXT;
+ALTER TABLE fact_controlling_shareholder ADD COLUMN IF NOT EXISTS source_date_quality TEXT;
+ALTER TABLE fact_holder_count_period ADD COLUMN IF NOT EXISTS source_notice_date TEXT;
+ALTER TABLE fact_holder_count_period ADD COLUMN IF NOT EXISTS source_available_date TEXT;
+ALTER TABLE fact_holder_count_period ADD COLUMN IF NOT EXISTS source_date_quality TEXT;
+ALTER TABLE fact_shareholder_trade_tdx_b ADD COLUMN IF NOT EXISTS source_notice_date TEXT;
+ALTER TABLE fact_shareholder_trade_tdx_b ADD COLUMN IF NOT EXISTS source_available_date TEXT;
+ALTER TABLE fact_shareholder_trade_tdx_b ADD COLUMN IF NOT EXISTS source_date_quality TEXT;
 
 CREATE TABLE IF NOT EXISTS mart_tdx_f10_capability_matrix (
     module_id TEXT PRIMARY KEY,
@@ -330,9 +360,9 @@ F10_CAPABILITIES = [
         "raw_table": "raw_tdx_f10_holder_research",
         "fact_table": "fact_holder_count_period",
         "pit_risk": "high",
-        "source_date_field": "page_update_date",
-        "availability_date_field": "fetched_at",
-        "notes": "uses F10 page update date until true source announcement date is parsed",
+        "source_date_field": "source_notice_date",
+        "availability_date_field": "source_available_date",
+        "notes": "uses explicit source date quality; page update is a conservative fallback until true notice date is parsed",
     },
     {
         "module_id": "shareholder_trade_b",
@@ -342,9 +372,9 @@ F10_CAPABILITIES = [
         "raw_table": "raw_tdx_f10_holder_research",
         "fact_table": "fact_shareholder_trade_tdx_b",
         "pit_risk": "high",
-        "source_date_field": "change_date",
-        "availability_date_field": "fetched_at",
-        "notes": "event date is parsed; announcement-date extraction still needs raw-section enrichment",
+        "source_date_field": "source_notice_date",
+        "availability_date_field": "source_available_date",
+        "notes": "event date is parsed separately; source availability uses conservative page update fallback",
     },
     {
         "module_id": "shareholder_plan_tdx_f10",
@@ -366,9 +396,9 @@ F10_CAPABILITIES = [
         "raw_table": "raw_tdx_f10_holder_research",
         "fact_table": "fact_controlling_shareholder",
         "pit_risk": "high",
-        "source_date_field": "page_update_date",
-        "availability_date_field": "fetched_at",
-        "notes": "profile-like F10 content; source date is page update date today",
+        "source_date_field": "source_notice_date",
+        "availability_date_field": "source_available_date",
+        "notes": "profile-like F10 content; source availability is explicitly quality-tagged",
     },
     {
         "module_id": "common_major_holder_stock",
@@ -378,9 +408,9 @@ F10_CAPABILITIES = [
         "raw_table": "raw_tdx_f10_holder_research",
         "fact_table": "fact_common_major_holder_stock",
         "pit_risk": "high",
-        "source_date_field": "report_date",
-        "availability_date_field": "fetched_at",
-        "notes": "relationship feature candidate; requires PIT audit before model use",
+        "source_date_field": "source_notice_date",
+        "availability_date_field": "source_available_date",
+        "notes": "relationship feature candidate; report_date is event period and source availability is quality-tagged",
     },
     {
         "module_id": "fund_holding_tdx_f10",
@@ -390,9 +420,9 @@ F10_CAPABILITIES = [
         "raw_table": "raw_tdx_f10_holder_research",
         "fact_table": "fact_fund_holding_tdx_f10",
         "pit_risk": "high",
-        "source_date_field": "report_date",
-        "availability_date_field": "fetched_at",
-        "notes": "section 7 fund rows; disclaimer rows are rejected",
+        "source_date_field": "source_notice_date",
+        "availability_date_field": "source_available_date",
+        "notes": "section 7 fund rows; report_date is event period and source availability is quality-tagged",
     },
 ]
 
@@ -416,6 +446,26 @@ def _execute_script(conn: Any, sql: str) -> None:
 
 def ensure_tables(conn: Any) -> None:
     _execute_script(conn, DDL)
+
+
+def _fetched_date(value: Any) -> str | None:
+    if value is None:
+        return None
+    text = str(value).strip()
+    if not text:
+        return None
+    return text[:10]
+
+
+def _derive_conservative_f10_source_dates(rec: dict[str, Any]) -> tuple[str | None, str | None, str]:
+    page_update = rec.get("page_update_date")
+    if page_update:
+        value = str(page_update)
+        return value, value, "page_update_date_conservative_fallback"
+    fetched = _fetched_date(rec.get("fetched_at"))
+    if fetched:
+        return None, fetched, "fetched_at_conservative_fallback"
+    return None, None, "missing_source_date"
 
 
 def _table_columns(conn: Any, table: str) -> set[str]:
@@ -835,6 +885,7 @@ def _insert_holder_count_rows(conn: Any, records: list[dict[str, Any]]) -> int:
         "stock_code", "stock_name", "market", "report_date", "holder_count",
         "holder_count_change", "holder_count_change_pct", "avg_float_shares",
         "avg_float_shares_change_pct", "close_price", "page_update_date",
+        "source_notice_date", "source_available_date", "source_date_quality",
         "source", "source_tier", "raw_hash", "fetched_at", "updated_at",
     ]
     fact_rows = []
@@ -842,6 +893,10 @@ def _insert_holder_count_rows(conn: Any, records: list[dict[str, Any]]) -> int:
         if not rec.get("report_date"):
             continue
         fact = dict(rec)
+        notice, available, quality = _derive_conservative_f10_source_dates(fact)
+        fact["source_notice_date"] = notice
+        fact["source_available_date"] = available
+        fact["source_date_quality"] = quality
         fact["source_tier"] = 1
         fact["updated_at"] = now
         fact_rows.append(tuple(fact.get(c) for c in fact_cols))
@@ -864,12 +919,18 @@ def _insert_trade_b_rows(
         "change_start_date", "change_end_date", "change_date", "holder_name",
         "holder_name_norm", "shares_change_text", "shares_change",
         "average_price_text", "average_price", "shares_after_text",
-        "shares_after", "change_method", "page_update_date", "source",
+        "shares_after", "change_method", "page_update_date",
+        "source_notice_date", "source_available_date", "source_date_quality",
+        "source",
         "source_tier", "raw_hash", "fetched_at", "trade_seq",
     ]
     rows = []
     for rec in records:
         rec["holder_name_norm"] = alias_map.get(rec.get("holder_name"), rec.get("holder_name"))
+        notice, available, quality = _derive_conservative_f10_source_dates(rec)
+        rec["source_notice_date"] = notice
+        rec["source_available_date"] = available
+        rec["source_date_quality"] = quality
         rec["source_tier"] = 1
         rows.append(tuple(rec.get(c) for c in cols))
     conn.executemany(
@@ -931,11 +992,17 @@ def _insert_common_major_holder_rows(conn: Any, records: list[dict[str, Any]]) -
         "major_holder_name", "peer_stock_code", "peer_stock_name", "shares_text",
         "shares", "hold_ratio_text", "hold_ratio", "change_text", "change_shares",
         "net_profit_parent_text", "net_profit_parent", "net_profit_deducted_text",
-        "net_profit_deducted", "page_update_date", "source", "source_tier",
+        "net_profit_deducted", "page_update_date",
+        "source_notice_date", "source_available_date", "source_date_quality",
+        "source", "source_tier",
         "raw_hash", "fetched_at", "row_seq",
     ]
     rows = []
     for rec in records:
+        notice, available, quality = _derive_conservative_f10_source_dates(rec)
+        rec["source_notice_date"] = notice
+        rec["source_available_date"] = available
+        rec["source_date_quality"] = quality
         rec["source_tier"] = 1
         rows.append(tuple(rec.get(c) for c in cols))
     conn.executemany(
@@ -967,7 +1034,9 @@ def _insert_fund_holding_rows(conn: Any, records: list[dict[str, Any]]) -> tuple
         "stock_code", "stock_name", "market", "report_date", "report_date_text",
         "fund_name", "shares_text", "shares", "float_a_ratio_text",
         "float_a_ratio", "market_value_text", "market_value",
-        "page_update_date", "source", "source_tier", "raw_hash", "fetched_at",
+        "page_update_date",
+        "source_notice_date", "source_available_date", "source_date_quality",
+        "source", "source_tier", "raw_hash", "fetched_at",
         "row_seq",
     ]
     rows = []
@@ -976,6 +1045,10 @@ def _insert_fund_holding_rows(conn: Any, records: list[dict[str, Any]]) -> tuple
         if _is_invalid_fund_holding(rec):
             rejected += 1
             continue
+        notice, available, quality = _derive_conservative_f10_source_dates(rec)
+        rec["source_notice_date"] = notice
+        rec["source_available_date"] = available
+        rec["source_date_quality"] = quality
         rec["source_tier"] = 1
         rows.append(tuple(rec.get(c) for c in cols))
     if rows:
@@ -1008,6 +1081,10 @@ def _upsert_control(conn: Any, rec: dict[str, Any] | None, fallback: dict[str, A
         "fetched_at": rec.get("fetched_at") or fallback.get("fetched_at"),
         "control_chain_text": rec.get("control_chain_text"),
     }
+    notice, available, quality = _derive_conservative_f10_source_dates(row)
+    row["source_notice_date"] = notice
+    row["source_available_date"] = available
+    row["source_date_quality"] = quality
     if not row["stock_code"] or not row["source"]:
         return 0
     cols = list(row.keys())
@@ -1017,6 +1094,98 @@ def _upsert_control(conn: Any, rec: dict[str, Any] | None, fallback: dict[str, A
         tuple(row[c] for c in cols),
     )
     return 1
+
+
+F10_SOURCE_DATE_BACKFILL_TABLES = (
+    "fact_holder_count_period",
+    "fact_shareholder_trade_tdx_b",
+    "fact_common_major_holder_stock",
+    "fact_fund_holding_tdx_f10",
+    "fact_controlling_shareholder",
+)
+
+
+def backfill_tdx_f10_source_dates(conn: Any) -> dict[str, Any]:
+    """Backfill explicit PIT source-date columns for parsed TDX F10 fact tables.
+
+    This does not claim to recover true exchange announcement timestamps. It
+    makes the current conservative fallback explicit so downstream PIT audits
+    can distinguish parsed notice dates from page-update/fetched-at fallback.
+    """
+
+    ensure_tables(conn)
+    out: dict[str, Any] = {"tables": {}, "updated_rows": 0}
+    for table in F10_SOURCE_DATE_BACKFILL_TABLES:
+        if not _table_exists(conn, table):
+            out["tables"][table] = {"exists": False, "updated_rows": 0, "remaining_missing": 0}
+            continue
+        cols = _table_columns(conn, table)
+        required = {"source_notice_date", "source_available_date", "source_date_quality"}
+        if not required.issubset(cols):
+            out["tables"][table] = {
+                "exists": True,
+                "updated_rows": 0,
+                "remaining_missing": None,
+                "error": "missing_source_date_columns",
+            }
+            continue
+        before = conn.execute(
+            f"""
+            SELECT COUNT(*) AS n
+              FROM {table}
+             WHERE source_available_date IS NULL
+                OR source_available_date = ''
+                OR source_date_quality IS NULL
+                OR source_date_quality = ''
+            """
+        ).fetchone()["n"]
+        conn.execute(
+            f"""
+            UPDATE {table}
+               SET source_notice_date = COALESCE(NULLIF(source_notice_date, ''), NULLIF(page_update_date, '')),
+                   source_available_date = COALESCE(
+                       NULLIF(source_available_date, ''),
+                       NULLIF(page_update_date, ''),
+                       NULLIF(SUBSTR(CAST(fetched_at AS VARCHAR), 1, 10), '')
+                   ),
+                   source_date_quality = COALESCE(
+                       NULLIF(source_date_quality, ''),
+                       CASE
+                           WHEN NULLIF(page_update_date, '') IS NOT NULL
+                               THEN 'page_update_date_conservative_fallback'
+                           WHEN NULLIF(CAST(fetched_at AS VARCHAR), '') IS NOT NULL
+                               THEN 'fetched_at_conservative_fallback'
+                           ELSE 'missing_source_date'
+                       END
+                   )
+             WHERE source_available_date IS NULL
+                OR source_available_date = ''
+                OR source_date_quality IS NULL
+                OR source_date_quality = ''
+            """
+        )
+        after = conn.execute(
+            f"""
+            SELECT COUNT(*) AS n
+              FROM {table}
+             WHERE source_available_date IS NULL
+                OR source_available_date = ''
+                OR source_date_quality IS NULL
+                OR source_date_quality = ''
+            """
+        ).fetchone()["n"]
+        updated = int(before or 0) - int(after or 0)
+        out["tables"][table] = {
+            "exists": True,
+            "updated_rows": updated,
+            "remaining_missing": int(after or 0),
+        }
+        out["updated_rows"] += updated
+    try:
+        conn.commit()
+    except Exception:
+        pass
+    return out
 
 
 def _upsert_parse_status(
@@ -1239,4 +1408,5 @@ __all__ = [
     "sync_tdx_f10_extra_facts",
     "build_tdx_f10_capability_matrix",
     "backfill_tdx_f10_shareholder_plans",
+    "backfill_tdx_f10_source_dates",
 ]

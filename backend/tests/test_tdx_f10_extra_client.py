@@ -8,6 +8,7 @@ from conftest import duck_mem
 import services.tdx_f10_extra_client as extra_client
 from services.tdx_f10_extra_client import (
     backfill_tdx_f10_shareholder_plans,
+    backfill_tdx_f10_source_dates,
     build_tdx_f10_capability_matrix,
     _insert_fund_holding_rows,
     ensure_tables,
@@ -98,14 +99,16 @@ def test_sync_tdx_f10_extra_facts_lands_format_b_sections():
 
         holder_row = conn.execute(
             """
-            SELECT holder_count, holder_count_change_pct, avg_float_shares_change_pct
+            SELECT holder_count, holder_count_change_pct, avg_float_shares_change_pct,
+                   source_available_date, source_date_quality
             FROM fact_holder_count_period
             WHERE stock_code = '600519' AND report_date = '2026-03-31'
             """
         ).fetchone()
         trade_row = conn.execute(
             """
-            SELECT holder_name, shares_change, average_price, change_method
+            SELECT holder_name, shares_change, average_price, change_method,
+                   source_available_date, source_date_quality
             FROM fact_shareholder_trade_tdx_b
             WHERE stock_code = '600519'
             ORDER BY trade_seq
@@ -125,7 +128,8 @@ def test_sync_tdx_f10_extra_facts_lands_format_b_sections():
         ).fetchone()
         ctrl_row = conn.execute(
             """
-            SELECT primary_name, actual_name, control_chain_text
+            SELECT primary_name, actual_name, control_chain_text,
+                   source_available_date, source_date_quality
             FROM fact_controlling_shareholder
             WHERE stock_code = '600519'
             """
@@ -133,7 +137,8 @@ def test_sync_tdx_f10_extra_facts_lands_format_b_sections():
         common_row = conn.execute(
             """
             SELECT major_holder_name, peer_stock_code, shares, hold_ratio_text,
-                   change_text, change_shares, net_profit_parent_text, net_profit_parent
+                   change_text, change_shares, net_profit_parent_text, net_profit_parent,
+                   source_available_date, source_date_quality
             FROM fact_common_major_holder_stock
             WHERE stock_code = '601398' AND peer_stock_code = '601988'
               AND major_holder_name = '中央汇金投资有限责任公司'
@@ -141,7 +146,8 @@ def test_sync_tdx_f10_extra_facts_lands_format_b_sections():
         ).fetchone()
         fund_row = conn.execute(
             """
-            SELECT fund_name, shares, float_a_ratio_text, market_value_text, market_value
+            SELECT fund_name, shares, float_a_ratio_text, market_value_text, market_value,
+                   source_available_date, source_date_quality
             FROM fact_fund_holding_tdx_f10
             WHERE raw_hash = 'fund_hash'
             ORDER BY row_seq
@@ -166,10 +172,14 @@ def test_sync_tdx_f10_extra_facts_lands_format_b_sections():
         assert holder_row["holder_count"] == 243_159
         assert holder_row["holder_count_change_pct"] == -4.98
         assert holder_row["avg_float_shares_change_pct"] == 5.24
+        assert holder_row["source_available_date"] == "2026-04-28"
+        assert holder_row["source_date_quality"] == "page_update_date_conservative_fallback"
         assert trade_row["holder_name"] == "中国贵州茅台酒厂（集团）有限责任公司"
         assert trade_row["shares_change"] == 1_274_200
         assert trade_row["average_price"] == 1443.14
         assert trade_row["change_method"] == "二级市场买卖"
+        assert trade_row["source_available_date"] == "2026-04-28"
+        assert trade_row["source_date_quality"] == "page_update_date_conservative_fallback"
         assert plan_row["subject"] == "中国贵州茅台酒厂（集团）有限责任公司"
         assert plan_row["direction"] == "增持计划"
         assert plan_row["progress"] == "完成"
@@ -181,17 +191,23 @@ def test_sync_tdx_f10_extra_facts_lands_format_b_sections():
         assert plan_row["target_amount_min"] == 3_000_000_000
         assert plan_row["target_amount_max"] == 3_300_000_000
         assert "→90%中国贵州茅台酒厂" in ctrl_row["control_chain_text"]
+        assert ctrl_row["source_available_date"] == "2026-04-28"
+        assert ctrl_row["source_date_quality"] == "page_update_date_conservative_fallback"
         assert common_row["shares"] == 188_792_000_000
         assert common_row["hold_ratio_text"] == "58.59"
         assert common_row["change_text"] == "不变"
         assert common_row["change_shares"] == 0
         assert common_row["net_profit_parent_text"] == "2430.21亿"
         assert common_row["net_profit_parent"] == 243_021_000_000
+        assert common_row["source_available_date"] == "2026-04-28"
+        assert common_row["source_date_quality"] == "page_update_date_conservative_fallback"
         assert fund_row["fund_name"] == "中国工商银行股份有限公司－华泰柏瑞沪深300交易型开放式指数证券投资基金"
         assert fund_row["shares"] == 4_566_400
         assert fund_row["float_a_ratio_text"] == "0.36"
         assert fund_row["market_value_text"] == "66.22亿"
         assert fund_row["market_value"] == 6_622_000_000
+        assert fund_row["source_available_date"] == "2026-04-28"
+        assert fund_row["source_date_quality"] == "page_update_date_conservative_fallback"
         assert status_count == 3
         assert second["raw_rows"] == 0
     finally:
@@ -247,11 +263,46 @@ def test_build_tdx_f10_capability_matrix_records_raw_and_fact_coverage():
         assert row["status"] == "ready"
         assert row["coverage_stock_count"] == 1
         assert row["row_count"] == 1
-        assert row["source_date_field"] == "page_update_date"
-        assert row["availability_date_field"] == "fetched_at"
+        assert row["source_date_field"] == "source_notice_date"
+        assert row["availability_date_field"] == "source_available_date"
         assert plan_cap["status"] == "raw_only"
         assert plan_cap["source_date_field"] == "source_notice_date"
         assert plan_cap["availability_date_field"] == "source_available_date"
+    finally:
+        conn.close()
+
+
+def test_backfill_tdx_f10_source_dates_marks_conservative_fallback_quality():
+    conn = duck_mem()
+    try:
+        ensure_tables(conn)
+        conn.execute(
+            """
+            INSERT INTO fact_holder_count_period
+            (stock_code, stock_name, market, report_date, holder_count,
+             holder_count_change, holder_count_change_pct, avg_float_shares,
+             avg_float_shares_change_pct, close_price, page_update_date,
+             source, source_tier, raw_hash, fetched_at, updated_at)
+            VALUES
+            ('600519', '贵州茅台', 'SH', '2026-03-31', 100, 1, 1.0, 1000,
+             0.1, 100.0, '2026-04-28', 'tdx_f10', 1, 'hash_1',
+             '2026-04-29T10:00:00', '2026-04-29T10:00:00')
+            """
+        )
+
+        result = backfill_tdx_f10_source_dates(conn)
+        row = conn.execute(
+            """
+            SELECT source_notice_date, source_available_date, source_date_quality
+              FROM fact_holder_count_period
+             WHERE stock_code = '600519'
+            """
+        ).fetchone()
+
+        assert result["tables"]["fact_holder_count_period"]["updated_rows"] == 1
+        assert row["source_notice_date"] == "2026-04-28"
+        assert row["source_available_date"] == "2026-04-28"
+        assert row["source_date_quality"] == "page_update_date_conservative_fallback"
     finally:
         conn.close()
 
