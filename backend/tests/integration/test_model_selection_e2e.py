@@ -28,8 +28,8 @@ def _seed_e2e_db(db_path: Path) -> None:
                 date TEXT,
                 regime_flag TEXT,
                 forward_ret_20d DOUBLE,
-                signal_a DOUBLE,
-                signal_b DOUBLE
+                ret_20d DOUBLE,
+                ret_20d_rank DOUBLE
             );
             CREATE TABLE mart_model_selection_run (
                 run_id TEXT,
@@ -64,7 +64,7 @@ def _seed_e2e_db(db_path: Path) -> None:
             """
             INSERT INTO mart_model_selection_run VALUES (
                 'selection_e2e', 'production_registry', 'unit_selected_features',
-                'forward_ret_20d', 1.0, '["signal_a", "signal_b"]',
+                'forward_ret_20d', 1.0, '["ret_20d", "ret_20d_rank"]',
                 '[]', 1, '{}', '2026-05-06'
             )
             """
@@ -74,17 +74,17 @@ def _seed_e2e_db(db_path: Path) -> None:
         for day_idx in range(24):
             day = (start + timedelta(days=day_idx)).isoformat()
             for stock_idx in range(8):
-                signal_a = float(stock_idx) / 10.0 + day_idx * 0.01
-                signal_b = float(7 - stock_idx) / 20.0
-                label = 0.04 * signal_a - 0.02 * signal_b + (day_idx % 3) * 0.001
+                ret_20d = float(stock_idx) / 10.0 + day_idx * 0.01
+                ret_20d_rank = float(stock_idx + 1) / 8.0
+                label = 0.04 * ret_20d + 0.02 * ret_20d_rank + (day_idx % 3) * 0.001
                 rows.append(
                     (
                         f"000{stock_idx + 1:03d}",
                         day,
                         "up" if day_idx % 3 == 0 else "flat",
                         label,
-                        signal_a,
-                        signal_b,
+                        ret_20d,
+                        ret_20d_rank,
                     )
                 )
         conn.executemany("INSERT INTO fact_feature_panel VALUES (?, ?, ?, ?, ?, ?)", rows)
@@ -158,7 +158,7 @@ def test_model_selection_train_and_walkforward_e2e(tmp_path: Path, monkeypatch: 
         assert model_row is not None
         model_id = model_row["model_id"]
         assert model_row["n_features"] == 2
-        assert json.loads(model_row["feature_cols_json"]) == ["signal_a", "signal_b"]
+        assert json.loads(model_row["feature_cols_json"]) == ["ret_20d", "ret_20d_rank"]
         assert "model_selection_selection_e2e" in model_row["feature_schema_version"]
 
         lifecycle = conn.execute(

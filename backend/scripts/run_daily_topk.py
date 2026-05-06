@@ -39,6 +39,10 @@ from services.ml_lifecycle.registry import (
     select_default_model_id,
 )
 from services.pipeline_manifest import git_commit_sha, record_pipeline_run, utc_now_iso
+from services.recommendation_universe import (
+    filter_investable_records,
+    load_recommendation_universe_policy,
+)
 from services.schema_versions import record_actual_version
 
 logger = logging.getLogger("daily_topk")
@@ -768,6 +772,24 @@ def main():
         "panel rows %d for %s (+ %d Alpha158 cols, needs_alpha158=%s)",
         len(records), target_date, len(a158_cols), needs_alpha158,
     )
+    universe_policy = load_recommendation_universe_policy()
+    t_universe = time.perf_counter()
+    records, universe_summary = filter_investable_records(
+        conn,
+        records,
+        policy=universe_policy,
+    )
+    timings["universe_filter_s"] = round(time.perf_counter() - t_universe, 3)
+    logger.info(
+        "investable universe policy=%s kept=%d excluded=%d reasons=%s",
+        universe_summary["policy_id"],
+        universe_summary["kept_rows"],
+        universe_summary["excluded_rows"],
+        universe_summary["excluded_by_reason"],
+    )
+    if not records:
+        raise RuntimeError(f"investable universe policy {universe_summary['policy_id']} left no scoring rows")
+    panel_cols = set(records[0].keys())
 
     # 训练使用了 regime-aware (one-hot), 评分需对齐
     if 'regime_flag' in panel_cols:
@@ -1020,6 +1042,11 @@ def main():
             "is_primary": is_primary,
             "selection_fallback": selection_fallback,
             "horizon_selection_run_id": horizon_run_id,
+            "universe_policy_id": universe_summary["policy_id"],
+            "universe_input_rows": universe_summary["input_rows"],
+            "universe_kept_rows": universe_summary["kept_rows"],
+            "universe_excluded_rows": universe_summary["excluded_rows"],
+            "universe_excluded_by_reason": universe_summary["excluded_by_reason"],
             "risk_summary_skipped": bool(args.skip_risk_summary),
             "n_features": len(feature_cols),
             "needs_alpha158": needs_alpha158,

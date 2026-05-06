@@ -333,6 +333,8 @@ def test_apply_production_feature_contract_filters_source_gap_and_auxiliary_feat
             "inst_count_qoq",
             "lhb_inst_buy_count_30d",
             "rz_balance",
+            "hs300_ret_20d",
+            "hs300_ret_60d",
             "regime_up",
         ],
         feature_group="base_dense_v2",
@@ -344,6 +346,8 @@ def test_apply_production_feature_contract_filters_source_gap_and_auxiliary_feat
     assert reasons["inst_count_qoq"] == "not_production_ready"
     assert reasons["lhb_inst_buy_count_30d"] == "not_model_input"
     assert reasons["rz_balance"] == "not_production_ready"
+    assert reasons["hs300_ret_20d"] == "not_model_input"
+    assert reasons["hs300_ret_60d"] == "not_model_input"
 
 
 def test_apply_production_feature_contract_blocks_explicit_bad_selection():

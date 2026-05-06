@@ -516,5 +516,5 @@ def test_feature_input_columns_exclude_pit_labels_and_identifiers():
     assert "kline_is_fallback" not in inputs
     for label in ("forward_ret_5d", "forward_ret_10d", "forward_ret_20d", "forward_ret_60d", "forward_ret_90d"):
         assert label not in inputs
-    assert "close" in inputs
+    assert "close" not in inputs
     assert "ret_20d" in inputs

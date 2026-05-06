@@ -816,6 +816,58 @@ def test_global_data_quality_gate_accepts_champion_primary_recommendation_output
         assert result["blockers"] == []
 
 
+def test_global_data_quality_gate_blocks_non_investable_primary_recommendation() -> None:
+    with duck_mem() as conn:
+        _seed_calendar(conn)
+        conn.executescript(
+            """
+            CREATE TABLE fact_feature_panel (
+                stock_code TEXT,
+                date TEXT,
+                amount_20d DOUBLE
+            );
+            INSERT INTO fact_feature_panel VALUES ('000001', '2026-01-02', 10.0);
+            CREATE TABLE dim_active_a_stock (
+                stock_code TEXT PRIMARY KEY,
+                stock_name TEXT
+            );
+            INSERT INTO dim_active_a_stock VALUES
+                ('000001', '*ST测试'),
+                ('000002', '正常股票');
+            CREATE TABLE mart_model_lifecycle (
+                model_id TEXT,
+                status TEXT
+            );
+            INSERT INTO mart_model_lifecycle VALUES ('champion_m', 'champion');
+            CREATE TABLE mart_daily_recommendation (
+                snapshot_date TEXT,
+                stock_code TEXT,
+                model_id TEXT,
+                is_primary BOOLEAN,
+                run_mode TEXT
+            );
+            INSERT INTO mart_daily_recommendation VALUES
+                ('2026-01-02', '000001', 'champion_m', TRUE, 'champion'),
+                ('2026-01-02', '000002', 'champion_m', TRUE, 'champion');
+            """
+        )
+
+        result = record_global_data_quality_gate(
+            conn,
+            gate_run_id="global_dq_non_investable_primary_rec_unit",
+            feature_tables=["fact_feature_panel"],
+            include_market=False,
+            include_institution_events=False,
+            include_pipeline_performance=False,
+        )
+
+        assert result["gate_status"] == "blocked"
+        assert (
+            "recommendation_output:primary_outputs_use_investable_universe:"
+            "mart_daily_recommendation:stock_code"
+        ) in result["blockers"]
+
+
 def test_global_data_quality_gate_blocks_cleanup_backup_tables() -> None:
     with duck_mem() as conn:
         _seed_calendar(conn)

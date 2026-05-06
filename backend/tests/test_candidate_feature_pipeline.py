@@ -21,7 +21,12 @@ def _create_candidate_inputs(conn):
             stock_code TEXT,
             date TEXT,
             close REAL,
-            forward_ret_20d REAL
+            forward_ret_20d REAL,
+            follow_net_return_5d REAL,
+            follow_net_return_10d REAL,
+            follow_net_return_20d REAL,
+            follow_net_return_60d REAL,
+            follow_net_return_90d REAL
         )
         """
     )
@@ -94,11 +99,11 @@ def _create_candidate_inputs(conn):
     panel_rows = []
     for date in ("2026-04-01", "2026-04-02"):
         panel_rows.extend([
-            ("000001", date, 10.0, 0.03),
-            ("000002", date, 20.0, 0.01),
-            ("000003", date, 30.0, -0.02),
+            ("000001", date, 10.0, 0.03, 0.01, 0.02, 0.03, 0.04, 0.05),
+            ("000002", date, 20.0, 0.01, 0.00, 0.01, 0.02, 0.03, 0.04),
+            ("000003", date, 30.0, -0.02, -0.01, -0.02, -0.03, -0.04, -0.05),
         ])
-    conn.executemany("INSERT INTO fact_feature_panel VALUES (?, ?, ?, ?)", panel_rows)
+    conn.executemany("INSERT INTO fact_feature_panel VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)", panel_rows)
     conn.executemany(
         "INSERT INTO fact_holder_count_period VALUES (?, ?, ?, ?)",
         [

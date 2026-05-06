@@ -13,6 +13,8 @@ def test_feature_registry_loads_groups_and_excludes_labels():
     assert "rz_balance" not in inputs
     assert "qfii_count_qoq" not in inputs
     assert "regime_flag" not in inputs
+    assert "hs300_ret_20d" not in inputs
+    assert "hs300_ret_60d" not in inputs
     assert "kline_source_name" not in inputs
     assert "kline_source_tier" not in inputs
     assert "kline_is_fallback" not in inputs
@@ -43,6 +45,8 @@ def test_feature_registry_loads_groups_and_excludes_labels():
     assert registry.features["close"].feature_role == "price_level_context"
     assert registry.features["close"].model_input is False
     assert "close" not in registry.model_input_columns()
+    assert registry.features["hs300_ret_20d"].feature_role == "market_regime_context"
+    assert registry.features["hs300_ret_60d"].feature_role == "market_regime_context"
     assert registry.label_columns() == (
         "forward_ret_5d",
         "forward_ret_10d",

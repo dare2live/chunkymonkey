@@ -13,6 +13,10 @@ from services.data_processing_monitor import ensure_data_processing_monitor_tabl
 from services.feature_registry import load_feature_registry
 from services.pipeline_manifest import git_commit_sha, record_pipeline_run, utc_now_iso
 from services.pricing_policy import load_pricing_label_policy, record_pricing_label_policy
+from services.recommendation_universe import (
+    explain_universe_exclusions,
+    load_recommendation_universe_policy,
+)
 from services.schema_versions import record_actual_version
 from services.utils import latest_completed_trade_date
 
@@ -2334,9 +2338,12 @@ def _check_recommendation_outputs(
     checked_tables: list[str] = []
     invalid_rows_total = 0
     multi_primary_dates_total = 0
+    non_investable_rows_total = 0
+    universe_policy = load_recommendation_universe_policy()
     evidence: dict[str, Any] = {
         "exists": False,
         "champion_model_ids": sorted(champion_ids),
+        "universe_policy_id": universe_policy.policy_id,
         "tables": {},
     }
     table_specs = (
@@ -2447,10 +2454,50 @@ def _check_recommendation_outputs(
                 reason=None if multi_primary_dates == 0 else "each snapshot_date may have only one primary model",
             )
             _append_outcome(item, details=details, blockers=blockers, warnings=warnings)
+        non_investable_rows = 0
+        if (
+            table_name in {"mart_daily_recommendation", "mart_daily_topk_view_cache"}
+            and "stock_code" in columns
+            and _table_exists(conn, "dim_active_a_stock")
+        ):
+            rows = conn.execute(
+                f"""
+                SELECT stock_code
+                  FROM {_quote_ident(table_name)}
+                 WHERE ({champion_filter})
+                   AND stock_code IS NOT NULL
+                   AND TRIM(CAST(stock_code AS VARCHAR)) <> ''
+                """
+            ).fetchall()
+            stock_codes = [str(_row_value(row, "stock_code", 0)) for row in rows]
+            exclusions = explain_universe_exclusions(conn, stock_codes, policy=universe_policy)
+            non_investable_rows = sum(1 for code in stock_codes if code in exclusions)
+            non_investable_rows_total += non_investable_rows
+            examples = [
+                {"stock_code": code, "reason": reason}
+                for code, reason in list(exclusions.items())[:10]
+            ]
+            item = _detail(
+                domain="recommendation_output",
+                table_name=table_name,
+                column_name="stock_code",
+                check_name="primary_outputs_use_investable_universe",
+                status="pass" if non_investable_rows == 0 else "fail",
+                row_count=_count_rows(conn, table_name),
+                violation_count=non_investable_rows,
+                reason=(
+                    None
+                    if non_investable_rows == 0
+                    else f"primary/champion recommendations must satisfy {universe_policy.policy_id}"
+                ),
+                examples=examples,
+            )
+            _append_outcome(item, details=details, blockers=blockers, warnings=warnings)
         evidence["tables"][table_name] = {
             "row_count": _count_rows(conn, table_name),
             "invalid_primary_or_champion_rows": invalid_rows,
             "multi_primary_dates": multi_primary_dates,
+            "non_investable_primary_or_champion_rows": non_investable_rows,
         }
     if not checked_tables:
         details.append(_detail(
@@ -2464,6 +2511,7 @@ def _check_recommendation_outputs(
     evidence["checked_tables"] = checked_tables
     evidence["invalid_primary_or_champion_rows"] = invalid_rows_total
     evidence["multi_primary_dates"] = multi_primary_dates_total
+    evidence["non_investable_primary_or_champion_rows"] = non_investable_rows_total
     return evidence
 
 

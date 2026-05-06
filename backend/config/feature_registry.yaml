@@ -262,6 +262,7 @@ groups:
     enabled: true
     production_ready: true
     candidate_only: false
+    model_input: false
     feature_role: regime_context
     availability_cadence: daily
     panel_density: dense_daily
@@ -274,8 +275,12 @@ groups:
     required_capabilities:
       - kline_daily
     features:
-      - hs300_ret_20d
-      - hs300_ret_60d
+      - hs300_ret_20d:
+          feature_role: market_regime_context
+          notes: Market-index return is retained for regime context, benchmarking, and risk throttling, but excluded from direct stock cross-sectional model inputs because stability search showed severe PSI drift.
+      - hs300_ret_60d:
+          feature_role: market_regime_context
+          notes: Market-index return is retained for regime context, benchmarking, and risk throttling, but excluded from direct stock cross-sectional model inputs because stability search showed severe PSI drift.
       - regime_flag:
           dtype: text
           model_input: false
