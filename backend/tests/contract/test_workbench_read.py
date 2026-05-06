@@ -874,7 +874,7 @@ def test_workbench_recommendations_returns_primary_topk_risk_outcome_and_source_
                 ('2026-05-06', '000099', 'old_champion', 1, 0.94, 1.00, 'risk_on',
                  '{}', '2026-05-06T09:05:00', 'primary', TRUE, 'champion'),
                 ('2026-05-06', '000001', 'champion_a', 1, 0.91, 1.00, 'risk_on',
-                 '{"model_top_features":[{"name":"ret_20d"},{"name":"ma_ratio_60"}]}',
+                 '{"model_top_features":[{"name":"ret_20d"},{"name":"ma_ratio_60"}],"stock_feature_values":[{"name":"ret_20d","raw_value":0.12,"model_value":0.12},{"name":"ma_ratio_60","raw_value":1.05,"model_value":1.05}]}',
                  '2026-05-06T09:00:00', 'primary', TRUE, 'champion'),
                 ('2026-05-06', '000002', 'champion_a', 2, 0.89, 0.99, 'risk_on',
                  '{"model_top_features":[{"name":"ret_60d"}]}',
@@ -958,6 +958,7 @@ def test_workbench_recommendations_returns_primary_topk_risk_outcome_and_source_
         assert recommendations["latest_primary"]["count"] == 2
         assert [row["stock_code"] for row in recommendations["rows"]] == ["000001", "000002"]
         assert recommendations["rows"][0]["top_features"] == ["ret_20d", "ma_ratio_60"]
+        assert recommendations["rows"][0]["top_feature_values"][0]["model_value"] == pytest.approx(0.12)
         assert recommendations["risk"][0]["top1_industry"] == "信息产业"
         assert recommendations["outcomes"]["count"] == 2
         assert recommendations["outcomes"]["hit_rate_5d"] == pytest.approx(0.5)

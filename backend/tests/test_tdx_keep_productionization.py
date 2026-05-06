@@ -8,7 +8,7 @@ import pytest
 from conftest import duck_mem
 from routers.recommendation import _resolve_model_id
 from scripts.build_tdx_keep_challenger_panel import build_panel
-from scripts.evaluate_tdx_keep_promotion_gate import evaluate_gate
+from scripts.evaluate_tdx_keep_promotion_gate import _rank_ic_gate, evaluate_gate
 from scripts.run_daily_topk import load_latest_model_id
 from services.ml_lifecycle.registry import select_default_model_id
 from services.model_feature_schema import (
@@ -132,6 +132,36 @@ def test_tdx_keep_schema_excludes_auto_watch_pool_from_default_schema():
         assert feature in cols
     for feature in TDX_KEEP_OPTIONAL_WATCH_FEATURE_COLS:
         assert feature not in cols
+
+
+def test_rank_ic_gate_uses_absolute_candidate_gate_for_cross_horizon_comparison():
+    ok, detail, reason = _rank_ic_gate(
+        0.096,
+        0.065,
+        champion_label_name="forward_ret_20d",
+        challenger_label_name="forward_ret_90d",
+    )
+
+    assert ok is True
+    assert reason is None
+    assert detail["horizon_mismatch"] is True
+    assert detail["comparison_scope"] == "absolute_candidate_rank_ic_due_to_horizon_mismatch"
+    assert detail["champion_holding_period"] == 20
+    assert detail["challenger_holding_period"] == 90
+
+
+def test_rank_ic_gate_keeps_uplift_rule_for_same_horizon_comparison():
+    ok, detail, reason = _rank_ic_gate(
+        0.096,
+        0.065,
+        champion_label_name="forward_ret_20d",
+        challenger_label_name="forward_ret_20d",
+    )
+
+    assert ok is False
+    assert "challenger rank_ic" in reason
+    assert detail["horizon_mismatch"] is False
+    assert detail["comparison_scope"] == "same_horizon_champion_uplift"
 
 
 def test_build_tdx_keep_challenger_panel_keeps_champion_panel_untouched():

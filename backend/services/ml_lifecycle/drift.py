@@ -15,7 +15,7 @@ from __future__ import annotations
 import logging
 import math
 import re
-from datetime import datetime
+from datetime import date, datetime
 from typing import Iterable, Optional
 
 from services.db import get_conn
@@ -44,6 +44,29 @@ CREATE TABLE IF NOT EXISTS mart_feature_drift_histogram (
 );
 CREATE INDEX IF NOT EXISTS idx_drift_hist_model_feature
     ON mart_feature_drift_histogram(model_id, feature_table, feature, bucket_version);
+"""
+
+DRIFT_SNAPSHOT_DDL = """
+CREATE TABLE IF NOT EXISTS mart_feature_drift (
+    snapshot_at TIMESTAMP NOT NULL,
+    model_id TEXT,
+    feature_set_id TEXT,
+    feature TEXT NOT NULL,
+    psi DOUBLE,
+    n_train BIGINT,
+    n_recent BIGINT,
+    window_days INTEGER,
+    severity TEXT NOT NULL,
+    notes TEXT,
+    PRIMARY KEY (snapshot_at, model_id, feature)
+);
+ALTER TABLE mart_feature_drift ADD COLUMN IF NOT EXISTS feature_set_id TEXT;
+CREATE INDEX IF NOT EXISTS idx_mart_feature_drift_snapshot
+    ON mart_feature_drift(snapshot_at DESC);
+CREATE INDEX IF NOT EXISTS idx_mart_feature_drift_severity
+    ON mart_feature_drift(severity, psi DESC);
+CREATE INDEX IF NOT EXISTS idx_mart_feature_drift_feature_set
+    ON mart_feature_drift(model_id, feature_set_id, snapshot_at DESC);
 """
 
 
@@ -109,6 +132,39 @@ def _quote_ident(name: str) -> str:
     return ".".join(f'"{part}"' for part in parts)
 
 
+def _iso_date(value) -> str:
+    if isinstance(value, datetime):
+        return value.date().isoformat()
+    if isinstance(value, date):
+        return value.isoformat()
+    return str(value)[:10]
+
+
+def _resolve_as_of_date(
+    conn,
+    *,
+    feature_table: str,
+    date_col: str,
+    feature_set_filter: str,
+    feature_set_params: list[str],
+    as_of_date: str | None,
+) -> str:
+    if as_of_date:
+        return _iso_date(as_of_date)
+    row = conn.execute(
+        f"""
+        SELECT MAX(CAST({_quote_ident(date_col)} AS DATE)) AS max_date
+          FROM {_quote_ident(feature_table)}
+         WHERE {_quote_ident(date_col)} IS NOT NULL
+           {feature_set_filter}
+        """,
+        feature_set_params,
+    ).fetchone()
+    if row and row["max_date"]:
+        return _iso_date(row["max_date"])
+    return datetime.utcnow().date().isoformat()
+
+
 def _histogram_counts_sql(
     conn,
     *,
@@ -117,12 +173,23 @@ def _histogram_counts_sql(
     feature: str,
     edges: list[float],
     recent_window_days: int,
+    as_of_date: str | None = None,
+    feature_set_id: str | None = None,
 ) -> tuple[list[int], int]:
     if len(edges) < 2:
         return [], 0
     table_sql = _quote_ident(feature_table)
     date_sql = _quote_ident(date_col)
     feature_sql = _quote_ident(feature)
+    feature_set_filter, feature_set_params = _feature_set_filter(conn, feature_table, feature_set_id)
+    anchor_date = _resolve_as_of_date(
+        conn,
+        feature_table=feature_table,
+        date_col=date_col,
+        feature_set_filter=feature_set_filter,
+        feature_set_params=feature_set_params,
+        as_of_date=as_of_date,
+    )
     exprs = []
     params = []
     for idx in range(len(edges) - 1):
@@ -135,10 +202,12 @@ def _histogram_counts_sql(
         f"""
         SELECT {', '.join(exprs)}, COUNT(*) AS n_recent
           FROM {table_sql}
-         WHERE {date_sql} >= strftime(now() - INTERVAL ({recent_window_days}) DAY, '%Y-%m-%d')
+         WHERE CAST({date_sql} AS DATE) > CAST(? AS DATE) - INTERVAL ({recent_window_days}) DAY
+           AND CAST({date_sql} AS DATE) <= CAST(? AS DATE)
+           {feature_set_filter}
            AND {feature_sql} IS NOT NULL
         """,
-        params,
+        [*params, anchor_date, anchor_date, *feature_set_params],
     )
     row = cursor.fetchone()
     if not row:
@@ -155,6 +224,36 @@ def ensure_drift_histogram_schema(conn) -> None:
             stmt = stmt.strip()
             if stmt:
                 conn.execute(stmt)
+
+
+def ensure_drift_snapshot_schema(conn) -> None:
+    if hasattr(conn, "executescript"):
+        conn.executescript(DRIFT_SNAPSHOT_DDL)
+    else:
+        for stmt in DRIFT_SNAPSHOT_DDL.split(";"):
+            stmt = stmt.strip()
+            if stmt:
+                conn.execute(stmt)
+
+
+def _has_column(conn, table: str, column: str) -> bool:
+    row = conn.execute(
+        """
+        SELECT COUNT(*)
+          FROM information_schema.columns
+         WHERE table_name = ? AND column_name = ?
+        """,
+        (table, column),
+    ).fetchone()
+    return bool(row and row[0])
+
+
+def _feature_set_filter(conn, feature_table: str, feature_set_id: str | None) -> tuple[str, list[str]]:
+    if not feature_set_id:
+        return "", []
+    if not _has_column(conn, feature_table, "feature_set_id"):
+        raise RuntimeError(f"{feature_table} has no feature_set_id column")
+    return "AND feature_set_id = ?", [str(feature_set_id)]
 
 
 def _psi_from_counts(train_counts: list[int], recent_counts: list[int]) -> float:
@@ -174,7 +273,29 @@ def _histogram_edges(values: list[float], *, n_bins: int) -> list[float]:
         return []
     sorted_train = sorted(values)
     qs = [idx / n_bins for idx in range(n_bins + 1)]
-    return _unique_sorted(_linear_quantile(sorted_train, q) for q in qs)
+    quantile_edges = _unique_sorted(_linear_quantile(sorted_train, q) for q in qs)
+    if len(quantile_edges) >= 3:
+        return quantile_edges
+
+    unique_values = _unique_sorted(sorted_train)
+    if len(unique_values) <= 1:
+        return []
+    if len(unique_values) <= n_bins:
+        first = unique_values[0]
+        last = unique_values[-1]
+        midpoints = [
+            (left + right) / 2.0
+            for left, right in zip(unique_values, unique_values[1:])
+        ]
+        pad = max((last - first) * 1e-9, 1e-9)
+        return [first - pad, *midpoints, last + pad]
+
+    first = unique_values[0]
+    last = unique_values[-1]
+    if first == last:
+        return []
+    step = (last - first) / n_bins
+    return [first + step * idx for idx in range(n_bins + 1)]
 
 
 def _load_cached_train_histogram(
@@ -336,10 +457,12 @@ def severity_for_psi(psi: float) -> str:
 def compute_feature_drift(
     *,
     feature_table: str = "fact_feature_panel",
+    feature_set_id: Optional[str] = None,
     feature_columns: Optional[list[str]] = None,
     train_window_days: int = 365,
     recent_window_days: int = 30,
     model_id: Optional[str] = None,
+    as_of_date: Optional[str] = None,
 ) -> list[dict]:
     """对 feature_table 的每个数值列算 PSI.
 
@@ -367,6 +490,15 @@ def compute_feature_drift(
             logger.warning(f"[drift] {feature_table} 没有可识别的日期列, 跳过")
             return []
         date_col = date_col_row[0]
+        feature_set_filter, feature_set_params = _feature_set_filter(conn, feature_table, feature_set_id)
+        anchor_date = _resolve_as_of_date(
+            conn,
+            feature_table=feature_table,
+            date_col=date_col,
+            feature_set_filter=feature_set_filter,
+            feature_set_params=feature_set_params,
+            as_of_date=as_of_date,
+        )
 
         results = []
         for col in feature_columns:
@@ -374,17 +506,20 @@ def compute_feature_drift(
                 # train 段
                 t_rows = conn.execute(f"""
                     SELECT {col} FROM {feature_table}
-                     WHERE {date_col} BETWEEN
-                           strftime(now() - INTERVAL ({train_window_days + recent_window_days}) DAY, '%Y-%m-%d')
-                       AND strftime(now() - INTERVAL ({recent_window_days}) DAY, '%Y-%m-%d')
+                     WHERE CAST({date_col} AS DATE) BETWEEN
+                           CAST(? AS DATE) - INTERVAL ({train_window_days + recent_window_days}) DAY
+                       AND CAST(? AS DATE) - INTERVAL ({recent_window_days}) DAY
+                       {feature_set_filter}
                        AND {col} IS NOT NULL
-                """).fetchall()
+                """, [anchor_date, anchor_date, *feature_set_params]).fetchall()
                 # recent 段
                 r_rows = conn.execute(f"""
                     SELECT {col} FROM {feature_table}
-                     WHERE {date_col} >= strftime(now() - INTERVAL ({recent_window_days}) DAY, '%Y-%m-%d')
+                     WHERE CAST({date_col} AS DATE) > CAST(? AS DATE) - INTERVAL ({recent_window_days}) DAY
+                       AND CAST({date_col} AS DATE) <= CAST(? AS DATE)
+                       {feature_set_filter}
                        AND {col} IS NOT NULL
-                """).fetchall()
+                """, [anchor_date, anchor_date, *feature_set_params]).fetchall()
                 t_vals = [r[0] for r in t_rows]
                 r_vals = [r[0] for r in r_rows]
                 psi, n_t, n_r = compute_psi(t_vals, r_vals)
@@ -393,6 +528,8 @@ def compute_feature_drift(
                     "feature": col, "psi": psi,
                     "n_train": n_t, "n_recent": n_r,
                     "severity": severity, "model_id": model_id,
+                    "feature_set_id": feature_set_id,
+                    "as_of_date": anchor_date,
                 })
             except Exception as exc:
                 logger.warning(f"[drift] {col} 失败: {exc}")
@@ -404,12 +541,14 @@ def compute_feature_drift(
 def compute_feature_drift_with_histogram_cache(
     *,
     feature_table: str = "fact_feature_panel",
+    feature_set_id: Optional[str] = None,
     feature_columns: Optional[list[str]] = None,
     train_window_days: int = 365,
     recent_window_days: int = 30,
     model_id: Optional[str] = None,
     n_bins: int = 10,
     refresh_baseline: bool = False,
+    as_of_date: Optional[str] = None,
 ) -> list[dict]:
     """Compute PSI using a persistent train histogram baseline.
 
@@ -417,7 +556,8 @@ def compute_feature_drift_with_histogram_cache(
     histograms. Later daily runs reuse the train bucket edges/counts and only
     scan recent rows, which is the intended production path for cron_daily.
     """
-    bucket_version = f"{feature_table}:train{train_window_days}:recent{recent_window_days}:bins{n_bins}:v1"
+    feature_set_key = feature_set_id or "*"
+    bucket_version = f"{feature_table}:feature_set={feature_set_key}:train{train_window_days}:recent{recent_window_days}:bins{n_bins}:v1"
     with get_conn() as conn:
         ensure_drift_histogram_schema(conn)
         if feature_columns is None:
@@ -438,6 +578,15 @@ def compute_feature_drift_with_histogram_cache(
             logger.warning(f"[drift] {feature_table} 没有可识别的日期列, 跳过")
             return []
         date_col = date_col_row[0]
+        feature_set_filter, feature_set_params = _feature_set_filter(conn, feature_table, feature_set_id)
+        anchor_date = _resolve_as_of_date(
+            conn,
+            feature_table=feature_table,
+            date_col=date_col,
+            feature_set_filter=feature_set_filter,
+            feature_set_params=feature_set_params,
+            as_of_date=as_of_date,
+        )
 
         results = []
         for col in feature_columns:
@@ -453,11 +602,12 @@ def compute_feature_drift_with_histogram_cache(
                 if not edges or not train_counts:
                     t_rows = conn.execute(f"""
                         SELECT {col} FROM {feature_table}
-                         WHERE {date_col} BETWEEN
-                               strftime(now() - INTERVAL ({train_window_days + recent_window_days}) DAY, '%Y-%m-%d')
-                           AND strftime(now() - INTERVAL ({recent_window_days}) DAY, '%Y-%m-%d')
+                         WHERE CAST({date_col} AS DATE) BETWEEN
+                               CAST(? AS DATE) - INTERVAL ({train_window_days + recent_window_days}) DAY
+                           AND CAST(? AS DATE) - INTERVAL ({recent_window_days}) DAY
+                           {feature_set_filter}
                            AND {col} IS NOT NULL
-                    """).fetchall()
+                    """, [anchor_date, anchor_date, *feature_set_params]).fetchall()
                     t_vals = [r[0] for r in t_rows]
                     edges = _histogram_edges(_finite_values(t_vals), n_bins=n_bins)
                     if len(edges) < 3:
@@ -468,6 +618,8 @@ def compute_feature_drift_with_histogram_cache(
                             "n_recent": 0,
                             "severity": "unknown",
                             "model_id": model_id,
+                            "feature_set_id": feature_set_id,
+                            "as_of_date": anchor_date,
                             "drift_source": "histogram_cache",
                         })
                         continue
@@ -491,6 +643,8 @@ def compute_feature_drift_with_histogram_cache(
                     feature=col,
                     edges=edges,
                     recent_window_days=recent_window_days,
+                    as_of_date=anchor_date,
+                    feature_set_id=feature_set_id,
                 )
                 _write_histogram_rows(
                     conn,
@@ -511,6 +665,8 @@ def compute_feature_drift_with_histogram_cache(
                     "n_recent": n_recent,
                     "severity": severity,
                     "model_id": model_id,
+                    "feature_set_id": feature_set_id,
+                    "as_of_date": anchor_date,
                     "drift_source": "histogram_cache",
                 })
             except Exception as exc:
@@ -530,22 +686,24 @@ def write_drift_snapshot(
     if not drift_results:
         return 0
     with get_conn() as conn:
+        ensure_drift_snapshot_schema(conn)
         # 用 SQL 端的 now() 保证 snapshot_at 一致
         if snapshot_at is None:
             snapshot_at = conn.execute("SELECT now()").fetchone()[0]
         for r in drift_results:
             conn.execute("""
                 INSERT INTO mart_feature_drift
-                  (snapshot_at, model_id, feature, psi, n_train, n_recent, window_days, severity, notes)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, NULL)
+                  (snapshot_at, model_id, feature_set_id, feature, psi, n_train, n_recent, window_days, severity, notes)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NULL)
                 ON CONFLICT (snapshot_at, model_id, feature) DO UPDATE SET
+                    feature_set_id = EXCLUDED.feature_set_id,
                     psi = EXCLUDED.psi,
                     n_train = EXCLUDED.n_train,
                     n_recent = EXCLUDED.n_recent,
                     window_days = EXCLUDED.window_days,
                     severity = EXCLUDED.severity
             """, (
-                snapshot_at, r.get("model_id"), r["feature"],
+                snapshot_at, r.get("model_id"), r.get("feature_set_id"), r["feature"],
                 None if (r["psi"] != r["psi"]) else r["psi"],  # 过滤 NaN
                 r["n_train"], r["n_recent"], window_days, r["severity"],
             ))

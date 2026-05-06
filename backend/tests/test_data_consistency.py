@@ -133,6 +133,7 @@ def test_core_daily_stock_price_readers_use_canonical_kline_relation():
             "CANONICAL_KLINE_QFQ_RELATION" not in text
             and "KLINE_DAILY_QFQ_RELATION" not in text
             and "get_canonical_kline_qfq_relation" not in text
+            and "canonical_kline_daily_qfq_sql" not in text
         ):
             missing.append(rel)
 

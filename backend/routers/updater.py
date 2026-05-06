@@ -28,6 +28,7 @@ import asyncio
 import json
 import logging
 import re
+import sys
 import time
 from datetime import datetime, timedelta
 from typing import Optional
@@ -50,6 +51,7 @@ from services.industry import industry_join_clause, summarize_industry_coverage
 from services.market_db import get_canonical_kline_qfq_relation
 from services.source_policy import normalize_kline_write_source
 from services.tdx_source import iter_tdx_servers
+from services.update_tasks import ingest_holders_tdxhub_raw_parse, sync_gpcw_files_and_auto_features
 from services.utils import latest_completed_trade_date
 
 logger = logging.getLogger("cm-api")
@@ -1364,12 +1366,10 @@ async def _step_sync_raw(conn) -> dict:
     # 解包 DuckConn 拿原生 duckdb connection (脚本里的 SQL 是原生写法).
     raw_con = conn._con if hasattr(conn, "_con") else conn
 
-    from scripts.ingest_holders_tdxhub import run as ingest_run
-
     loop = asyncio.get_event_loop()
 
     def _do() -> dict:
-        return ingest_run(workers=4, con=raw_con)
+        return ingest_holders_tdxhub_raw_parse(workers=4, con=raw_con)
 
     progress = await loop.run_in_executor(None, _do)
     attempted = int(progress.get("done") or 0)
@@ -3359,7 +3359,6 @@ async def _step_sync_financial(conn) -> dict:
     """
     import json as _json
     from services.financial_client import sync_financial_data
-    from services.tdx_affair_client import sync_gpcw_files
 
     progress_records = 0
     last_progress = {}
@@ -3386,29 +3385,7 @@ async def _step_sync_financial(conn) -> dict:
     )
 
     def _sync_gpcw_and_features(worker_conn):
-        from scripts.profile_tdx_gpcw_fields import profile_tdx_gpcw_fields
-        from scripts.build_tdx_gpcw_auto_features import build_tdx_gpcw_auto_features
-
-        result = sync_gpcw_files(worker_conn, quarters=12)
-        affected_dates = list(result.get("affected_report_dates") or [])
-        if affected_dates:
-            profile = profile_tdx_gpcw_fields(worker_conn)
-            auto_features = build_tdx_gpcw_auto_features(
-                worker_conn,
-                profile_run_id=profile["profile_run_id"],
-                report_dates=affected_dates,
-            )
-            result["field_profile"] = {
-                "profile_run_id": profile["profile_run_id"],
-                "field_count": profile["field_count"],
-                "model_candidate_count": profile["model_candidate_count"],
-            }
-            result["auto_feature_rebuild"] = {
-                "report_dates": auto_features["rebuilt_report_dates"],
-                "rows": auto_features["rebuilt_rows"],
-                "features": auto_features["rebuilt_features"],
-            }
-        return result
+        return sync_gpcw_files_and_auto_features(worker_conn, quarters=12)
 
     if daily_critical:
         gpcw_progress = {
@@ -4737,7 +4714,7 @@ async def run_lifeboat():
         global _lifeboat_running, _lifeboat_result
         try:
             proc = await asyncio.create_subprocess_exec(
-                "python3", str(script_path),
+                sys.executable, str(script_path),
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.STDOUT,
                 cwd=str(script_path.parent),

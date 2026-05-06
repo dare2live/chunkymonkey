@@ -127,6 +127,27 @@ def _known(
 
 
 def lineage_for_feature(feature_name: str) -> FeatureLineageSpec:
+    for suffix, transform_name in (
+        ("_xs_rank", "daily cross-sectional rank"),
+        ("_xs_bucket5", "daily cross-sectional quintile bucket"),
+    ):
+        if feature_name.endswith(suffix):
+            base_feature = feature_name[: -len(suffix)]
+            base = lineage_for_feature(base_feature)
+            if base.lineage_status != "missing":
+                return FeatureLineageSpec(
+                    feature_name=feature_name,
+                    feature_group=base.feature_group,
+                    source_table=base.source_table,
+                    upstream_source=base.upstream_source,
+                    source_tier=base.source_tier,
+                    source_date_col=base.source_date_col,
+                    available_date_col=base.available_date_col,
+                    parser_version=base.parser_version,
+                    pit_required=base.pit_required,
+                    lineage_status=base.lineage_status,
+                    notes=f"{base.notes} Derived from {base_feature} via {transform_name}.",
+                )
     if feature_name in PRICE_FEATURES:
         return _known(
             feature_name,

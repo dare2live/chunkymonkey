@@ -16,6 +16,7 @@ from __future__ import annotations
 import argparse
 import json
 import logging
+import math
 import pickle
 import sys
 import time
@@ -26,7 +27,7 @@ from typing import Any
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from services.db import get_conn
-from services.market_db import CANONICAL_KLINE_QFQ_RELATION
+from services.market_db import canonical_kline_daily_qfq_sql
 from services.model_feature_schema import (
     REGIME_FEATURE_COLS,
     feature_cols_from_json,
@@ -107,11 +108,7 @@ CREATE TABLE IF NOT EXISTS mart_daily_recommendation_risk (
 );
 """
 
-KLINE_DAILY_QFQ_SQL = """
-SELECT code, date, amount
-FROM {relation}
-WHERE freq='daily' AND adjust='qfq'
-""".format(relation=CANONICAL_KLINE_QFQ_RELATION)
+KLINE_DAILY_QFQ_SQL = canonical_kline_daily_qfq_sql(columns=("code", "date", "amount"))
 
 
 FEATURE_COLS = ordered_feature_cols(include_dense_v2=True)
@@ -203,11 +200,45 @@ def _records_from_cursor(cursor: Any) -> list[dict[str, Any]]:
 
 def _feature_value(value: Any) -> float:
     if value is None:
-        return float("nan")
+        return 0.0
     try:
-        return float(value)
+        number = float(value)
     except (TypeError, ValueError):
-        return float("nan")
+        return 0.0
+    return number if math.isfinite(number) else 0.0
+
+
+def _json_raw_feature_value(value: Any) -> Any:
+    if value is None:
+        return None
+    if isinstance(value, float) and not math.isfinite(value):
+        return None
+    if isinstance(value, (int, float, str, bool)):
+        return value
+    return str(value)
+
+
+def build_key_features_json(row: dict[str, Any], top_features: list[tuple[str, float]]) -> str:
+    model_features = [
+        {"name": name, "importance": float(importance or 0.0)}
+        for name, importance in top_features
+    ]
+    stock_values = []
+    for name, importance in top_features:
+        raw_value = row.get(name)
+        stock_values.append({
+            "name": name,
+            "importance": float(importance or 0.0),
+            "raw_value": _json_raw_feature_value(raw_value),
+            "model_value": _feature_value(raw_value),
+        })
+    return json.dumps(
+        {
+            "model_top_features": model_features,
+            "stock_feature_values": stock_values,
+        },
+        ensure_ascii=False,
+    )
 
 
 def _rank_percentiles(values: list[float]) -> list[float]:
@@ -545,8 +576,6 @@ def main():
 
     # top features (模型级, 所有股共享)
     top_feats = get_top_features(model, feature_cols, top_k=8)
-    features_json = json.dumps({'model_top_features': [{'name': n, 'importance': v} for n, v in top_feats]},
-                                 ensure_ascii=False)
 
     # 写入
     track_id = args.track_id
@@ -565,7 +594,7 @@ def main():
             'regime_flag': row.get('regime_flag'),
             'snapshot_date': target_date,
             'model_id': model_id,
-            'key_features_json': features_json,
+            'key_features_json': build_key_features_json(row, top_feats),
             'track_id': track_id,
             'is_primary': is_primary,
             'run_mode': args.mode,

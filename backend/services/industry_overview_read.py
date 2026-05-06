@@ -7,6 +7,10 @@ instead of letting individual routes rebuild the same aggregates differently.
 from datetime import date, timedelta
 from typing import Optional
 
+from services.business_facts import (
+    load_sector_active_business_facts_map,
+    load_sector_candidate_business_facts_map,
+)
 from services.industry import (
     industry_join_clause,
     industry_level_db_column,
@@ -54,69 +58,11 @@ def load_sector_momentum_map(conn) -> dict[str, dict]:
 
 
 def load_sector_active_map(conn) -> dict[str, dict]:
-    return _query_sector_map(
-        conn,
-        f"""
-        SELECT {_sector_select('rel')},
-               COUNT(DISTINCT institution_id) AS active_institution_count,
-               COUNT(DISTINCT stock_code) AS current_stock_count
-        FROM mart_current_relationship rel
-        WHERE {_sector_nonempty_condition('rel')}
-        GROUP BY {_sector_expr('rel')}
-        """,
-    )
+    return load_sector_active_business_facts_map(conn, sector_level=SECTOR_LEVEL)
 
 
 def load_sector_candidate_map(conn) -> dict[str, dict]:
-    return _query_sector_map(
-        conn,
-        f"""
-        SELECT {_sector_select('ctx')},
-               COUNT(*) AS candidate_count,
-               AVG(t.discovery_score) AS avg_discovery_score,
-               AVG(t.company_quality_score) AS avg_quality_score,
-               AVG(t.stage_score) AS avg_stage_score,
-               AVG(t.composite_priority_score) AS avg_composite_score,
-               SUM(CASE WHEN t.price_20d_pct IS NOT NULL THEN 1 ELSE 0 END) AS feedback_20d_count,
-               AVG(CASE WHEN t.price_20d_pct IS NOT NULL THEN t.price_20d_pct END) AS avg_price_20d_pct,
-               AVG(CASE WHEN t.price_20d_pct IS NOT NULL AND t.price_20d_pct > 0 THEN 1.0
-                        WHEN t.price_20d_pct IS NOT NULL THEN 0.0
-                        ELSE NULL END) * 100 AS win_rate_20d,
-               SUM(CASE WHEN t.priority_pool = 'A池' THEN 1 ELSE 0 END) AS a_pool_count,
-               SUM(CASE WHEN t.priority_pool = 'B池' THEN 1 ELSE 0 END) AS b_pool_count,
-               SUM(CASE WHEN t.priority_pool = 'C池' THEN 1 ELSE 0 END) AS c_pool_count,
-               SUM(CASE WHEN t.priority_pool = 'D池' THEN 1 ELSE 0 END) AS d_pool_count,
-               SUM(CASE WHEN t.priority_pool IN ('A池', 'B池') AND t.price_20d_pct IS NOT NULL THEN 1 ELSE 0 END) AS ab_feedback_20d_count,
-               AVG(CASE WHEN t.priority_pool IN ('A池', 'B池') AND t.price_20d_pct IS NOT NULL THEN t.price_20d_pct END) AS ab_avg_price_20d_pct,
-               AVG(CASE WHEN t.priority_pool IN ('A池', 'B池') AND t.price_20d_pct IS NOT NULL AND t.price_20d_pct > 0 THEN 1.0
-                        WHEN t.priority_pool IN ('A池', 'B池') AND t.price_20d_pct IS NOT NULL THEN 0.0
-                        ELSE NULL END) * 100 AS ab_win_rate_20d,
-               SUM(CASE WHEN t.priority_pool = 'A池' AND t.price_20d_pct IS NOT NULL THEN 1 ELSE 0 END) AS a_feedback_20d_count,
-               AVG(CASE WHEN t.priority_pool = 'A池' AND t.price_20d_pct IS NOT NULL THEN t.price_20d_pct END) AS a_avg_price_20d_pct,
-               AVG(CASE WHEN t.priority_pool = 'A池' AND t.price_20d_pct IS NOT NULL AND t.price_20d_pct > 0 THEN 1.0
-                        WHEN t.priority_pool = 'A池' AND t.price_20d_pct IS NOT NULL THEN 0.0
-                        ELSE NULL END) * 100 AS a_win_rate_20d,
-               SUM(CASE WHEN t.setup_tag IS NOT NULL THEN 1 ELSE 0 END) AS setup_candidate_count,
-               SUM(CASE WHEN t.company_quality_score >= 80 THEN 1 ELSE 0 END) AS quality_strong_count,
-               SUM(CASE WHEN t.stage_score >= 80 THEN 1 ELSE 0 END) AS stage_strong_count,
-               SUM(CASE WHEN COALESCE(t.company_quality_score, -1) >= 80 THEN 1 ELSE 0 END) AS quality_band_80_plus,
-               SUM(CASE WHEN COALESCE(t.company_quality_score, -1) >= 65 AND COALESCE(t.company_quality_score, -1) < 80 THEN 1 ELSE 0 END) AS quality_band_65_80,
-               SUM(CASE WHEN COALESCE(t.company_quality_score, -1) >= 50 AND COALESCE(t.company_quality_score, -1) < 65 THEN 1 ELSE 0 END) AS quality_band_50_65,
-               SUM(CASE WHEN COALESCE(t.company_quality_score, -1) < 50 THEN 1 ELSE 0 END) AS quality_band_below_50,
-               SUM(CASE WHEN COALESCE(t.stage_score, -1) >= 80 THEN 1 ELSE 0 END) AS stage_band_80_plus,
-               SUM(CASE WHEN COALESCE(t.stage_score, -1) >= 60 AND COALESCE(t.stage_score, -1) < 80 THEN 1 ELSE 0 END) AS stage_band_60_80,
-               SUM(CASE WHEN COALESCE(t.stage_score, -1) >= 40 AND COALESCE(t.stage_score, -1) < 60 THEN 1 ELSE 0 END) AS stage_band_40_60,
-               SUM(CASE WHEN COALESCE(t.stage_score, -1) < 40 THEN 1 ELSE 0 END) AS stage_band_below_40,
-               SUM(CASE WHEN COALESCE(t.composite_priority_score, -1) >= 75 THEN 1 ELSE 0 END) AS composite_band_75_plus,
-               SUM(CASE WHEN COALESCE(t.composite_priority_score, -1) >= 60 AND COALESCE(t.composite_priority_score, -1) < 75 THEN 1 ELSE 0 END) AS composite_band_60_75,
-               SUM(CASE WHEN COALESCE(t.composite_priority_score, -1) >= 45 AND COALESCE(t.composite_priority_score, -1) < 60 THEN 1 ELSE 0 END) AS composite_band_45_60,
-               SUM(CASE WHEN COALESCE(t.composite_priority_score, -1) < 45 THEN 1 ELSE 0 END) AS composite_band_below_45
-        FROM mart_stock_trend t
-        INNER JOIN dim_stock_industry_context_latest ctx ON ctx.stock_code = t.stock_code
-        WHERE {_sector_nonempty_condition('ctx')}
-        GROUP BY {_sector_expr('ctx')}
-        """,
-    )
+    return load_sector_candidate_business_facts_map(conn, sector_level=SECTOR_LEVEL)
 
 
 def load_sector_snapshot_feedback_map(conn) -> dict[str, dict]:

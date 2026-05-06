@@ -14,6 +14,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from services.db import get_conn
 from services.ml_lifecycle.registry import GATE_THRESHOLDS, get_model_status, select_default_model_id
 from services.model_feature_schema import TDX_KEEP_FEATURE_COLS
+from services.model_feature_schema import holding_period_from_label
 from services.feature_retention import load_production_keep_features
 from services.schema_versions import record_actual_version
 
@@ -77,10 +78,12 @@ def _latest_model(conn, prefix: str) -> str | None:
 def _model_metrics(conn, model_id: str | None) -> dict:
     if not model_id:
         return {}
+    label_expr = ", label_name" if _has_column(conn, "mart_multidim_model", "label_name") else ", NULL AS label_name"
     row = conn.execute(
-        """
+        f"""
         SELECT model_id, holdout_rank_ic, holdout_long_short_spread,
                holdout_top_decile_avg, holdout_winrate_top, feature_schema_version
+               {label_expr}
           FROM mart_multidim_model
          WHERE model_id = ?
         """,
@@ -209,15 +212,54 @@ def _latest_drift(conn, model_id: str | None) -> dict:
     return out
 
 
-def _rank_ic_gate(c_rank: float | None, h_rank: float | None) -> tuple[bool, dict, str | None]:
+def _rank_ic_gate(
+    c_rank: float | None,
+    h_rank: float | None,
+    *,
+    champion_label_name: str | None = None,
+    challenger_label_name: str | None = None,
+) -> tuple[bool, dict, str | None]:
     if c_rank is None or h_rank is None:
         return False, {"champion": c_rank, "challenger": h_rank}, "missing rank IC comparison"
+    champion_holding_period = holding_period_from_label(champion_label_name)
+    challenger_holding_period = holding_period_from_label(challenger_label_name)
+    horizon_mismatch = (
+        champion_holding_period is not None
+        and challenger_holding_period is not None
+        and champion_holding_period != challenger_holding_period
+    )
+    if horizon_mismatch:
+        min_abs = float(GATE_THRESHOLDS["min_ic_holdout"])
+        ok = h_rank >= min_abs
+        detail = {
+            "champion": c_rank,
+            "challenger": h_rank,
+            "champion_label_name": champion_label_name,
+            "challenger_label_name": challenger_label_name,
+            "champion_holding_period": champion_holding_period,
+            "challenger_holding_period": challenger_holding_period,
+            "horizon_mismatch": True,
+            "comparison_scope": "absolute_candidate_rank_ic_due_to_horizon_mismatch",
+            "min_abs_rank_ic": min_abs,
+        }
+        reason = (
+            f"challenger rank_ic {h_rank:.6f} < absolute min {min_abs:.6f} "
+            f"for cross-horizon comparison"
+            if not ok else None
+        )
+        return ok, detail, reason
     relative_required = c_rank * 1.05 if c_rank > 0 else c_rank + 0.001
     absolute_required = c_rank + 0.005
     ok = h_rank >= relative_required or h_rank >= absolute_required
     detail = {
         "champion": c_rank,
         "challenger": h_rank,
+        "champion_label_name": champion_label_name,
+        "challenger_label_name": challenger_label_name,
+        "champion_holding_period": champion_holding_period,
+        "challenger_holding_period": challenger_holding_period,
+        "horizon_mismatch": False,
+        "comparison_scope": "same_horizon_champion_uplift",
         "relative_required": relative_required,
         "absolute_required": absolute_required,
         "uplift_abs": h_rank - c_rank,
@@ -542,7 +584,12 @@ def evaluate_gate(
     challenger = _model_metrics(conn, challenger_model_id)
     c_rank = champion.get("holdout_rank_ic")
     h_rank = challenger.get("holdout_rank_ic")
-    rank_ok, rank_detail, rank_blocker = _rank_ic_gate(c_rank, h_rank)
+    rank_ok, rank_detail, rank_blocker = _rank_ic_gate(
+        c_rank,
+        h_rank,
+        champion_label_name=champion.get("label_name"),
+        challenger_label_name=challenger.get("label_name"),
+    )
     gate(
         "rank_ic",
         "PASS" if rank_ok else ("WAIT" if c_rank is None or h_rank is None else "FAIL"),

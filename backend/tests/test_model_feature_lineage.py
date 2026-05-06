@@ -21,6 +21,16 @@ def test_registered_model_features_have_lineage_specs():
     assert missing == []
 
 
+def test_transformed_cross_sectional_features_inherit_base_lineage():
+    spec = lineage_for_feature("vol_std_20d_xs_bucket5")
+
+    assert spec.lineage_status == "known"
+    assert spec.feature_group == "price_technical"
+    assert spec.source_table == "v_price_kline_qfq"
+    assert spec.pit_required is False
+    assert "vol_std_20d" in spec.notes
+
+
 def test_write_model_feature_lineage_uses_model_feature_cols_json():
     conn = duck_mem()
     try:

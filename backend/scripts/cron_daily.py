@@ -18,13 +18,13 @@ Phase 拆分:
 
 用法:
   # 完整一日
-  python3 backend/scripts/cron_daily.py
+  python backend/scripts/cron_daily.py
   # 手动全量回填 (非每日默认)
-  python3 backend/scripts/cron_daily.py --full-sync
+  python backend/scripts/cron_daily.py --full-sync
   # 跳过 sync (sync 已经手动跑过)
-  python3 backend/scripts/cron_daily.py --skip-sync
+  python backend/scripts/cron_daily.py --skip-sync
   # 只跑生产推荐与监控
-  python3 backend/scripts/cron_daily.py --only watermarks,topk,health,drift
+  python backend/scripts/cron_daily.py --only watermarks,topk,health,drift
 """
 from __future__ import annotations
 

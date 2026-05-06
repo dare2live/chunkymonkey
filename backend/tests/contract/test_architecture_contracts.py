@@ -33,3 +33,13 @@ def test_production_code_does_not_depend_on_deprecated_assets():
     )
 
     assert violations == []
+
+
+def test_routers_do_not_import_script_modules_directly():
+    offenders = []
+    for path in (REPO / "backend" / "routers").glob("*.py"):
+        text = path.read_text(encoding="utf-8")
+        if "from scripts" in text or "import scripts" in text:
+            offenders.append(path.relative_to(REPO).as_posix())
+
+    assert offenders == []

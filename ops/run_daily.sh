@@ -21,7 +21,8 @@ DATE=$(date +%Y-%m-%d)
 LOG_FILE="$LOG_DIR/daily-$DATE.log"
 UPDATE_TIMEOUT_SEC=$((60 * 60))   # 60 分钟封顶
 POLL_INTERVAL_SEC=15
-PYTHON_BIN="${PYTHON_BIN:-python3}"
+export PATH="/opt/homebrew/opt/python@3.13/libexec/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:$PATH"
+PYTHON_BIN="${PYTHON_BIN:-python}"
 DRY_RUN="${DRY_RUN:-0}"
 
 # 命令行 --dry-run 也算
@@ -40,6 +41,7 @@ log() {
 log "==== chunky-monkey daily run start ===="
 log "PROJECT_ROOT=$PROJECT_ROOT"
 log "BACKEND_URL=$BACKEND_URL"
+log "PYTHON_BIN=$PYTHON_BIN ($($PYTHON_BIN --version 2>&1 || echo unavailable))"
 
 # ----- 1. 检查交易日 (周末跳过, launchd 不区分中国节假日) -----
 DOW=$(date +%u)  # 1=Mon ... 7=Sun

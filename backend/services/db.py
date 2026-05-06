@@ -142,6 +142,7 @@ def init_db():
                 -- temporal
                 notice_date       TEXT,
                 effective_date    TEXT,                       -- 公告日 + 1 交易日 (回测 PIT)
+                availability_source TEXT,                      -- source_notice | regulatory_deadline
                 page_update_date  TEXT,                       -- F10 页头 "更新日期"
 
                 -- provenance
@@ -685,6 +686,7 @@ def init_db():
             CREATE TABLE IF NOT EXISTS mart_feature_drift (
                 snapshot_at      TIMESTAMP NOT NULL,
                 model_id         TEXT,                          -- 关联 mart_model_lifecycle (可空 = 全局基线)
+                feature_set_id   TEXT,                          -- 候选 feature_set 过滤后的漂移证据
                 feature          TEXT NOT NULL,
                 psi              DOUBLE,                        -- Population Stability Index
                 n_train          BIGINT,
@@ -698,6 +700,8 @@ def init_db():
                 ON mart_feature_drift(snapshot_at DESC);
             CREATE INDEX IF NOT EXISTS idx_mart_feature_drift_severity
                 ON mart_feature_drift(severity, psi DESC);
+            CREATE INDEX IF NOT EXISTS idx_mart_feature_drift_feature_set
+                ON mart_feature_drift(model_id, feature_set_id, snapshot_at DESC);
 
             CREATE TABLE IF NOT EXISTS mart_tdx_data_need_coverage (
                 need_id TEXT PRIMARY KEY,
@@ -1729,6 +1733,14 @@ def init_db():
             conn.execute("ALTER TABLE mart_institution_profile ADD COLUMN recent_exit_count INTEGER DEFAULT 0")
         except Exception:
             pass
+        for col in [
+            "availability_source TEXT",
+        ]:
+            try:
+                conn.execute(f"ALTER TABLE fact_top10_holder_period ADD COLUMN {col}")
+            except Exception:
+                pass
+
         for col in [
             "stock_name TEXT",
             "reason TEXT",

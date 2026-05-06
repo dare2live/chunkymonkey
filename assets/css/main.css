@@ -573,6 +573,26 @@ select {
   white-space: nowrap;
 }
 
+.wb-feature-values {
+  display: grid;
+  gap: 3px;
+  min-width: 180px;
+  max-width: 280px;
+}
+
+.wb-feature-values span {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  color: var(--cm-ink-700);
+}
+
+.wb-feature-values code {
+  max-width: 190px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 @media (max-width: 980px) {
   .wb-stats-row,
   .wb-grid {

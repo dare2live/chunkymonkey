@@ -152,6 +152,11 @@ def build_evidence_bundle(
                 model_id,
                 "--feature-table",
                 feature_table,
+                *(
+                    ["--feature-set-id", panel_feature_set_id]
+                    if panel_feature_set_id
+                    else []
+                ),
                 "--top-n",
                 "30",
             ],

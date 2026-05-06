@@ -189,12 +189,18 @@ async def get_daily_topk(
         items = []
         key_features_cache = None
         for r in rows:
+            stock_feature_values = []
             if key_features_cache is None:
                 try:
                     kf = json.loads(r["key_features_json"]) if r["key_features_json"] else {}
                     key_features_cache = kf.get("model_top_features", [])
                 except Exception:
                     key_features_cache = []
+            try:
+                kf = json.loads(r["key_features_json"]) if r["key_features_json"] else {}
+                stock_feature_values = kf.get("stock_feature_values", []) if isinstance(kf, dict) else []
+            except Exception:
+                stock_feature_values = []
             items.append({
                 "rank": r["rank_in_date"],
                 "stock_code": r["stock_code"],
@@ -209,6 +215,7 @@ async def get_daily_topk(
                 "is_primary": bool(r["is_primary"]),
                 "l1": r["l1"],
                 "l2": r["l2"],
+                "top_feature_values": stock_feature_values[:8] if isinstance(stock_feature_values, list) else [],
             })
 
         # 模型元数据

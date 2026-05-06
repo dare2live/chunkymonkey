@@ -339,10 +339,25 @@ def test_fixed_params_json_adds_lightgbm_runtime_defaults():
 
     assert params["num_leaves"] == 31
     assert params["min_data_in_leaf"] == 1000
+    assert params["model_family"] == "lightgbm"
     assert params["objective"] == "regression"
     assert params["metric"] == "rmse"
     assert params["feature_pre_filter"] is False
     assert params["seed"] == 42
+
+
+def test_fixed_params_json_preserves_lightgbm_ridge_blend_controls():
+    params = subject._fixed_params_from_json(
+        '{"model_family": "lightgbm_ridge_blend", "ridge_weight": 0.65, "ridge_alpha": 2.5, "num_leaves": 31}',
+        model_family="lightgbm_ridge_blend",
+    )
+
+    assert params["model_family"] == "lightgbm_ridge_blend"
+    assert params["ridge_weight"] == pytest.approx(0.65)
+    assert params["ridge_alpha"] == pytest.approx(2.5)
+    assert params["num_leaves"] == 31
+    assert params["objective"] == "regression"
+    assert subject._resolve_training_model_family("auto", params) == "lightgbm_ridge_blend"
 
 
 def test_fixed_params_json_rejects_non_object():

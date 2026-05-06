@@ -15,15 +15,20 @@ logger = logging.getLogger("cm-api")
 
 
 def _ensure_tdxhub_import_path() -> None:
-    try:
-        import tdxhub.holders  # noqa: F401
-        return
-    except ModuleNotFoundError:
-        pass
     stock_root = Path(__file__).resolve().parents[3]
     local_tdxhub = stock_root / "tdxhub"
+    local_tdxhub_pkg = local_tdxhub / "tdxhub"
     if local_tdxhub.exists() and str(local_tdxhub) not in sys.path:
         sys.path.insert(0, str(local_tdxhub))
+    try:
+        import tdxhub  # noqa: F401
+    except ModuleNotFoundError:
+        pass
+    else:
+        package_path = list(getattr(tdxhub, "__path__", []) or [])
+        if local_tdxhub_pkg.exists() and str(local_tdxhub_pkg) not in package_path:
+            tdxhub.__path__ = [str(local_tdxhub_pkg), *package_path]
+    import tdxhub.holders  # noqa: F401
 
 
 _ensure_tdxhub_import_path()

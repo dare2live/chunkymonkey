@@ -18,7 +18,7 @@ def _write_config(path: Path) -> None:
         """
 version: 1
 defaults:
-  python: python3
+  python: python
   backend_dir: backend
 research_schedule:
   - task_id: completed_model
@@ -138,7 +138,7 @@ def test_plan_research_schedule_persists_statuses_commands_and_manifest(tmp_path
         assert "--no-resume" in rows[0]["command_text"]
 
         command = json.loads(rows[1]["command_json"])
-        assert command["argv"][:2] == ["python3", "backend/scripts/run_optuna_model_stability_search.py"]
+        assert command["argv"][:2] == ["python", "backend/scripts/run_optuna_model_stability_search.py"]
         assert "--trials" in command["argv"]
         assert "waiting for dependencies: planned_large_model" == rows[2]["reason"]
         assert rows[3]["reason"] == "wait for drift mitigation"

@@ -115,7 +115,7 @@ def main():
 
     # Step 1: feature panel
     run_step(
-        ["python3", "-m", "backend.scripts.build_feature_panel_duck",
+        [sys.executable, "-m", "backend.scripts.build_feature_panel_duck",
          "--start", args.feature_start],
         "feature_panel",
         dry_run=args.dry_run,
@@ -123,7 +123,7 @@ def main():
 
     # Step 2: train + Optuna
     run_step(
-        ["python3", "-m", "backend.scripts.train_multidim_model",
+        [sys.executable, "-m", "backend.scripts.train_multidim_model",
          "--start", args.feature_start,
          "--feature-group", args.feature_group,
          "--trials", str(args.trials),
@@ -134,7 +134,7 @@ def main():
 
     # Step 3: daily topK
     run_step(
-        ["python3", "-m", "backend.scripts.run_daily_topk",
+        [sys.executable, "-m", "backend.scripts.run_daily_topk",
          "--top-k", str(args.top_k),
          "--by-regime"],
         "run_daily_topk",

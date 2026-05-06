@@ -17,7 +17,7 @@
     <key>EnvironmentVariables</key>
     <dict>
         <key>PATH</key>
-        <string>/usr/local/bin:/usr/bin:/bin:/opt/homebrew/bin</string>
+        <string>/opt/homebrew/opt/python@3.13/libexec/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin</string>
         <key>LANG</key>
         <string>zh_CN.UTF-8</string>
     </dict>

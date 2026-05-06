@@ -65,6 +65,7 @@ from services.holders_resolver import (  # noqa: E402
     MiaoxiangHolderSource,
     ResolverResult,
 )
+from services.holder_availability import enrich_holder_rows_with_availability  # noqa: E402
 from services.pipeline_manifest import git_commit_sha, record_pipeline_run, utc_now_iso  # noqa: E402
 
 
@@ -294,6 +295,41 @@ def _delete_existing_fact_rows(
     )
 
 
+def _update_holder_availability_source(con: duckdb.DuckDBPyConnection, rows: list[dict]) -> None:
+    try:
+        for row in rows:
+            source = row.get("availability_source")
+            if not source:
+                continue
+            con.execute(
+                """
+                UPDATE fact_top10_holder_period
+                SET availability_source = COALESCE(NULLIF(availability_source, ''), ?)
+                WHERE stock_code = ?
+                  AND report_date = ?
+                  AND holder_set = ?
+                  AND source = ?
+                  AND is_exit_row = ?
+                  AND holder_rank = ?
+                  AND row_seq = ?
+                  AND COALESCE(share_class, '') = COALESCE(?, '')
+                """,
+                (
+                    source,
+                    row.get("stock_code"),
+                    row.get("report_date"),
+                    row.get("holder_set"),
+                    row.get("source"),
+                    row.get("is_exit_row"),
+                    row.get("holder_rank"),
+                    row.get("row_seq"),
+                    row.get("share_class"),
+                ),
+            )
+    except Exception:
+        return
+
+
 def write_raw_one(
     con: duckdb.DuckDBPyConnection,
     *,
@@ -366,6 +402,7 @@ def write_one(con: duckdb.DuckDBPyConnection, *, stock_code: str, stock_name: st
         market=market,
         alias_map=alias_map,
     )
+    holders = enrich_holder_rows_with_availability(con, holders)
     periods = result.periods
     ctrl = result.controlling
     plans = _seq_rows(_copy_rows(result.plans), ("stock_code", "raw_hash"), "plan_seq")
@@ -457,6 +494,7 @@ def write_one(con: duckdb.DuckDBPyConnection, *, stock_code: str, stock_name: st
                   ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
                 )
             """, [_holder_tuple(row) for row in holders])
+            _update_holder_availability_source(con, holders)
 
         if ctrl is not None:
             con.execute("""

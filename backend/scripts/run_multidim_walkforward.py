@@ -16,8 +16,17 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 import lightgbm as lgb
 import numpy as np
+from sklearn.linear_model import Ridge
+from sklearn.pipeline import make_pipeline
+from sklearn.preprocessing import StandardScaler
 
 from services.db import get_conn
+from services.model_artifacts import (
+    CrossSectionalLightGBMRidgeBlend,
+    DEFAULT_RIDGE_ALPHA,
+    DEFAULT_RIDGE_WEIGHT,
+    lightgbm_regression_params,
+)
 from services.model_feature_schema import (
     BASE_FEATURE_COLS,
     DEFAULT_LABEL_NAME,
@@ -196,6 +205,12 @@ def latest_params(conn, model_id: str | None) -> tuple[str | None, dict]:
     out.update(params)
     out.update({"objective": "regression", "metric": "rmse", "verbose": -1})
     return row["model_id"], out
+
+
+def _resolve_model_family(requested: str, params: dict[str, Any] | None) -> str:
+    if requested != "auto":
+        return requested
+    return str((params or {}).get("model_family") or "lightgbm")
 
 
 def build_folds(dates: list, train_days: int, valid_days: int, test_days: int, step_days: int) -> list[dict]:
@@ -628,6 +643,12 @@ def main() -> None:
               "(对齐 baseline final fit + M6.1 ablation 口径)"),
     )
     parser.add_argument(
+        "--model-family",
+        choices=["auto", "lightgbm", "lightgbm_ridge_blend"],
+        default="auto",
+        help="walk-forward 模型族; auto 会从模型 best_params_json 推断",
+    )
+    parser.add_argument(
         "--update-lifecycle",
         action="store_true",
         help="仅正式研究 run 使用: 所有 fold quality=ok 时才把本次 walk-forward 汇总写回 lifecycle",
@@ -641,6 +662,7 @@ def main() -> None:
     try:
         ensure_model_schema(conn)
         source_model_id, params = latest_params(conn, args.model_id)
+        model_family = _resolve_model_family(args.model_family, params)
         selected_feature_cols: list[str] | None = None
         if args.feature_group == "model_selection_run":
             if not args.model_selection_run_id:
@@ -742,12 +764,32 @@ def main() -> None:
                 label=y_train_valid,
                 feature_name=feature_cols,
             )
-            model = lgb.train(
-                params,
-                dataset,
-                num_boost_round=args.walkforward_num_round,
-            )
-            pred = model.predict(X_test)
+            if model_family == "lightgbm_ridge_blend":
+                lightgbm_model = lgb.train(
+                    lightgbm_regression_params(params),
+                    dataset,
+                    num_boost_round=args.walkforward_num_round,
+                )
+                ridge_model = make_pipeline(
+                    StandardScaler(),
+                    Ridge(alpha=float(params.get("ridge_alpha", DEFAULT_RIDGE_ALPHA))),
+                )
+                ridge_model.fit(X_train_valid, y_train_valid)
+                model = CrossSectionalLightGBMRidgeBlend(
+                    lightgbm_model=lightgbm_model,
+                    ridge_model=ridge_model,
+                    ridge_weight=float(params.get("ridge_weight", DEFAULT_RIDGE_WEIGHT)),
+                    ridge_alpha=float(params.get("ridge_alpha", DEFAULT_RIDGE_ALPHA)),
+                    feature_names=feature_cols,
+                )
+                pred = model.predict(X_test, dates=test_dates)
+            else:
+                model = lgb.train(
+                    lightgbm_regression_params(params),
+                    dataset,
+                    num_boost_round=args.walkforward_num_round,
+                )
+                pred = model.predict(X_test)
             ic, rank_ic = compute_ic(y_test, pred, test_dates)
             dec = decile_metrics(y_test, pred, test_dates)
             test_mean_ret = _mean_label_array(y_test)
@@ -893,6 +935,7 @@ def main() -> None:
                 "folds": len(fold_metrics),
                 "avg_rank_ic": avg_rank_ic,
                 "n_features": len(feature_cols),
+                "model_family": model_family,
                 "model_selection_run_id": args.model_selection_run_id,
                 "prediction_mode": args.prediction_mode,
                 "save_predictions": bool(args.save_predictions),

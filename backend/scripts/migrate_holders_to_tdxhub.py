@@ -33,6 +33,7 @@ log = logging.getLogger("migrate-holders")
 REPO = Path(__file__).resolve().parent.parent.parent
 sys.path.insert(0, str(REPO / "backend"))
 from services.db import init_db, DB_PATH  # noqa: E402
+from services.holder_availability import backfill_holder_period_availability  # noqa: E402
 
 
 # 常见股东简称 → 工商全称
@@ -215,6 +216,8 @@ def run_migration(source: str, target: str, *, limit: int = 0) -> dict[str, int]
         n_after = tgt.execute("select count(*) from fact_top10_holder_period").fetchone()[0]
         counts["holders"] = n_after - n_before
         log.info("  fact_top10_holder_period: inserted %d (total %d)", counts["holders"], n_after)
+        availability = backfill_holder_period_availability(tgt)
+        log.info("  holder PIT availability: %s", availability)
 
         # ----- 4. fact_controlling_shareholder -----
         counts["controlling"] = 0

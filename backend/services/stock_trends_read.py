@@ -6,6 +6,7 @@ owns the canonical facts and the frontend only renders them.
 
 from typing import Optional
 
+from services.business_facts import load_stock_holder_gate_coverage_map
 from services.industry import attach_industry_aliases
 from services.scoring import derive_stock_gate_from_priority
 
@@ -180,20 +181,7 @@ def load_stock_trends_payload(conn) -> dict:
         """
     ).fetchall()
 
-    coverage_rows = conn.execute(
-        """
-        SELECT
-            stock_code,
-            COUNT(*) AS holder_total,
-            SUM(CASE WHEN follow_gate = 'follow' THEN 1 ELSE 0 END) AS holder_follow_count,
-            SUM(CASE WHEN follow_gate = 'watch' THEN 1 ELSE 0 END) AS holder_watch_count,
-            SUM(CASE WHEN follow_gate = 'observe' THEN 1 ELSE 0 END) AS holder_observe_count,
-            SUM(CASE WHEN follow_gate = 'avoid' THEN 1 ELSE 0 END) AS holder_avoid_count
-        FROM mart_current_relationship
-        GROUP BY stock_code
-        """
-    ).fetchall()
-    coverage_map = {row["stock_code"]: dict(row) for row in coverage_rows}
+    coverage_map = load_stock_holder_gate_coverage_map(conn)
     industry_map = load_industry_map(conn)
     screening_map = load_screening_snapshot_map(conn)
     dual_confirm_map = load_dual_confirm_snapshot_map(conn)

@@ -19,7 +19,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from services.analytics import duck_connection
 from services.feature_registry import FeatureRegistry, load_feature_registry
-from services.market_db import CANONICAL_KLINE_QFQ_RELATION
+from services.market_db import canonical_kline_daily_qfq_sql
 from services.schema_versions import record_actual_version
 
 logger = logging.getLogger("feature_panel_duck")
@@ -117,14 +117,7 @@ ALTER TABLE mart_feature_panel_validation ADD COLUMN IF NOT EXISTS source_waterm
 ALTER TABLE mart_feature_panel_validation ADD COLUMN IF NOT EXISTS source_watermarks_json TEXT;
 """
 
-KLINE_DAILY_QFQ_SQL = """
-SELECT code, date, open, high, low, close, volume, amount,
-       COALESCE(source_name, 'unknown') AS source_name,
-       COALESCE(source_tier, 99)::SMALLINT AS source_tier,
-       COALESCE(is_fallback, FALSE) AS is_fallback
-FROM {relation}
-WHERE freq='daily' AND adjust='qfq'
-""".format(relation=CANONICAL_KLINE_QFQ_RELATION)
+KLINE_DAILY_QFQ_SQL = canonical_kline_daily_qfq_sql(include_source_lineage=True)
 
 REAL_ABS_LIMIT = 1e30
 FEATURE_ROLLING_LOOKBACK_DAYS = 260

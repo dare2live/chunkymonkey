@@ -1,8 +1,8 @@
 """计算特征漂移并写入 mart_feature_drift.
 
 用法:
-  python3 backend/scripts/compute_feature_drift.py
-  python3 backend/scripts/compute_feature_drift.py --recent-days 7 --train-days 180
+  python backend/scripts/compute_feature_drift.py
+  python backend/scripts/compute_feature_drift.py --recent-days 7 --train-days 180
 """
 from __future__ import annotations
 
@@ -43,9 +43,11 @@ def _model_feature_cols(model_id: str | None) -> list[str] | None:
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--feature-table", default="fact_feature_panel")
+    parser.add_argument("--feature-set-id", default=None, help="feature_table 有 feature_set_id 列时过滤候选集")
     parser.add_argument("--model-id", default=None, help="显式模型; 默认 lifecycle champion")
     parser.add_argument("--train-days", type=int, default=365)
     parser.add_argument("--recent-days", type=int, default=30)
+    parser.add_argument("--as-of-date", default=None, help="漂移窗口锚点; 默认取 feature_table 的最新交易日")
     parser.add_argument("--top-n", type=int, default=30, help="只算前 N 个特征 (按列序)")
     parser.add_argument("--no-cache", action="store_true", help="禁用 histogram cache, 执行全量 PSI 扫描")
     parser.add_argument("--refresh-baseline", action="store_true", help="强制重建 train histogram baseline")
@@ -61,10 +63,12 @@ def main() -> int:
     compute_fn = compute_feature_drift if args.no_cache else compute_feature_drift_with_histogram_cache
     kwargs = {
         "feature_table": args.feature_table,
+        "feature_set_id": args.feature_set_id,
         "feature_columns": feature_cols,
         "train_window_days": args.train_days,
         "recent_window_days": args.recent_days,
         "model_id": model_id,
+        "as_of_date": args.as_of_date,
     }
     if not args.no_cache:
         kwargs["refresh_baseline"] = args.refresh_baseline

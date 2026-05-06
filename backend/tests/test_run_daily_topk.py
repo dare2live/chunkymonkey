@@ -1,8 +1,11 @@
 import pytest
+import json
 
 from scripts.run_daily_topk import (
     DDL,
+    build_key_features_json,
     demote_existing_primary_recommendations,
+    _feature_value,
     _percentile_linear,
     _rank_percentiles,
     _top_by_regime,
@@ -22,6 +25,35 @@ def test_rank_percentiles_matches_average_tie_semantics():
 def test_percentile_linear_interpolates_without_numpy():
     assert _percentile_linear([10, 20, 30, 40], 25) == pytest.approx(17.5)
     assert _percentile_linear([10, 20, 30, 40], 50) == pytest.approx(25.0)
+
+
+def test_feature_value_normalizes_missing_and_non_finite_values_to_training_default():
+    assert _feature_value(None) == 0.0
+    assert _feature_value("not-a-number") == 0.0
+    assert _feature_value(float("nan")) == 0.0
+    assert _feature_value(float("inf")) == 0.0
+    assert _feature_value("-inf") == 0.0
+    assert _feature_value("1.25") == pytest.approx(1.25)
+
+
+def test_build_key_features_json_includes_stock_feature_values():
+    payload = json.loads(
+        build_key_features_json(
+            {"ret_20d": 0.12, "bad": float("nan"), "raw_text": "x"},
+            [("ret_20d", 3.0), ("bad", 2.0), ("raw_text", 1.0)],
+        )
+    )
+
+    assert payload["model_top_features"][0] == {"name": "ret_20d", "importance": 3.0}
+    assert payload["stock_feature_values"][0] == {
+        "name": "ret_20d",
+        "importance": 3.0,
+        "raw_value": 0.12,
+        "model_value": 0.12,
+    }
+    assert payload["stock_feature_values"][1]["raw_value"] is None
+    assert payload["stock_feature_values"][1]["model_value"] == 0.0
+    assert payload["stock_feature_values"][2]["model_value"] == 0.0
 
 
 def test_top_by_regime_keeps_each_group_limit_in_score_order():

@@ -620,7 +620,7 @@
   function renderRecommendationTable(rows) {
     if (!rows.length) return renderEmpty('暂无推荐清单');
     return '<div class="wb-table-wrap"><table class="data-table data-table-compact wb-table">' +
-      '<thead><tr><th>Rank</th><th>股票</th><th>行业</th><th>Score</th><th>Percentile</th><th>Regime</th><th>Top features</th></tr></thead><tbody>' +
+      '<thead><tr><th>Rank</th><th>股票</th><th>行业</th><th>Score</th><th>Percentile</th><th>Regime</th><th>Top feature values</th></tr></thead><tbody>' +
       rows.map(function (row) {
         return '<tr>' +
           '<td>' + fmtNum(row.rank_in_date) + '</td>' +
@@ -629,10 +629,20 @@
           '<td>' + fmtFloat(row.pred_score, 4) + '</td>' +
           '<td>' + fmtPct(row.percentile) + '</td>' +
           '<td>' + esc(row.regime_flag || '-') + '</td>' +
-          '<td>' + esc((row.top_features || []).join(', ') || '-') + '</td>' +
+          '<td>' + renderTopFeatureValues(row.top_feature_values || [], row.top_features || []) + '</td>' +
           '</tr>';
       }).join('') +
       '</tbody></table></div>';
+  }
+
+  function renderTopFeatureValues(values, fallbackNames) {
+    if (!values.length) return esc((fallbackNames || []).join(', ') || '-');
+    return '<div class="wb-feature-values">' + values.slice(0, 4).map(function (item) {
+      var value = item.model_value != null ? item.model_value : item.raw_value;
+      return '<span title="importance ' + esc(fmtFloat(item.importance, 3)) + '">' +
+        '<code>' + esc(item.name || '-') + '</code> ' + esc(fmtFloat(value, 3)) +
+      '</span>';
+    }).join('') + '</div>';
   }
 
   function renderArchitectureCandidates(rows) {

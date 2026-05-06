@@ -1546,6 +1546,7 @@ def _recommendation_rows_from_table(
 def _recommendation_row_dict(row: Any) -> dict[str, Any]:
     key_features = _safe_json(row["key_features_json"]) or {}
     top_features = key_features.get("model_top_features") if isinstance(key_features, dict) else []
+    stock_feature_values = key_features.get("stock_feature_values") if isinstance(key_features, dict) else []
     if isinstance(top_features, list):
         top_features = [
             item.get("name") if isinstance(item, dict) else str(item)
@@ -1553,6 +1554,14 @@ def _recommendation_row_dict(row: Any) -> dict[str, Any]:
         ]
     else:
         top_features = []
+    if isinstance(stock_feature_values, list):
+        stock_feature_values = [
+            item
+            for item in stock_feature_values[:5]
+            if isinstance(item, dict)
+        ]
+    else:
+        stock_feature_values = []
     return {
         "stock_code": row["stock_code"],
         "stock_name": row["stock_name"],
@@ -1566,6 +1575,7 @@ def _recommendation_row_dict(row: Any) -> dict[str, Any]:
         "track_id": row["track_id"],
         "run_mode": row["run_mode"],
         "top_features": top_features,
+        "top_feature_values": stock_feature_values,
         "built_at": row["built_at"],
     }
 

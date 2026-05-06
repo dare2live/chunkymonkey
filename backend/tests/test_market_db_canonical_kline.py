@@ -2,6 +2,7 @@ from conftest import duck_mem
 from services.market_db import (
     CANONICAL_KLINE_QFQ_VIEW_DDL,
     PRICE_KLINE_TDXHUB_DDL,
+    canonical_kline_daily_qfq_sql,
     get_canonical_kline_qfq_relation,
     upsert_price_kline_tdxhub_rows,
 )
@@ -74,6 +75,21 @@ def test_canonical_kline_prefers_tdxhub_and_fills_fallback_gap():
 def test_canonical_relation_resolves_for_direct_and_attached_connections():
     assert get_canonical_kline_qfq_relation() == "v_price_kline_qfq"
     assert get_canonical_kline_qfq_relation("market") == "market.v_price_kline_qfq"
+
+
+def test_canonical_daily_qfq_sql_uses_single_policy_relation_and_optional_lineage():
+    assert canonical_kline_daily_qfq_sql(columns=("code", "date", "amount")) == (
+        "SELECT code, date, amount\n"
+        "FROM market.v_price_kline_qfq\n"
+        "WHERE freq='daily' AND adjust='qfq'"
+    )
+
+    sql = canonical_kline_daily_qfq_sql(include_source_lineage=True)
+
+    assert "FROM market.v_price_kline_qfq" in sql
+    assert "COALESCE(source_name, 'unknown') AS source_name" in sql
+    assert "COALESCE(source_tier, 99)::SMALLINT AS source_tier" in sql
+    assert "COALESCE(is_fallback, FALSE) AS is_fallback" in sql
 
 
 def test_tdxhub_upsert_writes_primary_table_for_canonical_reads():

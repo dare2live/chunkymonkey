@@ -32,8 +32,17 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 import lightgbm as lgb
 import numpy as np
 import optuna
+from sklearn.linear_model import Ridge
+from sklearn.pipeline import make_pipeline
+from sklearn.preprocessing import StandardScaler
 
 from services.db import get_conn
+from services.model_artifacts import (
+    CrossSectionalLightGBMRidgeBlend,
+    DEFAULT_RIDGE_ALPHA,
+    DEFAULT_RIDGE_WEIGHT,
+    lightgbm_regression_params,
+)
 from services.model_feature_schema import (
     DEFAULT_LABEL_NAME,
     REGIME_FEATURE_COLS,
@@ -734,7 +743,7 @@ def _holdout_metrics(holdout: list[dict[str, Any]], pred) -> tuple[float, float,
     return ic, rank_ic, dec
 
 
-def _log_top_features(feature_cols: list[str], model: lgb.Booster) -> dict[str, float]:
+def _log_top_features(feature_cols: list[str], model: Any) -> dict[str, float]:
     fi = dict(zip(feature_cols, model.feature_importance(importance_type='gain').tolist()))
     fi_sorted = sorted(fi.items(), key=lambda x: x[1], reverse=True)
     logger.info("top 10 特征: %s", fi_sorted[:10])
@@ -747,7 +756,7 @@ def _model_dir() -> Path:
     return model_dir
 
 
-def _save_model(model_id: str, final_model: lgb.Booster) -> Path:
+def _save_model(model_id: str, final_model: Any) -> Path:
     import pickle
     model_dir = _model_dir()
     model_path = model_dir / f"{model_id}.pkl"
@@ -792,7 +801,7 @@ def _best_params(study) -> dict:
     return best
 
 
-def _fixed_params_from_json(params_json: str | None) -> dict | None:
+def _fixed_params_from_json(params_json: str | None, *, model_family: str | None = None) -> dict | None:
     if not params_json:
         return None
     try:
@@ -801,12 +810,31 @@ def _fixed_params_from_json(params_json: str | None) -> dict | None:
         raise ValueError(f"--fixed-params-json must be a JSON object: {exc}") from exc
     if not isinstance(params, dict):
         raise ValueError("--fixed-params-json must be a JSON object")
+    family = str(model_family or params.get("model_family") or "lightgbm")
+    if family not in {"lightgbm", "lightgbm_ridge_blend"}:
+        raise ValueError(f"unsupported model_family for train_multidim_model: {family}")
     params.update({
         'objective': 'regression', 'metric': 'rmse', 'verbose': -1,
         'seed': 42, 'feature_fraction_seed': 42, 'bagging_seed': 42,
         'data_random_seed': 42, 'feature_pre_filter': False,
     })
+    if family == "lightgbm_ridge_blend":
+        params.update({
+            "model_family": "lightgbm_ridge_blend",
+            "ridge_weight": float(params.get("ridge_weight", DEFAULT_RIDGE_WEIGHT)),
+            "ridge_alpha": float(params.get("ridge_alpha", DEFAULT_RIDGE_ALPHA)),
+        })
+    else:
+        params.pop("ridge_weight", None)
+        params.pop("ridge_alpha", None)
+        params["model_family"] = "lightgbm"
     return params
+
+
+def _resolve_training_model_family(requested: str, params: dict[str, Any] | None) -> str:
+    if requested != "auto":
+        return requested
+    return str((params or {}).get("model_family") or "lightgbm")
 
 
 def _selection_schema_tag(run_id: str) -> str:
@@ -927,6 +955,8 @@ def main():
                         help='JSON object of LightGBM params. When set, skip Optuna and train with these params.')
     parser.add_argument('--fixed-params-run-id', default=None,
                         help='读取 mart_model_stability_search_summary.best_params_json 并跳过 Optuna')
+    parser.add_argument('--model-family', choices=['auto', 'lightgbm', 'lightgbm_ridge_blend'], default='auto',
+                        help='训练模型族; auto 会从 fixed params 的 model_family 推断, 否则默认 lightgbm')
     parser.add_argument('--model-id-prefix', default='multidim_v1',
                         help='模型 ID 前缀, M7 候选可用 multidim_v2_base / multidim_v2_dense 区分')
     args = parser.parse_args()
@@ -1049,7 +1079,12 @@ def main():
     )
     timings["matrix_precompute_s"] = round(time.perf_counter() - t_matrix, 3)
 
-    fixed_params = _fixed_params_from_json(fixed_params_json)
+    requested_model_family = args.model_family
+    raw_fixed_params = json.loads(fixed_params_json) if fixed_params_json else None
+    model_family = _resolve_training_model_family(requested_model_family, raw_fixed_params)
+    fixed_params = _fixed_params_from_json(fixed_params_json, model_family=model_family)
+    if model_family == "lightgbm_ridge_blend" and fixed_params is None:
+        raise RuntimeError("lightgbm_ridge_blend training requires --fixed-params-json or --fixed-params-run-id")
     if fixed_params is None:
         logger.info("Optuna 启动 %d 次 trial", args.trials)
         t_optuna = time.perf_counter()
@@ -1070,31 +1105,57 @@ def main():
         logger.info("Optuna 完成. best_value=%.4f params=%s", study.best_value, study.best_params)
         # 用 best params 重训 (train + valid 合并) + holdout 评估
         best = _best_params(study)
+        best["model_family"] = "lightgbm"
+        model_family = "lightgbm"
         model_search_mode = "optuna"
     else:
         timings["optuna_s"] = 0.0
         best = fixed_params
         model_search_mode = "fixed_params"
-        logger.info("使用 fixed LightGBM params, 跳过 Optuna: %s", best)
+        logger.info("使用 fixed %s params, 跳过 Optuna: %s", model_family, best)
     if args.num_threads > 0:
         best["num_threads"] = int(args.num_threads)
     logger.info("LightGBM num_threads=%s cpu_count=%s", best.get("num_threads", "default"), os.cpu_count())
 
     # no early_stopping in final fit - use fixed num_round
     t_fit = time.perf_counter()
-    final_model = lgb.train(
-        best,
-        lgb.Dataset(
-            X_train_valid,
-            label=y_train_valid,
-            feature_name=feature_cols,
-            free_raw_data=False,
-        ),
-        num_boost_round=args.num_round,
-    )
+    if model_family == "lightgbm_ridge_blend":
+        lightgbm_model = lgb.train(
+            lightgbm_regression_params(best),
+            lgb.Dataset(
+                X_train_valid,
+                label=y_train_valid,
+                feature_name=feature_cols,
+                free_raw_data=False,
+            ),
+            num_boost_round=args.num_round,
+        )
+        ridge_model = make_pipeline(
+            StandardScaler(),
+            Ridge(alpha=float(best.get("ridge_alpha", DEFAULT_RIDGE_ALPHA))),
+        )
+        ridge_model.fit(X_train_valid, y_train_valid)
+        final_model = CrossSectionalLightGBMRidgeBlend(
+            lightgbm_model=lightgbm_model,
+            ridge_model=ridge_model,
+            ridge_weight=float(best.get("ridge_weight", DEFAULT_RIDGE_WEIGHT)),
+            ridge_alpha=float(best.get("ridge_alpha", DEFAULT_RIDGE_ALPHA)),
+            feature_names=feature_cols,
+        )
+    else:
+        final_model = lgb.train(
+            lightgbm_regression_params(best),
+            lgb.Dataset(
+                X_train_valid,
+                label=y_train_valid,
+                feature_name=feature_cols,
+                free_raw_data=False,
+            ),
+            num_boost_round=args.num_round,
+        )
     timings["final_fit_s"] = round(time.perf_counter() - t_fit, 3)
     t_pred = time.perf_counter()
-    pred_ho = final_model.predict(X_holdout)
+    pred_ho = final_model.predict(X_holdout, dates=holdout_dates) if model_family == "lightgbm_ridge_blend" else final_model.predict(X_holdout)
     timings["holdout_predict_s"] = round(time.perf_counter() - t_pred, 3)
 
     t_metrics = time.perf_counter()
@@ -1176,6 +1237,7 @@ def main():
             "n_features": len(feature_cols),
             "model_selection_run_id": args.model_selection_run_id,
             "model_search_mode": model_search_mode,
+            "model_family": model_family,
             "fixed_params_run_id": args.fixed_params_run_id,
             "trials": args.trials,
             "num_round": args.num_round,
@@ -1201,6 +1263,7 @@ def main():
             "model_selection_run_id": args.model_selection_run_id,
             "source_selection_method": model_selection.get("method") if model_selection else None,
             "model_search_mode": model_search_mode,
+            "model_family": model_family,
             "fixed_params_run_id": args.fixed_params_run_id,
             "fixed_params": fixed_params,
             "label_name": args.label_name,

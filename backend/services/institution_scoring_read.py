@@ -8,6 +8,7 @@ backend shaping logic.
 import math
 from typing import Optional
 
+from services.business_facts import load_institution_scorecard_business_facts
 from services.scoring import load_scoring_config
 
 
@@ -25,78 +26,11 @@ def _scorecard_row_payload(rows, fields: list[str]) -> list[dict]:
 
 
 def load_institution_scorecard_stats(conn) -> dict:
-    summary_row = conn.execute(
-        """
-        SELECT COUNT(*) AS total,
-               SUM(CASE WHEN score_basis = 'buy' THEN 1 ELSE 0 END) AS buy_basis_count,
-               SUM(CASE WHEN score_basis = 'fallback_all' THEN 1 ELSE 0 END) AS fallback_basis_count,
-               SUM(CASE WHEN score_confidence = 'high' THEN 1 ELSE 0 END) AS quality_high_conf_count,
-               SUM(CASE WHEN followability_confidence = 'high' THEN 1 ELSE 0 END) AS follow_high_conf_count,
-               SUM(CASE WHEN quality_score >= 65 THEN 1 ELSE 0 END) AS quality_strong_count,
-               SUM(CASE WHEN followability_score >= 65 THEN 1 ELSE 0 END) AS followability_strong_count,
-               SUM(CASE WHEN safe_follow_event_count > 0 THEN 1 ELSE 0 END) AS safe_follow_inst_count,
-               AVG(quality_score) AS avg_quality_score,
-               AVG(followability_score) AS avg_followability_score,
-               AVG(avg_premium_pct) AS avg_premium_pct,
-               AVG(buy_event_count) AS avg_buy_event_count,
-               AVG(safe_follow_event_count) AS avg_safe_follow_event_count
-        FROM mart_institution_profile
-        """
-    ).fetchone()
-
-    type_rows = conn.execute(
-        """
-        SELECT COALESCE(inst_type, '未分类') AS inst_type,
-               COUNT(*) AS total,
-               AVG(quality_score) AS avg_quality_score,
-               AVG(followability_score) AS avg_followability_score
-        FROM mart_institution_profile
-        GROUP BY COALESCE(inst_type, '未分类')
-        ORDER BY COUNT(*) DESC, inst_type
-        LIMIT 6
-        """
-    ).fetchall()
-
-    hint_rows = conn.execute(
-        """
-        SELECT COALESCE(followability_hint, '未标注') AS followability_hint,
-               COUNT(*) AS total
-        FROM mart_institution_profile
-        GROUP BY COALESCE(followability_hint, '未标注')
-        ORDER BY COUNT(*) DESC, followability_hint
-        LIMIT 6
-        """
-    ).fetchall()
-
-    confidence_rows = conn.execute(
-        """
-        WITH confidence_dist AS (
-            SELECT 'quality' AS metric,
-                   COALESCE(score_confidence, '未标注') AS confidence,
-                   COUNT(*) AS total
-            FROM mart_institution_profile
-            GROUP BY COALESCE(score_confidence, '未标注')
-            UNION ALL
-            SELECT 'followability' AS metric,
-                   COALESCE(followability_confidence, '未标注') AS confidence,
-                   COUNT(*) AS total
-            FROM mart_institution_profile
-            GROUP BY COALESCE(followability_confidence, '未标注')
-        )
-        SELECT metric, confidence, total
-        FROM confidence_dist
-        ORDER BY metric,
-                 total DESC,
-                 CASE confidence
-                     WHEN 'high' THEN 1
-                     WHEN 'medium' THEN 2
-                     WHEN 'low' THEN 3
-                     WHEN '未标注' THEN 4
-                     ELSE 5
-                 END,
-                 confidence
-        """
-    ).fetchall()
+    facts = load_institution_scorecard_business_facts(conn)
+    summary_row = facts["summary"]
+    type_rows = facts["type_top"]
+    hint_rows = facts["hint_top"]
+    confidence_rows = facts["confidence_rows"]
 
     confidence_map = {"quality": [], "followability": []}
     for row in confidence_rows:

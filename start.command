@@ -5,6 +5,8 @@ ROOT_DIR="$(cd "$(dirname "$0")" && pwd)"
 BACKEND_DIR="$ROOT_DIR/backend"
 PORT=8000
 RELOAD_MODE="${CM_RELOAD:-0}"
+export PATH="/opt/homebrew/opt/python@3.13/libexec/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:$PATH"
+PYTHON_BIN="${PYTHON_BIN:-python}"
 
 find_port_pids() {
   lsof -nP -iTCP:"$PORT" -sTCP:LISTEN -t 2>/dev/null | sort -u
@@ -74,7 +76,7 @@ check_port_conflict
 # ---- akshare 启动前依赖检查 ----
 # 生产启动只检查本地版本，不在启动链路执行 pip install/upgrade。
 # 手动维护升级请运行: ./scripts/upgrade_akshare.sh
-current_v="$(python3 - <<'PY' 2>/dev/null || true
+current_v="$("$PYTHON_BIN" - <<'PY' 2>/dev/null || true
 try:
     import akshare as ak
     print(getattr(ak, "__version__", "unknown"))
@@ -93,6 +95,7 @@ echo "========================================"
 echo "  Chunky Monkey v2 启动中..."
 echo "  地址: http://localhost:$PORT"
 echo "  API:  http://localhost:$PORT/docs"
+echo "  Python: $($PYTHON_BIN --version 2>&1)"
 if [[ "$RELOAD_MODE" == "1" ]]; then
   echo "  模式: 开发热重载 (CM_RELOAD=1)"
 else
@@ -101,7 +104,7 @@ fi
 echo "  按 Ctrl+C 停止"
 echo "========================================"
 if [[ "$RELOAD_MODE" == "1" ]]; then
-  exec python3 -m uvicorn main:app --host 0.0.0.0 --port "$PORT" --reload --reload-dir "$BACKEND_DIR"
+  exec "$PYTHON_BIN" -m uvicorn main:app --host 0.0.0.0 --port "$PORT" --reload --reload-dir "$BACKEND_DIR"
 fi
 
-exec python3 -m uvicorn main:app --host 0.0.0.0 --port "$PORT"
+exec "$PYTHON_BIN" -m uvicorn main:app --host 0.0.0.0 --port "$PORT"

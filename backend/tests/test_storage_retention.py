@@ -450,6 +450,104 @@ def test_storage_retention_protects_model_selection_feature_sets():
         conn.close()
 
 
+def test_storage_retention_protects_feature_sets_from_evidence_profiles_and_schedule():
+    conn = duck_mem()
+    try:
+        conn.executescript(
+            """
+            CREATE TABLE fact_feature_panel_candidate (
+                feature_set_id TEXT,
+                stock_code TEXT,
+                built_at TEXT
+            );
+            CREATE TABLE mart_model_stability_search_summary (
+                run_id TEXT,
+                feature_set_id TEXT
+            );
+            CREATE TABLE mart_stock_horizon_profile (
+                run_id TEXT,
+                feature_set_id TEXT
+            );
+            CREATE TABLE mart_champion_candidate_evaluation (
+                evaluation_run_id TEXT,
+                config_json TEXT
+            );
+            CREATE TABLE mart_challenger_evidence_bundle (
+                evidence_run_id TEXT,
+                steps_json TEXT
+            );
+            CREATE TABLE mart_research_schedule_plan (
+                run_id TEXT,
+                command_json TEXT,
+                resources_json TEXT,
+                config_json TEXT
+            );
+            INSERT INTO fact_feature_panel_candidate VALUES
+                ('new_set', '000001', '2026-05-10T00:00:00'),
+                ('stability_set', '000001', '2026-05-09T00:00:00'),
+                ('horizon_set', '000001', '2026-05-08T00:00:00'),
+                ('candidate_eval_set', '000001', '2026-05-07T00:00:00'),
+                ('evidence_steps_set', '000001', '2026-05-06T00:00:00'),
+                ('schedule_command_set', '000001', '2026-05-05T00:00:00'),
+                ('schedule_resource_set', '000001', '2026-05-04T00:00:00'),
+                ('delete_old_set', '000001', '2026-05-03T00:00:00');
+            INSERT INTO mart_model_stability_search_summary VALUES
+                ('stability_run', 'stability_set');
+            INSERT INTO mart_stock_horizon_profile VALUES
+                ('horizon_run', 'horizon_set');
+            INSERT INTO mart_champion_candidate_evaluation VALUES
+                ('eval_run', '{"panel_feature_set_id": "candidate_eval_set"}');
+            INSERT INTO mart_challenger_evidence_bundle VALUES
+                ('evidence_run', '{"steps": [{"args": {"--feature-set-id": "evidence_steps_set"}}]}');
+            INSERT INTO mart_research_schedule_plan VALUES
+                (
+                    'schedule_run',
+                    '{"argv": ["python", "script.py", "--feature-set-id", "schedule_command_set"]}',
+                    '{"feature_set_id": "schedule_resource_set"}',
+                    '{"command": {"args": {"--retention-feature-set-id": "schedule_config_set"}}}'
+                );
+            INSERT INTO fact_feature_panel_candidate VALUES
+                ('schedule_config_set', '000001', '2026-05-02T00:00:00');
+            """
+        )
+        policy = StorageRetentionPolicy(
+            protected_model_statuses=("champion",),
+            candidate_feature_panels=(
+                CandidateFeaturePanelRule(
+                    table="fact_feature_panel_candidate",
+                    key_column="feature_set_id",
+                    built_at_column="built_at",
+                    retain_latest_keys=1,
+                ),
+            ),
+            model_prediction_tables=(),
+            model_file_roots=(),
+            optuna_study_roots=(),
+            defaults={"require_backup_before_delete": True},
+        )
+
+        report = plan_storage_cleanup(conn, policy)
+        feature_candidates = {
+            item["key_value"]
+            for item in report["candidates"]
+            if item["kind"] == "candidate_feature_panel"
+        }
+
+        assert "delete_old_set" in feature_candidates
+        assert "stability_set" not in feature_candidates
+        assert "horizon_set" not in feature_candidates
+        assert "candidate_eval_set" not in feature_candidates
+        assert "evidence_steps_set" not in feature_candidates
+        assert "schedule_command_set" not in feature_candidates
+        assert "schedule_resource_set" not in feature_candidates
+        assert "schedule_config_set" not in feature_candidates
+        assert "model_stability_summary" in report["protected_feature_set_reasons"]["stability_set"]
+        assert "stock_horizon_profile" in report["protected_feature_set_reasons"]["horizon_set"]
+        assert "research_schedule_command" in report["protected_feature_set_reasons"]["schedule_command_set"]
+    finally:
+        conn.close()
+
+
 def test_storage_retention_cli_executes_against_copied_duckdb(tmp_path):
     source_db = tmp_path / "source.duckdb"
     copied_db = tmp_path / "copied.duckdb"

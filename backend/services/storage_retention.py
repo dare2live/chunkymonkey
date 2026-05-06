@@ -148,6 +148,121 @@ def _model_id_values(conn, table: str, column: str) -> set[str]:
     }
 
 
+FEATURE_SET_JSON_KEYS = {
+    "feature_set_id",
+    "source_feature_set_id",
+    "retention_feature_set_id",
+    "panel_feature_set_id",
+    "output_feature_set_id",
+    "base_feature_set_id",
+    "extra_feature_set_id",
+}
+
+
+def _normalized_json_key(key: Any) -> str:
+    return str(key or "").strip().lstrip("-").replace("-", "_")
+
+
+def _feature_set_string_values(value: Any) -> set[str]:
+    if value is None:
+        return set()
+    if isinstance(value, str):
+        stripped = value.strip()
+        return {stripped} if stripped else set()
+    if isinstance(value, (int, float)):
+        return {str(value)}
+    if isinstance(value, dict):
+        values: set[str] = set()
+        for child in value.values():
+            values.update(_feature_set_string_values(child))
+        return values
+    if isinstance(value, Iterable):
+        values: set[str] = set()
+        for child in value:
+            values.update(_feature_set_string_values(child))
+        return values
+    return {str(value)}
+
+
+def _feature_set_values_from_json(raw: Any) -> set[str]:
+    if not raw:
+        return set()
+    try:
+        payload = json.loads(raw) if isinstance(raw, str) else raw
+    except Exception:
+        return set()
+
+    def walk(value: Any) -> set[str]:
+        values: set[str] = set()
+        if isinstance(value, dict):
+            for key, child in value.items():
+                normalized = _normalized_json_key(key)
+                if normalized in FEATURE_SET_JSON_KEYS:
+                    values.update(_feature_set_string_values(child))
+                values.update(walk(child))
+            return values
+        if isinstance(value, list):
+            for index, child in enumerate(value):
+                normalized = _normalized_json_key(child)
+                if normalized in FEATURE_SET_JSON_KEYS and index + 1 < len(value):
+                    values.update(_feature_set_string_values(value[index + 1]))
+                values.update(walk(child))
+        return values
+
+    return walk(payload)
+
+
+def _protect_feature_set(reasons: dict[str, list[str]], value: Any, reason: str) -> None:
+    for feature_set_id in _feature_set_string_values(value):
+        entries = reasons.setdefault(feature_set_id, [])
+        if reason not in entries:
+            entries.append(reason)
+
+
+def _protect_feature_sets_from_column(
+    conn,
+    reasons: dict[str, list[str]],
+    *,
+    table: str,
+    column: str,
+    reason: str,
+) -> None:
+    if not _table_exists(conn, table) or column not in _columns(conn, table):
+        return
+    rows = conn.execute(
+        f"""
+        SELECT DISTINCT {_quote_ident(column)} AS feature_set_id
+          FROM {_quote_ident(table)}
+         WHERE {_quote_ident(column)} IS NOT NULL
+           AND {_quote_ident(column)} <> ''
+        """
+    ).fetchall()
+    for row in rows:
+        _protect_feature_set(reasons, row["feature_set_id"], reason)
+
+
+def _protect_feature_sets_from_json_column(
+    conn,
+    reasons: dict[str, list[str]],
+    *,
+    table: str,
+    column: str,
+    reason: str,
+) -> None:
+    if not _table_exists(conn, table) or column not in _columns(conn, table):
+        return
+    for row in conn.execute(
+        f"""
+        SELECT {_quote_ident(column)} AS payload
+          FROM {_quote_ident(table)}
+         WHERE {_quote_ident(column)} IS NOT NULL
+           AND {_quote_ident(column)} <> ''
+        """
+    ).fetchall():
+        for feature_set_id in _feature_set_values_from_json(row["payload"]):
+            _protect_feature_set(reasons, feature_set_id, reason)
+
+
 def protected_model_id_reasons(conn, policy: StorageRetentionPolicy) -> dict[str, list[str]]:
     reasons: dict[str, list[str]] = {}
 
@@ -190,60 +305,81 @@ def protected_model_ids(conn, policy: StorageRetentionPolicy) -> set[str]:
     return set(protected_model_id_reasons(conn, policy))
 
 
+def protected_feature_set_id_reasons(
+    conn,
+    *,
+    include_lifecycle_training_config: bool = True,
+    include_model_selection_runs: bool = True,
+) -> dict[str, list[str]]:
+    reasons: dict[str, list[str]] = {}
+    if (
+        include_lifecycle_training_config
+        and _table_exists(conn, "mart_model_lifecycle")
+        and "training_config" in _columns(conn, "mart_model_lifecycle")
+    ):
+        rows = conn.execute("SELECT training_config FROM mart_model_lifecycle").fetchall()
+        for row in rows:
+            raw = row["training_config"]
+            for feature_set_id in _feature_set_values_from_json(raw):
+                _protect_feature_set(reasons, feature_set_id, "lifecycle_training_config")
+    if include_model_selection_runs:
+        _protect_feature_sets_from_column(
+            conn,
+            reasons,
+            table="mart_model_selection_run",
+            column="feature_set_id",
+            reason="model_selection_run",
+        )
+        _protect_feature_sets_from_column(
+            conn,
+            reasons,
+            table="mart_model_stability_search_summary",
+            column="feature_set_id",
+            reason="model_stability_summary",
+        )
+        _protect_feature_sets_from_column(
+            conn,
+            reasons,
+            table="mart_stock_horizon_profile",
+            column="feature_set_id",
+            reason="stock_horizon_profile",
+        )
+    if include_model_selection_runs and _table_exists(conn, "mart_hybrid_feature_panel_build"):
+        cols = _columns(conn, "mart_hybrid_feature_panel_build")
+        for col in ("output_feature_set_id", "base_feature_set_id", "extra_feature_set_id"):
+            if col in cols:
+                _protect_feature_sets_from_column(
+                    conn,
+                    reasons,
+                    table="mart_hybrid_feature_panel_build",
+                    column=col,
+                    reason=f"hybrid_feature_panel_build:{col}",
+                )
+    if include_model_selection_runs:
+        for table, column, reason in (
+            ("mart_champion_candidate_evaluation", "config_json", "champion_candidate_evaluation"),
+            ("mart_challenger_evidence_bundle", "steps_json", "challenger_evidence_bundle"),
+            ("mart_research_schedule_plan", "command_json", "research_schedule_command"),
+            ("mart_research_schedule_plan", "resources_json", "research_schedule_resources"),
+            ("mart_research_schedule_plan", "config_json", "research_schedule_config"),
+        ):
+            _protect_feature_sets_from_json_column(conn, reasons, table=table, column=column, reason=reason)
+    return reasons
+
+
 def protected_feature_set_ids(
     conn,
     *,
     include_lifecycle_training_config: bool = True,
     include_model_selection_runs: bool = True,
 ) -> set[str]:
-    if (
-        not include_lifecycle_training_config
-        or not _table_exists(conn, "mart_model_lifecycle")
-        or "training_config" not in _columns(conn, "mart_model_lifecycle")
-    ):
-        protected: set[str] = set()
-    else:
-        protected = set()
-        rows = conn.execute("SELECT training_config FROM mart_model_lifecycle").fetchall()
-        for row in rows:
-            raw = row["training_config"]
-            if not raw:
-                continue
-            try:
-                payload = json.loads(raw)
-            except Exception:
-                continue
-            for key in ("feature_set_id", "retention_feature_set_id"):
-                value = payload.get(key)
-                if value:
-                    protected.add(str(value))
-    if include_model_selection_runs and _table_exists(conn, "mart_model_selection_run"):
-        cols = _columns(conn, "mart_model_selection_run")
-        if "feature_set_id" in cols:
-            rows = conn.execute(
-                """
-                SELECT DISTINCT feature_set_id
-                  FROM mart_model_selection_run
-                 WHERE feature_set_id IS NOT NULL
-                   AND feature_set_id <> ''
-                """
-            ).fetchall()
-            protected.update(str(row["feature_set_id"]) for row in rows if row["feature_set_id"])
-    if include_model_selection_runs and _table_exists(conn, "mart_hybrid_feature_panel_build"):
-        cols = _columns(conn, "mart_hybrid_feature_panel_build")
-        for col in ("output_feature_set_id", "base_feature_set_id", "extra_feature_set_id"):
-            if col not in cols:
-                continue
-            rows = conn.execute(
-                f"""
-                SELECT DISTINCT {_quote_ident(col)} AS feature_set_id
-                  FROM mart_hybrid_feature_panel_build
-                 WHERE {_quote_ident(col)} IS NOT NULL
-                   AND {_quote_ident(col)} <> ''
-                """
-            ).fetchall()
-            protected.update(str(row["feature_set_id"]) for row in rows if row["feature_set_id"])
-    return protected
+    return set(
+        protected_feature_set_id_reasons(
+            conn,
+            include_lifecycle_training_config=include_lifecycle_training_config,
+            include_model_selection_runs=include_model_selection_runs,
+        )
+    )
 
 
 def _candidate_feature_panel_cleanup(
@@ -433,6 +569,7 @@ def plan_storage_cleanup(
     policy = policy or load_storage_retention_policy()
     protected_reasons = protected_model_id_reasons(conn, policy)
     protected = set(protected_reasons)
+    protected_feature_reasons = protected_feature_set_id_reasons(conn)
     candidates = [
         *_candidate_feature_panel_cleanup(conn, policy),
         *_model_prediction_cleanup(conn, policy),
@@ -445,6 +582,8 @@ def plan_storage_cleanup(
         "protected_model_statuses": list(policy.protected_model_statuses),
         "protected_model_ids": sorted(protected),
         "protected_model_reasons": protected_reasons,
+        "protected_feature_set_ids": sorted(protected_feature_reasons),
+        "protected_feature_set_reasons": protected_feature_reasons,
         "active_optuna_study_artifacts": optuna_artifacts,
         "active_optuna_study_count": len(optuna_artifacts),
         "compaction": compaction,

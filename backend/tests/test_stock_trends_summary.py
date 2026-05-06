@@ -1,3 +1,4 @@
+import asyncio
 import sys
 from pathlib import Path
 
@@ -203,3 +204,41 @@ def test_load_stock_trends_payload_queries_and_assembles(monkeypatch):
     assert rows[1]["stock_code"] == "600999"
     assert rows[1]["stock_gate_reason"] == "已拉黑"
     assert payload["summary"]["total"] == 2
+
+
+def test_stock_trends_route_delegates_to_read_service(monkeypatch):
+    from routers import institution as institution_router
+
+    class _Conn:
+        closed = False
+
+        def close(self):
+            self.closed = True
+
+    conn = _Conn()
+    institution_router._stock_trends_cache["ts"] = 0.0
+    institution_router._stock_trends_cache["payload"] = None
+
+    monkeypatch.setattr(institution_router, "get_conn", lambda: conn)
+    monkeypatch.setattr(
+        institution_router,
+        "load_stock_trends_payload",
+        lambda actual_conn: {
+            "data": [{"stock_code": "600001", "stock_gate": "follow"}],
+            "summary": {"total": 1, "followTotal": 1},
+        },
+    )
+
+    response = asyncio.run(institution_router.list_stock_trends())
+
+    assert response == {
+        "ok": True,
+        "data": [{"stock_code": "600001", "stock_gate": "follow"}],
+        "summary": {"total": 1, "followTotal": 1},
+        "total": 1,
+        "cached": False,
+    }
+    assert conn.closed
+    cached = asyncio.run(institution_router.list_stock_trends())
+    assert cached["cached"] is True
+    assert cached["summary"] == {"total": 1, "followTotal": 1}

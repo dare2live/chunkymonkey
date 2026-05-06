@@ -1,7 +1,7 @@
 """诊断智能更新各 step 的耗时，不经 HTTP，不并发 32 只股票同步（那是外部慢）。
 
 用法:
-    python3 scripts/diagnose_update_bottleneck.py
+    python scripts/diagnose_update_bottleneck.py
 
 只跑"计算/聚合"类 step（不拉外部数据），精准找内部瓶颈。
 输出各 step 耗时 + 返回值。

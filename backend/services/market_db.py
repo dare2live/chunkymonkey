@@ -5,9 +5,11 @@ market_db.py — 独立行情数据库 (market.duckdb)
 与业务库 smartmoney.duckdb 完全解耦，业务层只通过本模块读写行情数据。
 """
 
+from __future__ import annotations
+
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Optional
+from typing import Iterable, Optional
 
 from services.duck_adapter import connect as _duck_connect, DuckConn
 from services.source_policy import get_capability_policy
@@ -17,6 +19,7 @@ _DB_DIR = Path(__file__).resolve().parent.parent.parent / "data"
 _DB_PATH = _DB_DIR / "market.duckdb"
 KLINE_DAILY_QFQ_POLICY = get_capability_policy("kline_daily")
 CANONICAL_KLINE_QFQ_RELATION = KLINE_DAILY_QFQ_POLICY.canonical_relation or "market.v_price_kline_qfq"
+DEFAULT_KLINE_DAILY_QFQ_COLUMNS = ("code", "date", "open", "high", "low", "close", "volume", "amount")
 
 
 def get_canonical_kline_qfq_relation(schema: Optional[str] = None) -> str:
@@ -28,6 +31,37 @@ def get_canonical_kline_qfq_relation(schema: Optional[str] = None) -> str:
     """
     name = CANONICAL_KLINE_QFQ_RELATION.rsplit(".", 1)[-1]
     return f"{schema}.{name}" if schema else name
+
+
+def canonical_kline_daily_qfq_sql(
+    *,
+    relation: str | None = None,
+    columns: Iterable[str] = DEFAULT_KLINE_DAILY_QFQ_COLUMNS,
+    include_source_lineage: bool = False,
+) -> str:
+    """Return the canonical daily qfq K-line SELECT used by analytical jobs."""
+    relation = relation or CANONICAL_KLINE_QFQ_RELATION
+    allowed = {
+        "code", "date", "open", "high", "low", "close", "volume", "amount",
+        "freq", "adjust",
+    }
+    selected = []
+    for column in columns:
+        if column not in allowed:
+            raise ValueError(f"unsupported canonical kline column: {column}")
+        selected.append(column)
+    if include_source_lineage:
+        selected.extend([
+            "COALESCE(source_name, 'unknown') AS source_name",
+            "COALESCE(source_tier, 99)::SMALLINT AS source_tier",
+            "COALESCE(is_fallback, FALSE) AS is_fallback",
+        ])
+    select_sql = ", ".join(selected)
+    return (
+        f"SELECT {select_sql}\n"
+        f"FROM {relation}\n"
+        "WHERE freq='daily' AND adjust='qfq'"
+    )
 
 
 PRICE_KLINE_TDXHUB_DDL = """

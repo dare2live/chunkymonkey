@@ -149,7 +149,7 @@ def _quote_ident(name: str) -> str:
 
 
 def _command_parts(command: dict[str, Any], defaults: dict[str, Any]) -> dict[str, Any]:
-    python = str(command.get("python") or defaults.get("python") or "python3")
+    python = str(command.get("python") or defaults.get("python") or "python")
     backend_dir = str(command.get("backend_dir") or defaults.get("backend_dir") or "backend")
     script = str(command.get("script") or "").strip()
     if not script:
