@@ -26,10 +26,11 @@ from typing import Any, Optional
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from services.db import get_conn
-from services.market_db import get_market_conn
+from services.market_db import get_canonical_kline_qfq_relation, get_market_conn
 
 logger = logging.getLogger("build_lhb_events")
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s | %(message)s")
+KLINE_DAILY_QFQ_RELATION = get_canonical_kline_qfq_relation()
 
 
 FACT_LHB_EVENT_DDL = """
@@ -245,7 +246,7 @@ def compute_forward_returns(events: list[dict[str, Any]]) -> list[dict[str, Any]
     gain_Nd = close_{T+N交易日} / entry_price - 1
     max_drawdown_Nd = min(close_t / entry_price - 1) over t in [T+1, T+N]
     """
-    logger.info("加载 price_kline（用于 forward return）")
+    logger.info("加载 canonical K-line（用于 forward return）")
     codes = sorted({str(row.get("stock_code") or "").zfill(6) for row in events if row.get("stock_code")})
     if not codes:
         return _apply_forward_returns(events, [])
@@ -255,7 +256,7 @@ def compute_forward_returns(events: list[dict[str, Any]]) -> list[dict[str, Any]
         prices = _records_from_cursor(mkt.execute(
             f"""
             SELECT code, date, close
-            FROM price_kline
+            FROM {KLINE_DAILY_QFQ_RELATION}
             WHERE freq='daily' AND adjust='qfq'
               AND code IN ({placeholders})
             """,
@@ -263,7 +264,7 @@ def compute_forward_returns(events: list[dict[str, Any]]) -> list[dict[str, Any]
         ))
     finally:
         mkt.close()
-    logger.info("price_kline 行 %d", len(prices))
+    logger.info("canonical K-line 行 %d", len(prices))
 
     out = _apply_forward_returns(events, prices)
     logger.info(

@@ -26,6 +26,7 @@ from typing import Any
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from services.db import get_conn
+from services.market_db import CANONICAL_KLINE_QFQ_RELATION
 from services.model_feature_schema import (
     REGIME_FEATURE_COLS,
     feature_cols_from_json,
@@ -108,18 +109,9 @@ CREATE TABLE IF NOT EXISTS mart_daily_recommendation_risk (
 
 KLINE_DAILY_QFQ_SQL = """
 SELECT code, date, amount
-FROM market.price_kline_tdxhub
+FROM {relation}
 WHERE freq='daily' AND adjust='qfq'
-UNION ALL
-SELECT code, date, amount
-FROM market.price_kline
-WHERE freq='daily' AND adjust='qfq'
-  AND date > (
-      SELECT COALESCE(MAX(date), '1900-01-01')
-      FROM market.price_kline_tdxhub
-      WHERE freq='daily' AND adjust='qfq'
-  )
-"""
+""".format(relation=CANONICAL_KLINE_QFQ_RELATION)
 
 
 FEATURE_COLS = ordered_feature_cols(include_dense_v2=True)
@@ -372,6 +364,22 @@ def write_topk_view_cache(conn, rows: list[dict[str, Any]]) -> int:
     return len(payload)
 
 
+def demote_existing_primary_recommendations(conn, *, snapshot_date: str, model_id: str) -> None:
+    """Keep one primary model per snapshot date before writing champion TopK."""
+
+    for table in ("mart_daily_recommendation", "mart_daily_topk_view_cache"):
+        conn.execute(
+            f"""
+            UPDATE {table}
+               SET is_primary = FALSE
+             WHERE snapshot_date = ?
+               AND model_id <> ?
+               AND is_primary = TRUE
+            """,
+            (snapshot_date, model_id),
+        )
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--model-id', default=None, help='指定 model_id (默认取最新)')
@@ -575,6 +583,8 @@ def main():
     logger.info("写入 %d 条推荐 (track_id=%s, is_primary=%s)",
                 len(output), track_id, is_primary)
     t_write = time.perf_counter()
+    if is_primary:
+        demote_existing_primary_recommendations(conn, snapshot_date=target_date, model_id=model_id)
     conn.execute(
         """
         DELETE FROM mart_daily_recommendation

@@ -5,8 +5,9 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from conftest import duck_mem
-from routers import data_health as data_health_router
 from scripts.data_health_snapshot import compute_health_for_table
+from services import workbench_read
+from services.workbench_read import build_workbench_data_sources, build_workbench_storage
 
 
 def test_raw_source_freshness_uses_writer_time_and_trading_calendar():
@@ -122,15 +123,21 @@ def test_event_fact_freshness_uses_writer_time():
         conn.close()
 
 
-def test_sources_overview_excludes_derived_and_deprecated(monkeypatch):
+
+def test_workbench_source_health_excludes_derived_and_deprecated_assets():
     conn = duck_mem()
     try:
         conn.execute(
             """
             CREATE TABLE dim_data_asset (
                 table_name TEXT,
+                layer TEXT,
+                purpose TEXT,
+                writer_module TEXT,
                 upstream_source TEXT,
                 source_tier INTEGER,
+                expected_freshness TEXT,
+                sla_hours DOUBLE,
                 deprecation_status TEXT
             )
             """
@@ -141,32 +148,35 @@ def test_sources_overview_excludes_derived_and_deprecated(monkeypatch):
                 table_name TEXT,
                 snapshot_at TEXT,
                 row_count INTEGER,
+                last_data_date TEXT,
+                freshness_hours DOUBLE,
+                freshness_ok BOOLEAN,
                 severity TEXT,
-                freshness_hours DOUBLE
+                issue_summary TEXT,
+                source_tier_dist TEXT
             )
             """
         )
         conn.executemany(
-            "INSERT INTO dim_data_asset VALUES (?, ?, ?, ?)",
+            "INSERT INTO dim_data_asset VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
             [
-                ("raw_lhb_daily", "aif10:RPT_DAILYBILLBOARD_DETAILSNEW", 2, "active"),
-                ("fact_feature_panel", "derived: kline + 财务", 99, "active"),
-                ("legacy_hsgt", "akshare:stale_hsgt", 3, "deprecated"),
+                ("raw_lhb_daily", "raw", "lhb", "writer", "aif10:RPT_DAILYBILLBOARD_DETAILSNEW", 2, "daily", 24, "active"),
+                ("fact_feature_panel", "fact", "features", "feature_builder", "derived: kline + fundamentals", 99, "daily", 24, "active"),
+                ("legacy_hsgt", "raw", "legacy", "old_writer", "akshare:stale_hsgt", 3, "daily", 24, "deprecated"),
             ],
         )
         conn.executemany(
-            "INSERT INTO mart_data_health VALUES (?, '2026-05-04T12:00:00', ?, ?, ?)",
+            "INSERT INTO mart_data_health VALUES (?, '2026-05-04T12:00:00', ?, NULL, ?, TRUE, ?, NULL, ?)",
             [
-                ("raw_lhb_daily", 10, "green", 0),
-                ("fact_feature_panel", 10, "red", 120),
-                ("legacy_hsgt", 10, "red", 999),
+                ("raw_lhb_daily", 10, 0, "green", '{"2":10}'),
+                ("fact_feature_panel", 10, 120, "red", '{"99":10}'),
+                ("legacy_hsgt", 10, 999, "red", '{"3":10}'),
             ],
         )
-        monkeypatch.setattr(data_health_router, "get_conn", lambda: conn)
 
-        result = data_health_router.get_sources_overview()
+        result = build_workbench_data_sources(conn)
 
-        assert result["sources"] == [
+        assert result["source_health"]["sources"] == [
             {
                 "upstream_source": "aif10:RPT_DAILYBILLBOARD_DETAILSNEW",
                 "source_tier": 2,
@@ -177,6 +187,78 @@ def test_sources_overview_excludes_derived_and_deprecated(monkeypatch):
                 "green_count": 1,
                 "max_freshness_h": 0.0,
             }
+        ]
+        assert result["asset_health"]["summary"]["total"] == 3
+    finally:
+        try:
+            conn.close()
+        except Exception:
+            pass
+
+
+def test_workbench_storage_uses_retention_dry_run(monkeypatch):
+    conn = duck_mem()
+    try:
+        policy = object()
+
+        def fake_load_policy():
+            return policy
+
+        def fake_plan_storage_cleanup(seen_conn, seen_policy):
+            assert seen_conn is conn
+            assert seen_policy is policy
+            return {
+                "mode": "dry_run",
+                "candidate_count": 3,
+                "candidates": [
+                    {
+                        "kind": "candidate_feature_panel",
+                        "table": "fact_feature_panel_candidate",
+                        "key_column": "feature_set_id",
+                        "key_value": "old_set",
+                        "row_count": 1200,
+                        "last_built_at": "2026-05-01T00:00:00",
+                        "reason": "older than latest 3 feature_set_id values",
+                    },
+                    {
+                        "kind": "model_prediction_rows",
+                        "table": "mart_multidim_prediction",
+                        "model_id": "retired_m",
+                        "row_count": 34,
+                        "reason": "model is not champion/challenger/shadow",
+                    },
+                    {
+                        "kind": "model_file",
+                        "path": "/tmp/retired_m.pkl",
+                        "model_id": "retired_m",
+                        "bytes": 4096,
+                        "reason": "pkl model file is not protected by lifecycle status",
+                    },
+                ],
+                "protected_model_ids": ["champion_m"],
+                "protected_model_reasons": {"champion_m": ["lifecycle_status:champion"]},
+                "active_optuna_study_count": 1,
+                "active_optuna_study_artifacts": [{"path": "data/optuna/study.sqlite3", "bytes": 10}],
+                "compaction": {"recommended": True, "estimated_large_delete_rows": 1200},
+                "requires_backup_before_delete": True,
+            }
+
+        monkeypatch.setattr(workbench_read, "load_storage_retention_policy", fake_load_policy)
+        monkeypatch.setattr(workbench_read, "plan_storage_cleanup", fake_plan_storage_cleanup)
+
+        result = build_workbench_storage(conn)
+        retention = result["retention"]
+
+        assert retention["mode"] == "dry_run"
+        assert retention["candidate_count"] == 3
+        assert retention["protected_model_count"] == 1
+        assert retention["active_optuna_study_count"] == 1
+        assert retention["compaction"]["recommended"] is True
+        assert retention["requires_backup_before_delete"] is True
+        assert [row["kind"] for row in retention["candidates"]] == [
+            "candidate_feature_panel",
+            "model_prediction_rows",
+            "model_file",
         ]
     finally:
         try:

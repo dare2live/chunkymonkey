@@ -15,10 +15,11 @@ from typing import Optional
 from services.db import get_conn
 from services.gap_queue import reconcile_gap_queue_snapshot
 from services.industry import count_industry_rows, summarize_industry_coverage
-from services.market_db import get_market_conn
+from services.market_db import get_canonical_kline_qfq_relation, get_market_conn
 from services.utils import latest_completed_trade_date
 
 logger = logging.getLogger("cm-api")
+KLINE_DAILY_QFQ_RELATION = get_canonical_kline_qfq_relation()
 
 
 def _scalar(conn, sql: str, params=()):
@@ -597,7 +598,7 @@ def run_quality_audit(conn, use_cache: bool = True) -> dict:
     try:
         mkt_conn = get_market_conn()
         row = mkt_conn.execute(
-            "SELECT MAX(date) FROM price_kline WHERE freq='daily' AND adjust='qfq'"
+            f"SELECT MAX(date) FROM {KLINE_DAILY_QFQ_RELATION} WHERE freq='daily' AND adjust='qfq'"
         ).fetchone()
         latest_market_date = row[0] if row else None
         mkt_conn.close()

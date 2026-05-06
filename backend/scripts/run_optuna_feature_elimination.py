@@ -300,7 +300,8 @@ def _run_sql_reduction(
                COUNT(CASE WHEN label_name = 'forward_ret_20d' AND rank_ic IS NOT NULL THEN 1 END) AS fold_count,
                AVG(CASE WHEN label_name = 'forward_ret_5d' THEN rank_ic END) AS rank_ic_5d,
                AVG(CASE WHEN label_name = 'forward_ret_10d' THEN rank_ic END) AS rank_ic_10d,
-               AVG(CASE WHEN label_name = 'forward_ret_60d' THEN rank_ic END) AS rank_ic_60d
+               AVG(CASE WHEN label_name = 'forward_ret_60d' THEN rank_ic END) AS rank_ic_60d,
+               AVG(CASE WHEN label_name = 'forward_ret_90d' THEN rank_ic END) AS rank_ic_90d
         FROM mart_candidate_walkforward_eval
         WHERE feature_set_id = ?
         GROUP BY feature_name
@@ -319,6 +320,7 @@ def _run_sql_reduction(
             "forward_ret_5d": row["rank_ic_5d"] if row else None,
             "forward_ret_10d": row["rank_ic_10d"] if row else None,
             "forward_ret_60d": row["rank_ic_60d"] if row else None,
+            "forward_ret_90d": row["rank_ic_90d"] if row else None,
         }
         reason = _filter_rejection_reason(
             {
@@ -353,7 +355,7 @@ def _run_sql_reduction(
         if eligible else None
     )
     label_sensitivity = {}
-    for label in ("forward_ret_5d", "forward_ret_10d", "forward_ret_20d", "forward_ret_60d"):
+    for label in LABEL_COLUMNS:
         values = []
         for s in stats:
             if s["feature"] not in selected_features:

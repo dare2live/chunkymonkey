@@ -31,6 +31,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 import duckdb
 
+from services.market_db import CANONICAL_KLINE_QFQ_RELATION
+
 logger = logging.getLogger("alpha158")
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s | %(message)s")
 
@@ -52,7 +54,7 @@ def build(output_db: str, start_date: str):
                CAST(close AS DOUBLE) AS close,
                CAST(volume AS DOUBLE) AS volume,
                CAST(amount AS DOUBLE) AS amount
-        FROM mkt.price_kline_tdxhub
+        FROM {CANONICAL_KLINE_QFQ_RELATION}
         WHERE freq='daily' AND adjust='qfq' AND date >= '{start_date}'
     ),
     px AS (
@@ -124,7 +126,7 @@ def build(output_db: str, start_date: str):
     logger.info("构造 Alpha158 panel (windows=%s, start=%s)", windows, start_date)
 
     con = duckdb.connect(output_db)
-    con.execute(f"ATTACH '{market_db}' AS mkt (READ_ONLY)")
+    con.execute(f"ATTACH '{market_db}' AS market (READ_ONLY)")
 
     # 目标表
     con.execute("DROP TABLE IF EXISTS fact_alpha158_panel")
@@ -145,7 +147,7 @@ def build(output_db: str, start_date: str):
     # 建索引 (DuckDB min-max zone map 够用, 显式建 code+date 提速 join)
     con.execute("CREATE INDEX idx_a158_code_date ON fact_alpha158_panel(stock_code, date)")
 
-    con.execute("DETACH mkt")
+    con.execute("DETACH market")
     con.close()
 
 

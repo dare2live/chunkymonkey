@@ -431,9 +431,9 @@ DERIVED_WRITERS: list[ClientSpec] = [
         ],
     ),
     ClientSpec(
-        client_id="mark_deprecated_data_assets",
-        module="scripts.mark_deprecated_data_assets",
-        description="数据资产退役标记记录 (不删表)",
+        client_id="data_deprecation_records",
+        module="services.data_deprecation / scripts.record_data_deprecations",
+        description="数据资产退役登记记录 (不删表)",
         upstream_source="derived: dim_data_asset + stale reference audit",
         source_tier=99,
         writes=[

@@ -73,7 +73,11 @@ FEATURE_LABELS = {
     "regime_down": "市场·下跌",
     "regime_flag": "市场状态",
     # Label
+    "forward_ret_5d": "前向5日收益率",
+    "forward_ret_10d": "前向10日收益率",
     "forward_ret_20d": "前向20日收益率",
+    "forward_ret_60d": "前向60日收益率",
+    "forward_ret_90d": "前向90日收益率",
     # TDX keep challenger
     "forecast_profit_yoy_mid": "TDX业绩预告利润同比中值",
     "avg_float_shares_change_pct_tdx": "TDX户均流通股变化率",

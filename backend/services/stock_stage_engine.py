@@ -10,11 +10,12 @@ from datetime import date, datetime, timedelta
 from statistics import pstdev
 from typing import Optional
 
-from services.market_db import get_market_conn
+from services.market_db import get_canonical_kline_qfq_relation, get_market_conn
 from services.utils import safe_float as _safe_float, clamp_score as _clamp_score
 from services.constants import PATH_THRESHOLDS
 
 logger = logging.getLogger("cm-api")
+KLINE_DAILY_QFQ_RELATION = get_canonical_kline_qfq_relation()
 
 
 def _mean(values: list[float]) -> Optional[float]:
@@ -251,7 +252,7 @@ def _load_price_history(mkt_conn, codes: list[str], since_days: int = 420) -> di
         placeholders = ",".join("?" for _ in chunk)
         rows = mkt_conn.execute(
             f"SELECT code, date, high, low, close, amount "
-            f"FROM price_kline "
+            f"FROM {KLINE_DAILY_QFQ_RELATION} "
             f"WHERE code IN ({placeholders}) AND freq='daily' AND adjust='qfq' "
             f"AND date >= ? ORDER BY code, date",
             (*chunk, cutoff),

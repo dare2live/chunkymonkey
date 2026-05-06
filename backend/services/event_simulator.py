@@ -12,7 +12,8 @@ from collections import Counter, defaultdict
 from datetime import datetime, timedelta
 from typing import Optional
 
-from services.market_db import get_market_conn
+from services.market_db import get_canonical_kline_qfq_relation, get_market_conn
+KLINE_DAILY_QFQ_RELATION = get_canonical_kline_qfq_relation()
 
 
 def _normalize_date(d: Optional[str]) -> Optional[str]:
@@ -94,7 +95,7 @@ def load_price_panel(
         rows = conn.execute(
             f"""
             SELECT code, date, open, high, low, close
-            FROM price_kline
+            FROM {KLINE_DAILY_QFQ_RELATION}
             WHERE freq='daily' AND adjust='qfq'
               AND code IN ({placeholders})
               AND date BETWEEN ? AND ?

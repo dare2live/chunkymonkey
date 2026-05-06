@@ -87,8 +87,7 @@
     if (subHolder) subHolder.style.display = name === 'holder' ? '' : 'none';
     if (subEtf) subEtf.style.display = name === 'etf' ? '' : 'none';
     if (name === 'holder') {
-      // C6g: 进入股东挖掘默认显示股票视图
-      showView('stocks');
+      showView('workbench');
     } else if (name === 'etf') {
       showView('etf');
     }
@@ -112,15 +111,22 @@
     // P2-P5: 新增 data / strategy / settings 三个独立页, 通过 window.XxxView.show() 接入
     ({
       stocks: loadStocks,
+      workbench: function () { window.WorkbenchView && window.WorkbenchView.show(); },
       dashboard: loadWorkbench,
       research: loadResearch,
       etf: loadEtf,
       'model-monitor': loadModelMonitor,
       data: function () { window.CMDataView && window.CMDataView.show(); },
-      'data-health': function () { window.DataHealthView && window.DataHealthView.show(); },
       strategy: function () { window.StrategyView && window.StrategyView.show(); },
       settings: function () { window.SettingsView && window.SettingsView.show(); },
     })[name]?.();
+  }
+
+  function showWorkbenchTab(tab) {
+    if (window.WorkbenchView && window.WorkbenchView.setTab) {
+      window.WorkbenchView.setTab(tab);
+    }
+    showView('workbench');
   }
 
   function showEtfTab(tabName) {
@@ -5420,7 +5426,7 @@
   async function init() {
     renderIdleStepGrid();
     await checkHealth(); // ensure it awaits first to initialize module toggles
-    showView('stocks');
+    showView('workbench');
     el('btnUpdateAll').addEventListener('click', startUpdate);
     el('btnRefreshStatus')?.addEventListener('click', refreshWorkbenchStatus);
     el('btnStop').addEventListener('click', async () => {
@@ -6818,7 +6824,7 @@
     }
   }
 
-  window.App = { showView, setAlias, setType, toggleBlack, deleteInst, restoreInst, toggleInstDetail, toggleInstBreakdown, showL2Profile, toggleStockDetail, switchInstDim, switchStockDim, runSingleStep, loadWatchlist, loadExclusions, refreshNetwork, _api: api };
+  window.App = { showView, showWorkbenchTab, setAlias, setType, toggleBlack, deleteInst, restoreInst, toggleInstDetail, toggleInstBreakdown, showL2Profile, toggleStockDetail, switchInstDim, switchStockDim, runSingleStep, loadWatchlist, loadExclusions, refreshNetwork, _api: api };
   if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', startInit, { once: true });
   } else {

@@ -2,6 +2,7 @@
 数据更新管线
 
 当前主 DAG（Phase 5 清理后）：
+    0. sync_calendar            — 交易日历前置校验
     1. sync_raw                 — 下载十大股东
     2. match_inst               — 匹配跟踪机构
     3. sync_market_data         — 同步行情数据
@@ -46,15 +47,35 @@ from services.gap_queue import (
     summarize_gap_queue,
 )
 from services.industry import industry_join_clause, summarize_industry_coverage
+from services.market_db import get_canonical_kline_qfq_relation
+from services.source_policy import normalize_kline_write_source
 from services.tdx_source import iter_tdx_servers
 from services.utils import latest_completed_trade_date
 
 logger = logging.getLogger("cm-api")
 router = APIRouter()
+KLINE_DAILY_QFQ_RELATION = get_canonical_kline_qfq_relation()
 
 _UI_LOG_LIMIT = 400
 _ui_logs = []
 _ui_log_seq = 0
+CALENDAR_MIN_ROWS = 700
+CALENDAR_FUTURE_COVER_DAYS = 30
+CALENDAR_DATA_FETCH_STEPS = {
+    "sync_raw",
+    "sync_market_data",
+    "sync_financial",
+    "sync_industry",
+    "sync_surveys",
+    "sync_qfii",
+    "sync_margin",
+    "sync_lhb",
+    "sync_aif10_holder_count",
+    "sync_aif10_valuation_quantile",
+    "sync_aif10_peer_valuation",
+    "sync_aif10_forecast_consensus",
+    "sync_aif10_financial_history",
+}
 
 
 class _UILogHandler(logging.Handler):
@@ -294,6 +315,7 @@ def _format_step_result_for_log(status: str, count: int, detail_text: Optional[s
 # ============================================================
 
 STEPS = [
+    {"id": "sync_calendar",         "name": "交易日历前置",    "group": "data", "order": 0},
     {"id": "sync_raw",              "name": "下载十大股东",     "group": "data", "order": 1},
     {"id": "match_inst",            "name": "匹配跟踪机构",    "group": "data", "order": 2},
     {"id": "sync_market_data",      "name": "同步行情数据",    "group": "data", "order": 3},
@@ -329,17 +351,23 @@ STEPS = [
 
 # 硬依赖：failed → 跳过本步骤
 HARD_DEPS = {
-    "sync_raw": [],
+    "sync_calendar": [],
+    "sync_raw": ["sync_calendar"],
     "match_inst": ["sync_raw"],
-    "sync_market_data": ["match_inst"],
-    "sync_financial": [],
+    "sync_market_data": ["sync_calendar", "match_inst"],
+    "sync_financial": ["sync_calendar"],
     "gen_events": ["match_inst"],
     "calc_returns": ["gen_events"],
-    "sync_industry": ["match_inst"],
-    "sync_surveys": [],
-    "sync_qfii": [],
-    "sync_margin": [],
-    "sync_lhb": [],
+    "sync_industry": ["sync_calendar", "match_inst"],
+    "sync_surveys": ["sync_calendar"],
+    "sync_qfii": ["sync_calendar"],
+    "sync_margin": ["sync_calendar"],
+    "sync_lhb": ["sync_calendar"],
+    "sync_aif10_holder_count": ["sync_calendar"],
+    "sync_aif10_valuation_quantile": ["sync_calendar"],
+    "sync_aif10_peer_valuation": ["sync_calendar"],
+    "sync_aif10_forecast_consensus": ["sync_calendar"],
+    "sync_aif10_financial_history": ["sync_calendar"],
     "calc_financial_derived": ["sync_financial"],
     "build_current_rel": ["gen_events"],
     "build_profiles": ["build_current_rel"],
@@ -373,6 +401,7 @@ SOFT_DEPS = {
 MANUAL_ONLY_STEPS = {"calc_screening", "build_turtle_features"}
 
 STEP_BUDGET_SECONDS = {
+    "sync_calendar": 20,
     "sync_market_data": 30,
     "sync_financial": 45,
     "sync_raw": 45,
@@ -394,6 +423,7 @@ STEP_BUDGET_SECONDS = {
 }
 
 STEP_SOURCE_DOMAINS = {
+    "sync_calendar": ("trading_calendar", "akshare_calendar", 3),
     "sync_market_data": ("kline_daily", "tdxhub_quote", 1),
     "sync_financial": ("financial_gpcw_8q", "tdxhub_gpcw", 1),
     "sync_raw": ("holders_top10_float", "tdxhub_holders", 1),
@@ -461,6 +491,133 @@ def _critical_daily_plan(plan: dict) -> dict:
         out["reason"] = reasons
         out["critical_only_removed_steps"] = removed
     return _plan_with_budgets(out)
+
+
+def _ensure_calendar_step_for_data_fetch(steps: list[str]) -> list[str]:
+    """Insert calendar preflight before any source fetch step."""
+
+    if "sync_calendar" in steps:
+        return steps
+    if not any(step in CALENDAR_DATA_FETCH_STEPS for step in steps):
+        return steps
+    return ["sync_calendar", *steps]
+
+
+def _ensure_trading_calendar_table(conn) -> None:
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS dim_trading_calendar (
+            trade_date TEXT PRIMARY KEY,
+            is_trading INTEGER DEFAULT 1
+        )
+        """
+    )
+
+
+def _trading_calendar_status(conn, now: Optional[datetime] = None) -> dict:
+    now = now or datetime.now()
+    try:
+        _ensure_trading_calendar_table(conn)
+        row = conn.execute(
+            """
+            SELECT COUNT(*) AS cnt, MIN(trade_date) AS min_date, MAX(trade_date) AS max_date
+              FROM dim_trading_calendar
+             WHERE is_trading = 1
+            """
+        ).fetchone()
+    except Exception as exc:
+        return {
+            "exists": False,
+            "count": 0,
+            "min_date": None,
+            "max_date": None,
+            "latest_completed_trade_date": None,
+            "needs_refresh": True,
+            "reason": f"calendar_query_failed: {exc}",
+        }
+
+    count = int((row["cnt"] if hasattr(row, "keys") else row[0]) or 0) if row else 0
+    min_date = (row["min_date"] if hasattr(row, "keys") else row[1]) if row else None
+    max_date = (row["max_date"] if hasattr(row, "keys") else row[2]) if row else None
+    cover_target = (now.date() + timedelta(days=CALENDAR_FUTURE_COVER_DAYS)).strftime("%Y-%m-%d")
+    latest_trade = latest_completed_trade_date(conn, now=now) if count else None
+    reasons = []
+    if count < CALENDAR_MIN_ROWS:
+        reasons.append(f"rows<{CALENDAR_MIN_ROWS}")
+    if not max_date or str(max_date) < cover_target:
+        reasons.append(f"max_date<{cover_target}")
+    if not latest_trade:
+        reasons.append("no_completed_trade_date")
+    return {
+        "exists": True,
+        "count": count,
+        "min_date": min_date,
+        "max_date": max_date,
+        "latest_completed_trade_date": latest_trade,
+        "needs_refresh": bool(reasons),
+        "reason": ",".join(reasons) if reasons else "fresh",
+    }
+
+
+async def _refresh_trading_calendar(conn) -> int:
+    from services.akshare_client import fetch_trading_calendar
+
+    days = await fetch_trading_calendar()
+    unique_days = sorted({str(day)[:10] for day in days if day})
+    if len(unique_days) < CALENDAR_MIN_ROWS:
+        raise RuntimeError(f"交易日历刷新结果过少: {len(unique_days)}")
+
+    conn.execute("BEGIN TRANSACTION")
+    try:
+        conn.executemany(
+            """
+            INSERT OR REPLACE INTO dim_trading_calendar(trade_date, is_trading)
+            VALUES (?, 1)
+            """,
+            [(day,) for day in unique_days],
+        )
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
+    return len(unique_days)
+
+
+async def _step_sync_calendar(conn) -> dict:
+    """全局数据获取前置步骤：先确认交易日历可用且覆盖未来窗口。"""
+
+    before = _trading_calendar_status(conn)
+    refreshed = 0
+    if before["needs_refresh"]:
+        logger.info(f"[交易日历] 需要刷新: {before['reason']}")
+        refreshed = await _refresh_trading_calendar(conn)
+    after = _trading_calendar_status(conn)
+    if after["needs_refresh"] or not after["latest_completed_trade_date"]:
+        return {
+            "count": refreshed,
+            "status": "failed",
+            "error": f"交易日历不可用: {after['reason']}",
+            "calendar": after,
+        }
+
+    logger.info(
+        "[交易日历] ready: latest=%s range=%s~%s rows=%d refreshed=%d",
+        after["latest_completed_trade_date"],
+        after["min_date"],
+        after["max_date"],
+        after["count"],
+        refreshed,
+    )
+    return {
+        "count": refreshed,
+        "status": "completed",
+        "latest_trade_date": after["latest_completed_trade_date"],
+        "calendar": after,
+        "message": (
+            f"latest={after['latest_completed_trade_date']} "
+            f"range={after['min_date']}~{after['max_date']} refreshed={refreshed}"
+        ),
+    }
 
 
 def _touch_run_heartbeat(step_id: Optional[str] = None):
@@ -2148,11 +2305,12 @@ def _step_build_trends_sync(conn) -> int:
                 if not batch:
                     continue
                 placeholders = ",".join("?" * len(batch))
+                relation = KLINE_DAILY_QFQ_RELATION if freq == "daily" else "price_kline"
                 if min_date:
                     _append_plain(_mkt.execute(
                         f"""
                         SELECT code, date, close
-                        FROM price_kline
+                        FROM {relation}
                         WHERE freq=? AND adjust='qfq' AND date >= ?
                           AND code IN ({placeholders})
                         """,
@@ -2162,7 +2320,7 @@ def _step_build_trends_sync(conn) -> int:
                     _append_plain(_mkt.execute(
                         f"""
                         SELECT code, date, close
-                        FROM price_kline
+                        FROM {relation}
                         WHERE freq=? AND adjust='qfq'
                           AND code IN ({placeholders})
                         """,
@@ -2534,7 +2692,7 @@ async def _step_sync_market_data(conn) -> int:
     """同步行情数据：合并原 kline_monthly + kline_daily，写入 market.duckdb"""
     import json as _json
     from services.market_db import (
-        get_market_conn, upsert_price_rows, update_sync_state,
+        get_market_conn, upsert_price_rows, upsert_price_kline_tdxhub_rows, update_sync_state,
         get_all_sync_states
     )
     from services.akshare_client import (
@@ -2640,7 +2798,7 @@ async def _step_sync_market_data(conn) -> int:
                          "volume": r.get("volume"), "amount": r.get("amount")}
                         for r in kline_records
                     ]
-                    write_source = f"akshare_{source}" if source else "akshare_unknown"
+                    write_source = normalize_kline_write_source(source)
                     upsert_price_rows(mkt_conn, rows_data, source=write_source)
                     dates = [r["date"] for r in rows_data]
                     update_sync_state(mkt_conn, code, "monthly", source=write_source,
@@ -2779,7 +2937,7 @@ async def _step_sync_market_data(conn) -> int:
         daily_price_codes = {
             r["code"]
             for r in mkt_conn.execute(
-                "SELECT DISTINCT code FROM price_kline WHERE freq='daily' AND adjust='qfq'"
+                f"SELECT DISTINCT code FROM {KLINE_DAILY_QFQ_RELATION} WHERE freq='daily' AND adjust='qfq'"
             ).fetchall()
         }
         missing_d = [c for c in codes if c not in daily_price_codes]
@@ -2929,8 +3087,11 @@ async def _step_sync_market_data(conn) -> int:
                             for r in kline_records
                         ]
                         rows_written = len(rows_data)
-                        write_source = f"akshare_{source}" if source else "akshare_unknown"
-                        upsert_price_rows(mkt_conn, rows_data, source=write_source)
+                        write_source = normalize_kline_write_source(source)
+                        if write_source.startswith("tdxhub"):
+                            upsert_price_kline_tdxhub_rows(mkt_conn, rows_data, source=write_source)
+                        else:
+                            upsert_price_rows(mkt_conn, rows_data, source=write_source)
                         dates = [r["date"] for r in rows_data]
                         update_sync_state(mkt_conn, code, "daily", source=write_source,
                                           min_date=min(dates), max_date=max(dates),
@@ -3664,6 +3825,7 @@ async def _step_sync_aif10_financial_history(conn) -> dict:
 
 
 RUNNERS = {
+    "sync_calendar": _step_sync_calendar,
     "sync_raw": _step_sync_raw,
     "match_inst": _step_match_inst,
     "sync_market_data": _step_sync_market_data,
@@ -3722,7 +3884,7 @@ def _calibrate_data_completeness(conn, step_id, skipped, failed):
             from services.market_db import get_market_conn
             mkt_conn = get_market_conn()
             latest_market_date = mkt_conn.execute(
-                "SELECT MAX(date) FROM price_kline WHERE freq='daily' AND adjust='qfq'"
+                f"SELECT MAX(date) FROM {KLINE_DAILY_QFQ_RELATION} WHERE freq='daily' AND adjust='qfq'"
             ).fetchone()[0]
             mkt_conn.close()
             total_events = conn.execute(
@@ -4162,6 +4324,14 @@ async def smart_update(critical_only: bool = False):
 
     conn_plan = get_conn()
     try:
+        calendar_preflight = await _step_sync_calendar(conn_plan)
+        if calendar_preflight.get("status") == "failed":
+            _is_running = False
+            return {
+                "ok": False,
+                "message": calendar_preflight.get("error") or "交易日历不可用",
+                "calendar_preflight": calendar_preflight,
+            }
         # Production cron must not reuse a stale audit snapshot: a cached raw
         # freshness miss can incorrectly expand the daily plan into a long
         # full-source sync.
@@ -4170,7 +4340,11 @@ async def smart_update(critical_only: bool = False):
     finally:
         conn_plan.close()
 
-    steps_to_run = plan["steps"]
+    steps_to_run = _ensure_calendar_step_for_data_fetch(list(plan["steps"]))
+    if steps_to_run != plan["steps"]:
+        plan = dict(plan)
+        plan["steps"] = steps_to_run
+        plan = _plan_with_budgets(plan)
     if not steps_to_run:
         _is_running = False
         _set_last_noop_context("smart", "数据已是最新，无需更新")
@@ -4378,7 +4552,7 @@ async def run_single_step(step_id: str):
 
     step_meta = next((s for s in STEPS if s["id"] == step_id), None)
     step_name = (step_meta or {}).get("name", step_id)
-    step_ids = _collect_downstream_steps(step_id)
+    step_ids = _ensure_calendar_step_for_data_fetch(_collect_downstream_steps(step_id))
     _reset_ui_logs()
     _is_running = True
     _stop_requested = False

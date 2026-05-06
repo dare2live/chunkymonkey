@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import re
 from typing import Iterable
 
 
@@ -111,3 +112,10 @@ def feature_cols_from_json(raw: str | None) -> list[str]:
     if not isinstance(data, list):
         raise ValueError("feature_cols_json must be a JSON list")
     return [str(v) for v in data]
+
+
+def holding_period_from_label(label_name: str | None) -> int | None:
+    if not label_name:
+        return None
+    match = re.fullmatch(r"forward_ret_(\d+)d", str(label_name))
+    return int(match.group(1)) if match else None

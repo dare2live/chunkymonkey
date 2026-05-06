@@ -394,7 +394,7 @@ SELF_EXCLUDE_PATHS = (
 # Registry files whose purpose is to name retired assets and their replacements.
 # Literal retired table names here are retirement metadata, not live references.
 RETIREMENT_METADATA_PATHS = (
-    "backend/scripts/mark_deprecated_data_assets.py",
+    "backend/services/data_deprecation.py",
 )
 
 # 合法的退役 DDL/SQL 模式: DROP TABLE 删旧表, ALTER TABLE 改造, 等.

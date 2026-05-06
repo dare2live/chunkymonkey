@@ -131,13 +131,13 @@ def lineage_for_feature(feature_name: str) -> FeatureLineageSpec:
         return _known(
             feature_name,
             feature_group="price_technical",
-            source_table="price_kline_tdxhub",
-            upstream_source="tdxhub.kline:qfq_daily",
+            source_table="v_price_kline_qfq",
+            upstream_source="tdxhub.kline:qfq_daily+fallback_gap_fill",
             source_tier=1,
             source_date_col="date",
             available_date_col="date",
             pit_required=False,
-            notes="Derived from current-or-prior daily OHLCV at signal date.",
+            notes="Derived from canonical daily qfq OHLCV. tdxhub is primary; fallback only fills missing primary keys.",
         )
     if feature_name in MARGIN_FEATURES:
         return _known(

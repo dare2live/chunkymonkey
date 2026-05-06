@@ -112,6 +112,40 @@ def test_call_tdx_quotes_with_retry_collects_attempts(monkeypatch):
     assert attempts[1]["ok"] is True
 
 
+def test_call_tdx_quotes_with_retry_respects_max_attempts_and_timeout(monkeypatch):
+    factory_calls = []
+
+    class FakeQuotes:
+        @staticmethod
+        def factory(*, server, timeout, **_kwargs):
+            factory_calls.append((server, timeout))
+            raise TimeoutError("timed out")
+
+    monkeypatch.setattr(tdx_source, "get_tdx_quotes_class", lambda: FakeQuotes)
+    monkeypatch.setattr(
+        tdx_source,
+        "iter_tdx_servers",
+        lambda: (("1.1.1.1", 7709), ("2.2.2.2", 7709), ("3.3.3.3", 7709)),
+    )
+
+    tdx_source.reset_tdx_quotes_pool()
+    try:
+        with pytest.raises(RuntimeError):
+            tdx_source.call_tdx_quotes_with_retry(
+                lambda client: client.quotes(["000001"]),
+                action_name="quotes",
+                max_attempts=2,
+                connect_timeout=0.2,
+            )
+    finally:
+        tdx_source.reset_tdx_quotes_pool()
+
+    assert factory_calls == [
+        (("1.1.1.1", 7709), 0.2),
+        (("2.2.2.2", 7709), 0.2),
+    ]
+
+
 def test_call_tdx_quotes_with_retry_rotates_start_server(monkeypatch):
     monkeypatch.setattr(
         tdx_source,

@@ -37,6 +37,10 @@ def test_run_all_screens_accepts_price_records():
                 volume REAL,
                 amount REAL
             );
+            CREATE VIEW v_price_kline_qfq AS
+                SELECT code, date, freq, adjust, open, high, low, close, volume, amount
+                  FROM price_kline
+                 WHERE freq = 'daily' AND adjust = 'qfq';
             """
         )
         start = date(2026, 1, 1)

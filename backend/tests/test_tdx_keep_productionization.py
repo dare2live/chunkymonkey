@@ -142,6 +142,7 @@ def test_build_tdx_keep_challenger_panel_keeps_champion_panel_untouched():
             CREATE TABLE fact_feature_panel (
                 stock_code TEXT, date TEXT, regime_flag TEXT,
                 forward_ret_5d REAL, forward_ret_10d REAL, forward_ret_20d REAL, forward_ret_60d REAL,
+                forward_ret_90d REAL,
                 ret_1d REAL, ret_5d REAL
             )
             """
@@ -151,6 +152,7 @@ def test_build_tdx_keep_challenger_panel_keeps_champion_panel_untouched():
             CREATE TABLE fact_feature_panel_candidate (
                 feature_set_id TEXT, stock_code TEXT, date TEXT,
                 forward_ret_5d REAL, forward_ret_10d REAL, forward_ret_20d REAL, forward_ret_60d REAL,
+                forward_ret_90d REAL,
                 forecast_profit_yoy_mid REAL,
                 avg_float_shares_change_pct_tdx REAL,
                 ocf_to_profit_tdx REAL,
@@ -162,15 +164,15 @@ def test_build_tdx_keep_challenger_panel_keeps_champion_panel_untouched():
         conn.execute(
             """
             INSERT INTO fact_feature_panel VALUES
-            ('000001','2026-04-01','up',0.01,0.02,0.03,0.04,0.1,0.2),
-            ('000002','2026-04-01','up',0.01,0.02,0.03,0.04,0.3,0.4)
+            ('000001','2026-04-01','up',0.01,0.02,0.03,0.04,0.05,0.1,0.2),
+            ('000002','2026-04-01','up',0.01,0.02,0.03,0.04,0.05,0.3,0.4)
             """
         )
         conn.execute(
             """
             INSERT INTO fact_feature_panel_candidate VALUES
-            ('tdx_f10_gpcw_v1','000001','2026-04-01',0.01,0.02,0.03,0.04,10.0,20.0,1.5,0.2,30.0),
-            ('tdx_f10_gpcw_v1','000002','2026-04-01',0.01,0.02,0.03,0.04,20.0,30.0,2.5,0.3,40.0)
+            ('tdx_f10_gpcw_v1','000001','2026-04-01',0.01,0.02,0.03,0.04,0.05,10.0,20.0,1.5,0.2,30.0),
+            ('tdx_f10_gpcw_v1','000002','2026-04-01',0.01,0.02,0.03,0.04,0.05,20.0,30.0,2.5,0.3,40.0)
             """
         )
 
@@ -343,6 +345,22 @@ def test_promotion_gate_passes_relative_rank_ic_and_incremental_drift_scope():
         conn.execute(
             "INSERT INTO mart_daily_recommendation VALUES ('2026-05-04', '000001', 'tdx_keep_challenger_new', 'shadow')"
         )
+        conn.execute(
+            """
+            CREATE TABLE mart_model_walkforward_fold (
+                run_id TEXT,
+                model_id TEXT,
+                test_rank_ic DOUBLE,
+                test_long_short_spread DOUBLE,
+                quality_flag TEXT,
+                built_at TEXT
+            )
+            """
+        )
+        conn.executemany(
+            "INSERT INTO mart_model_walkforward_fold VALUES ('wf_1', 'tdx_keep_challenger_new', ?, 0.02, 'ok', '2026-05-04')",
+            [(0.030,), (0.031,), (0.029,), (0.032,)],
+        )
         _create_passing_source_lineage_evidence(conn)
 
         result = evaluate_gate(conn, challenger_model_id="tdx_keep_challenger_new")
@@ -351,6 +369,7 @@ def test_promotion_gate_passes_relative_rank_ic_and_incremental_drift_scope():
         assert result["decision"] == "promote_ready"
         assert result["gates"]["rank_ic"]["status"] == "PASS"
         assert result["gates"]["drift"]["status"] == "PASS"
+        assert result["gates"]["walk_forward"]["status"] == "PASS"
         assert result["gates"]["source_lineage"]["status"] == "PASS"
     finally:
         conn.close()
@@ -458,5 +477,212 @@ def test_promotion_gate_blocks_high_holder_fallback_ratio():
         assert result["decision"] == "reject"
         assert result["gates"]["source_lineage"]["status"] == "FAIL"
         assert any(item["gate"] == "source_lineage" for item in result["blockers"])
+    finally:
+        conn.close()
+
+
+def test_promotion_gate_uses_model_feature_coverage_for_generic_panel():
+    conn = duck_mem()
+    try:
+        _create_lifecycle_tables(conn)
+        conn.execute(
+            """
+            INSERT INTO mart_multidim_model VALUES
+            ('champion_model', '2026-04-01', 0.0400, 0.0100, 0.0100, 0.55,
+             'm7', 1, '["ret_20d"]')
+            """
+        )
+        conn.execute(
+            """
+            INSERT INTO mart_multidim_model VALUES
+            ('optuna_model_selection_new', '2026-05-04', 0.0500, 0.0200, 0.0110, 0.56,
+             'model_selection_run', 2, '["ret_20d", "ma_ratio_60"]')
+            """
+        )
+        conn.execute(
+            "INSERT INTO mart_model_lifecycle VALUES ('champion_model', 'champion', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, NULL, NULL, NULL, NULL, '{}', NULL)"
+        )
+        conn.execute(
+            "INSERT INTO mart_model_lifecycle VALUES ('optuna_model_selection_new', 'challenger', NULL, CURRENT_TIMESTAMP, NULL, NULL, NULL, NULL, '{}', NULL)"
+        )
+        conn.execute("CREATE TABLE mart_feature_pit_audit (audit_run_id TEXT, violation_rows INTEGER)")
+        conn.execute("INSERT INTO mart_feature_pit_audit VALUES ('pit_registry_panel_v1', 0)")
+        conn.execute(
+            """
+            CREATE TABLE fact_feature_panel (
+                stock_code TEXT,
+                date TEXT,
+                ret_20d DOUBLE,
+                ma_ratio_60 DOUBLE
+            )
+            """
+        )
+        conn.execute(
+            """
+            INSERT INTO fact_feature_panel VALUES
+            ('000001', '2026-04-01', 0.1, 1.1),
+            ('000002', '2026-04-01', 0.2, 1.2)
+            """
+        )
+
+        result = evaluate_gate(
+            conn,
+            challenger_model_id="optuna_model_selection_new",
+            feature_table="fact_feature_panel",
+            feature_set_id=None,
+            pit_audit_run_id="pit_registry_panel_v1",
+        )
+
+        assert result["gates"]["coverage"]["status"] == "PASS"
+        assert result["gates"]["coverage"]["feature_table"] == "fact_feature_panel"
+        assert {row["feature"] for row in result["gates"]["coverage"]["features"]} == {
+            "ret_20d",
+            "ma_ratio_60",
+        }
+    finally:
+        conn.close()
+
+
+def test_promotion_gate_waits_when_requested_pit_audit_run_missing():
+    conn = duck_mem()
+    try:
+        _create_lifecycle_tables(conn)
+        conn.execute(
+            """
+            INSERT INTO mart_multidim_model VALUES
+            ('champion_model', '2026-04-01', 0.0400, 0.0100, 0.0100, 0.55,
+             'm7', 1, '["ret_20d"]')
+            """
+        )
+        conn.execute(
+            """
+            INSERT INTO mart_multidim_model VALUES
+            ('optuna_model_selection_new', '2026-05-04', 0.0500, 0.0200, 0.0110, 0.56,
+             'model_selection_run', 1, '["ret_20d"]')
+            """
+        )
+        conn.execute(
+            "INSERT INTO mart_model_lifecycle VALUES ('champion_model', 'champion', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, NULL, NULL, NULL, NULL, '{}', NULL)"
+        )
+        conn.execute(
+            "INSERT INTO mart_model_lifecycle VALUES ('optuna_model_selection_new', 'challenger', NULL, CURRENT_TIMESTAMP, NULL, NULL, NULL, NULL, '{}', NULL)"
+        )
+        conn.execute("CREATE TABLE mart_feature_pit_audit (audit_run_id TEXT, violation_rows INTEGER)")
+        conn.execute("CREATE TABLE fact_feature_panel (stock_code TEXT, date TEXT, ret_20d DOUBLE)")
+        conn.execute("INSERT INTO fact_feature_panel VALUES ('000001', '2026-04-01', 0.1)")
+
+        result = evaluate_gate(
+            conn,
+            challenger_model_id="optuna_model_selection_new",
+            feature_table="fact_feature_panel",
+            feature_set_id=None,
+            pit_audit_run_id="missing_audit_run",
+        )
+
+        assert result["gates"]["PIT"]["status"] == "WAIT"
+        assert any(item["gate"] == "PIT" for item in result["blockers"])
+    finally:
+        conn.close()
+
+
+def test_promotion_gate_blocks_missing_generic_model_feature_column():
+    conn = duck_mem()
+    try:
+        _create_lifecycle_tables(conn)
+        conn.execute(
+            """
+            INSERT INTO mart_multidim_model VALUES
+            ('champion_model', '2026-04-01', 0.0400, 0.0100, 0.0100, 0.55,
+             'm7', 1, '["ret_20d"]')
+            """
+        )
+        conn.execute(
+            """
+            INSERT INTO mart_multidim_model VALUES
+            ('optuna_model_selection_new', '2026-05-04', 0.0500, 0.0200, 0.0110, 0.56,
+             'model_selection_run', 2, '["ret_20d", "missing_signal"]')
+            """
+        )
+        conn.execute(
+            "INSERT INTO mart_model_lifecycle VALUES ('champion_model', 'champion', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, NULL, NULL, NULL, NULL, '{}', NULL)"
+        )
+        conn.execute(
+            "INSERT INTO mart_model_lifecycle VALUES ('optuna_model_selection_new', 'challenger', NULL, CURRENT_TIMESTAMP, NULL, NULL, NULL, NULL, '{}', NULL)"
+        )
+        conn.execute("CREATE TABLE mart_feature_pit_audit (audit_run_id TEXT, violation_rows INTEGER)")
+        conn.execute("INSERT INTO mart_feature_pit_audit VALUES ('pit_registry_panel_v1', 0)")
+        conn.execute("CREATE TABLE fact_feature_panel (stock_code TEXT, date TEXT, ret_20d DOUBLE)")
+        conn.execute("INSERT INTO fact_feature_panel VALUES ('000001', '2026-04-01', 0.1)")
+
+        result = evaluate_gate(
+            conn,
+            challenger_model_id="optuna_model_selection_new",
+            feature_table="fact_feature_panel",
+            feature_set_id=None,
+            pit_audit_run_id="pit_registry_panel_v1",
+        )
+
+        assert result["gates"]["coverage"]["status"] == "FAIL"
+        assert any(row["status"] == "missing_column" for row in result["gates"]["coverage"]["features"])
+        assert any(item["gate"] == "coverage" for item in result["blockers"])
+    finally:
+        conn.close()
+
+
+def test_promotion_gate_waits_for_insufficient_walkforward_evidence():
+    conn = duck_mem()
+    try:
+        _create_lifecycle_tables(conn)
+        conn.execute(
+            """
+            INSERT INTO mart_multidim_model VALUES
+            ('champion_model', '2026-04-01', 0.0400, 0.0100, 0.0100, 0.55,
+             'm7', 1, '["ret_20d"]')
+            """
+        )
+        conn.execute(
+            """
+            INSERT INTO mart_multidim_model VALUES
+            ('optuna_model_selection_new', '2026-05-04', 0.0500, 0.0200, 0.0110, 0.56,
+             'model_selection_run', 1, '["ret_20d"]')
+            """
+        )
+        conn.execute(
+            "INSERT INTO mart_model_lifecycle VALUES ('champion_model', 'champion', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, NULL, NULL, NULL, NULL, '{}', NULL)"
+        )
+        conn.execute(
+            "INSERT INTO mart_model_lifecycle VALUES ('optuna_model_selection_new', 'challenger', NULL, CURRENT_TIMESTAMP, NULL, NULL, NULL, NULL, '{}', NULL)"
+        )
+        conn.execute("CREATE TABLE mart_feature_pit_audit (audit_run_id TEXT, violation_rows INTEGER)")
+        conn.execute("INSERT INTO mart_feature_pit_audit VALUES ('pit_registry_panel_v1', 0)")
+        conn.execute("CREATE TABLE fact_feature_panel (stock_code TEXT, date TEXT, ret_20d DOUBLE)")
+        conn.execute("INSERT INTO fact_feature_panel VALUES ('000001', '2026-04-01', 0.1)")
+        conn.execute(
+            """
+            CREATE TABLE mart_model_walkforward_fold (
+                run_id TEXT,
+                model_id TEXT,
+                test_rank_ic DOUBLE,
+                test_long_short_spread DOUBLE,
+                quality_flag TEXT,
+                built_at TEXT
+            )
+            """
+        )
+        conn.executemany(
+            "INSERT INTO mart_model_walkforward_fold VALUES ('wf_1', 'optuna_model_selection_new', ?, 0.02, 'ok', '2026-05-04')",
+            [(0.030,), (0.031,)],
+        )
+
+        result = evaluate_gate(
+            conn,
+            challenger_model_id="optuna_model_selection_new",
+            feature_table="fact_feature_panel",
+            feature_set_id=None,
+            pit_audit_run_id="pit_registry_panel_v1",
+        )
+
+        assert result["gates"]["walk_forward"]["status"] == "WAIT"
+        assert any(item["gate"] == "walk_forward" for item in result["blockers"])
     finally:
         conn.close()

@@ -269,7 +269,7 @@ def _make_conn():
 
 def _make_market_conn():
     conn = duck_mem()
-    conn.execute(
+    conn.executescript(
         """
         CREATE TABLE price_kline (
             code TEXT,
@@ -282,7 +282,11 @@ def _make_market_conn():
             low REAL,
             volume REAL,
             amount REAL
-        )
+        );
+        CREATE VIEW v_price_kline_qfq AS
+            SELECT code, date, freq, adjust, open, high, low, close, volume, amount
+              FROM price_kline
+             WHERE freq = 'daily' AND adjust = 'qfq';
         """
     )
     return conn

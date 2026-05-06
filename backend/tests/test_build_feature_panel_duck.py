@@ -33,9 +33,16 @@ def _seed_minimal_sources(con):
             volume DOUBLE,
             amount DOUBLE,
             freq TEXT,
-            adjust TEXT
+            adjust TEXT,
+            source_name TEXT,
+            source_tier SMALLINT,
+            is_fallback BOOLEAN
         );
         CREATE TABLE market.price_kline AS SELECT * FROM market.price_kline_tdxhub WHERE FALSE;
+        CREATE VIEW market.v_price_kline_qfq AS
+            SELECT code, date, freq, adjust, open, high, low, close, volume, amount,
+                   source_name, source_tier, is_fallback
+            FROM market.price_kline_tdxhub;
         CREATE TABLE smartmoney.raw_margin_daily (
             stock_code TEXT,
             trade_date TEXT,
@@ -91,11 +98,14 @@ def _seed_minimal_sources(con):
                 1_000_000.0 + idx * 1000 + offset,
                 "daily",
                 "qfq",
+                "tdxhub",
+                1,
+                False,
             ))
             if code != "510300":
                 margin_day = day if idx % 2 else _yyyymmdd(day)
                 margin_rows.append((code, margin_day, 1000.0 + idx * 5 + offset))
-    con.executemany("INSERT INTO market.price_kline_tdxhub VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", kline_rows)
+    con.executemany("INSERT INTO market.price_kline_tdxhub VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", kline_rows)
     con.executemany("INSERT INTO smartmoney.raw_margin_daily VALUES (?, ?, ?)", margin_rows)
     con.executemany(
         "INSERT INTO smartmoney.fact_institution_event VALUES (?, ?)",
@@ -122,18 +132,22 @@ def _seed_minimal_sources(con):
     )
 
 
-def test_build_panel_writes_fact_feature_panel_without_dataframe(monkeypatch):
+def test_build_panel_writes_fact_feature_panel_without_dataframe():
     con = duckdb.connect(":memory:")
     try:
         _seed_minimal_sources(con)
-        monkeypatch.setattr(subject, "get_duck", lambda writable=True: con)
 
-        summary = subject.build_panel("2026-01-01")
+        summary = subject._build_panel_with_connection(con, "2026-01-01")
         sample = con.execute(
             """
             SELECT stock_code, ret_5d, ret_20d, momentum_diff,
                    inst_event_count_30d, exec_buy_ge1_count_90d,
-                   days_since_exec_buy, regime_flag, forward_ret_20d, rz_balance
+                   days_since_exec_buy, regime_flag,
+                   forward_ret_5d, forward_ret_10d, forward_ret_20d, forward_ret_60d,
+                   forward_ret_90d,
+                   rz_balance,
+                   yjyg_lower_pct, kline_source_name, kline_source_tier,
+                   kline_is_fallback
             FROM fact_feature_panel
             WHERE stock_code = '000001'
               AND date = '2026-01-02'
@@ -147,6 +161,47 @@ def test_build_panel_writes_fact_feature_panel_without_dataframe(monkeypatch):
         assert sample[5] >= 0
         assert sample[6] >= -1
         assert sample[7] in {"na", "up", "down", "flat", None}
+        assert sample[8] is not None
         assert sample[9] is not None
+        assert sample[10] is not None
+        assert sample[11] is None
+        assert sample[12] is None
+        assert sample[13] is not None
+        assert sample[14] is None
+        assert sample[15] == "tdxhub"
+        assert sample[16] == 1
+        assert sample[17] is False
     finally:
         con.close()
+
+
+def test_ensure_fact_panel_schema_adds_new_horizon_label_columns_to_existing_table():
+    con = duckdb.connect(":memory:")
+    try:
+        con.execute(
+            """
+            CREATE TABLE fact_feature_panel (
+                stock_code TEXT,
+                date TEXT,
+                close REAL,
+                forward_ret_20d REAL
+            )
+            """
+        )
+
+        subject._ensure_fact_panel_schema(con)
+        cols = {row[1] for row in con.execute("PRAGMA table_info('fact_feature_panel')").fetchall()}
+
+        assert {"forward_ret_5d", "forward_ret_10d", "forward_ret_60d", "forward_ret_90d"}.issubset(cols)
+    finally:
+        con.close()
+
+
+def test_feature_registry_covers_panel_and_keeps_labels_out_of_inputs():
+    registry_result = subject.validate_feature_registry()
+    inputs = subject.feature_input_columns()
+
+    assert registry_result["status"] == "passed"
+    assert "ret_20d" in inputs
+    for label in ("forward_ret_5d", "forward_ret_10d", "forward_ret_20d", "forward_ret_60d", "forward_ret_90d"):
+        assert label not in inputs

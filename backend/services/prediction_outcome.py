@@ -49,7 +49,7 @@ def calc_outcomes(conn, *, lookback_days: int = 90) -> dict:
 
     需求:
     - mart_daily_recommendation: 预测来源
-    - market.duckdb#price_kline: 实际价格
+    - market.duckdb canonical K-line relation: actual prices
 
     优化:
     - 只算 outcome_known_at IS NULL 的 (未算过)
@@ -83,8 +83,9 @@ def calc_outcomes(conn, *, lookback_days: int = 90) -> dict:
         return {"status": "no_new_predictions", "n_processed": 0, "n_written": 0}
 
     # 拿价格 (一次性预加载: 所有相关 stock_code, 范围 cutoff → today + 35 天)
-    from services.market_db import get_market_conn
+    from services.market_db import get_canonical_kline_qfq_relation, get_market_conn
     mc = get_market_conn()
+    kline_relation = get_canonical_kline_qfq_relation()
 
     # 按股票预加载价格序列
     from collections import defaultdict
@@ -96,7 +97,7 @@ def calc_outcomes(conn, *, lookback_days: int = 90) -> dict:
         placeholders = ",".join(["?"] * len(relevant_codes))
         try:
             rows = mc.execute(f"""
-                SELECT code, date, close FROM price_kline
+                SELECT code, date, close FROM {kline_relation}
                 WHERE code IN ({placeholders})
                   AND date >= ?
                   AND freq = 'daily' AND adjust = 'qfq'

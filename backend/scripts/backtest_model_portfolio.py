@@ -16,6 +16,7 @@ from typing import Any
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from services.db import get_conn
+from services.market_db import CANONICAL_KLINE_QFQ_RELATION
 from services.ml_lifecycle.registry import select_default_model_id
 
 
@@ -26,6 +27,7 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name
 ROOT = Path(__file__).resolve().parent.parent.parent
 MARKET_DB = ROOT / "data" / "market.duckdb"
 ETF_DB = ROOT / "data" / "etf.duckdb"
+KLINE_DAILY_QFQ_RELATION = CANONICAL_KLINE_QFQ_RELATION
 
 
 DDL = """
@@ -173,11 +175,11 @@ def load_inputs(conn, model_id: str, min_avg_amount: float) -> tuple[list[dict],
     logger.info("model prediction window: %s ~ %s (%s dates)", start, end, n_dates)
 
     candidates = _records_from_cursor(duck.execute(
-        """
+        f"""
         WITH px AS (
             SELECT code, date, close, amount,
                    AVG(amount) OVER (PARTITION BY code ORDER BY date ROWS 19 PRECEDING) AS amount_ma20
-            FROM market.price_kline_tdxhub
+            FROM {KLINE_DAILY_QFQ_RELATION}
             WHERE freq='daily' AND adjust='qfq'
               AND date >= ? AND date <= ?
         )
@@ -199,11 +201,11 @@ def load_inputs(conn, model_id: str, min_avg_amount: float) -> tuple[list[dict],
         raise RuntimeError("流动性过滤后无候选股票")
 
     prices = _records_from_cursor(duck.execute(
-        """
+        f"""
         WITH px_base AS (
             SELECT code, date, close, amount,
                    AVG(amount) OVER (PARTITION BY code ORDER BY date ROWS 19 PRECEDING) AS amount_ma20
-            FROM market.price_kline_tdxhub
+            FROM {KLINE_DAILY_QFQ_RELATION}
             WHERE freq='daily' AND adjust='qfq'
               AND date >= ? AND date <= ?
         ),
@@ -216,7 +218,7 @@ def load_inputs(conn, model_id: str, min_avg_amount: float) -> tuple[list[dict],
         SELECT p.code, p.date, p.close, p.amount,
                p.close / NULLIF(LAG(p.close) OVER (PARTITION BY p.code ORDER BY p.date), 0) - 1 AS ret_1d,
                AVG(p.amount) OVER (PARTITION BY p.code ORDER BY p.date ROWS 19 PRECEDING) AS amount_ma20
-        FROM market.price_kline_tdxhub p
+        FROM {KLINE_DAILY_QFQ_RELATION} p
         JOIN candidate_codes c ON c.code = p.code
         WHERE p.freq='daily' AND p.adjust='qfq'
           AND p.date >= ? AND p.date <= ?
@@ -227,32 +229,33 @@ def load_inputs(conn, model_id: str, min_avg_amount: float) -> tuple[list[dict],
 
     benchmark_sql = """
         WITH src AS (
-            SELECT date, close FROM market.price_kline_tdxhub
-            WHERE code='510300' AND freq='daily' AND adjust='qfq'
-              AND date >= ? AND date <= ?
-            UNION ALL
-            SELECT date, close FROM market.price_kline
+            SELECT date, close, 1 AS source_priority FROM {kline_relation}
             WHERE code='510300' AND freq='daily' AND adjust='qfq'
               AND date >= ? AND date <= ?
             {etf_union}
         ),
         dedup AS (
-            SELECT date, close, ROW_NUMBER() OVER (PARTITION BY date ORDER BY close DESC) rn
+            SELECT date, close, ROW_NUMBER() OVER (PARTITION BY date ORDER BY source_priority) rn
             FROM src
         )
         SELECT date, close FROM dedup WHERE rn=1 ORDER BY date
     """
     etf_union = ""
-    params = [start, end, start, end]
+    params = [start, end]
     if ETF_DB.exists():
         etf_union = """
             UNION ALL
-            SELECT date, close FROM etf.etf_price_kline
+            SELECT date, close, 2 AS source_priority FROM etf.etf_price_kline
             WHERE code='510300' AND freq='daily' AND adjust='qfq'
               AND date >= ? AND date <= ?
         """
         params.extend([start, end])
-    benchmark = _records_from_cursor(duck.execute(benchmark_sql.format(etf_union=etf_union), params))
+    benchmark = _records_from_cursor(
+        duck.execute(
+            benchmark_sql.format(kline_relation=KLINE_DAILY_QFQ_RELATION, etf_union=etf_union),
+            params,
+        )
+    )
     return candidates, prices, benchmark
 
 

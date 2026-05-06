@@ -860,6 +860,7 @@ def init_db():
                 forward_ret_10d  REAL,
                 forward_ret_20d  REAL,
                 forward_ret_60d  REAL,
+                forward_ret_90d  REAL,
                 common_holder_network_count REAL,
                 fund_holding_shares_tdx_f10 REAL,
                 fund_holding_float_a_ratio_tdx_f10 REAL,
@@ -888,6 +889,7 @@ def init_db():
             ALTER TABLE fact_feature_panel_candidate ADD COLUMN IF NOT EXISTS forward_ret_5d REAL;
             ALTER TABLE fact_feature_panel_candidate ADD COLUMN IF NOT EXISTS forward_ret_10d REAL;
             ALTER TABLE fact_feature_panel_candidate ADD COLUMN IF NOT EXISTS forward_ret_60d REAL;
+            ALTER TABLE fact_feature_panel_candidate ADD COLUMN IF NOT EXISTS forward_ret_90d REAL;
             ALTER TABLE fact_feature_panel_candidate ADD COLUMN IF NOT EXISTS common_holder_network_count REAL;
             ALTER TABLE fact_feature_panel_candidate ADD COLUMN IF NOT EXISTS fund_holding_shares_tdx_f10 REAL;
             ALTER TABLE fact_feature_panel_candidate ADD COLUMN IF NOT EXISTS fund_holding_float_a_ratio_tdx_f10 REAL;
@@ -908,6 +910,7 @@ def init_db():
                 forward_ret_10d REAL,
                 forward_ret_20d REAL,
                 forward_ret_60d REAL,
+                forward_ret_90d REAL,
                 ret_1d REAL,
                 ret_5d REAL,
                 ret_20d REAL,
@@ -2280,7 +2283,7 @@ def init_db():
 
         # P0.1 (2026-04-28): 派生层 schema 版本管理
         # - 建 dim_schema_version 单点元数据表
-        # - 重建所有 view (防底表 schema drift, 含历史踩雷的 mart_model_validation_fold)
+        # - 重建仍声明为当前依赖的兼容 view (防底表 schema drift)
         # - 检测 expected != actual 的派生表, 启动时 log WARN
         # - 首次启动把所有现存表的 actual 设为 expected (建立 baseline)
         try:

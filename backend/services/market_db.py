@@ -10,10 +10,117 @@ from pathlib import Path
 from typing import Optional
 
 from services.duck_adapter import connect as _duck_connect, DuckConn
+from services.source_policy import get_capability_policy
 
 _DB_DIR = Path(__file__).resolve().parent.parent.parent / "data"
 # Phase 7: DuckDB 主库
 _DB_PATH = _DB_DIR / "market.duckdb"
+KLINE_DAILY_QFQ_POLICY = get_capability_policy("kline_daily")
+CANONICAL_KLINE_QFQ_RELATION = KLINE_DAILY_QFQ_POLICY.canonical_relation or "market.v_price_kline_qfq"
+
+
+def get_canonical_kline_qfq_relation(schema: Optional[str] = None) -> str:
+    """Resolve the canonical daily qfq K-line relation for a connection.
+
+    Cross-database analytical jobs attach `market.duckdb` as `market` and use
+    `market.v_price_kline_qfq`. Direct market connections use
+    `v_price_kline_qfq`.
+    """
+    name = CANONICAL_KLINE_QFQ_RELATION.rsplit(".", 1)[-1]
+    return f"{schema}.{name}" if schema else name
+
+
+PRICE_KLINE_TDXHUB_DDL = """
+CREATE TABLE IF NOT EXISTS price_kline_tdxhub (
+    code          TEXT NOT NULL,
+    date          TEXT NOT NULL,
+    freq          TEXT NOT NULL DEFAULT 'daily',
+    adjust        TEXT NOT NULL DEFAULT 'qfq',
+    open          REAL,
+    high          REAL,
+    low           REAL,
+    close         REAL,
+    volume        REAL,
+    amount        REAL,
+    factor        REAL,
+    source        TEXT DEFAULT 'tdxhub',
+    batch_id      TEXT,
+    ingested_at   TEXT DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (code, date, freq, adjust)
+);
+CREATE INDEX IF NOT EXISTS idx_pkt_code ON price_kline_tdxhub(code);
+CREATE INDEX IF NOT EXISTS idx_pkt_date ON price_kline_tdxhub(date);
+
+CREATE TABLE IF NOT EXISTS price_kline_tdxhub_adjustment_event (
+    code          TEXT NOT NULL,
+    event_date    TEXT NOT NULL,
+    event_hash    TEXT NOT NULL,
+    adjust_factor REAL NOT NULL,
+    prev_close    REAL,
+    source        TEXT,
+    batch_id      TEXT,
+    applied_at    TEXT DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (code, event_date, event_hash)
+);
+CREATE INDEX IF NOT EXISTS idx_pkt_adj_code_date
+    ON price_kline_tdxhub_adjustment_event(code, event_date);
+"""
+
+CANONICAL_KLINE_QFQ_VIEW_DDL = """
+CREATE OR REPLACE VIEW v_price_kline_qfq AS
+WITH primary_rows AS (
+    SELECT
+        code,
+        date,
+        freq,
+        adjust,
+        open,
+        high,
+        low,
+        close,
+        volume,
+        amount,
+        COALESCE(NULLIF(source, ''), 'tdxhub') AS source_name,
+        1::SMALLINT AS source_tier,
+        FALSE AS is_fallback,
+        batch_id,
+        ingested_at
+    FROM price_kline_tdxhub
+    WHERE freq = 'daily' AND adjust = 'qfq'
+),
+fallback_rows AS (
+    SELECT
+        f.code,
+        f.date,
+        f.freq,
+        f.adjust,
+        f.open,
+        f.high,
+        f.low,
+        f.close,
+        f.volume,
+        f.amount,
+        COALESCE(NULLIF(f.source, ''), 'akshare_multi_source') AS source_name,
+        3::SMALLINT AS source_tier,
+        TRUE AS is_fallback,
+        f.batch_id,
+        f.ingested_at
+    FROM price_kline f
+    WHERE f.freq = 'daily'
+      AND f.adjust = 'qfq'
+      AND NOT EXISTS (
+          SELECT 1
+          FROM primary_rows p
+          WHERE p.code = f.code
+            AND p.date = f.date
+            AND p.freq = f.freq
+            AND p.adjust = f.adjust
+      )
+)
+SELECT * FROM primary_rows
+UNION ALL
+SELECT * FROM fallback_rows
+"""
 
 # ---------------------------------------------------------------------------
 # Connection
@@ -114,6 +221,8 @@ def init_market_db():
             detail          TEXT
         );
         """)
+        conn.executescript(PRICE_KLINE_TDXHUB_DDL)
+        conn.executescript(CANONICAL_KLINE_QFQ_VIEW_DDL)
         conn.commit()
     finally:
         conn.close()
@@ -136,8 +245,9 @@ def get_kline(conn, code: str, date: str, freq: str = "daily",
               field: str = "open") -> Optional[float]:
     """单点价格查询：取指定日期的指定字段值"""
     col = _quote_price_field(field)
+    relation = get_canonical_kline_qfq_relation() if freq == "daily" else "price_kline"
     row = conn.execute(
-        f"SELECT {col} FROM price_kline "
+        f"SELECT {col} FROM {relation} "
         "WHERE code=? AND date=? AND freq=? AND adjust='qfq'",
         (code, date, freq)
     ).fetchone()
@@ -158,9 +268,10 @@ def get_kline(conn, code: str, date: str, freq: str = "daily",
 def get_kline_range(conn, code: str, start: str, end: str,
                     freq: str = "daily") -> "list[dict]":
     """区间查询：返回 [{date, open, high, low, close, volume, amount}]"""
+    relation = get_canonical_kline_qfq_relation() if freq == "daily" else "price_kline"
     rows = conn.execute(
         "SELECT date, open, high, low, close, volume, amount "
-        "FROM price_kline "
+        f"FROM {relation} "
         "WHERE code=? AND freq=? AND adjust='qfq' AND date>=? AND date<=? "
         "ORDER BY date",
         (code, freq, start, end)
@@ -240,6 +351,53 @@ def upsert_price_rows(conn, rows: list[dict], source: str,
                 r.get("open"), r.get("high"), r.get("low"), r.get("close"),
                 r.get("volume"), r.get("amount"),
                 source, batch_id, now,
+            )
+            for r in rows
+        ],
+    )
+    conn.commit()
+    return len(rows)
+
+
+def upsert_price_kline_tdxhub_rows(conn, rows: list[dict],
+                                   source: str = "tdxhub",
+                                   batch_id: str = None) -> int:
+    """
+    批量写入/更新 tdxhub 主 K 线表。
+
+    rows: [{code, date, freq, adjust, open, high, low, close, volume, amount, factor?}]
+    返回实际写入行数。
+    """
+    if not rows:
+        return 0
+    now = _now_iso()
+    conn.executemany(
+        """
+        DELETE FROM price_kline_tdxhub
+         WHERE code = ? AND date = ? AND freq = ? AND adjust = ?
+        """,
+        [
+            (
+                r["code"],
+                r["date"],
+                r.get("freq", "daily"),
+                r.get("adjust", "qfq"),
+            )
+            for r in rows
+        ],
+    )
+    conn.executemany(
+        "INSERT INTO price_kline_tdxhub "
+        "(code, date, freq, adjust, open, high, low, close, volume, amount, "
+        " factor, source, batch_id, ingested_at) "
+        "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+        [
+            (
+                r["code"], r["date"], r.get("freq", "daily"),
+                r.get("adjust", "qfq"),
+                r.get("open"), r.get("high"), r.get("low"), r.get("close"),
+                r.get("volume"), r.get("amount"), r.get("factor"),
+                source or "tdxhub", batch_id, now,
             )
             for r in rows
         ],

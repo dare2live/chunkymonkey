@@ -19,7 +19,7 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name
 
 
 AUTO_PANEL_FEATURE_SET_ID = "tdx_gpcw_auto_v1_pit"
-LABEL_COLUMNS = ["forward_ret_5d", "forward_ret_10d", "forward_ret_20d", "forward_ret_60d"]
+LABEL_COLUMNS = ["forward_ret_5d", "forward_ret_10d", "forward_ret_20d", "forward_ret_60d", "forward_ret_90d"]
 BASELINE_FEATURES = [
     "forecast_profit_yoy_mid",
     "inverse_holder_count_change_pct_tdx",
@@ -37,6 +37,7 @@ CREATE TABLE IF NOT EXISTS fact_feature_panel_candidate (
     forward_ret_10d REAL,
     forward_ret_20d REAL,
     forward_ret_60d REAL,
+    forward_ret_90d REAL,
     built_at TEXT,
     PRIMARY KEY (feature_set_id, stock_code, date)
 );
@@ -160,7 +161,8 @@ def build_tdx_gpcw_auto_feature_panel(
                    LEAD(close, 5) OVER w / NULLIF(close, 0) - 1 AS forward_ret_5d_calc,
                    LEAD(close, 10) OVER w / NULLIF(close, 0) - 1 AS forward_ret_10d_calc,
                    LEAD(close, 20) OVER w / NULLIF(close, 0) - 1 AS forward_ret_20d_calc,
-                   LEAD(close, 60) OVER w / NULLIF(close, 0) - 1 AS forward_ret_60d_calc
+                   LEAD(close, 60) OVER w / NULLIF(close, 0) - 1 AS forward_ret_60d_calc,
+                   LEAD(close, 90) OVER w / NULLIF(close, 0) - 1 AS forward_ret_90d_calc
             FROM fact_feature_panel
             WINDOW w AS (PARTITION BY stock_code ORDER BY date)
         ),
@@ -169,7 +171,8 @@ def build_tdx_gpcw_auto_feature_panel(
                    forward_ret_5d_calc AS forward_ret_5d,
                    forward_ret_10d_calc AS forward_ret_10d,
                    COALESCE(forward_ret_20d, forward_ret_20d_calc) AS forward_ret_20d,
-                   forward_ret_60d_calc AS forward_ret_60d
+                   forward_ret_60d_calc AS forward_ret_60d,
+                   forward_ret_90d_calc AS forward_ret_90d
             FROM priced
             WHERE {where_sql}
         )
@@ -180,6 +183,7 @@ def build_tdx_gpcw_auto_feature_panel(
                b.forward_ret_10d,
                b.forward_ret_20d,
                b.forward_ret_60d,
+               b.forward_ret_90d,
                {select_feature_cols},
                ? AS built_at
         FROM base b

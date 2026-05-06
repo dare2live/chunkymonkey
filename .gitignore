@@ -17,6 +17,8 @@ data/qlib_alpha158
 data/qlib_follow_models/
 data/qlib_runs_check/
 data/multidim_models/*.pkl
+data/optuna/
+data/storage_cleanup_smoke/
 claude/
 mlruns/
 node_modules/

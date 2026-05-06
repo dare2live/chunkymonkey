@@ -1,0 +1,12 @@
+version: 1
+
+capabilities:
+  kline_daily:
+    primary: tdxhub
+    fallback:
+      - akshare_multi_source
+    canonical_relation: market.v_price_kline_qfq
+    allow_fallback_for_latest_gap: true
+    require_fallback_lineage: true
+    max_primary_lag_trading_days: 1
+

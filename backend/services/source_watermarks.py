@@ -54,6 +54,7 @@ DOMAIN_SPECS = [
         "source_tier": 1,
         "table": "market.price_kline_tdxhub",
         "date_col": "date",
+        "where": "freq = 'daily' AND adjust = 'qfq'",
         "parser_version": "tdxhub_qfq_daily",
     },
     {
@@ -62,8 +63,14 @@ DOMAIN_SPECS = [
         "source_tier": 3,
         "table": "market.price_kline",
         "date_col": "date",
+        "where": "freq = 'daily' AND adjust = 'qfq'",
         "parser_version": "akshare_fallback_daily",
-        "fallback_reason": "fills dates not yet present in tdxhub qfq daily",
+        "fallback_reason": "fills keys/dates not yet present in tdxhub qfq daily",
+        "fallback_mode": "fills_primary_gap",
+        "primary_table": "market.price_kline_tdxhub",
+        "primary_date_col": "date",
+        "primary_where": "freq = 'daily' AND adjust = 'qfq'",
+        "gap_key_cols": ["code", "date", "freq", "adjust"],
     },
     {
         "data_domain": "holders_top10_float",
@@ -153,6 +160,11 @@ def _table_parts(table: str) -> tuple[str | None, str]:
 
 def _quote_table(table: str) -> str:
     return ".".join('"' + part.replace('"', '""') + '"' for part in table.split("."))
+
+
+def _where_clause(spec: dict[str, Any], key: str = "where") -> str:
+    clause = str(spec.get(key) or "").strip()
+    return f" WHERE {clause}" if clause else ""
 
 
 def _table_exists(conn, table: str) -> bool:
@@ -331,7 +343,7 @@ def derive_watermark(conn, spec: dict[str, Any]) -> dict[str, Any]:
             "last_data_date": None,
             "last_raw_hash": None,
             "row_count": 0,
-            "fallback_active": spec["source_tier"] > 1,
+            "fallback_active": False,
             "fallback_reason": spec.get("fallback_reason") or f"table_missing:{table}",
             "consecutive_failures": 1,
             "updated_at": now,
@@ -349,22 +361,92 @@ def derive_watermark(conn, spec: dict[str, Any]) -> dict[str, Any]:
             CAST(MAX({date_expr}) AS TEXT) AS last_data_date,
             CAST(MAX({hash_expr}) AS TEXT) AS last_raw_hash
           FROM {_quote_table(table)}
+          {_where_clause(spec)}
         """
     ).fetchone()
     row_count = int(row["row_count"] or 0)
     last_data_date = row["last_data_date"]
     last_raw_hash = row["last_raw_hash"] or _stable_hash(table, row_count, last_data_date)
+    fallback_active = _derive_fallback_active(
+        conn,
+        spec,
+        row_count=row_count,
+        last_data_date=last_data_date,
+    )
     return {
         **spec,
         "last_success_at": now if row_count > 0 else None,
         "last_data_date": last_data_date,
         "last_raw_hash": last_raw_hash,
         "row_count": row_count,
-        "fallback_active": spec["source_tier"] > 1 and row_count > 0,
+        "fallback_active": fallback_active,
         "fallback_reason": spec.get("fallback_reason"),
         "consecutive_failures": 0 if row_count > 0 else 1,
         "updated_at": now,
     }
+
+
+def _derive_fallback_active(
+    conn,
+    spec: dict[str, Any],
+    *,
+    row_count: int,
+    last_data_date: str | None,
+) -> bool:
+    """Return whether this source is actively filling a primary-source gap."""
+
+    if row_count <= 0 or int(spec.get("source_tier") or 0) <= 1:
+        return False
+    if spec.get("fallback_mode") != "fills_primary_gap":
+        return False
+
+    primary_table = spec.get("primary_table")
+    primary_date_col = spec.get("primary_date_col") or spec.get("date_col")
+    if not primary_table or not primary_date_col or not last_data_date:
+        return False
+    if not _table_exists(conn, primary_table):
+        return True
+    gap_key_cols = list(spec.get("gap_key_cols") or [])
+    if gap_key_cols:
+        fallback_cols = _columns(conn, table=spec["table"])
+        primary_cols = _columns(conn, primary_table)
+        if all(col in fallback_cols and col in primary_cols for col in gap_key_cols):
+            select_cols = ", ".join(f'"{col}"' for col in gap_key_cols)
+            join_clause = " AND ".join(f"p.\"{col}\" = f.\"{col}\"" for col in gap_key_cols)
+            missing_probe = conn.execute(
+                f"""
+                WITH fallback_rows AS (
+                    SELECT {select_cols}
+                      FROM {_quote_table(spec["table"])}
+                      {_where_clause(spec)}
+                ),
+                primary_rows AS (
+                    SELECT {select_cols}
+                      FROM {_quote_table(primary_table)}
+                      {_where_clause(spec, "primary_where")}
+                )
+                SELECT 1
+                  FROM fallback_rows f
+                  LEFT JOIN primary_rows p ON {join_clause}
+                 WHERE p."{gap_key_cols[0]}" IS NULL
+                 LIMIT 1
+                """
+            ).fetchone()
+            return missing_probe is not None
+    primary_cols = _columns(conn, primary_table)
+    if primary_date_col not in primary_cols:
+        return True
+    row = conn.execute(
+        f"""
+        SELECT CAST(MAX("{primary_date_col}") AS TEXT) AS last_data_date
+          FROM {_quote_table(primary_table)}
+          {_where_clause(spec, "primary_where")}
+        """
+    ).fetchone()
+    primary_last = row["last_data_date"] if row else None
+    if primary_last is None:
+        return True
+    return str(last_data_date) > str(primary_last)
 
 
 def upsert_watermark(conn, item: dict[str, Any]) -> None:

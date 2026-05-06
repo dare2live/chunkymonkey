@@ -8,7 +8,8 @@ from datetime import datetime
 from typing import Iterable, Optional
 
 from services.industry import industry_complete_condition, industry_join_clause
-from services.market_db import get_market_conn
+from services.market_db import get_canonical_kline_qfq_relation, get_market_conn
+KLINE_DAILY_QFQ_RELATION = get_canonical_kline_qfq_relation()
 
 DATASET_LABELS = {
     "daily_kline": "日K缺口",
@@ -52,8 +53,9 @@ def _compute_missing_codes(conn, dataset: str, *,
             own_conn = True
         try:
             freq = "daily" if dataset == "daily_kline" else "monthly"
+            relation = KLINE_DAILY_QFQ_RELATION if freq == "daily" else "price_kline"
             rows = mkt_conn.execute(
-                "SELECT DISTINCT code FROM price_kline WHERE freq=? AND adjust='qfq'",
+                f"SELECT DISTINCT code FROM {relation} WHERE freq=? AND adjust='qfq'",
                 (freq,),
             ).fetchall()
             present_codes = {row["code"] for row in rows}

@@ -8,7 +8,7 @@
   - 没有 walkforward 信息时 ic_walkforward_avg/std = NULL (后续 walkforward
     跑完会单独写)
 
-执行后, /api/data_health/models 就有内容可看.
+执行后, Workbench Champion/Research 读模型会读取 mart_model_lifecycle。
 """
 from __future__ import annotations
 

@@ -22,7 +22,7 @@ logger = logging.getLogger("tdx_keep_panel")
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s | %(message)s")
 
 
-LABEL_COLS = ["forward_ret_5d", "forward_ret_10d", "forward_ret_20d", "forward_ret_60d"]
+LABEL_COLS = ["forward_ret_5d", "forward_ret_10d", "forward_ret_20d", "forward_ret_60d", "forward_ret_90d"]
 
 
 def _columns(conn, table: str) -> set[str]:

@@ -397,9 +397,10 @@ _PRICE_CACHE: dict[tuple, float | None] = {}
 
 
 def make_default_price_fn():
-    """从 market.duckdb#price_kline 拿 close. 进程内 cache."""
-    from services.market_db import get_market_conn
+    """从 market.duckdb canonical K-line relation 拿 close. 进程内 cache."""
+    from services.market_db import get_canonical_kline_qfq_relation, get_market_conn
     mc = get_market_conn()
+    relation = get_canonical_kline_qfq_relation()
 
     def _fn(stock_code: str, date: str) -> float | None:
         key = (stock_code, date)
@@ -407,7 +408,12 @@ def make_default_price_fn():
             return _PRICE_CACHE[key]
         try:
             r = mc.execute(
-                "SELECT close FROM price_kline WHERE code = ? AND date = ? AND freq = 'daily' AND adjust = 'qfq' LIMIT 1",
+                f"""
+                SELECT close FROM {relation}
+                 WHERE code = ? AND date = ?
+                   AND freq = 'daily' AND adjust = 'qfq'
+                 LIMIT 1
+                """,
                 [stock_code, date],
             ).fetchone()
             v = float(r[0]) if r and r[0] else None

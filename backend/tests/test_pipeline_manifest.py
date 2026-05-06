@@ -1,11 +1,11 @@
 from conftest import duck_mem
-from routers import data_health as data_health_router
 from scripts.benchmark_model_pipeline import benchmark_plan
 from services.pipeline_manifest import (
     ensure_pipeline_manifest_schema,
     record_pipeline_run,
     table_row_counts,
 )
+from services.workbench_read import build_workbench_pipelines
 
 
 def test_record_pipeline_run_writes_auditable_manifest():
@@ -55,7 +55,7 @@ def test_table_row_counts_marks_missing_tables_as_none():
         conn.close()
 
 
-def test_performance_overview_marks_daily_phase_budget_overrun(monkeypatch):
+def test_workbench_pipelines_marks_warn_daily_run_as_blocker():
     conn = duck_mem()
     try:
         ensure_pipeline_manifest_schema(conn)
@@ -68,15 +68,15 @@ def test_performance_overview_marks_daily_phase_budget_overrun(monkeypatch):
             ended_at="2026-05-05T00:01:30",
             duration_s=90.0,
             perf_summary={"phases": [{"phase": "sync", "status": "warn", "phase_elapsed_s": 90.0}]},
+            blockers=[{"kind": "phase_warn", "phase": "sync"}],
         )
-        monkeypatch.setattr(data_health_router, "get_conn", lambda: conn)
 
-        result = data_health_router.get_performance_overview()
+        result = build_workbench_pipelines(conn, limit=10)
 
-        assert result["latest_daily"]["run_id"] == "cron_daily_unit"
-        assert result["daily_phases"][0]["phase"] == "sync"
-        assert result["daily_phases"][0]["over_budget"] is True
-        assert result["daily_phases"][0]["budget_s"] == 60.0
+        assert result["recent"][0]["run_id"] == "cron_daily_unit"
+        assert result["recent"][0]["status"] == "warn"
+        assert result["blockers"][0]["blocker_count"] == 1
+        assert result["blockers"][0]["perf_summary"]["phases"][0]["phase"] == "sync"
     finally:
         try:
             conn.close()

@@ -47,6 +47,11 @@ def _make_market_conn():
             freq TEXT,
             adjust TEXT
         );
+        CREATE VIEW v_price_kline_qfq AS
+            SELECT code, date, freq, adjust, NULL::REAL AS open, high, low, close,
+                   NULL::REAL AS volume, NULL::REAL AS amount
+              FROM price_kline
+             WHERE freq = 'daily' AND adjust = 'qfq';
         """
     )
     return conn

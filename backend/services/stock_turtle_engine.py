@@ -13,11 +13,13 @@ from datetime import date, datetime, timedelta
 from typing import Optional
 
 from services.industry import load_industry_map
+from services.market_db import get_canonical_kline_qfq_relation
 from services.utils import safe_float as _safe_float, clamp_score as _clamp_score
 
 logger = logging.getLogger("cm-api")
 
 TURTLE_FEATURE_SCHEMA_VERSION = 1
+KLINE_DAILY_QFQ_RELATION = get_canonical_kline_qfq_relation()
 
 
 def _round_price(value) -> Optional[float]:
@@ -45,7 +47,7 @@ def _load_price_history(mkt_conn, codes: list[str], since_days: int = 320) -> di
         placeholders = ",".join("?" for _ in chunk)
         rows = mkt_conn.execute(
             f"SELECT code, date, open, high, low, close, volume, amount "
-            f"FROM price_kline "
+            f"FROM {KLINE_DAILY_QFQ_RELATION} "
             f"WHERE code IN ({placeholders}) AND freq='daily' AND adjust='qfq' "
             f"AND date >= ? ORDER BY code, date",
             (*chunk, cutoff),

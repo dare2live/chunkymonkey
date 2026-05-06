@@ -1,0 +1,175 @@
+version: 1
+
+model_input_excluded:
+  - stock_code
+  - date
+  - built_at
+  - kline_source_name
+  - kline_source_tier
+  - kline_is_fallback
+  - forward_ret_5d
+  - forward_ret_10d
+  - forward_ret_20d
+  - forward_ret_60d
+  - forward_ret_90d
+
+groups:
+  kline_lineage:
+    enabled: true
+    production_ready: true
+    candidate_only: false
+    model_input: false
+    pit_release_lag_days: 0
+    source_tables:
+      - market.v_price_kline_qfq
+    required_capabilities:
+      - kline_daily
+    features:
+      - kline_source_name:
+          dtype: text
+      - kline_source_tier:
+          dtype: integer
+      - kline_is_fallback:
+          dtype: boolean
+
+  price_volume:
+    enabled: true
+    production_ready: true
+    candidate_only: false
+    pit_release_lag_days: 0
+    source_tables:
+      - market.v_price_kline_qfq
+      - smartmoney.raw_margin_daily
+    required_capabilities:
+      - kline_daily
+    features:
+      - close
+      - ret_1d
+      - ret_5d
+      - ret_20d
+      - ret_60d
+      - vol_z20d
+      - ma_ratio_5
+      - ma_ratio_20
+      - ma_ratio_60
+      - ma_ratio_250
+      - rz_balance
+      - rz_chg_5d_pct
+
+  alpha158_price_shape:
+    enabled: true
+    production_ready: true
+    candidate_only: false
+    pit_release_lag_days: 0
+    source_tables:
+      - market.v_price_kline_qfq
+    required_capabilities:
+      - kline_daily
+    features:
+      - kmid
+      - klen
+      - kup
+      - klow
+      - ksft
+      - vol_ratio_5_20
+      - vol_std_5d
+      - vol_std_20d
+      - range_pos_20
+      - range_pos_60
+      - momentum_diff
+      - amount_chg_5d
+
+  cross_sectional:
+    enabled: true
+    production_ready: true
+    candidate_only: false
+    pit_release_lag_days: 0
+    source_tables:
+      - market.v_price_kline_qfq
+      - smartmoney.dim_stock_tdx_industry
+    required_capabilities:
+      - kline_daily
+    features:
+      - ret_20d_rank
+      - ret_60d_rank
+      - vol_z20d_rank
+      - amount_chg_5d_rank
+      - rz_balance_rank
+      - rz_chg_5d_pct_rank
+      - ret_20d_tdx_l1_rel
+      - ret_60d_tdx_l1_rel
+      - vol_z20d_tdx_l1_rel
+      - amount_chg_5d_tdx_l1_rel
+      - rz_balance_to_amount20
+
+  event_activity:
+    enabled: true
+    production_ready: true
+    candidate_only: false
+    pit_release_lag_days: 0
+    source_tables:
+      - smartmoney.fact_institution_event
+      - smartmoney.fact_executive_trade_event
+      - smartmoney.fact_lhb_event
+    features:
+      - inst_event_count_30d
+      - inst_event_count_60d
+      - exec_buy_count_90d
+      - exec_buy_ge1_count_90d
+      - lhb_inst_buy_count_30d
+      - lhb_inst_buy_count_60d
+      - jgdy_count_60d
+      - dzjy_count_60d
+      - days_since_exec_buy
+      - days_since_lhb
+
+  fundamentals:
+    enabled: true
+    production_ready: true
+    candidate_only: false
+    pit_release_lag_days: 90
+    source_tables:
+      - smartmoney.fact_fundamental_quarterly
+    features:
+      - shareholder_count_qoq
+      - inst_count_qoq
+      - fund_count_qoq
+      - qfii_count_qoq
+      - yjyg_lower_pct
+      - yjyg_upper_pct
+      - roe
+      - eps_basic
+
+  regime:
+    enabled: true
+    production_ready: true
+    candidate_only: false
+    pit_release_lag_days: 0
+    source_tables:
+      - market.v_price_kline_qfq
+    required_capabilities:
+      - kline_daily
+    features:
+      - hs300_ret_20d
+      - hs300_ret_60d
+      - regime_flag:
+          dtype: text
+          model_input: false
+
+  labels:
+    enabled: true
+    production_ready: false
+    candidate_only: false
+    label: true
+    model_input: false
+    pit_release_lag_days: 90
+    source_tables:
+      - market.v_price_kline_qfq
+    required_capabilities:
+      - kline_daily
+    features:
+      - forward_ret_5d
+      - forward_ret_10d
+      - forward_ret_20d
+      - forward_ret_60d
+      - forward_ret_90d

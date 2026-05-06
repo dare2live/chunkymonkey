@@ -1,6 +1,6 @@
 """风险因子计算 — P1.6 (2026-04-28).
 
-从 market.duckdb#price_kline 算每只股的 risk profile:
+从 market.duckdb canonical K-line relation 算每只股的 risk profile:
 - vol_30d / vol_60d / vol_120d: 日收益率标准差 (年化)
 - max_drawdown_60d / max_drawdown_120d: 最大回撤 (从峰值跌幅)
 - sharpe_30d / sharpe_60d: 夏普 (年化超额收益 / vol)
@@ -134,7 +134,8 @@ def calc_risk_factors(conn, *, lookback_days: int = 250, max_stocks: int | None 
 
     # K 线在独立 market.duckdb, 用 market_db.get_market_conn (单独连接).
     # smartmoney 主库连接 conn 不能 ATTACH (会冲突 lock).
-    from services.market_db import get_market_conn
+    from services.market_db import get_canonical_kline_qfq_relation, get_market_conn
+    kline_relation = get_canonical_kline_qfq_relation()
     try:
         market_conn = get_market_conn()
     except Exception as exc:
@@ -143,7 +144,7 @@ def calc_risk_factors(conn, *, lookback_days: int = 250, max_stocks: int | None 
 
     # 探查 K 线表
     try:
-        market_conn.execute("SELECT 1 FROM price_kline LIMIT 1").fetchone()
+        market_conn.execute(f"SELECT 1 FROM {kline_relation} LIMIT 1").fetchone()
     except Exception as exc:
         market_conn.close()
         return {"status": "no_kline_table", "error": str(exc)}
@@ -168,7 +169,7 @@ def calc_risk_factors(conn, *, lookback_days: int = 250, max_stocks: int | None 
         try:
             # 拉近 lookback_days 个交易日的收盘价
             df_rows = market_conn.execute(f"""
-                SELECT date, close FROM price_kline
+                SELECT date, close FROM {kline_relation}
                 WHERE code = ? AND freq = 'daily' AND adjust = 'qfq'
                   AND close IS NOT NULL AND close > 0
                 ORDER BY date DESC LIMIT ?

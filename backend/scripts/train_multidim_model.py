@@ -39,7 +39,10 @@ from services.model_feature_schema import (
     REGIME_FEATURE_COLS,
     TDX_KEEP_CHALLENGER_SCHEMA_VERSION,
     TDX_KEEP_FEATURE_COLS,
+    feature_cols_from_json,
     feature_cols_to_json,
+    holding_period_from_label,
+    normalize_feature_cols,
     ordered_feature_cols,
 )
 from services.feature_retention import load_production_keep_features
@@ -120,6 +123,18 @@ def _table_columns(duck, table: str) -> set[str]:
     }
 
 
+def _table_exists(duck, table: str) -> bool:
+    row = duck.execute(
+        """
+        SELECT COUNT(*)
+          FROM information_schema.tables
+         WHERE table_name = ?
+        """,
+        (table,),
+    ).fetchone()
+    return bool(row and row[0])
+
+
 def _as_text_array(values) -> np.ndarray:
     if np.ma.isMaskedArray(values):
         values = values.filled("")
@@ -187,6 +202,8 @@ def _panel_query_parts(
     label_name: str,
     with_alpha158: bool,
     feature_table: str,
+    requested_feature_cols: list[str] | None = None,
+    only_requested_feature_cols: bool = False,
 ) -> tuple[list[str], list[str], str, set[str]]:
     alpha158_db = Path(__file__).resolve().parent.parent.parent / "data" / "alpha158.duckdb"
     a158_col_list: list[str] = []
@@ -212,11 +229,16 @@ def _panel_query_parts(
     for col in TDX_KEEP_FEATURE_COLS:
         if col not in schema_feature_cols:
             schema_feature_cols.append(col)
-    base_cols = [col for col in schema_feature_cols if col in panel_cols]
-    missing_cols = [col for col in FEATURE_COLS if col not in panel_cols]
-    if missing_cols:
-        logger.warning("fact_feature_panel 缺少 %d 个 schema 特征, 本次跳过: %s", len(missing_cols), missing_cols)
-    return base_cols, a158_col_list, ("p.regime_flag" if "regime_flag" in panel_cols else "NULL AS regime_flag"), panel_cols
+    requested_cols = normalize_feature_cols(requested_feature_cols or [])
+    base_cols = [] if only_requested_feature_cols else [col for col in schema_feature_cols if col in panel_cols]
+    for col in requested_cols:
+        if col in panel_cols and col not in base_cols:
+            base_cols.append(col)
+    if not only_requested_feature_cols:
+        missing_cols = [col for col in FEATURE_COLS if col not in panel_cols]
+        if missing_cols:
+            logger.warning("fact_feature_panel 缺少 %d 个 schema 特征, 本次跳过: %s", len(missing_cols), missing_cols)
+    return base_cols, a158_col_list, ("p.regime_flag" if "regime_flag" in panel_cols else "CAST(NULL AS VARCHAR)"), panel_cols
 
 
 def load_panel_arrays(
@@ -228,6 +250,8 @@ def load_panel_arrays(
     with_alpha158: bool = True,
     feature_table: str = "fact_feature_panel",
     feature_set_id: str | None = None,
+    requested_feature_cols: list[str] | None = None,
+    only_requested_feature_cols: bool = False,
 ) -> PanelData:
     """Load the training panel as columnar NumPy arrays, not row dicts."""
 
@@ -238,6 +262,8 @@ def load_panel_arrays(
         label_name=label_name,
         with_alpha158=with_alpha158,
         feature_table=feature_table,
+        requested_feature_cols=requested_feature_cols,
+        only_requested_feature_cols=only_requested_feature_cols,
     )
     feature_cols = [*base_cols, *a158_col_list]
     select_cols = [
@@ -303,6 +329,8 @@ def load_panel(
     with_alpha158: bool = True,
     feature_table: str = "fact_feature_panel",
     feature_set_id: str | None = None,
+    requested_feature_cols: list[str] | None = None,
+    only_requested_feature_cols: bool = False,
 ) -> list[dict[str, Any]]:
     """Compatibility helper for tests/debugging; production training uses arrays."""
 
@@ -314,7 +342,79 @@ def load_panel(
         with_alpha158=with_alpha158,
         feature_table=feature_table,
         feature_set_id=feature_set_id,
+        requested_feature_cols=requested_feature_cols,
+        only_requested_feature_cols=only_requested_feature_cols,
     ).to_records()
+
+
+def load_model_selection_run(conn, run_id: str) -> dict[str, Any]:
+    """Load an Optuna/selection run as a concrete feature list for training."""
+
+    duck = conn.raw if hasattr(conn, "raw") else conn
+    if not _table_exists(duck, "mart_model_selection_run"):
+        raise RuntimeError("mart_model_selection_run 不存在; 请先运行 feature search/selection")
+    row = conn.execute(
+        """
+        SELECT run_id, feature_set_id, method, label_name, objective_score,
+               selected_features_json, rejected_features_json, trials, notes, built_at
+          FROM mart_model_selection_run
+         WHERE run_id = ?
+        """,
+        (run_id,),
+    ).fetchone()
+    if not row:
+        raise RuntimeError(f"未找到 model selection run: {run_id}")
+    selected = normalize_feature_cols(feature_cols_from_json(row["selected_features_json"]))
+    if not selected:
+        raise RuntimeError(f"model selection run 没有 selected_features: {run_id}")
+    return {
+        "run_id": row["run_id"],
+        "feature_set_id": row["feature_set_id"],
+        "method": row["method"],
+        "label_name": row["label_name"],
+        "objective_score": row["objective_score"],
+        "selected_features": selected,
+        "rejected_features_json": row["rejected_features_json"],
+        "trials": row["trials"],
+        "notes": row["notes"],
+        "built_at": row["built_at"],
+    }
+
+
+def load_model_stability_search_run(conn, run_id: str) -> dict[str, Any]:
+    """Load best fixed params from mart_model_stability_search_summary."""
+
+    duck = conn.raw if hasattr(conn, "raw") else conn
+    if not _table_exists(duck, "mart_model_stability_search_summary"):
+        raise RuntimeError("mart_model_stability_search_summary 不存在; 请先运行 model stability search")
+    row = conn.execute(
+        """
+        SELECT run_id, model_selection_run_id, feature_table, feature_set_id,
+               label_name, selected_features_json, best_trial_number,
+               best_params_json, objective_score, config_json, built_at
+          FROM mart_model_stability_search_summary
+         WHERE run_id = ?
+        """,
+        (run_id,),
+    ).fetchone()
+    if not row:
+        raise RuntimeError(f"未找到 model stability search run: {run_id}")
+    params = json.loads(row["best_params_json"] or "{}")
+    if not isinstance(params, dict) or not params:
+        raise RuntimeError(f"model stability search run 没有 best_params_json: {run_id}")
+    return {
+        "run_id": row["run_id"],
+        "model_selection_run_id": row["model_selection_run_id"],
+        "feature_table": row["feature_table"],
+        "feature_set_id": row["feature_set_id"],
+        "label_name": row["label_name"],
+        "selected_features": normalize_feature_cols(feature_cols_from_json(row["selected_features_json"])),
+        "best_trial_number": row["best_trial_number"],
+        "best_params": params,
+        "objective_score": row["objective_score"],
+        "config_json": row["config_json"],
+        "built_at": row["built_at"],
+    }
 
 
 def split_time_series(rows: list[dict[str, Any]], train_ratio: float = 0.7, valid_ratio: float = 0.15):
@@ -363,6 +463,7 @@ def make_objective(
             'lambda_l1': trial.suggest_float('lambda_l1', 1e-4, 1.0, log=True),
             'lambda_l2': trial.suggest_float('lambda_l2', 1e-4, 1.0, log=True),
             'max_depth': trial.suggest_int('max_depth', 4, 10),
+            'feature_pre_filter': False,
             'verbose': -1,
         }
         model = lgb.train(
@@ -504,6 +605,8 @@ def resolve_feature_group_from_columns(
     regime_aware: bool,
     retention_keep_features: list[str] | None = None,
     retention_schema_tag: str = "retention_keep_v1",
+    selection_features: list[str] | None = None,
+    selection_schema_tag: str = "model_selection_run_v1",
 ) -> tuple[list[str], str]:
     from services.model_feature_schema import BASE_FEATURE_COLS, DENSE_V2_FEATURE_COLS
 
@@ -540,6 +643,15 @@ def resolve_feature_group_from_columns(
             raise RuntimeError(f"base_retention_keep 缺少 keep 特征: {missing}")
         cols = base + keep
         tag = retention_schema_tag
+    elif name == "model_selection_run":
+        requested = normalize_feature_cols(selection_features or [])
+        if not requested:
+            raise RuntimeError("model_selection_run 需要 --model-selection-run-id 提供 selected features")
+        missing = [c for c in requested if c not in panel_cols]
+        if missing:
+            raise RuntimeError(f"model_selection_run 缺少 selected 特征: {missing}")
+        cols = list(requested)
+        tag = selection_schema_tag
     elif name == "legacy_full":
         cols = [c for c in FEATURE_COLS if c in panel_cols]
         if a158:
@@ -649,10 +761,20 @@ def _feature_cols_for_log(feature_cols: list[str]) -> str:
 
 
 def _notes(args) -> str:
+    selection = (
+        f" · model_selection_run_id={args.model_selection_run_id}"
+        if getattr(args, "model_selection_run_id", None)
+        else ""
+    )
+    fixed_ref = getattr(args, "fixed_params_run_id", None)
+    if fixed_ref:
+        search_mode = f"fixed_params_run={fixed_ref}"
+    else:
+        search_mode = "fixed_params" if getattr(args, "fixed_params_json", None) else f"Optuna {args.trials} trials"
     return (
         f"M7/M8 candidate · feature_group={args.feature_group} · feature_table={args.feature_table} · "
-        f"feature_set_id={args.feature_set_id} · Optuna {args.trials} trials · "
-        f"regime_aware={args.regime_aware} · num_round={args.num_round}"
+        f"feature_set_id={args.feature_set_id} · {search_mode} · "
+        f"regime_aware={args.regime_aware} · num_round={args.num_round}{selection}"
     )
 
 
@@ -665,9 +787,31 @@ def _best_params(study) -> dict:
     best.update({
         'objective': 'regression', 'metric': 'rmse', 'verbose': -1,
         'seed': 42, 'feature_fraction_seed': 42, 'bagging_seed': 42,
-        'data_random_seed': 42,
+        'data_random_seed': 42, 'feature_pre_filter': False,
     })
     return best
+
+
+def _fixed_params_from_json(params_json: str | None) -> dict | None:
+    if not params_json:
+        return None
+    try:
+        params = json.loads(params_json)
+    except json.JSONDecodeError as exc:
+        raise ValueError(f"--fixed-params-json must be a JSON object: {exc}") from exc
+    if not isinstance(params, dict):
+        raise ValueError("--fixed-params-json must be a JSON object")
+    params.update({
+        'objective': 'regression', 'metric': 'rmse', 'verbose': -1,
+        'seed': 42, 'feature_fraction_seed': 42, 'bagging_seed': 42,
+        'data_random_seed': 42, 'feature_pre_filter': False,
+    })
+    return params
+
+
+def _selection_schema_tag(run_id: str) -> str:
+    safe = "".join(ch if ch.isalnum() else "_" for ch in run_id).strip("_")
+    return f"model_selection_{safe[:80] or 'run'}"
 
 
 def _split_bounds(train, valid, holdout):
@@ -759,7 +903,8 @@ def main():
     parser.add_argument('--feature-group',
                         choices=[
                             'base', 'base_dense_v2', 'base_alpha158', 'base_dense_v2_alpha158',
-                            'tdx_keep_v1', 'base_retention_keep', 'legacy_full',
+                            'tdx_keep_v1', 'base_retention_keep', 'model_selection_run',
+                            'legacy_full',
                         ],
                         default='base_dense_v2',
                         help='M7/M9: 显式特征组. 默认 base_dense_v2 为 compact production candidate; legacy_full 仅显式研究使用')
@@ -771,11 +916,17 @@ def main():
                         help='base_retention_keep 使用的 mart_feature_retention_decision.decision_run_id; 默认取最新')
     parser.add_argument('--retention-feature-set-id', default=None,
                         help='base_retention_keep 读取 retention decision 的 feature_set_id; 默认等于 --feature-set-id')
+    parser.add_argument('--model-selection-run-id', default=None,
+                        help='feature_group=model_selection_run 时读取 mart_model_selection_run.selected_features_json')
     parser.add_argument('--num-round', type=int, default=400, help='final fit 轮数')
     parser.add_argument('--objective-num-round', type=int, default=400,
                         help='Optuna 每次 trial 的训练轮数')
     parser.add_argument('--num-threads', type=int, default=0,
                         help='LightGBM num_threads; 0 表示使用 LightGBM 默认')
+    parser.add_argument('--fixed-params-json', default=None,
+                        help='JSON object of LightGBM params. When set, skip Optuna and train with these params.')
+    parser.add_argument('--fixed-params-run-id', default=None,
+                        help='读取 mart_model_stability_search_summary.best_params_json 并跳过 Optuna')
     parser.add_argument('--model-id-prefix', default='multidim_v1',
                         help='模型 ID 前缀, M7 候选可用 multidim_v2_base / multidim_v2_dense 区分')
     args = parser.parse_args()
@@ -789,15 +940,49 @@ def main():
     # 3) 最后落库时重新打开 writable connection, 写完 close
     conn = get_conn()
     ensure_model_schema(conn)
+    model_selection: dict[str, Any] | None = None
+    fixed_params_run: dict[str, Any] | None = None
+    fixed_params_json = args.fixed_params_json
+    if args.fixed_params_run_id:
+        if args.fixed_params_json:
+            raise RuntimeError("--fixed-params-json 和 --fixed-params-run-id 只能二选一")
+        fixed_params_run = load_model_stability_search_run(conn, args.fixed_params_run_id)
+        fixed_params_json = json.dumps(fixed_params_run["best_params"], ensure_ascii=False)
+        if args.feature_group == "model_selection_run" and not args.model_selection_run_id:
+            args.model_selection_run_id = fixed_params_run["model_selection_run_id"]
+    selected_feature_cols: list[str] | None = None
+    if args.feature_group == "model_selection_run":
+        if not args.model_selection_run_id:
+            raise RuntimeError("feature_group=model_selection_run 必须指定 --model-selection-run-id")
+        model_selection = load_model_selection_run(conn, args.model_selection_run_id)
+        selected_feature_cols = list(model_selection["selected_features"])
+        selected_label = model_selection.get("label_name")
+        if selected_label and selected_label != args.label_name:
+            logger.warning(
+                "model_selection_run label_name=%s differs from --label-name=%s; using explicit training label",
+                selected_label,
+                args.label_name,
+            )
+        if fixed_params_run and fixed_params_run["model_selection_run_id"] != args.model_selection_run_id:
+            raise RuntimeError(
+                "fixed params run belongs to model_selection_run_id="
+                f"{fixed_params_run['model_selection_run_id']}, not {args.model_selection_run_id}"
+            )
+    uses_alpha158_features = (
+        feature_group_uses_alpha158(args.feature_group)
+        or any(col.startswith("a158_") for col in (selected_feature_cols or []))
+    )
     t_load = time.perf_counter()
     panel = load_panel_arrays(
         conn,
         args.start,
         args.end,
         label_name=args.label_name,
-        with_alpha158=feature_group_uses_alpha158(args.feature_group),
+        with_alpha158=uses_alpha158_features,
         feature_table=args.feature_table,
         feature_set_id=args.feature_set_id,
+        requested_feature_cols=selected_feature_cols,
+        only_requested_feature_cols=bool(selected_feature_cols),
     )
     retention_keep_features: list[str] | None = None
     retention_decision_run_id: str | None = None
@@ -825,6 +1010,8 @@ def main():
         regime_aware=args.regime_aware,
         retention_keep_features=retention_keep_features,
         retention_schema_tag=f"retention_keep_{retention_decision_run_id or 'latest'}",
+        selection_features=selected_feature_cols,
+        selection_schema_tag=_selection_schema_tag(args.model_selection_run_id or "latest"),
     )
     logger.info("feature_group=%s schema_tag=%s 特征数=%d",
                 args.feature_group, schema_tag, len(feature_cols))
@@ -862,27 +1049,33 @@ def main():
     )
     timings["matrix_precompute_s"] = round(time.perf_counter() - t_matrix, 3)
 
-    # Optuna
-    logger.info("Optuna 启动 %d 次 trial", args.trials)
-    t_optuna = time.perf_counter()
-    study = optuna.create_study(direction='maximize')
-    study.optimize(
-        make_objective(
-            train_dataset,
-            valid_dataset,
-            X_valid,
-            y_valid,
-            valid_dates,
-            feature_cols,
-            args.objective_num_round,
-        ),
-        n_trials=args.trials,
-    )
-    timings["optuna_s"] = round(time.perf_counter() - t_optuna, 3)
-    logger.info("Optuna 完成. best_value=%.4f params=%s", study.best_value, study.best_params)
-
-    # 用 best params 重训 (train + valid 合并) + holdout 评估
-    best = _best_params(study)
+    fixed_params = _fixed_params_from_json(fixed_params_json)
+    if fixed_params is None:
+        logger.info("Optuna 启动 %d 次 trial", args.trials)
+        t_optuna = time.perf_counter()
+        study = optuna.create_study(direction='maximize')
+        study.optimize(
+            make_objective(
+                train_dataset,
+                valid_dataset,
+                X_valid,
+                y_valid,
+                valid_dates,
+                feature_cols,
+                args.objective_num_round,
+            ),
+            n_trials=args.trials,
+        )
+        timings["optuna_s"] = round(time.perf_counter() - t_optuna, 3)
+        logger.info("Optuna 完成. best_value=%.4f params=%s", study.best_value, study.best_params)
+        # 用 best params 重训 (train + valid 合并) + holdout 评估
+        best = _best_params(study)
+        model_search_mode = "optuna"
+    else:
+        timings["optuna_s"] = 0.0
+        best = fixed_params
+        model_search_mode = "fixed_params"
+        logger.info("使用 fixed LightGBM params, 跳过 Optuna: %s", best)
     if args.num_threads > 0:
         best["num_threads"] = int(args.num_threads)
     logger.info("LightGBM num_threads=%s cpu_count=%s", best.get("num_threads", "default"), os.cpu_count())
@@ -963,9 +1156,10 @@ def main():
         commit_sha=git_commit_sha(Path(__file__).resolve().parent.parent.parent),
         input_tables=[
             args.feature_table,
+            *(["mart_model_selection_run"] if args.model_selection_run_id else []),
             *(
                 ["data/alpha158.duckdb:fact_alpha158_panel"]
-                if feature_group_uses_alpha158(args.feature_group)
+                if uses_alpha158_features
                 else []
             ),
         ],
@@ -973,13 +1167,16 @@ def main():
         model_id=model_id,
         feature_group=args.feature_group,
         label_name=args.label_name,
-        holding_period=20 if args.label_name.endswith("_20d") else None,
+        holding_period=holding_period_from_label(args.label_name),
         perf_summary={
             "rows": panel.row_count,
             "n_train": int(len(train_idx)),
             "n_valid": int(len(valid_idx)),
             "n_holdout": int(len(holdout_idx)),
             "n_features": len(feature_cols),
+            "model_selection_run_id": args.model_selection_run_id,
+            "model_search_mode": model_search_mode,
+            "fixed_params_run_id": args.fixed_params_run_id,
             "trials": args.trials,
             "num_round": args.num_round,
             "objective_num_round": args.objective_num_round,
@@ -1001,6 +1198,11 @@ def main():
             "feature_group": args.feature_group,
             "feature_table": args.feature_table,
             "feature_set_id": args.feature_set_id,
+            "model_selection_run_id": args.model_selection_run_id,
+            "source_selection_method": model_selection.get("method") if model_selection else None,
+            "model_search_mode": model_search_mode,
+            "fixed_params_run_id": args.fixed_params_run_id,
+            "fixed_params": fixed_params,
             "label_name": args.label_name,
             "start": args.start,
             "end": args.end,

@@ -1,0 +1,612 @@
+version: 1
+
+defaults:
+  python: python3
+  backend_dir: backend
+  num_threads: 4
+  cost_bps: 10
+  train_days: 60
+  valid_days: 20
+  test_days: 20
+  step_days: 20
+  max_folds: 6
+  topk_size_choices: 50,100,150
+  max_topk_drawdown: 0.20
+  max_feature_drift_psi: 0.25
+
+ranker_policy:
+  enabled: true
+  large_trial_threshold: 0
+  require_prior_profile: true
+  max_runtime_ratio_vs_regression: 2.0
+  passing_status: pass
+  gate_failure_tokens:
+    - drift
+    - drawdown
+    - walkforward
+    - stability
+    - psi
+
+research_schedule:
+  - task_id: feature_assoc_2025_registry_fold
+    task_type: feature_association
+    priority: 10
+    enabled: true
+    evidence:
+      table: mart_feature_association_stat
+      key_column: run_id
+      run_id: feature_assoc_2025_registry_fold_20260505
+    command:
+      script: build_feature_association_duck.py
+      args:
+        --run-id: feature_assoc_2025_registry_fold_20260505
+        --start-date: "2025-01-01"
+        --end-date: "2025-12-31"
+        --min-daily-count: 100
+        --corr-threshold: 0.95
+        --folds: 4
+    resources:
+      feature_table: fact_feature_panel
+      label_name: forward_ret_20d
+
+  - task_id: feature_space_2025_registry
+    task_type: feature_search_space
+    priority: 20
+    enabled: true
+    depends_on:
+      - feature_assoc_2025_registry_fold
+    evidence:
+      table: mart_feature_search_space_summary
+      key_column: run_id
+      run_id: feature_space_2025_registry_20260505
+    command:
+      script: build_feature_search_space.py
+      args:
+        --association-run-id: feature_assoc_2025_registry_cluster_20260505
+        --run-id: feature_space_2025_registry_20260505
+        --min-abs-rank-ic: 0.02
+        --min-coverage-pct: 60
+        --min-fold-count: 20
+        --min-sign-stability: 0.55
+        --max-features: 30
+    resources:
+      output_table: mart_feature_search_space_summary
+
+  - task_id: optuna_feature_space_covgate_stable
+    task_type: feature_space_optuna
+    priority: 30
+    enabled: true
+    depends_on:
+      - feature_space_2025_registry
+    evidence:
+      table: mart_model_selection_run
+      key_column: run_id
+      run_id: optuna_feature_space_covgate_stable_20260506
+    command:
+      script: run_optuna_feature_space.py
+      args:
+        --run-id: optuna_feature_space_covgate_stable_20260506
+        --study-name: optuna_feature_space_covgate_stable_20260506
+        --search-space-run-id: feature_space_2025_registry_20260505
+        --trials: 80
+        --min-coverage-pct: 80
+        --max-features: 30
+    resources:
+      feature_table: fact_feature_panel
+      label_name: forward_ret_20d
+
+  - task_id: model_stability_covgate_lgbm_ranker_baseline
+    task_type: model_stability
+    priority: 40
+    enabled: true
+    depends_on:
+      - optuna_feature_space_covgate_stable
+    evidence:
+      table: mart_model_stability_search_summary
+      key_column: run_id
+      run_id: model_stability_covgate_stable_lgbm_ranker_20260506
+    command:
+      script: run_optuna_model_stability_search.py
+      args:
+        --model-selection-run-id: optuna_feature_space_covgate_stable_20260506
+        --run-id: model_stability_covgate_stable_lgbm_ranker_20260506
+        --study-name: model_stability_covgate_stable_lgbm_ranker_20260506
+        --model-family: lightgbm_ranker
+        --trials: 0
+        --no-resume: true
+        --start: "2025-01-01"
+        --end: "2025-12-31"
+        --feature-table: fact_feature_panel
+        --num-round: 80
+        --num-threads: 4
+        --train-days: 60
+        --valid-days: 20
+        --test-days: 20
+        --step-days: 20
+        --max-folds: 6
+        --topk-size-choices: 50,100,150
+        --cost-bps: 10
+        --max-topk-drawdown: 0.20
+        --max-feature-drift-psi: 0.25
+    resources:
+      feature_table: fact_feature_panel
+      model_family: lightgbm_ranker
+
+  - task_id: model_stability_covgate_lgbm_large
+    task_type: model_stability
+    priority: 50
+    enabled: true
+    depends_on:
+      - optuna_feature_space_covgate_stable
+    evidence:
+      table: mart_model_stability_search_summary
+      key_column: run_id
+      run_id: model_stability_covgate_stable_lgbm_large_20260506
+    command:
+      script: run_optuna_model_stability_search.py
+      args:
+        --model-selection-run-id: optuna_feature_space_covgate_stable_20260506
+        --run-id: model_stability_covgate_stable_lgbm_large_20260506
+        --study-name: model_stability_covgate_stable_lgbm_large_20260506
+        --model-family: lightgbm
+        --trials: 80
+        --start: "2025-01-01"
+        --end: "2025-12-31"
+        --feature-table: fact_feature_panel
+        --num-round: 160
+        --num-threads: 4
+        --train-days: 60
+        --valid-days: 20
+        --test-days: 20
+        --step-days: 20
+        --max-folds: 8
+        --topk-size-choices: 50,100,150,200
+        --cost-bps: 10
+        --max-topk-drawdown: 0.20
+        --max-feature-drift-psi: 0.25
+    resources:
+      feature_table: fact_feature_panel
+      model_family: lightgbm
+      planned_budget_trials: 80
+
+  - task_id: model_stability_covgate_ranker_large
+    task_type: model_stability
+    priority: 60
+    enabled: true
+    depends_on:
+      - model_stability_covgate_lgbm_ranker_baseline
+    evidence:
+      table: mart_model_stability_search_summary
+      key_column: run_id
+      run_id: model_stability_covgate_stable_ranker_large_20260506
+    command:
+      script: run_optuna_model_stability_search.py
+      args:
+        --model-selection-run-id: optuna_feature_space_covgate_stable_20260506
+        --run-id: model_stability_covgate_stable_ranker_large_20260506
+        --study-name: model_stability_covgate_stable_ranker_large_20260506
+        --model-family: lightgbm_ranker
+        --trials: 60
+        --start: "2025-01-01"
+        --end: "2025-12-31"
+        --feature-table: fact_feature_panel
+        --num-round: 140
+        --num-threads: 4
+        --train-days: 60
+        --valid-days: 20
+        --test-days: 20
+        --step-days: 20
+        --max-folds: 8
+        --topk-size-choices: 50,100,150,200
+        --cost-bps: 10
+        --max-topk-drawdown: 0.20
+        --max-feature-drift-psi: 0.25
+    resources:
+      feature_table: fact_feature_panel
+      model_family: lightgbm_ranker
+      planned_budget_trials: 60
+
+  - task_id: drift_safe_batch_gpcw_auto9_optuna8
+    task_type: drift_safe_batch
+    priority: 70
+    enabled: true
+    evidence:
+      table: mart_drift_safe_candidate_batch_summary
+      key_column: batch_run_id
+      run_id: hybrid_batch_drift_safe_gpcw_auto9_optuna8_20260506
+    command:
+      script: run_drift_safe_candidate_batch.py
+      args:
+        --batch-run-id: hybrid_batch_drift_safe_gpcw_auto9_optuna8_20260506
+        --candidate-summary-run-id: drift_safe_candidates_20260506
+        --model-families: lightgbm
+        --trials: 8
+        --feature-table: fact_feature_panel_candidate
+        --num-threads: 4
+    resources:
+      feature_table: fact_feature_panel_candidate
+      model_family: lightgbm
+
+  - task_id: feature_drift_mitigation_covgate_rank_bucket
+    task_type: feature_drift_mitigation
+    priority: 72
+    enabled: true
+    depends_on:
+      - optuna_feature_space_covgate_stable
+    evidence:
+      table: mart_feature_drift_mitigation_panel_build
+      key_column: run_id
+      run_id: feature_drift_mitigation_covgate_rank_bucket_20260506
+    command:
+      script: build_feature_drift_mitigation_panel.py
+      args:
+        --base-model-selection-run-id: optuna_feature_space_covgate_stable_20260506
+        --output-feature-set-id: drift_mitigated_covgate_stable_rank_bucket_20260506
+        --run-id: feature_drift_mitigation_covgate_rank_bucket_20260506
+        --model-selection-run-id: feature_drift_mitigated_covgate_rank_bucket_20260506
+        --root-cause-run-id: feature_drift_root_cause_20260506
+        --start-date: "2025-01-01"
+        --end-date: "2025-12-31"
+        --transform-types: xs_rank,xs_bucket5
+        --bucket-count: 5
+    resources:
+      feature_table: fact_feature_panel_candidate
+      model_selection_run_id: feature_drift_mitigated_covgate_rank_bucket_20260506
+
+  - task_id: model_stability_drift_mitigated_rank_bucket_smoke
+    task_type: model_stability
+    priority: 74
+    enabled: true
+    depends_on:
+      - feature_drift_mitigation_covgate_rank_bucket
+    evidence:
+      table: mart_model_stability_search_summary
+      key_column: run_id
+      run_id: model_stability_drift_mitigated_rank_bucket_smoke_20260506
+    command:
+      script: run_optuna_model_stability_search.py
+      args:
+        --model-selection-run-id: feature_drift_mitigated_covgate_rank_bucket_20260506
+        --run-id: model_stability_drift_mitigated_rank_bucket_smoke_20260506
+        --model-family: lightgbm
+        --trials: 0
+        --no-persistent-study: true
+        --start: "2025-01-01"
+        --end: "2025-12-31"
+        --feature-table: fact_feature_panel_candidate
+        --feature-set-id: drift_mitigated_covgate_stable_rank_bucket_20260506
+        --num-round: 60
+        --num-threads: 4
+        --train-days: 60
+        --valid-days: 20
+        --test-days: 20
+        --step-days: 20
+        --max-folds: 4
+        --min-ok-folds: 3
+        --topk-size-choices: 50,100,150
+        --cost-bps: 10
+        --max-topk-drawdown: 0.20
+        --max-feature-drift-psi: 0.25
+    resources:
+      feature_table: fact_feature_panel_candidate
+      feature_set_id: drift_mitigated_covgate_stable_rank_bucket_20260506
+      model_family: lightgbm
+
+  - task_id: feature_drift_mitigation_covgate_rank_bucket_regime_only
+    task_type: feature_drift_mitigation
+    priority: 76
+    enabled: true
+    depends_on:
+      - model_stability_drift_mitigated_rank_bucket_smoke
+    evidence:
+      table: mart_feature_drift_mitigation_panel_build
+      key_column: run_id
+      run_id: feature_drift_mitigation_rank_bucket_regime_only_20260506
+    command:
+      script: build_feature_drift_mitigation_panel.py
+      args:
+        --base-model-selection-run-id: optuna_feature_space_covgate_stable_20260506
+        --output-feature-set-id: drift_mitigated_covgate_rank_bucket_regime_only_20260506
+        --run-id: feature_drift_mitigation_rank_bucket_regime_only_20260506
+        --model-selection-run-id: feature_drift_mitigated_rank_bucket_regime_only_20260506
+        --root-cause-run-id: feature_drift_root_cause_20260506
+        --start-date: "2025-01-01"
+        --end-date: "2025-12-31"
+        --transform-types: xs_rank,xs_bucket5
+        --bucket-count: 5
+        --include-regime-controls: true
+    resources:
+      feature_table: fact_feature_panel_candidate
+      model_selection_run_id: feature_drift_mitigated_rank_bucket_regime_only_20260506
+
+  - task_id: model_stability_drift_mitigated_regime_only_optuna8
+    task_type: model_stability
+    priority: 78
+    enabled: true
+    depends_on:
+      - feature_drift_mitigation_covgate_rank_bucket_regime_only
+    evidence:
+      table: mart_model_stability_search_summary
+      key_column: run_id
+      run_id: model_stability_drift_mitigated_regime_only_optuna8_20260506
+    command:
+      script: run_optuna_model_stability_search.py
+      args:
+        --model-selection-run-id: feature_drift_mitigated_rank_bucket_regime_only_20260506
+        --run-id: model_stability_drift_mitigated_regime_only_optuna8_20260506
+        --study-name: model_stability_drift_mitigated_regime_only_optuna8_20260506
+        --storage: sqlite:///backend/.optuna/model_stability_drift_mitigated_regime_only_optuna8_20260506.db
+        --no-resume: true
+        --model-family: lightgbm
+        --trials: 8
+        --start: "2025-01-01"
+        --end: "2025-12-31"
+        --feature-table: fact_feature_panel_candidate
+        --feature-set-id: drift_mitigated_covgate_rank_bucket_regime_only_20260506
+        --num-round: 80
+        --num-threads: 4
+        --train-days: 60
+        --valid-days: 20
+        --test-days: 20
+        --step-days: 20
+        --max-folds: 4
+        --min-ok-folds: 3
+        --topk-size-choices: 50,100,150
+        --cost-bps: 10
+        --max-topk-drawdown: 0.20
+        --max-feature-drift-psi: 0.25
+    resources:
+      feature_table: fact_feature_panel_candidate
+      feature_set_id: drift_mitigated_covgate_rank_bucket_regime_only_20260506
+      model_family: lightgbm
+      planned_budget_trials: 8
+
+  - task_id: feature_assoc_trainvalid_spread
+    task_type: feature_association
+    priority: 79
+    enabled: true
+    depends_on:
+      - model_stability_drift_mitigated_regime_only_optuna8
+    evidence:
+      table: mart_feature_association_stat
+      key_column: run_id
+      run_id: feature_assoc_trainvalid_spread_20260506
+    command:
+      script: build_feature_association_duck.py
+      args:
+        --panel-table: fact_feature_panel
+        --label: forward_ret_20d
+        --horizon-labels: forward_ret_5d,forward_ret_10d,forward_ret_20d,forward_ret_60d,forward_ret_90d
+        --run-id: feature_assoc_trainvalid_spread_20260506
+        --start-date: "2025-01-02"
+        --end-date: "2025-11-10"
+        --min-daily-count: 100
+        --folds: 4
+        --skip-clusters: true
+    resources:
+      feature_table: fact_feature_panel
+      purpose: train-valid feature spread diagnosis without holdout feature selection
+
+  - task_id: feature_space_trainvalid_foldstable_spread
+    task_type: feature_search_space
+    priority: 79
+    enabled: true
+    depends_on:
+      - feature_assoc_trainvalid_spread
+    evidence:
+      table: mart_feature_search_space_summary
+      key_column: run_id
+      run_id: feature_space_trainvalid_foldstable_spread_20260506
+    command:
+      script: build_feature_search_space.py
+      args:
+        --association-run-id: feature_assoc_trainvalid_spread_20260506
+        --run-id: feature_space_trainvalid_foldstable_spread_20260506
+        --feature-set-id: trainvalid_foldstable_spread_20260506
+        --min-abs-rank-ic: 0.02
+        --min-coverage-pct: 60
+        --min-fold-count: 100
+        --min-sign-stability: 0.55
+        --min-fold-same-direction-rate: 0.75
+        --max-fold-rank-ic-std: 0.04
+        --max-features: 30
+        --coverage-table: fact_feature_panel
+    resources:
+      source_association_run_id: feature_assoc_trainvalid_spread_20260506
+      purpose: filter spread candidates by fold-level direction and RankIC stability
+
+  - task_id: feature_drift_mitigation_trainvalid_foldstable_spread
+    task_type: feature_drift_mitigation
+    priority: 79
+    enabled: true
+    depends_on:
+      - feature_space_trainvalid_foldstable_spread
+    evidence:
+      table: mart_feature_drift_mitigation_panel_build
+      key_column: run_id
+      run_id: feature_drift_mitigation_trainvalid_foldstable_spread_20260506
+    command:
+      script: build_feature_drift_mitigation_panel.py
+      args:
+        - --base-model-selection-run-id: feature_space_trainvalid_foldstable_spread_20260506
+        - --output-feature-set-id: drift_mitigated_trainvalid_foldstable_spread_20260506
+        - --run-id: feature_drift_mitigation_trainvalid_foldstable_spread_20260506
+        - --model-selection-run-id: feature_drift_mitigated_trainvalid_foldstable_spread_20260506
+        - --start-date: "2025-01-01"
+        - --end-date: "2025-12-31"
+        - --transform-types: xs_rank,xs_bucket5
+        - --bucket-count: 5
+        - --include-regime-controls: true
+        - --feature: inst_count_qoq
+        - --feature: vol_ratio_5_20
+    resources:
+      feature_table: fact_feature_panel_candidate
+      model_selection_run_id: feature_drift_mitigated_trainvalid_foldstable_spread_20260506
+
+  - task_id: model_stability_trainvalid_foldstable_spread_smoke
+    task_type: model_stability
+    priority: 79
+    enabled: true
+    depends_on:
+      - feature_drift_mitigation_trainvalid_foldstable_spread
+    evidence:
+      table: mart_model_stability_search_summary
+      key_column: run_id
+      run_id: model_stability_trainvalid_foldstable_spread_smoke_20260506
+    command:
+      script: run_optuna_model_stability_search.py
+      args:
+        --model-selection-run-id: feature_drift_mitigated_trainvalid_foldstable_spread_20260506
+        --run-id: model_stability_trainvalid_foldstable_spread_smoke_20260506
+        --study-name: model_stability_trainvalid_foldstable_spread_smoke_20260506
+        --model-family: lightgbm
+        --trials: 0
+        --start: "2025-01-01"
+        --end: "2025-12-31"
+        --feature-table: fact_feature_panel_candidate
+        --feature-set-id: drift_mitigated_trainvalid_foldstable_spread_20260506
+        --num-round: 80
+        --num-threads: 4
+        --train-days: 60
+        --valid-days: 20
+        --test-days: 20
+        --step-days: 20
+        --max-folds: 4
+        --min-ok-folds: 3
+        --topk-size-choices: 50,100,150
+        --cost-bps: 10
+        --max-topk-drawdown: 0.20
+        --max-feature-drift-psi: 0.25
+    resources:
+      feature_table: fact_feature_panel_candidate
+      feature_set_id: drift_mitigated_trainvalid_foldstable_spread_20260506
+      model_family: lightgbm
+      decision: rejected; low holdout RankIC/spread and high walk-forward std
+
+  - task_id: model_stability_regime_only_label60d_optuna8
+    task_type: model_stability
+    priority: 79
+    enabled: true
+    depends_on:
+      - model_stability_drift_mitigated_regime_only_optuna8
+    evidence:
+      table: mart_model_stability_search_summary
+      key_column: run_id
+      run_id: model_stability_regime_only_label60d_optuna8_20260506
+    command:
+      script: run_optuna_model_stability_search.py
+      args:
+        --model-selection-run-id: feature_drift_mitigated_rank_bucket_regime_only_20260506
+        --run-id: model_stability_regime_only_label60d_optuna8_20260506
+        --study-name: model_stability_regime_only_label60d_optuna8_20260506
+        --storage: sqlite:///backend/.optuna/model_stability_regime_only_label60d_optuna8_20260506.db
+        --no-resume: true
+        --label-name: forward_ret_60d
+        --model-family: lightgbm
+        --trials: 8
+        --start: "2025-01-01"
+        --end: "2025-12-31"
+        --feature-table: fact_feature_panel_candidate
+        --feature-set-id: drift_mitigated_covgate_rank_bucket_regime_only_20260506
+        --num-round: 80
+        --num-threads: 4
+        --train-days: 60
+        --valid-days: 20
+        --test-days: 20
+        --step-days: 20
+        --max-folds: 4
+        --min-ok-folds: 3
+        --topk-size-choices: 50,100,150
+        --cost-bps: 10
+        --max-topk-drawdown: 0.20
+        --max-feature-drift-psi: 0.25
+    resources:
+      feature_table: fact_feature_panel_candidate
+      feature_set_id: drift_mitigated_covgate_rank_bucket_regime_only_20260506
+      label_name: forward_ret_60d
+      model_family: lightgbm
+      planned_budget_trials: 8
+      decision: rejected; only high walk-forward std RankIC remains
+
+  - task_id: model_stability_regime_only_label_sweep_context
+    task_type: model_context_diagnostics
+    priority: 79
+    enabled: true
+    depends_on:
+      - model_stability_regime_only_label60d_optuna8
+    evidence:
+      table: mart_model_stability_context_summary
+      key_column: run_id
+      run_id: model_stability_context_regime_only_label_sweep_20260506
+    command:
+      script: build_model_stability_context_diagnostics.py
+      args:
+        - --run-id: model_stability_context_regime_only_label_sweep_20260506
+        - --source-run-id: model_stability_regime_only_label5d_smoke_20260506
+        - --source-run-id: model_stability_regime_only_label10d_smoke_20260506
+        - --source-run-id: model_stability_regime_only_label60d_smoke_20260506
+        - --source-run-id: model_stability_regime_only_label60d_optuna8_20260506
+    resources:
+      label_runs:
+        - model_stability_regime_only_label5d_smoke_20260506
+        - model_stability_regime_only_label10d_smoke_20260506
+        - model_stability_regime_only_label60d_smoke_20260506
+        - model_stability_regime_only_label60d_optuna8_20260506
+      decision: 60d has best holdout/spread profile but still fails high walk-forward std
+
+  - task_id: drift_safe_batch_gpcw_auto9_large
+    task_type: drift_safe_batch
+    priority: 80
+    enabled: true
+    deferred: true
+    defer_reason: >-
+      Deferred after the stable-registry LightGBM and lambdarank large studies
+      both failed walk-forward stability/drawdown/PSI gates and the previous
+      GPCW-hybrid optuna8 batch found no passing candidate. Re-enable only
+      after drift root-cause mitigation or a stronger candidate generator.
+    depends_on:
+      - drift_safe_batch_gpcw_auto9_optuna8
+    evidence:
+      table: mart_drift_safe_candidate_batch_summary
+      key_column: batch_run_id
+      run_id: hybrid_batch_drift_safe_gpcw_auto9_large_20260506
+    command:
+      script: run_drift_safe_candidate_batch.py
+      args:
+        --batch-run-id: hybrid_batch_drift_safe_gpcw_auto9_large_20260506
+        --candidate-summary-run-id: drift_safe_candidates_20260506
+        --model-families: lightgbm,lightgbm_ranker
+        --trials: 40
+        --feature-table: fact_feature_panel_candidate
+        --num-threads: 4
+        --topk-size-choices: 50,100,150,200
+        --max-topk-drawdown: 0.20
+        --max-feature-drift-psi: 0.25
+    resources:
+      feature_table: fact_feature_panel_candidate
+      model_family: lightgbm,lightgbm_ranker
+      planned_budget_trials_per_candidate: 40
+
+  - task_id: champion_candidate_eval_template
+    task_type: champion_candidate_eval
+    priority: 90
+    enabled: false
+    depends_on:
+      - model_stability_covgate_lgbm_large
+      - drift_safe_batch_gpcw_auto9_large
+    evidence:
+      table: mart_champion_candidate_evaluation
+      key_column: evaluation_run_id
+      run_id: candidate_eval_template
+    command:
+      script: evaluate_champion_candidate.py
+      args:
+        --model-id: REPLACE_WITH_TRAINED_CHALLENGER
+        --feature-table: fact_feature_panel
+        --feature-set-id: production_registry
+        --top-k: 50
+        --horizons: "20"
+        --top-sizes: 20,50,100,200,500
+        --cost-bps: 10
+    resources:
+      purpose: disabled template; enable only after a trained candidate model exists

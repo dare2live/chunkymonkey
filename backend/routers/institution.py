@@ -35,6 +35,7 @@ from services.institution_scoring_read import (
     load_institution_scorecard_stats,
     load_institution_scoring_breakdown,
 )
+from services.institution_l2_metrics import institution_l2_score_cte, l2_profile_ctes
 from services.institution_write import (
     batch_create_institution_records,
     create_institution_record,
@@ -747,12 +748,16 @@ async def get_institution_detail(inst_id: str):
                 "other_institutions": [],
             })
 
-        # Layer B 擅长度评分（from v_institution_l2_score，§26 引入）
+        # Layer B 擅长度评分（§26 引入）
         # 查该机构所有 (l2_name, stable_score, verdict, ho_n, ho_sharpe) 用于行业树注释
         layer_b_rows = conn.execute(
-            "SELECT l2_name, stable_score, verdict, ho_n, ho_sharpe, train_n, "
-            "entry_lag, max_hold_days, stop_loss, take_profit "
-            "FROM v_institution_l2_score WHERE institution_id = ?",
+            f"""
+            WITH {institution_l2_score_cte("l2_score")}
+            SELECT l2_name, stable_score, verdict, ho_n, ho_sharpe, train_n,
+                   entry_lag, max_hold_days, stop_loss, take_profit
+              FROM l2_score
+             WHERE institution_id = ?
+            """,
             (inst_id,)
         ).fetchall()
         layer_b_by_l2 = {row["l2_name"]: dict(row) for row in layer_b_rows}
@@ -768,7 +773,7 @@ async def get_institution_detail(inst_id: str):
             from services.industry import load_industry_map
             ind_map = load_industry_map(conn)
             # 用 tdx_l1_name / tdx_l2_name / tdx_l3_name（中文行业名），
-            # 与 mart_institution_industry_stat.industry_name 和 v_institution_l2_score.l2_name 对齐
+            # 与 mart_institution_industry_stat.industry_name 和 L2 score l2_name 对齐
             ind_rows = [
                 {"tdx_l1": ind_map[c].get("tdx_l1_name"),
                  "tdx_l2": ind_map[c].get("tdx_l2_name"),
@@ -863,13 +868,14 @@ def compute_stock_multidim_score(conn, stock_code: str) -> dict:
     }
 
     # F1 机构共振
-    row = conn.execute("""
+    row = conn.execute(f"""
+        WITH {institution_l2_score_cte("l2_score")}
         SELECT COUNT(DISTINCT mcr.institution_id) n_total,
           COUNT(DISTINCT CASE WHEN v.verdict='stable' THEN mcr.institution_id END) n_stable,
           AVG(COALESCE(v.stable_score, 0)) avg_score
         FROM mart_current_relationship mcr
         LEFT JOIN dim_stock_tdx_industry ind ON mcr.stock_code = ind.stock_code
-        LEFT JOIN v_institution_l2_score v
+        LEFT JOIN l2_score v
           ON v.institution_id = mcr.institution_id AND v.l2_name = ind.tdx_l2_name
         WHERE mcr.stock_code = ?
     """, (stock_code,)).fetchone()
@@ -1519,19 +1525,24 @@ async def get_l2_profile(l2_name: str):
     try:
         # 1. summary
         row = conn.execute(
-            "SELECT * FROM v_l2_profile WHERE l2_name = ?", (l2_name,)
+            f"""
+            WITH {l2_profile_ctes("l2_score", "l2_profile")}
+            SELECT * FROM l2_profile WHERE l2_name = ?
+            """,
+            (l2_name,),
         ).fetchone()
         if not row:
             return {"ok": False, "message": f"L2 行业 '{l2_name}' 未找到"}
         summary = dict(row)
 
         # 2. stable/weak_positive 机构列表（按评分降序）
-        inst_rows = conn.execute("""
+        inst_rows = conn.execute(f"""
+            WITH {institution_l2_score_cte("l2_score")}
             SELECT v.institution_id, ii.name inst_name, ii.type inst_type,
                 v.stable_score, v.verdict,
                 v.train_n, v.ho_n, v.ho_sharpe,
                 v.entry_lag, v.max_hold_days, v.stop_loss, v.take_profit
-            FROM v_institution_l2_score v
+            FROM l2_score v
             LEFT JOIN inst_institutions ii ON v.institution_id = ii.id
             WHERE v.l2_name = ? AND v.verdict IN ('stable', 'weak_positive')
             ORDER BY v.stable_score DESC

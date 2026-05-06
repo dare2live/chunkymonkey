@@ -460,6 +460,133 @@ select {
   letter-spacing: 0.3px;
 }
 
+.wb-stats-row {
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+}
+
+.wb-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 14px;
+  flex-wrap: wrap;
+}
+
+.wb-tabs {
+  flex-wrap: wrap;
+}
+
+.wb-tab-root {
+  display: grid;
+  gap: 14px;
+}
+
+.wb-stat {
+  min-height: 112px;
+}
+
+.wb-stat-sub {
+  margin-top: 6px;
+  font-size: 11px;
+  color: var(--cm-ink-500);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.wb-stat-status {
+  margin-top: 8px;
+}
+
+.wb-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.wb-panel {
+  min-width: 0;
+}
+
+.wb-panel .panel-head {
+  gap: 12px;
+}
+
+.wb-count-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.wb-count-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 10px;
+  border-radius: var(--cm-r-pill);
+  background: var(--cm-ink-50);
+  color: var(--cm-ink-700);
+  font-size: 12px;
+}
+
+.wb-empty-ok {
+  padding: 12px;
+  border-radius: var(--cm-r-md);
+  background: var(--cm-ok-100);
+  color: var(--cm-ok-500);
+  font-weight: 600;
+}
+
+.wb-kv {
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr);
+  gap: 8px 12px;
+  align-items: center;
+  font-size: 12px;
+}
+
+.wb-kv span {
+  color: var(--cm-ink-500);
+}
+
+.wb-kv b {
+  min-width: 0;
+  color: var(--cm-ink-900);
+  overflow-wrap: anywhere;
+}
+
+.wb-blocker-row,
+.wb-run-line {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.wb-table-wrap {
+  overflow-x: auto;
+}
+
+.wb-table td,
+.wb-table th {
+  white-space: nowrap;
+}
+
+@media (max-width: 980px) {
+  .wb-stats-row,
+  .wb-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 640px) {
+  .wb-stats-row,
+  .wb-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
 /* ====== 工作台网格 ====== */
 .dash-grid {
   display: grid;
@@ -7141,40 +7268,6 @@ tr.detail-row>td>.detail-panel {
   margin: 0 4px;
 }
 
-/* ==================== view-data-health (W0) ==================== */
-.dh-pill {
-  padding: 4px 10px;
-  border-radius: 12px;
-  font-size: 12px;
-  white-space: nowrap;
-}
-.dh-pill-green { background: #e6f7e6; color: #2a8a2a; }
-.dh-pill-yellow { background: #fff4d4; color: #a67c00; }
-.dh-pill-red { background: #fde8e8; color: #a02a2a; }
-.dh-pill-info { background: #e8f0ff; color: #2563eb; }
-
-.dh-tab-btn {
-  background: transparent;
-  border: none;
-  border-bottom: 2px solid transparent;
-  padding: 10px 16px;
-  font-size: 13px;
-  color: var(--cm-text-muted, #888);
-  cursor: pointer;
-  transition: color 0.15s, border-color 0.15s;
-  margin-bottom: -1px;
-}
-.dh-tab-btn:hover { color: var(--cm-text, #333); }
-.dh-tab-btn.active {
-  color: var(--cm-accent, #2563eb);
-  border-bottom-color: var(--cm-accent, #2563eb);
-  font-weight: 600;
-}
-
-#dh-health-table tbody tr.dh-row:hover {
-  background: var(--cm-bg-50, #f8f9fa);
-}
-
 /* Shared ChunkyMonkey primitives */
 .cm-dot {
   display: inline-block;
@@ -7386,13 +7479,3 @@ tr.detail-row>td>.detail-panel {
     gap: 3px;
   }
 }
-
-/* layer 颜色徽章 */
-.dh-layer-raw { padding: 2px 6px; background: #fff4d4; color: #8a6800; border-radius: 3px; font-size: 11px; }
-.dh-layer-dim { padding: 2px 6px; background: #e6f0ff; color: #1d4ed8; border-radius: 3px; font-size: 11px; }
-.dh-layer-fact { padding: 2px 6px; background: #e6f7e6; color: #2a7a2a; border-radius: 3px; font-size: 11px; }
-.dh-layer-mart { padding: 2px 6px; background: #f3e8ff; color: #6b21a8; border-radius: 3px; font-size: 11px; }
-.dh-layer-research { padding: 2px 6px; background: #fce7f3; color: #be185d; border-radius: 3px; font-size: 11px; }
-.dh-layer-cache { padding: 2px 6px; background: #f4f4f5; color: #525252; border-radius: 3px; font-size: 11px; }
-.dh-layer-sys { padding: 2px 6px; background: #fef3c7; color: #92400e; border-radius: 3px; font-size: 11px; }
-.dh-layer-other { padding: 2px 6px; background: #e7e5e4; color: #44403c; border-radius: 3px; font-size: 11px; }

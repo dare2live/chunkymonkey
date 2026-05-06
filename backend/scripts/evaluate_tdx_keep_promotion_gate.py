@@ -12,7 +12,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from services.db import get_conn
-from services.ml_lifecycle.registry import get_model_status, select_default_model_id
+from services.ml_lifecycle.registry import GATE_THRESHOLDS, get_model_status, select_default_model_id
 from services.model_feature_schema import TDX_KEEP_FEATURE_COLS
 from services.feature_retention import load_production_keep_features
 from services.schema_versions import record_actual_version
@@ -56,6 +56,10 @@ def _has_column(conn, table: str, column: str) -> bool:
         (table, column),
     ).fetchone()
     return bool(row and row[0])
+
+
+def _quote_ident(name: str) -> str:
+    return '"' + name.replace('"', '""') + '"'
 
 
 def _latest_model(conn, prefix: str) -> str | None:
@@ -116,6 +120,58 @@ def _latest_portfolio(conn, model_id: str | None) -> dict:
         (model_id,),
     ).fetchone()
     return dict(row) if row else {}
+
+
+def _latest_walkforward(conn, model_id: str | None) -> dict:
+    if not model_id or not _table_exists(conn, "mart_model_walkforward_fold"):
+        return {}
+    row = conn.execute(
+        """
+        SELECT run_id,
+               AVG(test_rank_ic) AS avg_rank_ic,
+               STDDEV(test_rank_ic) AS std_rank_ic,
+               AVG(test_long_short_spread) AS avg_spread,
+               COUNT(*) AS folds,
+               SUM(CASE WHEN COALESCE(quality_flag, '') = 'ok' THEN 1 ELSE 0 END) AS ok_folds,
+               MAX(built_at) AS latest_built_at
+          FROM mart_model_walkforward_fold
+         WHERE model_id = ?
+         GROUP BY run_id
+         ORDER BY MAX(built_at) DESC NULLS LAST, run_id DESC
+         LIMIT 1
+        """,
+        (model_id,),
+    ).fetchone()
+    return dict(row) if row else {}
+
+
+def _walkforward_gate(metrics: dict, *, min_folds: int = 4) -> tuple[str, dict, str | None]:
+    if not metrics:
+        return "WAIT", {"required_folds": min_folds}, "missing walk-forward evidence"
+    folds = int(metrics.get("folds") or 0)
+    ok_folds = int(metrics.get("ok_folds") or 0)
+    avg_rank_ic = metrics.get("avg_rank_ic")
+    std_rank_ic = metrics.get("std_rank_ic")
+    min_avg = float(GATE_THRESHOLDS["min_ic_walkforward_avg"])
+    max_std = float(GATE_THRESHOLDS["max_ic_walkforward_std"])
+    detail = {
+        **metrics,
+        "required_folds": min_folds,
+        "min_avg_rank_ic": min_avg,
+        "max_std_rank_ic": max_std,
+    }
+    if folds < min_folds or ok_folds < min_folds:
+        return "WAIT", detail, f"walk-forward evidence has only {ok_folds}/{min_folds} ok folds"
+    failures = []
+    if avg_rank_ic is None or float(avg_rank_ic) < min_avg:
+        failures.append(f"avg_rank_ic {avg_rank_ic} < {min_avg}")
+    if std_rank_ic is None:
+        failures.append("missing rank_ic std")
+    elif float(std_rank_ic) > max_std:
+        failures.append(f"std_rank_ic {float(std_rank_ic):.6f} > {max_std:.6f}")
+    if failures:
+        return "FAIL", detail, "; ".join(failures)
+    return "PASS", detail, None
 
 
 def _latest_drift(conn, model_id: str | None) -> dict:
@@ -359,6 +415,8 @@ def evaluate_gate(
     challenger_model_id: str | None = None,
     feature_set_id: str = "tdx_keep_challenger_v1",
     retention_feature_set_id: str | None = None,
+    feature_table: str = "fact_feature_panel_tdx_keep_challenger",
+    pit_audit_run_id: str = "pit_tdx_f10_gpcw_v1",
 ) -> dict:
     conn.executescript(DDL)
     challenger_model_id = challenger_model_id or _latest_model(conn, "tdx_keep_challenger")
@@ -376,54 +434,106 @@ def evaluate_gate(
     else:
         gate("model", "PASS", {"challenger_model_id": challenger_model_id})
 
-    pit = conn.execute(
-        """
-        SELECT COALESCE(SUM(violation_rows), 0)
-          FROM mart_feature_pit_audit
-         WHERE audit_run_id='pit_tdx_f10_gpcw_v1'
-        """
-    ).fetchone()[0]
-    gate("PIT", "PASS" if pit == 0 else "FAIL", {"violations": pit}, f"PIT violations={pit}" if pit else None)
+    if _table_exists(conn, "mart_feature_pit_audit"):
+        pit_row = conn.execute(
+            """
+            SELECT COUNT(*) AS audit_rows,
+                   COALESCE(SUM(violation_rows), 0) AS violations
+              FROM mart_feature_pit_audit
+             WHERE audit_run_id = ?
+            """,
+            (pit_audit_run_id,),
+        ).fetchone()
+        audit_rows = int(pit_row["audit_rows"] or 0) if pit_row else 0
+        pit = int(pit_row["violations"] or 0) if pit_row else 0
+        if audit_rows == 0:
+            gate(
+                "PIT",
+                "WAIT",
+                {"violations": None, "audit_run_id": pit_audit_run_id, "audit_rows": 0},
+                f"missing PIT audit run {pit_audit_run_id}",
+            )
+        else:
+            gate(
+                "PIT",
+                "PASS" if pit == 0 else "FAIL",
+                {"violations": pit, "audit_run_id": pit_audit_run_id, "audit_rows": audit_rows},
+                f"PIT violations={pit}" if pit else None,
+            )
+    else:
+        gate(
+            "PIT",
+            "WAIT",
+            {"audit_run_id": pit_audit_run_id},
+            "missing mart_feature_pit_audit",
+        )
 
     coverage_feature_run = None
+    challenger_feature_cols = _model_feature_cols(conn, challenger_model_id)
     coverage_features = list(TDX_KEEP_FEATURE_COLS)
-    try:
-        keep_features, coverage_feature_run = load_production_keep_features(
-            conn,
-            feature_set_id=retention_feature_set_id or feature_set_id,
-        )
-        if keep_features:
-            coverage_features = keep_features
-    except Exception as exc:
-        logger.warning("load retention keep features failed for %s: %s", feature_set_id, exc)
+    if feature_table != "fact_feature_panel_tdx_keep_challenger" and challenger_feature_cols:
+        coverage_features = challenger_feature_cols
+    else:
+        try:
+            keep_features, coverage_feature_run = load_production_keep_features(
+                conn,
+                feature_set_id=retention_feature_set_id or feature_set_id,
+            )
+            if keep_features:
+                coverage_features = keep_features
+        except Exception as exc:
+            logger.warning("load retention keep features failed for %s: %s", feature_set_id, exc)
 
+    panel_cols = set()
+    if _table_exists(conn, feature_table):
+        panel_cols = {
+            r[0]
+            for r in conn.execute(
+                "SELECT column_name FROM information_schema.columns WHERE table_name = ?",
+                (feature_table,),
+            ).fetchall()
+        }
     coverage_rows = []
-    if _table_exists(conn, "fact_feature_panel_tdx_keep_challenger"):
+    if panel_cols:
+        has_feature_set = "feature_set_id" in panel_cols
+        where_sql = "WHERE feature_set_id = ?" if has_feature_set and feature_set_id else ""
+        params = (feature_set_id,) if has_feature_set and feature_set_id else ()
         for f in coverage_features:
+            if f not in panel_cols:
+                coverage_rows.append({"feature": f, "coverage_pct": 0.0, "status": "missing_column"})
+                continue
             c = conn.execute(
                 f"""
-                SELECT COUNT({f}) * 100.0 / NULLIF(COUNT(*), 0)
-                  FROM fact_feature_panel_tdx_keep_challenger
-                 WHERE feature_set_id = ?
+                SELECT COUNT({_quote_ident(f)}) * 100.0 / NULLIF(COUNT(*), 0)
+                  FROM {_quote_ident(feature_table)}
+                  {where_sql}
                 """,
-                (feature_set_id,),
+                params,
             ).fetchone()[0]
-            coverage_rows.append({"feature": f, "coverage_pct": float(c or 0)})
+            coverage_rows.append({"feature": f, "coverage_pct": float(c or 0), "status": "ok"})
     pass_coverage = sum(1 for r in coverage_rows if r["coverage_pct"] >= 60.0)
     required_coverage = len(coverage_features)
+    missing_coverage_table = not _table_exists(conn, feature_table)
     gate(
         "coverage",
-        "PASS" if required_coverage > 0 and pass_coverage >= required_coverage else "FAIL",
+        (
+            "WAIT"
+            if missing_coverage_table
+            else ("PASS" if required_coverage > 0 and pass_coverage >= required_coverage else "FAIL")
+        ),
         {
             "features_ge_60_pct": pass_coverage,
             "required_features": required_coverage,
             "decision_run_id": coverage_feature_run,
             "panel_feature_set_id": feature_set_id,
             "retention_feature_set_id": retention_feature_set_id or feature_set_id,
+            "feature_table": feature_table,
             "features": coverage_rows,
         },
         (
-            f"only {pass_coverage}/{required_coverage} production keep features coverage >= 60%"
+            f"missing feature table {feature_table}"
+            if missing_coverage_table else
+            f"only {pass_coverage}/{required_coverage} required features coverage >= 60%"
             if pass_coverage < required_coverage else None
         ),
     )
@@ -481,6 +591,11 @@ def evaluate_gate(
 
     source_status, source_detail, source_blocker = _source_lineage_gate(conn)
     gate("source_lineage", source_status, source_detail, source_blocker)
+
+    walkforward_status, walkforward_detail, walkforward_blocker = _walkforward_gate(
+        _latest_walkforward(conn, challenger_model_id)
+    )
+    gate("walk_forward", walkforward_status, walkforward_detail, walkforward_blocker)
 
     if _table_exists(conn, "mart_daily_recommendation"):
         shadow_filter = "AND COALESCE(run_mode, '') = 'shadow'" if _has_column(conn, "mart_daily_recommendation", "run_mode") else ""
@@ -582,6 +697,8 @@ def main() -> int:
     parser.add_argument("--model-id", default=None)
     parser.add_argument("--feature-set-id", default="tdx_keep_challenger_v1")
     parser.add_argument("--retention-feature-set-id", default=None)
+    parser.add_argument("--feature-table", default="fact_feature_panel_tdx_keep_challenger")
+    parser.add_argument("--pit-audit-run-id", default="pit_tdx_f10_gpcw_v1")
     args = parser.parse_args()
     with get_conn() as conn:
         result = evaluate_gate(
@@ -589,6 +706,8 @@ def main() -> int:
             challenger_model_id=args.model_id,
             feature_set_id=args.feature_set_id,
             retention_feature_set_id=args.retention_feature_set_id,
+            feature_table=args.feature_table,
+            pit_audit_run_id=args.pit_audit_run_id,
         )
     logger.info("tdx keep promotion gate: %s", result)
     return 0

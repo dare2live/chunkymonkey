@@ -26,10 +26,11 @@ from typing import Any
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from services.db import get_conn
-from services.market_db import get_market_conn
+from services.market_db import get_canonical_kline_qfq_relation, get_market_conn
 
 logger = logging.getLogger("build_exec_trade")
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s | %(message)s")
+KLINE_DAILY_QFQ_RELATION = get_canonical_kline_qfq_relation()
 
 
 RAW_DDL = """
@@ -300,7 +301,7 @@ def _apply_forward_returns(
 
 
 def compute_forward_returns(events: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    logger.info("加载 price_kline")
+    logger.info("加载 canonical K-line")
     codes = sorted({str(row.get("stock_code") or "").zfill(6) for row in events if row.get("stock_code")})
     if not codes:
         return _apply_forward_returns(events, [])
@@ -314,7 +315,7 @@ def compute_forward_returns(events: list[dict[str, Any]]) -> list[dict[str, Any]
             placeholders = ",".join(["?"] * len(sub))
             cursor = mkt.execute(
                 f"""SELECT code, date, close
-                    FROM price_kline
+                    FROM {KLINE_DAILY_QFQ_RELATION}
                     WHERE freq='daily' AND adjust='qfq'
                       AND code IN ({placeholders})""",
                 sub,

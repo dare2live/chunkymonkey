@@ -3,14 +3,14 @@
 
 策略规则（§2 codex §4.2 + Claude 响应 §4）：
   1. 候选事件：event_type IN ('new_entry','increase')
-  2. cohort 准入：v_institution_l2_score.verdict='stable' 且 ho_n >= 15 且 ho_sharpe >= 1
+  2. cohort 准入：institution L2 score verdict='stable' 且 ho_n >= 15 且 ho_sharpe >= 1
   3. 成本过滤：premium_bucket != 'high_premium'
   4. 当日候选超过 topN：按 stable_score 降序取
   5. 仓位：等权，单机构 / 单 L2 / 单股票上限
   6. 退出：使用 cohort 的 train 最优参数（entry_lag, max_hold_days, stop_loss, take_profit）
 
 时间窗口：
-  - cohort 评估期：2023-04 ~ 2024-09-30（锁在 v_institution_l2_score，PIT 口径 cutoff=2024-09-30）
+  - cohort 评估期：2023-04 ~ 2024-09-30（锁在 institution L2 score，PIT 口径 cutoff=2024-09-30）
   - portfolio 回测期：2024-10-01 ~ 2026-04-21
 
 对照基线：
@@ -35,10 +35,12 @@ from typing import Any, Callable, Optional
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from services.db import get_conn
-from services.market_db import get_market_conn
+from services.institution_l2_metrics import institution_l2_score_cte
+from services.market_db import get_canonical_kline_qfq_relation, get_market_conn
 
 logger = logging.getLogger("portfolio_mvp")
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s | %(message)s")
+KLINE_DAILY_QFQ_RELATION = get_canonical_kline_qfq_relation()
 
 
 PORTFOLIO_TABLE_DDL = """
@@ -313,7 +315,8 @@ def load_events_with_pit_cohort(conn, start_date: str, end_date: str) -> list[di
     start_date / end_date YYYYMMDD。
     """
     sql = """
-        WITH ev AS (
+        WITH {institution_l2_score_cte("l2_score")},
+        ev AS (
           SELECT fe.institution_id, fe.stock_code, fe.notice_date, fe.report_date,
                  fe.event_type, fe.premium_pct, fe.premium_bucket,
                  ii.name inst_name, ii.type inst_type,
@@ -329,7 +332,7 @@ def load_events_with_pit_cohort(conn, start_date: str, end_date: str) -> list[di
                v.stable_score, v.verdict, v.ho_sharpe, v.ho_n,
                v.entry_lag, v.max_hold_days, v.stop_loss, v.take_profit
         FROM ev
-        LEFT JOIN v_institution_l2_score v
+        LEFT JOIN l2_score v
           ON v.institution_id = ev.institution_id AND v.l2_name = ev.l2
     """
     return _rows_as_dicts(_execute(conn, sql, (start_date, end_date)))
@@ -342,7 +345,7 @@ def load_prices(codes: list[str], start: str, end: str) -> dict[str, dict[str, A
     mkt = get_market_conn()
     sql = f"""
         SELECT code, date, open, high, low, close
-        FROM price_kline WHERE freq='daily' AND adjust='qfq'
+        FROM {KLINE_DAILY_QFQ_RELATION} WHERE freq='daily' AND adjust='qfq'
           AND code IN ({','.join(['?']*len(codes))})
           AND date BETWEEN ? AND ?
     """

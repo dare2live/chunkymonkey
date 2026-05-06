@@ -1,10 +1,9 @@
 """派生层 schema 版本登记 — P0.1 (2026-04-28).
 
 为什么需要:
-- chunky-monkey-v2 有 70 张派生表 (fact 23 + mart 28 + dim 19 + 2 view)
+- chunky-monkey-v2 有多张派生表和少量可选兼容 view.
 - 升级表结构 (加列/改列/重建 view) 时容易踩"schema drift"雷:
-    例如 mart_model_validation_fold view = SELECT * FROM 底表, 底表加列后
-    DuckDB 拒绝查 view (BinderException). 表面无改动, 但 API 500.
+    兼容 view 若长期存在, 底表加列后 DuckDB 可能拒绝查询旧 view.
 - 没有版本号机制 → 升级 schema 后旧代码读旧 schema, 新代码读新 schema, 沉默崩.
 
 设计:
@@ -42,9 +41,9 @@ FACT_VERSIONS = {
     "fact_institution_event": "v1",          # 机构事件 (核心)
     "fact_setup_snapshot": "v1",             # setup 快照
     "fact_chain_alpha_truth": "v1",          # 链路 alpha 真值
-    "fact_feature_panel": "v1",              # 特征面板 (Qlib alpha158)
-    "fact_feature_panel_candidate": "v1",    # 候选特征面板 (不替换 champion)
-    "fact_feature_panel_tdx_keep_challenger": "v1",  # TDX keep challenger 面板
+    "fact_feature_panel": "v3",              # 特征面板 (Qlib alpha158 + 90d 标签 + K线来源血缘)
+    "fact_feature_panel_candidate": "v2",    # 候选特征面板 (含 90d 标签, 不替换 champion)
+    "fact_feature_panel_tdx_keep_challenger": "v2",  # TDX keep challenger 面板
     "fact_dzjy_event": "v1",                 # 大宗交易事件
     "fact_executive_trade_event": "v1",      # 高管交易事件
     "fact_jgdy_event": "v1",                 # 机构调研事件
@@ -80,9 +79,30 @@ MART_VERSIONS = {
     "mart_institution_industry_stat": "v1",  # 机构行业统计
     "mart_institution_profile": "v1",        # 机构画像 ⭐
     "mart_model_ablation_run": "v1",
+    "mart_feature_association_stat": "v2",
+    "mart_feature_correlation_cluster": "v1",
+    "mart_feature_association_fold": "v1",
+    "mart_feature_search_space": "v1",
+    "mart_feature_search_space_summary": "v1",
+    "mart_optuna_feature_space_trial": "v1",
+    "mart_model_stability_search_trial": "v6",
+    "mart_model_stability_search_summary": "v1",
+    "mart_model_stability_context_diagnostic": "v1",
+    "mart_model_stability_context_summary": "v2",
+    "mart_drift_safe_candidate_feature": "v1",
+    "mart_drift_safe_candidate_summary": "v1",
+    "mart_drift_safe_candidate_batch_eval": "v1",
+    "mart_drift_safe_candidate_batch_summary": "v1",
+    "mart_feature_drift_root_cause": "v1",
+    "mart_feature_drift_root_cause_summary": "v1",
+    "mart_feature_drift_mitigation_panel_build": "v1",
+    "mart_hybrid_feature_panel_build": "v1",
+    "mart_stock_horizon_profile": "v2",
+    "mart_stock_horizon_feature_effect": "v2",
     "mart_feature_candidate_score": "v1",
-    "mart_feature_group_ablation": "v1",
+    "mart_feature_group_ablation": "v2",
     "mart_feature_pit_audit": "v1",
+    "mart_feature_panel_validation": "v1",
     "mart_candidate_walkforward_eval": "v1",
     "mart_model_holding_topk_eval": "v1",
     "mart_model_feature_lineage": "v1",
@@ -90,6 +110,12 @@ MART_VERSIONS = {
     "mart_feature_candidate_coverage": "v1",
     "mart_feature_drift_histogram": "v1",
     "mart_challenger_evidence_bundle": "v1",
+    "mart_champion_candidate_evaluation": "v1",
+    "mart_research_schedule_plan": "v1",
+    "mart_architecture_inventory_asset": "v1",
+    "mart_architecture_dependency_edge": "v1",
+    "mart_architecture_inventory_summary": "v1",
+    "mart_architecture_cleanup_plan": "v1",
     "mart_data_source_failure_queue": "v1",
     "mart_pipeline_lock": "v1",
     "mart_model_selection_run": "v1",
@@ -130,14 +156,12 @@ SCHEMA_VERSIONS = {**FACT_VERSIONS, **MART_VERSIONS, **DIM_DERIVED_VERSIONS}
 
 
 # ===========================================================================
-# View: 启动时 DROP + CREATE OR REPLACE, 防底表 schema drift
-# (model-performance 500 那次的 mart_model_validation_fold view 就是这种问题)
+# View: 启动时 DROP + CREATE OR REPLACE, 防底表 schema drift.
+# Keep this list empty unless a current production read path still needs a
+# compatibility view. Historical shims should move through architecture cleanup.
 # ===========================================================================
 
-RECREATE_VIEWS = {
-    "mart_model_validation_fold": "SELECT * FROM mart_model_walkforward_fold",
-    # 加 view: { name: SELECT 语句 }
-}
+RECREATE_VIEWS: dict[str, str] = {}
 
 
 # ===========================================================================

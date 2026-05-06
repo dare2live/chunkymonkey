@@ -16,7 +16,10 @@ from collections import defaultdict
 from datetime import datetime
 from typing import Optional
 
+from services.market_db import get_canonical_kline_qfq_relation
+
 logger = logging.getLogger("cm-api")
+KLINE_DAILY_QFQ_RELATION = get_canonical_kline_qfq_relation()
 
 
 # ============================================================
@@ -552,7 +555,7 @@ def run_all_screens(smart_conn, mkt_conn) -> int:
     placeholders = ",".join("?" for _ in codes)
     kline_rows = mkt_conn.execute(
         f"SELECT code, date, open, high, low, close, volume, amount "
-        f"FROM price_kline "
+        f"FROM {KLINE_DAILY_QFQ_RELATION} "
         f"WHERE code IN ({placeholders}) AND freq='daily' AND adjust='qfq' "
         f"ORDER BY code, date",
         codes

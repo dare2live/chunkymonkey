@@ -54,7 +54,7 @@ FEATURE_GROUPS = {
     ],
 }
 
-LABEL_COLUMNS = ["forward_ret_5d", "forward_ret_10d", "forward_ret_20d", "forward_ret_60d"]
+LABEL_COLUMNS = ["forward_ret_5d", "forward_ret_10d", "forward_ret_20d", "forward_ret_60d", "forward_ret_90d"]
 META_COLUMNS = {"feature_set_id", "stock_code", "date", "built_at", *LABEL_COLUMNS}
 
 
@@ -70,6 +70,7 @@ CREATE TABLE IF NOT EXISTS mart_feature_group_ablation (
     rank_ic_5d DOUBLE,
     rank_ic_10d DOUBLE,
     rank_ic_60d DOUBLE,
+    rank_ic_90d DOUBLE,
     feature_cols_json TEXT,
     built_at TEXT,
     PRIMARY KEY (run_id, group_name)
@@ -77,6 +78,7 @@ CREATE TABLE IF NOT EXISTS mart_feature_group_ablation (
 ALTER TABLE mart_feature_group_ablation ADD COLUMN IF NOT EXISTS rank_ic_5d DOUBLE;
 ALTER TABLE mart_feature_group_ablation ADD COLUMN IF NOT EXISTS rank_ic_10d DOUBLE;
 ALTER TABLE mart_feature_group_ablation ADD COLUMN IF NOT EXISTS rank_ic_60d DOUBLE;
+ALTER TABLE mart_feature_group_ablation ADD COLUMN IF NOT EXISTS rank_ic_90d DOUBLE;
 """
 
 
@@ -341,6 +343,7 @@ def run_group_ablation(
                     "rank_ic_5d": label_sensitivity.get("forward_ret_5d"),
                     "rank_ic_10d": label_sensitivity.get("forward_ret_10d"),
                     "rank_ic_60d": label_sensitivity.get("forward_ret_60d"),
+                    "rank_ic_90d": label_sensitivity.get("forward_ret_90d"),
                     "feature_cols_json": json.dumps(group_features, ensure_ascii=False),
                     "built_at": built_at,
                 }
@@ -350,14 +353,14 @@ def run_group_ablation(
             INSERT OR REPLACE INTO mart_feature_group_ablation
             (run_id, feature_set_id, group_name, n_features, rank_ic_full,
              rank_ic_without_group, rank_ic_delta, rank_ic_5d, rank_ic_10d,
-             rank_ic_60d, feature_cols_json, built_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+             rank_ic_60d, rank_ic_90d, feature_cols_json, built_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             [
                 (
                     r["run_id"], r["feature_set_id"], r["group_name"], r["n_features"],
                     r["rank_ic_full"], r["rank_ic_without_group"], r["rank_ic_delta"],
-                    r["rank_ic_5d"], r["rank_ic_10d"], r["rank_ic_60d"],
+                    r["rank_ic_5d"], r["rank_ic_10d"], r["rank_ic_60d"], r["rank_ic_90d"],
                     r["feature_cols_json"], r["built_at"],
                 )
                 for r in results
@@ -435,6 +438,7 @@ def run_group_ablation(
             "rank_ic_5d": label_sensitivity.get("forward_ret_5d"),
             "rank_ic_10d": label_sensitivity.get("forward_ret_10d"),
             "rank_ic_60d": label_sensitivity.get("forward_ret_60d"),
+            "rank_ic_90d": label_sensitivity.get("forward_ret_90d"),
             "feature_cols_json": json.dumps(group_existing, ensure_ascii=False),
             "built_at": built_at,
         }
@@ -445,14 +449,14 @@ def run_group_ablation(
         INSERT OR REPLACE INTO mart_feature_group_ablation
         (run_id, feature_set_id, group_name, n_features, rank_ic_full,
          rank_ic_without_group, rank_ic_delta, rank_ic_5d, rank_ic_10d,
-         rank_ic_60d, feature_cols_json, built_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+         rank_ic_60d, rank_ic_90d, feature_cols_json, built_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
         [
             (
                 r["run_id"], r["feature_set_id"], r["group_name"], r["n_features"],
                 r["rank_ic_full"], r["rank_ic_without_group"], r["rank_ic_delta"],
-                r["rank_ic_5d"], r["rank_ic_10d"], r["rank_ic_60d"],
+                r["rank_ic_5d"], r["rank_ic_10d"], r["rank_ic_60d"], r["rank_ic_90d"],
                 r["feature_cols_json"], r["built_at"],
             )
             for r in results

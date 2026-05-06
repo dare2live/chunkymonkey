@@ -94,6 +94,7 @@ def build_evidence_bundle(
     top_sizes: str = "20,50,100,200,500",
     cost_bps: float = 10.0,
     timeout: int = 900,
+    pit_audit_run_id: str = "pit_tdx_f10_gpcw_v1",
 ) -> dict[str, Any]:
     evidence_run_id = f"evidence_{model_id}_{datetime.utcnow().strftime('%Y%m%d_%H%M%S')}"
     started_at = utc_now_iso()
@@ -184,10 +185,14 @@ def build_evidence_bundle(
                 str(SCRIPT_DIR / "evaluate_tdx_keep_promotion_gate.py"),
                 "--model-id",
                 model_id,
+                "--feature-table",
+                feature_table,
                 "--feature-set-id",
                 panel_feature_set_id or feature_set_id,
                 "--retention-feature-set-id",
                 feature_set_id,
+                "--pit-audit-run-id",
+                pit_audit_run_id,
             ],
             {0},
         ),
@@ -257,6 +262,7 @@ def build_evidence_bundle(
                 "feature_table": feature_table,
                 "panel_feature_set_id": panel_feature_set_id,
                 "retention_feature_set_id": feature_set_id,
+                "pit_audit_run_id": pit_audit_run_id,
             },
         )
         conn.commit()
@@ -282,6 +288,7 @@ def main() -> int:
     parser.add_argument("--top-sizes", default="20,50,100,200,500")
     parser.add_argument("--cost-bps", type=float, default=10.0)
     parser.add_argument("--timeout", type=int, default=900)
+    parser.add_argument("--pit-audit-run-id", default="pit_tdx_f10_gpcw_v1")
     args = parser.parse_args()
     result = build_evidence_bundle(
         model_id=args.model_id,
@@ -293,6 +300,7 @@ def main() -> int:
         top_sizes=args.top_sizes,
         cost_bps=args.cost_bps,
         timeout=args.timeout,
+        pit_audit_run_id=args.pit_audit_run_id,
     )
     print(json.dumps(result, ensure_ascii=False, indent=2))
     return 0 if result["status"] == "success" else 2

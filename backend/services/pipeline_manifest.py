@@ -1,9 +1,9 @@
 """Pipeline run manifest helpers.
 
 This module keeps batch/model runs auditable without coupling every script to
-the full FastAPI app. Scripts can call ``record_pipeline_run`` after a run and
-the data-health UI can read ``mart_pipeline_run_manifest`` as the single
-runtime ledger.
+the full FastAPI app. Scripts can call ``record_pipeline_run`` after a run;
+Workbench read models consume ``mart_pipeline_run_manifest`` as the runtime
+ledger.
 """
 from __future__ import annotations
 
@@ -159,10 +159,18 @@ def record_pipeline_run(
     perf_summary_out = dict(perf_summary or {})
     duckdb_lock_wait_s = float(getattr(conn, "duckdb_lock_wait_s", 0.0) or 0.0)
     connect_mutex_wait_s = float(getattr(conn, "connect_mutex_wait_s", 0.0) or 0.0)
+    duckdb_connect_wait_s = float(
+        getattr(conn, "duckdb_connect_wait_s", duckdb_lock_wait_s + connect_mutex_wait_s) or 0.0
+    )
+    duckdb_connect_elapsed_s = float(getattr(conn, "duckdb_connect_elapsed_s", 0.0) or 0.0)
     if duckdb_lock_wait_s:
         perf_summary_out["duckdb_lock_wait_s"] = round(duckdb_lock_wait_s, 6)
     if connect_mutex_wait_s:
         perf_summary_out["connect_mutex_wait_s"] = round(connect_mutex_wait_s, 6)
+    if duckdb_connect_wait_s:
+        perf_summary_out["duckdb_connect_wait_s"] = round(duckdb_connect_wait_s, 6)
+    if duckdb_connect_elapsed_s:
+        perf_summary_out["duckdb_connect_elapsed_s"] = round(duckdb_connect_elapsed_s, 6)
 
     conn.execute(
         """

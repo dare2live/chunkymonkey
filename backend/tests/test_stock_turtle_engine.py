@@ -73,6 +73,10 @@ def _make_market_conn():
             amount REAL,
             PRIMARY KEY (code, date, freq, adjust)
         );
+        CREATE VIEW v_price_kline_qfq AS
+            SELECT code, date, freq, adjust, open, high, low, close, volume, amount
+              FROM price_kline
+             WHERE freq = 'daily' AND adjust = 'qfq';
         """
     )
     return conn

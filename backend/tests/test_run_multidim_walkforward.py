@@ -74,9 +74,14 @@ def test_walkforward_load_panel_records_and_feature_group_resolution():
         assert folds[0]["valid"] == ("2026-04-07", "2026-04-08")
         assert folds[0]["test"] == ("2026-04-09", "2026-04-10")
         assert subject.feature_group_uses_alpha158("base_dense_v2") is False
+        assert subject.feature_group_uses_alpha158("model_selection_run") is False
         assert subject.feature_group_uses_alpha158("legacy_full") is True
     finally:
         conn.close()
+
+
+def test_walkforward_default_params_disable_lightgbm_feature_prefilter():
+    assert subject.DEFAULT_PARAMS["feature_pre_filter"] is False
 
 
 def test_prediction_rows_score_profile_and_write_fold():

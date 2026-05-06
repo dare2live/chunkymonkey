@@ -25,6 +25,7 @@ from services.model_feature_schema import (
     REGIME_FEATURE_COLS,
     TDX_KEEP_CHALLENGER_SCHEMA_VERSION,
     TDX_KEEP_FEATURE_COLS,
+    holding_period_from_label,
     ordered_feature_cols,
 )
 from services.pipeline_manifest import git_commit_sha, record_pipeline_run, utc_now_iso
@@ -40,7 +41,9 @@ from scripts.run_feature_ablation import (
 )
 from scripts.train_multidim_model import (
     _date_bounds_array,
+    _selection_schema_tag,
     _prediction_column_arrays,
+    load_model_selection_run,
     load_panel_arrays,
     resolve_feature_group_from_columns,
 )
@@ -115,6 +118,7 @@ DEFAULT_PARAMS = {
     "feature_fraction_seed": 42,
     "bagging_seed": 42,
     "data_random_seed": 42,
+    "feature_pre_filter": False,
 }
 
 
@@ -601,7 +605,8 @@ def main() -> None:
         "--feature-group",
         choices=[
             "base", "base_dense_v2", "base_alpha158", "base_dense_v2_alpha158",
-            "tdx_keep_v1", "base_retention_keep", "legacy_full",
+            "tdx_keep_v1", "base_retention_keep", "model_selection_run",
+            "legacy_full",
         ],
         default="base_dense_v2",
         help="M7/M9: 显式特征组, 默认 base_dense_v2; legacy_full 仅显式研究使用",
@@ -610,6 +615,11 @@ def main() -> None:
     parser.add_argument("--feature-set-id", default=None)
     parser.add_argument("--retention-decision-run-id", default=None)
     parser.add_argument("--retention-feature-set-id", default=None)
+    parser.add_argument(
+        "--model-selection-run-id",
+        default=None,
+        help="feature_group=model_selection_run 时读取 mart_model_selection_run.selected_features_json",
+    )
     parser.add_argument(
         "--walkforward-num-round",
         type=int,
@@ -631,6 +641,23 @@ def main() -> None:
     try:
         ensure_model_schema(conn)
         source_model_id, params = latest_params(conn, args.model_id)
+        selected_feature_cols: list[str] | None = None
+        if args.feature_group == "model_selection_run":
+            if not args.model_selection_run_id:
+                raise RuntimeError("feature_group=model_selection_run 必须指定 --model-selection-run-id")
+            model_selection = load_model_selection_run(conn, args.model_selection_run_id)
+            selected_feature_cols = list(model_selection["selected_features"])
+            selected_label = model_selection.get("label_name")
+            if selected_label and selected_label != args.label_name:
+                logger.warning(
+                    "model_selection_run label_name=%s differs from --label-name=%s; using explicit walk-forward label",
+                    selected_label,
+                    args.label_name,
+                )
+        uses_alpha158_features = (
+            feature_group_uses_alpha158(args.feature_group)
+            or any(col.startswith("a158_") for col in (selected_feature_cols or []))
+        )
         if args.dry_run:
             dates = load_label_dates(
                 conn,
@@ -649,7 +676,9 @@ def main() -> None:
                 label_name=args.label_name,
                 feature_table=args.feature_table,
                 feature_set_id=args.feature_set_id,
-                with_alpha158=feature_group_uses_alpha158(args.feature_group),
+                with_alpha158=uses_alpha158_features,
+                requested_feature_cols=selected_feature_cols,
+                only_requested_feature_cols=bool(selected_feature_cols),
             )
             retention_keep_features: list[str] | None = None
             retention_decision_run_id: str | None = None
@@ -684,6 +713,8 @@ def main() -> None:
             regime_aware=args.regime_aware,
             retention_keep_features=retention_keep_features,
             retention_schema_tag=f"retention_keep_{retention_decision_run_id or 'latest'}",
+            selection_features=selected_feature_cols,
+            selection_schema_tag=_selection_schema_tag(args.model_selection_run_id or "latest"),
         )
         logger.info(
             "walkforward feature_group=%s schema_tag=%s 特征数=%d",
@@ -839,9 +870,10 @@ def main() -> None:
             input_tables=[
                 args.feature_table,
                 "mart_multidim_model",
+                *(["mart_model_selection_run"] if args.model_selection_run_id else []),
                 *(
                     ["data/alpha158.duckdb:fact_alpha158_panel"]
-                    if feature_group_uses_alpha158(args.feature_group)
+                    if uses_alpha158_features
                     else []
                 ),
             ],
@@ -856,11 +888,12 @@ def main() -> None:
             model_id=source_model_id,
             feature_group=args.feature_group,
             label_name=args.label_name,
-            holding_period=20 if args.label_name.endswith("_20d") else None,
+            holding_period=holding_period_from_label(args.label_name),
             perf_summary={
                 "folds": len(fold_metrics),
                 "avg_rank_ic": avg_rank_ic,
                 "n_features": len(feature_cols),
+                "model_selection_run_id": args.model_selection_run_id,
                 "prediction_mode": args.prediction_mode,
                 "save_predictions": bool(args.save_predictions),
                 "prediction_top_k": args.prediction_top_k if args.prediction_mode == "topk" else None,

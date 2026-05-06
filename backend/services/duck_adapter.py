@@ -113,7 +113,8 @@ class DuckConn:
         # FastAPI opens short-lived DuckDB connections from multiple worker
         # threads. Serializing connection creation avoids transient unique
         # file-handle conflicts while keeping each request on its own handle.
-        mutex_start = time.monotonic()
+        connect_start = time.monotonic()
+        mutex_start = connect_start
         with _CONNECT_LOCK:
             self.connect_mutex_wait_s = round(time.monotonic() - mutex_start, 6)
             self._con, self.duckdb_lock_wait_s = self._connect_with_retry(
@@ -121,6 +122,8 @@ class DuckConn:
                 read_only=read_only,
                 timeout=timeout,
             )
+        self.duckdb_connect_wait_s = round(self.connect_mutex_wait_s + self.duckdb_lock_wait_s, 6)
+        self.duckdb_connect_elapsed_s = round(time.monotonic() - connect_start, 6)
         self.in_transaction = False
         # 可选 ATTACH 其它 DuckDB
         if attach:

@@ -7,11 +7,11 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from conftest import duck_mem
 from scripts.build_candidate_feature_panel import build_candidate_feature_panel
-from scripts.mark_deprecated_data_assets import mark_deprecated_assets
 from scripts.run_feature_group_ablation import run_group_ablation
 from scripts.run_optuna_feature_elimination import run_optuna_feature_elimination
 from scripts.run_walkforward_feature_eval import run_walkforward_feature_eval
 from scripts.validate_tdx_feature_pit import validate_tdx_feature_pit
+from services.data_deprecation import record_data_deprecations
 
 
 def _create_candidate_inputs(conn):
@@ -228,7 +228,7 @@ def test_candidate_feature_panel_ablation_and_elimination_records():
         conn.close()
 
 
-def test_mark_deprecated_assets_updates_metadata_without_dropping_tables():
+def test_record_data_deprecations_updates_metadata_without_dropping_tables():
     conn = duck_mem()
     try:
         retired_table = "market" + "_raw" + "_holdings"
@@ -249,7 +249,7 @@ def test_mark_deprecated_assets_updates_metadata_without_dropping_tables():
             (retired_table,),
         )
 
-        result = mark_deprecated_assets(conn)
+        result = record_data_deprecations(conn)
         row = conn.execute(
             "SELECT deprecation_status, replacement_table FROM dim_data_asset WHERE table_name = ?",
             (retired_table,),

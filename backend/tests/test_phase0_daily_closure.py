@@ -72,8 +72,68 @@ def test_cron_detects_stale_backend_update_heartbeat():
 def test_cron_daily_includes_production_topk_and_source_watermarks():
     assert "watermarks" in cron_daily.ALL_PHASES
     assert "topk" in cron_daily.ALL_PHASES
+    assert "candidate_eval" in cron_daily.ALL_PHASES
     assert cron_daily.ALL_PHASES.index("watermarks") < cron_daily.ALL_PHASES.index("topk")
     assert cron_daily.ALL_PHASES.index("topk") < cron_daily.ALL_PHASES.index("health")
+    assert cron_daily.ALL_PHASES.index("drift") < cron_daily.ALL_PHASES.index("candidate_eval")
+    assert cron_daily.ALL_PHASES.index("candidate_eval") < cron_daily.ALL_PHASES.index("audit")
+
+
+def test_cron_candidate_eval_skips_without_explicit_model_id():
+    result = cron_daily.phase_candidate_eval(model_id=None)
+
+    assert result["status"] == "skipped"
+    assert cron_daily._phase_exit_severity(result) == 0
+
+
+def test_cron_main_runs_local_daily_phases_in_order(monkeypatch):
+    calls = []
+    recorded = {}
+
+    monkeypatch.setattr(sys, "argv", ["cron_daily.py", "--skip-sync", "--only", "lineage,watermarks,topk,health,drift,candidate_eval,audit"])
+    monkeypatch.setattr(cron_daily, "_acquire_cron_pipeline_lock", lambda **kwargs: {"acquired": True})
+    monkeypatch.setattr(cron_daily, "_heartbeat_cron_pipeline_lock", lambda **kwargs: None)
+    monkeypatch.setattr(cron_daily, "_release_cron_pipeline_lock", lambda **kwargs: {"released": True})
+
+    def record_manifest(**kwargs):
+        recorded.update(kwargs)
+
+    monkeypatch.setattr(cron_daily, "_record_cron_manifest", record_manifest)
+    monkeypatch.setattr(cron_daily, "phase_lineage", lambda: calls.append("lineage") or {"phase": "lineage", "status": "ok"})
+    monkeypatch.setattr(cron_daily, "phase_watermarks", lambda: calls.append("watermarks") or {"phase": "watermarks", "status": "ok"})
+    monkeypatch.setattr(cron_daily, "phase_topk", lambda **kwargs: calls.append("topk") or {"phase": "topk", "status": "ok"})
+    monkeypatch.setattr(cron_daily, "phase_health", lambda: calls.append("health") or {"phase": "health", "status": "ok"})
+    monkeypatch.setattr(cron_daily, "phase_drift", lambda: calls.append("drift") or {"phase": "drift", "status": "ok"})
+    monkeypatch.setattr(cron_daily, "phase_candidate_eval", lambda **kwargs: calls.append("candidate_eval") or {"phase": "candidate_eval", "status": "skipped"})
+    monkeypatch.setattr(cron_daily, "phase_audit", lambda: calls.append("audit") or {"phase": "audit", "status": "ok"})
+
+    rc = cron_daily.main()
+
+    assert rc == 0
+    assert calls == ["lineage", "watermarks", "topk", "health", "drift", "candidate_eval", "audit"]
+    assert recorded["exit_severity"] == 0
+    assert [row["phase"] for row in recorded["results"]] == calls
+
+
+def test_cron_main_blocks_duckdb_followups_after_sync_timeout(monkeypatch):
+    calls = []
+    recorded = {}
+
+    monkeypatch.setattr(sys, "argv", ["cron_daily.py", "--only", "sync,watermarks,topk"])
+    monkeypatch.setattr(cron_daily, "_acquire_cron_pipeline_lock", lambda **kwargs: {"acquired": True})
+    monkeypatch.setattr(cron_daily, "_heartbeat_cron_pipeline_lock", lambda **kwargs: None)
+    monkeypatch.setattr(cron_daily, "_release_cron_pipeline_lock", lambda **kwargs: {"released": True})
+    monkeypatch.setattr(cron_daily, "_record_cron_manifest", lambda **kwargs: recorded.update(kwargs))
+    monkeypatch.setattr(cron_daily, "phase_sync", lambda **kwargs: calls.append("sync") or {"phase": "sync", "status": "timeout"})
+    monkeypatch.setattr(cron_daily, "phase_watermarks", lambda: calls.append("watermarks") or {"phase": "watermarks", "status": "ok"})
+    monkeypatch.setattr(cron_daily, "phase_topk", lambda **kwargs: calls.append("topk") or {"phase": "topk", "status": "ok"})
+
+    rc = cron_daily.main()
+
+    assert rc == 2
+    assert calls == ["sync"]
+    assert recorded["exit_severity"] == 2
+    assert recorded["results"] == [{"phase": "sync", "status": "timeout", "phase_elapsed_s": recorded["results"][0]["phase_elapsed_s"]}]
 
 
 def test_aif10_registry_matches_live_special_reports():

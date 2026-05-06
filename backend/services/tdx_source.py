@@ -13,7 +13,7 @@ from typing import Optional
 
 
 logger = logging.getLogger("cm-api")
-_TDX_TIMEOUT_SECONDS = 5
+_TDX_TIMEOUT_SECONDS = float(os.environ.get("CM_TDX_TIMEOUT_SECONDS", "1.5"))
 _QUOTES_IDLE_TTL_SECONDS = 300
 _MOOTDX_CIRCUIT_BREAKER_SECONDS = 300
 _TDX_SERVER_FAILURE_COOLDOWN_SECONDS = 120
@@ -285,7 +285,14 @@ def _error_type_from_exception(exc: Exception) -> str:
     return type(exc).__name__
 
 
-def call_tdx_quotes_with_retry(operation, *, action_name: str = "quotes", collect_attempts: bool = False):
+def call_tdx_quotes_with_retry(
+    operation,
+    *,
+    action_name: str = "quotes",
+    collect_attempts: bool = False,
+    max_attempts: Optional[int] = None,
+    connect_timeout: Optional[float] = None,
+):
     """Run a Quotes operation with server retry and pooled client reuse."""
     Quotes = get_tdx_quotes_class()
     if Quotes is None:
@@ -293,7 +300,12 @@ def call_tdx_quotes_with_retry(operation, *, action_name: str = "quotes", collec
 
     attempts: list[str] = []
     attempt_details: list[dict[str, object]] = []
+    attempt_count = 0
+    timeout = float(connect_timeout if connect_timeout is not None else _TDX_TIMEOUT_SECONDS)
     for server in _iter_tdx_servers_for_request():
+        if max_attempts is not None and attempt_count >= max_attempts:
+            break
+        attempt_count += 1
         state = _get_quotes_pool_state(server)
         lock = state["lock"]
         started_at = time.monotonic()
@@ -306,7 +318,7 @@ def call_tdx_quotes_with_retry(operation, *, action_name: str = "quotes", collec
                         multithread=False,
                         heartbeat=False,
                         server=server,
-                        timeout=_TDX_TIMEOUT_SECONDS,
+                        timeout=timeout,
                     )
                     state["client"] = client
                 except Exception as exc:

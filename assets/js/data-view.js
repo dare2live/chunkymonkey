@@ -698,19 +698,13 @@
 
     // 并行拉 endpoint，顶部总览失败不阻塞原数据页。
     const tasks = [
-      fetchJSON('/api/data_health/snapshot').then(r => {
-        _state.health = r;
+      fetchJSON('/api/workbench/data-sources').then(r => {
+        _state.health = r.asset_health || {};
+        _state.sourceHealth = r.source_health || {};
         renderLinkOverview();
         renderDataCockpitPanels();
       }).catch(e => {
-        console.error('[DataView] health snapshot fail', e);
-      }),
-      fetchJSON('/api/data_health/sources').then(r => {
-        _state.sourceHealth = r;
-        renderLinkOverview();
-        renderDataCockpitPanels();
-      }).catch(e => {
-        console.error('[DataView] source health fail', e);
+        console.error('[DataView] workbench data-source health fail', e);
       }),
       fetchJSON('/api/rec/tdx-feature-validation').then(r => {
         _state.tdxValidation = r && r.ok ? r : null;

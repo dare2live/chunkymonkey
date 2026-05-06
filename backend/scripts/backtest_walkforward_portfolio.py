@@ -22,6 +22,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from services.db import get_conn
 from scripts.backtest_model_portfolio import (
+    KLINE_DAILY_QFQ_RELATION,
     ensure_attached,
     simulate_curve,
     _group_by,
@@ -105,11 +106,11 @@ def load_fold_inputs(conn, walkforward_run_id: str, min_avg_amount: float):
                 len({row["date"] for row in preds}))
 
     candidates_with_meta = _records_from_cursor(duck.execute(
-        """
+        f"""
         WITH px AS (
             SELECT code, date, close, amount,
                    AVG(amount) OVER (PARTITION BY code ORDER BY date ROWS 19 PRECEDING) AS amount_ma20
-            FROM market.price_kline_tdxhub
+            FROM {KLINE_DAILY_QFQ_RELATION}
             WHERE freq='daily' AND adjust='qfq'
               AND date >= ? AND date <= ?
         )
@@ -127,11 +128,11 @@ def load_fold_inputs(conn, walkforward_run_id: str, min_avg_amount: float):
         raise RuntimeError("流动性过滤后无候选股票 (检查 min_avg_amount)")
 
     prices = _records_from_cursor(duck.execute(
-        """
+        f"""
         WITH px_base AS (
             SELECT code, date, close, amount,
                    AVG(amount) OVER (PARTITION BY code ORDER BY date ROWS 19 PRECEDING) AS amount_ma20
-            FROM market.price_kline_tdxhub
+            FROM {KLINE_DAILY_QFQ_RELATION}
             WHERE freq='daily' AND adjust='qfq'
               AND date >= ? AND date <= ?
         ),
@@ -143,7 +144,7 @@ def load_fold_inputs(conn, walkforward_run_id: str, min_avg_amount: float):
         )
         SELECT p.code, p.date, p.close,
                p.close / NULLIF(LAG(p.close) OVER (PARTITION BY p.code ORDER BY p.date), 0) - 1 AS ret_1d
-        FROM market.price_kline_tdxhub p
+        FROM {KLINE_DAILY_QFQ_RELATION} p
         JOIN candidate_codes c ON c.code = p.code
         WHERE p.freq='daily' AND p.adjust='qfq'
           AND p.date >= ? AND p.date <= ?
@@ -153,9 +154,9 @@ def load_fold_inputs(conn, walkforward_run_id: str, min_avg_amount: float):
     ))
 
     benchmark = _records_from_cursor(duck.execute(
-        """
+        f"""
         WITH src AS (
-            SELECT date, close FROM market.price_kline_tdxhub
+            SELECT date, close FROM {KLINE_DAILY_QFQ_RELATION}
             WHERE code='510300' AND freq='daily' AND adjust='qfq'
               AND date >= ? AND date <= ?
         )

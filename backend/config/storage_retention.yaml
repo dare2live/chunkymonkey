@@ -1,0 +1,39 @@
+version: 1
+
+defaults:
+  mode: dry_run
+  require_backup_before_delete: true
+  require_explicit_execute_flag: true
+  large_delete_row_threshold: 1000000
+
+protected_model_statuses:
+  - champion
+  - challenger
+  - shadow
+
+candidate_feature_panels:
+  - table: fact_feature_panel_candidate
+    key_column: feature_set_id
+    built_at_column: built_at
+    retain_latest_keys: 3
+    protect_if_referenced_by_lifecycle_training_config: true
+    protect_if_referenced_by_model_selection_run: true
+
+model_prediction_tables:
+  - table: mart_multidim_prediction
+    model_id_column: model_id
+  - table: mart_daily_recommendation
+    model_id_column: model_id
+  - table: mart_daily_recommendation_risk
+    model_id_column: model_id
+  - table: mart_model_walkforward_prediction
+    run_id_column: run_id
+    model_id_source_table: mart_model_walkforward_fold
+    model_id_source_run_id_column: run_id
+    model_id_source_model_id_column: model_id
+
+model_file_roots:
+  - data/multidim_models
+
+optuna_study_roots:
+  - data/optuna

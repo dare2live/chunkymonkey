@@ -1,272 +1,156 @@
-"""
-Phase 0-D: 数据一致性回归测试
+"""Static data-contract tests for retired tables and canonical K-line usage.
 
-4 组测试 + 运行时旧引用检测：
-1. 迁移一致性：K 线行数/价格迁移前后一致
-2. 当前关系对称性：机构↔股票双向一致
-3. 事件收益唯一来源：gain_30d 来自 fact_institution_event 同一字段
-4. 旧逻辑清理：业务代码不再直接读取旧表
+Production DB content checks live in ``backend/tests/realdb`` and are opt-in.
+This default suite must be deterministic and must not open local production DBs.
 """
+from __future__ import annotations
 
-import os
-import subprocess
-import sys
+import ast
+import re
 from pathlib import Path
 
 import pytest
 
-# 把 backend 加到 path
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from services.db import get_conn, init_db
-from services.market_db import get_market_conn, init_market_db
+pytestmark = pytest.mark.contract
 
-
-def test_migration_consistency():
-    """测试 1：K 线迁移一致性"""
-    print("=== Test 1: Migration Consistency ===")
-    biz = get_conn()
-    mkt = get_market_conn()
-
-    # Step 5 任务 A：在 data/ 为 git-tracked 空骨架（无 symlink 到真实 DB）时，
-    # mkt 拿到的是 backend 启动时新建的空 DB。这是环境问题不是代码回归，skip 即可。
-    try:
-        pk_count = mkt.execute("SELECT COUNT(*) FROM price_kline").fetchone()[0]
-    except Exception as exc:
-        pytest.skip(f"price_kline 表不存在（DB 空壳）: {exc}")
-    if pk_count == 0:
-        pytest.skip("price_kline 为空（data/ 未连接到真实库）")
-    print(f"  price_kline: {pk_count} rows ✓")
-
-    # 如果旧表还在，做行数对比
-    old_exists = biz.execute(
-        "SELECT COUNT(*) FROM information_schema.tables WHERE table_name='stock_kline'"
-    ).fetchone()[0]
-    if old_exists:
-        old_count = biz.execute("SELECT COUNT(*) FROM stock_kline").fetchone()[0]
-        assert pk_count >= old_count, (
-            f"price_kline ({pk_count}) < stock_kline ({old_count})! Migration incomplete."
-        )
-        print(f"  stock_kline: {old_count} rows, price_kline >= old ✓")
-
-        # 样本价格对比（取 5 个样本）
-        samples = biz.execute(
-            "SELECT code, date, freq, open, close FROM stock_kline LIMIT 5"
-        ).fetchall()
-        for s in samples:
-            new_row = mkt.execute(
-                "SELECT open, close FROM price_kline WHERE code=? AND date=? AND freq=?",
-                (s["code"], s["date"], s["freq"])
-            ).fetchone()
-            assert new_row is not None, f"Missing in price_kline: {s['code']}/{s['date']}/{s['freq']}"
-            assert new_row["open"] == s["open"], f"Open mismatch: {s['code']}/{s['date']}"
-            assert new_row["close"] == s["close"], f"Close mismatch: {s['code']}/{s['date']}"
-        print(f"  Sample price check: {len(samples)} rows match ✓")
-    else:
-        print("  stock_kline already dropped, skipping comparison")
-
-    biz.close()
-    mkt.close()
-    print("  PASSED\n")
+BACKEND_DIR = Path(__file__).resolve().parent.parent
 
 
-def test_current_relationship_symmetry():
-    """测试 2：当前关系对称性"""
-    print("=== Test 2: Current Relationship Symmetry ===")
-    conn = get_conn()
-
-    mcr_count = conn.execute("SELECT COUNT(*) FROM mart_current_relationship").fetchone()[0]
-    if mcr_count == 0:
-        print("  mart_current_relationship is empty, skipping (run build_current_rel first)")
-        conn.close()
-        return
-
-    print(f"  mart_current_relationship: {mcr_count} rows")
-
-    # 2a: 取 10 个样本机构，验证其持仓数 = mcr 实际行数
-    sample_insts = conn.execute(
-        "SELECT institution_id, COUNT(*) as cnt "
-        "FROM mart_current_relationship GROUP BY institution_id LIMIT 10"
-    ).fetchall()
-    for si in sample_insts:
-        actual = conn.execute(
-            "SELECT COUNT(*) FROM mart_current_relationship WHERE institution_id=?",
-            (si["institution_id"],)
-        ).fetchone()[0]
-        assert actual == si["cnt"], (
-            f"Inst {si['institution_id']}: group count {si['cnt']} != actual {actual}"
-        )
-    print(f"  Institution count consistency: {len(sample_insts)} samples ✓")
-
-    # 2b: 取 10 个样本股票，验证其机构数 = mcr 实际行数
-    sample_stocks = conn.execute(
-        "SELECT stock_code, COUNT(*) as cnt "
-        "FROM mart_current_relationship GROUP BY stock_code LIMIT 10"
-    ).fetchall()
-    for ss in sample_stocks:
-        actual = conn.execute(
-            "SELECT COUNT(*) FROM mart_current_relationship WHERE stock_code=?",
-            (ss["stock_code"],)
-        ).fetchone()[0]
-        assert actual == ss["cnt"], (
-            f"Stock {ss['stock_code']}: group count {ss['cnt']} != actual {actual}"
-        )
-    print(f"  Stock count consistency: {len(sample_stocks)} samples ✓")
-
-    # 2c: 双向对称 — 如果 inst A holds stock B，则 stock B 的 holder 里包含 A
-    sample_pairs = conn.execute(
-        "SELECT institution_id, stock_code FROM mart_current_relationship LIMIT 20"
-    ).fetchall()
-    for p in sample_pairs:
-        reverse = conn.execute(
-            "SELECT 1 FROM mart_current_relationship WHERE stock_code=? AND institution_id=?",
-            (p["stock_code"], p["institution_id"])
-        ).fetchone()
-        assert reverse is not None, (
-            f"Symmetry broken: {p['institution_id']} → {p['stock_code']} exists, "
-            f"but reverse lookup failed"
-        )
-    print(f"  Bidirectional symmetry: {len(sample_pairs)} pairs ✓")
-
-    # 2d: per-stock latest 口径验证 — mcr 中每条记录的 report_date 应等于该股票全市场最新期
-    mismatches = conn.execute("""
-        SELECT m.stock_code, m.report_date AS mcr_rd, l.max_rd AS expected_rd
-        FROM mart_current_relationship m
-        LEFT JOIN (
-            SELECT stock_code, MAX(report_date) AS max_rd
-            FROM fact_top10_holder_period
-            WHERE holder_set = 'free'
-              AND NOT is_secondary_class
-              AND NOT is_exit_row
-            GROUP BY stock_code
-        ) l ON m.stock_code = l.stock_code
-        WHERE m.report_date != l.max_rd
-        LIMIT 5
-    """).fetchall()
-    if mismatches:
-        for mm in mismatches:
-            print(f"  ⚠ Stock {mm['stock_code']}: mcr_rd={mm['mcr_rd']}, expected={mm['expected_rd']}")
-        assert False, f"Per-stock latest mismatch: {len(mismatches)} rows"
-    print("  Per-stock latest report_date consistency ✓")
-
-    conn.close()
-    print("  PASSED\n")
+def _python_files(*roots: str) -> list[Path]:
+    files: list[Path] = []
+    for root in roots:
+        files.extend((BACKEND_DIR / root).rglob("*.py"))
+    return sorted(path for path in files if "__pycache__" not in path.parts)
 
 
-def test_event_return_single_source():
-    """测试 3：事件收益唯一来源"""
-    print("=== Test 3: Event Return Single Source ===")
-    conn = get_conn()
-
-    # 检查增强列是否存在
-    cols = [r[0] for r in conn.execute("DESCRIBE fact_institution_event").fetchall()]
-    assert "gain_30d" in cols, "fact_institution_event missing gain_30d column"
-    assert "calc_version" in cols, "fact_institution_event missing calc_version column"
-    print("  fact_institution_event enhanced columns exist ✓")
-
-    # 如果有收益数据，验证来源一致性
-    # 关键：MCR 只存每只股票最新期的关系，所以必须按 (inst, stock, report_date) 精确匹配
-    sample = conn.execute(
-        "SELECT e.institution_id, e.stock_code, e.report_date, e.gain_30d "
-        "FROM fact_institution_event e "
-        "INNER JOIN mart_current_relationship m "
-        "  ON e.institution_id = m.institution_id "
-        "  AND e.stock_code = m.stock_code "
-        "  AND e.report_date = m.report_date "
-        "WHERE e.gain_30d IS NOT NULL LIMIT 5"
-    ).fetchall()
-    if sample:
-        for s in sample:
-            mcr = conn.execute(
-                "SELECT gain_30d FROM mart_current_relationship "
-                "WHERE institution_id=? AND stock_code=?",
-                (s["institution_id"], s["stock_code"])
-            ).fetchone()
-            if mcr and mcr["gain_30d"] is not None:
-                assert mcr["gain_30d"] == s["gain_30d"], (
-                    f"gain_30d mismatch: event={s['gain_30d']}, mcr={mcr['gain_30d']} "
-                    f"for {s['institution_id']}/{s['stock_code']}/{s['report_date']}"
-                )
-        print(f"  Event→MCR gain_30d consistency: {len(sample)} samples ✓")
-    else:
-        print("  No gain_30d data yet (calc_returns not run), skipping value check")
-
-    conn.close()
-    print("  PASSED\n")
+def _source_without_comments(path: Path) -> str:
+    lines = []
+    for line in path.read_text(encoding="utf-8").splitlines():
+        code = line.split("#", 1)[0]
+        if code.strip():
+            lines.append(code)
+    return "\n".join(lines)
 
 
-def test_old_reference_cleanup():
-    """测试 4：旧逻辑清理（静态代码扫描）"""
-    print("=== Test 4: Old Reference Cleanup ===")
-    backend_dir = Path(__file__).resolve().parent.parent
-
-    # 排除范围
-    exclude_dirs = {"scripts", "tests", "__pycache__"}
-
-    warnings = []
-    for pattern, description in [
-        ("FROM fact_event_return", "direct read from fact_event_return"),
-        ("JOIN fact_event_return", "join with fact_event_return"),
-        ("INTO fact_event_return", "write to fact_event_return"),
-        ("FROM stock_kline", "direct read from stock_kline"),
-        ("INTO stock_kline", "write to stock_kline"),
-        ("dim_stock_industry\\b", "direct access to retired dim_stock_industry (sw)"),
-    ]:
-        result = subprocess.run(
-            ["grep", "-rnE", pattern, str(backend_dir),
-             "--include=*.py"],
-            capture_output=True, text=True
-        )
-        if result.stdout:
-            for line in result.stdout.strip().split("\n"):
-                # 检查是否在排除目录
-                rel = os.path.relpath(line.split(":")[0], backend_dir)
-                parts = Path(rel).parts
-                if any(p in exclude_dirs for p in parts):
-                    continue
-                if rel in {"services/industry.py", "services/db.py"}:
-                    continue
-                # 检查是否是注释或 deprecated 标记
-                code_part = ":".join(line.split(":")[2:]).strip()
-                if code_part.startswith("#") or "DEPRECATED" in code_part or "deprecated" in code_part:
-                    continue
-                # 过滤 dim_stock_industry_context_latest / dim_stock_tdx_industry (新表，保留)
-                if "dim_stock_industry_context_latest" in code_part or "dim_stock_tdx_industry" in code_part:
-                    continue
-                # 检查是否是 try/except 保护的过渡期代码
-                if "try:" in code_part or "except" in code_part:
-                    continue
-                warnings.append(f"  ⚠ {description}: {rel}:{line.split(':')[1]}")
-
-    if warnings:
-        print(f"  Found {len(warnings)} old references in business code:")
-        for w in warnings:
-            print(w)
-        print("  NOTE: Some may be legitimate transition code with try/except")
-    else:
-        print("  No unprotected old references found ✓")
-
-    print("  PASSED (informational)\n")
+def _python_string_literals_excluding_docstrings(path: Path) -> list[str]:
+    tree = ast.parse(path.read_text(encoding="utf-8"))
+    docstring_nodes = set()
+    for node in ast.walk(tree):
+        body = getattr(node, "body", None)
+        if (
+            isinstance(body, list)
+            and body
+            and isinstance(body[0], ast.Expr)
+            and isinstance(body[0].value, ast.Constant)
+            and isinstance(body[0].value.value, str)
+        ):
+            docstring_nodes.add(body[0].value)
+    return [
+        node.value
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Constant)
+        and isinstance(node.value, str)
+        and node not in docstring_nodes
+    ]
 
 
-def run_all():
-    """运行所有一致性测试"""
-    print("\n" + "=" * 60)
-    print("Phase 0-D: Data Consistency Tests")
-    print("=" * 60 + "\n")
+def test_retired_event_return_table_is_not_read_or_written_by_business_code():
+    offenders = []
+    patterns = [
+        "FROM fact_event_return",
+        "JOIN fact_event_return",
+        "INTO fact_event_return",
+        "UPDATE fact_event_return",
+        "DELETE FROM fact_event_return",
+    ]
+    for path in _python_files("services", "scripts", "routers"):
+        text = _source_without_comments(path)
+        if any(pattern in text for pattern in patterns):
+            offenders.append(path.relative_to(BACKEND_DIR).as_posix())
 
-    init_db()
-    init_market_db()
-
-    test_migration_consistency()
-    test_current_relationship_symmetry()
-    test_event_return_single_source()
-    test_old_reference_cleanup()
-
-    print("=" * 60)
-    print("ALL TESTS COMPLETED")
-    print("=" * 60)
+    assert offenders == []
 
 
-if __name__ == "__main__":
-    run_all()
+def test_retired_stock_kline_table_is_not_read_or_written_by_business_code():
+    offenders = []
+    patterns = [
+        "FROM stock_kline",
+        "JOIN stock_kline",
+        "INTO stock_kline",
+        "UPDATE stock_kline",
+        "DELETE FROM stock_kline",
+    ]
+    for path in _python_files("services", "scripts", "routers"):
+        text = _source_without_comments(path)
+        if any(pattern in text for pattern in patterns):
+            offenders.append(path.relative_to(BACKEND_DIR).as_posix())
+
+    assert offenders == []
+
+
+def test_retired_sw_industry_table_access_is_allowlisted_only_for_migration_and_cleanup():
+    allowed = {
+        "services/db.py",
+        "scripts/audit_stale_references.py",
+        "services/data_deprecation.py",
+    }
+    offenders = []
+    for path in _python_files("services", "scripts", "routers"):
+        rel = path.relative_to(BACKEND_DIR).as_posix()
+        if rel in allowed:
+            continue
+        literals = "\n".join(_python_string_literals_excluding_docstrings(path))
+        if re.search(r"\bdim_stock_industry\b", literals):
+            offenders.append(rel)
+
+    assert offenders == []
+
+
+def test_core_daily_stock_price_readers_use_canonical_kline_relation():
+    required = {
+        "scripts/build_feature_panel_duck.py",
+        "scripts/run_daily_topk.py",
+        "scripts/backtest_model_portfolio.py",
+        "scripts/backtest_walkforward_portfolio.py",
+        "scripts/build_alpha158_duck.py",
+        "scripts/build_executive_trade_events.py",
+        "scripts/build_lhb_events.py",
+        "services/return_engine.py",
+        "services/stock_stage_engine.py",
+        "services/stock_turtle_engine.py",
+        "services/screening_engine.py",
+        "services/sector_momentum.py",
+        "services/risk_factors.py",
+        "services/prediction_outcome.py",
+        "services/event_simulator.py",
+        "services/gap_queue.py",
+    }
+    missing = []
+    for rel in sorted(required):
+        text = (BACKEND_DIR / rel).read_text(encoding="utf-8")
+        if (
+            "CANONICAL_KLINE_QFQ_RELATION" not in text
+            and "KLINE_DAILY_QFQ_RELATION" not in text
+            and "get_canonical_kline_qfq_relation" not in text
+        ):
+            missing.append(rel)
+
+    assert missing == []
+
+
+def test_default_suite_does_not_open_production_db_connections():
+    """Guard this file against slipping back into runtime data audit behavior."""
+
+    tree = ast.parse(Path(__file__).read_text(encoding="utf-8"))
+    banned_calls = {"get_conn", "get_market_conn", "init_db", "init_market_db"}
+    offenders = []
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Call):
+            func = node.func
+            if isinstance(func, ast.Name) and func.id in banned_calls:
+                offenders.append(func.id)
+            elif isinstance(func, ast.Attribute) and func.attr in banned_calls:
+                offenders.append(func.attr)
+
+    assert offenders == []

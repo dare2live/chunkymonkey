@@ -33,7 +33,8 @@
   <div class="sub-bar" id="subBar">
     <!-- 股东挖掘主导航：研究决策链路 -->
     <div class="nav-sub-bar" id="nav-sub-holder">
-      <button class="nav-btn active" data-view="stocks">今日研究</button>
+      <button class="nav-btn active" data-view="workbench">总览</button>
+      <button class="nav-btn" data-view="stocks">今日研究</button>
       <button class="nav-btn" data-view="data">数据链路</button>
       <button class="nav-btn" data-view="model-monitor">模型实验室</button>
       <button class="nav-btn" data-view="dashboard">系统运维</button>
@@ -47,8 +48,20 @@
   </div>
 
   <main class="content">
+    <!-- ==================== 运营总览（Section 11 Workbench） ==================== -->
+    <section class="view active" id="view-workbench">
+      <div class="cm-page-head">
+        <div class="section-kicker">Overview</div>
+        <h2>运营总览</h2>
+        <p class="muted">交易日、数据状态、研究计划、Champion、漂移和清理状态的当前决策面板。</p>
+      </div>
+      <div id="wb-overview-root" class="workbench-overview">
+        <div class="muted" style="padding:20px;text-align:center">加载中...</div>
+      </div>
+    </section>
+
     <!-- ==================== 股票（主视图 C6g） ==================== -->
-    <section class="view active" id="view-stocks">
+    <section class="view" id="view-stocks">
       <div class="muted" style="padding:20px;text-align:center">加载中...</div>
     </section>
 
@@ -186,293 +199,6 @@
       </div>
     </section>
 
-    <!-- ==================== 数据健康 (W0, 2026-04-28) ==================== -->
-    <!-- 替代 dashboard 散在 5 端点的 health bar; 替代 view-data 的散点统计.
-         单一端点 /api/data_health/snapshot 驱动. -->
-    <section class="view" id="view-data-health">
-      <!-- 全局健康条 (永远顶置) -->
-      <div class="panel" id="dh-global-bar" style="margin-bottom:14px;padding:14px 18px;display:flex;gap:18px;align-items:center;flex-wrap:wrap">
-        <strong style="font-size:14px">数据健康</strong>
-        <span class="dh-pill dh-pill-green">alive <span id="dh-cnt-green">--</span></span>
-        <span class="dh-pill dh-pill-yellow">stale <span id="dh-cnt-yellow">--</span></span>
-        <span class="dh-pill dh-pill-red">broken <span id="dh-cnt-red">--</span></span>
-        <span class="dh-pill dh-pill-info">fallback <span id="dh-cnt-fallback">--</span></span>
-        <span class="muted" style="font-size:12px;margin-left:auto">最近快照: <span id="dh-snapshot-at">--</span></span>
-        <button class="chip chip-outline" id="dh-refresh">刷新</button>
-        <button class="chip chip-outline" id="dh-run-snapshot" title="立即重跑 data_health_snapshot.py">立即重跑</button>
-      </div>
-
-      <!-- Tab 切换 -->
-      <div class="panel" style="margin-bottom:14px;padding:0 14px;display:flex;gap:0;border-bottom:1px solid var(--cm-ink-100,#e2e2e2);flex-wrap:wrap">
-        <button class="dh-tab-btn active" data-dh-tab="health">健康看板 (Tab 4)</button>
-        <button class="dh-tab-btn" data-dh-tab="sources">数据源总览 (Tab 1)</button>
-        <button class="dh-tab-btn" data-dh-tab="clients">写入器 (Tab 2)</button>
-        <button class="dh-tab-btn" data-dh-tab="lineage">派生 Pipeline (Tab 3)</button>
-        <button class="dh-tab-btn" data-dh-tab="manifest">运行清单</button>
-        <button class="dh-tab-btn" data-dh-tab="performance">性能预算</button>
-        <button class="dh-tab-btn" data-dh-tab="drift">特征漂移 (Tab 5)</button>
-        <button class="dh-tab-btn" data-dh-tab="cleanup">清理 Backlog (Tab 6)</button>
-        <button class="dh-tab-btn" data-dh-tab="models">模型生命周期 (Tab 7)</button>
-      </div>
-
-      <!-- Tab 1: 健康看板 (table) -->
-      <div class="dh-tab-panel" id="dh-panel-health">
-        <div class="panel" style="margin-bottom:10px;padding:12px 14px;display:flex;gap:10px;align-items:center;flex-wrap:wrap">
-          <label style="font-size:12px">layer:
-            <select id="dh-filter-layer" style="padding:4px 8px;border:1px solid var(--cm-ink-100);border-radius:4px;font-size:12px">
-              <option value="">全部</option>
-              <option value="raw">raw</option>
-              <option value="dim">dim</option>
-              <option value="fact">fact</option>
-              <option value="mart">mart</option>
-              <option value="research">research</option>
-              <option value="sys">sys</option>
-              <option value="cache">cache</option>
-              <option value="other">other</option>
-            </select>
-          </label>
-          <label style="font-size:12px">severity:
-            <select id="dh-filter-severity" style="padding:4px 8px;border:1px solid var(--cm-ink-100);border-radius:4px;font-size:12px">
-              <option value="">全部</option>
-              <option value="red">red</option>
-              <option value="yellow">yellow</option>
-              <option value="green">green</option>
-            </select>
-          </label>
-          <input type="text" id="dh-filter-search" placeholder="搜表名 / writer / upstream..." style="padding:4px 8px;border:1px solid var(--cm-ink-100);border-radius:4px;font-size:12px;width:240px">
-          <span class="muted" style="font-size:11px;margin-left:auto" id="dh-table-stats"></span>
-        </div>
-        <div class="panel" style="padding:0;overflow-x:auto;max-height:62vh;overflow-y:auto">
-          <table id="dh-health-table" style="width:100%;border-collapse:collapse;font-size:12px">
-            <thead style="position:sticky;top:0;background:var(--cm-bg,#fff);z-index:1">
-              <tr style="border-bottom:1px solid var(--cm-ink-100,#e2e2e2)">
-                <th style="text-align:left;padding:8px 12px;width:40px"></th>
-                <th style="text-align:left;padding:8px 12px">表名</th>
-                <th style="text-align:left;padding:8px 12px;width:64px">layer</th>
-                <th style="text-align:right;padding:8px 12px;width:90px">行数</th>
-                <th style="text-align:left;padding:8px 12px;width:110px">最新数据</th>
-                <th style="text-align:right;padding:8px 12px;width:80px">freshness</th>
-                <th style="text-align:right;padding:8px 12px;width:60px">SLA</th>
-                <th style="text-align:left;padding:8px 12px">writer</th>
-                <th style="text-align:left;padding:8px 12px">问题</th>
-              </tr>
-            </thead>
-            <tbody id="dh-health-tbody">
-              <tr><td colspan="9" style="padding:30px;text-align:center" class="muted">加载中...</td></tr>
-            </tbody>
-          </table>
-        </div>
-      </div>
-
-      <!-- Tab 2: 数据源总览 (按 upstream_source × tier 聚合) -->
-      <div class="dh-tab-panel" id="dh-panel-sources" style="display:none">
-        <div class="panel" style="margin-bottom:10px;padding:12px 14px">
-          <div class="muted" style="font-size:12px">每行 = 一个外部数据源或业务域水位 (按 source_tier 排序). tier 1 主源 / tier 2 备源 / tier 3 兜底. red/yellow 计数来自当前快照. fallback active = tier > 1 实际有数据.</div>
-        </div>
-        <div class="panel" style="padding:0;overflow-x:auto;max-height:62vh;overflow-y:auto">
-          <table id="dh-sources-table" style="width:100%;border-collapse:collapse;font-size:12px">
-            <thead style="position:sticky;top:0;background:var(--cm-bg,#fff);z-index:1">
-              <tr style="border-bottom:1px solid var(--cm-ink-100,#e2e2e2)">
-                <th style="text-align:left;padding:8px 12px;width:60px">tier</th>
-                <th style="text-align:left;padding:8px 12px">upstream_source</th>
-                <th style="text-align:right;padding:8px 12px;width:90px">资产数</th>
-                <th style="text-align:right;padding:8px 12px;width:120px">总行数</th>
-                <th style="text-align:right;padding:8px 12px;width:80px">OK</th>
-                <th style="text-align:right;padding:8px 12px;width:80px">WARN</th>
-                <th style="text-align:right;padding:8px 12px;width:80px">FAIL</th>
-                <th style="text-align:right;padding:8px 12px;width:120px">最大延迟 (h)</th>
-              </tr>
-            </thead>
-            <tbody id="dh-sources-tbody">
-              <tr><td colspan="8" style="padding:30px;text-align:center" class="muted">加载中...</td></tr>
-            </tbody>
-          </table>
-        </div>
-      </div>
-
-      <!-- 运行清单: pipeline manifest -->
-      <div class="dh-tab-panel" id="dh-panel-manifest" style="display:none">
-        <div class="panel" style="margin-bottom:10px;padding:12px 14px">
-          <div class="muted" style="font-size:12px">每行 = 一次 CLI / batch / 模型 pipeline 运行。用于审计 commit、命令、输入输出、耗时、模型、gate 和性能摘要。</div>
-        </div>
-        <div class="panel" style="padding:0;overflow-x:auto;max-height:62vh;overflow-y:auto">
-          <table style="width:100%;border-collapse:collapse;font-size:12px">
-            <thead style="position:sticky;top:0;background:var(--cm-bg,#fff);z-index:1">
-              <tr style="border-bottom:1px solid var(--cm-ink-100,#e2e2e2)">
-                <th style="text-align:left;padding:8px 12px;width:40px"></th>
-                <th style="text-align:left;padding:8px 12px;width:180px">pipeline</th>
-                <th style="text-align:left;padding:8px 12px;width:160px">run_id</th>
-                <th style="text-align:right;padding:8px 12px;width:80px">耗时</th>
-                <th style="text-align:left;padding:8px 12px;width:160px">model</th>
-                <th style="text-align:left;padding:8px 12px;width:110px">feature</th>
-                <th style="text-align:left;padding:8px 12px">perf / blockers</th>
-                <th style="text-align:left;padding:8px 12px;width:140px">started</th>
-              </tr>
-            </thead>
-            <tbody id="dh-manifest-tbody">
-              <tr><td colspan="8" style="padding:30px;text-align:center" class="muted">加载中...</td></tr>
-            </tbody>
-          </table>
-        </div>
-      </div>
-
-      <!-- 性能预算: manifest-derived budget vs actual -->
-      <div class="dh-tab-panel" id="dh-panel-performance" style="display:none">
-        <div class="panel" style="margin-bottom:10px;padding:12px 14px">
-          <div style="display:flex;gap:14px;align-items:center;flex-wrap:wrap;font-size:12px">
-            <strong>Performance</strong>
-            <span class="muted">daily</span><code id="dh-perf-daily-run">--</code>
-            <span class="muted">benchmark</span><code id="dh-perf-benchmark-run">--</code>
-            <span class="muted">evidence</span><code id="dh-perf-evidence-run">--</code>
-          </div>
-        </div>
-        <div class="panel" style="padding:0;overflow-x:auto;max-height:62vh;overflow-y:auto">
-          <table style="width:100%;border-collapse:collapse;font-size:12px">
-            <thead style="position:sticky;top:0;background:var(--cm-bg,#fff);z-index:1">
-              <tr style="border-bottom:1px solid var(--cm-ink-100,#e2e2e2)">
-                <th style="text-align:left;padding:8px 12px;width:40px"></th>
-                <th style="text-align:left;padding:8px 12px;width:180px">scope</th>
-                <th style="text-align:left;padding:8px 12px">phase / step</th>
-                <th style="text-align:right;padding:8px 12px;width:100px">actual</th>
-                <th style="text-align:right;padding:8px 12px;width:100px">budget</th>
-                <th style="text-align:left;padding:8px 12px;width:120px">status</th>
-                <th style="text-align:left;padding:8px 12px">detail</th>
-              </tr>
-            </thead>
-            <tbody id="dh-performance-tbody">
-              <tr><td colspan="7" style="padding:30px;text-align:center" class="muted">加载中...</td></tr>
-            </tbody>
-          </table>
-        </div>
-      </div>
-
-      <!-- Tab 2: 写入器 (clients_registry) -->
-      <div class="dh-tab-panel" id="dh-panel-clients" style="display:none">
-        <div class="panel" style="margin-bottom:10px;padding:12px 14px">
-          <div class="muted" style="font-size:12px">每行 = 一个数据写入客户端 (services/data_sources/clients_registry.py). 展开看每张写入表的 freshness/sla/severity. tier 99 = 派生层 (不直接对接外部源).</div>
-        </div>
-        <div class="panel" style="padding:0;overflow-x:auto;max-height:62vh;overflow-y:auto">
-          <table id="dh-clients-table" style="width:100%;border-collapse:collapse;font-size:12px">
-            <thead style="position:sticky;top:0;background:var(--cm-bg,#fff);z-index:1">
-              <tr style="border-bottom:1px solid var(--cm-ink-100,#e2e2e2)">
-                <th style="text-align:left;padding:8px 12px;width:60px">tier</th>
-                <th style="text-align:left;padding:8px 12px;width:200px">client_id</th>
-                <th style="text-align:left;padding:8px 12px">upstream_source</th>
-                <th style="text-align:left;padding:8px 12px;width:120px">fallback</th>
-                <th style="text-align:right;padding:8px 12px;width:60px">表数</th>
-                <th style="text-align:right;padding:8px 12px;width:120px">健康</th>
-                <th style="text-align:left;padding:8px 12px;width:140px">sync step</th>
-              </tr>
-            </thead>
-            <tbody id="dh-clients-tbody">
-              <tr><td colspan="7" style="padding:30px;text-align:center" class="muted">加载中...</td></tr>
-            </tbody>
-          </table>
-        </div>
-      </div>
-
-      <!-- Tab 3: 派生 Pipeline (lineage) -->
-      <div class="dh-tab-panel" id="dh-panel-lineage" style="display:none">
-        <div class="panel" style="margin-bottom:10px;padding:12px 14px">
-          <div class="muted" style="font-size:12px">每行 = 一条派生 lineage (services/data_lineage/registry.py). last_status 来自 mart_lineage 运行时状态. <strong>sql_hash_changed</strong> = 当前声明的 SQL 跟上次跑的 sql_hash 不一致 (代码改了但还没重算).</div>
-        </div>
-        <div class="panel" style="padding:0;overflow-x:auto;max-height:62vh;overflow-y:auto">
-          <table id="dh-lineage-table" style="width:100%;border-collapse:collapse;font-size:12px">
-            <thead style="position:sticky;top:0;background:var(--cm-bg,#fff);z-index:1">
-              <tr style="border-bottom:1px solid var(--cm-ink-100,#e2e2e2)">
-                <th style="text-align:left;padding:8px 12px;width:40px">⬢</th>
-                <th style="text-align:left;padding:8px 12px">lineage_id</th>
-                <th style="text-align:left;padding:8px 12px;width:200px">输出表</th>
-                <th style="text-align:left;padding:8px 12px">输入表</th>
-                <th style="text-align:left;padding:8px 12px;width:80px">schedule</th>
-                <th style="text-align:left;padding:8px 12px;width:90px">status</th>
-                <th style="text-align:right;padding:8px 12px;width:90px">last 行数</th>
-                <th style="text-align:right;padding:8px 12px;width:80px">runtime</th>
-                <th style="text-align:left;padding:8px 12px;width:140px">last_run_at</th>
-              </tr>
-            </thead>
-            <tbody id="dh-lineage-tbody">
-              <tr><td colspan="9" style="padding:30px;text-align:center" class="muted">加载中...</td></tr>
-            </tbody>
-          </table>
-        </div>
-      </div>
-
-      <!-- Tab 5: 特征漂移 (drift) -->
-      <div class="dh-tab-panel" id="dh-panel-drift" style="display:none">
-        <div class="panel" style="margin-bottom:10px;padding:12px 14px;display:flex;gap:14px;flex-wrap:wrap;align-items:center">
-          <span class="muted" style="font-size:12px">PSI = Population Stability Index. <strong>&lt; 0.10 ok</strong> · 0.10–0.25 warn · <strong>≥ 0.25 critical</strong>. 重新跑: <code>backend/scripts/compute_feature_drift.py</code></span>
-          <span class="dh-pill dh-pill-green" style="margin-left:auto">ok <span id="dh-drift-cnt-ok">--</span></span>
-          <span class="dh-pill dh-pill-yellow">warn <span id="dh-drift-cnt-warn">--</span></span>
-          <span class="dh-pill dh-pill-red">critical <span id="dh-drift-cnt-critical">--</span></span>
-          <span class="muted" style="font-size:11px">snapshot: <span id="dh-drift-snap">--</span></span>
-        </div>
-        <div class="panel" style="padding:0;overflow-x:auto;max-height:62vh;overflow-y:auto">
-          <table style="width:100%;border-collapse:collapse;font-size:12px">
-            <thead style="position:sticky;top:0;background:var(--cm-bg,#fff);z-index:1">
-              <tr style="border-bottom:1px solid var(--cm-ink-100,#e2e2e2)">
-                <th style="text-align:left;padding:8px 12px;width:40px"></th>
-                <th style="text-align:left;padding:8px 12px">feature</th>
-                <th style="text-align:right;padding:8px 12px;width:90px">PSI</th>
-                <th style="text-align:right;padding:8px 12px;width:90px">n_train</th>
-                <th style="text-align:right;padding:8px 12px;width:90px">n_recent</th>
-                <th style="text-align:right;padding:8px 12px;width:80px">window</th>
-                <th style="text-align:left;padding:8px 12px;width:200px">model_id</th>
-              </tr>
-            </thead>
-            <tbody id="dh-drift-tbody">
-              <tr><td colspan="7" style="padding:30px;text-align:center" class="muted">加载中...</td></tr>
-            </tbody>
-          </table>
-        </div>
-      </div>
-
-      <!-- Tab 6: 清理 Backlog (orphan + red + stale 候选) -->
-      <div class="dh-tab-panel" id="dh-panel-cleanup" style="display:none">
-        <div class="panel" style="margin-bottom:10px;padding:12px 14px">
-          <div class="muted" style="font-size:12px">所有 <strong>red</strong> 表 (来自当前快照). orphan_no_writer / stale_empty 是优先清理候选. 真正 drop 走 <code>backend/scripts/cleanup_orphan_tables_w1.py</code> 模式.</div>
-        </div>
-        <div class="panel" style="padding:0;overflow-x:auto;max-height:62vh;overflow-y:auto">
-          <table style="width:100%;border-collapse:collapse;font-size:12px">
-            <thead style="position:sticky;top:0;background:var(--cm-bg,#fff);z-index:1">
-              <tr style="border-bottom:1px solid var(--cm-ink-100,#e2e2e2)">
-                <th style="text-align:left;padding:8px 12px;width:40px"></th>
-                <th style="text-align:left;padding:8px 12px">表名</th>
-                <th style="text-align:left;padding:8px 12px;width:64px">layer</th>
-                <th style="text-align:right;padding:8px 12px;width:90px">行数</th>
-                <th style="text-align:left;padding:8px 12px;width:110px">最新数据</th>
-                <th style="text-align:right;padding:8px 12px;width:80px">freshness</th>
-                <th style="text-align:left;padding:8px 12px">writer</th>
-                <th style="text-align:left;padding:8px 12px">问题</th>
-              </tr>
-            </thead>
-            <tbody id="dh-cleanup-tbody">
-              <tr><td colspan="8" style="padding:30px;text-align:center" class="muted">加载中...</td></tr>
-            </tbody>
-          </table>
-        </div>
-      </div>
-
-      <!-- Tab 7: 模型生命周期 -->
-      <div class="dh-tab-panel" id="dh-panel-models" style="display:none">
-        <div id="dh-model-champion-card" style="margin-bottom:14px"></div>
-        <div id="dh-model-challengers" style="margin-bottom:14px"></div>
-        <div id="dh-model-retired"></div>
-      </div>
-
-      <!-- 单表详情抽屉 (复用 .drawer 样式) -->
-      <div id="dh-asset-drawer" class="drawer" style="display:none">
-        <div class="drawer-overlay" id="dh-asset-overlay"></div>
-        <div class="drawer-panel">
-          <div class="drawer-header">
-            <span id="dh-asset-title" style="font-weight:600">--</span>
-            <button class="drawer-close" id="dh-asset-close">×</button>
-          </div>
-          <div class="drawer-body" id="dh-asset-body" style="padding:14px;font-size:12px"></div>
-        </div>
-      </div>
-    </section>
-
     <!-- ==================== 策略 (新增 P4: signal/cohort/backtest/screening) ==================== -->
     <section class="view" id="view-strategy">
       <div class="panel panel-hero" style="margin-bottom:14px;padding:18px">
@@ -573,7 +299,8 @@
           <div class="cm-action-title">高级诊断</div>
           <p class="muted">低频健康、策略参数、系统设置和危险操作。</p>
           <div class="chip-group">
-            <button class="chip chip-outline" onclick="window.App.showView('data-health')">高级数据健康</button>
+            <button class="chip chip-outline" onclick="window.App.showWorkbenchTab('dataSources')">数据源诊断</button>
+            <button class="chip chip-outline" onclick="window.App.showWorkbenchTab('pipelines')">管线健康</button>
             <button class="chip chip-outline" onclick="window.App.showView('strategy')">策略参数/回测</button>
             <button class="chip chip-outline" onclick="window.App.showView('settings')">系统设置</button>
           </div>
@@ -832,7 +559,7 @@
        'assets/js/widgets/etf-strategy-compare.js',
        'assets/js/stock-view.js',
        'assets/js/data-view.js',
-       'assets/js/data-health-view.js',
+       'assets/js/workbench-view.js',
        'assets/js/strategy-view.js',
        'assets/js/settings-view.js',
        'assets/js/app.js'].forEach(function (src) {
@@ -841,12 +568,12 @@
     })(window.CM_ASSET_VERSION);
   </script>
   <script>
-    // 默认入口：股票视图（C6g）
+    // 默认入口：运营总览
     (function () {
       document.addEventListener('DOMContentLoaded', function () {
         function boot() {
           if (window.App && window.App.showView) {
-            window.App.showView('stocks');
+            window.App.showView('workbench');
           } else {
             setTimeout(boot, 50);
           }

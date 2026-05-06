@@ -31,8 +31,10 @@ from services.industry import (
     industry_level_select,
     load_industry_map,
 )
+from services.market_db import get_canonical_kline_qfq_relation
 
 logger = logging.getLogger("cm-api")
+KLINE_DAILY_QFQ_RELATION = get_canonical_kline_qfq_relation()
 
 SECTOR_LEVEL = 1
 
@@ -491,7 +493,7 @@ def calc_sector_momentum(smart_conn, mkt_conn) -> int:
             benchmark_cutoff = (date.today() - timedelta(days=420)).strftime("%Y-%m-%d")
             placeholders = ",".join("?" for _ in all_codes)
             benchmark_rows = mkt_conn.execute(
-                f"SELECT code, date, close FROM price_kline "
+                f"SELECT code, date, close FROM {KLINE_DAILY_QFQ_RELATION} "
                 f"WHERE code IN ({placeholders}) AND freq='daily' AND adjust='qfq' "
                 f"AND date >= ? ORDER BY date",
                 (*all_codes, benchmark_cutoff)
@@ -520,7 +522,7 @@ def calc_sector_momentum(smart_conn, mkt_conn) -> int:
             # 加载成分股 K 线，合成等权指数
             placeholders = ",".join("?" for _ in codes)
             kline_rows = mkt_conn.execute(
-                f"SELECT code, date, close, high, low FROM price_kline "
+                f"SELECT code, date, close, high, low FROM {KLINE_DAILY_QFQ_RELATION} "
                 f"WHERE code IN ({placeholders}) AND freq='daily' AND adjust='qfq' "
                 f"ORDER BY date",
                 codes

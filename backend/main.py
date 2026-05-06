@@ -18,8 +18,8 @@ from fastapi.responses import HTMLResponse, Response
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from services.db import init_db, get_conn
+from services.dependency_guards import install_dependency_guards
 from services.market_db import init_market_db
-from services.runtime_patches import apply_runtime_patches
 
 # 日志
 logging.basicConfig(
@@ -29,7 +29,7 @@ logging.basicConfig(
 )
 logger = logging.getLogger("cm-api")
 
-apply_runtime_patches()
+install_dependency_guards()
 
 # 初始化数据库（仅建表，不做迁移）
 init_db()
@@ -101,13 +101,12 @@ app.include_router(signals_router, prefix="/api/signals", tags=["signals"])
 from routers.recommendation import router as recommendation_router
 app.include_router(recommendation_router, prefix="/api/rec", tags=["recommendation"])
 
+from routers.workbench import router as workbench_router
+app.include_router(workbench_router, prefix="/api/workbench", tags=["workbench"])
+
 # 数据源 registry (P1)
 from routers.data_sources import router as data_sources_router
 app.include_router(data_sources_router, prefix="/api/data_sources", tags=["data_sources"])
-
-# 数据健康看板 (W0, 2026-04-28)
-from routers.data_health import router as data_health_router
-app.include_router(data_health_router, prefix="/api", tags=["data_health"])
 
 # 策略预设 (P4)
 from routers.strategy_preset import router as strategy_preset_router
@@ -190,7 +189,6 @@ INDEX_ASSET_FILES = [
     ASSETS_DIR / "js" / "signal-adapter.js",
     ASSETS_DIR / "js" / "stock-view.js",
     ASSETS_DIR / "js" / "data-view.js",
-    ASSETS_DIR / "js" / "data-health-view.js",
     ASSETS_DIR / "js" / "strategy-view.js",
     ASSETS_DIR / "js" / "settings-view.js",
     ASSETS_DIR / "js" / "app.js",

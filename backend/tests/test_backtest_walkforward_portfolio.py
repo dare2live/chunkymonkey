@@ -90,6 +90,12 @@ def test_load_fold_inputs_uses_records_without_duckdb_registration(monkeypatch):
                 freq TEXT,
                 adjust TEXT
             );
+            CREATE VIEW market.v_price_kline_qfq AS
+                SELECT code, date, freq, adjust, NULL::REAL AS open, NULL::REAL AS high,
+                       NULL::REAL AS low, close, NULL::REAL AS volume, amount,
+                       'tdxhub' AS source_name, 1::SMALLINT AS source_tier,
+                       FALSE AS is_fallback, NULL::TEXT AS batch_id, NULL::TEXT AS ingested_at
+                FROM market.price_kline_tdxhub;
             """
         )
         conn.execute(

@@ -88,6 +88,193 @@ def test_load_panel_arrays_returns_numpy_columns_and_matrix():
         conn.close()
 
 
+def test_load_panel_arrays_accepts_requested_feature_columns():
+    conn = duck_mem()
+    try:
+        conn.executescript(
+            """
+            CREATE TABLE fact_feature_panel (
+                stock_code TEXT,
+                date TEXT,
+                regime_flag TEXT,
+                forward_ret_20d REAL,
+                ret_1d REAL,
+                custom_signal REAL
+            );
+            INSERT INTO fact_feature_panel VALUES
+                ('000001', '2026-01-01', 'up', 0.03, 0.01, 0.70),
+                ('000002', '2026-01-01', 'down', -0.01, NULL, 0.20);
+            """
+        )
+
+        panel = subject.load_panel_arrays(
+            conn,
+            "2026-01-01",
+            "2026-01-01",
+            with_alpha158=False,
+            requested_feature_cols=["custom_signal"],
+        )
+
+        assert "custom_signal" in panel.features
+        assert panel.features["custom_signal"].tolist() == pytest.approx([0.70, 0.20])
+    finally:
+        conn.close()
+
+
+def test_load_panel_arrays_can_limit_to_requested_feature_columns():
+    conn = duck_mem()
+    try:
+        conn.executescript(
+            """
+            CREATE TABLE fact_feature_panel (
+                stock_code TEXT,
+                date TEXT,
+                regime_flag TEXT,
+                forward_ret_20d REAL,
+                ret_1d REAL,
+                ret_5d REAL,
+                custom_signal REAL
+            );
+            INSERT INTO fact_feature_panel VALUES
+                ('000001', '2026-01-01', 'up', 0.03, 0.01, 0.02, 0.70);
+            """
+        )
+
+        panel = subject.load_panel_arrays(
+            conn,
+            "2026-01-01",
+            "2026-01-01",
+            with_alpha158=False,
+            requested_feature_cols=["custom_signal"],
+            only_requested_feature_cols=True,
+        )
+
+        assert set(panel.features) == {"custom_signal", "regime_up", "regime_flat", "regime_down"}
+    finally:
+        conn.close()
+
+
+def test_load_panel_arrays_handles_candidate_panel_without_regime_flag():
+    conn = duck_mem()
+    try:
+        conn.executescript(
+            """
+            CREATE TABLE fact_feature_panel_candidate (
+                feature_set_id TEXT,
+                stock_code TEXT,
+                date TEXT,
+                forward_ret_20d REAL,
+                custom_signal REAL
+            );
+            INSERT INTO fact_feature_panel_candidate VALUES
+                ('set_a', '000001', '2026-01-01', 0.03, 0.70),
+                ('set_b', '000002', '2026-01-01', -0.01, 0.20);
+            """
+        )
+
+        panel = subject.load_panel_arrays(
+            conn,
+            "2026-01-01",
+            "2026-01-01",
+            with_alpha158=False,
+            feature_table="fact_feature_panel_candidate",
+            feature_set_id="set_a",
+            requested_feature_cols=["custom_signal"],
+            only_requested_feature_cols=True,
+        )
+
+        assert panel.row_count == 1
+        assert panel.stock_codes.tolist() == ["000001"]
+        assert panel.features["custom_signal"].tolist() == pytest.approx([0.70])
+        assert panel.features["regime_up"].tolist() == pytest.approx([0.0])
+        assert panel.features["regime_flat"].tolist() == pytest.approx([0.0])
+        assert panel.features["regime_down"].tolist() == pytest.approx([0.0])
+    finally:
+        conn.close()
+
+
+def test_load_model_selection_run_returns_selected_features():
+    conn = duck_mem()
+    try:
+        conn.execute(
+            """
+            CREATE TABLE mart_model_selection_run (
+                run_id TEXT,
+                feature_set_id TEXT,
+                method TEXT,
+                label_name TEXT,
+                objective_score DOUBLE,
+                selected_features_json TEXT,
+                rejected_features_json TEXT,
+                trials INTEGER,
+                notes TEXT,
+                built_at TEXT
+            )
+            """
+        )
+        conn.execute(
+            """
+            INSERT INTO mart_model_selection_run VALUES (
+                'selection_1', 'production_registry', 'optuna_feature_space_proxy',
+                'forward_ret_20d', 1.23, '["custom_signal", "ret_1d", "custom_signal"]',
+                '[]', 8, '{}', '2026-05-05'
+            )
+            """
+        )
+
+        row = subject.load_model_selection_run(conn, "selection_1")
+
+        assert row["method"] == "optuna_feature_space_proxy"
+        assert row["selected_features"] == ["custom_signal", "ret_1d"]
+        assert row["label_name"] == "forward_ret_20d"
+    finally:
+        conn.close()
+
+
+def test_load_model_stability_search_run_returns_best_params():
+    conn = duck_mem()
+    try:
+        conn.execute(
+            """
+            CREATE TABLE mart_model_stability_search_summary (
+                run_id TEXT,
+                model_selection_run_id TEXT,
+                feature_table TEXT,
+                feature_set_id TEXT,
+                label_name TEXT,
+                selected_features_json TEXT,
+                best_trial_number INTEGER,
+                best_params_json TEXT,
+                objective_score DOUBLE,
+                trials INTEGER,
+                study_name TEXT,
+                study_total_trials INTEGER,
+                config_json TEXT,
+                built_at TEXT
+            )
+            """
+        )
+        conn.execute(
+            """
+            INSERT INTO mart_model_stability_search_summary VALUES (
+                'stable_1', 'selection_1', 'fact_feature_panel', NULL,
+                'forward_ret_20d', '["ret_20d"]', 3,
+                '{"num_leaves": 31, "min_data_in_leaf": 1000}',
+                0.12, 8, 'study_1', 8, '{}', '2026-05-06'
+            )
+            """
+        )
+
+        row = subject.load_model_stability_search_run(conn, "stable_1")
+
+        assert row["model_selection_run_id"] == "selection_1"
+        assert row["selected_features"] == ["ret_20d"]
+        assert row["best_params"]["num_leaves"] == 31
+        assert row["best_trial_number"] == 3
+    finally:
+        conn.close()
+
+
 def test_resolve_feature_group_uses_record_columns():
     rows = [
         {
@@ -109,9 +296,58 @@ def test_alpha158_is_only_required_by_alpha_feature_groups():
     assert subject.feature_group_uses_alpha158("base") is False
     assert subject.feature_group_uses_alpha158("base_dense_v2") is False
     assert subject.feature_group_uses_alpha158("tdx_keep_v1") is False
+    assert subject.feature_group_uses_alpha158("model_selection_run") is False
     assert subject.feature_group_uses_alpha158("base_alpha158") is True
     assert subject.feature_group_uses_alpha158("base_dense_v2_alpha158") is True
     assert subject.feature_group_uses_alpha158("legacy_full") is True
+
+
+def test_resolve_model_selection_feature_group_preserves_selection_order():
+    cols, tag = subject.resolve_feature_group_from_columns(
+        "model_selection_run",
+        {"ret_60d", "ma_ratio_60", "regime_up"},
+        regime_aware=True,
+        selection_features=["ma_ratio_60", "ret_60d"],
+        selection_schema_tag="model_selection_selection_1",
+    )
+
+    assert cols == ["ma_ratio_60", "ret_60d", "regime_up"]
+    assert tag == "model_selection_selection_1_regime"
+
+
+def test_resolve_model_selection_feature_group_rejects_missing_features():
+    with pytest.raises(RuntimeError, match="缺少 selected 特征"):
+        subject.resolve_feature_group_from_columns(
+            "model_selection_run",
+            {"ret_60d"},
+            regime_aware=False,
+            selection_features=["ma_ratio_60", "ret_60d"],
+        )
+
+
+def test_best_params_disable_lightgbm_feature_prefilter_for_optuna():
+    class Study:
+        best_params = {"min_data_in_leaf": 100}
+
+    params = subject._best_params(Study())
+
+    assert params["feature_pre_filter"] is False
+
+
+def test_fixed_params_json_adds_lightgbm_runtime_defaults():
+    params = subject._fixed_params_from_json('{"num_leaves": 31, "min_data_in_leaf": 1000}')
+
+    assert params["num_leaves"] == 31
+    assert params["min_data_in_leaf"] == 1000
+    assert params["objective"] == "regression"
+    assert params["metric"] == "rmse"
+    assert params["feature_pre_filter"] is False
+    assert params["seed"] == 42
+
+
+def test_fixed_params_json_rejects_non_object():
+    with pytest.raises(ValueError, match="JSON object"):
+        subject._fixed_params_from_json("[1, 2, 3]")
 
 
 def test_split_time_series_indices_match_date_order():

@@ -18,7 +18,12 @@ from datetime import datetime
 
 from typing import Optional
 
-from services.market_db import get_market_conn, get_kline, get_kline_range
+from services.market_db import (
+    get_canonical_kline_qfq_relation,
+    get_market_conn,
+    get_kline,
+    get_kline_range,
+)
 from services.utils import normalize_ymd as _normalize_ymd
 
 logger = logging.getLogger("cm-api")
@@ -30,6 +35,7 @@ CALC_REF_PRICE_MODE = "next_trade_open_qfq"
 MIN_COVERAGE_RATIO = 0.80
 
 BUY_EVENT_TYPES = {"new_entry", "increase"}
+KLINE_DAILY_QFQ_RELATION = get_canonical_kline_qfq_relation()
 
 
 # ---------------------------------------------------------------------------
@@ -216,7 +222,7 @@ def _get_exact_daily_field(mkt_conn, code: str, date: str, field: str) -> Option
     """读取日K字段。精确匹配不到时，取该日期起最近的有效交易日（停牌/假期容错）。"""
     col = _quote_price_field(field)
     row = mkt_conn.execute(
-        f"SELECT {col} FROM price_kline "
+        f"SELECT {col} FROM {KLINE_DAILY_QFQ_RELATION} "
         "WHERE code=? AND date=? AND freq='daily' AND adjust='qfq'",
         (code, date),
     ).fetchone()
@@ -224,7 +230,7 @@ def _get_exact_daily_field(mkt_conn, code: str, date: str, field: str) -> Option
         return row[0]
     # 回退：取 date 起 10 天内最近的有效记录
     row = mkt_conn.execute(
-        f"SELECT {col} FROM price_kline "
+        f"SELECT {col} FROM {KLINE_DAILY_QFQ_RELATION} "
         "WHERE code=? AND date>=? AND TRY_CAST(date AS DATE) <= TRY_CAST(? AS DATE) + INTERVAL 10 DAY "
         "AND freq='daily' AND adjust='qfq' "
         "ORDER BY date LIMIT 1",
@@ -375,7 +381,7 @@ class _StockKlineCache:
         # daily: {date_str: {open, high, low, close, volume, amount}}
         rows = mkt_conn.execute(
             "SELECT date, open, high, low, close, volume, amount "
-            "FROM price_kline "
+            f"FROM {KLINE_DAILY_QFQ_RELATION} "
             "WHERE code = ? AND freq = 'daily' AND adjust = 'qfq' "
             "ORDER BY date",
             (code,),
@@ -705,7 +711,7 @@ def calculate_returns(biz_conn, *, full_rescan: bool = False) -> int:
             pass
         stock_codes = set(ev["stock_code"] for ev in events)
         kline_code_rows = mkt_conn.execute(
-            "SELECT DISTINCT code FROM price_kline WHERE freq='daily'"
+            f"SELECT DISTINCT code FROM {KLINE_DAILY_QFQ_RELATION} WHERE freq='daily'"
         ).fetchall()
         has_kline = stock_codes.intersection(r["code"] for r in kline_code_rows)
 

@@ -494,14 +494,15 @@ def extract_turtle_payload(row: Optional[dict]) -> Optional[dict]:
 
 
 def _latest_daily_close(stock_code: str, mkt_conn=None):
-    from services.market_db import get_market_conn
+    from services.market_db import get_canonical_kline_qfq_relation, get_market_conn
 
     own_conn = mkt_conn is None
     if own_conn:
         mkt_conn = get_market_conn()
     try:
+        relation = get_canonical_kline_qfq_relation()
         row = mkt_conn.execute(
-            "SELECT date, close FROM price_kline "
+            f"SELECT date, close FROM {relation} "
             "WHERE code=? AND freq='daily' AND adjust='qfq' "
             "ORDER BY date DESC LIMIT 1",
             (stock_code,),
@@ -513,15 +514,16 @@ def _latest_daily_close(stock_code: str, mkt_conn=None):
 
 
 def _load_stock_price_timeline(stock_code: str, mkt_conn=None, years: int = 3, max_points: int = 260) -> dict:
-    from services.market_db import get_market_conn
+    from services.market_db import get_canonical_kline_qfq_relation, get_market_conn
 
     own_conn = mkt_conn is None
     if own_conn:
         mkt_conn = get_market_conn()
     try:
+        relation = get_canonical_kline_qfq_relation()
         since_date = (datetime.utcnow() - timedelta(days=max(years, 1) * 370)).strftime("%Y%m%d")
         rows = mkt_conn.execute(
-            "SELECT date, close FROM price_kline "
+            f"SELECT date, close FROM {relation} "
             "WHERE code=? AND freq='daily' AND adjust='qfq' AND date>=? "
             "ORDER BY date",
             (stock_code, since_date),

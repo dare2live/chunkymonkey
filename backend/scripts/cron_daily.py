@@ -7,7 +7,8 @@ Phase 拆分:
   4) topk       — lifecycle champion 每日 TopK; 可选 shadow TopK
   5) health     — scripts/data_health_snapshot.py main(); 写 mart_data_health
   6) drift      — scripts/compute_feature_drift.py main(); 写 mart_feature_drift
-  7) audit      — backend/scripts/audit_stale_references.py 走一遍 (CI gate)
+  7) candidate_eval — 可选: 对显式候选模型跑 PIT+Evidence+Gate
+  8) audit      — backend/scripts/audit_stale_references.py 走一遍 (CI gate)
 
 每个 phase 失败后:
   - 默认继续下一 phase (best-effort)
@@ -462,6 +463,35 @@ def phase_topk(
         return {"phase": "topk", "status": "failed", "reason": str(exc)}
 
 
+def phase_candidate_eval(
+    *,
+    model_id: str | None,
+    feature_table: str = "fact_feature_panel",
+    feature_set_id: str = "production_registry",
+    top_k: int = 50,
+    timeout: int = 900,
+) -> dict:
+    """Optional candidate automation: PIT audit -> evidence bundle -> Gate v2."""
+
+    if not model_id:
+        return {"phase": "candidate_eval", "status": "skipped", "reason": "candidate model id not provided"}
+    try:
+        from scripts.evaluate_champion_candidate import evaluate_champion_candidate
+
+        result = evaluate_champion_candidate(
+            model_id=model_id,
+            feature_table=feature_table,
+            feature_set_id=feature_set_id,
+            top_k=top_k,
+            timeout=timeout,
+        )
+        status = "ok" if result.get("status") == "passed" else ("warn" if result.get("status") == "waiting" else "critical")
+        return {"phase": "candidate_eval", "status": status, **result}
+    except Exception as exc:
+        log.exception("[candidate_eval] failed")
+        return {"phase": "candidate_eval", "status": "failed", "reason": str(exc)}
+
+
 def phase_audit() -> dict:
     """Phase 5: stale references audit. CI gate."""
     try:
@@ -486,7 +516,7 @@ def phase_audit() -> dict:
 # main
 # ─────────────────────────────────────────────────────────────────────
 
-ALL_PHASES = ["sync", "lineage", "watermarks", "topk", "health", "drift", "audit"]
+ALL_PHASES = ["sync", "lineage", "watermarks", "topk", "health", "drift", "candidate_eval", "audit"]
 
 
 def _record_cron_manifest(
@@ -619,7 +649,12 @@ def main() -> int:
     parser.add_argument("--top-k", type=int, default=50, help="每日 champion TopK 数量")
     parser.add_argument("--include-topk-risk-summary", action="store_true", help="每日 TopK 同步刷新风险摘要")
     parser.add_argument("--shadow-model-id", default=None, help="显式影子模型 ID; 不传则不写 shadow TopK")
-    parser.add_argument("--only", help="逗号分隔: sync,lineage,watermarks,topk,health,drift,audit")
+    parser.add_argument("--candidate-model-id", default=None, help="可选候选模型 ID; 提供后 candidate_eval phase 会执行 PIT+Evidence+Gate")
+    parser.add_argument("--candidate-feature-table", default="fact_feature_panel")
+    parser.add_argument("--candidate-feature-set-id", default="production_registry")
+    parser.add_argument("--candidate-top-k", type=int, default=50)
+    parser.add_argument("--candidate-timeout", type=int, default=900)
+    parser.add_argument("--only", help="逗号分隔: sync,lineage,watermarks,topk,health,drift,candidate_eval,audit")
     parser.add_argument("--strict", action="store_true", help="任一 phase 失败即退出")
     parser.add_argument("--sync-timeout", type=int, default=3600)
     parser.add_argument("--stale-heartbeat-seconds", type=int, default=300, help="backend update heartbeat 超过该秒数视为 stale")
@@ -699,6 +734,14 @@ def main() -> int:
                 r = phase_health()
             elif phase == "drift":
                 r = phase_drift()
+            elif phase == "candidate_eval":
+                r = phase_candidate_eval(
+                    model_id=args.candidate_model_id,
+                    feature_table=args.candidate_feature_table,
+                    feature_set_id=args.candidate_feature_set_id,
+                    top_k=args.candidate_top_k,
+                    timeout=args.candidate_timeout,
+                )
             elif phase == "audit":
                 r = phase_audit()
             else:
