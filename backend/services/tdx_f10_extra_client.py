@@ -39,6 +39,7 @@ from tdxhub.holders import (  # noqa: E402
     parse_controlling_shareholder,
     parse_fund_holdings_format_b,
     parse_holder_count_history_format_b,
+    parse_shareholder_plans_format_b,
     parse_shareholder_trades_format_b,
 )
 
@@ -124,6 +125,47 @@ CREATE INDEX IF NOT EXISTS idx_trade_b_stock_date
 CREATE INDEX IF NOT EXISTS idx_trade_b_holder
     ON fact_shareholder_trade_tdx_b(holder_name_norm);
 
+CREATE TABLE IF NOT EXISTS fact_shareholder_plan_tdx_f10 (
+    stock_code TEXT NOT NULL,
+    stock_name TEXT,
+    market TEXT,
+    announce_date TEXT,
+    latest_announce_date TEXT,
+    first_announce_date TEXT,
+    source_notice_date TEXT,
+    source_available_date TEXT,
+    source_date_quality TEXT,
+    subject TEXT,
+    direction TEXT,
+    progress TEXT,
+    start_date TEXT,
+    end_date TEXT,
+    target_shares_min_text TEXT,
+    target_shares_min BIGINT,
+    target_shares_text TEXT,
+    target_shares BIGINT,
+    target_ratio_text TEXT,
+    target_ratio DOUBLE,
+    target_amount_min_text TEXT,
+    target_amount_min BIGINT,
+    target_amount_max_text TEXT,
+    target_amount_max BIGINT,
+    trade_method TEXT,
+    reason TEXT,
+    narrative TEXT,
+    page_update_date TEXT,
+    source TEXT NOT NULL,
+    source_tier SMALLINT NOT NULL DEFAULT 1,
+    raw_hash TEXT,
+    fetched_at TEXT,
+    row_seq INTEGER NOT NULL DEFAULT 1,
+    PRIMARY KEY (stock_code, raw_hash, row_seq)
+);
+CREATE INDEX IF NOT EXISTS idx_shareholder_plan_stock_notice
+    ON fact_shareholder_plan_tdx_f10(stock_code, source_available_date DESC);
+CREATE INDEX IF NOT EXISTS idx_shareholder_plan_subject
+    ON fact_shareholder_plan_tdx_f10(subject);
+
 CREATE TABLE IF NOT EXISTS fact_common_major_holder_stock (
     stock_code TEXT NOT NULL,
     stock_name TEXT,
@@ -196,6 +238,7 @@ CREATE TABLE IF NOT EXISTS raw_tdx_f10_extra_parse_status (
     common_major_holder_rows INTEGER DEFAULT 0,
     fund_holding_rows INTEGER DEFAULT 0,
     fund_holding_rejected_rows INTEGER DEFAULT 0,
+    shareholder_plan_rows INTEGER DEFAULT 0,
     status TEXT NOT NULL,
     status_reason TEXT,
     parser_version TEXT,
@@ -205,6 +248,7 @@ CREATE TABLE IF NOT EXISTS raw_tdx_f10_extra_parse_status (
 CREATE INDEX IF NOT EXISTS idx_f10_extra_status_status
     ON raw_tdx_f10_extra_parse_status(status);
 ALTER TABLE raw_tdx_f10_extra_parse_status ADD COLUMN IF NOT EXISTS fund_holding_rejected_rows INTEGER DEFAULT 0;
+ALTER TABLE raw_tdx_f10_extra_parse_status ADD COLUMN IF NOT EXISTS shareholder_plan_rows INTEGER DEFAULT 0;
 ALTER TABLE raw_tdx_f10_extra_parse_status ADD COLUMN IF NOT EXISTS status_reason TEXT;
 ALTER TABLE raw_tdx_f10_extra_parse_status ADD COLUMN IF NOT EXISTS parser_version TEXT;
 
@@ -228,6 +272,28 @@ CREATE TABLE IF NOT EXISTS fact_controlling_shareholder (
     PRIMARY KEY (stock_code, source)
 );
 ALTER TABLE fact_controlling_shareholder ADD COLUMN control_chain_text TEXT;
+
+CREATE TABLE IF NOT EXISTS mart_tdx_f10_capability_matrix (
+    module_id TEXT PRIMARY KEY,
+    module_name TEXT NOT NULL,
+    endpoint TEXT,
+    parser TEXT,
+    raw_table TEXT,
+    fact_table TEXT,
+    raw_text_available BOOLEAN,
+    parsed_table_available BOOLEAN,
+    coverage_stock_count INTEGER,
+    row_count INTEGER,
+    latest_page_update_date TEXT,
+    latest_fetched_at TEXT,
+    parser_version TEXT,
+    pit_risk TEXT,
+    source_date_field TEXT,
+    availability_date_field TEXT,
+    status TEXT NOT NULL,
+    notes TEXT,
+    built_at TEXT
+);
 """
 
 
@@ -241,6 +307,94 @@ FUND_HOLDING_REJECTION_KEYWORDS = (
 )
 
 PARSER_VERSION = "tdx_f10_extra_v2"
+
+
+F10_CAPABILITIES = [
+    {
+        "module_id": "raw_holder_research",
+        "module_name": "股东研究原文",
+        "endpoint": "tdxhub.holders",
+        "parser": "raw_capture",
+        "raw_table": "raw_tdx_f10_holder_research",
+        "fact_table": None,
+        "pit_risk": "critical",
+        "source_date_field": "page_update_date",
+        "availability_date_field": "fetched_at",
+        "notes": "append-only raw F10 text; source notice extraction depends on downstream parser",
+    },
+    {
+        "module_id": "holder_count_history",
+        "module_name": "股东人数历史",
+        "endpoint": "tdxhub.holders",
+        "parser": "parse_holder_count_history_format_b",
+        "raw_table": "raw_tdx_f10_holder_research",
+        "fact_table": "fact_holder_count_period",
+        "pit_risk": "high",
+        "source_date_field": "page_update_date",
+        "availability_date_field": "fetched_at",
+        "notes": "uses F10 page update date until true source announcement date is parsed",
+    },
+    {
+        "module_id": "shareholder_trade_b",
+        "module_name": "股东增减持",
+        "endpoint": "tdxhub.holders",
+        "parser": "parse_shareholder_trades_format_b",
+        "raw_table": "raw_tdx_f10_holder_research",
+        "fact_table": "fact_shareholder_trade_tdx_b",
+        "pit_risk": "high",
+        "source_date_field": "change_date",
+        "availability_date_field": "fetched_at",
+        "notes": "event date is parsed; announcement-date extraction still needs raw-section enrichment",
+    },
+    {
+        "module_id": "shareholder_plan_tdx_f10",
+        "module_name": "股东增减持计划",
+        "endpoint": "tdxhub.holders",
+        "parser": "parse_shareholder_plans_format_b",
+        "raw_table": "raw_tdx_f10_holder_research",
+        "fact_table": "fact_shareholder_plan_tdx_f10",
+        "pit_risk": "high",
+        "source_date_field": "source_notice_date",
+        "availability_date_field": "source_available_date",
+        "notes": "Format B section 2; uses parsed latest/first announcement dates where present",
+    },
+    {
+        "module_id": "controlling_shareholder",
+        "module_name": "控股股东与实控人",
+        "endpoint": "tdxhub.holders",
+        "parser": "parse_controlling_shareholder",
+        "raw_table": "raw_tdx_f10_holder_research",
+        "fact_table": "fact_controlling_shareholder",
+        "pit_risk": "high",
+        "source_date_field": "page_update_date",
+        "availability_date_field": "fetched_at",
+        "notes": "profile-like F10 content; source date is page update date today",
+    },
+    {
+        "module_id": "common_major_holder_stock",
+        "module_name": "同大股东持股",
+        "endpoint": "tdxhub.holders",
+        "parser": "parse_common_major_holder_stocks_format_b",
+        "raw_table": "raw_tdx_f10_holder_research",
+        "fact_table": "fact_common_major_holder_stock",
+        "pit_risk": "high",
+        "source_date_field": "report_date",
+        "availability_date_field": "fetched_at",
+        "notes": "relationship feature candidate; requires PIT audit before model use",
+    },
+    {
+        "module_id": "fund_holding_tdx_f10",
+        "module_name": "基金持股明细",
+        "endpoint": "tdxhub.holders",
+        "parser": "parse_fund_holdings_format_b",
+        "raw_table": "raw_tdx_f10_holder_research",
+        "fact_table": "fact_fund_holding_tdx_f10",
+        "pit_risk": "high",
+        "source_date_field": "report_date",
+        "availability_date_field": "fetched_at",
+        "notes": "section 7 fund rows; disclaimer rows are rejected",
+    },
+]
 
 
 def _execute_script(conn: Any, sql: str) -> None:
@@ -262,6 +416,102 @@ def _execute_script(conn: Any, sql: str) -> None:
 
 def ensure_tables(conn: Any) -> None:
     _execute_script(conn, DDL)
+
+
+def _table_columns(conn: Any, table: str) -> set[str]:
+    try:
+        return {str(row[0]) for row in conn.execute(f"DESCRIBE {table}").fetchall()}
+    except Exception:
+        return set()
+
+
+def _table_metrics(conn: Any, table: str | None) -> dict[str, Any]:
+    if not table or not _table_exists(conn, table):
+        return {
+            "exists": False,
+            "row_count": 0,
+            "coverage_stock_count": 0,
+            "latest_page_update_date": None,
+            "latest_fetched_at": None,
+        }
+    cols = _table_columns(conn, table)
+    stock_expr = "COUNT(DISTINCT stock_code)" if "stock_code" in cols else "0"
+    page_expr = "MAX(page_update_date)" if "page_update_date" in cols else "NULL"
+    fetched_expr = "MAX(fetched_at)" if "fetched_at" in cols else "NULL"
+    row = conn.execute(
+        f"""
+        SELECT COUNT(*) AS row_count,
+               {stock_expr} AS coverage_stock_count,
+               {page_expr} AS latest_page_update_date,
+               {fetched_expr} AS latest_fetched_at
+          FROM {table}
+        """
+    ).fetchone()
+    return {
+        "exists": True,
+        "row_count": int(row["row_count"] or 0),
+        "coverage_stock_count": int(row["coverage_stock_count"] or 0),
+        "latest_page_update_date": str(row["latest_page_update_date"]) if row["latest_page_update_date"] else None,
+        "latest_fetched_at": str(row["latest_fetched_at"]) if row["latest_fetched_at"] else None,
+    }
+
+
+def build_tdx_f10_capability_matrix(conn: Any) -> dict[str, Any]:
+    """Persist a capability matrix for currently supported TDX F10 modules."""
+
+    ensure_tables(conn)
+    built_at = datetime.now(timezone.utc).isoformat(timespec="seconds")
+    rows = []
+    for cap in F10_CAPABILITIES:
+        raw_metrics = _table_metrics(conn, cap.get("raw_table"))
+        fact_metrics = _table_metrics(conn, cap.get("fact_table"))
+        parsed = bool(fact_metrics["exists"])
+        effective = fact_metrics if parsed else raw_metrics
+        status = "ready" if parsed and fact_metrics["row_count"] > 0 else (
+            "raw_only" if raw_metrics["row_count"] > 0 else "missing_raw"
+        )
+        rows.append(
+            (
+                cap["module_id"],
+                cap["module_name"],
+                cap.get("endpoint"),
+                cap.get("parser"),
+                cap.get("raw_table"),
+                cap.get("fact_table"),
+                bool(raw_metrics["exists"] and raw_metrics["row_count"] > 0),
+                parsed,
+                int(effective["coverage_stock_count"] or 0),
+                int(effective["row_count"] or 0),
+                effective["latest_page_update_date"],
+                effective["latest_fetched_at"],
+                PARSER_VERSION,
+                cap.get("pit_risk"),
+                cap.get("source_date_field"),
+                cap.get("availability_date_field"),
+                status,
+                cap.get("notes"),
+                built_at,
+            )
+        )
+    conn.executemany(
+        """
+        INSERT OR REPLACE INTO mart_tdx_f10_capability_matrix
+        (module_id, module_name, endpoint, parser, raw_table, fact_table,
+         raw_text_available, parsed_table_available, coverage_stock_count,
+         row_count, latest_page_update_date, latest_fetched_at, parser_version,
+         pit_risk, source_date_field, availability_date_field, status, notes,
+         built_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        rows,
+    )
+    conn.commit()
+    return {
+        "capability_rows": len(rows),
+        "ready_rows": sum(1 for row in rows if row[16] == "ready"),
+        "raw_only_rows": sum(1 for row in rows if row[16] == "raw_only"),
+        "built_at": built_at,
+    }
 
 
 def _rows_as_dicts(cursor: Any) -> list[dict[str, Any]]:
@@ -410,6 +660,158 @@ def _select_raw_rows(
     return _rows_as_dicts(conn.execute(sql, params))
 
 
+def _select_plan_raw_rows(
+    conn: Any,
+    *,
+    stock_codes: list[str] | None,
+    limit: int,
+    only_missing: bool,
+) -> list[dict[str, Any]]:
+    where = [
+        "raw_text LIKE '%【2.股东增减持计划】%'",
+        "raw_text LIKE '%最新公告日期%'",
+    ]
+    params: list[Any] = []
+    if stock_codes:
+        placeholders = ",".join(["?"] * len(stock_codes))
+        where.append(f"stock_code IN ({placeholders})")
+        params.extend(stock_codes)
+    if only_missing and _table_exists(conn, "fact_shareholder_plan_tdx_f10"):
+        where.append(
+            """
+            NOT EXISTS (
+                SELECT 1
+                  FROM fact_shareholder_plan_tdx_f10 p
+                 WHERE p.stock_code = r.stock_code
+                   AND p.raw_hash = r.raw_hash
+            )
+            """
+        )
+    sql = f"""
+        SELECT stock_code, stock_name, market, raw_text, raw_hash, fetched_at, f10_format
+        FROM raw_tdx_f10_holder_research r
+        WHERE {' AND '.join(where)}
+        ORDER BY fetched_at DESC, stock_code
+    """
+    if limit:
+        sql += " LIMIT ?"
+        params.append(int(limit))
+    return _rows_as_dicts(conn.execute(sql, params))
+
+
+def _update_parse_status_plan_rows(
+    conn: Any,
+    fallback: dict[str, Any],
+    *,
+    shareholder_plan_rows: int,
+) -> None:
+    if not fallback.get("stock_code") or not fallback.get("raw_hash"):
+        return
+    exists = conn.execute(
+        """
+        SELECT 1
+          FROM raw_tdx_f10_extra_parse_status
+         WHERE stock_code = ? AND raw_hash = ?
+         LIMIT 1
+        """,
+        (fallback.get("stock_code"), fallback.get("raw_hash")),
+    ).fetchone()
+    if exists:
+        conn.execute(
+            """
+            UPDATE raw_tdx_f10_extra_parse_status
+               SET shareholder_plan_rows = ?,
+                   parsed_at = ?
+             WHERE stock_code = ? AND raw_hash = ?
+            """,
+            (
+                int(shareholder_plan_rows or 0),
+                datetime.now(timezone.utc).isoformat(timespec="seconds"),
+                fallback.get("stock_code"),
+                fallback.get("raw_hash"),
+            ),
+        )
+        return
+    _upsert_parse_status(
+        conn,
+        fallback,
+        status="completed" if shareholder_plan_rows else "skipped_no_extra_section",
+        status_reason=(
+            "shareholder_plan_backfill"
+            if shareholder_plan_rows
+            else "no shareholder plan rows"
+        ),
+        shareholder_plan_rows=shareholder_plan_rows,
+    )
+
+
+def backfill_tdx_f10_shareholder_plans(
+    conn: Any,
+    *,
+    stock_codes: list[str] | None = None,
+    limit: int = 0,
+    only_missing: bool = True,
+) -> dict[str, Any]:
+    """Backfill only Format B shareholder-plan rows with parsed announce dates."""
+
+    ensure_tables(conn)
+    raw_rows = _select_plan_raw_rows(
+        conn,
+        stock_codes=stock_codes,
+        limit=limit,
+        only_missing=only_missing,
+    )
+    stats: dict[str, Any] = {
+        "raw_rows": len(raw_rows),
+        "shareholder_plan_rows": 0,
+        "skipped_non_format_b": 0,
+        "skipped_no_plan_rows": 0,
+        "errors": [],
+    }
+    for row in raw_rows:
+        fallback = {
+            "stock_code": row.get("stock_code"),
+            "stock_name": row.get("stock_name"),
+            "market": row.get("market"),
+            "raw_hash": row.get("raw_hash"),
+            "fetched_at": str(row.get("fetched_at")) if row.get("fetched_at") is not None else None,
+        }
+        try:
+            text = row.get("raw_text") or ""
+            if detect_f10_format(text) != "b":
+                stats["skipped_non_format_b"] += 1
+                _update_parse_status_plan_rows(conn, fallback, shareholder_plan_rows=0)
+                continue
+            plan_records = _records_from_payload(
+                parse_shareholder_plans_format_b(
+                    text,
+                    symbol=fallback["stock_code"] or "",
+                    stock_name=fallback["stock_name"] or "",
+                ),
+                fallback,
+            )
+            row_plan = _insert_shareholder_plan_rows(conn, plan_records)
+            _update_parse_status_plan_rows(conn, fallback, shareholder_plan_rows=row_plan)
+            stats["shareholder_plan_rows"] += row_plan
+            if row_plan == 0:
+                stats["skipped_no_plan_rows"] += 1
+        except Exception as exc:
+            ident = f"{row.get('stock_code')}/{row.get('raw_hash')}"
+            err = f"{ident}: {type(exc).__name__}: {exc}"
+            logger.warning("[tdx-f10-plan-backfill] parse failed for %s: %s", ident, exc)
+            stats["errors"].append(err)
+    try:
+        conn.commit()
+    except Exception:
+        pass
+    stats["status"] = "partial" if stats["errors"] else "completed"
+    try:
+        stats["capability_matrix"] = build_tdx_f10_capability_matrix(conn)
+    except Exception as exc:
+        stats["capability_matrix_error"] = f"{type(exc).__name__}: {exc}"
+    return stats
+
+
 def _insert_holder_count_rows(conn: Any, records: list[dict[str, Any]]) -> int:
     if not records:
         return 0
@@ -472,6 +874,49 @@ def _insert_trade_b_rows(
         rows.append(tuple(rec.get(c) for c in cols))
     conn.executemany(
         f"INSERT OR REPLACE INTO fact_shareholder_trade_tdx_b ({','.join(cols)}) "
+        f"VALUES ({','.join(['?'] * len(cols))})",
+        rows,
+    )
+    return len(records)
+
+
+def _derive_plan_source_dates(rec: dict[str, Any]) -> tuple[str | None, str | None, str]:
+    latest = rec.get("latest_announce_date") or rec.get("announce_date")
+    first = rec.get("first_announce_date")
+    page_update = rec.get("page_update_date")
+    if latest:
+        return latest, latest, "parsed_latest_announce_date"
+    if first:
+        return first, first, "parsed_first_announce_date"
+    if page_update:
+        return page_update, page_update, "page_update_date_fallback"
+    return None, None, "missing_source_date"
+
+
+def _insert_shareholder_plan_rows(conn: Any, records: list[dict[str, Any]]) -> int:
+    if not records:
+        return 0
+    cols = [
+        "stock_code", "stock_name", "market", "announce_date",
+        "latest_announce_date", "first_announce_date", "source_notice_date",
+        "source_available_date", "source_date_quality", "subject", "direction",
+        "progress", "start_date", "end_date", "target_shares_min_text",
+        "target_shares_min", "target_shares_text", "target_shares",
+        "target_ratio_text", "target_ratio", "target_amount_min_text",
+        "target_amount_min", "target_amount_max_text", "target_amount_max",
+        "trade_method", "reason", "narrative", "page_update_date", "source",
+        "source_tier", "raw_hash", "fetched_at", "row_seq",
+    ]
+    rows = []
+    for rec in records:
+        notice, available, quality = _derive_plan_source_dates(rec)
+        rec["source_notice_date"] = notice
+        rec["source_available_date"] = available
+        rec["source_date_quality"] = quality
+        rec["source_tier"] = 1
+        rows.append(tuple(rec.get(c) for c in cols))
+    conn.executemany(
+        f"INSERT OR REPLACE INTO fact_shareholder_plan_tdx_f10 ({','.join(cols)}) "
         f"VALUES ({','.join(['?'] * len(cols))})",
         rows,
     )
@@ -585,6 +1030,7 @@ def _upsert_parse_status(
     common_major_holder_rows: int = 0,
     fund_holding_rows: int = 0,
     fund_holding_rejected_rows: int = 0,
+    shareholder_plan_rows: int = 0,
     status_reason: str | None = None,
     error: str | None = None,
 ) -> None:
@@ -600,6 +1046,7 @@ def _upsert_parse_status(
         "common_major_holder_rows": common_major_holder_rows,
         "fund_holding_rows": fund_holding_rows,
         "fund_holding_rejected_rows": fund_holding_rejected_rows,
+        "shareholder_plan_rows": shareholder_plan_rows,
         "status": status,
         "status_reason": status_reason,
         "parser_version": PARSER_VERSION,
@@ -635,6 +1082,7 @@ def sync_tdx_f10_extra_facts(
         "raw_rows": len(raw_rows),
         "holder_count_rows": 0,
         "trade_b_rows": 0,
+        "shareholder_plan_rows": 0,
         "control_rows": 0,
         "common_major_holder_rows": 0,
         "fund_holding_rows": 0,
@@ -678,6 +1126,14 @@ def sync_tdx_f10_extra_facts(
                 ),
                 fallback,
             )
+            plan_records = _records_from_payload(
+                parse_shareholder_plans_format_b(
+                    text,
+                    symbol=fallback["stock_code"] or "",
+                    stock_name=fallback["stock_name"] or "",
+                ),
+                fallback,
+            )
             common_records = _records_from_payload(
                 parse_common_major_holder_stocks_format_b(
                     text,
@@ -701,6 +1157,7 @@ def sync_tdx_f10_extra_facts(
             )
             row_holder_count = _insert_holder_count_rows(conn, holder_records)
             row_trade_b = _insert_trade_b_rows(conn, trade_records, alias_map)
+            row_plan = _insert_shareholder_plan_rows(conn, plan_records)
             row_control = _upsert_control(conn, ctrl, fallback)
             row_common = _insert_common_major_holder_rows(conn, common_records)
             row_fund, row_fund_rejected = _insert_fund_holding_rows(conn, fund_records)
@@ -710,6 +1167,7 @@ def sync_tdx_f10_extra_facts(
             if (
                 row_holder_count == 0
                 and row_trade_b == 0
+                and row_plan == 0
                 and row_control == 0
                 and row_common == 0
                 and row_fund == 0
@@ -727,6 +1185,7 @@ def sync_tdx_f10_extra_facts(
                 status=row_status,
                 holder_count_rows=row_holder_count,
                 trade_b_rows=row_trade_b,
+                shareholder_plan_rows=row_plan,
                 control_rows=row_control,
                 common_major_holder_rows=row_common,
                 fund_holding_rows=row_fund,
@@ -735,6 +1194,7 @@ def sync_tdx_f10_extra_facts(
             )
             stats["holder_count_rows"] += row_holder_count
             stats["trade_b_rows"] += row_trade_b
+            stats["shareholder_plan_rows"] += row_plan
             stats["control_rows"] += row_control
             stats["common_major_holder_rows"] += row_common
             stats["fund_holding_rows"] += row_fund
@@ -767,7 +1227,16 @@ def sync_tdx_f10_extra_facts(
         stats["status"] = "completed_with_rejections"
     else:
         stats["status"] = "completed"
+    try:
+        stats["capability_matrix"] = build_tdx_f10_capability_matrix(conn)
+    except Exception as exc:
+        stats["capability_matrix_error"] = f"{type(exc).__name__}: {exc}"
     return stats
 
 
-__all__ = ["ensure_tables", "sync_tdx_f10_extra_facts"]
+__all__ = [
+    "ensure_tables",
+    "sync_tdx_f10_extra_facts",
+    "build_tdx_f10_capability_matrix",
+    "backfill_tdx_f10_shareholder_plans",
+]

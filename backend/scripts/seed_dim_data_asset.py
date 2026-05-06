@@ -116,6 +116,23 @@ EXTRA_FRESHNESS_BY_TABLE = {
     "mart_model_walkforward_portfolio_summary": ("on-demand", 24 * 30),
     "mart_prediction_outcome": ("on-demand", 24 * 30),
     "mart_step_fingerprint": ("on-demand", 24 * 30),
+    # Optional governance/research outputs. Empty means the corresponding
+    # workflow has not been activated for the current policy, not source loss.
+    "mart_candidate_feature_set_contract": ("on-demand", 24 * 30),
+    "mart_data_processing_tool_issue": ("on-demand", 24 * 30),
+    "mart_data_processing_tool_run": ("on-demand", 24 * 30),
+    "mart_feature_candidate_coverage": ("on-demand", 24 * 30),
+    "mart_feature_drift_mitigation_panel_build": ("on-demand", 24 * 30),
+    "mart_hybrid_feature_panel_build": ("on-demand", 24 * 30),
+    "mart_tdx_gpcw_auto_challenger_report": ("on-demand", 24 * 30),
+    "mart_tdx_gpcw_auto_feature_cluster": ("on-demand", 24 * 30),
+    "mart_tdx_gpcw_auto_feature_score": ("on-demand", 24 * 30),
+    "mart_tdx_gpcw_auto_optuna_run": ("on-demand", 24 * 30),
+    "mart_tdx_gpcw_auto_retention_decision": ("on-demand", 24 * 30),
+    "mart_temporal_research_panel": ("on-demand", 24 * 30),
+    "mart_temporal_research_panel_quality": ("on-demand", 24 * 30),
+    # gpcw files are quarter-end source manifests.
+    "mart_tdx_gpcw_file_manifest": ("quarterly", 24 * 95),
 }
 
 

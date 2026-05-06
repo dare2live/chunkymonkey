@@ -10,9 +10,10 @@ import argparse
 import hashlib
 import json
 import logging
+import os
 import sys
 import time
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
@@ -57,6 +58,13 @@ CREATE TABLE IF NOT EXISTS fact_feature_panel (
     jgdy_count_60d INTEGER,
     dzjy_count_60d INTEGER,
     days_since_exec_buy INTEGER, days_since_lhb INTEGER,
+    shareholder_plan_increase_count_180d INTEGER,
+    shareholder_plan_decrease_count_180d INTEGER,
+    shareholder_plan_completed_count_180d INTEGER,
+    shareholder_plan_increase_amount_max_180d REAL,
+    shareholder_plan_decrease_amount_max_180d REAL,
+    days_since_shareholder_plan_increase INTEGER,
+    days_since_shareholder_plan_decrease INTEGER,
     -- Pillar C 基本面
     shareholder_count_qoq REAL, inst_count_qoq REAL,
     fund_count_qoq REAL, qfii_count_qoq REAL,
@@ -67,6 +75,9 @@ CREATE TABLE IF NOT EXISTS fact_feature_panel (
     -- Labels
     forward_ret_5d REAL, forward_ret_10d REAL, forward_ret_20d REAL, forward_ret_60d REAL,
     forward_ret_90d REAL,
+    follow_net_return_5d REAL, follow_net_return_10d REAL,
+    follow_net_return_20d REAL, follow_net_return_60d REAL,
+    follow_net_return_90d REAL,
     built_at TEXT,
     PRIMARY KEY (stock_code, date)
 );
@@ -79,6 +90,18 @@ ALTER TABLE fact_feature_panel ADD COLUMN IF NOT EXISTS forward_ret_5d REAL;
 ALTER TABLE fact_feature_panel ADD COLUMN IF NOT EXISTS forward_ret_10d REAL;
 ALTER TABLE fact_feature_panel ADD COLUMN IF NOT EXISTS forward_ret_60d REAL;
 ALTER TABLE fact_feature_panel ADD COLUMN IF NOT EXISTS forward_ret_90d REAL;
+ALTER TABLE fact_feature_panel ADD COLUMN IF NOT EXISTS follow_net_return_5d REAL;
+ALTER TABLE fact_feature_panel ADD COLUMN IF NOT EXISTS follow_net_return_10d REAL;
+ALTER TABLE fact_feature_panel ADD COLUMN IF NOT EXISTS follow_net_return_20d REAL;
+ALTER TABLE fact_feature_panel ADD COLUMN IF NOT EXISTS follow_net_return_60d REAL;
+ALTER TABLE fact_feature_panel ADD COLUMN IF NOT EXISTS follow_net_return_90d REAL;
+ALTER TABLE fact_feature_panel ADD COLUMN IF NOT EXISTS shareholder_plan_increase_count_180d INTEGER;
+ALTER TABLE fact_feature_panel ADD COLUMN IF NOT EXISTS shareholder_plan_decrease_count_180d INTEGER;
+ALTER TABLE fact_feature_panel ADD COLUMN IF NOT EXISTS shareholder_plan_completed_count_180d INTEGER;
+ALTER TABLE fact_feature_panel ADD COLUMN IF NOT EXISTS shareholder_plan_increase_amount_max_180d REAL;
+ALTER TABLE fact_feature_panel ADD COLUMN IF NOT EXISTS shareholder_plan_decrease_amount_max_180d REAL;
+ALTER TABLE fact_feature_panel ADD COLUMN IF NOT EXISTS days_since_shareholder_plan_increase INTEGER;
+ALTER TABLE fact_feature_panel ADD COLUMN IF NOT EXISTS days_since_shareholder_plan_decrease INTEGER;
 CREATE INDEX IF NOT EXISTS idx_fp_date_label ON fact_feature_panel(date, forward_ret_20d);
 CREATE INDEX IF NOT EXISTS idx_fp_label ON fact_feature_panel(forward_ret_20d);
 CREATE INDEX IF NOT EXISTS idx_fp_label_5d ON fact_feature_panel(forward_ret_5d);
@@ -118,6 +141,11 @@ ALTER TABLE mart_feature_panel_validation ADD COLUMN IF NOT EXISTS source_waterm
 """
 
 KLINE_DAILY_QFQ_SQL = canonical_kline_daily_qfq_sql(include_source_lineage=True)
+HS300_BENCHMARK_CODES = tuple(
+    code.strip()
+    for code in os.environ.get("CM_HS300_BENCHMARK_CODES", "000300,510300").split(",")
+    if code.strip()
+)
 
 REAL_ABS_LIMIT = 1e30
 FEATURE_ROLLING_LOOKBACK_DAYS = 260
@@ -187,6 +215,15 @@ FEATURE_PANEL_SOURCE_SPECS = [
         "optional": True,
     },
     {
+        "domain": "shareholder_plan_tdx_f10",
+        "table": "smartmoney.fact_shareholder_plan_tdx_f10",
+        "date_col": "source_available_date",
+        "key_col": "stock_code",
+        "change_col": "fetched_at",
+        "row_level_dirty": True,
+        "dirty_lookback_days": 180,
+    },
+    {
         "domain": "fundamental_quarterly",
         "table": "smartmoney.fact_fundamental_quarterly",
         "date_col": "report_date",
@@ -225,12 +262,21 @@ KEEP_COLS = [
     "lhb_inst_buy_count_30d", "lhb_inst_buy_count_60d",
     "jgdy_count_60d", "dzjy_count_60d",
     "days_since_exec_buy", "days_since_lhb",
+    "shareholder_plan_increase_count_180d",
+    "shareholder_plan_decrease_count_180d",
+    "shareholder_plan_completed_count_180d",
+    "shareholder_plan_increase_amount_max_180d",
+    "shareholder_plan_decrease_amount_max_180d",
+    "days_since_shareholder_plan_increase",
+    "days_since_shareholder_plan_decrease",
     "shareholder_count_qoq", "inst_count_qoq",
     "fund_count_qoq", "qfii_count_qoq",
     "yjyg_lower_pct", "yjyg_upper_pct", "roe", "eps_basic",
     "hs300_ret_20d", "hs300_ret_60d", "regime_flag",
     "forward_ret_5d", "forward_ret_10d", "forward_ret_20d", "forward_ret_60d",
     "forward_ret_90d",
+    "follow_net_return_5d", "follow_net_return_10d", "follow_net_return_20d",
+    "follow_net_return_60d", "follow_net_return_90d",
     "built_at",
 ]
 
@@ -241,6 +287,11 @@ INTEGER_COLS = {
     "lhb_inst_buy_count_30d", "lhb_inst_buy_count_60d",
     "jgdy_count_60d", "dzjy_count_60d",
     "days_since_exec_buy", "days_since_lhb",
+    "shareholder_plan_increase_count_180d",
+    "shareholder_plan_decrease_count_180d",
+    "shareholder_plan_completed_count_180d",
+    "days_since_shareholder_plan_increase",
+    "days_since_shareholder_plan_decrease",
 }
 
 TEXT_COLS = {"stock_code", "date", "regime_flag", "built_at", "kline_source_name"}
@@ -253,6 +304,11 @@ PIT_LABEL_COLS = {
     "forward_ret_20d",
     "forward_ret_60d",
     "forward_ret_90d",
+    "follow_net_return_5d",
+    "follow_net_return_10d",
+    "follow_net_return_20d",
+    "follow_net_return_60d",
+    "follow_net_return_90d",
 }
 MODEL_INPUT_EXCLUDED_COLS = {"stock_code", "date", "built_at", *PIT_LABEL_COLS, *KLINE_LINEAGE_COLS}
 
@@ -266,6 +322,15 @@ def execute_script(duck, sql: str) -> None:
 
 def _quote_ident(name: str) -> str:
     return '"' + name.replace('"', '""') + '"'
+
+
+def _finite_or_null_sql(column: str) -> str:
+    q = _quote_ident(column)
+    return (
+        f"CASE WHEN {q} IS NULL OR NOT ISFINITE(CAST({q} AS DOUBLE)) "
+        f"OR ABS(CAST({q} AS DOUBLE)) > {REAL_ABS_LIMIT} "
+        f"THEN NULL ELSE CAST({q} AS DOUBLE) END"
+    )
 
 
 def _date_expr(expr: str) -> str:
@@ -322,6 +387,62 @@ def _relation_columns(duck, relation: str) -> set[str]:
             ).fetchall()
         }
     return set(_table_columns(duck, relation))
+
+
+def _relation_exists(duck, relation: str) -> bool:
+    schema, table = relation.split(".", 1) if "." in relation else (None, relation)
+    if schema:
+        row = duck.execute(
+            """
+            SELECT 1
+              FROM information_schema.tables
+             WHERE (table_schema = ? OR table_catalog = ?)
+               AND table_name = ?
+             LIMIT 1
+            """,
+            [schema, schema, table],
+        ).fetchone()
+        return row is not None
+    try:
+        duck.execute(f"SELECT 1 FROM {_quote_ident(relation)} LIMIT 0")
+        return True
+    except Exception:
+        return False
+
+
+def _active_a_stock_filter_sql(duck, *, alias: str = "kline") -> str:
+    """Restrict stock research panels to listed A shares when the master exists."""
+
+    relation = "smartmoney.dim_active_a_stock"
+    if not _relation_exists(duck, relation):
+        return ""
+    try:
+        row = duck.execute(
+            f"""
+            SELECT COUNT(*) AS n
+              FROM {relation}
+             WHERE stock_code IS NOT NULL
+               AND TRIM(CAST(stock_code AS VARCHAR)) != ''
+            """
+        ).fetchone()
+        if int(row[0] or 0) <= 0:
+            return ""
+    except Exception:
+        return ""
+    return (
+        f"AND {alias}.code IN ("
+        "SELECT stock_code FROM smartmoney.dim_active_a_stock "
+        "WHERE stock_code IS NOT NULL AND TRIM(CAST(stock_code AS VARCHAR)) != ''"
+        ")"
+    )
+
+
+def _hs300_benchmark_codes_sql() -> str:
+    codes = [code for code in HS300_BENCHMARK_CODES if code.isdigit() and len(code) == 6]
+    if not codes:
+        codes = ["000300", "510300"]
+    values = ", ".join(f"('{code}', {idx})" for idx, code in enumerate(codes, start=1))
+    return f"(VALUES {values}) AS benchmark_codes(code, priority)"
 
 
 def _row_count(duck, table: str) -> int:
@@ -908,15 +1029,100 @@ def _rolling_event_count(duck, evt_sql: str, count_col: str, windows: list[int])
         duck,
         "current_panel",
         f"""
-        WITH ev_raw AS ({evt_sql}),
+        WITH panel_dates AS (
+            SELECT stock_code, date, {_date_expr('date')} AS date_dt
+            FROM current_panel
+        ),
+        panel_bounds AS (
+            SELECT MIN(date_dt) AS min_panel_date FROM panel_dates
+        ),
+        ev_raw AS (
+            SELECT stock_code,
+                   {_date_expr('event_date')} AS event_dt,
+                   ROW_NUMBER() OVER () AS event_id
+            FROM ({evt_sql})
+            WHERE stock_code IS NOT NULL
+              AND event_date IS NOT NULL
+        ),
+        ev_aligned AS (
+            SELECT e.stock_code, MIN(p.date) AS date
+            FROM ev_raw e
+            JOIN panel_dates p
+              ON p.stock_code = e.stock_code
+             AND p.date_dt >= e.event_dt
+            CROSS JOIN panel_bounds b
+            WHERE e.event_dt >= b.min_panel_date
+            GROUP BY e.stock_code, e.event_id
+        ),
         ev_daily AS (
-            SELECT stock_code, {_date_text('event_date')} AS date, COUNT(*)::INTEGER AS n
-            FROM ev_raw
-            WHERE stock_code IS NOT NULL AND event_date IS NOT NULL
-            GROUP BY stock_code, {_date_text('event_date')}
+            SELECT stock_code, date, COUNT(*)::INTEGER AS n
+            FROM ev_aligned
+            GROUP BY stock_code, date
         ),
         panel_ev AS (
             SELECT p.stock_code, p.date, COALESCE(e.n, 0) AS n
+            FROM current_panel p
+            LEFT JOIN ev_daily e ON e.stock_code = p.stock_code AND e.date = p.date
+        ),
+        rolled AS (
+            SELECT stock_code, date, {rolled_cols}
+            FROM panel_ev
+        )
+        SELECT p.*, {select_cols}
+        FROM current_panel p
+        LEFT JOIN rolled r ON r.stock_code = p.stock_code AND r.date = p.date
+        """,
+    )
+
+
+def _rolling_event_sum(duck, evt_sql: str, sum_col: str, windows: list[int]) -> None:
+    select_cols = ", ".join(
+        f"COALESCE(r.{_quote_ident(sum_col + '_' + str(w) + 'd')}, 0)::DOUBLE "
+        f"AS {_quote_ident(sum_col + '_' + str(w) + 'd')}"
+        for w in windows
+    )
+    rolled_cols = ", ".join(
+        f"SUM(v) OVER (PARTITION BY stock_code ORDER BY date ROWS {w - 1} PRECEDING) "
+        f"AS {_quote_ident(sum_col + '_' + str(w) + 'd')}"
+        for w in windows
+    )
+    _replace_temp_table(
+        duck,
+        "current_panel",
+        f"""
+        WITH panel_dates AS (
+            SELECT stock_code, date, {_date_expr('date')} AS date_dt
+            FROM current_panel
+        ),
+        panel_bounds AS (
+            SELECT MIN(date_dt) AS min_panel_date FROM panel_dates
+        ),
+        ev_raw AS (
+            SELECT stock_code,
+                   {_date_expr('event_date')} AS event_dt,
+                   COALESCE(TRY_CAST(event_value AS DOUBLE), 0.0) AS event_value,
+                   ROW_NUMBER() OVER () AS event_id
+            FROM ({evt_sql})
+            WHERE stock_code IS NOT NULL
+              AND event_date IS NOT NULL
+        ),
+        ev_aligned AS (
+            SELECT e.stock_code, MIN(p.date) AS date, ANY_VALUE(e.event_value) AS event_value
+            FROM ev_raw e
+            JOIN panel_dates p
+              ON p.stock_code = e.stock_code
+             AND p.date_dt >= e.event_dt
+            CROSS JOIN panel_bounds b
+            WHERE e.event_dt >= b.min_panel_date
+            GROUP BY e.stock_code, e.event_id
+        ),
+        ev_daily AS (
+            SELECT stock_code, date, SUM(event_value)::DOUBLE AS v
+            FROM ev_aligned
+            GROUP BY stock_code, date
+        ),
+        panel_ev AS (
+            SELECT p.stock_code, p.date, COALESCE(e.v, 0.0) AS v
             FROM current_panel p
             LEFT JOIN ev_daily e ON e.stock_code = p.stock_code AND e.date = p.date
         ),
@@ -958,7 +1164,7 @@ def _days_since_event(duck, ev_sql: str, suffix: str) -> None:
 def _clean_select_expr(col: str, params: list[str]) -> str:
     q = _quote_ident(col)
     if col == "built_at":
-        params.append(datetime.utcnow().isoformat())
+        params.append(datetime.now(UTC).replace(tzinfo=None).isoformat())
         return "? AS built_at"
     if col in REAL_COLS:
         return (
@@ -1198,6 +1404,9 @@ def _insert_fact_panel(
     if reset:
         execute_script(duck, PANEL_DDL)
         where_sql = ""
+        if write_start_date:
+            where_sql = "WHERE date >= ?"
+            params.append(write_start_date)
     else:
         _ensure_fact_panel_schema(duck)
         where_sql = ""
@@ -1229,6 +1438,23 @@ def _build_panel_with_connection(
     t0 = time.time()
     blocks = set(feature_block_plan(update_columns))
     logger.info("feature block plan: %s", ",".join(feature_block_plan(update_columns)))
+    panel_start_date = write_start_date or start_date
+    read_start_date = start_date
+    write_filter_date = write_start_date
+    if reset and write_start_date is None:
+        read_start_date = _shift_trading_date(duck, start_date, -FEATURE_ROLLING_LOOKBACK_DAYS)
+        write_filter_date = start_date
+    logger.info(
+        "feature panel date window: read_start=%s write_start=%s reset=%s",
+        read_start_date,
+        panel_start_date,
+        reset,
+    )
+    active_a_filter_sql = _active_a_stock_filter_sql(duck, alias="kline")
+    if active_a_filter_sql:
+        logger.info("feature panel universe: dim_active_a_stock")
+    else:
+        logger.info("feature panel universe: canonical kline fallback (dim_active_a_stock unavailable)")
 
     logger.info("Step 1: Pillar B price/volume + Alpha158-inspired features")
     _replace_temp_table(
@@ -1244,6 +1470,7 @@ def _build_panel_with_connection(
                    (close / NULLIF(LAG(close, 1) OVER (PARTITION BY code ORDER BY date), 0) - 1) AS close_ret_1d
             FROM ({KLINE_DAILY_QFQ_SQL}) AS kline
             WHERE date >= ?
+              {active_a_filter_sql}
         ),
         features AS (
             SELECT
@@ -1282,7 +1509,7 @@ def _build_panel_with_connection(
         SELECT *, ret_5d - ret_20d AS momentum_diff
         FROM features
         """,
-        [start_date],
+        [read_start_date],
     )
     logger.info("Pillar B done: %d rows, %.1fs", _row_count(duck, "current_panel"), time.time() - t0)
 
@@ -1373,6 +1600,62 @@ def _build_panel_with_connection(
         except Exception as e:
             logger.warning("dzjy rolling skip: %s", e)
             _add_literal_columns(duck, {"dzjy_count_60d": "0::INTEGER"})
+        if _relation_exists(duck, "smartmoney.fact_shareholder_plan_tdx_f10"):
+            logger.info("Step 4: shareholder plan rolling counts/sums")
+            plan_base_sql = """
+                SELECT stock_code,
+                       source_available_date AS event_date,
+                       direction,
+                       progress,
+                       COALESCE(target_amount_max, target_amount_min, 0) AS event_value
+                  FROM smartmoney.fact_shareholder_plan_tdx_f10
+                 WHERE source_available_date IS NOT NULL
+            """
+            _rolling_event_count(
+                duck,
+                f"SELECT stock_code, event_date FROM ({plan_base_sql}) p WHERE direction LIKE '%增持%'",
+                "shareholder_plan_increase_count", [180],
+            )
+            _rolling_event_count(
+                duck,
+                f"SELECT stock_code, event_date FROM ({plan_base_sql}) p WHERE direction LIKE '%减持%'",
+                "shareholder_plan_decrease_count", [180],
+            )
+            _rolling_event_count(
+                duck,
+                f"SELECT stock_code, event_date FROM ({plan_base_sql}) p WHERE progress LIKE '%完成%'",
+                "shareholder_plan_completed_count", [180],
+            )
+            _rolling_event_sum(
+                duck,
+                f"""
+                SELECT stock_code, event_date, event_value
+                  FROM ({plan_base_sql}) p
+                 WHERE direction LIKE '%增持%'
+                """,
+                "shareholder_plan_increase_amount_max", [180],
+            )
+            _rolling_event_sum(
+                duck,
+                f"""
+                SELECT stock_code, event_date, event_value
+                  FROM ({plan_base_sql}) p
+                 WHERE direction LIKE '%减持%'
+                """,
+                "shareholder_plan_decrease_amount_max", [180],
+            )
+        else:
+            logger.warning("shareholder plan rolling skip: smartmoney.fact_shareholder_plan_tdx_f10 missing")
+            _add_literal_columns(
+                duck,
+                {
+                    "shareholder_plan_increase_count_180d": "0::INTEGER",
+                    "shareholder_plan_decrease_count_180d": "0::INTEGER",
+                    "shareholder_plan_completed_count_180d": "0::INTEGER",
+                    "shareholder_plan_increase_amount_max_180d": "0.0::DOUBLE",
+                    "shareholder_plan_decrease_amount_max_180d": "0.0::DOUBLE",
+                },
+            )
     else:
         logger.info("Step 4: event rolling counts skipped by scoped feature block plan")
 
@@ -1387,6 +1670,34 @@ def _build_panel_with_connection(
             except Exception as e:
                 logger.warning("days_since %s skip: %s", suffix, e)
                 _add_literal_columns(duck, {f"days_since_{suffix}": "-1::INTEGER"})
+        if _relation_exists(duck, "smartmoney.fact_shareholder_plan_tdx_f10"):
+            for ev_sql, suffix in [
+                (
+                    "SELECT stock_code, source_available_date AS event_date "
+                    "FROM smartmoney.fact_shareholder_plan_tdx_f10 "
+                    "WHERE source_available_date IS NOT NULL AND direction LIKE '%增持%'",
+                    "shareholder_plan_increase",
+                ),
+                (
+                    "SELECT stock_code, source_available_date AS event_date "
+                    "FROM smartmoney.fact_shareholder_plan_tdx_f10 "
+                    "WHERE source_available_date IS NOT NULL AND direction LIKE '%减持%'",
+                    "shareholder_plan_decrease",
+                ),
+            ]:
+                try:
+                    _days_since_event(duck, ev_sql, suffix)
+                except Exception as e:
+                    logger.warning("days_since %s skip: %s", suffix, e)
+                    _add_literal_columns(duck, {f"days_since_{suffix}": "-1::INTEGER"})
+        else:
+            _add_literal_columns(
+                duck,
+                {
+                    "days_since_shareholder_plan_increase": "-1::INTEGER",
+                    "days_since_shareholder_plan_decrease": "-1::INTEGER",
+                },
+            )
     else:
         logger.info("Step 5: days_since features skipped by scoped feature block plan")
 
@@ -1422,16 +1733,30 @@ def _build_panel_with_connection(
 
     if "regime" in blocks:
         logger.info("Step 7: market regime")
+        benchmark_codes_sql = _hs300_benchmark_codes_sql()
         _replace_temp_table(
             duck,
             "current_panel",
             f"""
-            WITH regime AS (
+            WITH benchmark_codes AS (
+                SELECT * FROM {benchmark_codes_sql}
+            ),
+            benchmark_px AS (
+                SELECT kline.date,
+                       kline.close,
+                       ROW_NUMBER() OVER (
+                           PARTITION BY kline.date
+                           ORDER BY benchmark_codes.priority
+                       ) AS rn
+                FROM ({KLINE_DAILY_QFQ_SQL}) AS kline
+                JOIN benchmark_codes ON benchmark_codes.code = kline.code
+            ),
+            regime AS (
                 SELECT date,
                        (close / NULLIF(LAG(close, 20) OVER (ORDER BY date), 0) - 1) AS hs300_ret_20d,
                        (close / NULLIF(LAG(close, 60) OVER (ORDER BY date), 0) - 1) AS hs300_ret_60d
-                FROM ({KLINE_DAILY_QFQ_SQL}) AS kline
-                WHERE code='510300'
+                FROM benchmark_px
+                WHERE rn = 1
             ),
             regime_labeled AS (
                 SELECT *,
@@ -1453,10 +1778,24 @@ def _build_panel_with_connection(
 
     if "cross_sectional" in blocks:
         logger.info("Step 8: cross-sectional rank / industry-relative / margin normalization")
+        cross_clean_cols = [
+            "ret_20d",
+            "ret_60d",
+            "vol_z20d",
+            "amount_chg_5d",
+            "rz_balance",
+            "rz_chg_5d_pct",
+            "amount_ma20",
+        ]
+        cross_exclude_sql = ", ".join(_quote_ident(col) for col in cross_clean_cols)
+        cross_clean_sql = ",\n                       ".join(
+            f"{_finite_or_null_sql(col)} AS {_quote_ident(col)}"
+            for col in cross_clean_cols
+        )
         _replace_temp_table(
             duck,
             "current_panel",
-            """
+            f"""
             WITH ind AS (
                 SELECT stock_code, tdx_l1 FROM smartmoney.dim_stock_tdx_industry
             ),
@@ -1464,6 +1803,11 @@ def _build_panel_with_connection(
                 SELECT p.*, ind.tdx_l1
                 FROM current_panel p
                 LEFT JOIN ind ON ind.stock_code = p.stock_code
+            ),
+            cleaned AS (
+                SELECT * EXCLUDE ({cross_exclude_sql}),
+                       {cross_clean_sql}
+                FROM joined
             )
             SELECT *,
                    CASE WHEN ret_20d IS NULL THEN NULL ELSE PERCENT_RANK() OVER (PARTITION BY date ORDER BY ret_20d NULLS LAST) END AS ret_20d_rank,
@@ -1477,7 +1821,7 @@ def _build_panel_with_connection(
                    vol_z20d - AVG(vol_z20d) OVER (PARTITION BY date, tdx_l1) AS vol_z20d_tdx_l1_rel,
                    amount_chg_5d - AVG(amount_chg_5d) OVER (PARTITION BY date, tdx_l1) AS amount_chg_5d_tdx_l1_rel,
                    rz_balance / NULLIF(amount_ma20, 0) AS rz_balance_to_amount20
-            FROM joined
+            FROM cleaned
             """,
         )
     else:
@@ -1487,7 +1831,7 @@ def _build_panel_with_connection(
     summary = _insert_fact_panel(
         duck,
         reset=reset,
-        write_start_date=write_start_date,
+        write_start_date=write_filter_date,
         update_columns=update_columns,
     )
     record_actual_version(duck, "fact_feature_panel")
@@ -1672,7 +2016,7 @@ def record_feature_panel_validation(duck, result: dict, *, run_mode: str) -> Non
     """Persist the latest panel validation summary for UI and pipeline audit."""
 
     execute_script(duck, FEATURE_PANEL_VALIDATION_DDL)
-    validated_at = datetime.utcnow().isoformat()
+    validated_at = datetime.now(UTC).replace(tzinfo=None).isoformat()
     validation_id = f"feature_panel_{run_mode}_{validated_at}"
     duck.execute(
         """

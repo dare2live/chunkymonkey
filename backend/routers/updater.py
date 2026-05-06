@@ -1852,6 +1852,7 @@ def _parse_notice_date(s: Optional[str]):
 def _step_build_profiles_sync(conn) -> int:
     """计算机构画像 mart_institution_profile"""
     from services.holdings import refresh_stock_latest_cache
+    from services.pricing_policy import load_pricing_label_policy
 
     def _followability_hint(safe_cnt, safe_wr30, eff30, high_cnt, high_wr30):
         """根据可跟统计给出简短提示。"""
@@ -1868,6 +1869,12 @@ def _step_build_profiles_sync(conn) -> int:
         return "信号损耗较大"
 
     refresh_stock_latest_cache(conn)
+    pricing_policy = load_pricing_label_policy()
+    for col in ("pricing_policy_id TEXT", "pricing_policy_hash TEXT"):
+        try:
+            conn.execute(f"ALTER TABLE mart_institution_profile ADD COLUMN {col}")
+        except Exception:
+            pass
     now = datetime.now().isoformat()
     conn.execute("BEGIN TRANSACTION")
     try:
@@ -2155,8 +2162,9 @@ def _step_build_profiles_sync(conn) -> int:
                 historical_median_holding_days, current_avg_held_days,
                 exit_event_count, exit_post_avg_gain_30d, exit_post_avg_gain_60d, exit_post_avg_gain_120d,
                 exit_avoid_loss_rate_30d, exit_avoid_loss_rate_60d, exit_avoid_loss_rate_120d,
+                pricing_policy_id, pricing_policy_hash,
                 updated_at)
-                VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+                VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
             """, (
                 inst_id, inst["name"], inst["display_name"], inst["type"],
                 stats["total_events"], stats["total_stocks"], stats["total_periods"],
@@ -2198,6 +2206,8 @@ def _step_build_profiles_sync(conn) -> int:
                 exit_row["avoid30"] if exit_row else None,
                 exit_row["avoid60"] if exit_row else None,
                 exit_row["avoid120"] if exit_row else None,
+                pricing_policy.policy_id,
+                pricing_policy.policy_hash(),
                 now
             ))
             count += 1
@@ -2799,14 +2809,16 @@ async def _step_sync_market_data(conn) -> int:
                         for r in kline_records
                     ]
                     write_source = normalize_kline_write_source(source)
-                    upsert_price_rows(mkt_conn, rows_data, source=write_source)
+                    rows_written = upsert_price_rows(mkt_conn, rows_data, source=write_source)
+                    if rows_written <= 0:
+                        raise ValueError("monthly_kline_cleaner_rejected_all_rows")
                     dates = [r["date"] for r in rows_data]
                     update_sync_state(mkt_conn, code, "monthly", source=write_source,
                                       min_date=min(dates), max_date=max(dates),
-                                      row_count=len(rows_data))
+                                      row_count=rows_written)
                     success_m += 1
-                    total_rows += len(rows_data)
-                    monthly_rows_total += len(rows_data)
+                    total_rows += rows_written
+                    monthly_rows_total += rows_written
                     if code in missing_m_set:
                         mark_gap_resolved(
                             conn,
@@ -3089,15 +3101,17 @@ async def _step_sync_market_data(conn) -> int:
                         rows_written = len(rows_data)
                         write_source = normalize_kline_write_source(source)
                         if write_source.startswith("tdxhub"):
-                            upsert_price_kline_tdxhub_rows(mkt_conn, rows_data, source=write_source)
+                            rows_written = upsert_price_kline_tdxhub_rows(mkt_conn, rows_data, source=write_source)
                         else:
-                            upsert_price_rows(mkt_conn, rows_data, source=write_source)
+                            rows_written = upsert_price_rows(mkt_conn, rows_data, source=write_source)
+                        if rows_written <= 0:
+                            raise ValueError("daily_kline_cleaner_rejected_all_rows")
                         dates = [r["date"] for r in rows_data]
                         update_sync_state(mkt_conn, code, "daily", source=write_source,
                                           min_date=min(dates), max_date=max(dates),
-                                          row_count=len(rows_data))
+                                          row_count=rows_written)
                         d_count += 1
-                        daily_rows_total += len(rows_data)
+                        daily_rows_total += rows_written
                         ok = True
                         if code in missing_d_set:
                             mark_gap_resolved(

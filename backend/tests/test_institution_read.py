@@ -179,7 +179,7 @@ def test_load_tracked_institutions_filters_and_sorts(monkeypatch):
             "INSERT INTO inst_institutions VALUES (?, ?, ?, ?, ?, ?, ?)",
             [
                 ("inst_active", "机构甲", "甲", "fund", 0, 1, None),
-                ("inst_archived", "机构乙", "乙", "insurance", 1, 1, None),
+                ("inst_inactive", "机构乙", "乙", "insurance", 1, 1, None),
                 ("inst_disabled", "机构丙", "丙", "broker", 0, 0, None),
             ],
         )
@@ -192,18 +192,18 @@ def test_load_tracked_institutions_filters_and_sorts(monkeypatch):
             [
                 ("inst_active", "600001", "2026-03-31", "2026-04-10", 100.0),
                 ("inst_active", "600002", "2026-03-31", "2026-04-11", 90.0),
-                ("inst_archived", "600003", "2026-03-31", "2026-04-09", 80.0),
+                ("inst_inactive", "600003", "2026-03-31", "2026-04-09", 80.0),
             ],
         )
         conn.commit()
 
         active_rows = institution_read.load_tracked_institutions(conn, show="active")
-        archived_rows = institution_read.load_tracked_institutions(conn, show="archived")
+        inactive_rows = institution_read.load_tracked_institutions(conn, show="inactive")
 
         assert [row["id"] for row in active_rows] == ["inst_active"]
         assert active_rows[0]["stock_count"] == 2
         assert active_rows[0]["latest_notice"] == "2026-04-11"
-        assert {row["id"] for row in archived_rows} == {"inst_archived", "inst_disabled"}
+        assert {row["id"] for row in inactive_rows} == {"inst_inactive", "inst_disabled"}
     finally:
         conn.close()
 

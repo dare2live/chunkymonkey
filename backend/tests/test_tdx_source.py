@@ -146,6 +146,66 @@ def test_call_tdx_quotes_with_retry_respects_max_attempts_and_timeout(monkeypatc
     ]
 
 
+def test_call_tdx_quotes_with_retry_caps_default_attempts(monkeypatch):
+    factory_calls = []
+
+    class FakeQuotes:
+        @staticmethod
+        def factory(*, server, **_kwargs):
+            factory_calls.append(server)
+            raise TimeoutError("timed out")
+
+    monkeypatch.delenv("CM_TDX_MAX_ATTEMPTS", raising=False)
+    monkeypatch.setattr(tdx_source, "get_tdx_quotes_class", lambda: FakeQuotes)
+    monkeypatch.setattr(
+        tdx_source,
+        "iter_tdx_servers",
+        lambda: tuple((f"1.1.1.{idx}", 7709) for idx in range(12)),
+    )
+
+    tdx_source.reset_tdx_quotes_pool()
+    try:
+        with pytest.raises(RuntimeError):
+            tdx_source.call_tdx_quotes_with_retry(
+                lambda client: client.quotes(["000001"]),
+                action_name="quotes",
+            )
+    finally:
+        tdx_source.reset_tdx_quotes_pool()
+
+    assert len(factory_calls) == 8
+
+
+def test_call_tdx_quotes_with_retry_allows_uncapped_attempts(monkeypatch):
+    factory_calls = []
+
+    class FakeQuotes:
+        @staticmethod
+        def factory(*, server, **_kwargs):
+            factory_calls.append(server)
+            raise TimeoutError("timed out")
+
+    monkeypatch.setenv("CM_TDX_MAX_ATTEMPTS", "0")
+    monkeypatch.setattr(tdx_source, "get_tdx_quotes_class", lambda: FakeQuotes)
+    monkeypatch.setattr(
+        tdx_source,
+        "iter_tdx_servers",
+        lambda: tuple((f"1.1.1.{idx}", 7709) for idx in range(3)),
+    )
+
+    tdx_source.reset_tdx_quotes_pool()
+    try:
+        with pytest.raises(RuntimeError):
+            tdx_source.call_tdx_quotes_with_retry(
+                lambda client: client.quotes(["000001"]),
+                action_name="quotes",
+            )
+    finally:
+        tdx_source.reset_tdx_quotes_pool()
+
+    assert len(factory_calls) == 3
+
+
 def test_call_tdx_quotes_with_retry_rotates_start_server(monkeypatch):
     monkeypatch.setattr(
         tdx_source,

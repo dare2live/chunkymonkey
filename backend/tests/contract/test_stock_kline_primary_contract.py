@@ -36,7 +36,7 @@ def test_stock_daily_qfq_policy_is_tdxhub_primary_with_canonical_relation():
     assert policy.require_fallback_lineage is True
 
 
-def test_canonical_qfq_uses_fallback_only_for_missing_primary_keys():
+def test_canonical_qfq_uses_fallback_only_for_missing_or_invalid_primary_keys():
     conn = mini_market_conn()
     try:
         insert_primary_kline(

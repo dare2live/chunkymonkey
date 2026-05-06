@@ -52,7 +52,6 @@ def main() -> int:
     parser.add_argument("--copy-from", default=None, help="Copy this DuckDB file to --db-path before planning/execution")
     parser.add_argument("--overwrite-copy", action="store_true", help="Allow --copy-from to replace an existing --db-path target")
     parser.add_argument("--execute-approved", action="store_true")
-    parser.add_argument("--backup-dir", default=None)
     parser.add_argument("--run-id", default=None)
     args = parser.parse_args()
 
@@ -65,7 +64,6 @@ def main() -> int:
                 policy,
                 approve=True,
                 run_id=args.run_id,
-                backup_dir=args.backup_dir,
             )
         else:
             report = plan_storage_cleanup(conn, policy)

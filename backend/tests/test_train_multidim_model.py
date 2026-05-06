@@ -325,6 +325,36 @@ def test_resolve_model_selection_feature_group_rejects_missing_features():
         )
 
 
+def test_apply_production_feature_contract_filters_source_gap_and_auxiliary_features():
+    cols, excluded = subject.apply_production_feature_contract(
+        [
+            "ret_60d",
+            "ret_60d_rank",
+            "inst_count_qoq",
+            "lhb_inst_buy_count_30d",
+            "rz_balance",
+            "regime_up",
+        ],
+        feature_group="base_dense_v2",
+        strict=False,
+    )
+
+    assert cols == ["ret_60d", "ret_60d_rank", "regime_up"]
+    reasons = {row["feature_name"]: row["reason"] for row in excluded}
+    assert reasons["inst_count_qoq"] == "not_production_ready"
+    assert reasons["lhb_inst_buy_count_30d"] == "not_model_input"
+    assert reasons["rz_balance"] == "not_production_ready"
+
+
+def test_apply_production_feature_contract_blocks_explicit_bad_selection():
+    with pytest.raises(RuntimeError, match="feature contract disallows explicit"):
+        subject.apply_production_feature_contract(
+            ["ret_60d", "inst_count_qoq"],
+            feature_group="model_selection_run",
+            strict=True,
+        )
+
+
 def test_best_params_disable_lightgbm_feature_prefilter_for_optuna():
     class Study:
         best_params = {"min_data_in_leaf": 100}

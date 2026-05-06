@@ -2,7 +2,6 @@ version: 1
 
 defaults:
   mode: dry_run
-  require_backup_before_delete: true
   require_explicit_execute_flag: true
   large_delete_row_threshold: 1000000
 
@@ -24,13 +23,35 @@ model_prediction_tables:
     model_id_column: model_id
   - table: mart_daily_recommendation
     model_id_column: model_id
+  - table: mart_daily_topk_view_cache
+    model_id_column: model_id
   - table: mart_daily_recommendation_risk
+    model_id_column: model_id
+  - table: mart_model_explanation
+    model_id_column: model_id
+  - table: mart_daily_recommendation_explanation
     model_id_column: model_id
   - table: mart_model_walkforward_prediction
     run_id_column: run_id
     model_id_source_table: mart_model_walkforward_fold
     model_id_source_run_id_column: run_id
     model_id_source_model_id_column: model_id
+
+protected_artifact_tables:
+  - table: raw_tdx_f10_holder_research
+    reason: TDX F10 raw holder snapshots are replayable source records
+  - table: raw_tdx_f10_holder_count_history
+    reason: TDX F10 parsed raw holder-count snapshots support source-date replay
+  - table: raw_tdx_f10_extra_parse_status
+    reason: TDX F10 parse ledger prevents repeated failed or terminal parses
+  - table: mart_tdx_f10_capability_matrix
+    reason: TDX F10 capability and PIT-date matrix is source governance evidence
+  - table: mart_feature_pit_audit
+    reason: PIT audit rows gate feature and model promotion
+  - table: mart_feature_pit_coverage_summary
+    reason: high/critical PIT coverage summary is model governance evidence
+  - table: mart_stock_horizon_selection
+    reason: per-stock holding horizon selection is recommendation evidence
 
 model_file_roots:
   - data/multidim_models

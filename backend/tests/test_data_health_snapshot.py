@@ -240,7 +240,7 @@ def test_workbench_storage_uses_retention_dry_run(monkeypatch):
                 "active_optuna_study_count": 1,
                 "active_optuna_study_artifacts": [{"path": "data/optuna/study.sqlite3", "bytes": 10}],
                 "compaction": {"recommended": True, "estimated_large_delete_rows": 1200},
-                "requires_backup_before_delete": True,
+                "delete_policy": "verified_direct_delete_no_archive",
             }
 
         monkeypatch.setattr(workbench_read, "load_storage_retention_policy", fake_load_policy)
@@ -254,7 +254,7 @@ def test_workbench_storage_uses_retention_dry_run(monkeypatch):
         assert retention["protected_model_count"] == 1
         assert retention["active_optuna_study_count"] == 1
         assert retention["compaction"]["recommended"] is True
-        assert retention["requires_backup_before_delete"] is True
+        assert retention["delete_policy"] == "verified_direct_delete_no_archive"
         assert [row["kind"] for row in retention["candidates"]] == [
             "candidate_feature_panel",
             "model_prediction_rows",

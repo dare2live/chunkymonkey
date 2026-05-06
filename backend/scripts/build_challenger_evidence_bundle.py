@@ -37,33 +37,74 @@ CREATE TABLE IF NOT EXISTS mart_challenger_evidence_bundle (
 """
 
 
-def _run_step(name: str, cmd: list[str], *, timeout: int, success_codes: set[int] | None = None) -> dict[str, Any]:
+def _emit_progress(message: str) -> None:
+    print(f"[evidence_bundle] {utc_now_iso()} {message}", flush=True)
+
+
+def _run_step(
+    name: str,
+    cmd: list[str],
+    *,
+    timeout: int,
+    success_codes: set[int] | None = None,
+    heartbeat_s: int = 30,
+) -> dict[str, Any]:
     started = time.perf_counter()
     success_codes = success_codes or {0}
+    heartbeat_s = max(1, int(heartbeat_s))
+    _emit_progress(f"step start name={name} timeout={timeout}s")
     try:
-        result = subprocess.run(
+        proc = subprocess.Popen(
             cmd,
             cwd=REPO,
             text=True,
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
-            timeout=timeout,
         )
-        status = "success" if result.returncode in success_codes else "failed"
+        stdout = ""
+        while True:
+            elapsed = time.perf_counter() - started
+            remaining = timeout - elapsed
+            if remaining <= 0:
+                proc.kill()
+                tail, _ = proc.communicate()
+                stdout = (stdout or "") + (tail or "")
+                duration_s = round(time.perf_counter() - started, 3)
+                _emit_progress(f"step timeout name={name} elapsed={duration_s:.3f}s")
+                return {
+                    "name": name,
+                    "status": "timeout",
+                    "returncode": None,
+                    "duration_s": duration_s,
+                    "command": " ".join(cmd),
+                    "output_tail": stdout[-4000:],
+                }
+            try:
+                tail, _ = proc.communicate(timeout=min(heartbeat_s, remaining))
+                stdout = (stdout or "") + (tail or "")
+                break
+            except subprocess.TimeoutExpired:
+                _emit_progress(f"step heartbeat name={name} elapsed={elapsed + min(heartbeat_s, remaining):.1f}s")
+                continue
+        status = "success" if proc.returncode in success_codes else "failed"
+        duration_s = round(time.perf_counter() - started, 3)
+        _emit_progress(f"step done name={name} status={status} returncode={proc.returncode} elapsed={duration_s:.3f}s")
         return {
             "name": name,
             "status": status,
-            "returncode": result.returncode,
-            "duration_s": round(time.perf_counter() - started, 3),
+            "returncode": proc.returncode,
+            "duration_s": duration_s,
             "command": " ".join(cmd),
-            "output_tail": (result.stdout or "")[-4000:],
+            "output_tail": (stdout or "")[-4000:],
         }
     except subprocess.TimeoutExpired as exc:
+        duration_s = round(time.perf_counter() - started, 3)
+        _emit_progress(f"step timeout name={name} elapsed={duration_s:.3f}s")
         return {
             "name": name,
             "status": "timeout",
             "returncode": None,
-            "duration_s": round(time.perf_counter() - started, 3),
+            "duration_s": duration_s,
             "command": " ".join(cmd),
             "output_tail": (exc.stdout or "")[-4000:] if isinstance(exc.stdout, str) else "",
         }
@@ -80,7 +121,7 @@ def _latest_gate_for_model(conn, model_id: str) -> dict[str, Any] | None:
         """,
         (model_id,),
     ).fetchone()
-    return dict(row) if row else None
+    return {key: row[key] for key in row.keys()} if row else None
 
 
 def build_evidence_bundle(
@@ -102,6 +143,10 @@ def build_evidence_bundle(
     steps: list[dict[str, Any]] = []
     py = sys.executable
     panel_feature_set_id = panel_feature_set_id or None
+    _emit_progress(
+        f"start model_id={model_id} feature_table={feature_table} "
+        f"top_k={top_k} horizons={horizons}"
+    )
 
     shadow_topk_cmd = [
         py,
@@ -272,6 +317,7 @@ def build_evidence_bundle(
         )
         conn.commit()
 
+    _emit_progress(f"done status={status} elapsed={duration_s:.3f}s failed_steps={[s['name'] for s in failed_steps]}")
     return {
         "evidence_run_id": evidence_run_id,
         "model_id": model_id,

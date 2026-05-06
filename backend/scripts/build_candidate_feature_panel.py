@@ -53,6 +53,11 @@ CREATE TABLE IF NOT EXISTS fact_feature_panel_candidate (
     forward_ret_20d REAL,
     forward_ret_60d REAL,
     forward_ret_90d REAL,
+    follow_net_return_5d REAL,
+    follow_net_return_10d REAL,
+    follow_net_return_20d REAL,
+    follow_net_return_60d REAL,
+    follow_net_return_90d REAL,
     common_holder_network_count REAL,
     fund_holding_shares_tdx_f10 REAL,
     fund_holding_float_a_ratio_tdx_f10 REAL,
@@ -82,6 +87,11 @@ ALTER TABLE fact_feature_panel_candidate ADD COLUMN IF NOT EXISTS forward_ret_5d
 ALTER TABLE fact_feature_panel_candidate ADD COLUMN IF NOT EXISTS forward_ret_10d REAL;
 ALTER TABLE fact_feature_panel_candidate ADD COLUMN IF NOT EXISTS forward_ret_60d REAL;
 ALTER TABLE fact_feature_panel_candidate ADD COLUMN IF NOT EXISTS forward_ret_90d REAL;
+ALTER TABLE fact_feature_panel_candidate ADD COLUMN IF NOT EXISTS follow_net_return_5d REAL;
+ALTER TABLE fact_feature_panel_candidate ADD COLUMN IF NOT EXISTS follow_net_return_10d REAL;
+ALTER TABLE fact_feature_panel_candidate ADD COLUMN IF NOT EXISTS follow_net_return_20d REAL;
+ALTER TABLE fact_feature_panel_candidate ADD COLUMN IF NOT EXISTS follow_net_return_60d REAL;
+ALTER TABLE fact_feature_panel_candidate ADD COLUMN IF NOT EXISTS follow_net_return_90d REAL;
 ALTER TABLE fact_feature_panel_candidate ADD COLUMN IF NOT EXISTS common_holder_network_count REAL;
 ALTER TABLE fact_feature_panel_candidate ADD COLUMN IF NOT EXISTS fund_holding_shares_tdx_f10 REAL;
 ALTER TABLE fact_feature_panel_candidate ADD COLUMN IF NOT EXISTS fund_holding_float_a_ratio_tdx_f10 REAL;
@@ -134,6 +144,11 @@ def build_candidate_feature_panel(
             feature_set_id, stock_code, date,
             forward_ret_5d, forward_ret_10d, forward_ret_20d, forward_ret_60d,
             forward_ret_90d,
+            follow_net_return_5d,
+            follow_net_return_10d,
+            follow_net_return_20d,
+            follow_net_return_60d,
+            follow_net_return_90d,
             common_holder_network_count,
             fund_holding_shares_tdx_f10,
             fund_holding_float_a_ratio_tdx_f10,
@@ -158,6 +173,9 @@ def build_candidate_feature_panel(
         )
         WITH priced AS (
             SELECT stock_code, date, close, forward_ret_20d,
+                   follow_net_return_5d, follow_net_return_10d,
+                   follow_net_return_20d, follow_net_return_60d,
+                   follow_net_return_90d,
                    LEAD(close, 5) OVER w / NULLIF(close, 0) - 1 AS forward_ret_5d_calc,
                    LEAD(close, 10) OVER w / NULLIF(close, 0) - 1 AS forward_ret_10d_calc,
                    LEAD(close, 20) OVER w / NULLIF(close, 0) - 1 AS forward_ret_20d_calc,
@@ -172,7 +190,12 @@ def build_candidate_feature_panel(
                    forward_ret_10d_calc AS forward_ret_10d,
                    COALESCE(forward_ret_20d, forward_ret_20d_calc) AS forward_ret_20d,
                    forward_ret_60d_calc AS forward_ret_60d,
-                   forward_ret_90d_calc AS forward_ret_90d
+                   forward_ret_90d_calc AS forward_ret_90d,
+                   follow_net_return_5d,
+                   follow_net_return_10d,
+                   follow_net_return_20d,
+                   follow_net_return_60d,
+                   follow_net_return_90d
             FROM priced
             WHERE {where_sql}
         ),
@@ -258,6 +281,11 @@ def build_candidate_feature_panel(
             b.forward_ret_20d,
             b.forward_ret_60d,
             b.forward_ret_90d,
+            b.follow_net_return_5d,
+            b.follow_net_return_10d,
+            b.follow_net_return_20d,
+            b.follow_net_return_60d,
+            b.follow_net_return_90d,
             ch.common_holder_network_count,
             ff.fund_holding_shares_tdx_f10,
             ff.fund_holding_float_a_ratio_tdx_f10,

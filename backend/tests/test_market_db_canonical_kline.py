@@ -1,3 +1,5 @@
+import json
+
 from conftest import duck_mem
 from services.market_db import (
     CANONICAL_KLINE_QFQ_VIEW_DDL,
@@ -68,6 +70,163 @@ def test_canonical_kline_prefers_tdxhub_and_fills_fallback_gap():
             ("000001", "2026-05-04", 10.5, "tdxhub", 1, False),
             ("000001", "2026-05-05", 11.5, "eastmoney", 3, True),
         ]
+    finally:
+        conn.close()
+
+
+def test_canonical_kline_uses_fallback_when_tdxhub_primary_price_is_invalid():
+    conn = duck_mem()
+    try:
+        conn.executescript(PRICE_KLINE_DDL)
+        conn.executescript(PRICE_KLINE_TDXHUB_DDL)
+        conn.executescript(CANONICAL_KLINE_QFQ_VIEW_DDL)
+        conn.execute(
+            """
+            INSERT INTO price_kline_tdxhub
+            (code, date, freq, adjust, open, high, low, close, volume, amount, source, batch_id, ingested_at)
+            VALUES ('000001', '2026-05-04', 'daily', 'qfq', NULL, NULL, NULL, NULL, NULL, NULL, 'tdxhub', 'tdx-bad', '2026-05-04')
+            """
+        )
+        conn.execute(
+            """
+            INSERT INTO price_kline
+            (code, date, freq, adjust, open, high, low, close, volume, amount, source, batch_id, ingested_at)
+            VALUES ('000001', '2026-05-04', 'daily', 'qfq', 11, 12, 10, 11.5, 1100, 12650, 'eastmoney', 'fb-good', '2026-05-04')
+            """
+        )
+
+        row = conn.execute(
+            """
+            SELECT close, source_name, source_tier, is_fallback
+              FROM v_price_kline_qfq
+             WHERE code = '000001' AND date = '2026-05-04'
+            """
+        ).fetchone()
+
+        assert tuple(row) == (11.5, "eastmoney", 3, True)
+    finally:
+        conn.close()
+
+
+def test_canonical_kline_uses_fallback_when_tdxhub_volume_amount_are_invalid():
+    conn = duck_mem()
+    try:
+        conn.executescript(PRICE_KLINE_DDL)
+        conn.executescript(PRICE_KLINE_TDXHUB_DDL)
+        conn.executescript(CANONICAL_KLINE_QFQ_VIEW_DDL)
+        conn.execute(
+            """
+            INSERT INTO price_kline_tdxhub
+            (code, date, freq, adjust, open, high, low, close, volume, amount, source, batch_id, ingested_at)
+            VALUES ('000001', '2026-05-04', 'daily', 'qfq', 10, 11, 9, 10.5, 5.877471754111438e-39, 5.877471754111438e-39, 'tdxhub', 'tdx-bad', '2026-05-04')
+            """
+        )
+        conn.execute(
+            """
+            INSERT INTO price_kline
+            (code, date, freq, adjust, open, high, low, close, volume, amount, source, batch_id, ingested_at)
+            VALUES ('000001', '2026-05-04', 'daily', 'qfq', 11, 12, 10, 11.5, 1100, 12650, 'eastmoney', 'fb-good', '2026-05-04')
+            """
+        )
+
+        row = conn.execute(
+            """
+            SELECT close, source_name, source_tier, is_fallback
+              FROM v_price_kline_qfq
+             WHERE code = '000001' AND date = '2026-05-04'
+            """
+        ).fetchone()
+
+        assert tuple(row) == (11.5, "eastmoney", 3, True)
+    finally:
+        conn.close()
+
+
+def test_canonical_kline_excludes_invalid_fallback_price_rows():
+    conn = duck_mem()
+    try:
+        conn.executescript(PRICE_KLINE_DDL)
+        conn.executescript(PRICE_KLINE_TDXHUB_DDL)
+        conn.executescript(CANONICAL_KLINE_QFQ_VIEW_DDL)
+        conn.execute(
+            """
+            INSERT INTO price_kline
+            (code, date, freq, adjust, open, high, low, close, volume, amount, source, batch_id, ingested_at)
+            VALUES ('000001', '2026-05-04', 'daily', 'qfq', 0, 12, 10, 11.5, 1100, 12650, 'eastmoney', 'fb-bad', '2026-05-04')
+            """
+        )
+
+        row = conn.execute("SELECT COUNT(*) FROM v_price_kline_qfq").fetchone()
+
+        assert row[0] == 0
+    finally:
+        conn.close()
+
+
+def test_tdxhub_upsert_rejects_invalid_rows_and_records_monitor_evidence():
+    conn = duck_mem()
+    try:
+        conn.executescript(PRICE_KLINE_DDL)
+        conn.executescript(PRICE_KLINE_TDXHUB_DDL)
+        conn.executescript(CANONICAL_KLINE_QFQ_VIEW_DDL)
+
+        written = upsert_price_kline_tdxhub_rows(
+            conn,
+            [
+                {
+                    "code": "000001",
+                    "date": "2026-05-04",
+                    "freq": "daily",
+                    "adjust": "qfq",
+                    "open": 10,
+                    "high": 11,
+                    "low": 9,
+                    "close": 10.5,
+                    "volume": 1000,
+                    "amount": 10500,
+                },
+                {
+                    "code": "000002",
+                    "date": "2026-05-04",
+                    "freq": "daily",
+                    "adjust": "qfq",
+                    "open": 20,
+                    "high": 21,
+                    "low": 19,
+                    "close": 20.5,
+                    "volume": 5.877471754111438e-39,
+                    "amount": 5.877471754111438e-39,
+                },
+            ],
+            source="tdxhub",
+            batch_id="unit-clean",
+        )
+
+        row = conn.execute("SELECT COUNT(*) FROM price_kline_tdxhub").fetchone()
+        monitor = conn.execute(
+            """
+            SELECT rejected_rows, reason_counts_json
+              FROM mart_data_processing_tool_run
+             WHERE output_table = 'price_kline_tdxhub'
+            """
+        ).fetchone()
+        issues = conn.execute(
+            """
+            SELECT reason_code, sample_rows_json
+              FROM mart_data_processing_tool_issue
+             WHERE affected_table = 'price_kline_tdxhub'
+             ORDER BY reason_code
+            """
+        ).fetchall()
+
+        assert written == 1
+        assert row[0] == 1
+        assert monitor["rejected_rows"] == 1
+        reasons = json.loads(monitor["reason_counts_json"])
+        assert reasons["invalid_volume"] == 1
+        assert reasons["invalid_amount"] == 1
+        assert [issue["reason_code"] for issue in issues] == ["invalid_amount", "invalid_volume"]
+        assert json.loads(issues[0]["sample_rows_json"])[0]["code"] == "000002"
     finally:
         conn.close()
 

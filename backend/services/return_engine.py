@@ -1,7 +1,7 @@
 """
 收益计算引擎 (Phase 0 重构版 + 2026-04-26 批处理优化)
 
-以公告日后下一交易日开盘为锚点，计算事件后的收益和回撤。
+以公告日后下一交易日可成交均价为锚点，计算事件后的收益和回撤。
 结果直接回写 fact_institution_event（不再写 fact_event_return）。
 K 线数据从 market.duckdb 读取。
 
@@ -24,12 +24,14 @@ from services.market_db import (
     get_kline,
     get_kline_range,
 )
+from services.pricing_policy import load_pricing_label_policy
 from services.utils import normalize_ymd as _normalize_ymd
 
 logger = logging.getLogger("cm-api")
 
-CALC_VERSION = "v2_qfq_open_anchor_dual_cost"
-CALC_REF_PRICE_MODE = "next_trade_open_qfq"
+PRICING_POLICY = load_pricing_label_policy()
+CALC_VERSION = PRICING_POLICY.event_calc_version
+CALC_REF_PRICE_MODE = PRICING_POLICY.follow_entry_ref_price_mode
 
 # 覆盖率门槛：低于此值直接 skip，不写半成品结果
 MIN_COVERAGE_RATIO = 0.80
@@ -139,6 +141,17 @@ def _resolve_reasonable_vwap(rows: list[dict], base_method: str) -> tuple[Option
     if 0.5 <= adjusted_ratio <= 1.5:
         return adjusted_vwap, f"{base_method}_volume_hand_adjusted"
 
+    return None, None
+
+
+def _resolve_follow_entry_price(row: dict) -> tuple[Optional[float], Optional[str]]:
+    """Follower executable cost: entry-day VWAP first, then open fallback."""
+    vwap, vwap_method = _resolve_reasonable_vwap([row], "entry_day_vwap_qfq")
+    if vwap:
+        return round(vwap, 4), vwap_method
+    entry_open = row.get("open")
+    if entry_open and entry_open > 0:
+        return round(float(entry_open), 4), "entry_day_vwap_qfq_fallback_open"
     return None, None
 
 
@@ -376,12 +389,19 @@ class _TradingCalendarCache:
 class _StockKlineCache:
     """单股 daily / monthly K 线一次性加载到内存, 给同股多事件复用."""
 
-    def __init__(self, mkt_conn, code: str):
+    def __init__(
+        self,
+        mkt_conn,
+        code: str,
+        *,
+        daily_relation: str = KLINE_DAILY_QFQ_RELATION,
+        monthly_relation: str = "price_kline",
+    ):
         self.code = code
         # daily: {date_str: {open, high, low, close, volume, amount}}
         rows = mkt_conn.execute(
             "SELECT date, open, high, low, close, volume, amount "
-            f"FROM {KLINE_DAILY_QFQ_RELATION} "
+            f"FROM {daily_relation} "
             "WHERE code = ? AND freq = 'daily' AND adjust = 'qfq' "
             "ORDER BY date",
             (code,),
@@ -403,7 +423,7 @@ class _StockKlineCache:
                 }
         rows_m = mkt_conn.execute(
             "SELECT date, open, high, low, close, volume, amount "
-            "FROM price_kline "
+            f"FROM {monthly_relation} "
             "WHERE code = ? AND freq = 'monthly' AND adjust = 'qfq' "
             "ORDER BY date",
             (code,),
@@ -421,6 +441,7 @@ class _StockKlineCache:
                     "date": r[0], "open": r[1], "high": r[2], "low": r[3],
                     "close": r[4], "volume": r[5], "amount": r[6],
                 })
+        self.max_daily_date = max(self.daily) if self.daily else None
 
     def field_at(self, date: str, field: str, calendar: _TradingCalendarCache,
                  max_forward: int = 10) -> Optional[float]:
@@ -439,6 +460,37 @@ class _StockKlineCache:
                 return r[field]
         return None
 
+    def row_at(self, date: str, calendar: _TradingCalendarCache,
+               max_forward: int = 10) -> Optional[dict]:
+        """Return the exact row or nearest later row within max_forward trading days."""
+        r = self.daily.get(date)
+        if r:
+            return r
+        idx = calendar.index_of_or_after(date)
+        for off in range(1, max_forward + 1):
+            j = idx + off
+            if j >= len(calendar.days):
+                break
+            r = self.daily.get(calendar.days[j])
+            if r:
+                return r
+        return None
+
+    def entry_price_at(self, date: str, calendar: _TradingCalendarCache,
+                       max_forward: int = 10) -> tuple[Optional[float], Optional[str]]:
+        idx = calendar.index_of_or_after(date)
+        for off in range(0, max_forward + 1):
+            j = idx + off
+            if j >= len(calendar.days):
+                break
+            row = self.daily.get(calendar.days[j])
+            if not row:
+                continue
+            price, method = _resolve_follow_entry_price(row)
+            if price and price > 0:
+                return price, method
+        return None, None
+
     def daily_range(self, start: str, end: str,
                     calendar: _TradingCalendarCache) -> list[dict]:
         """返回 [start, end] 区间内有 K 线的日线行列表 (升序)."""
@@ -456,6 +508,65 @@ class _StockKlineCache:
             if r:
                 out.append(r)
         return out
+
+
+def _create_temp_index(conn, index_name: str, table_name: str, column_name: str) -> None:
+    try:
+        conn.execute(f"CREATE INDEX {index_name} ON {table_name}({column_name})")
+    except Exception:
+        pass
+
+
+def _materialize_return_kline_relations(mkt_conn, stock_codes: list[str]) -> dict:
+    """Materialize K-line rows for this return run once, avoiding per-code view scans."""
+    started = datetime.now()
+    mkt_conn.execute("DROP TABLE IF EXISTS __return_codes")
+    mkt_conn.execute("DROP TABLE IF EXISTS __return_kline_daily")
+    mkt_conn.execute("DROP TABLE IF EXISTS __return_kline_monthly")
+    mkt_conn.execute("CREATE TEMP TABLE __return_codes(code TEXT PRIMARY KEY)")
+    mkt_conn.executemany("INSERT INTO __return_codes VALUES (?)", [(code,) for code in stock_codes])
+    after_codes = datetime.now()
+    mkt_conn.execute(
+        f"""
+        CREATE TEMP TABLE __return_kline_daily AS
+        SELECT k.code, k.date, k.freq, k.adjust,
+               k.open, k.high, k.low, k.close, k.volume, k.amount
+          FROM {KLINE_DAILY_QFQ_RELATION} AS k
+          JOIN __return_codes AS c ON k.code = c.code
+         WHERE k.freq = 'daily'
+           AND k.adjust = 'qfq'
+         ORDER BY k.code, k.date
+        """
+    )
+    _create_temp_index(mkt_conn, "idx_return_kline_daily_code", "__return_kline_daily", "code")
+    after_daily = datetime.now()
+    mkt_conn.execute(
+        """
+        CREATE TEMP TABLE __return_kline_monthly AS
+        SELECT k.code, k.date, k.freq, k.adjust,
+               k.open, k.high, k.low, k.close, k.volume, k.amount
+          FROM price_kline AS k
+          JOIN __return_codes AS c ON k.code = c.code
+         WHERE k.freq = 'monthly'
+           AND k.adjust = 'qfq'
+         ORDER BY k.code, k.date
+        """
+    )
+    _create_temp_index(mkt_conn, "idx_return_kline_monthly_code", "__return_kline_monthly", "code")
+    after_monthly = datetime.now()
+    daily_rows = mkt_conn.execute("SELECT COUNT(*) FROM __return_kline_daily").fetchone()[0]
+    monthly_rows = mkt_conn.execute("SELECT COUNT(*) FROM __return_kline_monthly").fetchone()[0]
+    return {
+        "daily_relation": "__return_kline_daily",
+        "monthly_relation": "__return_kline_monthly",
+        "daily_rows": int(daily_rows or 0),
+        "monthly_rows": int(monthly_rows or 0),
+        "timing_seconds": {
+            "codes": round((after_codes - started).total_seconds(), 3),
+            "daily": round((after_daily - after_codes).total_seconds(), 3),
+            "monthly": round((after_monthly - after_daily).total_seconds(), 3),
+        },
+    }
 
 
 def _estimate_inst_ref_cost_from_cache(
@@ -580,15 +691,20 @@ def _compute_one_event(
             ),
             "skip_no_anchor",
         )
-    price = kline.field_at(anchor, "open", calendar)
+    price, price_method = kline.entry_price_at(anchor, calendar)
     if not price or price <= 0:
         follow_gate, follow_gate_reason = _suggest_follow_gate(ev["event_type"], None)
+        price_entry_status = (
+            "future_signal_waiting"
+            if kline.max_daily_date and anchor > kline.max_daily_date
+            else "suspended_waiting"
+        )
         return (
             (
                 report_season, cost_window_start, cost_window_end,
                 inst_ref_cost, inst_cost_method, None,
                 None, follow_gate, follow_gate_reason,
-                anchor, None, "suspended_waiting",
+                anchor, None, price_entry_status,
                 None, None, None,
                 None, None,
                 None, None,
@@ -597,7 +713,7 @@ def _compute_one_event(
                 CALC_VERSION, CALC_REF_PRICE_MODE, now,
                 ev["institution_id"], ev["stock_code"], ev["report_date"],
             ),
-            "skip_no_price",
+            "skip_future" if price_entry_status == "future_signal_waiting" else "skip_no_price",
         )
 
     premium_pct = None
@@ -627,7 +743,7 @@ def _compute_one_event(
             report_season, cost_window_start, cost_window_end,
             inst_ref_cost, inst_cost_method, premium_pct,
             premium_bucket, follow_gate, follow_gate_reason,
-            anchor, price, "ok",
+            anchor, price, price_method or "ok",
             gains.get("10d"), gains.get("30d"), gains.get("60d"),
             gains.get("90d"), gains.get("120d"),
             dd30, dd60,
@@ -705,7 +821,6 @@ def calculate_returns(biz_conn, *, full_rescan: bool = False) -> int:
     try:
         try:
             mkt_conn.execute("SET preserve_insertion_order=false")
-            mkt_conn.execute("SET threads=1")
             mkt_conn.execute("SET memory_limit='2GB'")
         except Exception:
             pass
@@ -741,12 +856,24 @@ def calculate_returns(biz_conn, *, full_rescan: bool = False) -> int:
             f"[收益] {total_events} 事件分布在 {len(events_by_code)} 只股票, "
             f"平均 {total_events/max(len(events_by_code),1):.1f} 事件/股"
         )
+        kline_relations = _materialize_return_kline_relations(mkt_conn, sorted(events_by_code))
+        logger.info(
+            "[收益] K线临时表: daily=%d, monthly=%d, timing=%s",
+            kline_relations["daily_rows"],
+            kline_relations["monthly_rows"],
+            kline_relations["timing_seconds"],
+        )
 
         processed = 0
         log_every_codes = max(50, len(events_by_code) // 20)
         for code_idx, (code, code_events) in enumerate(events_by_code.items()):
             try:
-                kline = _StockKlineCache(mkt_conn, code)
+                kline = _StockKlineCache(
+                    mkt_conn,
+                    code,
+                    daily_relation=kline_relations["daily_relation"],
+                    monthly_relation=kline_relations["monthly_relation"],
+                )
             except Exception as exc:
                 logger.warning(f"[收益] {code} K 线加载失败: {exc}; 跳过 {len(code_events)} 事件")
                 # 给这些事件标 skip
@@ -834,14 +961,19 @@ def calculate_returns(biz_conn, *, full_rescan: bool = False) -> int:
             fix_updates: list = []
             for code, ev_list in fix_by_code.items():
                 try:
-                    kline_fix = _StockKlineCache(mkt_conn, code)
+                    kline_fix = _StockKlineCache(
+                        mkt_conn,
+                        code,
+                        daily_relation=kline_relations["daily_relation"],
+                        monthly_relation=kline_relations["monthly_relation"],
+                    )
                 except Exception:
                     continue
                 for ev in ev_list:
                     anchor = calendar.next_after(_normalize_ymd(ev["notice_date"]) or ev["notice_date"])
                     if not anchor:
                         continue
-                    price = kline_fix.field_at(anchor, "open", calendar)
+                    price, _price_method = kline_fix.entry_price_at(anchor, calendar)
                     if not price or price <= 0:
                         continue
                     update_tuple, status = _compute_one_event(ev, biz_conn, calendar, kline_fix, now)

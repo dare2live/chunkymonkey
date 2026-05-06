@@ -33,6 +33,7 @@ from services.model_feature_schema import (
     feature_cols_from_json,
     ordered_feature_cols,
 )
+from services.model_explainer import explain_prediction_batch, top_contributors
 from services.ml_lifecycle.registry import (
     get_default_champion_model_id,
     select_default_model_id,
@@ -57,12 +58,20 @@ CREATE TABLE IF NOT EXISTS mart_daily_recommendation (
     track_id      TEXT,
     is_primary    BOOLEAN,
     run_mode      TEXT DEFAULT 'champion',
+    baseline_horizon_days INTEGER DEFAULT 60,
+    selected_horizon_days INTEGER DEFAULT 60,
+    selected_horizon_confidence REAL,
+    horizon_selection_run_id TEXT,
     built_at      TEXT,
     PRIMARY KEY (snapshot_date, stock_code, model_id)
 );
 CREATE INDEX IF NOT EXISTS idx_dr_date ON mart_daily_recommendation(snapshot_date);
 CREATE INDEX IF NOT EXISTS idx_dr_rank ON mart_daily_recommendation(snapshot_date, rank_in_date);
 ALTER TABLE mart_daily_recommendation ADD COLUMN IF NOT EXISTS run_mode TEXT DEFAULT 'champion';
+ALTER TABLE mart_daily_recommendation ADD COLUMN IF NOT EXISTS baseline_horizon_days INTEGER DEFAULT 60;
+ALTER TABLE mart_daily_recommendation ADD COLUMN IF NOT EXISTS selected_horizon_days INTEGER DEFAULT 60;
+ALTER TABLE mart_daily_recommendation ADD COLUMN IF NOT EXISTS selected_horizon_confidence REAL;
+ALTER TABLE mart_daily_recommendation ADD COLUMN IF NOT EXISTS horizon_selection_run_id TEXT;
 
 CREATE TABLE IF NOT EXISTS mart_daily_topk_view_cache (
     snapshot_date TEXT NOT NULL,
@@ -76,6 +85,10 @@ CREATE TABLE IF NOT EXISTS mart_daily_topk_view_cache (
     track_id      TEXT,
     is_primary    BOOLEAN,
     run_mode      TEXT DEFAULT 'champion',
+    baseline_horizon_days INTEGER DEFAULT 60,
+    selected_horizon_days INTEGER DEFAULT 60,
+    selected_horizon_confidence REAL,
+    horizon_selection_run_id TEXT,
     stock_name    TEXT,
     xueqiu_symbol TEXT,
     tdx_l1_name   TEXT,
@@ -86,6 +99,10 @@ CREATE TABLE IF NOT EXISTS mart_daily_topk_view_cache (
 CREATE INDEX IF NOT EXISTS idx_topk_cache_date_rank
     ON mart_daily_topk_view_cache(snapshot_date DESC, rank_in_date);
 ALTER TABLE mart_daily_topk_view_cache ADD COLUMN IF NOT EXISTS run_mode TEXT DEFAULT 'champion';
+ALTER TABLE mart_daily_topk_view_cache ADD COLUMN IF NOT EXISTS baseline_horizon_days INTEGER DEFAULT 60;
+ALTER TABLE mart_daily_topk_view_cache ADD COLUMN IF NOT EXISTS selected_horizon_days INTEGER DEFAULT 60;
+ALTER TABLE mart_daily_topk_view_cache ADD COLUMN IF NOT EXISTS selected_horizon_confidence REAL;
+ALTER TABLE mart_daily_topk_view_cache ADD COLUMN IF NOT EXISTS horizon_selection_run_id TEXT;
 ALTER TABLE mart_daily_topk_view_cache ADD COLUMN IF NOT EXISTS xueqiu_symbol TEXT;
 ALTER TABLE mart_daily_topk_view_cache ADD COLUMN IF NOT EXISTS tdx_l1_name TEXT;
 ALTER TABLE mart_daily_topk_view_cache ADD COLUMN IF NOT EXISTS tdx_l2_name TEXT;
@@ -106,6 +123,41 @@ CREATE TABLE IF NOT EXISTS mart_daily_recommendation_risk (
     built_at      TEXT,
     PRIMARY KEY (snapshot_date, model_id)
 );
+
+CREATE TABLE IF NOT EXISTS mart_model_explanation (
+    model_id       TEXT NOT NULL,
+    snapshot_date  TEXT NOT NULL,
+    run_mode       TEXT NOT NULL,
+    explainer_status TEXT NOT NULL,
+    model_family   TEXT,
+    row_count      INTEGER,
+    feature_count  INTEGER,
+    max_abs_error  DOUBLE,
+    reason         TEXT,
+    built_at       TEXT,
+    PRIMARY KEY (model_id, snapshot_date, run_mode)
+);
+
+CREATE TABLE IF NOT EXISTS mart_daily_recommendation_explanation (
+    snapshot_date TEXT NOT NULL,
+    stock_code    TEXT NOT NULL,
+    model_id      TEXT NOT NULL,
+    feature_name  TEXT NOT NULL,
+    contribution  DOUBLE,
+    contribution_pct DOUBLE,
+    direction     TEXT,
+    raw_value     TEXT,
+    model_value   DOUBLE,
+    base_value    DOUBLE,
+    pred_score    DOUBLE,
+    additivity_error DOUBLE,
+    rank_in_date  INTEGER,
+    run_mode      TEXT,
+    built_at      TEXT,
+    PRIMARY KEY (snapshot_date, stock_code, model_id, feature_name)
+);
+CREATE INDEX IF NOT EXISTS idx_daily_rec_explain_model_date
+    ON mart_daily_recommendation_explanation(model_id, snapshot_date, rank_in_date);
 """
 
 KLINE_DAILY_QFQ_SQL = canonical_kline_daily_qfq_sql(columns=("code", "date", "amount"))
@@ -218,7 +270,15 @@ def _json_raw_feature_value(value: Any) -> Any:
     return str(value)
 
 
-def build_key_features_json(row: dict[str, Any], top_features: list[tuple[str, float]]) -> str:
+def build_key_features_json(
+    row: dict[str, Any],
+    top_features: list[tuple[str, float]],
+    *,
+    top_contribution_rows: list[dict[str, Any]] | None = None,
+    explanation_status: str | None = None,
+    base_value: float | None = None,
+    additivity_error: float | None = None,
+) -> str:
     model_features = [
         {"name": name, "importance": float(importance or 0.0)}
         for name, importance in top_features
@@ -232,13 +292,132 @@ def build_key_features_json(row: dict[str, Any], top_features: list[tuple[str, f
             "raw_value": _json_raw_feature_value(raw_value),
             "model_value": _feature_value(raw_value),
         })
-    return json.dumps(
-        {
-            "model_top_features": model_features,
-            "stock_feature_values": stock_values,
-        },
-        ensure_ascii=False,
+    payload = {
+        "model_top_features": model_features,
+        "stock_feature_values": stock_values,
+    }
+    if top_contribution_rows is not None:
+        payload["stock_feature_contributions"] = top_contribution_rows
+        payload["explanation_status"] = explanation_status
+        payload["base_value"] = base_value
+        payload["additivity_error"] = additivity_error
+    return json.dumps(payload, ensure_ascii=False)
+
+
+def _explanation_payload(
+    row: dict[str, Any],
+    explanation_row: dict[str, Any] | None,
+    *,
+    limit: int = 8,
+) -> list[dict[str, Any]]:
+    if not explanation_row:
+        return []
+    payload = []
+    for item in top_contributors(explanation_row, limit=limit):
+        feature_name = str(item.get("feature_name") or "")
+        raw_value = row.get(feature_name)
+        payload.append(
+            {
+                "name": feature_name,
+                "raw_value": _json_raw_feature_value(raw_value),
+                "model_value": _feature_value(raw_value),
+                "contribution": float(item.get("contribution") or 0.0),
+                "contribution_pct": float(item.get("contribution_pct") or 0.0),
+                "direction": item.get("direction") or "flat",
+            }
+        )
+    return payload
+
+
+def write_recommendation_explanations(
+    conn,
+    *,
+    output_rows: list[dict[str, Any]],
+    source_rows: list[dict[str, Any]],
+    feature_cols: list[str],
+    explanation: dict[str, Any],
+    built_at: str,
+) -> int:
+    if not output_rows:
+        return 0
+    snapshot_date = output_rows[0]["snapshot_date"]
+    model_id = output_rows[0]["model_id"]
+    run_mode = output_rows[0]["run_mode"]
+    status = str(explanation.get("status") or "unsupported")
+    conn.execute(
+        """
+        INSERT OR REPLACE INTO mart_model_explanation
+        (model_id, snapshot_date, run_mode, explainer_status, model_family,
+         row_count, feature_count, max_abs_error, reason, built_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        (
+            model_id,
+            snapshot_date,
+            run_mode,
+            status,
+            explanation.get("model_family"),
+            len(output_rows),
+            len(feature_cols),
+            explanation.get("max_abs_error"),
+            explanation.get("reason"),
+            built_at,
+        ),
     )
+    conn.execute(
+        """
+        DELETE FROM mart_daily_recommendation_explanation
+         WHERE snapshot_date = ? AND model_id = ?
+        """,
+        (snapshot_date, model_id),
+    )
+    if status != "exact":
+        return 0
+
+    rows = []
+    explanation_rows = explanation.get("rows") or []
+    for rec, source_row, ex_row in zip(output_rows, source_rows, explanation_rows):
+        if not ex_row:
+            continue
+        base_value = float(ex_row.get("base_value") or 0.0)
+        additivity_error = float(ex_row.get("additivity_error") or 0.0)
+        pred_score = float(ex_row.get("score") or rec["pred_score"])
+        for item in ex_row.get("features") or []:
+            if not isinstance(item, dict):
+                continue
+            feature_name = str(item.get("feature_name") or "")
+            raw_value = source_row.get(feature_name)
+            rows.append(
+                (
+                    snapshot_date,
+                    rec["stock_code"],
+                    model_id,
+                    feature_name,
+                    float(item.get("contribution") or 0.0),
+                    float(item.get("contribution_pct") or 0.0),
+                    item.get("direction") or "flat",
+                    json.dumps(_json_raw_feature_value(raw_value), ensure_ascii=False),
+                    _feature_value(raw_value),
+                    base_value,
+                    pred_score,
+                    additivity_error,
+                    int(rec["rank_in_date"]),
+                    run_mode,
+                    built_at,
+                )
+            )
+    if rows:
+        conn.executemany(
+            """
+            INSERT OR REPLACE INTO mart_daily_recommendation_explanation
+            (snapshot_date, stock_code, model_id, feature_name, contribution,
+             contribution_pct, direction, raw_value, model_value, base_value,
+             pred_score, additivity_error, rank_in_date, run_mode, built_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            rows,
+        )
+    return len(rows)
 
 
 def _rank_percentiles(values: list[float]) -> list[float]:
@@ -348,6 +527,58 @@ def _stock_identity_map(conn, stock_codes: list[str]) -> dict[str, dict[str, Any
     }
 
 
+def _latest_horizon_selection_run(conn) -> str | None:
+    row = conn.execute(
+        """
+        SELECT run_id
+          FROM mart_stock_horizon_selection
+         GROUP BY run_id
+         ORDER BY MAX(built_at) DESC NULLS LAST, run_id DESC
+         LIMIT 1
+        """
+    ).fetchone()
+    return row["run_id"] if row else None
+
+
+def load_horizon_selection_map(conn, stock_codes: list[str]) -> tuple[str | None, dict[str, dict[str, Any]]]:
+    try:
+        table_exists = conn.execute(
+            """
+            SELECT COUNT(*) FROM information_schema.tables
+             WHERE table_name = 'mart_stock_horizon_selection'
+            """
+        ).fetchone()[0]
+    except Exception:
+        table_exists = 0
+    if not table_exists:
+        return None, {}
+    run_id = _latest_horizon_selection_run(conn)
+    codes = sorted({str(code) for code in stock_codes if code})
+    if not run_id or not codes:
+        return run_id, {}
+    placeholders = ", ".join(["?"] * len(codes))
+    rows = conn.execute(
+        f"""
+        SELECT stock_code,
+               baseline_horizon_days,
+               selected_horizon_days,
+               selected_horizon_confidence
+          FROM mart_stock_horizon_selection
+         WHERE run_id = ?
+           AND stock_code IN ({placeholders})
+        """,
+        [run_id, *codes],
+    ).fetchall()
+    return run_id, {
+        row["stock_code"]: {
+            "baseline_horizon_days": int(row["baseline_horizon_days"] or 60),
+            "selected_horizon_days": int(row["selected_horizon_days"] or 60),
+            "selected_horizon_confidence": row["selected_horizon_confidence"],
+        }
+        for row in rows
+    }
+
+
 def write_topk_view_cache(conn, rows: list[dict[str, Any]]) -> int:
     if not rows:
         return 0
@@ -376,6 +607,10 @@ def write_topk_view_cache(conn, rows: list[dict[str, Any]]) -> int:
             row["track_id"],
             bool(row["is_primary"]),
             row["run_mode"],
+            int(row.get("baseline_horizon_days") or 60),
+            int(row.get("selected_horizon_days") or 60),
+            row.get("selected_horizon_confidence"),
+            row.get("horizon_selection_run_id"),
             ident.get("stock_name"),
             ident.get("xueqiu_symbol") or _xueqiu_symbol(row["stock_code"]),
             ident.get("tdx_l1_name"),
@@ -387,8 +622,10 @@ def write_topk_view_cache(conn, rows: list[dict[str, Any]]) -> int:
         INSERT OR REPLACE INTO mart_daily_topk_view_cache
         (snapshot_date, stock_code, model_id, rank_in_date, pred_score, percentile,
          regime_flag, key_features_json, track_id, is_primary, run_mode,
-         stock_name, xueqiu_symbol, tdx_l1_name, tdx_l2_name, built_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+         baseline_horizon_days, selected_horizon_days, selected_horizon_confidence,
+         horizon_selection_run_id, stock_name, xueqiu_symbol, tdx_l1_name,
+         tdx_l2_name, built_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
         payload,
     )
@@ -585,6 +822,27 @@ def main():
     if args.mode == 'shadow':
         is_primary = False
     built_at = datetime.utcnow().isoformat()
+    horizon_run_id, horizon_by_stock = load_horizon_selection_map(
+        conn,
+        [row.get("stock_code") for row in records],
+    )
+    t_explain = time.perf_counter()
+    explanation_all = explain_prediction_batch(
+        model,
+        [[_feature_value(row.get(col)) for col in feature_cols] for row in records],
+        feature_cols,
+        dates=[target_date] * len(records),
+        scores=[row["pred_score"] for row in records],
+    )
+    all_explanation_rows = explanation_all.get("rows") if explanation_all.get("status") == "exact" else []
+    explanation_by_stock = {
+        str(row.get("stock_code")): all_explanation_rows[idx]
+        for idx, row in enumerate(records)
+        if idx < len(all_explanation_rows)
+    }
+    timings["explain_s"] = round(time.perf_counter() - t_explain, 3)
+
+    output_source_rows = list(records)
     output = [
         {
             'stock_code': row.get('stock_code'),
@@ -594,20 +852,66 @@ def main():
             'regime_flag': row.get('regime_flag'),
             'snapshot_date': target_date,
             'model_id': model_id,
-            'key_features_json': build_key_features_json(row, top_feats),
+            'key_features_json': "{}",
             'track_id': track_id,
             'is_primary': is_primary,
             'run_mode': args.mode,
+            'baseline_horizon_days': int(
+                (horizon_by_stock.get(str(row.get('stock_code'))) or {}).get('baseline_horizon_days')
+                or 60
+            ),
+            'selected_horizon_days': int(
+                (horizon_by_stock.get(str(row.get('stock_code'))) or {}).get('selected_horizon_days')
+                or 60
+            ),
+            'selected_horizon_confidence': (
+                (horizon_by_stock.get(str(row.get('stock_code'))) or {}).get('selected_horizon_confidence')
+            ),
+            'horizon_selection_run_id': horizon_run_id,
             'built_at': built_at,
         }
-        for row in records
+        for row in output_source_rows
     ]
 
     # 限制 top_k
     if not args.by_regime:
         output = output[:args.top_k]
+        output_source_rows = output_source_rows[:args.top_k]
     else:
-        output = _top_by_regime(output, args.top_k)
+        selected = _top_by_regime(
+            [
+                {**out, "_source_row": src}
+                for out, src in zip(output, output_source_rows)
+            ],
+            args.top_k,
+        )
+        output = [{k: v for k, v in row.items() if k != "_source_row"} for row in selected]
+        output_source_rows = [row["_source_row"] for row in selected]
+
+    selected_explanation_rows = [
+        explanation_by_stock.get(str(row.get("stock_code")))
+        for row in output_source_rows
+    ]
+    explanation_rows = [row for row in selected_explanation_rows if row is not None]
+    selected_errors = [
+        float(row.get("additivity_error") or 0.0)
+        for row in explanation_rows
+    ]
+    explanation = {
+        **explanation_all,
+        "rows": selected_explanation_rows if explanation_all.get("status") == "exact" else [],
+        "max_abs_error": max(selected_errors) if selected_errors else explanation_all.get("max_abs_error"),
+    }
+    for idx, (out, src) in enumerate(zip(output, output_source_rows)):
+        ex_row = selected_explanation_rows[idx] if idx < len(selected_explanation_rows) else None
+        out["key_features_json"] = build_key_features_json(
+            src,
+            top_feats,
+            top_contribution_rows=_explanation_payload(src, ex_row),
+            explanation_status=str(explanation.get("status") or "unsupported"),
+            base_value=(float(ex_row["base_value"]) if ex_row else None),
+            additivity_error=(float(ex_row["additivity_error"]) if ex_row else None),
+        )
 
     logger.info("写入 %d 条推荐 (track_id=%s, is_primary=%s)",
                 len(output), track_id, is_primary)
@@ -625,14 +929,28 @@ def main():
         conn.execute(
             """INSERT OR REPLACE INTO mart_daily_recommendation
                (snapshot_date, stock_code, model_id, rank_in_date, pred_score, percentile,
-                regime_flag, key_features_json, track_id, is_primary, run_mode, built_at)
-               VALUES (?,?,?,?,?,?,?,?,?,?,?,?)""",
+                regime_flag, key_features_json, track_id, is_primary, run_mode,
+                baseline_horizon_days, selected_horizon_days, selected_horizon_confidence,
+                horizon_selection_run_id, built_at)
+               VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
             (r['snapshot_date'], r['stock_code'], r['model_id'],
              int(r['rank_in_date']), float(r['pred_score']), float(r['percentile']),
              r.get('regime_flag'), r['key_features_json'],
              r['track_id'], bool(r['is_primary']), r['run_mode'],
+             int(r.get('baseline_horizon_days') or 60),
+             int(r.get('selected_horizon_days') or 60),
+             r.get('selected_horizon_confidence'),
+             r.get('horizon_selection_run_id'),
              r['built_at']),
         )
+    explanation_rows_written = write_recommendation_explanations(
+        conn,
+        output_rows=output,
+        source_rows=output_source_rows,
+        feature_cols=feature_cols,
+        explanation=explanation,
+        built_at=built_at,
+    )
     conn.commit()
     timings["recommendation_write_s"] = round(time.perf_counter() - t_write, 3)
     t_cache = time.perf_counter()
@@ -655,6 +973,8 @@ def main():
         )
         timings["risk_summary_s"] = round(time.perf_counter() - t_risk, 3)
     record_actual_version(conn, "mart_daily_recommendation")
+    record_actual_version(conn, "mart_model_explanation")
+    record_actual_version(conn, "mart_daily_recommendation_explanation")
     if not args.skip_risk_summary:
         record_actual_version(conn, "mart_daily_recommendation_risk")
     record_actual_version(conn, "mart_daily_topk_view_cache")
@@ -691,11 +1011,15 @@ def main():
             "rows": len(records),
             "output_rows": len(output),
             "view_cache_rows": cache_rows,
+            "explanation_rows": explanation_rows_written,
+            "explanation_status": explanation.get("status"),
+            "explanation_max_abs_error": explanation.get("max_abs_error"),
             "top_k": args.top_k,
             "mode": args.mode,
             "track_id": track_id,
             "is_primary": is_primary,
             "selection_fallback": selection_fallback,
+            "horizon_selection_run_id": horizon_run_id,
             "risk_summary_skipped": bool(args.skip_risk_summary),
             "n_features": len(feature_cols),
             "needs_alpha158": needs_alpha158,

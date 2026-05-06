@@ -12,6 +12,11 @@ model_input_excluded:
   - forward_ret_20d
   - forward_ret_60d
   - forward_ret_90d
+  - follow_net_return_5d
+  - follow_net_return_10d
+  - follow_net_return_20d
+  - follow_net_return_60d
+  - follow_net_return_90d
 
 groups:
   kline_lineage:
@@ -19,6 +24,12 @@ groups:
     production_ready: true
     candidate_only: false
     model_input: false
+    feature_role: source_lineage
+    availability_cadence: daily
+    panel_density: dense_daily
+    expected_update_frequency: trading_day
+    null_policy: no_null
+    coverage_universe: active_a_stock_trading_days
     pit_release_lag_days: 0
     source_tables:
       - market.v_price_kline_qfq
@@ -36,6 +47,12 @@ groups:
     enabled: true
     production_ready: true
     candidate_only: false
+    feature_role: core_model_input
+    availability_cadence: daily
+    panel_density: dense_daily
+    expected_update_frequency: trading_day
+    null_policy: rolling_warmup_only
+    coverage_universe: active_a_stock_trading_days
     pit_release_lag_days: 0
     source_tables:
       - market.v_price_kline_qfq
@@ -43,7 +60,11 @@ groups:
     required_capabilities:
       - kline_daily
     features:
-      - close
+      - close:
+          model_input: false
+          feature_role: price_level_context
+          null_policy: no_null
+          notes: Raw close is retained for panel integrity and frontend context, but excluded from default production model inputs because it behaves as a price-level proxy rather than a stable alpha factor.
       - ret_1d
       - ret_5d
       - ret_20d
@@ -53,24 +74,41 @@ groups:
       - ma_ratio_20
       - ma_ratio_60
       - ma_ratio_250
-      - rz_balance
-      - rz_chg_5d_pct
+      - rz_balance:
+          production_ready: false
+          feature_role: research_only_source_gap
+          null_policy: excluded_until_backfilled
+      - rz_chg_5d_pct:
+          production_ready: false
+          feature_role: research_only_source_gap
+          null_policy: excluded_until_backfilled
 
   alpha158_price_shape:
     enabled: true
     production_ready: true
     candidate_only: false
+    feature_role: trend_strength_model_input
+    availability_cadence: daily
+    panel_density: dense_daily
+    expected_update_frequency: trading_day
+    null_policy: rolling_warmup_only
+    coverage_universe: active_a_stock_trading_days
     pit_release_lag_days: 0
     source_tables:
       - market.v_price_kline_qfq
     required_capabilities:
       - kline_daily
     features:
-      - kmid
-      - klen
-      - kup
-      - klow
-      - ksft
+      - kmid:
+          null_policy: no_null
+      - klen:
+          null_policy: no_null
+      - kup:
+          null_policy: no_null
+      - klow:
+          null_policy: no_null
+      - ksft:
+          null_policy: no_null
       - vol_ratio_5_20
       - vol_std_5d
       - vol_std_20d
@@ -83,6 +121,12 @@ groups:
     enabled: true
     production_ready: true
     candidate_only: false
+    feature_role: cross_sectional_context
+    availability_cadence: daily
+    panel_density: dense_daily_derived
+    expected_update_frequency: trading_day
+    null_policy: base_dependency_only
+    coverage_universe: active_a_stock_trading_days
     pit_release_lag_days: 0
     source_tables:
       - market.v_price_kline_qfq
@@ -94,23 +138,41 @@ groups:
       - ret_60d_rank
       - vol_z20d_rank
       - amount_chg_5d_rank
-      - rz_balance_rank
-      - rz_chg_5d_pct_rank
+      - rz_balance_rank:
+          production_ready: false
+          feature_role: research_only_source_gap
+          null_policy: excluded_until_backfilled
+      - rz_chg_5d_pct_rank:
+          production_ready: false
+          feature_role: research_only_source_gap
+          null_policy: excluded_until_backfilled
       - ret_20d_tdx_l1_rel
       - ret_60d_tdx_l1_rel
       - vol_z20d_tdx_l1_rel
       - amount_chg_5d_tdx_l1_rel
-      - rz_balance_to_amount20
+      - rz_balance_to_amount20:
+          production_ready: false
+          feature_role: research_only_source_gap
+          null_policy: excluded_until_backfilled
 
   event_activity:
     enabled: true
     production_ready: true
     candidate_only: false
+    model_input: false
+    feature_role: capital_attention_auxiliary
+    availability_cadence: event_window
+    panel_density: dense_daily_encoded
+    expected_update_frequency: event_driven
+    null_policy: encode_no_event_as_zero_or_days_since
+    coverage_universe: active_a_stock_trading_days
+    notes: Event-driven data such as LHB and investigations are auxiliary capital-attention signals; daily panel values should be encoded as 0/count/days_since, not NULL.
     pit_release_lag_days: 0
     source_tables:
       - smartmoney.fact_institution_event
       - smartmoney.fact_executive_trade_event
       - smartmoney.fact_lhb_event
+      - smartmoney.fact_shareholder_plan_tdx_f10
     features:
       - inst_event_count_30d
       - inst_event_count_60d
@@ -122,28 +184,90 @@ groups:
       - dzjy_count_60d
       - days_since_exec_buy
       - days_since_lhb
+      - shareholder_plan_increase_count_180d:
+          source_tables:
+            - smartmoney.fact_shareholder_plan_tdx_f10
+          source_event_date_column: source_notice_date
+          source_available_date_column: source_available_date
+          notes: TDX F10 shareholder increase-plan count; encoded from source_available_date and held out of production model inputs until validated.
+      - shareholder_plan_decrease_count_180d:
+          source_tables:
+            - smartmoney.fact_shareholder_plan_tdx_f10
+          source_event_date_column: source_notice_date
+          source_available_date_column: source_available_date
+          notes: TDX F10 shareholder decrease-plan count; encoded from source_available_date and held out of production model inputs until validated.
+      - shareholder_plan_completed_count_180d:
+          source_tables:
+            - smartmoney.fact_shareholder_plan_tdx_f10
+          source_event_date_column: source_notice_date
+          source_available_date_column: source_available_date
+          notes: TDX F10 completed shareholder plan count; auxiliary evidence only until stock/horizon validation proves usefulness.
+      - shareholder_plan_increase_amount_max_180d:
+          source_tables:
+            - smartmoney.fact_shareholder_plan_tdx_f10
+          source_event_date_column: source_notice_date
+          source_available_date_column: source_available_date
+          notes: Rolling sum of max planned increase amount from TDX F10 shareholder plans; no-event days encode as zero.
+      - shareholder_plan_decrease_amount_max_180d:
+          source_tables:
+            - smartmoney.fact_shareholder_plan_tdx_f10
+          source_event_date_column: source_notice_date
+          source_available_date_column: source_available_date
+          notes: Rolling sum of max planned decrease amount from TDX F10 shareholder plans; no-event days encode as zero.
+      - days_since_shareholder_plan_increase:
+          source_tables:
+            - smartmoney.fact_shareholder_plan_tdx_f10
+          source_event_date_column: source_notice_date
+          source_available_date_column: source_available_date
+          notes: Calendar days since last TDX F10 increase-plan source availability; no event encodes as -1.
+      - days_since_shareholder_plan_decrease:
+          source_tables:
+            - smartmoney.fact_shareholder_plan_tdx_f10
+          source_event_date_column: source_notice_date
+          source_available_date_column: source_available_date
+          notes: Calendar days since last TDX F10 decrease-plan source availability; no event encodes as -1.
 
   fundamentals:
     enabled: true
     production_ready: true
     candidate_only: false
+    feature_role: research_only_source_gap
+    availability_cadence: asof_periodic
+    panel_density: asof_daily
+    expected_update_frequency: quarterly_or_announcement
+    null_policy: excluded_until_backfilled
+    coverage_universe: active_a_stock_after_first_report
     pit_release_lag_days: 90
     source_tables:
       - smartmoney.fact_fundamental_quarterly
     features:
-      - shareholder_count_qoq
-      - inst_count_qoq
-      - fund_count_qoq
-      - qfii_count_qoq
-      - yjyg_lower_pct
-      - yjyg_upper_pct
-      - roe
-      - eps_basic
+      - shareholder_count_qoq:
+          production_ready: false
+      - inst_count_qoq:
+          production_ready: false
+      - fund_count_qoq:
+          production_ready: false
+      - qfii_count_qoq:
+          production_ready: false
+      - yjyg_lower_pct:
+          production_ready: false
+      - yjyg_upper_pct:
+          production_ready: false
+      - roe:
+          production_ready: false
+      - eps_basic:
+          production_ready: false
 
   regime:
     enabled: true
     production_ready: true
     candidate_only: false
+    feature_role: regime_context
+    availability_cadence: daily
+    panel_density: dense_daily
+    expected_update_frequency: trading_day
+    null_policy: no_null
+    coverage_universe: active_a_stock_trading_days
     pit_release_lag_days: 0
     source_tables:
       - market.v_price_kline_qfq
@@ -162,6 +286,12 @@ groups:
     candidate_only: false
     label: true
     model_input: false
+    feature_role: label
+    availability_cadence: future_horizon
+    panel_density: mature_label_only
+    expected_update_frequency: trading_day
+    null_policy: future_label_immature_only
+    coverage_universe: label_mature_rows
     pit_release_lag_days: 90
     source_tables:
       - market.v_price_kline_qfq
@@ -173,3 +303,8 @@ groups:
       - forward_ret_20d
       - forward_ret_60d
       - forward_ret_90d
+      - follow_net_return_5d
+      - follow_net_return_10d
+      - follow_net_return_20d
+      - follow_net_return_60d
+      - follow_net_return_90d

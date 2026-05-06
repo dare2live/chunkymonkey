@@ -13,7 +13,10 @@ from datetime import datetime, timedelta
 from typing import Optional
 
 from services.market_db import get_canonical_kline_qfq_relation, get_market_conn
+from services.pricing_policy import load_pricing_label_policy
+
 KLINE_DAILY_QFQ_RELATION = get_canonical_kline_qfq_relation()
+PRICING_POLICY = load_pricing_label_policy()
 
 
 def _normalize_date(d: Optional[str]) -> Optional[str]:
@@ -76,6 +79,8 @@ def _normalize_price_rows(payload) -> list[dict]:
             "high": row.get("high"),
             "low": row.get("low"),
             "close": row.get("close"),
+            "volume": row.get("volume"),
+            "amount": row.get("amount"),
         })
     rows.sort(key=lambda item: item["date"])
     return rows
@@ -119,12 +124,34 @@ def load_price_panel(
     }
 
 
+def _entry_price(row: dict, mode: str) -> tuple[Optional[float], str]:
+    normalized = str(mode or PRICING_POLICY.follow_entry_price_mode).strip().lower()
+    if normalized in {"ohlc4", "entry_day_ohlc4_qfq"}:
+        values = [_safe_float(row.get(key)) for key in ("open", "high", "low", "close")]
+        clean = [value for value in values if value is not None and value > 0]
+        return (_mean(clean), "entry_day_ohlc4_qfq") if clean else (None, "entry_day_ohlc4_qfq")
+    if normalized in {"vwap", "entry_day_vwap_qfq"}:
+        amount = _safe_float(row.get("amount"))
+        volume = _safe_float(row.get("volume"))
+        if amount is not None and volume is not None and amount > 0 and volume > 0:
+            vwap = amount / volume
+            close = _safe_float(row.get("close"))
+            if close is None or close <= 0 or 0.5 <= vwap / close <= 1.5:
+                return vwap, "entry_day_vwap_qfq"
+            adjusted = vwap / 100.0
+            if 0.5 <= adjusted / close <= 1.5:
+                return adjusted, "entry_day_vwap_qfq_volume_hand_adjusted"
+        return _safe_float(row.get("open")), "entry_day_vwap_qfq_fallback_open"
+    raise ValueError(f"unsupported entry_price_mode: {mode}")
+
+
 def _simulate_one(
     entry_date: str,
     code_prices: list[dict],
     max_hold_days: int,
     stop_loss: Optional[float],
     take_profit: Optional[float],
+    entry_price_mode: str,
 ) -> Optional[dict]:
     if not code_prices:
         return None
@@ -134,7 +161,7 @@ def _simulate_one(
     except ValueError:
         return None
 
-    entry_price = _safe_float(code_prices[entry_pos].get("close"))
+    entry_price, entry_price_method = _entry_price(code_prices[entry_pos], entry_price_mode)
     if entry_price is None or entry_price <= 0:
         return None
 
@@ -160,6 +187,7 @@ def _simulate_one(
                 "entry_date": entry_date,
                 "exit_date": dates[idx],
                 "entry_price": entry_price,
+                "entry_price_method": entry_price_method,
                 "exit_price": entry_price * (1 + stop_loss),
                 "pnl": stop_loss,
                 "hold_days": idx - entry_pos,
@@ -171,6 +199,7 @@ def _simulate_one(
                 "entry_date": entry_date,
                 "exit_date": dates[idx],
                 "entry_price": entry_price,
+                "entry_price_method": entry_price_method,
                 "exit_price": entry_price * (1 + stop_loss),
                 "pnl": stop_loss,
                 "hold_days": idx - entry_pos,
@@ -182,6 +211,7 @@ def _simulate_one(
                 "entry_date": entry_date,
                 "exit_date": dates[idx],
                 "entry_price": entry_price,
+                "entry_price_method": entry_price_method,
                 "exit_price": entry_price * (1 + take_profit),
                 "pnl": take_profit,
                 "hold_days": idx - entry_pos,
@@ -197,6 +227,7 @@ def _simulate_one(
         "entry_date": entry_date,
         "exit_date": dates[end_pos],
         "entry_price": entry_price,
+        "entry_price_method": entry_price_method,
         "exit_price": last_close,
         "pnl": last_close / entry_price - 1,
         "hold_days": end_pos - entry_pos,
@@ -253,12 +284,13 @@ def simulate_events(
     """Simulate follow-trades for event records.
 
     Event rows require institution_id, stock_code, and notice_date. Params:
-    entry_lag, max_hold_days, stop_loss, and take_profit.
+    entry_lag, max_hold_days, stop_loss, take_profit, and entry_price_mode.
     """
     entry_lag = int(params.get("entry_lag", 0))
     max_hold = int(params.get("max_hold_days", 20))
     stop_loss = params.get("stop_loss")
     take_profit = params.get("take_profit")
+    entry_price_mode = str(params.get("entry_price_mode") or PRICING_POLICY.follow_entry_price_mode)
 
     event_rows = _normalize_events(events)
     if prices_by_code is None:
@@ -284,7 +316,7 @@ def simulate_events(
         target = bisect_left(dates, notice) + entry_lag
         if target >= len(dates):
             continue
-        pos = _simulate_one(dates[target], code_prices, max_hold, stop_loss, take_profit)
+        pos = _simulate_one(dates[target], code_prices, max_hold, stop_loss, take_profit, entry_price_mode)
         if pos is None:
             continue
         pos["institution_id"] = event.get("institution_id")

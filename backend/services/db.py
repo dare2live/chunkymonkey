@@ -280,6 +280,47 @@ def init_db():
             CREATE INDEX IF NOT EXISTS idx_trade_b_holder
                 ON fact_shareholder_trade_tdx_b(holder_name_norm);
 
+            CREATE TABLE IF NOT EXISTS fact_shareholder_plan_tdx_f10 (
+                stock_code       TEXT NOT NULL,
+                stock_name       TEXT,
+                market           TEXT,
+                announce_date    TEXT,
+                latest_announce_date TEXT,
+                first_announce_date TEXT,
+                source_notice_date TEXT,
+                source_available_date TEXT,
+                source_date_quality TEXT,
+                subject          TEXT,
+                direction        TEXT,
+                progress         TEXT,
+                start_date       TEXT,
+                end_date         TEXT,
+                target_shares_min_text TEXT,
+                target_shares_min BIGINT,
+                target_shares_text TEXT,
+                target_shares    BIGINT,
+                target_ratio_text TEXT,
+                target_ratio     DOUBLE,
+                target_amount_min_text TEXT,
+                target_amount_min BIGINT,
+                target_amount_max_text TEXT,
+                target_amount_max BIGINT,
+                trade_method     TEXT,
+                reason           TEXT,
+                narrative        TEXT,
+                page_update_date TEXT,
+                source           TEXT NOT NULL,
+                source_tier      SMALLINT NOT NULL DEFAULT 1,
+                raw_hash         TEXT,
+                fetched_at       TEXT,
+                row_seq          INTEGER NOT NULL DEFAULT 1,
+                PRIMARY KEY (stock_code, raw_hash, row_seq)
+            );
+            CREATE INDEX IF NOT EXISTS idx_shareholder_plan_stock_notice
+                ON fact_shareholder_plan_tdx_f10(stock_code, source_available_date DESC);
+            CREATE INDEX IF NOT EXISTS idx_shareholder_plan_subject
+                ON fact_shareholder_plan_tdx_f10(subject);
+
             -- Format B 专用: 段 5 股东人数变化 raw/canonical 双层.
             CREATE TABLE IF NOT EXISTS raw_tdx_f10_holder_count_history (
                 stock_code       TEXT NOT NULL,
@@ -404,6 +445,7 @@ def init_db():
                 common_major_holder_rows INTEGER DEFAULT 0,
                 fund_holding_rows INTEGER DEFAULT 0,
                 fund_holding_rejected_rows INTEGER DEFAULT 0,
+                shareholder_plan_rows INTEGER DEFAULT 0,
                 status           TEXT NOT NULL,
                 status_reason    TEXT,
                 parser_version   TEXT,
@@ -413,6 +455,7 @@ def init_db():
             CREATE INDEX IF NOT EXISTS idx_f10_extra_status_status
                 ON raw_tdx_f10_extra_parse_status(status);
             ALTER TABLE raw_tdx_f10_extra_parse_status ADD COLUMN IF NOT EXISTS fund_holding_rejected_rows INTEGER DEFAULT 0;
+            ALTER TABLE raw_tdx_f10_extra_parse_status ADD COLUMN IF NOT EXISTS shareholder_plan_rows INTEGER DEFAULT 0;
             ALTER TABLE raw_tdx_f10_extra_parse_status ADD COLUMN IF NOT EXISTS status_reason TEXT;
             ALTER TABLE raw_tdx_f10_extra_parse_status ADD COLUMN IF NOT EXISTS parser_version TEXT;
 
@@ -865,6 +908,11 @@ def init_db():
                 forward_ret_20d  REAL,
                 forward_ret_60d  REAL,
                 forward_ret_90d  REAL,
+                follow_net_return_5d REAL,
+                follow_net_return_10d REAL,
+                follow_net_return_20d REAL,
+                follow_net_return_60d REAL,
+                follow_net_return_90d REAL,
                 common_holder_network_count REAL,
                 fund_holding_shares_tdx_f10 REAL,
                 fund_holding_float_a_ratio_tdx_f10 REAL,
@@ -894,6 +942,11 @@ def init_db():
             ALTER TABLE fact_feature_panel_candidate ADD COLUMN IF NOT EXISTS forward_ret_10d REAL;
             ALTER TABLE fact_feature_panel_candidate ADD COLUMN IF NOT EXISTS forward_ret_60d REAL;
             ALTER TABLE fact_feature_panel_candidate ADD COLUMN IF NOT EXISTS forward_ret_90d REAL;
+            ALTER TABLE fact_feature_panel_candidate ADD COLUMN IF NOT EXISTS follow_net_return_5d REAL;
+            ALTER TABLE fact_feature_panel_candidate ADD COLUMN IF NOT EXISTS follow_net_return_10d REAL;
+            ALTER TABLE fact_feature_panel_candidate ADD COLUMN IF NOT EXISTS follow_net_return_20d REAL;
+            ALTER TABLE fact_feature_panel_candidate ADD COLUMN IF NOT EXISTS follow_net_return_60d REAL;
+            ALTER TABLE fact_feature_panel_candidate ADD COLUMN IF NOT EXISTS follow_net_return_90d REAL;
             ALTER TABLE fact_feature_panel_candidate ADD COLUMN IF NOT EXISTS common_holder_network_count REAL;
             ALTER TABLE fact_feature_panel_candidate ADD COLUMN IF NOT EXISTS fund_holding_shares_tdx_f10 REAL;
             ALTER TABLE fact_feature_panel_candidate ADD COLUMN IF NOT EXISTS fund_holding_float_a_ratio_tdx_f10 REAL;
@@ -1188,6 +1241,25 @@ def init_db():
                 recorded_at      TEXT NOT NULL,
                 dry_run          BOOLEAN DEFAULT FALSE
             );
+
+            CREATE TABLE IF NOT EXISTS mart_data_deletion_record (
+                record_id TEXT PRIMARY KEY,
+                deletion_run_id TEXT NOT NULL,
+                table_name TEXT NOT NULL,
+                delete_scope TEXT NOT NULL,
+                key_column TEXT,
+                key_value TEXT,
+                deleted_rows BIGINT DEFAULT 0,
+                deleted_files BIGINT DEFAULT 0,
+                deleted_bytes BIGINT DEFAULT 0,
+                reason TEXT NOT NULL,
+                verification_json TEXT,
+                deleted_at TEXT NOT NULL
+            );
+            CREATE INDEX IF NOT EXISTS idx_data_deletion_run
+                ON mart_data_deletion_record(deletion_run_id);
+            CREATE INDEX IF NOT EXISTS idx_data_deletion_table
+                ON mart_data_deletion_record(table_name, delete_scope);
 
             -- K线已迁移到独立的 market.duckdb.price_kline
 
@@ -1515,6 +1587,8 @@ def init_db():
                 followability_score     REAL,
                 followability_confidence TEXT,
                 data_completeness       TEXT DEFAULT 'complete',
+                pricing_policy_id       TEXT,
+                pricing_policy_hash     TEXT,
                 updated_at              TEXT
             );
 
@@ -1738,6 +1812,14 @@ def init_db():
         ]:
             try:
                 conn.execute(f"ALTER TABLE fact_top10_holder_period ADD COLUMN {col}")
+            except Exception:
+                pass
+        for col in [
+            "pricing_policy_id TEXT",
+            "pricing_policy_hash TEXT",
+        ]:
+            try:
+                conn.execute(f"ALTER TABLE mart_institution_profile ADD COLUMN {col}")
             except Exception:
                 pass
 

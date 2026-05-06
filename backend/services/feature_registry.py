@@ -20,8 +20,18 @@ class FeatureSpec:
     label: bool = False
     model_input: bool = True
     source_tables: tuple[str, ...] = ()
+    source_event_date_column: str = ""
+    source_available_date_column: str = ""
     required_capabilities: tuple[str, ...] = ()
     pit_release_lag_days: int = 0
+    feature_role: str = "core_model_input"
+    availability_cadence: str = "daily"
+    panel_density: str = "dense_daily"
+    expected_update_frequency: str = "daily"
+    null_policy: str = "block_unclassified_null"
+    coverage_universe: str = "active_a_stock"
+    frontend_visible: bool = True
+    notes: str = ""
 
 
 @dataclass(frozen=True)
@@ -124,8 +134,20 @@ def load_feature_registry(path: str | Path | None = None) -> FeatureRegistry:
         group_label = bool(group_raw.get("label", False))
         group_model_input = bool(group_raw.get("model_input", not group_label))
         group_source_tables = _as_tuple(group_raw.get("source_tables"))
+        group_source_event_date_column = str(group_raw.get("source_event_date_column", ""))
+        group_source_available_date_column = str(group_raw.get("source_available_date_column", ""))
         group_required_capabilities = _as_tuple(group_raw.get("required_capabilities"))
         group_lag = max(int(group_raw.get("pit_release_lag_days", 0) or 0), 0)
+        group_feature_role = str(group_raw.get("feature_role", "core_model_input"))
+        group_availability_cadence = str(group_raw.get("availability_cadence", "daily"))
+        group_panel_density = str(group_raw.get("panel_density", "dense_daily"))
+        group_expected_update_frequency = str(
+            group_raw.get("expected_update_frequency", group_availability_cadence)
+        )
+        group_null_policy = str(group_raw.get("null_policy", "block_unclassified_null"))
+        group_coverage_universe = str(group_raw.get("coverage_universe", "active_a_stock"))
+        group_frontend_visible = bool(group_raw.get("frontend_visible", True))
+        group_notes = str(group_raw.get("notes", ""))
 
         for feature_name, feature_raw in _iter_feature_items(group_raw.get("features", [])):
             label = bool(feature_raw.get("label", group_label))
@@ -140,6 +162,12 @@ def load_feature_registry(path: str | Path | None = None) -> FeatureRegistry:
                 label=label,
                 model_input=model_input,
                 source_tables=_as_tuple(feature_raw.get("source_tables", group_source_tables)),
+                source_event_date_column=str(
+                    feature_raw.get("source_event_date_column", group_source_event_date_column)
+                ),
+                source_available_date_column=str(
+                    feature_raw.get("source_available_date_column", group_source_available_date_column)
+                ),
                 required_capabilities=_as_tuple(
                     feature_raw.get("required_capabilities", group_required_capabilities)
                 ),
@@ -147,5 +175,15 @@ def load_feature_registry(path: str | Path | None = None) -> FeatureRegistry:
                     int(feature_raw.get("pit_release_lag_days", group_lag) or 0),
                     0,
                 ),
+                feature_role=str(feature_raw.get("feature_role", group_feature_role)),
+                availability_cadence=str(feature_raw.get("availability_cadence", group_availability_cadence)),
+                panel_density=str(feature_raw.get("panel_density", group_panel_density)),
+                expected_update_frequency=str(
+                    feature_raw.get("expected_update_frequency", group_expected_update_frequency)
+                ),
+                null_policy=str(feature_raw.get("null_policy", group_null_policy)),
+                coverage_universe=str(feature_raw.get("coverage_universe", group_coverage_universe)),
+                frontend_visible=bool(feature_raw.get("frontend_visible", group_frontend_visible)),
+                notes=str(feature_raw.get("notes", group_notes)),
             )
     return FeatureRegistry(features=features, model_input_excluded=model_input_excluded)

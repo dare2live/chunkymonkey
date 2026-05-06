@@ -106,6 +106,84 @@ def test_workbench_overview_returns_stable_read_model():
         assert json.dumps(overview, ensure_ascii=False)
 
 
+def test_workbench_stock_horizon_marks_follow_net_60d_as_baseline() -> None:
+    with duck_mem() as conn:
+        conn.executescript(
+            """
+            CREATE TABLE mart_stock_horizon_profile (
+                run_id TEXT,
+                stock_code TEXT,
+                label_name TEXT,
+                horizon_days INTEGER,
+                obs_count INTEGER,
+                avg_return DOUBLE,
+                win_rate DOUBLE,
+                volatility DOUBLE,
+                horizon_score DOUBLE,
+                is_best BOOLEAN,
+                compounded_return DOUBLE,
+                max_drawdown DOUBLE,
+                path_obs_count INTEGER,
+                built_at TEXT
+            );
+            INSERT INTO mart_stock_horizon_profile VALUES
+                ('follow_horizon', '000001', 'follow_net_return_60d', 60, 100, 0.03, 0.58, 0.12, 0.50, TRUE, 0.20, -0.08, 2, '2026-05-06T10:00:00'),
+                ('follow_horizon', '000002', 'follow_net_return_90d', 90, 100, 0.04, 0.60, 0.13, 0.55, TRUE, 0.24, -0.09, 2, '2026-05-06T10:00:00');
+            CREATE TABLE mart_stock_horizon_selection (
+                run_id TEXT,
+                stock_code TEXT,
+                baseline_label TEXT,
+                baseline_horizon_days INTEGER,
+                selected_label TEXT,
+                selected_horizon_days INTEGER,
+                selected_horizon_confidence DOUBLE,
+                selected_horizon_score DOUBLE,
+                baseline_horizon_score DOUBLE,
+                score_advantage DOUBLE,
+                avg_return_advantage DOUBLE,
+                selected_max_drawdown DOUBLE,
+                baseline_max_drawdown DOUBLE,
+                selected_obs_count INTEGER,
+                baseline_obs_count INTEGER,
+                gate_status TEXT,
+                fallback_reason TEXT,
+                built_at TEXT
+            );
+            INSERT INTO mart_stock_horizon_selection VALUES
+                ('follow_horizon', '000001', 'follow_net_return_60d', 60, 'follow_net_return_60d', 60, 1.0, 0.50, 0.50, 0.0, 0.0, -0.08, -0.08, 100, 100, 'baseline', 'baseline_best_or_no_candidate_passed', '2026-05-06T10:00:00'),
+                ('follow_horizon', '000002', 'follow_net_return_60d', 60, 'follow_net_return_90d', 90, 0.7, 0.55, 0.50, 0.05, 0.01, -0.09, -0.10, 100, 100, 'selected', NULL, '2026-05-06T10:00:00');
+            CREATE TABLE mart_stock_horizon_feature_effect (
+                run_id TEXT,
+                stock_code TEXT,
+                label_name TEXT,
+                horizon_days INTEGER,
+                feature_name TEXT,
+                obs_count INTEGER,
+                corr DOUBLE,
+                abs_corr_rank INTEGER,
+                effect_direction TEXT,
+                built_at TEXT
+            );
+            INSERT INTO mart_stock_horizon_feature_effect VALUES
+                ('follow_horizon', '000001', 'follow_net_return_60d', 60, 'ma_ratio_250', 100, -0.32, 1, 'negative', '2026-05-06T10:00:00'),
+                ('follow_horizon', '000002', 'follow_net_return_90d', 90, 'ret_60d', 100, -0.41, 1, 'negative', '2026-05-06T10:00:00'),
+                ('follow_horizon', '000002', 'follow_net_return_60d', 60, 'wrong_horizon', 100, 0.50, 1, 'positive', '2026-05-06T10:00:00');
+            """
+        )
+
+        profile = build_workbench_research(conn)["stock_horizon_profile"]
+
+        assert profile["baseline_label"] == "follow_net_return_60d"
+        assert profile["horizon_distribution"][0]["is_baseline"] is True
+        assert profile["selected_horizon_distribution"][0]["is_baseline"] is True
+        by_stock = {row["stock_code"]: row for row in profile["horizon_selection"]}
+        assert by_stock["000002"]["top_feature_effects"][0]["feature_name"] == "ret_60d"
+        assert all(
+            item["feature_name"] != "wrong_horizon"
+            for item in by_stock["000002"]["top_feature_effects"]
+        )
+
+
 def test_workbench_research_returns_schedule_studies_ranker_and_drift():
     with duck_mem() as conn:
         conn.executescript(
@@ -286,6 +364,195 @@ def test_workbench_research_returns_schedule_studies_ranker_and_drift():
                 ('stock_profile_latest', '000001', 'forward_ret_60d', 60, 'regime_down', 120, 0.42, 1, 'positive', '2026-05-06T07:00:00'),
                 ('stock_profile_latest', '000002', 'forward_ret_90d', 90, 'ret_60d_tdx_l1_rel', 120, -0.38, 1, 'negative', '2026-05-06T07:00:00'),
                 ('stock_profile_latest', '000002', 'forward_ret_90d', 90, 'vol_std_20d', 120, -0.31, 2, 'negative', '2026-05-06T07:00:00');
+
+            CREATE TABLE mart_temporal_research_panel_quality (
+                run_id TEXT,
+                source_panel_table TEXT,
+                feature_set_id TEXT,
+                source_available_date_column TEXT,
+                source_date_filter_applied BOOLEAN,
+                input_rows BIGINT,
+                panel_rows BIGINT,
+                dropped_future_source_rows BIGINT,
+                stock_count BIGINT,
+                min_signal_date TEXT,
+                max_signal_date TEXT,
+                feature_count INTEGER,
+                label_count INTEGER,
+                labels_json TEXT,
+                features_json TEXT,
+                built_at TEXT
+            );
+            INSERT INTO mart_temporal_research_panel_quality VALUES
+                ('temporal_latest', 'fact_feature_panel_candidate', 'feature_set_a',
+                 'source_available_date', TRUE, 101, 100, 1, 20,
+                 '2026-01-01', '2026-01-20', 3, 2,
+                 '["forward_ret_20d","forward_ret_60d"]',
+                 '["signal_a","signal_b","noise"]',
+                 '2026-05-06T08:00:00');
+
+            CREATE TABLE mart_feature_temporal_relevance (
+                run_id TEXT,
+                label_name TEXT,
+                horizon_days INTEGER,
+                feature_name TEXT,
+                coverage_pct DOUBLE,
+                rank_ic DOUBLE,
+                directional_spread DOUBLE,
+                stability_score DOUBLE,
+                long_short_spread DOUBLE,
+                daily_count INTEGER,
+                built_at TEXT
+            );
+            INSERT INTO mart_feature_temporal_relevance VALUES
+                ('temporal_latest', 'forward_ret_20d', 20, 'signal_a', 99.0, 0.08, 0.025, 0.07, 0.025, 20, '2026-05-06T08:00:00'),
+                ('temporal_latest', 'forward_ret_60d', 60, 'signal_b', 98.0, -0.06, 0.031, 0.05, -0.031, 20, '2026-05-06T08:00:00');
+
+            CREATE TABLE mart_feature_pair_synergy (
+                run_id TEXT,
+                label_name TEXT,
+                horizon_days INTEGER,
+                feature_a TEXT,
+                feature_b TEXT,
+                joint_uplift DOUBLE,
+                interaction_score DOUBLE,
+                joint_obs_count BIGINT,
+                feature_corr DOUBLE,
+                joint_active_label_mean DOUBLE,
+                best_standalone_label_mean DOUBLE,
+                built_at TEXT
+            );
+            INSERT INTO mart_feature_pair_synergy VALUES
+                ('temporal_latest', 'forward_ret_20d', 20, 'signal_a', 'signal_b',
+                 0.012, 0.42, 30, 0.22, 0.061, 0.049, '2026-05-06T08:00:00');
+
+            CREATE TABLE mart_feature_interaction_candidate (
+                run_id TEXT,
+                label_name TEXT,
+                horizon_days INTEGER,
+                feature_a TEXT,
+                feature_b TEXT,
+                selected BOOLEAN,
+                selection_reason TEXT,
+                joint_uplift DOUBLE,
+                interaction_score DOUBLE,
+                joint_obs_count BIGINT,
+                built_at TEXT
+            );
+            INSERT INTO mart_feature_interaction_candidate VALUES
+                ('temporal_latest', 'forward_ret_20d', 20, 'signal_a', 'signal_b',
+                 TRUE, 'joint_effect_exceeds_standalone', 0.012, 0.42, 30,
+                 '2026-05-06T08:00:00');
+
+            CREATE TABLE mart_optuna_synergy_study_summary (
+                run_id TEXT,
+                source_run_id TEXT,
+                label_name TEXT,
+                best_trial_number INTEGER,
+                objective_score DOUBLE,
+                trials INTEGER,
+                study_total_trials INTEGER,
+                selected_features_json TEXT,
+                selected_interactions_json TEXT,
+                config_json TEXT,
+                built_at TEXT
+            );
+            INSERT INTO mart_optuna_synergy_study_summary VALUES
+                ('optuna_temporal', 'temporal_latest', 'forward_ret_20d', 3, 1.25,
+                 8, 8, '["signal_a","signal_b"]',
+                 '[{"feature_a":"signal_a","feature_b":"signal_b"}]',
+                 '{"best_metrics":{"feature_component":0.8,"interaction_component":0.45}}',
+                 '2026-05-06T08:10:00');
+
+            CREATE TABLE mart_synergy_policy_candidate (
+                run_id TEXT,
+                source_run_id TEXT,
+                label_name TEXT,
+                objective_score DOUBLE,
+                selected_features_json TEXT,
+                selected_interactions_json TEXT,
+                gate_status TEXT,
+                notes_json TEXT,
+                built_at TEXT
+            );
+            INSERT INTO mart_synergy_policy_candidate VALUES
+                ('optuna_temporal', 'temporal_latest', 'forward_ret_20d', 1.25,
+                 '["signal_a","signal_b"]',
+                 '[{"feature_a":"signal_a","feature_b":"signal_b"}]',
+                 'research_only', '{"promotion_gate_required":true}',
+                 '2026-05-06T08:10:00');
+
+            CREATE TABLE mart_synergy_policy_gate (
+                run_id TEXT,
+                candidate_run_id TEXT,
+                source_run_id TEXT,
+                label_name TEXT,
+                baseline_horizon_days INTEGER,
+                candidate_horizon_days INTEGER,
+                validation_status TEXT,
+                promotion_status TEXT,
+                production_eligible BOOLEAN,
+                fold_count INTEGER,
+                avg_rank_ic DOUBLE,
+                std_rank_ic DOUBLE,
+                avg_top_excess_return DOUBLE,
+                worst_top_excess_return DOUBLE,
+                avg_top_hit_rate DOUBLE,
+                worst_max_drawdown DOUBLE,
+                avg_turnover DOUBLE,
+                avg_cost_adjusted_top_excess_return DOUBLE,
+                worst_cost_adjusted_top_excess_return DOUBLE,
+                transaction_cost_bps DOUBLE,
+                blockers_json TEXT,
+                built_at TEXT
+            );
+            INSERT INTO mart_synergy_policy_gate VALUES
+                ('synergy_wf_temporal', 'optuna_temporal', 'temporal_latest',
+                 'forward_ret_20d', 60, 20, 'blocked', 'research_only', FALSE,
+                 5, 0.07, 0.02, 0.01, -0.004, 0.61, -0.31,
+                 0.35, 0.008, -0.006, 10.0,
+                 '["excessive_topk_drawdown"]', '2026-05-06T08:20:00');
+
+            CREATE TABLE mart_feature_cluster_redundancy (
+                run_id TEXT,
+                source_run_id TEXT,
+                cluster_id TEXT,
+                feature_name TEXT,
+                representative_feature TEXT,
+                max_abs_corr_in_cluster DOUBLE,
+                cluster_size INTEGER,
+                redundancy_status TEXT,
+                built_at TEXT
+            );
+            INSERT INTO mart_feature_cluster_redundancy VALUES
+                ('redundancy_temporal', 'temporal_latest', 'cluster_001',
+                 'signal_a', 'signal_a', 0.98, 2, 'representative',
+                 '2026-05-06T08:30:00'),
+                ('redundancy_temporal', 'temporal_latest', 'cluster_001',
+                 'signal_b', 'signal_a', 0.98, 2, 'redundant',
+                 '2026-05-06T08:30:00');
+
+            CREATE TABLE mart_feature_conditional_synergy (
+                run_id TEXT,
+                label_name TEXT,
+                horizon_days INTEGER,
+                condition_feature TEXT,
+                response_feature TEXT,
+                incremental_uplift DOUBLE,
+                conditional_response_uplift DOUBLE,
+                response_uplift DOUBLE,
+                interaction_score DOUBLE,
+                conditional_response_obs_count BIGINT,
+                feature_corr DOUBLE,
+                selected BOOLEAN,
+                selection_reason TEXT,
+                built_at TEXT
+            );
+            INSERT INTO mart_feature_conditional_synergy VALUES
+                ('temporal_latest', 'forward_ret_20d', 20, 'signal_a',
+                 'signal_b', 0.011, 0.017, 0.006, 0.24, 22, 0.19, TRUE,
+                 'conditional_response_exceeds_unconditional',
+                 '2026-05-06T08:40:00');
             """
         )
 
@@ -327,6 +594,22 @@ def test_workbench_research_returns_schedule_studies_ranker_and_drift():
         assert research["stock_horizon_profile"]["feature_effects_by_horizon"][0]["feature_name"] == "regime_down"
         assert research["stock_horizon_profile"]["feature_effects_by_horizon"][0]["dominant_direction"] == "positive"
         assert research["stock_horizon_profile"]["best_stocks"][0]["stock_code"] == "000002"
+        assert research["temporal_synergy"]["run_id"] == "temporal_latest"
+        assert research["temporal_synergy"]["quality"]["dropped_future_source_rows"] == 1
+        assert research["temporal_synergy"]["top_relevance"][0]["feature_name"] == "signal_a"
+        assert research["temporal_synergy"]["top_synergies"][0]["feature_a"] == "signal_a"
+        assert research["temporal_synergy"]["selected_interactions"][0]["selection_reason"] == "joint_effect_exceeds_standalone"
+        assert research["temporal_synergy"]["optuna_studies"][0]["run_id"] == "optuna_temporal"
+        assert research["temporal_synergy"]["optuna_studies"][0]["selected_interactions"][0]["feature_b"] == "signal_b"
+        assert research["temporal_synergy"]["policy_candidates"][0]["gate_status"] == "research_only"
+        assert research["temporal_synergy"]["policy_gates"][0]["validation_status"] == "blocked"
+        assert research["temporal_synergy"]["policy_gates"][0]["blockers"] == ["excessive_topk_drawdown"]
+        assert research["temporal_synergy"]["policy_gates"][0]["avg_turnover"] == pytest.approx(0.35)
+        assert research["temporal_synergy"]["policy_gates"][0]["avg_cost_adjusted_top_excess_return"] == pytest.approx(0.008)
+        assert research["temporal_synergy"]["redundancy_clusters"][0]["representative_feature"] == "signal_a"
+        assert research["temporal_synergy"]["redundancy_clusters"][0]["cluster_size"] == 2
+        assert research["temporal_synergy"]["conditional_synergies"][0]["condition_feature"] == "signal_a"
+        assert research["temporal_synergy"]["conditional_synergies"][0]["incremental_uplift"] == pytest.approx(0.011)
         assert research["feature_drift"]["top"][0]["feature_name"] == "ret_60d"
         assert json.dumps(research, ensure_ascii=False)
 
@@ -710,6 +993,49 @@ def test_workbench_features_returns_registry_validation_search_and_association()
                 '{"transform_types":["xs_rank","xs_winsor"]}',
                 120, 3, 2, '2026-01-01', '2026-01-02', '2026-05-06T12:00:00'
             );
+
+            CREATE TABLE mart_feature_catalog_current (
+                run_id TEXT,
+                feature_table TEXT,
+                feature_name TEXT,
+                feature_family TEXT,
+                registry_status TEXT,
+                model_input BOOLEAN,
+                production_ready BOOLEAN,
+                candidate_only BOOLEAN,
+                label BOOLEAN,
+                pit_risk_level TEXT,
+                total_rows INTEGER,
+                non_null_rows INTEGER,
+                coverage_pct DOUBLE,
+                source_event_date_column TEXT,
+                source_available_date_column TEXT,
+                allowed_in_production_research BOOLEAN,
+                built_at TEXT
+            );
+            INSERT INTO mart_feature_catalog_current VALUES
+                ('catalog_a', 'fact_feature_panel', 'ret_20d', 'price_volume', 'registered', TRUE, TRUE, FALSE, FALSE, 'low', 100, 99, 99.0, 'date', 'date', TRUE, '2026-05-06T12:30:00'),
+                ('catalog_a', 'fact_feature_panel_candidate', 'unknown_f10', 'unknown', 'unknown', FALSE, FALSE, TRUE, FALSE, 'critical', 0, 0, 0.0, NULL, NULL, FALSE, '2026-05-06T12:30:00');
+            CREATE TABLE mart_feature_pit_join_plan (
+                run_id TEXT,
+                feature_table TEXT,
+                feature_name TEXT,
+                pit_risk_level TEXT,
+                join_policy TEXT,
+                production_blocking BOOLEAN
+            );
+            INSERT INTO mart_feature_pit_join_plan VALUES
+                ('catalog_a', 'fact_feature_panel', 'ret_20d', 'low', 'same_day_or_trailing_market_data', FALSE),
+                ('catalog_a', 'fact_feature_panel_candidate', 'unknown_f10', 'critical', 'blocked_or_not_applicable', TRUE);
+            CREATE TABLE mart_feature_exclusion_reason (
+                run_id TEXT,
+                feature_table TEXT,
+                feature_name TEXT,
+                reason_code TEXT,
+                production_blocking BOOLEAN
+            );
+            INSERT INTO mart_feature_exclusion_reason VALUES
+                ('catalog_a', 'fact_feature_panel_candidate', 'unknown_f10', 'unknown_blocking', TRUE);
             """
         )
 
@@ -723,6 +1049,10 @@ def test_workbench_features_returns_registry_validation_search_and_association()
             "ret_60d_xs_rank",
             "ret_60d_xs_winsor",
         ]
+        assert features["feature_catalog"]["run_id"] == "catalog_a"
+        assert features["feature_catalog"]["summary"]["critical_features"] == 1
+        assert features["feature_catalog"]["rows"][0]["feature_name"] == "unknown_f10"
+        assert features["feature_catalog"]["rows"][0]["production_blocking"] is True
         assert features["top_associations"][0]["feature_name"] == "ma_ratio_60"
         assert features["feature_drift"]["top"][0]["feature_name"] == "ret_60d"
         assert json.dumps(features, ensure_ascii=False)

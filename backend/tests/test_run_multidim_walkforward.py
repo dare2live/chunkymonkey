@@ -84,6 +84,20 @@ def test_walkforward_default_params_disable_lightgbm_feature_prefilter():
     assert subject.DEFAULT_PARAMS["feature_pre_filter"] is False
 
 
+def test_walkforward_uses_training_feature_contract_filter():
+    allowed, excluded = subject.apply_production_feature_contract(
+        ["ret_60d", "inst_count_qoq", "lhb_inst_buy_count_30d", "regime_down"],
+        feature_group="base_dense_v2",
+        strict=False,
+    )
+
+    assert allowed == ["ret_60d", "regime_down"]
+    assert {row["feature_name"] for row in excluded} == {
+        "inst_count_qoq",
+        "lhb_inst_buy_count_30d",
+    }
+
+
 def test_prediction_rows_score_profile_and_write_fold():
     conn = duck_mem()
     try:

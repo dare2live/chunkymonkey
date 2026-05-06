@@ -55,11 +55,13 @@ from services.model_feature_schema import (
     ordered_feature_cols,
 )
 from services.feature_retention import load_production_keep_features
+from services.feature_registry import load_feature_registry
 from services.pipeline_manifest import (
     git_commit_sha,
     record_pipeline_run,
     utc_now_iso,
 )
+from services.pricing_policy import load_pricing_label_policy
 from scripts.run_feature_ablation import (
     compute_ic,
     decile_metrics,
@@ -90,6 +92,8 @@ CREATE TABLE IF NOT EXISTS mart_multidim_model (
     feature_cols_json TEXT,
     label_name TEXT,
     feature_schema_version TEXT,
+    pricing_policy_id TEXT,
+    pricing_policy_hash TEXT,
     notes TEXT
 );
 
@@ -107,16 +111,79 @@ CREATE TABLE IF NOT EXISTS mart_multidim_prediction (
 
 FEATURE_COLS = ordered_feature_cols(include_dense_v2=True)
 ALPHA158_FEATURE_GROUPS = {"base_alpha158", "base_dense_v2_alpha158", "legacy_full"}
+STRICT_FEATURE_CONTRACT_GROUPS = {"model_selection_run", "base_retention_keep", "tdx_keep_v1"}
 
 
 def feature_group_uses_alpha158(feature_group: str) -> bool:
     return feature_group in ALPHA158_FEATURE_GROUPS
 
 
+def _feature_contract_exclusion_reason(feature_name: str, spec: Any | None, excluded: set[str]) -> str | None:
+    if feature_name in REGIME_FEATURE_COLS:
+        return None
+    if feature_name in excluded:
+        return "model_input_excluded"
+    if spec is None:
+        return "missing_feature_registry_contract"
+    if spec.label:
+        return "label_column"
+    if not spec.enabled:
+        return "feature_disabled"
+    if not spec.model_input:
+        return "not_model_input"
+    if not spec.production_ready:
+        return "not_production_ready"
+    if str(spec.null_policy) == "excluded_until_backfilled":
+        return "excluded_until_backfilled"
+    return None
+
+
+def apply_production_feature_contract(
+    feature_cols: list[str],
+    *,
+    feature_group: str,
+    strict: bool,
+) -> tuple[list[str], list[dict[str, Any]]]:
+    registry = load_feature_registry()
+    excluded_names = set(registry.model_input_excluded)
+    allowed: list[str] = []
+    excluded: list[dict[str, Any]] = []
+    for feature_name in feature_cols:
+        spec = registry.features.get(feature_name)
+        reason = _feature_contract_exclusion_reason(feature_name, spec, excluded_names)
+        if reason is None:
+            allowed.append(feature_name)
+            continue
+        if feature_name.startswith("a158_") and feature_group in ALPHA158_FEATURE_GROUPS:
+            allowed.append(feature_name)
+            continue
+        excluded.append(
+            {
+                "feature_name": feature_name,
+                "reason": reason,
+                "feature_group": getattr(spec, "group", None),
+                "feature_role": getattr(spec, "feature_role", None),
+                "null_policy": getattr(spec, "null_policy", None),
+            }
+        )
+    if strict and excluded:
+        sample = ", ".join(f"{row['feature_name']}:{row['reason']}" for row in excluded[:20])
+        raise RuntimeError(f"feature contract disallows explicit training features: {sample}")
+    if not allowed:
+        raise RuntimeError("feature contract left no eligible model-input features")
+    return normalize_feature_cols(allowed), excluded
+
+
 def ensure_model_schema(conn) -> None:
     conn.executescript(MODEL_DDL)
     cols = {r[0] for r in conn.execute("DESCRIBE mart_multidim_model").fetchall()}
-    for col in ("feature_cols_json", "label_name", "feature_schema_version"):
+    for col in (
+        "feature_cols_json",
+        "label_name",
+        "feature_schema_version",
+        "pricing_policy_id",
+        "pricing_policy_hash",
+    ):
         if col not in cols:
             conn.execute(f"ALTER TABLE mart_multidim_model ADD COLUMN {col} TEXT")
     conn.commit()
@@ -884,6 +951,8 @@ def _insert_model(
     fi: dict[str, float],
     label_name: str,
     schema_tag: str,
+    pricing_policy_id: str,
+    pricing_policy_hash: str,
     notes: str,
 ) -> None:
     train_start, train_end = train_bounds
@@ -899,8 +968,8 @@ def _insert_model(
             holdout_top_decile_avg, holdout_bottom_decile_avg,
             holdout_long_short_spread, holdout_winrate_top,
             feature_importance_json, feature_cols_json, label_name, feature_schema_version,
-            notes
-        ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+            pricing_policy_id, pricing_policy_hash, notes
+        ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
         """,
         (model_id, datetime.utcnow().isoformat(),
          train_start, train_end,
@@ -915,6 +984,8 @@ def _insert_model(
          _feature_cols_for_log(feature_cols),
          label_name,
          schema_tag,
+         pricing_policy_id,
+         pricing_policy_hash,
         notes),
     )
 
@@ -1043,8 +1114,20 @@ def main():
         selection_features=selected_feature_cols,
         selection_schema_tag=_selection_schema_tag(args.model_selection_run_id or "latest"),
     )
-    logger.info("feature_group=%s schema_tag=%s 特征数=%d",
-                args.feature_group, schema_tag, len(feature_cols))
+    feature_cols, excluded_feature_contracts = apply_production_feature_contract(
+        feature_cols,
+        feature_group=args.feature_group,
+        strict=args.feature_group in STRICT_FEATURE_CONTRACT_GROUPS,
+    )
+    if excluded_feature_contracts:
+        schema_tag = f"{schema_tag}_contract_filtered"
+        logger.warning(
+            "feature contract excluded %d non-production features: %s",
+            len(excluded_feature_contracts),
+            excluded_feature_contracts[:20],
+        )
+    logger.info("feature_group=%s schema_tag=%s eligible_features=%d excluded_features=%d",
+                args.feature_group, schema_tag, len(feature_cols), len(excluded_feature_contracts))
 
     t_split = time.perf_counter()
     train_idx, valid_idx, holdout_idx = split_time_series_indices(panel.dates)
@@ -1174,6 +1257,7 @@ def main():
     logger.info("训练完成, 重新打开 DuckDB (writable) 落库...")
     conn = get_conn()
     ensure_model_schema(conn)
+    pricing_policy = load_pricing_label_policy()
     model_id = f"{args.model_id_prefix}_{args.feature_group}_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
     t_write = time.perf_counter()
     _insert_model(
@@ -1190,6 +1274,8 @@ def main():
         fi=fi,
         label_name=args.label_name,
         schema_tag=schema_tag,
+        pricing_policy_id=pricing_policy.policy_id,
+        pricing_policy_hash=pricing_policy.policy_hash(),
         notes=_notes(args),
     )
 
@@ -1248,6 +1334,7 @@ def main():
             "cpu_count": os.cpu_count(),
             "num_threads": best.get("num_threads", "default"),
             "timings": timings,
+            "excluded_feature_contracts": excluded_feature_contracts,
         },
     )
     conn.close()
@@ -1266,12 +1353,15 @@ def main():
             "model_family": model_family,
             "fixed_params_run_id": args.fixed_params_run_id,
             "fixed_params": fixed_params,
+            "pricing_policy_id": pricing_policy.policy_id,
+            "pricing_policy_hash": pricing_policy.policy_hash(),
             "label_name": args.label_name,
             "start": args.start,
             "end": args.end,
             "trials": args.trials,
             "num_round": args.num_round,
             "objective_num_round": args.objective_num_round,
+            "excluded_feature_contracts": excluded_feature_contracts,
         },
         ic_holdout=rank_ic,
     )

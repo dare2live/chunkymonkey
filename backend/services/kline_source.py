@@ -1,4 +1,5 @@
 import logging
+import math
 import time
 from datetime import datetime
 from typing import Optional
@@ -6,8 +7,12 @@ from typing import Optional
 from pydantic import TypeAdapter, ValidationError
 
 from services.api_schemas import KLineDailyRow
+from services.data_processing_monitor import ProcessingToolStats
 
 logger = logging.getLogger("cm-api")
+KLINE_CLEANING_POLICY_ID = "kline_clean_v1_positive_ohlcv_amount"
+KLINE_VALUE_EPSILON = 1e-6
+KLINE_PRICE_FIELDS = ("open", "high", "low", "close")
 
 
 def looks_like_empty_payload_error(err: Exception) -> bool:
@@ -116,7 +121,120 @@ def _compact_keys(row: dict) -> dict:
     return {str(key).replace(" ", ""): value for key, value in row.items()}
 
 
-def normalize_price_rows(payload, source: str) -> list[dict]:
+def _float_or_none(value) -> float | None:
+    if value is None:
+        return None
+    try:
+        number = float(value)
+    except (TypeError, ValueError):
+        return None
+    if not math.isfinite(number):
+        return None
+    return number
+
+
+def _sample_for_issue(row: dict) -> dict:
+    return {
+        key: row.get(key)
+        for key in ("code", "date", "datetime", "open", "high", "low", "close", "volume", "vol", "amount")
+        if key in row
+    }
+
+
+def clean_price_row(
+    raw_row: dict,
+    *,
+    source: str = "",
+    require_volume_amount: bool = True,
+) -> tuple[dict | None, list[str]]:
+    """Clean one normalized K-line row and return rejection reasons."""
+    row = dict(raw_row or {})
+    if "volume" not in row and "vol" in row:
+        row["volume"] = row["vol"]
+
+    date = normalize_date_value(row.get("date") or row.get("datetime"))
+    issues: list[str] = []
+    if not date:
+        issues.append("missing_or_invalid_date")
+
+    numbers: dict[str, float] = {}
+    for field in KLINE_PRICE_FIELDS:
+        value = _float_or_none(row.get(field))
+        if value is None or value <= KLINE_VALUE_EPSILON:
+            issues.append(f"invalid_{field}")
+        else:
+            numbers[field] = value
+
+    for field in ("volume", "amount"):
+        value = _float_or_none(row.get(field))
+        if value is None:
+            if require_volume_amount:
+                issues.append(f"missing_{field}")
+        elif value <= KLINE_VALUE_EPSILON:
+            issues.append(f"invalid_{field}")
+        else:
+            numbers[field] = value
+
+    if all(field in numbers for field in KLINE_PRICE_FIELDS):
+        high = numbers["high"]
+        low = numbers["low"]
+        if high < max(numbers["open"], numbers["close"], low):
+            issues.append("invalid_ohlc_high_low")
+        if low > min(numbers["open"], numbers["close"], high):
+            issues.append("invalid_ohlc_high_low")
+
+    if issues:
+        return None, sorted(set(issues))
+
+    cleaned = {
+        "date": date,
+        "open": numbers["open"],
+        "high": numbers["high"],
+        "low": numbers["low"],
+        "close": numbers["close"],
+        "volume": numbers.get("volume"),
+        "amount": numbers.get("amount"),
+    }
+    for key in ("code", "freq", "adjust", "factor"):
+        if key in row:
+            cleaned[key] = row.get(key)
+    return cleaned, []
+
+
+def clean_price_rows(
+    rows: list[dict],
+    *,
+    source: str = "",
+    require_volume_amount: bool = True,
+    tool_name: str = "kline_cleaner",
+) -> tuple[list[dict], ProcessingToolStats]:
+    stats = ProcessingToolStats(
+        tool_name=tool_name,
+        policy_id=KLINE_CLEANING_POLICY_ID,
+        source_name=source or None,
+    )
+    cleaned_rows: list[dict] = []
+    for raw in rows or []:
+        cleaned, issues = clean_price_row(
+            raw,
+            source=source,
+            require_volume_amount=require_volume_amount,
+        )
+        if cleaned is None:
+            stats.reject(issues, sample=_sample_for_issue(raw))
+            continue
+        stats.accept()
+        cleaned_rows.append(cleaned)
+    return cleaned_rows, stats
+
+
+def normalize_price_rows(
+    payload,
+    source: str,
+    *,
+    require_volume_amount: bool = True,
+    stats: ProcessingToolStats | None = None,
+) -> list[dict]:
     """Normalize upstream price payloads into shared daily-schema records."""
     source = str(source or "")
     column_map = {}
@@ -132,25 +250,27 @@ def normalize_price_rows(payload, source: str) -> list[dict]:
         }
 
     rows = []
+    local_stats = stats or ProcessingToolStats(
+        tool_name="kline_source_normalize",
+        policy_id=KLINE_CLEANING_POLICY_ID,
+        source_name=source or None,
+    )
     for raw in records_from_payload(payload):
         compact = _compact_keys(raw)
         row = {column_map.get(key, key): value for key, value in compact.items()}
         if "volume" not in row and "vol" in row:
             row["volume"] = row["vol"]
 
-        date = normalize_date_value(row.get("date") or row.get("datetime"))
-        if not date or not all(key in row for key in ("open", "high", "low", "close")):
+        cleaned, issues = clean_price_row(
+            row,
+            source=source,
+            require_volume_amount=require_volume_amount,
+        )
+        if cleaned is None:
+            local_stats.reject(issues, sample=_sample_for_issue(row))
             continue
-
-        rows.append({
-            "date": date,
-            "open": row.get("open"),
-            "high": row.get("high"),
-            "low": row.get("low"),
-            "close": row.get("close"),
-            "volume": row.get("volume"),
-            "amount": row.get("amount"),
-        })
+        local_stats.accept()
+        rows.append(cleaned)
     return rows
 
 

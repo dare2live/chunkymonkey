@@ -12,7 +12,7 @@
 设计:
 - signals: records with columns=[date, stock_code, action, weight]
   action ∈ {'buy','sell','hold'}, weight 是目标权重 [0,1]
-- 简化: 日频再平衡, 不考虑日内冲击 (T+1 收盘价成交)
+- 简化: 日频再平衡, 使用执行日 VWAP 作为成交基准
 - 滑点应用在每笔成交的成交价上
 - 约束在每次再平衡时强制 (违反则截断或拒绝)
 - 输出 equity curve + 交易明细
@@ -27,7 +27,10 @@ from collections import defaultdict
 from collections.abc import Mapping
 from typing import Callable, Literal
 
+from services.pricing_policy import load_pricing_label_policy
+
 logger = logging.getLogger("cm-api.portfolio_backtest")
+PRICING_POLICY = load_pricing_label_policy()
 
 
 # ===========================================================================
@@ -45,7 +48,7 @@ class SlippageModel:
       - impact: 综合 (含买卖价差 + 流动性)
     """
     type: Literal["fixed_bps", "linear", "sqrt", "impact"] = "fixed_bps"
-    fixed_bps: float = 5.0       # 万分之五
+    fixed_bps: float = PRICING_POLICY.transaction_cost_bps
     impact_coef: float = 10.0    # bps per unit (linear/sqrt/impact)
     bid_ask_spread_bps: float = 5.0  # impact 模式: bid-ask 半价差
 
@@ -179,7 +182,7 @@ def _normalize_signal_rows(signals) -> list[dict]:
 def run_portfolio_backtest(
     signals,
     *,
-    price_fn: Callable[[str, str], float | None],  # (stock_code, date) → close
+    price_fn: Callable[[str, str], float | None],  # (stock_code, date) → execution reference price
     initial_capital: float = 1_000_000,
     slippage: SlippageModel | None = None,
     constraint: PositionConstraint | None = None,
@@ -191,7 +194,7 @@ def run_portfolio_backtest(
 
     signals: 必须含列 [date (str YYYY-MM-DD), stock_code, target_weight (0-1)].
              同一天同一只股最多一行. 没出现的日子视作空仓.
-    price_fn: (sc, date) → close, 缺失返回 None (跳过该日成交).
+    price_fn: (sc, date) → execution reference price, 缺失返回 None (跳过该日成交).
     industry_fn: 可选, 用于行业约束.
     adv_fn: (sc, date) → adv (近 20 日均额), linear/sqrt/impact 滑点模式必传.
     """
@@ -396,8 +399,33 @@ def run_portfolio_backtest(
 _PRICE_CACHE: dict[tuple, float | None] = {}
 
 
+def _safe_float(value) -> float | None:
+    if value is None:
+        return None
+    try:
+        number = float(value)
+    except (TypeError, ValueError):
+        return None
+    return number if number > 0 else None
+
+
+def _resolve_execution_price(row) -> float | None:
+    """Execution basis: daily VWAP first, then open fallback."""
+    amount = _safe_float(row["amount"] if isinstance(row, dict) else row[2])
+    volume = _safe_float(row["volume"] if isinstance(row, dict) else row[3])
+    close = _safe_float(row["close"] if isinstance(row, dict) else row[1])
+    if amount and volume:
+        vwap = amount / volume
+        if close is None or 0.5 <= vwap / close <= 1.5:
+            return vwap
+        adjusted = vwap / 100.0
+        if 0.5 <= adjusted / close <= 1.5:
+            return adjusted
+    return _safe_float(row["open"] if isinstance(row, dict) else row[0])
+
+
 def make_default_price_fn():
-    """从 market.duckdb canonical K-line relation 拿 close. 进程内 cache."""
+    """从 market.duckdb canonical K-line relation 拿执行日 VWAP. 进程内 cache."""
     from services.market_db import get_canonical_kline_qfq_relation, get_market_conn
     mc = get_market_conn()
     relation = get_canonical_kline_qfq_relation()
@@ -409,14 +437,14 @@ def make_default_price_fn():
         try:
             r = mc.execute(
                 f"""
-                SELECT close FROM {relation}
+                SELECT open, close, amount, volume FROM {relation}
                  WHERE code = ? AND date = ?
                    AND freq = 'daily' AND adjust = 'qfq'
                  LIMIT 1
                 """,
                 [stock_code, date],
             ).fetchone()
-            v = float(r[0]) if r and r[0] else None
+            v = _resolve_execution_price(r) if r else None
         except Exception:
             v = None
         _PRICE_CACHE[key] = v

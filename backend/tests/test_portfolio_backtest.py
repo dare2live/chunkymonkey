@@ -6,6 +6,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from services.portfolio_backtest import (  # noqa: E402
     PositionConstraint,
     SlippageModel,
+    _resolve_execution_price,
     run_portfolio_backtest,
 )
 
@@ -43,3 +44,8 @@ def test_run_portfolio_backtest_reports_empty_signals():
     result = run_portfolio_backtest([], price_fn=lambda _code, _date: None)
 
     assert result.metrics == {"error": "empty signals"}
+
+
+def test_default_execution_price_prefers_vwap_with_open_fallback():
+    assert _resolve_execution_price({"open": 9.8, "close": 10.0, "amount": 1000.0, "volume": 100.0}) == 10.0
+    assert _resolve_execution_price({"open": 9.8, "close": 10.0, "amount": None, "volume": None}) == 9.8

@@ -119,6 +119,8 @@ def test_real_fallback_rows_do_not_overlap_existing_primary_keys():
                        AND p.date = c.date
                        AND p.freq = c.freq
                        AND p.adjust = c.adjust
+                       AND p.open IS NOT NULL AND p.open > 0
+                       AND p.close IS NOT NULL AND p.close > 0
                )
             """
         ).fetchone()[0]

@@ -69,7 +69,7 @@ _stock_trends_cache = {"ts": 0.0, "payload": None}
 # ============================================================
 
 @router.get("/institutions")
-async def list_institutions(show: str = Query("active", description="active=正常, archived=已归档, all=全部")):
+async def list_institutions(show: str = Query("active", description="active=正常, inactive=停用/合并/黑名单, all=全部")):
     """列出跟踪机构"""
     conn = get_conn()
     try:

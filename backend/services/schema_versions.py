@@ -41,8 +41,8 @@ FACT_VERSIONS = {
     "fact_institution_event": "v1",          # 机构事件 (核心)
     "fact_setup_snapshot": "v1",             # setup 快照
     "fact_chain_alpha_truth": "v1",          # 链路 alpha 真值
-    "fact_feature_panel": "v3",              # 特征面板 (Qlib alpha158 + 90d 标签 + K线来源血缘)
-    "fact_feature_panel_candidate": "v2",    # 候选特征面板 (含 90d 标签, 不替换 champion)
+    "fact_feature_panel": "v4",              # 特征面板 (含 follow_net_return_* 标签 + K线来源血缘)
+    "fact_feature_panel_candidate": "v3",    # 候选特征面板 (含 follow_net_return_* 标签, 不替换 champion)
     "fact_feature_panel_tdx_keep_challenger": "v2",  # TDX keep challenger 面板
     "fact_dzjy_event": "v1",                 # 大宗交易事件
     "fact_executive_trade_event": "v1",      # 高管交易事件
@@ -52,7 +52,7 @@ FACT_VERSIONS = {
     "fact_financial_derived": "v1",          # 财务派生
     "fact_financial_indicator_ak": "v1",     # akshare 财务指标
     "fact_fundamental_quarterly": "v1",      # 基本面季度
-    "fact_institution_follow_backtest": "v1",  # 机构跟随回测
+    "fact_institution_follow_backtest": "v2",  # 机构跟随回测 (pricing_policy_hash)
     "fact_policy_equity_curve": "v1",        # 策略 equity curve
     "fact_policy_eval": "v1",                # 策略评估
     "fact_policy_trade": "v1",               # 策略交易明细
@@ -77,7 +77,7 @@ MART_VERSIONS = {
     "mart_etf_snapshot_latest": "v1",
     "mart_etf_snapshot_state": "v1",
     "mart_institution_industry_stat": "v1",  # 机构行业统计
-    "mart_institution_profile": "v1",        # 机构画像 ⭐
+    "mart_institution_profile": "v2",        # 机构画像 ⭐ (pricing_policy_hash)
     "mart_model_ablation_run": "v1",
     "mart_feature_association_stat": "v2",
     "mart_feature_correlation_cluster": "v1",
@@ -99,10 +99,13 @@ MART_VERSIONS = {
     "mart_hybrid_feature_panel_build": "v1",
     "mart_stock_horizon_profile": "v3",
     "mart_stock_horizon_feature_effect": "v2",
+    "mart_stock_horizon_selection": "v1",
     "mart_feature_candidate_score": "v1",
     "mart_feature_group_ablation": "v2",
     "mart_feature_pit_audit": "v1",
+    "mart_feature_pit_coverage_summary": "v1",
     "mart_feature_panel_validation": "v1",
+    "mart_feature_panel_prune_run": "v1",
     "mart_candidate_walkforward_eval": "v1",
     "mart_model_holding_topk_eval": "v1",
     "mart_model_feature_lineage": "v1",
@@ -111,6 +114,28 @@ MART_VERSIONS = {
     "mart_feature_drift_histogram": "v1",
     "mart_challenger_evidence_bundle": "v1",
     "mart_champion_candidate_evaluation": "v1",
+    "mart_tdx_f10_capability_matrix": "v1",
+    "mart_feature_catalog_current": "v1",
+    "mart_feature_pit_join_plan": "v1",
+    "mart_feature_exclusion_reason": "v1",
+    "mart_model_explanation": "v1",
+    "mart_daily_recommendation_explanation": "v1",
+    "mart_temporal_research_panel": "v1",
+    "mart_temporal_research_panel_quality": "v1",
+    "mart_feature_temporal_relevance": "v1",
+    "mart_feature_bucket_effect": "v1",
+    "mart_feature_relevance_stability": "v1",
+    "mart_feature_pair_synergy": "v1",
+    "mart_feature_interaction_candidate": "v1",
+    "mart_feature_conditional_synergy": "v1",
+    "mart_feature_redundancy_pair": "v1",
+    "mart_feature_cluster_redundancy": "v1",
+    "mart_optuna_synergy_trial": "v1",
+    "mart_optuna_synergy_study_summary": "v1",
+    "mart_synergy_policy_candidate": "v1",
+    "mart_synergy_policy_walkforward": "v2",
+    "mart_synergy_policy_gate": "v2",
+    "mart_synergy_policy_evidence_bundle": "v1",
     "mart_research_schedule_plan": "v1",
     "mart_architecture_inventory_asset": "v1",
     "mart_architecture_dependency_edge": "v1",
@@ -118,6 +143,19 @@ MART_VERSIONS = {
     "mart_architecture_cleanup_plan": "v1",
     "mart_data_source_failure_queue": "v1",
     "mart_pipeline_lock": "v1",
+    "mart_pricing_label_policy": "v1",
+    "mart_pricing_label_policy_gate": "v1",
+    "mart_pricing_label_data_readiness_gate": "v1",
+    "mart_global_data_quality_gate": "v1",
+    "mart_global_data_quality_detail": "v1",
+    "mart_feature_null_policy": "v1",
+    "mart_candidate_feature_set_contract": "v1",
+    "mart_feature_availability_contract": "v1",
+    "mart_data_processing_tool_run": "v1",
+    "mart_data_processing_tool_issue": "v1",
+    "mart_data_deletion_record": "v1",
+    "mart_follow_return_label_build": "v1",
+    "mart_follow_return_label_quality": "v1",
     "mart_model_selection_run": "v1",
     "mart_tdx_challenger_report": "v1",
     "mart_tdx_keep_promotion_gate": "v1",

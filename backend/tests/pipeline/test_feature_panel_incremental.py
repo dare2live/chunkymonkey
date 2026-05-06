@@ -68,6 +68,16 @@ def _create_sources(con) -> None:
             trade_date TEXT,
             is_inst_net_buy INTEGER
         );
+        CREATE TABLE smartmoney.fact_shareholder_plan_tdx_f10 (
+            stock_code TEXT,
+            source_available_date TEXT,
+            source_notice_date TEXT,
+            direction TEXT,
+            progress TEXT,
+            target_amount_min BIGINT,
+            target_amount_max BIGINT,
+            fetched_at TEXT
+        );
         CREATE TABLE smartmoney.fact_fundamental_quarterly (
             stock_code TEXT,
             report_date TEXT,
@@ -147,6 +157,13 @@ def _seed_sources(con, day_count: int = 50) -> list[str]:
     con.executemany(
         "INSERT INTO smartmoney.fact_lhb_event VALUES (?, ?, ?)",
         [("000001", "2026-01-07", 1), ("000002", "20260108", 1)],
+    )
+    con.executemany(
+        "INSERT INTO smartmoney.fact_shareholder_plan_tdx_f10 VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+        [
+            ("000001", "2026-01-04", "2026-01-04", "增持计划", "完成", 3_000_000_000, 3_300_000_000, "2026-01-04T10:00:00"),
+            ("000001", "2026-01-10", "2026-01-10", "减持计划", "进行中", None, 500_000_000, "2026-01-10T10:00:00"),
+        ],
     )
     return days
 

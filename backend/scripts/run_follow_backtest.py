@@ -23,7 +23,7 @@ import itertools
 import json
 import logging
 import sys
-from datetime import datetime
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Optional
 
@@ -31,6 +31,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from services.db import get_conn
 from services.event_simulator import simulate_events
+from services.pricing_policy import load_pricing_label_policy
 
 logger = logging.getLogger("run_follow_backtest")
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s | %(message)s")
@@ -75,8 +76,12 @@ CREATE TABLE IF NOT EXISTS fact_institution_follow_backtest (
     exit_reasons_json TEXT,
     event_date_min    TEXT,
     event_date_max    TEXT,
+    pricing_policy_id TEXT,
+    pricing_policy_hash TEXT,
     PRIMARY KEY (cohort_scheme, cohort_key, backtest_run_at, split, entry_lag, max_hold_days, stop_loss, take_profit)
 );
+ALTER TABLE fact_institution_follow_backtest ADD COLUMN IF NOT EXISTS pricing_policy_id TEXT;
+ALTER TABLE fact_institution_follow_backtest ADD COLUMN IF NOT EXISTS pricing_policy_hash TEXT;
 """
 
 
@@ -217,7 +222,7 @@ def list_top_cohorts(
 
 # 默认 Grid 参数空间（§20 修正版 3x3x2）
 DEFAULT_GRID = {
-    "entry_lag": [1],  # 次日开仓（首版不扫 lag）
+    "entry_lag": [0],  # 信号日 VWAP 作为跟随成本
     "max_hold_days": [10, 20, 40],
     "stop_loss": [None, -0.08, -0.15],
     "take_profit": [None, 0.20],
@@ -236,6 +241,7 @@ def _row_for_split(
     if result.get("n_filled", 0) == 0:
         return None
     event_date_min, event_date_max = _event_range(events)
+    pricing_policy = load_pricing_label_policy()
     return {
         "cohort_scheme": cohort_scheme,
         "cohort_key": cohort_key,
@@ -257,6 +263,8 @@ def _row_for_split(
         "exit_reasons_json": json.dumps(result.get("exit_reason_counts", {}), ensure_ascii=False),
         "event_date_min": event_date_min,
         "event_date_max": event_date_max,
+        "pricing_policy_id": pricing_policy.policy_id,
+        "pricing_policy_hash": pricing_policy.policy_hash(),
     }
 
 
@@ -287,7 +295,7 @@ def run_backtest_for_cohort(
         return []
     logger.info("[%s | %s] 加载事件 %d 条", cohort_scheme, cohort_key, len(events))
 
-    run_at = datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%S")
+    run_at = datetime.now(UTC).replace(tzinfo=None).strftime("%Y-%m-%dT%H:%M:%S")
     results: list[dict] = []
     param_combos = list(itertools.product(
         grid["entry_lag"], grid["max_hold_days"], grid["stop_loss"], grid["take_profit"]
@@ -337,8 +345,9 @@ def run_backtest_for_cohort(
              max_hold_days, stop_loss, take_profit, n_events, n_filled,
              avg_pnl, avg_hold_days, win_rate, annual_return, sharpe,
              avg_position_maxdd, p95_position_maxdd, exit_reasons_json,
-             event_date_min, event_date_max)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+             event_date_min, event_date_max, pricing_policy_id,
+             pricing_policy_hash)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             [
                 (
@@ -349,7 +358,8 @@ def run_backtest_for_cohort(
                     row["win_rate"], row["annual_return"], row["sharpe"],
                     row["avg_position_maxdd"], row["p95_position_maxdd"],
                     row["exit_reasons_json"], row["event_date_min"],
-                    row["event_date_max"],
+                    row["event_date_max"], row["pricing_policy_id"],
+                    row["pricing_policy_hash"],
                 )
                 for row in results
             ],

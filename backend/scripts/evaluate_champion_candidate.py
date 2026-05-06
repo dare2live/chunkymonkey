@@ -47,6 +47,10 @@ def ensure_tables(conn: Any) -> None:
     conn.executescript(DDL)
 
 
+def _emit_progress(message: str) -> None:
+    print(f"[candidate_eval] {utc_now_iso()} {message}", flush=True)
+
+
 def candidate_evaluation_status(*, pit_status: str, evidence_status: str, gate_status: str | None) -> str:
     if pit_status != "passed" or evidence_status != "success":
         return "failed"
@@ -73,6 +77,7 @@ def _persist_candidate_evaluation(
     started_at: str,
     ended_at: str,
     duration_s: float,
+    stage_timings: dict[str, float] | None = None,
 ) -> None:
     ensure_tables(conn)
     pit_status = str(pit_result.get("status") or "unknown")
@@ -125,6 +130,7 @@ def _persist_candidate_evaluation(
             "pit_result": pit_result,
             "evidence_result": evidence_result,
             "config": config,
+            "stage_timings": stage_timings or {},
         },
     )
     conn.commit()
@@ -147,11 +153,15 @@ def evaluate_champion_candidate(
 ) -> dict[str, Any]:
     started_at = utc_now_iso()
     started = time.perf_counter()
+    stage_timings: dict[str, float] = {}
     evaluation_run_id = f"candidate_eval_{model_id}_{datetime.utcnow().strftime('%Y%m%d_%H%M%S')}"
     pit_audit_run_id = pit_audit_run_id or f"pit_registry_{model_id}_{datetime.utcnow().strftime('%Y%m%d_%H%M%S')}"
 
+    _emit_progress(f"start model_id={model_id} feature_table={feature_table} top_k={top_k} horizons={horizons}")
     owns_connection = conn is None
     connection_factory = connection_factory or get_conn
+    stage_started = time.perf_counter()
+    _emit_progress(f"pit_audit start run_id={pit_audit_run_id}")
     if owns_connection:
         with connection_factory() as audit_conn:
             ensure_tables(audit_conn)
@@ -173,7 +183,15 @@ def evaluate_champion_candidate(
             audit_run_id=pit_audit_run_id,
         )
         conn.commit()
+    stage_timings["pit_audit_s"] = round(time.perf_counter() - stage_started, 3)
+    _emit_progress(
+        "pit_audit done "
+        f"status={pit_result.get('status')} violations={pit_result.get('violation_rows')} "
+        f"elapsed={stage_timings['pit_audit_s']:.3f}s"
+    )
 
+    stage_started = time.perf_counter()
+    _emit_progress("evidence_bundle start")
     evidence_result = build_evidence_bundle(
         model_id=model_id,
         feature_set_id=feature_set_id,
@@ -185,6 +203,13 @@ def evaluate_champion_candidate(
         cost_bps=cost_bps,
         timeout=timeout,
         pit_audit_run_id=pit_audit_run_id,
+    )
+    stage_timings["evidence_bundle_s"] = round(time.perf_counter() - stage_started, 3)
+    _emit_progress(
+        "evidence_bundle done "
+        f"status={evidence_result.get('status')} gate={evidence_result.get('gate_status')} "
+        f"failed_steps={evidence_result.get('failed_steps')} "
+        f"elapsed={stage_timings['evidence_bundle_s']:.3f}s"
     )
 
     failed_steps = list(evidence_result.get("failed_steps") or [])
@@ -209,6 +234,8 @@ def evaluate_champion_candidate(
         "timeout": timeout,
     }
 
+    stage_started = time.perf_counter()
+    _emit_progress(f"persist start status={status}")
     if owns_connection:
         with connection_factory() as write_conn:
             _persist_candidate_evaluation(
@@ -225,6 +252,7 @@ def evaluate_champion_candidate(
                 started_at=started_at,
                 ended_at=ended_at,
                 duration_s=duration_s,
+                stage_timings=stage_timings,
             )
     else:
         _persist_candidate_evaluation(
@@ -241,7 +269,10 @@ def evaluate_champion_candidate(
             started_at=started_at,
             ended_at=ended_at,
             duration_s=duration_s,
+            stage_timings=stage_timings,
         )
+    stage_timings["persist_s"] = round(time.perf_counter() - stage_started, 3)
+    _emit_progress(f"done status={status} elapsed={duration_s:.3f}s")
     return {
         "evaluation_run_id": evaluation_run_id,
         "model_id": model_id,
@@ -254,6 +285,7 @@ def evaluate_champion_candidate(
         "gate_status": gate_status,
         "failed_steps": failed_steps,
         "duration_s": round(duration_s, 3),
+        "stage_timings": stage_timings,
     }
 
 

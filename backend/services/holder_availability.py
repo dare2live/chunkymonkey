@@ -134,6 +134,55 @@ def backfill_holder_period_availability(conn) -> dict:
     return backfill_holder_period_availability_rows(conn, overwrite_regulatory=False)
 
 
+def backfill_inst_holdings_notice_dates(conn) -> dict:
+    """Backfill inst_holdings.notice_date from canonical TDX holder facts."""
+
+    try:
+        before = conn.execute(
+            """
+            SELECT COUNT(*) AS n
+              FROM inst_holdings
+             WHERE notice_date IS NULL OR notice_date = ''
+            """
+        ).fetchone()
+    except Exception:
+        return {"updated_rows": 0, "remaining_missing_rows": 0, "status": "missing_inst_holdings"}
+    before_missing = int((before["n"] if hasattr(before, "keys") else before[0]) or 0)
+    conn.execute(
+        """
+        UPDATE inst_holdings AS h
+           SET notice_date = src.notice_date
+          FROM (
+                SELECT stock_code, report_date, holder_name,
+                       MAX(notice_date) AS notice_date
+                  FROM fact_top10_holder_period
+                 WHERE notice_date IS NOT NULL AND notice_date != ''
+                   AND holder_set = 'free'
+                   AND NOT COALESCE(is_secondary_class, FALSE)
+                   AND NOT COALESCE(is_exit_row, FALSE)
+                 GROUP BY stock_code, report_date, holder_name
+               ) AS src
+         WHERE h.stock_code = src.stock_code
+           AND h.report_date = src.report_date
+           AND h.holder_name = src.holder_name
+           AND (h.notice_date IS NULL OR h.notice_date = '')
+        """
+    )
+    after = conn.execute(
+        """
+        SELECT COUNT(*) AS n
+          FROM inst_holdings
+         WHERE notice_date IS NULL OR notice_date = ''
+        """
+    ).fetchone()
+    after_missing = int((after["n"] if hasattr(after, "keys") else after[0]) or 0)
+    return {
+        "updated_rows": max(before_missing - after_missing, 0),
+        "remaining_missing_rows": after_missing,
+        "status": "ok",
+    }
+
+
 def backfill_holder_period_availability_rows(conn, *, overwrite_regulatory: bool = False) -> dict:
     where = """
         report_date IS NOT NULL

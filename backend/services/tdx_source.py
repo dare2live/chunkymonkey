@@ -14,6 +14,7 @@ from typing import Optional
 
 logger = logging.getLogger("cm-api")
 _TDX_TIMEOUT_SECONDS = float(os.environ.get("CM_TDX_TIMEOUT_SECONDS", "1.5"))
+_TDX_DEFAULT_MAX_ATTEMPTS = 8
 _QUOTES_IDLE_TTL_SECONDS = 300
 _MOOTDX_CIRCUIT_BREAKER_SECONDS = 300
 _TDX_SERVER_FAILURE_COOLDOWN_SECONDS = 120
@@ -261,6 +262,22 @@ def _len_or_none(value) -> Optional[int]:
         return None
 
 
+def _default_tdx_max_attempts() -> Optional[int]:
+    """Bound a single TDX request so a cold failure never scans every server."""
+
+    raw = os.environ.get("CM_TDX_MAX_ATTEMPTS")
+    if raw is None or str(raw).strip() == "":
+        return _TDX_DEFAULT_MAX_ATTEMPTS
+    try:
+        value = int(str(raw).strip())
+    except ValueError:
+        logger.warning("[tdxhub] invalid CM_TDX_MAX_ATTEMPTS=%r, using %s", raw, _TDX_DEFAULT_MAX_ATTEMPTS)
+        return _TDX_DEFAULT_MAX_ATTEMPTS
+    if value <= 0:
+        return None
+    return value
+
+
 def _build_attempt(server: tuple[str, int], *, started_at: float, ok: bool,
                    error_type: Optional[str] = None, error: Optional[str] = None,
                    result=None) -> dict[str, object]:
@@ -302,8 +319,9 @@ def call_tdx_quotes_with_retry(
     attempt_details: list[dict[str, object]] = []
     attempt_count = 0
     timeout = float(connect_timeout if connect_timeout is not None else _TDX_TIMEOUT_SECONDS)
+    effective_max_attempts = max_attempts if max_attempts is not None else _default_tdx_max_attempts()
     for server in _iter_tdx_servers_for_request():
-        if max_attempts is not None and attempt_count >= max_attempts:
+        if effective_max_attempts is not None and attempt_count >= effective_max_attempts:
             break
         attempt_count += 1
         state = _get_quotes_pool_state(server)

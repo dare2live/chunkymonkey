@@ -18,6 +18,7 @@ DERIVED_TABLES = [
     "raw_tdx_f10_holder_count_history",
     "fact_holder_count_period",
     "fact_shareholder_trade_tdx_b",
+    "fact_shareholder_plan_tdx_f10",
     "fact_common_major_holder_stock",
     "fact_fund_holding_tdx_f10",
     "fact_controlling_shareholder",

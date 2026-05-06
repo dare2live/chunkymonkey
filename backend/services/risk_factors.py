@@ -18,6 +18,8 @@ import math
 import time
 from typing import Any
 
+from services.pipeline_manifest import git_commit_sha, record_pipeline_run, utc_now_iso
+
 logger = logging.getLogger("cm-api.risk_factors")
 
 TRADING_DAYS_PER_YEAR = 252
@@ -130,6 +132,7 @@ def _series_stats(closes: list[float]) -> dict:
 def calc_risk_factors(conn, *, lookback_days: int = 250, max_stocks: int | None = None) -> dict:
     """全市场跑 risk factors. 跑近 lookback_days K 线."""
     ensure_table(conn)
+    started_at = utc_now_iso()
     t0 = time.time()
 
     # K 线在独立 market.duckdb, 用 market_db.get_market_conn (单独连接).
@@ -162,51 +165,129 @@ def calc_risk_factors(conn, *, lookback_days: int = 250, max_stocks: int | None 
         market_conn.close()
         return {"status": "no_active_stocks"}
 
-    n_processed = 0
-    n_written = 0
-    today_iso = None
-    for sc in stocks:
-        try:
-            # 拉近 lookback_days 个交易日的收盘价
-            df_rows = market_conn.execute(f"""
-                SELECT date, close FROM {kline_relation}
-                WHERE code = ? AND freq = 'daily' AND adjust = 'qfq'
-                  AND close IS NOT NULL AND close > 0
-                ORDER BY date DESC LIMIT ?
-            """, [sc, lookback_days]).fetchall()
-            if len(df_rows) < 30:
-                continue
-            df_rows = list(reversed(df_rows))  # 转正序
-            closes = [float(r[1]) for r in df_rows]
-            calc_date = str(df_rows[-1][0])[:10]
-            if today_iso is None:
-                today_iso = calc_date
+    stage_t0 = time.time()
+    market_conn.execute("CREATE OR REPLACE TEMP TABLE __active_risk_stock(code TEXT)")
+    market_conn.executemany(
+        "INSERT INTO __active_risk_stock VALUES (?)",
+        [(str(stock),) for stock in stocks],
+    )
+    logger.info("[risk_factors] active stock temp loaded: %d", len(stocks))
 
-            stats = _series_stats(closes)
-            if not stats:
-                continue
-            conn.execute(
-                """INSERT OR REPLACE INTO fact_risk_factors
-                   (stock_code, calc_date, vol_30d, vol_60d, vol_120d,
-                    max_dd_60d, max_dd_120d, sharpe_30d, sharpe_60d,
-                    skew_60d, kurt_60d, mom_30d, mom_120d, n_bars)
-                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-                [
-                    sc, calc_date,
-                    stats.get("vol_30d"), stats.get("vol_60d"), stats.get("vol_120d"),
-                    stats.get("max_dd_60d"), stats.get("max_dd_120d"),
-                    stats.get("sharpe_30d"), stats.get("sharpe_60d"),
-                    stats.get("skew_60d"), stats.get("kurt_60d"),
-                    stats.get("mom_30d"), stats.get("mom_120d"),
-                    len(closes),
-                ],
-            )
-            n_written += 1
-        except Exception as exc:
-            logger.debug(f"[risk_factors] {sc}: {exc}")
-        n_processed += 1
+    sqrt_year = math.sqrt(TRADING_DAYS_PER_YEAR)
+    query = f"""
+        WITH k AS (
+            SELECT code AS stock_code,
+                   CAST(date AS VARCHAR) AS date,
+                   CAST(close AS DOUBLE) AS close
+              FROM {kline_relation}
+             WHERE freq = 'daily'
+               AND adjust = 'qfq'
+               AND close IS NOT NULL
+               AND close > 0
+               AND code IN (SELECT code FROM __active_risk_stock)
+        ),
+        ranked AS (
+            SELECT stock_code,
+                   date,
+                   close,
+                   ROW_NUMBER() OVER (PARTITION BY stock_code ORDER BY date DESC) AS rn_desc,
+                   LAG(close) OVER (PARTITION BY stock_code ORDER BY date) AS prev_close
+              FROM k
+        ),
+        limited AS (
+            SELECT stock_code, date, close, rn_desc, prev_close,
+                   CASE WHEN prev_close > 0 THEN LN(close / prev_close) ELSE NULL END AS ret
+              FROM ranked
+             WHERE rn_desc <= {int(lookback_days)}
+        ),
+        drawdown AS (
+            SELECT stock_code,
+                   date,
+                   rn_desc,
+                   close,
+                   MAX(close) OVER (
+                       PARTITION BY stock_code
+                       ORDER BY date
+                       ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW
+                   ) AS running_peak
+              FROM limited
+             WHERE rn_desc <= 120
+        ),
+        latest AS (
+            SELECT stock_code,
+                   MAX(date) AS calc_date,
+                   MAX(CASE WHEN rn_desc = 1 THEN close END) AS latest_close,
+                   MAX(CASE WHEN rn_desc = 30 THEN close END) AS close_30d,
+                   MAX(CASE WHEN rn_desc = 120 THEN close END) AS close_120d,
+                   COUNT(*) AS n_bars
+              FROM limited
+             GROUP BY stock_code
+        ),
+        ret_stats AS (
+            SELECT stock_code,
+                   STDDEV_SAMP(ret) FILTER (WHERE rn_desc <= 30) * {sqrt_year} AS vol_30d,
+                   STDDEV_SAMP(ret) FILTER (WHERE rn_desc <= 60) * {sqrt_year} AS vol_60d,
+                   STDDEV_SAMP(ret) FILTER (WHERE rn_desc <= 120) * {sqrt_year} AS vol_120d,
+                   (AVG(ret) FILTER (WHERE rn_desc <= 30) * {TRADING_DAYS_PER_YEAR})
+                       / NULLIF(STDDEV_SAMP(ret) FILTER (WHERE rn_desc <= 30) * {sqrt_year}, 0) AS sharpe_30d,
+                   (AVG(ret) FILTER (WHERE rn_desc <= 60) * {TRADING_DAYS_PER_YEAR})
+                       / NULLIF(STDDEV_SAMP(ret) FILTER (WHERE rn_desc <= 60) * {sqrt_year}, 0) AS sharpe_60d,
+                   SKEWNESS(ret) FILTER (WHERE rn_desc <= 60) AS skew_60d,
+                   KURTOSIS(ret) FILTER (WHERE rn_desc <= 60) AS kurt_60d
+              FROM limited
+             WHERE ret IS NOT NULL
+             GROUP BY stock_code
+        ),
+        dd AS (
+            SELECT stock_code,
+                   MAX(CASE
+                       WHEN rn_desc <= 60 AND running_peak > 0
+                       THEN (running_peak - close) / running_peak
+                   END) AS max_dd_60d,
+                   MAX(CASE
+                       WHEN rn_desc <= 120 AND running_peak > 0
+                       THEN (running_peak - close) / running_peak
+                   END) AS max_dd_120d
+              FROM drawdown
+             GROUP BY stock_code
+        )
+        SELECT l.stock_code,
+               l.calc_date,
+               r.vol_30d,
+               r.vol_60d,
+               r.vol_120d,
+               d.max_dd_60d,
+               d.max_dd_120d,
+               r.sharpe_30d,
+               r.sharpe_60d,
+               r.skew_60d,
+               r.kurt_60d,
+               CASE WHEN l.close_30d > 0 THEN l.latest_close / l.close_30d - 1 END AS mom_30d,
+               CASE WHEN l.close_120d > 0 THEN l.latest_close / l.close_120d - 1 END AS mom_120d,
+               l.n_bars
+          FROM latest l
+          LEFT JOIN ret_stats r USING (stock_code)
+          LEFT JOIN dd d USING (stock_code)
+         WHERE l.n_bars >= 30
+         ORDER BY l.stock_code
+    """
+    result_rows = market_conn.execute(query).fetchall()
     market_conn.close()
+    compute_elapsed = time.time() - stage_t0
+    logger.info("[risk_factors] batch computed rows=%d elapsed=%.2fs", len(result_rows), compute_elapsed)
+
+    conn.executemany(
+        """INSERT OR REPLACE INTO fact_risk_factors
+           (stock_code, calc_date, vol_30d, vol_60d, vol_120d,
+            max_dd_60d, max_dd_120d, sharpe_30d, sharpe_60d,
+            skew_60d, kurt_60d, mom_30d, mom_120d, n_bars)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+        [tuple(row) for row in result_rows],
+    )
     conn.commit()
+    today_iso = max((str(row[1]) for row in result_rows if row[1]), default=None)
+    n_written = len(result_rows)
+    n_processed = len(stocks)
 
     # P0.1 schema_version
     try:
@@ -216,6 +297,25 @@ def calc_risk_factors(conn, *, lookback_days: int = 250, max_stocks: int | None 
         pass
 
     elapsed = time.time() - t0
+    record_pipeline_run(
+        conn,
+        run_id=f"calc_risk_factors_{today_iso or 'unknown'}_{int(time.time())}",
+        pipeline_name="calc_risk_factors",
+        status="success",
+        started_at=started_at,
+        ended_at=utc_now_iso(),
+        duration_s=elapsed,
+        commit_sha=git_commit_sha(),
+        input_tables=[kline_relation, "dim_active_a_stock"],
+        output_tables=["fact_risk_factors"],
+        perf_summary={
+            "lookback_days": int(lookback_days),
+            "n_processed": n_processed,
+            "n_written": n_written,
+            "calc_date": today_iso,
+            "batch_compute_s": round(compute_elapsed, 3),
+        },
+    )
     logger.info(
         f"[risk_factors] {n_written}/{n_processed} 只股 / {elapsed:.1f}s, calc_date={today_iso}"
     )

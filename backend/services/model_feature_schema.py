@@ -117,5 +117,5 @@ def feature_cols_from_json(raw: str | None) -> list[str]:
 def holding_period_from_label(label_name: str | None) -> int | None:
     if not label_name:
         return None
-    match = re.fullmatch(r"forward_ret_(\d+)d", str(label_name))
+    match = re.fullmatch(r"(?:forward_ret|follow_net_return)_(\d+)d", str(label_name))
     return int(match.group(1)) if match else None

@@ -7,6 +7,7 @@ from conftest import duck_mem
 from services.duck_adapter import connect as duck_connect
 from services.storage_retention import (
     CandidateFeaturePanelRule,
+    ProtectedArtifactRule,
     StorageRetentionPolicy,
     execute_storage_cleanup,
     load_storage_retention_policy,
@@ -23,13 +24,14 @@ def test_storage_retention_missing_optional_tables_is_empty_dry_run():
             model_prediction_tables=(),
             model_file_roots=(),
             optuna_study_roots=(),
-            defaults={"require_backup_before_delete": True},
+            defaults={},
         )
         report = plan_storage_cleanup(conn, policy)
 
         assert report["mode"] == "dry_run"
         assert report["candidate_count"] == 0
-        assert report["requires_backup_before_delete"] is True
+        assert "requires_backup_before_delete" not in report
+        assert report["delete_policy"] == "verified_direct_delete_no_archive"
     finally:
         conn.close()
 
@@ -118,6 +120,15 @@ def test_storage_retention_protects_evidence_and_primary_outputs():
                 model_id TEXT,
                 stock_code TEXT
             );
+            CREATE TABLE mart_model_explanation (
+                model_id TEXT,
+                snapshot_date TEXT
+            );
+            CREATE TABLE mart_daily_recommendation_explanation (
+                model_id TEXT,
+                snapshot_date TEXT,
+                stock_code TEXT
+            );
             INSERT INTO mart_model_lifecycle VALUES
                 ('active_champion', 'champion', NULL),
                 ('retired_but_evidence', 'retired', NULL),
@@ -134,23 +145,85 @@ def test_storage_retention_protects_evidence_and_primary_outputs():
                 ('retired_gate_champion', '000001'),
                 ('retired_primary', '000002'),
                 ('delete_me', '000003');
+            INSERT INTO mart_model_explanation VALUES
+                ('retired_primary', '2026-04-30'),
+                ('delete_me', '2026-04-30');
+            INSERT INTO mart_daily_recommendation_explanation VALUES
+                ('retired_primary', '2026-04-30', '000001'),
+                ('delete_me', '2026-04-30', '000002');
             """
         )
 
         report = plan_storage_cleanup(conn)
         model_candidates = {
-            item["model_id"]
+            (item["table"], item["model_id"])
             for item in report["candidates"]
             if item["kind"] == "model_prediction_rows"
         }
 
-        assert "retired_but_evidence" not in model_candidates
-        assert "retired_gate_champion" not in model_candidates
-        assert "retired_primary" not in model_candidates
-        assert "delete_me" in model_candidates
+        assert ("mart_multidim_prediction", "retired_but_evidence") not in model_candidates
+        assert ("mart_multidim_prediction", "retired_gate_champion") not in model_candidates
+        assert ("mart_multidim_prediction", "retired_primary") not in model_candidates
+        assert ("mart_multidim_prediction", "delete_me") in model_candidates
+        assert ("mart_model_explanation", "retired_primary") not in model_candidates
+        assert ("mart_model_explanation", "delete_me") in model_candidates
+        assert ("mart_daily_recommendation_explanation", "retired_primary") not in model_candidates
+        assert ("mart_daily_recommendation_explanation", "delete_me") in model_candidates
         assert "evidence_bundle" in report["protected_model_reasons"]["retired_but_evidence"]
         assert "promotion_gate_champion" in report["protected_model_reasons"]["retired_gate_champion"]
         assert "primary_output:mart_daily_recommendation" in report["protected_model_reasons"]["retired_primary"]
+    finally:
+        conn.close()
+
+
+def test_storage_retention_reports_protected_pit_f10_and_horizon_artifacts():
+    conn = duck_mem()
+    try:
+        conn.executescript(
+            """
+            CREATE TABLE raw_tdx_f10_holder_research (
+                stock_code TEXT,
+                raw_hash TEXT
+            );
+            CREATE TABLE mart_feature_pit_coverage_summary (
+                audit_run_id TEXT,
+                feature_set_id TEXT
+            );
+            CREATE TABLE mart_stock_horizon_selection (
+                run_id TEXT,
+                feature_set_id TEXT
+            );
+            INSERT INTO raw_tdx_f10_holder_research VALUES ('000001', 'hash_1');
+            INSERT INTO mart_feature_pit_coverage_summary VALUES ('pit_run', 'pit_set');
+            INSERT INTO mart_stock_horizon_selection VALUES ('horizon_run', 'horizon_set');
+            """
+        )
+        policy = StorageRetentionPolicy(
+            protected_model_statuses=("champion",),
+            candidate_feature_panels=(),
+            model_prediction_tables=(),
+            model_file_roots=(),
+            optuna_study_roots=(),
+            defaults={},
+            protected_artifact_tables=(
+                ProtectedArtifactRule("raw_tdx_f10_holder_research", "raw replay"),
+                ProtectedArtifactRule("mart_feature_pit_coverage_summary", "pit evidence"),
+                ProtectedArtifactRule("missing_artifact", "future table"),
+            ),
+        )
+
+        report = plan_storage_cleanup(conn, policy)
+        artifacts = {row["table"]: row for row in report["protected_artifact_tables"]}
+
+        assert report["protected_artifact_table_count"] == 3
+        assert artifacts["raw_tdx_f10_holder_research"]["exists"] is True
+        assert artifacts["raw_tdx_f10_holder_research"]["row_count"] == 1
+        assert artifacts["mart_feature_pit_coverage_summary"]["exists"] is True
+        assert artifacts["missing_artifact"]["exists"] is False
+        assert "pit_set" in report["protected_feature_set_reasons"]
+        assert "feature_pit_coverage_summary" in report["protected_feature_set_reasons"]["pit_set"]
+        assert "horizon_set" in report["protected_feature_set_reasons"]
+        assert "stock_horizon_selection" in report["protected_feature_set_reasons"]["horizon_set"]
     finally:
         conn.close()
 
@@ -164,7 +237,7 @@ def test_storage_retention_execute_requires_approval():
             model_prediction_tables=(),
             model_file_roots=(),
             optuna_study_roots=(),
-            defaults={"require_backup_before_delete": True},
+            defaults={},
         )
 
         try:
@@ -177,7 +250,7 @@ def test_storage_retention_execute_requires_approval():
         conn.close()
 
 
-def test_storage_retention_execute_deletes_rows_after_backup(tmp_path):
+def test_storage_retention_execute_deletes_rows_directly_without_copying(tmp_path):
     conn = duck_mem()
     try:
         conn.executescript(
@@ -206,7 +279,7 @@ def test_storage_retention_execute_deletes_rows_after_backup(tmp_path):
             model_prediction_tables=load_storage_retention_policy().model_prediction_tables,
             model_file_roots=(),
             optuna_study_roots=(),
-            defaults={"require_backup_before_delete": True},
+            defaults={},
         )
 
         result = execute_storage_cleanup(
@@ -214,7 +287,6 @@ def test_storage_retention_execute_deletes_rows_after_backup(tmp_path):
             policy,
             approve=True,
             run_id="cleanup_unit",
-            backup_dir=tmp_path,
         )
         remaining = conn.execute(
             "SELECT model_id, COUNT(*) AS n FROM mart_multidim_prediction GROUP BY model_id ORDER BY model_id"
@@ -228,16 +300,17 @@ def test_storage_retention_execute_deletes_rows_after_backup(tmp_path):
 
         assert result["mode"] == "execute_approved"
         assert result["executed_count"] == 1
+        assert result["delete_policy"] == "verified_direct_delete_no_archive"
+        assert result["direct_delete_confirmed"] is True
         assert [(row["model_id"], row["n"]) for row in remaining] == [("keep_m", 1)]
-        assert backup_tables
-        assert (tmp_path / "manifest.json").exists()
+        assert backup_tables == []
+        assert not (tmp_path / "manifest.json").exists()
     finally:
         conn.close()
 
 
-def test_storage_retention_execute_backs_up_and_deletes_model_files(tmp_path):
+def test_storage_retention_execute_deletes_model_files_directly(tmp_path):
     model_dir = tmp_path / "models"
-    backup_dir = tmp_path / "backup"
     model_dir.mkdir()
     keep_file = model_dir / "keep_m.pkl"
     delete_file = model_dir / "delete_m.pkl"
@@ -263,7 +336,7 @@ def test_storage_retention_execute_backs_up_and_deletes_model_files(tmp_path):
             model_prediction_tables=(),
             model_file_roots=(str(model_dir),),
             optuna_study_roots=(),
-            defaults={"require_backup_before_delete": True},
+            defaults={},
         )
 
         result = execute_storage_cleanup(
@@ -271,13 +344,12 @@ def test_storage_retention_execute_backs_up_and_deletes_model_files(tmp_path):
             policy,
             approve=True,
             run_id="cleanup_files",
-            backup_dir=backup_dir,
         )
 
         assert keep_file.exists()
         assert not delete_file.exists()
-        assert (backup_dir / "delete_m.pkl").read_bytes() == b"delete"
         assert result["executed_count"] == 1
+        assert result["direct_delete_confirmed"] is True
     finally:
         conn.close()
 
@@ -327,7 +399,6 @@ model_prediction_tables: []
 model_file_roots: []
 optuna_study_roots: []
 defaults:
-  require_backup_before_delete: true
   large_delete_row_threshold: 2
 """,
         encoding="utf-8",
@@ -386,7 +457,7 @@ def test_storage_retention_recommends_compaction_for_large_deletes():
             model_prediction_tables=(),
             model_file_roots=(),
             optuna_study_roots=(),
-            defaults={"require_backup_before_delete": True, "large_delete_row_threshold": 2},
+            defaults={"large_delete_row_threshold": 2},
         )
 
         report = plan_storage_cleanup(conn, policy)
@@ -434,7 +505,7 @@ def test_storage_retention_protects_model_selection_feature_sets():
             model_prediction_tables=(),
             model_file_roots=(),
             optuna_study_roots=(),
-            defaults={"require_backup_before_delete": True},
+            defaults={},
         )
 
         report = plan_storage_cleanup(conn, policy)
@@ -468,6 +539,18 @@ def test_storage_retention_protects_feature_sets_from_evidence_profiles_and_sche
                 run_id TEXT,
                 feature_set_id TEXT
             );
+            CREATE TABLE mart_stock_horizon_selection (
+                run_id TEXT,
+                feature_set_id TEXT
+            );
+            CREATE TABLE mart_feature_pit_audit (
+                audit_run_id TEXT,
+                feature_set_id TEXT
+            );
+            CREATE TABLE mart_feature_pit_coverage_summary (
+                audit_run_id TEXT,
+                feature_set_id TEXT
+            );
             CREATE TABLE mart_champion_candidate_evaluation (
                 evaluation_run_id TEXT,
                 config_json TEXT
@@ -486,6 +569,9 @@ def test_storage_retention_protects_feature_sets_from_evidence_profiles_and_sche
                 ('new_set', '000001', '2026-05-10T00:00:00'),
                 ('stability_set', '000001', '2026-05-09T00:00:00'),
                 ('horizon_set', '000001', '2026-05-08T00:00:00'),
+                ('horizon_selection_set', '000001', '2026-05-07T12:00:00'),
+                ('pit_audit_set', '000001', '2026-05-07T08:00:00'),
+                ('pit_coverage_set', '000001', '2026-05-07T04:00:00'),
                 ('candidate_eval_set', '000001', '2026-05-07T00:00:00'),
                 ('evidence_steps_set', '000001', '2026-05-06T00:00:00'),
                 ('schedule_command_set', '000001', '2026-05-05T00:00:00'),
@@ -495,6 +581,12 @@ def test_storage_retention_protects_feature_sets_from_evidence_profiles_and_sche
                 ('stability_run', 'stability_set');
             INSERT INTO mart_stock_horizon_profile VALUES
                 ('horizon_run', 'horizon_set');
+            INSERT INTO mart_stock_horizon_selection VALUES
+                ('horizon_selection_run', 'horizon_selection_set');
+            INSERT INTO mart_feature_pit_audit VALUES
+                ('pit_audit_run', 'pit_audit_set');
+            INSERT INTO mart_feature_pit_coverage_summary VALUES
+                ('pit_coverage_run', 'pit_coverage_set');
             INSERT INTO mart_champion_candidate_evaluation VALUES
                 ('eval_run', '{"panel_feature_set_id": "candidate_eval_set"}');
             INSERT INTO mart_challenger_evidence_bundle VALUES
@@ -523,7 +615,7 @@ def test_storage_retention_protects_feature_sets_from_evidence_profiles_and_sche
             model_prediction_tables=(),
             model_file_roots=(),
             optuna_study_roots=(),
-            defaults={"require_backup_before_delete": True},
+            defaults={},
         )
 
         report = plan_storage_cleanup(conn, policy)
@@ -536,6 +628,9 @@ def test_storage_retention_protects_feature_sets_from_evidence_profiles_and_sche
         assert "delete_old_set" in feature_candidates
         assert "stability_set" not in feature_candidates
         assert "horizon_set" not in feature_candidates
+        assert "horizon_selection_set" not in feature_candidates
+        assert "pit_audit_set" not in feature_candidates
+        assert "pit_coverage_set" not in feature_candidates
         assert "candidate_eval_set" not in feature_candidates
         assert "evidence_steps_set" not in feature_candidates
         assert "schedule_command_set" not in feature_candidates
@@ -543,6 +638,9 @@ def test_storage_retention_protects_feature_sets_from_evidence_profiles_and_sche
         assert "schedule_config_set" not in feature_candidates
         assert "model_stability_summary" in report["protected_feature_set_reasons"]["stability_set"]
         assert "stock_horizon_profile" in report["protected_feature_set_reasons"]["horizon_set"]
+        assert "stock_horizon_selection" in report["protected_feature_set_reasons"]["horizon_selection_set"]
+        assert "feature_pit_audit" in report["protected_feature_set_reasons"]["pit_audit_set"]
+        assert "feature_pit_coverage_summary" in report["protected_feature_set_reasons"]["pit_coverage_set"]
         assert "research_schedule_command" in report["protected_feature_set_reasons"]["schedule_command_set"]
     finally:
         conn.close()
@@ -551,7 +649,6 @@ def test_storage_retention_protects_feature_sets_from_evidence_profiles_and_sche
 def test_storage_retention_cli_executes_against_copied_duckdb(tmp_path):
     source_db = tmp_path / "source.duckdb"
     copied_db = tmp_path / "copied.duckdb"
-    backup_dir = tmp_path / "backup"
     config = tmp_path / "storage_retention.yaml"
     config.write_text(
         """
@@ -565,7 +662,6 @@ model_prediction_tables:
 model_file_roots: []
 optuna_study_roots: []
 defaults:
-  require_backup_before_delete: true
 """,
         encoding="utf-8",
     )
@@ -609,8 +705,6 @@ defaults:
             "--execute-approved",
             "--run-id",
             "copied_cleanup_smoke",
-            "--backup-dir",
-            str(backup_dir),
         ],
         cwd=str(Path(__file__).resolve().parents[2]),
         text=True,
@@ -645,4 +739,4 @@ defaults:
     assert payload["executed_count"] == 1
     assert [(row["model_id"], row["n"]) for row in copied_remaining] == [("keep_m", 1)]
     assert [(row["model_id"], row["n"]) for row in source_remaining] == [("delete_m", 2), ("keep_m", 1)]
-    assert (backup_dir / "manifest.json").exists()
+    assert payload["direct_delete_confirmed"] is True

@@ -6,7 +6,8 @@ import argparse
 import json
 import math
 import sys
-from datetime import datetime
+import time
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -105,6 +106,10 @@ def _quote_relation(name: str) -> str:
     return ".".join(_quote_ident(part) for part in name.split("."))
 
 
+def _progress(message: str) -> None:
+    print(f"[feature_assoc] {utc_now_iso()} {message}", flush=True)
+
+
 def _execute_script(conn: Any, sql: str) -> None:
     if hasattr(conn, "executescript"):
         conn.executescript(sql)
@@ -136,9 +141,44 @@ def _registry_group_map() -> dict[str, str]:
     return {name: spec.group for name, spec in registry.features.items()}
 
 
-def _default_features(conn: Any, panel_table: str, label_names: list[str]) -> list[str]:
+def _registry_role_features(
+    *,
+    columns: dict[str, str],
+    label_names: list[str],
+    feature_roles: list[str],
+) -> list[str]:
+    labels = set(label_names)
+    roles = set(feature_roles)
+    registry = load_feature_registry()
+    return [
+        name
+        for name, spec in registry.features.items()
+        if spec.enabled
+        and not spec.label
+        and spec.feature_role in roles
+        and name in columns
+        and name not in labels
+        and _is_numeric_type(columns[name])
+    ]
+
+
+def _default_features(
+    conn: Any,
+    panel_table: str,
+    label_names: list[str],
+    *,
+    feature_roles: list[str] | None = None,
+) -> list[str]:
     columns = _table_columns(conn, panel_table)
     labels = set(label_names)
+    if feature_roles:
+        role_features = _registry_role_features(
+            columns=columns,
+            label_names=label_names,
+            feature_roles=feature_roles,
+        )
+        if role_features:
+            return role_features
     registry_features = [
         feature
         for feature in feature_input_columns()
@@ -630,6 +670,7 @@ def build_feature_association_stats(
     horizon_labels: list[str] | None = None,
     run_id: str | None = None,
     features: list[str] | None = None,
+    feature_roles: list[str] | None = None,
     start_date: str | None = None,
     end_date: str | None = None,
     min_daily_count: int = 10,
@@ -639,13 +680,28 @@ def build_feature_association_stats(
     folds: int = 0,
 ) -> dict[str, Any]:
     ensure_tables(conn)
+    run_id = run_id or f"feature_assoc_{datetime.now(UTC).strftime('%Y%m%d_%H%M%S')}"
+    started_at = utc_now_iso()
+    t0 = time.perf_counter()
+    _progress(
+        f"start run_id={run_id} panel={panel_table} label={label_name} "
+        f"feature_roles={','.join(feature_roles or []) or 'model_inputs'}"
+    )
     columns = _table_columns(conn, panel_table)
     labels = [label_name, *(horizon_labels or [])]
     labels = [label for label in dict.fromkeys(labels) if label in columns]
     if label_name not in labels:
         raise RuntimeError(f"label {label_name} is missing from {panel_table}")
 
-    requested = list(features or _default_features(conn, panel_table, labels))
+    requested = list(
+        features
+        or _default_features(
+            conn,
+            panel_table,
+            labels,
+            feature_roles=feature_roles,
+        )
+    )
     usable_features = [
         feature
         for feature in dict.fromkeys(requested)
@@ -658,6 +714,7 @@ def build_feature_association_stats(
     if not usable_features:
         raise RuntimeError(f"no numeric model-input features available in {panel_table}")
 
+    _progress(f"prepare_base_table start features={len(usable_features)} labels={len(labels)}")
     total_rows = _prepare_base_table(
         conn,
         panel_table=panel_table,
@@ -667,14 +724,17 @@ def build_feature_association_stats(
         start_date=start_date,
         end_date=end_date,
     )
-    run_id = run_id or f"feature_assoc_{datetime.utcnow().strftime('%Y%m%d_%H%M%S')}"
-    built_at = datetime.utcnow().isoformat(timespec="seconds")
+    _progress(f"prepare_base_table done rows={total_rows}")
+    built_at = datetime.now(UTC).replace(tzinfo=None).isoformat(timespec="seconds")
     group_map = _registry_group_map()
     source_fallback_pct = _source_fallback_pct(conn)
     source_distribution_json = _source_distribution_json(conn)
     rows = []
     stats: list[dict[str, Any]] = []
-    for feature in usable_features:
+    for idx, feature in enumerate(usable_features, start=1):
+        feature_t0 = time.perf_counter()
+        if idx == 1 or idx == len(usable_features) or idx % 5 == 0:
+            _progress(f"feature_stats start {idx}/{len(usable_features)} feature={feature}")
         primary = _compute_feature_label_stats(
             conn,
             feature=feature,
@@ -705,6 +765,12 @@ def build_feature_association_stats(
             "horizon_sensitivity_json": json.dumps(sensitivity, ensure_ascii=False, sort_keys=True),
         }
         stats.append(row)
+        if idx == 1 or idx == len(usable_features) or idx % 5 == 0:
+            _progress(
+                f"feature_stats done {idx}/{len(usable_features)} feature={feature} "
+                f"valid_rows={primary.get('valid_rows')} rank_ic={primary.get('rank_ic')} "
+                f"elapsed={time.perf_counter() - feature_t0:.3f}s"
+            )
         rows.append(
             (
                 run_id,
@@ -745,6 +811,7 @@ def build_feature_association_stats(
     cluster_rows = 0
     corr_pairs = len(stats) * max(len(stats) - 1, 0) // 2 if build_clusters else 0
     if build_clusters:
+        _progress(f"correlation_clusters start features={len(stats)} threshold={corr_threshold}")
         cluster_rows = _build_correlation_clusters(
             conn,
             run_id=run_id,
@@ -753,6 +820,10 @@ def build_feature_association_stats(
             corr_threshold=corr_threshold,
             built_at=built_at,
         )
+        _progress(f"correlation_clusters done rows={cluster_rows}")
+    else:
+        _progress("correlation_clusters skipped")
+    _progress(f"fold_associations start folds={folds}")
     fold_rows = _build_fold_associations(
         conn,
         run_id=run_id,
@@ -764,6 +835,8 @@ def build_feature_association_stats(
         min_daily_count=min_daily_count,
         built_at=built_at,
     )
+    _progress(f"fold_associations done rows={fold_rows}")
+    duration_s = time.perf_counter() - t0
     record_actual_version(conn, "mart_feature_association_stat")
     record_actual_version(conn, "mart_feature_correlation_cluster")
     record_actual_version(conn, "mart_feature_association_fold")
@@ -772,8 +845,9 @@ def build_feature_association_stats(
         run_id=run_id,
         pipeline_name="build_feature_association_duck",
         status="success",
-        started_at=built_at,
+        started_at=started_at,
         ended_at=utc_now_iso(),
+        duration_s=duration_s,
         commit_sha=git_commit_sha(Path(__file__).resolve().parent.parent.parent),
         input_tables=[panel_table],
         output_tables=[
@@ -795,12 +869,15 @@ def build_feature_association_stats(
             "start_date": start_date,
             "end_date": end_date,
             "feature_set_id": feature_set_id,
+            "feature_roles": feature_roles or [],
             "limit_features": limit_features,
             "source_fallback_pct": source_fallback_pct,
             "source_distribution_json": source_distribution_json,
+            "duration_s": duration_s,
         },
     )
     conn.commit()
+    _progress(f"done run_id={run_id} rows={len(rows)} duration_s={duration_s:.3f}")
     return {
         "run_id": run_id,
         "panel_table": panel_table,
@@ -816,6 +893,7 @@ def build_feature_association_stats(
         "total_rows": total_rows,
         "source_fallback_pct": source_fallback_pct,
         "source_distribution_json": source_distribution_json,
+        "duration_s": duration_s,
     }
 
 
@@ -826,6 +904,11 @@ def main() -> int:
     parser.add_argument("--label", default="forward_ret_20d")
     parser.add_argument("--horizon-labels", default="forward_ret_5d,forward_ret_10d,forward_ret_20d,forward_ret_60d,forward_ret_90d")
     parser.add_argument("--features", default=None, help="comma-separated feature list; defaults to registry inputs")
+    parser.add_argument(
+        "--feature-roles",
+        default=None,
+        help="comma-separated registry feature_role values to evaluate, e.g. core_model_input,capital_attention_auxiliary",
+    )
     parser.add_argument("--run-id", default=None)
     parser.add_argument("--start-date", default=None)
     parser.add_argument("--end-date", default=None)
@@ -837,6 +920,7 @@ def main() -> int:
     args = parser.parse_args()
 
     features = _parse_csv(args.features) or None
+    feature_roles = _parse_csv(args.feature_roles) or None
     horizon_labels = _parse_csv(args.horizon_labels)
     with get_conn() as conn:
         result = build_feature_association_stats(
@@ -847,6 +931,7 @@ def main() -> int:
             horizon_labels=horizon_labels,
             run_id=args.run_id,
             features=features,
+            feature_roles=feature_roles,
             start_date=args.start_date,
             end_date=args.end_date,
             min_daily_count=args.min_daily_count,

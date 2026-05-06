@@ -126,11 +126,27 @@ def generate_events(conn) -> int:
     logger.info("[事件] 开始生成...")
 
     rows = conn.execute("""
-        SELECT institution_id, holder_name, stock_code, stock_name,
-               report_date, notice_date, hold_amount, hold_change, hold_change_num
-        FROM inst_holdings
-        WHERE institution_id IS NOT NULL AND stock_code IS NOT NULL
-        ORDER BY institution_id, stock_code, report_date
+        WITH holder_notice AS (
+            SELECT stock_code, report_date, holder_name,
+                   MAX(notice_date) AS notice_date
+              FROM fact_top10_holder_period
+             WHERE notice_date IS NOT NULL AND notice_date != ''
+               AND holder_set = 'free'
+               AND NOT COALESCE(is_secondary_class, FALSE)
+               AND NOT COALESCE(is_exit_row, FALSE)
+             GROUP BY stock_code, report_date, holder_name
+        )
+        SELECT h.institution_id, h.holder_name, h.stock_code, h.stock_name,
+               h.report_date,
+               COALESCE(NULLIF(h.notice_date, ''), hn.notice_date) AS notice_date,
+               h.hold_amount, h.hold_change, h.hold_change_num
+        FROM inst_holdings h
+        LEFT JOIN holder_notice hn
+          ON h.stock_code = hn.stock_code
+         AND h.report_date = hn.report_date
+         AND h.holder_name = hn.holder_name
+        WHERE h.institution_id IS NOT NULL AND h.stock_code IS NOT NULL
+        ORDER BY h.institution_id, h.stock_code, h.report_date
     """).fetchall()
 
     if not rows:

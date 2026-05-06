@@ -258,6 +258,7 @@
     var rankerPolicy = data.ranker_policy || {};
     var stabilityContext = data.stability_context || {};
     var stockHorizon = data.stock_horizon_profile || {};
+    var temporalSynergy = data.temporal_synergy || {};
 
     setBody(
       '<section class="panel wb-panel">' +
@@ -279,6 +280,11 @@
       '<section class="panel wb-panel">' +
       '<div class="panel-head"><div><h3>个股持股周期画像</h3><div class="muted">run_id: <code>' + esc(stockHorizon.run_id || '-') + '</code> / baseline: <code>' + esc(stockHorizon.baseline_label || 'forward_ret_60d') + '</code></div></div></div>' +
       renderStockHorizonProfile(stockHorizon) +
+      '</section>' +
+
+      '<section class="panel wb-panel">' +
+      '<div class="panel-head"><div><h3>时序协同研究</h3><div class="muted">run_id: <code>' + esc(temporalSynergy.run_id || '-') + '</code></div></div></div>' +
+      renderTemporalSynergy(temporalSynergy) +
       '</section>' +
 
       '<section class="panel wb-panel">' +
@@ -305,6 +311,7 @@
     var kline = data.kline || {};
     var primary = kline.primary || {};
     var validation = data.latest_feature_validation || {};
+    var monitor = data.processing_monitor || {};
     setBody(
       '<div class="stats-row wb-stats-row">' +
       statCard('交易日目标', data.calendar_target || '-', 'calendar gate', data.calendar_target ? 'ok' : 'missing') +
@@ -312,6 +319,7 @@
       statCard('主源行数', fmtNum(primary.row_count || 0), esc(primary.last_data_date || '-'), primary.row_count ? 'ok' : 'missing') +
       statCard('Fallback', fmtNum(kline.fallback_active_count || 0), 'active sources', kline.fallback_active_count ? 'warn' : 'ok') +
       statCard('特征 fallback', fmtPct(validation.source_fallback_ratio), esc(validation.validation_id || '-'), validation.status || 'unknown') +
+      statCard('清洗拒绝', fmtNum(monitor.total_rejected_rows || 0), fmtNum(monitor.run_count || 0) + ' tool runs', (monitor.total_rejected_rows || 0) ? 'warn' : 'ok') +
       '</div>' +
 
       '<div class="wb-grid">' +
@@ -325,11 +333,55 @@
       '</section>' +
       '</div>' +
 
+      '<div class="wb-grid">' +
+      '<section class="panel wb-panel">' +
+      '<div class="panel-head"><div><h3>处理工具监控</h3><div class="muted">accepted / rejected</div></div></div>' +
+      renderProcessingMonitorTable(monitor.recent_runs || []) +
+      '</section>' +
+      '<section class="panel wb-panel">' +
+      '<div class="panel-head"><div><h3>拒绝原因</h3><div class="muted">cleaning contract</div></div></div>' +
+      renderProcessingReasonTable(monitor.reason_counts || []) +
+      '</section>' +
+      '</div>' +
+
       '<section class="panel wb-panel">' +
       '<div class="panel-head"><div><h3>数据源水位</h3><div class="muted">' + fmtNum(data.watermark_count || 0) + ' sources</div></div></div>' +
       renderWatermarkTable(data.watermarks || []) +
+      '</section>' +
+      '<section class="panel wb-panel">' +
+      '<div class="panel-head"><div><h3>TDX F10 能力矩阵</h3><div class="muted">parser / PIT source dates</div></div></div>' +
+      renderTdxF10CapabilityTable(data.tdx_f10_capabilities || []) +
       '</section>'
     );
+  }
+
+  function renderProcessingMonitorTable(rows) {
+    if (!rows.length) return renderEmpty('暂无处理工具运行记录');
+    return '<div class="wb-table-wrap"><table class="data-table data-table-compact wb-table">' +
+      '<thead><tr><th>tool</th><th>scope</th><th>source</th><th>status</th><th>accepted</th><th>rejected</th><th>output</th><th>ended</th></tr></thead><tbody>' +
+      rows.map(function (row) {
+        return '<tr>' +
+          '<td>' + esc(row.tool_name || '-') + '<div class="muted"><code>' + esc(row.run_id || '-') + '</code></div></td>' +
+          '<td>' + esc(row.scope || '-') + '</td>' +
+          '<td>' + esc(row.source_name || '-') + '</td>' +
+          '<td>' + pill(row.status || '-', row.status) + '</td>' +
+          '<td>' + fmtNum(row.accepted_rows || 0) + '</td>' +
+          '<td>' + fmtNum(row.rejected_rows || 0) + '</td>' +
+          '<td>' + esc(row.output_table || '-') + '</td>' +
+          '<td>' + esc(row.ended_at || '-') + '</td>' +
+          '</tr>';
+      }).join('') +
+      '</tbody></table></div>';
+  }
+
+  function renderProcessingReasonTable(rows) {
+    if (!rows.length) return renderEmpty('暂无拒绝原因');
+    return '<div class="wb-table-wrap"><table class="data-table data-table-compact wb-table">' +
+      '<thead><tr><th>reason</th><th>count</th></tr></thead><tbody>' +
+      rows.map(function (row) {
+        return '<tr><td>' + esc(row.reason || '-') + '</td><td>' + fmtNum(row.count || 0) + '</td></tr>';
+      }).join('') +
+      '</tbody></table></div>';
   }
 
   function renderSourceBlockers(rows) {
@@ -373,6 +425,24 @@
           '<td>' + pill(row.fallback_active ? 'active' : 'off', row.fallback_active ? 'warn' : 'ok') + '<div class="muted">' + esc(row.fallback_reason || '') + '</div></td>' +
           '<td>' + fmtNum(row.consecutive_failures || 0) + '</td>' +
           '<td>' + esc(row.updated_at || row.last_success_at || '-') + '</td>' +
+          '</tr>';
+      }).join('') +
+      '</tbody></table></div>';
+  }
+
+  function renderTdxF10CapabilityTable(rows) {
+    if (!rows.length) return renderEmpty('暂无 TDX F10 能力矩阵');
+    return '<div class="wb-table-wrap"><table class="data-table data-table-compact wb-table">' +
+      '<thead><tr><th>模块</th><th>状态</th><th>覆盖</th><th>行数</th><th>source date</th><th>availability</th><th>parser</th></tr></thead><tbody>' +
+      rows.map(function (row) {
+        return '<tr>' +
+          '<td>' + esc(row.module_name || '-') + '<div class="muted"><code>' + esc(row.module_id || '-') + '</code></div></td>' +
+          '<td>' + pill(row.status || '-', row.status === 'ready' ? 'ok' : row.status) + '<div class="muted">' + esc(row.pit_risk || '-') + '</div></td>' +
+          '<td>' + fmtNum(row.coverage_stock_count || 0) + '</td>' +
+          '<td>' + fmtNum(row.row_count || 0) + '</td>' +
+          '<td>' + esc(row.source_date_field || '-') + '<div class="muted">' + esc(row.latest_page_update_date || '-') + '</div></td>' +
+          '<td>' + esc(row.availability_date_field || '-') + '<div class="muted">' + esc(row.latest_fetched_at || '-') + '</div></td>' +
+          '<td>' + esc(row.parser || '-') + '<div class="muted">' + esc(row.parser_version || '-') + '</div></td>' +
           '</tr>';
       }).join('') +
       '</tbody></table></div>';
@@ -423,10 +493,15 @@
   function renderFeatures(data) {
     var registry = data.registry || {};
     var validation = data.latest_validation || {};
+    var availability = data.availability_contract || {};
+    var catalog = data.feature_catalog || {};
+    var catalogSummary = catalog.summary || {};
     setBody(
       '<div class="stats-row wb-stats-row">' +
       statCard('Registry', fmtNum(registry.feature_count || 0), 'model inputs ' + fmtNum(registry.model_input_count || 0), 'ok') +
       statCard('Labels', fmtNum(registry.label_count || 0), 'PIT lagged labels', 'info') +
+      statCard('字段契约', fmtNum((availability.rows || []).length), esc(availability.source || 'registry'), (availability.rows || []).length ? 'ok' : 'missing') +
+      statCard('字段资产', fmtNum(catalogSummary.total_features || 0), 'allowed ' + fmtNum(catalogSummary.allowed_features || 0), catalogSummary.critical_features ? 'warn' : 'ok') +
       statCard('Panel rows', fmtNum(validation.rows || 0), esc(validation.validation_id || '-'), validation.status || 'unknown') +
       statCard('Lineage', fmtPct(validation.source_lineage_coverage), 'source coverage', validation.source_lineage_coverage >= 1 ? 'ok' : 'warn') +
       statCard('Fallback ratio', fmtPct(validation.source_fallback_ratio), 'feature panel', validation.source_fallback_ratio ? 'warn' : 'ok') +
@@ -434,11 +509,19 @@
       '<div class="wb-grid">' +
       '<section class="panel wb-panel"><div class="panel-head"><div><h3>特征组</h3><div class="muted">registry groups</div></div></div>' +
       renderKeyValueCounts(registry.group_counts || {}) + '</section>' +
+      '<section class="panel wb-panel"><div class="panel-head"><div><h3>字段角色</h3><div class="muted">model / auxiliary / risk / display</div></div></div>' +
+      renderKeyValueCounts(availability.role_counts || {}) + '</section>' +
       '<section class="panel wb-panel"><div class="panel-head"><div><h3>Panel Validation</h3><div class="muted">' + esc(validation.validated_at || '-') + '</div></div></div>' +
       renderValidationSummary(validation) + '</section>' +
       '</div>' +
+      '<section class="panel wb-panel"><div class="panel-head"><div><h3>数据字段资产目录</h3><div class="muted">coverage / PIT risk / usage gate</div></div></div>' +
+      renderFeatureCatalog(catalog) + '</section>' +
+      '<section class="panel wb-panel"><div class="panel-head"><div><h3>字段可用性契约</h3><div class="muted">source / cadence / density / null policy / usage role</div></div></div>' +
+      renderFeatureAvailabilityContract(availability.rows || []) + '</section>' +
       '<section class="panel wb-panel"><div class="panel-head"><div><h3>Feature Search Space</h3><div class="muted">selected / excluded</div></div></div>' +
       renderSearchSpaceTable(data.search_spaces || []) + '</section>' +
+      '<section class="panel wb-panel"><div class="panel-head"><div><h3>PIT 覆盖</h3><div class="muted">high / critical audit</div></div></div>' +
+      renderPitCoverageTable(data.pit_coverage || []) + '</section>' +
       '<section class="panel wb-panel"><div class="panel-head"><div><h3>漂移缓解候选</h3><div class="muted">rank / winsor / bucket panels</div></div></div>' +
       renderMitigationBuildTable(data.drift_mitigation_builds || []) + '</section>' +
       '<div class="wb-grid">' +
@@ -448,6 +531,57 @@
       renderDriftTable(data.feature_drift) + '</section>' +
       '</div>'
     );
+  }
+
+  function renderFeatureAvailabilityContract(rows) {
+    if (!rows.length) return renderEmpty('暂无字段契约');
+    return '<div class="wb-table-wrap"><table class="data-table data-table-compact wb-table">' +
+      '<thead><tr><th>字段</th><th>角色</th><th>频率/密度</th><th>NULL 口径</th><th>入模</th><th>PIT lag</th><th>说明</th></tr></thead><tbody>' +
+      rows.map(function (row) {
+        var modelTone = row.model_input && row.production_ready && row.enabled ? 'ok' : row.production_ready ? 'warn' : 'info';
+        return '<tr>' +
+          '<td><code>' + esc(row.feature_name || '-') + '</code><div class="muted">' + esc(row.feature_group || '-') + '</div></td>' +
+          '<td>' + esc(row.feature_role || '-') + '</td>' +
+          '<td>' + esc(row.availability_cadence || '-') + '<div class="muted">' + esc(row.panel_density || '-') + '</div></td>' +
+          '<td><code>' + esc(row.null_policy || '-') + '</code><div class="muted">' + esc(row.coverage_universe || '-') + '</div></td>' +
+          '<td>' + pill(row.model_input ? 'model' : 'non-model', modelTone) + '<div class="muted">' + esc(row.expected_update_frequency || '-') + '</div></td>' +
+          '<td>' + fmtNum(row.pit_release_lag_days || 0) + 'd</td>' +
+          '<td>' + esc(row.notes || '-') + '</td>' +
+          '</tr>';
+      }).join('') +
+      '</tbody></table></div>';
+  }
+
+  function renderFeatureCatalog(catalog) {
+    var rows = (catalog || {}).rows || [];
+    var summary = (catalog || {}).summary || {};
+    if (!rows.length) return renderEmpty('暂无字段资产目录');
+    var header = '<div class="wb-count-row">' +
+      '<span class="wb-count-pill">allowed <b>' + fmtNum(summary.allowed_features || 0) + '</b></span>' +
+      '<span class="wb-count-pill">model <b>' + fmtNum(summary.model_input_features || 0) + '</b></span>' +
+      '<span class="wb-count-pill">unknown <b>' + fmtNum(summary.unknown_features || 0) + '</b></span>' +
+      '<span class="wb-count-pill">zero coverage <b>' + fmtNum(summary.zero_coverage_features || 0) + '</b></span>' +
+      '<span class="wb-count-pill">critical <b>' + fmtNum(summary.critical_features || 0) + '</b></span>' +
+      '<span class="wb-count-pill">high <b>' + fmtNum(summary.high_features || 0) + '</b></span>' +
+      '</div>';
+    return header + '<div class="wb-table-wrap"><table class="data-table data-table-compact wb-table">' +
+      '<thead><tr><th>字段</th><th>状态</th><th>PIT</th><th>覆盖</th><th>用途</th><th>source date</th><th>阻断原因</th></tr></thead><tbody>' +
+      rows.map(function (row) {
+        var allowed = !!row.allowed_in_production_research;
+        var riskTone = row.pit_risk_level === 'critical' ? 'bad' : row.pit_risk_level === 'high' ? 'warn' : 'ok';
+        var gateTone = allowed ? 'ok' : row.production_blocking ? 'bad' : 'info';
+        var roleText = row.model_input ? 'model' : row.label ? 'label' : row.candidate_only ? 'candidate' : 'non-model';
+        return '<tr>' +
+          '<td><code>' + esc(row.feature_name || '-') + '</code><div class="muted">' + esc(row.feature_table || '-') + '</div></td>' +
+          '<td>' + esc(row.registry_status || '-') + '<div class="muted">' + esc(row.feature_family || '-') + '</div></td>' +
+          '<td>' + pill(row.pit_risk_level || '-', riskTone) + '<div class="muted">' + esc(row.join_policy || '-') + '</div></td>' +
+          '<td>' + fmtPct((row.coverage_pct || 0) / 100) + '<div class="muted">' + fmtNum(row.non_null_rows || 0) + ' / ' + fmtNum(row.total_rows || 0) + '</div></td>' +
+          '<td>' + pill(allowed ? 'allowed' : 'blocked', gateTone) + '<div class="muted">' + esc(roleText) + '</div></td>' +
+          '<td>' + esc(row.source_available_date_column || '-') + '<div class="muted">' + esc(row.source_event_date_column || '-') + '</div></td>' +
+          '<td>' + esc(row.reason_codes || '-') + '</td>' +
+          '</tr>';
+      }).join('') +
+      '</tbody></table></div>';
   }
 
   function renderKeyValueCounts(counts) {
@@ -481,6 +615,25 @@
           '<td>' + fmtNum(row.excluded_count || 0) + '</td>' +
           '<td>' + esc(Object.keys(row.group_counts || {}).join(', ') || '-') + '</td>' +
           '<td>' + esc(row.built_at || '-') + '</td>' +
+          '</tr>';
+      }).join('') +
+      '</tbody></table></div>';
+  }
+
+  function renderPitCoverageTable(rows) {
+    if (!rows.length) return renderEmpty('暂无 PIT 覆盖摘要');
+    return '<div class="wb-table-wrap"><table class="data-table data-table-compact wb-table">' +
+      '<thead><tr><th>audit</th><th>scope</th><th>columns</th><th>passed</th><th>failed</th><th>unknown</th><th>risk</th><th>at</th></tr></thead><tbody>' +
+      rows.map(function (row) {
+        return '<tr>' +
+          '<td><code>' + esc(row.audit_run_id || '-') + '</code><div class="muted">' + esc(row.feature_set_id || '-') + '</div></td>' +
+          '<td>' + esc(row.audit_scope || '-') + '<div class="muted">' + esc(row.feature_table || '-') + '</div></td>' +
+          '<td>' + fmtNum(row.total_columns || 0) + '<div class="muted">audited ' + fmtNum(row.audited_columns || 0) + '</div></td>' +
+          '<td>' + fmtNum(row.passed_columns || 0) + '</td>' +
+          '<td>' + fmtNum(row.failed_columns || 0) + '</td>' +
+          '<td>' + pill(fmtNum(row.unknown_blocking_columns || 0), row.unknown_blocking_columns ? 'bad' : 'ok') + '</td>' +
+          '<td>H ' + fmtNum(row.high_risk_columns || 0) + ' / C ' + fmtNum(row.critical_risk_columns || 0) + '</td>' +
+          '<td>' + esc(row.audited_at || '-') + '</td>' +
           '</tr>';
       }).join('') +
       '</tbody></table></div>';
@@ -620,19 +773,32 @@
   function renderRecommendationTable(rows) {
     if (!rows.length) return renderEmpty('暂无推荐清单');
     return '<div class="wb-table-wrap"><table class="data-table data-table-compact wb-table">' +
-      '<thead><tr><th>Rank</th><th>股票</th><th>行业</th><th>Score</th><th>Percentile</th><th>Regime</th><th>Top feature values</th></tr></thead><tbody>' +
+      '<thead><tr><th>Rank</th><th>股票</th><th>行业</th><th>周期</th><th>Score</th><th>Percentile</th><th>Regime</th><th>贡献分解</th><th>Top feature values</th></tr></thead><tbody>' +
       rows.map(function (row) {
         return '<tr>' +
           '<td>' + fmtNum(row.rank_in_date) + '</td>' +
           '<td><code>' + esc(row.stock_code || '-') + '</code><div class="muted">' + esc(row.stock_name || row.xueqiu_symbol || '-') + '</div></td>' +
           '<td>' + esc(row.tdx_l1_name || '-') + '<div class="muted">' + esc(row.tdx_l2_name || '') + '</div></td>' +
+          '<td>' + fmtNum(row.selected_horizon_days || row.baseline_horizon_days || 60) + 'd ' + ((row.selected_horizon_days || 60) === 60 ? pill('baseline', 'ok') : '') +
+            '<div class="muted">conf ' + fmtPct(row.selected_horizon_confidence) + '</div></td>' +
           '<td>' + fmtFloat(row.pred_score, 4) + '</td>' +
           '<td>' + fmtPct(row.percentile) + '</td>' +
           '<td>' + esc(row.regime_flag || '-') + '</td>' +
+          '<td>' + renderTopFeatureContributions(row.top_feature_contributions || []) + '</td>' +
           '<td>' + renderTopFeatureValues(row.top_feature_values || [], row.top_features || []) + '</td>' +
           '</tr>';
       }).join('') +
       '</tbody></table></div>';
+  }
+
+  function renderTopFeatureContributions(values) {
+    if (!values.length) return '-';
+    return '<div class="wb-feature-values">' + values.slice(0, 4).map(function (item) {
+      var tone = item.direction === 'negative' ? 'warn' : (item.direction === 'positive' ? 'ok' : 'info');
+      return '<span title="contribution ' + esc(fmtFloat(item.contribution, 4)) + '">' +
+        '<code>' + esc(item.name || '-') + '</code> ' + pill(fmtFloat(item.contribution, 4), tone) +
+      '</span>';
+    }).join('') + '</div>';
   }
 
   function renderTopFeatureValues(values, fallbackNames) {
@@ -715,22 +881,231 @@
       '</tbody></table></div>';
   }
 
+  function renderTemporalSynergy(data) {
+    data = data || {};
+    var quality = data.quality || {};
+    var labels = data.label_summary || [];
+    var relevance = data.top_relevance || [];
+    var synergies = data.top_synergies || [];
+    var selected = data.selected_interactions || [];
+    var optuna = data.optuna_studies || [];
+    var policies = data.policy_candidates || [];
+    var gates = data.policy_gates || [];
+    var clusters = data.redundancy_clusters || [];
+    var conditional = data.conditional_synergies || [];
+    if (!quality.run_id && !labels.length && !relevance.length && !synergies.length && !selected.length && !optuna.length && !policies.length && !gates.length && !clusters.length && !conditional.length) return renderEmpty('暂无时序协同研究');
+    return '<div class="wb-kv">' +
+      '<div><span>面板行数</span><strong>' + fmtNum(quality.panel_rows || 0) + '</strong></div>' +
+      '<div><span>股票数</span><strong>' + fmtNum(quality.stock_count || 0) + '</strong></div>' +
+      '<div><span>特征/标签</span><strong>' + fmtNum(quality.feature_count || 0) + ' / ' + fmtNum(quality.label_count || 0) + '</strong></div>' +
+      '<div><span>未来源日期剔除</span><strong>' + fmtNum(quality.dropped_future_source_rows || 0) + '</strong></div>' +
+      '<div><span>窗口</span><strong>' + esc((quality.min_signal_date || '-') + ' ~ ' + (quality.max_signal_date || '-')) + '</strong></div>' +
+      '<div><span>PIT源日期</span><strong>' + esc(quality.source_date_filter_applied ? (quality.source_available_date_column || 'enabled') : 'panel-audited') + '</strong></div>' +
+      '</div>' +
+      '<div class="wb-grid" style="margin-top:12px">' +
+      '<div>' + renderTemporalOptunaTable(optuna) + '</div>' +
+      '<div>' + renderTemporalPolicyTable(policies) + '</div>' +
+      '</div>' +
+      '<div style="margin-top:12px">' + renderTemporalGateTable(gates) + '</div>' +
+      '<div class="wb-grid" style="margin-top:12px">' +
+      '<div>' + renderTemporalLabelSummary(labels) + '</div>' +
+      '<div>' + renderTemporalClusterTable(clusters) + '</div>' +
+      '</div>' +
+      '<div style="margin-top:12px">' + renderTemporalInteractionTable(selected, '入选交互') + '</div>' +
+      '<div style="margin-top:12px">' + renderTemporalConditionalTable(conditional) + '</div>' +
+      '<div class="wb-grid" style="margin-top:12px">' +
+      '<div>' + renderTemporalRelevanceTable(relevance) + '</div>' +
+      '<div>' + renderTemporalSynergyTable(synergies) + '</div>' +
+      '</div>';
+  }
+
+  function renderTemporalClusterTable(rows) {
+    if (!rows.length) return renderEmpty('暂无冗余聚类');
+    return '<div class="wb-table-wrap"><table class="data-table data-table-compact wb-table">' +
+      '<thead><tr><th>Cluster</th><th>代表变量</th><th>成员</th><th>|corr|max</th></tr></thead><tbody>' +
+      rows.map(function (row) {
+        return '<tr>' +
+          '<td><code>' + esc(row.cluster_id || '-') + '</code><div class="muted">' + esc(row.run_id || '-') + '</div></td>' +
+          '<td><code>' + esc(row.representative_feature || '-') + '</code></td>' +
+          '<td>' + fmtNum(row.cluster_size || 0) + '<div class="muted">' + esc(row.members || '-') + '</div></td>' +
+          '<td>' + fmtFloat(row.max_abs_corr_in_cluster, 4) + '</td>' +
+          '</tr>';
+      }).join('') +
+      '</tbody></table></div>';
+  }
+
+  function renderTemporalConditionalTable(rows) {
+    if (!rows.length) return renderEmpty('暂无条件交互');
+    return '<div class="wb-table-wrap"><table class="data-table data-table-compact wb-table">' +
+      '<thead><tr><th>条件触发</th><th>标签</th><th>增量 Uplift</th><th>条件 Uplift</th><th>全局 Uplift</th><th>Score</th><th>Corr</th><th>状态</th></tr></thead><tbody>' +
+      rows.map(function (row) {
+        return '<tr>' +
+          '<td><code>' + esc(row.condition_feature || '-') + '</code><div class="muted">then <code>' + esc(row.response_feature || '-') + '</code></div></td>' +
+          '<td>' + esc(row.label_name || '-') + '<div class="muted">' + fmtNum(row.horizon_days || 0) + 'd / n ' + fmtNum(row.conditional_response_obs_count || 0) + '</div></td>' +
+          '<td>' + fmtPct(row.incremental_uplift) + '</td>' +
+          '<td>' + fmtPct(row.conditional_response_uplift) + '</td>' +
+          '<td>' + fmtPct(row.response_uplift) + '</td>' +
+          '<td>' + fmtFloat(row.interaction_score, 4) + '</td>' +
+          '<td>' + fmtFloat(row.feature_corr, 3) + '</td>' +
+          '<td>' + pill(row.selection_reason || '-', row.selected ? 'ok' : 'warn') + '</td>' +
+          '</tr>';
+      }).join('') +
+      '</tbody></table></div>';
+  }
+
+  function renderTemporalOptunaTable(rows) {
+    if (!rows.length) return renderEmpty('暂无 Optuna 组合搜索');
+    return '<div class="wb-table-wrap"><table class="data-table data-table-compact wb-table">' +
+      '<thead><tr><th>Optuna run</th><th>标签</th><th>目标</th><th>Trials</th><th>特征</th><th>交互</th><th>组件</th></tr></thead><tbody>' +
+      rows.map(function (row) {
+        var metrics = row.best_metrics || {};
+        var selectedFeatures = row.selected_features || [];
+        var selectedInteractions = row.selected_interactions || [];
+        return '<tr>' +
+          '<td><code>' + esc(row.run_id || '-') + '</code><div class="muted">best #' + fmtNum(row.best_trial_number || 0) + '</div></td>' +
+          '<td>' + esc(row.label_name || '-') + '</td>' +
+          '<td>' + fmtFloat(row.objective_score, 4) + '</td>' +
+          '<td>' + fmtNum(row.trials || 0) + ' / ' + fmtNum(row.study_total_trials || 0) + '</td>' +
+          '<td>' + fmtNum(selectedFeatures.length) + '<div class="muted"><code>' + esc((selectedFeatures[0] || '-')) + '</code></div></td>' +
+          '<td>' + fmtNum(selectedInteractions.length) + '</td>' +
+          '<td>F ' + fmtFloat(metrics.feature_component, 3) + '<div class="muted">I ' + fmtFloat(metrics.interaction_component, 3) + '</div></td>' +
+          '</tr>';
+      }).join('') +
+      '</tbody></table></div>';
+  }
+
+  function renderTemporalGateTable(rows) {
+    if (!rows.length) return renderEmpty('暂无候选验证门禁');
+    return '<div class="wb-table-wrap"><table class="data-table data-table-compact wb-table">' +
+      '<thead><tr><th>验证 run</th><th>标签</th><th>状态</th><th>RankIC</th><th>TopK excess</th><th>Cost adj</th><th>Turnover</th><th>DD</th><th>阻塞</th></tr></thead><tbody>' +
+      rows.map(function (row) {
+        var blockers = row.blockers || [];
+        return '<tr>' +
+          '<td><code>' + esc(row.run_id || '-') + '</code><div class="muted">' + esc(row.candidate_run_id || '-') + '</div></td>' +
+          '<td>' + esc(row.label_name || '-') + '<div class="muted">' + fmtNum(row.candidate_horizon_days || 0) + 'd / base ' + fmtNum(row.baseline_horizon_days || 60) + 'd</div></td>' +
+          '<td>' + pill(row.validation_status || '-', row.validation_status || 'info') + '<div class="muted">' + esc(row.promotion_status || '-') + '</div></td>' +
+          '<td>' + fmtFloat(row.avg_rank_ic, 4) + '<div class="muted">std ' + fmtFloat(row.std_rank_ic, 4) + '</div></td>' +
+          '<td>' + fmtPct(row.avg_top_excess_return) + '<div class="muted">worst ' + fmtPct(row.worst_top_excess_return) + '</div></td>' +
+          '<td>' + fmtPct(row.avg_cost_adjusted_top_excess_return) + '<div class="muted">worst ' + fmtPct(row.worst_cost_adjusted_top_excess_return) + '</div></td>' +
+          '<td>' + fmtPct(row.avg_turnover) + '<div class="muted">' + fmtFloat(row.transaction_cost_bps, 1) + ' bps / hit ' + fmtPct(row.avg_top_hit_rate) + '</div></td>' +
+          '<td>' + fmtPct(row.worst_max_drawdown) + '</td>' +
+          '<td>' + (blockers.length ? blockers.map(function (item) { return pill(item, 'warn'); }).join(' ') : pill('pass', 'ok')) + '</td>' +
+          '</tr>';
+      }).join('') +
+      '</tbody></table></div>';
+  }
+
+  function renderTemporalPolicyTable(rows) {
+    if (!rows.length) return renderEmpty('暂无候选策略');
+    return '<div class="wb-table-wrap"><table class="data-table data-table-compact wb-table">' +
+      '<thead><tr><th>候选</th><th>标签</th><th>Gate</th><th>目标</th><th>特征</th><th>交互</th><th>built_at</th></tr></thead><tbody>' +
+      rows.map(function (row) {
+        return '<tr>' +
+          '<td><code>' + esc(row.run_id || '-') + '</code></td>' +
+          '<td>' + esc(row.label_name || '-') + '</td>' +
+          '<td>' + pill(row.gate_status || '-', row.gate_status || 'info') + '</td>' +
+          '<td>' + fmtFloat(row.objective_score, 4) + '</td>' +
+          '<td>' + fmtNum(row.selected_count || 0) + '</td>' +
+          '<td>' + fmtNum(row.selected_interaction_count || 0) + '</td>' +
+          '<td>' + esc(row.built_at || '-') + '</td>' +
+          '</tr>';
+      }).join('') +
+      '</tbody></table></div>';
+  }
+
+  function renderTemporalLabelSummary(rows) {
+    if (!rows.length) return renderEmpty('暂无标签汇总');
+    return '<div class="wb-table-wrap"><table class="data-table data-table-compact wb-table">' +
+      '<thead><tr><th>标签</th><th>特征数</th><th>覆盖</th><th>|RankIC|max</th><th>Spread max</th></tr></thead><tbody>' +
+      rows.map(function (row) {
+        return '<tr>' +
+          '<td><code>' + esc(row.label_name || '-') + '</code></td>' +
+          '<td>' + fmtNum(row.feature_count || 0) + '</td>' +
+          '<td>' + fmtPct((row.avg_coverage_pct || 0) / 100) + '</td>' +
+          '<td>' + fmtFloat(row.max_abs_rank_ic, 4) + '</td>' +
+          '<td>' + fmtPct(row.max_directional_spread) + '</td>' +
+          '</tr>';
+      }).join('') +
+      '</tbody></table></div>';
+  }
+
+  function renderTemporalRelevanceTable(rows) {
+    if (!rows.length) return renderEmpty('暂无单变量相关性');
+    return '<div class="wb-table-wrap"><table class="data-table data-table-compact wb-table">' +
+      '<thead><tr><th>变量</th><th>标签</th><th>RankIC</th><th>Spread</th><th>稳定</th><th>覆盖</th><th>日数</th></tr></thead><tbody>' +
+      rows.map(function (row) {
+        return '<tr>' +
+          '<td><code>' + esc(row.feature_name || '-') + '</code></td>' +
+          '<td>' + esc(row.label_name || '-') + '<div class="muted">' + fmtNum(row.horizon_days || 0) + 'd</div></td>' +
+          '<td>' + fmtFloat(row.rank_ic, 4) + '</td>' +
+          '<td>' + fmtPct(row.directional_spread) + '<div class="muted">LS ' + fmtPct(row.long_short_spread) + '</div></td>' +
+          '<td>' + fmtFloat(row.stability_score, 4) + '</td>' +
+          '<td>' + fmtPct((row.coverage_pct || 0) / 100) + '</td>' +
+          '<td>' + fmtNum(row.daily_count || 0) + '</td>' +
+          '</tr>';
+      }).join('') +
+      '</tbody></table></div>';
+  }
+
+  function renderTemporalSynergyTable(rows) {
+    if (!rows.length) return renderEmpty('暂无组合协同');
+    return '<div class="wb-table-wrap"><table class="data-table data-table-compact wb-table">' +
+      '<thead><tr><th>组合</th><th>标签</th><th>Uplift</th><th>Score</th><th>Joint</th><th>Standalone</th><th>Corr</th><th>观测</th></tr></thead><tbody>' +
+      rows.map(function (row) {
+        return '<tr>' +
+          '<td><code>' + esc(row.feature_a || '-') + '</code><div class="muted">+ <code>' + esc(row.feature_b || '-') + '</code></div></td>' +
+          '<td>' + esc(row.label_name || '-') + '<div class="muted">' + fmtNum(row.horizon_days || 0) + 'd</div></td>' +
+          '<td>' + fmtPct(row.joint_uplift) + '</td>' +
+          '<td>' + fmtFloat(row.interaction_score, 4) + '</td>' +
+          '<td>' + fmtPct(row.joint_active_label_mean) + '</td>' +
+          '<td>' + fmtPct(row.best_standalone_label_mean) + '</td>' +
+          '<td>' + fmtFloat(row.feature_corr, 3) + '</td>' +
+          '<td>' + fmtNum(row.joint_obs_count || 0) + '</td>' +
+          '</tr>';
+      }).join('') +
+      '</tbody></table></div>';
+  }
+
+  function renderTemporalInteractionTable(rows, title) {
+    if (!rows.length) return renderEmpty('暂无入选交互');
+    return '<div class="wb-table-wrap"><table class="data-table data-table-compact wb-table">' +
+      '<thead><tr><th>' + esc(title || '交互') + '</th><th>标签</th><th>原因</th><th>Uplift</th><th>Score</th><th>观测</th></tr></thead><tbody>' +
+      rows.map(function (row) {
+        return '<tr>' +
+          '<td><code>' + esc(row.feature_a || '-') + '</code><div class="muted">+ <code>' + esc(row.feature_b || '-') + '</code></div></td>' +
+          '<td>' + esc(row.label_name || '-') + '<div class="muted">' + fmtNum(row.horizon_days || 0) + 'd</div></td>' +
+          '<td>' + pill(row.selection_reason || '-', row.selected ? 'ok' : 'warn') + '</td>' +
+          '<td>' + fmtPct(row.joint_uplift) + '</td>' +
+          '<td>' + fmtFloat(row.interaction_score, 4) + '</td>' +
+          '<td>' + fmtNum(row.joint_obs_count || 0) + '</td>' +
+          '</tr>';
+      }).join('') +
+      '</tbody></table></div>';
+  }
+
   function renderStockHorizonProfile(data) {
     data = data || {};
     var comparison = data.horizon_comparison || [];
     var distribution = data.horizon_distribution || [];
+    var selectedDistribution = data.selected_horizon_distribution || [];
+    var selections = data.horizon_selection || data.selected_stocks || [];
     var stocks = data.best_stocks || [];
     var effects = data.top_effects || [];
     var effectDetails = data.feature_effects_by_horizon || [];
-    if (!comparison.length && !distribution.length && !stocks.length && !effects.length && !effectDetails.length) return renderEmpty('暂无个股周期画像');
+    if (!comparison.length && !distribution.length && !selectedDistribution.length && !selections.length && !stocks.length && !effects.length && !effectDetails.length) return renderEmpty('暂无个股周期画像');
     return '<div class="wb-kv">' +
       '<div><span>画像行数</span><strong>' + fmtNum(data.profile_count || 0) + '</strong></div>' +
       '<div><span>覆盖股票</span><strong>' + fmtNum(data.best_count || 0) + '</strong></div>' +
+      '<div><span>选择行数</span><strong>' + fmtNum(data.selection_count || 0) + '</strong></div>' +
       '<div><span>变量效应</span><strong>' + fmtNum(data.effect_count || 0) + '</strong></div>' +
       '</div>' +
       '<div class="wb-grid" style="margin-top:12px">' +
       '<div>' + renderHorizonComparisonTable(comparison) + '</div>' +
       '<div>' + renderHorizonDistributionTable(distribution) + '</div>' +
+      '</div>' +
+      '<div class="wb-grid" style="margin-top:12px">' +
+      '<div>' + renderSelectedHorizonDistributionTable(selectedDistribution) + '</div>' +
+      '<div>' + renderSelectedStockHorizonTable(selections) + '</div>' +
       '</div>' +
       '<div style="margin-top:12px">' + renderFeatureEffectByHorizonTable(effectDetails) + '</div>' +
       '<div class="wb-grid" style="margin-top:12px">' +
@@ -796,6 +1171,54 @@
           '</tr>';
       }).join('') +
       '</tbody></table></div>';
+  }
+
+  function renderSelectedHorizonDistributionTable(rows) {
+    if (!rows.length) return renderEmpty('暂无60d基线选择分布');
+    return '<div class="wb-table-wrap"><table class="data-table data-table-compact wb-table">' +
+      '<thead><tr><th>最终选择</th><th>股票数</th><th>Gate</th><th>置信度</th><th>评分优势</th><th>收益优势</th></tr></thead><tbody>' +
+      rows.map(function (row) {
+        return '<tr>' +
+          '<td>' + fmtNum(row.selected_horizon_days) + 'd ' + (row.is_baseline ? pill('baseline', 'ok') : '') + '<div class="muted">' + esc(row.selected_label || '-') + '</div></td>' +
+          '<td>' + fmtNum(row.stock_count || 0) + '</td>' +
+          '<td>' + pill(row.gate_status || '-', row.gate_status === 'selected' ? 'ok' : 'info') + '</td>' +
+          '<td>' + fmtPct(row.avg_confidence) + '</td>' +
+          '<td>' + fmtFloat(row.avg_score_advantage, 4) + '</td>' +
+          '<td>' + fmtPct(row.avg_return_advantage) + '</td>' +
+          '</tr>';
+      }).join('') +
+      '</tbody></table></div>';
+  }
+
+  function renderSelectedStockHorizonTable(rows) {
+    if (!rows.length) return renderEmpty('暂无个股60d选择');
+    return '<div class="wb-table-wrap"><table class="data-table data-table-compact wb-table">' +
+      '<thead><tr><th>股票</th><th>选择周期</th><th>置信度</th><th>评分优势</th><th>收益优势</th><th>回撤</th><th>Top 变量影响</th><th>Gate</th></tr></thead><tbody>' +
+      rows.map(function (row) {
+        var baseline = row.selected_label === row.baseline_label;
+        return '<tr>' +
+          '<td><code>' + esc(row.stock_code || '-') + '</code></td>' +
+          '<td>' + fmtNum(row.selected_horizon_days) + 'd ' + (baseline ? pill('baseline', 'ok') : '') + '<div class="muted">' + esc(row.selected_label || '-') + '</div></td>' +
+          '<td>' + fmtPct(row.selected_horizon_confidence) + '</td>' +
+          '<td>' + fmtFloat(row.score_advantage, 4) + '</td>' +
+          '<td>' + fmtPct(row.avg_return_advantage) + '</td>' +
+          '<td>' + fmtPct(row.selected_max_drawdown) + '<div class="muted">60d ' + fmtPct(row.baseline_max_drawdown) + '</div></td>' +
+          '<td>' + renderSelectedFeatureEffects(row.top_feature_effects || []) + '</td>' +
+          '<td>' + pill(row.gate_status || '-', row.gate_status === 'selected' ? 'ok' : 'info') + '<div class="muted">' + esc(row.fallback_reason || '') + '</div></td>' +
+          '</tr>';
+      }).join('') +
+      '</tbody></table></div>';
+  }
+
+  function renderSelectedFeatureEffects(rows) {
+    if (!rows.length) return '-';
+    return '<div class="wb-feature-values">' + rows.slice(0, 3).map(function (row) {
+      var direction = row.effect_direction || 'flat';
+      return '<span title="' + esc(direction) + ' corr ' + esc(fmtFloat(row.corr, 4)) + '">' +
+        '<code>' + esc(row.feature_name || '-') + '</code> ' +
+        pill(fmtFloat(row.corr, 3), direction === 'negative' ? 'warn' : 'ok') +
+      '</span>';
+    }).join('') + '</div>';
   }
 
   function renderHorizonEffectTable(rows) {

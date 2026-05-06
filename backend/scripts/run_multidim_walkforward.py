@@ -49,8 +49,10 @@ from scripts.run_feature_ablation import (
     _values,
 )
 from scripts.train_multidim_model import (
+    STRICT_FEATURE_CONTRACT_GROUPS,
     _date_bounds_array,
     _selection_schema_tag,
+    apply_production_feature_contract,
     _prediction_column_arrays,
     load_model_selection_run,
     load_panel_arrays,
@@ -156,6 +158,8 @@ CREATE TABLE IF NOT EXISTS mart_multidim_model (
     feature_cols_json TEXT,
     label_name TEXT,
     feature_schema_version TEXT,
+    pricing_policy_id TEXT,
+    pricing_policy_hash TEXT,
     notes TEXT
 );
 
@@ -174,7 +178,13 @@ CREATE TABLE IF NOT EXISTS mart_multidim_prediction (
 def ensure_model_schema(conn) -> None:
     conn.executescript(MODEL_DDL)
     cols = {row[0] for row in conn.execute("DESCRIBE mart_multidim_model").fetchall()}
-    for col in ("feature_cols_json", "label_name", "feature_schema_version"):
+    for col in (
+        "feature_cols_json",
+        "label_name",
+        "feature_schema_version",
+        "pricing_policy_id",
+        "pricing_policy_hash",
+    ):
         if col not in cols:
             conn.execute(f"ALTER TABLE mart_multidim_model ADD COLUMN {col} TEXT")
     conn.commit()
@@ -738,9 +748,21 @@ def main() -> None:
             selection_features=selected_feature_cols,
             selection_schema_tag=_selection_schema_tag(args.model_selection_run_id or "latest"),
         )
+        feature_cols, excluded_feature_contracts = apply_production_feature_contract(
+            feature_cols,
+            feature_group=args.feature_group,
+            strict=args.feature_group in STRICT_FEATURE_CONTRACT_GROUPS,
+        )
+        if excluded_feature_contracts:
+            schema_tag = f"{schema_tag}_contract_filtered"
+            logger.warning(
+                "feature contract excluded %d non-production features: %s",
+                len(excluded_feature_contracts),
+                excluded_feature_contracts[:20],
+            )
         logger.info(
-            "walkforward feature_group=%s schema_tag=%s 特征数=%d",
-            args.feature_group, schema_tag, len(feature_cols),
+            "walkforward feature_group=%s schema_tag=%s eligible_features=%d excluded_features=%d",
+            args.feature_group, schema_tag, len(feature_cols), len(excluded_feature_contracts),
         )
 
         run_id = f"walkforward_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
@@ -944,6 +966,7 @@ def main() -> None:
                 "cpu_count": os.cpu_count(),
                 "timings": timings,
                 "fold_metrics": fold_metrics,
+                "excluded_feature_contracts": excluded_feature_contracts,
             },
         )
     finally:

@@ -1,0 +1,329 @@
+version: 1
+policy_id: pricing_label_policy_vwap_follow_v1
+event_calc_version: v3_qfq_vwap_entry_dual_cost
+
+price_adjustment: qfq
+
+announcement_policy:
+  unknown_notice_time_execution: signal_day_vwap_when_signal_emitted
+  same_day_execution_allowed: true
+  signal_date_definition: signal_generated_after_source_is_pit_available
+  executable_date_definition: signal_date
+
+signal_policy:
+  source_available_date: source_notice_date_or_conservative_available_date
+  signal_generation_time: before_signal_day_execution_window_after_data_preflight
+  signal_date: first_trading_day_when_all_required_sources_are_pit_available
+  executable_date: signal_date
+  same_day_execution_allowed: true
+  duplicate_events_same_stock_date: aggregate_to_one_stock_signal
+  repeated_signal_while_position_active: record_evidence_do_not_open_duplicate_position
+  late_source_revision: usable_only_for_future_signal_dates_after_revision_available_date
+
+data_source_policy:
+  kline_primary_source: tdxhub
+  kline_fallback_allowed: false_without_explicit_source_policy
+  trading_calendar_preflight_required: true
+  f10_primary_source: tdxhub
+  fallback_sources:
+    - miaoxiang
+    - aif10
+    - akshare
+  fallback_rule: compare_and_record_disagreement_do_not_override_tdxhub_silently
+
+institution_cost:
+  purpose: estimate_institution_cost_not_user_execution_price
+  cost_window:
+    new_entry: previous_report_period_end_exclusive_to_current_report_date_inclusive
+    increase: previous_report_period_end_exclusive_to_current_report_date_inclusive
+    decrease: previous_report_period_end_exclusive_to_current_report_date_inclusive
+    exit: previous_report_period_end_exclusive_to_current_report_date_inclusive
+    no_previous_report_fallback: natural_current_report_period
+  primary: holding_change_window_daily_vwap_qfq
+  fallbacks:
+    - holding_change_window_daily_close_mean_qfq
+    - holding_change_window_monthly_vwap_qfq
+    - holding_change_window_monthly_close_mean_qfq
+  unknown_method: unknown_inst_cost
+  unknown_cost_blocks_premium_gate: true
+
+follow_entry:
+  purpose: user_executable_follow_cost
+  primary: entry_day_vwap_qfq
+  fallbacks:
+    - entry_day_open_qfq
+  volume_unit_guard: true
+  volume_hand_adjustment_allowed: true
+  no_trade_action: delay_until_tradable
+  limit_up_no_fill_action: mark_not_filled_or_delay
+  max_delay_trading_days: 5
+
+follow_exit:
+  purpose: user_executable_exit_price
+  default: horizon_end_vwap_qfq
+  fallbacks:
+    - horizon_end_close_qfq
+  no_trade_action: delay_until_tradable
+  limit_down_no_fill_action: mark_delayed_exit
+  max_delay_trading_days: 5
+  needs_definition: false
+
+holding_period:
+  baseline_days: 60
+  candidate_days:
+    - 5
+    - 10
+    - 20
+    - 60
+    - 90
+  counting: entry_execution_date_is_day_0_exit_on_nth_later_trading_day
+  baseline_policy: global_60d_baseline_other_horizons_stock_level_candidates
+
+alpha_forward_label:
+  role: diagnostic_price_trend_label_not_primary_follow_strategy_label
+  current: signal_day_close_to_horizon_end_close_qfq
+  keep_for_diagnostics: true
+  champion_training_allowed: false
+  needs_migration_review: false
+
+follow_return_label:
+  role: primary_label_for_institution_follow_models_and_champion_gates
+  gross_return: follow_exit_price / follow_entry_cost - 1
+  net_return: gross_follow_return - transaction_cost
+  horizons:
+    - follow_return_5d
+    - follow_return_10d
+    - follow_return_20d
+    - follow_return_60d
+    - follow_return_90d
+  primary_champion_label: follow_net_return_60d
+  horizon_candidate_labels:
+    - follow_net_return_5d
+    - follow_net_return_10d
+    - follow_net_return_20d
+    - follow_net_return_60d
+    - follow_net_return_90d
+
+portfolio_transaction_cost:
+  default_bps: 10.0
+  meaning: execution_friction_only_not_entry_price
+  components:
+    commission_bps: configurable
+    stamp_tax_bps: configurable_on_sell
+    slippage_bps: configurable
+    impact_bps: liquidity_model_or_default
+  applied_to: net_follow_return_and_portfolio_validation
+
+premium:
+  formula: follow_entry_cost / inst_ref_cost - 1
+  unknown_inst_cost_action: block_premium_gate
+
+corporate_action_policy:
+  price_basis: qfq
+  return_basis: qfq_adjusted_price_series
+  dividends_splits_rights: handled_by_qfq_adjustment
+  delisted_or_untradable_exit: mark_untradable_and_apply_exit_delay_policy
+
+tradability:
+  exclude_st: true
+  exclude_new_stock_days: 60
+  require_positive_volume: true
+  suspension_action: delay_or_not_filled
+  limit_up_entry_action: delay_or_not_filled
+  limit_down_exit_action: delay_or_not_filled
+  max_entry_delay_trading_days: 5
+  max_exit_delay_trading_days: 5
+
+universe:
+  default: tradable_a_share_universe
+  liquidity_filter: amount_20d_positive_and_above_config_threshold
+  industry_neutrality: report_both_raw_and_industry_relative
+
+feature_policy:
+  pit_required_for_training: true
+  source_available_date_required_for_high_critical_features: true
+  unknown_high_critical_action: block_from_promotion_training
+  label_columns_blocked_as_features: true
+  missing_value_policy: no_silent_missing_global_gate_before_training
+  winsorization: train_fold_only_no_full_sample_fit
+  standardization: train_fold_only_no_full_sample_fit
+  neutralization: optional_record_raw_and_neutralized_versions
+  categorical_encoding: train_fold_only_with_unknown_bucket
+  feature_family_ablation_required: true
+
+data_quality_policy:
+  zero_silent_missing_required: true
+  trading_calendar_preflight_required: true
+  calendar_must_be_loaded_before_any_data_fetch: true
+  any_null_or_missing_requires_root_cause: true
+  missing_ratio_threshold_for_blocking: 0.0
+  duplicate_business_keys_block: true
+  feature_panel_null_policy: block_all_non_label_nulls_unless_explicitly_classified
+  allowed_null_classifications:
+    - future_immature_follow_label
+    - future_signal_waiting
+    - explicitly_optional_source_unavailable_with_registry_reason
+  mature_label_null_action: block
+  missing_signal_kline_action: block
+  missing_entry_or_exit_price_action: block
+  global_gate_required_before:
+    - model_training
+    - optuna_search
+    - walkforward
+    - recommendation_generation
+    - champion_promotion
+
+performance_policy:
+  long_running_fetch_or_feature_job_is_bug_until_proven_otherwise: true
+  progress_heartbeat_required_after_s: 30
+  long_run_requires_stage_timing_manifest: true
+  default_pipeline_duration_budget_s: 600
+  pipeline_duration_budgets_s:
+    evaluate_champion_candidate: 30
+    build_challenger_evidence_bundle: 30
+    materialize_follow_return_labels: 120
+    build_feature_association_duck: 600
+    build_temporal_redundancy_clusters: 120
+    run_optuna_synergy_search: 300
+    validate_synergy_policy_candidate: 120
+    validate_synergy_policy_mark_to_market: 300
+    build_temporal_synergy_research: 1800
+    build_feature_panel_duck: 600
+    build_candidate_feature_panel: 600
+    build_stock_horizon_profile: 120
+    train_multidim_model: 900
+
+ranking_policy:
+  score_direction: higher_is_better
+  cross_section: signal_date_tradable_universe
+  rank_normalization: percentile_rank_by_signal_date
+  tie_breaker:
+    - higher_amount_20d
+    - lower_stock_code
+  topk_selection: after_pit_tradability_liquidity_and_risk_gates
+  topk_default: configurable_in_run_manifest
+
+portfolio_construction:
+  baseline: equal_weight_topk
+  rebalance_frequency: each_signal_date
+  max_single_stock_weight: configurable_cap
+  overlapping_positions_same_stock: prohibit_duplicate_active_position
+  repeated_signal_action: keep_existing_position_and_record_signal_evidence
+  unfilled_entry_capital: cash_zero_return_until_next_valid_signal
+  partial_fill_model: not_enabled_without_intraday_liquidity_model
+  cash_return: zero
+  position_exit: horizon_or_risk_exit_as_recorded_in_manifest
+
+risk_policy:
+  max_drawdown_gate: configurable_by_horizon_and_run
+  liquidity_gate: amount_and_volume_thresholds_recorded_in_manifest
+  concentration_gate: max_single_stock_and_industry_exposure_recorded
+  volatility_gate: compare_raw_and_regime_relative_volatility
+  stop_loss_take_profit: research_only_until_explicitly_validated
+
+benchmark:
+  primary_excess_return: tradable_universe_equal_weight
+  secondary:
+    - hs300
+    - tdx_l1_industry_equal_weight
+
+evaluation_metrics:
+  primary: cost_adjusted_topk_excess_return
+  required:
+    - gross_return
+    - net_return
+    - excess_return
+    - max_drawdown
+    - win_rate
+    - hit_stability
+    - turnover
+    - coverage
+    - fold_rank_ic_mean
+    - fold_rank_ic_std
+  stock_level_required:
+    - selected_horizon_return_advantage_vs_60d
+    - selected_horizon_drawdown_vs_60d
+    - selected_horizon_sample_count
+    - selected_horizon_confidence
+
+validation_split:
+  method: rolling_walk_forward
+  purge_embargo: horizon_dependent_required
+  holdouts:
+    - year
+    - market_regime
+    - industry
+    - stock_cluster
+
+model_training:
+  primary_label_family: follow_return_label
+  diagnostic_label_family: alpha_forward_label
+  disallow_champion_training_on_alpha_forward_label: true
+  require_pricing_policy_id_in_manifest: true
+  require_label_policy_id_in_manifest: true
+  stale_all_models_on_policy_hash_change: true
+
+model_family_policy:
+  allowed_if_registered_in_manifest: true
+  no_hard_coded_champion_ids_in_business_logic: true
+  per_family_feature_manifest_required: true
+  per_family_seed_required: true
+  family_comparison_requires_same_split_label_policy_and_universe: true
+
+optuna:
+  objective_primary: cost_adjusted_topk_excess_return
+  objectives_secondary:
+    - max_drawdown
+    - turnover
+    - fold_stability
+    - feature_pit_pass_rate
+    - explanation_additivity
+  prune_on:
+    - pit_unknown_blocking
+    - excessive_drawdown
+    - unstable_fold_ic
+
+explainability:
+  production_method: exact_additive_contribution_when_model_supports_it
+  shap_allowed: true
+  permutation_or_ablation_role: diagnostic_only_not_exact_contribution
+  additivity_check_required: true
+  frontend_visibility_required: true
+
+promotion_gate:
+  require_60d_baseline_comparison: true
+  prohibit_global_90d_replacement: true
+  require_follow_return_label: true
+  require_cost_adjusted_return_positive: true
+  require_drawdown_pass: true
+  require_policy_hash_match: true
+  require_workbench_visibility: true
+
+champion_policy:
+  production_baseline_horizon: 60
+  non_60d_horizons: stock_level_candidate_only
+  global_90d_replacement_allowed: false
+  per_stock_horizon_override_requires_selection_gate: true
+  champion_replacement_requires_explicit_promotion_run: true
+
+reproducibility_policy:
+  random_seed_required: true
+  run_manifest_required: true
+  pricing_policy_hash_required: true
+  feature_catalog_run_id_required: true
+  db_snapshot_or_source_cutoff_required: true
+  optuna_storage_uri_record_required: true
+
+frontend_policy:
+  recommendation_view_requires:
+    - selected_horizon
+    - 60d_baseline_comparison
+    - horizon_return_drawdown_table
+    - exact_contribution_breakdown
+    - pit_source_status
+    - policy_hash
+    - promotion_blockers
+
+production_rules:
+  stale_on_policy_change: true
+  require_policy_id_in_manifest: true

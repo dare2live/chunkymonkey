@@ -94,7 +94,7 @@ def search_institution_candidates(conn, keywords: str, holder_type: str = "") ->
 
 
 def load_tracked_institutions(conn, show: str = "active") -> list[dict]:
-    if show == "archived":
+    if show == "inactive":
         where = "WHERE (i.merged_into IS NOT NULL OR i.blacklisted = 1 OR i.enabled = 0)"
     elif show == "all":
         where = ""

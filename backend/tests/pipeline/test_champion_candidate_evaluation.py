@@ -85,7 +85,9 @@ def test_evaluate_champion_candidate_runs_pit_then_evidence_bundle(monkeypatch: 
         assert manifest["pipeline_name"] == "evaluate_champion_candidate"
         assert manifest["status"] == "passed"
         assert manifest["gate_result"] == "PASS"
-        assert json.loads(manifest["perf_summary_json"])["evidence_result"]["gate_status"] == "PASS"
+        perf = json.loads(manifest["perf_summary_json"])
+        assert perf["evidence_result"]["gate_status"] == "PASS"
+        assert set(perf["stage_timings"]) >= {"pit_audit_s", "evidence_bundle_s"}
     finally:
         conn.close()
 

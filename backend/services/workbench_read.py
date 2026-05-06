@@ -3,10 +3,15 @@ from __future__ import annotations
 
 from typing import Any
 import json
+from pathlib import Path
 
 from services.feature_registry import load_feature_registry
 from services.schema_versions import detect_drift
 from services.storage_retention import load_storage_retention_policy, plan_storage_cleanup
+
+
+REPO = Path(__file__).resolve().parent.parent.parent
+MARKET_DB = REPO / "data" / "market.duckdb"
 
 
 def _table_exists(conn: Any, table_name: str) -> bool:
@@ -20,6 +25,26 @@ def _table_exists(conn: Any, table_name: str) -> bool:
         (table_name,),
     ).fetchone()
     return row is not None
+
+
+def _relation_exists(conn: Any, relation: str) -> bool:
+    try:
+        conn.execute(f"SELECT 1 FROM {relation} LIMIT 0").fetchone()
+        return True
+    except Exception:
+        return False
+
+
+def _attach_market_readonly(conn: Any) -> bool:
+    if _relation_exists(conn, "market.sqlite_master"):
+        return True
+    if not MARKET_DB.exists():
+        return False
+    try:
+        conn.execute(f"ATTACH IF NOT EXISTS '{MARKET_DB}' AS market (READ_ONLY)")
+        return True
+    except Exception:
+        return False
 
 
 def _columns(conn: Any, table_name: str) -> set[str]:
@@ -354,6 +379,45 @@ def _model_stability_context(conn: Any, *, summary_limit: int = 8, diagnostic_li
     return {"run_id": run_id, "summaries": summaries, "diagnostics": diagnostics}
 
 
+def _is_baseline_horizon(label_name: Any, horizon_days: Any) -> bool:
+    try:
+        if int(horizon_days or 0) == 60:
+            return True
+    except Exception:
+        pass
+    return str(label_name or "") in {"forward_ret_60d", "follow_net_return_60d"}
+
+
+def _stock_horizon_baseline_label(conn: Any, run_id: str) -> str:
+    if _table_exists(conn, "mart_stock_horizon_selection"):
+        cols = _columns(conn, "mart_stock_horizon_selection")
+        if {"run_id", "baseline_label"}.issubset(cols):
+            row = conn.execute(
+                """
+                SELECT baseline_label
+                  FROM mart_stock_horizon_selection
+                 WHERE run_id = ?
+                   AND baseline_label IS NOT NULL
+                   AND baseline_label <> ''
+                 LIMIT 1
+                """,
+                (run_id,),
+            ).fetchone()
+            if row and row["baseline_label"]:
+                return str(row["baseline_label"])
+    row = conn.execute(
+        """
+        SELECT label_name
+          FROM mart_stock_horizon_profile
+         WHERE run_id = ?
+           AND horizon_days = 60
+         LIMIT 1
+        """,
+        (run_id,),
+    ).fetchone()
+    return str(row["label_name"]) if row and row["label_name"] else "follow_net_return_60d"
+
+
 def _stock_horizon_profile(conn: Any, *, stock_limit: int = 12, effect_limit: int = 12) -> dict[str, Any]:
     profile_table = "mart_stock_horizon_profile"
     effect_table = "mart_stock_horizon_feature_effect"
@@ -362,18 +426,23 @@ def _stock_horizon_profile(conn: Any, *, stock_limit: int = 12, effect_limit: in
         "baseline_label": "forward_ret_60d",
         "horizon_distribution": [],
         "horizon_comparison": [],
+        "horizon_selection": [],
+        "selected_horizon_distribution": [],
         "best_stocks": [],
+        "selected_stocks": [],
         "top_effects": [],
         "feature_effects_by_horizon": [],
         "profile_count": 0,
         "best_count": 0,
         "effect_count": 0,
+        "selection_count": 0,
     }
     if not _table_exists(conn, profile_table):
         return empty
     run_id = _latest_run_id(conn, profile_table)
     if not run_id:
         return empty
+    baseline_label = _stock_horizon_baseline_label(conn, run_id)
     profile_cols = _columns(conn, profile_table)
     required = {
         "run_id",
@@ -472,14 +541,115 @@ def _stock_horizon_profile(conn: Any, *, stock_limit: int = 12, effect_limit: in
     effect_count = 0
     top_effects: list[dict[str, Any]] = []
     feature_effects_by_horizon: list[dict[str, Any]] = []
+    effect_run_id = run_id
+    selection_count = 0
+    horizon_selection: list[dict[str, Any]] = []
+    selected_horizon_distribution: list[dict[str, Any]] = []
+    selected_stocks: list[dict[str, Any]] = []
+    if _table_exists(conn, "mart_stock_horizon_selection"):
+        selection_cols = _columns(conn, "mart_stock_horizon_selection")
+        selection_required = {
+            "run_id",
+            "stock_code",
+            "baseline_label",
+            "selected_label",
+            "selected_horizon_days",
+            "selected_horizon_confidence",
+            "score_advantage",
+            "avg_return_advantage",
+            "gate_status",
+        }
+        if selection_required.issubset(selection_cols):
+            selection_count = int(
+                conn.execute(
+                    "SELECT COUNT(*) FROM mart_stock_horizon_selection WHERE run_id = ?",
+                    (run_id,),
+                ).fetchone()[0]
+                or 0
+            )
+            dist_rows = conn.execute(
+                """
+                SELECT selected_label,
+                       selected_horizon_days,
+                       gate_status,
+                       COUNT(*) AS stock_count,
+                       AVG(selected_horizon_confidence) AS avg_confidence,
+                       AVG(score_advantage) AS avg_score_advantage,
+                       AVG(avg_return_advantage) AS avg_return_advantage
+                  FROM mart_stock_horizon_selection
+                 WHERE run_id = ?
+                 GROUP BY selected_label, selected_horizon_days, gate_status
+                 ORDER BY selected_horizon_days, gate_status
+                """,
+                (run_id,),
+            ).fetchall()
+            selected_horizon_distribution = [
+                {
+                    "selected_label": row["selected_label"],
+                    "selected_horizon_days": row["selected_horizon_days"],
+                    "gate_status": row["gate_status"],
+                    "stock_count": int(row["stock_count"] or 0),
+                    "avg_confidence": row["avg_confidence"],
+                    "avg_score_advantage": row["avg_score_advantage"],
+                    "avg_return_advantage": row["avg_return_advantage"],
+                    "is_baseline": _is_baseline_horizon(row["selected_label"], row["selected_horizon_days"]),
+                }
+                for row in dist_rows
+            ]
+            sel_rows = conn.execute(
+                """
+                SELECT stock_code,
+                       baseline_label,
+                       selected_label,
+                       selected_horizon_days,
+                       selected_horizon_confidence,
+                       score_advantage,
+                       avg_return_advantage,
+                       selected_max_drawdown,
+                       baseline_max_drawdown,
+                       selected_obs_count,
+                       gate_status,
+                       fallback_reason
+                  FROM mart_stock_horizon_selection
+                 WHERE run_id = ?
+                 ORDER BY selected_horizon_confidence DESC NULLS LAST,
+                          score_advantage DESC NULLS LAST,
+                          stock_code
+                 LIMIT ?
+                """,
+                (run_id, int(stock_limit)),
+            ).fetchall()
+            horizon_selection = [dict(row) for row in sel_rows]
+            selected_stocks = horizon_selection
     if _table_exists(conn, effect_table):
         effect_cols = _columns(conn, effect_table)
         effect_required = {"run_id", "stock_code", "label_name", "feature_name", "corr", "abs_corr_rank", "effect_direction"}
         if effect_required.issubset(effect_cols):
-            effect_count = int(
+            local_effect_count = int(
                 conn.execute(
                     "SELECT COUNT(*) FROM mart_stock_horizon_feature_effect WHERE run_id = ?",
                     (run_id,),
+                ).fetchone()[0]
+                or 0
+            )
+            if local_effect_count == 0:
+                fallback_run = _scalar(
+                    conn,
+                    """
+                    SELECT run_id
+                      FROM mart_stock_horizon_feature_effect
+                     GROUP BY run_id
+                    HAVING COUNT(*) > 0
+                     ORDER BY MAX(built_at) DESC NULLS LAST, run_id DESC
+                     LIMIT 1
+                    """,
+                )
+                if fallback_run:
+                    effect_run_id = str(fallback_run)
+            effect_count = int(
+                conn.execute(
+                    "SELECT COUNT(*) FROM mart_stock_horizon_feature_effect WHERE run_id = ?",
+                    (effect_run_id,),
                 ).fetchone()[0]
                 or 0
             )
@@ -504,7 +674,7 @@ def _stock_horizon_profile(conn: Any, *, stock_limit: int = 12, effect_limit: in
                  ORDER BY stock_count DESC, avg_abs_corr DESC NULLS LAST, e.feature_name
                  LIMIT ?
                 """,
-                (run_id, int(effect_limit)),
+                (effect_run_id, int(effect_limit)),
             ).fetchall()
             top_effects = [
                 {
@@ -528,13 +698,13 @@ def _stock_horizon_profile(conn: Any, *, stock_limit: int = 12, effect_limit: in
                        AVG(corr) AS avg_corr,
                        AVG(CASE WHEN corr > 0 THEN 1.0 WHEN corr < 0 THEN 0.0 ELSE NULL END) AS positive_share,
                        AVG(obs_count) AS avg_obs_count
-                  FROM mart_stock_horizon_feature_effect
+                 FROM mart_stock_horizon_feature_effect
                  WHERE run_id = ?
                  GROUP BY label_name, horizon_days, feature_name
                  ORDER BY horizon_days, avg_abs_corr DESC NULLS LAST, feature_name
                  LIMIT ?
                 """,
-                (run_id, 240),
+                (effect_run_id, 240),
             ).fetchall()
             for row in detail_rows:
                 positive_share = row["positive_share"]
@@ -559,10 +729,55 @@ def _stock_horizon_profile(conn: Any, *, stock_limit: int = 12, effect_limit: in
                         "avg_obs_count": row["avg_obs_count"],
                     }
                 )
+            if horizon_selection:
+                selected_by_stock = {
+                    str(row.get("stock_code")): row
+                    for row in horizon_selection
+                    if row.get("stock_code")
+                }
+                effect_stock_rows = conn.execute(
+                    """
+                    SELECT stock_code,
+                           label_name,
+                           horizon_days,
+                           feature_name,
+                           obs_count,
+                           corr,
+                           abs_corr_rank,
+                           effect_direction
+                      FROM mart_stock_horizon_feature_effect
+                     WHERE run_id = ?
+                       AND stock_code IN ({})
+                       AND abs_corr_rank <= 3
+                     ORDER BY stock_code, abs_corr_rank, feature_name
+                    """.format(", ".join(["?"] * len(selected_by_stock))),
+                    (effect_run_id, *selected_by_stock.keys()),
+                ).fetchall() if selected_by_stock else []
+                effects_by_stock: dict[str, list[dict[str, Any]]] = {}
+                for row in effect_stock_rows:
+                    selection = selected_by_stock.get(str(row["stock_code"]))
+                    if not selection:
+                        continue
+                    if str(row["label_name"]) != str(selection.get("selected_label")):
+                        continue
+                    effects_by_stock.setdefault(str(row["stock_code"]), []).append(
+                        {
+                            "label_name": row["label_name"],
+                            "horizon_days": row["horizon_days"],
+                            "feature_name": row["feature_name"],
+                            "obs_count": row["obs_count"],
+                            "corr": row["corr"],
+                            "abs_corr_rank": row["abs_corr_rank"],
+                            "effect_direction": row["effect_direction"],
+                        }
+                    )
+                for row in horizon_selection:
+                    row["top_feature_effects"] = effects_by_stock.get(str(row.get("stock_code")), [])
 
     return {
         "run_id": run_id,
-        "baseline_label": "forward_ret_60d",
+        "effect_run_id": effect_run_id,
+        "baseline_label": baseline_label,
         "horizon_comparison": [
             {
                 "label_name": row["label_name"],
@@ -578,7 +793,7 @@ def _stock_horizon_profile(conn: Any, *, stock_limit: int = 12, effect_limit: in
                 "avg_win_rate": row["avg_win_rate"],
                 "avg_volatility": row["avg_volatility"],
                 "avg_obs_count": row["avg_obs_count"],
-                "is_baseline": row["label_name"] == "forward_ret_60d",
+                "is_baseline": _is_baseline_horizon(row["label_name"], row["horizon_days"]),
             }
             for row in comparison_rows
         ],
@@ -597,10 +812,12 @@ def _stock_horizon_profile(conn: Any, *, stock_limit: int = 12, effect_limit: in
                 "avg_win_rate": row["avg_win_rate"],
                 "avg_volatility": row["avg_volatility"],
                 "avg_obs_count": row["avg_obs_count"],
-                "is_baseline": row["label_name"] == "forward_ret_60d",
+                "is_baseline": _is_baseline_horizon(row["label_name"], row["horizon_days"]),
             }
             for row in distribution_rows
         ],
+        "horizon_selection": horizon_selection,
+        "selected_horizon_distribution": selected_horizon_distribution,
         "best_stocks": [
             {
                 "stock_code": row["stock_code"],
@@ -614,15 +831,17 @@ def _stock_horizon_profile(conn: Any, *, stock_limit: int = 12, effect_limit: in
                 "win_rate": row["win_rate"],
                 "volatility": row["volatility"],
                 "horizon_score": row["horizon_score"],
-                "is_baseline": row["label_name"] == "forward_ret_60d",
+                "is_baseline": _is_baseline_horizon(row["label_name"], row["horizon_days"]),
             }
             for row in stock_rows
         ],
+        "selected_stocks": selected_stocks,
         "top_effects": top_effects,
         "feature_effects_by_horizon": feature_effects_by_horizon,
         "profile_count": int((counts or {})["profile_count"] or 0),
         "best_count": int((counts or {})["best_count"] or 0),
         "effect_count": effect_count,
+        "selection_count": selection_count,
     }
 
 
@@ -1009,6 +1228,68 @@ def _source_health_overview(conn: Any) -> dict[str, Any]:
     }
 
 
+def _data_processing_monitor_view(conn: Any, *, limit: int = 30) -> dict[str, Any]:
+    sources: list[tuple[str, str]] = []
+    if _table_exists(conn, "mart_data_processing_tool_run"):
+        sources.append(("main", "mart_data_processing_tool_run"))
+    if _attach_market_readonly(conn) and _relation_exists(conn, "market.mart_data_processing_tool_run"):
+        sources.append(("market", "market.mart_data_processing_tool_run"))
+
+    runs: list[dict[str, Any]] = []
+    for scope, table in sources:
+        try:
+            query_rows = conn.execute(
+                f"""
+                SELECT run_id, tool_name, policy_id, source_name, status,
+                       input_rows, accepted_rows, rejected_rows,
+                       reason_counts_json, output_table, batch_id,
+                       CAST(ended_at AS VARCHAR) AS ended_at, duration_s
+                  FROM {table}
+                 ORDER BY ended_at DESC
+                 LIMIT ?
+                """,
+                (int(limit),),
+            ).fetchall()
+        except Exception:
+            continue
+        for row in query_rows:
+            runs.append({
+                "scope": scope,
+                "run_id": row["run_id"],
+                "tool_name": row["tool_name"],
+                "policy_id": row["policy_id"],
+                "source_name": row["source_name"],
+                "status": row["status"],
+                "input_rows": int(row["input_rows"] or 0),
+                "accepted_rows": int(row["accepted_rows"] or 0),
+                "rejected_rows": int(row["rejected_rows"] or 0),
+                "reason_counts": _safe_json(row["reason_counts_json"]) or {},
+                "output_table": row["output_table"],
+                "batch_id": row["batch_id"],
+                "ended_at": row["ended_at"],
+                "duration_s": row["duration_s"],
+            })
+
+    runs.sort(key=lambda item: str(item.get("ended_at") or ""), reverse=True)
+    runs = runs[: int(limit)]
+    reason_counts: dict[str, int] = {}
+    for row in runs:
+        for reason, count in (row.get("reason_counts") or {}).items():
+            reason_counts[str(reason)] = reason_counts.get(str(reason), 0) + int(count or 0)
+    return {
+        "sources": [scope for scope, _ in sources],
+        "run_count": len(runs),
+        "total_input_rows": sum(row["input_rows"] for row in runs),
+        "total_accepted_rows": sum(row["accepted_rows"] for row in runs),
+        "total_rejected_rows": sum(row["rejected_rows"] for row in runs),
+        "reason_counts": [
+            {"reason": reason, "count": count}
+            for reason, count in sorted(reason_counts.items(), key=lambda item: (-item[1], item[0]))
+        ],
+        "recent_runs": runs,
+    }
+
+
 def build_workbench_data_sources(conn: Any, *, limit: int = 30, as_of_date: str | None = None) -> dict[str, Any]:
     rows = []
     if _table_exists(conn, "mart_data_source_watermark"):
@@ -1068,6 +1349,23 @@ def build_workbench_data_sources(conn: Any, *, limit: int = 30, as_of_date: str 
                     "count": row["consecutive_failures"],
                 }
             )
+    tdx_f10_capabilities = []
+    if _table_exists(conn, "mart_tdx_f10_capability_matrix"):
+        tdx_f10_capabilities = [
+            dict(row)
+            for row in conn.execute(
+                """
+                SELECT module_id, module_name, endpoint, parser, raw_table,
+                       fact_table, raw_text_available, parsed_table_available,
+                       coverage_stock_count, row_count, latest_page_update_date,
+                       latest_fetched_at, parser_version, pit_risk,
+                       source_date_field, availability_date_field, status, notes,
+                       built_at
+                  FROM mart_tdx_f10_capability_matrix
+                 ORDER BY module_id
+                """
+            ).fetchall()
+        ]
     return {
         "calendar_target": _latest_trading_day(conn, as_of_date=as_of_date),
         "watermark_count": len(rows),
@@ -1081,6 +1379,8 @@ def build_workbench_data_sources(conn: Any, *, limit: int = 30, as_of_date: str 
         "latest_feature_validation": latest_validation,
         "asset_health": _asset_health_snapshot(conn),
         "source_health": _source_health_overview(conn),
+        "processing_monitor": _data_processing_monitor_view(conn, limit=limit),
+        "tdx_f10_capabilities": tdx_f10_capabilities,
         "blockers": blockers,
     }
 
@@ -1102,6 +1402,264 @@ def build_workbench_pipelines(conn: Any, *, limit: int = 30) -> dict[str, Any]:
         "latest_by_pipeline": list(latest_by_pipeline.values()),
         "slowest": slowest,
         "blockers": blocker_rows,
+    }
+
+
+def _feature_availability_contract_view(conn: Any, *, limit: int = 160) -> dict[str, Any]:
+    rows: list[dict[str, Any]] = []
+    source = "registry"
+    if _table_exists(conn, "mart_feature_availability_contract"):
+        source = "mart_feature_availability_contract"
+        cols = _columns(conn, "mart_feature_availability_contract")
+        selected = [
+            "feature_name",
+            "feature_group",
+            "feature_role",
+            "availability_cadence",
+            "panel_density",
+            "expected_update_frequency",
+            "null_policy",
+            "coverage_universe",
+            "model_input",
+            "production_ready",
+            "enabled",
+            "frontend_visible",
+            "pit_release_lag_days",
+            "notes",
+            "built_at",
+        ]
+        if set(selected).issubset(cols):
+            rows = [
+                dict(row)
+                for row in conn.execute(
+                    """
+                    SELECT feature_name, feature_group, feature_role,
+                           availability_cadence, panel_density,
+                           expected_update_frequency, null_policy,
+                           coverage_universe, model_input, production_ready,
+                           enabled, frontend_visible, pit_release_lag_days,
+                           notes, built_at
+                      FROM mart_feature_availability_contract
+                     WHERE frontend_visible = TRUE
+                     ORDER BY
+                           CASE WHEN model_input THEN 0 ELSE 1 END,
+                           CASE WHEN production_ready THEN 0 ELSE 1 END,
+                           feature_role, feature_group, feature_name
+                     LIMIT ?
+                    """,
+                    (int(limit),),
+                ).fetchall()
+            ]
+    if not rows:
+        registry = load_feature_registry()
+        rows = [
+            {
+                "feature_name": spec.name,
+                "feature_group": spec.group,
+                "feature_role": spec.feature_role,
+                "availability_cadence": spec.availability_cadence,
+                "panel_density": spec.panel_density,
+                "expected_update_frequency": spec.expected_update_frequency,
+                "null_policy": spec.null_policy,
+                "coverage_universe": spec.coverage_universe,
+                "model_input": spec.model_input,
+                "production_ready": spec.production_ready,
+                "enabled": spec.enabled,
+                "frontend_visible": spec.frontend_visible,
+                "pit_release_lag_days": spec.pit_release_lag_days,
+                "notes": spec.notes,
+                "built_at": None,
+            }
+            for spec in registry.features.values()
+            if spec.frontend_visible
+        ][:limit]
+
+    role_counts: dict[str, int] = {}
+    cadence_counts: dict[str, int] = {}
+    density_counts: dict[str, int] = {}
+    null_policy_counts: dict[str, int] = {}
+    for row in rows:
+        role = str(row.get("feature_role") or "unknown")
+        cadence = str(row.get("availability_cadence") or "unknown")
+        density = str(row.get("panel_density") or "unknown")
+        null_policy = str(row.get("null_policy") or "unknown")
+        role_counts[role] = role_counts.get(role, 0) + 1
+        cadence_counts[cadence] = cadence_counts.get(cadence, 0) + 1
+        density_counts[density] = density_counts.get(density, 0) + 1
+        null_policy_counts[null_policy] = null_policy_counts.get(null_policy, 0) + 1
+    return {
+        "source": source,
+        "rows": rows,
+        "role_counts": role_counts,
+        "cadence_counts": cadence_counts,
+        "density_counts": density_counts,
+        "null_policy_counts": null_policy_counts,
+    }
+
+
+def _feature_catalog_current_view(conn: Any, *, limit: int = 240) -> dict[str, Any]:
+    table = "mart_feature_catalog_current"
+    if not _table_exists(conn, table):
+        return {"run_id": None, "summary": {}, "risk_counts": {}, "table_counts": {}, "rows": []}
+    run_id = _latest_run_id(conn, table)
+    if not run_id:
+        return {"run_id": None, "summary": {}, "risk_counts": {}, "table_counts": {}, "rows": []}
+    cols = _columns(conn, table)
+    required = {
+        "run_id",
+        "feature_table",
+        "feature_name",
+        "feature_family",
+        "registry_status",
+        "model_input",
+        "production_ready",
+        "pit_risk_level",
+        "total_rows",
+        "non_null_rows",
+        "coverage_pct",
+        "allowed_in_production_research",
+    }
+    if not required.issubset(cols):
+        return {"run_id": run_id, "summary": {}, "risk_counts": {}, "table_counts": {}, "rows": []}
+
+    risk_rows = conn.execute(
+        """
+        SELECT pit_risk_level, COUNT(*) AS n
+          FROM mart_feature_catalog_current
+         WHERE run_id = ?
+         GROUP BY pit_risk_level
+         ORDER BY pit_risk_level
+        """,
+        (run_id,),
+    ).fetchall()
+    table_rows = conn.execute(
+        """
+        SELECT feature_table, COUNT(*) AS n
+          FROM mart_feature_catalog_current
+         WHERE run_id = ?
+         GROUP BY feature_table
+         ORDER BY feature_table
+        """,
+        (run_id,),
+    ).fetchall()
+    summary_row = conn.execute(
+        """
+        SELECT COUNT(*) AS total_features,
+               SUM(CASE WHEN allowed_in_production_research THEN 1 ELSE 0 END) AS allowed_features,
+               SUM(CASE WHEN model_input THEN 1 ELSE 0 END) AS model_input_features,
+               SUM(CASE WHEN registry_status = 'unknown' THEN 1 ELSE 0 END) AS unknown_features,
+               SUM(CASE WHEN non_null_rows = 0 THEN 1 ELSE 0 END) AS zero_coverage_features,
+               SUM(CASE WHEN pit_risk_level = 'critical' THEN 1 ELSE 0 END) AS critical_features,
+               SUM(CASE WHEN pit_risk_level = 'high' THEN 1 ELSE 0 END) AS high_features
+          FROM mart_feature_catalog_current
+         WHERE run_id = ?
+        """,
+        (run_id,),
+    ).fetchone()
+
+    join_exists = _table_exists(conn, "mart_feature_pit_join_plan")
+    exclusion_exists = _table_exists(conn, "mart_feature_exclusion_reason")
+    join_sql = ""
+    if join_exists:
+        join_sql = """
+        LEFT JOIN mart_feature_pit_join_plan j
+          ON j.run_id = c.run_id
+         AND j.feature_table = c.feature_table
+         AND j.feature_name = c.feature_name
+        """
+    reason_sql = ""
+    if exclusion_exists:
+        reason_sql = """
+        LEFT JOIN (
+            SELECT run_id, feature_table, feature_name,
+                   STRING_AGG(reason_code, ', ' ORDER BY reason_code) AS reason_codes,
+                   MAX(CASE WHEN production_blocking THEN 1 ELSE 0 END) AS production_blocking
+              FROM mart_feature_exclusion_reason
+             WHERE run_id = ?
+             GROUP BY run_id, feature_table, feature_name
+        ) r
+          ON r.run_id = c.run_id
+         AND r.feature_table = c.feature_table
+         AND r.feature_name = c.feature_name
+        """
+    params: list[Any] = [run_id]
+    if exclusion_exists:
+        params.append(run_id)
+    params.append(int(limit))
+    query_rows = conn.execute(
+        f"""
+        SELECT c.feature_table,
+               c.feature_name,
+               c.feature_family,
+               c.registry_status,
+               c.model_input,
+               c.production_ready,
+               c.candidate_only,
+               c.label,
+               c.pit_risk_level,
+               c.total_rows,
+               c.non_null_rows,
+               c.coverage_pct,
+               c.source_event_date_column,
+               c.source_available_date_column,
+               c.allowed_in_production_research,
+               {"j.join_policy" if join_exists else "NULL"} AS join_policy,
+               {"j.production_blocking" if join_exists else "FALSE"} AS join_blocking,
+               {"r.production_blocking" if exclusion_exists else "FALSE"} AS exclusion_blocking,
+               {"r.reason_codes" if exclusion_exists else "NULL"} AS reason_codes
+          FROM mart_feature_catalog_current c
+          {join_sql}
+          {reason_sql}
+         WHERE c.run_id = ?
+         ORDER BY
+               CASE WHEN COALESCE({"j.production_blocking" if join_exists else "FALSE"}, FALSE)
+                      OR COALESCE({"r.production_blocking" if exclusion_exists else "FALSE"}, FALSE)
+                    THEN 0 ELSE 1 END,
+               CASE c.pit_risk_level
+                    WHEN 'critical' THEN 0
+                    WHEN 'high' THEN 1
+                    WHEN 'medium' THEN 2
+                    WHEN 'low' THEN 3
+                    ELSE 4
+               END,
+               c.coverage_pct ASC NULLS FIRST,
+               c.feature_table,
+               c.feature_name
+         LIMIT ?
+        """,
+        tuple(params),
+    ).fetchall()
+
+    return {
+        "run_id": run_id,
+        "summary": dict(summary_row) if summary_row else {},
+        "risk_counts": {str(row["pit_risk_level"]): int(row["n"] or 0) for row in risk_rows},
+        "table_counts": {str(row["feature_table"]): int(row["n"] or 0) for row in table_rows},
+        "rows": [
+            {
+                "feature_table": row["feature_table"],
+                "feature_name": row["feature_name"],
+                "feature_family": row["feature_family"],
+                "registry_status": row["registry_status"],
+                "model_input": bool(row["model_input"]) if row["model_input"] is not None else None,
+                "production_ready": (
+                    bool(row["production_ready"]) if row["production_ready"] is not None else None
+                ),
+                "candidate_only": bool(row["candidate_only"]) if row["candidate_only"] is not None else None,
+                "label": bool(row["label"]) if row["label"] is not None else None,
+                "pit_risk_level": row["pit_risk_level"],
+                "total_rows": row["total_rows"],
+                "non_null_rows": row["non_null_rows"],
+                "coverage_pct": row["coverage_pct"],
+                "source_event_date_column": row["source_event_date_column"],
+                "source_available_date_column": row["source_available_date_column"],
+                "allowed_in_production_research": bool(row["allowed_in_production_research"]),
+                "join_policy": row["join_policy"],
+                "production_blocking": bool(row["join_blocking"]) or bool(row["exclusion_blocking"]),
+                "reason_codes": row["reason_codes"],
+            }
+            for row in query_rows
+        ],
     }
 
 
@@ -1220,6 +1778,24 @@ def build_workbench_features(conn: Any, *, association_limit: int = 12) -> dict[
             for row in rows
         ]
 
+    pit_coverage = []
+    if _table_exists(conn, "mart_feature_pit_coverage_summary"):
+        pit_coverage = [
+            dict(row)
+            for row in conn.execute(
+                """
+                SELECT audit_run_id, feature_set_id, feature_table, audit_scope,
+                       total_columns, audited_columns, passed_columns,
+                       failed_columns, unknown_blocking_columns,
+                       missing_source_columns, not_applicable_columns,
+                       high_risk_columns, critical_risk_columns, audited_at
+                  FROM mart_feature_pit_coverage_summary
+                 ORDER BY audited_at DESC NULLS LAST, audit_run_id DESC
+                 LIMIT 5
+                """
+            ).fetchall()
+        ]
+
     return {
         "registry": {
             "feature_count": len(registry.features),
@@ -1231,6 +1807,9 @@ def build_workbench_features(conn: Any, *, association_limit: int = 12) -> dict[
         },
         "latest_validation": latest_validation,
         "search_spaces": search_spaces,
+        "availability_contract": _feature_availability_contract_view(conn),
+        "feature_catalog": _feature_catalog_current_view(conn),
+        "pit_coverage": pit_coverage,
         "drift_mitigation_builds": drift_mitigation_builds,
         "top_associations": top_associations,
         "feature_drift": _drift_offenders(conn, 12),
@@ -1431,7 +2010,7 @@ def build_workbench_storage(conn: Any, *, include_live_plan: bool = True) -> dic
                 "active_optuna_study_count": report.get("active_optuna_study_count", 0),
                 "compaction": report.get("compaction") or {"recommended": False},
                 "candidates": (report.get("candidates") or [])[:20],
-                "requires_backup_before_delete": report.get("requires_backup_before_delete"),
+                "delete_policy": report.get("delete_policy"),
                 "error": None,
             }
         except Exception as exc:  # pragma: no cover - defensive for partially migrated local DBs.
@@ -1441,6 +2020,483 @@ def build_workbench_storage(conn: Any, *, include_live_plan: bool = True) -> dic
         "retention": retention,
         "architecture": _architecture_cleanup_summary(conn),
         "architecture_cleanup": _architecture_cleanup_plan_summary(conn),
+    }
+
+
+def _temporal_synergy_research(
+    conn: Any,
+    *,
+    relevance_limit: int = 15,
+    synergy_limit: int = 15,
+) -> dict[str, Any]:
+    empty = {
+        "run_id": None,
+        "quality": None,
+        "label_summary": [],
+        "top_relevance": [],
+        "top_synergies": [],
+        "selected_interactions": [],
+        "optuna_studies": [],
+        "policy_candidates": [],
+        "policy_gates": [],
+        "redundancy_clusters": [],
+        "conditional_synergies": [],
+    }
+    quality_table = "mart_temporal_research_panel_quality"
+    relevance_table = "mart_feature_temporal_relevance"
+    pair_table = "mart_feature_pair_synergy"
+    candidate_table = "mart_feature_interaction_candidate"
+    optuna_table = "mart_optuna_synergy_study_summary"
+    policy_table = "mart_synergy_policy_candidate"
+    gate_table = "mart_synergy_policy_gate"
+    redundancy_table = "mart_feature_cluster_redundancy"
+    conditional_table = "mart_feature_conditional_synergy"
+    if not _table_exists(conn, quality_table):
+        return empty
+    run_id = _latest_run_id(conn, quality_table)
+    if not run_id:
+        return empty
+    quality_cols = _columns(conn, quality_table)
+    quality_row = conn.execute(
+        f"""
+        SELECT {_select_expr(quality_cols, "run_id")},
+               {_select_expr(quality_cols, "source_panel_table")},
+               {_select_expr(quality_cols, "feature_set_id")},
+               {_select_expr(quality_cols, "source_available_date_column")},
+               {_select_expr(quality_cols, "source_date_filter_applied", default="FALSE")},
+               {_select_expr(quality_cols, "input_rows")},
+               {_select_expr(quality_cols, "panel_rows")},
+               {_select_expr(quality_cols, "dropped_future_source_rows")},
+               {_select_expr(quality_cols, "stock_count")},
+               {_select_expr(quality_cols, "min_signal_date")},
+               {_select_expr(quality_cols, "max_signal_date")},
+               {_select_expr(quality_cols, "feature_count")},
+               {_select_expr(quality_cols, "label_count")},
+               {_select_expr(quality_cols, "labels_json")},
+               {_select_expr(quality_cols, "features_json")},
+               {_cast_select_expr(quality_cols, "built_at")}
+          FROM mart_temporal_research_panel_quality
+         WHERE run_id = ?
+         LIMIT 1
+        """,
+        (run_id,),
+    ).fetchone()
+    quality = None
+    if quality_row:
+        quality = {
+            "run_id": quality_row["run_id"],
+            "source_panel_table": quality_row["source_panel_table"],
+            "feature_set_id": quality_row["feature_set_id"],
+            "source_available_date_column": quality_row["source_available_date_column"],
+            "source_date_filter_applied": bool(quality_row["source_date_filter_applied"]),
+            "input_rows": quality_row["input_rows"],
+            "panel_rows": quality_row["panel_rows"],
+            "dropped_future_source_rows": quality_row["dropped_future_source_rows"],
+            "stock_count": quality_row["stock_count"],
+            "min_signal_date": quality_row["min_signal_date"],
+            "max_signal_date": quality_row["max_signal_date"],
+            "feature_count": quality_row["feature_count"],
+            "label_count": quality_row["label_count"],
+            "labels": _safe_json(quality_row["labels_json"]) or [],
+            "features": _safe_json(quality_row["features_json"]) or [],
+            "built_at": quality_row["built_at"],
+        }
+
+    label_summary: list[dict[str, Any]] = []
+    top_relevance: list[dict[str, Any]] = []
+    if _table_exists(conn, relevance_table):
+        rel_cols = _columns(conn, relevance_table)
+        if {"run_id", "label_name", "feature_name"}.issubset(rel_cols):
+            coverage_expr = "coverage_pct" if "coverage_pct" in rel_cols else "NULL"
+            rank_ic_expr = "rank_ic" if "rank_ic" in rel_cols else "NULL"
+            directional_spread_expr = "directional_spread" if "directional_spread" in rel_cols else "NULL"
+            summary_rows = conn.execute(
+                f"""
+                SELECT label_name,
+                       COUNT(*) AS feature_count,
+                       AVG({coverage_expr}) AS avg_coverage_pct,
+                       MAX(ABS(COALESCE({rank_ic_expr}, 0))) AS max_abs_rank_ic,
+                       MAX(COALESCE({directional_spread_expr}, 0)) AS max_directional_spread
+                  FROM mart_feature_temporal_relevance
+                 WHERE run_id = ?
+                 GROUP BY label_name
+                 ORDER BY label_name
+                """,
+                (run_id,),
+            ).fetchall()
+            label_summary = [
+                {
+                    "label_name": row["label_name"],
+                    "feature_count": int(row["feature_count"] or 0),
+                    "avg_coverage_pct": row["avg_coverage_pct"],
+                    "max_abs_rank_ic": row["max_abs_rank_ic"],
+                    "max_directional_spread": row["max_directional_spread"],
+                }
+                for row in summary_rows
+            ]
+            rel_rows = conn.execute(
+                f"""
+                SELECT {_select_expr(rel_cols, "label_name")},
+                       {_select_expr(rel_cols, "horizon_days")},
+                       {_select_expr(rel_cols, "feature_name")},
+                       {_select_expr(rel_cols, "coverage_pct")},
+                       {_select_expr(rel_cols, "rank_ic")},
+                       {_select_expr(rel_cols, "directional_spread")},
+                       {_select_expr(rel_cols, "stability_score")},
+                       {_select_expr(rel_cols, "long_short_spread")},
+                       {_select_expr(rel_cols, "daily_count")}
+                  FROM mart_feature_temporal_relevance
+                 WHERE run_id = ?
+                 ORDER BY ABS(COALESCE(rank_ic, 0)) DESC,
+                          ABS(COALESCE(directional_spread, 0)) DESC,
+                          feature_name
+                 LIMIT ?
+                """,
+                (run_id, int(relevance_limit)),
+            ).fetchall()
+            top_relevance = [
+                {
+                    "label_name": row["label_name"],
+                    "horizon_days": row["horizon_days"],
+                    "feature_name": row["feature_name"],
+                    "coverage_pct": row["coverage_pct"],
+                    "rank_ic": row["rank_ic"],
+                    "directional_spread": row["directional_spread"],
+                    "stability_score": row["stability_score"],
+                    "long_short_spread": row["long_short_spread"],
+                    "daily_count": row["daily_count"],
+                }
+                for row in rel_rows
+            ]
+
+    top_synergies: list[dict[str, Any]] = []
+    if _table_exists(conn, pair_table):
+        pair_cols = _columns(conn, pair_table)
+        if {"run_id", "label_name", "feature_a", "feature_b"}.issubset(pair_cols):
+            pair_rows = conn.execute(
+                f"""
+                SELECT {_select_expr(pair_cols, "label_name")},
+                       {_select_expr(pair_cols, "horizon_days")},
+                       {_select_expr(pair_cols, "feature_a")},
+                       {_select_expr(pair_cols, "feature_b")},
+                       {_select_expr(pair_cols, "joint_uplift")},
+                       {_select_expr(pair_cols, "interaction_score")},
+                       {_select_expr(pair_cols, "joint_obs_count")},
+                       {_select_expr(pair_cols, "feature_corr")},
+                       {_select_expr(pair_cols, "joint_active_label_mean")},
+                       {_select_expr(pair_cols, "best_standalone_label_mean")}
+                  FROM mart_feature_pair_synergy
+                 WHERE run_id = ?
+                 ORDER BY interaction_score DESC NULLS LAST,
+                          joint_uplift DESC NULLS LAST,
+                          feature_a,
+                          feature_b
+                 LIMIT ?
+                """,
+                (run_id, int(synergy_limit)),
+            ).fetchall()
+            top_synergies = [
+                {
+                    "label_name": row["label_name"],
+                    "horizon_days": row["horizon_days"],
+                    "feature_a": row["feature_a"],
+                    "feature_b": row["feature_b"],
+                    "joint_uplift": row["joint_uplift"],
+                    "interaction_score": row["interaction_score"],
+                    "joint_obs_count": row["joint_obs_count"],
+                    "feature_corr": row["feature_corr"],
+                    "joint_active_label_mean": row["joint_active_label_mean"],
+                    "best_standalone_label_mean": row["best_standalone_label_mean"],
+                }
+                for row in pair_rows
+            ]
+
+    selected_interactions: list[dict[str, Any]] = []
+    if _table_exists(conn, candidate_table):
+        candidate_cols = _columns(conn, candidate_table)
+        if {"run_id", "label_name", "feature_a", "feature_b", "selected"}.issubset(candidate_cols):
+            candidate_rows = conn.execute(
+                f"""
+                SELECT {_select_expr(candidate_cols, "label_name")},
+                       {_select_expr(candidate_cols, "horizon_days")},
+                       {_select_expr(candidate_cols, "feature_a")},
+                       {_select_expr(candidate_cols, "feature_b")},
+                       {_select_expr(candidate_cols, "selected")},
+                       {_select_expr(candidate_cols, "selection_reason")},
+                       {_select_expr(candidate_cols, "joint_uplift")},
+                       {_select_expr(candidate_cols, "interaction_score")},
+                       {_select_expr(candidate_cols, "joint_obs_count")}
+                  FROM mart_feature_interaction_candidate
+                 WHERE run_id = ?
+                   AND selected = TRUE
+                 ORDER BY interaction_score DESC NULLS LAST,
+                          joint_uplift DESC NULLS LAST,
+                          feature_a,
+                          feature_b
+                 LIMIT ?
+                """,
+                (run_id, int(synergy_limit)),
+            ).fetchall()
+            selected_interactions = [
+                {
+                    "label_name": row["label_name"],
+                    "horizon_days": row["horizon_days"],
+                    "feature_a": row["feature_a"],
+                    "feature_b": row["feature_b"],
+                    "selected": bool(row["selected"]),
+                    "selection_reason": row["selection_reason"],
+                    "joint_uplift": row["joint_uplift"],
+                    "interaction_score": row["interaction_score"],
+                    "joint_obs_count": row["joint_obs_count"],
+                }
+                for row in candidate_rows
+            ]
+
+    optuna_studies: list[dict[str, Any]] = []
+    if _table_exists(conn, optuna_table):
+        optuna_cols = _columns(conn, optuna_table)
+        if {"run_id", "source_run_id", "label_name"}.issubset(optuna_cols):
+            optuna_rows = conn.execute(
+                f"""
+                SELECT {_select_expr(optuna_cols, "run_id")},
+                       {_select_expr(optuna_cols, "source_run_id")},
+                       {_select_expr(optuna_cols, "label_name")},
+                       {_select_expr(optuna_cols, "best_trial_number")},
+                       {_select_expr(optuna_cols, "objective_score")},
+                       {_select_expr(optuna_cols, "trials")},
+                       {_select_expr(optuna_cols, "study_total_trials")},
+                       {_select_expr(optuna_cols, "selected_features_json")},
+                       {_select_expr(optuna_cols, "selected_interactions_json")},
+                       {_select_expr(optuna_cols, "config_json")},
+                       {_cast_select_expr(optuna_cols, "built_at")}
+                  FROM mart_optuna_synergy_study_summary
+                 WHERE source_run_id = ?
+                 ORDER BY built_at DESC NULLS LAST, run_id DESC
+                 LIMIT 8
+                """,
+                (run_id,),
+            ).fetchall()
+            for row in optuna_rows:
+                config = _safe_json(row["config_json"]) or {}
+                optuna_studies.append(
+                    {
+                        "run_id": row["run_id"],
+                        "source_run_id": row["source_run_id"],
+                        "label_name": row["label_name"],
+                        "best_trial_number": row["best_trial_number"],
+                        "objective_score": row["objective_score"],
+                        "trials": row["trials"],
+                        "study_total_trials": row["study_total_trials"],
+                        "selected_features": _safe_json(row["selected_features_json"]) or [],
+                        "selected_interactions": _safe_json(row["selected_interactions_json"]) or [],
+                        "best_metrics": config.get("best_metrics") or {},
+                        "built_at": row["built_at"],
+                    }
+                )
+
+    policy_candidates: list[dict[str, Any]] = []
+    if _table_exists(conn, policy_table):
+        policy_cols = _columns(conn, policy_table)
+        if {"run_id", "source_run_id", "label_name", "gate_status"}.issubset(policy_cols):
+            policy_rows = conn.execute(
+                f"""
+                SELECT {_select_expr(policy_cols, "run_id")},
+                       {_select_expr(policy_cols, "source_run_id")},
+                       {_select_expr(policy_cols, "label_name")},
+                       {_select_expr(policy_cols, "objective_score")},
+                       {_select_expr(policy_cols, "selected_features_json")},
+                       {_select_expr(policy_cols, "selected_interactions_json")},
+                       {_select_expr(policy_cols, "gate_status")},
+                       {_select_expr(policy_cols, "notes_json")},
+                       {_cast_select_expr(policy_cols, "built_at")}
+                  FROM mart_synergy_policy_candidate
+                 WHERE source_run_id = ?
+                 ORDER BY built_at DESC NULLS LAST, run_id DESC
+                 LIMIT 8
+                """,
+                (run_id,),
+            ).fetchall()
+            policy_candidates = [
+                {
+                    "run_id": row["run_id"],
+                    "source_run_id": row["source_run_id"],
+                    "label_name": row["label_name"],
+                    "objective_score": row["objective_score"],
+                    "selected_count": len(_safe_json(row["selected_features_json"]) or []),
+                    "selected_interaction_count": len(_safe_json(row["selected_interactions_json"]) or []),
+                    "gate_status": row["gate_status"],
+                    "notes": _safe_json(row["notes_json"]) or {},
+                    "built_at": row["built_at"],
+                }
+                for row in policy_rows
+            ]
+
+    policy_gates: list[dict[str, Any]] = []
+    if _table_exists(conn, gate_table):
+        gate_cols = _columns(conn, gate_table)
+        if {"run_id", "source_run_id", "candidate_run_id", "validation_status"}.issubset(gate_cols):
+            gate_rows = conn.execute(
+                f"""
+                SELECT {_select_expr(gate_cols, "run_id")},
+                       {_select_expr(gate_cols, "candidate_run_id")},
+                       {_select_expr(gate_cols, "source_run_id")},
+                       {_select_expr(gate_cols, "label_name")},
+                       {_select_expr(gate_cols, "baseline_horizon_days")},
+                       {_select_expr(gate_cols, "candidate_horizon_days")},
+                       {_select_expr(gate_cols, "validation_status")},
+                       {_select_expr(gate_cols, "promotion_status")},
+                       {_select_expr(gate_cols, "production_eligible")},
+                       {_select_expr(gate_cols, "fold_count")},
+                       {_select_expr(gate_cols, "avg_rank_ic")},
+                       {_select_expr(gate_cols, "std_rank_ic")},
+                       {_select_expr(gate_cols, "avg_top_excess_return")},
+                       {_select_expr(gate_cols, "worst_top_excess_return")},
+                       {_select_expr(gate_cols, "avg_top_hit_rate")},
+                       {_select_expr(gate_cols, "worst_max_drawdown")},
+                       {_select_expr(gate_cols, "avg_turnover")},
+                       {_select_expr(gate_cols, "avg_cost_adjusted_top_excess_return")},
+                       {_select_expr(gate_cols, "worst_cost_adjusted_top_excess_return")},
+                       {_select_expr(gate_cols, "transaction_cost_bps")},
+                       {_select_expr(gate_cols, "blockers_json")},
+                       {_cast_select_expr(gate_cols, "built_at")}
+                  FROM mart_synergy_policy_gate
+                 WHERE source_run_id = ?
+                 ORDER BY built_at DESC NULLS LAST, run_id DESC
+                 LIMIT 8
+                """,
+                (run_id,),
+            ).fetchall()
+            policy_gates = [
+                {
+                    "run_id": row["run_id"],
+                    "candidate_run_id": row["candidate_run_id"],
+                    "source_run_id": row["source_run_id"],
+                    "label_name": row["label_name"],
+                    "baseline_horizon_days": row["baseline_horizon_days"],
+                    "candidate_horizon_days": row["candidate_horizon_days"],
+                    "validation_status": row["validation_status"],
+                    "promotion_status": row["promotion_status"],
+                    "production_eligible": bool(row["production_eligible"]),
+                    "fold_count": row["fold_count"],
+                    "avg_rank_ic": row["avg_rank_ic"],
+                    "std_rank_ic": row["std_rank_ic"],
+                    "avg_top_excess_return": row["avg_top_excess_return"],
+                    "worst_top_excess_return": row["worst_top_excess_return"],
+                    "avg_top_hit_rate": row["avg_top_hit_rate"],
+                    "worst_max_drawdown": row["worst_max_drawdown"],
+                    "avg_turnover": row["avg_turnover"],
+                    "avg_cost_adjusted_top_excess_return": row["avg_cost_adjusted_top_excess_return"],
+                    "worst_cost_adjusted_top_excess_return": row["worst_cost_adjusted_top_excess_return"],
+                    "transaction_cost_bps": row["transaction_cost_bps"],
+                    "blockers": _safe_json(row["blockers_json"]) or [],
+                    "built_at": row["built_at"],
+                }
+                for row in gate_rows
+            ]
+
+    redundancy_clusters: list[dict[str, Any]] = []
+    if _table_exists(conn, redundancy_table):
+        redundancy_cols = _columns(conn, redundancy_table)
+        if {"run_id", "source_run_id", "cluster_id", "feature_name"}.issubset(redundancy_cols):
+            redundancy_run = conn.execute(
+                """
+                SELECT run_id
+                  FROM mart_feature_cluster_redundancy
+                 WHERE source_run_id = ?
+                 ORDER BY built_at DESC NULLS LAST, run_id DESC
+                 LIMIT 1
+                """,
+                (run_id,),
+            ).fetchone()
+            if redundancy_run:
+                redundancy_rows = conn.execute(
+                    """
+                    SELECT run_id,
+                           cluster_id,
+                           representative_feature,
+                           cluster_size,
+                           MAX(max_abs_corr_in_cluster) AS max_abs_corr_in_cluster,
+                           STRING_AGG(feature_name, ', ' ORDER BY redundancy_status, feature_name) AS members,
+                           CAST(MAX(built_at) AS VARCHAR) AS built_at
+                      FROM mart_feature_cluster_redundancy
+                     WHERE run_id = ?
+                     GROUP BY run_id, cluster_id, representative_feature, cluster_size
+                     ORDER BY cluster_size DESC, max_abs_corr_in_cluster DESC, cluster_id
+                     LIMIT 12
+                    """,
+                    (redundancy_run["run_id"],),
+                ).fetchall()
+                redundancy_clusters = [
+                    {
+                        "run_id": row["run_id"],
+                        "cluster_id": row["cluster_id"],
+                        "representative_feature": row["representative_feature"],
+                        "cluster_size": row["cluster_size"],
+                        "max_abs_corr_in_cluster": row["max_abs_corr_in_cluster"],
+                        "members": row["members"],
+                        "built_at": row["built_at"],
+                    }
+                    for row in redundancy_rows
+                ]
+
+    conditional_synergies: list[dict[str, Any]] = []
+    if _table_exists(conn, conditional_table):
+        conditional_cols = _columns(conn, conditional_table)
+        if {"run_id", "label_name", "condition_feature", "response_feature"}.issubset(conditional_cols):
+            conditional_rows = conn.execute(
+                f"""
+                SELECT {_select_expr(conditional_cols, "label_name")},
+                       {_select_expr(conditional_cols, "horizon_days")},
+                       {_select_expr(conditional_cols, "condition_feature")},
+                       {_select_expr(conditional_cols, "response_feature")},
+                       {_select_expr(conditional_cols, "incremental_uplift")},
+                       {_select_expr(conditional_cols, "conditional_response_uplift")},
+                       {_select_expr(conditional_cols, "response_uplift")},
+                       {_select_expr(conditional_cols, "interaction_score")},
+                       {_select_expr(conditional_cols, "conditional_response_obs_count")},
+                       {_select_expr(conditional_cols, "feature_corr")},
+                       {_select_expr(conditional_cols, "selected")},
+                       {_select_expr(conditional_cols, "selection_reason")}
+                  FROM mart_feature_conditional_synergy
+                 WHERE run_id = ?
+                 ORDER BY interaction_score DESC NULLS LAST,
+                          incremental_uplift DESC NULLS LAST,
+                          condition_feature,
+                          response_feature
+                 LIMIT ?
+                """,
+                (run_id, int(synergy_limit)),
+            ).fetchall()
+            conditional_synergies = [
+                {
+                    "label_name": row["label_name"],
+                    "horizon_days": row["horizon_days"],
+                    "condition_feature": row["condition_feature"],
+                    "response_feature": row["response_feature"],
+                    "incremental_uplift": row["incremental_uplift"],
+                    "conditional_response_uplift": row["conditional_response_uplift"],
+                    "response_uplift": row["response_uplift"],
+                    "interaction_score": row["interaction_score"],
+                    "conditional_response_obs_count": row["conditional_response_obs_count"],
+                    "feature_corr": row["feature_corr"],
+                    "selected": bool(row["selected"]),
+                    "selection_reason": row["selection_reason"],
+                }
+                for row in conditional_rows
+            ]
+
+    return {
+        "run_id": run_id,
+        "quality": quality,
+        "label_summary": label_summary,
+        "top_relevance": top_relevance,
+        "top_synergies": top_synergies,
+        "selected_interactions": selected_interactions,
+        "optuna_studies": optuna_studies,
+        "policy_candidates": policy_candidates,
+        "policy_gates": policy_gates,
+        "redundancy_clusters": redundancy_clusters,
+        "conditional_synergies": conditional_synergies,
     }
 
 
@@ -1491,6 +2547,10 @@ def _recommendation_rows(conn: Any, key: dict[str, Any], *, limit: int = 50) -> 
                {_select_expr(cols, "regime_flag")},
                {_select_expr(cols, "track_id")},
                {_select_expr(cols, "run_mode")},
+               {_select_expr(cols, "baseline_horizon_days", default="60")},
+               {_select_expr(cols, "selected_horizon_days", default="60")},
+               {_select_expr(cols, "selected_horizon_confidence")},
+               {_select_expr(cols, "horizon_selection_run_id")},
                {_select_expr(cols, "key_features_json")},
                {_select_expr(cols, "built_at")}
           FROM {table}
@@ -1529,6 +2589,10 @@ def _recommendation_rows_from_table(
                {_select_expr(cols, "regime_flag")},
                {_select_expr(cols, "track_id")},
                {_select_expr(cols, "run_mode")},
+               {_select_expr(cols, "baseline_horizon_days", default="60")},
+               {_select_expr(cols, "selected_horizon_days", default="60")},
+               {_select_expr(cols, "selected_horizon_confidence")},
+               {_select_expr(cols, "horizon_selection_run_id")},
                {_select_expr(cols, "key_features_json")},
                {_select_expr(cols, "built_at")}
           FROM {table}
@@ -1547,6 +2611,9 @@ def _recommendation_row_dict(row: Any) -> dict[str, Any]:
     key_features = _safe_json(row["key_features_json"]) or {}
     top_features = key_features.get("model_top_features") if isinstance(key_features, dict) else []
     stock_feature_values = key_features.get("stock_feature_values") if isinstance(key_features, dict) else []
+    stock_feature_contributions = (
+        key_features.get("stock_feature_contributions") if isinstance(key_features, dict) else []
+    )
     if isinstance(top_features, list):
         top_features = [
             item.get("name") if isinstance(item, dict) else str(item)
@@ -1562,6 +2629,14 @@ def _recommendation_row_dict(row: Any) -> dict[str, Any]:
         ]
     else:
         stock_feature_values = []
+    if isinstance(stock_feature_contributions, list):
+        stock_feature_contributions = [
+            item
+            for item in stock_feature_contributions[:5]
+            if isinstance(item, dict)
+        ]
+    else:
+        stock_feature_contributions = []
     return {
         "stock_code": row["stock_code"],
         "stock_name": row["stock_name"],
@@ -1574,8 +2649,18 @@ def _recommendation_row_dict(row: Any) -> dict[str, Any]:
         "regime_flag": row["regime_flag"],
         "track_id": row["track_id"],
         "run_mode": row["run_mode"],
+        "baseline_horizon_days": row["baseline_horizon_days"],
+        "selected_horizon_days": row["selected_horizon_days"],
+        "selected_horizon_confidence": row["selected_horizon_confidence"],
+        "horizon_selection_run_id": row["horizon_selection_run_id"],
         "top_features": top_features,
         "top_feature_values": stock_feature_values,
+        "top_feature_contributions": stock_feature_contributions,
+        "explanation_status": (
+            key_features.get("explanation_status") if isinstance(key_features, dict) else None
+        ),
+        "base_value": key_features.get("base_value") if isinstance(key_features, dict) else None,
+        "additivity_error": key_features.get("additivity_error") if isinstance(key_features, dict) else None,
         "built_at": row["built_at"],
     }
 
@@ -1861,6 +2946,7 @@ def build_workbench_research(conn: Any, *, task_limit: int = 20, study_limit: in
         "ranker_profiles": ranker_profiles,
         "stability_context": _model_stability_context(conn),
         "stock_horizon_profile": _stock_horizon_profile(conn),
+        "temporal_synergy": _temporal_synergy_research(conn),
         "feature_drift": _drift_offenders(conn, 12),
     }
 

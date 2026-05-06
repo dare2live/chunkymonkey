@@ -1,16 +1,18 @@
-"""Config-driven storage retention dry-run planner."""
+"""Config-driven storage retention planner with verified direct deletes."""
 from __future__ import annotations
 
 import json
-import shutil
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, Iterable
+
+from services.data_deletion import record_data_deletion
 
 
 CONFIG_PATH = Path(__file__).resolve().parent.parent / "config" / "storage_retention.yaml"
 REPO_ROOT = Path(__file__).resolve().parent.parent.parent
+DELETE_POLICY = "verified_direct_delete_no_archive"
 
 
 @dataclass(frozen=True)
@@ -34,6 +36,12 @@ class ModelPredictionRule:
 
 
 @dataclass(frozen=True)
+class ProtectedArtifactRule:
+    table: str
+    reason: str
+
+
+@dataclass(frozen=True)
 class StorageRetentionPolicy:
     protected_model_statuses: tuple[str, ...]
     candidate_feature_panels: tuple[CandidateFeaturePanelRule, ...]
@@ -41,6 +49,7 @@ class StorageRetentionPolicy:
     model_file_roots: tuple[str, ...]
     optuna_study_roots: tuple[str, ...]
     defaults: dict[str, Any]
+    protected_artifact_tables: tuple[ProtectedArtifactRule, ...] = ()
 
 
 def _as_tuple(value: Any) -> tuple[str, ...]:
@@ -67,6 +76,8 @@ def _load_yaml(path: Path) -> dict[str, Any]:
 def load_storage_retention_policy(path: str | Path | None = None) -> StorageRetentionPolicy:
     config_path = Path(path) if path is not None else CONFIG_PATH
     raw = _load_yaml(config_path)
+    defaults = dict(raw.get("defaults", {}) if isinstance(raw.get("defaults"), dict) else {})
+    defaults["delete_policy"] = DELETE_POLICY
     feature_rules = []
     for item in raw.get("candidate_feature_panels", []) or []:
         if not isinstance(item, dict):
@@ -99,13 +110,24 @@ def load_storage_retention_policy(path: str | Path | None = None) -> StorageRete
                 model_id_source_model_id_column=str(item.get("model_id_source_model_id_column", "model_id")),
             )
         )
+    protected_artifact_rules = []
+    for item in raw.get("protected_artifact_tables", []) or []:
+        if not isinstance(item, dict):
+            continue
+        protected_artifact_rules.append(
+            ProtectedArtifactRule(
+                table=str(item["table"]),
+                reason=str(item.get("reason") or "protected artifact table"),
+            )
+        )
     return StorageRetentionPolicy(
         protected_model_statuses=_as_tuple(raw.get("protected_model_statuses")),
         candidate_feature_panels=tuple(feature_rules),
         model_prediction_tables=tuple(prediction_rules),
         model_file_roots=_as_tuple(raw.get("model_file_roots")),
         optuna_study_roots=_as_tuple(raw.get("optuna_study_roots")),
-        defaults=raw.get("defaults", {}) if isinstance(raw.get("defaults"), dict) else {},
+        defaults=defaults,
+        protected_artifact_tables=tuple(protected_artifact_rules),
     )
 
 
@@ -344,6 +366,27 @@ def protected_feature_set_id_reasons(
             column="feature_set_id",
             reason="stock_horizon_profile",
         )
+        _protect_feature_sets_from_column(
+            conn,
+            reasons,
+            table="mart_stock_horizon_selection",
+            column="feature_set_id",
+            reason="stock_horizon_selection",
+        )
+        _protect_feature_sets_from_column(
+            conn,
+            reasons,
+            table="mart_feature_pit_audit",
+            column="feature_set_id",
+            reason="feature_pit_audit",
+        )
+        _protect_feature_sets_from_column(
+            conn,
+            reasons,
+            table="mart_feature_pit_coverage_summary",
+            column="feature_set_id",
+            reason="feature_pit_coverage_summary",
+        )
     if include_model_selection_runs and _table_exists(conn, "mart_hybrid_feature_panel_build"):
         cols = _columns(conn, "mart_hybrid_feature_panel_build")
         for col in ("output_feature_set_id", "base_feature_set_id", "extra_feature_set_id"):
@@ -532,6 +575,24 @@ def active_optuna_study_artifacts(policy: StorageRetentionPolicy) -> list[dict[s
     return artifacts
 
 
+def protected_artifact_table_summaries(conn, policy: StorageRetentionPolicy) -> list[dict[str, Any]]:
+    summaries: list[dict[str, Any]] = []
+    for rule in policy.protected_artifact_tables:
+        exists = _table_exists(conn, rule.table)
+        row_count = None
+        if exists:
+            row_count = conn.execute(f"SELECT COUNT(*) AS n FROM {_quote_ident(rule.table)}").fetchone()["n"]
+        summaries.append(
+            {
+                "table": rule.table,
+                "exists": exists,
+                "row_count": int(row_count or 0) if exists else None,
+                "reason": rule.reason,
+            }
+        )
+    return summaries
+
+
 def compaction_guidance(policy: StorageRetentionPolicy, candidates: list[dict[str, Any]]) -> dict[str, Any]:
     threshold = int(policy.defaults.get("large_delete_row_threshold", 1_000_000) or 0)
     row_candidates = [
@@ -556,7 +617,8 @@ def compaction_guidance(policy: StorageRetentionPolicy, candidates: list[dict[st
             (
                 "For full file compaction during a maintenance window: "
                 "EXPORT DATABASE '<export_dir>'; create a fresh DuckDB database; "
-                "IMPORT DATABASE '<export_dir>'; verify counts; then swap after backup."
+                "IMPORT DATABASE '<export_dir>'; verify counts; swap the verified database; "
+                "then delete the temporary export directory."
             ),
         ] if recommended else [],
     }
@@ -576,6 +638,7 @@ def plan_storage_cleanup(
         *_model_file_cleanup(policy, protected),
     ]
     optuna_artifacts = active_optuna_study_artifacts(policy)
+    protected_artifacts = protected_artifact_table_summaries(conn, policy)
     compaction = compaction_guidance(policy, candidates)
     return {
         "mode": "dry_run",
@@ -586,66 +649,101 @@ def plan_storage_cleanup(
         "protected_feature_set_reasons": protected_feature_reasons,
         "active_optuna_study_artifacts": optuna_artifacts,
         "active_optuna_study_count": len(optuna_artifacts),
+        "protected_artifact_tables": protected_artifacts,
+        "protected_artifact_table_count": len(protected_artifacts),
         "compaction": compaction,
         "candidate_count": len(candidates),
         "candidates": candidates,
-        "requires_backup_before_delete": bool(policy.defaults.get("require_backup_before_delete", True)),
+        "delete_policy": DELETE_POLICY,
     }
 
 
-def _backup_table_name(run_id: str, index: int, table: str) -> str:
-    return f"backup_storage_cleanup_{_safe_name(run_id)}_{index:03d}_{_safe_name(table)}"
-
-
-def _backup_and_delete_rows(
+def _delete_rows(
     conn,
     *,
     candidate: dict[str, Any],
     run_id: str,
-    index: int,
 ) -> dict[str, Any]:
     table = str(candidate["table"])
-    backup_table = _backup_table_name(run_id, index, table)
     if candidate["kind"] == "candidate_feature_panel":
         key_col = str(candidate["key_column"])
         key_value = candidate["key_value"]
-        conn.execute(
-            f"CREATE OR REPLACE TABLE {_quote_ident(backup_table)} AS "
-            f"SELECT * FROM {_quote_ident(table)} WHERE {_quote_ident(key_col)} = ?",
+        before = conn.execute(
+            f"SELECT COUNT(*) AS n FROM {_quote_ident(table)} WHERE {_quote_ident(key_col)} = ?",
             (key_value,),
-        )
-        before = conn.execute(f"SELECT COUNT(*) AS n FROM {_quote_ident(backup_table)}").fetchone()["n"]
+        ).fetchone()["n"]
         conn.execute(
             f"DELETE FROM {_quote_ident(table)} WHERE {_quote_ident(key_col)} = ?",
             (key_value,),
         )
-        return {"backup_table": backup_table, "deleted_rows": int(before or 0)}
+        record_data_deletion(
+            conn,
+            deletion_run_id=run_id,
+            table_name=table,
+            delete_scope="storage_retention",
+            key_column=key_col,
+            key_value=str(key_value),
+            deleted_rows=int(before or 0),
+            reason=str(candidate.get("reason") or "storage retention delete"),
+            verification={"candidate": candidate, "delete_policy": DELETE_POLICY},
+        )
+        return {
+            "delete_policy": DELETE_POLICY,
+            "direct_delete_confirmed": True,
+            "deleted_rows": int(before or 0),
+        }
     if candidate["kind"] == "model_prediction_rows":
         if candidate.get("model_id") is not None:
-            conn.execute(
-                f"CREATE OR REPLACE TABLE {_quote_ident(backup_table)} AS "
-                f"SELECT * FROM {_quote_ident(table)} WHERE model_id = ?",
+            before = conn.execute(
+                f"SELECT COUNT(*) AS n FROM {_quote_ident(table)} WHERE model_id = ?",
                 (candidate["model_id"],),
-            )
-            before = conn.execute(f"SELECT COUNT(*) AS n FROM {_quote_ident(backup_table)}").fetchone()["n"]
+            ).fetchone()["n"]
             conn.execute(
                 f"DELETE FROM {_quote_ident(table)} WHERE model_id = ?",
                 (candidate["model_id"],),
             )
-            return {"backup_table": backup_table, "deleted_rows": int(before or 0)}
-        if candidate.get("run_id") is not None:
-            conn.execute(
-                f"CREATE OR REPLACE TABLE {_quote_ident(backup_table)} AS "
-                f"SELECT * FROM {_quote_ident(table)} WHERE run_id = ?",
-                (candidate["run_id"],),
+            record_data_deletion(
+                conn,
+                deletion_run_id=run_id,
+                table_name=table,
+                delete_scope="storage_retention",
+                key_column="model_id",
+                key_value=str(candidate["model_id"]),
+                deleted_rows=int(before or 0),
+                reason=str(candidate.get("reason") or "storage retention delete"),
+                verification={"candidate": candidate, "delete_policy": DELETE_POLICY},
             )
-            before = conn.execute(f"SELECT COUNT(*) AS n FROM {_quote_ident(backup_table)}").fetchone()["n"]
+            return {
+                "delete_policy": DELETE_POLICY,
+                "direct_delete_confirmed": True,
+                "deleted_rows": int(before or 0),
+            }
+        if candidate.get("run_id") is not None:
+            before = conn.execute(
+                f"SELECT COUNT(*) AS n FROM {_quote_ident(table)} WHERE run_id = ?",
+                (candidate["run_id"],),
+            ).fetchone()["n"]
             conn.execute(
                 f"DELETE FROM {_quote_ident(table)} WHERE run_id = ?",
                 (candidate["run_id"],),
             )
-            return {"backup_table": backup_table, "deleted_rows": int(before or 0)}
-    return {"backup_table": None, "deleted_rows": 0}
+            record_data_deletion(
+                conn,
+                deletion_run_id=run_id,
+                table_name=table,
+                delete_scope="storage_retention",
+                key_column="run_id",
+                key_value=str(candidate["run_id"]),
+                deleted_rows=int(before or 0),
+                reason=str(candidate.get("reason") or "storage retention delete"),
+                verification={"candidate": candidate, "delete_policy": DELETE_POLICY},
+            )
+            return {
+                "delete_policy": DELETE_POLICY,
+                "direct_delete_confirmed": True,
+                "deleted_rows": int(before or 0),
+            }
+    return {"delete_policy": DELETE_POLICY, "direct_delete_confirmed": True, "deleted_rows": 0}
 
 
 def execute_storage_cleanup(
@@ -654,43 +752,71 @@ def execute_storage_cleanup(
     *,
     approve: bool = False,
     run_id: str | None = None,
-    backup_dir: str | Path | None = None,
 ) -> dict[str, Any]:
     policy = policy or load_storage_retention_policy()
     if not approve:
         raise RuntimeError("storage cleanup execution requires approve=True")
     run_id = run_id or f"storage_cleanup_{datetime.utcnow().strftime('%Y%m%d_%H%M%S')}"
     report = plan_storage_cleanup(conn, policy)
-    backup_root = Path(backup_dir) if backup_dir else (REPO_ROOT / "data" / "cleanup_backups" / run_id)
-    backup_root.mkdir(parents=True, exist_ok=True)
     executed: list[dict[str, Any]] = []
     for index, candidate in enumerate(report["candidates"], start=1):
         item = dict(candidate)
         if candidate["kind"] in {"candidate_feature_panel", "model_prediction_rows"}:
-            item.update(_backup_and_delete_rows(conn, candidate=candidate, run_id=run_id, index=index))
+            item.update(
+                _delete_rows(
+                    conn,
+                    candidate=candidate,
+                    run_id=run_id,
+                )
+            )
         elif candidate["kind"] == "model_file":
             source = Path(str(candidate["path"]))
-            dest = backup_root / source.name
             if source.exists():
-                shutil.copy2(source, dest)
+                bytes_deleted = source.stat().st_size
                 source.unlink()
-                item.update({"backup_path": str(dest), "deleted_files": 1})
+                record_data_deletion(
+                    conn,
+                    deletion_run_id=run_id,
+                    table_name="filesystem:data/multidim_models",
+                    delete_scope="storage_retention",
+                    key_column="model_id",
+                    key_value=str(candidate.get("model_id") or source.stem),
+                    deleted_files=1,
+                    deleted_bytes=bytes_deleted,
+                    reason=str(candidate.get("reason") or "storage retention delete"),
+                    verification={"candidate": candidate, "delete_policy": DELETE_POLICY},
+                )
+                item.update(
+                    {
+                        "delete_policy": DELETE_POLICY,
+                        "direct_delete_confirmed": True,
+                        "deleted_files": 1,
+                        "deleted_bytes": bytes_deleted,
+                    }
+                )
             else:
-                item.update({"backup_path": None, "deleted_files": 0})
+                item.update(
+                    {
+                        "delete_policy": DELETE_POLICY,
+                        "direct_delete_confirmed": True,
+                        "deleted_files": 0,
+                    }
+                )
         executed.append(item)
     manifest = {
         "mode": "execute_approved",
         "run_id": run_id,
-        "created_at": datetime.utcnow().isoformat(timespec="seconds"),
+        "created_at": datetime.now(UTC).isoformat(timespec="seconds"),
         "dry_run_report": report,
         "executed": executed,
+        "delete_policy": DELETE_POLICY,
     }
-    (backup_root / "manifest.json").write_text(json.dumps(manifest, ensure_ascii=False, indent=2, default=str), encoding="utf-8")
     conn.commit()
     return {
         "mode": "execute_approved",
         "run_id": run_id,
-        "backup_dir": str(backup_root),
+        "delete_policy": DELETE_POLICY,
+        "direct_delete_confirmed": True,
         "candidate_count": report["candidate_count"],
         "compaction": report.get("compaction"),
         "executed_count": len(executed),

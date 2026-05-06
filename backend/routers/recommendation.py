@@ -122,6 +122,14 @@ async def get_daily_topk(
         cache_available = _table_exists(conn, "mart_daily_topk_view_cache")
         cache_rows = []
         if cache_available:
+            cache_has_horizon = _has_column(conn, "mart_daily_topk_view_cache", "selected_horizon_days")
+            cache_horizon_select = (
+                "baseline_horizon_days, selected_horizon_days, "
+                "selected_horizon_confidence, horizon_selection_run_id,"
+                if cache_has_horizon
+                else "60 AS baseline_horizon_days, 60 AS selected_horizon_days, "
+                     "NULL AS selected_horizon_confidence, NULL AS horizon_selection_run_id,"
+            )
             cache_where = ["snapshot_date = ?", "model_id = ?"]
             cache_params = [date, model_id]
             if run_mode:
@@ -137,6 +145,7 @@ async def get_daily_topk(
                 SELECT snapshot_date, stock_code, model_id, rank_in_date,
                        pred_score, percentile, regime_flag, run_mode,
                        key_features_json, track_id, is_primary,
+                       {cache_horizon_select}
                        stock_name, tdx_l1_name AS l1, tdx_l2_name AS l2
                   FROM mart_daily_topk_view_cache
                  WHERE {' AND '.join(cache_where)}
@@ -147,6 +156,14 @@ async def get_daily_topk(
             ).fetchall()
 
         run_mode_select = "r.run_mode," if has_run_mode else "NULL AS run_mode,"
+        has_horizon = _has_column(conn, "mart_daily_recommendation", "selected_horizon_days")
+        horizon_select = (
+            "r.baseline_horizon_days, r.selected_horizon_days, "
+            "r.selected_horizon_confidence, r.horizon_selection_run_id,"
+            if has_horizon
+            else "60 AS baseline_horizon_days, 60 AS selected_horizon_days, "
+                 "NULL AS selected_horizon_confidence, NULL AS horizon_selection_run_id,"
+        )
         sql = f"""
             WITH name_ref AS (
                 SELECT stock_code, stock_name, 1 AS source_priority
@@ -176,6 +193,7 @@ async def get_daily_topk(
             SELECT r.snapshot_date, r.stock_code, r.model_id, r.rank_in_date,
                    r.pred_score, r.percentile, r.regime_flag, {run_mode_select}
                    r.key_features_json, r.track_id, r.is_primary,
+                   {horizon_select}
                    sn.stock_name,
                    ind.tdx_l1_name l1, ind.tdx_l2_name l2
             FROM mart_daily_recommendation r
@@ -190,6 +208,7 @@ async def get_daily_topk(
         key_features_cache = None
         for r in rows:
             stock_feature_values = []
+            stock_feature_contributions = []
             if key_features_cache is None:
                 try:
                     kf = json.loads(r["key_features_json"]) if r["key_features_json"] else {}
@@ -199,8 +218,14 @@ async def get_daily_topk(
             try:
                 kf = json.loads(r["key_features_json"]) if r["key_features_json"] else {}
                 stock_feature_values = kf.get("stock_feature_values", []) if isinstance(kf, dict) else []
+                stock_feature_contributions = (
+                    kf.get("stock_feature_contributions", [])
+                    if isinstance(kf, dict)
+                    else []
+                )
             except Exception:
                 stock_feature_values = []
+                stock_feature_contributions = []
             items.append({
                 "rank": r["rank_in_date"],
                 "stock_code": r["stock_code"],
@@ -215,7 +240,16 @@ async def get_daily_topk(
                 "is_primary": bool(r["is_primary"]),
                 "l1": r["l1"],
                 "l2": r["l2"],
+                "baseline_horizon_days": r["baseline_horizon_days"],
+                "selected_horizon_days": r["selected_horizon_days"],
+                "selected_horizon_confidence": r["selected_horizon_confidence"],
+                "horizon_selection_run_id": r["horizon_selection_run_id"],
                 "top_feature_values": stock_feature_values[:8] if isinstance(stock_feature_values, list) else [],
+                "top_feature_contributions": (
+                    stock_feature_contributions[:8]
+                    if isinstance(stock_feature_contributions, list)
+                    else []
+                ),
             })
 
         # 模型元数据

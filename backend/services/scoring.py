@@ -11,6 +11,7 @@ from datetime import datetime
 from typing import Optional, Tuple
 
 from services.industry import industry_join_clause, load_industry_map
+from services.pricing_policy import load_pricing_label_policy
 from services.utils import safe_float as _safe_float, percentile_ranks as _percentile_ranks
 from services.constants import (
     PATH_THRESHOLDS,
@@ -25,6 +26,11 @@ from services.constants import (
 )
 
 logger = logging.getLogger("cm-api")
+
+
+def _ensure_institution_profile_pricing_columns(conn) -> None:
+    conn.execute("ALTER TABLE mart_institution_profile ADD COLUMN IF NOT EXISTS pricing_policy_id TEXT")
+    conn.execute("ALTER TABLE mart_institution_profile ADD COLUMN IF NOT EXISTS pricing_policy_hash TEXT")
 
 
 # ============================================================
@@ -857,6 +863,7 @@ def calculate_institution_scores(conn) -> int:
     """
     config = load_scoring_config(conn, "scoring.institution")
     follow_config = load_scoring_config(conn, "scoring.followability")
+    _ensure_institution_profile_pricing_columns(conn)
     logger.info(f"[评分] 机构评分开始, 权重: {config}")
 
     # Phase 1: 优先使用买入类指标（buy_event_count, buy_win_rate_*, buy_avg_gain_*）
@@ -959,6 +966,7 @@ def calculate_institution_scores(conn) -> int:
 
     # 加权求和
     now = datetime.now().isoformat()
+    pricing_policy = load_pricing_label_policy()
     updates = []
     for i in range(n):
         weighted_parts = [
@@ -1023,11 +1031,24 @@ def calculate_institution_scores(conn) -> int:
         else:
             follow_confidence = "low"
 
-        updates.append((score, follow_score, score_basis, score_confidence, follow_confidence, now, profiles[i]["institution_id"]))
+        updates.append(
+            (
+                score,
+                follow_score,
+                score_basis,
+                score_confidence,
+                follow_confidence,
+                pricing_policy.policy_id,
+                pricing_policy.policy_hash(),
+                now,
+                profiles[i]["institution_id"],
+            )
+        )
 
     conn.executemany(
         "UPDATE mart_institution_profile SET quality_score = ?, followability_score = ?, score_basis = ?, "
-        "score_confidence = ?, followability_confidence = ?, updated_at = ? WHERE institution_id = ?",
+        "score_confidence = ?, followability_confidence = ?, pricing_policy_id = ?, "
+        "pricing_policy_hash = ?, updated_at = ? WHERE institution_id = ?",
         updates
     )
     conn.commit()

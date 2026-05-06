@@ -10,8 +10,11 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Iterable, Optional
+from uuid import uuid4
 
+from services.data_processing_monitor import record_data_processing_tool_run
 from services.duck_adapter import connect as _duck_connect, DuckConn
+from services.kline_source import KLINE_VALUE_EPSILON, clean_price_rows
 from services.source_policy import get_capability_policy
 
 _DB_DIR = Path(__file__).resolve().parent.parent.parent / "data"
@@ -121,6 +124,14 @@ WITH primary_rows AS (
         ingested_at
     FROM price_kline_tdxhub
     WHERE freq = 'daily' AND adjust = 'qfq'
+      AND open IS NOT NULL AND open > 0
+      AND high IS NOT NULL AND high > 0
+      AND low IS NOT NULL AND low > 0
+      AND close IS NOT NULL AND close > 0
+      AND volume IS NOT NULL AND volume >= 1e-6
+      AND amount IS NOT NULL AND amount >= 1e-6
+      AND high >= open AND high >= close AND high >= low
+      AND low <= open AND low <= close AND low <= high
 ),
 fallback_rows AS (
     SELECT
@@ -142,6 +153,14 @@ fallback_rows AS (
     FROM price_kline f
     WHERE f.freq = 'daily'
       AND f.adjust = 'qfq'
+      AND f.open IS NOT NULL AND f.open > 0
+      AND f.high IS NOT NULL AND f.high > 0
+      AND f.low IS NOT NULL AND f.low > 0
+      AND f.close IS NOT NULL AND f.close > 0
+      AND f.volume IS NOT NULL AND f.volume >= 1e-6
+      AND f.amount IS NOT NULL AND f.amount >= 1e-6
+      AND f.high >= f.open AND f.high >= f.close AND f.high >= f.low
+      AND f.low <= f.open AND f.low <= f.close AND f.low <= f.high
       AND NOT EXISTS (
           SELECT 1
           FROM primary_rows p
@@ -363,6 +382,36 @@ def _now_iso() -> str:
     return datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
 
 
+def _clean_kline_rows_for_write(
+    conn,
+    rows: list[dict],
+    *,
+    source: str,
+    output_table: str,
+    batch_id: str = None,
+) -> list[dict]:
+    cleaned_rows, stats = clean_price_rows(
+        rows,
+        source=source,
+        require_volume_amount=True,
+        tool_name=f"{output_table}_write_cleaner",
+    )
+    if stats.rejected_rows:
+        record_data_processing_tool_run(
+            conn,
+            stats=stats,
+            run_id=f"{stats.tool_name}_{batch_id or 'adhoc'}_{uuid4().hex[:12]}",
+            input_table="source_payload",
+            output_table=output_table,
+            batch_id=batch_id,
+            metadata={
+                "epsilon": KLINE_VALUE_EPSILON,
+                "contract": "finite_positive_ohlcv_amount",
+            },
+        )
+    return cleaned_rows
+
+
 def upsert_price_rows(conn, rows: list[dict], source: str,
                        batch_id: str = None) -> int:
     """
@@ -370,6 +419,15 @@ def upsert_price_rows(conn, rows: list[dict], source: str,
     rows: [{code, date, freq, adjust, open, high, low, close, volume, amount}]
     返回实际写入行数。
     """
+    if not rows:
+        return 0
+    rows = _clean_kline_rows_for_write(
+        conn,
+        rows,
+        source=source,
+        output_table="price_kline",
+        batch_id=batch_id,
+    )
     if not rows:
         return 0
     now = _now_iso()
@@ -402,6 +460,15 @@ def upsert_price_kline_tdxhub_rows(conn, rows: list[dict],
     rows: [{code, date, freq, adjust, open, high, low, close, volume, amount, factor?}]
     返回实际写入行数。
     """
+    if not rows:
+        return 0
+    rows = _clean_kline_rows_for_write(
+        conn,
+        rows,
+        source=source or "tdxhub",
+        output_table="price_kline_tdxhub",
+        batch_id=batch_id,
+    )
     if not rows:
         return 0
     now = _now_iso()

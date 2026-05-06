@@ -22,6 +22,8 @@ import logging
 import time
 from typing import Any
 
+from services.pipeline_manifest import git_commit_sha, record_pipeline_run, utc_now_iso
+
 logger = logging.getLogger("cm-api.aif10_capability")
 
 
@@ -174,22 +176,58 @@ def _normalize_row(row: dict, field_map: dict) -> dict:
     return out
 
 
-def sync_capability(capability_name: str, *, page_size: int = 500, max_pages: int = 0) -> dict:
+def sync_capability(
+    capability_name: str,
+    *,
+    page_size: int = 500,
+    max_pages: int = 0,
+    concurrent: bool = True,
+    concurrency: int = 5,
+) -> dict:
     """同步一个 capability. 返回 {capability, rows, elapsed_s}."""
     cfg = CAPABILITY_CONFIG[capability_name]
-    from aif10_scraper import fetch_all_pages
+    from aif10_scraper import fetch_all_pages, fetch_all_pages_concurrent
     from services.db import get_conn
 
+    started_at = utc_now_iso()
     t0 = time.time()
-    rows = fetch_all_pages(
+    last_progress_at = 0.0
+
+    def _progress(page: int, total_pages: int, rows_so_far: int) -> None:
+        nonlocal last_progress_at
+        now = time.time()
+        if page <= 1 or page >= total_pages or now - last_progress_at >= 10:
+            logger.info(
+                "[aif10/%s] page=%s/%s rows=%s elapsed=%.1fs",
+                capability_name,
+                page,
+                total_pages,
+                rows_so_far,
+                now - t0,
+            )
+            last_progress_at = now
+
+    fetcher = fetch_all_pages_concurrent if concurrent else fetch_all_pages
+    fetch_kwargs = dict(
         report_name=cfg["report_name"],
         page_size=page_size,
         max_pages=max_pages,
         sort_columns=cfg.get("sort_columns", ""),
         sort_types=cfg.get("sort_types", ""),
+        progress_callback=_progress,
+    )
+    if concurrent:
+        fetch_kwargs["concurrency"] = concurrency
+    rows = fetcher(
+        **fetch_kwargs,
     )
     if not rows:
-        return {"capability": capability_name, "rows": 0, "elapsed_s": round(time.time() - t0, 2)}
+        return {
+            "capability": capability_name,
+            "rows": 0,
+            "fetch_mode": "concurrent" if concurrent else "sync",
+            "elapsed_s": round(time.time() - t0, 2),
+        }
 
     # 字段映射
     normalized = [_normalize_row(r, cfg["field_map"]) for r in rows]
@@ -199,14 +237,30 @@ def sync_capability(capability_name: str, *, page_size: int = 500, max_pages: in
     try:
         ensure_table(conn, capability_name)
         proj_cols = list(cfg["field_map"].keys())
-        placeholders = ",".join(["?"] * len(proj_cols))
-        sql = (
-            f"INSERT OR REPLACE INTO {cfg['raw_table']} "
-            f"({','.join(proj_cols)}) VALUES ({placeholders})"
-        )
-        payload = [tuple(r.get(c) for c in proj_cols) for r in normalized]
-        conn.executemany(sql, payload)
+        write_t0 = time.time()
+        write_method = "duckdb_registered_dataframe"
+        try:
+            import pandas as pd
+
+            payload_df = pd.DataFrame(normalized, columns=proj_cols)
+            conn.register("__aif10_payload", payload_df)
+            col_sql = ",".join(proj_cols)
+            conn.execute(
+                f"INSERT OR REPLACE INTO {cfg['raw_table']} ({col_sql}) "
+                f"SELECT {col_sql} FROM __aif10_payload"
+            )
+            conn.unregister("__aif10_payload")
+        except Exception as exc:
+            write_method = f"executemany_fallback:{type(exc).__name__}"
+            placeholders = ",".join(["?"] * len(proj_cols))
+            sql = (
+                f"INSERT OR REPLACE INTO {cfg['raw_table']} "
+                f"({','.join(proj_cols)}) VALUES ({placeholders})"
+            )
+            payload = [tuple(r.get(c) for c in proj_cols) for r in normalized]
+            conn.executemany(sql, payload)
         conn.commit()
+        write_elapsed = time.time() - write_t0
 
         # P0.1 schema_version: 标记当前是 baseline
         try:
@@ -214,19 +268,48 @@ def sync_capability(capability_name: str, *, page_size: int = 500, max_pages: in
             record_actual_version(conn, cfg["raw_table"], "v1")
         except Exception:
             pass
+        record_pipeline_run(
+            conn,
+            run_id=f"sync_aif10_{capability_name}_{int(t0)}",
+            pipeline_name=f"sync_aif10_{capability_name}",
+            status="success",
+            started_at=started_at,
+            ended_at=utc_now_iso(),
+            duration_s=time.time() - t0,
+            commit_sha=git_commit_sha(),
+            input_tables=[],
+            output_tables=[cfg["raw_table"]],
+            perf_summary={
+                "capability": capability_name,
+                "report_name": cfg["report_name"],
+                "raw_table": cfg["raw_table"],
+                "rows": len(normalized),
+                "page_size": int(page_size),
+                "max_pages": int(max_pages),
+                "fetch_mode": "concurrent" if concurrent else "sync",
+                "concurrency": int(concurrency) if concurrent else 1,
+                "write_method": write_method,
+                "write_elapsed_s": round(write_elapsed, 3),
+            },
+        )
     finally:
         conn.close()
 
     elapsed = time.time() - t0
     logger.info(
         f"[aif10/{capability_name}] {cfg['report_name']}: "
-        f"{len(normalized)} 行 / {elapsed:.1f}s → {cfg['raw_table']}"
+        f"{len(normalized)} 行 / {elapsed:.1f}s → {cfg['raw_table']} "
+        f"(write={write_elapsed:.1f}s {write_method})"
     )
     return {
         "capability": capability_name,
         "report_name": cfg["report_name"],
         "raw_table": cfg["raw_table"],
         "rows": len(normalized),
+        "fetch_mode": "concurrent" if concurrent else "sync",
+        "concurrency": int(concurrency) if concurrent else 1,
+        "write_method": write_method,
+        "write_elapsed_s": round(write_elapsed, 2),
         "elapsed_s": round(elapsed, 2),
     }
 

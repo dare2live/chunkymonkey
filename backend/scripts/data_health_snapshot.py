@@ -41,7 +41,7 @@ from services.pipeline_manifest import git_commit_sha, record_pipeline_run, utc_
 
 # 日期列优先级 (从前到后查, 第一个存在的用作 last_data_date)
 DATA_DATE_COLUMN_CANDIDATES = [
-    "report_date", "trade_date", "notice_date", "change_date",
+    "report_date", "trade_date", "notice_date", "change_date", "calc_date",
     "snapshot_date", "as_of_date", "effective_date",
     "page_update_date", "last_data_at",
     "date", "ts",
@@ -50,6 +50,8 @@ DATA_DATE_COLUMN_CANDIDATES = [
 WRITER_DATE_COLUMN_CANDIDATES = [
     "last_writer_at", "ingested_at", "fetched_at", "built_at",
     "parsed_at", "profiled_at", "recorded_at", "audited_at",
+    "validated_at", "computed_at", "deleted_at", "started_at", "ended_at",
+    "first_seen_at", "last_seen_at", "heartbeat_at", "released_at",
     "updated_at", "created_at", "snapshot_at",
 ]
 
@@ -355,7 +357,7 @@ def main() -> int:
     run_t0 = time.perf_counter()
 
     con = get_conn()
-    now = datetime.utcnow()
+    now = datetime.now(timezone.utc).replace(tzinfo=None)
     ensure_asset_deprecation_columns(con)
 
     # 拉所有登记的资产

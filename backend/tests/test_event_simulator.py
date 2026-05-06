@@ -30,6 +30,8 @@ def test_simulate_events_accepts_records_and_reports_take_profit():
     assert result["exit_reason_counts"] == {"take_profit": 1}
     assert result["positions"][0]["exit_reason"] == "take_profit"
     assert result["positions"][0]["hold_days"] == 1
+    assert result["positions"][0]["entry_price"] == pytest.approx(99.0)
+    assert result["positions"][0]["entry_price_method"] == "entry_day_vwap_qfq_fallback_open"
 
 
 def test_simulate_events_prefers_conservative_stop_when_both_thresholds_hit():
@@ -49,7 +51,37 @@ def test_simulate_events_prefers_conservative_stop_when_both_thresholds_hit():
     assert result["n_filled"] == 1
     assert result["avg_pnl"] == -0.05
     assert result["exit_reason_counts"] == {"stop_loss_conservative": 1}
-    assert result["positions"][0]["intra_maxdd"] == pytest.approx(-0.06)
+    assert result["positions"][0]["entry_price"] == pytest.approx(99.0)
+    assert result["positions"][0]["entry_price_method"] == "entry_day_vwap_qfq_fallback_open"
+    assert result["positions"][0]["intra_maxdd"] == pytest.approx(94.0 / 99.0 - 1.0)
+
+
+def test_simulate_events_can_use_entry_day_vwap_for_follow_cost():
+    prices = {
+        "000001": [
+            {
+                "date": "2026-01-02",
+                "open": 99.0,
+                "high": 101.0,
+                "low": 98.0,
+                "close": 100.0,
+                "amount": 1000.0,
+                "volume": 10.0,
+            },
+            {"date": "2026-01-03", "open": 104.0, "high": 106.0, "low": 103.0, "close": 105.0},
+        ]
+    }
+
+    result = simulate_events(
+        [{"institution_id": "inst-1", "stock_code": "000001", "notice_date": "2026-01-02"}],
+        {"entry_lag": 0, "max_hold_days": 1, "entry_price_mode": "entry_day_vwap_qfq"},
+        prices_by_code=prices,
+    )
+
+    assert result["n_filled"] == 1
+    assert result["positions"][0]["entry_price"] == pytest.approx(100.0)
+    assert result["positions"][0]["entry_price_method"] == "entry_day_vwap_qfq"
+    assert result["positions"][0]["pnl"] == pytest.approx(0.05)
 
 
 def test_simulate_events_reports_unfilled_when_no_price_panel_rows():

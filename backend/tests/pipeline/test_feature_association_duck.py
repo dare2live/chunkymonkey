@@ -155,6 +155,58 @@ def test_default_feature_selection_uses_registry_and_numeric_columns_only():
         conn.close()
 
 
+def test_feature_association_can_select_auxiliary_feature_role_for_research():
+    conn = duck_mem()
+    try:
+        conn.execute(
+            """
+            CREATE TABLE fact_feature_panel (
+                stock_code TEXT,
+                date TEXT,
+                ret_20d DOUBLE,
+                shareholder_plan_increase_count_180d INTEGER,
+                days_since_shareholder_plan_increase INTEGER,
+                forward_ret_20d DOUBLE
+            )
+            """
+        )
+        rows = []
+        for day in ("2026-01-01", "2026-01-02"):
+            for idx in range(10):
+                aux = 1 if idx >= 5 else 0
+                rows.append((f"000{idx:03d}", day, float(idx), aux, idx if aux else -1, float(idx)))
+        conn.executemany("INSERT INTO fact_feature_panel VALUES (?, ?, ?, ?, ?, ?)", rows)
+
+        default_result = subject.build_feature_association_stats(
+            conn,
+            run_id="assoc_default_inputs_unit",
+            min_daily_count=5,
+            build_clusters=False,
+        )
+        aux_result = subject.build_feature_association_stats(
+            conn,
+            run_id="assoc_aux_role_unit",
+            feature_roles=["capital_attention_auxiliary"],
+            min_daily_count=5,
+            build_clusters=False,
+        )
+        aux_features = {
+            row["feature_name"]
+            for row in conn.execute(
+                "SELECT feature_name FROM mart_feature_association_stat WHERE run_id = 'assoc_aux_role_unit'"
+            ).fetchall()
+        }
+
+        assert default_result["features"] == 1
+        assert aux_result["features"] == 2
+        assert aux_features == {
+            "shareholder_plan_increase_count_180d",
+            "days_since_shareholder_plan_increase",
+        }
+    finally:
+        conn.close()
+
+
 def test_feature_association_filters_candidate_panel_by_feature_set_id():
     conn = duck_mem()
     try:

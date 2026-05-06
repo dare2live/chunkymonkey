@@ -11,7 +11,7 @@ import json
 import os
 import subprocess
 import sys
-from datetime import datetime
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, Iterable
 
@@ -48,11 +48,17 @@ CREATE INDEX IF NOT EXISTS idx_pipeline_manifest_name_status
 
 
 def utc_now_iso() -> str:
-    return datetime.utcnow().isoformat()
+    return datetime.now(UTC).isoformat()
 
 
 def ensure_pipeline_manifest_schema(conn) -> None:
-    conn.executescript(DDL)
+    if hasattr(conn, "executescript"):
+        conn.executescript(DDL)
+        return
+    for stmt in DDL.split(";"):
+        stmt = stmt.strip()
+        if stmt:
+            conn.execute(stmt)
 
 
 def current_command(argv: Iterable[str] | None = None) -> str:

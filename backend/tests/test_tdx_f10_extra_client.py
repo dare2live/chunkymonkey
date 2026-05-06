@@ -7,6 +7,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from conftest import duck_mem
 import services.tdx_f10_extra_client as extra_client
 from services.tdx_f10_extra_client import (
+    backfill_tdx_f10_shareholder_plans,
+    build_tdx_f10_capability_matrix,
     _insert_fund_holding_rows,
     ensure_tables,
     sync_tdx_f10_extra_facts,
@@ -110,6 +112,17 @@ def test_sync_tdx_f10_extra_facts_lands_format_b_sections():
             LIMIT 1
             """
         ).fetchone()
+        plan_row = conn.execute(
+            """
+            SELECT subject, direction, progress, latest_announce_date,
+                   first_announce_date, source_notice_date, source_available_date,
+                   source_date_quality, target_amount_min, target_amount_max
+            FROM fact_shareholder_plan_tdx_f10
+            WHERE stock_code = '600519'
+            ORDER BY source_available_date DESC
+            LIMIT 1
+            """
+        ).fetchone()
         ctrl_row = conn.execute(
             """
             SELECT primary_name, actual_name, control_chain_text
@@ -141,9 +154,11 @@ def test_sync_tdx_f10_extra_facts_lands_format_b_sections():
         second = sync_tdx_f10_extra_facts(conn)
 
         assert result["status"] == "completed"
+        assert result["capability_matrix"]["capability_rows"] >= 7
         assert result["raw_rows"] == 3
         assert result["holder_count_rows"] >= 60
         assert result["trade_b_rows"] == 3
+        assert result["shareholder_plan_rows"] == 1
         assert result["control_rows"] == 2
         assert result["common_major_holder_rows"] == 31
         assert result["fund_holding_rows"] == 2
@@ -155,6 +170,16 @@ def test_sync_tdx_f10_extra_facts_lands_format_b_sections():
         assert trade_row["shares_change"] == 1_274_200
         assert trade_row["average_price"] == 1443.14
         assert trade_row["change_method"] == "二级市场买卖"
+        assert plan_row["subject"] == "中国贵州茅台酒厂（集团）有限责任公司"
+        assert plan_row["direction"] == "增持计划"
+        assert plan_row["progress"] == "完成"
+        assert plan_row["latest_announce_date"] == "2025-12-30"
+        assert plan_row["first_announce_date"] == "2025-08-30"
+        assert plan_row["source_notice_date"] == "2025-12-30"
+        assert plan_row["source_available_date"] == "2025-12-30"
+        assert plan_row["source_date_quality"] == "parsed_latest_announce_date"
+        assert plan_row["target_amount_min"] == 3_000_000_000
+        assert plan_row["target_amount_max"] == 3_300_000_000
         assert "→90%中国贵州茅台酒厂" in ctrl_row["control_chain_text"]
         assert common_row["shares"] == 188_792_000_000
         assert common_row["hold_ratio_text"] == "58.59"
@@ -169,6 +194,103 @@ def test_sync_tdx_f10_extra_facts_lands_format_b_sections():
         assert fund_row["market_value"] == 6_622_000_000
         assert status_count == 3
         assert second["raw_rows"] == 0
+    finally:
+        conn.close()
+
+
+def test_build_tdx_f10_capability_matrix_records_raw_and_fact_coverage():
+    conn = duck_mem()
+    try:
+        _create_raw_table(conn)
+        ensure_tables(conn)
+        conn.execute(
+            """
+            INSERT INTO raw_tdx_f10_holder_research
+            (stock_code, stock_name, market, fetched_at, page_update_date,
+             raw_text, raw_hash, bytes_len, server, f10_format, parser_version)
+             VALUES (?, ?, ?, CURRENT_TIMESTAMP, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            ("600519", "贵州茅台", "SH", "2026-04-28", "raw text", "hash_1", 8, "fixture", "b_shsjz", "v1"),
+        )
+        conn.execute(
+            """
+            INSERT INTO fact_holder_count_period
+            (stock_code, stock_name, market, report_date, holder_count,
+             holder_count_change, holder_count_change_pct, avg_float_shares,
+             avg_float_shares_change_pct, close_price, page_update_date,
+             source, source_tier, raw_hash, fetched_at, updated_at)
+            VALUES
+            ('600519', '贵州茅台', 'SH', '2026-03-31', 100, 1, 1.0, 1000,
+             0.1, 100.0, '2026-04-28', 'tdx_f10', 1, 'hash_1',
+             '2026-04-28T10:00:00', '2026-04-28T10:00:00')
+            """
+        )
+
+        result = build_tdx_f10_capability_matrix(conn)
+        row = conn.execute(
+            """
+            SELECT status, coverage_stock_count, row_count, source_date_field,
+                   availability_date_field
+              FROM mart_tdx_f10_capability_matrix
+             WHERE module_id = 'holder_count_history'
+            """
+        ).fetchone()
+        plan_cap = conn.execute(
+            """
+            SELECT status, source_date_field, availability_date_field
+              FROM mart_tdx_f10_capability_matrix
+             WHERE module_id = 'shareholder_plan_tdx_f10'
+            """
+        ).fetchone()
+
+        assert result["capability_rows"] >= 7
+        assert row["status"] == "ready"
+        assert row["coverage_stock_count"] == 1
+        assert row["row_count"] == 1
+        assert row["source_date_field"] == "page_update_date"
+        assert row["availability_date_field"] == "fetched_at"
+        assert plan_cap["status"] == "raw_only"
+        assert plan_cap["source_date_field"] == "source_notice_date"
+        assert plan_cap["availability_date_field"] == "source_available_date"
+    finally:
+        conn.close()
+
+
+def test_backfill_tdx_f10_shareholder_plans_scans_only_plan_raw_rows():
+    conn = duck_mem()
+    try:
+        _create_raw_table(conn)
+        ensure_tables(conn)
+        text = FIXTURE.read_text(encoding="utf-8")
+        no_plan = "股东研究☆ ◇601398 工商银行 更新日期：2026-04-28◇ 通达信沪深京F10\n【2.股东增减持计划】 暂无数据\n"
+        conn.executemany(
+            """
+            INSERT INTO raw_tdx_f10_holder_research
+            (stock_code, stock_name, market, fetched_at, page_update_date,
+             raw_text, raw_hash, bytes_len, server, f10_format, parser_version)
+             VALUES (?, ?, ?, CURRENT_TIMESTAMP, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            [
+                ("600519", "贵州茅台", "SH", "2026-04-28", text, "plan_hash", len(text), "fixture", "b_shsjz", "v1"),
+                ("601398", "工商银行", "SH", "2026-04-28", no_plan, "no_plan_hash", len(no_plan), "fixture", "b_shsjz", "v1"),
+            ],
+        )
+
+        result = backfill_tdx_f10_shareholder_plans(conn)
+        second = backfill_tdx_f10_shareholder_plans(conn)
+        row = conn.execute(
+            """
+            SELECT source_available_date, source_date_quality
+              FROM fact_shareholder_plan_tdx_f10
+             WHERE stock_code = '600519'
+            """
+        ).fetchone()
+
+        assert result["raw_rows"] == 1
+        assert result["shareholder_plan_rows"] == 1
+        assert second["raw_rows"] == 0
+        assert row["source_available_date"] == "2025-12-30"
+        assert row["source_date_quality"] == "parsed_latest_announce_date"
     finally:
         conn.close()
 

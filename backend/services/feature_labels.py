@@ -78,6 +78,11 @@ FEATURE_LABELS = {
     "forward_ret_20d": "前向20日收益率",
     "forward_ret_60d": "前向60日收益率",
     "forward_ret_90d": "前向90日收益率",
+    "follow_net_return_5d": "跟随净收益率5日",
+    "follow_net_return_10d": "跟随净收益率10日",
+    "follow_net_return_20d": "跟随净收益率20日",
+    "follow_net_return_60d": "跟随净收益率60日",
+    "follow_net_return_90d": "跟随净收益率90日",
     # TDX keep challenger
     "forecast_profit_yoy_mid": "TDX业绩预告利润同比中值",
     "avg_float_shares_change_pct_tdx": "TDX户均流通股变化率",

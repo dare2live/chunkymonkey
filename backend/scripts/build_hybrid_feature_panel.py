@@ -18,7 +18,18 @@ from services.schema_versions import record_actual_version  # noqa: E402
 from scripts.train_multidim_model import load_model_selection_run  # noqa: E402
 
 
-LABEL_COLUMNS = ["forward_ret_5d", "forward_ret_10d", "forward_ret_20d", "forward_ret_60d", "forward_ret_90d"]
+LABEL_COLUMNS = [
+    "forward_ret_5d",
+    "forward_ret_10d",
+    "forward_ret_20d",
+    "forward_ret_60d",
+    "forward_ret_90d",
+    "follow_net_return_5d",
+    "follow_net_return_10d",
+    "follow_net_return_20d",
+    "follow_net_return_60d",
+    "follow_net_return_90d",
+]
 
 DDL = """
 CREATE TABLE IF NOT EXISTS fact_feature_panel_candidate (
