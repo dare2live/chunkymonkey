@@ -704,6 +704,129 @@ research_schedule:
       horizon_labels: forward_ret_5d,forward_ret_10d,forward_ret_20d,forward_ret_60d,forward_ret_90d
       effect_scope: all selected features per stock/horizon
 
+  - task_id: feature_drift_mitigation_covgate_rank_bucket_regime_vol20
+    task_type: feature_drift_mitigation
+    priority: 79
+    enabled: true
+    depends_on:
+      - model_stability_regime_only_label90d_lgbm_ridge_blend_smoke
+    evidence:
+      table: mart_feature_drift_mitigation_panel_build
+      key_column: run_id
+      run_id: feature_drift_mitigation_rank_bucket_regime_vol20_20260506
+    command:
+      script: build_feature_drift_mitigation_panel.py
+      args:
+        - --base-model-selection-run-id: optuna_feature_space_covgate_stable_20260506
+        - --output-feature-set-id: drift_mitigated_covgate_rank_bucket_regime_vol20_20260506
+        - --run-id: feature_drift_mitigation_rank_bucket_regime_vol20_20260506
+        - --model-selection-run-id: feature_drift_mitigated_rank_bucket_regime_vol20_20260506
+        - --start-date: "2025-01-01"
+        - --end-date: "2025-12-31"
+        - --transform-types: xs_rank,xs_bucket5
+        - --bucket-count: 5
+        - --include-regime-controls: true
+        - --feature: ma_ratio_60
+        - --feature: ret_60d
+        - --feature: ret_20d
+        - --feature: range_pos_60
+        - --feature: vol_ratio_5_20
+        - --feature: vol_std_20d
+    resources:
+      purpose: replace raw vol_std_20d with cross-sectional stable transforms after 90d blend PSI root cause
+      feature_set_id: drift_mitigated_covgate_rank_bucket_regime_vol20_20260506
+      model_selection_run_id: feature_drift_mitigated_rank_bucket_regime_vol20_20260506
+
+  - task_id: model_stability_regime_vol20_label90d_lgbm_ridge_blend_smoke
+    task_type: model_stability
+    priority: 79
+    enabled: true
+    depends_on:
+      - feature_drift_mitigation_covgate_rank_bucket_regime_vol20
+    evidence:
+      table: mart_model_stability_search_summary
+      key_column: run_id
+      run_id: model_stability_regime_vol20_label90d_lgbm_ridge_blend_smoke_20260506
+    command:
+      script: run_optuna_model_stability_search.py
+      args:
+        --model-selection-run-id: feature_drift_mitigated_rank_bucket_regime_vol20_20260506
+        --run-id: model_stability_regime_vol20_label90d_lgbm_ridge_blend_smoke_20260506
+        --study-name: model_stability_regime_vol20_label90d_lgbm_ridge_blend_smoke_20260506
+        --label-name: forward_ret_90d
+        --model-family: lightgbm_ridge_blend
+        --trials: 0
+        --start: "2025-01-01"
+        --end: "2025-12-31"
+        --feature-table: fact_feature_panel_candidate
+        --feature-set-id: drift_mitigated_covgate_rank_bucket_regime_vol20_20260506
+        --num-round: 80
+        --num-threads: 4
+        --train-days: 60
+        --valid-days: 20
+        --test-days: 20
+        --step-days: 20
+        --max-folds: 4
+        --min-ok-folds: 3
+        --topk-size-choices: 50,100,150
+        --cost-bps: 10
+        --max-topk-drawdown: 0.20
+        --max-feature-drift-psi: 0.25
+        --no-persistent-study: true
+    resources:
+      label_name: forward_ret_90d
+      model_family: lightgbm_ridge_blend
+      decision: pass; vol_std_20d transformed branch clears PSI, drawdown, holdout, and walk-forward gates
+
+  - task_id: stock_horizon_profile_regime_vol20_v1
+    task_type: stock_horizon_profile
+    priority: 79
+    enabled: true
+    depends_on:
+      - feature_drift_mitigation_covgate_rank_bucket_regime_vol20
+    evidence:
+      table: mart_stock_horizon_profile
+      key_column: run_id
+      run_id: stock_horizon_profile_regime_vol20_v1_20260506
+    command:
+      script: build_stock_horizon_profile.py
+      args:
+        --run-id: stock_horizon_profile_regime_vol20_v1_20260506
+        --feature-table: fact_feature_panel_candidate
+        --feature-set-id: drift_mitigated_covgate_rank_bucket_regime_vol20_20260506
+        --model-selection-run-id: feature_drift_mitigated_rank_bucket_regime_vol20_20260506
+        --labels: forward_ret_5d,forward_ret_10d,forward_ret_20d,forward_ret_60d,forward_ret_90d
+        --start-date: "2025-01-01"
+        --end-date: "2025-12-31"
+        --min-observations: 20
+        --top-features-per-stock: 0
+    resources:
+      baseline_label: forward_ret_60d
+      feature_count: 22
+      effect_scope: all selected features per stock/horizon
+
+  - task_id: model_stability_context_regime_vol20_pass
+    task_type: model_context_diagnostics
+    priority: 79
+    enabled: true
+    depends_on:
+      - model_stability_regime_vol20_label90d_lgbm_ridge_blend_smoke
+    evidence:
+      table: mart_model_stability_context_summary
+      key_column: run_id
+      run_id: model_stability_context_regime_vol20_pass_20260506
+    command:
+      script: build_model_stability_context_diagnostics.py
+      args:
+        - --run-id: model_stability_context_regime_vol20_pass_20260506
+        - --source-run-id: model_stability_regime_vol20_label90d_lgbm_ridge_blend_smoke_20260506
+        - --source-run-id: model_stability_regime_only_label90d_lgbm_ridge_blend_smoke_20260506
+        - --source-run-id: model_stability_regime_only_label60d_optuna8_20260506
+        - --source-run-id: model_stability_drift_mitigated_regime_only_optuna8_20260506
+    resources:
+      champion_research_candidate: model_stability_regime_vol20_label90d_lgbm_ridge_blend_smoke_20260506
+      decision: first current branch with no model-stability context blockers
+
   - task_id: model_stability_regime_only_label_sweep_context
     task_type: model_context_diagnostics
     priority: 79
