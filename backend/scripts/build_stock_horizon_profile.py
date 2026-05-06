@@ -20,11 +20,11 @@ from scripts.train_multidim_model import load_model_selection_run  # noqa: E402
 
 
 DEFAULT_LABELS = [
-    "forward_ret_5d",
-    "forward_ret_10d",
-    "forward_ret_20d",
-    "forward_ret_60d",
-    "forward_ret_90d",
+    "follow_net_return_5d",
+    "follow_net_return_10d",
+    "follow_net_return_20d",
+    "follow_net_return_60d",
+    "follow_net_return_90d",
 ]
 
 DDL = """
@@ -128,10 +128,54 @@ def _table_columns(conn: Any, table: str) -> set[str]:
     return {str(row[0]) for row in conn.execute(f"DESCRIBE {_quote_relation(table)}").fetchall()}
 
 
+def _table_exists(conn: Any, table: str) -> bool:
+    row = conn.execute(
+        """
+        SELECT COUNT(*)
+          FROM information_schema.tables
+         WHERE table_name = ?
+        """,
+        (table.split(".")[-1],),
+    ).fetchone()
+    return bool(row and row[0])
+
+
 def _parse_csv(value: str | None) -> list[str]:
     if not value:
         return []
     return [item.strip() for item in value.split(",") if item.strip()]
+
+
+def _latest_model_selection_run_id(conn: Any, *, label_name: str) -> str | None:
+    if not _table_exists(conn, "mart_model_selection_run"):
+        return None
+    cols = _table_columns(conn, "mart_model_selection_run")
+    if not {"run_id", "selected_features_json"}.issubset(cols):
+        return None
+    filters = ["selected_features_json IS NOT NULL", "selected_features_json <> ''"]
+    params: list[Any] = []
+    if "label_name" in cols:
+        filters.append("label_name = ?")
+        params.append(label_name)
+    order_terms = []
+    if "promote_to_champion" in cols:
+        order_terms.append("CASE WHEN promote_to_champion THEN 0 ELSE 1 END")
+    if "feature_set_id" in cols:
+        order_terms.append("CASE WHEN feature_set_id = 'production_registry' THEN 0 ELSE 1 END")
+    if "built_at" in cols:
+        order_terms.append("built_at DESC NULLS LAST")
+    order_terms.append("run_id DESC")
+    row = conn.execute(
+        f"""
+        SELECT run_id
+          FROM mart_model_selection_run
+         WHERE {' AND '.join(filters)}
+         ORDER BY {', '.join(order_terms)}
+         LIMIT 1
+        """,
+        params,
+    ).fetchone()
+    return str(row["run_id"]) if row and row["run_id"] else None
 
 
 def _resolve_features(
@@ -156,18 +200,18 @@ def build_stock_horizon_profile(
     conn: Any,
     *,
     run_id: str,
-    feature_table: str = "fact_feature_panel_candidate",
+    feature_table: str = "fact_feature_panel",
     feature_set_id: str | None = None,
     model_selection_run_id: str | None = None,
     features: list[str] | None = None,
     labels: list[str] | None = None,
-    start_date: str = "2025-01-01",
+    start_date: str = "2023-01-01",
     end_date: str | None = None,
     min_observations: int = 20,
     top_features_per_stock: int = 0,
-    baseline_label: str = "forward_ret_60d",
-    min_score_advantage: float = 0.0,
-    min_avg_return_advantage: float = 0.0,
+    baseline_label: str = "follow_net_return_60d",
+    min_score_advantage: float = 0.01,
+    min_avg_return_advantage: float = 0.005,
     min_selection_confidence: float = 0.55,
     max_candidate_drawdown: float = 0.25,
     skip_feature_effects: bool = False,
@@ -188,10 +232,19 @@ def build_stock_horizon_profile(
     labels = [label for label in labels if label in table_cols]
     if not labels:
         raise RuntimeError(f"no requested labels exist in {feature_table}")
+    resolved_model_selection_run_id = model_selection_run_id
+    if not features and not resolved_model_selection_run_id:
+        resolved_model_selection_run_id = _latest_model_selection_run_id(conn, label_name=baseline_label)
+        if resolved_model_selection_run_id:
+            print(
+                f"[stock_horizon] {utc_now_iso()} resolved model_selection_run_id="
+                f"{resolved_model_selection_run_id}",
+                flush=True,
+            )
     feature_cols = _resolve_features(
         conn,
         feature_table=feature_table,
-        model_selection_run_id=model_selection_run_id,
+        model_selection_run_id=resolved_model_selection_run_id,
         explicit_features=features,
     )
     if not feature_cols:
@@ -682,9 +735,14 @@ def build_stock_horizon_profile(
         perf_summary={
             "feature_table": feature_table,
             "feature_set_id": feature_set_id,
+            "model_selection_run_id": resolved_model_selection_run_id,
             "labels": labels,
             "features": feature_cols,
             "min_observations": int(min_observations),
+            "min_score_advantage": float(min_score_advantage),
+            "min_avg_return_advantage": float(min_avg_return_advantage),
+            "min_selection_confidence": float(min_selection_confidence),
+            "max_candidate_drawdown": float(max_candidate_drawdown),
             "top_features_per_stock": int(top_features_per_stock),
             "skip_feature_effects": bool(skip_feature_effects),
             "feature_effect_builder": "skipped" if skip_feature_effects else "batched_label_aggregate",
@@ -708,6 +766,7 @@ def build_stock_horizon_profile(
         "run_id": run_id,
         "feature_table": feature_table,
         "feature_set_id": feature_set_id,
+        "model_selection_run_id": resolved_model_selection_run_id,
         "labels": labels,
         "feature_count": len(feature_cols),
         "profile_count": profile_count,
@@ -715,23 +774,31 @@ def build_stock_horizon_profile(
         "effect_count": effect_count,
         "selection_count": selection_count,
         "selected_non_baseline_count": selected_non_baseline_count,
+        "selection_policy": {
+            "baseline_label": baseline_label,
+            "min_observations": int(min_observations),
+            "min_score_advantage": float(min_score_advantage),
+            "min_avg_return_advantage": float(min_avg_return_advantage),
+            "min_selection_confidence": float(min_selection_confidence),
+            "max_candidate_drawdown": float(max_candidate_drawdown),
+        },
     }
 
 
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--run-id", required=True)
-    parser.add_argument("--feature-table", default="fact_feature_panel_candidate")
+    parser.add_argument("--feature-table", default="fact_feature_panel")
     parser.add_argument("--feature-set-id", default=None)
     parser.add_argument("--model-selection-run-id", default=None)
     parser.add_argument("--features", default=None)
     parser.add_argument("--labels", default=",".join(DEFAULT_LABELS))
-    parser.add_argument("--start-date", default="2025-01-01")
+    parser.add_argument("--start-date", default="2023-01-01")
     parser.add_argument("--end-date", default=None)
     parser.add_argument("--min-observations", type=int, default=20)
-    parser.add_argument("--baseline-label", default="forward_ret_60d")
-    parser.add_argument("--min-score-advantage", type=float, default=0.0)
-    parser.add_argument("--min-avg-return-advantage", type=float, default=0.0)
+    parser.add_argument("--baseline-label", default="follow_net_return_60d")
+    parser.add_argument("--min-score-advantage", type=float, default=0.01)
+    parser.add_argument("--min-avg-return-advantage", type=float, default=0.005)
     parser.add_argument("--min-selection-confidence", type=float, default=0.55)
     parser.add_argument("--max-candidate-drawdown", type=float, default=0.25)
     parser.add_argument(

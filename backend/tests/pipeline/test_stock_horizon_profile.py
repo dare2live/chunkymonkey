@@ -33,7 +33,7 @@ def test_stock_horizon_profile_selects_best_horizon_and_feature_effects():
             """
             INSERT INTO mart_model_selection_run VALUES (
                 'selection_horizon', 'profile_set', 'unit',
-                'forward_ret_60d', 1.0, '["f_good", "f_bad"]',
+                'follow_net_return_60d', 1.0, '["f_good", "f_bad"]',
                 '[]', 0, '{}', '2026-05-06'
             )
             """
@@ -44,9 +44,9 @@ def test_stock_horizon_profile_selects_best_horizon_and_feature_effects():
                 feature_set_id TEXT,
                 stock_code TEXT,
                 date TEXT,
-                forward_ret_5d DOUBLE,
-                forward_ret_60d DOUBLE,
-                forward_ret_90d DOUBLE,
+                follow_net_return_5d DOUBLE,
+                follow_net_return_60d DOUBLE,
+                follow_net_return_90d DOUBLE,
                 f_good DOUBLE,
                 f_bad DOUBLE
             )
@@ -77,7 +77,7 @@ def test_stock_horizon_profile_selects_best_horizon_and_feature_effects():
             feature_table="fact_feature_panel_candidate",
             feature_set_id="profile_set",
             model_selection_run_id="selection_horizon",
-            labels=["forward_ret_5d", "forward_ret_60d", "forward_ret_90d"],
+            labels=["follow_net_return_5d", "follow_net_return_60d", "follow_net_return_90d"],
             min_observations=10,
             top_features_per_stock=0,
         )
@@ -98,7 +98,7 @@ def test_stock_horizon_profile_selects_best_horizon_and_feature_effects():
               FROM mart_stock_horizon_feature_effect
              WHERE run_id = 'stock_horizon_unit'
                AND stock_code = '000001'
-               AND label_name = 'forward_ret_90d'
+               AND label_name = 'follow_net_return_90d'
              ORDER BY abs_corr_rank
              LIMIT 1
             """
@@ -118,7 +118,7 @@ def test_stock_horizon_profile_selects_best_horizon_and_feature_effects():
         assert result["effect_count"] == 2
         assert result["selection_count"] == 1
         assert result["selected_non_baseline_count"] == 1
-        assert best["label_name"] == "forward_ret_90d"
+        assert best["label_name"] == "follow_net_return_90d"
         assert best["horizon_days"] == 90
         assert best["compounded_return"] > 0
         assert best["max_drawdown"] == pytest.approx(0.0)
@@ -127,8 +127,8 @@ def test_stock_horizon_profile_selects_best_horizon_and_feature_effects():
         assert effect["abs_corr_rank"] == 1
         assert effect["effect_direction"] == "positive"
         assert effect["corr"] == pytest.approx(1.0)
-        assert selection["baseline_label"] == "forward_ret_60d"
-        assert selection["selected_label"] == "forward_ret_90d"
+        assert selection["baseline_label"] == "follow_net_return_60d"
+        assert selection["selected_label"] == "follow_net_return_90d"
         assert selection["selected_horizon_days"] == 90
         assert selection["gate_status"] == "selected"
         assert selection["selected_horizon_confidence"] >= 0.55
@@ -160,7 +160,7 @@ def test_stock_horizon_selection_falls_back_to_60d_when_candidate_drawdown_fails
             """
             INSERT INTO mart_model_selection_run VALUES (
                 'selection_horizon', 'profile_set', 'unit',
-                'forward_ret_60d', 1.0, '["f_good"]',
+                'follow_net_return_60d', 1.0, '["f_good"]',
                 '[]', 0, '{}', '2026-05-06'
             )
             """
@@ -171,8 +171,8 @@ def test_stock_horizon_selection_falls_back_to_60d_when_candidate_drawdown_fails
                 feature_set_id TEXT,
                 stock_code TEXT,
                 date TEXT,
-                forward_ret_60d DOUBLE,
-                forward_ret_90d DOUBLE,
+                follow_net_return_60d DOUBLE,
+                follow_net_return_90d DOUBLE,
                 f_good DOUBLE
             )
             """
@@ -203,7 +203,7 @@ def test_stock_horizon_selection_falls_back_to_60d_when_candidate_drawdown_fails
             feature_table="fact_feature_panel_candidate",
             feature_set_id="profile_set",
             model_selection_run_id="selection_horizon",
-            labels=["forward_ret_60d", "forward_ret_90d"],
+            labels=["follow_net_return_60d", "follow_net_return_90d"],
             min_observations=10,
             max_candidate_drawdown=0.20,
         )
@@ -217,9 +217,83 @@ def test_stock_horizon_selection_falls_back_to_60d_when_candidate_drawdown_fails
             """
         ).fetchone()
 
-        assert selection["selected_label"] == "forward_ret_60d"
+        assert selection["selected_label"] == "follow_net_return_60d"
         assert selection["selected_horizon_days"] == 60
         assert selection["gate_status"] == "baseline"
         assert selection["fallback_reason"] == "baseline_best_or_no_candidate_passed"
+    finally:
+        conn.close()
+
+
+def test_stock_horizon_profile_defaults_to_follow_net_labels_and_latest_selection():
+    conn = duck_mem()
+    try:
+        subject.ensure_tables(conn)
+        conn.execute(
+            """
+            CREATE TABLE mart_model_selection_run (
+                run_id TEXT,
+                feature_set_id TEXT,
+                method TEXT,
+                label_name TEXT,
+                objective_score DOUBLE,
+                selected_features_json TEXT,
+                rejected_features_json TEXT,
+                trials INTEGER,
+                notes TEXT,
+                built_at TEXT
+            )
+            """
+        )
+        conn.execute(
+            """
+            INSERT INTO mart_model_selection_run VALUES
+                ('old_forward_selection', 'legacy_set', 'unit',
+                 'forward_ret_60d', 1.0, '["legacy_feature"]',
+                 '[]', 0, '{}', '2026-05-05'),
+                ('latest_follow_selection', 'production_registry', 'unit',
+                 'follow_net_return_60d', 1.0, '["f_good"]',
+                 '[]', 0, '{}', '2026-05-06')
+            """
+        )
+        conn.execute(
+            """
+            CREATE TABLE fact_feature_panel (
+                stock_code TEXT,
+                date TEXT,
+                follow_net_return_5d DOUBLE,
+                follow_net_return_60d DOUBLE,
+                f_good DOUBLE,
+                legacy_feature DOUBLE
+            )
+            """
+        )
+        rows = [
+            ("000001", f"2026-01-{idx + 1:02d}", 0.002, 0.01 + idx * 0.001, float(idx), float(20 - idx))
+            for idx in range(12)
+        ]
+        conn.executemany("INSERT INTO fact_feature_panel VALUES (?, ?, ?, ?, ?, ?)", rows)
+
+        result = subject.build_stock_horizon_profile(
+            conn,
+            run_id="stock_horizon_default_follow",
+            min_observations=5,
+            top_features_per_stock=1,
+        )
+        selection = conn.execute(
+            """
+            SELECT baseline_label, selected_label, selected_horizon_days
+              FROM mart_stock_horizon_selection
+             WHERE run_id = 'stock_horizon_default_follow'
+               AND stock_code = '000001'
+            """
+        ).fetchone()
+
+        assert result["feature_table"] == "fact_feature_panel"
+        assert result["model_selection_run_id"] == "latest_follow_selection"
+        assert result["labels"] == ["follow_net_return_5d", "follow_net_return_60d"]
+        assert selection["baseline_label"] == "follow_net_return_60d"
+        assert selection["selected_label"].startswith("follow_net_return_")
+        assert selection["selected_horizon_days"] in {5, 60}
     finally:
         conn.close()

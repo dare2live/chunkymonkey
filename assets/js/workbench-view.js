@@ -278,7 +278,7 @@
       '</section>' +
 
       '<section class="panel wb-panel">' +
-      '<div class="panel-head"><div><h3>个股持股周期画像</h3><div class="muted">run_id: <code>' + esc(stockHorizon.run_id || '-') + '</code> / baseline: <code>' + esc(stockHorizon.baseline_label || 'forward_ret_60d') + '</code></div></div></div>' +
+      '<div class="panel-head"><div><h3>个股持股周期画像</h3><div class="muted">run_id: <code>' + esc(stockHorizon.run_id || '-') + '</code> / baseline: <code>' + esc(stockHorizon.baseline_label || 'follow_net_return_60d') + '</code></div></div></div>' +
       renderStockHorizonProfile(stockHorizon) +
       '</section>' +
 

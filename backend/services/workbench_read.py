@@ -423,7 +423,7 @@ def _stock_horizon_profile(conn: Any, *, stock_limit: int = 12, effect_limit: in
     effect_table = "mart_stock_horizon_feature_effect"
     empty = {
         "run_id": None,
-        "baseline_label": "forward_ret_60d",
+        "baseline_label": "follow_net_return_60d",
         "horizon_distribution": [],
         "horizon_comparison": [],
         "horizon_selection": [],
