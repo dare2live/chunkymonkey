@@ -122,7 +122,9 @@ def load_stock_horizon_evidence(
             "fallback_reason": row["fallback_reason"],
             "is_baseline": selected_horizon == baseline_horizon,
             "top_feature_effects": [],
+            "horizon_comparison": [],
         }
+    _load_horizon_comparison(conn, out, run_id)
     if not out or effect_limit <= 0 or not _table_exists(conn, "mart_stock_horizon_feature_effect"):
         return out
     effect_cols = _columns(conn, "mart_stock_horizon_feature_effect")
@@ -179,6 +181,144 @@ def load_stock_horizon_evidence(
             }
         )
     return out
+
+
+def _load_horizon_comparison(conn: Any, out: dict[str, dict[str, Any]], run_id: str) -> None:
+    if not out:
+        return
+    stock_codes = list(out.keys())
+    placeholders = ", ".join(["?"] * len(stock_codes))
+    if _table_exists(conn, "mart_stock_horizon_candidate_gate"):
+        cols = _columns(conn, "mart_stock_horizon_candidate_gate")
+        required = {
+            "run_id",
+            "stock_code",
+            "label_name",
+            "horizon_days",
+            "candidate_status",
+            "reason_code",
+        }
+        if required.issubset(cols):
+            rows = conn.execute(
+                f"""
+                SELECT stock_code,
+                       label_name,
+                       horizon_days,
+                       {_select_expr(cols, "obs_count", "NULL")},
+                       {_select_expr(cols, "avg_return", "NULL")},
+                       {_select_expr(cols, "median_return", "NULL")},
+                       {_select_expr(cols, "win_rate", "NULL")},
+                       {_select_expr(cols, "volatility", "NULL")},
+                       {_select_expr(cols, "downside_avg", "NULL")},
+                       {_select_expr(cols, "compounded_return", "NULL")},
+                       {_select_expr(cols, "max_drawdown", "NULL")},
+                       {_select_expr(cols, "path_obs_count", "NULL")},
+                       {_select_expr(cols, "horizon_score", "NULL")},
+                       {_select_expr(cols, "baseline_horizon_score", "NULL")},
+                       {_select_expr(cols, "score_advantage", "NULL")},
+                       {_select_expr(cols, "avg_return_advantage", "NULL")},
+                       {_select_expr(cols, "selection_confidence", "NULL")},
+                       candidate_status,
+                       reason_code
+                  FROM mart_stock_horizon_candidate_gate
+                 WHERE run_id = ?
+                   AND stock_code IN ({placeholders})
+                 ORDER BY stock_code, horizon_days
+                """,
+                [run_id, *stock_codes],
+            ).fetchall()
+            for row in rows:
+                target = out.get(str(row["stock_code"]))
+                if target is None:
+                    continue
+                selected_label = target.get("selected_label")
+                baseline_label = target.get("baseline_label")
+                target["horizon_comparison"].append(
+                    {
+                        "label_name": row["label_name"],
+                        "horizon_days": row["horizon_days"],
+                        "obs_count": row["obs_count"],
+                        "avg_return": row["avg_return"],
+                        "median_return": row["median_return"],
+                        "win_rate": row["win_rate"],
+                        "volatility": row["volatility"],
+                        "downside_avg": row["downside_avg"],
+                        "compounded_return": row["compounded_return"],
+                        "max_drawdown": row["max_drawdown"],
+                        "path_obs_count": row["path_obs_count"],
+                        "horizon_score": row["horizon_score"],
+                        "baseline_horizon_score": row["baseline_horizon_score"],
+                        "score_advantage": row["score_advantage"],
+                        "avg_return_advantage": row["avg_return_advantage"],
+                        "selection_confidence": row["selection_confidence"],
+                        "candidate_status": row["candidate_status"],
+                        "reason_code": row["reason_code"],
+                        "is_selected": row["label_name"] == selected_label,
+                        "is_baseline": row["label_name"] == baseline_label,
+                    }
+                )
+            return
+
+    if not _table_exists(conn, "mart_stock_horizon_profile"):
+        return
+    cols = _columns(conn, "mart_stock_horizon_profile")
+    required = {"run_id", "stock_code", "label_name", "horizon_days"}
+    if not required.issubset(cols):
+        return
+    rows = conn.execute(
+        f"""
+        SELECT stock_code,
+               label_name,
+               horizon_days,
+               {_select_expr(cols, "obs_count", "NULL")},
+               {_select_expr(cols, "avg_return", "NULL")},
+               {_select_expr(cols, "median_return", "NULL")},
+               {_select_expr(cols, "win_rate", "NULL")},
+               {_select_expr(cols, "volatility", "NULL")},
+               {_select_expr(cols, "downside_avg", "NULL")},
+               {_select_expr(cols, "compounded_return", "NULL")},
+               {_select_expr(cols, "max_drawdown", "NULL")},
+               {_select_expr(cols, "path_obs_count", "NULL")},
+               {_select_expr(cols, "horizon_score", "NULL")}
+          FROM mart_stock_horizon_profile
+         WHERE run_id = ?
+           AND stock_code IN ({placeholders})
+         ORDER BY stock_code, horizon_days
+        """,
+        [run_id, *stock_codes],
+    ).fetchall()
+    for row in rows:
+        target = out.get(str(row["stock_code"]))
+        if target is None:
+            continue
+        selected_label = target.get("selected_label")
+        baseline_label = target.get("baseline_label")
+        is_selected = row["label_name"] == selected_label
+        is_baseline = row["label_name"] == baseline_label
+        target["horizon_comparison"].append(
+            {
+                "label_name": row["label_name"],
+                "horizon_days": row["horizon_days"],
+                "obs_count": row["obs_count"],
+                "avg_return": row["avg_return"],
+                "median_return": row["median_return"],
+                "win_rate": row["win_rate"],
+                "volatility": row["volatility"],
+                "downside_avg": row["downside_avg"],
+                "compounded_return": row["compounded_return"],
+                "max_drawdown": row["max_drawdown"],
+                "path_obs_count": row["path_obs_count"],
+                "horizon_score": row["horizon_score"],
+                "baseline_horizon_score": target.get("baseline_horizon_score"),
+                "score_advantage": None,
+                "avg_return_advantage": None,
+                "selection_confidence": target.get("selected_horizon_confidence") if is_selected else None,
+                "candidate_status": "selected" if is_selected else ("baseline" if is_baseline else "profile_only"),
+                "reason_code": "selected_horizon" if is_selected else ("baseline_60d" if is_baseline else "gate_detail_unavailable"),
+                "is_selected": is_selected,
+                "is_baseline": is_baseline,
+            }
+        )
 
 
 __all__ = ["latest_stock_horizon_run_id", "load_stock_horizon_evidence"]

@@ -34,6 +34,43 @@ def test_load_stock_horizon_evidence_uses_latest_selection_and_selected_effects(
                  'follow_net_return_90d', 90, 0.72, 0.18, 0.12, 0.06, 0.03,
                  -0.08, -0.13, 90, 90, 'selected', NULL, '2026-05-06T10:00:00');
 
+            CREATE TABLE mart_stock_horizon_candidate_gate (
+                run_id TEXT,
+                stock_code TEXT,
+                label_name TEXT,
+                horizon_days INTEGER,
+                obs_count INTEGER,
+                avg_return DOUBLE,
+                median_return DOUBLE,
+                win_rate DOUBLE,
+                volatility DOUBLE,
+                downside_avg DOUBLE,
+                compounded_return DOUBLE,
+                max_drawdown DOUBLE,
+                path_obs_count INTEGER,
+                horizon_score DOUBLE,
+                baseline_horizon_days INTEGER,
+                baseline_horizon_score DOUBLE,
+                baseline_avg_return DOUBLE,
+                baseline_max_drawdown DOUBLE,
+                baseline_obs_count INTEGER,
+                score_advantage DOUBLE,
+                avg_return_advantage DOUBLE,
+                selection_confidence DOUBLE,
+                candidate_status TEXT,
+                reason_code TEXT,
+                built_at TEXT
+            );
+            INSERT INTO mart_stock_horizon_candidate_gate VALUES
+                ('latest_run', '000001', 'follow_net_return_60d', 60, 90,
+                 0.010, 0.009, 0.52, 0.12, -0.02, 0.08, -0.13, 2,
+                 0.12, 60, 0.12, 0.010, -0.13, 90, 0.0, 0.0, 0.5,
+                 'baseline', 'baseline_60d', '2026-05-06T10:00:00'),
+                ('latest_run', '000001', 'follow_net_return_90d', 90, 90,
+                 0.040, 0.032, 0.60, 0.11, -0.01, 0.15, -0.08, 1,
+                 0.18, 60, 0.12, 0.010, -0.13, 90, 0.06, 0.03, 0.72,
+                 'candidate_pass', 'candidate_pass', '2026-05-06T10:00:00');
+
             CREATE TABLE mart_stock_horizon_feature_effect (
                 run_id TEXT,
                 stock_code TEXT,
@@ -59,6 +96,9 @@ def test_load_stock_horizon_evidence_uses_latest_selection_and_selected_effects(
         assert evidence["000001"]["selected_horizon_days"] == 90
         assert evidence["000001"]["avg_return_advantage"] == 0.03
         assert evidence["000001"]["is_baseline"] is False
+        assert [row["horizon_days"] for row in evidence["000001"]["horizon_comparison"]] == [60, 90]
+        assert evidence["000001"]["horizon_comparison"][1]["candidate_status"] == "candidate_pass"
+        assert evidence["000001"]["horizon_comparison"][1]["is_selected"] is True
         assert evidence["000001"]["top_feature_effects"][0]["feature_name"] == "ret_60d"
         assert all(row["feature_name"] != "wrong_horizon" for row in evidence["000001"]["top_feature_effects"])
         assert "000002" not in evidence

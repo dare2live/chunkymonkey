@@ -90,6 +90,10 @@
     const cls = n >= 0 ? 'sig-pos' : 'sig-neg';
     return `<span class="${cls}">${n >= 0 ? '+' : ''}${n.toFixed(digits)}%</span>`;
   }
+  function fmtRatioPlain(v, digits = 1) {
+    if (v == null || isNaN(Number(v))) return '-';
+    return (Number(v) * 100).toFixed(digits) + '%';
+  }
   function fmtDate(d) {
     if (!d) return '-';
     const s = String(d).replace(/[^0-9]/g, '').slice(0, 8);
@@ -154,7 +158,55 @@
     if (h.selected_horizon_confidence != null) bits.push('conf ' + (Number(h.selected_horizon_confidence) * 100).toFixed(0) + '%');
     if (h.avg_return_advantage != null) bits.push('收益差 ' + (Number(h.avg_return_advantage) * 100).toFixed(1) + '%');
     if (h.selected_max_drawdown != null) bits.push('DD ' + (Number(h.selected_max_drawdown) * 100).toFixed(1) + '%');
-    return bits.join(' · ') || '60d baseline';
+    return bits.join(' · ') || '60d基线';
+  }
+  function horizonStatusLabel(row) {
+    if (!row) return '-';
+    if (row.is_selected) return '选中';
+    if (row.is_baseline) return '基线';
+    const map = {
+      candidate_pass: '通过',
+      candidate_score_advantage_below_threshold: '分数不足',
+      candidate_return_advantage_below_threshold: '收益不足',
+      candidate_drawdown_blocked: '回撤阻断',
+      candidate_confidence_low: '置信不足',
+      candidate_low_observation: '样本不足',
+      profile_only: '未入选',
+    };
+    return map[row.candidate_status] || row.candidate_status || '未入选';
+  }
+  function renderHorizonComparisonTable(horizon) {
+    const rows = (horizon && horizon.horizon_comparison || []).slice().sort((a, b) =>
+      Number(a.horizon_days || 0) - Number(b.horizon_days || 0)
+    );
+    if (!rows.length) {
+      return '<div class="cm-muted-note" style="margin-top:10px">暂无 5/10/20/60/90d 周期对比明细。</div>';
+    }
+    const body = rows.map(row => `<tr class="${row.is_selected ? 'cm-row-strong' : ''}">
+      <td><b>${esc(row.horizon_days || '-')}d</b></td>
+      <td>${esc(horizonStatusLabel(row))}</td>
+      <td class="sig-num">${fmtRatioPlain(row.avg_return)}</td>
+      <td class="sig-num">${fmtRatioPlain(row.max_drawdown)}</td>
+      <td class="sig-num">${fmtRatioPlain(row.win_rate)}</td>
+      <td class="sig-num">${fmtRatioPlain(row.volatility)}</td>
+      <td class="sig-num">${esc(row.obs_count || '-')}</td>
+      <td>${esc(row.reason_code || '-')}</td>
+    </tr>`).join('');
+    return `<div class="sig-table-wrap" style="margin-top:12px">
+      <table class="sig-table sig-table-sm">
+        <thead><tr>
+          <th>周期</th>
+          <th>状态</th>
+          <th class="sig-num">均收益</th>
+          <th class="sig-num">最大回撤</th>
+          <th class="sig-num">胜率</th>
+          <th class="sig-num">波动</th>
+          <th class="sig-num">样本</th>
+          <th>原因</th>
+        </tr></thead>
+        <tbody>${body}</tbody>
+      </table>
+    </div>`;
   }
   function renderAiCell(stockCode) {
     const item = state.topkMap.get(stockCode);
@@ -623,6 +675,7 @@
       </div>
     </div>
     ${topEffects ? '<div class="cm-muted-note" style="margin-top:10px">周期变量影响 ' + topEffects + '</div>' : ''}
+    ${renderHorizonComparisonTable(horizon)}
     <div id="sv-drawer-model-badge" style="margin-top:12px"></div>`;
     if (global.MultidimBadgeWidget) {
       global.MultidimBadgeWidget.mount('sv-drawer-model-badge', { stockCode: s.stockCode });

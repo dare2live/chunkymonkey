@@ -112,11 +112,21 @@ def test_stock_horizon_profile_selects_best_horizon_and_feature_effects():
                AND stock_code = '000001'
             """
         ).fetchone()
+        candidate_gate = conn.execute(
+            """
+            SELECT label_name, candidate_status, reason_code
+              FROM mart_stock_horizon_candidate_gate
+             WHERE run_id = 'stock_horizon_unit'
+               AND stock_code = '000001'
+             ORDER BY horizon_days
+            """
+        ).fetchall()
 
         assert result["profile_count"] == 3
         assert result["best_count"] == 1
         assert result["effect_count"] == 2
         assert result["selection_count"] == 1
+        assert result["candidate_gate_count"] == 3
         assert result["selected_non_baseline_count"] == 1
         assert best["label_name"] == "follow_net_return_90d"
         assert best["horizon_days"] == 90
@@ -132,6 +142,13 @@ def test_stock_horizon_profile_selects_best_horizon_and_feature_effects():
         assert selection["selected_horizon_days"] == 90
         assert selection["gate_status"] == "selected"
         assert selection["selected_horizon_confidence"] >= 0.55
+        assert [row["label_name"] for row in candidate_gate] == [
+            "follow_net_return_5d",
+            "follow_net_return_60d",
+            "follow_net_return_90d",
+        ]
+        assert candidate_gate[-1]["candidate_status"] == "candidate_pass"
+        assert candidate_gate[-1]["reason_code"] == "candidate_pass"
     finally:
         conn.close()
 
@@ -171,8 +188,8 @@ def test_stock_horizon_selection_falls_back_to_60d_when_candidate_drawdown_fails
                 feature_set_id TEXT,
                 stock_code TEXT,
                 date TEXT,
+                follow_net_return_5d DOUBLE,
                 follow_net_return_60d DOUBLE,
-                follow_net_return_90d DOUBLE,
                 f_good DOUBLE
             )
             """
@@ -187,8 +204,8 @@ def test_stock_horizon_selection_falls_back_to_60d_when_candidate_drawdown_fails
                     "profile_set",
                     "000001",
                     f"2026-01-{idx + 1:02d}",
-                    0.01,
                     candidate,
+                    0.01,
                     float(idx),
                 )
             )
@@ -203,8 +220,10 @@ def test_stock_horizon_selection_falls_back_to_60d_when_candidate_drawdown_fails
             feature_table="fact_feature_panel_candidate",
             feature_set_id="profile_set",
             model_selection_run_id="selection_horizon",
-            labels=["follow_net_return_60d", "follow_net_return_90d"],
+            labels=["follow_net_return_5d", "follow_net_return_60d"],
             min_observations=10,
+            min_score_advantage=-1.0,
+            min_avg_return_advantage=-1.0,
             max_candidate_drawdown=0.20,
         )
 
@@ -216,11 +235,22 @@ def test_stock_horizon_selection_falls_back_to_60d_when_candidate_drawdown_fails
                AND stock_code = '000001'
             """
         ).fetchone()
+        rejected = conn.execute(
+            """
+            SELECT candidate_status, reason_code
+              FROM mart_stock_horizon_candidate_gate
+               WHERE run_id = 'stock_horizon_fallback'
+                 AND stock_code = '000001'
+                 AND label_name = 'follow_net_return_5d'
+            """
+        ).fetchone()
 
         assert selection["selected_label"] == "follow_net_return_60d"
         assert selection["selected_horizon_days"] == 60
         assert selection["gate_status"] == "baseline"
         assert selection["fallback_reason"] == "baseline_best_or_no_candidate_passed"
+        assert rejected["candidate_status"] == "candidate_drawdown_blocked"
+        assert rejected["reason_code"] == "max_drawdown_exceeds_policy"
     finally:
         conn.close()
 

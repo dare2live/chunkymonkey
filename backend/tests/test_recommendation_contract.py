@@ -87,6 +87,19 @@ def test_daily_topk_items_include_model_trace(monkeypatch):
             effect_direction TEXT,
             built_at TEXT
         );
+        CREATE TABLE mart_stock_horizon_candidate_gate (
+            run_id TEXT,
+            stock_code TEXT,
+            label_name TEXT,
+            horizon_days INTEGER,
+            avg_return DOUBLE,
+            max_drawdown DOUBLE,
+            win_rate DOUBLE,
+            volatility DOUBLE,
+            obs_count INTEGER,
+            candidate_status TEXT,
+            reason_code TEXT
+        );
         INSERT INTO mart_model_lifecycle VALUES (
             'model_a', 'champion', TIMESTAMP '2026-05-04 09:00:00', TIMESTAMP '2026-05-04 09:00:00'
         );
@@ -109,6 +122,11 @@ def test_daily_topk_items_include_model_trace(monkeypatch):
             'stock_horizon_latest', '000001', 'follow_net_return_90d', 90,
             'ma_ratio_60', 90, -0.42, 1, 'negative', '2026-05-06T10:00:00'
         );
+        INSERT INTO mart_stock_horizon_candidate_gate VALUES
+            ('stock_horizon_latest', '000001', 'follow_net_return_60d', 60,
+             0.01, -0.13, 0.52, 0.12, 90, 'baseline', 'baseline_60d'),
+            ('stock_horizon_latest', '000001', 'follow_net_return_90d', 90,
+             0.04, -0.08, 0.60, 0.11, 90, 'candidate_pass', 'candidate_pass');
         """
     )
     monkeypatch.setattr(recommendation, "get_conn", lambda: conn)
@@ -128,6 +146,7 @@ def test_daily_topk_items_include_model_trace(monkeypatch):
     assert item["selected_horizon_days"] == 90
     assert item["horizon_selection_run_id"] == "stock_horizon_latest"
     assert item["horizon_evidence"]["avg_return_advantage"] == 0.03
+    assert [row["horizon_days"] for row in item["horizon_evidence"]["horizon_comparison"]] == [60, 90]
     assert item["horizon_evidence"]["top_feature_effects"][0]["feature_name"] == "ma_ratio_60"
     assert item["top_feature_values"][0]["name"] == "ret_20d"
     assert item["top_feature_values"][0]["model_value"] == 0.12

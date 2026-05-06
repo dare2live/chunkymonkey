@@ -95,6 +95,37 @@ CREATE TABLE IF NOT EXISTS mart_stock_horizon_selection (
 );
 CREATE INDEX IF NOT EXISTS idx_stock_horizon_selection_horizon
     ON mart_stock_horizon_selection(run_id, selected_horizon_days, gate_status);
+
+CREATE TABLE IF NOT EXISTS mart_stock_horizon_candidate_gate (
+    run_id TEXT NOT NULL,
+    stock_code TEXT NOT NULL,
+    label_name TEXT NOT NULL,
+    horizon_days INTEGER,
+    obs_count INTEGER,
+    avg_return DOUBLE,
+    median_return DOUBLE,
+    win_rate DOUBLE,
+    volatility DOUBLE,
+    downside_avg DOUBLE,
+    compounded_return DOUBLE,
+    max_drawdown DOUBLE,
+    path_obs_count INTEGER,
+    horizon_score DOUBLE,
+    baseline_horizon_days INTEGER,
+    baseline_horizon_score DOUBLE,
+    baseline_avg_return DOUBLE,
+    baseline_max_drawdown DOUBLE,
+    baseline_obs_count INTEGER,
+    score_advantage DOUBLE,
+    avg_return_advantage DOUBLE,
+    selection_confidence DOUBLE,
+    candidate_status TEXT NOT NULL,
+    reason_code TEXT NOT NULL,
+    built_at TEXT NOT NULL,
+    PRIMARY KEY (run_id, stock_code, label_name)
+);
+CREATE INDEX IF NOT EXISTS idx_stock_horizon_candidate_gate_stock
+    ON mart_stock_horizon_candidate_gate(run_id, stock_code, horizon_days);
 """
 
 
@@ -207,7 +238,7 @@ def build_stock_horizon_profile(
     labels: list[str] | None = None,
     start_date: str = "2023-01-01",
     end_date: str | None = None,
-    min_observations: int = 20,
+    min_observations: int = 60,
     top_features_per_stock: int = 0,
     baseline_label: str = "follow_net_return_60d",
     min_score_advantage: float = 0.01,
@@ -220,6 +251,7 @@ def build_stock_horizon_profile(
     conn.execute("DELETE FROM mart_stock_horizon_profile WHERE run_id = ?", (run_id,))
     conn.execute("DELETE FROM mart_stock_horizon_feature_effect WHERE run_id = ?", (run_id,))
     conn.execute("DELETE FROM mart_stock_horizon_selection WHERE run_id = ?", (run_id,))
+    conn.execute("DELETE FROM mart_stock_horizon_candidate_gate WHERE run_id = ?", (run_id,))
     started_at = utc_now_iso()
     t0 = time.perf_counter()
     stage_timings: dict[str, float] = {}
@@ -550,7 +582,7 @@ def build_stock_horizon_profile(
     stage_started = time.perf_counter()
     conn.execute(
         """
-        CREATE OR REPLACE TEMP TABLE stock_horizon_candidates AS
+        CREATE OR REPLACE TEMP TABLE stock_horizon_candidate_gate_raw AS
         WITH baseline AS (
             SELECT *
               FROM mart_stock_horizon_profile
@@ -588,10 +620,100 @@ def build_stock_horizon_profile(
                      ELSE 'candidate_pass'
                    END AS candidate_status
               FROM ranked
+        )
+        SELECT run_id,
+               stock_code,
+               label_name,
+               horizon_days,
+               obs_count,
+               avg_return,
+               median_return,
+               win_rate,
+               volatility,
+               downside_avg,
+               compounded_return,
+               max_drawdown,
+               path_obs_count,
+               horizon_score,
+               baseline_horizon_days,
+               baseline_horizon_score,
+               baseline_avg_return,
+               baseline_max_drawdown,
+               baseline_obs_count,
+               score_advantage,
+               avg_return_advantage,
+               selection_confidence,
+               candidate_status,
+               CASE
+                 WHEN candidate_status = 'baseline' THEN 'baseline_60d'
+                 WHEN candidate_status = 'candidate_low_observation' THEN 'insufficient_observation_count'
+                 WHEN candidate_status = 'candidate_score_advantage_below_threshold' THEN 'score_advantage_below_threshold'
+                 WHEN candidate_status = 'candidate_return_advantage_below_threshold' THEN 'avg_return_advantage_below_threshold'
+                 WHEN candidate_status = 'candidate_drawdown_blocked' THEN 'max_drawdown_exceeds_policy'
+                 WHEN candidate_status = 'candidate_confidence_low' THEN 'selection_confidence_below_threshold'
+                 ELSE 'candidate_pass'
+               END AS reason_code
+          FROM eligible
+        """,
+        (
+            run_id,
+            baseline_label,
+            run_id,
+            baseline_label,
+            int(min_observations),
+            float(min_score_advantage),
+            float(min_avg_return_advantage),
+            float(max_candidate_drawdown),
+            float(min_selection_confidence),
         ),
+    )
+    conn.execute(
+        """
+        INSERT OR REPLACE INTO mart_stock_horizon_candidate_gate (
+            run_id, stock_code, label_name, horizon_days, obs_count,
+            avg_return, median_return, win_rate, volatility, downside_avg,
+            compounded_return, max_drawdown, path_obs_count, horizon_score,
+            baseline_horizon_days, baseline_horizon_score, baseline_avg_return,
+            baseline_max_drawdown, baseline_obs_count, score_advantage,
+            avg_return_advantage, selection_confidence, candidate_status,
+            reason_code, built_at
+        )
+        SELECT ? AS run_id,
+               stock_code,
+               label_name,
+               horizon_days,
+               obs_count,
+               avg_return,
+               median_return,
+               win_rate,
+               volatility,
+               downside_avg,
+               compounded_return,
+               max_drawdown,
+               path_obs_count,
+               horizon_score,
+               baseline_horizon_days,
+               baseline_horizon_score,
+               baseline_avg_return,
+               baseline_max_drawdown,
+               baseline_obs_count,
+               score_advantage,
+               avg_return_advantage,
+               selection_confidence,
+               candidate_status,
+               reason_code,
+               ? AS built_at
+          FROM stock_horizon_candidate_gate_raw
+        """,
+        (run_id, built_at),
+    )
+    conn.execute(
+        """
+        CREATE OR REPLACE TEMP TABLE stock_horizon_candidates AS
+        WITH
         picked AS (
             SELECT *
-              FROM eligible
+              FROM stock_horizon_candidate_gate_raw
              WHERE candidate_status IN ('baseline', 'candidate_pass')
              QUALIFY ROW_NUMBER() OVER (
                  PARTITION BY stock_code
@@ -634,19 +756,7 @@ def build_stock_horizon_profile(
          WHERE b.run_id = ?
            AND b.label_name = ?
         """,
-        (
-            run_id,
-            baseline_label,
-            run_id,
-            baseline_label,
-            int(min_observations),
-            float(min_score_advantage),
-            float(min_avg_return_advantage),
-            float(max_candidate_drawdown),
-            float(min_selection_confidence),
-            run_id,
-            baseline_label,
-        ),
+        (run_id, baseline_label),
     )
     conn.execute(
         """
@@ -703,6 +813,10 @@ def build_stock_horizon_profile(
         "SELECT COUNT(*) FROM mart_stock_horizon_selection WHERE run_id = ?",
         (run_id,),
     ).fetchone()[0])
+    candidate_gate_count = int(conn.execute(
+        "SELECT COUNT(*) FROM mart_stock_horizon_candidate_gate WHERE run_id = ?",
+        (run_id,),
+    ).fetchone()[0])
     selected_non_baseline_count = int(conn.execute(
         """
         SELECT COUNT(*) FROM mart_stock_horizon_selection
@@ -714,6 +828,7 @@ def build_stock_horizon_profile(
     record_actual_version(conn, "mart_stock_horizon_profile")
     record_actual_version(conn, "mart_stock_horizon_feature_effect")
     record_actual_version(conn, "mart_stock_horizon_selection")
+    record_actual_version(conn, "mart_stock_horizon_candidate_gate")
     duration_s = time.perf_counter() - t0
     record_pipeline_run(
         conn,
@@ -729,6 +844,7 @@ def build_stock_horizon_profile(
             "mart_stock_horizon_profile",
             "mart_stock_horizon_feature_effect",
             "mart_stock_horizon_selection",
+            "mart_stock_horizon_candidate_gate",
         ],
         feature_group="stock_horizon_profile",
         label_name=",".join(labels),
@@ -750,6 +866,7 @@ def build_stock_horizon_profile(
             "best_count": best_count,
             "effect_count": effect_count,
             "selection_count": selection_count,
+            "candidate_gate_count": candidate_gate_count,
             "selected_non_baseline_count": selected_non_baseline_count,
             "duration_s": duration_s,
             "stage_timings": stage_timings,
@@ -773,6 +890,7 @@ def build_stock_horizon_profile(
         "best_count": best_count,
         "effect_count": effect_count,
         "selection_count": selection_count,
+        "candidate_gate_count": candidate_gate_count,
         "selected_non_baseline_count": selected_non_baseline_count,
         "selection_policy": {
             "baseline_label": baseline_label,
@@ -795,7 +913,7 @@ def main() -> int:
     parser.add_argument("--labels", default=",".join(DEFAULT_LABELS))
     parser.add_argument("--start-date", default="2023-01-01")
     parser.add_argument("--end-date", default=None)
-    parser.add_argument("--min-observations", type=int, default=20)
+    parser.add_argument("--min-observations", type=int, default=60)
     parser.add_argument("--baseline-label", default="follow_net_return_60d")
     parser.add_argument("--min-score-advantage", type=float, default=0.01)
     parser.add_argument("--min-avg-return-advantage", type=float, default=0.005)
