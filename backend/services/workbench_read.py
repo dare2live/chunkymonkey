@@ -1103,6 +1103,12 @@ def _asset_health_snapshot(conn: Any) -> dict[str, Any]:
         "snapshot_at": None,
         "summary": {"total": 0, "green": 0, "yellow": 0, "red": 0, "unknown": 0},
         "by_layer": {},
+        "governance_counts": {
+            "coverage_policy": {},
+            "null_policy": {},
+            "model_eligibility": {},
+            "quality_gate_level": {},
+        },
         "items": [],
         "red_list": [],
         "fallback_active": [],
@@ -1113,11 +1119,27 @@ def _asset_health_snapshot(conn: Any) -> dict[str, Any]:
     if not snap_at:
         return empty
     health_cols = _columns(conn, "mart_data_health")
+    dim_cols = _columns(conn, "dim_data_asset")
     tier_dist_expr = "m.source_tier_dist" if "source_tier_dist" in health_cols else "NULL AS source_tier_dist"
+    governance_exprs = []
+    for column in (
+        "asset_grain",
+        "asset_cadence",
+        "coverage_policy",
+        "null_policy",
+        "pit_policy",
+        "intended_use",
+        "model_eligibility",
+        "strategy_eligibility",
+        "frontend_visibility",
+        "quality_gate_level",
+    ):
+        governance_exprs.append(f"d.{column}" if column in dim_cols else f"NULL AS {column}")
     rows = conn.execute(
         f"""
         SELECT d.table_name, d.layer, d.purpose, d.writer_module,
                d.upstream_source, d.source_tier, d.expected_freshness, d.sla_hours,
+               {", ".join(governance_exprs)},
                m.row_count, CAST(m.last_data_date AS VARCHAR) AS last_data_date,
                m.freshness_hours, m.freshness_ok, m.severity, m.issue_summary,
                {tier_dist_expr}
@@ -1131,6 +1153,12 @@ def _asset_health_snapshot(conn: Any) -> dict[str, Any]:
     ).fetchall()
     by_layer: dict[str, dict[str, int]] = {}
     severity_total = {"green": 0, "yellow": 0, "red": 0, "unknown": 0}
+    governance_counts: dict[str, dict[str, int]] = {
+        "coverage_policy": {},
+        "null_policy": {},
+        "model_eligibility": {},
+        "quality_gate_level": {},
+    }
     items = []
     red_list = []
     fallback_active = []
@@ -1141,6 +1169,9 @@ def _asset_health_snapshot(conn: Any) -> dict[str, Any]:
         layer_counts = by_layer.setdefault(layer, {"green": 0, "yellow": 0, "red": 0, "unknown": 0, "total": 0})
         layer_counts[sev] = layer_counts.get(sev, 0) + 1
         layer_counts["total"] += 1
+        for field, counts in governance_counts.items():
+            value = str(row[field] or "unknown")
+            counts[value] = counts.get(value, 0) + 1
         tier_dist = _safe_json(row["source_tier_dist"]) or None
         if isinstance(tier_dist, dict):
             fallback_rows = sum(int(value) for key, value in tier_dist.items() if str(key).isdigit() and int(key) > 1)
@@ -1164,6 +1195,16 @@ def _asset_health_snapshot(conn: Any) -> dict[str, Any]:
             "writer_module": row["writer_module"],
             "upstream_source": row["upstream_source"],
             "source_tier": row["source_tier"],
+            "asset_grain": row["asset_grain"],
+            "asset_cadence": row["asset_cadence"],
+            "coverage_policy": row["coverage_policy"],
+            "null_policy": row["null_policy"],
+            "pit_policy": row["pit_policy"],
+            "intended_use": row["intended_use"],
+            "model_eligibility": row["model_eligibility"],
+            "strategy_eligibility": row["strategy_eligibility"],
+            "frontend_visibility": row["frontend_visibility"],
+            "quality_gate_level": row["quality_gate_level"],
             "issue_summary": row["issue_summary"],
             "source_tier_distribution": tier_dist,
         }
@@ -1174,6 +1215,7 @@ def _asset_health_snapshot(conn: Any) -> dict[str, Any]:
         "snapshot_at": snap_at,
         "summary": {"total": sum(severity_total.values()), **severity_total},
         "by_layer": by_layer,
+        "governance_counts": governance_counts,
         "items": items,
         "red_list": red_list,
         "fallback_active": fallback_active,

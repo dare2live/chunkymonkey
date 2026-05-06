@@ -542,6 +542,16 @@ def init_db():
                 expected_freshness TEXT,                      -- 't+0' / 't+1' / 'quarterly' / 'event' / 'static'
                 sla_hours         INTEGER,                    -- 数据延迟超过 N 小时算 yellow
                 consumed_by_views TEXT,                       -- JSON 数组: ['view-stocks', 'view-research']
+                asset_grain       TEXT,                       -- stock_code+date / event / report_period / run_id
+                asset_cadence     TEXT,                       -- trading_day_daily / event_driven / quarterly / on_demand
+                coverage_policy   TEXT,                       -- dense_active_a_stock / sparse_event / periodic_report
+                null_policy       TEXT,                       -- no_null / no_event_is_absence / classified_required
+                pit_policy        TEXT,                       -- same_day_market / source_notice_date / registry_required
+                intended_use      TEXT,                       -- model_training / context / attention / monitoring
+                model_eligibility TEXT,                       -- registered_features_only / encoded_auxiliary_only / blocked
+                strategy_eligibility TEXT,                    -- entry_exit_pricing / filter_context / diagnostics
+                frontend_visibility TEXT,                     -- governance_visible / hidden_internal
+                quality_gate_level TEXT,                      -- blocking / warning / monitor_only
                 is_append_only    BOOLEAN DEFAULT FALSE,
                 deprecation_status TEXT DEFAULT 'active',
                 deprecated_at     TEXT,
@@ -558,6 +568,16 @@ def init_db():
             ALTER TABLE dim_data_asset ADD COLUMN deprecated_at TEXT;
             ALTER TABLE dim_data_asset ADD COLUMN deprecated_reason TEXT;
             ALTER TABLE dim_data_asset ADD COLUMN replacement_table TEXT;
+            ALTER TABLE dim_data_asset ADD COLUMN asset_grain TEXT;
+            ALTER TABLE dim_data_asset ADD COLUMN asset_cadence TEXT;
+            ALTER TABLE dim_data_asset ADD COLUMN coverage_policy TEXT;
+            ALTER TABLE dim_data_asset ADD COLUMN null_policy TEXT;
+            ALTER TABLE dim_data_asset ADD COLUMN pit_policy TEXT;
+            ALTER TABLE dim_data_asset ADD COLUMN intended_use TEXT;
+            ALTER TABLE dim_data_asset ADD COLUMN model_eligibility TEXT;
+            ALTER TABLE dim_data_asset ADD COLUMN strategy_eligibility TEXT;
+            ALTER TABLE dim_data_asset ADD COLUMN frontend_visibility TEXT;
+            ALTER TABLE dim_data_asset ADD COLUMN quality_gate_level TEXT;
 
             -- ============================================================
             -- 集市层 (新, W0): 数据健康快照 mart_data_health

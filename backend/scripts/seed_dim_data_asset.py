@@ -109,6 +109,8 @@ EXTRA_FRESHNESS_BY_TABLE = {
     "mart_data_audit_report": ("on-demand", 24 * 30),
     "mart_etf_snapshot_latest": ("on-demand", 24 * 30),
     "mart_etf_snapshot_state": ("on-demand", 24 * 30),
+    "mart_challenger_evidence_bundle": ("on-demand", 24 * 30),
+    "mart_champion_candidate_evaluation": ("on-demand", 24 * 30),
     "mart_model_ablation_run": ("on-demand", 24 * 30),
     "mart_model_feature_lineage": ("on-demand", 24 * 30),
     "mart_model_holding_topk_eval": ("on-demand", 24 * 30),
@@ -133,6 +135,62 @@ EXTRA_FRESHNESS_BY_TABLE = {
     "mart_temporal_research_panel_quality": ("on-demand", 24 * 30),
     # gpcw files are quarter-end source manifests.
     "mart_tdx_gpcw_file_manifest": ("quarterly", 24 * 95),
+    # Drift is a current champion monitor, not a raw source. Empty rows should
+    # be fixed by running compute_feature_drift, not source backfill.
+    "mart_feature_drift": ("t+0", 25),
+    "mart_feature_drift_histogram": ("t+0", 25),
+}
+
+
+EXTRA_ASSET_CONTRACT_BY_TABLE = {
+    "mart_challenger_evidence_bundle": {
+        "asset_grain": "candidate_model_id+evidence_run_id",
+        "asset_cadence": "on_demand",
+        "coverage_policy": "only_when_active_challenger_exists",
+        "null_policy": "empty_allowed_without_active_challenger",
+        "pit_policy": "inherits_candidate_feature_policy",
+        "intended_use": "promotion_evidence_for_candidate_only",
+        "model_eligibility": "not_model_input",
+        "strategy_eligibility": "promotion_gate_context",
+        "frontend_visibility": "governance_visible",
+        "quality_gate_level": "monitor_only",
+    },
+    "mart_champion_candidate_evaluation": {
+        "asset_grain": "candidate_model_id+evaluation_run_id",
+        "asset_cadence": "on_demand",
+        "coverage_policy": "only_when_active_challenger_exists",
+        "null_policy": "empty_allowed_without_active_challenger",
+        "pit_policy": "inherits_candidate_feature_policy",
+        "intended_use": "promotion_decision_for_candidate_only",
+        "model_eligibility": "not_model_input",
+        "strategy_eligibility": "promotion_gate_context",
+        "frontend_visibility": "governance_visible",
+        "quality_gate_level": "monitor_only",
+    },
+    "mart_feature_drift": {
+        "asset_grain": "model_id+feature+snapshot_at",
+        "asset_cadence": "trading_day_or_model_refresh",
+        "coverage_policy": "current_champion_model_features",
+        "null_policy": "no_unclassified_nulls",
+        "pit_policy": "inherits_model_training_policy",
+        "intended_use": "champion_model_monitoring",
+        "model_eligibility": "not_model_input",
+        "strategy_eligibility": "promotion_and_retrain_gate",
+        "frontend_visibility": "governance_visible",
+        "quality_gate_level": "blocking",
+    },
+    "mart_feature_drift_histogram": {
+        "asset_grain": "model_id+feature+bucket",
+        "asset_cadence": "trading_day_or_model_refresh",
+        "coverage_policy": "current_champion_model_features",
+        "null_policy": "no_unclassified_nulls",
+        "pit_policy": "inherits_model_training_policy",
+        "intended_use": "champion_model_monitoring_cache",
+        "model_eligibility": "not_model_input",
+        "strategy_eligibility": "promotion_and_retrain_gate",
+        "frontend_visibility": "governance_visible",
+        "quality_gate_level": "blocking",
+    },
 }
 
 
@@ -186,6 +244,238 @@ def infer_freshness(table_name: str, layer: str) -> tuple[str, int]:
     if layer in ("fact", "mart"):
         return ("t+1", 48)
     return ("on-demand", 24 * 30)
+
+
+GOVERNANCE_COLUMNS = [
+    "asset_grain",
+    "asset_cadence",
+    "coverage_policy",
+    "null_policy",
+    "pit_policy",
+    "intended_use",
+    "model_eligibility",
+    "strategy_eligibility",
+    "frontend_visibility",
+    "quality_gate_level",
+]
+
+
+def ensure_dim_data_asset_governance_columns(con) -> None:
+    exists = con.execute(
+        """
+        SELECT 1
+          FROM information_schema.tables
+         WHERE table_name = 'dim_data_asset'
+         LIMIT 1
+        """
+    ).fetchone()
+    if not exists:
+        return
+    for column in GOVERNANCE_COLUMNS:
+        try:
+            con.execute(f"ALTER TABLE dim_data_asset ADD COLUMN {column} TEXT")
+        except Exception as exc:
+            msg = str(exc).lower()
+            if "already exists" in msg or "duplicate" in msg:
+                continue
+            raise
+
+
+def table_columns(con, table_name: str) -> set[str]:
+    try:
+        return {
+            row["column_name"] if hasattr(row, "keys") else row[0]
+            for row in con.execute(
+                """
+                SELECT column_name
+                  FROM information_schema.columns
+                 WHERE table_name = ?
+                """,
+                (table_name,),
+            ).fetchall()
+        }
+    except Exception:
+        return set()
+
+
+def registry_asset_contract(table: str) -> dict[str, str]:
+    found = _registry_table_metadata(table)
+    if found is None:
+        return {}
+    _, write_spec = found
+    out: dict[str, str] = {}
+    for column in GOVERNANCE_COLUMNS:
+        value = getattr(write_spec, column, None)
+        if value is not None:
+            out[column] = str(value)
+    return out
+
+
+def infer_asset_contract(
+    table_name: str,
+    *,
+    layer: str,
+    freshness: str,
+    upstream_source: object | None,
+) -> dict[str, str]:
+    name = table_name.lower()
+    upstream = str(upstream_source or "").lower()
+    freshness_norm = str(freshness or "").lower()
+
+    contract = {
+        "asset_grain": "table",
+        "asset_cadence": "on_demand",
+        "coverage_policy": "workflow_dependent",
+        "null_policy": "classified_required",
+        "pit_policy": "not_model_input",
+        "intended_use": "governance_context",
+        "model_eligibility": "not_model_input",
+        "strategy_eligibility": "diagnostics_or_context",
+        "frontend_visibility": "governance_visible",
+        "quality_gate_level": "monitor_only",
+    }
+
+    if "trading_calendar" in name:
+        contract.update(
+            asset_grain="trade_date",
+            asset_cadence="exchange_calendar",
+            coverage_policy="complete_exchange_calendar",
+            null_policy="no_null",
+            pit_policy="pre_fetch_calendar_gate",
+            intended_use="pipeline_gate",
+            model_eligibility="not_model_input",
+            strategy_eligibility="calendar_filter",
+            quality_gate_level="blocking",
+        )
+    elif "kline" in name or "price_" in name:
+        contract.update(
+            asset_grain="stock_code+trade_date",
+            asset_cadence="trading_day_daily",
+            coverage_policy="dense_active_a_stock_trading_days",
+            null_policy="no_null_for_ohlcv_after_calendar",
+            pit_policy="same_day_market_data_after_close",
+            intended_use="pricing_and_trend_source",
+            model_eligibility="derive_features_only",
+            strategy_eligibility="entry_exit_pricing_and_trend",
+            quality_gate_level="blocking",
+        )
+        if "tdxhub" in upstream or "tdxhub" in name:
+            contract["intended_use"] = "primary_pricing_source"
+        elif "akshare" in upstream:
+            contract["intended_use"] = "fallback_pricing_source"
+            contract["quality_gate_level"] = "warning"
+    elif "feature_panel" in name:
+        contract.update(
+            asset_grain="stock_code+signal_date",
+            asset_cadence="trading_day_daily",
+            coverage_policy="dense_active_a_stock_trading_days",
+            null_policy="no_unclassified_nulls",
+            pit_policy="feature_registry_required",
+            intended_use="model_training_and_scoring",
+            model_eligibility="registered_features_only",
+            strategy_eligibility="scoring_and_horizon_selection",
+            quality_gate_level="blocking",
+        )
+    elif any(token in name for token in ("lhb", "survey", "dzjy", "event", "plan", "trade")):
+        contract.update(
+            asset_grain="stock_code+event",
+            asset_cadence="event_driven",
+            coverage_policy="sparse_event_presence_only",
+            null_policy="no_event_is_absence_not_missing",
+            pit_policy="source_notice_or_event_date_required",
+            intended_use="attention_signal_or_context",
+            model_eligibility="encoded_auxiliary_only",
+            strategy_eligibility="attention_filter_context",
+            quality_gate_level="warning",
+        )
+    elif any(token in name for token in ("holder", "qfii", "fund_holding")):
+        contract.update(
+            asset_grain="stock_code+report_period+holder",
+            asset_cadence="periodic_or_event",
+            coverage_policy="periodic_report_after_listing",
+            null_policy="classified_required",
+            pit_policy="source_notice_date_required",
+            intended_use="institutional_ownership_context",
+            model_eligibility="pit_validated_candidate_only",
+            strategy_eligibility="institution_filter_context",
+            quality_gate_level="blocking",
+        )
+    elif any(token in name for token in ("financial", "gpcw", "fundamental", "forecast")):
+        contract.update(
+            asset_grain="stock_code+report_period",
+            asset_cadence="quarterly_or_announcement",
+            coverage_policy="periodic_report_after_listing",
+            null_policy="classified_required",
+            pit_policy="source_notice_or_conservative_lag_required",
+            intended_use="fundamental_context_or_candidate",
+            model_eligibility="pit_validated_candidate_only",
+            strategy_eligibility="quality_filter_context",
+            quality_gate_level="blocking",
+        )
+    elif any(token in name for token in ("recommendation", "prediction", "model", "champion")):
+        contract.update(
+            asset_grain="run_id+stock_code",
+            asset_cadence="on_demand_or_trading_day",
+            coverage_policy="run_manifest_defined",
+            null_policy="no_unclassified_nulls",
+            pit_policy="inherits_input_policy_hash",
+            intended_use="production_decision_output",
+            model_eligibility="not_model_input",
+            strategy_eligibility="production_output",
+            quality_gate_level="blocking",
+        )
+    elif freshness_norm in {"event", "event_driven"}:
+        contract.update(
+            asset_grain="event",
+            asset_cadence="event_driven",
+            coverage_policy="sparse_event_presence_only",
+            null_policy="no_event_is_absence_not_missing",
+            pit_policy="source_event_date_required",
+            intended_use="event_context",
+            model_eligibility="encoded_auxiliary_only",
+            strategy_eligibility="context_or_filter",
+            quality_gate_level="warning",
+        )
+    elif freshness_norm in {"quarterly", "monthly", "weekly"}:
+        contract.update(
+            asset_grain="stock_code+period",
+            asset_cadence=freshness_norm,
+            coverage_policy="periodic_source_expected",
+            null_policy="classified_required",
+            pit_policy="source_available_date_required",
+            intended_use="periodic_context",
+            model_eligibility="pit_validated_candidate_only",
+            strategy_eligibility="context_or_filter",
+            quality_gate_level="warning",
+        )
+    elif layer in {"dim", "sys"}:
+        contract.update(
+            asset_grain="entity_key",
+            asset_cadence="static_or_config",
+            coverage_policy="complete_for_configured_universe",
+            null_policy="no_null_for_keys",
+            pit_policy="configuration_effective_date",
+            intended_use="dimension_or_policy",
+            model_eligibility="not_model_input",
+            strategy_eligibility="filter_or_join_dimension",
+            quality_gate_level="blocking",
+        )
+    elif layer in {"fact", "mart"} and freshness_norm == "on-demand":
+        contract.update(
+            asset_grain="run_id",
+            asset_cadence="on_demand",
+            coverage_policy="run_manifest_defined",
+            null_policy="classified_required",
+            pit_policy="inherits_input_policy",
+            intended_use="research_or_monitoring",
+            model_eligibility="not_model_input",
+            strategy_eligibility="diagnostics_or_context",
+            quality_gate_level="monitor_only",
+        )
+
+    contract.update(EXTRA_ASSET_CONTRACT_BY_TABLE.get(table_name, {}))
+    contract.update(registry_asset_contract(table_name))
+    return contract
 
 
 def grep_writer(table_name: str) -> str | None:
@@ -304,6 +594,7 @@ def main() -> int:
     args = parser.parse_args()
 
     con = get_conn()
+    ensure_dim_data_asset_governance_columns(con)
     log.info("scanning all tables...")
     tables = get_all_tables(con)
     log.info("total tables: %d", len(tables))
@@ -311,11 +602,22 @@ def main() -> int:
     # 拿当前已注册的, 区分 auto vs manual
     existing = {}
     try:
+        dim_cols = table_columns(con, "dim_data_asset")
+        select_cols = [
+            "table_name",
+            "auto_discovered",
+            "purpose",
+            "upstream_source",
+            "source_tier",
+            "fallback_chain",
+            "expected_freshness",
+            "sla_hours",
+            "consumed_by_views",
+            "notes",
+            *[column for column in GOVERNANCE_COLUMNS if column in dim_cols],
+        ]
         for r in con.execute(
-            "SELECT table_name, auto_discovered, purpose, upstream_source, "
-            "       source_tier, fallback_chain, expected_freshness, sla_hours, "
-            "       consumed_by_views, notes "
-            "FROM dim_data_asset"
+            f"SELECT {', '.join(select_cols)} FROM dim_data_asset"
         ).fetchall():
             existing[r["table_name"]] = r
     except Exception:
@@ -339,11 +641,22 @@ def main() -> int:
             if layer in ("fact", "mart") and writer is not None:
                 upstream = f"derived (writer: {writer})"
         freshness, sla = infer_freshness(tbl, layer)
+        governance = infer_asset_contract(
+            tbl,
+            layer=layer,
+            freshness=freshness,
+            upstream_source=upstream,
+        )
         purpose = None  # 留给人工补
 
         prev = existing.get(tbl)
         # 人工补的字段 (除非 --force-overwrite) 保留
-        if prev is not None and not args.force_overwrite:
+        preserve_manual = (
+            prev is not None
+            and not args.force_overwrite
+            and not bool(prev.get("auto_discovered"))
+        )
+        if preserve_manual:
             if prev.get("purpose"):
                 purpose = prev["purpose"]
             if prev.get("upstream_source"):
@@ -354,6 +667,9 @@ def main() -> int:
                 freshness = prev["expected_freshness"]
             if prev.get("sla_hours") is not None:
                 sla = prev["sla_hours"]
+            for column in GOVERNANCE_COLUMNS:
+                if prev.get(column):
+                    governance[column] = prev[column]
 
         readers_json = json.dumps(readers, ensure_ascii=False)
         # consumed_by_views: 简单 grep frontend 找 fetch('/api/...) 含表名 (粗略)
@@ -361,8 +677,19 @@ def main() -> int:
         consumed_by_views = "[]"
 
         if args.dry_run:
-            log.info("[dry] %s | layer=%s | writer=%s | readers=%d | upstream=%s | tier=%s | freshness=%s",
-                     tbl, layer, writer, len(readers), upstream, source_tier, freshness)
+            log.info(
+                "[dry] %s | layer=%s | writer=%s | readers=%d | upstream=%s | "
+                "tier=%s | freshness=%s | coverage=%s | model=%s",
+                tbl,
+                layer,
+                writer,
+                len(readers),
+                upstream,
+                source_tier,
+                freshness,
+                governance["coverage_policy"],
+                governance["model_eligibility"],
+            )
             continue
 
         # DuckDB binder 在 DO UPDATE SET 上下文里把 CURRENT_TIMESTAMP 当列名;
@@ -379,6 +706,16 @@ def main() -> int:
                 source_tier = EXCLUDED.source_tier,
                 expected_freshness = EXCLUDED.expected_freshness,
                 sla_hours = EXCLUDED.sla_hours,
+                asset_grain = EXCLUDED.asset_grain,
+                asset_cadence = EXCLUDED.asset_cadence,
+                coverage_policy = EXCLUDED.coverage_policy,
+                null_policy = EXCLUDED.null_policy,
+                pit_policy = EXCLUDED.pit_policy,
+                intended_use = EXCLUDED.intended_use,
+                model_eligibility = EXCLUDED.model_eligibility,
+                strategy_eligibility = EXCLUDED.strategy_eligibility,
+                frontend_visibility = EXCLUDED.frontend_visibility,
+                quality_gate_level = EXCLUDED.quality_gate_level,
                 last_updated_at = now()
             """
         else:
@@ -386,25 +723,79 @@ def main() -> int:
                 layer = EXCLUDED.layer,
                 writer_module = EXCLUDED.writer_module,
                 reader_modules = EXCLUDED.reader_modules,
-                purpose = COALESCE(dim_data_asset.purpose, EXCLUDED.purpose),
-                upstream_source = COALESCE(dim_data_asset.upstream_source, EXCLUDED.upstream_source),
-                source_tier = COALESCE(dim_data_asset.source_tier, EXCLUDED.source_tier),
-                expected_freshness = COALESCE(dim_data_asset.expected_freshness, EXCLUDED.expected_freshness),
-                sla_hours = COALESCE(dim_data_asset.sla_hours, EXCLUDED.sla_hours),
+                purpose = CASE WHEN dim_data_asset.auto_discovered
+                               THEN COALESCE(EXCLUDED.purpose, dim_data_asset.purpose)
+                               ELSE COALESCE(dim_data_asset.purpose, EXCLUDED.purpose) END,
+                upstream_source = CASE WHEN dim_data_asset.auto_discovered
+                                       THEN EXCLUDED.upstream_source
+                                       ELSE COALESCE(dim_data_asset.upstream_source, EXCLUDED.upstream_source) END,
+                source_tier = CASE WHEN dim_data_asset.auto_discovered
+                                   THEN EXCLUDED.source_tier
+                                   ELSE COALESCE(dim_data_asset.source_tier, EXCLUDED.source_tier) END,
+                expected_freshness = CASE WHEN dim_data_asset.auto_discovered
+                                          THEN EXCLUDED.expected_freshness
+                                          ELSE COALESCE(dim_data_asset.expected_freshness, EXCLUDED.expected_freshness) END,
+                sla_hours = CASE WHEN dim_data_asset.auto_discovered
+                                 THEN EXCLUDED.sla_hours
+                                 ELSE COALESCE(dim_data_asset.sla_hours, EXCLUDED.sla_hours) END,
+                asset_grain = CASE WHEN dim_data_asset.auto_discovered
+                                   THEN EXCLUDED.asset_grain
+                                   ELSE COALESCE(dim_data_asset.asset_grain, EXCLUDED.asset_grain) END,
+                asset_cadence = CASE WHEN dim_data_asset.auto_discovered
+                                     THEN EXCLUDED.asset_cadence
+                                     ELSE COALESCE(dim_data_asset.asset_cadence, EXCLUDED.asset_cadence) END,
+                coverage_policy = CASE WHEN dim_data_asset.auto_discovered
+                                       THEN EXCLUDED.coverage_policy
+                                       ELSE COALESCE(dim_data_asset.coverage_policy, EXCLUDED.coverage_policy) END,
+                null_policy = CASE WHEN dim_data_asset.auto_discovered
+                                   THEN EXCLUDED.null_policy
+                                   ELSE COALESCE(dim_data_asset.null_policy, EXCLUDED.null_policy) END,
+                pit_policy = CASE WHEN dim_data_asset.auto_discovered
+                                  THEN EXCLUDED.pit_policy
+                                  ELSE COALESCE(dim_data_asset.pit_policy, EXCLUDED.pit_policy) END,
+                intended_use = CASE WHEN dim_data_asset.auto_discovered
+                                    THEN EXCLUDED.intended_use
+                                    ELSE COALESCE(dim_data_asset.intended_use, EXCLUDED.intended_use) END,
+                model_eligibility = CASE WHEN dim_data_asset.auto_discovered
+                                         THEN EXCLUDED.model_eligibility
+                                         ELSE COALESCE(dim_data_asset.model_eligibility, EXCLUDED.model_eligibility) END,
+                strategy_eligibility = CASE WHEN dim_data_asset.auto_discovered
+                                            THEN EXCLUDED.strategy_eligibility
+                                            ELSE COALESCE(dim_data_asset.strategy_eligibility, EXCLUDED.strategy_eligibility) END,
+                frontend_visibility = CASE WHEN dim_data_asset.auto_discovered
+                                           THEN EXCLUDED.frontend_visibility
+                                           ELSE COALESCE(dim_data_asset.frontend_visibility, EXCLUDED.frontend_visibility) END,
+                quality_gate_level = CASE WHEN dim_data_asset.auto_discovered
+                                          THEN EXCLUDED.quality_gate_level
+                                          ELSE COALESCE(dim_data_asset.quality_gate_level, EXCLUDED.quality_gate_level) END,
                 last_updated_at = now()
             """
         con.execute(f"""
             INSERT INTO dim_data_asset (
                 table_name, layer, purpose, writer_module, reader_modules,
                 upstream_source, source_tier, expected_freshness, sla_hours,
-                consumed_by_views, auto_discovered, last_updated_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, TRUE, now())
+                consumed_by_views,
+                asset_grain, asset_cadence, coverage_policy, null_policy,
+                pit_policy, intended_use, model_eligibility,
+                strategy_eligibility, frontend_visibility, quality_gate_level,
+                auto_discovered, last_updated_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, TRUE, now())
             ON CONFLICT (table_name) DO UPDATE SET
                 {update_clause}
         """, (
             tbl, layer, purpose, writer, readers_json,
             upstream, source_tier, freshness, sla,
             consumed_by_views,
+            governance["asset_grain"],
+            governance["asset_cadence"],
+            governance["coverage_policy"],
+            governance["null_policy"],
+            governance["pit_policy"],
+            governance["intended_use"],
+            governance["model_eligibility"],
+            governance["strategy_eligibility"],
+            governance["frontend_visibility"],
+            governance["quality_gate_level"],
         ))
         upserted += 1
 

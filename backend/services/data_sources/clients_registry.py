@@ -30,6 +30,16 @@ class TableWriteSpec:
     purpose: str
     freshness: str = "t+1"
     sla_hours: int = 48
+    asset_grain: str | None = None
+    asset_cadence: str | None = None
+    coverage_policy: str | None = None
+    null_policy: str | None = None
+    pit_policy: str | None = None
+    intended_use: str | None = None
+    model_eligibility: str | None = None
+    strategy_eligibility: str | None = None
+    frontend_visibility: str | None = None
+    quality_gate_level: str | None = None
 
 
 @dataclass

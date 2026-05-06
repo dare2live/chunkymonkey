@@ -312,12 +312,16 @@
     var primary = kline.primary || {};
     var validation = data.latest_feature_validation || {};
     var monitor = data.processing_monitor || {};
+    var assetHealth = data.asset_health || {};
+    var governanceCounts = assetHealth.governance_counts || {};
+    var qualityCounts = governanceCounts.quality_gate_level || {};
     setBody(
       '<div class="stats-row wb-stats-row">' +
       statCard('交易日目标', data.calendar_target || '-', 'calendar gate', data.calendar_target ? 'ok' : 'missing') +
       statCard('K线主源', primary.source_name || '-', 'tier ' + fmt(primary.source_tier), kline.primary_is_tdxhub ? 'ok' : 'bad') +
       statCard('主源行数', fmtNum(primary.row_count || 0), esc(primary.last_data_date || '-'), primary.row_count ? 'ok' : 'missing') +
       statCard('Fallback', fmtNum(kline.fallback_active_count || 0), 'active sources', kline.fallback_active_count ? 'warn' : 'ok') +
+      statCard('资产治理', fmtNum(((assetHealth.summary || {}).total) || 0), renderStatusCounts(qualityCounts), ((qualityCounts || {}).blocking || 0) ? 'ok' : 'info') +
       statCard('特征 fallback', fmtPct(validation.source_fallback_ratio), esc(validation.validation_id || '-'), validation.status || 'unknown') +
       statCard('清洗拒绝', fmtNum(monitor.total_rejected_rows || 0), fmtNum(monitor.run_count || 0) + ' tool runs', (monitor.total_rejected_rows || 0) ? 'warn' : 'ok') +
       '</div>' +
@@ -328,12 +332,21 @@
       renderSourceBlockers(data.blockers || []) +
       '</section>' +
       '<section class="panel wb-panel">' +
-      '<div class="panel-head"><div><h3>特征源分布</h3><div class="muted">' + esc(validation.validated_at || '-') + '</div></div></div>' +
-      renderSourceDistribution(validation.source_distribution || []) +
+      '<div class="panel-head"><div><h3>资产治理标签</h3><div class="muted">coverage / null / model eligibility</div></div></div>' +
+      renderAssetGovernanceCounts(governanceCounts) +
       '</section>' +
       '</div>' +
 
+      '<section class="panel wb-panel">' +
+      '<div class="panel-head"><div><h3>资产用途与质量契约</h3><div class="muted">should it be daily / can it enter model / how nulls are interpreted</div></div></div>' +
+      renderAssetGovernanceTable(assetHealth.items || []) +
+      '</section>' +
+
       '<div class="wb-grid">' +
+      '<section class="panel wb-panel">' +
+      '<div class="panel-head"><div><h3>特征源分布</h3><div class="muted">' + esc(validation.validated_at || '-') + '</div></div></div>' +
+      renderSourceDistribution(validation.source_distribution || []) +
+      '</section>' +
       '<section class="panel wb-panel">' +
       '<div class="panel-head"><div><h3>处理工具监控</h3><div class="muted">accepted / rejected</div></div></div>' +
       renderProcessingMonitorTable(monitor.recent_runs || []) +
@@ -353,6 +366,49 @@
       renderTdxF10CapabilityTable(data.tdx_f10_capabilities || []) +
       '</section>'
     );
+  }
+
+  function renderAssetGovernanceCounts(counts) {
+    counts = counts || {};
+    var parts = [
+      ['coverage', counts.coverage_policy || {}],
+      ['null', counts.null_policy || {}],
+      ['model', counts.model_eligibility || {}],
+      ['gate', counts.quality_gate_level || {}]
+    ];
+    return parts.map(function (part) {
+      return '<div style="margin-bottom:10px"><div class="muted" style="margin-bottom:5px">' + esc(part[0]) + '</div>' +
+        renderKeyValueCounts(part[1]) + '</div>';
+    }).join('');
+  }
+
+  function renderAssetGovernanceTable(rows) {
+    rows = (rows || []).filter(function (row) {
+      return (row.frontend_visibility || 'governance_visible') !== 'hidden_internal';
+    });
+    if (!rows.length) return renderEmpty('暂无资产治理标签');
+    rows = rows.slice().sort(function (a, b) {
+      var gateRank = { blocking: 0, warning: 1, monitor_only: 2 };
+      var ar = gateRank[a.quality_gate_level] == null ? 3 : gateRank[a.quality_gate_level];
+      var br = gateRank[b.quality_gate_level] == null ? 3 : gateRank[b.quality_gate_level];
+      if (ar !== br) return ar - br;
+      return String(a.table_name || '').localeCompare(String(b.table_name || ''));
+    }).slice(0, 80);
+    return '<div class="wb-table-wrap"><table class="data-table data-table-compact wb-table">' +
+      '<thead><tr><th>资产</th><th>健康</th><th>频率/覆盖</th><th>NULL/PIT</th><th>用途</th><th>入模/策略</th></tr></thead><tbody>' +
+      rows.map(function (row) {
+        var gate = row.quality_gate_level || 'monitor_only';
+        var gateTone = gate === 'blocking' ? 'bad' : gate === 'warning' ? 'warn' : 'info';
+        return '<tr>' +
+          '<td><code>' + esc(row.table_name || '-') + '</code><div class="muted">' + esc(row.layer || '-') + ' · ' + esc(row.asset_grain || '-') + '</div></td>' +
+          '<td>' + pill(row.severity || 'unknown', row.severity || 'unknown') + '<div class="muted">' + esc(row.issue_summary || row.upstream_source || '-') + '</div></td>' +
+          '<td>' + esc(row.asset_cadence || row.expected_freshness || '-') + '<div class="muted">' + esc(row.coverage_policy || '-') + '</div></td>' +
+          '<td><code>' + esc(row.null_policy || '-') + '</code><div class="muted">' + esc(row.pit_policy || '-') + '</div></td>' +
+          '<td>' + esc(row.intended_use || '-') + '<div class="muted">' + pill(gate, gateTone) + '</div></td>' +
+          '<td>' + esc(row.model_eligibility || '-') + '<div class="muted">' + esc(row.strategy_eligibility || '-') + '</div></td>' +
+          '</tr>';
+      }).join('') +
+      '</tbody></table></div>';
   }
 
   function renderProcessingMonitorTable(rows) {

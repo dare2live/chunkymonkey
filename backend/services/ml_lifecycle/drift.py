@@ -687,9 +687,11 @@ def write_drift_snapshot(
         return 0
     with get_conn() as conn:
         ensure_drift_snapshot_schema(conn)
-        # 用 SQL 端的 now() 保证 snapshot_at 一致
+        # Use Python time here. DuckDB's now() can require optional timezone
+        # modules in lightweight environments, while the snapshot only needs a
+        # stable run timestamp.
         if snapshot_at is None:
-            snapshot_at = conn.execute("SELECT now()").fetchone()[0]
+            snapshot_at = datetime.utcnow().isoformat(timespec="seconds")
         for r in drift_results:
             conn.execute("""
                 INSERT INTO mart_feature_drift
