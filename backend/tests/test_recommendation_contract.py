@@ -106,7 +106,7 @@ def test_daily_topk_items_include_model_trace(monkeypatch):
         INSERT INTO mart_multidim_model VALUES ('model_a', 0.1, 0.2, 0.3, 0.4, 0.5, 12, '2026-05-04');
         INSERT INTO mart_daily_recommendation VALUES (
             '2026-05-04', '000001', 'model_a', 1, 0.42, 0.99, 'up', 'champion',
-            '{"model_top_features":[{"name":"ret_20d"}],"stock_feature_values":[{"name":"ret_20d","raw_value":0.12,"model_value":0.12}]}',
+            '{"model_top_features":[{"name":"ret_20d"}],"stock_feature_values":[{"name":"ret_20d","raw_value":0.12,"model_value":0.12}],"stock_feature_contributions":[{"name":"ret_20d","raw_value":0.12,"model_value":0.12,"contribution":0.08,"contribution_pct":0.2,"direction":"positive"}],"explanation_status":"exact","base_value":0.10,"additivity_error":0.000001}',
             'primary', TRUE
         );
         INSERT INTO fact_institution_event VALUES ('000001', '平安银行');
@@ -150,6 +150,10 @@ def test_daily_topk_items_include_model_trace(monkeypatch):
     assert item["horizon_evidence"]["top_feature_effects"][0]["feature_name"] == "ma_ratio_60"
     assert item["top_feature_values"][0]["name"] == "ret_20d"
     assert item["top_feature_values"][0]["model_value"] == 0.12
+    assert item["top_feature_contributions"][0]["contribution"] == 0.08
+    assert item["explanation_status"] == "exact"
+    assert item["base_value"] == 0.10
+    assert item["additivity_error"] == 0.000001
 
 
 def test_model_comparison_uses_latest_gated_challenger(monkeypatch):

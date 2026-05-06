@@ -94,6 +94,10 @@
     if (v == null || isNaN(Number(v))) return '-';
     return (Number(v) * 100).toFixed(digits) + '%';
   }
+  function fmtNum(v, digits = 4) {
+    if (v == null || isNaN(Number(v))) return '-';
+    return Number(v).toFixed(digits);
+  }
   function fmtDate(d) {
     if (!d) return '-';
     const s = String(d).replace(/[^0-9]/g, '').slice(0, 8);
@@ -203,6 +207,34 @@
           <th class="sig-num">波动</th>
           <th class="sig-num">样本</th>
           <th>原因</th>
+        </tr></thead>
+        <tbody>${body}</tbody>
+      </table>
+    </div>`;
+  }
+  function renderContributionTable(topk) {
+    const rows = (topk && topk.top_feature_contributions || []).slice(0, 8);
+    if (!rows.length) {
+      return '<div class="cm-muted-note" style="margin-top:10px">暂无精确贡献分解。</div>';
+    }
+    const body = rows.map(row => {
+      const cls = Number(row.contribution || 0) >= 0 ? 'sig-pos' : 'sig-neg';
+      return `<tr>
+        <td><code>${esc(row.name || '-')}</code></td>
+        <td class="sig-num ${cls}">${fmtNum(row.contribution, 5)}</td>
+        <td class="sig-num">${fmtRatioPlain(row.contribution_pct, 1)}</td>
+        <td class="sig-num">${fmtNum(row.model_value, 4)}</td>
+        <td>${esc(row.direction || '-')}</td>
+      </tr>`;
+    }).join('');
+    return `<div class="sig-table-wrap" style="margin-top:12px">
+      <table class="sig-table sig-table-sm">
+        <thead><tr>
+          <th>特征</th>
+          <th class="sig-num">贡献</th>
+          <th class="sig-num">占比</th>
+          <th class="sig-num">模型值</th>
+          <th>方向</th>
         </tr></thead>
         <tbody>${body}</tbody>
       </table>
@@ -666,15 +698,21 @@
       <div class="cm-action-card">
         <div class="cm-action-title">模型</div>
         <p><b>${esc(state.topkMeta?.model_id || '--')}</b></p>
-        <p class="muted">角色 ${esc(modelRoleText(state.topkMeta))} · 日期 ${esc(state.topkMeta?.snapshot_date || '--')}</p>
+        <p class="muted">角色 ${esc(modelRoleText(state.topkMeta))} · 日期 ${esc(state.topkMeta?.snapshot_date || '--')} · ${esc(topk?.explanation_status || 'no explanation')}</p>
       </div>
       <div class="cm-action-card">
         <div class="cm-action-title">个股持股周期</div>
         <p><b>${esc(horizonLabel(topk))}</b></p>
         <p class="muted">${horizon ? '收益优势 ' + fmtRatioPct(horizon.avg_return_advantage) + ' · 回撤 ' + fmtRatioPct(horizon.selected_max_drawdown) : '暂无个股周期证据'}</p>
       </div>
+      <div class="cm-action-card">
+        <div class="cm-action-title">加性校验</div>
+        <p><b>${fmtNum(topk?.base_value, 5)}</b></p>
+        <p class="muted">score ${fmtNum(topk?.pred_score, 5)} · error ${fmtNum(topk?.additivity_error, 8)}</p>
+      </div>
     </div>
     ${topEffects ? '<div class="cm-muted-note" style="margin-top:10px">周期变量影响 ' + topEffects + '</div>' : ''}
+    ${renderContributionTable(topk)}
     ${renderHorizonComparisonTable(horizon)}
     <div id="sv-drawer-model-badge" style="margin-top:12px"></div>`;
     if (global.MultidimBadgeWidget) {

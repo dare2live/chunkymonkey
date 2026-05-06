@@ -235,6 +235,9 @@ async def get_daily_topk(
             )
             stock_feature_values = []
             stock_feature_contributions = []
+            explanation_status = None
+            base_value = None
+            additivity_error = None
             if key_features_cache is None:
                 try:
                     kf = json.loads(r["key_features_json"]) if r["key_features_json"] else {}
@@ -249,6 +252,9 @@ async def get_daily_topk(
                     if isinstance(kf, dict)
                     else []
                 )
+                explanation_status = kf.get("explanation_status") if isinstance(kf, dict) else None
+                base_value = kf.get("base_value") if isinstance(kf, dict) else None
+                additivity_error = kf.get("additivity_error") if isinstance(kf, dict) else None
             except Exception:
                 stock_feature_values = []
                 stock_feature_contributions = []
@@ -277,6 +283,9 @@ async def get_daily_topk(
                     if isinstance(stock_feature_contributions, list)
                     else []
                 ),
+                "explanation_status": explanation_status,
+                "base_value": base_value,
+                "additivity_error": additivity_error,
             })
 
         # 模型元数据
