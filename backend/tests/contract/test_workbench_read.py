@@ -256,6 +256,7 @@ def test_workbench_research_returns_schedule_studies_ranker_and_drift():
                 downside_avg DOUBLE,
                 compounded_return DOUBLE,
                 max_drawdown DOUBLE,
+                path_obs_count INTEGER,
                 horizon_score DOUBLE,
                 rank_in_stock INTEGER,
                 is_best BOOLEAN,
@@ -263,11 +264,11 @@ def test_workbench_research_returns_schedule_studies_ranker_and_drift():
             );
             INSERT INTO mart_stock_horizon_profile VALUES
                 ('stock_profile_latest', 'fact_feature_panel_candidate', 'feature_set_a',
-                 '000001', 'forward_ret_60d', 60, 120, 0.08, 0.06, 0.62, 0.20, -0.03, 0.18, -0.09, 0.124, 1, TRUE, '2026-05-06T07:00:00'),
+                 '000001', 'forward_ret_60d', 60, 120, 0.08, 0.06, 0.62, 0.20, -0.03, 0.18, -0.09, 4, 0.124, 1, TRUE, '2026-05-06T07:00:00'),
                 ('stock_profile_latest', 'fact_feature_panel_candidate', 'feature_set_a',
-                 '000002', 'forward_ret_90d', 90, 120, 0.14, 0.10, 0.68, 0.24, -0.04, 0.31, -0.05, 0.185, 1, TRUE, '2026-05-06T07:00:00'),
+                 '000002', 'forward_ret_90d', 90, 120, 0.14, 0.10, 0.68, 0.24, -0.04, 0.31, -0.05, 3, 0.185, 1, TRUE, '2026-05-06T07:00:00'),
                 ('stock_profile_old', 'fact_feature_panel_candidate', 'feature_set_a',
-                 '000003', 'forward_ret_20d', 20, 80, 0.02, 0.01, 0.51, 0.12, -0.02, 0.05, -0.07, 0.068, 1, TRUE, '2026-05-05T07:00:00');
+                 '000003', 'forward_ret_20d', 20, 80, 0.02, 0.01, 0.51, 0.12, -0.02, 0.05, -0.07, 5, 0.068, 1, TRUE, '2026-05-05T07:00:00');
 
             CREATE TABLE mart_stock_horizon_feature_effect (
                 run_id TEXT,
@@ -318,6 +319,7 @@ def test_workbench_research_returns_schedule_studies_ranker_and_drift():
         assert research["stock_horizon_profile"]["baseline_label"] == "forward_ret_60d"
         assert research["stock_horizon_profile"]["best_count"] == 2
         assert research["stock_horizon_profile"]["horizon_comparison"][0]["avg_max_drawdown"] == pytest.approx(-0.09)
+        assert research["stock_horizon_profile"]["horizon_comparison"][0]["avg_path_obs_count"] == pytest.approx(4.0)
         assert [row["horizon_days"] for row in research["stock_horizon_profile"]["horizon_distribution"]] == [60, 90]
         assert research["stock_horizon_profile"]["horizon_distribution"][0]["is_baseline"] is True
         assert research["stock_horizon_profile"]["top_effects"][0]["feature_name"] == "regime_down"

@@ -82,7 +82,8 @@ def test_stock_horizon_profile_selects_best_horizon_and_feature_effects():
 
         best = conn.execute(
             """
-            SELECT stock_code, label_name, horizon_days, is_best, compounded_return, max_drawdown
+            SELECT stock_code, label_name, horizon_days, is_best,
+                   compounded_return, max_drawdown, path_obs_count
               FROM mart_stock_horizon_profile
              WHERE run_id = 'stock_horizon_unit'
                AND stock_code = '000001'
@@ -108,6 +109,7 @@ def test_stock_horizon_profile_selects_best_horizon_and_feature_effects():
         assert best["horizon_days"] == 90
         assert best["compounded_return"] > 0
         assert best["max_drawdown"] == pytest.approx(0.0)
+        assert best["path_obs_count"] == 1
         assert effect["feature_name"] == "f_good"
         assert effect["abs_corr_rank"] == 1
         assert effect["effect_direction"] == "positive"

@@ -43,6 +43,7 @@ CREATE TABLE IF NOT EXISTS mart_stock_horizon_profile (
     downside_avg DOUBLE,
     compounded_return DOUBLE,
     max_drawdown DOUBLE,
+    path_obs_count INTEGER,
     horizon_score DOUBLE,
     rank_in_stock INTEGER,
     is_best BOOLEAN,
@@ -51,6 +52,7 @@ CREATE TABLE IF NOT EXISTS mart_stock_horizon_profile (
 );
 ALTER TABLE mart_stock_horizon_profile ADD COLUMN IF NOT EXISTS compounded_return DOUBLE;
 ALTER TABLE mart_stock_horizon_profile ADD COLUMN IF NOT EXISTS max_drawdown DOUBLE;
+ALTER TABLE mart_stock_horizon_profile ADD COLUMN IF NOT EXISTS path_obs_count INTEGER;
 CREATE INDEX IF NOT EXISTS idx_stock_horizon_profile_best
     ON mart_stock_horizon_profile(run_id, is_best, horizon_score);
 
@@ -187,6 +189,7 @@ def build_stock_horizon_profile(
     for label in labels:
         label_q = _quote_ident(label)
         horizon = holding_period_from_label(label)
+        horizon_step = max(int(horizon or 1), 1)
         profile_selects.append(
             f"""
             SELECT stock_code,
@@ -199,7 +202,8 @@ def build_stock_horizon_profile(
                    s.volatility,
                    s.downside_avg,
                    d.compounded_return,
-                   d.max_drawdown
+                   d.max_drawdown,
+                   d.path_obs_count
               FROM (
                     SELECT stock_code,
                            COUNT({label_q}) AS obs_count,
@@ -215,6 +219,7 @@ def build_stock_horizon_profile(
                    ) s
               LEFT JOIN (
                     SELECT stock_code,
+                           COUNT(*) AS path_obs_count,
                            MAX(CASE WHEN rn_desc = 1 THEN equity END) - 1.0 AS compounded_return,
                            MIN(equity / NULLIF(peak_equity, 0.0) - 1.0) AS max_drawdown
                       FROM (
@@ -235,7 +240,7 @@ def build_stock_horizon_profile(
                                                    date,
                                                    EXP(SUM(
                                                        CASE
-                                                           WHEN {label_q} > -0.999999 THEN LN(1.0 + {label_q})
+                                                           WHEN sampled_return > -0.999999 THEN LN(1.0 + sampled_return)
                                                            ELSE LN(0.000001)
                                                        END
                                                    ) OVER (
@@ -243,8 +248,23 @@ def build_stock_horizon_profile(
                                                        ORDER BY date
                                                        ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW
                                                    )) AS equity
-                                              FROM stock_horizon_base
-                                             WHERE {label_q} IS NOT NULL
+                                              FROM (
+                                                    SELECT stock_code,
+                                                           date,
+                                                           {label_q} AS sampled_return
+                                                      FROM (
+                                                            SELECT stock_code,
+                                                                   date,
+                                                                   {label_q},
+                                                                   ROW_NUMBER() OVER (
+                                                                       PARTITION BY stock_code
+                                                                       ORDER BY date
+                                                                   ) AS rn
+                                                              FROM stock_horizon_base
+                                                             WHERE {label_q} IS NOT NULL
+                                                           ) ordered_labels
+                                                     WHERE ((rn - 1) % {horizon_step}) = 0
+                                                   ) sampled_labels
                                            ) path
                                    ) with_peak
                            ) drawdown_path
@@ -282,6 +302,7 @@ def build_stock_horizon_profile(
             downside_avg,
             compounded_return,
             max_drawdown,
+            path_obs_count,
             horizon_score,
             rank_in_stock,
             is_best,
@@ -301,6 +322,7 @@ def build_stock_horizon_profile(
                downside_avg,
                compounded_return,
                max_drawdown,
+               path_obs_count,
                horizon_score,
                ROW_NUMBER() OVER (
                    PARTITION BY stock_code

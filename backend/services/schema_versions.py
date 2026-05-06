@@ -97,7 +97,7 @@ MART_VERSIONS = {
     "mart_feature_drift_root_cause_summary": "v1",
     "mart_feature_drift_mitigation_panel_build": "v1",
     "mart_hybrid_feature_panel_build": "v1",
-    "mart_stock_horizon_profile": "v2",
+    "mart_stock_horizon_profile": "v3",
     "mart_stock_horizon_feature_effect": "v2",
     "mart_feature_candidate_score": "v1",
     "mart_feature_group_ablation": "v2",

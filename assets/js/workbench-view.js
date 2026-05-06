@@ -732,16 +732,17 @@
   function renderHorizonComparisonTable(rows) {
     if (!rows.length) return renderEmpty('暂无周期对比');
     return '<div class="wb-table-wrap"><table class="data-table data-table-compact wb-table">' +
-      '<thead><tr><th>周期对比</th><th>股票数</th><th>均值收益</th><th>复合收益</th><th>最大回撤</th><th>胜率</th><th>波动</th><th>评分</th></tr></thead><tbody>' +
+      '<thead><tr><th>周期对比</th><th>股票数</th><th>均值收益</th><th>路径收益</th><th>最大回撤</th><th>胜率</th><th>波动</th><th>路径观测</th><th>评分</th></tr></thead><tbody>' +
       rows.map(function (row) {
         return '<tr>' +
           '<td>' + fmtNum(row.horizon_days) + 'd ' + (row.is_baseline ? pill('baseline', 'ok') : '') + '<div class="muted">' + esc(row.label_name || '-') + '</div></td>' +
           '<td>' + fmtNum(row.stock_count || 0) + '</td>' +
           '<td>' + fmtPct(row.avg_return) + '</td>' +
-          '<td>' + fmtPct(row.avg_compounded_return) + '</td>' +
-          '<td>' + fmtPct(row.avg_max_drawdown) + '</td>' +
+          '<td>' + fmtPct(row.avg_compounded_return) + '<div class="muted">med ' + fmtPct(row.median_compounded_return) + '</div></td>' +
+          '<td>' + fmtPct(row.avg_max_drawdown) + '<div class="muted">med ' + fmtPct(row.median_max_drawdown) + '</div></td>' +
           '<td>' + fmtPct(row.avg_win_rate) + '</td>' +
           '<td>' + fmtPct(row.avg_volatility) + '</td>' +
+          '<td>' + fmtFloat(row.avg_path_obs_count, 1) + '</td>' +
           '<td>' + fmtFloat(row.avg_horizon_score, 4) + '</td>' +
           '</tr>';
       }).join('') +
@@ -751,13 +752,14 @@
   function renderHorizonDistributionTable(rows) {
     if (!rows.length) return renderEmpty('暂无周期分布');
     return '<div class="wb-table-wrap"><table class="data-table data-table-compact wb-table">' +
-      '<thead><tr><th>最佳周期分布</th><th>股票数</th><th>均值收益</th><th>最大回撤</th><th>胜率</th><th>波动</th><th>评分</th></tr></thead><tbody>' +
+      '<thead><tr><th>最佳周期分布</th><th>股票数</th><th>均值收益</th><th>路径收益</th><th>最大回撤</th><th>胜率</th><th>波动</th><th>评分</th></tr></thead><tbody>' +
       rows.map(function (row) {
         return '<tr>' +
           '<td>' + fmtNum(row.horizon_days) + 'd ' + (row.is_baseline ? pill('baseline', 'ok') : '') + '<div class="muted">' + esc(row.label_name || '-') + '</div></td>' +
           '<td>' + fmtNum(row.stock_count || 0) + '</td>' +
           '<td>' + fmtPct(row.avg_return) + '</td>' +
-          '<td>' + fmtPct(row.avg_max_drawdown) + '</td>' +
+          '<td>' + fmtPct(row.avg_compounded_return) + '<div class="muted">med ' + fmtPct(row.median_compounded_return) + '</div></td>' +
+          '<td>' + fmtPct(row.avg_max_drawdown) + '<div class="muted">med ' + fmtPct(row.median_max_drawdown) + '</div></td>' +
           '<td>' + fmtPct(row.avg_win_rate) + '</td>' +
           '<td>' + fmtPct(row.avg_volatility) + '</td>' +
           '<td>' + fmtFloat(row.avg_horizon_score, 4) + '</td>' +
@@ -807,16 +809,18 @@
   function renderBestStockHorizonTable(rows) {
     if (!rows.length) return renderEmpty('暂无样本股票');
     return '<div class="wb-table-wrap" style="margin-top:12px"><table class="data-table data-table-compact wb-table">' +
-      '<thead><tr><th>样本股票</th><th>最佳周期</th><th>评分</th><th>均值收益</th><th>最大回撤</th><th>胜率</th><th>波动</th></tr></thead><tbody>' +
+      '<thead><tr><th>样本股票</th><th>最佳周期</th><th>评分</th><th>均值收益</th><th>路径收益</th><th>最大回撤</th><th>胜率</th><th>波动</th><th>路径观测</th></tr></thead><tbody>' +
       rows.map(function (row) {
         return '<tr>' +
           '<td><code>' + esc(row.stock_code || '-') + '</code></td>' +
           '<td>' + fmtNum(row.horizon_days) + 'd ' + (row.is_baseline ? pill('baseline', 'ok') : '') + '<div class="muted">' + esc(row.label_name || '-') + '</div></td>' +
           '<td>' + fmtFloat(row.horizon_score, 4) + '</td>' +
           '<td>' + fmtPct(row.avg_return) + '</td>' +
+          '<td>' + fmtPct(row.compounded_return) + '</td>' +
           '<td>' + fmtPct(row.max_drawdown) + '</td>' +
           '<td>' + fmtPct(row.win_rate) + '</td>' +
           '<td>' + fmtPct(row.volatility) + '</td>' +
+          '<td>' + fmtNum(row.path_obs_count || 0) + '</td>' +
           '</tr>';
       }).join('') +
       '</tbody></table></div>';

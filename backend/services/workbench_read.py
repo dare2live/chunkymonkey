@@ -391,6 +391,7 @@ def _stock_horizon_profile(conn: Any, *, stock_limit: int = 12, effect_limit: in
         return {**empty, "run_id": run_id}
     compounded_expr = "compounded_return" if "compounded_return" in profile_cols else "NULL"
     max_drawdown_expr = "max_drawdown" if "max_drawdown" in profile_cols else "NULL"
+    path_obs_expr = "path_obs_count" if "path_obs_count" in profile_cols else "NULL"
 
     counts = conn.execute(
         """
@@ -409,7 +410,10 @@ def _stock_horizon_profile(conn: Any, *, stock_limit: int = 12, effect_limit: in
                AVG(horizon_score) AS avg_horizon_score,
                AVG(avg_return) AS avg_return,
                AVG({compounded_expr}) AS avg_compounded_return,
+               MEDIAN({compounded_expr}) AS median_compounded_return,
                AVG({max_drawdown_expr}) AS avg_max_drawdown,
+               MEDIAN({max_drawdown_expr}) AS median_max_drawdown,
+               AVG({path_obs_expr}) AS avg_path_obs_count,
                AVG(win_rate) AS avg_win_rate,
                AVG(volatility) AS avg_volatility,
                AVG(obs_count) AS avg_obs_count
@@ -428,7 +432,10 @@ def _stock_horizon_profile(conn: Any, *, stock_limit: int = 12, effect_limit: in
                AVG(horizon_score) AS avg_horizon_score,
                AVG(avg_return) AS avg_return,
                AVG({compounded_expr}) AS avg_compounded_return,
+               MEDIAN({compounded_expr}) AS median_compounded_return,
                AVG({max_drawdown_expr}) AS avg_max_drawdown,
+               MEDIAN({max_drawdown_expr}) AS median_max_drawdown,
+               AVG({path_obs_expr}) AS avg_path_obs_count,
                AVG(win_rate) AS avg_win_rate,
                AVG(volatility) AS avg_volatility,
                AVG(obs_count) AS avg_obs_count
@@ -449,6 +456,7 @@ def _stock_horizon_profile(conn: Any, *, stock_limit: int = 12, effect_limit: in
                avg_return,
                {compounded_expr} AS compounded_return,
                {max_drawdown_expr} AS max_drawdown,
+               {path_obs_expr} AS path_obs_count,
                win_rate,
                volatility,
                horizon_score
@@ -563,7 +571,10 @@ def _stock_horizon_profile(conn: Any, *, stock_limit: int = 12, effect_limit: in
                 "avg_horizon_score": row["avg_horizon_score"],
                 "avg_return": row["avg_return"],
                 "avg_compounded_return": row["avg_compounded_return"],
+                "median_compounded_return": row["median_compounded_return"],
                 "avg_max_drawdown": row["avg_max_drawdown"],
+                "median_max_drawdown": row["median_max_drawdown"],
+                "avg_path_obs_count": row["avg_path_obs_count"],
                 "avg_win_rate": row["avg_win_rate"],
                 "avg_volatility": row["avg_volatility"],
                 "avg_obs_count": row["avg_obs_count"],
@@ -579,7 +590,10 @@ def _stock_horizon_profile(conn: Any, *, stock_limit: int = 12, effect_limit: in
                 "avg_horizon_score": row["avg_horizon_score"],
                 "avg_return": row["avg_return"],
                 "avg_compounded_return": row["avg_compounded_return"],
+                "median_compounded_return": row["median_compounded_return"],
                 "avg_max_drawdown": row["avg_max_drawdown"],
+                "median_max_drawdown": row["median_max_drawdown"],
+                "avg_path_obs_count": row["avg_path_obs_count"],
                 "avg_win_rate": row["avg_win_rate"],
                 "avg_volatility": row["avg_volatility"],
                 "avg_obs_count": row["avg_obs_count"],
@@ -596,6 +610,7 @@ def _stock_horizon_profile(conn: Any, *, stock_limit: int = 12, effect_limit: in
                 "avg_return": row["avg_return"],
                 "compounded_return": row["compounded_return"],
                 "max_drawdown": row["max_drawdown"],
+                "path_obs_count": row["path_obs_count"],
                 "win_rate": row["win_rate"],
                 "volatility": row["volatility"],
                 "horizon_score": row["horizon_score"],
