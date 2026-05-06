@@ -26,7 +26,8 @@ def _seed_price_rows(conn, *, days: int = 100) -> None:
             low DOUBLE,
             close DOUBLE,
             volume DOUBLE,
-            amount DOUBLE
+            amount DOUBLE,
+            factor DOUBLE
         )
         """
     )
@@ -47,13 +48,14 @@ def _seed_price_rows(conn, *, days: int = 100) -> None:
                 close,
                 100.0,
                 close * 100.0,
+                1.0,
             )
         )
-    conn.executemany("INSERT INTO market.price_kline_tdxhub VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", rows)
+    conn.executemany("INSERT INTO market.price_kline_tdxhub VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", rows)
     conn.execute(
         """
         CREATE VIEW market.v_price_kline_qfq AS
-        SELECT code, date, freq, adjust, open, high, low, close, volume, amount
+        SELECT code, date, freq, adjust, open, high, low, close, volume, amount, factor
           FROM market.price_kline_tdxhub
         """
     )

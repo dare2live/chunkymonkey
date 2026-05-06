@@ -16,11 +16,12 @@ def test_pricing_label_policy_loads_vwap_follow_contract():
     policy = load_pricing_label_policy()
 
     assert policy.policy_id == "pricing_label_policy_vwap_follow_v1"
-    assert policy.event_calc_version == "v3_qfq_vwap_entry_dual_cost"
+    assert policy.event_calc_version == "v4_qfq_factor_adjusted_vwap_entry_dual_cost"
     assert policy.follow_entry_price_mode == "entry_day_vwap_qfq"
     assert policy.follow_entry_ref_price_mode == "entry_day_vwap_qfq_fallback_open"
     assert policy.transaction_cost_bps == 10.0
     assert policy.to_dict()["portfolio_transaction_cost"]["meaning"] == "execution_friction_only_not_entry_price"
+    assert policy.to_dict()["follow_entry"]["qfq_factor_adjustment_required_for_hand_volume"] is True
     assert policy.follow_exit_default == "horizon_end_vwap_qfq"
     assert policy.follow_exit_needs_definition is False
     assert policy.alpha_forward_label_needs_migration_review is False
@@ -49,7 +50,7 @@ def test_pricing_label_policy_records_db_snapshot():
 
         assert payload["policy_id"] == "pricing_label_policy_vwap_follow_v1"
         assert row["policy_id"] == "pricing_label_policy_vwap_follow_v1"
-        assert row["event_calc_version"] == "v3_qfq_vwap_entry_dual_cost"
+        assert row["event_calc_version"] == "v4_qfq_factor_adjusted_vwap_entry_dual_cost"
         assert row["follow_entry_price_mode"] == "entry_day_vwap_qfq"
         assert row["follow_entry_ref_price_mode"] == "entry_day_vwap_qfq_fallback_open"
         assert json.loads(row["policy_json"])["production_rules"]["stale_on_policy_change"] is True
@@ -149,7 +150,7 @@ def test_pricing_label_data_readiness_gate_passes_when_follow_labels_and_policy_
                 calc_ref_price_mode TEXT
             );
             INSERT INTO fact_institution_event VALUES
-                ('2026-01-01', 'v3_qfq_vwap_entry_dual_cost', 'entry_day_vwap_qfq_fallback_open');
+                ('2026-01-01', 'v4_qfq_factor_adjusted_vwap_entry_dual_cost', 'entry_day_vwap_qfq_fallback_open');
 
             CREATE TABLE mart_multidim_model (
                 model_id TEXT,

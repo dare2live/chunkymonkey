@@ -1,6 +1,8 @@
 import sys
 from pathlib import Path
 
+import pytest
+
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from services.portfolio_backtest import (  # noqa: E402
@@ -48,4 +50,7 @@ def test_run_portfolio_backtest_reports_empty_signals():
 
 def test_default_execution_price_prefers_vwap_with_open_fallback():
     assert _resolve_execution_price({"open": 9.8, "close": 10.0, "amount": 1000.0, "volume": 100.0}) == 10.0
+    assert _resolve_execution_price(
+        {"open": 789.0, "close": 810.5583, "amount": 4584230912.0, "volume": 173308.0, "factor": 3.0357990066842}
+    ) == pytest.approx(803.0099)
     assert _resolve_execution_price({"open": 9.8, "close": 10.0, "amount": None, "volume": None}) == 9.8

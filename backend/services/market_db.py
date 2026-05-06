@@ -22,7 +22,9 @@ _DB_DIR = Path(__file__).resolve().parent.parent.parent / "data"
 _DB_PATH = _DB_DIR / "market.duckdb"
 KLINE_DAILY_QFQ_POLICY = get_capability_policy("kline_daily")
 CANONICAL_KLINE_QFQ_RELATION = KLINE_DAILY_QFQ_POLICY.canonical_relation or "market.v_price_kline_qfq"
-DEFAULT_KLINE_DAILY_QFQ_COLUMNS = ("code", "date", "open", "high", "low", "close", "volume", "amount")
+DEFAULT_KLINE_DAILY_QFQ_COLUMNS = (
+    "code", "date", "open", "high", "low", "close", "volume", "amount", "factor",
+)
 
 
 def get_canonical_kline_qfq_relation(schema: Optional[str] = None) -> str:
@@ -45,7 +47,7 @@ def canonical_kline_daily_qfq_sql(
     """Return the canonical daily qfq K-line SELECT used by analytical jobs."""
     relation = relation or CANONICAL_KLINE_QFQ_RELATION
     allowed = {
-        "code", "date", "open", "high", "low", "close", "volume", "amount",
+        "code", "date", "open", "high", "low", "close", "volume", "amount", "factor",
         "freq", "adjust",
     }
     selected = []
@@ -117,6 +119,7 @@ WITH primary_rows AS (
         close,
         volume,
         amount,
+        COALESCE(factor, 1.0) AS factor,
         COALESCE(NULLIF(source, ''), 'tdxhub') AS source_name,
         1::SMALLINT AS source_tier,
         FALSE AS is_fallback,
@@ -145,6 +148,7 @@ fallback_rows AS (
         f.close,
         f.volume,
         f.amount,
+        1.0 AS factor,
         COALESCE(NULLIF(f.source, ''), 'akshare_multi_source') AS source_name,
         3::SMALLINT AS source_tier,
         TRUE AS is_fallback,
@@ -285,13 +289,28 @@ def init_market_db():
 # Read Functions
 # ---------------------------------------------------------------------------
 
-_PRICE_FIELDS = {"open", "high", "low", "close", "volume", "amount"}
+_PRICE_FIELDS = {"open", "high", "low", "close", "volume", "amount", "factor"}
 
 
 def _quote_price_field(field: str) -> str:
     if field not in _PRICE_FIELDS:
         raise ValueError(f"unsupported price field: {field}")
     return f'"{field}"'
+
+
+def _relation_has_column(conn, relation: str, column: str) -> bool:
+    try:
+        rows = conn.execute(f"DESCRIBE {relation}").fetchall()
+    except Exception:
+        return False
+    for row in rows:
+        try:
+            name = row["column_name"]
+        except Exception:
+            name = row[0]
+        if str(name).lower() == column.lower():
+            return True
+    return False
 
 
 def get_kline(conn, code: str, date: str, freq: str = "daily",
@@ -320,10 +339,12 @@ def get_kline(conn, code: str, date: str, freq: str = "daily",
 
 def get_kline_range(conn, code: str, start: str, end: str,
                     freq: str = "daily") -> "list[dict]":
-    """区间查询：返回 [{date, open, high, low, close, volume, amount}]"""
+    """区间查询：返回 [{date, open, high, low, close, volume, amount, factor}]"""
     relation = get_canonical_kline_qfq_relation() if freq == "daily" else "price_kline"
+    has_factor = freq == "daily" and _relation_has_column(conn, relation, "factor")
+    factor_expr = "COALESCE(factor, 1.0) AS factor" if has_factor else "1.0 AS factor"
     rows = conn.execute(
-        "SELECT date, open, high, low, close, volume, amount "
+        f"SELECT date, open, high, low, close, volume, amount, {factor_expr} "
         f"FROM {relation} "
         "WHERE code=? AND freq=? AND adjust='qfq' AND date>=? AND date<=? "
         "ORDER BY date",

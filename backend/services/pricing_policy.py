@@ -110,6 +110,7 @@ class PricingLabelPolicy:
     follow_entry_fallbacks: tuple[str, ...]
     follow_volume_unit_guard: bool
     follow_volume_hand_adjustment_allowed: bool
+    follow_qfq_factor_adjustment_required_for_hand_volume: bool
     follow_exit_default: str
     follow_exit_needs_definition: bool
     alpha_forward_label_current: str
@@ -148,6 +149,9 @@ class PricingLabelPolicy:
                 "fallbacks": list(self.follow_entry_fallbacks),
                 "volume_unit_guard": self.follow_volume_unit_guard,
                 "volume_hand_adjustment_allowed": self.follow_volume_hand_adjustment_allowed,
+                "qfq_factor_adjustment_required_for_hand_volume": (
+                    self.follow_qfq_factor_adjustment_required_for_hand_volume
+                ),
                 "ref_price_mode": self.follow_entry_ref_price_mode,
             },
             "follow_exit": {
@@ -231,6 +235,8 @@ class PricingLabelPolicy:
             warnings.append("follow_vwap_volume_unit_guard_disabled")
         if not self.follow_volume_hand_adjustment_allowed:
             warnings.append("follow_vwap_hand_volume_adjustment_disabled")
+        if not self.follow_qfq_factor_adjustment_required_for_hand_volume:
+            warnings.append("follow_vwap_qfq_factor_adjustment_disabled")
         return warnings
 
 
@@ -317,6 +323,9 @@ def load_pricing_label_policy(path: str | Path | None = None) -> PricingLabelPol
         follow_entry_fallbacks=_as_tuple(follow_entry.get("fallbacks") or ("entry_day_open_qfq",)),
         follow_volume_unit_guard=bool(follow_entry.get("volume_unit_guard", True)),
         follow_volume_hand_adjustment_allowed=bool(follow_entry.get("volume_hand_adjustment_allowed", True)),
+        follow_qfq_factor_adjustment_required_for_hand_volume=bool(
+            follow_entry.get("qfq_factor_adjustment_required_for_hand_volume", True)
+        ),
         follow_exit_default=str(follow_exit.get("default") or "horizon_end_close_qfq"),
         follow_exit_needs_definition=bool(follow_exit.get("needs_definition", True)),
         alpha_forward_label_current=str(

@@ -99,7 +99,7 @@ def load_price_panel(
         placeholders = ",".join("?" for _ in stock_codes)
         rows = conn.execute(
             f"""
-            SELECT code, date, open, high, low, close
+            SELECT code, date, open, high, low, close, volume, amount, factor
             FROM {KLINE_DAILY_QFQ_RELATION}
             WHERE freq='daily' AND adjust='qfq'
               AND code IN ({placeholders})
@@ -138,9 +138,13 @@ def _entry_price(row: dict, mode: str) -> tuple[Optional[float], str]:
             close = _safe_float(row.get("close"))
             if close is None or close <= 0 or 0.5 <= vwap / close <= 1.5:
                 return vwap, "entry_day_vwap_qfq"
-            adjusted = vwap / 100.0
-            if 0.5 <= adjusted / close <= 1.5:
-                return adjusted, "entry_day_vwap_qfq_volume_hand_adjusted"
+            hand_adjusted = vwap / 100.0
+            factor = _safe_float(row.get("factor")) or 1.0
+            factor_adjusted = hand_adjusted * factor
+            if abs(factor - 1.0) > 1e-9 and 0.5 <= factor_adjusted / close <= 1.5:
+                return factor_adjusted, "entry_day_vwap_qfq_volume_hand_factor_adjusted"
+            if 0.5 <= hand_adjusted / close <= 1.5:
+                return hand_adjusted, "entry_day_vwap_qfq_volume_hand_adjusted"
         return _safe_float(row.get("open")), "entry_day_vwap_qfq_fallback_open"
     raise ValueError(f"unsupported entry_price_mode: {mode}")
 

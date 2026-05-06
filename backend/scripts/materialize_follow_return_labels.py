@@ -22,6 +22,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from services.analytics import duck_connection  # noqa: E402
 from services.market_db import canonical_kline_daily_qfq_sql  # noqa: E402
 from services.pipeline_manifest import git_commit_sha, record_pipeline_run, utc_now_iso  # noqa: E402
+from services.pricing_sql import qfq_vwap_expr  # noqa: E402
 from services.pricing_policy import load_pricing_label_policy  # noqa: E402
 from services.schema_versions import record_actual_version  # noqa: E402
 
@@ -247,6 +248,12 @@ def _build_daily_label_table(conn: Any, *, horizons: list[int], transaction_cost
             """
         )
     kline_sql = canonical_kline_daily_qfq_sql()
+    qfq_vwap_sql = qfq_vwap_expr(
+        amount="amount",
+        volume="volume",
+        close="close",
+        factor="factor",
+    )
     conn.execute("DROP TABLE IF EXISTS __follow_return_label_daily")
     conn.execute(
         f"""
@@ -256,38 +263,15 @@ def _build_daily_label_table(conn: Any, *, horizons: list[int], transaction_cost
                    CAST(date AS TEXT) AS date,
                    CAST(open AS DOUBLE) AS open,
                    CAST(close AS DOUBLE) AS close,
-                   CASE
-                     WHEN amount IS NOT NULL AND volume IS NOT NULL
-                      AND amount > 0 AND volume > 0
-                     THEN CAST(amount AS DOUBLE) / CAST(volume AS DOUBLE)
-                     ELSE NULL
-                   END AS raw_vwap
+                   CAST(volume AS DOUBLE) AS volume,
+                   CAST(amount AS DOUBLE) AS amount,
+                   CAST(factor AS DOUBLE) AS factor
               FROM ({kline_sql}) k
         ),
         px AS (
             SELECT stock_code, date,
-                   CASE
-                     WHEN raw_vwap IS NOT NULL AND close > 0
-                      AND raw_vwap / close BETWEEN 0.5 AND 1.5
-                     THEN raw_vwap
-                     WHEN raw_vwap IS NOT NULL AND close > 0
-                      AND (raw_vwap / 100.0) / close BETWEEN 0.5 AND 1.5
-                     THEN raw_vwap / 100.0
-                     WHEN open > 0
-                     THEN open
-                     ELSE NULL
-                   END AS entry_price,
-                   CASE
-                     WHEN raw_vwap IS NOT NULL AND close > 0
-                      AND raw_vwap / close BETWEEN 0.5 AND 1.5
-                     THEN raw_vwap
-                     WHEN raw_vwap IS NOT NULL AND close > 0
-                      AND (raw_vwap / 100.0) / close BETWEEN 0.5 AND 1.5
-                     THEN raw_vwap / 100.0
-                     WHEN close > 0
-                     THEN close
-                     ELSE NULL
-                   END AS exit_price
+                   COALESCE({qfq_vwap_sql}, open) AS entry_price,
+                   COALESCE({qfq_vwap_sql}, close) AS exit_price
               FROM raw_px
         ),
         indexed_px AS (

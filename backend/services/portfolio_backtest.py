@@ -414,13 +414,17 @@ def _resolve_execution_price(row) -> float | None:
     amount = _safe_float(row["amount"] if isinstance(row, dict) else row[2])
     volume = _safe_float(row["volume"] if isinstance(row, dict) else row[3])
     close = _safe_float(row["close"] if isinstance(row, dict) else row[1])
+    factor = _safe_float(row.get("factor") if isinstance(row, dict) else (row[4] if len(row) > 4 else None)) or 1.0
     if amount and volume:
         vwap = amount / volume
         if close is None or 0.5 <= vwap / close <= 1.5:
             return vwap
-        adjusted = vwap / 100.0
-        if 0.5 <= adjusted / close <= 1.5:
-            return adjusted
+        hand_adjusted = vwap / 100.0
+        factor_adjusted = hand_adjusted * factor
+        if abs(factor - 1.0) > 1e-9 and 0.5 <= factor_adjusted / close <= 1.5:
+            return factor_adjusted
+        if 0.5 <= hand_adjusted / close <= 1.5:
+            return hand_adjusted
     return _safe_float(row["open"] if isinstance(row, dict) else row[0])
 
 
@@ -437,7 +441,7 @@ def make_default_price_fn():
         try:
             r = mc.execute(
                 f"""
-                SELECT open, close, amount, volume FROM {relation}
+                SELECT open, close, amount, volume, COALESCE(factor, 1.0) AS factor FROM {relation}
                  WHERE code = ? AND date = ?
                    AND freq = 'daily' AND adjust = 'qfq'
                  LIMIT 1

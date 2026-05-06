@@ -2085,6 +2085,128 @@ def _check_feature_table(
     return evidence
 
 
+def _check_feature_table_kline_alignment(
+    conn: Any,
+    table_name: str,
+    details: list[dict[str, Any]],
+    blockers: list[str],
+    warnings: list[str],
+    *,
+    example_limit: int,
+) -> dict[str, Any]:
+    columns = _table_columns(conn, table_name)
+    required = {"stock_code", "date", "close"}
+    if not required <= set(columns):
+        return {"checked": False, "reason": "feature table does not expose stock_code/date/close"}
+    attached = attach_market_if_available(conn)
+    kline_table = "market.v_price_kline_qfq"
+    if not attached or not _table_exists(conn, kline_table):
+        item = _detail(
+            domain="feature_panel_kline",
+            table_name=table_name,
+            check_name="canonical_kline_available",
+            status="fail",
+            reason="feature panel K-line alignment requires canonical TDXHub K-line view",
+        )
+        _append_outcome(item, details=details, blockers=blockers, warnings=warnings)
+        return {"checked": False, "market_attached": attached}
+
+    relation = _quote_table(table_name)
+    row_count = _count_rows(conn, table_name)
+    panel_source_name_expr = "p.kline_source_name" if "kline_source_name" in columns else "NULL"
+    panel_source_tier_expr = "p.kline_source_tier" if "kline_source_tier" in columns else "NULL"
+    panel_is_fallback_expr = "p.kline_is_fallback" if "kline_is_fallback" in columns else "NULL"
+    join_sql = f"""
+        FROM {relation} p
+        LEFT JOIN {_quote_table(kline_table)} k
+          ON k.code = p.stock_code
+         AND k.date = p.date
+         AND k.freq = 'daily'
+         AND k.adjust = 'qfq'
+    """
+    checks = {
+        "missing_canonical_kline": "k.code IS NULL",
+        "close_mismatch_with_canonical_kline": (
+            "k.code IS NOT NULL AND (p.close IS NULL OR ABS(CAST(p.close AS DOUBLE) - CAST(k.close AS DOUBLE)) > 1e-4)"
+        ),
+        "canonical_kline_fallback_used": (
+            "k.code IS NOT NULL AND (COALESCE(k.is_fallback, FALSE) OR COALESCE(k.source_tier, 99) <> 1)"
+        ),
+    }
+    if {"kline_source_tier", "kline_is_fallback"} <= set(columns):
+        checks["panel_kline_lineage_stale"] = (
+            "k.code IS NOT NULL AND ("
+            "COALESCE(p.kline_is_fallback, FALSE) <> COALESCE(k.is_fallback, FALSE) "
+            "OR COALESCE(p.kline_source_tier, 99) <> COALESCE(k.source_tier, 99)"
+            ")"
+        )
+
+    evidence: dict[str, Any] = {"checked": True, "row_count": row_count}
+    for check_name, predicate in checks.items():
+        violation_count = int(
+            _row_value(
+                conn.execute(f"SELECT COUNT(*) AS n {join_sql} WHERE {predicate}").fetchone(),
+                "n",
+                0,
+            )
+            or 0
+        )
+        examples: list[dict[str, Any]] = []
+        if violation_count:
+            rows = conn.execute(
+                f"""
+                SELECT p.stock_code,
+                       p.date,
+                       p.close AS panel_close,
+                       {panel_source_name_expr} AS panel_source_name,
+                       {panel_source_tier_expr} AS panel_source_tier,
+                       {panel_is_fallback_expr} AS panel_is_fallback,
+                       k.close AS canonical_close,
+                       k.source_name AS canonical_source_name,
+                       k.source_tier AS canonical_source_tier,
+                       k.is_fallback AS canonical_is_fallback
+                  {join_sql}
+                 WHERE {predicate}
+                 ORDER BY p.date DESC, p.stock_code
+                 LIMIT ?
+                """,
+                (example_limit,),
+            ).fetchall()
+            examples = [
+                {
+                    "stock_code": _row_value(row, "stock_code", 0),
+                    "date": _row_value(row, "date", 1),
+                    "panel_close": _row_value(row, "panel_close", 2),
+                    "panel_source_name": _row_value(row, "panel_source_name", 3),
+                    "panel_source_tier": _row_value(row, "panel_source_tier", 4),
+                    "panel_is_fallback": _row_value(row, "panel_is_fallback", 5),
+                    "canonical_close": _row_value(row, "canonical_close", 6),
+                    "canonical_source_name": _row_value(row, "canonical_source_name", 7),
+                    "canonical_source_tier": _row_value(row, "canonical_source_tier", 8),
+                    "canonical_is_fallback": _row_value(row, "canonical_is_fallback", 9),
+                }
+                for row in rows
+            ]
+        item = _detail(
+            domain="feature_panel_kline",
+            table_name=table_name,
+            column_name="close",
+            check_name=check_name,
+            status="pass" if violation_count == 0 else "fail",
+            row_count=row_count,
+            violation_count=violation_count,
+            reason=(
+                None
+                if violation_count == 0
+                else "feature panel price and K-line lineage must match canonical primary TDXHub K-line"
+            ),
+            examples=examples,
+        )
+        _append_outcome(item, details=details, blockers=blockers, warnings=warnings)
+        evidence[check_name] = violation_count
+    return evidence
+
+
 def _check_market_kline(
     conn: Any,
     details: list[dict[str, Any]],
@@ -3049,6 +3171,15 @@ def record_global_data_quality_gate(
             example_limit=example_limit,
             strict_nulls=strict_feature_nulls,
         )
+        if include_market:
+            evidence["feature_tables"][table_name]["kline_alignment"] = _check_feature_table_kline_alignment(
+                conn,
+                table_name,
+                details,
+                blockers,
+                warnings,
+                example_limit=example_limit,
+            )
         stage_timings[f"feature_table_scan:{table_name}_s"] = round(time.perf_counter() - stage_started, 3)
         _emit_progress(
             f"feature_table_scan done table={table_name} "

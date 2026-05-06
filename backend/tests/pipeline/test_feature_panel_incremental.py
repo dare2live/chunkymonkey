@@ -34,6 +34,7 @@ def _create_sources(con) -> None:
             close DOUBLE,
             volume DOUBLE,
             amount DOUBLE,
+            factor DOUBLE,
             freq TEXT,
             adjust TEXT,
             source_name TEXT,
@@ -42,7 +43,7 @@ def _create_sources(con) -> None:
         );
         CREATE VIEW market.v_price_kline_qfq AS
             SELECT code, date, freq, adjust, open, high, low, close, volume, amount,
-                   source_name, source_tier, is_fallback
+                   factor, source_name, source_tier, is_fallback
             FROM market.price_kline_tdxhub;
         CREATE TABLE smartmoney.dim_trading_calendar (
             trade_date TEXT PRIMARY KEY,
@@ -128,6 +129,7 @@ def _insert_days(con, start: date, count: int) -> list[str]:
                     close,
                     1000.0 + idx * 10 + offset,
                     1_000_000.0 + idx * 1000 + offset,
+                    1.0,
                     "daily",
                     "qfq",
                     "tdxhub",
@@ -138,7 +140,7 @@ def _insert_days(con, start: date, count: int) -> list[str]:
             if code != "510300":
                 margin_rows.append((code, day if idx % 2 else _yyyymmdd(day), 1000.0 + idx * 5 + offset))
     con.executemany("INSERT OR REPLACE INTO smartmoney.dim_trading_calendar VALUES (?, ?)", calendar_rows)
-    con.executemany("INSERT INTO market.price_kline_tdxhub VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", kline_rows)
+    con.executemany("INSERT INTO market.price_kline_tdxhub VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", kline_rows)
     con.executemany("INSERT INTO smartmoney.raw_margin_daily VALUES (?, ?, ?)", margin_rows)
     return days
 

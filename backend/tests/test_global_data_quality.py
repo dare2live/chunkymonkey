@@ -69,6 +69,71 @@ def test_global_data_quality_gate_blocks_any_unclassified_feature_null() -> None
         assert "not classified" in detail["reason"]
 
 
+def test_global_data_quality_gate_blocks_stale_feature_panel_kline_lineage() -> None:
+    with duck_mem() as conn:
+        _seed_calendar(conn)
+        conn.executescript(
+            """
+            CREATE SCHEMA market;
+            CREATE TABLE market.v_price_kline_qfq (
+                code TEXT,
+                date TEXT,
+                freq TEXT,
+                adjust TEXT,
+                open DOUBLE,
+                high DOUBLE,
+                low DOUBLE,
+                close DOUBLE,
+                volume DOUBLE,
+                amount DOUBLE,
+                factor DOUBLE,
+                source_name TEXT,
+                source_tier INTEGER,
+                is_fallback BOOLEAN
+            );
+            INSERT INTO market.v_price_kline_qfq VALUES
+                ('000001', '2026-01-02', 'daily', 'qfq', 10, 11, 9, 10.5, 1000, 10500, 1.0, 'tdxhub', 1, FALSE);
+            CREATE TABLE fact_feature_panel (
+                stock_code TEXT,
+                date TEXT,
+                close DOUBLE,
+                amount_20d DOUBLE,
+                follow_net_return_60d DOUBLE,
+                kline_source_name TEXT,
+                kline_source_tier INTEGER,
+                kline_is_fallback BOOLEAN
+            );
+            INSERT INTO fact_feature_panel VALUES
+                ('000001', '2026-01-02', 9.9, 10.0, 0.05, 'eastmoney', 3, TRUE);
+            """
+        )
+
+        result = record_global_data_quality_gate(
+            conn,
+            gate_run_id="global_dq_kline_alignment_unit",
+            feature_tables=["fact_feature_panel"],
+            include_market=True,
+            include_institution_events=False,
+            include_pipeline_performance=False,
+        )
+        failed_checks = {
+            row["check_name"]: row["violation_count"]
+            for row in conn.execute(
+                """
+                SELECT check_name, violation_count
+                  FROM mart_global_data_quality_detail
+                 WHERE gate_run_id = 'global_dq_kline_alignment_unit'
+                   AND domain = 'feature_panel_kline'
+                   AND status = 'fail'
+                """
+            ).fetchall()
+        }
+
+        assert result["gate_status"] == "blocked"
+        assert failed_checks["close_mismatch_with_canonical_kline"] == 1
+        assert failed_checks["panel_kline_lineage_stale"] == 1
+
+
 def test_candidate_contract_seed_ignores_deleted_feature_sets() -> None:
     with duck_mem() as conn:
         _seed_calendar(conn)

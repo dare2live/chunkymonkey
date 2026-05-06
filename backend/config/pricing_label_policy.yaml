@@ -1,6 +1,6 @@
-version: 1
+version: 2
 policy_id: pricing_label_policy_vwap_follow_v1
-event_calc_version: v3_qfq_vwap_entry_dual_cost
+event_calc_version: v4_qfq_factor_adjusted_vwap_entry_dual_cost
 
 price_adjustment: qfq
 
@@ -54,6 +54,7 @@ follow_entry:
     - entry_day_open_qfq
   volume_unit_guard: true
   volume_hand_adjustment_allowed: true
+  qfq_factor_adjustment_required_for_hand_volume: true
   no_trade_action: delay_until_tradable
   limit_up_no_fill_action: mark_not_filled_or_delay
   max_delay_trading_days: 5

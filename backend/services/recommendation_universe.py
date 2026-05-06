@@ -65,6 +65,13 @@ def _table_exists(conn: Any, table_name: str) -> bool:
     ).fetchone() is not None
 
 
+def _row_value(row: Any, key: str, index: int) -> Any:
+    try:
+        return row[key]
+    except Exception:
+        return row[index]
+
+
 def _stock_names(conn: Any, stock_codes: list[str]) -> dict[str, str | None]:
     codes = sorted({str(code) for code in stock_codes if code})
     if not codes or not _table_exists(conn, "dim_active_a_stock"):
@@ -77,7 +84,7 @@ def _stock_names(conn: Any, stock_codes: list[str]) -> dict[str, str | None]:
         """,
         (codes,),
     ).fetchall()
-    names = {str(row["stock_code"]): row["stock_name"] for row in rows}
+    names = {str(_row_value(row, "stock_code", 0)): _row_value(row, "stock_name", 1) for row in rows}
     for code in codes:
         names.setdefault(code, None)
     return names
@@ -97,9 +104,11 @@ def _explicit_exclusions(conn: Any, stock_codes: list[str]) -> dict[str, str]:
     ).fetchall()
     out: dict[str, str] = {}
     for row in rows:
-        category = str(row["category"] or "excluded_stocks")
-        reason = str(row["reason"] or "").strip()
-        out[str(row["stock_code"])] = f"excluded_stocks:{category}" + (f":{reason}" if reason else "")
+        category = str(_row_value(row, "category", 1) or "excluded_stocks")
+        reason = str(_row_value(row, "reason", 2) or "").strip()
+        out[str(_row_value(row, "stock_code", 0))] = (
+            f"excluded_stocks:{category}" + (f":{reason}" if reason else "")
+        )
     return out
 
 

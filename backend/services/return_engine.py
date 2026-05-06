@@ -93,20 +93,31 @@ def _resolve_cost_window(biz_conn, report_date: str) -> tuple[Optional[str], Opt
     return rows[-1]["trade_date"], rows[0]["trade_date"], "special"
 
 
-def _rows_vwap(rows: list[dict]) -> Optional[float]:
-    """基于 amount / volume 计算 VWAP。"""
-    amount_sum = 0.0
-    volume_sum = 0.0
-    for row in rows:
-        amount = row.get("amount")
-        volume = row.get("volume")
-        if amount is None or volume is None or amount <= 0 or volume <= 0:
-            continue
-        amount_sum += float(amount)
-        volume_sum += float(volume)
-    if volume_sum <= 0:
-        return None
-    return amount_sum / volume_sum
+def _row_qfq_vwap(row: dict, *, close_ref: Optional[float], base_method: str) -> tuple[Optional[float], Optional[str]]:
+    amount = row.get("amount")
+    volume = row.get("volume")
+    if amount is None or volume is None or amount <= 0 or volume <= 0:
+        return None, None
+    raw_vwap = float(amount) / float(volume)
+    close = row.get("close") or close_ref
+    if close is None or close <= 0:
+        return raw_vwap, base_method
+    close = float(close)
+    if 0.5 <= raw_vwap / close <= 1.5:
+        return raw_vwap, base_method
+    hand_vwap = raw_vwap / 100.0
+    factor = row.get("factor") or 1.0
+    try:
+        factor = float(factor or 1.0)
+        factor_vwap = hand_vwap * factor
+    except (TypeError, ValueError):
+        factor = 1.0
+        factor_vwap = hand_vwap
+    if abs(factor - 1.0) > 1e-9 and 0.5 <= factor_vwap / close <= 1.5:
+        return factor_vwap, f"{base_method}_volume_hand_factor_adjusted"
+    if 0.5 <= hand_vwap / close <= 1.5:
+        return hand_vwap, f"{base_method}_volume_hand_adjusted"
+    return None, None
 
 
 def _rows_close_mean(rows: list[dict]) -> Optional[float]:
@@ -124,24 +135,24 @@ def _resolve_reasonable_vwap(rows: list[dict], base_method: str) -> tuple[Option
     实际抓到的 volume 在不同源上可能有“股 / 手”差异，导致 amount / volume
     偶发放大 100 倍。这里优先选择与窗口收盘均价量级一致的口径。
     """
-    raw_vwap = _rows_vwap(rows)
-    if raw_vwap is None:
-        return None, None
-
     close_mean = _rows_close_mean(rows)
-    if close_mean is None or close_mean <= 0:
-        return raw_vwap, base_method
-
-    ratio = raw_vwap / close_mean
-    if 0.5 <= ratio <= 1.5:
-        return raw_vwap, base_method
-
-    adjusted_vwap = raw_vwap / 100.0
-    adjusted_ratio = adjusted_vwap / close_mean
-    if 0.5 <= adjusted_ratio <= 1.5:
-        return adjusted_vwap, f"{base_method}_volume_hand_adjusted"
-
-    return None, None
+    prices: list[float] = []
+    methods: set[str] = set()
+    for row in rows:
+        price, method = _row_qfq_vwap(row, close_ref=close_mean, base_method=base_method)
+        if price is None or method is None:
+            continue
+        prices.append(float(price))
+        methods.add(method)
+    if not prices:
+        return None, None
+    if f"{base_method}_volume_hand_factor_adjusted" in methods:
+        method = f"{base_method}_volume_hand_factor_adjusted"
+    elif f"{base_method}_volume_hand_adjusted" in methods:
+        method = f"{base_method}_volume_hand_adjusted"
+    else:
+        method = base_method
+    return sum(prices) / len(prices), method
 
 
 def _resolve_follow_entry_price(row: dict) -> tuple[Optional[float], Optional[str]]:
@@ -222,7 +233,7 @@ def _suggest_follow_gate(event_type: Optional[str], premium_pct: Optional[float]
     return "avoid", "high_premium"
 
 
-_PRICE_FIELDS = {"open", "high", "low", "close", "volume", "amount"}
+_PRICE_FIELDS = {"open", "high", "low", "close", "volume", "amount", "factor"}
 
 
 def _quote_price_field(field: str) -> str:
@@ -398,9 +409,9 @@ class _StockKlineCache:
         monthly_relation: str = "price_kline",
     ):
         self.code = code
-        # daily: {date_str: {open, high, low, close, volume, amount}}
+        # daily: {date_str: {open, high, low, close, volume, amount, factor}}
         rows = mkt_conn.execute(
-            "SELECT date, open, high, low, close, volume, amount "
+            "SELECT date, open, high, low, close, volume, amount, COALESCE(factor, 1.0) AS factor "
             f"FROM {daily_relation} "
             "WHERE code = ? AND freq = 'daily' AND adjust = 'qfq' "
             "ORDER BY date",
@@ -414,12 +425,13 @@ class _StockKlineCache:
                     "date": d,
                     "open": r["open"], "high": r["high"], "low": r["low"],
                     "close": r["close"], "volume": r["volume"], "amount": r["amount"],
+                    "factor": r["factor"],
                 }
             else:
                 d = r[0]
                 self.daily[d] = {
                     "date": d, "open": r[1], "high": r[2], "low": r[3],
-                    "close": r[4], "volume": r[5], "amount": r[6],
+                    "close": r[4], "volume": r[5], "amount": r[6], "factor": r[7],
                 }
         rows_m = mkt_conn.execute(
             "SELECT date, open, high, low, close, volume, amount "
@@ -530,7 +542,7 @@ def _materialize_return_kline_relations(mkt_conn, stock_codes: list[str]) -> dic
         f"""
         CREATE TEMP TABLE __return_kline_daily AS
         SELECT k.code, k.date, k.freq, k.adjust,
-               k.open, k.high, k.low, k.close, k.volume, k.amount
+               k.open, k.high, k.low, k.close, k.volume, k.amount, COALESCE(k.factor, 1.0) AS factor
           FROM {KLINE_DAILY_QFQ_RELATION} AS k
           JOIN __return_codes AS c ON k.code = c.code
          WHERE k.freq = 'daily'

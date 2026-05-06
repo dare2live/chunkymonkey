@@ -25,14 +25,15 @@ def test_prune_feature_panel_to_canonical_kline_removes_rows_without_valid_signa
                 low DOUBLE,
                 close DOUBLE,
                 volume DOUBLE,
-                amount DOUBLE
+                amount DOUBLE,
+                factor DOUBLE
             )
             """
         )
         conn.execute(
             """
             CREATE VIEW market.v_price_kline_qfq AS
-            SELECT code, date, freq, adjust, open, high, low, close, volume, amount
+            SELECT code, date, freq, adjust, open, high, low, close, volume, amount, factor
               FROM market.price_kline_tdxhub
              WHERE open > 0 AND close > 0
             """
@@ -49,7 +50,7 @@ def test_prune_feature_panel_to_canonical_kline_removes_rows_without_valid_signa
         conn.execute(
             """
             INSERT INTO market.price_kline_tdxhub
-            VALUES ('000001', '2026-01-02', 'daily', 'qfq', 10, 11, 9, 10.5, 100, 1050)
+            VALUES ('000001', '2026-01-02', 'daily', 'qfq', 10, 11, 9, 10.5, 100, 1050, 1.0)
             """
         )
         conn.execute("INSERT INTO fact_feature_panel VALUES ('000001', '2026-01-02', 1.0)")

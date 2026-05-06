@@ -33,6 +33,7 @@ from services.db import get_conn  # noqa: E402
 from services.model_feature_schema import holding_period_from_label  # noqa: E402
 from services.pipeline_manifest import git_commit_sha, record_pipeline_run, utc_now_iso  # noqa: E402
 from services.pricing_policy import load_pricing_label_policy, record_pricing_label_policy  # noqa: E402
+from services.pricing_sql import qfq_vwap_expr, qfq_vwap_method_expr  # noqa: E402
 from services.schema_versions import record_actual_version  # noqa: E402
 
 
@@ -431,6 +432,7 @@ def _materialize_kline(conn: Any, *, kline_relation: str) -> dict[str, Any]:
     else:
         source_tier_expr = "1"
     is_fallback_expr = "COALESCE(is_fallback, FALSE)" if "is_fallback" in cols else "FALSE"
+    factor_expr = "COALESCE(factor, 1.0)" if "factor" in cols else "1.0"
     lineage_available = bool({"source", "source_name", "source_tier", "is_fallback"} & cols)
     filters = ["TRUE"]
     if "freq" in cols:
@@ -471,6 +473,7 @@ def _materialize_kline(conn: Any, *, kline_relation: str) -> dict[str, Any]:
                CAST(k.close AS DOUBLE) AS close,
                CAST(k.volume AS DOUBLE) AS volume,
                CAST(k.amount AS DOUBLE) AS amount,
+               CAST({factor_expr} AS DOUBLE) AS factor,
                {source_name_expr} AS source_name,
                CAST({source_tier_expr} AS INTEGER) AS source_tier,
                CAST({is_fallback_expr} AS BOOLEAN) AS is_fallback
@@ -505,8 +508,20 @@ def _materialize_positions(
     built_at: str,
 ) -> dict[str, int]:
     cost_rate = max(float(transaction_cost_bps), 0.0) / 10000.0
+    entry_vwap_sql = qfq_vwap_expr(
+        amount="entry_amount",
+        volume="entry_volume",
+        close="entry_close",
+        factor="entry_factor",
+    )
+    entry_method_sql = qfq_vwap_method_expr(
+        amount="entry_amount",
+        volume="entry_volume",
+        close="entry_close",
+        factor="entry_factor",
+    )
     conn.execute(
-        """
+        f"""
         CREATE OR REPLACE TEMP TABLE __mtm_positions_raw AS
         WITH positioned AS (
             SELECT s.*,
@@ -521,6 +536,7 @@ def _materialize_positions(
                    e.close AS entry_close,
                    e.amount AS entry_amount,
                    e.volume AS entry_volume,
+                   e.factor AS entry_factor,
                    e.source_name AS kline_source_name,
                    e.source_tier AS kline_source_tier,
                    e.is_fallback AS kline_is_fallback,
@@ -552,36 +568,8 @@ def _materialize_positions(
               ) nx ON TRUE
         )
         SELECT *,
-               CASE
-                 WHEN entry_amount IS NOT NULL AND entry_volume IS NOT NULL
-                  AND entry_amount > 0 AND entry_volume > 0
-                  AND entry_close > 0
-                  AND (entry_amount / entry_volume) / entry_close BETWEEN 0.5 AND 1.5
-                 THEN entry_amount / entry_volume
-                 WHEN entry_amount IS NOT NULL AND entry_volume IS NOT NULL
-                  AND entry_amount > 0 AND entry_volume > 0
-                  AND entry_close > 0
-                  AND ((entry_amount / entry_volume) / 100.0) / entry_close BETWEEN 0.5 AND 1.5
-                 THEN (entry_amount / entry_volume) / 100.0
-                 WHEN entry_open > 0
-                 THEN entry_open
-                 ELSE NULL
-               END AS entry_price,
-               CASE
-                 WHEN entry_amount IS NOT NULL AND entry_volume IS NOT NULL
-                  AND entry_amount > 0 AND entry_volume > 0
-                  AND entry_close > 0
-                  AND (entry_amount / entry_volume) / entry_close BETWEEN 0.5 AND 1.5
-                 THEN 'signal_day_vwap_qfq'
-                 WHEN entry_amount IS NOT NULL AND entry_volume IS NOT NULL
-                  AND entry_amount > 0 AND entry_volume > 0
-                  AND entry_close > 0
-                  AND ((entry_amount / entry_volume) / 100.0) / entry_close BETWEEN 0.5 AND 1.5
-                 THEN 'signal_day_vwap_qfq_volume_hand_adjusted'
-                 WHEN entry_open > 0
-                 THEN 'signal_day_vwap_qfq_fallback_open'
-                 ELSE NULL
-               END AS entry_price_method
+               COALESCE({entry_vwap_sql}, entry_open) AS entry_price,
+               COALESCE({entry_method_sql}, 'signal_day_vwap_qfq_fallback_open') AS entry_price_method
           FROM entry_px
         """
     )

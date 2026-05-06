@@ -33,6 +33,7 @@ def _seed_minimal_sources(con):
             close DOUBLE,
             volume DOUBLE,
             amount DOUBLE,
+            factor DOUBLE,
             freq TEXT,
             adjust TEXT,
             source_name TEXT,
@@ -42,7 +43,7 @@ def _seed_minimal_sources(con):
         CREATE TABLE market.price_kline AS SELECT * FROM market.price_kline_tdxhub WHERE FALSE;
         CREATE VIEW market.v_price_kline_qfq AS
             SELECT code, date, freq, adjust, open, high, low, close, volume, amount,
-                   source_name, source_tier, is_fallback
+                   factor, source_name, source_tier, is_fallback
             FROM market.price_kline_tdxhub;
         CREATE TABLE smartmoney.raw_margin_daily (
             stock_code TEXT,
@@ -107,6 +108,7 @@ def _seed_minimal_sources(con):
                 close,
                 1000.0 + idx * 10 + offset,
                 1_000_000.0 + idx * 1000 + offset,
+                1.0,
                 "daily",
                 "qfq",
                 "tdxhub",
@@ -116,7 +118,7 @@ def _seed_minimal_sources(con):
             if code != "510300":
                 margin_day = day if idx % 2 else _yyyymmdd(day)
                 margin_rows.append((code, margin_day, 1000.0 + idx * 5 + offset))
-    con.executemany("INSERT INTO market.price_kline_tdxhub VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", kline_rows)
+    con.executemany("INSERT INTO market.price_kline_tdxhub VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", kline_rows)
     con.executemany("INSERT INTO smartmoney.raw_margin_daily VALUES (?, ?, ?)", margin_rows)
     con.executemany(
         "INSERT INTO smartmoney.fact_institution_event VALUES (?, ?)",
@@ -298,13 +300,14 @@ def test_market_regime_prefers_hs300_index_over_etf_proxy():
                 close,
                 10_000.0 + idx,
                 10_000_000.0 + idx,
+                1.0,
                 "daily",
                 "qfq",
                 "tdxhub_index",
                 1,
                 False,
             ))
-        con.executemany("INSERT INTO market.price_kline_tdxhub VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", index_rows)
+        con.executemany("INSERT INTO market.price_kline_tdxhub VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", index_rows)
 
         subject._build_panel_with_connection(con, "2026-01-01")
         actual = con.execute(

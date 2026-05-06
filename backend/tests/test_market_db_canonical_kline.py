@@ -60,15 +60,15 @@ def test_canonical_kline_prefers_tdxhub_and_fills_fallback_gap():
 
         rows = conn.execute(
             """
-            SELECT code, date, close, source_name, source_tier, is_fallback
+            SELECT code, date, close, factor, source_name, source_tier, is_fallback
               FROM v_price_kline_qfq
              ORDER BY date
             """
         ).fetchall()
 
         assert [tuple(row) for row in rows] == [
-            ("000001", "2026-05-04", 10.5, "tdxhub", 1, False),
-            ("000001", "2026-05-05", 11.5, "eastmoney", 3, True),
+            ("000001", "2026-05-04", 10.5, 1.0, "tdxhub", 1, False),
+            ("000001", "2026-05-05", 11.5, 1.0, "eastmoney", 3, True),
         ]
     finally:
         conn.close()
@@ -246,6 +246,7 @@ def test_canonical_daily_qfq_sql_uses_single_policy_relation_and_optional_lineag
     sql = canonical_kline_daily_qfq_sql(include_source_lineage=True)
 
     assert "FROM market.v_price_kline_qfq" in sql
+    assert "factor" in sql
     assert "COALESCE(source_name, 'unknown') AS source_name" in sql
     assert "COALESCE(source_tier, 99)::SMALLINT AS source_tier" in sql
     assert "COALESCE(is_fallback, FALSE) AS is_fallback" in sql
@@ -288,7 +289,7 @@ def test_tdxhub_upsert_writes_primary_table_for_canonical_reads():
 
         row = conn.execute(
             """
-            SELECT close, source_name, source_tier, is_fallback
+            SELECT close, factor, source_name, source_tier, is_fallback
               FROM v_price_kline_qfq
              WHERE code = '000001' AND date = '2026-05-04'
             """
@@ -298,7 +299,7 @@ def test_tdxhub_upsert_writes_primary_table_for_canonical_reads():
         ).fetchone()
 
         assert written == 1
-        assert tuple(row) == (10.5, "tdxhub_incremental", 1, False)
+        assert tuple(row) == (10.5, 1.0, "tdxhub_incremental", 1, False)
         assert tuple(primary) == (10.5, "tdxhub_incremental", "tdx-inc")
     finally:
         conn.close()

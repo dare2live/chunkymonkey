@@ -32,6 +32,21 @@ def test_follow_entry_price_adjusts_hand_volume_vwap():
     assert method == "entry_day_vwap_qfq_volume_hand_adjusted"
 
 
+def test_follow_entry_price_adjusts_hand_volume_vwap_with_qfq_factor():
+    price, method = subject._resolve_follow_entry_price(
+        {
+            "open": 789.0,
+            "close": 810.5583,
+            "amount": 4584230912.0,
+            "volume": 173308.0,
+            "factor": 3.0357990066842,
+        }
+    )
+
+    assert price == pytest.approx(803.0099)
+    assert method == "entry_day_vwap_qfq_volume_hand_factor_adjusted"
+
+
 def test_follow_entry_price_falls_back_to_open_when_vwap_missing():
     price, method = subject._resolve_follow_entry_price(
         {
@@ -64,7 +79,7 @@ def test_return_kline_materialization_allows_fast_stock_cache_reads():
                 amount DOUBLE
             );
             CREATE VIEW v_price_kline_qfq AS
-            SELECT code, date, freq, adjust, open, high, low, close, volume, amount
+            SELECT code, date, freq, adjust, open, high, low, close, volume, amount, 1.0 AS factor
               FROM price_kline
              WHERE freq = 'daily'
                AND adjust = 'qfq';
