@@ -134,6 +134,58 @@ def test_global_data_quality_gate_blocks_stale_feature_panel_kline_lineage() -> 
         assert failed_checks["panel_kline_lineage_stale"] == 1
 
 
+def test_global_data_quality_warns_on_future_institution_notice_dates() -> None:
+    with duck_mem() as conn:
+        _seed_calendar(conn)
+        conn.executescript(
+            """
+            CREATE TABLE fact_feature_panel (
+                stock_code TEXT,
+                date TEXT,
+                amount_20d DOUBLE,
+                follow_net_return_60d DOUBLE
+            );
+            INSERT INTO fact_feature_panel VALUES ('000001', '2026-01-02', 10.0, 0.05);
+
+            CREATE TABLE fact_institution_event (
+                institution_id TEXT,
+                stock_code TEXT,
+                stock_name TEXT,
+                report_date TEXT,
+                notice_date TEXT,
+                event_type TEXT
+            );
+            INSERT INTO fact_institution_event VALUES
+                ('inst_a', '000001', '测试股票', '2026-01-01', '29991231', 'new_entry');
+            """
+        )
+
+        result = record_global_data_quality_gate(
+            conn,
+            gate_run_id="global_dq_future_notice_unit",
+            feature_tables=["fact_feature_panel"],
+            include_market=False,
+            include_institution_events=True,
+            include_pipeline_performance=False,
+        )
+        detail = conn.execute(
+            """
+            SELECT status, severity, violation_count, reason
+              FROM mart_global_data_quality_detail
+             WHERE gate_run_id = 'global_dq_future_notice_unit'
+               AND domain = 'institution_event'
+               AND check_name = 'future_notice_date'
+            """
+        ).fetchone()
+
+        assert result["gate_status"] == "pass"
+        assert "institution_event:future_notice_date:fact_institution_event:notice_date" in result["warnings"]
+        assert detail["status"] == "fail"
+        assert detail["severity"] == "warning"
+        assert detail["violation_count"] == 1
+        assert "excluded from live signals" in detail["reason"]
+
+
 def test_candidate_contract_seed_ignores_deleted_feature_sets() -> None:
     with duck_mem() as conn:
         _seed_calendar(conn)

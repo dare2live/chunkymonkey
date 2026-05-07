@@ -210,7 +210,7 @@ def _source_max_notice_date(conn) -> str | None:
             )
             SELECT MAX(notice_iso) AS max_notice_date
               FROM normalized
-             WHERE CAST(notice_iso AS DATE) <= CURRENT_DATE
+             WHERE TRY_CAST(notice_iso AS DATE) <= CURRENT_DATE
             """
         ).fetchone()
         return str(row["max_notice_date"]) if row and row["max_notice_date"] is not None else None

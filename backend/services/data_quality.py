@@ -2359,6 +2359,64 @@ def _check_institution_events(
         )
         _append_outcome(item, details=details, blockers=blockers, warnings=warnings)
         evidence[f"{column}_missing"] = missing
+    if "notice_date" in columns:
+        notice_iso = (
+            "CASE "
+            "WHEN length(CAST(notice_date AS VARCHAR)) = 8 AND instr(CAST(notice_date AS VARCHAR), '-') = 0 "
+            "THEN substr(CAST(notice_date AS VARCHAR),1,4) || '-' || "
+            "substr(CAST(notice_date AS VARCHAR),5,2) || '-' || "
+            "substr(CAST(notice_date AS VARCHAR),7,2) "
+            "ELSE CAST(notice_date AS VARCHAR) END"
+        )
+        future_where = f"TRY_CAST(({notice_iso}) AS DATE) > CURRENT_DATE"
+        future_count = _count_rows(conn, table_name, where_sql=future_where)
+        future_bounds = conn.execute(
+            f"""
+            SELECT MIN({notice_iso}) AS min_future_notice_date,
+                   MAX({notice_iso}) AS max_future_notice_date
+              FROM {_quote_table(table_name)}
+             WHERE {future_where}
+            """
+        ).fetchone()
+        example_columns = [
+            column
+            for column in ("institution_id", "stock_code", "stock_name", "report_date", "notice_date", "event_type")
+            if column in columns
+        ]
+        item = _detail(
+            domain="institution_event",
+            table_name=table_name,
+            column_name="notice_date",
+            check_name="future_notice_date",
+            status="pass" if future_count == 0 else "fail",
+            severity="warning",
+            row_count=row_count,
+            violation_count=future_count,
+            reason=None
+            if future_count == 0
+            else "future notice_date rows are excluded from live signals and require source-date root-cause review",
+            examples=_sample_examples(
+                conn,
+                table_name,
+                where_sql=future_where,
+                columns=example_columns,
+                limit=5,
+            )
+            if future_count
+            else [],
+        )
+        _append_outcome(item, details=details, blockers=blockers, warnings=warnings)
+        evidence["future_notice_date_rows"] = future_count
+        evidence["min_future_notice_date"] = (
+            str(future_bounds["min_future_notice_date"])
+            if future_bounds and future_bounds["min_future_notice_date"] is not None
+            else None
+        )
+        evidence["max_future_notice_date"] = (
+            str(future_bounds["max_future_notice_date"])
+            if future_bounds and future_bounds["max_future_notice_date"] is not None
+            else None
+        )
     if {"price_entry", "price_entry_status"} <= set(columns):
         where = """
             (price_entry IS NULL OR price_entry <= 0)
