@@ -72,6 +72,9 @@ EXTRA_WRITER_BY_TABLE = {
     # Dynamic f-string writers are intentionally kept configurable in code, but
     # static grep cannot infer the concrete target table from imported constants.
     "mart_shareholder_plan_initial_event": "backend/scripts/build_shareholder_plan_initial_event.py",
+    "mart_shareholder_plan_feature_family_eval": (
+        "backend/scripts/evaluate_shareholder_plan_feature_families.py"
+    ),
 }
 
 EXTRA_UPSTREAM_BY_TABLE = {
@@ -97,6 +100,10 @@ EXTRA_UPSTREAM_BY_TABLE = {
     "mart_stock_screening":         ("derived (calc_screening manual step)", None),
     "mart_shareholder_plan_initial_event": (
         "derived from fact_shareholder_plan_tdx_f10",
+        None,
+    ),
+    "mart_shareholder_plan_feature_family_eval": (
+        "derived from fact_feature_panel + fact_shareholder_plan_tdx_f10 + mart_shareholder_plan_initial_event",
         None,
     ),
 }
@@ -148,6 +155,7 @@ EXTRA_FRESHNESS_BY_TABLE = {
     "mart_temporal_research_panel": ("on-demand", 24 * 30),
     "mart_tdx_f10_source_date_section_audit": ("on-demand", 24 * 30),
     "mart_shareholder_plan_initial_event": ("event", 48),
+    "mart_shareholder_plan_feature_family_eval": ("on-demand", 24 * 30),
     "mart_tdx_server_health": ("on-demand", 24 * 30),
     "mart_temporal_research_panel_quality": ("on-demand", 24 * 30),
     # gpcw files are quarter-end source manifests.
@@ -219,6 +227,18 @@ EXTRA_ASSET_CONTRACT_BY_TABLE = {
         "strategy_eligibility": "capital_attention_auxiliary",
         "frontend_visibility": "governance_visible",
         "quality_gate_level": "blocking",
+    },
+    "mart_shareholder_plan_feature_family_eval": {
+        "asset_grain": "run_id+source_family+feature_name+label_name",
+        "asset_cadence": "on_demand_research",
+        "coverage_policy": "current_feature_panel_follow_labels",
+        "null_policy": "metrics_null_allowed_when_daily_rank_ic_insufficient",
+        "pit_policy": "compares_latest_state_and_initial_event_source_available_dates",
+        "intended_use": "shareholder_plan_feature_family_role_decision",
+        "model_eligibility": "not_model_input_research_evidence_only",
+        "strategy_eligibility": "feature_family_selection_evidence",
+        "frontend_visibility": "governance_visible",
+        "quality_gate_level": "monitor_only",
     },
 }
 

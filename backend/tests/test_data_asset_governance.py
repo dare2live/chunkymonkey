@@ -53,6 +53,21 @@ def test_infer_asset_contract_freezes_initial_shareholder_plan_event_purpose():
     assert contract["quality_gate_level"] == "blocking"
 
 
+def test_infer_asset_contract_marks_shareholder_plan_family_eval_as_research_evidence():
+    contract = infer_asset_contract(
+        "mart_shareholder_plan_feature_family_eval",
+        layer="mart",
+        freshness="on-demand",
+        upstream_source="derived from fact_feature_panel + shareholder plan marts",
+    )
+
+    assert contract["asset_grain"] == "run_id+source_family+feature_name+label_name"
+    assert contract["pit_policy"] == "compares_latest_state_and_initial_event_source_available_dates"
+    assert contract["model_eligibility"] == "not_model_input_research_evidence_only"
+    assert contract["strategy_eligibility"] == "feature_family_selection_evidence"
+    assert contract["quality_gate_level"] == "monitor_only"
+
+
 def test_seed_dim_data_asset_reuses_backend_text_index_for_writer_and_readers():
     text_index = [
         (
