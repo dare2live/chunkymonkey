@@ -86,6 +86,14 @@ def ensure_tables(conn: Any) -> None:
     _execute_script(conn, DDL)
 
 
+def _table_columns(conn: Any, table_name: str) -> set[str]:
+    try:
+        rows = conn.execute(f"DESCRIBE {table_name}").fetchall()
+    except Exception:
+        return set()
+    return {str(row["column_name"] if hasattr(row, "keys") else row[0]) for row in rows}
+
+
 def default_optuna_storage_url() -> str:
     storage_dir = Path(__file__).resolve().parent.parent.parent / "data" / "optuna"
     storage_dir.mkdir(parents=True, exist_ok=True)
@@ -240,6 +248,69 @@ def _load_rank_matrix_proxy_features(
     summary["gate_blockers"] = gate_blockers
     summary["gate_config"] = _safe_json(summary.get("gate_config_json"), {})
     return by_feature, summary
+
+
+def _auto_rank_matrix_run_id(
+    conn: Any,
+    *,
+    label_name: str,
+    required_features: set[str],
+    source_association_run_id: str | None,
+    require_gate_pass: bool = True,
+    require_cache_backed: bool = True,
+    limit: int = 50,
+) -> str | None:
+    try:
+        bench_cols = _table_columns(conn, "mart_feature_rank_matrix_benchmark")
+        stat_cols = _table_columns(conn, "mart_feature_rank_matrix_proxy_stat")
+    except Exception:
+        return None
+    if not {"run_id"}.issubset(bench_cols) or not {"run_id", "label_name", "feature_name"}.issubset(stat_cols):
+        return None
+    gate_filter = "AND COALESCE(gate_status, '') = 'pass'" if require_gate_pass and "gate_status" in bench_cols else ""
+    exact_filter = ""
+    params: list[Any] = []
+    if source_association_run_id and "exact_run_id" in bench_cols:
+        exact_filter = "AND COALESCE(exact_run_id, ?) = ?"
+        params.extend([source_association_run_id, source_association_run_id])
+    order_expr = "built_at DESC NULLS LAST, run_id DESC" if "built_at" in bench_cols else "run_id DESC"
+    config_expr = "config_json" if "config_json" in bench_cols else "NULL AS config_json"
+    rows = conn.execute(
+        f"""
+        SELECT run_id, {config_expr}
+          FROM mart_feature_rank_matrix_benchmark
+         WHERE 1 = 1
+           {gate_filter}
+           {exact_filter}
+         ORDER BY {order_expr}
+         LIMIT ?
+        """,
+        [*params, int(limit)],
+    ).fetchall()
+    if not rows:
+        return None
+    for row in rows:
+        run_id = str(row["run_id"])
+        if require_cache_backed:
+            config = _safe_json(row["config_json"], {})
+            cache = config.get("rank_matrix_cache") if isinstance(config, dict) else None
+            if not isinstance(cache, dict) or str(cache.get("status") or "") not in {"hit", "miss"}:
+                continue
+        coverage = conn.execute(
+            """
+            SELECT COUNT(DISTINCT feature_name) AS feature_count
+              FROM mart_feature_rank_matrix_proxy_stat
+             WHERE run_id = ?
+               AND label_name = ?
+               AND feature_name IN (
+            """
+            + ",".join(["?"] * len(required_features))
+            + ")",
+            [run_id, label_name, *sorted(required_features)],
+        ).fetchone()
+        if int(coverage["feature_count"] or 0) == len(required_features):
+            return run_id
+    return None
 
 
 def _apply_rank_matrix_proxy(
@@ -420,6 +491,8 @@ def run_optuna_feature_space(
     load_if_exists: bool = True,
     rank_matrix_run_id: str | None = None,
     require_rank_matrix_gate: bool = True,
+    auto_rank_matrix_run: bool = False,
+    auto_rank_matrix_require_cache: bool = True,
 ) -> dict[str, Any]:
     ensure_tables(conn)
     search_space_run_id = search_space_run_id or latest_search_space_run_id(conn)
@@ -427,12 +500,28 @@ def run_optuna_feature_space(
         raise RuntimeError("no feature search space run found")
     features, summary = _load_search_space(conn, search_space_run_id)
     rank_matrix_summary: dict[str, Any] | None = None
+    rank_matrix_auto_lookup = {
+        "enabled": bool(auto_rank_matrix_run),
+        "require_cache_backed": bool(auto_rank_matrix_require_cache),
+        "selected_run_id": None,
+    }
+    required_feature_names = {str(row["feature_name"]) for row in features}
+    if not rank_matrix_run_id and auto_rank_matrix_run:
+        rank_matrix_run_id = _auto_rank_matrix_run_id(
+            conn,
+            label_name=str(summary.get("label_name")),
+            required_features=required_feature_names,
+            source_association_run_id=summary.get("source_association_run_id"),
+            require_gate_pass=require_rank_matrix_gate,
+            require_cache_backed=auto_rank_matrix_require_cache,
+        )
+        rank_matrix_auto_lookup["selected_run_id"] = rank_matrix_run_id
     if rank_matrix_run_id:
         proxy_by_feature, rank_matrix_summary = _load_rank_matrix_proxy_features(
             conn,
             rank_matrix_run_id=rank_matrix_run_id,
             label_name=str(summary.get("label_name")),
-            required_features={str(row["feature_name"]) for row in features},
+            required_features=required_feature_names,
             require_gate_pass=require_rank_matrix_gate,
         )
         features = _apply_rank_matrix_proxy(features, proxy_by_feature)
@@ -642,6 +731,7 @@ def run_optuna_feature_space(
                     "study_total_trials": study_total_trials,
                     "best_subset_fold_metrics": best_subset_metrics,
                     "rank_matrix_run_id": rank_matrix_run_id,
+                    "rank_matrix_auto_lookup": rank_matrix_auto_lookup,
                     "rank_matrix_summary": rank_matrix_summary,
                     "message": "Optuna proxy feature-space search; no model trained or promoted",
                 },
@@ -682,6 +772,7 @@ def run_optuna_feature_space(
             "study_total_trials": study_total_trials,
             "best_subset_fold_metrics": best_subset_metrics,
             "rank_matrix_run_id": rank_matrix_run_id,
+            "rank_matrix_auto_lookup": rank_matrix_auto_lookup,
             "rank_matrix_gate_status": (rank_matrix_summary or {}).get("gate_status"),
             "rank_matrix_compared_pairs": (rank_matrix_summary or {}).get("compared_pairs"),
             "rank_matrix_max_abs_rank_ic_delta": (rank_matrix_summary or {}).get("max_abs_rank_ic_delta"),
@@ -703,6 +794,7 @@ def run_optuna_feature_space(
         "study_total_trials": study_total_trials,
         "best_subset_fold_metrics": best_subset_metrics,
         "rank_matrix_run_id": rank_matrix_run_id,
+        "rank_matrix_auto_lookup": rank_matrix_auto_lookup,
         "rank_matrix_gate_status": (rank_matrix_summary or {}).get("gate_status"),
     }
 
@@ -723,6 +815,8 @@ def main() -> int:
     parser.add_argument("--no-persistent-study", action="store_true")
     parser.add_argument("--no-resume", action="store_true")
     parser.add_argument("--rank-matrix-run-id", default=None)
+    parser.add_argument("--auto-rank-matrix-run", action="store_true")
+    parser.add_argument("--allow-uncached-rank-matrix-auto", action="store_true")
     parser.add_argument("--allow-rank-matrix-gate-fail", action="store_true")
     args = parser.parse_args()
 
@@ -740,6 +834,8 @@ def main() -> int:
             load_if_exists=not args.no_resume,
             rank_matrix_run_id=args.rank_matrix_run_id,
             require_rank_matrix_gate=not args.allow_rank_matrix_gate_fail,
+            auto_rank_matrix_run=args.auto_rank_matrix_run,
+            auto_rank_matrix_require_cache=not args.allow_uncached_rank_matrix_auto,
         )
     print(json.dumps(result, ensure_ascii=False, indent=2, default=str))
     return 0

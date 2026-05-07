@@ -110,7 +110,8 @@ def _seed_rank_matrix_proxy(conn, *, gate_status: str = "pass") -> None:
             max_abs_rank_ic_delta DOUBLE,
             avg_abs_rank_ic_delta DOUBLE,
             matrix_duration_s DOUBLE,
-            exact_run_id TEXT
+            exact_run_id TEXT,
+            config_json TEXT
         )
         """
     )
@@ -132,7 +133,8 @@ def _seed_rank_matrix_proxy(conn, *, gate_status: str = "pass") -> None:
     conn.execute(
         """
         INSERT INTO mart_feature_rank_matrix_benchmark VALUES
-        ('rank_proxy_1', ?, ?, '{"max_abs_rank_ic_delta": 0.001}', 5, 0.0001, 0.00002, 1.2, 'assoc_1')
+        ('rank_proxy_1', ?, ?, '{"max_abs_rank_ic_delta": 0.001}', 5, 0.0001, 0.00002, 1.2, 'assoc_1',
+         '{"rank_matrix_cache":{"status":"hit","cache_key":"cache_a","table_name":"mart_feature_rank_matrix_cache_cache_a"}}')
         """,
         [gate_status, "[]" if gate_status == "pass" else '["too_much_delta"]'],
     )
@@ -218,6 +220,47 @@ def test_run_optuna_feature_space_can_use_gate_passed_rank_matrix_proxy():
         assert notes["rank_matrix_summary"]["gate_status"] == "pass"
         assert perf["rank_matrix_run_id"] == "rank_proxy_1"
         assert perf["rank_matrix_gate_status"] == "pass"
+    finally:
+        conn.close()
+
+
+def test_run_optuna_feature_space_can_auto_select_compatible_rank_matrix_proxy():
+    conn = duck_mem()
+    try:
+        _seed_search_space(conn)
+        _seed_rank_matrix_proxy(conn)
+
+        result = subject.run_optuna_feature_space(
+            conn,
+            search_space_run_id="space_1",
+            run_id="optuna_space_auto_rank_proxy",
+            trials=0,
+            max_features=2,
+            auto_rank_matrix_run=True,
+        )
+        model_row = conn.execute(
+            """
+            SELECT method, notes
+              FROM mart_model_selection_run
+             WHERE run_id = 'optuna_space_auto_rank_proxy'
+            """
+        ).fetchone()
+        manifest = conn.execute(
+            "SELECT perf_summary_json FROM mart_pipeline_run_manifest WHERE run_id = 'optuna_space_auto_rank_proxy'"
+        ).fetchone()
+        notes = json.loads(model_row["notes"])
+        perf = json.loads(manifest["perf_summary_json"])
+
+        assert result["rank_matrix_run_id"] == "rank_proxy_1"
+        assert result["rank_matrix_auto_lookup"] == {
+            "enabled": True,
+            "require_cache_backed": True,
+            "selected_run_id": "rank_proxy_1",
+        }
+        assert model_row["method"] == "optuna_feature_space_rank_matrix_proxy"
+        assert notes["rank_matrix_auto_lookup"]["selected_run_id"] == "rank_proxy_1"
+        assert perf["rank_matrix_run_id"] == "rank_proxy_1"
+        assert perf["rank_matrix_auto_lookup"]["enabled"] is True
     finally:
         conn.close()
 
