@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from datetime import date, timedelta
 
 import duckdb
@@ -190,6 +191,96 @@ def test_materialize_follow_return_labels_skips_when_policy_quality_is_current()
         assert second["stage_timing"]["fact_feature_panel.set_seconds"] == 0.0
         assert second_build_rows == 0
         assert '"skipped": true' in manifest
+    finally:
+        conn.close()
+
+
+def test_scoped_follow_return_labels_record_full_table_build_and_quality():
+    conn = duckdb.connect(":memory:")
+    try:
+        _seed_price_rows(conn, days=100)
+        conn.execute(
+            """
+            CREATE TABLE fact_feature_panel (
+                stock_code TEXT,
+                date TEXT
+            )
+            """
+        )
+        conn.execute("INSERT INTO fact_feature_panel VALUES ('000001', '2026-01-01')")
+        conn.execute("INSERT INTO fact_feature_panel VALUES ('000001', '2026-01-02')")
+        conn.execute("INSERT INTO fact_feature_panel VALUES ('000001', '2026-01-03')")
+        materialize_follow_return_labels(
+            conn,
+            feature_tables=["fact_feature_panel"],
+            horizons=[5, 10, 20, 60, 90],
+            run_id="follow_label_scoped_full_first",
+        )
+        conn.execute(
+            """
+            UPDATE fact_feature_panel
+               SET follow_net_return_5d = NULL,
+                   follow_net_return_10d = NULL,
+                   follow_net_return_20d = NULL,
+                   follow_net_return_60d = NULL,
+                   follow_net_return_90d = NULL
+             WHERE date = '2026-01-02'
+            """
+        )
+
+        result = materialize_follow_return_labels(
+            conn,
+            feature_tables=["fact_feature_panel"],
+            horizons=[5, 10, 20, 60, 90],
+            start_date="2026-01-02",
+            end_date="2026-01-02",
+            run_id="follow_label_scoped_full_second",
+        )
+        build = conn.execute(
+            """
+            SELECT row_count, min_date, max_date, label_non_null_json
+              FROM mart_follow_return_label_build
+             WHERE run_id = 'follow_label_scoped_full_second'
+               AND feature_table = 'fact_feature_panel'
+            """
+        ).fetchone()
+        quality = conn.execute(
+            """
+            SELECT row_count,
+                   non_null_count,
+                   null_count,
+                   mature_null_count,
+                   unclassified_null_count
+              FROM mart_follow_return_label_quality
+             WHERE run_id = 'follow_label_scoped_full_second'
+               AND feature_table = 'fact_feature_panel'
+               AND label_name = 'follow_net_return_90d'
+            """
+        ).fetchone()
+        gate = record_pricing_label_data_readiness_gate(
+            conn,
+            gate_run_id="follow_label_scoped_full_gate",
+            feature_tables=["fact_feature_panel"],
+        )
+
+        table_summary = result["feature_tables"][0]
+        assert table_summary["update_scope"]["row_count"] == 1
+        assert table_summary["row_count"] == 3
+        assert table_summary["profile_scope"] == "full_table"
+        assert table_summary["quality_scope"] == "full_table"
+        assert build[0:3] == (3, "2026-01-01", "2026-01-03")
+        assert json.loads(build[3]) == {
+            "follow_net_return_5d": 3,
+            "follow_net_return_10d": 3,
+            "follow_net_return_20d": 3,
+            "follow_net_return_60d": 3,
+            "follow_net_return_90d": 3,
+        }
+        assert quality == (3, 3, 0, 0, 0)
+        assert gate["gate_status"] == "pass"
+        assert gate["evidence"]["feature_tables"]["fact_feature_panel"]["follow_label_build"][
+            "run_id"
+        ] == "follow_label_scoped_full_second"
     finally:
         conn.close()
 

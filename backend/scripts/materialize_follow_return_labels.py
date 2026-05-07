@@ -389,11 +389,15 @@ def _update_feature_table(
     }
     return {
         "feature_table": feature_table,
-        "row_count": row_count,
-        "min_date": _row_value(row, "min_date", 1),
-        "max_date": _row_value(row, "max_date", 2),
-        "label_non_null": label_non_null,
-        "label_coverage": label_coverage,
+        "update_scope": {
+            "start_date": start_date,
+            "end_date": end_date,
+            "row_count": row_count,
+            "min_date": _row_value(row, "min_date", 1),
+            "max_date": _row_value(row, "max_date", 2),
+            "label_non_null": label_non_null,
+            "label_coverage": label_coverage,
+        },
         "clear_seconds": clear_seconds,
         "set_seconds": set_seconds,
     }
@@ -728,7 +732,7 @@ def materialize_follow_return_labels(
     feature_tables = feature_tables or DEFAULT_FEATURE_TABLES[:]
     horizons = horizons or DEFAULT_HORIZONS[:]
     labels = labels_for_horizons(horizons)
-    built_at = datetime.now(UTC).replace(tzinfo=None).isoformat(timespec="seconds")
+    built_at = datetime.now(UTC).replace(tzinfo=None).isoformat(timespec="microseconds")
     run_id = run_id or f"follow_return_label_build_{datetime.now(UTC).strftime('%Y%m%d_%H%M%S')}"
     _ensure_tables(conn)
     stage_timing: dict[str, float] = {}
@@ -766,6 +770,7 @@ def materialize_follow_return_labels(
             stage_timing[f"{feature_table}.clear_seconds"] = 0.0
             stage_timing[f"{feature_table}.set_seconds"] = 0.0
             stage_timing[f"{feature_table}.update_seconds"] = 0.0
+            stage_timing[f"{feature_table}.full_profile_seconds"] = 0.0
             stage_timing[f"{feature_table}.quality_seconds"] = 0.0
             _emit_progress(
                 progress,
@@ -787,6 +792,15 @@ def materialize_follow_return_labels(
         stage_timing[f"{feature_table}.clear_seconds"] = summary["clear_seconds"]
         stage_timing[f"{feature_table}.set_seconds"] = summary["set_seconds"]
         stage_timing[f"{feature_table}.update_seconds"] = summary["update_seconds"]
+        profile_started = time.perf_counter()
+        full_profile = _current_label_profile(conn, feature_table=feature_table, labels=labels)
+        if full_profile is None:
+            raise RuntimeError(f"failed to profile follow labels after update: {feature_table}")
+        summary["full_profile_seconds"] = round(time.perf_counter() - profile_started, 3)
+        summary["profile_scope"] = "full_table"
+        summary["quality_scope"] = "full_table"
+        summary.update(full_profile)
+        stage_timing[f"{feature_table}.full_profile_seconds"] = summary["full_profile_seconds"]
         table_summaries.append(summary)
         conn.execute(
             """
@@ -827,8 +841,8 @@ def materialize_follow_return_labels(
             event_calc_version=policy.event_calc_version,
             horizons=horizons,
             labels=labels,
-            start_date=start_date,
-            end_date=end_date,
+            start_date=None,
+            end_date=None,
             built_at=built_at,
         )
         summary["quality_seconds"] = round(time.perf_counter() - quality_started, 3)
