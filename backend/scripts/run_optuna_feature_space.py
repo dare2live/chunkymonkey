@@ -13,7 +13,7 @@ import json
 import math
 import sys
 from collections import Counter, defaultdict
-from datetime import datetime
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -192,6 +192,80 @@ def _load_fold_rank_ic_by_feature(conn: Any, association_run_id: str | None) -> 
     return by_feature
 
 
+def _load_rank_matrix_proxy_features(
+    conn: Any,
+    *,
+    rank_matrix_run_id: str,
+    label_name: str,
+    required_features: set[str],
+    require_gate_pass: bool = True,
+) -> tuple[dict[str, dict[str, Any]], dict[str, Any]]:
+    benchmark = conn.execute(
+        """
+        SELECT run_id, gate_status, gate_blockers_json, gate_config_json,
+               compared_pairs, max_abs_rank_ic_delta, avg_abs_rank_ic_delta,
+               matrix_duration_s, exact_run_id
+          FROM mart_feature_rank_matrix_benchmark
+         WHERE run_id = ?
+        """,
+        (rank_matrix_run_id,),
+    ).fetchone()
+    if not benchmark:
+        raise RuntimeError(f"missing rank-matrix benchmark run: {rank_matrix_run_id}")
+    gate_status = str(benchmark["gate_status"] or "")
+    gate_blockers = _safe_json(benchmark["gate_blockers_json"], [])
+    if require_gate_pass and gate_status != "pass":
+        raise RuntimeError(
+            f"rank-matrix proxy run {rank_matrix_run_id} is not gate-pass: "
+            f"{gate_status or 'unknown'} blockers={gate_blockers}"
+        )
+    rows = conn.execute(
+        """
+        SELECT feature_name, rank_ic, long_short_spread, exact_rank_ic,
+               abs_rank_ic_delta, daily_count, valid_rank_rows
+          FROM mart_feature_rank_matrix_proxy_stat
+         WHERE run_id = ?
+           AND label_name = ?
+        """,
+        (rank_matrix_run_id, label_name),
+    ).fetchall()
+    by_feature = {str(row["feature_name"]): dict(row) for row in rows}
+    missing = sorted(required_features - set(by_feature))
+    if missing:
+        raise RuntimeError(
+            f"rank-matrix proxy run {rank_matrix_run_id} missing {len(missing)} search-space features: "
+            f"{missing[:10]}"
+        )
+    summary = dict(benchmark)
+    summary["gate_blockers"] = gate_blockers
+    summary["gate_config"] = _safe_json(summary.get("gate_config_json"), {})
+    return by_feature, summary
+
+
+def _apply_rank_matrix_proxy(
+    features: list[dict[str, Any]],
+    proxy_by_feature: dict[str, dict[str, Any]],
+) -> list[dict[str, Any]]:
+    updated = []
+    for row in features:
+        feature_name = str(row["feature_name"])
+        proxy = proxy_by_feature[feature_name]
+        proxy_rank_ic = _finite_float(proxy.get("rank_ic"), default=_finite_float(row.get("rank_ic")))
+        merged = dict(row)
+        merged["rank_ic"] = proxy_rank_ic
+        merged["abs_rank_ic"] = abs(proxy_rank_ic)
+        merged["rank_direction"] = -1 if proxy_rank_ic < 0 else 1
+        if proxy.get("long_short_spread") is not None:
+            merged["long_short_spread"] = _finite_float(proxy.get("long_short_spread"))
+        merged["matrix_proxy_rank_ic"] = proxy_rank_ic
+        merged["matrix_proxy_exact_rank_ic"] = proxy.get("exact_rank_ic")
+        merged["matrix_proxy_abs_rank_ic_delta"] = proxy.get("abs_rank_ic_delta")
+        merged["matrix_proxy_daily_count"] = proxy.get("daily_count")
+        merged["matrix_proxy_valid_rank_rows"] = proxy.get("valid_rank_rows")
+        updated.append(merged)
+    return updated
+
+
 def _feature_score(feature: dict[str, Any], weights: dict[str, float]) -> float:
     weights = _normalise_weights(weights)
     abs_rank_ic = _finite_float(feature.get("abs_rank_ic"))
@@ -344,19 +418,31 @@ def run_optuna_feature_space(
     storage_url: str | None = None,
     study_name: str | None = None,
     load_if_exists: bool = True,
+    rank_matrix_run_id: str | None = None,
+    require_rank_matrix_gate: bool = True,
 ) -> dict[str, Any]:
     ensure_tables(conn)
     search_space_run_id = search_space_run_id or latest_search_space_run_id(conn)
     if not search_space_run_id:
         raise RuntimeError("no feature search space run found")
     features, summary = _load_search_space(conn, search_space_run_id)
+    rank_matrix_summary: dict[str, Any] | None = None
+    if rank_matrix_run_id:
+        proxy_by_feature, rank_matrix_summary = _load_rank_matrix_proxy_features(
+            conn,
+            rank_matrix_run_id=rank_matrix_run_id,
+            label_name=str(summary.get("label_name")),
+            required_features={str(row["feature_name"]) for row in features},
+            require_gate_pass=require_rank_matrix_gate,
+        )
+        features = _apply_rank_matrix_proxy(features, proxy_by_feature)
     fold_rank_ic_by_feature = _load_fold_rank_ic_by_feature(conn, summary.get("source_association_run_id"))
     groups = sorted({str(row.get("feature_group") or "unknown") for row in features if row["selection_role"] != "protected"})
     group_sizes = Counter(str(row.get("feature_group") or "unknown") for row in features if row["selection_role"] != "protected")
     max_features = max(1, min(int(max_features), len(features)))
-    run_id = run_id or f"optuna_feature_space_{datetime.utcnow().strftime('%Y%m%d_%H%M%S')}"
+    run_id = run_id or f"optuna_feature_space_{datetime.now(UTC).strftime('%Y%m%d_%H%M%S')}"
     study_name = study_name or run_id
-    built_at = datetime.utcnow().isoformat(timespec="seconds")
+    built_at = datetime.now(UTC).replace(tzinfo=None).isoformat(timespec="seconds")
     trial_rows: list[tuple] = []
 
     def evaluate(
@@ -537,7 +623,7 @@ def run_optuna_feature_space(
         (
             run_id,
             feature_set_id,
-            "optuna_feature_space_proxy",
+            "optuna_feature_space_rank_matrix_proxy" if rank_matrix_run_id else "optuna_feature_space_proxy",
             summary.get("label_name"),
             best_value,
             json.dumps(selected_features, ensure_ascii=False),
@@ -555,6 +641,8 @@ def run_optuna_feature_space(
                     "study_name": study_name if storage_url else None,
                     "study_total_trials": study_total_trials,
                     "best_subset_fold_metrics": best_subset_metrics,
+                    "rank_matrix_run_id": rank_matrix_run_id,
+                    "rank_matrix_summary": rank_matrix_summary,
                     "message": "Optuna proxy feature-space search; no model trained or promoted",
                 },
                 ensure_ascii=False,
@@ -577,6 +665,7 @@ def run_optuna_feature_space(
             "mart_feature_search_space",
             "mart_feature_search_space_summary",
             *([] if not fold_rank_ic_by_feature else ["mart_feature_association_fold"]),
+            *([] if not rank_matrix_run_id else ["mart_feature_rank_matrix_proxy_stat", "mart_feature_rank_matrix_benchmark"]),
         ],
         output_tables=["mart_optuna_feature_space_trial", "mart_model_selection_run"],
         label_name=summary.get("label_name"),
@@ -592,6 +681,11 @@ def run_optuna_feature_space(
             "study_name": study_name if storage_url else None,
             "study_total_trials": study_total_trials,
             "best_subset_fold_metrics": best_subset_metrics,
+            "rank_matrix_run_id": rank_matrix_run_id,
+            "rank_matrix_gate_status": (rank_matrix_summary or {}).get("gate_status"),
+            "rank_matrix_compared_pairs": (rank_matrix_summary or {}).get("compared_pairs"),
+            "rank_matrix_max_abs_rank_ic_delta": (rank_matrix_summary or {}).get("max_abs_rank_ic_delta"),
+            "rank_matrix_avg_abs_rank_ic_delta": (rank_matrix_summary or {}).get("avg_abs_rank_ic_delta"),
         },
     )
     conn.commit()
@@ -608,6 +702,8 @@ def run_optuna_feature_space(
         "study_name": study_name if storage_url else None,
         "study_total_trials": study_total_trials,
         "best_subset_fold_metrics": best_subset_metrics,
+        "rank_matrix_run_id": rank_matrix_run_id,
+        "rank_matrix_gate_status": (rank_matrix_summary or {}).get("gate_status"),
     }
 
 
@@ -626,6 +722,8 @@ def main() -> int:
     parser.add_argument("--study-name", default=None)
     parser.add_argument("--no-persistent-study", action="store_true")
     parser.add_argument("--no-resume", action="store_true")
+    parser.add_argument("--rank-matrix-run-id", default=None)
+    parser.add_argument("--allow-rank-matrix-gate-fail", action="store_true")
     args = parser.parse_args()
 
     with get_conn() as conn:
@@ -640,6 +738,8 @@ def main() -> int:
             storage_url=storage_url,
             study_name=args.study_name,
             load_if_exists=not args.no_resume,
+            rank_matrix_run_id=args.rank_matrix_run_id,
+            require_rank_matrix_gate=not args.allow_rank_matrix_gate_fail,
         )
     print(json.dumps(result, ensure_ascii=False, indent=2, default=str))
     return 0

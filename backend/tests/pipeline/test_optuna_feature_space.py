@@ -98,6 +98,54 @@ def _seed_search_space(conn) -> None:
     )
 
 
+def _seed_rank_matrix_proxy(conn, *, gate_status: str = "pass") -> None:
+    conn.execute(
+        """
+        CREATE TABLE mart_feature_rank_matrix_benchmark (
+            run_id TEXT,
+            gate_status TEXT,
+            gate_blockers_json TEXT,
+            gate_config_json TEXT,
+            compared_pairs INTEGER,
+            max_abs_rank_ic_delta DOUBLE,
+            avg_abs_rank_ic_delta DOUBLE,
+            matrix_duration_s DOUBLE,
+            exact_run_id TEXT
+        )
+        """
+    )
+    conn.execute(
+        """
+        CREATE TABLE mart_feature_rank_matrix_proxy_stat (
+            run_id TEXT,
+            label_name TEXT,
+            feature_name TEXT,
+            rank_ic DOUBLE,
+            long_short_spread DOUBLE,
+            exact_rank_ic DOUBLE,
+            abs_rank_ic_delta DOUBLE,
+            daily_count INTEGER,
+            valid_rank_rows BIGINT
+        )
+        """
+    )
+    conn.execute(
+        """
+        INSERT INTO mart_feature_rank_matrix_benchmark VALUES
+        ('rank_proxy_1', ?, ?, '{"max_abs_rank_ic_delta": 0.001}', 5, 0.0001, 0.00002, 1.2, 'assoc_1')
+        """,
+        [gate_status, "[]" if gate_status == "pass" else '["too_much_delta"]'],
+    )
+    rows = [
+        ("rank_proxy_1", "forward_ret_20d", "protected_base", 0.001, 0.0, 0.001, 0.0, 4, 100),
+        ("rank_proxy_1", "forward_ret_20d", "strong_price", -0.050, -0.01, -0.090, 0.00001, 4, 100),
+        ("rank_proxy_1", "forward_ret_20d", "mid_price", -0.020, -0.01, -0.050, 0.00001, 4, 100),
+        ("rank_proxy_1", "forward_ret_20d", "strong_flow", 0.030, 0.02, 0.070, 0.00001, 4, 100),
+        ("rank_proxy_1", "forward_ret_20d", "event_signal", 0.200, 0.10, -0.040, 0.00001, 4, 100),
+    ]
+    conn.executemany("INSERT INTO mart_feature_rank_matrix_proxy_stat VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)", rows)
+
+
 def test_run_optuna_feature_space_records_trials_and_selection():
     conn = duck_mem()
     try:
@@ -131,6 +179,64 @@ def test_run_optuna_feature_space_records_trials_and_selection():
         perf = json.loads(manifest["perf_summary_json"])
         assert perf["selected_count"] == len(selected)
         assert perf["best_subset_fold_metrics"]["subset_fold_count"] == 4.0
+    finally:
+        conn.close()
+
+
+def test_run_optuna_feature_space_can_use_gate_passed_rank_matrix_proxy():
+    conn = duck_mem()
+    try:
+        _seed_search_space(conn)
+        _seed_rank_matrix_proxy(conn)
+
+        result = subject.run_optuna_feature_space(
+            conn,
+            search_space_run_id="space_1",
+            run_id="optuna_space_rank_proxy",
+            trials=0,
+            max_features=2,
+            rank_matrix_run_id="rank_proxy_1",
+        )
+        model_row = conn.execute(
+            """
+            SELECT method, selected_features_json, notes
+              FROM mart_model_selection_run
+             WHERE run_id = 'optuna_space_rank_proxy'
+            """
+        ).fetchone()
+        manifest = conn.execute(
+            "SELECT perf_summary_json FROM mart_pipeline_run_manifest WHERE run_id = 'optuna_space_rank_proxy'"
+        ).fetchone()
+        selected = json.loads(model_row["selected_features_json"])
+        notes = json.loads(model_row["notes"])
+        perf = json.loads(manifest["perf_summary_json"])
+
+        assert result["rank_matrix_gate_status"] == "pass"
+        assert model_row["method"] == "optuna_feature_space_rank_matrix_proxy"
+        assert "event_signal" in selected
+        assert notes["rank_matrix_run_id"] == "rank_proxy_1"
+        assert notes["rank_matrix_summary"]["gate_status"] == "pass"
+        assert perf["rank_matrix_run_id"] == "rank_proxy_1"
+        assert perf["rank_matrix_gate_status"] == "pass"
+    finally:
+        conn.close()
+
+
+def test_run_optuna_feature_space_blocks_failed_rank_matrix_proxy_gate():
+    conn = duck_mem()
+    try:
+        _seed_search_space(conn)
+        _seed_rank_matrix_proxy(conn, gate_status="blocked")
+
+        with pytest.raises(RuntimeError, match="not gate-pass"):
+            subject.run_optuna_feature_space(
+                conn,
+                search_space_run_id="space_1",
+                run_id="optuna_space_rank_proxy_blocked",
+                trials=0,
+                max_features=2,
+                rank_matrix_run_id="rank_proxy_1",
+            )
     finally:
         conn.close()
 
