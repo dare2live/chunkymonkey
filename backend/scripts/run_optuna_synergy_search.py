@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import math
 import sys
@@ -279,6 +280,132 @@ def _load_feature_directions(
     return {feature: (-1 if by_feature.get(feature, 0.0) < 0 else 1) for feature in features}
 
 
+def _risk_rank_cache_key(
+    *,
+    source_run_id: str,
+    label_name: str,
+    date_column: str,
+    features: list[str],
+    feature_directions: dict[str, int],
+) -> str:
+    payload = {
+        "rank_mode": "daily_percent_rank_directional_v1",
+        "source_run_id": source_run_id,
+        "label_name": label_name,
+        "date_column": date_column,
+        "features": [
+            {"feature_name": feature, "direction": int(feature_directions.get(feature, 1))}
+            for feature in sorted(features)
+        ],
+    }
+    raw = json.dumps(payload, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+    return hashlib.sha256(raw.encode("utf-8")).hexdigest()
+
+
+def _empty_risk_rank_cache() -> dict[str, Any]:
+    return {
+        "tables": {},
+        "stats": {
+            "enabled": True,
+            "hits": 0,
+            "misses": 0,
+            "entry_count": 0,
+            "build_s": 0.0,
+            "lookup_s": 0.0,
+        },
+    }
+
+
+def _risk_rank_cache_stats(cache: dict[str, Any] | None) -> dict[str, Any]:
+    if not cache:
+        return {"enabled": False}
+    stats = dict(cache.get("stats") or {})
+    stats["entry_count"] = len(cache.get("tables") or {})
+    stats["preferred_feature_count"] = len(cache.get("preferred_features") or [])
+    for key in ("build_s", "lookup_s"):
+        stats[key] = round(float(stats.get(key) or 0.0), 3)
+    for key in ("hits", "misses", "entry_count", "preferred_feature_count"):
+        stats[key] = int(stats.get(key) or 0)
+    stats["enabled"] = bool(stats.get("enabled", True))
+    return stats
+
+
+def _risk_feature_rank_table(
+    conn: Any,
+    *,
+    panel_table: str,
+    source_run_id: str,
+    label_name: str,
+    date_column: str,
+    usable_features: list[str],
+    feature_directions: dict[str, int],
+    rank_cache: dict[str, Any] | None = None,
+) -> tuple[str, dict[str, Any]]:
+    stats = rank_cache.get("stats") if rank_cache else None
+    tables = rank_cache.get("tables") if rank_cache else None
+    cache_key = _risk_rank_cache_key(
+        source_run_id=source_run_id,
+        label_name=label_name,
+        date_column=date_column,
+        features=usable_features,
+        feature_directions=feature_directions,
+    )
+    lookup_t0 = time.perf_counter()
+    if isinstance(tables, dict) and cache_key in tables:
+        if isinstance(stats, dict):
+            stats["hits"] = int(stats.get("hits") or 0) + 1
+            stats["lookup_s"] = float(stats.get("lookup_s") or 0.0) + time.perf_counter() - lookup_t0
+        entry = dict(tables[cache_key])
+        return str(entry["table_name"]), {
+            "status": "hit",
+            "cache_key": cache_key,
+            "table_name": entry["table_name"],
+            "feature_count": len(usable_features),
+        }
+
+    if isinstance(stats, dict):
+        stats["misses"] = int(stats.get("misses") or 0) + 1
+        stats["lookup_s"] = float(stats.get("lookup_s") or 0.0) + time.perf_counter() - lookup_t0
+    table_name = f"optuna_risk_feature_rank_{cache_key[:20]}" if tables is not None else "optuna_risk_feature_rank"
+    rank_exprs = []
+    for feature in usable_features:
+        direction = feature_directions.get(feature, 1)
+        order = "ASC" if direction >= 0 else "DESC"
+        alias = f"__risk_rank_{feature}"
+        rank_exprs.append(
+            "PERCENT_RANK() OVER "
+            f"(PARTITION BY {_quote_ident(date_column)} "
+            f"ORDER BY {_quote_ident(feature)} {order} NULLS FIRST) AS {_quote_ident(alias)}"
+        )
+    build_t0 = time.perf_counter()
+    conn.execute(
+        f"""
+        CREATE OR REPLACE TEMP TABLE {_quote_relation(table_name)} AS
+        SELECT stock_code,
+               CAST({_quote_ident(date_column)} AS VARCHAR) AS date,
+               {_quote_ident(label_name)} AS label_value,
+               {", ".join(rank_exprs)}
+          FROM {_quote_relation(panel_table)}
+         WHERE run_id = ?
+           AND {_quote_ident(label_name)} IS NOT NULL
+        """,
+        (source_run_id,),
+    )
+    build_s = time.perf_counter() - build_t0
+    if isinstance(tables, dict):
+        tables[cache_key] = {"table_name": table_name, "feature_count": len(usable_features)}
+        if isinstance(stats, dict):
+            stats["entry_count"] = len(tables)
+            stats["build_s"] = float(stats.get("build_s") or 0.0) + build_s
+    return table_name, {
+        "status": "miss",
+        "cache_key": cache_key,
+        "table_name": table_name,
+        "feature_count": len(usable_features),
+        "build_s": round(build_s, 3),
+    }
+
+
 def _load_feature_clusters(conn: Any, source_run_id: str) -> dict[str, str]:
     table_name = "mart_feature_cluster_redundancy"
     if not _table_exists(conn, table_name):
@@ -355,6 +482,7 @@ def _risk_evaluate_selection(
     return_weight: float,
     drawdown_penalty_weight: float,
     turnover_penalty_weight: float,
+    rank_cache: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     panel_table = "mart_temporal_research_panel"
     if not _table_exists(conn, panel_table):
@@ -380,32 +508,31 @@ def _risk_evaluate_selection(
             "risk_objective": proxy_objective,
         }
 
+    rank_features = list(usable_features)
+    if rank_cache:
+        preferred_features = [
+            str(feature)
+            for feature in rank_cache.get("preferred_features", [])
+            if str(feature) in panel_cols
+        ]
+        if preferred_features and set(usable_features).issubset(preferred_features):
+            rank_features = preferred_features
+
     feature_directions = _load_feature_directions(
         conn,
         source_run_id=source_run_id,
         label_name=label_name,
-        features=usable_features,
+        features=rank_features,
     )
-    rank_exprs = []
-    for feature in usable_features:
-        direction = feature_directions.get(feature, 1)
-        order = "ASC" if direction >= 0 else "DESC"
-        alias = f"__risk_rank_{feature}"
-        rank_exprs.append(
-            f"PERCENT_RANK() OVER (PARTITION BY date ORDER BY {_quote_ident(feature)} {order} NULLS FIRST) AS {_quote_ident(alias)}"
-        )
-    conn.execute(
-        f"""
-        CREATE OR REPLACE TEMP TABLE optuna_risk_feature_rank AS
-        SELECT stock_code,
-               CAST({_quote_ident(date_column)} AS VARCHAR) AS date,
-               {_quote_ident(label_name)} AS label_value,
-               {", ".join(rank_exprs)}
-          FROM {_quote_relation(panel_table)}
-         WHERE run_id = ?
-           AND {_quote_ident(label_name)} IS NOT NULL
-        """,
-        (source_run_id,),
+    feature_rank_table, feature_rank_cache = _risk_feature_rank_table(
+        conn,
+        panel_table=panel_table,
+        source_run_id=source_run_id,
+        label_name=label_name,
+        date_column=date_column,
+        usable_features=rank_features,
+        feature_directions=feature_directions,
+        rank_cache=rank_cache,
     )
     score_terms = [f"{_quote_ident(f'__risk_rank_{feature}')}" for feature in usable_features]
     interaction_terms = []
@@ -431,7 +558,7 @@ def _risk_evaluate_selection(
                date,
                label_value,
                ({' + '.join(all_terms)}) / {float(len(all_terms))} AS policy_score
-          FROM optuna_risk_feature_rank
+          FROM {_quote_relation(feature_rank_table)}
         """
     )
     fold_count = max(int(folds), 1)
@@ -581,6 +708,8 @@ def _risk_evaluate_selection(
         "fold_count": len(fold_metrics),
         "drawdown_return_mode": "cost_adjusted_holding_period_return_dailyized",
         "missing_features": missing_features,
+        "rank_feature_count": len(rank_features),
+        "feature_rank_cache": feature_rank_cache,
         "fold_metrics": fold_metrics,
         "weights": {
             "proxy_weight": proxy_weight,
@@ -898,14 +1027,25 @@ def run_optuna_synergy_search(
         _progress("deterministic baseline done")
 
     risk_evaluated_trials = 0
+    risk_rank_cache: dict[str, Any] | None = None
     if risk_aware:
         risk_t0 = time.perf_counter()
+        risk_rank_cache = _empty_risk_rank_cache()
         candidates_for_risk = sorted(completed, key=_trial_value, reverse=True)[
             : max(int(risk_eval_top_trials), 1)
         ]
+        preferred_rank_features = sorted(
+            {
+                str(feature)
+                for trial in candidates_for_risk
+                for feature in evaluations[int(trial.number)]["selected_features"]
+            }
+        )
+        risk_rank_cache["preferred_features"] = preferred_rank_features
         _progress(
             f"risk rerank start candidates={len(candidates_for_risk)} "
-            f"top_quantile={risk_top_quantile} folds={risk_folds}"
+            f"top_quantile={risk_top_quantile} folds={risk_folds} "
+            f"preferred_rank_features={len(preferred_rank_features)}"
         )
         risk_ranked: list[tuple[float, Any, dict[str, Any]]] = []
         for idx, trial in enumerate(candidates_for_risk, start=1):
@@ -932,6 +1072,7 @@ def run_optuna_synergy_search(
                 return_weight=risk_return_weight,
                 drawdown_penalty_weight=risk_drawdown_penalty_weight,
                 turnover_penalty_weight=risk_turnover_penalty_weight,
+                rank_cache=risk_rank_cache,
             )
             outcome["metrics"]["risk_evaluation"] = risk_metrics
             risk_score = _finite_float(risk_metrics.get("risk_objective"), proxy_objective)
@@ -951,7 +1092,8 @@ def run_optuna_synergy_search(
         best["objective"] = best_risk_score
         _progress(
             f"risk rerank done evaluated={risk_evaluated_trials} "
-            f"best_trial={int(best_trial.number)} risk_objective={best_risk_score:.6f}"
+            f"best_trial={int(best_trial.number)} risk_objective={best_risk_score:.6f} "
+            f"rank_cache={_risk_rank_cache_stats(risk_rank_cache)}"
         )
         stage_timings["risk_rerank_s"] = round(time.perf_counter() - risk_t0, 3)
 
@@ -1014,6 +1156,7 @@ def run_optuna_synergy_search(
         "risk_folds": int(risk_folds),
         "risk_transaction_cost_bps": float(risk_transaction_cost_bps),
         "risk_conditional_threshold": float(risk_conditional_threshold),
+        "risk_feature_rank_cache": _risk_rank_cache_stats(risk_rank_cache),
         "feature_cluster_count": len(set(feature_clusters.values())) if feature_clusters else 0,
         "pair_interaction_rows": len(pair_rows),
         "conditional_interaction_rows": len(conditional_rows),
@@ -1105,6 +1248,7 @@ def run_optuna_synergy_search(
             "objective_score": objective_score,
             "risk_aware": bool(risk_aware),
             "risk_evaluated_trials": int(risk_evaluated_trials),
+            "risk_feature_rank_cache": _risk_rank_cache_stats(risk_rank_cache),
             "best_trial_number": int(best_trial.number),
             "feature_cluster_count": len(set(feature_clusters.values())) if feature_clusters else 0,
             "pair_interaction_rows": len(pair_rows),
@@ -1136,6 +1280,7 @@ def run_optuna_synergy_search(
         "selected_interactions": best["selected_interactions"],
         "risk_aware": bool(risk_aware),
         "risk_evaluated_trials": int(risk_evaluated_trials),
+        "risk_feature_rank_cache": _risk_rank_cache_stats(risk_rank_cache),
         "duration_s": duration_s,
     }
 

@@ -257,8 +257,60 @@ def test_optuna_synergy_search_risk_aware_records_rerank_metrics():
         assert config["feature_subset_pool_size"] == 3
         assert best_risk["available"] is True
         assert "worst_max_drawdown" in best_risk
+        assert config["risk_feature_rank_cache"]["enabled"] is True
+        assert config["risk_feature_rank_cache"]["misses"] >= 1
         assert json.loads(manifest["perf_summary_json"])["risk_aware"] is True
+        assert json.loads(manifest["perf_summary_json"])["risk_feature_rank_cache"]["enabled"] is True
         assert sum("risk_evaluation" in row for row in trial_metrics) == 3
+
+
+def test_risk_evaluation_reuses_feature_rank_cache_for_candidate_feature_union():
+    with duck_mem() as conn:
+        _seed_synergy_inputs(conn)
+        rank_cache = subject._empty_risk_rank_cache()
+        rank_cache["preferred_features"] = ["strong_a", "strong_b", "weak_c"]
+        kwargs = {
+            "source_run_id": "temporal_unit",
+            "label_name": "forward_ret_20d",
+            "selected_features": ["strong_a", "strong_b"],
+            "selected_interactions": [
+                {
+                    "interaction_type": "conditional",
+                    "feature_a": "strong_a",
+                    "feature_b": "strong_b",
+                }
+            ],
+            "top_quantile": 0.5,
+            "folds": 2,
+            "transaction_cost_bps": 20.0,
+            "conditional_threshold": 0.8,
+            "proxy_objective": 0.0,
+            "proxy_weight": 0.05,
+            "rank_ic_weight": 10.0,
+            "return_weight": 100.0,
+            "drawdown_penalty_weight": 3.0,
+            "turnover_penalty_weight": 1.0,
+            "rank_cache": rank_cache,
+        }
+        alternate_kwargs = {
+            **kwargs,
+            "selected_features": ["strong_a", "weak_c"],
+            "selected_interactions": [],
+        }
+
+        first = subject._risk_evaluate_selection(conn, **kwargs)
+        second = subject._risk_evaluate_selection(conn, **alternate_kwargs)
+        stats = subject._risk_rank_cache_stats(rank_cache)
+
+        assert first["available"] is True
+        assert first["feature_rank_cache"]["status"] == "miss"
+        assert first["rank_feature_count"] == 3
+        assert second["feature_rank_cache"]["status"] == "hit"
+        assert second["rank_feature_count"] == 3
+        assert stats["misses"] == 1
+        assert stats["hits"] == 1
+        assert stats["entry_count"] == 1
+        assert stats["preferred_feature_count"] == 3
 
 
 def test_evaluate_policy_uses_redundancy_clusters_for_feature_diversity():
