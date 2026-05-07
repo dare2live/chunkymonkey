@@ -65,6 +65,11 @@ def test_workbench_frontend_render_smoke_for_all_tabs():
             source_fallback_ratio: 0.01,
             source_distribution: [{ source_name: 'tdxhub_quote', row_count: 10 }],
           },
+          tdx_server_health: {
+            summary: { healthy_count: 1, timeout_server_count: 1, total_successes: 3, total_failures: 1, total_timeouts: 1, capabilities: ['kline_daily_raw'] },
+            updated_at: '2026-05-07T05:02:00+00:00',
+            servers: [{ server_host: '218.6.170.47', server_port: 7709, capability: 'kline_daily_raw', success_count: 3, failure_count: 0, timeout_count: 0, health_score: 34.1, avg_success_elapsed_s: 0.42, last_attempt_elapsed_s: 0.39, last_success_at: '2026-05-07T05:00:00+00:00', source_run_id: 'tdx_probe_good' }],
+          },
           watermarks: [{ data_domain: 'kline', source_name: 'tdxhub_quote', source_tier: 1, row_count: 10 }],
           blockers: [],
         };
@@ -143,7 +148,7 @@ def test_workbench_frontend_render_smoke_for_all_tabs():
         };
 
         render('_renderOverview', overview, ['最新完成交易日', 'cron_daily', 'champion_a']);
-        render('_renderDataSources', dataSources, ['K线主源', 'tdxhub_quote', '数据源水位']);
+        render('_renderDataSources', dataSources, ['K线主源', 'tdxhub_quote', '数据源水位', 'TDX K线服务器健康']);
         render('_renderPipelines', pipelines, ['最近运行', 'cron_daily', '最慢运行']);
         render('_renderFeatures', features, ['Registry', 'Feature Search Space', '漂移缓解候选', 'mitigation_1', 'ret_20d']);
         render('_renderResearch', research, ['研究队列', 'Ranker 性能', 'ranker_perf', '个股持股周期画像', 'Top 变量影响', 'ma_ratio_250', '时序协同研究', 'signal_a']);

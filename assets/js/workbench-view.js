@@ -315,11 +315,14 @@
     var assetHealth = data.asset_health || {};
     var governanceCounts = assetHealth.governance_counts || {};
     var qualityCounts = governanceCounts.quality_gate_level || {};
+    var tdxHealth = data.tdx_server_health || {};
+    var tdxHealthSummary = tdxHealth.summary || {};
     setBody(
       '<div class="stats-row wb-stats-row">' +
       statCard('交易日目标', data.calendar_target || '-', 'calendar gate', data.calendar_target ? 'ok' : 'missing') +
       statCard('K线主源', primary.source_name || '-', 'tier ' + fmt(primary.source_tier), kline.primary_is_tdxhub ? 'ok' : 'bad') +
       statCard('主源行数', fmtNum(primary.row_count || 0), esc(primary.last_data_date || '-'), primary.row_count ? 'ok' : 'missing') +
+      statCard('TDX健康', fmtNum(tdxHealthSummary.healthy_count || 0), fmtNum(tdxHealthSummary.timeout_server_count || 0) + ' timeout servers', (tdxHealthSummary.timeout_server_count || 0) ? 'warn' : 'ok') +
       statCard('Fallback', fmtNum(kline.fallback_active_count || 0), 'active sources', kline.fallback_active_count ? 'warn' : 'ok') +
       statCard('资产治理', fmtNum(((assetHealth.summary || {}).total) || 0), renderStatusCounts(qualityCounts), ((qualityCounts || {}).blocking || 0) ? 'ok' : 'info') +
       statCard('特征 fallback', fmtPct(validation.source_fallback_ratio), esc(validation.validation_id || '-'), validation.status || 'unknown') +
@@ -360,6 +363,10 @@
       '<section class="panel wb-panel">' +
       '<div class="panel-head"><div><h3>数据源水位</h3><div class="muted">' + fmtNum(data.watermark_count || 0) + ' sources</div></div></div>' +
       renderWatermarkTable(data.watermarks || []) +
+      '</section>' +
+      '<section class="panel wb-panel">' +
+      '<div class="panel-head"><div><h3>TDX K线服务器健康</h3><div class="muted">' + esc(tdxHealth.updated_at || '-') + '</div></div></div>' +
+      renderTdxServerHealthTable(tdxHealth) +
       '</section>' +
       '<section class="panel wb-panel">' +
       '<div class="panel-head"><div><h3>TDX F10 能力矩阵</h3><div class="muted">parser / PIT source dates</div></div></div>' +
@@ -481,6 +488,36 @@
           '<td>' + pill(row.fallback_active ? 'active' : 'off', row.fallback_active ? 'warn' : 'ok') + '<div class="muted">' + esc(row.fallback_reason || '') + '</div></td>' +
           '<td>' + fmtNum(row.consecutive_failures || 0) + '</td>' +
           '<td>' + esc(row.updated_at || row.last_success_at || '-') + '</td>' +
+          '</tr>';
+      }).join('') +
+      '</tbody></table></div>';
+  }
+
+  function renderTdxServerHealthTable(data) {
+    data = data || {};
+    var rows = data.servers || [];
+    var summary = data.summary || {};
+    if (!rows.length) return renderEmpty('暂无 TDX 服务器健康记录');
+    var meta = '<div class="muted" style="margin-bottom:10px">' +
+      'capabilities: ' + esc((summary.capabilities || []).join(', ') || '-') +
+      ' · success ' + fmtNum(summary.total_successes || 0) +
+      ' / fail ' + fmtNum(summary.total_failures || 0) +
+      ' / timeout ' + fmtNum(summary.total_timeouts || 0) +
+      '</div>';
+    return meta + '<div class="wb-table-wrap"><table class="data-table data-table-compact wb-table">' +
+      '<thead><tr><th>server</th><th>capability</th><th>score</th><th>attempts</th><th>latency</th><th>last ok</th><th>last fail</th><th>run</th></tr></thead><tbody>' +
+      rows.map(function (row) {
+        var failed = (row.failure_count || 0) > 0 || (row.timeout_count || 0) > 0;
+        var status = failed ? 'warn' : ((row.success_count || 0) > 0 ? 'ok' : 'info');
+        return '<tr>' +
+          '<td><code>' + esc((row.server_host || '-') + ':' + (row.server_port || '-')) + '</code></td>' +
+          '<td>' + esc(row.capability || '-') + '</td>' +
+          '<td>' + pill(fmtFloat(row.health_score, 2), status) + '</td>' +
+          '<td>ok ' + fmtNum(row.success_count || 0) + '<div class="muted">fail ' + fmtNum(row.failure_count || 0) + ' · timeout ' + fmtNum(row.timeout_count || 0) + '</div></td>' +
+          '<td>' + fmtDuration(row.avg_success_elapsed_s) + '<div class="muted">last ' + fmtDuration(row.last_attempt_elapsed_s) + '</div></td>' +
+          '<td>' + esc(row.last_success_at || '-') + '</td>' +
+          '<td>' + esc(row.last_failure_at || '-') + '<div class="muted">' + esc(row.last_error_type || '') + '</div></td>' +
+          '<td><code>' + esc(row.source_run_id || '-') + '</code></td>' +
           '</tr>';
       }).join('') +
       '</tbody></table></div>';

@@ -50,6 +50,8 @@ def test_workbench_frontend_entrypoint_is_registered():
     assert "/api/workbench/storage" in workbench_js
     assert "data-wb-tab" in workbench_js
     assert "数据源" in workbench_js
+    assert "TDX K线服务器健康" in workbench_js
+    assert "renderTdxServerHealthTable" in workbench_js
     assert "管线" in workbench_js
     assert "特征" in workbench_js
     assert "推荐" in workbench_js

@@ -5,6 +5,7 @@ import json
 import pytest
 
 from conftest import duck_mem
+from services.duck_adapter import connect as duck_connect
 from services.workbench_read import (
     build_workbench_champion,
     build_workbench_data_sources,
@@ -840,6 +841,26 @@ def test_workbench_data_sources_returns_tdxhub_primary_watermarks_and_feature_li
                 ('price_kline_tdxhub', '2026-05-06T10:00:00', 100, '2026-04-30', 1.0, TRUE, 'green', NULL, '{"1":100}'),
                 ('fact_feature_panel', '2026-05-06T10:00:00', 120, '2026-04-30', 2.0, TRUE, 'yellow', 'fallback rows', '{"1":100,"3":20}'),
                 ('legacy_shadow_table', '2026-05-06T10:00:00', 0, NULL, NULL, FALSE, 'red', 'deprecated', '{"3":1}');
+
+            CREATE TABLE mart_tdx_server_health (
+                server_host TEXT,
+                server_port INTEGER,
+                capability TEXT,
+                success_count BIGINT,
+                failure_count BIGINT,
+                timeout_count BIGINT,
+                last_success_at TEXT,
+                last_failure_at TEXT,
+                last_error_type TEXT,
+                avg_success_elapsed_s DOUBLE,
+                last_attempt_elapsed_s DOUBLE,
+                health_score DOUBLE,
+                source_run_id TEXT,
+                updated_at TEXT
+            );
+            INSERT INTO mart_tdx_server_health VALUES
+                ('218.6.170.47', 7709, 'kline_daily_raw', 7, 0, 0, '2026-05-07T05:00:00+00:00', NULL, NULL, 0.42, 0.39, 74.58, 'tdx_probe_good', '2026-05-07T05:00:00+00:00'),
+                ('180.153.18.171', 7709, 'kline_daily_raw', 0, 5, 5, NULL, '2026-05-07T05:02:00+00:00', 'TimeoutError', NULL, 1.50, -35.00, 'tdx_probe_bad', '2026-05-07T05:02:00+00:00');
             """
         )
 
@@ -862,8 +883,45 @@ def test_workbench_data_sources_returns_tdxhub_primary_watermarks_and_feature_li
             "duckdb",
             "tdxhub_quote",
         ]
+        assert data_sources["tdx_server_health"]["summary"]["healthy_count"] == 1
+        assert data_sources["tdx_server_health"]["summary"]["timeout_server_count"] == 1
+        assert data_sources["tdx_server_health"]["top_servers"][0]["server_host"] == "218.6.170.47"
+        assert data_sources["tdx_server_health"]["failing_servers"][0]["last_error_type"] == "TimeoutError"
         assert data_sources["blockers"][0]["kind"] == "source_failures"
         assert json.dumps(data_sources, ensure_ascii=False)
+
+
+def test_workbench_data_sources_reads_tdx_server_health_from_attached_market(tmp_path):
+    market_path = tmp_path / "market.duckdb"
+    with duck_connect(str(market_path)) as market:
+        market.executescript(
+            """
+            CREATE TABLE mart_tdx_server_health (
+                server_host TEXT,
+                server_port INTEGER,
+                capability TEXT,
+                success_count BIGINT,
+                failure_count BIGINT,
+                timeout_count BIGINT,
+                last_success_at TEXT,
+                last_failure_at TEXT,
+                last_error_type TEXT,
+                avg_success_elapsed_s DOUBLE,
+                last_attempt_elapsed_s DOUBLE,
+                health_score DOUBLE,
+                source_run_id TEXT,
+                updated_at TEXT
+            );
+            INSERT INTO mart_tdx_server_health VALUES
+                ('218.6.170.47', 7709, 'kline_daily_raw', 3, 0, 0, '2026-05-07T05:00:00+00:00', NULL, NULL, 0.42, 0.39, 34.58, 'tdx_probe_good', '2026-05-07T05:00:00+00:00');
+            """
+        )
+
+    with duck_mem(attach={"market": str(market_path)}) as conn:
+        data_sources = build_workbench_data_sources(conn, as_of_date="2026-05-06")
+
+    assert data_sources["tdx_server_health"]["summary"]["healthy_count"] == 1
+    assert data_sources["tdx_server_health"]["servers"][0]["server_host"] == "218.6.170.47"
 
 
 def test_workbench_pipelines_returns_recent_status_slowest_and_blockers():
