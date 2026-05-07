@@ -2490,6 +2490,171 @@ def _check_institution_events(
     return evidence
 
 
+def _compact_date_expr(column_name: str) -> str:
+    quoted = _quote_ident(column_name)
+    return (
+        "substr("
+        f"regexp_replace(COALESCE(CAST({quoted} AS VARCHAR), ''), '[^0-9]', '', 'g'), "
+        "1, 8)"
+    )
+
+
+def _iso_date_expr(compact_expr: str) -> str:
+    return (
+        f"substr({compact_expr},1,4) || '-' || "
+        f"substr({compact_expr},5,2) || '-' || "
+        f"substr({compact_expr},7,2)"
+    )
+
+
+def _check_holder_availability(
+    conn: Any,
+    details: list[dict[str, Any]],
+    blockers: list[str],
+    warnings: list[str],
+    *,
+    example_limit: int = 5,
+) -> dict[str, Any]:
+    table_name = "fact_top10_holder_period"
+    if not _table_exists(conn, table_name):
+        return {"exists": False}
+
+    columns = set(_table_columns(conn, table_name))
+    row_count = _count_rows(conn, table_name)
+    evidence: dict[str, Any] = {"exists": True, "rows": row_count}
+
+    required = {"report_date", "page_update_date", "availability_source"}
+    if required <= columns:
+        page_norm = _compact_date_expr("page_update_date")
+        report_norm = _compact_date_expr("report_date")
+        page_before_report_where = f"""
+            length({page_norm}) = 8
+            AND length({report_norm}) = 8
+            AND {page_norm} < {report_norm}
+        """
+        unsafe_page_update_where = f"""
+            {page_before_report_where}
+            AND COALESCE(NULLIF(availability_source, ''), 'unknown') = 'page_update_date'
+        """
+        page_before_report_rows = _count_rows(
+            conn,
+            table_name,
+            where_sql=page_before_report_where,
+        )
+        unsafe_page_update_rows = _count_rows(
+            conn,
+            table_name,
+            where_sql=unsafe_page_update_where,
+        )
+        example_columns = [
+            column
+            for column in (
+                "stock_code",
+                "stock_name",
+                "report_date",
+                "page_update_date",
+                "notice_date",
+                "availability_source",
+                "raw_hash",
+                "fetched_at",
+            )
+            if column in columns
+        ]
+        item = _detail(
+            domain="holder_availability",
+            table_name=table_name,
+            column_name="page_update_date",
+            check_name="page_update_before_report_used_as_availability",
+            status="pass" if unsafe_page_update_rows == 0 else "fail",
+            row_count=row_count,
+            violation_count=unsafe_page_update_rows,
+            reason=(
+                None
+                if unsafe_page_update_rows == 0 and page_before_report_rows == 0
+                else (
+                    "F10 page_update_date is before report_date and must not be used as PIT availability"
+                    if unsafe_page_update_rows
+                    else "F10 page_update_date/report_date conflicts exist but are not used as page_update_date availability"
+                )
+            ),
+            examples=_sample_examples(
+                conn,
+                table_name,
+                where_sql=unsafe_page_update_where if unsafe_page_update_rows else page_before_report_where,
+                columns=example_columns,
+                limit=example_limit,
+            )
+            if page_before_report_rows
+            else [],
+        )
+        _append_outcome(item, details=details, blockers=blockers, warnings=warnings)
+        evidence["page_update_before_report_rows"] = page_before_report_rows
+        evidence["unsafe_page_update_availability_rows"] = unsafe_page_update_rows
+
+    fetched_required = {"report_date", "notice_date", "fetched_at", "availability_source"}
+    if fetched_required <= columns:
+        report_norm = _compact_date_expr("report_date")
+        fetched_norm = _compact_date_expr("fetched_at")
+        notice_norm = _compact_date_expr("notice_date")
+        fetched_iso = _iso_date_expr(fetched_norm)
+        notice_iso = _iso_date_expr(notice_norm)
+        invalid_fetched_where = f"""
+            COALESCE(NULLIF(availability_source, ''), 'unknown') = 'fetched_at_observed'
+            AND (
+                length({report_norm}) != 8
+                OR length({fetched_norm}) != 8
+                OR length({notice_norm}) != 8
+                OR {fetched_norm} < {report_norm}
+                OR TRY_CAST({fetched_iso} AS DATE) > CURRENT_DATE
+                OR TRY_CAST({notice_iso} AS DATE) > CURRENT_DATE
+            )
+        """
+        invalid_fetched_rows = _count_rows(
+            conn,
+            table_name,
+            where_sql=invalid_fetched_where,
+        )
+        example_columns = [
+            column
+            for column in (
+                "stock_code",
+                "stock_name",
+                "report_date",
+                "notice_date",
+                "page_update_date",
+                "availability_source",
+                "raw_hash",
+                "fetched_at",
+            )
+            if column in columns
+        ]
+        item = _detail(
+            domain="holder_availability",
+            table_name=table_name,
+            column_name="fetched_at",
+            check_name="invalid_fetched_at_observed_availability",
+            status="pass" if invalid_fetched_rows == 0 else "fail",
+            row_count=row_count,
+            violation_count=invalid_fetched_rows,
+            reason=None
+            if invalid_fetched_rows == 0
+            else "fetched_at_observed must be observed on/after report_date and not in the future",
+            examples=_sample_examples(
+                conn,
+                table_name,
+                where_sql=invalid_fetched_where,
+                columns=example_columns,
+                limit=example_limit,
+            )
+            if invalid_fetched_rows
+            else [],
+        )
+        _append_outcome(item, details=details, blockers=blockers, warnings=warnings)
+        evidence["invalid_fetched_at_observed_rows"] = invalid_fetched_rows
+
+    return evidence
+
+
 def _has_stage_timing(perf: Any) -> bool:
     if not isinstance(perf, dict):
         return False
@@ -3376,6 +3541,19 @@ def record_global_data_quality_gate(
         evidence["institution_events"] = _check_institution_events(conn, details, blockers, warnings)
         stage_timings["institution_event_scan_s"] = round(time.perf_counter() - stage_started, 3)
         _emit_progress(f"institution_event_scan done elapsed={stage_timings['institution_event_scan_s']:.3f}s")
+    stage_started = time.perf_counter()
+    _emit_progress("holder_availability_scan start")
+    evidence["holder_availability"] = _check_holder_availability(
+        conn,
+        details,
+        blockers,
+        warnings,
+        example_limit=example_limit,
+    )
+    stage_timings["holder_availability_scan_s"] = round(time.perf_counter() - stage_started, 3)
+    _emit_progress(
+        f"holder_availability_scan done elapsed={stage_timings['holder_availability_scan_s']:.3f}s"
+    )
     stage_started = time.perf_counter()
     _emit_progress("recommendation_output_scan start")
     evidence["recommendation_outputs"] = _check_recommendation_outputs(conn, details, blockers, warnings)
