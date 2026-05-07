@@ -2771,7 +2771,23 @@ def _check_tdx_f10_source_availability(
             available_norm = _compact_date_expr("source_available_date")
             notice_iso = _iso_date_expr(notice_norm)
             available_iso = _iso_date_expr(available_norm)
-            checks = (
+            allowed_quality = (
+                "parsed_latest_announce_date",
+                "parsed_first_announce_date",
+                "page_update_date_fallback",
+                "missing_source_date",
+            )
+            invalid_quality_values = ", ".join(f"'{value}'" for value in allowed_quality)
+            checks = [
+                (
+                    "invalid_source_date_quality",
+                    "source_date_quality",
+                    f"""
+                    source_date_quality IS NULL
+                    OR source_date_quality NOT IN ({invalid_quality_values})
+                    """,
+                    "shareholder-plan source date quality must identify announcement/page-update provenance",
+                ),
                 (
                     "missing_parsed_source_notice_date",
                     "source_notice_date",
@@ -2802,7 +2818,64 @@ def _check_tdx_f10_source_availability(
                     """,
                     "TDX/F10 source availability cannot be in the future",
                 ),
-            )
+            ]
+            plan_window_columns = [column for column in ("start_date", "end_date") if column in columns]
+            announcement_columns = [
+                column
+                for column in (
+                    "announce_date",
+                    "latest_announce_date",
+                    "first_announce_date",
+                    "page_update_date",
+                )
+                if column in columns
+            ]
+            if plan_window_columns:
+                window_notice_terms = [
+                    f"length({_compact_date_expr(column)}) = 8 AND {notice_norm} = {_compact_date_expr(column)}"
+                    for column in plan_window_columns
+                ]
+                window_available_terms = [
+                    f"length({_compact_date_expr(column)}) = 8 AND {available_norm} = {_compact_date_expr(column)}"
+                    for column in plan_window_columns
+                ]
+                notice_announcement_terms = [
+                    f"length({_compact_date_expr(column)}) = 8 AND {notice_norm} = {_compact_date_expr(column)}"
+                    for column in announcement_columns
+                ]
+                available_announcement_terms = [
+                    f"length({_compact_date_expr(column)}) = 8 AND {available_norm} = {_compact_date_expr(column)}"
+                    for column in announcement_columns
+                ]
+                notice_announcement_match = (
+                    " OR ".join(notice_announcement_terms)
+                    if notice_announcement_terms
+                    else "FALSE"
+                )
+                available_announcement_match = (
+                    " OR ".join(available_announcement_terms)
+                    if available_announcement_terms
+                    else "FALSE"
+                )
+                checks.append(
+                    (
+                        "plan_window_used_as_source_date",
+                        "source_available_date",
+                        f"""
+                        (
+                            length({notice_norm}) = 8
+                            AND ({' OR '.join(window_notice_terms)})
+                            AND NOT ({notice_announcement_match})
+                        )
+                        OR (
+                            length({available_norm}) = 8
+                            AND ({' OR '.join(window_available_terms)})
+                            AND NOT ({available_announcement_match})
+                        )
+                        """,
+                        "shareholder-plan start/end dates are plan windows, not source availability",
+                    )
+                )
             example_columns = [
                 column
                 for column in (
@@ -2813,6 +2886,10 @@ def _check_tdx_f10_source_availability(
                     "source_date_quality",
                     "announce_date",
                     "latest_announce_date",
+                    "first_announce_date",
+                    "start_date",
+                    "end_date",
+                    "page_update_date",
                     "raw_hash",
                     "fetched_at",
                 )
