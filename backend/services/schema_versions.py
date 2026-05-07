@@ -38,7 +38,7 @@ logger = logging.getLogger("cm-api.schema_versions")
 
 # fact_* (事件/快照层, 23 张)
 FACT_VERSIONS = {
-    "fact_institution_event": "v1",          # 机构事件 (核心)
+    "fact_institution_event": "v2",          # 机构事件 (公告日 source lineage)
     "fact_setup_snapshot": "v1",             # setup 快照
     "fact_chain_alpha_truth": "v1",          # 链路 alpha 真值
     "fact_feature_panel": "v4",              # 特征面板 (含 follow_net_return_* 标签 + K线来源血缘)

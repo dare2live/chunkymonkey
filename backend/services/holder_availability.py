@@ -7,6 +7,20 @@ from datetime import datetime, timedelta
 from typing import Any
 
 
+def _table_columns(conn, table_name: str) -> set[str]:
+    try:
+        rows = conn.execute(f"PRAGMA table_info('{table_name}')").fetchall()
+    except Exception:
+        return set()
+    columns: set[str] = set()
+    for row in rows:
+        if hasattr(row, "keys"):
+            columns.add(str(row["name"]))
+        else:
+            columns.add(str(row[1]))
+    return columns
+
+
 def normalize_yyyymmdd(value: Any) -> str | None:
     if value in (None, ""):
         return None
@@ -135,7 +149,7 @@ def backfill_holder_period_availability(conn) -> dict:
 
 
 def backfill_inst_holdings_notice_dates(conn) -> dict:
-    """Backfill inst_holdings.notice_date from canonical TDX holder facts."""
+    """Backfill inst_holdings PIT availability fields from canonical TDX holder facts."""
 
     try:
         before = conn.execute(
@@ -148,24 +162,101 @@ def backfill_inst_holdings_notice_dates(conn) -> dict:
     except Exception:
         return {"updated_rows": 0, "remaining_missing_rows": 0, "status": "missing_inst_holdings"}
     before_missing = int((before["n"] if hasattr(before, "keys") else before[0]) or 0)
-    conn.execute(
+
+    inst_columns = _table_columns(conn, "inst_holdings")
+    holder_columns = _table_columns(conn, "fact_top10_holder_period")
+    has_holder_source = "availability_source" in holder_columns
+    has_notice_source = "notice_date_source" in inst_columns
+    has_source_notice_date = "source_notice_date" in inst_columns
+    has_availability_deadline = "availability_deadline" in inst_columns
+
+    source_expr = (
+        "COALESCE(NULLIF(availability_source, ''), 'unknown')"
+        if has_holder_source
+        else "'unknown'"
+    )
+    source_sort_expr = (
         """
+        CASE
+            WHEN availability_source = 'source_notice' THEN 0
+            WHEN availability_source = 'regulatory_deadline' THEN 1
+            ELSE 2
+        END
+        """
+        if has_holder_source
+        else "2"
+    )
+    source_notice_expr = (
+        "CASE WHEN availability_source = 'source_notice' THEN notice_date ELSE NULL END"
+        if has_holder_source
+        else "NULL"
+    )
+    deadline_expr = (
+        "CASE WHEN availability_source = 'regulatory_deadline' THEN notice_date ELSE NULL END"
+        if has_holder_source
+        else "NULL"
+    )
+
+    set_clauses = ["notice_date = COALESCE(NULLIF(h.notice_date, ''), src.notice_date)"]
+    update_conditions = ["h.notice_date IS NULL OR h.notice_date = ''"]
+    if has_notice_source:
+        set_clauses.append(
+            "notice_date_source = COALESCE(NULLIF(h.notice_date_source, ''), src.notice_date_source)"
+        )
+        update_conditions.append("h.notice_date_source IS NULL OR h.notice_date_source = ''")
+    if has_source_notice_date:
+        set_clauses.append(
+            "source_notice_date = COALESCE(NULLIF(h.source_notice_date, ''), src.source_notice_date)"
+        )
+        update_conditions.append(
+            """
+            (
+                src.notice_date_source = 'source_notice'
+                AND (h.source_notice_date IS NULL OR h.source_notice_date = '')
+            )
+            """
+        )
+    if has_availability_deadline:
+        set_clauses.append(
+            "availability_deadline = COALESCE(NULLIF(h.availability_deadline, ''), src.availability_deadline)"
+        )
+        update_conditions.append(
+            """
+            (
+                src.notice_date_source = 'regulatory_deadline'
+                AND (h.availability_deadline IS NULL OR h.availability_deadline = '')
+            )
+            """
+        )
+
+    conn.execute(
+        f"""
         UPDATE inst_holdings AS h
-           SET notice_date = src.notice_date
+           SET {", ".join(set_clauses)}
           FROM (
-                SELECT stock_code, report_date, holder_name,
-                       MAX(notice_date) AS notice_date
-                  FROM fact_top10_holder_period
-                 WHERE notice_date IS NOT NULL AND notice_date != ''
-                   AND holder_set = 'free'
-                   AND NOT COALESCE(is_secondary_class, FALSE)
-                   AND NOT COALESCE(is_exit_row, FALSE)
-                 GROUP BY stock_code, report_date, holder_name
+                SELECT stock_code, report_date, holder_name, notice_date,
+                       notice_date_source, source_notice_date, availability_deadline
+                  FROM (
+                        SELECT stock_code, report_date, holder_name, notice_date,
+                               {source_expr} AS notice_date_source,
+                               {source_notice_expr} AS source_notice_date,
+                               {deadline_expr} AS availability_deadline,
+                               ROW_NUMBER() OVER (
+                                   PARTITION BY stock_code, report_date, holder_name
+                                   ORDER BY {source_sort_expr}, notice_date DESC
+                               ) AS rn
+                          FROM fact_top10_holder_period
+                         WHERE notice_date IS NOT NULL AND notice_date != ''
+                           AND holder_set = 'free'
+                           AND NOT COALESCE(is_secondary_class, FALSE)
+                           AND NOT COALESCE(is_exit_row, FALSE)
+                       )
+                 WHERE rn = 1
                ) AS src
          WHERE h.stock_code = src.stock_code
            AND h.report_date = src.report_date
            AND h.holder_name = src.holder_name
-           AND (h.notice_date IS NULL OR h.notice_date = '')
+           AND ({" OR ".join(update_conditions)})
         """
     )
     after = conn.execute(
@@ -180,6 +271,199 @@ def backfill_inst_holdings_notice_dates(conn) -> dict:
         "updated_rows": max(before_missing - after_missing, 0),
         "remaining_missing_rows": after_missing,
         "status": "ok",
+    }
+
+
+def backfill_institution_event_notice_sources(conn) -> dict:
+    """Backfill event notice-source lineage without regenerating event returns."""
+
+    event_columns = _table_columns(conn, "fact_institution_event")
+    required_event_columns = {
+        "notice_date_source",
+        "source_notice_date",
+        "availability_deadline",
+    }
+    if not event_columns:
+        return {"status": "missing_fact_institution_event", "updated_rows": 0}
+    if not required_event_columns <= event_columns:
+        return {
+            "status": "missing_event_source_columns",
+            "updated_rows": 0,
+            "missing_columns": sorted(required_event_columns - event_columns),
+        }
+
+    holder_columns = _table_columns(conn, "fact_top10_holder_period")
+    if not holder_columns:
+        return {"status": "missing_fact_top10_holder_period", "updated_rows": 0}
+    has_holder_source = "availability_source" in holder_columns
+    source_expr = (
+        "COALESCE(NULLIF(availability_source, ''), 'unknown')"
+        if has_holder_source
+        else "'unknown'"
+    )
+    source_sort_expr = (
+        """
+        CASE
+            WHEN availability_source = 'source_notice' THEN 0
+            WHEN availability_source = 'regulatory_deadline' THEN 1
+            ELSE 2
+        END
+        """
+        if has_holder_source
+        else "2"
+    )
+    source_notice_expr = (
+        "CASE WHEN availability_source = 'source_notice' THEN notice_date ELSE NULL END"
+        if has_holder_source
+        else "NULL"
+    )
+    deadline_expr = (
+        "CASE WHEN availability_source = 'regulatory_deadline' THEN notice_date ELSE NULL END"
+        if has_holder_source
+        else "NULL"
+    )
+    missing_where = """
+        notice_date_source IS NULL OR notice_date_source = ''
+        OR (
+            notice_date_source = 'source_notice'
+            AND (source_notice_date IS NULL OR source_notice_date = '')
+        )
+        OR (
+            notice_date_source = 'regulatory_deadline'
+            AND (availability_deadline IS NULL OR availability_deadline = '')
+        )
+    """
+    event_missing_where = """
+        e.notice_date_source IS NULL OR e.notice_date_source = ''
+        OR (
+            e.notice_date_source = 'source_notice'
+            AND (e.source_notice_date IS NULL OR e.source_notice_date = '')
+        )
+        OR (
+            e.notice_date_source = 'regulatory_deadline'
+            AND (e.availability_deadline IS NULL OR e.availability_deadline = '')
+        )
+    """
+    before = conn.execute(
+        f"SELECT COUNT(*) AS n FROM fact_institution_event WHERE {missing_where}"
+    ).fetchone()
+    before_missing = int((before["n"] if hasattr(before, "keys") else before[0]) or 0)
+    for index_name in ("idx_fie_notice_source", "idx_event_notice_source"):
+        try:
+            conn.execute(f"DROP INDEX IF EXISTS {index_name}")
+        except Exception:
+            pass
+
+    holder_source_cte = f"""
+        SELECT stock_code, report_date, holder_name, notice_date_source,
+               source_notice_date, availability_deadline
+          FROM (
+                SELECT stock_code, report_date, holder_name,
+                       {source_expr} AS notice_date_source,
+                       {source_notice_expr} AS source_notice_date,
+                       {deadline_expr} AS availability_deadline,
+                       ROW_NUMBER() OVER (
+                           PARTITION BY stock_code, report_date, holder_name
+                           ORDER BY {source_sort_expr}, notice_date DESC
+                       ) AS rn
+                  FROM fact_top10_holder_period
+                 WHERE notice_date IS NOT NULL AND notice_date != ''
+                   AND holder_set = 'free'
+                   AND NOT COALESCE(is_secondary_class, FALSE)
+                   AND NOT COALESCE(is_exit_row, FALSE)
+               )
+         WHERE rn = 1
+    """
+    period_source_cte = f"""
+        SELECT stock_code, report_date, notice_date_source,
+               source_notice_date, availability_deadline
+          FROM (
+                SELECT stock_code, report_date,
+                       {source_expr} AS notice_date_source,
+                       {source_notice_expr} AS source_notice_date,
+                       {deadline_expr} AS availability_deadline,
+                       ROW_NUMBER() OVER (
+                           PARTITION BY stock_code, report_date
+                           ORDER BY {source_sort_expr}, notice_date DESC
+                       ) AS rn
+                  FROM fact_top10_holder_period
+                 WHERE stock_code IS NOT NULL
+                   AND notice_date IS NOT NULL AND notice_date != ''
+                   AND holder_set = 'free'
+                   AND NOT COALESCE(is_secondary_class, FALSE)
+                   AND NOT COALESCE(is_exit_row, FALSE)
+               )
+         WHERE rn = 1
+    """
+
+    conn.execute(
+        f"""
+        UPDATE fact_institution_event AS e
+           SET notice_date_source = COALESCE(NULLIF(e.notice_date_source, ''), src.notice_date_source),
+               source_notice_date = COALESCE(NULLIF(e.source_notice_date, ''), src.source_notice_date),
+               availability_deadline = COALESCE(NULLIF(e.availability_deadline, ''), src.availability_deadline)
+          FROM ({holder_source_cte}) AS src
+         WHERE e.stock_code = src.stock_code
+           AND e.report_date = src.report_date
+           AND e.holder_name = src.holder_name
+           AND ({event_missing_where})
+        """
+    )
+    conn.execute(
+        f"""
+        UPDATE fact_institution_event AS e
+           SET notice_date_source = COALESCE(NULLIF(e.notice_date_source, ''), src.notice_date_source),
+               source_notice_date = COALESCE(NULLIF(e.source_notice_date, ''), src.source_notice_date),
+               availability_deadline = COALESCE(NULLIF(e.availability_deadline, ''), src.availability_deadline)
+          FROM ({period_source_cte}) AS src
+         WHERE e.stock_code = src.stock_code
+           AND e.report_date = src.report_date
+           AND ({event_missing_where})
+        """
+    )
+    conn.commit()
+    try:
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_fie_notice_source "
+            "ON fact_institution_event(notice_date_source)"
+        )
+        conn.commit()
+    except Exception:
+        pass
+
+    after = conn.execute(
+        f"SELECT COUNT(*) AS n FROM fact_institution_event WHERE {missing_where}"
+    ).fetchone()
+    after_missing = int((after["n"] if hasattr(after, "keys") else after[0]) or 0)
+    future_by_source = conn.execute(
+        """
+        WITH norm AS (
+            SELECT COALESCE(NULLIF(notice_date_source, ''), 'unknown') AS notice_date_source,
+                   TRY_CAST(
+                       CASE
+                           WHEN length(CAST(notice_date AS VARCHAR)) = 8
+                                AND instr(CAST(notice_date AS VARCHAR), '-') = 0
+                           THEN substr(CAST(notice_date AS VARCHAR),1,4) || '-' ||
+                                substr(CAST(notice_date AS VARCHAR),5,2) || '-' ||
+                                substr(CAST(notice_date AS VARCHAR),7,2)
+                           ELSE CAST(notice_date AS VARCHAR)
+                       END AS DATE
+                   ) AS notice_dt
+              FROM fact_institution_event
+             WHERE notice_date IS NOT NULL AND notice_date != ''
+        )
+        SELECT notice_date_source, COUNT(*) AS rows
+          FROM norm
+         WHERE notice_dt > CURRENT_DATE
+         GROUP BY notice_date_source
+         ORDER BY rows DESC
+        """
+    ).fetchall()
+    return {
+        "status": "ok",
+        "updated_rows": max(before_missing - after_missing, 0),
+        "remaining_missing_source_rows": after_missing,
+        "future_notice_by_source": [dict(row) for row in future_by_source],
     }
 
 

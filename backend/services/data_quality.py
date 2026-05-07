@@ -2378,23 +2378,65 @@ def _check_institution_events(
              WHERE {future_where}
             """
         ).fetchone()
+        future_by_source: list[dict[str, Any]] = []
+        source_notice_future_count = 0
+        if "notice_date_source" in columns:
+            future_by_source = [
+                dict(row)
+                for row in conn.execute(
+                    f"""
+                    SELECT COALESCE(NULLIF(notice_date_source, ''), 'unknown') AS notice_date_source,
+                           COUNT(*) AS rows
+                      FROM {_quote_table(table_name)}
+                     WHERE {future_where}
+                     GROUP BY COALESCE(NULLIF(notice_date_source, ''), 'unknown')
+                     ORDER BY rows DESC
+                    """
+                ).fetchall()
+            ]
+            source_notice_future_count = int(
+                next(
+                    (
+                        row["rows"]
+                        for row in future_by_source
+                        if row.get("notice_date_source") == "source_notice"
+                    ),
+                    0,
+                )
+                or 0
+            )
         example_columns = [
             column
-            for column in ("institution_id", "stock_code", "stock_name", "report_date", "notice_date", "event_type")
+            for column in (
+                "institution_id",
+                "stock_code",
+                "stock_name",
+                "report_date",
+                "notice_date",
+                "notice_date_source",
+                "source_notice_date",
+                "availability_deadline",
+                "event_type",
+            )
             if column in columns
         ]
+        severity = "blocker" if source_notice_future_count else "warning"
         item = _detail(
             domain="institution_event",
             table_name=table_name,
             column_name="notice_date",
             check_name="future_notice_date",
             status="pass" if future_count == 0 else "fail",
-            severity="warning",
+            severity=severity,
             row_count=row_count,
             violation_count=future_count,
             reason=None
             if future_count == 0
-            else "future notice_date rows are excluded from live signals and require source-date root-cause review",
+            else (
+                "future source_notice rows indicate upstream date corruption"
+                if source_notice_future_count
+                else "future notice_date rows are excluded from live signals; regulatory_deadline rows are plannable fallback dates, not true source disclosure dates"
+            ),
             examples=_sample_examples(
                 conn,
                 table_name,
@@ -2407,6 +2449,9 @@ def _check_institution_events(
         )
         _append_outcome(item, details=details, blockers=blockers, warnings=warnings)
         evidence["future_notice_date_rows"] = future_count
+        if future_by_source:
+            evidence["future_notice_by_source"] = future_by_source
+            evidence["future_source_notice_rows"] = source_notice_future_count
         evidence["min_future_notice_date"] = (
             str(future_bounds["min_future_notice_date"])
             if future_bounds and future_bounds["min_future_notice_date"] is not None

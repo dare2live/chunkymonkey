@@ -20,6 +20,20 @@ from services.constants import CHANGE_MAP as _CHANGE_MAP
 logger = logging.getLogger("cm-api")
 
 
+def _table_columns(conn, table_name: str) -> set[str]:
+    try:
+        rows = conn.execute(f"PRAGMA table_info('{table_name}')").fetchall()
+    except Exception:
+        return set()
+    columns: set[str] = set()
+    for row in rows:
+        if hasattr(row, "keys"):
+            columns.add(str(row["name"]))
+        else:
+            columns.add(str(row[1]))
+    return columns
+
+
 # ---------------------------------------------------------------------------
 # 幂等化: 输入签名 + KV 存储 (§4.25 #2)
 # ---------------------------------------------------------------------------
@@ -63,6 +77,23 @@ def compute_gen_events_input_signature(conn) -> tuple[str, int]:
     holdings_part = f"holdings|{row['n_rows']}|{row['sum_amount']:.2f}|{row['n_keys']}|{row['max_rd']}"
     h.update(holdings_part.encode("utf-8"))
     n_rows = int(row["n_rows"] or 0)
+    inst_columns = _table_columns(conn, "inst_holdings")
+    if "notice_date_source" in inst_columns:
+        source_row = conn.execute("""
+            SELECT
+                COUNT(*) FILTER (WHERE notice_date_source = 'source_notice') AS source_notice_rows,
+                COUNT(*) FILTER (WHERE notice_date_source = 'regulatory_deadline') AS regulatory_deadline_rows,
+                MAX(COALESCE(notice_date, '')) AS max_notice_date,
+                MAX(COALESCE(notice_date_source, '')) AS max_notice_date_source
+            FROM inst_holdings
+            WHERE institution_id IS NOT NULL AND stock_code IS NOT NULL
+        """).fetchone()
+        source_part = (
+            f"|notice_source|{source_row['source_notice_rows']}|"
+            f"{source_row['regulatory_deadline_rows']}|"
+            f"{source_row['max_notice_date']}|{source_row['max_notice_date_source']}"
+        )
+        h.update(source_part.encode("utf-8"))
 
     # 2. fact_top10_holder_period 最新两期 (free/非二级/非退出): generate_exit_events 用 (stock_code, report_date) 序列
     try:
@@ -124,21 +155,83 @@ def update_step_fingerprint(conn, step_id: str, fingerprint: str, row_count: int
 def generate_events(conn) -> int:
     """从 inst_holdings 生成事件（优先用东财原始标记，回退到持仓量对比）"""
     logger.info("[事件] 开始生成...")
+    inst_columns = _table_columns(conn, "inst_holdings")
+    holder_columns = _table_columns(conn, "fact_top10_holder_period")
+    event_columns = _table_columns(conn, "fact_institution_event")
+    can_insert_source = {
+        "notice_date_source",
+        "source_notice_date",
+        "availability_deadline",
+    } <= event_columns
+    holder_source_expr = (
+        "COALESCE(NULLIF(availability_source, ''), 'unknown')"
+        if "availability_source" in holder_columns
+        else "'unknown'"
+    )
+    holder_source_sort_expr = (
+        """
+        CASE
+            WHEN availability_source = 'source_notice' THEN 0
+            WHEN availability_source = 'regulatory_deadline' THEN 1
+            ELSE 2
+        END
+        """
+        if "availability_source" in holder_columns
+        else "2"
+    )
+    holder_source_notice_expr = (
+        "CASE WHEN availability_source = 'source_notice' THEN notice_date ELSE NULL END"
+        if "availability_source" in holder_columns
+        else "NULL"
+    )
+    holder_deadline_expr = (
+        "CASE WHEN availability_source = 'regulatory_deadline' THEN notice_date ELSE NULL END"
+        if "availability_source" in holder_columns
+        else "NULL"
+    )
+    h_notice_source_expr = (
+        "NULLIF(h.notice_date_source, '')"
+        if "notice_date_source" in inst_columns
+        else "NULL"
+    )
+    h_source_notice_expr = (
+        "NULLIF(h.source_notice_date, '')"
+        if "source_notice_date" in inst_columns
+        else "NULL"
+    )
+    h_deadline_expr = (
+        "NULLIF(h.availability_deadline, '')"
+        if "availability_deadline" in inst_columns
+        else "NULL"
+    )
 
-    rows = conn.execute("""
+    rows = conn.execute(f"""
         WITH holder_notice AS (
-            SELECT stock_code, report_date, holder_name,
-                   MAX(notice_date) AS notice_date
-              FROM fact_top10_holder_period
-             WHERE notice_date IS NOT NULL AND notice_date != ''
-               AND holder_set = 'free'
-               AND NOT COALESCE(is_secondary_class, FALSE)
-               AND NOT COALESCE(is_exit_row, FALSE)
-             GROUP BY stock_code, report_date, holder_name
+            SELECT stock_code, report_date, holder_name, notice_date,
+                   notice_date_source, source_notice_date, availability_deadline
+              FROM (
+                    SELECT stock_code, report_date, holder_name, notice_date,
+                           {holder_source_expr} AS notice_date_source,
+                           {holder_source_notice_expr} AS source_notice_date,
+                           {holder_deadline_expr} AS availability_deadline,
+                           ROW_NUMBER() OVER (
+                               PARTITION BY stock_code, report_date, holder_name
+                               ORDER BY {holder_source_sort_expr}, notice_date DESC
+                           ) AS rn
+                      FROM fact_top10_holder_period
+                     WHERE notice_date IS NOT NULL AND notice_date != ''
+                       AND holder_set = 'free'
+                       AND NOT COALESCE(is_secondary_class, FALSE)
+                       AND NOT COALESCE(is_exit_row, FALSE)
+                   )
+             WHERE rn = 1
         )
         SELECT h.institution_id, h.holder_name, h.stock_code, h.stock_name,
                h.report_date,
                COALESCE(NULLIF(h.notice_date, ''), hn.notice_date) AS notice_date,
+               COALESCE({h_notice_source_expr}, hn.notice_date_source, 'unknown') AS notice_date_source,
+               COALESCE({h_source_notice_expr}, hn.source_notice_date) AS source_notice_date,
+               COALESCE({h_deadline_expr}, hn.availability_deadline) AS availability_deadline,
                h.hold_amount, h.hold_change, h.hold_change_num
         FROM inst_holdings h
         LEFT JOIN holder_notice hn
@@ -193,22 +286,49 @@ def generate_events(conn) -> int:
             change = cur - prev
             pct = (change / prev * 100) if prev > 0 else 0
 
-            events.append((
-                inst_id, rec["holder_name"], stock_code, rec["stock_name"],
-                rec["report_date"], rec["notice_date"], event_type,
-                cur, prev, change, round(pct, 2), now
-            ))
+            events.append({
+                "institution_id": inst_id,
+                "holder_name": rec["holder_name"],
+                "stock_code": stock_code,
+                "stock_name": rec["stock_name"],
+                "report_date": rec["report_date"],
+                "notice_date": rec["notice_date"],
+                "notice_date_source": rec.get("notice_date_source") or "unknown",
+                "source_notice_date": rec.get("source_notice_date"),
+                "availability_deadline": rec.get("availability_deadline"),
+                "event_type": event_type,
+                "hold_amount": cur,
+                "prev_hold_amount": prev,
+                "change_amount": change,
+                "change_pct": round(pct, 2),
+                "created_at": now,
+            })
 
     conn.execute("BEGIN TRANSACTION")
     try:
         conn.execute("DELETE FROM fact_institution_event")
-        conn.executemany("""
+        if can_insert_source:
+            insert_columns = [
+                "institution_id", "holder_name", "stock_code", "stock_name",
+                "report_date", "notice_date", "notice_date_source",
+                "source_notice_date", "availability_deadline", "event_type",
+                "hold_amount", "prev_hold_amount", "change_amount", "change_pct", "created_at",
+            ]
+        else:
+            insert_columns = [
+                "institution_id", "holder_name", "stock_code", "stock_name",
+                "report_date", "notice_date", "event_type",
+                "hold_amount", "prev_hold_amount", "change_amount", "change_pct", "created_at",
+            ]
+        placeholders = ", ".join("?" for _ in insert_columns)
+        conn.executemany(
+            f"""
             INSERT INTO fact_institution_event
-            (institution_id, holder_name, stock_code, stock_name,
-             report_date, notice_date, event_type,
-             hold_amount, prev_hold_amount, change_amount, change_pct, created_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        """, events)
+            ({", ".join(insert_columns)})
+            VALUES ({placeholders})
+            """,
+            [tuple(event[column] for column in insert_columns) for event in events],
+        )
         conn.commit()
     except Exception:
         conn.rollback()
@@ -216,7 +336,7 @@ def generate_events(conn) -> int:
 
     counts = {}
     for e in events:
-        t = e[6]
+        t = e["event_type"]
         counts[t] = counts.get(t, 0) + 1
     logger.info(f"[事件] 生成 {len(events)} 条: {counts}")
     return len(events)
@@ -224,6 +344,39 @@ def generate_events(conn) -> int:
 
 def generate_exit_events(conn) -> int:
     """检测退出事件：每只股票取自己最新的报告期和上一期对比，上期有该机构、最新期没有 → 退出"""
+    holder_columns = _table_columns(conn, "fact_top10_holder_period")
+    event_columns = _table_columns(conn, "fact_institution_event")
+    can_insert_source = {
+        "notice_date_source",
+        "source_notice_date",
+        "availability_deadline",
+    } <= event_columns
+    holder_source_expr = (
+        "COALESCE(NULLIF(availability_source, ''), 'unknown')"
+        if "availability_source" in holder_columns
+        else "'unknown'"
+    )
+    holder_source_sort_expr = (
+        """
+        CASE
+            WHEN availability_source = 'source_notice' THEN 0
+            WHEN availability_source = 'regulatory_deadline' THEN 1
+            ELSE 2
+        END
+        """
+        if "availability_source" in holder_columns
+        else "2"
+    )
+    holder_source_notice_expr = (
+        "CASE WHEN availability_source = 'source_notice' THEN notice_date ELSE NULL END"
+        if "availability_source" in holder_columns
+        else "NULL"
+    )
+    holder_deadline_expr = (
+        "CASE WHEN availability_source = 'regulatory_deadline' THEN notice_date ELSE NULL END"
+        if "availability_source" in holder_columns
+        else "NULL"
+    )
 
     # 每只股票最新的两个报告期
     stock_periods = conn.execute("""
@@ -262,18 +415,30 @@ def generate_exit_events(conn) -> int:
         holdings_index.add(key)
         holdings_detail[key] = r
 
-    # 批量查出每个 (stock_code, report_date) 的公告日，供 exit 事件使用
-    notice_map = {}  # (stock_code, report_date) -> notice_date
-    for r in conn.execute("""
-        SELECT stock_code, report_date, MAX(notice_date) AS notice_date
-        FROM fact_top10_holder_period
-        WHERE stock_code IS NOT NULL AND notice_date IS NOT NULL AND notice_date != ''
-          AND holder_set = 'free'
-          AND NOT is_secondary_class
-          AND NOT is_exit_row
-        GROUP BY stock_code, report_date
+    # 批量查出每个 (stock_code, report_date) 的公告日与来源，供 exit 事件使用。
+    # 若真实公告日和监管兜底日期同时存在，优先保留真实公告日。
+    notice_map = {}  # (stock_code, report_date) -> availability payload
+    for r in conn.execute(f"""
+        SELECT stock_code, report_date, notice_date, notice_date_source,
+               source_notice_date, availability_deadline
+          FROM (
+                SELECT stock_code, report_date, notice_date,
+                       {holder_source_expr} AS notice_date_source,
+                       {holder_source_notice_expr} AS source_notice_date,
+                       {holder_deadline_expr} AS availability_deadline,
+                       ROW_NUMBER() OVER (
+                           PARTITION BY stock_code, report_date
+                           ORDER BY {holder_source_sort_expr}, notice_date DESC
+                       ) AS rn
+                  FROM fact_top10_holder_period
+                 WHERE stock_code IS NOT NULL AND notice_date IS NOT NULL AND notice_date != ''
+                   AND holder_set = 'free'
+                   AND NOT is_secondary_class
+                   AND NOT is_exit_row
+               )
+         WHERE rn = 1
     """).fetchall():
-        notice_map[(r["stock_code"], r["report_date"])] = r["notice_date"]
+        notice_map[(r["stock_code"], r["report_date"])] = dict(r)
 
     now = datetime.now().isoformat()
     exits = []
@@ -285,7 +450,8 @@ def generate_exit_events(conn) -> int:
             continue
 
         # exit 的公告日 = 该股票最新报告期在原始数据中的公告日
-        exit_notice = notice_map.get((stock_code, latest_rd))
+        exit_notice_payload = notice_map.get((stock_code, latest_rd)) or {}
+        exit_notice = exit_notice_payload.get("notice_date")
 
         for inst_id in inst_ids:
             prev_key = (inst_id, stock_code, prev_rd)
@@ -295,21 +461,47 @@ def generate_exit_events(conn) -> int:
             if prev_key in holdings_index and latest_key not in holdings_index:
                 prev_rec = holdings_detail[prev_key]
                 prev_amt = float(prev_rec["hold_amount"] or 0)
-                exits.append((
-                    inst_id, prev_rec["holder_name"],
-                    stock_code, prev_rec["stock_name"],
-                    latest_rd, exit_notice, "exit",
-                    0, prev_amt, -prev_amt, -100.0, now
-                ))
+                exits.append({
+                    "institution_id": inst_id,
+                    "holder_name": prev_rec["holder_name"],
+                    "stock_code": stock_code,
+                    "stock_name": prev_rec["stock_name"],
+                    "report_date": latest_rd,
+                    "notice_date": exit_notice,
+                    "notice_date_source": exit_notice_payload.get("notice_date_source") or "unknown",
+                    "source_notice_date": exit_notice_payload.get("source_notice_date"),
+                    "availability_deadline": exit_notice_payload.get("availability_deadline"),
+                    "event_type": "exit",
+                    "hold_amount": 0,
+                    "prev_hold_amount": prev_amt,
+                    "change_amount": -prev_amt,
+                    "change_pct": -100.0,
+                    "created_at": now,
+                })
 
     if exits:
-        conn.executemany("""
+        if can_insert_source:
+            insert_columns = [
+                "institution_id", "holder_name", "stock_code", "stock_name",
+                "report_date", "notice_date", "notice_date_source",
+                "source_notice_date", "availability_deadline", "event_type",
+                "hold_amount", "prev_hold_amount", "change_amount", "change_pct", "created_at",
+            ]
+        else:
+            insert_columns = [
+                "institution_id", "holder_name", "stock_code", "stock_name",
+                "report_date", "notice_date", "event_type",
+                "hold_amount", "prev_hold_amount", "change_amount", "change_pct", "created_at",
+            ]
+        placeholders = ", ".join("?" for _ in insert_columns)
+        conn.executemany(
+            f"""
             INSERT INTO fact_institution_event
-            (institution_id, holder_name, stock_code, stock_name,
-             report_date, notice_date, event_type,
-             hold_amount, prev_hold_amount, change_amount, change_pct, created_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        """, exits)
+            ({", ".join(insert_columns)})
+            VALUES ({placeholders})
+            """,
+            [tuple(event[column] for column in insert_columns) for event in exits],
+        )
         conn.commit()
 
     logger.info(f"[事件] 退出: {len(exits)} 条")

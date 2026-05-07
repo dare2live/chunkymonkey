@@ -1383,6 +1383,9 @@ def init_db():
                 stock_name      TEXT,
                 report_date     TEXT NOT NULL,
                 notice_date     TEXT,
+                notice_date_source TEXT,                      -- source_notice | regulatory_deadline | unknown
+                source_notice_date TEXT,                      -- true source disclosure date, NULL when unavailable
+                availability_deadline TEXT,                   -- statutory/plannable fallback date, NULL when not used
                 holder_rank     INTEGER,
                 hold_amount     REAL,
                 hold_market_cap REAL,
@@ -1407,6 +1410,9 @@ def init_db():
                 stock_name        TEXT,
                 report_date       TEXT NOT NULL,
                 notice_date       TEXT,
+                notice_date_source TEXT,                      -- source_notice | regulatory_deadline | unknown
+                source_notice_date TEXT,                      -- true source disclosure date, NULL when unavailable
+                availability_deadline TEXT,                   -- statutory/plannable fallback date, NULL when not used
                 event_type        TEXT NOT NULL,
                 hold_amount       REAL,
                 prev_hold_amount  REAL,
@@ -1835,6 +1841,15 @@ def init_db():
             except Exception:
                 pass
         for col in [
+            "notice_date_source TEXT",
+            "source_notice_date TEXT",
+            "availability_deadline TEXT",
+        ]:
+            try:
+                conn.execute(f"ALTER TABLE inst_holdings ADD COLUMN {col}")
+            except Exception:
+                pass
+        for col in [
             "pricing_policy_id TEXT",
             "pricing_policy_hash TEXT",
         ]:
@@ -1901,6 +1916,9 @@ def init_db():
             "tradable_date TEXT",
             "price_entry REAL",
             "price_entry_status TEXT",
+            "notice_date_source TEXT",
+            "source_notice_date TEXT",
+            "availability_deadline TEXT",
             "gain_10d REAL", "gain_30d REAL", "gain_60d REAL",
             "gain_90d REAL", "gain_120d REAL",
             "excess_30d REAL", "excess_60d REAL", "excess_120d REAL",
@@ -2380,6 +2398,7 @@ def init_db():
                 # fact_institution_event 高频查 by stock_code + holder_name
                 "CREATE INDEX IF NOT EXISTS idx_fie_stock ON fact_institution_event(stock_code, report_date DESC)",
                 "CREATE INDEX IF NOT EXISTS idx_fie_holder ON fact_institution_event(holder_name, report_date DESC)",
+                "CREATE INDEX IF NOT EXISTS idx_fie_notice_source ON fact_institution_event(notice_date_source)",
                 # mart_daily_recommendation 按日期查 topK
                 "CREATE INDEX IF NOT EXISTS idx_mdr_date_rank ON mart_daily_recommendation(snapshot_date DESC, rank_in_date)",
                 # fact_risk_factors P1.6

@@ -536,6 +536,37 @@ def test_today_signals_exclude_future_notice_dates(memdb):
     assert [signal.stock_code for signal in signals] == ["000001"]
 
 
+def test_today_signals_expose_notice_source_lineage(memdb):
+    memdb.execute("ALTER TABLE fact_institution_event ADD COLUMN notice_date_source TEXT")
+    memdb.execute("ALTER TABLE fact_institution_event ADD COLUMN source_notice_date TEXT")
+    memdb.execute("ALTER TABLE fact_institution_event ADD COLUMN availability_deadline TEXT")
+    today_iso = datetime.now().strftime("%Y-%m-%d")
+    _seed_events(memdb, [
+        ("inst1", "000001", "2023-Q4", today_iso, "new_entry", 0.0, 10.0, "医药"),
+    ] + [
+        ("inst1", f"0001{i}", "2023-Q1", f"2023-{i:02d}-15", "new_entry", 0.0, 10.0, "医药")
+        for i in range(1, 11)
+    ])
+    memdb.execute(
+        """
+        UPDATE fact_institution_event
+           SET notice_date_source = 'source_notice',
+               source_notice_date = notice_date
+         WHERE stock_code = '000001'
+        """
+    )
+    cfg = PolicyConfig(min_sample=5, ev_threshold_pct=3.0,
+                       prefer_same_industry_min_sample=5, signal_freshness_days=30)
+
+    signals = build_today_signals(memdb, config=cfg)
+    payload = signals[0].to_dict()
+
+    assert payload["stock_code"] == "000001"
+    assert payload["notice_date_source"] == "source_notice"
+    assert payload["source_notice_date"] == today_iso
+    assert payload["availability_deadline"] is None
+
+
 # ─── rule_breakdown (Step 2.5) ───────────────────────────────────────
 
 def test_build_rule_breakdown_seven_checks_default_shape():

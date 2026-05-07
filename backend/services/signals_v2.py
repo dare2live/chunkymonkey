@@ -36,6 +36,20 @@ from services.utils import safe_float as _safe_float
 logger = logging.getLogger("cm-api")
 
 
+def _table_columns(conn, table_name: str) -> set[str]:
+    try:
+        rows = conn.execute(f"PRAGMA table_info('{table_name}')").fetchall()
+    except Exception:
+        return set()
+    columns: set[str] = set()
+    for row in rows:
+        if hasattr(row, "keys"):
+            columns.add(str(row["name"]))
+        else:
+            columns.add(str(row[1]))
+    return columns
+
+
 TODAY_SIGNAL_CACHE_DDL = """
 CREATE TABLE IF NOT EXISTS mart_today_signal_cache (
     cache_key TEXT PRIMARY KEY,
@@ -411,6 +425,9 @@ class Recommendation:
     stock_name: str
     industry: Optional[str]
     notice_date: str
+    notice_date_source: Optional[str]
+    source_notice_date: Optional[str]
+    availability_deadline: Optional[str]
     event_type: str
     premium_pct: Optional[float]
     # 最终合并后的决策
@@ -438,6 +455,9 @@ class Recommendation:
             "stock_name": self.stock_name,
             "industry": self.industry,
             "notice_date": self.notice_date,
+            "notice_date_source": self.notice_date_source,
+            "source_notice_date": self.source_notice_date,
+            "availability_deadline": self.availability_deadline,
             "event_type": self.event_type,
             "premium_pct": self.premium_pct,
             "action": self.action,
@@ -648,6 +668,9 @@ def recommend_for_event(
         stock_name=event.get("stock_name") or "",
         industry=event.get("industry"),
         notice_date=event.get("notice_date") or "",
+        notice_date_source=event.get("notice_date_source"),
+        source_notice_date=event.get("source_notice_date"),
+        availability_deadline=event.get("availability_deadline"),
         event_type=event.get("event_type") or "",
         premium_pct=_safe_float(event.get("premium_pct")),
         action=decision["action"],
@@ -1223,6 +1246,16 @@ def build_today_signals(
     """
     cfg = config or load_config(conn)
     fresh_days = freshness_days or cfg.signal_freshness_days
+    event_columns = _table_columns(conn, "fact_institution_event")
+    notice_source_select = (
+        "e.notice_date_source" if "notice_date_source" in event_columns else "NULL"
+    )
+    source_notice_select = (
+        "e.source_notice_date" if "source_notice_date" in event_columns else "NULL"
+    )
+    deadline_select = (
+        "e.availability_deadline" if "availability_deadline" in event_columns else "NULL"
+    )
 
     # 最近 N 天新 buy 事件。notice_date 在库里是 YYYYMMDD 无分隔符，
     # 查询端统一重拼成 YYYY-MM-DD 后再做日期比较。
@@ -1231,6 +1264,9 @@ def build_today_signals(
             e.institution_id, i.display_name AS institution_name, i.type AS inst_type,
             e.stock_code, e.stock_name,
             e.report_date, e.notice_date, e.event_type,
+            {notice_source_select} AS notice_date_source,
+            {source_notice_select} AS source_notice_date,
+            {deadline_select} AS availability_deadline,
             e.premium_pct, e.{cfg.gain_column} AS realized_return_pct,
             ind.tdx_l1 AS industry,
             h.holder_rank, h.hold_ratio
@@ -1312,6 +1348,9 @@ def build_today_signals(
             stock_name=event.get("stock_name") or "",
             industry=event.get("industry"),
             notice_date=event.get("notice_date") or "",
+            notice_date_source=event.get("notice_date_source"),
+            source_notice_date=event.get("source_notice_date"),
+            availability_deadline=event.get("availability_deadline"),
             event_type=event.get("event_type") or "",
             premium_pct=_safe_float(event.get("premium_pct")),
             action=decision["action"],

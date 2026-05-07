@@ -1630,14 +1630,15 @@ def _step_match_inst_sync(conn) -> int:
     conn.execute("""
         CREATE TEMP TABLE tmp_inst_holdings_rebuild AS
         SELECT institution_id, holder_name, holder_type, stock_code, stock_name,
-               report_date, notice_date, holder_rank, hold_amount, hold_market_cap,
+               report_date, notice_date, notice_date_source, source_notice_date,
+               availability_deadline, holder_rank, hold_amount, hold_market_cap,
                hold_ratio, hold_change, hold_change_num, ? AS created_at
         FROM (
             SELECT
                 candidate.*,
                 ROW_NUMBER() OVER (
                     PARTITION BY holder_name, stock_code, report_date
-                    ORDER BY match_seq, holder_rank_sort, notice_date DESC, institution_id
+                    ORDER BY match_seq, notice_source_sort, holder_rank_sort, notice_date DESC, institution_id
                 ) AS rn
             FROM (
                 SELECT
@@ -1649,8 +1650,16 @@ def _step_match_inst_sync(conn) -> int:
                     r.stock_name,
                     TRIM(r.report_date) AS report_date,
                     r.notice_date,
+                    COALESCE(NULLIF(r.availability_source, ''), 'unknown') AS notice_date_source,
+                    CASE WHEN r.availability_source = 'source_notice' THEN r.notice_date ELSE NULL END AS source_notice_date,
+                    CASE WHEN r.availability_source = 'regulatory_deadline' THEN r.notice_date ELSE NULL END AS availability_deadline,
                     r.holder_rank,
                     COALESCE(TRY_CAST(r.holder_rank AS INTEGER), 999999) AS holder_rank_sort,
+                    CASE
+                        WHEN r.availability_source = 'source_notice' THEN 0
+                        WHEN r.availability_source = 'regulatory_deadline' THEN 1
+                        ELSE 2
+                    END AS notice_source_sort,
                     r.hold_amount,
                     r.hold_market_cap,
                     r.hold_ratio,
@@ -1703,6 +1712,9 @@ def _step_match_inst_sync(conn) -> int:
                 CAST(stock_name AS TEXT) AS stock_name,
                 CAST(report_date AS TEXT) AS report_date,
                 CAST(notice_date AS TEXT) AS notice_date,
+                CAST(notice_date_source AS TEXT) AS notice_date_source,
+                CAST(source_notice_date AS TEXT) AS source_notice_date,
+                CAST(availability_deadline AS TEXT) AS availability_deadline,
                 CAST(holder_rank AS INTEGER) AS holder_rank,
                 CAST(hold_amount AS DOUBLE) AS hold_amount,
                 CAST(hold_market_cap AS DOUBLE) AS hold_market_cap,
@@ -1773,6 +1785,12 @@ async def _step_gen_events(conn) -> dict:
         count = generate_events(worker_conn)
         count += generate_exit_events(worker_conn)
         update_step_fingerprint(worker_conn, "gen_events", new_fp, count)
+        try:
+            from services.schema_versions import record_actual_version
+
+            record_actual_version(worker_conn, "fact_institution_event")
+        except Exception:
+            logger.debug("[schema] fact_institution_event version record skipped", exc_info=True)
         return {
             "count": count,
             "status": "completed",
