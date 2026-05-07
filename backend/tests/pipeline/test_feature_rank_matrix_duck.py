@@ -83,7 +83,7 @@ def test_rank_matrix_proxy_matches_exact_dense_association():
             """
             SELECT feature_count, label_count, proxy_rows, compared_pairs,
                    max_abs_rank_ic_delta, gate_status, gate_blockers_json,
-                   stage_timings_json
+                   config_json, stage_timings_json
               FROM mart_feature_rank_matrix_benchmark
              WHERE run_id = 'rank_matrix_dense'
             """
@@ -103,8 +103,11 @@ def test_rank_matrix_proxy_matches_exact_dense_association():
         assert benchmark["max_abs_rank_ic_delta"] == pytest.approx(0.0)
         assert benchmark["gate_status"] == "pass"
         assert json.loads(benchmark["gate_blockers_json"]) == []
+        assert json.loads(benchmark["config_json"])["proxy_association_mode"] == "per_feature_multi_label"
         assert "rank_matrix_build_s" in json.loads(benchmark["stage_timings_json"])
-        assert "stage_timings" in json.loads(manifest["perf_summary_json"])
+        manifest_perf = json.loads(manifest["perf_summary_json"])
+        assert manifest_perf["proxy_association_mode"] == "per_feature_multi_label"
+        assert "stage_timings" in manifest_perf
     finally:
         conn.close()
 

@@ -208,6 +208,107 @@ def _compute_proxy_stat(
     }
 
 
+def _compute_proxy_stats_for_feature(
+    conn: Any,
+    *,
+    feature_rank_column: str,
+    label_rank_columns: dict[str, str],
+    labels: list[str],
+    total_rows: int,
+    min_daily_count: int,
+) -> dict[str, dict[str, Any]]:
+    feature_rank_q = _quote_ident(feature_rank_column)
+    valid_select = [
+        "date",
+        f"{feature_rank_q} AS feature_rank",
+    ]
+    overall_exprs = []
+    daily_exprs = []
+    daily_summary_exprs = []
+    for idx, label in enumerate(labels):
+        label_rank_alias = f"label_rank_{idx}"
+        label_value_alias = f"label_value_{idx}"
+        label_rank_q = _quote_ident(label_rank_columns[label])
+        label_q = _quote_ident(label)
+        valid_select.append(f"{label_rank_q} AS {label_rank_alias}")
+        valid_select.append(f"{label_q} AS {label_value_alias}")
+        overall_exprs.extend(
+            [
+                f"COUNT({label_rank_alias}) AS valid_rank_rows_{idx}",
+                (
+                    f"AVG(CASE WHEN {label_rank_alias} IS NOT NULL "
+                    f"AND feature_rank >= 0.9 THEN {label_value_alias} END) AS top_mean_{idx}"
+                ),
+                (
+                    f"AVG(CASE WHEN {label_rank_alias} IS NOT NULL "
+                    f"AND feature_rank <= 0.1 THEN {label_value_alias} END) AS bottom_mean_{idx}"
+                ),
+            ]
+        )
+        daily_exprs.extend(
+            [
+                f"COUNT({label_rank_alias}) AS n_{idx}",
+                f"corr(feature_rank, {label_rank_alias}) AS rank_ic_{idx}",
+            ]
+        )
+        daily_summary_exprs.extend(
+            [
+                (
+                    f"AVG(CASE WHEN n_{idx} >= {int(min_daily_count)} "
+                    f"THEN rank_ic_{idx} END) AS rank_ic_{idx}"
+                ),
+                (
+                    f"COUNT(CASE WHEN n_{idx} >= {int(min_daily_count)} "
+                    f"AND rank_ic_{idx} IS NOT NULL THEN 1 END) AS daily_count_{idx}"
+                ),
+            ]
+        )
+    row = conn.execute(
+        f"""
+        WITH valid AS (
+            SELECT {", ".join(valid_select)}
+              FROM __feature_rank_matrix
+             WHERE {feature_rank_q} IS NOT NULL
+        ),
+        overall AS (
+            SELECT {", ".join(overall_exprs)}
+              FROM valid
+        ),
+        daily AS (
+            SELECT date,
+                   {", ".join(daily_exprs)}
+              FROM valid
+             GROUP BY date
+        ),
+        daily_summary AS (
+            SELECT {", ".join(daily_summary_exprs)}
+              FROM daily
+        )
+        SELECT *
+          FROM overall
+         CROSS JOIN daily_summary
+        """
+    ).fetchone()
+    out: dict[str, dict[str, Any]] = {}
+    for idx, label in enumerate(labels):
+        top_mean = _finite_float(row[f"top_mean_{idx}"] if row else None)
+        bottom_mean = _finite_float(row[f"bottom_mean_{idx}"] if row else None)
+        out[label] = {
+            "total_rows": total_rows,
+            "valid_rank_rows": int(row[f"valid_rank_rows_{idx}"] or 0) if row else 0,
+            "daily_count": int(row[f"daily_count_{idx}"] or 0) if row else 0,
+            "rank_ic": _finite_float(row[f"rank_ic_{idx}"] if row else None),
+            "top_decile_label_mean": top_mean,
+            "bottom_decile_label_mean": bottom_mean,
+            "long_short_spread": (
+                top_mean - bottom_mean
+                if top_mean is not None and bottom_mean is not None
+                else None
+            ),
+        }
+    return out
+
+
 def _load_exact_rank_ic(conn: Any, exact_run_id: str | None) -> tuple[dict[tuple[str, str], float | None], float | None]:
     if not exact_run_id:
         return {}, None
@@ -303,7 +404,7 @@ def build_feature_rank_matrix_proxy(
     started_at = utc_now_iso()
     started = time.perf_counter()
     timer = PipelineTimer()
-    built_at = datetime.now(UTC).replace(tzinfo=None).isoformat(timespec="seconds")
+    built_at = datetime.now(UTC).replace(tzinfo=None).isoformat(timespec="microseconds")
     _progress(f"start run_id={run_id} panel={panel_table} label={label_name}")
 
     _progress("schema_and_feature_selection start")
@@ -363,15 +464,16 @@ def build_feature_rank_matrix_proxy(
     _progress("proxy_association start")
     with timer.stage("proxy_association_s"):
         for feature in usable_features:
+            feature_stats = _compute_proxy_stats_for_feature(
+                conn,
+                feature_rank_column=rank_aliases[feature],
+                label_rank_columns={label: rank_aliases[label] for label in labels},
+                labels=labels,
+                total_rows=total_rows,
+                min_daily_count=min_daily_count,
+            )
             for label in labels:
-                stat = _compute_proxy_stat(
-                    conn,
-                    feature_rank_column=rank_aliases[feature],
-                    label_rank_column=rank_aliases[label],
-                    label=label,
-                    total_rows=total_rows,
-                    min_daily_count=min_daily_count,
-                )
+                stat = feature_stats[label]
                 exact_value = exact_rank_ic.get((feature, label))
                 delta = _delta(stat["rank_ic"], exact_value)
                 if delta is not None:
@@ -440,6 +542,7 @@ def build_feature_rank_matrix_proxy(
         "min_daily_count": min_daily_count,
         "limit_features": limit_features,
         "rank_matrix_mode": "single_select_nulls_last_proxy",
+        "proxy_association_mode": "per_feature_multi_label",
         "proxy_gate": gate_config,
     }
 
@@ -518,6 +621,7 @@ def build_feature_rank_matrix_proxy(
                 "proxy_gate_status": gate_status,
                 "proxy_gate_blockers": gate_blockers,
                 "proxy_gate_config": gate_config,
+                "proxy_association_mode": "per_feature_multi_label",
             }
         ),
     )
