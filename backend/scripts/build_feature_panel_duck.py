@@ -13,14 +13,18 @@ import logging
 import os
 import sys
 import time
+from contextlib import nullcontext
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
+from typing import Any, Iterator
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from services.analytics import duck_connection
 from services.feature_registry import FeatureRegistry, load_feature_registry
 from services.market_db import canonical_kline_daily_qfq_sql
+from services.pipeline_manifest import git_commit_sha, record_pipeline_run, utc_now_iso
+from services.pipeline_timing import PipelineTimer
 from services.schema_versions import record_actual_version
 
 logger = logging.getLogger("feature_panel_duck")
@@ -318,6 +322,12 @@ def execute_script(duck, sql: str) -> None:
         stmt = stmt.strip()
         if stmt:
             duck.execute(stmt)
+
+
+def _timed_stage(timer: PipelineTimer | None, name: str) -> Iterator[None]:
+    if timer is None:
+        return nullcontext()
+    return timer.stage(name)
 
 
 def _quote_ident(name: str) -> str:
@@ -1434,6 +1444,7 @@ def _build_panel_with_connection(
     reset: bool = True,
     write_start_date: str | None = None,
     update_columns: list[str] | None = None,
+    timer: PipelineTimer | None = None,
 ) -> dict[str, int]:
     t0 = time.time()
     blocks = set(feature_block_plan(update_columns))
@@ -1457,10 +1468,11 @@ def _build_panel_with_connection(
         logger.info("feature panel universe: canonical kline fallback (dim_active_a_stock unavailable)")
 
     logger.info("Step 1: Pillar B price/volume + Alpha158-inspired features")
-    _replace_temp_table(
-        duck,
-        "current_panel",
-        f"""
+    with _timed_stage(timer, "price_volume_features_s"):
+        _replace_temp_table(
+            duck,
+            "current_panel",
+            f"""
         WITH px AS (
             SELECT code as stock_code, date,
                    open, high, low, close, volume, amount,
@@ -1509,16 +1521,17 @@ def _build_panel_with_connection(
         SELECT *, ret_5d - ret_20d AS momentum_diff
         FROM features
         """,
-        [read_start_date],
-    )
+            [read_start_date],
+        )
     logger.info("Pillar B done: %d rows, %.1fs", _row_count(duck, "current_panel"), time.time() - t0)
 
     if "margin" in blocks:
         logger.info("Step 2: margin join")
-        _replace_temp_table(
-            duck,
-            "current_panel",
-            """
+        with _timed_stage(timer, "margin_join_s"):
+            _replace_temp_table(
+                duck,
+                "current_panel",
+                """
             WITH margin AS (
                 SELECT stock_code,
                        {margin_date} AS date,
@@ -1536,16 +1549,17 @@ def _build_panel_with_connection(
               ON p.stock_code = m.stock_code
              AND p.date = STRFTIME(m.date, '%Y-%m-%d')
             """.format(margin_date=_date_expr("trade_date")),
-        )
+            )
     else:
         logger.info("Step 2: margin join skipped by scoped feature block plan")
 
     if "labels" in blocks:
         logger.info("Step 3: forward return horizon labels")
-        _replace_temp_table(
-            duck,
-            "current_panel",
-            """
+        with _timed_stage(timer, "forward_return_labels_s"):
+            _replace_temp_table(
+                duck,
+                "current_panel",
+                """
             SELECT *,
                    (LEAD(close, 6) OVER w / NULLIF(LEAD(close, 1) OVER w, 0) - 1) AS forward_ret_5d,
                    (LEAD(close, 11) OVER w / NULLIF(LEAD(close, 1) OVER w, 0) - 1) AS forward_ret_10d,
@@ -1555,11 +1569,12 @@ def _build_panel_with_connection(
             FROM current_panel
             WINDOW w AS (PARTITION BY stock_code ORDER BY date)
             """,
-        )
+            )
     else:
         logger.info("Step 3: forward_ret_20d label skipped by scoped feature block plan")
 
     if "event_activity" in blocks:
+        stage_started = time.perf_counter()
         logger.info("Step 4: event rolling counts")
         _rolling_event_count(
             duck,
@@ -1656,10 +1671,13 @@ def _build_panel_with_connection(
                     "shareholder_plan_decrease_amount_max_180d": "0.0::DOUBLE",
                 },
             )
+        if timer is not None:
+            timer.record("event_rolling_counts_s", time.perf_counter() - stage_started)
     else:
         logger.info("Step 4: event rolling counts skipped by scoped feature block plan")
 
     if "event_activity" in blocks:
+        stage_started = time.perf_counter()
         logger.info("Step 5: days_since features")
         for ev_sql, suffix in [
             ("SELECT stock_code, notice_date AS event_date FROM smartmoney.fact_executive_trade_event WHERE direction='buy'", "exec_buy"),
@@ -1698,16 +1716,19 @@ def _build_panel_with_connection(
                     "days_since_shareholder_plan_decrease": "-1::INTEGER",
                 },
             )
+        if timer is not None:
+            timer.record("days_since_features_s", time.perf_counter() - stage_started)
     else:
         logger.info("Step 5: days_since features skipped by scoped feature block plan")
 
     if "fundamentals" in blocks:
         fundamental_lag_days = _group_pit_release_lag_days("fundamentals", default=90)
         logger.info("Step 6: fundamentals ASOF join (release_lag_days=%d)", fundamental_lag_days)
-        _replace_temp_table(
-            duck,
-            "current_panel",
-            f"""
+        with _timed_stage(timer, "fundamentals_asof_join_s"):
+            _replace_temp_table(
+                duck,
+                "current_panel",
+                f"""
             WITH ffq AS (
                 SELECT stock_code,
                        STRFTIME(STRPTIME(report_date, '%Y%m%d') + INTERVAL {fundamental_lag_days} DAY, '%Y-%m-%d') AS date,
@@ -1727,17 +1748,18 @@ def _build_panel_with_connection(
             ASOF LEFT JOIN ffq f
               ON p.stock_code = f.stock_code AND p.date >= f.date
             """,
-        )
+            )
     else:
         logger.info("Step 6: fundamentals ASOF join skipped by scoped feature block plan")
 
     if "regime" in blocks:
         logger.info("Step 7: market regime")
         benchmark_codes_sql = _hs300_benchmark_codes_sql()
-        _replace_temp_table(
-            duck,
-            "current_panel",
-            f"""
+        with _timed_stage(timer, "market_regime_s"):
+            _replace_temp_table(
+                duck,
+                "current_panel",
+                f"""
             WITH benchmark_codes AS (
                 SELECT * FROM {benchmark_codes_sql}
             ),
@@ -1772,7 +1794,7 @@ def _build_panel_with_connection(
             FROM current_panel p
             LEFT JOIN regime_labeled r ON r.date = p.date
             """,
-        )
+            )
     else:
         logger.info("Step 7: market regime skipped by scoped feature block plan")
 
@@ -1792,10 +1814,11 @@ def _build_panel_with_connection(
             f"{_finite_or_null_sql(col)} AS {_quote_ident(col)}"
             for col in cross_clean_cols
         )
-        _replace_temp_table(
-            duck,
-            "current_panel",
-            f"""
+        with _timed_stage(timer, "cross_sectional_features_s"):
+            _replace_temp_table(
+                duck,
+                "current_panel",
+                f"""
             WITH ind AS (
                 SELECT stock_code, tdx_l1 FROM smartmoney.dim_stock_tdx_industry
             ),
@@ -1823,18 +1846,21 @@ def _build_panel_with_connection(
                    rz_balance / NULLIF(amount_ma20, 0) AS rz_balance_to_amount20
             FROM cleaned
             """,
-        )
+            )
     else:
         logger.info("Step 8: cross-sectional block skipped by scoped feature block plan")
 
     logger.info("Step 9: write fact_feature_panel")
-    summary = _insert_fact_panel(
-        duck,
-        reset=reset,
-        write_start_date=write_filter_date,
-        update_columns=update_columns,
-    )
-    record_actual_version(duck, "fact_feature_panel")
+    with _timed_stage(timer, "write_fact_feature_panel_s"):
+        summary = _insert_fact_panel(
+            duck,
+            reset=reset,
+            write_start_date=write_filter_date,
+            update_columns=update_columns,
+        )
+        record_actual_version(duck, "fact_feature_panel")
+    if timer is not None:
+        timer.record("total_build_s", time.time() - t0)
     logger.info(
         "fact_feature_panel: rows=%d codes=%d dates=%d label_non_null=%d elapsed=%.1f min",
         summary["rows"], summary["codes"], summary["dates"], summary["label_non_null"],
@@ -1843,41 +1869,209 @@ def _build_panel_with_connection(
     return summary
 
 
-def build_panel(start_date: str) -> dict[str, int]:
-    with duck_connection(writable=True) as duck:
-        summary = _build_panel_with_connection(duck, start_date)
-        validation = validate_feature_panel(duck)
-        record_feature_panel_validation(duck, validation, run_mode="full")
-        if validation["status"] != "passed":
-            raise RuntimeError(f"feature panel validation failed: {validation['blockers']}")
-        return summary
+def _default_run_id(run_mode: str) -> str:
+    return f"feature_panel_duck_{run_mode}_{time.strftime('%Y%m%d_%H%M%S')}"
 
 
-def build_panel_incremental(start_date: str | None = None, *, feature_groups: list[str] | None = None) -> dict:
-    with duck_connection(writable=True) as duck:
-        plan = plan_incremental_window(duck, start_date=start_date)
-        if plan["noop"]:
-            return {"status": "noop", "plan": plan}
-        update_columns = feature_group_columns(feature_groups) if feature_groups else None
-        summary = _build_panel_with_connection(
-            duck,
-            str(plan["read_start_date"]),
-            reset=False,
-            write_start_date=str(plan["write_start_date"]),
-            update_columns=update_columns,
-        )
-        validation = validate_feature_panel(duck)
-        record_feature_panel_validation(duck, validation, run_mode="incremental")
-        if validation["status"] != "passed":
-            return {"status": "failed", "plan": plan, "summary": summary, "validation": validation}
-        return {
-            "status": "completed",
+def _record_feature_panel_pipeline_run(
+    duck,
+    *,
+    run_id: str,
+    run_mode: str,
+    status: str,
+    started_at: str,
+    duration_s: float,
+    timer: PipelineTimer,
+    start_date: str | None = None,
+    plan: dict[str, Any] | None = None,
+    summary: dict[str, Any] | None = None,
+    validation: dict[str, Any] | None = None,
+    feature_groups: list[str] | None = None,
+    blockers: list[str] | None = None,
+) -> None:
+    validation_summary = None
+    if validation is not None:
+        validation_summary = {
+            "status": validation.get("status"),
+            "rows": validation.get("rows"),
+            "duplicate_keys": validation.get("duplicate_keys"),
+            "close_coverage": validation.get("close_coverage"),
+            "source_lineage_coverage": validation.get("source_lineage_coverage"),
+            "source_fallback_ratio": validation.get("source_fallback_ratio"),
+            "source_watermark_hash": validation.get("source_watermark_hash"),
+            "blockers": validation.get("blockers") or [],
+        }
+    record_pipeline_run(
+        duck,
+        run_id=run_id,
+        pipeline_name="build_feature_panel_duck",
+        status=status,
+        started_at=started_at,
+        ended_at=utc_now_iso(),
+        duration_s=duration_s,
+        commit_sha=git_commit_sha(),
+        input_tables=[
+            "market.price_kline_tdxhub",
+            "smartmoney.dim_active_a_stock",
+            "smartmoney.raw_margin_daily",
+            "smartmoney.fact_institution_event",
+            "smartmoney.fact_executive_trade_event",
+            "smartmoney.fact_lhb_event",
+            "smartmoney.fact_shareholder_plan_tdx_f10",
+            "smartmoney.fact_fundamental_quarterly",
+            "smartmoney.dim_stock_tdx_industry",
+        ],
+        output_tables=["fact_feature_panel", "mart_feature_panel_validation"],
+        gate_result="pass" if status == "success" and not blockers else "blocked",
+        blockers=blockers or [],
+        perf_summary={
+            "stage_timings": dict(timer.stage_timings),
+            "run_mode": run_mode,
+            "start_date": start_date,
+            "feature_groups": feature_groups or [],
             "plan": plan,
             "summary": summary,
-            "validation": validation,
-            "feature_groups": feature_groups or [],
-            "updated_columns": update_columns or [],
-        }
+            "validation": validation_summary,
+        },
+    )
+
+
+def build_panel(start_date: str, *, run_id: str | None = None) -> dict[str, int]:
+    timer = PipelineTimer()
+    started_at = utc_now_iso()
+    started = time.perf_counter()
+    run_id = run_id or _default_run_id("full")
+    recorded = False
+    with duck_connection(writable=True) as duck:
+        try:
+            summary = _build_panel_with_connection(duck, start_date, timer=timer)
+            with timer.stage("validate_feature_panel_s"):
+                validation = validate_feature_panel(duck)
+            with timer.stage("record_feature_panel_validation_s"):
+                record_feature_panel_validation(duck, validation, run_mode="full")
+            blockers = list(validation.get("blockers") or [])
+            status = "success" if validation["status"] == "passed" else "failed"
+            _record_feature_panel_pipeline_run(
+                duck,
+                run_id=run_id,
+                run_mode="full",
+                status=status,
+                started_at=started_at,
+                duration_s=round(time.perf_counter() - started, 3),
+                timer=timer,
+                start_date=start_date,
+                summary=summary,
+                validation=validation,
+                blockers=blockers,
+            )
+            recorded = True
+            if validation["status"] != "passed":
+                raise RuntimeError(f"feature panel validation failed: {validation['blockers']}")
+            return summary
+        except Exception as exc:
+            if not recorded:
+                _record_feature_panel_pipeline_run(
+                    duck,
+                    run_id=run_id,
+                    run_mode="full",
+                    status="failed",
+                    started_at=started_at,
+                    duration_s=round(time.perf_counter() - started, 3),
+                    timer=timer,
+                    start_date=start_date,
+                    blockers=[str(exc)],
+                )
+            raise
+
+
+def build_panel_incremental(
+    start_date: str | None = None,
+    *,
+    feature_groups: list[str] | None = None,
+    run_id: str | None = None,
+) -> dict:
+    timer = PipelineTimer()
+    started_at = utc_now_iso()
+    started = time.perf_counter()
+    run_id = run_id or _default_run_id("incremental")
+    recorded = False
+    with duck_connection(writable=True) as duck:
+        with timer.stage("plan_incremental_window_s"):
+            plan = plan_incremental_window(duck, start_date=start_date)
+        if plan["noop"]:
+            result = {"status": "noop", "plan": plan}
+            _record_feature_panel_pipeline_run(
+                duck,
+                run_id=run_id,
+                run_mode="incremental",
+                status="success",
+                started_at=started_at,
+                duration_s=round(time.perf_counter() - started, 3),
+                timer=timer,
+                start_date=start_date,
+                plan=plan,
+                feature_groups=feature_groups,
+            )
+            recorded = True
+            return result
+        update_columns = feature_group_columns(feature_groups) if feature_groups else None
+        try:
+            summary = _build_panel_with_connection(
+                duck,
+                str(plan["read_start_date"]),
+                reset=False,
+                write_start_date=str(plan["write_start_date"]),
+                update_columns=update_columns,
+                timer=timer,
+            )
+            with timer.stage("validate_feature_panel_s"):
+                validation = validate_feature_panel(duck)
+            with timer.stage("record_feature_panel_validation_s"):
+                record_feature_panel_validation(duck, validation, run_mode="incremental")
+            blockers = list(validation.get("blockers") or [])
+            status = "success" if validation["status"] == "passed" else "failed"
+            _record_feature_panel_pipeline_run(
+                duck,
+                run_id=run_id,
+                run_mode="incremental",
+                status=status,
+                started_at=started_at,
+                duration_s=round(time.perf_counter() - started, 3),
+                timer=timer,
+                start_date=start_date,
+                plan=plan,
+                summary=summary,
+                validation=validation,
+                feature_groups=feature_groups,
+                blockers=blockers,
+            )
+            recorded = True
+            if validation["status"] != "passed":
+                return {"status": "failed", "plan": plan, "summary": summary, "validation": validation}
+            return {
+                "status": "completed",
+                "plan": plan,
+                "summary": summary,
+                "validation": validation,
+                "feature_groups": feature_groups or [],
+                "updated_columns": update_columns or [],
+            }
+        except Exception as exc:
+            if not recorded:
+                _record_feature_panel_pipeline_run(
+                    duck,
+                    run_id=run_id,
+                    run_mode="incremental",
+                    status="failed",
+                    started_at=started_at,
+                    duration_s=round(time.perf_counter() - started, 3),
+                    timer=timer,
+                    start_date=start_date,
+                    plan=plan,
+                    feature_groups=feature_groups,
+                    blockers=[str(exc)],
+                )
+            raise
 
 
 def validate_feature_panel(duck, *, min_close_coverage: float = 0.99) -> dict:
@@ -2068,21 +2262,26 @@ def _parse_csv(value: str | None) -> list[str]:
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--start", default="2023-01-01")
+    parser.add_argument("--start", default=None)
     parser.add_argument("--mode", choices=["full", "incremental", "backfill", "validate-only"], default="full")
     parser.add_argument(
         "--feature-groups",
         default=None,
         help="comma-separated registry groups for scoped incremental/backfill column updates",
     )
+    parser.add_argument("--run-id", default=None)
     args = parser.parse_args()
     feature_groups = _parse_csv(args.feature_groups)
     if feature_groups and args.mode not in {"incremental", "backfill"}:
         raise SystemExit("--feature-groups is only supported with --mode incremental/backfill")
     if args.mode == "full":
-        build_panel(args.start)
-    elif args.mode in {"incremental", "backfill"}:
-        build_panel_incremental(args.start, feature_groups=feature_groups or None)
+        build_panel(args.start or "2023-01-01", run_id=args.run_id)
+    elif args.mode == "backfill":
+        if not args.start:
+            raise SystemExit("--start is required with --mode backfill")
+        build_panel_incremental(args.start, feature_groups=feature_groups or None, run_id=args.run_id)
+    elif args.mode == "incremental":
+        build_panel_incremental(args.start, feature_groups=feature_groups or None, run_id=args.run_id)
     else:
         with duck_connection(writable=True) as duck:
             result = validate_and_record_feature_panel(duck, run_mode="validate-only")

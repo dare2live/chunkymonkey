@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+import json
+import sys
+from contextlib import contextmanager
 from datetime import date, timedelta
 
 import pytest
@@ -233,6 +236,58 @@ def test_incremental_build_replaces_dirty_window_and_preserves_older_rows():
         assert incremental_summary["rows"] >= summary["rows"]
     finally:
         con.close()
+
+
+def test_build_panel_incremental_noop_records_stage_timing_manifest(monkeypatch):
+    con = duck_mem()
+    try:
+        days = _seed_sources(con, day_count=45)
+        summary = subject._build_panel_with_connection(con, days[0])
+        assert summary["rows"] > 0
+
+        @contextmanager
+        def fake_duck_connection(*, writable: bool = False):
+            assert writable is True
+            yield con
+
+        monkeypatch.setattr(subject, "duck_connection", fake_duck_connection)
+
+        result = subject.build_panel_incremental(run_id="unit_feature_panel_noop")
+
+        row = con.execute(
+            """
+            SELECT status, perf_summary_json
+              FROM mart_pipeline_run_manifest
+             WHERE run_id = 'unit_feature_panel_noop'
+            """
+        ).fetchone()
+        perf = json.loads(row[1])
+        assert result["status"] == "noop"
+        assert row[0] == "success"
+        assert perf["run_mode"] == "incremental"
+        assert perf["plan"]["noop"] is True
+        assert "plan_incremental_window_s" in perf["stage_timings"]
+    finally:
+        con.close()
+
+
+def test_main_incremental_without_start_uses_auto_planned_window(monkeypatch):
+    calls = []
+
+    def fake_build_panel_incremental(start_date=None, *, feature_groups=None, run_id=None):
+        calls.append({"start_date": start_date, "feature_groups": feature_groups, "run_id": run_id})
+        return {"status": "noop"}
+
+    monkeypatch.setattr(subject, "build_panel_incremental", fake_build_panel_incremental)
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        ["build_feature_panel_duck.py", "--mode", "incremental", "--run-id", "unit_auto_incremental"],
+    )
+
+    subject.main()
+
+    assert calls == [{"start_date": None, "feature_groups": None, "run_id": "unit_auto_incremental"}]
 
 
 def test_validate_feature_panel_detects_duplicate_keys_and_low_close_coverage():
