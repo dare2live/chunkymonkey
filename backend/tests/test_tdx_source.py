@@ -123,8 +123,13 @@ def test_call_tdx_quotes_with_retry_collects_attempts(monkeypatch):
     assert result["symbol"] == ("000001",)
     assert attempts[0]["server"] == ("1.1.1.1", 7709)
     assert attempts[0]["error_type"] == "empty"
+    assert "connect_elapsed_sec" in attempts[0]
+    assert "operation_elapsed_sec" in attempts[0]
+    assert attempts[0]["pooled_client"] is False
     assert attempts[1]["server"] == ("2.2.2.2", 7709)
     assert attempts[1]["ok"] is True
+    assert "connect_elapsed_sec" in attempts[1]
+    assert "operation_elapsed_sec" in attempts[1]
 
 
 def test_call_tdx_quotes_with_retry_respects_max_attempts_and_timeout(monkeypatch):

@@ -10,6 +10,7 @@ pipeline_duration_budgets_s:
   evaluate_champion_candidate: 30
   build_challenger_evidence_bundle: 30
   materialize_follow_return_labels: 120
+  benchmark_tdx_kline_fetch: 120
   build_feature_association_duck: 600
   build_feature_rank_matrix_duck: 120
   build_temporal_redundancy_clusters: 120

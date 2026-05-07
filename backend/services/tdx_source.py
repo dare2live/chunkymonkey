@@ -332,14 +332,32 @@ def _default_tdx_max_attempts() -> Optional[int]:
     return value
 
 
-def _build_attempt(server: tuple[str, int], *, started_at: float, ok: bool,
-                   error_type: Optional[str] = None, error: Optional[str] = None,
-                   result=None) -> dict[str, object]:
+def _build_attempt(
+    server: tuple[str, int],
+    *,
+    started_at: float,
+    ok: bool,
+    error_type: Optional[str] = None,
+    error: Optional[str] = None,
+    result=None,
+    lock_wait_s: float | None = None,
+    connect_elapsed_s: float | None = None,
+    operation_elapsed_s: float | None = None,
+    pooled_client: bool | None = None,
+) -> dict[str, object]:
     attempt: dict[str, object] = {
         "server": server,
         "ok": ok,
         "elapsed_sec": round(time.monotonic() - started_at, 3),
     }
+    if lock_wait_s is not None:
+        attempt["lock_wait_sec"] = round(float(lock_wait_s), 3)
+    if connect_elapsed_s is not None:
+        attempt["connect_elapsed_sec"] = round(float(connect_elapsed_s), 3)
+    if operation_elapsed_s is not None:
+        attempt["operation_elapsed_sec"] = round(float(operation_elapsed_s), 3)
+    if pooled_client is not None:
+        attempt["pooled_client"] = bool(pooled_client)
     if ok:
         rows = _len_or_none(result)
         if rows is not None:
@@ -382,9 +400,14 @@ def call_tdx_quotes_with_retry(
         state = _get_quotes_pool_state(server)
         lock = state["lock"]
         started_at = time.monotonic()
+        lock_started_at = time.monotonic()
         with lock:
+            lock_wait_s = time.monotonic() - lock_started_at
             client = state.get("client")
+            pooled_client = client is not None
+            connect_elapsed_s = 0.0
             if client is None:
+                connect_started_at = time.monotonic()
                 try:
                     client = Quotes.factory(
                         market="std",
@@ -393,8 +416,10 @@ def call_tdx_quotes_with_retry(
                         server=server,
                         timeout=timeout,
                     )
+                    connect_elapsed_s = time.monotonic() - connect_started_at
                     state["client"] = client
                 except Exception as exc:
+                    connect_elapsed_s = time.monotonic() - connect_started_at
                     error_type = _error_type_from_exception(exc)
                     attempts.append(f"{server[0]}:{server[1]}:{error_type}")
                     attempt_details.append(
@@ -404,6 +429,10 @@ def call_tdx_quotes_with_retry(
                             ok=False,
                             error_type=error_type,
                             error=str(exc),
+                            lock_wait_s=lock_wait_s,
+                            connect_elapsed_s=connect_elapsed_s,
+                            operation_elapsed_s=0.0,
+                            pooled_client=False,
                         )
                     )
                     _mark_tdx_server_failure(server, error_type)
@@ -411,15 +440,29 @@ def call_tdx_quotes_with_retry(
                     continue
 
             try:
+                operation_started_at = time.monotonic()
                 result = operation(client)
+                operation_elapsed_s = time.monotonic() - operation_started_at
                 state["last_used"] = time.monotonic()
                 _mark_tdx_server_success(server)
-                attempt_details.append(_build_attempt(server, started_at=started_at, ok=True, result=result))
+                attempt_details.append(
+                    _build_attempt(
+                        server,
+                        started_at=started_at,
+                        ok=True,
+                        result=result,
+                        lock_wait_s=lock_wait_s,
+                        connect_elapsed_s=connect_elapsed_s,
+                        operation_elapsed_s=operation_elapsed_s,
+                        pooled_client=pooled_client,
+                    )
+                )
                 payload = (result, f"tdxhub_{server[0]}:{server[1]}")
                 if collect_attempts:
                     return payload + (attempt_details,)
                 return payload
             except Exception as exc:
+                operation_elapsed_s = time.monotonic() - operation_started_at
                 error_type = _error_type_from_exception(exc)
                 attempts.append(f"{server[0]}:{server[1]}:{error_type}")
                 attempt_details.append(
@@ -429,6 +472,10 @@ def call_tdx_quotes_with_retry(
                         ok=False,
                         error_type=error_type,
                         error=str(exc),
+                        lock_wait_s=lock_wait_s,
+                        connect_elapsed_s=connect_elapsed_s,
+                        operation_elapsed_s=operation_elapsed_s,
+                        pooled_client=pooled_client,
                     )
                 )
                 _mark_tdx_server_failure(server, error_type)
