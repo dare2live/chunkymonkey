@@ -399,6 +399,151 @@ def _update_feature_table(
     }
 
 
+def _current_label_profile(conn: Any, *, feature_table: str, labels: list[str]) -> dict[str, Any] | None:
+    columns = _table_columns(conn, feature_table)
+    if not columns or any(label not in columns for label in labels):
+        return None
+    relation = _quote_relation(feature_table)
+    counts_sql = ", ".join(
+        f"COUNT({_quote_ident(label)}) AS {_quote_ident(label)}"
+        for label in labels
+    )
+    row = conn.execute(
+        f"""
+        SELECT COUNT(*) AS row_count,
+               MIN(CAST(date AS TEXT)) AS min_date,
+               MAX(CAST(date AS TEXT)) AS max_date,
+               {counts_sql}
+          FROM {relation}
+        """
+    ).fetchone()
+    row_count = int(_row_value(row, "row_count", 0) or 0)
+    label_non_null = {
+        label: int(_row_value(row, label, 3 + idx) or 0)
+        for idx, label in enumerate(labels)
+    }
+    return {
+        "row_count": row_count,
+        "min_date": _row_value(row, "min_date", 1),
+        "max_date": _row_value(row, "max_date", 2),
+        "label_non_null": label_non_null,
+        "label_coverage": {
+            label: (label_non_null[label] / row_count if row_count else 0.0)
+            for label in labels
+        },
+    }
+
+
+def _safe_json_loads(value: Any, default: Any) -> Any:
+    if value in (None, ""):
+        return default
+    try:
+        return json.loads(value)
+    except Exception:
+        return default
+
+
+def _latest_label_build_skip_evidence(
+    conn: Any,
+    *,
+    feature_table: str,
+    policy_hash: str,
+    event_calc_version: str,
+    horizons: list[int],
+    labels: list[str],
+    start_date: str | None,
+    end_date: str | None,
+) -> dict[str, Any] | None:
+    if start_date or end_date:
+        return None
+    if not _table_exists(conn, "mart_follow_return_label_build"):
+        return None
+    profile = _current_label_profile(conn, feature_table=feature_table, labels=labels)
+    if profile is None:
+        return None
+    row = conn.execute(
+        """
+        SELECT run_id, policy_hash, event_calc_version,
+               horizons_json, labels_json, row_count,
+               label_non_null_json, min_date, max_date
+          FROM mart_follow_return_label_build
+         WHERE feature_table = ?
+         ORDER BY built_at DESC
+         LIMIT 1
+        """,
+        (feature_table,),
+    ).fetchone()
+    if not row:
+        return None
+    latest_run_id = str(_row_value(row, "run_id", 0) or "")
+    if _row_value(row, "policy_hash", 1) != policy_hash:
+        return None
+    if _row_value(row, "event_calc_version", 2) != event_calc_version:
+        return None
+    if _safe_json_loads(_row_value(row, "horizons_json", 3), []) != horizons:
+        return None
+    if _safe_json_loads(_row_value(row, "labels_json", 4), []) != labels:
+        return None
+    if int(_row_value(row, "row_count", 5) or 0) != profile["row_count"]:
+        return None
+    if str(_row_value(row, "min_date", 7) or "") != str(profile["min_date"] or ""):
+        return None
+    if str(_row_value(row, "max_date", 8) or "") != str(profile["max_date"] or ""):
+        return None
+    if _safe_json_loads(_row_value(row, "label_non_null_json", 6), {}) != profile["label_non_null"]:
+        return None
+    if not _table_exists(conn, "mart_follow_return_label_quality"):
+        return None
+    placeholders = ", ".join("?" for _label in labels)
+    quality_rows = conn.execute(
+        f"""
+        SELECT label_name,
+               row_count,
+               non_null_count,
+               mature_null_count,
+               missing_signal_kline_count,
+               missing_entry_price_count,
+               missing_exit_price_count,
+               unclassified_null_count
+          FROM mart_follow_return_label_quality
+         WHERE run_id = ?
+           AND feature_table = ?
+           AND label_name IN ({placeholders})
+        """,
+        [latest_run_id, feature_table, *labels],
+    ).fetchall()
+    if len(quality_rows) != len(labels):
+        return None
+    by_label = {str(_row_value(row, "label_name", 0)): row for row in quality_rows}
+    for label in labels:
+        quality = by_label.get(label)
+        if quality is None:
+            return None
+        if int(_row_value(quality, "row_count", 1) or 0) != profile["row_count"]:
+            return None
+        if int(_row_value(quality, "non_null_count", 2) or 0) != profile["label_non_null"][label]:
+            return None
+        for idx in (3, 4, 5, 6, 7):
+            if int(_row_value(quality, "", idx) or 0) != 0:
+                return None
+    return {
+        "feature_table": feature_table,
+        "row_count": profile["row_count"],
+        "min_date": profile["min_date"],
+        "max_date": profile["max_date"],
+        "label_non_null": profile["label_non_null"],
+        "label_coverage": profile["label_coverage"],
+        "clear_seconds": 0.0,
+        "set_seconds": 0.0,
+        "update_seconds": 0.0,
+        "quality_seconds": 0.0,
+        "quality": [],
+        "skipped": True,
+        "skip_reason": "current_labels_match_latest_policy_quality_build",
+        "latest_build_run_id": latest_run_id,
+    }
+
+
 def _insert_quality_rows(
     conn: Any,
     *,
@@ -587,13 +732,47 @@ def materialize_follow_return_labels(
     run_id = run_id or f"follow_return_label_build_{datetime.now(UTC).strftime('%Y%m%d_%H%M%S')}"
     _ensure_tables(conn)
     stage_timing: dict[str, float] = {}
-    stage_started = time.perf_counter()
-    _emit_progress(progress, f"[follow-label] build daily labels: horizons={horizons}")
-    _build_daily_label_table(conn, horizons=horizons, transaction_cost_bps=policy.transaction_cost_bps)
-    stage_timing["build_daily_label_table_seconds"] = round(time.perf_counter() - stage_started, 3)
+    skip_started = time.perf_counter()
+    skip_summaries: dict[str, dict[str, Any]] = {}
+    for feature_table in feature_tables:
+        skip_summary = _latest_label_build_skip_evidence(
+            conn,
+            feature_table=feature_table,
+            policy_hash=policy.policy_hash(),
+            event_calc_version=policy.event_calc_version,
+            horizons=horizons,
+            labels=labels,
+            start_date=start_date,
+            end_date=end_date,
+        )
+        if skip_summary is not None:
+            skip_summaries[feature_table] = skip_summary
+    stage_timing["skip_check_seconds"] = round(time.perf_counter() - skip_started, 3)
+
+    tables_to_update = [table for table in feature_tables if table not in skip_summaries]
+    if tables_to_update:
+        stage_started = time.perf_counter()
+        _emit_progress(progress, f"[follow-label] build daily labels: horizons={horizons}")
+        _build_daily_label_table(conn, horizons=horizons, transaction_cost_bps=policy.transaction_cost_bps)
+        stage_timing["build_daily_label_table_seconds"] = round(time.perf_counter() - stage_started, 3)
+    else:
+        stage_timing["build_daily_label_table_seconds"] = 0.0
 
     table_summaries = []
     for feature_table in feature_tables:
+        if feature_table in skip_summaries:
+            summary = skip_summaries[feature_table]
+            table_summaries.append(summary)
+            stage_timing[f"{feature_table}.clear_seconds"] = 0.0
+            stage_timing[f"{feature_table}.set_seconds"] = 0.0
+            stage_timing[f"{feature_table}.update_seconds"] = 0.0
+            stage_timing[f"{feature_table}.quality_seconds"] = 0.0
+            _emit_progress(
+                progress,
+                "[follow-label] skip table: "
+                f"{feature_table}, latest_build={summary['latest_build_run_id']}",
+            )
+            continue
         table_started = time.perf_counter()
         _emit_progress(progress, f"[follow-label] update table: {feature_table}")
         summary = _update_feature_table(

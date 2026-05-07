@@ -143,6 +143,57 @@ def test_materialize_follow_return_labels_updates_panels_and_records_policy_buil
         conn.close()
 
 
+def test_materialize_follow_return_labels_skips_when_policy_quality_is_current():
+    conn = duckdb.connect(":memory:")
+    try:
+        _seed_price_rows(conn)
+        conn.execute(
+            """
+            CREATE TABLE fact_feature_panel (
+                stock_code TEXT,
+                date TEXT
+            )
+            """
+        )
+        conn.execute("INSERT INTO fact_feature_panel VALUES ('000001', '2026-01-01')")
+        first = materialize_follow_return_labels(
+            conn,
+            feature_tables=["fact_feature_panel"],
+            horizons=[5, 10],
+            run_id="follow_label_skip_first",
+        )
+        second = materialize_follow_return_labels(
+            conn,
+            feature_tables=["fact_feature_panel"],
+            horizons=[5, 10],
+            run_id="follow_label_skip_second",
+        )
+        second_build_rows = conn.execute(
+            """
+            SELECT COUNT(*)
+              FROM mart_follow_return_label_build
+             WHERE run_id = 'follow_label_skip_second'
+            """
+        ).fetchone()[0]
+        manifest = conn.execute(
+            """
+            SELECT perf_summary_json
+              FROM mart_pipeline_run_manifest
+             WHERE run_id = 'follow_label_skip_second'
+            """
+        ).fetchone()[0]
+
+        assert first["feature_tables"][0].get("skipped") is not True
+        assert second["feature_tables"][0]["skipped"] is True
+        assert second["feature_tables"][0]["latest_build_run_id"] == "follow_label_skip_first"
+        assert second["stage_timing"]["build_daily_label_table_seconds"] == 0.0
+        assert second["stage_timing"]["fact_feature_panel.set_seconds"] == 0.0
+        assert second_build_rows == 0
+        assert '"skipped": true' in manifest
+    finally:
+        conn.close()
+
+
 def test_pricing_data_readiness_uses_follow_label_build_policy_hash():
     conn = duckdb.connect(":memory:")
     try:
