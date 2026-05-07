@@ -22,18 +22,16 @@ records + 用了哪个 source.
 from __future__ import annotations
 
 import logging
-import sys
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from datetime import datetime
-from pathlib import Path
 from typing import Optional
+
+from services.tdx_source import ensure_workspace_tdxhub_path
 
 logger = logging.getLogger("cm-api")
 
-# tdxhub.holders 通过同级 checkout 或 pip install -e ../tdxhub 引入.
-STOCK_ROOT = Path(__file__).resolve().parents[3]
-sys.path.insert(0, str(STOCK_ROOT / "tdxhub"))
+ensure_workspace_tdxhub_path()
 
 
 @dataclass

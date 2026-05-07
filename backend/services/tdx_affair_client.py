@@ -20,7 +20,7 @@ import hashlib
 from datetime import datetime
 from typing import Any, Optional
 
-from services.tdx_source import get_tdx_affair_class
+from services.tdx_source import ensure_workspace_tdxhub_path, get_tdx_affair_class
 
 logger = logging.getLogger("cm-api")
 
@@ -476,6 +476,7 @@ def _pick_first_numeric_value(row, source_names: tuple[str, ...]) -> Optional[fl
 
 
 def _load_financial_columns() -> list[str]:
+    ensure_workspace_tdxhub_path()
     try:
         from tdxhub.financial.columns import columns as financial_columns
 

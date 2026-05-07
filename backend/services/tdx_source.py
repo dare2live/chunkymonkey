@@ -7,8 +7,10 @@ expects that package to be provided by the dare2live/tdxhub fork.
 
 import logging
 import os
+import sys
 import threading
 import time
+from pathlib import Path
 from typing import Optional
 
 
@@ -27,6 +29,53 @@ DEFAULT_TDX_SERVERS: tuple[tuple[str, int], ...] = (
     ("123.60.70.228", 7709),
     ("116.205.163.254", 7709),
 )
+
+
+def workspace_tdxhub_path() -> Path | None:
+    """Return the sibling tdxhub fork path when this checkout has one."""
+
+    stock_root = Path(__file__).resolve().parents[3]
+    candidate = stock_root / "tdxhub"
+    if (candidate / "tdxhub" / "__init__.py").exists():
+        return candidate
+    return None
+
+
+def _module_is_loaded_from_path(module_name: str, root: Path) -> bool:
+    module = sys.modules.get(module_name)
+    if module is None:
+        return False
+    module_file = getattr(module, "__file__", None)
+    if not module_file:
+        return False
+    try:
+        Path(module_file).resolve().relative_to(root.resolve())
+        return True
+    except ValueError:
+        return False
+
+
+def ensure_workspace_tdxhub_path() -> Path | None:
+    """Prefer the local tdxhub fork before importing any tdxhub module."""
+
+    local_path = workspace_tdxhub_path()
+    if local_path is None:
+        return None
+
+    text = str(local_path)
+    if sys.path[:1] != [text]:
+        sys.path[:] = [item for item in sys.path if item != text]
+        sys.path.insert(0, text)
+
+    if "tdxhub" in sys.modules and not _module_is_loaded_from_path("tdxhub", local_path):
+        for name in list(sys.modules):
+            if name == "tdxhub" or name.startswith("tdxhub."):
+                del sys.modules[name]
+    return local_path
+
+
+ensure_workspace_tdxhub_path()
+
 
 _tdxhub_runtime_state_lock = threading.Lock()
 _tdxhub_runtime_state: dict[str, object] = {
@@ -80,6 +129,7 @@ def parse_tdx_server_string(value: str) -> Optional[tuple[str, int]]:
 
 
 def _load_hq_hosts() -> tuple[tuple[str, int], ...]:
+    ensure_workspace_tdxhub_path()
     try:
         from tdxhub.consts import HQ_HOSTS as hosts
 
@@ -104,6 +154,7 @@ def iter_tdx_servers() -> tuple[tuple[str, int], ...]:
 
 
 def get_tdx_quotes_class():
+    ensure_workspace_tdxhub_path()
     try:
         from tdxhub.quotes import Quotes
 
@@ -113,6 +164,7 @@ def get_tdx_quotes_class():
 
 
 def get_tdx_affair_class():
+    ensure_workspace_tdxhub_path()
     try:
         from tdxhub.affair import Affair
 

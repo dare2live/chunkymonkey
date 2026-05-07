@@ -820,14 +820,15 @@ def main():
     if n_trained is not None and len(feature_cols) != n_trained:
         raise RuntimeError(f"特征数不匹配: model={n_trained}, panel={len(feature_cols)}")
     t_predict = time.perf_counter()
-    X = [[_feature_value(row.get(col)) for col in feature_cols] for row in records]
+    feature_matrix = [[_feature_value(row.get(col)) for col in feature_cols] for row in records]
     # LightGBM 对 Column_N 模型 predict 时忽略 feature_name, 按顺序吃 X
-    predictions = model.predict(X, predict_disable_shape_check=False)
+    predictions = model.predict(feature_matrix, predict_disable_shape_check=False)
     pred_scores = [float(value) for value in predictions]
     percentiles = _rank_percentiles(pred_scores)
     for idx, row in enumerate(records):
         row['pred_score'] = pred_scores[idx]
         row['percentile'] = percentiles[idx]
+        row['_feature_vector'] = feature_matrix[idx]
     records.sort(key=lambda row: row['pred_score'], reverse=True)
     for idx, row in enumerate(records, 1):
         row['rank_in_date'] = idx
@@ -848,22 +849,6 @@ def main():
         conn,
         [row.get("stock_code") for row in records],
     )
-    t_explain = time.perf_counter()
-    explanation_all = explain_prediction_batch(
-        model,
-        [[_feature_value(row.get(col)) for col in feature_cols] for row in records],
-        feature_cols,
-        dates=[target_date] * len(records),
-        scores=[row["pred_score"] for row in records],
-    )
-    all_explanation_rows = explanation_all.get("rows") if explanation_all.get("status") == "exact" else []
-    explanation_by_stock = {
-        str(row.get("stock_code")): all_explanation_rows[idx]
-        for idx, row in enumerate(records)
-        if idx < len(all_explanation_rows)
-    }
-    timings["explain_s"] = round(time.perf_counter() - t_explain, 3)
-
     output_source_rows = list(records)
     output = [
         {
@@ -910,10 +895,24 @@ def main():
         output = [{k: v for k, v in row.items() if k != "_source_row"} for row in selected]
         output_source_rows = [row["_source_row"] for row in selected]
 
-    selected_explanation_rows = [
-        explanation_by_stock.get(str(row.get("stock_code")))
+    t_explain = time.perf_counter()
+    selected_feature_matrix = [
+        row.get("_feature_vector") or [_feature_value(row.get(col)) for col in feature_cols]
         for row in output_source_rows
     ]
+    explanation_all = explain_prediction_batch(
+        model,
+        selected_feature_matrix,
+        feature_cols,
+        dates=[target_date] * len(output_source_rows),
+        scores=[row["pred_score"] for row in output_source_rows],
+    )
+    selected_explanation_rows = (
+        explanation_all.get("rows")
+        if explanation_all.get("status") == "exact"
+        else []
+    )
+    timings["explain_s"] = round(time.perf_counter() - t_explain, 3)
     explanation_rows = [row for row in selected_explanation_rows if row is not None]
     selected_errors = [
         float(row.get("additivity_error") or 0.0)

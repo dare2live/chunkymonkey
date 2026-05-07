@@ -25,9 +25,7 @@ from concurrent.futures import FIRST_COMPLETED, ThreadPoolExecutor, wait
 from datetime import datetime, timedelta
 from pathlib import Path
 
-STOCK_ROOT = Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-sys.path.insert(0, str(STOCK_ROOT / "tdxhub"))
 warnings.filterwarnings('ignore')
 
 from services.market_db import get_market_conn
@@ -230,22 +228,30 @@ def normalize(rows: list[dict], batch_id: str, source_name: str = "tdxhub") -> l
 def write_batch(conn, rows: list[dict]) -> int:
     if not rows:
         return 0
-    conn.executemany(
+    conn.execute(
         """
-        DELETE FROM price_kline_tdxhub
-         WHERE code = ? AND date = ? AND freq = ? AND adjust = ?
-        """,
-        [
-            (row["code"], row["date"], row["freq"], row["adjust"])
-            for row in rows
-        ],
+        CREATE TEMP TABLE IF NOT EXISTS tmp_price_kline_tdxhub_write (
+            code TEXT,
+            date TEXT,
+            freq TEXT,
+            adjust TEXT,
+            open REAL,
+            high REAL,
+            low REAL,
+            close REAL,
+            volume REAL,
+            amount REAL,
+            factor REAL,
+            source TEXT,
+            batch_id TEXT
+        )
+        """
     )
+    conn.execute("DELETE FROM tmp_price_kline_tdxhub_write")
     conn.executemany(
         """
-        INSERT INTO price_kline_tdxhub (
-            code, date, freq, adjust, open, high, low, close,
-            volume, amount, factor, source, batch_id
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        INSERT INTO tmp_price_kline_tdxhub_write
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
         [
             (
@@ -256,6 +262,27 @@ def write_batch(conn, rows: list[dict]) -> int:
             )
             for row in rows
         ],
+    )
+    conn.execute(
+        """
+        DELETE FROM price_kline_tdxhub AS target
+              USING tmp_price_kline_tdxhub_write AS incoming
+              WHERE target.code = incoming.code
+                AND target.date = incoming.date
+                AND target.freq = incoming.freq
+                AND target.adjust = incoming.adjust
+        """
+    )
+    conn.execute(
+        """
+        INSERT INTO price_kline_tdxhub (
+            code, date, freq, adjust, open, high, low, close,
+            volume, amount, factor, source, batch_id
+        )
+        SELECT code, date, freq, adjust, open, high, low, close,
+               volume, amount, factor, source, batch_id
+          FROM tmp_price_kline_tdxhub_write
+        """
     )
     return len(rows)
 

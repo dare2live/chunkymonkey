@@ -18,6 +18,21 @@ from scripts.build_tdx_gpcw_auto_features import build_tdx_gpcw_auto_features
 from scripts.profile_tdx_gpcw_fields import profile_tdx_gpcw_fields
 
 
+def test_tdx_source_prefers_workspace_tdxhub_fork_when_present():
+    local_path = tdx_source.workspace_tdxhub_path()
+    if local_path is None:
+        pytest.skip("workspace tdxhub fork is not checked out next to chunky-monkey-v2")
+
+    tdx_source.ensure_workspace_tdxhub_path()
+
+    import tdxhub
+    from tdxhub.quotes import StdQuotes
+
+    Path(tdxhub.__file__).resolve().relative_to(local_path.resolve())
+    assert hasattr(StdQuotes, "bars_records")
+    assert hasattr(StdQuotes, "index_bars_records")
+
+
 def test_iter_tdx_servers_prefers_custom_and_deduplicates(monkeypatch):
     monkeypatch.setenv("CM_TDX_SERVERS", "1.1.1.1:7709,2.2.2.2:7709,1.1.1.1:7709")
     monkeypatch.setattr(

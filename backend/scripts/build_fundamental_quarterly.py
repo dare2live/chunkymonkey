@@ -23,10 +23,11 @@ import time
 from datetime import datetime
 from pathlib import Path
 
-STOCK_ROOT = Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-sys.path.insert(0, str(STOCK_ROOT / "tdxhub"))
 
+from services.tdx_source import ensure_workspace_tdxhub_path
+
+ensure_workspace_tdxhub_path()
 from tdxhub.affair import Affair
 
 from services.db import get_conn

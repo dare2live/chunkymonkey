@@ -55,11 +55,10 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(mess
 log = logging.getLogger("ingest-holders")
 
 REPO = Path(__file__).resolve().parent.parent.parent
-STOCK_ROOT = REPO.parent
 sys.path.insert(0, str(REPO / "backend"))
-sys.path.insert(0, str(STOCK_ROOT / "tdxhub"))  # sibling editable checkout
 
 from services.db import get_conn, init_db  # noqa: E402
+from services.tdx_source import ensure_workspace_tdxhub_path  # noqa: E402
 from services.holders_resolver import (  # noqa: E402
     HolderResolver,
     MiaoxiangHolderSource,
@@ -67,6 +66,8 @@ from services.holders_resolver import (  # noqa: E402
 )
 from services.holder_availability import enrich_holder_rows_with_availability  # noqa: E402
 from services.pipeline_manifest import git_commit_sha, record_pipeline_run, utc_now_iso  # noqa: E402
+
+ensure_workspace_tdxhub_path()
 
 
 CHANGE_STATUS_TO_LEGACY = {

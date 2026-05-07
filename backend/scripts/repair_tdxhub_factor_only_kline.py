@@ -19,16 +19,16 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
-STOCK_ROOT = Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-sys.path.insert(0, str(STOCK_ROOT / "tdxhub"))
 
 from build_price_kline_tdxhub import normalize, pull_one_stock, pull_one_stock_with_retry  # noqa: E402
 from services.data_processing_monitor import ProcessingToolStats, record_data_processing_tool_run  # noqa: E402
 from services.market_db import get_market_conn  # noqa: E402
 from services.pipeline_manifest import git_commit_sha, record_pipeline_run, utc_now_iso  # noqa: E402
 from services.schema_versions import record_actual_version  # noqa: E402
-from services.tdx_source import call_tdx_quotes_with_retry  # noqa: E402
+from services.tdx_source import call_tdx_quotes_with_retry, ensure_workspace_tdxhub_path  # noqa: E402
+
+ensure_workspace_tdxhub_path()
 
 
 logger = logging.getLogger("repair_tdxhub_factor_only_kline")
