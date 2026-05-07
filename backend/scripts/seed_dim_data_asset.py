@@ -482,7 +482,88 @@ def infer_asset_contract(
     return contract
 
 
-def grep_writer(table_name: str) -> str | None:
+def _backend_python_text_index() -> list[tuple[str, str]]:
+    """Read backend Python files once for writer/reader discovery."""
+
+    files: list[tuple[str, str]] = []
+    for f in BACKEND.rglob("*.py"):
+        rel = str(f.relative_to(REPO))
+        if (
+            "/tests/" in rel
+            or "audit_stale_references" in rel
+            or "seed_dim_data_asset" in rel
+            or "data_health_snapshot" in rel
+        ):
+            continue
+        try:
+            files.append((rel, f.read_text(encoding="utf-8", errors="ignore")))
+        except Exception:
+            continue
+    return files
+
+
+def _rank_writer_path(rel: str) -> tuple:
+    if "scripts/" in rel:
+        tier = 0
+    elif rel.endswith("services/db.py"):
+        tier = 3
+    elif "services/" in rel:
+        tier = 1
+    elif "routers/" in rel:
+        tier = 2
+    else:
+        tier = 4
+    return (tier, len(rel))
+
+
+def _build_backend_table_reference_index(
+    table_names: list[str],
+    text_index: list[tuple[str, str]],
+) -> tuple[dict[str, str], dict[str, list[str]]]:
+    """Build table writer/reader maps with one pass over backend files."""
+
+    table_set = set(table_names)
+    table_capture = r'["`\']?(?P<table>[A-Za-z_][A-Za-z0-9_]*)["`\']?'
+    qualified_capture = rf'(?:[A-Za-z_][A-Za-z0-9_]*\.)?{table_capture}'
+    write_patterns = [
+        re.compile(rf"\bINSERT\s+(?:OR\s+(?:REPLACE|IGNORE)\s+)?INTO\s+{qualified_capture}\b", re.IGNORECASE),
+        re.compile(rf"\bUPDATE\s+{qualified_capture}\b", re.IGNORECASE),
+        re.compile(rf"\bDELETE\s+FROM\s+{qualified_capture}\b", re.IGNORECASE),
+        re.compile(
+            rf"\bCREATE\s+(?:OR\s+REPLACE\s+)?(?:TABLE|TEMP\s+TABLE)"
+            rf"(?:\s+IF\s+NOT\s+EXISTS)?\s+{qualified_capture}[\s\S]{{0,240}}\bAS\b",
+            re.IGNORECASE,
+        ),
+        re.compile(rf'register\(\s*["\'](?P<table>[A-Za-z_][A-Za-z0-9_]*)["\']', re.IGNORECASE),
+        re.compile(rf'\bCOPY\s+{qualified_capture}\b', re.IGNORECASE),
+        re.compile(rf'\.to_sql\(\s*["\'](?P<table>[A-Za-z_][A-Za-z0-9_]*)["\']', re.IGNORECASE),
+    ]
+    read_patterns = [
+        re.compile(rf"\bFROM\s+{qualified_capture}\b", re.IGNORECASE),
+        re.compile(rf"\bJOIN\s+{qualified_capture}\b", re.IGNORECASE),
+    ]
+    writer_hits: dict[str, list[str]] = defaultdict(list)
+    reader_hits: dict[str, set[str]] = defaultdict(set)
+    for rel, text in text_index:
+        for pattern in write_patterns:
+            for match in pattern.finditer(text):
+                table = match.group("table")
+                if table in table_set:
+                    writer_hits[table].append(rel)
+        for pattern in read_patterns:
+            for match in pattern.finditer(text):
+                table = match.group("table")
+                if table in table_set:
+                    reader_hits[table].add(rel)
+    writer_map = {
+        table: sorted(set(paths), key=_rank_writer_path)[0]
+        for table, paths in writer_hits.items()
+    }
+    reader_map = {table: sorted(paths) for table, paths in reader_hits.items()}
+    return writer_map, reader_map
+
+
+def grep_writer(table_name: str, text_index: list[tuple[str, str]] | None = None) -> str | None:
     """全仓 grep, 找真 writer (INSERT/UPDATE 优先于 CREATE TABLE).
 
     db.py 里的 CREATE TABLE IF NOT EXISTS 是 schema 声明, 不是 writer.
@@ -511,38 +592,14 @@ def grep_writer(table_name: str) -> str | None:
 
     def _scan(patterns):
         out = []
-        for f in BACKEND.rglob("*.py"):
-            rel = str(f.relative_to(REPO))
-            if ("/tests/" in rel
-                or "audit_stale_references" in rel
-                or "seed_dim_data_asset" in rel
-                or "data_health_snapshot" in rel):
-                continue
-            try:
-                text = f.read_text(encoding="utf-8", errors="ignore")
-                if any(p.search(text) for p in patterns):
-                    out.append(rel)
-            except Exception:
-                pass
+        for rel, text in text_index or _backend_python_text_index():
+            if any(p.search(text) for p in patterns):
+                out.append(rel)
         return out
-
-    def _rank(rel: str) -> tuple:
-        # scripts/ 优先, 其次 services/<not db.py>, 最后 services/db.py / routers
-        if "scripts/" in rel:
-            tier = 0
-        elif rel.endswith("services/db.py"):
-            tier = 3  # db.py 通常只是 schema 声明
-        elif "services/" in rel:
-            tier = 1
-        elif "routers/" in rel:
-            tier = 2
-        else:
-            tier = 4
-        return (tier, len(rel))
 
     write_hits = _scan(pat_write)
     if write_hits:
-        write_hits.sort(key=_rank)
+        write_hits.sort(key=_rank_writer_path)
         return write_hits[0]
     schema_hits = _scan(pat_schema)
     if schema_hits:
@@ -552,7 +609,7 @@ def grep_writer(table_name: str) -> str | None:
     return None
 
 
-def grep_readers(table_name: str) -> list[str]:
+def grep_readers(table_name: str, text_index: list[tuple[str, str]] | None = None) -> list[str]:
     """全仓 grep, 找 FROM X / JOIN X / SELECT...X 命中的所有 .py 文件."""
 
     patterns = [
@@ -560,16 +617,9 @@ def grep_readers(table_name: str) -> list[str]:
         re.compile(rf"\bJOIN\s+{re.escape(table_name)}\b", re.IGNORECASE),
     ]
     readers = []
-    for f in BACKEND.rglob("*.py"):
-        rel = str(f.relative_to(REPO))
-        if "/tests/" in rel or "audit_stale_references" in rel or "seed_dim_data_asset" in rel:
-            continue
-        try:
-            text = f.read_text(encoding="utf-8", errors="ignore")
-            if any(p.search(text) for p in patterns):
-                readers.append(rel)
-        except Exception:
-            pass
+    for rel, text in text_index or _backend_python_text_index():
+        if any(p.search(text) for p in patterns):
+            readers.append(rel)
     return readers
 
 
@@ -602,6 +652,17 @@ def main() -> int:
     log.info("scanning all tables...")
     tables = get_all_tables(con)
     log.info("total tables: %d", len(tables))
+    text_index = _backend_python_text_index()
+    log.info("indexed %d backend python files", len(text_index))
+    writer_index, reader_index = _build_backend_table_reference_index(
+        [tbl for tbl, _row_count in tables],
+        text_index,
+    )
+    log.info(
+        "reference index: writers=%d reader_sets=%d",
+        len(writer_index),
+        len(reader_index),
+    )
 
     # 拿当前已注册的, 区分 auto vs manual
     existing = {}
@@ -635,8 +696,8 @@ def main() -> int:
             # 自身不在自审计内 (避免循环)
             continue
         layer = detect_layer(tbl)
-        writer = registry_writer(tbl) or grep_writer(tbl)
-        readers = grep_readers(tbl)
+        writer = registry_writer(tbl) or writer_index.get(tbl)
+        readers = list(reader_index.get(tbl) or [])
         # 排除自引用
         readers = [r for r in readers if r != writer]
         upstream, source_tier = known_upstream(tbl)

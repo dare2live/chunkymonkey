@@ -4,7 +4,12 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from conftest import duck_mem
-from scripts.seed_dim_data_asset import infer_asset_contract
+from scripts.seed_dim_data_asset import (
+    _build_backend_table_reference_index,
+    grep_readers,
+    grep_writer,
+    infer_asset_contract,
+)
 from services.workbench_read import build_workbench_data_sources
 
 
@@ -31,6 +36,49 @@ def test_infer_asset_contract_distinguishes_dense_kline_and_sparse_events():
     assert lhb["null_policy"] == "no_event_is_absence_not_missing"
     assert lhb["model_eligibility"] == "encoded_auxiliary_only"
     assert lhb["strategy_eligibility"] == "attention_filter_context"
+
+
+def test_seed_dim_data_asset_reuses_backend_text_index_for_writer_and_readers():
+    text_index = [
+        (
+            "backend/scripts/build_custom_table.py",
+            "conn.execute('INSERT INTO mart_custom_asset SELECT * FROM source_table')",
+        ),
+        (
+            "backend/services/custom_read.py",
+            "rows = conn.execute('SELECT * FROM mart_custom_asset').fetchall()",
+        ),
+    ]
+
+    assert grep_writer("mart_custom_asset", text_index) == "backend/scripts/build_custom_table.py"
+    assert grep_readers("mart_custom_asset", text_index) == ["backend/services/custom_read.py"]
+
+
+def test_seed_dim_data_asset_builds_reference_maps_in_one_pass():
+    text_index = [
+        (
+            "backend/scripts/build_custom_table.py",
+            "conn.execute('INSERT INTO mart_custom_asset SELECT * FROM source_table')",
+        ),
+        (
+            "backend/services/custom_read.py",
+            "rows = conn.execute('SELECT * FROM mart_custom_asset JOIN dim_custom ON 1=1').fetchall()",
+        ),
+        (
+            "backend/services/schema_only.py",
+            "conn.execute('CREATE TABLE IF NOT EXISTS mart_custom_asset (id INTEGER)')",
+        ),
+    ]
+
+    writers, readers = _build_backend_table_reference_index(
+        ["mart_custom_asset", "dim_custom"],
+        text_index,
+    )
+
+    assert writers["mart_custom_asset"] == "backend/scripts/build_custom_table.py"
+    assert "backend/services/schema_only.py" not in writers.values()
+    assert readers["mart_custom_asset"] == ["backend/services/custom_read.py"]
+    assert readers["dim_custom"] == ["backend/services/custom_read.py"]
 
 
 def test_workbench_data_sources_exposes_asset_governance_contracts():
