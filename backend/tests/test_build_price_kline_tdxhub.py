@@ -225,20 +225,33 @@ def test_main_buffers_incremental_rows_before_duckdb_write(monkeypatch):
                 }
             ],
             "tdxhub_unit_raw_incremental",
+            [{"server": ("1.1.1.1", 7709), "ok": True, "elapsed_sec": 0.02}],
         )
 
     def spy_write_batch(write_conn, rows):
         write_sizes.append(len(rows))
         return original_write_batch(write_conn, rows)
 
-    monkeypatch.setattr(builder, "get_market_conn", lambda: conn)
+    class CloseTrackingConn:
+        def __init__(self, inner):
+            self.inner = inner
+            self.closed = False
+
+        def __getattr__(self, name):
+            return getattr(self.inner, name)
+
+        def close(self):
+            self.closed = True
+
+    wrapped_conn = CloseTrackingConn(conn)
+    monkeypatch.setattr(builder, "get_market_conn", lambda: wrapped_conn)
     monkeypatch.setattr(builder, "load_calendar_target_date", lambda: "2026-05-06")
     monkeypatch.setattr(
         builder,
         "load_local_active_a_stock_list",
         lambda: ([("000001", 0), ("000002", 0)], "dim_active_a_stock"),
     )
-    monkeypatch.setattr(builder, "fetch_one_stock_normalized", fake_fetch)
+    monkeypatch.setattr(builder, "fetch_one_stock_normalized_with_attempts", fake_fetch)
     monkeypatch.setattr(builder, "write_batch", spy_write_batch)
     monkeypatch.setattr(
         builder,
@@ -263,6 +276,16 @@ def test_main_buffers_incremental_rows_before_duckdb_write(monkeypatch):
     builder.main()
 
     assert write_sizes == [2]
+    health_row = conn.execute(
+        """
+        SELECT success_count, source_run_id
+          FROM mart_tdx_server_health
+         WHERE server_host = '1.1.1.1' AND capability = 'kline_daily_raw'
+        """
+    ).fetchone()
+    assert health_row["success_count"] == 2
+    assert str(health_row["source_run_id"]).startswith("tdxhub_")
+    assert wrapped_conn.closed is True
 
 
 def test_resolve_kline_worker_count_parallelizes_qfq_by_default():
@@ -314,6 +337,7 @@ def test_main_parallel_raw_fetch_rotates_across_server_pool(monkeypatch):
                 }
             ],
             "tdxhub_unit",
+            [{"server": ("1.1.1.1", 7709), "ok": True, "elapsed_sec": 0.02}],
         )
 
     monkeypatch.setattr(builder, "get_market_conn", lambda: conn)
@@ -328,7 +352,7 @@ def test_main_parallel_raw_fetch_rotates_across_server_pool(monkeypatch):
         "open_quotes_client_with_retry",
         lambda **_kwargs: (_ for _ in ()).throw(AssertionError("stock list network should not run")),
     )
-    monkeypatch.setattr(builder, "fetch_one_stock_normalized", fake_fetch)
+    monkeypatch.setattr(builder, "fetch_one_stock_normalized_with_attempts", fake_fetch)
     monkeypatch.setattr(
         sys,
         "argv",

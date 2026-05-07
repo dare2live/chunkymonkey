@@ -33,6 +33,7 @@ from services.db import get_conn as get_business_conn
 from services.tdx_source import (
     call_tdx_quotes_with_retry,
     load_tdx_server_health,
+    record_tdx_server_attempts,
     record_tdx_server_runtime_health,
 )
 from services.utils import latest_completed_trade_date
@@ -944,6 +945,31 @@ def fetch_one_stock_normalized(
     return normalize(records, batch_id, source_name=source_name), source_name
 
 
+def fetch_one_stock_normalized_with_attempts(
+    code: str,
+    *,
+    pages: int,
+    adjust: str | None,
+    batch_id: str,
+    connect_timeout: float,
+    max_attempts: int,
+    prefer_last_success: bool = False,
+) -> tuple[list[dict], str, list[dict]]:
+    if adjust:
+        raise NotImplementedError(UNSUPPORTED_ADJUSTED_RECORDS_MESSAGE)
+    records, source_name, attempts = call_tdx_quotes_with_retry(
+        lambda client: pull_one_stock(client, code, pages=pages, adjust=adjust, raise_errors=True),
+        action_name=f"price_kline_tdxhub.bars[{code}]",
+        collect_attempts=True,
+        max_attempts=max_attempts,
+        connect_timeout=connect_timeout,
+        prefer_last_success=prefer_last_success,
+    )
+    if adjust is None:
+        source_name = f"{source_name}_raw_incremental"
+    return normalize(records, batch_id, source_name=source_name), source_name, list(attempts)
+
+
 def resolve_kline_worker_count(
     *,
     explicit_workers: int | None,
@@ -1040,6 +1066,7 @@ def main():
     n_stocks_done = 0
     n_rows_written = 0
     n_failed = []
+    tdx_attempts: list[dict] = []
     n_raw_xdxr_dropped = 0
     n_xdxr_adjusted_rows = 0
     n_xdxr_adjustment_events = 0
@@ -1211,7 +1238,7 @@ def main():
                     source_name = f"{client_source}_raw_incremental" if pull_adjust is None else client_source
                     norm = normalize(records, batch_id, source_name=source_name)
                 else:
-                    norm, source_name = fetch_one_stock_normalized(
+                    norm, source_name, attempts = fetch_one_stock_normalized_with_attempts(
                         code,
                         pages=args.pages,
                         adjust=pull_adjust,
@@ -1220,10 +1247,12 @@ def main():
                         max_attempts=per_stock_total_attempts,
                         prefer_last_success=True,
                     )
+                    tdx_attempts.extend(attempts)
             except Exception as e:
+                tdx_attempts.extend(list(getattr(e, "tdx_attempts", []) or []))
                 if args.per_stock_retry_attempts > 0:
                     try:
-                        norm, source_name = fetch_one_stock_normalized(
+                        norm, source_name, attempts = fetch_one_stock_normalized_with_attempts(
                             code,
                             pages=args.pages,
                             adjust=pull_adjust,
@@ -1232,7 +1261,9 @@ def main():
                             max_attempts=max(1, int(args.per_stock_retry_attempts)),
                             prefer_last_success=True,
                         )
+                        tdx_attempts.extend(attempts)
                     except Exception as retry_e:
+                        tdx_attempts.extend(list(getattr(retry_e, "tdx_attempts", []) or []))
                         logger.warning("code=%s 拉取失败: %s; retry_failed=%s", code, e, retry_e)
                         n_failed.append(code)
                         log_progress(i + 1)
@@ -1263,7 +1294,7 @@ def main():
             except StopIteration:
                 return False
             future = pool.submit(
-                fetch_one_stock_normalized,
+                fetch_one_stock_normalized_with_attempts,
                 code,
                 pages=args.pages,
                 adjust=pull_adjust,
@@ -1286,8 +1317,10 @@ def main():
                 for future in done:
                     code = futures.pop(future)
                     try:
-                        norm, source_name = future.result()
+                        norm, source_name, attempts = future.result()
+                        tdx_attempts.extend(attempts)
                     except Exception as e:
+                        tdx_attempts.extend(list(getattr(e, "tdx_attempts", []) or []))
                         logger.warning("code=%s 拉取失败: %s", code, e)
                         n_failed.append(code)
                     else:
@@ -1303,16 +1336,27 @@ def main():
     flush_pending_rows()
     if stock_list and pull_adjust is None:
         try:
-            server_health_record = record_tdx_server_runtime_health(
-                conn,
-                capability=TDX_KLINE_RAW_HEALTH_CAPABILITY,
-                run_id=batch_id,
-            )
+            if tdx_attempts:
+                server_health_record = record_tdx_server_attempts(
+                    conn,
+                    tdx_attempts,
+                    capability=TDX_KLINE_RAW_HEALTH_CAPABILITY,
+                    run_id=batch_id,
+                )
+                health_record_mode = "exact_attempts"
+            else:
+                server_health_record = record_tdx_server_runtime_health(
+                    conn,
+                    capability=TDX_KLINE_RAW_HEALTH_CAPABILITY,
+                    run_id=batch_id,
+                )
+                health_record_mode = "runtime_counts"
             if int(server_health_record.get("updated_server_count") or 0) > 0:
                 logger.info(
-                    "TDX K 线服务器健康已更新: %d 台 / attempts=%d",
+                    "TDX K 线服务器健康已更新: %d 台 / attempts=%d / mode=%s",
                     int(server_health_record.get("updated_server_count") or 0),
                     int(server_health_record.get("attempt_count") or 0),
+                    health_record_mode,
                 )
         except Exception as exc:
             logger.warning("TDX K 线服务器健康记录失败: %s", exc)
