@@ -52,6 +52,10 @@ def test_workbench_frontend_entrypoint_is_registered():
     assert "数据源" in workbench_js
     assert "TDX K线服务器健康" in workbench_js
     assert "renderTdxServerHealthTable" in workbench_js
+    assert "TDX F10 Source-Date Audit" in workbench_js
+    assert "renderTdxF10SourceDateAudit" in workbench_js
+    assert "TDX/F10 Source-Date DQ" in workbench_js
+    assert "renderTdxF10SourceDq" in workbench_js
     assert "管线" in workbench_js
     assert "特征" in workbench_js
     assert "推荐" in workbench_js

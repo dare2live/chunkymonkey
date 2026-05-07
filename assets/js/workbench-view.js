@@ -383,6 +383,14 @@
       '<section class="panel wb-panel">' +
       '<div class="panel-head"><div><h3>TDX F10 能力矩阵</h3><div class="muted">parser / PIT source dates</div></div></div>' +
       renderTdxF10CapabilityTable(data.tdx_f10_capabilities || []) +
+      '</section>' +
+      '<section class="panel wb-panel">' +
+      '<div class="panel-head"><div><h3>TDX F10 Source-Date Audit</h3><div class="muted">section semantics / source notice candidates</div></div></div>' +
+      renderTdxF10SourceDateAudit(data.f10_source_date_audit || {}) +
+      '</section>' +
+      '<section class="panel wb-panel">' +
+      '<div class="panel-head"><div><h3>TDX/F10 Source-Date DQ</h3><div class="muted">latest global gate evidence</div></div></div>' +
+      renderTdxF10SourceDq(data.tdx_f10_source_dq || {}) +
       '</section>'
     );
   }
@@ -565,6 +573,67 @@
           '<td>' + esc(row.source_date_field || '-') + '<div class="muted">' + esc(row.latest_page_update_date || '-') + '</div></td>' +
           '<td>' + esc(row.availability_date_field || '-') + '<div class="muted">' + esc(row.latest_fetched_at || '-') + '</div></td>' +
           '<td>' + esc(row.parser || '-') + '<div class="muted">' + esc(row.parser_version || '-') + '</div></td>' +
+          '</tr>';
+      }).join('') +
+      '</tbody></table></div>';
+  }
+
+  function renderTdxF10SourceDateAudit(audit) {
+    audit = audit || {};
+    var summary = audit.summary || {};
+    var rows = audit.rows || [];
+    if (!audit.run_id) return renderEmpty('暂无 F10 source-date section audit');
+    var header = '<div class="wb-count-row">' +
+      '<span class="wb-count-pill">raw <b>' + fmtNum(summary.raw_row_count || 0) + '</b></span>' +
+      '<span class="wb-count-pill">audit rows <b>' + fmtNum(summary.audit_rows || 0) + '</b></span>' +
+      '<span class="wb-count-pill">source notice <b>' + fmtNum(summary.source_notice_candidate_occurrences || 0) + '</b></span>' +
+      '<span class="wb-count-pill">future source notice <b>' + fmtNum(summary.source_notice_candidate_future_occurrences || 0) + '</b></span>' +
+      '<span class="wb-count-pill">future plan/event <b>' + fmtNum(summary.future_occurrence_count || 0) + '</b></span>' +
+      '</div><div class="muted" style="margin-bottom:10px">run_id: <code>' + esc(audit.run_id || '-') + '</code> · built ' + esc(audit.built_at || '-') + '</div>';
+    if (!rows.length) return header + renderEmpty('暂无审计明细');
+    return header + '<div class="wb-table-wrap"><table class="data-table data-table-compact wb-table">' +
+      '<thead><tr><th>section</th><th>pattern</th><th>role</th><th>candidate</th><th>occurrences</th><th>future</th><th>date range</th><th>coverage</th></tr></thead><tbody>' +
+      rows.map(function (row) {
+        var candidate = !!row.source_notice_candidate;
+        var future = Number(row.future_occurrence_count || 0);
+        var roleTone = candidate ? 'ok' : future ? 'warn' : 'info';
+        return '<tr>' +
+          '<td><code>' + esc(row.section_id || '-') + '</code><div class="muted">' + esc(row.section_name || '-') + '</div></td>' +
+          '<td><code>' + esc(row.pattern_name || '-') + '</code></td>' +
+          '<td>' + pill(row.date_role || '-', roleTone) + '</td>' +
+          '<td>' + pill(candidate ? 'source_notice' : 'no', candidate ? 'ok' : 'info') + '</td>' +
+          '<td>' + fmtNum(row.occurrence_count || 0) + '</td>' +
+          '<td>' + pill(fmtNum(future), future ? 'warn' : 'ok') + '</td>' +
+          '<td>' + esc((row.min_date || '-') + ' ~ ' + (row.max_date || '-')) + '</td>' +
+          '<td>' + fmtNum(row.stock_count || 0) + ' stocks<div class="muted">' + fmtNum(row.raw_row_count || 0) + ' raw rows</div></td>' +
+          '</tr>';
+      }).join('') +
+      '</tbody></table></div>';
+  }
+
+  function renderTdxF10SourceDq(dq) {
+    dq = dq || {};
+    var details = dq.details || [];
+    if (!dq.gate_run_id) return renderEmpty('暂无 TDX/F10 source-date DQ gate');
+    var header = '<div class="wb-count-row">' +
+      '<span class="wb-count-pill">status <b>' + esc(dq.gate_status || '-') + '</b></span>' +
+      '<span class="wb-count-pill">blockers <b>' + fmtNum(dq.blocker_count || 0) + '</b></span>' +
+      '<span class="wb-count-pill">warnings <b>' + fmtNum(dq.warning_count || 0) + '</b></span>' +
+      '<span class="wb-count-pill">checks <b>' + fmtNum(((dq.summary || {}).detail_count) || details.length) + '</b></span>' +
+      '</div><div class="muted" style="margin-bottom:10px">gate: <code>' + esc(dq.gate_run_id || '-') + '</code> · ended ' + esc(dq.ended_at || '-') + '</div>';
+    if (!details.length) return header + renderEmpty('暂无 DQ 明细');
+    return header + '<div class="wb-table-wrap"><table class="data-table data-table-compact wb-table">' +
+      '<thead><tr><th>table</th><th>check</th><th>status</th><th>rows</th><th>violations</th><th>reason</th></tr></thead><tbody>' +
+      details.map(function (row) {
+        var status = row.status || '-';
+        var tone = status === 'pass' ? 'ok' : status === 'fail' ? 'bad' : 'info';
+        return '<tr>' +
+          '<td><code>' + esc(row.table_name || '-') + '</code><div class="muted">' + esc(row.column_name || '-') + '</div></td>' +
+          '<td>' + esc(row.check_name || '-') + '</td>' +
+          '<td>' + pill(status, tone) + '<div class="muted">' + esc(row.severity || '-') + '</div></td>' +
+          '<td>' + fmtNum(row.row_count || 0) + '</td>' +
+          '<td>' + pill(fmtNum(row.violation_count || 0), Number(row.violation_count || 0) ? 'bad' : 'ok') + '</td>' +
+          '<td>' + esc(row.reason || '-') + '</td>' +
           '</tr>';
       }).join('') +
       '</tbody></table></div>';

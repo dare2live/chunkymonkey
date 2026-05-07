@@ -70,6 +70,24 @@ def test_workbench_frontend_render_smoke_for_all_tabs():
             updated_at: '2026-05-07T05:02:00+00:00',
             servers: [{ server_host: '218.6.170.47', server_port: 7709, capability: 'kline_daily_raw', success_count: 3, failure_count: 0, timeout_count: 0, health_score: 34.1, avg_success_elapsed_s: 0.42, last_attempt_elapsed_s: 0.39, last_success_at: '2026-05-07T05:00:00+00:00', source_run_id: 'tdx_probe_good' }],
           },
+          f10_source_date_audit: {
+            run_id: 'f10_source_v3',
+            built_at: '2026-05-07T10:00:00',
+            summary: { raw_row_count: 100, audit_rows: 2, source_notice_candidate_occurrences: 95, source_notice_candidate_future_occurrences: 0, future_occurrence_count: 3 },
+            rows: [
+              { section_id: '2', section_name: '股东增减持计划', pattern_name: 'latest_announce_date', date_role: 'source_notice_date', source_notice_candidate: true, occurrence_count: 95, future_occurrence_count: 0, min_date: '2026-01-01', max_date: '2026-05-01', stock_count: 80, raw_row_count: 100 },
+              { section_id: '2', section_name: '股东增减持计划', pattern_name: 'change_end_date', date_role: 'plan_end_date', source_notice_candidate: false, occurrence_count: 20, future_occurrence_count: 3, min_date: '2026-01-01', max_date: '2026-12-31', stock_count: 80, raw_row_count: 100 },
+            ],
+          },
+          tdx_f10_source_dq: {
+            gate_run_id: 'dq_f10_source',
+            gate_status: 'pass',
+            blocker_count: 0,
+            warning_count: 0,
+            ended_at: '2026-05-07T10:00:13',
+            summary: { detail_count: 1 },
+            details: [{ table_name: 'fact_shareholder_plan_tdx_f10', column_name: 'source_available_date', check_name: 'plan_window_used_as_source_date', status: 'pass', severity: 'blocker', row_count: 12062, violation_count: 0 }],
+          },
           watermarks: [{ data_domain: 'kline', source_name: 'tdxhub_quote', source_tier: 1, row_count: 10 }],
           today_signal_cache: { status: 'hit', signal_count: 9261, freshness_days: 90, source_max_notice_date: '2026-05-05', current_source_max_notice_date: '2026-05-05', built_at: '2026-05-07T08:00:00', stale: false, requires_refresh: false, step: { status: 'completed', records: 9261, finished_at: '2026-05-07T08:00:01' } },
           blockers: [],
@@ -154,7 +172,7 @@ def test_workbench_frontend_render_smoke_for_all_tabs():
         };
 
         render('_renderOverview', overview, ['最新完成交易日', 'cron_daily', 'champion_a']);
-        render('_renderDataSources', dataSources, ['K线主源', 'tdxhub_quote', '信号快照', '今日信号快照', '数据源水位', 'TDX K线服务器健康']);
+        render('_renderDataSources', dataSources, ['K线主源', 'tdxhub_quote', '信号快照', '今日信号快照', '数据源水位', 'TDX K线服务器健康', 'TDX F10 Source-Date Audit', 'plan_window_used_as_source_date']);
         render('_renderPipelines', pipelines, ['最近运行', 'cron_daily', '最慢运行']);
         render('_renderFeatures', features, ['Registry', 'Feature Search Space', '漂移缓解候选', 'mitigation_1', 'ret_20d']);
         render('_renderResearch', research, ['研究队列', 'Ranker 性能', 'Rank Matrix Cache', 'rank_matrix_cache_hit', 'ranker_perf', '个股持股周期画像', 'Top 变量影响', 'ma_ratio_250', '时序协同研究', 'signal_a']);
