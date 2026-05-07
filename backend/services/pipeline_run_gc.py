@@ -8,6 +8,7 @@ from typing import Any
 
 from services.data_deletion import ensure_data_deletion_tables, record_data_deletion
 from services.pipeline_manifest import git_commit_sha, record_pipeline_run, utc_now_iso
+from services.pipeline_performance_policy import load_pipeline_performance_policy
 from services.pricing_policy import load_pricing_label_policy
 
 
@@ -52,8 +53,10 @@ def _champion_model_ids(conn: Any) -> set[str]:
 def plan_obsolete_pipeline_performance_run_delete(conn: Any) -> dict[str, Any]:
     if not _table_exists(conn, "mart_pipeline_run_manifest"):
         return {"mode": "dry_run", "offenders": [], "blocked": [], "offender_count": 0}
-    policy = load_pricing_label_policy()
-    perf_policy = policy.definition_sections.get("performance_policy") or {}
+    pricing_policy = load_pricing_label_policy()
+    perf_policy = load_pipeline_performance_policy().to_dict()
+    if not perf_policy.get("pipeline_duration_budgets_s"):
+        perf_policy = pricing_policy.definition_sections.get("performance_policy") or {}
     progress_s = float(perf_policy.get("progress_heartbeat_required_after_s") or 30)
     default_budget = float(perf_policy.get("default_pipeline_duration_budget_s") or 600)
     budgets = perf_policy.get("pipeline_duration_budgets_s") or {}
@@ -108,8 +111,9 @@ def plan_obsolete_pipeline_performance_run_delete(conn: Any) -> dict[str, Any]:
             offenders.append(item)
     return {
         "mode": "dry_run",
-        "policy_id": policy.policy_id,
-        "policy_hash": policy.policy_hash(),
+        "policy_id": pricing_policy.policy_id,
+        "policy_hash": pricing_policy.policy_hash(),
+        "performance_policy_id": perf_policy.get("policy_id"),
         "tracked_pipelines": tracked,
         "offender_count": len(offenders),
         "blocked_count": len(blocked),

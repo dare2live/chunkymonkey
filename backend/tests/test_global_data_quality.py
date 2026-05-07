@@ -866,6 +866,41 @@ def test_global_data_quality_gate_blocks_slow_pipeline_without_stage_timing() ->
         assert any("pipeline_performance:slow_run_has_stage_timing" in item for item in result["blockers"])
 
 
+def test_global_data_quality_uses_dedicated_pipeline_performance_policy() -> None:
+    with duck_mem() as conn:
+        _seed_calendar(conn)
+        conn.execute(
+            """
+            CREATE TABLE fact_feature_panel (
+                stock_code TEXT,
+                date TEXT,
+                amount_20d DOUBLE
+            )
+            """
+        )
+        conn.execute("INSERT INTO fact_feature_panel VALUES ('000001', '2026-01-02', 10.0)")
+        record_pipeline_run(
+            conn,
+            run_id="slow_rank_matrix_no_timing",
+            pipeline_name="build_feature_rank_matrix_duck",
+            status="success",
+            duration_s=61.0,
+            perf_summary={"config": {"mode": "proxy"}},
+        )
+
+        result = record_global_data_quality_gate(
+            conn,
+            gate_run_id="global_dq_slow_rank_matrix_unit",
+            feature_tables=["fact_feature_panel"],
+            include_market=False,
+            include_institution_events=False,
+            include_pipeline_performance=True,
+        )
+
+        assert result["gate_status"] == "blocked"
+        assert any("build_feature_rank_matrix_duck" in item for item in result["blockers"])
+
+
 def test_global_data_quality_gate_accepts_slow_pipeline_with_stage_timing() -> None:
     with duck_mem() as conn:
         _seed_calendar(conn)

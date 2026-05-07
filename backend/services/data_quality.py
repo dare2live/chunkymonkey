@@ -12,6 +12,7 @@ from services.data_deletion import ensure_data_deletion_tables
 from services.data_processing_monitor import ensure_data_processing_monitor_tables
 from services.feature_registry import load_feature_registry
 from services.pipeline_manifest import git_commit_sha, record_pipeline_run, utc_now_iso
+from services.pipeline_performance_policy import load_pipeline_performance_policy
 from services.pricing_policy import load_pricing_label_policy, record_pricing_label_policy
 from services.recommendation_universe import (
     explain_universe_exclusions,
@@ -2405,7 +2406,9 @@ def _check_pipeline_performance(
         )
         _append_outcome(item, details=details, blockers=blockers, warnings=warnings)
         return {"exists": False}
-    perf_policy = policy_sections.get("performance_policy") or {}
+    perf_policy = load_pipeline_performance_policy().to_dict()
+    if not perf_policy.get("pipeline_duration_budgets_s"):
+        perf_policy = policy_sections.get("performance_policy") or {}
     progress_s = float(perf_policy.get("progress_heartbeat_required_after_s") or 30)
     default_budget = float(perf_policy.get("default_pipeline_duration_budget_s") or 600)
     budgets = perf_policy.get("pipeline_duration_budgets_s") or {}
