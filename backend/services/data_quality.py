@@ -2380,6 +2380,7 @@ def _check_institution_events(
         ).fetchone()
         future_by_source: list[dict[str, Any]] = []
         source_notice_future_count = 0
+        observed_source_future_count = 0
         if "notice_date_source" in columns:
             future_by_source = [
                 dict(row)
@@ -2405,6 +2406,11 @@ def _check_institution_events(
                 )
                 or 0
             )
+            observed_source_future_count = sum(
+                int(row["rows"] or 0)
+                for row in future_by_source
+                if row.get("notice_date_source") in {"source_notice", "page_update_date"}
+            )
         example_columns = [
             column
             for column in (
@@ -2420,7 +2426,7 @@ def _check_institution_events(
             )
             if column in columns
         ]
-        severity = "blocker" if source_notice_future_count else "warning"
+        severity = "blocker" if observed_source_future_count else "warning"
         item = _detail(
             domain="institution_event",
             table_name=table_name,
@@ -2433,8 +2439,8 @@ def _check_institution_events(
             reason=None
             if future_count == 0
             else (
-                "future source_notice rows indicate upstream date corruption"
-                if source_notice_future_count
+                "future observed-source notice rows indicate upstream date corruption"
+                if observed_source_future_count
                 else "future notice_date rows are excluded from live signals; regulatory_deadline rows are plannable fallback dates, not true source disclosure dates"
             ),
             examples=_sample_examples(
@@ -2452,6 +2458,7 @@ def _check_institution_events(
         if future_by_source:
             evidence["future_notice_by_source"] = future_by_source
             evidence["future_source_notice_rows"] = source_notice_future_count
+            evidence["future_observed_source_rows"] = observed_source_future_count
         evidence["min_future_notice_date"] = (
             str(future_bounds["min_future_notice_date"])
             if future_bounds and future_bounds["min_future_notice_date"] is not None

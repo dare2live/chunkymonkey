@@ -172,8 +172,9 @@ def generate_events(conn) -> int:
         """
         CASE
             WHEN availability_source = 'source_notice' THEN 0
-            WHEN availability_source = 'regulatory_deadline' THEN 1
-            ELSE 2
+            WHEN availability_source = 'page_update_date' THEN 1
+            WHEN availability_source = 'regulatory_deadline' THEN 2
+            ELSE 3
         END
         """
         if "availability_source" in holder_columns
@@ -360,8 +361,9 @@ def generate_exit_events(conn) -> int:
         """
         CASE
             WHEN availability_source = 'source_notice' THEN 0
-            WHEN availability_source = 'regulatory_deadline' THEN 1
-            ELSE 2
+            WHEN availability_source = 'page_update_date' THEN 1
+            WHEN availability_source = 'regulatory_deadline' THEN 2
+            ELSE 3
         END
         """
         if "availability_source" in holder_columns

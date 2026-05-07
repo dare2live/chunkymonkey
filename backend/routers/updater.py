@@ -1657,8 +1657,9 @@ def _step_match_inst_sync(conn) -> int:
                     COALESCE(TRY_CAST(r.holder_rank AS INTEGER), 999999) AS holder_rank_sort,
                     CASE
                         WHEN r.availability_source = 'source_notice' THEN 0
-                        WHEN r.availability_source = 'regulatory_deadline' THEN 1
-                        ELSE 2
+                        WHEN r.availability_source = 'page_update_date' THEN 1
+                        WHEN r.availability_source = 'regulatory_deadline' THEN 2
+                        ELSE 3
                     END AS notice_source_sort,
                     r.hold_amount,
                     r.hold_market_cap,

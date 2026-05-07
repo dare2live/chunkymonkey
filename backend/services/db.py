@@ -142,7 +142,7 @@ def init_db():
                 -- temporal
                 notice_date       TEXT,
                 effective_date    TEXT,                       -- 公告日 + 1 交易日 (回测 PIT)
-                availability_source TEXT,                      -- source_notice | regulatory_deadline
+                availability_source TEXT,                      -- source_notice | page_update_date | regulatory_deadline
                 page_update_date  TEXT,                       -- F10 页头 "更新日期"
 
                 -- provenance
@@ -1383,7 +1383,7 @@ def init_db():
                 stock_name      TEXT,
                 report_date     TEXT NOT NULL,
                 notice_date     TEXT,
-                notice_date_source TEXT,                      -- source_notice | regulatory_deadline | unknown
+                notice_date_source TEXT,                      -- source_notice | page_update_date | regulatory_deadline | unknown
                 source_notice_date TEXT,                      -- true source disclosure date, NULL when unavailable
                 availability_deadline TEXT,                   -- statutory/plannable fallback date, NULL when not used
                 holder_rank     INTEGER,
@@ -1410,7 +1410,7 @@ def init_db():
                 stock_name        TEXT,
                 report_date       TEXT NOT NULL,
                 notice_date       TEXT,
-                notice_date_source TEXT,                      -- source_notice | regulatory_deadline | unknown
+                notice_date_source TEXT,                      -- source_notice | page_update_date | regulatory_deadline | unknown
                 source_notice_date TEXT,                      -- true source disclosure date, NULL when unavailable
                 availability_deadline TEXT,                   -- statutory/plannable fallback date, NULL when not used
                 event_type        TEXT NOT NULL,
