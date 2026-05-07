@@ -226,6 +226,31 @@ def test_call_tdx_quotes_with_retry_rotates_start_server(monkeypatch):
     assert third[0] == ("3.3.3.3", 7709)
 
 
+def test_tdx_server_iteration_can_disable_last_success_affinity(monkeypatch):
+    monkeypatch.setattr(
+        tdx_source,
+        "iter_tdx_servers",
+        lambda: (("1.1.1.1", 7709), ("2.2.2.2", 7709), ("3.3.3.3", 7709)),
+    )
+
+    tdx_source.reset_tdx_quotes_pool()
+    try:
+        tdx_source._mark_tdx_server_success(("2.2.2.2", 7709))
+        without_affinity = tdx_source._iter_tdx_servers_for_request(prefer_last_success=False)
+    finally:
+        tdx_source.reset_tdx_quotes_pool()
+
+    tdx_source.reset_tdx_quotes_pool()
+    try:
+        tdx_source._mark_tdx_server_success(("2.2.2.2", 7709))
+        with_affinity = tdx_source._iter_tdx_servers_for_request(prefer_last_success=True)
+    finally:
+        tdx_source.reset_tdx_quotes_pool()
+
+    assert without_affinity[0] == ("1.1.1.1", 7709)
+    assert with_affinity[0] == ("2.2.2.2", 7709)
+
+
 def test_call_tdx_quotes_with_retry_deprioritizes_recent_timeout_server(monkeypatch):
     class FakeClient:
         def __init__(self, server):

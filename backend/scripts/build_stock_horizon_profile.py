@@ -38,6 +38,8 @@ CREATE TABLE IF NOT EXISTS mart_stock_horizon_profile (
     obs_count INTEGER,
     avg_return DOUBLE,
     median_return DOUBLE,
+    max_return DOUBLE,
+    min_return DOUBLE,
     win_rate DOUBLE,
     volatility DOUBLE,
     downside_avg DOUBLE,
@@ -53,6 +55,8 @@ CREATE TABLE IF NOT EXISTS mart_stock_horizon_profile (
 ALTER TABLE mart_stock_horizon_profile ADD COLUMN IF NOT EXISTS compounded_return DOUBLE;
 ALTER TABLE mart_stock_horizon_profile ADD COLUMN IF NOT EXISTS max_drawdown DOUBLE;
 ALTER TABLE mart_stock_horizon_profile ADD COLUMN IF NOT EXISTS path_obs_count INTEGER;
+ALTER TABLE mart_stock_horizon_profile ADD COLUMN IF NOT EXISTS max_return DOUBLE;
+ALTER TABLE mart_stock_horizon_profile ADD COLUMN IF NOT EXISTS min_return DOUBLE;
 CREATE INDEX IF NOT EXISTS idx_stock_horizon_profile_best
     ON mart_stock_horizon_profile(run_id, is_best, horizon_score);
 
@@ -104,6 +108,8 @@ CREATE TABLE IF NOT EXISTS mart_stock_horizon_candidate_gate (
     obs_count INTEGER,
     avg_return DOUBLE,
     median_return DOUBLE,
+    max_return DOUBLE,
+    min_return DOUBLE,
     win_rate DOUBLE,
     volatility DOUBLE,
     downside_avg DOUBLE,
@@ -126,6 +132,8 @@ CREATE TABLE IF NOT EXISTS mart_stock_horizon_candidate_gate (
 );
 CREATE INDEX IF NOT EXISTS idx_stock_horizon_candidate_gate_stock
     ON mart_stock_horizon_candidate_gate(run_id, stock_code, horizon_days);
+ALTER TABLE mart_stock_horizon_candidate_gate ADD COLUMN IF NOT EXISTS max_return DOUBLE;
+ALTER TABLE mart_stock_horizon_candidate_gate ADD COLUMN IF NOT EXISTS min_return DOUBLE;
 """
 
 
@@ -328,6 +336,8 @@ def build_stock_horizon_profile(
                    s.obs_count,
                    s.avg_return,
                    s.median_return,
+                   s.max_return,
+                   s.min_return,
                    s.win_rate,
                    s.volatility,
                    s.downside_avg,
@@ -339,6 +349,8 @@ def build_stock_horizon_profile(
                            COUNT({label_q}) AS obs_count,
                            AVG({label_q}) AS avg_return,
                            MEDIAN({label_q}) AS median_return,
+                           MAX({label_q}) AS max_return,
+                           MIN({label_q}) AS min_return,
                            AVG(CASE WHEN {label_q} > 0 THEN 1.0 ELSE 0.0 END) AS win_rate,
                            STDDEV_SAMP({label_q}) AS volatility,
                            AVG(CASE WHEN {label_q} < 0 THEN {label_q} ELSE 0.0 END) AS downside_avg
@@ -427,6 +439,8 @@ def build_stock_horizon_profile(
             obs_count,
             avg_return,
             median_return,
+            max_return,
+            min_return,
             win_rate,
             volatility,
             downside_avg,
@@ -447,6 +461,8 @@ def build_stock_horizon_profile(
                obs_count,
                avg_return,
                median_return,
+               max_return,
+               min_return,
                win_rate,
                volatility,
                downside_avg,
@@ -628,6 +644,8 @@ def build_stock_horizon_profile(
                obs_count,
                avg_return,
                median_return,
+               max_return,
+               min_return,
                win_rate,
                volatility,
                downside_avg,
@@ -672,6 +690,7 @@ def build_stock_horizon_profile(
         INSERT OR REPLACE INTO mart_stock_horizon_candidate_gate (
             run_id, stock_code, label_name, horizon_days, obs_count,
             avg_return, median_return, win_rate, volatility, downside_avg,
+            max_return, min_return,
             compounded_return, max_drawdown, path_obs_count, horizon_score,
             baseline_horizon_days, baseline_horizon_score, baseline_avg_return,
             baseline_max_drawdown, baseline_obs_count, score_advantage,
@@ -688,6 +707,8 @@ def build_stock_horizon_profile(
                win_rate,
                volatility,
                downside_avg,
+               max_return,
+               min_return,
                compounded_return,
                max_drawdown,
                path_obs_count,

@@ -85,7 +85,7 @@ def test_stock_horizon_profile_selects_best_horizon_and_feature_effects():
         best = conn.execute(
             """
             SELECT stock_code, label_name, horizon_days, is_best,
-                   compounded_return, max_drawdown, path_obs_count
+                   max_return, min_return, compounded_return, max_drawdown, path_obs_count
               FROM mart_stock_horizon_profile
              WHERE run_id = 'stock_horizon_unit'
                AND stock_code = '000001'
@@ -114,7 +114,7 @@ def test_stock_horizon_profile_selects_best_horizon_and_feature_effects():
         ).fetchone()
         candidate_gate = conn.execute(
             """
-            SELECT label_name, candidate_status, reason_code
+            SELECT label_name, max_return, min_return, candidate_status, reason_code
               FROM mart_stock_horizon_candidate_gate
              WHERE run_id = 'stock_horizon_unit'
                AND stock_code = '000001'
@@ -130,6 +130,8 @@ def test_stock_horizon_profile_selects_best_horizon_and_feature_effects():
         assert result["selected_non_baseline_count"] == 1
         assert best["label_name"] == "follow_net_return_90d"
         assert best["horizon_days"] == 90
+        assert best["max_return"] == pytest.approx(0.078)
+        assert best["min_return"] == pytest.approx(0.020)
         assert best["compounded_return"] > 0
         assert best["max_drawdown"] == pytest.approx(0.0)
         assert best["path_obs_count"] == 1
@@ -149,6 +151,8 @@ def test_stock_horizon_profile_selects_best_horizon_and_feature_effects():
         ]
         assert candidate_gate[-1]["candidate_status"] == "candidate_pass"
         assert candidate_gate[-1]["reason_code"] == "candidate_pass"
+        assert candidate_gate[-1]["max_return"] == pytest.approx(0.078)
+        assert candidate_gate[-1]["min_return"] == pytest.approx(0.020)
     finally:
         conn.close()
 

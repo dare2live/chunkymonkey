@@ -311,6 +311,150 @@ def test_global_data_quality_gate_allows_only_classified_immature_follow_label_n
         assert "future immature" in detail["reason"]
 
 
+def test_global_data_quality_gate_blocks_stale_follow_label_quality_counts() -> None:
+    policy = load_pricing_label_policy()
+    with duck_mem() as conn:
+        _seed_calendar(conn)
+        conn.execute(
+            """
+            CREATE TABLE fact_feature_panel (
+                stock_code TEXT,
+                date TEXT,
+                amount_20d DOUBLE,
+                follow_net_return_60d DOUBLE
+            )
+            """
+        )
+        conn.executemany(
+            "INSERT INTO fact_feature_panel VALUES (?, ?, ?, ?)",
+            [
+                ("000001", "2026-01-02", 10.0, None),
+                ("000002", "2026-01-02", 20.0, None),
+            ],
+        )
+        conn.executescript(
+            """
+            CREATE TABLE mart_follow_return_label_build (
+                run_id TEXT,
+                feature_table TEXT,
+                policy_id TEXT,
+                policy_hash TEXT,
+                event_calc_version TEXT,
+                price_adjustment TEXT,
+                transaction_cost_bps DOUBLE,
+                horizons_json TEXT,
+                labels_json TEXT,
+                row_count BIGINT,
+                label_non_null_json TEXT,
+                label_coverage_json TEXT,
+                min_date TEXT,
+                max_date TEXT,
+                built_at TEXT
+            );
+            CREATE TABLE mart_follow_return_label_quality (
+                run_id TEXT,
+                feature_table TEXT,
+                label_name TEXT,
+                horizon_days INTEGER,
+                policy_id TEXT,
+                policy_hash TEXT,
+                event_calc_version TEXT,
+                row_count BIGINT,
+                non_null_count BIGINT,
+                null_count BIGINT,
+                immature_null_count BIGINT,
+                mature_null_count BIGINT,
+                missing_signal_kline_count BIGINT,
+                missing_entry_price_count BIGINT,
+                missing_exit_price_count BIGINT,
+                unclassified_null_count BIGINT,
+                min_date TEXT,
+                max_date TEXT,
+                stock_max_date_min TEXT,
+                stock_max_date_max TEXT,
+                global_market_max_date TEXT,
+                built_at TEXT
+            );
+            """
+        )
+        conn.execute(
+            """
+            INSERT INTO mart_follow_return_label_build
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                "stale_label_build_unit",
+                "fact_feature_panel",
+                policy.policy_id,
+                policy.policy_hash(),
+                policy.event_calc_version,
+                policy.price_adjustment,
+                policy.transaction_cost_bps,
+                "[60]",
+                json.dumps(["follow_net_return_60d"]),
+                1,
+                json.dumps({"follow_net_return_60d": 0}),
+                json.dumps({"follow_net_return_60d": 0.0}),
+                "2026-01-02",
+                "2026-01-02",
+                "2026-05-06T00:00:00",
+            ),
+        )
+        conn.execute(
+            """
+            INSERT INTO mart_follow_return_label_quality
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                "stale_label_build_unit",
+                "fact_feature_panel",
+                "follow_net_return_60d",
+                60,
+                policy.policy_id,
+                policy.policy_hash(),
+                policy.event_calc_version,
+                1,
+                0,
+                1,
+                1,
+                0,
+                0,
+                0,
+                0,
+                0,
+                "2026-01-02",
+                "2026-01-02",
+                "2026-01-02",
+                "2026-01-02",
+                "2026-01-02",
+                "2026-05-06T00:00:00",
+            ),
+        )
+
+        result = record_global_data_quality_gate(
+            conn,
+            gate_run_id="global_dq_stale_follow_quality_unit",
+            feature_tables=["fact_feature_panel"],
+            include_market=False,
+            include_institution_events=False,
+            include_pipeline_performance=False,
+        )
+        detail = conn.execute(
+            """
+            SELECT status, violation_count, reason
+              FROM mart_global_data_quality_detail
+             WHERE gate_run_id = 'global_dq_stale_follow_quality_unit'
+               AND domain = 'feature_panel_nulls'
+               AND column_name = 'follow_net_return_60d'
+            """
+        ).fetchone()
+
+        assert result["gate_status"] == "blocked"
+        assert detail["status"] == "fail"
+        assert detail["violation_count"] == 2
+        assert "row_count/null_count exactly matches" in detail["reason"]
+
+
 def test_global_data_quality_gate_allows_registry_classified_optional_null() -> None:
     with duck_mem() as conn:
         _seed_calendar(conn)

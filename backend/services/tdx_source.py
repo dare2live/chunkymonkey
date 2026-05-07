@@ -194,7 +194,9 @@ def _get_server_health_snapshot() -> dict[tuple[str, int], dict[str, object]]:
 
 def _should_cooldown_server(error_type: Optional[str]) -> bool:
     text = str(error_type or "").lower()
-    return any(token in text for token in ("timeout", "connect", "recv", "reset", "brokenpipe", "oserror"))
+    return any(token in text for token in (
+        "timeout", "connect", "recv", "reset", "brokenpipe", "oserror", "notimplemented",
+    ))
 
 
 def _mark_tdx_server_success(server: tuple[str, int]) -> None:
@@ -224,7 +226,7 @@ def _mark_tdx_server_failure(server: tuple[str, int], error_type: Optional[str])
             )
 
 
-def _iter_tdx_servers_for_request() -> tuple[tuple[str, int], ...]:
+def _iter_tdx_servers_for_request(*, prefer_last_success: bool = True) -> tuple[tuple[str, int], ...]:
     servers = iter_tdx_servers()
     if len(servers) <= 1:
         return servers
@@ -246,7 +248,7 @@ def _iter_tdx_servers_for_request() -> tuple[tuple[str, int], ...]:
         else:
             ready.append(server)
 
-    if len(ready) > 1:
+    if prefer_last_success and len(ready) > 1:
         preferred = max(ready, key=lambda item: float(snapshot.get(item, {}).get("last_success_at") or 0.0))
         if float(snapshot.get(preferred, {}).get("last_success_at") or 0.0) > 0:
             ready = [preferred] + [server for server in ready if server != preferred]
@@ -309,6 +311,7 @@ def call_tdx_quotes_with_retry(
     collect_attempts: bool = False,
     max_attempts: Optional[int] = None,
     connect_timeout: Optional[float] = None,
+    prefer_last_success: bool = True,
 ):
     """Run a Quotes operation with server retry and pooled client reuse."""
     Quotes = get_tdx_quotes_class()
@@ -320,7 +323,7 @@ def call_tdx_quotes_with_retry(
     attempt_count = 0
     timeout = float(connect_timeout if connect_timeout is not None else _TDX_TIMEOUT_SECONDS)
     effective_max_attempts = max_attempts if max_attempts is not None else _default_tdx_max_attempts()
-    for server in _iter_tdx_servers_for_request():
+    for server in _iter_tdx_servers_for_request(prefer_last_success=prefer_last_success):
         if effective_max_attempts is not None and attempt_count >= effective_max_attempts:
             break
         attempt_count += 1

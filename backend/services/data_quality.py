@@ -777,7 +777,7 @@ def _latest_follow_label_quality(conn: Any, feature_table: str) -> dict[str, dic
         return {}
     build = conn.execute(
         """
-        SELECT run_id
+        SELECT run_id, built_at
           FROM mart_follow_return_label_build
          WHERE feature_table = ?
          ORDER BY built_at DESC
@@ -788,10 +788,12 @@ def _latest_follow_label_quality(conn: Any, feature_table: str) -> dict[str, dic
     if not build:
         return {}
     run_id = _row_value(build, "run_id", 0)
+    built_at = _row_value(build, "built_at", 1)
     rows = conn.execute(
         """
         SELECT label_name,
                row_count,
+               non_null_count,
                null_count,
                immature_null_count,
                mature_null_count,
@@ -809,16 +811,49 @@ def _latest_follow_label_quality(conn: Any, feature_table: str) -> dict[str, dic
     for row in rows:
         label = str(_row_value(row, "label_name", 0))
         out[label] = {
+            "run_id": str(run_id),
+            "built_at": built_at,
             "row_count": int(_row_value(row, "row_count", 1) or 0),
-            "null_count": int(_row_value(row, "null_count", 2) or 0),
-            "immature_null_count": int(_row_value(row, "immature_null_count", 3) or 0),
-            "mature_null_count": int(_row_value(row, "mature_null_count", 4) or 0),
-            "missing_signal_kline_count": int(_row_value(row, "missing_signal_kline_count", 5) or 0),
-            "missing_entry_price_count": int(_row_value(row, "missing_entry_price_count", 6) or 0),
-            "missing_exit_price_count": int(_row_value(row, "missing_exit_price_count", 7) or 0),
-            "unclassified_null_count": int(_row_value(row, "unclassified_null_count", 8) or 0),
+            "non_null_count": int(_row_value(row, "non_null_count", 2) or 0),
+            "null_count": int(_row_value(row, "null_count", 3) or 0),
+            "immature_null_count": int(_row_value(row, "immature_null_count", 4) or 0),
+            "mature_null_count": int(_row_value(row, "mature_null_count", 5) or 0),
+            "missing_signal_kline_count": int(_row_value(row, "missing_signal_kline_count", 6) or 0),
+            "missing_entry_price_count": int(_row_value(row, "missing_entry_price_count", 7) or 0),
+            "missing_exit_price_count": int(_row_value(row, "missing_exit_price_count", 8) or 0),
+            "unclassified_null_count": int(_row_value(row, "unclassified_null_count", 9) or 0),
         }
     return out
+
+
+def _clean_follow_label_quality(
+    label_quality: dict[str, Any] | None,
+    *,
+    row_count: int,
+    null_count: int,
+    exact_current_table: bool,
+) -> bool:
+    if not label_quality:
+        return False
+    quality_row_count = int(label_quality.get("row_count") or 0)
+    quality_null_count = int(label_quality.get("null_count") or 0)
+    quality_non_null_count = int(label_quality.get("non_null_count") or 0)
+    if exact_current_table:
+        if quality_row_count != int(row_count) or quality_null_count != int(null_count):
+            return False
+        if quality_non_null_count != int(row_count) - int(null_count):
+            return False
+    else:
+        if quality_row_count < int(row_count) or quality_null_count < int(null_count):
+            return False
+    return (
+        quality_null_count == int(label_quality.get("immature_null_count") or 0)
+        and int(label_quality.get("mature_null_count") or 0) == 0
+        and int(label_quality.get("missing_signal_kline_count") or 0) == 0
+        and int(label_quality.get("missing_entry_price_count") or 0) == 0
+        and int(label_quality.get("missing_exit_price_count") or 0) == 0
+        and int(label_quality.get("unclassified_null_count") or 0) == 0
+    )
 
 
 def _match_null_policy(conn: Any, table_name: str, column_name: str) -> dict[str, Any] | None:
@@ -1411,13 +1446,11 @@ def _check_feature_panel_nulls(
             continue
         if column.startswith(FOLLOW_LABEL_PREFIX):
             label_quality = quality.get(column)
-            if label_quality and (
-                label_quality["null_count"] == label_quality["immature_null_count"]
-                and label_quality["mature_null_count"] == 0
-                and label_quality["missing_signal_kline_count"] == 0
-                and label_quality["missing_entry_price_count"] == 0
-                and label_quality["missing_exit_price_count"] == 0
-                and label_quality["unclassified_null_count"] == 0
+            if _clean_follow_label_quality(
+                label_quality,
+                row_count=row_count,
+                null_count=null_count,
+                exact_current_table=("feature_set_id" not in columns),
             ):
                 allowed_immature_labels[column] = label_quality
                 item = _detail(
@@ -1432,6 +1465,22 @@ def _check_feature_panel_nulls(
                 )
                 _append_outcome(item, details=details, blockers=blockers, warnings=warnings)
                 continue
+            item = _detail(
+                domain="feature_panel_nulls",
+                table_name=table_name,
+                column_name=column,
+                check_name="stale_or_inconsistent_follow_label_quality",
+                status="fail",
+                row_count=row_count,
+                violation_count=null_count,
+                reason=(
+                    "follow label nulls require a current mart_follow_return_label_quality "
+                    "record whose row_count/null_count exactly matches the scanned feature table "
+                    "and whose nulls are fully classified as future immature"
+                ),
+            )
+            _append_outcome(item, details=details, blockers=blockers, warnings=warnings)
+            continue
         base_column = _industry_relative_base_column(column)
         if table_name == "fact_feature_panel" and base_column and base_column in columns:
             base_policy = _match_null_policy(conn, table_name, base_column)
@@ -1906,13 +1955,11 @@ def _check_candidate_feature_panel_nulls(
 
             if feature.startswith(FOLLOW_LABEL_PREFIX):
                 label_quality = quality.get(feature)
-                if label_quality and (
-                    label_quality["null_count"] == label_quality["immature_null_count"]
-                    and label_quality["mature_null_count"] == 0
-                    and label_quality["missing_signal_kline_count"] == 0
-                    and label_quality["missing_entry_price_count"] == 0
-                    and label_quality["missing_exit_price_count"] == 0
-                    and label_quality["unclassified_null_count"] == 0
+                if _clean_follow_label_quality(
+                    label_quality,
+                    row_count=set_rows,
+                    null_count=null_count,
+                    exact_current_table=False,
                 ):
                     contract_null_features[f"{feature_set_id}:{feature}"] = {
                         "null_count": null_count,

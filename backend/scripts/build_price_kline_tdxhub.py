@@ -15,11 +15,13 @@
 from __future__ import annotations
 
 import argparse
+import os
 import hashlib
 import logging
 import sys
 import time
 import warnings
+from concurrent.futures import FIRST_COMPLETED, ThreadPoolExecutor, wait
 from datetime import datetime, timedelta
 from pathlib import Path
 
@@ -181,12 +183,14 @@ def pull_one_stock_with_retry(
     adjust: str | None = "qfq",
     max_attempts: int | None = None,
     connect_timeout: float | None = None,
+    prefer_last_success: bool = True,
 ) -> tuple[list[dict], str]:
     records, source = call_tdx_quotes_with_retry(
         lambda client: pull_one_stock(client, code, pages=pages, adjust=adjust, raise_errors=True),
         action_name=f"price_kline_tdxhub.bars[{code}]",
         max_attempts=max_attempts,
         connect_timeout=connect_timeout,
+        prefer_last_success=prefer_last_success,
     )
     return records, source
 
@@ -798,6 +802,31 @@ def filter_after_latest(rows: list[dict], latest_dates: dict[str, str]) -> list[
     return out
 
 
+def fetch_one_stock_normalized(
+    code: str,
+    *,
+    pages: int,
+    adjust: str | None,
+    batch_id: str,
+    connect_timeout: float,
+    max_attempts: int,
+    prefer_last_success: bool = False,
+) -> tuple[list[dict], str]:
+    """Fetch one stock through the shared TDX server pool and normalize rows."""
+
+    records, source_name = pull_one_stock_with_retry(
+        code,
+        pages=pages,
+        adjust=adjust,
+        max_attempts=max_attempts,
+        connect_timeout=connect_timeout,
+        prefer_last_success=prefer_last_success,
+    )
+    if adjust is None:
+        source_name = f"{source_name}_raw_incremental"
+    return normalize(records, batch_id, source_name=source_name), source_name
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--pages', type=int, default=2,
@@ -814,6 +843,10 @@ def main():
                         help='启动选路最多尝试服务器数，默认 8')
     parser.add_argument('--per-stock-retry-attempts', type=int, default=0,
                         help='单股拉取失败后的额外服务器重试数，默认 0 以避免慢服务器放大')
+    parser.add_argument('--workers', type=int, default=None,
+                        help='K 线并发拉取 worker 数；写库仍单线程。默认：raw 增量 8，qfq 全量 1；可用 CM_TDX_KLINE_WORKERS 覆盖')
+    parser.add_argument('--max-inflight', type=int, default=0,
+                        help='并发模式最多同时挂起的股票请求，默认 workers*4')
     parser.add_argument('--log-every', type=int, default=50,
                         help='每 N 只股票输出一次进度，默认 50')
     parser.add_argument('--target-date', default=None,
@@ -861,6 +894,21 @@ def main():
     if args.skip_existing and args.allow_raw_incremental:
         pull_adjust = None
         logger.info("skip_existing: 使用 tdxhub 原始近端 K 线补新增日期，factor=1.0")
+    env_workers = int(os.getenv("CM_TDX_KLINE_WORKERS", "0") or 0)
+    if args.workers is not None:
+        workers = max(1, int(args.workers or 1))
+    elif env_workers > 0:
+        workers = env_workers
+    else:
+        workers = 8 if pull_adjust is None else 1
+    max_inflight = max(workers, int(args.max_inflight or workers * 4))
+    per_stock_total_attempts = max(1, int(args.per_stock_retry_attempts or 0) + 1)
+    logger.info(
+        "fetch mode: workers=%d max_inflight=%d per_stock_total_attempts=%d",
+        workers,
+        max_inflight,
+        per_stock_total_attempts,
+    )
     t0 = time.time()
     n_stocks_done = 0
     n_rows_written = 0
@@ -903,31 +951,12 @@ def main():
                         len(xdxr_gap_codes),
                     )
 
-    for i, (code, _market) in enumerate(stock_list):
-        try:
-            records = pull_one_stock(client, code, pages=args.pages, adjust=pull_adjust, raise_errors=True)
-            source_name = f"{client_source}_raw_incremental" if pull_adjust is None else client_source
-        except Exception as e:
-            if args.per_stock_retry_attempts > 0:
-                try:
-                    records, source_name = pull_one_stock_with_retry(
-                        code,
-                        pages=args.pages,
-                        adjust=pull_adjust,
-                        max_attempts=args.per_stock_retry_attempts,
-                        connect_timeout=args.connect_timeout,
-                    )
-                    if pull_adjust is None:
-                        source_name = f"{source_name}_raw_incremental"
-                except Exception as retry_e:
-                    logger.warning("code=%s 拉取失败: %s; retry_failed=%s", code, e, retry_e)
-                    n_failed.append(code)
-                    continue
-            else:
-                logger.warning("code=%s 拉取失败: %s", code, e)
-                n_failed.append(code)
-                continue
-        norm = normalize(records, batch_id, source_name=source_name)
+    def process_normalized_stock(code: str, norm: list[dict], source_name: str) -> None:
+        nonlocal n_rows_written
+        nonlocal n_stocks_done
+        nonlocal n_raw_xdxr_dropped
+        nonlocal n_xdxr_adjusted_rows
+        nonlocal n_xdxr_adjustment_events
         if args.skip_existing:
             if pull_adjust is None:
                 code_events = xdxr_gap_events.get(code) or []
@@ -952,22 +981,104 @@ def main():
                     n_raw_xdxr_dropped += dropped
             norm = filter_after_latest(norm, latest_dates)
             if not norm:
-                continue
-        try:
-            n = write_batch(conn, norm)
-            n_rows_written += n
-            n_stocks_done += 1
-        except Exception as e:
-            logger.warning("code=%s write 失败: %s", code, e)
-            n_failed.append(code)
-            continue
-        if (i + 1) % max(1, args.log_every) == 0:
+                return
+        n = write_batch(conn, norm)
+        n_rows_written += n
+        n_stocks_done += 1
+
+    def log_progress(completed: int) -> None:
+        if completed % max(1, args.log_every) == 0:
             conn.commit()
             dt = time.time() - t0
-            rate = (i + 1) / dt if dt > 0 else 0
-            eta = (len(stock_list) - (i + 1)) / rate / 60 if rate > 0 else 0
+            rate = completed / dt if dt > 0 else 0
+            eta = (len(stock_list) - completed) / rate / 60 if rate > 0 else 0
             logger.info("进度 %d/%d (%.1f股/s)  写入 %d 行  ETA %.1f min  失败 %d",
-                        i + 1, len(stock_list), rate, n_rows_written, eta, len(n_failed))
+                        completed, len(stock_list), rate, n_rows_written, eta, len(n_failed))
+
+    if workers <= 1:
+        for i, (code, _market) in enumerate(stock_list):
+            try:
+                records = pull_one_stock(client, code, pages=args.pages, adjust=pull_adjust, raise_errors=True)
+                source_name = f"{client_source}_raw_incremental" if pull_adjust is None else client_source
+            except Exception as e:
+                if args.per_stock_retry_attempts > 0:
+                    try:
+                        norm, source_name = fetch_one_stock_normalized(
+                            code,
+                            pages=args.pages,
+                            adjust=pull_adjust,
+                            batch_id=batch_id,
+                            connect_timeout=args.connect_timeout,
+                            max_attempts=max(1, int(args.per_stock_retry_attempts)),
+                            prefer_last_success=True,
+                        )
+                    except Exception as retry_e:
+                        logger.warning("code=%s 拉取失败: %s; retry_failed=%s", code, e, retry_e)
+                        n_failed.append(code)
+                        log_progress(i + 1)
+                        continue
+                else:
+                    logger.warning("code=%s 拉取失败: %s", code, e)
+                    n_failed.append(code)
+                    log_progress(i + 1)
+                    continue
+            else:
+                norm = normalize(records, batch_id, source_name=source_name)
+            try:
+                process_normalized_stock(code, norm, source_name)
+            except Exception as e:
+                logger.warning("code=%s write 失败: %s", code, e)
+                n_failed.append(code)
+            log_progress(i + 1)
+    else:
+        try:
+            client.close()
+        except Exception:
+            pass
+        completed = 0
+        stock_iter = iter(enumerate(stock_list))
+        futures = {}
+
+        def submit_next(pool: ThreadPoolExecutor) -> bool:
+            try:
+                _idx, (code, _market) = next(stock_iter)
+            except StopIteration:
+                return False
+            future = pool.submit(
+                fetch_one_stock_normalized,
+                code,
+                pages=args.pages,
+                adjust=pull_adjust,
+                batch_id=batch_id,
+                connect_timeout=args.connect_timeout,
+                max_attempts=per_stock_total_attempts,
+                prefer_last_success=pull_adjust is not None,
+            )
+            futures[future] = code
+            return True
+
+        with ThreadPoolExecutor(max_workers=workers, thread_name_prefix="tdx-kline") as pool:
+            for _ in range(min(max_inflight, len(stock_list))):
+                if not submit_next(pool):
+                    break
+            while futures:
+                done, _pending = wait(futures, return_when=FIRST_COMPLETED)
+                for future in done:
+                    code = futures.pop(future)
+                    try:
+                        norm, source_name = future.result()
+                    except Exception as e:
+                        logger.warning("code=%s 拉取失败: %s", code, e)
+                        n_failed.append(code)
+                    else:
+                        try:
+                            process_normalized_stock(code, norm, source_name)
+                        except Exception as e:
+                            logger.warning("code=%s write 失败: %s", code, e)
+                            n_failed.append(code)
+                    completed += 1
+                    log_progress(completed)
+                    submit_next(pool)
 
     conn.commit()
     dt = time.time() - t0

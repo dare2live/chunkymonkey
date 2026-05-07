@@ -186,31 +186,49 @@
     if (!rows.length) {
       return '<div class="cm-muted-note" style="margin-top:10px">暂无 5/10/20/60/90d 周期对比明细。</div>';
     }
-    const body = rows.map(row => `<tr class="${row.is_selected ? 'cm-row-strong' : ''}">
-      <td><b>${esc(row.horizon_days || '-')}d</b></td>
-      <td>${esc(horizonStatusLabel(row))}</td>
-      <td class="sig-num">${fmtRatioPlain(row.avg_return)}</td>
-      <td class="sig-num">${fmtRatioPlain(row.max_drawdown)}</td>
-      <td class="sig-num">${fmtRatioPlain(row.win_rate)}</td>
-      <td class="sig-num">${fmtRatioPlain(row.volatility)}</td>
-      <td class="sig-num">${esc(row.obs_count || '-')}</td>
-      <td>${esc(row.reason_code || '-')}</td>
-    </tr>`).join('');
-    return `<div class="sig-table-wrap" style="margin-top:12px">
-      <table class="sig-table sig-table-sm">
-        <thead><tr>
-          <th>周期</th>
-          <th>状态</th>
-          <th class="sig-num">均收益</th>
-          <th class="sig-num">最大回撤</th>
-          <th class="sig-num">胜率</th>
-          <th class="sig-num">波动</th>
-          <th class="sig-num">样本</th>
-          <th>原因</th>
-        </tr></thead>
-        <tbody>${body}</tbody>
-      </table>
-    </div>`;
+    const baseline = rows.find(row => row.is_baseline)
+      || rows.find(row => Number(row.horizon_days) === Number(horizon?.baseline_horizon_days || 60))
+      || null;
+    const body = rows.map(row => {
+      const avgDelta = baseline && row.avg_return != null && baseline.avg_return != null
+        ? Number(row.avg_return) - Number(baseline.avg_return)
+        : null;
+      const drawdownDelta = baseline && row.max_drawdown != null && baseline.max_drawdown != null
+        ? Number(row.max_drawdown) - Number(baseline.max_drawdown)
+        : null;
+      const tone = row.is_selected
+        ? 'good'
+        : row.candidate_status === 'candidate_drawdown_blocked'
+          || row.candidate_status === 'candidate_low_observation'
+          ? 'warn'
+          : 'info';
+      const badges = [
+        row.is_baseline ? '<span class="cm-horizon-pill">60d 基线</span>' : '',
+        row.is_selected ? '<span class="cm-horizon-pill cm-horizon-pill-selected">当前使用</span>' : '',
+      ].filter(Boolean).join('');
+      const delta = !row.is_baseline && baseline
+        ? `<div class="cm-horizon-vs">vs 60d · 均收益 ${fmtRatioPct(avgDelta)} · 回撤差 ${fmtRatioPct(drawdownDelta)}</div>`
+        : `<div class="cm-horizon-vs">60d 作为默认基线和比较锚点</div>`;
+      return `<div class="stock-evidence-item stock-evidence-item--${tone} cm-horizon-node ${row.is_selected ? 'cm-horizon-node-selected' : ''}">
+        <div class="stock-evidence-date">${esc(row.horizon_days || '-')}d</div>
+        <div class="stock-evidence-content">
+          <div class="cm-horizon-title-row">
+            <div class="stock-evidence-title">${esc(horizonStatusLabel(row))}</div>
+            <div>${badges}</div>
+          </div>
+          <div class="cm-horizon-metrics">
+            <span><b>最高收益</b>${fmtRatioPlain(row.max_return)}</span>
+            <span><b>均收益</b>${fmtRatioPlain(row.avg_return)}</span>
+            <span><b>最大回撤</b>${fmtRatioPlain(row.max_drawdown)}</span>
+            <span><b>胜率</b>${fmtRatioPlain(row.win_rate)}</span>
+            <span><b>样本</b>${esc(row.obs_count || '-')}</span>
+          </div>
+          ${delta}
+          <div class="cm-horizon-reason">${esc(row.reason_code || '-')}</div>
+        </div>
+      </div>`;
+    }).join('');
+    return `<div class="stock-evidence-timeline cm-horizon-timeline">${body}</div>`;
   }
   function renderContributionTable(topk) {
     const rows = (topk && topk.top_feature_contributions || []).slice(0, 8);

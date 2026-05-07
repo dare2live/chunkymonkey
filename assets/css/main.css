@@ -5700,6 +5700,70 @@ tr.detail-row>td>.detail-panel {
 .sig-row-active { background: var(--cm-warn-100); }
 .sig-row-active:hover { background: var(--cm-warn-100); }
 
+.cm-horizon-timeline {
+  margin-top: 12px;
+}
+.cm-horizon-node-selected .stock-evidence-content {
+  border-color: var(--cm-ok-500);
+  background: linear-gradient(0deg, rgba(236, 253, 245, 0.62), rgba(255, 255, 255, 0.94));
+}
+.cm-horizon-title-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.cm-horizon-pill {
+  display: inline-flex;
+  align-items: center;
+  min-height: 20px;
+  padding: 2px 7px;
+  border: 1px solid var(--cm-ink-100);
+  border-radius: 999px;
+  color: var(--cm-ink-600);
+  background: var(--cm-bg);
+  font-size: 10px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+.cm-horizon-pill-selected {
+  border-color: var(--cm-ok-500);
+  color: var(--cm-ok-700);
+  background: var(--cm-ok-50);
+}
+.cm-horizon-metrics {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(78px, 1fr));
+  gap: 6px;
+  margin-top: 8px;
+}
+.cm-horizon-metrics span {
+  min-width: 0;
+  padding: 6px 7px;
+  border: 1px solid var(--cm-ink-100);
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.72);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+.cm-horizon-metrics b {
+  display: block;
+  margin-bottom: 2px;
+  color: var(--cm-ink-500);
+  font-size: 10px;
+}
+.cm-horizon-vs,
+.cm-horizon-reason {
+  margin-top: 6px;
+  font-size: 11px;
+  color: var(--cm-ink-500);
+}
+@media (max-width: 720px) {
+  .cm-horizon-metrics {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
 /* Signals v2 · 硬规则 breakdown（detail 抽屉顶部） */
 .sig-breakdown-panel { margin-bottom: 8px; }
 .sig-breakdown-grid {
