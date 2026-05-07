@@ -40,6 +40,11 @@ LOCAL_ACTIVE_A_STOCK_MIN_ROWS = 3000
 DEFAULT_WRITE_BATCH_ROWS = 5000
 DEFAULT_RAW_INCREMENTAL_WORKERS = 8
 DEFAULT_QFQ_WORKERS = 4
+UNSUPPORTED_ADJUSTED_RECORDS_MESSAGE = (
+    "tdxhub records mode does not support adjusted qfq K-line fetch. "
+    "Use --skip-existing raw incremental for tail updates, or implement a "
+    "verified full raw+xdxr qfq rebuild before truncating/rebuilding history."
+)
 
 
 TABLE_DDL = """
@@ -217,10 +222,15 @@ def pull_one_stock(
     code: str,
     pages: int = 2,
     *,
-    adjust: str | None = "qfq",
+    adjust: str | None = None,
     raise_errors: bool = False,
 ) -> list[dict]:
     """拉 `pages` 页 bars, 每页 800 根. 返回聚合后的 records."""
+    if adjust:
+        if raise_errors:
+            raise NotImplementedError(UNSUPPORTED_ADJUSTED_RECORDS_MESSAGE)
+        logger.warning("code=%s adjusted records fetch skipped: %s", code, UNSUPPORTED_ADJUSTED_RECORDS_MESSAGE)
+        return []
     parts = []
     for start in range(0, pages * 800, 800):
         try:
@@ -251,11 +261,13 @@ def pull_one_stock_with_retry(
     code: str,
     pages: int = 2,
     *,
-    adjust: str | None = "qfq",
+    adjust: str | None = None,
     max_attempts: int | None = None,
     connect_timeout: float | None = None,
     prefer_last_success: bool = True,
 ) -> tuple[list[dict], str]:
+    if adjust:
+        raise NotImplementedError(UNSUPPORTED_ADJUSTED_RECORDS_MESSAGE)
     records, source = call_tdx_quotes_with_retry(
         lambda client: pull_one_stock(client, code, pages=pages, adjust=adjust, raise_errors=True),
         action_name=f"price_kline_tdxhub.bars[{code}]",
@@ -949,7 +961,7 @@ def main():
     parser.add_argument('--skip-existing', action='store_true',
                         help='按每股 MAX(date) 只写新增日期（增量补缺口），不再整只股票跳过')
     parser.add_argument('--truncate', action='store_true',
-                        help='清空 price_kline_tdxhub 后全量重拉')
+                        help='已禁用：必须先实现并验证 raw+xdxr/factor qfq 全量重建路径')
     parser.add_argument('--connect-timeout', type=float, default=1.5,
                         help='tdxhub 单服务器连接/握手超时秒数，默认 1.5')
     parser.add_argument('--max-server-attempts', type=int, default=8,
@@ -991,16 +1003,20 @@ def main():
         conn.close()
         return
 
-    if args.truncate:
-        conn.execute("DELETE FROM price_kline_tdxhub")
-        conn.commit()
-        logger.info("price_kline_tdxhub 已清空")
-
     batch_id = f"tdxhub_{time.strftime('%Y%m%d_%H%M%S')}"
     pull_adjust = "qfq"
     if args.skip_existing and args.allow_raw_incremental:
         pull_adjust = None
         logger.info("skip_existing: 使用 tdxhub 原始近端 K 线补新增日期，factor=1.0")
+    if pull_adjust is not None:
+        conn.close()
+        raise RuntimeError(UNSUPPORTED_ADJUSTED_RECORDS_MESSAGE)
+    if args.truncate and pull_adjust is None:
+        conn.close()
+        raise RuntimeError(
+            "Refusing to truncate and refill qfq table with raw bars. "
+            "Full rebuild needs a verified raw+xdxr/factor reconstruction path."
+        )
     env_workers = int(os.getenv("CM_TDX_KLINE_WORKERS", "0") or 0)
     workers = resolve_kline_worker_count(
         explicit_workers=args.workers,

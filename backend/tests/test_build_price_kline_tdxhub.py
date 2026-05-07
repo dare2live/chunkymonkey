@@ -55,7 +55,7 @@ def test_pull_and_normalize_price_records():
 
     assert len(records) == 2
     assert client.calls[0]["symbol"] == "1"
-    assert client.calls[0]["adjust"] == "qfq"
+    assert "adjust" not in client.calls[0]
     assert normalized == [
         {
             "code": "000001",
@@ -101,7 +101,22 @@ def test_retry_helpers_use_shared_tdx_retry(monkeypatch):
     assert stock_list == [("600001", 1), ("000001", 0), ("300001", 0)]
     assert source == "tdxhub_test:7709"
     assert normalized[0]["source"] == "tdxhub_test:7709"
-    assert clients[-1].calls[0]["adjust"] == "qfq"
+    assert "adjust" not in clients[-1].calls[0]
+
+
+def test_adjusted_records_mode_is_rejected_before_tdx_retry(monkeypatch):
+    monkeypatch.setattr(
+        builder,
+        "call_tdx_quotes_with_retry",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(AssertionError("retry should not run")),
+    )
+
+    try:
+        builder.pull_one_stock_with_retry("000001", pages=1, adjust="qfq")
+    except NotImplementedError as exc:
+        assert "does not support adjusted qfq" in str(exc)
+    else:
+        raise AssertionError("adjusted records mode should be rejected")
 
 
 def test_load_local_active_a_stock_list_filters_supported_a_share_codes(monkeypatch):
@@ -273,7 +288,7 @@ def test_resolve_kline_worker_count_parallelizes_qfq_by_default():
     ) == 9
 
 
-def test_main_parallel_qfq_fetch_rotates_across_server_pool(monkeypatch):
+def test_main_parallel_raw_fetch_rotates_across_server_pool(monkeypatch):
     conn = duck_mem()
     conn.executescript(builder.TABLE_DDL)
     prefer_last_success_values = []
@@ -302,10 +317,16 @@ def test_main_parallel_qfq_fetch_rotates_across_server_pool(monkeypatch):
         )
 
     monkeypatch.setattr(builder, "get_market_conn", lambda: conn)
+    monkeypatch.setattr(builder, "load_calendar_target_date", lambda: "2026-05-06")
+    monkeypatch.setattr(
+        builder,
+        "load_local_active_a_stock_list",
+        lambda: ([("000001", 0), ("000002", 0)], "dim_active_a_stock"),
+    )
     monkeypatch.setattr(
         builder,
         "open_quotes_client_with_retry",
-        lambda **_kwargs: ([("000001", 0), ("000002", 0)], FakeClient(), "tdxhub_unit"),
+        lambda **_kwargs: (_ for _ in ()).throw(AssertionError("stock list network should not run")),
     )
     monkeypatch.setattr(builder, "fetch_one_stock_normalized", fake_fetch)
     monkeypatch.setattr(
@@ -313,6 +334,7 @@ def test_main_parallel_qfq_fetch_rotates_across_server_pool(monkeypatch):
         "argv",
         [
             "build_price_kline_tdxhub.py",
+            "--skip-existing",
             "--workers",
             "2",
             "--write-batch-rows",
@@ -325,6 +347,70 @@ def test_main_parallel_qfq_fetch_rotates_across_server_pool(monkeypatch):
     builder.main()
 
     assert prefer_last_success_values == [False, False]
+
+
+def test_main_rejects_unsupported_full_adjusted_rebuild(monkeypatch):
+    conn = duck_mem()
+    conn.executescript(builder.TABLE_DDL)
+    monkeypatch.setattr(builder, "get_market_conn", lambda: conn)
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        ["build_price_kline_tdxhub.py", "--limit", "1"],
+    )
+
+    try:
+        builder.main()
+    except RuntimeError as exc:
+        assert "does not support adjusted qfq" in str(exc)
+    else:
+        raise AssertionError("full adjusted rebuild should be rejected")
+
+
+def test_main_rejects_truncate_raw_refill_before_delete(monkeypatch):
+    conn = duck_mem()
+    conn.executescript(builder.TABLE_DDL)
+    conn.execute(
+        """
+        INSERT INTO price_kline_tdxhub (
+            code, date, freq, adjust, open, high, low, close,
+            volume, amount, factor, source, batch_id
+        ) VALUES (
+            '000001', '2026-05-06', 'daily', 'qfq', 10, 11, 9, 10.5,
+            1000, 10500, 1.0, 'unit', 'unit'
+        )
+        """
+    )
+
+    class CloseTrackingConn:
+        def __init__(self, inner):
+            self.inner = inner
+            self.closed = False
+
+        def __getattr__(self, name):
+            return getattr(self.inner, name)
+
+        def close(self):
+            self.closed = True
+
+    wrapped_conn = CloseTrackingConn(conn)
+    monkeypatch.setattr(builder, "get_market_conn", lambda: wrapped_conn)
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        ["build_price_kline_tdxhub.py", "--skip-existing", "--truncate"],
+    )
+
+    try:
+        builder.main()
+    except RuntimeError as exc:
+        assert "Refusing to truncate" in str(exc)
+    else:
+        raise AssertionError("raw truncate refill should be rejected")
+
+    rows = conn.execute("SELECT COUNT(*) FROM price_kline_tdxhub").fetchone()[0]
+    assert rows == 1
+    assert wrapped_conn.closed is True
 
 
 def test_write_batch_uses_records():
