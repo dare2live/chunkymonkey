@@ -2655,6 +2655,197 @@ def _check_holder_availability(
     return evidence
 
 
+F10_SOURCE_AVAILABILITY_TABLES = (
+    ("fact_holder_count_period", "report_date"),
+    ("fact_common_major_holder_stock", "report_date"),
+    ("fact_fund_holding_tdx_f10", "report_date"),
+    ("fact_shareholder_trade_tdx_b", "change_date"),
+)
+
+
+def _check_tdx_f10_source_availability(
+    conn: Any,
+    details: list[dict[str, Any]],
+    blockers: list[str],
+    warnings: list[str],
+    *,
+    example_limit: int = 5,
+) -> dict[str, Any]:
+    evidence: dict[str, Any] = {"tables": {}}
+    for table_name, fact_date_column in F10_SOURCE_AVAILABILITY_TABLES:
+        if not _table_exists(conn, table_name):
+            evidence["tables"][table_name] = {"exists": False}
+            continue
+        columns = set(_table_columns(conn, table_name))
+        row_count = _count_rows(conn, table_name)
+        table_evidence: dict[str, Any] = {"exists": True, "rows": row_count}
+        evidence["tables"][table_name] = table_evidence
+        required = {fact_date_column, "source_available_date", "source_date_quality"}
+        if not required <= columns:
+            table_evidence["missing_columns"] = sorted(required - columns)
+            continue
+
+        fact_norm = _compact_date_expr(fact_date_column)
+        available_norm = _compact_date_expr("source_available_date")
+        available_iso = _iso_date_expr(available_norm)
+        missing_available_where = """
+            source_available_date IS NULL
+            OR CAST(source_available_date AS VARCHAR) = ''
+        """
+        available_before_fact_where = f"""
+            length({fact_norm}) = 8
+            AND length({available_norm}) = 8
+            AND {available_norm} < {fact_norm}
+        """
+        future_available_where = f"""
+            length({available_norm}) = 8
+            AND TRY_CAST({available_iso} AS DATE) > CURRENT_DATE
+        """
+        example_columns = [
+            column
+            for column in (
+                "stock_code",
+                "stock_name",
+                fact_date_column,
+                "source_available_date",
+                "source_notice_date",
+                "source_date_quality",
+                "page_update_date",
+                "raw_hash",
+                "fetched_at",
+            )
+            if column in columns
+        ]
+        for check_name, column_name, where_sql, reason in (
+            (
+                "missing_source_available_date",
+                "source_available_date",
+                missing_available_where,
+                "TDX/F10 parsed rows must carry a source availability date before model eligibility",
+            ),
+            (
+                "source_available_before_fact_date",
+                "source_available_date",
+                available_before_fact_where,
+                "TDX/F10 source availability cannot be earlier than the fact period/event date",
+            ),
+            (
+                "future_source_available_date",
+                "source_available_date",
+                future_available_where,
+                "TDX/F10 source availability cannot be in the future",
+            ),
+        ):
+            violation_count = _count_rows(conn, table_name, where_sql=where_sql)
+            item = _detail(
+                domain="tdx_f10_source_availability",
+                table_name=table_name,
+                column_name=column_name,
+                check_name=check_name,
+                status="pass" if violation_count == 0 else "fail",
+                row_count=row_count,
+                violation_count=violation_count,
+                reason=None if violation_count == 0 else reason,
+                examples=_sample_examples(
+                    conn,
+                    table_name,
+                    where_sql=where_sql,
+                    columns=example_columns,
+                    limit=example_limit,
+                )
+                if violation_count
+                else [],
+            )
+            _append_outcome(item, details=details, blockers=blockers, warnings=warnings)
+            table_evidence[check_name] = violation_count
+
+    plan_table = "fact_shareholder_plan_tdx_f10"
+    if _table_exists(conn, plan_table):
+        columns = set(_table_columns(conn, plan_table))
+        row_count = _count_rows(conn, plan_table)
+        plan_evidence: dict[str, Any] = {"exists": True, "rows": row_count}
+        evidence["tables"][plan_table] = plan_evidence
+        required = {"source_notice_date", "source_available_date", "source_date_quality"}
+        if required <= columns:
+            notice_norm = _compact_date_expr("source_notice_date")
+            available_norm = _compact_date_expr("source_available_date")
+            notice_iso = _iso_date_expr(notice_norm)
+            available_iso = _iso_date_expr(available_norm)
+            checks = (
+                (
+                    "missing_parsed_source_notice_date",
+                    "source_notice_date",
+                    """
+                    source_date_quality LIKE 'parsed_%'
+                    AND (
+                        source_notice_date IS NULL
+                        OR CAST(source_notice_date AS VARCHAR) = ''
+                    )
+                    """,
+                    "parsed shareholder-plan rows must retain the source notice date",
+                ),
+                (
+                    "future_source_notice_date",
+                    "source_notice_date",
+                    f"""
+                    length({notice_norm}) = 8
+                    AND TRY_CAST({notice_iso} AS DATE) > CURRENT_DATE
+                    """,
+                    "TDX/F10 parsed source notice date cannot be in the future",
+                ),
+                (
+                    "future_source_available_date",
+                    "source_available_date",
+                    f"""
+                    length({available_norm}) = 8
+                    AND TRY_CAST({available_iso} AS DATE) > CURRENT_DATE
+                    """,
+                    "TDX/F10 source availability cannot be in the future",
+                ),
+            )
+            example_columns = [
+                column
+                for column in (
+                    "stock_code",
+                    "stock_name",
+                    "source_notice_date",
+                    "source_available_date",
+                    "source_date_quality",
+                    "announce_date",
+                    "latest_announce_date",
+                    "raw_hash",
+                    "fetched_at",
+                )
+                if column in columns
+            ]
+            for check_name, column_name, where_sql, reason in checks:
+                violation_count = _count_rows(conn, plan_table, where_sql=where_sql)
+                item = _detail(
+                    domain="tdx_f10_source_availability",
+                    table_name=plan_table,
+                    column_name=column_name,
+                    check_name=check_name,
+                    status="pass" if violation_count == 0 else "fail",
+                    row_count=row_count,
+                    violation_count=violation_count,
+                    reason=None if violation_count == 0 else reason,
+                    examples=_sample_examples(
+                        conn,
+                        plan_table,
+                        where_sql=where_sql,
+                        columns=example_columns,
+                        limit=example_limit,
+                    )
+                    if violation_count
+                    else [],
+                )
+                _append_outcome(item, details=details, blockers=blockers, warnings=warnings)
+                plan_evidence[check_name] = violation_count
+        else:
+            plan_evidence["missing_columns"] = sorted(required - columns)
+    return evidence
+
+
 def _has_stage_timing(perf: Any) -> bool:
     if not isinstance(perf, dict):
         return False
@@ -3553,6 +3744,20 @@ def record_global_data_quality_gate(
     stage_timings["holder_availability_scan_s"] = round(time.perf_counter() - stage_started, 3)
     _emit_progress(
         f"holder_availability_scan done elapsed={stage_timings['holder_availability_scan_s']:.3f}s"
+    )
+    stage_started = time.perf_counter()
+    _emit_progress("tdx_f10_source_availability_scan start")
+    evidence["tdx_f10_source_availability"] = _check_tdx_f10_source_availability(
+        conn,
+        details,
+        blockers,
+        warnings,
+        example_limit=example_limit,
+    )
+    stage_timings["tdx_f10_source_availability_scan_s"] = round(time.perf_counter() - stage_started, 3)
+    _emit_progress(
+        "tdx_f10_source_availability_scan done "
+        f"elapsed={stage_timings['tdx_f10_source_availability_scan_s']:.3f}s"
     )
     stage_started = time.perf_counter()
     _emit_progress("recommendation_output_scan start")
