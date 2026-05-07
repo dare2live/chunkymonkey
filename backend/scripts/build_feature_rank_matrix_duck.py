@@ -8,6 +8,7 @@ current exact pairwise association path before any default behavior changes.
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import math
 import re
@@ -26,6 +27,7 @@ from scripts.build_feature_association_duck import (  # noqa: E402
     _parse_csv,
     _prepare_base_table,
     _quote_ident,
+    _quote_relation,
     _table_columns,
 )
 from services.db import get_conn  # noqa: E402
@@ -82,6 +84,26 @@ CREATE TABLE IF NOT EXISTS mart_feature_rank_matrix_benchmark (
 ALTER TABLE mart_feature_rank_matrix_benchmark ADD COLUMN IF NOT EXISTS gate_status TEXT;
 ALTER TABLE mart_feature_rank_matrix_benchmark ADD COLUMN IF NOT EXISTS gate_blockers_json TEXT;
 ALTER TABLE mart_feature_rank_matrix_benchmark ADD COLUMN IF NOT EXISTS gate_config_json TEXT;
+
+CREATE TABLE IF NOT EXISTS mart_feature_rank_matrix_cache_manifest (
+    cache_key TEXT PRIMARY KEY,
+    table_name TEXT NOT NULL,
+    panel_table TEXT NOT NULL,
+    feature_set_id TEXT,
+    features_json TEXT NOT NULL,
+    labels_json TEXT NOT NULL,
+    panel_signature_json TEXT NOT NULL,
+    row_count BIGINT,
+    rank_column_count INTEGER,
+    build_duration_s DOUBLE,
+    created_at TEXT,
+    last_used_at TEXT,
+    hit_count INTEGER DEFAULT 0
+);
+CREATE INDEX IF NOT EXISTS idx_rank_matrix_cache_last_used
+    ON mart_feature_rank_matrix_cache_manifest(last_used_at DESC);
+ALTER TABLE mart_feature_rank_matrix_cache_manifest ADD COLUMN IF NOT EXISTS hit_count INTEGER DEFAULT 0;
+ALTER TABLE mart_feature_rank_matrix_cache_manifest ADD COLUMN IF NOT EXISTS build_duration_s DOUBLE;
 """
 
 
@@ -108,17 +130,109 @@ def _safe_alias(prefix: str, name: str, idx: int) -> str:
     return f"{prefix}_{idx:03d}_{stem[:48]}"
 
 
+def _drop_rank_matrix_relation(conn: Any) -> None:
+    conn.execute("DROP VIEW IF EXISTS __feature_rank_matrix")
+    conn.execute("DROP TABLE IF EXISTS __feature_rank_matrix")
+
+
+def _cache_table_exists(conn: Any, table_name: str) -> bool:
+    try:
+        conn.execute(f"SELECT 1 FROM {_quote_ident(table_name)} LIMIT 1").fetchone()
+        return True
+    except Exception:
+        return False
+
+
+def _cache_table_name(cache_key: str) -> str:
+    return f"mart_feature_rank_matrix_cache_{cache_key[:20]}"
+
+
+def _rank_matrix_panel_signature(
+    conn: Any,
+    *,
+    panel_table: str,
+    feature_set_id: str | None,
+    start_date: str | None,
+    end_date: str | None,
+) -> dict[str, Any]:
+    table_cols = _table_columns(conn, panel_table)
+    where = []
+    params: list[str] = []
+    if feature_set_id:
+        where.append("feature_set_id = ?")
+        params.append(feature_set_id)
+    if start_date:
+        where.append("date >= ?")
+        params.append(start_date)
+    if end_date:
+        where.append("date <= ?")
+        params.append(end_date)
+    where_sql = (" WHERE " + " AND ".join(where)) if where else ""
+    max_built_expr = "MAX(CAST(built_at AS VARCHAR)) AS max_built_at" if "built_at" in table_cols else "NULL AS max_built_at"
+    stock_expr = "COUNT(DISTINCT stock_code) AS stock_count" if "stock_code" in table_cols else "NULL AS stock_count"
+    row = conn.execute(
+        f"""
+        SELECT COUNT(*) AS row_count,
+               CAST(MIN(date) AS VARCHAR) AS min_date,
+               CAST(MAX(date) AS VARCHAR) AS max_date,
+               {stock_expr},
+               {max_built_expr}
+          FROM {_quote_relation(panel_table)}
+        {where_sql}
+        """,
+        params,
+    ).fetchone()
+    return {
+        "row_count": int(row["row_count"] or 0) if row else 0,
+        "min_date": row["min_date"] if row else None,
+        "max_date": row["max_date"] if row else None,
+        "stock_count": int(row["stock_count"] or 0) if row and row["stock_count"] is not None else None,
+        "max_built_at": row["max_built_at"] if row else None,
+    }
+
+
+def _rank_matrix_cache_key(
+    *,
+    panel_table: str,
+    feature_set_id: str | None,
+    features: list[str],
+    labels: list[str],
+    start_date: str | None,
+    end_date: str | None,
+    panel_signature: dict[str, Any],
+) -> str:
+    payload = {
+        "version": 1,
+        "rank_mode": "percent_rank_by_date_nulls_last",
+        "panel_table": panel_table,
+        "feature_set_id": feature_set_id,
+        "features": features,
+        "labels": labels,
+        "start_date": start_date,
+        "end_date": end_date,
+        "panel_signature": panel_signature,
+    }
+    return hashlib.sha256(json.dumps(payload, ensure_ascii=False, sort_keys=True).encode("utf-8")).hexdigest()
+
+
+def _rank_matrix_aliases(features: list[str], labels: list[str]) -> dict[str, str]:
+    rank_columns = list(dict.fromkeys([*features, *labels]))
+    return {
+        column: _safe_alias("rank", column, idx)
+        for idx, column in enumerate(rank_columns, start=1)
+    }
+
+
 def _build_rank_matrix(
     conn: Any,
     *,
     features: list[str],
     labels: list[str],
+    target_table: str = "__feature_rank_matrix",
+    temporary: bool = True,
 ) -> tuple[dict[str, str], int]:
     rank_columns = list(dict.fromkeys([*features, *labels]))
-    rank_aliases = {
-        column: _safe_alias("rank", column, idx)
-        for idx, column in enumerate(rank_columns, start=1)
-    }
+    rank_aliases = _rank_matrix_aliases(features, labels)
     select_exprs = ["b.stock_code", "b.date"]
     for label in labels:
         select_exprs.append(f"b.{_quote_ident(label)} AS {_quote_ident(label)}")
@@ -137,16 +251,148 @@ def _build_rank_matrix(
                  ELSE NULL END AS {rank_alias}
             """
         )
-    conn.execute("DROP TABLE IF EXISTS __feature_rank_matrix")
+    table_q = _quote_ident(target_table)
+    if temporary:
+        _drop_rank_matrix_relation(conn)
+        create_kind = "TEMP TABLE"
+    else:
+        conn.execute(f"DROP TABLE IF EXISTS {table_q}")
+        create_kind = "TABLE"
     conn.execute(
         f"""
-        CREATE TEMP TABLE __feature_rank_matrix AS
+        CREATE {create_kind} {table_q} AS
         SELECT {", ".join(select_exprs)}
           FROM __feature_assoc_base b
         """
     )
-    row = conn.execute("SELECT COUNT(*) FROM __feature_rank_matrix").fetchone()
+    row = conn.execute(f"SELECT COUNT(*) FROM {table_q}").fetchone()
     return rank_aliases, int(row[0] or 0)
+
+
+def _load_or_build_rank_matrix(
+    conn: Any,
+    *,
+    features: list[str],
+    labels: list[str],
+    panel_table: str,
+    feature_set_id: str | None,
+    start_date: str | None,
+    end_date: str | None,
+    use_rank_cache: bool,
+    rank_cache_max_entries: int,
+) -> tuple[dict[str, str], int, dict[str, Any]]:
+    if not use_rank_cache:
+        rank_aliases, rank_matrix_rows = _build_rank_matrix(conn, features=features, labels=labels)
+        return rank_aliases, rank_matrix_rows, {"status": "disabled", "cache_key": None, "table_name": None}
+
+    panel_signature = _rank_matrix_panel_signature(
+        conn,
+        panel_table=panel_table,
+        feature_set_id=feature_set_id,
+        start_date=start_date,
+        end_date=end_date,
+    )
+    cache_key = _rank_matrix_cache_key(
+        panel_table=panel_table,
+        feature_set_id=feature_set_id,
+        features=features,
+        labels=labels,
+        start_date=start_date,
+        end_date=end_date,
+        panel_signature=panel_signature,
+    )
+    table_name = _cache_table_name(cache_key)
+    manifest = conn.execute(
+        """
+        SELECT table_name, row_count, hit_count
+          FROM mart_feature_rank_matrix_cache_manifest
+         WHERE cache_key = ?
+        """,
+        [cache_key],
+    ).fetchone()
+    if manifest and _cache_table_exists(conn, str(manifest["table_name"])):
+        _drop_rank_matrix_relation(conn)
+        conn.execute(f"CREATE TEMP VIEW __feature_rank_matrix AS SELECT * FROM {_quote_ident(str(manifest['table_name']))}")
+        conn.execute(
+            """
+            UPDATE mart_feature_rank_matrix_cache_manifest
+               SET last_used_at = ?, hit_count = COALESCE(hit_count, 0) + 1
+             WHERE cache_key = ?
+            """,
+            [utc_now_iso(), cache_key],
+        )
+        rank_aliases = _rank_matrix_aliases(features, labels)
+        return rank_aliases, int(manifest["row_count"] or 0), {
+            "status": "hit",
+            "cache_key": cache_key,
+            "table_name": manifest["table_name"],
+            "panel_signature": panel_signature,
+            "hit_count": int(manifest["hit_count"] or 0) + 1,
+        }
+
+    started = time.perf_counter()
+    rank_aliases, rank_matrix_rows = _build_rank_matrix(
+        conn,
+        features=features,
+        labels=labels,
+        target_table=table_name,
+        temporary=False,
+    )
+    build_duration_s = time.perf_counter() - started
+    _drop_rank_matrix_relation(conn)
+    conn.execute(f"CREATE TEMP VIEW __feature_rank_matrix AS SELECT * FROM {_quote_ident(table_name)}")
+    now = utc_now_iso()
+    conn.execute(
+        """
+        INSERT OR REPLACE INTO mart_feature_rank_matrix_cache_manifest
+        (cache_key, table_name, panel_table, feature_set_id, features_json,
+         labels_json, panel_signature_json, row_count, rank_column_count,
+         build_duration_s, created_at, last_used_at, hit_count)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        [
+            cache_key,
+            table_name,
+            panel_table,
+            feature_set_id,
+            json.dumps(features, ensure_ascii=False),
+            json.dumps(labels, ensure_ascii=False),
+            json.dumps(panel_signature, ensure_ascii=False, sort_keys=True),
+            rank_matrix_rows,
+            len(rank_aliases),
+            build_duration_s,
+            now,
+            now,
+            0,
+        ],
+    )
+    _prune_rank_matrix_cache(conn, max_entries=rank_cache_max_entries, keep_cache_key=cache_key)
+    return rank_aliases, rank_matrix_rows, {
+        "status": "miss",
+        "cache_key": cache_key,
+        "table_name": table_name,
+        "panel_signature": panel_signature,
+        "build_duration_s": build_duration_s,
+    }
+
+
+def _prune_rank_matrix_cache(conn: Any, *, max_entries: int, keep_cache_key: str) -> None:
+    if max_entries <= 0:
+        return
+    rows = conn.execute(
+        """
+        SELECT cache_key, table_name
+          FROM mart_feature_rank_matrix_cache_manifest
+         ORDER BY COALESCE(last_used_at, created_at) DESC, cache_key DESC
+        """
+    ).fetchall()
+    for row in rows[max_entries:]:
+        cache_key = str(row["cache_key"])
+        table_name = str(row["table_name"])
+        if cache_key == keep_cache_key:
+            continue
+        conn.execute(f"DROP TABLE IF EXISTS {_quote_ident(table_name)}")
+        conn.execute("DELETE FROM mart_feature_rank_matrix_cache_manifest WHERE cache_key = ?", [cache_key])
 
 
 def _compute_proxy_stat(
@@ -398,6 +644,8 @@ def build_feature_rank_matrix_proxy(
     min_compared_pairs: int = 1,
     max_abs_rank_ic_delta: float = 0.001,
     max_avg_abs_rank_ic_delta: float = 0.0002,
+    use_rank_cache: bool = True,
+    rank_cache_max_entries: int = 4,
 ) -> dict[str, Any]:
     ensure_tables(conn)
     run_id = run_id or f"feature_rank_matrix_{datetime.now(UTC).strftime('%Y%m%d_%H%M%S')}"
@@ -451,12 +699,18 @@ def build_feature_rank_matrix_proxy(
 
     _progress("rank_matrix_build start")
     with timer.stage("rank_matrix_build_s"):
-        rank_aliases, rank_matrix_rows = _build_rank_matrix(
+        rank_aliases, rank_matrix_rows, rank_cache = _load_or_build_rank_matrix(
             conn,
             features=usable_features,
             labels=labels,
+            panel_table=panel_table,
+            feature_set_id=feature_set_id,
+            start_date=start_date,
+            end_date=end_date,
+            use_rank_cache=use_rank_cache,
+            rank_cache_max_entries=rank_cache_max_entries,
         )
-    _progress(f"rank_matrix_build done rows={rank_matrix_rows}")
+    _progress(f"rank_matrix_build done rows={rank_matrix_rows} cache={rank_cache.get('status')}")
 
     exact_rank_ic, exact_duration_s = _load_exact_rank_ic(conn, exact_run_id)
     proxy_rows = []
@@ -544,6 +798,13 @@ def build_feature_rank_matrix_proxy(
         "rank_matrix_mode": "single_select_nulls_last_proxy",
         "proxy_association_mode": "per_feature_multi_label",
         "proxy_gate": gate_config,
+        "rank_matrix_cache": {
+            "enabled": bool(use_rank_cache),
+            "status": rank_cache.get("status"),
+            "cache_key": rank_cache.get("cache_key"),
+            "table_name": rank_cache.get("table_name"),
+            "max_entries": int(rank_cache_max_entries),
+        },
     }
 
     _progress("write_benchmark_summary start")
@@ -586,6 +847,7 @@ def build_feature_rank_matrix_proxy(
         )
         record_actual_version(conn, "mart_feature_rank_matrix_proxy_stat")
         record_actual_version(conn, "mart_feature_rank_matrix_benchmark")
+        record_actual_version(conn, "mart_feature_rank_matrix_cache_manifest")
     _progress("write_benchmark_summary done")
 
     record_pipeline_run(
@@ -622,6 +884,7 @@ def build_feature_rank_matrix_proxy(
                 "proxy_gate_blockers": gate_blockers,
                 "proxy_gate_config": gate_config,
                 "proxy_association_mode": "per_feature_multi_label",
+                "rank_matrix_cache": rank_cache,
             }
         ),
     )
@@ -645,6 +908,7 @@ def build_feature_rank_matrix_proxy(
         "proxy_gate_status": gate_status,
         "proxy_gate_blockers": gate_blockers,
         "proxy_gate_config": gate_config,
+        "rank_matrix_cache": rank_cache,
         "stage_timings": timer.stage_timings,
     }
 
@@ -666,6 +930,8 @@ def main() -> int:
     parser.add_argument("--min-compared-pairs", type=int, default=1)
     parser.add_argument("--max-abs-rank-ic-delta", type=float, default=0.001)
     parser.add_argument("--max-avg-abs-rank-ic-delta", type=float, default=0.0002)
+    parser.add_argument("--no-rank-cache", action="store_true")
+    parser.add_argument("--rank-cache-max-entries", type=int, default=4)
     args = parser.parse_args()
 
     features = _parse_csv(args.features) or None
@@ -689,6 +955,8 @@ def main() -> int:
             min_compared_pairs=args.min_compared_pairs,
             max_abs_rank_ic_delta=args.max_abs_rank_ic_delta,
             max_avg_abs_rank_ic_delta=args.max_avg_abs_rank_ic_delta,
+            use_rank_cache=not args.no_rank_cache,
+            rank_cache_max_entries=args.rank_cache_max_entries,
         )
     print(json.dumps(result, ensure_ascii=False, indent=2, default=str))
     return 0

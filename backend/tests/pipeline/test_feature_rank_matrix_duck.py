@@ -104,10 +104,97 @@ def test_rank_matrix_proxy_matches_exact_dense_association():
         assert benchmark["gate_status"] == "pass"
         assert json.loads(benchmark["gate_blockers_json"]) == []
         assert json.loads(benchmark["config_json"])["proxy_association_mode"] == "per_feature_multi_label"
+        assert json.loads(benchmark["config_json"])["rank_matrix_cache"]["status"] == "miss"
         assert "rank_matrix_build_s" in json.loads(benchmark["stage_timings_json"])
         manifest_perf = json.loads(manifest["perf_summary_json"])
         assert manifest_perf["proxy_association_mode"] == "per_feature_multi_label"
+        assert manifest_perf["rank_matrix_cache"]["status"] == "miss"
         assert "stage_timings" in manifest_perf
+    finally:
+        conn.close()
+
+
+def test_rank_matrix_proxy_reuses_persistent_rank_cache():
+    conn = duck_mem()
+    try:
+        _seed_dense_panel(conn)
+        exact_subject.build_feature_association_stats(
+            conn,
+            run_id="exact_dense_cache",
+            features=["good_feature", "inverse_feature"],
+            label_name="forward_ret_20d",
+            horizon_labels=["follow_net_return_60d"],
+            min_daily_count=6,
+            build_clusters=False,
+        )
+
+        first = subject.build_feature_rank_matrix_proxy(
+            conn,
+            run_id="rank_matrix_cache_first",
+            exact_run_id="exact_dense_cache",
+            features=["good_feature", "inverse_feature"],
+            label_name="forward_ret_20d",
+            horizon_labels=["follow_net_return_60d"],
+            min_daily_count=6,
+        )
+        second = subject.build_feature_rank_matrix_proxy(
+            conn,
+            run_id="rank_matrix_cache_second",
+            exact_run_id="exact_dense_cache",
+            features=["good_feature", "inverse_feature"],
+            label_name="forward_ret_20d",
+            horizon_labels=["follow_net_return_60d"],
+            min_daily_count=6,
+        )
+        cache_key = first["rank_matrix_cache"]["cache_key"]
+        table_name = first["rank_matrix_cache"]["table_name"]
+        manifest = conn.execute(
+            """
+            SELECT cache_key, table_name, hit_count, row_count
+              FROM mart_feature_rank_matrix_cache_manifest
+             WHERE cache_key = ?
+            """,
+            [cache_key],
+        ).fetchone()
+        cached_rows = conn.execute(f"SELECT COUNT(*) FROM {table_name}").fetchone()[0]
+
+        assert first["rank_matrix_cache"]["status"] == "miss"
+        assert second["rank_matrix_cache"]["status"] == "hit"
+        assert second["rank_matrix_cache"]["cache_key"] == cache_key
+        assert second["max_abs_rank_ic_delta"] == pytest.approx(0.0)
+        assert manifest["hit_count"] == 1
+        assert manifest["row_count"] == first["rank_matrix_rows"]
+        assert cached_rows == first["rank_matrix_rows"]
+    finally:
+        conn.close()
+
+
+def test_rank_matrix_cache_prunes_old_entries_by_direct_delete():
+    conn = duck_mem()
+    try:
+        _seed_dense_panel(conn)
+
+        first = subject.build_feature_rank_matrix_proxy(
+            conn,
+            run_id="rank_matrix_cache_prune_first",
+            features=["good_feature"],
+            label_name="forward_ret_20d",
+            min_daily_count=6,
+            rank_cache_max_entries=1,
+        )
+        second = subject.build_feature_rank_matrix_proxy(
+            conn,
+            run_id="rank_matrix_cache_prune_second",
+            features=["inverse_feature"],
+            label_name="forward_ret_20d",
+            min_daily_count=6,
+            rank_cache_max_entries=1,
+        )
+        manifest_count = conn.execute("SELECT COUNT(*) FROM mart_feature_rank_matrix_cache_manifest").fetchone()[0]
+
+        assert manifest_count == 1
+        assert not subject._cache_table_exists(conn, first["rank_matrix_cache"]["table_name"])
+        assert subject._cache_table_exists(conn, second["rank_matrix_cache"]["table_name"])
     finally:
         conn.close()
 
