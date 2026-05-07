@@ -30,6 +30,7 @@
     topkMap: new Map(),
     topkMeta: null,
     topkLoading: false,
+    signalSummary: null,
     screeningMap: new Map(),      // stock_code → mart_stock_screening 行
     turtleMap: new Map(),         // stock_code → dim_stock_turtle_latest 行
     loading: false,
@@ -857,6 +858,18 @@
     const root = el('sv-status-area');
     if (!root) return;
     const meta = state.topkMeta || {};
+    const signalCache = state.signalSummary?.cache || {};
+    const cacheStatus = signalCache.status || '--';
+    const cacheTone = cacheStatus === 'hit' && !signalCache.stale ? 'ok'
+      : cacheStatus === 'refreshed' ? 'ok'
+      : 'warn';
+    const cacheLabel = cacheStatus === 'miss' ? '未物化'
+      : signalCache.stale ? '已过期'
+      : cacheStatus === 'hit' ? '快照'
+      : cacheStatus;
+    const cacheTitle = signalCache.built_at
+      ? `built ${String(signalCache.built_at).replace('T', ' ').slice(0, 19)}`
+      : (signalCache.message || 'today-signal cache');
     const role = modelRoleText(meta);
     const healthTone = state.topkLoading ? 'warn' : state.topkItems.length ? 'ok' : 'warn';
     root.innerHTML = `<div class="cm-status-strip">
@@ -879,6 +892,10 @@
       <div class="cm-status-item cm-status-info">
         <span>TDX keep challenger</span>
         <b>Shadow 实验中</b>
+      </div>
+      <div class="cm-status-item cm-status-${cacheTone}">
+        <span>信号快照</span>
+        <b title="${esc(cacheTitle)}">${esc(cacheLabel)}</b>
       </div>
       <div class="cm-status-item cm-status-${healthTone}">
         <span>画像边界</span>
@@ -1050,6 +1067,7 @@
         global.SignalAdapter.fetchScreeningEnrichment().catch(() => null),
         fetch('/api/rec/daily-topk?limit=80').then(r => r.ok ? r.json() : null).catch(() => null),
       ]);
+      state.signalSummary = result.summary || null;
       state.byStock = result.byStock || [];
       state.rawEvents = result.events || [];
       state.watchlistSet = new Set(((wl && wl.data) || []).map(w => w.stock_code));
@@ -1058,6 +1076,7 @@
       parseTopkPayload(topk);
     } catch (e) {
       console.error('StockView reload failed', e);
+      state.signalSummary = null;
       state.byStock = [];
       state.rawEvents = [];
       parseTopkPayload(null);

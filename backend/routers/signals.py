@@ -2,7 +2,7 @@
 signals_v2 HTTP 路由
 
 前缀：/api/signals
-所有路由只读 DuckDB + 调 signals_v2.py 服务，不触发任何 recompute。
+默认只读 DuckDB 中已物化的 signals_v2 快照；refresh=true 才显式重建。
 """
 
 import logging
@@ -56,6 +56,29 @@ def _shape_today_signal_payload(
     return {
         "summary": summary,
         "signals": signals,
+    }
+
+
+def _today_signal_cache_miss_payload(*, freshness_days: int) -> dict:
+    cache_status = {
+        "status": "miss",
+        "built_at": None,
+        "signal_count": 0,
+        "source_max_notice_date": None,
+        "current_source_max_notice_date": None,
+        "stale": True,
+        "requires_refresh": True,
+        "message": "No materialized today-signal snapshot; use refresh=true or run the update pipeline.",
+    }
+    return {
+        "summary": {
+            "total": 0,
+            "by_action": {"follow": 0, "watch": 0, "skip": 0},
+            "freshness_days": int(freshness_days),
+            "cache": cache_status,
+        },
+        "signals": [],
+        "cache": cache_status,
     }
 
 
@@ -178,17 +201,18 @@ async def get_today_signals(
     try:
         cfg = load_config(conn)
         fresh_days = int(freshness_days or cfg.signal_freshness_days)
-        payload = None if refresh else load_today_signal_cache(
-            conn,
-            config=cfg,
-            freshness_days=fresh_days,
-        )
-        if payload is None:
+        if refresh:
             payload = materialize_today_signal_cache(
                 conn,
                 config=cfg,
                 freshness_days=fresh_days,
             )
+        else:
+            payload = load_today_signal_cache(
+                conn,
+                config=cfg,
+                freshness_days=fresh_days,
+            ) or _today_signal_cache_miss_payload(freshness_days=fresh_days)
         return _shape_today_signal_payload(
             payload,
             freshness_days=fresh_days,
