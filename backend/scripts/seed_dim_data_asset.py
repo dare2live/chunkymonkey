@@ -75,6 +75,12 @@ EXTRA_WRITER_BY_TABLE = {
     "mart_shareholder_plan_feature_family_eval": (
         "backend/scripts/evaluate_shareholder_plan_feature_families.py"
     ),
+    "mart_shareholder_plan_family_walkforward": (
+        "backend/scripts/validate_shareholder_plan_family_walkforward.py"
+    ),
+    "mart_shareholder_plan_family_walkforward_summary": (
+        "backend/scripts/validate_shareholder_plan_family_walkforward.py"
+    ),
 }
 
 EXTRA_UPSTREAM_BY_TABLE = {
@@ -104,6 +110,14 @@ EXTRA_UPSTREAM_BY_TABLE = {
     ),
     "mart_shareholder_plan_feature_family_eval": (
         "derived from fact_feature_panel + fact_shareholder_plan_tdx_f10 + mart_shareholder_plan_initial_event",
+        None,
+    ),
+    "mart_shareholder_plan_family_walkforward": (
+        "derived from fact_feature_panel + shareholder plan feature-family sources",
+        None,
+    ),
+    "mart_shareholder_plan_family_walkforward_summary": (
+        "derived from mart_shareholder_plan_family_walkforward",
         None,
     ),
 }
@@ -156,6 +170,8 @@ EXTRA_FRESHNESS_BY_TABLE = {
     "mart_tdx_f10_source_date_section_audit": ("on-demand", 24 * 30),
     "mart_shareholder_plan_initial_event": ("event", 48),
     "mart_shareholder_plan_feature_family_eval": ("on-demand", 24 * 30),
+    "mart_shareholder_plan_family_walkforward": ("on-demand", 24 * 30),
+    "mart_shareholder_plan_family_walkforward_summary": ("on-demand", 24 * 30),
     "mart_tdx_server_health": ("on-demand", 24 * 30),
     "mart_temporal_research_panel_quality": ("on-demand", 24 * 30),
     # gpcw files are quarter-end source manifests.
@@ -237,6 +253,30 @@ EXTRA_ASSET_CONTRACT_BY_TABLE = {
         "intended_use": "shareholder_plan_feature_family_role_decision",
         "model_eligibility": "not_model_input_research_evidence_only",
         "strategy_eligibility": "feature_family_selection_evidence",
+        "frontend_visibility": "governance_visible",
+        "quality_gate_level": "monitor_only",
+    },
+    "mart_shareholder_plan_family_walkforward": {
+        "asset_grain": "run_id+source_family+feature_name+label_name+fold_id",
+        "asset_cadence": "on_demand_research",
+        "coverage_policy": "current_feature_panel_follow_labels_walkforward_folds",
+        "null_policy": "metrics_null_allowed_when_fold_signal_is_insufficient",
+        "pit_policy": "inherits_shareholder_plan_source_available_date_policy",
+        "intended_use": "shareholder_plan_feature_family_walkforward_validation",
+        "model_eligibility": "not_model_input_research_evidence_only",
+        "strategy_eligibility": "candidate_validation_before_registry_change",
+        "frontend_visibility": "governance_visible",
+        "quality_gate_level": "monitor_only",
+    },
+    "mart_shareholder_plan_family_walkforward_summary": {
+        "asset_grain": "run_id+source_family+feature_name+label_name",
+        "asset_cadence": "on_demand_research",
+        "coverage_policy": "current_feature_panel_follow_labels_walkforward_summary",
+        "null_policy": "gate_blockers_classify_insufficient_fold_metrics",
+        "pit_policy": "inherits_shareholder_plan_family_walkforward_policy",
+        "intended_use": "shareholder_plan_feature_family_model_candidate_gate",
+        "model_eligibility": "not_model_input_research_evidence_only",
+        "strategy_eligibility": "candidate_validation_before_registry_change",
         "frontend_visibility": "governance_visible",
         "quality_gate_level": "monitor_only",
     },

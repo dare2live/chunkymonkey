@@ -74,6 +74,8 @@ def test_workbench_frontend_entrypoint_is_registered():
     assert "feature_drift_cache_hit_rate" in workbench_js
     assert "Rank Matrix Cache" in workbench_js
     assert "renderRankMatrixCache" in workbench_js
+    assert "Walk-forward 候选验证" in workbench_js
+    assert "renderShareholderPlanWalkforward" in workbench_js
     assert "setTab: setTab" in workbench_js
     assert "global.WorkbenchView" in workbench_js
 

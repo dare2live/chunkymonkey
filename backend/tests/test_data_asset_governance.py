@@ -68,6 +68,21 @@ def test_infer_asset_contract_marks_shareholder_plan_family_eval_as_research_evi
     assert contract["quality_gate_level"] == "monitor_only"
 
 
+def test_infer_asset_contract_marks_shareholder_plan_walkforward_as_research_gate():
+    contract = infer_asset_contract(
+        "mart_shareholder_plan_family_walkforward_summary",
+        layer="mart",
+        freshness="on-demand",
+        upstream_source="derived from mart_shareholder_plan_family_walkforward",
+    )
+
+    assert contract["asset_grain"] == "run_id+source_family+feature_name+label_name"
+    assert contract["pit_policy"] == "inherits_shareholder_plan_family_walkforward_policy"
+    assert contract["model_eligibility"] == "not_model_input_research_evidence_only"
+    assert contract["strategy_eligibility"] == "candidate_validation_before_registry_change"
+    assert contract["quality_gate_level"] == "monitor_only"
+
+
 def test_seed_dim_data_asset_reuses_backend_text_index_for_writer_and_readers():
     text_index = [
         (

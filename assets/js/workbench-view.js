@@ -260,6 +260,7 @@
     var stabilityContext = data.stability_context || {};
     var stockHorizon = data.stock_horizon_profile || {};
     var shareholderPlan = data.shareholder_plan_family_eval || {};
+    var shareholderPlanWf = data.shareholder_plan_family_walkforward || {};
     var temporalSynergy = data.temporal_synergy || {};
 
     setBody(
@@ -287,6 +288,7 @@
       '<section class="panel wb-panel">' +
       '<div class="panel-head"><div><h3>股东计划特征家族</h3><div class="muted">run_id: <code>' + esc(shareholderPlan.run_id || '-') + '</code></div></div></div>' +
       renderShareholderPlanFamilyEval(shareholderPlan) +
+      '<div style="margin-top:14px">' + renderShareholderPlanWalkforward(shareholderPlanWf) + '</div>' +
       '</section>' +
 
       '<section class="panel wb-panel">' +
@@ -388,6 +390,88 @@
           '<td>' + fmtFloat(row.ic, 4) + '</td>' +
           '<td>' + fmtPct((row.nondefault_pct || 0) / 100) + '</td>' +
           '<td>' + fmtNum(row.event_rows || 0) + '<div class="muted">stocks ' + fmtNum(row.distinct_event_stocks || 0) + '</div></td>' +
+          '</tr>';
+      }).join('') +
+      '</tbody></table></div>';
+  }
+
+  function renderShareholderPlanWalkforward(data) {
+    data = data || {};
+    var summary = data.summary || {};
+    var gates = data.gate_summary || [];
+    var top = data.top_rows || [];
+    var paired = data.paired_rows || [];
+    if (!data.run_id && !gates.length && !top.length && !paired.length) return renderEmpty('暂无股东计划 walk-forward');
+    return '<div class="panel-subhead"><h4>Walk-forward 候选验证</h4><span class="muted">run_id: <code>' + esc(data.run_id || '-') + '</code></span></div>' +
+      '<div class="wb-kv">' +
+      '<div><span>组合</span><strong>' + fmtNum(summary.row_count || 0) + '</strong></div>' +
+      '<div><span>fold</span><strong>' + fmtNum(summary.fold_count || 0) + '</strong></div>' +
+      '<div><span>标签</span><strong>' + fmtNum(summary.label_count || 0) + '</strong></div>' +
+      '<div><span>状态</span><strong>' + Object.keys(summary.gate_status_counts || {}).map(function (key) { return esc(key) + ' ' + fmtNum((summary.gate_status_counts || {})[key] || 0); }).join(' / ') + '</strong></div>' +
+      '<div><span>built</span><strong>' + esc(summary.built_at || '-').slice(0, 19) + '</strong></div>' +
+      '</div>' +
+      '<div class="wb-grid" style="margin-top:12px">' +
+      '<div>' + renderShareholderPlanWalkforwardGateSummary(gates) + '</div>' +
+      '<div>' + renderShareholderPlanWalkforwardPairs(paired) + '</div>' +
+      '</div>' +
+      '<div style="margin-top:12px">' + renderShareholderPlanWalkforwardTop(top) + '</div>';
+  }
+
+  function renderShareholderPlanWalkforwardGateSummary(rows) {
+    if (!rows.length) return renderEmpty('暂无 walk-forward gate 汇总');
+    return '<div class="wb-table-wrap"><table class="data-table data-table-compact wb-table">' +
+      '<thead><tr><th>家族</th><th>标签</th><th>Gate</th><th>特征</th><th>有效fold</th><th>SignalIC</th><th>L/S</th><th>DD</th><th>激活</th></tr></thead><tbody>' +
+      rows.map(function (row) {
+        return '<tr>' +
+          '<td><code>' + esc(row.source_family || '-') + '</code></td>' +
+          '<td>' + esc(row.label_name || '-') + '</td>' +
+          '<td>' + pill(row.gate_status || 'unknown', row.gate_status) + '</td>' +
+          '<td>' + fmtNum(row.feature_count || 0) + '</td>' +
+          '<td>' + fmtNum(row.max_valid_fold_count || 0) + '</td>' +
+          '<td>' + fmtFloat(row.max_signal_rank_ic, 4) + '</td>' +
+          '<td>' + fmtPct(row.max_long_short_spread) + '</td>' +
+          '<td>' + fmtPct(row.worst_drawdown) + '</td>' +
+          '<td>' + fmtPct((row.avg_active_pct || 0) / 100) + '</td>' +
+          '</tr>';
+      }).join('') +
+      '</tbody></table></div>';
+  }
+
+  function renderShareholderPlanWalkforwardPairs(rows) {
+    if (!rows.length) return renderEmpty('暂无 walk-forward 家族对比');
+    return '<div class="wb-table-wrap"><table class="data-table data-table-compact wb-table">' +
+      '<thead><tr><th>特征</th><th>标签</th><th>Initial</th><th>Latest</th><th>L/S优势</th><th>有效fold</th></tr></thead><tbody>' +
+      rows.map(function (row) {
+        return '<tr>' +
+          '<td><code>' + esc(row.feature_name || '-') + '</code></td>' +
+          '<td>' + esc(row.label_name || '-') + '</td>' +
+          '<td>' + fmtPct(row.initial_long_short_spread) + '<div class="muted">' + esc(row.initial_gate_status || '-') + ' / IC ' + fmtFloat(row.initial_signal_rank_ic, 4) + '</div></td>' +
+          '<td>' + fmtPct(row.latest_long_short_spread) + '<div class="muted">' + esc(row.latest_gate_status || '-') + ' / IC ' + fmtFloat(row.latest_signal_rank_ic, 4) + '</div></td>' +
+          '<td>' + fmtPct(row.long_short_advantage) + '</td>' +
+          '<td>I ' + fmtNum(row.initial_valid_fold_count || 0) + '<div class="muted">L ' + fmtNum(row.latest_valid_fold_count || 0) + '</div></td>' +
+          '</tr>';
+      }).join('') +
+      '</tbody></table></div>';
+  }
+
+  function renderShareholderPlanWalkforwardTop(rows) {
+    if (!rows.length) return renderEmpty('暂无 walk-forward 明细');
+    return '<div class="wb-table-wrap"><table class="data-table data-table-compact wb-table">' +
+      '<thead><tr><th>Gate</th><th>家族</th><th>特征</th><th>标签</th><th>有效fold</th><th>SignalIC</th><th>L/S</th><th>DD</th><th>激活</th><th>阻断</th></tr></thead><tbody>' +
+      rows.map(function (row) {
+        var blockers = (row.blockers || []).join(', ');
+        var cautions = (row.cautions || []).join(', ');
+        return '<tr>' +
+          '<td>' + pill(row.gate_status || 'unknown', row.gate_status) + '</td>' +
+          '<td><code>' + esc(row.source_family || '-') + '</code></td>' +
+          '<td><code>' + esc(row.feature_name || '-') + '</code></td>' +
+          '<td>' + esc(row.label_name || '-') + '</td>' +
+          '<td>' + fmtNum(row.valid_fold_count || 0) + ' / ' + fmtNum(row.fold_count || 0) + '</td>' +
+          '<td>' + fmtFloat(row.avg_signal_adjusted_holdout_rank_ic, 4) + '</td>' +
+          '<td>' + fmtPct(row.avg_holdout_long_short_spread) + '<div class="muted">pos ' + fmtPct(row.positive_long_short_fold_share) + '</div></td>' +
+          '<td>' + fmtPct(row.worst_holdout_long_short_max_drawdown) + '</td>' +
+          '<td>' + fmtPct((row.avg_holdout_active_pct || 0) / 100) + '<div class="muted">min ' + fmtNum(row.min_holdout_active_rows || 0) + '</div></td>' +
+          '<td><span class="muted">' + esc(blockers || cautions || '-') + '</span></td>' +
           '</tr>';
       }).join('') +
       '</tbody></table></div>';

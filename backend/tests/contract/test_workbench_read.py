@@ -641,6 +641,60 @@ def test_workbench_research_returns_schedule_studies_ranker_and_drift():
                  'follow_net_return_90d', 180, 1000, 980, 98.0, 80, 8.0,
                  12062, 2500, 0.02, 0.006, 0.02, 80, 0.55, 0.08,
                  0.10, 0.04, 0.06, '2026-05-06T09:00:00');
+
+            CREATE TABLE mart_shareholder_plan_family_walkforward_summary (
+                run_id TEXT,
+                source_eval_run_id TEXT,
+                panel_table TEXT,
+                source_family TEXT,
+                source_table TEXT,
+                feature_name TEXT,
+                feature_purpose TEXT,
+                label_name TEXT,
+                window_days INTEGER,
+                fold_count INTEGER,
+                valid_fold_count INTEGER,
+                avg_train_rank_ic DOUBLE,
+                avg_holdout_rank_ic DOUBLE,
+                avg_signal_adjusted_holdout_rank_ic DOUBLE,
+                avg_holdout_rank_ic_std DOUBLE,
+                positive_signal_rank_ic_fold_share DOUBLE,
+                avg_train_active_inactive_spread DOUBLE,
+                avg_holdout_active_inactive_spread DOUBLE,
+                avg_holdout_long_short_spread DOUBLE,
+                positive_long_short_fold_share DOUBLE,
+                worst_holdout_long_short_max_drawdown DOUBLE,
+                avg_holdout_top_quantile_return DOUBLE,
+                avg_holdout_bottom_quantile_return DOUBLE,
+                avg_holdout_turnover DOUBLE,
+                avg_holdout_active_pct DOUBLE,
+                min_holdout_active_rows BIGINT,
+                gate_status TEXT,
+                blockers_json TEXT,
+                cautions_json TEXT,
+                built_at TEXT
+            );
+            INSERT INTO mart_shareholder_plan_family_walkforward_summary VALUES
+                ('plan_wf_latest', 'plan_family_latest', 'fact_feature_panel',
+                 'initial_event', 'mart_shareholder_plan_initial_event',
+                 'shareholder_plan_decrease_count_180d',
+                 'initial_notice_capital_attention_candidate',
+                 'follow_net_return_60d', 180, 4, 2, 0.01, 0.012,
+                 0.012, 0.01, 1.0, 0.02, 0.03, 0.19, 1.0, -0.07,
+                 0.21, 0.02, 0.35, 0.012, 29, 'blocked',
+                 '["insufficient_valid_walkforward_folds"]',
+                 '["sparse_activation_requires_auxiliary_or_context_use"]',
+                 '2026-05-06T10:00:00'),
+                ('plan_wf_latest', 'plan_family_latest', 'fact_feature_panel',
+                 'latest_state', 'fact_shareholder_plan_tdx_f10',
+                 'shareholder_plan_decrease_count_180d',
+                 'current_latest_state_context',
+                 'follow_net_return_60d', 180, 4, 1, 0.004, 0.005,
+                 0.005, 0.01, 1.0, 0.01, 0.02, 0.05, 1.0, -0.07,
+                 0.08, 0.03, 0.40, 0.017, 50, 'blocked',
+                 '["insufficient_valid_walkforward_folds"]',
+                 '["sparse_activation_requires_auxiliary_or_context_use"]',
+                 '2026-05-06T10:00:00');
             """
         )
 
@@ -710,6 +764,14 @@ def test_workbench_research_returns_schedule_studies_ranker_and_drift():
             "shareholder_plan_decrease_count_180d"
         )
         assert research["shareholder_plan_family_eval"]["paired_advantages"][0]["abs_spread_advantage"] == pytest.approx(0.03)
+        assert research["shareholder_plan_family_walkforward"]["run_id"] == "plan_wf_latest"
+        assert research["shareholder_plan_family_walkforward"]["summary"]["gate_status_counts"] == {"blocked": 2}
+        assert research["shareholder_plan_family_walkforward"]["top_rows"][0]["blockers"] == [
+            "insufficient_valid_walkforward_folds"
+        ]
+        assert research["shareholder_plan_family_walkforward"]["paired_rows"][0][
+            "long_short_advantage"
+        ] == pytest.approx(0.14)
         assert research["feature_drift"]["top"][0]["feature_name"] == "ret_60d"
         assert json.dumps(research, ensure_ascii=False)
 
