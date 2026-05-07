@@ -38,6 +38,8 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name
 
 LOCAL_ACTIVE_A_STOCK_MIN_ROWS = 3000
 DEFAULT_WRITE_BATCH_ROWS = 5000
+DEFAULT_RAW_INCREMENTAL_WORKERS = 8
+DEFAULT_QFQ_WORKERS = 4
 
 
 TABLE_DDL = """
@@ -925,6 +927,19 @@ def fetch_one_stock_normalized(
     return normalize(records, batch_id, source_name=source_name), source_name
 
 
+def resolve_kline_worker_count(
+    *,
+    explicit_workers: int | None,
+    env_workers: int,
+    pull_adjust: str | None,
+) -> int:
+    if explicit_workers is not None:
+        return max(1, int(explicit_workers or 1))
+    if env_workers > 0:
+        return int(env_workers)
+    return DEFAULT_RAW_INCREMENTAL_WORKERS if pull_adjust is None else DEFAULT_QFQ_WORKERS
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--pages', type=int, default=2,
@@ -942,7 +957,7 @@ def main():
     parser.add_argument('--per-stock-retry-attempts', type=int, default=0,
                         help='单股拉取失败后的额外服务器重试数，默认 0 以避免慢服务器放大')
     parser.add_argument('--workers', type=int, default=None,
-                        help='K 线并发拉取 worker 数；写库仍单线程。默认：raw 增量 8，qfq 全量 1；可用 CM_TDX_KLINE_WORKERS 覆盖')
+                        help='K 线并发拉取 worker 数；写库仍单线程。默认：raw 增量 8，qfq 全量 4；可用 CM_TDX_KLINE_WORKERS 覆盖')
     parser.add_argument('--max-inflight', type=int, default=0,
                         help='并发模式最多同时挂起的股票请求，默认 workers*4')
     parser.add_argument('--log-every', type=int, default=50,
@@ -987,12 +1002,11 @@ def main():
         pull_adjust = None
         logger.info("skip_existing: 使用 tdxhub 原始近端 K 线补新增日期，factor=1.0")
     env_workers = int(os.getenv("CM_TDX_KLINE_WORKERS", "0") or 0)
-    if args.workers is not None:
-        workers = max(1, int(args.workers or 1))
-    elif env_workers > 0:
-        workers = env_workers
-    else:
-        workers = 8 if pull_adjust is None else 1
+    workers = resolve_kline_worker_count(
+        explicit_workers=args.workers,
+        env_workers=env_workers,
+        pull_adjust=pull_adjust,
+    )
     max_inflight = max(workers, int(args.max_inflight or workers * 4))
     per_stock_total_attempts = max(1, int(args.per_stock_retry_attempts or 0) + 1)
     logger.info(
@@ -1224,7 +1238,9 @@ def main():
                 batch_id=batch_id,
                 connect_timeout=args.connect_timeout,
                 max_attempts=per_stock_total_attempts,
-                prefer_last_success=pull_adjust is not None,
+                # Parallel fetches should spread across the server pool instead
+                # of queuing behind the single most recent successful server.
+                prefer_last_success=False,
             )
             futures[future] = code
             return True

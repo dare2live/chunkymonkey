@@ -328,6 +328,49 @@ def test_call_tdx_quotes_with_retry_deprioritizes_recent_timeout_server(monkeypa
     assert third["server"] == ("2.2.2.2", 7709)
 
 
+def test_call_tdx_quotes_with_retry_stops_on_not_implemented(monkeypatch):
+    factory_calls = []
+
+    class FakeClient:
+        def __init__(self, server):
+            self.server = server
+
+        def close(self):
+            return None
+
+    class FakeQuotes:
+        @staticmethod
+        def factory(*, server, **_kwargs):
+            factory_calls.append(server)
+            return FakeClient(server)
+
+    monkeypatch.setattr(tdx_source, "get_tdx_quotes_class", lambda: FakeQuotes)
+    monkeypatch.setattr(
+        tdx_source,
+        "iter_tdx_servers",
+        lambda: (("1.1.1.1", 7709), ("2.2.2.2", 7709), ("3.3.3.3", 7709)),
+    )
+
+    tdx_source.reset_tdx_quotes_pool()
+    try:
+        with pytest.raises(RuntimeError) as exc_info:
+            tdx_source.call_tdx_quotes_with_retry(
+                lambda _client: (_ for _ in ()).throw(NotImplementedError("unsupported operation")),
+                action_name="quotes.unsupported",
+                collect_attempts=True,
+                max_attempts=3,
+            )
+        attempts = getattr(exc_info.value, "tdx_attempts")
+        health = tdx_source._get_server_health_snapshot()
+    finally:
+        tdx_source.reset_tdx_quotes_pool()
+
+    assert factory_calls == [("1.1.1.1", 7709)]
+    assert len(attempts) == 1
+    assert attempts[0]["error_type"] == "NotImplementedError"
+    assert float(health[("1.1.1.1", 7709)].get("unavailable_until") or 0.0) == 0.0
+
+
 def test_fetch_latest_snapshot_batch_uses_shared_quotes_pool(monkeypatch):
     mocked_call = mock.Mock(
         return_value=({"000001": {"updated_date": "2026-04-13", "zongzichan": 100.0}}, "tdxhub_1.1.1.1:7709")

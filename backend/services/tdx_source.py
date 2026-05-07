@@ -21,6 +21,7 @@ _QUOTES_IDLE_TTL_SECONDS = 300
 _MOOTDX_CIRCUIT_BREAKER_SECONDS = 300
 _TDX_SERVER_FAILURE_COOLDOWN_SECONDS = 120
 _TDX_SERVER_TIMEOUT_COOLDOWN_SECONDS = 300
+_NON_RETRYABLE_OPERATION_ERROR_TYPES = {"NotImplementedError"}
 
 DEFAULT_TDX_SERVERS: tuple[tuple[str, int], ...] = (
     ("110.41.147.114", 7709),
@@ -247,7 +248,7 @@ def _get_server_health_snapshot() -> dict[tuple[str, int], dict[str, object]]:
 def _should_cooldown_server(error_type: Optional[str]) -> bool:
     text = str(error_type or "").lower()
     return any(token in text for token in (
-        "timeout", "connect", "recv", "reset", "brokenpipe", "oserror", "notimplemented",
+        "timeout", "connect", "recv", "reset", "brokenpipe", "oserror",
     ))
 
 
@@ -437,6 +438,8 @@ def call_tdx_quotes_with_retry(
                     )
                     _mark_tdx_server_failure(server, error_type)
                     logger.debug(f"[tdxhub] {action_name} 建连失败 {server}: {exc}")
+                    if error_type in _NON_RETRYABLE_OPERATION_ERROR_TYPES:
+                        break
                     continue
 
             try:
@@ -483,6 +486,8 @@ def call_tdx_quotes_with_retry(
                 _close_quietly(client)
                 state["client"] = None
                 state["last_used"] = time.monotonic()
+                if error_type in _NON_RETRYABLE_OPERATION_ERROR_TYPES:
+                    break
 
     error = RuntimeError(f"{action_name} unavailable: " + ", ".join(attempts[:5]))
     if collect_attempts:

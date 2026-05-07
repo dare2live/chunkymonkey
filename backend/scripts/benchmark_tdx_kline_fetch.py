@@ -14,6 +14,7 @@ import logging
 import os
 import sys
 import time
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -42,6 +43,7 @@ class BenchmarkConfig:
     target_date: str | None = None
     connect_timeout: float = 1.5
     max_server_attempts: int = 8
+    workers: int = 1
     allow_stock_list_network: bool = False
     probe_when_fresh: bool = False
     write_benchmark: bool = True
@@ -234,16 +236,41 @@ def run_benchmark(config: BenchmarkConfig) -> dict[str, Any]:
         failed_codes: list[str] = []
         if sample_stock_list:
             with timer.stage("fetch_requests_s"):
-                for code, _market in sample_stock_list:
+                def fetch_one(code: str) -> tuple[str, list[dict[str, Any]], str, list[dict[str, Any]]]:
+                    records, source_name, stock_attempts = fetch_stock_with_attempts(
+                        code,
+                        pages=config.pages,
+                        adjust_mode=config.adjust_mode,
+                        connect_timeout=config.connect_timeout,
+                        max_server_attempts=config.max_server_attempts,
+                    )
+                    return code, records, source_name, stock_attempts
+
+                if config.workers <= 1 or len(sample_stock_list) <= 1:
+                    work_iter = ((code, None) for code, _market in sample_stock_list)
+                    futures = None
+                else:
+                    pool = ThreadPoolExecutor(
+                        max_workers=min(max(1, int(config.workers)), len(sample_stock_list)),
+                        thread_name_prefix="tdx-bench",
+                    )
+                    futures = {
+                        pool.submit(fetch_one, code): code
+                        for code, _market in sample_stock_list
+                    }
+                    work_iter = ((future, futures[future]) for future in as_completed(futures))
+
+                for item, code_hint in work_iter:
                     try:
-                        records, source_name, stock_attempts = fetch_stock_with_attempts(
-                            code,
-                            pages=config.pages,
-                            adjust_mode=config.adjust_mode,
-                            connect_timeout=config.connect_timeout,
-                            max_server_attempts=config.max_server_attempts,
-                        )
+                        if futures is None:
+                            code = str(item)
+                            _code, records, source_name, stock_attempts = fetch_one(code)
+                        else:
+                            future = item
+                            _code, records, source_name, stock_attempts = future.result()
+                            code = _code
                     except Exception as exc:
+                        code = str(code_hint or item)
                         logger.warning("code=%s benchmark fetch failed: %s", code, exc)
                         attempts.extend(list(getattr(exc, "tdx_attempts", []) or []))
                         failed_codes.append(code)
@@ -258,6 +285,8 @@ def run_benchmark(config: BenchmarkConfig) -> dict[str, Any]:
                     )
                     attempts.extend(stock_attempts)
                     raw_payloads.append((records, source_name))
+                if futures is not None:
+                    pool.shutdown(wait=True)
 
         with timer.stage("row_decode_normalize_s"):
             for records, source_name in raw_payloads:
@@ -279,6 +308,8 @@ def run_benchmark(config: BenchmarkConfig) -> dict[str, Any]:
                 if config.adjust_mode == "qfq"
                 else "dry_run_requires_production_fetch_for_mutating_adjustment"
             )
+        if sample_stock_list and failed_codes:
+            blockers.append(f"fetch_failed:{len(failed_codes)}/{len(sample_stock_list)}")
 
         temp_write_rows = 0
         if config.write_benchmark:
@@ -363,6 +394,7 @@ def parse_args(argv: list[str] | None = None) -> BenchmarkConfig:
     parser.add_argument("--target-date", default=None)
     parser.add_argument("--connect-timeout", type=float, default=1.5)
     parser.add_argument("--max-server-attempts", type=int, default=8)
+    parser.add_argument("--workers", type=int, default=1)
     parser.add_argument("--allow-stock-list-network", action="store_true")
     parser.add_argument("--probe-when-fresh", action="store_true")
     parser.add_argument("--no-write-benchmark", action="store_true")
@@ -376,6 +408,7 @@ def parse_args(argv: list[str] | None = None) -> BenchmarkConfig:
         target_date=args.target_date,
         connect_timeout=float(args.connect_timeout),
         max_server_attempts=max(1, int(args.max_server_attempts)),
+        workers=max(1, int(args.workers)),
         allow_stock_list_network=bool(args.allow_stock_list_network),
         probe_when_fresh=bool(args.probe_when_fresh),
         write_benchmark=not bool(args.no_write_benchmark),

@@ -250,6 +250,83 @@ def test_main_buffers_incremental_rows_before_duckdb_write(monkeypatch):
     assert write_sizes == [2]
 
 
+def test_resolve_kline_worker_count_parallelizes_qfq_by_default():
+    assert builder.resolve_kline_worker_count(
+        explicit_workers=None,
+        env_workers=0,
+        pull_adjust="qfq",
+    ) == builder.DEFAULT_QFQ_WORKERS
+    assert builder.resolve_kline_worker_count(
+        explicit_workers=None,
+        env_workers=0,
+        pull_adjust=None,
+    ) == builder.DEFAULT_RAW_INCREMENTAL_WORKERS
+    assert builder.resolve_kline_worker_count(
+        explicit_workers=2,
+        env_workers=9,
+        pull_adjust="qfq",
+    ) == 2
+    assert builder.resolve_kline_worker_count(
+        explicit_workers=None,
+        env_workers=9,
+        pull_adjust="qfq",
+    ) == 9
+
+
+def test_main_parallel_qfq_fetch_rotates_across_server_pool(monkeypatch):
+    conn = duck_mem()
+    conn.executescript(builder.TABLE_DDL)
+    prefer_last_success_values = []
+
+    def fake_fetch(code, **kwargs):
+        prefer_last_success_values.append(kwargs["prefer_last_success"])
+        return (
+            [
+                {
+                    "code": code,
+                    "date": "2026-05-06",
+                    "freq": "daily",
+                    "adjust": "qfq",
+                    "open": 10.0,
+                    "high": 11.0,
+                    "low": 9.0,
+                    "close": 10.5,
+                    "volume": 1000.0,
+                    "amount": 10500.0,
+                    "factor": 1.0,
+                    "source": "tdxhub_unit",
+                    "batch_id": "unit",
+                }
+            ],
+            "tdxhub_unit",
+        )
+
+    monkeypatch.setattr(builder, "get_market_conn", lambda: conn)
+    monkeypatch.setattr(
+        builder,
+        "open_quotes_client_with_retry",
+        lambda **_kwargs: ([("000001", 0), ("000002", 0)], FakeClient(), "tdxhub_unit"),
+    )
+    monkeypatch.setattr(builder, "fetch_one_stock_normalized", fake_fetch)
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "build_price_kline_tdxhub.py",
+            "--workers",
+            "2",
+            "--write-batch-rows",
+            "99",
+            "--log-every",
+            "99",
+        ],
+    )
+
+    builder.main()
+
+    assert prefer_last_success_values == [False, False]
+
+
 def test_write_batch_uses_records():
     conn = duck_mem()
     try:
