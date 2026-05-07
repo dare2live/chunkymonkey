@@ -112,7 +112,17 @@ def test_build_feature_association_stats_scores_features_and_clusters():
         assert by_cluster["inverse_feature"]["cluster_id"] == by_cluster["duplicate_good"]["cluster_id"]
         assert abs(by_cluster["duplicate_good"]["corr_to_representative"]) == pytest.approx(1.0)
         assert abs(by_cluster["inverse_feature"]["corr_to_representative"]) == pytest.approx(1.0)
-        assert json.loads(manifest["perf_summary_json"])["features"] == 5
+        perf_summary = json.loads(manifest["perf_summary_json"])
+        assert perf_summary["features"] == 5
+        assert set(perf_summary["stage_timings"]) >= {
+            "schema_and_feature_selection_s",
+            "prepare_base_table_s",
+            "feature_stats_s",
+            "correlation_clusters_s",
+            "fold_associations_s",
+            "total_before_manifest_s",
+        }
+        assert perf_summary["slowest_features"][0]["feature_name"] in by_feature
     finally:
         conn.close()
 

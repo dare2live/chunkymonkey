@@ -17,6 +17,7 @@ from scripts.build_feature_panel_duck import feature_input_columns  # noqa: E402
 from services.db import get_conn  # noqa: E402
 from services.feature_registry import load_feature_registry  # noqa: E402
 from services.pipeline_manifest import git_commit_sha, record_pipeline_run, utc_now_iso  # noqa: E402
+from services.pipeline_timing import PipelineTimer  # noqa: E402
 from services.schema_versions import record_actual_version  # noqa: E402
 
 
@@ -309,6 +310,17 @@ def _compute_feature_label_stats(
     ).fetchone()
     ic = _finite_float(ic_row["ic"] if ic_row else None)
 
+    decile_expr = (
+        """
+               (SELECT AVG(CASE WHEN feature_rank >= 0.9 THEN label_value END) FROM ranked) AS top_mean,
+               (SELECT AVG(CASE WHEN feature_rank <= 0.1 THEN label_value END) FROM ranked) AS bottom_mean
+        """
+        if include_deciles
+        else """
+               NULL AS top_mean,
+               NULL AS bottom_mean
+        """
+    )
     rank_row = conn.execute(
         f"""
         WITH valid AS (
@@ -320,6 +332,7 @@ def _compute_feature_label_stats(
         ),
         ranked AS (
             SELECT date,
+                   label_value,
                    PERCENT_RANK() OVER (PARTITION BY date ORDER BY feature_value) AS feature_rank,
                    PERCENT_RANK() OVER (PARTITION BY date ORDER BY label_value) AS label_rank
               FROM valid
@@ -348,7 +361,8 @@ def _compute_feature_label_stats(
                     )
                     ELSE NULL END AS rank_ic_std,
                COUNT(rank_ic) AS fold_count,
-               AVG(CASE WHEN rank_ic > 0 THEN 1.0 ELSE 0.0 END) AS same_sign_rate
+               AVG(CASE WHEN rank_ic > 0 THEN 1.0 ELSE 0.0 END) AS same_sign_rate,
+               {decile_expr}
           FROM valid_daily
         """,
         [min_daily_count],
@@ -357,32 +371,9 @@ def _compute_feature_label_stats(
     rank_ic_std = _finite_float(rank_row["rank_ic_std"] if rank_row else None)
     fold_count = int(rank_row["fold_count"] or 0) if rank_row else 0
     same_sign_rate = _finite_float(rank_row["same_sign_rate"] if rank_row else None)
-
-    top_mean = bottom_mean = spread = None
-    if include_deciles:
-        decile_row = conn.execute(
-            f"""
-            WITH valid AS (
-                SELECT date,
-                       CAST({feature_q} AS DOUBLE) AS feature_value,
-                       CAST({label_q} AS DOUBLE) AS label_value
-                  FROM {base_table}
-                 WHERE {valid_where}
-            ),
-            ranked AS (
-                SELECT date, label_value,
-                       PERCENT_RANK() OVER (PARTITION BY date ORDER BY feature_value) AS feature_rank
-                  FROM valid
-            )
-            SELECT AVG(CASE WHEN feature_rank >= 0.9 THEN label_value END) AS top_mean,
-                   AVG(CASE WHEN feature_rank <= 0.1 THEN label_value END) AS bottom_mean
-              FROM ranked
-            """
-        ).fetchone()
-        top_mean = _finite_float(decile_row["top_mean"] if decile_row else None)
-        bottom_mean = _finite_float(decile_row["bottom_mean"] if decile_row else None)
-        if top_mean is not None and bottom_mean is not None:
-            spread = top_mean - bottom_mean
+    top_mean = _finite_float(rank_row["top_mean"] if rank_row else None)
+    bottom_mean = _finite_float(rank_row["bottom_mean"] if rank_row else None)
+    spread = top_mean - bottom_mean if top_mean is not None and bottom_mean is not None else None
 
     return {
         "total_rows": total_rows,
@@ -398,6 +389,52 @@ def _compute_feature_label_stats(
         "bottom_decile_label_mean": bottom_mean,
         "long_short_spread": spread,
     }
+
+
+def _compute_feature_label_rank_ic(
+    conn: Any,
+    *,
+    feature: str,
+    label: str,
+    min_daily_count: int,
+    base_table: str = "__feature_assoc_base",
+) -> float | None:
+    feature_q = _quote_ident(feature)
+    label_q = _quote_ident(label)
+    valid_where = (
+        f"{feature_q} IS NOT NULL AND {label_q} IS NOT NULL "
+        f"AND ISFINITE(CAST({feature_q} AS DOUBLE)) "
+        f"AND ISFINITE(CAST({label_q} AS DOUBLE))"
+    )
+    row = conn.execute(
+        f"""
+        WITH valid AS (
+            SELECT date,
+                   CAST({feature_q} AS DOUBLE) AS feature_value,
+                   CAST({label_q} AS DOUBLE) AS label_value
+              FROM {base_table}
+             WHERE {valid_where}
+        ),
+        ranked AS (
+            SELECT date,
+                   PERCENT_RANK() OVER (PARTITION BY date ORDER BY feature_value) AS feature_rank,
+                   PERCENT_RANK() OVER (PARTITION BY date ORDER BY label_value) AS label_rank
+              FROM valid
+        ),
+        daily AS (
+            SELECT date,
+                   corr(feature_rank, label_rank) AS rank_ic
+              FROM ranked
+             GROUP BY date
+            HAVING COUNT(*) >= ?
+        )
+        SELECT AVG(rank_ic) AS rank_ic
+          FROM daily
+         WHERE rank_ic IS NOT NULL
+        """,
+        [min_daily_count],
+    ).fetchone()
+    return _finite_float(row["rank_ic"] if row else None)
 
 
 def _finite_float(value: Any) -> float | None:
@@ -683,163 +720,182 @@ def build_feature_association_stats(
     run_id = run_id or f"feature_assoc_{datetime.now(UTC).strftime('%Y%m%d_%H%M%S')}"
     started_at = utc_now_iso()
     t0 = time.perf_counter()
+    timer = PipelineTimer()
     _progress(
         f"start run_id={run_id} panel={panel_table} label={label_name} "
         f"feature_roles={','.join(feature_roles or []) or 'model_inputs'}"
     )
-    columns = _table_columns(conn, panel_table)
-    labels = [label_name, *(horizon_labels or [])]
-    labels = [label for label in dict.fromkeys(labels) if label in columns]
-    if label_name not in labels:
-        raise RuntimeError(f"label {label_name} is missing from {panel_table}")
+    with timer.stage("schema_and_feature_selection_s"):
+        columns = _table_columns(conn, panel_table)
+        labels = [label_name, *(horizon_labels or [])]
+        labels = [label for label in dict.fromkeys(labels) if label in columns]
+        if label_name not in labels:
+            raise RuntimeError(f"label {label_name} is missing from {panel_table}")
 
-    requested = list(
-        features
-        or _default_features(
-            conn,
-            panel_table,
-            labels,
-            feature_roles=feature_roles,
+        requested = list(
+            features
+            or _default_features(
+                conn,
+                panel_table,
+                labels,
+                feature_roles=feature_roles,
+            )
         )
-    )
-    usable_features = [
-        feature
-        for feature in dict.fromkeys(requested)
-        if feature in columns
-        and feature not in set(labels)
-        and _is_numeric_type(columns[feature])
-    ]
-    if limit_features is not None:
-        usable_features = usable_features[: max(int(limit_features), 0)]
-    if not usable_features:
-        raise RuntimeError(f"no numeric model-input features available in {panel_table}")
+        usable_features = [
+            feature
+            for feature in dict.fromkeys(requested)
+            if feature in columns
+            and feature not in set(labels)
+            and _is_numeric_type(columns[feature])
+        ]
+        if limit_features is not None:
+            usable_features = usable_features[: max(int(limit_features), 0)]
+        if not usable_features:
+            raise RuntimeError(f"no numeric model-input features available in {panel_table}")
 
     _progress(f"prepare_base_table start features={len(usable_features)} labels={len(labels)}")
-    total_rows = _prepare_base_table(
-        conn,
-        panel_table=panel_table,
-        feature_set_id=feature_set_id,
-        features=usable_features,
-        labels=labels,
-        start_date=start_date,
-        end_date=end_date,
-    )
+    with timer.stage("prepare_base_table_s"):
+        total_rows = _prepare_base_table(
+            conn,
+            panel_table=panel_table,
+            feature_set_id=feature_set_id,
+            features=usable_features,
+            labels=labels,
+            start_date=start_date,
+            end_date=end_date,
+        )
     _progress(f"prepare_base_table done rows={total_rows}")
     built_at = datetime.now(UTC).replace(tzinfo=None).isoformat(timespec="seconds")
-    group_map = _registry_group_map()
-    source_fallback_pct = _source_fallback_pct(conn)
-    source_distribution_json = _source_distribution_json(conn)
+    with timer.stage("registry_and_source_lineage_s"):
+        group_map = _registry_group_map()
+        source_fallback_pct = _source_fallback_pct(conn)
+        source_distribution_json = _source_distribution_json(conn)
     rows = []
     stats: list[dict[str, Any]] = []
-    for idx, feature in enumerate(usable_features, start=1):
-        feature_t0 = time.perf_counter()
-        if idx == 1 or idx == len(usable_features) or idx % 5 == 0:
-            _progress(f"feature_stats start {idx}/{len(usable_features)} feature={feature}")
-        primary = _compute_feature_label_stats(
-            conn,
-            feature=feature,
-            label=label_name,
-            total_rows=total_rows,
-            min_daily_count=min_daily_count,
-            include_deciles=True,
-        )
-        sensitivity = {}
-        for label in labels:
-            label_stats = (
-                primary
-                if label == label_name
-                else _compute_feature_label_stats(
-                    conn,
-                    feature=feature,
-                    label=label,
-                    total_rows=total_rows,
-                    min_daily_count=min_daily_count,
-                    include_deciles=False,
+    feature_timings: list[dict[str, Any]] = []
+    with timer.stage("feature_stats_s"):
+        for idx, feature in enumerate(usable_features, start=1):
+            feature_t0 = time.perf_counter()
+            if idx == 1 or idx == len(usable_features) or idx % 5 == 0:
+                _progress(f"feature_stats start {idx}/{len(usable_features)} feature={feature}")
+            primary = _compute_feature_label_stats(
+                conn,
+                feature=feature,
+                label=label_name,
+                total_rows=total_rows,
+                min_daily_count=min_daily_count,
+                include_deciles=True,
+            )
+            sensitivity = {}
+            for label in labels:
+                sensitivity[label] = (
+                    primary["rank_ic"]
+                    if label == label_name
+                    else _compute_feature_label_rank_ic(
+                        conn,
+                        feature=feature,
+                        label=label,
+                        min_daily_count=min_daily_count,
+                    )
+                )
+            row = {
+                "feature_name": feature,
+                "feature_group": group_map.get(feature, "unregistered"),
+                **primary,
+                "horizon_sensitivity_json": json.dumps(sensitivity, ensure_ascii=False, sort_keys=True),
+            }
+            stats.append(row)
+            feature_elapsed_s = time.perf_counter() - feature_t0
+            feature_timings.append(
+                {
+                    "feature_name": feature,
+                    "elapsed_s": round(feature_elapsed_s, 3),
+                    "valid_rows": primary.get("valid_rows"),
+                    "rank_ic": primary.get("rank_ic"),
+                }
+            )
+            if idx == 1 or idx == len(usable_features) or idx % 5 == 0:
+                _progress(
+                    f"feature_stats done {idx}/{len(usable_features)} feature={feature} "
+                    f"valid_rows={primary.get('valid_rows')} rank_ic={primary.get('rank_ic')} "
+                    f"elapsed={feature_elapsed_s:.3f}s"
+                )
+            rows.append(
+                (
+                    run_id,
+                    panel_table,
+                    label_name,
+                    feature,
+                    row["feature_group"],
+                    primary["total_rows"],
+                    primary["valid_rows"],
+                    primary["coverage_pct"],
+                    primary["missing_pct"],
+                    primary["ic"],
+                    primary["rank_ic"],
+                    primary["rank_ic_std_by_date"],
+                    primary["fold_count"],
+                    primary["fold_same_sign_rate"],
+                    primary["top_decile_label_mean"],
+                    primary["bottom_decile_label_mean"],
+                    primary["long_short_spread"],
+                    row["horizon_sensitivity_json"],
+                    source_fallback_pct,
+                    source_distribution_json,
+                    built_at,
                 )
             )
-            sensitivity[label] = label_stats["rank_ic"]
-        row = {
-            "feature_name": feature,
-            "feature_group": group_map.get(feature, "unregistered"),
-            **primary,
-            "horizon_sensitivity_json": json.dumps(sensitivity, ensure_ascii=False, sort_keys=True),
-        }
-        stats.append(row)
-        if idx == 1 or idx == len(usable_features) or idx % 5 == 0:
-            _progress(
-                f"feature_stats done {idx}/{len(usable_features)} feature={feature} "
-                f"valid_rows={primary.get('valid_rows')} rank_ic={primary.get('rank_ic')} "
-                f"elapsed={time.perf_counter() - feature_t0:.3f}s"
-            )
-        rows.append(
-            (
-                run_id,
-                panel_table,
-                label_name,
-                feature,
-                row["feature_group"],
-                primary["total_rows"],
-                primary["valid_rows"],
-                primary["coverage_pct"],
-                primary["missing_pct"],
-                primary["ic"],
-                primary["rank_ic"],
-                primary["rank_ic_std_by_date"],
-                primary["fold_count"],
-                primary["fold_same_sign_rate"],
-                primary["top_decile_label_mean"],
-                primary["bottom_decile_label_mean"],
-                primary["long_short_spread"],
-                row["horizon_sensitivity_json"],
-                source_fallback_pct,
-                source_distribution_json,
-                built_at,
-            )
+    with timer.stage("write_feature_association_stats_s"):
+        conn.executemany(
+            """
+            INSERT OR REPLACE INTO mart_feature_association_stat
+            (run_id, panel_table, label_name, feature_name, feature_group, total_rows,
+             valid_rows, coverage_pct, missing_pct, ic, rank_ic, rank_ic_std_by_date,
+             fold_count, fold_same_sign_rate, top_decile_label_mean,
+             bottom_decile_label_mean, long_short_spread, horizon_sensitivity_json,
+             source_fallback_pct, source_distribution_json, built_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            rows,
         )
-    conn.executemany(
-        """
-        INSERT OR REPLACE INTO mart_feature_association_stat
-        (run_id, panel_table, label_name, feature_name, feature_group, total_rows,
-         valid_rows, coverage_pct, missing_pct, ic, rank_ic, rank_ic_std_by_date,
-         fold_count, fold_same_sign_rate, top_decile_label_mean,
-         bottom_decile_label_mean, long_short_spread, horizon_sensitivity_json,
-         source_fallback_pct, source_distribution_json, built_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        """,
-        rows,
-    )
     cluster_rows = 0
     corr_pairs = len(stats) * max(len(stats) - 1, 0) // 2 if build_clusters else 0
     if build_clusters:
         _progress(f"correlation_clusters start features={len(stats)} threshold={corr_threshold}")
-        cluster_rows = _build_correlation_clusters(
+        with timer.stage("correlation_clusters_s"):
+            cluster_rows = _build_correlation_clusters(
+                conn,
+                run_id=run_id,
+                panel_table=panel_table,
+                stats=stats,
+                corr_threshold=corr_threshold,
+                built_at=built_at,
+            )
+        _progress(f"correlation_clusters done rows={cluster_rows}")
+    else:
+        timer.record("correlation_clusters_s", 0.0)
+        _progress("correlation_clusters skipped")
+    _progress(f"fold_associations start folds={folds}")
+    with timer.stage("fold_associations_s"):
+        fold_rows = _build_fold_associations(
             conn,
             run_id=run_id,
             panel_table=panel_table,
-            stats=stats,
-            corr_threshold=corr_threshold,
+            label=label_name,
+            features=usable_features,
+            group_map=group_map,
+            folds=folds,
+            min_daily_count=min_daily_count,
             built_at=built_at,
         )
-        _progress(f"correlation_clusters done rows={cluster_rows}")
-    else:
-        _progress("correlation_clusters skipped")
-    _progress(f"fold_associations start folds={folds}")
-    fold_rows = _build_fold_associations(
-        conn,
-        run_id=run_id,
-        panel_table=panel_table,
-        label=label_name,
-        features=usable_features,
-        group_map=group_map,
-        folds=folds,
-        min_daily_count=min_daily_count,
-        built_at=built_at,
-    )
     _progress(f"fold_associations done rows={fold_rows}")
+    with timer.stage("schema_version_record_s"):
+        record_actual_version(conn, "mart_feature_association_stat")
+        record_actual_version(conn, "mart_feature_correlation_cluster")
+        record_actual_version(conn, "mart_feature_association_fold")
     duration_s = time.perf_counter() - t0
-    record_actual_version(conn, "mart_feature_association_stat")
-    record_actual_version(conn, "mart_feature_correlation_cluster")
-    record_actual_version(conn, "mart_feature_association_fold")
+    timer.record("total_before_manifest_s", duration_s)
+    slowest_features = sorted(feature_timings, key=lambda item: float(item["elapsed_s"]), reverse=True)[:10]
     record_pipeline_run(
         conn,
         run_id=run_id,
@@ -856,25 +912,28 @@ def build_feature_association_stats(
             "mart_feature_association_fold",
         ],
         label_name=label_name,
-        perf_summary={
-            "features": len(usable_features),
-            "labels": labels,
-            "rows": len(rows),
-            "cluster_rows": cluster_rows,
-            "corr_pairs": corr_pairs,
-            "folds": int(folds),
-            "fold_rows": fold_rows,
-            "corr_threshold": corr_threshold,
-            "build_clusters": build_clusters,
-            "start_date": start_date,
-            "end_date": end_date,
-            "feature_set_id": feature_set_id,
-            "feature_roles": feature_roles or [],
-            "limit_features": limit_features,
-            "source_fallback_pct": source_fallback_pct,
-            "source_distribution_json": source_distribution_json,
-            "duration_s": duration_s,
-        },
+        perf_summary=timer.summary(
+            {
+                "features": len(usable_features),
+                "labels": labels,
+                "rows": len(rows),
+                "cluster_rows": cluster_rows,
+                "corr_pairs": corr_pairs,
+                "folds": int(folds),
+                "fold_rows": fold_rows,
+                "corr_threshold": corr_threshold,
+                "build_clusters": build_clusters,
+                "start_date": start_date,
+                "end_date": end_date,
+                "feature_set_id": feature_set_id,
+                "feature_roles": feature_roles or [],
+                "limit_features": limit_features,
+                "source_fallback_pct": source_fallback_pct,
+                "source_distribution_json": source_distribution_json,
+                "duration_s": duration_s,
+                "slowest_features": slowest_features,
+            }
+        ),
     )
     conn.commit()
     _progress(f"done run_id={run_id} rows={len(rows)} duration_s={duration_s:.3f}")
