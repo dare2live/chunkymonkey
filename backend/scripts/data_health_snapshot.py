@@ -60,6 +60,21 @@ SOURCE_TIER_COL = "source_tier"
 NON_EXPIRING_FRESHNESS = {"static", "on-demand", "derived"}
 OPTIONAL_EMPTY_FRESHNESS = NON_EXPIRING_FRESHNESS
 TRADING_CADENCE_FRESHNESS = {"t+0", "t+1", "event"}
+PERIODIC_OR_EVENT_ASSET_TOKENS = {
+    "periodic",
+    "periodic_or_event",
+    "periodic_report",
+    "periodic_report_after_listing",
+    "event",
+    "event_driven",
+    "sparse_event",
+}
+NON_EXPIRING_ASSET_TOKENS = {
+    "on_demand",
+    "workflow_dependent",
+    "only_when_active_challenger_exists",
+    "empty_allowed_without_active_challenger",
+}
 
 
 def get_table_columns(con, table: str) -> list[str]:
@@ -202,6 +217,27 @@ def _max_severity(left: str, right: str) -> str:
     return left if _severity_rank(left) >= _severity_rank(right) else right
 
 
+def _is_periodic_or_event_asset(asset: dict) -> bool:
+    values = [
+        asset.get("asset_cadence"),
+        asset.get("asset_grain"),
+        asset.get("coverage_policy"),
+        asset.get("intended_use"),
+    ]
+    text = " ".join(str(value or "").lower() for value in values)
+    return any(token in text for token in PERIODIC_OR_EVENT_ASSET_TOKENS)
+
+
+def _is_non_expiring_asset(asset: dict) -> bool:
+    values = [
+        asset.get("asset_cadence"),
+        asset.get("coverage_policy"),
+        asset.get("null_policy"),
+    ]
+    text = " ".join(str(value or "").lower() for value in values)
+    return any(token in text for token in NON_EXPIRING_ASSET_TOKENS)
+
+
 def compute_health_for_table(con, asset: dict, now: datetime) -> dict:
     """对单表计算健康指标. asset 是 dim_data_asset 行 dict."""
 
@@ -209,7 +245,7 @@ def compute_health_for_table(con, asset: dict, now: datetime) -> dict:
     layer = asset["layer"]
     expected_freshness = asset.get("expected_freshness") or "on-demand"
     sla_hours = asset.get("sla_hours") or 48
-    non_expiring = expected_freshness in NON_EXPIRING_FRESHNESS
+    non_expiring = expected_freshness in NON_EXPIRING_FRESHNESS or _is_non_expiring_asset(asset)
 
     if asset.get("deprecation_status") == "deprecated":
         row_count = None
@@ -278,6 +314,10 @@ def compute_health_for_table(con, asset: dict, now: datetime) -> dict:
             layer == "raw"
             or expected_freshness == "event"
             or last_data_dt is None
+            or (
+                expected_freshness in TRADING_CADENCE_FRESHNESS
+                and _is_periodic_or_event_asset(asset)
+            )
         )
     )
     if prefer_writer:
@@ -361,13 +401,29 @@ def main() -> int:
     ensure_asset_deprecation_columns(con)
 
     # 拉所有登记的资产
-    rows = con.execute("""
-        SELECT table_name, layer, purpose, writer_module, reader_modules,
-               upstream_source, source_tier, expected_freshness, sla_hours,
-               consumed_by_views, deprecation_status, replacement_table
+    asset_columns = set(get_table_columns(con, "dim_data_asset"))
+    base_cols = [
+        "table_name", "layer", "purpose", "writer_module", "reader_modules",
+        "upstream_source", "source_tier", "expected_freshness", "sla_hours",
+        "consumed_by_views", "deprecation_status", "replacement_table",
+    ]
+    optional_cols = [
+        "asset_grain", "asset_cadence", "coverage_policy", "null_policy",
+        "pit_policy", "intended_use", "model_eligibility",
+        "strategy_eligibility", "frontend_visibility", "quality_gate_level",
+    ]
+    select_cols = list(base_cols)
+    select_cols.extend(
+        col if col in asset_columns else f"NULL AS {col}"
+        for col in optional_cols
+    )
+    rows = con.execute(
+        f"""
+        SELECT {', '.join(select_cols)}
         FROM dim_data_asset
         ORDER BY layer, table_name
-    """).fetchall()
+        """
+    ).fetchall()
     log.info("scanning %d assets", len(rows))
 
     snapshots: list[dict] = []

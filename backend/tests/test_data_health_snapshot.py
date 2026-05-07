@@ -79,6 +79,43 @@ def test_on_demand_table_without_date_column_is_green():
         conn.close()
 
 
+def test_on_demand_asset_contract_overrides_name_based_daily_freshness():
+    conn = duck_mem()
+    try:
+        conn.execute(
+            """
+            CREATE TABLE mart_synergy_policy_mtm_daily_path (
+                date TEXT,
+                built_at TEXT
+            )
+            """
+        )
+        conn.execute(
+            "INSERT INTO mart_synergy_policy_mtm_daily_path VALUES ('2026-04-30', '2026-05-01T00:00:00')"
+        )
+
+        health = compute_health_for_table(
+            conn,
+            {
+                "table_name": "mart_synergy_policy_mtm_daily_path",
+                "layer": "mart",
+                "writer_module": "backend/scripts/validate_synergy_policy_mark_to_market.py",
+                "upstream_source": "derived",
+                "expected_freshness": "t+0",
+                "sla_hours": 24,
+                "asset_cadence": "on_demand",
+                "coverage_policy": "workflow_dependent",
+            },
+            datetime(2026, 5, 7, 12, 0, 0),
+        )
+
+        assert health["severity"] == "green"
+        assert health["freshness_hours"] is None
+        assert health["issue_summary"] is None
+    finally:
+        conn.close()
+
+
 def test_event_fact_freshness_uses_writer_time():
     conn = duck_mem()
     try:
@@ -119,6 +156,56 @@ def test_event_fact_freshness_uses_writer_time():
         assert health["severity"] == "green"
         assert health["freshness_hours"] == 0
         assert health["last_writer_at"].startswith("2026-04-30")
+    finally:
+        conn.close()
+
+
+def test_periodic_holder_fact_freshness_uses_writer_time_not_report_date():
+    conn = duck_mem()
+    try:
+        conn.execute("CREATE TABLE dim_trading_calendar (trade_date TEXT, is_trading INTEGER)")
+        conn.execute(
+            """
+            INSERT INTO dim_trading_calendar VALUES
+            ('2026-05-05', 1), ('2026-05-06', 1), ('2026-05-07', 1)
+            """
+        )
+        conn.execute(
+            """
+            CREATE TABLE fact_top10_holder_period (
+                stock_code TEXT,
+                report_date TEXT,
+                holder_name TEXT,
+                fetched_at TEXT
+            )
+            """
+        )
+        conn.execute(
+            """
+            INSERT INTO fact_top10_holder_period
+            VALUES ('000001', '20260429', 'holder', '2026-05-05T08:25:19+00:00')
+            """
+        )
+
+        health = compute_health_for_table(
+            conn,
+            {
+                "table_name": "fact_top10_holder_period",
+                "layer": "fact",
+                "writer_module": "backend/scripts/ingest_holders_tdxhub.py",
+                "upstream_source": "tdxhub.holders",
+                "expected_freshness": "t+1",
+                "sla_hours": 48,
+                "asset_cadence": "periodic_or_event",
+                "coverage_policy": "periodic_report_after_listing",
+            },
+            datetime(2026, 5, 7, 0, 54, 0),
+        )
+
+        assert health["severity"] == "green"
+        assert health["freshness_hours"] == 48
+        assert health["last_data_date"] == "20260429"
+        assert health["last_writer_at"].startswith("2026-05-05")
     finally:
         conn.close()
 
