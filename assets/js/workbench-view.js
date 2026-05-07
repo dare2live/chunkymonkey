@@ -317,17 +317,20 @@
     var primary = kline.primary || {};
     var validation = data.latest_feature_validation || {};
     var monitor = data.processing_monitor || {};
+    var signalCache = data.today_signal_cache || {};
     var assetHealth = data.asset_health || {};
     var governanceCounts = assetHealth.governance_counts || {};
     var qualityCounts = governanceCounts.quality_gate_level || {};
     var tdxHealth = data.tdx_server_health || {};
     var tdxHealthSummary = tdxHealth.summary || {};
+    var signalCacheTone = (signalCache.requires_refresh || signalCache.stale) ? 'warn' : (signalCache.status || 'unknown');
     setBody(
       '<div class="stats-row wb-stats-row">' +
       statCard('交易日目标', data.calendar_target || '-', 'calendar gate', data.calendar_target ? 'ok' : 'missing') +
       statCard('K线主源', primary.source_name || '-', 'tier ' + fmt(primary.source_tier), kline.primary_is_tdxhub ? 'ok' : 'bad') +
       statCard('主源行数', fmtNum(primary.row_count || 0), esc(primary.last_data_date || '-'), primary.row_count ? 'ok' : 'missing') +
       statCard('TDX健康', fmtNum(tdxHealthSummary.healthy_count || 0), fmtNum(tdxHealthSummary.timeout_server_count || 0) + ' timeout servers', (tdxHealthSummary.timeout_server_count || 0) ? 'warn' : 'ok') +
+      statCard('信号快照', signalCache.status || '-', fmtNum(signalCache.signal_count || 0) + ' signals', signalCacheTone) +
       statCard('Fallback', fmtNum(kline.fallback_active_count || 0), 'active sources', kline.fallback_active_count ? 'warn' : 'ok') +
       statCard('资产治理', fmtNum(((assetHealth.summary || {}).total) || 0), renderStatusCounts(qualityCounts), ((qualityCounts || {}).blocking || 0) ? 'ok' : 'info') +
       statCard('特征 fallback', fmtPct(validation.source_fallback_ratio), esc(validation.validation_id || '-'), validation.status || 'unknown') +
@@ -351,6 +354,10 @@
       '</section>' +
 
       '<div class="wb-grid">' +
+      '<section class="panel wb-panel">' +
+      '<div class="panel-head"><div><h3>今日信号快照</h3><div class="muted">materialized read model</div></div></div>' +
+      renderTodaySignalCache(signalCache) +
+      '</section>' +
       '<section class="panel wb-panel">' +
       '<div class="panel-head"><div><h3>特征源分布</h3><div class="muted">' + esc(validation.validated_at || '-') + '</div></div></div>' +
       renderSourceDistribution(validation.source_distribution || []) +
@@ -450,6 +457,23 @@
         return '<tr><td>' + esc(row.reason || '-') + '</td><td>' + fmtNum(row.count || 0) + '</td></tr>';
       }).join('') +
       '</tbody></table></div>';
+  }
+
+  function renderTodaySignalCache(cache) {
+    cache = cache || {};
+    var step = cache.step || {};
+    var status = cache.status || 'unknown';
+    var statusTone = (cache.requires_refresh || cache.stale) ? 'warn' : status;
+    return '<div class="wb-table-wrap"><table class="data-table data-table-compact wb-table">' +
+      '<thead><tr><th>状态</th><th>信号</th><th>freshness</th><th>source max</th><th>built</th><th>刷新步骤</th></tr></thead><tbody>' +
+      '<tr>' +
+      '<td>' + pill(status, statusTone) + (cache.error ? '<div class="muted">' + esc(cache.error) + '</div>' : '') + '</td>' +
+      '<td>' + fmtNum(cache.signal_count || 0) + '</td>' +
+      '<td>' + (cache.freshness_days == null ? '-' : fmtNum(cache.freshness_days) + 'd') + '</td>' +
+      '<td>' + esc(cache.source_max_notice_date || '-') + '<div class="muted">current ' + esc(cache.current_source_max_notice_date || '-') + '</div></td>' +
+      '<td>' + esc(cache.built_at || '-') + '</td>' +
+      '<td>' + pill(step.status || 'not-run', step.status || 'info') + '<div class="muted">' + fmtNum(step.records || 0) + ' rows · ' + esc(step.finished_at || step.started_at || '-') + '</div></td>' +
+      '</tr></tbody></table></div>';
   }
 
   function renderSourceBlockers(rows) {

@@ -1434,6 +1434,52 @@ def _data_processing_monitor_view(conn: Any, *, limit: int = 30) -> dict[str, An
     }
 
 
+def _today_signal_cache_view(conn: Any) -> dict[str, Any]:
+    try:
+        from services.signals_v2 import describe_today_signal_cache  # noqa: WPS433
+
+        status = describe_today_signal_cache(conn)
+    except Exception as exc:
+        status = {
+            "status": "unavailable",
+            "signal_count": 0,
+            "freshness_days": None,
+            "source_max_notice_date": None,
+            "current_source_max_notice_date": None,
+            "built_at": None,
+            "stale": True,
+            "requires_refresh": True,
+            "error": str(exc)[:160],
+        }
+    step = None
+    if _table_exists(conn, "step_status"):
+        cols = _columns(conn, "step_status")
+        if {"step_id", "status"}.issubset(cols):
+            records_expr = "records" if "records" in cols else "NULL AS records"
+            started_expr = "CAST(started_at AS VARCHAR) AS started_at" if "started_at" in cols else "NULL AS started_at"
+            finished_expr = "CAST(finished_at AS VARCHAR) AS finished_at" if "finished_at" in cols else "NULL AS finished_at"
+            error_expr = "error" if "error" in cols else "NULL AS error"
+            row = conn.execute(
+                f"""
+                SELECT status, {records_expr}, {started_expr},
+                       {finished_expr}, {error_expr}
+                  FROM step_status
+                 WHERE step_id = 'refresh_today_signals'
+                 LIMIT 1
+                """
+            ).fetchone()
+            if row:
+                step = {
+                    "status": row["status"],
+                    "records": row["records"],
+                    "started_at": row["started_at"],
+                    "finished_at": row["finished_at"],
+                    "error": row["error"],
+                }
+    status["step"] = step
+    return status
+
+
 def _empty_tdx_server_health_view() -> dict[str, Any]:
     return {
         "summary": {
@@ -1649,6 +1695,7 @@ def build_workbench_data_sources(conn: Any, *, limit: int = 30, as_of_date: str 
         "asset_health": _asset_health_snapshot(conn),
         "source_health": _source_health_overview(conn),
         "processing_monitor": _data_processing_monitor_view(conn, limit=limit),
+        "today_signal_cache": _today_signal_cache_view(conn),
         "tdx_server_health": _tdx_server_health_view(conn, limit=limit),
         "tdx_f10_capabilities": tdx_f10_capabilities,
         "blockers": blockers,

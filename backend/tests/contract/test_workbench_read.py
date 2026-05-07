@@ -936,6 +936,8 @@ def test_workbench_data_sources_returns_tdxhub_primary_watermarks_and_feature_li
         assert data_sources["tdx_server_health"]["summary"]["timeout_server_count"] == 1
         assert data_sources["tdx_server_health"]["top_servers"][0]["server_host"] == "218.6.170.47"
         assert data_sources["tdx_server_health"]["failing_servers"][0]["last_error_type"] == "TimeoutError"
+        assert data_sources["today_signal_cache"]["status"] == "miss"
+        assert data_sources["today_signal_cache"]["requires_refresh"] is True
         assert data_sources["blockers"][0]["kind"] == "source_failures"
         assert json.dumps(data_sources, ensure_ascii=False)
 
