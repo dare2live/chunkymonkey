@@ -92,6 +92,11 @@ def test_workbench_frontend_render_smoke_for_all_tabs():
           model_stability: [{ run_id: 'stable_1', model_family: 'lightgbm_ranker', best_status: 'pass', objective_score: 0.1, trials: 2 }],
           ranker_policy: { run_id: 'schedule_1', ranker_policy_deferred: 0, policy: { max_runtime_ratio_vs_regression: 2, large_trial_threshold: 8 } },
           ranker_profiles: [{ run_id: 'ranker_perf', duration_s: 11.6, duration_per_trial_s: 5.8, cache_hit_rate: 0.5, train_time_pct: 0.2, runtime_ratio_vs_regression: 1.4, ranker_cache: { hits: 3, misses: 3, cached_rows: 100, max_group_size: 12 }, timing: { train_s: 2.3 } }],
+          rank_matrix_cache: {
+            summary: { entry_count: 1, total_rows: 100, total_hits: 1, latest_used_at: '2026-05-07T06:39:29Z' },
+            latest_benchmarks: [{ run_id: 'rank_matrix_cache_hit', label_name: 'follow_net_return_60d', feature_count: 12, label_count: 1, total_rows: 100, rank_matrix_rows: 100, matrix_duration_s: 0.9, rank_matrix_build_s: 0.2, proxy_association_s: 0.4, gate_status: 'pass', max_abs_rank_ic_delta: 0.00008, rank_matrix_cache: { status: 'hit', table_name: 'mart_feature_rank_matrix_cache_abc' }, built_at: '2026-05-07T06:39:30Z' }],
+            cache_entries: [{ table_name: 'mart_feature_rank_matrix_cache_abc', panel_table: 'fact_feature_panel', row_count: 100, rank_column_count: 13, hit_count: 1, build_duration_s: 5.0, last_used_at: '2026-05-07T06:39:29Z' }],
+          },
           stability_context: { run_id: 'context_1', summaries: [], diagnostics: [] },
           stock_horizon_profile: {
             run_id: 'stock_horizon_1',
@@ -151,7 +156,7 @@ def test_workbench_frontend_render_smoke_for_all_tabs():
         render('_renderDataSources', dataSources, ['K线主源', 'tdxhub_quote', '数据源水位', 'TDX K线服务器健康']);
         render('_renderPipelines', pipelines, ['最近运行', 'cron_daily', '最慢运行']);
         render('_renderFeatures', features, ['Registry', 'Feature Search Space', '漂移缓解候选', 'mitigation_1', 'ret_20d']);
-        render('_renderResearch', research, ['研究队列', 'Ranker 性能', 'ranker_perf', '个股持股周期画像', 'Top 变量影响', 'ma_ratio_250', '时序协同研究', 'signal_a']);
+        render('_renderResearch', research, ['研究队列', 'Ranker 性能', 'Rank Matrix Cache', 'rank_matrix_cache_hit', 'ranker_perf', '个股持股周期画像', 'Top 变量影响', 'ma_ratio_250', '时序协同研究', 'signal_a']);
         render('_renderChampion', champion, ['Champion 阻塞上下文', 'deployed', 'champion_a']);
         render('_renderRecommendations', recommendations, ['Primary TopK', 'tdxhub_quote', '平安银行']);
         render('_renderStorage', storage, ['清理计划', '架构清理计划', 'cleanup_1']);

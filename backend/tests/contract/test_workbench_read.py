@@ -248,6 +248,50 @@ def test_workbench_research_returns_schedule_studies_ranker_and_drift():
                 ('lgbm_run', 'run_optuna_model_stability_search', '2026-05-05 04:00:00', 2.00,
                  '{"timing":{"train_s":0.4}}');
 
+            CREATE TABLE mart_feature_rank_matrix_cache_manifest (
+                cache_key TEXT,
+                table_name TEXT,
+                panel_table TEXT,
+                feature_set_id TEXT,
+                row_count BIGINT,
+                rank_column_count INTEGER,
+                build_duration_s DOUBLE,
+                created_at TEXT,
+                last_used_at TEXT,
+                hit_count INTEGER
+            );
+            INSERT INTO mart_feature_rank_matrix_cache_manifest VALUES
+                ('cache_a', 'mart_feature_rank_matrix_cache_cache_a', 'fact_feature_panel', NULL,
+                 4052975, 13, 4.99, '2026-05-07T06:39:13Z', '2026-05-07T06:39:29Z', 1);
+
+            CREATE TABLE mart_feature_rank_matrix_benchmark (
+                run_id TEXT,
+                panel_table TEXT,
+                label_name TEXT,
+                feature_count INTEGER,
+                label_count INTEGER,
+                total_rows BIGINT,
+                rank_matrix_rows BIGINT,
+                proxy_rows BIGINT,
+                matrix_duration_s DOUBLE,
+                rank_matrix_build_s DOUBLE,
+                proxy_association_s DOUBLE,
+                compared_pairs INTEGER,
+                max_abs_rank_ic_delta DOUBLE,
+                avg_abs_rank_ic_delta DOUBLE,
+                gate_status TEXT,
+                config_json TEXT,
+                stage_timings_json TEXT,
+                built_at TEXT
+            );
+            INSERT INTO mart_feature_rank_matrix_benchmark VALUES
+                ('rank_matrix_cache_hit', 'fact_feature_panel', 'follow_net_return_60d',
+                 12, 1, 4052975, 4052975, 12, 0.919, 0.200, 0.492,
+                 12, 0.00008393, 0.00000886, 'pass',
+                 '{"rank_matrix_cache":{"enabled":true,"status":"hit","cache_key":"cache_a","table_name":"mart_feature_rank_matrix_cache_cache_a","max_entries":4}}',
+                 '{"rank_matrix_build_s":0.2,"proxy_association_s":0.492}',
+                 '2026-05-07T06:39:30Z');
+
             CREATE TABLE mart_feature_drift_root_cause_summary (
                 run_id TEXT,
                 source_run_id TEXT,
@@ -574,6 +618,11 @@ def test_workbench_research_returns_schedule_studies_ranker_and_drift():
         assert research["ranker_profiles"][0]["feature_drift_cache_hit_rate"] == pytest.approx(3 / 6)
         assert research["ranker_profiles"][0]["train_time_pct"] == pytest.approx(0.22 / 1.49)
         assert research["ranker_profiles"][0]["runtime_ratio_vs_regression"] == pytest.approx(0.745 / 0.38)
+        assert research["rank_matrix_cache"]["summary"]["entry_count"] == 1
+        assert research["rank_matrix_cache"]["summary"]["total_hits"] == 1
+        assert research["rank_matrix_cache"]["cache_entries"][0]["table_name"] == "mart_feature_rank_matrix_cache_cache_a"
+        assert research["rank_matrix_cache"]["latest_benchmarks"][0]["rank_matrix_cache"]["status"] == "hit"
+        assert research["rank_matrix_cache"]["latest_benchmarks"][0]["rank_matrix_build_s"] == pytest.approx(0.2)
         assert research["stability_context"]["run_id"] == "context_latest"
         assert research["stability_context"]["summaries"][0]["main_blockers"] == [
             "market_phase_rank_inversion",

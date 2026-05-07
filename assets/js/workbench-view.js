@@ -256,6 +256,7 @@
     var studies = data.model_stability || [];
     var ranker = data.ranker_profiles || [];
     var rankerPolicy = data.ranker_policy || {};
+    var rankMatrixCache = data.rank_matrix_cache || {};
     var stabilityContext = data.stability_context || {};
     var stockHorizon = data.stock_horizon_profile || {};
     var temporalSynergy = data.temporal_synergy || {};
@@ -298,6 +299,10 @@
       '<section class="panel wb-panel">' +
       '<div class="panel-head"><div><h3>Ranker 性能</h3><div class="muted">cache / timing</div></div></div>' +
       renderRankerTable(ranker) +
+      '</section>' +
+      '<section class="panel wb-panel">' +
+      '<div class="panel-head"><div><h3>Rank Matrix Cache</h3><div class="muted">persisted rank windows</div></div></div>' +
+      renderRankMatrixCache(rankMatrixCache) +
       '</section>' +
       '<section class="panel wb-panel">' +
       '<div class="panel-head"><div><h3>漂移处理优先级</h3><div class="muted">run_id: <code>' + esc(((data.feature_drift || {}).run_id) || '-') + '</code></div></div></div>' +
@@ -1379,6 +1384,57 @@
           '</tr>';
       }).join('') +
       '</tbody></table></div>';
+  }
+
+  function renderRankMatrixCache(data) {
+    data = data || {};
+    var summary = data.summary || {};
+    var benches = data.latest_benchmarks || [];
+    var entries = data.cache_entries || [];
+    if (!benches.length && !entries.length) return renderEmpty('暂无 rank matrix cache');
+    var meta = '<div class="wb-kv">' +
+      '<div><span>entries</span><strong>' + fmtNum(summary.entry_count || entries.length || 0) + '</strong></div>' +
+      '<div><span>rows</span><strong>' + fmtNum(summary.total_rows || 0) + '</strong></div>' +
+      '<div><span>hits</span><strong>' + fmtNum(summary.total_hits || 0) + '</strong></div>' +
+      '<div><span>latest</span><strong>' + esc(summary.latest_used_at || '-') + '</strong></div>' +
+      '</div>';
+    var benchTable = '';
+    if (benches.length) {
+      benchTable = '<div class="wb-table-wrap" style="margin-top:12px"><table class="data-table data-table-compact wb-table">' +
+        '<thead><tr><th>run</th><th>cache</th><th>label</th><th>features</th><th>rows</th><th>duration</th><th>rank build</th><th>gate</th></tr></thead><tbody>' +
+        benches.map(function (row) {
+          var cache = row.rank_matrix_cache || {};
+          return '<tr>' +
+            '<td><code>' + esc(row.run_id || '-') + '</code><div class="muted">' + esc(row.built_at || '-') + '</div></td>' +
+            '<td>' + pill(cache.status || 'unknown', cache.status || 'info') + '<div class="muted"><code>' + esc(cache.table_name || '-') + '</code></div></td>' +
+            '<td>' + esc(row.label_name || '-') + '</td>' +
+            '<td>' + fmtNum(row.feature_count || 0) + ' x ' + fmtNum(row.label_count || 0) + '</td>' +
+            '<td>' + fmtNum(row.rank_matrix_rows || row.total_rows || 0) + '</td>' +
+            '<td>' + fmtDuration(row.matrix_duration_s) + '</td>' +
+            '<td>' + fmtDuration(row.rank_matrix_build_s) + '<div class="muted">proxy ' + fmtDuration(row.proxy_association_s) + '</div></td>' +
+            '<td>' + pill(row.gate_status || '-', row.gate_status || 'unknown') + '<div class="muted">delta ' + fmtFloat(row.max_abs_rank_ic_delta, 6) + '</div></td>' +
+            '</tr>';
+        }).join('') +
+        '</tbody></table></div>';
+    }
+    var entryTable = '';
+    if (entries.length) {
+      entryTable = '<div class="wb-table-wrap" style="margin-top:12px"><table class="data-table data-table-compact wb-table">' +
+        '<thead><tr><th>cache table</th><th>panel</th><th>rows</th><th>cols</th><th>hits</th><th>build</th><th>used</th></tr></thead><tbody>' +
+        entries.map(function (row) {
+          return '<tr>' +
+            '<td><code>' + esc(row.table_name || '-') + '</code></td>' +
+            '<td>' + esc(row.panel_table || '-') + '<div class="muted">' + esc(row.feature_set_id || '-') + '</div></td>' +
+            '<td>' + fmtNum(row.row_count || 0) + '</td>' +
+            '<td>' + fmtNum(row.rank_column_count || 0) + '</td>' +
+            '<td>' + fmtNum(row.hit_count || 0) + '</td>' +
+            '<td>' + fmtDuration(row.build_duration_s) + '</td>' +
+            '<td>' + esc(row.last_used_at || row.created_at || '-') + '</td>' +
+            '</tr>';
+        }).join('') +
+        '</tbody></table></div>';
+    }
+    return meta + benchTable + entryTable;
   }
 
   function renderStabilityContext(data) {

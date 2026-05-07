@@ -68,6 +68,8 @@ def test_workbench_frontend_entrypoint_is_registered():
     assert "runtime_ratio_vs_regression" in workbench_js
     assert "eval cache" in workbench_js
     assert "feature_drift_cache_hit_rate" in workbench_js
+    assert "Rank Matrix Cache" in workbench_js
+    assert "renderRankMatrixCache" in workbench_js
     assert "setTab: setTab" in workbench_js
     assert "global.WorkbenchView" in workbench_js
 
