@@ -687,6 +687,77 @@ def test_global_data_quality_blocks_invalid_shareholder_plan_source_quality() ->
         assert "provenance" in detail["reason"]
 
 
+def test_global_data_quality_blocks_initial_shareholder_plan_event_policy_breaks() -> None:
+    with duck_mem() as conn:
+        _seed_calendar(conn)
+        conn.executescript(
+            """
+            CREATE TABLE fact_feature_panel (
+                stock_code TEXT,
+                date TEXT,
+                amount_20d DOUBLE,
+                follow_net_return_60d DOUBLE
+            );
+            INSERT INTO fact_feature_panel VALUES ('000001', '2026-01-02', 10.0, 0.05);
+
+            CREATE TABLE mart_shareholder_plan_initial_event (
+                stock_code TEXT,
+                stock_name TEXT,
+                source_notice_date TEXT,
+                source_available_date TEXT,
+                source_date_quality TEXT,
+                source_row_grain TEXT,
+                first_announce_date TEXT,
+                announce_date TEXT,
+                latest_announce_date TEXT,
+                latest_state_available_date TEXT,
+                latest_progress TEXT,
+                raw_hash TEXT
+            );
+            INSERT INTO mart_shareholder_plan_initial_event VALUES
+                ('000001', '测试股票', '20260105', '20260106',
+                 'parsed_first_announce_date_initial_event',
+                 'latest_shareholder_plan_state', '20260105', NULL,
+                 '20260106', '20260106', '完成', 'hash_a');
+            """
+        )
+
+        result = record_global_data_quality_gate(
+            conn,
+            gate_run_id="global_dq_tdx_f10_initial_plan_unit",
+            feature_tables=["fact_feature_panel"],
+            include_market=False,
+            include_institution_events=False,
+            include_pipeline_performance=False,
+        )
+        rows = conn.execute(
+            """
+            SELECT check_name, status, severity, violation_count, reason
+              FROM mart_global_data_quality_detail
+             WHERE gate_run_id = 'global_dq_tdx_f10_initial_plan_unit'
+               AND domain = 'tdx_f10_source_availability'
+               AND table_name = 'mart_shareholder_plan_initial_event'
+             ORDER BY check_name
+            """
+        ).fetchall()
+        by_check = {row["check_name"]: row for row in rows}
+
+        assert result["gate_status"] == "blocked"
+        assert (
+            "tdx_f10_source_availability:source_available_differs_from_notice:"
+            "mart_shareholder_plan_initial_event:source_available_date"
+        ) in result["blockers"]
+        assert (
+            "tdx_f10_source_availability:invalid_source_row_grain:"
+            "mart_shareholder_plan_initial_event:source_row_grain"
+        ) in result["blockers"]
+        assert by_check["source_available_differs_from_notice"]["status"] == "fail"
+        assert by_check["source_available_differs_from_notice"]["severity"] == "blocker"
+        assert by_check["source_available_differs_from_notice"]["violation_count"] == 1
+        assert "initial source notice date" in by_check["source_available_differs_from_notice"]["reason"]
+        assert by_check["invalid_source_row_grain"]["violation_count"] == 1
+
+
 def test_candidate_contract_seed_ignores_deleted_feature_sets() -> None:
     with duck_mem() as conn:
         _seed_calendar(conn)

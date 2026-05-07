@@ -38,6 +38,21 @@ def test_infer_asset_contract_distinguishes_dense_kline_and_sparse_events():
     assert lhb["strategy_eligibility"] == "attention_filter_context"
 
 
+def test_infer_asset_contract_freezes_initial_shareholder_plan_event_purpose():
+    contract = infer_asset_contract(
+        "mart_shareholder_plan_initial_event",
+        layer="mart",
+        freshness="event",
+        upstream_source="derived from fact_shareholder_plan_tdx_f10",
+    )
+
+    assert contract["asset_grain"] == "stock_code+initial_notice_date+subject+direction+plan_window"
+    assert contract["pit_policy"] == "source_notice_date_equals_source_available_date"
+    assert contract["intended_use"] == "initial_shareholder_plan_capital_attention_candidate"
+    assert contract["model_eligibility"] == "research_candidate_after_validation"
+    assert contract["quality_gate_level"] == "blocking"
+
+
 def test_seed_dim_data_asset_reuses_backend_text_index_for_writer_and_readers():
     text_index = [
         (

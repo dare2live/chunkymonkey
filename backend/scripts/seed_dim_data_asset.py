@@ -68,6 +68,12 @@ from services.data_sources.clients_registry import (
     freshness_for_table as _registry_freshness,
 )
 
+EXTRA_WRITER_BY_TABLE = {
+    # Dynamic f-string writers are intentionally kept configurable in code, but
+    # static grep cannot infer the concrete target table from imported constants.
+    "mart_shareholder_plan_initial_event": "backend/scripts/build_shareholder_plan_initial_event.py",
+}
+
 EXTRA_UPSTREAM_BY_TABLE = {
     # 多个 client 链回写, 在 registry 内不太适合归到单一 client
     "raw_tdx_f10_holder_research": ("tdxhub.holders", 1),
@@ -89,6 +95,10 @@ EXTRA_UPSTREAM_BY_TABLE = {
     "mart_current_relationship":    ("derived (build_current_relationship)", None),
     "mart_stock_trend":             ("derived (build_trends step)", None),
     "mart_stock_screening":         ("derived (calc_screening manual step)", None),
+    "mart_shareholder_plan_initial_event": (
+        "derived from fact_shareholder_plan_tdx_f10",
+        None,
+    ),
 }
 
 EXTRA_FRESHNESS_BY_TABLE = {
@@ -137,6 +147,7 @@ EXTRA_FRESHNESS_BY_TABLE = {
     "mart_tdx_gpcw_auto_retention_decision": ("on-demand", 24 * 30),
     "mart_temporal_research_panel": ("on-demand", 24 * 30),
     "mart_tdx_f10_source_date_section_audit": ("on-demand", 24 * 30),
+    "mart_shareholder_plan_initial_event": ("event", 48),
     "mart_tdx_server_health": ("on-demand", 24 * 30),
     "mart_temporal_research_panel_quality": ("on-demand", 24 * 30),
     # gpcw files are quarter-end source manifests.
@@ -194,6 +205,18 @@ EXTRA_ASSET_CONTRACT_BY_TABLE = {
         "intended_use": "champion_model_monitoring_cache",
         "model_eligibility": "not_model_input",
         "strategy_eligibility": "promotion_and_retrain_gate",
+        "frontend_visibility": "governance_visible",
+        "quality_gate_level": "blocking",
+    },
+    "mart_shareholder_plan_initial_event": {
+        "asset_grain": "stock_code+initial_notice_date+subject+direction+plan_window",
+        "asset_cadence": "event_derived",
+        "coverage_policy": "only_stocks_with_shareholder_plan_announcements",
+        "null_policy": "sparse_event_rows_allowed_no_silent_missing_source_date",
+        "pit_policy": "source_notice_date_equals_source_available_date",
+        "intended_use": "initial_shareholder_plan_capital_attention_candidate",
+        "model_eligibility": "research_candidate_after_validation",
+        "strategy_eligibility": "capital_attention_auxiliary",
         "frontend_visibility": "governance_visible",
         "quality_gate_level": "blocking",
     },
@@ -698,7 +721,7 @@ def main() -> int:
             # 自身不在自审计内 (避免循环)
             continue
         layer = detect_layer(tbl)
-        writer = registry_writer(tbl) or writer_index.get(tbl)
+        writer = registry_writer(tbl) or EXTRA_WRITER_BY_TABLE.get(tbl) or writer_index.get(tbl)
         readers = list(reader_index.get(tbl) or [])
         # 排除自引用
         readers = [r for r in readers if r != writer]

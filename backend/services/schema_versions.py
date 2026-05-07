@@ -119,6 +119,7 @@ MART_VERSIONS = {
     "mart_champion_candidate_evaluation": "v1",
     "mart_tdx_f10_capability_matrix": "v1",
     "mart_tdx_f10_source_date_section_audit": "v3",
+    "mart_shareholder_plan_initial_event": "v1",
     "mart_feature_catalog_current": "v1",
     "mart_feature_pit_join_plan": "v1",
     "mart_feature_exclusion_reason": "v1",

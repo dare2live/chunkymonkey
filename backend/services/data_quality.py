@@ -2920,6 +2920,174 @@ def _check_tdx_f10_source_availability(
                 plan_evidence[check_name] = violation_count
         else:
             plan_evidence["missing_columns"] = sorted(required - columns)
+
+    initial_plan_table = "mart_shareholder_plan_initial_event"
+    if _table_exists(conn, initial_plan_table):
+        columns = set(_table_columns(conn, initial_plan_table))
+        row_count = _count_rows(conn, initial_plan_table)
+        initial_evidence: dict[str, Any] = {"exists": True, "rows": row_count}
+        evidence["tables"][initial_plan_table] = initial_evidence
+        required = {
+            "source_notice_date",
+            "source_available_date",
+            "source_date_quality",
+            "source_row_grain",
+        }
+        if required <= columns:
+            notice_norm = _compact_date_expr("source_notice_date")
+            available_norm = _compact_date_expr("source_available_date")
+            notice_iso = _iso_date_expr(notice_norm)
+            available_iso = _iso_date_expr(available_norm)
+            allowed_quality = (
+                "parsed_first_announce_date_initial_event",
+                "parsed_announce_date_initial_event",
+                "parsed_latest_announce_date_initial_event_fallback",
+                "current_source_notice_initial_event_fallback",
+            )
+            invalid_quality_values = ", ".join(f"'{value}'" for value in allowed_quality)
+            checks = [
+                (
+                    "invalid_source_date_quality",
+                    "source_date_quality",
+                    f"""
+                    source_date_quality IS NULL
+                    OR source_date_quality NOT IN ({invalid_quality_values})
+                    """,
+                    "initial shareholder-plan event rows must expose exact source-date provenance",
+                ),
+                (
+                    "invalid_source_row_grain",
+                    "source_row_grain",
+                    """
+                    source_row_grain IS NULL
+                    OR source_row_grain != 'initial_shareholder_plan_notice'
+                    """,
+                    "initial shareholder-plan mart must stay at initial notice event grain",
+                ),
+                (
+                    "missing_source_notice_date",
+                    "source_notice_date",
+                    """
+                    source_notice_date IS NULL
+                    OR CAST(source_notice_date AS VARCHAR) = ''
+                    """,
+                    "initial shareholder-plan event rows cannot enter the mart without source notice date",
+                ),
+                (
+                    "missing_source_available_date",
+                    "source_available_date",
+                    """
+                    source_available_date IS NULL
+                    OR CAST(source_available_date AS VARCHAR) = ''
+                    """,
+                    "initial shareholder-plan event rows cannot enter the mart without availability date",
+                ),
+                (
+                    "malformed_source_notice_date",
+                    "source_notice_date",
+                    f"""
+                    source_notice_date IS NOT NULL
+                    AND CAST(source_notice_date AS VARCHAR) != ''
+                    AND length({notice_norm}) != 8
+                    """,
+                    "initial shareholder-plan source notice date must be parseable as YYYYMMDD",
+                ),
+                (
+                    "malformed_source_available_date",
+                    "source_available_date",
+                    f"""
+                    source_available_date IS NOT NULL
+                    AND CAST(source_available_date AS VARCHAR) != ''
+                    AND length({available_norm}) != 8
+                    """,
+                    "initial shareholder-plan source availability date must be parseable as YYYYMMDD",
+                ),
+                (
+                    "source_available_differs_from_notice",
+                    "source_available_date",
+                    f"""
+                    length({notice_norm}) = 8
+                    AND length({available_norm}) = 8
+                    AND {available_norm} != {notice_norm}
+                    """,
+                    "initial event availability is the initial source notice date by policy",
+                ),
+                (
+                    "future_source_notice_date",
+                    "source_notice_date",
+                    f"""
+                    length({notice_norm}) = 8
+                    AND TRY_CAST({notice_iso} AS DATE) > CURRENT_DATE
+                    """,
+                    "initial shareholder-plan source notice date cannot be in the future",
+                ),
+                (
+                    "future_source_available_date",
+                    "source_available_date",
+                    f"""
+                    length({available_norm}) = 8
+                    AND TRY_CAST({available_iso} AS DATE) > CURRENT_DATE
+                    """,
+                    "initial shareholder-plan source availability date cannot be in the future",
+                ),
+            ]
+            if "latest_state_available_date" in columns:
+                latest_norm = _compact_date_expr("latest_state_available_date")
+                checks.append(
+                    (
+                        "latest_state_available_before_initial_source",
+                        "latest_state_available_date",
+                        f"""
+                        length({latest_norm}) = 8
+                        AND length({available_norm}) = 8
+                        AND {latest_norm} < {available_norm}
+                        """,
+                        "latest-state metadata cannot be available before the initial source event",
+                    )
+                )
+            example_columns = [
+                column
+                for column in (
+                    "stock_code",
+                    "stock_name",
+                    "source_notice_date",
+                    "source_available_date",
+                    "source_date_quality",
+                    "source_row_grain",
+                    "first_announce_date",
+                    "announce_date",
+                    "latest_announce_date",
+                    "latest_state_available_date",
+                    "latest_progress",
+                    "raw_hash",
+                )
+                if column in columns
+            ]
+            for check_name, column_name, where_sql, reason in checks:
+                violation_count = _count_rows(conn, initial_plan_table, where_sql=where_sql)
+                item = _detail(
+                    domain="tdx_f10_source_availability",
+                    table_name=initial_plan_table,
+                    column_name=column_name,
+                    check_name=check_name,
+                    status="pass" if violation_count == 0 else "fail",
+                    row_count=row_count,
+                    violation_count=violation_count,
+                    reason=None if violation_count == 0 else reason,
+                    examples=_sample_examples(
+                        conn,
+                        initial_plan_table,
+                        where_sql=where_sql,
+                        columns=example_columns,
+                        limit=example_limit,
+                    )
+                    if violation_count
+                    else [],
+                )
+                _append_outcome(item, details=details, blockers=blockers, warnings=warnings)
+                initial_evidence[check_name] = violation_count
+        else:
+            initial_evidence["missing_columns"] = sorted(required - columns)
     return evidence
 
 
