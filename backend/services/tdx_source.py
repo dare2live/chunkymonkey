@@ -22,6 +22,8 @@ _QUOTES_IDLE_TTL_SECONDS = 300
 _MOOTDX_CIRCUIT_BREAKER_SECONDS = 300
 _TDX_SERVER_FAILURE_COOLDOWN_SECONDS = 120
 _TDX_SERVER_TIMEOUT_COOLDOWN_SECONDS = 300
+_TDX_SERVER_HEALTH_DECAY_HALF_LIFE_HOURS = 24.0
+_TDX_SERVER_HEALTH_MEMORY_ATTEMPTS = 64
 _NON_RETRYABLE_OPERATION_ERROR_TYPES = {"NotImplementedError"}
 
 DEFAULT_TDX_SERVERS: tuple[tuple[str, int], ...] = (
@@ -330,6 +332,104 @@ def _utc_now_text() -> str:
     return datetime.now(timezone.utc).isoformat(timespec="seconds")
 
 
+def _tdx_server_health_decay_half_life_hours() -> float:
+    raw = os.environ.get("CM_TDX_SERVER_HEALTH_DECAY_HALF_LIFE_HOURS")
+    if raw is None or str(raw).strip() == "":
+        return _TDX_SERVER_HEALTH_DECAY_HALF_LIFE_HOURS
+    try:
+        value = float(str(raw).strip())
+    except ValueError:
+        logger.warning("[tdxhub] invalid CM_TDX_SERVER_HEALTH_DECAY_HALF_LIFE_HOURS=%r", raw)
+        return _TDX_SERVER_HEALTH_DECAY_HALF_LIFE_HOURS
+    return max(value, 0.0)
+
+
+def _tdx_server_health_memory_attempts() -> int:
+    raw = os.environ.get("CM_TDX_SERVER_HEALTH_MEMORY_ATTEMPTS")
+    if raw is None or str(raw).strip() == "":
+        return _TDX_SERVER_HEALTH_MEMORY_ATTEMPTS
+    try:
+        value = int(str(raw).strip())
+    except ValueError:
+        logger.warning("[tdxhub] invalid CM_TDX_SERVER_HEALTH_MEMORY_ATTEMPTS=%r", raw)
+        return _TDX_SERVER_HEALTH_MEMORY_ATTEMPTS
+    return max(value, 0)
+
+
+def _parse_utc_datetime(value: Any) -> datetime | None:
+    if value is None:
+        return None
+    if isinstance(value, datetime):
+        dt = value
+    else:
+        try:
+            dt = datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+        except ValueError:
+            return None
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    return dt.astimezone(timezone.utc)
+
+
+def _age_decay_factor(updated_at: Any, *, now: datetime) -> float:
+    half_life_hours = _tdx_server_health_decay_half_life_hours()
+    if half_life_hours <= 0:
+        return 1.0
+    dt = _parse_utc_datetime(updated_at)
+    if dt is None:
+        return 1.0
+    age_hours = max((now - dt).total_seconds() / 3600.0, 0.0)
+    if age_hours <= 0:
+        return 1.0
+    return 0.5 ** (age_hours / half_life_hours)
+
+
+def _scaled_count(value: int, scale: float) -> int:
+    if value <= 0 or scale <= 0:
+        return 0
+    return max(0, int(round(float(value) * scale)))
+
+
+def _cap_server_health_counts(row: dict[str, Any]) -> tuple[dict[str, Any], bool]:
+    cap = _tdx_server_health_memory_attempts()
+    if cap <= 0:
+        return dict(row), False
+    success_count = int(row.get("success_count") or 0)
+    failure_count = int(row.get("failure_count") or 0)
+    timeout_count = int(row.get("timeout_count") or 0)
+    total = success_count + failure_count
+    if total <= cap:
+        capped = dict(row)
+        capped["timeout_count"] = min(timeout_count, failure_count)
+        return capped, False
+    scale = float(cap) / float(total)
+    capped = dict(row)
+    capped["success_count"] = _scaled_count(success_count, scale)
+    capped["failure_count"] = _scaled_count(failure_count, scale)
+    capped["timeout_count"] = min(_scaled_count(timeout_count, scale), capped["failure_count"])
+    return capped, True
+
+
+def _effective_server_health(row: dict[str, Any], *, now: datetime) -> tuple[dict[str, Any], bool, bool]:
+    decay_factor = _age_decay_factor(row.get("updated_at"), now=now)
+    decayed = dict(row)
+    decay_applied = decay_factor < 0.999999
+    if decay_applied:
+        decayed["success_count"] = _scaled_count(int(row.get("success_count") or 0), decay_factor)
+        decayed["failure_count"] = _scaled_count(int(row.get("failure_count") or 0), decay_factor)
+        decayed["timeout_count"] = _scaled_count(int(row.get("timeout_count") or 0), decay_factor)
+    decayed, capped = _cap_server_health_counts(decayed)
+    decayed["timeout_count"] = min(int(decayed.get("timeout_count") or 0), int(decayed.get("failure_count") or 0))
+    decayed["health_score"] = _compute_health_score(
+        success_count=int(decayed.get("success_count") or 0),
+        failure_count=int(decayed.get("failure_count") or 0),
+        timeout_count=int(decayed.get("timeout_count") or 0),
+        avg_success_elapsed_s=decayed.get("avg_success_elapsed_s"),
+        last_success_at=decayed.get("last_success_at"),
+    )
+    return decayed, decay_applied, capped
+
+
 def _server_from_attempt(value: Any) -> tuple[str, int] | None:
     if isinstance(value, (tuple, list)) and len(value) == 2:
         try:
@@ -352,7 +452,7 @@ def _compute_health_score(
     score = float(success_count * 10 - failure_count * 3 - timeout_count * 4)
     if avg_success_elapsed_s is not None:
         score -= min(float(avg_success_elapsed_s), 10.0)
-    if last_success_at:
+    if success_count > 0 and last_success_at:
         score += 5.0
     return round(score, 6)
 
@@ -362,7 +462,7 @@ def _existing_server_health(conn: Any, server: tuple[str, int], capability: str)
         """
         SELECT success_count, failure_count, timeout_count,
                last_success_at, last_failure_at, last_error_type,
-               avg_success_elapsed_s, last_attempt_elapsed_s, source_run_id
+               avg_success_elapsed_s, last_attempt_elapsed_s, source_run_id, updated_at
         FROM mart_tdx_server_health
         WHERE server_host = ? AND server_port = ? AND capability = ?
         """,
@@ -380,6 +480,7 @@ def _existing_server_health(conn: Any, server: tuple[str, int], capability: str)
         "avg_success_elapsed_s": row[6],
         "last_attempt_elapsed_s": row[7],
         "source_run_id": row[8],
+        "updated_at": row[9],
     }
 
 
@@ -462,10 +563,16 @@ def record_tdx_server_attempts(
             if "timeout" in error_type.lower():
                 state["timeout_count"] += 1
 
-    now_text = _utc_now_text()
+    now_dt = datetime.now(timezone.utc)
+    now_text = now_dt.isoformat(timespec="seconds")
     updated = 0
+    decayed_server_count = 0
+    capped_server_count = 0
     for server, delta in by_server.items():
-        existing = _existing_server_health(conn, server, capability)
+        existing_raw = _existing_server_health(conn, server, capability)
+        existing, decayed, capped = _effective_server_health(existing_raw, now=now_dt) if existing_raw else ({}, False, False)
+        decayed_server_count += 1 if decayed else 0
+        capped_server_count += 1 if capped else 0
         prev_success = int(existing.get("success_count") or 0)
         delta_success = int(delta.get("success_count") or 0)
         success_count = prev_success + delta_success
@@ -481,6 +588,17 @@ def record_tdx_server_attempts(
         last_success_at = now_text if delta_success else existing.get("last_success_at")
         last_failure_at = now_text if int(delta.get("failure_count") or 0) else existing.get("last_failure_at")
         last_error_type = delta.get("last_error_type") or existing.get("last_error_type")
+        merged, capped_after_merge = _cap_server_health_counts(
+            {
+                "success_count": success_count,
+                "failure_count": failure_count,
+                "timeout_count": timeout_count,
+            }
+        )
+        success_count = int(merged.get("success_count") or 0)
+        failure_count = int(merged.get("failure_count") or 0)
+        timeout_count = int(merged.get("timeout_count") or 0)
+        capped_server_count += 1 if capped_after_merge else 0
         health_score = _compute_health_score(
             success_count=success_count,
             failure_count=failure_count,
@@ -511,6 +629,8 @@ def record_tdx_server_attempts(
         "capability": capability,
         "attempt_count": len(attempts),
         "updated_server_count": updated,
+        "decayed_server_count": decayed_server_count,
+        "capped_server_count": capped_server_count,
         "skipped_non_retryable_count": skipped_non_retryable,
     }
 
@@ -553,23 +673,61 @@ def load_tdx_server_health(
     )
     rows = conn.execute(
         """
-        SELECT server_host, server_port
+        SELECT server_host, server_port, success_count, failure_count, timeout_count,
+               last_success_at, last_failure_at, last_error_type,
+               avg_success_elapsed_s, last_attempt_elapsed_s, source_run_id, updated_at
         FROM mart_tdx_server_health
         WHERE capability = ?
           AND success_count > 0
           AND updated_at >= ?
-        ORDER BY health_score DESC, last_success_at DESC, avg_success_elapsed_s ASC
-        LIMIT ?
         """,
-        [capability, min_updated_at, max(1, int(limit))],
+        [capability, min_updated_at],
     ).fetchall()
-    ordered = tuple((str(row[0]), int(row[1])) for row in rows)
+    now_dt = datetime.now(timezone.utc)
+    candidates: list[dict[str, Any]] = []
+    decayed_server_count = 0
+    capped_server_count = 0
+    for row in rows:
+        raw = {
+            "server_host": str(row[0]),
+            "server_port": int(row[1]),
+            "success_count": int(row[2] or 0),
+            "failure_count": int(row[3] or 0),
+            "timeout_count": int(row[4] or 0),
+            "last_success_at": row[5],
+            "last_failure_at": row[6],
+            "last_error_type": row[7],
+            "avg_success_elapsed_s": row[8],
+            "last_attempt_elapsed_s": row[9],
+            "source_run_id": row[10],
+            "updated_at": row[11],
+        }
+        effective, decayed, capped = _effective_server_health(raw, now=now_dt)
+        decayed_server_count += 1 if decayed else 0
+        capped_server_count += 1 if capped else 0
+        if int(effective.get("success_count") or 0) <= 0:
+            continue
+        candidates.append(effective)
+    candidates.sort(
+        key=lambda row: (
+            float(row.get("health_score") or 0.0),
+            str(row.get("last_success_at") or ""),
+            -float(row.get("avg_success_elapsed_s") or 0.0),
+        ),
+        reverse=True,
+    )
+    candidates = candidates[: max(1, int(limit))]
+    ordered = tuple((str(row["server_host"]), int(row["server_port"])) for row in candidates)
     with _server_priority_guard:
         _server_priority = ordered
     return {
         "capability": capability,
         "loaded_server_count": len(ordered),
         "servers": [f"{host}:{port}" for host, port in ordered],
+        "decayed_server_count": decayed_server_count,
+        "capped_server_count": capped_server_count,
+        "decay_half_life_hours": _tdx_server_health_decay_half_life_hours(),
+        "memory_attempt_cap": _tdx_server_health_memory_attempts(),
     }
 
 

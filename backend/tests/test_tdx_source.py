@@ -1,6 +1,7 @@
 import sys
 import asyncio
 import json
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from unittest import mock
 
@@ -111,6 +112,64 @@ def test_tdx_server_health_skips_non_retryable_operation_errors():
     assert [(row["server_host"], row["success_count"], row["failure_count"]) for row in rows] == [
         ("2.2.2.2", 1, 0)
     ]
+
+
+def test_tdx_server_health_load_decays_stale_high_score(monkeypatch):
+    conn = duck_mem()
+    now = datetime.now(timezone.utc)
+    old = (now - timedelta(hours=48)).isoformat(timespec="seconds")
+    fresh = now.isoformat(timespec="seconds")
+    monkeypatch.setenv("CM_TDX_SERVER_HEALTH_DECAY_HALF_LIFE_HOURS", "1")
+    monkeypatch.setattr(
+        tdx_source,
+        "_load_hq_hosts",
+        lambda: (("1.1.1.1", 7709), ("2.2.2.2", 7709)),
+    )
+
+    tdx_source.ensure_tdx_server_health_table(conn)
+    conn.executescript(
+        f"""
+        INSERT INTO mart_tdx_server_health VALUES
+            ('1.1.1.1', 7709, 'kline_daily_raw', 100, 0, 0, '{old}', NULL, NULL, 0.10, 0.10, 1004.90, 'old_good', '{old}'),
+            ('2.2.2.2', 7709, 'kline_daily_raw', 2, 0, 0, '{fresh}', NULL, NULL, 0.20, 0.20, 24.80, 'fresh_good', '{fresh}');
+        """
+    )
+
+    tdx_source.reset_tdx_quotes_pool()
+    try:
+        loaded = tdx_source.load_tdx_server_health(conn, capability="kline_daily_raw", max_age_hours=72)
+        servers = tdx_source.iter_tdx_servers()
+    finally:
+        tdx_source.reset_tdx_quotes_pool()
+
+    assert loaded["servers"] == ["2.2.2.2:7709"]
+    assert loaded["decayed_server_count"] >= 1
+    assert servers[0] == ("2.2.2.2", 7709)
+
+
+def test_tdx_server_health_caps_attempt_memory(monkeypatch):
+    conn = duck_mem()
+    monkeypatch.setenv("CM_TDX_SERVER_HEALTH_MEMORY_ATTEMPTS", "10")
+
+    record = tdx_source.record_tdx_server_attempts(
+        conn,
+        [{"server": ("1.1.1.1", 7709), "ok": True, "elapsed_sec": 0.01} for _ in range(50)],
+        capability="kline_daily_raw",
+        run_id="unit",
+    )
+    row = conn.execute(
+        """
+        SELECT success_count, failure_count, timeout_count, health_score
+          FROM mart_tdx_server_health
+         WHERE server_host = '1.1.1.1'
+        """
+    ).fetchone()
+
+    assert record["capped_server_count"] == 1
+    assert row["success_count"] == 10
+    assert row["failure_count"] == 0
+    assert row["timeout_count"] == 0
+    assert row["health_score"] < 110
 
 
 def test_call_tdx_quotes_with_retry_reuses_pooled_client(monkeypatch):
