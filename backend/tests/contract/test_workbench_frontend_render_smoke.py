@@ -132,6 +132,13 @@ def test_workbench_frontend_render_smoke_for_all_tabs():
             feature_effects_by_horizon: [{ label_name: 'follow_net_return_90d', horizon_days: 90, feature_name: 'ma_ratio_250', dominant_direction: 'negative', stock_count: 2, avg_abs_corr: 0.4, avg_corr: -0.4, positive_share: 0.1, avg_obs_count: 80 }],
             best_stocks: [{ stock_code: '000001', label_name: 'follow_net_return_90d', horizon_days: 90, horizon_score: 0.16, avg_return: 0.03, compounded_return: 0.18, max_drawdown: -0.12, win_rate: 0.6, volatility: 0.21, path_obs_count: 6, is_baseline: false }],
           },
+          shareholder_plan_family_eval: {
+            run_id: 'plan_family_1',
+            summary: { panel_rows: 1000, row_count: 65, source_family_count: 2, feature_count: 7, label_count: 5, built_at: '2026-05-07T10:47:57' },
+            family_summary: [{ source_family: 'initial_event', label_name: 'follow_net_return_90d', feature_count: 6, panel_rows: 1000, avg_nondefault_pct: 2.3, max_abs_rank_ic: 0.012, max_abs_spread: 0.095, positive_spread_share: 1 }],
+            paired_advantages: [{ feature_name: 'shareholder_plan_decrease_count_180d', label_name: 'follow_net_return_90d', latest_rank_ic: 0.006, initial_rank_ic: 0.012, latest_spread: 0.06, initial_spread: 0.09, abs_spread_advantage: 0.03, latest_nondefault_pct: 8, initial_nondefault_pct: 10 }],
+            top_effects: [{ source_family: 'initial_event', source_table: 'mart_shareholder_plan_initial_event', feature_name: 'shareholder_plan_decrease_count_180d', feature_purpose: 'initial_notice_capital_attention_candidate', label_name: 'follow_net_return_90d', window_days: 180, valid_rows: 980, nondefault_pct: 10, event_rows: 8163, distinct_event_stocks: 2500, ic: 0.04, rank_ic: 0.012, daily_rank_ic_count: 120, positive_rank_ic_share: 0.62, label_mean_when_active: 0.15, label_mean_when_inactive: 0.06, active_inactive_label_spread: 0.09, built_at: '2026-05-07T10:47:57' }],
+          },
           temporal_synergy: {
             run_id: 'temporal_1',
             quality: { run_id: 'temporal_1', panel_rows: 100, stock_count: 20, feature_count: 3, label_count: 2, dropped_future_source_rows: 1, min_signal_date: '2026-01-01', max_signal_date: '2026-01-20', source_date_filter_applied: true, source_available_date_column: 'source_available_date' },
@@ -175,7 +182,7 @@ def test_workbench_frontend_render_smoke_for_all_tabs():
         render('_renderDataSources', dataSources, ['K线主源', 'tdxhub_quote', '信号快照', '今日信号快照', '数据源水位', 'TDX K线服务器健康', 'TDX F10 Source-Date Audit', 'plan_window_used_as_source_date']);
         render('_renderPipelines', pipelines, ['最近运行', 'cron_daily', '最慢运行']);
         render('_renderFeatures', features, ['Registry', 'Feature Search Space', '漂移缓解候选', 'mitigation_1', 'ret_20d']);
-        render('_renderResearch', research, ['研究队列', 'Ranker 性能', 'Rank Matrix Cache', 'rank_matrix_cache_hit', 'ranker_perf', '个股持股周期画像', 'Top 变量影响', 'ma_ratio_250', '时序协同研究', 'signal_a']);
+        render('_renderResearch', research, ['研究队列', 'Ranker 性能', 'Rank Matrix Cache', 'rank_matrix_cache_hit', 'ranker_perf', '个股持股周期画像', 'Top 变量影响', 'ma_ratio_250', '股东计划特征家族', 'plan_family_1', 'initial_event', 'shareholder_plan_decrease_count_180d', '时序协同研究', 'signal_a']);
         render('_renderChampion', champion, ['Champion 阻塞上下文', 'deployed', 'champion_a']);
         render('_renderRecommendations', recommendations, ['Primary TopK', 'tdxhub_quote', '平安银行']);
         render('_renderStorage', storage, ['清理计划', '架构清理计划', 'cleanup_1']);

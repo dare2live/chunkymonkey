@@ -259,6 +259,7 @@
     var rankMatrixCache = data.rank_matrix_cache || {};
     var stabilityContext = data.stability_context || {};
     var stockHorizon = data.stock_horizon_profile || {};
+    var shareholderPlan = data.shareholder_plan_family_eval || {};
     var temporalSynergy = data.temporal_synergy || {};
 
     setBody(
@@ -281,6 +282,11 @@
       '<section class="panel wb-panel">' +
       '<div class="panel-head"><div><h3>个股持股周期画像</h3><div class="muted">run_id: <code>' + esc(stockHorizon.run_id || '-') + '</code> / baseline: <code>' + esc(stockHorizon.baseline_label || 'follow_net_return_60d') + '</code></div></div></div>' +
       renderStockHorizonProfile(stockHorizon) +
+      '</section>' +
+
+      '<section class="panel wb-panel">' +
+      '<div class="panel-head"><div><h3>股东计划特征家族</h3><div class="muted">run_id: <code>' + esc(shareholderPlan.run_id || '-') + '</code></div></div></div>' +
+      renderShareholderPlanFamilyEval(shareholderPlan) +
       '</section>' +
 
       '<section class="panel wb-panel">' +
@@ -310,6 +316,81 @@
       '</section>' +
       '</div>'
     );
+  }
+
+  function renderShareholderPlanFamilyEval(data) {
+    data = data || {};
+    var summary = data.summary || {};
+    var families = data.family_summary || [];
+    var top = data.top_effects || [];
+    var paired = data.paired_advantages || [];
+    if (!data.run_id && !families.length && !top.length && !paired.length) return renderEmpty('暂无股东计划特征家族评估');
+    return '<div class="wb-kv">' +
+      '<div><span>面板行数</span><strong>' + fmtNum(summary.panel_rows || 0) + '</strong></div>' +
+      '<div><span>输出行数</span><strong>' + fmtNum(summary.row_count || 0) + '</strong></div>' +
+      '<div><span>家族/特征</span><strong>' + fmtNum(summary.source_family_count || 0) + ' / ' + fmtNum(summary.feature_count || 0) + '</strong></div>' +
+      '<div><span>标签</span><strong>' + fmtNum(summary.label_count || 0) + '</strong></div>' +
+      '<div><span>built</span><strong>' + esc(summary.built_at || '-').slice(0, 19) + '</strong></div>' +
+      '</div>' +
+      '<div class="wb-grid" style="margin-top:12px">' +
+      '<div>' + renderShareholderPlanFamilySummary(families) + '</div>' +
+      '<div>' + renderShareholderPlanPairedTable(paired) + '</div>' +
+      '</div>' +
+      '<div style="margin-top:12px">' + renderShareholderPlanTopTable(top) + '</div>';
+  }
+
+  function renderShareholderPlanFamilySummary(rows) {
+    if (!rows.length) return renderEmpty('暂无家族汇总');
+    return '<div class="wb-table-wrap"><table class="data-table data-table-compact wb-table">' +
+      '<thead><tr><th>家族</th><th>标签</th><th>特征</th><th>激活</th><th>|RankIC|max</th><th>|Spread|max</th><th>正向</th></tr></thead><tbody>' +
+      rows.map(function (row) {
+        return '<tr>' +
+          '<td><code>' + esc(row.source_family || '-') + '</code></td>' +
+          '<td>' + esc(row.label_name || '-') + '</td>' +
+          '<td>' + fmtNum(row.feature_count || 0) + '</td>' +
+          '<td>' + fmtPct((row.avg_nondefault_pct || 0) / 100) + '</td>' +
+          '<td>' + fmtFloat(row.max_abs_rank_ic, 4) + '</td>' +
+          '<td>' + fmtPct(row.max_abs_spread) + '</td>' +
+          '<td>' + fmtPct(row.positive_spread_share) + '</td>' +
+          '</tr>';
+      }).join('') +
+      '</tbody></table></div>';
+  }
+
+  function renderShareholderPlanPairedTable(rows) {
+    if (!rows.length) return renderEmpty('暂无家族对比');
+    return '<div class="wb-table-wrap"><table class="data-table data-table-compact wb-table">' +
+      '<thead><tr><th>特征</th><th>标签</th><th>Initial Spread</th><th>Latest Spread</th><th>优势</th><th>激活率</th></tr></thead><tbody>' +
+      rows.map(function (row) {
+        return '<tr>' +
+          '<td><code>' + esc(row.feature_name || '-') + '</code></td>' +
+          '<td>' + esc(row.label_name || '-') + '</td>' +
+          '<td>' + fmtPct(row.initial_spread) + '<div class="muted">IC ' + fmtFloat(row.initial_rank_ic, 4) + '</div></td>' +
+          '<td>' + fmtPct(row.latest_spread) + '<div class="muted">IC ' + fmtFloat(row.latest_rank_ic, 4) + '</div></td>' +
+          '<td>' + fmtPct(row.abs_spread_advantage) + '</td>' +
+          '<td>I ' + fmtPct((row.initial_nondefault_pct || 0) / 100) + '<div class="muted">L ' + fmtPct((row.latest_nondefault_pct || 0) / 100) + '</div></td>' +
+          '</tr>';
+      }).join('') +
+      '</tbody></table></div>';
+  }
+
+  function renderShareholderPlanTopTable(rows) {
+    if (!rows.length) return renderEmpty('暂无股东计划效果');
+    return '<div class="wb-table-wrap"><table class="data-table data-table-compact wb-table">' +
+      '<thead><tr><th>家族</th><th>特征</th><th>标签</th><th>Spread</th><th>RankIC</th><th>IC</th><th>激活</th><th>事件</th></tr></thead><tbody>' +
+      rows.map(function (row) {
+        return '<tr>' +
+          '<td><code>' + esc(row.source_family || '-') + '</code><div class="muted">' + esc(row.feature_purpose || '-') + '</div></td>' +
+          '<td><code>' + esc(row.feature_name || '-') + '</code></td>' +
+          '<td>' + esc(row.label_name || '-') + '</td>' +
+          '<td>' + fmtPct(row.active_inactive_label_spread) + '<div class="muted">active ' + fmtPct(row.label_mean_when_active) + '</div></td>' +
+          '<td>' + fmtFloat(row.rank_ic, 4) + '<div class="muted">days ' + fmtNum(row.daily_rank_ic_count || 0) + '</div></td>' +
+          '<td>' + fmtFloat(row.ic, 4) + '</td>' +
+          '<td>' + fmtPct((row.nondefault_pct || 0) / 100) + '</td>' +
+          '<td>' + fmtNum(row.event_rows || 0) + '<div class="muted">stocks ' + fmtNum(row.distinct_event_stocks || 0) + '</div></td>' +
+          '</tr>';
+      }).join('') +
+      '</tbody></table></div>';
   }
 
   function renderDataSources(data) {

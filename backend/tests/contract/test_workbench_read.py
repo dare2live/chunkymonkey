@@ -598,6 +598,49 @@ def test_workbench_research_returns_schedule_studies_ranker_and_drift():
                  'signal_b', 0.011, 0.017, 0.006, 0.24, 22, 0.19, TRUE,
                  'conditional_response_exceeds_unconditional',
                  '2026-05-06T08:40:00');
+
+            CREATE TABLE mart_shareholder_plan_feature_family_eval (
+                run_id TEXT,
+                panel_table TEXT,
+                source_family TEXT,
+                source_table TEXT,
+                feature_name TEXT,
+                feature_purpose TEXT,
+                label_name TEXT,
+                window_days INTEGER,
+                total_rows BIGINT,
+                valid_rows BIGINT,
+                coverage_pct DOUBLE,
+                nondefault_rows BIGINT,
+                nondefault_pct DOUBLE,
+                event_rows BIGINT,
+                distinct_event_stocks BIGINT,
+                ic DOUBLE,
+                rank_ic DOUBLE,
+                rank_ic_std_by_date DOUBLE,
+                daily_rank_ic_count INTEGER,
+                positive_rank_ic_share DOUBLE,
+                feature_mean DOUBLE,
+                label_mean_when_active DOUBLE,
+                label_mean_when_inactive DOUBLE,
+                active_inactive_label_spread DOUBLE,
+                built_at TEXT
+            );
+            INSERT INTO mart_shareholder_plan_feature_family_eval VALUES
+                ('plan_family_latest', 'fact_feature_panel', 'initial_event',
+                 'mart_shareholder_plan_initial_event',
+                 'shareholder_plan_decrease_count_180d',
+                 'initial_notice_capital_attention_candidate',
+                 'follow_net_return_90d', 180, 1000, 980, 98.0, 120, 12.0,
+                 8163, 2500, 0.04, 0.012, 0.03, 120, 0.62, 0.1,
+                 0.15, 0.06, 0.09, '2026-05-06T09:00:00'),
+                ('plan_family_latest', 'fact_feature_panel', 'latest_state',
+                 'fact_shareholder_plan_tdx_f10',
+                 'shareholder_plan_decrease_count_180d',
+                 'current_latest_state_context',
+                 'follow_net_return_90d', 180, 1000, 980, 98.0, 80, 8.0,
+                 12062, 2500, 0.02, 0.006, 0.02, 80, 0.55, 0.08,
+                 0.10, 0.04, 0.06, '2026-05-06T09:00:00');
             """
         )
 
@@ -660,6 +703,13 @@ def test_workbench_research_returns_schedule_studies_ranker_and_drift():
         assert research["temporal_synergy"]["redundancy_clusters"][0]["cluster_size"] == 2
         assert research["temporal_synergy"]["conditional_synergies"][0]["condition_feature"] == "signal_a"
         assert research["temporal_synergy"]["conditional_synergies"][0]["incremental_uplift"] == pytest.approx(0.011)
+        assert research["shareholder_plan_family_eval"]["run_id"] == "plan_family_latest"
+        assert research["shareholder_plan_family_eval"]["summary"]["row_count"] == 2
+        assert research["shareholder_plan_family_eval"]["family_summary"][0]["source_family"] == "initial_event"
+        assert research["shareholder_plan_family_eval"]["top_effects"][0]["feature_name"] == (
+            "shareholder_plan_decrease_count_180d"
+        )
+        assert research["shareholder_plan_family_eval"]["paired_advantages"][0]["abs_spread_advantage"] == pytest.approx(0.03)
         assert research["feature_drift"]["top"][0]["feature_name"] == "ret_60d"
         assert json.dumps(research, ensure_ascii=False)
 
