@@ -5568,6 +5568,25 @@ tr.detail-row>td>.detail-panel {
 .sig-badge-follow { background: var(--cm-ok-100); color: var(--cm-ok-500); }
 .sig-badge-watch { background: var(--cm-warn-100); color: var(--cm-warn-500); }
 .sig-badge-skip { background: var(--cm-ink-50); color: var(--cm-ink-500); }
+.sig-source-badge {
+  display: inline-flex;
+  align-items: center;
+  min-height: 18px;
+  padding: 1px 6px;
+  border-radius: 4px;
+  font-size: 10px;
+  font-weight: 600;
+  line-height: 1.4;
+  white-space: nowrap;
+}
+.sig-source-badge-compact {
+  padding: 0 5px;
+  font-size: 10px;
+}
+.sig-source-true { background: var(--cm-ok-100); color: var(--cm-ok-500); }
+.sig-source-page { background: var(--cm-info-100); color: var(--cm-info-500); }
+.sig-source-deadline { background: var(--cm-warn-100); color: var(--cm-warn-500); }
+.sig-source-unknown { background: var(--cm-ink-50); color: var(--cm-ink-500); }
 
 .sig-table-wrap {
   background: var(--cm-surface); border: 1px solid var(--cm-ink-100); border-radius: 10px;

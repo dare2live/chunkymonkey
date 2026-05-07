@@ -118,6 +118,29 @@
     };
     return map[action] || `<span class="sig-badge sig-badge-skip">${esc(action)}</span>`;
   }
+  function noticeSourceMeta(source) {
+    const key = source || 'unknown';
+    const map = {
+      source_notice: { label: '公告日', cls: 'sig-source-true', title: '真实源公告日' },
+      page_update_date: { label: 'F10更新', cls: 'sig-source-page', title: 'TDX/F10 页面更新日，可观测但不等同真实公告日' },
+      regulatory_deadline: { label: '监管兜底', cls: 'sig-source-deadline', title: '监管披露期限兜底，不是真实公告日' },
+      unknown: { label: '未知来源', cls: 'sig-source-unknown', title: '公告日来源未标记' },
+    };
+    return map[key] || map.unknown;
+  }
+  function noticeSourceBadge(source, opts = {}) {
+    const meta = noticeSourceMeta(source);
+    return `<span class="sig-source-badge ${meta.cls} ${opts.compact ? 'sig-source-badge-compact' : ''}" title="${esc(meta.title)}">${esc(meta.label)}</span>`;
+  }
+  function noticeSourceSummary(counts) {
+    const c = counts || {};
+    const bits = [];
+    if (c.source_notice) bits.push(`${c.source_notice}源公告`);
+    if (c.page_update_date) bits.push(`${c.page_update_date}F10更新`);
+    if (c.regulatory_deadline) bits.push(`${c.regulatory_deadline}监管兜底`);
+    if (c.unknown) bits.push(`${c.unknown}未知`);
+    return bits.length ? bits.join(' · ') : '暂无来源标记';
+  }
   function normalizeTopkItem(item, idx) {
     const code = item.stock_code || item.code || '';
     const rank = item.rank || item.rank_in_date || idx + 1;
@@ -399,7 +422,7 @@
       <td class="sig-num">${s.premiumAvg != null ? fmtPct(s.premiumAvg) : '-'}</td>
       <td class="sv-date-cell">
         <div>${esc(daLabel)}</div>
-        <div class="muted sv-sub">${fmtDate(s.latestNotice)}</div>
+        <div class="muted sv-sub">${fmtDate(s.latestNotice)} ${noticeSourceBadge(s.topEvent?.noticeDateSource, { compact: true })}</div>
       </td>
       <td class="sv-actions-cell">
         ${star}
@@ -608,6 +631,7 @@
         <span><span class="muted">平均溢价</span> ${s.premiumAvg != null ? fmtPct(s.premiumAvg) : '-'}</span>
         <span><span class="muted">最佳长期EV</span> ${s.longEVBest != null ? fmtPct(s.longEVBest) : '-'}</span>
         <span><span class="muted">最近事件</span> ${fmtDate(s.latestNotice)}</span>
+        <span><span class="muted">日期来源</span> ${noticeSourceBadge(s.topEvent?.noticeDateSource)} ${esc(noticeSourceSummary(s.noticeSourceCounts))}</span>
         <span><span class="muted">AI</span> ${renderAiCell(code)}</span>
         <span><span class="muted">周期</span> ${esc(horizonLabel(state.topkMap.get(code)))}</span>
         <span id="sv-drawer-multidim-badge"></span>
@@ -696,7 +720,7 @@
     content.innerHTML = `<div class="cm-status-strip" style="margin-bottom:12px">
       <div class="cm-status-item"><span>TDX 公式</span><b>${tdx}</b></div>
       <div class="cm-status-item"><span>海龟状态</span><b>${turtle}</b></div>
-      <div class="cm-status-item"><span>数据边界</span><b>机构覆盖股票</b></div>
+      <div class="cm-status-item"><span>日期来源</span><b>${esc(noticeSourceSummary(s.noticeSourceCounts))}</b></div>
     </div>${eventHtml.innerHTML}`;
   }
 
@@ -749,7 +773,7 @@
       <td class="sig-num">${ev.longEV?.pct != null ? fmtPct(ev.longEV.pct) : '-'}
         ${ev.longEV?.n ? `<div class="muted sv-sub">n=${ev.longEV.n}</div>` : ''}
       </td>
-      <td><span class="muted sv-sub">${fmtDate(ev.noticeDate)}</span></td>
+      <td><span class="muted sv-sub">${fmtDate(ev.noticeDate)}</span><div>${noticeSourceBadge(ev.noticeDateSource, { compact: true })}</div></td>
     </tr>`).join('');
     content.innerHTML = `<div class="sig-table-wrap">
       <table class="sig-table sig-table-sm">
@@ -758,7 +782,7 @@
           <th>机构</th>
           <th class="sig-num" style="width:80px">溢价</th>
           <th class="sig-num" style="width:100px">长期 EV</th>
-          <th style="width:90px">公告日</th>
+          <th style="width:120px">可用日</th>
         </tr></thead>
         <tbody>${rows}</tbody>
       </table>
@@ -771,7 +795,7 @@
       String(b.noticeDate || '').localeCompare(String(a.noticeDate || ''))
     );
     const rows = events.map(ev => `<tr>
-      <td><span class="muted sv-sub">${fmtDate(ev.noticeDate)}</span></td>
+      <td><span class="muted sv-sub">${fmtDate(ev.noticeDate)}</span><div>${noticeSourceBadge(ev.noticeDateSource, { compact: true })}</div></td>
       <td>${actionBadge(ev.action)}</td>
       <td><b>${esc(ev.institutionName || ev.institutionId || '-')}</b></td>
       <td class="sig-num">${ev.premiumPct != null ? fmtPct(ev.premiumPct) : '-'}</td>
@@ -781,7 +805,7 @@
     content.innerHTML = `<div class="sig-table-wrap">
       <table class="sig-table sig-table-sm">
         <thead><tr>
-          <th style="width:90px">公告日</th>
+          <th style="width:120px">可用日</th>
           <th style="width:60px">档位</th>
           <th>机构</th>
           <th class="sig-num" style="width:80px">溢价</th>
@@ -820,6 +844,7 @@
           ${actionBadge(ev.action)}
           <b>${esc(ev.institutionName || ev.institutionId || '-')}</b>
           <span class="muted sv-sub">${fmtDate(ev.noticeDate)}</span>
+          ${noticeSourceBadge(ev.noticeDateSource, { compact: true })}
           ${ev.ruleTriggered ? `<span style="color:var(--cm-bad-500);font-size:11px">触发: ${esc(ev.ruleTriggered)}</span>` : ''}
         </div>
         <div class="sv-evidence-grid">${chips}</div>

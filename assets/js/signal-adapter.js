@@ -57,6 +57,9 @@
       institutionType: raw.institution_type || (raw.rule_breakdown?.checks || []).find(c => c.key === 'inst_type')?.raw,
       eventType: raw.event_type,
       noticeDate: raw.notice_date,
+      noticeDateSource: raw.notice_date_source || 'unknown',
+      sourceNoticeDate: raw.source_notice_date || null,
+      availabilityDeadline: raw.availability_deadline || null,
       premiumPct: raw.premium_pct,
       action: raw.action,                          // follow / watch / skip
       reasonLabel: raw.reason_label,
@@ -93,6 +96,7 @@
           events: [],
           institutions: new Set(),
           actionCounts: { follow: 0, watch: 0, skip: 0 },
+          noticeSourceCounts: { source_notice: 0, page_update_date: 0, regulatory_deadline: 0, unknown: 0 },
         });
       }
       const g = groups.get(code);
@@ -100,6 +104,9 @@
       g.events.push(view);
       g.institutions.add(raw.institution_id);
       if (g.actionCounts[raw.action] !== undefined) g.actionCounts[raw.action] += 1;
+      const src = raw.notice_date_source || 'unknown';
+      if (g.noticeSourceCounts[src] === undefined) g.noticeSourceCounts[src] = 0;
+      g.noticeSourceCounts[src] += 1;
     });
 
     return Array.from(groups.values()).map(g => {
@@ -122,6 +129,7 @@
         instCount: g.institutions.size,
         eventCount: g.events.length,
         actionCounts: g.actionCounts,
+        noticeSourceCounts: g.noticeSourceCounts,
         bestAction: top ? top.action : 'none',
         topEvent: top,
         events: sorted,
