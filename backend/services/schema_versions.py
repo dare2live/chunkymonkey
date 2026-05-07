@@ -82,6 +82,8 @@ MART_VERSIONS = {
     "mart_feature_association_stat": "v2",
     "mart_feature_correlation_cluster": "v1",
     "mart_feature_association_fold": "v1",
+    "mart_feature_rank_matrix_proxy_stat": "v1",
+    "mart_feature_rank_matrix_benchmark": "v1",
     "mart_feature_search_space": "v1",
     "mart_feature_search_space_summary": "v1",
     "mart_optuna_feature_space_trial": "v1",

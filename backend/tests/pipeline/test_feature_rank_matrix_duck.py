@@ -1,0 +1,136 @@
+from __future__ import annotations
+
+import json
+
+import pytest
+
+from conftest import duck_mem
+from scripts import build_feature_association_duck as exact_subject
+from scripts import build_feature_rank_matrix_duck as subject
+
+
+pytestmark = pytest.mark.pipeline
+
+
+def _seed_dense_panel(conn) -> None:
+    conn.execute(
+        """
+        CREATE TABLE fact_feature_panel (
+            stock_code TEXT,
+            date TEXT,
+            good_feature DOUBLE,
+            inverse_feature DOUBLE,
+            forward_ret_20d DOUBLE,
+            follow_net_return_60d DOUBLE
+        )
+        """
+    )
+    rows = []
+    for day in ("2026-01-01", "2026-01-02", "2026-01-03"):
+        for idx in range(12):
+            label = float(idx) / 100.0
+            rows.append(
+                (
+                    f"000{idx:03d}",
+                    day,
+                    float(idx),
+                    float(-idx),
+                    label,
+                    label * 2.0,
+                )
+            )
+    conn.executemany(
+        "INSERT INTO fact_feature_panel VALUES (?, ?, ?, ?, ?, ?)",
+        rows,
+    )
+
+
+def test_rank_matrix_proxy_matches_exact_dense_association():
+    conn = duck_mem()
+    try:
+        _seed_dense_panel(conn)
+        exact_subject.build_feature_association_stats(
+            conn,
+            run_id="exact_dense",
+            features=["good_feature", "inverse_feature"],
+            label_name="forward_ret_20d",
+            horizon_labels=["follow_net_return_60d"],
+            min_daily_count=6,
+            build_clusters=False,
+        )
+
+        result = subject.build_feature_rank_matrix_proxy(
+            conn,
+            run_id="rank_matrix_dense",
+            exact_run_id="exact_dense",
+            features=["good_feature", "inverse_feature"],
+            label_name="forward_ret_20d",
+            horizon_labels=["follow_net_return_60d"],
+            min_daily_count=6,
+        )
+        rows = conn.execute(
+            """
+            SELECT label_name, feature_name, rank_ic, exact_rank_ic, abs_rank_ic_delta
+              FROM mart_feature_rank_matrix_proxy_stat
+             WHERE run_id = 'rank_matrix_dense'
+             ORDER BY label_name, feature_name
+            """
+        ).fetchall()
+        manifest = conn.execute(
+            "SELECT perf_summary_json FROM mart_pipeline_run_manifest WHERE run_id = 'rank_matrix_dense'"
+        ).fetchone()
+        benchmark = conn.execute(
+            """
+            SELECT feature_count, label_count, proxy_rows, compared_pairs,
+                   max_abs_rank_ic_delta, stage_timings_json
+              FROM mart_feature_rank_matrix_benchmark
+             WHERE run_id = 'rank_matrix_dense'
+            """
+        ).fetchone()
+
+        assert result["features"] == 2
+        assert result["labels"] == ["forward_ret_20d", "follow_net_return_60d"]
+        assert result["proxy_rows"] == 4
+        assert result["compared_pairs"] == 4
+        assert result["max_abs_rank_ic_delta"] == pytest.approx(0.0)
+        assert sorted(row["rank_ic"] for row in rows) == pytest.approx([-1.0, -1.0, 1.0, 1.0])
+        assert all(row["abs_rank_ic_delta"] == pytest.approx(0.0) for row in rows)
+        assert benchmark["feature_count"] == 2
+        assert benchmark["label_count"] == 2
+        assert benchmark["proxy_rows"] == 4
+        assert benchmark["compared_pairs"] == 4
+        assert benchmark["max_abs_rank_ic_delta"] == pytest.approx(0.0)
+        assert "rank_matrix_build_s" in json.loads(benchmark["stage_timings_json"])
+        assert "stage_timings" in json.loads(manifest["perf_summary_json"])
+    finally:
+        conn.close()
+
+
+def test_rank_matrix_proxy_records_without_exact_run():
+    conn = duck_mem()
+    try:
+        _seed_dense_panel(conn)
+
+        result = subject.build_feature_rank_matrix_proxy(
+            conn,
+            run_id="rank_matrix_no_exact",
+            features=["good_feature"],
+            label_name="forward_ret_20d",
+            min_daily_count=6,
+        )
+        row = conn.execute(
+            """
+            SELECT rank_ic, exact_rank_ic, abs_rank_ic_delta
+              FROM mart_feature_rank_matrix_proxy_stat
+             WHERE run_id = 'rank_matrix_no_exact'
+               AND feature_name = 'good_feature'
+            """
+        ).fetchone()
+
+        assert result["proxy_rows"] == 1
+        assert result["compared_pairs"] == 0
+        assert row["rank_ic"] == pytest.approx(1.0)
+        assert row["exact_rank_ic"] is None
+        assert row["abs_rank_ic_delta"] is None
+    finally:
+        conn.close()
