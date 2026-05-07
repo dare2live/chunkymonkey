@@ -22,6 +22,7 @@ CREATE TABLE IF NOT EXISTS mart_tdx_f10_source_date_section_audit (
     raw_row_count INTEGER NOT NULL,
     stock_count INTEGER NOT NULL,
     occurrence_count INTEGER NOT NULL,
+    future_occurrence_count INTEGER NOT NULL DEFAULT 0,
     min_date TEXT,
     max_date TEXT,
     sample_json TEXT,
@@ -30,6 +31,8 @@ CREATE TABLE IF NOT EXISTS mart_tdx_f10_source_date_section_audit (
 );
 CREATE INDEX IF NOT EXISTS idx_f10_source_date_audit_run
     ON mart_tdx_f10_source_date_section_audit(run_id);
+ALTER TABLE mart_tdx_f10_source_date_section_audit
+    ADD COLUMN IF NOT EXISTS future_occurrence_count INTEGER DEFAULT 0;
 """
 
 SECTION_RE = re.compile(r"【(?P<section_id>\d+)\.(?P<section_name>[^】]+)】")
@@ -147,10 +150,12 @@ def audit_tdx_f10_source_date_sections(
             "raw_hashes": set(),
             "stocks": set(),
             "occurrence_count": 0,
+            "future_occurrence_count": 0,
             "dates": [],
             "samples": [],
         }
     )
+    today = datetime.now(UTC).date().isoformat()
 
     for row in raw_rows:
         text = row.get("raw_text") or ""
@@ -173,6 +178,8 @@ def audit_tdx_f10_source_date_sections(
                     bucket["occurrence_count"] += 1
                     if date_value:
                         bucket["dates"].append(date_value)
+                        if date_value > today:
+                            bucket["future_occurrence_count"] += 1
                     if len(bucket["samples"]) < 3:
                         bucket["samples"].append(
                             {
@@ -198,6 +205,7 @@ def audit_tdx_f10_source_date_sections(
                 len(bucket["raw_hashes"]),
                 len(bucket["stocks"]),
                 int(bucket["occurrence_count"]),
+                int(bucket["future_occurrence_count"]),
                 dates[0] if dates else None,
                 dates[-1] if dates else None,
                 json.dumps(bucket["samples"], ensure_ascii=False),
@@ -210,8 +218,9 @@ def audit_tdx_f10_source_date_sections(
             INSERT INTO mart_tdx_f10_source_date_section_audit
             (run_id, section_id, section_name, pattern_name, date_role,
              source_notice_candidate, raw_row_count, stock_count,
-             occurrence_count, min_date, max_date, sample_json, built_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+             occurrence_count, future_occurrence_count, min_date, max_date,
+             sample_json, built_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             rows,
         )
@@ -227,5 +236,6 @@ def audit_tdx_f10_source_date_sections(
         "raw_rows": len(raw_rows),
         "audit_rows": len(rows),
         "source_notice_candidate_occurrences": source_notice_candidates,
+        "future_occurrences": sum(int(row[9]) for row in rows),
         "built_at": built_at,
     }

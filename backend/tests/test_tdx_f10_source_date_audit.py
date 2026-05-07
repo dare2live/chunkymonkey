@@ -17,7 +17,7 @@ F10_SAMPLE = """股东研究☆ ◇000001 测试银行 更新日期：2026-05-05
 【2.股东增减持计划】
 最新公告日期：2026-04-30，变动方向：拟减持，进度：进行中
 【3.重要股东持股变动】
-变动日期：2026-04-12
+变动日期：2099-04-12
 【4.股东变化】
 截至日期：2026-03-31 十大股东情况
 """
@@ -66,7 +66,7 @@ def test_audit_tdx_f10_source_date_sections_classifies_source_notice_candidates(
                 """
                 SELECT section_id, pattern_name, date_role,
                        source_notice_candidate, occurrence_count,
-                       min_date, max_date
+                       future_occurrence_count, min_date, max_date
                   FROM mart_tdx_f10_source_date_section_audit
                  WHERE run_id = 'tdx_f10_source_audit_unit'
                 """
@@ -76,9 +76,13 @@ def test_audit_tdx_f10_source_date_sections_classifies_source_notice_candidates(
         assert result["raw_rows"] == 1
         assert result["audit_rows"] == 5
         assert result["source_notice_candidate_occurrences"] == 1
+        assert result["future_occurrences"] == 1
         assert rows[("header", "page_update_date")]["date_role"] == "page_update_availability"
         assert rows[("1", "cutoff_date")]["date_role"] == "fact_period_date"
         assert rows[("2", "latest_announce_date")]["date_role"] == "source_notice_date"
         assert rows[("2", "latest_announce_date")]["source_notice_candidate"] is True
+        assert rows[("2", "latest_announce_date")]["future_occurrence_count"] == 0
+        assert rows[("3", "change_date")]["date_role"] == "event_date"
+        assert rows[("3", "change_date")]["future_occurrence_count"] == 1
         assert rows[("4", "cutoff_date")]["date_role"] == "fact_period_date"
         assert rows[("4", "cutoff_date")]["source_notice_candidate"] is False
