@@ -1203,6 +1203,20 @@ def _fact_panel_summary(duck) -> dict[str, int]:
     }
 
 
+def _incremental_window_covers_existing_panel(duck, write_start_date: str | None) -> bool:
+    """Return true when incremental replacement would delete the whole panel."""
+
+    if not write_start_date or not _table_exists(duck, "fact_feature_panel"):
+        return False
+    try:
+        row = duck.execute("SELECT COUNT(*), MIN(date) FROM fact_feature_panel").fetchone()
+    except Exception:
+        return False
+    row_count = int(row[0] or 0) if row else 0
+    min_date = str(row[1]) if row and row[1] else None
+    return row_count > 0 and min_date is not None and str(write_start_date) <= min_date
+
+
 def feature_group_columns(groups: list[str]) -> list[str]:
     registry = _feature_registry()
     known_groups = {spec.group for spec in registry.features.values()}
@@ -1407,6 +1421,12 @@ def _insert_fact_panel(
             update_columns=update_columns,
             write_start_date=write_start_date,
         )
+    if not reset and _incremental_window_covers_existing_panel(duck, write_start_date):
+        logger.info(
+            "incremental write_start=%s covers existing fact_feature_panel; using drop/recreate instead of DELETE",
+            write_start_date,
+        )
+        reset = True
     panel_cols = set(_table_columns(duck, "current_panel"))
     keep = [col for col in KEEP_COLS if col == "built_at" or col in panel_cols]
     params: list[str] = []

@@ -364,6 +364,46 @@ def test_ensure_fact_panel_schema_adds_new_horizon_label_columns_to_existing_tab
         con.close()
 
 
+def test_insert_fact_panel_recreates_when_incremental_window_covers_existing_table(monkeypatch):
+    con = duckdb.connect(":memory:")
+    try:
+        subject.execute_script(con, subject.PANEL_SCHEMA_DDL)
+        con.execute(
+            """
+            INSERT INTO fact_feature_panel (stock_code, date, close)
+            VALUES ('000001', '2026-01-01', 9.0)
+            """
+        )
+        con.execute(
+            """
+            CREATE TABLE current_panel (
+                stock_code TEXT,
+                date TEXT,
+                close DOUBLE
+            )
+            """
+        )
+        con.execute("INSERT INTO current_panel VALUES ('000001', '2026-01-01', 10.0)")
+        original_execute_script = subject.execute_script
+        ddl_calls = []
+
+        def spy_execute_script(duck, sql):
+            if sql == subject.PANEL_DDL:
+                ddl_calls.append("panel_ddl")
+            return original_execute_script(duck, sql)
+
+        monkeypatch.setattr(subject, "execute_script", spy_execute_script)
+
+        summary = subject._insert_fact_panel(con, reset=False, write_start_date="2026-01-01")
+        row = con.execute("SELECT close FROM fact_feature_panel WHERE stock_code='000001'").fetchone()
+
+        assert ddl_calls == ["panel_ddl"]
+        assert summary["rows"] == 1
+        assert row[0] == pytest.approx(10.0)
+    finally:
+        con.close()
+
+
 def test_feature_registry_covers_panel_and_keeps_labels_out_of_inputs():
     registry_result = subject.validate_feature_registry()
     inputs = subject.feature_input_columns()
