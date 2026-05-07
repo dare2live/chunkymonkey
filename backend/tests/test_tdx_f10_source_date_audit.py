@@ -16,8 +16,9 @@ F10_SAMPLE = """股东研究☆ ◇000001 测试银行 更新日期：2026-05-05
 【1.控股股东与实际控股人】 截止日期:2025-12-31
 【2.股东增减持计划】
 最新公告日期：2026-04-30，变动方向：拟减持，进度：进行中
+首次公告披露日：2026-04-29，起始日期：2026-05-01，截止日期：2099-12-31
 【3.重要股东持股变动】
-变动日期：2099-04-12
+起始变动日期：2099-04-01，截止变动日期：2099-04-12，变动日期：2099-04-15
 【4.股东变化】
 截至日期：2026-03-31 十大股东情况
 """
@@ -74,14 +75,21 @@ def test_audit_tdx_f10_source_date_sections_classifies_source_notice_candidates(
         }
 
         assert result["raw_rows"] == 1
-        assert result["audit_rows"] == 5
-        assert result["source_notice_candidate_occurrences"] == 1
-        assert result["future_occurrences"] == 1
+        assert result["audit_rows"] == 10
+        assert result["source_notice_candidate_occurrences"] == 2
+        assert result["future_occurrences"] == 4
         assert rows[("header", "page_update_date")]["date_role"] == "page_update_availability"
         assert rows[("1", "cutoff_date")]["date_role"] == "fact_period_date"
         assert rows[("2", "latest_announce_date")]["date_role"] == "source_notice_date"
         assert rows[("2", "latest_announce_date")]["source_notice_candidate"] is True
         assert rows[("2", "latest_announce_date")]["future_occurrence_count"] == 0
+        assert rows[("2", "first_announce_date")]["date_role"] == "source_notice_date"
+        assert rows[("2", "first_announce_date")]["source_notice_candidate"] is True
+        assert rows[("2", "start_date")]["date_role"] == "plan_start_date"
+        assert rows[("2", "cutoff_date")]["date_role"] == "plan_end_date"
+        assert rows[("2", "cutoff_date")]["future_occurrence_count"] == 1
+        assert rows[("3", "change_start_date")]["date_role"] == "event_start_date"
+        assert rows[("3", "change_end_date")]["date_role"] == "event_end_date"
         assert rows[("3", "change_date")]["date_role"] == "event_date"
         assert rows[("3", "change_date")]["future_occurrence_count"] == 1
         assert rows[("4", "cutoff_date")]["date_role"] == "fact_period_date"

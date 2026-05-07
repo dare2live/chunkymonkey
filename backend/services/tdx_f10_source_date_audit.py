@@ -40,11 +40,15 @@ DATE_TOKEN = r"(?P<date>\d{4}[./-]\d{1,2}[./-]\d{1,2})"
 DATE_PATTERNS: tuple[tuple[str, re.Pattern[str]], ...] = (
     ("page_update_date", re.compile(rf"更新日期[:：]\s*{DATE_TOKEN}")),
     ("latest_announce_date", re.compile(rf"最新公告日期[:：]\s*{DATE_TOKEN}")),
+    ("first_announce_date", re.compile(rf"首次公告披露日[:：]\s*{DATE_TOKEN}")),
     ("announce_date", re.compile(rf"(?<!最新)公告日期[:：]\s*{DATE_TOKEN}")),
     ("disclosure_date", re.compile(rf"披露日期[:：]\s*{DATE_TOKEN}")),
     ("publish_date", re.compile(rf"发布日期[:：]\s*{DATE_TOKEN}")),
+    ("change_start_date", re.compile(rf"起始变动日期[:：]\s*{DATE_TOKEN}")),
+    ("change_end_date", re.compile(rf"截止变动日期[:：]\s*{DATE_TOKEN}")),
+    ("start_date", re.compile(rf"起始日期[:：]\s*{DATE_TOKEN}")),
     ("cutoff_date", re.compile(rf"(?:截止日期|截至日期)[:：]\s*{DATE_TOKEN}")),
-    ("change_date", re.compile(rf"变动日期[:：]\s*{DATE_TOKEN}")),
+    ("change_date", re.compile(rf"(?<!起始)(?<!截止)变动日期[:：]\s*{DATE_TOKEN}")),
 )
 
 
@@ -102,13 +106,31 @@ def split_f10_sections(text: str) -> list[dict[str, str]]:
 def _date_role(section_id: str, pattern_name: str) -> tuple[str, bool]:
     if pattern_name == "page_update_date":
         return "page_update_availability", False
-    if section_id == "2" and pattern_name in {"latest_announce_date", "announce_date"}:
+    if section_id == "2" and pattern_name in {
+        "latest_announce_date",
+        "first_announce_date",
+        "announce_date",
+    }:
         return "source_notice_date", True
+    if section_id == "2" and pattern_name in {"start_date", "change_start_date"}:
+        return "plan_start_date", False
+    if section_id == "2" and pattern_name in {"cutoff_date", "change_end_date"}:
+        return "plan_end_date", False
+    if pattern_name == "change_start_date":
+        return "event_start_date", False
+    if pattern_name == "change_end_date":
+        return "event_end_date", False
     if pattern_name == "cutoff_date":
         return "fact_period_date", False
     if pattern_name == "change_date":
         return "event_date", False
-    if pattern_name in {"latest_announce_date", "announce_date", "disclosure_date", "publish_date"}:
+    if pattern_name in {
+        "latest_announce_date",
+        "first_announce_date",
+        "announce_date",
+        "disclosure_date",
+        "publish_date",
+    }:
         return "ambiguous_notice_phrase", False
     return "unknown_date_phrase", False
 
