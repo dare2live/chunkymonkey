@@ -30,7 +30,11 @@ warnings.filterwarnings('ignore')
 
 from services.market_db import get_market_conn
 from services.db import get_conn as get_business_conn
-from services.tdx_source import call_tdx_quotes_with_retry
+from services.tdx_source import (
+    call_tdx_quotes_with_retry,
+    load_tdx_server_health,
+    record_tdx_server_runtime_health,
+)
 from services.utils import latest_completed_trade_date
 
 logger = logging.getLogger("price_kline_tdxhub")
@@ -40,6 +44,7 @@ LOCAL_ACTIVE_A_STOCK_MIN_ROWS = 3000
 DEFAULT_WRITE_BATCH_ROWS = 5000
 DEFAULT_RAW_INCREMENTAL_WORKERS = 8
 DEFAULT_QFQ_WORKERS = 4
+TDX_KLINE_RAW_HEALTH_CAPABILITY = "kline_daily_raw"
 UNSUPPORTED_ADJUSTED_RECORDS_MESSAGE = (
     "tdxhub records mode does not support adjusted qfq K-line fetch. "
     "Use --skip-existing raw incremental for tail updates, or implement a "
@@ -1129,6 +1134,17 @@ def main():
     if stock_list_source:
         logger.info("A 股同步清单来源: %s", stock_list_source)
 
+    if stock_list and pull_adjust is None:
+        try:
+            server_health_load = load_tdx_server_health(conn, capability=TDX_KLINE_RAW_HEALTH_CAPABILITY)
+            if int(server_health_load.get("loaded_server_count") or 0) > 0:
+                logger.info(
+                    "TDX K 线服务器健康优先级已加载: %d 台",
+                    int(server_health_load.get("loaded_server_count") or 0),
+                )
+        except Exception as exc:
+            logger.warning("TDX K 线服务器健康优先级加载失败，将使用默认服务器顺序: %s", exc)
+
     def flush_pending_rows() -> int:
         nonlocal n_rows_written
         nonlocal pending_write_rows
@@ -1285,6 +1301,21 @@ def main():
                     submit_next(pool)
 
     flush_pending_rows()
+    if stock_list and pull_adjust is None:
+        try:
+            server_health_record = record_tdx_server_runtime_health(
+                conn,
+                capability=TDX_KLINE_RAW_HEALTH_CAPABILITY,
+                run_id=batch_id,
+            )
+            if int(server_health_record.get("updated_server_count") or 0) > 0:
+                logger.info(
+                    "TDX K 线服务器健康已更新: %d 台 / attempts=%d",
+                    int(server_health_record.get("updated_server_count") or 0),
+                    int(server_health_record.get("attempt_count") or 0),
+                )
+        except Exception as exc:
+            logger.warning("TDX K 线服务器健康记录失败: %s", exc)
     conn.commit()
     dt = time.time() - t0
     logger.info("=" * 60)

@@ -10,8 +10,9 @@ import os
 import sys
 import threading
 import time
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from typing import Optional
+from typing import Any, Optional
 
 
 logger = logging.getLogger("cm-api")
@@ -30,6 +31,27 @@ DEFAULT_TDX_SERVERS: tuple[tuple[str, int], ...] = (
     ("123.60.70.228", 7709),
     ("116.205.163.254", 7709),
 )
+
+TDX_SERVER_HEALTH_DDL = """
+CREATE TABLE IF NOT EXISTS mart_tdx_server_health (
+    server_host TEXT NOT NULL,
+    server_port INTEGER NOT NULL,
+    capability TEXT NOT NULL,
+    success_count BIGINT NOT NULL,
+    failure_count BIGINT NOT NULL,
+    timeout_count BIGINT NOT NULL,
+    last_success_at TEXT,
+    last_failure_at TEXT,
+    last_error_type TEXT,
+    avg_success_elapsed_s DOUBLE,
+    last_attempt_elapsed_s DOUBLE,
+    health_score DOUBLE NOT NULL,
+    source_run_id TEXT,
+    updated_at TEXT NOT NULL
+);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_mart_tdx_server_health_key
+ON mart_tdx_server_health(server_host, server_port, capability);
+"""
 
 
 def workspace_tdxhub_path() -> Path | None:
@@ -151,7 +173,7 @@ def iter_tdx_servers() -> tuple[tuple[str, int], ...]:
             continue
         seen.add(server)
         ordered.append(server)
-    return tuple(ordered)
+    return _apply_tdx_server_priority(tuple(ordered))
 
 
 def get_tdx_quotes_class():
@@ -180,6 +202,21 @@ _server_cursor_guard = threading.Lock()
 _server_cursor = 0
 _server_health_guard = threading.Lock()
 _server_health: dict[tuple[str, int], dict[str, object]] = {}
+_server_priority_guard = threading.Lock()
+_server_priority: tuple[tuple[str, int], ...] = ()
+
+
+def _apply_tdx_server_priority(servers: tuple[tuple[str, int], ...]) -> tuple[tuple[str, int], ...]:
+    with _server_priority_guard:
+        priority = tuple(_server_priority)
+    if not priority or len(servers) <= 1:
+        return servers
+    available = set(servers)
+    prioritized = [server for server in priority if server in available]
+    if not prioritized:
+        return servers
+    prioritized_set = set(prioritized)
+    return tuple(prioritized + [server for server in servers if server not in prioritized_set])
 
 
 def _close_quietly(client) -> None:
@@ -228,7 +265,7 @@ def _get_quotes_pool_state(server: tuple[str, int]) -> dict[str, object]:
 
 
 def reset_tdx_quotes_pool() -> None:
-    global _server_cursor
+    global _server_cursor, _server_priority
     with _quotes_pool_guard:
         items = list(_quotes_pool.items())
         _quotes_pool.clear()
@@ -236,6 +273,8 @@ def reset_tdx_quotes_pool() -> None:
         _server_cursor = 0
     with _server_health_guard:
         _server_health.clear()
+    with _server_priority_guard:
+        _server_priority = ()
     for _server, state in items:
         _close_quietly(state.get("client"))
 
@@ -259,6 +298,7 @@ def _mark_tdx_server_success(server: tuple[str, int]) -> None:
         state["last_success_at"] = now
         state["unavailable_until"] = 0.0
         state["last_error_type"] = ""
+        state["success_count"] = int(state.get("success_count") or 0) + 1
 
 
 def _mark_tdx_server_failure(server: tuple[str, int], error_type: Optional[str]) -> None:
@@ -267,6 +307,9 @@ def _mark_tdx_server_failure(server: tuple[str, int], error_type: Optional[str])
         state = _server_health.setdefault(server, {})
         state["last_failure_at"] = now
         state["last_error_type"] = str(error_type or "")
+        state["failure_count"] = int(state.get("failure_count") or 0) + 1
+        if "timeout" in str(error_type or "").lower():
+            state["timeout_count"] = int(state.get("timeout_count") or 0) + 1
         if _should_cooldown_server(error_type):
             cooldown = (
                 _TDX_SERVER_TIMEOUT_COOLDOWN_SECONDS
@@ -279,16 +322,284 @@ def _mark_tdx_server_failure(server: tuple[str, int], error_type: Optional[str])
             )
 
 
+def ensure_tdx_server_health_table(conn: Any) -> None:
+    conn.executescript(TDX_SERVER_HEALTH_DDL)
+
+
+def _utc_now_text() -> str:
+    return datetime.now(timezone.utc).isoformat(timespec="seconds")
+
+
+def _server_from_attempt(value: Any) -> tuple[str, int] | None:
+    if isinstance(value, (tuple, list)) and len(value) == 2:
+        try:
+            return str(value[0]), int(value[1])
+        except (TypeError, ValueError):
+            return None
+    if isinstance(value, str):
+        return parse_tdx_server_string(value)
+    return None
+
+
+def _compute_health_score(
+    *,
+    success_count: int,
+    failure_count: int,
+    timeout_count: int,
+    avg_success_elapsed_s: float | None,
+    last_success_at: str | None,
+) -> float:
+    score = float(success_count * 10 - failure_count * 3 - timeout_count * 4)
+    if avg_success_elapsed_s is not None:
+        score -= min(float(avg_success_elapsed_s), 10.0)
+    if last_success_at:
+        score += 5.0
+    return round(score, 6)
+
+
+def _existing_server_health(conn: Any, server: tuple[str, int], capability: str) -> dict[str, Any]:
+    row = conn.execute(
+        """
+        SELECT success_count, failure_count, timeout_count,
+               last_success_at, last_failure_at, last_error_type,
+               avg_success_elapsed_s, last_attempt_elapsed_s, source_run_id
+        FROM mart_tdx_server_health
+        WHERE server_host = ? AND server_port = ? AND capability = ?
+        """,
+        [server[0], server[1], capability],
+    ).fetchone()
+    if row is None:
+        return {}
+    return {
+        "success_count": int(row[0] or 0),
+        "failure_count": int(row[1] or 0),
+        "timeout_count": int(row[2] or 0),
+        "last_success_at": row[3],
+        "last_failure_at": row[4],
+        "last_error_type": row[5],
+        "avg_success_elapsed_s": row[6],
+        "last_attempt_elapsed_s": row[7],
+        "source_run_id": row[8],
+    }
+
+
+def _replace_server_health(conn: Any, *, server: tuple[str, int], capability: str, row: dict[str, Any]) -> None:
+    conn.execute(
+        """
+        DELETE FROM mart_tdx_server_health
+        WHERE server_host = ? AND server_port = ? AND capability = ?
+        """,
+        [server[0], server[1], capability],
+    )
+    conn.execute(
+        """
+        INSERT INTO mart_tdx_server_health (
+            server_host, server_port, capability,
+            success_count, failure_count, timeout_count,
+            last_success_at, last_failure_at, last_error_type,
+            avg_success_elapsed_s, last_attempt_elapsed_s,
+            health_score, source_run_id, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        [
+            server[0],
+            server[1],
+            capability,
+            int(row.get("success_count") or 0),
+            int(row.get("failure_count") or 0),
+            int(row.get("timeout_count") or 0),
+            row.get("last_success_at"),
+            row.get("last_failure_at"),
+            row.get("last_error_type"),
+            row.get("avg_success_elapsed_s"),
+            row.get("last_attempt_elapsed_s"),
+            float(row.get("health_score") or 0.0),
+            row.get("source_run_id"),
+            row.get("updated_at") or _utc_now_text(),
+        ],
+    )
+
+
+def record_tdx_server_attempts(
+    conn: Any,
+    attempts: list[dict[str, Any]],
+    *,
+    capability: str,
+    run_id: str | None = None,
+) -> dict[str, Any]:
+    """Persist per-server TDX attempts so later processes avoid cold probing."""
+
+    ensure_tdx_server_health_table(conn)
+    by_server: dict[tuple[str, int], dict[str, Any]] = {}
+    skipped_non_retryable = 0
+    for attempt in attempts:
+        server = _server_from_attempt(attempt.get("server"))
+        if server is None:
+            continue
+        error_type = str(attempt.get("error_type") or "")
+        if error_type in _NON_RETRYABLE_OPERATION_ERROR_TYPES:
+            skipped_non_retryable += 1
+            continue
+        state = by_server.setdefault(
+            server,
+            {
+                "success_count": 0,
+                "failure_count": 0,
+                "timeout_count": 0,
+                "success_elapsed_sum": 0.0,
+                "last_error_type": None,
+                "last_attempt_elapsed_s": None,
+            },
+        )
+        elapsed = float(attempt.get("elapsed_sec") or 0.0)
+        state["last_attempt_elapsed_s"] = elapsed
+        if attempt.get("ok"):
+            state["success_count"] += 1
+            state["success_elapsed_sum"] += elapsed
+        else:
+            state["failure_count"] += 1
+            state["last_error_type"] = error_type or "error"
+            if "timeout" in error_type.lower():
+                state["timeout_count"] += 1
+
+    now_text = _utc_now_text()
+    updated = 0
+    for server, delta in by_server.items():
+        existing = _existing_server_health(conn, server, capability)
+        prev_success = int(existing.get("success_count") or 0)
+        delta_success = int(delta.get("success_count") or 0)
+        success_count = prev_success + delta_success
+        failure_count = int(existing.get("failure_count") or 0) + int(delta.get("failure_count") or 0)
+        timeout_count = int(existing.get("timeout_count") or 0) + int(delta.get("timeout_count") or 0)
+        prev_avg = existing.get("avg_success_elapsed_s")
+        if success_count > 0:
+            avg_success_elapsed_s = (
+                float(prev_avg or 0.0) * prev_success + float(delta.get("success_elapsed_sum") or 0.0)
+            ) / success_count
+        else:
+            avg_success_elapsed_s = prev_avg
+        last_success_at = now_text if delta_success else existing.get("last_success_at")
+        last_failure_at = now_text if int(delta.get("failure_count") or 0) else existing.get("last_failure_at")
+        last_error_type = delta.get("last_error_type") or existing.get("last_error_type")
+        health_score = _compute_health_score(
+            success_count=success_count,
+            failure_count=failure_count,
+            timeout_count=timeout_count,
+            avg_success_elapsed_s=avg_success_elapsed_s,
+            last_success_at=last_success_at,
+        )
+        _replace_server_health(
+            conn,
+            server=server,
+            capability=capability,
+            row={
+                "success_count": success_count,
+                "failure_count": failure_count,
+                "timeout_count": timeout_count,
+                "last_success_at": last_success_at,
+                "last_failure_at": last_failure_at,
+                "last_error_type": last_error_type,
+                "avg_success_elapsed_s": avg_success_elapsed_s,
+                "last_attempt_elapsed_s": delta.get("last_attempt_elapsed_s"),
+                "health_score": health_score,
+                "source_run_id": run_id or existing.get("source_run_id"),
+                "updated_at": now_text,
+            },
+        )
+        updated += 1
+    return {
+        "capability": capability,
+        "attempt_count": len(attempts),
+        "updated_server_count": updated,
+        "skipped_non_retryable_count": skipped_non_retryable,
+    }
+
+
+def record_tdx_server_runtime_health(
+    conn: Any,
+    *,
+    capability: str,
+    run_id: str | None = None,
+) -> dict[str, Any]:
+    attempts: list[dict[str, Any]] = []
+    for server, state in _get_server_health_snapshot().items():
+        attempts.extend(
+            {"server": server, "ok": True, "elapsed_sec": 0.0}
+            for _ in range(int(state.get("success_count") or 0))
+        )
+        attempts.extend(
+            {
+                "server": server,
+                "ok": False,
+                "elapsed_sec": 0.0,
+                "error_type": str(state.get("last_error_type") or "error"),
+            }
+            for _ in range(int(state.get("failure_count") or 0))
+        )
+    return record_tdx_server_attempts(conn, attempts, capability=capability, run_id=run_id)
+
+
+def load_tdx_server_health(
+    conn: Any,
+    *,
+    capability: str,
+    max_age_hours: int = 72,
+    limit: int = 32,
+) -> dict[str, Any]:
+    ensure_tdx_server_health_table(conn)
+    global _server_priority
+    min_updated_at = (datetime.now(timezone.utc) - timedelta(hours=max(1, int(max_age_hours)))).isoformat(
+        timespec="seconds"
+    )
+    rows = conn.execute(
+        """
+        SELECT server_host, server_port
+        FROM mart_tdx_server_health
+        WHERE capability = ?
+          AND success_count > 0
+          AND updated_at >= ?
+        ORDER BY health_score DESC, last_success_at DESC, avg_success_elapsed_s ASC
+        LIMIT ?
+        """,
+        [capability, min_updated_at, max(1, int(limit))],
+    ).fetchall()
+    ordered = tuple((str(row[0]), int(row[1])) for row in rows)
+    with _server_priority_guard:
+        _server_priority = ordered
+    return {
+        "capability": capability,
+        "loaded_server_count": len(ordered),
+        "servers": [f"{host}:{port}" for host, port in ordered],
+    }
+
+
 def _iter_tdx_servers_for_request(*, prefer_last_success: bool = True) -> tuple[tuple[str, int], ...]:
     servers = iter_tdx_servers()
     if len(servers) <= 1:
         return servers
 
     global _server_cursor
-    with _server_cursor_guard:
-        start = _server_cursor % len(servers)
-        _server_cursor += 1
-    rotated = servers[start:] + servers[:start]
+    with _server_priority_guard:
+        priority = tuple(_server_priority)
+    if priority and not prefer_last_success:
+        priority_set = set(priority)
+        priority_servers = tuple(server for server in servers if server in priority_set)
+        cold_servers = tuple(server for server in servers if server not in priority_set)
+        if priority_servers:
+            with _server_cursor_guard:
+                start = _server_cursor % len(priority_servers)
+                _server_cursor += 1
+            rotated = priority_servers[start:] + priority_servers[:start] + cold_servers
+        else:
+            with _server_cursor_guard:
+                start = _server_cursor % len(servers)
+                _server_cursor += 1
+            rotated = servers[start:] + servers[:start]
+    else:
+        with _server_cursor_guard:
+            start = _server_cursor % len(servers)
+            _server_cursor += 1
+        rotated = servers[start:] + servers[:start]
     snapshot = _get_server_health_snapshot()
     now = time.monotonic()
     ready = []

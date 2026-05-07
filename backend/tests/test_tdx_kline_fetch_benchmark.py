@@ -55,6 +55,8 @@ def test_tdx_kline_fetch_benchmark_skips_network_when_preflight_is_fresh(monkeyp
     assert result["preflight"]["stale_stock_count"] == 0
     assert result["preflight"]["network_touched"] is False
     assert result["fetch_summary"]["fetched_stock_count"] == 0
+    assert result["tdx_server_health"]["loaded"]["skipped"] == "no_network_request"
+    assert result["tdx_server_health"]["recorded"]["skipped"] == "no_tdx_attempts"
     assert "calendar_preflight_s" in result["stage_timings"]
     row = conn.execute(
         """
@@ -128,6 +130,21 @@ def test_tdx_kline_fetch_benchmark_records_attempt_and_write_breakdown(monkeypat
     assert attempts["connect_elapsed_s"] == 0.005
     assert attempts["operation_elapsed_s"] == 0.015
     assert result["write_benchmark"]["temp_rows_written"] == 1
+    assert result["tdx_server_health"]["loaded"]["capability"] == "kline_daily_raw"
+    assert result["tdx_server_health"]["recorded"]["updated_server_count"] == 1
+    health_row = conn.execute(
+        """
+        SELECT server_host, server_port, capability, success_count
+          FROM mart_tdx_server_health
+         WHERE capability = 'kline_daily_raw'
+        """
+    ).fetchone()
+    assert (
+        health_row["server_host"],
+        health_row["server_port"],
+        health_row["capability"],
+        health_row["success_count"],
+    ) == ("1.1.1.1", 7709, "kline_daily_raw", 1)
     assert {"fetch_requests_s", "row_decode_normalize_s", "duckdb_write_benchmark_s"} <= set(
         result["stage_timings"]
     )

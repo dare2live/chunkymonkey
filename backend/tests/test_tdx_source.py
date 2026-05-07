@@ -46,6 +46,73 @@ def test_iter_tdx_servers_prefers_custom_and_deduplicates(monkeypatch):
     assert servers == (("1.1.1.1", 7709), ("2.2.2.2", 7709), ("3.3.3.3", 7709))
 
 
+def test_tdx_server_health_reorders_future_server_iteration(monkeypatch):
+    conn = duck_mem()
+    monkeypatch.delenv("CM_TDX_SERVERS", raising=False)
+    monkeypatch.setattr(
+        tdx_source,
+        "_load_hq_hosts",
+        lambda: (("1.1.1.1", 7709), ("2.2.2.2", 7709), ("3.3.3.3", 7709)),
+    )
+
+    tdx_source.reset_tdx_quotes_pool()
+    try:
+        record = tdx_source.record_tdx_server_attempts(
+            conn,
+            [
+                {"server": ("1.1.1.1", 7709), "ok": False, "error_type": "TimeoutError", "elapsed_sec": 1.5},
+                {"server": ("2.2.2.2", 7709), "ok": True, "elapsed_sec": 0.2},
+                {"server": ("3.3.3.3", 7709), "ok": True, "elapsed_sec": 0.3},
+            ],
+            capability="kline_daily_raw",
+            run_id="unit",
+        )
+        loaded = tdx_source.load_tdx_server_health(conn, capability="kline_daily_raw")
+        servers = tdx_source.iter_tdx_servers()
+        first_request = tdx_source._iter_tdx_servers_for_request(prefer_last_success=False)
+        second_request = tdx_source._iter_tdx_servers_for_request(prefer_last_success=False)
+        third_request = tdx_source._iter_tdx_servers_for_request(prefer_last_success=False)
+    finally:
+        tdx_source.reset_tdx_quotes_pool()
+
+    assert record["updated_server_count"] == 3
+    assert loaded["loaded_server_count"] == 2
+    assert loaded["servers"] == ["2.2.2.2:7709", "3.3.3.3:7709"]
+    assert servers[0] == ("2.2.2.2", 7709)
+    assert set(servers) == {("1.1.1.1", 7709), ("2.2.2.2", 7709), ("3.3.3.3", 7709)}
+    assert [first_request[0], second_request[0], third_request[0]] == [
+        ("2.2.2.2", 7709),
+        ("3.3.3.3", 7709),
+        ("2.2.2.2", 7709),
+    ]
+
+
+def test_tdx_server_health_skips_non_retryable_operation_errors():
+    conn = duck_mem()
+
+    record = tdx_source.record_tdx_server_attempts(
+        conn,
+        [
+            {"server": ("1.1.1.1", 7709), "ok": False, "error_type": "NotImplementedError", "elapsed_sec": 0.01},
+            {"server": ("2.2.2.2", 7709), "ok": True, "elapsed_sec": 0.2},
+        ],
+        capability="kline_daily_raw",
+        run_id="unit",
+    )
+    rows = conn.execute(
+        """
+        SELECT server_host, success_count, failure_count
+          FROM mart_tdx_server_health
+         ORDER BY server_host
+        """
+    ).fetchall()
+
+    assert record["skipped_non_retryable_count"] == 1
+    assert [(row["server_host"], row["success_count"], row["failure_count"]) for row in rows] == [
+        ("2.2.2.2", 1, 0)
+    ]
+
+
 def test_call_tdx_quotes_with_retry_reuses_pooled_client(monkeypatch):
     factory_calls = []
 

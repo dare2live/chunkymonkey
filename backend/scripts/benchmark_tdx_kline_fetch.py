@@ -24,7 +24,11 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from services.market_db import get_market_conn  # noqa: E402
 from services.pipeline_manifest import git_commit_sha, record_pipeline_run, utc_now_iso  # noqa: E402
 from services.pipeline_timing import PipelineTimer  # noqa: E402
-from services.tdx_source import call_tdx_quotes_with_retry  # noqa: E402
+from services.tdx_source import (  # noqa: E402
+    call_tdx_quotes_with_retry,
+    load_tdx_server_health,
+    record_tdx_server_attempts,
+)
 
 import build_price_kline_tdxhub as kline  # noqa: E402
 
@@ -53,6 +57,10 @@ def _source_for_adjust(source_name: str, adjust_mode: str) -> str:
     if adjust_mode == "raw" and "raw_incremental" not in source_name:
         return f"{source_name}_raw_incremental"
     return source_name
+
+
+def _server_health_capability(adjust_mode: str) -> str:
+    return "kline_daily_raw" if adjust_mode == "raw" else "kline_daily_qfq_records"
 
 
 def _attempt_server_text(attempt: dict[str, Any]) -> str:
@@ -234,7 +242,16 @@ def run_benchmark(config: BenchmarkConfig) -> dict[str, Any]:
         normalized_rows: list[dict[str, Any]] = []
         attempts: list[dict[str, Any]] = []
         failed_codes: list[str] = []
+        server_health_capability = _server_health_capability(config.adjust_mode)
+        server_health_load: dict[str, Any] = {
+            "capability": server_health_capability,
+            "loaded_server_count": 0,
+            "servers": [],
+            "skipped": "no_network_request",
+        }
         if sample_stock_list:
+            with timer.stage("tdx_server_health_load_s"):
+                server_health_load = load_tdx_server_health(conn, capability=server_health_capability)
             with timer.stage("fetch_requests_s"):
                 def fetch_one(code: str) -> tuple[str, list[dict[str, Any]], str, list[dict[str, Any]]]:
                     records, source_name, stock_attempts = fetch_stock_with_attempts(
@@ -316,6 +333,21 @@ def run_benchmark(config: BenchmarkConfig) -> dict[str, Any]:
             with timer.stage("duckdb_write_benchmark_s"):
                 temp_write_rows = write_temp_kline_rows(conn, normalized_rows)
 
+        server_health_record: dict[str, Any] = {
+            "capability": server_health_capability,
+            "attempt_count": 0,
+            "updated_server_count": 0,
+            "skipped": "no_tdx_attempts",
+        }
+        if attempts:
+            with timer.stage("tdx_server_health_persist_s"):
+                server_health_record = record_tdx_server_attempts(
+                    conn,
+                    attempts,
+                    capability=server_health_capability,
+                    run_id=config.run_id,
+                )
+
         ended_at = utc_now_iso()
         duration_s = round(time.perf_counter() - started, 3)
         preflight = {
@@ -355,6 +387,10 @@ def run_benchmark(config: BenchmarkConfig) -> dict[str, Any]:
                 "xdxr_gap_code_count": xdxr_gap_code_count,
                 "xdxr_gap_event_count": xdxr_gap_event_count,
             },
+            "tdx_server_health": {
+                "loaded": server_health_load,
+                "recorded": server_health_record,
+            },
             "stage_timings": dict(timer.stage_timings),
         }
         record_pipeline_run(
@@ -377,6 +413,7 @@ def run_benchmark(config: BenchmarkConfig) -> dict[str, Any]:
                 "fetch_summary": fetch_summary,
                 "write_benchmark": result["write_benchmark"],
                 "qfq_adjustment": result["qfq_adjustment"],
+                "tdx_server_health": result["tdx_server_health"],
             },
         )
         return result
