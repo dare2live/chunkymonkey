@@ -116,6 +116,40 @@ def test_on_demand_asset_contract_overrides_name_based_daily_freshness():
         conn.close()
 
 
+def test_on_demand_empty_table_with_writer_is_green():
+    conn = duck_mem()
+    try:
+        conn.execute(
+            """
+            CREATE TABLE mart_tdx_server_health (
+                server_host TEXT,
+                updated_at TEXT
+            )
+            """
+        )
+
+        health = compute_health_for_table(
+            conn,
+            {
+                "table_name": "mart_tdx_server_health",
+                "layer": "mart",
+                "writer_module": "backend/services/tdx_source.py",
+                "upstream_source": "derived",
+                "expected_freshness": "t+1",
+                "sla_hours": 48,
+                "asset_cadence": "on_demand",
+                "coverage_policy": "workflow_dependent",
+            },
+            datetime(2026, 5, 7, 12, 0, 0),
+        )
+
+        assert health["row_count"] == 0
+        assert health["severity"] == "green"
+        assert health["issue_summary"] is None
+    finally:
+        conn.close()
+
+
 def test_event_fact_freshness_uses_writer_time():
     conn = duck_mem()
     try:

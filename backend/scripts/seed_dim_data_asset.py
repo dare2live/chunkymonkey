@@ -136,6 +136,8 @@ EXTRA_FRESHNESS_BY_TABLE = {
     "mart_tdx_gpcw_auto_optuna_run": ("on-demand", 24 * 30),
     "mart_tdx_gpcw_auto_retention_decision": ("on-demand", 24 * 30),
     "mart_temporal_research_panel": ("on-demand", 24 * 30),
+    "mart_tdx_f10_source_date_section_audit": ("on-demand", 24 * 30),
+    "mart_tdx_server_health": ("on-demand", 24 * 30),
     "mart_temporal_research_panel_quality": ("on-demand", 24 * 30),
     # gpcw files are quarter-end source manifests.
     "mart_tdx_gpcw_file_manifest": ("quarterly", 24 * 95),

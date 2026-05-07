@@ -342,7 +342,7 @@ def compute_health_for_table(con, asset: dict, now: datetime) -> dict:
     # severity 判定
     issues = []
     severity = "green"
-    if row_count == 0 and expected_freshness not in OPTIONAL_EMPTY_FRESHNESS:
+    if row_count == 0 and expected_freshness not in OPTIONAL_EMPTY_FRESHNESS and not non_expiring:
         severity = "red"
         issues.append("0 rows but expected to be populated")
     elif freshness_hours is not None:
@@ -369,6 +369,7 @@ def compute_health_for_table(con, asset: dict, now: datetime) -> dict:
         asset.get("writer_module") is not None
         and row_count == 0
         and expected_freshness not in OPTIONAL_EMPTY_FRESHNESS
+        and not non_expiring
     ):
         severity = "red"
         issues.append("stale_empty (writer registered but never produced rows)")
