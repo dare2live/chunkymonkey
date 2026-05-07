@@ -5585,6 +5585,7 @@ tr.detail-row>td>.detail-panel {
 }
 .sig-source-true { background: var(--cm-ok-100); color: var(--cm-ok-500); }
 .sig-source-page { background: var(--cm-info-100); color: var(--cm-info-500); }
+.sig-source-fetched { background: var(--cm-info-100); color: var(--cm-ink-700); }
 .sig-source-deadline { background: var(--cm-warn-100); color: var(--cm-warn-500); }
 .sig-source-unknown { background: var(--cm-ink-50); color: var(--cm-ink-500); }
 

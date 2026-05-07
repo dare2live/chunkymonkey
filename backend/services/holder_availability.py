@@ -112,11 +112,13 @@ def derive_holder_availability_dates(
     notice_date: Any = None,
     effective_date: Any = None,
     page_update_date: Any = None,
+    fetched_at: Any = None,
 ) -> tuple[str | None, str | None, str | None]:
     """Return notice, effective, and source for holder period availability."""
 
     normalized_notice = normalize_yyyymmdd(notice_date)
     source = "source_notice" if normalized_notice else None
+    regulatory_deadline = regulatory_notice_date_for_report_date(report_date)
     if normalized_notice is None:
         normalized_page_update = normalize_yyyymmdd(page_update_date)
         normalized_report = normalize_yyyymmdd(report_date)
@@ -126,7 +128,21 @@ def derive_holder_availability_dates(
             normalized_notice = normalized_page_update
             source = "page_update_date"
     if normalized_notice is None:
-        normalized_notice = regulatory_notice_date_for_report_date(report_date)
+        normalized_fetched = normalize_yyyymmdd(fetched_at)
+        normalized_report = normalize_yyyymmdd(report_date)
+        today = datetime.now().strftime("%Y%m%d")
+        if (
+            normalized_fetched
+            and normalized_report
+            and normalized_fetched >= normalized_report
+            and normalized_fetched <= today
+            and regulatory_deadline
+            and regulatory_deadline > today
+        ):
+            normalized_notice = normalized_fetched
+            source = "fetched_at_observed"
+    if normalized_notice is None:
+        normalized_notice = regulatory_deadline
         source = "regulatory_deadline" if normalized_notice else None
     normalized_effective = normalize_yyyymmdd(effective_date)
     if normalized_notice and normalized_effective is None:
@@ -144,6 +160,7 @@ def enrich_holder_rows_with_availability(conn, rows: Iterable[dict]) -> list[dic
             notice_date=item.get("notice_date"),
             effective_date=item.get("effective_date"),
             page_update_date=item.get("page_update_date"),
+            fetched_at=item.get("fetched_at"),
         )
         item["notice_date"] = notice
         item["effective_date"] = effective
@@ -238,6 +255,91 @@ def backfill_future_holder_period_page_update_availability(conn) -> dict:
     }
 
 
+def backfill_future_holder_period_fetched_at_availability(conn) -> dict:
+    """Upgrade future regulatory fallback dates to observed raw fetch dates.
+
+    This is deliberately limited to rows whose regulatory fallback is still in
+    the future. For older historical periods, a current scrape timestamp is not
+    a historical disclosure date and must not replace the statutory fallback.
+    """
+
+    columns = _table_columns(conn, "fact_top10_holder_period")
+    required = {"notice_date", "effective_date", "availability_source", "fetched_at", "report_date"}
+    if not required <= columns:
+        return {
+            "status": "missing_columns",
+            "updated_rows": 0,
+            "missing_columns": sorted(required - columns),
+        }
+
+    fetched_norm = (
+        "substr(REPLACE(REPLACE(REPLACE(REPLACE(CAST(fetched_at AS VARCHAR), '-', ''), '/', ''), '.', ''), 'T', ''), 1, 8)"
+    )
+    report_norm = (
+        "substr(REPLACE(REPLACE(REPLACE(CAST(report_date AS VARCHAR), '-', ''), '/', ''), '.', ''), 1, 8)"
+    )
+    notice_norm = (
+        "substr(REPLACE(REPLACE(REPLACE(CAST(notice_date AS VARCHAR), '-', ''), '/', ''), '.', ''), 1, 8)"
+    )
+    fetched_iso = (
+        f"substr({fetched_norm},1,4) || '-' || substr({fetched_norm},5,2) || '-' || substr({fetched_norm},7,2)"
+    )
+    notice_iso = (
+        f"substr({notice_norm},1,4) || '-' || substr({notice_norm},5,2) || '-' || substr({notice_norm},7,2)"
+    )
+    candidate_where = f"""
+        availability_source = 'regulatory_deadline'
+        AND fetched_at IS NOT NULL
+        AND CAST(fetched_at AS VARCHAR) != ''
+        AND length({fetched_norm}) = 8
+        AND length({report_norm}) = 8
+        AND {fetched_norm} >= {report_norm}
+        AND TRY_CAST({fetched_iso} AS DATE) <= CURRENT_DATE
+        AND TRY_CAST({notice_iso} AS DATE) > CURRENT_DATE
+    """
+    before = conn.execute(
+        f"SELECT COUNT(*) AS n FROM fact_top10_holder_period WHERE {candidate_where}"
+    ).fetchone()
+    before_count = int((before["n"] if hasattr(before, "keys") else before[0]) or 0)
+    if before_count == 0:
+        return {"status": "ok", "updated_rows": 0, "remaining_candidate_rows": 0}
+
+    fetched_dates = [
+        row["fetched_date"] if hasattr(row, "keys") else row[0]
+        for row in conn.execute(
+            f"""
+            SELECT DISTINCT {fetched_norm} AS fetched_date
+              FROM fact_top10_holder_period
+             WHERE {candidate_where}
+             ORDER BY fetched_date
+            """
+        ).fetchall()
+    ]
+    for fetched_date in fetched_dates:
+        effective_date = next_trading_day_after(conn, fetched_date)
+        conn.execute(
+            f"""
+            UPDATE fact_top10_holder_period
+               SET notice_date = ?,
+                   effective_date = ?,
+                   availability_source = 'fetched_at_observed'
+             WHERE {candidate_where}
+               AND {fetched_norm} = ?
+            """,
+            (fetched_date, effective_date, fetched_date),
+        )
+    conn.commit()
+    after = conn.execute(
+        f"SELECT COUNT(*) AS n FROM fact_top10_holder_period WHERE {candidate_where}"
+    ).fetchone()
+    after_count = int((after["n"] if hasattr(after, "keys") else after[0]) or 0)
+    return {
+        "status": "ok",
+        "updated_rows": max(before_count - after_count, 0),
+        "remaining_candidate_rows": after_count,
+    }
+
+
 def backfill_inst_holdings_notice_dates(conn) -> dict:
     """Backfill inst_holdings PIT availability fields from canonical TDX holder facts."""
 
@@ -270,8 +372,9 @@ def backfill_inst_holdings_notice_dates(conn) -> dict:
         CASE
             WHEN availability_source = 'source_notice' THEN 0
             WHEN availability_source = 'page_update_date' THEN 1
-            WHEN availability_source = 'regulatory_deadline' THEN 2
-            ELSE 3
+            WHEN availability_source = 'fetched_at_observed' THEN 2
+            WHEN availability_source = 'regulatory_deadline' THEN 3
+            ELSE 4
         END
         """
         if has_holder_source
@@ -382,8 +485,9 @@ def backfill_institution_event_notice_sources(conn) -> dict:
         CASE
             WHEN availability_source = 'source_notice' THEN 0
             WHEN availability_source = 'page_update_date' THEN 1
-            WHEN availability_source = 'regulatory_deadline' THEN 2
-            ELSE 3
+            WHEN availability_source = 'fetched_at_observed' THEN 2
+            WHEN availability_source = 'regulatory_deadline' THEN 3
+            ELSE 4
         END
         """
         if has_holder_source
@@ -425,8 +529,9 @@ def backfill_institution_event_notice_sources(conn) -> dict:
         CASE
             WHEN e.notice_date_source = 'source_notice' THEN 0
             WHEN e.notice_date_source = 'page_update_date' THEN 1
-            WHEN e.notice_date_source = 'regulatory_deadline' THEN 2
-            ELSE 3
+            WHEN e.notice_date_source = 'fetched_at_observed' THEN 2
+            WHEN e.notice_date_source = 'regulatory_deadline' THEN 3
+            ELSE 4
         END
     """
     before = conn.execute(

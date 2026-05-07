@@ -96,7 +96,7 @@
           events: [],
           institutions: new Set(),
           actionCounts: { follow: 0, watch: 0, skip: 0 },
-          noticeSourceCounts: { source_notice: 0, page_update_date: 0, regulatory_deadline: 0, unknown: 0 },
+          noticeSourceCounts: { source_notice: 0, page_update_date: 0, fetched_at_observed: 0, regulatory_deadline: 0, unknown: 0 },
         });
       }
       const g = groups.get(code);

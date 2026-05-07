@@ -124,6 +124,7 @@
     const map = {
       source_notice: { label: '公告日', cls: 'sig-source-true', title: '真实源公告日' },
       page_update_date: { label: 'F10更新', cls: 'sig-source-page', title: 'TDX/F10 页面更新日，可观测但不等同真实公告日' },
+      fetched_at_observed: { label: '抓取可见', cls: 'sig-source-fetched', title: '本地抓取时已可见，保守晚于真实公告日' },
       regulatory_deadline: { label: '监管兜底', cls: 'sig-source-deadline', title: '监管披露期限兜底，不是真实公告日' },
       unknown: { label: '未知来源', cls: 'sig-source-unknown', title: '公告日来源未标记' },
     };
@@ -138,6 +139,7 @@
     const bits = [];
     if (c.source_notice) bits.push(`${c.source_notice}源公告`);
     if (c.page_update_date) bits.push(`${c.page_update_date}F10更新`);
+    if (c.fetched_at_observed) bits.push(`${c.fetched_at_observed}抓取可见`);
     if (c.regulatory_deadline) bits.push(`${c.regulatory_deadline}监管兜底`);
     if (c.unknown) bits.push(`${c.unknown}未知`);
     return bits.length ? bits.join(' · ') : '暂无来源标记';

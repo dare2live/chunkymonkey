@@ -265,3 +265,53 @@ def test_backfill_institution_event_notice_sources_upgrades_regulatory_to_page_u
         assert row["notice_date_source"] == "page_update_date"
         assert row["source_notice_date"] is None
         assert row["availability_deadline"] == "20260720"
+
+
+def test_backfill_institution_event_notice_sources_upgrades_regulatory_to_fetched_observed():
+    with duck_mem() as conn:
+        conn.executescript(
+            """
+            CREATE TABLE fact_top10_holder_period (
+                stock_code TEXT,
+                report_date TEXT,
+                holder_set TEXT,
+                holder_name TEXT,
+                notice_date TEXT,
+                availability_source TEXT,
+                is_secondary_class BOOLEAN,
+                is_exit_row BOOLEAN
+            );
+            CREATE TABLE fact_institution_event (
+                institution_id TEXT,
+                holder_name TEXT,
+                stock_code TEXT,
+                report_date TEXT,
+                notice_date TEXT,
+                notice_date_source TEXT,
+                source_notice_date TEXT,
+                availability_deadline TEXT,
+                event_type TEXT,
+                gain_60d DOUBLE
+            );
+            INSERT INTO fact_top10_holder_period VALUES
+                ('000001', '20260421', 'free', 'holder_a', '20260505', 'fetched_at_observed', FALSE, FALSE);
+            INSERT INTO fact_institution_event VALUES
+                ('inst_a', 'holder_a', '000001', '20260421', '20260720',
+                 'regulatory_deadline', NULL, '20260720', 'new_entry', NULL);
+            """
+        )
+
+        result = backfill_institution_event_notice_sources(conn)
+        row = conn.execute(
+            """
+            SELECT notice_date, notice_date_source, source_notice_date,
+                   availability_deadline
+              FROM fact_institution_event
+            """
+        ).fetchone()
+
+        assert result["status"] == "ok"
+        assert row["notice_date"] == "20260505"
+        assert row["notice_date_source"] == "fetched_at_observed"
+        assert row["source_notice_date"] is None
+        assert row["availability_deadline"] == "20260720"

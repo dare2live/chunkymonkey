@@ -1132,6 +1132,7 @@
         var map = {
           source_notice: { text: '公告日', cls: 'sig-source-true', title: '真实源公告日' },
           page_update_date: { text: 'F10更新', cls: 'sig-source-page', title: 'TDX/F10 页面更新日，可观测但不等同真实公告日' },
+          fetched_at_observed: { text: '抓取可见', cls: 'sig-source-fetched', title: '本地抓取时已可见，保守晚于真实公告日' },
           regulatory_deadline: { text: '监管兜底', cls: 'sig-source-deadline', title: '监管披露期限兜底，不是真实公告日' },
           unknown: { text: '未知来源', cls: 'sig-source-unknown', title: '公告日来源未标记' },
         };

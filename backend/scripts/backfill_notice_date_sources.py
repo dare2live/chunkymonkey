@@ -6,6 +6,7 @@ import json
 
 from services.db import get_conn, init_db
 from services.holder_availability import (
+    backfill_future_holder_period_fetched_at_availability,
     backfill_future_holder_period_page_update_availability,
     backfill_institution_event_notice_sources,
     backfill_inst_holdings_notice_dates,
@@ -18,6 +19,7 @@ def main() -> None:
     init_db()
     with get_conn() as conn:
         page_update = backfill_future_holder_period_page_update_availability(conn)
+        fetched_at = backfill_future_holder_period_fetched_at_availability(conn)
         holdings = backfill_inst_holdings_notice_dates(conn)
         events = backfill_institution_event_notice_sources(conn)
         recalculated_returns = calculate_returns(conn)
@@ -26,6 +28,7 @@ def main() -> None:
         json.dumps(
             {
                 "holder_page_update": page_update,
+                "holder_fetched_at": fetched_at,
                 "inst_holdings": holdings,
                 "fact_institution_event": events,
                 "recalculated_returns": recalculated_returns,
