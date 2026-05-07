@@ -14,6 +14,7 @@ from services.audit import (  # noqa: E402
     _needs_stock_score_recalc,
     _summarize_current_relationship_freshness,
     _summarize_external_attention,
+    _today_signal_cache_plan_reason,
     build_smart_plan,
 )
 from services.utils import latest_completed_trade_date  # noqa: E402
@@ -412,6 +413,23 @@ class ExternalAttentionSyncPlanTests(unittest.TestCase):
 
         self.assertIn("build_external_attention", step_ids)
         self.assertIn("calc_stock_scores", step_ids)
+
+    def test_calc_returns_cascades_to_today_signal_snapshot(self):
+        step_ids = _collect_downstream_steps("calc_returns")
+
+        self.assertIn("calc_returns", step_ids)
+        self.assertIn("refresh_today_signals", step_ids)
+
+    def test_today_signal_cache_miss_plans_snapshot_refresh(self):
+        conn = _make_plan_conn()
+        try:
+            reason = _today_signal_cache_plan_reason(conn, [])
+            plan = build_smart_plan(conn, audit=_make_audit(), use_cache=False)
+
+            self.assertEqual(reason, "无今日信号快照")
+            self.assertIn("refresh_today_signals", plan["steps"])
+        finally:
+            conn.close()
 
     def test_build_smart_plan_recalc_scores_for_event_driven_trend_refresh(self):
         conn = _make_plan_conn()

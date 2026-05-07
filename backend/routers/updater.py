@@ -22,6 +22,7 @@
  17. build_turtle_features    — 海龟执行特征
  18. calc_inst_scores         — 机构评分
  19. calc_stock_scores        — 股票评分
+ 20. refresh_today_signals    — 物化今日信号快照
 """
 
 import asyncio
@@ -349,6 +350,7 @@ STEPS = [
     {"id": "build_turtle_features", "name": "海龟执行特征",    "group": "mart", "order": 17.5},
     {"id": "calc_inst_scores",      "name": "机构评分",        "group": "mart", "order": 18},
     {"id": "calc_stock_scores",     "name": "股票评分",        "group": "mart", "order": 19},
+    {"id": "refresh_today_signals",  "name": "今日信号快照",    "group": "mart", "order": 20},
 ]
 
 # 硬依赖：failed → 跳过本步骤
@@ -382,6 +384,7 @@ HARD_DEPS = {
     "build_turtle_features": ["build_stage_features"],
     "calc_inst_scores": ["build_profiles", "build_industry_stat"],
     "calc_stock_scores": ["calc_inst_scores", "build_stage_features"],
+    "refresh_today_signals": ["calc_returns"],
 }
 
 # 软依赖：failed/skipped → 继续执行但标注 data_completeness='partial'
@@ -398,6 +401,7 @@ SOFT_DEPS = {
     "build_turtle_features": [],
     "calc_inst_scores": ["calc_returns"],
     "calc_stock_scores": ["calc_returns", "build_external_attention"],
+    "refresh_today_signals": ["sync_industry", "sync_financial", "sync_surveys"],
 }
 
 MANUAL_ONLY_STEPS = {"calc_screening", "build_turtle_features"}
@@ -422,6 +426,7 @@ STEP_BUDGET_SECONDS = {
     "build_external_attention": 45,
     "calc_stock_scores": 45,
     "calc_inst_scores": 45,
+    "refresh_today_signals": 60,
 }
 
 STEP_SOURCE_DOMAINS = {
@@ -447,6 +452,7 @@ DAILY_NON_CRITICAL_STEPS = {
     "build_external_attention",
     "build_stage_features",
     "calc_stock_scores",
+    "refresh_today_signals",
 }
 
 _is_running = False
@@ -3750,6 +3756,31 @@ async def _step_calc_stock_scores(conn) -> int:
     return await _run_blocking_db_task(calculate_stock_scores)
 
 
+async def _step_refresh_today_signals(conn) -> dict:
+    """物化今日信号快照；页面打开只读这个快照，不隐式重算。"""
+    from services.signals_v2 import load_config, materialize_today_signal_cache
+
+    def _worker(worker_conn):
+        cfg = load_config(worker_conn)
+        payload = materialize_today_signal_cache(
+            worker_conn,
+            config=cfg,
+            freshness_days=cfg.signal_freshness_days,
+        )
+        cache = payload.get("cache") or {}
+        count = int(cache.get("signal_count") or len(payload.get("signals") or []))
+        return {
+            "count": count,
+            "status": "completed",
+            "freshness_days": cfg.signal_freshness_days,
+            "built_at": cache.get("built_at"),
+            "source_max_notice_date": cache.get("source_max_notice_date"),
+            "message": f"物化 {count} 条今日信号快照",
+        }
+
+    return await _run_blocking_db_task(_worker)
+
+
 # P1.5 (2026-04-28): 5 个妙想独家 capability sync step
 async def _step_sync_aif10_capability(conn, capability_name: str) -> dict:
     """通用妙想 capability sync step. 失败不阻塞主流程."""
@@ -3867,6 +3898,7 @@ RUNNERS = {
     "build_turtle_features": _step_build_turtle_features,
     "calc_inst_scores": _step_calc_inst_scores,
     "calc_stock_scores": _step_calc_stock_scores,
+    "refresh_today_signals": _step_refresh_today_signals,
 }
 
 

@@ -304,6 +304,61 @@ def load_today_signal_cache(
     }
 
 
+def describe_today_signal_cache(
+    conn,
+    *,
+    config: PolicyConfig | None = None,
+    freshness_days: int | None = None,
+) -> dict:
+    cfg = config or load_config(conn)
+    fresh_days = int(freshness_days or cfg.signal_freshness_days)
+    ensure_today_signal_cache(conn)
+    cache_key, policy_hash = _today_signal_cache_key(
+        freshness_days=fresh_days,
+        config=cfg,
+    )
+    current_source_max = _source_max_notice_date(conn)
+    row = conn.execute(
+        """
+        SELECT signal_count,
+               source_max_notice_date,
+               built_at
+          FROM mart_today_signal_cache
+         WHERE cache_key = ?
+           AND policy_hash = ?
+         LIMIT 1
+        """,
+        (cache_key, policy_hash),
+    ).fetchone()
+    if not row:
+        return {
+            "status": "miss",
+            "cache_key": cache_key,
+            "policy_hash": policy_hash,
+            "freshness_days": fresh_days,
+            "signal_count": 0,
+            "source_max_notice_date": None,
+            "current_source_max_notice_date": current_source_max,
+            "built_at": None,
+            "stale": True,
+            "requires_refresh": True,
+        }
+    source_max = row["source_max_notice_date"]
+    stale = bool(current_source_max and source_max and current_source_max != source_max)
+    return {
+        "status": "hit",
+        "cache_key": cache_key,
+        "policy_hash": policy_hash,
+        "freshness_days": fresh_days,
+        "signal_count": int(row["signal_count"] or 0),
+        "source_max_notice_date": source_max,
+        "current_source_max_notice_date": current_source_max,
+        "built_at": row["built_at"],
+        "stale": stale,
+        "requires_refresh": stale,
+    }
+
+
 def materialize_today_signal_cache(
     conn,
     *,

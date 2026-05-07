@@ -473,6 +473,33 @@ def _needs_stock_score_recalc(planned_steps: list[str]) -> bool:
     )
 
 
+def _today_signal_cache_plan_reason(conn, planned_steps: list[str]) -> Optional[str]:
+    if any(
+        step in planned_steps
+        for step in [
+            "gen_events",
+            "calc_returns",
+            "sync_industry",
+            "sync_financial",
+            "sync_surveys",
+        ]
+    ):
+        return "事件、收益、行业或信号特征上游变更后刷新今日信号快照"
+    try:
+        from services.signals_v2 import describe_today_signal_cache  # noqa: WPS433
+
+        status = describe_today_signal_cache(conn)
+    except Exception as exc:
+        return f"今日信号快照状态不可读: {str(exc)[:80]}"
+    if status.get("status") == "miss":
+        return "无今日信号快照"
+    if status.get("requires_refresh"):
+        current = status.get("current_source_max_notice_date") or "unknown"
+        cached = status.get("source_max_notice_date") or "unknown"
+        return f"今日信号快照事件边界变化（cache {cached} → source {current}）"
+    return None
+
+
 def _summarize_current_relationship_freshness(conn) -> dict:
     summary = {
         "latest_raw_report_date": "",
@@ -1311,7 +1338,7 @@ def build_smart_plan(conn, force_all=False, *, audit: Optional[dict] = None, use
         "calc_screening", "calc_sector_momentum", "build_external_attention",
         "build_stage_features", "build_turtle_features",
         "calc_risk_factors", "calc_prediction_outcomes",
-        "calc_inst_scores", "calc_stock_scores",
+        "calc_inst_scores", "calc_stock_scores", "refresh_today_signals",
     ]
 
     plan = {"steps": [], "reason": [], "skip_reasons": {}}
@@ -1687,6 +1714,14 @@ def build_smart_plan(conn, force_all=False, *, audit: Optional[dict] = None, use
         plan["reason"].append("机构评分、趋势、阶段/预测特征或外部关注变更后重算股票评分")
     else:
         plan["skip_reasons"]["calc_stock_scores"] = "上游未变更，无需重算"
+
+    # 12b. 今日信号快照：页面默认只读快照，因此更新链路必须在受控 checkpoint 显式刷新。
+    today_signal_reason = _today_signal_cache_plan_reason(conn, plan["steps"])
+    if today_signal_reason:
+        plan["steps"].append("refresh_today_signals")
+        plan["reason"].append(today_signal_reason)
+    else:
+        plan["skip_reasons"]["refresh_today_signals"] = "今日信号快照已是最新"
 
     # 13. 选股筛选 —— 已迁出智能更新，转独立"选股模块"手动触发
     plan["skip_reasons"]["calc_screening"] = "已迁出智能更新，请用工作台·选股扫描手动触发"
