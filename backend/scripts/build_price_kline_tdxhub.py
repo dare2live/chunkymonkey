@@ -36,6 +36,9 @@ from services.utils import latest_completed_trade_date
 logger = logging.getLogger("price_kline_tdxhub")
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s | %(message)s")
 
+LOCAL_ACTIVE_A_STOCK_MIN_ROWS = 3000
+DEFAULT_WRITE_BATCH_ROWS = 5000
+
 
 TABLE_DDL = """
 CREATE TABLE IF NOT EXISTS price_kline_tdxhub (
@@ -83,6 +86,22 @@ def _is_a_share(code: str, market: int) -> bool:
     return False
 
 
+def _tdx_market_from_code(code: str) -> int | None:
+    c = str(code or "").strip().zfill(6)
+    if c.startswith(("60", "68")):
+        return 1
+    if c.startswith(("00", "30")):
+        return 0
+    return None
+
+
+def _row_get(row, key: str, index: int):
+    try:
+        return row[key]
+    except Exception:
+        return row[index]
+
+
 def load_a_stock_list(client) -> list[tuple[str, int]]:
     sh = client.stocks_records(market=1)
     sz = client.stocks_records(market=0)
@@ -118,6 +137,58 @@ def open_quotes_client_with_retry(
 def load_a_stock_list_with_retry() -> list[tuple[str, int]]:
     stock_list, _client, _source = open_quotes_client_with_retry()
     return stock_list
+
+
+def load_local_active_a_stock_list(
+    *,
+    min_rows: int = LOCAL_ACTIVE_A_STOCK_MIN_ROWS,
+) -> tuple[list[tuple[str, int]], str]:
+    """Return locally cached active A-share codes without touching network."""
+
+    try:
+        biz_conn = get_business_conn()
+    except Exception as exc:
+        return [], f"dim_active_a_stock_unavailable:{type(exc).__name__}"
+    try:
+        exists = biz_conn.execute(
+            """
+            SELECT 1
+              FROM information_schema.tables
+             WHERE table_name = 'dim_active_a_stock'
+             LIMIT 1
+            """
+        ).fetchone()
+        if not exists:
+            return [], "dim_active_a_stock_missing"
+        rows = biz_conn.execute(
+            """
+            SELECT stock_code, market
+              FROM dim_active_a_stock
+             WHERE stock_code IS NOT NULL
+             ORDER BY stock_code
+            """
+        ).fetchall()
+    except Exception as exc:
+        return [], f"dim_active_a_stock_read_error:{type(exc).__name__}"
+    finally:
+        biz_conn.close()
+
+    codes: list[tuple[str, int]] = []
+    for row in rows:
+        code = str(_row_get(row, "stock_code", 0) or "").strip().zfill(6)
+        market = _tdx_market_from_code(code)
+        if market is None or not _is_a_share(code, market):
+            continue
+        codes.append((code, market))
+    if len(codes) < min_rows:
+        return [], f"dim_active_a_stock_insufficient:{len(codes)}"
+    logger.info(
+        "本地 A 股主数据 %d 只 (沪 %d, 深 %d)",
+        len(codes),
+        sum(1 for _, m in codes if m == 1),
+        sum(1 for _, m in codes if m == 0),
+    )
+    return codes, "dim_active_a_stock"
 
 
 def _safe_float(value) -> float | None:
@@ -876,6 +947,8 @@ def main():
                         help='并发模式最多同时挂起的股票请求，默认 workers*4')
     parser.add_argument('--log-every', type=int, default=50,
                         help='每 N 只股票输出一次进度，默认 50')
+    parser.add_argument('--write-batch-rows', type=int, default=DEFAULT_WRITE_BATCH_ROWS,
+                        help='累计多少行后批量写入 DuckDB，默认 5000；写库仍单线程')
     parser.add_argument('--target-date', default=None,
                         help='增量追新的目标日期，默认使用交易日历最近已完成交易日')
     parser.add_argument('--allow-raw-incremental', action=argparse.BooleanOptionalAction, default=True,
@@ -908,14 +981,6 @@ def main():
         conn.commit()
         logger.info("price_kline_tdxhub 已清空")
 
-    stock_list, client, client_source = open_quotes_client_with_retry(
-        max_attempts=args.max_server_attempts,
-        connect_timeout=args.connect_timeout,
-    )
-    if args.limit > 0:
-        stock_list = stock_list[:args.limit]
-        logger.info("限制跑前 %d 只", args.limit)
-
     batch_id = f"tdxhub_{time.strftime('%Y%m%d_%H%M%S')}"
     pull_adjust = "qfq"
     if args.skip_existing and args.allow_raw_incremental:
@@ -943,8 +1008,16 @@ def main():
     n_raw_xdxr_dropped = 0
     n_xdxr_adjusted_rows = 0
     n_xdxr_adjustment_events = 0
+    write_batch_rows = max(1, int(args.write_batch_rows or DEFAULT_WRITE_BATCH_ROWS))
+    pending_write_rows: list[dict] = []
 
-    # 已有每股 max(date), 用于增量只补新日期.
+    stock_list: list[tuple[str, int]] = []
+    client = None
+    client_source = ""
+    stock_list_source = ""
+    stock_list_already_filtered = False
+
+    # 已有每股 max(date), 用于增量只补新日期. 这一步必须早于 TDXHub 触网。
     latest_dates = {}
     xdxr_gap_codes: set[str] = set()
     xdxr_gap_events: dict[str, list[dict]] = {}
@@ -952,16 +1025,61 @@ def main():
         latest_dates = load_latest_dates(conn)
         logger.info("skip_existing: 已加载 %d 只股的最新日期, 将只补新增交易日", len(latest_dates))
         target_date, target_source = choose_incremental_target_date(conn, args.target_date)
-        if target_date:
-            before_count = len(stock_list)
-            stock_list = filter_stale_stock_list(stock_list, latest_dates, target_date)
+        local_stock_list, local_source = load_local_active_a_stock_list()
+        if target_date and local_stock_list:
+            if args.limit > 0:
+                local_stock_list = local_stock_list[:args.limit]
+                logger.info("限制跑前 %d 只", args.limit)
+            before_count = len(local_stock_list)
+            stock_list = filter_stale_stock_list(local_stock_list, latest_dates, target_date)
+            stock_list_source = local_source
+            stock_list_already_filtered = True
             logger.info(
-                "skip_existing: 目标日期 %s (%s), stale 股票 %d/%d",
+                "skip_existing: 目标日期 %s (%s), 本地预检 stale 股票 %d/%d",
                 target_date,
                 target_source,
                 len(stock_list),
                 before_count,
             )
+            if not stock_list:
+                dt = time.time() - t0
+                logger.info(
+                    "skip_existing: 本地交易日历和主数据确认无待补 K 线，跳过 TDXHub 连接和行情请求"
+                )
+                logger.info("=" * 60)
+                logger.info("完成: 0 股成功 / 0 股失败 / 0 行写入 / 耗时 %.2f 秒", dt)
+                row = conn.execute(
+                    "SELECT MIN(date), MAX(date), COUNT(DISTINCT date), COUNT(DISTINCT code) "
+                    "FROM price_kline_tdxhub"
+                ).fetchone()
+                logger.info("price_kline_tdxhub 整体: %s ~ %s, 交易日 %d, 股票 %d", *row)
+                conn.close()
+                return
+        elif local_source:
+            logger.info("skip_existing: 本地 A 股主数据不可用于预检 (%s)，回退 TDXHub 代码表", local_source)
+
+    if not stock_list:
+        stock_list, client, client_source = open_quotes_client_with_retry(
+            max_attempts=args.max_server_attempts,
+            connect_timeout=args.connect_timeout,
+        )
+        stock_list_source = client_source
+        if args.limit > 0:
+            stock_list = stock_list[:args.limit]
+            logger.info("限制跑前 %d 只", args.limit)
+
+    if args.skip_existing:
+        if target_date:
+            if not stock_list_already_filtered:
+                before_count = len(stock_list)
+                stock_list = filter_stale_stock_list(stock_list, latest_dates, target_date)
+                logger.info(
+                    "skip_existing: 目标日期 %s (%s), stale 股票 %d/%d",
+                    target_date,
+                    target_source,
+                    len(stock_list),
+                    before_count,
+                )
             if pull_adjust is None and args.apply_xdxr_adjustment:
                 xdxr_gap_events = load_xdxr_gap_events(conn, latest_dates, target_date)
                 xdxr_gap_codes = set(xdxr_gap_events)
@@ -978,12 +1096,27 @@ def main():
                         len(xdxr_gap_codes),
                     )
 
+    if stock_list_source:
+        logger.info("A 股同步清单来源: %s", stock_list_source)
+
+    def flush_pending_rows() -> int:
+        nonlocal n_rows_written
+        nonlocal pending_write_rows
+        if not pending_write_rows:
+            return 0
+        rows = pending_write_rows
+        pending_write_rows = []
+        n = write_batch(conn, rows)
+        n_rows_written += n
+        return n
+
     def process_normalized_stock(code: str, norm: list[dict], source_name: str) -> None:
         nonlocal n_rows_written
         nonlocal n_stocks_done
         nonlocal n_raw_xdxr_dropped
         nonlocal n_xdxr_adjusted_rows
         nonlocal n_xdxr_adjustment_events
+        nonlocal pending_write_rows
         if args.skip_existing:
             if pull_adjust is None:
                 code_events = xdxr_gap_events.get(code) or []
@@ -1009,12 +1142,14 @@ def main():
             norm = filter_after_latest(norm, latest_dates)
             if not norm:
                 return
-        n = write_batch(conn, norm)
-        n_rows_written += n
+        pending_write_rows.extend(norm)
         n_stocks_done += 1
+        if len(pending_write_rows) >= write_batch_rows:
+            flush_pending_rows()
 
     def log_progress(completed: int) -> None:
         if completed % max(1, args.log_every) == 0:
+            flush_pending_rows()
             conn.commit()
             dt = time.time() - t0
             rate = completed / dt if dt > 0 else 0
@@ -1025,8 +1160,20 @@ def main():
     if workers <= 1:
         for i, (code, _market) in enumerate(stock_list):
             try:
-                records = pull_one_stock(client, code, pages=args.pages, adjust=pull_adjust, raise_errors=True)
-                source_name = f"{client_source}_raw_incremental" if pull_adjust is None else client_source
+                if client is not None:
+                    records = pull_one_stock(client, code, pages=args.pages, adjust=pull_adjust, raise_errors=True)
+                    source_name = f"{client_source}_raw_incremental" if pull_adjust is None else client_source
+                    norm = normalize(records, batch_id, source_name=source_name)
+                else:
+                    norm, source_name = fetch_one_stock_normalized(
+                        code,
+                        pages=args.pages,
+                        adjust=pull_adjust,
+                        batch_id=batch_id,
+                        connect_timeout=args.connect_timeout,
+                        max_attempts=per_stock_total_attempts,
+                        prefer_last_success=True,
+                    )
             except Exception as e:
                 if args.per_stock_retry_attempts > 0:
                     try:
@@ -1049,8 +1196,6 @@ def main():
                     n_failed.append(code)
                     log_progress(i + 1)
                     continue
-            else:
-                norm = normalize(records, batch_id, source_name=source_name)
             try:
                 process_normalized_stock(code, norm, source_name)
             except Exception as e:
@@ -1107,6 +1252,7 @@ def main():
                     log_progress(completed)
                     submit_next(pool)
 
+    flush_pending_rows()
     conn.commit()
     dt = time.time() - t0
     logger.info("=" * 60)

@@ -104,6 +104,152 @@ def test_retry_helpers_use_shared_tdx_retry(monkeypatch):
     assert clients[-1].calls[0]["adjust"] == "qfq"
 
 
+def test_load_local_active_a_stock_list_filters_supported_a_share_codes(monkeypatch):
+    conn = duck_mem()
+    conn.execute(
+        """
+        CREATE TABLE dim_active_a_stock (
+            stock_code TEXT,
+            stock_name TEXT,
+            market TEXT,
+            source TEXT,
+            updated_at TEXT
+        )
+        """
+    )
+    conn.executemany(
+        "INSERT INTO dim_active_a_stock VALUES (?, ?, ?, ?, ?)",
+        [
+            ("600001", "沪市主板", "SH", "unit", "2026-05-07"),
+            ("688001", "科创板", "SH", "unit", "2026-05-07"),
+            ("000001", "深市主板", "SZ", "unit", "2026-05-07"),
+            ("300001", "创业板", "SZ", "unit", "2026-05-07"),
+            ("430001", "北交所", "BJ", "unit", "2026-05-07"),
+            ("159001", "ETF", "SZ", "unit", "2026-05-07"),
+        ],
+    )
+    monkeypatch.setattr(builder, "get_business_conn", lambda: conn)
+
+    stock_list, source = builder.load_local_active_a_stock_list(min_rows=1)
+
+    assert source == "dim_active_a_stock"
+    assert stock_list == [
+        ("000001", 0),
+        ("300001", 0),
+        ("600001", 1),
+        ("688001", 1),
+    ]
+
+
+def test_load_local_active_a_stock_list_reports_insufficient_cache(monkeypatch):
+    conn = duck_mem()
+    conn.execute("CREATE TABLE dim_active_a_stock (stock_code TEXT, market TEXT)")
+    conn.execute("INSERT INTO dim_active_a_stock VALUES ('000001', 'SZ')")
+    monkeypatch.setattr(builder, "get_business_conn", lambda: conn)
+
+    stock_list, source = builder.load_local_active_a_stock_list(min_rows=2)
+
+    assert stock_list == []
+    assert source == "dim_active_a_stock_insufficient:1"
+
+
+def test_main_skip_existing_exits_before_tdx_when_local_preflight_has_no_stale(monkeypatch):
+    conn = duck_mem()
+    conn.executescript(builder.TABLE_DDL)
+    conn.execute(
+        """
+        INSERT INTO price_kline_tdxhub (
+            code, date, freq, adjust, open, high, low, close,
+            volume, amount, factor, source, batch_id
+        ) VALUES (
+            '000001', '2026-05-06', 'daily', 'qfq', 10, 11, 9, 10.5,
+            1000, 10500, 1.0, 'tdxhub', 'unit'
+        )
+        """
+    )
+    monkeypatch.setattr(builder, "get_market_conn", lambda: conn)
+    monkeypatch.setattr(builder, "load_calendar_target_date", lambda: "2026-05-06")
+    monkeypatch.setattr(
+        builder,
+        "load_local_active_a_stock_list",
+        lambda: ([("000001", 0)], "dim_active_a_stock"),
+    )
+    monkeypatch.setattr(
+        builder,
+        "open_quotes_client_with_retry",
+        lambda **_kwargs: (_ for _ in ()).throw(AssertionError("TDXHub stock list should not be fetched")),
+    )
+    monkeypatch.setattr(sys, "argv", ["build_price_kline_tdxhub.py", "--skip-existing"])
+
+    builder.main()
+
+
+def test_main_buffers_incremental_rows_before_duckdb_write(monkeypatch):
+    conn = duck_mem()
+    conn.executescript(builder.TABLE_DDL)
+    write_sizes = []
+    original_write_batch = builder.write_batch
+
+    def fake_fetch(code, **_kwargs):
+        return (
+            [
+                {
+                    "code": code,
+                    "date": "2026-05-06",
+                    "freq": "daily",
+                    "adjust": "qfq",
+                    "open": 10.0,
+                    "high": 11.0,
+                    "low": 9.0,
+                    "close": 10.5,
+                    "volume": 1000.0,
+                    "amount": 10500.0,
+                    "factor": 1.0,
+                    "source": "tdxhub_unit_raw_incremental",
+                    "batch_id": "unit",
+                }
+            ],
+            "tdxhub_unit_raw_incremental",
+        )
+
+    def spy_write_batch(write_conn, rows):
+        write_sizes.append(len(rows))
+        return original_write_batch(write_conn, rows)
+
+    monkeypatch.setattr(builder, "get_market_conn", lambda: conn)
+    monkeypatch.setattr(builder, "load_calendar_target_date", lambda: "2026-05-06")
+    monkeypatch.setattr(
+        builder,
+        "load_local_active_a_stock_list",
+        lambda: ([("000001", 0), ("000002", 0)], "dim_active_a_stock"),
+    )
+    monkeypatch.setattr(builder, "fetch_one_stock_normalized", fake_fetch)
+    monkeypatch.setattr(builder, "write_batch", spy_write_batch)
+    monkeypatch.setattr(
+        builder,
+        "open_quotes_client_with_retry",
+        lambda **_kwargs: (_ for _ in ()).throw(AssertionError("TDXHub stock list should not be fetched")),
+    )
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "build_price_kline_tdxhub.py",
+            "--skip-existing",
+            "--workers",
+            "1",
+            "--write-batch-rows",
+            "99",
+            "--log-every",
+            "99",
+        ],
+    )
+
+    builder.main()
+
+    assert write_sizes == [2]
+
+
 def test_write_batch_uses_records():
     conn = duck_mem()
     try:
