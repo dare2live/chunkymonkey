@@ -72,10 +72,16 @@ CREATE TABLE IF NOT EXISTS mart_feature_rank_matrix_benchmark (
     compared_pairs INTEGER,
     max_abs_rank_ic_delta DOUBLE,
     avg_abs_rank_ic_delta DOUBLE,
+    gate_status TEXT,
+    gate_blockers_json TEXT,
+    gate_config_json TEXT,
     config_json TEXT,
     stage_timings_json TEXT,
     built_at TEXT
 );
+ALTER TABLE mart_feature_rank_matrix_benchmark ADD COLUMN IF NOT EXISTS gate_status TEXT;
+ALTER TABLE mart_feature_rank_matrix_benchmark ADD COLUMN IF NOT EXISTS gate_blockers_json TEXT;
+ALTER TABLE mart_feature_rank_matrix_benchmark ADD COLUMN IF NOT EXISTS gate_config_json TEXT;
 """
 
 
@@ -242,6 +248,37 @@ def _delta(left: float | None, right: float | None) -> float | None:
     return value if math.isfinite(value) else None
 
 
+def _evaluate_proxy_gate(
+    *,
+    exact_run_id: str | None,
+    compared_pairs: int,
+    max_delta: float | None,
+    avg_delta: float | None,
+    min_compared_pairs: int,
+    max_abs_rank_ic_delta: float,
+    max_avg_abs_rank_ic_delta: float,
+) -> tuple[str, list[str], dict[str, Any]]:
+    config = {
+        "min_compared_pairs": int(min_compared_pairs),
+        "max_abs_rank_ic_delta": float(max_abs_rank_ic_delta),
+        "max_avg_abs_rank_ic_delta": float(max_avg_abs_rank_ic_delta),
+    }
+    blockers: list[str] = []
+    if not exact_run_id:
+        blockers.append("exact_run_id_missing")
+    if compared_pairs < min_compared_pairs:
+        blockers.append(f"compared_pairs {compared_pairs} < {min_compared_pairs}")
+    if max_delta is None:
+        blockers.append("max_abs_rank_ic_delta_missing")
+    elif max_delta > max_abs_rank_ic_delta:
+        blockers.append(f"max_abs_rank_ic_delta {max_delta:.8f} > {max_abs_rank_ic_delta:.8f}")
+    if avg_delta is None:
+        blockers.append("avg_abs_rank_ic_delta_missing")
+    elif avg_delta > max_avg_abs_rank_ic_delta:
+        blockers.append(f"avg_abs_rank_ic_delta {avg_delta:.8f} > {max_avg_abs_rank_ic_delta:.8f}")
+    return ("pass" if not blockers else "blocked", blockers, config)
+
+
 def build_feature_rank_matrix_proxy(
     conn: Any,
     *,
@@ -257,6 +294,9 @@ def build_feature_rank_matrix_proxy(
     end_date: str | None = None,
     min_daily_count: int = 10,
     limit_features: int | None = None,
+    min_compared_pairs: int = 1,
+    max_abs_rank_ic_delta: float = 0.001,
+    max_avg_abs_rank_ic_delta: float = 0.0002,
 ) -> dict[str, Any]:
     ensure_tables(conn)
     run_id = run_id or f"feature_rank_matrix_{datetime.now(UTC).strftime('%Y%m%d_%H%M%S')}"
@@ -381,6 +421,15 @@ def build_feature_rank_matrix_proxy(
     compared_pairs = len(deltas)
     max_delta = max(deltas) if deltas else None
     avg_delta = sum(deltas) / len(deltas) if deltas else None
+    gate_status, gate_blockers, gate_config = _evaluate_proxy_gate(
+        exact_run_id=exact_run_id,
+        compared_pairs=compared_pairs,
+        max_delta=max_delta,
+        avg_delta=avg_delta,
+        min_compared_pairs=min_compared_pairs,
+        max_abs_rank_ic_delta=max_abs_rank_ic_delta,
+        max_avg_abs_rank_ic_delta=max_avg_abs_rank_ic_delta,
+    )
     config = {
         "feature_set_id": feature_set_id,
         "feature_roles": feature_roles or [],
@@ -391,6 +440,7 @@ def build_feature_rank_matrix_proxy(
         "min_daily_count": min_daily_count,
         "limit_features": limit_features,
         "rank_matrix_mode": "single_select_nulls_last_proxy",
+        "proxy_gate": gate_config,
     }
 
     _progress("write_benchmark_summary start")
@@ -402,8 +452,9 @@ def build_feature_rank_matrix_proxy(
              total_rows, rank_matrix_rows, proxy_rows, exact_run_id,
              exact_duration_s, matrix_duration_s, rank_matrix_build_s,
              proxy_association_s, compared_pairs, max_abs_rank_ic_delta,
-             avg_abs_rank_ic_delta, config_json, stage_timings_json, built_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+             avg_abs_rank_ic_delta, gate_status, gate_blockers_json,
+             gate_config_json, config_json, stage_timings_json, built_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             [
                 run_id,
@@ -422,6 +473,9 @@ def build_feature_rank_matrix_proxy(
                 compared_pairs,
                 max_delta,
                 avg_delta,
+                gate_status,
+                json.dumps(gate_blockers, ensure_ascii=False, sort_keys=True),
+                json.dumps(gate_config, ensure_ascii=False, sort_keys=True),
                 json.dumps(config, ensure_ascii=False, sort_keys=True),
                 json.dumps(stage_timings, ensure_ascii=False, sort_keys=True),
                 built_at,
@@ -446,6 +500,8 @@ def build_feature_rank_matrix_proxy(
             "mart_feature_rank_matrix_benchmark",
         ],
         label_name=label_name,
+        gate_result=gate_status,
+        blockers=gate_blockers,
         perf_summary=timer.summary(
             {
                 "features": len(usable_features),
@@ -459,6 +515,9 @@ def build_feature_rank_matrix_proxy(
                 "compared_pairs": compared_pairs,
                 "max_abs_rank_ic_delta": max_delta,
                 "avg_abs_rank_ic_delta": avg_delta,
+                "proxy_gate_status": gate_status,
+                "proxy_gate_blockers": gate_blockers,
+                "proxy_gate_config": gate_config,
             }
         ),
     )
@@ -479,6 +538,9 @@ def build_feature_rank_matrix_proxy(
         "compared_pairs": compared_pairs,
         "max_abs_rank_ic_delta": max_delta,
         "avg_abs_rank_ic_delta": avg_delta,
+        "proxy_gate_status": gate_status,
+        "proxy_gate_blockers": gate_blockers,
+        "proxy_gate_config": gate_config,
         "stage_timings": timer.stage_timings,
     }
 
@@ -497,6 +559,9 @@ def main() -> int:
     parser.add_argument("--end-date", default=None)
     parser.add_argument("--min-daily-count", type=int, default=10)
     parser.add_argument("--limit-features", type=int, default=None)
+    parser.add_argument("--min-compared-pairs", type=int, default=1)
+    parser.add_argument("--max-abs-rank-ic-delta", type=float, default=0.001)
+    parser.add_argument("--max-avg-abs-rank-ic-delta", type=float, default=0.0002)
     args = parser.parse_args()
 
     features = _parse_csv(args.features) or None
@@ -517,6 +582,9 @@ def main() -> int:
             end_date=args.end_date,
             min_daily_count=args.min_daily_count,
             limit_features=args.limit_features,
+            min_compared_pairs=args.min_compared_pairs,
+            max_abs_rank_ic_delta=args.max_abs_rank_ic_delta,
+            max_avg_abs_rank_ic_delta=args.max_avg_abs_rank_ic_delta,
         )
     print(json.dumps(result, ensure_ascii=False, indent=2, default=str))
     return 0

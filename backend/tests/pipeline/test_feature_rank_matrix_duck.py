@@ -82,7 +82,8 @@ def test_rank_matrix_proxy_matches_exact_dense_association():
         benchmark = conn.execute(
             """
             SELECT feature_count, label_count, proxy_rows, compared_pairs,
-                   max_abs_rank_ic_delta, stage_timings_json
+                   max_abs_rank_ic_delta, gate_status, gate_blockers_json,
+                   stage_timings_json
               FROM mart_feature_rank_matrix_benchmark
              WHERE run_id = 'rank_matrix_dense'
             """
@@ -100,6 +101,8 @@ def test_rank_matrix_proxy_matches_exact_dense_association():
         assert benchmark["proxy_rows"] == 4
         assert benchmark["compared_pairs"] == 4
         assert benchmark["max_abs_rank_ic_delta"] == pytest.approx(0.0)
+        assert benchmark["gate_status"] == "pass"
+        assert json.loads(benchmark["gate_blockers_json"]) == []
         assert "rank_matrix_build_s" in json.loads(benchmark["stage_timings_json"])
         assert "stage_timings" in json.loads(manifest["perf_summary_json"])
     finally:
@@ -129,6 +132,8 @@ def test_rank_matrix_proxy_records_without_exact_run():
 
         assert result["proxy_rows"] == 1
         assert result["compared_pairs"] == 0
+        assert result["proxy_gate_status"] == "blocked"
+        assert "exact_run_id_missing" in result["proxy_gate_blockers"]
         assert row["rank_ic"] == pytest.approx(1.0)
         assert row["exact_rank_ic"] is None
         assert row["abs_rank_ic_delta"] is None
