@@ -9,7 +9,7 @@ signals_v2 单元测试
     - 历史严格左切（no look-ahead）
 """
 
-from datetime import datetime
+from datetime import datetime, timedelta
 
 import pytest
 
@@ -28,6 +28,8 @@ from services.signals_v2 import (
     institution_track_record,
     backtest_historical,
     build_today_signals,
+    load_today_signal_cache,
+    materialize_today_signal_cache,
     ensure_defaults,
     cohort_recent_matured,
     institution_multi_horizon,
@@ -484,6 +486,54 @@ def test_today_signals_recent_only(memdb):
     signals = build_today_signals(memdb, config=cfg)
     assert len(signals) == 1
     assert signals[0].stock_code == "000001"
+
+
+def test_today_signal_cache_returns_last_materialized_result(memdb):
+    today = datetime.now()
+    initial_notice_iso = (today - timedelta(days=2)).strftime("%Y-%m-%d")
+    newer_notice_iso = (today - timedelta(days=1)).strftime("%Y-%m-%d")
+    _seed_events(memdb, [
+        ("inst1", "000001", "2023-Q4", initial_notice_iso, "new_entry", 0.0, 10.0, "医药"),
+    ] + [
+        ("inst1", f"0001{i}", "2023-Q1", f"2023-{i:02d}-15", "new_entry", 0.0, 10.0, "医药")
+        for i in range(1, 11)
+    ])
+    cfg = PolicyConfig(min_sample=5, ev_threshold_pct=3.0,
+                       prefer_same_industry_min_sample=5, signal_freshness_days=30)
+
+    materialized = materialize_today_signal_cache(memdb, config=cfg, freshness_days=30)
+    cached = load_today_signal_cache(memdb, config=cfg, freshness_days=30)
+    _seed_events(memdb, [
+        ("inst1", "000099", "2023-Q4", newer_notice_iso, "new_entry", 0.0, 10.0, "医药"),
+    ])
+    stale_cached = load_today_signal_cache(memdb, config=cfg, freshness_days=30)
+
+    assert materialized["summary"]["cache"]["status"] == "refreshed"
+    assert cached["summary"]["cache"]["status"] == "hit"
+    assert cached["summary"]["total"] == 1
+    assert cached["signals"][0]["stock_code"] == "000001"
+    assert stale_cached["summary"]["cache"]["stale"] is True
+    assert stale_cached["summary"]["total"] == 1
+    assert stale_cached["signals"][0]["stock_code"] == "000001"
+
+
+def test_today_signals_exclude_future_notice_dates(memdb):
+    today = datetime.now()
+    today_iso = today.strftime("%Y-%m-%d")
+    tomorrow_iso = (today + timedelta(days=1)).strftime("%Y-%m-%d")
+    _seed_events(memdb, [
+        ("inst1", "000001", "2023-Q4", today_iso, "new_entry", 0.0, 10.0, "医药"),
+        ("inst1", "000099", "2023-Q4", tomorrow_iso, "new_entry", 0.0, 10.0, "医药"),
+    ] + [
+        ("inst1", f"0001{i}", "2023-Q1", f"2023-{i:02d}-15", "new_entry", 0.0, 10.0, "医药")
+        for i in range(1, 11)
+    ])
+    cfg = PolicyConfig(min_sample=5, ev_threshold_pct=3.0,
+                       prefer_same_industry_min_sample=5, signal_freshness_days=30)
+
+    signals = build_today_signals(memdb, config=cfg)
+
+    assert [signal.stock_code for signal in signals] == ["000001"]
 
 
 # ─── rule_breakdown (Step 2.5) ───────────────────────────────────────

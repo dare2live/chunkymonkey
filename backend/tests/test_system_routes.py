@@ -1,6 +1,7 @@
 from fastapi.testclient import TestClient
 import main
 from main import app
+from routers import workbench as workbench_router
 
 client = TestClient(app)
 
@@ -33,3 +34,25 @@ def test_index_injects_runtime_asset_version(monkeypatch):
     assert response.headers["cache-control"] == "no-store"
     assert "text/html" in response.headers["content-type"]
     assert "window.CM_ASSET_VERSION = '20260417abc';" in response.text
+
+
+def test_workbench_storage_route_defaults_to_persisted_read_model(monkeypatch):
+    calls = []
+
+    class DummyConn:
+        def close(self):
+            pass
+
+    def fake_storage(_conn, *, include_live_plan=True):
+        calls.append(include_live_plan)
+        return {"retention": {"mode": "unavailable"}, "latest_manifest": {}}
+
+    monkeypatch.setattr(workbench_router, "get_conn", lambda: DummyConn())
+    monkeypatch.setattr(workbench_router, "build_workbench_storage", fake_storage)
+
+    response = client.get("/api/workbench/storage")
+    explicit = client.get("/api/workbench/storage?include_live_plan=true")
+
+    assert response.status_code == 200
+    assert explicit.status_code == 200
+    assert calls == [False, True]

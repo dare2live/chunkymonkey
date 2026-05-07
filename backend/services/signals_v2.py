@@ -24,6 +24,7 @@ signals_v2.py — 极简跟随信号引擎
 
 from __future__ import annotations
 
+import hashlib
 import json
 import logging
 from dataclasses import asdict, dataclass, field
@@ -33,6 +34,20 @@ from typing import Optional
 from services.utils import safe_float as _safe_float
 
 logger = logging.getLogger("cm-api")
+
+
+TODAY_SIGNAL_CACHE_DDL = """
+CREATE TABLE IF NOT EXISTS mart_today_signal_cache (
+    cache_key TEXT PRIMARY KEY,
+    freshness_days INTEGER NOT NULL,
+    policy_hash TEXT NOT NULL,
+    summary_json TEXT NOT NULL,
+    signals_json TEXT NOT NULL,
+    signal_count INTEGER NOT NULL,
+    source_max_notice_date TEXT,
+    built_at TEXT NOT NULL
+);
+"""
 
 
 # ─────────────────────────────────────────────────────────────────────
@@ -148,6 +163,198 @@ def load_config(conn) -> PolicyConfig:
     except Exception as exc:
         logger.warning(f"[signals_v2] 读配置失败: {exc}，使用默认值")
     return PolicyConfig(**merged)
+
+
+def ensure_today_signal_cache(conn) -> None:
+    if hasattr(conn, "executescript"):
+        conn.executescript(TODAY_SIGNAL_CACHE_DDL)
+        return
+    for stmt in TODAY_SIGNAL_CACHE_DDL.split(";"):
+        stmt = stmt.strip()
+        if stmt:
+            conn.execute(stmt)
+
+
+def _policy_hash(config: PolicyConfig) -> str:
+    raw = json.dumps(asdict(config), ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+    return hashlib.sha256(raw.encode("utf-8")).hexdigest()[:16]
+
+
+def _today_signal_cache_key(*, freshness_days: int, config: PolicyConfig) -> tuple[str, str]:
+    policy_hash = _policy_hash(config)
+    raw = json.dumps(
+        {
+            "cache": "today_signals_v1",
+            "freshness_days": int(freshness_days),
+            "policy_hash": policy_hash,
+        },
+        sort_keys=True,
+        separators=(",", ":"),
+    )
+    return hashlib.sha256(raw.encode("utf-8")).hexdigest(), policy_hash
+
+
+def _source_max_notice_date(conn) -> str | None:
+    try:
+        row = conn.execute(
+            """
+            WITH normalized AS (
+                SELECT CASE
+                           WHEN length(notice_date) = 8 AND instr(notice_date, '-') = 0
+                               THEN substr(notice_date,1,4) || '-' || substr(notice_date,5,2) || '-' || substr(notice_date,7,2)
+                           ELSE notice_date
+                       END AS notice_iso
+                  FROM fact_institution_event
+                 WHERE event_type IN ('new_entry', 'increase')
+                   AND notice_date IS NOT NULL
+            )
+            SELECT MAX(notice_iso) AS max_notice_date
+              FROM normalized
+             WHERE CAST(notice_iso AS DATE) <= CURRENT_DATE
+            """
+        ).fetchone()
+        return str(row["max_notice_date"]) if row and row["max_notice_date"] is not None else None
+    except Exception:
+        return None
+
+
+def _today_signal_summary(
+    *,
+    signals: list[dict],
+    freshness_days: int,
+    cache_status: dict | None = None,
+) -> dict:
+    counts = {"follow": 0, "watch": 0, "skip": 0}
+    for signal in signals:
+        action = signal.get("action")
+        counts[action] = counts.get(action, 0) + 1
+    out = {
+        "total": len(signals),
+        "by_action": counts,
+        "freshness_days": int(freshness_days),
+    }
+    if cache_status:
+        out["cache"] = cache_status
+    return out
+
+
+def load_today_signal_cache(
+    conn,
+    *,
+    config: PolicyConfig,
+    freshness_days: int,
+) -> dict | None:
+    ensure_today_signal_cache(conn)
+    cache_key, policy_hash = _today_signal_cache_key(
+        freshness_days=int(freshness_days),
+        config=config,
+    )
+    row = conn.execute(
+        """
+        SELECT summary_json,
+               signals_json,
+               signal_count,
+               source_max_notice_date,
+               built_at
+          FROM mart_today_signal_cache
+         WHERE cache_key = ?
+           AND policy_hash = ?
+         LIMIT 1
+        """,
+        (cache_key, policy_hash),
+    ).fetchone()
+    if not row:
+        return None
+    signals = json.loads(row["signals_json"] or "[]")
+    summary = json.loads(row["summary_json"] or "{}")
+    current_source_max = _source_max_notice_date(conn)
+    cache_status = {
+        "status": "hit",
+        "cache_key": cache_key,
+        "policy_hash": policy_hash,
+        "built_at": row["built_at"],
+        "signal_count": int(row["signal_count"] or 0),
+        "source_max_notice_date": row["source_max_notice_date"],
+        "current_source_max_notice_date": current_source_max,
+        "stale": bool(
+            current_source_max
+            and row["source_max_notice_date"]
+            and current_source_max != row["source_max_notice_date"]
+        ),
+    }
+    summary["cache"] = cache_status
+    return {
+        "summary": summary,
+        "signals": signals,
+        "cache": cache_status,
+    }
+
+
+def materialize_today_signal_cache(
+    conn,
+    *,
+    config: PolicyConfig | None = None,
+    freshness_days: int | None = None,
+) -> dict:
+    cfg = config or load_config(conn)
+    fresh_days = int(freshness_days or cfg.signal_freshness_days)
+    cache_key, policy_hash = _today_signal_cache_key(
+        freshness_days=fresh_days,
+        config=cfg,
+    )
+    signal_dicts = [
+        signal.to_dict()
+        for signal in build_today_signals(conn, config=cfg, freshness_days=fresh_days)
+    ]
+    source_max = _source_max_notice_date(conn)
+    built_at = datetime.now().isoformat(timespec="seconds")
+    cache_status = {
+        "status": "refreshed",
+        "cache_key": cache_key,
+        "policy_hash": policy_hash,
+        "built_at": built_at,
+        "signal_count": len(signal_dicts),
+        "source_max_notice_date": source_max,
+        "current_source_max_notice_date": source_max,
+        "stale": False,
+    }
+    summary = _today_signal_summary(
+        signals=signal_dicts,
+        freshness_days=fresh_days,
+        cache_status=cache_status,
+    )
+    ensure_today_signal_cache(conn)
+    conn.execute(
+        """
+        INSERT OR REPLACE INTO mart_today_signal_cache (
+            cache_key, freshness_days, policy_hash, summary_json, signals_json,
+            signal_count, source_max_notice_date, built_at
+        )
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        (
+            cache_key,
+            fresh_days,
+            policy_hash,
+            json.dumps(summary, ensure_ascii=False, sort_keys=True),
+            json.dumps(signal_dicts, ensure_ascii=False, sort_keys=True),
+            len(signal_dicts),
+            source_max,
+            built_at,
+        ),
+    )
+    try:
+        from services.schema_versions import record_actual_version  # noqa: WPS433
+
+        record_actual_version(conn, "mart_today_signal_cache")
+    except Exception:
+        logger.debug("[signals_v2] mart_today_signal_cache schema version record skipped", exc_info=True)
+    conn.commit()
+    return {
+        "summary": summary,
+        "signals": signal_dicts,
+        "cache": cache_status,
+    }
 
 
 def save_config(conn, config: dict) -> None:
@@ -1041,6 +1248,13 @@ def build_today_signals(
                   ELSE e.notice_date
               END
           ) >= CAST(CURRENT_DATE - INTERVAL (?) DAY AS VARCHAR)
+          AND (
+              CASE
+                  WHEN length(e.notice_date) = 8 AND instr(e.notice_date, '-') = 0
+                      THEN substr(e.notice_date,1,4) || '-' || substr(e.notice_date,5,2) || '-' || substr(e.notice_date,7,2)
+                  ELSE e.notice_date
+              END
+          ) <= CAST(CURRENT_DATE AS VARCHAR)
         ORDER BY e.notice_date DESC, e.institution_id
     """, (fresh_days,)).fetchall()
 

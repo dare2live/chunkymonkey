@@ -74,10 +74,10 @@ def workbench_features():
 
 
 @router.get("/storage")
-def workbench_storage():
+def workbench_storage(include_live_plan: bool = False):
     conn = get_conn()
     try:
-        return build_workbench_storage(conn)
+        return build_workbench_storage(conn, include_live_plan=include_live_plan)
     finally:
         conn.close()
 

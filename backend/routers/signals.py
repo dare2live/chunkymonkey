@@ -14,8 +14,9 @@ from services.db import get_conn
 from services.signals_v2 import (
     DEFAULT_CONFIG,
     PolicyConfig,
-    build_today_signals,
+    load_today_signal_cache,
     load_config,
+    materialize_today_signal_cache,
     save_config,
     ensure_defaults,
     institution_track_record,
@@ -27,6 +28,35 @@ from services.signals_v2 import (
 
 logger = logging.getLogger("cm-api")
 router = APIRouter()
+
+
+def _shape_today_signal_payload(
+    payload: dict,
+    *,
+    freshness_days: int,
+    action_filter: Optional[str],
+    limit: int,
+) -> dict:
+    signals = list(payload.get("signals") or [])
+    if action_filter:
+        signals = [signal for signal in signals if signal.get("action") == action_filter]
+    signals = signals[:limit]
+    counts = {"follow": 0, "watch": 0, "skip": 0}
+    for signal in signals:
+        action = signal.get("action")
+        counts[action] = counts.get(action, 0) + 1
+    cache_status = payload.get("cache") or (payload.get("summary") or {}).get("cache")
+    summary = {
+        "total": len(signals),
+        "by_action": counts,
+        "freshness_days": freshness_days,
+    }
+    if cache_status:
+        summary["cache"] = cache_status
+    return {
+        "summary": summary,
+        "signals": signals,
+    }
 
 
 # ─────────────────────────────────────────────────────────────────────
@@ -136,32 +166,35 @@ async def get_today_signals(
     freshness_days: Optional[int] = None,
     action_filter: Optional[str] = None,  # "follow" | "watch" | "skip" | None
     limit: int = 500,
+    refresh: bool = False,
 ):
     """
     返回最近 N 天的 buy 事件 + 每条的推荐。
 
-    前端主视图的数据源。action_filter='follow' 只看真正可跟的。
+    前端主视图的数据源。默认读取上一次物化结果，refresh=true 才重建。
+    action_filter='follow' 只看真正可跟的。
     """
     conn = get_conn()
     try:
-        signals = build_today_signals(conn, freshness_days=freshness_days)
-        if action_filter:
-            signals = [s for s in signals if s.action == action_filter]
-        signals = signals[:limit]
-
-        # 汇总
-        counts = {"follow": 0, "watch": 0, "skip": 0}
-        for s in signals:
-            counts[s.action] = counts.get(s.action, 0) + 1
-
-        return {
-            "summary": {
-                "total": len(signals),
-                "by_action": counts,
-                "freshness_days": freshness_days or load_config(conn).signal_freshness_days,
-            },
-            "signals": [s.to_dict() for s in signals],
-        }
+        cfg = load_config(conn)
+        fresh_days = int(freshness_days or cfg.signal_freshness_days)
+        payload = None if refresh else load_today_signal_cache(
+            conn,
+            config=cfg,
+            freshness_days=fresh_days,
+        )
+        if payload is None:
+            payload = materialize_today_signal_cache(
+                conn,
+                config=cfg,
+                freshness_days=fresh_days,
+            )
+        return _shape_today_signal_payload(
+            payload,
+            freshness_days=fresh_days,
+            action_filter=action_filter,
+            limit=limit,
+        )
     finally:
         conn.close()
 
