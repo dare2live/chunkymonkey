@@ -669,7 +669,7 @@
             if (id > _lastLogId) {
               _lastLogId = id;
               const ts = item.ts ? new Date(item.ts).toLocaleTimeString() : '';
-              _logBuffer.push(`[${ts}] ${item.msg || ''}`);
+              _logBuffer.push(`[${ts}] ${item.message || item.msg || ''}`);
               if (_logBuffer.length > 500) _logBuffer.shift();
             }
           });

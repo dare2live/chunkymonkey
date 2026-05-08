@@ -77,7 +77,7 @@ AUDIT_RULES: dict[str, dict] = {
         "date_field": "report_date",
         "date_min_distinct_90d": 0,  # 季报
         "value_checks": [
-            ("holder_rank BETWEEN 1 AND 20", "股东排名 1-20"),
+            ("holder_rank BETWEEN 1 AND 21", "股东排名 1-21 (21=其他合计)"),
             ("shares_approx IS NULL OR shares_approx >= 0", "持股数 >= 0"),
             ("hold_ratio_float IS NULL OR hold_ratio_float BETWEEN 0 AND 105",
              "占流通股比 0-105% (>100% 仅 A/H 边界容忍)"),
