@@ -153,12 +153,20 @@ def test_tdx_industry_history_table_created_and_written(tmp_path, monkeypatch):
     result = tic.sync_tdx_industry(conn)
     assert result["rows_upserted"] == 2
     assert result.get("history_snapshot_date")
+    assert result.get("raw_hash")
 
     # history 表应存在且有 2 行
     hist_rows = conn.execute(
-        "SELECT stock_code, snapshot_date, tdx_l1 FROM dim_stock_tdx_industry_history"
+        "SELECT stock_code, snapshot_date, tdx_l1, source_raw_hash FROM dim_stock_tdx_industry_history"
     ).fetchall()
     assert len(hist_rows) == 2
+    assert {row["source_raw_hash"] for row in hist_rows} == {result["raw_hash"]}
+    raw_rows = conn.execute(
+        "SELECT raw_hash, file_name, bytes_len FROM raw_tdx_industry_file_snapshot"
+    ).fetchall()
+    assert [(row["raw_hash"], row["file_name"], row["bytes_len"]) for row in raw_rows] == [
+        (result["raw_hash"], "tdxhy.cfg", 4)
+    ]
     conn.close()
 
 

@@ -69,6 +69,7 @@ CLIENTS: list[ClientSpec] = [
         source_tier=1,
         fallback_chain=["tdxhub"],
         writes=[
+            TableWriteSpec("raw_tdx_industry_file_snapshot", "tdxhy.cfg 原始快照", "weekly", 24*7),
             TableWriteSpec("dim_stock_tdx_industry", "股票×行业映射", "weekly", 24*7),
             TableWriteSpec("dim_stock_tdx_industry_history", "行业归属历史", "weekly", 24*7),
         ],

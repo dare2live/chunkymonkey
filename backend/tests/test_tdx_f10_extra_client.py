@@ -258,6 +258,13 @@ def test_build_tdx_f10_capability_matrix_records_raw_and_fact_coverage():
              WHERE module_id = 'shareholder_plan_tdx_f10'
             """
         ).fetchone()
+        version = conn.execute(
+            """
+            SELECT actual_version
+              FROM dim_schema_version
+             WHERE table_name = 'mart_tdx_f10_capability_matrix'
+            """
+        ).fetchone()
 
         assert result["capability_rows"] >= 7
         assert row["status"] == "ready"
@@ -268,6 +275,7 @@ def test_build_tdx_f10_capability_matrix_records_raw_and_fact_coverage():
         assert plan_cap["status"] == "raw_only"
         assert plan_cap["source_date_field"] == "source_notice_date"
         assert plan_cap["availability_date_field"] == "source_available_date"
+        assert version["actual_version"] == "v1"
     finally:
         conn.close()
 

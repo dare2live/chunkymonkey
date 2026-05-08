@@ -1879,6 +1879,7 @@ def _step_build_profiles_sync(conn) -> int:
     """计算机构画像 mart_institution_profile"""
     from services.holdings import refresh_stock_latest_cache
     from services.pricing_policy import load_pricing_label_policy
+    from services.schema_versions import record_actual_version
 
     def _followability_hint(safe_cnt, safe_wr30, eff30, high_cnt, high_wr30):
         """根据可跟统计给出简短提示。"""
@@ -2238,6 +2239,7 @@ def _step_build_profiles_sync(conn) -> int:
             ))
             count += 1
 
+        record_actual_version(conn, "mart_institution_profile")
         conn.commit()
     except Exception:
         conn.rollback()

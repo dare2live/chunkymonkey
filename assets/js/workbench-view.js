@@ -107,6 +107,24 @@
     return '<div class="muted" style="padding:14px 0">' + esc(text || '暂无数据') + '</div>';
   }
 
+  function renderReadModelMeta(data) {
+    var meta = (data && data.read_model) || {};
+    if (!meta.source_mode) return '';
+    var rows = meta.materialized_tables || [];
+    var available = rows.filter(function (row) { return row && row.available; }).length;
+    return '<section class="panel wb-panel wb-read-model-panel">' +
+      '<div class="panel-head"><div><h3>物化结果</h3>' +
+      '<div class="muted">endpoint: <code>' + esc(meta.endpoint || '-') + '</code></div></div>' +
+      '<div>' + pill(meta.recompute_on_read ? 'read recompute' : 'snapshot read', meta.recompute_on_read ? 'warn' : 'ok') + '</div></div>' +
+      '<div class="wb-count-row">' +
+      '<span class="wb-count-pill">source <b>' + esc(meta.source_mode || 'materialized_snapshot') + '</b></span>' +
+      '<span class="wb-count-pill">tables <b>' + fmtNum(available) + '/' + fmtNum(rows.length) + '</b></span>' +
+      '<span class="wb-count-pill">latest <b>' + esc(meta.latest_materialized_at || '-') + '</b></span>' +
+      '</div>' +
+      '<div class="muted">刷新视图只重新读取最后一次成功物化的 JSON；训练、验证和数据拉取由 pipeline/job 触发。</div>' +
+      '</section>';
+  }
+
   function renderShell(tab) {
     var root = document.getElementById('wb-overview-root');
     if (!root) return;
@@ -122,7 +140,7 @@
       tabButton('recommendations', '推荐', tab) +
       tabButton('storage', '存储', tab) +
       '</div>' +
-      '<button class="chip chip-outline" id="wb-refresh">刷新</button>' +
+      '<button class="chip chip-outline" id="wb-refresh">刷新视图</button>' +
       '</div>' +
       '<div id="wb-tab-root" class="wb-tab-root"></div>';
 
@@ -214,6 +232,7 @@
     var storage = data.storage || {};
 
     setBody(
+      renderReadModelMeta(data) +
       '<div class="stats-row wb-stats-row">' +
       statCard('最新完成交易日', data.latest_trading_day, 'calendar target', data.latest_trading_day ? 'ok' : 'missing') +
       statCard('最新运行', latestManifest.pipeline_name || '-', esc(latestManifest.run_id || ''), latestManifest.status) +
@@ -259,11 +278,14 @@
     var rankMatrixCache = data.rank_matrix_cache || {};
     var stabilityContext = data.stability_context || {};
     var stockHorizon = data.stock_horizon_profile || {};
+    var shareholderPlanInitial = data.shareholder_plan_initial_feature_panel || {};
     var shareholderPlan = data.shareholder_plan_family_eval || {};
     var shareholderPlanWf = data.shareholder_plan_family_walkforward || {};
     var temporalSynergy = data.temporal_synergy || {};
+    var industryPit = data.industry_pit || {};
 
     setBody(
+      renderReadModelMeta(data) +
       '<section class="panel wb-panel">' +
       '<div class="panel-head"><div><h3>研究队列</h3><div class="muted">run_id: <code>' + esc(schedule.run_id || '-') + '</code></div></div>' +
       '<div class="wb-count-row">' + renderStatusCounts(schedule.status_counts) + '</div></div>' +
@@ -287,8 +309,16 @@
 
       '<section class="panel wb-panel">' +
       '<div class="panel-head"><div><h3>股东计划特征家族</h3><div class="muted">run_id: <code>' + esc(shareholderPlan.run_id || '-') + '</code></div></div></div>' +
+      renderShareholderPlanInitialPanel(shareholderPlanInitial) +
+      '<div style="margin-top:14px">' +
       renderShareholderPlanFamilyEval(shareholderPlan) +
+      '</div>' +
       '<div style="margin-top:14px">' + renderShareholderPlanWalkforward(shareholderPlanWf) + '</div>' +
+      '</section>' +
+
+      '<section class="panel wb-panel">' +
+      '<div class="panel-head"><div><h3>行业 PIT 就绪度</h3><div class="muted">industry membership / strategy constraint gate</div></div></div>' +
+      renderIndustryPitReadiness(industryPit) +
       '</section>' +
 
       '<section class="panel wb-panel">' +
@@ -318,6 +348,49 @@
       '</section>' +
       '</div>'
     );
+  }
+
+  function renderIndustryPitReadiness(data) {
+    data = data || {};
+    if (!data.run_id) return renderEmpty('暂无行业 PIT 质量证据');
+    var eligible = !!data.pit_eligible;
+    var blockers = data.blockers || [];
+    return '<div class="wb-kv">' +
+      '<div><span>状态</span><strong>' + pill(eligible ? 'eligible' : 'blocked', eligible ? 'ok' : 'bad') + '</strong></div>' +
+      '<div><span>run</span><strong><code>' + esc(data.run_id || '-') + '</code></strong></div>' +
+      '<div><span>信号表</span><strong><code>' + esc(data.signal_table || '-') + '</code></strong></div>' +
+      '<div><span>信号窗口</span><strong>' + esc((data.min_signal_date || '-') + ' ~ ' + (data.max_signal_date || '-')) + '</strong></div>' +
+      '<div><span>信号行数</span><strong>' + fmtNum(data.signal_row_count || 0) + '</strong></div>' +
+      '<div><span>股票/日期</span><strong>' + fmtNum(data.signal_stock_count || 0) + ' / ' + fmtNum(data.signal_date_count || 0) + '</strong></div>' +
+      '<div><span>PIT 行/股票</span><strong>' + fmtNum(data.pit_row_count || 0) + ' / ' + fmtNum(data.pit_stock_count || 0) + '</strong></div>' +
+      '<div><span>历史快照</span><strong>' + fmtNum(data.history_snapshot_count || 0) + '</strong><div class="muted">' + esc((data.history_min_snapshot_date || '-') + ' ~ ' + (data.history_max_snapshot_date || '-')) + '</div></div>' +
+      '<div><span>Observed/Fallback</span><strong>' + fmtNum(data.observed_pit_signal_rows || 0) + ' / ' + fmtNum(data.fallback_signal_rows || 0) + '</strong></div>' +
+      '<div><span>Fallback 比例</span><strong>' + fmtPct(data.fallback_ratio) + '</strong></div>' +
+      '<div><span>缺失 PIT</span><strong>' + fmtNum(data.missing_pit_rows || 0) + '</strong></div>' +
+      '<div><span>阻塞</span><strong>' + (blockers.length ? blockers.map(function (b) { return pill(b, 'bad'); }).join('') : pill('none', 'ok')) + '</strong></div>' +
+      '</div>';
+  }
+
+  function renderShareholderPlanInitialPanel(data) {
+    data = data || {};
+    var q = data.quality || {};
+    if (!q.run_id) return renderEmpty('暂无初始事件研究面板');
+    var timings = q.stage_timings || {};
+    return '<details class="workbench-section" open>' +
+      '<summary><span class="workbench-section-title">初始事件研究面板</span><span class="muted" style="font-size:11px;font-weight:400"><code>' + esc(q.run_id || '-') + '</code></span></summary>' +
+      '<div class="wb-kv" style="margin-top:8px">' +
+      '<div><span>面板行数</span><strong>' + fmtNum(q.panel_rows || 0) + '</strong></div>' +
+      '<div><span>股票/日期</span><strong>' + fmtNum(q.stock_count || 0) + ' / ' + fmtNum(q.date_count || 0) + '</strong></div>' +
+      '<div><span>事件激活</span><strong>' + fmtPct((q.active_pct || 0) / 100) + '</strong></div>' +
+      '<div><span>匹配事件</span><strong>' + fmtNum(q.matched_event_rows || 0) + ' / ' + fmtNum(q.initial_event_rows || 0) + '</strong></div>' +
+      '<div><span>交易日历不匹配</span><strong>' + fmtNum(q.calendar_mismatch_rows || 0) + '</strong></div>' +
+      '<div><span>构建耗时</span><strong>' + fmtDuration(timings.total_s || 0) + '</strong></div>' +
+      '<div><span>完整标签剔除</span><strong>' + fmtNum(q.dropped_incomplete_label_rows || 0) + '</strong></div>' +
+      '<div><span>完整上下文剔除</span><strong>' + fmtNum(q.dropped_incomplete_context_rows || 0) + '</strong></div>' +
+      '<div><span>窗口</span><strong>' + esc((q.min_date || '-') + ' ~ ' + (q.max_date || '-')) + '</strong></div>' +
+      '<div><span>特征/标签</span><strong>' + fmtNum((q.initial_features || []).length + (q.context_features || []).length) + ' / ' + fmtNum((q.labels || []).length) + '</strong></div>' +
+      '</div>' +
+      '</details>';
   }
 
   function renderShareholderPlanFamilyEval(data) {
@@ -490,6 +563,7 @@
     var tdxHealthSummary = tdxHealth.summary || {};
     var signalCacheTone = (signalCache.requires_refresh || signalCache.stale) ? 'warn' : (signalCache.status || 'unknown');
     setBody(
+      renderReadModelMeta(data) +
       '<div class="stats-row wb-stats-row">' +
       statCard('交易日目标', data.calendar_target || '-', 'calendar gate', data.calendar_target ? 'ok' : 'missing') +
       statCard('K线主源', primary.source_name || '-', 'tier ' + fmt(primary.source_tier), kline.primary_is_tdxhub ? 'ok' : 'bad') +
@@ -808,6 +882,7 @@
     var recent = data.recent || [];
     var latest = recent[0] || {};
     setBody(
+      renderReadModelMeta(data) +
       '<div class="stats-row wb-stats-row">' +
       statCard('最近运行', latest.pipeline_name || '-', esc(latest.run_id || '-'), latest.status || 'unknown') +
       statCard('最近状态', fmtNum(recent.length), renderStatusCounts(data.status_counts), latest.status || 'unknown') +
@@ -853,6 +928,7 @@
     var catalog = data.feature_catalog || {};
     var catalogSummary = catalog.summary || {};
     setBody(
+      renderReadModelMeta(data) +
       '<div class="stats-row wb-stats-row">' +
       statCard('Registry', fmtNum(registry.feature_count || 0), 'model inputs ' + fmtNum(registry.model_input_count || 0), 'ok') +
       statCard('Labels', fmtNum(registry.label_count || 0), 'PIT lagged labels', 'info') +
@@ -1040,6 +1116,7 @@
     var cleanup = data.architecture_cleanup || {};
     var manifest = data.latest_manifest || {};
     setBody(
+      renderReadModelMeta(data) +
       '<div class="stats-row wb-stats-row">' +
       statCard('清理计划', manifest.latest_run_id || '-', esc(manifest.started_at || '-'), manifest.latest_status || 'none') +
       statCard('Retention candidates', fmtNum(retention.candidate_count || 0), retention.mode || '-', retention.candidate_count ? 'warn' : 'ok') +
@@ -1081,6 +1158,7 @@
     var source = data.source_quality || {};
     var outcomes = data.outcomes || {};
     setBody(
+      renderReadModelMeta(data) +
       '<div class="stats-row wb-stats-row">' +
       statCard('Primary TopK', fmtNum(latest.count || 0), esc(latest.snapshot_date || '-') + ' / ' + esc(latest.model_id || '-'), latest.count ? 'ok' : 'missing') +
       statCard('K线主源', source.kline_primary || '-', 'tdxhub primary', source.kline_primary_is_tdxhub ? 'ok' : 'bad') +
@@ -1247,9 +1325,11 @@
     var optuna = data.optuna_studies || [];
     var policies = data.policy_candidates || [];
     var gates = data.policy_gates || [];
+    var mtmGates = data.policy_mtm_gates || [];
+    var strategySweeps = data.policy_mtm_strategy_sweeps || [];
     var clusters = data.redundancy_clusters || [];
     var conditional = data.conditional_synergies || [];
-    if (!quality.run_id && !labels.length && !relevance.length && !synergies.length && !selected.length && !optuna.length && !policies.length && !gates.length && !clusters.length && !conditional.length) return renderEmpty('暂无时序协同研究');
+    if (!quality.run_id && !labels.length && !relevance.length && !synergies.length && !selected.length && !optuna.length && !policies.length && !gates.length && !mtmGates.length && !strategySweeps.length && !clusters.length && !conditional.length) return renderEmpty('暂无时序协同研究');
     return '<div class="wb-kv">' +
       '<div><span>面板行数</span><strong>' + fmtNum(quality.panel_rows || 0) + '</strong></div>' +
       '<div><span>股票数</span><strong>' + fmtNum(quality.stock_count || 0) + '</strong></div>' +
@@ -1263,6 +1343,8 @@
       '<div>' + renderTemporalPolicyTable(policies) + '</div>' +
       '</div>' +
       '<div style="margin-top:12px">' + renderTemporalGateTable(gates) + '</div>' +
+      '<div style="margin-top:12px">' + renderTemporalMtmGateTable(mtmGates) + '</div>' +
+      '<div style="margin-top:12px">' + renderTemporalMtmStrategySweepTable(strategySweeps) + '</div>' +
       '<div class="wb-grid" style="margin-top:12px">' +
       '<div>' + renderTemporalLabelSummary(labels) + '</div>' +
       '<div>' + renderTemporalClusterTable(clusters) + '</div>' +
@@ -1336,16 +1418,72 @@
       '<thead><tr><th>验证 run</th><th>标签</th><th>状态</th><th>RankIC</th><th>TopK excess</th><th>Cost adj</th><th>Turnover</th><th>DD</th><th>阻塞</th></tr></thead><tbody>' +
       rows.map(function (row) {
         var blockers = row.blockers || [];
+        var mode = row.gate_mode === 'strict_fold' ? 'strict fold' : 'metric';
+        var prod = row.production_eligible ? 'production eligible' : 'not production';
         return '<tr>' +
-          '<td><code>' + esc(row.run_id || '-') + '</code><div class="muted">' + esc(row.candidate_run_id || '-') + '</div></td>' +
+          '<td><code>' + esc(row.run_id || '-') + '</code><div class="muted">' + esc(row.candidate_run_id || '-') + '</div><div class="muted">' + esc(mode) + '</div></td>' +
           '<td>' + esc(row.label_name || '-') + '<div class="muted">' + fmtNum(row.candidate_horizon_days || 0) + 'd / base ' + fmtNum(row.baseline_horizon_days || 60) + 'd</div></td>' +
-          '<td>' + pill(row.validation_status || '-', row.validation_status || 'info') + '<div class="muted">' + esc(row.promotion_status || '-') + '</div></td>' +
+          '<td>' + pill(row.validation_status || '-', row.validation_status || 'info') + '<div class="muted">' + esc(row.promotion_status || '-') + '</div><div class="muted">' + esc(prod) + '</div></td>' +
           '<td>' + fmtFloat(row.avg_rank_ic, 4) + '<div class="muted">std ' + fmtFloat(row.std_rank_ic, 4) + '</div></td>' +
           '<td>' + fmtPct(row.avg_top_excess_return) + '<div class="muted">worst ' + fmtPct(row.worst_top_excess_return) + '</div></td>' +
           '<td>' + fmtPct(row.avg_cost_adjusted_top_excess_return) + '<div class="muted">worst ' + fmtPct(row.worst_cost_adjusted_top_excess_return) + '</div></td>' +
           '<td>' + fmtPct(row.avg_turnover) + '<div class="muted">' + fmtFloat(row.transaction_cost_bps, 1) + ' bps / hit ' + fmtPct(row.avg_top_hit_rate) + '</div></td>' +
           '<td>' + fmtPct(row.worst_max_drawdown) + '</td>' +
           '<td>' + (blockers.length ? blockers.map(function (item) { return pill(item, 'warn'); }).join(' ') : pill('pass', 'ok')) + '</td>' +
+          '</tr>';
+      }).join('') +
+      '</tbody></table></div>';
+  }
+
+  function renderTemporalMtmGateTable(rows) {
+    if (!rows.length) return renderEmpty('暂无逐日盯市验证');
+    return '<div class="wb-table-wrap"><table class="data-table data-table-compact wb-table">' +
+      '<thead><tr><th>MTM run</th><th>标签</th><th>入场口径</th><th>状态</th><th>收益/DD</th><th>路径</th><th>持仓</th><th>价格质量</th><th>阻塞</th></tr></thead><tbody>' +
+      rows.map(function (row) {
+        var blockers = row.blockers || [];
+        var prod = row.production_eligible ? 'production eligible' : 'not production';
+        var quantile = row.top_quantile == null ? '-' : fmtPct(row.top_quantile);
+        var topK = row.daily_top_k ? 'topK ' + fmtNum(row.daily_top_k) : 'all';
+        var marketBits = [];
+        if (row.min_market_hs300_ret_20d != null) marketBits.push('HS20 >= ' + fmtPct(row.min_market_hs300_ret_20d));
+        if (row.min_market_hs300_ret_60d != null) marketBits.push('HS60 >= ' + fmtPct(row.min_market_hs300_ret_60d));
+        var marketText = row.market_filter_enabled ? marketBits.join(' / ') : 'market all';
+        var industryText = row.industry_constraints_requested
+          ? 'industry L1 cap ' + fmtNum(row.max_industry_l1_active_positions || 0) + ' / PIT ' + (row.industry_pit_eligible ? 'ok' : 'blocked')
+          : 'industry off';
+        return '<tr>' +
+          '<td><code>' + esc(row.run_id || '-') + '</code><div class="muted">' + esc(row.candidate_run_id || '-') + '</div></td>' +
+          '<td>' + esc(row.label_name || '-') + '<div class="muted">' + fmtNum(row.candidate_horizon_days || 0) + 'd / base ' + fmtNum(row.baseline_horizon_days || 60) + 'd</div></td>' +
+          '<td>' + esc(marketText || '-') + '<div class="muted">q ' + quantile + ' / ' + esc(topK) + '</div><div class="muted">' + esc(industryText) + '</div><div class="muted">filtered ' + fmtNum(row.market_filter_removed_signal_count || 0) + ' / topK ' + fmtNum(row.daily_top_k_filtered_count || 0) + '</div></td>' +
+          '<td>' + pill(row.validation_status || '-', row.validation_status || 'info') + '<div class="muted">' + esc(row.promotion_status || '-') + '</div><div class="muted">' + esc(prod) + '</div></td>' +
+          '<td>' + fmtPct(row.total_return) + '<div class="muted">ann ' + fmtPct(row.annualized_return) + ' / DD ' + fmtPct(row.max_drawdown) + '</div></td>' +
+          '<td>' + fmtNum(row.date_count || 0) + 'd<div class="muted">sharpe ' + fmtFloat(row.sharpe, 3) + '</div></td>' +
+          '<td>' + fmtNum(row.position_count || 0) + '<div class="muted">active ' + fmtNum(row.avg_active_positions || 0) + ' / hit ' + fmtPct(row.position_hit_rate) + '</div></td>' +
+          '<td>TDX non ' + fmtNum(row.non_tdxhub_kline_count || 0) + '<div class="muted">missing ' + fmtNum(row.missing_path_price_count || 0) + ' / ff ' + fmtNum(row.forward_filled_path_price_count || 0) + '</div></td>' +
+          '<td>' + (blockers.length ? blockers.map(function (item) { return pill(item, 'warn'); }).join(' ') : pill('pass', 'ok')) + '</td>' +
+          '</tr>';
+      }).join('') +
+      '</tbody></table></div>';
+  }
+
+  function renderTemporalMtmStrategySweepTable(rows) {
+    if (!rows.length) return renderEmpty('暂无 MTM 策略参数搜索');
+    return '<div class="wb-table-wrap"><table class="data-table data-table-compact wb-table">' +
+      '<thead><tr><th>策略 sweep</th><th>变体</th><th>状态</th><th>目标</th><th>收益/DD</th><th>信号/持仓</th><th>过滤</th></tr></thead><tbody>' +
+      rows.map(function (row) {
+        var blockers = row.blockers || [];
+        var marketBits = [];
+        if (row.min_market_hs300_ret_20d != null) marketBits.push('HS20 >= ' + fmtPct(row.min_market_hs300_ret_20d));
+        if (row.min_market_hs300_ret_60d != null) marketBits.push('HS60 >= ' + fmtPct(row.min_market_hs300_ret_60d));
+        var marketText = marketBits.length ? marketBits.join(' / ') : 'market all';
+        return '<tr>' +
+          '<td><code>' + esc(row.run_id || '-') + '</code><div class="muted">' + esc(row.candidate_run_id || '-') + '</div></td>' +
+          '<td>' + esc(row.variant_id || '-') + '<div class="muted">' + esc(marketText) + '</div></td>' +
+          '<td>' + pill(row.validation_status || '-', row.validation_status || 'info') + '<div class="muted">' + (blockers.length ? blockers.map(function (item) { return esc(item); }).join(', ') : 'pass') + '</div></td>' +
+          '<td>' + fmtFloat(row.objective_score, 4) + '<div class="muted">q ' + fmtPct(row.top_quantile) + '</div></td>' +
+          '<td>' + fmtPct(row.total_return) + '<div class="muted">ann ' + fmtPct(row.annualized_return) + ' / DD ' + fmtPct(row.max_drawdown) + '</div><div class="muted">sharpe ' + fmtFloat(row.sharpe, 3) + '</div></td>' +
+          '<td>' + fmtNum(row.signal_count || 0) + '<div class="muted">pos ' + fmtNum(row.position_count || 0) + ' / active ' + fmtNum(row.avg_active_positions || 0) + '</div></td>' +
+          '<td>market ' + fmtNum(row.market_filter_removed_signal_count || 0) + '<div class="muted">topK ' + fmtNum(row.daily_top_k_filtered_count || 0) + '</div></td>' +
           '</tr>';
       }).join('') +
       '</tbody></table></div>';
@@ -1763,6 +1901,7 @@
     var deployment = data.deployment || {};
 
     setBody(
+      renderReadModelMeta(data) +
       '<div class="stats-row wb-stats-row">' +
       statCard('Champion', firstChampion, renderStatusCounts(lifecycle.counts), champions.length ? 'champion' : 'missing') +
       statCard('候选模型', fmtNum((data.challengers || []).length), 'lifecycle challengers', (data.challengers || []).length ? 'running' : 'none') +

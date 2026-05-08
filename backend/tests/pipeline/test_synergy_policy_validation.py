@@ -145,6 +145,78 @@ def test_validate_synergy_policy_keeps_non_baseline_horizon_research_only():
         assert gate["candidate_horizon_days"] == 5
 
 
+def test_validate_synergy_policy_can_force_research_only_after_metric_pass():
+    with duck_mem() as conn:
+        _seed_validation_inputs(conn, label_name="forward_ret_60d")
+
+        result = subject.validate_synergy_policy_candidate(
+            conn,
+            candidate_run_id="candidate_unit",
+            run_id="synergy_wf_force_research",
+            folds=4,
+            top_quantile=0.20,
+            min_fold_count=4,
+            min_avg_rank_ic=0.50,
+            max_std_rank_ic=0.20,
+            min_top_obs_count=1,
+            force_research_only=True,
+        )
+        gate = conn.execute(
+            """
+            SELECT validation_status, promotion_status, production_eligible, thresholds_json
+              FROM mart_synergy_policy_gate
+             WHERE run_id = 'synergy_wf_force_research'
+            """
+        ).fetchone()
+
+        assert result["validation_status"] == "pass"
+        assert result["promotion_status"] == "research_only"
+        assert result["production_eligible"] is False
+        assert gate["validation_status"] == "pass"
+        assert gate["promotion_status"] == "research_only"
+        assert gate["production_eligible"] is False
+        assert json.loads(gate["thresholds_json"])["force_research_only"] is True
+
+
+def test_validate_synergy_policy_blocks_unstable_cost_adjusted_folds():
+    with duck_mem() as conn:
+        _seed_validation_inputs(conn, label_name="forward_ret_60d")
+
+        result = subject.validate_synergy_policy_candidate(
+            conn,
+            candidate_run_id="candidate_unit",
+            run_id="synergy_wf_unstable_folds",
+            folds=4,
+            top_quantile=0.20,
+            min_fold_count=4,
+            min_avg_rank_ic=0.50,
+            max_std_rank_ic=0.20,
+            min_top_obs_count=1,
+            min_cost_adjusted_positive_fold_ratio=1.0,
+            min_fold_cost_adjusted_top_excess_return=999.0,
+        )
+        gate = conn.execute(
+            """
+            SELECT validation_status, promotion_status, production_eligible,
+                   blockers_json, thresholds_json
+              FROM mart_synergy_policy_gate
+             WHERE run_id = 'synergy_wf_unstable_folds'
+            """
+        ).fetchone()
+
+        blockers = json.loads(gate["blockers_json"])
+        thresholds = json.loads(gate["thresholds_json"])
+
+        assert result["validation_status"] == "blocked"
+        assert "unstable_cost_adjusted_top_excess_return" in result["blockers"]
+        assert result["cost_adjusted_positive_fold_ratio"] == 0.0
+        assert gate["promotion_status"] == "research_only"
+        assert gate["production_eligible"] is False
+        assert "unstable_cost_adjusted_top_excess_return" in blockers
+        assert thresholds["min_cost_adjusted_positive_fold_ratio"] == 1.0
+        assert thresholds["min_fold_cost_adjusted_top_excess_return"] == 999.0
+
+
 def test_validate_synergy_policy_scores_conditional_interactions_as_condition_gated_terms():
     with duck_mem() as conn:
         conn.executescript(

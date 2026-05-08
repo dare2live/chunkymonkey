@@ -283,6 +283,9 @@ def validate_synergy_policy_candidate(
     min_top_obs_count: int = 50,
     transaction_cost_bps: float | None = None,
     conditional_threshold: float = 0.80,
+    force_research_only: bool = False,
+    min_cost_adjusted_positive_fold_ratio: float = 0.0,
+    min_fold_cost_adjusted_top_excess_return: float = 0.0,
 ) -> dict[str, Any]:
     ensure_tables(conn)
     pricing_policy = load_pricing_label_policy()
@@ -561,6 +564,16 @@ def validate_synergy_policy_candidate(
         sum(cost_adjusted_top_excess) / len(cost_adjusted_top_excess) if cost_adjusted_top_excess else 0.0
     )
     avg_turnover = sum(turnovers) / len(turnovers) if turnovers else 0.0
+    required_fold_ratio = max(min(float(min_cost_adjusted_positive_fold_ratio), 1.0), 0.0)
+    required_fold_excess = float(min_fold_cost_adjusted_top_excess_return)
+    cost_adjusted_positive_fold_count = sum(
+        1 for value in cost_adjusted_top_excess if value >= required_fold_excess
+    )
+    cost_adjusted_positive_fold_ratio = (
+        cost_adjusted_positive_fold_count / len(cost_adjusted_top_excess)
+        if cost_adjusted_top_excess
+        else 0.0
+    )
     blockers = []
     if len(fold_metrics) < int(min_fold_count):
         blockers.append("insufficient_fold_count")
@@ -572,6 +585,8 @@ def validate_synergy_policy_candidate(
         blockers.append("low_top_excess_return")
     if avg_cost_adjusted_top_excess < float(min_avg_cost_adjusted_top_excess_return):
         blockers.append("low_cost_adjusted_top_excess_return")
+    if required_fold_ratio > 0.0 and cost_adjusted_positive_fold_ratio < required_fold_ratio:
+        blockers.append("unstable_cost_adjusted_top_excess_return")
     if drawdowns and min(drawdowns) < -abs(float(max_worst_drawdown)):
         blockers.append("excessive_topk_drawdown")
     if fold_metrics and min(metric["top_obs_count"] for metric in fold_metrics) < int(min_top_obs_count):
@@ -579,7 +594,11 @@ def validate_synergy_policy_candidate(
     if missing_features:
         blockers.append("missing_selected_features")
     validation_status = "pass" if not blockers else "blocked"
-    production_eligible = bool(validation_status == "pass" and candidate_horizon_days == baseline_horizon_days)
+    production_eligible = bool(
+        validation_status == "pass"
+        and candidate_horizon_days == baseline_horizon_days
+        and not force_research_only
+    )
     promotion_status = "production_candidate" if production_eligible else "research_only"
     if validation_status == "pass" and candidate_horizon_days != baseline_horizon_days:
         promotion_status = "research_only"
@@ -597,6 +616,9 @@ def validate_synergy_policy_candidate(
         "transaction_cost_bps": transaction_cost_bps,
         "conditional_threshold": conditional_threshold,
         "drawdown_return_mode": "cost_adjusted_holding_period_return_dailyized",
+        "force_research_only": bool(force_research_only),
+        "min_cost_adjusted_positive_fold_ratio": required_fold_ratio,
+        "min_fold_cost_adjusted_top_excess_return": required_fold_excess,
     }
     gate = {
         "validation_status": validation_status,
@@ -604,6 +626,9 @@ def validate_synergy_policy_candidate(
         "production_eligible": production_eligible,
         "blockers": blockers,
         "missing_features": missing_features,
+        "force_research_only": bool(force_research_only),
+        "cost_adjusted_positive_fold_count": cost_adjusted_positive_fold_count,
+        "cost_adjusted_positive_fold_ratio": cost_adjusted_positive_fold_ratio,
     }
     conn.execute(
         """
@@ -707,9 +732,12 @@ def validate_synergy_policy_candidate(
             "avg_cost_adjusted_top_excess_return": avg_cost_adjusted_top_excess,
             "avg_turnover": avg_turnover,
             "transaction_cost_bps": float(transaction_cost_bps),
+            "cost_adjusted_positive_fold_count": cost_adjusted_positive_fold_count,
+            "cost_adjusted_positive_fold_ratio": cost_adjusted_positive_fold_ratio,
             "pricing_policy_id": pricing_policy.policy_id,
             "pricing_policy_hash": pricing_policy.policy_hash(),
             "conditional_threshold": float(conditional_threshold),
+            "force_research_only": bool(force_research_only),
             "promotion_status": promotion_status,
             "production_eligible": production_eligible,
         },
@@ -730,6 +758,8 @@ def validate_synergy_policy_candidate(
         "avg_cost_adjusted_top_excess_return": avg_cost_adjusted_top_excess,
         "avg_turnover": avg_turnover,
         "transaction_cost_bps": float(transaction_cost_bps),
+        "cost_adjusted_positive_fold_count": cost_adjusted_positive_fold_count,
+        "cost_adjusted_positive_fold_ratio": cost_adjusted_positive_fold_ratio,
         "blockers": blockers,
     }
 
@@ -750,6 +780,23 @@ def main() -> int:
     parser.add_argument("--min-top-obs-count", type=int, default=50)
     parser.add_argument("--transaction-cost-bps", type=float, default=None)
     parser.add_argument("--conditional-threshold", type=float, default=0.80)
+    parser.add_argument(
+        "--force-research-only",
+        action="store_true",
+        help="Record a metric pass as research_only instead of production_candidate.",
+    )
+    parser.add_argument(
+        "--min-cost-adjusted-positive-fold-ratio",
+        type=float,
+        default=0.0,
+        help="Require this fraction of folds to meet the fold-level cost-adjusted excess threshold.",
+    )
+    parser.add_argument(
+        "--min-fold-cost-adjusted-top-excess-return",
+        type=float,
+        default=0.0,
+        help="Fold-level cost-adjusted top excess threshold used by the positive-fold ratio gate.",
+    )
     args = parser.parse_args()
     with get_conn() as conn:
         result = validate_synergy_policy_candidate(
@@ -768,6 +815,9 @@ def main() -> int:
             min_top_obs_count=args.min_top_obs_count,
             transaction_cost_bps=args.transaction_cost_bps,
             conditional_threshold=args.conditional_threshold,
+            force_research_only=args.force_research_only,
+            min_cost_adjusted_positive_fold_ratio=args.min_cost_adjusted_positive_fold_ratio,
+            min_fold_cost_adjusted_top_excess_return=args.min_fold_cost_adjusted_top_excess_return,
         )
     print(json.dumps(result, ensure_ascii=False, indent=2, default=str))
     return 0

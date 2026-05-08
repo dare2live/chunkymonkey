@@ -27,6 +27,7 @@ tdx_industry_client.py — 通达信行业分类同步（取代申万 SW 三级�
 from __future__ import annotations
 
 import logging
+import hashlib
 from datetime import datetime
 from typing import Any, Optional
 
@@ -56,6 +57,20 @@ def _ensure_table(conn: Any) -> None:
         CREATE INDEX IF NOT EXISTS idx_tdx_industry_l1 ON dim_stock_tdx_industry(tdx_l1);
         CREATE INDEX IF NOT EXISTS idx_tdx_industry_l2 ON dim_stock_tdx_industry(tdx_l2);
         CREATE INDEX IF NOT EXISTS idx_tdx_industry_l3 ON dim_stock_tdx_industry(tdx_l3);
+
+        CREATE TABLE IF NOT EXISTS raw_tdx_industry_file_snapshot (
+            snapshot_date TEXT NOT NULL,
+            raw_hash TEXT NOT NULL,
+            file_name TEXT NOT NULL,
+            source_label TEXT,
+            fetched_at TIMESTAMP NOT NULL,
+            bytes_len INTEGER NOT NULL,
+            raw_bytes BLOB NOT NULL,
+            parser_version TEXT NOT NULL DEFAULT 'tdxhy_v1',
+            PRIMARY KEY (snapshot_date, raw_hash)
+        );
+        CREATE INDEX IF NOT EXISTS idx_raw_tdx_industry_snapshot_date
+            ON raw_tdx_industry_file_snapshot(snapshot_date);
     """)
     existing = {
         row["column_name"] if hasattr(row, "keys") else row[0]
@@ -66,6 +81,28 @@ def _ensure_table(conn: Any) -> None:
             conn.execute(f"ALTER TABLE dim_stock_tdx_industry ADD COLUMN {col} TEXT")
             logger.info(f"[tdx_industry] ALTER TABLE: 新增列 {col}")
     conn.commit()
+
+
+def _record_raw_tdxhy_snapshot(
+    conn: Any,
+    *,
+    data: bytes,
+    source: str,
+    fetched_at: datetime,
+    snapshot_date: str,
+) -> str:
+    raw_hash = hashlib.sha256(data).hexdigest()
+    conn.execute(
+        """
+        INSERT OR REPLACE INTO raw_tdx_industry_file_snapshot (
+            snapshot_date, raw_hash, file_name, source_label,
+            fetched_at, bytes_len, raw_bytes, parser_version
+        )
+        VALUES (?, ?, ?, ?, ?, ?, ?, 'tdxhy_v1')
+        """,
+        (snapshot_date, raw_hash, _TDXHY_FILE, source, fetched_at, len(data), data),
+    )
+    return raw_hash
 
 
 # ─────────────────────────────────────────────────────────────────────
@@ -205,9 +242,19 @@ def sync_tdx_industry(conn: Any) -> dict:
         result["errors"].append(f"fetch failed: {exc}")
         return result
 
+    fetched_at = datetime.now()
+    snapshot_date = fetched_at.strftime("%Y-%m-%d")
     result["source"] = source
-    result["fetched_at"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    result["fetched_at"] = fetched_at.strftime("%Y-%m-%d %H:%M:%S")
     logger.info(f"[tdx_industry] 下载 tdxhy.cfg 成功，{len(data)} bytes，来源 {source}")
+    raw_hash = _record_raw_tdxhy_snapshot(
+        conn,
+        data=data,
+        source=source,
+        fetched_at=fetched_at,
+        snapshot_date=snapshot_date,
+    )
+    result["raw_hash"] = raw_hash
 
     parsed = _parse_tdxhy(data)
     result["rows_fetched"] = len(parsed)
@@ -251,22 +298,51 @@ def sync_tdx_industry(conn: Any) -> dict:
             tdx_l1_name   TEXT,
             tdx_l2_name   TEXT,
             tdx_l3_name   TEXT,
+            source_raw_hash TEXT,
+            source_label TEXT,
+            fetched_at TIMESTAMP,
             PRIMARY KEY (stock_code, snapshot_date)
         )
         """
     )
+    existing_history = {
+        row["column_name"] if hasattr(row, "keys") else row[0]
+        for row in conn.execute("DESCRIBE dim_stock_tdx_industry_history").fetchall()
+    }
+    for col, ddl_type in (
+        ("source_raw_hash", "TEXT"),
+        ("source_label", "TEXT"),
+        ("fetched_at", "TIMESTAMP"),
+    ):
+        if col not in existing_history:
+            conn.execute(f"ALTER TABLE dim_stock_tdx_industry_history ADD COLUMN {col} {ddl_type}")
     conn.execute(
         "CREATE INDEX IF NOT EXISTS idx_tdx_ind_hist_stock ON dim_stock_tdx_industry_history(stock_code)"
     )
-    snapshot_date = datetime.now().strftime("%Y-%m-%d")
     conn.executemany(
         """
         INSERT OR REPLACE INTO dim_stock_tdx_industry_history
             (stock_code, snapshot_date, tdx_l1, tdx_l2, tdx_l3,
-             tdx_l1_name, tdx_l2_name, tdx_l3_name)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+             tdx_l1_name, tdx_l2_name, tdx_l3_name,
+             source_raw_hash, source_label, fetched_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
-        [(r[0], snapshot_date, r[1], r[2], r[3], r[4], r[5], r[6]) for r in parsed],
+        [
+            (
+                r[0],
+                snapshot_date,
+                r[1],
+                r[2],
+                r[3],
+                r[4],
+                r[5],
+                r[6],
+                raw_hash,
+                source,
+                fetched_at,
+            )
+            for r in parsed
+        ],
     )
 
     conn.commit()

@@ -36,11 +36,29 @@ def _response_size_bytes(response: Any) -> int:
     return len(str(text).encode("utf-8"))
 
 
+def _response_json(response: Any) -> dict[str, Any]:
+    json_func = getattr(response, "json", None)
+    if callable(json_func):
+        try:
+            payload = json_func()
+            return payload if isinstance(payload, dict) else {}
+        except Exception:
+            return {}
+    content = getattr(response, "content", None)
+    text = content.decode("utf-8") if isinstance(content, bytes) else getattr(response, "text", "")
+    try:
+        payload = json.loads(str(text or "{}"))
+    except Exception:
+        return {}
+    return payload if isinstance(payload, dict) else {}
+
+
 def measure_endpoints(
     client: Any,
     *,
     endpoints: list[str] | None = None,
     max_latency_ms: float = 1500.0,
+    require_materialized_contract: bool = True,
 ) -> dict[str, Any]:
     rows = []
     for endpoint in endpoints or WORKBENCH_ENDPOINTS:
@@ -48,14 +66,26 @@ def measure_endpoints(
         error = None
         status_code = None
         size_bytes = 0
+        read_model_contract_ok = None
+        read_model_source_mode = None
+        recompute_on_read = None
         try:
             response = client.get(endpoint)
             status_code = int(getattr(response, "status_code", 0) or 0)
             size_bytes = _response_size_bytes(response)
+            if status_code == 200 and require_materialized_contract:
+                read_model = _response_json(response).get("read_model") or {}
+                read_model_source_mode = read_model.get("source_mode")
+                recompute_on_read = read_model.get("recompute_on_read")
+                read_model_contract_ok = (
+                    read_model_source_mode == "materialized_snapshot"
+                    and recompute_on_read is False
+                )
         except Exception as exc:  # pragma: no cover - defensive real-client path.
             error = str(exc)
         elapsed_ms = round((time.perf_counter() - started) * 1000.0, 3)
-        ok = status_code == 200 and error is None and elapsed_ms <= max_latency_ms
+        contract_ok = read_model_contract_ok is not False
+        ok = status_code == 200 and error is None and elapsed_ms <= max_latency_ms and contract_ok
         rows.append(
             {
                 "endpoint": endpoint,
@@ -63,20 +93,25 @@ def measure_endpoints(
                 "elapsed_ms": elapsed_ms,
                 "response_size_bytes": size_bytes,
                 "budget_ms": float(max_latency_ms),
+                "read_model_contract_ok": read_model_contract_ok,
+                "read_model_source_mode": read_model_source_mode,
+                "recompute_on_read": recompute_on_read,
                 "ok": ok,
                 "error": error,
             }
         )
     failed = [row for row in rows if row["status_code"] != 200 or row["error"]]
     slow = [row for row in rows if row["elapsed_ms"] > max_latency_ms and not row["error"]]
+    contract_failed = [row for row in rows if row["read_model_contract_ok"] is False]
     return {
         "endpoint_count": len(rows),
         "max_latency_ms": max((row["elapsed_ms"] for row in rows), default=0.0),
         "avg_latency_ms": round(sum(row["elapsed_ms"] for row in rows) / max(len(rows), 1), 3),
         "slow_count": len(slow),
         "failed_count": len(failed),
+        "contract_failed_count": len(contract_failed),
         "budget_ms": float(max_latency_ms),
-        "status": "pass" if not slow and not failed else "warn",
+        "status": "pass" if not slow and not failed and not contract_failed else "warn",
         "endpoints": rows,
     }
 

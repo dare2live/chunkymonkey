@@ -165,7 +165,7 @@ def test_candidate_feature_panel_ablation_and_elimination_records():
         built = build_candidate_feature_panel(conn, start_date="2026-04-01")
         sample = conn.execute(
             """
-            SELECT common_holder_network_count, fund_holding_shares_tdx_f10,
+            SELECT close, common_holder_network_count, fund_holding_shares_tdx_f10,
                    fund_holding_float_a_ratio_tdx_f10, fund_holding_market_value_tdx_f10,
                    holder_count_change_pct_tdx, holder_count_acceleration_tdx,
                    top10_concentration_change,
@@ -200,6 +200,7 @@ def test_candidate_feature_panel_ablation_and_elimination_records():
         ).fetchone()
 
         assert built["rows"] == 6
+        assert sample["close"] == 10.0
         assert sample["common_holder_network_count"] == 2
         assert sample["fund_holding_shares_tdx_f10"] == 1000.0
         assert sample["fund_holding_float_a_ratio_tdx_f10"] == pytest.approx(3.5)

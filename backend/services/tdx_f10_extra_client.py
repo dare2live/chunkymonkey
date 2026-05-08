@@ -497,6 +497,8 @@ def _table_metrics(conn: Any, table: str | None) -> dict[str, Any]:
 def build_tdx_f10_capability_matrix(conn: Any) -> dict[str, Any]:
     """Persist a capability matrix for currently supported TDX F10 modules."""
 
+    from services.schema_versions import record_actual_version
+
     ensure_tables(conn)
     built_at = datetime.now(timezone.utc).isoformat(timespec="seconds")
     rows = []
@@ -543,6 +545,7 @@ def build_tdx_f10_capability_matrix(conn: Any) -> dict[str, Any]:
         """,
         rows,
     )
+    record_actual_version(conn, "mart_tdx_f10_capability_matrix")
     conn.commit()
     return {
         "capability_rows": len(rows),

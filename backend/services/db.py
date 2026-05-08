@@ -923,6 +923,7 @@ def init_db():
                 feature_set_id   TEXT NOT NULL,
                 stock_code       TEXT NOT NULL,
                 date             TEXT NOT NULL,
+                close            REAL,
                 forward_ret_5d   REAL,
                 forward_ret_10d  REAL,
                 forward_ret_20d  REAL,
@@ -958,6 +959,7 @@ def init_db():
             );
             CREATE INDEX IF NOT EXISTS idx_feature_candidate_date
                 ON fact_feature_panel_candidate(feature_set_id, date);
+            ALTER TABLE fact_feature_panel_candidate ADD COLUMN IF NOT EXISTS close REAL;
             ALTER TABLE fact_feature_panel_candidate ADD COLUMN IF NOT EXISTS forward_ret_5d REAL;
             ALTER TABLE fact_feature_panel_candidate ADD COLUMN IF NOT EXISTS forward_ret_10d REAL;
             ALTER TABLE fact_feature_panel_candidate ADD COLUMN IF NOT EXISTS forward_ret_60d REAL;
@@ -1084,6 +1086,7 @@ def init_db():
                 rank_ic_5d       DOUBLE,
                 rank_ic_10d      DOUBLE,
                 rank_ic_60d      DOUBLE,
+                rank_ic_90d      DOUBLE,
                 feature_cols_json TEXT,
                 built_at         TEXT,
                 PRIMARY KEY (run_id, group_name)
@@ -1091,6 +1094,7 @@ def init_db():
             ALTER TABLE mart_feature_group_ablation ADD COLUMN IF NOT EXISTS rank_ic_5d DOUBLE;
             ALTER TABLE mart_feature_group_ablation ADD COLUMN IF NOT EXISTS rank_ic_10d DOUBLE;
             ALTER TABLE mart_feature_group_ablation ADD COLUMN IF NOT EXISTS rank_ic_60d DOUBLE;
+            ALTER TABLE mart_feature_group_ablation ADD COLUMN IF NOT EXISTS rank_ic_90d DOUBLE;
 
             CREATE TABLE IF NOT EXISTS mart_model_selection_run (
                 run_id           TEXT PRIMARY KEY,

@@ -139,6 +139,10 @@ def test_workbench_frontend_render_smoke_for_all_tabs():
             paired_advantages: [{ feature_name: 'shareholder_plan_decrease_count_180d', label_name: 'follow_net_return_90d', latest_rank_ic: 0.006, initial_rank_ic: 0.012, latest_spread: 0.06, initial_spread: 0.09, abs_spread_advantage: 0.03, latest_nondefault_pct: 8, initial_nondefault_pct: 10 }],
             top_effects: [{ source_family: 'initial_event', source_table: 'mart_shareholder_plan_initial_event', feature_name: 'shareholder_plan_decrease_count_180d', feature_purpose: 'initial_notice_capital_attention_candidate', label_name: 'follow_net_return_90d', window_days: 180, valid_rows: 980, nondefault_pct: 10, event_rows: 8163, distinct_event_stocks: 2500, ic: 0.04, rank_ic: 0.012, daily_rank_ic_count: 120, positive_rank_ic_share: 0.62, label_mean_when_active: 0.15, label_mean_when_inactive: 0.06, active_inactive_label_spread: 0.09, built_at: '2026-05-07T10:47:57' }],
           },
+          shareholder_plan_initial_feature_panel: {
+            run_id: 'sp_initial_panel_1',
+            quality: { run_id: 'sp_initial_panel_1', feature_set_id: 'sp_initial_set', panel_rows: 3561243, stock_count: 5143, date_count: 715, min_date: '2023-01-03', max_date: '2025-12-15', initial_event_rows: 8163, matched_event_rows: 6224, active_rows: 257653, active_pct: 7.23, dropped_incomplete_label_rows: 466580, dropped_incomplete_context_rows: 25152, calendar_mismatch_rows: 0, labels: ['follow_net_return_60d', 'follow_net_return_90d'], context_features: ['ret_20d_rank'], initial_features: ['sp_initial_decrease_count_180d'], stage_timings: { total_s: 13.741 } },
+          },
           shareholder_plan_family_walkforward: {
             run_id: 'plan_wf_1',
             summary: { row_count: 2, source_family_count: 2, feature_count: 1, label_count: 1, fold_count: 4, max_valid_fold_count: 2, built_at: '2026-05-07T11:11:01', gate_status_counts: { blocked: 2 } },
@@ -155,9 +159,30 @@ def test_workbench_frontend_render_smoke_for_all_tabs():
             selected_interactions: [{ label_name: 'forward_ret_20d', horizon_days: 20, feature_a: 'signal_a', feature_b: 'signal_b', selected: true, selection_reason: 'joint_effect_exceeds_standalone', joint_uplift: 0.012, interaction_score: 0.42, joint_obs_count: 30 }],
             optuna_studies: [{ run_id: 'optuna_temporal', label_name: 'forward_ret_20d', best_trial_number: 3, objective_score: 1.25, trials: 8, study_total_trials: 8, selected_features: ['signal_a', 'signal_b'], selected_interactions: [{ feature_a: 'signal_a', feature_b: 'signal_b' }], best_metrics: { feature_component: 0.8, interaction_component: 0.45 } }],
             policy_candidates: [{ run_id: 'optuna_temporal', label_name: 'forward_ret_20d', gate_status: 'research_only', objective_score: 1.25, selected_count: 2, selected_interaction_count: 1, built_at: '2026-05-06T08:10:00' }],
-            policy_gates: [{ run_id: 'synergy_wf_temporal', candidate_run_id: 'optuna_temporal', label_name: 'forward_ret_20d', baseline_horizon_days: 60, candidate_horizon_days: 20, validation_status: 'blocked', promotion_status: 'research_only', avg_rank_ic: 0.07, std_rank_ic: 0.02, avg_top_excess_return: 0.01, worst_top_excess_return: -0.004, avg_cost_adjusted_top_excess_return: 0.008, worst_cost_adjusted_top_excess_return: -0.006, avg_turnover: 0.35, transaction_cost_bps: 10, avg_top_hit_rate: 0.61, worst_max_drawdown: -0.31, blockers: ['excessive_topk_drawdown'] }],
+            policy_gates: [{ run_id: 'synergy_wf_temporal', candidate_run_id: 'optuna_temporal', label_name: 'forward_ret_20d', baseline_horizon_days: 60, candidate_horizon_days: 20, validation_status: 'blocked', promotion_status: 'research_only', production_eligible: false, gate_mode: 'strict_fold', avg_rank_ic: 0.07, std_rank_ic: 0.02, avg_top_excess_return: 0.01, worst_top_excess_return: -0.004, avg_cost_adjusted_top_excess_return: 0.008, worst_cost_adjusted_top_excess_return: -0.006, avg_turnover: 0.35, transaction_cost_bps: 10, avg_top_hit_rate: 0.61, worst_max_drawdown: -0.31, blockers: ['excessive_topk_drawdown'] }],
+            policy_mtm_gates: [{ run_id: 'mtm_temporal', candidate_run_id: 'optuna_temporal', label_name: 'forward_ret_20d', baseline_horizon_days: 60, candidate_horizon_days: 20, validation_status: 'blocked', promotion_status: 'research_only', production_eligible: false, position_count: 22860, date_count: 775, total_return: 0.52, annualized_return: 0.15, max_drawdown: -0.39, sharpe: 0.65, avg_active_positions: 1799.4, position_hit_rate: 0.47, non_tdxhub_kline_count: 0, missing_path_price_count: 0, forward_filled_path_price_count: 1521, blockers: ['excessive_mark_to_market_drawdown'] }],
             redundancy_clusters: [{ run_id: 'redundancy_temporal', cluster_id: 'cluster_001', representative_feature: 'signal_a', cluster_size: 2, members: 'signal_a, signal_b', max_abs_corr_in_cluster: 0.98 }],
             conditional_synergies: [{ label_name: 'forward_ret_20d', horizon_days: 20, condition_feature: 'signal_a', response_feature: 'signal_b', incremental_uplift: 0.011, conditional_response_uplift: 0.017, response_uplift: 0.006, interaction_score: 0.24, conditional_response_obs_count: 22, feature_corr: 0.19, selected: true, selection_reason: 'conditional_response_exceeds_unconditional' }],
+          },
+          industry_pit: {
+            run_id: 'industry_pit_1',
+            signal_table: 'mart_shareholder_plan_initial_feature_panel',
+            min_signal_date: '2023-01-03',
+            max_signal_date: '2025-12-15',
+            signal_row_count: 3561243,
+            signal_stock_count: 5143,
+            signal_date_count: 715,
+            pit_row_count: 28039,
+            pit_stock_count: 5609,
+            history_snapshot_count: 5,
+            history_min_snapshot_date: '2026-04-25',
+            history_max_snapshot_date: '2026-05-05',
+            observed_pit_signal_rows: 0,
+            fallback_signal_rows: 3561243,
+            fallback_ratio: 1,
+            missing_pit_rows: 0,
+            pit_eligible: false,
+            blockers: ['industry_current_label_fallback_in_signal_window'],
           },
           feature_drift: { top: [] },
         };
@@ -189,7 +214,7 @@ def test_workbench_frontend_render_smoke_for_all_tabs():
         render('_renderDataSources', dataSources, ['K线主源', 'tdxhub_quote', '信号快照', '今日信号快照', '数据源水位', 'TDX K线服务器健康', 'TDX F10 Source-Date Audit', 'plan_window_used_as_source_date']);
         render('_renderPipelines', pipelines, ['最近运行', 'cron_daily', '最慢运行']);
         render('_renderFeatures', features, ['Registry', 'Feature Search Space', '漂移缓解候选', 'mitigation_1', 'ret_20d']);
-        render('_renderResearch', research, ['研究队列', 'Ranker 性能', 'Rank Matrix Cache', 'rank_matrix_cache_hit', 'ranker_perf', '个股持股周期画像', 'Top 变量影响', 'ma_ratio_250', '股东计划特征家族', 'plan_family_1', 'initial_event', 'shareholder_plan_decrease_count_180d', '时序协同研究', 'signal_a']);
+        render('_renderResearch', research, ['研究队列', 'Ranker 性能', 'Rank Matrix Cache', 'rank_matrix_cache_hit', 'ranker_perf', '个股持股周期画像', 'Top 变量影响', 'ma_ratio_250', '股东计划特征家族', 'plan_family_1', 'initial_event', 'shareholder_plan_decrease_count_180d', '行业 PIT 就绪度', 'industry_pit_1', '时序协同研究', 'signal_a']);
         render('_renderChampion', champion, ['Champion 阻塞上下文', 'deployed', 'champion_a']);
         render('_renderRecommendations', recommendations, ['Primary TopK', 'tdxhub_quote', '平安银行']);
         render('_renderStorage', storage, ['清理计划', '架构清理计划', 'cleanup_1']);

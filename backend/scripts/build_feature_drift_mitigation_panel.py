@@ -35,6 +35,7 @@ CREATE TABLE IF NOT EXISTS fact_feature_panel_candidate (
     feature_set_id TEXT NOT NULL,
     stock_code TEXT NOT NULL,
     date TEXT NOT NULL,
+    close REAL,
     forward_ret_5d REAL,
     forward_ret_10d REAL,
     forward_ret_20d REAL,
@@ -221,6 +222,7 @@ def load_root_cause_features(
 
 
 def _ensure_candidate_columns(conn: Any, columns: list[str], *, labels: list[str], has_regime: bool) -> None:
+    conn.execute("ALTER TABLE fact_feature_panel_candidate ADD COLUMN IF NOT EXISTS close REAL")
     for label in labels:
         conn.execute(f"ALTER TABLE fact_feature_panel_candidate ADD COLUMN IF NOT EXISTS {_quote_ident(label)} REAL")
     if has_regime:
@@ -400,7 +402,11 @@ def build_feature_drift_mitigation_panel(
     ranked_cols.extend(f"q.{_quote_ident(_slug(feature) + '_q_high')}" for feature in mitigated)
     ranked_cols.extend(window_selects)
 
-    insert_cols = ["feature_set_id", "stock_code", "date", *labels]
+    include_close = "close" in base_cols
+    insert_cols = ["feature_set_id", "stock_code", "date"]
+    if include_close:
+        insert_cols.append("close")
+    insert_cols.extend(labels)
     if has_regime:
         insert_cols.append("regime_flag")
     insert_cols.extend(selected_features)
@@ -410,8 +416,10 @@ def build_feature_drift_mitigation_panel(
         "? AS feature_set_id",
         "r.stock_code",
         "CAST(r.date AS VARCHAR) AS date",
-        *[f"CAST(r.{_quote_ident(label)} AS REAL) AS {_quote_ident(label)}" for label in labels],
     ]
+    if include_close:
+        select_cols.append("CAST(r.close AS REAL) AS close")
+    select_cols.extend(f"CAST(r.{_quote_ident(label)} AS REAL) AS {_quote_ident(label)}" for label in labels)
     if has_regime:
         select_cols.append("CAST(r.regime_flag AS TEXT) AS regime_flag")
     for feature in copied_features:

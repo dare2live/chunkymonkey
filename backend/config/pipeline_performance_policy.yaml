@@ -17,6 +17,10 @@ pipeline_duration_budgets_s:
   run_optuna_feature_space: 120
   run_optuna_synergy_search: 300
   validate_synergy_policy_candidate: 120
+  rerank_optuna_synergy_mtm: 900
+  sweep_synergy_mtm_strategy: 900
+  build_industry_pit: 120
+  build_shareholder_plan_initial_feature_panel: 300
   validate_shareholder_plan_family_walkforward: 300
   validate_synergy_policy_mark_to_market: 300
   build_temporal_synergy_research: 1800

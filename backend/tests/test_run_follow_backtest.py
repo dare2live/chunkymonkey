@@ -121,6 +121,13 @@ def test_follow_backtest_writes_results_without_table_registration(monkeypatch):
             FROM fact_institution_follow_backtest
             """
         ).fetchone()
+        version = conn.execute(
+            """
+            SELECT actual_version
+              FROM dim_schema_version
+             WHERE table_name = 'fact_institution_follow_backtest'
+            """
+        ).fetchone()
 
         assert len(rows) == 1
         assert rows[0]["n_events"] == 2
@@ -129,5 +136,6 @@ def test_follow_backtest_writes_results_without_table_registration(monkeypatch):
         assert stored["event_date_min"] == "20260102"
         assert stored["event_date_max"] == "20260103"
         assert json.loads(stored["exit_reasons_json"]) == {"max_hold": 2}
+        assert version["actual_version"] == "v2"
     finally:
         conn.close()

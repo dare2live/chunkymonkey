@@ -96,6 +96,9 @@ def test_workbench_overview_returns_stable_read_model():
         overview = build_workbench_overview(conn, as_of_date="2026-05-06")
 
         assert overview["latest_trading_day"] == "2026-05-06"
+        assert overview["read_model"]["source_mode"] == "materialized_snapshot"
+        assert overview["read_model"]["recompute_on_read"] is False
+        assert overview["read_model"]["latest_materialized_at"] == "2026-05-06 09:00:00"
         assert overview["latest_manifest"]["run_id"] == "manifest_new"
         assert overview["latest_manifest"]["gate_result"] == "pass"
         assert overview["schema_drift_count"] >= 1
@@ -105,6 +108,29 @@ def test_workbench_overview_returns_stable_read_model():
         assert overview["feature_drift"]["top"][0]["feature_name"] == "ret_60d"
         assert overview["storage"]["latest_run_id"] == "storage_plan"
         assert json.dumps(overview, ensure_ascii=False)
+
+
+def test_workbench_endpoints_expose_materialized_read_contract():
+    with duck_mem() as conn:
+        payloads = {
+            "overview": build_workbench_overview(conn),
+            "data-sources": build_workbench_data_sources(conn),
+            "pipelines": build_workbench_pipelines(conn),
+            "features": build_workbench_features(conn),
+            "research": build_workbench_research(conn),
+            "champion": build_workbench_champion(conn),
+            "recommendations": build_workbench_recommendations(conn),
+            "storage": build_workbench_storage(conn, include_live_plan=False),
+        }
+
+        for endpoint, payload in payloads.items():
+            meta = payload["read_model"]
+            assert meta["endpoint"] == endpoint
+            assert meta["source_mode"] == "materialized_snapshot"
+            assert meta["recompute_on_read"] is False
+            assert meta["refresh_semantics"] == "reload_materialized_json_only"
+            assert meta["trigger"] == "pipeline_or_manual_job"
+            assert meta["materialized_tables"]
 
 
 def test_workbench_stock_horizon_marks_follow_net_60d_as_baseline() -> None:
@@ -183,6 +209,86 @@ def test_workbench_stock_horizon_marks_follow_net_60d_as_baseline() -> None:
             item["feature_name"] != "wrong_horizon"
             for item in by_stock["000002"]["top_feature_effects"]
         )
+
+
+def test_workbench_research_returns_industry_pit_readiness() -> None:
+    with duck_mem() as conn:
+        conn.executescript(
+            """
+            CREATE TABLE mart_industry_pit_quality (
+                run_id TEXT,
+                signal_table TEXT,
+                signal_stock_column TEXT,
+                signal_date_column TEXT,
+                signal_row_count BIGINT,
+                signal_stock_count BIGINT,
+                signal_date_count BIGINT,
+                min_signal_date TEXT,
+                max_signal_date TEXT,
+                pit_row_count BIGINT,
+                pit_stock_count BIGINT,
+                history_snapshot_count BIGINT,
+                history_min_snapshot_date TEXT,
+                history_max_snapshot_date TEXT,
+                matched_signal_rows BIGINT,
+                observed_pit_signal_rows BIGINT,
+                fallback_signal_rows BIGINT,
+                missing_pit_rows BIGINT,
+                missing_tdx_l1_rows BIGINT,
+                fallback_ratio DOUBLE,
+                missing_ratio DOUBLE,
+                pit_eligible BOOLEAN,
+                blockers_json TEXT,
+                stage_timings_json TEXT,
+                built_at TEXT
+            );
+            CREATE TABLE mart_stock_industry_pit (
+                stock_code TEXT,
+                effective_from TEXT,
+                effective_to TEXT,
+                source TEXT,
+                is_historical_pit BOOLEAN
+            );
+            INSERT INTO mart_industry_pit_quality VALUES (
+                'industry_pit_latest',
+                'mart_shareholder_plan_initial_feature_panel',
+                'stock_code',
+                'date',
+                100,
+                10,
+                5,
+                '2023-01-03',
+                '2023-01-10',
+                20,
+                10,
+                1,
+                '2026-04-25',
+                '2026-04-25',
+                100,
+                0,
+                100,
+                0,
+                0,
+                1.0,
+                0.0,
+                FALSE,
+                '["industry_current_label_fallback_in_signal_window"]',
+                '{"total_s": 0.1}',
+                '2026-05-07T10:00:00'
+            );
+            INSERT INTO mart_stock_industry_pit VALUES
+                ('000001', '1900-01-01', '2026-04-24', 'current_label_fallback', FALSE),
+                ('000001', '2026-04-25', '9999-12-31', 'tdx_industry_history_snapshot', TRUE);
+            """
+        )
+
+        research = build_workbench_research(conn)
+
+        assert research["industry_pit"]["run_id"] == "industry_pit_latest"
+        assert research["industry_pit"]["pit_eligible"] is False
+        assert research["industry_pit"]["fallback_signal_rows"] == 100
+        assert research["industry_pit"]["fallback_pit_rows"] == 1
+        assert research["industry_pit"]["observed_pit_rows"] == 1
 
 
 def test_workbench_research_returns_schedule_studies_ranker_and_drift():
@@ -558,6 +664,75 @@ def test_workbench_research_returns_schedule_studies_ranker_and_drift():
                  0.35, 0.008, -0.006, 10.0,
                  '["excessive_topk_drawdown"]', '2026-05-06T08:20:00');
 
+            CREATE TABLE mart_synergy_policy_mtm_gate (
+                run_id TEXT,
+                candidate_run_id TEXT,
+                source_run_id TEXT,
+                label_name TEXT,
+                baseline_horizon_days INTEGER,
+                candidate_horizon_days INTEGER,
+                validation_status TEXT,
+                promotion_status TEXT,
+                production_eligible BOOLEAN,
+                position_count BIGINT,
+                date_count BIGINT,
+                total_return DOUBLE,
+                annualized_return DOUBLE,
+                max_drawdown DOUBLE,
+                sharpe DOUBLE,
+                avg_active_positions DOUBLE,
+                avg_position_net_return DOUBLE,
+                position_hit_rate DOUBLE,
+                transaction_cost_bps DOUBLE,
+                non_tdxhub_kline_count BIGINT,
+                missing_path_price_count BIGINT,
+                blockers_json TEXT,
+                thresholds_json TEXT,
+                evidence_json TEXT,
+                built_at TEXT
+            );
+            INSERT INTO mart_synergy_policy_mtm_gate VALUES
+                ('mtm_temporal', 'optuna_temporal', 'temporal_latest',
+                 'forward_ret_20d', 60, 20, 'blocked', 'research_only', FALSE,
+                 22860, 775, 0.52, 0.15, -0.39, 0.65, 1799.4, 0.027,
+                 0.47, 20.0, 0, 0, '["excessive_mark_to_market_drawdown"]',
+                 '{"force_research_only":true,"top_quantile":0.1,"daily_top_k":20,"market_filter_enabled":true,"min_market_hs300_ret_20d":0.03}',
+                 '{"forward_filled_path_price_count":1521,"rank_threshold_signal_count":1000,"market_eligible_signal_count":800,"market_filter_removed_signal_count":200,"daily_top_k_filtered_count":300,"market_allowed_date_count":120,"market_blocked_date_count":40}',
+                 '2026-05-06T08:30:00');
+
+            CREATE TABLE mart_synergy_policy_mtm_strategy_sweep (
+                run_id TEXT,
+                variant_id TEXT,
+                mtm_run_id TEXT,
+                candidate_run_id TEXT,
+                source_run_id TEXT,
+                label_name TEXT,
+                top_quantile DOUBLE,
+                daily_top_k INTEGER,
+                min_market_hs300_ret_20d DOUBLE,
+                min_market_hs300_ret_60d DOUBLE,
+                objective_score DOUBLE,
+                validation_status TEXT,
+                blockers_json TEXT,
+                signal_count BIGINT,
+                market_filter_removed_signal_count BIGINT,
+                daily_top_k_filtered_count BIGINT,
+                position_count BIGINT,
+                total_return DOUBLE,
+                annualized_return DOUBLE,
+                max_drawdown DOUBLE,
+                sharpe DOUBLE,
+                avg_active_positions DOUBLE,
+                built_at TEXT
+            );
+            INSERT INTO mart_synergy_policy_mtm_strategy_sweep VALUES
+                ('strategy_sweep_temporal', 'hs20_0p05__hs60_none',
+                 'strategy_sweep_temporal_hs20_0p05__hs60_none',
+                 'optuna_temporal', 'temporal_latest', 'forward_ret_20d',
+                 0.1, NULL, 0.05, NULL, -0.01, 'pass', '[]',
+                 46682, 309772, 0, 8115, 0.79, 0.29, -0.19, 1.13,
+                 852.1, '2026-05-06T08:40:00');
+
             CREATE TABLE mart_feature_cluster_redundancy (
                 run_id TEXT,
                 source_run_id TEXT,
@@ -641,6 +816,45 @@ def test_workbench_research_returns_schedule_studies_ranker_and_drift():
                  'follow_net_return_90d', 180, 1000, 980, 98.0, 80, 8.0,
                  12062, 2500, 0.02, 0.006, 0.02, 80, 0.55, 0.08,
                  0.10, 0.04, 0.06, '2026-05-06T09:00:00');
+
+            CREATE TABLE mart_shareholder_plan_initial_feature_panel_quality (
+                run_id TEXT,
+                feature_set_id TEXT,
+                base_panel_table TEXT,
+                initial_event_table TEXT,
+                window_days INTEGER,
+                input_rows BIGINT,
+                panel_rows BIGINT,
+                stock_count BIGINT,
+                date_count BIGINT,
+                min_date TEXT,
+                max_date TEXT,
+                initial_event_rows BIGINT,
+                matched_event_rows BIGINT,
+                active_rows BIGINT,
+                active_pct DOUBLE,
+                dropped_invalid_date_rows BIGINT,
+                dropped_incomplete_label_rows BIGINT,
+                dropped_incomplete_context_rows BIGINT,
+                calendar_mismatch_rows BIGINT,
+                labels_json TEXT,
+                context_features_json TEXT,
+                initial_features_json TEXT,
+                require_complete_labels BOOLEAN,
+                require_complete_context BOOLEAN,
+                stage_timings_json TEXT,
+                built_at TEXT
+            );
+            INSERT INTO mart_shareholder_plan_initial_feature_panel_quality VALUES
+                ('sp_initial_panel_latest', 'sp_initial_feature_set',
+                 'fact_feature_panel', 'mart_shareholder_plan_initial_event',
+                 180, 4052975, 3561243, 5143, 715, '2023-01-03',
+                 '2025-12-15', 8163, 6224, 257653, 7.2349, 0,
+                 466580, 25152, 0,
+                 '["follow_net_return_60d","follow_net_return_90d"]',
+                 '["ret_20d_rank"]',
+                 '["sp_initial_decrease_count_180d"]',
+                 TRUE, TRUE, '{"total_s":13.741}', '2026-05-06T09:30:00');
 
             CREATE TABLE mart_shareholder_plan_family_walkforward_summary (
                 run_id TEXT,
@@ -753,6 +967,21 @@ def test_workbench_research_returns_schedule_studies_ranker_and_drift():
         assert research["temporal_synergy"]["policy_gates"][0]["blockers"] == ["excessive_topk_drawdown"]
         assert research["temporal_synergy"]["policy_gates"][0]["avg_turnover"] == pytest.approx(0.35)
         assert research["temporal_synergy"]["policy_gates"][0]["avg_cost_adjusted_top_excess_return"] == pytest.approx(0.008)
+        assert research["temporal_synergy"]["policy_gates"][0]["gate_mode"] == "metric"
+        assert research["temporal_synergy"]["policy_gates"][0]["production_eligible"] is False
+        assert research["temporal_synergy"]["policy_mtm_gates"][0]["validation_status"] == "blocked"
+        assert research["temporal_synergy"]["policy_mtm_gates"][0]["blockers"] == [
+            "excessive_mark_to_market_drawdown"
+        ]
+        assert research["temporal_synergy"]["policy_mtm_gates"][0]["total_return"] == pytest.approx(0.52)
+        assert research["temporal_synergy"]["policy_mtm_gates"][0]["forward_filled_path_price_count"] == 1521
+        assert research["temporal_synergy"]["policy_mtm_gates"][0]["daily_top_k"] == 20
+        assert research["temporal_synergy"]["policy_mtm_gates"][0]["market_filter_enabled"] is True
+        assert research["temporal_synergy"]["policy_mtm_gates"][0]["min_market_hs300_ret_20d"] == pytest.approx(0.03)
+        assert research["temporal_synergy"]["policy_mtm_gates"][0]["market_filter_removed_signal_count"] == 200
+        assert research["temporal_synergy"]["policy_mtm_strategy_sweeps"][0]["validation_status"] == "pass"
+        assert research["temporal_synergy"]["policy_mtm_strategy_sweeps"][0]["min_market_hs300_ret_20d"] == pytest.approx(0.05)
+        assert research["temporal_synergy"]["policy_mtm_strategy_sweeps"][0]["max_drawdown"] == pytest.approx(-0.19)
         assert research["temporal_synergy"]["redundancy_clusters"][0]["representative_feature"] == "signal_a"
         assert research["temporal_synergy"]["redundancy_clusters"][0]["cluster_size"] == 2
         assert research["temporal_synergy"]["conditional_synergies"][0]["condition_feature"] == "signal_a"
@@ -764,6 +993,12 @@ def test_workbench_research_returns_schedule_studies_ranker_and_drift():
             "shareholder_plan_decrease_count_180d"
         )
         assert research["shareholder_plan_family_eval"]["paired_advantages"][0]["abs_spread_advantage"] == pytest.approx(0.03)
+        assert research["shareholder_plan_initial_feature_panel"]["run_id"] == "sp_initial_panel_latest"
+        initial_quality = research["shareholder_plan_initial_feature_panel"]["quality"]
+        assert initial_quality["panel_rows"] == 3561243
+        assert initial_quality["calendar_mismatch_rows"] == 0
+        assert initial_quality["labels"] == ["follow_net_return_60d", "follow_net_return_90d"]
+        assert initial_quality["stage_timings"]["total_s"] == pytest.approx(13.741)
         assert research["shareholder_plan_family_walkforward"]["run_id"] == "plan_wf_latest"
         assert research["shareholder_plan_family_walkforward"]["summary"]["gate_status_counts"] == {"blocked": 2}
         assert research["shareholder_plan_family_walkforward"]["top_rows"][0]["blockers"] == [

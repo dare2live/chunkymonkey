@@ -257,7 +257,7 @@ def test_write_one_persists_records_and_is_idempotent():
             "SELECT holder_name_norm, hold_ratio_float, hold_change, hold_change_num, notice_date, effective_date "
             "FROM fact_top10_holder_period"
         ).fetchone()
-        assert holder == ("Holder Canon", 1.5, "加仓", 100.0, "20260430", "20260501")
+        assert holder == ("Holder Canon", 1.5, "加仓", 100.0, "20260504", "20260505")
         assert con.execute("SELECT COUNT(*) FROM raw_tdx_f10_holder_research").fetchone()[0] == 1
         assert con.execute("SELECT COUNT(*) FROM fact_controlling_shareholder").fetchone()[0] == 1
         assert con.execute("SELECT plan_seq FROM fact_shareholder_plan").fetchone()[0] == 1

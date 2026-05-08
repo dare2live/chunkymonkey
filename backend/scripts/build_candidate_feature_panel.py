@@ -48,6 +48,7 @@ CREATE TABLE IF NOT EXISTS fact_feature_panel_candidate (
     feature_set_id TEXT NOT NULL,
     stock_code TEXT NOT NULL,
     date TEXT NOT NULL,
+    close REAL,
     forward_ret_5d REAL,
     forward_ret_10d REAL,
     forward_ret_20d REAL,
@@ -83,6 +84,7 @@ CREATE TABLE IF NOT EXISTS fact_feature_panel_candidate (
 );
 CREATE INDEX IF NOT EXISTS idx_feature_candidate_date
     ON fact_feature_panel_candidate(feature_set_id, date);
+ALTER TABLE fact_feature_panel_candidate ADD COLUMN IF NOT EXISTS close REAL;
 ALTER TABLE fact_feature_panel_candidate ADD COLUMN IF NOT EXISTS forward_ret_5d REAL;
 ALTER TABLE fact_feature_panel_candidate ADD COLUMN IF NOT EXISTS forward_ret_10d REAL;
 ALTER TABLE fact_feature_panel_candidate ADD COLUMN IF NOT EXISTS forward_ret_60d REAL;
@@ -142,6 +144,7 @@ def build_candidate_feature_panel(
         f"""
         INSERT OR REPLACE INTO fact_feature_panel_candidate (
             feature_set_id, stock_code, date,
+            close,
             forward_ret_5d, forward_ret_10d, forward_ret_20d, forward_ret_60d,
             forward_ret_90d,
             follow_net_return_5d,
@@ -186,6 +189,7 @@ def build_candidate_feature_panel(
         ),
         base AS (
             SELECT stock_code, date,
+                   close,
                    forward_ret_5d_calc AS forward_ret_5d,
                    forward_ret_10d_calc AS forward_ret_10d,
                    COALESCE(forward_ret_20d, forward_ret_20d_calc) AS forward_ret_20d,
@@ -276,6 +280,7 @@ def build_candidate_feature_panel(
             ? AS feature_set_id,
             b.stock_code,
             b.date,
+            b.close,
             b.forward_ret_5d,
             b.forward_ret_10d,
             b.forward_ret_20d,

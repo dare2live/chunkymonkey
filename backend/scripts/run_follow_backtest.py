@@ -32,6 +32,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from services.db import get_conn
 from services.event_simulator import simulate_events
 from services.pricing_policy import load_pricing_label_policy
+from services.schema_versions import record_actual_version
 
 logger = logging.getLogger("run_follow_backtest")
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s | %(message)s")
@@ -364,6 +365,7 @@ def run_backtest_for_cohort(
                 for row in results
             ],
         )
+        record_actual_version(conn, "fact_institution_follow_backtest")
         conn.commit()
         logger.info("  写入 %d 行", len(results))
     return results

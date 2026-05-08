@@ -36,6 +36,7 @@ CREATE TABLE IF NOT EXISTS fact_feature_panel_candidate (
     feature_set_id TEXT NOT NULL,
     stock_code TEXT NOT NULL,
     date TEXT NOT NULL,
+    close REAL,
     forward_ret_5d REAL,
     forward_ret_10d REAL,
     forward_ret_20d REAL,
@@ -105,6 +106,7 @@ def _parse_csv(value: str | None) -> list[str]:
 
 
 def _ensure_candidate_columns(conn: Any, columns: list[str], *, regime: bool) -> None:
+    conn.execute("ALTER TABLE fact_feature_panel_candidate ADD COLUMN IF NOT EXISTS close REAL")
     for label in LABEL_COLUMNS:
         conn.execute(f"ALTER TABLE fact_feature_panel_candidate ADD COLUMN IF NOT EXISTS {_quote_ident(label)} REAL")
     if regime:
@@ -200,7 +202,11 @@ def build_hybrid_feature_panel(
         extra_join_filters.append(extra_filter)
     params = [*join_params, *params]
 
-    insert_cols = ["feature_set_id", "stock_code", "date", *labels]
+    include_close = "close" in base_cols
+    insert_cols = ["feature_set_id", "stock_code", "date"]
+    if include_close:
+        insert_cols.append("close")
+    insert_cols.extend(labels)
     if has_regime:
         insert_cols.append("regime_flag")
     insert_cols.extend(selected_features)
@@ -210,8 +216,10 @@ def build_hybrid_feature_panel(
         "? AS feature_set_id",
         "b.stock_code",
         "CAST(b.date AS VARCHAR) AS date",
-        *[f"CAST(b.{_quote_ident(label)} AS REAL) AS {_quote_ident(label)}" for label in labels],
     ]
+    if include_close:
+        select_cols.append("CAST(b.close AS REAL) AS close")
+    select_cols.extend(f"CAST(b.{_quote_ident(label)} AS REAL) AS {_quote_ident(label)}" for label in labels)
     if has_regime:
         select_cols.append("CAST(b.regime_flag AS TEXT) AS regime_flag")
     select_cols.extend(f"CAST(b.{_quote_ident(feature)} AS REAL) AS {_quote_ident(feature)}" for feature in base_features)

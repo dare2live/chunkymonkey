@@ -3193,6 +3193,83 @@ def _check_pipeline_performance(
     }
 
 
+def _check_industry_pit_readiness(
+    conn: Any,
+    details: list[dict[str, Any]],
+    blockers: list[str],
+    warnings: list[str],
+) -> dict[str, Any]:
+    table_name = "mart_industry_pit_quality"
+    if not _table_exists(conn, table_name):
+        return {"exists": False}
+    row = conn.execute(
+        """
+        SELECT run_id,
+               signal_table,
+               signal_row_count,
+               history_snapshot_count,
+               fallback_signal_rows,
+               missing_pit_rows,
+               missing_tdx_l1_rows,
+               fallback_ratio,
+               missing_ratio,
+               pit_eligible,
+               blockers_json,
+               built_at
+          FROM mart_industry_pit_quality
+         ORDER BY built_at DESC NULLS LAST, run_id DESC
+         LIMIT 1
+        """
+    ).fetchone()
+    if not row:
+        item = _detail(
+            domain="industry_pit",
+            table_name=table_name,
+            check_name="latest_quality_exists",
+            status="fail",
+            severity="warning",
+            violation_count=1,
+            reason="industry PIT quality table exists but has no readiness row",
+        )
+        _append_outcome(item, details=details, blockers=blockers, warnings=warnings)
+        return {"exists": True, "has_latest": False}
+
+    pit_eligible = bool(_row_value(row, "pit_eligible", 9))
+    blocker_list = _safe_json_load(_row_value(row, "blockers_json", 10)) or []
+    item = _detail(
+        domain="industry_pit",
+        table_name=table_name,
+        check_name="latest_readiness",
+        status="pass" if pit_eligible else "fail",
+        severity="warning",
+        row_count=int(_row_value(row, "signal_row_count", 2) or 0),
+        violation_count=0 if pit_eligible else len(blocker_list) or 1,
+        reason=(
+            None
+            if pit_eligible
+            else "industry constraints must stay disabled until PIT readiness passes"
+        ),
+        examples=[{"blockers": blocker_list[:5]}] if blocker_list else [],
+    )
+    _append_outcome(item, details=details, blockers=blockers, warnings=warnings)
+    return {
+        "exists": True,
+        "has_latest": True,
+        "run_id": _row_value(row, "run_id", 0),
+        "signal_table": _row_value(row, "signal_table", 1),
+        "signal_row_count": int(_row_value(row, "signal_row_count", 2) or 0),
+        "history_snapshot_count": int(_row_value(row, "history_snapshot_count", 3) or 0),
+        "fallback_signal_rows": int(_row_value(row, "fallback_signal_rows", 4) or 0),
+        "missing_pit_rows": int(_row_value(row, "missing_pit_rows", 5) or 0),
+        "missing_tdx_l1_rows": int(_row_value(row, "missing_tdx_l1_rows", 6) or 0),
+        "fallback_ratio": _row_value(row, "fallback_ratio", 7),
+        "missing_ratio": _row_value(row, "missing_ratio", 8),
+        "pit_eligible": pit_eligible,
+        "blockers": blocker_list,
+        "built_at": _row_value(row, "built_at", 11),
+    }
+
+
 def _model_status_map(conn: Any) -> dict[str, str]:
     if not _table_exists(conn, "mart_model_lifecycle"):
         return {}
@@ -4025,6 +4102,14 @@ def record_global_data_quality_gate(
         f"model_feature_contract_scan done elapsed={stage_timings['model_feature_contract_scan_s']:.3f}s"
     )
     stage_started = time.perf_counter()
+    _emit_progress("industry_pit_readiness_scan start")
+    evidence["industry_pit"] = _check_industry_pit_readiness(conn, details, blockers, warnings)
+    stage_timings["industry_pit_readiness_scan_s"] = round(time.perf_counter() - stage_started, 3)
+    _emit_progress(
+        "industry_pit_readiness_scan done "
+        f"elapsed={stage_timings['industry_pit_readiness_scan_s']:.3f}s"
+    )
+    stage_started = time.perf_counter()
     _emit_progress("model_lifecycle_scan start")
     evidence["model_lifecycle"] = _check_model_lifecycle_integrity(conn, details, blockers, warnings)
     stage_timings["model_lifecycle_scan_s"] = round(time.perf_counter() - stage_started, 3)
@@ -4124,6 +4209,7 @@ def record_global_data_quality_gate(
             "mart_pipeline_run_manifest",
             "mart_data_processing_tool_run",
             "mart_data_processing_tool_issue",
+            "mart_industry_pit_quality",
         ],
         output_tables=[
             "mart_global_data_quality_gate",

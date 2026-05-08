@@ -120,6 +120,96 @@ def _store_trial_outcome(trial: optuna.Trial, outcome: dict[str, Any]) -> None:
     trial.set_user_attr("synergy_metrics", outcome["metrics"])
 
 
+def _normalized_interaction(interaction: dict[str, Any]) -> dict[str, str]:
+    interaction_type = str(interaction.get("interaction_type") or "pair").lower()
+    feature_a = str(interaction.get("feature_a") or "")
+    feature_b = str(interaction.get("feature_b") or "")
+    if interaction_type == "pair" and feature_b < feature_a:
+        feature_a, feature_b = feature_b, feature_a
+    return {
+        "interaction_type": interaction_type,
+        "feature_a": feature_a,
+        "feature_b": feature_b,
+    }
+
+
+def _candidate_fingerprint(
+    selected_features: list[str],
+    selected_interactions: list[dict[str, Any]],
+) -> str:
+    interactions = [
+        _normalized_interaction(interaction)
+        for interaction in selected_interactions
+        if isinstance(interaction, dict)
+    ]
+    interactions.sort(
+        key=lambda item: (
+            item["interaction_type"],
+            item["feature_a"],
+            item["feature_b"],
+        )
+    )
+    payload = {
+        "features": sorted(str(feature) for feature in selected_features),
+        "interactions": interactions,
+    }
+    return json.dumps(payload, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+
+
+def _candidate_tokens(
+    selected_features: list[str],
+    selected_interactions: list[dict[str, Any]],
+) -> set[str]:
+    tokens = {f"feature:{feature}" for feature in selected_features}
+    for interaction in selected_interactions:
+        if not isinstance(interaction, dict):
+            continue
+        normalized = _normalized_interaction(interaction)
+        tokens.add(
+            "interaction:"
+            f"{normalized['interaction_type']}:"
+            f"{normalized['feature_a']}:"
+            f"{normalized['feature_b']}"
+        )
+    return tokens
+
+
+def _generation_penalty(
+    *,
+    selected_features: list[str],
+    selected_interactions: list[dict[str, Any]],
+    seen_fingerprints: set[str],
+    prior_candidate_tokens: list[set[str]],
+    dedupe_candidates_in_search: bool,
+    duplicate_candidate_penalty: float,
+    diversity_penalty_weight: float,
+) -> dict[str, Any]:
+    fingerprint = _candidate_fingerprint(selected_features, selected_interactions)
+    tokens = _candidate_tokens(selected_features, selected_interactions)
+    is_duplicate = fingerprint in seen_fingerprints
+    max_similarity = 0.0
+    if tokens and prior_candidate_tokens:
+        max_similarity = max(
+            len(tokens & prior) / max(len(tokens | prior), 1)
+            for prior in prior_candidate_tokens
+        )
+    duplicate_penalty = (
+        max(float(duplicate_candidate_penalty), 0.0)
+        if dedupe_candidates_in_search and is_duplicate
+        else 0.0
+    )
+    diversity_penalty = max(float(diversity_penalty_weight), 0.0) * max_similarity
+    return {
+        "fingerprint": fingerprint,
+        "duplicate": is_duplicate,
+        "max_similarity_to_prior": max_similarity,
+        "duplicate_penalty": duplicate_penalty,
+        "diversity_penalty": diversity_penalty,
+        "total_penalty": duplicate_penalty + diversity_penalty,
+        "token_count": len(tokens),
+    }
+
+
 def latest_temporal_synergy_run_id(conn: Any) -> str | None:
     row = conn.execute(
         """
@@ -895,6 +985,11 @@ def run_optuna_synergy_search(
     risk_return_weight: float = 100.0,
     risk_drawdown_penalty_weight: float = 3.0,
     risk_turnover_penalty_weight: float = 1.0,
+    risk_objective_in_search: bool = False,
+    risk_rank_feature_pool_size: int = 0,
+    dedupe_candidates_in_search: bool = False,
+    duplicate_candidate_penalty: float = 10.0,
+    diversity_penalty_weight: float = 0.0,
 ) -> dict[str, Any]:
     ensure_tables(conn)
     source_run_id = source_run_id or latest_temporal_synergy_run_id(conn)
@@ -929,11 +1024,29 @@ def run_optuna_synergy_search(
     min_features = max(min(int(min_features), max_features), 1)
     max_interactions = max(int(max_interactions), 0)
     evaluations: dict[int, dict[str, Any]] = {}
+    risk_evaluated_trials = 0
+    risk_inline_evaluated_trials = 0
+    duplicate_candidate_count = 0
+    diversity_penalized_trials = 0
+    risk_rank_cache: dict[str, Any] | None = None
+    seen_generation_fingerprints: set[str] = set()
+    prior_generation_tokens: list[set[str]] = []
     subset_pool_rows = [
         row
         for row in relevance
         if _finite_float(row.get("coverage_pct")) >= min_coverage_pct
     ][: max(int(feature_subset_pool_size), 0)]
+    if risk_objective_in_search:
+        risk_rank_cache = _empty_risk_rank_cache()
+        preferred_rows = [
+            row
+            for row in relevance
+            if _finite_float(row.get("coverage_pct")) >= min_coverage_pct
+        ][: max(int(risk_rank_feature_pool_size), 0)]
+        if preferred_rows:
+            risk_rank_cache["preferred_features"] = sorted(
+                {str(row["feature_name"]) for row in preferred_rows}
+            )
 
     def evaluate(
         params: dict[str, float],
@@ -965,6 +1078,9 @@ def run_optuna_synergy_search(
         )
 
         def objective(trial: optuna.Trial) -> float:
+            nonlocal duplicate_candidate_count
+            nonlocal diversity_penalized_trials
+            nonlocal risk_inline_evaluated_trials
             params = _suggest_params(trial)
             n_features = trial.suggest_int("max_features", min_features, max_features)
             n_interactions = trial.suggest_int("max_interactions", 0, max_interactions)
@@ -996,9 +1112,57 @@ def run_optuna_synergy_search(
             if feature_allowlist is not None:
                 outcome["metrics"]["feature_subset_pool_size"] = len(subset_pool_rows)
                 outcome["metrics"]["feature_allowlist_count"] = len(feature_allowlist)
+            proxy_objective = float(outcome["objective"])
+            objective_value = proxy_objective
+            outcome["metrics"]["proxy_objective"] = proxy_objective
+            if risk_objective_in_search:
+                risk_metrics = _risk_evaluate_selection(
+                    conn,
+                    source_run_id=source_run_id,
+                    label_name=label_name,
+                    selected_features=outcome["selected_features"],
+                    selected_interactions=outcome["selected_interactions"],
+                    top_quantile=risk_top_quantile,
+                    folds=risk_folds,
+                    transaction_cost_bps=risk_transaction_cost_bps,
+                    conditional_threshold=risk_conditional_threshold,
+                    proxy_objective=proxy_objective,
+                    proxy_weight=risk_proxy_weight,
+                    rank_ic_weight=risk_rank_ic_weight,
+                    return_weight=risk_return_weight,
+                    drawdown_penalty_weight=risk_drawdown_penalty_weight,
+                    turnover_penalty_weight=risk_turnover_penalty_weight,
+                    rank_cache=risk_rank_cache,
+                )
+                outcome["metrics"]["risk_evaluation"] = risk_metrics
+                objective_value = _finite_float(
+                    risk_metrics.get("risk_objective"),
+                    proxy_objective,
+                )
+                risk_inline_evaluated_trials += 1
+            penalty = _generation_penalty(
+                selected_features=outcome["selected_features"],
+                selected_interactions=outcome["selected_interactions"],
+                seen_fingerprints=seen_generation_fingerprints,
+                prior_candidate_tokens=prior_generation_tokens,
+                dedupe_candidates_in_search=dedupe_candidates_in_search,
+                duplicate_candidate_penalty=duplicate_candidate_penalty,
+                diversity_penalty_weight=diversity_penalty_weight,
+            )
+            seen_generation_fingerprints.add(str(penalty["fingerprint"]))
+            prior_generation_tokens.append(
+                _candidate_tokens(outcome["selected_features"], outcome["selected_interactions"])
+            )
+            if penalty["duplicate"]:
+                duplicate_candidate_count += 1
+            if _finite_float(penalty["diversity_penalty"]) > 0:
+                diversity_penalized_trials += 1
+            objective_value -= _finite_float(penalty["total_penalty"])
+            outcome["objective"] = objective_value
+            outcome["metrics"]["generation_penalty"] = penalty
             evaluations[trial.number] = {"params": params, **outcome}
             _store_trial_outcome(trial, outcome)
-            return float(outcome["objective"])
+            return float(objective_value)
 
         study.optimize(objective, n_trials=int(trials))
         stage_timings["optuna_optimize_s"] = round(time.perf_counter() - optimize_t0, 3)
@@ -1026,11 +1190,10 @@ def run_optuna_synergy_search(
         stage_timings["deterministic_baseline_s"] = round(time.perf_counter() - baseline_t0, 3)
         _progress("deterministic baseline done")
 
-    risk_evaluated_trials = 0
-    risk_rank_cache: dict[str, Any] | None = None
     if risk_aware:
         risk_t0 = time.perf_counter()
-        risk_rank_cache = _empty_risk_rank_cache()
+        if risk_rank_cache is None:
+            risk_rank_cache = _empty_risk_rank_cache()
         candidates_for_risk = sorted(completed, key=_trial_value, reverse=True)[
             : max(int(risk_eval_top_trials), 1)
         ]
@@ -1150,13 +1313,22 @@ def run_optuna_synergy_search(
         "best_metrics": best["metrics"],
         "feature_subset_pool_size": int(feature_subset_pool_size),
         "risk_aware": bool(risk_aware),
+        "risk_objective_in_search": bool(risk_objective_in_search),
         "risk_eval_top_trials": int(risk_eval_top_trials),
         "risk_evaluated_trials": int(risk_evaluated_trials),
+        "risk_inline_evaluated_trials": int(risk_inline_evaluated_trials),
         "risk_top_quantile": float(risk_top_quantile),
         "risk_folds": int(risk_folds),
         "risk_transaction_cost_bps": float(risk_transaction_cost_bps),
         "risk_conditional_threshold": float(risk_conditional_threshold),
+        "risk_rank_feature_pool_size": int(risk_rank_feature_pool_size),
         "risk_feature_rank_cache": _risk_rank_cache_stats(risk_rank_cache),
+        "dedupe_candidates_in_search": bool(dedupe_candidates_in_search),
+        "duplicate_candidate_penalty": float(duplicate_candidate_penalty),
+        "diversity_penalty_weight": float(diversity_penalty_weight),
+        "duplicate_candidate_count": int(duplicate_candidate_count),
+        "diversity_penalized_trials": int(diversity_penalized_trials),
+        "unique_candidate_fingerprint_count": len(seen_generation_fingerprints),
         "feature_cluster_count": len(set(feature_clusters.values())) if feature_clusters else 0,
         "pair_interaction_rows": len(pair_rows),
         "conditional_interaction_rows": len(conditional_rows),
@@ -1247,8 +1419,14 @@ def run_optuna_synergy_search(
             "selected_interaction_count": len(best["selected_interactions"]),
             "objective_score": objective_score,
             "risk_aware": bool(risk_aware),
+            "risk_objective_in_search": bool(risk_objective_in_search),
             "risk_evaluated_trials": int(risk_evaluated_trials),
+            "risk_inline_evaluated_trials": int(risk_inline_evaluated_trials),
             "risk_feature_rank_cache": _risk_rank_cache_stats(risk_rank_cache),
+            "dedupe_candidates_in_search": bool(dedupe_candidates_in_search),
+            "duplicate_candidate_count": int(duplicate_candidate_count),
+            "diversity_penalized_trials": int(diversity_penalized_trials),
+            "unique_candidate_fingerprint_count": len(seen_generation_fingerprints),
             "best_trial_number": int(best_trial.number),
             "feature_cluster_count": len(set(feature_clusters.values())) if feature_clusters else 0,
             "pair_interaction_rows": len(pair_rows),
@@ -1279,8 +1457,13 @@ def run_optuna_synergy_search(
         "selected_features": best["selected_features"],
         "selected_interactions": best["selected_interactions"],
         "risk_aware": bool(risk_aware),
+        "risk_objective_in_search": bool(risk_objective_in_search),
         "risk_evaluated_trials": int(risk_evaluated_trials),
+        "risk_inline_evaluated_trials": int(risk_inline_evaluated_trials),
         "risk_feature_rank_cache": _risk_rank_cache_stats(risk_rank_cache),
+        "duplicate_candidate_count": int(duplicate_candidate_count),
+        "diversity_penalized_trials": int(diversity_penalized_trials),
+        "unique_candidate_fingerprint_count": len(seen_generation_fingerprints),
         "duration_s": duration_s,
     }
 
@@ -1311,6 +1494,11 @@ def main() -> int:
     parser.add_argument("--risk-return-weight", type=float, default=100.0)
     parser.add_argument("--risk-drawdown-penalty-weight", type=float, default=3.0)
     parser.add_argument("--risk-turnover-penalty-weight", type=float, default=1.0)
+    parser.add_argument("--risk-objective-in-search", action="store_true")
+    parser.add_argument("--risk-rank-feature-pool-size", type=int, default=0)
+    parser.add_argument("--dedupe-candidates-in-search", action="store_true")
+    parser.add_argument("--duplicate-candidate-penalty", type=float, default=10.0)
+    parser.add_argument("--diversity-penalty-weight", type=float, default=0.0)
     args = parser.parse_args()
     storage_url = None if args.no_persistent_study else (args.storage or default_optuna_storage_url())
     with get_conn() as conn:
@@ -1339,6 +1527,11 @@ def main() -> int:
             risk_return_weight=args.risk_return_weight,
             risk_drawdown_penalty_weight=args.risk_drawdown_penalty_weight,
             risk_turnover_penalty_weight=args.risk_turnover_penalty_weight,
+            risk_objective_in_search=args.risk_objective_in_search,
+            risk_rank_feature_pool_size=args.risk_rank_feature_pool_size,
+            dedupe_candidates_in_search=args.dedupe_candidates_in_search,
+            duplicate_candidate_penalty=args.duplicate_candidate_penalty,
+            diversity_penalty_weight=args.diversity_penalty_weight,
         )
     print(json.dumps(result, ensure_ascii=False, indent=2, default=str))
     return 0

@@ -24,7 +24,7 @@ def _table_exists(conn: Any, table_name: str) -> bool:
         """,
         (table_name,),
     ).fetchone()
-    return row is not None
+    return row is not None and _relation_exists(conn, table_name)
 
 
 def _relation_exists(conn: Any, relation: str) -> bool:
@@ -126,10 +126,63 @@ def _latest_run_id(conn: Any, table_name: str) -> str | None:
     if not _table_exists(conn, table_name):
         return None
     cols = _columns(conn, table_name)
+    if "run_id" not in cols:
+        return None
     order_col = "built_at" if "built_at" in cols else "created_at" if "created_at" in cols else None
     if order_col:
         return _scalar(conn, f"SELECT run_id FROM {table_name} ORDER BY {order_col} DESC LIMIT 1")
     return _scalar(conn, f"SELECT run_id FROM {table_name} LIMIT 1")
+
+
+def _read_model_meta(conn: Any, endpoint: str, tables: list[str]) -> dict[str, Any]:
+    materialized_tables = []
+    latest_values: list[str] = []
+    freshness_candidates = [
+        "built_at",
+        "updated_at",
+        "created_at",
+        "ended_at",
+        "started_at",
+        "snapshot_at",
+        "evaluated_at",
+        "snapshot_date",
+        "trade_date",
+        "date",
+    ]
+    for table in tables:
+        item: dict[str, Any] = {
+            "table": table,
+            "available": _table_exists(conn, table),
+            "latest_run_id": None,
+            "latest_row_at": None,
+            "freshness_column": None,
+        }
+        if item["available"]:
+            cols = _columns(conn, table)
+            item["latest_run_id"] = _latest_run_id(conn, table) if "run_id" in cols else None
+            freshness_col = next((col for col in freshness_candidates if col in cols), None)
+            if freshness_col:
+                item["freshness_column"] = freshness_col
+                latest = _scalar(
+                    conn,
+                    f"SELECT CAST(MAX(TRY_CAST({freshness_col} AS TIMESTAMP)) AS VARCHAR) FROM {table}",
+                )
+                if not latest:
+                    latest = _scalar(conn, f"SELECT CAST(MAX({freshness_col}) AS VARCHAR) FROM {table}")
+                item["latest_row_at"] = latest
+                if latest:
+                    latest_values.append(str(latest))
+        materialized_tables.append(item)
+
+    return {
+        "endpoint": endpoint,
+        "source_mode": "materialized_snapshot",
+        "recompute_on_read": False,
+        "refresh_semantics": "reload_materialized_json_only",
+        "trigger": "pipeline_or_manual_job",
+        "latest_materialized_at": max(latest_values) if latest_values else None,
+        "materialized_tables": materialized_tables,
+    }
 
 
 def _status_counts(conn: Any, table_name: str, *, run_id: str | None = None) -> dict[str, int]:
@@ -1179,6 +1232,18 @@ def build_workbench_overview(conn: Any, *, drift_limit: int = 8, as_of_date: str
         blockers.append({"kind": "schema_drift", "count": len(drift)})
 
     overview = {
+        "read_model": _read_model_meta(
+            conn,
+            "overview",
+            [
+                "dim_trading_calendar",
+                "mart_pipeline_run_manifest",
+                "mart_research_schedule_plan",
+                "mart_model_lifecycle",
+                "mart_feature_drift_root_cause_summary",
+                "dim_schema_version",
+            ],
+        ),
         "latest_trading_day": _latest_trading_day(conn, as_of_date=as_of_date),
         "latest_manifest": _latest_manifest(conn),
         "schema_drift_count": len(drift),
@@ -1860,6 +1925,20 @@ def build_workbench_data_sources(conn: Any, *, limit: int = 30, as_of_date: str 
             ).fetchall()
         ]
     return {
+        "read_model": _read_model_meta(
+            conn,
+            "data-sources",
+            [
+                "dim_trading_calendar",
+                "mart_data_source_watermark",
+                "mart_data_health",
+                "mart_data_processing_monitor",
+                "mart_tdx_server_health",
+                "mart_tdx_f10_capability_matrix",
+                "mart_tdx_f10_source_date_audit",
+                "mart_tdx_f10_source_dq_detail",
+            ],
+        ),
         "calendar_target": _latest_trading_day(conn, as_of_date=as_of_date),
         "watermark_count": len(rows),
         "watermarks": rows,
@@ -1894,6 +1973,11 @@ def build_workbench_pipelines(conn: Any, *, limit: int = 30) -> dict[str, Any]:
     )[:8]
     blocker_rows = [row for row in rows if row["blocker_count"] or str(row["status"]).lower() not in {"success", "completed"}]
     return {
+        "read_model": _read_model_meta(
+            conn,
+            "pipelines",
+            ["mart_pipeline_run_manifest"],
+        ),
         "status_counts": _manifest_status_counts(conn, limit=limit),
         "recent": rows,
         "latest_by_pipeline": list(latest_by_pipeline.values()),
@@ -2294,6 +2378,19 @@ def build_workbench_features(conn: Any, *, association_limit: int = 12) -> dict[
         ]
 
     return {
+        "read_model": _read_model_meta(
+            conn,
+            "features",
+            [
+                "mart_feature_panel_validation",
+                "mart_feature_availability_contract",
+                "mart_feature_search_space_summary",
+                "mart_feature_association_stat",
+                "mart_feature_drift_root_cause_summary",
+                "mart_feature_drift_mitigation_panel_build",
+                "mart_feature_pit_coverage_summary",
+            ],
+        ),
         "registry": {
             "feature_count": len(registry.features),
             "model_input_count": len(registry.model_input_columns()),
@@ -2513,6 +2610,16 @@ def build_workbench_storage(conn: Any, *, include_live_plan: bool = True) -> dic
         except Exception as exc:  # pragma: no cover - defensive for partially migrated local DBs.
             retention["error"] = str(exc)
     return {
+        "read_model": _read_model_meta(
+            conn,
+            "storage",
+            [
+                "mart_pipeline_run_manifest",
+                "mart_storage_cleanup_plan",
+                "mart_architecture_cleanup_summary",
+                "mart_architecture_cleanup_plan",
+            ],
+        ),
         "latest_manifest": latest_manifest,
         "retention": retention,
         "architecture": _architecture_cleanup_summary(conn),
@@ -2536,6 +2643,7 @@ def _temporal_synergy_research(
         "optuna_studies": [],
         "policy_candidates": [],
         "policy_gates": [],
+        "policy_mtm_gates": [],
         "redundancy_clusters": [],
         "conditional_synergies": [],
     }
@@ -2546,6 +2654,8 @@ def _temporal_synergy_research(
     optuna_table = "mart_optuna_synergy_study_summary"
     policy_table = "mart_synergy_policy_candidate"
     gate_table = "mart_synergy_policy_gate"
+    mtm_gate_table = "mart_synergy_policy_mtm_gate"
+    mtm_strategy_sweep_table = "mart_synergy_policy_mtm_strategy_sweep"
     redundancy_table = "mart_feature_cluster_redundancy"
     conditional_table = "mart_feature_conditional_synergy"
     if not _table_exists(conn, quality_table):
@@ -2855,6 +2965,7 @@ def _temporal_synergy_research(
                        {_select_expr(gate_cols, "worst_cost_adjusted_top_excess_return")},
                        {_select_expr(gate_cols, "transaction_cost_bps")},
                        {_select_expr(gate_cols, "blockers_json")},
+                       {_select_expr(gate_cols, "thresholds_json")},
                        {_cast_select_expr(gate_cols, "built_at")}
                   FROM mart_synergy_policy_gate
                  WHERE source_run_id = ?
@@ -2863,8 +2974,17 @@ def _temporal_synergy_research(
                 """,
                 (run_id,),
             ).fetchall()
-            policy_gates = [
-                {
+            policy_gates = []
+            for row in gate_rows:
+                blockers = _safe_json(row["blockers_json"]) or []
+                thresholds = _safe_json(row["thresholds_json"]) or {}
+                gate_mode = (
+                    "strict_fold"
+                    if float(thresholds.get("min_cost_adjusted_positive_fold_ratio") or 0.0) > 0.0
+                    else "metric"
+                )
+                policy_gates.append(
+                    {
                     "run_id": row["run_id"],
                     "candidate_run_id": row["candidate_run_id"],
                     "source_run_id": row["source_run_id"],
@@ -2885,11 +3005,168 @@ def _temporal_synergy_research(
                     "avg_cost_adjusted_top_excess_return": row["avg_cost_adjusted_top_excess_return"],
                     "worst_cost_adjusted_top_excess_return": row["worst_cost_adjusted_top_excess_return"],
                     "transaction_cost_bps": row["transaction_cost_bps"],
-                    "blockers": _safe_json(row["blockers_json"]) or [],
+                    "blockers": blockers,
+                    "thresholds": thresholds,
+                    "gate_mode": gate_mode,
                     "built_at": row["built_at"],
                 }
-                for row in gate_rows
-            ]
+                )
+
+    policy_mtm_gates: list[dict[str, Any]] = []
+    if _table_exists(conn, mtm_gate_table):
+        mtm_cols = _columns(conn, mtm_gate_table)
+        if {"run_id", "source_run_id", "candidate_run_id", "validation_status"}.issubset(mtm_cols):
+            mtm_rows = conn.execute(
+                f"""
+                SELECT {_select_expr(mtm_cols, "run_id")},
+                       {_select_expr(mtm_cols, "candidate_run_id")},
+                       {_select_expr(mtm_cols, "source_run_id")},
+                       {_select_expr(mtm_cols, "label_name")},
+                       {_select_expr(mtm_cols, "baseline_horizon_days")},
+                       {_select_expr(mtm_cols, "candidate_horizon_days")},
+                       {_select_expr(mtm_cols, "validation_status")},
+                       {_select_expr(mtm_cols, "promotion_status")},
+                       {_select_expr(mtm_cols, "production_eligible")},
+                       {_select_expr(mtm_cols, "position_count")},
+                       {_select_expr(mtm_cols, "date_count")},
+                       {_select_expr(mtm_cols, "total_return")},
+                       {_select_expr(mtm_cols, "annualized_return")},
+                       {_select_expr(mtm_cols, "max_drawdown")},
+                       {_select_expr(mtm_cols, "sharpe")},
+                       {_select_expr(mtm_cols, "avg_active_positions")},
+                       {_select_expr(mtm_cols, "avg_position_net_return")},
+                       {_select_expr(mtm_cols, "position_hit_rate")},
+                       {_select_expr(mtm_cols, "transaction_cost_bps")},
+                       {_select_expr(mtm_cols, "non_tdxhub_kline_count")},
+                       {_select_expr(mtm_cols, "missing_path_price_count")},
+                       {_select_expr(mtm_cols, "blockers_json")},
+                       {_select_expr(mtm_cols, "thresholds_json")},
+                       {_select_expr(mtm_cols, "evidence_json")},
+                       {_cast_select_expr(mtm_cols, "built_at")}
+                  FROM mart_synergy_policy_mtm_gate
+                 WHERE source_run_id = ?
+                 ORDER BY built_at DESC NULLS LAST, run_id DESC
+                 LIMIT 8
+                """,
+                (run_id,),
+            ).fetchall()
+            for row in mtm_rows:
+                evidence = _safe_json(row["evidence_json"]) or {}
+                thresholds = _safe_json(row["thresholds_json"]) or {}
+                policy_mtm_gates.append(
+                    {
+                        "run_id": row["run_id"],
+                        "candidate_run_id": row["candidate_run_id"],
+                        "source_run_id": row["source_run_id"],
+                        "label_name": row["label_name"],
+                        "baseline_horizon_days": row["baseline_horizon_days"],
+                        "candidate_horizon_days": row["candidate_horizon_days"],
+                        "validation_status": row["validation_status"],
+                        "promotion_status": row["promotion_status"],
+                        "production_eligible": bool(row["production_eligible"]),
+                        "position_count": row["position_count"],
+                        "date_count": row["date_count"],
+                        "total_return": row["total_return"],
+                        "annualized_return": row["annualized_return"],
+                        "max_drawdown": row["max_drawdown"],
+                        "sharpe": row["sharpe"],
+                        "avg_active_positions": row["avg_active_positions"],
+                        "avg_position_net_return": row["avg_position_net_return"],
+                        "position_hit_rate": row["position_hit_rate"],
+                        "transaction_cost_bps": row["transaction_cost_bps"],
+                        "non_tdxhub_kline_count": row["non_tdxhub_kline_count"],
+                        "missing_path_price_count": row["missing_path_price_count"],
+                        "forward_filled_path_price_count": evidence.get("forward_filled_path_price_count"),
+                        "rank_threshold_signal_count": evidence.get("rank_threshold_signal_count"),
+                        "market_eligible_signal_count": evidence.get("market_eligible_signal_count"),
+                        "market_filter_removed_signal_count": evidence.get("market_filter_removed_signal_count"),
+                        "daily_top_k_filtered_count": evidence.get("daily_top_k_filtered_count"),
+                        "market_allowed_date_count": evidence.get("market_allowed_date_count"),
+                        "market_blocked_date_count": evidence.get("market_blocked_date_count"),
+                        "daily_top_k": thresholds.get("daily_top_k"),
+                        "top_quantile": thresholds.get("top_quantile"),
+                        "signal_selection_mode": thresholds.get("signal_selection_mode"),
+                        "market_filter_enabled": bool(thresholds.get("market_filter_enabled")),
+                        "min_market_hs300_ret_20d": thresholds.get("min_market_hs300_ret_20d"),
+                        "min_market_hs300_ret_60d": thresholds.get("min_market_hs300_ret_60d"),
+                        "max_industry_l1_active_positions": thresholds.get("max_industry_l1_active_positions"),
+                        "industry_constraints_requested": bool(thresholds.get("industry_constraints_requested")),
+                        "industry_constraints_applied": bool(thresholds.get("industry_constraints_applied")),
+                        "industry_pit_eligible": evidence.get("industry_pit_eligible"),
+                        "industry_pit_fallback_ratio": evidence.get("industry_pit_fallback_ratio"),
+                        "industry_constraint_blockers": evidence.get("industry_constraint_blockers") or [],
+                        "blockers": _safe_json(row["blockers_json"]) or [],
+                        "thresholds": thresholds,
+                        "built_at": row["built_at"],
+                    }
+                )
+
+    policy_mtm_strategy_sweeps: list[dict[str, Any]] = []
+    if _table_exists(conn, mtm_strategy_sweep_table):
+        sweep_cols = _columns(conn, mtm_strategy_sweep_table)
+        if {"run_id", "variant_id", "source_run_id", "validation_status"}.issubset(sweep_cols):
+            sweep_rows = conn.execute(
+                f"""
+                SELECT {_select_expr(sweep_cols, "run_id")},
+                       {_select_expr(sweep_cols, "variant_id")},
+                       {_select_expr(sweep_cols, "mtm_run_id")},
+                       {_select_expr(sweep_cols, "candidate_run_id")},
+                       {_select_expr(sweep_cols, "source_run_id")},
+                       {_select_expr(sweep_cols, "label_name")},
+                       {_select_expr(sweep_cols, "top_quantile")},
+                       {_select_expr(sweep_cols, "daily_top_k")},
+                       {_select_expr(sweep_cols, "min_market_hs300_ret_20d")},
+                       {_select_expr(sweep_cols, "min_market_hs300_ret_60d")},
+                       {_select_expr(sweep_cols, "objective_score")},
+                       {_select_expr(sweep_cols, "validation_status")},
+                       {_select_expr(sweep_cols, "blockers_json")},
+                       {_select_expr(sweep_cols, "signal_count")},
+                       {_select_expr(sweep_cols, "market_filter_removed_signal_count")},
+                       {_select_expr(sweep_cols, "daily_top_k_filtered_count")},
+                       {_select_expr(sweep_cols, "position_count")},
+                       {_select_expr(sweep_cols, "total_return")},
+                       {_select_expr(sweep_cols, "annualized_return")},
+                       {_select_expr(sweep_cols, "max_drawdown")},
+                       {_select_expr(sweep_cols, "sharpe")},
+                       {_select_expr(sweep_cols, "avg_active_positions")},
+                       {_cast_select_expr(sweep_cols, "built_at")}
+                  FROM mart_synergy_policy_mtm_strategy_sweep
+                 WHERE source_run_id = ?
+                 ORDER BY built_at DESC NULLS LAST,
+                          run_id DESC,
+                          objective_score DESC NULLS LAST
+                 LIMIT 16
+                """,
+                (run_id,),
+            ).fetchall()
+            for row in sweep_rows:
+                policy_mtm_strategy_sweeps.append(
+                    {
+                        "run_id": row["run_id"],
+                        "variant_id": row["variant_id"],
+                        "mtm_run_id": row["mtm_run_id"],
+                        "candidate_run_id": row["candidate_run_id"],
+                        "source_run_id": row["source_run_id"],
+                        "label_name": row["label_name"],
+                        "top_quantile": row["top_quantile"],
+                        "daily_top_k": row["daily_top_k"],
+                        "min_market_hs300_ret_20d": row["min_market_hs300_ret_20d"],
+                        "min_market_hs300_ret_60d": row["min_market_hs300_ret_60d"],
+                        "objective_score": row["objective_score"],
+                        "validation_status": row["validation_status"],
+                        "blockers": _safe_json(row["blockers_json"]) or [],
+                        "signal_count": row["signal_count"],
+                        "market_filter_removed_signal_count": row["market_filter_removed_signal_count"],
+                        "daily_top_k_filtered_count": row["daily_top_k_filtered_count"],
+                        "position_count": row["position_count"],
+                        "total_return": row["total_return"],
+                        "annualized_return": row["annualized_return"],
+                        "max_drawdown": row["max_drawdown"],
+                        "sharpe": row["sharpe"],
+                        "avg_active_positions": row["avg_active_positions"],
+                        "built_at": row["built_at"],
+                    }
+                )
 
     redundancy_clusters: list[dict[str, Any]] = []
     if _table_exists(conn, redundancy_table):
@@ -2992,8 +3269,108 @@ def _temporal_synergy_research(
         "optuna_studies": optuna_studies,
         "policy_candidates": policy_candidates,
         "policy_gates": policy_gates,
+        "policy_mtm_gates": policy_mtm_gates,
+        "policy_mtm_strategy_sweeps": policy_mtm_strategy_sweeps,
         "redundancy_clusters": redundancy_clusters,
         "conditional_synergies": conditional_synergies,
+    }
+
+
+def _industry_pit_readiness(conn: Any) -> dict[str, Any]:
+    table = "mart_industry_pit_quality"
+    pit_table = "mart_stock_industry_pit"
+    empty = {
+        "run_id": None,
+        "pit_eligible": False,
+        "blockers": ["missing_industry_pit_quality"],
+        "pit_row_count": 0,
+        "pit_stock_count": 0,
+        "history_snapshot_count": 0,
+    }
+    if not _table_exists(conn, table):
+        return empty
+    cols = _columns(conn, table)
+    row = conn.execute(
+        f"""
+        SELECT {_select_expr(cols, "run_id")},
+               {_select_expr(cols, "signal_table")},
+               {_select_expr(cols, "signal_stock_column")},
+               {_select_expr(cols, "signal_date_column")},
+               {_select_expr(cols, "window_start")},
+               {_select_expr(cols, "window_end")},
+               {_select_expr(cols, "signal_row_count")},
+               {_select_expr(cols, "signal_stock_count")},
+               {_select_expr(cols, "signal_date_count")},
+               {_select_expr(cols, "min_signal_date")},
+               {_select_expr(cols, "max_signal_date")},
+               {_select_expr(cols, "pit_row_count")},
+               {_select_expr(cols, "pit_stock_count")},
+               {_select_expr(cols, "history_snapshot_count")},
+               {_select_expr(cols, "history_min_snapshot_date")},
+               {_select_expr(cols, "history_max_snapshot_date")},
+               {_select_expr(cols, "matched_signal_rows")},
+               {_select_expr(cols, "observed_pit_signal_rows")},
+               {_select_expr(cols, "fallback_signal_rows")},
+               {_select_expr(cols, "missing_pit_rows")},
+               {_select_expr(cols, "missing_tdx_l1_rows")},
+               {_select_expr(cols, "fallback_ratio")},
+               {_select_expr(cols, "missing_ratio")},
+               {_select_expr(cols, "pit_eligible", default="FALSE")},
+               {_select_expr(cols, "blockers_json")},
+               {_select_expr(cols, "stage_timings_json")},
+               {_cast_select_expr(cols, "built_at")}
+          FROM mart_industry_pit_quality
+         ORDER BY built_at DESC NULLS LAST, run_id DESC
+         LIMIT 1
+        """
+    ).fetchone()
+    if not row:
+        return empty
+    blockers = _safe_json(row["blockers_json"]) or []
+    stage_timings = _safe_json(row["stage_timings_json"]) or {}
+    fallback_rows = 0
+    observed_rows = 0
+    if _table_exists(conn, pit_table):
+        agg = conn.execute(
+            """
+            SELECT SUM(CASE WHEN source = 'current_label_fallback' THEN 1 ELSE 0 END) AS fallback_rows,
+                   SUM(CASE WHEN is_historical_pit THEN 1 ELSE 0 END) AS observed_rows
+              FROM mart_stock_industry_pit
+            """
+        ).fetchone()
+        if agg:
+            fallback_rows = int(agg["fallback_rows"] or 0)
+            observed_rows = int(agg["observed_rows"] or 0)
+    return {
+        "run_id": row["run_id"],
+        "signal_table": row["signal_table"],
+        "signal_stock_column": row["signal_stock_column"],
+        "signal_date_column": row["signal_date_column"],
+        "window_start": row["window_start"],
+        "window_end": row["window_end"],
+        "signal_row_count": row["signal_row_count"],
+        "signal_stock_count": row["signal_stock_count"],
+        "signal_date_count": row["signal_date_count"],
+        "min_signal_date": row["min_signal_date"],
+        "max_signal_date": row["max_signal_date"],
+        "pit_row_count": row["pit_row_count"],
+        "pit_stock_count": row["pit_stock_count"],
+        "history_snapshot_count": row["history_snapshot_count"],
+        "history_min_snapshot_date": row["history_min_snapshot_date"],
+        "history_max_snapshot_date": row["history_max_snapshot_date"],
+        "matched_signal_rows": row["matched_signal_rows"],
+        "observed_pit_signal_rows": row["observed_pit_signal_rows"],
+        "fallback_signal_rows": row["fallback_signal_rows"],
+        "missing_pit_rows": row["missing_pit_rows"],
+        "missing_tdx_l1_rows": row["missing_tdx_l1_rows"],
+        "fallback_ratio": row["fallback_ratio"],
+        "missing_ratio": row["missing_ratio"],
+        "pit_eligible": bool(row["pit_eligible"]),
+        "blockers": blockers,
+        "stage_timings": stage_timings if isinstance(stage_timings, dict) else {},
+        "fallback_pit_rows": fallback_rows,
+        "observed_pit_rows": observed_rows,
+        "built_at": row["built_at"],
     }
 
 
@@ -3236,6 +3613,16 @@ def build_workbench_recommendations(conn: Any, *, limit: int = 50) -> dict[str, 
     data_sources = build_workbench_data_sources(conn, limit=20)
     kline = data_sources.get("kline") or {}
     return {
+        "read_model": _read_model_meta(
+            conn,
+            "recommendations",
+            [
+                "mart_daily_recommendation",
+                "mart_prediction_outcome",
+                "mart_feature_panel_validation",
+                "mart_data_source_watermark",
+            ],
+        ),
         "latest_primary": key or {"snapshot_date": None, "model_id": None, "count": 0},
         "rows": rows,
         "risk": _recommendation_risk(conn, key),
@@ -3409,6 +3796,88 @@ def _shareholder_plan_family_eval(conn: Any, *, limit: int = 12) -> dict[str, An
         "family_summary": family_summary,
         "top_effects": top_effects,
         "paired_advantages": paired_advantages,
+    }
+
+
+def _shareholder_plan_initial_feature_panel(conn: Any) -> dict[str, Any]:
+    table = "mart_shareholder_plan_initial_feature_panel_quality"
+    empty = {
+        "run_id": None,
+        "quality": None,
+    }
+    if not _table_exists(conn, table):
+        return empty
+    run_id = _latest_run_id(conn, table)
+    if not run_id:
+        return empty
+    cols = _columns(conn, table)
+    row = conn.execute(
+        f"""
+        SELECT {_select_expr(cols, "run_id")},
+               {_select_expr(cols, "feature_set_id")},
+               {_select_expr(cols, "base_panel_table")},
+               {_select_expr(cols, "initial_event_table")},
+               {_select_expr(cols, "window_days")},
+               {_select_expr(cols, "input_rows")},
+               {_select_expr(cols, "panel_rows")},
+               {_select_expr(cols, "stock_count")},
+               {_select_expr(cols, "date_count")},
+               {_select_expr(cols, "min_date")},
+               {_select_expr(cols, "max_date")},
+               {_select_expr(cols, "initial_event_rows")},
+               {_select_expr(cols, "matched_event_rows")},
+               {_select_expr(cols, "active_rows")},
+               {_select_expr(cols, "active_pct")},
+               {_select_expr(cols, "dropped_invalid_date_rows")},
+               {_select_expr(cols, "dropped_incomplete_label_rows")},
+               {_select_expr(cols, "dropped_incomplete_context_rows")},
+               {_select_expr(cols, "calendar_mismatch_rows")},
+               {_select_expr(cols, "labels_json")},
+               {_select_expr(cols, "context_features_json")},
+               {_select_expr(cols, "initial_features_json")},
+               {_select_expr(cols, "require_complete_labels", default="FALSE")},
+               {_select_expr(cols, "require_complete_context", default="FALSE")},
+               {_select_expr(cols, "stage_timings_json")},
+               {_cast_select_expr(cols, "built_at")}
+          FROM {table}
+         WHERE run_id = ?
+         LIMIT 1
+        """,
+        (run_id,),
+    ).fetchone()
+    if not row:
+        return empty
+    quality = {
+        "run_id": row["run_id"],
+        "feature_set_id": row["feature_set_id"],
+        "base_panel_table": row["base_panel_table"],
+        "initial_event_table": row["initial_event_table"],
+        "window_days": row["window_days"],
+        "input_rows": row["input_rows"],
+        "panel_rows": row["panel_rows"],
+        "stock_count": row["stock_count"],
+        "date_count": row["date_count"],
+        "min_date": row["min_date"],
+        "max_date": row["max_date"],
+        "initial_event_rows": row["initial_event_rows"],
+        "matched_event_rows": row["matched_event_rows"],
+        "active_rows": row["active_rows"],
+        "active_pct": row["active_pct"],
+        "dropped_invalid_date_rows": row["dropped_invalid_date_rows"],
+        "dropped_incomplete_label_rows": row["dropped_incomplete_label_rows"],
+        "dropped_incomplete_context_rows": row["dropped_incomplete_context_rows"],
+        "calendar_mismatch_rows": row["calendar_mismatch_rows"],
+        "labels": _safe_json(row["labels_json"]) or [],
+        "context_features": _safe_json(row["context_features_json"]) or [],
+        "initial_features": _safe_json(row["initial_features_json"]) or [],
+        "require_complete_labels": bool(row["require_complete_labels"]),
+        "require_complete_context": bool(row["require_complete_context"]),
+        "stage_timings": _safe_json(row["stage_timings_json"]) or {},
+        "built_at": row["built_at"],
+    }
+    return {
+        "run_id": row["run_id"],
+        "quality": quality,
     }
 
 
@@ -3783,6 +4252,25 @@ def build_workbench_research(conn: Any, *, task_limit: int = 20, study_limit: in
             )
 
     return {
+        "read_model": _read_model_meta(
+            conn,
+            "research",
+            [
+                "mart_research_schedule_plan",
+                "mart_model_stability_search_summary",
+                "mart_pipeline_run_manifest",
+                "mart_stock_horizon_profile",
+                "mart_stock_horizon_selection",
+                "mart_shareholder_plan_initial_feature_panel_quality",
+                "mart_shareholder_plan_feature_family_eval",
+                "mart_shareholder_plan_family_walkforward_summary",
+                "mart_temporal_synergy_relevance",
+                "mart_synergy_policy_validation",
+                "mart_synergy_policy_mtm_validation",
+                "mart_synergy_policy_mtm_strategy_sweep",
+                "mart_industry_pit_quality",
+            ],
+        ),
         "research_schedule": {
             "run_id": schedule_run_id,
             "status_counts": _status_counts(conn, "mart_research_schedule_plan", run_id=schedule_run_id),
@@ -3794,9 +4282,11 @@ def build_workbench_research(conn: Any, *, task_limit: int = 20, study_limit: in
         "rank_matrix_cache": _rank_matrix_cache_view(conn),
         "stability_context": _model_stability_context(conn),
         "stock_horizon_profile": _stock_horizon_profile(conn),
+        "shareholder_plan_initial_feature_panel": _shareholder_plan_initial_feature_panel(conn),
         "shareholder_plan_family_eval": _shareholder_plan_family_eval(conn),
         "shareholder_plan_family_walkforward": _shareholder_plan_family_walkforward(conn),
         "temporal_synergy": _temporal_synergy_research(conn),
+        "industry_pit": _industry_pit_readiness(conn),
         "feature_drift": _drift_offenders(conn, 12),
     }
 
@@ -4003,6 +4493,18 @@ def build_workbench_champion(conn: Any, *, limit: int = 12) -> dict[str, Any]:
 
     deployment = _champion_deployment_summary(lifecycle=lifecycle, gates=gates, topk=topk)
     return {
+        "read_model": _read_model_meta(
+            conn,
+            "champion",
+            [
+                "mart_model_lifecycle",
+                "mart_champion_candidate_evaluation",
+                "mart_challenger_evidence_bundle",
+                "mart_tdx_keep_promotion_gate",
+                "mart_model_stability_context_summary",
+                "mart_daily_recommendation",
+            ],
+        ),
         "lifecycle": lifecycle,
         "deployment": deployment,
         "challengers": challengers,

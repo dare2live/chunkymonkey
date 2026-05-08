@@ -264,6 +264,63 @@ def test_optuna_synergy_search_risk_aware_records_rerank_metrics():
         assert sum("risk_evaluation" in row for row in trial_metrics) == 3
 
 
+def test_optuna_synergy_search_can_use_risk_objective_during_generation():
+    with duck_mem() as conn:
+        _seed_synergy_inputs(conn)
+
+        result = subject.run_optuna_synergy_search(
+            conn,
+            source_run_id="temporal_unit",
+            label_name="forward_ret_20d",
+            run_id="optuna_inline_risk",
+            trials=5,
+            min_features=2,
+            max_features=3,
+            max_interactions=2,
+            min_coverage_pct=80.0,
+            seed=20260507,
+            storage_url=None,
+            feature_subset_pool_size=3,
+            risk_objective_in_search=True,
+            risk_rank_feature_pool_size=3,
+            risk_top_quantile=0.5,
+            risk_folds=2,
+            risk_transaction_cost_bps=20.0,
+            dedupe_candidates_in_search=True,
+            duplicate_candidate_penalty=1.0,
+            diversity_penalty_weight=0.1,
+        )
+
+        summary = conn.execute(
+            "SELECT config_json FROM mart_optuna_synergy_study_summary WHERE run_id = 'optuna_inline_risk'"
+        ).fetchone()
+        manifest = conn.execute(
+            "SELECT perf_summary_json FROM mart_pipeline_run_manifest WHERE run_id = 'optuna_inline_risk'"
+        ).fetchone()
+        trial_metrics = [
+            json.loads(row["metrics_json"])
+            for row in conn.execute(
+                "SELECT metrics_json FROM mart_optuna_synergy_trial WHERE run_id = 'optuna_inline_risk'"
+            ).fetchall()
+        ]
+
+        config = json.loads(summary["config_json"])
+        perf = json.loads(manifest["perf_summary_json"])
+
+        assert result["risk_objective_in_search"] is True
+        assert result["risk_inline_evaluated_trials"] == 5
+        assert config["risk_objective_in_search"] is True
+        assert config["risk_inline_evaluated_trials"] == 5
+        assert config["dedupe_candidates_in_search"] is True
+        assert config["risk_feature_rank_cache"]["enabled"] is True
+        assert config["risk_feature_rank_cache"]["preferred_feature_count"] == 3
+        assert perf["risk_objective_in_search"] is True
+        assert perf["risk_inline_evaluated_trials"] == 5
+        assert perf["unique_candidate_fingerprint_count"] >= 1
+        assert all("risk_evaluation" in row for row in trial_metrics)
+        assert all("generation_penalty" in row for row in trial_metrics)
+
+
 def test_risk_evaluation_reuses_feature_rank_cache_for_candidate_feature_union():
     with duck_mem() as conn:
         _seed_synergy_inputs(conn)
@@ -310,7 +367,35 @@ def test_risk_evaluation_reuses_feature_rank_cache_for_candidate_feature_union()
         assert stats["misses"] == 1
         assert stats["hits"] == 1
         assert stats["entry_count"] == 1
-        assert stats["preferred_feature_count"] == 3
+    assert stats["preferred_feature_count"] == 3
+
+
+def test_candidate_generation_penalty_normalizes_duplicate_signatures():
+    features = ["strong_b", "strong_a"]
+    interactions = [
+        {"interaction_type": "pair", "feature_a": "strong_b", "feature_b": "strong_a"}
+    ]
+    fingerprint = subject._candidate_fingerprint(features, interactions)
+    seen = {fingerprint}
+
+    penalty = subject._generation_penalty(
+        selected_features=["strong_a", "strong_b"],
+        selected_interactions=[
+            {"interaction_type": "pair", "feature_a": "strong_a", "feature_b": "strong_b"}
+        ],
+        seen_fingerprints=seen,
+        prior_candidate_tokens=[
+            subject._candidate_tokens(features, interactions),
+        ],
+        dedupe_candidates_in_search=True,
+        duplicate_candidate_penalty=2.0,
+        diversity_penalty_weight=0.5,
+    )
+
+    assert penalty["duplicate"] is True
+    assert penalty["duplicate_penalty"] == pytest.approx(2.0)
+    assert penalty["max_similarity_to_prior"] == pytest.approx(1.0)
+    assert penalty["total_penalty"] == pytest.approx(2.5)
 
 
 def test_evaluate_policy_uses_redundancy_clusters_for_feature_diversity():

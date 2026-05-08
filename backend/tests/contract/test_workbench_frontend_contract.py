@@ -76,6 +76,10 @@ def test_workbench_frontend_entrypoint_is_registered():
     assert "renderRankMatrixCache" in workbench_js
     assert "Walk-forward 候选验证" in workbench_js
     assert "renderShareholderPlanWalkforward" in workbench_js
+    assert "刷新视图" in workbench_js
+    assert "renderReadModelMeta" in workbench_js
+    assert "materialized_snapshot" in workbench_js
+    assert "pipeline/job" in workbench_js
     assert "setTab: setTab" in workbench_js
     assert "global.WorkbenchView" in workbench_js
 

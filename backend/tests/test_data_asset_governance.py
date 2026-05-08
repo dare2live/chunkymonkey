@@ -53,6 +53,21 @@ def test_infer_asset_contract_freezes_initial_shareholder_plan_event_purpose():
     assert contract["quality_gate_level"] == "blocking"
 
 
+def test_infer_asset_contract_marks_initial_shareholder_plan_panel_research_only():
+    contract = infer_asset_contract(
+        "mart_shareholder_plan_initial_feature_panel",
+        layer="mart",
+        freshness="on-demand",
+        upstream_source="derived from fact_feature_panel + mart_shareholder_plan_initial_event",
+    )
+
+    assert contract["asset_grain"] == "feature_set_id+stock_code+trade_date"
+    assert contract["null_policy"] == "event_absence_encoded_no_unclassified_nulls"
+    assert contract["pit_policy"] == "initial_event_source_available_date_lte_signal_date"
+    assert contract["model_eligibility"] == "not_production_model_input_research_only_until_walkforward_gate"
+    assert contract["strategy_eligibility"] == "capital_attention_auxiliary_context_candidate"
+
+
 def test_infer_asset_contract_marks_shareholder_plan_family_eval_as_research_evidence():
     contract = infer_asset_contract(
         "mart_shareholder_plan_feature_family_eval",
@@ -81,6 +96,79 @@ def test_infer_asset_contract_marks_shareholder_plan_walkforward_as_research_gat
     assert contract["model_eligibility"] == "not_model_input_research_evidence_only"
     assert contract["strategy_eligibility"] == "candidate_validation_before_registry_change"
     assert contract["quality_gate_level"] == "monitor_only"
+
+
+def test_infer_asset_contract_marks_mtm_rerank_as_research_gate():
+    contract = infer_asset_contract(
+        "mart_synergy_policy_mtm_rerank",
+        layer="mart",
+        freshness="on-demand",
+        upstream_source="derived from mart_optuna_synergy_trial + validate_synergy_policy_mark_to_market",
+    )
+
+    assert contract["asset_grain"] == "run_id+optuna_run_id+trial_number"
+    assert contract["pit_policy"] == "inherits_synergy_policy_candidate_and_tdxhub_mtm_policy"
+    assert contract["model_eligibility"] == "not_model_input_research_evidence_only"
+    assert contract["strategy_eligibility"] == "research_rerank_gate_before_candidate_promotion"
+
+
+def test_infer_asset_contract_marks_mtm_strategy_sweep_as_research_gate():
+    contract = infer_asset_contract(
+        "mart_synergy_policy_mtm_strategy_sweep",
+        layer="mart",
+        freshness="on-demand",
+        upstream_source="derived from mart_synergy_policy_candidate + validate_synergy_policy_mark_to_market",
+    )
+
+    assert contract["asset_grain"] == "run_id+variant_id"
+    assert contract["pit_policy"] == "inherits_synergy_policy_candidate_tdxhub_mtm_and_market_state_filter_policy"
+    assert contract["model_eligibility"] == "not_model_input_research_evidence_only"
+    assert contract["strategy_eligibility"] == "strategy_parameter_gate_before_candidate_promotion"
+
+
+def test_infer_asset_contract_marks_industry_pit_as_constraint_gate():
+    contract = infer_asset_contract(
+        "mart_stock_industry_pit",
+        layer="mart",
+        freshness="on-demand",
+        upstream_source="derived from dim_stock_tdx_industry_history + dim_stock_tdx_industry",
+    )
+
+    assert contract["asset_grain"] == "stock_code+effective_date_range"
+    assert (
+        contract["pit_policy"]
+        == "latest_industry_snapshot_lte_signal_date_current_label_fallback_blocked"
+    )
+    assert contract["model_eligibility"] == "not_model_input"
+    assert contract["strategy_eligibility"] == "blocked_until_mart_industry_pit_quality_passes"
+    assert contract["quality_gate_level"] == "blocking_when_industry_constraints_enabled"
+
+
+def test_infer_asset_contract_marks_raw_tdx_industry_snapshot_as_lineage_source():
+    contract = infer_asset_contract(
+        "raw_tdx_industry_file_snapshot",
+        layer="raw",
+        freshness="weekly",
+        upstream_source="tdxhub.block (tdxhy.cfg)",
+    )
+
+    assert contract["asset_grain"] == "snapshot_date+raw_hash"
+    assert contract["pit_policy"] == "source_snapshot_before_parsed_dimension_rows"
+    assert contract["intended_use"] == "audit_and_future_industry_pit_backfill_source"
+    assert contract["strategy_eligibility"] == "raw_lineage_for_industry_constraints"
+
+
+def test_infer_asset_contract_marks_industry_pit_quality_as_required_gate():
+    contract = infer_asset_contract(
+        "mart_industry_pit_quality",
+        layer="mart",
+        freshness="on-demand",
+        upstream_source="derived from mart_stock_industry_pit + configured signal table",
+    )
+
+    assert contract["asset_grain"] == "run_id+signal_table"
+    assert contract["pit_policy"] == "documents_industry_pit_eligibility_before_strategy_use"
+    assert contract["strategy_eligibility"] == "required_gate_for_industry_concentration_parameters"
 
 
 def test_seed_dim_data_asset_reuses_backend_text_index_for_writer_and_readers():

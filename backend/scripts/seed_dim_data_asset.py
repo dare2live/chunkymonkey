@@ -72,6 +72,12 @@ EXTRA_WRITER_BY_TABLE = {
     # Dynamic f-string writers are intentionally kept configurable in code, but
     # static grep cannot infer the concrete target table from imported constants.
     "mart_shareholder_plan_initial_event": "backend/scripts/build_shareholder_plan_initial_event.py",
+    "mart_shareholder_plan_initial_feature_panel": (
+        "backend/scripts/build_shareholder_plan_initial_feature_panel.py"
+    ),
+    "mart_shareholder_plan_initial_feature_panel_quality": (
+        "backend/scripts/build_shareholder_plan_initial_feature_panel.py"
+    ),
     "mart_shareholder_plan_feature_family_eval": (
         "backend/scripts/evaluate_shareholder_plan_feature_families.py"
     ),
@@ -81,6 +87,12 @@ EXTRA_WRITER_BY_TABLE = {
     "mart_shareholder_plan_family_walkforward_summary": (
         "backend/scripts/validate_shareholder_plan_family_walkforward.py"
     ),
+    "mart_synergy_policy_mtm_rerank": "backend/scripts/rerank_optuna_synergy_mtm.py",
+    "mart_synergy_policy_mtm_rerank_summary": "backend/scripts/rerank_optuna_synergy_mtm.py",
+    "mart_synergy_policy_mtm_strategy_sweep": "backend/scripts/sweep_synergy_mtm_strategy.py",
+    "mart_synergy_policy_mtm_strategy_sweep_summary": "backend/scripts/sweep_synergy_mtm_strategy.py",
+    "mart_stock_industry_pit": "backend/scripts/build_industry_pit.py",
+    "mart_industry_pit_quality": "backend/scripts/build_industry_pit.py",
 }
 
 EXTRA_UPSTREAM_BY_TABLE = {
@@ -108,6 +120,14 @@ EXTRA_UPSTREAM_BY_TABLE = {
         "derived from fact_shareholder_plan_tdx_f10",
         None,
     ),
+    "mart_shareholder_plan_initial_feature_panel": (
+        "derived from fact_feature_panel + mart_shareholder_plan_initial_event",
+        None,
+    ),
+    "mart_shareholder_plan_initial_feature_panel_quality": (
+        "derived from mart_shareholder_plan_initial_feature_panel",
+        None,
+    ),
     "mart_shareholder_plan_feature_family_eval": (
         "derived from fact_feature_panel + fact_shareholder_plan_tdx_f10 + mart_shareholder_plan_initial_event",
         None,
@@ -118,6 +138,30 @@ EXTRA_UPSTREAM_BY_TABLE = {
     ),
     "mart_shareholder_plan_family_walkforward_summary": (
         "derived from mart_shareholder_plan_family_walkforward",
+        None,
+    ),
+    "mart_synergy_policy_mtm_rerank": (
+        "derived from mart_optuna_synergy_trial + validate_synergy_policy_mark_to_market",
+        None,
+    ),
+    "mart_synergy_policy_mtm_rerank_summary": (
+        "derived from mart_synergy_policy_mtm_rerank",
+        None,
+    ),
+    "mart_synergy_policy_mtm_strategy_sweep": (
+        "derived from mart_synergy_policy_candidate + validate_synergy_policy_mark_to_market",
+        None,
+    ),
+    "mart_synergy_policy_mtm_strategy_sweep_summary": (
+        "derived from mart_synergy_policy_mtm_strategy_sweep",
+        None,
+    ),
+    "mart_stock_industry_pit": (
+        "derived from dim_stock_tdx_industry_history + dim_stock_tdx_industry",
+        None,
+    ),
+    "mart_industry_pit_quality": (
+        "derived from mart_stock_industry_pit + configured signal table",
         None,
     ),
 }
@@ -161,6 +205,12 @@ EXTRA_FRESHNESS_BY_TABLE = {
     "mart_synergy_policy_mtm_daily_path": ("on-demand", 24 * 30),
     "mart_synergy_policy_mtm_gate": ("on-demand", 24 * 30),
     "mart_synergy_policy_mtm_evidence_bundle": ("on-demand", 24 * 30),
+    "mart_synergy_policy_mtm_rerank": ("on-demand", 24 * 30),
+    "mart_synergy_policy_mtm_rerank_summary": ("on-demand", 24 * 30),
+    "mart_synergy_policy_mtm_strategy_sweep": ("on-demand", 24 * 30),
+    "mart_synergy_policy_mtm_strategy_sweep_summary": ("on-demand", 24 * 30),
+    "mart_stock_industry_pit": ("on-demand", 24 * 30),
+    "mart_industry_pit_quality": ("on-demand", 24 * 30),
     "mart_tdx_gpcw_auto_challenger_report": ("on-demand", 24 * 30),
     "mart_tdx_gpcw_auto_feature_cluster": ("on-demand", 24 * 30),
     "mart_tdx_gpcw_auto_feature_score": ("on-demand", 24 * 30),
@@ -169,6 +219,8 @@ EXTRA_FRESHNESS_BY_TABLE = {
     "mart_temporal_research_panel": ("on-demand", 24 * 30),
     "mart_tdx_f10_source_date_section_audit": ("on-demand", 24 * 30),
     "mart_shareholder_plan_initial_event": ("event", 48),
+    "mart_shareholder_plan_initial_feature_panel": ("on-demand", 24 * 30),
+    "mart_shareholder_plan_initial_feature_panel_quality": ("on-demand", 24 * 30),
     "mart_shareholder_plan_feature_family_eval": ("on-demand", 24 * 30),
     "mart_shareholder_plan_family_walkforward": ("on-demand", 24 * 30),
     "mart_shareholder_plan_family_walkforward_summary": ("on-demand", 24 * 30),
@@ -244,6 +296,30 @@ EXTRA_ASSET_CONTRACT_BY_TABLE = {
         "frontend_visibility": "governance_visible",
         "quality_gate_level": "blocking",
     },
+    "mart_shareholder_plan_initial_feature_panel": {
+        "asset_grain": "feature_set_id+stock_code+trade_date",
+        "asset_cadence": "on_demand_research",
+        "coverage_policy": "mature_follow_label_rows_on_current_feature_panel",
+        "null_policy": "event_absence_encoded_no_unclassified_nulls",
+        "pit_policy": "initial_event_source_available_date_lte_signal_date",
+        "intended_use": "multivariate_research_panel_for_initial_shareholder_plan_context",
+        "model_eligibility": "not_production_model_input_research_only_until_walkforward_gate",
+        "strategy_eligibility": "capital_attention_auxiliary_context_candidate",
+        "frontend_visibility": "governance_visible",
+        "quality_gate_level": "monitor_only",
+    },
+    "mart_shareholder_plan_initial_feature_panel_quality": {
+        "asset_grain": "run_id",
+        "asset_cadence": "on_demand_research",
+        "coverage_policy": "quality_manifest_for_initial_shareholder_plan_research_panel",
+        "null_policy": "metrics_nullable_only_when_panel_empty",
+        "pit_policy": "documents_initial_feature_panel_pit_and_calendar_checks",
+        "intended_use": "research_panel_quality_gate_and_performance_evidence",
+        "model_eligibility": "not_model_input",
+        "strategy_eligibility": "research_quality_gate",
+        "frontend_visibility": "governance_visible",
+        "quality_gate_level": "monitor_only",
+    },
     "mart_shareholder_plan_feature_family_eval": {
         "asset_grain": "run_id+source_family+feature_name+label_name",
         "asset_cadence": "on_demand_research",
@@ -279,6 +355,90 @@ EXTRA_ASSET_CONTRACT_BY_TABLE = {
         "strategy_eligibility": "candidate_validation_before_registry_change",
         "frontend_visibility": "governance_visible",
         "quality_gate_level": "monitor_only",
+    },
+    "mart_synergy_policy_mtm_rerank": {
+        "asset_grain": "run_id+optuna_run_id+trial_number",
+        "asset_cadence": "on_demand_research",
+        "coverage_policy": "top_optuna_trials_selected_for_mtm_rerank",
+        "null_policy": "no_unclassified_nulls_metrics_nullable_only_when_trial_fails_before_mtm",
+        "pit_policy": "inherits_synergy_policy_candidate_and_tdxhub_mtm_policy",
+        "intended_use": "post_optuna_mtm_drawdown_exposure_reranking",
+        "model_eligibility": "not_model_input_research_evidence_only",
+        "strategy_eligibility": "research_rerank_gate_before_candidate_promotion",
+        "frontend_visibility": "governance_visible",
+        "quality_gate_level": "monitor_only",
+    },
+    "mart_synergy_policy_mtm_rerank_summary": {
+        "asset_grain": "run_id",
+        "asset_cadence": "on_demand_research",
+        "coverage_policy": "summary_for_mtm_rerank_run",
+        "null_policy": "best_trial_nullable_only_when_no_trials_evaluated",
+        "pit_policy": "inherits_mart_synergy_policy_mtm_rerank",
+        "intended_use": "post_optuna_mtm_rerank_summary_and_governance",
+        "model_eligibility": "not_model_input_research_evidence_only",
+        "strategy_eligibility": "research_rerank_gate_before_candidate_promotion",
+        "frontend_visibility": "governance_visible",
+        "quality_gate_level": "monitor_only",
+    },
+    "mart_synergy_policy_mtm_strategy_sweep": {
+        "asset_grain": "run_id+variant_id",
+        "asset_cadence": "on_demand_research",
+        "coverage_policy": "strategy_parameter_grid_selected_for_mtm_validation",
+        "null_policy": "no_unclassified_nulls_metrics_nullable_only_when_variant_fails_before_mtm",
+        "pit_policy": "inherits_synergy_policy_candidate_tdxhub_mtm_and_market_state_filter_policy",
+        "intended_use": "mtm_strategy_parameter_search_before_candidate_promotion",
+        "model_eligibility": "not_model_input_research_evidence_only",
+        "strategy_eligibility": "strategy_parameter_gate_before_candidate_promotion",
+        "frontend_visibility": "governance_visible",
+        "quality_gate_level": "monitor_only",
+    },
+    "mart_synergy_policy_mtm_strategy_sweep_summary": {
+        "asset_grain": "run_id",
+        "asset_cadence": "on_demand_research",
+        "coverage_policy": "summary_for_mtm_strategy_parameter_sweep",
+        "null_policy": "best_variant_nullable_only_when_no_variants_evaluated",
+        "pit_policy": "inherits_mart_synergy_policy_mtm_strategy_sweep",
+        "intended_use": "mtm_strategy_parameter_search_summary_and_governance",
+        "model_eligibility": "not_model_input_research_evidence_only",
+        "strategy_eligibility": "strategy_parameter_gate_before_candidate_promotion",
+        "frontend_visibility": "governance_visible",
+        "quality_gate_level": "monitor_only",
+    },
+    "raw_tdx_industry_file_snapshot": {
+        "asset_grain": "snapshot_date+raw_hash",
+        "asset_cadence": "source_file_snapshot",
+        "coverage_policy": "one_raw_tdxhy_file_per_successful_tdx_industry_sync",
+        "null_policy": "no_null_for_raw_hash_file_name_fetched_at_bytes",
+        "pit_policy": "source_snapshot_before_parsed_dimension_rows",
+        "intended_use": "audit_and_future_industry_pit_backfill_source",
+        "model_eligibility": "not_model_input",
+        "strategy_eligibility": "raw_lineage_for_industry_constraints",
+        "frontend_visibility": "governance_visible",
+        "quality_gate_level": "blocking_when_industry_constraints_enabled",
+    },
+    "mart_stock_industry_pit": {
+        "asset_grain": "stock_code+effective_date_range",
+        "asset_cadence": "on_demand_governance",
+        "coverage_policy": "complete_for_signal_universe_only_when_quality_gate_passes",
+        "null_policy": "no_null_for_keys_source_and_effective_dates",
+        "pit_policy": "latest_industry_snapshot_lte_signal_date_current_label_fallback_blocked",
+        "intended_use": "industry_constraint_readiness_and_future_strategy_parameter_source",
+        "model_eligibility": "not_model_input",
+        "strategy_eligibility": "blocked_until_mart_industry_pit_quality_passes",
+        "frontend_visibility": "governance_visible",
+        "quality_gate_level": "blocking_when_industry_constraints_enabled",
+    },
+    "mart_industry_pit_quality": {
+        "asset_grain": "run_id+signal_table",
+        "asset_cadence": "on_demand_governance",
+        "coverage_policy": "signal_stock_date_coverage_for_industry_pit",
+        "null_policy": "metrics_nullable_only_when_signal_scope_missing",
+        "pit_policy": "documents_industry_pit_eligibility_before_strategy_use",
+        "intended_use": "industry_constraint_gate_and_frontend_readiness",
+        "model_eligibility": "not_model_input",
+        "strategy_eligibility": "required_gate_for_industry_concentration_parameters",
+        "frontend_visibility": "governance_visible",
+        "quality_gate_level": "blocking_when_industry_constraints_enabled",
     },
 }
 

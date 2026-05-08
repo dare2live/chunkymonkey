@@ -336,6 +336,8 @@ def _load_kept_signals(
     conn: Any,
     *,
     threshold: float,
+    daily_top_k: int | None,
+    market_filter_enabled: bool,
     horizon_days: int,
     calendar_days: list[tuple[str, int]],
 ) -> dict[str, int]:
@@ -343,23 +345,63 @@ def _load_kept_signals(
     conn.execute("CREATE TEMP TABLE __mtm_calendar(trade_date TEXT PRIMARY KEY, trade_idx BIGINT)")
     conn.executemany("INSERT INTO __mtm_calendar VALUES (?, ?)", calendar_days)
     max_trade_idx = calendar_days[-1][1]
+    top_k_value = int(daily_top_k) if daily_top_k is not None and int(daily_top_k) > 0 else None
+    market_join = (
+        "JOIN __mtm_market_state m ON m.date = r.signal_date AND m.market_allowed"
+        if market_filter_enabled
+        else ""
+    )
+    market_count_join = (
+        "JOIN __mtm_market_state m ON m.date = r.signal_date AND m.market_allowed"
+        if market_filter_enabled
+        else ""
+    )
     rows = conn.execute(
-        """
-        SELECT r.stock_code,
-               r.signal_date AS entry_date,
-               c.trade_idx AS entry_trade_idx,
-               r.policy_score,
-               r.score_rank,
-               r.label_value
-          FROM synergy_mtm_ranked r
-          JOIN __mtm_calendar c
-            ON c.trade_date = r.signal_date
-         WHERE r.score_rank >= ?
-         ORDER BY r.stock_code, c.trade_idx, r.score_rank DESC
+        f"""
+        WITH eligible AS (
+            SELECT r.stock_code,
+                   r.signal_date AS entry_date,
+                   c.trade_idx AS entry_trade_idx,
+                   r.policy_score,
+                   r.score_rank,
+                   r.label_value,
+                   ROW_NUMBER() OVER (
+                       PARTITION BY r.signal_date
+                       ORDER BY r.score_rank DESC, r.policy_score DESC, r.stock_code
+                   ) AS daily_signal_rank
+              FROM synergy_mtm_ranked r
+              {market_join}
+              JOIN __mtm_calendar c
+                ON c.trade_date = r.signal_date
+             WHERE r.score_rank >= ?
+        )
+        SELECT *
+          FROM eligible
+         WHERE ? IS NULL OR daily_signal_rank <= ?
+         ORDER BY stock_code, entry_trade_idx, score_rank DESC
         """,
-        (threshold,),
+        (threshold, top_k_value, top_k_value),
     ).fetchall()
     signal_count = len(rows)
+    threshold_signal_count = int(
+        conn.execute(
+            "SELECT COUNT(*) AS n FROM synergy_mtm_ranked WHERE score_rank >= ?",
+            (threshold,),
+        ).fetchone()["n"]
+        or 0
+    )
+    market_eligible_signal_count = int(
+        conn.execute(
+            f"""
+            SELECT COUNT(*) AS n
+              FROM synergy_mtm_ranked r
+              {market_count_join}
+             WHERE r.score_rank >= ?
+            """,
+            (threshold,),
+        ).fetchone()["n"]
+        or 0
+    )
     kept_rows: list[tuple[Any, ...]] = []
     active_until_by_stock: dict[str, int] = {}
     repeated = 0
@@ -407,9 +449,151 @@ def _load_kept_signals(
         conn.executemany("INSERT INTO __mtm_kept_signals VALUES (?, ?, ?, ?, ?, ?, ?, ?)", kept_rows)
     return {
         "signal_count": signal_count,
+        "rank_threshold_signal_count": threshold_signal_count,
+        "market_eligible_signal_count": market_eligible_signal_count,
+        "market_filter_removed_signal_count": max(threshold_signal_count - market_eligible_signal_count, 0),
+        "daily_top_k_filtered_count": max(market_eligible_signal_count - signal_count, 0),
         "position_signal_count": len(kept_rows),
         "repeated_signal_suppressed_count": repeated,
         "no_exit_date_count": no_exit,
+    }
+
+
+def _prepare_market_state_filter(
+    conn: Any,
+    *,
+    min_market_hs300_ret_20d: float | None,
+    min_market_hs300_ret_60d: float | None,
+) -> dict[str, Any]:
+    conn.execute("DROP TABLE IF EXISTS __mtm_market_state")
+    enabled = min_market_hs300_ret_20d is not None or min_market_hs300_ret_60d is not None
+    if not enabled:
+        return {
+            "market_filter_enabled": False,
+            "market_allowed_date_count": None,
+            "market_blocked_date_count": None,
+        }
+    source_table = "fact_feature_panel"
+    if not _table_exists(conn, source_table):
+        raise RuntimeError("fact_feature_panel is required for market state filtering")
+    cols = _table_columns(conn, source_table)
+    missing = sorted(
+        col
+        for col, threshold in {
+            "hs300_ret_20d": min_market_hs300_ret_20d,
+            "hs300_ret_60d": min_market_hs300_ret_60d,
+        }.items()
+        if threshold is not None and col not in cols
+    )
+    if missing:
+        raise RuntimeError(f"fact_feature_panel missing market filter columns: {missing}")
+    conditions = []
+    if min_market_hs300_ret_20d is not None:
+        conditions.append(f"hs300_ret_20d >= {float(min_market_hs300_ret_20d):.12f}")
+    if min_market_hs300_ret_60d is not None:
+        conditions.append(f"hs300_ret_60d >= {float(min_market_hs300_ret_60d):.12f}")
+    allowed_sql = " AND ".join(conditions) if conditions else "TRUE"
+    conn.execute(
+        f"""
+        CREATE TEMP TABLE __mtm_market_state AS
+        WITH daily AS (
+            SELECT date,
+                   MAX(CAST(hs300_ret_20d AS DOUBLE)) AS hs300_ret_20d,
+                   MAX(CAST(hs300_ret_60d AS DOUBLE)) AS hs300_ret_60d
+              FROM {source_table}
+             GROUP BY date
+        )
+        SELECT date,
+               hs300_ret_20d,
+               hs300_ret_60d,
+               CAST(({allowed_sql}) AS BOOLEAN) AS market_allowed
+          FROM daily
+        """
+    )
+    row = conn.execute(
+        """
+        SELECT COUNT(*) AS date_count,
+               SUM(CASE WHEN market_allowed THEN 1 ELSE 0 END) AS allowed_dates
+          FROM __mtm_market_state
+        """
+    ).fetchone()
+    date_count = int(row["date_count"] or 0)
+    allowed = int(row["allowed_dates"] or 0)
+    return {
+        "market_filter_enabled": True,
+        "market_allowed_date_count": allowed,
+        "market_blocked_date_count": max(date_count - allowed, 0),
+        "min_market_hs300_ret_20d": min_market_hs300_ret_20d,
+        "min_market_hs300_ret_60d": min_market_hs300_ret_60d,
+    }
+
+
+def _industry_constraint_readiness(
+    conn: Any,
+    *,
+    max_industry_l1_active_positions: int | None,
+) -> dict[str, Any]:
+    requested = (
+        max_industry_l1_active_positions is not None
+        and int(max_industry_l1_active_positions) > 0
+    )
+    if not requested:
+        return {
+            "industry_constraints_requested": False,
+            "industry_constraints_applied": False,
+            "industry_constraint_blockers": [],
+        }
+    blockers: list[str] = []
+    quality: dict[str, Any] = {}
+    if not _table_exists(conn, "mart_stock_industry_pit"):
+        blockers.append("missing_industry_pit_table")
+    if not _table_exists(conn, "mart_industry_pit_quality"):
+        blockers.append("missing_industry_pit_quality")
+    else:
+        row = conn.execute(
+            """
+            SELECT run_id,
+                   signal_table,
+                   pit_eligible,
+                   fallback_ratio,
+                   missing_ratio,
+                   fallback_signal_rows,
+                   missing_pit_rows,
+                   blockers_json,
+                   built_at
+              FROM mart_industry_pit_quality
+             ORDER BY built_at DESC NULLS LAST, run_id DESC
+             LIMIT 1
+            """
+        ).fetchone()
+        if not row:
+            blockers.append("missing_industry_pit_quality_row")
+        else:
+            try:
+                quality_blockers = json.loads(row["blockers_json"] or "[]")
+            except Exception:
+                quality_blockers = []
+            pit_eligible = bool(row["pit_eligible"])
+            if not pit_eligible:
+                blockers.append("industry_pit_not_ready_for_constraints")
+            quality = {
+                "industry_pit_quality_run_id": row["run_id"],
+                "industry_pit_signal_table": row["signal_table"],
+                "industry_pit_eligible": pit_eligible,
+                "industry_pit_fallback_ratio": row["fallback_ratio"],
+                "industry_pit_missing_ratio": row["missing_ratio"],
+                "industry_pit_fallback_signal_rows": row["fallback_signal_rows"],
+                "industry_pit_missing_pit_rows": row["missing_pit_rows"],
+                "industry_pit_quality_blockers": quality_blockers,
+                "industry_pit_quality_built_at": row["built_at"],
+            }
+    blockers.append("industry_constraint_execution_not_implemented")
+    return {
+        "industry_constraints_requested": True,
+        "industry_constraints_applied": False,
+        "max_industry_l1_active_positions": int(max_industry_l1_active_positions),
+        "industry_constraint_blockers": sorted(set(blockers)),
+        **quality,
     }
 
 
@@ -822,6 +1006,10 @@ def validate_synergy_policy_mark_to_market(
     candidate_run_id: str | None = None,
     run_id: str | None = None,
     top_quantile: float = 0.10,
+    daily_top_k: int | None = None,
+    min_market_hs300_ret_20d: float | None = None,
+    min_market_hs300_ret_60d: float | None = None,
+    max_industry_l1_active_positions: int | None = None,
     baseline_horizon_days: int = 60,
     min_positions: int = 100,
     min_active_days: int = 60,
@@ -833,6 +1021,7 @@ def validate_synergy_policy_mark_to_market(
     end_date: str | None = None,
     kline_relation: str | None = None,
     allow_kline_fallback: bool = False,
+    force_research_only: bool = False,
     progress: bool = True,
 ) -> dict[str, Any]:
     ensure_tables(conn)
@@ -899,10 +1088,21 @@ def validate_synergy_policy_mark_to_market(
 
     _progress(progress, "select_positions start")
     stage_started = time.perf_counter()
+    market_filter = _prepare_market_state_filter(
+        conn,
+        min_market_hs300_ret_20d=min_market_hs300_ret_20d,
+        min_market_hs300_ret_60d=min_market_hs300_ret_60d,
+    )
+    industry_constraints = _industry_constraint_readiness(
+        conn,
+        max_industry_l1_active_positions=max_industry_l1_active_positions,
+    )
     threshold = 1.0 - max(min(float(top_quantile), 1.0), 0.001)
     selection_counts = _load_kept_signals(
         conn,
         threshold=threshold,
+        daily_top_k=daily_top_k,
+        market_filter_enabled=bool(market_filter["market_filter_enabled"]),
         horizon_days=horizon_days,
         calendar_days=calendar_days,
     )
@@ -977,9 +1177,14 @@ def validate_synergy_policy_mark_to_market(
         blockers.append("low_total_return")
     if path_evidence["max_drawdown"] < -abs(float(max_drawdown)):
         blockers.append("excessive_mark_to_market_drawdown")
+    blockers.extend(industry_constraints.get("industry_constraint_blockers") or [])
 
     validation_status = "pass" if not blockers else "blocked"
-    production_eligible = bool(validation_status == "pass" and horizon_days == baseline_horizon_days)
+    production_eligible = bool(
+        validation_status == "pass"
+        and horizon_days == baseline_horizon_days
+        and not force_research_only
+    )
     promotion_status = "production_candidate" if production_eligible else "research_only"
     if validation_status == "pass" and horizon_days != baseline_horizon_days:
         promotion_status = "research_only"
@@ -987,6 +1192,18 @@ def validate_synergy_policy_mark_to_market(
         "baseline_horizon_days": baseline_horizon_days,
         "candidate_horizon_days": horizon_days,
         "top_quantile": top_quantile,
+        "daily_top_k": int(daily_top_k) if daily_top_k is not None else None,
+        "signal_selection_mode": "top_quantile_then_daily_top_k" if daily_top_k else "top_quantile",
+        "min_market_hs300_ret_20d": min_market_hs300_ret_20d,
+        "min_market_hs300_ret_60d": min_market_hs300_ret_60d,
+        "market_filter_enabled": bool(market_filter["market_filter_enabled"]),
+        "max_industry_l1_active_positions": (
+            int(max_industry_l1_active_positions)
+            if max_industry_l1_active_positions is not None
+            else None
+        ),
+        "industry_constraints_requested": bool(industry_constraints["industry_constraints_requested"]),
+        "industry_constraints_applied": bool(industry_constraints["industry_constraints_applied"]),
         "min_positions": min_positions,
         "min_active_days": min_active_days,
         "min_total_return": min_total_return,
@@ -997,9 +1214,12 @@ def validate_synergy_policy_mark_to_market(
         "exit_price_mode": "horizon_day_close_qfq_for_mtm_exit",
         "kline_relation": kline_relation,
         "allow_kline_fallback": allow_kline_fallback,
+        "force_research_only": bool(force_research_only),
     }
     evidence = {
         **selection_counts,
+        **market_filter,
+        **industry_constraints,
         **kline_evidence,
         **position_evidence,
         **path_evidence,
@@ -1011,6 +1231,7 @@ def validate_synergy_policy_mark_to_market(
         "promotion_status": promotion_status,
         "production_eligible": production_eligible,
         "blockers": blockers,
+        "force_research_only": bool(force_research_only),
         "thresholds": thresholds,
         "evidence": evidence,
     }
@@ -1111,6 +1332,8 @@ def validate_synergy_policy_mark_to_market(
             "mart_synergy_policy_candidate",
             "mart_temporal_research_panel",
             "mart_feature_temporal_relevance",
+            "mart_stock_industry_pit",
+            "mart_industry_pit_quality",
             kline_relation,
             "dim_trading_calendar",
         ],
@@ -1131,6 +1354,7 @@ def validate_synergy_policy_mark_to_market(
             **evidence,
             "promotion_status": promotion_status,
             "production_eligible": production_eligible,
+            "force_research_only": bool(force_research_only),
             "thresholds": thresholds,
         },
     )
@@ -1153,6 +1377,10 @@ def main() -> int:
     parser.add_argument("--candidate-run-id", default=None)
     parser.add_argument("--run-id", default=None)
     parser.add_argument("--top-quantile", type=float, default=0.10)
+    parser.add_argument("--daily-top-k", type=int, default=None)
+    parser.add_argument("--min-market-hs300-ret-20d", type=float, default=None)
+    parser.add_argument("--min-market-hs300-ret-60d", type=float, default=None)
+    parser.add_argument("--max-industry-l1-active-positions", type=int, default=None)
     parser.add_argument("--baseline-horizon-days", type=int, default=60)
     parser.add_argument("--min-positions", type=int, default=100)
     parser.add_argument("--min-active-days", type=int, default=60)
@@ -1164,6 +1392,11 @@ def main() -> int:
     parser.add_argument("--end-date", default=None)
     parser.add_argument("--kline-relation", default=None)
     parser.add_argument("--allow-kline-fallback", action="store_true")
+    parser.add_argument(
+        "--force-research-only",
+        action="store_true",
+        help="Record a mark-to-market pass as research_only instead of production_candidate.",
+    )
     parser.add_argument("--quiet", action="store_true")
     args = parser.parse_args()
     with get_conn() as conn:
@@ -1172,6 +1405,10 @@ def main() -> int:
             candidate_run_id=args.candidate_run_id,
             run_id=args.run_id,
             top_quantile=args.top_quantile,
+            daily_top_k=args.daily_top_k,
+            min_market_hs300_ret_20d=args.min_market_hs300_ret_20d,
+            min_market_hs300_ret_60d=args.min_market_hs300_ret_60d,
+            max_industry_l1_active_positions=args.max_industry_l1_active_positions,
             baseline_horizon_days=args.baseline_horizon_days,
             min_positions=args.min_positions,
             min_active_days=args.min_active_days,
@@ -1183,6 +1420,7 @@ def main() -> int:
             end_date=args.end_date,
             kline_relation=args.kline_relation,
             allow_kline_fallback=args.allow_kline_fallback,
+            force_research_only=args.force_research_only,
             progress=not args.quiet,
         )
     print(json.dumps(result, ensure_ascii=False, indent=2, default=str))

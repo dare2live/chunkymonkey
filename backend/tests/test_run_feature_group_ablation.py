@@ -46,7 +46,7 @@ def test_walkforward_group_ablation_uses_existing_eval_rows():
 
         stored = conn.execute(
             """
-            SELECT group_name, n_features, rank_ic_full
+            SELECT group_name, n_features, rank_ic_full, rank_ic_90d
             FROM mart_feature_group_ablation
             WHERE run_id = 'test_wf_ablation'
             ORDER BY group_name
@@ -55,5 +55,6 @@ def test_walkforward_group_ablation_uses_existing_eval_rows():
         assert result["method"] == "walkforward_sql"
         assert result["rank_ic_full"] == 0.03
         assert {row["group_name"] for row in stored} == {"holder_count_chip", "ownership_tdx_f10"}
+        assert "rank_ic_90d" in {row[0] for row in conn.execute("DESCRIBE mart_feature_group_ablation").fetchall()}
     finally:
         conn.close()

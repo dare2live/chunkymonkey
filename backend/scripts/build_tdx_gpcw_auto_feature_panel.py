@@ -33,6 +33,7 @@ CREATE TABLE IF NOT EXISTS fact_feature_panel_candidate (
     feature_set_id TEXT NOT NULL,
     stock_code TEXT NOT NULL,
     date TEXT NOT NULL,
+    close REAL,
     forward_ret_5d REAL,
     forward_ret_10d REAL,
     forward_ret_20d REAL,
@@ -97,6 +98,7 @@ def _feature_candidates(conn: Any, source_feature_set_id: str, max_features: int
 
 
 def _ensure_feature_columns(conn: Any, features: list[str]) -> None:
+    conn.execute("ALTER TABLE fact_feature_panel_candidate ADD COLUMN IF NOT EXISTS close REAL")
     for label in LABEL_COLUMNS:
         conn.execute(f"ALTER TABLE fact_feature_panel_candidate ADD COLUMN IF NOT EXISTS {_quote_ident(label)} REAL")
     for feature in features:
@@ -129,7 +131,7 @@ def build_tdx_gpcw_auto_feature_panel(
         for feature in features
     )
     select_feature_cols = ",\n               ".join(f"q.{_quote_ident(feature)}" for feature in features)
-    insert_cols = ["feature_set_id", "stock_code", "date", *LABEL_COLUMNS, *features, "built_at"]
+    insert_cols = ["feature_set_id", "stock_code", "date", "close", *LABEL_COLUMNS, *features, "built_at"]
 
     filters = ["date >= ?"]
     params: list[Any] = [start_date]
@@ -168,6 +170,7 @@ def build_tdx_gpcw_auto_feature_panel(
         ),
         base AS (
             SELECT stock_code, date,
+                   close,
                    forward_ret_5d_calc AS forward_ret_5d,
                    forward_ret_10d_calc AS forward_ret_10d,
                    COALESCE(forward_ret_20d, forward_ret_20d_calc) AS forward_ret_20d,
@@ -179,6 +182,7 @@ def build_tdx_gpcw_auto_feature_panel(
         SELECT ? AS feature_set_id,
                b.stock_code,
                b.date,
+               b.close,
                b.forward_ret_5d,
                b.forward_ret_10d,
                b.forward_ret_20d,

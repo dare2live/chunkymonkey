@@ -190,3 +190,203 @@ def test_mark_to_market_blocks_non_tdxhub_kline_path() -> None:
 
         assert result["validation_status"] == "blocked"
         assert "non_tdxhub_kline_path" in result["blockers"]
+
+
+def test_mark_to_market_can_cap_daily_new_signals_after_quantile_filter() -> None:
+    with duck_mem() as conn:
+        _seed_mtm_inputs(conn)
+
+        result = subject.validate_synergy_policy_mark_to_market(
+            conn,
+            candidate_run_id="candidate_mtm_unit",
+            run_id="mtm_daily_top_k_unit",
+            top_quantile=1.0,
+            daily_top_k=1,
+            min_positions=1,
+            min_active_days=1,
+            min_total_return=-1.0,
+            max_drawdown=0.99,
+            kline_relation="kline_unit",
+            progress=False,
+        )
+        gate = conn.execute(
+            """
+            SELECT thresholds_json, evidence_json
+              FROM mart_synergy_policy_mtm_gate
+             WHERE run_id = 'mtm_daily_top_k_unit'
+            """
+        ).fetchone()
+        thresholds = json.loads(gate["thresholds_json"])
+        evidence = json.loads(gate["evidence_json"])
+
+        assert result["validation_status"] == "pass"
+        assert result["rank_threshold_signal_count"] == 6
+        assert result["signal_count"] == 2
+        assert result["daily_top_k_filtered_count"] == 4
+        assert result["position_count"] == 1
+        assert thresholds["daily_top_k"] == 1
+        assert thresholds["signal_selection_mode"] == "top_quantile_then_daily_top_k"
+        assert evidence["rank_threshold_signal_count"] == 6
+
+
+def test_mark_to_market_can_filter_entries_by_market_state() -> None:
+    with duck_mem() as conn:
+        _seed_mtm_inputs(conn)
+        conn.executescript(
+            """
+            CREATE TABLE fact_feature_panel (
+                stock_code TEXT,
+                date TEXT,
+                hs300_ret_20d DOUBLE,
+                hs300_ret_60d DOUBLE
+            );
+            INSERT INTO fact_feature_panel VALUES
+                ('000001', '2026-01-01', 0.02, 0.03),
+                ('000002', '2026-01-01', 0.02, 0.03),
+                ('000003', '2026-01-01', 0.02, 0.03),
+                ('000001', '2026-01-02', -0.04, -0.02),
+                ('000002', '2026-01-02', -0.04, -0.02),
+                ('000003', '2026-01-02', -0.04, -0.02);
+            """
+        )
+
+        result = subject.validate_synergy_policy_mark_to_market(
+            conn,
+            candidate_run_id="candidate_mtm_unit",
+            run_id="mtm_market_filter_unit",
+            top_quantile=1.0,
+            min_market_hs300_ret_20d=0.0,
+            min_positions=1,
+            min_active_days=1,
+            min_total_return=-1.0,
+            max_drawdown=0.99,
+            kline_relation="kline_unit",
+            progress=False,
+        )
+        gate = conn.execute(
+            """
+            SELECT thresholds_json, evidence_json
+              FROM mart_synergy_policy_mtm_gate
+             WHERE run_id = 'mtm_market_filter_unit'
+            """
+        ).fetchone()
+        thresholds = json.loads(gate["thresholds_json"])
+        evidence = json.loads(gate["evidence_json"])
+
+        assert result["validation_status"] == "pass"
+        assert result["rank_threshold_signal_count"] == 6
+        assert result["market_eligible_signal_count"] == 3
+        assert result["market_filter_removed_signal_count"] == 3
+        assert result["signal_count"] == 3
+        assert result["position_count"] == 3
+        assert thresholds["market_filter_enabled"] is True
+        assert thresholds["min_market_hs300_ret_20d"] == pytest.approx(0.0)
+        assert evidence["market_allowed_date_count"] == 1
+        assert evidence["market_blocked_date_count"] == 1
+
+
+def test_mark_to_market_blocks_requested_industry_constraint_until_pit_ready() -> None:
+    with duck_mem() as conn:
+        _seed_mtm_inputs(conn)
+        conn.executescript(
+            """
+            CREATE TABLE mart_stock_industry_pit (
+                stock_code TEXT,
+                effective_from TEXT,
+                effective_to TEXT,
+                tdx_l1 TEXT,
+                source TEXT,
+                is_historical_pit BOOLEAN
+            );
+            CREATE TABLE mart_industry_pit_quality (
+                run_id TEXT,
+                signal_table TEXT,
+                pit_eligible BOOLEAN,
+                fallback_ratio DOUBLE,
+                missing_ratio DOUBLE,
+                fallback_signal_rows BIGINT,
+                missing_pit_rows BIGINT,
+                blockers_json TEXT,
+                built_at TEXT
+            );
+            INSERT INTO mart_industry_pit_quality VALUES (
+                'industry_pit_blocked',
+                'mart_temporal_research_panel',
+                FALSE,
+                1.0,
+                0.0,
+                6,
+                0,
+                '["industry_current_label_fallback_in_signal_window"]',
+                '2026-05-07T10:00:00'
+            );
+            """
+        )
+
+        result = subject.validate_synergy_policy_mark_to_market(
+            conn,
+            candidate_run_id="candidate_mtm_unit",
+            run_id="mtm_industry_guard_unit",
+            top_quantile=0.34,
+            max_industry_l1_active_positions=2,
+            min_positions=1,
+            min_active_days=1,
+            min_total_return=-1.0,
+            max_drawdown=0.99,
+            kline_relation="kline_unit",
+            progress=False,
+        )
+        gate = conn.execute(
+            """
+            SELECT thresholds_json, evidence_json
+              FROM mart_synergy_policy_mtm_gate
+             WHERE run_id = 'mtm_industry_guard_unit'
+            """
+        ).fetchone()
+        thresholds = json.loads(gate["thresholds_json"])
+        evidence = json.loads(gate["evidence_json"])
+
+        assert result["validation_status"] == "blocked"
+        assert "industry_pit_not_ready_for_constraints" in result["blockers"]
+        assert "industry_constraint_execution_not_implemented" in result["blockers"]
+        assert thresholds["industry_constraints_requested"] is True
+        assert thresholds["industry_constraints_applied"] is False
+        assert thresholds["max_industry_l1_active_positions"] == 2
+        assert evidence["industry_pit_eligible"] is False
+        assert evidence["industry_pit_fallback_ratio"] == pytest.approx(1.0)
+
+
+def test_mark_to_market_can_force_research_only_after_metric_pass() -> None:
+    with duck_mem() as conn:
+        _seed_mtm_inputs(conn)
+
+        result = subject.validate_synergy_policy_mark_to_market(
+            conn,
+            candidate_run_id="candidate_mtm_unit",
+            run_id="mtm_force_research",
+            top_quantile=0.34,
+            baseline_horizon_days=5,
+            min_positions=1,
+            min_active_days=1,
+            min_total_return=-1.0,
+            max_drawdown=0.99,
+            kline_relation="kline_unit",
+            force_research_only=True,
+            progress=False,
+        )
+        gate = conn.execute(
+            """
+            SELECT validation_status, promotion_status, production_eligible,
+                   thresholds_json, evidence_json
+              FROM mart_synergy_policy_mtm_gate
+             WHERE run_id = 'mtm_force_research'
+            """
+        ).fetchone()
+
+        assert result["validation_status"] == "pass"
+        assert result["promotion_status"] == "research_only"
+        assert result["production_eligible"] is False
+        assert gate["validation_status"] == "pass"
+        assert gate["promotion_status"] == "research_only"
+        assert gate["production_eligible"] is False
+        assert json.loads(gate["thresholds_json"])["force_research_only"] is True

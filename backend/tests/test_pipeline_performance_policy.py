@@ -15,5 +15,11 @@ def test_pipeline_performance_policy_is_loaded_outside_pricing_hash():
     assert performance_policy.pipeline_duration_budgets_s["build_feature_rank_matrix_duck"] == 120
     assert performance_policy.pipeline_duration_budgets_s["run_optuna_feature_space"] == 120
     assert performance_policy.pipeline_duration_budgets_s[
+        "build_shareholder_plan_initial_feature_panel"
+    ] == 300
+    assert performance_policy.pipeline_duration_budgets_s[
         "validate_shareholder_plan_family_walkforward"
     ] == 300
+    assert performance_policy.pipeline_duration_budgets_s["rerank_optuna_synergy_mtm"] == 900
+    assert performance_policy.pipeline_duration_budgets_s["sweep_synergy_mtm_strategy"] == 900
+    assert performance_policy.pipeline_duration_budgets_s["build_industry_pit"] == 120
