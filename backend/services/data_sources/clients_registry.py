@@ -408,16 +408,7 @@ DERIVED_WRITERS: list[ClientSpec] = [
             TableWriteSpec("mart_feature_retention_decision", "候选特征保留决策", "on-demand", 24*30),
         ],
     ),
-    ClientSpec(
-        client_id="train_tdx_challenger_model",
-        module="scripts.train_tdx_challenger_model",
-        description="TDX 保留特征 challenger 报告 (不替换 champion)",
-        upstream_source="derived: fact_feature_panel_candidate + mart_feature_retention_decision",
-        source_tier=99,
-        writes=[
-            TableWriteSpec("mart_tdx_challenger_report", "TDX challenger 模型报告", "on-demand", 24*30),
-        ],
-    ),
+    # train_tdx_challenger_model ClientSpec removed Phase ψ.5 — script 已删 (0 imports)
     ClientSpec(
         client_id="tdx_keep_challenger_productionization",
         module="scripts.build_tdx_keep_challenger_panel / scripts.train_tdx_keep_challenger_model / scripts.evaluate_tdx_keep_promotion_gate",

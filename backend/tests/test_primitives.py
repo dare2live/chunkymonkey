@@ -16,19 +16,26 @@ def conn():
 
 class TestDDL:
     def test_ensure_creates_all_tables(self, conn):
+        # Phase ψ.5: 4 张 0-row + 0-ref + 0-insert fact 表退役:
+        #   fact_daily_price_status / fact_stock_liquidity_daily /
+        #   fact_stock_style_daily / fact_stock_market_cap_daily
+        # ensure_primitives_tables 只建剩 8 张 dim 配置/维度表.
         names = {r[0] for r in conn.execute(
             "SELECT table_name FROM information_schema.tables WHERE table_schema='main'"
         ).fetchall()}
         expected = {
             "dim_price_limit_rules", "dim_market_segment", "dim_trading_rule",
             "dim_fee_schedule", "dim_trading_session",
-            "fact_daily_price_status",
-            "dim_liquidity_threshold", "fact_stock_liquidity_daily",
+            "dim_liquidity_threshold",
             "dim_listing_status",
-            "dim_style_factor", "fact_stock_style_daily",
-            "fact_stock_market_cap_daily",
+            "dim_style_factor",
         }
         assert expected.issubset(names)
+        # Retired tables MUST NOT be recreated by ensure
+        assert "fact_daily_price_status" not in names
+        assert "fact_stock_liquidity_daily" not in names
+        assert "fact_stock_style_daily" not in names
+        assert "fact_stock_market_cap_daily" not in names
 
     def test_idempotent(self, conn):
         from services.primitives.ddl import ensure_primitives_tables

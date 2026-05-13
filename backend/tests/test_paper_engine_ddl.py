@@ -1,9 +1,13 @@
-"""Phase δ D1 — DDL 单测: 4 张表 + 幂等。"""
+"""Phase δ D1 — DDL 单测.
+
+Phase ψ.5: mart_decision_outcome 表退役 (0 rows / 0 reads / 0 writes), ensure
+只建剩下 3 张. 单测同步.
+"""
 from __future__ import annotations
 
 
 class TestEnsurePaperTables:
-    def test_ensure_creates_four_tables(self):
+    def test_ensure_creates_three_tables(self):
         from services.duck_adapter import connect as duck_connect
         from services.paper_engine.ddl import ensure_paper_tables
 
@@ -16,7 +20,8 @@ class TestEnsurePaperTables:
             assert "mart_paper_nav" in names
             assert "fact_paper_position" in names
             assert "mart_signal_ic" in names
-            assert "mart_decision_outcome" in names
+            # mart_decision_outcome retired Phase ψ.5
+            assert "mart_decision_outcome" not in names
         finally:
             conn.close()
 

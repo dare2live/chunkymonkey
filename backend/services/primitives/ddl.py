@@ -181,17 +181,19 @@ CREATE INDEX IF NOT EXISTS idx_fsmc_date ON fact_stock_market_cap_daily(date);
 
 
 def ensure_primitives_tables(conn) -> None:
-    """幂等建表 (10 张表 + 2 个 fact 副表 = 共 12 张, 但 §3.4 计数为 10 项)。"""
+    """幂等建表. Phase ψ.5 清掉 4 张 dead fact 表 (0 rows + 0 reads + 0 inserts):
+        fact_daily_price_status (历史无写入路径)
+        fact_stock_liquidity_daily
+        fact_stock_style_daily
+        fact_stock_market_cap_daily
+    剩 8 个 dim/fact (5 dim 配置表 + 3 dim 维度表), DDL string 保留供未来如有需要恢复.
+    """
     conn.executescript(DIM_PRICE_LIMIT_RULES_DDL)
     conn.executescript(DIM_MARKET_SEGMENT_DDL)
     conn.executescript(DIM_TRADING_RULE_DDL)
     conn.executescript(DIM_FEE_SCHEDULE_DDL)
     conn.executescript(DIM_TRADING_SESSION_DDL)
-    conn.executescript(FACT_DAILY_PRICE_STATUS_DDL)
     conn.executescript(DIM_LIQUIDITY_THRESHOLD_DDL)
-    conn.executescript(FACT_STOCK_LIQUIDITY_DAILY_DDL)
     conn.executescript(DIM_LISTING_STATUS_DDL)
     conn.executescript(DIM_STYLE_FACTOR_DDL)
-    conn.executescript(FACT_STOCK_STYLE_DAILY_DDL)
-    conn.executescript(FACT_STOCK_MARKET_CAP_DAILY_DDL)
     conn.commit()

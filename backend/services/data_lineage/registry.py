@@ -161,15 +161,7 @@ LINEAGES: list[LineageSpec] = [
         entry_point="scripts.build_feature_retention_decisions:build_feature_retention_decisions",
         schedule="on-demand",
     ),
-    LineageSpec(
-        lineage_id="mart_tdx_challenger_report/retained_rank_ensemble_v1",
-        output_table="mart_tdx_challenger_report",
-        input_tables=["fact_feature_panel_candidate", "mart_feature_retention_decision"],
-        description="基于保留 TDX 特征生成 challenger-only rank ensemble 报告; 不提升 champion",
-        owner="scripts.train_tdx_challenger_model",
-        entry_point="scripts.train_tdx_challenger_model:train_tdx_challenger_model",
-        schedule="on-demand",
-    ),
+    # mart_tdx_challenger_report LineageSpec removed Phase ψ.5 — script train_tdx_challenger_model 已删
     LineageSpec(
         lineage_id="fact_feature_panel_tdx_keep_challenger/tdx_keep_v1",
         output_table="fact_feature_panel_tdx_keep_challenger",

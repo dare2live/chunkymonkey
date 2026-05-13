@@ -102,9 +102,11 @@ CREATE INDEX IF NOT EXISTS idx_msi_formula ON mart_signal_ic(formula_id);
 
 
 # =================================================================
-# 4. mart_decision_outcome — 每笔 BUY 决策的后续结果 (ε 反馈用)
+# 4. mart_decision_outcome — 已废弃 (Phase ψ.5): 0 rows / 0 inserts / 0 reads.
+#     原本规划写 BUY 决策回放, 实际上 Phase ε 的 selection_outcome / mart_paper_nav
+#     已覆盖. 保留 DDL 字符串只为 grep 可定位, 不再 ensure_tables.
 # =================================================================
-MART_DECISION_OUTCOME_DDL = """
+_MART_DECISION_OUTCOME_DDL_DEPRECATED = """
 CREATE TABLE IF NOT EXISTS mart_decision_outcome (
     decision_date         TEXT NOT NULL,
     stock_code            TEXT NOT NULL,
@@ -135,9 +137,8 @@ CREATE INDEX IF NOT EXISTS idx_mdo_formula ON mart_decision_outcome(primary_form
 
 
 def ensure_paper_tables(conn) -> None:
-    """幂等建表 (4 张表)。"""
+    """幂等建表 (Phase ψ.5: 从 4 张缩至 3 张, mart_decision_outcome 废弃)。"""
     conn.executescript(MART_PAPER_NAV_DDL)
     conn.executescript(FACT_PAPER_POSITION_DDL)
     conn.executescript(MART_SIGNAL_IC_DDL)
-    conn.executescript(MART_DECISION_OUTCOME_DDL)
     conn.commit()
