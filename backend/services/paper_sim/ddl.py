@@ -1,0 +1,136 @@
+"""Paper Sim v2 — 4 张专用表 (跟旧 paper_engine 物理隔离).
+
+设计意图:
+- mart_paper_sim_nav        日级 NAV + HS300 + 超额
+- fact_paper_sim_position   持仓快照 (open & close 都用同一表, position_id 自然键)
+- fact_paper_sim_trade      交易日志 (BUY / SELL / SWAP_OUT / SWAP_IN), 每个动作一行
+- mart_paper_sim_kpi        每次完整 walk-forward 跑完后写 1 行 KPI summary
+
+旧 paper_engine 的 mart_paper_nav (5-04-13 停了) 不动, 保留历史回放.
+新 paper_sim_* 表跟新 swap-driven 规则绑定, 干净起步.
+"""
+from __future__ import annotations
+
+
+DDL = """
+CREATE TABLE IF NOT EXISTS mart_paper_sim_nav (
+    sim_run_id        TEXT NOT NULL,             -- 一次 walk-forward 唯一 ID
+    date              TEXT NOT NULL,
+    total_value       DOUBLE NOT NULL,           -- 现金 + 持仓市值
+    cash              DOUBLE NOT NULL,
+    positions_value   DOUBLE NOT NULL,
+    n_positions       INTEGER NOT NULL,
+    hs300_nav         DOUBLE,                    -- 基准 NAV (归一化)
+    daily_ret         DOUBLE,
+    excess_daily      DOUBLE,                    -- 当日策略 - HS300
+    cum_excess        DOUBLE,
+    regime            TEXT,                      -- bull / bear / sideways (HS300 60d)
+    built_at          TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (sim_run_id, date)
+);
+CREATE INDEX IF NOT EXISTS idx_msn_date ON mart_paper_sim_nav(date);
+
+CREATE TABLE IF NOT EXISTS fact_paper_sim_position (
+    position_id       TEXT NOT NULL,             -- f"{stock}_{open_date}_{run_id}"
+    sim_run_id        TEXT NOT NULL,
+    stock_code        TEXT NOT NULL,
+    formula_id        TEXT NOT NULL,
+    formula_variant   TEXT NOT NULL,
+    stage_at_buy      TEXT,                      -- 买入时 technical_stage
+    -- Optuna 9-dim 寻优参数 (买入时锁定, 不变)
+    optimal_hp        INTEGER NOT NULL,
+    optimal_stop_pct  DOUBLE,
+    optimal_target_pct DOUBLE,
+    optimal_trailing_pct DOUBLE,
+    -- 入场
+    open_date         TEXT NOT NULL,
+    open_price        DOUBLE NOT NULL,
+    shares            INTEGER NOT NULL,
+    buy_cost          DOUBLE NOT NULL,           -- 含手续费 + 滑点
+    -- 出场 (持仓中为 NULL)
+    close_date        TEXT,
+    close_price       DOUBLE,
+    sell_revenue      DOUBLE,                    -- 扣完税费滑点
+    close_reason      TEXT,                      -- target / stop / trailing / hp / stage / swap
+    pnl               DOUBLE,                    -- sell_revenue - buy_cost
+    pnl_pct           DOUBLE,                    -- pnl / buy_cost
+    days_held         INTEGER,
+    -- 锁定的预期值 (用来算达成率)
+    expected_target_pct DOUBLE NOT NULL,         -- = optimal_target_pct (锁定时的)
+    -- 元
+    is_open           BOOLEAN NOT NULL DEFAULT TRUE,
+    built_at          TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (position_id)
+);
+CREATE INDEX IF NOT EXISTS idx_fpsp_run   ON fact_paper_sim_position(sim_run_id);
+CREATE INDEX IF NOT EXISTS idx_fpsp_stock ON fact_paper_sim_position(stock_code);
+CREATE INDEX IF NOT EXISTS idx_fpsp_open  ON fact_paper_sim_position(is_open);
+
+CREATE TABLE IF NOT EXISTS fact_paper_sim_trade (
+    trade_id          TEXT PRIMARY KEY,          -- uuid
+    sim_run_id        TEXT NOT NULL,
+    position_id       TEXT NOT NULL,
+    date              TEXT NOT NULL,
+    type              TEXT NOT NULL,             -- BUY / SELL / SWAP_OUT / SWAP_IN
+    reason            TEXT NOT NULL,             -- 详细触发原因
+    price             DOUBLE NOT NULL,
+    shares            INTEGER NOT NULL,
+    gross_amount      DOUBLE NOT NULL,
+    tx_cost           DOUBLE NOT NULL,
+    net_amount        DOUBLE NOT NULL,           -- gross +/- tx_cost
+    -- Swap counterfactual (仅 SWAP_OUT 行填)
+    swap_uplift_estimate DOUBLE,                 -- 估算的 swap 净收益增量
+    built_at          TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_fpst_run  ON fact_paper_sim_trade(sim_run_id);
+CREATE INDEX IF NOT EXISTS idx_fpst_date ON fact_paper_sim_trade(date);
+CREATE INDEX IF NOT EXISTS idx_fpst_pos  ON fact_paper_sim_trade(position_id);
+
+CREATE TABLE IF NOT EXISTS mart_paper_sim_kpi (
+    sim_run_id        TEXT PRIMARY KEY,
+    variant           TEXT NOT NULL,             -- baseline / swap_v1 / swap_optuna
+    period_start      TEXT NOT NULL,
+    period_end        TEXT NOT NULL,
+    n_days            INTEGER NOT NULL,
+
+    -- A. 用户终极标准
+    annual_return     DOUBLE,
+    max_dd            DOUBLE,
+    sharpe            DOUBLE,
+    calmar            DOUBLE,
+    monthly_win_rate  DOUBLE,
+    total_return      DOUBLE,
+    excess_vs_hs300   DOUBLE,
+    information_ratio DOUBLE,
+    user_criteria_pass BOOLEAN,
+
+    -- B. Anti-churn
+    avg_holding_days  DOUBLE,
+    annual_turnover   DOUBLE,                    -- 全年成交额 / 初始资金
+    tx_cost_total     DOUBLE,
+    tx_cost_pct_of_gross_pnl DOUBLE,
+    swap_count        INTEGER,
+    swap_uplift_total DOUBLE,                    -- Σ (换上 Y 实际剩余收益 - 反事实 A 剩余收益)
+    anti_churn_pass   BOOLEAN,
+
+    -- C. Robustness
+    rolling_ir_60d_median DOUBLE,
+    rolling_ir_60d_p25    DOUBLE,
+    rolling_annual_90d_median DOUBLE,
+    regime_bull_return    DOUBLE,
+    regime_bear_return    DOUBLE,
+    regime_sideways_return DOUBLE,
+    robustness_pass   BOOLEAN,
+
+    -- 综合
+    all_kpi_pass      BOOLEAN,
+    config_snapshot   TEXT,                      -- JSON of full PaperSimConfig (审计 + 复现)
+    built_at          TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_mpsk_variant ON mart_paper_sim_kpi(variant);
+"""
+
+
+def ensure_paper_sim_tables(conn) -> None:
+    """幂等建 4 张 paper_sim 专用表."""
+    conn.executescript(DDL)
