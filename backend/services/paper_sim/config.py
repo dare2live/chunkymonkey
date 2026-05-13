@@ -38,6 +38,9 @@ class SelectionConfig:
     liquidity_max_price: float
     exclude_stage: list
     backtest_tier_thresholds: dict       # {strong_buy: {sharpe_min, win_rate_min, calmar_min}, buy: {...}}
+    # Phase ψ.α: 公式白名单 (空 / None = 不限制, 列表 = 只用列表里的 formula_id)
+    # 用于 ablation: momentum vs reversal vs combined 同 paper_sim 路径下切换
+    formula_whitelist: tuple = ()
 
 
 @dataclass(frozen=True)
@@ -151,7 +154,12 @@ def load_config(path: Path | None = None, override: dict | None = None) -> Paper
 
     cfg = PaperSimConfig(
         portfolio=PortfolioConfig(**raw["portfolio"]),
-        selection=SelectionConfig(**raw["selection"]),
+        selection=SelectionConfig(
+            **{**raw["selection"],
+               # Phase ψ.α: yaml list → tuple (frozen dataclass 要求 hashable)
+               "formula_whitelist": tuple(raw["selection"].get("formula_whitelist") or ()),
+               "exclude_stage": list(raw["selection"].get("exclude_stage") or [])}
+        ),
         exit=ExitConfig(**raw["exit"]),
         swap=SwapConfig(**raw["swap"]),
         tx_cost=TxCostConfig(**raw["tx_cost"]),

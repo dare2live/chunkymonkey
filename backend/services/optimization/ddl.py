@@ -34,8 +34,10 @@ _OOS_COLUMNS_SQL = """
 
 
 def _stage_optimal_ddl(table_name: str) -> str:
+    # Phase ψ.α: 改成幂等 CREATE (不 DROP). 业务表跨多次 Optuna run 累积:
+    # 增量场景 (--formula reversal_*) 不应清掉历史 momentum 行.
+    # 全量重建场景由 entry script 显式 DELETE FROM (在 INSERT 前).
     return f"""
-DROP TABLE IF EXISTS {table_name};
 CREATE TABLE IF NOT EXISTS {table_name} (
     stock_code         TEXT NOT NULL,
     formula_id         TEXT NOT NULL,
@@ -88,6 +90,72 @@ CREATE INDEX IF NOT EXISTS idx_{table_name}_stage ON {table_name}(stage_filter);
 """
 
 
+def _per_formula_stage_optimal_ddl(table_name: str) -> str:
+    """Phase ψ.α B — per-formula × stage × train_end_date 严格 walk-forward 表.
+
+    设计原则 (CLAUDE.md Rule 7 + 用户原话 "真金白银, 不是数字游戏"):
+      - PK = (formula_id, formula_variant, stage_filter, train_end_date)
+      - 一行 = 在 train_end_date 当时, 用 < train_end_date 所有信号 train Optuna
+              选出的 best params + 在 [train_end_date, +60d] forward 窗 OOS 验证
+      - paper_sim 在历史时刻 t 选股: WHERE train_end_date <= t ORDER BY train_end_date DESC
+        → 取"在 t 那天能算出的最近 train 版本", 0 selection leakage
+      - 同 (formula × stage) 多行 (~每月底 1 行 = ~34 行), 跨所有股票合并 — 适合稀疏信号
+    """
+    return f"""
+CREATE TABLE IF NOT EXISTS {table_name} (
+    formula_id         TEXT NOT NULL,
+    formula_variant    TEXT NOT NULL,
+    stage_filter       TEXT NOT NULL,
+    train_end_date     TEXT NOT NULL,            -- Phase ψ.α B: 严格 walk-forward, paper_sim 按此切片
+    -- 5 维 strategy params (供 paper_sim 用)
+    optimal_hp         INTEGER NOT NULL,
+    optimal_stop_pct   REAL NOT NULL,
+    optimal_target_pct REAL NOT NULL,
+    optimal_trailing_pct REAL NOT NULL,
+    optimal_buy_offset INTEGER NOT NULL DEFAULT 1,
+    -- 4 维 K 线形态阈值
+    optimal_body_ratio_min      REAL DEFAULT 0.0,
+    optimal_lower_shadow_min    REAL DEFAULT 0.0,
+    optimal_close_position_min  REAL DEFAULT 0.0,
+    optimal_volume_relative_min REAL DEFAULT 0.0,
+    -- in-sample (train, 全市场合并) metrics
+    in_sample_n_traded INTEGER,
+    in_sample_win_rate REAL,
+    in_sample_avg_ret  REAL,
+    in_sample_sharpe   REAL,
+    in_sample_calmar   REAL,
+    in_sample_avg_max_dd REAL,
+    -- OOS metrics (业务真值)
+    walk_forward_mode  TEXT,
+    train_n_signals    INTEGER,
+    test_n_signals     INTEGER,
+    oos_sharpe         REAL,
+    oos_win_rate       REAL,
+    oos_avg_ret        REAL,
+    oos_n_traded       INTEGER,
+    oos_period_start   TEXT,
+    oos_period_end     TEXT,
+    oos_n_windows      INTEGER,
+    oos_monthly_sharpe_std REAL,
+    -- Optuna 元信息
+    optuna_score       REAL,
+    optuna_n_trials    INTEGER,
+    n_signals_input    INTEGER,
+    n_stocks_input     INTEGER,            -- 该 (formula × stage) 涵盖多少股
+    -- 元
+    execution_model_version TEXT,
+    eval_start_date    TEXT,
+    eval_end_date      TEXT,
+    forward_days       INTEGER,                  -- OOS 窗大小 (默认 60)
+    built_at           TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (formula_id, formula_variant, stage_filter, train_end_date)
+);
+CREATE INDEX IF NOT EXISTS idx_{table_name}_train_end ON {table_name}(train_end_date);
+CREATE INDEX IF NOT EXISTS idx_{table_name}_formula ON {table_name}(formula_id);
+CREATE INDEX IF NOT EXISTS idx_{table_name}_oos_sharpe ON {table_name}(oos_sharpe);
+"""
+
+
 def _governance_log_ddl(table_name: str) -> str:
     return f"""
 CREATE TABLE IF NOT EXISTS {table_name} (
@@ -107,21 +175,49 @@ CREATE INDEX IF NOT EXISTS idx_{table_name}_reason ON {table_name}(reason);
 """
 
 
+def _table_has_column(conn, table_name: str, column_name: str) -> bool:
+    """检测表是否有指定列 (用于 schema 演化探测)."""
+    try:
+        rows = conn.execute(
+            f"PRAGMA table_info('{table_name}')"
+        ).fetchall()
+        return any(r[1] == column_name for r in rows)
+    except Exception:
+        return False
+
+
+def _table_exists(conn, table_name: str) -> bool:
+    try:
+        conn.execute(f"SELECT 1 FROM {table_name} LIMIT 0").fetchall()
+        return True
+    except Exception:
+        return False
+
+
 def ensure_optuna_tables(
     conn,
     cfg: Optional[OptunaConfig] = None,
+    with_per_formula: bool = False,
 ) -> None:
-    """幂等建 3 张 Optuna 治理 / 输出表.
+    """幂等建 Optuna 治理 / 输出表 (含 schema 演化探测).
 
-    用法 (在 optimize_per_stock_stage_strategy.py):
-        from services.optimization.ddl import ensure_optuna_tables
-        ensure_optuna_tables(conn)
+    Args:
+        with_per_formula: True 时额外建 mart_per_formula_stage_optimal (Phase ψ.α)
+
+    Schema 演化策略 (Rule 9.6):
+      - per_formula 表 schema 改了 (Phase ψ.α B 加 train_end_date), 旧版表会缺列
+      - 用 PRAGMA table_info 检测, 缺关键列就 DROP + REBUILD (数据期, 允许)
+      - 一旦稳定上线后改成 ALTER TABLE 增量迁移
     """
     cfg = cfg or get_optuna_config()
     conn.executescript(_stage_optimal_ddl(cfg.output.stage_optimal_table))
-    # cross-stage 兜底表: 跟 stage_aware 共用 DDL (差别仅 PK 不含 stage_filter, 这里简化 也放 stage='')
-    # 实际旧表 mart_per_stock_strategy_optimal 已存在不同 schema, 暂只确保 stage 表 + governance log.
     conn.executescript(_governance_log_ddl(cfg.output.governance_log_table))
+    if with_per_formula:
+        table = "mart_per_formula_stage_optimal"
+        if _table_exists(conn, table) and not _table_has_column(conn, table, "train_end_date"):
+            # 老 schema, schema 演化期 — DROP + REBUILD
+            conn.execute(f"DROP TABLE {table}")
+        conn.executescript(_per_formula_stage_optimal_ddl(table))
 
 
 def log_governance_violations(

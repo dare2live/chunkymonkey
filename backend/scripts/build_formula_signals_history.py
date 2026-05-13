@@ -42,6 +42,7 @@ from services.formula_engine.ddl import ensure_formula_tables
 from services.formula_engine import macd_golden_cross    # noqa: F401
 from services.formula_engine import turtle_breakout      # noqa: F401
 from services.formula_engine import dynamic_ma_iterative  # noqa: F401
+from services.formula_engine import reversal_short_term  # noqa: F401  (Phase ψ.α R-α)
 
 from services.market_db import get_market_conn
 
@@ -297,7 +298,8 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--start", default="2023-01-01")
     parser.add_argument("--end",   default=None, help="默认 K 线最新日")
-    parser.add_argument("--formula", default=None, help="只跑指定公式, e.g., macd_golden_cross")
+    parser.add_argument("--formula", default=None, nargs="+",
+                        help="只跑指定公式 (多个用空格分隔), e.g., --formula reversal_1m_mild reversal_1m_deep")
     args = parser.parse_args()
 
     # 全程用原生 duckdb (fetchnumpy 需要)
@@ -324,7 +326,7 @@ def main():
             args.end = min(kline_max, cal_max) if kline_max else cal_max
         log.info(f"回测区间: {args.start} - {args.end}")
 
-        formula_ids = (args.formula,) if args.formula else tuple(REGISTRY.keys())
+        formula_ids = tuple(args.formula) if args.formula else tuple(REGISTRY.keys())
         log.info(f"公式: {formula_ids}")
 
         # 一次性 groupby K 线,供 signal 计算 + horizon evidence 共用

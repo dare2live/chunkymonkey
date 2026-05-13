@@ -21,10 +21,11 @@ selection:
   liquidity_min_amount_20d: 50_000_000   # 日均 < 5000 万剔除
   liquidity_max_price: 500         # 单股 > 500 元剔除
   exclude_stage: []                # 默认不按 stage 排除 (跟 portfolio_backtest 一致)
-  formula_whitelist: []            # Phase ψ.α: 空 = 不限制 (全部公式). 用于 ablation:
-                                   #   momentum 3 公式: [macd_golden_cross, turtle_breakout_20, turtle_breakout_55, dynamic_ma_iterative_cross]
-                                   #   reversal 3 公式: [reversal_1m_mild, reversal_1m_deep, reversal_1w]
-                                   #   reversal-only deep: [reversal_1m_deep]   (sharpe 1.10 horizon-evidence 最优)
+  # Phase ψ.α ablation B: 只用 reversal 公式族 (3 个, sharpe 0.3-1.10)
+  formula_whitelist:
+    - reversal_1m_mild
+    - reversal_1m_deep
+    - reversal_1w
   # backtest mode 评分简化 (跟 portfolio_backtest.py 一致, 确保两个模拟器口径对齐):
   backtest_tier_thresholds:
     strong_buy:                    # 三同时满足才 STRONG_BUY

@@ -170,17 +170,26 @@ def main():
                         help="默认 calendar-gated latest_closed_trade_date (Phase ψ.5)")
     parser.add_argument("--ablation", action="store_true",
                         help="跑 baseline + swap_v1 两个 variant 并对比")
+    parser.add_argument("--config-path", default=None,
+                        help="自定义 yaml 路径 (Phase ψ.α: paper_sim_momentum.yaml / "
+                             "paper_sim_reversal.yaml / paper_sim_reversal_deep_only.yaml 等). "
+                             "默认 backend/config/paper_sim_config.yaml.")
     args = parser.parse_args()
 
     if args.end is None:
         args.end = latest_closed_or_raise()
         log.info(f"--end 默认 (calendar-gated): {args.end}")
 
+    from pathlib import Path
+    cfg_path = Path(args.config_path) if args.config_path else None
+    if cfg_path:
+        log.info(f"--config-path: {cfg_path}")
+
     if args.ablation:
         # baseline: swap.enabled = False
-        cfg_baseline = load_config(override={"swap": {"enabled": False}})
+        cfg_baseline = load_config(path=cfg_path, override={"swap": {"enabled": False}})
         # swap_v1: 默认 config
-        cfg_swap = load_config()
+        cfg_swap = load_config(path=cfg_path)
 
         baseline = run_walk_forward("baseline", args.start, args.end, cfg_baseline)
         swap_v1 = run_walk_forward("swap_v1", args.start, args.end, cfg_swap)
@@ -190,9 +199,9 @@ def main():
         _ablation_compare(baseline, swap_v1, cfg_swap)
     else:
         if args.variant == "baseline":
-            cfg = load_config(override={"swap": {"enabled": False}})
+            cfg = load_config(path=cfg_path, override={"swap": {"enabled": False}})
         else:
-            cfg = load_config()
+            cfg = load_config(path=cfg_path)
         summary = run_walk_forward(args.variant, args.start, args.end, cfg)
         _print_kpi(summary, args.variant.upper())
 

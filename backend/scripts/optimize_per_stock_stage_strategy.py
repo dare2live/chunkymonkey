@@ -130,6 +130,10 @@ def main():
                         help=f"时序切分模式 (默认 cfg.walk_forward.default_mode="
                              f"{cfg.walk_forward.default_mode}). "
                              f"none=旧 in-sample fit (governance 拒入业务表, 仅调试).")
+    parser.add_argument("--formula", nargs="+", default=None,
+                        help="只跑指定公式 (多个空格分隔), e.g., "
+                             "--formula reversal_1m_deep reversal_1m_mild. "
+                             "默认跑全部公式. 不重 DELETE 其他公式 — 增量 UPSERT 同表.")
     args = parser.parse_args()
 
     if args.end is None:
@@ -148,15 +152,23 @@ def main():
     mkt = duckdb.connect(str(MARKET_DB), read_only=True)
     mkt.execute(f"ATTACH '{SMART_DB}' AS sm (READ_ONLY)")
     log.info("加载 signals × context.stage ...")
+    formula_filter_sql = ""
+    formula_filter_params: list = []
+    if args.formula:
+        placeholders = ",".join(["?"] * len(args.formula))
+        formula_filter_sql = f" AND t.formula_id IN ({placeholders})"
+        formula_filter_params = list(args.formula)
+        log.info(f"  --formula 过滤: {args.formula}")
     sigs = mkt.execute(
-        """SELECT t.stock_code, t.date, t.formula_id, t.formula_variant,
+        f"""SELECT t.stock_code, t.date, t.formula_id, t.formula_variant,
                   COALESCE(c.technical_stage, '?') AS stage
              FROM sm.fact_technical_trigger t
              LEFT JOIN sm.fact_signal_context c
                ON c.stock_code = t.stock_code AND c.date = t.date
             WHERE t.date >= ? AND t.date <= ?
+              {formula_filter_sql}
             ORDER BY t.stock_code, t.formula_variant, t.date""",
-        [args.start, args.end],
+        [args.start, args.end] + formula_filter_params,
     ).fetchall()
     n_raw = len(sigs)
     sigs = [r for r in sigs if not is_index_code(r[0]) and r[4] in ("1", "1.5", "2", "3", "4")]
@@ -282,7 +294,15 @@ def main():
         table = cfg.output.stage_optimal_table
         conn.execute("BEGIN TRANSACTION")
         try:
-            conn.execute(f"DELETE FROM {table}")
+            # Phase ψ.α: 增量删除 — 只清本次跑的 formula_id 行, 不动其他公式数据
+            if args.formula:
+                placeholders = ",".join(["?"] * len(args.formula))
+                conn.execute(f"DELETE FROM {table} WHERE formula_id IN ({placeholders})",
+                             list(args.formula))
+                log.info(f"  增量 DELETE {table} WHERE formula_id IN {args.formula}")
+            else:
+                conn.execute(f"DELETE FROM {table}")
+                log.info(f"  全量 DELETE FROM {table}")
             conn.executemany(
                 f"""INSERT INTO {table} (
                     stock_code, formula_id, formula_variant, stage_filter,

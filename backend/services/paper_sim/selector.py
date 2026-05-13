@@ -121,47 +121,60 @@ def load_today_candidates_inline(
     sb_th = th["strong_buy"]
     by_th = th["buy"]
 
-    # Phase ψ: 用 OOS metrics 排名 (anti-leakage). COALESCE 顺序:
-    #   sopt 有 OOS → 用 OOS;  sopt 无 OOS (旧 in-sample fit 行) → 退到 in-sample (兼容期);
-    #   sopt 不存在 → opt (cross-stage 兜底, 也优先 OOS)
-    # 期望: Optuna 重跑 (含 P3.5 OOS) 后, sopt.oos_sharpe 都有值, 业务代码完全脱离 in-sample.
+    # Phase ψ.α B: 严格 walk-forward selector (0 leakage)
+    #   - 用 mart_per_formula_stage_optimal (per-formula × stage × train_end_date 多行)
+    #   - JOIN WHERE train_end_date <= signal_date — 在历史 t 时只能用 t-1 之前训出的 params
+    #   - ORDER BY train_end_date DESC LIMIT 1 — 取最近一版 best params
+    #   - 排名: 不用 mart.sharpe (会含 leakage), 用 t.strength DESC (公式当日 strength)
+    #
+    # 注意: cross-stage fallback (opt) 暂不接 — 反转策略 stage 是关键, 不该 fallback.
+    # Phase ψ.α: formula_whitelist 过滤
+    formula_filter_sql = ""
+    formula_filter_params: list = []
+    if cfg.formula_whitelist:
+        ph = ",".join(["?"] * len(cfg.formula_whitelist))
+        formula_filter_sql = f" AND t.formula_id IN ({ph})"
+        formula_filter_params = list(cfg.formula_whitelist)
     rows = conn.execute(
-        """
+        f"""
+        WITH latest_train_end AS (
+          SELECT formula_id, formula_variant, stage_filter,
+                 MAX(train_end_date) AS train_end_date
+            FROM mart_per_formula_stage_optimal
+           WHERE train_end_date <= ?
+           GROUP BY 1, 2, 3
+        )
         SELECT t.date, t.stock_code, t.formula_id, t.formula_variant,
                COALESCE(c.technical_stage, '?') AS stage,
-               COALESCE(sopt.optimal_hp, opt.optimal_hp) AS opt_hp,
-               COALESCE(sopt.optimal_stop_pct, opt.optimal_stop_pct) AS opt_stop,
-               COALESCE(sopt.optimal_target_pct, opt.optimal_target_pct) AS opt_target,
-               COALESCE(sopt.optimal_trailing_pct, opt.optimal_trailing_pct) AS opt_trail,
-               -- Phase ψ: 优先 sopt.oos_*, 退 sopt 旧 in-sample, 再退 opt (cross-stage 兜底)
-               COALESCE(sopt.oos_sharpe, sopt.sharpe, opt.sharpe) AS sharpe,
-               COALESCE(sopt.oos_win_rate, sopt.win_rate, opt.win_rate) AS win_rate,
-               COALESCE(sopt.optimal_calmar, opt.optimal_calmar) AS calmar,
-               COALESCE(sopt.oos_avg_ret, sopt.avg_ret, opt.avg_ret) AS avg_ret,
-               CASE WHEN sopt.stock_code IS NOT NULL THEN 'stage_aware'
-                    ELSE 'cross_stage_fallback' END AS source_tier
+               pfo.optimal_hp        AS opt_hp,
+               pfo.optimal_stop_pct  AS opt_stop,
+               pfo.optimal_target_pct AS opt_target,
+               pfo.optimal_trailing_pct AS opt_trail,
+               -- 仅用于 tier 评级 (走 backtest_tier_thresholds), 不影响 selection bias:
+               --   不再 ORDER BY oos_sharpe; selection 排名走 t.strength DESC 在下游 sort
+               pfo.oos_sharpe        AS sharpe,
+               pfo.oos_win_rate      AS win_rate,
+               pfo.in_sample_calmar  AS calmar,
+               pfo.oos_avg_ret       AS avg_ret,
+               'walk_forward_global' AS source_tier,
+               -- 关键: 当日 strength 用于排名 (公式当日算的, 0 leakage)
+               t.strength            AS today_strength
           FROM fact_technical_trigger t
           LEFT JOIN fact_signal_context c
             ON c.stock_code = t.stock_code AND c.date = t.date
-          LEFT JOIN mart_per_stock_stage_strategy_optimal sopt
-            ON sopt.stock_code = t.stock_code
-           AND sopt.formula_id = t.formula_id
-           AND sopt.formula_variant = t.formula_variant
-           AND sopt.stage_filter = c.technical_stage
-           AND abs(COALESCE(sopt.oos_avg_ret, sopt.avg_ret)) <= 0.5
-           AND sopt.avg_max_dd >= -0.5
-           AND abs(COALESCE(sopt.oos_sharpe, sopt.sharpe)) <= 10
-           AND COALESCE(sopt.oos_win_rate, sopt.win_rate) >= 0.5
-          LEFT JOIN mart_per_stock_strategy_optimal opt
-            ON opt.stock_code = t.stock_code
-           AND opt.formula_id = t.formula_id
-           AND opt.formula_variant = t.formula_variant
-           AND abs(opt.avg_ret) <= 0.5 AND opt.avg_max_dd >= -0.5
-           AND abs(opt.sharpe) <= 10 AND opt.win_rate >= 0.5
+          JOIN latest_train_end lte
+            ON lte.formula_id      = t.formula_id
+           AND lte.formula_variant = t.formula_variant
+           AND lte.stage_filter    = COALESCE(c.technical_stage, '?')
+          JOIN mart_per_formula_stage_optimal pfo
+            ON pfo.formula_id      = lte.formula_id
+           AND pfo.formula_variant = lte.formula_variant
+           AND pfo.stage_filter    = lte.stage_filter
+           AND pfo.train_end_date  = lte.train_end_date
          WHERE t.date = ?
-           AND (sopt.stock_code IS NOT NULL OR opt.stock_code IS NOT NULL)
+           {formula_filter_sql}
         """,
-        [signal_date],
+        [signal_date, signal_date] + formula_filter_params,
     ).fetchall()
 
     out: list[CandidateRow] = []
@@ -170,7 +183,8 @@ def load_today_candidates_inline(
         win = r[10] or 0
         calmar = r[11] or 0
         avg_ret = r[12] or 0
-        # 简化 tier (跟 portfolio_backtest.py 一致)
+        today_strength = r[14] or 0   # 当日 strength (公式当日算, 0 leakage)
+        # tier (用 oos metric 评级 — oos 来自 train_end 当时的 forward 60d 实测, 0 leakage)
         if (sharpe >= sb_th["sharpe_min"]
                 and win >= sb_th["win_rate_min"]
                 and calmar >= sb_th["calmar_min"]):
@@ -182,8 +196,10 @@ def load_today_candidates_inline(
         # min_tier_to_buy 过滤
         if cfg.min_tier_to_buy == "STRONG_BUY" and tier != "STRONG_BUY":
             continue
-        # score: STRONG_BUY 用 sharpe×100, BUY 用 sharpe×50
-        score = sharpe * (100 if tier == "STRONG_BUY" else 50)
+        # Phase ψ.α B 排名: 用 today_strength × tier_multiplier, 不用 sharpe (避免 selection leakage)
+        # STRONG_BUY 候选 × 1.5, BUY × 1.0
+        tier_mul = 1.5 if tier == "STRONG_BUY" else 1.0
+        score = today_strength * tier_mul
         if cfg.exclude_stage and r[4] in cfg.exclude_stage:
             continue
         out.append(CandidateRow(
