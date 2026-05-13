@@ -1,0 +1,166 @@
+## paper_sim_ensemble.yaml — Phase ψ.β.4 多 alpha ensemble 模式
+##
+## 用法: PYTHONPATH=backend python backend/scripts/run_paper_sim_v2.py \
+##         --config-path backend/config/paper_sim_ensemble.yaml --ablation
+##
+## 设计原则 (CLAUDE.md Rule 7/8/9 严格 PIT + 真金白银):
+## - 每个 alpha 数据源都是 PIT 时序 (audit 验证)
+## - selector 在 t 时刻只 JOIN ≤ t 数据, 不偷看未来
+## - alpha zscore 归一化后加权综合, 不直接用绝对值排序
+
+# ─── 资金 / 持仓 (跟 baseline 一致) ───
+portfolio:
+  initial_cash: 1_000_000
+  max_positions: 5
+  cash_when_strong_buy_lt: 5
+  position_sizing: "wilson_kelly"
+  min_cash_pct: 0.05
+
+# ─── 候选选股 (ensemble 模式) ───
+selection:
+  mode: "ensemble"                       # 新模式: 跨 alpha 综合排名
+  candidate_source: "mart_daily_position_recommendation"   # 不用
+  rank_by: "ensemble_score"
+  min_tier_to_buy: "BUY"
+  min_tier_to_swap_in: "STRONG_BUY"
+  liquidity_min_amount_20d: 50_000_000
+  liquidity_max_price: 500
+  exclude_stage: []
+  formula_whitelist: []                  # ensemble mode 不限公式
+  backtest_tier_thresholds:              # 仅 fallback 用 (ensemble mode 直接 zscore)
+    strong_buy: {sharpe_min: 0.5, win_rate_min: 0.55, calmar_min: 0.5}
+    buy:        {sharpe_min: 0.2, win_rate_min: 0.50}
+
+  # ── Ensemble alphas (核心配置) ──
+  # 每个 alpha 一行: name / weight / source_table / source_col / direction / pit_key
+  # direction: +1 = 越大越好, -1 = 越小越好 (zscore 后取负)
+  # pit_key: JOIN 条件 — paper_sim 选股时 WHERE pit_key <= signal_date
+  ensemble_alphas:
+    # ─── 技术: 短期反转 ⭐ Phase ψ.α 实测 OOS sharpe 0.39 ───
+    - name: "reversal_signal"
+      weight: 0.20
+      source_table: "fact_technical_trigger"
+      source_col: "strength"             # 公式当日 strength, 0 leakage
+      direction: 1
+      pit_key: "date"                    # signal date 本身就是 PIT
+      filter_formula_ids: ["reversal_1m_deep", "reversal_1m_mild"]  # 主用 deep
+    # ─── 风险因子 (Phase ψ.β.1) ───
+    - name: "sharpe_60d"
+      weight: 0.15
+      source_table: "fact_risk_factors"
+      source_col: "sharpe_60d"
+      direction: 1
+      pit_key: "calc_date"
+    - name: "mom_30d"                    # 短期动量
+      weight: 0.05
+      source_table: "fact_risk_factors"
+      source_col: "mom_30d"
+      direction: 1
+      pit_key: "calc_date"
+    - name: "vol_60d"                    # 低波动偏好
+      weight: 0.05
+      source_table: "fact_risk_factors"
+      source_col: "vol_60d"
+      direction: -1                      # 越低越好
+      pit_key: "calc_date"
+    # ─── 基本面 / 估值 (Phase ψ.β.2) ───
+    - name: "pe_ttm_inv"
+      weight: 0.10
+      source_table: "fact_financial_pit_daily"
+      source_col: "pe_ttm"
+      direction: -1                      # 越低越便宜
+      pit_key: "trade_date"
+      filter: "pe_ttm > 0 AND pe_ttm < 100"   # 排除负 PE / 超贵
+    - name: "roe_q"
+      weight: 0.10
+      source_table: "fact_financial_pit_daily"
+      source_col: "roe_q"
+      direction: 1
+      pit_key: "trade_date"
+    - name: "profit_yoy"
+      weight: 0.05
+      source_table: "fact_financial_pit_daily"
+      source_col: "profit_yoy"
+      direction: 1
+      pit_key: "trade_date"
+    # ─── 资金流 (Phase ψ.β.3) ───
+    - name: "lhb_inst_buy_30d"
+      weight: 0.15
+      source_table: "fact_capital_flow_pit_daily"
+      source_col: "lhb_inst_buy_30d"
+      direction: 1
+      pit_key: "trade_date"
+    - name: "exec_net_signal"
+      weight: 0.10                       # 高管净增持信号
+      source_table: "fact_capital_flow_pit_daily"
+      source_col: "exec_net_signal"
+      direction: 1
+      pit_key: "trade_date"
+    - name: "holder_count_change_q"
+      weight: 0.05                       # 股东户数减少 = 筹码集中
+      source_table: "fact_capital_flow_pit_daily"
+      source_col: "holder_count_change_q_pct"
+      direction: -1                      # 越降越好
+      pit_key: "trade_date"
+
+  # ── 大盘 regime gate (fact_regime_state) ──
+  regime_gate:
+    enabled: true
+    source_table: "fact_regime_state"
+    pit_key: "trade_date"
+    # 不同 regime 调整 ensemble 总分
+    bear_multiplier: 0.3                 # bear regime: 降低买入门槛
+    sideways_multiplier: 0.7
+    bull_multiplier: 1.0
+
+# ─── 退出 / Swap / 风险 / Tx cost (跟 baseline 一致) ───
+exit:
+  use_optuna_stop: true
+  use_optuna_target: true
+  use_optuna_trailing: true
+  use_optuna_hp: true
+  stage_deterioration_sell: true
+
+swap:
+  enabled: true
+  severe_threshold: 0.5
+  candidate_must_close_gap: true
+  gap_buffer_pct: 0.0035
+  min_holding_days_before_swap: 3
+  max_swaps_per_day: 2
+
+tx_cost:
+  commission_pct: 0.00025
+  commission_min_cny: 5.0
+  stamp_duty_sell_pct: 0.0005
+  transfer_fee_sh_pct: 0.00002
+  slippage_pct: 0.001
+
+risk:
+  daily_dd_warning_pct: -0.03
+  max_dd_hard_stop_pct: -0.10
+  hard_stop_freeze_days: 5
+
+validation:
+  user_criteria:
+    annual_return_min: 0.30
+    max_dd_min: -0.20
+    excess_vs_hs300_min: 0.0
+    monthly_win_rate_min: 0.55
+  anti_churn:
+    avg_holding_days_min: 5
+    annual_turnover_max: 8.0
+    tx_cost_pct_of_gross_pnl_max: 0.10
+    swap_uplift_must_be_positive: true
+  robustness:
+    rolling_ir_60d_p25_min: 0.0
+    rolling_annual_90d_median_min: 0.05
+    regime_bull_min: 0.05
+    regime_bear_min: -0.20
+    regime_sideways_min: -0.05
+
+data:
+  trading_calendar_table: "dim_trading_calendar"
+  daily_recommendation_table: "mart_daily_position_recommendation"
+  kline_table: "v_price_kline_qfq"
+  market_index: "000300"
