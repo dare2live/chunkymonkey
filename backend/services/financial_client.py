@@ -119,7 +119,10 @@ def ensure_tables(conn):
             PRIMARY KEY (stock_code, report_date)
         );
         CREATE INDEX IF NOT EXISTS idx_rgf_report ON raw_gpcw_financial(report_date);
-        CREATE INDEX IF NOT EXISTS idx_rgf_stock_report ON raw_gpcw_financial(stock_code, report_date);
+        -- Phase ψ.5 根因 2 修复: idx_rgf_stock_report 跟 PRIMARY KEY (stock_code, report_date)
+        -- 完全冗余, 删掉以消除 DuckDB ON CONFLICT 时 secondary index 不一致的风险面.
+        -- (老 DB 文件如已有该索引, 在 services/db_health.drop_redundant_indexes() 启动时清理.)
+        -- CREATE INDEX IF NOT EXISTS idx_rgf_stock_report ON raw_gpcw_financial(stock_code, report_date);
 
         -- 事实层：派生财务指标（可重算）
         CREATE TABLE IF NOT EXISTS fact_financial_derived (
@@ -725,18 +728,37 @@ def _resolve_snapshot_report_date(conn, stock_code: str, notice_date: Optional[s
 
 
 def _cleanup_snapshot_stub(conn, stock_code: str, notice_date: Optional[str], report_date: Optional[str]) -> None:
+    """Phase ψ.5 根因 2 修复: DELETE 改走 rowid.
+
+    原写法 (DELETE WHERE 列条件) 会经过 ART secondary index. DuckDB 偶发的
+    "Failed to delete all rows from index. Only deleted 0 out of 1 rows" 来自
+    index 跟 storage 不一致时索引说有但 storage 找不到 (phantom).
+
+    新写法: 先 SELECT rowid 走 PK 查询拿物理位置, 再 DELETE WHERE rowid IN (...).
+    rowid 直接定位 storage row, 不依赖 secondary index, 也不会触发 phantom FATAL.
+    若索引真有 phantom, SELECT 返回空集, DELETE 0 行, sync 继续 — 而不是整库 FATAL.
+    """
     notice = _normalize_date(notice_date)
     if not notice or not report_date:
         return
+    rowids = [
+        r[0] for r in conn.execute(
+            """
+            SELECT rowid FROM raw_gpcw_financial
+            WHERE stock_code = ?
+              AND report_type = 'latest_snapshot'
+              AND notice_date = ?
+              AND report_date != ?
+            """,
+            (stock_code, notice, report_date),
+        ).fetchall()
+    ]
+    if not rowids:
+        return
+    placeholders = ",".join("?" for _ in rowids)
     conn.execute(
-        """
-        DELETE FROM raw_gpcw_financial
-        WHERE stock_code = ?
-          AND report_type = 'latest_snapshot'
-          AND notice_date = ?
-          AND report_date != ?
-        """,
-        (stock_code, notice, report_date),
+        f"DELETE FROM raw_gpcw_financial WHERE rowid IN ({placeholders})",
+        rowids,
     )
 
 

@@ -57,6 +57,31 @@ except Exception:
 # FastAPI app
 app = FastAPI(title="Chunky Monkey v2", version="2.0.0")
 
+
+@app.on_event("startup")
+async def _db_health_check():
+    """Phase ψ.5 根因 2: 启动时跑 DB 索引一致性检查 + 清冗余索引.
+
+    DuckDB ART secondary index 在 ON CONFLICT DO UPDATE / 异常中断写入时偶发
+    跟 storage 不一致 (phantom rows in index). 启动检测可避免运行后 sync 路径
+    因 phantom 触发 FATAL invalidate.
+    """
+    try:
+        from services.db import get_conn
+        from services.db_health import run_startup_checks
+        _c = get_conn()
+        try:
+            summary = run_startup_checks(_c)
+        finally:
+            _c.close()
+        import logging
+        logging.getLogger("cm-startup").info("[db_health] startup checks: %s", summary)
+    except Exception as exc:
+        import logging
+        # 索引在 REINDEX 后仍不一致才会抛 — 拒绝静默吞掉 (Rule 5: 不打补丁)
+        logging.getLogger("cm-startup").error("[db_health] startup checks FAILED: %s", exc)
+        raise
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
