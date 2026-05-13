@@ -457,3 +457,89 @@ async def formula_stage_fitness(formula_variant: str):
         }
     finally:
         conn.close()
+
+
+# ============ 6. STOCK STAGE-OPTIMAL MATRIX (Phase η+++++++, ψ.3) ============
+@router.get("/stock/{stock_code}/stage-optimal")
+async def stock_stage_optimal(stock_code: str):
+    """单股 stage × formula 9-dim Optuna 寻优矩阵 (Phase η+++++++).
+
+    数据源: mart_per_stock_stage_strategy_optimal (17,663 行, 按 stock × variant × stage 寻优).
+    展示该股每个 stage 下每个公式的最佳 9 维参数 + 真实 metrics.
+    """
+    conn = get_conn()
+    try:
+        if not _table_exists(conn, "mart_per_stock_stage_strategy_optimal"):
+            return {"ok": True, "stock_code": stock_code, "matrix": [],
+                    "message": "mart_per_stock_stage_strategy_optimal 未生成"}
+
+        rows = conn.execute(
+            """SELECT stage_filter, formula_id, formula_variant,
+                      optimal_hp, optimal_stop_pct, optimal_target_pct,
+                      optimal_trailing_pct, optimal_buy_offset,
+                      optimal_body_ratio_min, optimal_lower_shadow_min,
+                      optimal_close_position_min, optimal_volume_relative_min,
+                      n_traded, win_rate, avg_ret, avg_max_dd,
+                      sharpe, calmar, optimal_sortino,
+                      pct_exit_target, pct_exit_stop, pct_exit_trailing, pct_exit_hp
+                 FROM mart_per_stock_stage_strategy_optimal
+                WHERE stock_code = ?
+                  AND abs(avg_ret) <= 0.5 AND avg_max_dd >= -0.5 AND abs(sharpe) <= 10
+                ORDER BY stage_filter, sharpe DESC NULLS LAST""",
+            [stock_code],
+        ).fetchall()
+
+        matrix = [{
+            "stage": r[0], "formula_id": r[1], "formula_variant": r[2],
+            "params": {
+                "hp": r[3], "stop_pct": r[4], "target_pct": r[5],
+                "trailing_pct": r[6], "buy_offset": r[7],
+                "body_ratio_min": r[8], "lower_shadow_min": r[9],
+                "close_position_min": r[10], "volume_relative_min": r[11],
+            },
+            "metrics": {
+                "n_traded": r[12], "win_rate": r[13],
+                "avg_ret": r[14], "avg_dd": r[15],
+                "sharpe": r[16], "calmar": r[17], "sortino": r[18],
+            },
+            "exit_breakdown": {
+                "target": r[19], "stop": r[20], "trailing": r[21], "hp": r[22],
+            },
+        } for r in rows]
+
+        # best per stage (跨 formula 选 sharpe 最高)
+        best_per_stage: dict = {}
+        for r in matrix:
+            k = r["stage"]
+            if k not in best_per_stage or (r["metrics"]["sharpe"] or 0) > (best_per_stage[k]["metrics"]["sharpe"] or 0):
+                best_per_stage[k] = r
+
+        # cross-stage fallback (旧 cross-stage 表)
+        fallback = []
+        if _table_exists(conn, "mart_per_stock_strategy_optimal"):
+            fb_rows = conn.execute(
+                """SELECT formula_id, formula_variant, optimal_hp,
+                          n_traded, win_rate, avg_ret, avg_max_dd, sharpe, calmar
+                     FROM mart_per_stock_strategy_optimal
+                    WHERE stock_code = ?
+                      AND abs(avg_ret) <= 0.5 AND avg_max_dd >= -0.5 AND abs(sharpe) <= 10
+                    ORDER BY sharpe DESC NULLS LAST""",
+                [stock_code],
+            ).fetchall()
+            fallback = [{
+                "formula_id": r[0], "formula_variant": r[1],
+                "hp": r[2], "n_traded": r[3], "win_rate": r[4],
+                "avg_ret": r[5], "avg_dd": r[6], "sharpe": r[7], "calmar": r[8],
+            } for r in fb_rows]
+
+        return {
+            "ok": True,
+            "stock_code": stock_code,
+            "stage_aware_matrix": matrix,
+            "best_per_stage": list(best_per_stage.values()),
+            "cross_stage_fallback": fallback,
+            "n_stage_aware": len(matrix),
+            "n_cross_stage_fallback": len(fallback),
+        }
+    finally:
+        conn.close()

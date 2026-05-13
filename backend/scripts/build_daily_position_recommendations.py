@@ -123,10 +123,10 @@ def main():
             )
             return f"CASE {cases} ELSE '?' END"
 
-        log.info("加载今日触发 × per-stock Optuna 寻优结果 (Phase ζ) ...")
-        # Phase ζ 改造: 切换数据源到 mart_per_stock_strategy_optimal
-        # 每股每 variant 已用 Optuna 寻优出最佳 (hp, stop, target, trailing) + 真实 metrics
-        # 不再分 Tier A/B — Optuna 已用全部信号寻优, 桶维度仅作展示/分析
+        log.info("加载今日触发 × stage-aware Optuna 寻优结果 (ψ.2 = η+++++++ live 切换) ...")
+        # ψ.2 改造: 切到 stage-aware tier-1 (mart_per_stock_stage_strategy_optimal, 17,663 行
+        #  按 stock × variant × stage 寻优), tier-2 fallback 用旧 cross-stage 表
+        # —— 与 portfolio_backtest.py 同一 pattern, 保证 live 推荐与回测一致
         BUCKET_MIN_N = 10  # 保留参数 (UI 展示需要)
 
         candidates_raw = conn.execute(
@@ -142,26 +142,38 @@ def main():
                   ON c.stock_code = t.stock_code AND c.date = t.date
                WHERE t.date = ?
             )
-            -- Phase ζ: 直接 JOIN mart_per_stock_strategy_optimal (每股每 variant 一行 Optuna 最佳)
+            -- η+++++++ tier-1: stage-aware optimal, fallback: cross-stage optimal
             SELECT ts.stock_code, ts.formula_id, ts.formula_variant,
                    ts.vol_bin, ts.amt_bin, ts.p60_bin, ts.stage_bin,
-                   opt.optimal_hp        AS holding_days,
-                   opt.n_traded          AS n_signals,
-                   opt.win_rate, opt.avg_ret, opt.avg_max_dd AS avg_dd,
-                   opt.sharpe, opt.calmar,
-                   'optuna_per_stock'    AS match_tier,
-                   opt.optimal_stop_pct, opt.optimal_target_pct, opt.optimal_trailing_pct,
+                   COALESCE(sopt.optimal_hp,           opt.optimal_hp)           AS holding_days,
+                   COALESCE(sopt.n_traded,             opt.n_traded)             AS n_signals,
+                   COALESCE(sopt.win_rate,             opt.win_rate)             AS win_rate,
+                   COALESCE(sopt.avg_ret,              opt.avg_ret)              AS avg_ret,
+                   COALESCE(sopt.avg_max_dd,           opt.avg_max_dd)           AS avg_dd,
+                   COALESCE(sopt.sharpe,               opt.sharpe)               AS sharpe,
+                   COALESCE(sopt.calmar,               opt.calmar)               AS calmar,
+                   CASE WHEN sopt.stock_code IS NOT NULL THEN 'stage_aware'
+                        ELSE 'cross_stage_fallback' END                          AS match_tier,
+                   COALESCE(sopt.optimal_stop_pct,     opt.optimal_stop_pct)     AS optimal_stop_pct,
+                   COALESCE(sopt.optimal_target_pct,   opt.optimal_target_pct)   AS optimal_target_pct,
+                   COALESCE(sopt.optimal_trailing_pct, opt.optimal_trailing_pct) AS optimal_trailing_pct,
                    p.fundamental_stage, p.latest_close,
                    COALESCE(sf.survey_bin, '冷')     AS survey_bin,
                    COALESCE(sf.survey_count_60d, 0)  AS survey_count_60d
               FROM today_signals ts
-              JOIN mart_per_stock_strategy_optimal opt
-                ON opt.stock_code = ts.stock_code
-               AND opt.formula_id = ts.formula_id
+              LEFT JOIN mart_per_stock_stage_strategy_optimal sopt
+                ON sopt.stock_code      = ts.stock_code
+               AND sopt.formula_id      = ts.formula_id
+               AND sopt.formula_variant = ts.formula_variant
+               AND sopt.stage_filter    = ts.stage_bin
+               -- audit fix: filter ret/dd/sharpe 异常值
+               AND abs(sopt.avg_ret) <= 0.5 AND sopt.avg_max_dd >= -0.5
+               AND abs(sopt.sharpe) <= 10
+              LEFT JOIN mart_per_stock_strategy_optimal opt
+                ON opt.stock_code      = ts.stock_code
+               AND opt.formula_id      = ts.formula_id
                AND opt.formula_variant = ts.formula_variant
-               -- audit fix: filter ret/dd/sharpe 异常值 (复权 spike + std≈0 虚假高 sharpe)
-               AND abs(opt.avg_ret) <= 0.5
-               AND opt.avg_max_dd >= -0.5
+               AND abs(opt.avg_ret) <= 0.5 AND opt.avg_max_dd >= -0.5
                AND abs(opt.sharpe) <= 10
               LEFT JOIN mart_stock_picture_daily p
                 ON p.stock_code = ts.stock_code
@@ -169,10 +181,17 @@ def main():
               LEFT JOIN mart_stock_survey_features sf
                 ON sf.stock_code = ts.stock_code
                AND sf.as_of_date = ?
+             WHERE (sopt.stock_code IS NOT NULL OR opt.stock_code IS NOT NULL)
             """,
             [signal_date, signal_date],
         ).fetchall()
-        log.info(f"  原始候选: {len(candidates_raw)} 条 (each = per-stock Optuna 最优 hp 唯一一行)")
+        # 报告 stage-aware 命中 vs fallback 占比
+        n_stage_aware = sum(1 for r in candidates_raw if r[14] == "stage_aware")
+        n_fallback = len(candidates_raw) - n_stage_aware
+        log.info(
+            f"  原始候选: {len(candidates_raw)} 条 "
+            f"(stage_aware tier-1 = {n_stage_aware}, cross_stage tier-2 fallback = {n_fallback})"
+        )
 
         # 4. 转 dict, 加 signal_close 字段
         candidates = []

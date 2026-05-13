@@ -3,15 +3,22 @@
 端点:
   GET /api/v3/portfolio/profiles            — 3 个 profile 参数表
   GET /api/v3/portfolio/recommendations     — 每日推荐 (按 profile 过滤)
+  GET /api/v3/portfolio/backtest            — Phase η+++++++ walk-forward NAV + KPI + regime
 """
 from __future__ import annotations
 
+import csv
 import logging
+from pathlib import Path
 from typing import Any
 
 from fastapi import APIRouter, Query, HTTPException
 
 from services.db import get_conn
+
+
+# 与 scripts/portfolio_backtest.py 同一路径 (output of walk-forward backtest)
+NAV_CSV_PATH = Path(__file__).resolve().parents[2] / "data" / "portfolio_backtest_nav.csv"
 
 logger = logging.getLogger("cm-api.v3-portfolio-builder")
 router = APIRouter()
@@ -236,3 +243,142 @@ async def get_recommendations(
         }
     finally:
         conn.close()
+
+
+# ============ Phase η+++++++ ψ.3 — walk-forward backtest endpoint ============
+@router.get("/backtest")
+async def get_portfolio_backtest(
+    start: str | None = Query(None, description="过滤起始日 (YYYY-MM-DD)"),
+    end:   str | None = Query(None, description="过滤结束日 (YYYY-MM-DD)"),
+    sample: int = Query(0, ge=0, le=10000, description=">0 时下采样到该点数 (用于 UI 性能)"),
+):
+    """Phase η+++++++ walk-forward portfolio backtest 完整结果.
+
+    数据源: scripts/portfolio_backtest.py 输出的 NAV CSV (策略 vs HS300).
+    实时算 KPI + regime + excess alpha — 不存中间表, 每次请求重算 (~10ms).
+
+    返回:
+      - nav_curve: 日级 (date, strategy_nav, benchmark_nav, excess_pct)
+      - metrics: 年化 / max_dd / Sharpe / Calmar / IR / monthly_win / total_return
+      - regime_segments: 牛/熊/震荡 各段平均收益 (HS300 60d 阈值)
+      - user_criteria: 用户 3 个 PASS 标准的 ✅/❌
+    """
+    if not NAV_CSV_PATH.exists():
+        return {
+            "ok": False,
+            "message": f"NAV CSV 未生成 (期望路径: {NAV_CSV_PATH}). 先跑 scripts/portfolio_backtest.py.",
+            "nav_curve": [], "metrics": {}, "regime_segments": [],
+        }
+
+    # 1. 读 CSV
+    dates: list[str] = []
+    s_navs: list[float] = []
+    b_navs: list[float] = []
+    with open(NAV_CSV_PATH, newline="") as f:
+        for row in csv.DictReader(f):
+            d = row["date"]
+            if start and d < start:
+                continue
+            if end and d > end:
+                continue
+            dates.append(d)
+            s_navs.append(float(row["strategy_nav"]))
+            b_navs.append(float(row["benchmark_nav"]))
+
+    if len(s_navs) < 2:
+        return {"ok": False, "message": "NAV 数据太少 (<2 行)", "nav_curve": [], "metrics": {}}
+
+    # 2. 实时算 metrics + excess alpha
+    from services.portfolio_walk_forward.metrics import compute_metrics, compute_excess_alpha
+    m_strategy = compute_metrics(s_navs)
+    m_benchmark = compute_metrics(b_navs)
+    excess = compute_excess_alpha(s_navs, b_navs)
+
+    # 3. regime 分段统计 (HS300 60d 回报)
+    try:
+        from services.portfolio_walk_forward.regime import classify_regime
+        regime_buckets: dict[str, list[float]] = {"bull": [], "bear": [], "sideways": []}
+        for i in range(60, len(b_navs)):
+            r60 = b_navs[i] / b_navs[i - 60] - 1
+            label = classify_regime(r60)
+            # 该日策略 vs 前 1 日的日收益
+            s_d = s_navs[i] / s_navs[i - 1] - 1
+            regime_buckets[label].append(s_d)
+        regime_segments = []
+        for label, rets in regime_buckets.items():
+            if rets:
+                # cumulative return for that regime
+                cum = 1.0
+                for r in rets:
+                    cum *= (1 + r)
+                regime_segments.append({
+                    "regime": label,
+                    "n_days": len(rets),
+                    "avg_daily_ret": sum(rets) / len(rets),
+                    "cumulative_return": cum - 1,
+                })
+            else:
+                regime_segments.append({"regime": label, "n_days": 0,
+                                         "avg_daily_ret": 0, "cumulative_return": 0})
+    except Exception as exc:
+        logger.warning("regime split failed: %s", exc)
+        regime_segments = []
+
+    # 4. 用户 3 标准 PASS 检查
+    user_criteria = {
+        "annual_return_ge_30pct":  {"target": 0.30,  "actual": m_strategy.annual_return,
+                                     "pass": m_strategy.annual_return >= 0.30},
+        "max_dd_ge_neg_20pct":     {"target": -0.20, "actual": m_strategy.max_drawdown,
+                                     "pass": m_strategy.max_drawdown >= -0.20},
+        "excess_vs_hs300_positive": {"target": 0.0,
+                                      "actual": excess.get("excess_total_return", 0),
+                                      "pass": excess.get("excess_total_return", 0) > 0},
+    }
+    all_pass = all(c["pass"] for c in user_criteria.values())
+
+    # 5. NAV 曲线 (可选下采样)
+    nav_curve = []
+    n_pts = len(dates)
+    step = max(1, n_pts // sample) if sample > 0 else 1
+    for i in range(0, n_pts, step):
+        nav_curve.append({
+            "date": dates[i],
+            "strategy_nav": s_navs[i],
+            "benchmark_nav": b_navs[i],
+            "excess_pct": (s_navs[i] / s_navs[0]) - (b_navs[i] / b_navs[0]),
+        })
+    # 确保最后一个点一定包含
+    if nav_curve and nav_curve[-1]["date"] != dates[-1]:
+        nav_curve.append({
+            "date": dates[-1],
+            "strategy_nav": s_navs[-1],
+            "benchmark_nav": b_navs[-1],
+            "excess_pct": (s_navs[-1] / s_navs[0]) - (b_navs[-1] / b_navs[0]),
+        })
+
+    return {
+        "ok": True,
+        "csv_path": str(NAV_CSV_PATH),
+        "period": {"start": dates[0], "end": dates[-1], "n_days": n_pts},
+        "metrics": {
+            "strategy": {
+                "total_return":   m_strategy.total_return,
+                "annual_return":  m_strategy.annual_return,
+                "max_drawdown":   m_strategy.max_drawdown,
+                "calmar":         m_strategy.calmar,
+                "sharpe":         m_strategy.sharpe,
+                "monthly_win_rate": m_strategy.monthly_win_rate,
+            },
+            "benchmark": {
+                "total_return":   m_benchmark.total_return,
+                "annual_return":  m_benchmark.annual_return,
+                "max_drawdown":   m_benchmark.max_drawdown,
+                "sharpe":         m_benchmark.sharpe,
+            },
+            "excess": excess,
+        },
+        "regime_segments": regime_segments,
+        "user_criteria": user_criteria,
+        "all_user_criteria_pass": all_pass,
+        "nav_curve": nav_curve,
+    }
