@@ -111,6 +111,24 @@ def _load_kline_today(mkt_conn, codes: list[str], today: str) -> dict[str, dict]
     }
 
 
+def _vwap(k: dict) -> float:
+    """当日 VWAP = amount / (volume × 100).
+
+    A 股 v_price_kline_qfq 表里:
+      - amount 单位 = 元
+      - volume 单位 = **手** (1 手 = 100 股), 不是股!
+    所以 VWAP (元/股) = amount / (volume × 100).
+    实测落在 [low, high] 范围 (跟 close 接近, 是当日加权均价).
+
+    volume=0 (停牌) 或 amount=0 → fallback close.
+    """
+    vol = k.get("volume") or 0
+    amt = k.get("amount") or 0
+    if vol > 0 and amt > 0:
+        return amt / (vol * 100)
+    return k.get("close") or 0
+
+
 def _today_stage(conn, codes: list[str], today: str) -> dict[str, str]:
     """当日 technical_stage. 用于 exit_rules.stage_deterioration_sell."""
     if not codes:
@@ -188,8 +206,8 @@ def run_paper_sim_day(
             optimal_stop_pct=p.optimal_stop_pct,
             optimal_target_pct=p.optimal_target_pct,
             optimal_trailing_pct=p.optimal_trailing_pct,
-            days_held=days_held, current_close=k["close"],
-            current_high=k.get("high", k["close"]),
+            days_held=days_held, current_close=_vwap(k),
+            current_high=k.get("high", k["close"]),    # target arm 用 high (盘中触摸到 target 就 arm)
             peak_since_entry=p.high_since_arm or p.open_price,
             trailing_armed=p.trailing_armed,
             today_stage=stage_today.get(p.stock_code),
@@ -229,22 +247,23 @@ def run_paper_sim_day(
                 stock_code=p.stock_code, entry_price=p.open_price,
                 sell_target=p.open_price * (1 + (p.expected_target_pct or 0)),
                 optimal_hp=p.optimal_hp, days_held=days_held,
-                current_price=k["close"], score_at_entry=0,
+                current_price=_vwap(k), score_at_entry=0,
             ))
         swap_decisions = rank_swap_candidates(hs_list, swap_candidates, cfg.swap)
         for d in swap_decisions:
-            # SWAP_OUT
+            # SWAP_OUT — 用当日 VWAP 卖
             p_out = next(p for p in remaining_holdings if p.stock_code == d.holding.stock_code)
             k_out = kline[p_out.stock_code]
-            _close_position(conn, p_out, today, k_out["close"], f"swap:{d.reason}",
+            sell_vwap = _vwap(k_out)
+            _close_position(conn, p_out, today, sell_vwap, f"swap:{d.reason}",
                              sim_run_id, cfg, swap_uplift=d.swap_uplift_estimate)
-            cash += compute_sell_revenue(cfg.tx_cost, k_out["close"], p_out.shares,
+            cash += compute_sell_revenue(cfg.tx_cost, sell_vwap, p_out.shares,
                                           p_out.stock_code).effective_amount
             closed_position_ids.add(p_out.position_id)
             summary["n_swaps"] += 1
-            # SWAP_IN — 直接走 _open_position
+            # SWAP_IN — 用当日 VWAP 买
             cand = next(c for c in candidates_passed if c.stock_code == d.candidate.stock_code)
-            cash = _open_position(conn, cand, today, kline[cand.stock_code]["close"],
+            cash = _open_position(conn, cand, today, _vwap(kline[cand.stock_code]),
                                    cash, sim_run_id, cfg, source="swap")
 
     # 5. 入新 (填满 max_positions)
@@ -266,7 +285,7 @@ def run_paper_sim_day(
         sizing = allocate_positions(candidates_for_new, cfg.portfolio, cash,
                                      total_capital=cash + _positions_value(conn, sim_run_id, mkt_conn, today))
         for s, c in zip(sizing, candidates_for_new):
-            buy_price = kline[c.stock_code]["close"]
+            buy_price = _vwap(kline[c.stock_code])    # 用户指定: 当日 VWAP 入场
             if buy_price <= 0 or s.target_cny <= 0:
                 continue
             shares = round_to_lots(s.target_cny, buy_price)
