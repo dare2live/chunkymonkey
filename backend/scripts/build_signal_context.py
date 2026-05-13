@@ -13,11 +13,13 @@ from __future__ import annotations
 import argparse
 import logging
 import time
-from datetime import date as _date
 from pathlib import Path
 
 import duckdb
 import numpy as np
+
+from services.db import get_conn
+from services.utils import latest_completed_trade_date
 
 
 log = logging.getLogger("build_signal_context")
@@ -52,8 +54,22 @@ def rolling_max(arr: np.ndarray, window: int) -> np.ndarray:
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--start", default="2024-01-01")
-    parser.add_argument("--end", default=_date.today().isoformat())
+    parser.add_argument("--end", default=None,
+                        help="默认走 trading_calendar.latest_closed_trading_date (盘中调时取昨日)")
     args = parser.parse_args()
+
+    if args.end is None:
+        _c = get_conn()
+        try:
+            args.end = latest_completed_trade_date(_c)
+        finally:
+            _c.close()
+        if not args.end:
+            raise RuntimeError(
+                "latest_completed_trade_date 返 None — dim_trading_calendar 未 seed, "
+                "拒绝用 wall-clock fallback"
+            )
+        log.info(f"--end 默认 (calendar-gated): {args.end}")
 
     t_total = time.time()
     log.info(f"build signal context {args.start} ~ {args.end}")

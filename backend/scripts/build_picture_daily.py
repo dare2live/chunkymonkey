@@ -53,7 +53,21 @@ logging.basicConfig(
 
 
 def _today_iso() -> str:
-    return date.today().isoformat()
+    """Phase ψ.5 根因修复: picture snapshot 默认对齐"最近已收盘交易日", 不是 wall-clock today.
+    盘中调时 snapshot_date 标昨日, 跟 K 线 / 财务等底料日期一致, 避免"今天的画像用昨天数据"错配.
+    """
+    from services.db import get_conn
+    from services.utils import latest_completed_trade_date
+    _c = get_conn()
+    try:
+        d = latest_completed_trade_date(_c)
+    finally:
+        _c.close()
+    if not d:
+        raise RuntimeError(
+            "latest_completed_trade_date 返 None — dim_trading_calendar 未 seed"
+        )
+    return d
 
 
 def _load_archetypes(conn) -> dict[str, dict]:

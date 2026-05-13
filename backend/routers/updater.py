@@ -2983,7 +2983,13 @@ async def _step_sync_market_data(conn) -> int:
         missing_d = [c for c in codes if c not in daily_price_codes]
         missing_d_set = set(missing_d)
         # 用交易日历判断：max_date < 最新已收盘交易日 → 需补差额
-        latest_trade_date = latest_completed_trade_date(conn) or datetime.now().strftime("%Y-%m-%d")
+        # Phase ψ.5: 拒绝 wall-clock fallback, 日历不可用直接 raise (而不是落入盘中数据)
+        latest_trade_date = latest_completed_trade_date(conn)
+        if not latest_trade_date:
+            raise RuntimeError(
+                "[行情同步 reconcile] latest_completed_trade_date 返 None — "
+                "dim_trading_calendar 未 seed, 拒绝用 wall-clock fallback"
+            )
         # 查询当前停牌列表（从东财停复牌接口）
         suspended_codes = set()
         try:
@@ -3037,7 +3043,17 @@ async def _step_sync_market_data(conn) -> int:
                     return "20230101"
             return "20230101"
 
-        daily_end_date = datetime.now().strftime("%Y%m%d")
+        # Phase ψ.5 根因修复: 用日历前置, 不用 wall-clock now.
+        # 盘中调 sync 应只抓到上一个已收盘交易日的 K 线, 避免盘中 tick 半成品入库.
+        # 复用 services/utils.py:latest_completed_trade_date (close_hour=16 默认更保守).
+        daily_end_iso = latest_completed_trade_date(conn)        # 'YYYY-MM-DD'
+        if not daily_end_iso:
+            raise RuntimeError(
+                "[行情同步] latest_completed_trade_date 返 None — "
+                "dim_trading_calendar 未 seed 或表损坏, 拒绝用 wall-clock fallback"
+            )
+        daily_end_date = daily_end_iso.replace("-", "")          # 'YYYYMMDD' 给上游 API
+        logger.info(f"[行情同步] 日K end_date (calendar-gated): {daily_end_iso}")
         daily_preflight = None
         daily_prefer_fallback = False
         if to_fetch_d:
@@ -3119,13 +3135,24 @@ async def _step_sync_market_data(conn) -> int:
                         prefer_fallback=daily_prefer_fallback,
                     )
                     if kline_records:
+                        # 双重防御 (Phase ψ.5): 即便上游 ignore end_date 仍返盘中 tick,
+                        # 本地强制按 daily_end_iso 上界过滤, 不让盘中半成品落库.
                         rows_data = [
                             {"code": code, "date": str(r["date"])[:10], "freq": "daily",
                              "adjust": "qfq", "open": r["open"], "high": r["high"],
                              "low": r["low"], "close": r["close"],
                              "volume": r.get("volume"), "amount": r.get("amount")}
                             for r in kline_records
+                            if str(r["date"])[:10] <= daily_end_iso
                         ]
+                        if not rows_data:
+                            # 上游全部返回的都是 daily_end_iso 之后的盘中数据, 跳过本股.
+                            failed_codes.append(code)
+                            update_sync_state(
+                                mkt_conn, code, "daily", row_count=0,
+                                error=f"all_records_after_{daily_end_iso}",
+                            )
+                            return
                         rows_written = len(rows_data)
                         write_source = normalize_kline_write_source(source)
                         if write_source.startswith("tdxhub"):

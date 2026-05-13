@@ -33,6 +33,7 @@ import duckdb
 import numpy as np
 
 from services.db import get_conn
+from services.utils import latest_completed_trade_date
 from services.formula_engine import REGISTRY
 from services.formula_engine.base import FormulaSignal
 from services.formula_engine.ddl import ensure_formula_tables
@@ -302,12 +303,25 @@ def main():
     # 全程用原生 duckdb (fetchnumpy 需要)
     mkt_conn = duckdb.connect(str(MARKET_DB_PATH), read_only=True)
     try:
-        # 确定 end
+        # 确定 end — Phase ψ.5 根因修复:
+        # 1. 用 K 线 max(date) 作为默认 (K 线已经 calendar-gated 后, 自然是 latest_closed)
+        # 2. 但是显式上界 = min(K线max, latest_completed_trade_date) 以防 K 线遗留盘中数据
+        # 3. 不再 fallback to datetime.utcnow (会引入今天日期)
         if args.end is None:
             row = mkt_conn.execute(
                 "SELECT MAX(date) FROM v_price_kline_qfq WHERE adjust='qfq'"
             ).fetchone()
-            args.end = row[0] if row else datetime.utcnow().strftime("%Y-%m-%d")
+            kline_max = row[0] if row else None
+            smart_conn = get_conn()
+            try:
+                cal_max = latest_completed_trade_date(smart_conn)
+            finally:
+                smart_conn.close()
+            if not cal_max:
+                raise RuntimeError(
+                    "latest_completed_trade_date 返 None — dim_trading_calendar 未 seed"
+                )
+            args.end = min(kline_max, cal_max) if kline_max else cal_max
         log.info(f"回测区间: {args.start} - {args.end}")
 
         formula_ids = (args.formula,) if args.formula else tuple(REGISTRY.keys())
