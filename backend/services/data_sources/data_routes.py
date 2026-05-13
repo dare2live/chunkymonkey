@@ -173,16 +173,7 @@ DATA_ROUTES = [
         "client_module": "services/qfii_client.py (P6.3 已迁)",
         "notes": "P6.3 (2026-04-28): reportName 不变 (RPT_DMSK_HOLDERS), 字段全兼容. 实测 2025Q4 不变 = 34 行",
     },
-    {
-        "data_name": "融资融券",
-        "raw_table": "raw_margin_daily",
-        "current": {"source": "akshare", "protocol": "ak.stock_margin_detail_sse / ak.stock_margin_detail_szse", "status": "connected"},
-        "target": None,
-        "freshness": "T-0",
-        "step_id": "sync_margin",
-        "client_module": "services/margin_client.py",
-        "notes": "走 akshare 库 (沪市+深市两个独立接口). 没有迁移需求.",
-    },
+    # 融资融券 entry removed Phase ψ.5 — raw_margin_daily 写完没人读
     {
         "data_name": "机构调研事件",
         "raw_table": "mart_stock_survey_activity",

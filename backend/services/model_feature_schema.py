@@ -14,7 +14,7 @@ TDX_KEEP_CHALLENGER_SCHEMA_VERSION = "m8_tdx_keep_challenger_v1"
 BASE_FEATURE_COLS = [
     "ret_1d", "ret_5d", "ret_20d", "ret_60d",
     "vol_z20d", "ma_ratio_5", "ma_ratio_20", "ma_ratio_60", "ma_ratio_250",
-    "rz_balance", "rz_chg_5d_pct",
+    # rz_balance, rz_chg_5d_pct removed Phase ψ.5 — raw_margin_daily dead
     "kmid", "klen", "kup", "klow", "ksft",
     "vol_ratio_5_20", "vol_std_5d", "vol_std_20d",
     "range_pos_20", "range_pos_60",
@@ -33,10 +33,9 @@ BASE_FEATURE_COLS = [
 
 DENSE_V2_FEATURE_COLS = [
     "ret_20d_rank", "ret_60d_rank", "vol_z20d_rank", "amount_chg_5d_rank",
-    "rz_balance_rank", "rz_chg_5d_pct_rank",
+    # rz_balance_rank, rz_chg_5d_pct_rank, rz_balance_to_amount20 removed Phase ψ.5
     "ret_20d_tdx_l1_rel", "ret_60d_tdx_l1_rel",
     "vol_z20d_tdx_l1_rel", "amount_chg_5d_tdx_l1_rel",
-    "rz_balance_to_amount20",
 ]
 
 

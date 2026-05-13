@@ -71,7 +71,7 @@ CALENDAR_DATA_FETCH_STEPS = {
     "sync_industry",
     "sync_surveys",
     "sync_qfii",
-    "sync_margin",
+    # sync_margin removed (Phase ψ.5 dead-data cleanup): 写了没人读, UI 一处 + audit 一处而已
     "sync_lhb",
     "sync_aif10_holder_count",
     "sync_aif10_valuation_quantile",
@@ -328,7 +328,7 @@ STEPS = [
     {"id": "sync_industry",         "name": "通达信行业",      "group": "data", "order": 7},
     {"id": "sync_surveys",          "name": "机构调研",        "group": "data", "order": 7.5},
     {"id": "sync_qfii",             "name": "QFII 季报",       "group": "data", "order": 7.6},
-    {"id": "sync_margin",           "name": "融资融券",        "group": "data", "order": 7.7},
+    # {"id": "sync_margin", ...} removed Phase ψ.5: dead data, see audit
     {"id": "sync_lhb",              "name": "龙虎榜",          "group": "data", "order": 7.8},
     # P1.5 (2026-04-28): 5 个妙想独家 capability sync step
     {"id": "sync_aif10_holder_count",     "name": "妙想股东人数",     "group": "data", "order": 7.81},
@@ -365,7 +365,6 @@ HARD_DEPS = {
     "sync_industry": ["sync_calendar", "match_inst"],
     "sync_surveys": ["sync_calendar"],
     "sync_qfii": ["sync_calendar"],
-    "sync_margin": ["sync_calendar"],
     "sync_lhb": ["sync_calendar"],
     "sync_aif10_holder_count": ["sync_calendar"],
     "sync_aif10_valuation_quantile": ["sync_calendar"],
@@ -426,7 +425,6 @@ STEP_BUDGET_MODEL: dict[str, dict] = {
     "sync_industry":                   {"base":  60, "per_day": 10, "max":  180},
     "sync_surveys":                    {"base":  90, "per_day": 15, "max":  240},
     "sync_qfii":                       {"base":  90, "per_day": 10, "max":  180},
-    "sync_margin":                     {"base":  90, "per_day": 10, "max":  180},
     "sync_lhb":                        {"base":  90, "per_day": 10, "max":  180},
     "sync_aif10_holder_count":         {"base":  90, "per_day": 10, "max":  180},
     "sync_aif10_valuation_quantile":   {"base":  90, "per_day": 10, "max":  180},
@@ -480,7 +478,6 @@ STEP_SOURCE_DOMAINS = {
     "sync_surveys": ("institution_survey", "aif10_survey", 2),
     "sync_qfii": ("qfii_holding_quarterly", "aif10_qfii", 2),
     "sync_lhb": ("lhb_daily", "aif10_lhb", 2),
-    "sync_margin": ("margin_financing", "aif10_margin", 2),
     "sync_aif10_holder_count": ("aif10_holder_count", "aif10", 2),
     "sync_aif10_valuation_quantile": ("aif10_valuation_quantile", "aif10", 2),
     "sync_aif10_peer_valuation": ("aif10_peer_valuation", "aif10", 2),
@@ -3661,56 +3658,10 @@ async def _step_sync_surveys(conn) -> dict:
     }
 
 
-async def _step_sync_margin(conn) -> dict:
-    """融资融券日度同步（外资退役后最有信息量的杠杆资金维度）。
-
-    同步最近一个交易日的 SH+SZ 明细；如果 DB 里已有该日，则跳过。
-    两融 T 日数据通常要等到 T 日晚上才披露完整，白天跑会拿到空响应；
-    因此开启 fallback_days=2，源未披露时自动降级到 T-1、T-2。
-    """
-    from services.margin_client import ensure_tables, sync_margin_day
-
-    ensure_tables(conn)
-    trade_date = latest_completed_trade_date(conn)
-    if not trade_date:
-        logger.warning("[两融] 未找到最近完成交易日，跳过同步")
-        return {"count": 0, "status": "skipped", "message": "未找到最近完成交易日"}
-
-    row = conn.execute(
-        "SELECT COUNT(*) FROM raw_margin_daily WHERE trade_date = ?",
-        (trade_date,),
-    ).fetchone()
-    existing = int(row[0] or 0) if row else 0
-    if existing > 0:
-        logger.info(f"[两融] 交易日 {trade_date} 已有 {existing} 条，跳过")
-        return {
-            "count": 0,
-            "status": "skipped",
-            "existing": existing,
-            "trade_date": trade_date,
-            "message": f"{trade_date} 已有 {existing} 条, 跳过",
-        }
-
-    logger.info(f"[两融] 开始同步交易日 {trade_date}（允许 T-1/T-2 降级）")
-    result = await sync_margin_day(conn, trade_date, fallback_days=2)
-    if result.get("fallback_used"):
-        logger.info(
-            f"[两融] 已降级到 {result.get('trade_date')} "
-            f"（原请求 {result.get('requested_date')}），"
-            f"written={result.get('written_rows')}"
-        )
-    written = int(result.get("written_rows") or 0)
-    msg = f"写入 {written} 条 ({result.get('trade_date') or trade_date})"
-    if result.get("fallback_used"):
-        msg += f" [fallback from {result.get('requested_date')}]"
-    return {
-        "count": written,
-        "status": "completed" if written > 0 else "skipped",
-        "written": written,
-        "trade_date": result.get("trade_date") or trade_date,
-        "fallback_used": bool(result.get("fallback_used")),
-        "message": msg if written > 0 else f"{result.get('trade_date') or trade_date} 源未披露/无新数据",
-    }
+# _step_sync_margin removed Phase ψ.5: raw_margin_daily was written daily but
+# never consumed by any recommendation / backtest / signal pipeline.
+# Only two leftover consumers were a UI score in routers/institution.py (also
+# removed) and a smart_plan trigger in services/audit.py (also removed).
 
 
 async def _step_sync_lhb(conn) -> dict:
@@ -3961,7 +3912,6 @@ RUNNERS = {
     "sync_industry": _step_sync_industry,
     "sync_surveys": _step_sync_surveys,
     "sync_qfii": _step_sync_qfii,
-    "sync_margin": _step_sync_margin,
     "sync_lhb": _step_sync_lhb,
     # P1.5 妙想独家 capability
     "sync_aif10_holder_count": _step_sync_aif10_holder_count,

@@ -56,16 +56,7 @@ AUDIT_RULES: dict[str, dict] = {
         "date_field": "report_date",
         "date_min_distinct_90d": 0,  # 季报数据, 90 天不一定有
     },
-    "raw_margin_daily": {
-        "pk": ["trade_date", "stock_code", "market"],
-        "not_null": ["trade_date", "stock_code", "market"],
-        "date_field": "trade_date",
-        "date_min_distinct_90d": 40,
-        "value_checks": [
-            ("rz_balance IS NULL OR rz_balance >= 0", "融资余额 >= 0"),
-            ("rq_balance IS NULL OR rq_balance >= 0", "融券余额 >= 0"),
-        ],
-    },
+    # raw_margin_daily audit rule removed Phase ψ.5 — dead data
     # P7 (2026-04-28): market_raw_holdings 整表退役.
     # 新 canonical fact_top10_holder_period 由 tdxhub.holders 写入,
     # A/H 拆分 + holder_set + is_exit_row + source_tier; 审计规则相应升级.

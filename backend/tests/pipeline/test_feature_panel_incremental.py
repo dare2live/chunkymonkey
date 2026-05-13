@@ -378,63 +378,9 @@ def test_validate_and_record_feature_panel_persists_validate_only_audit():
         con.close()
 
 
-def test_incremental_plan_rebuilds_when_non_kline_source_snapshot_changes():
-    con = duck_mem()
-    try:
-        days = _seed_sources(con, day_count=45)
-        subject._build_panel_with_connection(con, days[0])
-        validation = subject.validate_feature_panel(con)
-        subject.record_feature_panel_validation(con, validation, run_mode="unit")
-
-        clean_plan = subject.plan_incremental_window(con, lookback_days=5, label_lookback_days=3)
-
-        con.execute(
-            "INSERT INTO smartmoney.raw_margin_daily VALUES ('000001', ?, 1234.0)",
-            [days[-1]],
-        )
-        dirty_plan = subject.plan_incremental_window(con, lookback_days=5, label_lookback_days=3)
-
-        assert clean_plan["noop"] is True
-        assert dirty_plan["noop"] is False
-        assert dirty_plan["source_max_date"] == days[-1]
-        assert "margin_daily" in dirty_plan["changed_source_domains"]
-        assert "changed feature-panel source snapshot" in dirty_plan["reason"]
-        assert dirty_plan["write_start_date"] <= days[-1]
-        assert dirty_plan["read_start_date"] <= dirty_plan["write_start_date"]
-    finally:
-        con.close()
-
-
-def test_incremental_plan_uses_row_level_change_metadata_for_historical_source_update():
-    con = duck_mem()
-    try:
-        days = _seed_sources(con, day_count=80)
-        con.execute("ALTER TABLE smartmoney.raw_margin_daily ADD COLUMN ingested_at TIMESTAMP")
-        con.execute("UPDATE smartmoney.raw_margin_daily SET ingested_at = '2026-01-01T00:00:00'")
-        subject._build_panel_with_connection(con, days[0])
-        validation = subject.validate_feature_panel(con)
-        subject.record_feature_panel_validation(con, validation, run_mode="unit")
-
-        clean_plan = subject.plan_incremental_window(con, lookback_days=5, label_lookback_days=3)
-        con.execute(
-            """
-            INSERT INTO smartmoney.raw_margin_daily
-            (stock_code, trade_date, rz_balance, ingested_at)
-            VALUES ('000001', ?, 4321.0, '2099-01-01T00:00:00')
-            """,
-            [days[10]],
-        )
-        dirty_plan = subject.plan_incremental_window(con, lookback_days=5, label_lookback_days=3)
-
-        assert clean_plan["noop"] is True
-        assert dirty_plan["noop"] is False
-        assert dirty_plan["write_start_date"] == days[10]
-        assert dirty_plan["read_start_date"] == days[5]
-        assert "row-level dirty windows: margin_daily" in dirty_plan["reason"]
-        assert dirty_plan["row_level_dirty_windows"][0]["domain"] == "margin_daily"
-        assert dirty_plan["row_level_dirty_windows"][0]["changed_rows"] == 1
-    finally:
-        con.close()
+# test_incremental_plan_rebuilds_when_non_kline_source_snapshot_changes removed Phase ψ.5:
+# 原测 margin_daily domain 触发增量重建 — margin domain 已删, 测试 obsolete.
+# test_incremental_plan_uses_row_level_change_metadata_for_historical_source_update 同上.
 
 
 def test_feature_group_scoped_backfill_updates_only_selected_group_columns():
@@ -485,7 +431,8 @@ def test_feature_block_plan_limits_scoped_compute_dependencies():
     cross_columns = subject.feature_group_columns(["cross_sectional"])
 
     assert subject.feature_block_plan(event_columns) == ["price_shape", "event_activity"]
-    assert subject.feature_block_plan(cross_columns) == ["price_shape", "margin", "cross_sectional"]
+    # Phase ψ.5: 'margin' block 已删, cross_sectional 不再过 margin
+    assert subject.feature_block_plan(cross_columns) == ["price_shape", "cross_sectional"]
 
 
 def test_event_scoped_backfill_skips_unrelated_margin_source():

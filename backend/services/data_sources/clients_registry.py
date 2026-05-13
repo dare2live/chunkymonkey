@@ -188,18 +188,7 @@ CLIENTS: list[ClientSpec] = [
     ),
 
     # ── tier 3: akshare (兜底) ───────────────────────────────────────
-    ClientSpec(
-        client_id="margin_client",
-        module="services.margin_client",
-        description="融资融券明细",
-        upstream_source="akshare:stock_margin_detail_sse/szse",
-        source_tier=3,
-        fallback_chain=["akshare"],
-        writes=[
-            TableWriteSpec("raw_margin_daily", "融资融券原始", "t+1", 48),
-        ],
-        sync_step_id="sync_margin",
-    ),
+    # margin_client ClientSpec removed Phase ψ.5 — dead data (see audit)
     ClientSpec(
         client_id="capital_client",
         module="services.capital_client",

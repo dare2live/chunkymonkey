@@ -186,7 +186,8 @@ def test_build_panel_writes_fact_feature_panel_without_dataframe():
         assert sample[10] is not None
         assert sample[11] is None
         assert sample[12] is None
-        assert sample[13] is not None
+        # Phase ψ.5: rz_balance now NULL placeholder (margin sync deprecated)
+        assert sample[13] is None
         assert sample[14] is None
         assert sample[15] == "tdxhub"
         assert sample[16] == 1

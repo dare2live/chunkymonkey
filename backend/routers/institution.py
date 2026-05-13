@@ -631,24 +631,7 @@ def compute_stock_multidim_score(conn, stock_code: str) -> dict:
             "avg_stable_score": round(avg, 1),
         }
 
-    # F2 两融情绪
-    mrow = conn.execute("""
-        WITH latest AS (
-          SELECT stock_code, rz_balance FROM raw_margin_daily
-          WHERE trade_date = (SELECT MAX(trade_date) FROM raw_margin_daily)
-        )
-        SELECT rz_balance,
-          (SELECT COUNT(*) FROM latest WHERE rz_balance <= l.rz_balance AND rz_balance IS NOT NULL) * 100.0
-            / NULLIF((SELECT COUNT(*) FROM latest WHERE rz_balance IS NOT NULL), 0) pct
-        FROM latest l WHERE stock_code = ?
-    """, (stock_code,)).fetchone()
-    if mrow and mrow["rz_balance"] is not None:
-        pct = mrow["pct"] or 0
-        result["margin_score"] = round(pct, 1)
-        result["components"]["margin"] = {
-            "rz_balance_yuan": mrow["rz_balance"],
-            "market_percentile": round(pct, 1),
-        }
+    # F2 两融情绪 — removed Phase ψ.5: raw_margin_daily 写完没人读, UI 也不再展示
 
     # F3 调研热度
     srow = conn.execute("""

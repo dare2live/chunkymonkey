@@ -64,7 +64,7 @@ PRICE_FEATURES = {
     "hs300_ret_20d", "hs300_ret_60d",
 }
 
-MARGIN_FEATURES = {"rz_balance", "rz_chg_5d_pct", "rz_balance_rank", "rz_chg_5d_pct_rank", "rz_balance_to_amount20"}
+MARGIN_FEATURES: set[str] = set()  # Phase ψ.5 emptied — raw_margin_daily 删除, 这些特征不再有数据源
 
 EVENT_FEATURES = {
     "inst_event_count_30d": ("fact_institution_event", "derived:tdx_f10_holder_events", 99),
@@ -160,17 +160,7 @@ def lineage_for_feature(feature_name: str) -> FeatureLineageSpec:
             pit_required=False,
             notes="Derived from canonical daily qfq OHLCV. tdxhub is primary; fallback only fills missing primary keys.",
         )
-    if feature_name in MARGIN_FEATURES:
-        return _known(
-            feature_name,
-            feature_group="margin",
-            source_table="raw_margin_daily",
-            upstream_source="akshare:stock_margin_detail_sse/szse",
-            source_tier=3,
-            source_date_col="trade_date",
-            available_date_col="trade_date",
-            pit_required=True,
-        )
+    # MARGIN_FEATURES lineage block removed Phase ψ.5 — set 已清空, 不会再 match
     if feature_name in EVENT_FEATURES:
         source_table, upstream, tier = EVENT_FEATURES[feature_name]
         return _known(

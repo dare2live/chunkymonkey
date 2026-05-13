@@ -69,12 +69,7 @@ def test_write_model_feature_lineage_uses_model_feature_cols_json():
                 "source_tier": 1,
                 "pit_required": True,
             },
-            {
-                "feature_name": "rz_balance",
-                "source_table": "raw_margin_daily",
-                "source_tier": 3,
-                "pit_required": True,
-            },
+            # rz_balance lineage row removed Phase ψ.5 — raw_margin_daily deprecated
         ]
     finally:
         conn.close()

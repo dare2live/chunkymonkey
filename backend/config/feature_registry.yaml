@@ -56,7 +56,7 @@ groups:
     pit_release_lag_days: 0
     source_tables:
       - market.v_price_kline_qfq
-      - smartmoney.raw_margin_daily
+      # smartmoney.raw_margin_daily removed Phase ψ.5 — dead data
     required_capabilities:
       - kline_daily
     features:

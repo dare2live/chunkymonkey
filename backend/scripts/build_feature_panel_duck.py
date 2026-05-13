@@ -162,15 +162,7 @@ FEATURE_PANEL_SOURCE_SPECS = [
         "query": KLINE_DAILY_QFQ_SQL,
         "dirty_lookback_days": FEATURE_ROLLING_LOOKBACK_DAYS + LABEL_DIRTY_LOOKBACK_DAYS,
     },
-    {
-        "domain": "margin_daily",
-        "table": "smartmoney.raw_margin_daily",
-        "date_col": "trade_date",
-        "key_col": "stock_code",
-        "change_col": "ingested_at",
-        "row_level_dirty": True,
-        "dirty_lookback_days": 20,
-    },
+    # margin_daily domain removed Phase ψ.5 — raw_margin_daily dead
     {
         "domain": "institution_event",
         "table": "smartmoney.fact_institution_event",
@@ -1245,7 +1237,7 @@ def feature_groups_for_columns(columns: list[str] | None) -> set[str]:
 
 FEATURE_BLOCK_GROUPS = {
     "price_shape": {"kline_lineage", "price_volume", "alpha158_price_shape"},
-    "margin": {"price_volume", "cross_sectional"},
+    # margin block removed Phase ψ.5 — raw_margin_daily dead, NULL placeholder retained
     "labels": {"labels"},
     "event_activity": {"event_activity"},
     "fundamentals": {"fundamentals"},
@@ -1548,27 +1540,17 @@ def _build_panel_with_connection(
     if "margin" in blocks:
         logger.info("Step 2: margin join")
         with _timed_stage(timer, "margin_join_s"):
+            # Phase ψ.5: raw_margin_daily 已 deprecated, margin feature 写 NULL placeholder.
+            # 保留列 schema 不破坏现有 panel data; build_feature_panel 整体本就实验状态.
             _replace_temp_table(
                 duck,
                 "current_panel",
                 """
-            WITH margin AS (
-                SELECT stock_code,
-                       {margin_date} AS date,
-                       rz_balance,
-                       (
-                           rz_balance
-                           / NULLIF(LAG(rz_balance, 5) OVER (PARTITION BY stock_code ORDER BY {margin_date}), 0)
-                           - 1
-                       ) AS rz_chg_5d_pct
-                FROM smartmoney.raw_margin_daily
-            )
-            SELECT p.*, m.rz_balance, m.rz_chg_5d_pct
+            SELECT p.*,
+                   CAST(NULL AS REAL) AS rz_balance,
+                   CAST(NULL AS REAL) AS rz_chg_5d_pct
             FROM current_panel p
-            LEFT JOIN margin m
-              ON p.stock_code = m.stock_code
-             AND p.date = STRFTIME(m.date, '%Y-%m-%d')
-            """.format(margin_date=_date_expr("trade_date")),
+            """,
             )
     else:
         logger.info("Step 2: margin join skipped by scoped feature block plan")
@@ -1819,14 +1801,13 @@ def _build_panel_with_connection(
         logger.info("Step 7: market regime skipped by scoped feature block plan")
 
     if "cross_sectional" in blocks:
-        logger.info("Step 8: cross-sectional rank / industry-relative / margin normalization")
+        logger.info("Step 8: cross-sectional rank / industry-relative (margin dropped Phase ψ.5)")
         cross_clean_cols = [
             "ret_20d",
             "ret_60d",
             "vol_z20d",
             "amount_chg_5d",
-            "rz_balance",
-            "rz_chg_5d_pct",
+            # rz_balance, rz_chg_5d_pct removed Phase ψ.5
             "amount_ma20",
         ]
         cross_exclude_sql = ", ".join(_quote_ident(col) for col in cross_clean_cols)
@@ -1857,13 +1838,10 @@ def _build_panel_with_connection(
                    CASE WHEN ret_60d IS NULL THEN NULL ELSE PERCENT_RANK() OVER (PARTITION BY date ORDER BY ret_60d NULLS LAST) END AS ret_60d_rank,
                    CASE WHEN vol_z20d IS NULL THEN NULL ELSE PERCENT_RANK() OVER (PARTITION BY date ORDER BY vol_z20d NULLS LAST) END AS vol_z20d_rank,
                    CASE WHEN amount_chg_5d IS NULL THEN NULL ELSE PERCENT_RANK() OVER (PARTITION BY date ORDER BY amount_chg_5d NULLS LAST) END AS amount_chg_5d_rank,
-                   CASE WHEN rz_balance IS NULL THEN NULL ELSE PERCENT_RANK() OVER (PARTITION BY date ORDER BY rz_balance NULLS LAST) END AS rz_balance_rank,
-                   CASE WHEN rz_chg_5d_pct IS NULL THEN NULL ELSE PERCENT_RANK() OVER (PARTITION BY date ORDER BY rz_chg_5d_pct NULLS LAST) END AS rz_chg_5d_pct_rank,
                    ret_20d - AVG(ret_20d) OVER (PARTITION BY date, tdx_l1) AS ret_20d_tdx_l1_rel,
                    ret_60d - AVG(ret_60d) OVER (PARTITION BY date, tdx_l1) AS ret_60d_tdx_l1_rel,
                    vol_z20d - AVG(vol_z20d) OVER (PARTITION BY date, tdx_l1) AS vol_z20d_tdx_l1_rel,
-                   amount_chg_5d - AVG(amount_chg_5d) OVER (PARTITION BY date, tdx_l1) AS amount_chg_5d_tdx_l1_rel,
-                   rz_balance / NULLIF(amount_ma20, 0) AS rz_balance_to_amount20
+                   amount_chg_5d - AVG(amount_chg_5d) OVER (PARTITION BY date, tdx_l1) AS amount_chg_5d_tdx_l1_rel
             FROM cleaned
             """,
             )
@@ -1933,7 +1911,7 @@ def _record_feature_panel_pipeline_run(
         input_tables=[
             "market.price_kline_tdxhub",
             "smartmoney.dim_active_a_stock",
-            "smartmoney.raw_margin_daily",
+            # smartmoney.raw_margin_daily removed Phase ψ.5
             "smartmoney.fact_institution_event",
             "smartmoney.fact_executive_trade_event",
             "smartmoney.fact_lhb_event",

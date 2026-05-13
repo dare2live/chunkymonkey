@@ -123,7 +123,7 @@ REASSIGNMENTS = [
     ("raw_aif10_forecast_consensus", "miaoxiang/aif10", "miaoxiang", "akshare", False, "low", "卖方一致预期不能被公司业绩预告替代。"),
     ("raw_institution_surveys", "miaoxiang", "miaoxiang", "akshare", False, "low", "机构调研 TDX/gpcw 不覆盖。"),
     ("raw_lhb_daily", "akshare/eastmoney", "miaoxiang", "akshare", True, "medium", "龙虎榜明细仍需外部源。"),
-    ("raw_margin_daily", "akshare", "miaoxiang", "akshare", True, "medium", "融资融券暂无 TDX 主供链路。"),
+    # raw_margin_daily entry removed Phase ψ.5 — dead data
     ("raw_capital_dividend_detail", "akshare", "tdxhub_quote", "miaoxiang", True, "medium", "除权除息用 TDX，方案细节保留 fallback。"),
     ("raw_capital_repurchase", "akshare", "miaoxiang", "akshare", False, "low", "回购明细 TDX/gpcw 不覆盖。"),
 ]

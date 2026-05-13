@@ -7,7 +7,7 @@
 - 提供 endpoint POST /api/inst/update/parallel_sync 跑一波独立 sync 并行
 
 工程价值评估:
-- 数据获取 group: sync_qfii / sync_margin / sync_lhb / sync_surveys / sync_aif10_*
+- 数据获取 group: sync_qfii / sync_lhb / sync_surveys / sync_aif10_*
   全部 HARD_DEPS=[], 可并行. 顺序跑 ~3 min, 并行 ~30s.
 - calc / mart group 大多有依赖, 并行价值小
 

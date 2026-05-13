@@ -147,7 +147,7 @@ def cache_invalidate_endpoint(body: Optional[dict] = None):
 async def parallel_sync_endpoint(body: Optional[dict] = None):
     """并行跑数据获取 group (P2.9).
 
-    body 例: {"steps": ["sync_qfii", "sync_margin", "sync_lhb"]}
+    body 例: {"steps": ["sync_qfii", "sync_lhb"]}
             (不传则跑所有 HARD_DEPS=[] 的 sync_* step)
     """
     from services.db import get_conn
