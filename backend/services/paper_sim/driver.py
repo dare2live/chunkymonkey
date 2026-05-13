@@ -23,7 +23,7 @@ from typing import Any, Optional
 from services.paper_sim.config import PaperSimConfig
 from services.paper_sim.exit_rules import ExitInputs, evaluate_exit
 from services.paper_sim.selector import (
-    CandidateRow, load_today_candidates, filter_by_liquidity, to_swap_candidate,
+    CandidateRow, load_today_candidates_dispatch, filter_by_liquidity, to_swap_candidate,
 )
 from services.paper_sim.sizer import allocate_positions
 from services.paper_sim.swap_rules import (
@@ -41,13 +41,13 @@ logger = logging.getLogger("paper_sim.driver")
 class _OpenPosition:
     """driver 内部用; 跟 fact_paper_sim_position schema 一致.
 
-    包含: 买入元数据 + 当前价 + peak_since_entry (trailing 用).
+    包含: 买入元数据 + 当前价 + trailing 状态 (armed + high_since_arm 跨日).
     """
     __slots__ = (
         "position_id", "stock_code", "formula_id", "formula_variant",
         "stage_at_buy", "optimal_hp", "optimal_stop_pct", "optimal_target_pct",
         "optimal_trailing_pct", "open_date", "open_price", "shares",
-        "buy_cost", "expected_target_pct", "peak_since_entry", "current_score",
+        "buy_cost", "expected_target_pct", "trailing_armed", "high_since_arm",
     )
 
     def __init__(self, **kw):
@@ -61,7 +61,7 @@ def _load_open_positions(conn, sim_run_id: str) -> list[_OpenPosition]:
         SELECT position_id, stock_code, formula_id, formula_variant,
                stage_at_buy, optimal_hp, optimal_stop_pct, optimal_target_pct,
                optimal_trailing_pct, open_date, open_price, shares,
-               buy_cost, expected_target_pct
+               buy_cost, expected_target_pct, trailing_armed, high_since_arm
           FROM fact_paper_sim_position
          WHERE sim_run_id = ? AND is_open = TRUE
         """,
@@ -72,21 +72,8 @@ def _load_open_positions(conn, sim_run_id: str) -> list[_OpenPosition]:
         stage_at_buy=r[4], optimal_hp=r[5], optimal_stop_pct=r[6],
         optimal_target_pct=r[7], optimal_trailing_pct=r[8], open_date=r[9],
         open_price=r[10], shares=r[11], buy_cost=r[12], expected_target_pct=r[13],
-        peak_since_entry=None, current_score=None,
+        trailing_armed=bool(r[14]), high_since_arm=float(r[15]) if r[15] is not None else None,
     ) for r in rows]
-
-
-def _peak_since_entry(mkt_conn, stock_code: str, open_date: str, today: str) -> float:
-    """从 open_date 到 today 的最高 close. 给 trailing 用."""
-    r = mkt_conn.execute(
-        """
-        SELECT MAX(close) FROM v_price_kline_qfq
-         WHERE code = ? AND adjust='qfq' AND freq='daily'
-           AND date >= ? AND date <= ?
-        """,
-        [stock_code, open_date, today],
-    ).fetchone()
-    return float(r[0] or 0.0)
 
 
 def _load_kline_today(mkt_conn, codes: list[str], today: str) -> dict[str, dict]:
@@ -180,19 +167,11 @@ def run_paper_sim_day(
 
     # 2. K 线 + stage
     held_codes = [p.stock_code for p in open_positions]
-    candidates_raw = load_today_candidates(conn, today, cfg.selection)
+    candidates_raw = load_today_candidates_dispatch(conn, today, cfg.selection)
     candidate_codes = list({c.stock_code for c in candidates_raw})
     all_codes = list(set(held_codes) | set(candidate_codes))
     kline = _load_kline_today(mkt_conn, all_codes, today)
     stage_today = _today_stage(conn, held_codes, today)
-
-    # peak_since_entry for trailing
-    for p in open_positions:
-        p.peak_since_entry = max(
-            _peak_since_entry(mkt_conn, p.stock_code, p.open_date, today),
-            kline.get(p.stock_code, {}).get("close", 0),
-            p.open_price,
-        )
 
     # 3. 退出评估
     closed_position_ids: set[str] = set()
@@ -210,7 +189,9 @@ def run_paper_sim_day(
             optimal_target_pct=p.optimal_target_pct,
             optimal_trailing_pct=p.optimal_trailing_pct,
             days_held=days_held, current_close=k["close"],
-            peak_since_entry=p.peak_since_entry,
+            current_high=k.get("high", k["close"]),
+            peak_since_entry=p.high_since_arm or p.open_price,
+            trailing_armed=p.trailing_armed,
             today_stage=stage_today.get(p.stock_code),
         ))
         if d.should_exit:
@@ -219,6 +200,12 @@ def run_paper_sim_day(
                                           p.stock_code).effective_amount
             closed_position_ids.add(p.position_id)
             summary["n_exits"] += 1
+        elif d.new_trailing_armed != p.trailing_armed or d.new_peak != p.high_since_arm:
+            # 跨日更新 trailing 状态
+            conn.execute(
+                "UPDATE fact_paper_sim_position SET trailing_armed=?, high_since_arm=? WHERE position_id=?",
+                [d.new_trailing_armed, d.new_peak, p.position_id],
+            )
 
     remaining_holdings = [p for p in open_positions if p.position_id not in closed_position_ids]
 
@@ -372,7 +359,7 @@ def _open_position_directly(conn, c: CandidateRow, today: str, buy_price: float,
                               shares: int, buy_result, sim_run_id: str,
                               cfg: PaperSimConfig, source: str, cash: float) -> float:
     """已经算好 shares + buy_cost, 直接 INSERT. 返回新的 cash."""
-    position_id = f"{c.stock_code}_{today}_{sim_run_id[:8]}"
+    position_id = f"{c.stock_code}_{today}_{uuid.uuid4().hex[:8]}"
     conn.execute(
         """INSERT INTO fact_paper_sim_position
            (position_id, sim_run_id, stock_code, formula_id, formula_variant,

@@ -29,6 +29,7 @@ class PortfolioConfig:
 
 @dataclass(frozen=True)
 class SelectionConfig:
+    mode: str                            # "production" | "backtest"
     candidate_source: str
     rank_by: str
     min_tier_to_buy: str
@@ -36,6 +37,7 @@ class SelectionConfig:
     liquidity_min_amount_20d: float
     liquidity_max_price: float
     exclude_stage: list
+    backtest_tier_thresholds: dict       # {strong_buy: {sharpe_min, win_rate_min, calmar_min}, buy: {...}}
 
 
 @dataclass(frozen=True)
@@ -128,6 +130,7 @@ def _validate(cfg: PaperSimConfig) -> None:
     assert r.max_dd_hard_stop_pct < r.daily_dd_warning_pct  # hard stop 更严
 
     sel = cfg.selection
+    assert sel.mode in {"production", "backtest"}, f"unknown selection.mode: {sel.mode}"
     assert sel.min_tier_to_buy in {"BUY", "STRONG_BUY", "WATCH"}
     assert sel.min_tier_to_swap_in in {"BUY", "STRONG_BUY"}
 

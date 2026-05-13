@@ -57,6 +57,9 @@ CREATE TABLE IF NOT EXISTS fact_paper_sim_position (
     days_held         INTEGER,
     -- 锁定的预期值 (用来算达成率)
     expected_target_pct DOUBLE NOT NULL,         -- = optimal_target_pct (锁定时的)
+    -- Trailing 状态 (跨日跟踪, portfolio_backtest 同款逻辑)
+    trailing_armed    BOOLEAN NOT NULL DEFAULT FALSE,  -- target hit 后变 True
+    high_since_arm    DOUBLE,                          -- arm 后的最高价
     -- 元
     is_open           BOOLEAN NOT NULL DEFAULT TRUE,
     built_at          TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,

@@ -1,13 +1,17 @@
 """Paper Sim v2 — 候选选股 + 流动性过滤.
 
-数据源: mart_daily_position_recommendation (已含 Wilson+Kelly+6 因子综合 score,
-        每股每 formula 一行, 多 horizon)
+两种 mode:
 
-不在这里重做评分; 信任上游 daily_position_recommendation 输出, 仅:
-  - tier 过滤
-  - 流动性过滤 (复用 services/portfolio_walk_forward/liquidity.py)
-  - 跳过当前已持仓 (driver 传入持仓 set)
-  - 按 score 降序
+  selection.mode = "production"  (live 推荐用)
+    数据源: mart_daily_position_recommendation (上游已 Wilson+Kelly+6 因子综合 score)
+    + JOIN mart_stock_formula_buy_signal_daily.tier
+
+  selection.mode = "backtest"    (walk-forward 用, 历史每天 inline 算)
+    数据源: fact_technical_trigger + mart_per_stock_stage_strategy_optimal
+            (cross-stage fallback) + fact_signal_context.technical_stage
+    评分跟 portfolio_backtest.py 同款: tier 简化判定 (sharpe + win + calmar)
+
+mode 选择放 config 里, business 代码不动 — Rule 2 + 项目特定 "模块化, 不硬编码".
 """
 from __future__ import annotations
 
@@ -100,6 +104,106 @@ def load_today_candidates(
             stage=r[13], match_tier=r[14],
         ))
     return out
+
+
+def load_today_candidates_inline(
+    conn,
+    signal_date: str,
+    cfg: SelectionConfig,
+) -> list[CandidateRow]:
+    """backtest mode: 直接 JOIN trigger + optimal 表算候选, 不依赖 daily_rec.
+
+    跟 portfolio_backtest.py 同款 SQL (Wilson + Kelly 简化, 通过 sharpe/win/calmar
+    打 tier — 用户 6 因子综合 score 在 buy_signal_daily 里, 但历史每日不可用,
+    所以 backtest 用简化 tier 评分).
+    """
+    th = cfg.backtest_tier_thresholds
+    sb_th = th["strong_buy"]
+    by_th = th["buy"]
+
+    rows = conn.execute(
+        """
+        SELECT t.date, t.stock_code, t.formula_id, t.formula_variant,
+               COALESCE(c.technical_stage, '?') AS stage,
+               COALESCE(sopt.optimal_hp, opt.optimal_hp) AS opt_hp,
+               COALESCE(sopt.optimal_stop_pct, opt.optimal_stop_pct) AS opt_stop,
+               COALESCE(sopt.optimal_target_pct, opt.optimal_target_pct) AS opt_target,
+               COALESCE(sopt.optimal_trailing_pct, opt.optimal_trailing_pct) AS opt_trail,
+               COALESCE(sopt.sharpe, opt.sharpe) AS sharpe,
+               COALESCE(sopt.win_rate, opt.win_rate) AS win_rate,
+               COALESCE(sopt.optimal_calmar, opt.optimal_calmar) AS calmar,
+               COALESCE(sopt.avg_ret, opt.avg_ret) AS avg_ret,
+               CASE WHEN sopt.stock_code IS NOT NULL THEN 'stage_aware'
+                    ELSE 'cross_stage_fallback' END AS source_tier
+          FROM fact_technical_trigger t
+          LEFT JOIN fact_signal_context c
+            ON c.stock_code = t.stock_code AND c.date = t.date
+          LEFT JOIN mart_per_stock_stage_strategy_optimal sopt
+            ON sopt.stock_code = t.stock_code
+           AND sopt.formula_id = t.formula_id
+           AND sopt.formula_variant = t.formula_variant
+           AND sopt.stage_filter = c.technical_stage
+           AND abs(sopt.avg_ret) <= 0.5 AND sopt.avg_max_dd >= -0.5
+           AND abs(sopt.sharpe) <= 10 AND sopt.win_rate >= 0.5
+          LEFT JOIN mart_per_stock_strategy_optimal opt
+            ON opt.stock_code = t.stock_code
+           AND opt.formula_id = t.formula_id
+           AND opt.formula_variant = t.formula_variant
+           AND abs(opt.avg_ret) <= 0.5 AND opt.avg_max_dd >= -0.5
+           AND abs(opt.sharpe) <= 10 AND opt.win_rate >= 0.5
+         WHERE t.date = ?
+           AND (sopt.stock_code IS NOT NULL OR opt.stock_code IS NOT NULL)
+        """,
+        [signal_date],
+    ).fetchall()
+
+    out: list[CandidateRow] = []
+    for r in rows:
+        sharpe = r[9] or 0
+        win = r[10] or 0
+        calmar = r[11] or 0
+        avg_ret = r[12] or 0
+        # 简化 tier (跟 portfolio_backtest.py 一致)
+        if (sharpe >= sb_th["sharpe_min"]
+                and win >= sb_th["win_rate_min"]
+                and calmar >= sb_th["calmar_min"]):
+            tier = "STRONG_BUY"
+        elif sharpe >= by_th["sharpe_min"] and win >= by_th["win_rate_min"]:
+            tier = "BUY"
+        else:
+            continue
+        # min_tier_to_buy 过滤
+        if cfg.min_tier_to_buy == "STRONG_BUY" and tier != "STRONG_BUY":
+            continue
+        # score: STRONG_BUY 用 sharpe×100, BUY 用 sharpe×50
+        score = sharpe * (100 if tier == "STRONG_BUY" else 50)
+        if cfg.exclude_stage and r[4] in cfg.exclude_stage:
+            continue
+        out.append(CandidateRow(
+            stock_code=r[1], formula_id=r[2], formula_variant=r[3],
+            tier=tier, score=score,
+            expected_total_return=avg_ret,
+            optimal_hp=int(r[5] or 0),
+            optimal_target_pct=float(r[7]) if r[7] is not None else None,
+            optimal_stop_pct=float(r[6]) if r[6] is not None else None,
+            optimal_trailing_pct=float(r[8]) if r[8] is not None else None,
+            signal_close=0,           # 不需要 (driver 走 K 线 close)
+            sell_target=None, stop_price=None,
+            stage=r[4], match_tier=r[13],
+        ))
+    out.sort(key=lambda c: -c.score)
+    return out
+
+
+def load_today_candidates_dispatch(
+    conn,
+    signal_date: str,
+    cfg: SelectionConfig,
+) -> list[CandidateRow]:
+    """根据 cfg.mode 分发到 production / backtest loader."""
+    if cfg.mode == "backtest":
+        return load_today_candidates_inline(conn, signal_date, cfg)
+    return load_today_candidates(conn, signal_date, cfg)
 
 
 def filter_by_liquidity(
