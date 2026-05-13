@@ -210,22 +210,29 @@ def test_source_failure_queue_records_and_resolves_failures():
 
 
 def test_smart_plan_budget_annotation_is_explicit():
+    # Phase ψ.5 根因 3: budget 从 static 45/45 改成 base-only 估算
+    # (实际跑时还会按 watermark lag 动态加, 这里 plan 预览只看 base).
+    from routers.updater import STEP_BUDGET_MODEL
     plan = _plan_with_budgets({"steps": ["sync_financial", "build_stage_features"], "reason": []})
 
-    assert plan["budgets"]["sync_financial"] == 45
-    assert plan["budgets"]["build_stage_features"] == 45
-    assert plan["estimated_budget_s"] == 90
+    base_fin = STEP_BUDGET_MODEL["sync_financial"]["base"]
+    base_stg = STEP_BUDGET_MODEL["build_stage_features"]["base"]
+    assert plan["budgets"]["sync_financial"] == base_fin
+    assert plan["budgets"]["build_stage_features"] == base_stg
+    assert plan["estimated_budget_s"] == base_fin + base_stg
 
 
 def test_critical_daily_plan_filters_noncritical_dashboard_steps():
+    from routers.updater import STEP_BUDGET_MODEL
     plan = _critical_daily_plan({
         "steps": ["sync_financial", "calc_financial_derived", "build_stage_features", "calc_stock_scores"],
         "reason": ["unit"],
     })
 
+    base_fin = STEP_BUDGET_MODEL["sync_financial"]["base"]
     assert plan["steps"] == ["sync_financial"]
-    assert plan["budgets"] == {"sync_financial": 45}
-    assert plan["estimated_budget_s"] == 45
+    assert plan["budgets"] == {"sync_financial": base_fin}
+    assert plan["estimated_budget_s"] == base_fin
     assert "calc_financial_derived" in plan["critical_only_removed_steps"]
     assert "calc_stock_scores" in plan["skip_reasons"]
 

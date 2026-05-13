@@ -406,28 +406,70 @@ SOFT_DEPS = {
 
 MANUAL_ONLY_STEPS = {"calc_screening", "build_turtle_features"}
 
-STEP_BUDGET_SECONDS = {
-    "sync_calendar": 20,
-    "sync_market_data": 30,
-    "sync_financial": 45,
-    "sync_raw": 45,
-    "sync_industry": 30,
-    "sync_surveys": 60,
-    "sync_qfii": 60,
-    "sync_margin": 60,
-    "sync_lhb": 60,
-    "sync_aif10_holder_count": 60,
-    "sync_aif10_valuation_quantile": 60,
-    "sync_aif10_peer_valuation": 60,
-    "sync_aif10_forecast_consensus": 60,
-    "sync_aif10_financial_history": 60,
-    "calc_financial_derived": 45,
-    "build_stage_features": 45,
-    "build_external_attention": 45,
-    "calc_stock_scores": 45,
-    "calc_inst_scores": 45,
-    "refresh_today_signals": 60,
+# Phase ψ.5 根因 3 修复 — budget 模型: base + lag_days × per_day, cap by max.
+#
+# 旧 STEP_BUDGET_SECONDS 是 static (例 sync_market_data=30s), 假设每日增量小,
+# 但 watermark 滞后多天时, 真实工作量 ≈ 全市场 × lag 天 × 单股 RTT, static budget
+# 必定 timeout, 历史上只能用单 step endpoint 绕过 (违反 Rule 5).
+#
+# 新模型: workload-scaled — 滞后 7 天的 sync_market_data 给 120 + 7×60 = 540s.
+# max 上限防"无限滞后" (脏 watermark 报上百天) 把进程跑死.
+#
+# 派生 step (calc_*/build_*/refresh_*) 不跟 lag 挂钩, 但 base 也调宽 (45 → 90/120).
+STEP_BUDGET_MODEL: dict[str, dict] = {
+    # 数据 sync — workload 跟 watermark lag_days 线性
+    "sync_calendar":                   {"base":  30, "per_day":  0, "max":   30},
+    "sync_market_data":                {"base": 120, "per_day": 60, "max":  900},
+    # sync_financial: 5000+ 股 × 每只 ~0.5s = 单次 catchup 可达 45 min. base 大些, max 给到 1h.
+    "sync_financial":                  {"base": 600, "per_day": 120, "max": 3600},
+    "sync_raw":                        {"base":  60, "per_day": 20, "max":  300},
+    "sync_industry":                   {"base":  60, "per_day": 10, "max":  180},
+    "sync_surveys":                    {"base":  90, "per_day": 15, "max":  240},
+    "sync_qfii":                       {"base":  90, "per_day": 10, "max":  180},
+    "sync_margin":                     {"base":  90, "per_day": 10, "max":  180},
+    "sync_lhb":                        {"base":  90, "per_day": 10, "max":  180},
+    "sync_aif10_holder_count":         {"base":  90, "per_day": 10, "max":  180},
+    "sync_aif10_valuation_quantile":   {"base":  90, "per_day": 10, "max":  180},
+    "sync_aif10_peer_valuation":       {"base":  90, "per_day": 10, "max":  180},
+    "sync_aif10_forecast_consensus":   {"base":  90, "per_day": 10, "max":  180},
+    "sync_aif10_financial_history":    {"base":  90, "per_day": 10, "max":  180},
+    # 派生 step — 跟 lag 无关, 但 base 比之前宽
+    "calc_financial_derived":          {"base":  90, "per_day":  0, "max":   90},
+    "build_stage_features":            {"base":  90, "per_day":  0, "max":   90},
+    "build_external_attention":        {"base":  90, "per_day":  0, "max":   90},
+    "calc_stock_scores":               {"base":  90, "per_day":  0, "max":   90},
+    "calc_inst_scores":                {"base":  90, "per_day":  0, "max":   90},
+    "refresh_today_signals":           {"base": 120, "per_day":  0, "max":  120},
 }
+
+
+def _watermark_lag_days(conn, step_id: str) -> int:
+    """查 step 对应的 watermark 距今滞后天数 (用 wall-clock 'today' — 这里**不是** end_date,
+    只是 budget 估算的 workload signal, 用 wall-clock 是对的: 滞后多久就是多久)."""
+    domain_info = STEP_SOURCE_DOMAINS.get(step_id)
+    if not domain_info:
+        return 0
+    domain, source, _tier = domain_info
+    try:
+        row = conn.execute(
+            "SELECT updated_at FROM mart_data_source_watermark WHERE data_domain=? AND source_name=?",
+            (domain, source),
+        ).fetchone()
+    except Exception:
+        return 0
+    if not row or not row[0]:
+        return 0
+    try:
+        from datetime import datetime
+        wm_text = str(row[0])[:19]   # 'YYYY-MM-DD HH:MM:SS'
+        wm = datetime.fromisoformat(wm_text.replace(" ", "T"))
+        return max(0, (datetime.now() - wm).days)
+    except Exception:
+        return 0
+
+
+# 旧接口保留 — _plan_with_budgets 用于展示 estimate (用 base, 不带 conn 也能算)
+STEP_BUDGET_SECONDS = {sid: m["base"] for sid, m in STEP_BUDGET_MODEL.items()}
 
 STEP_SOURCE_DOMAINS = {
     "sync_calendar": ("trading_calendar", "akshare_calendar", 3),
@@ -471,8 +513,21 @@ def _raise_if_stop():
         raise _RunStopped("用户已停止")
 
 
-def _step_budget_seconds(step_id: str) -> Optional[int]:
-    return STEP_BUDGET_SECONDS.get(step_id)
+def _step_budget_seconds(step_id: str, *, conn=None) -> Optional[int]:
+    """Phase ψ.5 根因 3 修复 — 动态 budget: base + lag_days × per_day, capped.
+
+    conn 可选: 传了走 watermark lag 算动态 budget; 不传则返 base (用于 plan preview).
+    """
+    model = STEP_BUDGET_MODEL.get(step_id)
+    if not model:
+        return STEP_BUDGET_SECONDS.get(step_id)  # legacy fallback
+    base = int(model["base"])
+    per_day = int(model.get("per_day", 0))
+    cap = int(model.get("max", base))
+    if per_day == 0 or conn is None:
+        return min(base, cap)
+    lag = _watermark_lag_days(conn, step_id)
+    return min(base + lag * per_day, cap)
 
 
 def _plan_with_budgets(plan: dict) -> dict:
@@ -4532,7 +4587,10 @@ async def smart_update(critical_only: bool = False):
 
                 try:
                     runner = RUNNERS[sid]
-                    budget = _step_budget_seconds(sid)
+                    # Phase ψ.5 根因 3: budget 跟 watermark lag 走 (动态), 不再 static
+                    budget = _step_budget_seconds(sid, conn=conn)
+                    if budget is not None:
+                        logger.info(f"[智能更新] {step['name']} budget={budget}s (calendar-lag-aware)")
                     step_conn = get_conn(timeout=120)
                     try:
                         coro = runner(step_conn)
@@ -4578,7 +4636,7 @@ async def smart_update(critical_only: bool = False):
                     logger.info(f"[智能更新] 已停止: {step['name']}")
                     break
                 except asyncio.TimeoutError:
-                    budget = _step_budget_seconds(sid)
+                    budget = _step_budget_seconds(sid, conn=conn)
                     error_text = f"step budget timeout after {budget}s"
                     _record_step_source_state(conn, sid, "failed", error_text)
                     _update_step(conn, sid, status="failed",
