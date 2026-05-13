@@ -49,28 +49,37 @@ def load_today_candidates(
     signal_date: str,
     cfg: SelectionConfig,
 ) -> list[CandidateRow]:
-    """加载当日 mart_daily_position_recommendation 全部, 应用 tier + exclude_stage 过滤.
+    """加载当日 mart_daily_position_recommendation + JOIN buy_signal_daily.tier.
 
-    流动性过滤独立做 — 因为它需要 K 线, driver 拿到 K 线后才能调.
+    daily_position_recommendation 自身的 confidence_tier 是数字 (T1/T2/T3 置信度),
+    跟 BUY/STRONG_BUY 是两回事. STRONG_BUY/BUY tier 字符串在
+    mart_stock_formula_buy_signal_daily 里 — 上游已按 (stock × formula × signal_date)
+    打过 tier, 这里 JOIN 拿到.
     """
     rows = conn.execute(
         f"""
-        SELECT stock_code, formula_id, formula_variant,
-               COALESCE(confidence_tier, 'BUY') AS tier,
-               score, avg_ret AS expected_total_return,
-               holding_days AS optimal_hp,
-               optimal_target_pct, optimal_stop_pct, optimal_trailing_pct,
-               signal_close, sell_target, stop_price,
-               stage_bin AS stage, match_tier
-          FROM {cfg.candidate_source}
-         WHERE signal_date = ?
-           AND COALESCE(confidence_tier, 'BUY') IN (
-                 SELECT t FROM (VALUES ('BUY'), ('STRONG_BUY')) v(t)
-                 WHERE ? IN ('BUY', 'WATCH') OR t = 'STRONG_BUY'
-               )
-         ORDER BY score DESC
+        SELECT dpr.stock_code, dpr.formula_id, dpr.formula_variant,
+               COALESCE(bs.tier, 'BUY') AS tier,
+               dpr.score, dpr.avg_ret AS expected_total_return,
+               dpr.holding_days AS optimal_hp,
+               dpr.optimal_target_pct, dpr.optimal_stop_pct, dpr.optimal_trailing_pct,
+               dpr.signal_close_price, dpr.sell_target_price, dpr.stop_price,
+               dpr.stage_bin AS stage, dpr.match_tier
+          FROM {cfg.candidate_source} dpr
+          LEFT JOIN mart_stock_formula_buy_signal_daily bs
+                 ON bs.signal_date     = dpr.signal_date
+                AND bs.stock_code      = dpr.stock_code
+                AND bs.formula_id      = dpr.formula_id
+                AND bs.formula_variant = dpr.formula_variant
+         WHERE dpr.signal_date = ?
+           AND (
+              ? = 'WATCH'
+              OR (? = 'BUY' AND COALESCE(bs.tier, 'BUY') IN ('BUY', 'STRONG_BUY'))
+              OR (? = 'STRONG_BUY' AND bs.tier = 'STRONG_BUY')
+           )
+         ORDER BY dpr.score DESC
         """,
-        [signal_date, cfg.min_tier_to_buy],
+        [signal_date, cfg.min_tier_to_buy, cfg.min_tier_to_buy, cfg.min_tier_to_buy],
     ).fetchall()
 
     out: list[CandidateRow] = []
