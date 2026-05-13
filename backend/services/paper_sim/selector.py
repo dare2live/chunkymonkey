@@ -121,6 +121,10 @@ def load_today_candidates_inline(
     sb_th = th["strong_buy"]
     by_th = th["buy"]
 
+    # Phase ψ: 用 OOS metrics 排名 (anti-leakage). COALESCE 顺序:
+    #   sopt 有 OOS → 用 OOS;  sopt 无 OOS (旧 in-sample fit 行) → 退到 in-sample (兼容期);
+    #   sopt 不存在 → opt (cross-stage 兜底, 也优先 OOS)
+    # 期望: Optuna 重跑 (含 P3.5 OOS) 后, sopt.oos_sharpe 都有值, 业务代码完全脱离 in-sample.
     rows = conn.execute(
         """
         SELECT t.date, t.stock_code, t.formula_id, t.formula_variant,
@@ -129,10 +133,11 @@ def load_today_candidates_inline(
                COALESCE(sopt.optimal_stop_pct, opt.optimal_stop_pct) AS opt_stop,
                COALESCE(sopt.optimal_target_pct, opt.optimal_target_pct) AS opt_target,
                COALESCE(sopt.optimal_trailing_pct, opt.optimal_trailing_pct) AS opt_trail,
-               COALESCE(sopt.sharpe, opt.sharpe) AS sharpe,
-               COALESCE(sopt.win_rate, opt.win_rate) AS win_rate,
+               -- Phase ψ: 优先 sopt.oos_*, 退 sopt 旧 in-sample, 再退 opt (cross-stage 兜底)
+               COALESCE(sopt.oos_sharpe, sopt.sharpe, opt.sharpe) AS sharpe,
+               COALESCE(sopt.oos_win_rate, sopt.win_rate, opt.win_rate) AS win_rate,
                COALESCE(sopt.optimal_calmar, opt.optimal_calmar) AS calmar,
-               COALESCE(sopt.avg_ret, opt.avg_ret) AS avg_ret,
+               COALESCE(sopt.oos_avg_ret, sopt.avg_ret, opt.avg_ret) AS avg_ret,
                CASE WHEN sopt.stock_code IS NOT NULL THEN 'stage_aware'
                     ELSE 'cross_stage_fallback' END AS source_tier
           FROM fact_technical_trigger t
@@ -143,8 +148,10 @@ def load_today_candidates_inline(
            AND sopt.formula_id = t.formula_id
            AND sopt.formula_variant = t.formula_variant
            AND sopt.stage_filter = c.technical_stage
-           AND abs(sopt.avg_ret) <= 0.5 AND sopt.avg_max_dd >= -0.5
-           AND abs(sopt.sharpe) <= 10 AND sopt.win_rate >= 0.5
+           AND abs(COALESCE(sopt.oos_avg_ret, sopt.avg_ret)) <= 0.5
+           AND sopt.avg_max_dd >= -0.5
+           AND abs(COALESCE(sopt.oos_sharpe, sopt.sharpe)) <= 10
+           AND COALESCE(sopt.oos_win_rate, sopt.win_rate) >= 0.5
           LEFT JOIN mart_per_stock_strategy_optimal opt
             ON opt.stock_code = t.stock_code
            AND opt.formula_id = t.formula_id

@@ -77,6 +77,118 @@
 
 不能干净回答 = **estimate, not measured**, 不许提交.
 
+## Rule 7 — Anti-Look-Ahead / Anti-Leakage (普适)
+
+任何在时刻 t 做的决策 (选股 / 排名 / 调参 / 信号触发 / 评分 / 仓位), **只能**用 t 时刻能看到的信息 — t 之后的 K 线 / 公告 / 复权因子 / 排名 / 任何 mart 表算出来的 metric 都不许碰. 违反 = look-ahead leakage, 测出来的成绩**全是假的**.
+
+### 检查点 (任何带"时间"的代码都要过)
+
+| 场景 | 错例 | 正解 |
+|---|---|---|
+| **调参** | Optuna 拿 2023-2026 全段 signals 选 best params, 再用这些 params "回到" 2023-01 模拟 | 时序切分 (`walk_forward.expanding_monthly`), Optuna 只看早窗, OOS 跑后窗 |
+| **排名** | `paper_sim` 在 t 选 top 5, 用的 `sharpe` 是 mart 表里用全段 t→T 算的 | 用 t-1 截止可算的 rolling metric (滚动 60 天真实 NAV uplift / rolling IR) |
+| **特征** | `compute_features(bars, sig_i)` 用了 `bars[sig_i+1:]` 未来 K 线 | 只用 `bars[:sig_i+1]` (含当日 close, 但需注意当日收盘前数据不可用) |
+| **Label** | 训练标签 = "未来 30 天涨 ≥ 15%" 没 purge 跨期 | purged k-fold (Lopez de Prado) + embargo 至少 1× forward 期 |
+| **JOIN** | `JOIN fact_xxx ON xxx.date <= t` 但 `xxx.built_at > t` (该行是事后才补的) | JOIN 上 `AND xxx.built_at <= t`, 或用 `as_of_date` 字段精确控制 point-in-time |
+| **股票宇宙** | 用今天的"沪深 300 成份股"回测 2018 — 当时不在 300 里的股票被错误排除 | 用历史 `dim_index_member_history.as_of_date` 取 t 时刻成份 |
+| **复权因子** | 用最新 qfq 复权因子算 2018 价格 — 2024 拆股已"穿越"回 2018 价格 | 复权要 point-in-time, 或在每次 rebalance 时用当时的复权因子重算 |
+| **生存者偏差** | 只用现存上市股票回测, 不含 2020-2024 已退市的 | 数据源包含已退市股票 + 入场时点的有效宇宙 |
+| **指数 / 行业** | 用今天的行业分类回测 5 年前 — 当时不同行业的股票被错误归类 | 行业分类也要 point-in-time |
+
+### Self-check 提问 — 任何 t 时刻决策代码提交前问
+
+1. 这个数字 / 排名 / 选择, 在历史时刻 t **当时** 能算出来吗?
+2. 我用的所有输入字段, `built_at / as_of_date / 数据可用日` 都 ≤ t 吗?
+3. 我的 train / test 切分是按时间还是按 index/random? (random = leakage)
+4. 我有没有"事后看哪些好"挑了池子 (selection bias)? 比如挑"现存上市"挑"已知龙头"
+5. 跨期 label (未来 N 天涨幅) 有没有 purge + embargo?
+
+不能干净回答 = leakage, 不许提交.
+
+### 防御 (Rule 5 + Rule 7 联合)
+
+- 数据库表加 `built_at / as_of_date` 列, SQL JOIN 永远带 `AND xxx.built_at <= ?` (t 时刻).
+- 时序切分走 `services/optimization/walk_forward.py::split_*` (有 `assert_no_temporal_leak`).
+- 业务表的 "forward metric" (例 sharpe / win_rate) 必须标 OOS, 不许跟 in-sample fit 混用.
+- 入库前 governance 守门 (`services/optimization/governance.py::enforce_pre_insert`).
+
+### 反例 (Claude 自己踩过, 别再踩)
+
+| 我做了什么 | 后果 | 真根因修法 |
+|---|---|---|
+| `mart_per_stock_stage_strategy_optimal.sharpe` 入库的是 Optuna 在 2023-2026 整段 in-sample fit 后的 sharpe; `paper_sim/selector.py: ORDER BY sharpe DESC` 当作 forward 预期排名 | paper_sim 跑出 "+312%" 看似优秀, 但 selector 在 2023-01 当天选的是"事后看 2023-2026 表现最强 5 只" — 实际不可能这么选 | (a) Optuna 改 `walk_forward.expanding_monthly` (R1), OOS 拼起来才是真 sharpe; (b) selector 改 `ORDER BY oos_sharpe`; (c) governance 拒入 `walk_forward_mode='none'` 行 |
+| `compute_features_from_bars(bars, sig_i)` 用 `bars[sig_i-19:sig_i+1]` (含当日) | OK ✓ 这次干净 (但若哪天加 "未来 N 天涨幅" 当 feature 就 leak) | 已加 trailing-only test 防回退 |
+
+## Rule 8 — Optuna 治理 (Rule 7 在调参层的落地)
+
+任何 Optuna 调参 (5/9 维超参 / 公式权重 / sizing 阈值 / 任何 `study.optimize`),
+**必须**走 `services.optimization` 中央层 — 不许在脚本里裸调 `study.optimize`.
+全部阈值 / 区间 / 权重 / 模式 / 表名 走 `backend/config/optuna_config.yaml`, 不 hardcode.
+
+### 必走的 3 个守门点
+
+1. **切分时序** — 喂进 `study.optimize` 之前调
+   `services.optimization.walk_forward.split_dispatch(signals)` (默认走
+   `cfg.walk_forward.default_mode = 'expanding_monthly'` = R1 标准),
+   只用最早窗 train 集去 maximize, 不许整段 in-sample.
+2. **预校验** — `study.optimize` 调用前调
+   `governance.enforce_pre_optimize(n_trials, has_seed=True)`,
+   不通过 raise (强制 50 ≤ n_trials ≤ 500 + 固定 seed).
+3. **OOS 验证** — best params 拿到后, **在 test 集上重跑一次** 拿 OOS metrics, 入库.
+   入库前调 `governance.enforce_pre_insert(record)`,
+   `walk_forward_mode='none'` / OOS 字段缺失 / 不真实数值 (sharpe>5, win>0.95, avg>50%) → raise.
+
+### 业务表 / 业务代码约定
+
+- `mart_per_stock_*_optimal` 表 **必须**有 OOS 列 (`oos_sharpe / oos_win_rate / oos_avg_ret / oos_n_traded / oos_period_start / oos_period_end / walk_forward_mode / train_n_signals / test_n_signals`).
+- selector / scoring / ranking 业务代码 **只读 `oos_*` 字段**, 不读 in-sample fit 字段.
+  老字段 (`sharpe / win_rate / avg_ret`) 保留作描述 / 历史, SQL 用 `COALESCE(oos_*, in_sample_*)` 兼容期.
+- 新加任何 "stock × formula × something" 寻优表, 必须照搬这套 OOS 列 + governance 守门.
+
+### 反例 (踩过)
+
+| 错法 | 正解 |
+|---|---|
+| `study.optimize(objective, n_trials=100)` 喂整段 2023-2026 signals | `split_dispatch(signals)` (默认 expanding_monthly), Optuna 只看最早窗 train |
+| 入库的 `mart.sharpe = study.best_value 对应的 summary.sharpe` (in-sample) | best params 在所有后续月 OOS 各跑一遍, aggregator 合并算 `oos_sharpe` |
+| `paper_sim/selector.py: ORDER BY sharpe DESC` 用 in-sample 排名 → selection leakage | `ORDER BY COALESCE(oos_sharpe, sharpe) DESC`, OOS 优先 |
+| Optuna 跑出 `sharpe=8.2, win_rate=0.93` 直接入库 → 实际 paper_sim 亏 30% | governance.enforce_pre_insert 看到 `oos_sharpe > 5` 直接 raise, 强迫先排查 |
+
+### 改动 Optuna 治理规则 → 全部改 `backend/config/optuna_config.yaml`
+
+业务代码 `services/optimization/*.py` **不许** hardcode 阈值 / 区间 / 权重 / 表名. 改参数 = 改 yaml, 业务代码不动. (跟 paper_sim_config.yaml 同款.)
+
+| yaml 段 | 控制什么 | 业务代码读这里 |
+|---|---|---|
+| `governance` | n_trials min/max, OOS 必填, 现实数值上限 (sharpe/win/avg) | `services/optimization/governance.py` |
+| `walk_forward` | 默认模式 (R1=`expanding_monthly`) + 每模式参数 | `services/optimization/walk_forward.py` |
+| `search_space.strategy` | hp/stop/target/trailing 5 维范围 | `services/backtest/search_space.py` |
+| `search_space.candle_pattern` | 4 维 K 线形态阈值范围 | `services/candle_pattern/search_space.py` |
+| `composite` | 7 个多目标权重 (∑=1.0) | `services/optimization/composite.py` |
+| `constraints` | 硬约束 (max_dd / streak / worst_loss / min_traded) | `services/optimization/constraints.py` |
+| `execution` | n_trials / n_workers / sample_min 默认 | 所有 optimize_*.py 入口脚本 |
+| `output` | 业务表名 / 审计表名 | `services/optimization/ddl.py` |
+
+加载入口: `from services.optimization.config import get_optuna_config` (返回 frozen `OptunaConfig` 单例, `reload_optuna_config()` 强制 reload).
+
+### R1 标准 (用户指定) — `expanding_monthly`
+
+- 每月底切一次 walk-forward.
+- 前 `min_train_months` 月 (默认 6) 当 train base, Optuna 在最早窗 train 集上选 best params.
+- 然后用 best params 在**每个**后续月 (OOS test) 上跑一遍 — 多窗 trades 全部聚合算 `oos_sharpe / oos_win_rate / oos_avg_ret`.
+- 入库的 sharpe = 滚动多窗 OOS 拼起来的真值, 不是 in-sample fit.
+- 聚合走 `services/optimization/oos_aggregator.py::aggregate_oos_metrics`.
+
+### 审计
+
+任何 Optuna run 的 reject 都写 `fact_optuna_governance_log` (PK=`run_id`), 含 `record_json` 全量 + 原因. 跑完后查:
+
+```sql
+SELECT reason, COUNT(*) FROM fact_optuna_governance_log
+ WHERE run_id = '<最近 run_id>'
+ GROUP BY 1 ORDER BY 2 DESC;
+```
+
 ## 项目特定补充
 
 - **数据驱动**: 任何参数 / 阈值 / 权重必须有 backtest 证据. 拍脑袋默认是 anti-pattern.
@@ -117,7 +229,7 @@
 
 | 表 | 用途 | 常踩 |
 |---|---|---|
-| `mart_per_stock_stage_strategy_optimal` | **stage-aware 9-dim Optuna 寻优结果 (17,663 行)** | 列是 `built_at` 不是 `updated_at`; `stage_filter` 不是 `technical_stage` |
+| `mart_per_stock_stage_strategy_optimal` | **stage-aware 9-dim Optuna 寻优 (Phase ψ 加 OOS 列)** | 列是 `built_at` 不是 `updated_at`; `stage_filter` 不是 `technical_stage`; **业务代码只读 `oos_*` 字段, 不读 in-sample fit 字段** (老 `sharpe/win_rate/avg_ret` 仅描述) |
 | `mart_per_stock_strategy_optimal` | 旧 cross-stage Optuna (24,442 行, 给 daily 兜底用) | 同上 |
 | `mart_stock_formula_optuna_v2` | per-stock × formula × hp 全宇宙 (337K 行) — fitness rebuild 的源 | 单 sharpe 可能 -8e14, winsorize 到 [-5, +5] |
 | `mart_stage_formula_fitness` | cohort fitness (fund × tech × formula × hp), 1,015 行 | `technical_stage` 不是 `stage_filter` |

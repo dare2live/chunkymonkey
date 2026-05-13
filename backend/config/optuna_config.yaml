@@ -1,0 +1,93 @@
+## optuna_config.yaml — Phase ψ Optuna 全部 hyperparam 中央配置 (Rule 7 + 模块化)
+##
+## 调参规则: 改这个 YAML 就够, 业务代码不动. 任何 `study.optimize` 必须走此处.
+## 不许 hardcode: n_trials / seed / train_ratio / search_space / weights / constraints 都在这里.
+##
+## 业界做法 (Lopez de Prado "Advances in FinML" Ch. 7-8 + Bailey "Probability of Backtest Overfit"):
+## - 时序切分必须 walk-forward, 严禁整段 in-sample fit
+## - 入库前必须 OOS 验证, 不许只填 in-sample fit
+## - 多目标聚合 + 硬约束 + 现实数值上限 = 三道防线 anti-overfit
+
+# ─── 1. Optuna 治理 (governance.py 读这里) ───
+governance:
+  # 寻优时长
+  min_n_trials: 50                 # < 50 不稳定, 禁入业务
+  max_n_trials: 500                # > 500 边际效益低
+  require_sampler_seed: true       # 必须固定 seed (复现)
+  default_optuna_seed: 42
+
+  # walk-forward 强制
+  require_walk_forward: true       # 业务表禁止 in-sample fit 入库
+  min_train_signals: 5
+  min_test_signals: 3
+
+  # 反 estimation 现实上限 (Rule 6 — 超出多半 leakage / bug)
+  max_realistic_sharpe: 5.0        # 单笔 sharpe > 5 几乎不可能
+  max_realistic_win_rate: 0.95     # 长期单股胜率 > 95% 不真实
+  max_realistic_avg_ret: 0.50      # 平均单笔 > 50% 不可能
+  min_realistic_avg_ret: -0.50     # < -50% 也不可能 (cap_net_ret 已防)
+
+# ─── 2. Walk-forward 策略 (walk_forward.py 读这里) ───
+walk_forward:
+  default_mode: "expanding_monthly"   # R1 标准 (用户指定): 月度滚动 OOS
+  # R1 expanding_monthly: 每月底用 t-1 月之前所有 signals 当 train, 当月 (t) OOS
+  expanding_monthly:
+    min_train_months: 6               # 前 6 个月做累积, 不切窗
+    forward_months: 1                 # 每窗向前 1 个月 OOS
+    min_total_months: 12              # 总样本 < 12 个月退到 holdout
+  # 备选 holdout (小样本 / R1 不适用时的兜底)
+  holdout:
+    train_ratio: 0.7
+    min_train_signals: 5
+    min_test_signals: 3
+  # 备选 expanding (按 n_windows 切, 不按月)
+  expanding:
+    n_windows: 4
+    min_train_signals: 10
+    min_test_signals: 3
+
+# ─── 3. 搜索空间 (search_space.py 读这里) ───
+search_space:
+  strategy:
+    hp_choices: [5, 10, 15, 20, 30, 60, 90]   # 用户指定 7 档持仓周期
+    stop_pct:        { lo: -0.15, hi: -0.03 }  # 止损 3-15%
+    target_pct:      { lo:  0.05, hi:  0.30 }  # 止盈 5-30%
+    trailing_pct:    { lo:  0.01, hi:  0.08 }  # trailing 1-8%
+    buy_offset_choices: [1, 2, 3, 5]           # T+1 / T+2 / T+3 / T+5
+  candle_pattern:
+    body_ratio_min:        { lo: 0.0, hi: 0.8 }
+    lower_shadow_min:      { lo: 0.0, hi: 0.6 }
+    close_position_min:    { lo: 0.0, hi: 0.8 }
+    volume_relative_min:   { lo: 0.0, hi: 2.0 }
+
+# ─── 4. 多目标聚合权重 (composite.py 读这里) ───
+composite:
+  calmar_w:    0.35          # 用户最关心 (稳定收益最大化)
+  sortino_w:   0.25          # 下行控制
+  sharpe_w:    0.15          # 传统, 权重低
+  stability_w: 0.10          # winrate 一致性
+  pain_w:      0.05          # 路径痛苦度 (惩罚)
+  ulcer_w:     0.05          # 累积痛苦度 (惩罚)
+  tail_w:      0.05          # 尾部风险 (惩罚)
+  # 权重和必须 = 1.0, 校验在 composite.py:__post_init__
+
+# ─── 5. 硬约束 (constraints.py 读这里) ───
+constraints:
+  max_acceptable_drawdown: -0.25   # 平均 max_dd ≥ -25% (用户心脏)
+  worst_single_loss:       -0.30   # 单笔最差 ≥ -30%
+  max_loss_streak:          5      # 连续亏损 ≤ 5 笔
+  min_traded:               5      # 至少开仓 5 次
+
+# ─── 6. Optuna 执行配置 (脚本入口读这里, 不 hardcode) ───
+execution:
+  n_trials:    100
+  n_workers:   8
+  sample_min:  5             # (stock × variant × stage) < 5 signals 不寻优
+  # 命令行 --trials / --workers 可 override
+
+# ─── 7. 写库配置 (DDL + writer 读这里) ───
+output:
+  stage_optimal_table:    "mart_per_stock_stage_strategy_optimal"
+  cross_stage_optimal_table: "mart_per_stock_strategy_optimal"
+  governance_log_table:   "fact_optuna_governance_log"  # 治理 reject 审计
+  # 业务代码 (selector / daily_recommendation) 读 stage_optimal_table.oos_* 字段
