@@ -26,6 +26,29 @@
 - 不要告诉 Claude "step 1 做 X step 2 做 Y" — 告诉它"成功长什么样", 让它自己迭代.
 - 成功 = 用户能 verify 的具体可测试结果.
 
+## Rule 5 — Root Cause Over Patches
+
+数据获取的稳定性 / 准确性是前置条件, 出问题必须查根因, 不打补丁不跳过.
+
+- 看到失败 / 异常 / 数据异常, **先问"为什么"**, 不要本能去找绕过路径. 禁止: `try/except: pass`, `--skip-step`, `if env: bypass`, `--end YYYY-MM-DD` 钉死规避上游 bug, 单 step endpoint 绕 budget.
+- 找**首次**写坏 / 首次抛错的代码路径; 修源头, 不只清状态.
+- 区分 **症状修复 vs 根因修复**:
+  - DELETE 损坏的行 / DROP+REBUILD index / 清缓存 = 症状修复 (清状态, 必要但不够).
+  - 找哪条代码路径把行写坏 / 何时何处第一次违反约束 = 根因修复.
+  - 两者都要做, 但**只做症状修复就停下来 = 故障会再来**.
+- 找不到根因也要**明说**, 然后加**防御**: 启动健康检查 / 失败立刻 raise (而非 fallback to wall-clock) / lint 测试防回退. 防御 ≠ 修复, 但比静默 bypass 强百倍.
+- 暂时绕过必须**显式 TODO + 关联 issue / commit**, 不能伪装成"已解决". 真解决的标准: 根因代码改了 + 防回退测试加了 + 历史污染清了 + 一次端到端验证.
+- 数据源 / sync / DB 写入路径的问题**严禁忍** — 这些是 production 的地基, 一颗螺丝松整栋楼歪.
+
+**反例 (Claude 自己踩过, 别再踩)**:
+
+| 症状 | 我曾经的"修法" (错) | 真根因修法 (对) |
+|---|---|---|
+| K 线表有今天盘中数据 | 下游 builder `--end 2026-05-12` 钉死 | sync_market_data 入口用 `latest_completed_trade_date` + records 上界过滤 + lint 防回退 |
+| DuckDB DELETE 报 "0 out of 1 rows" → FATAL | DROP+REBUILD index 清状态 | 找首次写坏 index 的代码路径, 改 DELETE 走 rowid 绕 index, 加启动 health check |
+| sync_market_data 30s budget timeout | 用单 step endpoint 绕 budget | budget 按 watermark 滞后动态算 / 改 heartbeat watchdog |
+| 已经有的 utils 函数没 grep 就造重 | 写完才发现重复 | **动手前 grep 是 Rule 5 的子条款** — 现象 = 错的方案, 不是没方案 |
+
 ## 项目特定补充
 
 - **数据驱动**: 任何参数 / 阈值 / 权重必须有 backtest 证据. 拍脑袋默认是 anti-pattern.
