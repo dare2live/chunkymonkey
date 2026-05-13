@@ -49,6 +49,34 @@
 | sync_market_data 30s budget timeout | 用单 step endpoint 绕 budget | budget 按 watermark 滞后动态算 / 改 heartbeat watchdog |
 | 已经有的 utils 函数没 grep 就造重 | 写完才发现重复 | **动手前 grep 是 Rule 5 的子条款** — 现象 = 错的方案, 不是没方案 |
 
+## Rule 6 — Measured, Not Estimated
+
+任何**参数 / 阈值 / 模型预测 / 策略效果**, 必须用**真实历史数据测过**, 不能用公式估出来.
+
+- 写"差不多""估计""假设""按当前速度跑""按平均收益线性外推"——都是 anti-pattern.
+- 看到自己写出 `xxx_estimate` / `predicted_xxx` / `assumed_xxx` 这种变量名, **停一下** — 它真的来自数据, 还是来自我拍脑袋的公式?
+- 公式不是数据. 能写出来的公式只是一种**先验假设**, 跟"匀速跑"一样可能跟实际反着来.
+- 凡是 "uplift / score / 收益 / 胜率 / 风险" 类指标, 必须能回答: **这是用哪些历史 row + 哪段时间窗 + 哪个 K 线 / 报表 fact 测出来的?**
+- 测不出来 (数据缺) 就显式标 `unknown`, 不要拿公式凑一个数糊弄自己.
+- 配置文件里写默认参数, **必须**附 backtest 证据 (commit hash / 测试 ID / KPI 数字). 跟项目特定补充 "数据驱动" 一致.
+
+**反例 (Claude 自己踩过, 别再踩)**:
+
+| 我写了什么 | 为什么错 | 正确做法 |
+|---|---|---|
+| `swap_uplift_estimate = (Y总预期 × 子区间比例) − (A当前涨幅 × 剩余时间比例) − 0.35% buffer` | 两项都是公式假设"匀速跑". A 在严重落后时大概率继续亏不匀速; Y 收益常集中在 hp 末尾不是早期均摊. 跑出来 uplift "看似正" 但 ablation 实测 swap 把年化拉低 33pp. | 真实 K 线 forward 反事实: SWAP_OUT 那天起, A 留下来持到原 hp 到期的真实 K 线收益 vs Y 在 A 原剩余天数里的真实 K 线收益, 减真实往返 tx_cost. **两个真实数, 不是估算**. |
+| KPI 阈值 (severe=0.5 / 年化≥30% / 持仓≥5天 等) 写在 yaml 默认 | 默认是"我觉得合理"拍脑袋, 没 sensitivity sweep 验证. | Optuna / grid search 跑 800+ 天历史 sweep 这些阈值, 选 KPI 矩阵稳健的组合; commit 附 sweep 结果. |
+| Wilson 默认 0.55 (sizer.py `wilson = 0.55`) | "假设上游已 wilson 排序过" — 是估算不是事实. | 改读上游真实 `wilson_win_rate` 字段; 没有就显式 skip 不算 kelly. |
+| portfolio_backtest +45.4% 报用户做最终决策 | 它不算 tx_cost / 不算流动性 / 不算 T+1 滑点 = 理想化估算. paper_sim 加真实成本后年化骤降 -44%. | live 决策必须基于含 tx_cost + T+1 滑点 + 流动性的 paper_sim, 不用 portfolio_backtest 的理想数. |
+
+**Self-check 提问** — 提交任何"性能指标"前问:
+1. 这个数字从哪行 SQL 跑出来?
+2. 涵盖几行 / 几天真实历史?
+3. 换成 "unknown" 决策会不一样吗?
+4. 用户能自己复现这个数字吗?
+
+不能干净回答 = **estimate, not measured**, 不许提交.
+
 ## 项目特定补充
 
 - **数据驱动**: 任何参数 / 阈值 / 权重必须有 backtest 证据. 拍脑袋默认是 anti-pattern.
