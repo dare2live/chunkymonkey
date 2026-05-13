@@ -151,16 +151,25 @@ validation:
     avg_holding_days_min: 5
     annual_turnover_max: 8.0
     tx_cost_pct_of_gross_pnl_max: 0.10
-    swap_uplift_must_be_positive: true
+    swap_uplift_total_min: 0.0
   robustness:
+    rolling_ir_60d_median_min: 0.3
     rolling_ir_60d_p25_min: 0.0
-    rolling_annual_90d_median_min: 0.05
-    regime_bull_min: 0.05
-    regime_bear_min: -0.20
-    regime_sideways_min: -0.05
+    rolling_annual_90d_median_min: 0.10
+    regime_min_return_per_segment: -0.05
+  ablation:
+    swap_vs_baseline_annual_uplift_min: 0.03
+    swap_vs_baseline_max_dd_degradation_max: 0.02
+    swap_vs_baseline_sharpe_ratio_min: 1.05
+  sensitivity:
+    severe_threshold_sweep: [0.4, 0.5, 0.6]
+    gap_buffer_sweep: [0.002, 0.0035, 0.005]
+  reality_check:
+    one_word_blocked_pct_max: 0.10
+    avg_slippage_realized_min: 0.0005
 
 data:
-  trading_calendar_table: "dim_trading_calendar"
-  daily_recommendation_table: "mart_daily_position_recommendation"
-  kline_table: "v_price_kline_qfq"
-  market_index: "000300"
+  optimal_table_primary: "mart_per_formula_stage_optimal"
+  optimal_table_fallback: "mart_per_stock_strategy_optimal"
+  benchmark: "000300"
+  start_date: "2023-01-03"

@@ -29,7 +29,7 @@ class PortfolioConfig:
 
 @dataclass(frozen=True)
 class SelectionConfig:
-    mode: str                            # "production" | "backtest"
+    mode: str                            # "production" | "backtest" | "ensemble"
     candidate_source: str
     rank_by: str
     min_tier_to_buy: str
@@ -41,6 +41,15 @@ class SelectionConfig:
     # Phase ψ.α: 公式白名单 (空 / None = 不限制, 列表 = 只用列表里的 formula_id)
     # 用于 ablation: momentum vs reversal vs combined 同 paper_sim 路径下切换
     formula_whitelist: tuple = ()
+    # Phase ψ.β.4: ensemble 多 alpha 综合 配置
+    # ensemble_alphas: list of {name, weight, source_table, source_col, direction, pit_key, ...}
+    ensemble_alphas: tuple = ()
+    # regime_gate: {enabled, source_table, pit_key, bear_multiplier, sideways_multiplier, bull_multiplier}
+    regime_gate: dict = field(default_factory=dict)
+    # ensemble 默认持仓参数 (paper_sim simulate_trade 用 — 反转 deep × stage=1 实测最优)
+    default_holding: dict = field(default_factory=lambda: {
+        "hp": 15, "stop_pct": -0.10, "target_pct": 0.20, "trailing_pct": 0.05
+    })
 
 
 @dataclass(frozen=True)
@@ -133,9 +142,16 @@ def _validate(cfg: PaperSimConfig) -> None:
     assert r.max_dd_hard_stop_pct < r.daily_dd_warning_pct  # hard stop 更严
 
     sel = cfg.selection
-    assert sel.mode in {"production", "backtest"}, f"unknown selection.mode: {sel.mode}"
+    assert sel.mode in {"production", "backtest", "ensemble"}, f"unknown selection.mode: {sel.mode}"
     assert sel.min_tier_to_buy in {"BUY", "STRONG_BUY", "WATCH"}
     assert sel.min_tier_to_swap_in in {"BUY", "STRONG_BUY"}
+    if sel.mode == "ensemble":
+        assert sel.ensemble_alphas, "ensemble mode requires non-empty ensemble_alphas"
+        for a in sel.ensemble_alphas:
+            assert all(k in a for k in ("name", "weight", "source_table", "source_col",
+                                        "direction", "pit_key")), \
+                   f"ensemble alpha missing required keys: {a}"
+            assert a["direction"] in (1, -1, +1)
 
 
 def load_config(path: Path | None = None, override: dict | None = None) -> PaperSimConfig:
@@ -156,9 +172,13 @@ def load_config(path: Path | None = None, override: dict | None = None) -> Paper
         portfolio=PortfolioConfig(**raw["portfolio"]),
         selection=SelectionConfig(
             **{**raw["selection"],
-               # Phase ψ.α: yaml list → tuple (frozen dataclass 要求 hashable)
                "formula_whitelist": tuple(raw["selection"].get("formula_whitelist") or ()),
-               "exclude_stage": list(raw["selection"].get("exclude_stage") or [])}
+               "exclude_stage": list(raw["selection"].get("exclude_stage") or []),
+               # Phase ψ.β.4: ensemble alphas (tuple of dict — frozen dc 字段可为 tuple)
+               "ensemble_alphas": tuple(raw["selection"].get("ensemble_alphas") or []),
+               "regime_gate": raw["selection"].get("regime_gate", {}) or {},
+               "default_holding": raw["selection"].get("default_holding", {}) or {
+                   "hp": 15, "stop_pct": -0.10, "target_pct": 0.20, "trailing_pct": 0.05}}
         ),
         exit=ExitConfig(**raw["exit"]),
         swap=SwapConfig(**raw["swap"]),

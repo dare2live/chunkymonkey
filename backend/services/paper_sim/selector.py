@@ -15,6 +15,7 @@ mode 选择放 config 里, business 代码不动 — Rule 2 + 项目特定 "模�
 """
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass
 from typing import Optional
 
@@ -26,6 +27,8 @@ from services.portfolio_walk_forward.liquidity import (
 
 
 TIER_RANK = {"NO_SIGNAL": 0, "WATCH": 1, "BUY": 2, "STRONG_BUY": 3}
+
+log = logging.getLogger("paper_sim.selector")
 
 
 @dataclass(frozen=True)
@@ -218,12 +221,168 @@ def load_today_candidates_inline(
     return out
 
 
+def load_today_candidates_ensemble(
+    conn,
+    signal_date: str,
+    cfg: SelectionConfig,
+) -> list[CandidateRow]:
+    """Phase ψ.β.4 ensemble mode: 多 alpha 综合 zscore 排名 + regime gate.
+
+    严格 PIT (Rule 9.1):
+      - 每个 alpha 表 JOIN 时 WHERE pit_key <= signal_date
+      - zscore 跨当日全市场算 (不偷看未来)
+      - regime_gate 用 fact_regime_state PIT (trade_date <= signal_date)
+
+    无 selection leakage — 因为 alpha 来源都是 PIT 时序数据 (β.1/β.2/β.3 backfill 过).
+    用 cfg.default_holding 给所有候选用统一 hp/stop/target (ensemble 不调单股 params).
+    """
+    import math
+    alphas = list(cfg.ensemble_alphas)
+    if not alphas:
+        return []
+
+    # 1. 每个 alpha 拉当日 (stock_code → raw_value) — ASOF 最近 ≤ signal_date
+    alpha_data: dict[str, dict[str, float]] = {}
+    for a in alphas:
+        name = a["name"]
+        table = a["source_table"]
+        col = a["source_col"]
+        pit_key = a["pit_key"]
+        extra_filter = a.get("filter", "")
+        formula_filter = a.get("filter_formula_ids", [])
+        # SQL: ASOF JOIN — 拿每股 ≤ signal_date 的最近一行 col 值
+        # 简化版: 对每股查 MAX(pit_key) <= signal_date, 然后 JOIN 拿值
+        filter_sql = ""
+        params: list = [signal_date]
+        if extra_filter:
+            filter_sql += f" AND {extra_filter}"
+        if formula_filter and "formula_id" in {c[1] for c in conn.execute(
+            f"PRAGMA table_info('{table}')").fetchall()}:
+            ph = ",".join(["?"] * len(formula_filter))
+            filter_sql += f" AND formula_id IN ({ph})"
+            params += list(formula_filter)
+        sql = f"""
+            WITH pit_max AS (
+                SELECT stock_code, MAX({pit_key}) AS pit
+                  FROM {table}
+                 WHERE {pit_key} <= ?
+                   {filter_sql}
+                 GROUP BY stock_code
+            )
+            SELECT t.stock_code, t.{col}
+              FROM {table} t
+              JOIN pit_max p
+                ON p.stock_code = t.stock_code
+               AND p.pit = t.{pit_key}
+             WHERE t.{col} IS NOT NULL
+        """
+        try:
+            rows = conn.execute(sql, params).fetchall()
+            alpha_data[name] = {r[0]: float(r[1]) for r in rows if r[1] is not None}
+        except Exception as e:
+            log.warning(f"  ensemble alpha {name} JOIN failed: {e}")
+            alpha_data[name] = {}
+
+    # 2. 算各 alpha 的 zscore (跨当日市场分布)
+    alpha_zscore: dict[str, dict[str, float]] = {}
+    for a in alphas:
+        name = a["name"]
+        direction = a.get("direction", 1)
+        data = alpha_data[name]
+        if not data:
+            alpha_zscore[name] = {}
+            continue
+        vals = list(data.values())
+        mean = sum(vals) / len(vals)
+        var = sum((v - mean) ** 2 for v in vals) / max(len(vals) - 1, 1)
+        std = math.sqrt(var) if var > 0 else 1.0
+        alpha_zscore[name] = {
+            sc: ((v - mean) / std) * direction
+            for sc, v in data.items()
+        }
+
+    # 3. 加权综合 score
+    weight_sum = sum(a["weight"] for a in alphas)
+    all_stocks: set = set()
+    for d in alpha_data.values():
+        all_stocks.update(d.keys())
+
+    scores: dict[str, float] = {}
+    for sc in all_stocks:
+        score = 0.0
+        n_alphas_present = 0
+        for a in alphas:
+            name = a["name"]
+            z = alpha_zscore[name].get(sc)
+            if z is None:
+                continue
+            score += (a["weight"] / weight_sum) * z
+            n_alphas_present += 1
+        # 至少需要一半 alpha 有值才信
+        if n_alphas_present >= max(2, len(alphas) // 2):
+            scores[sc] = score
+
+    # 4. regime gate
+    rg = cfg.regime_gate
+    if rg.get("enabled"):
+        try:
+            regime_row = conn.execute(f"""
+                SELECT regime_label FROM {rg.get('source_table', 'fact_regime_state')}
+                 WHERE {rg.get('pit_key', 'trade_date')} <= ?
+                 ORDER BY {rg.get('pit_key', 'trade_date')} DESC LIMIT 1
+            """, [signal_date]).fetchone()
+            if regime_row and regime_row[0]:
+                regime = regime_row[0].lower()
+                mul = rg.get(f"{regime}_multiplier", 1.0)
+                scores = {sc: v * mul for sc, v in scores.items()}
+        except Exception as e:
+            log.warning(f"  regime gate failed: {e}")
+
+    # 5. 取 top N (按 score DESC), 用 default_holding 给统一 params
+    dh = cfg.default_holding
+    sorted_scores = sorted(scores.items(), key=lambda kv: -kv[1])
+
+    # tier 简化: top 50% → STRONG_BUY, top 50-90% → BUY, 其余跳
+    n_total = len(sorted_scores)
+    n_strong = max(1, n_total // 10)   # 前 10% STRONG_BUY
+    n_buy    = max(n_strong, n_total // 3)   # 前 33% BUY
+
+    out: list[CandidateRow] = []
+    for i, (sc, score) in enumerate(sorted_scores):
+        if i < n_strong:
+            tier = "STRONG_BUY"
+        elif i < n_buy:
+            tier = "BUY"
+        else:
+            break
+        if cfg.min_tier_to_buy == "STRONG_BUY" and tier != "STRONG_BUY":
+            continue
+        out.append(CandidateRow(
+            stock_code=sc,
+            formula_id="ensemble",
+            formula_variant="ensemble",
+            tier=tier,
+            score=float(score),
+            expected_total_return=float(dh.get("target_pct", 0.20)),
+            optimal_hp=int(dh.get("hp", 15)),
+            optimal_target_pct=float(dh.get("target_pct", 0.20)),
+            optimal_stop_pct=float(dh.get("stop_pct", -0.10)),
+            optimal_trailing_pct=float(dh.get("trailing_pct", 0.05)),
+            signal_close=0.0,
+            sell_target=None, stop_price=None,
+            stage=None, match_tier="ensemble",
+        ))
+    return out
+
+
 def load_today_candidates_dispatch(
     conn,
     signal_date: str,
     cfg: SelectionConfig,
 ) -> list[CandidateRow]:
-    """根据 cfg.mode 分发到 production / backtest loader."""
+    """根据 cfg.mode 分发到 production / backtest / ensemble loader."""
+    if cfg.mode == "ensemble":
+        return load_today_candidates_ensemble(conn, signal_date, cfg)
     if cfg.mode == "backtest":
         return load_today_candidates_inline(conn, signal_date, cfg)
     return load_today_candidates(conn, signal_date, cfg)
