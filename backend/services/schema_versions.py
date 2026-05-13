@@ -64,6 +64,19 @@ FACT_VERSIONS = {
     "fact_stock_stage_features": "v1",       # 阶段特征
     "fact_stock_turtle_features": "v1",      # 海龟特征
     "fact_risk_factors": "v1",               # P1.6 风险因子 (vol/sharpe/dd/mom/skew/kurt)
+    # Phase β/γ/δ/ε 新增 (2026-05-12)
+    "fact_technical_trigger": "v1",          # Phase β: 公式触发信号
+    "fact_stock_technical_stage": "v1",      # Phase β: Stan Weinstein 4 stage
+    "fact_stock_fundamental_stage_daily": "v1",  # Phase γ: 基本面阶段 PIT 日快照
+    "fact_stock_type_daily": "v1",           # Phase γ: 5 状态股票类型
+    "fact_paper_position": "v1",             # Phase δ: 虚拟交易事件
+    "fact_stock_selection_log": "v1",        # Phase ε: 选股事件 PIT log
+    "fact_signal_context": "v1",             # Phase ε++: 每日每股 5 维上下文 (vol/amt/price_pos/stage)
+    # §3.4 十项基础设施 fact 类
+    "fact_daily_price_status": "v1",         # 一字板 / 涨跌停 / 停牌
+    "fact_stock_liquidity_daily": "v1",      # 流动性
+    "fact_stock_style_daily": "v1",          # 风格因子 z-score
+    "fact_stock_market_cap_daily": "v1",     # 市值
 }
 
 # mart_* (集市层, 可重算, 32 张)
@@ -195,6 +208,30 @@ MART_VERSIONS = {
     "mart_prediction_outcome": "v1",         # P2.8 预测 outcome tracker
     "mart_ensemble_signals": "v1",           # P3.11 多策略 ensemble
     "mart_today_signal_cache": "v1",         # signals_v2 read cache
+    # Phase β/γ/δ/ε 新增 (2026-05-12)
+    "mart_formula_horizon_evidence": "v1",   # Phase β: 公式 horizon 胜率证据
+    "mart_stage_formula_fitness": "v1",      # Phase β: stage × formula × hd 适配
+    "mart_stock_picture_daily": "v1",        # Phase γ: 5,512 股全画像 fan-out
+    "mart_stock_trade_plan": "v1",           # Phase γ: 8 字段 trade plan
+    "mart_paper_nav": "v1",                  # Phase δ: 虚拟 NAV 日序列
+    "mart_signal_ic": "v1",                  # Phase δ: 公式 Spearman IC
+    "mart_decision_outcome": "v1",           # Phase δ: BUY 决策 outcome
+    "mart_stock_selection_outcome": "v1",    # Phase ε: 选股事件 forward return
+    "mart_stock_selection_summary": "v1",    # Phase ε: 每股 rolling 统计
+    "mart_formula_weight_history": "v1",     # Phase ε: 反馈环公式权重
+    "mart_daily_blended_recommendation": "v1",  # Phase ε+: 反馈环融合后的 daily-topk
+    "mart_model_composite_score": "v1",      # §6.5.1 Risk-adjusted composite
+    "mart_model_edge_flags": "v1",           # §6.5.2 OVERFIT/RISKY/DEAD 三道防线
+    "mart_research_reflection_log": "v1",    # §6.5.3 GEPA 反思日志
+    "mart_stock_formula_optuna": "v1",       # Phase η: per-stock 公式 grid search
+    "mart_daily_formula_buys": "v1",         # Phase η: 每日 T+1 公式推荐
+    "mart_per_stock_optuna_best": "v1",      # Phase η+: per-stock 真 Optuna 最佳配置
+    "mart_daily_position_recommendation": "v4",  # Phase ζ: 加 optimal_stop_pct/target/trailing 暴露寻优明细
+    "mart_stock_survey_features": "v1",          # Phase η++++: 调研热度桶 (IC 60d=0.086 实测验证)
+    "mart_stock_formula_optuna_v2": "v1",        # Phase ε.4: 真实回测 (含 stop/trailing/target + 成本 + 一字板)
+    "mart_per_stock_strategy_optimal": "v3",     # Phase η++++++: 加 K线形态阈值 + 多目标 metrics
+    "mart_stock_formula_buy_signal_daily": "v2", # Phase η+++++ 修正: 8 因子全维 (含 archetype/primary_type)
+    "mart_stage_formula_fitness": "v2",          # Phase η++++++: 重建 6 fund × 6 tech × 5 formula × 7 hp
 }
 
 # dim_* 派生类 (静态/缓存型, 不含 raw dim, 12 张)
@@ -208,6 +245,17 @@ DIM_DERIVED_VERSIONS = {
     "dim_stock_quality_latest": "v1",
     "dim_stock_stage_latest": "v1",
     "dim_stock_turtle_latest": "v1",
+    # Phase γ 新增 (2026-05-12)
+    "dim_stock_stage_days": "v1",            # Phase γ: 基本面/技术面阶段持续天数
+    # §3.4 十项基础设施 dim 类
+    "dim_price_limit_rules": "v1",           # 涨跌停规则
+    "dim_market_segment": "v1",              # 市场细分
+    "dim_trading_rule": "v1",                # T+1 / 手数 / tick
+    "dim_fee_schedule": "v1",                # 佣金 / 印花税
+    "dim_trading_session": "v1",             # 盘口时段
+    "dim_liquidity_threshold": "v1",         # 流动性阈值
+    "dim_listing_status": "v1",              # 退市状态
+    "dim_style_factor": "v1",                # 风格因子定义
 }
 
 # 合并: 业务派生表全集 (raw_* / dim_active_a_stock / dim_trading_calendar 等不进, 它们靠 sync_raw 维护)

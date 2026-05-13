@@ -1,9 +1,9 @@
 """
-tdx_industry_client.py — 通达信行业分类同步（取代申万 SW 三级分类）
+tdx_industry_client.py — 通达信行业分类同步（已彻底取代申万 SW 三级分类，Phase η++ 2026-05-12 清理）
 
 数据源：TDX 行情协议远程文件 `tdxhy.cfg`
   - 文件大小 ~150KB，5604 只股票
-  - 每行 6 字段：市场|代码|通达信 T 码|||申万 X 码
+  - 每行 6 字段：市场|代码|通达信 T 码|||(忽略第6列旧申万码)
   - **每只股票唯一对应一个 T 码**（唯一性已实测验证）
   - T 码三级结构：
       T + 2 位 → 一级（13 个）
@@ -20,7 +20,9 @@ tdx_industry_client.py — 通达信行业分类同步（取代申万 SW 三级�
   tdx_l1       一级代码（T + 2 位）
   tdx_l2       二级代码（T + 4 位）
   tdx_l3       三级代码（T + 6 位）
-  sw_x_legacy  申万 X 码（从 tdxhy.cfg 同一行提取，仅作审计/对照，不参与业务）
+  tdx_l1_name  一级中文名
+  tdx_l2_name  二级中文名
+  tdx_l3_name  三级中文名
   updated_at   TIMESTAMP
 """
 
@@ -51,7 +53,6 @@ def _ensure_table(conn: Any) -> None:
             tdx_l1_name   TEXT,
             tdx_l2_name   TEXT,
             tdx_l3_name   TEXT,
-            sw_x_legacy   TEXT,
             updated_at    TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         );
         CREATE INDEX IF NOT EXISTS idx_tdx_industry_l1 ON dim_stock_tdx_industry(tdx_l1);
@@ -167,12 +168,14 @@ def _split_tdx_code(code: str) -> tuple[Optional[str], Optional[str], Optional[s
 
 
 _ParsedRow = tuple[str, Optional[str], Optional[str], Optional[str],
-                   Optional[str], Optional[str], Optional[str], Optional[str]]
+                   Optional[str], Optional[str], Optional[str]]
 
 
 def _parse_tdxhy(data: bytes) -> list[_ParsedRow]:
     """解析 tdxhy.cfg 字节流，返回
-    [(stock_code, tdx_l1, tdx_l2, tdx_l3, tdx_l1_name, tdx_l2_name, tdx_l3_name, sw_x_legacy), ...]。
+    [(stock_code, tdx_l1, tdx_l2, tdx_l3, tdx_l1_name, tdx_l2_name, tdx_l3_name), ...]。
+
+    注: tdxhy.cfg 第 6 列原为申万 X 码; Phase η++ 已废弃, 仅解析 TDX 三级。
     """
     from services.tdx_industry_names import get_tdx_industry_name
 
@@ -183,11 +186,10 @@ def _parse_tdxhy(data: bytes) -> list[_ParsedRow]:
         if not line:
             continue
         parts = line.split("|")
-        if len(parts) < 6:
+        if len(parts) < 3:
             continue
         stock_code = parts[1].strip()
         tdx_raw = parts[2].strip()
-        sw_x = parts[5].strip() or None
 
         if not stock_code:
             continue
@@ -198,7 +200,6 @@ def _parse_tdxhy(data: bytes) -> list[_ParsedRow]:
             get_tdx_industry_name(l1),
             get_tdx_industry_name(l2),
             get_tdx_industry_name(l3),
-            sw_x,
         ))
     return rows
 
@@ -276,8 +277,8 @@ def sync_tdx_industry(conn: Any) -> dict:
         INSERT OR REPLACE INTO dim_stock_tdx_industry
           (stock_code, tdx_l1, tdx_l2, tdx_l3,
            tdx_l1_name, tdx_l2_name, tdx_l3_name,
-           sw_x_legacy, updated_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+           updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
     """
     now_ts = datetime.now()
     parsed_with_ts = [tuple(row) + (now_ts,) for row in parsed]
@@ -395,7 +396,7 @@ def get_tdx_industry(conn: Any, stock_code: str) -> Optional[dict]:
     """查询单只股票的通达信行业三级代码（含中文名）。"""
     row = conn.execute(
         """SELECT tdx_l1, tdx_l2, tdx_l3,
-                  tdx_l1_name, tdx_l2_name, tdx_l3_name, sw_x_legacy
+                  tdx_l1_name, tdx_l2_name, tdx_l3_name
              FROM dim_stock_tdx_industry WHERE stock_code=?""",
         (stock_code,),
     ).fetchone()
@@ -408,7 +409,6 @@ def get_tdx_industry(conn: Any, stock_code: str) -> Optional[dict]:
         "tdx_l1_name": row[3],
         "tdx_l2_name": row[4],
         "tdx_l3_name": row[5],
-        "sw_x_legacy": row[6],
     }
 
 
@@ -416,14 +416,13 @@ def load_tdx_industry_map(conn: Any) -> dict[str, dict]:
     """批量加载全量股票→行业映射（含中文名）。"""
     rows = conn.execute(
         """SELECT stock_code, tdx_l1, tdx_l2, tdx_l3,
-                  tdx_l1_name, tdx_l2_name, tdx_l3_name, sw_x_legacy
+                  tdx_l1_name, tdx_l2_name, tdx_l3_name
              FROM dim_stock_tdx_industry"""
     ).fetchall()
     return {
         r[0]: {
             "tdx_l1": r[1], "tdx_l2": r[2], "tdx_l3": r[3],
             "tdx_l1_name": r[4], "tdx_l2_name": r[5], "tdx_l3_name": r[6],
-            "sw_x_legacy": r[7],
         }
         for r in rows
     }

@@ -1318,7 +1318,6 @@ def init_db():
                 tdx_l1_name   TEXT,
                 tdx_l2_name   TEXT,
                 tdx_l3_name   TEXT,
-                sw_x_legacy   TEXT,
                 updated_at    TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             );
             CREATE INDEX IF NOT EXISTS idx_tdx_industry_l1 ON dim_stock_tdx_industry(tdx_l1);
@@ -2039,6 +2038,8 @@ def init_db():
             ("mart_current_relationship", "sw_level1"),
             ("mart_current_relationship", "sw_level2"),
             ("mart_current_relationship", "sw_level3"),
+            # Phase η++ 2026-05-12: 删除 dim_stock_tdx_industry 残留审计列
+            ("dim_stock_tdx_industry", "sw_x_legacy"),
         ]
         for tbl, col in sw_drop_plan:
             try:
@@ -2047,6 +2048,11 @@ def init_db():
                 pass
         try:
             conn.execute("DROP TABLE IF EXISTS dim_stock_industry")
+        except Exception:
+            pass
+        # Phase η++ 2026-05-12: 退役已废弃的行业快照表
+        try:
+            conn.execute("DROP TABLE IF EXISTS fact_institution_event_industry_snapshot")
         except Exception:
             pass
 

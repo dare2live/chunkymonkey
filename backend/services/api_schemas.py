@@ -24,15 +24,5 @@ class KLineDailyRow(BaseModel):
     amount: Optional[float] = None
 
 
-class SWIndustryRow(BaseModel):
-    """AKShare SW Industry tree structure row parsing"""
-    股票代码: str
-
-    model_config = ConfigDict(extra="allow")
-
-
-class SWIndustryTreeRow(BaseModel):
-    """AKShare SW Industry Tree category row"""
-    类目编码: str
-
-    model_config = ConfigDict(extra="allow")
+# SW industry parsing classes removed (Phase η++ 2026-05-12): 申万已在 Phase 2/3 退役,
+# 项目全面切换通达信 L2 (dim_stock_tdx_industry). 这两个类无活引用, 直接删除.

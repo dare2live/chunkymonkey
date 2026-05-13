@@ -137,15 +137,15 @@ def test_tdx_industry_history_table_created_and_written(tmp_path, monkeypatch):
             stock_code TEXT PRIMARY KEY,
             tdx_l1 TEXT, tdx_l2 TEXT, tdx_l3 TEXT,
             tdx_l1_name TEXT, tdx_l2_name TEXT, tdx_l3_name TEXT,
-            sw_x_legacy TEXT, updated_at TIMESTAMP
+            updated_at TIMESTAMP
         );
         """
     )
 
-    # mock 下载 + 解析
+    # mock 下载 + 解析 (Phase η++: 删除第 8 列 sw_x_legacy)
     parsed_fake = [
-        ("600519", "T02", "T0202", "T020201", "日常消费", "饮料", "白酒", "SW食品"),
-        ("000001", "T10", "T1001", "T100101", "金融", "银行", "大型银行", "SW银行"),
+        ("600519", "T02", "T0202", "T020201", "日常消费", "饮料", "白酒"),
+        ("000001", "T10", "T1001", "T100101", "金融", "银行", "大型银行"),
     ]
     monkeypatch.setattr(tic, "_fetch_tdxhy_bytes", lambda: (b"fake", "http://fake"))
     monkeypatch.setattr(tic, "_parse_tdxhy", lambda _: parsed_fake)
@@ -181,7 +181,7 @@ def test_get_tdx_industry_at_event_time_fallback():
             stock_code TEXT PRIMARY KEY,
             tdx_l1 TEXT, tdx_l2 TEXT, tdx_l3 TEXT,
             tdx_l1_name TEXT, tdx_l2_name TEXT, tdx_l3_name TEXT,
-            sw_x_legacy TEXT, updated_at TIMESTAMP
+            updated_at TIMESTAMP
         );
         CREATE TABLE dim_stock_tdx_industry_history (
             stock_code TEXT, snapshot_date TEXT,
@@ -190,7 +190,7 @@ def test_get_tdx_industry_at_event_time_fallback():
             PRIMARY KEY(stock_code, snapshot_date)
         );
         INSERT INTO dim_stock_tdx_industry
-            VALUES('600519','T02','T0202','T020201','消费','饮料','白酒',NULL,CURRENT_TIMESTAMP);
+            VALUES('600519','T02','T0202','T020201','消费','饮料','白酒',CURRENT_TIMESTAMP);
         """
     )
     # 无 history，应回退当前（get_tdx_industry 返回 dict 无 source 字段）

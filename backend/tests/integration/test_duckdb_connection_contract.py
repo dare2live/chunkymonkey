@@ -155,7 +155,19 @@ def test_production_code_keeps_raw_duckdb_connect_calls_allowlisted():
         "scripts/backtest_etf_strategies.py",
         "scripts/build_alpha158_duck.py",
         "scripts/build_etf_sector_rotation.py",
+        "scripts/build_formula_signals_history.py",
+        "scripts/build_stage_formula_fitness.py",
         "scripts/migrate_holders_to_tdxhub.py",
+        "scripts/build_signal_context.py",
+        "scripts/analyze_macd_feature_buckets.py",
+        "scripts/build_stock_formula_optuna.py",
+        "scripts/optuna_per_stock_macd.py",
+        "scripts/validate_sentiment_ic.py",
+        "scripts/validate_exclusion_rules.py",
+        "scripts/build_stock_formula_optuna_v2.py",
+        "scripts/optimize_per_stock_strategy.py",
+        "scripts/optimize_per_stock_stage_strategy.py",
+        "scripts/portfolio_backtest.py",
     }
     found = set()
 

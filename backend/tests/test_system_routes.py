@@ -25,15 +25,20 @@ def test_inst_health_summary_alias_matches_health_contract():
     assert "etf" in payload["available_modules"]
 
 
-def test_index_injects_runtime_asset_version(monkeypatch):
-    monkeypatch.setattr(main, "build_index_asset_version", lambda: "20260417abc")
+def test_root_redirects_to_v3():
+    """Phase ζ: 根路径默认重定向到 v3 设计稿。"""
+    response = client.get("/", follow_redirects=False)
+    assert response.status_code in (307, 308)
+    assert "v3" in response.headers.get("location", "").lower()
 
-    response = client.get("/")
 
-    assert response.status_code == 200
-    assert response.headers["cache-control"] == "no-store"
-    assert "text/html" in response.headers["content-type"]
-    assert "window.CM_ASSET_VERSION = '20260417abc';" in response.text
+def test_legacy_returns_410_gone():
+    """Phase ζ 收尾: 旧 vanilla 前端正式退役, /legacy 返回 410 Gone。"""
+    response = client.get("/legacy", follow_redirects=False)
+    assert response.status_code == 410
+    body = response.json()
+    assert body["error"] == "legacy_retired"
+    assert "/v3" in body["redirect"]
 
 
 def test_workbench_storage_route_defaults_to_persisted_read_model(monkeypatch):

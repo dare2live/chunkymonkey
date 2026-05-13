@@ -492,6 +492,122 @@ def phase_candidate_eval(
         return {"phase": "candidate_eval", "status": "failed", "reason": str(exc)}
 
 
+def phase_selection_log() -> dict:
+    """Phase ε.1: 把今日 daily-topk + 公式触发追加到 fact_stock_selection_log."""
+    try:
+        from datetime import date as _date
+        from services.db import get_conn
+        from services.selection.ddl import ensure_selection_tables
+        from services.selection.logger import log_topk_selection, log_formula_selection
+        conn = get_conn()
+        try:
+            ensure_selection_tables(conn)
+            today = _date.today().isoformat()
+            # 今日 daily-topk
+            topk_rows = conn.execute(
+                """
+                SELECT stock_code, rank_in_date, pred_score, model_id, baseline_horizon_days
+                  FROM mart_daily_recommendation
+                 WHERE snapshot_date = ?
+                """,
+                [today],
+            ).fetchall()
+            topk_dicts = [
+                {"stock_code": r[0], "rank_in_date": r[1], "pred_score": r[2],
+                 "model_id": r[3], "baseline_horizon_days": r[4]}
+                for r in topk_rows
+            ]
+            n_topk = log_topk_selection(conn, today, topk_dicts) if topk_dicts else 0
+            # 今日 formula 触发
+            sig_rows = conn.execute(
+                """
+                SELECT stock_code, formula_id, strength, state
+                  FROM fact_technical_trigger
+                 WHERE date = ?
+                """,
+                [today],
+            ).fetchall()
+            sig_dicts = [
+                {"stock_code": r[0], "formula_id": r[1], "strength": r[2], "state": r[3]}
+                for r in sig_rows
+            ]
+            n_formula = log_formula_selection(conn, today, sig_dicts) if sig_dicts else 0
+            return {"phase": "selection_log", "status": "ok",
+                    "topk_rows": n_topk, "formula_rows": n_formula}
+        finally:
+            conn.close()
+    except Exception as exc:
+        log.exception("[selection_log] failed")
+        return {"phase": "selection_log", "status": "failed", "reason": str(exc)}
+
+
+def phase_selection_outcome() -> dict:
+    """Phase ε.2: 对 [today-60d, today] 间 selection_log 算 outcome (5/10/30d ret)."""
+    try:
+        from datetime import date as _date, timedelta
+        from services.db import get_conn
+        from services.market_db import get_market_conn
+        from services.selection.ddl import ensure_selection_tables
+        from services.selection.outcome import compute_outcomes_for_period
+        conn = get_conn()
+        mkt = get_market_conn()
+        try:
+            ensure_selection_tables(conn)
+            end = _date.today().isoformat()
+            start = (_date.today() - timedelta(days=60)).isoformat()
+            n = compute_outcomes_for_period(conn, mkt, start, end)
+            return {"phase": "selection_outcome", "status": "ok", "rows": n,
+                    "window": f"{start}~{end}"}
+        finally:
+            conn.close()
+            mkt.close()
+    except Exception as exc:
+        log.exception("[selection_outcome] failed")
+        return {"phase": "selection_outcome", "status": "failed", "reason": str(exc)}
+
+
+def phase_selection_summary() -> dict:
+    """Phase ε.3: 全量重算 mart_stock_selection_summary (asof_date=today)."""
+    try:
+        from datetime import date as _date
+        from services.db import get_conn
+        from services.selection.ddl import ensure_selection_tables
+        from services.selection.summary import recompute_all_summaries
+        conn = get_conn()
+        try:
+            ensure_selection_tables(conn)
+            today = _date.today().isoformat()
+            n = recompute_all_summaries(conn, today)
+            return {"phase": "selection_summary", "status": "ok", "rows": n}
+        finally:
+            conn.close()
+    except Exception as exc:
+        log.exception("[selection_summary] failed")
+        return {"phase": "selection_summary", "status": "failed", "reason": str(exc)}
+
+
+def phase_formula_weights() -> dict:
+    """Phase ε.4: 反馈环 — 从 mart_signal_ic 派生 mart_formula_weight_history."""
+    try:
+        from datetime import date as _date
+        from services.db import get_conn
+        from services.paper_engine.ddl import ensure_paper_tables
+        from services.selection.ddl import ensure_selection_tables
+        from services.selection.feedback import derive_formula_weights
+        conn = get_conn()
+        try:
+            ensure_paper_tables(conn)
+            ensure_selection_tables(conn)
+            today = _date.today().isoformat()
+            n = derive_formula_weights(conn, today, ic_window_days=60)
+            return {"phase": "formula_weights", "status": "ok", "rows": n}
+        finally:
+            conn.close()
+    except Exception as exc:
+        log.exception("[formula_weights] failed")
+        return {"phase": "formula_weights", "status": "failed", "reason": str(exc)}
+
+
 def phase_audit() -> dict:
     """Phase 5: stale references audit. CI gate."""
     try:
@@ -516,7 +632,9 @@ def phase_audit() -> dict:
 # main
 # ─────────────────────────────────────────────────────────────────────
 
-ALL_PHASES = ["sync", "lineage", "watermarks", "topk", "health", "drift", "candidate_eval", "audit"]
+ALL_PHASES = ["sync", "lineage", "watermarks", "topk",
+              "selection_log", "selection_outcome", "selection_summary", "formula_weights",
+              "health", "drift", "candidate_eval", "audit"]
 
 
 def _record_cron_manifest(
@@ -730,6 +848,14 @@ def main() -> int:
                     shadow_model_id=args.shadow_model_id,
                     include_risk_summary=args.include_topk_risk_summary,
                 )
+            elif phase == "selection_log":
+                r = phase_selection_log()
+            elif phase == "selection_outcome":
+                r = phase_selection_outcome()
+            elif phase == "selection_summary":
+                r = phase_selection_summary()
+            elif phase == "formula_weights":
+                r = phase_formula_weights()
             elif phase == "health":
                 r = phase_health()
             elif phase == "drift":

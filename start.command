@@ -73,27 +73,30 @@ cd "$BACKEND_DIR"
 stop_project_server
 check_port_conflict
 
-# ---- akshare 启动前依赖检查 ----
-# 生产启动只检查本地版本，不在启动链路执行 pip install/upgrade。
-# 手动维护升级请运行: ./scripts/upgrade_akshare.sh
+# ---- akshare 依赖检查 (改成查 pip metadata, 不真 import) ----
+# 之前用 import akshare 触发 mini_racer V8 init, 在 macOS 14+ 崩 (Python quit unexpectedly)
+# 现在用 pip metadata 查版本, 不 import → 不触发 V8
 current_v="$("$PYTHON_BIN" - <<'PY' 2>/dev/null || true
 try:
-    import akshare as ak
-    print(getattr(ak, "__version__", "unknown"))
+    from importlib.metadata import version
+    print(version('akshare'))
 except Exception:
     print("")
 PY
 )"
 if [[ -n "$current_v" ]]; then
-  echo "akshare: 本地版本 v${current_v}"
+  echo "akshare: 本地版本 v${current_v} (metadata 查, 未 import → 避 V8 崩溃)"
 else
-  echo "akshare: 未安装或无法导入；TDX 主链路可启动，akshare 兜底接口会不可用。"
-  echo "          如需维护升级，请运行 ./scripts/upgrade_akshare.sh"
+  echo "akshare: 未安装; TDX 主链路可启动, akshare 兜底接口会不可用"
 fi
+
+# V8 flags 防 mini_racer 在 macOS 上 partition_alloc 崩溃
+# (akshare → mini_racer → V8 已知 issue: https://github.com/bpcreech/PyMiniRacer)
+export V8_FLAGS="${V8_FLAGS:---no-randomize-hashes --no-sandbox}"
 
 echo "========================================"
 echo "  Chunky Monkey v2 启动中..."
-echo "  地址: http://localhost:$PORT"
+echo "  地址: http://localhost:$PORT  (/ → /v3 设计稿)"
 echo "  API:  http://localhost:$PORT/docs"
 echo "  Python: $($PYTHON_BIN --version 2>&1)"
 if [[ "$RELOAD_MODE" == "1" ]]; then
@@ -103,6 +106,30 @@ else
 fi
 echo "  按 Ctrl+C 停止"
 echo "========================================"
+
+# ---- 后端就绪后自动打开 v3 前端 ----
+# 设置 CM_OPEN_BROWSER=0 可禁用 (headless 跑批场景)
+open_frontend_when_ready() {
+  # 60 次 × 0.5s = 30s 总等待
+  local max_attempts=60
+  local i
+  for ((i=1; i<=max_attempts; i++)); do
+    if curl -sf "http://localhost:$PORT/health" > /dev/null 2>&1; then
+      echo "✓ 后端就绪 (尝试 ${i} 次), 打开浏览器 http://localhost:$PORT/v3"
+      open "http://localhost:$PORT/" 2>/dev/null || true
+      return 0
+    fi
+    sleep 0.5
+  done
+  echo "⚠ 后端 30s 内未就绪, 跳过自动打开浏览器"
+  echo "  请手动访问: http://localhost:$PORT/v3"
+}
+
+if [[ "${CM_OPEN_BROWSER:-1}" == "1" ]]; then
+  # 后台等待 + 打开浏览器, 主进程继续执行 uvicorn
+  open_frontend_when_ready &
+fi
+
 if [[ "$RELOAD_MODE" == "1" ]]; then
   exec "$PYTHON_BIN" -m uvicorn main:app --host 0.0.0.0 --port "$PORT" --reload --reload-dir "$BACKEND_DIR"
 fi

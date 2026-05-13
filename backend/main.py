@@ -112,6 +112,30 @@ app.include_router(data_sources_router, prefix="/api/data_sources", tags=["data_
 from routers.strategy_preset import router as strategy_preset_router
 app.include_router(strategy_preset_router, prefix="/api/inst/strategy", tags=["strategy_preset"])
 
+# v3 设计稿专用聚合 API
+from routers.v3_meta import router as v3_meta_router
+app.include_router(v3_meta_router, prefix="/api/v3", tags=["v3_meta"])
+
+# Phase γ D4: 股票画像 + trade plan (mart_stock_picture_daily / mart_stock_trade_plan)
+from routers.v3_picture import router as v3_picture_router
+app.include_router(v3_picture_router, prefix="/api/v3", tags=["v3_picture"])
+
+# Phase δ D4: paper engine (mart_paper_nav / fact_paper_position / mart_signal_ic / mart_decision_outcome)
+from routers.v3_paper import router as v3_paper_router
+app.include_router(v3_paper_router, prefix="/api/v3/paper", tags=["v3_paper"])
+
+# Phase ε D3: 优选追踪 + 反馈闭环
+from routers.v3_selection import router as v3_selection_router
+app.include_router(v3_selection_router, prefix="/api/v3/selection", tags=["v3_selection"])
+
+# Phase η: 3 视图 API (股票/公式/机构)
+from routers.v3_views import router as v3_views_router
+app.include_router(v3_views_router, prefix="/api/v3/view", tags=["v3_view"])
+
+# Phase η++ : 组合构建器 (3 risk profile, Kelly + Wilson 仓位)
+from routers.v3_portfolio_builder import router as v3_portfolio_builder_router
+app.include_router(v3_portfolio_builder_router, prefix="/api/v3/portfolio", tags=["v3_portfolio"])
+
 # 初始化 signals_v2 默认配置（幂等）
 try:
     _conn = get_conn()
@@ -226,12 +250,38 @@ def render_index_html() -> str:
 if ASSETS_DIR.exists():
     app.mount("/assets", StaticFiles(directory=str(ASSETS_DIR)), name="assets")
 
+# v3 设计稿（React CDN，零工具链，详见 开发手册.md §7）
+DESIGN_DIR = PROJECT_ROOT / "design"
+if DESIGN_DIR.exists():
+    app.mount("/v3", StaticFiles(directory=str(DESIGN_DIR), html=False), name="v3-design")
+
 
 @app.get("/")
 async def index():
-    if INDEX_HTML.exists():
-        return HTMLResponse(
-            content=render_index_html(),
-            headers={"Cache-Control": "no-store"},
-        )
-    return {"message": "Chunky Monkey v2 API", "docs": "/docs"}
+    """根路径直接进 v3 设计稿 (旧 vanilla 前端已 Phase ζ 退役)。"""
+    from fastapi.responses import RedirectResponse
+    return RedirectResponse(url="/v3/Chunky%20Monkey%20v3.html")
+
+
+@app.get("/legacy")
+@app.get("/legacy/")
+async def legacy_retired():
+    """Phase ζ 收尾: 旧 vanilla 前端正式退役。文件保留在 repo 历史, 但不再对外提供。"""
+    from fastapi.responses import JSONResponse
+    return JSONResponse(
+        status_code=410,
+        content={
+            "ok": False,
+            "error": "legacy_retired",
+            "message": "旧 vanilla 前端已 Phase ζ 退役, 请使用 /v3",
+            "redirect": "/v3/Chunky%20Monkey%20v3.html",
+        },
+    )
+
+
+@app.get("/v3")
+@app.get("/v3/")
+async def v3_index():
+    """v3 设计稿入口，重定向到主 HTML。"""
+    from fastapi.responses import RedirectResponse
+    return RedirectResponse(url="/v3/Chunky%20Monkey%20v3.html")
