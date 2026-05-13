@@ -78,7 +78,11 @@ def main():
                 if (i + 1) % 10 == 0:
                     log.info(f"  replay {i+1}/{len(days)} ({d})")
         else:
-            d = args.date or date.today().isoformat()
+            if args.date:
+                d = args.date
+            else:
+                from services.utils import latest_closed_or_raise
+                d = latest_closed_or_raise()  # Phase ψ.5: calendar-gated
             # 找前一交易日
             prev_row = conn.execute(
                 "SELECT trade_date FROM dim_trading_calendar WHERE trade_date < ? AND is_trading=1 ORDER BY trade_date DESC LIMIT 1",

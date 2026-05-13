@@ -16,6 +16,8 @@ from collections.abc import Mapping, Sequence
 from datetime import date, datetime, timedelta
 from typing import Optional
 
+from services.utils import latest_closed_or_raise as _latest_closed
+
 logger = logging.getLogger("cm-api")
 _AKSHARE_CACHE_TTL_SEC = 300
 _AKSHARE_CACHE: dict[tuple, tuple[float, list[dict]]] = {}
@@ -385,7 +387,7 @@ def _aggregate_survey_snapshot(rows: list[dict]) -> dict[str, dict]:
 def sync_external_attention_snapshot(conn) -> int:
     ensure_tables(conn)
 
-    snapshot_date = date.today().strftime("%Y-%m-%d")
+    snapshot_date = _latest_closed()  # Phase ψ.5: calendar-gated
     now = datetime.now().isoformat()
     stock_name_map = _load_stock_name_map(conn)
     survey_start = (date.today() - timedelta(days=90)).strftime("%Y%m%d")

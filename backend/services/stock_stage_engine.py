@@ -11,7 +11,7 @@ from statistics import pstdev
 from typing import Optional
 
 from services.market_db import get_canonical_kline_qfq_relation, get_market_conn
-from services.utils import safe_float as _safe_float, clamp_score as _clamp_score
+from services.utils import safe_float as _safe_float, clamp_score as _clamp_score, latest_closed_or_raise as _latest_closed
 from services.constants import PATH_THRESHOLDS
 
 logger = logging.getLogger("cm-api")
@@ -264,7 +264,7 @@ def _load_price_history(mkt_conn, codes: list[str], since_days: int = 420) -> di
 
 def build_stock_stage_features(conn, mkt_conn=None, snapshot_date: Optional[str] = None) -> int:
     ensure_tables(conn)
-    snapshot_date = snapshot_date or date.today().strftime("%Y-%m-%d")
+    snapshot_date = snapshot_date or _latest_closed()  # Phase ψ.5: calendar-gated
     now = datetime.now().isoformat()
     own_conn = False
     if mkt_conn is None:

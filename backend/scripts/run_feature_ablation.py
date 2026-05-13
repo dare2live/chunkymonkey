@@ -384,7 +384,7 @@ def load_baseline_params(conn, model_id: str | None) -> tuple[str, dict]:
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--start", default="2023-01-01")
-    parser.add_argument("--end", default=datetime.now().strftime("%Y-%m-%d"))
+    parser.add_argument("--end", default=datetime.now().strftime("%Y-%m-%d"))  # Phase ψ.5 allowlist: 实验脚本
     parser.add_argument("--label-name", default=DEFAULT_LABEL_NAME)
     parser.add_argument(
         "--params-source",

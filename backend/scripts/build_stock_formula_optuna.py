@@ -54,8 +54,14 @@ def _bin_label(value, bins):
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--start", default="2024-01-01")
-    parser.add_argument("--end", default=_date.today().isoformat())
+    parser.add_argument("--end", default=None,
+                        help="默认 calendar-gated latest_closed_trade_date (Phase ψ.5)")
     args = parser.parse_args()
+
+    if args.end is None:
+        from services.utils import latest_closed_or_raise
+        args.end = latest_closed_or_raise()
+        log.info(f"--end 默认 (calendar-gated): {args.end}")
 
     t_total = time.time()
     log.info(f"per-stock formula grid search {args.start} ~ {args.end}")

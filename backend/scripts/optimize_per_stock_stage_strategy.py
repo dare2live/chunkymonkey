@@ -145,11 +145,16 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--trials", type=int, default=100)
     parser.add_argument("--start",  default="2023-01-01")
-    parser.add_argument("--end",    default=_date.today().isoformat())
+    parser.add_argument("--end",    default=None,
+                        help="默认 calendar-gated latest_closed_trade_date (Phase ψ.5)")
     parser.add_argument("--workers", type=int, default=8)
     parser.add_argument("--min-signals", type=int, default=STAGE_MIN_SIGNALS,
                         help="(stock × variant × stage) 至少这么多信号才寻优")
     args = parser.parse_args()
+
+    if args.end is None:
+        from services.utils import latest_closed_or_raise
+        args.end = latest_closed_or_raise()
 
     t0 = time.time()
     log.info(f"=== η+++++++ A 路线 — 每股每公式每形态 Optuna ===")

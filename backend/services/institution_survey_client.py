@@ -21,6 +21,8 @@ import logging
 from datetime import date, datetime, timedelta
 from typing import Any, Optional
 
+from services.utils import latest_closed_or_raise as _latest_closed
+
 logger = logging.getLogger("cm-api")
 
 
@@ -300,7 +302,7 @@ def rebuild_survey_mart(
     _ensure_tables(conn)
 
     if as_of_date is None:
-        as_of_date = date.today().strftime("%Y-%m-%d")
+        as_of_date = _latest_closed()  # Phase ψ.5: calendar-gated
 
     logger.info(f"[survey] 重算 mart_stock_survey_activity (as_of={as_of_date})")
 

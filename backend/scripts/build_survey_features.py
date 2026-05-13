@@ -76,7 +76,11 @@ def main():
         n_events = sum(len(v) for v in events.values())
         all_dates = sorted({d for lst in events.values() for d, _ in lst})
         actual_start = args.start or all_dates[0]
-        actual_end = args.end or _date.today().isoformat()
+        if args.end:
+            actual_end = args.end
+        else:
+            from services.utils import latest_closed_or_raise
+            actual_end = latest_closed_or_raise()  # Phase ψ.5: calendar-gated
         log.info(f"  events: {n_events:,} 条 / {len(events):,} 股, 日期 {all_dates[0]} → {all_dates[-1]}")
         log.info(f"  grid 范围: {actual_start} → {actual_end}")
 

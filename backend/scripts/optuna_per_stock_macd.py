@@ -158,8 +158,13 @@ def main():
     parser.add_argument("--n-stocks", type=int, default=500)
     parser.add_argument("--trials", type=int, default=30)
     parser.add_argument("--start", default="2024-01-01")
-    parser.add_argument("--end", default=_date.today().isoformat())
+    parser.add_argument("--end", default=None,
+                        help="默认 calendar-gated latest_closed_trade_date (Phase ψ.5)")
     args = parser.parse_args()
+
+    if args.end is None:
+        from services.utils import latest_closed_or_raise
+        args.end = latest_closed_or_raise()
 
     import optuna
     optuna.logging.set_verbosity(optuna.logging.ERROR)

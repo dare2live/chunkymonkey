@@ -24,8 +24,14 @@ log = logging.getLogger("build_selection_outcome_daily")
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--from", dest="from_date", default="2024-01-01")
-    parser.add_argument("--to", dest="to_date", default=_date.today().isoformat())
+    parser.add_argument("--to", dest="to_date", default=None,
+                        help="默认 calendar-gated latest_closed_trade_date (Phase ψ.5)")
     args = parser.parse_args()
+
+    if args.to_date is None:
+        from services.utils import latest_closed_or_raise
+        args.to_date = latest_closed_or_raise()
+        log.info(f"--to 默认 (calendar-gated): {args.to_date}")
 
     conn = get_conn()
     mkt = get_market_conn()

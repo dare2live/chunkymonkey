@@ -993,7 +993,7 @@ def _insert_model(
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--start', default='2023-01-01')
-    parser.add_argument('--end', default=datetime.now().strftime('%Y-%m-%d'))
+    parser.add_argument('--end', default=datetime.now().strftime('%Y-%m-%d'))  # Phase ψ.5 allowlist: 实验脚本
     parser.add_argument('--trials', type=int, default=50, help='Optuna 搜参次数')
     parser.add_argument('--label-name', default=DEFAULT_LABEL_NAME,
                         help='训练标签列名, 默认 forward_ret_20d')

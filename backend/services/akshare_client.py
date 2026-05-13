@@ -440,7 +440,7 @@ async def fetch_stock_kline_daily(code: str, days: int = 150,
 
 async def test_kline_availability(sample_code: str = "000001") -> dict:
     """测试 K 线源可用性，并区分 tdxhub 失效与 fallback 可用。"""
-    end_date = datetime.now().strftime("%Y%m%d")
+    end_date = datetime.now().strftime("%Y%m%d")  # Phase ψ.5 allowlist: 健康探测用 wall-clock 合理
     start_date = (datetime.now() - timedelta(days=15)).strftime("%Y%m%d")
     started_at = time.time()
     result = {

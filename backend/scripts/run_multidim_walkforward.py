@@ -609,7 +609,7 @@ def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--model-id", default=None, help="复用哪个模型的 best_params; 默认最新")
     parser.add_argument("--start", default="2023-01-01")
-    parser.add_argument("--end", default=datetime.now().strftime("%Y-%m-%d"))
+    parser.add_argument("--end", default=datetime.now().strftime("%Y-%m-%d"))  # Phase ψ.5 allowlist: 实验脚本
     parser.add_argument("--label-name", default=DEFAULT_LABEL_NAME)
     parser.add_argument("--train-days", type=int, default=378)
     parser.add_argument("--valid-days", type=int, default=63)

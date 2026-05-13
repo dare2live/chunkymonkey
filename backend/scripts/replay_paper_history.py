@@ -287,12 +287,17 @@ def backfill_benchmark_columns(conn, mkt_conn, model_id: str = "paper_replay_v1"
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--from", dest="from_date", default="2024-01-01")
-    parser.add_argument("--to", dest="to_date", default=_date.today().isoformat())
+    parser.add_argument("--to", dest="to_date", default=None,
+                        help="默认 calendar-gated latest_closed_trade_date (Phase ψ.5)")
     parser.add_argument("--initial-capital", type=float, default=1_000_000.0)
     parser.add_argument("--max-positions", type=int, default=20)
     parser.add_argument("--model-id", default="paper_replay_v1")
     parser.add_argument("--skip-benchmark", action="store_true")
     args = parser.parse_args()
+
+    if args.to_date is None:
+        from services.utils import latest_closed_or_raise
+        args.to_date = latest_closed_or_raise()
 
     t0 = time.time()
     conn = get_conn()

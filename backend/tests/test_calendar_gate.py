@@ -83,13 +83,26 @@ def test_custom_close_hour_15_30_equivalent(cal_conn):
 
 # ===================== AST lint =====================
 
-SCAN_PATHS = [
-    REPO_ROOT / "backend" / "routers" / "updater.py",
-    REPO_ROOT / "backend" / "scripts" / "build_signal_context.py",
-    REPO_ROOT / "backend" / "scripts" / "build_formula_signals_history.py",
-    REPO_ROOT / "backend" / "scripts" / "build_stage_formula_fitness.py",
-    REPO_ROOT / "backend" / "scripts" / "build_picture_daily.py",
-]
+def _gather_scan_paths() -> list:
+    """Phase ψ.5: 扩 lint 覆盖整个 services + scripts + routers, 而不是固定 5 个文件.
+
+    rglob 动态收集. 任何新加进去的 .py 自动入扫. 排除 __pycache__ + 测试自身.
+    """
+    base_dirs = [
+        REPO_ROOT / "backend" / "services",
+        REPO_ROOT / "backend" / "scripts",
+        REPO_ROOT / "backend" / "routers",
+    ]
+    out = []
+    for d in base_dirs:
+        for p in sorted(d.rglob("*.py")):
+            if "__pycache__" in str(p):
+                continue
+            out.append(p)
+    return out
+
+
+SCAN_PATHS = _gather_scan_paths()
 
 
 def _is_wall_clock_date_string(node: ast.AST) -> bool:
@@ -130,11 +143,20 @@ def _find_violations(path: Path) -> list[tuple[int, str]]:
         if _is_wall_clock_date_string(node):
             line = getattr(node, "lineno", -1)
             snippet = src.splitlines()[line - 1].strip() if line > 0 else "?"
-            # allowlist: runtime / log 时间戳, manifest run_id 等 — 不是 trade_date 用途
-            if any(tok in snippet for tok in ("started_at", "finished_at", "built_at",
-                                                "heartbeat", "manifest", "run_id",
-                                                "isoformat(timespec=", "updated_at",
-                                                "profiled_at", "log.info(f", "logger.info(f")):
+            # allowlist: runtime / log 时间戳, manifest run_id, batch_id, model_id 等
+            # — 这些都是 wall-clock 合法用途 (不是 trade_date 写入).
+            if any(tok in snippet for tok in (
+                "started_at", "finished_at", "built_at",
+                "heartbeat", "manifest", "run_id",
+                "isoformat(timespec=", "updated_at",
+                "profiled_at", "log.info(f", "logger.info(f",
+                "batch_id", "model_id", "stamp =", "f\"hs300_benchmark_",
+                "test_kline_availability", "snapshot_lag",
+                # 健康检查 / audit 用 wall-clock 看物理时间是合理的:
+                "_days_lag(", "fetched_at <=",
+                # 显式 Phase ψ.5 allowlist 注释:
+                "Phase ψ.5 allowlist",
+            )):
                 continue
             violations.append((line, snippet))
     return violations

@@ -221,7 +221,7 @@ def audit_data_freshness(conn) -> list[dict]:
     """5. 数据时效性 (是否到今日)."""
     issues = []
     from datetime import date
-    today = date.today().isoformat()
+    today = date.today().isoformat()  # Phase ψ.5 allowlist: audit 衡量物理 today 的数据滞后天数
     checks = [
         ("fact_technical_trigger", "date"),
         ("fact_signal_context", "date"),

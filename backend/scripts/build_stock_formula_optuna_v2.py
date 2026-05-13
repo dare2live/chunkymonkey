@@ -113,10 +113,16 @@ def _bin_label(value, bins):
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--start", default="2024-01-01")
-    parser.add_argument("--end", default=_date.today().isoformat())
+    parser.add_argument("--end", default=None,
+                        help="默认 calendar-gated latest_closed_trade_date (Phase ψ.5)")
     parser.add_argument("--limit-stocks", type=int, default=None,
                         help="限测 N 只 (debug 用)")
     args = parser.parse_args()
+
+    if args.end is None:
+        from services.utils import latest_closed_or_raise
+        args.end = latest_closed_or_raise()
+        log.info(f"--end 默认 (calendar-gated): {args.end}")
 
     t0 = time.time()
     log.info(f"=== ε.4 重建 mart_stock_formula_optuna_v2 ({args.start} → {args.end}) ===")

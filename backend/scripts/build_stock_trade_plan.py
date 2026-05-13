@@ -34,7 +34,9 @@ logging.basicConfig(
 
 
 def _today_iso() -> str:
-    return date.today().isoformat()
+    """Phase ψ.5: snapshot_date 走 calendar (跟 K 线 / 信号一致), 不允许 wall-clock fallback."""
+    from services.utils import latest_closed_or_raise
+    return latest_closed_or_raise()
 
 
 def compute_turtle_features(highs: np.ndarray, lows: np.ndarray, closes: np.ndarray) -> dict[str, float]:

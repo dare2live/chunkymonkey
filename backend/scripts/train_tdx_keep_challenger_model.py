@@ -448,7 +448,7 @@ def main() -> int:
     parser.add_argument("--model-prefix", default="tdx_keep_challenger")
     parser.add_argument("--trials", type=int, default=80)
     parser.add_argument("--start", default="2023-01-01")
-    parser.add_argument("--end", default=datetime.now().strftime("%Y-%m-%d"))
+    parser.add_argument("--end", default=datetime.now().strftime("%Y-%m-%d"))  # Phase ψ.5 allowlist: 实验脚本
     parser.add_argument("--optuna-max-rows", type=int, default=600_000)
     parser.add_argument("--num-round", type=int, default=260)
     args = parser.parse_args()

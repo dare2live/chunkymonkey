@@ -24,9 +24,15 @@ log = logging.getLogger("backfill_buy_signal")
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--start", default="2023-01-03")
-    parser.add_argument("--end",   default=_date.today().isoformat())
+    parser.add_argument("--end",   default=None,
+                        help="默认 services.utils.latest_completed_trade_date (Phase ψ.5 calendar-gated)")
     parser.add_argument("--skip-existing", action="store_true", help="跳过已有数据日")
     args = parser.parse_args()
+
+    if args.end is None:
+        from services.utils import latest_closed_or_raise
+        args.end = latest_closed_or_raise()
+        log.info(f"--end 默认 (calendar-gated): {args.end}")
 
     t0 = time.time()
     conn = get_conn()

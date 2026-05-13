@@ -45,11 +45,16 @@ MARKET_DB = Path(__file__).resolve().parents[2] / "data" / "market.duckdb"
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--start", default="2023-01-03")
-    parser.add_argument("--end",   default=_date.today().isoformat())
+    parser.add_argument("--end",   default=None,
+                        help="默认 calendar-gated latest_closed_trade_date (Phase ψ.5)")
     parser.add_argument("--initial-capital", type=float, default=1_000_000.0)
     parser.add_argument("--max-positions", type=int, default=15)
     parser.add_argument("--benchmark", default="000300")  # HS300
     args = parser.parse_args()
+
+    if args.end is None:
+        from services.utils import latest_closed_or_raise
+        args.end = latest_closed_or_raise()
 
     t0 = time.time()
     log.info(f"=== π Portfolio Walk-Forward Backtest ===")

@@ -19,6 +19,8 @@ import logging
 from datetime import date, datetime, timedelta
 from typing import Optional
 
+from services.utils import latest_closed_or_raise as _latest_closed
+
 logger = logging.getLogger("cm-api")
 
 UNLOCK_LOOKAHEAD_DAYS = 365
@@ -551,7 +553,7 @@ def _update_capital_detail_state(conn, stock_code: str, synced_at: str, error: O
 
 def build_capital_behavior_latest(conn, as_of_date: Optional[str] = None) -> int:
     ensure_tables(conn)
-    snapshot_date = as_of_date or date.today().strftime("%Y-%m-%d")
+    snapshot_date = as_of_date or _latest_closed()  # Phase ψ.5: calendar-gated
     repurchase_snapshot = _latest_snapshot_date(conn, "raw_capital_repurchase")
     unlock_snapshot = _latest_snapshot_date(conn, "raw_capital_unlock")
     dividend_snapshot = _latest_snapshot_date(conn, "raw_capital_dividend_summary")
@@ -698,7 +700,7 @@ def build_capital_behavior_latest(conn, as_of_date: Optional[str] = None) -> int
 async def sync_capital_behavior_data(conn, snapshot_date: Optional[str] = None,
                                      stock_codes: Optional[list] = None) -> int:
     ensure_tables(conn)
-    snapshot_date = snapshot_date or date.today().strftime("%Y-%m-%d")
+    snapshot_date = snapshot_date or _latest_closed()  # Phase ψ.5: calendar-gated
     created_at = datetime.now().isoformat()
     loop = asyncio.get_running_loop()
 

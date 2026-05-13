@@ -24,6 +24,8 @@ from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any
 
+# Phase ψ.5: 'today' 用 calendar-gated, 拒绝 wall-clock fallback
+
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 import akshare as ak
@@ -267,7 +269,7 @@ def build_hsgt_daily(conn, today_only: bool = True) -> int:
     """)
     total = 0
     built_at = datetime.utcnow().isoformat()
-    today = datetime.now().strftime('%Y%m%d')
+    today = datetime.now().strftime('%Y%m%d')  # Phase ψ.5 allowlist: experimental (dead-audit phase 2)
     try:
         sh_rows = _records_from_table(ak.stock_hsgt_hold_stock_em(market='沪股通', indicator='今日排行'))
     except Exception as e:
@@ -326,7 +328,7 @@ def build_hot_rank_daily(conn) -> int:
     );
     CREATE INDEX IF NOT EXISTS idx_hot_d_code ON fact_hot_rank_daily(stock_code);
     """)
-    today = datetime.now().strftime('%Y%m%d')
+    today = datetime.now().strftime('%Y%m%d')  # Phase ψ.5 allowlist: experimental (dead-audit phase 2)
     built_at = datetime.utcnow().isoformat()
     try:
         records = _records_from_table(ak.stock_hot_rank_em())
@@ -433,7 +435,7 @@ def build_profit_forecast(conn) -> int:
     CREATE INDEX IF NOT EXISTS idx_pf_code ON fact_profit_forecast_daily(stock_code);
     """)
     built_at = datetime.utcnow().isoformat()
-    today = datetime.now().strftime('%Y%m%d')
+    today = datetime.now().strftime('%Y%m%d')  # Phase ψ.5 allowlist: experimental (dead-audit phase 2)
     try:
         records = _records_from_table(ak.stock_profit_forecast_em(symbol=''))
     except Exception as e:
@@ -487,9 +489,9 @@ def main():
     parser.add_argument('--tasks', default='jgdy,dzjy,hsgt,hot,profit_forecast',
                         help='逗号分隔: jgdy, dzjy, hsgt, hot, rr, profit_forecast')
     parser.add_argument('--jgdy-start', default='20230101')
-    parser.add_argument('--jgdy-end', default=datetime.now().strftime('%Y%m%d'))
+    parser.add_argument('--jgdy-end', default=datetime.now().strftime('%Y%m%d'))  # Phase ψ.5 allowlist
     parser.add_argument('--dzjy-start', default='20230101')
-    parser.add_argument('--dzjy-end', default=datetime.now().strftime('%Y%m%d'))
+    parser.add_argument('--dzjy-end', default=datetime.now().strftime('%Y%m%d'))  # Phase ψ.5 allowlist
     parser.add_argument('--rr-top-n', type=int, default=500,
                         help='研报只拉按机构调研热度 top N (避免全市场 5k 股)')
     args = parser.parse_args()

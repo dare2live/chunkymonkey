@@ -158,13 +158,18 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--trials", type=int, default=100)
     parser.add_argument("--start",  default="2024-01-01")
-    parser.add_argument("--end",    default=_date.today().isoformat())
+    parser.add_argument("--end",    default=None,
+                        help="默认 calendar-gated latest_closed_trade_date (Phase ψ.5)")
     parser.add_argument("--limit-stocks", type=int, default=None)
     parser.add_argument("--min-signals", type=int, default=10,
                         help="(stock × variant) 至少这么多信号才寻优")
     parser.add_argument("--workers", type=int, default=8,
                         help="进程池 worker 数 (默认 8, 实际取 min(cpu_count-1, this))")
     args = parser.parse_args()
+
+    if args.end is None:
+        from services.utils import latest_closed_or_raise
+        args.end = latest_closed_or_raise()
 
     t0 = time.time()
     log.info(f"=== ζ 每股每 variant Optuna 寻优 ===")

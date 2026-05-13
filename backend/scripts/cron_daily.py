@@ -495,14 +495,14 @@ def phase_candidate_eval(
 def phase_selection_log() -> dict:
     """Phase ε.1: 把今日 daily-topk + 公式触发追加到 fact_stock_selection_log."""
     try:
-        from datetime import date as _date
         from services.db import get_conn
+        from services.utils import latest_closed_or_raise
         from services.selection.ddl import ensure_selection_tables
         from services.selection.logger import log_topk_selection, log_formula_selection
         conn = get_conn()
         try:
             ensure_selection_tables(conn)
-            today = _date.today().isoformat()
+            today = latest_closed_or_raise()  # Phase ψ.5: calendar-gated
             # 今日 daily-topk
             topk_rows = conn.execute(
                 """
@@ -553,8 +553,10 @@ def phase_selection_outcome() -> dict:
         mkt = get_market_conn()
         try:
             ensure_selection_tables(conn)
-            end = _date.today().isoformat()
-            start = (_date.today() - timedelta(days=60)).isoformat()
+            from services.utils import latest_closed_or_raise
+            end = latest_closed_or_raise()  # Phase ψ.5: calendar-gated
+            # start = end - 60 天 (按物理日历, 不是交易日; 用 _date.today/timedelta 算 wall-clock window 是合理的)
+            start = (_date.fromisoformat(end) - timedelta(days=60)).isoformat()
             n = compute_outcomes_for_period(conn, mkt, start, end)
             return {"phase": "selection_outcome", "status": "ok", "rows": n,
                     "window": f"{start}~{end}"}
@@ -569,14 +571,14 @@ def phase_selection_outcome() -> dict:
 def phase_selection_summary() -> dict:
     """Phase ε.3: 全量重算 mart_stock_selection_summary (asof_date=today)."""
     try:
-        from datetime import date as _date
         from services.db import get_conn
+        from services.utils import latest_closed_or_raise
         from services.selection.ddl import ensure_selection_tables
         from services.selection.summary import recompute_all_summaries
         conn = get_conn()
         try:
             ensure_selection_tables(conn)
-            today = _date.today().isoformat()
+            today = latest_closed_or_raise()  # Phase ψ.5: calendar-gated
             n = recompute_all_summaries(conn, today)
             return {"phase": "selection_summary", "status": "ok", "rows": n}
         finally:
@@ -589,8 +591,8 @@ def phase_selection_summary() -> dict:
 def phase_formula_weights() -> dict:
     """Phase ε.4: 反馈环 — 从 mart_signal_ic 派生 mart_formula_weight_history."""
     try:
-        from datetime import date as _date
         from services.db import get_conn
+        from services.utils import latest_closed_or_raise
         from services.paper_engine.ddl import ensure_paper_tables
         from services.selection.ddl import ensure_selection_tables
         from services.selection.feedback import derive_formula_weights
@@ -598,7 +600,7 @@ def phase_formula_weights() -> dict:
         try:
             ensure_paper_tables(conn)
             ensure_selection_tables(conn)
-            today = _date.today().isoformat()
+            today = latest_closed_or_raise()  # Phase ψ.5: calendar-gated
             n = derive_formula_weights(conn, today, ic_window_days=60)
             return {"phase": "formula_weights", "status": "ok", "rows": n}
         finally:

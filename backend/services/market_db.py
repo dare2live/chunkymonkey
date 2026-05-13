@@ -400,7 +400,7 @@ def get_all_xdxr_sync_states(conn) -> "list[dict]":
 # ---------------------------------------------------------------------------
 
 def _now_iso() -> str:
-    return datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
+    return datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")  # Phase ψ.5 allowlist: INSERT timestamp helper
 
 
 def _clean_kline_rows_for_write(

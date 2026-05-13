@@ -194,7 +194,7 @@ def main():
         codes = codes[:args.limit]
     logger.info("A 股 %d 只准备拉 orderbook", len(codes))
 
-    snapshot_date = args.snapshot_date or datetime.now().strftime('%Y%m%d')
+    snapshot_date = args.snapshot_date or datetime.now().strftime('%Y%m%d')  # Phase ψ.5 allowlist
 
     t0 = time.time()
     total_written = 0

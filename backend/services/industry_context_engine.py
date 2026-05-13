@@ -9,6 +9,8 @@ import logging
 from datetime import date, datetime, timedelta
 from typing import Optional
 
+from services.utils import latest_closed_or_raise as _latest_closed
+
 logger = logging.getLogger("cm-api")
 
 
@@ -173,7 +175,7 @@ def _score_tailwind(
 
 def build_stock_industry_context(conn, snapshot_date: Optional[str] = None) -> int:
     ensure_tables(conn)
-    snapshot_date = snapshot_date or date.today().strftime("%Y-%m-%d")
+    snapshot_date = snapshot_date or _latest_closed()  # Phase ψ.5: calendar-gated
     now = datetime.now().isoformat()
     recent_cutoff = (date.today() - timedelta(days=180)).strftime("%Y%m%d")
 

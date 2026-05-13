@@ -22,7 +22,7 @@ _DB_PATH = _DB_DIR / "etf.duckdb"
 
 
 def _now_iso() -> str:
-    return datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
+    return datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")  # Phase ψ.5 allowlist: INSERT timestamp helper
 
 
 def get_etf_conn(timeout: int = 30) -> DuckConn:
