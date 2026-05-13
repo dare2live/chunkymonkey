@@ -130,6 +130,8 @@ def derive_holder_availability_dates(
     if normalized_notice is None:
         normalized_fetched = normalize_yyyymmdd(fetched_at)
         normalized_report = normalize_yyyymmdd(report_date)
+        # Phase ψ.5 allowlist: 此处 today 用于 "fetched_at <= 物理今天" 健康检查,
+        # 不是 trade_date 写入, wall-clock 合理 (fetched_at 可以 = 当前物理日期).
         today = datetime.now().strftime("%Y%m%d")
         if (
             normalized_fetched

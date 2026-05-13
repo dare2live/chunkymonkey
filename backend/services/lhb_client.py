@@ -19,6 +19,8 @@ import logging
 from datetime import date, datetime, timedelta
 from typing import Any, Optional
 
+from services.utils import latest_closed_or_raise as _latest_closed
+
 logger = logging.getLogger("cm-api")
 
 LHB_SOURCE = "miaoxiang_RPT_DAILYBILLBOARD_DETAILSNEW"
@@ -359,7 +361,7 @@ async def backfill_lhb_history(
 ) -> dict:
     """按月切分后逐窗口拉取并 upsert。"""
     ensure_tables(conn)
-    end_date = end_date or date.today().strftime("%Y-%m-%d")
+    end_date = end_date or _latest_closed()  # Phase ψ.5: calendar-gated
     windows = _iter_monthly_windows(start_date, end_date)
     total = 0
     detail: list[dict] = []

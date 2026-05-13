@@ -25,7 +25,7 @@ from services.market_db import (
     get_kline_range,
 )
 from services.pricing_policy import load_pricing_label_policy
-from services.utils import normalize_ymd as _normalize_ymd
+from services.utils import normalize_ymd as _normalize_ymd, latest_closed_or_raise as _latest_closed
 
 logger = logging.getLogger("cm-api")
 
@@ -311,7 +311,7 @@ def _classify_path(mkt_conn, code: str, anchor: str) -> dict:
     价格路径分类（从 scoring.py 移入）。
     基于公告后至今的日 K 判断路径状态。
     """
-    today = datetime.now().strftime("%Y-%m-%d")
+    today = _latest_closed()  # Phase ψ.5: calendar-gated, no wall-clock fallback
     klines = get_kline_range(mkt_conn, code, anchor, today, freq="daily")
     if len(klines) < 2:
         return {"path_state": None, "return_to_now": None,
@@ -615,7 +615,7 @@ def _estimate_inst_ref_cost_from_cache(
 def _classify_path_from_cache(kline: _StockKlineCache, anchor: str,
                               calendar: _TradingCalendarCache) -> dict:
     """同 _classify_path, 但用内存 cache."""
-    today = datetime.now().strftime("%Y-%m-%d")
+    today = _latest_closed()  # Phase ψ.5: calendar-gated, no wall-clock fallback
     klines = kline.daily_range(anchor, today, calendar)
     if len(klines) < 2:
         return {"path_state": None, "return_to_now": None,
@@ -798,7 +798,7 @@ def calculate_returns(biz_conn, *, full_rescan: bool = False) -> int:
     else:
         # 只取：未算（calc_version NULL/旧），或虽已算但 gain_120d 仍可能变化的
         # 冻结条件: calc_version = 当前版本 AND tradable_date + 180d < today
-        today = datetime.now().strftime("%Y-%m-%d")
+        today = _latest_closed()  # Phase ψ.5: calendar-gated, no wall-clock fallback
         events = biz_conn.execute(
             """
             SELECT institution_id, stock_code, report_date, notice_date, event_type
@@ -954,7 +954,7 @@ def calculate_returns(biz_conn, *, full_rescan: bool = False) -> int:
 
         # 补救扫描：找 tradable_date ≤ 今天但无入口价、且现在有 K 线的事件
         # §4.25 #1 同样按股分组复用 cache
-        today = datetime.now().strftime("%Y-%m-%d")
+        today = _latest_closed()  # Phase ψ.5: calendar-gated, no wall-clock fallback
         fixable = biz_conn.execute(
             "SELECT institution_id, stock_code, report_date, notice_date, event_type "
             "FROM fact_institution_event "

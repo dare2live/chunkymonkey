@@ -12,7 +12,7 @@ from typing import Optional, Tuple
 
 from services.industry import industry_join_clause, load_industry_map
 from services.pricing_policy import load_pricing_label_policy
-from services.utils import safe_float as _safe_float, percentile_ranks as _percentile_ranks
+from services.utils import safe_float as _safe_float, percentile_ranks as _percentile_ranks, latest_closed_or_raise as _latest_closed
 from services.constants import (
     PATH_THRESHOLDS,
     COMPOSITE_WEIGHTS,
@@ -1145,7 +1145,7 @@ def classify_price_path(conn, stock_code: str, notice_date: str, *, mkt_conn=Non
     if _own_conn:
         mkt_conn = get_market_conn()
     try:
-        today = _dt.now().strftime("%Y-%m-%d")
+        today = _latest_closed()  # Phase ψ.5: calendar-gated
         klines = get_kline_range(mkt_conn, stock_code, notice_date, today, freq="daily")
     finally:
         if _own_conn:

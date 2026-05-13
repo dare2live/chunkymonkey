@@ -115,3 +115,23 @@ def latest_completed_trade_date(conn, now: Optional[datetime] = None, close_hour
     if hasattr(row, "keys") and "d" in row.keys():
         return row["d"]
     return row[0]
+
+
+def latest_closed_or_raise(now: Optional[datetime] = None, close_hour: int = 16) -> str:
+    """Phase ψ.5 便利 wrapper — 不需 caller 传 conn, 内部自取 + raise on miss.
+
+    适合 deep-call sites (return_engine / scoring / screening 等), 让它们
+    一行替换原本的 `datetime.now().strftime("%Y-%m-%d")`. 拒绝静默 wall-clock fallback.
+    """
+    from services.db import get_conn
+
+    conn = get_conn()
+    try:
+        d = latest_completed_trade_date(conn, now=now, close_hour=close_hour)
+    finally:
+        conn.close()
+    if not d:
+        raise RuntimeError(
+            "dim_trading_calendar 未 seed 或表损坏; 拒绝 fallback to wall-clock now."
+        )
+    return d

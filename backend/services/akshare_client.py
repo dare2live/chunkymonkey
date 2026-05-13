@@ -361,10 +361,18 @@ async def probe_stock_kline_fallback_preference(code: str, start_date: str, end_
 async def fetch_stock_kline_monthly(code: str, limit: int = 36,
                                     start_date: str = "20230101",
                                     end_date: Optional[str] = None):
-    """获取月K线。东财失败时回退到日K聚合月K。"""
+    """获取月K线。东财失败时回退到日K聚合月K。
+
+    Phase ψ.5 根因 1 残留修复: end_date 必须由调用方显式传入 (走 calendar gate).
+    禁止 fallback to wall-clock now (会拉盘中半成品月 K).
+    """
     import akshare as ak
 
-    end_date = end_date or datetime.now().strftime("%Y%m%d")
+    if not end_date:
+        raise ValueError(
+            "fetch_stock_kline_monthly: end_date is required and must be calendar-gated "
+            "(use services.utils.latest_completed_trade_date upstream)"
+        )
 
     try:
         payload = await _safe_akshare_call(
@@ -404,8 +412,16 @@ async def fetch_stock_kline_daily(code: str, days: int = 150,
                                   start_date: Optional[str] = None,
                                   end_date: Optional[str] = None,
                                   prefer_fallback: bool = False):
-    """获取日K线。缺失股票拉全历史，失败时自动回退新浪 / 腾讯。"""
-    end_date = end_date or datetime.now().strftime("%Y%m%d")
+    """获取日K线。缺失股票拉全历史，失败时自动回退新浪 / 腾讯。
+
+    Phase ψ.5 根因 1 残留修复: end_date 必须由调用方显式传入 (走 calendar gate).
+    禁止 fallback to wall-clock now (会拉盘中 tick).
+    """
+    if not end_date:
+        raise ValueError(
+            "fetch_stock_kline_daily: end_date is required and must be calendar-gated "
+            "(use services.utils.latest_completed_trade_date upstream)"
+        )
     start = start_date or (datetime.now() - timedelta(days=days)).strftime("%Y%m%d")
 
     try:

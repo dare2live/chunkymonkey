@@ -32,6 +32,7 @@ from services.industry import (
     load_industry_map,
 )
 from services.market_db import get_canonical_kline_qfq_relation
+from services.utils import latest_closed_or_raise as _latest_closed
 
 logger = logging.getLogger("cm-api")
 KLINE_DAILY_QFQ_RELATION = get_canonical_kline_qfq_relation()
@@ -507,7 +508,7 @@ def calc_sector_momentum(smart_conn, mkt_conn) -> int:
             benchmark_close = None
 
     now = datetime.now().isoformat()
-    calc_date = datetime.now().strftime("%Y-%m-%d")
+    calc_date = _latest_closed()  # Phase ψ.5: calendar-gated
     count = 0
     total_sectors = len(industries)
     sector_rotation_rows = []

@@ -24,6 +24,7 @@ sys.path.insert(0, str(_ROOT / "backend"))
 from services.akshare_client import fetch_stock_kline_daily
 from services.kline_source import aggregate_monthly_from_daily
 from services.db import get_conn
+from services.utils import latest_completed_trade_date
 from services.market_db import (
     get_market_conn,
     init_market_db,
@@ -137,6 +138,17 @@ async def main():
         print("无缺口，无需补数")
         return 0
 
+    # Phase ψ.5: 拒绝 wall-clock now() — 必须 calendar-gated end_date.
+    _biz = get_conn()
+    try:
+        end_iso = latest_completed_trade_date(_biz)
+    finally:
+        _biz.close()
+    if not end_iso:
+        raise RuntimeError("dim_trading_calendar 未 seed, 拒绝 fallback to wall-clock now")
+    end_date_yyyymmdd = end_iso.replace("-", "")
+    print(f"K线 end_date (calendar-gated): {end_iso}")
+
     mkt_conn = get_market_conn()
     batch_id = start_import_batch(
         mkt_conn,
@@ -158,7 +170,7 @@ async def main():
                 kline_records, source = await fetch_stock_kline_daily(
                     code,
                     start_date=args.start_date,
-                    end_date=datetime.now().strftime("%Y%m%d"),
+                    end_date=end_date_yyyymmdd,   # Phase ψ.5: calendar-gated
                 )
                 return code, kline_records, source, None
             except Exception as exc:

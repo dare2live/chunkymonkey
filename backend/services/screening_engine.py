@@ -17,6 +17,7 @@ from datetime import datetime
 from typing import Optional
 
 from services.market_db import get_canonical_kline_qfq_relation
+from services.utils import latest_closed_or_raise as _latest_closed
 
 logger = logging.getLogger("cm-api")
 KLINE_DAILY_QFQ_RELATION = get_canonical_kline_qfq_relation()
@@ -566,7 +567,7 @@ def run_all_screens(smart_conn, mkt_conn) -> int:
         return 0
 
     now = datetime.now().isoformat()
-    screen_date = datetime.now().strftime("%Y-%m-%d")
+    screen_date = _latest_closed()  # Phase ψ.5: calendar-gated
     results = []
     stock_groups: dict[str, list[dict]] = defaultdict(list)
     for row in kline_rows:

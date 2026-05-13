@@ -2779,7 +2779,11 @@ async def _step_build_industry_stat(conn) -> int:
 
 
 async def _step_sync_market_data(conn) -> int:
-    """同步行情数据：合并原 kline_monthly + kline_daily，写入 market.duckdb"""
+    """同步行情数据：合并原 kline_monthly + kline_daily，写入 market.duckdb
+
+    Phase ψ.5: monthly + daily 都走 calendar-gated end_date (统一调用 latest_
+    completed_trade_date), 不允许 fallback to wall-clock now.
+    """
     import json as _json
     from services.market_db import (
         get_market_conn, upsert_price_rows, upsert_price_kline_tdxhub_rows, update_sync_state,
@@ -2791,6 +2795,15 @@ async def _step_sync_market_data(conn) -> int:
         probe_stock_kline_fallback_preference,
     )
     from services.xdxr_client import sync_xdxr_for_codes
+
+    # Phase ψ.5: 统一 end_date — 在 step 入口算一次, 后续 monthly + daily 都用.
+    monthly_end_iso = latest_completed_trade_date(conn)
+    if not monthly_end_iso:
+        raise RuntimeError(
+            "[行情同步] dim_trading_calendar 未 seed, 拒绝 fallback to wall-clock"
+        )
+    monthly_end_date = monthly_end_iso.replace("-", "")
+    logger.info(f"[行情同步] 月K + 日K end_date (calendar-gated): {monthly_end_iso}")
 
     mkt_conn = get_market_conn()
     sub_status = {}
@@ -2879,7 +2892,9 @@ async def _step_sync_market_data(conn) -> int:
                         reason="正在尝试补齐月K",
                         commit=False,
                     )
-                kline_records, source = await fetch_stock_kline_monthly(code, limit=36, start_date="20230101")
+                kline_records, source = await fetch_stock_kline_monthly(
+                    code, limit=36, start_date="20230101", end_date=monthly_end_date
+                )
                 if kline_records:
                     rows_data = [
                         {"code": code, "date": str(r["date"])[:10], "freq": "monthly",
@@ -3095,17 +3110,9 @@ async def _step_sync_market_data(conn) -> int:
                     return "20230101"
             return "20230101"
 
-        # Phase ψ.5 根因修复: 用日历前置, 不用 wall-clock now.
-        # 盘中调 sync 应只抓到上一个已收盘交易日的 K 线, 避免盘中 tick 半成品入库.
-        # 复用 services/utils.py:latest_completed_trade_date (close_hour=16 默认更保守).
-        daily_end_iso = latest_completed_trade_date(conn)        # 'YYYY-MM-DD'
-        if not daily_end_iso:
-            raise RuntimeError(
-                "[行情同步] latest_completed_trade_date 返 None — "
-                "dim_trading_calendar 未 seed 或表损坏, 拒绝用 wall-clock fallback"
-            )
-        daily_end_date = daily_end_iso.replace("-", "")          # 'YYYYMMDD' 给上游 API
-        logger.info(f"[行情同步] 日K end_date (calendar-gated): {daily_end_iso}")
+        # Phase ψ.5: 复用 step 入口算的 monthly_end_iso (monthly + daily 同一日期)
+        daily_end_iso = monthly_end_iso
+        daily_end_date = monthly_end_date
         daily_preflight = None
         daily_prefer_fallback = False
         if to_fetch_d:

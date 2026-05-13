@@ -24,6 +24,8 @@ import time
 from dataclasses import dataclass, field
 from datetime import date
 
+from services.utils import latest_closed_or_raise as _latest_closed
+
 logger = logging.getLogger("cm-api.strategy_ensemble")
 
 
@@ -146,7 +148,7 @@ def compute_ensemble(
     if alphas is None:
         alphas = DEFAULT_ALPHAS
     if snapshot_date is None:
-        snapshot_date = date.today().isoformat()
+        snapshot_date = _latest_closed()  # Phase ψ.5: calendar-gated
 
     t0 = time.time()
     # 1. 拉每个 alpha 的 (stock_code, raw_score)
