@@ -737,6 +737,39 @@ SELECT * FROM mart_data_source_watermark;
 
 每次 session 增量内容写这里, 新 session 启动时**从下往上读**最近改了啥.
 
+### 2026-05-14 凌晨 (Phase ψ.β.sector — 板块强度 alpha + 综合 plan)
+
+**用户提的 3 个根本问题**:
+1. 反转因子是公式还是辅助? — **同时是两者** (backtest 当公式, ensemble 当 alpha)
+2. 数据应该拉齐 2023-01 — 系统 audit 找出 6 张表缺历史
+3. 字段单位管理 — VWAP bug 暴露项目无 dict 机制
+
+**用户洞察**: tdxhub 应该有现成的板块/概念 K 线
+
+**调查结果**:
+- `services/tdx_industry_client.py` 只拉**分类映射**, 没拉行业 K 线
+- `services/block_client.py` 已实现 TDX block_zs/fg/gn (指数/风格/概念) — **但只拉成分股映射, 没拉 K 线**
+- 项目当前路径: services/sector_momentum.py 用方案 A (**成分股等权聚合**算行业指数), 不依赖 tdxhub 直接的行业 K 线
+- 缺陷: calc_sector_momentum 只算"今天", 没历史 backfill, mart_sector_momentum 只 41 行 (2026-04 起)
+
+**修法 (Phase ψ.β.sector)**:
+- 新写 `backend/scripts/backfill_sector_momentum_history.py`
+- 方案 A: K 线 × `dim_stock_tdx_industry_history` (PIT 行业) ASOF JOIN
+  → 每日按当时 PIT 行业聚合个股 close 等权 → 板块指数
+  → 算 ma20/60 + return_5d/20d/60d/120d + excess vs 全市场 + vol_60d + price_vs_ma 位置
+  → 写新表 `fact_sector_momentum_daily` (sector × date, 跟现有 mart 表不冲突)
+- 预估: 13 一级行业 × 800 天 = ~10K 行, ~5-10 min 跑
+
+**新表 schema**: fact_sector_momentum_daily (sector_name, date, sector_close, n_stocks,
+ma20, ma60, vol_60d, ret_5d/20d/60d/120d, excess_20d/60d, price_vs_ma20, price_vs_ma60, n_bars)
+
+**集成路径**:
+- paper_sim_ensemble.yaml 加 3 sector alpha (ret_60d / excess_60d / price_vs_ma20)
+- 反转 backtest mode 加 filter: 排除 ret_60d < market_ret_60d 的弱行业股
+- paper_sim ablation: with vs without sector alpha
+
+**等 paper_sim reversal_v2 ablation 完后跑 sector backfill** (DB 锁).
+
 ### 2026-05-14 凌晨 (Phase ψ.β.align — 严重 VWAP bug + selector 跟用户对齐)
 
 **用户 push back**: "你跑的是单一策略, 没真正模拟实盘选股 — 实盘是各种公式入池后按 OOS 强弱选最强"
