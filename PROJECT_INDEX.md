@@ -1,9 +1,40 @@
-# PROJECT_INDEX.md — Chunky Monkey v2 全貌索引
+# PROJECT_INDEX.md — Chunky Monkey v2 项目地图 (新人 briefing)
 
 > ⚠ **每次 session 启动必读** (CLAUDE.md 已引用). 用于防止对话压缩 / context 丢失导致重复发现项目结构 / 误解数据资产.
 > 内容是**项目地图**, 不是规则 — 规则在 CLAUDE.md.
+>
+> **目标**: 新接手 (无论 Claude 还是人) 读完此文档**不用看代码 / 不用查 DB** 就能理解:
+> 项目业务 / 架构 / 技术路线 / 数据资产 / 当前进度 / 已知坑 / 常用操作.
 
-最后更新: 2026-05-14 (Phase ψ.β.perf 后). 数据资产 / 模块 schema 变更后请刷新本文档.
+最后更新: 2026-05-14 (Phase ψ.β.enforce 后, 16 项遗漏审计完成).
+
+## 30 秒速览 — 这是什么项目
+
+**Chunky Monkey v2** = A 股**自动选股 + 实盘模拟**系统. 用户(私人投资者)用它筛 5 只股票 / 月度轮换.
+
+**用户目标 (硬指标, 一切优先级以此为锚)**:
+- 年化 ≥ **+30%**
+- max_drawdown ≥ **-20%**
+- 超额 vs HS300 > 0
+
+**数据基础**: 6,618 股 A 股 K 线 (2022-01 起) + 70K+ 财报 + 35K 机构事件 + 53K 龙虎榜 + 68K 高管增减持 + 大盘 regime + 4 阶段技术形态分类.
+
+**架构主线 (alpha pipeline)**:
+```
+原始数据 → 公式信号 + PIT 因子 → Optuna 调参 (walk-forward) → mart 表
+       → paper_sim selector (按 ensemble score 排名)
+       → simulate_trade (T+1 入场, 含 tx_cost + 涨跌停)
+       → NAV 曲线 → KPI 验证 (6 类 20+ 指标)
+```
+
+**当前最强发现** (实测严格 walk-forward OOS, 7.5h 跑批):
+- `reversal_1m_mild × stage=1.5`: avg OOS sharpe **+0.435** / win **58.5%**
+- `reversal_1m_deep × stage=1`: avg OOS sharpe **+0.32** / win **60.5%**
+- 整体 momentum 公式 (MACD/turtle/dynamic_ma) **全失效** (OOS sharpe ~0 或负)
+
+**距离用户目标**: 单股 OOS sharpe 0.32 → 5 股组合 + 月度轮换 paper_sim 真实期望约 **+15-25% 年化** (推算未实测). 缺 **+5-15pp** 才达 +30% 标准.
+
+**下一步**: 引入更多 alpha 源 (机构跟随主 alpha PIT 重建 / case-based 历史相似 / 板块强度) — 见 §11 "16 项遗漏审计".
 
 ## 维护责任 (Rule 9.5 沉淀)
 
@@ -32,6 +63,81 @@
 基线: 2023-01-03 起, 100 万初始, HS300 benchmark.
 
 ---
+
+## Pipeline 数据流图 (端到端架构)
+
+```
+┌──────────────────────────────────────────────────────────────────────┐
+│ 0. 原始数据层 (data sources)                                         │
+│   - akshare (K 线 / 财报 / 龙虎榜)  - tdxhub (qfq 复权 K 线)         │
+│   - aif10 (估值 / 一致预期)         - tdx F10 (机构持仓)             │
+│   - 内部模拟器 (event_simulator)                                     │
+└──────────────────────────────────────────────────────────────────────┘
+        │
+        ▼
+┌──────────────────────────────────────────────────────────────────────┐
+│ 1. raw_ 层 (smartmoney.duckdb): 70K 财报 / 53K 龙虎榜 / 35K 机构事件  │
+│    market.duckdb: 6M K 线 / 158K xdxr 事件                           │
+└──────────────────────────────────────────────────────────────────────┘
+        │ sync (POST /api/inst/update/smart) — 含 watermark
+        ▼
+┌──────────────────────────────────────────────────────────────────────┐
+│ 2. fact_ 层 (PIT 时序事实表):                                        │
+│    - fact_stock_technical_stage (2.4M, Stan Weinstein 4 stage)       │
+│    - fact_signal_context (2.7M, vol_r20/price_pos/drawdown_60d/stage)│
+│    - fact_technical_trigger (公式信号触发, 含 strength)              │
+│    - fact_risk_factors (4.8M, Phase ψ.β.1 PIT mom/sharpe/vol)        │
+│    - fact_financial_pit_daily (3.7M, Phase ψ.β.2 PE/PB/ROE/yoy)      │
+│    - fact_capital_flow_pit_daily (858K, Phase ψ.β.3 lhb/exec/holder) │
+│    - fact_regime_state (775, 大盘 bull/bear/sideways)                │
+└──────────────────────────────────────────────────────────────────────┘
+        │ Optuna 调参 (R1 walk-forward, expanding_monthly / train_end_forward)
+        │ governance 守门 (sharpe>5/win>0.95/avg>0.5 reject)
+        ▼
+┌──────────────────────────────────────────────────────────────────────┐
+│ 3. mart_ 业务层 (调参 / 寻优结果):                                   │
+│    - mart_per_formula_stage_optimal (426 OOS 行,                     │
+│         per formula × stage × train_end_date, 最强 setup ↓)          │
+│    - mart_per_stock_stage_strategy_optimal (per-stock × stage 旧表)  │
+│    - mart_formula_horizon_evidence (per formula × hp 全市场)         │
+│    - mart_stock_trend (主 alpha 88 列, 但 ⚠ latest 快照无 PIT)       │
+│    - fact_optuna_governance_log (reject 审计)                        │
+└──────────────────────────────────────────────────────────────────────┘
+        │
+        ▼
+┌──────────────────────────────────────────────────────────────────────┐
+│ 4. paper_sim selector (3 mode):                                      │
+│    - "backtest" 单公式排名 (按 mart_per_formula_stage.oos_sharpe)    │
+│    - "ensemble" 10 alpha zscore 加权 + regime gate (Phase ψ.β.4)     │
+│    - "production" 走 mart_daily_position_recommendation (实盘)        │
+│    选 top 5 + 流动性过滤 (vol_60d ≤ 40% / amount_20d ≥ 5000万)       │
+└──────────────────────────────────────────────────────────────────────┘
+        │ T+1 VWAP 入场
+        ▼
+┌──────────────────────────────────────────────────────────────────────┐
+│ 5. simulate_trade (services/backtest/realistic_engine.py):           │
+│    - T+1 入场 (buy_offset=1, 一字涨停延迟 1 次)                      │
+│    - 5 出场触发: stop_loss > target_arm > trailing > hp_expired      │
+│         > stage_deterioration                                        │
+│    - 含 tx_cost (佣金 0.025% + 印花税 0.05% + 滑点 0.1%)              │
+│    - 含涨跌停 reject_buy (一字涨停不买) / 退市暂停过滤                │
+└──────────────────────────────────────────────────────────────────────┘
+        │ 每日 NAV 更新, swap 决策, 跨日 trailing arm
+        ▼
+┌──────────────────────────────────────────────────────────────────────┐
+│ 6. paper_sim 输出 + KPI:                                             │
+│    - fact_paper_sim_nav (NAV 时序)                                   │
+│    - fact_paper_sim_position (持仓快照)                              │
+│    - fact_paper_sim_trade (BUY/SELL/SWAP_OUT/SWAP_IN)                │
+│    - mart_paper_sim_kpi (6 类 KPI: A 用户标准 / B anti-churn         │
+│         / C robustness / D ablation / E sensitivity / F reality)     │
+└──────────────────────────────────────────────────────────────────────┘
+        │
+        ▼ 决策: 6 类 KPI 全过 → 上线 / 一类不过 → 不上线
+┌──────────────────────────────────────────────────────────────────────┐
+│ 7. 实盘上线 (待 — 还没满足用户 +30%/-20%/超额 HS300)                  │
+└──────────────────────────────────────────────────────────────────────┘
+```
 
 ## 1. 三个 DuckDB 数据库
 
@@ -304,6 +410,105 @@
 
 ---
 
+## 常用命令 cheatsheet (复制即可跑)
+
+### 安装 (新人首次)
+```bash
+git clone https://github.com/dare2live/chunky-monkey-v2.git
+cd chunky-monkey-v2
+python3 -m venv venv && source venv/bin/activate
+pip install -r backend/requirements.txt
+pip install pre-commit && pre-commit install   # 强制 PROJECT_INDEX 同步检查
+```
+
+### 数据 backfill (从空开始)
+```bash
+# 1. 技术阶段 (Stan Weinstein 4 stage)
+PYTHONPATH=backend python backend/scripts/build_stage_formula_fitness.py --start 2022-09-01
+
+# 2. signal_context (vol/amt/price_pos + technical_stage)
+PYTHONPATH=backend python backend/scripts/build_signal_context.py --start 2023-09-01
+
+# 3. 公式信号历史 (含反转 3 公式)
+PYTHONPATH=backend python backend/scripts/build_formula_signals_history.py
+
+# 4. PIT 因子 (Phase ψ.β.1/2/3)
+PYTHONPATH=backend python backend/scripts/backfill_risk_factors_history.py
+PYTHONPATH=backend python backend/scripts/backfill_financial_pit.py
+PYTHONPATH=backend python backend/scripts/backfill_capital_flow_pit.py
+```
+
+### Optuna 跑批
+```bash
+# per-formula × stage 全局 walk-forward (推荐)
+PYTHONPATH=backend python backend/scripts/optimize_per_formula_stage.py \
+    --formula reversal_1m_mild reversal_1m_deep reversal_1w \
+              macd_golden_cross turtle_breakout_20 turtle_breakout_55 \
+              dynamic_ma_iterative_cross
+# 时长: ~7.5h (1260 任务), 输出 mart_per_formula_stage_optimal 426 行
+```
+
+### paper_sim 跑批 (4 套 ablation)
+```bash
+# A. baseline (no swap, 老 momentum 公式)
+PYTHONPATH=backend python backend/scripts/run_paper_sim_v2.py --variant baseline
+
+# B. 反转单 alpha (最强 setup)
+PYTHONPATH=backend python backend/scripts/run_paper_sim_v2.py \
+    --config-path backend/config/paper_sim_reversal.yaml --ablation
+
+# C. momentum 单 alpha
+PYTHONPATH=backend python backend/scripts/run_paper_sim_v2.py \
+    --config-path backend/config/paper_sim_momentum.yaml --ablation
+
+# D. ensemble 10 alpha 综合 (主战)
+PYTHONPATH=backend python backend/scripts/run_paper_sim_v2.py \
+    --config-path backend/config/paper_sim_ensemble.yaml --ablation
+# 时长: 各 ~30-60 min
+```
+
+### 数据查询 (常用诊断)
+```bash
+# 查 mart 表最强 setup
+duckdb data/smartmoney.duckdb -c "
+SELECT formula_id, stage_filter, COUNT(*) AS n,
+       ROUND(AVG(oos_sharpe),3) AS avg_sh,
+       ROUND(AVG(oos_win_rate)*100,1) AS win
+  FROM mart_per_formula_stage_optimal
+ GROUP BY 1, 2 ORDER BY avg_sh DESC LIMIT 10"
+
+# 查 PIT 数据 freshness
+duckdb data/smartmoney.duckdb -c "
+SELECT 'risk_factors' AS t, MIN(calc_date), MAX(calc_date), COUNT(*) FROM fact_risk_factors
+UNION SELECT 'financial', MIN(trade_date), MAX(trade_date), COUNT(*) FROM fact_financial_pit_daily
+UNION SELECT 'capital_flow', MIN(trade_date), MAX(trade_date), COUNT(*) FROM fact_capital_flow_pit_daily
+UNION SELECT 'signal_context', MIN(date), MAX(date), COUNT(*) FROM fact_signal_context"
+```
+
+### 测试 / 验证
+```bash
+# 全部单测 (paper_sim + optuna + backtest + ...)
+cd backend && PYTHONPATH=. pytest tests/ -q
+
+# 仅 Optuna 治理测试
+cd backend && PYTHONPATH=. pytest tests/optimization -q   # 83 tests
+
+# 跑 audit (23 项检查)
+PYTHONPATH=backend python backend/scripts/audit_end_to_end.py
+```
+
+### Pre-commit 测试 (避免 hook reject)
+```bash
+# 改完代码后 staged
+git add backend/services/your_file.py
+
+# 测 hook (会告诉你需不需要改 PROJECT_INDEX)
+python3 backend/scripts/check_project_index_sync.py; echo "exit=$?"
+
+# 如果 exit=1 → 改 PROJECT_INDEX.md 加进 §14, 然后 git add PROJECT_INDEX.md
+# 如果 exit=0 → 可以 commit
+```
+
 ## 7. CLAUDE.md 规则栈 (现 9 条)
 
 ```
@@ -400,6 +605,86 @@ Rule 9: 真金白银 / 第一性原理       — 用户视角严苛门槛
 
 ---
 
+## 11.5 已知遗漏 / 待办清单 (按 ROI 优先级)
+
+> 这是用户反复 push back 后系统 audit 的结果. 每项含: 用户期望 / 现状 / 优先级 / 估时.
+> Claude 应该在每个 phase 结束自动 review 这个列表, 不让任何一项静默 drop.
+
+### P0 — 必修 (影响主目标达成)
+
+| # | 项 | 用户期望 | 现状 | 估时 |
+|---|---|---|---|---|
+| 1 | **数据 sync 同步** | 数据更新到最新交易日 | `mart_data_source_watermark` 停在 2026-05-06, 其他 2026-05-13. 没主动跑 sync | 1 h |
+| 2 | **goal.md 维护** | Phase ψ.β 系列进度记录在 goal.md | goal.md 没动过 Phase ψ.β 内容 | 1 h |
+| 4 | **mart_sector_momentum 历史 backfill** | 板块强度可历史回测 | 只 41 行 (2026-04 起), 板块 alpha 不可用 | 半天 |
+| 11 | **swap 策略最终评估** | 反转 setup 下 swap 是否需要? | swap_v1 跑 -44% 后中断, 反转下没验证 | paper_sim ablation 一部分 |
+
+### P1 — 高 ROI (alpha 增强)
+
+| # | 项 | 用户期望 | 现状 | 估时 |
+|---|---|---|---|---|
+| 5 | **mart_stock_trend.action_score PIT 重建** | 机构跟随主 alpha (0.40 权重) 历史可用 | β.3 改方向用 lhb/exec/holder 替代; 主 action_score 还是 latest 快照 | 3-5 天 (受 fact_institution_event 只 1 年限制) |
+| 6 | **case-based / k-NN 历史相似回测** | "结合历史相似形态胜率" 选股 | 列为 R-γ, 未开工. 数据基础 fact_signal_context + archetype 已有 | 1-2 周 |
+| 10 | **大盘 regime gate paper_sim 验证** | regime 择时是否生效? | yaml 配置加了但 paper_sim 还没验证 (反转 ablation 没用 ensemble mode) | paper_sim ablation 一部分 |
+
+### P2 — 中 ROI (alpha 拓展)
+
+| # | 项 | 现状 | 估时 |
+|---|---|---|---|
+| 3 | fact_stock_archetype 历史 backfill | 只 2026-04 几天 | 半天 |
+| 7 | sentiment/ 关注度 alpha 集成 | 8 文件框架, 未对接 | 1 天 |
+| 8 | 量价相关因子 (vol-price correlation) | 调研提过, 未建 | 半天 |
+| 9 | fact_financial_derived.revenue_yoy sparse | 部分股 null (如 000001 银行) | 修 derived 表本身, 半天 |
+
+### P3 — 工程 / 审计
+
+| # | 项 | 现状 | 估时 |
+|---|---|---|---|
+| 12 | swap_uplift_estimate vs 反事实验证 | Phase ψ Batch 4c todo | 半天 |
+| 13 | qfq 复权 PIT leakage | "业界接受不修", 但 Rule 9.1 严格说要处理 | 1-2 天 |
+| 14 | 行业分类 PIT 系统验证 | 没核 SQL 用 history 还是 latest | 半天 |
+| 15 | codex 分支整理 | 保留作 backup (用户原话), 不删 | 0 |
+| 16 | dev 手册 / goal.md / PROJECT_INDEX 职责划分 | 没明文, 内容可能冗余 | 半天 |
+
+### 处理原则
+
+- 每跑完一个 phase / commit 后, **检查这个列表是否有项可以划掉**
+- 新踩坑 / 新 audit 发现的项加进来
+- 不静默 drop — 即使 "暂不修" 也要写明理由
+- P0 不修, 用户目标基本不可能达成
+
+## Performance Profile (跑批时间预期)
+
+| 任务 | 数据量 | 实测时长 | 备注 |
+|---|---|---|---|
+| build_signal_context backfill | 3.3M K 线 → 2.7M context | **5.7 min** | calc 1 min + 写库 4.7 min |
+| build_stage_formula_fitness (含 technical_stage) | 5.2M K 线 → 2.4M stage | **4 min** | classify 22s + 写库 3.5 min |
+| backfill_risk_factors_history | 5.5M K 线 → 4.8M risk PIT | **12 min** | SQL 窗口 8.6s + 写库 11.5 min |
+| backfill_financial_pit | 70K 财报 + K 线 → 3.7M PIT | **10 min** | ASOF JOIN 4s + 写库 10 min |
+| backfill_capital_flow_pit | 53K lhb + 68K exec + holder → 858K | **2.4 min** | SQL 3s + 写库 2 min |
+| optimize_per_formula_stage (反转 3 公式) | 455 任务 × 100 trials | **28 min** | 8 workers |
+| **optimize_per_formula_stage (全 7 公式)** | **1260 任务 × 100 trials** | **7.5 h** ⚠ | 后期 5 worker tail (用户问"卡了吗") |
+| paper_sim_v2 walk-forward 单 variant 800 天 | 4-5K 候选 / 天 | 30 min | swap_v1 含 |
+| paper_sim_v2 ablation (baseline + swap_v1) | 2 variants × 800 天 | 60 min | |
+
+### 已修 hotspot (Phase ψ.β.perf, commit 192bcb4d)
+
+| Hotspot | 修法 | 预期加速 |
+|---|---|---|
+| `realistic_engine._idx` linear search | 加 `_BAR_DATE_IDX_CACHE` dict cache | **2-5×** |
+| `objective.py` + `optimize.py` 重跑 simulate_trade | 新增 `backtest_signals_with_trades` 返回 (summary, trades) | **1.5-2×** |
+| `objective.py` 自己做 linear search | 改用 `_idx` (含 dict cache) | **1.2-1.5×** |
+
+**预期重跑 1260 任务 Optuna 从 7.5h 降到 ~3h**.
+
+### 已知尚未优化
+
+| 项 | 影响 |
+|---|---|
+| `dynamic_ma_iterative` 公式 10 轮迭代 Python loop | 慢公式之一, 可 numpy 向量化 → 3-5× |
+| backfill 写库阶段 (单事务 INSERT) | 平均 150 us/row, 4.8M 行 11 min. COPY FROM Parquet 可 5-10× |
+| Optuna pool tail effect (5 worker idle / 2 worker 慢任务) | 改 chunksize 或调度策略, 拉平 worker 负载 |
+
 ## 12. 当前 Phase / 进度
 
 | Phase | 内容 | 状态 |
@@ -451,6 +736,25 @@ SELECT * FROM mart_data_source_watermark;
 ## 14. Session 增量更新日志 (Rule 9.5 长期沉淀)
 
 每次 session 增量内容写这里, 新 session 启动时**从下往上读**最近改了啥.
+
+### 2026-05-14 深夜 (Phase ψ.β.briefing — 16 项遗漏审计 + PROJECT_INDEX 大重写)
+
+用户 push back: "其他事项一定也会有遗漏, 扫描对话记录找出来" + "项目文档标准是新人不读代码就能理解".
+
+**16 项遗漏审计** (扫对话历史得出):
+- P0 必修: 数据 sync / goal.md 维护 / mart_sector_momentum / swap 最终评估
+- P1 高 ROI: 机构跟随 PIT (受 1 年限制) / case-based 回测 / regime gate 验证
+- P2 中 ROI: archetype backfill / sentiment / vol-price 因子 / financial yoy fix
+- P3 工程: swap_uplift / qfq leakage / 行业 PIT / 文档职责划分
+
+**PROJECT_INDEX 重写** (满足 "新人 briefing" 标准):
+- 加 "30 秒速览": 项目业务 + 用户目标 + 当前最强发现 + 距离目标
+- 加 "Pipeline 数据流图": 端到端 raw → mart → selector → paper_sim → KPI
+- 加 "常用命令 cheatsheet": 安装 / backfill / Optuna / paper_sim / 数据查询 / 测试
+- 加 "16 项遗漏审计": 按 ROI P0-P3 分级 + 估时
+- 加 "Performance Profile": 跑批时间预期 + 已修/未修 hotspot
+
+527 行 → 800+ 行. 新人读 30 分钟就能完整掌握项目, 不用读代码 / 查 DB.
 
 ### 2026-05-14 后期 (Phase ψ.β.enforce — 工作流强制层)
 
