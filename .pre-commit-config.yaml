@@ -19,3 +19,16 @@ repos:
       - id: ruff
         args: [--fix, --exit-zero]  # 自动修, 不阻塞
         files: ^backend/(services|routers)/.*\.py$
+
+  # Phase ψ.β.perf+: PROJECT_INDEX.md 同步检查 (Rule 9.5/9.6 落地)
+  # 修改 backend/services/, scripts/build_/optimize_/run_/backfill_, config/*.yaml, CLAUDE.md
+  # 必须同时改 PROJECT_INDEX.md, 否则 reject commit. 防 Claude 遗漏文档同步.
+  - repo: local
+    hooks:
+      - id: project-index-sync
+        name: PROJECT_INDEX.md sync check
+        entry: python backend/scripts/check_project_index_sync.py
+        language: system
+        pass_filenames: false
+        stages: [pre-commit]
+        always_run: true

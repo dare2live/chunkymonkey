@@ -252,6 +252,45 @@ SELECT reason, COUNT(*) FROM fact_optuna_governance_log
 - **git**: commit + push + 分支管理 + worktree 残留清理 — 任何工作完成自动 commit
 - **模块化 + config 驱动**: 阈值 / 参数 / 表名 / 路径 / 日期 一律走 yaml. 业务代码不 hardcode.
 - **不硬编码**: 改参数 = 改一处 config, 不动业务代码
+- **PROJECT_INDEX.md 同步**: 改 service / script / yaml / Rule **必须**同步改 PROJECT_INDEX.md.
+  Pre-commit hook (`backend/scripts/check_project_index_sync.py`) 强制 reject 不同步的 commit.
+
+### 9.7 Commit 前必走的 5-question self-check
+
+(根因: Claude 多次遗漏文档同步 / 漏掉防回退测试 / commit 后才发现问题. Pre-commit hook 是
+技术防护层, 这套自检是认知层 — 两层一起)
+
+每次 `git commit` 前**逐项**确认:
+
+1. **`PROJECT_INDEX.md` 同步了吗?**
+   - 新加数据表 → §2; 新 service/script → §3-4; 新 yaml → §6; 解决坑 → §8 标 ✅;
+     新踩坑 → §11 + 这条规则; 加 §14 增量日志
+   - Pre-commit hook 会强制检查, 但我应该主动改 — hook 是最后防线不是开发流程
+2. **测试新加了吗?** — 改了核心逻辑必有单测 / 集成测; 改了 perf 必有 benchmark test 防回退
+3. **数据 / 跑批 commit log 截图 / 数字 写进 commit message 了吗?**
+   - 例: "实测 4.8M 行 / 12 min / sample stock 验证" — 不是 "fixed" 这种空说明
+4. **CLAUDE.md / Rule 9 反例表加了吗?** — 这次踩的新坑必须沉淀
+5. **Rule 9.1 真金白银 self-check** (策略相关 commit): 含 leakage/估算/假设? 数字穿透到 forward 期望?
+
+不能逐项答 "yes" = 别 commit. 重做.
+
+### 9.8 工作流 enforcement (技术层)
+
+防 Claude 忘记自检, 项目已加技术层强制:
+
+| 层 | 文件 | 防什么 |
+|---|---|---|
+| `pre-commit hook: project-index-sync` | `.pre-commit-config.yaml` + `backend/scripts/check_project_index_sync.py` | 改 service/script/yaml 没改 PROJECT_INDEX → reject commit |
+| `pre-commit hook: ruff` | 同上 | 代码格式 |
+| `pre-commit hook: trailing-whitespace / end-of-file-fixer / check-yaml / check-merge-conflict / detect-private-key / check-added-large-files` (1MB) | 同上 | 基础检查 |
+| **CI**: GitHub Actions (待加) | `.github/workflows/` | 跑 pre-commit + pytest |
+
+安装 hook (一次性):
+```bash
+pip install pre-commit && pre-commit install
+```
+
+如果 hook 误判 → 修 `check_project_index_sync.py` 的 `TRIGGERS` / `EXEMPT_*`. 不要 `--no-verify` 跳过.
 
 ### Self-check 提问 — 任何"涉策略"决策提交前问
 

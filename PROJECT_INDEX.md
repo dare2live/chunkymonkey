@@ -452,6 +452,27 @@ SELECT * FROM mart_data_source_watermark;
 
 每次 session 增量内容写这里, 新 session 启动时**从下往上读**最近改了啥.
 
+### 2026-05-14 后期 (Phase ψ.β.enforce — 工作流强制层)
+
+**根因 (用户 push back)**: PROJECT_INDEX.md 多次遗漏更新, Rule 9.5 是被动文字, 没自动触发.
+
+**修法 (3 层防护)**:
+- 层 1 (硬): Pre-commit hook `backend/scripts/check_project_index_sync.py` — staged 含
+  service/script/yaml/CLAUDE.md 但没含 PROJECT_INDEX → reject commit (exit=1)
+- 层 2 (中): CLAUDE.md Rule 9.7 commit 前 5-question self-check; Rule 9.8 工作流 enforcement
+- 层 3 (软): TodoWrite 每 phase 结束自动加 "update PROJECT_INDEX" todo (Claude 自觉)
+
+**Touch 文件**:
+- `backend/scripts/check_project_index_sync.py` (新, hook 脚本)
+- `.pre-commit-config.yaml` (加 local hook)
+- `CLAUDE.md` (加 Rule 9.7 + 9.8)
+- `PROJECT_INDEX.md` (本次更新即遵守新规则)
+
+**安装 hook** (一次性, 已写进 Rule 9.8):
+```bash
+pip install pre-commit && pre-commit install
+```
+
 ### 2026-05-14 (Phase ψ.β.perf — Optuna 重跑 + 性能优化)
 
 **关键发现** (按 Rule 9.4 + 9.5 沉淀):
