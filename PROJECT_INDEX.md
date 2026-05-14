@@ -740,6 +740,22 @@ SELECT * FROM mart_data_source_watermark;
 
 每次 session 增量内容写这里, 新 session 启动时**从下往上读**最近改了啥.
 
+### 2026-05-14 (Phase v3.2 P0a.2 — build_p0a_label_panel SQL builder + 单测)
+
+**新模块** `services/labels/build.py` + `services/labels/ddl.py`:
+- `LABEL_PANEL_DDL`: `mart_p0a_label_panel` schema (20 字段, PK=(stock_code, signal_date))
+- `_BUILD_SQL`: 一次性 CTE 算 (entry_date / exit_dates / entry_vwap / exit_vwaps / unable masks / fwd_cost_after) — 用 ROW_NUMBER() OVER 算 trade day rank, 自动跳非交易日.
+- `build_p0a_label_panel()`: ATTACH market.duckdb, 写 tmp_signal_dates + tmp_stocks, 跑 SQL, idempotent DELETE+INSERT 入 mart 表.
+
+**Mask 逻辑**:
+- 停牌: K 线 NULL OR volume=0 → unable=True
+- 一字板: open=high=low=close 且 volume>0 → unable=True
+- 任一 unable (entry or that horizon's exit) → label=NULL
+
+**单测** (`tests/labels/test_build.py`, 6 passed): DDL / normal path / entry suspended / 一字板 entry / 仅 5d exit unable / label_version 常量.
+
+**实际跑** (P0a.2.b 下个 commit): 取 alpha158 panel signal_dates + KEEP universe → 写 mart_p0a_label_panel (估计 ~4M 行).
+
 ### 2026-05-14 (Phase v3.2 P0a.1 — cost-after label 模块落盘)
 
 **P0a 起步** (P-1 PASS 后启动, PLAN_V3 §6 串行 gate 解锁).
