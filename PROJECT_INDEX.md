@@ -740,6 +740,20 @@ SELECT * FROM mart_data_source_watermark;
 
 每次 session 增量内容写这里, 新 session 启动时**从下往上读**最近改了啥.
 
+### 2026-05-14 (Phase v3.2 horizon ablation 启动 — 5d/10d/20d 对比)
+
+**新 CLI** `scripts/run_p0b_horizon_ablation.py`:
+- 跑 3 个完整 P0b walk-forward (fwd_cost_after_5d/10d/20d)
+- 解析 stdout RankIC + IC IR + n_dates
+- 输出对比 table + best horizon
+
+**5d horizon 跑中** (单窗 w2 RankIC=0.0417 显示某些窗口 PASS):
+- w2: 0.0417 ✓
+- w3: 0.0104, w4: -0.0056, w5: 0.001
+- 波动大, overall 未必 ≥ 0.03
+
+PLAN_V3 §3 #5 label horizon ablation 决策点正在跑.
+
 ### 2026-05-14 (Phase v3.2 perf — DataFrame bulk INSERT 250× 加速 + P0b 入库)
 
 **P0b v5 完成**: executemany 1.96M × 17 placeholders 卡 12 min → DuckDB register DataFrame + `INSERT INTO ... SELECT * FROM df` **14 秒** (250× 加速).
