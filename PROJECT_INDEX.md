@@ -740,6 +740,20 @@ SELECT * FROM mart_data_source_watermark;
 
 每次 session 增量内容写这里, 新 session 启动时**从下往上读**最近改了啥.
 
+### 2026-05-14 (Phase v3.2 — end-to-end pipeline runbook + P0a label panel 全量 build PASS)
+
+**P0a label panel 全量 build 完成** (Phase v3.2 第一个数据产物):
+- 4,625 KEEP universe stocks × 799 alpha158 panel dates = **3,695,375 rows**
+- 耗时 1281.6s (~21 min), 4 LATERAL CTE 调度
+- round_trip_cost_pct = 0.302%, label_version = 'p0a_v1'
+
+**新脚本** `scripts/run_v3_2_pipeline.py` — PLAN_V3 §6 串行 gate Python 实现:
+- 7 phases (p-1 → p0a → p0b → p0c → p1 → p2 → p3) 串行
+- `--start-phase` / `--stop-phase` 单段或全跑
+- 每 phase PASS 才进下一个 (Rule 11 串行硬约束)
+- P-1 直接调 5 个 audit script; P0b 调 train_p0b_lightgbm.py;
+  P0a/P0c/P1/P2/P3 当前是 stub + WARN, 待 CLI 入口加全后整合.
+
 ### 2026-05-14 (Phase v3.2 P3 — final holdout acceptance gate)
 
 **新模块** `services/portfolio/final_holdout.py`:
