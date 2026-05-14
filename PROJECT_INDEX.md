@@ -740,6 +740,16 @@ SELECT * FROM mart_data_source_watermark;
 
 每次 session 增量内容写这里, 新 session 启动时**从下往上读**最近改了啥.
 
+### 2026-05-14 (Phase v3.2 P2 + P3 CLI 入口)
+
+**新 CLI**:
+- `scripts/run_p2_composite_search.py`: 81 grid (3×3×3×3 = ret_w×dd_w×turnover_w×cost_w) 搜
+  composite weights → 入 mart_p2_composite_result; 输出 Top 5 weight 组合
+- `scripts/run_p3_final_holdout.py`: 读最近 N 个 OOS 月 stitched final holdout, 算 4 硬
+  验收 (ann/dd/excess/monthly_win), HS300 ann_ret 从 dim_index_price 算, 入 mart_p3_acceptance_result
+
+**P0b train 跑中**: 第 1 分钟内 RAM 升到 19.7% (1.5GB), 仍 R 状态.
+
 ### 2026-05-14 (Phase v3.2 P0a Acceptance PASS + P0b train 启动 + P1 ablation CLI)
 
 **P0a Acceptance gate**: 10 PASS / 0 WARN / 0 FAIL ✅ (audit_p0a_panel.py)
