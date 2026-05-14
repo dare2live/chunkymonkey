@@ -138,7 +138,12 @@ def main() -> int:
 
     def objective(trial: "optuna.Trial") -> float:
         max_depth = trial.suggest_int("max_depth", 3, 8)
-        num_leaves_high = min(127, max(15, 2 ** max_depth - 1))
+        # Codex M2 (a163ca58): max(15, 2^max_depth-1) bug — max_depth=3 时 2^3-1=7,
+        # max(15,7)=15 让 num_leaves search up to 15 >> 树 max 7. 改 min:
+        num_leaves_low = min(15, 2 ** max_depth - 1)
+        num_leaves_high = min(127, 2 ** max_depth - 1)
+        if num_leaves_high <= num_leaves_low:
+            num_leaves_high = num_leaves_low + 1
         cfg = LightGBMWalkForwardConfig(
             label_field=args.label,
             min_train_months=args.min_train_months,
@@ -146,7 +151,7 @@ def main() -> int:
             n_estimators=n_est_default,
             early_stopping_rounds=early_stop,
             max_depth=max_depth,
-            num_leaves=trial.suggest_int("num_leaves", 15, num_leaves_high, log=True),
+            num_leaves=trial.suggest_int("num_leaves", num_leaves_low, num_leaves_high, log=True),
             learning_rate=trial.suggest_float("learning_rate", 0.01, 0.08, log=True),
             min_child_samples=trial.suggest_int("min_child_samples", 20, 300, log=True),
             feature_fraction=trial.suggest_float("feature_fraction", 0.55, 0.95),
@@ -165,7 +170,8 @@ def main() -> int:
         if not ics:
             return -10.0
         mean_ic = float(np.mean(ics))
-        std_ic = float(np.std(ics))
+        # Codex M3 (a163ca58): sample std (ddof=1) not population std (ddof=0)
+        std_ic = float(np.std(ics, ddof=1)) if len(ics) > 1 else 0.0
         score = mean_ic - 0.5 * std_ic
         trial.set_user_attr("rank_ic_mean", mean_ic)
         trial.set_user_attr("rank_ic_std", std_ic)

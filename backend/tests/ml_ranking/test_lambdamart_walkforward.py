@@ -67,12 +67,15 @@ def test_empty_rows_returns_empty_result():
 
 
 def test_train_lambdamart_small_data_runs():
-    """生成 8 个月 × 10 stocks 数据, 跑通 train_lambdamart_walkforward + 出 result."""
+    """生成 14 个月 × 30 stocks (满足 walk_forward.min_total_months=12), 跑通 train_lambdamart_walkforward."""
     rows = []
     rng = np.random.RandomState(42)
-    for m in range(8):
-        month_str = f"2024-{m+1:02d}-15"
-        for s in range(10):
+    for m in range(14):
+        # spread across 2024 + early 2025
+        year = 2024 + (m // 12)
+        month = (m % 12) + 1
+        month_str = f"{year}-{month:02d}-15"
+        for s in range(30):
             stock_code = f"6{s:05d}"
             feat = rng.randn(5)
             # Label correlates weakly with feat[0]
@@ -97,6 +100,7 @@ def test_train_lambdamart_small_data_runs():
     result = train_lambdamart_walkforward(rows, cfg)
     # 8 months, min_train=4, forward=1 → 至少 4 windows (months 5..8 test)
     # 但 80 rows train + 10 rows test per window — n_train < 100 first windows may skip
-    assert result.n_windows >= 0  # ranker may skip 100-row threshold windows
+    # Codex Mi1 (a163ca58): assert >= 1, 不空 (空 = walk_forward 切分 fail)
+    assert result.n_windows >= 1
     # 至少 config 传递正确
     assert result.config.n_estimators == 20

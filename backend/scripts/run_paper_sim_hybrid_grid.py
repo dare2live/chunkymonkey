@@ -49,9 +49,8 @@ def main() -> int:
     log.info(f"  w grid: {w_list}")
     log.info(f"  model_id: {args.model_id}")
 
-    # Lazy import (defer heavy load)
-    from services.scripts.run_paper_sim_v2 import run_walk_forward  # if module
-    # 退到 direct import
+    # Codex C5 (a163ca58): 移除 wrong import path 'services.scripts.run_paper_sim_v2',
+    # 直接 import scripts.run_paper_sim_v2 (sys.path 已含 backend)
     from importlib import import_module
     runner = import_module("scripts.run_paper_sim_v2")
 

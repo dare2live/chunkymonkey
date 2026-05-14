@@ -80,7 +80,9 @@ def main() -> int:
                         default="2024-07-01,2025-01-01,2025-07-01,2026-01-01",
                         help="comma-sep cutoff_dates (半年频)")
     parser.add_argument("--limit-stocks", type=int, default=None,
-                        help="限制 stock 数 (smoke 测试用)")
+                        help="限制 stock 数 (smoke 测试用) — ⚠ Codex M4 (a163ca58): 当前只 ETL 阶段 limit, "
+                             "optimize_per_stock_stage_strategy.py 全量跑 (subprocess 没 --limit-stocks arg). "
+                             "TODO: 加 arg forwarding 让 smoke 真 1h, 当前 smoke 仍 ~12h × 1 cutoff.")
     parser.add_argument("--trials", type=int, default=50,
                         help="Optuna trials per (stock × stage × formula)")
     parser.add_argument("--workers", type=int, default=4)
@@ -106,17 +108,21 @@ def main() -> int:
     # 然后 ETL 同表 → PIT 表 (加 cutoff_date 列)
     repo = Path(__file__).resolve().parents[2]
     overall_t0 = time.time()
+    from datetime import timedelta
     for cutoff in cutoffs:
         cutoff_dt = datetime.strptime(cutoff, "%Y-%m-%d")
+        # Codex C2 (a163ca58) fix: cutoff-day inclusive 是 leakage,
+        # 用前 1 天 strict <. Train range 用 cutoff - 2 年 → cutoff - 1 day.
         train_start = (cutoff_dt.replace(year=cutoff_dt.year - 2)).strftime("%Y-%m-%d")
+        train_end = (cutoff_dt - timedelta(days=1)).strftime("%Y-%m-%d")
         log.info("")
-        log.info(f"=== cutoff={cutoff} ({train_start} → {cutoff}) ===")
+        log.info(f"=== cutoff={cutoff} (train {train_start} → {train_end}, signals strict < {cutoff}) ===")
         t_cutoff = time.time()
 
         cmd = [
             "python", "backend/scripts/optimize_per_stock_stage_strategy.py",
             "--start", train_start,
-            "--end", cutoff,
+            "--end", train_end,  # Codex C2: exclude cutoff_date 自身 (前 1 天)
             "--trials", str(args.trials),
             "--workers", str(args.workers),
             "--walk-forward-mode", "expanding_monthly",
@@ -146,7 +152,7 @@ def main() -> int:
                  win_rate, oos_win_rate, n_traded, oos_n_traded,
                  walk_forward_mode, train_n_signals, test_n_signals, built_at)
                 SELECT stock_code, ?, formula_id, formula_variant, stage_filter,
-                       holding_days,
+                       optimal_hp AS holding_days,  -- Codex C3 (a163ca58): 生产列名是 optimal_hp 不是 holding_days
                        optimal_target_pct, optimal_stop_pct, optimal_trailing_pct,
                        sharpe, oos_sharpe, avg_ret, oos_avg_ret,
                        win_rate, oos_win_rate, n_traded, oos_n_traded,

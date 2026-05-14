@@ -184,7 +184,8 @@ formula_trigger AS (
     LEFT JOIN fact_technical_trigger ftt
       ON ftt.stock_code = g.stock_code
      AND CAST(ftt.date AS DATE) = g.signal_date
-     AND ftt.state = 'triggered'
+     -- Codex C1 (a163ca58): 生产 state 是 NULL/just_crossed, 不是 'triggered'
+     -- fact_technical_trigger 本身就是触发记录 (表名), 不需 state filter
     GROUP BY g.stock_code, g.signal_date
 ),
 -- v3 Day 2 ① 调研热度 ASOF (PIT-safe, as_of_date <= signal_date)
@@ -442,6 +443,11 @@ def build_p0a_feature_label_panel_v3(
     stock_codes: Iterable[str],
     output_table: str = "mart_p0a_feature_label_panel_v3",
 ) -> dict:
+    # Codex Mi2 (a163ca58): SQL INSERT 写死 mart_p0a_feature_label_panel_v3, 非默认 output_table 不工作
+    if output_table != "mart_p0a_feature_label_panel_v3":
+        raise NotImplementedError(
+            f"output_table={output_table} not supported; SQL hardcoded to mart_p0a_feature_label_panel_v3"
+        )
     """Build P0a feature × label panel v3.
 
     v2 (85) → v3 (103) 加 18 列:

@@ -202,9 +202,13 @@ def train_one_window(
         log.warning(f"lambdamart train_mask only {train_mask.sum()} valid; skip window")
         return np.full(len(test_rows_sorted), np.nan), y_test_raw
 
-    # 转 label → per-date relevance integer + group_sizes
+    # Codex M1 (a163ca58) fix: NaN label filter 必须在 group_sizes 计算之前,
+    # 否则 group counts 跟 LGBMRanker 接收的 sample 数不一致.
+    valid_rows = [r for r, m in zip(train_rows_sorted, train_mask) if m]
+    valid_labels = y_train_raw[train_mask]
+    valid_X = X_train[train_mask]
     train_relevance, train_groups = _label_to_per_date_relevance(
-        train_rows_sorted, y_train_raw, cfg.label_gain_max,
+        valid_rows, valid_labels, cfg.label_gain_max,
     )
 
     lgbm_params = dict(
@@ -231,8 +235,7 @@ def train_one_window(
         lgbm_params["min_split_gain"] = cfg.min_split_gain
 
     model = lgb.LGBMRanker(**lgbm_params)
-    model.fit(X_train[train_mask], train_relevance[train_mask],
-              group=train_groups)  # group_sizes 已按 sorted signal_date 排好
+    model.fit(valid_X, train_relevance, group=train_groups)  # all already NaN-filtered
     y_pred = model.predict(X_test)
     return y_pred, y_test_raw
 

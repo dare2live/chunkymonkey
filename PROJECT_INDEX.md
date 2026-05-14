@@ -809,6 +809,30 @@ CLAUDE.md 增强:
 - v2 features: 79 → 85 (不是 87)
 - TODO v3: 重 Optuna walk-forward expanding_monthly 入库 (stock × cutoff_date × best_sharpe), ASOF JOIN
 
+### 2026-05-15 (Codex 综合 review a163ca58 — 12 finding fix)
+
+补做漏掉 Codex review (commit 419cdff8/b891473a/151b7178 没走). Codex 反馈 5 CRITICAL + 5 MAJOR + 2 MINOR, 全 fix:
+
+**CRITICAL (5)**:
+- C1: `ftt.state = 'triggered'` 过滤所有 — 生产 state 是 NULL (88%) / 'just_crossed' (12%), 不是 'triggered'. fact_technical_trigger 全是触发记录, 不需 state filter → 去掉
+- C2: build_stage_opt_pit `--end cutoff` 包含 cutoff 当日 leakage → 改 cutoff - 1 day
+- C3: ETL SELECT `holding_days` 不存在, 生产列是 `optimal_hp` → 改 `optimal_hp AS holding_days`
+- C4: paper_sim config.py assert 拒 'hybrid' mode → 加 hybrid + ml_score
+- C5: run_paper_sim_hybrid_grid.py wrong import `services.scripts.run_paper_sim_v2` → 移除
+
+**MAJOR (5)**:
+- M1: LambdaMART train_groups 在 NaN filter 前算 → fix order: filter mask → derive valid arrays → groups
+- M2: num_leaves bound `max(15, 2^max_depth-1)` bug, max_depth=3 时 num_leaves up to 15 >> 树 max 7 → 改 min(...)
+- M3: np.std 默认 ddof=0 population → 改 ddof=1 sample (Codex Q4 objective)
+- M4 (折中): build_stage_opt_pit --limit-stocks 只 ETL 阶段 limit, optimize subprocess 全量 — 文档清楚 "TODO forward arg"
+- M5 (sequencing): hybrid_loader default exit_table 仍 latest snapshot — Day 5 PIT 表 build 完后 swap default
+
+**MINOR (2)**:
+- Mi1: lambdamart test `>= 0` 空 → 改 `>= 1` + mock data 14 months 30 stocks 满足 min_total_months=12
+- Mi2: feature_join_v3 INSERT INTO 硬编码 → 加 raise if output_table != default (单 SQL 不支持 dynamic)
+
+105 单测全过. Kill chain v4 (Step 3 broken formula_trigger data) + 准备 chain v5 重启.
+
 ### 2026-05-15 (v3 实跑 chain Step 1 修 3 production schema bug)
 
 **Bug discovered during v3 build live run**:

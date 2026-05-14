@@ -163,7 +163,9 @@ def _validate(cfg: PaperSimConfig) -> None:
     assert r.max_dd_hard_stop_pct < r.daily_dd_warning_pct  # hard stop 更严
 
     sel = cfg.selection
-    assert sel.mode in {"production", "backtest", "ensemble"}, f"unknown selection.mode: {sel.mode}"
+    # Codex C4 (a163ca58): 加 ml_score / hybrid (Day 6 + P0c modes)
+    assert sel.mode in {"production", "backtest", "ensemble", "ml_score", "hybrid"}, \
+        f"unknown selection.mode: {sel.mode}"
     assert sel.min_tier_to_buy in {"BUY", "STRONG_BUY", "WATCH"}
     assert sel.min_tier_to_swap_in in {"BUY", "STRONG_BUY"}
     if sel.mode == "ensemble":
