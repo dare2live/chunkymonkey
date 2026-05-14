@@ -740,6 +740,19 @@ SELECT * FROM mart_data_source_watermark;
 
 每次 session 增量内容写这里, 新 session 启动时**从下往上读**最近改了啥.
 
+### 2026-05-14 (Phase v3.2 P0b — train CLI + output DDL)
+
+**新加** `services/ml_ranking/ddl.py`:
+- `mart_p0b_oos_predictions`: 每行 (stock_code, signal_date, score, model_id) — P0c selector ORDER BY score 取 top-K
+- `mart_p0b_walkforward_eval`: 每行 (run_id, window_idx, model_id, rank_ic, ...) — 单 window 评估
+
+**新 CLI** `scripts/train_p0b_lightgbm.py`:
+- 读 mart_p0a_feature_label_panel → walk-forward → 写 mart_p0b_oos_predictions + mart_p0b_walkforward_eval
+- 入参: --label / --run-id / --model-id / --n-estimators / --learning-rate / --num-leaves
+- 输出: stdout 含 stitched OOS RankIC + Gate PASS/FAIL
+
+**Codex review** (thread afdcb201a02362909, async): 6 个 Q (NaN label/feature filter / META 完整性 / ranks ties / passed_gate 阈值 / overwrite 历史 / LambdaMART ablation).
+
 ### 2026-05-14 (Phase v3.2 P0b — LightGBM pointwise + walk-forward + RankIC 模块)
 
 **新模块** `services/ml_ranking/`:
