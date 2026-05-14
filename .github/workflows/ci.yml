@@ -11,7 +11,8 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        python-version: ['3.10', '3.11']
+        # 项目代码用 datetime.UTC (Python 3.11+ 标准 API), 30+ 文件依赖, 不向下兼容 3.10
+        python-version: ['3.11', '3.12']
 
     steps:
       - uses: actions/checkout@v6
