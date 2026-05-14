@@ -162,6 +162,12 @@
 - **模块化 + 不硬编码**: 数值/阈值/路径/日期/表名走 yaml. 改参数 = 改 yaml 一行, 业务代码不动. `if stock_code == "600036"` / `hp = 30` 写死禁止.
 - **复用 (动手前 grep)**: 同逻辑出现 2 次 → 抽公共; 3 次还重写 → 立即停下重构. 单次不预先抽象 (Rule 1).
 - **PROJECT_INDEX 同步**: 改 service/script/yaml/Rule 必须同步改 PROJECT_INDEX. Pre-commit hook reject 不同步.
+- **doc 自维护** (用户原话: "每次修改 claude.md / memory 时直接做优化更新"): 每次编辑 `CLAUDE.md` / `memory/*.md` 时**顺手做整理**, 不要被动等用户提醒. 检查:
+  - **过期**: 状态描述跟现状不符 → 改/删 (e.g. v3 plan 已被 v3.2 取代, 删旧建新)
+  - **冗余**: 同一概念在多处重复 → 合并到一处 + `[[name]]` 链接 (e.g. 反例 commit hash 集中到 status 文件, 不在多 memory 重复贴)
+  - **结构**: 长 file (> 200 行 CLAUDE.md / > 100 行 memory) 该分组/层次化, 用 section header
+  - **链接**: `MEMORY.md` 索引按类型/重要度分组, `[[name]]` 串联相关
+  - **deprecation**: 早期方向 / 已偏离的方案不删, 加 "⚠ 状态: 已偏离 / deprecated" 头注 + 仍可复用部分指引
 - **不偷工**: 用户要全量真实数据, 不"快速验证小样本".
 - **诚实**: 数据告诉什么就报什么, 不报喜不报忧.
 
@@ -185,6 +191,7 @@
 3. **commit message 含数字证据?** — "实测 4.8M 行 / 12 min / sample 验证", 不是 "fixed".
 4. **反例表加了?** — 这次踩的新坑沉淀到 Rule 5/6/7/9 反例.
 5. **真金白银 self-check** (策略 commit): 含 leakage/估算/假设? 穿透 forward 期望?
+6. **改了 CLAUDE.md / memory 时顺手优化了吗?** — 顺便检查过期/冗余/结构 (见 §8 doc 自维护). 不要被动等用户提醒"再整理一下".
 
 不能逐项 yes = 别 commit. 重做.
 

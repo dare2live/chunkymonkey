@@ -740,6 +740,20 @@ SELECT * FROM mart_data_source_watermark;
 
 每次 session 增量内容写这里, 新 session 启动时**从下往上读**最近改了啥.
 
+### 2026-05-14 (Rule + memory 加 "doc 自维护" — 改 CLAUDE.md/memory 时主动优化)
+
+用户原话: "在每次修改 claude.md 和 memory 时直接做一个优化和更新 — 删除过时、优化冗余".
+
+CLAUDE.md:
+- §8 工程纪律加 "doc 自维护" 项 (5 必查: 过期/冗余/结构/链接/deprecation)
+- §9.2 commit-time self-check 加第 6 项: 改 CLAUDE.md/memory 顺手优化了吗?
+
+Memory (跨 session 持久化):
+- 新 `feedback_doc_self_optimize.md`
+- MEMORY.md 索引同步
+
+跟 PROJECT_INDEX 同步纪律同级 — 都是 doc 维护质量.
+
 ### 2026-05-14 (CLAUDE.md 加 "异常高数字 = leakage 警报" 显式规则)
 
 用户原话: "参数寻优不用未来函数怎么体现的? 之前有一版本 100% 胜率, 收益超高, optuna 读完整 3 年 K 线倒推买卖点".
