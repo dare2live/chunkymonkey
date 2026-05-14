@@ -189,10 +189,10 @@ def check_mask_effective(conn) -> list[CheckResult]:
     return out
 
 
-def check_keep_universe(conn) -> list[CheckResult]:
+def check_keep_universe(conn, feature_panel: str = "mart_p0a_feature_label_panel") -> list[CheckResult]:
     """5. 所有 stock_code 前缀 ∈ KEEP universe (60/00/30/68)."""
     out: list[CheckResult] = []
-    for table in ("mart_p0a_label_panel", "mart_p0a_feature_label_panel"):
+    for table in ("mart_p0a_label_panel", feature_panel):
         try:
             bad = conn.execute(f"""
                 SELECT COUNT(*) FROM {table}
@@ -222,14 +222,14 @@ def check_keep_universe(conn) -> list[CheckResult]:
     return out
 
 
-def check_feature_panel_no_forward_leak(conn) -> list[CheckResult]:
-    """6. mart_p0a_feature_label_panel 不应含 exit_vwap_5d 等 forward 特征 (forward 字段是 label not feature)."""
+def check_feature_panel_no_forward_leak(conn, feature_panel: str = "mart_p0a_feature_label_panel") -> list[CheckResult]:
+    """6. feature panel 不应含 exit_vwap_5d 等 forward 特征 (forward 字段是 label not feature)."""
     out: list[CheckResult] = []
     try:
         cols = [
             r[0] for r in conn.execute(
                 "SELECT column_name FROM information_schema.columns "
-                "WHERE table_name = 'mart_p0a_feature_label_panel'"
+                f"WHERE table_name = '{feature_panel}'"
             ).fetchall()
         ]
     except Exception as e:
@@ -259,20 +259,80 @@ def check_feature_panel_no_forward_leak(conn) -> list[CheckResult]:
     return out
 
 
+def check_v3_pit_confidence(conn, feature_panel: str) -> list[CheckResult]:
+    """v3 专属: industry_pit_confidence 分布 + 关键源 NULL 率."""
+    out: list[CheckResult] = []
+    try:
+        # industry_pit_confidence 分布
+        rows = conn.execute(
+            f"SELECT industry_pit_confidence, COUNT(*) FROM {feature_panel} "
+            f"GROUP BY industry_pit_confidence"
+        ).fetchall()
+    except Exception as e:
+        out.append(CheckResult(
+            section="7. v3 PIT confidence",
+            name="industry_pit_confidence_schema",
+            status="WARN",
+            detail=f"{feature_panel} 没 industry_pit_confidence 字段 (v1/v2 跳过): {e}",
+        ))
+        return out
+    total = sum(c for _, c in rows)
+    fallback_n = sum(c for v, c in rows if v == "current_label_fallback")
+    fallback_pct = fallback_n / total if total else 0
+    status = "WARN" if fallback_pct > 0.5 else "PASS"
+    out.append(CheckResult(
+        section="7. v3 PIT confidence",
+        name="industry_fallback_ratio",
+        status=status,
+        detail=f"industry fallback {fallback_pct*100:.1f}% ({fallback_n:,}/{total:,}) — "
+               f"接受 (dim_stock_tdx_industry_history 1 周 snapshot); 若 P0b 训练严格 PIT 需 filter",
+        extras={"fallback_pct": fallback_pct, "by_confidence": dict(rows)},
+    ))
+    # 关键源 NULL 率
+    for col in ("survey_count_60d", "pe_ttm_z_1y", "sector_ret_60d",
+                "inst_quality_wavg", "inst_holder_cnt"):
+        try:
+            r = conn.execute(
+                f"SELECT COUNT(*), COUNT({col}) FROM {feature_panel}"
+            ).fetchone()
+            total_r, non_null = r[0], r[1]
+            null_pct = (total_r - non_null) / total_r if total_r else 0
+            status = "WARN" if null_pct > 0.5 else "PASS"
+            out.append(CheckResult(
+                section="7. v3 PIT confidence",
+                name=f"null_ratio_{col}",
+                status=status,
+                detail=f"{col} NULL {null_pct*100:.1f}% ({total_r - non_null:,}/{total_r:,})",
+                extras={"null_pct": null_pct},
+            ))
+        except Exception as e:
+            out.append(CheckResult(
+                section="7. v3 PIT confidence",
+                name=f"null_ratio_{col}",
+                status="WARN",
+                detail=f"{col} not in {feature_panel}: {e}",
+            ))
+    return out
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="P0a panel PIT + Acceptance audit")
     parser.add_argument("--json-out", type=Path, default=Path("/tmp/p0a_audit.json"))
+    parser.add_argument("--feature-panel", default="mart_p0a_feature_label_panel",
+                        help="v1 (default) / mart_p0a_feature_label_panel_v2 / _v3")
     args = parser.parse_args()
 
-    log.info("=== P0a Panel Audit (PLAN_V3 v3.2 P0a Acceptance) ===")
+    log.info(f"=== P0a Panel Audit (PLAN_V3 v3.2 P0a Acceptance, panel={args.feature_panel}) ===")
     conn = duck_connect(str(DB_PATH), read_only=True)
     try:
         results: list[CheckResult] = []
         results.extend(check_label_panel_reproducibility(conn))
         results.extend(check_cost_deducted(conn))
         results.extend(check_mask_effective(conn))
-        results.extend(check_keep_universe(conn))
-        results.extend(check_feature_panel_no_forward_leak(conn))
+        results.extend(check_keep_universe(conn, feature_panel=args.feature_panel))
+        results.extend(check_feature_panel_no_forward_leak(conn, feature_panel=args.feature_panel))
+        if args.feature_panel.endswith("_v3"):
+            results.extend(check_v3_pit_confidence(conn, feature_panel=args.feature_panel))
     finally:
         conn.close()
 

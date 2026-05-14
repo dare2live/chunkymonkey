@@ -809,6 +809,19 @@ CLAUDE.md 增强:
 - v2 features: 79 → 85 (不是 87)
 - TODO v3: 重 Optuna walk-forward expanding_monthly 入库 (stock × cutoff_date × best_sharpe), ASOF JOIN
 
+### 2026-05-14 (CLAUDE §10 push back + audit_p0a v3 改造)
+
+**CLAUDE.md §10 Codex Review Gate 加 push back 原则** (用户 2026-05-14 push back):
+- 5 维度评估: 原则一致 / 用户目标 / 代价 vs 收益 / 现状妥协 / 现实数据
+- 三档反应: 完全接受 / 折中 (写明分歧 + 理由) / 拒绝 (写明理由)
+- 反例: 2026-05-14 我对 Codex review (a8c34359a) 7 finding 全接受没 push back, 实际 C1/M1 都是折中应显式标注
+
+**memory feedback-codex-critical-evaluation.md** 配套, MEMORY.md 索引同步.
+
+**`scripts/audit_p0a_panel.py`** 加 v3 支持:
+- --feature-panel arg (default v1, 兼容 v2/v3)
+- check_v3_pit_confidence: industry_fallback_ratio + 5 关键源 NULL ratio (待 v3 build 后跑)
+
 ### 2026-05-14 (Phase v3.2 Day 4 prep — LightGBM Optuna search space + early stop)
 
 **`services/ml_ranking/lightgbm_walkforward.py`** (LightGBMWalkForwardConfig 加 5 Optional 字段 — backward compat):

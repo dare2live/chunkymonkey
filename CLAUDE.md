@@ -215,9 +215,30 @@
 **执行**:
 1. 写完代码 + 单测后, **不立刻 commit**
 2. `codex:rescue` (默认 fresh thread, 长流程 `--resume`) 提交 diff + 上下文
-3. Codex 输出意见 → **逐条回应** (接受/反对/折中), 不"看了忽略"
+3. Codex 输出意见 → **逐条评估 + 协作沟通找最佳方案**, 不全盘接受也不全盘忽略
 4. 修代码 → 再 review (循环) 或自审 OK → commit
-5. commit message 引用 Codex agent ID + 关键意见 / 关键修改
+5. commit message 引用 Codex agent ID + 关键意见 / 关键修改 / **你拒绝/折中的项 + 理由**
+
+**逐条评估原则** (用户原话 2026-05-14: "不要全盘接受 codex 反馈, 要结合实际提出自己的想法, 通过沟通找出最佳方案, 前提是遵循原则和我设定的目标"):
+
+不全盘接受 ≠ 不接受. 每个 finding 走这个评估:
+
+| 维度 | 评估问 |
+|---|---|
+| **原则一致** | 跟 Rule 5 (PIT) / Rule 7 (真金白银) / Rule 4 (measured) 一致吗? |
+| **用户目标** | 改了能让 年化≥30% / max_dd≥-20% / 月胜率≥55% / 超额 HS300>0 更可信吗? |
+| **代价 vs 收益** | 修这个让代码复杂多少? 真减 leakage / 真涨 alpha 多少 (能 measure 吗)? |
+| **现状妥协** | 项目其它地方已经接受同 trade-off 吗 (e.g. industry_pit fallback)? |
+| **现实数据** | 我们这里数据可不可行 (e.g. mart_institution_profile 没 as_of_date 字段)? |
+
+**三档反应**:
+1. **完全接受**: 跟原则一致, 代价低收益高, 现实可行 → 直接修. 加单测固化.
+2. **折中**: 接受 spirit 但实施不同 (e.g. Codex 建议 PIT snapshot 表, 我加 _NOT_PIT 注释 + TODO + 测试 NULL case). 必须在 commit message **写明分歧 + 我选了什么 + 理由**.
+3. **拒绝**: 跟用户原则冲突 / 偏离目标 / 代价过高 / 数据不支持 → push back. 必须**写明拒绝理由**, 不能"看了忽略".
+
+**反例 (踩过)**: 2026-05-14 我对 Codex 7 finding 全接受没 push back 任何条 — 用户 push back: "全盘接受 ≠ 协作". 正解: 至少标出哪些是折中/我有补充判断 (e.g. C1 institution_profile 我选"接受 spirit + 注释 + 测试"而不是"建表 PIT snapshot 立刻做"; M1 fallback 我选"暴露 confidence 让下游 filter"而不是"严格 PIT 排除").
+
+**协作沟通**: 复杂 finding (e.g. 设计取舍) Codex 一次反馈不够, 应 `codex:rescue --resume` 接着追问"为啥推荐 X 而不是 Y?" "我提议 Z 你看可行吗?" — 不是 review-modify-commit 一次性, 是 review-discuss-iterate.
 
 **Codex 三态**:
 | 状态 | 判定 | 处理 |
