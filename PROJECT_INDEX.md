@@ -740,6 +740,19 @@ SELECT * FROM mart_data_source_watermark;
 
 每次 session 增量内容写这里, 新 session 启动时**从下往上读**最近改了啥.
 
+### 2026-05-14 (Phase v3.2 v2 修 Codex Q1 leakage — 删除 stage_opt_per_stock)
+
+**Codex review `acf48d35a80850383` Q1 CRITICAL**:
+- v2 stage_opt_per_stock CTE 是 `MAX(COALESCE(oos_sharpe, sharpe)) GROUP BY stock_code` 全期 MAX
+- 给每个 signal_date 历史 row 用了未来 Optuna OOS 结果 — **系统性 leakage**, 不是 PIT
+- Rule 7 违反: 给 t 时刻决策用了 > t 的 mart_per_stock_stage_strategy_optimal Optuna 寻优结果
+
+**修复**:
+- 删除 3 列: stage_opt_best_sharpe / stage_opt_best_avg_ret / stage_opt_total_traded
+- 保留 formula_trigger 6 dummy (PIT 严格 OK by Codex Q2)
+- v2 features: 79 → 85 (不是 87)
+- TODO v3: 重 Optuna walk-forward expanding_monthly 入库 (stock × cutoff_date × best_sharpe), ASOF JOIN
+
 ### 2026-05-14 (Phase v3.2 v2 扩 feature + chain orchestrator)
 
 **`services/labels/feature_join_v2.py`** (+ 8 features, 79 → 87):

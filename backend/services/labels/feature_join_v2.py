@@ -1,21 +1,24 @@
-"""P0a feature × label JOIN v2 — 加 stage_optimal + formula_trigger 特征 (PLAN_V3 §99 P0a).
+"""P0a feature × label JOIN v2 — 加 formula_trigger 特征 (PLAN_V3 §99 P0a).
 
-v1 (services/labels/feature_join.py) 79 features → v2 加 8 features:
-- stage_opt_best_sharpe / stage_opt_best_avg_ret / stage_opt_total_traded (per-stock formula 历史寻优)
+v1 (services/labels/feature_join.py) 79 features → v2 加 6 features:
 - formula_{macd, dyma, turtle20, turtle55, reversal}_triggered (signal_date 当日公式触发)
 - formula_n_triggered (当日触发公式数量)
 
-→ 总 87 features, 同 mart_p0a_label_panel labels JOIN 出 mart_p0a_feature_label_panel_v2.
+→ 总 85 features, 同 mart_p0a_label_panel labels JOIN 出 mart_p0a_feature_label_panel_v2.
 
 来源:
-- mart_per_stock_stage_strategy_optimal (17K rows, Phase η+++++++ 9-dim Optuna 寻优)
 - fact_signal_context (PIT, stock × date × formula_id × state 触发记录)
 
 PIT 严格 (Rule 7):
-- stage_optimal: Optuna 寻优 backfill 是 final, 不可避免少量 lookahead.
-  但作为 stock-level 排名特征 (per-stock best sharpe), 不是 signal_date 特定.
-  TODO 后续重 Optuna 用 walk-forward 切分入库 oos_sharpe_per_window.
-- formula_trigger: fact_signal_context.date <= signal_date 严格 PIT.
+- formula_trigger: fact_signal_context.date::DATE = signal_date 严格 PIT (当日触发).
+
+**Codex review (acf48d35a80850383) Q1 CRITICAL 修复**:
+- 删除 stage_opt_per_stock 三列 (stage_opt_best_sharpe / best_avg_ret / total_traded):
+  `MAX(COALESCE(oos_sharpe, sharpe)) GROUP BY stock_code` 全期 MAX 是**系统性 leakage**
+  — 给每个 signal_date 历史 row 用了未来 Optuna OOS 结果. 不是 PIT.
+- TODO v3: 重跑 Optuna walk-forward expanding_monthly, 入库 (stock × cutoff_date × best_sharpe),
+  然后 ASOF cutoff_date <= signal_date JOIN.
+- Q2 nice-to-have: formula_id 5-enum 硬编码 + 后续加 audit 报告 unknown formulas.
 """
 from __future__ import annotations
 
@@ -73,11 +76,7 @@ CREATE TABLE IF NOT EXISTS mart_p0a_feature_label_panel_v2 (
     -- Event dummies
     event_lhb_7d  BOOLEAN, event_lhb_30d  BOOLEAN,
     event_inst_7d BOOLEAN, event_inst_30d BOOLEAN,
-    -- v2 新加 stage optimal (per-stock formula best)
-    stage_opt_best_sharpe   DOUBLE,
-    stage_opt_best_avg_ret  DOUBLE,
-    stage_opt_total_traded  INTEGER,
-    -- v2 新加 formula trigger dummies
+    -- v2 新加 formula trigger dummies (Codex review acf48d35a80850383 Q1: 删除 stage_opt cols leakage)
     formula_macd_triggered      BOOLEAN,
     formula_dyma_triggered      BOOLEAN,
     formula_turtle20_triggered  BOOLEAN,
@@ -92,7 +91,7 @@ CREATE TABLE IF NOT EXISTS mart_p0a_feature_label_panel_v2 (
 """
 
 
-# v2 SQL: 在 v1 基础上加 stage_opt_per_stock CTE + formula_trigger CTE.
+# v2 SQL: 在 v1 基础上加 formula_trigger CTE (stage_opt 删除, Codex Q1 leakage).
 # 入参: tmp_signal_dates / tmp_stocks 已 stage; a158.fact_alpha158_panel ATTACHed.
 _FEATURE_JOIN_SQL_V2 = """
 WITH
@@ -145,18 +144,9 @@ risk_asof AS (
          AND r.calc_date::DATE <= g.signal_date
     ) WHERE rn = 1
 ),
--- v2 新加: per-stock formula 寻优 best metrics
-stage_opt_per_stock AS (
-    SELECT
-        stock_code,
-        MAX(COALESCE(oos_sharpe, sharpe)) AS stage_opt_best_sharpe,
-        MAX(COALESCE(oos_avg_ret, avg_ret)) AS stage_opt_best_avg_ret,
-        SUM(n_traded) AS stage_opt_total_traded
-    FROM mart_per_stock_stage_strategy_optimal
-    WHERE n_traded >= 5
-    GROUP BY stock_code
-),
 -- v2 新加: signal_date 当日公式触发 dummy
+-- (Codex review acf48d35a80850383 Q1 CRITICAL: 删除 stage_opt_per_stock CTE,
+--  MAX GROUP BY stock_code 是全期 leakage, 不切 signal_date. v3 重 Optuna walk-forward 后启用.)
 formula_trigger AS (
     SELECT
         g.stock_code, g.signal_date,
@@ -192,7 +182,6 @@ INSERT INTO mart_p0a_feature_label_panel_v2 (
     mom_30d, mom_120d,
     pe_ttm, pb, ps_ttm, roe_q,
     event_lhb_7d, event_lhb_30d, event_inst_7d, event_inst_30d,
-    stage_opt_best_sharpe, stage_opt_best_avg_ret, stage_opt_total_traded,
     formula_macd_triggered, formula_dyma_triggered,
     formula_turtle20_triggered, formula_turtle55_triggered, formula_reversal_triggered,
     formula_n_triggered,
@@ -221,9 +210,6 @@ SELECT
     COALESCE(lh.cnt_30d, 0) > 0,
     COALESCE(ie.cnt_7d, 0)  > 0,
     COALESCE(ie.cnt_30d, 0) > 0,
-    sopt.stage_opt_best_sharpe,
-    sopt.stage_opt_best_avg_ret,
-    sopt.stage_opt_total_traded,
     COALESCE(ft.formula_macd_triggered,    FALSE),
     COALESCE(ft.formula_dyma_triggered,    FALSE),
     COALESCE(ft.formula_turtle20_triggered, FALSE),
@@ -245,8 +231,6 @@ LEFT JOIN lhb_agg lh
     ON lh.stock_code = g.stock_code AND lh.signal_date = g.signal_date
 LEFT JOIN inst_agg ie
     ON ie.stock_code = g.stock_code AND ie.signal_date = g.signal_date
-LEFT JOIN stage_opt_per_stock sopt
-    ON sopt.stock_code = g.stock_code
 LEFT JOIN formula_trigger ft
     ON ft.stock_code = g.stock_code AND ft.signal_date = g.signal_date
 """
@@ -260,7 +244,7 @@ def build_p0a_feature_label_panel_v2(
     stock_codes: Iterable[str],
     output_table: str = "mart_p0a_feature_label_panel_v2",
 ) -> dict:
-    """Build P0a feature × label panel v2 (+ stage_opt + formula_trigger 特征)."""
+    """Build P0a feature × label panel v2 (+ formula_trigger 特征, stage_opt 删除见 Codex Q1)."""
     signal_dates = list(signal_dates)
     stock_codes = list(stock_codes)
     if not signal_dates or not stock_codes:
