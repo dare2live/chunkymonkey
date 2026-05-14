@@ -740,6 +740,23 @@ SELECT * FROM mart_data_source_watermark;
 
 每次 session 增量内容写这里, 新 session 启动时**从下往上读**最近改了啥.
 
+### 2026-05-14 (Phase v3.2 v2 扩 feature + chain orchestrator)
+
+**`services/labels/feature_join_v2.py`** (+ 8 features, 79 → 87):
+- `stage_opt_best_sharpe / stage_opt_best_avg_ret / stage_opt_total_traded`: per-stock formula 寻优 best (from mart_per_stock_stage_strategy_optimal, COALESCE oos_sharpe 优先)
+- `formula_{macd, dyma, turtle20, turtle55, reversal}_triggered`: signal_date 当日触发 dummy (from fact_signal_context)
+- `formula_n_triggered`: 当日触发公式数量
+- 输出表 `mart_p0a_feature_label_panel_v2` (跟 v1 并存, 不破坏现有 P1 ablation reads)
+
+**`scripts/run_v3_2_full_chain.py`** (P1 ablation 后接续):
+1. build feature_label_panel_v2 (+ stage_opt + formula_trigger)
+2. train P0b v2 × 3 horizon (5d/10d/20d)
+3. Deflated SR audit (Bailey-LdP)
+4. paper_sim_v2 with ml_score yaml (blend Option A)
+5. P2 composite grid (81 weights)
+6. P3 final holdout (4 硬验收)
+7. promote champion (P3 PASS 才 promote)
+
 ### 2026-05-14 (Phase v3.2 governance wire — build/feature_join 加 post-insert verify)
 
 **Phase ψ.γ.dict.2 兑现** (之前 commit 模块但没 wire = 反例):
