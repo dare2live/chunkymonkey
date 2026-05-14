@@ -282,6 +282,61 @@ def test_write_one_persists_records_and_is_idempotent():
         con.close()
 
 
+def test_write_one_drops_empty_placeholder_plans():
+    """P-1.4 root cause: tdxhub parser 偶尔返回 announce_date=None + subject='' + direction=''
+    的占位 plan stub. ingest 必须过滤, 防 fact_shareholder_plan 写入空记录污染 audit.
+    """
+    con = _make_conn()
+    lock = threading.Lock()
+    try:
+        result = _make_result()
+        # 全空 stub 应被过滤 (announce/subject/direction 三字段都 empty)
+        result.plans.append({
+            "stock_code": "600519",
+            "stock_name": "贵州茅台",
+            "market": "SH",
+            "announce_date": None,
+            "subject": "",
+            "direction": "",
+            "progress": "",
+            "source": "tdx_f10",
+            "raw_hash": "abc123",
+            "fetched_at": "2026-05-05T01:30:00",
+        })
+        # 仅 announce_date 有值 (subject/direction 空) 应保留 — 三字段任一非空都算有效
+        result.plans.append({
+            "stock_code": "600519",
+            "stock_name": "贵州茅台",
+            "market": "SH",
+            "announce_date": "20260510",
+            "subject": "",
+            "direction": "",
+            "source": "tdx_f10",
+            "raw_hash": "abc123",
+            "fetched_at": "2026-05-05T01:30:00",
+        })
+        ingest.write_one(
+            con,
+            stock_code="600519",
+            stock_name="贵州茅台",
+            market="SH",
+            result=result,
+            alias_map={},
+            lock=lock,
+        )
+        # 原始 1 行 + announce-only 1 行 = 2; empty stub 被过滤
+        assert con.execute("SELECT COUNT(*) FROM fact_shareholder_plan").fetchone()[0] == 2
+        empty_left = con.execute(
+            "SELECT COUNT(*) FROM fact_shareholder_plan "
+            "WHERE (announce_date IS NULL OR announce_date='') "
+            "  AND (subject IS NULL OR subject='') "
+            "  AND (direction IS NULL OR direction='')"
+        ).fetchone()[0]
+        assert empty_left == 0
+    finally:
+        con.close()
+
+
 def test_parse_raw_row_preserves_raw_lineage():
     raw_row = {
         "stock_code": "600519",

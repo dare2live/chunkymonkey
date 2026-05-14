@@ -407,6 +407,16 @@ def write_one(con: duckdb.DuckDBPyConnection, *, stock_code: str, stock_name: st
     periods = result.periods
     ctrl = result.controlling
     plans = _seq_rows(_copy_rows(result.plans), ("stock_code", "raw_hash"), "plan_seq")
+    # Root cause for P-1.4 audit FAIL (Rule 5): tdxhub F10 parser 偶尔返回
+    # placeholder plan rows (announce_date=None + subject='' + direction='') —
+    # 2026-04-28 一次 sync 写入了 7034 行空记录, 拉低 announce_date 非空率到 53%.
+    # 过滤掉这类空 stub: 至少 announce_date / subject / direction 之一非空才入库.
+    plans = [
+        p for p in plans
+        if (p.get("announce_date") or "").strip()
+        or (p.get("subject") or "").strip()
+        or (p.get("direction") or "").strip()
+    ]
     trades = _seq_rows(_copy_rows(result.trades), ("stock_code", "raw_hash"), "trade_seq")
     for row in plans:
         row["stock_code"] = row.get("stock_code") or stock_code
