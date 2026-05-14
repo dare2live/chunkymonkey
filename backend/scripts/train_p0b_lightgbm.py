@@ -206,46 +206,61 @@ def main() -> int:
         log.info(f"  Gate: {'✓ PASS' if passed else '✗ FAIL'} "
                  f"(RankIC ≥ 0.03 AND n_dates ≥ 30)")
 
-        # Write predictions
-        log.info("Writing predictions + eval to DB...")
+        # Write predictions — DELETE + executemany 批量 (per-row INSERT 1.7M rows × 5ms = 2小时)
+        log.info(f"Writing {len(all_predictions):,} predictions + {len(window_results)} eval to DB (batch)...")
         built_at = datetime.now(UTC).isoformat(timespec="seconds")
-        for p in all_predictions:
+        # Idempotent: 同 model_id + run_id 范围内 signal_date 先 DELETE
+        if all_predictions:
+            min_date = min(p["signal_date"] for p in all_predictions)
+            max_date = max(p["signal_date"] for p in all_predictions)
             conn.execute(
-                """
-                INSERT INTO mart_p0b_oos_predictions
-                (stock_code, signal_date, score,
-                 fwd_cost_after_5d, fwd_cost_after_10d, fwd_cost_after_20d,
-                 model_id, model_version, feature_version, label_version,
-                 walk_forward_mode, train_start, train_end, test_start, test_end,
-                 is_final_holdout, built_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                ON CONFLICT (stock_code, signal_date, model_id) DO UPDATE
-                  SET score=excluded.score, built_at=excluded.built_at
-                """,
-                [p["stock_code"], p["signal_date"], p["score"],
-                 p.get("fwd_cost_after_5d"), p.get("fwd_cost_after_10d"), p.get("fwd_cost_after_20d"),
-                 args.model_id, "p0b_baseline_v1", "p0a_v1", "p0a_v1",
-                 "expanding_monthly", p["train_start"], p["train_end"], p["test_start"], p["test_end"],
-                 False, built_at],
+                "DELETE FROM mart_p0b_oos_predictions "
+                "WHERE model_id = ? AND signal_date BETWEEN ? AND ?",
+                [args.model_id, min_date, max_date],
             )
-        for w in window_results:
-            conn.execute(
-                """
-                INSERT INTO mart_p0b_walkforward_eval
-                (run_id, window_idx, model_id, model_version, feature_version,
-                 label_version, walk_forward_mode,
-                 train_start, train_end, test_start, test_end,
-                 n_train, n_test, rank_ic, rank_ic_ir, is_final_holdout, built_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                """,
-                [run_id, w["window_idx"], args.model_id, "p0b_baseline_v1", "p0a_v1",
-                 "p0a_v1", "expanding_monthly",
-                 str(w["train_start"]), str(w["train_end"]), str(w["test_start"]), str(w["test_end"]),
-                 w["n_train"], w["n_test"],
-                 w["rank_ic"] if w["rank_ic"] == w["rank_ic"] else None,
-                 w["rank_ic_ir"] if w["rank_ic_ir"] == w["rank_ic_ir"] else None,
-                 False, built_at],
-            )
+        # Batch INSERT predictions
+        pred_rows = [
+            (p["stock_code"], p["signal_date"], p["score"],
+             p.get("fwd_cost_after_5d"), p.get("fwd_cost_after_10d"), p.get("fwd_cost_after_20d"),
+             args.model_id, "p0b_baseline_v1", "p0a_v1", "p0a_v1",
+             "expanding_monthly", p["train_start"], p["train_end"], p["test_start"], p["test_end"],
+             False, built_at)
+            for p in all_predictions
+        ]
+        conn._con.executemany(
+            """
+            INSERT INTO mart_p0b_oos_predictions
+            (stock_code, signal_date, score,
+             fwd_cost_after_5d, fwd_cost_after_10d, fwd_cost_after_20d,
+             model_id, model_version, feature_version, label_version,
+             walk_forward_mode, train_start, train_end, test_start, test_end,
+             is_final_holdout, built_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            pred_rows,
+        )
+        # Eval rows
+        eval_rows = [
+            (run_id, w["window_idx"], args.model_id, "p0b_baseline_v1", "p0a_v1",
+             "p0a_v1", "expanding_monthly",
+             str(w["train_start"]), str(w["train_end"]), str(w["test_start"]), str(w["test_end"]),
+             w["n_train"], w["n_test"],
+             w["rank_ic"] if w["rank_ic"] == w["rank_ic"] else None,
+             w["rank_ic_ir"] if w["rank_ic_ir"] == w["rank_ic_ir"] else None,
+             False, built_at)
+            for w in window_results
+        ]
+        conn._con.executemany(
+            """
+            INSERT OR REPLACE INTO mart_p0b_walkforward_eval
+            (run_id, window_idx, model_id, model_version, feature_version,
+             label_version, walk_forward_mode,
+             train_start, train_end, test_start, test_end,
+             n_train, n_test, rank_ic, rank_ic_ir, is_final_holdout, built_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            eval_rows,
+        )
         log.info(f"Wrote {len(all_predictions):,} predictions + {len(window_results)} eval rows")
         return 0 if passed else 0  # Always exit 0; warn only
     finally:

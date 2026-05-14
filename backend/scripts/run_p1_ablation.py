@@ -4,11 +4,14 @@
 读 mart_p0a_feature_label_panel → run_ablation_suite → 入库
 mart_p1_ablation_result + stdout summary.
 
+DataFrame-based (跟 train_p0b v3 一致): conn._con.execute().fetchdf() 跳 list[dict].
+
 用法:
     PYTHONPATH=backend python backend/scripts/run_p1_ablation.py \
         --label fwd_cost_after_10d \
         --n-estimators 50 \
-        --run-id p1_ablation_baseline
+        --run-id p1_ablation_baseline \
+        --start-date 2024-01-01 --end-date 2026-04-30
 """
 from __future__ import annotations
 
@@ -62,6 +65,8 @@ def main() -> int:
     parser.add_argument("--num-leaves", type=int, default=31)
     parser.add_argument("--min-train-months", type=int, default=None)
     parser.add_argument("--forward-months", type=int, default=None)
+    parser.add_argument("--start-date", default=None)
+    parser.add_argument("--end-date", default=None)
     args = parser.parse_args()
 
     run_id = args.run_id or f"p1_{datetime.now(UTC).strftime('%Y%m%dT%H%M%S')}_{uuid.uuid4().hex[:6]}"
@@ -70,14 +75,24 @@ def main() -> int:
     conn = duck_connect(str(DB_PATH))
     try:
         conn.execute(ABLATION_RESULT_DDL)
-        log.info("Loading rows from mart_p0a_feature_label_panel...")
-        cur = conn.execute("SELECT * FROM mart_p0a_feature_label_panel ORDER BY signal_date, stock_code")
-        cols = [d[0] for d in cur.description]
-        rows = [dict(zip(cols, r)) for r in cur.fetchall()]
-        log.info(f"Loaded {len(rows):,} rows; {len(cols)} columns")
-        if not rows:
-            log.error("No rows in mart_p0a_feature_label_panel")
-            return 1
+        log.info("Loading DataFrame from mart_p0a_feature_label_panel...")
+        # DataFrame fast path (跟 train_p0b v3 一致): _con.execute().fetchdf() 跳 dict
+        import pandas as pd
+        df = conn._con.execute(
+            "SELECT * FROM mart_p0a_feature_label_panel ORDER BY signal_date, stock_code"
+        ).fetchdf()
+        log.info(f"Loaded {len(df):,} rows × {len(df.columns)} cols")
+        if args.start_date:
+            df = df[df["signal_date"] >= pd.to_datetime(args.start_date)]
+        if args.end_date:
+            df = df[df["signal_date"] <= pd.to_datetime(args.end_date)]
+        df = df[df[args.label].notna()].copy()
+        log.info(f"After filters: {len(df):,} rows")
+
+        # Convert DataFrame to list[dict] via to_dict('records') — 仍要给 ablation API
+        # (TODO 后续 ablation 也改成 DataFrame-based; 当前 to_dict 用 numpy 后端, 比 cursor.fetchall() 快约 3-5×)
+        rows = df.to_dict("records")
+        log.info(f"Converted to {len(rows):,} dicts")
 
         cfg = LightGBMWalkForwardConfig(
             label_field=args.label,

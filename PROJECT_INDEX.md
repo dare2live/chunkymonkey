@@ -740,6 +740,13 @@ SELECT * FROM mart_data_source_watermark;
 
 每次 session 增量内容写这里, 新 session 启动时**从下往上读**最近改了啥.
 
+### 2026-05-14 (Phase v3.2 perf — batch INSERT executemany + DataFrame load)
+
+**性能修复** (P0b train + P1 ablation 共用):
+- per-row INSERT 1.7M rows × 5ms = 2.4 小时 → `executemany` 批量 ~10s
+- DELETE 范围 + executemany 模拟 ON CONFLICT (DuckDB executemany 不支持 ON CONFLICT)
+- DataFrame load: `conn._con.execute().fetchdf()` 27s vs cursor.fetchall() 21+ min hang
+
 ### 2026-05-14 (Phase v3.2 P0b 真实跑 — OOS RankIC=0.0108, Gate FAIL)
 
 **P0b train v3 完成** (DataFrame-based rewrite, 50× 加速):
