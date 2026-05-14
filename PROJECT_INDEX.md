@@ -740,6 +740,18 @@ SELECT * FROM mart_data_source_watermark;
 
 每次 session 增量内容写这里, 新 session 启动时**从下往上读**最近改了啥.
 
+### 2026-05-14 (Rule 10.2 新加: Codex thread 慢 ≠ Codex 不可用)
+
+**用户 push back** (CLAUDE.md Rule 10): 我多次误判"单 thread stuck" 为"Codex 整体不可用", 走 Rule 10.2 fallback self-review 跳过. 这是错的 — codex-companion.mjs setup 一直 ready=True.
+
+**新 §10.2** (CLAUDE.md):
+- 单 thread > 30 min 无产出 → cancel + `codex:rescue --fresh` 起新 thread
+- **真正不可用** (setup ready=false / 服务不可达) 才走 fallback (§10.3)
+- 原 §10.2 fallback 改为 §10.3
+- 原 §10.3 单分支策略 改为 §10.4
+
+**为啥 critical**: Codex Q1 acf48d35a80850383 抓 stage_opt_per_stock leakage 是 self-review 没看到的; fallback 路径会把 systemic leakage 推到 main.
+
 ### 2026-05-14 (Phase v3.2 v2 修 Codex Q1 leakage — 删除 stage_opt_per_stock)
 
 **Codex review `acf48d35a80850383` Q1 CRITICAL**:

@@ -376,12 +376,27 @@ chmod +x .git/hooks/pre-commit .git/hooks/commit-msg
 5. 接受的改进 → 修代码 → 再次 Codex review (循环) 或 → 自审 OK → commit
 6. commit message 必须含 Codex review 结果引用 (agent ID + 关键意见 / 关键修改)
 
-### 10.2 Fallback: Codex 不可用时 Claude 自审
+### 10.2 Codex thread 慢 ≠ Codex 不可用 — cancel + fresh thread
 
-**Codex 不可用判定**:
+**根因** (用户原话, 2026-05-14): "Codex 是可用状态, 我注意到你前面说 codex 不可用, 请检查".
+
+我多次把"单个 review thread 跑了 1h+ 没回应"误判为"Codex 整体不可用", 随后走 Rule 10.2 fallback self-review 跳过. 这是**错的**:
+- `codex-companion.mjs setup` 持续报 `ready: True, codex: True, auth: True` (整体可用)
+- 单个 thread stuck 是该 thread 的问题, 不是 codex 服务不可达
+- 正确做法: **cancel 慢 thread + 起 fresh thread review** (用 `--fresh` 标志)
+
+**Codex 真正不可用判定** (走 10.3 fallback):
 - `codex-companion.mjs setup` 报 `ready: false`
-- `codex-companion.mjs task` 调用失败 / timeout / 服务不可达
+- `codex-companion.mjs task` 调用本身失败 / timeout / 服务不可达 (不是个别 thread 慢)
 - 用户明确说 "Codex 不可用直接走"
+
+**Codex thread 慢的处理** (不走 fallback):
+- 单 thread > 30 min 无产出 (`progressPreview` 不更新或卡同一 grep) → 视为 stuck
+- `node "/Users/dp/.claude/plugins/cache/openai-codex/codex/1.0.4/scripts/codex-companion.mjs" cancel <task_id>`
+- 起 fresh thread: `codex:rescue --fresh <相同 prompt>`
+- 不要 fallback self-review
+
+### 10.3 Fallback: Codex 真正不可用时 Claude 自审
 
 **Claude 自审清单** (必须逐条写进 commit message):
 1. PIT 检查: 任何特征 / label / 决策都没用未来信息?
@@ -390,7 +405,7 @@ chmod +x .git/hooks/pre-commit .git/hooks/commit-msg
 4. Rule 9 真金白银 self-check: 含 leakage / 估算 / 假设吗?
 5. 反例风险: 跟 CLAUDE.md Rule 6/7/8/9 反例表对照, 有没有重复踩坑?
 
-### 10.3 单分支策略 — 只在 main 上工作
+### 10.4 单分支策略 — 只在 main 上工作
 
 **用户硬指令**: 项目保持 `main` 单分支, 不开 feature 分支, 不用 git worktree.
 
@@ -503,7 +518,7 @@ Bash({command: "python script2.py", run_in_background: true})
 
 - 并发跑 5 个 audit 写完后, **一次性** 让 Codex review 整个 P-1 模块 (节省 Codex 调用)
 - 或者每个 audit 单独 codex thread (粒度更细但成本高 — 一般不必要)
-- Codex 不可用时 (Rule 10.2 fallback): main agent 自审 5-question, 也是串行汇总
+- Codex 不可用时 (Rule 10.3 fallback): main agent 自审 5-question, 也是串行汇总
 
 ---
 
