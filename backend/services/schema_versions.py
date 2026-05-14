@@ -235,6 +235,8 @@ MART_VERSIONS = {
     # Phase v3.2 PLAN_V3 (ML ranking + paper_sim ML score)
     "mart_p0a_label_panel": "v1",                # P0a T+1 VWAP forward 5/10/20d cost-after labels + mask
     "mart_p0a_feature_label_panel": "v1",        # P0a JOIN alpha158 + risk + financial + events × label
+    "mart_p0a_feature_label_panel_v2": "v1",     # P0a v2: + 6 formula_trigger dummies (stage_opt 删除 Codex Q1 leakage)
+    "mart_p0a_feature_label_panel_v3": "v1",     # P0a v3: + survey 4 + valuation_z 4 + sector 5 + inst_path_a 5 (Codex 7-day plan Day 2-3)
     "mart_p0b_oos_predictions": "v1",            # P0b walk-forward OOS predictions (1 row per stock×signal_date×model_id)
     "mart_p0b_walkforward_eval": "v1",           # P0b 每窗 RankIC + IC IR + n_train/n_test
     "mart_p1_ablation_result": "v1",             # P1 feature group ablation (baseline + drop_one + only_one)

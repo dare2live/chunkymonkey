@@ -49,14 +49,18 @@ _META_FIELDS = {
 }
 
 
-def _load_df(conn) -> pd.DataFrame:
-    """从 mart_p0a_feature_label_panel 加载为 DataFrame, signal_date 转 month_start.
+def _load_df(conn, panel_name: str = "mart_p0a_feature_label_panel") -> pd.DataFrame:
+    """从指定 P0a feature_label_panel 加载为 DataFrame, signal_date 转 month_start.
 
     用 wrapper 底层 _con.execute().fetchdf() 拿 pandas (DuckDB native fast path,
     跳过 Python dict 转换 — 3.7M × 80 cols ≈ 1-2 min 而非 20+ min).
+
+    Args:
+        conn: DuckConn.
+        panel_name: 'mart_p0a_feature_label_panel' (v1, default) | '_v2' | '_v3'.
     """
     df = conn._con.execute(
-        "SELECT * FROM mart_p0a_feature_label_panel ORDER BY signal_date, stock_code"
+        f"SELECT * FROM {panel_name} ORDER BY signal_date, stock_code"
     ).fetchdf()
     df["month_start"] = pd.to_datetime(df["signal_date"]).dt.to_period("M").dt.to_timestamp()
     return df

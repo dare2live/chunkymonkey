@@ -308,6 +308,42 @@ databases:
         built_at:        {type: TEXT}
         # NOTE: 65 alpha158 features (a158_kmid..a158_vstd60) — schema 见 alpha158.duckdb::fact_alpha158_panel
 
+    mart_p0a_feature_label_panel_v3:
+      description: "P0a feature × label JOIN v3 — v2 + survey 4 + valuation_z 4 + sector 5 + inst_path_a 5 (Codex 7-day plan Day 2-3)"
+      pit_key: signal_date
+      row_count_approx: 3_700_000
+      coverage: "103 features + 2 PK + 2 metadata = 107 (Day 5 + 5 = 112)"
+      fields:
+        stock_code:           {type: TEXT, role: pk}
+        signal_date:          {type: DATE, role: pit-key}
+        # Day 2 ① 调研热度 (mart_stock_survey_features ASOF as_of_date <= signal_date, 90d 窗内)
+        survey_count_30d:     {type: INTEGER, description: "30 自然日内调研次数"}
+        survey_count_60d:     {type: INTEGER, description: "60 自然日内调研次数 (实测 IC=0.086 60d, Codex hypothesis +0.006~0.020)"}
+        survey_inst_30d:      {type: INTEGER, description: "30 日累计机构数"}
+        survey_inst_60d:      {type: INTEGER, description: "60 日累计机构数"}
+        # Day 2 ② 估值 z-score (PIT-safe rolling 1Y, 替代 aif10 latest-snapshot leakage)
+        pe_ttm_z_1y:          {type: DOUBLE, description: "PE-TTM rolling 1Y z-score (240 trade days), pe_ttm 单 stock 自身"}
+        pb_z_1y:              {type: DOUBLE}
+        ps_ttm_z_1y:          {type: DOUBLE}
+        roe_q_z_4q:           {type: DOUBLE, description: "ROE-Q rolling 4Q z-score (60 trade days approx)"}
+        # Day 2 ③ 板块 momentum (mart_stock_industry_pit ASOF → fact_sector_momentum_daily PIT date<=signal)
+        sector_ret_5d:        {type: DOUBLE}
+        sector_ret_20d:       {type: DOUBLE}
+        sector_ret_60d:       {type: DOUBLE}
+        sector_excess_20d:    {type: DOUBLE, description: "sector_ret_20d − market_ret_20d"}
+        sector_excess_60d:    {type: DOUBLE}
+        # Day 3 ④ 机构路径 A (mart_stock_industry_pit × fact_top10_holder_period.effective_date<=signal)
+        inst_quality_wavg:    {type: DOUBLE, description: "SUM(hold_ratio_total × win_rate_60d) / SUM(hold_ratio_total) per holder"}
+        inst_quality_max:     {type: DOUBLE, description: "MAX(win_rate_60d) 重仓机构"}
+        inst_total_holding_ratio: {type: DOUBLE, description: "SUM(hold_ratio_total) — top10 流通持仓总和"}
+        inst_holder_cnt:      {type: INTEGER, description: "COUNT(DISTINCT holder_name_norm), 含未匹配机构"}
+        top_inst_holding_ratio: {type: DOUBLE, description: "per-signal_date 0.8 quantile 以上机构持仓比 (Codex M2 fix)"}
+        # Codex M1 fix — 让下游可 filter 'current_label_fallback' leakage 信号
+        industry_pit_confidence: {type: TEXT, enum: ["observed_snapshot", "current_label_fallback"], description: "M1: 'fallback' 标 mart_stock_industry_pit 用了 latest 行业 (跟 backfill_sector_momentum 同妥协)"}
+        feature_version:      {type: TEXT, enum: ["p0a_v3"]}
+        built_at:             {type: TEXT}
+        # NOTE: 余 85 列继承 v2 (label 7 + alpha158 65 + risk 6 + fin_raw 4 + events 4 + formula 6 + meta + ...)
+
     mart_p0b_oos_predictions:
       description: "P0b walk-forward OOS predictions — 每行 (stock × signal_date × model_id) 含 ML score + forward labels"
       pit_key: signal_date

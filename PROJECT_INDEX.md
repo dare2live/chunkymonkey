@@ -809,12 +809,38 @@ CLAUDE.md 增强:
 - v2 features: 79 → 85 (不是 87)
 - TODO v3: 重 Optuna walk-forward expanding_monthly 入库 (stock × cutoff_date × best_sharpe), ASOF JOIN
 
+### 2026-05-14 (Phase v3.2 v3 扩 feature — Codex 7-day plan Day 2 + Day 3)
+
+**`services/labels/feature_join_v3.py`** (+ 18 features over v2, 84 → 102 + 1 PIT confidence meta):
+- Day 2 ① 调研热度 4 (mart_stock_survey_features ASOF as_of_date<=signal): survey_count_30d/60d, inst_30d/60d
+- Day 2 ② 估值 z-score 4 (PIT-safe rolling 1Y, **替代 raw_aif10_valuation_quantile latest-snapshot leakage**): pe_ttm_z_1y, pb_z_1y, ps_ttm_z_1y, roe_q_z_4q. ROWS BETWEEN 239 PRECEDING AND CURRENT ROW = exactly 240 trading days (Codex Mi1 fix)
+- Day 2 ③ 板块 momentum 5 (mart_stock_industry_pit ASOF → fact_sector_momentum_daily PIT date<=signal): sector_ret_5d/20d/60d, sector_excess_20d/60d
+- Day 3 ④ 机构路径 A 5 (Codex Q3 SQL, fact_top10_holder_period.effective_date<=signal): inst_quality_wavg/max, total_holding_ratio, holder_cnt, top_inst_holding_ratio
+- + 1 PIT meta: industry_pit_confidence ('observed_snapshot' / 'current_label_fallback') 让下游可 filter (Codex M1 fix)
+- 输出表 `mart_p0a_feature_label_panel_v3` (v2 保留兼容)
+- 14 单测 (PIT 严格 + Codex Mi2 推荐补强 5: z 算术 / per-date quantile / unmatched-NULL / pit_confidence / 240-row exact) 全过
+
+**Codex review (a8c34359a) 完整修复**:
+- C1 + M4: `mart_institution_profile.win_rate_60d` 当前 latest NOT PIT. inst_quality_{wavg,max} 改 WHERE inst_quality IS NOT NULL (Codex M4), 加注释 critical TODO v3.5 接 PIT snapshot
+- M1: industry_pit_confidence 字段输出, 下游 P0b 训练可 filter 'current_label_fallback' 严格 PIT
+- M2: top_inst_holding_ratio quantile 改 per-signal_date subquery (排除 NULL inst_quality + 防全局 mix future)
+- M3: 文档 102 features (alpha158 实际 64 不是 65)
+- Mi1: rolling window 239 PRECEDING + current = exactly 240 trading days = 1Y
+
+**`scripts/build_p0a_feature_panel_v3.py`**: CLI 跑 v3 build (KEEP universe + alpha158 dates → build_p0a_feature_label_panel_v3)
+
+**PIT 调研结论 (Day 1)**:
+- raw_aif10_valuation_quantile 无时间字段 → latest snapshot only, 历史回测 leakage. 替代: PIT 干净 rolling z-score
+- dim_stock_tdx_industry_history 仅 ~1 周 snapshot, mart_stock_industry_pit 多 `current_label_fallback`. 接受跟 backfill_sector_momentum 同妥协
+- fact_top10_holder_period.effective_date DDL "公告日+1 交易日 PIT 安全", 实测 NULL 率待 ablation 完后查
+- mart_stock_survey_features.as_of_date PIT 安全
+
 ### 2026-05-14 (Phase v3.2 v2 扩 feature + chain orchestrator)
 
-**`services/labels/feature_join_v2.py`** (+ 8 features, 79 → 87):
-- `stage_opt_best_sharpe / stage_opt_best_avg_ret / stage_opt_total_traded`: per-stock formula 寻优 best (from mart_per_stock_stage_strategy_optimal, COALESCE oos_sharpe 优先)
+**`services/labels/feature_join_v2.py`** (+ 6 features, 79 → 85):
 - `formula_{macd, dyma, turtle20, turtle55, reversal}_triggered`: signal_date 当日触发 dummy (from fact_signal_context)
 - `formula_n_triggered`: 当日触发公式数量
+- Codex acf48d35 Q1 CRITICAL fix: 删 stage_opt_per_stock 3 列 (MAX GROUP BY stock_code 是 systemic leakage)
 - 输出表 `mart_p0a_feature_label_panel_v2` (跟 v1 并存, 不破坏现有 P1 ablation reads)
 
 **`scripts/run_v3_2_full_chain.py`** (P1 ablation 后接续):
