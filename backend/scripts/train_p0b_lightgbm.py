@@ -206,39 +206,49 @@ def main() -> int:
         log.info(f"  Gate: {'✓ PASS' if passed else '✗ FAIL'} "
                  f"(RankIC ≥ 0.03 AND n_dates ≥ 30)")
 
-        # Write predictions — DELETE + executemany 批量 (per-row INSERT 1.7M rows × 5ms = 2小时)
-        log.info(f"Writing {len(all_predictions):,} predictions + {len(window_results)} eval to DB (batch)...")
+        # Write predictions — DuckDB DataFrame bulk INSERT (executemany 1.9M × 17 placeholders 太慢)
+        log.info(f"Writing {len(all_predictions):,} predictions + {len(window_results)} eval to DB (DataFrame bulk)...")
         built_at = datetime.now(UTC).isoformat(timespec="seconds")
-        # Idempotent: 同 model_id + run_id 范围内 signal_date 先 DELETE
-        if all_predictions:
-            min_date = min(p["signal_date"] for p in all_predictions)
-            max_date = max(p["signal_date"] for p in all_predictions)
-            conn.execute(
-                "DELETE FROM mart_p0b_oos_predictions "
-                "WHERE model_id = ? AND signal_date BETWEEN ? AND ?",
-                [args.model_id, min_date, max_date],
-            )
-        # Batch INSERT predictions
-        pred_rows = [
-            (p["stock_code"], p["signal_date"], p["score"],
-             p.get("fwd_cost_after_5d"), p.get("fwd_cost_after_10d"), p.get("fwd_cost_after_20d"),
-             args.model_id, "p0b_baseline_v1", "p0a_v1", "p0a_v1",
-             "expanding_monthly", p["train_start"], p["train_end"], p["test_start"], p["test_end"],
-             False, built_at)
+        # Idempotent: 同 model_id 全删 + 重写 (走 mass DELETE 比 BETWEEN 快, 1 个 model_id 一般 = 一次 run)
+        conn._con.execute(
+            "DELETE FROM mart_p0b_oos_predictions WHERE model_id = ?",
+            [args.model_id],
+        )
+        # Build DataFrame for bulk INSERT
+        pred_df = pd.DataFrame([
+            {
+                "stock_code": p["stock_code"], "signal_date": p["signal_date"],
+                "score": p["score"],
+                "fwd_cost_after_5d": p.get("fwd_cost_after_5d"),
+                "fwd_cost_after_10d": p.get("fwd_cost_after_10d"),
+                "fwd_cost_after_20d": p.get("fwd_cost_after_20d"),
+                "model_id": args.model_id,
+                "model_version": "p0b_baseline_v1",
+                "feature_version": "p0a_v1", "label_version": "p0a_v1",
+                "walk_forward_mode": "expanding_monthly",
+                "train_start": p["train_start"], "train_end": p["train_end"],
+                "test_start": p["test_start"], "test_end": p["test_end"],
+                "is_final_holdout": False, "built_at": built_at,
+            }
             for p in all_predictions
-        ]
-        conn._con.executemany(
-            """
+        ])
+        # DuckDB native: register DataFrame + INSERT INTO ... SELECT (bulk, 100× executemany)
+        conn._con.register("_p0b_pred_df", pred_df)
+        conn._con.execute("""
             INSERT INTO mart_p0b_oos_predictions
             (stock_code, signal_date, score,
              fwd_cost_after_5d, fwd_cost_after_10d, fwd_cost_after_20d,
              model_id, model_version, feature_version, label_version,
              walk_forward_mode, train_start, train_end, test_start, test_end,
              is_final_holdout, built_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """,
-            pred_rows,
-        )
+            SELECT stock_code, signal_date::DATE, score,
+                   fwd_cost_after_5d, fwd_cost_after_10d, fwd_cost_after_20d,
+                   model_id, model_version, feature_version, label_version,
+                   walk_forward_mode, train_start::DATE, train_end::DATE, test_start::DATE, test_end::DATE,
+                   is_final_holdout, built_at
+            FROM _p0b_pred_df
+        """)
+        conn._con.unregister("_p0b_pred_df")
         # Eval rows
         eval_rows = [
             (run_id, w["window_idx"], args.model_id, "p0b_baseline_v1", "p0a_v1",

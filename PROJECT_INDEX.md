@@ -740,6 +740,12 @@ SELECT * FROM mart_data_source_watermark;
 
 每次 session 增量内容写这里, 新 session 启动时**从下往上读**最近改了啥.
 
+### 2026-05-14 (Phase v3.2 perf — DataFrame bulk INSERT 250× 加速 + P0b 入库)
+
+**P0b v5 完成**: executemany 1.96M × 17 placeholders 卡 12 min → DuckDB register DataFrame + `INSERT INTO ... SELECT * FROM df` **14 秒** (250× 加速).
+
+实测最终: 1,959,564 predictions + 22 eval rows 入库 `mart_p0b_oos_predictions` + `mart_p0b_walkforward_eval`. P0c selector 可以读 score.
+
 ### 2026-05-14 (Phase v3.2 perf — batch INSERT executemany + DataFrame load)
 
 **性能修复** (P0b train + P1 ablation 共用):
