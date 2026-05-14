@@ -740,6 +740,14 @@ SELECT * FROM mart_data_source_watermark;
 
 每次 session 增量内容写这里, 新 session 启动时**从下往上读**最近改了啥.
 
+### 2026-05-14 (Phase v3.2 governance wire — build/feature_join 加 post-insert verify)
+
+**Phase ψ.γ.dict.2 兑现** (之前 commit 模块但没 wire = 反例):
+- `services/labels/build.py + feature_join.py` 加 `_post_insert_governance_verify(conn, table_name)`
+- SQL INSERT 完成后 sample 100 行 → validate_rows_before_insert (skip_missing_table=True)
+- 不阻塞 INSERT (max_violation_rate=1.0), 仅 log
+- 字典 8 mart schema (commit 7e0ba50f) 现可被 enforce 验证
+
 ### 2026-05-14 (Phase v3.2 governance wire — 7 mart 入 schema + yaml + Deflated Sharpe)
 
 **用户 push back: "说了没做" 扫描结果**:

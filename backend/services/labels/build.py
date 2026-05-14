@@ -260,11 +260,42 @@ def build_p0a_label_panel(
                 for r in rows
             ],
         )
+        # Post-insert governance verify (Phase ψ.γ.dict.2 字典 enforce wire).
+        # Lightweight: sample 100 行验证字典约束 (NOT NULL pk / type / outlier_cap / enum).
+        verify = _post_insert_governance_verify(conn, output_table, sample_size=100)
+        log.info(f"  governance: {verify['passed']}/{verify['total']} rows pass dict; "
+                 f"rate={verify['rate']:.4%}")
+
         return {
             "rows_built": len(rows),
             "round_trip_cost_pct": round_trip,
             "label_version": LABEL_VERSION,
             "built_at": built_at,
+            "governance_verify": verify,
         }
     finally:
         conn.close()
+
+
+def _post_insert_governance_verify(conn, table_name: str, sample_size: int = 100) -> dict:
+    """Post-insert field dictionary verify (Phase ψ.γ.dict.2 wire).
+
+    SQL INSERT 完成后 sample N 行, 经 validate_rows_before_insert (skip if 表不在字典).
+    返回 {passed, failed, rate, sample_violations}; 不 raise (post-hoc audit).
+    """
+    try:
+        from services.data_governance import validate_rows_before_insert
+    except ImportError:
+        log.warning("data_governance not importable, skip verify")
+        return {"passed": 0, "failed": 0, "total": 0, "rate": 0.0, "violations_sample": []}
+
+    cur = conn._con.execute(f"SELECT * FROM {table_name} ORDER BY built_at DESC LIMIT {sample_size}")
+    cols = [d[0] for d in cur.description]
+    rows = cur.fetchall()
+    if not rows:
+        return {"passed": 0, "failed": 0, "total": 0, "rate": 0.0, "violations_sample": []}
+    return validate_rows_before_insert(
+        rows, cols, table_name,
+        max_violation_rate=1.0,        # 不 raise (post-hoc), 仅 log
+        skip_missing_table=True,       # 表不在字典则 skip (graceful)
+    )
