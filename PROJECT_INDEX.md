@@ -809,6 +809,15 @@ CLAUDE.md 增强:
 - v2 features: 79 → 85 (不是 87)
 - TODO v3: 重 Optuna walk-forward expanding_monthly 入库 (stock × cutoff_date × best_sharpe), ASOF JOIN
 
+### 2026-05-15 (v3 实跑 chain Step 1 修 3 production schema bug)
+
+**Bug discovered during v3 build live run**:
+1. `fact_signal_context` 无 formula_id/state — 实际触发记录在 `fact_technical_trigger`. v2 SQL 历史也错 (`mart_p0a_feature_label_panel_v2` 没 build 过)
+2. `fact_top10_holder_period.effective_date` 是 `'YYYYMMDD'` 字符串 (e.g. '20200501') — `CAST AS DATE` 不识别, 用 `STRPTIME(..., '%Y%m%d')::DATE`
+3. `fact_financial_pit_daily.trade_date` 是 TEXT — fin_z_history CTE select 加 `CAST(trade_date AS DATE)`, WINDOW ORDER 同步
+
+Master_chain v4 (blekqa4eb → 重启 b8naz1ii8) 实跑 Step 1 v3 build ~80s 跑通 (4625 stocks × 557 dates panel), Step 2 audit PASS, Step 3 Day 4 smoke Optuna 启动.
+
 ### 2026-05-15 (Phase v3.2 Day 5+6 wire + Day 7 LambdaMART — 全 7-day plan code 完成)
 
 **Day 5 (`scripts/build_stage_opt_pit.py`)**: stage_opt PIT walk-forward 半年 cutoff builder

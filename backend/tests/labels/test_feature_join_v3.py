@@ -68,8 +68,9 @@ def _setup_schema(conn: duckdb.DuckDBPyConnection) -> None:
         CREATE TABLE fact_institution_event (stock_code TEXT, notice_date TEXT)
     """)
     conn.execute("""
-        CREATE TABLE fact_signal_context (
-            stock_code TEXT, date DATE, formula_id TEXT, state TEXT
+        CREATE TABLE fact_technical_trigger (
+            stock_code TEXT, date DATE, formula_id TEXT, formula_variant TEXT,
+            strength DOUBLE, state TEXT
         )
     """)
 
@@ -105,7 +106,7 @@ def _setup_schema(conn: duckdb.DuckDBPyConnection) -> None:
         CREATE TABLE fact_top10_holder_period (
             stock_code TEXT, report_date TEXT, holder_set TEXT,
             holder_rank INTEGER, holder_name TEXT, holder_name_norm TEXT,
-            hold_ratio_total DOUBLE, effective_date TEXT
+            hold_ratio_total DOUBLE, effective_date TEXT  -- YYYYMMDD format (production)
         )
     """)
     conn.execute("""
@@ -263,8 +264,8 @@ def test_holder_inst_quality_weighted_average():
     conn.execute("INSERT INTO a158.fact_alpha158_panel (stock_code, date) "
                  "VALUES ('600000', '2024-06-30')")
     conn.execute("INSERT INTO fact_top10_holder_period VALUES "
-                 "('600000', '2024-03-31', 'free', 1, '中央汇金', '中央汇金', 5.0, '2024-04-30'),"
-                 "('600000', '2024-03-31', 'free', 2, '高瓴资本', '高瓴资本', 2.0, '2024-04-30')")
+                 "('600000', '2024-03-31', 'free', 1, '中央汇金', '中央汇金', 5.0, '20240430'),"
+                 "('600000', '2024-03-31', 'free', 2, '高瓴资本', '高瓴资本', 2.0, '20240430')")
     conn.execute("INSERT INTO mart_institution_profile VALUES "
                  "('中央汇金', 60.0), ('高瓴资本', 80.0)")
 
@@ -289,7 +290,7 @@ def test_holder_future_effective_date_excluded():
     conn.execute("INSERT INTO a158.fact_alpha158_panel (stock_code, date) "
                  "VALUES ('600000', '2024-06-30')")
     conn.execute("INSERT INTO fact_top10_holder_period VALUES "
-                 "('600000', '2024-06-30', 'free', 1, '未来基金', '未来基金', 99.0, '2024-07-15')")
+                 "('600000', '2024-06-30', 'free', 1, '未来基金', '未来基金', 99.0, '20240715')")
     conn.execute("INSERT INTO mart_institution_profile VALUES "
                  "('未来基金', 99.0)")
 
@@ -365,8 +366,8 @@ def test_inst_quality_excludes_unmatched_holders():
     conn.execute("INSERT INTO a158.fact_alpha158_panel (stock_code, date) "
                  "VALUES ('600000', '2024-06-30')")
     conn.execute("INSERT INTO fact_top10_holder_period VALUES "
-                 "('600000', '2024-03-31', 'free', 1, '中央汇金', '中央汇金', 5.0, '2024-04-30'),"
-                 "('600000', '2024-03-31', 'free', 2, '未知机构', '未知机构', 3.0, '2024-04-30')")
+                 "('600000', '2024-03-31', 'free', 1, '中央汇金', '中央汇金', 5.0, '20240430'),"
+                 "('600000', '2024-03-31', 'free', 2, '未知机构', '未知机构', 3.0, '20240430')")
     conn.execute("INSERT INTO mart_institution_profile VALUES ('中央汇金', 60.0)")
     # 未知机构没 institution_profile entry → inst_quality IS NULL
 
@@ -402,8 +403,8 @@ def test_top_inst_quantile_per_signal_date():
     # 2024-06-30: 1 机构 quality=100 (单独 q80=100)
     # 2024-07-31: 1 机构 quality=10 (单独 q80=10)
     conn.execute("INSERT INTO fact_top10_holder_period VALUES "
-                 "('600000', '2024-03-31', 'free', 1, 'A', 'A', 5.0, '2024-04-30'),"
-                 "('600000', '2024-06-30', 'free', 1, 'B', 'B', 3.0, '2024-07-15')")
+                 "('600000', '2024-03-31', 'free', 1, 'A', 'A', 5.0, '20240430'),"
+                 "('600000', '2024-06-30', 'free', 1, 'B', 'B', 3.0, '20240715')")
     conn.execute("INSERT INTO mart_institution_profile VALUES ('A', 100.0), ('B', 10.0)")
 
     rows = _build_with_inputs(conn, signal_dates=["2024-06-30", "2024-07-31"], stock_codes=["600000"])

@@ -171,19 +171,20 @@ risk_asof AS (
     ) WHERE rn = 1
 ),
 formula_trigger AS (
+    -- fact_technical_trigger (有 formula_id + state), 不是 fact_signal_context (上下文只有量价)
     SELECT
         g.stock_code, g.signal_date,
-        MAX(CASE WHEN fsc.formula_id = 'macd_golden_cross' THEN 1 ELSE 0 END)::BOOLEAN AS formula_macd_triggered,
-        MAX(CASE WHEN fsc.formula_id = 'dynamic_ma_iterative_cross' THEN 1 ELSE 0 END)::BOOLEAN AS formula_dyma_triggered,
-        MAX(CASE WHEN fsc.formula_id = 'turtle_breakout_20' THEN 1 ELSE 0 END)::BOOLEAN AS formula_turtle20_triggered,
-        MAX(CASE WHEN fsc.formula_id = 'turtle_breakout_55' THEN 1 ELSE 0 END)::BOOLEAN AS formula_turtle55_triggered,
-        MAX(CASE WHEN fsc.formula_id = 'reversal_1m_deep' THEN 1 ELSE 0 END)::BOOLEAN AS formula_reversal_triggered,
-        COUNT(DISTINCT fsc.formula_id) AS formula_n_triggered
+        MAX(CASE WHEN ftt.formula_id = 'macd_golden_cross' THEN 1 ELSE 0 END)::BOOLEAN AS formula_macd_triggered,
+        MAX(CASE WHEN ftt.formula_id = 'dynamic_ma_iterative_cross' THEN 1 ELSE 0 END)::BOOLEAN AS formula_dyma_triggered,
+        MAX(CASE WHEN ftt.formula_id = 'turtle_breakout_20' THEN 1 ELSE 0 END)::BOOLEAN AS formula_turtle20_triggered,
+        MAX(CASE WHEN ftt.formula_id = 'turtle_breakout_55' THEN 1 ELSE 0 END)::BOOLEAN AS formula_turtle55_triggered,
+        MAX(CASE WHEN ftt.formula_id = 'reversal_1m_deep' THEN 1 ELSE 0 END)::BOOLEAN AS formula_reversal_triggered,
+        COUNT(DISTINCT ftt.formula_id) AS formula_n_triggered
     FROM grid g
-    LEFT JOIN fact_signal_context fsc
-      ON fsc.stock_code = g.stock_code
-     AND fsc.date::DATE = g.signal_date
-     AND fsc.state = 'triggered'
+    LEFT JOIN fact_technical_trigger ftt
+      ON ftt.stock_code = g.stock_code
+     AND CAST(ftt.date AS DATE) = g.signal_date
+     AND ftt.state = 'triggered'
     GROUP BY g.stock_code, g.signal_date
 ),
 -- v3 Day 2 ① 调研热度 ASOF (PIT-safe, as_of_date <= signal_date)
@@ -209,8 +210,9 @@ survey_asof AS (
 ),
 -- v3 Day 2 ② 估值 z-score (PIT-safe rolling 1Y, 替代 aif10 latest-snapshot leakage)
 fin_z_history AS (
+    -- fact_financial_pit_daily.trade_date 生产是 TEXT, 这里 CAST AS DATE 保证 JOIN 类型一致
     SELECT
-        stock_code, trade_date,
+        stock_code, CAST(trade_date AS DATE) AS trade_date,
         pe_ttm, pb, ps_ttm, roe_q,
         (pe_ttm - AVG(pe_ttm) OVER w_1y) / NULLIF(STDDEV(pe_ttm) OVER w_1y, 0) AS pe_ttm_z_1y,
         (pb     - AVG(pb)     OVER w_1y) / NULLIF(STDDEV(pb)     OVER w_1y, 0) AS pb_z_1y,
@@ -218,9 +220,9 @@ fin_z_history AS (
         (roe_q  - AVG(roe_q)  OVER w_4q) / NULLIF(STDDEV(roe_q)  OVER w_4q, 0) AS roe_q_z_4q
     FROM fact_financial_pit_daily
     WINDOW
-        w_1y AS (PARTITION BY stock_code ORDER BY trade_date
+        w_1y AS (PARTITION BY stock_code ORDER BY CAST(trade_date AS DATE)
                  ROWS BETWEEN 239 PRECEDING AND CURRENT ROW),  -- 239 PRECEDING + 当行 = 240 rows = 1Y trading days
-        w_4q AS (PARTITION BY stock_code ORDER BY trade_date
+        w_4q AS (PARTITION BY stock_code ORDER BY CAST(trade_date AS DATE)
                  ROWS BETWEEN 59 PRECEDING AND CURRENT ROW)    -- 59 + 当行 = 60 rows = 4Q trading days (~)
 ),
 fin_asof AS (
@@ -239,7 +241,7 @@ fin_asof AS (
         FROM grid g
         LEFT JOIN fin_z_history f
           ON f.stock_code = g.stock_code
-         AND f.trade_date <= g.signal_date
+         AND f.trade_date <= g.signal_date  -- both DATE after CAST in fin_z_history
     ) WHERE rn = 1
 ),
 -- v3 Day 2 ③ 板块 momentum via mart_stock_industry_pit (PIT industry mapping)
@@ -305,13 +307,13 @@ holder_asof_with_inst_quality AS (
         ip2.win_rate_60d AS inst_quality,  -- ⚠ NOT PIT, mart_institution_profile latest; v3.5 接 PIT snapshot
         ROW_NUMBER() OVER (
             PARTITION BY g.stock_code, g.signal_date, h.holder_name_norm
-            ORDER BY CAST(h.effective_date AS DATE) DESC, h.report_date DESC
+            ORDER BY STRPTIME(h.effective_date, '%Y%m%d')::DATE DESC, h.report_date DESC
         ) AS rn
     FROM grid g
     LEFT JOIN fact_top10_holder_period h
       ON h.stock_code = g.stock_code
-     AND CAST(h.effective_date AS DATE) <= g.signal_date
-     AND CAST(h.effective_date AS DATE) >= g.signal_date - INTERVAL 180 DAY
+     AND STRPTIME(h.effective_date, '%Y%m%d')::DATE <= g.signal_date
+     AND STRPTIME(h.effective_date, '%Y%m%d')::DATE >= g.signal_date - INTERVAL 180 DAY
     LEFT JOIN mart_institution_profile ip2
       ON ip2.institution_name = h.holder_name_norm
     WHERE h.holder_set = 'free'  -- 优先用流通持仓 (避大股东锁仓 stub)
