@@ -740,6 +740,25 @@ SELECT * FROM mart_data_source_watermark;
 
 每次 session 增量内容写这里, 新 session 启动时**从下往上读**最近改了啥.
 
+### 2026-05-14 (Phase v3.2 P1 — ablation framework (alpha158 / risk / financial / events drop-one + only-one))
+
+**新模块** `services/ml_ranking/ablation.py`:
+- `FeatureGroup`: 命名 feature group (e.g. alpha158=65列, risk_factors=6列, financial_pit=4列, events=4列)
+- `DEFAULT_GROUPS`: 跟 mart_p0a_feature_label_panel 对齐
+- `run_ablation_suite(rows, groups)`:
+  - baseline 全 groups → walk-forward 跑 → RankIC
+  - drop-one: 逐个去掉 group → walk-forward → 比 baseline
+  - add-one: 只用单 group → walk-forward → 看单组贡献
+- `AblationSuite.summary()`: tabular dict (rank_ic + ic_ir + delta_vs_baseline)
+
+PLAN_V3 §3 数据决定的决策点接入:
+- #2 alpha158 全量 vs top-N (add-one only_alpha158 vs baseline)
+- #3 机构路径 A/B (drop events_inst)
+- #4 公式特征是否保留 (drop formula_dummies — 当前未加入 panel)
+
+**单测** (4 passed): baseline + drop_one + add_one 数量 + n_features 正确; signal_group >
+noise_group (synthetic 强信号验证).
+
 ### 2026-05-14 (Phase v3.2 P0a.4 — audit_p0a_panel.py PIT + Acceptance gate)
 
 **新脚本** `scripts/audit_p0a_panel.py` (P0a Acceptance gate):
