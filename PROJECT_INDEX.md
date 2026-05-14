@@ -6,7 +6,7 @@
 > **目标**: 新接手 (无论 Claude 还是人) 读完此文档**不用看代码 / 不用查 DB** 就能理解:
 > 项目业务 / 架构 / 技术路线 / 数据资产 / 当前进度 / 已知坑 / 常用操作.
 
-最后更新: 2026-05-14 (Phase ψ.γ.discipline Rule 治理工作流 / Phase ψ.β.5 L2 vol-aware / 16 项遗漏审计).
+最后更新: 2026-05-14 (Phase ψ.δ.experiment 3 ablation fail + per_stock_stage ceiling 跑中; handoff Claude Code CLI 见 HANDOFF.md).
 
 ## 30 秒速览 — 这是什么项目
 
@@ -739,6 +739,31 @@ SELECT * FROM mart_data_source_watermark;
 ## 14. Session 增量更新日志 (Rule 9.5 长期沉淀)
 
 每次 session 增量内容写这里, 新 session 启动时**从下往上读**最近改了啥.
+
+### 2026-05-14 (Phase ψ.γ.experiment — ablation 3 fail + per_stock_stage ceiling test 跑中)
+
+**用户 4 次 /loop = 自主推进**. 我做了 3 个 ablation 实验全 fail, 当前跑 ceiling test (PID 12518).
+
+**Ablation 对比** (paper_sim 2024-04 ~ 2026-05, 509 trading days):
+
+| 实验 | ann | mdd | sharpe | 月胜 | hp | turnover | tx cost |
+|---|---|---|---|---|---|---|---|
+| 14-alpha (含 mean-rev sector_pred) hp=15 | -17.9% | -46.2% | -0.11 | 50% | 15 | 38.7x | 9.7% |
+| 13-alpha hp=30 (减半 turnover) | -10.9% | -39.7% | -0.03 | 58% | 27 | 21.6x | 6.5% |
+| **13-alpha hp=15 (current best baseline)** | **+3.78%** | **-30.1%** | **+0.29** | ? | 15 | ~30x | ? |
+| **13-alpha hp=15 + per_stock_stage=true (跑中)** | **?** | ? | ? | ? | 15+ | ? | ? |
+
+**学到 (Rule 9.4 失败先承认)**:
+1. 加 alpha 已饱和 — 14th alpha (Ridge IC=-0.06 mean reversion direction=-1) 反 hurt 21pp ann
+2. hp 翻倍减 turnover ✓ 但 ann 退化 14pp — long-holds 拖累, 不能 cut loss 快
+3. 真问题在 **alpha 自身弱** — mart_per_stock_stage_strategy_optimal 整体 OOS avg sharpe -0.331
+4. 用户目标 +30%/-20% 跟实测 baseline +3.78%/-30% 差距 = real-world friction (tx cost + 流动性 + PIT clean 收敛)
+
+**关键技术债发现**: `mart_per_stock_stage_strategy_optimal` **PIT broken** — built_at 全 2026-05-13 (单 batch 写入, 不是 walk-forward multi train_end_date). paper_sim 历史选股时含 selection leakage. 当前 ceiling test 是 ceiling 不是 real production.
+
+**当前 in-flight**: PID 12518 paper_sim per_stock_stage=true, ETA 14:00.
+
+**HANDOFF**: `HANDOFF.md` 已写 (handoff 给 Claude Code CLI).
 
 ### 2026-05-14 (Phase ψ.δ.1 — 板块轮动预测 Ridge regression alpha + IC mean-reversion 发现)
 
