@@ -740,6 +740,20 @@ SELECT * FROM mart_data_source_watermark;
 
 每次 session 增量内容写这里, 新 session 启动时**从下往上读**最近改了啥.
 
+### 2026-05-14 (Phase v3.2 P4c champion model + walk_forward._ym() 修 datetime.date 兼容)
+
+**新模块** `services/portfolio/champion.py` (P4c 复盘闭环):
+- `CHAMPION_DDL`: mart_champion_model (champion_id PK + 8 必填 KPI + is_current_champion + promoted_at/reason)
+- `ChampionRecord`: 注册 record dataclass
+- `validate_champion_kpi_completeness()`: P4c Gate 检 8 KPI 必填 (rank_ic/ann_ret/max_dd/monthly_win_rate/excess_vs_hs300/turnover/tx_cost_pct/capacity_concentration)
+- `register_champion(conn, rec, promote, reason)`: 注册; promote=True 时其他 record `is_current_champion=FALSE` (单冠军)
+- `get_current_champion(conn)`: 当前唯一 champion
+- `compare_challenger(conn, challenger)`: 报每 KPI Δ
+
+**单测** (8 passed): KPI complete/missing 验证, register w/wo promote, single champion 唯一, compare_challenger.
+
+**Bug fix** `walk_forward._ym()`: DuckDB DATE 列返回 datetime.date 而非 str, 加 isinstance check 兼容两者. 原有 8 个 expanding_monthly tests 仍 pass. P0b train 第二次跑.
+
 ### 2026-05-14 (Phase v3.2 P0c yaml + P2/P3 CLI)
 
 **新 yaml** `backend/config/paper_sim_ml_score.yaml`:

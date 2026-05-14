@@ -56,9 +56,15 @@ def _sort_by_date(signals: list[dict]) -> list[dict]:
     return sorted(signals, key=lambda s: s["signal_date"])
 
 
-def _ym(date_str: str) -> tuple[int, int]:
-    """'YYYY-MM-DD' → (year, month)."""
-    return int(date_str[:4]), int(date_str[5:7])
+def _ym(date_val) -> tuple[int, int]:
+    """'YYYY-MM-DD' str OR datetime.date → (year, month).
+
+    DuckDB DATE 列读出来是 datetime.date 对象, str slicing 会 fail; 兼容两者.
+    """
+    if hasattr(date_val, "year") and hasattr(date_val, "month"):
+        return date_val.year, date_val.month
+    s = str(date_val)
+    return int(s[:4]), int(s[5:7])
 
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
