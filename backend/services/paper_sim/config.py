@@ -29,7 +29,7 @@ class PortfolioConfig:
 
 @dataclass(frozen=True)
 class SelectionConfig:
-    mode: str                            # "production" | "backtest" | "ensemble"
+    mode: str                            # "production" | "backtest" | "ensemble" | "ml_score"
     candidate_source: str
     rank_by: str
     min_tier_to_buy: str
@@ -60,6 +60,11 @@ class SelectionConfig:
     # Phase ψ.γ.2: per-stock × stage 接入 ensemble (用现有 mart_per_stock_stage_strategy_optimal
     # 24K 行 9 维 Optuna OOS 产物覆盖 default_holding). 优先级: per_stock_stage > vol_aware > default.
     per_stock_stage: dict = field(default_factory=dict)
+    # PLAN_V3 v3.2 P0c: ML score mode (Option A) — selector ranking 用 mart_p0b_oos_predictions.
+    # 只在 mode='ml_score' 生效. exit/swap 仍走 Optuna 9-dim 公式 (per_stock_stage).
+    ml_score_model_id: str = "lgbm_baseline_v1"
+    ml_score_max_candidates: int = 30
+    ml_score_min_score: float | None = None
 
 
 @dataclass(frozen=True)

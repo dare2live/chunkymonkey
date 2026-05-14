@@ -595,11 +595,25 @@ def load_today_candidates_dispatch(
     signal_date: str,
     cfg: SelectionConfig,
 ) -> list[CandidateRow]:
-    """根据 cfg.mode 分发到 production / backtest / ensemble loader."""
+    """根据 cfg.mode 分发到 production / backtest / ensemble / ml_score loader.
+
+    ml_score (PLAN_V3 v3.2 P0c Option A): ML score 替换 selector ranking,
+        从 mart_p0b_oos_predictions ORDER BY score DESC 取 top-K,
+        exit/swap 仍走 Optuna 9-dim 公式. 见 services/paper_sim/ml_score_loader.
+    """
     if cfg.mode == "ensemble":
         return load_today_candidates_ensemble(conn, signal_date, cfg)
     if cfg.mode == "backtest":
         return load_today_candidates_inline(conn, signal_date, cfg)
+    if cfg.mode == "ml_score":
+        # Lazy import 防循环 (ml_score_loader 依赖 CandidateRow from selector).
+        from services.paper_sim.ml_score_loader import load_today_candidates_ml_score
+        return load_today_candidates_ml_score(
+            conn, signal_date,
+            model_id=getattr(cfg, "ml_score_model_id", "lgbm_baseline_v1"),
+            max_candidates=getattr(cfg, "ml_score_max_candidates", 30),
+            min_score=getattr(cfg, "ml_score_min_score", None),
+        )
     return load_today_candidates(conn, signal_date, cfg)
 
 

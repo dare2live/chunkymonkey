@@ -757,7 +757,7 @@ SELECT * FROM mart_data_source_watermark;
 **单测** (6 passed): top-K ORDER BY score / min_score filter / model_id filter / empty date /
 exit params 取 best oos_sharpe / n_traded < 5 filter.
 
-**待集成** P0c.b: 在 selector.py load_today_candidates_dispatch 加 mode='ml_score' case, 在 SelectionConfig 加 ml_score_model_id / max_candidates 字段.
+**集成 P0c.b** (本 commit): selector.py::load_today_candidates_dispatch 加 mode='ml_score' case (lazy import), SelectionConfig 加 3 个 ml_score_* 默认字段. 77 paper_sim tests pass.
 
 ### 2026-05-14 (Phase v3.2 P0b — train CLI + output DDL)
 
