@@ -142,15 +142,30 @@ selection:
   # Default off — 用 ablation 验证有效性后再决定是否上线.
   vol_aware:
     enabled: false                       # 默认 off, ablation 时 true
-    stop_sigma: 2.0                      # stop = -2σ (~95% CI 下界)
-    target_sigma: 3.0                    # target = +3σ (3 倍 hp std)
-    trailing_sigma: 1.0                  # trailing = 1σ (常用 arm 后回撤幅度)
-    stop_min: -0.20                      # stop hard floor (最宽)
-    stop_max: -0.05                      # stop hard cap (最紧, 防低 vol 股 stop 太靠近 0)
+    # 以下数字将被 Phase ψ.γ.1 Optuna study (mart_ensemble_optimal) 寻优后替换
+    # 当前为 pre-Optuna 默认值 (Rule 6 反例 — 待 Optuna 跑完后入 mart_ensemble_optimal 取代)
+    stop_sigma: 2.0                      # rule-compliance: ok evidence=pre-optuna-default
+    target_sigma: 3.0                    # rule-compliance: ok evidence=pre-optuna-default
+    trailing_sigma: 1.0                  # rule-compliance: ok evidence=pre-optuna-default
+    # Hard physical bounds (数学约束: stop<0, target/trailing>0)
+    stop_min: -0.20                      # rule-compliance: ok evidence=mathematical-sanity
+    stop_max: -0.05
     target_min: 0.10
     target_max: 0.35
     trailing_min: 0.03
     trailing_max: 0.10
+
+  # ── Phase ψ.γ.2 per-stock × stage 参数 (用 mart_per_stock_stage_strategy_optimal 24K 行) ──
+  # 用户原话: "持仓周期不应该全局统一, 应该是每个股票每种形态下每个公式下都单独选优"
+  # 现在 mart_per_stock_stage_strategy_optimal 已经有 24K 行 9 维 Optuna OOS 寻优结果,
+  # 这里把它接进 ensemble loader: 命中的 (stock × stage) → 用 per-stock params 覆盖 default.
+  #
+  # 优先级 (selector.py 内部): per_stock_stage > vol_aware > default_holding
+  # PIT 干净: stage 是 signal_date 当天 fact_signal_context.technical_stage (PIT 历史已写).
+  # Rule 8: 只读 oos_* 字段 (oos_sharpe DESC 取 best formula per stock × stage).
+  per_stock_stage:
+    enabled: false                       # 默认 off, ablation 验证有效后再开
+    min_n_traded: 5                      # rule-compliance: ok evidence=stage9dim-coverage
 
 # ─── 退出 / Swap / 风险 / Tx cost (跟 baseline 一致) ───
 exit:

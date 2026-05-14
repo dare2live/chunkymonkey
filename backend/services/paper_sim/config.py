@@ -57,6 +57,9 @@ class SelectionConfig:
     # Phase ψ.β.5 L2: vol-aware per-stock 参数 (从 fact_risk_factors.vol_60d 缩放 stop/target/trailing)
     # enabled=False (默认 off, 不影响现有 ensemble v3 跑批); 启用见 paper_sim_ensemble.yaml 注释
     vol_aware: dict = field(default_factory=dict)
+    # Phase ψ.γ.2: per-stock × stage 接入 ensemble (用现有 mart_per_stock_stage_strategy_optimal
+    # 24K 行 9 维 Optuna OOS 产物覆盖 default_holding). 优先级: per_stock_stage > vol_aware > default.
+    per_stock_stage: dict = field(default_factory=dict)
 
 
 @dataclass(frozen=True)
@@ -189,7 +192,8 @@ def load_config(path: Path | None = None, override: dict | None = None) -> Paper
                "ensemble_quality_filters": raw["selection"].get("ensemble_quality_filters") or {
                    "max_vol_60d": 0.40, "min_amount_20d_yuan": 0,
                    "allowed_stages": ["1", "1.5", "2"]},
-               "vol_aware": raw["selection"].get("vol_aware", {}) or {}}
+               "vol_aware":        raw["selection"].get("vol_aware",        {}) or {},
+               "per_stock_stage":  raw["selection"].get("per_stock_stage",  {}) or {}}
         ),
         exit=ExitConfig(**raw["exit"]),
         swap=SwapConfig(**raw["swap"]),

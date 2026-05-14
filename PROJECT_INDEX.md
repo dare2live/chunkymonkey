@@ -290,7 +290,7 @@
 | 模块 | 作用 |
 |---|---|
 | `services/paper_sim/config.py` | yaml loader (portfolio / selection / exit / swap / tx_cost / risk / validation / data) |
-| | selector.py | backtest mode 查 mart_per_formula_stage_optimal (Phase ψ.α B), 0 selection leakage; **Phase ψ.β.5 L2**: ensemble mode 可按 vol_60d 缩放 stop/target/trailing per-stock (`_vol_aware_params`, config flag `selection.vol_aware.enabled`) |
+| | selector.py | backtest mode 查 mart_per_formula_stage_optimal (Phase ψ.α B), 0 selection leakage; **Phase ψ.β.5 L2**: ensemble mode 可按 vol_60d 缩放 stop/target/trailing per-stock (`_vol_aware_params`, config flag `selection.vol_aware.enabled`); **Phase ψ.γ.2 L3**: ensemble mode 可 JOIN mart_per_stock_stage_strategy_optimal (24K 行 9-dim OOS) 用 per-stock × stage params 覆盖 default (`_load_per_stock_stage_optimal`, config flag `selection.per_stock_stage.enabled`). 优先级: per_stock_stage > vol_aware > default_holding. |
 | | driver.py | walk-forward 主循环 + VWAP 成交 + swap 决策 |
 | | exit_rules.py | 5 触发优先级 (stop > target_arm > trailing > hp_expired > stage_deterioration) |
 | | swap_rules.py | compute_fulfillment / candidate_can_close_gap / evaluate_swap |
@@ -737,6 +737,32 @@ SELECT * FROM mart_data_source_watermark;
 ## 14. Session 增量更新日志 (Rule 9.5 长期沉淀)
 
 每次 session 增量内容写这里, 新 session 启动时**从下往上读**最近改了啥.
+
+### 2026-05-14 (Phase ψ.γ.2 — per-stock × stage 接入 ensemble loader L3)
+
+**用户原话** (回忆): "持仓周期不应该全局统一, 应该是每个股票每种形态下每个公式下都单独选优"
+
+**问题**: 该寻优产物 `mart_per_stock_stage_strategy_optimal` (24K 行 9 维 Optuna OOS) 已存在但
+ensemble mode 没用 — 只用 default_holding 一组参数. 这是真正的 "per-stock × stage" gap.
+
+**修法**:
+- 加 `_load_per_stock_stage_optimal(conn, stock_stage_pairs, min_n_traded=5)` helper
+  - 按 stage 分组批量 query (DuckDB 不直接支持 tuple IN, OR 拼/分 stage 简单)
+  - 每 (stock × stage) 取 oos_sharpe DESC + oos_n_traded DESC 第一行 (跨 formula 取 best)
+  - Rule 8: 只读 oos_* 字段
+- ensemble loader 实现优先级: **per_stock_stage > vol_aware > default_holding**
+- 把 stage_map 提前到 quality filter 之前无条件 load (P2 + L2 复用)
+- config flag `selection.per_stock_stage.enabled` (默认 false, ablation 时 true)
+- yaml `per_stock_stage:` section 加进 ensemble.yaml
+
+**Touch 文件**:
+- `backend/services/paper_sim/selector.py` (+`_load_per_stock_stage_optimal` ~60 行 + 优先级 logic)
+- `backend/services/paper_sim/config.py` (`per_stock_stage: dict` 字段)
+- `backend/config/paper_sim_ensemble.yaml` (`per_stock_stage:` 段, 默认 enabled: false)
+- `backend/tests/paper_sim/test_per_stock_stage.py` (新, 4 单测 MockConn)
+
+**测试**: 12/12 PASS (4 新 + 8 vol_aware regression). Integration test 等 Optuna PID 7702 跑完
+不占 DB 锁后做 (full paper_sim ablation: enabled=true vs false 对比 KPI).
 
 ### 2026-05-14 (Phase ψ.γ.1 — ensemble 20 维 Optuna 全寻优)
 

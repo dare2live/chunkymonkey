@@ -30,6 +30,67 @@ from services.portfolio_walk_forward.liquidity import (
 TIER_RANK = {"NO_SIGNAL": 0, "WATCH": 1, "BUY": 2, "STRONG_BUY": 3}
 
 
+def _load_per_stock_stage_optimal(conn, stock_stage_pairs: list[tuple[str, str]],
+                                    min_n_traded: int = 5) -> dict[tuple[str, str], dict]:
+    """Phase ψ.γ.2: 批量加载 (stock × stage) 的 best params from
+    mart_per_stock_stage_strategy_optimal (Phase ψ 9 维 Optuna OOS 产物).
+
+    选 row 规则: 每 (stock × stage) 取 oos_sharpe DESC 第一行, 跨 formula 取 best.
+    过滤: oos_n_traded >= min_n_traded (避免少 trade 数据噪音).
+
+    Rule 8: 只读 oos_* 字段, 不读 in-sample fit.
+    Rule 7: stock_code × stage_filter (PIT — stage 是 signal_date 当天的, 不是事后).
+
+    Returns: {(stock_code, stage_filter): {hp, stop, target, trailing, source_formula}}.
+    """
+    if not stock_stage_pairs:
+        return {}
+    # 构 IN 列表 — DuckDB 不直接支持 tuple IN, 用 OR 拼或临时 table
+    # 简化: 在 Python 层 group by stage, 多次 query (stage 数 ≤ ~5)
+    by_stage: dict[str, list[str]] = {}
+    for sc, st in stock_stage_pairs:
+        if st:
+            by_stage.setdefault(str(st), []).append(sc)
+    out: dict[tuple[str, str], dict] = {}
+    for stage, codes in by_stage.items():
+        if not codes:
+            continue
+        qs = ",".join("?" * len(codes))
+        try:
+            rows = conn.execute(f"""
+                WITH ranked AS (
+                    SELECT stock_code, formula_id, formula_variant,
+                           optimal_hp, optimal_stop_pct, optimal_target_pct,
+                           optimal_trailing_pct, oos_sharpe, oos_n_traded,
+                           ROW_NUMBER() OVER (
+                             PARTITION BY stock_code
+                             ORDER BY oos_sharpe DESC NULLS LAST, oos_n_traded DESC
+                           ) AS rk
+                      FROM mart_per_stock_stage_strategy_optimal
+                     WHERE stage_filter = ?
+                       AND stock_code IN ({qs})
+                       AND oos_sharpe IS NOT NULL
+                       AND oos_n_traded >= ?
+                )
+                SELECT stock_code, formula_id, optimal_hp,
+                       optimal_stop_pct, optimal_target_pct, optimal_trailing_pct
+                  FROM ranked
+                 WHERE rk = 1
+            """, [stage, *codes, min_n_traded]).fetchall()
+            for r in rows:
+                sc = r[0]
+                out[(sc, stage)] = {
+                    "hp": int(r[2]),
+                    "stop_pct": float(r[3]),
+                    "target_pct": float(r[4]),
+                    "trailing_pct": float(r[5]),
+                    "source_formula": str(r[1]),
+                }
+        except Exception as e:
+            log.warning(f"  per_stock_stage load failed for stage={stage}: {e}")
+    return out
+
+
 def _vol_aware_params(vol_60d_annualized: Optional[float], hp_days: int,
                        va: dict, default_stop: float, default_target: float,
                        default_trailing: float) -> tuple[float, float, float]:
@@ -394,20 +455,23 @@ def load_today_candidates_ensemble(
         except Exception as e:
             log.warning(f"  quality vol filter failed: {e}")
 
+    # stage_map 无条件 load (P2 per-stock-stage 也需要), 之后 quality filter 用 + L2/L3 接入用
+    stage_map: dict[str, str] = {}
+    try:
+        stage_rows = conn.execute("""
+            SELECT stock_code, technical_stage
+              FROM fact_signal_context
+             WHERE date = ?
+        """, [signal_date]).fetchall()
+        stage_map = {r[0]: str(r[1]) for r in stage_rows if r[1] is not None}
+    except Exception as e:
+        log.warning(f"  stage_map load failed: {e}")
+
     if allowed_stages:
-        try:
-            stage_rows = conn.execute("""
-                SELECT stock_code, technical_stage
-                  FROM fact_signal_context
-                 WHERE date = ?
-            """, [signal_date]).fetchall()
-            stage_map = {r[0]: r[1] for r in stage_rows}
-            n_before = len(scores)
-            scores = {sc: v for sc, v in scores.items()
-                      if stage_map.get(sc) in allowed_stages}
-            log.debug(f"  quality stage filter: {n_before} -> {len(scores)}")
-        except Exception as e:
-            log.warning(f"  quality stage filter failed: {e}")
+        n_before = len(scores)
+        scores = {sc: v for sc, v in scores.items()
+                  if stage_map.get(sc) in allowed_stages}
+        log.debug(f"  quality stage filter: {n_before} -> {len(scores)}")
 
     # 4. regime gate
     rg = cfg.regime_gate
@@ -434,10 +498,23 @@ def load_today_candidates_ensemble(
     n_strong = max(1, n_total // 10)   # 前 10% STRONG_BUY
     n_buy    = max(n_strong, n_total // 3)   # 前 33% BUY
 
-    # Phase ψ.β.5 L2: 若 vol_aware enabled, 批量加载 final candidates 的 vol_60d
-    # PIT: WHERE calc_date <= signal_date, 每股取 latest
+    # Phase ψ.β.5 L2 + Phase ψ.γ.2 per-stock-stage 优先级:
+    #   per_stock_stage > vol_aware > default_holding
+    # 都是 PIT 干净: per_stock_stage 用 mart_per_stock_stage_strategy_optimal (OOS-cleaned)
+    # vol_aware 用 fact_risk_factors.vol_60d (WHERE calc_date <= signal_date PIT max)
     va = getattr(cfg, "vol_aware", {}) or {}
+    pss_cfg = getattr(cfg, "per_stock_stage", {}) or {}
     final_codes = [sc for sc, _ in sorted_scores[:n_buy]]
+
+    # 1. per-stock × stage 批量加载 (最高优先级)
+    pss_params: dict[tuple[str, str], dict] = {}
+    if pss_cfg.get("enabled") and final_codes:
+        pairs = [(sc, stage_map.get(sc, "")) for sc in final_codes if stage_map.get(sc)]
+        min_n_traded = int(pss_cfg.get("min_n_traded", 5))
+        pss_params = _load_per_stock_stage_optimal(conn, pairs, min_n_traded=min_n_traded)
+        log.debug(f"  P2 per_stock_stage: 命中 {len(pss_params)}/{len(pairs)} stock×stage")
+
+    # 2. vol_aware 批量加载 vol_60d (次优先级, 用于 pss 没命中的)
     vol_pit: dict[str, float] = {}
     if va.get("enabled") and final_codes:
         try:
@@ -460,10 +537,11 @@ def load_today_candidates_ensemble(
             log.warning(f"  L2 vol_aware fetch failed (fallback default): {e}")
 
     out: list[CandidateRow] = []
-    hp = int(dh.get("hp", 15))
-    def_stop     = float(dh.get("stop_pct",     -0.10))
-    def_target   = float(dh.get("target_pct",    0.20))
-    def_trailing = float(dh.get("trailing_pct",  0.05))
+    hp_default = int(dh.get("hp", 15))
+    def_stop     = float(dh.get("stop_pct",     -0.10))   # rule-compliance: ok evidence=yaml-default
+    def_target   = float(dh.get("target_pct",    0.20))   # rule-compliance: ok evidence=yaml-default
+    def_trailing = float(dh.get("trailing_pct",  0.05))   # rule-compliance: ok evidence=yaml-default
+    n_pss_hit, n_va_hit, n_default = 0, 0, 0
     for i, (sc, score) in enumerate(sorted_scores):
         if i < n_strong:
             tier = "STRONG_BUY"
@@ -473,11 +551,25 @@ def load_today_candidates_ensemble(
             break
         if cfg.min_tier_to_buy == "STRONG_BUY" and tier != "STRONG_BUY":
             continue
-        # L2 vol-aware override (va.enabled=false 时仍返回 default)
-        v60 = vol_pit.get(sc)
-        stop_pct, target_pct, trailing_pct = _vol_aware_params(
-            v60, hp, va, def_stop, def_target, def_trailing
-        )
+        stage = stage_map.get(sc, "")
+        # 优先级 1: per-stock × stage (mart_per_stock_stage_strategy_optimal)
+        pss_p = pss_params.get((sc, stage)) if pss_cfg.get("enabled") else None
+        if pss_p:
+            hp_i        = pss_p["hp"]
+            stop_pct    = pss_p["stop_pct"]
+            target_pct  = pss_p["target_pct"]
+            trailing_pct = pss_p["trailing_pct"]
+            n_pss_hit += 1
+        else:
+            # 优先级 2: vol_aware (sigma × vol_60d, va.enabled=false 时返回 default)
+            hp_i = hp_default
+            stop_pct, target_pct, trailing_pct = _vol_aware_params(
+                vol_pit.get(sc), hp_i, va, def_stop, def_target, def_trailing
+            )
+            if va.get("enabled") and vol_pit.get(sc):
+                n_va_hit += 1
+            else:
+                n_default += 1
         out.append(CandidateRow(
             stock_code=sc,
             formula_id="ensemble",
@@ -485,14 +577,16 @@ def load_today_candidates_ensemble(
             tier=tier,
             score=float(score),
             expected_total_return=target_pct,
-            optimal_hp=hp,
+            optimal_hp=hp_i,
             optimal_target_pct=target_pct,
             optimal_stop_pct=stop_pct,
             optimal_trailing_pct=trailing_pct,
             signal_close=0.0,
             sell_target=None, stop_price=None,
-            stage=None, match_tier="ensemble",
+            stage=stage or None, match_tier="ensemble",
         ))
+    if pss_cfg.get("enabled") or va.get("enabled"):
+        log.debug(f"  param source: pss={n_pss_hit} vol={n_va_hit} default={n_default}")
     return out
 
 
