@@ -398,6 +398,95 @@ chmod +x .git/hooks/pre-commit .git/hooks/commit-msg
 | codex/claude/* AI 分支 5 条悬挂 (距 main 0 commit), 影响项目清晰 | v3.2 启动前 P0a 全删, 不再开任何 AI 子分支 |
 | 代码改完直接 commit, 没让 Codex review | Rule 10.1 强制 review; commit 前 stage 已改的文件, 让 Codex 看 diff |
 
+## Rule 11 — 并发 vs 串行执行 (任务调度原则)
+
+(根因: 用户原话 "在不需要串行的任务里是否可以多 agents 并发". v3.2 P-1 内部有 5 个独立 audit, 串行做 5 倍时间, 并发能压到 1 倍.)
+
+### 11.1 串行硬约束 (不许并发)
+
+(Codex review 反馈: 补 6 项隐式串行)
+
+| 场景 | 原因 |
+|---|---|
+| PLAN_V3 §6 Phase gate (P-1 → P0a/b/c → P1 → P2 → P3) | 下游依赖上游 Acceptance metric; 上游 FAIL 必须立即停 |
+| 同一文件 Edit / Write | 工具层冲突, 后写覆盖前写 |
+| 同一 DuckDB 表写入 | DuckDB 单 writer 锁 |
+| 同一 Optuna study | study lock + 防多重检验 |
+| 同一 paper_sim run | KPI 表 PK 冲突 + sim_run_id 唯一 |
+| commit / push 序列 | git 工作树状态机, 一次一个 commit |
+| 同一 output JSON/log path | 后写覆盖前写, 数据丢失 |
+| 同一 model artifact / cache 目录 | 中间产物覆盖 |
+| 共享 temp tables (CREATE TEMP TABLE 同名) | DuckDB session 隔离但同名冲突 |
+| shared config / env 变更 | 一个任务改 yaml 另一个读到中间状态 |
+| 并发 audit 期间数据 sync 写主库 | 读写竞态, audit 拿到不一致快照 |
+| PROJECT_INDEX/CLAUDE.md/goal.md commit 序列 | 文档依赖 code outcome, 必须串行 |
+
+### 11.2 可并发场景 (推荐 multi-agent)
+
+| 场景 | 例子 |
+|---|---|
+| **read-only audit** (互相不依赖) | P-1.1 PIT + P-1.2 生存者 + P-1.3 stop/limit + P-1.4 事件 timestamp + P-1.5 universe coverage 可同时写脚本 + 同时跑 |
+| **独立特征源** (P0a 内部) | alpha158 feature gen 跟 institution feature gen 跟 capital flow feature gen 互相无依赖, 可并发 |
+| **独立 ablation** (P0b/P1) | LightGBM vs LambdaMART / 全量 vs top-N / horizon 5 vs 10 vs 20 等独立窗口, 跑不同 model_id 不冲突 |
+| **Codex review** (按模块分) | 不同 module 可同时开多个 codex thread (但同一 module 必须同 thread + resume) |
+| **doc + code 并行** | PROJECT_INDEX 改 + code 改 可同时 stage, 一次 commit |
+
+### 11.3 实现方式 (Claude Code 工具)
+
+**单消息发多个 Agent calls** — 默认并行:
+
+```
+一次发 5 个 Agent({subagent_type: "Explore", prompt: "..."}) 调用 →
+工具调度并发跑 (max 5 同时)
+```
+
+**长任务后台化** — `run_in_background: true`:
+
+```
+Agent({subagent_type: "...", prompt: "...", run_in_background: true})
+→ main agent 继续做别的; 任务完成时自动通知
+```
+
+**Bash 并发** — `run_in_background: true` 跑独立 shell 任务:
+
+```
+Bash({command: "python script1.py", run_in_background: true})
+Bash({command: "python script2.py", run_in_background: true})
+→ 两个 Python 进程并发, main 继续
+```
+
+### 11.4 并发安全清单 (启动并发前必查)
+
+(Codex review 反馈: 6 项必要但不充分, 补 6 项)
+
+- [ ] 任务间**无文件冲突** (不同时改同文件; 测试 fixture 也算)
+- [ ] 任务间**无 DB 写冲突** (DuckDB 单 writer; 读 OK)
+- [ ] **DB 连接 read-only=True** (services.duck_adapter.connect 显式 read_only=True; 不能用默认 get_conn)
+- [ ] 任务间**无外部资源冲突** (同一 cron task / port / lock)
+- [ ] **唯一 output path** (每个并发任务的 JSON/log/cache 路径唯一, 不共享)
+- [ ] **无共享 cache/artifact 目录** (mlruns/study/model_dir 不能重叠)
+- [ ] 任务**互相不依赖结果** (上游产物 ≠ 下游输入)
+- [ ] **数据 sync 任务停止** (并发审计/训练时禁止 sync 写主库, 避免读写竞态)
+- [ ] **deterministic input snapshot** (固定 seed + 固定 DB snapshot; 避免不同任务读到不同时刻数据)
+- [ ] 失败的任务**不影响其他任务进度** (无 fail-fast 共享状态; 资源预算够)
+- [ ] 完成后**串行汇总**: main agent 验证 Acceptance + commit (汇总点不能并发)
+- [ ] **每个并发任务有独立 run output** (不只整体 summary, 单独 run 日志供 Codex review 用)
+
+### 11.5 反模式 (不要做)
+
+| 错法 | 正解 |
+|---|---|
+| 5 个 agent 同时改 audit_*.py 公共代码 (例如 import shared module) | 先 main agent 写公共部分, 再分派 5 个独立 audit; 公共部分串行 |
+| 5 个 agent 同时跑 Optuna study (study name 同) | 串行跑, 或 study name 唯一化 |
+| Phase P-1 PASS 都没等就启动 P0a | PLAN §6 串行 gate 严守, 上游 PASS 才下游 |
+| 并发跑完后不汇总, 直接进下一步 | 必须 main agent 串行检查 Acceptance + commit |
+
+### 11.6 Codex review 在并发场景下的策略
+
+- 并发跑 5 个 audit 写完后, **一次性** 让 Codex review 整个 P-1 模块 (节省 Codex 调用)
+- 或者每个 audit 单独 codex thread (粒度更细但成本高 — 一般不必要)
+- Codex 不可用时 (Rule 10.2 fallback): main agent 自审 5-question, 也是串行汇总
+
 ---
 
 ## 项目特定补充

@@ -740,6 +740,33 @@ SELECT * FROM mart_data_source_watermark;
 
 每次 session 增量内容写这里, 新 session 启动时**从下往上读**最近改了啥.
 
+### 2026-05-14 (Phase v3.2 P-1.1 落盘 + Codex review 修复 + Rule 11 并发原则)
+
+**新脚本**: `backend/scripts/audit_pit_integrity.py` (P-1.1 PIT 完整性审计, 5 sections).
+
+**Codex review thread `a78ce8072a36f2c83` 反馈, Critical 全修**:
+- Q1 OOS predicate AND→OR bug (修) — 暴露真 leak: `mart_per_formula_stage_optimal` 224/426 行 OOS 期跟 train 期重叠 (v2 legacy, P0a 不作主源, WARN 而非 FAIL)
+- Q3 DB 连接改 `services.duck_adapter.connect(db_path, read_only=True)` 支持并发
+- Q4 forward leak spot check 改 5 个跨 regime signal_date (2024-04 / 2024-12 / 2025-06 / 2026-03 / latest)
+- Q6 加 Section 5 legacy usage guard (`git grep` 静态扫 v3.2 selector/optimize/build 是否引用 v2 legacy 表)
+
+**实测最终结果** (Codex 修复后): PASS=10 / WARN=26 / FAIL=0 → P-1.1 PASS
+
+**P-1.1 实测结果** (PASS=6 / WARN=8 / FAIL=0):
+- 225 个 fact/mart 表中 193 有 PIT 列 (85.8%), 31 exempt (audit/snapshot/dim), **0 不应有但缺失** → PIT 列覆盖通过
+- v3.2 critical 表 `mart_per_stock_stage_strategy_optimal`: 2 distinct built_at, 2174 行 → 走向 expanding_monthly
+- v2 legacy 表 `mart_per_stock_strategy_optimal` / `mart_per_formula_stage_optimal`: 单 batch 写入 (24K + 426 行) → v3.2 不作主决策, 仅作 baseline
+- forward leak spot check: 5 PIT 源 (risk_factors / financial_pit / capital_flow / signal_context / technical_trigger) 含未来日期行 (selector 必须 `WHERE pit_col <= signal_date` 过滤)
+
+**CLAUDE.md 新增 Rule 11** — 并发 vs 串行执行原则:
+- 11.1 串行硬约束: PLAN §6 Phase gate / 同文件 / 同 DB 表写 / 同 Optuna study / commit 序列
+- 11.2 可并发: read-only audit / 独立特征源 / 独立 ablation / Codex review (按模块)
+- 11.3 实现: 单消息发多 Agent calls (max 5) / `run_in_background: true`
+- 11.4 安全清单: 启动并发前必查 (无文件/DB/资源冲突, 互不依赖, 串行汇总)
+- 11.5/6 反模式 + Codex review 策略
+
+**下一步**: P-1.2 ~ P-1.5 (4 个 audit) 用 Rule 11 并发执行 (5 agents 同时写 + 跑).
+
 ### 2026-05-14 (Phase v3.2 共识落盘 — Claude × Codex 三轮讨论达成 ML ranking 主导路线)
 
 **重大方向调整**: v2 ensemble 拼权重 + v3 两路合并 **全部废弃**, 改 ML ranking 主导.
