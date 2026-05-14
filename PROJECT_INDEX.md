@@ -740,6 +740,24 @@ SELECT * FROM mart_data_source_watermark;
 
 每次 session 增量内容写这里, 新 session 启动时**从下往上读**最近改了啥.
 
+### 2026-05-14 (Phase v3.2 P0a.1 — cost-after label 模块落盘)
+
+**P0a 起步** (P-1 PASS 后启动, PLAN_V3 §6 串行 gate 解锁).
+
+**新模块** `services/labels/cost_after.py` (P0a 训练 label 入口):
+- `compute_round_trip_cost_pct(tx)`: 单次完整往返 (买+卖) tx_cost % (commission 2× + slippage 2× + stamp_duty + transfer_fee 2×), 实测 ≈ 0.302%
+- `compute_forward_cost_after_returns()`: T+1 VWAP 入场 → 5/10/20 日 VWAP 退出, 减 round-trip → net return. 不可成交 mask 显式 None (entry_unable/exit_*_unable per horizon).
+- `ForwardCostAfterResult`: 三 horizon + round_trip 元数据
+
+**用户决策** (2026-05-14):
+- 入场价 = T+1 VWAP (跟 paper_sim 实际成交成本一致)
+- Mask = 停牌 + 涨跌停都 mask (跟 P-1.3 tradeability audit 一致)
+- 后续 P0a.2 build script 调用方算 unable_to_trade_mask 传入此模块
+
+**单测**: 7 passed (round-trip 实测 0.3% / normal 5/10/20 / entry mask / exit mask per-horizon / 0-price / loss path / round-trip 跨 horizon 常量).
+
+**复用**: TxCostConfig from `services/paper_sim/config.py` (Rule 2 simplicity, 不平行造).
+
 ### 2026-05-14 (Phase v3.2 P-1 收尾 — 5/5 audit PASS + 治理模块 + CI 修复 + P-1.2 KEEP universe)
 
 **Commits**: aa57c185 (CI matrix) → ea76571b (pyyaml) → 69371838 (P-1.4 root cause) → f429d91f (governance modules) → P-1.2 KEEP universe 落盘 (本 commit)
