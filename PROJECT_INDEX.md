@@ -740,6 +740,21 @@ SELECT * FROM mart_data_source_watermark;
 
 每次 session 增量内容写这里, 新 session 启动时**从下往上读**最近改了啥.
 
+### 2026-05-14 (Phase v3.2 P0a.3 — feature × label JOIN cross-DB + Codex Q4/Q5 critical fix)
+
+**新模块** `services/labels/feature_join.py`:
+- `FEATURE_PANEL_DDL`: `mart_p0a_feature_label_panel` (PK=(stock_code, signal_date)) 含 label 字段 (5/10/20 fwd_cost_after + entry_date + unable_at_entry) + 65 a158 列 + 6 risk_factors + 4 financial_pit + 4 event dummies + metadata
+- `_FEATURE_JOIN_SQL`: 一次 CTE 化 4 个 LEFT JOIN — grid (CROSS) → label / a158 / risk_asof / financial_pit / lhb_agg / inst_agg
+- ATTACH alpha158.duckdb AS a158, 写入 smartmoney.duckdb
+
+**Codex review fix** (thread ac55f8f69918a6ae0 → cancelled at 1h+ stuck, new thread ab74ca105171568e8 完成 review):
+- **Q4 critical fix**: 4 LATERAL nested-loop → 2 pre-aggregated CTE (lhb_agg + inst_agg), COUNT(*) FILTER 同时算 7d/30d windows. 单一 hash join 替代 O(N×scan).
+- **Q5 critical fix**: risk_factors ASOF 决策 — calc_date 本身是 deterministic from K-line (vol_60d 用 [T-60, T]), PIT-safe by construction. 不强加 ingested_at filter (当前 backfill 全 ingested_at=2026-05-13 → 100% NULL). TODO 后续增量 ingest 改 ingested_at=calc_date+1 后可启严格 filter.
+- **Bug fix** (self-discovered): fact_lhb_event PIT 字段是 trade_date 不是 notice_date; institution_event.notice_date 格式 'YYYYMMDD' 需要 STRPTIME.
+- **Schema fix**: fact_risk_factors 没 mom_60d 列, 只有 mom_30d/mom_120d.
+
+**实测** (3 stocks × 3 signal_dates = 9 rows): SQL 跑通, vol_60d/sharpe_60d/pe_ttm 全 non-null, event_inst_30d 正确 boolean.
+
 ### 2026-05-14 (Phase v3.2 P0a.2 — build_p0a_label_panel SQL builder + 单测)
 
 **新模块** `services/labels/build.py` + `services/labels/ddl.py`:
