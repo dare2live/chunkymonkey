@@ -809,6 +809,23 @@ CLAUDE.md 增强:
 - v2 features: 79 → 85 (不是 87)
 - TODO v3: 重 Optuna walk-forward expanding_monthly 入库 (stock × cutoff_date × best_sharpe), ASOF JOIN
 
+### 2026-05-14 (Phase v3.2 Day 4 prep — LightGBM Optuna search space + early stop)
+
+**`services/ml_ranking/lightgbm_walkforward.py`** (LightGBMWalkForwardConfig 加 5 Optional 字段 — backward compat):
+- `max_depth`: 3-8 search space (Codex Q4)
+- `reg_alpha` (lambda_l1): 1e-8 - 10.0 log
+- `reg_lambda` (lambda_l2): 1e-8 - 50.0 log
+- `min_split_gain` (min_gain_to_split): 0.0 - 0.2
+- `early_stopping_rounds`: n_estimators=2000 时配合 (last 10% train 作 eval set)
+- train_one_window: conditional pass — default None = LGBM default (现有 ablation/baseline 不变)
+
+**`scripts/run_p0b_lightgbm_optuna_v3.py`** (新 Optuna CLI, Day 4 用):
+- 默认 50 trials smoke (n_est=300 no early_stop) / `--full` 200 trials (n_est=2000 + early_stop=100)
+- Codex Q4 完整 search space (12 维: max_depth/num_leaves/lr/n_est/min_child/feat_frac/bag_frac/bag_freq/l1/l2/min_gain_split)
+- Objective: `mean(per_window_rank_ic) - 0.5 * std` (Codex 推荐, 惩罚窗口波动)
+- 入库 mart_p1_optuna_trials (run_id × trial_number × params_json + rank_ic_mean/std)
+- TPESampler seed=42, gc_after_trial=True 防内存涨
+
 ### 2026-05-14 (Phase v3.2 v3 扩 feature — Codex 7-day plan Day 2 + Day 3)
 
 **`services/labels/feature_join_v3.py`** (+ 18 features over v2, 84 → 102 + 1 PIT confidence meta):

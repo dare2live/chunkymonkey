@@ -44,6 +44,13 @@ class LightGBMWalkForwardConfig:
     """LightGBM 训练超参 + walk-forward 配置.
 
     用法: 默认值是 P0b 首跑值, 后续 P1 用 Optuna 搜.
+
+    Codex Q4 search space (200-trial Optuna 推荐), 新字段都 Optional (None = LGBM default):
+    - max_depth: 3-8, 限制树深度防过拟合
+    - reg_alpha (lambda_l1): 1e-8 - 10.0 log
+    - reg_lambda (lambda_l2): 1e-8 - 50.0 log
+    - min_split_gain (min_gain_to_split): 0.0 - 0.2
+    - early_stopping_rounds: 100 (n_estimators=2000 时配合 early stop)
     """
     # LightGBM 核心超参 (业界默认 + 用户偏中庸)
     num_leaves: int = 31
@@ -54,6 +61,12 @@ class LightGBMWalkForwardConfig:
     bagging_freq: int = 5
     min_child_samples: int = 20
     random_state: int = 42
+    # Codex Q4 新加 (default None = backward compatible)
+    max_depth: int | None = None
+    reg_alpha: float | None = None
+    reg_lambda: float | None = None
+    min_split_gain: float | None = None
+    early_stopping_rounds: int | None = None
     # 用哪个 horizon 作 target
     label_field: str = "fwd_cost_after_10d"
     # walk-forward 参数 (默认从 optuna_config.yaml 取)
@@ -160,7 +173,7 @@ def train_one_window(
         log.warning(f"train_mask only {train_mask.sum()} valid; skip window")
         return np.full(len(test_rows), np.nan), y_test
 
-    model = lgb.LGBMRegressor(
+    lgbm_params = dict(
         num_leaves=cfg.num_leaves,
         learning_rate=cfg.learning_rate,
         n_estimators=cfg.n_estimators,
@@ -171,7 +184,37 @@ def train_one_window(
         random_state=cfg.random_state,
         verbose=-1,
     )
-    model.fit(X_train[train_mask], y_train[train_mask])
+    if cfg.max_depth is not None:
+        lgbm_params["max_depth"] = cfg.max_depth
+    if cfg.reg_alpha is not None:
+        lgbm_params["reg_alpha"] = cfg.reg_alpha
+    if cfg.reg_lambda is not None:
+        lgbm_params["reg_lambda"] = cfg.reg_lambda
+    if cfg.min_split_gain is not None:
+        lgbm_params["min_split_gain"] = cfg.min_split_gain
+    model = lgb.LGBMRegressor(**lgbm_params)
+
+    fit_kwargs: dict[str, Any] = {}
+    if cfg.early_stopping_rounds is not None and cfg.early_stopping_rounds > 0:
+        # Use last 10% of train as eval set for early stopping (Codex Q4: n_est=2000 + early_stop=100)
+        n_train_valid = int(train_mask.sum())
+        split_idx = int(n_train_valid * 0.9)
+        idx_train_valid = np.where(train_mask)[0]
+        cut = idx_train_valid[split_idx]
+        early_train_mask = train_mask.copy()
+        early_train_mask[cut:] = False  # train on first 90%
+        eval_mask = train_mask.copy()
+        eval_mask[:cut] = False  # eval on last 10%
+        if eval_mask.sum() >= 50:
+            model.fit(
+                X_train[early_train_mask], y_train[early_train_mask],
+                eval_set=[(X_train[eval_mask], y_train[eval_mask])],
+                callbacks=[lgb.early_stopping(cfg.early_stopping_rounds, verbose=False)],
+            )
+        else:
+            model.fit(X_train[train_mask], y_train[train_mask])
+    else:
+        model.fit(X_train[train_mask], y_train[train_mask])
     y_pred = model.predict(X_test)
     return y_pred, y_test
 
