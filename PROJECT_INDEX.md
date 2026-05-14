@@ -740,6 +740,16 @@ SELECT * FROM mart_data_source_watermark;
 
 每次 session 增量内容写这里, 新 session 启动时**从下往上读**最近改了啥.
 
+### 2026-05-14 (Phase v3.2 P0c yaml + P2/P3 CLI)
+
+**新 yaml** `backend/config/paper_sim_ml_score.yaml`:
+- selection.mode = 'ml_score' (新 dispatch case)
+- selection.ml_score_model_id = 'lgbm_baseline_v1'
+- selection.ml_score_max_candidates = 30
+- 其他同 paper_sim_config.yaml (exit Optuna 9-dim / swap v1 / tx_cost)
+
+用法: `python run_paper_sim_v2.py --config-path paper_sim_ml_score.yaml --start ... --end ...`
+
 ### 2026-05-14 (Phase v3.2 P2 + P3 CLI 入口)
 
 **新 CLI**:

@@ -1,0 +1,89 @@
+# Phase v3.2 P0c paper_sim with ml_score mode (Option A).
+# 继承 paper_sim_config.yaml 大部分设置, 改 selection.mode 为 'ml_score' 用
+# mart_p0b_oos_predictions ORDER BY score DESC 取 top-K, exit 仍走 Optuna 9-dim.
+#
+# 用法:
+#   PYTHONPATH=backend python backend/scripts/run_paper_sim_v2.py \
+#       --config-path backend/config/paper_sim_ml_score.yaml \
+#       --start 2024-01-01 --end 2026-04-30
+#
+# 注意: paper_sim_config.yaml load_config 不做继承, 此处全量复制 + 覆盖 selection 段.
+# 后续若 yaml 支持 include, 简化为 only override 段.
+
+# ─── 投资组合 ───
+portfolio:
+  initial_cash: 1_000_000
+  max_positions: 5
+  position_sizing: "equal_weight"  # 简单等权 (P2 时可改 vol-target)
+  cash_when_strong_buy_lt: 5
+  min_cash_pct: 0.05
+
+# ─── 候选选股 (ML score 模式 - Option A) ───
+selection:
+  mode: "ml_score"                 # P0c Option A
+  candidate_source: "mart_p0b_oos_predictions"   # 此字段在 ml_score mode 不实际使用
+  rank_by: "score"                 # ML score
+  min_tier_to_buy: "BUY"           # ml_score mode 下 tier 字段为 'ML_RANK', 此处可忽略
+  min_tier_to_swap_in: "STRONG_BUY"
+  liquidity_min_amount_20d: 50_000_000
+  liquidity_max_price: 500
+  exclude_stage: []
+  # ML score 模式特定字段:
+  ml_score_model_id: "lgbm_baseline_v1"
+  ml_score_max_candidates: 30      # 取 ML score 前 30 名 (大于 max_positions 防过滤后不够)
+  ml_score_min_score: null         # 不限分数下限
+
+# ─── 退出 (Optuna 9-dim) ───
+exit:
+  use_optuna_stop: true
+  use_optuna_target: true
+  use_optuna_trailing: true
+  use_optuna_hp: true
+  stage_deterioration_sell: true
+
+# ─── 换股 (swap_v1) ───
+swap:
+  enabled: true
+  severe_threshold: 0.50
+  candidate_must_close_gap: true
+  gap_buffer_pct: 0.0035
+  min_holding_days_before_swap: 1
+  max_swaps_per_day: 1
+
+# ─── 真实交易成本 ───
+tx_cost:
+  commission_pct: 0.00025
+  commission_min_cny: 5
+  stamp_duty_sell_pct: 0.0005
+  transfer_fee_sh_pct: 0.00001
+  slippage_pct: 0.001
+
+# ─── 风控 ───
+risk:
+  daily_dd_warning_pct: -0.05
+  max_dd_hard_stop_pct: -0.20
+  hard_stop_freeze_days: 30
+
+# ─── 数据源 ───
+data:
+  optimal_table_primary: "mart_per_stock_stage_strategy_optimal"
+  optimal_table_fallback: "mart_per_stock_strategy_optimal"
+  benchmark: "000300"
+
+# ─── 验证 / 反事实 ───
+validation:
+  user_criteria:
+    ann_ret_min: 0.30
+    max_dd_min: -0.20
+    excess_vs_hs300_min: 0.0
+    monthly_win_rate_min: 0.55
+  anti_churn:
+    annual_turnover_max: 8.0
+    tx_cost_pct_of_gross_pnl_max: 0.10
+    swap_uplift_total_min: 0.0
+  robustness: {}
+  ablation: {}
+  sensitivity: {}
+  reality_check:
+    slippage_stress_pct: 0.003
+    annual_degradation_max: 0.05
