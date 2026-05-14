@@ -740,6 +740,24 @@ SELECT * FROM mart_data_source_watermark;
 
 每次 session 增量内容写这里, 新 session 启动时**从下往上读**最近改了啥.
 
+### 2026-05-14 (Phase v3.2 P0a Acceptance PASS + P0b train 启动 + P1 ablation CLI)
+
+**P0a Acceptance gate**: 10 PASS / 0 WARN / 0 FAIL ✅ (audit_p0a_panel.py)
+- §1 Reproducibility: label_version + built_at 全填 (3.7M rows)
+- §2 Cost: round_trip = 0.302% 常量 + 10-sample formula 验
+- §3 Mask: unable_at_entry/exit_N=True → label NULL 全部生效
+- §5 KEEP universe: 全部 60/00/30/68 前缀
+- §6 PIT feature panel: 不含 exit_vwap/exit_date/unable_at_exit_
+
+**新 CLI** `scripts/run_p1_ablation.py`:
+- 读 mart_p0a_feature_label_panel → run_ablation_suite → 写 mart_p1_ablation_result
+- 入参: --label / --run-id / --n-estimators / --learning-rate / --num-leaves
+- 输出: stdout summary table (experiment × n_features × RankIC × IC IR × Δbase)
+
+**P0b train** 后台启动: lgbm_baseline_v1 × fwd_cost_after_10d × n_estimators=200 × walk-forward.
+
+**P0a feature_label panel 全量 build**: 3,695,375 rows in 41s (Codex Q4 优化 30+× 加速 vs label panel 21min).
+
 ### 2026-05-14 (Phase v3.2 — end-to-end pipeline runbook + P0a label panel 全量 build PASS)
 
 **P0a label panel 全量 build 完成** (Phase v3.2 第一个数据产物):
