@@ -740,6 +740,28 @@ SELECT * FROM mart_data_source_watermark;
 
 每次 session 增量内容写这里, 新 session 启动时**从下往上读**最近改了啥.
 
+### 2026-05-14 (Phase v3.2 P0b 真实跑 — OOS RankIC=0.0108, Gate FAIL)
+
+**P0b train v3 完成** (DataFrame-based rewrite, 50× 加速):
+- 改用 `conn._con.execute().fetchdf()` 直接拿 pandas DataFrame (vs 旧 list[dict] 21+ min hang)
+- 3,695,375 rows → 27s load + 9 min walk-forward (22 windows × 200 estimators)
+- DataFrame-based pipeline 替代 list[dict] 慢路径
+
+**实测结果** (KEEP universe × 2024-01..2026-04, fwd_cost_after_10d):
+- 22 windows, n_dates=440
+- **OOS RankIC mean: 0.0108** (Gate FAIL, < 0.03)
+- IC IR: 0.1257
+- 单窗 RankIC 波动: [-0.0067, +0.0364]
+- 入库 mart_p0b_oos_predictions + mart_p0b_walkforward_eval
+
+**结论**: 当前 alpha158 + risk_factors + financial_pit + 4 events 不足以预测 10d forward.
+PLAN_V3 §6 串行 gate 标 P0b FAIL → 阻塞 P0c.
+
+**下一步** (PLAN_V3 §3 决策点 + Rule 9.4 失败先承认):
+- P1 ablation: alpha158 vs risk_factors vs events 贡献分析
+- 试 5d / 20d horizon (PLAN_V3 §3 #5 label horizon)
+- 扩特征 (机构路径 A/B / 公式触发哑变量 / 行业中性)
+
 ### 2026-05-14 (Phase v3.2 P4c promote CLI + walk_forward._ym() regression test)
 
 **新 CLI** `scripts/promote_champion.py`:
