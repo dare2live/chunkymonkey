@@ -199,10 +199,16 @@ def load_today_candidates_inline(
         # min_tier_to_buy 过滤
         if cfg.min_tier_to_buy == "STRONG_BUY" and tier != "STRONG_BUY":
             continue
-        # Phase ψ.α B 排名: 用 today_strength × tier_multiplier, 不用 sharpe (避免 selection leakage)
-        # STRONG_BUY 候选 × 1.5, BUY × 1.0
+        # Phase ψ.β.align: 按 mart_per_formula_stage_optimal.oos_sharpe (PIT 干净) 排名
+        # mart 表是 walk-forward 多行 (per train_end_date), JOIN WHERE train_end_date <= signal_date
+        # → 该 oos_sharpe 在 signal_date 时刻**可知**, 不偷未来. 这才是实盘真实选股逻辑:
+        #   "看每个 (stock × formula × stage) setup 的历史 OOS 多强, 跨公式可比".
+        # 之前用 today_strength 是过度保守, 丢了主排名信号.
+        # Tiebreaker: today_strength (公式当日触发强度).
         tier_mul = 1.5 if tier == "STRONG_BUY" else 1.0
-        score = today_strength * tier_mul
+        # 主 score = oos_sharpe × tier_mul (跨公式可比)
+        # 加小量 today_strength 作 tiebreaker
+        score = sharpe * tier_mul + 0.01 * today_strength
         if cfg.exclude_stage and r[4] in cfg.exclude_stage:
             continue
         out.append(CandidateRow(

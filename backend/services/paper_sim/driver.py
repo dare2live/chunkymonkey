@@ -112,21 +112,58 @@ def _load_kline_today(mkt_conn, codes: list[str], today: str) -> dict[str, dict]
 
 
 def _vwap(k: dict) -> float:
-    """当日 VWAP = amount / (volume × 100).
+    """当日 VWAP (元/股), 含 sanity check 防数据源单位不一致.
 
-    A 股 v_price_kline_qfq 表里:
+    A 股 v_price_kline_qfq 表里**应该**是:
       - amount 单位 = 元
-      - volume 单位 = **手** (1 手 = 100 股), 不是股!
-    所以 VWAP (元/股) = amount / (volume × 100).
-    实测落在 [low, high] 范围 (跟 close 接近, 是当日加权均价).
+      - volume 单位 = 手 (1 手 = 100 股)
+      - VWAP = amount / (volume × 100)
+
+    但实测 tdxhub 数据源 volume = 手, akshare_sina 数据源 volume = 股 (单位差 100×).
+    这导致 paper_sim 在 source 切换日 VWAP 算错 100× — 触发 stop_hit 卖出价 0.11 元
+    (实际 11 元), pnl_pct -99% 误判, NAV 暴跌.
+
+    Sanity check (Rule 9.4 数据失败先承认):
+    1. 算 vwap_raw = amount / volume  (假设 volume = 股)
+    2. 算 vwap_lot = amount / (volume × 100)  (假设 volume = 手)
+    3. 看哪个落在 [low, high] 区间 — 用那个
+    4. 都不落区间 → fallback close (停牌 / 数据脏)
 
     volume=0 (停牌) 或 amount=0 → fallback close.
     """
     vol = k.get("volume") or 0
     amt = k.get("amount") or 0
-    if vol > 0 and amt > 0:
-        return amt / (vol * 100)
-    return k.get("close") or 0
+    close = k.get("close") or 0
+    low = k.get("low") or 0
+    high = k.get("high") or float("inf")
+
+    if vol <= 0 or amt <= 0:
+        return close
+
+    vwap_lot = amt / (vol * 100.0)   # tdxhub 假设
+    vwap_raw = amt / vol             # akshare 假设
+
+    # 哪个落在 [low, high] (容忍 5% buffer)
+    if low > 0 and high > 0:
+        lo_b = low * 0.95
+        hi_b = high * 1.05
+        lot_ok = lo_b <= vwap_lot <= hi_b
+        raw_ok = lo_b <= vwap_raw <= hi_b
+        if lot_ok and not raw_ok:
+            return vwap_lot
+        if raw_ok and not lot_ok:
+            return vwap_raw
+        if lot_ok and raw_ok:
+            # 两个都"合理", 用 close 安全 (理论上不可能, 除非 close = vwap × 100)
+            return close
+        # 都不合理 → fallback close
+        return close
+    # low/high 缺失 — 选离 close 近的
+    if close > 0:
+        if abs(vwap_lot - close) < abs(vwap_raw - close):
+            return vwap_lot
+        return vwap_raw
+    return vwap_lot   # 全失败兜底
 
 
 def _today_stage(conn, codes: list[str], today: str) -> dict[str, str]:

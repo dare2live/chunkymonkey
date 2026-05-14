@@ -737,6 +737,29 @@ SELECT * FROM mart_data_source_watermark;
 
 每次 session 增量内容写这里, 新 session 启动时**从下往上读**最近改了啥.
 
+### 2026-05-14 凌晨 (Phase ψ.β.align — 严重 VWAP bug + selector 跟用户对齐)
+
+**用户 push back**: "你跑的是单一策略, 没真正模拟实盘选股 — 实盘是各种公式入池后按 OOS 强弱选最强"
+
+**修法 #1: selector 按 oos_sharpe 排名 (PIT 干净, 跨公式可比)**
+- 老代码: `score = today_strength × tier_mul` (公式内自定 strength, 跨公式不可比)
+- 新代码: `score = oos_sharpe × tier_mul + 0.01 × today_strength` (oos_sharpe 主, strength tiebreaker)
+- mart_per_formula_stage_optimal 是 walk-forward 多行表, JOIN WHERE train_end_date <= signal_date
+  本来就 PIT — 我之前过度保守用 strength 排, 丢了主排名信号
+
+**修法 #2: _vwap 严重 bug — akshare_sina 数据源 volume 单位不一致**
+- 实测: 2026-05-07 起 source 从 tdxhub → akshare_sina, volume 单位从 "手" 变 "股" (差 100×)
+- 老 _vwap 写死 `amount / (volume × 100)` → akshare 数据算 vwap / 100 (0.11 元而不是 11.4)
+- 触发 stop_hit 假信号, 持仓 pnl_pct=-99% — paper_sim NAV 从 1.6M 暴跌 360K
+- 修后: _vwap 加 sanity check, 算 vwap_lot 和 vwap_raw 两种, 选落在 [low, high] 的;
+  都不合理 → close fallback
+- 3 新单测防回退 (akshare 单位 / tdxhub 单位 / 极端不合理)
+
+**实测教训** (Rule 9.5):
+- 用户之前 reversal-only smoke (-52% 年化) 当时被 VWAP bug 污染. 真实数字应该+25% 年化
+- 数据源切换 (sync 进了新数据源) 没显式审计 — 沉默 break paper_sim
+- 解决: _vwap 加 sanity, 失败先承认而不是用错值
+
 ### 2026-05-14 深夜 (Phase ψ.β.briefing — 16 项遗漏审计 + PROJECT_INDEX 大重写)
 
 用户 push back: "其他事项一定也会有遗漏, 扫描对话记录找出来" + "项目文档标准是新人不读代码就能理解".
