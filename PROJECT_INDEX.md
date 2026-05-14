@@ -400,6 +400,8 @@
 | `backend/config/optuna_config.yaml` | Optuna 治理 (Phase ψ Rule 7/8) — governance/walk_forward/search_space/composite/constraints/execution/output |
 | `backend/config/paper_sim_config.yaml` | Paper Sim v2 hyperparam |
 | `backend/config/paper_sim_momentum.yaml` / `paper_sim_reversal.yaml` / `paper_sim_reversal_deep_only.yaml` | Phase ψ.α ablation 切换 |
+| `backend/config/paper_sim_ensemble.yaml` | **Phase ψ.β.4** ensemble 模式 (13 alpha + regime + vol_aware + per_stock_stage) |
+| `backend/config/field_dictionary.yaml` | **Phase ψ.γ.dict.1** 字段字典 (3 DB × 12 核心表 × 100+ 字段 + 单位 + PIT key + outlier cap + JOIN 模板) — 防 VWAP unit bug 类故障 |
 | `backend/config/recommendation_universe.yaml` | 选股宇宙 |
 | `backend/config/pipeline_performance_policy.yaml` | step budget 预算 |
 | `backend/config/data_sources.yaml` | 数据源 |
@@ -737,6 +739,53 @@ SELECT * FROM mart_data_source_watermark;
 ## 14. Session 增量更新日志 (Rule 9.5 长期沉淀)
 
 每次 session 增量内容写这里, 新 session 启动时**从下往上读**最近改了啥.
+
+### 2026-05-14 (Phase ψ.γ.dict.1 — 字段字典 yaml + 跨表治理基础)
+
+**用户原话**: "之前说的数据治理做了么, 就是清洗、加工、存储之类的"
+
+**承认**: 没系统做. 项目数据治理碎片化 — 各 sync 客户端独立清洗 / ETL 散落多脚本 /
+跨表字段命名不一致 (date vs trade_date vs calc_date) / 单位不一致 (volume 在 akshare=股
+在 tdxhub=手) / VWAP bug 暴露这一漏洞.
+
+**修法 (Phase ψ.γ.dict.1 第一步)**:
+- 新文件 `backend/config/field_dictionary.yaml` (~250 行)
+- 内容: 3 个数据库 (market/smart/etf) × 12 张核心业务表 × 100+ 字段
+- 每字段含: type / unit / role (pit-key/pk/business-canonical/in-sample-only) /
+  enum / sign / outlier_cap / description / warning (e.g. volume MIXED unit)
+- 通用约定: stock_code 格式 / PIT 命名 / null policy / outlier policy
+- JOIN 模板: pit_max_by_stock_date / asof_kline_to_event
+- 已知不一致 (§17 渐进 fix): 日期字段命名 / volume 单位 / outlier cap hardcode
+
+**用途**:
+1. ETL 写入前 sanity check (单位 / 范围 / PIT key 完整性)
+2. 跨表 JOIN 写代码时查 "这表的 PIT key 是哪个字段"
+3. 新人接手时一图看全核心 schema
+4. 单测自动 verify schema 跟字典一致 (防漂移, 后续 Phase ψ.γ.dict.4 加)
+
+**特别强调** (防 VWAP bug 类故障): `v_price_kline_qfq.volume` 字段
+明确标 "MIXED — tdxhub=手 / akshare_sina=股", 加 warning + 引用 _vwap sanity helper.
+
+**下一步**:
+- Phase ψ.γ.dict.2: ETL normalize layer (统一 K 线读 + unit conversion + NaN handling)
+- Phase ψ.γ.dict.3: pre-insert data quality governance (类似 Optuna governance for raw → fact)
+- Phase ψ.γ.dict.4: schema-vs-dictionary 自动 verifier
+
+### 2026-05-14 (Phase ψ.γ.1.v2 — Optuna 单 worker 缩 train window 重启)
+
+**根因 (用户 push back)**: 我之前估算 "6.5万小时" 错了 — 把 per-stock backtest 跟 per-stock paper_sim 混了.
+
+**实际并发能力**:
+- per-stock × stage × formula 9 维 Optuna (24K 任务) — `optimize_per_stock_stage_strategy.py`
+  **8 workers fork 实测 58 min** — 已实现
+- ensemble 20 维 Optuna (50 trials) — 每 trial 跑完整 paper_sim 5 仓位组合, DuckDB 单 writer
+  锁限制 single worker. **GPU 无意义** (TPE + DuckDB + 串行 simulation 都是 CPU bound)
+
+**实测时长**:
+- v1 21 mo train: trial 0 跑了 8+ min 还没出 — 估 25-30 min/trial × 50 = 20+ hr 太慢, kill
+- **v2 9 mo train**: trial 0 = 101s, 50 trials ≈ 1.4 hr ✓ (PID 8029, study=ensemble_full_v2_short)
+
+**经验**: 缩 train window 比 multi-worker (DuckDB 锁阻碍) 更直接.
 
 ### 2026-05-14 (Phase ψ.γ.2 — per-stock × stage 接入 ensemble loader L3)
 
