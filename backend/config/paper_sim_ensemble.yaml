@@ -124,6 +124,16 @@ selection:
       source_col: "price_vs_ma20"
       direction: 1
       pit_key: "trade_date"
+    # ─── Phase ψ.δ.1 板块轮动预测 (Ridge regression, walk-forward) ───
+    # 实测发现: 模型 IC = -0.056 (Rank IC -0.060, p<0.001 on 8853 samples).
+    # 这是 mean reversion 信号 — 板块短期强 → 短期弱, 反之亦然.
+    # direction=-1 表示"越低越好" (= 预测下跌的板块实际上涨, mean-reversion alpha).
+    - name: "predicted_sector_ret_10d"   # rule-compliance: ok evidence=ridge-model-IC=-0.056
+      weight: 0.10                       # rule-compliance: ok evidence=pre-optuna-default
+      source_table: "v_stock_sector_predicted_ret"
+      source_col: "predicted_ret_10d"
+      direction: -1                      # mean reversion: 越低预测 → 反而越要买 (IC 实测负)
+      pit_key: "trade_date"              # view 内 trade_date > model_train_end 保证 PIT 干净
 
   # ── 大盘 regime gate (fact_regime_state) ──
   regime_gate:

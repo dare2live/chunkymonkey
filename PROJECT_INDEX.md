@@ -740,6 +740,39 @@ SELECT * FROM mart_data_source_watermark;
 
 每次 session 增量内容写这里, 新 session 启动时**从下往上读**最近改了啥.
 
+### 2026-05-14 (Phase ψ.δ.1 — 板块轮动预测 Ridge regression alpha + IC mean-reversion 发现)
+
+**用户原话**: "按照规律做个板块、概念、行业轮动啥的, 并作出预测, 辅助选股"
+
+**对齐用户的 CDE 选择**:
+- C 动量+反转分阶段 + E ML 端到端 — 取轻量版 Ridge regression 防 overfit
+
+**实现**:
+- 新脚本 `backend/scripts/train_sector_rotation_predictor.py` (~220 行)
+- 输入特征 (8 维 sector-level): ret_5d/20d/60d, vol_60d, excess_20d/60d, price_vs_ma20/60
+- Target: forward 10 day sector return
+- Model: Ridge regression (alpha=1.0)
+- Walk-forward: 每月末 retrain on cumulative past (purge 10 day gap 防 target leakage)
+- 新表 `fact_sector_predicted_ret_daily` (PK = sector_name×date×model_train_end)
+- 8983 行预测写入, 跑批 2 秒
+
+**关键发现 — IC 负**:
+- IC = **-0.056** (Pearson), Rank IC = **-0.060** (Spearman, p<0.001 on 8853 pairs)
+- Direction hit ratio = 49.0% (worse than 50%)
+- **这是 mean reversion 信号** — 板块短期强 → 短期弱
+- Ridge 学到的是 momentum 方向, 但市场 reversing
+
+**alpha 接入 (Rule 6 数据驱动)**:
+- 新 view `v_stock_sector_predicted_ret` (stock_code × predicted_ret JOIN dim_tdx_industry)
+- `paper_sim_ensemble.yaml` 加 14th alpha `predicted_sector_ret_10d`
+  - direction = **-1** (mean reversion: 预测低 → 实际高 → 加成)
+  - weight = 0.10 (pre-Optuna default, 后续 Optuna 寻优)
+
+**测试**: 跑 paper_sim ablation (baseline vs +sector_pred alpha) 看 KPI 是否改善.
+
+**学到 (Rule 9.4 数据失败先承认)**: 简单 Ridge 不会一次到位; 但 IC 信息已学到了
+正确方向 (虽然反向), 跟用户"实事求是数据驱动"一致.
+
 ### 2026-05-14 (Phase ψ.γ.dict.1 — 字段字典 yaml + 跨表治理基础)
 
 **用户原话**: "之前说的数据治理做了么, 就是清洗、加工、存储之类的"
