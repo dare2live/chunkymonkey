@@ -740,6 +740,25 @@ SELECT * FROM mart_data_source_watermark;
 
 每次 session 增量内容写这里, 新 session 启动时**从下往上读**最近改了啥.
 
+### 2026-05-14 (Phase v3.2 P0b — LightGBM pointwise + walk-forward + RankIC 模块)
+
+**新模块** `services/ml_ranking/`:
+- `rank_ic.py`: 横截面 RankIC (Spearman) + stitched OOS aggregation (mean + IC IR)
+- `lightgbm_walkforward.py`: LightGBM pointwise regressor + expanding_monthly walk-forward
+  - `LightGBMWalkForwardConfig`: 训练超参 (num_leaves=31 / learning_rate=0.05 / n_estimators=200 / ...) + walk-forward (min_train_months / forward_months)
+  - `train_lightgbm_walkforward()`: 单消息驱动全 pipeline — split → fit per window → predict → stitched RankIC
+  - `WalkForwardResult.passed_gate`: P0b Acceptance 检 RankIC ≥ 0.03 AND n_dates ≥ 30
+
+**复用** (Rule 2/"可复用"):
+- `services.optimization.walk_forward.split_expanding_monthly` (R1 标准, Rule 8 强制时序)
+- LightGBM 4.6.0 (已 install)
+
+**单测** (14 passed):
+- `test_rank_ic.py`: perfect/anti corr / random noise / NaN filter / 1 stock skip / empty / missing label (9 tests)
+- `test_lightgbm_walkforward.py`: synthetic linear signal (RankIC > 0.10) / pure noise (|IC| < 0.30) / empty / too few months / gate property (5 tests)
+
+**下一步 P0b.b** (待 P0a 全量 label panel build 完): 跑 mart_p0a_feature_label_panel 真实数据 → 出 OOS RankIC + 拼 cost-after returns + Acceptance gate.
+
 ### 2026-05-14 (Phase v3.2 P0a.3 — feature × label JOIN cross-DB + Codex Q4/Q5 critical fix)
 
 **新模块** `services/labels/feature_join.py`:
