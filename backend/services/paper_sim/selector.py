@@ -614,6 +614,16 @@ def load_today_candidates_dispatch(
             max_candidates=getattr(cfg, "ml_score_max_candidates", 30),
             min_score=getattr(cfg, "ml_score_min_score", None),
         )
+    if cfg.mode == "hybrid":
+        # Codex 7-day plan Day 6: hybrid blend (sequential filter + rank-linear).
+        from services.paper_sim.hybrid_score_loader import load_today_candidates_hybrid
+        return load_today_candidates_hybrid(
+            conn, signal_date,
+            model_id=getattr(cfg, "hybrid_model_id", "lgbm_baseline_v1"),
+            max_candidates=getattr(cfg, "hybrid_max_candidates", 30),
+            w_ml=getattr(cfg, "hybrid_w_ml", 0.20),
+            q60_min_stage=getattr(cfg, "hybrid_q60_min_stage", True),
+        )
     return load_today_candidates(conn, signal_date, cfg)
 
 

@@ -65,6 +65,12 @@ class SelectionConfig:
     ml_score_model_id: str = "lgbm_baseline_v1"
     ml_score_max_candidates: int = 30
     ml_score_min_score: float | None = None
+    # Codex 7-day plan Day 6: hybrid mode (sequential filter + rank-linear blend).
+    # 只在 mode='hybrid' 生效.
+    hybrid_model_id: str = "lgbm_baseline_v1"
+    hybrid_w_ml: float = 0.20
+    hybrid_max_candidates: int = 30
+    hybrid_q60_min_stage: bool = True
 
 
 @dataclass(frozen=True)

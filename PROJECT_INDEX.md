@@ -809,6 +809,29 @@ CLAUDE.md 增强:
 - v2 features: 79 → 85 (不是 87)
 - TODO v3: 重 Optuna walk-forward expanding_monthly 入库 (stock × cutoff_date × best_sharpe), ASOF JOIN
 
+### 2026-05-15 (Phase v3.2 Day 5+6 wire + Day 7 LambdaMART — 全 7-day plan code 完成)
+
+**Day 5 (`scripts/build_stage_opt_pit.py`)**: stage_opt PIT walk-forward 半年 cutoff builder
+- 4 cutoffs (2024-07-01, 2025-01-01, 2025-07-01, 2026-01-01)
+- 每 cutoff 跑 optimize_per_stock_stage_strategy.py --start (cutoff-2y) --end cutoff
+- ETL 入新表 mart_per_stock_stage_strategy_optimal_pit (PK 加 cutoff_date)
+- 全量 ~48h, --limit-stocks N 做 smoke 验证 pipeline
+
+**Day 6 wire (`services/paper_sim/config.py + selector.py`)**: paper_sim engine 加 mode='hybrid'
+- SelectionConfig 加 hybrid_model_id/w_ml/max_candidates/q60_min_stage 字段
+- load_today_candidates_dispatch 加 mode='hybrid' → load_today_candidates_hybrid
+
+**Day 6 grid (`scripts/run_paper_sim_hybrid_grid.py`)**: 跑 5 w grid 对比
+- 默认 w grid [0.00, 0.10, 0.20, 0.30, 0.40] (Codex Q5)
+- 每 w 一次 walk-forward → KPI 表 (ann_ret/dd/excess/win_rate/sharpe)
+
+**Day 7 LambdaMART (`services/ml_ranking/lambdamart_walkforward.py`)**: pairwise NDCG 对照
+- LGBMRanker objective='lambdarank' + per-signal_date group_sizes
+- label continuous → per-date integer relevance (0..label_gain_max-1)
+- 5 单测过 (config / per-date relevance / 多 dates / empty / small data)
+
+**Day 7 CLI (`scripts/run_p0b_lambdamart_v3.py`)**: 入 mart_p0b_oos_predictions model_id='lambdamart_v3_*'
+
 ### 2026-05-15 (Phase v3.2 Day 6 prep — hybrid blend loader + yaml)
 
 **`services/paper_sim/hybrid_score_loader.py`** (Codex Q5 sequential filter + rank-linear blend):
