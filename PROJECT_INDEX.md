@@ -356,7 +356,7 @@
 | `validate_*` | 10 | validate_exclusion_rules 等 |
 | `audit_*` | 5 | **audit_end_to_end.py** (23 项检查) |
 | `backfill_*` | 5 | 各种回填 |
-| `optimize_*` | 3 | **optimize_per_stock_stage_strategy.py** (Phase ψ R1), **optimize_per_formula_stage.py** (Phase ψ.α B) |
+| `optimize_*` | 4 | **optimize_per_stock_stage_strategy.py** (Phase ψ R1), **optimize_per_formula_stage.py** (Phase ψ.α B), **optimize_ensemble_full.py** (Phase ψ.γ.1, **20 维 ensemble Optuna**: 13 alpha weights + 2 regime + 3 sigma + hp + max_vol, constrained sharpe, holdout train/test, mart_ensemble_optimal 入库) |
 | `rebuild_*` | 2 | rebuild_stage_formula_fitness |
 | `replay_*` | 2 | replay_paper_history_signflip |
 | `evaluate_*` / `train_*` | 4+2 | 各种评估 + 训练 |
@@ -737,6 +737,42 @@ SELECT * FROM mart_data_source_watermark;
 ## 14. Session 增量更新日志 (Rule 9.5 长期沉淀)
 
 每次 session 增量内容写这里, 新 session 启动时**从下往上读**最近改了啥.
+
+### 2026-05-14 (Phase ψ.γ.1 — ensemble 20 维 Optuna 全寻优)
+
+**用户原话**: "把数据都充分调动起来" — 之前 ensemble.yaml 里 13 alpha weights + 3 regime
+multipliers + 3 vol sigma + hp + max_vol 全部拍脑袋, 没让 Optuna 寻优.
+
+**新脚本**: `backend/scripts/optimize_ensemble_full.py`
+
+**Search space (20 维)**:
+- 13 alpha weights ∈ [0.0, 0.4] each — reversal/sharpe/mom/vol/pe/roe/yoy/lhb/exec/holder/sector×3
+- 2 regime multipliers (bear/sideways; bull=1.0 fixed baseline)
+- 3 vol_aware sigma multipliers (stop/target/trailing)
+- 1 hp ∈ {5,10,15,20,30}
+- 1 max_vol_60d ∈ [0.20, 0.60]
+
+**Walk-forward (holdout)**:
+- train: 2023-01-03 ~ 2024-09-30 (21 mo) — Optuna 寻最优
+- test:  2024-10-01 ~ 2026-05-12 (19 mo) — OOS 验证
+
+**Objective**: constrained sharpe (max sharpe s.t. ann_ret≥0.30 AND max_dd≥-0.20).
+违反约束 soft penalty = 10 × (违反量), 引导 Optuna 朝可行域走.
+
+**新表**: mart_ensemble_optimal (PK=study_name), 含 OOS 列符合 Rule 8 governance:
+  study_name, best_params_json, train/test KPIs (ann_ret/max_dd/sharpe/calmar),
+  oos_n_traded, n_trials, best_trial_number, objective_function, ann_ret_min, max_dd_min, built_at
+
+**Touch 文件**:
+- `backend/scripts/optimize_ensemble_full.py` (新, ~380 行)
+- `services.optimization.governance` 复用 (enforce_pre_optimize 守门)
+- yaml 不动 (override 跑时注入)
+- PROJECT_INDEX §4 + §14 同步
+
+**Benchmark**: 4 mo paper_sim = 40s/trial, 估 21 mo = ~3.5 min × 50 trials = ~3 hr 一晚上能跑.
+
+**等 Optuna 跑完**: best_params 入 mart_ensemble_optimal → paper_sim 用 best_params 跑完整
+2023-2026 → 看 OOS KPI 是否过 +30%/-20% 目标.
 
 ### 2026-05-14 (Phase ψ.γ.discipline — Rule 6/5/7 治理工作流 + 反例沉淀)
 
