@@ -328,48 +328,59 @@ def check_universe_coverage_crosscheck(conn) -> list[CheckResult]:
 
 
 def check_survivorship_spot_check(conn) -> list[CheckResult]:
-    """Section 4: 随机历史日期 spot check — 当时 universe 是否含 现已退市 stock.
+    """Section 4: KEEP universe 历史 K 线完整性 spot check.
 
-    核心 survivorship check: 历史日期 t 的 K线 universe 应当含 当时活跃 +
-    后续退市的 stock. 若 universe 只是 t 时刻在 dim_active_a_stock (现存) 的子集,
-    则有偏差.
+    **用户硬编码原则** (CLAUDE.md): A 股个人散户 5 仓位 universe = 当前 active
+    60/00/30/68 股, 排除老三板/ETF/北交所/退市. 接受生存者偏差作为简化交换.
+
+    此 audit 验证: KEEP universe (当前 active A 股) 在历史样本日的 K 线是否完整
+    (允许 IPO 后才有 K 线 — 用 first_seen_date 过滤). KEEP 内 K 线缺失才 FAIL.
     """
     out: list[CheckResult] = []
 
     try:
-        # 取已 delisted stocks (有 delisted_date) — 同时拉 first_seen_date 做上市起点条件.
-        # Codex review Q1 fix: spot check must require listing_date <= sig_date < delisted_date,
-        # otherwise audit claims "stocks should exist before they were even listed".
-        delisted_rows = conn.execute(
+        # KEEP universe = 当前 active 60/00/30/68 股 (用户硬编码). 拉 first_seen_date 用于
+        # 过滤 sig_date 时尚未上市的股 (IPO 后才在 K 线很正常, 不是缺数据).
+        from services.universe import is_active_a_share
+        active_rows = conn.execute(
             """
-            SELECT stock_code, delisted_date, first_seen_date
+            SELECT stock_code, first_seen_date
             FROM dim_all_ever_listed
-            WHERE is_active=0 AND delisted_date IS NOT NULL AND delisted_date != ''
+            WHERE is_active=1
             """
         ).fetchall()
-        delisted_map = {r[0]: r[1] for r in delisted_rows}
-        first_seen_map = {r[0]: r[2] for r in delisted_rows}
+        # 前缀过滤 (用户硬编码: 排除 92/15/51/56/58/...).
+        keep_universe = {
+            r[0]: r[1] for r in active_rows if is_active_a_share(r[0])
+        }
     except Exception as e:
         out.append(CheckResult(
-            section="4. Survivorship spot-check",
+            section="4. KEEP universe K-line completeness",
             name="bootstrap",
             status="FAIL",
-            detail=f"could not load delisted set: {e}",
+            detail=f"could not load KEEP universe: {e}",
         ))
         return out
 
-    if not delisted_map:
+    if not keep_universe:
         out.append(CheckResult(
-            section="4. Survivorship spot-check",
+            section="4. KEEP universe K-line completeness",
             name="bootstrap",
             status="FAIL",
-            detail="no delisted stocks in dim_all_ever_listed — cannot run spot check",
+            detail="empty KEEP universe — dim_all_ever_listed 无 active 60/00/30/68 股?",
         ))
         return out
+
+    out.append(CheckResult(
+        section="4. KEEP universe K-line completeness",
+        name="universe_size",
+        status="PASS",
+        detail=f"KEEP universe: {len(keep_universe)} active 60/00/30/68 股 (用户硬编码)",
+        rows=len(keep_universe),
+    ))
 
     for sig_date in SPOT_CHECK_DATES:
         try:
-            # 当日 K线 universe
             kline_universe = {
                 r[0] for r in conn.execute(
                     "SELECT DISTINCT code FROM mkt.price_kline "
@@ -379,79 +390,65 @@ def check_survivorship_spot_check(conn) -> list[CheckResult]:
             }
             if not kline_universe:
                 out.append(CheckResult(
-                    section="4. Survivorship spot-check",
+                    section="4. KEEP universe K-line completeness",
                     name=f"date={sig_date}",
                     status="WARN",
                     detail=f"no K线 data on {sig_date} (非交易日?)",
                 ))
                 continue
 
-            # 当时 应该 active 的 delisted stocks: listing_date <= sig_date < delisted_date.
-            # Codex review Q1 fix: 没有 listing_date 条件会把 "sig_date 时还未上市" 的股
-            # 错误纳入 should_be_in (e.g. 2024-03 上市 + 2025-08 退市的股, sig_date=2024-01-15
-            # 时本不在 universe, 不该期望它出现).
-            # rule-compliance: ok evidence=sentinel-MAX-date (防 None, 不是 model 参数)
-            MAX_SENTINEL_DATE = "9999-99-99"
-            should_be_in = {
-                code for code, d in delisted_map.items()
-                if d and d > sig_date
-                and (first_seen_map.get(code) or MAX_SENTINEL_DATE) <= sig_date
+            # Expected = KEEP 中当时已上市的子集 (first_seen_date <= sig_date).
+            expected = {
+                code for code, fsd in keep_universe.items()
+                if (fsd or "9999-99-99") <= sig_date  # rule-compliance: ok evidence=sentinel-MAX-date
             }
-            # 实际在 universe 里的 delisted stocks
-            actually_in = should_be_in & kline_universe
-            missing = should_be_in - kline_universe
+            actually_in = expected & kline_universe
+            missing = expected - kline_universe
+            coverage = len(actually_in) / len(expected) if expected else 1.0
 
-            # 计算覆盖率
-            coverage = len(actually_in) / len(should_be_in) if should_be_in else 1.0
-
-            if not should_be_in:
-                status = "WARN"
-                detail = f"{sig_date}: 0 stocks should-be-in (无对应历史退市 — 日期太早/太晚)"
-            elif coverage >= 0.95:
+            if coverage >= 0.99:
                 status = "PASS"
                 detail = (
-                    f"{sig_date}: K线 universe={len(kline_universe)}, "
-                    f"should_be_in(后续退市)={len(should_be_in)}, "
-                    f"actually_in={len(actually_in)}, coverage={coverage:.1%}"
+                    f"{sig_date}: KEEP expected={len(expected)}, "
+                    f"in K线={len(actually_in)}, coverage={coverage:.2%}"
                 )
-            elif coverage >= 0.80:
+            elif coverage >= 0.95:
                 status = "WARN"
                 detail = (
-                    f"{sig_date}: coverage={coverage:.1%} "
-                    f"({len(actually_in)}/{len(should_be_in)}); "
-                    f"missing={len(missing)} 后续退市股不在当日 universe"
+                    f"{sig_date}: KEEP coverage={coverage:.2%} "
+                    f"({len(actually_in)}/{len(expected)}); missing {len(missing)}"
                 )
             else:
                 status = "FAIL"
                 detail = (
-                    f"{sig_date}: coverage={coverage:.1%} "
-                    f"({len(actually_in)}/{len(should_be_in)}); "
-                    f"严重生存者偏差 — {len(missing)} 后续退市股不在当日 universe"
+                    f"{sig_date}: KEEP coverage={coverage:.2%} — "
+                    f"{len(missing)} active 股 K 线缺失 (需 tdxhub backfill)"
                 )
 
             extras = {
                 "kline_universe_size": len(kline_universe),
-                "should_be_in": len(should_be_in),
+                "expected": len(expected),
                 "actually_in": len(actually_in),
                 "missing": len(missing),
                 "coverage": round(coverage, 4),
             }
-            # 添加一些 missing 样本
             if missing:
                 sample = sorted(missing)[:5]
-                extras["missing_sample"] = [{"code": c, "delisted_date": delisted_map[c]} for c in sample]
+                extras["missing_sample"] = [
+                    {"code": c, "first_seen_date": keep_universe.get(c)} for c in sample
+                ]
 
             out.append(CheckResult(
-                section="4. Survivorship spot-check",
+                section="4. KEEP universe K-line completeness",
                 name=f"date={sig_date}",
                 status=status,
                 detail=detail,
-                rows=len(should_be_in),
+                rows=len(expected),
                 extras=extras,
             ))
         except Exception as e:
             out.append(CheckResult(
-                section="4. Survivorship spot-check",
+                section="4. KEEP universe K-line completeness",
                 name=f"date={sig_date}",
                 status="WARN",
                 detail=f"check failed: {e}",

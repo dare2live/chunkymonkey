@@ -103,8 +103,9 @@
 | 目标 | 证明训练数据可用于真钱模拟 |
 | 动作 | 新增/修复 PIT、退市、ST、停牌、涨跌停、复权、上市首日、事件 timestamp、股票池覆盖审计 |
 | 脚本 | `audit_pit_integrity.py`、`audit_survivorship.py`、`audit_tradeability.py`、`audit_event_timestamp.py`、`audit_universe_coverage.py` |
-| Go metric | PIT FAIL=0; 不可交易状态覆盖率=100%; 退市/ST 覆盖差异=0 未解释项; 事件 timestamp 非空率 ≥99.5% |
-| No-go | 任一 PIT FAIL; 停牌/涨跌停未进入 paper_sim 过滤; 退市/ST 缺口无法解释 |
+| Universe | **用户硬编码 KEEP universe** = active 60/00/30/68 (沪深主板+创业板+科创板), 由 `services/universe.py::is_active_a_share` 守门; 个人散户 5 仓位场景接受生存者偏差换简化, 不交易退市/三板; ETF (15/51/56/58) 后续单独 enable, **不硬编码进 EXCLUDED** |
+| Go metric | PIT FAIL=0; 不可交易状态覆盖率=100%; KEEP universe 历史 K 线 coverage ≥ 99%; 事件 timestamp 非空率 ≥99.5% |
+| No-go | 任一 PIT FAIL; 停牌/涨跌停未进入 paper_sim 过滤; KEEP universe coverage < 95% (active 股 K 线缺口) |
 | 估时 | 2 天 |
 
 ### P0a 特征与 Label 闭环

@@ -742,6 +742,8 @@ SELECT * FROM mart_data_source_watermark;
 
 ### 2026-05-14 (Phase v3.2 P-1 收尾 — 5/5 audit PASS + 治理模块 + CI 修复 + P-1.2 KEEP universe)
 
+**Commits**: aa57c185 (CI matrix) → ea76571b (pyyaml) → 69371838 (P-1.4 root cause) → f429d91f (governance modules) → P-1.2 KEEP universe 落盘 (本 commit)
+
 **P-1 整体 gate PASS** (5/5 audit, 可进 P0a):
 - P-1.1 PIT: PASS=10/WARN=26/FAIL=0
 - P-1.2 Survivorship (KEEP universe): PASS=12/WARN=2/FAIL=0
