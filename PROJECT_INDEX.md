@@ -6,7 +6,7 @@
 > **目标**: 新接手 (无论 Claude 还是人) 读完此文档**不用看代码 / 不用查 DB** 就能理解:
 > 项目业务 / 架构 / 技术路线 / 数据资产 / 当前进度 / 已知坑 / 常用操作.
 
-最后更新: 2026-05-14 (Phase ψ.β.enforce 后, 16 项遗漏审计完成).
+最后更新: 2026-05-14 (Phase ψ.β.5 L2 vol-aware per-stock 参数 / Phase ψ.β.enforce / 16 项遗漏审计).
 
 ## 30 秒速览 — 这是什么项目
 
@@ -290,7 +290,7 @@
 | 模块 | 作用 |
 |---|---|
 | `services/paper_sim/config.py` | yaml loader (portfolio / selection / exit / swap / tx_cost / risk / validation / data) |
-| | selector.py | backtest mode 查 mart_per_formula_stage_optimal (Phase ψ.α B), 0 selection leakage |
+| | selector.py | backtest mode 查 mart_per_formula_stage_optimal (Phase ψ.α B), 0 selection leakage; **Phase ψ.β.5 L2**: ensemble mode 可按 vol_60d 缩放 stop/target/trailing per-stock (`_vol_aware_params`, config flag `selection.vol_aware.enabled`) |
 | | driver.py | walk-forward 主循环 + VWAP 成交 + swap 决策 |
 | | exit_rules.py | 5 触发优先级 (stop > target_arm > trailing > hp_expired > stage_deterioration) |
 | | swap_rules.py | compute_fulfillment / candidate_can_close_gap / evaluate_swap |
@@ -736,6 +736,38 @@ SELECT * FROM mart_data_source_watermark;
 ## 14. Session 增量更新日志 (Rule 9.5 长期沉淀)
 
 每次 session 增量内容写这里, 新 session 启动时**从下往上读**最近改了啥.
+
+### 2026-05-14 (Phase ψ.β.5 — L2 vol-aware per-stock 参数缩放)
+
+**用户洞察**: "我感觉现在的选股策略和实盘模拟策略似乎都是批量化均值, 没有做到精细化每个股票, 我的理解对么"
+
+**确认**: 是. 当前 ensemble mode `default_holding` 给所有 candidates 同一组 (hp=15 / stop=-0.10 / target=+0.20 / trailing=+0.05), 完全不分股票特性 → 高 vol 股容易 stop_hit, 低 vol 股 target 不可达.
+
+**修法 (Phase ψ.β.5 L2)**:
+- 加 `_vol_aware_params(vol_60d, hp, va_cfg, defaults)` 函数到 selector.py
+- 公式: `sigma_hp = vol_60d_annualized × sqrt(hp / 252)`,
+  `stop = -2σ`, `target = +3σ`, `trailing = +1σ` (sigma 倍数 yaml 可配)
+- Hard bounds clip 防极端 vol 失真: stop∈[-0.20, -0.05], target∈[0.10, 0.35], trailing∈[0.03, 0.10]
+- ensemble loader 批量 PIT 加载 vol_60d (`WHERE calc_date <= signal_date`), 应用到 final candidates
+- config flag `selection.vol_aware.enabled` 默认 false (向后兼容, ablation 时开)
+
+**Touch 文件**:
+- `backend/services/paper_sim/config.py` (加 `vol_aware: dict` 字段)
+- `backend/services/paper_sim/selector.py` (加 `_vol_aware_params` + ensemble loader 批量 fetch vol_60d + override)
+- `backend/config/paper_sim_ensemble.yaml` (加 `vol_aware:` 段, enabled: false)
+- `backend/tests/paper_sim/test_vol_aware.py` (**新, 8 单测**: enabled/disabled/None vol/zero vol/mid vol/high vol clip/low vol clip/hp scaling/custom sigma)
+
+**单测结果**: 8/8 PASS. 全套 paper_sim 67/67 PASS (无回退).
+
+**下一步**: 等 ensemble v3 跑完 → 看 KPI → 开启 `vol_aware.enabled=true` 跑 v4 ablation 对比.
+
+**5-level fine-graining roadmap** (按工程量排):
+- L0 (现状): 全 strategy 一套参数 — 批量化均值
+- L1: per-formula × stage — Optuna 已实现 (mart_per_formula_stage_optimal)
+- **L2 (本次)**: per-stock vol-aware 缩放 — 半天, 已完成
+- L3: per-stock × stage × formula 完整网格 — 1-2 天 (需扩 mart 表)
+- L4: case-based / k-NN 历史相似度 — 1-2 周 (大工程)
+- L5: ML 端到端 — 月级 (Phase ψ.γ)
 
 ### 2026-05-14 凌晨 (Phase ψ.β.sector — 板块强度 alpha + 综合 plan)
 

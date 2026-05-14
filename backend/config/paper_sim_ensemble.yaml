@@ -102,6 +102,28 @@ selection:
       source_col: "holder_count_change_q_pct"
       direction: -1                      # 越降越好
       pit_key: "trade_date"
+    # ─── 板块强度 (Phase ψ.β.sector) ───
+    # 但板块 alpha 是 per-sector 不是 per-stock — 需特殊 JOIN
+    # 简化: 拿当前股所在 sector 的 ret_60d / excess_60d / price_vs_ma20 作为 alpha
+    # (selector ensemble loader 需识别 source_table 用 sector_name JOIN)
+    - name: "sector_ret_60d"
+      weight: 0.08                       # 行业 60 日 ret (越强越买)
+      source_table: "v_stock_sector_momentum_daily"   # view: stock_code × sector momentum
+      source_col: "ret_60d"
+      direction: 1
+      pit_key: "trade_date"
+    - name: "sector_excess_60d"
+      weight: 0.07                       # 行业 vs 全市场 60 日超额
+      source_table: "v_stock_sector_momentum_daily"
+      source_col: "excess_60d"
+      direction: 1
+      pit_key: "trade_date"
+    - name: "sector_price_vs_ma20"
+      weight: 0.05                       # 行业价 vs 20 日均线 (越正越强)
+      source_table: "v_stock_sector_momentum_daily"
+      source_col: "price_vs_ma20"
+      direction: 1
+      pit_key: "trade_date"
 
   # ── 大盘 regime gate (fact_regime_state) ──
   regime_gate:
@@ -112,6 +134,23 @@ selection:
     bear_multiplier: 0.3                 # bear regime: 降低买入门槛
     sideways_multiplier: 0.7
     bull_multiplier: 1.0
+
+  # ── Phase ψ.β.5 L2 vol-aware per-stock 参数 ──
+  # 把"批量化均值" (所有股共用 hp=15/stop=-0.10/target=0.20) 升级为
+  # "按每股 vol_60d 缩放" (高 vol 股给宽 stop+target, 低 vol 股给紧 stop+target).
+  # 启用前提: fact_risk_factors.vol_60d 已 PIT backfill (Phase ψ.β.1 已完成).
+  # Default off — 用 ablation 验证有效性后再决定是否上线.
+  vol_aware:
+    enabled: false                       # 默认 off, ablation 时 true
+    stop_sigma: 2.0                      # stop = -2σ (~95% CI 下界)
+    target_sigma: 3.0                    # target = +3σ (3 倍 hp std)
+    trailing_sigma: 1.0                  # trailing = 1σ (常用 arm 后回撤幅度)
+    stop_min: -0.20                      # stop hard floor (最宽)
+    stop_max: -0.05                      # stop hard cap (最紧, 防低 vol 股 stop 太靠近 0)
+    target_min: 0.10
+    target_max: 0.35
+    trailing_min: 0.03
+    trailing_max: 0.10
 
 # ─── 退出 / Swap / 风险 / Tx cost (跟 baseline 一致) ───
 exit:

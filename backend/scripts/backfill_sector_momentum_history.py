@@ -70,12 +70,15 @@ def main():
     # 退到 dim_stock_tdx_industry (latest 但稳定)
     log.info("加载 PIT 行业映射 ...")
     sector_col_name = f"tdx_{args.industry_level}_name"
-    history_check = mkt.execute(f"""
-        SELECT COUNT(*) FROM sm.dim_stock_tdx_industry_history
-    """).fetchone()[0]
-    if history_check > 1000:
-        # PIT 表有数据 — 用 history
-        log.info(f"  使用 dim_stock_tdx_industry_history (PIT, {history_check:,} 行)")
+    # dim_stock_tdx_industry_history 是 PIT 但实际只 ~1 周 snapshot (2026-04-25 起)
+    # 真实历史 PIT 不可用 — 退到 latest (假设行业分类跨 3 年基本不变, 业界做法)
+    # Phase ψ.β.dict 后续可加 announce_date 字段做真 PIT.
+    history_distinct_dates = mkt.execute(
+        "SELECT COUNT(DISTINCT snapshot_date) FROM sm.dim_stock_tdx_industry_history"
+    ).fetchone()[0]
+    if history_distinct_dates >= 30:
+        # 真有 ≥ 30 天 PIT 历史, 用 history
+        log.info(f"  使用 dim_stock_tdx_industry_history ({history_distinct_dates} snapshots, PIT)")
         mkt.execute(f"""
             CREATE OR REPLACE TEMP TABLE __pit_industry AS
             SELECT stock_code, snapshot_date AS effective_date, {sector_col_name} AS sector
@@ -83,8 +86,8 @@ def main():
              WHERE {sector_col_name} IS NOT NULL AND {sector_col_name} != ''
         """)
     else:
-        # PIT 表稀, 退到 latest (无 history)
-        log.warning(f"  dim_stock_tdx_industry_history 只 {history_check} 行, 退到 latest 表")
+        log.warning(f"  dim_stock_tdx_industry_history 只 {history_distinct_dates} 个 snapshot, "
+                    f"退到 latest (假设行业分类 3 年内基本不变)")
         mkt.execute(f"""
             CREATE OR REPLACE TEMP TABLE __pit_industry AS
             SELECT stock_code, '2020-01-01' AS effective_date, {sector_col_name} AS sector

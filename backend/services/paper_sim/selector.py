@@ -16,6 +16,7 @@ mode 选择放 config 里, business 代码不动 — Rule 2 + 项目特定 "模�
 from __future__ import annotations
 
 import logging
+import math
 from dataclasses import dataclass
 from typing import Optional
 
@@ -27,6 +28,45 @@ from services.portfolio_walk_forward.liquidity import (
 
 
 TIER_RANK = {"NO_SIGNAL": 0, "WATCH": 1, "BUY": 2, "STRONG_BUY": 3}
+
+
+def _vol_aware_params(vol_60d_annualized: Optional[float], hp_days: int,
+                       va: dict, default_stop: float, default_target: float,
+                       default_trailing: float) -> tuple[float, float, float]:
+    """L2 vol-aware: 按 vol_60d 缩放 stop/target/trailing.
+
+    Rule 6 (数据驱动): vol_60d 从 fact_risk_factors.vol_60d PIT 来, hp_days × sigma scaling.
+    Rule 9.1 真金白银: clip 到 [stop_min, stop_max] 等 hard bounds — 防极端 vol 估算失真.
+
+    Args:
+        vol_60d_annualized: PIT vol_60d (年化 std), None 则返回默认值
+        hp_days: 持仓周期 (trading days)
+        va: vol_aware 配置 dict (sigma 倍数 + min/max bounds)
+        default_*: vol 缺失时的兜底默认值
+    Returns:
+        (stop_pct, target_pct, trailing_pct) — stop 是负数, target/trailing 是正数
+    """
+    if not va.get("enabled") or not vol_60d_annualized or vol_60d_annualized <= 0:
+        return default_stop, default_target, default_trailing
+    # 年化 -> hp 日 std
+    sigma_hp = vol_60d_annualized * math.sqrt(max(hp_days, 1) / 252.0)
+    stop_sigma     = float(va.get("stop_sigma", 2.0))
+    target_sigma   = float(va.get("target_sigma", 3.0))
+    trailing_sigma = float(va.get("trailing_sigma", 1.0))
+    raw_stop     = -stop_sigma * sigma_hp
+    raw_target   = +target_sigma * sigma_hp
+    raw_trailing = +trailing_sigma * sigma_hp
+    # clip
+    stop_min     = float(va.get("stop_min",     -0.20))   # 最宽 stop (最负)
+    stop_max     = float(va.get("stop_max",     -0.05))   # 最紧 stop (最接近 0)
+    target_min   = float(va.get("target_min",    0.10))
+    target_max   = float(va.get("target_max",    0.35))
+    trailing_min = float(va.get("trailing_min",  0.03))
+    trailing_max = float(va.get("trailing_max",  0.10))
+    stop     = max(stop_min,     min(stop_max,     raw_stop))
+    target   = max(target_min,   min(target_max,   raw_target))
+    trailing = max(trailing_min, min(trailing_max, raw_trailing))
+    return stop, target, trailing
 
 log = logging.getLogger("paper_sim.selector")
 
@@ -394,7 +434,36 @@ def load_today_candidates_ensemble(
     n_strong = max(1, n_total // 10)   # 前 10% STRONG_BUY
     n_buy    = max(n_strong, n_total // 3)   # 前 33% BUY
 
+    # Phase ψ.β.5 L2: 若 vol_aware enabled, 批量加载 final candidates 的 vol_60d
+    # PIT: WHERE calc_date <= signal_date, 每股取 latest
+    va = getattr(cfg, "vol_aware", {}) or {}
+    final_codes = [sc for sc, _ in sorted_scores[:n_buy]]
+    vol_pit: dict[str, float] = {}
+    if va.get("enabled") and final_codes:
+        try:
+            qs = ",".join("?" * len(final_codes))
+            vol_rows = conn.execute(f"""
+                WITH pit_max AS (
+                    SELECT stock_code, MAX(calc_date) AS pit
+                      FROM fact_risk_factors
+                     WHERE calc_date <= ? AND stock_code IN ({qs})
+                     GROUP BY stock_code
+                )
+                SELECT t.stock_code, t.vol_60d
+                  FROM fact_risk_factors t
+                  JOIN pit_max p ON p.stock_code = t.stock_code AND p.pit = t.calc_date
+                 WHERE t.vol_60d IS NOT NULL
+            """, [signal_date, *final_codes]).fetchall()
+            vol_pit = {r[0]: float(r[1]) for r in vol_rows}
+            log.debug(f"  L2 vol_aware: 加载 {len(vol_pit)}/{len(final_codes)} 个 vol_60d")
+        except Exception as e:
+            log.warning(f"  L2 vol_aware fetch failed (fallback default): {e}")
+
     out: list[CandidateRow] = []
+    hp = int(dh.get("hp", 15))
+    def_stop     = float(dh.get("stop_pct",     -0.10))
+    def_target   = float(dh.get("target_pct",    0.20))
+    def_trailing = float(dh.get("trailing_pct",  0.05))
     for i, (sc, score) in enumerate(sorted_scores):
         if i < n_strong:
             tier = "STRONG_BUY"
@@ -404,17 +473,22 @@ def load_today_candidates_ensemble(
             break
         if cfg.min_tier_to_buy == "STRONG_BUY" and tier != "STRONG_BUY":
             continue
+        # L2 vol-aware override (va.enabled=false 时仍返回 default)
+        v60 = vol_pit.get(sc)
+        stop_pct, target_pct, trailing_pct = _vol_aware_params(
+            v60, hp, va, def_stop, def_target, def_trailing
+        )
         out.append(CandidateRow(
             stock_code=sc,
             formula_id="ensemble",
             formula_variant="ensemble",
             tier=tier,
             score=float(score),
-            expected_total_return=float(dh.get("target_pct", 0.20)),
-            optimal_hp=int(dh.get("hp", 15)),
-            optimal_target_pct=float(dh.get("target_pct", 0.20)),
-            optimal_stop_pct=float(dh.get("stop_pct", -0.10)),
-            optimal_trailing_pct=float(dh.get("trailing_pct", 0.05)),
+            expected_total_return=target_pct,
+            optimal_hp=hp,
+            optimal_target_pct=target_pct,
+            optimal_stop_pct=stop_pct,
+            optimal_trailing_pct=trailing_pct,
             signal_close=0.0,
             sell_target=None, stop_price=None,
             stage=None, match_tier="ensemble",

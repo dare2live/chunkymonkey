@@ -54,6 +54,9 @@ class SelectionConfig:
         "min_amount_20d_yuan": 0,   # 流动性 (driver liquidity 已 filter, 这里冗余)
         "allowed_stages": ["1", "1.5", "2"],   # 仅底部 / 突破中 / 上升趋势
     })
+    # Phase ψ.β.5 L2: vol-aware per-stock 参数 (从 fact_risk_factors.vol_60d 缩放 stop/target/trailing)
+    # enabled=False (默认 off, 不影响现有 ensemble v3 跑批); 启用见 paper_sim_ensemble.yaml 注释
+    vol_aware: dict = field(default_factory=dict)
 
 
 @dataclass(frozen=True)
@@ -185,7 +188,8 @@ def load_config(path: Path | None = None, override: dict | None = None) -> Paper
                    "hp": 15, "stop_pct": -0.10, "target_pct": 0.20, "trailing_pct": 0.05},
                "ensemble_quality_filters": raw["selection"].get("ensemble_quality_filters") or {
                    "max_vol_60d": 0.40, "min_amount_20d_yuan": 0,
-                   "allowed_stages": ["1", "1.5", "2"]}}
+                   "allowed_stages": ["1", "1.5", "2"]},
+               "vol_aware": raw["selection"].get("vol_aware", {}) or {}}
         ),
         exit=ExitConfig(**raw["exit"]),
         swap=SwapConfig(**raw["swap"]),
