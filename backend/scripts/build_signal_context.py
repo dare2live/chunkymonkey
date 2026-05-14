@@ -156,7 +156,8 @@ def main():
 
     # 写库 (DELETE + INSERT 显式事务, 用 services 主 conn)
     log.info("写库 (atomic)...")
-    from services.db import get_conn
+    # Phase ψ.β.4.5: 不要重复 import get_conn — Python local scoping 会让 line 62
+    # 的 _c = get_conn() 失效 (UnboundLocalError). get_conn 已在顶部 import.
     from services.formula_engine.signal_context_ddl import ensure_signal_context_table
     conn = get_conn()
     try:

@@ -45,12 +45,27 @@ class Bar:
     amount: float
 
 
+# Phase ψ.β.perf: bar date → idx cache (per bars list, by id())
+# 性能 hotspot: simulate_trade 每次调用 _idx O(N) linear search.
+# Optuna 100 trials × N_signals × K-line bars = O(1e11) ops 在大跑批里.
+# 用 id(bars) 做 key 缓存 {date: idx} — fork worker 内 bars_by_stock 共享内存,
+# id 稳定不变, 缓存命中率近 100%.
+# 防御: cache size 上限 (LRU evict), 防内存爆.
+_BAR_DATE_IDX_CACHE: dict[int, dict[str, int]] = {}
+_BAR_DATE_IDX_CACHE_MAX = 10_000   # 10K stocks 大约够全市场
+
+
 def _idx(bars: list[Bar], date: str) -> int:
-    """二分查日期索引."""
-    for i, b in enumerate(bars):
-        if b.date == date:
-            return i
-    return -1
+    """日期 → bars 列表索引. O(1) dict 查找 (含 cache build)."""
+    key = id(bars)
+    cache = _BAR_DATE_IDX_CACHE.get(key)
+    if cache is None:
+        if len(_BAR_DATE_IDX_CACHE) >= _BAR_DATE_IDX_CACHE_MAX:
+            # 简单 evict: 随机删一个 (Python 3.7+ dict 保序, 删第一个即最老)
+            _BAR_DATE_IDX_CACHE.pop(next(iter(_BAR_DATE_IDX_CACHE)), None)
+        cache = {b.date: i for i, b in enumerate(bars)}
+        _BAR_DATE_IDX_CACHE[key] = cache
+    return cache.get(date, -1)
 
 
 def simulate_trade(
@@ -207,8 +222,8 @@ def _build_result(stock_code: str, signal_date: str, buy_date: str, buy_price: f
 # 批量聚合
 # ─────────────────────────────────────────────────────────────────────
 
-def backtest_signals(
-    signals: list[dict],   # [{stock_code, signal_date}, ...]
+def backtest_signals_with_trades(
+    signals: list[dict],
     bars_by_stock: dict[str, list[Bar]],
     stop_pct: float,
     target_pct: float,
@@ -216,7 +231,8 @@ def backtest_signals(
     hp_target: int,
     execution: ExecutionModel = EXECUTION_MODEL,
     buy_offset: int = 1,
-) -> BacktestSummary:
+) -> tuple[BacktestSummary, list[TradeResult]]:
+    """Phase ψ.β.perf: 同时返回 summary + trades, 避免调用方重新跑 simulate_trade."""
     trades: list[TradeResult] = []
     for sig in signals:
         bars = bars_by_stock.get(sig["stock_code"])
@@ -230,7 +246,26 @@ def backtest_signals(
         )
         if t is not None:
             trades.append(t)
-    return aggregate(trades, n_signals=len(signals))
+    return aggregate(trades, n_signals=len(signals)), trades
+
+
+def backtest_signals(
+    signals: list[dict],   # [{stock_code, signal_date}, ...]
+    bars_by_stock: dict[str, list[Bar]],
+    stop_pct: float,
+    target_pct: float,
+    trailing_pct: float,
+    hp_target: int,
+    execution: ExecutionModel = EXECUTION_MODEL,
+    buy_offset: int = 1,
+) -> BacktestSummary:
+    """Legacy 兼容接口 — 内部走 backtest_signals_with_trades."""
+    summary, _ = backtest_signals_with_trades(
+        signals=signals, bars_by_stock=bars_by_stock,
+        stop_pct=stop_pct, target_pct=target_pct, trailing_pct=trailing_pct,
+        hp_target=hp_target, execution=execution, buy_offset=buy_offset,
+    )
+    return summary
 
 
 def aggregate(trades: list[TradeResult], n_signals: int) -> BacktestSummary:

@@ -322,6 +322,47 @@ def load_today_candidates_ensemble(
         if n_alphas_present >= max(2, len(alphas) // 2):
             scores[sc] = score
 
+    # 3.5. Phase ψ.β.4.6: quality filter — 排除高波动 / 下跌趋势 stock
+    qf = getattr(cfg, "ensemble_quality_filters", {}) or {}
+    max_vol = qf.get("max_vol_60d")
+    allowed_stages = set(qf.get("allowed_stages") or [])
+
+    if max_vol is not None:
+        try:
+            vol_rows = conn.execute("""
+                WITH pit_max AS (
+                    SELECT stock_code, MAX(calc_date) AS pit
+                      FROM fact_risk_factors
+                     WHERE calc_date <= ?
+                     GROUP BY stock_code
+                )
+                SELECT t.stock_code, t.vol_60d
+                  FROM fact_risk_factors t
+                  JOIN pit_max p ON p.stock_code = t.stock_code AND p.pit = t.calc_date
+                 WHERE t.vol_60d IS NOT NULL AND t.vol_60d > ?
+            """, [signal_date, max_vol]).fetchall()
+            high_vol_stocks = {r[0] for r in vol_rows}
+            n_before = len(scores)
+            scores = {sc: v for sc, v in scores.items() if sc not in high_vol_stocks}
+            log.debug(f"  quality vol filter: {n_before} -> {len(scores)} (高 vol 剔 {len(high_vol_stocks)})")
+        except Exception as e:
+            log.warning(f"  quality vol filter failed: {e}")
+
+    if allowed_stages:
+        try:
+            stage_rows = conn.execute("""
+                SELECT stock_code, technical_stage
+                  FROM fact_signal_context
+                 WHERE date = ?
+            """, [signal_date]).fetchall()
+            stage_map = {r[0]: r[1] for r in stage_rows}
+            n_before = len(scores)
+            scores = {sc: v for sc, v in scores.items()
+                      if stage_map.get(sc) in allowed_stages}
+            log.debug(f"  quality stage filter: {n_before} -> {len(scores)}")
+        except Exception as e:
+            log.warning(f"  quality stage filter failed: {e}")
+
     # 4. regime gate
     rg = cfg.regime_gate
     if rg.get("enabled"):

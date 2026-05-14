@@ -42,13 +42,17 @@ class SelectionConfig:
     # 用于 ablation: momentum vs reversal vs combined 同 paper_sim 路径下切换
     formula_whitelist: tuple = ()
     # Phase ψ.β.4: ensemble 多 alpha 综合 配置
-    # ensemble_alphas: list of {name, weight, source_table, source_col, direction, pit_key, ...}
     ensemble_alphas: tuple = ()
-    # regime_gate: {enabled, source_table, pit_key, bear_multiplier, sideways_multiplier, bull_multiplier}
     regime_gate: dict = field(default_factory=dict)
-    # ensemble 默认持仓参数 (paper_sim simulate_trade 用 — 反转 deep × stage=1 实测最优)
     default_holding: dict = field(default_factory=lambda: {
         "hp": 15, "stop_pct": -0.10, "target_pct": 0.20, "trailing_pct": 0.05
+    })
+    # Phase ψ.β.4.6: quality filter (sanity gate, 在 zscore 之前 filter universe)
+    # 防止 ensemble 选高 vol 股 (短期 stop_hit 频繁) 和下跌趋势股 (stage=4)
+    ensemble_quality_filters: dict = field(default_factory=lambda: {
+        "max_vol_60d": 0.40,        # 60 日年化 std ≤ 40% (排除高波动)
+        "min_amount_20d_yuan": 0,   # 流动性 (driver liquidity 已 filter, 这里冗余)
+        "allowed_stages": ["1", "1.5", "2"],   # 仅底部 / 突破中 / 上升趋势
     })
 
 
@@ -178,7 +182,10 @@ def load_config(path: Path | None = None, override: dict | None = None) -> Paper
                "ensemble_alphas": tuple(raw["selection"].get("ensemble_alphas") or []),
                "regime_gate": raw["selection"].get("regime_gate", {}) or {},
                "default_holding": raw["selection"].get("default_holding", {}) or {
-                   "hp": 15, "stop_pct": -0.10, "target_pct": 0.20, "trailing_pct": 0.05}}
+                   "hp": 15, "stop_pct": -0.10, "target_pct": 0.20, "trailing_pct": 0.05},
+               "ensemble_quality_filters": raw["selection"].get("ensemble_quality_filters") or {
+                   "max_vol_60d": 0.40, "min_amount_20d_yuan": 0,
+                   "allowed_stages": ["1", "1.5", "2"]}}
         ),
         exit=ExitConfig(**raw["exit"]),
         swap=SwapConfig(**raw["swap"]),
