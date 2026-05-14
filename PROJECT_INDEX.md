@@ -740,6 +740,26 @@ SELECT * FROM mart_data_source_watermark;
 
 每次 session 增量内容写这里, 新 session 启动时**从下往上读**最近改了啥.
 
+### 2026-05-14 (Phase v3.2 governance wire — 7 mart 入 schema + yaml + Deflated Sharpe)
+
+**用户 push back: "说了没做" 扫描结果**:
+- `services/data_governance/*` (commit f429d91f) 没在 ETL 调 (Phase ψ.γ.dict.2 自己反例)
+- 工程红线"新表必须注册 dim_schema_version" 7 个新 mart 没注册
+- PLAN_V3 §99 P0a 列出的"机构路径 A/B + 公式触发哑变量"没接 feature
+- `paper_sim_ml_score.yaml` 没跑过 / mart_p2_composite / mart_p3_acceptance / mart_champion 全空
+
+**本批补强**:
+- `services/schema_versions.py`: 加 8 个 mart 表 (p0a label + p0a feature_label + p0b oos + p0b walkforward_eval + p1 ablation + p2 composite + p3 acceptance + champion model)
+- `backend/config/field_dictionary.yaml`: 8 mart schema 入字典 (含 pk/pit-key role / outlier_cap / enum)
+- `scripts/p0b_deflated_sharpe_audit.py`: Bailey-LdP 跨 3 horizon study 校正 OOS RankIC
+
+**TODO** (待 P1 ablation 完成):
+- A1: feature_join 加 mart_per_stock_stage_strategy_optimal → stage_opt_sharpe/hp 特征
+- A2: feature_join 加 mart_institution_industry_stat → inst_quality 特征 (路径 A)
+- A4: feature_join 加 fact_signal_context → 公式触发 dummy + 公式 IC
+- D1: build_p0a_* 入口 wire validate_rows_before_insert (governance enforce)
+- 跑 paper_sim_v2 with ml_score mode (blend, 不替代 stage-aware Optuna)
+
 ### 2026-05-14 (Phase v3.2 horizon ablation 启动 — 5d/10d/20d 对比)
 
 **新 CLI** `scripts/run_p0b_horizon_ablation.py`:

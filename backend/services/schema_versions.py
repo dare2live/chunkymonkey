@@ -232,6 +232,15 @@ MART_VERSIONS = {
     "mart_per_stock_strategy_optimal": "v3",     # Phase η++++++: 加 K线形态阈值 + 多目标 metrics
     "mart_stock_formula_buy_signal_daily": "v2", # Phase η+++++ 修正: 8 因子全维 (含 archetype/primary_type)
     "mart_stage_formula_fitness": "v2",          # Phase η++++++: 重建 6 fund × 6 tech × 5 formula × 7 hp
+    # Phase v3.2 PLAN_V3 (ML ranking + paper_sim ML score)
+    "mart_p0a_label_panel": "v1",                # P0a T+1 VWAP forward 5/10/20d cost-after labels + mask
+    "mart_p0a_feature_label_panel": "v1",        # P0a JOIN alpha158 + risk + financial + events × label
+    "mart_p0b_oos_predictions": "v1",            # P0b walk-forward OOS predictions (1 row per stock×signal_date×model_id)
+    "mart_p0b_walkforward_eval": "v1",           # P0b 每窗 RankIC + IC IR + n_train/n_test
+    "mart_p1_ablation_result": "v1",             # P1 feature group ablation (baseline + drop_one + only_one)
+    "mart_p2_composite_result": "v1",            # P2 composite weight grid search (ret/dd/hp/turnover/cost/capacity)
+    "mart_p3_acceptance_result": "v1",           # P3 final holdout 4 硬验收 + KPI snapshot
+    "mart_champion_model": "v1",                 # P4c 单冠军 + KPI 完整性 Gate (Bailey-LdP deflated SR)
 }
 
 # dim_* 派生类 (静态/缓存型, 不含 raw dim, 12 张)

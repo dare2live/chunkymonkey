@@ -244,6 +244,204 @@ databases:
         oos_sharpe:        {type: DOUBLE, role: business-canonical}
         oos_calmar:        {type: DOUBLE}
 
+    # ─── PLAN_V3 v3.2 (ML ranking pipeline, Phase v3.2 P0a/P0b/P1/P2/P3/P4c) ───
+
+    mart_p0a_label_panel:
+      description: "P0a 训练 label 主表 — T+1 VWAP entry × 5/10/20d VWAP exit, 扣 round-trip tx_cost ≈ 0.302%, 停牌/一字板 mask"
+      pit_key: signal_date
+      row_count_approx: 3_700_000
+      coverage: "4625 KEEP universe × 799 alpha158 dates (2023-01-03..2026-04-23)"
+      fields:
+        stock_code:          {type: TEXT, role: pk}
+        signal_date:         {type: DATE, role: pit-key}
+        entry_date:          {type: DATE, description: "T+1 trading day"}
+        entry_vwap:          {type: DOUBLE}
+        unable_at_entry:     {type: BOOL}
+        exit_date_5d:        {type: DATE}
+        exit_vwap_5d:        {type: DOUBLE}
+        unable_at_exit_5d:   {type: BOOL}
+        fwd_cost_after_5d:   {type: DOUBLE, description: "(exit_vwap_5d/entry_vwap - 1) - round_trip; NULL when mask"}
+        exit_date_10d:       {type: DATE}
+        exit_vwap_10d:       {type: DOUBLE}
+        unable_at_exit_10d:  {type: BOOL}
+        fwd_cost_after_10d:  {type: DOUBLE}
+        exit_date_20d:       {type: DATE}
+        exit_vwap_20d:       {type: DOUBLE}
+        unable_at_exit_20d:  {type: BOOL}
+        fwd_cost_after_20d:  {type: DOUBLE}
+        round_trip_cost_pct: {type: DOUBLE, sign: positive, outlier_cap: 0.01, description: "≈ 0.00302 一致"}
+        label_version:       {type: TEXT}
+        built_at:            {type: TEXT}
+
+    mart_p0a_feature_label_panel:
+      description: "P0a feature × label JOIN — alpha158 + risk + financial + events (ML ranking 训练用)"
+      pit_key: signal_date
+      row_count_approx: 3_700_000
+      coverage: "同 mart_p0a_label_panel, 89 cols (label + 65 a158 + 6 risk + 4 financial + 4 events + metadata)"
+      fields:
+        stock_code:          {type: TEXT, role: pk}
+        signal_date:         {type: DATE, role: pit-key}
+        # Label fields (forward, training only — feature pipeline 严禁读)
+        entry_date:          {type: DATE}
+        unable_at_entry:     {type: BOOL}
+        fwd_cost_after_5d:   {type: DOUBLE}
+        fwd_cost_after_10d:  {type: DOUBLE}
+        fwd_cost_after_20d:  {type: DOUBLE}
+        # Risk factors (vol/sharpe/mom — ASOF calc_date <= signal_date)
+        vol_30d:   {type: DOUBLE, unit: "fraction (年化)", outlier_cap: 2.0}
+        vol_60d:   {type: DOUBLE, unit: "fraction (年化)", outlier_cap: 2.0}
+        vol_120d:  {type: DOUBLE}
+        sharpe_60d: {type: DOUBLE, outlier_cap: [-5, 5]}
+        mom_30d:   {type: DOUBLE, unit: fraction}
+        mom_120d:  {type: DOUBLE}
+        # Financial PIT (pe/pb/ps/roe — ASOF trade_date=signal_date)
+        pe_ttm:    {type: DOUBLE, description: "负值=亏损股, paper_sim filter"}
+        pb:        {type: DOUBLE}
+        ps_ttm:    {type: DOUBLE}
+        roe_q:     {type: DOUBLE}
+        # Event dummies (7d/30d window 内有 LHB / 机构事件)
+        event_lhb_7d:    {type: BOOL}
+        event_lhb_30d:   {type: BOOL}
+        event_inst_7d:   {type: BOOL}
+        event_inst_30d:  {type: BOOL}
+        feature_version: {type: TEXT}
+        built_at:        {type: TEXT}
+        # NOTE: 65 alpha158 features (a158_kmid..a158_vstd60) — schema 见 alpha158.duckdb::fact_alpha158_panel
+
+    mart_p0b_oos_predictions:
+      description: "P0b walk-forward OOS predictions — 每行 (stock × signal_date × model_id) 含 ML score + forward labels"
+      pit_key: signal_date
+      row_count_approx: 5_900_000
+      coverage: "3 model_id × ~2M rows each (lgbm_baseline_5d/10d/20d)"
+      fields:
+        stock_code:        {type: TEXT, role: pk}
+        signal_date:       {type: DATE, role: pit-key}
+        model_id:          {type: TEXT, role: pk, description: "lgbm_baseline_5d / _10d / _20d / lambdamart_v1 / ..."}
+        score:             {type: DOUBLE, description: "ML predicted score (排序用, 跨 model 不可比)"}
+        fwd_cost_after_5d:  {type: DOUBLE}
+        fwd_cost_after_10d: {type: DOUBLE}
+        fwd_cost_after_20d: {type: DOUBLE}
+        model_version:     {type: TEXT}
+        feature_version:   {type: TEXT}
+        label_version:     {type: TEXT}
+        walk_forward_mode: {type: TEXT, enum: ["expanding_monthly", "holdout", "none"]}
+        train_start:       {type: DATE}
+        train_end:         {type: DATE}
+        test_start:        {type: DATE}
+        test_end:          {type: DATE}
+        is_final_holdout:  {type: BOOL}
+        built_at:          {type: TEXT}
+
+    mart_p0b_walkforward_eval:
+      description: "P0b 每窗 walk-forward eval — RankIC + IC IR + n_train/n_test"
+      fields:
+        run_id:            {type: TEXT, role: pk}
+        window_idx:        {type: INTEGER, role: pk}
+        model_id:          {type: TEXT, role: pk}
+        model_version:     {type: TEXT}
+        feature_version:   {type: TEXT}
+        label_version:     {type: TEXT}
+        walk_forward_mode: {type: TEXT, enum: ["expanding_monthly"]}
+        train_start:       {type: DATE}
+        train_end:         {type: DATE}
+        test_start:        {type: DATE}
+        test_end:          {type: DATE}
+        n_train:           {type: INTEGER, sign: positive}
+        n_test:            {type: INTEGER, sign: positive}
+        rank_ic:           {type: DOUBLE, outlier_cap: [-1, 1]}
+        rank_ic_ir:        {type: DOUBLE}
+        is_final_holdout:  {type: BOOL}
+        built_at:          {type: TEXT}
+
+    mart_p1_ablation_result:
+      description: "P1 feature group ablation — baseline + drop_one + only_one experiments"
+      fields:
+        run_id:              {type: TEXT, role: pk}
+        experiment_name:     {type: TEXT, role: pk}
+        feature_groups_used: {type: JSON}
+        n_features:          {type: INTEGER, sign: positive}
+        n_windows:           {type: INTEGER, sign: positive}
+        rank_ic:             {type: DOUBLE, outlier_cap: [-1, 1]}
+        rank_ic_ir:          {type: DOUBLE}
+        delta_vs_baseline:   {type: DOUBLE}
+        n_oos_dates:         {type: INTEGER}
+        label_field:         {type: TEXT}
+        n_estimators:        {type: INTEGER}
+        learning_rate:       {type: DOUBLE}
+        num_leaves:          {type: INTEGER}
+        built_at:            {type: TEXT}
+
+    mart_p2_composite_result:
+      description: "P2 composite weight grid search — ret/dd/hp/turnover/cost/capacity 6-dim grid"
+      fields:
+        run_id:                {type: TEXT, role: pk}
+        grid_idx:              {type: INTEGER, role: pk}
+        model_id:              {type: TEXT}
+        ret_w:                 {type: DOUBLE, sign: positive}
+        dd_w:                  {type: DOUBLE, sign: positive}
+        hp_w:                  {type: DOUBLE}
+        turnover_w:            {type: DOUBLE, sign: positive}
+        cost_w:                {type: DOUBLE, sign: positive}
+        capacity_w:            {type: DOUBLE, sign: positive}
+        hp_penalty_mode:       {type: TEXT, enum: ["linear", "log", "piecewise"]}
+        ann_ret:               {type: DOUBLE}
+        max_dd:                {type: DOUBLE}
+        avg_hp:                {type: DOUBLE}
+        turnover:              {type: DOUBLE, sign: positive}
+        tx_cost_pct:           {type: DOUBLE, sign: positive}
+        concentration:         {type: DOUBLE, outlier_cap: [0, 1]}
+        composite_score:       {type: DOUBLE}
+        built_at:              {type: TEXT}
+
+    mart_p3_acceptance_result:
+      description: "P3 final holdout acceptance — 4 硬验收 (用户终极目标 PLAN_V3 §0.1)"
+      fields:
+        run_id:               {type: TEXT, role: pk}
+        model_id:             {type: TEXT, role: pk}
+        ann_ret:              {type: DOUBLE}
+        max_dd:               {type: DOUBLE}
+        excess_vs_hs300:      {type: DOUBLE}
+        monthly_win_rate:     {type: DOUBLE, outlier_cap: [0, 1]}
+        hs300_ann_ret:        {type: DOUBLE}
+        n_oos_months:         {type: INTEGER}
+        final_period_start:   {type: TEXT}
+        final_period_end:     {type: TEXT}
+        model_version:        {type: TEXT}
+        feature_version:      {type: TEXT}
+        label_version:        {type: TEXT}
+        seed:                 {type: INTEGER}
+        passed:               {type: BOOL}
+        failures_json:        {type: TEXT}
+        built_at:             {type: TEXT}
+
+    mart_champion_model:
+      description: "P4c champion model registry — 单冠军 + 8 必填 KPI Gate"
+      fields:
+        champion_id:           {type: TEXT, role: pk}
+        model_id:              {type: TEXT, role: business-canonical}
+        model_version:         {type: TEXT}
+        feature_version:       {type: TEXT}
+        label_version:         {type: TEXT}
+        seed:                  {type: INTEGER}
+        rank_ic:               {type: DOUBLE, outlier_cap: [-1, 1]}
+        ann_ret:               {type: DOUBLE}
+        max_dd:                {type: DOUBLE}
+        monthly_win_rate:      {type: DOUBLE, outlier_cap: [0, 1]}
+        excess_vs_hs300:       {type: DOUBLE}
+        turnover:              {type: DOUBLE, sign: positive}
+        tx_cost_pct:           {type: DOUBLE, sign: positive}
+        capacity_concentration: {type: DOUBLE, outlier_cap: [0, 1]}
+        final_period_start:    {type: TEXT}
+        final_period_end:      {type: TEXT}
+        n_oos_months:          {type: INTEGER}
+        is_current_champion:   {type: BOOL}
+        promoted_at:           {type: TEXT}
+        promoted_reason:       {type: TEXT}
+        composite_score:       {type: DOUBLE}
+        p3_passed:             {type: BOOL}
+        p3_failures_json:      {type: TEXT}
+        built_at:              {type: TEXT}
+
   etf.duckdb:
     description: ETF 数据 (单独 DB, 跟主流不混)
 
