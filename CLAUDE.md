@@ -54,6 +54,24 @@
 | DuckDB DELETE 报 "0 out of 1 rows" → FATAL | DROP+REBUILD index 清状态 | 找首次写坏 index 的代码路径, 改 DELETE 走 rowid 绕 index, 加启动 health check |
 | sync_market_data 30s budget timeout | 用单 step endpoint 绕 budget | budget 按 watermark 滞后动态算 / 改 heartbeat watchdog |
 | 已经有的 utils 函数没 grep 就造重 | 写完才发现重复 | **动手前 grep 是 Rule 5 的子条款** — 现象 = 错的方案, 不是没方案 |
+| `fact_shareholder_plan.announce_date` 47% NULL 假设 "upstream 真缺, 不该 FAIL" | 接受 audit 误报 / 放松 audit 阈值 | 上市公司公告 announce_date **不会真缺** — 查 sync 路径漏了字段, 或 akshare 抽取失败, 用 tdxhub / miaoxiang 重拉补全 |
+
+### 数据源可信度分级 (用户原话)
+
+| 数据源 | 理论覆盖率 | 缺失原因 |
+|---|---|---|
+| **tdxhub** | 100% | 缺失 = 自己同步逻辑有 bug, 不是 upstream 真缺 |
+| **miaoxiang** | 100% | 同上 |
+| **akshare** | 不稳定 | 限频 / 接口变 / 数据滞后 — 缺失可能是上游 |
+| **其他第三方** | 视情况 | case-by-case 判定 |
+
+**核心原则** (用户原话): **"上市公司数据本身不会缺失"** (公告/股价/财报/股东). 数据不全时:
+
+1. **必须查根因** — 不直接假设 "upstream 真缺"
+2. **判断合理性 + 逻辑性** — e.g. 53.18% NULL 不可能是 reality (公告披露率 100%)
+3. **优先 tdxhub / miaoxiang 重拉** — 这两个源稳定, 真有缺失 99% 是我们 sync 路径问题
+4. **akshare 缺失** 可能是真上游问题, 但仍需查 (是否被限频 / 接口变了)
+5. **修源头不放松 audit 阈值** — Rule 5 根因, 不打补丁
 
 ## Rule 6 — Measured, Not Estimated
 

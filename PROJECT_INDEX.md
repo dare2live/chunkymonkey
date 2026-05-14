@@ -740,6 +740,28 @@ SELECT * FROM mart_data_source_watermark;
 
 每次 session 增量内容写这里, 新 session 启动时**从下往上读**最近改了啥.
 
+### 2026-05-14 (Phase v3.2 P-1.2~P-1.5 并发完成 — P-1 gate FAIL, 待 audit 修复 + backfill)
+
+**Rule 11 并发首测**: 4 个 general-purpose subagent 并发各写一个 audit, 都用 read_only=True 连接, 唯一 output path, 互不依赖. 实测可行.
+
+**新脚本** (chunkymonkey/backend/scripts/):
+- `audit_survivorship.py` (P-1.2): PASS=6 WARN=2 **FAIL=5** — Codex push back: spot check 缺 `listing_date <= sig_date` 条件 (FALSE POSITIVE for 11%; 真 K线 gap 存在)
+- `audit_tradeability.py` (P-1.3): PASS=9 WARN=1 FAIL=0 — Codex push back: 涨跌停规则未接入 paper_sim 应升级 WARN→FAIL
+- `audit_event_timestamp.py` (P-1.4): PASS=54 WARN=5 **FAIL=1** — Codex push back: `fact_shareholder_plan.announce_date` 是 nullable legacy 列, 不应硬 FAIL (用 `source_available_date` 字段更准)
+- `audit_universe_coverage.py` (P-1.5): PASS=18 WARN=5 FAIL=0 — Codex push back: `GAP_FAIL_RATIO=0.05` 隐式放松"100% 覆盖" 要求
+
+**Codex review thread `a69d6c54f52aeff36`** — 4 个 audit 反馈, 用户原则 push back Codex Q3:
+- (a) 修 P-1.2 audit listing_date 条件 → 重跑得到真实覆盖率
+- (b) backfill ~780 退市股 K 线 (**用 tdxhub, 不用 akshare**: 用户原则数据源可信度) + `dim_listing_status` 实例化
+- (c) P-1.3 升级 WARN→FAIL (paper_sim stop/limit wiring) — Codex 对
+- (d) ~~P-1.4 audit 改字段~~ — **Codex 错**: 用户原则 "上市公司数据不会真缺", `fact_shareholder_plan.announce_date` 47% NULL 是 sync 路径 bug, 不该放松 audit. 应该查根因 + 从 tdxhub/miaoxiang 重拉补全 (CLAUDE.md 新增"数据源可信度分级")
+
+**P-1 整体 gate**: 2 真 FAIL → PLAN §6 串行 gate 阻塞 P0. 修复路径:
+1. 修 P-1.2 audit listing_date bug → 重跑得真实数字
+2. 升级 P-1.3 WARN→FAIL
+3. backfill: 退市股 K 线 + `announce_date` 都走 tdxhub
+4. 重跑 P-1 全套 → 若 PASS 进 P0a
+
 ### 2026-05-14 (Phase v3.2 P-1.1 落盘 + Codex review 修复 + Rule 11 并发原则)
 
 **新脚本**: `backend/scripts/audit_pit_integrity.py` (P-1.1 PIT 完整性审计, 5 sections).
