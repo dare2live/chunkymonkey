@@ -388,7 +388,10 @@ def check_paper_sim_filter(conn) -> list[CheckResult]:
             ]},
         ))
     elif limit_hits:
-        # rule 表 / DDL / seed 存在但 paper_sim 没接入 — WARN (可改 FAIL)
+        # P-1.3 audit 边界: 数据层 (规则表 + K线能识别) = 已 PASS 在前面 sections.
+        # 工程层 (paper_sim selector 接入 stop/limit wiring) 是 P0c 范围, 不是 P-1 数据审计.
+        # Codex review Q2 主张升级 FAIL, 但跟 PLAN §6 串行 gate 矛盾 — P0c 在 P-1 之后,
+        # FAIL 会形成循环阻塞. 标 WARN + pending_phase=P0c 让 P0c gate 检查时升级.
         files = sorted({str(h[0].relative_to(repo_root)) for h in limit_hits})
         out.append(CheckResult(
             section="3. paper_sim filter",
@@ -396,11 +399,11 @@ def check_paper_sim_filter(conn) -> list[CheckResult]:
             status="WARN",
             detail=(
                 f"dim_price_limit_rules 在 {len(files)} 文件被引用 (DDL/seed/scripts) — "
-                "但 paper_sim/portfolio_walk_forward 没直接调用. 涨停日选股 / 跌停日卖出 "
-                "在 selector 层无显式过滤 (依赖上游 v_price_kline_qfq 数据过滤)"
+                "但 paper_sim/portfolio_walk_forward 没直接调用. P0c selector refactor 必修接入 "
+                "stop/limit wiring (PLAN §2 P0c Acceptance: 交易日志含不可成交原因, 同 seed 可复现)."
             ),
             rows=len(limit_hits),
-            extras={"files": files},
+            extras={"files": files, "pending_phase": "P0c"},
         ))
     else:
         out.append(CheckResult(

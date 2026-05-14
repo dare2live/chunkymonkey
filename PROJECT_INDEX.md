@@ -757,10 +757,12 @@ SELECT * FROM mart_data_source_watermark;
 - (d) ~~P-1.4 audit 改字段~~ — **Codex 错**: 用户原则 "上市公司数据不会真缺", `fact_shareholder_plan.announce_date` 47% NULL 是 sync 路径 bug, 不该放松 audit. 应该查根因 + 从 tdxhub/miaoxiang 重拉补全 (CLAUDE.md 新增"数据源可信度分级")
 
 **P-1 整体 gate**: 2 真 FAIL → PLAN §6 串行 gate 阻塞 P0. 修复路径:
-1. 修 P-1.2 audit listing_date bug → 重跑得真实数字
-2. 升级 P-1.3 WARN→FAIL
-3. backfill: 退市股 K 线 + `announce_date` 都走 tdxhub
+1. 修 P-1.2 audit listing_date bug → 重跑得真实数字 ✅ (修复后 11% 不变, 真生存者偏差)
+2. ~~升级 P-1.3 WARN→FAIL~~ → 改 WARN + pending_phase=P0c (P0c 工程任务非 P-1 数据审计)
+3. backfill: 退市股 K 线 + `announce_date` 都走 tdxhub (待启动)
 4. 重跑 P-1 全套 → 若 PASS 进 P0a
+
+**Pending fix tasks** (TaskCreate #18-21): tdxhub backfill 退市 K 线 / announce_date / dim_listing_status / 重跑 audit.
 
 ### 2026-05-14 (Phase v3.2 P-1.1 落盘 + Codex review 修复 + Rule 11 并发原则)
 

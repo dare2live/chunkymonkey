@@ -337,15 +337,18 @@ def check_survivorship_spot_check(conn) -> list[CheckResult]:
     out: list[CheckResult] = []
 
     try:
-        # 取已 delisted stocks (有 delisted_date)
+        # 取已 delisted stocks (有 delisted_date) — 同时拉 first_seen_date 做上市起点条件.
+        # Codex review Q1 fix: spot check must require listing_date <= sig_date < delisted_date,
+        # otherwise audit claims "stocks should exist before they were even listed".
         delisted_rows = conn.execute(
             """
-            SELECT stock_code, delisted_date
+            SELECT stock_code, delisted_date, first_seen_date
             FROM dim_all_ever_listed
             WHERE is_active=0 AND delisted_date IS NOT NULL AND delisted_date != ''
             """
         ).fetchall()
         delisted_map = {r[0]: r[1] for r in delisted_rows}
+        first_seen_map = {r[0]: r[2] for r in delisted_rows}
     except Exception as e:
         out.append(CheckResult(
             section="4. Survivorship spot-check",
@@ -383,10 +386,16 @@ def check_survivorship_spot_check(conn) -> list[CheckResult]:
                 ))
                 continue
 
-            # 当时 应该 active (delisted_date > sig_date) 的 delisted stocks
+            # 当时 应该 active 的 delisted stocks: listing_date <= sig_date < delisted_date.
+            # Codex review Q1 fix: 没有 listing_date 条件会把 "sig_date 时还未上市" 的股
+            # 错误纳入 should_be_in (e.g. 2024-03 上市 + 2025-08 退市的股, sig_date=2024-01-15
+            # 时本不在 universe, 不该期望它出现).
+            # rule-compliance: ok evidence=sentinel-MAX-date (防 None, 不是 model 参数)
+            MAX_SENTINEL_DATE = "9999-99-99"
             should_be_in = {
                 code for code, d in delisted_map.items()
                 if d and d > sig_date
+                and (first_seen_map.get(code) or MAX_SENTINEL_DATE) <= sig_date
             }
             # 实际在 universe 里的 delisted stocks
             actually_in = should_be_in & kline_universe
