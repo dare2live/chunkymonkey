@@ -740,6 +740,17 @@ SELECT * FROM mart_data_source_watermark;
 
 每次 session 增量内容写这里, 新 session 启动时**从下往上读**最近改了啥.
 
+### 2026-05-14 (Phase v3.2 P0a.4 — audit_p0a_panel.py PIT + Acceptance gate)
+
+**新脚本** `scripts/audit_p0a_panel.py` (P0a Acceptance gate):
+- §1 Reproducibility: label_version / built_at 全 non-NULL
+- §2 Cost deducted: round_trip_cost_pct > 0 + 常量; 10-sample 抽 spot check (exit/entry - 1) - rt = label
+- §3 Mask effective: unable_at_entry=True 时 5/10/20 label 全 NULL; unable_at_exit_Nd=True 时该 horizon label NULL
+- §5 KEEP universe: 全部 stock_code 前缀 ∈ ('60','00','30','68')
+- §6 PIT (feature panel): mart_p0a_feature_label_panel 不含 exit_vwap_/exit_date_/unable_at_exit_ 字段 (forward 在 label 不在 feature)
+
+待 P0a 全量 build 完跑 → P0a Acceptance gate PASS/FAIL.
+
 ### 2026-05-14 (Phase v3.2 P0c — paper_sim selector ML score loader Option A)
 
 **新模块** `services/paper_sim/ml_score_loader.py`:
