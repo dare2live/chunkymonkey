@@ -203,7 +203,129 @@ chmod +x .git/hooks/pre-commit .git/hooks/commit-msg
 
 最近用户的 4 次 /loop = "继续自主推进". 没有新指令.
 
-## 11. 不确定 / 推断 (区分事实 vs 猜测)
+## 11. 踩过的坑 — 别再踩 (跨多轮对话汇总)
+
+### 本 session (Phase ψ.γ/ψ.δ) 踩的坑
+
+| # | 坑 | 后果 | 修法 (已 commit) |
+|---|---|---|---|
+| 1 | **6.5万小时估算错误** — 把"per-stock backtest" (毫秒级单股 9 维 backtest) 跟"per-stock paper_sim" (18 min/trial 完整 5 仓位组合 sim) 搞混 | 误导用户; 用户 push back "不能并发? 你那么多显卡都不行?" | 实际 `optimize_per_stock_stage_strategy.py` 8 workers fork 58 min 已实现. 不要靠 GPU — Optuna TPE + DuckDB query 是 CPU bound. |
+| 2 | **Optuna v1 21 mo train 估错时间** — 我估 3.5 min/trial 实际 25 min/trial | 35 min 浪费 + kill | 估算前先做 1-trial benchmark, 不靠"看着合理" |
+| 3 | **Optuna v2 9 mo train 错选 2023-01~09** — fact_signal_context 2024-03 起 backfill, quality_filter 把所有 candidate 过滤 | 16 trials 全 0 trade, 35 min 浪费 + kill | **运行 Optuna 前先验证 train window 在所有 alpha 数据源覆盖期内** |
+| 4 | **L2 vol-aware sigma=2.0/3.0/1.0 + 6 bounds 拍脑袋** — 违反 Rule 6 "Measured not Estimated" | 用户 push back 后才发现 | Rule compliance hook (`check_rule_compliance.py`) staged-diff 强 reject magic numbers 没 evidence 注释 (commit ce9559e4) |
+| 5 | **VWAP volume 单位 MIXED** — akshare_sina=股 vs tdxhub=手, 我写死 `amount/(volume×100)` | akshare 数据 vwap=0.11 元 → stop_hit 假信号 → NAV 1.6M 暴跌 360K | `_vwap` 加 sanity check 选落在 [low×0.95, high×1.05] 的候选; 3 单测防回退 (commit 76541731) |
+| 6 | **ensemble v3 拍脑袋配置浪费跑批** — 13 alpha weights + regime mul + sigma + bounds 全拍脑袋 (Rule 6 反例 3 行) | 跑半天 NAV 1.13M (+13%) 不达标, 数据无意义 | CLAUDE.md Rule 6 反例表加 L2/ensemble/regime 3 行, Rule 9.9 写代码前 "measured from where?" ritual |
+| 7 | **14-alpha mean-reversion 加进 hurt 21pp ann** — Ridge sector_pred IC=-0.06 direction=-1 加进 ensemble 退化 ann -17.9% | 14 alpha 比 13 alpha baseline 差 21pp 年化 | 设 weight=0 disabled 保留, 后续 Optuna 决定. 学到: **加 alpha 已饱和, 边际负** |
+| 8 | **hp=30 减 turnover ✓ 但 ann 退化 14pp** — 我猜测 hp 翻倍减半 tx cost 应该改善 ann | 实测反例: 月胜率 ↑ 但 ann 反降. long-holds 拖累 stop-loss | 学到: **不能简单猜参数效果**, 必须 measured |
+| 9 | **mart_per_stock_stage_strategy_optimal PIT broken** — built_at 全 2026-05-13 单 batch, 不是 walk-forward multi train_end_date | paper_sim 历史选股看到事后数据 = selection leakage | 当前 ceiling test 是 ceiling 不是 real. 真修需 `optimize_per_stock_stage_walk_forward.py` 多 train_end_date 模式 |
+| 10 | **PROJECT_INDEX 同步多次遗漏** — Rule 9.5 是被动文字, 我下意识不维护 | 用户 push back 3 次 | pre-commit hook (`check_project_index_sync.py`) staged 含 service/script/yaml 必须改 PROJECT_INDEX, 否则 reject (commit 9e9d9fc6) |
+| 11 | **我即使 CLAUDE.md 有 Rule 也不遵守** | 用户原话: "即使claude.md有rule但你也不尊守，这个问题咋解决?" | 3 层防护: pre-commit hook 硬挡 + commit-msg 5-question keyword 检查 + Rule 9.9 写代码前 ritual (commit ce9559e4) |
+
+### 之前 session (Phase ψ.α/ψ.β) 踩的坑 (Rule 9 反例表)
+
+| # | 坑 | 修法 |
+|---|---|---|
+| 12 | `mart_per_stock_stage_strategy_optimal.sharpe` 用 in-sample fit (Optuna 整段 2023-2026 fit 出来), `paper_sim/selector.py: ORDER BY sharpe DESC` → paper_sim 跑 "+312%" 实际选的是"事后看最强 5 只" | walk_forward.expanding_monthly (R1), 业务代码只读 `oos_*` 字段, governance.enforce_pre_insert 拒入 `walk_forward_mode='none'` |
+| 13 | `swap_uplift_estimate = (Y总预期 × 子区间比例) - (A当前涨幅 × 剩余比例) - 0.35%` 两项都假设"匀速跑" | 真实 K 线 forward 反事实: 两个真实数, 不是估算 |
+| 14 | Wilson 默认 0.55 (`sizer.py: wilson = 0.55`) — "假设上游已 wilson 排序过" | 改读上游真实 `wilson_win_rate` 字段, 没有就显式 skip |
+| 15 | `portfolio_backtest +45.4%` 报用户做最终决策 — 不算 tx_cost / 流动性 / T+1 滑点 = 理想化 | live 决策必须基于含真实成本的 paper_sim, 不用 portfolio_backtest |
+| 16 | KPI 阈值 (severe=0.5 / 年化≥30% / 持仓≥5天) 拍脑袋默认 | Optuna / grid search 跑 800+ 天 sweep, commit 附 sweep 结果 |
+| 17 | DuckDB DELETE 报 "0 out of 1 rows" → DROP+REBUILD index 清状态 (症状修复) | 找首次写坏 index 的代码路径, 改 DELETE 走 rowid 绕 index, 加启动 health check |
+| 18 | sync_market_data 30s budget timeout → 用单 step endpoint 绕 budget | budget 按 watermark 滞后动态算 / heartbeat watchdog |
+| 19 | K 线表有今天盘中数据 → 下游 builder `--end 2026-05-12` 钉死 | sync_market_data 入口用 `latest_completed_trade_date` + records 上界过滤 + lint 防回退 |
+| 20 | `executescript` 不可用 on DuckDB connection | 手动 split `;` 然后逐条 execute |
+| 21 | `dim_stock_tdx_industry_history` 只 6 snapshot 假 PIT | fallback latest, 加 warning "假设 3 年内行业分类不变" |
+| 22 | `build_signal_context.py` UnboundLocalError | duplicate `from services.db import get_conn` 触发 Python 局部 scoping. 删 dup. |
+| 23 | mart_per_formula_stage_optimal schema 改了 CREATE IF NOT EXISTS 不更新 | 加 schema-aware DROP + 重建 |
+| 24 | holder_count_change_pct 含 30M 极端值 | cap |pct| <= 90 (Phase ψ.β.3 SQL filter) |
+| 25 | 8h+ 工作没 commit, 用户提醒后才 commit | Git Safety Protocol — Rule 9.6 "任何工作完成自动 commit" |
+
+### 跨 Rule 的核心模式 (Claude 最容易再踩)
+
+| 反模式 | 根因 | 防御 |
+|---|---|---|
+| 拍脑袋写数字然后宣称"业界常用 / 看着合理 / 先试试看" | 我"觉得自己懂 Rule 6", 但写代码下意识又写 | `check_rule_compliance.py` hook 硬挡 magic numbers |
+| 估算时间 (跑批 / Optuna trial) 没做 1-trial benchmark | 想省事 | 提交前先跑 1 trial 看时间, 再扩展 |
+| 看到坑找绕路 (try/except: pass / --skip-step / --end 钉死) | Rule 5 反例 | 看到失败先问"为什么", 找首次写坏的代码路径, 修源头不打补丁 |
+| 加 alpha / 加复杂度 想找"魔法" 改善 KPI | Rule 2 反例 | "看到更简单方案就 push back". 14 alpha 实测反 hurt — alpha 已饱和 |
+| 一次改多个变量然后归因 | 实验设计错 | One variable at a time. 13-alpha hp=15 vs 13-alpha hp=30 才能归因到 hp |
+
+## 12. 用户总体要求 (跨整个对话历史汇总)
+
+### 终极目标 (锚)
+
+> **"短期内资产最大幅度增值不缩水"**
+
+3 个 PASS 标准 (用户原话最终版):
+1. **年化 ≥ 30%**
+2. **max_dd ≥ -20%**
+3. **超额 vs HS300 > 0**
+
+补充: **月胜率 ≥ 55%** (Anti-churn 标准)
+
+基线: 2023-01-03 开始, 100 万初始, HS300 benchmark, 不考虑现金利息.
+
+### 用户原话 — 数据/方法论原则
+
+| 原话 | 含义 |
+|---|---|
+| "不是数字游戏, 是真金白银投入的" | Rule 9.1 真金白银门槛, 拒绝"大概率/接近"近似妥协 |
+| "你跑的是单一策略, 没真正模拟实盘选股 — 实盘是各种公式入池后按 OOS 强弱选最强" | selector ORDER BY oos_sharpe (Rule 8 sacred), paper_sim 是真实 alpha workflow |
+| "把数据都充分调动起来" | 不要只跑单一公式, 多 alpha ensemble + Optuna 寻优 + 数据治理 |
+| "持仓周期不应该全局统一, 应该是每个股票每种形态下每个公式下都单独选优" | per-stock × stage × formula 9 维 Optuna (mart_per_stock_stage_strategy_optimal) |
+| "我感觉现在的选股策略和实盘模拟策略似乎都是批量化均值, 没有做到精细化每个股票" | L2 vol-aware (per-stock vol×sigma) + L3 per-stock-stage 接入 ensemble |
+| "按照规律做个板块、概念、行业轮动啥的, 并作出预测, 辅助选股" | Phase ψ.δ.1 实施 (Ridge regression, IC=-0.06 mean reversion) |
+| "策略不合格就是不合格" | Rule 9.4 数据失败先承认, 不报喜不报忧 |
+| "我总感觉你没有充分发挥optuna的潜力呢, 每股参数自动寻优, 组合寻优, 各因子叠加寻优, 而不是预先设定" | Phase ψ.γ.1 ensemble Optuna 20 维 (alpha weights + regime + sigma + hp) — **实施但 alpha 弱救不了** |
+
+### 用户原话 — 工程纪律
+
+| 原话 | 含义 |
+|---|---|
+| "你就按照 claude.md 里的原则持续推进直到全部完成吧, 对于能彻底解决问题的方案, 即使耗时也要选择, 彻底解决, 完成后做个审计并制定计划修复, 一轮一轮迭代直到没有问题, 期间不用征求我同意了" | 用户授权 autonomous 推进, 但每轮要 audit + plan |
+| "把刚才发生的你的问题补救措施... 总结成规则写到 claude.md 里遵守" | Rule 9.5 沉淀, 教训进 CLAUDE.md 不止 commit message |
+| "leakage 相关规则是不是也可以写在 claude.md 里作为 rule" | Rule 7 anti-leakage 完整规则 (8 个 leakage 场景 + 防御机制) |
+| "为啥你会遗漏事项呢? 请你找到原因并修复" | Rule 9.5 + Phase ψ.β.enforce pre-commit hook |
+| "项目文档怎么能确保在每次commit的时候同步更新呢?" | `check_project_index_sync.py` hook (9e9d9fc6) |
+| "不止是项目文档更新, 其他事项一定也会有遗漏的, 请你扫描我们的对话记录找出遗漏的问题" | §11.5 16 项遗漏审计 |
+| "项目文档更新的标准是你或者其他人在新接手的时候能迅速理解项目内容、架构、技术路线、业务、等等, 而不用完整的读取项目全部代码和数据库文件" | PROJECT_INDEX.md 标准: 新人 30 min 上手, 不读代码 / 不查 DB |
+| "即使claude.md有rule但你也不尊守, 这个问题咋解决?" | Phase ψ.γ.discipline 3 层防护 (Rule compliance hook + commit-msg hook + Rule 9.9 ritual) |
+| "之前说的数据治理做了么, 就是清洗、加工、存储之类的" | Phase ψ.γ.dict.1 字段字典 (commit 9d1ac25a) — 后续 ETL normalize / pre-insert governance 待做 |
+
+### 用户拍板的决策 (记录)
+
+| 议题 | 用户选 | 实施状态 |
+|---|---|---|
+| Phase ψ.α 路线 (反转 vs 动量 vs 综合) | "B. 先把漏洞补上, 重新验证之前几个公式, 再结合新策略放一起对比" | ψ.β 完成 (反转 OOS sharpe 0.39) |
+| Phase ψ.γ.1 Optuna 维度 | "1、A" (精简 20 维) | 实施了 3 次 fail |
+| Phase ψ.γ.2 per-stock 寻优 | "2、B, 先试试看啊" | (b) 不现实 push back, (c) mart_per_stock_stage_strategy_optimal 接入但 PIT broken |
+| Phase ψ.γ.1 objective | "3、constrained" (max sharpe s.t. ann≥0.30 AND mdd≥-0.20) | ✓ 实施 |
+| 板块轮动规律 | "CDE" (动量+反转分阶段 + lead-lag + ML 端到端) | ψ.δ.1 实施 C/E 轻量版 Ridge, IC=-0.06 mean rev |
+| 板块预测接入方式 | "A" (加 alpha) | ✓ 14th alpha, weight=0 disabled (hurt KPI) |
+| 概念板块要做 | "做啊" | P3 pending |
+| 优先级排序 | "按项目现状优先级排序制定计划" | 由 Claude 定 — handoff 中分支 A/B/C |
+| 数据 sync | "数据 sync 同步" | §11.5 P0 #1 pending (watermark 2026-05-06 滞后) |
+
+### 用户沟通偏好
+
+- **中文回复, 简洁实用** — 表格 + 数字 > 段落 (绝对不写小作文)
+- **不报喜不报忧** — 0 STRONG_BUY / 数据滞后 / 实验 fail 必须**先讲**, 不能埋在底下
+- **第一性原理 push back** — 用户多次 push 我修正错估算, 错假设
+- **数据驱动** — 任何"估算 / 假设 / 看着合理" 用户直接质疑
+- **拒绝近似妥协** — "大概率 / 接近 / 差不多" 都不接受
+- **看到更简单方案 push back** — Rule 1, 资深工程师会觉得"太复杂"的, 简化
+- **目标穿透** — 中间数字 (sharpe / win rate) 不算结论, 必须穿透到 forward 真实期望
+- **失败先承认** — Rule 9.4, 不要包装
+
+### 用户最近的 4 次 /loop
+
+之前 4 次 `/loop check Optuna 9-dim AND data update progress; if both done, rebuild fitness/buy_signal/daily, run audit, finalize goal.md`:
+
+- 字面是旧任务 (Phase ψ 之前). 实际意图: **autonomous 推进, 不需用户拍板每步**.
+- /loop input 是 stale, 应该 dynamic mode + 当前实际工作 (Phase ψ.γ/ψ.δ).
+- Claude Code CLI 接管后不需要 `/loop` — 是这个 session 的 self-pace 机制, 新 session 重做即可.
+
+## 13. 不确定 / 推断 (区分事实 vs 猜测)
 
 | 类别 | 内容 |
 |---|---|
@@ -212,7 +334,7 @@ chmod +x .git/hooks/pre-commit .git/hooks/commit-msg
 | **弱推断** (需更多验证) | 用户目标 +30%/-20% 不现实; 加 hp 减 turnover 应该提升 ann (实测反例); 板块 mean reversion 在更细参数下可能有效 |
 | **未知** | per_stock_stage ceiling test KPI 数字 (PID 12518 跑中); 概念板块加进去后 KPI; 真 ML 因子的 ceiling |
 
-## 12. 实战 Cheatsheet
+## 14. 实战 Cheatsheet
 
 ```bash
 # Paper sim (单次)
