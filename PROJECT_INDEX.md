@@ -740,6 +740,29 @@ SELECT * FROM mart_data_source_watermark;
 
 每次 session 增量内容写这里, 新 session 启动时**从下往上读**最近改了啥.
 
+### 2026-05-14 (Phase v3.2 P3 — final holdout acceptance gate)
+
+**新模块** `services/portfolio/final_holdout.py`:
+- 4 个硬验收常量 (PLAN_V3 §0.1 用户终极目标):
+  - `ANN_RET_TARGET = 0.30`
+  - `MAX_DD_TARGET = -0.20`
+  - `MONTHLY_WIN_RATE_TARGET = 0.55`
+  - excess vs HS300 > 0 (硬约束)
+- `FinalHoldoutMetrics`: KPI dataclass (含 model_version/feature_version/label_version/seed)
+- `check_final_acceptance(metrics) -> AcceptanceResult`: 4 项硬验收
+- `format_acceptance_report(metrics, result)`: markdown 报告 (PASS/FAIL + ✓/✗ 表)
+
+**严格 PIT** (Rule 7 + Rule 9.1):
+- final holdout 只读一次 (P3 验收)
+- P0/P1/P2 阶段绝对禁读 (governance.enforce_pre_optimize 已有 check)
+
+**单测** (11 passed):
+- 常量 vs PLAN_V3 对齐
+- perfect pass / 4 项各自 fail / 全 fail
+- boundary 精确匹配 (≥ 通过)
+- excess=0 fail (> 0 严格)
+- format report PASS/FAIL 输出验证
+
 ### 2026-05-14 (Phase v3.2 P2 — composite scoring framework)
 
 **新模块** `services/portfolio/composite_score.py`:
