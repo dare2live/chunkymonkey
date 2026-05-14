@@ -740,6 +740,19 @@ SELECT * FROM mart_data_source_watermark;
 
 每次 session 增量内容写这里, 新 session 启动时**从下往上读**最近改了啥.
 
+### 2026-05-14 (Phase v3.2 P4c promote CLI + walk_forward._ym() regression test)
+
+**新 CLI** `scripts/promote_champion.py`:
+- 读 `mart_p3_acceptance_result` by run_id → P3 KPI
+- 读 `mart_p2_composite_result` 最高 composite_score
+- 构造 `ChampionRecord` → validate → register_champion(promote=True)
+- 对比 challenger vs current champion (compare_challenger)
+- P3 FAIL 拒绝 promote (--force 强制)
+
+**Regression test** `test_expanding_monthly_accepts_datetime_date_signal_date`:
+- 防 P0b train 再 fail 在 'datetime.date' object not subscriptable
+- 9 个 expanding_monthly tests 全 pass
+
 ### 2026-05-14 (Phase v3.2 P4c champion model + walk_forward._ym() 修 datetime.date 兼容)
 
 **新模块** `services/portfolio/champion.py` (P4c 复盘闭环):
