@@ -809,6 +809,21 @@ CLAUDE.md 增强:
 - v2 features: 79 → 85 (不是 87)
 - TODO v3: 重 Optuna walk-forward expanding_monthly 入库 (stock × cutoff_date × best_sharpe), ASOF JOIN
 
+### 2026-05-15 (Phase v3.2 Day 6 prep — hybrid blend loader + yaml)
+
+**`services/paper_sim/hybrid_score_loader.py`** (Codex Q5 sequential filter + rank-linear blend):
+- INNER JOIN mart_p0b_oos_predictions × mart_per_stock_stage_strategy_optimal
+- q60_min_stage: eligibility 仅取 stage_oos_sharpe >= q60_by_date (防弱 ML 挤掉强 stage)
+- PERCENT_RANK() → s_ml/s_stage ∈ [-1, 1] → hybrid_score = (1-w_ml) × s_stage + w_ml × s_ml
+- w_ml grid: {0, 0.10, 0.20, 0.30, 0.40} nested WF 选 (不用 Optuna, Codex Q5 推荐)
+- 9 单测 (w=0/1 退化 / q60 filter / NULL ml / 缺 stage drop / w 边界异常)
+
+**`config/paper_sim_hybrid.yaml`**: selection.mode='hybrid' + hybrid_w_ml/q60_min_stage/max_candidates 字段
+
+**Codex 反馈处理 (CLAUDE §10 push back rule)**:
+- 完全接受: rank-linear blend 公式 + sequential filter (q60 stage eligibility) + w grid 不用 Optuna
+- **折中 (我的选择)**: stage_opt 用 latest snapshot (NOT PIT), Day 5 PIT walk-forward 表暂不做. **理由**: 先验证 blend 有 value (smoke RankIC ≥ 0.025) 再投入 12h PIT 改造, 否则做无价值
+
 ### 2026-05-14 (CLAUDE §10 push back + audit_p0a v3 改造)
 
 **CLAUDE.md §10 Codex Review Gate 加 push back 原则** (用户 2026-05-14 push back):

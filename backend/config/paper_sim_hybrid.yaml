@@ -1,0 +1,90 @@
+# Phase v3.2 Day 6 paper_sim hybrid (ML × stage_opt blend).
+# Codex Q5 sequential filter + rank-linear blend.
+#
+# 跟 paper_sim_ml_score.yaml 同结构, 改 selection.mode 为 'hybrid' 用
+# services.paper_sim.hybrid_score_loader.load_today_candidates_hybrid.
+#
+# 用法 (5 个 w grid 各跑一次):
+#   for w in 0.00 0.10 0.20 0.30 0.40; do
+#     PYTHONPATH=backend python backend/scripts/run_paper_sim_hybrid_grid.py \
+#         --w-ml $w --variant swap_v1 --start 2024-01-01 --end 2026-04-30
+#   done
+# 或者一次性跑 grid (script 内部循环):
+#   PYTHONPATH=backend python backend/scripts/run_paper_sim_hybrid_grid.py \
+#       --w-grid 0,0.10,0.20,0.30,0.40
+#
+# 输出: mart_paper_sim_hybrid_grid (run_id × w_ml × ann_ret/dd/...)
+# 选最优 w via nested WF.
+
+portfolio:
+  initial_cash: 1_000_000
+  max_positions: 5
+  position_sizing: "equal_weight"
+  cash_when_strong_buy_lt: 5
+  min_cash_pct: 0.05
+
+# ─── 候选选股 (hybrid mode, Codex Day 6) ───
+selection:
+  mode: "hybrid"                   # services.paper_sim.hybrid_score_loader
+  candidate_source: "mart_p0b_oos_predictions"
+  rank_by: "hybrid_score"
+  min_tier_to_buy: "BUY"
+  min_tier_to_swap_in: "STRONG_BUY"
+  liquidity_min_amount_20d: 50_000_000
+  liquidity_max_price: 500
+  exclude_stage: []
+  # Hybrid mode 特定字段:
+  hybrid_model_id: "lgbm_baseline_v1"       # 实跑 v3 后改为 v3 model_id
+  hybrid_w_ml: 0.20                          # 默认 w, 实测靠 grid 替换
+  hybrid_max_candidates: 30
+  hybrid_q60_min_stage: true                 # eligibility: stage_oos_sharpe >= q60
+  # ⚠ stage_opt 是 latest snapshot NOT PIT (Day 5 PIT 表才严格)
+
+exit:
+  use_optuna_stop: true
+  use_optuna_target: true
+  use_optuna_trailing: true
+  use_optuna_hp: true
+  stage_deterioration_sell: true
+
+swap:
+  enabled: true
+  severe_threshold: 0.50
+  candidate_must_close_gap: true
+  gap_buffer_pct: 0.0035
+  min_holding_days_before_swap: 1
+  max_swaps_per_day: 1
+
+tx_cost:
+  commission_pct: 0.00025
+  commission_min_cny: 5
+  stamp_duty_sell_pct: 0.0005
+  transfer_fee_sh_pct: 0.00001
+  slippage_pct: 0.001
+
+risk:
+  daily_dd_warning_pct: -0.05
+  max_dd_hard_stop_pct: -0.20
+  hard_stop_freeze_days: 30
+
+data:
+  optimal_table_primary: "mart_per_stock_stage_strategy_optimal"
+  optimal_table_fallback: "mart_per_stock_strategy_optimal"
+  benchmark: "000300"
+
+validation:
+  user_criteria:
+    ann_ret_min: 0.30
+    max_dd_min: -0.20
+    excess_vs_hs300_min: 0.0
+    monthly_win_rate_min: 0.55
+  anti_churn:
+    annual_turnover_max: 8.0
+    tx_cost_pct_of_gross_pnl_max: 0.10
+    swap_uplift_total_min: 0.0
+  robustness: {}
+  ablation: {}
+  sensitivity: {}
+  reality_check:
+    slippage_stress_pct: 0.003
+    annual_degradation_max: 0.05
