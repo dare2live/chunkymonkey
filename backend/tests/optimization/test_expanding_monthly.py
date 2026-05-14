@@ -96,6 +96,26 @@ def test_expanding_monthly_invalid_params_raise():
         split_expanding_monthly(sigs, forward_months=0)
 
 
+def test_expanding_monthly_accepts_datetime_date_signal_date():
+    """Regression: DuckDB DATE 列读出来是 datetime.date, _ym 必须兼容.
+
+    P0b train 第一次跑 fail 在此 ('datetime.date' object is not subscriptable).
+    """
+    import datetime
+    sigs = []
+    for m in range(12):
+        for s in range(5):
+            sigs.append({
+                "stock_code": f"60{s:04d}",
+                "signal_date": datetime.date(2024, m + 1, 15),  # 真实 DuckDB 返回
+            })
+    splits = split_expanding_monthly(sigs, min_train_months=6, forward_months=1)
+    assert len(splits) == 6  # months 7..12 各一窗
+    for sp in splits:
+        assert sp.train and sp.test
+        assert isinstance(sp.train[0]["signal_date"], datetime.date)
+
+
 def test_expanding_monthly_forward_2_months():
     """forward_months=2 → 每窗 OOS = 2 个月."""
     sigs = _make_signals_per_month(n_months=24, sigs_per_month=5)
