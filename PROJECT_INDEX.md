@@ -3,7 +3,20 @@
 > ⚠ **每次 session 启动必读** (CLAUDE.md 已引用). 用于防止对话压缩 / context 丢失导致重复发现项目结构 / 误解数据资产.
 > 内容是**项目地图**, 不是规则 — 规则在 CLAUDE.md.
 
-最后更新: 2026-05-13. 数据资产 / 模块 schema 变更后请刷新本文档.
+最后更新: 2026-05-14 (Phase ψ.β.perf 后). 数据资产 / 模块 schema 变更后请刷新本文档.
+
+## 维护责任 (Rule 9.5 沉淀)
+
+**每次完成一个 phase / commit / 数据 backfill 后, 都要更新本文档**. 具体 checkpoints:
+- 新加数据表 → 加进 §2 (数据资产)
+- 新加 service 模块 / script 入口 → 加进 §3-4
+- 新加 yaml config → 加进 §6
+- 解决了已知坑 → §8 标 ✅ + 短说明
+- 跑出新 OOS 数据 → 加进 §10
+- 踩了新坑 → §11 + CLAUDE.md Rule 9
+- 加 §14 增量日志 (本 session 做了啥)
+
+不维护 = 下次 session 又要重新摸索 = 用户最大抱怨
 
 ---
 
@@ -313,11 +326,21 @@ Rule 9: 真金白银 / 第一性原理       — 用户视角严苛门槛
 |---|---|
 | `mart_sector_momentum` 只 41 行 (2026-04 起) | ❌ 没历史回测能力, **需 rebuild 全期** |
 | `fact_setup_snapshot` 0 行 | ❌ 未启用 |
-| **paper_sim 选股没走 strategy_ensemble** | ⚠ 只走 mart_per_stock/formula_*_optimal, 浪费项目主 alpha (institution_follow 0.40) |
-| **case-based / k-NN 历史相似回测** | ❌ 未建. 数据基础 (fact_signal_context + fact_stock_archetype) 已有 |
-| **`fact_regime_state` 在 paper_sim 没用** | ⚠ 大盘择时未启用 |
-| sentiment/ 包未集成到主选股 | ⚠ 8 文件框架, 未对接 |
-| 大盘指数 K 线 (000300 等) 在 paper_sim 未用作 benchmark | ⚠ excess vs HS300 计算依赖 |
+| **paper_sim 选股 走 strategy_ensemble** | ✅ Phase ψ.β.4: ensemble mode + `paper_sim_ensemble.yaml` 10 alpha |
+| **5 alpha 主源数据 PIT 时序** | ✅ β.1 fact_risk_factors / β.2 fact_financial_pit_daily / β.3 fact_capital_flow_pit_daily backfill 完成 (跨 2023-01 → 2026-05) |
+| **fact_institution_event 主 alpha** | ⚠ 只 1 年 (2025-04 起), 无法做 800 天 backfill — β.3 改用 lhb+exec+holder 替代 |
+| **mart_stock_trend.action_score (机构跟随主 alpha)** | ❌ 仍是 latest 快照 — 未做 PIT 重建 (依赖 fact_institution_event 1 年限制) |
+| **aif10 估值/一致预期** | ❌ 全 latest 快照, 无 PIT, β.2 改用 fact_financial_derived 替代 |
+| **case-based / k-NN 历史相似回测** | ❌ 未建. 数据基础已有 (fact_signal_context + archetype) |
+| **`fact_regime_state` 在 paper_sim** | ✅ Phase ψ.β.4: ensemble selector regime_gate (bear 0.3x / sideways 0.7x / bull 1.0x) |
+| sentiment/ 包未集成 | ⚠ 8 文件框架, 未对接 |
+| 大盘指数 K 线 在 paper_sim 当 benchmark | ✅ 已用作 excess vs HS300 |
+| **fact_signal_context 早期数据缺** | ✅ Phase ψ.β.4.5 backfill 完成 (2024-03 起, 66% valid_stage) |
+| **fact_stock_technical_stage 早期缺** | ✅ Phase ψ.β.4.5 backfill 完成 (2023-09-12 起, 2.4M 行) |
+| **mart_per_formula_stage_optimal train_end 范围** | ⏳ 正在重跑 (1260 任务, 5 worker, 含 7 公式 × stage × 35 train_end) |
+| **Optuna 跑批 8h 慢** | ✅ Phase ψ.β.perf 修 hotspot: _idx O(1) cache + backtest_signals_with_trades 避免重跑 simulate_trade. 重跑预估 3-4h |
+| `fact_stock_archetype` (基本面质量) 只 2026-04 几天 | ⚠ 未 backfill 历史 (待后续 audit) |
+| `fact_financial_derived.revenue_yoy` 对部分股 (如 000001) null | ⚠ derived 表本身 sparse, 不影响其他股 |
 
 ---
 
@@ -382,14 +405,32 @@ Rule 9: 真金白银 / 第一性原理       — 用户视角严苛门槛
 | Phase | 内容 | 状态 |
 |---|---|---|
 | Phase β-η+++++++ | 前期工作 (公式 / Optuna / fitness / sizer / etc.) | 大量已完成, 见 goal.md |
-| **Phase ψ** | Optuna 治理 + R1 + Rule 7/8 + paper_sim VWAP 修正 | ✅ commit `34e83d75` push `codex/...` |
-| **Phase ψ.α** | 反转因子 + per-formula 全局 + B 严格 walk-forward + Rule 9 | ✅ 在 `feature/reversal-factor` 分支未 commit |
-| **Phase ψ.β** (规划中) | paper_sim 接 strategy_ensemble (5 alpha) + sector + regime + case-based | ⏳ 待用户拍板 |
+| **Phase ψ** | Optuna 治理 + R1 + Rule 7/8 + paper_sim VWAP 修正 | ✅ commit `34e83d75` (main + codex) |
+| **Phase ψ.α** | 反转因子 + per-formula 全局 + B 严格 walk-forward + Rule 9 + PROJECT_INDEX | ✅ commit `545cb3d9` (feature/reversal-factor) |
+| **Phase ψ.β.1** | fact_risk_factors PIT backfill (4.8M 行 / 6,567 股 / 810 天) | ✅ commit `5a3b5ea8` |
+| **Phase ψ.β.2** | fact_financial_pit_daily PIT (3.69M 行) — PE/PB/ROE/yoy/inst_holding_pct | ✅ commit `baf815b6` (β.2+β.3) |
+| **Phase ψ.β.3** | fact_capital_flow_pit_daily (858K 行) — lhb/exec/holder PIT | ✅ commit `baf815b6` |
+| **Phase ψ.β.4** | paper_sim ensemble selector + 10 alpha yaml + regime_gate | ✅ commit `1af98eca` |
+| **Phase ψ.β.4.5** | backfill fact_stock_technical_stage + fact_signal_context 历史 | ✅ 数据已落, 待 commit |
+| **Phase ψ.β.4.6** | ensemble quality_filter (vol_60d / allowed_stages) | ✅ commit `192bcb4d` |
+| **Phase ψ.β.perf** | hotspot fix: _idx O(1) cache + backtest_signals_with_trades | ✅ commit `192bcb4d`, 161 测过 |
+| **Phase ψ.β.5** (in-progress) | optimize_per_formula 重跑 7 公式 × 35 train_end = 1260 任务 | ⏳ 5 worker 67% CPU, 1000/1260 |
+| **Phase ψ.β.6** (next) | paper_sim ablation 完整 800 天 (reversal / momentum / ensemble) | ⏸ 等 ψ.β.5 |
+| **Phase ψ.β.7** (next) | audit + 修 残留漏洞 (mart_stock_trend PIT / sector_momentum 全期 / case-based 等) | ⏸ |
 
-git 状态:
-- 分支: `feature/reversal-factor` (基于 codex)
-- worktree 残留: `/Users/dp/.codex/worktrees/a980/stock` ⚠ 待清
-- main 落后 codex 79 commits (codex 是纯线性后续, 可 ff merge)
+git 状态 (commit chain):
+```
+main:                       34e83d75  (Phase ψ Optuna 治理)
+feature/reversal-factor:    192bcb4d  (head, 含 β.1-β.4.6 + perf, 6 commits ahead)
+  ← 192bcb4d  Phase ψ.β.perf
+  ← 1af98eca  Phase ψ.β.4 ensemble selector
+  ← baf815b6  Phase ψ.β.2+β.3 financial + capital_flow PIT
+  ← 5a3b5ea8  Phase ψ.β.1 risk_factors PIT
+  ← 545cb3d9  Phase ψ.α reversal + Rule 9 + PROJECT_INDEX
+  ← 34e83d75  Phase ψ
+```
+
+worktree 残留: `/Users/dp/.codex/worktrees/a980/stock` 链接到外部 `/Users/dp/Documents/M/stock/.git`, 不归本项目处理.
 
 ---
 
@@ -404,3 +445,62 @@ SELECT * FROM mart_data_source_watermark;
 ```
 
 或运行 `backend/scripts/build_architecture_inventory.py` 自动重生成.
+
+---
+
+## 14. Session 增量更新日志 (Rule 9.5 长期沉淀)
+
+每次 session 增量内容写这里, 新 session 启动时**从下往上读**最近改了啥.
+
+### 2026-05-14 (Phase ψ.β.perf — Optuna 重跑 + 性能优化)
+
+**关键发现** (按 Rule 9.4 + 9.5 沉淀):
+- fact_institution_event 数据只 1 年 (2025-04 起), 无法做 800 天 backfill — 主 alpha 重建 deferred
+- aif10 估值/一致预期 全是 latest 快照, 无 PIT — 改用 fact_financial_derived (跨 4 年季度)
+- fact_signal_context / fact_stock_technical_stage 早期数据缺 — 都已 backfill
+- mart_per_formula_stage_optimal 重跑 7 公式 1260 任务跑 8 小时 (vs 反转 3 公式 28 min) — 性能瓶颈 5×
+- Optuna 跑批 hotspot:
+  - `_idx` linear search O(N), 调用 1e11 次 — 已加 dict cache O(1)
+  - `objective.py` / `optimize.py` 跑完 backtest_signals 又重跑 simulate_trade — 重复 50%, 已新加 `backtest_signals_with_trades` 一次性返回 trades
+
+**数据资产新加** (Phase ψ.β PIT 主线):
+- `fact_risk_factors` 4.8M 行 (跨 810 天, vol/sharpe/mom/skew/kurt)
+- `fact_financial_pit_daily` 3.69M 行 (跨 748 天, PE_TTM/PB/PS_TTM/ROE/yoy/inst_holding_pct)
+- `fact_capital_flow_pit_daily` 858K 行 (lhb/exec/holder PIT, outlier capped at 90%)
+- `fact_signal_context` backfill 至 2024-03 (66% valid_stage)
+- `fact_stock_technical_stage` backfill 至 2023-09-12 (2.4M 行)
+
+**代码新加**:
+- `backend/scripts/backfill_risk_factors_history.py` (β.1)
+- `backend/scripts/backfill_financial_pit.py` (β.2)
+- `backend/scripts/backfill_capital_flow_pit.py` (β.3)
+- `backend/config/paper_sim_ensemble.yaml` (β.4)
+- `backend/services/paper_sim/selector.py` 加 `load_today_candidates_ensemble` (β.4)
+- `backend/services/backtest/realistic_engine.py` 加 `_BAR_DATE_IDX_CACHE` + `backtest_signals_with_trades` (β.perf)
+- 5 new tests in `tests/backtest/test_realistic_engine_idx_cache.py`
+
+**Claude 踩坑** (Rule 9.5):
+- 估算 Optuna 全量 80 min, 实际 8 小时 (5× off). 教训: 全公式 vs 反转-only 单任务复杂度不一样.
+- build_signal_context.py 行 159 重复 `from services.db import get_conn` 触发 Python local scoping UnboundLocalError. 教训: import 一次即可.
+- 第一版 fact_capital_flow_pit_daily 没 outlier filter, holder_change_pct 含 30M 极端值. 教训: backfill 必加 sanity bounds.
+
+### 2026-05-13 (Phase ψ.α 反转因子 + PROJECT_INDEX 首次写入)
+
+(见 commit `545cb3d9` 详细)
+- Rule 9 真金白银 / 第一性原理 写入 CLAUDE.md
+- PROJECT_INDEX.md 首次写入 (406 行 13 节)
+- 反转公式 3 variant (mild/deep/1w) 写入 formula_engine
+- B walk-forward `split_train_end_forward` + `list_month_ends` + 10 单测
+- mart_per_formula_stage_optimal 加 train_end_date 多行 schema
+- paper_sim selector 改 walk-forward + 按 today strength 排名
+- horizon_evidence 实测: reversal_1m_deep × 20d sharpe **+1.10** / win 61.8%
+- B v2 严格 walk-forward 实测: reversal_1m_deep × stage=1 avg OOS sharpe **+0.39** / win 58.1%
+
+### 2026-05-12 之前 (Phase ψ Optuna 治理)
+
+(见 commit `34e83d75` 详细)
+- Rule 7 (Anti-Look-Ahead) + Rule 8 (Optuna 治理) 写入 CLAUDE.md
+- backend/config/optuna_config.yaml + services/optimization/{config,walk_forward,governance,composite,constraints,objectives,ddl,oos_aggregator}.py
+- VWAP 100× bug 修复
+- Rule 6 Measured-Not-Estimated 写入
+- 73 单测全过
