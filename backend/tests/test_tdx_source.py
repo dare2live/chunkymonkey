@@ -22,7 +22,7 @@ from scripts.profile_tdx_gpcw_fields import profile_tdx_gpcw_fields
 def test_tdx_source_prefers_workspace_tdxhub_fork_when_present():
     local_path = tdx_source.workspace_tdxhub_path()
     if local_path is None:
-        pytest.skip("workspace tdxhub fork is not checked out next to chunky-monkey-v2")
+        pytest.skip("workspace tdxhub fork is not checked out next to chunkymonkey")
 
     tdx_source.ensure_workspace_tdxhub_path()
 

@@ -1,5 +1,5 @@
 """一次性迁移：把 /tmp/tdxhub_universe.duckdb (tdxhub.holders 跑出的 5179 只 99.6%
-覆盖结果) 灌入 chunky-monkey-v2/data/smartmoney.duckdb 的新 fact_* 表.
+覆盖结果) 灌入 chunkymonkey/data/smartmoney.duckdb 的新 fact_* 表.
 
 新表由 backend/services/db.py 已经声明好 schema. 本脚本只负责:
 

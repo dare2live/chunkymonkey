@@ -1,0 +1,117 @@
+## paper_sim_config.yaml — Phase ψ Paper Sim v2 全部 hyperparam (Rule 2 + 项目特定模块化)
+##
+## 调参规则: 改这个 YAML 就够, 业务代码不动. CLAUDE.md "不硬编码" 兑现.
+## Optuna 调参也基于这个 schema 做 grid / bayesian search.
+
+# ─── 资金 / 持仓 ───
+portfolio:
+  initial_cash: 1_000_000          # 100 万 (用户指定)
+  max_positions: 5                 # 用户指定: 最多 5 只 (D1 选 B)
+  cash_when_strong_buy_lt: 5       # STRONG_BUY 候选不足 5 时留现金, 不强行买次好的
+  position_sizing: "wilson_kelly"  # wilson_kelly / equal / kelly
+  min_cash_pct: 0.05               # 永远留至少 5% 现金应对滑点 + 整手凑数
+
+# ─── 候选选股 ───
+selection:
+  mode: "backtest"                 # production (用 daily_rec 表) 或 backtest (inline 从 trigger+optimal)
+  candidate_source: "mart_daily_position_recommendation"   # 仅 production mode 用
+  rank_by: "score"                 # daily_position_recommendation 自带的 6 因子综合 score
+  min_tier_to_buy: "BUY"           # 至少 BUY 才考虑首次建仓
+  min_tier_to_swap_in: "STRONG_BUY"  # 用户指定: 换股只接 STRONG_BUY 候选
+  liquidity_min_amount_20d: 50_000_000   # 日均 < 5000 万剔除
+  liquidity_max_price: 500         # 单股 > 500 元剔除
+  exclude_stage: []                # 默认不按 stage 排除 (跟 portfolio_backtest 一致)
+  # Phase ψ.α ablation A: 只用 momentum 公式族 (现有, OOS sharpe 全负 baseline)
+  formula_whitelist:
+    - macd_golden_cross
+    - turtle_breakout_20
+    - turtle_breakout_55
+    - dynamic_ma_iterative_cross
+  # backtest mode 评分简化 (跟 portfolio_backtest.py 一致, 确保两个模拟器口径对齐):
+  backtest_tier_thresholds:
+    strong_buy:                    # 三同时满足才 STRONG_BUY
+      sharpe_min: 0.8
+      win_rate_min: 0.65
+      calmar_min: 1.0
+    buy:                           # 否则任一满足才 BUY
+      sharpe_min: 0.3
+      win_rate_min: 0.55
+
+# ─── 退出 (用每股 Optuna 的真实参数, 不全局硬编码) ───
+exit:
+  use_optuna_stop: true            # optimal_stop_pct
+  use_optuna_target: true          # optimal_target_pct
+  use_optuna_trailing: true        # optimal_trailing_pct
+  use_optuna_hp: true              # optimal_hp 到期自动清
+  stage_deterioration_sell: true   # 买入时 stage ≤2, 持有期 stage=4 + 亏损 → 提前卖
+
+# ─── Swap (达成率 = 盈利进度 ÷ 时间进度, 用户审过) ───
+swap:
+  enabled: true                    # ablation 关掉做 baseline 对照
+  severe_threshold: 0.5            # 达成率 < 0.5 视为严重落后, 触发 swap 考虑
+  candidate_must_close_gap: true   # 候选 Y 在 A 剩余天数能贡献的进度 ≥ A 的落后 gap + buffer
+  gap_buffer_pct: 0.0035           # 扣完 tx_cost 还要赚的 buffer (= 往返手续费近似)
+  min_holding_days_before_swap: 1  # 至少持 1 天才能 swap (A 股本来 T+1 不能 T+0, 防意外)
+  max_swaps_per_day: 2             # 单日最多 swap 2 次 (anti-churn 硬上限)
+
+# ─── 真实交易成本 ───
+tx_cost:
+  commission_pct: 0.00025          # 0.025% 单边 (中信/华泰参考)
+  commission_min_cny: 5            # 最低 5 元
+  stamp_duty_sell_pct: 0.0005      # 0.05% 卖出印花
+  transfer_fee_sh_pct: 0.00001     # 上交所过户费 0.001% (深交所 0)
+  slippage_pct: 0.001              # 买/卖各 0.1% 滑点 (T+1 开盘价基准)
+
+# ─── 风控 ───
+risk:
+  daily_dd_warning_pct: -0.03      # 当日 -3% warning (报告标黄)
+  max_dd_hard_stop_pct: -0.25      # 累计 -25% 强制全清观望 (一周不开新仓)
+  hard_stop_freeze_days: 5         # 触发硬止损后冻结天数
+
+# ─── KPI 验证阈值 (回测决策树用) ───
+validation:
+  # A. 用户终极标准 — 必过
+  user_criteria:
+    annual_return_min: 0.30
+    max_dd_min: -0.20
+    excess_vs_hs300_min: 0.0
+    monthly_win_rate_min: 0.55
+
+  # B. Anti-churn — 用户最关心
+  anti_churn:
+    avg_holding_days_min: 5        # 平均持仓天数 ≥ 5
+    annual_turnover_max: 8.0       # 年化换手 ≤ 8x
+    tx_cost_pct_of_gross_pnl_max: 0.10  # 手续费占毛利 ≤ 10%
+    swap_uplift_total_min: 0.0     # 反事实 swap 净增益总和 > 0
+
+  # C. Robustness — 跨周期稳定
+  robustness:
+    rolling_ir_60d_median_min: 0.5
+    rolling_ir_60d_p25_min: 0.0
+    rolling_annual_90d_median_min: 0.25
+    regime_min_return_per_segment: -0.02   # 牛/熊/震荡每段 ≥ -2%
+
+  # D. Ablation — swap 必须显著贡献
+  ablation:
+    swap_vs_baseline_annual_uplift_min: 0.03  # ≥ +3pp 年化
+    swap_vs_baseline_max_dd_degradation_max: 0.02  # max_dd 不能恶化超 2pp
+    swap_vs_baseline_sharpe_ratio_min: 1.05  # Sharpe 比 ≥ 1.05x
+
+  # E. Sensitivity — 参数稳健
+  sensitivity:
+    severe_threshold_sweep: [0.4, 0.5, 0.6]
+    gap_buffer_sweep: [0.003, 0.0035, 0.005]
+    max_positions_sweep: [3, 5, 7]
+    annual_swing_max: 0.05         # 不同参数下年化波动 ≤ 5pp
+
+  # F. Reality-check
+  reality_check:
+    slippage_stress_pct: 0.003     # 滑点 0.1% → 0.3% 压测
+    annual_degradation_max: 0.05   # 各压测项年化退化 ≤ 5pp
+
+# ─── 数据 / Schema ───
+data:
+  optimal_table_primary: "mart_per_stock_stage_strategy_optimal"
+  optimal_table_fallback: "mart_per_stock_strategy_optimal"
+  benchmark: "000300"              # HS300
+  start_date: "2023-01-03"         # 回测起点 (跟 portfolio_backtest 一致)

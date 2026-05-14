@@ -28,7 +28,8 @@ from typing import Literal
 
 from services.optimization.config import OptunaConfig, get_optuna_config
 
-WalkForwardMode = Literal["none", "holdout", "expanding", "expanding_monthly"]
+WalkForwardMode = Literal["none", "holdout", "expanding", "expanding_monthly",
+                          "train_end_forward"]
 
 
 @dataclass(frozen=True)
@@ -237,6 +238,94 @@ def split_expanding_monthly(
             mode="expanding_monthly",
         ))
     return splits
+
+
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# Mode 5: train_end_forward (B 严格 walk-forward, 用于 paper_sim 多行表)
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+
+def _add_days(date_str: str, days: int) -> str:
+    """'YYYY-MM-DD' + N days → 'YYYY-MM-DD'."""
+    from datetime import date, timedelta
+    y, m, d = int(date_str[:4]), int(date_str[5:7]), int(date_str[8:10])
+    return (date(y, m, d) + timedelta(days=days)).strftime("%Y-%m-%d")
+
+
+def split_train_end_forward(
+    signals: list[dict],
+    train_end_date: str,            # 'YYYY-MM-DD', 例 '2024-02-29'
+    forward_days: int = 60,         # OOS = [train_end_date, train_end_date + forward_days)
+    min_train: int | None = None,
+    min_test: int | None = None,
+    cfg: OptunaConfig | None = None,
+) -> WalkForwardSplit | None:
+    """B 严格 walk-forward 切分: 给定 train_end_date, 切 train + 短 forward 窗 OOS.
+
+    用于 paper_sim 写多行 mart 表 (per train_end_date 一行).
+    切分 train < d <= test < d + forward_days.
+
+    Args:
+        signals:        按 signal_date 升序 (内部再排保险)
+        train_end_date: 切分点, train 严格 < 此, test ≥ 此
+        forward_days:   forward 窗大小, 默认 60 天 (~2 月, 平衡样本 + 时效)
+        min_train:      train 至少多少笔 (默认 cfg)
+        min_test:       test 至少多少笔 (默认 cfg)
+
+    Returns:
+        WalkForwardSplit 或 None (任一不足).
+    """
+    cfg = cfg or get_optuna_config()
+    mt = min_train if min_train is not None else cfg.governance.min_train_signals
+    ms = min_test if min_test is not None else cfg.governance.min_test_signals
+
+    sigs = _sort_by_date(signals)
+    if not sigs:
+        return None
+
+    forward_end = _add_days(train_end_date, forward_days)
+    train = [s for s in sigs if s["signal_date"] < train_end_date]
+    test  = [s for s in sigs
+             if train_end_date <= s["signal_date"] < forward_end]
+
+    if len(train) < mt or len(test) < ms:
+        return None
+
+    return WalkForwardSplit(
+        train=train, test=test,
+        train_start=train[0]["signal_date"], train_end=train[-1]["signal_date"],
+        test_start=test[0]["signal_date"], test_end=test[-1]["signal_date"],
+        mode="train_end_forward",
+    )
+
+
+def list_month_ends(
+    start_date: str,
+    end_date: str,
+) -> list[str]:
+    """生成 [start_date, end_date] 之间所有月末日期字符串 (YYYY-MM-DD).
+
+    例 start='2023-01-15' end='2026-05-12' → ['2023-01-31', '2023-02-28', ..., '2026-04-30']
+
+    注: 不含 end_date 所在的当月月末 (因为 forward 窗会越过 dataset 边界).
+    """
+    from datetime import date, timedelta
+    sy, sm = int(start_date[:4]), int(start_date[5:7])
+    ey, em = int(end_date[:4]), int(end_date[5:7])
+    out = []
+    y, m = sy, sm
+    while (y, m) <= (ey, em - 1):    # 不含 end 月 (forward 窗用)
+        # 该月最后一天
+        if m == 12:
+            next_first = date(y + 1, 1, 1)
+        else:
+            next_first = date(y, m + 1, 1)
+        last_day = next_first - timedelta(days=1)
+        out.append(last_day.strftime("%Y-%m-%d"))
+        m += 1
+        if m > 12:
+            m = 1; y += 1
+    return out
 
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━

@@ -1,0 +1,281 @@
+## field_dictionary.yaml — Phase ψ.γ.dict.1 字段字典 (跨表 schema + 单位 + PIT key 治理)
+##
+## 根因: VWAP volume unit bug (akshare_sina=股 vs tdxhub=手) 暴露项目无统一字段单位治理.
+## 跨表字段命名也不一致 (date / trade_date / calc_date / signal_date), 写代码时易混.
+##
+## 用途:
+##   1. ETL 写入前 sanity check (单位 / 范围 / PIT key 完整性)
+##   2. Cross-table JOIN 写代码时查"这表的 PIT key 是哪个字段"
+##   3. 新人接手时一图看全核心 schema
+##   4. 单测自动 verify schema 跟字典一致 (防漂移)
+##
+## 维护责任 (Rule 9.5): 新加业务表 / 新增 PIT 字段 / 改单位 — 必须同步更新这里.
+## Pre-commit hook 不强制 (schema 变动频率低), 但 PROJECT_INDEX §2 应同步.
+
+## 通用约定
+conventions:
+  unit_currency:    "CNY (人民币元) 除非特别标注"
+  unit_percent:     "fraction (0.30 表示 30%, 不是 30)"
+  unit_count:       "整数计数 (股数/手数/笔数视字段单位)"
+  unit_dimensionless: "无量纲 (sharpe, calmar 等)"
+  unit_iso_date:    "YYYY-MM-DD 字符串 (DuckDB DATE 类型)"
+  stock_code:       "6 位字符串 (sh.60xxxx → 600000, 不带前缀)"
+
+  pit_key_convention: |
+    PIT key = "事件能被市场看到的日期". JOIN 时 WHERE pit_key <= signal_date.
+    跨表 pit_key 命名不统一是项目历史债 — 字典里 normalize 名是 pit_key, 物理字段名见 actual_column.
+
+  null_policy: |
+    业务关键字段 (price/volume/amount/signal_score 等) 应 NOT NULL.
+    derived 字段 (e.g. yoy / ratio / pct_change) 允许 NULL (上游缺数据时), 业务代码必须 COALESCE 或 IFNULL.
+
+  outlier_policy: |
+    - return / ret_pct: |x| <= 0.5 (50% 单日为合理上限, 超过通常是数据错或公司行为)
+    - sharpe: -5 ≤ x ≤ 5 (winsorize, 单股年化超 5 通常是 leakage 或 bug)
+    - holder_count_change_q_pct: |x| <= 90 (Phase ψ.β.3 实测发现 30M 极端值, cap 90%)
+    - vol_60d (年化): 0 < x ≤ 2.0 (200% 已是垃圾股极端)
+
+## 数据库 → 表 → 字段
+databases:
+
+  market.duckdb:
+    description: K 线 / 指数 / 复权因子 / 流动性 (核心市场数据)
+
+    v_price_kline_qfq:
+      description: "K 线视图 (qfq 前复权), 含个股 + 指数 (000300/000905/000852/000016)"
+      pit_key: date
+      row_count_approx: 5_970_000
+      coverage: "6,618 股 / 指数 / 2022-01-01 → 2026-05-13"
+      fields:
+        date:    {type: DATE,   role: pit-key, description: "交易日"}
+        code:    {type: TEXT,   description: "股票/指数代码 (6 位)"}
+        adjust:  {type: TEXT,   description: "复权方式 'qfq' / 'hfq' / 'none'"}
+        freq:    {type: TEXT,   description: "频率 'daily' / 'weekly'"}
+        open:    {type: DOUBLE, unit: CNY, description: "开盘价"}
+        high:    {type: DOUBLE, unit: CNY, description: "最高价"}
+        low:     {type: DOUBLE, unit: CNY, description: "最低价"}
+        close:   {type: DOUBLE, unit: CNY, description: "收盘价"}
+        volume:
+          type: DOUBLE
+          unit: "**MIXED** — tdxhub 数据=手 (100 股), akshare_sina 数据=股 (1 股)"
+          warning: |
+            源不一致! _vwap helper (services/paper_sim/driver.py) 必须 sanity-check
+            落在 [low*0.95, high*1.05] 范围内, 选 amt/vol 或 amt/(vol×100) 之一.
+            历史教训: Phase ψ.β.align bug — paper_sim NAV 从 1.6M 暴跌 360K.
+        amount:  {type: DOUBLE, unit: CNY, description: "成交额"}
+      notes:
+        - "前复权 (qfq): 复权因子 PIT 仍是 latest, 严格意义有未来函数 (§11.5 #13)"
+        - "VWAP 计算: 必须用 _vwap helper, 不要直接 amount/volume"
+
+    dim_stock_tdx_industry_history:
+      description: "通达信行业 PIT 映射 (snapshot_date 多版本)"
+      pit_key: snapshot_date
+      coverage: "只 ~1 周 snapshot (2026-04-25 起). 真实 PIT 历史不可用, 回测 fallback latest"
+      fields:
+        snapshot_date:    {type: DATE, role: pit-key}
+        stock_code:       {type: TEXT}
+        tdx_l1_name:      {type: TEXT, description: "通达信一级行业"}
+        tdx_l2_name:      {type: TEXT, description: "通达信二级行业 (大类)"}
+        tdx_l3_name:      {type: TEXT, description: "通达信三级行业 (细类)"}
+      notes:
+        - "Phase ψ.β.sector backfill 用 latest fallback (假设 3 年内行业分类基本不变, 业界做法)"
+        - "真 PIT 需 announce_date 字段 — 后续 Phase ψ.γ.dict 可加"
+
+  smartmoney.duckdb:
+    description: 业务表 / mart / 策略寻优产物
+
+    fact_signal_context:
+      description: "信号上下文 — 个股每日 stage / vol_r20 / price_pos / drawdown 等"
+      pit_key: date
+      row_count_approx: 2_700_000
+      coverage: "2023-09-12 → 2026-05-11"
+      fields:
+        date:            {type: DATE,   role: pit-key}
+        stock_code:      {type: TEXT}
+        vol_r20:         {type: DOUBLE, unit: fraction, description: "20 日相对成交量"}
+        amt_r20:         {type: DOUBLE, unit: fraction}
+        amount_20d_avg:  {type: DOUBLE, unit: CNY}
+        price_pos_60d:   {type: DOUBLE, unit: fraction, description: "60 日内当前价百分位 [0,1]"}
+        price_pos_120d:  {type: DOUBLE, unit: fraction}
+        drawdown_60d:    {type: DOUBLE, unit: fraction, description: "60 日内最大回撤 (负数)"}
+        technical_stage:
+          type: TEXT
+          enum: ["1", "1.5", "2", "3", "4"]
+          description: "Stan Weinstein 4 stage (1=底部 / 1.5=突破中 / 2=上升 / 3=顶部 / 4=下跌)"
+        built_at: {type: TIMESTAMP, description: "写入时间, JOIN 时可 WHERE built_at <= t 防回填污染"}
+
+    fact_technical_trigger:
+      description: "公式信号触发 — 公式当日命中 + 强度"
+      pit_key: date
+      fields:
+        date:             {type: DATE, role: pit-key}
+        stock_code:       {type: TEXT}
+        formula_id:       {type: TEXT, description: "公式 ID (reversal_1m_deep, dynamic_ma, ...)"}
+        formula_variant:  {type: TEXT, description: "变体 ID (公式可有多版本)"}
+        strength:         {type: DOUBLE, description: "信号强度 [0,1] (公式自定义, 跨公式不可比!)"}
+        state:            {type: TEXT, description: "状态 ('triggered' / 'armed' / 'expired')"}
+        reason_codes_json: {type: JSON}
+
+    fact_risk_factors:
+      description: "PIT 风险因子表 (Phase ψ.β.1)"
+      pit_key: calc_date
+      row_count_approx: 4_800_000
+      coverage: "6,567 股 / 810 trading days / 2023-01-01 → 2026-05-12"
+      fields:
+        stock_code:  {type: TEXT}
+        calc_date:   {type: DATE, role: pit-key}
+        vol_30d:     {type: DOUBLE, unit: "fraction (年化)", description: "30 日年化波动率"}
+        vol_60d:     {type: DOUBLE, unit: "fraction (年化)", outlier_cap: 2.0}
+        vol_120d:    {type: DOUBLE, unit: "fraction (年化)"}
+        sharpe_60d:  {type: DOUBLE, unit: dimensionless, outlier_cap: [-5, 5]}
+        mom_30d:     {type: DOUBLE, unit: "fraction (累计 return)"}
+        mom_60d:     {type: DOUBLE, unit: "fraction"}
+        mom_120d:    {type: DOUBLE, unit: "fraction"}
+      notes:
+        - "JOIN 模板: WHERE r.calc_date = (SELECT MAX(calc_date) FROM fact_risk_factors WHERE stock_code=? AND calc_date<=?)"
+
+    fact_financial_pit_daily:
+      description: "财务 PIT 日度表 (Phase ψ.β.2) — ASOF JOIN raw_gpcw_detail × derived"
+      pit_key: trade_date
+      row_count_approx: 3_700_000
+      coverage: "5,196 股 / 748 trading days"
+      fields:
+        stock_code:    {type: TEXT}
+        trade_date:    {type: DATE, role: pit-key}
+        pe_ttm:        {type: DOUBLE, unit: dimensionless, description: "市盈率 TTM (负值=亏损股, paper_sim filter)"}
+        pb:            {type: DOUBLE, unit: dimensionless}
+        ps_ttm:        {type: DOUBLE, unit: dimensionless}
+        roe_q:         {type: DOUBLE, unit: "fraction (季度 ROE)"}
+        profit_yoy:    {type: DOUBLE, unit: "fraction", warning: "部分股 sparse (如 000001 银行) — null 不影响其他股"}
+        revenue_yoy:   {type: DOUBLE, unit: "fraction"}
+        inst_holding_pct: {type: DOUBLE, unit: "fraction"}
+      notes:
+        - "announce_date 是真 PIT key (财报披露日), trade_date 是 ASOF JOIN K 线后的 forward 填充"
+
+    fact_capital_flow_pit_daily:
+      description: "资金流 PIT 日度 (Phase ψ.β.3) — lhb + executive + holder 汇总"
+      pit_key: trade_date
+      row_count_approx: 858_000
+      fields:
+        stock_code:        {type: TEXT}
+        trade_date:        {type: DATE, role: pit-key}
+        lhb_inst_buy_30d:  {type: DOUBLE, unit: CNY, description: "30 日机构席位龙虎榜买入额"}
+        exec_net_signal:   {type: DOUBLE, unit: dimensionless, description: "高管净增持信号 (>0 增持, <0 减持)"}
+        holder_count_change_q_pct: {type: DOUBLE, unit: percent, outlier_cap: 90, description: "股东户数变化 % (>0 越来越散户, <0 筹码集中)"}
+      notes:
+        - "outlier: Phase ψ.β.3 backfill 实测发现 holder_count_change 30M 极端值, cap |pct| ≤ 90"
+
+    fact_sector_momentum_daily:
+      description: "行业板块动量日度 (Phase ψ.β.sector) — 成分股等权聚合"
+      pit_key: trade_date
+      row_count_approx: 10_500
+      coverage: "13 一级行业 × 800 trading days"
+      fields:
+        sector_name:        {type: TEXT}
+        trade_date:         {type: DATE, role: pit-key}
+        sector_close:       {type: DOUBLE, unit: CNY, description: "成分股 close 等权平均"}
+        n_stocks:           {type: INTEGER, description: "当日成分股数 (PIT 行业映射 fallback latest)"}
+        ma20:               {type: DOUBLE, unit: CNY}
+        ma60:               {type: DOUBLE, unit: CNY}
+        vol_60d:            {type: DOUBLE, unit: "fraction (年化)"}
+        ret_5d:             {type: DOUBLE, unit: fraction}
+        ret_20d:            {type: DOUBLE, unit: fraction}
+        ret_60d:            {type: DOUBLE, unit: fraction}
+        ret_120d:           {type: DOUBLE, unit: fraction}
+        excess_20d:         {type: DOUBLE, unit: fraction, description: "vs 全市场 (HS300) 超额"}
+        excess_60d:         {type: DOUBLE, unit: fraction}
+        price_vs_ma20:      {type: DOUBLE, unit: fraction, description: "(close - ma20) / ma20"}
+        price_vs_ma60:      {type: DOUBLE, unit: fraction}
+        n_bars:             {type: INTEGER, description: "聚合用的 K 线条数"}
+
+    fact_regime_state:
+      description: "大盘 regime 状态 (HS300-based bull/bear/sideways)"
+      pit_key: trade_date
+      row_count_approx: 775
+      fields:
+        trade_date:        {type: DATE, role: pit-key}
+        regime_id:         {type: INTEGER}
+        regime_label:      {type: TEXT, enum: [bull, bear, sideways]}
+        regime_prob_json:  {type: JSON, description: "3 状态后验概率"}
+        transition_signal: {type: BOOL, description: "本日是否检测到状态切换"}
+
+    mart_per_stock_stage_strategy_optimal:
+      description: "Per (stock × formula × stage) 9 维 Optuna OOS 寻优结果 (Phase ψ R1)"
+      pit_key: built_at
+      row_count_approx: 24_442
+      fields:
+        stock_code:           {type: TEXT, role: pk}
+        formula_id:           {type: TEXT, role: pk}
+        formula_variant:      {type: TEXT, role: pk}
+        stage_filter:         {type: TEXT, role: pk, enum: ["1", "1.5", "2", "3", "4"]}
+        optimal_hp:           {type: INTEGER, enum: [5, 10, 15, 20, 30, 60, 90]}
+        optimal_stop_pct:     {type: DOUBLE, unit: fraction, sign: negative}
+        optimal_target_pct:   {type: DOUBLE, unit: fraction, sign: positive}
+        optimal_trailing_pct: {type: DOUBLE, unit: fraction, sign: positive}
+        oos_sharpe:           {type: DOUBLE, unit: dimensionless, role: business-canonical}
+        oos_win_rate:         {type: DOUBLE, unit: fraction}
+        oos_avg_ret:          {type: DOUBLE, unit: fraction}
+        oos_n_traded:         {type: INTEGER}
+        sharpe:               {type: DOUBLE, role: in-sample-only, warning: "Rule 8: 业务代码不读, 仅描述"}
+        win_rate:             {type: DOUBLE, role: in-sample-only}
+      notes:
+        - "Rule 8 sacred rule: 业务代码只读 oos_* 字段. 老 sharpe/win_rate 仅留作历史描述"
+
+    mart_per_formula_stage_optimal:
+      description: "Per (formula × stage × train_end_date) 严格 walk-forward Optuna (Phase ψ.α B)"
+      pit_key: train_end_date
+      fields:
+        formula_id:        {type: TEXT, role: pk}
+        formula_variant:   {type: TEXT, role: pk}
+        stage_filter:      {type: TEXT, role: pk}
+        train_end_date:    {type: DATE, role: pk + pit-key}
+        optimal_hp:        {type: INTEGER}
+        optimal_stop_pct:  {type: DOUBLE, unit: fraction}
+        optimal_target_pct: {type: DOUBLE, unit: fraction}
+        oos_sharpe:        {type: DOUBLE, unit: dimensionless, role: business-canonical}
+
+    mart_ensemble_optimal:
+      description: "Phase ψ.γ.1 ensemble 20 维 Optuna 全寻优 best_params + OOS (新)"
+      pit_key: built_at
+      fields:
+        study_name:        {type: TEXT, role: pk}
+        best_params_json:  {type: JSON}
+        walk_forward_mode: {type: TEXT}
+        oos_sharpe:        {type: DOUBLE, role: business-canonical}
+        oos_calmar:        {type: DOUBLE}
+
+  etf.duckdb:
+    description: ETF 数据 (单独 DB, 跟主流不混)
+
+## 跨表 JOIN 模板 (Rule 7 PIT 防 leakage)
+join_templates:
+
+  pit_max_by_stock_date: |
+    -- 取每股 ≤ signal_date 的最新 PIT 行
+    SELECT t.*
+      FROM <table> t
+      JOIN (
+        SELECT stock_code, MAX(<pit_key>) AS pit
+          FROM <table>
+         WHERE <pit_key> <= ?  -- signal_date
+         GROUP BY stock_code
+      ) p ON p.stock_code = t.stock_code AND p.pit = t.<pit_key>
+
+  asof_kline_to_event: |
+    -- ASOF JOIN: K 线 × 财报 announce_date (财报日发布后, forward 填充到下次发布)
+    SELECT k.date, k.code, k.close, f.<field>
+      FROM market.v_price_kline_qfq k
+      ASOF JOIN <event_table> f
+        ON k.code = f.stock_code AND k.date >= f.announce_date
+
+## 已知字段命名不一致 (技术债, §11.5 #17 渐进 fix)
+known_inconsistencies:
+  date_field_names:
+    - "fact_signal_context.date  vs  fact_risk_factors.calc_date  vs  fact_financial_pit_daily.trade_date"
+    - "→ 应统一为 pit_key 角色字段, 物理名保留向后兼容"
+  unit_volume:
+    - "v_price_kline_qfq.volume: tdxhub=手, akshare_sina=股"
+    - "→ Phase ψ.β.align _vwap sanity check 已挡; 长期方案: ingest 时 normalize 到 '手'"
+  outlier_cap:
+    - "holder_count_change_q_pct cap=90 — Phase ψ.β.3 hardcoded in backfill SQL"
+    - "→ 长期: 单独 outlier policy yaml + 写入前 governance"

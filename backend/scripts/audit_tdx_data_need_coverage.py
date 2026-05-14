@@ -16,7 +16,7 @@ logger = logging.getLogger("tdx_data_need_coverage")
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s | %(message)s")
 
 ROOT = Path(__file__).resolve().parents[3]
-CHUNKY = ROOT / "chunky-monkey-v2"
+CHUNKY = ROOT / "chunkymonkey"
 TDXHUB = ROOT / "tdxhub"
 MIAOXIANG = ROOT / "miaoxiang"
 

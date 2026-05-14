@@ -10,7 +10,7 @@ from __future__ import annotations
 import math
 from typing import Callable, Optional
 
-from services.backtest.realistic_engine import Bar, backtest_signals, simulate_trade
+from services.backtest.realistic_engine import Bar, backtest_signals
 from services.backtest.result import BacktestSummary
 from services.backtest.search_space import SearchSpace
 from services.candle_pattern.evaluator import score_pattern_match
@@ -43,20 +43,16 @@ def make_objective(
         pattern = DEFAULT_PATTERN_SEARCH_SPACE.sample(trial)
 
         # 3. 过滤 signals — 仅保留通过 K 线形态过滤的 signal
+        # Phase ψ.β.perf: 用 _idx (含 dict cache) 替代 linear search
+        from services.backtest.realistic_engine import _idx as _bar_idx
         from services.candle_pattern.features import compute_features_from_bars
 
-        # 预算 features (per signal_date), filter
         filtered = []
         for s in signals:
             bars = bars_by_stock.get(s["stock_code"])
             if not bars:
                 continue
-            # 找 signal_date 在 bars 里的索引
-            sig_i = -1
-            for i, b in enumerate(bars):
-                if b.date == s["signal_date"]:
-                    sig_i = i
-                    break
+            sig_i = _bar_idx(bars, s["signal_date"])
             if sig_i < 20:
                 continue
             feat = compute_features_from_bars(bars, sig_i)
@@ -66,8 +62,9 @@ def make_objective(
         if len(filtered) < DEFAULT_CONSTRAINTS.min_traded:
             return SCORE_FAILURE
 
-        # 4. 回测 (用 filter 后的 signals)
-        summary = backtest_signals(
+        # 4. 回测 — Phase ψ.β.perf: 一次性拿 summary + trades, 不再重跑 simulate_trade
+        from services.backtest.realistic_engine import backtest_signals_with_trades
+        summary, trades = backtest_signals_with_trades(
             signals=filtered,
             bars_by_stock=bars_by_stock,
             stop_pct=strat.stop_pct,
@@ -77,23 +74,6 @@ def make_objective(
             execution=EXECUTION_MODEL,
             buy_offset=buy_offset,
         )
-
-        # 5. 拿 trades (for objectives + constraints)
-        # 为了拿原始 trades 需要在 backtest_signals 里 expose, 但为简洁直接重做
-        from services.backtest.realistic_engine import simulate_trade
-        trades = []
-        for s in filtered:
-            bars = bars_by_stock.get(s["stock_code"])
-            if not bars:
-                continue
-            t = simulate_trade(
-                stock_code=s["stock_code"], signal_date=s["signal_date"], bars=bars,
-                stop_pct=strat.stop_pct, target_pct=strat.target_pct,
-                trailing_pct=strat.trailing_pct, hp_target=hp,
-                execution=EXECUTION_MODEL, buy_offset=buy_offset,
-            )
-            if t is not None:
-                trades.append(t)
 
         # 6. 硬约束检查
         ok, fail_reason = passes_hard_constraints(trades)

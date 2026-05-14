@@ -1,7 +1,7 @@
 """派生层 schema 版本登记 — P0.1 (2026-04-28).
 
 为什么需要:
-- chunky-monkey-v2 有多张派生表和少量可选兼容 view.
+- chunkymonkey 有多张派生表和少量可选兼容 view.
 - 升级表结构 (加列/改列/重建 view) 时容易踩"schema drift"雷:
     兼容 view 若长期存在, 底表加列后 DuckDB 可能拒绝查询旧 view.
 - 没有版本号机制 → 升级 schema 后旧代码读旧 schema, 新代码读新 schema, 沉默崩.

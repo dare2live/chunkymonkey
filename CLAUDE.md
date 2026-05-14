@@ -1,5 +1,11 @@
 # CLAUDE.md — 工程规则 (必须遵守)
 
+> ⚠ **Session 启动必读**: `PROJECT_INDEX.md` (项目全貌地图 — 数据资产 / 模块 / alpha 流水线 / 已知坑).
+>
+> 本文档 (CLAUDE.md) 是**规则**, PROJECT_INDEX.md 是**地图**. 规则告诉你怎么做, 地图告诉你在哪做.
+>
+> 对话压缩后第一件事: 重读 PROJECT_INDEX.md 防止 context 失真.
+
 ## Rule 1 — Think Before Coding
 
 - 没有隐藏假设. 把你的假设说出来.
@@ -68,6 +74,9 @@
 | KPI 阈值 (severe=0.5 / 年化≥30% / 持仓≥5天 等) 写在 yaml 默认 | 默认是"我觉得合理"拍脑袋, 没 sensitivity sweep 验证. | Optuna / grid search 跑 800+ 天历史 sweep 这些阈值, 选 KPI 矩阵稳健的组合; commit 附 sweep 结果. |
 | Wilson 默认 0.55 (sizer.py `wilson = 0.55`) | "假设上游已 wilson 排序过" — 是估算不是事实. | 改读上游真实 `wilson_win_rate` 字段; 没有就显式 skip 不算 kelly. |
 | portfolio_backtest +45.4% 报用户做最终决策 | 它不算 tx_cost / 不算流动性 / 不算 T+1 滑点 = 理想化估算. paper_sim 加真实成本后年化骤降 -44%. | live 决策必须基于含 tx_cost + T+1 滑点 + 流动性的 paper_sim, 不用 portfolio_backtest 的理想数. |
+| Phase ψ.β.5 L2 vol-aware: `stop_sigma=2.0, target_sigma=3.0, trailing_sigma=1.0` + `bounds [-0.20, -0.05, 0.10, 0.35, 0.03, 0.10]` 全部 hardcode 进 yaml 默认 + 单测 fixture, 我宣称是"业界常用 -2σ + 3σ + 1σ" | "业界常用"是估算不是数据. 这个项目里有没有 stop_sigma=2.0 比 1.5 更好的 backtest 证据? **没有**. 我跳过 Optuna 直接拍脑袋. 用户 push back "没充分发挥 optuna 潜力" — 一针见血. | sigma 倍数 + bounds 全部丢进 Optuna search space (Phase ψ.γ.1), walk-forward expanding_monthly + constrained calmar (max sharpe s.t. ann_ret≥0.30 AND max_dd≥-0.20), OOS 拼出 best_params 入 mart_ensemble_optimal. 业务代码只读 mart 表, 不 hardcode. |
+| Phase ψ.β.4 ensemble alpha weights (`reversal=0.20, sharpe_60d=0.15, mom_30d=0.05, vol_60d=0.05, pe_ttm=0.10, roe_q=0.10, profit_yoy=0.05, lhb_inst=0.15, exec_net=0.10, holder_count=0.05, sector_ret=0.08, sector_excess=0.07, sector_price_vs_ma=0.05`) 写在 yaml 默认 + 我宣称"业务直觉权重" | 13 个 alpha 权重为啥是这样? 没 backtest 证据. 同样是 estimate not measured. | 13 weights → Optuna search space, 跟 sigma 一起搞. 让 Optuna 找最优组合. |
+| Phase ψ.β.4 regime_gate multipliers (`bear=0.3, sideways=0.7, bull=1.0`) | 拍脑袋 "熊市半仓, 震荡 7 折, 牛市满仓". 没历史 regime 切换的 paper_sim sensitivity sweep. | 3 multipliers → Optuna search space, OOS 评估每种 regime 上的 sharpe 贡献. |
 
 **Self-check 提问** — 提交任何"性能指标"前问:
 1. 这个数字从哪行 SQL 跑出来?
@@ -189,6 +198,208 @@ SELECT reason, COUNT(*) FROM fact_optuna_governance_log
  GROUP BY 1 ORDER BY 2 DESC;
 ```
 
+## Rule 9 — 真金白银门槛 / 第一性原理 (用户视角)
+
+涉及**策略 / 实盘 / 金钱投入**的决策, 严苛度跟普通工程不一样. 把每行代码当成"如果上线后会真亏钱, 我能不能睡得着"来评估.
+
+### 9.1 真金白银门槛 — 拒绝"大概率 / 接近"的近似妥协
+
+| 我容易写出的近似 (错) | 真金白银下应该的标准 (对) |
+|---|---|
+| "leakage 影响估计 < 10%, 拿初步数字看" | 0 leakage. 5-10% 误差在实盘可能就是亏损线, 不接受 |
+| "含等量 leakage 公平对比 — 看相对优劣" | 实盘世界没有 leakage. 含 leakage 的"相对优劣"在实盘可能反转 |
+| "回测年化 +312% 看上去不错" | 立刻怀疑 leakage 而非兴奋. 真实期望永远比回测低 |
+| "先跑试试看, 不行再修" | 跑之前先想清楚"跑出来的数字能不能直接用于决策". 不能就别跑 |
+
+用户原话: **"不是数字游戏, 是真金白银投入的"**.
+
+### 9.2 第一性原理 push back (主动质疑自己的妥协)
+
+当我写出"含 X 但 Y 仍有效"的论证, 自己先 push back **"按第一性原理 X 应该存在吗?"**:
+
+- "Optuna 用全期 in-sample 调参但 OOS 测 — 这不是真 OOS, 是 leakage" ✓ (用户 push 出来的)
+- "公式触发频繁但 swap 加值好 — 不是有效策略, 频繁调仓本身就是失败" ✓ (用户 push 出来的)
+- "策略含 selection leakage 但跟 baseline 对比仍有意义 — 错, 实盘没有 baseline" ✓ (用户 push 出来的)
+
+妥协论证 90% 来自**我想省事不想做深入**. 写出妥协前自问: "如果用户说不接受这个妥协, 真正干净的方案是什么?" — 大多数时候那个方案才是正解.
+
+### 9.3 目标穿透 — 不被中间数字迷惑
+
+用户终极目标 = **短期资产最大幅度增值不缩水 (+30% 年化 / -20% max_dd / 超额 HS300)**.
+
+中间任何"看上去好的数字"都不是结论, 必须穿透检查:
+
+- in-sample Optuna sharpe +2.0 → 是 fit 还是真 alpha?
+- horizon_evidence sharpe +1.10 → 是市场级数据还是含选择偏差?
+- paper_sim 年化 +65% → 含 leakage 吗? 实盘真实期望多少?
+
+不能干净穿透到"真实 forward 期望" = 不是结论, 是噪音, 不能用于决策.
+
+### 9.4 数据失败先承认, 不强行包装
+
+- 反转策略 OOS 不及格 → 立刻承认换方向, 不留恋 momentum 沉没成本
+- "策略不合格就是不合格" — 用户原话
+- 不要因为"已经花了 X 小时调它"就硬要给个正向结论. 不及格就是不及格.
+
+### 9.5 Rule 化沉淀 — 长期纪律 > 短期效率
+
+学到的教训进 CLAUDE.md, 不止 commit message. 用户原话:
+- "把刚才发生的你的问题补救措施... 总结成规则写到 claude.md 里遵守"
+- "leakage 相关规则是不是也可以写在 claude.md 里作为 rule"
+- "你总结一下我在这个项目里的总体思路写进 claude.md 作为规则严格执行"
+
+**短期"快一点"的捷径, 长期一定会出技术债. Rule 化才能跨 session 跨 agent 持续遵守.**
+
+### 9.6 工程纪律 — git / 模块化 / 配置化是基础
+
+- **git**: commit + push + 分支管理 + worktree 残留清理 — 任何工作完成自动 commit
+- **模块化 + config 驱动**: 阈值 / 参数 / 表名 / 路径 / 日期 一律走 yaml. 业务代码不 hardcode.
+- **不硬编码**: 改参数 = 改一处 config, 不动业务代码
+- **PROJECT_INDEX.md 同步**: 改 service / script / yaml / Rule **必须**同步改 PROJECT_INDEX.md.
+  Pre-commit hook (`backend/scripts/check_project_index_sync.py`) 强制 reject 不同步的 commit.
+
+### 9.7 Commit 前必走的 5-question self-check
+
+(根因: Claude 多次遗漏文档同步 / 漏掉防回退测试 / commit 后才发现问题. Pre-commit hook 是
+技术防护层, 这套自检是认知层 — 两层一起)
+
+每次 `git commit` 前**逐项**确认:
+
+1. **`PROJECT_INDEX.md` 同步了吗?**
+   - 新加数据表 → §2; 新 service/script → §3-4; 新 yaml → §6; 解决坑 → §8 标 ✅;
+     新踩坑 → §11 + 这条规则; 加 §14 增量日志
+   - Pre-commit hook 会强制检查, 但我应该主动改 — hook 是最后防线不是开发流程
+2. **测试新加了吗?** — 改了核心逻辑必有单测 / 集成测; 改了 perf 必有 benchmark test 防回退
+3. **数据 / 跑批 commit log 截图 / 数字 写进 commit message 了吗?**
+   - 例: "实测 4.8M 行 / 12 min / sample stock 验证" — 不是 "fixed" 这种空说明
+4. **CLAUDE.md / Rule 9 反例表加了吗?** — 这次踩的新坑必须沉淀
+5. **Rule 9.1 真金白银 self-check** (策略相关 commit): 含 leakage/估算/假设? 数字穿透到 forward 期望?
+
+不能逐项答 "yes" = 别 commit. 重做.
+
+### 9.8 工作流 enforcement (技术层)
+
+防 Claude 忘记自检, 项目已加技术层强制:
+
+| 层 | 文件 | 防什么 |
+|---|---|---|
+| `git pre-commit hook: project-index-sync` | `.git/hooks/pre-commit` → `backend/scripts/check_project_index_sync.py` | 改 service/script/yaml 没改 PROJECT_INDEX → reject commit |
+| `git pre-commit hook: rule-compliance` | `.git/hooks/pre-commit` → `backend/scripts/check_rule_compliance.py` | staged diff 含 magic alpha weight / sigma / multiplier / threshold / hardcoded date / stock_code / try-except pass → 必须有 `# evidence:` / `# from yaml:` / `# measured:` 注释或 yaml 外置, 否则 reject |
+| `git commit-msg hook: self-check` | `.git/hooks/commit-msg` → `backend/scripts/check_commit_message.py` | commit message 缺 Rule 9.7 GROUP A (测试/防回退/修复) 或 GROUP B (PIT/OOS/实测) 关键词 → reject |
+| `pre-commit hook: ruff` | `.pre-commit-config.yaml` | 代码格式 (可选, 框架未安装时跳过) |
+| **CI**: GitHub Actions (待加) | `.github/workflows/` | 跑 pre-commit + pytest |
+
+安装 hook (一次性):
+```bash
+# 项目用 native git hook (.git/hooks/), 已经装好. 重新安装:
+chmod +x .git/hooks/pre-commit .git/hooks/commit-msg
+```
+
+如果 hook 误判 → 修对应脚本的 `PATTERNS` / `EVIDENCE_KEYWORDS` / `EXEMPT_*`. 不要 `--no-verify` 跳过.
+
+### 9.9 写代码前的 explicit ritual — 任何数字入代码前 self-check
+
+(根因: Phase ψ.β.5 我写 L2 vol-aware 时 sigma=2.0/3.0/1.0 + bounds [-0.20,-0.05,0.10,0.35,0.03,0.10]
+全部拍脑袋. CLAUDE.md Rule 6 写了"拍脑袋是 anti-pattern", 我背得熟, 但写代码时下意识又写了.
+说明 Rule 9.7 commit-time 自检太晚 — 错已经写出. 必须 **write-time 自检**.)
+
+**Before** typing any numeric literal into `services/` 或 `scripts/` 业务代码:
+
+1. **问**: 这个数字 measured from where?
+   - 有 Optuna study? → `# measured: optuna study <id>`
+   - 有 backtest commit? → `# evidence: backtest <commit-hash>`
+   - 在 yaml 里默认 fallback? → `# from yaml: <section>`
+   - **都没有? → 停手**. 把数字加进 yaml, 业务代码读 yaml. **或** 跑 Optuna 寻优.
+
+2. **不接受的回答**:
+   - "看着合理" / "业界常用" / "我估计" / "先用这个试试" — 全是拍脑袋
+   - "等跑出来不好再调" — 不行, 跑出来好坏不是 ground truth, 看出来真好可能是 leakage
+
+3. **Yaml-back 是默认**:
+   - 任何 service/script 里的数值字面量, **default 路径**应该是 yaml 配置
+   - 业务代码只读 yaml, 不 hardcode
+   - 改参数 = 改 yaml 一行, 业务代码不动 (跟 paper_sim_config.yaml 同款)
+
+4. **特例 (可以 hardcode)**:
+   - 数学常数 (sqrt(252), pi, e, 100 股/手)
+   - 边界值 (0, 1, MIN_FLOAT, INFINITY)
+   - 测试 fixture
+   - SQL LIMIT / 分页 size (但仍建议 yaml)
+   - 这些不算 anti-pattern, 但要写注释解释为啥能 hardcode
+
+**Pre-commit hook (`check_rule_compliance.py`) 是 last line of defense**. Rule 9.9 是写代码时第一道防线.
+
+### Self-check 提问 — 任何"涉策略"决策提交前问
+
+1. 这个数字 / 选择, 含 leakage / 估算 / 假设 吗? 答 "是" 就别提交.
+2. 真金白银投入下, 我能 100% 解释这个决策的依据吗? 答 "差不多" 就别提交.
+3. 跟用户终极目标 (+30%/-20%/超额) 直接对齐吗? 还是中间过程的"虚胜利"?
+4. 数据告诉我们什么? 不报喜不报忧, 失败就立即换方向.
+5. 这次学到的教训应该进 CLAUDE.md 哪条规则? 不进就会忘.
+
+## Rule 10 — Codex review gate + 单分支策略
+
+(根因: 用户原话 "代码阶段性完成提交 commit 时必须让 codex review, 提出审查意见. 保持在 main 上, 不要开分支和 worktree 保持项目清晰. 如果遇到 codex 不可用再自行 review".)
+
+### 10.1 Codex review gate (代码 commit 必走)
+
+**触发条件**: 任何**代码**阶段性 commit (新 service / script / 改业务逻辑 / 改 yaml / 加测试) 必须先让 Codex review.
+
+**豁免**:
+- 纯 markdown commit (PLAN / CLAUDE / HANDOFF / PROJECT_INDEX / goal.md / README)
+- 改名 / 路径替换类机械操作
+- 修文档错别字 / 格式
+
+**执行步骤**:
+1. 写完代码 + 单测后, **不立刻 commit**
+2. 用 `codex:rescue` (默认 fresh thread, 长流程同 thread 用 `--resume`) 提交 diff + 上下文, 让 Codex review
+3. Codex 输出审查意见 (问题 / 风险 / 改进建议)
+4. 必须**逐条回应** Codex 意见 (接受/反对/折中), 不允许"看了但忽略"
+5. 接受的改进 → 修代码 → 再次 Codex review (循环) 或 → 自审 OK → commit
+6. commit message 必须含 Codex review 结果引用 (agent ID + 关键意见 / 关键修改)
+
+### 10.2 Fallback: Codex 不可用时 Claude 自审
+
+**Codex 不可用判定**:
+- `codex-companion.mjs setup` 报 `ready: false`
+- `codex-companion.mjs task` 调用失败 / timeout / 服务不可达
+- 用户明确说 "Codex 不可用直接走"
+
+**Claude 自审清单** (必须逐条写进 commit message):
+1. PIT 检查: 任何特征 / label / 决策都没用未来信息?
+2. OOS 检查: 所有 metric 都是 walk-forward OOS, 不是 in-sample fit?
+3. 单测 / 集成测: 新逻辑有测试, 覆盖正常 + 边界 + 异常?
+4. Rule 9 真金白银 self-check: 含 leakage / 估算 / 假设吗?
+5. 反例风险: 跟 CLAUDE.md Rule 6/7/8/9 反例表对照, 有没有重复踩坑?
+
+### 10.3 单分支策略 — 只在 main 上工作
+
+**用户硬指令**: 项目保持 `main` 单分支, 不开 feature 分支, 不用 git worktree.
+
+**意图**: 防止分支散落 (历史教训: 之前有 `codex/chunkymonkey-data-champion-20260506` / `claude/bold-kowalevski-a7d9fc` 等 5 条多余分支).
+
+**执行**:
+- 所有 commit 直接进 `main`
+- 改名 / 退役 / 重大重构也在 main 上做, 不开 feature/v3-arch 之类
+- Push 后**立即**用 `git branch -a` 验证只剩 main
+- 紧急 hotfix 也在 main, 不开 hotfix/ 分支
+- 如果 Codex review 发现风险, 应该在 commit 前修, 不是开分支隔离
+
+**例外** (用户授权才允许):
+- PR 协作场景 (需要 Pull Request)
+- 大型重构需要 review 期 (用户明确说 "开个分支")
+- 这两种情况必须**显式用户拍板**, 不是 Claude 自己决定
+
+### 反例 (踩过)
+
+| 错法 | 正解 |
+|---|---|
+| 之前 Phase ψ 工作开 `feature/reversal-factor` 分支, 24 个 commit 没 merge 回 main | v3.2 起所有工作直接 commit main; 历史 feature 分支 merge 后立即删 |
+| codex/claude/* AI 分支 5 条悬挂 (距 main 0 commit), 影响项目清晰 | v3.2 启动前 P0a 全删, 不再开任何 AI 子分支 |
+| 代码改完直接 commit, 没让 Codex review | Rule 10.1 强制 review; commit 前 stage 已改的文件, 让 Codex 看 diff |
+
+---
+
 ## 项目特定补充
 
 - **数据驱动**: 任何参数 / 阈值 / 权重必须有 backtest 证据. 拍脑袋默认是 anti-pattern.
@@ -264,7 +475,7 @@ SELECT reason, COUNT(*) FROM fact_optuna_governance_log
 
 ### 运行环境 — 踩过的雷
 
-- **端口 8000** 默认是 chunky-monkey-v2 backend (`start.command` 里硬编码). 但宿主机上还有别的 app ("志途 LifeHack API") 也想用 8000 — 当前实际占住. 起 chunky-monkey 前先 `lsof -i:8000` 确认.
+- **端口 8000** 默认是 chunkymonkey backend (`start.command` 里硬编码). 但宿主机上还有别的 app ("志途 LifeHack API") 也想用 8000 — 当前实际占住. 起 chunky-monkey 前先 `lsof -i:8000` 确认.
 - **uvicorn 长跑会崩**: 5-12 晚上 uvicorn 8001 SIGABRT (uvloop asyncio 6 小时后死). 不要假设 backend 一直在线; cron_daily 的 sync 步骤会调 HTTP, 后端没起就 skip.
 - **start.command** 会先 `stop_project_server` 杀掉占住 8000 的旧实例 (前提是 cwd 是这个项目). 别的项目占的不会被杀.
 - akshare 不要 import (会触发 mini_racer V8 init 在 macOS 14+ 崩). 用 `importlib.metadata.version('akshare')` 查版本.

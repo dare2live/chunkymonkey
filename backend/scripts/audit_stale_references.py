@@ -47,7 +47,7 @@ REPO = Path(__file__).resolve().parent.parent.parent
 ROOT = REPO.parent
 BACKEND = REPO / "backend"
 PROJECT_ROOTS = {
-    "chunky-monkey-v2": REPO,
+    "chunkymonkey": REPO,
     "tdxhub": ROOT / "tdxhub",
     "miaoxiang": ROOT / "miaoxiang",
 }

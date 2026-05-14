@@ -10,6 +10,7 @@
 """
 from __future__ import annotations
 
+import math
 from typing import Optional
 
 from services.optimization.config import (
@@ -133,6 +134,68 @@ def enforce_pre_insert(
             f"oos_n_traded={n} < min_test_signals={g.min_test_signals} "
             f"(OOS 样本太少, 不可信)"
         )
+
+
+def enforce_deflated_sharpe(
+    observed_sharpe: float,
+    cumulative_n_trials: int,
+    n_observations: int,
+    cfg: Optional[OptunaConfig] = None,
+    skewness: float = 0.0,
+    kurtosis: float = 3.0,
+) -> float:
+    """跨 study 多重测试守门 (Bailey & López de Prado 2014).
+
+    Rule 7 防单 study leakage, Rule 8 强制 OOS, **但** 累积跑过 N 个 study 后,
+    "最好那一个 study 的 OOS sharpe" 仍有 multiple testing selection bias.
+    本函数算 Deflated SR p-value, p < cfg.deflated_sharpe.min_p_value → raise.
+
+    用法 (Optuna 跑完后入业务表前):
+        from services.optimization.governance import enforce_deflated_sharpe
+        # cumulative_n_trials 从 fact_optuna_cumulative_trials 取项目至今累积 trials
+        p = enforce_deflated_sharpe(
+            observed_sharpe=best_oos_sharpe,
+            cumulative_n_trials=N,
+            n_observations=oos_n_traded,
+        )
+        record['deflated_sr_p_value'] = p
+        record['deflated_sr_n_trials'] = N
+
+    Returns:
+        deflated_sr_p_value ∈ [0, 1]. Raise GovernanceViolation 当 p < min_p_value
+        或 enabled=true 但输入数值病态 (NaN).
+        当 cfg.deflated_sharpe.enabled=false → 返回 NaN, 不 raise (兼容旧路径).
+    """
+    from services.optimization.deflated_sharpe import deflated_sharpe_ratio
+
+    cfg = cfg or get_optuna_config()
+    if not cfg.deflated_sharpe.enabled:
+        return float("nan")
+
+    g = cfg.deflated_sharpe
+    p = deflated_sharpe_ratio(
+        observed_sharpe=observed_sharpe,
+        n_trials=cumulative_n_trials,
+        n_observations=n_observations,
+        sharpe_variance=g.default_sharpe_variance,
+        skewness=skewness,
+        kurtosis=kurtosis,
+    )
+    if math.isnan(p):
+        raise GovernanceViolation(
+            f"Deflated SR p=NaN — 输入数值病态 "
+            f"(kurtosis 过高 / sharpe 过大 / n_trials<2 / T<2). "
+            f"observed={observed_sharpe:.4f} N={cumulative_n_trials} T={n_observations}"
+        )
+    if p < g.min_p_value:
+        raise GovernanceViolation(
+            f"Deflated SR p={p:.4f} < min={g.min_p_value}. "
+            f"observed Sharpe={observed_sharpe:.4f} 在跨 study 累积 "
+            f"N={cumulative_n_trials} trials × OOS T={n_observations} obs 下, "
+            f"大概率是 multiple testing 噪音, 不是真 alpha. "
+            f"参考 Bailey & López de Prado (2014)."
+        )
+    return p
 
 
 class GovernanceViolation(ValueError):

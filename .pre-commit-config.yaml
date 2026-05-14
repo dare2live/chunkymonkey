@@ -19,3 +19,41 @@ repos:
       - id: ruff
         args: [--fix, --exit-zero]  # 自动修, 不阻塞
         files: ^backend/(services|routers)/.*\.py$
+
+  # Phase ψ.β.perf+: PROJECT_INDEX.md 同步检查 (Rule 9.5/9.6 落地)
+  # 修改 backend/services/, scripts/build_/optimize_/run_/backfill_, config/*.yaml, CLAUDE.md
+  # 必须同时改 PROJECT_INDEX.md, 否则 reject commit. 防 Claude 遗漏文档同步.
+  - repo: local
+    hooks:
+      - id: project-index-sync
+        name: PROJECT_INDEX.md sync check
+        entry: python backend/scripts/check_project_index_sync.py
+        language: system
+        pass_filenames: false
+        stages: [pre-commit]
+        always_run: true
+
+  # Phase ψ.γ.discipline: Rule 6/5/7 反 pattern 检测 (Rule 9.5/9.6/9.7 落地)
+  # 扫 staged diff 找 magic alpha weight / sigma / multiplier / threshold /
+  # hardcoded date / stock_code / try-except pass — 必须有 evidence 注释或 yaml 外置.
+  # 防 Claude 在 service 代码里拍脑袋写参数 (Rule 6 反例).
+  - repo: local
+    hooks:
+      - id: rule-compliance
+        name: Rule 6/5/7 反 pattern check
+        entry: python backend/scripts/check_rule_compliance.py
+        language: system
+        pass_filenames: false
+        stages: [pre-commit]
+        always_run: true
+
+  # Phase ψ.γ.discipline: commit message 5-question keyword 检测 (Rule 9.7 落地)
+  # 涉 service/script/config 的 commit 必须含 PIT/OOS/数据/实测 关键词 (GROUP B);
+  # 任何 commit 必须含 测试/防回退/修复 关键词 (GROUP A). 防空说明 commit.
+  - repo: local
+    hooks:
+      - id: commit-msg-self-check
+        name: Commit message Rule 9.7 self-check
+        entry: python backend/scripts/check_commit_message.py
+        language: system
+        stages: [commit-msg]

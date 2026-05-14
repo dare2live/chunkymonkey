@@ -29,7 +29,7 @@ class PortfolioConfig:
 
 @dataclass(frozen=True)
 class SelectionConfig:
-    mode: str                            # "production" | "backtest"
+    mode: str                            # "production" | "backtest" | "ensemble"
     candidate_source: str
     rank_by: str
     min_tier_to_buy: str
@@ -38,6 +38,28 @@ class SelectionConfig:
     liquidity_max_price: float
     exclude_stage: list
     backtest_tier_thresholds: dict       # {strong_buy: {sharpe_min, win_rate_min, calmar_min}, buy: {...}}
+    # Phase ψ.α: 公式白名单 (空 / None = 不限制, 列表 = 只用列表里的 formula_id)
+    # 用于 ablation: momentum vs reversal vs combined 同 paper_sim 路径下切换
+    formula_whitelist: tuple = ()
+    # Phase ψ.β.4: ensemble 多 alpha 综合 配置
+    ensemble_alphas: tuple = ()
+    regime_gate: dict = field(default_factory=dict)
+    default_holding: dict = field(default_factory=lambda: {
+        "hp": 15, "stop_pct": -0.10, "target_pct": 0.20, "trailing_pct": 0.05
+    })
+    # Phase ψ.β.4.6: quality filter (sanity gate, 在 zscore 之前 filter universe)
+    # 防止 ensemble 选高 vol 股 (短期 stop_hit 频繁) 和下跌趋势股 (stage=4)
+    ensemble_quality_filters: dict = field(default_factory=lambda: {
+        "max_vol_60d": 0.40,        # 60 日年化 std ≤ 40% (排除高波动)
+        "min_amount_20d_yuan": 0,   # 流动性 (driver liquidity 已 filter, 这里冗余)
+        "allowed_stages": ["1", "1.5", "2"],   # 仅底部 / 突破中 / 上升趋势
+    })
+    # Phase ψ.β.5 L2: vol-aware per-stock 参数 (从 fact_risk_factors.vol_60d 缩放 stop/target/trailing)
+    # enabled=False (默认 off, 不影响现有 ensemble v3 跑批); 启用见 paper_sim_ensemble.yaml 注释
+    vol_aware: dict = field(default_factory=dict)
+    # Phase ψ.γ.2: per-stock × stage 接入 ensemble (用现有 mart_per_stock_stage_strategy_optimal
+    # 24K 行 9 维 Optuna OOS 产物覆盖 default_holding). 优先级: per_stock_stage > vol_aware > default.
+    per_stock_stage: dict = field(default_factory=dict)
 
 
 @dataclass(frozen=True)
@@ -130,9 +152,16 @@ def _validate(cfg: PaperSimConfig) -> None:
     assert r.max_dd_hard_stop_pct < r.daily_dd_warning_pct  # hard stop 更严
 
     sel = cfg.selection
-    assert sel.mode in {"production", "backtest"}, f"unknown selection.mode: {sel.mode}"
+    assert sel.mode in {"production", "backtest", "ensemble"}, f"unknown selection.mode: {sel.mode}"
     assert sel.min_tier_to_buy in {"BUY", "STRONG_BUY", "WATCH"}
     assert sel.min_tier_to_swap_in in {"BUY", "STRONG_BUY"}
+    if sel.mode == "ensemble":
+        assert sel.ensemble_alphas, "ensemble mode requires non-empty ensemble_alphas"
+        for a in sel.ensemble_alphas:
+            assert all(k in a for k in ("name", "weight", "source_table", "source_col",
+                                        "direction", "pit_key")), \
+                   f"ensemble alpha missing required keys: {a}"
+            assert a["direction"] in (1, -1, +1)
 
 
 def load_config(path: Path | None = None, override: dict | None = None) -> PaperSimConfig:
@@ -151,7 +180,21 @@ def load_config(path: Path | None = None, override: dict | None = None) -> Paper
 
     cfg = PaperSimConfig(
         portfolio=PortfolioConfig(**raw["portfolio"]),
-        selection=SelectionConfig(**raw["selection"]),
+        selection=SelectionConfig(
+            **{**raw["selection"],
+               "formula_whitelist": tuple(raw["selection"].get("formula_whitelist") or ()),
+               "exclude_stage": list(raw["selection"].get("exclude_stage") or []),
+               # Phase ψ.β.4: ensemble alphas (tuple of dict — frozen dc 字段可为 tuple)
+               "ensemble_alphas": tuple(raw["selection"].get("ensemble_alphas") or []),
+               "regime_gate": raw["selection"].get("regime_gate", {}) or {},
+               "default_holding": raw["selection"].get("default_holding", {}) or {
+                   "hp": 15, "stop_pct": -0.10, "target_pct": 0.20, "trailing_pct": 0.05},
+               "ensemble_quality_filters": raw["selection"].get("ensemble_quality_filters") or {
+                   "max_vol_60d": 0.40, "min_amount_20d_yuan": 0,
+                   "allowed_stages": ["1", "1.5", "2"]},
+               "vol_aware":        raw["selection"].get("vol_aware",        {}) or {},
+               "per_stock_stage":  raw["selection"].get("per_stock_stage",  {}) or {}}
+        ),
         exit=ExitConfig(**raw["exit"]),
         swap=SwapConfig(**raw["swap"]),
         tx_cost=TxCostConfig(**raw["tx_cost"]),

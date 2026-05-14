@@ -1,0 +1,163 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Chunky Monkey v2 · 跟随机构选股</title>
+<link rel="stylesheet" href="tokens.css"/>
+<style>
+  html, body { margin:0; height:100%; font-family: var(--f-sans); background: var(--c-bg); }
+  body { overflow:hidden; }
+  @keyframes cmFade  { from { opacity:0 } to { opacity:1 } }
+  @keyframes cmSlide { from { transform: translateX(20px); opacity:0 } to { transform: translateX(0); opacity:1 } }
+</style>
+</head>
+<body>
+<div id="root"></div>
+
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+
+<script type="text/babel" src="v2-data.jsx"></script>
+<script type="text/babel" src="v2-picks.jsx"></script>
+<script type="text/babel" src="v2-inst-health.jsx"></script>
+
+<script type="text/babel">
+const { useState, useEffect } = React;
+
+function TopBar({ page, setPage, openSettings }) {
+  return (
+    <header className="app-top">
+      <div className="app-brand">
+        <span className="mark">CM</span>
+        <span>Chunky Monkey</span>
+      </div>
+      <div className="app-tabs">
+        {[
+          ['picks',  '今日推荐'],
+          ['insts',  '机构榜'],
+          ['health', '数据健康'],
+          ['admin',  '后台'],
+        ].map(([id,l]) => (
+          <button key={id} className={`app-tab ${page===id?'active':''}`} onClick={() => setPage(id)}>{l}</button>
+        ))}
+      </div>
+      <div className="app-spacer"/>
+      <div className="app-search">
+        <span style={{color:'var(--c-ink-40)'}}>⌕</span>
+        <input placeholder="股票代码 / 机构名…"/>
+        <span className="kbd">⌘K</span>
+      </div>
+      <button className="btn btn-sm" onClick={openSettings}>参数</button>
+      <div style={{width:24,height:24,borderRadius:12,background:'var(--c-ink-100)',color:'#fff',display:'inline-flex',alignItems:'center',justifyContent:'center',fontSize:11,fontWeight:600}}>DP</div>
+    </header>
+  );
+}
+
+/* 机构榜 — 完整列表页 */
+function InstRank({ openInst }) {
+  const { INST_DB, TypePill, MiniSpark } = window.CMV2;
+  const [type, setType] = useState('all');
+  const [minEvents, setMinEvents] = useState(8);
+  const types = ['all', ...new Set(INST_DB.map(i => i.type))];
+  const filtered = INST_DB
+    .filter(i => (type === 'all' || i.type === type) && i.events >= minEvents)
+    .sort((a,b) => (b.win * b.trust) - (a.win * a.trust));
+
+  return (
+    <div>
+      <div className="page-head">
+        <div>
+          <div className="crumbs"><span>研究</span><span className="sep">›</span><span className="here">机构榜</span></div>
+          <h1>机构 track record · {filtered.length} / {INST_DB.length}</h1>
+          <p>排序 = 胜率 × 信任度。样本不足 {minEvents} 次的机构会被自动过滤。点击任意机构看完整 60d 收益分布。</p>
+        </div>
+        <div className="page-actions">
+          <button className="btn">导入新机构</button>
+          <button className="btn btn-primary">建立机构组合</button>
+        </div>
+      </div>
+
+      <div className="cm-card" style={{padding:'10px 14px',marginBottom:14,display:'flex',gap:10,alignItems:'center',flexWrap:'wrap'}}>
+        <span className="muted" style={{fontSize:12}}>类型</span>
+        <div style={{display:'flex',gap:4,flexWrap:'wrap'}}>
+          {types.map(t => (
+            <button key={t} onClick={() => setType(t)} style={{
+              padding:'4px 10px',borderRadius:14,fontSize:11,
+              background: type===t?'var(--c-ink-100)':'var(--c-bg-2)',
+              color: type===t?'#fff':'var(--c-ink-70)',
+              fontWeight: type===t?500:400,
+            }}>{t==='all'?'全部':t}</button>
+          ))}
+        </div>
+        <div style={{flex:1}}/>
+        <span className="muted" style={{fontSize:12}}>最少事件</span>
+        <input type="range" min="1" max="40" value={minEvents} onChange={e=>setMinEvents(+e.target.value)} style={{width:120}}/>
+        <span className="mono" style={{fontSize:12,fontWeight:600,minWidth:24}}>{minEvents}</span>
+      </div>
+
+      <div className="cm-card" style={{padding:0,overflow:'hidden'}}>
+        <table className="cm-table">
+          <thead><tr>
+            <th style={{width:32}}>#</th>
+            <th>机构</th>
+            <th style={{width:90}}>类型</th>
+            <th className="num" style={{width:72}}>事件</th>
+            <th className="num" style={{width:72}}>胜率</th>
+            <th className="num" style={{width:80}}>平均 60d</th>
+            <th className="num" style={{width:80}}>中位 60d</th>
+            <th className="num" style={{width:72}}>信任度</th>
+            <th style={{width:90}}>近 12 次</th>
+            <th style={{width:32}}/>
+          </tr></thead>
+          <tbody>
+            {filtered.map((i, idx) => (
+              <tr key={i.id} style={{cursor:'pointer'}} onClick={() => openInst(i)}>
+                <td className="mono muted-2" style={{fontSize:11}}>{idx+1}</td>
+                <td>
+                  <div style={{fontWeight:500}}>{i.alias}</div>
+                  <div className="muted-2" style={{fontSize:10.5}}>{i.name}</div>
+                </td>
+                <td><TypePill type={i.type}/></td>
+                <td className="num mono">{i.events}</td>
+                <td className="num mono" style={{fontWeight:600,color:i.win>=0.6?'var(--c-accent)':i.win>=0.5?'var(--c-warn)':'var(--c-bad)'}}>
+                  {Math.round(i.win*100)}%
+                </td>
+                <td className={`num mono ${i.avg60>=0?'up':'down'}`}>{i.avg60>=0?'+':''}{(i.avg60*100).toFixed(1)}%</td>
+                <td className={`num mono ${i.med60>=0?'up':'down'}`}>{i.med60>=0?'+':''}{(i.med60*100).toFixed(1)}%</td>
+                <td className="num mono" style={{fontWeight:500}}>{i.trust.toFixed(2)}</td>
+                <td><MiniSpark data={i.recent}/></td>
+                <td style={{color:'var(--c-ink-40)'}}>›</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      <div style={{height:24}}/>
+    </div>
+  );
+}
+
+function App() {
+  const [page, setPage] = useState('picks');
+  const [inst, setInst] = useState(null);
+
+  return (
+    <div className="app" style={{position:'relative'}}>
+      <TopBar page={page} setPage={setPage} openSettings={() => {}}/>
+      <main style={{flex:1,overflow:'auto',padding:'18px 28px',background:'var(--c-bg)'}}>
+        {page === 'picks'  && <window.TodayPicks openInst={setInst}/>}
+        {page === 'insts'  && <InstRank openInst={setInst}/>}
+        {page === 'health' && <window.DataHealth/>}
+        {page === 'admin'  && <div style={{padding:'80px 0',textAlign:'center',color:'var(--c-ink-55)'}}>后台 — 数据源管理 / 模型训练 / 告警规则<br/><span className="muted-2" style={{fontSize:12}}>留空, 沿用方向 A 的链路图</span></div>}
+      </main>
+      <window.InstDrawer inst={inst} onClose={() => setInst(null)}/>
+    </div>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById('root')).render(<App/>);
+</script>
+</body>
+</html>

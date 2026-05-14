@@ -256,16 +256,14 @@ def _filter_signals_by_pattern(
     from services.candle_pattern.evaluator import score_pattern_match
     from services.candle_pattern.features import compute_features_from_bars
 
+    # Phase ψ.β.perf: 用 _idx (O(1) dict cache) 替代 linear search
+    from services.backtest.realistic_engine import _idx as _bar_idx
     filtered = []
     for s in signals:
         bars = bars_by_stock.get(s["stock_code"])
         if not bars:
             continue
-        sig_i = -1
-        for i, b in enumerate(bars):
-            if b.date == s["signal_date"]:
-                sig_i = i
-                break
+        sig_i = _bar_idx(bars, s["signal_date"])
         if sig_i < 20:
             continue
         feat = compute_features_from_bars(bars, sig_i)
@@ -320,6 +318,8 @@ def _evaluate_at_params(
     best_close: float, best_vol: float,
 ):
     """跑 backtest + objectives. 返回 (BacktestSummary, ObjectiveValues) 或 (None, None)."""
+    # Phase ψ.β.perf: 一次性拿 summary + trades, 避免 _trades_at_params 重复 simulate_trade
+    from services.backtest.realistic_engine import backtest_signals_with_trades
     from services.optimization.objectives import compute_all_objectives
 
     filtered = _filter_signals_by_pattern(
@@ -328,7 +328,7 @@ def _evaluate_at_params(
     if len(filtered) < MIN_TRADED_SIGNALS:
         return None, None
 
-    summary = backtest_signals(
+    summary, trades = backtest_signals_with_trades(
         signals=filtered, bars_by_stock=bars_by_stock,
         stop_pct=best_stop, target_pct=best_target, trailing_pct=best_trail,
         hp_target=best_hp, execution=EXECUTION_MODEL,
@@ -337,11 +337,6 @@ def _evaluate_at_params(
     if summary.n_traded < MIN_TRADED_SIGNALS:
         return None, None
 
-    trades = _trades_at_params(
-        filtered, bars_by_stock,
-        best_stop, best_target, best_trail, best_hp, best_buy_offset,
-        best_body, best_lower, best_close, best_vol,
-    )
     obj = compute_all_objectives(trades)
     if obj is None:
         return None, None

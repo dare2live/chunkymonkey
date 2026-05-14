@@ -1,7 +1,7 @@
 """tdxhub source adapter — 包装 dare2live/tdxhub 的 14 类 capability.
 
 tdxhub 已通过 `pip install -e ../tdxhub` 引入, 入口 `import tdxhub.X`.
-chunky-monkey-v2 的 tdx_source.py 已封了连接池/circuit breaker, 我们继续走它.
+chunkymonkey 的 tdx_source.py 已封了连接池/circuit breaker, 我们继续走它.
 
 P7 (2026-04-28): 新增 holders_top10_float — F10「股东研究」结构化解析,
 99.6% 全市场覆盖, A/H 拆分, 含退出表. 替代 miaoxiang RPT_F10_EH_FREEHOLDERS.
