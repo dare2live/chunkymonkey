@@ -337,6 +337,67 @@ chmod +x .git/hooks/pre-commit .git/hooks/commit-msg
 4. 数据告诉我们什么? 不报喜不报忧, 失败就立即换方向.
 5. 这次学到的教训应该进 CLAUDE.md 哪条规则? 不进就会忘.
 
+## Rule 10 — Codex review gate + 单分支策略
+
+(根因: 用户原话 "代码阶段性完成提交 commit 时必须让 codex review, 提出审查意见. 保持在 main 上, 不要开分支和 worktree 保持项目清晰. 如果遇到 codex 不可用再自行 review".)
+
+### 10.1 Codex review gate (代码 commit 必走)
+
+**触发条件**: 任何**代码**阶段性 commit (新 service / script / 改业务逻辑 / 改 yaml / 加测试) 必须先让 Codex review.
+
+**豁免**:
+- 纯 markdown commit (PLAN / CLAUDE / HANDOFF / PROJECT_INDEX / goal.md / README)
+- 改名 / 路径替换类机械操作
+- 修文档错别字 / 格式
+
+**执行步骤**:
+1. 写完代码 + 单测后, **不立刻 commit**
+2. 用 `codex:rescue` (默认 fresh thread, 长流程同 thread 用 `--resume`) 提交 diff + 上下文, 让 Codex review
+3. Codex 输出审查意见 (问题 / 风险 / 改进建议)
+4. 必须**逐条回应** Codex 意见 (接受/反对/折中), 不允许"看了但忽略"
+5. 接受的改进 → 修代码 → 再次 Codex review (循环) 或 → 自审 OK → commit
+6. commit message 必须含 Codex review 结果引用 (agent ID + 关键意见 / 关键修改)
+
+### 10.2 Fallback: Codex 不可用时 Claude 自审
+
+**Codex 不可用判定**:
+- `codex-companion.mjs setup` 报 `ready: false`
+- `codex-companion.mjs task` 调用失败 / timeout / 服务不可达
+- 用户明确说 "Codex 不可用直接走"
+
+**Claude 自审清单** (必须逐条写进 commit message):
+1. PIT 检查: 任何特征 / label / 决策都没用未来信息?
+2. OOS 检查: 所有 metric 都是 walk-forward OOS, 不是 in-sample fit?
+3. 单测 / 集成测: 新逻辑有测试, 覆盖正常 + 边界 + 异常?
+4. Rule 9 真金白银 self-check: 含 leakage / 估算 / 假设吗?
+5. 反例风险: 跟 CLAUDE.md Rule 6/7/8/9 反例表对照, 有没有重复踩坑?
+
+### 10.3 单分支策略 — 只在 main 上工作
+
+**用户硬指令**: 项目保持 `main` 单分支, 不开 feature 分支, 不用 git worktree.
+
+**意图**: 防止分支散落 (历史教训: 之前有 `codex/chunkymonkey-data-champion-20260506` / `claude/bold-kowalevski-a7d9fc` 等 5 条多余分支).
+
+**执行**:
+- 所有 commit 直接进 `main`
+- 改名 / 退役 / 重大重构也在 main 上做, 不开 feature/v3-arch 之类
+- Push 后**立即**用 `git branch -a` 验证只剩 main
+- 紧急 hotfix 也在 main, 不开 hotfix/ 分支
+- 如果 Codex review 发现风险, 应该在 commit 前修, 不是开分支隔离
+
+**例外** (用户授权才允许):
+- PR 协作场景 (需要 Pull Request)
+- 大型重构需要 review 期 (用户明确说 "开个分支")
+- 这两种情况必须**显式用户拍板**, 不是 Claude 自己决定
+
+### 反例 (踩过)
+
+| 错法 | 正解 |
+|---|---|
+| 之前 Phase ψ 工作开 `feature/reversal-factor` 分支, 24 个 commit 没 merge 回 main | v3.2 起所有工作直接 commit main; 历史 feature 分支 merge 后立即删 |
+| codex/claude/* AI 分支 5 条悬挂 (距 main 0 commit), 影响项目清晰 | v3.2 启动前 P0a 全删, 不再开任何 AI 子分支 |
+| 代码改完直接 commit, 没让 Codex review | Rule 10.1 强制 review; commit 前 stage 已改的文件, 让 Codex 看 diff |
+
 ---
 
 ## 项目特定补充

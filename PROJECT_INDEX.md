@@ -740,6 +740,38 @@ SELECT * FROM mart_data_source_watermark;
 
 每次 session 增量内容写这里, 新 session 启动时**从下往上读**最近改了啥.
 
+### 2026-05-14 (Phase v3.2 共识落盘 — Claude × Codex 三轮讨论达成 ML ranking 主导路线)
+
+**重大方向调整**: v2 ensemble 拼权重 + v3 两路合并 **全部废弃**, 改 ML ranking 主导.
+
+**讨论历史**: Claude × Codex 三轮 (`a15203724858923e8`):
+- Round 1: Codex initial review PLAN_V3 (两路合并), 给出可行性 **3/10**
+- Round 2: Claude push back 5 点 (walk-forward / 估时 / fake P50 / 机构 join / paper_sim 改造), Codex 全部接受
+- Round 3: Codex 出完整 PLAN_V3.2 草稿, Claude 落盘 + 加分支约束
+
+**ceiling test 结果填表 (PID 12518 → KPI)**:
+
+| 实验 | ann | mdd | sharpe | 结论 |
+|---|---|---|---|---|
+| 13-alpha hp=15 baseline | +3.78% | -30.1% | +0.29 | 当前真钱基线 |
+| **+ per_stock_stage=true (ceiling)** | **-26.5%** | **-50.5%** | **-0.61** | 含 PIT leakage 都失败 → 路线证伪 |
+
+**新路线 (PLAN_V3.2)**:
+- ML ranking 主导 (LightGBM/LambdaMART), 公式 + 机构跟随 降为特征/baseline/解释层
+- 三目标 composite + 换手/容量/滑点惩罚 (代替原 7 目标)
+- walk_forward expanding_monthly R1 + final holdout 锁最近 6 个月
+- 串行 Phase gate (P-1 → P0a/b/c → P1 → P2 → P3 → P4a/b/c)
+- 10 个数据决定的决策点 (ablation 决定, 不拍脑袋)
+
+**CLAUDE.md 新增 Rule 10** — Codex review gate + 单分支策略:
+- 10.1 代码 commit 前必走 Codex review (markdown 类豁免)
+- 10.2 Codex 不可用 fallback: Claude 自审 5-question
+- 10.3 main 单分支, 禁开 feature 分支 / worktree (用户硬指令)
+
+**项目改名**: chunky-monkey-v2 → chunkymonkey (GitHub repo + 本地目录 + 16 文件引用同步).
+
+**PLAN_V3.md** (本仓库根) = v3.2 共识版 实施计划, 含 §0-§9 完整路线. 后续 /goal 命令从中执行.
+
 ### 2026-05-14 (Phase ψ.γ.experiment — ablation 3 fail + per_stock_stage ceiling test 跑中)
 
 **用户 4 次 /loop = 自主推进**. 我做了 3 个 ablation 实验全 fail, 当前跑 ceiling test (PID 12518).

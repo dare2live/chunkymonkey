@@ -1,478 +1,405 @@
-# PLAN_V3.md — v3 退役 v2 实施计划
+# PLAN_V3.md — ML Ranking 主导实施计划 (v3.2 共识版)
 
-> **创建**: 2026-05-14
-> **状态**: 待用户拍板
-> **背景**: paper_sim per_stock_stage ceiling test (-26.5%) 证伪 v2 ensemble 路线; 用户重新明确产品愿景 = "机构跟随是手段, 公式独立也行, 终极目标资产增值"; 退役 v2 ensemble 拼权重, 上位 v3 两路合并架构.
-
----
-
-## 0. 产品愿景 (锚)
-
-**终极目标** (用户原话): "短期内资产最大幅度增值不缩水"
-
-**3 PASS 标准**:
-1. 年化 ≥ 30%
-2. max_dd ≥ -20%
-3. 超额 vs HS300 > 0
-4. (补) 月胜率 ≥ 55%
-
-**baseline**: 2023-01-03 起 100 万本金, HS300 benchmark, 不算现金利息.
-
-**当前实测 baseline (2026-05-14, 含真实 tx_cost)**:
-- paper_sim 13-alpha hp=15: ann **+3.78%** / mdd -30.1% / sharpe +0.29  ← 距目标 -26pp
-- per_stock_stage ceiling: ann **-26.5%** ← 路线证伪
-- portfolio_walk_forward +45.4% / +205.4% 超额 ← 理想化, 不算 tx_cost/T+1/流动性 (Rule 9 反例)
+> 创建：2026-05-14 (Claude × Codex 三轮讨论后共识版)
+> 状态：待启动 P-1
+> 目标：真实成本、T+1、停牌/涨跌停、流动性/容量约束下，paper_sim 年化 ≥30%、max_dd ≥-20%、超额 vs HS300 >0、月胜率 ≥55%
+> 核心变更：废弃 V3 两路合并，改为 ML ranking 主导；公式与机构逻辑降为特征、baseline、解释层
+> Codex 历史 agent: `a15203724858923e8` (后续 review 可 `--resume` 复用)
 
 ---
 
-## 1. v3 两路合并架构
+## §0 基线与废弃项
 
-```
-┌──────────────────────────────────────────────────────────┐
-│  A 路: 机构跟随 (用户产品最初愿景)                       │
-│    机构事件 (fact_institution_event/lhb_event)           │
-│    ↓ JOIN mart_institution_industry_stat                 │
-│      (擅长判定: win_rate / avg_gain / sample 阈值上 yaml │
-│       + Optuna 寻最优阈值)                               │
-│    ↓ 触发 institution_follow formula (T+1 vwap 入场)     │
-└──────────────────────────────────────────────────────────┘
-                            ↘
-┌──────────────────────────────────────────────────────────┐
-│  B 路: 公式独立                                          │
-│    全市场扫 fact_technical_trigger 当日触发              │
-│    ↓ (turtle_20/55, macd_above/below, reversal_1w/1m, ma)│
-│    ↓ JOIN mart_per_stock_stage_strategy_optimal_v3       │
-│      (per-stock × formula × stage 最优 params, OOS)      │
-└──────────────────────────────────────────────────────────┘
-                            ↘
-                ┌──────────────────────┐
-                │  Optuna 学习两路权重 │
-                │  alpha_w_inst        │
-                │  + alpha_w_formula   │
-                │  (∑ = 1.0)           │
-                └──────────────────────┘
-                            ↓
-                ┌──────────────────────────────┐
-                │  三目标 + 约束综合排序       │
-                │  max(ann_ret)                │
-                │  min(|max_dd|)               │
-                │  min(avg_hold_days)          │
-                │  constraint: sharpe>0        │
-                │           OR calmar>0.5      │
-                └──────────────────────────────┘
-                            ↓
-                    top 5 → paper_sim 5 仓
-                    (tx_cost + T+1 + 流动性 真实)
-                            ↓
-                    mart_paper_sim_kpi → 复盘 + 再训练
-                            ↓
-                    UI: 机构 / 股票 / 公式 视图
-```
+### 0.1 当前实测基线
 
----
+| 项 | 实测 | 结论 |
+|---|---:|---|
+| paper_sim 13-alpha hp=15 | ann +3.78% / mdd -30.1% / sharpe +0.29 | 当前真钱基线, 未达标 |
+| per_stock_stage ceiling test | ann -26.5% | v2 per-stock/stage ensemble 路线证伪 |
+| portfolio_walk_forward | +45.4%, 不含 tx_cost/T+1/流动性 | 假 winner, 禁止作为决策依据 |
+| 终极目标差距 | +3.78% → +30% = +26.22pp | 必须修 alpha, 不修目标 |
 
-## 2. 四类清单
-
-### 退役
+### 0.2 废弃项
 
 | 项 | 原因 | 动作 |
 |---|---|---|
-| `paper_sim_ensemble.yaml` 13-alpha `ensemble_alphas` 拼权重 | 跟用户产品愿景错位 (拼权重不是机构跟随+公式) | yaml 删 ensemble_alphas 段, 保留 PIT alpha 表给 Optuna feature 用 |
-| `selector.load_today_candidates_ensemble` | ensemble_score 排序模式 | 函数标 deprecated, paper_sim mode 默认切 v3 |
-| `selection.per_stock_stage.enabled = true` | ceiling test -26.5% 证伪 | yaml 改 false + 注释解释; mart 表保留作历史 |
-| `Phase ψ.δ.1 sector_pred` 14th alpha | 实测 hurt 21pp | weight=0 已 disable, v3 path 不接入 |
-| `selection.vol_aware.enabled` | 拍脑袋 sigma 参数 (Rule 6 反例) | 默认 off 锁住 |
-| `portfolio_walk_forward +45.4%` 作主要 KPI | 理想化, 不含 tx_cost | goal.md 顶部标"理想化基准 — 不作决策依据", 移到 §历史 |
+| `paper_sim_ensemble.yaml` 的 `ensemble_alphas` | 拼权重不是 alpha, 且未证明成本后有效 | 退役, 不进入 v3.2 主路径 |
+| A 路机构 + B 路公式 + Optuna 权重合并 | 二次过拟合风险高, 无法隔离 alpha 来源 | 退役 |
+| `portfolio_walk_forward +45.4%` | 不含真实交易约束 | 标注为历史反例 |
+| per-stock/stage 作为主选择器 | ceiling ann -26.5% | 只保留为特征/benchmark |
+| 公式独立主导买入 | 未证明收益能力 | 降级为 baseline/解释层 |
 
-### 保留 (按用户拍板 v3 退役边界)
+### 0.3 保留资产
 
-| 项 | 价值 |
-|---|---|
-| `mart_per_stock_stage_strategy_optimal` (17,663 行) | 寻优表是 v3 B 路的核心数据资产 |
-| `formula_engine` 7 公式 + `candle_pattern/` 形态识别 | v3 B 路核心 |
-| `event_simulator.py` | production-ready, v3 A 路核心引擎 |
-| `mart_institution_industry_stat` (4,807) / `mart_institution_profile` (231) | v3 A 路 "机构擅长"核心表 |
-| `fact_alpha158_panel` (4M 行) | v3 P1b 接入 |
-| Optuna governance + walk_forward + audit_end_to_end | 跨 Phase 基础设施 |
-| paper_sim driver / exit_rules / tx_cost / swap_rules | 引擎主体, 只换 selector |
-
-### 改造
-
-| 项 | 改造点 |
-|---|---|
-| `composite.py` + `optuna_config.yaml.composite` | 7 目标 → 3 目标 (ret/dd/hp) + 约束 (sharpe>0 OR calmar>0.5) |
-| `selector.py` | 新增 v3 mode 函数 `load_today_candidates_v3` (两路合并) |
-| `paper_sim_ensemble.yaml` | 默认 mode 切 v3, 加 alpha_w_inst/alpha_w_formula |
-| `FormulaBase.compute_signals` | 加 `events_by_code: Optional[dict] = None` 参数 |
-| 数据覆盖率 stage=1/3/4 偏低 (50/191/89 行) | 找上游写坏路径 backfill, **不放松 n_traded 阈值** |
-
-### 新建
-
-| 项 | 用途 |
-|---|---|
-| `services/formula_engine/institution_follow.py` | institution_follow formula 实现 |
-| `services/optimization/objectives_v3.py` | 3 目标 + 约束实现 |
-| `services/paper_sim/selector_v3.py` (或同文件加函数) | v3 mode dispatch |
-| `mart_per_stock_stage_strategy_optimal_v3` 新表 | 3 目标 objective 寻优结果 |
-| `mart_institution_excellence` (可选) | 机构擅长行业判定结果 (阈值 + Optuna 寻优后) |
-| `backend/scripts/optimize_per_stock_stage_strategy_v3.py` | v3 寻优脚本 (3 目标 + 候选池精调) |
-| `backend/scripts/build_institution_follow_signals.py` | 构建 institution_follow 历史信号 |
-| `routers/v3_views.py` 接线 | 机构/股票/公式三视图 API |
+| 资产 | 行数/状态 | v3.2 用途 |
+|---|---:|---|
+| `fact_alpha158_panel` | 4,022,758 行 | ML ranking 核心特征 |
+| `fact_institution_event` | 35K | 事件特征 |
+| `fact_lhb_event` | 52K | 事件/情绪/异动特征 |
+| `mart_institution_industry_stat` | 4,807 行 | 机构×行业质量特征 |
+| `mart_institution_profile` | 231 行 | 机构画像特征 |
+| `mart_per_stock_stage_strategy_optimal` | 17,663 行 | 公式历史表现特征/benchmark |
+| `event_simulator.py` | 已有 | 事件特征生成与回放 |
+| paper_sim | 已有 | 成本后真实验证引擎 |
+| Optuna governance / walk_forward | 已有 | R1 expanding_monthly 验证标准 |
 
 ---
 
-## 3. Phase 路线图
+## §1 数据窗口 + walk-forward expanding_monthly 详细 schema
 
-### P0a — Git 清理 (30 min, 无依赖)
+### 1.1 标准切分
 
-**动作**:
-1. 读 working tree 未提交模块 (`deflated_sharpe.py` / `data_governance/` / `diagnose_alpha_ic.py` / `check_deflated_sharpe.py`) 看是 v2 残留还是 v3 资产; 报告用户决定 commit / 丢弃
-2. `git add design/` (Chunky Monkey v3.html + 16 个 v3-*.jsx) 一次性入 git
-3. commit 当前 4 modified (`optuna_config.yaml` / `backfill_risk_factors_history.py` / `config.py` / `governance.py`) — message 标 "Phase ψ in-flight, pre-v3 freeze"
-4. `git push origin feature/reversal-factor`
-5. 创建 PR `feature/reversal-factor` → `main`, merge (用户授权)
-6. 删 5 多余分支: `codex/chunkymonkey-data-champion-20260506`, `claude/bold-kowalevski-a7d9fc`, `claude/loving-sutherland-ff7b74`, `claude/mystifying-benz-29d9e0`, `codex/chunkymonkey-data-champion-20260506` (本地+远端)
-7. main 上新开 `feature/v3-arch` 作 v3 工作分支
+固定 24 月训练 / 11 月验证 / 6 月 holdout 废弃。v3.2 统一使用 `walk_forward.expanding_monthly`, 即每个月月末重训, 下一月 OOS。
 
-**Acceptance**:
-- [ ] `git status` 0 modified, 0 untracked (除 data/ 数据库)
-- [ ] `git branch -a` 只剩 main + feature/v3-arch + remotes/origin/{main, feature/v3-arch}
-- [ ] design/ 全部入 git (16 v3-*.jsx + Chunky Monkey v{2,3}.html)
-- [ ] HANDOFF.md / goal.md 已 push 到 main
-
-**回滚**: 删错分支 → `git reflog` 找 SHA + `git update-ref refs/heads/<name> <SHA>` 恢复
-
-### P0b — Composite 改 3 目标 (3-4 hr 含跑批)
-
-**动作**:
-1. 改 `services/optimization/composite.py`:
-   - 新 `CompositeWeightsV3 = {ret_w, dd_w, hp_w}`, ∑=1.0
-   - 新 `composite_score_v3(obj, weights)` 函数:
-     ```
-     raw = obj.annual_ret * ret_w - abs(obj.max_dd) * dd_w - obj.avg_hold_days/60 * hp_w
-     sample_w = log(1 + obj.n_traded)
-     # 约束: 不通过 raw = -inf
-     if obj.sharpe <= 0 and obj.calmar <= 0.5: raw = -1e9
-     return raw * sample_w
-     ```
-2. 改 `optuna_config.yaml`:
-   - 加 `composite_v3:` 段 (ret_w=0.5 / dd_w=0.3 / hp_w=0.2, 约束阈值)
-   - 加 `objective_version:` 字段, default = "3obj_ret_dd_hp_v1"
-3. 单测加: `test_composite_v3.py` 覆盖 (a) 高 ret 但 dd 极差→ 排序低 (b) 约束触发返回 -inf (c) 权重 ∑=1.0 校验
-4. 写 `optimize_per_stock_stage_strategy_v3.py`:
-   - 复用现 `optimize_per_stock_stage_strategy.py` 主体
-   - 改 objective 调 `composite_score_v3`
-   - 入新表 `mart_per_stock_stage_strategy_optimal_v3` (同 schema + `objective_version` 列)
-5. 数据覆盖率 self-check: stage_filter 各分段统计 n_signals, 若 stage=1/3/4 < 500 个 signal → backfill (拉数据不跳过)
-6. 8 workers fork 跑 v3 寻优 (~60 min), 入 `_v3` 后缀新表
-7. 跑 audit_end_to_end → 0 FAIL
-8. 跑 1402 baseline pytest → 全绿
-
-**Acceptance**:
-- [ ] `composite_v3` 单测 ≥ 3 cases 全绿
-- [ ] `mart_per_stock_stage_strategy_optimal_v3` 行数 ≥ 15,000 (跟旧版同量级)
-- [ ] 新表 OOS sharpe > 0 行数占比 ≥ 旧版 (用 SQL 对比)
-- [ ] audit_end_to_end 0 FAIL, 1402 pytest 全绿
-- [ ] commit message 含 "Phase v3.P0b: composite 3-obj + ret/dd/hp + 约束 sharpe>0|calmar>0.5; 实测 17K rows backfill; OOS sharpe > 0 占比 +X%"
-
-**回滚**: 新表 DROP, composite_v3 文件删, yaml 还原 — 旧表 17K 行不动
-
-### P0c — institution_follow 包为 formula (1-2 day)
-
-**动作**:
-1. 扩展 `FormulaBase.compute_signals` 加 `events_by_code: Optional[dict[str, list[dict]]] = None`
-   - 7 现有 formula 不传, 不受影响
-   - 加单测验证向后兼容: 旧 formula 不传 events_by_code 应 work
-2. 新建 `services/formula_engine/institution_follow.py`:
-   - `class InstitutionFollowFormula(FormulaBase)`
-   - metadata.formula_id = "institution_follow"
-   - 内部读 `fact_institution_event` 或外部传入 events_by_code
-   - 擅长判定: JOIN `mart_institution_industry_stat` WHERE win_rate_90d ≥ threshold_w AND sample_events ≥ threshold_s AND avg_gain_90d ≥ threshold_g
-   - 阈值 threshold_w / threshold_s / threshold_g 上 yaml `formula_engine.institution_follow.thresholds`
-   - 加 Optuna 寻优可选 (P0d 时启用)
-3. 新建 `backend/scripts/build_institution_follow_signals.py`:
-   - 扫历史 fact_institution_event, 按擅长判定生成 fact_technical_trigger 行 (formula_id=institution_follow)
-   - 入 `fact_technical_trigger` (现有表), `formula_variant` = institution_follow (单 variant 起步)
-4. 加 institution_follow 进 P0b v3 寻优 pipeline (跑 8 workers fork 1 hr)
-5. 单测:
-   - test_institution_follow_signal_gen (5+ cases: 擅长判定 / 阈值边界 / 重复 event 去重 / 多机构同股 / 行业 fallback)
-   - test_event_simulator_with_institution_follow (集成测试)
-6. 数据覆盖率 self-check: stage_filter × institution_follow 行数 ≥ 200, 否则 backfill
-
-**Acceptance**:
-- [ ] FormulaBase 兼容性单测全绿 (7 现有 formula 不受影响)
-- [ ] InstitutionFollowFormula 单测 5+ cases 全绿
-- [ ] `fact_technical_trigger` 含 institution_follow 行 ≥ 5000 (按擅长判定生成)
-- [ ] `mart_per_stock_stage_strategy_optimal_v3` 含 formula_id=institution_follow 行 ≥ 300
-- [ ] audit_end_to_end 0 FAIL (含新 formula 检查项)
-- [ ] commit message 含 "Phase v3.P0c: institution_follow as 8th formula; 擅长判定 yaml + Optuna; 阈值寻优实测 X trials; mart_v3 入 X 行"
-
-**回滚**: institution_follow.py 删 + fact_technical_trigger DELETE formula_id=institution_follow + mart_v3 DELETE — FormulaBase 改动需要保留 (向后兼容, 不影响其他)
-
-### P0d — selector v3 mode (1 day)
-
-**动作**:
-1. 新建 `selector.load_today_candidates_v3` 函数:
-   - A 路: 当日 fact_institution_event JOIN excellence 判定 → institution_follow 候选
-   - B 路: 当日 fact_technical_trigger (排除 institution_follow, 即"公式独立路径") → 公式候选
-   - JOIN mart_per_stock_stage_strategy_optimal_v3 取每候选 best params (按 stock × formula × stage)
-   - 两路 score 加权: `final_score = alpha_w_inst * score_A + alpha_w_formula * score_B` (∑=1.0)
-   - 加权后三目标排序 top 5
-2. yaml `paper_sim_ensemble.yaml`:
-   - mode: "v3" (新增)
-   - 删 ensemble_alphas 段 (退役)
-   - alpha_w_inst: 0.5 / alpha_w_formula: 0.5 (P0d 默认, P0e 实测后 Optuna 寻优)
-3. 流动性 / T+1 滑点 / max_positions=5 / regime gate 保留
-4. 单测:
-   - test_selector_v3_two_path_merge (两路合并去重)
-   - test_selector_v3_regime_gate
-   - test_selector_v3_liquidity_filter
-   - test_selector_v3_top_n
-5. paper_sim integration smoke (5 天 walk-forward) 跑通
-
-**Acceptance**:
-- [ ] selector_v3 单测 4+ cases 全绿
-- [ ] paper_sim smoke run 5 天跑通, KPI 入 mart_paper_sim_kpi
-- [ ] audit_end_to_end 0 FAIL
-- [ ] commit message 含 "Phase v3.P0d: selector v3 mode 两路合并; yaml alpha_w 寻优起步"
-
-**回滚**: yaml 改回 mode=ensemble + 删 selector_v3 函数 — paper_sim 引擎主体不动
-
-### P0e — paper_sim v3 验证 (30 min + 完整跑 ~30 min)
-
-**动作**:
-1. paper_sim 完整 walk-forward 跑 v3 mode (2024-04-01 → 2026-05-12, 509 天)
-2. KPI 入 mart_paper_sim_kpi (sim_run_id=v3_baseline_YYYYMMDD_HHMMSS)
-3. 对比表:
-   - v2 baseline 13-alpha hp=15: ann +3.78% / mdd -30.1%
-   - v2 ceiling per_stock_stage: ann -26.5%
-   - **v3 baseline 两路合并 50/50**: ann ? / mdd ?
-4. Optuna 寻 alpha_w_inst / alpha_w_formula 最优 (50 trials, 各 30 min smoke run)
-5. 用户拍板: 若 v3 ann ≥ +10%/mdd ≥ -25% → 继续 P1; 若 < 0 → 暂停 P1 alpha158, 改先 P1a 数据覆盖率补强
-
-**Acceptance**:
-- [ ] paper_sim 完整跑通, KPI 入库
-- [ ] v3_baseline 对比 v2 baseline 数字表入 PLAN_V3.md §6 KPI Tracking
-- [ ] Rule 9.1 真金白银 self-check: 数字含 leakage / 估算 / 假设吗? 答 "否"
-- [ ] commit message 含 "Phase v3.P0e: paper_sim v3 baseline ann=X% mdd=Y% sharpe=Z; alpha_w 寻优最优 inst=A formula=B; 对比 v2 baseline 差/超 Cpp"
-
-**回滚**: 不需要 — P0e 是测量 + 报告, 不改代码
-
-**P0e 是 P0 阶段的 user checkpoint**. 数字出来后用户拍板 P1 优先级.
-
-### P1a — 数据覆盖率补强 (0.5-1 day, 条件依赖 P0e 结果)
-
-**动作**:
-1. stage_filter 各分段 signal 数量统计:
-   - 目前 stage=1: 50 / 1.5: 145 / 2: 1699 / 3: 191 / 4: 89
-2. 找首次写坏路径: stage=1/3/4 为什么少? 是 fact_signal_context.technical_stage 划分本身 skew, 还是 fact_technical_trigger 过滤?
-3. backfill 路径: 看 build_signal_context.py 是否漏写历史数据 / quality_filter 是否过严
-4. 数据补到各 stage ≥ 500 行后, 重跑 P0b/P0c 寻优
-5. 不放松 n_traded ≥ 3/5 阈值 — Rule 5 不打补丁
-
-**Acceptance**:
-- [ ] 各 stage_filter signal 数量 ≥ 500 (除非业务上 stage=1 本身极少)
-- [ ] mart_per_stock_stage_strategy_optimal_v3 各 stage 行数翻倍 (or 给出业务解释为何不能)
-- [ ] commit message 含 "Phase v3.P1a: 数据覆盖率补强; stage=X 从 N → M; 根因 = ..."
-
-**回滚**: backfill 是只增不减, 无需回滚 (新增数据不影响旧行)
-
-### P1b — alpha158 接入 (作 feature 过滤器, 2 day)
-
-**动作**:
-1. alpha158 PIT 验证: `fact_alpha158_panel` 158 columns 每个 trailing-only 验证, 无 forward leak
-2. IC 筛选 top-20: 用 `run_optuna_feature_elimination.py` 或独立脚本算 158 因子 IC, 取 top-20
-3. 加进 `candle_pattern.search_space`: 加 `alpha158_filter_threshold` 维度 (Optuna 寻每 stage 最优阈值)
-4. formula_engine 各 formula 加 alpha158_filter (可选): 触发后用 alpha158 top-N IC 因子做二次过滤
-5. 重跑 P0b v3 寻优 (含 alpha158 filter), 入 `mart_per_stock_stage_strategy_optimal_v3_alpha158`
-6. paper_sim ablation: v3 baseline vs v3 + alpha158, 对比
-
-**Acceptance**:
-- [ ] alpha158 PIT 单测全绿 (trailing-only 校验)
-- [ ] IC 筛选 top-20 列表 commit 到 yaml
-- [ ] mart_v3_alpha158 行数 ≥ mart_v3
-- [ ] paper_sim ablation 入 mart_paper_sim_kpi
-- [ ] commit message 含 "Phase v3.P1b: alpha158 top-20 IC 接入; v3+alpha158 ann=X% (vs v3 baseline Y%)"
-
-**回滚**: alpha158 filter 默认 off, 不强加; 老 mart_v3 不动
-
-### P2 — v3 UI 接线 (2-3 day)
-
-**动作**:
-1. 调研 `routers/v3_views.py` / `v3_picture.py` / `v3_portfolio_builder.py` 当前提供的 API
-2. 缺什么补什么:
-   - 机构视图: `mart_institution_industry_stat` + `mart_institution_profile` 聚合 → API
-   - 股票视图: `mart_per_stock_stage_strategy_optimal_v3` × `fact_signal_context` × `fact_technical_trigger` → 单股 detail API
-   - 公式视图: `mart_per_stock_stage_strategy_optimal_v3` GROUP BY formula_id → 公式 portfolio API
-3. design/v3-page-*.jsx 真实接线 (从 mock 改 fetch 真 API)
-4. end-to-end smoke (打开浏览器手动验证三视图)
-
-**Acceptance**:
-- [ ] 三视图 API 跑通 (curl 测试)
-- [ ] 前端三页面真实数据 (不是 mock)
-- [ ] commit message 含 "Phase v3.P2: 三视图 UI 接线 + design jsx 入 git"
-
-### P3 — bestchoice 合并 (1 day)
-
-**动作**:
-1. 读 bestchoice/compute.py 完整逻辑 (52KB)
-2. 对比 services/formula_engine/macd_golden_cross.py
-3. 决策: bestchoice MACD 包成第 9 个 formula variant (macd_golden_cross_bestchoice) 还是退役
-4. bestchoice 数据库 cache_*.duckdb 是否保留 (策略参数 cache, 可能是寻优历史)
-5. main.py FastAPI 服务化逻辑是否合并入 chunky-monkey backend
-
-**Acceptance**:
-- [ ] bestchoice/compute.py 核心逻辑明确归宿 (formula 化 / 退役 / 独立保留)
-- [ ] 无重复实现 (一致接口走 formula_engine)
-- [ ] commit message 含 "Phase v3.P3: bestchoice 合并方案 = X"
-
-### P4 — 复盘闭环 (2 day)
-
-**动作**:
-1. paper_sim 日志 → 训练数据 pipeline:
-   - mart_paper_sim_kpi 行 → mlflow run metric
-   - paper_sim 交易日志 → mart_walkforward_eval (复活停摆 3-4 周的 v3 治理表)
-2. champion 治理:
-   - mart_champion_model 表建 (memory v3 计划里, 当前不存在)
-   - RankIC ≥ 0.05 gate (memory 提到, 当前 0.037 未达)
-3. 自动调参循环: paper_sim KPI 进 mlflow → trigger Optuna 重跑
-4. 复盘看板: 历史 paper_sim runs 在 UI 一栏展示
-
-**Acceptance**:
-- [ ] mart_walkforward_eval / mart_champion_model 表建好
-- [ ] mlflow run 跑通 (paper_sim KPI 进 mlflow)
-- [ ] champion gate 阈值在 yaml
-- [ ] commit message 含 "Phase v3.P4: 复盘闭环; champion gate RankIC = X (vs target ≥0.05)"
-
----
-
-## 4. 工程纪律 (每 Phase 必走)
-
-### 4.1 单测要求
-
-- 改核心逻辑必有单测 / 集成测
-- 改 perf 必有 benchmark test 防回退
-- 测试基线 1402 passed 必须保持, 新加只增不减
-- 单测覆盖率: 新模块 coverage ≥ 80%
-
-### 4.2 Optuna 真跑标准
-
-- n_trials ∈ [50, 500], 固定 seed
-- 走 services.optimization.governance.enforce_pre_optimize
-- 走 walk_forward.split_dispatch (R1 expanding_monthly)
-- best params 入库前走 governance.enforce_pre_insert
-- 入库 mart 表必须有 oos_* 字段 + walk_forward_mode != 'none'
-- 拒绝 "快速验证 < 50 trials"
-
-### 4.3 数据覆盖率不够 → 拉数据
-
-- stage / formula / industry 任一分段覆盖偏低 (< 500) → 找首次写坏路径
-- 禁止: 放松 n_traded 阈值 / try-except skip / --skip-step / --end YYYY-MM-DD 钉死
-- 修源头不打补丁 (Rule 5 根因)
-
-### 4.4 5-question commit hook
-
-每 commit 前 self-check:
-1. PROJECT_INDEX.md 同步了吗? (Pre-commit hook 强制)
-2. 测试新加了吗?
-3. 数据/跑批数字写进 commit message 了吗?
-4. CLAUDE.md / Rule 9 反例表加了吗? (本次踩的新坑)
-5. Rule 9.1 真金白银 self-check: 含 leakage/估算/假设? 数字穿透到 forward 期望?
-
-### 4.5 PROJECT_INDEX / CLAUDE.md / goal.md 同步
-
-每 Phase 完结:
-- PROJECT_INDEX.md: 新表 §2 / 新 service §3 / 新 yaml §6 / 解决坑 §8 标 ✅ / 新坑 §11 + Rule 9 反例
-- goal.md: 滚动 ledger 顶部追加 "### YYYY-MM-DD Phase v3.PX — 内容" 段
-- CLAUDE.md Rule 6 / Rule 9 反例表: 新坑沉淀
-
-### 4.6 失败先承认 (Rule 9.4)
-
-- 数字告诉我们什么就报什么
-- 0 STRONG_BUY / 数据滞后 / 实验 fail 必须**先讲**
-- 不要因 "已经花了 X 小时调它" 硬要正向结论
-- 拒绝包装
-
----
-
-## 5. KPI Tracking 表 (实测 baseline + 各 Phase 目标)
-
-| Phase | KPI 指标 | 现状 / baseline | Phase 目标 | 实测后填 |
-|---|---|---|---|---|
-| baseline | paper_sim 13-alpha hp=15 ann | +3.78% | — | (已知) |
-| baseline | paper_sim 13-alpha hp=15 mdd | -30.1% | — | (已知) |
-| baseline | paper_sim 13-alpha hp=15 sharpe | +0.29 | — | (已知) |
-| P0b | mart_v3 OOS sharpe > 0 行数占比 | 旧表 ~30% | ≥ 30% (不退) | TBD |
-| P0c | fact_technical_trigger institution_follow 行数 | 0 | ≥ 5,000 | TBD |
-| P0c | mart_v3 含 institution_follow 行数 | 0 | ≥ 300 | TBD |
-| P0e | v3 baseline 50/50 ann | — | ≥ +10% (期望)/ ≥ 0% (底线) | TBD |
-| P0e | v3 baseline 50/50 mdd | — | ≥ -25% (期望) / ≥ -30% (底线) | TBD |
-| P0e | Optuna 最优 alpha_w_inst | — | (无预期, 数据告诉) | TBD |
-| P1a | stage=1 signal 数量 | 50 | ≥ 500 | TBD |
-| P1a | stage=4 signal 数量 | 89 | ≥ 500 | TBD |
-| P1b | v3+alpha158 ann vs v3 baseline | — | 至少不退 | TBD |
-| 终极 | paper_sim ann (含 tx_cost/T+1) | +3.78% | ≥ +30% | TBD |
-| 终极 | paper_sim mdd | -30% | ≥ -20% | TBD |
-| 终极 | paper_sim 超额 vs HS300 | — | > 0 | TBD |
-
----
-
-## 6. 风险 & 回滚
-
-| 风险 | 检测 | 回滚动作 |
+| 类型 | 定义 | 用途 |
 |---|---|---|
-| P0b composite_v3 寻优出来 OOS 比旧版差 | mart_v3 OOS sharpe > 0 占比 < 旧版 | 不切换 selector v3 mode, 排查 ret/dd/hp 权重比例 |
-| P0c institution_follow 信号数太少 | fact_technical_trigger < 5000 行 | 排查擅长判定阈值是否过严, 拉数据 backfill |
-| P0e v3 baseline ann < 0 | paper_sim KPI | 暂停 P1 alpha158, 先排查 selector v3 逻辑 / 数据 |
-| P1a backfill 后数据仍少 | stage_filter 计数 | 业务上承认 stage=1 本身极少, 在 yaml 加业务约束注释 |
-| P1b alpha158 接入后 hurt | paper_sim ablation | alpha158_filter 默认 off, 不切主流程 |
-| alpha 整体仍弱 (ann < +10%) | P0e baseline + P1b ablation 都 < +10% | 用户拍板: 调目标 (+15%/-15%) 或 改 alpha 根本 (sentiment / 概念板块 / ML) |
+| Train | 从起始交易日到 OOS 前一月最后交易日 | 训练模型, 拟合 scaler/encoder |
+| OOS | 下一自然月全部交易日 | 生成预测, paper_sim, RankIC |
+| Validation stitched OOS | 非 final 的多个 OOS 月拼接 | ablation, Optuna, P0/P1/P2 gate |
+| Final holdout stitched OOS | 最近 6 个 OOS 月拼接 | P3 最终验收, 只读一次 |
+
+### 1.2 月度 walk-forward timeline
+
+| 轮次 | 训练窗口 | OOS 窗口 | 输出 |
+|---|---|---|---|
+| R1-M01 | start → 2024-03 月末 | 2024-04 | score / RankIC / paper_sim |
+| R1-M02 | start → 2024-04 月末 | 2024-05 | score / RankIC / paper_sim |
+| R1-M03 | start → 2024-05 月末 | 2024-06 | score / RankIC / paper_sim |
+| ... | 每月 expanding | 下一月 | stitched OOS |
+| Final-M01 | start → final 前一月末 | 最近第 6 个月 | final OOS 片段 |
+| Final-M06 | start → final 前一月末 | 最近第 1 个月 | final OOS 片段 |
+
+> 具体日期由交易日历生成, 不硬编码。final holdout = 最近 6 个 OOS 月 stitched; P3 前不得用于调参。
+
+### 1.3 结果表 schema
+
+| 字段 | 类型 | 要求 |
+|---|---|---|
+| `run_id` | string | 唯一, 包含 phase/model/seed |
+| `walk_forward_mode` | string | 必须为 `expanding_monthly` |
+| `train_start` | date | 起始交易日 |
+| `train_end` | date | OOS 前一月最后交易日 |
+| `oos_start` | date | OOS 月首个交易日 |
+| `oos_end` | date | OOS 月最后交易日 |
+| `is_final_holdout` | bool | 最近 6 个 OOS 月为 true |
+| `model_version` | string | 特征集 + label + 模型 + seed hash |
+| `feature_version` | string | 特征生成版本 |
+| `label_version` | string | label 生成版本 |
+| `rank_ic` | float | 当月横截面 RankIC |
+| `ann_ret_cost_after` | float | stitched 后计算 |
+| `max_dd_cost_after` | float | stitched 后计算 |
+| `turnover` | float | 月换手 |
+| `tx_cost_pct` | float | 成本占资产比例 |
+| `capacity_concentration` | float | 容量/集中度惩罚输入 |
 
 ---
 
-## 7. /goal 命令格式 (闭环复现)
+## §2 Phase 路线
 
-在 `goal.md` 顶部追加段格式:
+### P-1 数据审计
 
-```markdown
-### 2026-MM-DD Phase v3.PX — <标题>
+| 项 | 内容 |
+|---|---|
+| 目标 | 证明训练数据可用于真钱模拟 |
+| 动作 | 新增/修复 PIT、退市、ST、停牌、涨跌停、复权、上市首日、事件 timestamp、股票池覆盖审计 |
+| 脚本 | `audit_pit_integrity.py`、`audit_survivorship.py`、`audit_tradeability.py`、`audit_event_timestamp.py`、`audit_universe_coverage.py` |
+| Go metric | PIT FAIL=0; 不可交易状态覆盖率=100%; 退市/ST 覆盖差异=0 未解释项; 事件 timestamp 非空率 ≥99.5% |
+| No-go | 任一 PIT FAIL; 停牌/涨跌停未进入 paper_sim 过滤; 退市/ST 缺口无法解释 |
+| 估时 | 2 天 |
 
-**状态**: in_progress / completed / blocked
+### P0a 特征与 Label 闭环
 
-**输入**:
-- 上一 Phase 输出 (KPI / mart 表行数 / commit SHA)
-- 本 Phase 起步条件
+| 项 | 内容 |
+|---|---|
+| 特征 | alpha158 + 事件特征 + LHB/机构行为 + 流动性 + 风险因子 + 公式触发哑变量 |
+| Label | T+1 可成交入场后, 未来 5/10/20 日成本后收益 |
+| 成本 | 佣金、印花税、过户费、滑点、不可成交 mask |
+| 机构路径 A | stock-date 粒度: 持仓/相关机构列表 JOIN `mart_institution_industry_stat`, 生成 `inst_quality_avg/max/count` |
+| 机构路径 B | event-date-stock 粒度: `fact_institution_event` 触发时 JOIN 机构×行业质量, 生成 `event_quality_score/event_decay` |
+| 公式用途 | 公式触发、历史 OOS 表现、stage 最优参数作为特征; 不直接主导买入 |
+| Go metric | feature panel 可复现; label 已扣成本; 不可成交样本 mask 生效; 核心特征 PIT audit 通过 |
+| No-go | label 未扣成本; 机构 join 无法追溯; 核心特征存在前视 |
+| 估时 | 1.5-2 天 |
 
-**Acceptance**: (从 PLAN_V3.md 抄)
-- [ ] 验收点 1
-- [ ] ...
+### P0b ML Ranking + R1 Walk-forward
 
-**实测结果**:
-- KPI X = Y (vs target Z)
-- commit: <SHA>
+| 项 | 内容 |
+|---|---|
+| 模型 | LightGBM pointwise 首跑; LambdaMART pairwise 做同特征 ablation |
+| 验证 | 恢复 `walk_forward.expanding_monthly`, 每月重训、下一月 OOS |
+| 输出 | 月度 OOS score、RankIC、分位收益、换手、成本后 paper_sim |
+| Go metric | validation stitched OOS RankIC ≥0.03; 成本后 ann > +3.78%; mdd 不差于 -30.1% |
+| 阈值依据 | RankIC 0.03 作为可交易横截面模型下限; 收益必须击败当前真钱基线 |
+| No-go | RankIC <0.03; 成本后不胜基线; 收益集中于单月/单行业 |
+| 估时 | 2-3 天 |
 
-**下一步**: 
-- 满足 Acceptance → 启动 Phase v3.P(X+1)
-- 失败 → 走 §6 风险回滚
+### P0c paper_sim Selector Refactor
+
+| 项 | 内容 |
+|---|---|
+| 决策 | 采用 Option A: ML score 替换 selector ranking; exit/swap 保留现有 Optuna 9-dim |
+| 原因 | 最小改造, 隔离"选股 alpha 是否成立"; 不在 P0 同时重构 exit |
+| 暂不采用 | Option B: score 跌出 top-N 卖出; Option C: score < q50 swap |
+| 决策门 | P2 再做 A/B/C 对比 |
+| 动作 | 改 selector 读取月度/日度 ML score; 保留流动性、T+1、涨跌停、max_positions、swap_rules |
+| Go metric | 完整 paper_sim 跑通; 交易日志含不可成交原因; 同 seed 可复现; KPI 入库 |
+| No-go | selector 与 swap_rules 冲突; 成交过滤绕过; 无法复现 |
+| 估时 | 1.5-2 天 |
+
+### P1 特征工程扩展 + 超参优化
+
+| 项 | 内容 |
+|---|---|
+| 特征扩展 | alpha158 全量/top-N、事件衰减、行业中性、市值/波动/换手、机构质量 A/B、公式 IC/历史表现 |
+| Optuna | n_trials ∈ [50,500], 固定 seed, R1 expanding_monthly |
+| Ablation | 每组特征必须报告 RankIC、ann、mdd、turnover、tx_cost_pct |
+| Go metric | validation stitched OOS RankIC ≥0.04; ann 高于 P0; mdd 不劣化 |
+| No-go | IS 提升但 OOS 不提升; 收益来自单月/单行业; 成本吃掉收益 |
+| 估时 | 3-4 天 |
+
+### P2 组合优化 + 复合评分
+
+Composite:
+
+```text
+composite =
+  ret_w * ann_ret
+- dd_w * abs(max_dd)
+- hp_w * f(avg_hp)
+- turnover_w * turnover
+- cost_w * tx_cost_pct
+- capacity_w * concentration
 ```
 
-用户 `/goal` 命令时, Claude:
+| 项 | 内容 |
+|---|---|
+| 权重 | 由 validation grid/Optuna 决定, 不预设最终权重 |
+| `f(avg_hp)` | 线性、分段、log 三种候选, 用 OOS composite 决定 |
+| 加入 | 容量、单票集中度、行业集中度、换手、滑点、涨跌停成交失败率 |
+| Exit 对比 | Option A selection-only; Option B dynamic exit; Option C probability threshold swap |
+| Go metric | validation composite 高于 P1; 容量惩罚后 ann 不低于 P1; mdd/turnover/cost 同时受控 |
+| No-go | 高换手伪收益; 容量惩罚后 alpha 消失; 单票/行业集中不可接受 |
+| 估时 | 3 天 |
+
+### P3 Final Holdout 验收 + 实盘准备
+
+| 项 | 内容 |
+|---|---|
+| 输入 | P2 冻结代码、特征、模型、权重、seed |
+| 数据 | 最近 6 个 OOS 月 stitched final holdout |
+| 硬验收 | ann ≥30%; max_dd ≥-20%; 超额 vs HS300 >0; 月胜率 ≥55% |
+| 输出 | paper trading 候选、SHAP、风险暴露、不可成交原因、交易回放 |
+| No-go | 任一硬目标失败, 停止包装, 回到 alpha 根因 |
+| 估时 | 2 天 |
+
+### P4a UI 三视图
+
+| 项 | 内容 |
+|---|---|
+| 状态 | Deferred, 不进入 P0-P3 critical path |
+| 机构视图 | `mart_institution_industry_stat` + `mart_institution_profile` + 机构特征贡献 |
+| 股票视图 | ML score、SHAP、风险暴露、不可成交原因、持仓/候选历史 |
+| 公式视图 | 公式 IC、公式触发、公式 SHAP 贡献、baseline 对比 |
+| Go metric | 三视图 API 返回真实数据; 无 mock; 能解释 P3 候选 |
+| No-go | UI 反向改动交易逻辑; mock 当真数据 |
+| 估时 | 2-3 天 |
+
+### P4b bestchoice 合并
+
+| 项 | 内容 |
+|---|---|
+| 状态 | Deferred |
+| 动作 | 读 `bestchoice/compute.py`; 对比现有 formula; 决定转特征、解释层、或归档 |
+| 原则 | 不作为主 selector; 必须通过 OOS ablation 才能进特征集 |
+| Go metric | bestchoice 特征加入后 validation composite 提升 |
+| No-go | 只提升 IS; 重复实现; 绕过 ML ranking |
+| 估时 | 1-2 天 |
+
+### P4c 复盘闭环
+
+| 项 | 内容 |
+|---|---|
+| 动作 | paper_sim KPI → mlflow; 交易日志 → `mart_walkforward_eval`; champion → `mart_champion_model` |
+| Gate | champion 必须记录 RankIC、ann、mdd、turnover、cost、capacity |
+| Go metric | 可复现任一历史 run; 可比较 champion/challenger |
+| No-go | 只存最终收益, 不存输入版本 |
+| 估时 | 2 天 |
+
+---
+
+## §3 数据决定的决策点
+
+| # | 问题 | 实验方法 | Metric | 选择条件 |
+|---:|---|---|---|---|
+| 1 | LightGBM vs LambdaMART | 同窗口、同特征、同 label ablation | OOS RankIC / composite | 高者胜; 差距极小则选简单模型 |
+| 2 | alpha158 全量 vs top-N | feature elimination | RankIC、ann、turnover、cost | composite 高者胜 |
+| 3 | 机构路径 A/B 是否保留 | add/drop ablation | 成本后 ann、RankIC、SHAP | OOS 有增益才保留 |
+| 4 | 公式特征是否保留 | 公式 IC + SHAP benchmark | OOS IC / SHAP gain | 无贡献则只留 UI 解释 |
+| 5 | label horizon 5/10/20 | 三套 label 训练 | OOS composite | composite 高者胜 |
+| 6 | selection-only vs dynamic exit | P2 A/B/C 对比 | ann/mdd/turnover/cost | 成本后 composite 高者胜 |
+| 7 | 换手惩罚系数 | grid/Optuna | validation composite | 高换手伪收益被淘汰 |
+| 8 | 流动性阈值 | ADV/成交额扫描 | capacity-adjusted sharpe | 成交失败率低且 composite 高 |
+| 9 | 行业/市值中性 | neutralized vs raw | RankIC、行业集中度 | 收益不塌且集中度下降则保留 |
+| 10 | 事件衰减窗口 | 1/3/5/10/20 日 decay | RankIC、ann | OOS 最优窗口胜 |
+
+---
+
+## §4 +30% 目标自检
+
+| 项 | 规则 |
+|---|---|
+| P50/P90 | P0 首次 R1 OOS 完结后填; 当前禁止写估计数字 |
+| +30% 年化 | 只由 P3 final holdout 成本后 paper_sim 证明 |
+| 未达 +30% | 触发 `改 alpha → 扩数据/换市场 → 重训 → 再验收` |
+| 禁止动作 | 不因工程完成而调低目标; 不使用 IS/validation 替代 final |
+| 冲突说明 | +30% 与 ML ranking 不冲突; 与反复窥探 final holdout 调参冲突 |
+
+P0 首次 R1 OOS 后补表:
+
+| 指标 | P0 实测 | P1 实测 | P2 实测 | P3 Final |
+|---|---:|---:|---:|---:|
+| RankIC | TBD | TBD | TBD | TBD |
+| ann cost-after | TBD | TBD | TBD | TBD |
+| max_dd | TBD | TBD | TBD | TBD |
+| sharpe | TBD | TBD | TBD | TBD |
+| monthly win_rate | TBD | TBD | TBD | TBD |
+| turnover | TBD | TBD | TBD | TBD |
+| tx_cost_pct | TBD | TBD | TBD | TBD |
+
+---
+
+## §5 风险表
+
+| 风险 | 检测方法 | 缓解 | 回滚 |
+|---|---|---|---|
+| 数据泄露/前视偏差 | PIT audit、timestamp audit、feature lag 检查 | 禁用泄露列, 补 lag | 回到 P-1 |
+| 生存者偏差 | 股票池与退市/ST 历史覆盖审计 | 补全历史 universe | 禁止训练 |
+| 停牌/涨跌停不可成交 | tradeability audit、成交失败日志 | mask 不可成交样本 | 重跑 label/paper_sim |
+| 退市/ST 处理错误 | ST/退市日历对账 | 加入风险标签/过滤 | 重建 universe |
+| 过拟合/alpha decay | monthly OOS RankIC 曲线、deflated sharpe | 降维、正则、删特征 | 回退 champion |
+| 多重检验 | Optuna study 审计、实验登记 | 限制试验次数, final 锁定 | 作废污染实验 |
+| 流动性/容量约束 | ADV、成交额占比、concentration | capacity penalty | 降仓/禁买 |
+| 换手成本侵蚀 | turnover、tx_cost_pct | turnover/cost penalty | 拉长 holding period |
+| 短持高频小胜幻觉 | hp/turnover/cost 分解 | composite 加 hp/cost 惩罚 | 禁用该参数区 |
+| 单票/行业拥挤 | exposure report | 单票/行业上限 | 降权/过滤 |
+| final holdout 污染 | 访问日志、配置锁 | P3 前不可读 | 重切 holdout |
+| DuckDB 连接架构问题 | 并发读写压力测试 | 单写多读、事务封装 | 串行写入 |
+| Optuna 误用 | n_trials/seed/OOS 字段检查 | governance enforce | 作废 study |
+| 公式行数当质量 | metric audit | 禁止用行数作收益指标 | 删除该 gate |
+| OOS sharpe>0 行占比误导 | portfolio-level paper_sim | 用成本后组合 KPI | 删除代理指标 |
+| UI/P4 抢 critical path | Phase gate | P3 前不做 UI | 延后 P4 |
+| 假 winner 心理锚 | goal/CLAUDE 反例表 | 禁止引用为成果 | 移入历史反例 |
+
+---
+
+## §6 串行 Gate
+
+```python
+def run_plan_v3_2():
+    if not P_minus_1.pass_gate():
+        stop("P-1 FAIL: 数据不可用于真钱系统, 禁止训练")
+
+    if not P0a.pass_gate():
+        stop("P0a FAIL: 特征/label/PIT/成本闭环失败, 禁止建模")
+
+    if not P0b.pass_gate():
+        stop("P0b FAIL: ML ranking 未打败当前真钱基线, 禁止 P0c/P1")
+
+    if not P0c.pass_gate():
+        stop("P0c FAIL: paper_sim selector 不可复现或成交过滤失效, 禁止 P1")
+
+    if not P1.pass_gate():
+        stop("P1 FAIL: 特征/模型/超参无 OOS 增益, 回到 alpha 根因")
+
+    if not P2.pass_gate():
+        stop("P2 FAIL: 组合成本后不可交易, 禁止 final holdout")
+
+    if not P3.pass_gate():
+        stop("P3 FAIL: 未达 +30% 硬目标, 改 alpha, 不改目标")
+
+    start_paper_trading()
+
+    if P3.pass_gate():
+        run_P4a_ui()
+        run_P4b_bestchoice_ablation()
+        run_P4c_review_loop()
+```
+
+硬约束:
+
+| 规则 | 含义 |
+|---|---|
+| P0 没过 | P1 不许启动 |
+| P2 没过 | P3 final holdout 不许打开 |
+| P3 没过 | 不包装、不上线、不调目标 |
+| 任一 Phase FAIL | 立即停, 不污染下游 |
+
+---
+
+## §7 工程纪律 (硬约束)
+
+| # | 约束 | 要求 |
+|---|---|---|
+| 1 | **单分支策略** | 所有工作直接在 `main` 提交。**禁止开 feature 分支或 worktree**, 保持项目清晰 (用户硬指令) |
+| 2 | **Codex review gate** | 每次代码阶段性 commit 前必须先让 Codex review (见 CLAUDE.md Rule 10)。**Codex 不可用时 Claude 自行 review 作为 fallback**。文档/PLAN/CLAUDE.md 类纯 markdown commit 可豁免 |
+| 3 | 单测 | 每个新模块必须有 unit test; audit/model/selector/paper_sim 必有 integration test |
+| 4 | Optuna | n_trials ∈ [50,500]; 固定 seed; R1 expanding_monthly; 禁止 <50 trials 当结论 |
+| 5 | 数据覆盖 | 覆盖不足先 backfill; 禁止放松 n_traded/coverage 阈值 |
+| 6 | 成本真实 | 所有收益 KPI 必须含 tx_cost、T+1、停牌、涨跌停、流动性过滤 |
+| 7 | final holdout | P3 前不可用于调参、ablation、阈值选择 |
+| 8 | 5-question commit hook | PIT? OOS? real-test? unit-test? regression? 全部回答 |
+| 9 | PROJECT_INDEX | 新表、新脚本、新服务、新风险必须同步 |
+| 10 | goal.md | 每 Phase 记录输入、输出、KPI、commit、下一步 |
+| 11 | CLAUDE.md / Rule 9 反例 | 新踩坑必须入反例表 |
+| 12 | 失败先承认 | FAIL 数字先写; 禁止"接近""看起来合理"包装 |
+| 13 | 可复现 | run_id、model_version、feature_version、label_version、seed 必须入库 |
+| 14 | 不改目标 | +30% 是硬验收; 未达修 alpha, 不修口径 |
+
+---
+
+## §8 启动 checklist
+
+| # | 动作 | 完成标准 |
+|---:|---|---|
+| 1 | 覆盖原 `PLAN_V3.md` 为本 PLAN_V3.2 共识版 | 文件落盘 ✅ |
+| 2 | `CLAUDE.md` 加 Rule 10 (Codex review gate + 单分支策略) | Rule 10 已落盘 |
+| 3 | 切到 `main`, merge feature/reversal-factor (no-ff 保历史), 删除 feature 分支 (本地+远端) | git: main HEAD 含所有 v3.2 工作; 0 多余 branch |
+| 4 | 更新 `goal.md` 顶部 ledger | 标记 Phase = P-1 |
+| 5 | 更新 `PROJECT_INDEX.md` | 新 Phase、新脚本、新表计划已登记 |
+| 6 | 标注历史反例 | `portfolio_walk_forward +45.4%` 不作决策依据 |
+| 7 | 冻结 final holdout 访问规则 | 配置/文档写明 P3 前不可读 |
+| 8 | 创建 P-1 ~ P4c TaskList | TaskCreate 完整 |
+| 9 | 启动 P-1 数据审计 | 先审计, 不训练 |
+| 10 | P-1 FAIL 时 | 停止, 修数据 |
+| 11 | P-1 PASS 后 | 进入 P0a 特征与 label 闭环 |
+
+---
+
+## §9 /goal 命令格式 (闭环复现)
+
+`goal.md` 顶部追加段:
+
+```markdown
+### YYYY-MM-DD Phase v3.2.PX — <标题>
+
+**状态**: in_progress / completed / blocked
+**输入**: 上 Phase 输出 (KPI / mart 表行数 / commit SHA)
+**Acceptance**: (从 PLAN_V3 §2 抄)
+**实测结果**: KPI 实测 (vs target)
+**Codex review**: agent ID / commit SHA / 关键意见 (或 Codex 不可用 → Claude 自审记录)
+**下一步**: 满足 → 启动 P(X+1); 失败 → 走 §5 风险回滚
+```
+
+`/goal` 命令时, Claude:
 1. 读 `goal.md` 顶部最新 Phase ledger 段
-2. 读 `PLAN_V3.md` 找当前 Phase Acceptance
+2. 读本 PLAN_V3 §2 找当前 Phase Acceptance
 3. 状态 in_progress → 继续执行
-4. 状态 completed → 启动下一 Phase
-5. 状态 blocked → 报告用户决策点
+4. 代码阶段性 commit 前 → 触发 Codex review (CLAUDE.md Rule 10); Codex 不可用 → Claude 自审
+5. 状态 completed → 串行 Gate 检查 (§6) → 启动下一 Phase
+6. 状态 blocked → 报告用户决策点
 
 ---
 
-## 8. 启动 checklist (用户拍板 PLAN_V3.md 后)
+**End of PLAN_V3.md (v3.2 共识版)**.
 
-- [ ] 用户确认 PLAN_V3.md (本文件)
-- [ ] 创建 P0a-P4 TaskList 进 TaskCreate
-- [ ] commit PLAN_V3.md 到 main (走 5-question hook)
-- [ ] 开 feature/v3-arch 分支
-- [ ] 启动 P0a Git 清理
-
----
-
-**End of PLAN_V3.md**.
+**讨论历史**: Claude × Codex 三轮 (Codex initial review 3/10 → push back 5 点 Codex 接受 → 完整草稿落盘). Codex 历史 agent: `a15203724858923e8`.
