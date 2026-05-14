@@ -740,6 +740,23 @@ SELECT * FROM mart_data_source_watermark;
 
 每次 session 增量内容写这里, 新 session 启动时**从下往上读**最近改了啥.
 
+### 2026-05-14 (CLAUDE.md 重构 — 640 → 270 行)
+
+用户原话: "claude.md 是不是过于啰嗦降低读取效率了, 请你写成自己能明白的样式".
+
+重构:
+- 12 主 section + 4 sub-section (Self-Check 9.1/9.2/9.3, Codex 三态嵌入 §10)
+- 删冗余: 重复"用户原话"引用 (3-5次→1次); 大段反例细节解释保留关键 commit hash
+- 项目笔记 (运行环境/命名陷阱/sync/loop/测试基线/关键表陷阱) 移到 PROJECT_INDEX.md (本应如此, "地图")
+- Rule 1+2+3 合并为 §1 "Think Before Coding" (短)
+- Rule 5 反例从 5 行表压缩到 4 个 bullet (含 commit hash)
+- Rule 6 反例从 6 行表压缩到 5 个 bullet
+- Rule 9 + Rule 9.7 + Rule 9.8 + Rule 9.9 → §7 真金白银 + §8 工程纪律 + §9 Self-Check (双层)
+- Rule 10 Codex 三态用表格 + §10.2 §10.3 合并 (慢 = cancel+fresh, 真不可用 = self-审 fallback)
+- 附录 → "详细信息见 PROJECT_INDEX.md" 列表
+
+行数: 640 → 270 (砍 57%), 所有规则保留, 反例 commit hash 保留 (69371838/5cc47987/...)
+
 ### 2026-05-14 (Rule 10.2 新加: Codex thread 慢 ≠ Codex 不可用)
 
 **用户 push back** (CLAUDE.md Rule 10): 我多次误判"单 thread stuck" 为"Codex 整体不可用", 走 Rule 10.2 fallback self-review 跳过. 这是错的 — codex-companion.mjs setup 一直 ready=True.
