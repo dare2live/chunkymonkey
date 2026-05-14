@@ -74,6 +74,9 @@
 | KPI 阈值 (severe=0.5 / 年化≥30% / 持仓≥5天 等) 写在 yaml 默认 | 默认是"我觉得合理"拍脑袋, 没 sensitivity sweep 验证. | Optuna / grid search 跑 800+ 天历史 sweep 这些阈值, 选 KPI 矩阵稳健的组合; commit 附 sweep 结果. |
 | Wilson 默认 0.55 (sizer.py `wilson = 0.55`) | "假设上游已 wilson 排序过" — 是估算不是事实. | 改读上游真实 `wilson_win_rate` 字段; 没有就显式 skip 不算 kelly. |
 | portfolio_backtest +45.4% 报用户做最终决策 | 它不算 tx_cost / 不算流动性 / 不算 T+1 滑点 = 理想化估算. paper_sim 加真实成本后年化骤降 -44%. | live 决策必须基于含 tx_cost + T+1 滑点 + 流动性的 paper_sim, 不用 portfolio_backtest 的理想数. |
+| Phase ψ.β.5 L2 vol-aware: `stop_sigma=2.0, target_sigma=3.0, trailing_sigma=1.0` + `bounds [-0.20, -0.05, 0.10, 0.35, 0.03, 0.10]` 全部 hardcode 进 yaml 默认 + 单测 fixture, 我宣称是"业界常用 -2σ + 3σ + 1σ" | "业界常用"是估算不是数据. 这个项目里有没有 stop_sigma=2.0 比 1.5 更好的 backtest 证据? **没有**. 我跳过 Optuna 直接拍脑袋. 用户 push back "没充分发挥 optuna 潜力" — 一针见血. | sigma 倍数 + bounds 全部丢进 Optuna search space (Phase ψ.γ.1), walk-forward expanding_monthly + constrained calmar (max sharpe s.t. ann_ret≥0.30 AND max_dd≥-0.20), OOS 拼出 best_params 入 mart_ensemble_optimal. 业务代码只读 mart 表, 不 hardcode. |
+| Phase ψ.β.4 ensemble alpha weights (`reversal=0.20, sharpe_60d=0.15, mom_30d=0.05, vol_60d=0.05, pe_ttm=0.10, roe_q=0.10, profit_yoy=0.05, lhb_inst=0.15, exec_net=0.10, holder_count=0.05, sector_ret=0.08, sector_excess=0.07, sector_price_vs_ma=0.05`) 写在 yaml 默认 + 我宣称"业务直觉权重" | 13 个 alpha 权重为啥是这样? 没 backtest 证据. 同样是 estimate not measured. | 13 weights → Optuna search space, 跟 sigma 一起搞. 让 Optuna 找最优组合. |
+| Phase ψ.β.4 regime_gate multipliers (`bear=0.3, sideways=0.7, bull=1.0`) | 拍脑袋 "熊市半仓, 震荡 7 折, 牛市满仓". 没历史 regime 切换的 paper_sim sensitivity sweep. | 3 multipliers → Optuna search space, OOS 评估每种 regime 上的 sharpe 贡献. |
 
 **Self-check 提问** — 提交任何"性能指标"前问:
 1. 这个数字从哪行 SQL 跑出来?
@@ -280,17 +283,51 @@ SELECT reason, COUNT(*) FROM fact_optuna_governance_log
 
 | 层 | 文件 | 防什么 |
 |---|---|---|
-| `pre-commit hook: project-index-sync` | `.pre-commit-config.yaml` + `backend/scripts/check_project_index_sync.py` | 改 service/script/yaml 没改 PROJECT_INDEX → reject commit |
-| `pre-commit hook: ruff` | 同上 | 代码格式 |
-| `pre-commit hook: trailing-whitespace / end-of-file-fixer / check-yaml / check-merge-conflict / detect-private-key / check-added-large-files` (1MB) | 同上 | 基础检查 |
+| `git pre-commit hook: project-index-sync` | `.git/hooks/pre-commit` → `backend/scripts/check_project_index_sync.py` | 改 service/script/yaml 没改 PROJECT_INDEX → reject commit |
+| `git pre-commit hook: rule-compliance` | `.git/hooks/pre-commit` → `backend/scripts/check_rule_compliance.py` | staged diff 含 magic alpha weight / sigma / multiplier / threshold / hardcoded date / stock_code / try-except pass → 必须有 `# evidence:` / `# from yaml:` / `# measured:` 注释或 yaml 外置, 否则 reject |
+| `git commit-msg hook: self-check` | `.git/hooks/commit-msg` → `backend/scripts/check_commit_message.py` | commit message 缺 Rule 9.7 GROUP A (测试/防回退/修复) 或 GROUP B (PIT/OOS/实测) 关键词 → reject |
+| `pre-commit hook: ruff` | `.pre-commit-config.yaml` | 代码格式 (可选, 框架未安装时跳过) |
 | **CI**: GitHub Actions (待加) | `.github/workflows/` | 跑 pre-commit + pytest |
 
 安装 hook (一次性):
 ```bash
-pip install pre-commit && pre-commit install
+# 项目用 native git hook (.git/hooks/), 已经装好. 重新安装:
+chmod +x .git/hooks/pre-commit .git/hooks/commit-msg
 ```
 
-如果 hook 误判 → 修 `check_project_index_sync.py` 的 `TRIGGERS` / `EXEMPT_*`. 不要 `--no-verify` 跳过.
+如果 hook 误判 → 修对应脚本的 `PATTERNS` / `EVIDENCE_KEYWORDS` / `EXEMPT_*`. 不要 `--no-verify` 跳过.
+
+### 9.9 写代码前的 explicit ritual — 任何数字入代码前 self-check
+
+(根因: Phase ψ.β.5 我写 L2 vol-aware 时 sigma=2.0/3.0/1.0 + bounds [-0.20,-0.05,0.10,0.35,0.03,0.10]
+全部拍脑袋. CLAUDE.md Rule 6 写了"拍脑袋是 anti-pattern", 我背得熟, 但写代码时下意识又写了.
+说明 Rule 9.7 commit-time 自检太晚 — 错已经写出. 必须 **write-time 自检**.)
+
+**Before** typing any numeric literal into `services/` 或 `scripts/` 业务代码:
+
+1. **问**: 这个数字 measured from where?
+   - 有 Optuna study? → `# measured: optuna study <id>`
+   - 有 backtest commit? → `# evidence: backtest <commit-hash>`
+   - 在 yaml 里默认 fallback? → `# from yaml: <section>`
+   - **都没有? → 停手**. 把数字加进 yaml, 业务代码读 yaml. **或** 跑 Optuna 寻优.
+
+2. **不接受的回答**:
+   - "看着合理" / "业界常用" / "我估计" / "先用这个试试" — 全是拍脑袋
+   - "等跑出来不好再调" — 不行, 跑出来好坏不是 ground truth, 看出来真好可能是 leakage
+
+3. **Yaml-back 是默认**:
+   - 任何 service/script 里的数值字面量, **default 路径**应该是 yaml 配置
+   - 业务代码只读 yaml, 不 hardcode
+   - 改参数 = 改 yaml 一行, 业务代码不动 (跟 paper_sim_config.yaml 同款)
+
+4. **特例 (可以 hardcode)**:
+   - 数学常数 (sqrt(252), pi, e, 100 股/手)
+   - 边界值 (0, 1, MIN_FLOAT, INFINITY)
+   - 测试 fixture
+   - SQL LIMIT / 分页 size (但仍建议 yaml)
+   - 这些不算 anti-pattern, 但要写注释解释为啥能 hardcode
+
+**Pre-commit hook (`check_rule_compliance.py`) 是 last line of defense**. Rule 9.9 是写代码时第一道防线.
 
 ### Self-check 提问 — 任何"涉策略"决策提交前问
 

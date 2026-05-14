@@ -6,7 +6,7 @@
 > **目标**: 新接手 (无论 Claude 还是人) 读完此文档**不用看代码 / 不用查 DB** 就能理解:
 > 项目业务 / 架构 / 技术路线 / 数据资产 / 当前进度 / 已知坑 / 常用操作.
 
-最后更新: 2026-05-14 (Phase ψ.β.5 L2 vol-aware per-stock 参数 / Phase ψ.β.enforce / 16 项遗漏审计).
+最后更新: 2026-05-14 (Phase ψ.γ.discipline Rule 治理工作流 / Phase ψ.β.5 L2 vol-aware / 16 项遗漏审计).
 
 ## 30 秒速览 — 这是什么项目
 
@@ -645,6 +645,7 @@ Rule 9: 真金白银 / 第一性原理       — 用户视角严苛门槛
 | 14 | 行业分类 PIT 系统验证 | 没核 SQL 用 history 还是 latest | 半天 |
 | 15 | codex 分支整理 | 保留作 backup (用户原话), 不删 | 0 |
 | 16 | dev 手册 / goal.md / PROJECT_INDEX 职责划分 | 没明文, 内容可能冗余 | 半天 |
+| 17 | **283 历史 Rule violations 渐进清理** (Phase ψ.γ.discipline 扫出) | Rule 5 silent except 138 / Rule 7 date 112 / stock 22 / Rule 6 alpha weight 6 (strategy_ensemble.py) / threshold 3 / sigma 1 / multiplier 1. 多数 Rule 5 可能合理 (best-effort cleanup), Rule 6 6 个是 strategy_ensemble.py 真违规需要 yaml-back. | 1-2 天 (按 rule 分批清理 + 误判加 evidence 注释) |
 
 ### 处理原则
 
@@ -736,6 +737,40 @@ SELECT * FROM mart_data_source_watermark;
 ## 14. Session 增量更新日志 (Rule 9.5 长期沉淀)
 
 每次 session 增量内容写这里, 新 session 启动时**从下往上读**最近改了啥.
+
+### 2026-05-14 (Phase ψ.γ.discipline — Rule 6/5/7 治理工作流 + 反例沉淀)
+
+**用户 push back**: "即使 CLAUDE.md 有 rule 但你也不遵守, 这个问题咋解决?"
+
+**根因 (诚实承认)**:
+- Phase ψ.β.5 L2 vol-aware: sigma=2.0/3.0/1.0 + bounds [-0.20,-0.05,0.10,0.35,0.03,0.10] 全部拍脑袋
+- Phase ψ.β.4 ensemble alpha weights (13 个数字): 拍脑袋
+- Phase ψ.β.4 regime_gate multipliers (0.3/0.7/1.0): 拍脑袋
+- 共同特征: 我"觉得自己懂 Rule 6", 但写代码时下意识又违反
+
+**修法 (3 层防护, 跟 PROJECT_INDEX hook 同套路)**:
+- 层 1 (硬): `.git/hooks/pre-commit` → `backend/scripts/check_rule_compliance.py` —
+  staged diff 含 magic alpha weight / sigma / multiplier / threshold / hardcoded date /
+  stock_code / try-except pass → 必须有 `# evidence:` / `# from yaml:` / `# measured:`
+  注释或 yaml 外置, 否则 reject commit. 7 测试场景全 PASS.
+- 层 2 (硬): `.git/hooks/commit-msg` → `backend/scripts/check_commit_message.py` —
+  commit message 必须含 GROUP A (test/防回退/修复) 关键词 + 若改 service/script/config 必须含
+  GROUP B (PIT/OOS/实测) 关键词. 3 测试场景 PASS.
+- 层 3 (中): CLAUDE.md 加 Rule 9.9 "写代码前 explicit ritual — 任何数字入代码前 self-check
+  measured from where". Rule 9.8 工作流 enforcement 表补充 2 新 hook 描述.
+
+**Touch 文件**:
+- `backend/scripts/check_rule_compliance.py` (新, 290 行, 7 个反 pattern)
+- `backend/scripts/check_commit_message.py` (新, 130 行, 2 group keyword)
+- `.git/hooks/pre-commit` (新, native git hook)
+- `.git/hooks/commit-msg` (新, native git hook)
+- `.pre-commit-config.yaml` (加 hook config, 备用 pre-commit framework 路径)
+- `CLAUDE.md` (Rule 6 反例表加 3 行 ensemble/regime/vol_aware 拍脑袋案例 + 新 Rule 9.9)
+
+**整库扫描结果**: 283 历史 violations (Rule 5 silent 138 / Rule 7 date 112 / stock 22 /
+Rule 6 alpha weight 6 等). 加进 §11.5 #17 渐进清理.
+
+**学到的**: Rule 文字是被动的, 必须技术层硬挡. 每次 Claude 违 Rule → 加 hook, 不要靠"我会记得".
 
 ### 2026-05-14 (Phase ψ.β.5 — L2 vol-aware per-stock 参数缩放)
 
