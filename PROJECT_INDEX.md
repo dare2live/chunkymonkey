@@ -740,6 +740,19 @@ SELECT * FROM mart_data_source_watermark;
 
 每次 session 增量内容写这里, 新 session 启动时**从下往上读**最近改了啥.
 
+### 2026-05-14 (Phase v3.2 P2 — composite scoring framework)
+
+**新模块** `services/portfolio/composite_score.py`:
+- `CompositeWeights`: PLAN_V3 §2 P2 权重 dataclass — ret_w/dd_w/hp_w/turnover_w/cost_w/capacity_w + hp_penalty_mode
+- `_hp_penalty(avg_hp, mode)`: 3 模式 (linear=1/hp / log=1/log(hp+e) / piecewise<5d 重罚 >60d 轻罚)
+- `compute_composite_score(ann_ret, max_dd, ...)`: 主公式
+  = ret_w * ann_ret - dd_w*|max_dd| - hp_w*f(hp) - turnover_w*turnover - cost_w*tx_cost_pct - capacity_w*concentration
+- `score_strategy_run(metrics)`: convenience wrapper
+
+**待集成 P2.b**: validation grid/Optuna 搜权重 (PLAN_V3 §2 "权重由 validation 决定, 不预设").
+
+**单测** (9 passed): pure return / dd lowers / turnover lowers / 3 hp penalty modes / wrapper / 用户目标 (ann≥30 dd≥-20 composite ≥ 0.05).
+
 ### 2026-05-14 (Phase v3.2 P1 — ablation framework (alpha158 / risk / financial / events drop-one + only-one))
 
 **新模块** `services/ml_ranking/ablation.py`:
