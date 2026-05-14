@@ -85,8 +85,14 @@
 3. train/test 按时间还是 random? (random = leakage)
 4. 有 selection bias (挑"现存上市"/"已知龙头")?
 5. 跨期 label 有 purge + embargo?
+6. **数字异常好看了吗?** RankIC > 0.3 / sharpe > 5 / win_rate > 0.95 / 年化 > 100% / 胜率 100% → **立刻怀疑 leakage, 不是兴奋**. 真实 forward 期望永远比回测低.
 
 不能干净答 = leakage, 不许提交.
+
+**异常高数字 = leakage 警报信号** (用户原话: "之前一版本 100% 胜率, 收益超高, 因为 Optuna 读完整 3 年 K 线倒推买卖点"):
+- paper_sim 跑出 +312% / 高胜率 → 几乎一定 leakage. 历史根因: `mart.sharpe` 是 Optuna 全期 in-sample fit, selector ORDER BY 等于"事后挑最强"
+- 修法三件套: (a) Optuna 改 walk_forward.expanding_monthly Optuna 只看早窗; (b) 入库 `oos_sharpe` (多窗 OOS 拼接), selector ORDER BY `COALESCE(oos_sharpe, sharpe)`; (c) `governance.enforce_pre_insert` 拒 `walk_forward_mode='none'` + sharpe > 5 / win > 0.95 raise
+- v3.2 P0b 实测 RankIC 0.0108-0.0203 (跨 5/10/20 horizon) = 干净 PIT 下的诚实数字; 跟历史 +312% 假象**完全相反**, 这是好事
 
 **防御**:
 - 表加 `built_at/as_of_date` 列, JOIN 永远带 `AND xxx.built_at <= ?`
@@ -119,6 +125,13 @@
 - 入库 sharpe = 多窗 OOS 真值, 不是 in-sample fit
 
 **审计**: 任何 reject 写 `fact_optuna_governance_log` (PK=`run_id`, `record_json` 全量 + 原因)
+
+**Optuna 不用未来函数 — 3 道防线**:
+1. **数据切分**: `walk_forward.split_expanding_monthly(signals)` 严格 train_months[0..k-1] / test_month[k] 切分, Optuna 只看 train 集 fit, **不参与决定 test 内容**
+2. **搜索空间**: Optuna 搜的是**策略行为参数** (hp/stop/target/trailing/形态阈值), 不是数据查找. 不会"看未来 K 线选参数"
+3. **入库守门**: `enforce_pre_insert` 拒 `walk_forward_mode='none'` / OOS 字段缺 / sharpe>5 / win>0.95 → raise (100% 胜率会被拦)
+
+**反例 (踩过, 别重)**: Phase ψ.γ 之前 `mart_per_stock_stage_strategy_optimal.sharpe` 入库 in-sample fit, `selector ORDER BY sharpe DESC` 等于"事后选最强 5 只", paper_sim "+312%" 高胜率假象. 修法见 Rule 5 反例.
 
 ## 7. 真金白银 — 策略 / 实盘 / 钱投入
 

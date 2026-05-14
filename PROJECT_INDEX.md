@@ -740,6 +740,19 @@ SELECT * FROM mart_data_source_watermark;
 
 每次 session 增量内容写这里, 新 session 启动时**从下往上读**最近改了啥.
 
+### 2026-05-14 (CLAUDE.md 加 "异常高数字 = leakage 警报" 显式规则)
+
+用户原话: "参数寻优不用未来函数怎么体现的? 之前有一版本 100% 胜率, 收益超高, optuna 读完整 3 年 K 线倒推买卖点".
+
+CLAUDE.md 增强:
+- Rule 5 (Anti-Leakage) Self-check **加第 6 问**: 数字异常好看 (RankIC>0.3 / sharpe>5 / win>0.95 / 年化>100% / 胜率 100%) → 立刻怀疑 leakage 不是兴奋
+- 加 "异常高数字 = leakage 警报信号" 子节, 含 paper_sim +312% 历史反例 + 修法三件套
+- Rule 6 (Optuna 治理) 加 "Optuna 不用未来函数 — 3 道防线":
+  1. walk_forward.split_expanding_monthly 严格 train/test 时序切
+  2. 搜索空间只搜策略行为参数, 不读未来 K 线
+  3. governance.enforce_pre_insert 拒 in-sample fit + 拦不真实数值
+- v3.2 P0b 实测 RankIC 0.02 作为"诚实"反向证据 (跟历史 +312% 假象相反)
+
 ### 2026-05-14 (CLAUDE.md 重构 — 640 → 270 行)
 
 用户原话: "claude.md 是不是过于啰嗦降低读取效率了, 请你写成自己能明白的样式".
