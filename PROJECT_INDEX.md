@@ -740,6 +740,25 @@ SELECT * FROM mart_data_source_watermark;
 
 每次 session 增量内容写这里, 新 session 启动时**从下往上读**最近改了啥.
 
+### 2026-05-14 (Phase v3.2 P0c — paper_sim selector ML score loader Option A)
+
+**新模块** `services/paper_sim/ml_score_loader.py`:
+- `load_today_candidates_ml_score(conn, signal_date, model_id, max_candidates, min_score)`:
+  - 主排名: mart_p0b_oos_predictions ORDER BY score DESC LIMIT K
+  - Exit params LEFT JOIN: mart_per_stock_stage_strategy_optimal best (oos_sharpe DESC, n_traded ≥ 5)
+  - 返回 list[CandidateRow] 兼容现有 selector.py 结构
+  - tier='ML_RANK' / match_tier='ml_score' 跟 V2 区分
+
+**Option A 决策** (PLAN_V3 §99 P0c):
+- selector ranking 用 ML score (替换公式 sharpe 排名)
+- exit / swap 仍走 Optuna 9-dim 公式 (mart_per_stock_stage_strategy_optimal)
+- 隔离"选股 alpha 是否成立" 实验, P2 再做 A/B/C 对比
+
+**单测** (6 passed): top-K ORDER BY score / min_score filter / model_id filter / empty date /
+exit params 取 best oos_sharpe / n_traded < 5 filter.
+
+**待集成** P0c.b: 在 selector.py load_today_candidates_dispatch 加 mode='ml_score' case, 在 SelectionConfig 加 ml_score_model_id / max_candidates 字段.
+
 ### 2026-05-14 (Phase v3.2 P0b — train CLI + output DDL)
 
 **新加** `services/ml_ranking/ddl.py`:
