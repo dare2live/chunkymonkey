@@ -122,7 +122,7 @@ databases:
       row_count_approx: 4_800_000
       coverage: "6,567 股 / 810 trading days / 2023-01-01 → 2026-05-12"
       fields:
-        stock_code:  {type: TEXT}
+        stock_code:  {type: TEXT, role: pk}
         calc_date:   {type: DATE, role: pit-key}
         vol_30d:     {type: DOUBLE, unit: "fraction (年化)", description: "30 日年化波动率"}
         vol_60d:     {type: DOUBLE, unit: "fraction (年化)", outlier_cap: 2.0}

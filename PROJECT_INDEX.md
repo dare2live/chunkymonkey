@@ -740,6 +740,43 @@ SELECT * FROM mart_data_source_watermark;
 
 每次 session 增量内容写这里, 新 session 启动时**从下往上读**最近改了啥.
 
+### 2026-05-14 (Phase v3.2 P-1 收尾 — 5/5 audit PASS + 治理模块 + CI 修复 + P-1.2 KEEP universe)
+
+**P-1 整体 gate PASS** (5/5 audit, 可进 P0a):
+- P-1.1 PIT: PASS=10/WARN=26/FAIL=0
+- P-1.2 Survivorship (KEEP universe): PASS=12/WARN=2/FAIL=0
+- P-1.3 Tradeability: PASS=9/WARN=1/FAIL=0
+- P-1.4 Event Timestamp: PASS=55/WARN=5/FAIL=0 (修 fact_shareholder_plan 7034 placeholder)
+- P-1.5 Universe Coverage: PASS=18/WARN=5/FAIL=0
+
+**P-1.2 KEEP universe 决策** (用户硬指令):
+- A 股个人散户 5 仓位场景接受生存者偏差, universe = active 60/00/30/68 (沪深主板/创业板/科创板)
+- 新模块 `services/universe.py::is_active_a_share` 守门 (60/00/30/68 前缀检查)
+- ETF (15/51/56/58) 等其他类**不硬编码进 EXCLUDED**, 后续 phase 单独 enable
+- audit_survivorship.py Section 4 改成"KEEP universe K 线完整性 spot check" (5 个采样日 coverage ≥ 99.5%)
+- PLAN_V3 §99 P-1 Go metric 同步更新 (KEEP coverage ≥ 99% 取代"退市/ST 覆盖差异")
+
+**P-1.4 root cause fix** (Rule 5):
+- 根因: tdxhub F10 parser 返回 placeholder plan stub (announce_date/subject/direction 全空), chunkymonkey ingest 没过滤就 INSERT → 7034 行空记录 (2026-04-28 一次 sync, 2138 个 distinct stock)
+- 修: `ingest_holders_tdxhub.py` line 409 加过滤 (三字段任一非空才入库); DELETE 7034 历史污染; 加 `test_write_one_drops_empty_placeholder_plans` 防回退
+- 验证: fact_shareholder_plan 15022 → 7988 rows, announce_date 非空率 100%
+
+**新治理模块** (Phase ψ.γ 残留, terminal 崩溃后规整入 main):
+- `services/data_governance/` (config/enforcer/etl_hook): 字段字典 runtime enforce — ETL INSERT 前守门 pk NULL / enum / sign / outlier_cap 违反; 23 单测
+- `services/optimization/deflated_sharpe.py` + `scripts/check_deflated_sharpe.py`: Bailey-LdP 跨 study 多重检验校正 (p>0.95 才算 alpha 真存在, 防 Rule 7 单 study OOS + Rule 8 walk-forward 仍含累积 selection bias); 26 单测
+- yaml fix: `fact_risk_factors.stock_code` 加 `role: pk` (原本只 pit-key)
+
+**CI 修复** (3 commit, 5 连续 fail → green):
+- `aa57c185` matrix `[3.10, 3.11]` → `[3.11, 3.12]` (项目代码用 datetime.UTC, Python 3.11+ 标准 API)
+- `ea76571b` install deps 加 `pyyaml` (3 个 config loader 都 import yaml)
+- `69371838` P-1.4 root cause fix push
+
+**Codex review thread `ac55f8f69918a6ae0`**: P-1.2 KEEP universe 修订 review 中 (universe.py + audit_survivorship.py edge cases).
+
+**反例新增 (CLAUDE Rule 5 表)**:
+- ingest 写空 placeholder 行: 没过滤 parser 返回的 stub → audit FAIL → 必查 sync 路径根因 (不放松阈值)
+- CI 5 连续 fail: Python version 缺承诺 (无 pyproject.toml) + 缺依赖 (pyyaml 漏装) → 走 smoke import 拦截
+
 ### 2026-05-14 (Phase v3.2 P-1.2~P-1.5 并发完成 — P-1 gate FAIL, 待 audit 修复 + backfill)
 
 **Rule 11 并发首测**: 4 个 general-purpose subagent 并发各写一个 audit, 都用 read_only=True 连接, 唯一 output path, 互不依赖. 实测可行.
