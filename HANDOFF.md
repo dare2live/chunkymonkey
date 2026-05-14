@@ -374,5 +374,5 @@ PYTHONPATH=backend python -m pytest backend/tests/ -q
 **Handoff timestamp**: 2026-05-14 13:37  
 **Last commit**: `b4a5cd90` (Phase ψ.δ.1)  
 **Branch**: `feature/reversal-factor`  
-**Remote**: `origin/feature/reversal-factor` @ github.com/dare2live/chunky-monkey-v2  
+**Remote**: `origin/feature/reversal-factor` @ github.com/dare2live/chunkymonkey  
 **In-flight**: PID 12518 paper_sim per_stock_stage ceiling test (ETA ~14:00)

@@ -25,6 +25,8 @@ from pathlib import Path
 
 import duckdb
 
+from services.data_governance import validate_rows_before_insert
+
 
 log = logging.getLogger("backfill_risk_factors_history")
 logging.basicConfig(level=logging.INFO,
@@ -171,6 +173,25 @@ def main():
     # 3. 写库
     log.info("写 fact_risk_factors ...")
     t3 = time.time()
+
+    # Phase ψ.γ.dict.2 — 字典 runtime enforce (Rule 5/6/7/9.5)
+    INSERT_COLUMNS = [
+        "stock_code", "calc_date",
+        "vol_30d", "vol_60d", "vol_120d",
+        "max_dd_60d", "max_dd_120d",
+        "sharpe_30d", "sharpe_60d",
+        "skew_60d", "kurt_60d",
+        "mom_30d", "mom_120d",
+        "n_bars",
+    ]
+    # skip_missing_table=True — 字典当前覆盖 vol_30d/vol_60d/vol_120d/sharpe_60d/mom_30d/mom_120d
+    # (Phase ψ.β.1 字段子集); skew/kurt/max_dd_*/sharpe_30d/n_bars 字典未列, 不强校验.
+    # 重点: pk/pit-key (stock_code/calc_date) + 已收录字段的 outlier_cap (vol_60d≤2.0, sharpe_60d∈[-5,5]).
+    validate_rows_before_insert(
+        rows, INSERT_COLUMNS, "fact_risk_factors",
+        max_violation_rate=0.005,    # 5% 容忍 (历史数据 trailing 早期 NaN 等)
+    )
+
     smart = duckdb.connect(str(SMART_DB))
     try:
         ensure_table(smart)

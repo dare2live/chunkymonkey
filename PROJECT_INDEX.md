@@ -416,8 +416,8 @@
 
 ### 安装 (新人首次)
 ```bash
-git clone https://github.com/dare2live/chunky-monkey-v2.git
-cd chunky-monkey-v2
+git clone https://github.com/dare2live/chunkymonkey.git
+cd chunkymonkey
 python3 -m venv venv && source venv/bin/activate
 pip install -r backend/requirements.txt
 pip install pre-commit && pre-commit install   # 强制 PROJECT_INDEX 同步检查

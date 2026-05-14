@@ -133,6 +133,15 @@ class OutputConfig:
 
 
 @dataclass(frozen=True)
+class DeflatedSharpeConfig:
+    """Phase ψ.γ.discipline — 跨 study 多重测试治理 (Bailey & López de Prado 2014)."""
+    enabled: bool
+    min_p_value: float
+    default_sharpe_variance: float
+    cumulative_trials_log_table: str
+
+
+@dataclass(frozen=True)
 class OptunaConfig:
     """整体配置. 通过 load_optuna_config() 拿."""
     governance: GovernanceConfig
@@ -142,6 +151,7 @@ class OptunaConfig:
     constraints: ConstraintsConfig
     execution: ExecutionConfig
     output: OutputConfig
+    deflated_sharpe: DeflatedSharpeConfig
 
 
 # ─────────────────────────────────────────────────────────────────────
@@ -203,6 +213,14 @@ def _validate(cfg: OptunaConfig) -> None:
     assert out.stage_optimal_table, "output.stage_optimal_table 必须非空"
     assert out.governance_log_table, "output.governance_log_table 必须非空"
 
+    ds = cfg.deflated_sharpe
+    assert 0.0 < ds.min_p_value < 1.0, \
+        f"deflated_sharpe.min_p_value 必须 (0, 1), 实 {ds.min_p_value}"
+    assert ds.default_sharpe_variance > 0, \
+        f"deflated_sharpe.default_sharpe_variance 必须 > 0, 实 {ds.default_sharpe_variance}"
+    assert ds.cumulative_trials_log_table, \
+        "deflated_sharpe.cumulative_trials_log_table 必须非空"
+
 
 def load_optuna_config(
     path: Path | None = None,
@@ -257,6 +275,12 @@ def load_optuna_config(
         constraints=ConstraintsConfig(**raw["constraints"]),
         execution=ExecutionConfig(**raw["execution"]),
         output=OutputConfig(**raw["output"]),
+        deflated_sharpe=DeflatedSharpeConfig(**raw.get("deflated_sharpe", {
+            "enabled": False,
+            "min_p_value": 0.95,
+            "default_sharpe_variance": 1.0,
+            "cumulative_trials_log_table": "fact_optuna_cumulative_trials",
+        })),
     )
     _validate(cfg)
     return cfg

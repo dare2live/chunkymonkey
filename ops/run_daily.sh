@@ -13,7 +13,7 @@
 set -u  # 不 set -e, 让流程能记录失败再退出
 
 # ----- 配置 -----
-PROJECT_ROOT="/Users/dp/Documents/M/stock/chunky-monkey-v2"
+PROJECT_ROOT="/Users/dp/Documents/M/stock/chunkymonkey"
 BACKEND_URL="http://127.0.0.1:8000"
 API_BASE="$BACKEND_URL/api/inst"   # updater router 挂在 /api/inst
 LOG_DIR="$HOME/Library/Logs/chunky-monkey"

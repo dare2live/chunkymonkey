@@ -414,7 +414,7 @@ chmod +x .git/hooks/pre-commit .git/hooks/commit-msg
 
 ### 运行环境 — 踩过的雷
 
-- **端口 8000** 默认是 chunky-monkey-v2 backend (`start.command` 里硬编码). 但宿主机上还有别的 app ("志途 LifeHack API") 也想用 8000 — 当前实际占住. 起 chunky-monkey 前先 `lsof -i:8000` 确认.
+- **端口 8000** 默认是 chunkymonkey backend (`start.command` 里硬编码). 但宿主机上还有别的 app ("志途 LifeHack API") 也想用 8000 — 当前实际占住. 起 chunky-monkey 前先 `lsof -i:8000` 确认.
 - **uvicorn 长跑会崩**: 5-12 晚上 uvicorn 8001 SIGABRT (uvloop asyncio 6 小时后死). 不要假设 backend 一直在线; cron_daily 的 sync 步骤会调 HTTP, 后端没起就 skip.
 - **start.command** 会先 `stop_project_server` 杀掉占住 8000 的旧实例 (前提是 cwd 是这个项目). 别的项目占的不会被杀.
 - akshare 不要 import (会触发 mini_racer V8 init 在 macOS 14+ 崩). 用 `importlib.metadata.version('akshare')` 查版本.

@@ -50,6 +50,9 @@ walk_forward:
 search_space:
   strategy:
     hp_choices: [5, 10, 15, 20, 30, 60, 90]   # 用户指定 7 档持仓周期
+    # evidence: Sa & Hu (2024) "Stock Classification with Risk Constraints" 实证 —
+    #   2-3% 止损 → 精确率 +3pp; <2% 过紧 → 提前终止盈利交易.
+    #   当前 hi=-0.03 已排除 <3% 过紧, 符合 prior. lo=-0.15 适用大波动股. 不改.
     stop_pct:        { lo: -0.15, hi: -0.03 }  # 止损 3-15%
     target_pct:      { lo:  0.05, hi:  0.30 }  # 止盈 5-30%
     trailing_pct:    { lo:  0.01, hi:  0.08 }  # trailing 1-8%
@@ -91,3 +94,12 @@ output:
   cross_stage_optimal_table: "mart_per_stock_strategy_optimal"
   governance_log_table:   "fact_optuna_governance_log"  # 治理 reject 审计
   # 业务代码 (selector / daily_recommendation) 读 stage_optimal_table.oos_* 字段
+
+# ─── 8. Deflated Sharpe Ratio 治理 (deflated_sharpe.py — Bailey & López de Prado 2014) ───
+# evidence: 公式 from Bailey-LdP 2014 eq. 12 (E[max SR]) + eq. 9 (deflated SR variance adjustment)
+# 跨 study 多重测试治理 — Rule 7/8 在单 study 内防 leakage, 本段防跨 study 试错累积 selection bias
+deflated_sharpe:
+  enabled: false                      # 默认关闭, 累积 trials log 落地后再开 (P1)
+  min_p_value: 0.95                   # observed SR 真显著性必须 > 0.95
+  default_sharpe_variance: 1.0        # trials 间 SR 方差 prior (没历史时 = 1.0)
+  cumulative_trials_log_table: "fact_optuna_cumulative_trials"  # 跨 study 累积 trials 追踪表
