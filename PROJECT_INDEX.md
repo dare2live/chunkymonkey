@@ -740,6 +740,32 @@ SELECT * FROM mart_data_source_watermark;
 
 每次 session 增量内容写这里, 新 session 启动时**从下往上读**最近改了啥.
 
+### 2026-05-15 (Codex C-C: paper_sim tradability mask — T+1 + 涨跌停 + 停牌 + segment-aware ±%)
+
+Codex aaedbc9d C 计划 4 段之第 3 段. 实盘 A 股 mask: 老 driver 仅靠 close>0 隐式过滤, 不查涨停 / 跌停 / 段差. 历史回测时段 (创业板 / 科创板 / 北交所) 偏差大.
+
+新增/变更:
+- `services/paper_sim/tradability.py` (新, 100 行): segment-aware 限制
+  - `get_segment_limit_pct(stock_code) -> (up_pct, down_pct)` 主板 ±10% / 创业/科创 ±20% / 北交所 ±30%
+  - `is_suspended(k)` volume/amount/close <= 0
+  - `is_limit_up_today / is_limit_down_today(k, pre_close, pct)` close vs pre_close × (1+pct ± 1bp 容差)
+  - `can_buy / can_sell(k, pre_close, stock_code)` 综合
+- `driver.py::_load_kline_today` 加 `pre_close` (LAG over date < today within 20-day window)
+- `driver.py` 3 决策点加 mask:
+  - exit eval: 停牌 → hold, 跌停 → hold (record `n_blocked_limit_down_sell`)
+  - swap: swap-out 跌停 + swap-in 涨停 → skip (record `n_blocked_swap_out/in`)
+  - new buy: 停牌 + 涨停 → skip (record `n_blocked_limit_up_buy`)
+- `services/labels/cost_after.py` 未动 (label 不涉 mask, paper_sim runtime 才用)
+- 测试: `test_tradability.py` (新, 17 测试) — segment / 停牌 / 涨停 / 跌停 / pre_close 缺失 / 综合 case.
+
+简化: 不查 dim_price_limit_rules / is_st / days_after_ipo (新股 ±44% 等 corner case 走 fallback ±10%). Phase 4+ 接入完整版.
+
+T+1 由 day-cycle 隐式实现 (open_positions 从 DB load, 当天 buy 后写入, 不在当天 eval 范围).
+
+测试: 2159 passed (vs C-B 基线 2132, +27 含 tradability + tx_cost 重写).
+
+剩余 C 计划: C-D 历史 paper_sim 跑 + KPI + 决策.
+
 ### 2026-05-15 (Hook 升级: emoji ban + post-fix-audit 强制 — 用户推 hook 防忘事)
 
 用户原话: "之前总忘的事情都做成这样的" (PROJECT_INDEX sync hook 刚救场后).

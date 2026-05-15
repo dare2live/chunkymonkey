@@ -30,6 +30,7 @@ from services.paper_sim.swap_rules import (
     HoldingState, rank_swap_candidates,
 )
 from services.paper_sim.tx_cost import compute_buy_cost, compute_sell_revenue
+from services.paper_sim.tradability import can_buy, can_sell, is_suspended
 from services.portfolio_walk_forward.liquidity import round_to_lots
 
 
@@ -77,7 +78,11 @@ def _load_open_positions(conn, sim_run_id: str) -> list[_OpenPosition]:
 
 
 def _load_kline_today(mkt_conn, codes: list[str], today: str) -> dict[str, dict]:
-    """当日 K 线 + 20 日均量. Returns {code: {close, open, high, low, volume, amount, amount_ma20}}."""
+    """当日 K 线 + 20 日均量 + 前一交易日 close (用于涨跌停 mask).
+
+    Returns {code: {close, open, high, low, volume, amount, amount_ma20, pre_close}}.
+    pre_close: 前一个交易日 close (跨 20 trading days 防长假期, ORDER BY date DESC LIMIT 1).
+    """
     if not codes:
         return {}
     qs = ",".join("?" * len(codes))
@@ -94,11 +99,23 @@ def _load_kline_today(mkt_conn, codes: list[str], today: str) -> dict[str, dict]
            WHERE adjust='qfq' AND freq='daily' AND date <= ? AND code IN ({qs})
              AND date > strftime(strptime(?, '%Y-%m-%d') - INTERVAL '40 days', '%Y-%m-%d')
            GROUP BY code
+        ),
+        prev AS (
+          SELECT code,
+                 LAST(close ORDER BY date) AS pre_close
+            FROM v_price_kline_qfq
+           WHERE adjust='qfq' AND freq='daily' AND code IN ({qs})
+             AND date < ?
+             AND date > strftime(strptime(?, '%Y-%m-%d') - INTERVAL '20 days', '%Y-%m-%d')
+           GROUP BY code
         )
-        SELECT t.code, t.close, t.open, t.high, t.low, t.volume, t.amount, m.amount_ma20
-          FROM today t LEFT JOIN ma20 m ON t.code = m.code
+        SELECT t.code, t.close, t.open, t.high, t.low, t.volume, t.amount,
+               m.amount_ma20, p.pre_close
+          FROM today t
+          LEFT JOIN ma20 m ON t.code = m.code
+          LEFT JOIN prev p ON t.code = p.code
         """,
-        [today, *codes, today, *codes, today],
+        [today, *codes, today, *codes, today, *codes, today, today],
     ).fetchall()
     return {
         r[0]: {
@@ -106,6 +123,7 @@ def _load_kline_today(mkt_conn, codes: list[str], today: str) -> dict[str, dict]
             "high": float(r[3] or 0), "low": float(r[4] or 0),
             "volume": float(r[5] or 0), "amount": float(r[6] or 0),
             "amount_ma20": float(r[7] or 0) if r[7] else None,
+            "pre_close": float(r[8] or 0) if r[8] else None,
         }
         for r in rows
     }
@@ -234,6 +252,11 @@ def run_paper_sim_day(
         k = kline.get(p.stock_code)
         if not k or k.get("close", 0) <= 0:
             continue
+        # C-C mask: 停牌 → 持仓 hold (无法 sell), 不算 exit
+        if is_suspended(k):
+            summary.setdefault("n_blocked_suspended_sell", 0)
+            summary["n_blocked_suspended_sell"] += 1
+            continue
         days_held = (datetime.strptime(today, "%Y-%m-%d").date()
                      - datetime.strptime(p.open_date, "%Y-%m-%d").date()).days
         d = evaluate_exit(ExitInputs(
@@ -250,6 +273,11 @@ def run_paper_sim_day(
             today_stage=stage_today.get(p.stock_code),
         ))
         if d.should_exit:
+            # C-C mask: 跌停板 → sell 排不到队, 保守 hold 一天
+            if not can_sell(k, k.get("pre_close"), p.stock_code):
+                summary.setdefault("n_blocked_limit_down_sell", 0)
+                summary["n_blocked_limit_down_sell"] += 1
+                continue
             adv20 = k.get("amount_ma20")
             _close_position(conn, p, today, d.exit_price, d.reason, sim_run_id, cfg,
                             adv20=adv20)
@@ -294,6 +322,17 @@ def run_paper_sim_day(
             # SWAP_OUT — 用当日 VWAP 卖
             p_out = next(p for p in remaining_holdings if p.stock_code == d.holding.stock_code)
             k_out = kline[p_out.stock_code]
+            # C-C mask: swap-out 停牌/跌停 → skip 这条 swap
+            if not can_sell(k_out, k_out.get("pre_close"), p_out.stock_code):
+                summary.setdefault("n_blocked_swap_out", 0)
+                summary["n_blocked_swap_out"] += 1
+                continue
+            # swap-in 也得 can_buy
+            k_in = kline[d.candidate.stock_code]
+            if not can_buy(k_in, k_in.get("pre_close"), d.candidate.stock_code):
+                summary.setdefault("n_blocked_swap_in", 0)
+                summary["n_blocked_swap_in"] += 1
+                continue
             sell_vwap = _vwap(k_out)
             adv20_out = k_out.get("amount_ma20")
             _close_position(conn, p_out, today, sell_vwap, f"swap:{d.reason}",
@@ -329,7 +368,13 @@ def run_paper_sim_day(
         sizing = allocate_positions(candidates_for_new, cfg.portfolio, cash,
                                      total_capital=cash + _positions_value(conn, sim_run_id, mkt_conn, today))
         for s, c in zip(sizing, candidates_for_new):
-            buy_price = _vwap(kline[c.stock_code])    # 用户指定: 当日 VWAP 入场
+            k_c = kline[c.stock_code]
+            # C-C mask: 停牌 + 涨停板 不能 buy
+            if not can_buy(k_c, k_c.get("pre_close"), c.stock_code):
+                summary.setdefault("n_blocked_limit_up_buy", 0)
+                summary["n_blocked_limit_up_buy"] += 1
+                continue
+            buy_price = _vwap(k_c)    # 用户指定: 当日 VWAP 入场
             if buy_price <= 0 or s.target_cny <= 0:
                 continue
             shares = round_to_lots(s.target_cny, buy_price)
@@ -337,7 +382,7 @@ def run_paper_sim_day(
                 continue
             buy = compute_buy_cost(
                 cfg.tx_cost, buy_price, shares,
-                adv20=kline[c.stock_code].get("amount_ma20"),
+                adv20=k_c.get("amount_ma20"),
             )
             if buy.effective_amount > cash:
                 # 不够买就跳过
