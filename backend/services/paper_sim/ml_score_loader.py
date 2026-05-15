@@ -29,73 +29,132 @@ def load_today_candidates_ml_score(
     model_id: str = "lgbm_baseline_v1",
     max_candidates: int = 30,
     min_score: float | None = None,
-    exit_table: str = "mart_per_stock_stage_strategy_optimal",
+    exit_table: str = "mart_per_stock_stage_strategy_optimal_pit",
+    use_pit: bool = True,
 ) -> list[CandidateRow]:
-    """ML score 排序的候选 loader.
+    """ML score 排序的候选 loader (Codex C-A 改造 2026-05-15 — PIT-safe).
 
     SQL:
         SELECT top K from mart_p0b_oos_predictions ORDER BY score DESC
-        LEFT JOIN mart_per_stock_stage_strategy_optimal (latest stage params)
+        ASOF JOIN mart_per_stock_stage_strategy_optimal_pit
+                  WHERE cutoff_date <= signal_date (PIT-safe)
 
     Args:
         conn: smartmoney.duckdb 连接.
         signal_date: 'YYYY-MM-DD'.
         model_id: 用哪个 model 的 OOS predictions.
-        max_candidates: 取前 K (默认 30; P0c gate 不限制具体值, P2 由 composite 决定).
-        min_score: 可选 score 下限 (默认 None = 不过滤).
-        exit_table: 取 exit params 的 mart 表 (默认 stage-aware).
+        max_candidates: 取前 K (默认 30).
+        min_score: 可选 score 下限.
+        exit_table: PIT 表 default mart_per_stock_stage_strategy_optimal_pit (Codex adc5b44520 D CRITICAL fix).
+        use_pit: True 用 PIT ASOF cutoff_date<=signal_date. False 用 latest snapshot (deprecated, 含 leakage).
 
     Returns:
-        list[CandidateRow] sorted by score DESC.
+        list[CandidateRow] sorted by score DESC. Missing PIT row → 不入候选 (Codex C-A: no fallback to latest).
 
-    PIT 保证 (Rule 7):
-        mart_p0b_oos_predictions 上游 train_lightgbm_walkforward 已用
-        split_expanding_monthly, predictions 是 OOS. 严禁读 in-sample fit 字段.
+    PIT 保证 (Codex C-A):
+        - mart_p0b_oos_predictions OOS predictions (上游 walk-forward)
+        - mart_per_stock_stage_strategy_optimal_pit cutoff_date <= signal_date (Day 5 PIT)
+        - 无 fallback latest snapshot, missing row 直接 drop (防 leakage)
     """
     score_filter = f"AND score >= {float(min_score)}" if min_score is not None else ""
 
-    # 联合 mart_p0b_oos_predictions (主排名) + exit params (mart_per_stock_stage_strategy_optimal).
-    # exit params 按 stock × stage best avg_calmar 取一行 (v3.2 ψ.γ.1 9-dim).
-    # 若 stage 未知则 stage_filter='cross' 兜底 (mart_per_stock_strategy_optimal 旧表).
-    sql = f"""
-    WITH preds AS (
-        SELECT stock_code, signal_date, score,
-               fwd_cost_after_5d, fwd_cost_after_10d, fwd_cost_after_20d
-        FROM mart_p0b_oos_predictions
-        WHERE signal_date = ? AND model_id = ?
-              {score_filter}
-        ORDER BY score DESC NULLS LAST
-        LIMIT ?
-    ),
-    exit_params AS (
-        -- 每 stock 取 best stage_filter (最高 oos_sharpe / sharpe)
-        SELECT stock_code, formula_id, formula_variant,
-               oos_avg_ret, holding_days,
-               optimal_target_pct, optimal_stop_pct, optimal_trailing_pct,
-               stage_filter
-        FROM (
-            SELECT *, ROW_NUMBER() OVER (
-                PARTITION BY stock_code
-                ORDER BY COALESCE(oos_sharpe, sharpe) DESC NULLS LAST
-            ) AS rn
-            FROM {exit_table}
-            WHERE n_traded >= 5
-        ) WHERE rn = 1
-    )
-    SELECT
-        p.stock_code, p.signal_date, p.score,
-        COALESCE(e.formula_id, 'ml_default')   AS formula_id,
-        COALESCE(e.formula_variant, 'default') AS formula_variant,
-        COALESCE(e.holding_days, 10)           AS optimal_hp,
-        e.optimal_target_pct, e.optimal_stop_pct, e.optimal_trailing_pct,
-        e.oos_avg_ret AS expected_total_return,
-        e.stage_filter AS stage
-    FROM preds p
-    LEFT JOIN exit_params e
-        ON e.stock_code = p.stock_code
-    ORDER BY p.score DESC
-    """
-    rows = conn.execute(sql, [signal_date, model_id, max_candidates]).fetchall()
+    if use_pit:
+        # PIT-safe ASOF JOIN (Codex C-A): cutoff_date <= signal_date 取最近, missing 不 fallback
+        sql = f"""
+        WITH preds AS (
+            SELECT stock_code, signal_date, score,
+                   fwd_cost_after_5d, fwd_cost_after_10d, fwd_cost_after_20d
+            FROM mart_p0b_oos_predictions
+            WHERE signal_date = ? AND model_id = ?
+                  {score_filter}
+            ORDER BY score DESC NULLS LAST
+            LIMIT ?
+        ),
+        exit_params_pit AS (
+            -- ASOF: per (stock × variant × stage) 取最近 cutoff_date <= signal_date 的 best (COALESCE oos_sharpe DESC)
+            SELECT stock_code, formula_id, formula_variant,
+                   oos_avg_ret, holding_days,
+                   optimal_target_pct, optimal_stop_pct, optimal_trailing_pct,
+                   stage_filter, cutoff_date
+            FROM (
+                SELECT *, ROW_NUMBER() OVER (
+                    PARTITION BY stock_code, formula_variant, stage_filter
+                    ORDER BY cutoff_date DESC,
+                             COALESCE(oos_sharpe, sharpe) DESC NULLS LAST
+                ) AS rn
+                FROM {exit_table}
+                WHERE CAST(cutoff_date AS DATE) <= CAST(? AS DATE)
+                  AND n_traded >= 5
+            ) WHERE rn = 1
+        ),
+        exit_per_stock AS (
+            -- 每 stock 取 best (variant × stage) 一行
+            SELECT stock_code, formula_id, formula_variant,
+                   oos_avg_ret, holding_days,
+                   optimal_target_pct, optimal_stop_pct, optimal_trailing_pct,
+                   stage_filter
+            FROM (
+                SELECT *, ROW_NUMBER() OVER (
+                    PARTITION BY stock_code ORDER BY oos_avg_ret DESC NULLS LAST
+                ) AS rn
+                FROM exit_params_pit
+            ) WHERE rn = 1
+        )
+        SELECT
+            p.stock_code, p.signal_date, p.score,
+            e.formula_id, e.formula_variant,
+            e.holding_days AS optimal_hp,
+            e.optimal_target_pct, e.optimal_stop_pct, e.optimal_trailing_pct,
+            e.oos_avg_ret AS expected_total_return,
+            e.stage_filter AS stage
+        FROM preds p
+        INNER JOIN exit_per_stock e
+            ON e.stock_code = p.stock_code
+        ORDER BY p.score DESC
+        """
+        # Note: INNER JOIN — 没 PIT exit params 的 stock 不入候选 (Codex C-A no fallback)
+        rows = conn.execute(sql, [signal_date, model_id, max_candidates, signal_date]).fetchall()
+    else:
+        # Legacy path: latest snapshot (含 leakage, 仅保留 backwards compat)
+        log.warning("use_pit=False — latest snapshot 含 D CRITICAL leakage, 仅 backwards compat")
+        sql = f"""
+        WITH preds AS (
+            SELECT stock_code, signal_date, score,
+                   fwd_cost_after_5d, fwd_cost_after_10d, fwd_cost_after_20d
+            FROM mart_p0b_oos_predictions
+            WHERE signal_date = ? AND model_id = ?
+                  {score_filter}
+            ORDER BY score DESC NULLS LAST
+            LIMIT ?
+        ),
+        exit_params AS (
+            SELECT stock_code, formula_id, formula_variant,
+                   oos_avg_ret, holding_days,
+                   optimal_target_pct, optimal_stop_pct, optimal_trailing_pct,
+                   stage_filter
+            FROM (
+                SELECT *, ROW_NUMBER() OVER (
+                    PARTITION BY stock_code
+                    ORDER BY COALESCE(oos_sharpe, sharpe) DESC NULLS LAST
+                ) AS rn
+                FROM mart_per_stock_stage_strategy_optimal
+                WHERE n_traded >= 5
+            ) WHERE rn = 1
+        )
+        SELECT
+            p.stock_code, p.signal_date, p.score,
+            COALESCE(e.formula_id, 'ml_default')   AS formula_id,
+            COALESCE(e.formula_variant, 'default') AS formula_variant,
+            COALESCE(e.holding_days, 10)           AS optimal_hp,
+            e.optimal_target_pct, e.optimal_stop_pct, e.optimal_trailing_pct,
+            e.oos_avg_ret AS expected_total_return,
+            e.stage_filter AS stage
+        FROM preds p
+        LEFT JOIN exit_params e
+            ON e.stock_code = p.stock_code
+        ORDER BY p.score DESC
+        """
+        rows = conn.execute(sql, [signal_date, model_id, max_candidates]).fetchall()
 
     out: list[CandidateRow] = []
     for r in rows:

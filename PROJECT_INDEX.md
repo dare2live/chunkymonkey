@@ -740,6 +740,19 @@ SELECT * FROM mart_data_source_watermark;
 
 每次 session 增量内容写这里, 新 session 启动时**从下往上读**最近改了啥.
 
+### 2026-05-15 (Codex C-A: paper_sim PIT loader 改造 — D CRITICAL leakage 修复 Step 1/4)
+
+Codex aaedbc9d C 计划 4 段 A/B/C/D 之第 1 段. 修 D paper_sim CRITICAL (`mart_per_stock_stage_strategy_optimal` latest snapshot + same-day buy = +312% phantom 等级).
+
+变更:
+- `services/paper_sim/ml_score_loader.py`: 加 `use_pit: bool = True`, default `exit_table='mart_per_stock_stage_strategy_optimal_pit'`. ASOF JOIN cutoff_date<=signal_date, **INNER JOIN no fallback** (Codex C-A 不允许 latest snapshot fallback).
+- `services/paper_sim/hybrid_score_loader.py`: 同设计. legacy 分支 (use_pit=False) 硬编码非 PIT 表名, 加 `log.warning` D CRITICAL leakage 警告.
+- 单测: 7+8 老 call 加 `use_pit=False` (向后兼容). 86 paper_sim 测试全 pass (0.50s).
+
+Production 调用方 (selector.py:611, 620) 不传 use_pit → 默认 True → 自动切 PIT 路径.
+
+剩余 C 计划: C-B Cost Model + yaml / C-C T+1 + 涨跌停 + 停牌 masks / C-D 历史 paper_sim 决策.
+
 ### 2026-05-14 (Rule + memory 加 "doc 自维护" — 改 CLAUDE.md/memory 时主动优化)
 
 用户原话: "在每次修改 claude.md 和 memory 时直接做一个优化和更新 — 删除过时、优化冗余".

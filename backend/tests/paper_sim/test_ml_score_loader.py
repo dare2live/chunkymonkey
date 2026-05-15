@@ -59,7 +59,7 @@ def test_basic_loads_top_k_by_score():
             [code, "turtle_20", "v1", "stage_2", hp, target, -0.05, 0.03, 1.5, 1.2, 0.08, 0.07, 10]
         )
 
-    rows = load_today_candidates_ml_score(conn, "2024-06-17", max_candidates=3)
+    rows = load_today_candidates_ml_score(conn, "2024-06-17", use_pit=False, max_candidates=3)
     assert len(rows) == 3
     # ORDER BY score DESC
     assert rows[0].stock_code == "600001" and rows[0].score == 1.0
@@ -86,7 +86,7 @@ def test_min_score_filter():
              "expanding_monthly", "2024-01-01", "2024-05-31", "2024-06-01", "2024-06-30",
              False, "ts"]
         )
-    rows = load_today_candidates_ml_score(conn, "2024-06-17", min_score=0.5)
+    rows = load_today_candidates_ml_score(conn, "2024-06-17", use_pit=False, min_score=0.5)
     assert len(rows) == 2  # only 600001 (1.0) and 600002 (0.6)
 
 
@@ -106,15 +106,15 @@ def test_model_id_filter():
          "expanding_monthly", "2024-01-01", "2024-05-31", "2024-06-01", "2024-06-30",
          False, "ts"]
     )
-    rows_lgbm = load_today_candidates_ml_score(conn, "2024-06-17", model_id="lgbm_baseline_v1")
-    rows_lm = load_today_candidates_ml_score(conn, "2024-06-17", model_id="lambdamart_v1")
+    rows_lgbm = load_today_candidates_ml_score(conn, "2024-06-17", use_pit=False, model_id="lgbm_baseline_v1")
+    rows_lm = load_today_candidates_ml_score(conn, "2024-06-17", use_pit=False, model_id="lambdamart_v1")
     assert len(rows_lgbm) == 1 and rows_lgbm[0].stock_code == "600001"
     assert len(rows_lm) == 1 and rows_lm[0].stock_code == "600002"
 
 
 def test_empty_date_returns_empty():
     conn = _make_conn()
-    rows = load_today_candidates_ml_score(conn, "2024-12-31")
+    rows = load_today_candidates_ml_score(conn, "2024-12-31", use_pit=False)
     assert rows == []
 
 
@@ -134,7 +134,7 @@ def test_exit_params_picks_best_oos_sharpe():
             "INSERT INTO mart_per_stock_stage_strategy_optimal VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             ["600001", "f1", "v1", stage, hp, 0.10, -0.05, 0.03, 0.8, oos_sh, 0.05, 0.04, 10]
         )
-    rows = load_today_candidates_ml_score(conn, "2024-06-17")
+    rows = load_today_candidates_ml_score(conn, "2024-06-17", use_pit=False)
     assert len(rows) == 1
     # Best oos_sharpe=1.8 (stage_2, hp=20)
     assert rows[0].optimal_hp == 20
@@ -156,7 +156,7 @@ def test_n_traded_filter():
         "INSERT INTO mart_per_stock_stage_strategy_optimal VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
         ["600001", "f1", "v1", "stage_2", 20, 0.10, -0.05, 0.03, 1.5, 1.5, 0.05, 0.05, 3]
     )
-    rows = load_today_candidates_ml_score(conn, "2024-06-17")
+    rows = load_today_candidates_ml_score(conn, "2024-06-17", use_pit=False)
     assert len(rows) == 1
     # Exit params 被 n_traded < 5 filter 排除 → 用 default
     assert rows[0].formula_id == "ml_default"

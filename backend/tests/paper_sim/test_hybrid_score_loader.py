@@ -82,7 +82,7 @@ def test_basic_hybrid_orders_by_blend_score():
         _insert_ml(conn, code, "2024-06-30", float(i + 1))
         _insert_stage(conn, code, float(4 - i), n_traded=10)
     rows = load_today_candidates_hybrid(
-        conn, "2024-06-30", model_id="lgbm_v1", w_ml=0.2, max_candidates=10, q60_min_stage=True
+        conn, "2024-06-30", model_id="lgbm_v1", use_pit=False, w_ml=0.2, max_candidates=10, q60_min_stage=True
     )
     # exact 排序 (Codex MINOR): 600001 score=0.6 first, 600002 score=-0.6 second
     # (eligible 集合只剩 2 行, ranked 内部 percent_rank: 0/1 → 各自 [-1,1] 极端)
@@ -104,7 +104,7 @@ def test_w_0_degenerates_to_pure_stage_rank():
         _insert_ml(conn, code, "2024-06-30", float(4 - i))  # ML: 4,3,2,1
         _insert_stage(conn, code, float(i + 1), n_traded=10)  # stage: 1,2,3,4
     rows = load_today_candidates_hybrid(
-        conn, "2024-06-30", model_id="lgbm_v1", w_ml=0.0, max_candidates=10, q60_min_stage=False
+        conn, "2024-06-30", model_id="lgbm_v1", use_pit=False, w_ml=0.0, max_candidates=10, q60_min_stage=False
     )
     # 按 stage_oos_sharpe DESC: 600004 (4), 600003 (3), 600002 (2), 600001 (1)
     assert [r.stock_code for r in rows] == ["600004", "600003", "600002", "600001"]
@@ -117,7 +117,7 @@ def test_w_1_degenerates_to_pure_ml_rank():
         _insert_ml(conn, code, "2024-06-30", float(i + 1))  # ML: 1,2,3,4
         _insert_stage(conn, code, float(4 - i), n_traded=10)  # stage: 4,3,2,1
     rows = load_today_candidates_hybrid(
-        conn, "2024-06-30", model_id="lgbm_v1", w_ml=1.0, max_candidates=10, q60_min_stage=False
+        conn, "2024-06-30", model_id="lgbm_v1", use_pit=False, w_ml=1.0, max_candidates=10, q60_min_stage=False
     )
     # 按 ml_score DESC: 600004 (4), 600003 (3), 600002 (2), 600001 (1)
     assert [r.stock_code for r in rows] == ["600004", "600003", "600002", "600001"]
@@ -131,7 +131,7 @@ def test_q60_min_stage_filter():
         _insert_ml(conn, code, "2024-06-30", 1.0)
         _insert_stage(conn, code, sharpes[i], n_traded=10)
     rows = load_today_candidates_hybrid(
-        conn, "2024-06-30", model_id="lgbm_v1", w_ml=0.3, max_candidates=10, q60_min_stage=True
+        conn, "2024-06-30", model_id="lgbm_v1", use_pit=False, w_ml=0.3, max_candidates=10, q60_min_stage=True
     )
     # 2 stocks above q60 ≈ 1.9: sharpe=2.0 (600004), sharpe=2.5 (600005)
     assert len(rows) == 2
@@ -145,7 +145,7 @@ def test_q60_min_stage_disabled_keeps_all():
         _insert_ml(conn, code, "2024-06-30", 1.0)
         _insert_stage(conn, code, float(i + 1), n_traded=10)
     rows = load_today_candidates_hybrid(
-        conn, "2024-06-30", model_id="lgbm_v1", w_ml=0.2, max_candidates=10, q60_min_stage=False
+        conn, "2024-06-30", model_id="lgbm_v1", use_pit=False, w_ml=0.2, max_candidates=10, q60_min_stage=False
     )
     assert len(rows) == 3
 
@@ -158,7 +158,7 @@ def test_low_n_traded_dropped_from_stage():
     _insert_stage(conn, "600001", 2.0, n_traded=10)  # ok
     _insert_stage(conn, "600002", 2.0, n_traded=3)  # filtered out
     rows = load_today_candidates_hybrid(
-        conn, "2024-06-30", model_id="lgbm_v1", w_ml=0.2, max_candidates=10, q60_min_stage=False
+        conn, "2024-06-30", model_id="lgbm_v1", use_pit=False, w_ml=0.2, max_candidates=10, q60_min_stage=False
     )
     assert len(rows) == 1
     assert rows[0].stock_code == "600001"
@@ -180,7 +180,7 @@ def test_null_ml_score_filtered():
     _insert_stage(conn, "600001", 1.0, n_traded=10)
     _insert_stage(conn, "600002", 2.0, n_traded=10)
     rows = load_today_candidates_hybrid(
-        conn, "2024-06-30", model_id="lgbm_v1", w_ml=0.2, max_candidates=10, q60_min_stage=False
+        conn, "2024-06-30", model_id="lgbm_v1", use_pit=False, w_ml=0.2, max_candidates=10, q60_min_stage=False
     )
     assert len(rows) == 1
     assert rows[0].stock_code == "600001"
@@ -202,7 +202,7 @@ def test_match_tier_marks_w_value():
     _insert_ml(conn, "600001", "2024-06-30", 1.0)
     _insert_stage(conn, "600001", 1.0, n_traded=10)
     rows = load_today_candidates_hybrid(
-        conn, "2024-06-30", model_id="lgbm_v1", w_ml=0.25, max_candidates=10, q60_min_stage=False
+        conn, "2024-06-30", model_id="lgbm_v1", use_pit=False, w_ml=0.25, max_candidates=10, q60_min_stage=False
     )
     assert rows[0].match_tier == "hybrid_w0.25"
     assert rows[0].tier == "HYBRID_ML_STAGE"

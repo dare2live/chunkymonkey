@@ -8,13 +8,12 @@ Codex Q5 sequential filter + rank-linear blend:
 
 w grid (nested WF 选最优): {0, 0.10, 0.20, 0.30, 0.40}
 
-**Codex 反馈处理 (CLAUDE §10 §10 三档反应 — 折中)**:
-- 完全接受: rank-linear blend 公式 + sequential filter (q60 stage eligibility) + w grid 不用 Optuna
-- 折中: stage_opt 用 mart_per_stock_stage_strategy_optimal **latest snapshot** (NOT PIT)
-  跟 P0c only-ML 同妥协. Day 5 PIT walk-forward 重 Optuna 表 (mart_per_stock_stage_strategy_optimal_pit)
-  待 v3 smoke RankIC 验证 ML alpha ≥ 0.025 后再做, 否则做无 value.
-  ⚠ 历史回测注: latest snapshot 跟 signal_date 不对齐, 这是已知 leakage 风险.
-  paper_sim 上线前必须切 PIT 表.
+**PIT-safe (Codex C-A 2026-05-15)**:
+- Default use_pit=True: stage_opt 走 mart_per_stock_stage_strategy_optimal_pit (Day 5 4 cutoffs × 千股 Optuna)
+- ASOF JOIN: WHERE cutoff_date <= signal_date, ORDER BY cutoff_date DESC, oos_sharpe DESC
+- INNER JOIN — 没 PIT row 的 stock 直接 drop, 无 fallback latest (Codex C-A 不允许 D CRITICAL leakage)
+- use_pit=False 走 mart_per_stock_stage_strategy_optimal latest snapshot (含 D CRITICAL leakage),
+  仅保留 backwards-compat, 实盘不允许. 调用方传 use_pit=False 时记 warning log.
 
 **为何不用 Optuna 搜 w**:
 - w grid 5 个值 small, nested WF 直接遍历比 Optuna 更可控
@@ -39,7 +38,8 @@ def load_today_candidates_hybrid(
     max_candidates: int = 30,
     w_ml: float = 0.20,
     q60_min_stage: bool = True,
-    exit_table: str = "mart_per_stock_stage_strategy_optimal",
+    exit_table: str = "mart_per_stock_stage_strategy_optimal_pit",
+    use_pit: bool = True,
 ) -> list[CandidateRow]:
     """Hybrid ML + stage_opt 排序 loader (Codex Q5 Day 6).
 
@@ -65,10 +65,10 @@ def load_today_candidates_hybrid(
       7. hybrid_score = (1-w_ml) * s_stage + w_ml * s_ml
       8. ORDER BY hybrid_score DESC LIMIT max_candidates
 
-    PIT 妥协 (CLAUDE §10 §7 真金白银 — 显式标):
-      - mart_per_stock_stage_strategy_optimal 是 latest snapshot, NOT PIT
-      - 历史 signal_date 用 latest oos_sharpe = 跟 P0c only-ML 同 leakage 风险
-      - Day 5 PIT 表 (mart_per_stock_stage_strategy_optimal_pit) 验证 blend 有 value 后才做
+    PIT 默认 (Codex C-A 2026-05-15):
+      - use_pit=True: ASOF JOIN mart_per_stock_stage_strategy_optimal_pit WHERE cutoff_date <= signal_date
+      - INNER JOIN — 缺 PIT row 的 stock 直接 drop, 不 fallback latest
+      - use_pit=False: 落 latest snapshot (含 leakage), 仅 backwards-compat
     """
     if not (0.0 <= w_ml <= 1.0):
         raise ValueError(f"w_ml {w_ml} out of [0, 1]")
@@ -81,6 +81,47 @@ def load_today_candidates_hybrid(
             "若用于 nested WF 选优请确保已 documented 偏离"
         )
 
+    # Codex C-A (2026-05-15): 用 PIT 表 ASOF cutoff_date<=signal_date, no fallback latest
+    pit_cte = f"""
+        stage_per_stock AS (
+            -- ASOF: per stock 取最近 cutoff_date <= signal_date 的 best (variant × stage)
+            SELECT stock_code,
+                   COALESCE(oos_sharpe, sharpe) AS stage_oos_sharpe,
+                   formula_id, formula_variant,
+                   oos_avg_ret, holding_days,
+                   optimal_target_pct, optimal_stop_pct, optimal_trailing_pct,
+                   stage_filter, cutoff_date
+            FROM (
+                SELECT *, ROW_NUMBER() OVER (
+                    PARTITION BY stock_code
+                    ORDER BY cutoff_date DESC,
+                             COALESCE(oos_sharpe, sharpe) DESC NULLS LAST
+                ) AS rn
+                FROM {exit_table}
+                WHERE CAST(cutoff_date AS DATE) <= CAST(? AS DATE)
+                  AND n_traded >= 5
+            ) WHERE rn = 1
+        ),
+    """ if use_pit else """
+        stage_per_stock AS (
+            -- Legacy latest snapshot (含 leakage, deprecated) — hardcoded mart_per_stock_stage_strategy_optimal
+            SELECT stock_code,
+                   COALESCE(oos_sharpe, sharpe) AS stage_oos_sharpe,
+                   formula_id, formula_variant,
+                   oos_avg_ret, holding_days,
+                   optimal_target_pct, optimal_stop_pct, optimal_trailing_pct,
+                   stage_filter
+            FROM (
+                SELECT *, ROW_NUMBER() OVER (
+                    PARTITION BY stock_code
+                    ORDER BY COALESCE(oos_sharpe, sharpe) DESC NULLS LAST
+                ) AS rn
+                FROM mart_per_stock_stage_strategy_optimal
+                WHERE n_traded >= 5
+            ) WHERE rn = 1
+        ),
+    """
+
     sql = f"""
     WITH ml_preds AS (
         SELECT stock_code, signal_date, score AS ml_score
@@ -88,22 +129,7 @@ def load_today_candidates_hybrid(
         WHERE signal_date = ? AND model_id = ?
               AND score IS NOT NULL
     ),
-    stage_per_stock AS (
-        SELECT stock_code,
-               COALESCE(oos_sharpe, sharpe) AS stage_oos_sharpe,
-               formula_id, formula_variant,
-               oos_avg_ret, holding_days,
-               optimal_target_pct, optimal_stop_pct, optimal_trailing_pct,
-               stage_filter
-        FROM (
-            SELECT *, ROW_NUMBER() OVER (
-                PARTITION BY stock_code
-                ORDER BY COALESCE(oos_sharpe, sharpe) DESC NULLS LAST
-            ) AS rn
-            FROM {exit_table}
-            WHERE n_traded >= 5
-        ) WHERE rn = 1
-    ),
+    {pit_cte}
     joined AS (
         SELECT m.stock_code, m.ml_score, s.stage_oos_sharpe,
                s.formula_id, s.formula_variant, s.oos_avg_ret, s.holding_days,
@@ -140,10 +166,13 @@ def load_today_candidates_hybrid(
     LIMIT ?
     """
 
-    rows = conn.execute(
-        sql,
-        [signal_date, model_id, q60_min_stage, w_ml, w_ml, max_candidates],
-    ).fetchall()
+    # PIT mode 额外 1 个 param (signal_date for cutoff_date filter)
+    if use_pit:
+        params = [signal_date, model_id, signal_date, q60_min_stage, w_ml, w_ml, max_candidates]
+    else:
+        log.warning("use_pit=False — latest snapshot 含 D CRITICAL leakage, 仅 backwards compat")
+        params = [signal_date, model_id, q60_min_stage, w_ml, w_ml, max_candidates]
+    rows = conn.execute(sql, params).fetchall()
 
     out: list[CandidateRow] = []
     for r in rows:
