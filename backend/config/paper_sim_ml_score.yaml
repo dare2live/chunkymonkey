@@ -41,9 +41,9 @@ selection:
   ml_score_model_id: "lgbm_v3_honest_20d"
   ml_score_max_candidates: 30      # 取 ML score 前 30 名 (大于 max_positions 防过滤后不够)
   ml_score_min_score: null         # 不限分数下限
-  # Path A 2026-05-15 anti-churn: hp_expired 强制 days_held >= max(optimal_hp, min_forced_hp)
-  # 实测 旧持仓 13.9d / target 6 周 (~30d). 设 15 中庸 (2x 当前持仓), 不太激进破坏 Optuna optimal_hp.
-  min_forced_hp: 15
+  # Path A 实验 (2026-05-15): min_forced_hp=15 + cash 0.30 → 年化 -7% 灾难, 暴 alpha 损坏 (Optuna optimal_hp override).
+  # Revert min_forced_hp=0, 仅留 cash 0.30 单变量实验 (Codex Rule 5 反向警报后控变量).
+  min_forced_hp: 0
 
 # ─── 退出 (Optuna 9-dim) ───
 exit:

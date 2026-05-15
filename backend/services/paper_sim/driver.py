@@ -31,6 +31,9 @@ from services.paper_sim.swap_rules import (
 )
 from services.paper_sim.tx_cost import compute_buy_cost, compute_sell_revenue
 from services.paper_sim.tradability import can_buy, can_sell, is_suspended
+from services.paper_sim.risk_control import (
+    compute_portfolio_dd, should_hard_stop, is_buy_frozen, compute_freeze_until,
+)
 from services.portfolio_walk_forward.liquidity import round_to_lots
 
 
@@ -251,8 +254,48 @@ def run_paper_sim_day(
     kline = _load_kline_today(mkt_conn, all_codes, today)
     stage_today = _today_stage(conn, held_codes, today)
 
+    # 2.5. 风控 — portfolio_dd hard stop (v3 实验 2026-05-15)
+    # 跟踪 sim 起 peak NAV, 若当前 dd <= max_dd_hard_stop_pct → 全清 + 冻结 N 天
+    peak_nav_row = conn.execute(
+        "SELECT MAX(total_value) FROM mart_paper_sim_nav WHERE sim_run_id=?",
+        [sim_run_id],
+    ).fetchone()
+    last_nav_row = conn.execute(
+        "SELECT total_value FROM mart_paper_sim_nav WHERE sim_run_id=? "
+        "ORDER BY date DESC LIMIT 1",
+        [sim_run_id],
+    ).fetchone()
+    peak_nav = float(peak_nav_row[0]) if peak_nav_row and peak_nav_row[0] else cfg.portfolio.initial_cash
+    prev_nav = float(last_nav_row[0]) if last_nav_row and last_nav_row[0] else cfg.portfolio.initial_cash
+    current_dd_yesterday = compute_portfolio_dd(prev_nav, peak_nav)
+    hard_stop_triggered = should_hard_stop(current_dd_yesterday, cfg.risk.max_dd_hard_stop_pct)
+
     # 3. 退出评估
     closed_position_ids: set[str] = set()
+    if hard_stop_triggered:
+        # 全清: 用当日 VWAP 卖所有 open positions (按 tradability mask 顺延)
+        summary["n_hard_stop"] = 0
+        for p in open_positions:
+            k = kline.get(p.stock_code)
+            if not k or k.get("close", 0) <= 0:
+                continue
+            if is_suspended(k):
+                continue   # 停牌的下次再清
+            if not can_sell(k, k.get("pre_close"), p.stock_code):
+                continue   # 跌停板也卖不动 (Codex 严)
+            sell_price = _vwap(k)
+            adv20 = k.get("amount_ma20")
+            _close_position(conn, p, today, sell_price, "hard_stop_portfolio_dd",
+                            sim_run_id, cfg, adv20=adv20)
+            cash += compute_sell_revenue(
+                cfg.tx_cost, sell_price, p.shares, adv20=adv20,
+            ).effective_amount
+            closed_position_ids.add(p.position_id)
+            summary["n_hard_stop"] += 1
+        log.warning(
+            f"  HARD STOP triggered: dd={current_dd_yesterday:.1%} ≤ "
+            f"{cfg.risk.max_dd_hard_stop_pct:.0%}, 全清 {summary['n_hard_stop']} 仓"
+        )
     for p in open_positions:
         k = kline.get(p.stock_code)
         if not k or k.get("close", 0) <= 0:
@@ -355,11 +398,23 @@ def run_paper_sim_day(
                                    cash, sim_run_id, cfg, source="swap",
                                    adv20=kline[cand.stock_code].get("amount_ma20"))
 
-    # 5. 入新 (填满 max_positions)
+    # 5. 入新 (填满 max_positions) — hard_stop 冻结期内 skip
+    # 检 hard_stop 历史 (Codex Rule 5 PIT-safe: 历史 trade reason)
+    hard_stop_last_row = conn.execute(
+        "SELECT MAX(date) FROM fact_paper_sim_trade "
+        "WHERE sim_run_id=? AND reason LIKE 'hard_stop%'",
+        [sim_run_id],
+    ).fetchone()
+    buy_frozen = False
+    if hard_stop_last_row and hard_stop_last_row[0]:
+        freeze_until = compute_freeze_until(hard_stop_last_row[0], cfg.risk.hard_stop_freeze_days)
+        buy_frozen = is_buy_frozen(today, freeze_until)
+    if buy_frozen:
+        summary["n_blocked_buy_hard_stop_frozen"] = 1
     current_holding_count = len([p for p in open_positions if p.position_id not in closed_position_ids]) \
                               + summary["n_swaps"]
     slots_left = cfg.portfolio.max_positions - current_holding_count
-    if slots_left > 0:
+    if slots_left > 0 and not buy_frozen:
         candidates_passed, _ = filter_by_liquidity(candidates_raw, kline, cfg.selection)
         held_set = {p.stock_code for p in open_positions if p.position_id not in closed_position_ids}
         # also exclude already swapped-in stocks

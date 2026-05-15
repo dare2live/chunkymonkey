@@ -740,6 +740,22 @@ SELECT * FROM mart_data_source_watermark;
 
 每次 session 增量内容写这里, 新 session 启动时**从下往上读**最近改了啥.
 
+### 2026-05-15 (v3 实验: portfolio_dd hard stop — Path A v1 失败教训后)
+
+Path A v1 (cash 0.30 + min_forced_hp 15) 灾难 alpha 破坏 (-45pp 年化). Path A v2 (cash only) 维持 alpha + 改 robustness. v3 = v2 + portfolio_dd hard stop, 真正 portfolio-level dd 控制.
+
+新增:
+- `services/paper_sim/risk_control.py` (60 行): compute_portfolio_dd / should_hard_stop / is_buy_frozen / compute_freeze_until.
+- `driver.py` 加 step 2.5 风控: peak NAV 跟踪 (from mart_paper_sim_nav MAX), current_dd 算, 若 ≤ max_dd_hard_stop_pct → 全清 + 冻结 hard_stop_freeze_days.
+- `driver.py` 加 step 5 buy frozen check (从 fact_paper_sim_trade reason='hard_stop%' 查最近).
+- 单测 `test_risk_control.py` 13 cases.
+
+PIT-safe: dd 用 prior NAV vs prior peak, 不读未来.
+
+Existing config (RiskConfig.max_dd_hard_stop_pct -0.20 / hard_stop_freeze_days 30) 已存在但 unwired, 现 wire 起.
+
+剩 v4-v7 experiments 看 v3 结果决定 (max_pos 集中 / regime sizing / Phase 1 推进).
+
 ### 2026-05-15 (Path A: anti-churn + cash buffer — Codex aa2d79d2 C-D MARGINAL 修)
 
 C-D verdict MARGINAL (核心 alpha +38.6% PASS 但 max_dd -27% / 换手 22.9x 单边 FAIL). 用户选 Path A+B 并行.
