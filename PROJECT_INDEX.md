@@ -740,6 +740,10 @@ SELECT * FROM mart_data_source_watermark;
 
 每次 session 增量内容写这里, 新 session 启动时**从下往上读**最近改了啥.
 
+### 2026-05-15 (run_paper_sim_v2.py emoji 清理 — emoji hook 触发后主动)
+
+run_paper_sim_v2.py print 5 处 check-mark-button + cross-mark → [PASS]/[FAIL]. emoji hook 自身已 fire 过, 主动 proactive 清理避免后续编辑被拦.
+
 ### 2026-05-15 (PIT regression test + diagnostic script — Codex aa2d79d2 配套)
 
 ADV20 PIT-safe fix (d60fa73f) 配套 Rule 9.2 #2 (测试加了) + Codex CRITICAL #2 / MAJOR #3 诊断工具.

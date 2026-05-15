@@ -106,7 +106,7 @@ def _print_kpi(summary: dict, label: str) -> None:
     print(f"  {label} — sim_run_id={summary.get('variant')}")
     print(f"{'='*120}")
     uc = summary["user_criteria"]
-    print(f"\n  A. 用户终极标准 ({'✅ PASS' if uc['pass'] else '❌ FAIL'}):")
+    print(f"\n  A. 用户终极标准 ({'[PASS]' if uc['pass'] else '[FAIL]'}):")
     print(f"     年化     {uc['annual_return']*100:+.1f}%  (≥ 30% 必过)")
     print(f"     max_dd   {uc['max_dd']*100:+.1f}%  (≥ -20% 必过)")
     print(f"     超额     {uc.get('excess_total_return', 0)*100:+.1f}%  (> 0 必过)")
@@ -114,7 +114,7 @@ def _print_kpi(summary: dict, label: str) -> None:
     print(f"     Sharpe   {uc['sharpe']:+.2f}  Calmar {uc['calmar']:+.2f}  IR {uc.get('information_ratio',0):+.2f}")
 
     ac = summary["anti_churn"]
-    print(f"\n  B. Anti-churn ({'✅ PASS' if ac['pass'] else '❌ FAIL'}):")
+    print(f"\n  B. Anti-churn ({'[PASS]' if ac['pass'] else '[FAIL]'}):")
     print(f"     平均持仓天数  {ac['avg_holding_days']:.1f}  (≥ 5 必过)")
     print(f"     年化换手     {ac['annual_turnover']:.2f}x  (≤ 8 必过)")
     print(f"     手续费占毛利  {ac['tx_cost_pct_of_gross_pnl']*100:.1f}%  (≤ 10% 必过)")
@@ -122,7 +122,7 @@ def _print_kpi(summary: dict, label: str) -> None:
     print(f"     swap 净 uplift {ac['swap_uplift_total']:+.3f}  (> 0 必过 — 反事实证明 swap 有价值)")
 
     rb = summary["robustness"]
-    print(f"\n  C. Robustness ({'✅ PASS' if rb['pass'] else '❌ FAIL'}):")
+    print(f"\n  C. Robustness ({'[PASS]' if rb['pass'] else '[FAIL]'}):")
     ir_med = rb.get("rolling_ir_60d_median")
     ir_p25 = rb.get("rolling_ir_60d_p25")
     ann_med = rb.get("rolling_annual_90d_median")
@@ -136,7 +136,7 @@ def _print_kpi(summary: dict, label: str) -> None:
     print(f"     熊市段 {bear*100:+.1f}%" if bear is not None else "     熊市段 N/A")
     print(f"     震荡段 {side*100:+.1f}%" if side is not None else "     震荡段 N/A")
 
-    print(f"\n  >>> 综合 KPI: {'✅✅✅ ALL PASS — 可上 live' if summary['all_pass'] else '❌ 至少一类 FAIL — 不上线'}")
+    print(f"\n  >>> 综合 KPI: {'[ALL PASS] 可上 live' if summary['all_pass'] else '[FAIL] 至少一类不过 — 不上线'}")
 
 
 def _ablation_compare(baseline: dict, swap_v1: dict, cfg: PaperSimConfig) -> None:
@@ -157,7 +157,7 @@ def _ablation_compare(baseline: dict, swap_v1: dict, cfg: PaperSimConfig) -> Non
         and dd_degrade <= th["swap_vs_baseline_max_dd_degradation_max"]
         and sharpe_ratio >= th["swap_vs_baseline_sharpe_ratio_min"]
     )
-    print(f"     >>> {'✅ swap 显著贡献 — 保留' if ablation_pass else '❌ swap 价值不显著 — 考虑关 swap 上线 baseline 简化版'}")
+    print(f"     >>> {'[PASS] swap 显著贡献 — 保留' if ablation_pass else '[FAIL] swap 价值不显著 — 考虑关 swap 上线 baseline 简化版'}")
 
 
 def main():
