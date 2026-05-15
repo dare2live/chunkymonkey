@@ -809,6 +809,32 @@ CLAUDE.md 增强:
 - v2 features: 79 → 85 (不是 87)
 - TODO v3: 重 Optuna walk-forward expanding_monthly 入库 (stock × cutoff_date × best_sharpe), ASOF JOIN
 
+### 2026-05-15 (v3_ext 候选 +11 cols 资金流 PIT — 并发探索, /pit-audit 验证)
+
+用户 push back: "是不是测试的组合还没有找到最优解? 正在跑的继续跑, 其他可以同步并发的比如增补候选方案或者其他的可以并发".
+
+实际并发不冲突 chain v6 的探索: 写 code + 单测 (不动 smartmoney write lock).
+
+发现 `fact_capital_flow_pit_daily` (858K rows, 810 dates, 2023-01 → 2026-05):
+- PIT-safe by design (跟 fact_financial_pit_daily 同模式, Codex 之前 verify CLEAN)
+- 11 cols: LHB 5 (count/net_buy_pct/inst_buy_30d/90d) + 高管 5 (buy/sell_60d/pct/net_signal) + 股东户数 1
+- v3 feature_join_v3 完全没用 — free alpha 候选
+
+**`services/labels/feature_join_v3_ext.py`** (新):
+- 在 v3 panel 基础上 LEFT JOIN fact_capital_flow_pit_daily
+- 4 单测 (DDL idempotent / 基本 JOIN / PIT 未来 row 排除 / NULL coverage)
+
+**`/pit-audit` skill (a163ca58 sequel) Step 1-3 PASS**:
+- Step 1: 11 cols 列出
+- Step 2: source fact_capital_flow_pit_daily, builder backfill_capital_flow_pit.py
+- Step 3: trailing window + 事件公告日 inclusive (LHB borderline marginal, exec+holder ✅)
+- **Step 4 micro-ablation DEFER** chain v6 完 (smartmoney single writer lock)
+
+待 chain v6 完成后 (~30h):
+1. 跑 build_v3_ext (~80s 类似 v3 build)
+2. /pit-audit Step 4 micro-ablation: drop 11 cols vs include 比较 RankIC
+3. 若贡献 +0.005+ → ✅ deploy v3_ext path
+
 ### 2026-05-15 (CLAUDE §9.2 #7 + post-fix-audit skill — reactive→proactive 固化)
 
 用户 push back: "我不问你也不想着解决遗留问题, 这个应该写在 skill 还是 claude.md 里还是怎么固化".
