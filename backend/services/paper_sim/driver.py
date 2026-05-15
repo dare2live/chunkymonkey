@@ -292,8 +292,8 @@ def run_paper_sim_day(
             ).effective_amount
             closed_position_ids.add(p.position_id)
             summary["n_hard_stop"] += 1
-        log.warning(
-            f"  HARD STOP triggered: dd={current_dd_yesterday:.1%} ≤ "
+        logger.warning(
+            f"  HARD STOP triggered: dd={current_dd_yesterday:.1%} <= "
             f"{cfg.risk.max_dd_hard_stop_pct:.0%}, 全清 {summary['n_hard_stop']} 仓"
         )
     for p in open_positions:

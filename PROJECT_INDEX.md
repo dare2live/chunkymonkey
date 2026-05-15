@@ -740,6 +740,16 @@ SELECT * FROM mart_data_source_watermark;
 
 每次 session 增量内容写这里, 新 session 启动时**从下往上读**最近改了啥.
 
+### 2026-05-15 (v3 hot-fix: log → logger NameError + 加 audit_sim_run_ledger)
+
+v3 实跑发现 hard_stop 在 day ~165 触发 (peak NAV ~1.4M, current 1.13M, dd -20%) — 设计如预期. 但 driver.py:295 笔误 log.warning (应 logger), script crash.
+
+变更:
+- driver.py:295 log → logger
+- backend/scripts/audit_sim_run_ledger.py (新, 80 行): 横向对比 mart_paper_sim_kpi 所有 swap_v1_20260515_* run, 一表 (年化/dd/胜率/超额/Sharpe/换手/持仓). 配合用户 "保留各种组合" 决策.
+
+post-fix verified: 129 paper_sim tests pass, 无 'log.' 残留.
+
 ### 2026-05-15 (v3 实验: portfolio_dd hard stop — Path A v1 失败教训后)
 
 Path A v1 (cash 0.30 + min_forced_hp 15) 灾难 alpha 破坏 (-45pp 年化). Path A v2 (cash only) 维持 alpha + 改 robustness. v3 = v2 + portfolio_dd hard stop, 真正 portfolio-level dd 控制.
