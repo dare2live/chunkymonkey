@@ -740,6 +740,19 @@ SELECT * FROM mart_data_source_watermark;
 
 每次 session 增量内容写这里, 新 session 启动时**从下往上读**最近改了啥.
 
+### 2026-05-15 (PIT regression test + diagnostic script — Codex aa2d79d2 配套)
+
+ADV20 PIT-safe fix (d60fa73f) 配套 Rule 9.2 #2 (测试加了) + Codex CRITICAL #2 / MAJOR #3 诊断工具.
+
+新增:
+- `backend/tests/paper_sim/test_kline_pit.py` (4 tests, in-memory DuckDB fixture):
+  amount_ma20 excludes today (fail = leak 回退) / pre_close 同检 / OHLCV 区别校验
+- `backend/scripts/audit_paper_sim_diagnostics.py` (3 段, read-only):
+  A. PIT coverage daily audit (每月 1 行采样) — 检 PIT 累积 stock 数
+  B. Turnover breakdown — type/reason × n_trades + 持仓天数 bucket
+  C. Candidate stability — Holdings day-over-day Jaccard (近似 candidate churn)
+  用法: `python backend/scripts/audit_paper_sim_diagnostics.py --sim-run-id <id>`
+
 ### 2026-05-15 (Codex aa2d79d2 CRITICAL: paper_sim ADV20 leak 修 — Codex C-D review 发现)
 
 Codex aa2d79d2 review C-D KPI 时发现 amount_ma20 SQL `date <= today` 含今日 amount = D CRITICAL leak (实盘 T+1 09:25 决策时今日 amount 未知). CLAUDE §10 ⛔ PIT CRITICAL 不允许折中, 立刻修.
