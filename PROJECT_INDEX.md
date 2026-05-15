@@ -740,6 +740,18 @@ SELECT * FROM mart_data_source_watermark;
 
 每次 session 增量内容写这里, 新 session 启动时**从下往上读**最近改了啥.
 
+### 2026-05-16 (v9 max_pos 3 FAIL → v4 (max_pos 5) 最终确认)
+
+Codex acf91c1f 推 v4 后, 用户 push 探索更多组合. 跑 v9 (max_pos 5→3, Codex 旁路 b).
+
+v9 KPI 全方位 worse: ann +43.4% (-23pp) / max_dd -24.3% (-4.3pp 反更深!) / 胜率 44% (-23pp) / Sharpe 0.77 (-0.81).
+
+集中度反向不 work — 单 stock 暴跌时整组合受影响更大 (33% each vs v4 14% each). hard_stop fire at -24.3% 比 -20% threshold 更深 (daily granularity 来不及救).
+
+Yaml restored max_pos 3→5.
+
+实验 ledger 9 experiments (v0-v9) 全保留 in mart_paper_sim_kpi.
+
 ### 2026-05-16 (v4-v8 ablation + Codex acf91c1f final verdict — v4 唯一 Phase 1 候选)
 
 Codex aa2d79d2 review v3 标 single-window luck 嫌疑后, 用户 push 探索更多组合. 跑 v4-v8 ablation + Codex 二审 (acf91c1f).

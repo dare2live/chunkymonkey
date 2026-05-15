@@ -13,7 +13,7 @@
 # ─── 投资组合 ───
 portfolio:
   initial_cash: 1_000_000
-  max_positions: 5
+  max_positions: 5     # v4 FINAL: v9 (max_pos 3) 反而 dd 更深 -24.3% + ann -23pp + 胜率 -23pp, 集中度反向不帮
   position_sizing: "equal"  # 简单等权 (P2 时可改 vol-target / kelly / wilson_kelly)
   cash_when_strong_buy_lt: 5
   min_cash_pct: 0.30   # Path A 2026-05-15: 0.05 → 0.30, 减集中度 + 控 max_dd (Codex aa2d79d2 #1)
