@@ -740,6 +740,27 @@ SELECT * FROM mart_data_source_watermark;
 
 每次 session 增量内容写这里, 新 session 启动时**从下往上读**最近改了啥.
 
+### 2026-05-15 (Path A: anti-churn + cash buffer — Codex aa2d79d2 C-D MARGINAL 修)
+
+C-D verdict MARGINAL (核心 alpha +38.6% PASS 但 max_dd -27% / 换手 22.9x 单边 FAIL). 用户选 Path A+B 并行.
+
+Path A (前台, 1-2h): 修 strategy 而非数据.
+
+变更:
+- `services/paper_sim/exit_rules.py::ExitInputs`: 加 `min_forced_hp` 字段 (anti-churn).
+  hp_expired 触发 = days_held >= max(optimal_hp, min_forced_hp). stop_hit/trailing/stage_det 不受此限.
+- `services/paper_sim/config.py::SelectionConfig`: 加 `min_forced_hp=0` 默认.
+- `services/paper_sim/driver.py`: ExitInputs 传 cfg.selection.min_forced_hp.
+- `backend/config/paper_sim_ml_score.yaml`:
+  - `min_cash_pct: 0.05 → 0.30` (减集中度, 控 max_dd)
+  - `min_forced_hp: 15` (强制 2 周持仓, 实测 13.9d → ≥15d 拉长)
+
+不动 (本期 defer):
+- portfolio_dd hard stop (-15% 减仓) — 等 A 效果验证后看是否还需
+- 全 PIT 表 rebuild — Path B 任务
+
+next: paper_sim rerun 看 KPI; 同时 Codex Path B 启动 (build_stage_opt_pit 加 4 cutoffs).
+
 ### 2026-05-15 (run_paper_sim_v2.py emoji 清理 — emoji hook 触发后主动)
 
 run_paper_sim_v2.py print 5 处 check-mark-button + cross-mark → [PASS]/[FAIL]. emoji hook 自身已 fire 过, 主动 proactive 清理避免后续编辑被拦.

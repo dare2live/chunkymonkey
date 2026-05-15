@@ -38,6 +38,9 @@ class ExitInputs:
     peak_since_entry: float          # max(close OR high) 自 trailing armed 以来
     trailing_armed: bool             # 已 arm trailing? (target hit 后变 True)
     today_stage: Optional[str]       # 今日 technical_stage (取自 fact_signal_context)
+    min_forced_hp: int = 0           # Path A 2026-05-15: hp_expired 最小天数 (anti-churn)
+                                     # 0 = 关闭, ≥1 = hp_expired 触发 days_held >= max(optimal_hp, min_forced_hp)
+                                     # stop_hit / trailing / stage_det 不受此限 (真实风险退出永远允许)
 
 
 @dataclass(frozen=True)
@@ -82,8 +85,9 @@ def evaluate_exit(inp: ExitInputs) -> ExitDecision:
         # 未触发, 更新 peak (跨日传给 driver)
         return ExitDecision(False, new_trailing_armed=True, new_peak=peak)
 
-    # 4. hp 到期
-    if inp.optimal_hp > 0 and inp.days_held >= inp.optimal_hp:
+    # 4. hp 到期 (Path A 2026-05-15: 强制 min_forced_hp 防 churning)
+    effective_hp = max(inp.optimal_hp, inp.min_forced_hp) if inp.optimal_hp > 0 else 0
+    if effective_hp > 0 and inp.days_held >= effective_hp:
         return ExitDecision(True, reason="hp_expired", exit_price=inp.current_close,
                               new_trailing_armed=new_armed)
 

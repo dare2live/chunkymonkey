@@ -14,9 +14,9 @@
 portfolio:
   initial_cash: 1_000_000
   max_positions: 5
-  position_sizing: "equal_weight"  # 简单等权 (P2 时可改 vol-target)
+  position_sizing: "equal"  # 简单等权 (P2 时可改 vol-target / kelly / wilson_kelly)
   cash_when_strong_buy_lt: 5
-  min_cash_pct: 0.05
+  min_cash_pct: 0.30   # Path A 2026-05-15: 0.05 → 0.30, 减集中度 + 控 max_dd (Codex aa2d79d2 #1)
 
 # ─── 候选选股 (ML score 模式 - Option A) ───
 selection:
@@ -28,10 +28,22 @@ selection:
   liquidity_min_amount_20d: 50_000_000
   liquidity_max_price: 500
   exclude_stage: []
-  # ML score 模式特定字段:
-  ml_score_model_id: "lgbm_baseline_v1"
+  # backtest_tier_thresholds: required by config.SelectionConfig, ml_score mode 不实际用
+  backtest_tier_thresholds:
+    strong_buy:
+      sharpe_min: 0.8
+      win_rate_min: 0.65
+      calmar_min: 1.0
+    buy:
+      sharpe_min: 0.3
+      win_rate_min: 0.55
+  # ML score 模式特定字段 (Codex C-D 切到 v3 honest 20d model):
+  ml_score_model_id: "lgbm_v3_honest_20d"
   ml_score_max_candidates: 30      # 取 ML score 前 30 名 (大于 max_positions 防过滤后不够)
   ml_score_min_score: null         # 不限分数下限
+  # Path A 2026-05-15 anti-churn: hp_expired 强制 days_held >= max(optimal_hp, min_forced_hp)
+  # 实测 旧持仓 13.9d / target 6 周 (~30d). 设 15 中庸 (2x 当前持仓), 不太激进破坏 Optuna optimal_hp.
+  min_forced_hp: 15
 
 # ─── 退出 (Optuna 9-dim) ───
 exit:
@@ -70,24 +82,34 @@ risk:
 
 # ─── 数据源 ───
 data:
-  optimal_table_primary: "mart_per_stock_stage_strategy_optimal"
+  optimal_table_primary: "mart_per_stock_stage_strategy_optimal_pit"  # Codex C-A PIT-safe
   optimal_table_fallback: "mart_per_stock_strategy_optimal"
   benchmark: "000300"
+  start_date: "2024-07-01"   # Codex C-D 起点 (PIT 表 + ML 预测最早重合)
 
-# ─── 验证 / 反事实 ───
+# ─── 验证 / 反事实 (跟 paper_sim_config.yaml 对齐, 用户终极目标当 target 而非 hard gate) ───
 validation:
   user_criteria:
-    ann_ret_min: 0.30
+    annual_return_min: 0.30
     max_dd_min: -0.20
     excess_vs_hs300_min: 0.0
     monthly_win_rate_min: 0.55
   anti_churn:
+    avg_holding_days_min: 5
     annual_turnover_max: 8.0
     tx_cost_pct_of_gross_pnl_max: 0.10
     swap_uplift_total_min: 0.0
-  robustness: {}
-  ablation: {}
-  sensitivity: {}
+  robustness:
+    rolling_ir_60d_median_min: 0.5
+    rolling_ir_60d_p25_min: 0.0
+    rolling_annual_90d_median_min: 0.25
+    regime_min_return_per_segment: -0.02
+  ablation:
+    swap_vs_baseline_annual_uplift_min: 0.03
+    swap_vs_baseline_max_dd_degradation_max: 0.02
+    swap_vs_baseline_sharpe_ratio_min: 1.05
+  sensitivity:
+    severe_threshold_sweep: [0.4, 0.5, 0.6]
   reality_check:
     slippage_stress_pct: 0.003
     annual_degradation_max: 0.05

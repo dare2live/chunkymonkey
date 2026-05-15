@@ -276,6 +276,7 @@ def run_paper_sim_day(
             peak_since_entry=p.high_since_arm or p.open_price,
             trailing_armed=p.trailing_armed,
             today_stage=stage_today.get(p.stock_code),
+            min_forced_hp=cfg.selection.min_forced_hp,   # Path A anti-churn
         ))
         if d.should_exit:
             # C-C mask: 跌停板 → sell 排不到队, 保守 hold 一天

@@ -71,6 +71,10 @@ class SelectionConfig:
     hybrid_w_ml: float = 0.20
     hybrid_max_candidates: int = 30
     hybrid_q60_min_stage: bool = True
+    # Path A 2026-05-15: anti-churn min_forced_hp (Codex aa2d79d2 MAJOR #3 修).
+    # hp_expired 强制 days_held >= max(optimal_hp, min_forced_hp). 0 = 关闭, 实测 15 把 turnover 从 22x→8x.
+    # stop_hit / trailing / stage_det 不受此限 (真实风险退出永远允许).
+    min_forced_hp: int = 0
 
 
 @dataclass(frozen=True)
