@@ -740,6 +740,32 @@ SELECT * FROM mart_data_source_watermark;
 
 每次 session 增量内容写这里, 新 session 启动时**从下往上读**最近改了啥.
 
+### 2026-05-16 (v4-v8 ablation + Codex acf91c1f final verdict — v4 唯一 Phase 1 候选)
+
+Codex aa2d79d2 review v3 标 single-window luck 嫌疑后, 用户 push 探索更多组合. 跑 v4-v8 ablation + Codex 二审 (acf91c1f).
+
+ablation 数据 (window A 2025-07~2026-04, lgbm_v3_honest_20d):
+- v3 (-20% + freeze 30): ann +50.5% / dd -20.0%
+- v4 (-20% + freeze 14): ann +66.6% / dd -20.0% — sweep 当前最佳
+- v5 (-20% + freeze 21): ann +59.8% / dd -20.0%
+- v6 (-18% + freeze 14): ann +18.5% / dd -19.0% — too strict
+- v8 (-22% + freeze 14): ann +106.4% / dd -22.0% — 破 -20% 硬约束, 拒绝
+
+Multi-window (window B 2024-12~2025-08):
+- v7 (-20% + freeze 14 同 v4 params): ann +45.0% / dd -13.9% / 胜 75% / 60d IR 1.32 — **falsify single-window luck**
+
+Codex acf91c1f verdict:
+- v4 唯一 Phase 1 候选 (5/5 PASS + 用户 max_dd -20% 硬约束)
+- v8 +106.4% 拒绝 (破 max_dd)
+- 优先级 e > c > a > b > d:
+  - e (剩余高优): 全 PIT 表 universe 488-1490 → 5000 A 股 重 build
+  - c (DONE via v7): multi-window 同 params validate
+  - a: Phase 1 mart_stock_regime_full 84 features build
+  - b (旁路): max_pos 5→3
+  - d (拒绝): 放松 max_dd 中间 milestone
+
+yaml restore 到 v4 params (max_dd -0.20 / freeze 14). 8 experiments 全保留 mart_paper_sim_kpi (用户 push 保留多种组合).
+
 ### 2026-05-15 (v3 hot-fix: log → logger NameError + 加 audit_sim_run_ledger)
 
 v3 实跑发现 hard_stop 在 day ~165 触发 (peak NAV ~1.4M, current 1.13M, dd -20%) — 设计如预期. 但 driver.py:295 笔误 log.warning (应 logger), script crash.

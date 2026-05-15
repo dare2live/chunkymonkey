@@ -77,8 +77,13 @@ tx_cost:
 # ─── 风控 ───
 risk:
   daily_dd_warning_pct: -0.05
+  # v4 FINAL params (Codex acf91c1f 2026-05-16 review verdict):
+  #   - 5/5 user metrics PASS on window A (2025-07~2026-04, ann +66.6%)
+  #   - 5/5 PASS on window B (2024-12~2025-08, v7 ann +45.0% dd -13.9%)
+  #   - max_dd hard constraint -20%; v8 (-22%) 拒绝 (ann 翻倍但 max_dd -22% 破约束)
+  #   - freeze 14 sweep 最优 (vs 21/30, alpha 单调降)
   max_dd_hard_stop_pct: -0.20
-  hard_stop_freeze_days: 30
+  hard_stop_freeze_days: 14
 
 # ─── 数据源 ───
 data:
