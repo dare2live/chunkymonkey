@@ -250,9 +250,12 @@ def run_paper_sim_day(
             today_stage=stage_today.get(p.stock_code),
         ))
         if d.should_exit:
-            _close_position(conn, p, today, d.exit_price, d.reason, sim_run_id, cfg)
-            cash += compute_sell_revenue(cfg.tx_cost, d.exit_price, p.shares,
-                                          p.stock_code).effective_amount
+            adv20 = k.get("amount_ma20")
+            _close_position(conn, p, today, d.exit_price, d.reason, sim_run_id, cfg,
+                            adv20=adv20)
+            cash += compute_sell_revenue(
+                cfg.tx_cost, d.exit_price, p.shares, adv20=adv20,
+            ).effective_amount
             closed_position_ids.add(p.position_id)
             summary["n_exits"] += 1
         elif d.new_trailing_armed != p.trailing_armed or d.new_peak != p.high_since_arm:
@@ -292,16 +295,20 @@ def run_paper_sim_day(
             p_out = next(p for p in remaining_holdings if p.stock_code == d.holding.stock_code)
             k_out = kline[p_out.stock_code]
             sell_vwap = _vwap(k_out)
+            adv20_out = k_out.get("amount_ma20")
             _close_position(conn, p_out, today, sell_vwap, f"swap:{d.reason}",
-                             sim_run_id, cfg, swap_uplift=d.swap_uplift_estimate)
-            cash += compute_sell_revenue(cfg.tx_cost, sell_vwap, p_out.shares,
-                                          p_out.stock_code).effective_amount
+                             sim_run_id, cfg, swap_uplift=d.swap_uplift_estimate,
+                             adv20=adv20_out)
+            cash += compute_sell_revenue(
+                cfg.tx_cost, sell_vwap, p_out.shares, adv20=adv20_out,
+            ).effective_amount
             closed_position_ids.add(p_out.position_id)
             summary["n_swaps"] += 1
             # SWAP_IN — 用当日 VWAP 买
             cand = next(c for c in candidates_passed if c.stock_code == d.candidate.stock_code)
             cash = _open_position(conn, cand, today, _vwap(kline[cand.stock_code]),
-                                   cash, sim_run_id, cfg, source="swap")
+                                   cash, sim_run_id, cfg, source="swap",
+                                   adv20=kline[cand.stock_code].get("amount_ma20"))
 
     # 5. 入新 (填满 max_positions)
     current_holding_count = len([p for p in open_positions if p.position_id not in closed_position_ids]) \
@@ -328,7 +335,10 @@ def run_paper_sim_day(
             shares = round_to_lots(s.target_cny, buy_price)
             if shares <= 0:
                 continue
-            buy = compute_buy_cost(cfg.tx_cost, buy_price, shares, c.stock_code)
+            buy = compute_buy_cost(
+                cfg.tx_cost, buy_price, shares,
+                adv20=kline[c.stock_code].get("amount_ma20"),
+            )
             if buy.effective_amount > cash:
                 # 不够买就跳过
                 continue
@@ -384,8 +394,9 @@ def _positions_value(conn, sim_run_id: str, mkt_conn, today: str) -> float:
 
 def _close_position(conn, p, today: str, sell_price: float, reason: str,
                      sim_run_id: str, cfg: PaperSimConfig,
-                     swap_uplift: Optional[float] = None) -> None:
-    sell = compute_sell_revenue(cfg.tx_cost, sell_price, p.shares, p.stock_code)
+                     swap_uplift: Optional[float] = None,
+                     adv20: Optional[float] = None) -> None:
+    sell = compute_sell_revenue(cfg.tx_cost, sell_price, p.shares, adv20=adv20)
     pnl = sell.effective_amount - p.buy_cost
     pnl_pct = pnl / p.buy_cost if p.buy_cost > 0 else 0
     days_held = (datetime.strptime(today, "%Y-%m-%d").date()
@@ -443,14 +454,14 @@ def _open_position_directly(conn, c: CandidateRow, today: str, buy_price: float,
 
 def _open_position(conn, c: CandidateRow, today: str, buy_price: float,
                     cash: float, sim_run_id: str, cfg: PaperSimConfig,
-                    source: str) -> float:
+                    source: str, adv20: Optional[float] = None) -> float:
     """从候选 + 当前 cash 算 shares 并下单 (用于 swap_in 简化路径)."""
     # swap-in 简化: 用 cash 的 1/max_positions 比例买入
     target_cny = cash / max(cfg.portfolio.max_positions, 1)
     shares = round_to_lots(target_cny, buy_price)
     if shares <= 0:
         return cash
-    buy = compute_buy_cost(cfg.tx_cost, buy_price, shares, c.stock_code)
+    buy = compute_buy_cost(cfg.tx_cost, buy_price, shares, adv20=adv20)
     if buy.effective_amount > cash:
         return cash
     return _open_position_directly(conn, c, today, buy_price, shares, buy,

@@ -11,23 +11,29 @@ from services.labels.cost_after import (
 from services.paper_sim.config import TxCostConfig
 
 
-# 跟 paper_sim_config.yaml::tx_cost 一致的实测值
+# 跟 paper_sim_config.yaml::tx_cost 一致的实测值 (Codex C-B 完整 A 股结构)
 _TX = TxCostConfig(
     commission_pct=0.00025,
     commission_min_cny=5,
     stamp_duty_sell_pct=0.0005,
-    transfer_fee_sh_pct=0.00001,
-    slippage_pct=0.001,
+    transfer_fee_pct=0.00001,
+    exchange_fee_pct=0.0000341,
+    regulatory_fee_pct=0.00002,
+    slippage_pct=0.0008,
+    large_order_surcharge_pct=0.0015,
+    large_order_adv_threshold_pct=0.03,
 )
 
 
-def test_round_trip_cost_around_0_3pct():
-    """实测: paper_sim_config tx_cost 单次往返 ≈ 0.3%.
+def test_round_trip_cost_around_0_27pct():
+    """实测: paper_sim_config tx_cost 单次往返 ≈ 0.27% (Codex C-B 完整结构).
 
-    evidence: 2*0.00025 + 2*0.001 + 0.0005 + 2*0.00001 = 0.00302.
+    evidence: 2*0.00025 + 0.0005 + 2*0.00001 + 2*0.0000341 + 2*0.00002 + 2*0.0008
+            = 0.0005 + 0.0005 + 0.00002 + 0.0000682 + 0.00004 + 0.0016
+            ≈ 0.002728 (0.2728%, 不含大单 surcharge)
     """
     rt = compute_round_trip_cost_pct(_TX)
-    assert 0.0029 < rt < 0.0031
+    assert 0.0026 < rt < 0.0028
 
 
 def test_normal_path_5d_10d_20d():

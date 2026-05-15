@@ -58,8 +58,12 @@ tx_cost:
   commission_pct: 0.00025          # 0.025% 单边 (中信/华泰参考)
   commission_min_cny: 5            # 最低 5 元
   stamp_duty_sell_pct: 0.0005      # 0.05% 卖出印花
-  transfer_fee_sh_pct: 0.00001     # 上交所过户费 0.001% (深交所 0)
-  slippage_pct: 0.001              # 买/卖各 0.1% 滑点 (T+1 开盘价基准)
+  transfer_fee_pct: 0.00001             # 过户费 0.001% (2023+ 沪深统一双向)
+  exchange_fee_pct: 0.0000341           # 交易所规费 0.00341% (双向)
+  regulatory_fee_pct: 0.00002           # 证管费 0.002% (双向)
+  slippage_pct: 0.0008                  # 基础滑点 8 bps (大盘 5-10 bps 区间)
+  large_order_surcharge_pct: 0.0015     # 大单溢价 15 bps (单边)
+  large_order_adv_threshold_pct: 0.03   # 大单阈值 3% × ADV20
 
 # ─── 风控 ───
 risk:

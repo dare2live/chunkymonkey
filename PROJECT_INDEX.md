@@ -740,6 +740,21 @@ SELECT * FROM mart_data_source_watermark;
 
 每次 session 增量内容写这里, 新 session 启动时**从下往上读**最近改了啥.
 
+### 2026-05-15 (Codex C-B: paper_sim 完整 A 股成本模型 — 6 项费用 + 大单 surcharge)
+
+Codex aaedbc9d C 计划 4 段之第 2 段. 老 tx_cost 只算 4 项 (佣金/印花/上交所过户/滑点 10 bps), 漏交易所规费/证管费, 沪深过户费没统一双向, 没大单溢价.
+
+变更:
+- `services/paper_sim/tx_cost.py`: 重写. 6 项成本 (佣金/印花/过户双向/规费/证管/滑点 8 bps) + 大单 surcharge (`base > adv20 × 3% → +15 bps`). 删 `_is_sh_market` (2023+ 沪深统一过户).
+- `services/paper_sim/config.py`: `TxCostConfig` 字段 5→9, 新增 `exchange_fee_pct / regulatory_fee_pct / large_order_surcharge_pct / large_order_adv_threshold_pct`. Rename `transfer_fee_sh_pct → transfer_fee_pct`. `_validate` 9 字段全 check.
+- 8 paper_sim yaml: rename + 加 4 新字段 (`paper_sim_config / hybrid / ensemble / cross_formula / reversal / reversal_deep_only / ml_score / momentum`).
+- `services/paper_sim/driver.py`: 5 个 `compute_buy_cost/sell_revenue` 调用方 + 2 helper (`_close_position / _open_position`) 全 thread ADV20 (来自 `kline[code]["amount_ma20"]`).
+- `services/labels/cost_after.py`: `compute_round_trip_cost_pct` 接 6 项, round_trip ≈ 0.27% (从 0.30% 更细).
+- 单测: `test_tx_cost.py` 重写 (9 测试 含大单 surcharge case), `test_cost_after.py / test_build.py` 更新 fixture.
+- 全 2132 unit tests pass (55s).
+
+剩余 C 计划: C-C T+1 + 涨跌停 + 停牌 masks / C-D 历史 paper_sim 决策.
+
 ### 2026-05-15 (Codex C-A: paper_sim PIT loader 改造 — D CRITICAL leakage 修复 Step 1/4)
 
 Codex aaedbc9d C 计划 4 段 A/B/C/D 之第 1 段. 修 D paper_sim CRITICAL (`mart_per_stock_stage_strategy_optimal` latest snapshot + same-day buy = +312% phantom 等级).

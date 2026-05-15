@@ -21,8 +21,12 @@ _TX = TxCostConfig(
     commission_pct=0.00025,
     commission_min_cny=5,
     stamp_duty_sell_pct=0.0005,
-    transfer_fee_sh_pct=0.00001,
-    slippage_pct=0.001,
+    transfer_fee_pct=0.00001,
+    exchange_fee_pct=0.0000341,
+    regulatory_fee_pct=0.00002,
+    slippage_pct=0.0008,
+    large_order_surcharge_pct=0.0015,
+    large_order_adv_threshold_pct=0.03,
 )
 
 

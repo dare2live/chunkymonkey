@@ -211,8 +211,12 @@ tx_cost:
   commission_pct: 0.00025
   commission_min_cny: 5.0
   stamp_duty_sell_pct: 0.0005
-  transfer_fee_sh_pct: 0.00002
-  slippage_pct: 0.001
+  transfer_fee_pct: 0.00001             # 过户费 0.001% (2023+ 沪深统一双向)
+  exchange_fee_pct: 0.0000341           # 交易所规费 0.00341% (双向)
+  regulatory_fee_pct: 0.00002           # 证管费 0.002% (双向)
+  slippage_pct: 0.0008                  # 基础滑点 8 bps (大盘 5-10 bps 区间)
+  large_order_surcharge_pct: 0.0015     # 大单溢价 15 bps (单边)
+  large_order_adv_threshold_pct: 0.03   # 大单阈值 3% × ADV20
 
 risk:
   daily_dd_warning_pct: -0.03

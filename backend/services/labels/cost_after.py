@@ -31,19 +31,20 @@ from services.paper_sim.config import TxCostConfig
 def compute_round_trip_cost_pct(tx: TxCostConfig) -> float:
     """单次完整往返 (买 + 卖) 真实成本 % (occurring on principal).
 
-    Args:
-        tx: paper_sim_config.yaml::tx_cost.
+    Codex C-B 2026-05-15: 接入完整 A 股成本结构 (印花/佣金/过户/规费/证管/滑点).
+    大单 surcharge (adv20 触发) 不在 label 阶段计入 (label 是 universe-level baseline,
+    不假设 order size). paper_sim runtime 才按实际 ADV20 + 仓位计.
 
     Returns:
-        round_trip_pct ∈ (0, 0.01) — 通常 0.003 (0.3%).
-        commission_min_cny 不在此考虑 (per-trade 最低 5 元,
-        散户 5 仓位 × 20 万本金, commission_pct 已超 min, 简化忽略).
+        round_trip_pct ≈ 0.0027 (0.27%, 不含大单 surcharge).
     """
     return (
-        2 * tx.commission_pct
-        + 2 * tx.slippage_pct
-        + tx.stamp_duty_sell_pct           # 卖出印花税单边
-        + 2 * tx.transfer_fee_sh_pct       # SH 单边 0.001% × 2 (SZ=0, 这里取上界保守)
+        2 * tx.commission_pct                # 佣金双边
+        + tx.stamp_duty_sell_pct             # 印花税卖单边
+        + 2 * tx.transfer_fee_pct            # 过户费双边 (2023+ 沪深统一)
+        + 2 * tx.exchange_fee_pct            # 交易所规费双边
+        + 2 * tx.regulatory_fee_pct          # 证管费双边
+        + 2 * tx.slippage_pct                # 基础滑点双边
     )
 
 

@@ -94,11 +94,20 @@ class SwapConfig:
 
 @dataclass(frozen=True)
 class TxCostConfig:
-    commission_pct: float
-    commission_min_cny: float
-    stamp_duty_sell_pct: float
-    transfer_fee_sh_pct: float
-    slippage_pct: float
+    """A 股完整成本结构 (Codex aaedbc9d C-B 2026-05-15).
+
+    2023+ 沪深统一 transfer_fee 双向, 不再区分 SH-only.
+    大单 surcharge: base > large_order_adv_threshold_pct × ADV20 时触发 +large_order_surcharge_pct slippage.
+    """
+    commission_pct: float                       # 佣金 (单边), 通常 0.025%
+    commission_min_cny: float                   # 佣金最低, 通常 5 CNY
+    stamp_duty_sell_pct: float                  # 印花税 (sell only), 0.05% (2023.08 降)
+    transfer_fee_pct: float                     # 过户费 (沪深双向), 0.001%
+    exchange_fee_pct: float                     # 交易所规费 (双向), 0.00341%
+    regulatory_fee_pct: float                   # 证管费 (双向), 0.002%
+    slippage_pct: float                         # 基础滑点 (单边), 8 bps = 0.08%
+    large_order_surcharge_pct: float            # 大单溢价 (单边), 15 bps = 0.15%
+    large_order_adv_threshold_pct: float        # 大单阈值 (× ADV20), 3%
 
 
 @dataclass(frozen=True)
@@ -155,8 +164,16 @@ def _validate(cfg: PaperSimConfig) -> None:
 
     t = cfg.tx_cost
     assert 0 < t.commission_pct < 0.01, f"commission_pct unrealistic: {t.commission_pct}"
-    assert 0 < t.stamp_duty_sell_pct < 0.005
-    assert 0 < t.slippage_pct < 0.01
+    assert t.commission_min_cny >= 0, f"commission_min_cny negative: {t.commission_min_cny}"
+    assert 0 < t.stamp_duty_sell_pct < 0.005, f"stamp_duty unrealistic: {t.stamp_duty_sell_pct}"
+    assert 0 <= t.transfer_fee_pct < 0.001, f"transfer_fee unrealistic: {t.transfer_fee_pct}"
+    assert 0 <= t.exchange_fee_pct < 0.001, f"exchange_fee unrealistic: {t.exchange_fee_pct}"
+    assert 0 <= t.regulatory_fee_pct < 0.001, f"regulatory_fee unrealistic: {t.regulatory_fee_pct}"
+    assert 0 < t.slippage_pct < 0.01, f"slippage unrealistic: {t.slippage_pct}"
+    assert 0 <= t.large_order_surcharge_pct < 0.01, \
+        f"large_order_surcharge unrealistic: {t.large_order_surcharge_pct}"
+    assert 0 <= t.large_order_adv_threshold_pct < 1.0, \
+        f"large_order_adv_threshold out of [0, 1): {t.large_order_adv_threshold_pct}"
 
     r = cfg.risk
     assert r.daily_dd_warning_pct < 0 and r.daily_dd_warning_pct > -0.2
