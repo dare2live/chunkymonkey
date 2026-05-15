@@ -809,6 +809,24 @@ CLAUDE.md 增强:
 - v2 features: 79 → 85 (不是 87)
 - TODO v3: 重 Optuna walk-forward expanding_monthly 入库 (stock × cutoff_date × best_sharpe), ASOF JOIN
 
+### 2026-05-15 (Leakage cleanup process gap + pit-audit skill)
+
+用户 push back: "之前有 leakage 的数据验证是怎么处理的".
+
+诚实承认 oversight: 之前 kill 进程 + 修代码 + restart 不够, **没 explicit DELETE leaked rows / ALTER DROP COLUMN 物理 leakage cols**. Lucky 主要表没污染 (Optuna commit-at-end + chain 没跑到 train write phase), 但 panel 物理含 10 leakage cols.
+
+**`backend/scripts/cleanup_leakage_data.py`** (新):
+- DELETE leaked run_id / model_id 从 mart_p1_optuna_trials, oos_predictions, walkforward_eval, ablation_result
+- ALTER TABLE DROP COLUMN inst_path_a 5 + sector 5 cols from mart_p0a_feature_label_panel_v3
+- dry-run 默认, --execute 实际 cleanup
+
+**新 skill `~/.claude/skills/pit-audit/SKILL.md`** (user-level):
+- 5 步 procedural workflow (不可跳): 列举 cols → trace 表 → PIT contract check → micro-ablation → 三档 verdict
+- 触发: substantial feature commit 前 / Codex flag PIT / RankIC vs baseline +50% jump
+- ChunkyMonkey 反例 inline (5cc47987 + b891473a + Day 5 缺位)
+
+**memory 新加 `feedback_leakage_cleanup.md`**: Leakage 后 explicit DB cleanup (DELETE rows + ALTER DROP COLUMN) 不只是 kill+code fix.
+
 ### 2026-05-15 (Codex PIT 专项 review adc5b44520 — 4 leakage BLOCK + CLAUDE §10 收紧)
 
 用户 push back: "已经写了严格避免 leakage 为啥还能出这种问题呢, 你调查一下".
