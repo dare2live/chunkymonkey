@@ -116,11 +116,17 @@ def main() -> int:
         df = df[df[args.label].notna()].copy()
         log.info(f"After date+label filter: {len(df):,} rows")
 
-        # numeric coercion (industry_pit_confidence 是 TEXT, 不入 feature)
+        # numeric coercion + Codex adc5b44520 leakage cols 排除
         non_feature = {
             "stock_code", "signal_date", "entry_date", "unable_at_entry",
             "fwd_cost_after_5d", "fwd_cost_after_10d", "fwd_cost_after_20d",
             "feature_version", "built_at", "industry_pit_confidence",
+            # Codex adc5b44520 CRITICAL: latest-snapshot institution_profile leakage
+            "inst_quality_wavg", "inst_quality_max", "inst_total_holding_ratio",
+            "inst_holder_cnt", "top_inst_holding_ratio",
+            # Codex adc5b44520 MAJOR: 99.978% current_label_fallback contamination
+            "sector_ret_5d", "sector_ret_20d", "sector_ret_60d",
+            "sector_excess_20d", "sector_excess_60d",
         }
         feature_columns = [c for c in df.columns if c not in non_feature
                            and pd.api.types.is_numeric_dtype(df[c])]

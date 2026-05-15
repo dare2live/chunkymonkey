@@ -172,6 +172,7 @@ def split_expanding_monthly(
     forward_months: int | None = None,
     min_test: int | None = None,
     cfg: OptunaConfig | None = None,
+    embargo_days: int = 0,
 ) -> list[WalkForwardSplit]:
     """R1 标准: 每月底切一次 walk-forward.
 
@@ -233,6 +234,15 @@ def split_expanding_monthly(
         test_months = set(months[i] for i in test_month_indices)
         train = [s for s in sigs if _ym(s["signal_date"]) in train_months]
         test = [s for s in sigs if _ym(s["signal_date"]) in test_months]
+        # Codex adc5b44520 MAJOR fix: embargo gap (label horizon 内 train rows drop)
+        # 防 train label K 线 [signal_date+1..+20d] 跟 test signal_date 重叠
+        if embargo_days > 0 and test:
+            test_start_str = test[0]["signal_date"]
+            from datetime import datetime, timedelta
+            ts_dt = datetime.strptime(str(test_start_str)[:10], "%Y-%m-%d")
+            cutoff_dt = ts_dt - timedelta(days=embargo_days)
+            cutoff_str = cutoff_dt.strftime("%Y-%m-%d")
+            train = [s for s in train if str(s["signal_date"])[:10] < cutoff_str]
         if len(test) < ms:
             continue   # 这个月太少, 跳
         splits.append(WalkForwardSplit(

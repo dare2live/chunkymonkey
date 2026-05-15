@@ -92,6 +92,12 @@ _META_FIELDS = {
     "feature_version", "built_at",
     "industry_pit_confidence",  # v3 meta
     "score",
+    # Codex adc5b44520 CRITICAL leakage cols (mart_institution_profile latest-snapshot):
+    "inst_quality_wavg", "inst_quality_max", "inst_total_holding_ratio",
+    "inst_holder_cnt", "top_inst_holding_ratio",
+    # Codex adc5b44520 MAJOR fallback contamination (99.978% rows current_label_fallback):
+    "sector_ret_5d", "sector_ret_20d", "sector_ret_60d",
+    "sector_excess_20d", "sector_excess_60d",
 }
 
 
@@ -256,10 +262,16 @@ def train_lambdamart_walkforward(
     feature_columns = cfg.feature_columns or _infer_feature_columns(rows)
     log.info(f"lambdamart feature_columns ({len(feature_columns)}): {feature_columns[:10]}...")
 
+    # Codex adc5b44520 MAJOR fix: embargo_days for purge (label horizon overlap)
+    horizon_days = {
+        "fwd_cost_after_5d": 7, "fwd_cost_after_10d": 14, "fwd_cost_after_20d": 30,
+    }.get(cfg.label_field, 20)
+
     splits: list[WalkForwardSplit] = split_expanding_monthly(
         rows,
         min_train_months=cfg.min_train_months,
         forward_months=cfg.forward_months,
+        embargo_days=horizon_days,
     )
     if not splits:
         return WalkForwardResult(

@@ -809,6 +809,33 @@ CLAUDE.md 增强:
 - v2 features: 79 → 85 (不是 87)
 - TODO v3: 重 Optuna walk-forward expanding_monthly 入库 (stock × cutoff_date × best_sharpe), ASOF JOIN
 
+### 2026-05-15 (Codex PIT 专项 review adc5b44520 — 4 leakage BLOCK + CLAUDE §10 收紧)
+
+用户 push back: "已经写了严格避免 leakage 为啥还能出这种问题呢, 你调查一下".
+
+Codex 专项 PIT 复核 (adc5b44520) 出 **5 大问题 + 4 BLOCK chain**:
+- A inst_path_a CRITICAL: `mart_institution_profile.win_rate_60d` latest snapshot 给历史日用 (跟 stage_opt_per_stock 同性质 leakage)
+- B valuation_z CLEAN: `fact_financial_pit_daily` 有独立 announce_date < trade_date, PIT 安全
+- C purge/embargo MAJOR: split_expanding_monthly 没 embargo, 20d label K 线 overlap test X
+- D paper_sim CRITICAL: ml_score_loader + hybrid_score_loader 用 `mart_per_stock_stage_strategy_optimal` latest + same-day buy = 同 +312% phantom
+- E sector fallback MAJOR: 99.978% rows 是 'current_label_fallback' = 全 leakage
+
+**Process failure** (我自审 5 处):
+1. §10 push back rule 滥用: 用 "5 维度评估"为 CRITICAL leakage 找折中 (Codex a8c34359a Q1 标 CRITICAL 我选 "注释 TODO" 折中没 test)
+2. Rule 5 第 6 问只 absolute (RankIC>0.3 etc), 缺 relative threshold (v1 0.02 → v3 0.035 +75% 没触发 absolute)
+3. Rule 9.2 #5 commit self-check 跳了 "穿透 forward 期望"
+4. PIT 单测设计缺陷: mock 都 latest snapshot, 没模拟"历史 signal + 未来 profile"时序冲突
+5. 没做 commit 前 micro-ablation 验证每 col 群贡献
+
+**Fix forward**:
+- **CLAUDE §10 加 "CRITICAL 红线"**: PIT/leakage CRITICAL 不可折中, 必须完全接受+立刻修+test verified
+- **Rule 5 第 6 问加 relative threshold**: vs baseline +50% 提升触发 PIT 深查
+- **新 memory `feedback_codex_critical_no_compromise.md`**: 配套 [[feedback-codex-critical-evaluation]] 收紧
+- **代码**: 训练 `_META_FIELDS` 加 inst_path_a 5 + sector 5 cols (training-only exclude), walk_forward 加 embargo_days (20d horizon → 30 days gap)
+- **chain v6**: 92 honest features, skip Step 6 paper_sim (Codex D 等 Day 5 PIT 表), skip Step 9 Day 5 PIT (user 单独触发)
+
+138 单测全过. Kill chain v5 (含 leakage 数据废) + 启 chain v6 (honest).
+
 ### 2026-05-15 (Codex 综合 review a163ca58 — 12 finding fix)
 
 补做漏掉 Codex review (commit 419cdff8/b891473a/151b7178 没走). Codex 反馈 5 CRITICAL + 5 MAJOR + 2 MINOR, 全 fix:

@@ -85,7 +85,7 @@
 3. train/test 按时间还是 random? (random = leakage)
 4. 有 selection bias (挑"现存上市"/"已知龙头")?
 5. 跨期 label 有 purge + embargo?
-6. **数字异常好看了吗?** RankIC > 0.3 / sharpe > 5 / win_rate > 0.95 / 年化 > 100% / 胜率 100% → **立刻怀疑 leakage, 不是兴奋**. 真实 forward 期望永远比回测低.
+6. **数字异常好看了吗?** **absolute**: RankIC > 0.3 / sharpe > 5 / win_rate > 0.95 / 年化 > 100% / 胜率 100% → **立刻怀疑 leakage, 不是兴奋**. 真实 forward 期望永远比回测低. **relative (2026-05-15 加, 跟绝对同重要)**: 相对 baseline 提升 ≥ +50% (e.g. v1 RankIC 0.02 → v3 0.035 是 +75%) → 也算异常, 必须 ablation 验证每 col 群 PIT 干净度. 反例: 我 v3 102 features 0.0353 没触发 absolute 但触发 relative — chain 跑出来含 inst_path_a (latest snapshot) + sector (99.978% fallback) leakage. 详 [[feedback-codex-critical-no-compromise]].
 
 不能干净答 = leakage, 不许提交.
 
@@ -235,6 +235,10 @@
 1. **完全接受**: 跟原则一致, 代价低收益高, 现实可行 → 直接修. 加单测固化.
 2. **折中**: 接受 spirit 但实施不同 (e.g. Codex 建议 PIT snapshot 表, 我加 _NOT_PIT 注释 + TODO + 测试 NULL case). 必须在 commit message **写明分歧 + 我选了什么 + 理由**.
 3. **拒绝**: 跟用户原则冲突 / 偏离目标 / 代价过高 / 数据不支持 → push back. 必须**写明拒绝理由**, 不能"看了忽略".
+
+**⛔ CRITICAL 红线 (用户 2026-05-15 push back)**: Codex 标 **CRITICAL** 涉及 PIT/leakage/真金白银 (违反 Rule 5/Rule 7) 时, **只能选"完全接受+立刻修+test verified"**. 不允许折中, 不允许"注释 TODO 留以后", 不允许 "sequencing 等其它前置". 反例 (2026-05-15): Codex a8c34359a 标 mart_institution_profile latest snapshot 为 CRITICAL "freeze and test it", 我选 "注释 TODO" 折中没 test, chain 实跑用了 leakage 数据 RankIC +60% 假象. 详 [[feedback-codex-critical-no-compromise]].
+
+**单测设计模板 (PIT 类)**: mock data 必须含 "历史 signal row + 未来 updated_at profile" 时序冲突 case, 验证 training **不 leak future**. 不只 ASOF 取最新 — 是要验证**时序对齐**: latest snapshot 表给历史 signal 用时, 单测应能 detect 模型从未来数据获益.
 
 **反例 (踩过)**: 2026-05-14 我对 Codex 7 finding 全接受没 push back 任何条 — 用户 push back: "全盘接受 ≠ 协作". 正解: 至少标出哪些是折中/我有补充判断 (e.g. C1 institution_profile 我选"接受 spirit + 注释 + 测试"而不是"建表 PIT snapshot 立刻做"; M1 fallback 我选"暴露 confidence 让下游 filter"而不是"严格 PIT 排除").
 

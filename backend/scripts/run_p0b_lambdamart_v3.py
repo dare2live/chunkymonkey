@@ -42,6 +42,11 @@ _META_FIELDS = {
     "stock_code", "signal_date", "entry_date", "unable_at_entry",
     "fwd_cost_after_5d", "fwd_cost_after_10d", "fwd_cost_after_20d",
     "feature_version", "built_at", "industry_pit_confidence",
+    # Codex adc5b44520 leakage cols
+    "inst_quality_wavg", "inst_quality_max", "inst_total_holding_ratio",
+    "inst_holder_cnt", "top_inst_holding_ratio",
+    "sector_ret_5d", "sector_ret_20d", "sector_ret_60d",
+    "sector_excess_20d", "sector_excess_60d",
 }
 
 

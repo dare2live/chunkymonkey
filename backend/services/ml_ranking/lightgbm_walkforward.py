@@ -108,13 +108,20 @@ class WalkForwardResult:
         )
 
 
-# 元数据字段 (不进 feature)
+# 元数据字段 + Codex PIT leakage (adc5b44520) 已知 leakage cols
 _META_FIELDS = {
     "stock_code", "signal_date", "entry_date",
     "fwd_cost_after_5d", "fwd_cost_after_10d", "fwd_cost_after_20d",
     "unable_at_entry",
     "feature_version", "built_at",
     "score",  # output 字段, 不进 feature
+    "industry_pit_confidence",  # v3 PIT metadata
+    # Codex adc5b44520 CRITICAL leakage cols (mart_institution_profile latest-snapshot, 等 Day 5 PIT 表):
+    "inst_quality_wavg", "inst_quality_max", "inst_total_holding_ratio",
+    "inst_holder_cnt", "top_inst_holding_ratio",
+    # Codex adc5b44520 MAJOR fallback (99.978% rows 是 current_label_fallback, 等历史 industry PIT 表):
+    "sector_ret_5d", "sector_ret_20d", "sector_ret_60d",
+    "sector_excess_20d", "sector_excess_60d",
 }
 
 
@@ -243,10 +250,18 @@ def train_lightgbm_walkforward(
     feature_columns = cfg.feature_columns or _infer_feature_columns(rows)
     log.info(f"feature_columns ({len(feature_columns)}): {feature_columns[:10]}...")
 
+    # Codex adc5b44520 MAJOR fix: embargo_days based on label horizon (Codex Q4 推荐 20d)
+    horizon_days = {
+        "fwd_cost_after_5d": 7,    # 5 trading days + small buffer
+        "fwd_cost_after_10d": 14,  # 10 trading days
+        "fwd_cost_after_20d": 30,  # 20 trading days
+    }.get(cfg.label_field, 20)
+
     splits: list[WalkForwardSplit] = split_expanding_monthly(
         rows,
         min_train_months=cfg.min_train_months,
         forward_months=cfg.forward_months,
+        embargo_days=horizon_days,
     )
     if not splits:
         return WalkForwardResult(

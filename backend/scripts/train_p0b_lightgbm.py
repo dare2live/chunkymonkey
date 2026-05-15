@@ -40,12 +40,17 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(me
 log = logging.getLogger("train_p0b")
 
 
-# 元数据字段不入 feature matrix
+# 元数据字段不入 feature matrix + Codex adc5b44520 leakage cols
 _META_FIELDS = {
     "stock_code", "signal_date", "entry_date",
     "fwd_cost_after_5d", "fwd_cost_after_10d", "fwd_cost_after_20d",
     "unable_at_entry",
     "feature_version", "built_at",
+    "industry_pit_confidence",
+    "inst_quality_wavg", "inst_quality_max", "inst_total_holding_ratio",
+    "inst_holder_cnt", "top_inst_holding_ratio",
+    "sector_ret_5d", "sector_ret_20d", "sector_ret_60d",
+    "sector_excess_20d", "sector_excess_60d",
 }
 
 
