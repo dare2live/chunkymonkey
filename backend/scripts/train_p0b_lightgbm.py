@@ -109,6 +109,8 @@ def main() -> int:
     parser.add_argument("--num-leaves", type=int, default=31)
     parser.add_argument("--start-date", default=None, help="过滤 signal_date >= 此日期")
     parser.add_argument("--end-date", default=None, help="过滤 signal_date <= 此日期")
+    parser.add_argument("--feature-panel", default="mart_p0a_feature_label_panel",
+                        help="读哪张 P0a panel (v1 default, _v2, _v3 可选)")
     args = parser.parse_args()
 
     run_id = args.run_id or f"p0b_{datetime.now(UTC).strftime('%Y%m%dT%H%M%S')}_{uuid.uuid4().hex[:6]}"
@@ -119,7 +121,7 @@ def main() -> int:
         create_p0b_ddl(conn)
 
         log.info("Loading DataFrame from mart_p0a_feature_label_panel...")
-        df = _load_df(conn)
+        df = _load_df(conn, panel_name=args.feature_panel)
         log.info(f"Loaded {len(df):,} rows × {len(df.columns)} cols")
 
         if args.start_date:

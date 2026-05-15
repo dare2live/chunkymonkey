@@ -137,8 +137,8 @@ def main() -> int:
                     False, built_at,
                 ])
         # Use register DataFrame approach (faster than executemany)
+        # (module-level `import pandas as pd` line 27, 不要 shadow)
         if ranger:
-            import pandas as pd
             df_pred = pd.DataFrame(ranger, columns=[
                 "stock_code", "signal_date", "score",
                 "fwd_cost_after_5d", "fwd_cost_after_10d", "fwd_cost_after_20d",

@@ -84,7 +84,7 @@ def main() -> int:
                              "optimize_per_stock_stage_strategy.py 全量跑 (subprocess 没 --limit-stocks arg). "
                              "TODO: 加 arg forwarding 让 smoke 真 1h, 当前 smoke 仍 ~12h × 1 cutoff.")
     parser.add_argument("--trials", type=int, default=50,
-                        help="Optuna trials per (stock × stage × formula)")
+                        help="Optuna trials per (stock × stage × formula). governance.min_n_trials=50 强制 (yaml)")
     parser.add_argument("--workers", type=int, default=4)
     args = parser.parse_args()
 

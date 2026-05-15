@@ -809,6 +809,17 @@ CLAUDE.md 增强:
 - v2 features: 79 → 85 (不是 87)
 - TODO v3: 重 Optuna walk-forward expanding_monthly 入库 (stock × cutoff_date × best_sharpe), ASOF JOIN
 
+### 2026-05-15 (chain v7 启动 + 3 bug fix — v3 → v3.1 transition)
+
+Codex (a989f255) 决定 chain v6 → v7: KILL Step 3 剩+6+8 (16h 浪费), KEEP Step 4 LambdaMART + 5 LightGBM baseline + 7 Deflated SR + 9 Day 5 PIT (38h, v3.1 prereq).
+
+Chain v7 启动 1 min 全 fail, 3 bug 修:
+1. run_p0b_lambdamart_v3.py line 141 inner pandas import shadow module-level → UnboundLocalError
+2. train_p0b_lightgbm.py argparse 缺 --feature-panel arg → unrecognized
+3. build_stage_opt_pit.py default trials 20 < governance min 50 → GovernanceViolation
+
+23 单测全过. Chain v7 重启后台.
+
 ### 2026-05-15 (v3_ext 候选 +11 cols 资金流 PIT — 并发探索, /pit-audit 验证)
 
 用户 push back: "是不是测试的组合还没有找到最优解? 正在跑的继续跑, 其他可以同步并发的比如增补候选方案或者其他的可以并发".
