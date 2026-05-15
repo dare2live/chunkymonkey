@@ -740,6 +740,19 @@ SELECT * FROM mart_data_source_watermark;
 
 每次 session 增量内容写这里, 新 session 启动时**从下往上读**最近改了啥.
 
+### 2026-05-15 (Hook 升级: emoji ban + post-fix-audit 强制 — 用户推 hook 防忘事)
+
+用户原话: "之前总忘的事情都做成这样的" (PROJECT_INDEX sync hook 刚救场后).
+
+新增/扩展 hook (`.git/hooks/pre-commit` + `commit-msg`):
+- `backend/scripts/check_no_emoji.py` (新, 170 行): grep staged diff 找 emoji codepoint 段. ban U+1F300+ 主块 + VS16 + ZWJ + 特定 check-mark-button / cross-mark / sparkles / star / lightning / heart. NOT ban: red-circle / triangle-warn / plain-check / plain-cross / arrow / Greek 字母 / CJK (CLAUDE.md 大量使用).
+- `backend/scripts/check_commit_message.py` 扩展 GROUP D: commit body 含 `fix/leakage/drop/cleanup/revert/kill/stale` 之一 → 必须含 `post-fix-audit / cleanup verified / 无残留 / cleanup_leakage_data` 之一. 触发 Rule 9.2 #7 (用户 2026-05-15 push back "我不问你也不想着").
+- `.git/hooks/pre-commit` 加 step 3 调 check_no_emoji.
+
+#3 try/except: pass 已在 `check_rule_compliance.py:108-112` (Rule 5 silent except pass), 不重复加.
+
+学到的: Rule 文字 + memory 都是被动, hook 是技术硬挡. 用户偏好 "把反复犯的全做成 hook" — 优先级 emoji > post-fix-audit > 异常数字 > 测试缺失.
+
 ### 2026-05-15 (Codex C-B: paper_sim 完整 A 股成本模型 — 6 项费用 + 大单 surcharge)
 
 Codex aaedbc9d C 计划 4 段之第 2 段. 老 tx_cost 只算 4 项 (佣金/印花/上交所过户/滑点 10 bps), 漏交易所规费/证管费, 沪深过户费没统一双向, 没大单溢价.

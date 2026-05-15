@@ -64,6 +64,21 @@ GROUP_B_KEYWORDS = (
     "annual", "年化", "sharpe", "max_dd", "calmar",
 )
 
+# GROUP D: post-fix-audit trigger (Rule 9.2 #7, 用户 2026-05-15 push back)
+# Subject/body 含这些词 → 必须含 cleanup 证据
+POST_FIX_TRIGGER_KEYWORDS = (
+    "fix", "修复", "bug", "leakage",
+    "cleanup", "清理", "drop", "remove", "revert",
+    "kill", "stale", "残留",
+)
+POST_FIX_PROOF_KEYWORDS = (
+    "post-fix-audit", "post-fix audit",
+    "cleanup verified", "无残留", "无 stale", "no stale",
+    "stale artifact 已清", "cleanup_leakage_data",
+    "alter drop column", "delete from",
+    "rule 9.2 #7",
+)
+
 # Trigger files — 这些路径有改动 → 强制要求 GROUP B 关键词
 DATA_STRATEGY_PATH_PREFIXES = (
     "backend/services/",
@@ -129,7 +144,11 @@ def main(msg_path: str) -> int:
     require_b = needs_group_b(staged)
     has_b = any(kw in body_only for kw in GROUP_B_KEYWORDS) if require_b else True
 
-    if has_a and has_b:
+    # GROUP D: post-fix-audit (Rule 9.2 #7) — 含 fix/leakage/drop/cleanup 必须含 cleanup 证据
+    triggered_d = any(kw in body_only for kw in POST_FIX_TRIGGER_KEYWORDS)
+    has_d_proof = any(kw in body_only for kw in POST_FIX_PROOF_KEYWORDS) if triggered_d else True
+
+    if has_a and has_b and has_d_proof:
         return 0
 
     # Reject + 提示
@@ -145,6 +164,15 @@ def main(msg_path: str) -> int:
         print("MISSING GROUP B (数据/策略类): 改了 service / script / config → 必须有", file=sys.stderr)
         print(f"  候选: {', '.join(GROUP_B_KEYWORDS[:8])}, ...", file=sys.stderr)
         print("  例: 'PIT 干净', 'OOS sharpe 0.39', '4.8M 行 backfill'", file=sys.stderr)
+        print(file=sys.stderr)
+    if triggered_d and not has_d_proof:
+        triggered_kws = [kw for kw in POST_FIX_TRIGGER_KEYWORDS if kw in body_only]
+        print("MISSING GROUP D (post-fix-audit): commit 含 fix/leakage/drop/cleanup 关键词,", file=sys.stderr)
+        print(f"  触发: {', '.join(triggered_kws[:5])}", file=sys.stderr)
+        print(f"  必须含: {', '.join(POST_FIX_PROOF_KEYWORDS[:6])}", file=sys.stderr)
+        print("  例: 'cleanup verified 无残留', 'post-fix-audit 已 5 步走完', 'cleanup_leakage_data 0 row'", file=sys.stderr)
+        print("  根因: Rule 9.2 #7 — fix 后必须主动清 stale artifact (DB row / panel cols / model_id / cache).", file=sys.stderr)
+        print("        skill: /post-fix-audit 走 5 步.", file=sys.stderr)
         print(file=sys.stderr)
     print("修法 (3 选 1):", file=sys.stderr)
     print("  1. 重写 commit message body, 加 self-check 关键词", file=sys.stderr)

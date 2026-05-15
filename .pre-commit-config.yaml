@@ -50,6 +50,7 @@ repos:
   # Phase ψ.γ.discipline: commit message 5-question keyword 检测 (Rule 9.7 落地)
   # 涉 service/script/config 的 commit 必须含 PIT/OOS/数据/实测 关键词 (GROUP B);
   # 任何 commit 必须含 测试/防回退/修复 关键词 (GROUP A). 防空说明 commit.
+  # 2026-05-15 加 GROUP D: 含 fix/leakage/drop/cleanup → 必须含 post-fix-audit 证据 (Rule 9.2 #7).
   - repo: local
     hooks:
       - id: commit-msg-self-check
@@ -57,3 +58,16 @@ repos:
         entry: python backend/scripts/check_commit_message.py
         language: system
         stages: [commit-msg]
+
+  # 2026-05-15: emoji ban — feedback_no_emoji 落地
+  # ban U+1F300+ 高 codepoint 主块 + VS16 emoji 化变体 + ZWJ 序列 + 特定常用 check-mark-button / cross-mark.
+  # NOT ban: red-circle-warn / triangle-warn / plain-check / plain-cross / arrow / Greek / CJK.
+  - repo: local
+    hooks:
+      - id: no-emoji
+        name: No emoji (feedback_no_emoji)
+        entry: python backend/scripts/check_no_emoji.py
+        language: system
+        pass_filenames: false
+        stages: [pre-commit]
+        always_run: true
