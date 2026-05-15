@@ -809,6 +809,19 @@ CLAUDE.md 增强:
 - v2 features: 79 → 85 (不是 87)
 - TODO v3: 重 Optuna walk-forward expanding_monthly 入库 (stock × cutoff_date × best_sharpe), ASOF JOIN
 
+### 2026-05-15 (CLAUDE §9.2 #7 + post-fix-audit skill — reactive→proactive 固化)
+
+用户 push back: "我不问你也不想着解决遗留问题, 这个应该写在 skill 还是 claude.md 里还是怎么固化".
+
+诚实 process gap: reactive (用户问才查) vs proactive (主动想 stale artifact). 比单 leakage 更核心.
+
+**3 处协作固化**:
+1. **CLAUDE.md §9.2 commit self-check 加 #7** "post-fix stale artifact 强制清理" — 触发时机
+2. **`~/.claude/skills/post-fix-audit/`** (user-level skill) — 5 步 procedural workflow
+3. **memory feedback_post_fix_cleanup_proactive.md** — Reactive vs proactive 反例 + 7 类联想 mapping
+
+跟 [[pit-audit]] 配套 — forward (commit 前 PIT 验证) vs backward (fix 后清残留) = 完整 fix lifecycle.
+
 ### 2026-05-15 (Leakage cleanup process gap + pit-audit skill)
 
 用户 push back: "之前有 leakage 的数据验证是怎么处理的".

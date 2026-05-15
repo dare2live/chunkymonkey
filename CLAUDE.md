@@ -192,6 +192,13 @@
 4. **反例表加了?** — 这次踩的新坑沉淀到 Rule 5/6/7/9 反例.
 5. **真金白银 self-check** (策略 commit): 含 leakage/估算/假设? 穿透 forward 期望?
 6. **改了 CLAUDE.md / memory 时顺手优化了吗?** — 顺便检查过期/冗余/结构 (见 §8 doc 自维护). 不要被动等用户提醒"再整理一下".
+7. **本次 fix 产生 stale artifact 都清了吗?** (用户 2026-05-15 push back "我不问你也不想着"). commit 含 fix/bug/leakage/cleanup/drop/remove/revert 关键词 OR 改 SQL/schema/_META_FIELDS/kill process → **强制 invoke `/post-fix-audit`** 走 5 步:
+  □ 列举 touched files / tables / configs (git diff)
+  □ 每 artifact 主动想 downstream stale (旧 model_id / panel cols / paper_sim run / cache)
+  □ DB residue check (`cleanup_leakage_data.py` dry-run)
+  □ Process / cache / tmp file 清单
+  □ Execute cleanup + verify 0 residue
+  反模式: kill 进程 + 修代码 + restart 就以为完事, 没清 DB row / 没 ALTER DROP COLUMN / 没标 downstream model stale. 反例见 [[feedback-leakage-cleanup]]: Codex a8c34359a 标 CRITICAL → 我修代码 → commit → 但 panel 含 inst_path_a 5 cols 物理数据没清, paper_sim 若误读会 leakage.
 
 不能逐项 yes = 别 commit. 重做.
 
