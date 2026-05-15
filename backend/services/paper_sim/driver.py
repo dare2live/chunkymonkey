@@ -78,10 +78,14 @@ def _load_open_positions(conn, sim_run_id: str) -> list[_OpenPosition]:
 
 
 def _load_kline_today(mkt_conn, codes: list[str], today: str) -> dict[str, dict]:
-    """当日 K 线 + 20 日均量 + 前一交易日 close (用于涨跌停 mask).
+    """当日 K 线 + 20 日均量 (PIT-safe prior-day only) + 前一交易日 close.
 
     Returns {code: {close, open, high, low, volume, amount, amount_ma20, pre_close}}.
-    pre_close: 前一个交易日 close (跨 20 trading days 防长假期, ORDER BY date DESC LIMIT 1).
+
+    PIT-safe (Codex aa2d79d2 CRITICAL fix 2026-05-15):
+    - amount_ma20 用 prior 20 days only (date < today, 不含今日), 避免 leak 今日 amount.
+      实盘 T+1 09:25 决策时今日 amount 还未知, paper_sim 必须 mirror 这点.
+    - pre_close: 前一个交易日 close (跨 20 trading days 防长假期).
     """
     if not codes:
         return {}
@@ -94,9 +98,10 @@ def _load_kline_today(mkt_conn, codes: list[str], today: str) -> dict[str, dict]
            WHERE adjust='qfq' AND freq='daily' AND date = ? AND code IN ({qs})
         ),
         ma20 AS (
+          -- PIT: date < today (strict), 仅 prior 20 trading days. Codex aa2d79d2 CRITICAL fix.
           SELECT code, AVG(amount) AS amount_ma20
             FROM v_price_kline_qfq
-           WHERE adjust='qfq' AND freq='daily' AND date <= ? AND code IN ({qs})
+           WHERE adjust='qfq' AND freq='daily' AND date < ? AND code IN ({qs})
              AND date > strftime(strptime(?, '%Y-%m-%d') - INTERVAL '40 days', '%Y-%m-%d')
            GROUP BY code
         ),

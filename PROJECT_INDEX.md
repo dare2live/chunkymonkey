@@ -740,6 +740,24 @@ SELECT * FROM mart_data_source_watermark;
 
 每次 session 增量内容写这里, 新 session 启动时**从下往上读**最近改了啥.
 
+### 2026-05-15 (Codex aa2d79d2 CRITICAL: paper_sim ADV20 leak 修 — Codex C-D review 发现)
+
+Codex aa2d79d2 review C-D KPI 时发现 amount_ma20 SQL `date <= today` 含今日 amount = D CRITICAL leak (实盘 T+1 09:25 决策时今日 amount 未知). CLAUDE §10 ⛔ PIT CRITICAL 不允许折中, 立刻修.
+
+变更:
+- driver.py::_load_kline_today: ma20 CTE `date <= ?` → `date < ?` (strict)
+- 0.46% ADV20 diff (实测 600519 2025-09-01: 5.93B → 5.90B)
+- 大单 surcharge 触发阈值 (base > 3%×ADV20) marginally 变化, 实测 KPI 影响应小但原则 critical
+- selector.py:654 同 SQL source 自动 propagate
+
+post-fix cleanup verified:
+- 单测 112 paper_sim pass (vs C-C baseline 112, 无回退)
+- SQL 实测验证 diff 存在但小
+- 其它 amount_ma20 callers (selector.py:654) 同源, fix 自动生效
+- C-D KPI (老的) 含 leak 嫌疑, 需 rerun (next step)
+
+下一步: rerun C-D + 加 PIT coverage daily audit (Codex CRITICAL #2) + turnover diagnostic (Codex MAJOR #3).
+
 ### 2026-05-15 (Codex C-C: paper_sim tradability mask — T+1 + 涨跌停 + 停牌 + segment-aware ±%)
 
 Codex aaedbc9d C 计划 4 段之第 3 段. 实盘 A 股 mask: 老 driver 仅靠 close>0 隐式过滤, 不查涨停 / 跌停 / 段差. 历史回测时段 (创业板 / 科创板 / 北交所) 偏差大.
