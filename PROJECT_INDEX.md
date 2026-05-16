@@ -740,6 +740,31 @@ SELECT * FROM mart_data_source_watermark;
 
 每次 session 增量内容写这里, 新 session 启动时**从下往上读**最近改了啥.
 
+### 2026-05-16 (BREAKTHROUGH: beta+decile features 验证 alpha 真实存在 RankIC +0.0362!)
+
+**Codex a49c90a6 backlog #51 feature research lane 验证成功!**
+
+Test: mart_stock_regime_full v2 with cdp/cal/regime 排除, **keep beta + mcap_decile**:
+- RankIC **+0.0362** (Gate PASS, ≥ 0.03)
+- IC IR **+0.3913** (健康)
+- n_dates 62, 4 walk-forward windows
+
+vs prior runs (same 1.5 year window):
+| run | features | RankIC | IC IR |
+|---|---|---|---|
+| v3 baseline | 98 | +0.0068 | +0.1214 |
+| regime_full naive | 111 (含 noisy) | -0.0043 | -0.0414 |
+| beta+decile only | 100 (排除 13 noisy, 加 3 new) | **+0.0362** | **+0.3913** |
+
+**Delta vs v3 baseline: +0.0294pp (4.3x improvement)**.
+
+Codex 之前 acf91c1f NO-GO hierarchical 是 based on weak alpha. **NEW finding: industry beta + mcap decile = REAL alpha source**. Phase 2 hierarchical 可能 worth revisiting.
+
+下一步:
+- 跑 window B (2024-01~2025-08) 验证 cross-window robustness (Codex 接受 acceptance)
+- DSR audit
+- 如 BOTH windows PASS → 正式 reintroduce, 可考虑 Phase 2 hierarchical 重新评估
+
 ### 2026-05-16 (mart_stock_regime_full v2: 加 beta + decile 测试 RankIC delta)
 
 接入 backlog #51 feature research:
