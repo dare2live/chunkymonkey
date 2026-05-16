@@ -740,6 +740,22 @@ SELECT * FROM mart_data_source_watermark;
 
 每次 session 增量内容写这里, 新 session 启动时**从下往上读**最近改了啥.
 
+### 2026-05-16 (Phase 1 Step 2-4: mart_stock_regime_full materialized + 5 audits 实施)
+
+Codex aa4a41ca Path 3 完成 infrastructure:
+
+新增:
+- `scripts/build_mart_stock_regime_full.py`: 把 v3 panel 112 cols + candle_pattern 12 + regime 3 (PIT D-1 lag) + calendar 5 (month/dow/dom/tdom/days_to_month_end) JOIN 成 materialized 表 (135 cols).
+- 5 acceptance audits inline (PIT-integrity-candle / PIT-integrity-regime / Feature-coverage / Row-count / Schema).
+- PIT 锚点: candle.source_max_trade_date / regime LEAD trade_date (D 决策用 D-1 regime) / signal_date / regime_full_anchor_date.
+
+smoke build (2026-03-01 ~ 04-23, 50 stocks candle smoke):
+- 175,750 rows / 4,625 stocks / 38 days / 135 cols
+- PIT-integrity-candle: 0 violations ✓
+- Feature-coverage: candle 1.05% (smoke 限制) / regime 92.11% / calendar 100%
+
+剩 full-universe candle build (BG running ~30 min) + mart_stock_regime_full 全窗口 rebuild → full Phase 1 panel ready.
+
 ### 2026-05-16 (Phase 1 Step 1: fact_candle_pattern_daily ETL — Codex aa4a41ca Path 3)
 
 Phase 1 (mart_stock_regime_full) Codex 推 Path 3 (augment v3 with view + 3 missing dim). 第 1 dim 实施.
