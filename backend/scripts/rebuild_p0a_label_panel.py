@@ -45,7 +45,10 @@ MARKET_DB = REPO_ROOT / "data" / "market.duckdb"
 def main() -> int:
     parser = argparse.ArgumentParser(description="Rebuild mart_p0a_label_panel governance v1")
     parser.add_argument("--start-date", default="2024-01-01")  # rule-compliance: ok evidence=alpha158-panel-实测起点
-    parser.add_argument("--end-date", default="2026-05-15")    # rule-compliance: ok evidence=tdxhub-sync-latest-trading-day
+    # Codex round 17 Q3 REDLINE: tdxhub sync 滞后 2026-05-07+, 最后 full coverage 日 2026-05-06
+    parser.add_argument("--end-date", default="2026-05-06")    # rule-compliance: ok evidence=tdxhub-last-full-coverage-day
+    parser.add_argument("--min-coverage-pct", type=float, default=0.95,
+                        help="每个 signal_date stock 覆盖率 (Codex Q8.2 coverage gate)")
     parser.add_argument("--universe-filter", default="60,00,30,68",
                         help="KEEP universe prefix (default: 60/00/30/68 A-share)")
     args = parser.parse_args()
@@ -54,29 +57,46 @@ def main() -> int:
     log.info(f"=== Rebuild mart_p0a_label_panel (LABEL_VERSION={LABEL_VERSION}) ===")
     log.info(f"  range: {args.start_date} → {args.end_date}")
 
-    # 1. KEEP universe
+    # 1. KEEP universe — PIT/ever-listed (Codex round 17 Q2a REDLINE: 不用 is_active=1 防 survivorship bias)
+    # 用 dim_all_ever_listed 全部 (含退市股), build_p0a_label_panel SQL LEFT JOIN v_price_kline_qfq
+    # 退市股 / 未上市 stock 在 signal_date 时无 K 线 → entry_vwap=NULL → label=NULL (自动 PIT)
     sm = duckdb.connect(str(SMART_DB), read_only=True)
     prefixes = tuple(args.universe_filter.split(","))
     placeholders = ",".join("?" for _ in prefixes)
     stocks = [r[0] for r in sm.execute(
         f"SELECT stock_code FROM dim_all_ever_listed "
-        f"WHERE is_active=1 AND SUBSTR(stock_code,1,2) IN ({placeholders}) "
+        f"WHERE SUBSTR(stock_code,1,2) IN ({placeholders}) "
         f"ORDER BY stock_code",
         list(prefixes),
     ).fetchall()]
     sm.close()
-    log.info(f"  KEEP universe: {len(stocks):,} stocks (prefix {args.universe_filter})")
+    log.info(f"  ever-listed universe: {len(stocks):,} stocks (prefix {args.universe_filter}) — PIT via LEFT JOIN NULL")
 
     # 2. signal_dates from v_price_kline_qfq (tier-1 tdxhub primary)
+    # 加 coverage gate (Codex Q8.2): 每个 signal_date 必须覆盖 >= min_coverage_pct * universe
     mkt = duckdb.connect(str(MARKET_DB), read_only=True)
-    dates = [str(r[0]) for r in mkt.execute(
-        "SELECT DISTINCT date FROM v_price_kline_qfq "
+    date_coverage = mkt.execute(
+        "SELECT date, COUNT(DISTINCT code) AS n_codes FROM v_price_kline_qfq "
         "WHERE freq='daily' AND adjust='qfq' AND date >= ? AND date <= ? "
-        "ORDER BY date",
+        "GROUP BY date ORDER BY date",
         [args.start_date, args.end_date],
-    ).fetchall()]
+    ).fetchall()
     mkt.close()
-    log.info(f"  signal_dates: {len(dates):,} dates ({dates[0] if dates else 'N/A'} → {dates[-1] if dates else 'N/A'})")
+    if not date_coverage:
+        log.error("v_price_kline_qfq empty in date range — aborting")
+        return 1
+
+    min_codes = int(len(stocks) * args.min_coverage_pct * 0.5)  # 历史可能少一些股, 用 universe 50% 做下限
+    valid_dates = [d for d, n in date_coverage if n >= min_codes]
+    partial_dates = [(d, n) for d, n in date_coverage if n < min_codes]
+    if partial_dates:
+        log.warning(f"  Coverage gate: {len(partial_dates)} dates dropped (codes < {min_codes}):")
+        for d, n in partial_dates[:5]: log.warning(f"    {d} | {n} codes")
+        if len(partial_dates) > 5:
+            log.warning(f"    ... and {len(partial_dates)-5} more")
+    dates = valid_dates
+    log.info(f"  signal_dates: {len(dates):,} dates ({dates[0] if dates else 'N/A'} → {dates[-1] if dates else 'N/A'})"
+             f" — {len(partial_dates)} partial-coverage dates excluded")
 
     if not stocks or not dates:
         log.error("Empty universe or dates — aborting")

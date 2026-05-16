@@ -838,10 +838,38 @@ Phase 2 step 2 全 reader 完成. Phase 2 step 3 (Physical DELETE 4.84M rows) �
 - DELETE + INSERT idempotent (build_p0a_label_panel 内部), 旧 p0a_v1 (signal_date, stock_code) 重叠自动覆盖
 - **状态**: 后台 PID 96970 running ~20-40min, KEEP=4,625 stocks × 570 dates = 2.64M signal pairs
 
-**#8 run_phase3_governance_v1_rebuild.sh chain orchestrator (commit ?)**:
+**#8 run_phase3_governance_v1_rebuild.sh chain orchestrator (commit f8bc11a9)**:
 - 6 step sequential: rebuild_p0a_label / feature_panel_v3 / lgbm_v5 重训 / paper_sim / P3 holdout / final audit
 - 总耗时 ~7-12h (主要 step 3 lgbm Optuna 200 trial walk-forward ~6-10h)
 - 每 step log 落 data/audit/logs/phase3_<timestamp>/, 最后 print audit severity
+
+**#9 Codex round 17 verdict integration (task-mp8nh03e-9v7h7s, commit ?)**:
+Codex review session 9 commit 后给出 **2 REDLINE Blocker + 12 FIX item + 1 COMPROMISE**:
+
+| ID | Verdict | 内容 | 状态 |
+|---|---|---|---|
+| Q2a | **REDLINE** | rebuild_p0a 用 `is_active=1` filter = survivorship bias | **修** (改 ever-listed PIT via LEFT JOIN NULL) |
+| Q3 | **REDLINE** | DELETE 前没 sync tdxhub gap → 28K coverage 缺失 | **修** (--end-date 2026-05-06 = tdxhub last full coverage day + coverage gate) |
+| Q1 | COMPROMISE | governance.yaml lineage 只 1 example | defer (Phase 3 完后补) |
+| Q2b | FIX | label/feature dates 不同 source | TODO 加 intersection assert |
+| Q2c | FIX | post-build 没 invoke audit_p0a_panel.py | TODO |
+| Q4 | FIX | label test fixture 没 HS300 fallback path | TODO 加单测 |
+| Q5 | FIX | updater fetch first 后 skip (浪费 fetch 时间) | TODO 加 preflight |
+| Q6 | COMPROMISE | model_id 改 `lgbm_20260517_governance_v1_20d` (date-based) | 接受 |
+| Q7 | FIX | 历史 paper_sim 应 DELETE 不 deprecated marker | **修** (DELETE p0a_v1/p0a_v2 unusable 3.76M rows) |
+| Q8.1-8.8 | FIX | 8 gate (coverage / survivorship / audit / metadata / RankIC / P3 / final-holdout 冻结) | TODO P4 verify gate |
+
+**实施 (本 commit)**:
+- backend/scripts/rebuild_p0a_label_panel.py:
+  - Q2a: KEEP universe `is_active=1` filter 移除, 改 ever-listed 全 5,210 (PIT via LEFT JOIN NULL)
+  - Q3: --end-date default 2026-05-15 → 2026-05-06 (tdxhub last full coverage day)
+  - Q8.2: 加 --min-coverage-pct + 自动 drop partial coverage dates (e.g. 2026-05-07~15 32 codes only)
+- DB cleanup (Codex Q7): 
+  - DELETE mart_p0a_label_panel WHERE label_version='p0a_v1' (1,119,250 corrupt rows)
+  - DELETE mart_p0a_label_panel WHERE label_version='p0a_v2_governance_v1' (2,636,250 unusable rows)
+  - Total cleared 3,755,500 rows, table now empty (待重 rebuild)
+
+**待修 (后续 commit)**: Q2b/Q2c/Q4/Q5/Q8 gate 系列, 但优先重 rebuild label panel 验证 fixed PIT + coverage.
 
 ### 2026-05-17 凌晨 数据治理 framework v1 (Codex round 16 task-mp8ktoe3-8rkde7, commit d055f5cb)
 
