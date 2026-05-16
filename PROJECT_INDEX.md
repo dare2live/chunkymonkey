@@ -740,6 +740,37 @@ SELECT * FROM mart_data_source_watermark;
 
 每次 session 增量内容写这里, 新 session 启动时**从下往上读**最近改了啥.
 
+### 2026-05-16 (Codex review hook + Phase 2 ablation 最终结论)
+
+**用户 push (2026-05-16): "让 codex review 这事儿建成 hook 了么"**.
+
+新增 `backend/scripts/check_codex_review.py` (commit-msg hook):
+- 检测 code-relevant commit (backend/services/scripts/config/tests/...)
+- 强制 body 含 Codex evidence ('Codex <agent_id>' / 'codex-rescue' / 'codex review' / 8-char hex pattern)
+- Bypass: '# codex-review: skipped reason=<typo|rename|markdown|trivial>'
+- 不 auto-invoke Codex (避 60-100s block dev), 仅 message audit
+
+Hook wired:
+- `.git/hooks/commit-msg` step 2 调 check_codex_review
+- `.pre-commit-config.yaml` 加 codex-review-check (stages: [commit-msg])
+
+**Phase 2 ablation 最终结论** (Codex ad2e09e7):
+- drop_all 13 new cols → RankIC +0.0068 (= v3 baseline same window)
+- drop only cdp_* (keep cal/regime) → +0.0010
+- keep all → -0.0043
+
+Cost breakdown:
+- cdp_* (12 candle cols) 单独 cost **0.53pp** alpha
+- cal_* + regime_* (7 cols) 单独 cost **0.58pp** alpha
+- 两者 roughly equal, candle 略大 (per col 更多 noise)
+
+verdict: **mart_stock_regime_full 不该 augment** v3 naive. _META_FIELDS 默认排除 ALL 13 新 cols.
+
+Phase 2 path forward:
+- v3 full window LambdaMART (n_est 200) 看 baseline alpha 是否能 +0.02+
+- 如 full window 强 → hierarchical 24-pool 可能 work
+- 如 full window 弱 → 需 Codex 4th review 找新方向
+
 ### 2026-05-16 (Phase 2 _META_FIELDS fix + 重测 — Codex ad2e09e7 ABLATION step 1)
 
 修 run_p0b_lambdamart_v3.py::_META_FIELDS 排除 mart_stock_regime_full 新 meta cols:

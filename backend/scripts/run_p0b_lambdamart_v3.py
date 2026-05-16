@@ -50,6 +50,19 @@ _META_FIELDS = {
     # Codex ad2e09e7 2026-05-16: mart_stock_regime_full meta cols 排除 (DATE / VARCHAR labels)
     "cdp_source_max_date", "regime_full_anchor_date",
     "regime_label_lag1",   # VARCHAR label, lambdamart 不支持
+    # Codex ad2e09e7 ABLATION RESULTS (2026-05-16 final):
+    # - drop_all 13 → RankIC +0.0068 (= v3 baseline)
+    # - drop only cdp_* → RankIC +0.0010
+    # - keep all → RankIC -0.0043
+    # cdp_* cost 0.53pp / cal+regime cost 0.58pp / both noise > signal.
+    # Codex Q2 verdict 确认: naive augment 不 work, 必须 hierarchical 才能 derive alpha.
+    # 默认排除 ALL 13 新 cols, 后续 reintroduce 单 dim 时 in-feature-importance 验证.
+    "cdp_body_ratio", "cdp_upper_shadow", "cdp_lower_shadow",
+    "cdp_close_pos", "cdp_volume_rel", "cdp_breakout_20",
+    "cdp_is_bullish", "cdp_is_doji", "cdp_is_long_lower",
+    "cdp_is_long_upper", "cdp_is_marubozu", "cdp_is_high_vol",
+    "regime_id_lag1", "regime_transition_lag1",
+    "cal_month", "cal_dow", "cal_dom", "cal_tdom", "cal_tdays_to_month_end",
 }
 
 

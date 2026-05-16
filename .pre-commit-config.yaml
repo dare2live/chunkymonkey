@@ -71,3 +71,14 @@ repos:
         pass_filenames: false
         stages: [pre-commit]
         always_run: true
+
+  # 2026-05-16: CLAUDE Rule 10 Codex review check — code-relevant commit 必须含 Codex review evidence
+  # backend/services/scripts/config/tests/ 改 → 必须 body 含 'Codex <agent_id>' 或 'codex-review: skipped reason=...'
+  # 防 dev 不走 Codex review 直接 commit (尤其策略 / 数据 / 模型类 critical 改)
+  - repo: local
+    hooks:
+      - id: codex-review-check
+        name: Codex review evidence check (CLAUDE Rule 10)
+        entry: python backend/scripts/check_codex_review.py
+        language: system
+        stages: [commit-msg]
