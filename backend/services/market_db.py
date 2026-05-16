@@ -439,9 +439,20 @@ def upsert_price_rows(conn, rows: list[dict], source: str,
     批量写入/更新 K 线数据。
     rows: [{code, date, freq, adjust, open, high, low, close, volume, amount}]
     返回实际写入行数。
+
+    governance v1 (configs/data_governance.yaml): price_kline 主表 retired
+    except hs300_benchmark_allowlist. 非 allowlist source 写入直接 raise.
     """
     if not rows:
         return 0
+    # from yaml: configs/data_governance.yaml schema_contracts.price_kline.allowed_sources
+    PRICE_KLINE_ALLOWED_SOURCES = {"akshare_csindex_hs300"}
+    if source not in PRICE_KLINE_ALLOWED_SOURCES:
+        raise ValueError(
+            f"governance v1 reject: source={source!r} not in price_kline.allowed_sources "
+            f"{sorted(PRICE_KLINE_ALLOWED_SOURCES)}. price_kline 主表 retired, "
+            f"stock K-line 走 upsert_price_kline_tdxhub_rows (price_kline_tdxhub)."
+        )
     rows = _clean_kline_rows_for_write(
         conn,
         rows,

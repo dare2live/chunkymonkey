@@ -784,19 +784,24 @@ SELECT * FROM mart_data_source_watermark;
 
 每次 session 增量内容写这里, 新 session 启动时**从下往上读**最近改了啥.
 
-### 2026-05-17 凌晨 Phase 1 governance v1 ingestion lint enforcement (commit ?)
+### 2026-05-17 凌晨 Phase 1 governance v1 ingestion lint enforcement (commit 9a7cb182 + ?)
 
-实施 Codex round 16 governance.yaml ingestion_lint.reject.invalid_vwap_close_ratio:
-1. `backend/services/kline_source.py`:
-   - KLINE_CLEANING_POLICY_ID v1 → v2_governance_v1_lint
-   - 新常量 LOT_SIZE_SHARES=100 / VWAP_CLOSE_RATIO_MIN=0.5 / MAX=1.5 (4 处 Rule 7 evidence 注释)
-   - clean_price_row 加 invalid_vwap_close_ratio 验证 (`amount/(volume*100)/close not in [0.5, 1.5]` → reject)
-2. 4 test fixture 更新到 governance v1 contract (volume unit=lots):
-   - test_kline_cleaning.py / test_kline_sources.py / test_market_db_canonical_kline.py / test_tdx_source.py
+实施 Codex round 16 governance.yaml ingestion_lint reject 规则:
+
+**#1 invalid_vwap_close_ratio (commit 9a7cb182)**:
+- `backend/services/kline_source.py::clean_price_row` 加 `amount/(volume*100)/close not in [0.5, 1.5]` reject
+- KLINE_CLEANING_POLICY_ID v1 → v2_governance_v1_lint
+- 4 test fixture 更新到 governance v1 contract (volume unit=lots)
+
+**#2 forbidden_stock_kline_source (commit ?)**:
+- `backend/services/market_db.py::upsert_price_rows` 加 source allowlist check
+- 非 PRICE_KLINE_ALLOWED_SOURCES={akshare_csindex_hs300} → raise ValueError
+- governance v1: price_kline 主表 retired except hs300 benchmark allowlist
+- 加单测 cover (test_upsert_price_rows_rejects_non_allowlist_source_governance_v1)
 
 测试: 5 fail 全 fix, 全 suite 17 fail / 2189 pass = baseline 一致 (lint 改动无 regression).
 
-未实施 (Phase 1 剩余): forbidden_stock_kline_source lint / launchd cron nightly_data_audit / pre-commit governance-yaml-sync.
+未实施 (Phase 1 剩余): launchd cron nightly_data_audit / pre-commit governance-yaml-sync hook.
 
 ### 2026-05-17 凌晨 数据治理 framework v1 (Codex round 16 task-mp8ktoe3-8rkde7, commit d055f5cb)
 

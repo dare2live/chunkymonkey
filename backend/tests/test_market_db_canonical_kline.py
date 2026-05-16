@@ -303,3 +303,36 @@ def test_tdxhub_upsert_writes_primary_table_for_canonical_reads():
         assert tuple(primary) == (10.5, "tdxhub_incremental", "tdx-inc")
     finally:
         conn.close()
+
+
+def test_upsert_price_rows_rejects_non_allowlist_source_governance_v1():
+    """governance v1: price_kline 主表 retired except hs300 allowlist.
+    
+    from yaml: configs/data_governance.yaml schema_contracts.price_kline.allowed_sources
+    """
+    import pytest
+    from services.market_db import upsert_price_rows
+    
+    conn = duck_mem()
+    try:
+        conn.executescript(PRICE_KLINE_DDL)
+        row = {
+            "code": "000001", "date": "2026-05-15", "freq": "daily", "adjust": "qfq",
+            "open": 10, "high": 11, "low": 9, "close": 10.5,
+            "volume": 10, "amount": 10500,
+        }
+        # 退役 source 一律 reject
+        for forbidden in ["akshare_sina", "tdxhub", "mootdx", "eastmoney_direct"]:
+            with pytest.raises(ValueError, match="governance v1 reject"):
+                upsert_price_rows(conn, [row], source=forbidden)
+
+        # HS300 allowlist accept
+        hs300 = {
+            "code": "000300", "date": "2026-05-15", "freq": "daily", "adjust": "qfq",
+            "open": 3500, "high": 3550, "low": 3480, "close": 3520,
+            "volume": 100.0, "amount": 100.0 * 100 * 3520,
+        }
+        n = upsert_price_rows(conn, [hs300], source="akshare_csindex_hs300")
+        assert n == 1
+    finally:
+        conn.close()
