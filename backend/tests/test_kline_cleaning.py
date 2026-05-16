@@ -19,7 +19,7 @@ def test_normalize_price_rows_maps_vol_and_rejects_invalid_ohlcv_amount():
                 "high": 11,
                 "low": 9,
                 "close": 10.5,
-                "vol": 1000,
+                "vol": 10,  # governance v1: volume unit = lots, 10 lots = 1000 shares
                 "amount": 10500,
             },
             {
@@ -37,7 +37,7 @@ def test_normalize_price_rows_maps_vol_and_rejects_invalid_ohlcv_amount():
                 "high": 11,
                 "low": 9,
                 "close": 10.5,
-                "volume": 1000,
+                "volume": 10,  # governance v1: volume unit = lots
             },
         ],
         "tdxhub",
@@ -51,7 +51,7 @@ def test_normalize_price_rows_maps_vol_and_rejects_invalid_ohlcv_amount():
             "high": 11.0,
             "low": 9.0,
             "close": 10.5,
-            "volume": 1000.0,
+            "volume": 10.0,
             "amount": 10500.0,
         }
     ]
@@ -75,7 +75,7 @@ def test_clean_price_rows_preserves_code_and_records_issue_samples():
                 "high": 11,
                 "low": 9,
                 "close": 10.5,
-                "volume": 1000,
+                "volume": 10,
                 "amount": 10500,
             },
             {
@@ -87,7 +87,7 @@ def test_clean_price_rows_preserves_code_and_records_issue_samples():
                 "high": 9,
                 "low": 11,
                 "close": 10.5,
-                "volume": 1000,
+                "volume": 10,
                 "amount": 10500,
             },
         ],

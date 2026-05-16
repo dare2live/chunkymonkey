@@ -784,6 +784,39 @@ SELECT * FROM mart_data_source_watermark;
 
 每次 session 增量内容写这里, 新 session 启动时**从下往上读**最近改了啥.
 
+### 2026-05-17 凌晨 Phase 1 governance v1 ingestion lint enforcement (commit ?)
+
+实施 Codex round 16 governance.yaml ingestion_lint.reject.invalid_vwap_close_ratio:
+1. `backend/services/kline_source.py`:
+   - KLINE_CLEANING_POLICY_ID v1 → v2_governance_v1_lint
+   - 新常量 LOT_SIZE_SHARES=100 / VWAP_CLOSE_RATIO_MIN=0.5 / MAX=1.5 (4 处 Rule 7 evidence 注释)
+   - clean_price_row 加 invalid_vwap_close_ratio 验证 (`amount/(volume*100)/close not in [0.5, 1.5]` → reject)
+2. 4 test fixture 更新到 governance v1 contract (volume unit=lots):
+   - test_kline_cleaning.py / test_kline_sources.py / test_market_db_canonical_kline.py / test_tdx_source.py
+
+测试: 5 fail 全 fix, 全 suite 17 fail / 2189 pass = baseline 一致 (lint 改动无 regression).
+
+未实施 (Phase 1 剩余): forbidden_stock_kline_source lint / launchd cron nightly_data_audit / pre-commit governance-yaml-sync.
+
+### 2026-05-17 凌晨 数据治理 framework v1 (Codex round 16 task-mp8ktoe3-8rkde7, commit d055f5cb)
+
+触发: P3 holdout lgbm_v3_honest_20d 6 OOS 月 ann_ret=21843% (Rule 5 异常高数字), root cause
+price_kline.volume 单位混乱, label panel vwap 算错 100×, 2.77M corrupt rows / 6151 stocks / 812 dates.
+
+Codex round 16 deliver:
+1. `configs/data_governance.yaml` 244 行 — kline_governance_v1_tdxhub_primary
+   - 3 tier (tdxhub / hs300_only / legacy retire) / schema contract / 6 reject lint / cross-source / audit / deprecation / lineage
+2. `docs/deprecation_sop.md` 136 行 — Source 退役 4 步 SOP
+3. `backend/scripts/check_sina_tdxhub_overlap.py` 113 行 — sina_not_in_tdxhub_codes=0 verified
+4. `backend/scripts/nightly_data_audit.py` 308 行 — 加入 git, 3 critical alarm 已 detect (vwap 27,899 / tier1 0.79% / fwd_outlier 704K)
+
+PROJECT_INDEX 加 重大数据治理事件 section + 7 治理空白 + 7 vwap consumer (4 缺 sanity) + 暂停项.
+.gitignore data/audit/.
+
+5 维度评估全盘接受 0 折中 (Rule 10 CRITICAL 不允许折中).
+
+暂停项: P3 holdout / Phase 4 cron / lgbm_v3_honest_20d KPI / 历史 paper_sim KPI.
+
 ### 2026-05-16 晚 Phase 2 v1 sector budget (Codex round 5+13 — 12 supersector 40% NAV)
 
 实施 Codex round 5 MAJOR design (sector budget hard cap 40% NAV):

@@ -545,7 +545,7 @@ def test_fetch_index_kline_uses_shared_quotes_pool(monkeypatch):
                 "low": 9.8,
                 "close": 10.2,
                 "vol": 12345.0,
-                "amount": 67890.0,
+                "amount": 12591900.0,
             },
             {
                 "date": "2026-04-13",
@@ -554,7 +554,7 @@ def test_fetch_index_kline_uses_shared_quotes_pool(monkeypatch):
                 "low": 10.0,
                 "close": 10.4,
                 "vol": 22345.0,
-                "amount": 77890.0,
+                "amount": 23238800.0,
             },
         ], "tdxhub_1.1.1.1:7709")
     )
@@ -578,7 +578,7 @@ def test_fetch_daily_tdxhub_with_diagnostics_uses_shared_quotes_pool(monkeypatch
                 "low": 9.8,
                 "close": 10.2,
                 "volume": 12345.0,
-                "amount": 67890.0,
+                "amount": 12591900.0,
                 "date": "2026-04-10",
             },
         ], "tdxhub_1.1.1.1:7709", attempts)
@@ -612,7 +612,7 @@ def test_fetch_daily_tdxhub_with_diagnostics_marks_timeout_heavy_success_as_degr
                 "low": 9.8,
                 "close": 10.2,
                 "volume": 12345.0,
-                "amount": 67890.0,
+                "amount": 12591900.0,
                 "date": "2026-04-10",
             },
         ], "tdxhub_3.3.3.3:7709", attempts)

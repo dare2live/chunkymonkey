@@ -238,10 +238,12 @@ class KlineSourceFallbackTests(unittest.IsolatedAsyncioTestCase):
 
 class KlineSourceHelperTests(unittest.TestCase):
     def test_aggregate_monthly_from_daily_rolls_up_ohlcv(self):
+        # governance v1: volume unit = lots, amount = volume * 100 shares * close (rough)
+        # close=1.2, volume=100 lots = 10000 shares, amount = 10000 * 1.2 = 12000 元
         monthly = aggregate_monthly_from_daily([
-            {"date": "2026-03-03", "open": 1.0, "high": 1.3, "low": 0.9, "close": 1.2, "volume": 100.0, "amount": 110.0},
-            {"date": "2026-03-28", "open": 1.2, "high": 1.4, "low": 1.1, "close": 1.35, "volume": 120.0, "amount": 125.0},
-            {"date": "2026-04-02", "open": 1.35, "high": 1.5, "low": 1.3, "close": 1.45, "volume": 90.0, "amount": 98.0},
+            {"date": "2026-03-03", "open": 1.0, "high": 1.3, "low": 0.9, "close": 1.2, "volume": 100.0, "amount": 12000.0},
+            {"date": "2026-03-28", "open": 1.2, "high": 1.4, "low": 1.1, "close": 1.35, "volume": 120.0, "amount": 15600.0},
+            {"date": "2026-04-02", "open": 1.35, "high": 1.5, "low": 1.3, "close": 1.45, "volume": 90.0, "amount": 12600.0},
         ])
 
         self.assertEqual([row["date"] for row in monthly], ["2026-03-01", "2026-04-01"])
@@ -250,7 +252,7 @@ class KlineSourceHelperTests(unittest.TestCase):
         self.assertEqual(monthly[0]["high"], 1.4)
         self.assertEqual(monthly[0]["low"], 0.9)
         self.assertEqual(monthly[0]["volume"], 220.0)
-        self.assertEqual(monthly[0]["amount"], 235.0)
+        self.assertEqual(monthly[0]["amount"], 27600.0)
 
 
 if __name__ == "__main__":

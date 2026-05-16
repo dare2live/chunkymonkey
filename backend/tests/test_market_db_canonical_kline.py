@@ -182,7 +182,7 @@ def test_tdxhub_upsert_rejects_invalid_rows_and_records_monitor_evidence():
                     "high": 11,
                     "low": 9,
                     "close": 10.5,
-                    "volume": 1000,
+                    "volume": 10,
                     "amount": 10500,
                 },
                 {
@@ -278,7 +278,7 @@ def test_tdxhub_upsert_writes_primary_table_for_canonical_reads():
                     "high": 11,
                     "low": 9,
                     "close": 10.5,
-                    "volume": 1000,
+                    "volume": 10,
                     "amount": 10500,
                     "factor": 1.0,
                 }
