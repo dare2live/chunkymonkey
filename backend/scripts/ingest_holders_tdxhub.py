@@ -488,6 +488,29 @@ def write_one(con: duckdb.DuckDBPyConnection, *, stock_code: str, stock_name: st
             ))
 
         if holders:
+            # DuckDB INSERT OR REPLACE 不处理 batch 内重复 PK (会 trigger INTERNAL FATAL).
+            # PK = UNIQUE(stock_code, report_date, holder_set, source, is_exit_row,
+            #             holder_rank, row_seq, share_class). dedup key 完整 8 字段.
+            # Codex aaedbc9d MAJOR: 加 duplicate-count log 暴露 parser bug 频率, 不静默吞.
+            _dedup_seen: dict[tuple, dict] = {}
+            for _row in holders:
+                _key = (
+                    _row.get("stock_code"), _row.get("report_date"),
+                    _row.get("holder_set"), _row.get("source") or "tdx_f10",
+                    _row.get("is_exit_row"),
+                    _row.get("holder_rank"), _row.get("row_seq"),
+                    _row.get("share_class"),
+                )
+                _dedup_seen[_key] = _row
+            holders_for_insert = list(_dedup_seen.values())
+            _dup_count = len(holders) - len(holders_for_insert)
+            if _dup_count > 0:
+                _sample = list(_dedup_seen.keys())[:3]
+                logger.warning(
+                    "[ingest_holders] batch-dedup: stock=%s dropped %d/%d rows "
+                    "(parser duplicate PK; sample keys=%s)",
+                    stock_code, _dup_count, len(holders), _sample,
+                )
             con.executemany("""
                 INSERT OR REPLACE INTO fact_top10_holder_period(
                   stock_code, stock_name, market, report_date, holder_set,
@@ -504,8 +527,8 @@ def write_one(con: duckdb.DuckDBPyConnection, *, stock_code: str, stock_name: st
                   ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
                   ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
                 )
-            """, [_holder_tuple(row) for row in holders])
-            _update_holder_availability_source(con, holders)
+            """, [_holder_tuple(row) for row in holders_for_insert])
+            _update_holder_availability_source(con, holders_for_insert)
 
         if ctrl is not None:
             con.execute("""
