@@ -740,6 +740,30 @@ SELECT * FROM mart_data_source_watermark;
 
 每次 session 增量内容写这里, 新 session 启动时**从下往上读**最近改了啥.
 
+### 2026-05-16 (IC-vs-paper_sim discrepancy 根因: top-K vs distribution correlation)
+
+深查 beta_decile model 实际 top 5 picks vs forward returns:
+
+| model | window 2025-01-08 ~ 2025-08-29 top 5 avg fwd_20d |
+|---|---|
+| lgbm_v3_honest_20d | **+3.87%** |
+| phase2_beta_decile_winB | **+0.51%** (低 3.36pp!) |
+
+**根因**: RankIC 衡量 overall correlation; top-K 是 distribution tail. beta_decile 选 高 industry beta + 大 mcap stocks (e.g. 601985/600025/601816 SH 主板) — they correlate with industry/regime good (high IC) BUT historical 跌. lgbm_v3 选 中小盘 (300707/688381/301266 创业板/科创板) — higher upside.
+
+**Profound finding**: Industry beta + mcap decile features 是 **risk management** (pool assignment / regime gate) 的有效 feature, NOT selector top-K.
+
+这恰好 验证 Codex final 24-pool plan:
+- 加 beta_decile 到 pool assignment ✓
+- 加 beta_decile 到 regime gate ✓ (C_adaptive portfolio)
+- DON'T 加 beta_decile 到 selector ranking (会 select losers)
+
+Phase 2 hierarchical 24-pool 现路径明确:
+- Parent (selector): lgbm_v3 类 features (alpha158 + sector ret + fund flow)
+- Child (regime gate / pool risk): beta_decile + industry features
+
+下次 session: implement hierarchical with feature separation. Frozen holdout 2025-09~2026-04 验证.
+
 ### 2026-05-16 (beta_decile paper_sim REVELATION: RankIC PASS but paper_sim FAIL)
 
 Codex ace17432 priority #3 validation: paper_sim with beta_decile_winB model on its native Window B (2025-01~2025-08).
