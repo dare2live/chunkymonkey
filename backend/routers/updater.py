@@ -2904,7 +2904,14 @@ async def _step_sync_market_data(conn) -> int:
                         for r in kline_records
                     ]
                     write_source = normalize_kline_write_source(source)
-                    rows_written = upsert_price_rows(mkt_conn, rows_data, source=write_source)
+                    # governance v1: price_kline 主表 stock 入库一律 reject (yaml retired_except_hs300_benchmark_allowlist)
+                    # monthly stock K 线无 tdxhub native 表 → 跳过 + 记 deprecation
+                    logger.info(
+                        f"[governance v1] monthly stock K-line skipped (主表 retired): "
+                        f"code={code} source={write_source} rows={len(rows_data)} "
+                        f"reason=no_tdxhub_monthly_table"
+                    )
+                    rows_written = 0
                     if rows_written <= 0:
                         raise ValueError("monthly_kline_cleaner_rejected_all_rows")
                     dates = [r["date"] for r in rows_data]
@@ -3217,7 +3224,14 @@ async def _step_sync_market_data(conn) -> int:
                         if write_source.startswith("tdxhub"):
                             rows_written = upsert_price_kline_tdxhub_rows(mkt_conn, rows_data, source=write_source)
                         else:
-                            rows_written = upsert_price_rows(mkt_conn, rows_data, source=write_source)
+                            # governance v1: stock daily 主表 retired, 只 tdxhub native
+                            # from yaml: configs/data_governance.yaml schema_contracts.price_kline.forbidden_sources
+                            logger.info(
+                                f"[governance v1] non-tdxhub stock daily K-line skipped: "
+                                f"code={code} source={write_source} rows={len(rows_data)} "
+                                f"reason=主表_retired_只tdxhub_native"
+                            )
+                            rows_written = 0
                         if rows_written <= 0:
                             raise ValueError("daily_kline_cleaner_rejected_all_rows")
                         dates = [r["date"] for r in rows_data]

@@ -815,7 +815,13 @@ SELECT * FROM mart_data_source_watermark;
 - Phase 2 Read Path Removal step 2 (此次踩坑 labels/build.py 直接读主表绕过 view, 现已修)
 
 未实施 (Phase 1 剩余): pre-commit governance-yaml-sync hook.
-Phase 2 剩余 reader patch: return_engine.py:560 / paper_engine/benchmarks.py:28 / portfolio_backtest.py / event_simulator.py / pricing_sql.py.
+**#5 Read Path Removal — writers graceful skip (commit ?)**:
+- `backend/routers/updater.py` monthly path (line 2906-2913): 不写主表, log [governance v1] skip + rows_written=0
+- `backend/routers/updater.py` daily 非 tdxhub path (line 3216-3220): 已 if tdxhub 走 _tdxhub, else 改 log + skip (不 raise)
+- `backend/scripts/fill_missing_market_kline.py` (line 101 monthly + 198 daily): 全 log warning + continue
+- 效果: sync 路径不再 raise (governance v1 enforce 仍在 upsert_price_rows 内部, 防深层 bug)
+
+Phase 2 step 2 全 reader 完成. Phase 2 step 3 (Physical DELETE 4.84M rows) 仍待 user 授权.
 
 ### 2026-05-17 凌晨 数据治理 framework v1 (Codex round 16 task-mp8ktoe3-8rkde7, commit d055f5cb)
 

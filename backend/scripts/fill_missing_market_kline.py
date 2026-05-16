@@ -98,19 +98,14 @@ def derive_monthly_from_daily(mkt_conn, codes: list[str]) -> tuple[int, int]:
         if not monthly_rows:
             continue
 
-        upsert_price_rows(mkt_conn, monthly_rows, source="derived_from_daily", batch_id=batch_id)
-        dates = [r["date"] for r in monthly_rows]
-        update_sync_state(
-            mkt_conn,
-            code,
-            "monthly",
-            source="derived_from_daily",
-            min_date=min(dates),
-            max_date=max(dates),
-            row_count=len(monthly_rows),
+        # governance v1: price_kline 主表 stock 入库 retired (yaml forbidden_sources 含 derived_from_daily)
+        # from yaml: configs/data_governance.yaml schema_contracts.price_kline.forbidden_sources
+        # 此 script 历史用途已 deprecated, monthly stock K 线建议下游消费侧从 daily aggregate
+        log.warning(
+            f"[governance v1] skip derived_from_daily monthly write: code={code} rows={len(monthly_rows)} "
+            f"reason=主表_retired_consumer_应_daily_aggregate"
         )
-        code_count += 1
-        row_count += len(monthly_rows)
+        continue
 
     finish_import_batch(
         mkt_conn,
@@ -200,20 +195,14 @@ async def main():
                 for r in kline_records
             ]
             write_source = f"akshare_{source}" if source else "akshare_unknown"
-            upsert_price_rows(mkt_conn, rows, source=write_source, batch_id=batch_id)
-            dates = [r["date"] for r in rows]
-            update_sync_state(
-                mkt_conn,
-                code,
-                "daily",
-                source=write_source,
-                min_date=min(dates),
-                max_date=max(dates),
-                row_count=len(rows),
+            # governance v1: stock daily 主表 retired (yaml forbidden_sources 含所有 akshare_*)
+            # from yaml: configs/data_governance.yaml schema_contracts.price_kline.forbidden_sources
+            # akshare fill_missing 路径整体 deprecated, daily stock 走 tdxhub native (upsert_price_kline_tdxhub_rows)
+            log.warning(
+                f"[governance v1] skip akshare fill_missing write: code={code} source={write_source} "
+                f"rows={len(rows)} reason=主表_retired_use_tdxhub_native"
             )
-            imported_codes += 1
-            written_rows += len(rows)
-            source_counter[source or "unknown"] += 1
+            continue
 
         if idx % 25 == 0 or idx == total:
             print(
