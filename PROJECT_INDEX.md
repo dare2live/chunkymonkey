@@ -823,11 +823,19 @@ SELECT * FROM mart_data_source_watermark;
 
 Phase 2 step 2 全 reader 完成. Phase 2 step 3 (Physical DELETE 4.84M rows) 仍待 user 授权.
 
-**#6 cleanup_deprecated_kline_sources.py dry-run script (commit ?)**:
+**#6 cleanup_deprecated_kline_sources.py + EXECUTED (commit 121f3262)**:
 - `backend/scripts/cleanup_deprecated_kline_sources.py`: dry-run / --execute 双模式
-- 已实测 dry-run: 4,879,870 rows / 13 source 待删, 1,048 HS300 allowlist 保留
-- 未 execute (destructive, 待 user 授权)
-- 配套 docs/deprecation_sop.md Step 3 SQL template
+- **已 executed (2026-05-17 01:51)**: 4,879,870 rows deleted in 19s, 0 residue
+- 保留: akshare_csindex_hs300 1,048 (HS300 allowlist), price_kline_tdxhub 5,167,494 不影响
+- nightly_data_audit 验证: vwap_close_ratio + tier1_ratio 已转 severity=ok
+- 剩 fwd_cost_after_outlier critical (在 mart_p0a_label_panel 旧 corrupt label, 待 rebuild)
+- backup: data/market.duckdb.backup_2026_05_17_volume_unit_fix (1.4GB) 可 rollback
+
+**#7 rebuild_p0a_label_panel.py (commit ?)**:
+- `backend/scripts/rebuild_p0a_label_panel.py`: rebuild mart_p0a_label_panel from clean tdxhub
+- 走 v_price_kline_qfq view (governance v1 contract) + vwap=amount/(volume*100) + LABEL_VERSION=p0a_v2_governance_v1
+- 默认 range 2024-01-01 ~ 2026-05-15 + KEEP universe (60/00/30/68)
+- DELETE + INSERT idempotent (build_p0a_label_panel 内部), 旧 p0a_v1 (signal_date, stock_code) 重叠自动覆盖
 
 ### 2026-05-17 凌晨 数据治理 framework v1 (Codex round 16 task-mp8ktoe3-8rkde7, commit d055f5cb)
 
