@@ -831,11 +831,17 @@ Phase 2 step 2 全 reader 完成. Phase 2 step 3 (Physical DELETE 4.84M rows) �
 - 剩 fwd_cost_after_outlier critical (在 mart_p0a_label_panel 旧 corrupt label, 待 rebuild)
 - backup: data/market.duckdb.backup_2026_05_17_volume_unit_fix (1.4GB) 可 rollback
 
-**#7 rebuild_p0a_label_panel.py (commit ?)**:
+**#7 rebuild_p0a_label_panel.py (commit 6828ea7b)**:
 - `backend/scripts/rebuild_p0a_label_panel.py`: rebuild mart_p0a_label_panel from clean tdxhub
 - 走 v_price_kline_qfq view (governance v1 contract) + vwap=amount/(volume*100) + LABEL_VERSION=p0a_v2_governance_v1
 - 默认 range 2024-01-01 ~ 2026-05-15 + KEEP universe (60/00/30/68)
 - DELETE + INSERT idempotent (build_p0a_label_panel 内部), 旧 p0a_v1 (signal_date, stock_code) 重叠自动覆盖
+- **状态**: 后台 PID 96970 running ~20-40min, KEEP=4,625 stocks × 570 dates = 2.64M signal pairs
+
+**#8 run_phase3_governance_v1_rebuild.sh chain orchestrator (commit ?)**:
+- 6 step sequential: rebuild_p0a_label / feature_panel_v3 / lgbm_v5 重训 / paper_sim / P3 holdout / final audit
+- 总耗时 ~7-12h (主要 step 3 lgbm Optuna 200 trial walk-forward ~6-10h)
+- 每 step log 落 data/audit/logs/phase3_<timestamp>/, 最后 print audit severity
 
 ### 2026-05-17 凌晨 数据治理 framework v1 (Codex round 16 task-mp8ktoe3-8rkde7, commit d055f5cb)
 
