@@ -740,6 +740,20 @@ SELECT * FROM mart_data_source_watermark;
 
 每次 session 增量内容写这里, 新 session 启动时**从下往上读**最近改了啥.
 
+### 2026-05-16 (Phase 2 prereq: mart_stock_pool_assignment 24-pool builder)
+
+Codex final v3.1 hierarchical 24-pool 方案 prereq (12 CITIC L1 × 2 liquidity tier).
+
+新增 `scripts/build_mart_stock_pool_assignment.py`:
+- 月度 assign stock → (supersector × tier) pool
+- PIT-safe: industry from mart_stock_industry_pit (effective_from ≤ month_start, confidence='observed_snapshot') + ADV60 WINDOW prior 60 day strict
+- median split per supersector
+- pool_id = '{supersector}_{tier}' (target 24 pools)
+
+待 candle full build 释放 DB lock 后运行 (本 commit 仅代码 ready).
+
+Phase 2 用例: `SELECT * FROM mart_stock_pool_assignment WHERE pool_id='制造业_high'`
+
 ### 2026-05-16 (Phase 1 Step 2-4: mart_stock_regime_full materialized + 5 audits 实施)
 
 Codex aa4a41ca Path 3 完成 infrastructure:
