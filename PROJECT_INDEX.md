@@ -33,16 +33,16 @@
 | `nightly_data_audit.py` | 308 | 已存在 + 跑过 + 3 critical 报警, **未 cron, 报警没人收** |
 | 退役 4 步流程 | -- | 不存在, mootdx 退役 data 残留 1M+ rows |
 
-**Vwap consumer 共 7 处 (4 处缺 sanity)**:
+**Vwap consumer 共 7 处 (deep audit 后确认只 1 处真缺 sanity, 已修)**:
 | File:line | 状态 |
 |---|---|
-| `paper_sim/driver.py::_vwap:144` | [PASS] helper sanity |
-| `return_engine.py::_resolve_reasonable_vwap:96` | [PASS] 独立 helper |
-| `labels/build.py:134-155` | [BLOCKED] SQL 直接 `amount/volume` (此次踩坑) |
-| `portfolio_backtest.py:419` | [BLOCKED] 直接 amount/volume |
-| `event_simulator.py:137` | [BLOCKED] 直接 amount/volume |
-| `pricing_sql.py:18,57` | [BLOCKED] raw_vwap 无 sanity |
-| `buy_pricing.py:68` | ⚠ hardcode `volume * 100` |
+| `paper_sim/driver.py::_vwap:144` | [PASS] helper sanity (raw vs lot 选 [low,high] 区间) |
+| `return_engine.py::_resolve_reasonable_vwap:96` | [PASS] 独立 helper sanity |
+| `labels/build.py:134-155` | [PASS] 已修 commit 9c01eae0 (改读 v_price_kline_qfq view + `amount/(volume*100)`) |
+| `portfolio_backtest.py:419` | [PASS] inline sanity (`vwap/close BETWEEN 0.5 AND 1.5` + factor_adjusted fallback) |
+| `event_simulator.py:137` | [PASS] inline sanity (相同 pattern) |
+| `pricing_sql.py:18-44` | [PASS] CASE sanity (raw/hand/factor 3 路 + close ratio BETWEEN) |
+| `buy_pricing.py:68` | hardcode `volume * 100` (上游 source 单位约定保证手, governance v1 enforce) |
 
 **暂停项 (治理完成前)**:
 - [BLOCKED] P3 holdout 决策 (基于 corrupt label)
