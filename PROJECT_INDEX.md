@@ -740,6 +740,30 @@ SELECT * FROM mart_data_source_watermark;
 
 每次 session 增量内容写这里, 新 session 启动时**从下往上读**最近改了啥.
 
+### 2026-05-16 (Phase 1 Step 1: fact_candle_pattern_daily ETL — Codex aa4a41ca Path 3)
+
+Phase 1 (mart_stock_regime_full) Codex 推 Path 3 (augment v3 with view + 3 missing dim). 第 1 dim 实施.
+
+新增:
+- `services/candle_pattern/ddl.py`: fact_candle_pattern_daily DDL (12 features + source_max_trade_date PIT 锚点)
+- `scripts/build_candle_pattern_daily.py`: ETL builder, prior 20-day WINDOW MA20/MAX20 PIT-safe
+- 单测: smoke build 50 stocks × 2 month, 1846 rows, PIT integrity PASS, 100% coverage
+
+字段:
+- 6 数值: body_ratio / upper_shadow_ratio / lower_shadow_ratio / close_position / volume_relative / breakout_strength_20
+- 6 binary: is_bullish / is_doji / is_long_lower_shadow / is_long_upper_shadow / is_marubozu / is_high_volume
+
+PIT 安全 (Codex aa4a41ca 要求):
+- WINDOW ROWS BETWEEN 20 PRECEDING AND 1 PRECEDING (strict prior, 不含今日)
+- source_max_trade_date = trade_date, assertion source_max_trade_date ≤ trade_date
+
+acceptance audit smoke:
+- PIT integrity: 0 violations ✓
+- Feature coverage: 100% (body_ratio / close_position / breakout_strength_20)
+- 46.37% bullish / 8.83% doji (合理)
+
+剩 2 dim (regime / calendar) + mart_stock_regime_full materialized view 后续做.
+
 ### 2026-05-16 (multi-portfolio paper_sim driver wrap — 用户 push "3 组对比")
 
 用户 ask 实盘 3 组 paper_sim 并行 (v4 保守 / v8 激进 / Phase 1 后 自适应).
