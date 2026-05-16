@@ -241,48 +241,55 @@ def stage_child(args) -> int:
             log.warning(f"  pool {pool} too small ({len(pool_df)} rows), skip")
             continue
 
-        # Simple monthly walk-forward (1 train cutoff for child smoke)
-        cutoff_month = pool_df["signal_date"].quantile(0.7)
-        train = pool_df[pool_df["signal_date"] < cutoff_month]
-        test = pool_df[pool_df["signal_date"] >= cutoff_month]
-        if len(test) == 0 or len(train) < 100:
+        # Walk-forward expanding monthly: for each test month, train on prior data
+        pool_df["month"] = pool_df["signal_date"].dt.to_period("M")
+        months = sorted(pool_df["month"].unique())
+        if len(months) < args.min_train_months + 1:
+            log.warning(f"  pool {pool}: only {len(months)} months, need {args.min_train_months + 1}, skip")
             continue
+        pool_predictions = 0
+        for i, test_month in enumerate(months[args.min_train_months:], start=args.min_train_months):
+            train_months = months[:i]
+            train = pool_df[pool_df["month"].isin(train_months)]
+            test = pool_df[pool_df["month"] == test_month]
+            if len(test) == 0 or len(train) < 100:
+                continue
 
-        x_train = train[risk_features].fillna(0).values
-        y_train = train["residual"].values
-        x_test = test[risk_features].fillna(0).values
+            x_train = train[risk_features].fillna(0).values
+            y_train = train["residual"].values
+            x_test = test[risk_features].fillna(0).values
 
-        model_child = lgb.LGBMRegressor(
-            num_leaves=15, learning_rate=0.05, n_estimators=args.n_estimators,
-            verbose=-1,
-        )
-        model_child.fit(x_train, y_train)
-        child_score = model_child.predict(x_test)
+            model_child = lgb.LGBMRegressor(
+                num_leaves=15, learning_rate=0.05, n_estimators=args.n_estimators,
+                verbose=-1,
+            )
+            model_child.fit(x_train, y_train)
+            child_score = model_child.predict(x_test)
 
-        # 写 mart_p0b_oos_predictions for this pool
-        rows = []
-        for i, (_, row) in enumerate(test.iterrows()):
-            rows.append([
-                row["stock_code"], row["signal_date"],
-                float(child_score[i]),
-                row.get("fwd_cost_after_5d"),
-                row.get(args.label) if args.label == "fwd_cost_after_10d" else None,
-                row.get("fwd_cost_after_20d"),
-                f"phase2_child_{pool}",
-                "v3.2.phase2_child", "regime_full_v2_risk", "v1",
-                "expanding_monthly", built_at,
-            ])
-        conn._con.executemany(
-            """INSERT OR REPLACE INTO mart_p0b_oos_predictions
-               (stock_code, signal_date, score, fwd_cost_after_5d,
-                fwd_cost_after_10d, fwd_cost_after_20d, model_id,
-                model_version, feature_version, label_version,
-                walk_forward_mode, built_at)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-            rows,
-        )
-        total_predictions += len(rows)
-        log.info(f"  pool {pool}: train={len(train)} test={len(test)} predictions={len(rows)}")
+            rows = []
+            for j, (_, row) in enumerate(test.iterrows()):
+                rows.append([
+                    row["stock_code"], row["signal_date"],
+                    float(child_score[j]),
+                    row.get("fwd_cost_after_5d"),
+                    row.get(args.label) if args.label == "fwd_cost_after_10d" else None,
+                    row.get("fwd_cost_after_20d"),
+                    f"phase2_child_{pool}",
+                    "v3.2.phase2_child_wf", "regime_full_v2_risk", "v1",
+                    "expanding_monthly", built_at,
+                ])
+            conn._con.executemany(
+                """INSERT OR REPLACE INTO mart_p0b_oos_predictions
+                   (stock_code, signal_date, score, fwd_cost_after_5d,
+                    fwd_cost_after_10d, fwd_cost_after_20d, model_id,
+                    model_version, feature_version, label_version,
+                    walk_forward_mode, built_at)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                rows,
+            )
+            pool_predictions += len(rows)
+        total_predictions += pool_predictions
+        log.info(f"  pool {pool}: {len(months)} months / {len(months) - args.min_train_months} test windows / {pool_predictions} predictions")
 
     log.info(f"\n=== Phase 2 Child OOS Results ===")
     log.info(f"  Pools trained: {len(pools)}")

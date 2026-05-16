@@ -38,11 +38,12 @@ selection:
       sharpe_min: 0.3
       win_rate_min: 0.55
   # ML score 模式特定字段:
-  # Codex ace17432 验证 priority #3: beta_decile_winB paper_sim FAIL.
-  # Phase 2 hierarchical (parent + 24 child residual): phase2_combined_w70 RankIC +0.1330 (20x baseline).
-  # 实测 paper_sim 1 month: ann +114%/max_dd -7%/胜率 100% (但 16 dates 太小 + 换手 45x).
-  # 维持 lgbm_v3_honest_20d 作 default live (paper_sim 5/5 PASS 2 windows verified).
-  # phase2_combined 待 walk-forward expanding monthly child training + frozen holdout 验证.
+  # Phase 2 hierarchical:
+  # - 70/30 split combined: RankIC +0.1330 (overfit) / paper_sim +114% 1 month
+  # - WF expanding monthly: RankIC +0.0730 / IC IR 1.4272 / paper_sim +18% (conservative)
+  # vs lgbm_v3 v4 baseline (200 day verified): +66.6% / 5/5 PASS.
+  # Phase 2 alpha exists but not clearly > v3 on small WF sample (21 dates).
+  # 维持 lgbm_v3_honest_20d 作 live default (verified production model).
   ml_score_model_id: "lgbm_v3_honest_20d"
   ml_score_max_candidates: 30      # 取 ML score 前 30 名 (大于 max_positions 防过滤后不够)
   ml_score_min_score: null         # 不限分数下限

@@ -740,6 +740,28 @@ SELECT * FROM mart_data_source_watermark;
 
 每次 session 增量内容写这里, 新 session 启动时**从下往上读**最近改了啥.
 
+### 2026-05-16 (Phase 2 WF child + WF combined: RankIC +0.0730 + paper_sim +18% conservative)
+
+Walk-forward expanding monthly child stage 实施:
+- Child WF (min-train-months 1): 26 pools × 2 test windows = 74,846 predictions / 21 dates
+- WF combined: **RankIC +0.0730 / IC IR +1.4272** (Gate PASS, 11x v3 baseline)
+
+vs prior 70/30 split (overfit risk):
+- 70/30 combined: RankIC +0.1330 / IC IR 1.2841 / 16 dates
+- WF combined: RankIC +0.0730 / IC IR 1.4272 / 21 dates (more conservative + IC IR ↑)
+
+paper_sim with phase2_combined_w70_wf (21 dates, 2026-02-02 ~ 2026-03-10):
+- ann +18.3% / max_dd -4.5% / 胜率 100% / 超额 +6.4%
+- Sharpe +0.94 / Calmar +4.04 / IR +2.66
+- 换手 58.81x (FAIL)
+- 3/5 user metrics PASS
+
+vs lgbm_v3 v4 baseline (200 day window): ann +66.6% / 5/5 PASS.
+
+Conclusion: Phase 2 hierarchical alpha REAL (IC PASS, paper_sim positive) BUT NOT CLEARLY > v3 baseline on small WF sample. 需 frozen holdout + longer window comparison.
+
+yaml revert ml_score_model_id → lgbm_v3_honest_20d (live default).
+
 ### 2026-05-16 (Phase 2 paper_sim translation: +114% ann, 100% win 1 month — RankIC translates!)
 
 phase2_combined_w70 paper_sim (window 2026-02-09 ~ 2026-03-10, 16 dates):
