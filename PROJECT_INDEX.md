@@ -740,6 +740,30 @@ SELECT * FROM mart_data_source_watermark;
 
 每次 session 增量内容写这里, 新 session 启动时**从下往上读**最近改了啥.
 
+### 2026-05-16 (Phase 2 paper_sim translation: +114% ann, 100% win 1 month — RankIC translates!)
+
+phase2_combined_w70 paper_sim (window 2026-02-09 ~ 2026-03-10, 16 dates):
+- 年化 +114.1% / max_dd -7.4% / 月胜率 100% / 超额 +9.9% (4/5 user metrics PASS)
+- Sharpe +2.57 / Calmar +15.41 / IR +5.27 / 换手 45x
+- Anti-churn FAIL (换手 too high, 但 alpha 显著)
+
+**Phase 2 hierarchical alpha 真 translates to paper_sim!** (vs beta_decile_winB IC PASS but paper_sim FAIL).
+
+但 caveat:
+- 1 month / 16 dates sample 太小 (Codex Rule 5 异常数字警报)
+- 可能 lucky window (no hard_stop, 浅 max_dd)
+- Walk-forward expanding monthly child training 才能产生 full window predictions
+- Frozen holdout 2025-09~2026-04 验证待做
+
+yaml revert 回 lgbm_v3_honest_20d (paper_sim 5/5 PASS 2 windows verified production model).
+phase2_combined 作 candidate, 待 walk-forward + frozen holdout + DSR audit PASS 后切换.
+
+下次 session 实施:
+- Child stage walk-forward expanding monthly (full window predictions)
+- Frozen holdout 2025-09~2026-04 validate
+- DSR audit on phase2_combined_w70 full window
+- paper_sim with phase2_combined_w70 full window
+
 ### 2026-05-16 (Phase 2 HIERARCHICAL FULL IMPL: parent+child+combine RankIC +0.1330!)
 
 **[BREAKTHROUGH] Codex final 24-pool hierarchical 完整实施成功**:
