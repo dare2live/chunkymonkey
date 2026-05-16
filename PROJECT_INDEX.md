@@ -740,6 +740,30 @@ SELECT * FROM mart_data_source_watermark;
 
 每次 session 增量内容写这里, 新 session 启动时**从下往上读**最近改了啥.
 
+### 2026-05-16 (Phase 2 parent smoke 警报: mart_stock_regime_full RankIC -0.0043 NEGATIVE!)
+
+跑 existing run_p0b_lambdamart_v3.py on mart_stock_regime_full (135 cols):
+- 50 n_estimators, 4 walk-forward windows (2025-01 ~ 2026-04, 62 dates)
+- 1.35M filtered training rows / 240,858 predictions
+- **overall RankIC -0.0043 (NEGATIVE!)** vs v3 baseline +0.018~0.021
+- IC IR -0.0414 / Gate FAIL
+
+⚠ Codex Rule 5 反向警报: naive augment 3 dim (candle/regime/calendar) → 暴跌 alpha (-2.4pp).
+
+可能根因 (待 next session 调查):
+1. 新 cols 引入 noise > signal
+2. `regime_full_anchor_date` DATE col 误入 features (需 _META_FIELDS 排除)
+3. smoke window 1.5 year 短 vs v3 baseline 1.8 year
+4. Need per-pool train (Phase 2 hierarchical 才真实测点)
+
+下次 session 行动:
+- _META_FIELDS 排除新 DATE / META cols
+- v3 baseline same-window 对比 (2025-01~2026-04)
+- mart_stock_regime_full same-window 重测
+- Codex 复审 + per-pool training (Phase 2 真正路径)
+
+重要发现: naive feature augment 不 work, 必须 hierarchical pooled 才能发挥 24-pool benefit (Codex original 推荐).
+
 ### 2026-05-16 (Phase 2 skeleton: train_phase2_hierarchical.py 3-stage 设计)
 
 Codex final hierarchical 24-pool 方案 训练 script skeleton (stage parent / child / combine):
