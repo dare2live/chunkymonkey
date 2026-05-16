@@ -599,3 +599,38 @@ def _hs300_normalized(mkt_conn, conn, today: str, sim_run_id: str,
     if not start_close or not start_close[0]:
         return None
     return today_close / float(start_close[0])
+
+
+# ===================== 多 portfolio (实盘 forward 用) =====================
+
+def run_paper_sim_day_multi(
+    conn,
+    mkt_conn,
+    *,
+    today: str,
+    portfolios: dict[str, "tuple[str, PaperSimConfig]"],
+    starting_cash_map: Optional[dict[str, float]] = None,
+) -> dict[str, dict[str, Any]]:
+    """跑多个 portfolio 同日 (用户 2026-05-16: 3 组 paper_sim 对比).
+
+    Args:
+        portfolios: {portfolio_id: (sim_run_id, cfg)}.
+            e.g. {'A': ('live_A_2026-05-16', cfg_v4), 'B': ('live_B_2026-05-16', cfg_v8)}
+        starting_cash_map: optional {portfolio_id: cash} 仅 sim 第一天用; 后续天 driver 从最近 NAV 推.
+
+    Returns:
+        {portfolio_id: summary} — 每 portfolio 独立 summary (n_exits/n_swaps/n_buys/total_value/...).
+
+    各 portfolio 独立 sim_run_id, 独立 NAV / position / trade / KPI 表写入.
+    适用: live forward simulation 每日盘后 cron 触发, 3 组并行 dashboard 对比.
+    """
+    results: dict[str, dict[str, Any]] = {}
+    for pid, (sim_run_id, cfg) in portfolios.items():
+        starting_cash = (starting_cash_map or {}).get(pid)
+        res = run_paper_sim_day(
+            conn, mkt_conn,
+            sim_run_id=sim_run_id, today=today, cfg=cfg,
+            starting_cash=starting_cash,
+        )
+        results[pid] = res
+    return results

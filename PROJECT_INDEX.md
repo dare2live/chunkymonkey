@@ -740,6 +740,22 @@ SELECT * FROM mart_data_source_watermark;
 
 每次 session 增量内容写这里, 新 session 启动时**从下往上读**最近改了啥.
 
+### 2026-05-16 (multi-portfolio paper_sim driver wrap — 用户 push "3 组对比")
+
+用户 ask 实盘 3 组 paper_sim 并行 (v4 保守 / v8 激进 / Phase 1 后 自适应).
+
+新增 `services/paper_sim/driver.py::run_paper_sim_day_multi(conn, mkt, today, portfolios)`:
+- `portfolios: {pid: (sim_run_id, cfg)}` — 每 portfolio 独立 sim_run_id + cfg
+- 内部 loop 调 run_paper_sim_day, 各独立 NAV / position / trade / KPI 表写入
+- 适用 live forward simulation 每日 cron 触发 3-way dashboard
+
+单测 backend/tests/paper_sim/test_multi_portfolio.py 4 cases (per-portfolio call / starting_cash_map / empty / None default).
+
+Codex aa4a41ca consult Phase 1 architecture: 推 Path 3 (augment v3 with view, preserve validated alpha + add 3 missing dim: candle_pattern / regime / calendar).
+- B: PIT-safe approach per dim (anchor at trade_date, source_max_trade_date assertion)
+- C: universe_flag at materialization (488-1490 liquid)
+- D: 5 acceptance audit SQL (PIT integrity / feature completeness / compute cost / tradability / universe coverage)
+
 ### 2026-05-16 (v10 v8-multi-window audit — v8 +106% 单 fire 时点 artifact, v4 维持最终候选)
 
 用户 push back 问 "v8 +106% vs v4 +66% 是不是 leakage". Audit 5 维度 (Rule 5):
