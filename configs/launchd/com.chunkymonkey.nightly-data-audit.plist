@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.chunkymonkey.nightly-data-audit</string>
+
+    <key>ProgramArguments</key>
+    <array>
+        <string>/bin/zsh</string>
+        <string>-lc</string>
+        <string>cd /Users/dp/Documents/M/stock/chunkymonkey &amp;&amp; PYTHONPATH=backend /opt/homebrew/opt/python@3.13/libexec/bin/python3 backend/scripts/nightly_data_audit.py --write-default-json --lookback-days 30</string>
+    </array>
+
+    <key>StartCalendarInterval</key>
+    <dict>
+        <key>Hour</key>
+        <integer>2</integer>
+        <key>Minute</key>
+        <integer>0</integer>
+    </dict>
+
+    <key>StandardOutPath</key>
+    <string>/Users/dp/Documents/M/stock/chunkymonkey/data/audit/launchd_stdout.log</string>
+
+    <key>StandardErrorPath</key>
+    <string>/Users/dp/Documents/M/stock/chunkymonkey/data/audit/launchd_stderr.log</string>
+
+    <key>RunAtLoad</key>
+    <false/>
+
+    <key>WorkingDirectory</key>
+    <string>/Users/dp/Documents/M/stock/chunkymonkey</string>
+</dict>
+</plist>

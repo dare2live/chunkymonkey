@@ -801,7 +801,13 @@ SELECT * FROM mart_data_source_watermark;
 
 测试: 5 fail 全 fix, 全 suite 17 fail / 2189 pass = baseline 一致 (lint 改动无 regression).
 
-未实施 (Phase 1 剩余): launchd cron nightly_data_audit / pre-commit governance-yaml-sync hook.
+**#3 launchd cron (commit ?)**:
+- `configs/launchd/com.chunkymonkey.nightly-data-audit.plist`: 每天 02:00 跑 nightly_data_audit (StartCalendarInterval Hour=2 Minute=0)
+- `configs/launchd/README.md`: install / verify / failure response / uninstall 文档
+- plist plutil -lint PASS / dry-run command PASS (severity=critical 报警如预期)
+- 注意: 用户需手动 `cp ... ~/Library/LaunchAgents/ && launchctl load ...` (system-level deploy 不自动)
+
+未实施 (Phase 1 剩余): pre-commit governance-yaml-sync hook.
 
 ### 2026-05-17 凌晨 数据治理 framework v1 (Codex round 16 task-mp8ktoe3-8rkde7, commit d055f5cb)
 
