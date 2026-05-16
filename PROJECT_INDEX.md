@@ -740,6 +740,30 @@ SELECT * FROM mart_data_source_watermark;
 
 每次 session 增量内容写这里, 新 session 启动时**从下往上读**最近改了啥.
 
+### 2026-05-16 (beta_decile paper_sim REVELATION: RankIC PASS but paper_sim FAIL)
+
+Codex ace17432 priority #3 validation: paper_sim with beta_decile_winB model on its native Window B (2025-01~2025-08).
+
+KPI 实测:
+- 年化 -16.1% (vs lgbm_v3 same window v7 +45.0%, **-61pp 暴跌!**)
+- max_dd -16.5% (less aggressive but no alpha to lose)
+- 月胜率 29% (vs v7 75%)
+- 60d IR med **-1.30** (negative!)
+- Sharpe -0.72
+
+⚠ Critical finding: **RankIC alpha (+0.0694 / DSR 0.9746 PASS) does NOT translate to paper_sim**. Mechanism untranslate:
+1. Top-K selection bias (model 选不同 stocks 实际 traders 难 fit)
+2. Liquidity differs (high beta stocks 流动性 issue)
+3. Score distribution flat (cost dominates marginal alpha)
+4. RankIC measures correlation, paper_sim measures strategy ROI
+
+Codex ace17432 priority #2 verdict **CONFIRMED**: GO lgbm_v3_honest_20d (paper_sim 5/5 PASS verified). beta_decile alpha exists at IC level but FAILS strategy translation.
+
+实施:
+- yaml revert ml_score_model_id 回 lgbm_v3_honest_20d
+- beta_decile features 留 mart_stock_regime_full (Phase 2 hierarchical 用) BUT not for selector
+- Codex 5th #2 verified, #3 actioned + finding documented
+
 ### 2026-05-16 (Codex 5th ace17432 FINAL: CLEAR LAUNCH PATH)
 
 5 round Codex review chain: aa2d79d2 → acf91c1f → ad2e09e7 → a49c90a6 → **ace17432 (final)**.
