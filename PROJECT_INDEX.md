@@ -786,6 +786,23 @@ SELECT * FROM mart_data_source_watermark;
 4. Phase 2 hierarchical reframe: 不当 selector 主线, 转 "解释层 + 横截面排序辅助"
 5. 预注册盲测窗: 锁 future N month 防研究污染
 
+**Codex 2/3/4 round 迭代 (用户 push back 驱动)**:
+- Round 1 (a53bac9456): #47 战略 verdict, Option C (KEEP 5178+fallback) 先做
+- Round 2 (--fresh, 用户 push back "小宇宙过于局限"): 调整 stance — C 不解决 selection bias 只是 baseline, 真 fix Option E (PIT cross-sectional pool), Phase 1a F+C 对照实验先
+- Round 3 (--fresh, fallback default 设计): hp=10 / stop=-0.08 / target=0.12 / trailing=0.08 ex-ante 弱假设, single global default 不分 sector, yaml 默认 fallback_enabled=false 维持 live 兼容
+- Round 4 (--fresh, full diff pre-review, 跑中): 4 file 改动 (config.py + ml_score_loader.py + paper_sim_ml_score_C_5178.yaml 新建 + selector.py CandidateRow +exit_source)
+
+**Codex log 改进 (用户实时 visibility)**:
+- 路径: `/tmp/codex.log`, 用户 `tail -f` 持续 follow (一次开着 follow 自动)
+- 格式 (round 4 起): `[Claude → Codex]` prompt + `[Codex → Claude]` response 聊天对话标识, 用户能看双向
+- 防 retry: 用 `PROMPT='...'` Bash variable 避免 HEREDOC special char escape (round 4 第一次 fail exit 1, retry PASS)
+
+**Option C 实施就绪 (待 sync 完 + Codex round 4 verdict)**:
+- config.py SelectionConfig +ml_score_fallback_enabled (bool=False) +ml_score_fallback_params (dict)
+- ml_score_loader.py use_pit=True path 加 `if cfg.ml_score_fallback_enabled` 分支 (LEFT JOIN+COALESCE) else 现有 INNER JOIN 不改
+- paper_sim_ml_score_C_5178.yaml 新建 (复制 ml_score.yaml + fallback_enabled=true)
+- selector.py CandidateRow +exit_source field default='pit'
+
 ### 2026-05-16 (Phase 2 WF child + WF combined: RankIC +0.0730 + paper_sim +18% conservative)
 
 Walk-forward expanding monthly child stage 实施:

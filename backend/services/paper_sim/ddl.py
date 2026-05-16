@@ -57,6 +57,8 @@ CREATE TABLE IF NOT EXISTS fact_paper_sim_position (
     days_held         INTEGER,
     -- 锁定的预期值 (用来算达成率)
     expected_target_pct DOUBLE NOT NULL,         -- = optimal_target_pct (锁定时的)
+    -- Phase 1a Option C (Codex round 4 MAJOR): exit params 来源 'pit' (PIT 表 INNER JOIN) 或 'fallback' (Option C 弱 default 缺 PIT)
+    exit_source       TEXT DEFAULT 'pit',
     -- Trailing 状态 (跨日跟踪, portfolio_backtest 同款逻辑)
     trailing_armed    BOOLEAN NOT NULL DEFAULT FALSE,  -- target hit 后变 True
     high_since_arm    DOUBLE,                          -- arm 后的最高价
@@ -83,6 +85,8 @@ CREATE TABLE IF NOT EXISTS fact_paper_sim_trade (
     net_amount        DOUBLE NOT NULL,           -- gross +/- tx_cost
     -- Swap counterfactual (仅 SWAP_OUT 行填)
     swap_uplift_estimate DOUBLE,                 -- 估算的 swap 净收益增量
+    -- Phase 1a Option C (Codex round 4 MAJOR): 继承自 position.exit_source ('pit' / 'fallback')
+    exit_source       TEXT DEFAULT 'pit',
     built_at          TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 CREATE INDEX IF NOT EXISTS idx_fpst_run  ON fact_paper_sim_trade(sim_run_id);
@@ -128,6 +132,13 @@ CREATE TABLE IF NOT EXISTS mart_paper_sim_kpi (
     -- 综合
     all_kpi_pass      BOOLEAN,
     config_snapshot   TEXT,                      -- JSON of full PaperSimConfig (审计 + 复现)
+    -- Phase 1a Option C (Codex round 6 MAJOR #1): exit_source 分层 attribution (按 closed position)
+    pit_count         INTEGER,
+    pit_pnl           DOUBLE,
+    pit_pnl_pct       DOUBLE,                    -- pit pnl / pit buy_cost
+    fallback_count    INTEGER,
+    fallback_pnl      DOUBLE,
+    fallback_pnl_pct  DOUBLE,                    -- fallback pnl / fallback buy_cost
     built_at          TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 CREATE INDEX IF NOT EXISTS idx_mpsk_variant ON mart_paper_sim_kpi(variant);
@@ -135,5 +146,25 @@ CREATE INDEX IF NOT EXISTS idx_mpsk_variant ON mart_paper_sim_kpi(variant);
 
 
 def ensure_paper_sim_tables(conn) -> None:
-    """幂等建 4 张 paper_sim 专用表."""
+    """幂等建 4 张 paper_sim 专用表 + ALTER 加 exit_source / partition KPI cols (Phase 1a Codex round 4+6 MAJOR)."""
     conn.executescript(DDL)
+    # Phase 1a Option C migration: 已存表 ALTER 加 exit_source / partition KPI cols
+    # CREATE TABLE IF NOT EXISTS 不会修改已存表 schema, 需 ALTER 单独跑.
+    # DuckDB ALTER ADD COLUMN IF NOT EXISTS 不支持, 用 try/except + duplicate-column 收窄 (Codex round 6 MINOR #5).
+    _migrations = [
+        ("fact_paper_sim_position", "exit_source TEXT DEFAULT 'pit'"),
+        ("fact_paper_sim_trade",    "exit_source TEXT DEFAULT 'pit'"),
+        ("mart_paper_sim_kpi",      "pit_count INTEGER"),
+        ("mart_paper_sim_kpi",      "pit_pnl DOUBLE"),
+        ("mart_paper_sim_kpi",      "pit_pnl_pct DOUBLE"),
+        ("mart_paper_sim_kpi",      "fallback_count INTEGER"),
+        ("mart_paper_sim_kpi",      "fallback_pnl DOUBLE"),
+        ("mart_paper_sim_kpi",      "fallback_pnl_pct DOUBLE"),
+    ]
+    for tbl, coldef in _migrations:
+        try:
+            conn.execute(f"ALTER TABLE {tbl} ADD COLUMN {coldef}")
+        except Exception as _e:
+            # 只吞 duplicate-column 错 (column 已存在), 其他 migration 错 raise
+            if "already exists" not in str(_e).lower() and "duplicate" not in str(_e).lower():
+                raise

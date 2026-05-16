@@ -57,7 +57,8 @@ def _load_trade_log(conn, sim_run_id: str) -> list[dict]:
 
 def _load_closed_positions(conn, sim_run_id: str) -> list[dict]:
     rows = conn.execute(
-        """SELECT stock_code, open_date, close_date, days_held, pnl, pnl_pct, close_reason
+        """SELECT stock_code, open_date, close_date, days_held, pnl, pnl_pct, close_reason,
+                  COALESCE(exit_source, 'pit') AS exit_source, buy_cost
              FROM fact_paper_sim_position
             WHERE sim_run_id = ? AND is_open = FALSE""",
         [sim_run_id],
@@ -65,9 +66,76 @@ def _load_closed_positions(conn, sim_run_id: str) -> list[dict]:
     return [
         {"stock_code": r[0], "open_date": r[1], "close_date": r[2],
          "days_held": int(r[3] or 0), "pnl": float(r[4] or 0),
-         "pnl_pct": float(r[5] or 0), "reason": r[6]}
+         "pnl_pct": float(r[5] or 0), "reason": r[6],
+         "exit_source": str(r[7]) if r[7] else "pit",
+         "buy_cost": float(r[8] or 0)}
         for r in rows
     ]
+
+
+# Phase 1a Option C (Codex round 4 MAJOR + round 6 MAJOR fix): exit_source 分层 attribution
+def compute_partition_kpi_by_exit_source(
+    conn, sim_run_id: str,
+    initial_cash: float = 1_000_000,
+    period_days: int | None = None,
+) -> dict:
+    """按 exit_source ('pit' / 'fallback' / 'all') 算 closed position attribution.
+
+    Codex round 6 MAJOR #2 fix: ann_ret_approx 按**测试窗口长度** annualize (period_days),
+    不按平均持仓期 (那样不可加总, 容易夸大). 若 period_days 缺, 从 navs date range 推.
+
+    返回 dict 含每个 partition 的 (count / sum_pnl / sum_buy_cost / pnl_pct_aggregate / ann_ret_approx).
+
+    用于 Phase 1a F vs C 对照: 跑 C.yaml 后看 pit_only 跟 fallback_only 各自贡献.
+    """
+    closed = _load_closed_positions(conn, sim_run_id)
+    # period_days: 优先 arg, 否则从 mart_paper_sim_nav date 推. 至少 1 防 0 除.
+    if period_days is None:
+        try:
+            r = conn.execute(
+                "SELECT COUNT(DISTINCT date) FROM mart_paper_sim_nav WHERE sim_run_id = ?",
+                [sim_run_id],
+            ).fetchone()
+            period_days = int(r[0] or 1)
+        except Exception:
+            period_days = 1
+    period_days = max(int(period_days), 1)
+
+    if not closed:
+        empty = {"count": 0, "sum_pnl": 0.0, "sum_buy_cost": 0.0,
+                 "pnl_pct_aggregate": 0.0, "ann_ret_approx": 0.0,
+                 "win_rate": 0.0, "avg_days_held": 0.0}
+        return {"all": empty, "pit_only": empty, "fallback_only": empty,
+                "period_days": period_days}
+
+    def _aggregate(positions: list[dict]) -> dict:
+        if not positions:
+            return {"count": 0, "sum_pnl": 0.0, "sum_buy_cost": 0.0,
+                    "pnl_pct_aggregate": 0.0, "ann_ret_approx": 0.0,
+                    "win_rate": 0.0, "avg_days_held": 0.0}
+        sum_pnl = sum(p["pnl"] for p in positions)
+        sum_cost = sum(p["buy_cost"] for p in positions)
+        wins = sum(1 for p in positions if p["pnl"] > 0)
+        avg_days = sum(p["days_held"] for p in positions) / len(positions)
+        return {
+            "count": len(positions),
+            "sum_pnl": sum_pnl,
+            "sum_buy_cost": sum_cost,
+            "pnl_pct_aggregate": sum_pnl / sum_cost if sum_cost > 0 else 0.0,
+            # Codex round 6 MAJOR #2: 按测试窗口 annualize, 不按平均持仓期
+            "ann_ret_approx": (sum_pnl / initial_cash) * (252.0 / period_days),
+            "win_rate": wins / len(positions),
+            "avg_days_held": avg_days,
+        }
+
+    pit_only = [p for p in closed if p["exit_source"] == "pit"]
+    fallback_only = [p for p in closed if p["exit_source"] == "fallback"]
+    return {
+        "all": _aggregate(closed),
+        "pit_only": _aggregate(pit_only),
+        "fallback_only": _aggregate(fallback_only),
+        "period_days": period_days,
+    }
 
 
 # ===================== A. 用户终极标准 =====================
@@ -283,6 +351,15 @@ def write_kpi_summary(
     pass_rb = check_robustness_pass(rb, cfg.validation.robustness)
     all_pass = pass_uc and pass_ac and pass_rb
 
+    # Phase 1a Option C (Codex round 6 MAJOR #1 fix): exit_source 分层 attribution 落库
+    partition = compute_partition_kpi_by_exit_source(
+        conn, sim_run_id,
+        initial_cash=float(cfg.portfolio.initial_cash),
+        period_days=len(navs),
+    )
+    _pit = partition.get("pit_only") or {}
+    _fb = partition.get("fallback_only") or {}
+
     conn.execute(
         """INSERT OR REPLACE INTO mart_paper_sim_kpi
         (sim_run_id, variant, period_start, period_end, n_days,
@@ -292,8 +369,11 @@ def write_kpi_summary(
          swap_count, swap_uplift_total, anti_churn_pass,
          rolling_ir_60d_median, rolling_ir_60d_p25, rolling_annual_90d_median,
          regime_bull_return, regime_bear_return, regime_sideways_return,
-         robustness_pass, all_kpi_pass, config_snapshot)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+         robustness_pass, all_kpi_pass, config_snapshot,
+         pit_count, pit_pnl, pit_pnl_pct,
+         fallback_count, fallback_pnl, fallback_pnl_pct)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
+                ?, ?, ?, ?, ?, ?)""",
         [sim_run_id, variant, dates[0], dates[-1], len(navs),
          uc["annual_return"], uc["max_dd"], uc["sharpe"], uc["calmar"],
          uc["monthly_win_rate"], uc["total_return"], uc.get("excess_total_return"),
@@ -305,7 +385,9 @@ def write_kpi_summary(
          rb.get("regime_bull_return"), rb.get("regime_bear_return"),
          rb.get("regime_sideways_return"), pass_rb, all_pass,
          json.dumps({"portfolio": asdict(cfg.portfolio), "swap": asdict(cfg.swap)},
-                    ensure_ascii=False)],
+                    ensure_ascii=False),
+         _pit.get("count"), _pit.get("sum_pnl"), _pit.get("pnl_pct_aggregate"),
+         _fb.get("count"), _fb.get("sum_pnl"), _fb.get("pnl_pct_aggregate")],
     )
     conn.commit()
 
@@ -315,4 +397,6 @@ def write_kpi_summary(
         "anti_churn": {**ac, "pass": pass_ac},
         "robustness": {**rb, "pass": pass_rb},
         "all_pass": all_pass,
+        # Phase 1a Option C: exit_source 分层 attribution (Codex round 6 MAJOR #1)
+        "partition_by_exit_source": partition,
     }

@@ -52,6 +52,8 @@ class _OpenPosition:
         "stage_at_buy", "optimal_hp", "optimal_stop_pct", "optimal_target_pct",
         "optimal_trailing_pct", "open_date", "open_price", "shares",
         "buy_cost", "expected_target_pct", "trailing_armed", "high_since_arm",
+        # Phase 1a Option C (Codex round 4 MAJOR): exit params 来源 'pit' or 'fallback'
+        "exit_source",
     )
 
     def __init__(self, **kw):
@@ -65,7 +67,8 @@ def _load_open_positions(conn, sim_run_id: str) -> list[_OpenPosition]:
         SELECT position_id, stock_code, formula_id, formula_variant,
                stage_at_buy, optimal_hp, optimal_stop_pct, optimal_target_pct,
                optimal_trailing_pct, open_date, open_price, shares,
-               buy_cost, expected_target_pct, trailing_armed, high_since_arm
+               buy_cost, expected_target_pct, trailing_armed, high_since_arm,
+               COALESCE(exit_source, 'pit') AS exit_source
           FROM fact_paper_sim_position
          WHERE sim_run_id = ? AND is_open = TRUE
         """,
@@ -77,6 +80,7 @@ def _load_open_positions(conn, sim_run_id: str) -> list[_OpenPosition]:
         optimal_target_pct=r[7], optimal_trailing_pct=r[8], open_date=r[9],
         open_price=r[10], shares=r[11], buy_cost=r[12], expected_target_pct=r[13],
         trailing_armed=bool(r[14]), high_since_arm=float(r[15]) if r[15] is not None else None,
+        exit_source=str(r[16]) if r[16] is not None else "pit",
     ) for r in rows]
 
 
@@ -515,16 +519,17 @@ def _close_position(conn, p, today: str, sell_price: float, reason: str,
         [today, sell_price, sell.effective_amount, reason,
          pnl, pnl_pct, days_held, p.position_id],
     )
-    # trade log
+    # trade log (Phase 1a Option C: 继承 position.exit_source)
     conn.execute(
         """INSERT INTO fact_paper_sim_trade
            (trade_id, sim_run_id, position_id, date, type, reason,
-            price, shares, gross_amount, tx_cost, net_amount, swap_uplift_estimate)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            price, shares, gross_amount, tx_cost, net_amount, swap_uplift_estimate, exit_source)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
         [str(uuid.uuid4()), sim_run_id, p.position_id, today,
          "SWAP_OUT" if reason.startswith("swap:") else "SELL",
          reason, sell_price, p.shares, sell.base_amount, sell.total_cost,
-         sell.effective_amount, swap_uplift],
+         sell.effective_amount, swap_uplift,
+         getattr(p, "exit_source", "pit") or "pit"],
     )
 
 
@@ -533,27 +538,29 @@ def _open_position_directly(conn, c: CandidateRow, today: str, buy_price: float,
                               cfg: PaperSimConfig, source: str, cash: float) -> float:
     """已经算好 shares + buy_cost, 直接 INSERT. 返回新的 cash."""
     position_id = f"{c.stock_code}_{today}_{uuid.uuid4().hex[:8]}"
+    _exit_src = getattr(c, "exit_source", "pit") or "pit"  # Phase 1a Option C
     conn.execute(
         """INSERT INTO fact_paper_sim_position
            (position_id, sim_run_id, stock_code, formula_id, formula_variant,
             stage_at_buy, optimal_hp, optimal_stop_pct, optimal_target_pct,
             optimal_trailing_pct, open_date, open_price, shares, buy_cost,
-            expected_target_pct, is_open)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, TRUE)""",
+            expected_target_pct, is_open, exit_source)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, TRUE, ?)""",
         [position_id, sim_run_id, c.stock_code, c.formula_id, c.formula_variant,
          c.stage, c.optimal_hp, c.optimal_stop_pct, c.optimal_target_pct,
          c.optimal_trailing_pct, today, buy_price, shares, buy_result.effective_amount,
-         c.optimal_target_pct or 0],
+         c.optimal_target_pct or 0, _exit_src],
     )
     conn.execute(
         """INSERT INTO fact_paper_sim_trade
            (trade_id, sim_run_id, position_id, date, type, reason,
-            price, shares, gross_amount, tx_cost, net_amount)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            price, shares, gross_amount, tx_cost, net_amount, exit_source)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
         [str(uuid.uuid4()), sim_run_id, position_id, today,
          "SWAP_IN" if source == "swap" else "BUY",
          f"{source}:tier={c.tier},score={c.score:.1f}", buy_price, shares,
-         buy_result.base_amount, buy_result.total_cost, buy_result.effective_amount],
+         buy_result.base_amount, buy_result.total_cost, buy_result.effective_amount,
+         _exit_src],
     )
     return cash - buy_result.effective_amount
 

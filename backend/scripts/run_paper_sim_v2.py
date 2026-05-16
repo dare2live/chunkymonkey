@@ -136,6 +136,19 @@ def _print_kpi(summary: dict, label: str) -> None:
     print(f"     熊市段 {bear*100:+.1f}%" if bear is not None else "     熊市段 N/A")
     print(f"     震荡段 {side*100:+.1f}%" if side is not None else "     震荡段 N/A")
 
+    # Phase 1a Option C (Codex round 6 MAJOR #1): exit_source 分层 attribution
+    partition = summary.get("partition_by_exit_source") or {}
+    if partition and any(partition.get(k, {}).get("count") for k in ("pit_only", "fallback_only")):
+        print(f"\n  D. 分层 attribution by exit_source (Phase 1a Option C):")
+        pit = partition.get("pit_only") or {}
+        fb = partition.get("fallback_only") or {}
+        period_days = partition.get("period_days", 0)
+        print(f"     测试窗口 period_days={period_days} (用于 ann_ret_approx annualize)")
+        print(f"     pit_only    : count={pit.get('count',0)}  sum_pnl={pit.get('sum_pnl',0):+,.0f}  "
+              f"pnl_pct={pit.get('pnl_pct_aggregate',0)*100:+.2f}%  ann_ret_approx={pit.get('ann_ret_approx',0)*100:+.1f}%")
+        print(f"     fallback    : count={fb.get('count',0)}  sum_pnl={fb.get('sum_pnl',0):+,.0f}  "
+              f"pnl_pct={fb.get('pnl_pct_aggregate',0)*100:+.2f}%  ann_ret_approx={fb.get('ann_ret_approx',0)*100:+.1f}%")
+
     print(f"\n  >>> 综合 KPI: {'[ALL PASS] 可上 live' if summary['all_pass'] else '[FAIL] 至少一类不过 — 不上线'}")
 
 

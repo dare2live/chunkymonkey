@@ -150,6 +150,9 @@ class CandidateRow:
     stop_price: Optional[float]
     stage: Optional[str]
     match_tier: str                 # 'stage_aware' / 'cross_stage_fallback'
+    # Phase 1a Option C (Codex round 4 MAJOR): exit params 来源标识. 'pit' = INNER JOIN
+    # mart_per_stock_stage_strategy_optimal_pit 拿到; 'fallback' = 缺 PIT, 走 ex-ante 弱 default.
+    exit_source: str = "pit"
 
 
 def load_today_candidates(
@@ -613,6 +616,9 @@ def load_today_candidates_dispatch(
             model_id=getattr(cfg, "ml_score_model_id", "lgbm_baseline_v1"),
             max_candidates=getattr(cfg, "ml_score_max_candidates", 30),
             min_score=getattr(cfg, "ml_score_min_score", None),
+            # Phase 1a Option C (Codex round 4): propagate fallback flag/params
+            fallback_enabled=getattr(cfg, "ml_score_fallback_enabled", False),
+            fallback_params=getattr(cfg, "ml_score_fallback_params", None),
         )
     if cfg.mode == "hybrid":
         # Codex 7-day plan Day 6: hybrid blend (sequential filter + rank-linear).

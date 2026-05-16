@@ -65,6 +65,14 @@ class SelectionConfig:
     ml_score_model_id: str = "lgbm_baseline_v1"
     ml_score_max_candidates: int = 30
     ml_score_min_score: float | None = None
+    # Phase 1a Option C (Codex round 3 fallback default + round 4 MAJOR 落库闭环):
+    # ml_score_fallback_enabled=True 时, paper_sim universe 扩到 KEEP 5178 全 A.
+    # 缺 PIT exit params 股走 ml_score_fallback_params ex-ante 弱 default (不可调参防 leakage).
+    # 默认 False 维持 Option F (1490 严格 INNER JOIN) live 3 portfolio yaml 兼容.
+    ml_score_fallback_enabled: bool = False
+    ml_score_fallback_params: dict = field(default_factory=lambda: {
+        "hp": 10, "stop_pct": -0.08, "target_pct": 0.12, "trailing_pct": 0.08,
+    })
     # Codex 7-day plan Day 6: hybrid mode (sequential filter + rank-linear blend).
     # 只在 mode='hybrid' 生效.
     hybrid_model_id: str = "lgbm_baseline_v1"
@@ -75,6 +83,27 @@ class SelectionConfig:
     # hp_expired 强制 days_held >= max(optimal_hp, min_forced_hp). 0 = 关闭, 实测 15 把 turnover 从 22x→8x.
     # stop_hit / trailing / stage_det 不受此限 (真实风险退出永远允许).
     min_forced_hp: int = 0
+
+    def __post_init__(self):
+        # Phase 1a Option C (Codex round 6 MINOR #4): 校验 ml_score_fallback_params
+        # ex-ante 弱假设, 防 yaml 错配让 paper_sim 跑脏参数.
+        if self.ml_score_fallback_enabled:
+            fp = self.ml_score_fallback_params or {}
+            required = ("hp", "stop_pct", "target_pct", "trailing_pct")
+            missing = [k for k in required if k not in fp]
+            if missing:
+                raise ValueError(
+                    f"ml_score_fallback_enabled=true 但 fallback_params 缺 key: {missing}. "
+                    f"required: hp/stop_pct/target_pct/trailing_pct (ex-ante 弱假设)"
+                )
+            if fp["hp"] <= 0 or fp["hp"] > 60:
+                raise ValueError(f"fallback hp={fp['hp']} 不合理 (应 1-60 day)")
+            if fp["stop_pct"] >= 0 or fp["stop_pct"] < -0.30:
+                raise ValueError(f"fallback stop_pct={fp['stop_pct']} 不合理 (应 -0.01 ~ -0.30, 负数)")
+            if fp["target_pct"] <= 0 or fp["target_pct"] > 1.0:
+                raise ValueError(f"fallback target_pct={fp['target_pct']} 不合理 (应 0.01 ~ 1.0, 正数)")
+            if fp["trailing_pct"] <= 0 or fp["trailing_pct"] > 0.50:
+                raise ValueError(f"fallback trailing_pct={fp['trailing_pct']} 不合理 (应 0.01 ~ 0.50, 正数)")
 
 
 @dataclass(frozen=True)
