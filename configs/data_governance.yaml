@@ -1,0 +1,243 @@
+version: 1
+policy_id: kline_governance_v1_tdxhub_primary
+effective_date: "2026-05-17"
+owner: data-platform
+
+source_tiers:
+  tier_1:
+    standard: "Contracted, reproducible, PIT-safe, unit-declared source with measured coverage and automated lint."
+    responsibilities:
+      - "Own canonical production writes for the capability."
+      - "Publish field units, precision, timezone, adjustment policy, and expected freshness."
+      - "Block downstream builds when contract, coverage, or sanity checks fail."
+    decision_criteria:
+      freshness_trading_days_max: 1
+      source_lineage_required: true
+      unit_contract_required: true
+      downstream_allowed: true
+    sources:
+      kline_daily_qfq: price_kline_tdxhub
+  tier_2:
+    standard: "Validated fallback or benchmark-only source with explicit allowlist and row-level lineage."
+    responsibilities:
+      - "Fill only approved gaps that tier-1 cannot currently cover."
+      - "Never overwrite a tier-1 row for the same capability key."
+      - "Expire automatically when tier-1 coverage is restored."
+    decision_criteria:
+      downstream_allowed: "allowlist only"
+      fallback_requires_ticket: true
+      row_level_is_fallback_required: true
+    sources:
+      hs300_benchmark: akshare_csindex_hs300
+  tier_3:
+    standard: "Exploratory, legacy, or non-contracted data. Not allowed in production marts or labels."
+    responsibilities:
+      - "Remain outside production canonical views."
+      - "Be deleted when replaced by tier-1 or tier-2."
+      - "Require a new source review before any production use."
+    decision_criteria:
+      downstream_allowed: false
+      production_write_allowed: false
+      retention_default: delete
+
+schema_contracts:
+  price_kline_tdxhub:
+    contract_id: price_kline_tdxhub_v1_lots_cny_qfq_daily
+    capability: kline_daily_qfq
+    source_tier: 1
+    primary_key: [code, date, freq, adjust]
+    timezone: Asia/Shanghai
+    trading_calendar: dim_trading_calendar
+    adjustment: qfq
+    date_semantics: "exchange trading date, not ingestion date"
+    fields:
+      code:
+        type: text
+        unit: security_code
+      date:
+        type: date_text_yyyy_mm_dd
+        unit: trading_day
+      freq:
+        type: text
+        allowed_values: [daily, monthly]
+      adjust:
+        type: text
+        allowed_values: [qfq]
+      open:
+        type: real
+        unit: CNY_per_share
+        precision: 1e-4
+      high:
+        type: real
+        unit: CNY_per_share
+        precision: 1e-4
+      low:
+        type: real
+        unit: CNY_per_share
+        precision: 1e-4
+      close:
+        type: real
+        unit: CNY_per_share
+        precision: 1e-4
+      volume:
+        type: real
+        unit: lots
+        lot_size_shares: 100
+        precision: 1e-6
+      amount:
+        type: real
+        unit: CNY
+        precision: 0.01
+      factor:
+        type: real
+        unit: qfq_adjustment_factor
+        default: 1.0
+      source:
+        type: text
+        unit: source_name
+      batch_id:
+        type: text
+        unit: ingest_run_id
+      ingested_at:
+        type: timestamp_text
+        timezone: UTC
+    derived_formulas:
+      vwap_qfq:
+        expression: "amount / (volume * lot_size_shares)"
+        unit: CNY_per_share
+        valid_ratio_to_close: [0.5, 1.5]
+
+  price_kline:
+    contract_id: price_kline_legacy_retired_v1
+    status: retired_except_hs300_benchmark_allowlist
+    allowed_sources: [akshare_csindex_hs300]
+    forbidden_sources:
+      - akshare_sina
+      - akshare_eastmoney
+      - akshare_tx
+      - akshare_mootdx
+      - chatgpt_import
+      - mootdx
+      - eastmoney_direct
+      - derived_from_daily
+    downstream_allowed: false
+    retirement_target: "delete stock rows, keep no production stock writer"
+
+ingestion_lint:
+  policy_id: kline_ingest_lint_v1
+  reject:
+    - name: missing_primary_key
+      rule: "code/date/freq/adjust is null or empty"
+    - name: non_positive_ohlc
+      rule: "open/high/low/close <= 0"
+    - name: non_positive_volume_or_amount
+      rule: "volume <= 0 or amount <= 0"
+    - name: invalid_ohlc_shape
+      rule: "high < max(open, low, close) or low > min(open, high, close)"
+    - name: invalid_vwap_close_ratio
+      rule: "amount / (volume * 100) / close not in [0.5, 1.5]"
+    - name: forbidden_stock_kline_source
+      rule: "capability=kline_daily_qfq and source not like 'tdxhub%'"
+  warn:
+    - name: high_single_code_daily_change
+      rule: "abs(close / lag(close) - 1) > 0.25 outside explicitly allowlisted listing-limit regimes"
+    - name: stale_source
+      rule: "max(date) lags latest_completed_trade_date by more than 1 trading day"
+    - name: tier2_benchmark_fallback_used
+      rule: "source_tier=2 row accepted for benchmark allowlist"
+  accept:
+    - name: tier1_clean_tdxhub
+      rule: "tdxhub row passes schema contract and lint"
+    - name: hs300_tier2_allowlist
+      rule: "code='000300' and source='akshare_csindex_hs300' until tier-1 HS300 history is complete"
+
+cross_source_consistency:
+  authority_order:
+    - source_tier: 1
+      source: price_kline_tdxhub
+      action: authoritative
+    - source_tier: 2
+      source: akshare_csindex_hs300
+      action: benchmark_gap_fill_only
+    - source_tier: 3
+      source: legacy_akshare_or_direct
+      action: reject_for_production
+  conflict_key: [code, date, freq, adjust]
+  conflict_resolution:
+    same_key_tier1_vs_any: "tier-1 wins; lower tier row is ignored and counted as conflict."
+    same_key_same_tier: "reject unless values match within price epsilon 1e-4 and amount epsilon 0.01."
+    tier2_without_allowlist: "reject and alert."
+    tier3_in_canonical_view: "block downstream build."
+
+periodic_audit:
+  script: backend/scripts/nightly_data_audit.py
+  schedule: "nightly after market sync, before label/model/paper_sim builds"
+  checks:
+    - name: vwap_close_ratio_anomaly_count
+      sql_id: vwap_close_ratio
+      threshold:
+        warn_count_gt: 0
+        block_count_gt: 0
+    - name: single_source_proportion_drift
+      sql_id: source_proportion
+      threshold:
+        tier1_ratio_min: 0.999
+        fallback_rows_allowlist_only: true
+        block_non_allowlist_fallback_rows_gt: 0
+    - name: fwd_cost_after_outlier_count
+      sql_id: fwd_cost_after_outliers
+      threshold:
+        abs_value_gt: 1.0
+        block_count_gt: 0
+        block_nan_count_gt: 0
+  failure_response:
+    warn: "write audit report, continue read-only dashboards only"
+    block: "stop label panel, model training, paper_sim, P3 holdout, and champion promotion"
+    alert_path: "data/audit/nightly_data_audit_latest.json plus cron stderr"
+
+deprecation:
+  sop_document: docs/deprecation_sop.md
+  retention_preference: delete_not_archive
+  retired_sources_delete:
+    - akshare_sina
+    - akshare_eastmoney
+    - akshare_tx
+    - akshare_mootdx
+    - chatgpt_import
+    - mootdx
+    - eastmoney_direct
+    - derived_from_daily
+
+lineage_provenance:
+  example:
+    raw_column: price_kline_tdxhub.volume
+    raw_contract: price_kline_tdxhub_v1_lots_cny_qfq_daily
+    raw_unit: lots
+    transform_1:
+      output_column: mart_p0a_label_panel.entry_vwap
+      expression: "amount / (volume * 100)"
+      unit: CNY_per_share
+      transform_id: label_vwap_qfq_lots_v1
+    transform_2:
+      output_columns:
+        - mart_p0a_label_panel.fwd_cost_after_5d
+        - mart_p0a_label_panel.fwd_cost_after_10d
+        - mart_p0a_label_panel.fwd_cost_after_20d
+      expression: "(exit_price / entry_vwap) - 1 - round_trip_cost_pct"
+      unit: ratio
+      transform_id: forward_cost_after_v1
+    model:
+      feature_table: mart_p0a_feature_label_panel_v3
+      prediction_table: mart_p0b_oos_predictions
+      required_fields:
+        - input_contract_hash
+        - label_build_id
+        - feature_build_id
+        - model_id
+    kpi:
+      table: mart_p3_acceptance_result
+      required_fields:
+        - model_id
+        - prediction_build_id
+        - label_build_id
+        - audit_run_id

@@ -19,6 +19,7 @@ data/qlib_runs_check/
 data/multidim_models/*.pkl
 data/optuna/
 data/storage_cleanup_smoke/
+data/audit/
 claude/
 mlruns/
 node_modules/

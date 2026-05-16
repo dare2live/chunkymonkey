@@ -6,7 +6,51 @@
 > **目标**: 新接手 (无论 Claude 还是人) 读完此文档**不用看代码 / 不用查 DB** 就能理解:
 > 项目业务 / 架构 / 技术路线 / 数据资产 / 当前进度 / 已知坑 / 常用操作.
 
-最后更新: 2026-05-14 (Phase ψ.δ.experiment 3 ablation fail + per_stock_stage ceiling 跑中; handoff Claude Code CLI 见 HANDOFF.md).
+最后更新: **2026-05-17** (P0a label CRITICAL leakage → 数据治理 framework 优先, Codex round 16 yaml/sop deliver, ML chain 暂停 rebuild).
+
+## [CRITICAL] 2026-05-17 重大数据治理事件
+
+**触发**: P3 holdout lgbm_v3_honest_20d 6 OOS 月 ann_ret=21843% (Rule 5 异常高数字 leakage 警报), root cause `market.duckdb price_kline.volume` 单位混乱 (akshare_sina=股 / mootdx/eastmoney=手), label panel vwap 算错 100×.
+
+**用户 push back**:
+1. "tdxhub 优先, 口径也会变?" — ML 训练统一 tdxhub 口径
+2. "mootdx 已退役, 不应再有 mootdx 字样"
+3. "数据治理出现了问题" — systemic 不是单点
+4. "先研究治理方案, 不然后续是空中楼阁"
+
+**Codex round 16 deliver** (task-mp8ktoe3-8rkde7):
+- `configs/data_governance.yaml` 244 行 — 3 tier / schema contract / 6 reject + 3 warn lint / cross-source / nightly audit / deprecation / lineage 4-level
+- `docs/deprecation_sop.md` 136 行 — 4 步 SOP (Decision Record / Read Path Removal / Physical Delete / Rebuild Gate)
+- `backend/scripts/check_sina_tdxhub_overlap.py` — coverage 验证 (sina_not_in_tdxhub_codes = 0 verified)
+
+**Governance 已建但未 enforce 的基础设施 (修了一半)**:
+| 资产 | 行数 | 现状 |
+|---|---:|---|
+| `kline_source.py::clean_price_row` | 60 | 基础 sanity, **不 source-aware**, **不归一化单位** |
+| `config/field_dictionary.yaml` | 515 | 已记 volume unit warning, **doc-only 不 enforce** |
+| `paper_sim/driver.py::_vwap` helper | -- | 已加 sanity, **label/build.py SQL 不走 helper** |
+| `return_engine.py::_resolve_reasonable_vwap` | -- | 已加 sanity, 独立 2 个 helper 不共享 |
+| `nightly_data_audit.py` | 308 | 已存在 + 跑过 + 3 critical 报警, **未 cron, 报警没人收** |
+| 退役 4 步流程 | -- | 不存在, mootdx 退役 data 残留 1M+ rows |
+
+**Vwap consumer 共 7 处 (4 处缺 sanity)**:
+| File:line | 状态 |
+|---|---|
+| `paper_sim/driver.py::_vwap:144` | [PASS] helper sanity |
+| `return_engine.py::_resolve_reasonable_vwap:96` | [PASS] 独立 helper |
+| `labels/build.py:134-155` | [BLOCKED] SQL 直接 `amount/volume` (此次踩坑) |
+| `portfolio_backtest.py:419` | [BLOCKED] 直接 amount/volume |
+| `event_simulator.py:137` | [BLOCKED] 直接 amount/volume |
+| `pricing_sql.py:18,57` | [BLOCKED] raw_vwap 无 sanity |
+| `buy_pricing.py:68` | ⚠ hardcode `volume * 100` |
+
+**暂停项 (治理完成前)**:
+- [BLOCKED] P3 holdout 决策 (基于 corrupt label)
+- [BLOCKED] Phase 4 cron 实盘上线
+- [BLOCKED] lgbm_v3_honest_20d KPI 引用 (deprecated, 等重训)
+- [BLOCKED] 历史 mart_paper_sim_kpi 决策 (deprecated, 单位混期)
+
+**新 model_id 命名 (rebuild 后)**: `lgbm_v4_tdxhub_only_<horizon>d` (区分 corrupt v3).
 
 ## 30 秒速览 — 这是什么项目
 
@@ -42,7 +86,7 @@
 - 新加数据表 → 加进 §2 (数据资产)
 - 新加 service 模块 / script 入口 → 加进 §3-4
 - 新加 yaml config → 加进 §6
-- 解决了已知坑 → §8 标 ✅ + 短说明
+- 解决了已知坑 → §8 标 [PASS] + 短说明
 - 跑出新 OOS 数据 → 加进 §10
 - 踩了新坑 → §11 + CLAUDE.md Rule 9
 - 加 §14 增量日志 (本 session 做了啥)
@@ -163,7 +207,7 @@
 | 表 / 字段 | 数据量 | freshness | 用途 |
 |---|---|---|---|
 | `v_price_kline_qfq` (market.duckdb) 含指数 K 线 | 5.97M 行 / 6,618 股 / 2022-01 → 2026-05 | 实时 | 指数代码: `000300` 沪深300 / `000905` 中证500 / `000852` 中证1000 / `000016` 上证50 |
-| `fact_regime_state` | 775 行 / 2023-02 → 2026-04 ✅ | 历史可用 | trade_date / regime_id / regime_label (bull/bear/sideways) / regime_prob_json / transition_signal |
+| `fact_regime_state` | 775 行 / 2023-02 → 2026-04 [PASS] | 历史可用 | trade_date / regime_id / regime_label (bull/bear/sideways) / regime_prob_json / transition_signal |
 | `dim_market_segment` | dim 表 | 静态 | 市场分段 |
 
 ### 2.2 行业 / 板块
@@ -531,21 +575,21 @@ Rule 9: 真金白银 / 第一性原理       — 用户视角严苛门槛
 
 | 项 | 状态 |
 |---|---|
-| `mart_sector_momentum` 只 41 行 (2026-04 起) | ❌ 没历史回测能力, **需 rebuild 全期** |
-| `fact_setup_snapshot` 0 行 | ❌ 未启用 |
-| **paper_sim 选股 走 strategy_ensemble** | ✅ Phase ψ.β.4: ensemble mode + `paper_sim_ensemble.yaml` 10 alpha |
-| **5 alpha 主源数据 PIT 时序** | ✅ β.1 fact_risk_factors / β.2 fact_financial_pit_daily / β.3 fact_capital_flow_pit_daily backfill 完成 (跨 2023-01 → 2026-05) |
+| `mart_sector_momentum` 只 41 行 (2026-04 起) | [BLOCKED] 没历史回测能力, **需 rebuild 全期** |
+| `fact_setup_snapshot` 0 行 | [BLOCKED] 未启用 |
+| **paper_sim 选股 走 strategy_ensemble** | [PASS] Phase ψ.β.4: ensemble mode + `paper_sim_ensemble.yaml` 10 alpha |
+| **5 alpha 主源数据 PIT 时序** | [PASS] β.1 fact_risk_factors / β.2 fact_financial_pit_daily / β.3 fact_capital_flow_pit_daily backfill 完成 (跨 2023-01 → 2026-05) |
 | **fact_institution_event 主 alpha** | ⚠ 只 1 年 (2025-04 起), 无法做 800 天 backfill — β.3 改用 lhb+exec+holder 替代 |
-| **mart_stock_trend.action_score (机构跟随主 alpha)** | ❌ 仍是 latest 快照 — 未做 PIT 重建 (依赖 fact_institution_event 1 年限制) |
-| **aif10 估值/一致预期** | ❌ 全 latest 快照, 无 PIT, β.2 改用 fact_financial_derived 替代 |
-| **case-based / k-NN 历史相似回测** | ❌ 未建. 数据基础已有 (fact_signal_context + archetype) |
-| **`fact_regime_state` 在 paper_sim** | ✅ Phase ψ.β.4: ensemble selector regime_gate (bear 0.3x / sideways 0.7x / bull 1.0x) |
+| **mart_stock_trend.action_score (机构跟随主 alpha)** | [BLOCKED] 仍是 latest 快照 — 未做 PIT 重建 (依赖 fact_institution_event 1 年限制) |
+| **aif10 估值/一致预期** | [BLOCKED] 全 latest 快照, 无 PIT, β.2 改用 fact_financial_derived 替代 |
+| **case-based / k-NN 历史相似回测** | [BLOCKED] 未建. 数据基础已有 (fact_signal_context + archetype) |
+| **`fact_regime_state` 在 paper_sim** | [PASS] Phase ψ.β.4: ensemble selector regime_gate (bear 0.3x / sideways 0.7x / bull 1.0x) |
 | sentiment/ 包未集成 | ⚠ 8 文件框架, 未对接 |
-| 大盘指数 K 线 在 paper_sim 当 benchmark | ✅ 已用作 excess vs HS300 |
-| **fact_signal_context 早期数据缺** | ✅ Phase ψ.β.4.5 backfill 完成 (2024-03 起, 66% valid_stage) |
-| **fact_stock_technical_stage 早期缺** | ✅ Phase ψ.β.4.5 backfill 完成 (2023-09-12 起, 2.4M 行) |
+| 大盘指数 K 线 在 paper_sim 当 benchmark | [PASS] 已用作 excess vs HS300 |
+| **fact_signal_context 早期数据缺** | [PASS] Phase ψ.β.4.5 backfill 完成 (2024-03 起, 66% valid_stage) |
+| **fact_stock_technical_stage 早期缺** | [PASS] Phase ψ.β.4.5 backfill 完成 (2023-09-12 起, 2.4M 行) |
 | **mart_per_formula_stage_optimal train_end 范围** | ⏳ 正在重跑 (1260 任务, 5 worker, 含 7 公式 × stage × 35 train_end) |
-| **Optuna 跑批 8h 慢** | ✅ Phase ψ.β.perf 修 hotspot: _idx O(1) cache + backtest_signals_with_trades 避免重跑 simulate_trade. 重跑预估 3-4h |
+| **Optuna 跑批 8h 慢** | [PASS] Phase ψ.β.perf 修 hotspot: _idx O(1) cache + backtest_signals_with_trades 避免重跑 simulate_trade. 重跑预估 3-4h |
 | `fact_stock_archetype` (基本面质量) 只 2026-04 几天 | ⚠ 未 backfill 历史 (待后续 audit) |
 | `fact_financial_derived.revenue_yoy` 对部分股 (如 000001) null | ⚠ derived 表本身 sparse, 不影响其他股 |
 
@@ -693,15 +737,15 @@ Rule 9: 真金白银 / 第一性原理       — 用户视角严苛门槛
 | Phase | 内容 | 状态 |
 |---|---|---|
 | Phase β-η+++++++ | 前期工作 (公式 / Optuna / fitness / sizer / etc.) | 大量已完成, 见 goal.md |
-| **Phase ψ** | Optuna 治理 + R1 + Rule 7/8 + paper_sim VWAP 修正 | ✅ commit `34e83d75` (main + codex) |
-| **Phase ψ.α** | 反转因子 + per-formula 全局 + B 严格 walk-forward + Rule 9 + PROJECT_INDEX | ✅ commit `545cb3d9` (feature/reversal-factor) |
-| **Phase ψ.β.1** | fact_risk_factors PIT backfill (4.8M 行 / 6,567 股 / 810 天) | ✅ commit `5a3b5ea8` |
-| **Phase ψ.β.2** | fact_financial_pit_daily PIT (3.69M 行) — PE/PB/ROE/yoy/inst_holding_pct | ✅ commit `baf815b6` (β.2+β.3) |
-| **Phase ψ.β.3** | fact_capital_flow_pit_daily (858K 行) — lhb/exec/holder PIT | ✅ commit `baf815b6` |
-| **Phase ψ.β.4** | paper_sim ensemble selector + 10 alpha yaml + regime_gate | ✅ commit `1af98eca` |
-| **Phase ψ.β.4.5** | backfill fact_stock_technical_stage + fact_signal_context 历史 | ✅ 数据已落, 待 commit |
-| **Phase ψ.β.4.6** | ensemble quality_filter (vol_60d / allowed_stages) | ✅ commit `192bcb4d` |
-| **Phase ψ.β.perf** | hotspot fix: _idx O(1) cache + backtest_signals_with_trades | ✅ commit `192bcb4d`, 161 测过 |
+| **Phase ψ** | Optuna 治理 + R1 + Rule 7/8 + paper_sim VWAP 修正 | [PASS] commit `34e83d75` (main + codex) |
+| **Phase ψ.α** | 反转因子 + per-formula 全局 + B 严格 walk-forward + Rule 9 + PROJECT_INDEX | [PASS] commit `545cb3d9` (feature/reversal-factor) |
+| **Phase ψ.β.1** | fact_risk_factors PIT backfill (4.8M 行 / 6,567 股 / 810 天) | [PASS] commit `5a3b5ea8` |
+| **Phase ψ.β.2** | fact_financial_pit_daily PIT (3.69M 行) — PE/PB/ROE/yoy/inst_holding_pct | [PASS] commit `baf815b6` (β.2+β.3) |
+| **Phase ψ.β.3** | fact_capital_flow_pit_daily (858K 行) — lhb/exec/holder PIT | [PASS] commit `baf815b6` |
+| **Phase ψ.β.4** | paper_sim ensemble selector + 10 alpha yaml + regime_gate | [PASS] commit `1af98eca` |
+| **Phase ψ.β.4.5** | backfill fact_stock_technical_stage + fact_signal_context 历史 | [PASS] 数据已落, 待 commit |
+| **Phase ψ.β.4.6** | ensemble quality_filter (vol_60d / allowed_stages) | [PASS] commit `192bcb4d` |
+| **Phase ψ.β.perf** | hotspot fix: _idx O(1) cache + backtest_signals_with_trades | [PASS] commit `192bcb4d`, 161 测过 |
 | **Phase ψ.β.5** (in-progress) | optimize_per_formula 重跑 7 公式 × 35 train_end = 1260 任务 | ⏳ 5 worker 67% CPU, 1000/1260 |
 | **Phase ψ.β.6** (next) | paper_sim ablation 完整 800 天 (reversal / momentum / ensemble) | ⏸ 等 ψ.β.5 |
 | **Phase ψ.β.7** (next) | audit + 修 残留漏洞 (mart_stock_trend PIT / sector_momentum 全期 / case-based 等) | ⏸ |
@@ -1636,13 +1680,13 @@ Chain v7 启动 1 min 全 fail, 3 bug 修:
 **`/pit-audit` skill (a163ca58 sequel) Step 1-3 PASS**:
 - Step 1: 11 cols 列出
 - Step 2: source fact_capital_flow_pit_daily, builder backfill_capital_flow_pit.py
-- Step 3: trailing window + 事件公告日 inclusive (LHB borderline marginal, exec+holder ✅)
+- Step 3: trailing window + 事件公告日 inclusive (LHB borderline marginal, exec+holder [PASS])
 - **Step 4 micro-ablation DEFER** chain v6 完 (smartmoney single writer lock)
 
 待 chain v6 完成后 (~30h):
 1. 跑 build_v3_ext (~80s 类似 v3 build)
 2. /pit-audit Step 4 micro-ablation: drop 11 cols vs include 比较 RankIC
-3. 若贡献 +0.005+ → ✅ deploy v3_ext path
+3. 若贡献 +0.005+ → [PASS] deploy v3_ext path
 
 ### 2026-05-15 (CLAUDE §9.2 #7 + post-fix-audit skill — reactive→proactive 固化)
 
@@ -1972,7 +2016,7 @@ PLAN_V3 §6 串行 gate 标 P0b FAIL → 阻塞 P0c.
 
 ### 2026-05-14 (Phase v3.2 P0a Acceptance PASS + P0b train 启动 + P1 ablation CLI)
 
-**P0a Acceptance gate**: 10 PASS / 0 WARN / 0 FAIL ✅ (audit_p0a_panel.py)
+**P0a Acceptance gate**: 10 PASS / 0 WARN / 0 FAIL [PASS] (audit_p0a_panel.py)
 - §1 Reproducibility: label_version + built_at 全填 (3.7M rows)
 - §2 Cost: round_trip = 0.302% 常量 + 10-sample formula 验
 - §3 Mask: unable_at_entry/exit_N=True → label NULL 全部生效
@@ -2224,7 +2268,7 @@ exit params 取 best oos_sharpe / n_traded < 5 filter.
 - (d) ~~P-1.4 audit 改字段~~ — **Codex 错**: 用户原则 "上市公司数据不会真缺", `fact_shareholder_plan.announce_date` 47% NULL 是 sync 路径 bug, 不该放松 audit. 应该查根因 + 从 tdxhub/miaoxiang 重拉补全 (CLAUDE.md 新增"数据源可信度分级")
 
 **P-1 整体 gate**: 2 真 FAIL → PLAN §6 串行 gate 阻塞 P0. 修复路径:
-1. 修 P-1.2 audit listing_date bug → 重跑得真实数字 ✅ (修复后 11% 不变, 真生存者偏差)
+1. 修 P-1.2 audit listing_date bug → 重跑得真实数字 [PASS] (修复后 11% 不变, 真生存者偏差)
 2. ~~升级 P-1.3 WARN→FAIL~~ → 改 WARN + pending_phase=P0c (P0c 工程任务非 P-1 数据审计)
 3. backfill: 退市股 K 线 + `announce_date` 都走 tdxhub (待启动)
 4. 重跑 P-1 全套 → 若 PASS 进 P0a
