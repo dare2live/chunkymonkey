@@ -740,6 +740,25 @@ SELECT * FROM mart_data_source_watermark;
 
 每次 session 增量内容写这里, 新 session 启动时**从下往上读**最近改了啥.
 
+### 2026-05-16 (v10 v8-multi-window audit — v8 +106% 单 fire 时点 artifact, v4 维持最终候选)
+
+用户 push back 问 "v8 +106% vs v4 +66% 是不是 leakage". Audit 5 维度 (Rule 5):
+
+跑 v10 (v8 params -22% on window B 2024-12~2025-08):
+- ann +45.0% / max_dd -13.9% / 胜 75% / 60d IR 1.32 — **identical to v7 (v4 params 同 window B)**
+- 因 window B 整段市场 dd < -13.9% < -20% < -22%, **hard_stop 在 window B 根本没 fire**
+- v4 == v8 在 window B 行为完全相同
+
+verdict (Codex Rule 5 audit):
+- 不是 leakage / 未来函数 (PIT 代码 / walk-forward OOS / selection bias / hard_stop 内部 都 clean)
+- 是 **single-event timing artifact**: v8 +40pp 优势仅 window A 单次 fire 时点 (v4 在 -20% 卖, v8 在 -22% 卖晚 2-3 day, 市场反弹时点错位)
+- 不广义: window B 不 fire → v8 == v4
+
+修正 verdict: **v4 是真 robust 候选** (2 window 同样 5/5 PASS). v8 是 "lucky 1-event ROI", 不该 baseline.
+保留 v8 ledger 作 "激进配置 reference" — 实盘若 user 接受 single-fire timing 风险.
+
+yaml restore 到 v4 final (-20% / freeze 14).
+
 ### 2026-05-16 (v9 max_pos 3 FAIL → v4 (max_pos 5) 最终确认)
 
 Codex acf91c1f 推 v4 后, 用户 push 探索更多组合. 跑 v9 (max_pos 5→3, Codex 旁路 b).
