@@ -176,14 +176,183 @@ def stage_parent(args) -> int:
 
 
 def stage_child(args) -> int:
-    """Per-pool child residual regression (待 next session 完整实施)."""
-    log.warning("stage_child SKELETON — next session 实施 per-pool LightGBM regression on residual.")
+    """Per-pool child residual regression (Codex ace17432 priority #4 实施).
+
+    每 pool 独立 LightGBM regression on residual = label - sigmoid(parent_score).
+    Features: 仅 risk dim (beta_60d / beta_60d_z / mcap_decile + 必要 alpha158).
+    """
+    import lightgbm as lgb
+    import numpy as np
+
+    log.info(f"=== Phase 2 child residual pool={args.pool_id or 'all'} ===")
+
+    run_id = args.run_id or f"phase2_child_{datetime.now(UTC).strftime('%Y%m%dT%H%M%S')}_{uuid.uuid4().hex[:6]}"
+    parent_model_id = args.parent_model_id or "phase2_parent_20d"
+
+    conn = duck_connect(str(DB_PATH))
+    create_p0b_ddl(conn)
+
+    # Load panel + parent score + pool assignment
+    df = conn._con.execute(f"""
+        SELECT r.*,
+               p.score AS parent_score,
+               pa.pool_id, pa.supersector, pa.liquidity_tier
+        FROM mart_stock_regime_full r
+        JOIN mart_p0b_oos_predictions p
+            ON p.stock_code = r.stock_code AND p.signal_date = r.signal_date
+            AND p.model_id = '{parent_model_id}'
+        LEFT JOIN mart_stock_pool_assignment pa
+            ON pa.stock_code = r.stock_code
+            AND DATE_TRUNC('month', pa.as_of_month) = DATE_TRUNC('month', r.signal_date)
+        WHERE r.signal_date >= CAST(? AS DATE)
+          AND r.signal_date <= CAST(? AS DATE)
+          AND r.{args.label} IS NOT NULL
+        ORDER BY r.signal_date, r.stock_code
+    """, [args.start_date, args.end_date]).fetchdf()
+    log.info(f"  loaded {len(df):,} rows (joined with parent + pool)")
+
+    if len(df) == 0:
+        log.error("No parent_score rows; run stage_parent first.")
+        return 1
+
+    # Compute residual: label - sigmoid(parent_score)
+    df["parent_sigmoid"] = 1 / (1 + np.exp(-df["parent_score"]))
+    df["residual"] = df[args.label] - df["parent_sigmoid"]
+
+    # Filter to specific pool if requested
+    if args.pool_id:
+        df = df[df["pool_id"] == args.pool_id].copy()
+        log.info(f"  filtered to pool '{args.pool_id}': {len(df):,} rows")
+
+    # Risk feature columns (Codex ace17432 separation)
+    risk_features = [c for c in ["beta_60d", "beta_60d_z", "mcap_decile"]
+                     if c in df.columns]
+    log.info(f"  risk features: {risk_features}")
+
+    pools = df["pool_id"].dropna().unique() if not args.pool_id else [args.pool_id]
+    log.info(f"  pools to train: {len(pools)}")
+
+    built_at = datetime.now(UTC).isoformat(timespec="seconds")
+    total_predictions = 0
+
+    for pool in pools:
+        pool_df = df[df["pool_id"] == pool].copy()
+        if len(pool_df) < 200:
+            log.warning(f"  pool {pool} too small ({len(pool_df)} rows), skip")
+            continue
+
+        # Simple monthly walk-forward (1 train cutoff for child smoke)
+        cutoff_month = pool_df["signal_date"].quantile(0.7)
+        train = pool_df[pool_df["signal_date"] < cutoff_month]
+        test = pool_df[pool_df["signal_date"] >= cutoff_month]
+        if len(test) == 0 or len(train) < 100:
+            continue
+
+        x_train = train[risk_features].fillna(0).values
+        y_train = train["residual"].values
+        x_test = test[risk_features].fillna(0).values
+
+        model_child = lgb.LGBMRegressor(
+            num_leaves=15, learning_rate=0.05, n_estimators=args.n_estimators,
+            verbose=-1,
+        )
+        model_child.fit(x_train, y_train)
+        child_score = model_child.predict(x_test)
+
+        # 写 mart_p0b_oos_predictions for this pool
+        rows = []
+        for i, (_, row) in enumerate(test.iterrows()):
+            rows.append([
+                row["stock_code"], row["signal_date"],
+                float(child_score[i]),
+                row.get("fwd_cost_after_5d"),
+                row.get(args.label) if args.label == "fwd_cost_after_10d" else None,
+                row.get("fwd_cost_after_20d"),
+                f"phase2_child_{pool}",
+                "v3.2.phase2_child", "regime_full_v2_risk", "v1",
+                "expanding_monthly", built_at,
+            ])
+        conn._con.executemany(
+            """INSERT OR REPLACE INTO mart_p0b_oos_predictions
+               (stock_code, signal_date, score, fwd_cost_after_5d,
+                fwd_cost_after_10d, fwd_cost_after_20d, model_id,
+                model_version, feature_version, label_version,
+                walk_forward_mode, built_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            rows,
+        )
+        total_predictions += len(rows)
+        log.info(f"  pool {pool}: train={len(train)} test={len(test)} predictions={len(rows)}")
+
+    log.info(f"\n=== Phase 2 Child OOS Results ===")
+    log.info(f"  Pools trained: {len(pools)}")
+    log.info(f"  Total predictions: {total_predictions:,}")
     return 0
 
 
 def stage_combine(args) -> int:
-    """Combine parent + child (待 next session 完整实施)."""
-    log.warning("stage_combine SKELETON — next session 实施 0.70*parent + 0.30*child.")
+    """Combine parent + child → final score (Codex final step 3)."""
+    log.info(f"=== Phase 2 combine w_parent={args.w_parent} ===")
+    parent_mid = args.parent_model_id or "phase2_parent_20d"
+    conn = duck_connect(str(DB_PATH))
+    create_p0b_ddl(conn)
+
+    # JOIN parent + child by (signal_date, stock_code)
+    rows = conn._con.execute(f"""
+        SELECT
+            p.stock_code, p.signal_date,
+            ({args.w_parent} * p.score + (1 - {args.w_parent}) * c.score) AS combined_score,
+            p.fwd_cost_after_5d, p.fwd_cost_after_10d, p.fwd_cost_after_20d,
+            c.model_id AS child_model_id
+        FROM mart_p0b_oos_predictions p
+        JOIN mart_p0b_oos_predictions c
+            ON c.stock_code = p.stock_code AND c.signal_date = p.signal_date
+        WHERE p.model_id = '{parent_mid}'
+          AND c.model_id LIKE 'phase2_child_%'
+    """).fetchdf()
+    log.info(f"  combined {len(rows):,} rows")
+
+    if len(rows) == 0:
+        log.error("No combined rows — run parent+child first")
+        return 1
+
+    # 写 mart_p0b_oos_predictions(model_id='phase2_combined_*')
+    combined_model_id = args.model_id or f"phase2_combined_w{int(args.w_parent*100)}"
+    built_at = datetime.now(UTC).isoformat(timespec="seconds")
+    insert_rows = []
+    for _, r in rows.iterrows():
+        insert_rows.append([
+            r["stock_code"], r["signal_date"],
+            float(r["combined_score"]),
+            r.get("fwd_cost_after_5d"),
+            r.get("fwd_cost_after_10d"),
+            r.get("fwd_cost_after_20d"),
+            combined_model_id,
+            "v3.2.phase2_combined", "regime_full_v2", "v1",
+            "expanding_monthly", built_at,
+        ])
+    conn._con.executemany(
+        """INSERT OR REPLACE INTO mart_p0b_oos_predictions
+           (stock_code, signal_date, score, fwd_cost_after_5d,
+            fwd_cost_after_10d, fwd_cost_after_20d, model_id,
+            model_version, feature_version, label_version,
+            walk_forward_mode, built_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+        insert_rows,
+    )
+    log.info(f"  Wrote {len(insert_rows):,} predictions as {combined_model_id}")
+
+    # Quick RankIC computation per signal_date
+    import numpy as np
+    rows_eval = rows.dropna(subset=["fwd_cost_after_20d", "combined_score"])
+    if len(rows_eval) >= 30:
+        ic_per_day = rows_eval.groupby("signal_date").apply(
+            lambda g: g["combined_score"].corr(g["fwd_cost_after_20d"], method="spearman")
+        ).dropna()
+        log.info(f"\n=== Phase 2 Combined OOS ===")
+        log.info(f"  signal_date n: {len(ic_per_day)}")
+        log.info(f"  overall RankIC: {ic_per_day.mean():.4f}")
+        log.info(f"  IC IR: {ic_per_day.mean() / ic_per_day.std():.4f}" if ic_per_day.std() > 0 else "  IC IR: nan")
     return 0
 
 
@@ -196,6 +365,7 @@ def main() -> int:
     parser.add_argument("--w-parent", type=float, default=0.70)
     parser.add_argument("--run-id", default=None)
     parser.add_argument("--model-id", default=None)
+    parser.add_argument("--parent-model-id", default=None, help="stage_child use parent score from this model_id")
     parser.add_argument("--min-train-months", type=int, default=12)
     parser.add_argument("--forward-months", type=int, default=1)
     parser.add_argument("--n-estimators", type=int, default=200)

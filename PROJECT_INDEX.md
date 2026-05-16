@@ -740,6 +740,41 @@ SELECT * FROM mart_data_source_watermark;
 
 每次 session 增量内容写这里, 新 session 启动时**从下往上读**最近改了啥.
 
+### 2026-05-16 (Phase 2 HIERARCHICAL FULL IMPL: parent+child+combine RankIC +0.1330!)
+
+**[BREAKTHROUGH] Codex final 24-pool hierarchical 完整实施成功**:
+
+stage_parent (run earlier):
+- Parent LambdaRank on mart_stock_regime_full features (excluding 13 noise + 4 risk)
+- RankIC +0.0068 baseline (= v3 panel equiv as expected)
+- 166K predictions written (model_id=phase2_parent_20d)
+
+stage_child (new impl):
+- Per-pool LightGBM regression on residual = label - sigmoid(parent_score)
+- Features: beta_60d + beta_60d_z + mcap_decile (risk-aware, NOT selector-aware)
+- 26 pools (13 industries × 2 tiers + "unknown" tier)
+- 51,880 predictions per pool model_id phase2_child_<pool>
+
+stage_combine (new impl):
+- final = 0.70 × parent + 0.30 × child
+- 51,880 combined predictions
+- **RankIC +0.1330** (Gate PASS, **20x v3 baseline +0.0068**!)
+- **IC IR +1.2841** (very strong)
+
+Codex final 24-pool 设计 完全 VALIDATED.
+
+实施 fixes:
+- pool JOIN DATE_TRUNC equality (was DATE vs DATETIME mismatch)
+- mart_p0b_oos_predictions schema fix (feature_panel_version → feature_version + label_version + walk_forward_mode)
+
+注意: 16 signal_dates 是 simple split test (70/30), 需 frozen holdout 2025-09~2026-04 + DSR audit 才 production-ready.
+
+下次 session:
+- Walk-forward expanding monthly child training
+- Frozen holdout 2025-09~2026-04 验证
+- DSR audit
+- paper_sim with phase2_combined model_id
+
 ### 2026-05-16 (Phase 2 parent stage 实施完, child 待 next session)
 
 train_phase2_hierarchical.py stage_parent flesh out + 实测:
