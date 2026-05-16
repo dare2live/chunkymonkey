@@ -740,6 +740,25 @@ SELECT * FROM mart_data_source_watermark;
 
 每次 session 增量内容写这里, 新 session 启动时**从下往上读**最近改了啥.
 
+### 2026-05-16 (Feature research lane backlog: industry beta + market cap decile)
+
+Codex a49c90a6 MAJOR backlog item #51: feature research lane scripts (not 接入 mart_stock_regime_full 直到 RankIC delta + DSR PASS).
+
+新增:
+- `scripts/build_industry_beta_daily.py`: per-stock 60-day rolling beta vs industry-equal-weighted return. PIT-safe (shift 1 strict prior).
+  - cols: beta_60d / beta_60d_zscore / industry / source_max_trade_date
+- `scripts/build_market_cap_decile_daily.py`: cross-sectional 10 deciles per day. Proxy = prior_close × amount (defer dim_stock_basic.shares).
+  - cols: market_cap_proxy / mcap_decile / source_max_trade_date
+
+未运行 (待 v4 ablation 释放 DB lock).
+
+未来评估:
+- 跑 ablation: 加 beta + decile 到 model 看 RankIC delta in BOTH windows
+- 仅 delta > +0.002 + DSR PASS 才 reintroduce 到 mart_stock_regime_full
+- C_adaptive portfolio 后续接 regime gate (基于 industry beta sensitivity)
+
+Time-of-month features already in mart_stock_regime_full (cal_dom / cal_tdom), 无需单独 ETL.
+
 ### 2026-05-16 (Phase 4+ dashboard: audit_live_dashboard.py)
 
 Phase 4+ live ops dashboard 实施:
