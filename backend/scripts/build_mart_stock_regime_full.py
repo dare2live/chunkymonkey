@@ -112,6 +112,10 @@ SELECT
     cal.cal_day_of_month AS cal_dom,
     cal.cal_trading_day_of_month AS cal_tdom,
     cal.cal_trading_days_to_month_end AS cal_tdays_to_month_end,
+    -- backlog feature research (Codex a49c90a6 step #51): industry beta + mcap decile
+    ib.beta_60d AS beta_60d,
+    ib.beta_60d_zscore AS beta_60d_z,
+    mc.mcap_decile AS mcap_decile,
     -- PIT 锚点
     p.signal_date AS regime_full_anchor_date,
     CURRENT_TIMESTAMP AS built_at
@@ -122,6 +126,10 @@ LEFT JOIN regime_lag1 rl
     ON rl.apply_date = p.signal_date
 LEFT JOIN calendar_features cal
     ON cal.trade_date = p.signal_date
+LEFT JOIN fact_industry_beta_daily ib
+    ON ib.stock_code = p.stock_code AND ib.trade_date = p.signal_date
+LEFT JOIN fact_market_cap_decile_daily mc
+    ON mc.stock_code = p.stock_code AND mc.trade_date = p.signal_date
 WHERE p.signal_date >= CAST(? AS DATE) AND p.signal_date <= CAST(? AS DATE)
 """
 

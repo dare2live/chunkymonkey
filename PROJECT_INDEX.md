@@ -740,6 +740,15 @@ SELECT * FROM mart_data_source_watermark;
 
 每次 session 增量内容写这里, 新 session 启动时**从下往上读**最近改了啥.
 
+### 2026-05-16 (mart_stock_regime_full v2: 加 beta + decile 测试 RankIC delta)
+
+接入 backlog #51 feature research:
+- build_industry_beta_daily.py 跑完: 2.83M rows / 16s / PIT 0 violations / 100% coverage
+- build_market_cap_decile_daily.py 跑完: 3.43M rows / 7s / 10 deciles perfect equal split
+- mart_stock_regime_full 加 beta_60d / beta_60d_z / mcap_decile (138 cols total)
+
+RankIC test 跑中: 看是否 > v3 baseline +0.0068 (Codex 要求 BOTH windows + DSR PASS 才正式接入).
+
 ### 2026-05-16 (Feature research lane backlog: industry beta + market cap decile)
 
 Codex a49c90a6 MAJOR backlog item #51: feature research lane scripts (not 接入 mart_stock_regime_full 直到 RankIC delta + DSR PASS).
