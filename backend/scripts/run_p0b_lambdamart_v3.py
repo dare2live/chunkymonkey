@@ -47,6 +47,9 @@ _META_FIELDS = {
     "inst_holder_cnt", "top_inst_holding_ratio",
     "sector_ret_5d", "sector_ret_20d", "sector_ret_60d",
     "sector_excess_20d", "sector_excess_60d",
+    # Codex ad2e09e7 2026-05-16: mart_stock_regime_full meta cols 排除 (DATE / VARCHAR labels)
+    "cdp_source_max_date", "regime_full_anchor_date",
+    "regime_label_lag1",   # VARCHAR label, lambdamart 不支持
 }
 
 

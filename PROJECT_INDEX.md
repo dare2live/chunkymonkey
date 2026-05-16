@@ -740,6 +740,13 @@ SELECT * FROM mart_data_source_watermark;
 
 每次 session 增量内容写这里, 新 session 启动时**从下往上读**最近改了啥.
 
+### 2026-05-16 (Phase 2 _META_FIELDS fix + 重测 — Codex ad2e09e7 ABLATION step 1)
+
+修 run_p0b_lambdamart_v3.py::_META_FIELDS 排除 mart_stock_regime_full 新 meta cols:
+- cdp_source_max_date (DATE, PIT 锚) / regime_full_anchor_date (DATE, meta) / regime_label_lag1 (VARCHAR string)
+
+重跑 phase2_regime_full_meta_fix 看是否 recover alpha → v3 baseline +0.0068.
+
 ### 2026-05-16 (Phase 2 parent smoke 警报: mart_stock_regime_full RankIC -0.0043 NEGATIVE!)
 
 跑 existing run_p0b_lambdamart_v3.py on mart_stock_regime_full (135 cols):
