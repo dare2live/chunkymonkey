@@ -740,6 +740,27 @@ SELECT * FROM mart_data_source_watermark;
 
 每次 session 增量内容写这里, 新 session 启动时**从下往上读**最近改了啥.
 
+### 2026-05-16 (Codex a49c90a6 FINAL: NO-GO Phase 2/3, launch v4 live)
+
+Codex 4th review final verdict (a49c90a6, 综合 Phase 2 ablation + DSR significance):
+
+CRITICAL:
+1. NO-GO Phase 2 24-pool hierarchical (parent +0.0068 short / +0.0445 long DSR not significant; child residual overfit risk 高)
+2. Skip Phase 2-3, **直接 Phase 4+ live multi-portfolio**
+3. v4 paper_sim 5/5 PASS 2 windows 是唯一 verified 可上线路径
+
+MAJOR:
+- Feature engineering (industry beta / time-of-month / market-cap decile) 作 research lane, 每 group RankIC delta + DSR PASS 才 reintroduce
+- 季节性/regime alpha hypothesis 待 rolling-window 验证
+
+最终路径:
+1. v4 ablation replay (currently running ~25 min)
+2. mart_stock_regime_full + 13 new cols 保 DB 但 model 不 use (defer)
+3. Phase 4+ live forward sim 启动 (run_paper_sim_day_multi 已 supported)
+4. Feature research backlog
+
+项目状态: 不再 multi-week wait. **v4 ready to launch**.
+
 ### 2026-05-16 (Codex review hook + Phase 2 ablation 最终结论)
 
 **用户 push (2026-05-16): "让 codex review 这事儿建成 hook 了么"**.
