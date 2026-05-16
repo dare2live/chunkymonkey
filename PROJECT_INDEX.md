@@ -823,6 +823,12 @@ SELECT * FROM mart_data_source_watermark;
 
 Phase 2 step 2 全 reader 完成. Phase 2 step 3 (Physical DELETE 4.84M rows) 仍待 user 授权.
 
+**#6 cleanup_deprecated_kline_sources.py dry-run script (commit ?)**:
+- `backend/scripts/cleanup_deprecated_kline_sources.py`: dry-run / --execute 双模式
+- 已实测 dry-run: 4,879,870 rows / 13 source 待删, 1,048 HS300 allowlist 保留
+- 未 execute (destructive, 待 user 授权)
+- 配套 docs/deprecation_sop.md Step 3 SQL template
+
 ### 2026-05-17 凌晨 数据治理 framework v1 (Codex round 16 task-mp8ktoe3-8rkde7, commit d055f5cb)
 
 触发: P3 holdout lgbm_v3_honest_20d 6 OOS 月 ann_ret=21843% (Rule 5 异常高数字), root cause
