@@ -740,6 +740,18 @@ SELECT * FROM mart_data_source_watermark;
 
 每次 session 增量内容写这里, 新 session 启动时**从下往上读**最近改了啥.
 
+### 2026-05-16 (Phase 4+ infrastructure END-TO-END VERIFIED + IC root cause)
+
+Smoke run run_paper_sim_live_daily.py + audit_live_dashboard.py on 2025-07-01:
+- 3 portfolios (A_v4 / B_v8 / C_adaptive) all PASS
+- NAV 997,774 each (initial 1M - tx_cost ~2.2K)
+- Cash 30.4% / 3 pos / hard_stop 0
+- Dashboard output format correct
+
+Phase 4+ infrastructure **end-to-end VERIFIED working**. Project launch-ready.
+
+Fix: audit_live_dashboard.py col name (excess_total_return → excess_vs_hs300 actual schema).
+
 ### 2026-05-16 (IC-vs-paper_sim discrepancy 根因: top-K vs distribution correlation)
 
 深查 beta_decile model 实际 top 5 picks vs forward returns:

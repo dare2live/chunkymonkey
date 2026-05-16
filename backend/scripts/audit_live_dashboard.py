@@ -108,7 +108,7 @@ def main() -> int:
     print("--- KPI 横向 (from mart_paper_sim_kpi, if KPI write triggered) ---")
     kpi_rows = conn.execute("""
         SELECT sim_run_id, annual_return, max_dd, monthly_win_rate,
-               excess_total_return, sharpe, calmar, annual_turnover
+               excess_vs_hs300, sharpe, calmar, annual_turnover
         FROM mart_paper_sim_kpi
         WHERE sim_run_id IN ('live_A_v4', 'live_B_v8', 'live_C_adaptive')
         ORDER BY sim_run_id
