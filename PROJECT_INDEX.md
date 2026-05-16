@@ -740,6 +740,19 @@ SELECT * FROM mart_data_source_watermark;
 
 每次 session 增量内容写这里, 新 session 启动时**从下往上读**最近改了啥.
 
+### 2026-05-16 (Phase 4+ dashboard: audit_live_dashboard.py)
+
+Phase 4+ live ops dashboard 实施:
+- scripts/audit_live_dashboard.py
+- 输出: 3 portfolio (live_A_v4 / live_B_v8 / live_C_adaptive) 当前 NAV / cumret / max_dd / cash% / 30d return / hard_stop count
+- KPI 横向对比 from mart_paper_sim_kpi (年化/dd/胜率/超额/Sharpe/Calmar/turnover)
+- 用法: --as-of 2026-05-16 (default today)
+
+部署组合 (Phase 4+ MVP):
+- 每日 17:00 cron: `run_paper_sim_live_daily.py --today $(date +%Y-%m-%d)`
+- 18:00 dashboard: `audit_live_dashboard.py`
+- KPI 写 mart_paper_sim_kpi (cron 月底触发 full KPI compute)
+
 ### 2026-05-16 (Phase 4+ live infrastructure: run_paper_sim_live_daily.py 3 组并行)
 
 Codex a49c90a6 verdict 之后实施 Phase 4+ live forward simulation 基础设施.
