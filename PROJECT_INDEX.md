@@ -740,6 +740,20 @@ SELECT * FROM mart_data_source_watermark;
 
 每次 session 增量内容写这里, 新 session 启动时**从下往上读**最近改了啥.
 
+### 2026-05-16 (Phase 2 skeleton: train_phase2_hierarchical.py 3-stage 设计)
+
+Codex final hierarchical 24-pool 方案 训练 script skeleton (stage parent / child / combine):
+- Stage 1 parent: LightGBM LambdaRank on mart_stock_regime_full (135 cols), group=signal_date, walk-forward
+- Stage 2 child residual: 24 pools 独立 regression on (parent_score, residual), pool from mart_stock_pool_assignment
+- Stage 3 combine: final = 0.70 × parent + 0.30 × child, 写 mart_p0b_oos_predictions
+
+实施待 next session (multi-day work). 当前 skeleton + docstring + TODO 路径明确.
+
+Phase 2 acceptance (待 train 完):
+- OOS RankIC ≥ 0.024 (vs chain v6 honest 0.020 = +0.004 真增益)
+- Net ann_ret ≥ 18% / Max_dd ≥ -25% / DSR > 0.50
+- Per-fold top-feature overlap > 55%
+
 ### 2026-05-16 (Phase 1 全量 build 完成 + Phase 2 prereq 实施 — 重大进展)
 
 candle build 用 pandas/numpy vectorized 重写, **9 秒** 完成 2.5M rows (vs 估 70 min Python loop, 466x 加速).
