@@ -609,6 +609,18 @@ def load_today_candidates_dispatch(
     if cfg.mode == "backtest":
         return load_today_candidates_inline(conn, signal_date, cfg)
     if cfg.mode == "ml_score":
+        # Phase 1c (Codex round 10+11): tiered loader 优先, 否则 legacy ml_score
+        if getattr(cfg, "ml_score_tiered_enabled", False):
+            from services.paper_sim.tiered_score_loader import load_today_candidates_tiered
+            return load_today_candidates_tiered(
+                conn, signal_date,
+                model_id=getattr(cfg, "ml_score_model_id", "lgbm_baseline_v1"),
+                core_slots=getattr(cfg, "ml_score_tiered_core_slots", 4),
+                explore_slots=getattr(cfg, "ml_score_tiered_explore_slots", 1),
+                explore_pool_size=getattr(cfg, "ml_score_tiered_explore_pool_size", 20),
+                score_weights=getattr(cfg, "ml_score_tiered_score_weights", None),
+                fallback_params=getattr(cfg, "ml_score_fallback_params", None),
+            )
         # Lazy import 防循环 (ml_score_loader 依赖 CandidateRow from selector).
         from services.paper_sim.ml_score_loader import load_today_candidates_ml_score
         return load_today_candidates_ml_score(

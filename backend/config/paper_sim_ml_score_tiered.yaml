@@ -1,0 +1,146 @@
+# Phase 1c — paper_sim_ml_score_tiered.yaml (Codex round 10 A+D verdict + round 11 v1 lean).
+#
+# 3 层 selector (用户 push back Codex round 2 binary F/C):
+# - 核心层 (PIT 1490 INNER JOIN top-4): 真 alpha
+# - 中间层 (non-PIT composite sub-rank top-1): 矬子里拔大个, ML score 加权
+# - 外围层 (剩余): 暂不选
+#
+# 跟 paper_sim_ml_score.yaml (F) 区别: selection.ml_score_tiered_enabled=true
+# 跟 paper_sim_ml_score_C_5178.yaml (C) 区别: C 用 default fallback 全部, tiered 用 composite sub-rank
+#
+# Codex round 11 verdict: v1 静态先 + 接口可流动 → v2 流动 (+1-2 day).
+# 当前 v1 静态; v2 加 rolling perf vs universe median promotion/demotion.
+#
+# 用法:
+#   PYTHONPATH=backend python backend/scripts/run_paper_sim_v2.py \
+#       --config-path backend/config/paper_sim_ml_score_tiered.yaml \
+#       --start 2025-07-01 --end 2026-04-30  # Window A
+
+# ─── 投资组合 ───
+portfolio:
+  initial_cash: 1_000_000
+  max_positions: 5     # v4 FINAL: v9 (max_pos 3) 反而 dd 更深 -24.3% + ann -23pp + 胜率 -23pp, 集中度反向不帮
+  position_sizing: "equal"  # 简单等权 (P2 时可改 vol-target / kelly / wilson_kelly)
+  cash_when_strong_buy_lt: 5
+  min_cash_pct: 0.30   # Path A 2026-05-15: 0.05 → 0.30, 减集中度 + 控 max_dd (Codex aa2d79d2 #1)
+
+# ─── 候选选股 (ML score 模式 - Option A) ───
+selection:
+  mode: "ml_score"                 # P0c Option A
+  candidate_source: "mart_p0b_oos_predictions"   # 此字段在 ml_score mode 不实际使用
+  rank_by: "score"                 # ML score
+  min_tier_to_buy: "BUY"           # ml_score mode 下 tier 字段为 'ML_RANK', 此处可忽略
+  min_tier_to_swap_in: "STRONG_BUY"
+  liquidity_min_amount_20d: 50_000_000
+  liquidity_max_price: 500
+  exclude_stage: []
+  # backtest_tier_thresholds: required by config.SelectionConfig, ml_score mode 不实际用
+  backtest_tier_thresholds:
+    strong_buy:
+      sharpe_min: 0.8
+      win_rate_min: 0.65
+      calmar_min: 1.0
+    buy:
+      sharpe_min: 0.3
+      win_rate_min: 0.55
+  # ML score 模式特定字段:
+  # Phase 2 hierarchical:
+  # - 70/30 split combined: RankIC +0.1330 (overfit) / paper_sim +114% 1 month
+  # - WF expanding monthly: RankIC +0.0730 / IC IR 1.4272 / paper_sim +18% (conservative)
+  # vs lgbm_v3 v4 baseline (200 day verified): +66.6% / 5/5 PASS.
+  # Phase 2 alpha exists but not clearly > v3 on small WF sample (21 dates).
+  # 维持 lgbm_v3_honest_20d 作 live default (verified production model).
+  ml_score_model_id: "lgbm_v3_honest_20d"
+  ml_score_max_candidates: 30      # 取 ML score 前 30 名 (大于 max_positions 防过滤后不够)
+  ml_score_min_score: null         # 不限分数下限
+  # Path A 实验 (2026-05-15): min_forced_hp=15 + cash 0.30 → 年化 -7% 灾难, 暴 alpha 损坏 (Optuna optimal_hp override).
+  # Revert min_forced_hp=0, 仅留 cash 0.30 单变量实验 (Codex Rule 5 反向警报后控变量).
+  min_forced_hp: 0
+  # Phase 1c (Codex round 10+11): tiered selector — 跟 ml_score_fallback_enabled 互斥
+  ml_score_tiered_enabled: true
+  ml_score_tiered_core_slots: 4        # PIT 1490 INNER JOIN top-N
+  ml_score_tiered_explore_slots: 1     # non-PIT composite sub-rank top-M
+  ml_score_tiered_explore_pool_size: 20  # non-PIT 候选池 (内做 sub-rank)
+  ml_score_tiered_score_weights:        # composite score 权重 (v1 只用 ml, v2 接 liquidity/stage)
+    ml: 0.6
+    liquidity: 0.2
+    stage: 0.2
+  # Phase 1a Option C (Codex round 3): ex-ante 弱 default 给 explore 层 (non-PIT)
+  ml_score_fallback_enabled: false  # tiered 路径不走 fallback dispatch
+  ml_score_fallback_params:           # explore 层 exit params (跟 Option C 同)
+    hp: 10
+    stop_pct: -0.08
+    target_pct: 0.12
+    trailing_pct: 0.08
+
+# ─── 退出 (Optuna 9-dim) ───
+exit:
+  use_optuna_stop: true
+  use_optuna_target: true
+  use_optuna_trailing: true
+  use_optuna_hp: true
+  stage_deterioration_sell: true
+
+# ─── 换股 (swap_v1) ───
+swap:
+  enabled: true
+  severe_threshold: 0.50
+  candidate_must_close_gap: true
+  gap_buffer_pct: 0.0035
+  min_holding_days_before_swap: 1
+  max_swaps_per_day: 1
+
+# ─── 真实交易成本 ───
+tx_cost:
+  commission_pct: 0.00025
+  commission_min_cny: 5
+  stamp_duty_sell_pct: 0.0005
+  transfer_fee_pct: 0.00001             # 过户费 0.001% (2023+ 沪深统一双向)
+  exchange_fee_pct: 0.0000341           # 交易所规费 0.00341% (双向)
+  regulatory_fee_pct: 0.00002           # 证管费 0.002% (双向)
+  slippage_pct: 0.0008                  # 基础滑点 8 bps (大盘 5-10 bps 区间)
+  large_order_surcharge_pct: 0.0015     # 大单溢价 15 bps (单边)
+  large_order_adv_threshold_pct: 0.03   # 大单阈值 3% × ADV20
+
+# ─── 风控 ───
+risk:
+  daily_dd_warning_pct: -0.05
+  # v4 FINAL params (Codex acf91c1f + v10 Rule 5 audit 2026-05-16):
+  # v10 验证 v8 (-22%) 在 window B 跟 v4 等价 (hard_stop 不 fire), v8 +40pp 优势仅 window A
+  # 单 fire 时点 artifact, 不广义. v4 (-20%) 是 robust 真 candidate.
+  max_dd_hard_stop_pct: -0.20
+  hard_stop_freeze_days: 14
+
+# ─── 数据源 ───
+data:
+  optimal_table_primary: "mart_per_stock_stage_strategy_optimal_pit"  # Codex C-A PIT-safe
+  optimal_table_fallback: "mart_per_stock_strategy_optimal"
+  benchmark: "000300"
+  start_date: "2024-07-01"   # Codex C-D 起点 (PIT 表 + ML 预测最早重合)
+
+# ─── 验证 / 反事实 (跟 paper_sim_config.yaml 对齐, 用户终极目标当 target 而非 hard gate) ───
+validation:
+  user_criteria:
+    annual_return_min: 0.30
+    max_dd_min: -0.20
+    excess_vs_hs300_min: 0.0
+    monthly_win_rate_min: 0.55
+  anti_churn:
+    avg_holding_days_min: 5
+    annual_turnover_max: 8.0
+    tx_cost_pct_of_gross_pnl_max: 0.10
+    swap_uplift_total_min: 0.0
+  robustness:
+    rolling_ir_60d_median_min: 0.5
+    rolling_ir_60d_p25_min: 0.0
+    rolling_annual_90d_median_min: 0.25
+    regime_min_return_per_segment: -0.02
+  ablation:
+    swap_vs_baseline_annual_uplift_min: 0.03
+    swap_vs_baseline_max_dd_degradation_max: 0.02
+    swap_vs_baseline_sharpe_ratio_min: 1.05
+  sensitivity:
+    severe_threshold_sweep: [0.4, 0.5, 0.6]
+  reality_check:
+    slippage_stress_pct: 0.003
+    annual_degradation_max: 0.05

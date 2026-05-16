@@ -740,6 +740,30 @@ SELECT * FROM mart_data_source_watermark;
 
 每次 session 增量内容写这里, 新 session 启动时**从下往上读**最近改了啥.
 
+### 2026-05-16 晚 Phase 1c (tiered selector v1 — Codex 10/11/12 round + user 分层 push back)
+
+**用户 push back Codex round 2 binary F vs C** (2026-05-16 晚): "小宇宙作为核心层, 其他探索矬子里拔大个, 细化, 而不是把余下 ~3700 只去寻找共同点".
+
+**Codex round 10 推 A+D**: PIT 1490 top-4 + non-PIT 3124 top-1 composite sub-rank (ML score × 流动性 × stage × sector 拥挤惩罚), 不用 default fallback.
+
+**用户 refine 3 层**: "核心层/中间层/外围层, 你俩更专业".
+
+**用户 push back 静态**: "三层之间应该还设计流动机制吧, 还是说有其他方法" → Codex round 11 pushback 成立, 推 v1 静态先 + 接口可流动 → v2 流动 (rolling perf vs universe median promotion/demotion). Bandit 3-5d 过重不推.
+
+**Codex round 12 pre-commit MINOR verdict (commit OK + 3 caveats)**:
+- composite weights/sector penalty 未实现, 当前 explore 实际 ML-only (v1 lean, v2 加 liquidity/stage)
+- reporter attribution by exit_source 未 cover 'explore' 值 (followup)
+- swap_rules ML_RANK_CORE/EXPLORE 不在 swap-in 白名单 (预期, 不允许换股)
+
+**5 file 实施** (待 commit):
+1. `backend/services/paper_sim/tiered_score_loader.py` 新建 167 行 (core+explore)
+2. `backend/services/paper_sim/config.py` SelectionConfig +ml_score_tiered_enabled + 4 sub fields
+3. `backend/services/paper_sim/selector.py` dispatch ml_score 加 tiered 分支优先
+4. `backend/config/paper_sim_ml_score_tiered.yaml` 新文件 (tiered_enabled=true)
+5. CandidateRow tier/exit_source 复用 (ML_RANK_CORE/EXPLORE + exit_source='pit'/'explore')
+
+**Tiered Win A 跑中** (PID 71156, ETA 4-5 min): 后期 core=3-4 + explore=1 candidates 满了, 早期 PIT cov 不足 core=0-1.
+
 ### 2026-05-16 晚 (Backend 路径修正 + Codex 战略 review + DuckDB PK dedup fix + PostToolUse hook)
 
 **Backend 路径救正** (PID 70131 死, 旧 chunky-monkey-v2 stale path):

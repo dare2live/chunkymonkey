@@ -73,6 +73,16 @@ class SelectionConfig:
     ml_score_fallback_params: dict = field(default_factory=lambda: {
         "hp": 10, "stop_pct": -0.08, "target_pct": 0.12, "trailing_pct": 0.08,
     })
+    # Phase 1c (Codex round 10+11): tiered selector (core PIT + explore non-PIT composite).
+    # User push back 静态分层 — Codex round 11 推 v1 静态先 + 接口可流动 → v2 流动规则.
+    # 跟 ml_score_fallback_enabled mutually exclusive: tiered 是 fallback 的更细化分层版.
+    ml_score_tiered_enabled: bool = False
+    ml_score_tiered_core_slots: int = 4
+    ml_score_tiered_explore_slots: int = 1
+    ml_score_tiered_explore_pool_size: int = 20
+    ml_score_tiered_score_weights: dict = field(default_factory=lambda: {
+        "ml": 0.6, "liquidity": 0.2, "stage": 0.2,
+    })
     # Codex 7-day plan Day 6: hybrid mode (sequential filter + rank-linear blend).
     # 只在 mode='hybrid' 生效.
     hybrid_model_id: str = "lgbm_baseline_v1"
