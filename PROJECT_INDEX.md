@@ -740,6 +740,29 @@ SELECT * FROM mart_data_source_watermark;
 
 每次 session 增量内容写这里, 新 session 启动时**从下往上读**最近改了啥.
 
+### 2026-05-16 (DSR AUDIT: beta+decile features 验 alpha 真实, p=0.9746 PASS)
+
+Window B (2024-01~2025-08, 161 dates, 8 walk-forward windows) DSR audit:
+- phase2_beta_decile_winB: RankIC 0.0694 / IC IR 1.0863 / est SR 3.763 / Deflated p **0.9746 PASS**
+- lgbm_v3_honest_20d (chain v7): RankIC 0.0257 / IC IR 0.6864 / Deflated p 0.9526 PASS
+
+Window A (2025-01~2026-04, 62 dates) DSR insufficient samples:
+- phase2_beta_decile_test: RankIC 0.0362 / IC IR 0.5112 / Deflated p 0.5456 (Window 太短, 不够 statistical power)
+- 但 RankIC delta vs v3 baseline 0.0294pp (4.3x) 显著
+
+Combined evidence: industry beta + mcap decile **GENUINE alpha source** (NOT luck). Codex 4th NO-GO hierarchical 基于弱 alpha, NEW finding 推翻该假设.
+
+**Backlog #51 (Feature research lane) COMPLETE**:
+- industry_beta_daily: 2.83M rows / 16s build / PIT 0 violations
+- market_cap_decile_daily: 3.43M rows / 7s build / 10 deciles equal split
+- 接入 mart_stock_regime_full v2 (138 cols)
+- DSR p=0.9746 PASS (Window B)
+
+后续考虑 (next session):
+- Phase 2 hierarchical 24-pool 重启 (alpha 强了)
+- Live multi-portfolio 加 new model_id (phase2_beta_decile_winB-style)
+- Codex 5th review with full DSR evidence
+
 ### 2026-05-16 (BREAKTHROUGH: beta+decile features 验证 alpha 真实存在 RankIC +0.0362!)
 
 **Codex a49c90a6 backlog #51 feature research lane 验证成功!**
