@@ -740,6 +740,28 @@ SELECT * FROM mart_data_source_watermark;
 
 每次 session 增量内容写这里, 新 session 启动时**从下往上读**最近改了啥.
 
+### 2026-05-16 (Codex 5th ace17432 FINAL: CLEAR LAUNCH PATH)
+
+5 round Codex review chain: aa2d79d2 → acf91c1f → ad2e09e7 → a49c90a6 → **ace17432 (final)**.
+
+Codex 5th 决定:
+1. **Phase 2 24-pool CONDITIONAL-GO**: WinB 强 (DSR 0.9746) BUT 需 frozen holdout 2025-09~2026-04 validate (WinB post-discovery overlaps A)
+2. **Live model: GO lgbm_v3_honest_20d** (DSR 0.9526 + paper_sim 5/5 PASS verified). beta_decile 没 paper_sim 不立刻 switch, parallel validate.
+3. **C_adaptive: CONDITIONAL-GO existing regime gate** placeholder. 不立刻 switch beta_decile as gate, log as shadow.
+4. **Priority** (clear order):
+   - a) Launch v4 + lgbm_v3 (verified) NOW
+   - d) Phase 4+ monitoring (infra ready) NOW
+   - b) Re-paper_sim beta_decile parallel
+   - c) Phase 2 24-pool implementation (after frozen holdout)
+   - e) Defer #47 PIT 5000 expansion
+
+**项目状态**: Launch-ready + Codex-approved. 用户部署 cron 1 line 即启动 live forward sim.
+
+后续 (next session):
+- Re-paper_sim beta_decile (~30 min, single config)
+- Frozen holdout 2025-09~2026-04 beta_decile re-validate
+- 然后 Phase 2 24-pool 实施 (Codex CONDITIONAL-GO)
+
 ### 2026-05-16 (DSR AUDIT: beta+decile features 验 alpha 真实, p=0.9746 PASS)
 
 Window B (2024-01~2025-08, 161 dates, 8 walk-forward windows) DSR audit:
