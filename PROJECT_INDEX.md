@@ -740,6 +740,37 @@ SELECT * FROM mart_data_source_watermark;
 
 每次 session 增量内容写这里, 新 session 启动时**从下往上读**最近改了啥.
 
+### 2026-05-16 (Phase 4+ live infrastructure: run_paper_sim_live_daily.py 3 组并行)
+
+Codex a49c90a6 verdict 之后实施 Phase 4+ live forward simulation 基础设施.
+
+新增 `scripts/run_paper_sim_live_daily.py`:
+- 加载 3 组 portfolio: A v4 (max_dd -20%) / B v8 (-22%) / C adaptive (placeholder v4 same)
+- yaml override pattern: A 用 paper_sim_ml_score.yaml 默认, B override max_dd_hard_stop_pct -0.22
+- run_paper_sim_day_multi 调用, 各独立 sim_run_id (live_A_v4 / live_B_v8 / live_C_adaptive)
+- 支持 --catchup bootstrap 历史 NAV + --today daily cron 模式
+
+PIT-safe (Codex Rule 5+7):
+- 每日 09:25 决策只用 D-1 EOD 数据 + 当日 09:25 之前 K线 (T 当日 VWAP entry)
+- ml_score_loader / hybrid 用 mart_per_stock_stage_strategy_optimal_pit ASOF
+- pre_close LAG / amount_ma20 strict prior
+
+cron setup (用户机器 crontab -e):
+```
+# 每日 17:00 跑 daily forward sim (盘后)
+0 17 * * 1-5 cd /path/to/chunkymonkey && PYTHONPATH=backend python backend/scripts/run_paper_sim_live_daily.py --today $(date +\%Y-\%m-\%d) >> /var/log/paper_sim_live.log 2>&1
+```
+
+3 组 portfolio config 加载验证 PASS:
+- A_v4: max_dd=-0.20 / freeze=14
+- B_v8: max_dd=-0.22 / freeze=14
+- C_adaptive: max_dd=-0.20 / freeze=14 (placeholder, defer Phase 2 feature research 完后开发 regime gate)
+
+剩任务:
+- Dashboard (audit_sim_run_ledger.py 已可用作 daily 3-way KPI 对比)
+- Production deployment (cron + log rotation + alerting)
+- Feature research lane (task #51)
+
 ### 2026-05-16 (Codex a49c90a6 FINAL: NO-GO Phase 2/3, launch v4 live)
 
 Codex 4th review final verdict (a49c90a6, 综合 Phase 2 ablation + DSR significance):
