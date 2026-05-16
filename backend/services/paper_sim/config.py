@@ -83,6 +83,13 @@ class SelectionConfig:
     ml_score_tiered_score_weights: dict = field(default_factory=lambda: {
         "ml": 0.6, "liquidity": 0.2, "stage": 0.2,
     })
+    # Phase 2 sector budget (Codex round 5 MAJOR verdict).
+    # 12 supersector hard cap 40% NAV (Top-5 单行业最多 2 只).
+    sector_budget_enabled: bool = False
+    sector_budget_level: str = "tdx_l1"          # tdx_l1 (12-15 一级) / tdx_l2 (40+) / tdx_l3
+    sector_budget_hard_cap_pct: float = 0.40    # rule-compliance: ok evidence=codex-round-5-design
+    sector_budget_soft_cap_pct: float = 0.30    # rule-compliance: ok evidence=codex-round-5-design (v1 暂不用 soft penalty)
+    sector_budget_confidence_filter: str = "observed_snapshot"  # 跳过 12.4% fallback
     # Codex 7-day plan Day 6: hybrid mode (sequential filter + rank-linear blend).
     # 只在 mode='hybrid' 生效.
     hybrid_model_id: str = "lgbm_baseline_v1"

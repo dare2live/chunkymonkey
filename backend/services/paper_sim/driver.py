@@ -430,8 +430,27 @@ def run_paper_sim_day(
         ).fetchall()}
         candidates_for_new = [c for c in candidates_passed if c.stock_code not in new_held][:slots_left]
         # 用 sizer 算每个候选的 cny
+        nav_for_sector = cash + _positions_value(conn, sim_run_id, mkt_conn, today)
         sizing = allocate_positions(candidates_for_new, cfg.portfolio, cash,
-                                     total_capital=cash + _positions_value(conn, sim_run_id, mkt_conn, today))
+                                     total_capital=nav_for_sector)
+
+        # Phase 2 sector budget (Codex round 5): 加载 PIT industry + 算 current exposure
+        sector_map: dict = {}
+        sector_exposure: dict = {}
+        if getattr(cfg.selection, "sector_budget_enabled", False):
+            from services.paper_sim.sector_budget import (
+                load_industry_pit, compute_current_sector_exposure,
+                check_sector_quota, log_sector_breach,
+            )
+            level = getattr(cfg.selection, "sector_budget_level", "tdx_l1")
+            conf = getattr(cfg.selection, "sector_budget_confidence_filter", "observed_snapshot")
+            sector_map = load_industry_pit(conn, today, level=level, confidence_filter=conf)
+            current_prices = {sc: float(k.get("close", 0)) for sc, k in kline.items()}
+            current_positions = _load_open_positions(conn, sim_run_id)
+            sector_exposure = compute_current_sector_exposure(
+                current_positions, current_prices, sector_map, nav_for_sector,
+            )
+
         for s, c in zip(sizing, candidates_for_new):
             k_c = kline[c.stock_code]
             # C-C mask: 停牌 + 涨停板 不能 buy
@@ -439,6 +458,20 @@ def run_paper_sim_day(
                 summary.setdefault("n_blocked_limit_up_buy", 0)
                 summary["n_blocked_limit_up_buy"] += 1
                 continue
+            # Phase 2 sector budget check (Codex round 5+13 hard cap 40% NAV)
+            _sector_budget_on = getattr(cfg.selection, "sector_budget_enabled", False)
+            if _sector_budget_on:
+                hard_cap = getattr(cfg.selection, "sector_budget_hard_cap_pct", 0.40)
+                allowed, reason = check_sector_quota(
+                    c.stock_code, s.target_cny, sector_map,
+                    sector_exposure, nav_for_sector, hard_cap,
+                )
+                if not allowed:
+                    summary.setdefault("n_blocked_sector_budget", 0)
+                    summary["n_blocked_sector_budget"] += 1
+                    log_sector_breach(sim_run_id, today, c.stock_code,
+                                       sector_map.get(c.stock_code) or "UNKNOWN", reason or "")
+                    continue
             buy_price = _vwap(k_c)    # 用户指定: 当日 VWAP 入场
             if buy_price <= 0 or s.target_cny <= 0:
                 continue
@@ -455,6 +488,13 @@ def run_paper_sim_day(
             cash = _open_position_directly(conn, c, today, buy_price, shares, buy,
                                             sim_run_id, cfg, source="new", cash=cash)
             summary["n_buys"] += 1
+            # Phase 2 sector budget (Codex round 13 MAJOR fix): exposure 累加移到成交后,
+            # 用实际成交额 buy.effective_amount (不是 sizer.target_cny), 避免跳单误挡.
+            if _sector_budget_on:
+                _sect = sector_map.get(c.stock_code)
+                if _sect:
+                    sector_exposure[_sect] = sector_exposure.get(_sect, 0.0) + \
+                                              (buy.effective_amount / nav_for_sector if nav_for_sector > 0 else 0)
 
     # 6. NAV 计算 + 写 mart_paper_sim_nav
     positions_value = _positions_value(conn, sim_run_id, mkt_conn, today)

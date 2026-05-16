@@ -740,6 +740,23 @@ SELECT * FROM mart_data_source_watermark;
 
 每次 session 增量内容写这里, 新 session 启动时**从下往上读**最近改了啥.
 
+### 2026-05-16 晚 Phase 2 v1 sector budget (Codex round 5+13 — 12 supersector 40% NAV)
+
+实施 Codex round 5 MAJOR design (sector budget hard cap 40% NAV):
+1. `backend/services/paper_sim/sector_budget.py` 新 ~110 行 (load_industry_pit / compute_exposure / check_quota / log_breach)
+2. `config.py` SelectionConfig +sector_budget fields (enabled/level/hard_cap/soft_cap/confidence)
+3. `driver.py` BUY 路径加 pre-load sector_map + check_quota + 成交后累加 exposure
+4. `paper_sim_ml_score_sector_budget.yaml` 新 (sector_budget_enabled=true tdx_l1 0.40)
+
+**Codex round 13 MAJOR 3 fix** (commit ?):
+- PIT effective_to 闭区间: `> ?` → `>= ?` 不漏末日
+- fallback 缺映射 stock 直接 allow (不入 UNKNOWN 桶汇聚误挡)
+- Exposure 累加时机移到 _open_position_directly 成功后, 用 buy.effective_amount 实际成交额
+
+Data: mart_stock_industry_pit 87.6% observed_snapshot / 12.4% fallback. tdx_l1 实际 13 类 + NULL (round 5 写 "12 supersector" 是估算).
+
+backward compat: 默认 false, F/Phase 4+ live yaml 不受影响. mart_paper_sim_sector_breach 表 v2 defer (v1 只 log warning).
+
 ### 2026-05-16 晚 Phase 1c (tiered selector v1 — Codex 10/11/12 round + user 分层 push back)
 
 **用户 push back Codex round 2 binary F vs C** (2026-05-16 晚): "小宇宙作为核心层, 其他探索矬子里拔大个, 细化, 而不是把余下 ~3700 只去寻找共同点".
