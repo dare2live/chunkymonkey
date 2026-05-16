@@ -801,13 +801,21 @@ SELECT * FROM mart_data_source_watermark;
 
 测试: 5 fail 全 fix, 全 suite 17 fail / 2189 pass = baseline 一致 (lint 改动无 regression).
 
-**#3 launchd cron (commit ?)**:
+**#3 launchd cron (commit 6bdee127)**:
 - `configs/launchd/com.chunkymonkey.nightly-data-audit.plist`: 每天 02:00 跑 nightly_data_audit (StartCalendarInterval Hour=2 Minute=0)
 - `configs/launchd/README.md`: install / verify / failure response / uninstall 文档
-- plist plutil -lint PASS / dry-run command PASS (severity=critical 报警如预期)
 - 注意: 用户需手动 `cp ... ~/Library/LaunchAgents/ && launchctl load ...` (system-level deploy 不自动)
 
+**#4 labels/build.py 改读 v_price_kline_qfq view + vwap 公式 governance v1 (commit ?)**:
+- `backend/services/labels/build.py`:
+  - SQL `FROM mkt.price_kline` → `FROM mkt.v_price_kline_qfq` (5 处)
+  - SQL vwap: `amount / volume` → `amount / (volume * 100.0)` (4 处: entry + 3 exit_*d)
+  - LABEL_VERSION 'p0a_v1' → 'p0a_v2_governance_v1'
+- `backend/tests/labels/test_build.py`: fixture 改用 `price_kline_tdxhub` + view, vwap expected 用 governance v1 公式
+- Phase 2 Read Path Removal step 2 (此次踩坑 labels/build.py 直接读主表绕过 view, 现已修)
+
 未实施 (Phase 1 剩余): pre-commit governance-yaml-sync hook.
+Phase 2 剩余 reader patch: return_engine.py:560 / paper_engine/benchmarks.py:28 / portfolio_backtest.py / event_simulator.py / pricing_sql.py.
 
 ### 2026-05-17 凌晨 数据治理 framework v1 (Codex round 16 task-mp8ktoe3-8rkde7, commit d055f5cb)
 

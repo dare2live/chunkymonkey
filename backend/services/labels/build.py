@@ -35,7 +35,7 @@ from services.paper_sim.config import TxCostConfig, load_config as load_paper_si
 
 log = logging.getLogger("labels.build")
 
-LABEL_VERSION = "p0a_v1"
+LABEL_VERSION = "p0a_v2_governance_v1"
 
 # SQL: 对 signal_date list × stock_code list 一次性算 entry/exit VWAP + masks + labels.
 # 入参 (DuckDB placeholder ?): tx round_trip_cost_pct.
@@ -45,7 +45,7 @@ WITH
 trading_days AS (
     -- 取所有交易日有序 (从 price_kline daily qfq).
     SELECT DISTINCT date::DATE AS d
-    FROM mkt.price_kline
+    FROM mkt.v_price_kline_qfq
     WHERE freq='daily' AND adjust='qfq'
 ),
 trading_day_rank AS (
@@ -92,7 +92,7 @@ entry_kline AS (
            k.low    AS e_low,
            k.close  AS e_close
     FROM stock_signal_grid g
-    LEFT JOIN mkt.price_kline k
+    LEFT JOIN mkt.v_price_kline_qfq k
       ON k.code = g.stock_code AND k.date = strftime(g.entry_date, '%Y-%m-%d')
      AND k.freq='daily' AND k.adjust='qfq'
 ),
@@ -102,7 +102,7 @@ exit_5d AS (
            k.open AS x_open, k.high AS x_high,
            k.low AS x_low, k.close AS x_close
     FROM stock_signal_grid g
-    LEFT JOIN mkt.price_kline k
+    LEFT JOIN mkt.v_price_kline_qfq k
       ON k.code = g.stock_code AND k.date = strftime(g.exit_date_5d, '%Y-%m-%d')
      AND k.freq='daily' AND k.adjust='qfq'
 ),
@@ -112,7 +112,7 @@ exit_10d AS (
            k.open AS x_open, k.high AS x_high,
            k.low AS x_low, k.close AS x_close
     FROM stock_signal_grid g
-    LEFT JOIN mkt.price_kline k
+    LEFT JOIN mkt.v_price_kline_qfq k
       ON k.code = g.stock_code AND k.date = strftime(g.exit_date_10d, '%Y-%m-%d')
      AND k.freq='daily' AND k.adjust='qfq'
 ),
@@ -122,7 +122,7 @@ exit_20d AS (
            k.open AS x_open, k.high AS x_high,
            k.low AS x_low, k.close AS x_close
     FROM stock_signal_grid g
-    LEFT JOIN mkt.price_kline k
+    LEFT JOIN mkt.v_price_kline_qfq k
       ON k.code = g.stock_code AND k.date = strftime(g.exit_date_20d, '%Y-%m-%d')
      AND k.freq='daily' AND k.adjust='qfq'
 ),
@@ -130,29 +130,30 @@ masks_and_vwap AS (
     SELECT
         g.stock_code, g.signal_date, g.entry_date,
         g.exit_date_5d, g.exit_date_10d, g.exit_date_20d,
-        -- entry VWAP + mask
-        CASE WHEN e.e_volume > 0 THEN e.e_amount / e.e_volume ELSE NULL END AS entry_vwap,
+        -- entry VWAP + mask (governance v1: volume unit=lots, vwap = amount / (volume * 100))
+        -- from yaml: configs/data_governance.yaml schema_contracts.price_kline_tdxhub.derived_formulas.vwap_qfq
+        CASE WHEN e.e_volume > 0 THEN e.e_amount / (e.e_volume * 100.0) ELSE NULL END AS entry_vwap,
         CASE
             WHEN e.e_amount IS NULL OR e.e_volume IS NULL OR e.e_volume = 0 THEN TRUE
             WHEN e.e_open = e.e_high AND e.e_open = e.e_low AND e.e_open = e.e_close THEN TRUE
             ELSE FALSE
         END AS unable_at_entry,
         -- 5d exit VWAP + mask
-        CASE WHEN x5.x_volume > 0 THEN x5.x_amount / x5.x_volume ELSE NULL END AS exit_vwap_5d,
+        CASE WHEN x5.x_volume > 0 THEN x5.x_amount / (x5.x_volume * 100.0) ELSE NULL END AS exit_vwap_5d,
         CASE
             WHEN x5.x_amount IS NULL OR x5.x_volume IS NULL OR x5.x_volume = 0 THEN TRUE
             WHEN x5.x_open = x5.x_high AND x5.x_open = x5.x_low AND x5.x_open = x5.x_close THEN TRUE
             ELSE FALSE
         END AS unable_at_exit_5d,
         -- 10d
-        CASE WHEN x10.x_volume > 0 THEN x10.x_amount / x10.x_volume ELSE NULL END AS exit_vwap_10d,
+        CASE WHEN x10.x_volume > 0 THEN x10.x_amount / (x10.x_volume * 100.0) ELSE NULL END AS exit_vwap_10d,
         CASE
             WHEN x10.x_amount IS NULL OR x10.x_volume IS NULL OR x10.x_volume = 0 THEN TRUE
             WHEN x10.x_open = x10.x_high AND x10.x_open = x10.x_low AND x10.x_open = x10.x_close THEN TRUE
             ELSE FALSE
         END AS unable_at_exit_10d,
         -- 20d
-        CASE WHEN x20.x_volume > 0 THEN x20.x_amount / x20.x_volume ELSE NULL END AS exit_vwap_20d,
+        CASE WHEN x20.x_volume > 0 THEN x20.x_amount / (x20.x_volume * 100.0) ELSE NULL END AS exit_vwap_20d,
         CASE
             WHEN x20.x_amount IS NULL OR x20.x_volume IS NULL OR x20.x_volume = 0 THEN TRUE
             WHEN x20.x_open = x20.x_high AND x20.x_open = x20.x_low AND x20.x_open = x20.x_close THEN TRUE

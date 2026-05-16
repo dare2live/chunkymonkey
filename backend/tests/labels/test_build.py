@@ -31,18 +31,38 @@ _TX = TxCostConfig(
 
 
 def _make_conn_with_mock_kline(rows: list[dict]) -> duckdb.DuckDBPyConnection:
-    """Create in-memory conn with mkt schema + price_kline table populated."""
+    """Create in-memory conn with mkt schema + v_price_kline_qfq view (governance v1).
+
+    governance v1: label build reads mkt.v_price_kline_qfq (tier-1 tdxhub primary).
+    Test fixture creates price_kline_tdxhub + canonical view (mock production schema).
+    """
     conn = duckdb.connect(":memory:")
     conn.execute("CREATE SCHEMA IF NOT EXISTS mkt")
     conn.execute("""
-        CREATE TABLE mkt.price_kline (
+        CREATE TABLE mkt.price_kline_tdxhub (
             code TEXT, date TEXT, freq TEXT, adjust TEXT,
             open DOUBLE, high DOUBLE, low DOUBLE, close DOUBLE,
-            volume DOUBLE, amount DOUBLE
+            volume DOUBLE, amount DOUBLE,
+            factor DOUBLE DEFAULT 1.0,
+            source TEXT DEFAULT 'tdxhub',
+            batch_id TEXT,
+            ingested_at TEXT
         )
     """)
+    conn.execute("""
+        CREATE OR REPLACE VIEW mkt.v_price_kline_qfq AS
+        SELECT code, date, freq, adjust, open, high, low, close, volume, amount,
+               COALESCE(factor, 1.0) AS factor,
+               COALESCE(source, 'tdxhub') AS source_name,
+               1::SMALLINT AS source_tier,
+               FALSE AS is_fallback
+        FROM mkt.price_kline_tdxhub
+        WHERE freq='daily' AND adjust='qfq'
+          AND open > 0 AND high > 0 AND low > 0 AND close > 0
+          AND volume >= 1e-6 AND amount >= 1e-6
+    """)
     conn.executemany(
-        "INSERT INTO mkt.price_kline (code, date, freq, adjust, open, high, low, close, volume, amount) "
+        "INSERT INTO mkt.price_kline_tdxhub (code, date, freq, adjust, open, high, low, close, volume, amount) "
         "VALUES (?, ?, 'daily', 'qfq', ?, ?, ?, ?, ?, ?)",
         [
             (r["code"], r["date"], r["open"], r["high"], r["low"], r["close"],
@@ -79,12 +99,14 @@ def test_normal_path_all_horizons_have_label():
     kline = []
     for i in range(22):
         date_str = f"2024-01-{(i % 28) + 1:02d}" if i < 28 else f"2024-02-{(i - 27):02d}"
+        # governance v1: volume unit=lots, vwap = amount / (volume * 100)
+        # 设计: vwap = 10 + i*0.1, volume=10 lots, → amount = vwap * volume * 100
         kline.append({
             "code": "600000", "date": date_str,
             "open": 10.0 + i * 0.1, "high": 10.0 + i * 0.1, "low": 10.0 + i * 0.1,
             "close": 10.0 + i * 0.1,
-            "volume": 1000.0,
-            "amount": 10000.0 + i * 100.0,  # VWAP = 10 + i*0.1
+            "volume": 10.0,
+            "amount": (10.0 + i * 0.1) * 10.0 * 100.0,  # vwap=10+i*0.1
         })
     # 让 high>low 避免一字板误判
     for k in kline:
@@ -96,9 +118,9 @@ def test_normal_path_all_horizons_have_label():
     rows = _run_build_sql(conn, [kline[0]["date"]], ["600000"], rt)
     assert len(rows) == 1
     r = rows[0]
-    # entry_vwap = kline[1].amount / kline[1].volume
-    expected_entry = kline[1]["amount"] / kline[1]["volume"]
-    expected_5d = kline[1 + 5]["amount"] / kline[1 + 5]["volume"]
+    # entry_vwap = kline[1].amount / (kline[1].volume * 100) (governance v1)
+    expected_entry = kline[1]["amount"] / (kline[1]["volume"] * 100.0)
+    expected_5d = kline[1 + 5]["amount"] / (kline[1 + 5]["volume"] * 100.0)
     assert abs(r[3] - expected_entry) < 1e-9
     assert r[4] is False  # unable_at_entry
     assert abs(r[6] - expected_5d) < 1e-9
@@ -134,7 +156,7 @@ def test_entry_suspended_all_labels_none():
 
     # 增加另一只股 在 D1 有 K 线, 让 trading_days 包含 D1
     conn.execute(
-        "INSERT INTO mkt.price_kline (code, date, freq, adjust, open, high, low, close, volume, amount) "
+        "INSERT INTO mkt.price_kline_tdxhub (code, date, freq, adjust, open, high, low, close, volume, amount) "
         "VALUES ('000001', '2024-01-02', 'daily', 'qfq', 1, 1.05, 0.95, 1, 100, 1000)"
     )
 
@@ -209,4 +231,4 @@ def test_only_exit_5d_unable_other_horizons_ok():
 
 
 def test_label_version_constant():
-    assert LABEL_VERSION == "p0a_v1"
+    assert LABEL_VERSION == "p0a_v2_governance_v1"
