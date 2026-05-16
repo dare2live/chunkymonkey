@@ -740,6 +740,24 @@ SELECT * FROM mart_data_source_watermark;
 
 每次 session 增量内容写这里, 新 session 启动时**从下往上读**最近改了啥.
 
+### 2026-05-16 (Phase 2 parent stage 实施完, child 待 next session)
+
+train_phase2_hierarchical.py stage_parent flesh out + 实测:
+- Parent global LambdaRank on mart_stock_regime_full
+- Exclude: meta + leakage + 13 noise + 4 risk features (Codex ace17432 separation)
+- 实测 same window 2025-01~2026-04:
+  - RankIC +0.0068 (= v3 baseline as expected, feature set 基本 same as v3 - exclude noise)
+  - 4 windows / 62 dates / Gate FAIL
+  - Predictions 写 mart_p0b_oos_predictions(model_id='phase2_parent_20d')
+- Schema fix: feature_panel_version → feature_version + 加 label_version, walk_forward_mode
+
+stage_parent **works end-to-end**. Phase 2 真正 alpha 来自 child residual (per-pool LightGBM on beta_decile features).
+
+下次 session 实施:
+- stage_child: 24 pool LightGBM regression on residual (label - sigmoid(parent_score))
+- stage_combine: final = 0.70 × parent + 0.30 × child
+- Frozen holdout 2025-09~2026-04 验证
+
 ### 2026-05-16 (Phase 4+ infrastructure END-TO-END VERIFIED + IC root cause)
 
 Smoke run run_paper_sim_live_daily.py + audit_live_dashboard.py on 2025-07-01:
