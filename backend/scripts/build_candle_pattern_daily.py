@@ -98,44 +98,67 @@ def main() -> int:
 
     log.info(f"  K线 rows loaded: {len(rows):,} ({time.time()-t0:.0f}s)")
 
-    # 计算 candle features per row
-    batch: list[tuple] = []
-    t1 = time.time()
-    for r in rows:
-        code, date, op, hi, lo, cl, vol, vol_ma_amt, close_max_20 = r
-        if vol_ma_amt is None or close_max_20 is None:
-            # 前 20 日 prior history 不足 → skip
-            continue
-        # vol_ma20 用 amount-based 转 vol (close × volume ≈ amount, 近似)
-        # 但 compute_features_for_signal 期望 vol_ma20 = average volume, 不是 amount.
-        # 用 amount / close 近似 average volume (PIT 安全, 都是 prior days).
-        # 实际应跑 AVG(volume) OVER. 简化此处.
-        vol_ma20 = vol_ma_amt / cl if cl > 0 else None
-        if not vol_ma20:
-            continue
-        feats = compute_features_for_signal(
-            open_p=op, high=hi, low=lo, close=cl, volume=vol,
-            vol_ma20=vol_ma20, close_max_20=close_max_20,
+    # Vectorized 算 candle features (numpy/pandas, 100x faster than Python loop)
+    import pandas as pd, numpy as np
+    df = pd.DataFrame(rows, columns=[
+        "stock_code", "trade_date", "open", "high", "low", "close",
+        "volume", "vol_ma_amt", "close_max_20",
+    ])
+    # Drop rows missing 20-day prior history
+    df = df.dropna(subset=["vol_ma_amt", "close_max_20"])
+    df = df[(df["close"] > 0) & (df["high"] >= df["low"]) & ((df["high"] - df["low"]) > 1e-9)]
+
+    full = df["high"] - df["low"]
+    body = (df["close"] - df["open"]).abs()
+    upper = df["high"] - df[["open", "close"]].max(axis=1)
+    lower = df[["open", "close"]].min(axis=1) - df["low"]
+
+    df["body_ratio"] = body / full
+    df["upper_shadow_ratio"] = upper / full
+    df["lower_shadow_ratio"] = lower / full
+    df["close_position"] = (df["close"] - df["low"]) / full
+    # vol_ma20 = vol_ma_amt / close (avg vol approx, PIT prior)
+    vol_ma20 = df["vol_ma_amt"] / df["close"]
+    df["volume_relative"] = np.where(vol_ma20 > 0, df["volume"] / vol_ma20, 1.0)
+    df["breakout_strength_20"] = np.where(
+        df["close_max_20"] > 0,
+        (df["close"] - df["close_max_20"]) / df["close_max_20"],
+        0.0,
+    )
+    # 6 binary 派生
+    df["is_bullish"] = df["close"] > df["open"]
+    df["is_doji"] = df["body_ratio"] < 0.1
+    df["is_long_lower_shadow"] = df["lower_shadow_ratio"] > 0.6
+    df["is_long_upper_shadow"] = df["upper_shadow_ratio"] > 0.6
+    df["is_marubozu"] = df["body_ratio"] > 0.9
+    df["is_high_volume"] = df["volume_relative"] > 2.0
+    df["source_max_trade_date"] = df["trade_date"]
+
+    log.info(f"  vectorized compute done: {len(df):,} rows ({time.time()-t0:.0f}s)")
+
+    # Bulk insert via DuckDB register
+    out_df = df[[
+        "stock_code", "trade_date",
+        "body_ratio", "upper_shadow_ratio", "lower_shadow_ratio",
+        "close_position", "volume_relative", "breakout_strength_20",
+        "is_bullish", "is_doji", "is_long_lower_shadow",
+        "is_long_upper_shadow", "is_marubozu", "is_high_volume",
+        "source_max_trade_date",
+    ]]
+    conn.register("candle_pattern_tmp", out_df)
+    conn.execute("""
+        INSERT OR REPLACE INTO fact_candle_pattern_daily (
+            stock_code, trade_date,
+            body_ratio, upper_shadow_ratio, lower_shadow_ratio,
+            close_position, volume_relative, breakout_strength_20,
+            is_bullish, is_doji, is_long_lower_shadow,
+            is_long_upper_shadow, is_marubozu, is_high_volume,
+            source_max_trade_date
         )
-        if feats is None:
-            continue
-        batch.append((
-            code, date,
-            feats.body_ratio, feats.upper_shadow_ratio, feats.lower_shadow_ratio,
-            feats.close_position, feats.volume_relative, feats.breakout_strength_20,
-            feats.is_bullish, feats.is_doji, feats.is_long_lower_shadow,
-            feats.is_long_upper_shadow, feats.is_marubozu, feats.is_high_volume,
-            date,  # source_max_trade_date = trade_date (PIT)
-        ))
-        if len(batch) >= args.batch_size:
-            _flush_batch(conn, batch)
-            total_rows += len(batch)
-            batch = []
-            if total_rows % 50000 == 0:
-                log.info(f"  ... {total_rows:,} rows written ({time.time()-t1:.0f}s)")
-    if batch:
-        _flush_batch(conn, batch)
-        total_rows += len(batch)
+        SELECT * FROM candle_pattern_tmp
+    """)
+    conn.unregister("candle_pattern_tmp")
+    total_rows = len(out_df)
 
     log.info(f"  build done: {total_rows:,} rows written, {time.time()-t0:.0f}s total")
 
@@ -153,7 +176,11 @@ def main() -> int:
 
 
 def _flush_batch(conn, batch: list[tuple]) -> None:
-    """Bulk INSERT OR REPLACE (idempotent rebuild)."""
+    """Legacy: Bulk INSERT OR REPLACE (idempotent rebuild).
+
+    Note (2026-05-16): vectorized 版本不用这个, 用 DataFrame register + INSERT FROM SELECT.
+    保留 backwards-compat.
+    """
     conn.executemany("""
         INSERT OR REPLACE INTO fact_candle_pattern_daily (
             stock_code, trade_date,

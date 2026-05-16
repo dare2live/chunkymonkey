@@ -87,8 +87,9 @@ active_stocks AS (
     JOIN mart_stock_industry_pit ind
         ON CAST(ind.effective_from AS DATE) <= ma.first_trading_day
        AND (CAST(ind.effective_to AS DATE) > ma.first_trading_day OR ind.effective_to = '9999-12-31')
-       AND ind.confidence_level = 'observed_snapshot'  -- 仅 PIT 真观察 (排 fallback)
        AND ind.tdx_l1 IS NOT NULL
+    -- Codex final 方案: supersector STATIC (按上市日期 fix), 接受 current_label_fallback (历史 industry_pit 99.978% fallback 已知).
+    -- 2026-04-25+ 才有 observed_snapshot, 历史 PIT 用 fallback 等价静态映射 (Codex 接受).
 ),
 -- ADV60 at each (stock, month_start), PIT prior 60 day
 adv60_at_anchor AS (

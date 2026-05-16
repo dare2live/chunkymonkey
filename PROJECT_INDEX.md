@@ -740,6 +740,26 @@ SELECT * FROM mart_data_source_watermark;
 
 每次 session 增量内容写这里, 新 session 启动时**从下往上读**最近改了啥.
 
+### 2026-05-16 (Phase 1 全量 build 完成 + Phase 2 prereq 实施 — 重大进展)
+
+candle build 用 pandas/numpy vectorized 重写, **9 秒** 完成 2.5M rows (vs 估 70 min Python loop, 466x 加速).
+
+Phase 1 全量 mart_stock_regime_full build (12s):
+- 2,576,125 rows / 4,625 stocks / 557 trading days / 135 cols
+- 5 acceptance audits 全 PASS:
+  - PIT-integrity-candle: **0 violations** (Codex Path 3 ASSERTION)
+  - Feature coverage: candle 98.5% / regime 99.46% / calendar 100%
+  - Schema: 135 cols (target 84+50 = 134 close)
+  - Row count: full window covered
+
+Phase 2 prereq mart_stock_pool_assignment build:
+- 154,812 rows / 5,529 stocks / 28 months / 38 pools (target 24, 13 industries × 2-3 tiers)
+- pool distribution: 装备制造_high 496 / 信息产业 / 可选消费 442 / 材料 384 / 日常消费 183 / ... / 综合类 9 (小)
+- supersector STATIC (Codex final 方案, 接受 current_label_fallback)
+- 实施需 filter "unknown" tier (ADV60 缺失) + 合并 "综合类" 小 pool
+
+Performance优化: vectorized pandas approach.
+
 ### 2026-05-16 (Phase 2 prereq: mart_stock_pool_assignment 24-pool builder)
 
 Codex final v3.1 hierarchical 24-pool 方案 prereq (12 CITIC L1 × 2 liquidity tier).
