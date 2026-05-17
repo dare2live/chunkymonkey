@@ -1,12 +1,18 @@
-"""Phase 4 #2 alpha feature engineering (Codex round 19 verdict #1 priority).
+"""Phase 4 alpha feature engineering (Codex round 19 verdict #1 priority).
 
-新增 alpha factors 候选 (按 Codex 推荐 ROI 排序):
-1. time_of_month: 月初/月末效应 (无 join, 仅日期算)
-2. market_cap_decile: 大小盘 SMB factor (TODO)
-3. industry_beta: stock vs industry residual (TODO)
-4. capital_flow: 北向 5d 净买入 / 融资余额变化 (TODO)
-5. institution_visit: 调研事件 7d/30d count (TODO)
-6. sector_momentum: 28 行业 30d return rank (复用 fact_sector_momentum_daily)
+实际实施 (Codex round 19-22, 2026-05-17):
+1. time_of_month: 月初/月末效应 (7 features, 无 join)
+2. market_cap_decile: SMB factor (6 features)
+3. industry_beta: rolling 60d residual (4 features)
+4. capital_flow: PIT wrap fact_capital_flow_pit_daily LHB+高管+股东户数 (15 features)
+5. sector_momentum: PIT industry + sector_momentum_daily — 实测 0% coverage (Pattern D 警告)
+6. institution_survey: mart_stock_survey_features wrap (7 features)
+7. forecast_upside: 一致预期 EPS × target_PE 上升空间 (纯函数, 等 PIT 累积)
+
+Audit (2026-05-17 AUDIT_2026_05_17.md):
+- 真有用: mcap_decile (corr 0.074), lhb_count_30d (0.055)
+- CONST/dead: sector_momentum 9 + holder_count_change_q_pct (见 V5_FEATURE_PLAN.md)
+- a158 top features 仍是 alpha 主力 (0.10-0.11)
 """
 from services.features.time_of_month import build_time_of_month_features, feature_names as tom_feature_names
 from services.features.market_cap_decile import build_market_cap_features, feature_names as mc_feature_names
