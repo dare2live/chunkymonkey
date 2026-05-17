@@ -173,13 +173,21 @@ Round 25 改的文件 (待 Codex 完成后 review):
 - ⏳ Phase 4 alpha 提升: 50 new features (in progress) → 期望 RankIC 0.025 → 0.035+
 - ⏳ score_rank_diff_v1 sizer 差异化仓位 (commit 71bb2189) — paper_sim ablation **跑中 (PID 93189, equal variant)**
 
-## 2026-05-17 19:55 in-flight ops
+## 2026-05-17 19:55 → 20:08 in-flight ops 更新
 
-| Op | 主机 | PID | 进度 | ETA | 状态 |
-|---|---|---|---|---|---|
-| Wave 1 Optuna 4 jobs | GCP VM | 11255/323/89/57 | trials=0/50 各 | unclear | CPU 779-791% 各 满载 |
-| K-line VM catch-up | GCP VM | 14468 | 2000/5165 stocks 39% | ~10 min | 5.3 股/s, 0 失败 |
-| Sizer ablation equal | 本地 | 93189 | 42 min CPU 跑 | unclear | 365% CPU 多核 |
+| Op | 主机 | 状态 | 关键数据 |
+|---|---|---|---|
+| Wave 1 Optuna 4 jobs **重启** | GCP VM | 跑中 | 新 PID 15240/306/374/452, thread thrash 修后 ~100s/fit (vs 30 min 前) |
+| K-line VM catch-up | GCP VM | **完成 15.5min** | 5149 股 / 35732 行 / 122 xdxr 重建 / 0 失败. price_kline_tdxhub now 2022-01-04 ~ 2026-05-15 |
+| K-line delta 提取 + 下载 | local | 完成 | 36260 行 / 7 trading days / 5177-5182 codes per day / 2.4MB |
+| K-line delta 合并 local market.duckdb | local | 等 sizer | DB lock conflict |
+| Sizer ablation equal | 本地 | 完成 811s | ann_ret_approx -9.0%, [FAIL] (lgbm_20260517_governance_v1_20d 弱) |
+| Sizer ablation rank_diff | 本地 PID 95319 | 跑中 ~13/20 yr | yaml schema fix 后 OK |
+
+**关键诊断**:
+- Wave 1 thread thrash 反例: OMP_NUM_THREADS=8 没传 LightGBM → 4 proc × 32 threads = 128 on 32 cores = 4× 过度订阅 (commit 1ba456bc 修 hp `n_jobs/num_threads = OMP_NUM_THREADS or 8`)
+- Wave 1 ETA 重估: trial-1 ~25 min (16 windows × ~100s/fit), 50 trials × 4 jobs = ~21h wall (vs 之前 15+ days 估计)
+- K-line VM tdxhub TCP OK + 9/9 servers tdxhub_ok (local 100% timeout 反例) — confirms 网络层差异是 GCP us-central1 vs 国内本地差异
 
 Commits 本轮:
 - 71e75209 PIT industry source_available_date 严格化 (Codex Round 25)
