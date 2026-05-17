@@ -39,8 +39,21 @@ log = logging.getLogger("labels.feature_join_v4")
 FEATURE_PANEL_VERSION_V4 = "p0a_v4"
 
 
-# v4 列扩展 (相对 v3_ext 增量)
+# v4 列扩展 (相对 v3 直接增量, 内联 capital_flow + Phase 4 modules; skip v3_ext intermediate)
 V4_NEW_COLS = [
+    # capital_flow (12 cols inline, ex-v3_ext) — fact_capital_flow_pit_daily PIT verified
+    ("lhb_count_30d", "INTEGER"),
+    ("lhb_net_buy_pct_30d", "DOUBLE"),
+    ("lhb_inst_buy_30d", "INTEGER"),
+    ("lhb_count_90d", "INTEGER"),
+    ("lhb_inst_buy_90d", "INTEGER"),
+    ("exec_buy_60d", "INTEGER"),
+    ("exec_sell_60d", "INTEGER"),
+    ("exec_buy_pct_60d", "DOUBLE"),
+    ("exec_sell_pct_60d", "DOUBLE"),
+    ("exec_net_signal", "DOUBLE"),
+    ("holder_count_change_q_pct", "DOUBLE"),
+    ("holder_count_q_report_date", "TEXT"),
     # market_cap_decile (1 col, from fact_market_cap_decile_daily)
     ("mcap_decile", "INTEGER"),
     # industry_beta (2 cols, from fact_industry_beta_daily)
@@ -56,11 +69,7 @@ V4_NEW_COLS = [
     ("sm_price_vs_ma20", "DOUBLE"),
     ("sm_price_vs_ma60", "DOUBLE"),
     ("sm_vol_60d", "DOUBLE"),
-    # institution_survey (4 raw from mart_stock_survey_features)
-    ("survey_count_30d", "INTEGER"),
-    ("survey_count_60d", "INTEGER"),
-    ("survey_inst_30d", "INTEGER"),
-    ("survey_inst_60d", "INTEGER"),
+    # institution_survey: 4 cols 已在 v3, 跳过 (avoid col conflict)
     # time_of_month (7 inline SQL)
     ("tom_day_of_month", "INTEGER"),
     ("tom_days_to_month_end", "INTEGER"),
@@ -75,7 +84,13 @@ V4_NEW_COLS = [
 _FEATURE_JOIN_SQL_V4 = """
 INSERT INTO mart_p0a_feature_label_panel_v4
 SELECT
-    v3ext.*,
+    v3.*,
+    -- capital_flow 12 cols (inline from fact_capital_flow_pit_daily PIT)
+    cf.lhb_count_30d, cf.lhb_net_buy_pct_30d, cf.lhb_inst_buy_30d,
+    cf.lhb_count_90d, cf.lhb_inst_buy_90d,
+    cf.exec_buy_60d, cf.exec_sell_60d,
+    cf.exec_buy_pct_60d, cf.exec_sell_pct_60d, cf.exec_net_signal,
+    cf.holder_count_change_q_pct, cf.holder_count_q_report_date,
     -- market_cap_decile
     mcd.mcap_decile,
     -- industry_beta
@@ -90,47 +105,45 @@ SELECT
     sm.price_vs_ma20 AS sm_price_vs_ma20,
     sm.price_vs_ma60 AS sm_price_vs_ma60,
     sm.vol_60d AS sm_vol_60d,
-    -- institution_survey
-    sv.survey_count_30d, sv.survey_count_60d,
-    sv.survey_inst_30d, sv.survey_inst_60d,
+    -- institution_survey 4 cols 已在 v3.* 自动继承, 跳过重复 SELECT
     -- time_of_month (inline SQL date math)
-    EXTRACT(DAY FROM v3ext.signal_date)::INTEGER AS tom_day_of_month,
-    DATEDIFF('day', v3ext.signal_date, DATE_TRUNC('month', v3ext.signal_date) + INTERVAL '1 month' - INTERVAL '1 day')::INTEGER AS tom_days_to_month_end,
-    DATEDIFF('day', DATE_TRUNC('month', v3ext.signal_date), v3ext.signal_date)::INTEGER AS tom_days_from_month_start,
+    EXTRACT(DAY FROM v3.signal_date)::INTEGER AS tom_day_of_month,
+    DATEDIFF('day', v3.signal_date, DATE_TRUNC('month', v3.signal_date) + INTERVAL '1 month' - INTERVAL '1 day')::INTEGER AS tom_days_to_month_end,
+    DATEDIFF('day', DATE_TRUNC('month', v3.signal_date), v3.signal_date)::INTEGER AS tom_days_from_month_start,
     CASE
-        WHEN EXTRACT(DAY FROM v3ext.signal_date) <= 7 THEN 0
-        WHEN EXTRACT(DAY FROM v3ext.signal_date) >= DAY(LAST_DAY(v3ext.signal_date)) - 6 THEN 2
+        WHEN EXTRACT(DAY FROM v3.signal_date) <= 7 THEN 0
+        WHEN EXTRACT(DAY FROM v3.signal_date) >= DAY(LAST_DAY(v3.signal_date)) - 6 THEN 2
         ELSE 1
     END::INTEGER AS tom_month_phase,
-    CASE WHEN EXTRACT(DAY FROM v3ext.signal_date) <= 7 THEN 1 ELSE 0 END::INTEGER AS tom_is_first_week,
-    CASE WHEN EXTRACT(DAY FROM v3ext.signal_date) >= DAY(LAST_DAY(v3ext.signal_date)) - 6 THEN 1 ELSE 0 END::INTEGER AS tom_is_last_week,
+    CASE WHEN EXTRACT(DAY FROM v3.signal_date) <= 7 THEN 1 ELSE 0 END::INTEGER AS tom_is_first_week,
+    CASE WHEN EXTRACT(DAY FROM v3.signal_date) >= DAY(LAST_DAY(v3.signal_date)) - 6 THEN 1 ELSE 0 END::INTEGER AS tom_is_last_week,
     CASE
-        WHEN EXTRACT(DAY FROM v3ext.signal_date) <= 3 OR
-             EXTRACT(DAY FROM v3ext.signal_date) >= DAY(LAST_DAY(v3ext.signal_date)) - 2 THEN 1
+        WHEN EXTRACT(DAY FROM v3.signal_date) <= 3 OR
+             EXTRACT(DAY FROM v3.signal_date) >= DAY(LAST_DAY(v3.signal_date)) - 2 THEN 1
         ELSE 0
     END::INTEGER AS tom_is_month_turn
-FROM mart_p0a_feature_label_panel_v3_ext v3ext
+FROM mart_p0a_feature_label_panel_v3 v3
+-- capital_flow PIT (inline, replaces v3_ext intermediate)
+LEFT JOIN fact_capital_flow_pit_daily cf
+  ON cf.stock_code = v3.stock_code
+ AND CAST(cf.trade_date AS DATE) = v3.signal_date
 LEFT JOIN fact_market_cap_decile_daily mcd
-  ON mcd.stock_code = v3ext.stock_code
- AND mcd.trade_date = v3ext.signal_date
+  ON mcd.stock_code = v3.stock_code
+ AND mcd.trade_date = v3.signal_date
 LEFT JOIN fact_industry_beta_daily ib
-  ON ib.stock_code = v3ext.stock_code
- AND ib.trade_date = v3ext.signal_date
+  ON ib.stock_code = v3.stock_code
+ AND ib.trade_date = v3.signal_date
 -- PIT industry lookup (strict observed_snapshot, fallback excluded)
 LEFT JOIN mart_stock_industry_pit sip
-  ON sip.stock_code = v3ext.stock_code
- AND sip.effective_from <= CAST(v3ext.signal_date AS VARCHAR)
- AND (sip.effective_to > CAST(v3ext.signal_date AS VARCHAR) OR sip.effective_to IS NULL)
+  ON sip.stock_code = v3.stock_code
+ AND sip.effective_from <= CAST(v3.signal_date AS VARCHAR)
+ AND (sip.effective_to > CAST(v3.signal_date AS VARCHAR) OR sip.effective_to IS NULL)
  AND sip.confidence_level = 'observed_snapshot'
 LEFT JOIN fact_sector_momentum_daily sm
   ON sm.sector_name = sip.tdx_l1_name
- AND sm.date = CAST(v3ext.signal_date AS VARCHAR)
--- Institution survey (PIT as_of_date)
-LEFT JOIN mart_stock_survey_features sv
-  ON sv.stock_code = v3ext.stock_code
- AND sv.as_of_date = CAST(v3ext.signal_date AS VARCHAR)
-WHERE v3ext.signal_date IN (SELECT signal_date FROM tmp_signal_dates)
-  AND v3ext.stock_code IN (SELECT stock_code FROM tmp_stocks)
+ AND sm.date = CAST(v3.signal_date AS VARCHAR)
+WHERE v3.signal_date IN (SELECT signal_date FROM tmp_signal_dates)
+  AND v3.stock_code IN (SELECT stock_code FROM tmp_stocks)
 """
 
 
@@ -154,7 +167,7 @@ def build_p0a_feature_label_panel_v4(
         # DDL: CREATE TABLE LIKE v3_ext + ALTER ADD 22 cols
         conn.execute(
             "CREATE TABLE IF NOT EXISTS mart_p0a_feature_label_panel_v4 AS "
-            "SELECT * FROM mart_p0a_feature_label_panel_v3_ext WHERE 1=0"
+            "SELECT * FROM mart_p0a_feature_label_panel_v3 WHERE 1=0"
         )
         for col, dtype in V4_NEW_COLS:
             try:

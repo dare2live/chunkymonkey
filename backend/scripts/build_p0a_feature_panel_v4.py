@@ -48,26 +48,22 @@ def main() -> int:
     t0 = time.time()
     log.info(f"=== Build feature_label_panel_v4 (range {args.start_date} → {args.end_date}) ===")
 
-    # 1. Universe + dates from v3_ext panel (reuse same range/codes)
+    # 1. Universe + dates from v3 panel (v3_ext skipped, capital_flow inlined)
     sm = duckdb.connect(str(SMART_DB), read_only=True)
-    # Quick sanity check: v3_ext exists
     try:
-        n_v3ext = sm.execute("SELECT COUNT(*) FROM mart_p0a_feature_label_panel_v3_ext").fetchone()[0]
-        log.info(f"  v3_ext panel: {n_v3ext:,} rows")
-        if n_v3ext == 0:
-            log.error("v3_ext panel empty — run build_p0a_feature_panel_v3_ext first")
-            return 1
+        n_v3 = sm.execute("SELECT COUNT(*) FROM mart_p0a_feature_label_panel_v3").fetchone()[0]
+        log.info(f"  v3 panel: {n_v3:,} rows")
     except Exception as e:
-        log.error(f"v3_ext panel missing: {e} — must build v3_ext first")
+        log.error(f"v3 panel missing: {e}")
         return 1
 
     dates = [str(r[0]) for r in sm.execute(
-        "SELECT DISTINCT signal_date FROM mart_p0a_feature_label_panel_v3_ext "
+        "SELECT DISTINCT signal_date FROM mart_p0a_feature_label_panel_v3 "
         "WHERE signal_date >= ? AND signal_date <= ? ORDER BY signal_date",
         [args.start_date, args.end_date],
     ).fetchall()]
     stocks = [r[0] for r in sm.execute(
-        "SELECT DISTINCT stock_code FROM mart_p0a_feature_label_panel_v3_ext "
+        "SELECT DISTINCT stock_code FROM mart_p0a_feature_label_panel_v3 "
         "ORDER BY stock_code"
     ).fetchall()]
     sm.close()

@@ -71,6 +71,15 @@
 
 **用户决策**: 上 GCP — Codex round 21 GCP 方案讨论中 (后台 a0737e36f10dc9294)
 
+## Optuna v4 新进展 (12:11 启动)
+
+- **PID 25088 (v3) 已 cancel** (in-memory trials 都丢, trial 0 +0.005 / trial 1 -0.029 远低于 baseline 0.0246, 损失低)
+- **v4 panel built 229s** (3m49s): mart_p0a_feature_label_panel_v4 2,901,970 rows × 143 cols
+- **v4 coverage audit**: mcap_decile 97.7% / beta_60d 97.6% / **sector_momentum 0%** (Codex round 20 警告: industry_pit 99.8% fallback, observed_snapshot filter 导致空) / survey 8.8% (v3 已有) / tom 100%
+- **Optuna v4 PID 47508 启动** (n_trials=50 + MedianPruner + PreparedPanel + per-trial persist)
+- 估时: 50 trials × ~10 min/trial × pruner factor 0.5 = ~4-6h (vs v3 实测 24 天)
+- 监控: `tail -f data/audit/logs/optuna_v4_20260517T121145.log`
+
 ## 长期 v3.2 状态 (η+++++++ +45.4% baseline, 含 leakage 历史)
 
 - [FAIL] +45.4% baseline 含 stage_optimal in-sample fit leakage (Codex acf48d35 标 CRITICAL)

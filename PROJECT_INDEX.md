@@ -994,7 +994,15 @@ Phase 3 step 5 P3 holdout (4 months last):
 - `backend/scripts/audit_lgbm_feature_importance.py`: read-only LightGBM importance ranking
 - 帮 Phase 4 #2 (feature engineering) 决策: 哪些 features 真带 alpha, 哪些噪音
 
-**#45 paper_sim_ml_score_governance_v1_rank_diff yaml (Codex round 19 #1, commit ?)**:
+**#46 v4 panel built + Optuna v4 launched (commit ?)**:
+- 切流程: Cancel v3 PID 25088 → build v4 panel 229s → launch Optuna v4 PID 47508
+- v4 panel: mart_p0a_feature_label_panel_v4 2,901,970 rows × 143 cols
+- v4 SQL fix: inline capital_flow JOIN (skip v3_ext intermediate); V4_NEW_COLS 35→31 (drop 4 survey dup)
+- v4 coverage: mcap 97.7% / beta 97.6% / sector_momentum 0% (Codex 警告) / survey 8.8% / tom 100%
+- Optuna v4 启动: n_trials=50 + MedianPruner + PreparedPanel + per-trial persist
+- 估时: ~4-6h (vs v3 24 天)
+
+**#45 paper_sim_ml_score_governance_v1_rank_diff yaml (Codex round 19 #1, commit bd1c5e94)**:
 - `backend/config/paper_sim_ml_score_governance_v1_rank_diff.yaml`:
   - Fork from governance_v1.yaml, 只改 position_sizing: equal → score_rank_diff_v1
   - 加 sizing_params: p=1.2, vol_exp=0.5, cash_buffer=0.15, max_single=0.25, min_single=0.05 (Codex round 19 verdict)
