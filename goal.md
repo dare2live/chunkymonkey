@@ -71,7 +71,24 @@
 
 **用户决策**: 上 GCP — Codex round 21 GCP 方案讨论中 (后台 a0737e36f10dc9294)
 
-## Optuna v4 新进展 (12:11 启动)
+## 本 session 持续工作汇总 (2026-05-17 06:00 起, 56 commits push origin/main `58ebf777`)
+
+| 阶段 | 输出 |
+|---|---|
+| Phase 4 features | 7 modules / 50 features / 41 tests pass |
+| Codex CRITICAL fixes (round 19) | forecast_upside PIT winsorize + champion rank_ic 占位 |
+| v4 panel | mart_p0a_feature_label_panel_v4 2.9M × 143 cols (229s build) |
+| Optuna v4 perf-wired | PreparedPanel + MedianPruner + per-trial persist (vs v3 24 天) |
+| Forecast EPS PIT | 2,374 stocks 首 snapshot (akshare 13-col 多年 EPS) |
+| Forecast upside live | 2,313 stocks 入 mart_forecast_upside_live SHADOW |
+| GCP Batch + GCS scaffolding | 12 文件 (Codex round 22) + setup_all.sh 一键 setup |
+| paper_sim sizer ablation | yaml + driver 脚本 |
+| Daily launchd cron | Mon-Fri 19:00 forecast EPS 自动 ingest |
+| Cleanup orphans | v1/v2 module + v3.2 chain 删除 |
+| Monitor tools | monitor_optuna_v4.py / run_post_optuna_v4_chain.sh |
+| goal.md ledger | 持续维护含 P0 issues 跟优先级 |
+
+## Optuna v4 进展 (12:11 启动)
 
 - **PID 25088 (v3) 已 cancel** (in-memory trials 都丢, trial 0 +0.005 / trial 1 -0.029 远低于 baseline 0.0246, 损失低)
 - **v4 panel built 229s** (3m49s): mart_p0a_feature_label_panel_v4 2,901,970 rows × 143 cols
