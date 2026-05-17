@@ -198,6 +198,15 @@ Round 25 改的文件 (待 Codex 完成后 review):
 
 Task #70 + #71 mark completed. 下一步 wave 1 完成后 retrain + 再跑 sizer ablation 看是否能上线.
 
+**Post-fix-audit 主动清残留** ([[post-fix-audit]] skill):
+- `mart_forecast_upside_live` 2026-05-17 snapshot close coverage **1.9% → 95.1%** (rebuilt with merged kline)
+- Top stocks by upside_blend (forecast_inst_count >= 5): 000703 / 601615 / 002602 / 002603 / 000598 / 600395 / 002493 / 300592 / 002271 / 600104 (大部分 PE 触及 80.0 上限, target_pe blend 后 industry 化)
+
+## 12:20 UTC 后续 in-flight
+
+- Wave 1: 16 min 跑 ~9 fits 各 job, trials=0 (trial-1 ETA ~12:30 完成)
+- ETA 重估: 50 trials × ~22 min avg / 4 jobs parallel = ~12-15h wall (with MedianPruner)
+
 **关键诊断**:
 - Wave 1 thread thrash 反例: OMP_NUM_THREADS=8 没传 LightGBM → 4 proc × 32 threads = 128 on 32 cores = 4× 过度订阅 (commit 1ba456bc 修 hp `n_jobs/num_threads = OMP_NUM_THREADS or 8`)
 - Wave 1 ETA 重估: trial-1 ~25 min (16 windows × ~100s/fit), 50 trials × 4 jobs = ~21h wall (vs 之前 15+ days 估计)
