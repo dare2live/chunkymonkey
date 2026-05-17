@@ -2,6 +2,23 @@
 
 This directory contains a strict-PIT Cloud Batch template for heavyweight experiments.
 
+## Quick Start (one-shot setup)
+
+After `gcloud auth login` + enable billing for project (GUI 1-click), run:
+
+```bash
+gcp/setup_all.sh PROJECT_ID BUCKET_NAME REGION EMAIL
+```
+
+例:
+```bash
+gcp/setup_all.sh chunkymonkey-2026 chunkymonkey-dp-2026 us-central1 dp@example.com
+```
+
+This single script does steps 1-6: verify auth, enable APIs, create GCS bucket + Artifact Registry + service account + IAM roles, replace all placeholders. Output tells you steps 7-10 (Docker build, data upload, smoke job, pull results).
+
+---
+
 ## Recommended Architecture
 
 Use Cloud Batch plus GCS for experiment bursts, with the Mac mini remaining the daily orchestrator. Do not keep a standing experiment cluster. Each job downloads immutable DuckDB snapshots from GCS to VM local ephemeral disk, runs one isolated experiment, uploads result files, and exits.
