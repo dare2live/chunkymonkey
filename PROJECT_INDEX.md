@@ -894,11 +894,23 @@ Codex review session 9 commit 后给出 **2 REDLINE Blocker + 12 FIX item + 1 CO
   - 验 entry_vwap = amount/(volume*100) = 3510 (governance v1 公式正确)
 - pytest backend/tests/labels/: 32 pass (含 new 1)
 
-**#14 nightly_data_audit.py Q8.1 training window audit (commit ?)**:
+**#14 nightly_data_audit.py Q8.1 training window audit (commit f99fb7c3)**:
 - Codex Q8.1: 30 天 lookback 不覆盖 training window (2024-01-01 起)
 - 加 `--training-window-audit` flag, 启用 900 天 lookback (~2.5 年)
 - audit JSON 输出含 `training_window_audit` boolean 标记
 - 用法: nightly cron 用 default 30 (drift detect); P3 acceptance 前用 --training-window-audit
+
+**#15 audit_survivorship_gate.py Q8.3 (commit ?)**:
+- Codex Q8.3: 新 audit script 验证 ML training data 不含 survivorship bias
+- 检查 (1) mart_p0a_label_panel distinct codes >= 90% ever_listed (含退市股)
+- 检查 (2) training builder scripts 不 hardcode `is_active=1` (rebuild/train_p0b/feature_panel/run_p0b_*)
+- Exit 0 PASS / Exit 1 FAIL with detail
+
+**#16 akshare_client.py Q5 tdxhub_only mode (commit ?)**:
+- Codex Q5: governance v1 stock K-line 应仅 tdxhub, 不调 akshare fallback
+- 加 `tdxhub_only=True` 参数到 `_fetch_daily_with_fallback` + `fetch_stock_kline_daily`
+- ON 时: 跳过 prefer_fallback / fallback_diagnostics akshare 分支, tdxhub 失败直接 return None (caller log)
+- 现 routers/updater.py 可改调 `tdxhub_only=True` 避免无意义 fetch
 
 ### 2026-05-17 凌晨 数据治理 framework v1 (Codex round 16 task-mp8ktoe3-8rkde7, commit d055f5cb)
 

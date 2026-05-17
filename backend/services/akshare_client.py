@@ -283,7 +283,13 @@ async def _fetch_daily_with_fallback(
     end_date: str,
     *,
     prefer_fallback: bool = False,
+    tdxhub_only: bool = False,
 ):
+    """fetch daily K-line with fallback chain.
+
+    Codex round 17 Q5 FIX: tdxhub_only=True 时跳过 akshare fallback,
+    governance v1 stock K-line 应仅 tdxhub native (price_kline 主表 retired).
+    """
     best_rows = []
     best_source = ""
     best_latest = None
@@ -300,7 +306,7 @@ async def _fetch_daily_with_fallback(
             best_latest = latest
         return latest
 
-    if prefer_fallback:
+    if prefer_fallback and not tdxhub_only:
         rows_fb, src_fb, fallback_diagnostics = await _fetch_daily_akshare_fallbacks(
             code,
             start_date,
@@ -323,7 +329,7 @@ async def _fetch_daily_with_fallback(
         if _is_rows_fresh_enough(rows_m, end_date):
             return rows_m, src_m
 
-    if fallback_diagnostics is None:
+    if fallback_diagnostics is None and not tdxhub_only:
         rows_fb, src_fb, fallback_diagnostics = await _fetch_daily_akshare_fallbacks(
             code,
             start_date,
@@ -337,6 +343,11 @@ async def _fetch_daily_with_fallback(
 
     if best_rows:
         return best_rows, best_source
+
+    # Codex Q5: tdxhub_only=True 时 fallback 不允许, 直接 return None (caller log + skip)
+    if tdxhub_only:
+        logger.info(f"[governance v1 tdxhub_only] {code}: tdxhub unavailable, no fallback")
+        return None, ""
 
     _raise_daily_fallback_error(fallback_diagnostics or {})
     return None, ""
@@ -411,7 +422,8 @@ async def fetch_stock_kline_monthly(code: str, limit: int = 36,
 async def fetch_stock_kline_daily(code: str, days: int = 150,
                                   start_date: Optional[str] = None,
                                   end_date: Optional[str] = None,
-                                  prefer_fallback: bool = False):
+                                  prefer_fallback: bool = False,
+                                  tdxhub_only: bool = False):
     """获取日K线。缺失股票拉全历史，失败时自动回退新浪 / 腾讯。
 
     Phase ψ.5 根因 1 残留修复: end_date 必须由调用方显式传入 (走 calendar gate).
@@ -430,6 +442,7 @@ async def fetch_stock_kline_daily(code: str, days: int = 150,
             start,
             end_date,
             prefer_fallback=prefer_fallback,
+            tdxhub_only=tdxhub_only,
         )
         if rows:
             return rows, source
