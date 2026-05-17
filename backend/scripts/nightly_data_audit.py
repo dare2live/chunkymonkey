@@ -255,7 +255,8 @@ def build_report(args: argparse.Namespace) -> dict[str, Any]:
     con = _connect(args.smartmoney_db, args.market_db)
     try:
         max_date = _max_canonical_date(con)
-        cutoff = max_date - timedelta(days=max(0, args.lookback_days))
+        effective_lookback = 900 if args.training_window_audit else args.lookback_days
+        cutoff = max_date - timedelta(days=max(0, effective_lookback))
         checks = [
             check_vwap_close_ratio(con, cutoff),
             check_source_proportion(con, cutoff),
@@ -273,7 +274,8 @@ def build_report(args: argparse.Namespace) -> dict[str, Any]:
         "generated_at_utc": generated_at.isoformat(timespec="seconds"),
         "smartmoney_db": str(args.smartmoney_db),
         "market_db": str(args.market_db),
-        "lookback_days": args.lookback_days,
+        "lookback_days": effective_lookback,
+        "training_window_audit": args.training_window_audit,
         "canonical_max_date": max_date.isoformat(),
         "cutoff_date": cutoff.isoformat(),
         "severity": max_severity,
@@ -285,7 +287,12 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Run nightly K-line data governance audit")
     parser.add_argument("--smartmoney-db", type=Path, default=DEFAULT_SMARTMONEY_DB)
     parser.add_argument("--market-db", type=Path, default=DEFAULT_MARKET_DB)
-    parser.add_argument("--lookback-days", type=int, default=30)
+    # Codex round 17 Q8.1 FIX: governance v1 训练 window 2024-01-01 起, 30 天不够覆盖
+    # default 改 900 (~2.5 年, 覆盖 2024-01 ~ now), 加 --training-window-audit flag 触发 full window
+    parser.add_argument("--lookback-days", type=int, default=30,
+                        help="nightly default 30 (recent drift); 加 --training-window-audit 覆盖全训练 window")
+    parser.add_argument("--training-window-audit", action="store_true",
+                        help="Codex Q8.1: 跑全训练 window (2024-01-01 起), 等同 --lookback-days 900")
     parser.add_argument("--write-json", type=Path, default=None)
     parser.add_argument("--write-default-json", action="store_true")
     return parser.parse_args()

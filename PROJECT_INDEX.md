@@ -886,13 +886,19 @@ Codex review session 9 commit 后给出 **2 REDLINE Blocker + 12 FIX item + 1 CO
 - 当 ann_ret > 0.50 → failures.append("sanity cap"), passed=False
 - 新单测 test_ann_ret_sanity_cap_blocks_corrupt_label_ann (1 pass)
 
-**#13 test_build.py Q4 HS300 fallback path test (commit ?)**:
+**#13 test_build.py Q4 HS300 fallback path test (commit 4b1ed9a1)**:
 - Codex Q4: label-build 单测只 mock primary path, 没 cover fallback (HS300 allowlist) 路径
 - 加 `_make_conn_with_fallback_view` fixture: 完整 mock v_price_kline_qfq view (primary + fallback NOT EXISTS)
 - 加 `test_label_build_uses_hs300_fallback_when_no_tdxhub_primary`:
   - 000300 stock 走 fallback (HS300 allowlist), 跑 build_p0a_label_panel
   - 验 entry_vwap = amount/(volume*100) = 3510 (governance v1 公式正确)
 - pytest backend/tests/labels/: 32 pass (含 new 1)
+
+**#14 nightly_data_audit.py Q8.1 training window audit (commit ?)**:
+- Codex Q8.1: 30 天 lookback 不覆盖 training window (2024-01-01 起)
+- 加 `--training-window-audit` flag, 启用 900 天 lookback (~2.5 年)
+- audit JSON 输出含 `training_window_audit` boolean 标记
+- 用法: nightly cron 用 default 30 (drift detect); P3 acceptance 前用 --training-window-audit
 
 ### 2026-05-17 凌晨 数据治理 framework v1 (Codex round 16 task-mp8ktoe3-8rkde7, commit d055f5cb)
 
