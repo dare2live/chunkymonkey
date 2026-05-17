@@ -14,6 +14,7 @@ from services.features.industry_beta import build_industry_beta_features, featur
 from services.features.capital_flow import build_capital_flow_features, feature_names as cf_feature_names
 from services.features.sector_momentum import build_sector_momentum_features, feature_names as sm_feature_names
 from services.features.institution_survey import build_institution_survey_features, feature_names as is_feature_names
+from services.features.forecast_upside import build_forecast_upside_features, feature_names as fu_feature_names
 
 __all__ = [
     "build_time_of_month_features",
@@ -28,4 +29,6 @@ __all__ = [
     "sm_feature_names",
     "build_institution_survey_features",
     "is_feature_names",
+    "build_forecast_upside_features",
+    "fu_feature_names",
 ]

@@ -994,7 +994,18 @@ Phase 3 step 5 P3 holdout (4 months last):
 - `backend/scripts/audit_lgbm_feature_importance.py`: read-only LightGBM importance ranking
 - 帮 Phase 4 #2 (feature engineering) 决策: 哪些 features 真带 alpha, 哪些噪音
 
-**#39 institution_survey feature (Codex round 19 #6, commit ?)**:
+**#40 forecast_upside framework (Codex verdict + 用户业绩预测 vision, commit ?)**:
+- `backend/services/features/forecast_upside.py`:
+  - compute_target_pe_self_median (本股 rolling N 日 PE 中位)
+  - compute_target_pe_industry_median (per-date cross-section)
+  - compute_target_pe_blend (加权混合 + bounds)
+  - compute_upside (fy_eps × pe / price - 1, with clip)
+  - build_forecast_upside_features end-to-end (6 features: 3 target_pe + 3 upside)
+- 纯函数, 不读 DB, 不接训练 panel
+- 历史 backtest 必须等 daily PIT snapshot 累积 (akshare stock_profit_forecast_em 已可调, fact_profit_forecast_daily DDL 已写但未跑)
+- 12 tests pass (upside basic/negative_eps/zero_price/clip; target_pe self/industry/blend/clip/nan_fallback; end_to_end; feature_names)
+
+**#39 institution_survey feature (Codex round 19 #6, commit 3cd8ac21)**:
 - `backend/services/features/institution_survey.py`:
   - JOIN mart_stock_survey_features by (stock_code, signal_date=as_of_date)
   - 4 raw cols (survey_count_30/60d, survey_inst_30/60d)
