@@ -239,6 +239,54 @@
 
 并行派多个 Codex (run_in_background=true) — 不同主题不冲突, 各自跑各自 thread. 完成自动通知, 不 poll.
 
+### 10.0.1 Claude 自己也派 multi-agents + Claude/Codex 跨 agent 多轮沟通 (新加 2026-05-17)
+
+> **用户原则 2 (2026-05-17 push back)**: "对于你自己, 也要在相关位置写上可以指派多 agents 完成任务, 你的 agent 和 codex 的 agent 之间也可以做多轮次沟通, 多维度充分发挥你们两个合作的最大能力".
+
+**Claude 自己的 multi-agent 用法**:
+
+| Claude agent 类型 | 适合做的事 |
+|---|---|
+| **Explore** | 大代码库探索, find 文件/symbol/keyword (3+ 次 grep 替代) |
+| **Plan** | 复杂多步骤实施 plan, 不只是当前 task |
+| **general-purpose** | 兜底 — 多步任务 + 不确定路径 |
+| **claude-code-guide** | Claude Code / Anthropic SDK 自身问题 |
+
+派 Claude agent 触发条件:
+- 探索 / 调研 > 3 个 grep — Explore (read-only)
+- 实施 plan > 5 步 — Plan
+- 复杂 multi-step 修复 — general-purpose
+- 各自工作不互相 file conflict — 可并行 background
+
+**Claude/Codex 跨 agent 多轮沟通**:
+
+模式 1: **Claude (调度) → Codex (深度设计) → Claude (实施 + 测试) → Codex (review)**
+- 调度: Claude 拆任务 + 写规范
+- 设计: Codex 出方案 (PIT spec, factor 公式, DDL, etc)
+- 实施: Claude 写代码 (按 Codex spec, 不再问 Codex 细节)
+- review: Codex 审 Claude 写完的代码, 找 PIT / leakage / edge case
+
+模式 2: **多 Codex 并行 → Claude 综合 verdict → Codex resume 单点深挖**
+- 例: Codex Round 27/28/29 三 round 评估不同工具源 (量化包 / 社区策略 / awesome-quant)
+- Claude 综合 3 个 round 给 unified verdict (matrix), commit doc
+- 跟某个具体工具 (e.g. backtester-mcp) 再开 Codex --resume 深挖 spec
+
+模式 3: **Claude 实施时遇到 unclear → Codex 探索 → Claude 收 + 继续**
+- 不阻塞 Claude session, Codex 异步出 spec 后 Claude resume
+- 不一次性派 完整任务给 Codex (太大), 拆 phase 派
+
+**不要做的事**:
+- Claude agent 跟 Codex agent **冲突 file** — 并行前确认无 overlap (CLAUDE.md §11.4 并发前必查)
+- Codex 中途 cancel 不归 Claude — Codex thread 卡的 cancel 是分开决策 ([[feedback-codex-thread-stuck]] 30 min idle 阈值)
+- Claude 子 agent 报告进度 — 直接拿结果, 不让 sub-agent 做 review/audit (它没你的 context)
+
+**实战已用例 (2026-05-17 session)**:
+- Codex Round 25-30 + Round 31-33 (本轮派的 3 个) = 8 个 Codex 跑 background 并行
+- 同时 Claude 自己 main session 跑 Wave 1 status / sizer ablation / forecast_upside rebuild
+- 多 Codex 完成自动通知 Claude 处理 → commit / wire
+
+固化路径: memory [[feedback-multi-agent-collab]] (新建).
+
 ### 10.1 Review Gate (commit-time)
 
 **触发**: 任何代码阶段性 commit 必须先 Codex review.

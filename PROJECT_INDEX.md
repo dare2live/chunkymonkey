@@ -788,7 +788,9 @@ SELECT * FROM mart_data_source_watermark;
 
 用户 push back 2026-05-17 "充分利用 Codex 各种能力, 增加对话轮次, 分配更多任务, 请固化". CLAUDE.md §10 新加 §10.0 主动派任务场景 (7 类: 架构 doc / 调研 / 数据修复 / PIT 设计 / SQL 重构 / factor spec / negative finding), 加派任务模板, 加并行 background dispatch. 配套 memory [[feedback-codex-proactive-dispatch]].
 
-2026-05-17 实战: Round 25-30 + 31-33 各 substantial 设计/调研, 不是单纯 review.
+用户继续 push back 2026-05-17 "对于你自己也要写上可以指派多 agents, Claude 跟 Codex agent 多轮次沟通". CLAUDE.md §10.0.1 新加 multi-agent 协作 (Claude sub-agent Explore/Plan/general-purpose + Claude/Codex 跨 agent 3 模式). 配套 memory [[feedback-multi-agent-collab]].
+
+2026-05-17 实战: Round 25-30 + 31-33 各 substantial 设计/调研, 不是单纯 review. 8+ Codex 并行 background.
 
 ### 2026-05-17 晚 Wave 1 thread thrashing 诊断 + paper_sim sizer fix
 
