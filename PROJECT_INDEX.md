@@ -994,7 +994,16 @@ Phase 3 step 5 P3 holdout (4 months last):
 - `backend/scripts/audit_lgbm_feature_importance.py`: read-only LightGBM importance ranking
 - 帮 Phase 4 #2 (feature engineering) 决策: 哪些 features 真带 alpha, 哪些噪音
 
-**#30 性能优化 phase 2 — PreparedSignalSet 数组化 (commit ?)**:
+**#31 性能优化 phase 3 — fast_path Optuna search (commit ?)**:
+- `backend/services/perf/fast_path.py`:
+  - `SimResult` dataclass (5 ndarray columns: net_ret/gross_ret/max_dd/holding_days/exit_reason)
+  - `ExitReason` IntEnum (UNSET / HOLD_END / STOP_HIT / TARGET_HIT / TRAILING_HIT / UNABLE / LIMIT_*)
+  - `compute_sharpe()` / `compute_mean_ret()` / `compute_ic_ir()` / `compute_objectives_from_arrays()`
+- Optuna trial 内不再 allocate TradeResult dict 列表 → 估 5-15× speedup
+- audit path (best params 后) 仍跑 realistic_engine 生成详细 TradeResult
+- 8 tests pass
+
+**#30 性能优化 phase 2 — PreparedSignalSet 数组化 (commit a3520748)**:
 - `backend/services/perf/prepared_signal_set.py`:
   - PreparedSignalSet dataclass (8 ndarray columns + stock_slice + stage_codec)
   - build_from_df() pandas → numpy columnar

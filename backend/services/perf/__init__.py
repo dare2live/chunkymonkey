@@ -14,6 +14,14 @@ from services.perf.prepared_signal_set import (
     PreparedSignalSet,
     build_from_df,
 )
+from services.perf.fast_path import (
+    SimResult,
+    ExitReason,
+    compute_sharpe,
+    compute_mean_ret,
+    compute_ic_ir,
+    compute_objectives_from_arrays,
+)
 
 __all__ = [
     "ShardSpec",
@@ -23,4 +31,10 @@ __all__ = [
     "reduce_to_duckdb",
     "PreparedSignalSet",
     "build_from_df",
+    "SimResult",
+    "ExitReason",
+    "compute_sharpe",
+    "compute_mean_ret",
+    "compute_ic_ir",
+    "compute_objectives_from_arrays",
 ]
