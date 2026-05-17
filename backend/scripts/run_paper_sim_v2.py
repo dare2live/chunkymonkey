@@ -176,8 +176,8 @@ def _ablation_compare(baseline: dict, swap_v1: dict, cfg: PaperSimConfig) -> Non
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--variant", default="swap_v1",
-                        choices=["swap_v1", "baseline", "swap_optuna"],
-                        help="单跑哪个 variant; --ablation 时忽略")
+                        help="单跑哪个 variant (free-form label string for KPI tagging); "
+                             "--ablation 时忽略. e.g. swap_v1 / baseline / swap_optuna / sizer_ablation_equal")
     parser.add_argument("--start", default="2023-01-03")
     parser.add_argument("--end", default=None,
                         help="默认 calendar-gated latest_closed_trade_date (Phase ψ.5)")

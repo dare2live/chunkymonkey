@@ -784,6 +784,10 @@ SELECT * FROM mart_data_source_watermark;
 
 每次 session 增量内容写这里, 新 session 启动时**从下往上读**最近改了啥.
 
+### 2026-05-17 晚 paper_sim --variant 自由化 + 触发 task #70 sizer ablation
+
+`backend/scripts/run_paper_sim_v2.py` 删 `choices=["swap_v1", "baseline", "swap_optuna"]` 限制, 允许 free-form label string (variant 仅用作 KPI 标签). 解锁 task #70 sizer_ablation_equal vs sizer_ablation_score_rank_diff_v1 跑历史. lgbm_20260517_governance_v1_20d model 2.16M OOS predictions 覆盖 2024-07-01 ~ 2026-04-13.
+
 ### 2026-05-17 下午 Codex Round 25 PIT industry source_available_date 严格化
 
 `backend/services/industry_pit.py` + `tdx_industry_client.py` 加 `source_available_date` 列, 严格区分 snapshot_date (业务日期) vs 实际入库日:
