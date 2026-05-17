@@ -34,7 +34,8 @@
 | 1 | forecast_upside.py 全样本 winsorize = forward leakage | 改 rolling window quantile, 加 test_winsorize_is_pit_safe | done commit 89aa9c3b |
 | 2 | promote_champion.py rank_ic = ann_ret * 0.1 占位污染 champion register | 改 _load_p0b_rank_ic from mart_p0b_walkforward_eval, 无 → 拒 promote | done commit 89aa9c3b |
 | 3 | Phase 4 features 全没 wire 到生产 panel — 设计 build_p0a_feature_panel_v4.py | feature_join_v4.py + driver script done (code only, 等 Optuna 完跑) | done code |
-| 4 | run_v3_2_full_chain.py:97 silent bug (cmd 没传 --feature-panel v2 实际走 v1) | 待修 (script 可能 deprecate 整删) | 待 |
+| 4 | run_v3_2_full_chain.py:97 silent bug (cmd 没传 --feature-panel v2 实际走 v1) | 整删 (v1/v2 chain 都 deprecated) | done commit a4b37574 |
+| 5 | Codex round 21 实测 24-day Optuna 根因 (Phase 1-6 perf 没 wire 到 Optuna 脚本) | run_p0b_lightgbm_optuna_v4.py perf-wired (PreparedPanel + MedianPruner + per-trial persist) | done code |
 
 ### 4.C Cleanup (Codex 重排: P0→P2, 因 train script 仍硬编码 v1)
 

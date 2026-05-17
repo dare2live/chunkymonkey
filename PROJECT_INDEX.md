@@ -994,7 +994,18 @@ Phase 3 step 5 P3 holdout (4 months last):
 - `backend/scripts/audit_lgbm_feature_importance.py`: read-only LightGBM importance ranking
 - 帮 Phase 4 #2 (feature engineering) 决策: 哪些 features 真带 alpha, 哪些噪音
 
-**#43 ingest_profit_forecast_snapshot.py — daily PIT immutable (Codex round 20 P1, commit ?)**:
+**#44 run_p0b_lightgbm_optuna_v4 perf-wired (Codex round 21 Path Z, commit ?)**:
+- `backend/scripts/run_p0b_lightgbm_optuna_v4.py`: PreparedPanel + MedianPruner + per-trial persist + governance enforce
+- 解决 Codex round 21 实测 24-day Optuna 问题:
+  - 用 services.perf.prepared_panel.build_panel_from_df 替代 df.to_dict (省 14.5 min)
+  - 预计算 walk-forward windows 一次 (省 31 min/trial 重切窗)
+  - objective 内 trial.report(score, step=window_idx) + should_prune (MedianPruner 真生效)
+  - per-trial 落盘 mart_p1_optuna_trials (callback, 防 kill 丢失)
+  - enforce_pre_optimize governance gate
+- 默认 n_trials=50 + MedianPruner(startup=10, warmup=7, n_min=5)
+- 估时间: 50 trials × pruning factor ~0.5 × ~10 min/trial = ~4-6h (vs v3 实测 24 天)
+
+**#43 ingest_profit_forecast_snapshot.py — daily PIT immutable (Codex round 20 P1, commit 820f43f2)**:
 - `backend/scripts/ingest_profit_forecast_snapshot.py`:
   - akshare stock_profit_forecast_em → raw_profit_forecast_snapshot_daily
   - schema: snapshot_date / stock_code / forecast_inst_count / eps_forecast (this/next/two_years) / profit_yoy / source / source_label / as_of_date / fetched_at / raw_json
