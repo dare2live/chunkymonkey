@@ -994,7 +994,27 @@ Phase 3 step 5 P3 holdout (4 months last):
 - `backend/scripts/audit_lgbm_feature_importance.py`: read-only LightGBM importance ranking
 - 帮 Phase 4 #2 (feature engineering) 决策: 哪些 features 真带 alpha, 哪些噪音
 
-**#28 Phase 4 full chain orchestrator (commit ?)**:
+**#29 性能优化 phase 1 — shard/manifest/reducer 架构 + CodeGraph 安装 (commit ?)**:
+
+按 stock/quant_experiment_optimization_and_codegraph_brief.md Codex verdict 实施.
+
+CodeGraph (代码探索 MCP server):
+- `npm install -g @colbymchenry/codegraph` (93 packages installed)
+- `codegraph init -i` indexed 745 python files / 12,118 symbols
+- `.codegraph/` 加 .gitignore
+
+性能 phase 1 (shard parallel + reducer 单写入):
+- `backend/services/perf/shard_runner.py`:
+  - `ShardSpec` / `ShardManifest` dataclass (save/load JSON)
+  - `export_snapshot(db_path, query, output_parquet)`: read-only snapshot 导 parquet
+  - `run_shards(manifest, worker_fn_name, max_workers=3)`: ProcessPoolExecutor 并行 + manifest 状态记录
+  - `reduce_to_duckdb(manifest, target_table, delete_clause)`: 顺序 INSERT INTO (single writer)
+- `backend/services/perf/__init__.py`: 5 public API
+- `backend/tests/perf/test_shard_runner.py`: 3 tests pass (manifest roundtrip + export + reduce)
+
+ROI: Phase 4 ablation #4 (3 horizons) / #5 (3 universes) / #6 (LambdaMART) 可并行跑 → ~3-5× speedup.
+
+**#28 Phase 4 full chain orchestrator (commit 60625188)**:
 - `backend/scripts/run_phase4_full_chain.sh`: 6 stage sequential
   - Stage 1: Optuna wait + 抽 best params + 重训
   - Stage 2: feature importance audit
