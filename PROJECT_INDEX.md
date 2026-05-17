@@ -784,6 +784,10 @@ SELECT * FROM mart_data_source_watermark;
 
 每次 session 增量内容写这里, 新 session 启动时**从下往上读**最近改了啥.
 
+### 2026-05-17 晚 MSAF Phase 1.4: sector_budget_enabled 默认 True
+
+Codex R34 root cause D MAJOR — paper_sim/config.py `sector_budget_enabled: bool = False` 改为 `True`. 历史 paper_sim 单行业 >40% NAV, 实测 max_dd -22.25% 超用户 -20% hard cap. MSAF Phase 1 必须默认开 sector cap 40% (Codex round 5 design 早就 propose 但默认关闭).
+
 ### 2026-05-17 晚 CLAUDE.md §10 改: Codex 主动派任务 (固化用户偏好)
 
 用户 push back 2026-05-17 "充分利用 Codex 各种能力, 增加对话轮次, 分配更多任务, 请固化". CLAUDE.md §10 新加 §10.0 主动派任务场景 (7 类: 架构 doc / 调研 / 数据修复 / PIT 设计 / SQL 重构 / factor spec / negative finding), 加派任务模板, 加并行 background dispatch. 配套 memory [[feedback-codex-proactive-dispatch]].

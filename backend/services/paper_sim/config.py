@@ -93,7 +93,9 @@ class SelectionConfig:
     })
     # Phase 2 sector budget (Codex round 5 MAJOR verdict).
     # 12 supersector hard cap 40% NAV (Top-5 单行业最多 2 只).
-    sector_budget_enabled: bool = False
+    # 2026-05-17 MSAF Phase 1.4: 默认开启 (Codex R34 root cause D MAJOR).
+    # rule-compliance: ok evidence=codex-r34-root-cause-D-default-enable
+    sector_budget_enabled: bool = True
     sector_budget_level: str = "tdx_l1"          # tdx_l1 (12-15 一级) / tdx_l2 (40+) / tdx_l3
     sector_budget_hard_cap_pct: float = 0.40    # rule-compliance: ok evidence=codex-round-5-design
     sector_budget_soft_cap_pct: float = 0.30    # rule-compliance: ok evidence=codex-round-5-design (v1 暂不用 soft penalty)
