@@ -994,7 +994,16 @@ Phase 3 step 5 P3 holdout (4 months last):
 - `backend/scripts/audit_lgbm_feature_importance.py`: read-only LightGBM importance ranking
 - 帮 Phase 4 #2 (feature engineering) 决策: 哪些 features 真带 alpha, 哪些噪音
 
-**#37 capital_flow feature wrap (Codex round 19 #3, commit ?)**:
+**#38 sector_momentum feature (Codex round 19 #5, commit ?)**:
+- `backend/services/features/sector_momentum.py`:
+  - JOIN mart_stock_industry_pit (PIT industry 跨期变更支持) + fact_sector_momentum_daily
+  - 9 raw cols (ret_5/20/60/120d, excess_20/60d, price_vs_ma20/60, vol_60d)
+  - 2 派生: sec_mom_score (excess_60 + 0.3*excess_20), sec_mom_rank_60d (cross-section rank)
+  - 11 total features
+- PIT 安全: default 排除 confidence_level='current_label_fallback' (14.3% 污染), 仅用 observed_snapshot (85.7% 干净)
+- 5 tests pass (pit_join / history_switch / fallback_excluded / fallback_optin / feature_names)
+
+**#37 capital_flow feature wrap (Codex round 19 #3, commit c76e4283)**:
 - `backend/services/features/capital_flow.py`:
   - JOIN fact_capital_flow_pit_daily by (stock_code, signal_date=trade_date)
   - 11 raw cols (lhb/exec/holder PIT 验证)
