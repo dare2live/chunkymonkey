@@ -994,6 +994,16 @@ Phase 3 step 5 P3 holdout (4 months last):
 - `backend/scripts/audit_lgbm_feature_importance.py`: read-only LightGBM importance ranking
 - 帮 Phase 4 #2 (feature engineering) 决策: 哪些 features 真带 alpha, 哪些噪音
 
+**#28 Phase 4 full chain orchestrator (commit ?)**:
+- `backend/scripts/run_phase4_full_chain.sh`: 6 stage sequential
+  - Stage 1: Optuna wait + 抽 best params + 重训
+  - Stage 2: feature importance audit
+  - Stage 3: exit_params PIT rebuild (SKIP defer)
+  - Stage 4: 3 ablation (label / universe / LambdaMART)
+  - Stage 5: aggregate RankIC ranking
+  - Stage 6: final governance + survivorship audit
+- 预计 ~8h Mac CPU (Stage 1 ~6h Optuna + Stage 2-6 ~2h)
+
 **#27 Phase 4 #5 universe ablation 完整 (commit a991ff24 skeleton + ?)**:
 - `backend/scripts/run_phase4_universe_ablation.sh`: 3 universe (baseline KEEP / top-2000 / sector neutral)
 - Step 1 build SQL views + Step 2 train 3 universes + Step 3 aggregate RankIC
