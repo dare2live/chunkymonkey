@@ -142,10 +142,16 @@ def main() -> int:
                  WHERE trade_date = (SELECT MAX(trade_date) FROM fact_financial_pit_daily)
             ),
             latest_close AS (
+                -- Latest close PER STOCK (not single global latest date — many stocks won't trade today)
                 SELECT code AS stock_code, close
-                  FROM mkt.v_price_kline_qfq
-                 WHERE adjust='qfq' AND freq='daily'
-                   AND date = (SELECT MAX(date) FROM mkt.v_price_kline_qfq WHERE adjust='qfq' AND freq='daily')
+                  FROM (
+                    SELECT code, date, close,
+                           ROW_NUMBER() OVER (PARTITION BY code ORDER BY date DESC) AS rn
+                      FROM mkt.v_price_kline_qfq
+                     WHERE adjust='qfq' AND freq='daily'
+                       AND CAST(date AS DATE) >= CAST(? AS DATE) - INTERVAL '10 days'
+                  )
+                 WHERE rn = 1
             )
             SELECT
                 ? AS snapshot_date,
@@ -189,6 +195,7 @@ def main() -> int:
             snapshot_date, snapshot_date,  # industry_pe filter
             snapshot_date, snapshot_date,  # stock_pit_industry filter
             snapshot_date, snapshot_date,  # stock_self_pe range
+            snapshot_date,  # latest_close 10d lookback anchor
             snapshot_date,  # output snapshot_date
             args.target_pe_cap, args.target_pe_floor,
             args.blend_self_weight, args.blend_self_weight,

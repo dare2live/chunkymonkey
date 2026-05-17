@@ -80,6 +80,16 @@
 - 估时: 50 trials × ~10 min/trial × pruner factor 0.5 = ~4-6h (vs v3 实测 24 天)
 - 监控: `tail -f data/audit/logs/optuna_v4_20260517T121145.log`
 
+## 2026-05-17 临时 critical issues 发现
+
+### Data sync gap (v_price_kline_qfq market.duckdb)
+- 2026-04-30 之前: ~5,150 codes/day (full universe)
+- 2026-05-07-12: 仅 101 codes
+- 2026-05-13-15: 仅 32 codes
+- 影响: forecast_upside_live close JOIN 仅 45/2313 stocks (2%); daily live trading 无法跑
+- 不影响: Optuna v4 训练 (v3 panel cutoff 2026-04-13, 早于断点)
+- 待修 P0 (下 session): sync 路径 / akshare rate limit / tdxhub fallback path / 物理清残缺日 + 重 sync
+
 ## 长期 v3.2 状态 (η+++++++ +45.4% baseline, 含 leakage 历史)
 
 - [FAIL] +45.4% baseline 含 stage_optimal in-sample fit leakage (Codex acf48d35 标 CRITICAL)
