@@ -994,7 +994,16 @@ Phase 3 step 5 P3 holdout (4 months last):
 - `backend/scripts/audit_lgbm_feature_importance.py`: read-only LightGBM importance ranking
 - 帮 Phase 4 #2 (feature engineering) 决策: 哪些 features 真带 alpha, 哪些噪音
 
-**#38 sector_momentum feature (Codex round 19 #5, commit ?)**:
+**#39 institution_survey feature (Codex round 19 #6, commit ?)**:
+- `backend/services/features/institution_survey.py`:
+  - JOIN mart_stock_survey_features by (stock_code, signal_date=as_of_date)
+  - 4 raw cols (survey_count_30/60d, survey_inst_30/60d)
+  - 3 派生: is_inst_survey_30d/60d (机构占比), is_survey_active (二值)
+  - 7 total features
+- 数据覆盖 2025-04-23 ~ 2026-05-12 (~13 mo, 训练前期 2024-01~2025-04 全 NULL/0 接受 partial)
+- 4 tests pass (basic_join / missing_pre_coverage_zero / derived_inst_ratio / feature_names)
+
+**#38 sector_momentum feature (Codex round 19 #5, commit d1f64ec5)**:
 - `backend/services/features/sector_momentum.py`:
   - JOIN mart_stock_industry_pit (PIT industry 跨期变更支持) + fact_sector_momentum_daily
   - 9 raw cols (ret_5/20/60/120d, excess_20/60d, price_vs_ma20/60, vol_60d)

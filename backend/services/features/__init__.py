@@ -13,6 +13,7 @@ from services.features.market_cap_decile import build_market_cap_features, featu
 from services.features.industry_beta import build_industry_beta_features, feature_names as ib_feature_names
 from services.features.capital_flow import build_capital_flow_features, feature_names as cf_feature_names
 from services.features.sector_momentum import build_sector_momentum_features, feature_names as sm_feature_names
+from services.features.institution_survey import build_institution_survey_features, feature_names as is_feature_names
 
 __all__ = [
     "build_time_of_month_features",
@@ -25,4 +26,6 @@ __all__ = [
     "cf_feature_names",
     "build_sector_momentum_features",
     "sm_feature_names",
+    "build_institution_survey_features",
+    "is_feature_names",
 ]
