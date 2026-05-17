@@ -994,7 +994,12 @@ Phase 3 step 5 P3 holdout (4 months last):
 - `backend/scripts/audit_lgbm_feature_importance.py`: read-only LightGBM importance ranking
 - 帮 Phase 4 #2 (feature engineering) 决策: 哪些 features 真带 alpha, 哪些噪音
 
-**#26 Phase 4 #4 label horizon ablation chain script (commit ?)**:
+**#27 Phase 4 #5 universe ablation skeleton (commit ?)**:
+- `backend/scripts/run_phase4_universe_ablation.sh`: 3 universe (baseline KEEP / top-2000 / sector neutral)
+- Step 1 build SQL views: v_phase4_universe_liquid_top2000 + v_phase4_universe_sector_neutral
+- TODO: train_p0b_lightgbm.py 加 --universe-filter-view 参数实际跑
+
+**#26 Phase 4 #4 label horizon ablation chain script (commit 98a62c20)**:
 - `backend/scripts/run_phase4_label_horizon_ablation.sh`: 3 horizons (5d/10d/20d) sequential train
 - Step 0 wait Optuna done (pgrep -f loop) → Step 1 train × 3 → Step 2 aggregate RankIC
 - governance v1 baseline (LABEL_VERSION=p0a_v2_governance_v1, FEATURE_VERSION=p0a_v3)
