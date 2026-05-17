@@ -990,6 +990,13 @@ Phase 3 step 5 P3 holdout (4 months last):
 5. Universe ablation (KEEP 60/00/30/68 vs 流动性 top-2000 vs sector neutral)
 6. LightGBM 替代 (LambdaMART / CatBoost / XGBoost ranker)
 
+**#23 Phase 4 #3 启动 — Optuna 200 trials --full (commit ?)**:
+- 后台 PID 25088 跑 (~6-8h)
+- run_p0b_lightgbm_optuna_v3.py --label fwd_cost_after_20d --n-trials 200 --full
+- --min-train-months 12 --feature-panel mart_p0a_feature_label_panel_v3
+- 期望: RankIC 0.0246 → 0.04+ (hyperparam 调优)
+- log: data/audit/logs/optuna200_*.log
+
 **#20 paper_sim_ml_score_governance_v1.yaml + Phase 3 step 2/3 启动 (commit db394565)**:
 - Phase 3 step 2: build_p0a_feature_panel_v3 完成 (102s ~2 min):
   - rows: 2,901,970 / KEEP universe 5,210 (ever-listed) / feature_version=p0a_v3
