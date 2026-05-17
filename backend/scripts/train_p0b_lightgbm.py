@@ -111,6 +111,14 @@ def main() -> int:
     parser.add_argument("--end-date", default=None, help="过滤 signal_date <= 此日期")
     parser.add_argument("--feature-panel", default="mart_p0a_feature_label_panel",
                         help="读哪张 P0a panel (v1 default, _v2, _v3 可选)")
+    # Codex round 17 Q8.5 FIX: 不再 hardcode 'p0a_v1', 通过 CLI 传 governance v1 版本
+    parser.add_argument("--feature-version", default="p0a_v1",
+                        help="feature panel version (governance v1: 'p0a_v2_governance_v1')")
+    parser.add_argument("--label-version", default="p0a_v1",
+                        help="label panel version (governance v1: 'p0a_v2_governance_v1')")
+    # Codex round 17 Q8.6 FIX: enforce RankIC gate (≥0.03 + n_dates ≥30) — 失败 exit 1
+    parser.add_argument("--enforce-rankic-gate", action="store_true",
+                        help="P0b RankIC gate ≥0.03 + n_dates ≥30 fail 时 exit 1 (governance v1 default ON)")
     args = parser.parse_args()
 
     run_id = args.run_id or f"p0b_{datetime.now(UTC).strftime('%Y%m%dT%H%M%S')}_{uuid.uuid4().hex[:6]}"
@@ -235,7 +243,7 @@ def main() -> int:
                 "fwd_cost_after_20d": p.get("fwd_cost_after_20d"),
                 "model_id": args.model_id,
                 "model_version": "p0b_baseline_v1",
-                "feature_version": "p0a_v1", "label_version": "p0a_v1",
+                "feature_version": args.feature_version, "label_version": args.label_version,
                 "walk_forward_mode": "expanding_monthly",
                 "train_start": p["train_start"], "train_end": p["train_end"],
                 "test_start": p["test_start"], "test_end": p["test_end"],
@@ -262,8 +270,8 @@ def main() -> int:
         conn._con.unregister("_p0b_pred_df")
         # Eval rows
         eval_rows = [
-            (run_id, w["window_idx"], args.model_id, "p0b_baseline_v1", "p0a_v1",
-             "p0a_v1", "expanding_monthly",
+            (run_id, w["window_idx"], args.model_id, "p0b_baseline_v1", args.feature_version,
+             args.label_version, "expanding_monthly",
              str(w["train_start"]), str(w["train_end"]), str(w["test_start"]), str(w["test_end"]),
              w["n_train"], w["n_test"],
              w["rank_ic"] if w["rank_ic"] == w["rank_ic"] else None,
@@ -283,7 +291,11 @@ def main() -> int:
             eval_rows,
         )
         log.info(f"Wrote {len(all_predictions):,} predictions + {len(window_results)} eval rows")
-        return 0 if passed else 0  # Always exit 0; warn only
+        # Codex round 17 Q8.6 FIX: enforce gate when --enforce-rankic-gate (governance v1 default)
+        if args.enforce_rankic_gate and not passed:
+            log.error("P0b gate FAIL (governance v1 enforce): RankIC < 0.03 OR n_dates < 30. exit 1")
+            return 1
+        return 0
     finally:
         conn.close()
 
