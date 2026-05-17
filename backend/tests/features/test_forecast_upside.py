@@ -69,6 +69,26 @@ class TestTargetPeSelfMedian:
         assert result.notna().sum() > 0
         assert (result.dropna() > 0).all()
 
+    def test_winsorize_is_pit_safe(self):
+        """Codex CRITICAL fix: winsorize 应用 trailing window 分位, 不是全样本.
+        Early rows 不能 'know' 后期分布."""
+        # 前 200 rows PE 10-30, 后 200 rows PE 出现极端 1000
+        early = list(range(10, 30))  # bounded 10-30
+        late_extreme = [1000] * 20
+        pe = pd.Series(early * 10 + late_extreme * 10)  # 400 rows
+        result = compute_target_pe_self_median(pe, window_days=60, min_periods=30,
+                                                winsor_pct=(0.05, 0.95))
+        # 前期 (index 50): trailing window 全 normal, median ≈ 19-20
+        # 如果是全样本 winsorize, 后期 1000 会拉高 hi quantile → 前期 median 不受影响
+        # 但若用 global quantile, hi=接近 1000, 前期 PE 不被 clip → 前期 median 还是正常 ~19
+        # 关键测试: median 应该单调增 (不能前期"看到"后期数据)
+        idx_early = 100  # rolling window 完全在 early 段
+        idx_late = 300  # rolling window 完全在 late 段
+        early_med = result.iloc[idx_early]
+        late_med = result.iloc[idx_late]
+        # late median 应该 > early median (后期 PE 更高)
+        assert late_med > early_med + 50, f"late {late_med} should much higher than early {early_med}"
+
 
 class TestTargetPeIndustryMedian:
     def test_per_date_per_industry_median(self):

@@ -54,10 +54,11 @@ def compute_target_pe_self_median(
     pe = pe_history.astype("float64").where(pe_history > 0, np.nan)
     if winsor_pct:
         lo_q, hi_q = winsor_pct
-        # Rolling winsorize approximation: clip each value by global quantiles
-        lo = pe.quantile(lo_q)
-        hi = pe.quantile(hi_q)
-        pe = pe.clip(lower=lo, upper=hi)
+        # PIT-safe rolling winsorize — clip each value by its own trailing-window quantiles only
+        # (Codex round 19+ CRITICAL fix: 之前用 global quantile 是 forward leakage)
+        lo_series = pe.rolling(window_days, min_periods=min_periods).quantile(lo_q)
+        hi_series = pe.rolling(window_days, min_periods=min_periods).quantile(hi_q)
+        pe = pe.clip(lower=lo_series, upper=hi_series)
     return pe.rolling(window_days, min_periods=min_periods).median()
 
 

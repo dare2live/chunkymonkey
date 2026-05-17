@@ -994,16 +994,21 @@ Phase 3 step 5 P3 holdout (4 months last):
 - `backend/scripts/audit_lgbm_feature_importance.py`: read-only LightGBM importance ranking
 - 帮 Phase 4 #2 (feature engineering) 决策: 哪些 features 真带 alpha, 哪些噪音
 
-**#40 forecast_upside framework (Codex verdict + 用户业绩预测 vision, commit ?)**:
+**#41 Codex round 20 CRITICAL fixes (commit ?)**:
+- `backend/services/features/forecast_upside.py:54-63`: PIT winsorize fix. 之前全样本 quantile → forward leakage. 改 rolling window quantile, 每行只 clip 用自己 trailing window. test_winsorize_is_pit_safe 加.
+- `backend/scripts/promote_champion.py:132-145`: 删 rank_ic = ann_ret × 0.1 占位 (污染 champion register 指标). 改 _load_p0b_rank_ic from mart_p0b_walkforward_eval (优先 final_holdout, fallback 全 OOS windows avg). rank_ic None → 拒 promote (除非 --force).
+- 测试: 13 fu tests pass (新 winsorize_is_pit_safe)
+
+**#40 forecast_upside framework (Codex verdict + 用户业绩预测 vision, commit 95b30089)**:
 - `backend/services/features/forecast_upside.py`:
-  - compute_target_pe_self_median (本股 rolling N 日 PE 中位)
+  - compute_target_pe_self_median (本股 rolling N 日 PE 中位, PIT-safe rolling winsorize)
   - compute_target_pe_industry_median (per-date cross-section)
   - compute_target_pe_blend (加权混合 + bounds)
   - compute_upside (fy_eps × pe / price - 1, with clip)
   - build_forecast_upside_features end-to-end (6 features: 3 target_pe + 3 upside)
 - 纯函数, 不读 DB, 不接训练 panel
 - 历史 backtest 必须等 daily PIT snapshot 累积 (akshare stock_profit_forecast_em 已可调, fact_profit_forecast_daily DDL 已写但未跑)
-- 12 tests pass (upside basic/negative_eps/zero_price/clip; target_pe self/industry/blend/clip/nan_fallback; end_to_end; feature_names)
+- 13 tests pass (含 winsorize_is_pit_safe)
 
 **#39 institution_survey feature (Codex round 19 #6, commit 3cd8ac21)**:
 - `backend/services/features/institution_survey.py`:

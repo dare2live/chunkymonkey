@@ -68,6 +68,29 @@ def _load_p2_composite(conn, model_id: str) -> float | None:
         return None
 
 
+def _load_p0b_rank_ic(conn, model_id: str, feature_version: str | None) -> float | None:
+    """从 mart_p0b_walkforward_eval 取此 model_id 平均 rank_ic.
+    用 OOS test windows 平均 (filter is_final_holdout=true if 存在, 否则全 windows)."""
+    try:
+        # 优先 final holdout
+        r = conn.execute(
+            "SELECT AVG(rank_ic) FROM mart_p0b_walkforward_eval "
+            "WHERE model_id = ? AND is_final_holdout = TRUE",
+            [model_id],
+        ).fetchone()
+        if r and r[0] is not None:
+            return r[0]
+        # fallback: 全 OOS windows
+        r = conn.execute(
+            "SELECT AVG(rank_ic) FROM mart_p0b_walkforward_eval WHERE model_id = ?",
+            [model_id],
+        ).fetchone()
+        return r[0] if r and r[0] is not None else None
+    except Exception as e:
+        log.warning(f"P0b rank_ic lookup failed: {e}")
+        return None
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="P4c promote champion CLI")
     parser.add_argument("--p3-run-id", required=True)
@@ -94,6 +117,11 @@ def main() -> int:
         composite = _load_p2_composite(conn, p3["model_id"])
         log.info(f"P2 composite score (best): {composite}")
 
+        # Codex CRITICAL fix: 用 mart_p0b_walkforward_eval real rank_ic, 不接受 ann_ret*0.1 占位
+        feature_version = p3.get("feature_version")
+        rank_ic_real = _load_p0b_rank_ic(conn, p3["model_id"], feature_version)
+        log.info(f"P0b walkforward rank_ic (avg): {rank_ic_real}")
+
         champion_id = args.champion_id or f"{p3['model_id']}_{p3['run_id']}"
         rec = ChampionRecord(
             champion_id=champion_id,
@@ -102,7 +130,7 @@ def main() -> int:
             feature_version=p3.get("feature_version") or "p0a_v1",
             label_version=p3.get("label_version") or "p0a_v1",
             seed=p3.get("seed") or 42,
-            rank_ic=None,  # 来自 P0b train (未直接关联), 后续 enrich
+            rank_ic=rank_ic_real,  # 真实 OOS rank_ic from mart_p0b_walkforward_eval (Codex fix)
             ann_ret=p3["ann_ret"], max_dd=p3["max_dd"],
             monthly_win_rate=p3["monthly_win_rate"],
             excess_vs_hs300=p3["excess_vs_hs300"],
@@ -129,13 +157,17 @@ def main() -> int:
                 dv = comp.get(f"{k}_delta")
                 log.info(f"  {k}: champion={cv}, challenger={hv}, Δ={dv}")
 
-        # Register (NOTE: rank_ic 当前 None — P4c Gate 会拒绝, 需要 enrichment)
-        # 简化: 用 P3 ann_ret 临时填 rank_ic (后续 P4c.b 加 enrichment)
+        # Codex CRITICAL fix: 删除 rank_ic = ann_ret * 0.1 占位 (污染 champion register).
+        # 现在只接受 mart_p0b_walkforward_eval 的真实 OOS rank_ic.
+        # 如果 rank_ic 为 None → 拒 promote (除非 --force, 然后明确写 NULL 不伪填).
         if rec.rank_ic is None:
-            rec = ChampionRecord(
-                **{**rec.__dict__, "rank_ic": rec.ann_ret * 0.1}  # 占位估算
-            )
-            log.warning("rank_ic 临时估算 = ann_ret × 0.1; 后续 P4c.b 从 mart_p0b_walkforward_eval enrich")
+            if not args.force:
+                log.error(
+                    "rank_ic not available from mart_p0b_walkforward_eval for "
+                    f"model_id={p3['model_id']}. 拒绝 promote (用 --force 跳过但 rank_ic 入库为 NULL)."
+                )
+                return 1
+            log.warning("--force 启用, rank_ic 入库为 NULL (champion register KPI 不完整).")
 
         ok = register_champion(conn, rec, promote=True, reason=args.reason)
         if not ok:

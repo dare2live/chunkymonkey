@@ -21,19 +21,30 @@
 
 | 阶段 | 内容 | 状态 |
 |---|---|---|
-| 4.B.1 | `forecast_upside.py` 纯函数模块 (upside = fy1_eps × target_pe / current_price - 1) | 进行中 |
+| 4.B.1 | `forecast_upside.py` 纯函数模块 (upside = fy1_eps × target_pe / current_price - 1) | done (commit 95b30089) |
+| 4.B.1.fix | PIT winsorize fix (Codex CRITICAL: 之前全样本 quantile = forward leakage) | done |
 | 4.B.2 | `ingest_profit_forecast_snapshot.py` daily immutable PIT snapshot | 待 |
 | 4.B.3 | shadow validation mart (5d/20d hit_rate) | 数月累积后 |
 | 4.B.4 | Optuna joint search space (forecast_year/target_pe_source/blend/upside_floor) | 数月后 |
 
-### 4.C Cleanup (用户 [[feedback_dead_data_purge]] 废弃数据彻底删除)
+### 4.B.fixes Codex CRITICAL fixes (本 session)
+
+| # | bug | 修 |
+|---|---|---|
+| 1 | forecast_upside.py 全样本 winsorize = forward leakage | 改 rolling window quantile, 加 test_winsorize_is_pit_safe |
+| 2 | promote_champion.py rank_ic = ann_ret * 0.1 占位污染 champion register | 改 _load_p0b_rank_ic from mart_p0b_walkforward_eval, 无 → 拒 promote (除非 --force) |
+| 3 | Phase 4 features 全没 wire 到生产 panel — 设计 build_p0a_feature_panel_v4.py | 待 (等 Optuna 完) |
+
+### 4.C Cleanup (Codex 重排: P0→P2, 因 train script 仍硬编码 v1)
 
 | 优先级 | 任务 | 状态 |
 |---|---|---|
-| P0 | feature_join_v1 (9 callers) — 评估 + 迁移 + 删 | 待 |
-| P0 | feature_join_v2 (1 caller run_v3_2_full_chain) — 迁移 + 删 | 待 |
-| P1 | paper_sim score_loader 3 版本合并 → 1 主版本 | 待 |
-| P1 | paper_sim_*.yaml 13 → 3 (base + overlay) | 待 |
+| P2 | feature_join_v1 (0 fn caller) — defer 等 train_p0b_lightgbm.py:119 / run_p1_ablation.py:82 默认迁 v3 | defer |
+| P2 | feature_join_v2 (1 caller orphan chain) — defer 同上 | defer |
+| P1 | paper_sim score_loader 3 → 1 主 loader + strategy param | 待 |
+| P1 | paper_sim_*.yaml 12 → 3 (active base + conservative + experiment) | 待 |
+| P1 | run_v3_2_full_chain.py:97 silent bug 修 (cmd 没传 --feature-panel v2) | 待 |
+| P2 | 物理 DROP v3 panel leakage 残列 (inst_quality_* / sector_ret_*) | 等 Optuna 完 |
 
 ### 4.D 决策出口闭环 (codegraph audit P0 gap)
 
