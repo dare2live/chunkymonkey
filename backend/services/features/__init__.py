@@ -10,10 +10,13 @@
 """
 from services.features.time_of_month import build_time_of_month_features, feature_names as tom_feature_names
 from services.features.market_cap_decile import build_market_cap_features, feature_names as mc_feature_names
+from services.features.industry_beta import build_industry_beta_features, feature_names as ib_feature_names
 
 __all__ = [
     "build_time_of_month_features",
     "tom_feature_names",
     "build_market_cap_features",
     "mc_feature_names",
+    "build_industry_beta_features",
+    "ib_feature_names",
 ]

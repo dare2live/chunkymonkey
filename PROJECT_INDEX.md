@@ -994,7 +994,15 @@ Phase 3 step 5 P3 holdout (4 months last):
 - `backend/scripts/audit_lgbm_feature_importance.py`: read-only LightGBM importance ranking
 - 帮 Phase 4 #2 (feature engineering) 决策: 哪些 features 真带 alpha, 哪些噪音
 
-**#35 Phase 4 #2 feature engineering — time_of_month + market_cap_decile (commit ?)**:
+**#36 industry_beta feature (Codex round 19 #1, commit ?)**:
+- `backend/services/features/industry_beta.py`:
+  - Rolling 60d covariance/variance → beta
+  - residual = stock_ret_Nd - beta × ind_ret_Nd (alpha 部分)
+  - excess / alpha_ratio
+  - 4 features × N-day lookback
+- 3 tests pass
+
+**#35 Phase 4 #2 feature engineering — time_of_month + market_cap_decile (commit d07f5ebb)**:
 
 按 Codex round 19 verdict #1 priority — 先 feature engineering 才能真正提 alpha.
 
