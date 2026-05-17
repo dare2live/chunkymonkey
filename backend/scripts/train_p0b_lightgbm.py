@@ -54,19 +54,26 @@ _META_FIELDS = {
 }
 
 
-def _load_df(conn, panel_name: str = "mart_p0a_feature_label_panel") -> pd.DataFrame:
+def _load_df(conn, panel_name: str = "mart_p0a_feature_label_panel",
+             universe_filter_view: str | None = None) -> pd.DataFrame:
     """从指定 P0a feature_label_panel 加载为 DataFrame, signal_date 转 month_start.
-
-    用 wrapper 底层 _con.execute().fetchdf() 拿 pandas (DuckDB native fast path,
-    跳过 Python dict 转换 — 3.7M × 80 cols ≈ 1-2 min 而非 20+ min).
 
     Args:
         conn: DuckConn.
         panel_name: 'mart_p0a_feature_label_panel' (v1, default) | '_v2' | '_v3'.
+        universe_filter_view: Codex Q1 + Phase 4 #5 — optional view name (signal_date, stock_code)
+                              INNER JOIN 过滤 universe (e.g. v_phase4_universe_liquid_top2000)
     """
-    df = conn._con.execute(
-        f"SELECT * FROM {panel_name} ORDER BY signal_date, stock_code"
-    ).fetchdf()
+    if universe_filter_view:
+        sql = (
+            f"SELECT p.* FROM {panel_name} p "
+            f"INNER JOIN {universe_filter_view} u "
+            f"  ON u.signal_date = p.signal_date AND u.stock_code = p.stock_code "
+            f"ORDER BY p.signal_date, p.stock_code"
+        )
+    else:
+        sql = f"SELECT * FROM {panel_name} ORDER BY signal_date, stock_code"
+    df = conn._con.execute(sql).fetchdf()
     df["month_start"] = pd.to_datetime(df["signal_date"]).dt.to_period("M").dt.to_timestamp()
     return df
 
@@ -111,6 +118,9 @@ def main() -> int:
     parser.add_argument("--end-date", default=None, help="过滤 signal_date <= 此日期")
     parser.add_argument("--feature-panel", default="mart_p0a_feature_label_panel",
                         help="读哪张 P0a panel (v1 default, _v2, _v3 可选)")
+    # Phase 4 #5 universe ablation: INNER JOIN view 过滤 universe
+    parser.add_argument("--universe-filter-view", default=None,
+                        help="可选 view (signal_date, stock_code) 过滤 universe (e.g. v_phase4_universe_liquid_top2000)")
     # Codex round 17 Q8.5 FIX: 不再 hardcode 'p0a_v1', 通过 CLI 传 governance v1 版本
     parser.add_argument("--feature-version", default="p0a_v1",
                         help="feature panel version (governance v1: 'p0a_v2_governance_v1')")
@@ -128,8 +138,11 @@ def main() -> int:
     try:
         create_p0b_ddl(conn)
 
-        log.info("Loading DataFrame from mart_p0a_feature_label_panel...")
-        df = _load_df(conn, panel_name=args.feature_panel)
+        if args.universe_filter_view:
+            log.info(f"Loading DataFrame from {args.feature_panel} INNER JOIN {args.universe_filter_view} ...")
+        else:
+            log.info(f"Loading DataFrame from {args.feature_panel} ...")
+        df = _load_df(conn, panel_name=args.feature_panel, universe_filter_view=args.universe_filter_view)
         log.info(f"Loaded {len(df):,} rows × {len(df.columns)} cols")
 
         if args.start_date:

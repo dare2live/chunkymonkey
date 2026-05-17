@@ -97,10 +97,55 @@ PY
 # NOTE: train_p0b_lightgbm.py 当前不支持 --universe-filter, 需手工 universe inline
 # 简化: 跑 baseline (A) + B + C 用 SQL pre-filter pa
 # 实际此 phase 需先扩 train_p0b_lightgbm.py 加 --universe-filter-view 参数
-log "Step 2: train across 3 universes (baseline + B + C)"
-log "  NOTE: train_p0b_lightgbm.py 当前不支持 --universe-view, 待 add CLI 后跑"
-log "  目前生成 universe filter views, train 单独 PR/commit 实施"
+log "Step 2: train across 3 universes (baseline A + liquid top-2000 B + sector neutral C)"
 
-log "=== Phase 4 #5 universe ablation script skeleton DONE ==="
+# A baseline (无 universe filter)
+MODEL_A="lgbm_${TIMESTAMP}_governance_v1_universe_A_baseline"
+log "  A baseline train → ${MODEL_A}"
+python backend/scripts/train_p0b_lightgbm.py \
+    --label "$LABEL" --model-id "$MODEL_A" \
+    --feature-version "$FEATURE_VERSION" --label-version "$LABEL_VERSION" \
+    --feature-panel "$FEATURE_PANEL" \
+    --enforce-rankic-gate \
+    2>&1 | tee "$LOG_DIR/train_A_baseline.log"
+
+# B liquid top-2000
+MODEL_B="lgbm_${TIMESTAMP}_governance_v1_universe_B_liquid_top2000"
+log "  B liquid top-2000 → ${MODEL_B}"
+python backend/scripts/train_p0b_lightgbm.py \
+    --label "$LABEL" --model-id "$MODEL_B" \
+    --feature-version "$FEATURE_VERSION" --label-version "$LABEL_VERSION" \
+    --feature-panel "$FEATURE_PANEL" \
+    --universe-filter-view v_phase4_universe_liquid_top2000 \
+    --enforce-rankic-gate \
+    2>&1 | tee "$LOG_DIR/train_B_liquid_top2000.log"
+
+# C sector neutral
+MODEL_C="lgbm_${TIMESTAMP}_governance_v1_universe_C_sector_neutral"
+log "  C sector neutral → ${MODEL_C}"
+python backend/scripts/train_p0b_lightgbm.py \
+    --label "$LABEL" --model-id "$MODEL_C" \
+    --feature-version "$FEATURE_VERSION" --label-version "$LABEL_VERSION" \
+    --feature-panel "$FEATURE_PANEL" \
+    --universe-filter-view v_phase4_universe_sector_neutral \
+    --enforce-rankic-gate \
+    2>&1 | tee "$LOG_DIR/train_C_sector_neutral.log"
+
+# Step 3: aggregate RankIC across universes
+log "Step 3: aggregate RankIC across 3 universes"
+python3 -c "
+import duckdb
+c = duckdb.connect('data/smartmoney.duckdb', read_only=True)
+r = c.execute(\"\"\"
+SELECT model_id, AVG(rank_ic) avg_ic, AVG(rank_ic_ir) avg_ic_ir, COUNT(*) n_windows
+FROM mart_p0b_walkforward_eval
+WHERE model_id LIKE 'lgbm_${TIMESTAMP}_governance_v1_universe_%'
+GROUP BY model_id ORDER BY avg_ic DESC
+\"\"\").fetchall()
+print('Phase 4 #5 universe ablation results:')
+for row in r: print(f'  {row[0]:60s} ic={row[1]:.4f} ic_ir={row[2]:.4f} n={row[3]}')
+c.close()
+" 2>&1 | tee "$LOG_DIR/ablation_results.log"
+
+log "=== Phase 4 #5 universe ablation DONE ==="
 log "log dir: $LOG_DIR"
-log "TODO: train_p0b_lightgbm.py 加 --universe-filter-view 参数 (read view, INNER JOIN signal_date+stock_code)"
