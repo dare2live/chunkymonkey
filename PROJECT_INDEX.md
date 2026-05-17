@@ -990,10 +990,15 @@ Phase 3 step 5 P3 holdout (4 months last):
 5. Universe ablation (KEEP 60/00/30/68 vs 流动性 top-2000 vs sector neutral)
 6. LightGBM 替代 (LambdaMART / CatBoost / XGBoost ranker)
 
-**#24 Phase 4 alpha 根因 audit script (commit ?)**:
+**#24 Phase 4 alpha 根因 audit script (commit b8f2d285)**:
 - `backend/scripts/audit_lgbm_feature_importance.py`: read-only LightGBM importance ranking
 - 帮 Phase 4 #2 (feature engineering) 决策: 哪些 features 真带 alpha, 哪些噪音
-- 用法: PYTHONPATH=backend python backend/scripts/audit_lgbm_feature_importance.py --top-n 20 --bottom-n 20
+
+**#25 Phase 4 #6 LambdaMART Q8.5/Q8.6 fix (commit ?)**:
+- run_p0b_lambdamart_v3.py 同 train_p0b 模式:
+  - Q8.5: --feature-version / --label-version CLI 参数化
+  - Q8.6: walkforward_eval INSERT OR REPLACE → DELETE+INSERT idempotent
+- Phase 4 #6 ablation ready (Optuna done 后 trigger)
 
 **#23 Phase 4 #3 启动 — Optuna 200 trials --full (commit 10b1b829)**:
 - 后台 PID 25088 跑 (~6-8h)

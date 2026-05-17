@@ -79,6 +79,11 @@ def main() -> int:
     parser.add_argument("--num-leaves", type=int, default=31)
     parser.add_argument("--label-gain-max", type=int, default=20)
     parser.add_argument("--feature-panel", default="mart_p0a_feature_label_panel_v3")
+    # Codex round 17 Q8.5 governance v1 同样 apply 到 LambdaMART (Phase 4 #6 ready)
+    parser.add_argument("--feature-version", default="p0a_v3",
+                        help="feature panel version (governance v1: 'p0a_v3')")
+    parser.add_argument("--label-version", default="v1",
+                        help="label panel version (governance v1: 'p0a_v2_governance_v1')")
     parser.add_argument("--start-date", default="2024-01-01")  # rule-compliance: ok evidence=alpha158-panel-实测范围
     parser.add_argument("--end-date", default="2026-04-30")    # rule-compliance: ok evidence=alpha158-panel-实测范围
     args = parser.parse_args()
@@ -147,7 +152,7 @@ def main() -> int:
                     p.get("fwd_cost_after_5d"),
                     p.get(args.label) if args.label == "fwd_cost_after_10d" else None,
                     p.get("fwd_cost_after_20d"),
-                    model_id, "v3.lambdamart", "p0a_v3", "v1",
+                    model_id, "v3.lambdamart", args.feature_version, args.label_version,
                     "expanding_monthly",
                     win.train_start, win.train_end, win.test_start, win.test_end,
                     False, built_at,
@@ -179,15 +184,21 @@ def main() -> int:
         log.info(f"Wrote {len(ranger):,} predictions to mart_p0b_oos_predictions")
 
         # Walk-forward eval rows
+        # 防 PK schema crash (DROP+CTAS 重建表丢 PK 时 INSERT OR REPLACE BinderException, e0d8b3da 反例)
+        # 改用 DELETE + INSERT idempotent pattern (跟 train_p0b 同模式 commit 361708fb)
+        conn.execute(
+            "DELETE FROM mart_p0b_walkforward_eval WHERE run_id = ? AND model_id = ?",
+            [run_id, model_id],
+        )
         for i, win in enumerate(result.windows):
             conn.execute(
-                """INSERT OR REPLACE INTO mart_p0b_walkforward_eval
+                """INSERT INTO mart_p0b_walkforward_eval
                    (run_id, window_idx, model_id, model_version, feature_version, label_version,
                     walk_forward_mode, train_start, train_end, test_start, test_end,
                     n_train, n_test, rank_ic, rank_ic_ir, built_at)
                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                 [
-                    run_id, i, model_id, "v3.lambdamart", "p0a_v3", "v1",
+                    run_id, i, model_id, "v3.lambdamart", args.feature_version, args.label_version,
                     "expanding_monthly", win.train_start, win.train_end,
                     win.test_start, win.test_end,
                     win.n_train, win.n_test,
