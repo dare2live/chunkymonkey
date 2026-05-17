@@ -994,7 +994,16 @@ Phase 3 step 5 P3 holdout (4 months last):
 - `backend/scripts/audit_lgbm_feature_importance.py`: read-only LightGBM importance ranking
 - 帮 Phase 4 #2 (feature engineering) 决策: 哪些 features 真带 alpha, 哪些噪音
 
-**#32 性能优化 phase 4 — PreparedPanel LightGBM 优化 (commit ?)**:
+**#33 性能优化 phase 6 — benchmark + audit guardrails (commit ?)**:
+- `backend/services/perf/benchmark.py`:
+  - `BenchmarkReport` dataclass (name / elapsed_sec / peak_memory_mb / timestamp_utc / metadata)
+  - `benchmark_section()` context manager (timing + psutil RSS)
+  - `save_benchmark()` / `load_benchmarks()` JSON 持久化
+  - `compare_benchmarks()` regression detection (delta_pct > threshold → flag)
+- 8 tests pass (section / save-load / compare regression)
+- Phase 5 (DuckDB reducer) 已 phase 1 cover
+
+**#32 性能优化 phase 4 — PreparedPanel LightGBM 优化 (commit d5e75e01)**:
 - `backend/services/perf/prepared_panel.py`:
   - `PreparedPanel` dataclass: X/y float32 ndarray (no dict overhead)
   - 加 y_5d/y_10d/y_20d 备用 labels + date_codes (int32 month encoding) + stock_codes

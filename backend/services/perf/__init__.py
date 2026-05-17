@@ -27,6 +27,13 @@ from services.perf.prepared_panel import (
     build_panel_from_df,
     compute_walk_forward_windows,
 )
+from services.perf.benchmark import (
+    BenchmarkReport,
+    benchmark_section,
+    save_benchmark,
+    load_benchmarks,
+    compare_benchmarks,
+)
 
 __all__ = [
     "ShardSpec",
@@ -45,4 +52,9 @@ __all__ = [
     "PreparedPanel",
     "build_panel_from_df",
     "compute_walk_forward_windows",
+    "BenchmarkReport",
+    "benchmark_section",
+    "save_benchmark",
+    "load_benchmarks",
+    "compare_benchmarks",
 ]
