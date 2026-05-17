@@ -994,7 +994,15 @@ Phase 3 step 5 P3 holdout (4 months last):
 - `backend/scripts/audit_lgbm_feature_importance.py`: read-only LightGBM importance ranking
 - 帮 Phase 4 #2 (feature engineering) 决策: 哪些 features 真带 alpha, 哪些噪音
 
-**#53 v5 feature plan — drop CONST/noise (commit ?)**:
+**#54 GCP Path A: SSH 单 VM 简化 setup (用户 push back Docker overkill, commit ?)**:
+- `gcp/setup_ssh_vm.sh` (4-arg): 创建 GCE n2-standard-32 spot VM (32 vCPU, 128GB RAM)
+- 不用 Docker / Artifact Registry / Cloud Batch — pure SSH + Python venv
+- 30 min setup vs Path B 1-2h
+- 成本 ~$3 (spot 6h)
+- 跑 Optuna v4 估 5-8h (32 cores vs Mac 8 cores)
+- README 加 Path A vs Path B 对比表
+
+**#53 v5 feature plan — drop CONST/noise (commit 4a3ebdc3)**:
 - `backend/services/features/V5_FEATURE_PLAN.md`:
   - DROP 10: sm_* 9 cols + holder_count_change_q_pct
   - KEEP 21: lhb 5, exec 5, mcap 1, beta 2, survey 4, tom 7

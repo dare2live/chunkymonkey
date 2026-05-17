@@ -1,8 +1,39 @@
-# ChunkyMonkey GCP Batch Orchestration
+# ChunkyMonkey GCP
 
-This directory contains a strict-PIT Cloud Batch template for heavyweight experiments.
+Two paths depending on goal:
 
-## Quick Start (one-shot setup)
+| 路径 | Setup 时间 | 并行支持 | 适合 |
+|---|---|---|---|
+| **A. SSH 单 VM (setup_ssh_vm.sh)** | 30 min | no | 单 Optuna 加速 (当前急需) |
+| **B. Cloud Batch + GCS (setup_all.sh)** | 1-2h | yes (N parallel) | 多 experiment 并行探索 (用户 vision) |
+
+## Path A: SSH + Single VM (no Docker, simpler)
+
+```bash
+# Prerequisite (用户一次):
+brew install --cask google-cloud-sdk
+gcloud auth login
+# Enable billing for project (GCP Console 1-click)
+
+# 一键 setup VM:
+gcp/setup_ssh_vm.sh PROJECT_ID [BUCKET_NAME] [REGION]
+
+# Script 会:
+#  1. 验证 gcloud auth
+#  2. enable Compute + Storage APIs
+#  3. 创建 GCE VM (n2-standard-32, 32 vCPU, 128GB RAM, spot)
+#  4. (optional) 创建 GCS bucket
+#  5. 打印 next steps (upload data + SSH + run Optuna)
+
+# 跑完 Optuna 后:
+gcloud compute instances stop chunkymonkey-optuna --zone us-central1-a
+# 或 delete (省钱):
+gcloud compute instances delete chunkymonkey-optuna --zone us-central1-a
+```
+
+成本估算: spot n2-standard-32 ~$0.45/h × 6h ≈ **$3** + storage $0.5/月
+
+## Path B: Cloud Batch + GCS (Docker, parallel exploration)
 
 ### Prerequisite (Mac local, 一次性)
 
