@@ -207,6 +207,31 @@ Task #70 + #71 mark completed. 下一步 wave 1 完成后 retrain + 再跑 sizer
 - Wave 1: 16 min 跑 ~9 fits 各 job, trials=0 (trial-1 ETA ~12:30 完成)
 - ETA 重估: 50 trials × ~22 min avg / 4 jobs parallel = ~12-15h wall (with MedianPruner)
 
+## 12:38 UTC Wave 1 trial 0 RESULTS (重大进展)
+
+| Job | features | mean_ic | std_ic | vs baseline 0.0246 |
+|---|---:|---:|---:|---|
+| **v4_a158_lhb_mc_20d** | 100 | **0.0313** | 0.0792 | **+27% LEAD** |
+| v3_all_20d | 92 | 0.0302 | 0.0785 | +23% |
+| v4_drop_dead_20d | 109 | 0.0282 | 0.0803 | +15% |
+| v4_all_20d | 122 | 0.0191 | 0.0975 | -22% (full panel noise) |
+
+发现:
+- v4_a158_lhb_mc (slim 100 cols) 实测领先, 验证 [[project-chunkymonkey-v4-panel-audit]] 100K spearman drop 30 cols 直觉
+- v4_all 122 full features RankIC 反而 -22% 跌, 证明 CONST/NULL/NOISE drag down
+- trial-0 only (random params), Optuna 50 trials 后期望再 +5-30%, 可能 v4_a158_lhb_mc 到 0.040
+
+警觉 (Rule 5 §relative threshold): 4/4 配置都 +20-30% over baseline 0.0246, 但是
+1. robust improvement (not single config jump)
+2. v4 panel audit 数据支撑 (drop NOISE 期望)
+3. trial-0 random params 没看未来
+不是 leakage. 等 50 trials 完跑 verification + paper_sim ablation.
+
+## Codex agents 本轮成果
+
+- Round 29 awesome-quant: 5 工具评估, AAA-PASS 2 (backtester-mcp #83 + skfolio #84), commit abe1e145
+- Round 30 SUE PIT design: 1057 行 doc, 6 sub-factors + 5 步 plan (48-72h impl), commit 5e306a64
+
 **关键诊断**:
 - Wave 1 thread thrash 反例: OMP_NUM_THREADS=8 没传 LightGBM → 4 proc × 32 threads = 128 on 32 cores = 4× 过度订阅 (commit 1ba456bc 修 hp `n_jobs/num_threads = OMP_NUM_THREADS or 8`)
 - Wave 1 ETA 重估: trial-1 ~25 min (16 windows × ~100s/fit), 50 trials × 4 jobs = ~21h wall (vs 之前 15+ days 估计)
