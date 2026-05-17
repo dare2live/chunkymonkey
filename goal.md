@@ -87,11 +87,17 @@
 
 ### Data sync gap (v_price_kline_qfq market.duckdb)
 - 2026-04-30 之前: ~5,150 codes/day (full universe)
-- 2026-05-07-12: 仅 101 codes
+- 2026-05-06: 5,202 codes (tdxhub_218.6.170.47:7709_raw_incremental 5101 + tdxhub 101)
+- 2026-05-07-12: 仅 101 codes (tdxhub base, no incremental)
 - 2026-05-13-15: 仅 32 codes
 - 影响: forecast_upside_live close JOIN 仅 45/2313 stocks (2%); daily live trading 无法跑
 - 不影响: Optuna v4 训练 (v3 panel cutoff 2026-04-13, 早于断点)
-- 待修 P0 (下 session): sync 路径 / akshare rate limit / tdxhub fallback path / 物理清残缺日 + 重 sync
+- 根因 (smoke test 2026-05-17): tdxhub raw_incremental servers (218.85.139.19 / 218.85.139.20 / 58.23.131.163 等 10 IP) **全部 TimeoutError**, 不只是 rate limit
+- 待修 (下 session P0):
+  1. 跟用户确认服务器列表是否变化
+  2. 改 services/tdx_source.py 重新发现服务器 OR 换 akshare 一线源
+  3. 重 sync 2026-05-07 ~ 2026-05-16 历史
+  4. 修 cron daily sync 防回退
 
 ## 长期 v3.2 状态 (η+++++++ +45.4% baseline, 含 leakage 历史)
 
