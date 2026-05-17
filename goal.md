@@ -1,261 +1,188 @@
-# Goal Ledger — ChunkyMonkey 持久执行账本
+# Goal Ledger — ChunkyMonkey MSAF (Multi-Strategy Adaptive Framework)
 
-> 用户终极目标: **年化 ≥30% / max_dd ≥-20% / 月胜率 ≥55% / 超额沪深 300 > 0** (100万 CNY paper trading, 5-position cap).
-> 本 ledger 滚动更新, 状态实时反映工程进度. 跟 PROJECT_INDEX.md 互补 — PROJECT_INDEX 是地图, goal.md 是任务流水.
+> 用户终极目标 (clarified 2026-05-17):
+> - **跨年中位 ann_ret 25-35%**
+> - **单年 ann_ret ≥ 0%** (不接受任何年负收益)
+> - max_dd ≥ -20%, 月胜率 ≥ 55%
+> - 100 万 CNY × 5 仓 long-only T+1 retail
+> - **只做股票** (不能 ETF / 期货 / 期权 / 债券 / 商品)
 
-## 当前阶段: Phase 4 (Feature Engineering + Forecast Upside Framework)
+> 本 ledger 是 MSAF master plan, 实时滚动. PROJECT_INDEX.md 是地图, goal.md 是任务流水.
 
-### 4.A Phase 4 feature modules — 28 单测全过, 已 push (2026-05-17 上午)
+## 0. 顶层设计: MSAF 三类策略融合
 
-| # | 模块 | features | tests | commit |
-|---|---|---|---|---|
-| 1 | time_of_month | 7 | 6 | d07f5ebb |
-| 2 | market_cap_decile | 6 | 6 | d07f5ebb |
-| 3 | industry_beta | 4 | 3 | 9b46d57b |
-| 4 | capital_flow (wrap PIT 858K) | 15 | 4 | c76e4283 |
-| 5 | sector_momentum (PIT industry) | 11 | 5 | d1f64ec5 |
-| 6 | institution_survey | 7 | 4 | 3cd8ac21 |
-| **总** | **6 modules** | **50** | **28** | — |
+### 0.1 选定方案 (2026-05-17 user confirm)
 
-### 4.B Forecast Upside Framework (Codex round 19+, 用户业绩预测+Optuna joint)
+3 类策略融合 + Regime Adaptive 加权 + 风控 hard gate:
 
-| 阶段 | 内容 | 状态 |
+```
+┌──────────────────────────────────────────────────────┐
+│ Layer 1: Alpha 源 (基础 features)                       │
+│   - 量化组: alpha158 + sector + 估值 + mcap_decile      │
+│   - 机构组: LHB + 北向 + 主力 + 调研 + 大宗             │
+│   - 事件组: SUE + PEAD + 业绩预告 + 政策                │
+└──────────────────────────────────────────────────────┘
+                          ↓
+┌──────────────────────────────────────────────────────┐
+│ Layer 2: 3 类策略 parallel 执行                          │
+│   策略 1 纯量化: LambdaMART top-K + cost-aware         │
+│   策略 2 狙击手: confluence 触发, 1-3 仓, Kelly sizing   │
+│   策略 3 机构跟随: smart money following, 5 仓           │
+└──────────────────────────────────────────────────────┘
+                          ↓
+┌──────────────────────────────────────────────────────┐
+│ Layer 3: Regime Adaptive 加权                          │
+│   Bull (HS300 above MA60 + breadth >50%):              │
+│     量化 30% + 狙击 40% + 机构 30%                      │
+│   Neutral: 量化 40% + 狙击 30% + 机构 30%               │
+│   Bear (HS300 below MA60 + breadth <40%):              │
+│     量化 10% + 狙击 20% + 机构 10% (空仓 60%)           │
+│   Crash (跌穿 + 60d ret <-15%): 全空仓                  │
+└──────────────────────────────────────────────────────┘
+                          ↓
+┌──────────────────────────────────────────────────────┐
+│ Layer 4: 风控 hard gates                                │
+│   - 单年 ann_ret ≥ 0% hard (违反 → 全空仓 + alert)      │
+│   - max_dd ≥ -20% hard (违反 → 减仓 50%)                │
+│   - 月胜率 ≥ 55% target (不达 → log)                    │
+│   - 实盘前必过 backtester-mcp PBO/DSR (R31 已 design)   │
+└──────────────────────────────────────────────────────┘
+                          ↓
+┌──────────────────────────────────────────────────────┐
+│ Layer 5: 监控 + 自适应                                  │
+│   - 每月 evaluate 每类策略 oos_ann + oos_sharpe         │
+│   - alpha 衰减 detect (60d rolling IR < 0 → 退役)       │
+│   - regime drift alert                                  │
+│   - 实时 paper_sim ablation per 策略                    │
+└──────────────────────────────────────────────────────┘
+```
+
+### 0.2 数学期望
+
+| 配置 | 跨年中位 | 单年 ≥ 0% P | Sharpe | 工作量 |
+|---|---:|---:|---:|---:|
+| 单一策略 (Scheme 4/6/7) | 22-35% | 55-75% | 1.0-1.8 | 10-22w |
+| **MSAF 3 类 ensemble** | **30-45%** | **70-80%** | **2.0-3.0** | **17-25w** |
+
+数学推导:
+- IR_ensemble = IR_individual × sqrt(N/(1+(N-1)ρ))
+- 3 个 IR=1.5 策略 × ρ=0.35 → IR_ensemble = 1.5 × sqrt(3/(1+0.7)) = 1.97
+- 单年 ≥ 0% P 跟单策略相比 ↑ 因低相关 ensemble smooth out
+
+### 0.3 资源分配
+
+| Task | 本地 (Mac mini 8C 8GB) | GCP n2-standard-32 |
 |---|---|---|
-| 4.B.1 | `forecast_upside.py` 纯函数模块 (upside = fy1_eps × target_pe / current_price - 1) | done (commit 95b30089) |
-| 4.B.1.fix | PIT winsorize fix (Codex CRITICAL: 之前全样本 quantile = forward leakage) | done |
-| 4.B.2 | `ingest_profit_forecast_snapshot.py` daily immutable PIT snapshot | done — 首 snapshot 2026-05-17 入库 2,374 stocks (akshare 13 cols 多年 EPS) |
-| 4.B.3 | shadow validation mart (5d/20d hit_rate) | 数月累积后 |
-| 4.B.4 | Optuna joint search space (forecast_year/target_pe_source/blend/upside_floor) | 数月后 |
+| Codex 协作 + design + commit + doc | ✓ | - |
+| 单测 + 小规模 SQL audit | ✓ | - |
+| 数据 ingestion (akshare 历史 backfill) | - | ✓ (网络通) |
+| Optuna walk-forward (50-200 trials × multi-strategy) | - | ✓ (32 cores 满载) |
+| paper_sim ablation 多 variant | ✓ (小) | ✓ (大) |
+| backtester-mcp PBO/DSR | ✓ (轻量) | - |
+| 3 类策略 parallel walk-forward (Wave 6-8) | - | ✓ (4-8 jobs 并行) |
 
-### 4.B.fixes Codex CRITICAL fixes (本 session)
+## 1. 实施 Phase Plan (4 Phase, 17-25 weeks)
 
-| # | bug | 修 | 状态 |
+### Phase 1 (Week 1-4): Foundation 修
+
+Codex R34 5 步 redesign 落地 (基础 framework 干净):
+
+| 步 | 内容 | 工作量 | 负责 |
+|---|---|---:|---|
+| 1.1 | horizon governance (label 5/10/20/60/90d 全建, P3 按 model label 评) | 3-5d | Codex (派) |
+| 1.2 | **top-K cost-aware ranker** (LambdaMART/listwise NDCG@5 + cost penalty) | 5-8d | Codex (派) |
+| 1.3 | PIT data gate (survivor fix `universe.py` + NULL fillna 修 `prepared_panel.py`) | 4-7d | Codex (派) |
+| 1.4 | 组合层 (sector budget default + realized vol sizing + turnover budget) | 4-6d | Claude main |
+| 1.5 | backtester-mcp PBO/DSR gate 接入 (R31 doc 已 design) | 3-5d | Claude main |
+
+**Phase 1 acceptance**: 修后 lgbm_v3_honest_20d-equivalent 配置实测 RankIC ≥ 0.04 (vs current 0.025), Sharpe ≥ 1.0, 跨年中位 ann_ret ≥ 5%.
+
+### Phase 2 (Week 5-10): 3 类策略 parallel build
+
+| 策略 | 关键设计 doc | 工作量 | 负责 |
+|---|---|---:|---|
+| **策略 1 纯量化 v6** | LambdaMART + alpha158 + sector_excess + mcap_decile | 4-6w | Codex A |
+| **策略 2 狙击手** | R37 design + confluence + Kelly + R30 SUE PIT | 4-6w | Codex B |
+| **策略 3 机构跟随** | R38 design + LHB + 北向 + 主力 + 调研 | 4-6w | Codex C |
+
+数据 backfill (Phase 2 阻塞依赖):
+- SUE / yjyg / forecast 历史 (R30 设计, akshare → VM)
+- 北向资金历史 (待 verify ChunkyMonkey 现有)
+- 大宗交易历史 (待 verify)
+
+**Phase 2 acceptance**: 每类策略独立 RankIC ≥ 0.04, oos_sharpe ≥ 1.0, 历史 2022/2023 跨年中位 ann ≥ 8% (单类 not yet ensemble).
+
+### Phase 3 (Week 11-14): Ensemble + Regime Adaptive
+
+| 步 | 内容 | 工作量 |
+|---|---|---:|
+| 3.1 | Regime state 计算 (HS300 MA + breadth + 60d IR) | 4-6d |
+| 3.2 | 3 类策略 ensemble walk-forward 加权 | 5-7d |
+| 3.3 | Risk gates 实施 (单年 ≥ 0%, max_dd ≥ -20%, regime trigger 减仓 / 空仓) | 4-6d |
+| 3.4 | 监控层 (paper_sim ablation per 策略, alpha 衰减 detect) | 3-5d |
+
+**Phase 3 acceptance**: MSAF ensemble 2022/2023/2024/2025 paper_sim 每年 ann_ret ≥ 0%, 跨年中位 ≥ 20%, max_dd ≥ -20%.
+
+### Phase 4 (Week 15-18): Validation + Promote
+
+| 步 | 内容 | 工作量 |
+|---|---|---:|
+| 4.1 | backtester-mcp PBO/DSR gate 历史反例验证 (paper_sim +312% 等阻断) | 3-5d |
+| 4.2 | Final holdout (2026 H1) 跑 + decision | 1w |
+| 4.3 | 实盘前 paper_sim 累积验证 (3 月模拟) | 4-6w wall (paper) |
+| 4.4 | promote_champion 决策 + GO/NO-GO 实盘 | 1d |
+
+**Phase 4 acceptance**: MSAF Final holdout 实测跨年中位 ≥ 25%, 单年 ≥ 0% (历史 + holdout), PBO ≤ 0.20, DSR p ≥ 0.95.
+
+## 2. 当前 Codex 协作 (在 flight)
+
+| Codex Round | Topic | 状态 | 输出 |
 |---|---|---|---|
-| 1 | forecast_upside.py 全样本 winsorize = forward leakage | 改 rolling window quantile, 加 test_winsorize_is_pit_safe | done commit 89aa9c3b |
-| 2 | promote_champion.py rank_ic = ann_ret * 0.1 占位污染 champion register | 改 _load_p0b_rank_ic from mart_p0b_walkforward_eval, 无 → 拒 promote | done commit 89aa9c3b |
-| 3 | Phase 4 features 全没 wire 到生产 panel — 设计 build_p0a_feature_panel_v4.py | feature_join_v4.py + driver script done (code only, 等 Optuna 完跑) | done code |
-| 4 | run_v3_2_full_chain.py:97 silent bug (cmd 没传 --feature-panel v2 实际走 v1) | 整删 (v1/v2 chain 都 deprecated) | done commit a4b37574 |
-| 5 | Codex round 21 实测 24-day Optuna 根因 (Phase 1-6 perf 没 wire 到 Optuna 脚本) | run_p0b_lightgbm_optuna_v4.py perf-wired (PreparedPanel + MedianPruner + per-trial persist) | done code |
+| R25 数据完整性 | sync_kline_from_gcs.py | DONE | commit c34c9643 |
+| R26 综合架构 audit | 1059 行 doc | DONE | commit 26e4660d |
+| R27 量化工具评估 | AlphaLens/Riskfolio/TA-Lib | DONE | commit e5b8827d |
+| R28 中国社区策略 | SUE/PEAD/规律 | DONE | commit e5b8827d |
+| R29 awesome-quant | backtester-mcp/skfolio | DONE | commit abe1e145 |
+| R30 SUE PIT 设计 | 6 sub-factors 1057 行 | DONE | commit 5e306a64 |
+| R31 backtester-mcp PBO/DSR | 4-gate 1492 行 | DONE | commit 39d748ce |
+| R32 负面 filter | unlock/pledge/holder | **CANCELLED** (1h+ idle) | 待重派 Phase 2 |
+| R33 regime defense | HS300 MA + breadth | **CANCELLED** (1h+ idle, spec 含 ETF 需 update) | 待重派 Phase 3 |
+| R34 第一性原理 | 6 root cause + redesign | DONE | commit f314f8b7 |
+| R35 feasibility | Grinold-Kahn + 公开数据 | DONE | commit f314f8b7 |
+| R36 只做股票多 Scheme | 8 Scheme + 决策树 | DONE | commit f314f8b7 (281KB doc) |
+| R37 sniper Kelly verify | 历史 hindsight + 实测 | running 38min | 等 doc |
+| R38 机构跟随 + MSAF 顶层 | 3 类 ensemble 数学 | running 7min | 等 doc |
 
-### 4.C Cleanup (Codex 重排: P0→P2, 因 train script 仍硬编码 v1)
+## 3. 立即开始 — Phase 1 Week 1 (NOW)
 
-| 优先级 | 任务 | 状态 |
+### 3.1 派 Codex Phase 1 implementation (parallel)
+
+| Codex | Phase 1 task | 状态 |
 |---|---|---|
-| P2 | feature_join_v1 (0 fn caller) — defer 等 train_p0b_lightgbm.py:119 / run_p1_ablation.py:82 默认迁 v3 | defer |
-| P2 | feature_join_v2 (1 caller orphan chain) — defer 同上 | defer |
-| P1 | paper_sim score_loader 3 → 1 主 loader + strategy param | 待 |
-| P1 | paper_sim_*.yaml 12 → 3 (active base + conservative + experiment) | 待 |
-| P1 | run_v3_2_full_chain.py:97 silent bug 修 (cmd 没传 --feature-panel v2) | 待 |
-| P2 | 物理 DROP v3 panel leakage 残列 (inst_quality_* / sector_ret_*) | 等 Optuna 完 |
+| Codex A | 1.2 LambdaMART top-K cost-aware ranker (改写 run_p0b_lightgbm_optuna_v4.py → run_p0b_lambdamart_v6.py) | 准备派 |
+| Codex B | 1.3 PIT data gate (universe.py survivor 修 + prepared_panel.py NULL fillna 修) | 准备派 |
+| Codex C | 1.1 horizon governance (label 5/10/20/60/90d 全建 + P3 evaluator multi-horizon) | 准备派 |
+| Claude main | 1.4 组合层 (sector budget + vol sizing + turnover budget) + 1.5 backtester-mcp wire | now |
 
-### 4.D 决策出口闭环 (codegraph audit P0 gap)
+### 3.2 等 R37 + R38 完成后
 
-| 任务 | 状态 |
-|---|---|
-| `scripts/run_daily_decision_pipeline.py` 串 sync→panel→train→sim→champion→alert | 待 |
+R37 (sniper) → Phase 2 策略 2 doc base
+R38 (机构跟随 + MSAF) → Phase 2-3 顶层 doc base
 
-## Optuna 当前: PID 25088 — 性能问题决策中
+## 4. 工作纪律 (carry over)
 
-- run_id: `p0b_optuna200_governance_v1_20260517T085523`
-- 启动: 2026-05-17 08:55, 现 11:50 (2h55m)
-- 进度: trial 1 window 16/16 (即将完成 trial 1)
-- **实测速度**: trial 1 总 ~2h54m. 200 trials = ~24 天 (远超原 11 天估算)
-- 模型: 92 features (governance v1 PIT clean), label fwd_cost_after_20d
-- baseline RankIC: 0.0246 (governance v1 honest)
-- 目标: 优化超参 看能否 push RankIC > 0.03
-
-**Codex 实测根因 (round 21)**:
-- Phase 1-6 perf 模块 wire 在 train_p0b_lightgbm.py, 不在 run_p0b_lightgbm_optuna_v3.py
-- df.to_dict("records") 一次 14.5 min, 每 trial 切窗 31 min × 16 win 后 LGBM fit 2 min/win
-- 加 MedianPruner 不生效因为 objective 没 trial.report() + should_prune()
-
-**用户决策**: 上 GCP — Codex round 21 GCP 方案讨论中 (后台 a0737e36f10dc9294)
-
-## 本 session 持续工作汇总 (2026-05-17 06:00 起, 56 commits push origin/main `58ebf777`)
-
-| 阶段 | 输出 |
-|---|---|
-| Phase 4 features | 7 modules / 50 features / 41 tests pass |
-| Codex CRITICAL fixes (round 19) | forecast_upside PIT winsorize + champion rank_ic 占位 |
-| v4 panel | mart_p0a_feature_label_panel_v4 2.9M × 143 cols (229s build) |
-| Optuna v4 perf-wired | PreparedPanel + MedianPruner + per-trial persist (vs v3 24 天) |
-| Forecast EPS PIT | 2,374 stocks 首 snapshot (akshare 13-col 多年 EPS) |
-| Forecast upside live | 2,313 stocks 入 mart_forecast_upside_live SHADOW |
-| GCP Batch + GCS scaffolding | 12 文件 (Codex round 22) + setup_all.sh 一键 setup |
-| paper_sim sizer ablation | yaml + driver 脚本 |
-| Daily launchd cron | Mon-Fri 19:00 forecast EPS 自动 ingest |
-| Cleanup orphans | v1/v2 module + v3.2 chain 删除 |
-| Monitor tools | monitor_optuna_v4.py / run_post_optuna_v4_chain.sh |
-| goal.md ledger | 持续维护含 P0 issues 跟优先级 |
-
-## Optuna v4 进展 (12:11 启动)
-
-- **PID 25088 (v3) 已 cancel** (in-memory trials 都丢, trial 0 +0.005 / trial 1 -0.029 远低于 baseline 0.0246, 损失低)
-- **v4 panel built 229s** (3m49s): mart_p0a_feature_label_panel_v4 2,901,970 rows × 143 cols
-- **v4 coverage audit**: mcap_decile 97.7% / beta_60d 97.6% / **sector_momentum 0%** (Codex round 20 警告: industry_pit 99.8% fallback, observed_snapshot filter 导致空) / survey 8.8% (v3 已有) / tom 100%
-- **Optuna v4 PID 47508 启动** (n_trials=50 + MedianPruner + PreparedPanel + per-trial persist)
-- **实测 (54m 后)**: trial 0 完成 mean_ic=0.0191 (低于 baseline 0.0246), score=-0.0297; trial 1 win 9/16 进行中
-- **每 trial 实测 ~32 min** (16 windows × 2 min/win, LGBM 训练 bottleneck), 比 v3 80 min/trial 快 2.5x
-- 估时修正: 50 trials × 32 min × pruner factor 0.6 = ~16h (vs v3 24 天)
-- 监控: `tail -f data/audit/logs/optuna_v4_20260517T121145.log`
-- 修 schema: ALTER mart_p1_optuna_trials ADD user_attrs_json + pruned_at_window (v4 callback 需)
-- **15:24 trial 3 完成 mean_ic=0.0123 (低于 0/1/2, 持续下降)**
-- **15:30 决定 cancel — 4 trials 全 < baseline 0.0246, Phase 4 features 不带 alpha 证据充分**
-- **15:30 Retrain LGBM PID 63919 启动** (trial 1 best params, mart_p0a_feature_label_panel_v4, model_id=lgbm_v4_optbest_7fed34)
-- 估时 retrain: ~30-60 min (单次 train, 非 walk-forward)
-- **16:10 Retrain windows 1-14 完成 mean RankIC 0.0092, std 0.0504** (低于 baseline, 14/16 windows): -0.049/+0.003/+0.037/+0.119/+0.072/-0.002/+0.016/+0.022/+0.009/+0.040/-0.035/+0.004/-0.082/-0.025
-- **16:12 用户指令 暂停所有计算 + 查 GCP project**
-- **16:12 Kill retrain PID 63921** (windows 1-14 已 walk-forward 但未完, 16/16 中 14 done)
-- **16:12 GCP project 确认**: gen-lang-client-0821344445 (ChunkyMonkey) — 空 (仅 Gemini API), gen-lang-client-0274784341 (Gemini API project) 有 e2-micro VM 太小用不了
-- **16:18 待用户 confirm 创新 VM**: 在 ChunkyMonkey project 跑 setup_ssh_vm.sh — 需先 enable billing
-- **16:20 直接执行 setup_ssh_vm.sh (per stop hook 持续执行)**: VM `chunkymonkey-optuna` 创建成功 (n2-standard-32 spot, 32 vCPU, 128GB RAM, 100GB disk, IP 35.184.198.61)
-- **16:25 VM Python env ready**: Debian 12 / Python 3.11.2 / duckdb+pandas+lightgbm+optuna+scipy installed / git clone chunkymonkey 完成
-- **16:25 GCS upload 启动**: smartmoney.duckdb 21GB ~8MB/s, ETA 35-40 min, PID 70711
-- 下一步: upload 完 → VM 上 gsutil download → 跑 Optuna v4 50 trials (~5-8h vs Mac 47h)
-
-### 2026-05-17 18:53 Wave 1 进度
-
-| 项 | 值 | 备注 |
-|---|---|---|
-| VM 状态 | RUNNING SPOT IP 35.184.198.61 | n2-standard-32 |
-| Wave 1 启动 | 10:03-10:04 UTC | 4 jobs |
-| 已运行 | ~1h00m | 11:03 UTC |
-| 第一个 trial finished | 0/4 | 慢启动正常 |
-| 4 进程 CPU% | 700-880% 各 | OMP_NUM_THREADS=8 满载 |
-| Load avg | 55.6 (32 核) | 满载 |
-| RAM 占用 | 各 ~3GB res | 128GB free 89GB |
-| OOM/crash | 0 | 干净 |
-| Trial-1 ETA | ~1.5-2h (16 walk-forward windows) | 第一个 trial 最慢 |
-| Wave 1 总 ETA 重估 | 24-48h (50 trials × 4 jobs) | 初估 5-8h 偏乐观 |
-| Decision | 不 kill, 持续监控 | CPU 满载证明真工作 |
-
-### 2026-05-17 18:53 Codex agents in-flight
-
-| Round | Task ID | Elapsed | 状态 |
-|---|---|---|---|
-| 25 数据完整性 | task-mp9l9ojr-3a3zzx | 1h19m+ | 写完代码, 测试阶段 |
-| 26 架构审计 | task-mp9mpu75-ytw1c5 | 38m+ | 写完 docs/chunkymonkey_architecture_audit_20260517.md (1059 行 52KB), wrap-up |
-| 27 量化工具 | task-mp9mdxif-xdq8ov | 36m | DONE → RESEARCH_QUANT_TOOLS_R27.md (commit e5b8827d) |
-| 28 社区策略 | task-mp9n4x4f-aowasb | 5m42s | DONE → RESEARCH_COMMUNITY_STRATEGIES_R28.md (commit e5b8827d) |
-
-Round 25 改的文件 (待 Codex 完成后 review):
-- `backend/scripts/sync_kline_from_gcs.py` (新)
-- `gcp/fetch_kline_via_vm.sh` (新)
-- `gcp/test_tdxhub_connectivity.sh` (新)
-- `backend/services/industry_pit.py` (+45 -)
-- `backend/services/tdx_industry_client.py` (+7 -)
-- `backend/scripts/build_industry_beta_daily.py` (+14 -)
-- `backend/scripts/build_market_cap_decile_daily.py` (+19 -)
-- `backend/tests/test_audit_fixes.py` (+3 -)
-- `backend/tests/test_industry_pit.py` (+48 -)
-
-## 2026-05-17 临时 critical issues 发现
-
-### Data sync gap (v_price_kline_qfq market.duckdb)
-- 2026-04-30 之前: ~5,150 codes/day (full universe)
-- 2026-05-06: 5,202 codes (tdxhub_218.6.170.47:7709_raw_incremental 5101 + tdxhub 101)
-- 2026-05-07-12: 仅 101 codes (tdxhub base, no incremental)
-- 2026-05-13-15: 仅 32 codes
-- 影响: forecast_upside_live close JOIN 仅 45/2313 stocks (2%); daily live trading 无法跑
-- 不影响: Optuna v4 训练 (v3 panel cutoff 2026-04-13, 早于断点)
-- 根因 (smoke test 2026-05-17): tdxhub raw_incremental servers (218.85.139.19 / 218.85.139.20 / 58.23.131.163 等 10 IP) **全部 TimeoutError**, 不只是 rate limit
-- 待修 (下 session P0):
-  1. 跟用户确认服务器列表是否变化
-  2. 改 services/tdx_source.py 重新发现服务器 OR 换 akshare 一线源
-  3. 重 sync 2026-05-07 ~ 2026-05-16 历史
-  4. 修 cron daily sync 防回退
-
-## 长期 v3.2 状态 (η+++++++ +45.4% baseline, 含 leakage 历史)
-
-- [FAIL] +45.4% baseline 含 stage_optimal in-sample fit leakage (Codex acf48d35 标 CRITICAL)
-- [OK] governance v1 框架部署完成 (yaml + sop + audit + check + lint + DELETE 16.5M leaked rows)
-- [OK] Phase 3 honest verdict: RankIC=0.0246, ann=-65.5%, P3 FAIL (干净 PIT 实测)
-- ⏳ Phase 4 alpha 提升: 50 new features (in progress) → 期望 RankIC 0.025 → 0.035+
-- ⏳ score_rank_diff_v1 sizer 差异化仓位 (commit 71bb2189) — paper_sim ablation **跑中 (PID 93189, equal variant)**
-
-## 2026-05-17 19:55 → 20:08 in-flight ops 更新
-
-| Op | 主机 | 状态 | 关键数据 |
-|---|---|---|---|
-| Wave 1 Optuna 4 jobs **重启** | GCP VM | 跑中 | 新 PID 15240/306/374/452, thread thrash 修后 ~100s/fit (vs 30 min 前) |
-| K-line VM catch-up | GCP VM | **完成 15.5min** | 5149 股 / 35732 行 / 122 xdxr 重建 / 0 失败. price_kline_tdxhub now 2022-01-04 ~ 2026-05-15 |
-| K-line delta 提取 + 下载 | local | 完成 | 36260 行 / 7 trading days / 5177-5182 codes per day / 2.4MB |
-| K-line delta 合并 local market.duckdb | local | **完成 12:16:49 UTC** | 36260 rows / 122 xdxr events / source_available_date=2026-05-17 |
-| Sizer ablation equal | 本地 | 完成 811s | ann_ret_approx -9.0%, [FAIL] |
-| Sizer ablation rank_diff | 本地 | **完成 31m total** | ann_ret_approx -2.8% (+6.2pp vs equal), 月胜率 50% / 换手 30.86x [FAIL]; 验证 Codex round 19 预测 alpha is root cause + sizing alone +2-8pp 范围 |
-
-**v_price_kline_qfq 验证 (本地 DB) — sync gap FIXED**:
-| date | codes (before) | codes (after) |
-|---|---:|---:|
-| 2026-05-06 | 5203 | 5181 |
-| 2026-05-07 | 105 | **5182** |
-| 2026-05-08 | 105 | **5180** |
-| 2026-05-11 | 105 | **5178** |
-| 2026-05-12 | 105 | **5177** |
-| 2026-05-13 | 36 | **5181** |
-| 2026-05-14 | 36 | **5181** |
-| 2026-05-15 | 36 | **5181** |
-
-Task #70 + #71 mark completed. 下一步 wave 1 完成后 retrain + 再跑 sizer ablation 看是否能上线.
-
-**Post-fix-audit 主动清残留** ([[post-fix-audit]] skill):
-- `mart_forecast_upside_live` 2026-05-17 snapshot close coverage **1.9% → 95.1%** (rebuilt with merged kline)
-- Top stocks by upside_blend (forecast_inst_count >= 5): 000703 / 601615 / 002602 / 002603 / 000598 / 600395 / 002493 / 300592 / 002271 / 600104 (大部分 PE 触及 80.0 上限, target_pe blend 后 industry 化)
-
-## 12:20 UTC 后续 in-flight
-
-- Wave 1: 16 min 跑 ~9 fits 各 job, trials=0 (trial-1 ETA ~12:30 完成)
-- ETA 重估: 50 trials × ~22 min avg / 4 jobs parallel = ~12-15h wall (with MedianPruner)
-
-## 12:38 UTC Wave 1 trial 0 RESULTS (重大进展)
-
-| Job | features | mean_ic | std_ic | vs baseline 0.0246 |
-|---|---:|---:|---:|---|
-| **v4_a158_lhb_mc_20d** | 100 | **0.0313** | 0.0792 | **+27% LEAD** |
-| v3_all_20d | 92 | 0.0302 | 0.0785 | +23% |
-| v4_drop_dead_20d | 109 | 0.0282 | 0.0803 | +15% |
-| v4_all_20d | 122 | 0.0191 | 0.0975 | -22% (full panel noise) |
-
-发现:
-- v4_a158_lhb_mc (slim 100 cols) 实测领先, 验证 [[project-chunkymonkey-v4-panel-audit]] 100K spearman drop 30 cols 直觉
-- v4_all 122 full features RankIC 反而 -22% 跌, 证明 CONST/NULL/NOISE drag down
-- trial-0 only (random params), Optuna 50 trials 后期望再 +5-30%, 可能 v4_a158_lhb_mc 到 0.040
-
-警觉 (Rule 5 §relative threshold): 4/4 配置都 +20-30% over baseline 0.0246, 但是
-1. robust improvement (not single config jump)
-2. v4 panel audit 数据支撑 (drop NOISE 期望)
-3. trial-0 random params 没看未来
-不是 leakage. 等 50 trials 完跑 verification + paper_sim ablation.
-
-## Codex agents 本轮成果
-
-- Round 29 awesome-quant: 5 工具评估, AAA-PASS 2 (backtester-mcp #83 + skfolio #84), commit abe1e145
-- Round 30 SUE PIT design: 1057 行 doc, 6 sub-factors + 5 步 plan (48-72h impl), commit 5e306a64
-
-**关键诊断**:
-- Wave 1 thread thrash 反例: OMP_NUM_THREADS=8 没传 LightGBM → 4 proc × 32 threads = 128 on 32 cores = 4× 过度订阅 (commit 1ba456bc 修 hp `n_jobs/num_threads = OMP_NUM_THREADS or 8`)
-- Wave 1 ETA 重估: trial-1 ~25 min (16 windows × ~100s/fit), 50 trials × 4 jobs = ~21h wall (vs 之前 15+ days 估计)
-- K-line VM tdxhub TCP OK + 9/9 servers tdxhub_ok (local 100% timeout 反例) — confirms 网络层差异是 GCP us-central1 vs 国内本地差异
-
-Commits 本轮:
-- 71e75209 PIT industry source_available_date 严格化 (Codex Round 25)
-- c34c9643 sync GCP VM-to-local K线 delta merge 脚本 (Codex Round 25)
-- 26e4660d Codex Round 26 1059 行架构审计 doc
-- 088ec92d v4 panel feature audit 100K spearman (30 cols drop)
-- b28b49ea fix paper_sim --variant choices 移除 (解锁 sizer ablation)
-
-新 skill 蒸馏:
-- /parallel-grid-runner (Wave 1 4 大 lock 反例)
-- /data-integrity-audit (sync gap + NULL + fallback 4 模式)
-
-新 memory:
-- feedback_parallel_grid_lock.md
-- project_chunkymonkey_v4_panel_audit.md
-
-## 工作纪律
-
-- 小步快跑, 每完成子项立即 commit + push (用户 [[feedback_git_commit_frequency]])
 - 中文输出, 表格 > 段落, 不报喜不报忧
-- Codex review gate: 每代码 commit 前 codex:rescue --model gpt-5.5 --effort xhigh
-- PIT/leakage CRITICAL 不允许折中 (用户 [[feedback_codex_critical_no_compromise]])
-- Phase 4 feature 模块拉完 → 待 Optuna 完成 → wire 进 panel → retrain → paper_sim ablation
+- 单分支 main, 不开 worktree
+- 每 commit Codex review gate (CLAUDE.md §10.1)
+- 派 Codex 主动 (CLAUDE.md §10.0) — 充分利用
+- multi-agent 协作 (CLAUDE.md §10.0.1) — Claude/Codex 跨 agent
+- PIT-strict CRITICAL 不可折中 (memory [[feedback-codex-critical-no-compromise]])
+- 真金白银 self-check (Rule 7)
+- backtester-mcp PBO/DSR 实盘前必过 (R31 design)
+- 数据治理 enforcement: watermark.max_data_date + panel build pre-flight K-line freshness gate (Codex R26 audit 指出)
+
+## 5. 历史 (deprecated, 仅参考)
+
+- ~~v3.2 RankIC 0.0246 ann -65.5%~~ — 框架 deprecated, MSAF 重构
+- ~~Wave 1 4 jobs trial-0 v4_a158_lhb_mc 0.0313~~ — panel sync gap corrupted, 已 kill
+- ~~paper_sim sizer ablation equal -9% / rank_diff -2.8%~~ — 都 [FAIL], 当前 model 弱不能靠 sizer 救
