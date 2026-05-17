@@ -906,11 +906,21 @@ Codex review session 9 commit 后给出 **2 REDLINE Blocker + 12 FIX item + 1 CO
 - 检查 (2) training builder scripts 不 hardcode `is_active=1` (rebuild/train_p0b/feature_panel/run_p0b_*)
 - Exit 0 PASS / Exit 1 FAIL with detail
 
-**#16 akshare_client.py Q5 tdxhub_only mode (commit ?)**:
+**#16 akshare_client.py Q5 tdxhub_only mode (commit ab552530)**:
 - Codex Q5: governance v1 stock K-line 应仅 tdxhub, 不调 akshare fallback
 - 加 `tdxhub_only=True` 参数到 `_fetch_daily_with_fallback` + `fetch_stock_kline_daily`
 - ON 时: 跳过 prefer_fallback / fallback_diagnostics akshare 分支, tdxhub 失败直接 return None (caller log)
 - 现 routers/updater.py 可改调 `tdxhub_only=True` 避免无意义 fetch
+
+**#17 final_holdout_freeze.py Q8.8 (commit ?)**:
+- Codex Q8.8: "Freeze final window before P3, log access, and ensure no ablation/threshold tuning reads it"
+- 新 `backend/services/portfolio/final_holdout_freeze.py`:
+  - `mart_p3_holdout_freeze` 表 (PK model_id, period_start/end + frozen_at + access_log)
+  - `freeze_window()`: P3 前 freeze 6-month window
+  - `assert_no_holdout_leak(signal_dates, phase)`: train/Optuna/paper_sim 之前 invoke, raise if leak
+  - `record_holdout_access()`: P3 acceptance 阶段记录访问 (audit trail)
+- 新单测 `backend/tests/portfolio/test_final_holdout_freeze.py`: 5 pass (freeze / overlap raise / outside pass / no-freeze skip / log append)
+- 后续整合 (orchestrator): P3 acceptance 前 freeze_window(), 之后 train/Optuna 调 assert_no_holdout_leak
 
 ### 2026-05-17 凌晨 数据治理 framework v1 (Codex round 16 task-mp8ktoe3-8rkde7, commit d055f5cb)
 
