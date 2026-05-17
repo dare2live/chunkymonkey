@@ -994,7 +994,13 @@ Phase 3 step 5 P3 holdout (4 months last):
 - `backend/scripts/audit_lgbm_feature_importance.py`: read-only LightGBM importance ranking
 - 帮 Phase 4 #2 (feature engineering) 决策: 哪些 features 真带 alpha, 哪些噪音
 
-**#55 Codex Round 23 — Feature Ablation Grid + Wave 2 (commit ?)**:
+**#56 Codex Round 25 fix — DuckDB single-writer lock in 4-parallel grid (commit ?)**:
+- 实测 Wave 1 launch: 3/4 jobs stuck "DuckDB busy, retrying connection"
+- run_p0b_lightgbm_optuna_v4.py 加 --no-persist (skip per-trial callback) + read_only=True (panel 只读)
+- gcp/run_feature_ablation_grid.sh 自动加 --no-persist
+- 后续 merge: 单进程 grep log + parse mean_ic, 不并发写
+
+**#55 Codex Round 23 — Feature Ablation Grid + Wave 2 (commit e32b8525)**:
 - `gcp/run_feature_ablation_grid.sh`: Wave 1 — 4 parallel × 8 cores
   - Slot 0: v3_all (92 features, baseline rebuild)
   - Slot 1: v4_all (122 features, control)

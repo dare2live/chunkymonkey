@@ -75,6 +75,8 @@ launch_job() {
     esac
 
     echo "[launch] ${label} | panel=${panel} | exclude=${extra_excl}"
+    # Codex Round 25 fix: --no-persist (avoid DuckDB single-writer lock across 4 parallel jobs)
+    # Trials stored in log only; merge from logs after Wave 1 done.
     OMP_NUM_THREADS=8 MKL_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 \
         nohup python backend/scripts/run_p0b_lightgbm_optuna_v4.py \
             --feature-panel "$panel" \
@@ -83,6 +85,7 @@ launch_job() {
             --start-date 2024-01-01 --end-date 2026-04-13 \
             --min-train-months 12 \
             --run-id "${label}_$(date -u +%Y%m%dT%H%M%S)" \
+            --no-persist \
             $excl \
             > "$logfile" 2>&1 &
     local pid=$!

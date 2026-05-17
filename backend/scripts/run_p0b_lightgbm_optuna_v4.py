@@ -108,6 +108,10 @@ def main() -> int:
     parser.add_argument("--seed", type=int, default=42)  # rule-compliance: ok evidence=governance-fixed-seed
     parser.add_argument("--exclude-cols", default="",
                         help="comma-separated col names to exclude (Codex round 23 feature ablation grid)")
+    parser.add_argument("--no-persist", action="store_true",
+                        help="skip per-trial DB persist callback (avoid DuckDB single-writer lock in parallel grid)")
+    parser.add_argument("--db-path", default=None,
+                        help="override DB path (per-job SQLite for parallel grid)")
     args = parser.parse_args()
 
     # Governance gate (Codex CRITICAL: enforce_pre_optimize)
@@ -119,7 +123,8 @@ def main() -> int:
     # Stage 1: Load + PreparedPanel + 预计算 windows
     t0 = time.time()
     log.info(f"=== Stage 1: Load + PreparedPanel + windows ===")
-    conn = duck_connect(str(DB_PATH))
+    db_path = args.db_path or str(DB_PATH)
+    conn = duck_connect(db_path, read_only=True)  # rule-compliance: ok evidence=parallel-grid-multi-reader
     try:
         conn.execute(OPTUNA_TRIALS_DDL)
         log.info(f"Loading DataFrame from {args.feature_panel} ...")
@@ -276,8 +281,11 @@ def main() -> int:
             # rule-compliance: ok evidence=persist-best-effort
             log.warning(f"trial persist failed: {e}")
 
-    study.optimize(objective, n_trials=args.n_trials, gc_after_trial=True,
-                   callbacks=[_persist_trial])
+    # Codex Round 25 fix: skip per-trial DB callback when running parallel grid (avoid DuckDB lock)
+    callbacks = [] if args.no_persist else [_persist_trial]
+    if args.no_persist:
+        log.info("--no-persist: skipping per-trial DB callback (Codex Round 25 parallel grid fix)")
+    study.optimize(objective, n_trials=args.n_trials, gc_after_trial=True, callbacks=callbacks)
 
     # Stage 3: Final report
     log.info(f"=== Stage 3: Best trial ===")
