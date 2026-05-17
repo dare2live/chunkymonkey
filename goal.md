@@ -9,6 +9,32 @@
 
 > 本 ledger 是 MSAF master plan, 实时滚动. PROJECT_INDEX.md 是地图, goal.md 是任务流水.
 
+## 项目交付标准 (用户 2026-05-17 定义, 不达 = 不交付)
+
+| # | 类别 | 交付标准 | 当前状态 |
+|---|---|---|---|
+| 1 | 数据管理 | sync gap 自动 alert + watermark 实填 + 历史 leakage 清干净 + PIT 严格 | partial (sync gap 修过 1 次, watermark NULL) |
+| 2 | 策略模型管理 | MSAF 3 类策略 (纯量化/狙击/机构跟随) + ensemble + regime gate 全上线 + paper_sim KPI 达标 | 0% (设计完, 实施 in flight) |
+| 3 | backtester gate | PBO/DSR/conservative/IS-OOS 4 gate 全部 enforce + 历史反例阻断验证 | 设计完 (R31), 实施待 |
+| 4 | **全自动化 daily update** | 用户每天跑数据更新 = 1 click or zero click, 不需要大模型维护 | 0% (当前 manual, cron 部分) |
+| 5 | GCP 成本控制 | 月 ≤ $10 credit, 每 batch 完 stop VM | rule 已固化 (CLAUDE.md §10.0.2), 待 sustained |
+| 6 | 实盘 GO/NO-GO | 跨 5 年回测 中位 ≥ 25%, 单年 ≥ 0%, Sharpe ≥ 2.0, PBO ≤ 0.2 | 0% (待 Phase 4 validation gate) |
+
+**目前距离交付**: 估 17-25 weeks (4 Phase 全跑). 单纯 MSAF 不够 — 还要 daily-auto-update infra.
+
+## GCP 资源管理 (用户 push back 重点)
+
+固化在 CLAUDE.md §10.0.2 + memory [[feedback-gcp-cost-control]]. 关键:
+
+- VM `chunkymonkey-optuna` n2-standard-32 spot us-central1-a, $0.376/h
+- 24/7 running $275/月 vs 用户 **$10/月 credit** → 25× 超预算
+- **每次 batch 完立即 `bash gcp/vm_stop.sh`**
+- 下次需要 `bash gcp/vm_start.sh`
+- Codex 跑本地 Mac, 不需 VM
+- VM 只在: Optuna grid / akshare backfill / tdxhub 大批量
+
+**当前 VM 状态**: TERMINATED (本 session stop, 累计 13h 花 ~$5.4)
+
 ## 0. 顶层设计: MSAF 三类策略融合
 
 ### 0.1 选定方案 (2026-05-17 user confirm)

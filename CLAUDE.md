@@ -339,6 +339,64 @@
 4. 真金白银: leakage/估算/假设?
 5. 反例: 跟 Rule 5-7 反例对照过?
 
+## 10.0.2 GCP 资源管理 (2026-05-17 用户 push back)
+
+> **用户原话**: "把谷歌云的使用当个重点问题固化, 不要浪费资源并给出具体解决方案"
+
+### GCP VM 当前配置
+
+- VM: `chunkymonkey-optuna` n2-standard-32 spot, us-central1-a
+- Spot rate: $0.376/h (76% off vs on-demand $1.553/h)
+- Disk: 100 GB pd-standard ($0.04/GB-月 = $4/月)
+- GCS: ~25 GB (smartmoney 21.4 + market 1.5 + alpha158 1.86 + delta) ($0.020/GB-月 = $0.50/月)
+- 用户预算: **$10/月 GCP credit**
+
+### 成本对比
+
+| 策略 | 月费 USD | 备注 |
+|---|---:|---|
+| 24/7 spot running | $275 | 巨亏, 不要 |
+| 6h/天 (8h × 0.75) | $73 | 仍超预算 |
+| 1.5h/天 (batch only) | $22 | 仍超 |
+| **0.5h/天 (1 weekly batch)** | **$10** | 卡 $10 credit |
+| Stop VM keep disk | $4.5 | idle 长期 |
+| Delete VM, GCS only | $0.5 | 完全冷冻, 重启需 reinstall |
+
+### 强制规则
+
+**每次 batch 任务完 → 立即 stop VM**:
+
+| 触发 | 工具 | 验证 |
+|---|---|---|
+| Codex compute / Optuna grid / panel build / kline fetch / data backfill 完 | `bash gcp/vm_stop.sh` | `gcloud compute instances describe chunkymonkey-optuna --zone us-central1-a --format='value(status)'` 应 = TERMINATED |
+| 下次需要 batch | `bash gcp/vm_start.sh` | 自动等 SSH ready, 5-10 秒 |
+
+**禁止**:
+- VM 24/7 running (浪费 \$271/月)
+- 跑完任务忘 stop (空跑 1 小时浪费 \$0.376)
+- "等会儿用" 不 stop (Claude 自己也容易 forget)
+
+**预算监控**:
+- 每月初查 `gcloud billing accounts list` + 项目 billing 用量
+- 跑任何 batch 前估 wall time + 成本 (e.g. Optuna 50 trials × 4 jobs ≈ 12-15h × \$0.376 = \$4.5-5.6)
+- 超 \$8/月 (80% credit) 立即检查 / 优化
+
+**Claude main session 自检 (每次操作 VM 前)**:
+1. 真要用 VM 吗? (Codex 本地能跑就别 VM)
+2. 任务时长估算? (< 30 min 单点小任务考虑本地; > 1h batch 才上 VM)
+3. 跑完会 stop 吗? (写 nohup 时同时计划 stop)
+4. 数据 final output 在 GCS 还是 VM disk? (GCS 永久, disk 同 VM 周期)
+
+### Codex 跑 background 不上 VM
+
+Codex companion 跑本地 Mac, 不占 VM. 派 Codex 任务不需要 VM start.
+
+VM 只在以下场景需要:
+- Wave 1/2/3 Optuna grid (32 cores 并行)
+- akshare 数据 backfill (国内网络 block, VM 端通)
+- tdxhub 大批量历史拉取
+- 多策略 walk-forward 并行 build
+
 ## 11. 并发 vs 串行
 
 ### 11.1 串行硬约束

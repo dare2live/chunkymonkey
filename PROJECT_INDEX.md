@@ -784,6 +784,10 @@ SELECT * FROM mart_data_source_watermark;
 
 每次 session 增量内容写这里, 新 session 启动时**从下往上读**最近改了啥.
 
+### 2026-05-17 晚 CLAUDE.md §10.0.2 GCP 成本控制 + 项目交付标准固化
+
+用户 push back: "把谷歌云的使用当个重点问题固化, 不要浪费资源", "项目还不具备交付条件, 应该随时维护 goal.md". CLAUDE.md §10.0.2 加 GCP rule: VM 不用必 stop ($0.376/h spot, 24/7 $275/月 vs $10 credit). vm_start.sh + vm_stop.sh 自动化. goal.md 加 6 项交付标准. memory [[feedback-gcp-cost-control]] 新建.
+
 ### 2026-05-17 晚 MSAF Phase 1.4: sector_budget_enabled 默认 True
 
 Codex R34 root cause D MAJOR — paper_sim/config.py `sector_budget_enabled: bool = False` 改为 `True`. 历史 paper_sim 单行业 >40% NAV, 实测 max_dd -22.25% 超用户 -20% hard cap. MSAF Phase 1 必须默认开 sector cap 40% (Codex round 5 design 早就 propose 但默认关闭).
