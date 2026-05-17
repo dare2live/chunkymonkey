@@ -994,7 +994,15 @@ Phase 3 step 5 P3 holdout (4 months last):
 - `backend/scripts/audit_lgbm_feature_importance.py`: read-only LightGBM importance ranking
 - 帮 Phase 4 #2 (feature engineering) 决策: 哪些 features 真带 alpha, 哪些噪音
 
-**#29 性能优化 phase 1 — shard/manifest/reducer 架构 + CodeGraph 安装 (commit ?)**:
+**#30 性能优化 phase 2 — PreparedSignalSet 数组化 (commit ?)**:
+- `backend/services/perf/prepared_signal_set.py`:
+  - PreparedSignalSet dataclass (8 ndarray columns + stock_slice + stage_codec)
+  - build_from_df() pandas → numpy columnar
+  - filter() fast bool mask (9 参数 vectorized, 无 Python for-loop)
+- 收益: Optuna trial 内形态过滤 ~10-30× speedup
+- `backend/tests/perf/test_prepared_signal_set.py`: 7 tests pass
+
+**#29 性能优化 phase 1 — shard/manifest/reducer 架构 + CodeGraph 安装 (commit d300b45d)**:
 
 按 stock/quant_experiment_optimization_and_codegraph_brief.md Codex verdict 实施.
 

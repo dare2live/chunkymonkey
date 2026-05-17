@@ -10,6 +10,10 @@ from services.perf.shard_runner import (
     run_shards,
     reduce_to_duckdb,
 )
+from services.perf.prepared_signal_set import (
+    PreparedSignalSet,
+    build_from_df,
+)
 
 __all__ = [
     "ShardSpec",
@@ -17,4 +21,6 @@ __all__ = [
     "export_snapshot",
     "run_shards",
     "reduce_to_duckdb",
+    "PreparedSignalSet",
+    "build_from_df",
 ]
