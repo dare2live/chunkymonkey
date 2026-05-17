@@ -106,6 +106,8 @@ def main() -> int:
     parser.add_argument("--min-train-months", type=int, default=12)  # rule-compliance: ok evidence=governance-default
     parser.add_argument("--feature-panel", default="mart_p0a_feature_label_panel_v4")
     parser.add_argument("--seed", type=int, default=42)  # rule-compliance: ok evidence=governance-fixed-seed
+    parser.add_argument("--exclude-cols", default="",
+                        help="comma-separated col names to exclude (Codex round 23 feature ablation grid)")
     args = parser.parse_args()
 
     # Governance gate (Codex CRITICAL: enforce_pre_optimize)
@@ -148,6 +150,11 @@ def main() -> int:
             "holder_count_q_report_date",  # v3_ext meta
             "sector_name",  # v4 meta
         }
+        # Codex round 23: additional --exclude-cols runtime exclusion (feature ablation grid)
+        if args.exclude_cols:
+            extra_excl = set(c.strip() for c in args.exclude_cols.split(",") if c.strip())
+            meta_cols.update(extra_excl)
+            log.info(f"  --exclude-cols added {len(extra_excl)} cols: {sorted(extra_excl)[:5]}...")
         feature_cols = [c for c in df.columns
                         if c not in meta_cols and pd.api.types.is_numeric_dtype(df[c])]
         log.info(f"  feature_columns ({len(feature_cols)}): {feature_cols[:10]}...")

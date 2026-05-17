@@ -994,7 +994,18 @@ Phase 3 step 5 P3 holdout (4 months last):
 - `backend/scripts/audit_lgbm_feature_importance.py`: read-only LightGBM importance ranking
 - 帮 Phase 4 #2 (feature engineering) 决策: 哪些 features 真带 alpha, 哪些噪音
 
-**#54 GCP Path A: SSH 单 VM 简化 setup (用户 push back Docker overkill, commit ?)**:
+**#55 Codex Round 23 — Feature Ablation Grid + Wave 2 (commit ?)**:
+- `gcp/run_feature_ablation_grid.sh`: Wave 1 — 4 parallel × 8 cores
+  - Slot 0: v3_all (92 features, baseline rebuild)
+  - Slot 1: v4_all (122 features, control)
+  - Slot 2: v4_drop_dead (109 features, drop sm+holder+survey+tom)
+  - Slot 3: v4_a158_lhb_mc (100 features, extreme keep)
+- `gcp/run_grid_wave2.sh`: Wave 2 — 8 parallel × 4 cores (top config × 4 horizon + 4 seed)
+- `run_p0b_lightgbm_optuna_v4.py --exclude-cols`: runtime feature exclusion arg
+- Gate: rank_ic >= 0.030 green / 0.0275 yellow / <0.0275 stop v4
+- Cost: Wave 1+2 estimated $5-7 (within user $10/月 credit)
+
+**#54 GCP Path A: SSH 单 VM 简化 setup (用户 push back Docker overkill, commit a0a4b42e)**:
 - `gcp/setup_ssh_vm.sh` (4-arg): 创建 GCE n2-standard-32 spot VM (32 vCPU, 128GB RAM)
 - 不用 Docker / Artifact Registry / Cloud Batch — pure SSH + Python venv
 - 30 min setup vs Path B 1-2h
