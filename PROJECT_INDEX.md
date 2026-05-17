@@ -994,7 +994,15 @@ Phase 3 step 5 P3 holdout (4 months last):
 - `backend/scripts/audit_lgbm_feature_importance.py`: read-only LightGBM importance ranking
 - 帮 Phase 4 #2 (feature engineering) 决策: 哪些 features 真带 alpha, 哪些噪音
 
-**#52 Phase 4 predictive power audit (commit ?)**:
+**#53 v5 feature plan — drop CONST/noise (commit ?)**:
+- `backend/services/features/V5_FEATURE_PLAN.md`:
+  - DROP 10: sm_* 9 cols + holder_count_change_q_pct
+  - KEEP 21: lhb 5, exec 5, mcap 1, beta 2, survey 4, tom 7
+  - Option A (推荐): 改 meta_cols set 训练时 exclude (no panel rebuild)
+  - Option B (cosmetic): build v5 panel
+  - Expected RankIC improvement: 0-3% (LGBM 已 ignore CONST)
+
+**#52 Phase 4 predictive power audit (commit 0ca16a49)**:
 - `backend/services/features/AUDIT_2026_05_17.md`: spearmanr 100K rows sample of v4 panel
 - **关键发现**: 13/31 Phase 4 cols 是 CONST/noise:
   - sector_momentum 9 cols: 全 CONST var ~0 (PIT industry observed_snapshot filter 导致 0% 覆盖)
