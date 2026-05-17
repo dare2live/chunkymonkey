@@ -180,9 +180,23 @@ Round 25 改的文件 (待 Codex 完成后 review):
 | Wave 1 Optuna 4 jobs **重启** | GCP VM | 跑中 | 新 PID 15240/306/374/452, thread thrash 修后 ~100s/fit (vs 30 min 前) |
 | K-line VM catch-up | GCP VM | **完成 15.5min** | 5149 股 / 35732 行 / 122 xdxr 重建 / 0 失败. price_kline_tdxhub now 2022-01-04 ~ 2026-05-15 |
 | K-line delta 提取 + 下载 | local | 完成 | 36260 行 / 7 trading days / 5177-5182 codes per day / 2.4MB |
-| K-line delta 合并 local market.duckdb | local | 等 sizer | DB lock conflict |
-| Sizer ablation equal | 本地 | 完成 811s | ann_ret_approx -9.0%, [FAIL] (lgbm_20260517_governance_v1_20d 弱) |
-| Sizer ablation rank_diff | 本地 PID 95319 | 跑中 ~13/20 yr | yaml schema fix 后 OK |
+| K-line delta 合并 local market.duckdb | local | **完成 12:16:49 UTC** | 36260 rows / 122 xdxr events / source_available_date=2026-05-17 |
+| Sizer ablation equal | 本地 | 完成 811s | ann_ret_approx -9.0%, [FAIL] |
+| Sizer ablation rank_diff | 本地 | **完成 31m total** | ann_ret_approx -2.8% (+6.2pp vs equal), 月胜率 50% / 换手 30.86x [FAIL]; 验证 Codex round 19 预测 alpha is root cause + sizing alone +2-8pp 范围 |
+
+**v_price_kline_qfq 验证 (本地 DB) — sync gap FIXED**:
+| date | codes (before) | codes (after) |
+|---|---:|---:|
+| 2026-05-06 | 5203 | 5181 |
+| 2026-05-07 | 105 | **5182** |
+| 2026-05-08 | 105 | **5180** |
+| 2026-05-11 | 105 | **5178** |
+| 2026-05-12 | 105 | **5177** |
+| 2026-05-13 | 36 | **5181** |
+| 2026-05-14 | 36 | **5181** |
+| 2026-05-15 | 36 | **5181** |
+
+Task #70 + #71 mark completed. 下一步 wave 1 完成后 retrain + 再跑 sizer ablation 看是否能上线.
 
 **关键诊断**:
 - Wave 1 thread thrash 反例: OMP_NUM_THREADS=8 没传 LightGBM → 4 proc × 32 threads = 128 on 32 cores = 4× 过度订阅 (commit 1ba456bc 修 hp `n_jobs/num_threads = OMP_NUM_THREADS or 8`)
