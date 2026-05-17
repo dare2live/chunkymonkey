@@ -53,15 +53,22 @@
 |---|---|
 | `scripts/run_daily_decision_pipeline.py` 串 sync→panel→train→sim→champion→alert | 待 |
 
-## Optuna 当前: PID 25088
+## Optuna 当前: PID 25088 — 性能问题决策中
 
 - run_id: `p0b_optuna200_governance_v1_20260517T085523`
-- 启动: 2026-05-17 08:55
-- 进度 (10:01): trial 1, window 10/16 (2 min/window)
-- 估计完成: ~22:00 (~12h total, 9h remaining)
+- 启动: 2026-05-17 08:55, 现 11:50 (2h55m)
+- 进度: trial 1 window 16/16 (即将完成 trial 1)
+- **实测速度**: trial 1 总 ~2h54m. 200 trials = ~24 天 (远超原 11 天估算)
 - 模型: 92 features (governance v1 PIT clean), label fwd_cost_after_20d
 - baseline RankIC: 0.0246 (governance v1 honest)
-- 目标: 优化超参 (lgbm leaves/lr/feature_frac) 看能否 push RankIC > 0.03
+- 目标: 优化超参 看能否 push RankIC > 0.03
+
+**Codex 实测根因 (round 21)**:
+- Phase 1-6 perf 模块 wire 在 train_p0b_lightgbm.py, 不在 run_p0b_lightgbm_optuna_v3.py
+- df.to_dict("records") 一次 14.5 min, 每 trial 切窗 31 min × 16 win 后 LGBM fit 2 min/win
+- 加 MedianPruner 不生效因为 objective 没 trial.report() + should_prune()
+
+**用户决策**: 上 GCP — Codex round 21 GCP 方案讨论中 (后台 a0737e36f10dc9294)
 
 ## 长期 v3.2 状态 (η+++++++ +45.4% baseline, 含 leakage 历史)
 
