@@ -921,6 +921,16 @@ Codex review session 9 commit 后给出 **2 REDLINE Blocker + 12 FIX item + 1 CO
   - `record_holdout_access()`: P3 acceptance 阶段记录访问 (audit trail)
 - 新单测 `backend/tests/portfolio/test_final_holdout_freeze.py`: 5 pass
 
+**#20 paper_sim_ml_score_governance_v1.yaml + Phase 3 step 2/3 启动 (commit ?)**:
+- Phase 3 step 2: build_p0a_feature_panel_v3 完成 (102s ~2 min):
+  - rows: 2,901,970 / KEEP universe 5,210 (ever-listed) / feature_version=p0a_v3
+- Phase 3 step 3 启动 (PID 22069 ~30-60min):
+  - train_p0b_lightgbm.py --model-id lgbm_20260517_governance_v1_20d
+  - --feature-version p0a_v3 --label-version p0a_v2_governance_v1
+  - --feature-panel mart_p0a_feature_label_panel_v3 --enforce-rankic-gate
+  - 用 default LightGBM params (跳 Optuna 寻参省 ~6-8h)
+- 新 paper_sim_ml_score_governance_v1.yaml: ml_score_model_id 改 governance v1
+
 **#19 build_p0a_feature_panel_v3.py Q2a fix + audit improvement (commit ?)**:
 - build_p0a_feature_panel_v3.py 也含 `is_active=1` filter (Codex Q2a REDLINE 完整覆盖)
 - 移除 `is_active=1`, KEEP universe 5,210 → 5,210 (ever-listed PIT)
