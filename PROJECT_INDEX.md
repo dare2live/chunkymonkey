@@ -994,7 +994,14 @@ Phase 3 step 5 P3 holdout (4 months last):
 - `backend/scripts/audit_lgbm_feature_importance.py`: read-only LightGBM importance ranking
 - 帮 Phase 4 #2 (feature engineering) 决策: 哪些 features 真带 alpha, 哪些噪音
 
-**#44 run_p0b_lightgbm_optuna_v4 perf-wired (Codex round 21 Path Z, commit ?)**:
+**#45 paper_sim_ml_score_governance_v1_rank_diff yaml (Codex round 19 #1, commit ?)**:
+- `backend/config/paper_sim_ml_score_governance_v1_rank_diff.yaml`:
+  - Fork from governance_v1.yaml, 只改 position_sizing: equal → score_rank_diff_v1
+  - 加 sizing_params: p=1.2, vol_exp=0.5, cash_buffer=0.15, max_single=0.25, min_single=0.05 (Codex round 19 verdict)
+- 用途: 跟 governance_v1.yaml (equal sizing) ablation 比较, 验证用户 "差异化到底" 假设
+- 期望: alpha 是根因 (Codex round 19 verdict), sizing alone +2-8pp 年化 — 但需要 Optuna 完 + v4 panel build + retrain 后验证
+
+**#44 run_p0b_lightgbm_optuna_v4 perf-wired (Codex round 21 Path Z, commit 7ac2758d)**:
 - `backend/scripts/run_p0b_lightgbm_optuna_v4.py`: PreparedPanel + MedianPruner + per-trial persist + governance enforce
 - 解决 Codex round 21 实测 24-day Optuna 问题:
   - 用 services.perf.prepared_panel.build_panel_from_df 替代 df.to_dict (省 14.5 min)
