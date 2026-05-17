@@ -994,7 +994,30 @@ Phase 3 step 5 P3 holdout (4 months last):
 - `backend/scripts/audit_lgbm_feature_importance.py`: read-only LightGBM importance ranking
 - 帮 Phase 4 #2 (feature engineering) 决策: 哪些 features 真带 alpha, 哪些噪音
 
-**#34 score_rank_diff_v1 sizer — per-stock 差异化仓位 (Codex round 19, commit ?)**:
+**#35 Phase 4 #2 feature engineering — time_of_month + market_cap_decile (commit ?)**:
+
+按 Codex round 19 verdict #1 priority — 先 feature engineering 才能真正提 alpha.
+
+实施 2 个新 feature module:
+- `backend/services/features/time_of_month.py`:
+  - 7 features: tom_day_of_month / tom_days_to_month_end / tom_days_from_month_start
+    / tom_month_phase (0/1/2) / tom_is_first_week / tom_is_last_week / tom_is_month_turn
+  - 业界 evidence: 月初/月末效应 (新基金流入 / 季度排名调仓 / 财报披露)
+  - 无 join, 纯日期算
+- `backend/services/features/market_cap_decile.py`:
+  - 6 features: mc_log_cap / mc_decile (1-10) / mc_quintile (1-5)
+    / mc_rank_normalized (0-1) / mc_is_small / mc_is_large
+  - 业界 evidence: SMB factor (小盘 alpha + 高 vol vs 大盘稳定)
+  - Per-date cross-section ranking
+
+backend/tests/features/: 12 tests pass (time_of_month 6 + market_cap_decile 6)
+
+下一步 (待 Optuna done DB lock 释放):
+- 加 time_of_month + market_cap_decile 13 features 到 mart_p0a_feature_label_panel_v3 build SQL
+- 重 build feature panel (governance v1 LABEL_VERSION 不变, 新 feature_version=p0a_v4)
+- 重 train lgbm 看 RankIC 是否 0.0246 → 0.030+
+
+**#34 score_rank_diff_v1 sizer — per-stock 差异化仓位 (Codex round 19, commit 71bb2189)**:
 
 用户 push back "差异化到底" + Codex round 19 (a59f50ececd83cdb1) verdict 落地.
 
