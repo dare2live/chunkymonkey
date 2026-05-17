@@ -994,7 +994,41 @@ Phase 3 step 5 P3 holdout (4 months last):
 - `backend/scripts/audit_lgbm_feature_importance.py`: read-only LightGBM importance ranking
 - 帮 Phase 4 #2 (feature engineering) 决策: 哪些 features 真带 alpha, 哪些噪音
 
-**#33 性能优化 phase 6 — benchmark + audit guardrails (commit ?)**:
+**#34 score_rank_diff_v1 sizer — per-stock 差异化仓位 (Codex round 19, commit ?)**:
+
+用户 push back "差异化到底" + Codex round 19 (a59f50ececd83cdb1) verdict 落地.
+
+实施:
+- `backend/services/paper_sim/sizer.py`:
+  - 加 `_score_rank_diff_v1()` function:
+    - base_w_i = (N+1-rank_i)^p (p=1.2 default)
+    - vol_haircut_i = clip((median_vol / vol_i)^0.5, 0.75, 1.20)
+    - final_w_i = raw_w_i / sum(raw_w) * (1 - cash_buffer)
+    - clip to [min_single=0.05, max_single=0.25]
+  - allocate_positions dispatch 加 "score_rank_diff_v1" mode
+- config.py validate 加 "score_rank_diff_v1" 到 allowed sizing list
+- 新 backend/tests/paper_sim/test_sizer_score_rank_diff.py: 7 tests pass
+
+实测形状 (5 等 vol candidate, p=1.2):
+| rank | weight | Codex 推荐 |
+|---:|---:|---:|
+| 1 | 30.0% | 30 |
+| 2 | 23.4% | 23 |
+| 3 | 16.5% | 17 |
+| 4 | 10.2% | 10 |
+| 5 | 5.0% | 5 |
+| cash | 14.9% | 15 |
+
+→ **完美 match Codex round 19 verdict**.
+
+**Codex round 19 重要 push back**:
+- alpha 弱时 (RankIC=0.0246) 仓位差异化最多 +2-8pp ann (vs equal)
+- 距 30% target 缺口 95.5pp, 差异化最多救 +20pp
+- **必先 feature engineering** 才有意义寻参 sizing
+- 反对 35/25/20/15/5 (太激进) + 反对 full 5D Optuna (5 样本易 overfit)
+- 推荐 stacking: sector cap → liquidity filter → vol haircut → rank tilt → cap/cash
+
+**#33 性能优化 phase 6 — benchmark + audit guardrails (commit d495335c)**:
 - `backend/services/perf/benchmark.py`:
   - `BenchmarkReport` dataclass (name / elapsed_sec / peak_memory_mb / timestamp_utc / metadata)
   - `benchmark_section()` context manager (timing + psutil RSS)

@@ -203,7 +203,7 @@ def _validate(cfg: PaperSimConfig) -> None:
     assert p.initial_cash > 0, "initial_cash 必须 > 0"
     assert 1 <= p.max_positions <= 30, f"max_positions out of [1, 30]: {p.max_positions}"
     assert 0 <= p.min_cash_pct < 0.5, f"min_cash_pct out of [0, 0.5): {p.min_cash_pct}"
-    assert p.position_sizing in {"wilson_kelly", "equal", "kelly"}, \
+    assert p.position_sizing in {"wilson_kelly", "equal", "kelly", "score_rank_diff_v1"}, \
         f"unknown sizing: {p.position_sizing}"
 
     s = cfg.swap
