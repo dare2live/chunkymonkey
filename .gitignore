@@ -31,3 +31,4 @@ backend/forecast_sample.csv
 .duckdb-wal
 *.duckdb
 *.duckdb.wal
+gcp/jobs/
