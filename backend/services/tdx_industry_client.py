@@ -301,6 +301,7 @@ def sync_tdx_industry(conn: Any) -> dict:
             tdx_l3_name   TEXT,
             source_raw_hash TEXT,
             source_label TEXT,
+            source_available_date TEXT,
             fetched_at TIMESTAMP,
             PRIMARY KEY (stock_code, snapshot_date)
         )
@@ -313,6 +314,7 @@ def sync_tdx_industry(conn: Any) -> dict:
     for col, ddl_type in (
         ("source_raw_hash", "TEXT"),
         ("source_label", "TEXT"),
+        ("source_available_date", "TEXT"),
         ("fetched_at", "TIMESTAMP"),
     ):
         if col not in existing_history:
@@ -325,8 +327,8 @@ def sync_tdx_industry(conn: Any) -> dict:
         INSERT OR REPLACE INTO dim_stock_tdx_industry_history
             (stock_code, snapshot_date, tdx_l1, tdx_l2, tdx_l3,
              tdx_l1_name, tdx_l2_name, tdx_l3_name,
-             source_raw_hash, source_label, fetched_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+             source_raw_hash, source_label, source_available_date, fetched_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
         [
             (
@@ -340,6 +342,7 @@ def sync_tdx_industry(conn: Any) -> dict:
                 r[6],
                 raw_hash,
                 source,
+                snapshot_date,
                 fetched_at,
             )
             for r in parsed

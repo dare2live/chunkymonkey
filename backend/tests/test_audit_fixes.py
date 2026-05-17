@@ -157,10 +157,11 @@ def test_tdx_industry_history_table_created_and_written(tmp_path, monkeypatch):
 
     # history 表应存在且有 2 行
     hist_rows = conn.execute(
-        "SELECT stock_code, snapshot_date, tdx_l1, source_raw_hash FROM dim_stock_tdx_industry_history"
+        "SELECT stock_code, snapshot_date, tdx_l1, source_raw_hash, source_available_date FROM dim_stock_tdx_industry_history"
     ).fetchall()
     assert len(hist_rows) == 2
     assert {row["source_raw_hash"] for row in hist_rows} == {result["raw_hash"]}
+    assert {row["source_available_date"] for row in hist_rows} == {result["history_snapshot_date"]}
     raw_rows = conn.execute(
         "SELECT raw_hash, file_name, bytes_len FROM raw_tdx_industry_file_snapshot"
     ).fetchall()

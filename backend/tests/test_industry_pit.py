@@ -106,6 +106,54 @@ def test_build_industry_pit_passes_when_signal_window_uses_observed_snapshots_on
         assert result["observed_pit_signal_rows"] == 2
 
 
+def test_build_industry_pit_blocks_static_backfill_with_future_available_date() -> None:
+    with duck_mem() as conn:
+        _seed_industry_tables(conn)
+        conn.execute("ALTER TABLE dim_stock_tdx_industry_history ADD COLUMN source_available_date TEXT")
+        conn.executescript(
+            """
+            INSERT INTO dim_stock_tdx_industry VALUES
+                ('000001', 'A', 'A1', 'A11', '行业A', '行业A1', '行业A11');
+            INSERT INTO dim_stock_tdx_industry_history (
+                stock_code, snapshot_date,
+                tdx_l1, tdx_l2, tdx_l3,
+                tdx_l1_name, tdx_l2_name, tdx_l3_name,
+                source_available_date
+            ) VALUES (
+                '000001', '2024-01-02',
+                'A', 'A1', 'A11',
+                '行业A', '行业A1', '行业A11',
+                '2026-05-17'
+            );
+            INSERT INTO signal_scope VALUES ('000001', '2024-01-03');
+            """
+        )
+
+        result = build_industry_pit(
+            conn,
+            run_id="pit_static_backfill_blocked",
+            signal_table="signal_scope",
+            signal_date_column="signal_date",
+        )
+
+        assert result["pit_eligible"] is False
+        assert result["observed_pit_signal_rows"] == 0
+        assert result["fallback_signal_rows"] == 1
+        assert "industry_current_label_fallback_in_signal_window" in result["blockers"]
+        row = conn.execute(
+            """
+            SELECT source, confidence_level, is_historical_pit, source_available_date
+              FROM mart_stock_industry_pit
+             WHERE stock_code = '000001'
+               AND effective_from = '2024-01-02'
+            """
+        ).fetchone()
+        assert row["source"] == "tdx_industry_static_backfill"
+        assert row["confidence_level"] == "current_label_fallback"
+        assert row["is_historical_pit"] is False
+        assert row["source_available_date"] == "2026-05-17"
+
+
 def test_workbench_research_exposes_industry_pit_readiness() -> None:
     with duck_mem() as conn:
         _seed_industry_tables(conn)

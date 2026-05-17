@@ -32,6 +32,7 @@ CREATE TABLE IF NOT EXISTS {PIT_TABLE} (
     tdx_l3_name TEXT,
     source TEXT NOT NULL,
     source_snapshot_date TEXT,
+    source_available_date TEXT,
     confidence_level TEXT NOT NULL,
     is_historical_pit BOOLEAN NOT NULL,
     built_at TEXT NOT NULL,
@@ -127,6 +128,18 @@ def _build_pit_rows(conn: Any, *, fallback_start: str, built_at: str) -> dict[st
     has_history = _table_exists(conn, HISTORY_TABLE)
     has_current = _table_exists(conn, CURRENT_TABLE)
     if has_history:
+        history_cols = _columns(conn, HISTORY_TABLE)
+        if "source_available_date" not in history_cols:
+            conn.execute(f"ALTER TABLE {HISTORY_TABLE} ADD COLUMN source_available_date TEXT")
+        conn.execute(
+            f"""
+            UPDATE {HISTORY_TABLE}
+               SET source_available_date = snapshot_date
+             WHERE source_available_date IS NULL
+               AND snapshot_date IS NOT NULL
+            """
+        )
+    if has_history:
         conn.execute(
             f"""
             INSERT OR REPLACE INTO {PIT_TABLE} (
@@ -134,11 +147,12 @@ def _build_pit_rows(conn: Any, *, fallback_start: str, built_at: str) -> dict[st
                 tdx_l1, tdx_l2, tdx_l3,
                 tdx_l1_name, tdx_l2_name, tdx_l3_name,
                 source, source_snapshot_date, confidence_level,
-                is_historical_pit, built_at
+                source_available_date, is_historical_pit, built_at
             )
             WITH hist AS (
                 SELECT stock_code,
                        CAST(snapshot_date AS DATE) AS snapshot_date,
+                       CAST(source_available_date AS DATE) AS source_available_date,
                        tdx_l1, tdx_l2, tdx_l3,
                        tdx_l1_name, tdx_l2_name, tdx_l3_name
                   FROM {HISTORY_TABLE}
@@ -158,10 +172,26 @@ def _build_pit_rows(conn: Any, *, fallback_start: str, built_at: str) -> dict[st
                        AS effective_to,
                    tdx_l1, tdx_l2, tdx_l3,
                    tdx_l1_name, tdx_l2_name, tdx_l3_name,
-                   'tdx_industry_history_snapshot' AS source,
+                   CASE
+                     WHEN source_available_date IS NOT NULL
+                      AND source_available_date > snapshot_date
+                       THEN 'tdx_industry_static_backfill'
+                     ELSE 'tdx_industry_history_snapshot'
+                   END AS source,
                    CAST(snapshot_date AS VARCHAR) AS source_snapshot_date,
-                   'observed_snapshot' AS confidence_level,
-                   TRUE AS is_historical_pit,
+                   CASE
+                     WHEN source_available_date IS NOT NULL
+                      AND source_available_date > snapshot_date
+                       THEN 'current_label_fallback'
+                     ELSE 'observed_snapshot'
+                   END AS confidence_level,
+                   CAST(source_available_date AS VARCHAR) AS source_available_date,
+                   CASE
+                     WHEN source_available_date IS NOT NULL
+                      AND source_available_date > snapshot_date
+                       THEN FALSE
+                     ELSE TRUE
+                   END AS is_historical_pit,
                    ? AS built_at
               FROM ranged
             """,
@@ -188,7 +218,7 @@ def _build_pit_rows(conn: Any, *, fallback_start: str, built_at: str) -> dict[st
                 tdx_l1, tdx_l2, tdx_l3,
                 tdx_l1_name, tdx_l2_name, tdx_l3_name,
                 source, source_snapshot_date, confidence_level,
-                is_historical_pit, built_at
+                source_available_date, is_historical_pit, built_at
             )
             SELECT c.stock_code,
                    ? AS effective_from,
@@ -205,6 +235,7 @@ def _build_pit_rows(conn: Any, *, fallback_start: str, built_at: str) -> dict[st
                    'current_label_fallback' AS source,
                    NULL AS source_snapshot_date,
                    'current_label_fallback' AS confidence_level,
+                   NULL AS source_available_date,
                    FALSE AS is_historical_pit,
                    ? AS built_at
               FROM {CURRENT_TABLE} c
@@ -224,7 +255,7 @@ def _build_pit_rows(conn: Any, *, fallback_start: str, built_at: str) -> dict[st
         f"""
         SELECT COUNT(*) AS pit_rows,
                COUNT(DISTINCT stock_code) AS pit_stocks,
-               SUM(CASE WHEN source = 'current_label_fallback' THEN 1 ELSE 0 END) AS fallback_rows,
+               SUM(CASE WHEN NOT is_historical_pit THEN 1 ELSE 0 END) AS fallback_rows,
                SUM(CASE WHEN is_historical_pit THEN 1 ELSE 0 END) AS observed_rows
           FROM {PIT_TABLE}
         """
@@ -374,7 +405,7 @@ def _quality_from_signal_scope(
                    MAX(signal_date) AS max_signal_date,
                    SUM(CASE WHEN source IS NOT NULL THEN 1 ELSE 0 END) AS matched_signal_rows,
                    SUM(CASE WHEN is_historical_pit THEN 1 ELSE 0 END) AS observed_pit_signal_rows,
-                   SUM(CASE WHEN source = 'current_label_fallback' THEN 1 ELSE 0 END) AS fallback_signal_rows,
+                   SUM(CASE WHEN source IS NOT NULL AND NOT is_historical_pit THEN 1 ELSE 0 END) AS fallback_signal_rows,
                    SUM(CASE WHEN source IS NULL THEN 1 ELSE 0 END) AS missing_pit_rows,
                    SUM(CASE WHEN source IS NULL OR tdx_l1 IS NULL OR TRIM(CAST(tdx_l1 AS VARCHAR)) = ''
                             THEN 1 ELSE 0 END) AS missing_tdx_l1_rows

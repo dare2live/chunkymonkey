@@ -49,6 +49,7 @@ CREATE TABLE {TARGET} (
     PRIMARY KEY (stock_code, trade_date)
 )
 """
+DDL_CREATE_IF_NOT_EXISTS = DDL_CREATE.replace("CREATE TABLE", "CREATE TABLE IF NOT EXISTS", 1)
 DDL_INDEX = f"CREATE INDEX IF NOT EXISTS idx_mcap_date ON {TARGET}(trade_date)"
 
 BUILD_SQL = f"""
@@ -62,7 +63,7 @@ WITH prior_day AS (
         LAG(close * amount) OVER (PARTITION BY code ORDER BY date) AS prior_proxy
     FROM market.v_price_kline_qfq
     WHERE adjust='qfq' AND freq='daily'
-      AND CAST(date AS DATE) >= CAST(? AS DATE)
+      AND CAST(date AS DATE) >= CAST(? AS DATE) - INTERVAL '7 days'
       AND CAST(date AS DATE) <= CAST(? AS DATE)
 ),
 deciled AS (
@@ -78,6 +79,7 @@ SELECT
     trade_date AS source_max_trade_date,
     CURRENT_TIMESTAMP AS built_at
 FROM deciled
+WHERE trade_date >= CAST(? AS DATE)
 """
 
 
@@ -85,6 +87,8 @@ def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--start", default="2024-01-01")   # rule-compliance: ok evidence=panel-window
     parser.add_argument("--end", default="2026-04-23")     # rule-compliance: ok evidence=panel-window-end
+    parser.add_argument("--incremental", action="store_true",
+                        help="只重算 start/end 切片，不删除历史全表")
     args = parser.parse_args()
     log.info(f"=== build fact_market_cap_decile_daily {args.start} → {args.end} ===")
 
@@ -92,9 +96,16 @@ def main() -> int:
     market_db = Path(__file__).resolve().parents[2] / "data" / "market.duckdb"
     conn.execute(f"ATTACH IF NOT EXISTS '{market_db}' AS market (READ_ONLY)")
 
-    conn.execute(DDL_DROP)
-    conn.execute(DDL_CREATE)
-    conn.execute(BUILD_SQL, [args.start, args.end])
+    if args.incremental:
+        conn.execute(DDL_CREATE_IF_NOT_EXISTS)
+        conn.execute(
+            f"DELETE FROM {TARGET} WHERE trade_date >= CAST(? AS DATE) AND trade_date <= CAST(? AS DATE)",
+            [args.start, args.end],
+        )
+    else:
+        conn.execute(DDL_DROP)
+        conn.execute(DDL_CREATE)
+    conn.execute(BUILD_SQL, [args.start, args.end, args.start])
     conn.execute(DDL_INDEX)
 
     r = conn.execute(f"""

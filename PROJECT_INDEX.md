@@ -784,6 +784,23 @@ SELECT * FROM mart_data_source_watermark;
 
 每次 session 增量内容写这里, 新 session 启动时**从下往上读**最近改了啥.
 
+### 2026-05-17 下午 Codex Round 25 PIT industry source_available_date 严格化
+
+`backend/services/industry_pit.py` + `tdx_industry_client.py` 加 `source_available_date` 列, 严格区分 snapshot_date (业务日期) vs 实际入库日:
+
+- `source_available_date > snapshot_date` 自动标记 source='tdx_industry_static_backfill', confidence_level='current_label_fallback', is_historical_pit=FALSE
+- 防 [[pit-audit]] Pattern A latest-snapshot leakage (e.g. industry 99.978% fallback 反例)
+- 加 test_build_industry_pit_blocks_static_backfill_with_future_available_date 验证 fallback 路径
+
+附带 `build_industry_beta_daily.py` + `build_market_cap_decile_daily.py` 加 `--incremental` flag (切片重算, 不 DROP 全表), market_cap LAG 窗口扩 7 天保证 prior_day 不空.
+
+新增 K 线 GCP sync 脚本:
+- `backend/scripts/sync_kline_from_gcs.py` — VM 产 TDXHub delta → GCS → 本地 market.duckdb merge, 跟踪 source_available_date PIT
+- `gcp/fetch_kline_via_vm.sh` — 在 VM 上触发 tdxhub 拉新数据 + upload GCS delta
+- `gcp/test_tdxhub_connectivity.sh` — VM 端 tdxhub 连通性检查 (本地 tdxhub 全部 timeout 反例)
+
+待 commit 后续: 数据 sync 实际 fire-and-merge 触发 (修 [[project-pit-holder-data-gap]] data_sync_gap_2026_05_07).
+
 ### 2026-05-17 凌晨 Phase 1 governance v1 ingestion lint enforcement (commit 9a7cb182 + ?)
 
 实施 Codex round 16 governance.yaml ingestion_lint reject 规则:

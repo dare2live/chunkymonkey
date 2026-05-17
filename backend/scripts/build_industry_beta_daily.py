@@ -60,6 +60,7 @@ CREATE TABLE {TARGET} (
     PRIMARY KEY (stock_code, trade_date)
 )
 """
+DDL_CREATE_IF_NOT_EXISTS = DDL_CREATE.replace("CREATE TABLE", "CREATE TABLE IF NOT EXISTS", 1)
 
 DDL_INDEX_DATE = f"CREATE INDEX IF NOT EXISTS idx_beta_date ON {TARGET}(trade_date)"
 DDL_INDEX_STOCK_DATE = f"CREATE INDEX IF NOT EXISTS idx_beta_stock_date ON {TARGET}(stock_code, trade_date)"
@@ -69,6 +70,8 @@ def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--start", default="2024-01-01")   # rule-compliance: ok evidence=panel-window
     parser.add_argument("--end", default="2026-04-23")     # rule-compliance: ok evidence=panel-window-end
+    parser.add_argument("--incremental", action="store_true",
+                        help="只重算 start/end 切片，不删除历史全表")
     args = parser.parse_args()
 
     log.info(f"=== build fact_industry_beta_daily ===")
@@ -83,8 +86,15 @@ def main() -> int:
         r = conn.execute(f"SELECT COUNT(*) FROM {tbl}").fetchone()[0]
         log.info(f"  prereq {tbl}: {r:,} rows")
 
-    conn.execute(DDL_DROP)
-    conn.execute(DDL_CREATE)
+    if args.incremental:
+        conn.execute(DDL_CREATE_IF_NOT_EXISTS)
+        conn.execute(
+            f"DELETE FROM {TARGET} WHERE trade_date >= CAST(? AS DATE) AND trade_date <= CAST(? AS DATE)",
+            [args.start, args.end],
+        )
+    else:
+        conn.execute(DDL_DROP)
+        conn.execute(DDL_CREATE)
 
     # Step 1: stock daily returns (prior 60 day window for beta calc)
     t0 = time.time()
