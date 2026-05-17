@@ -784,6 +784,12 @@ SELECT * FROM mart_data_source_watermark;
 
 每次 session 增量内容写这里, 新 session 启动时**从下往上读**最近改了啥.
 
+### 2026-05-17 晚 CLAUDE.md §10 改: Codex 主动派任务 (固化用户偏好)
+
+用户 push back 2026-05-17 "充分利用 Codex 各种能力, 增加对话轮次, 分配更多任务, 请固化". CLAUDE.md §10 新加 §10.0 主动派任务场景 (7 类: 架构 doc / 调研 / 数据修复 / PIT 设计 / SQL 重构 / factor spec / negative finding), 加派任务模板, 加并行 background dispatch. 配套 memory [[feedback-codex-proactive-dispatch]].
+
+2026-05-17 实战: Round 25-30 + 31-33 各 substantial 设计/调研, 不是单纯 review.
+
 ### 2026-05-17 晚 Wave 1 thread thrashing 诊断 + paper_sim sizer fix
 
 **Wave 1 throughput 问题** (CPU 791% × 4 procs 但 trials=0 in 2h):

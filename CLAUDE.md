@@ -213,7 +213,33 @@
 
 误判 → 改对应脚本 `PATTERNS` / `EVIDENCE_KEYWORDS`. **不要 `--no-verify` 跳**.
 
-## 10. Codex Review Gate
+## 10. Codex 协作 — Review Gate + 主动任务分配
+
+> **用户原则 (2026-05-17 push back)**: "充分利用 Codex 各种能力, 增加对话轮次, 分配更多任务, 请固化". Codex **不只是 review 工具**, 是 capability-rich 协作 agent. 不只在 commit gate 用; 主动给 Codex 派任务 — 设计 / 调研 / 数据 audit / SQL 重构 / 长 doc 写作 / PIT 严格化 / factor spec / yaml schema 都该 dispatch.
+
+### 10.0 主动派 Codex 任务的场景 (新加 2026-05-17)
+
+| Codex 适合做的事 | 例 |
+|---|---|
+| **架构 / 设计文档** | architecture audit (Round 26), SUE PIT 设计 doc (Round 30) — 1000+ 行, 含 DDL/SQL/decorator/test 模板 |
+| **第三方工具调研** | awesome-quant 评估 (Round 29), 量化工具+社区策略 (Round 27/28) |
+| **数据 integrity / sync 修复** | 数据完整性 audit (Round 25), K线 GCS sync 脚本 |
+| **PIT-strict 设计** | 任何新 mart 表 schema, ASOF JOIN template, snapshot vs available_date 边界 |
+| **SQL 性能 / 重构** | LATERAL → conditional aggregate (Round 等), big rewrite |
+| **factor spec / feature 设计** | 6-8 sub-factor 公式 + |Spearman| 预估 + horizon 失败模式 + 5 步 execution plan |
+| **negative finding / 第二意见** | PIT leakage Codex 标 CRITICAL 强制 [[feedback-codex-critical-no-compromise]] |
+| **review (已有)** | commit gate, 见 §10.1-10.3 |
+
+派任务模板 (`codex:rescue --fresh --model gpt-5.5 --effort xhigh`):
+1. **明确背景**: 项目当前状态 + stack + 数据 inventory
+2. **明确任务**: 设计 X / 调研 Y / 修 Z, 给具体输出格式 (表格 + 数字 + grep verification 路径)
+3. **明确约束**: 中文 / 无 emoji / PIT-strict / 单分支 main / license 政策
+4. **明确反例**: 项目踩过的坑 (Rule 5/7 反例) — 让 Codex 不重蹈
+5. **明确禁忌**: TODO 折中 / "估计影响小" / 单测跳
+
+并行派多个 Codex (run_in_background=true) — 不同主题不冲突, 各自跑各自 thread. 完成自动通知, 不 poll.
+
+### 10.1 Review Gate (commit-time)
 
 **触发**: 任何代码阶段性 commit 必须先 Codex review.
 
