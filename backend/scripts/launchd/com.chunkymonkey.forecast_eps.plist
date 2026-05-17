@@ -1,0 +1,78 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  launchd job: daily forecast EPS snapshot ingest (Codex round 21 P1)
+
+  Install:
+    cp backend/scripts/launchd/com.chunkymonkey.forecast_eps.plist ~/Library/LaunchAgents/
+    launchctl load ~/Library/LaunchAgents/com.chunkymonkey.forecast_eps.plist
+
+  Uninstall:
+    launchctl unload ~/Library/LaunchAgents/com.chunkymonkey.forecast_eps.plist
+    rm ~/Library/LaunchAgents/com.chunkymonkey.forecast_eps.plist
+
+  Schedule: 每个交易日 19:00 (盘后 +3h), 跑 ingest_profit_forecast_snapshot.py.
+  immutable snapshot, INSERT ON CONFLICT skip, 不覆盖已 ingest 历史.
+-->
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.chunkymonkey.forecast_eps</string>
+
+    <key>ProgramArguments</key>
+    <array>
+        <string>/opt/homebrew/bin/python3</string>
+        <string>/Users/dp/Documents/M/stock/chunkymonkey/backend/scripts/ingest_profit_forecast_snapshot.py</string>
+    </array>
+
+    <key>WorkingDirectory</key>
+    <string>/Users/dp/Documents/M/stock/chunkymonkey</string>
+
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>PYTHONPATH</key>
+        <string>/Users/dp/Documents/M/stock/chunkymonkey/backend</string>
+        <key>PATH</key>
+        <string>/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin</string>
+    </dict>
+
+    <!-- 每个工作日 19:00 (盘后 3h, 数据应已 settle) -->
+    <key>StartCalendarInterval</key>
+    <array>
+        <dict>
+            <key>Weekday</key><integer>1</integer>
+            <key>Hour</key><integer>19</integer>
+            <key>Minute</key><integer>0</integer>
+        </dict>
+        <dict>
+            <key>Weekday</key><integer>2</integer>
+            <key>Hour</key><integer>19</integer>
+            <key>Minute</key><integer>0</integer>
+        </dict>
+        <dict>
+            <key>Weekday</key><integer>3</integer>
+            <key>Hour</key><integer>19</integer>
+            <key>Minute</key><integer>0</integer>
+        </dict>
+        <dict>
+            <key>Weekday</key><integer>4</integer>
+            <key>Hour</key><integer>19</integer>
+            <key>Minute</key><integer>0</integer>
+        </dict>
+        <dict>
+            <key>Weekday</key><integer>5</integer>
+            <key>Hour</key><integer>19</integer>
+            <key>Minute</key><integer>0</integer>
+        </dict>
+    </array>
+
+    <key>StandardOutPath</key>
+    <string>/Users/dp/Documents/M/stock/chunkymonkey/data/audit/logs/forecast_eps_daily.log</string>
+
+    <key>StandardErrorPath</key>
+    <string>/Users/dp/Documents/M/stock/chunkymonkey/data/audit/logs/forecast_eps_daily.err</string>
+
+    <key>RunAtLoad</key>
+    <false/>
+</dict>
+</plist>

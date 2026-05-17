@@ -994,7 +994,15 @@ Phase 3 step 5 P3 holdout (4 months last):
 - `backend/scripts/audit_lgbm_feature_importance.py`: read-only LightGBM importance ranking
 - 帮 Phase 4 #2 (feature engineering) 决策: 哪些 features 真带 alpha, 哪些噪音
 
-**#49 compute_forecast_upside_live SHADOW preview (Codex round 19+, commit ?)**:
+**#50 launchd plist for daily forecast EPS ingest (commit ?)**:
+- `backend/scripts/launchd/com.chunkymonkey.forecast_eps.plist`:
+  - 每个工作日 19:00 (盘后 3h) trigger ingest_profit_forecast_snapshot.py
+  - 写日志 data/audit/logs/forecast_eps_daily.log
+  - 安装: `cp 到 ~/Library/LaunchAgents/ && launchctl load`
+- plutil 验证 OK
+- 用户手动安装 (system-level, 安全考虑不自动 load)
+
+**#49 compute_forecast_upside_live SHADOW preview (Codex round 19+, commit 4b96b470)**:
 - `backend/scripts/compute_forecast_upside_live.py`:
   - JOIN raw_profit_forecast_snapshot_daily × mart_stock_industry_pit × fact_financial_pit_daily × v_price_kline_qfq
   - 算 upside_self / upside_industry / upside_blend / upside_consensus_pe (per Codex round 19 4 tier target_pe)
