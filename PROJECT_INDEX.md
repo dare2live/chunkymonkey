@@ -994,7 +994,18 @@ Phase 3 step 5 P3 holdout (4 months last):
 - `backend/scripts/audit_lgbm_feature_importance.py`: read-only LightGBM importance ranking
 - 帮 Phase 4 #2 (feature engineering) 决策: 哪些 features 真带 alpha, 哪些噪音
 
-**#51 post-Optuna v4 chain runner + GCP setup_all.sh (commit ?)**:
+**#52 Phase 4 predictive power audit (commit ?)**:
+- `backend/services/features/AUDIT_2026_05_17.md`: spearmanr 100K rows sample of v4 panel
+- **关键发现**: 13/31 Phase 4 cols 是 CONST/noise:
+  - sector_momentum 9 cols: 全 CONST var ~0 (PIT industry observed_snapshot filter 导致 0% 覆盖)
+  - holder_count_change_q_pct: CONST (97% NULL sparse)
+  - survey 4: 0.011 (noise)
+  - tom 7: 0.019 (marginal)
+- 真有用 (≥0.05 corr): mcap_decile 0.074, lhb_count_30d 0.055 — 仅 2 features
+- 跟 a158 top (0.10+) 比仍弱
+- v5 推荐: drop 10 dead cols → 109 features 清理
+
+**#51 post-Optuna v4 chain runner + GCP setup_all.sh (commit fa6cd7b8)**:
 - `backend/scripts/run_post_optuna_v4_chain.sh`: 5 step post-Optuna 链 (verify done → gate check rank_ic > 0.0246 → retrain best → paper_sim ablation → KPI summary)
 - `gcp/setup_all.sh`: 4-arg one-shot GCP setup (verify auth / enable APIs / create bucket+repo+SA+IAM / replace placeholders / step 7-10 报告)
 - 用户 gcloud auth + 提供 4 值 → 我可以在本 chat 完成 GCP 上云全流程
