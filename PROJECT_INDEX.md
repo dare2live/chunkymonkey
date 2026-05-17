@@ -994,7 +994,12 @@ Phase 3 step 5 P3 holdout (4 months last):
 - `backend/scripts/audit_lgbm_feature_importance.py`: read-only LightGBM importance ranking
 - 帮 Phase 4 #2 (feature engineering) 决策: 哪些 features 真带 alpha, 哪些噪音
 
-**#50 launchd plist for daily forecast EPS ingest (commit ?)**:
+**#51 post-Optuna v4 chain runner + GCP setup_all.sh (commit ?)**:
+- `backend/scripts/run_post_optuna_v4_chain.sh`: 5 step post-Optuna 链 (verify done → gate check rank_ic > 0.0246 → retrain best → paper_sim ablation → KPI summary)
+- `gcp/setup_all.sh`: 4-arg one-shot GCP setup (verify auth / enable APIs / create bucket+repo+SA+IAM / replace placeholders / step 7-10 报告)
+- 用户 gcloud auth + 提供 4 值 → 我可以在本 chat 完成 GCP 上云全流程
+
+**#50 launchd plist for daily forecast EPS ingest (commit 13d9155f)**:
 - `backend/scripts/launchd/com.chunkymonkey.forecast_eps.plist`:
   - 每个工作日 19:00 (盘后 3h) trigger ingest_profit_forecast_snapshot.py
   - 写日志 data/audit/logs/forecast_eps_daily.log
