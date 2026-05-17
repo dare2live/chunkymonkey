@@ -279,9 +279,15 @@ def main() -> int:
              False, built_at)
             for w in window_results
         ]
+        # 防 PK schema crash (CTAS 重建表丢 PK 时 INSERT OR REPLACE BinderException)
+        # 改用 DELETE + INSERT idempotent pattern (跟 mart_p0b_oos_predictions 同模式 line 224)
+        conn._con.execute(
+            "DELETE FROM mart_p0b_walkforward_eval WHERE run_id = ? AND model_id = ?",
+            [run_id, args.model_id],
+        )
         conn._con.executemany(
             """
-            INSERT OR REPLACE INTO mart_p0b_walkforward_eval
+            INSERT INTO mart_p0b_walkforward_eval
             (run_id, window_idx, model_id, model_version, feature_version,
              label_version, walk_forward_mode,
              train_start, train_end, test_start, test_end,
