@@ -113,6 +113,42 @@
 - **16:25 GCS upload 启动**: smartmoney.duckdb 21GB ~8MB/s, ETA 35-40 min, PID 70711
 - 下一步: upload 完 → VM 上 gsutil download → 跑 Optuna v4 50 trials (~5-8h vs Mac 47h)
 
+### 2026-05-17 18:53 Wave 1 进度
+
+| 项 | 值 | 备注 |
+|---|---|---|
+| VM 状态 | RUNNING SPOT IP 35.184.198.61 | n2-standard-32 |
+| Wave 1 启动 | 10:03-10:04 UTC | 4 jobs |
+| 已运行 | ~1h00m | 11:03 UTC |
+| 第一个 trial finished | 0/4 | 慢启动正常 |
+| 4 进程 CPU% | 700-880% 各 | OMP_NUM_THREADS=8 满载 |
+| Load avg | 55.6 (32 核) | 满载 |
+| RAM 占用 | 各 ~3GB res | 128GB free 89GB |
+| OOM/crash | 0 | 干净 |
+| Trial-1 ETA | ~1.5-2h (16 walk-forward windows) | 第一个 trial 最慢 |
+| Wave 1 总 ETA 重估 | 24-48h (50 trials × 4 jobs) | 初估 5-8h 偏乐观 |
+| Decision | 不 kill, 持续监控 | CPU 满载证明真工作 |
+
+### 2026-05-17 18:53 Codex agents in-flight
+
+| Round | Task ID | Elapsed | 状态 |
+|---|---|---|---|
+| 25 数据完整性 | task-mp9l9ojr-3a3zzx | 1h19m+ | 写完代码, 测试阶段 |
+| 26 架构审计 | task-mp9mpu75-ytw1c5 | 38m+ | 写完 docs/chunkymonkey_architecture_audit_20260517.md (1059 行 52KB), wrap-up |
+| 27 量化工具 | task-mp9mdxif-xdq8ov | 36m | DONE → RESEARCH_QUANT_TOOLS_R27.md (commit e5b8827d) |
+| 28 社区策略 | task-mp9n4x4f-aowasb | 5m42s | DONE → RESEARCH_COMMUNITY_STRATEGIES_R28.md (commit e5b8827d) |
+
+Round 25 改的文件 (待 Codex 完成后 review):
+- `backend/scripts/sync_kline_from_gcs.py` (新)
+- `gcp/fetch_kline_via_vm.sh` (新)
+- `gcp/test_tdxhub_connectivity.sh` (新)
+- `backend/services/industry_pit.py` (+45 -)
+- `backend/services/tdx_industry_client.py` (+7 -)
+- `backend/scripts/build_industry_beta_daily.py` (+14 -)
+- `backend/scripts/build_market_cap_decile_daily.py` (+19 -)
+- `backend/tests/test_audit_fixes.py` (+3 -)
+- `backend/tests/test_industry_pit.py` (+48 -)
+
 ## 2026-05-17 临时 critical issues 发现
 
 ### Data sync gap (v_price_kline_qfq market.duckdb)
