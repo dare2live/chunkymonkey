@@ -956,6 +956,40 @@ Final audit (training-window 900 day):
 - exit_params PIT 表 rebuild (1490 → 5210 codes, 配合新 label_version)
 - alpha 弱 (0.0246 RankIC) 回根因: feature engineering / Optuna 寻参 / 新 universe / 新 label horizon
 
+**#22 Phase 3 全 chain FINAL verdict — governance v1 真实 alpha 不达目标 (commit ?)**:
+
+Phase 3 step 4 paper_sim (2025-12-01 ~ 2026-04-13 late window, 87 days):
+| Metric | Value | Gate | Pass |
+|---|---:|---:|---|
+| pit_only ann_ret_approx | -65.5% | ≥ 30% | ✗ |
+| 月胜率 | 50% | ≥ 55% | ✗ |
+| 超额 vs HS300 | +6.8% | > 0 | ✓ |
+| 年化换手 | 51× | ≤ 8 | ✗ |
+| 手续费占毛利 | 11.2% | ≤ 10% | ✗ |
+| pit_only count | 43 trades | -- | -- |
+| swap 次数 | 0 | -- | -- |
+
+Phase 3 step 5 P3 holdout (4 months last):
+- ann_ret=0 / max_dd=0 / monthly_win_rate=0 / n_oos_months=0
+- P3 FAIL: ann_ret < 30% + excess ≤ 0 + monthly_win < 55%
+
+**真实 alpha verdict** (governance v1, 数据干净后):
+- mart_p0b_oos_predictions: RankIC=0.0246 (低于 0.03 gate)
+- paper_sim: 真实 NAV 跌 -2.71% in 87 days = ann -65.5%
+- corrupt era lgbm_v3 假象: ann=21843% (volume unit bug)
+
+→ governance v1 unit bug 修干净后, **真实 alpha 不到 用户终极目标 (年化 30%)**. CLAUDE Rule 5
+"异常高数字 = leakage 警报" 反证 governance v1 enforce 落地有效 — 真实 forward 期望永远 < 回测.
+
+按 PLAN_V3 §72 "任一失败 → 停止包装, 回到 alpha 根因, 不调目标":
+**不上线 paper trading**, Phase 4 必修:
+1. exit_params PIT rebuild (1490 → 5210 codes 配 governance v1 universe)
+2. Feature engineering 加新 alpha factors
+3. Optuna 寻参 200 trials --full (跳过的 ~8h)
+4. label horizon ablation (5d/10d/20d RankIC 哪个最强)
+5. Universe ablation (KEEP 60/00/30/68 vs 流动性 top-2000 vs sector neutral)
+6. LightGBM 替代 (LambdaMART / CatBoost / XGBoost ranker)
+
 **#20 paper_sim_ml_score_governance_v1.yaml + Phase 3 step 2/3 启动 (commit db394565)**:
 - Phase 3 step 2: build_p0a_feature_panel_v3 完成 (102s ~2 min):
   - rows: 2,901,970 / KEEP universe 5,210 (ever-listed) / feature_version=p0a_v3
