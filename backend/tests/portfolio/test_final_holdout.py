@@ -127,3 +127,26 @@ def test_format_fail_report_lists_failures():
     assert "回 alpha 根因" in report
     for f in r.failures:
         assert any(part in report for part in f.split())  # 部分关键字出现
+
+
+def test_ann_ret_sanity_cap_blocks_corrupt_label_ann():
+    """Codex Q8.7 FIX: ann_ret > 50% sanity cap (防 corrupt label leakage).
+    
+    反例: lgbm_v3_honest_20d P3 ann_ret=21843% (volume unit bug).
+    """
+    from services.portfolio.final_holdout import (
+        FinalHoldoutMetrics, check_final_acceptance, ANN_RET_SANITY_CAP
+    )
+    # 假设 P3 跑出 ann_ret=2.5 (250%) — 触发 sanity cap
+    metrics = FinalHoldoutMetrics(
+        ann_ret=2.5,
+        max_dd=-0.15,
+        excess_vs_hs300=2.4,
+        monthly_win_rate=0.85,
+        hs300_ann_ret=0.10,
+        n_oos_months=6,
+    )
+    result = check_final_acceptance(metrics)
+    assert not result.passed
+    assert any("sanity cap" in f for f in result.failures)
+    assert ANN_RET_SANITY_CAP == 0.50  # measured baseline (governance v1)

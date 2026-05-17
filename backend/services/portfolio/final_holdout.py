@@ -31,6 +31,11 @@ ANN_RET_TARGET = 0.30
 MAX_DD_TARGET = -0.20
 MONTHLY_WIN_RATE_TARGET = 0.55
 
+# Codex round 17 Q8.7 FIX: ann_ret sanity cap (governance v1, 防 corrupt label 再 PASS)
+# A 股策略 hard cap: 真实期望最高 50% / 年, 超过几乎必 leakage (反例: lgbm_v3 ann=21843%)
+# evidence: backtest commit 9c01eae0 (governance v1 修复) — 之前 ann_ret=21843% 是 unit bug
+ANN_RET_SANITY_CAP = 0.50
+
 
 @dataclass(frozen=True)
 class FinalHoldoutMetrics:
@@ -97,6 +102,14 @@ def check_final_acceptance(metrics: FinalHoldoutMetrics) -> AcceptanceResult:
     if metrics.monthly_win_rate < MONTHLY_WIN_RATE_TARGET:
         failures.append(
             f"monthly_win_rate={metrics.monthly_win_rate:.4f} < target {MONTHLY_WIN_RATE_TARGET}"
+        )
+
+    # Codex round 17 Q8.7 FIX: ann_ret sanity cap (governance v1 leakage 警报)
+    # 反例: corrupt label 时代 lgbm_v3_honest_20d P3 ann_ret=21843% (volume unit bug)
+    if metrics.ann_ret > ANN_RET_SANITY_CAP:
+        failures.append(
+            f"ann_ret={metrics.ann_ret:.4f} > sanity cap {ANN_RET_SANITY_CAP} "
+            f"(governance v1 leakage 警报, 反例 lgbm_v3 21843% volume unit bug)"
         )
 
     return AcceptanceResult(

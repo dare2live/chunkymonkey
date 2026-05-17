@@ -876,12 +876,15 @@ Codex review session 9 commit 后给出 **2 REDLINE Blocker + 12 FIX item + 1 CO
 - Q8.6: 加 `--enforce-rankic-gate` flag, fail (RankIC<0.03 或 n_dates<30) 时 exit 1 (governance v1 default ON)
 - 测试: syntax + args 验证 PASS
 
-**#11 rebuild_p0a_label_panel.py Q2b + Q2c FIX (commit ?)**:
+**#11 rebuild_p0a_label_panel.py Q2b + Q2c FIX (commit f380e1d9)**:
 - Q2b: signal_dates 跟 alpha158 dates intersection (防 label/feature dates 不一致)
-  - 之前 label = v_price_kline_qfq dates, feature = alpha158 dates 不一致 → 部分 row 无 features
-  - 加 a158_dates_set filter, market-only dates 自动 drop + log
 - Q2c: 加 `--run-audit-gate` 触发 audit_p0a_panel.py post-build hard gate
-  - subprocess invoke, exit != 0 → rebuild script 返回 fail code
+
+**#12 final_holdout.py Q8.7 ann_ret sanity cap (commit ?)**:
+- Codex Q8.7: 加 ANN_RET_SANITY_CAP = 0.50 (50% / 年)
+- 反例: lgbm_v3 P3 ann_ret=21843% (volume unit bug) 触发 → blocks PASS
+- 当 ann_ret > 0.50 → failures.append("sanity cap"), passed=False
+- 新单测 test_ann_ret_sanity_cap_blocks_corrupt_label_ann (1 pass)
 
 ### 2026-05-17 凌晨 数据治理 framework v1 (Codex round 16 task-mp8ktoe3-8rkde7, commit d055f5cb)
 
