@@ -81,7 +81,7 @@ def main() -> int:
 
     t0 = time.time()
     snapshot_date = args.snapshot_date or datetime.now().strftime("%Y-%m-%d")
-    built_at = datetime.now(UTC)
+    built_at = datetime.now().isoformat(timespec="seconds")  # ISO string, avoid pytz
     log.info(f"=== Live forecast upside ({snapshot_date}, target_pe={args.target_pe_source}) ===")
 
     # Open DBs
@@ -131,8 +131,8 @@ def main() -> int:
                 SELECT stock_code,
                        MEDIAN(pe_ttm) AS pe_self_median
                   FROM fact_financial_pit_daily
-                 WHERE trade_date >= DATE(?) - INTERVAL '? days'
-                   AND trade_date <= ?
+                 WHERE CAST(trade_date AS DATE) >= CAST(? AS DATE) - INTERVAL '? days'
+                   AND CAST(trade_date AS DATE) <= CAST(? AS DATE)
                    AND pe_ttm > 0
                  GROUP BY 1
             ),
@@ -240,8 +240,12 @@ def main() -> int:
             log.info("Top 10 by upside_blend (forecast_inst_count >= 5):")
             for r in top:
                 code, ind, eps, cls, pe, ind_pe, tgt, up = r
-                log.info(f"  {code} ({ind}): eps={eps:.2f}, close={cls:.2f}, pe={pe:.1f if pe else 'NA'}, "
-                         f"ind_pe={ind_pe:.1f if ind_pe else 'NA'}, target={tgt:.1f}, upside={up*100:.1f}%")
+                pe_s = f"{pe:.1f}" if pe is not None else "NA"
+                ind_pe_s = f"{ind_pe:.1f}" if ind_pe is not None else "NA"
+                tgt_s = f"{tgt:.1f}" if tgt is not None else "NA"
+                up_s = f"{up*100:.1f}%" if up is not None else "NA"
+                log.info(f"  {code} ({ind}): eps={eps:.2f}, close={cls:.2f}, "
+                         f"pe={pe_s}, ind_pe={ind_pe_s}, target={tgt_s}, upside={up_s}")
     finally:
         conn.close()
 
