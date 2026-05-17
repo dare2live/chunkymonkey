@@ -921,7 +921,42 @@ Codex review session 9 commit 后给出 **2 REDLINE Blocker + 12 FIX item + 1 CO
   - `record_holdout_access()`: P3 acceptance 阶段记录访问 (audit trail)
 - 新单测 `backend/tests/portfolio/test_final_holdout_freeze.py`: 5 pass
 
-**#20 paper_sim_ml_score_governance_v1.yaml + Phase 3 step 2/3 启动 (commit ?)**:
+**#21 Phase 3 完整 chain 完成 + 真实 alpha 诚实 verdict (commit ?)**:
+
+实测 governance v1 chain (Phase 3 step 1-5):
+| Step | 状态 | 实测 |
+|---|---|---|
+| step 1 label rebuild | PASS | 2,933,230 rows / 5,210 PIT codes / outliers 0.16% |
+| step 2 feature rebuild | PASS | 2,901,970 / 102s |
+| step 3 lgbm train | partial FAIL | **mean RankIC=0.0246 < 0.03 gate** / 2.16M preds 写 / PK schema crash 修复 |
+| step 4 paper_sim | FAIL | 0 candidates (exit_params PIT 1490 codes vs 5210 mismatch) |
+| step 5 P3 holdout | FAIL | ann_ret=0 max_dd=0 win=0 (无 trades) |
+
+**真实诚实 alpha verdict** (按 CLAUDE Rule 5 异常高数字 反证):
+- corrupt era lgbm_v3 P3: ann_ret=21843% (volume unit bug 假)
+- **governance v1 lgbm_20260517: 真实 RankIC=0.0246, 比 corrupt 0.035 假数据**低**
+
+→ governance v1 unit bug 修干净后 alpha 显著 < corrupt era 假象, **CLAUDE Rule 5 异常高数字警报反证 governance v1 落地有效**.
+
+PK schema crash 修复:
+- DROP+CTAS 重建 mart_p0b_* 丢 PRIMARY KEY → train_p0b INSERT OR REPLACE BinderException
+- ALTER TABLE ADD PRIMARY KEY 重 add: (model_id, signal_date, stock_code) + walkforward (run_id, window_idx)
+
+P3 historical corrupt cleanup:
+- mart_p3_acceptance_result 删 lgbm_v3_honest_20d (ann=218 corrupt 假数据)
+
+Final audit (training-window 900 day):
+- vwap_close_ratio: critical 1,385 (tier-1 真实事件, 95% ↓ vs session 开始 27,899)
+- single_source_proportion_drift: **ok** tier1_ratio=1.0 ✓
+- fwd_cost_after_outlier: critical 8,251 (mart_p0a 3938 + mart_p0b governance v1 4313, 0 NaN ✓)
+
+**Phase 3 step 6 final audit verify**: 1/3 critical → ok (single_source). 2/3 critical 剩 (vwap 95% ↓ / fwd outlier governance v1 真实 distribution).
+
+后续 Phase 4 (alpha 根因回溯, PLAN_V3 §72 "失败不调目标"):
+- exit_params PIT 表 rebuild (1490 → 5210 codes, 配合新 label_version)
+- alpha 弱 (0.0246 RankIC) 回根因: feature engineering / Optuna 寻参 / 新 universe / 新 label horizon
+
+**#20 paper_sim_ml_score_governance_v1.yaml + Phase 3 step 2/3 启动 (commit db394565)**:
 - Phase 3 step 2: build_p0a_feature_panel_v3 完成 (102s ~2 min):
   - rows: 2,901,970 / KEEP universe 5,210 (ever-listed) / feature_version=p0a_v3
 - Phase 3 step 3 启动 (PID 22069 ~30-60min):
