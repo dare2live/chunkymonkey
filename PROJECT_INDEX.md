@@ -994,7 +994,17 @@ Phase 3 step 5 P3 holdout (4 months last):
 - `backend/scripts/audit_lgbm_feature_importance.py`: read-only LightGBM importance ranking
 - 帮 Phase 4 #2 (feature engineering) 决策: 哪些 features 真带 alpha, 哪些噪音
 
-**#31 性能优化 phase 3 — fast_path Optuna search (commit ?)**:
+**#32 性能优化 phase 4 — PreparedPanel LightGBM 优化 (commit ?)**:
+- `backend/services/perf/prepared_panel.py`:
+  - `PreparedPanel` dataclass: X/y float32 ndarray (no dict overhead)
+  - 加 y_5d/y_10d/y_20d 备用 labels + date_codes (int32 month encoding) + stock_codes
+  - `build_panel_from_df`: pandas → float32 ndarray + drop NaN label rows + auto exclude meta cols
+  - `compute_walk_forward_windows`: expanding monthly precompute, panel.window_indices[i]={train_idx, test_idx}
+  - Optuna trial 内 `panel.get_window(i)` 一行返 X_train/y_train/X_test/y_test
+- 收益: 无 df.to_dict("records") overhead, float64→float32 (4× memory ↓)
+- 5 tests pass
+
+**#31 性能优化 phase 3 — fast_path Optuna search (commit af942751)**:
 - `backend/services/perf/fast_path.py`:
   - `SimResult` dataclass (5 ndarray columns: net_ret/gross_ret/max_dd/holding_days/exit_reason)
   - `ExitReason` IntEnum (UNSET / HOLD_END / STOP_HIT / TARGET_HIT / TRAILING_HIT / UNABLE / LIMIT_*)

@@ -22,6 +22,11 @@ from services.perf.fast_path import (
     compute_ic_ir,
     compute_objectives_from_arrays,
 )
+from services.perf.prepared_panel import (
+    PreparedPanel,
+    build_panel_from_df,
+    compute_walk_forward_windows,
+)
 
 __all__ = [
     "ShardSpec",
@@ -37,4 +42,7 @@ __all__ = [
     "compute_mean_ret",
     "compute_ic_ir",
     "compute_objectives_from_arrays",
+    "PreparedPanel",
+    "build_panel_from_df",
+    "compute_walk_forward_windows",
 ]
