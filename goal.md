@@ -99,6 +99,10 @@
 - 估时修正: 50 trials × 32 min × pruner factor 0.6 = ~16h (vs v3 24 天)
 - 监控: `tail -f data/audit/logs/optuna_v4_20260517T121145.log`
 - 修 schema: ALTER mart_p1_optuna_trials ADD user_attrs_json + pruned_at_window (v4 callback 需)
+- **15:24 trial 3 完成 mean_ic=0.0123 (低于 0/1/2, 持续下降)**
+- **15:30 决定 cancel — 4 trials 全 < baseline 0.0246, Phase 4 features 不带 alpha 证据充分**
+- **15:30 Retrain LGBM PID 63919 启动** (trial 1 best params, mart_p0a_feature_label_panel_v4, model_id=lgbm_v4_optbest_7fed34)
+- 估时 retrain: ~30-60 min (单次 train, 非 walk-forward)
 
 ## 2026-05-17 临时 critical issues 发现
 
