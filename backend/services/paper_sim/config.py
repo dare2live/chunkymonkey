@@ -25,6 +25,14 @@ class PortfolioConfig:
     cash_when_strong_buy_lt: int
     position_sizing: str
     min_cash_pct: float
+    # score_rank_diff_v1 sizer 可选参数 (Codex round 19, sizer.py L83-89 用 getattr)
+    score_rank_p: float = 1.2
+    vol_haircut_exp: float = 0.5
+    vol_haircut_min: float = 0.75
+    vol_haircut_max: float = 1.20
+    score_rank_cash_buffer: float = 0.15
+    max_single_weight: float = 0.25
+    min_single_weight: float = 0.05
 
 
 @dataclass(frozen=True)

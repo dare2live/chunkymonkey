@@ -784,6 +784,22 @@ SELECT * FROM mart_data_source_watermark;
 
 每次 session 增量内容写这里, 新 session 启动时**从下往上读**最近改了啥.
 
+### 2026-05-17 晚 Wave 1 thread thrashing 诊断 + paper_sim sizer fix
+
+**Wave 1 throughput 问题** (CPU 791% × 4 procs 但 trials=0 in 2h):
+- VM 实测每 proc 47 threads (OMP_NUM_THREADS=8 没传到 LightGBM)
+- LightGBM `n_jobs` 默认 = nproc (=32). 4 proc × 32 = 128 threads on 32 cores → 4× 过度订阅
+- 修: `run_p0b_lightgbm_optuna_v4.py` hp 加 `n_jobs / num_threads = OMP_NUM_THREADS or 8`
+- 期望速度 ↑ 4-8× (省线程切换), 50 trials × 4 jobs ETA 30-50h → 8-12h
+
+**Paper sim sizer fix** (启动 task #70 sizer ablation):
+- `paper_sim_ml_score_governance_v1_rank_diff.yaml` nested `sizing_params` dict → frozen
+  dataclass unpack 不能接受. 改 flat keys (score_rank_p, vol_haircut_exp, ...) 跟
+  `sizer.py` L83-89 `getattr` 默认值对齐
+- `PortfolioConfig` 加 7 个可选字段 (default 来自 Codex round 19 a59f50ececd83cdb1)
+- equal variant 完: ann_ret_approx -9.0%, [FAIL] 不上线 (lgbm_20260517_governance_v1_20d
+  现 model 弱; Wave 1 跑完后期望更强)
+
 ### 2026-05-17 晚 paper_sim --variant 自由化 + 触发 task #70 sizer ablation
 
 `backend/scripts/run_paper_sim_v2.py` 删 `choices=["swap_v1", "baseline", "swap_optuna"]` 限制, 允许 free-form label string (variant 仅用作 KPI 标签). 解锁 task #70 sizer_ablation_equal vs sizer_ablation_score_rank_diff_v1 跑历史. lgbm_20260517_governance_v1_20d model 2.16M OOS predictions 覆盖 2024-07-01 ~ 2026-04-13.

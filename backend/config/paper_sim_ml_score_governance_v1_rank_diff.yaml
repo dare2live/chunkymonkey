@@ -22,13 +22,13 @@ portfolio:
   position_sizing: "score_rank_diff_v1"   # Codex round 19 #1 — 用户 "差异化到底"
   cash_when_strong_buy_lt: 5
   min_cash_pct: 0.30
-  # score_rank_diff_v1 specific params (Codex round 19 推荐):
-  sizing_params:
-    p: 1.2                  # rank tilt exponent (rank^p × base)
-    vol_exp: 0.5            # volatility haircut exponent (1/vol^vol_exp)
-    cash_buffer: 0.15       # 15% extra cash buffer beyond min_cash_pct
-    max_single_pct: 0.25    # 单股 cap 25%
-    min_single_pct: 0.05    # 单股 floor 5%
+  # score_rank_diff_v1 flat params (Codex round 19 推荐) — sizer.py L83-89 用 getattr
+  # 注: 不能用 nested sizing_params dict (PortfolioConfig 是 frozen dataclass, **kwargs unpack)
+  score_rank_p: 1.2                  # rank tilt exponent (rank^p × base)
+  vol_haircut_exp: 0.5               # volatility haircut exponent (1/vol^vol_exp)
+  score_rank_cash_buffer: 0.15       # 15% extra cash buffer beyond min_cash_pct
+  max_single_weight: 0.25            # 单股 cap 25%
+  min_single_weight: 0.05            # 单股 floor 5%
 
 # ─── 候选选股 (ML score 模式 - Option A) ───
 selection:

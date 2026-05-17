@@ -36,6 +36,7 @@ import argparse
 import gc
 import logging
 import math
+import os
 import sys
 import time
 import uuid
@@ -201,6 +202,10 @@ def main() -> int:
         num_leaves_high = min(127, 2 ** max_depth - 1)
         if num_leaves_high <= num_leaves_low:
             num_leaves_high = num_leaves_low + 1
+        # rule-compliance: ok evidence=parallel-grid-runner-skill-Wave1-thread-thrash-fix
+        # Honor OMP_NUM_THREADS so 4-parallel grid doesn't spawn 4×32=128 threads on 32 cores
+        # Default 8 (matches our Wave 1 launcher OMP_NUM_THREADS=8)
+        n_jobs = int(os.environ.get("OMP_NUM_THREADS", "8"))
         hp = {
             "max_depth": max_depth,
             "num_leaves": trial.suggest_int("num_leaves", num_leaves_low, num_leaves_high, log=True),
@@ -215,6 +220,8 @@ def main() -> int:
             "n_estimators": n_est_default,
             "random_state": args.seed,
             "verbose": -1,
+            "n_jobs": n_jobs,
+            "num_threads": n_jobs,
         }
 
         # 跑 each window, report 累积 mean_ic for pruner
