@@ -994,7 +994,15 @@ Phase 3 step 5 P3 holdout (4 months last):
 - `backend/scripts/audit_lgbm_feature_importance.py`: read-only LightGBM importance ranking
 - 帮 Phase 4 #2 (feature engineering) 决策: 哪些 features 真带 alpha, 哪些噪音
 
-**#46 v4 panel built + Optuna v4 launched (commit ?)**:
+**#47 forecast EPS 首 snapshot 入库 (commit ?)**:
+- `raw_profit_forecast_snapshot_daily`: 2,374 stocks × 13 fields (akshare 多年 EPS forecast)
+- snapshot_date=2026-05-17, EPS coverage 100% this year (2026), 99.9% next year (2027), 89.3% two years (2028)
+- Top inst_count: 贵州茅台 43 研报, 东鹏饮料 38, 安井食品 36
+- Parser 升级支持 akshare 13-col 格式 (动态年份映射 snapshot_year → this/next/two_years)
+- 改 ingest 错误处理 (移除 BEGIN/COMMIT, 按行 best-effort, 防 transaction-aborted)
+- 接下来 daily 跑 = 真 PIT 累积, 数月后可 walk-forward backtest forecast_upside
+
+**#46 v4 panel built + Optuna v4 launched (commit 11ec2d6c)**:
 - 切流程: Cancel v3 PID 25088 → build v4 panel 229s → launch Optuna v4 PID 47508
 - v4 panel: mart_p0a_feature_label_panel_v4 2,901,970 rows × 143 cols
 - v4 SQL fix: inline capital_flow JOIN (skip v3_ext intermediate); V4_NEW_COLS 35→31 (drop 4 survey dup)

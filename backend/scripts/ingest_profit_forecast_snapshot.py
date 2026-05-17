@@ -99,18 +99,37 @@ def fetch_akshare_em(symbol: str = "") -> list[dict]:
 
 
 def parse_akshare_row(record: dict, snapshot_date: str, fetched_at: datetime) -> dict | None:
-    """Parse one akshare row to our schema."""
+    """Parse one akshare row to our schema.
+
+    2026-05 实测 akshare 返回 13 cols: 序号/代码/名称/研报数/机构投资评级/
+    2025/2026/2027/2028 预测每股收益. 没暴露具体 "this year" / "next year" 字段名,
+    我们按 snapshot_date 的年份动态映射:
+      this_year = forecast for year (snapshot_year)
+      next_year = forecast for year (snapshot_year + 1)
+      two_years = forecast for year (snapshot_year + 2)
+    """
     code = _normalize_stock_code(record.get("代码") or record.get("stock_code"))
     if not code:
         return None
+
+    # Dynamic year mapping (snapshot_date YYYY-MM-DD)
+    try:
+        snap_year = int(snapshot_date[:4])
+    except (ValueError, IndexError):
+        snap_year = datetime.now().year  # rule-compliance: ok evidence=current-year-fallback
+
+    eps_this = _safe_float(record.get(f"{snap_year}预测每股收益") or record.get("每股收益"))
+    eps_next = _safe_float(record.get(f"{snap_year + 1}预测每股收益") or record.get("次年每股收益"))
+    eps_two = _safe_float(record.get(f"{snap_year + 2}预测每股收益") or record.get("两年每股收益"))
+
     return {
         "snapshot_date": snapshot_date,
         "stock_code": code,
         "security_name": record.get("名称") or record.get("stock_name"),
         "forecast_inst_count": _safe_int(record.get("研报数") or record.get("forecast_inst_count")),
-        "eps_forecast_this_year": _safe_float(record.get("每股收益") or record.get("eps")),
-        "eps_forecast_next_year": _safe_float(record.get("次年每股收益") or record.get("eps_next")),
-        "eps_forecast_two_years": _safe_float(record.get("两年每股收益") or record.get("eps_two_years")),
+        "eps_forecast_this_year": eps_this,
+        "eps_forecast_next_year": eps_next,
+        "eps_forecast_two_years": eps_two,
         "profit_yoy_this_year": _safe_float(record.get("净利润同比") or record.get("profit_yoy")),
         "source": "akshare_em",
         "source_label": "stock_profit_forecast_em",
@@ -195,30 +214,28 @@ def main() -> int:
                 f"  snapshot_date={snapshot_date} already has {n_existing} rows. "
                 f"INSERT OR IGNORE will skip dups (immutable snapshot)."
             )
-        conn.execute("BEGIN TRANSACTION")
-        try:
-            inserted = 0
-            for r in rows:
-                # INSERT OR IGNORE doesn't exist in DuckDB; use INSERT...ON CONFLICT
-                try:
-                    conn.execute(
-                        f"INSERT INTO raw_profit_forecast_snapshot_daily ({col_list}) "
-                        f"VALUES ({placeholders})",
-                        [r[c] for c in cols],
-                    )
-                    inserted += 1
-                except duckdb.ConstraintException as ce:
-                    # PK conflict on (snapshot_date, stock_code, source) → immutable, skip
-                    # rule-compliance: ok evidence=immutable-snapshot-design
-                    log.debug(f"  PK conflict skip: {r['stock_code']} — {ce}")
-            conn.execute("COMMIT")
-        except BaseException:
+        # No explicit transaction — each INSERT auto-commits.
+        # PK conflicts skip (immutable snapshot); type errors logged + skipped (not aborting whole batch).
+        inserted = 0
+        skipped_pk = 0
+        skipped_err = 0
+        for r in rows:
             try:
-                conn.execute("ROLLBACK")
-            except Exception as rb_err:
-                # rule-compliance: ok evidence=rollback-best-effort
-                log.error(f"  rollback failed: {rb_err}")
-            raise
+                conn.execute(
+                    f"INSERT INTO raw_profit_forecast_snapshot_daily ({col_list}) "
+                    f"VALUES ({placeholders})",
+                    [r[c] for c in cols],
+                )
+                inserted += 1
+            except duckdb.ConstraintException:
+                # PK conflict on (snapshot_date, stock_code, source) → immutable, skip
+                # rule-compliance: ok evidence=immutable-snapshot-design
+                skipped_pk += 1
+            except Exception as ins_err:
+                # Per-row error 不中断 batch
+                # rule-compliance: ok evidence=ingest-best-effort-batch
+                log.warning(f"  insert err for {r.get('stock_code')}: {ins_err}")
+                skipped_err += 1
 
         # Audit
         r = conn.execute(
@@ -227,7 +244,7 @@ def main() -> int:
             [snapshot_date]
         ).fetchone()
         log.info(f"  {snapshot_date} table state: {r[0]:,} rows / {r[1]:,} stocks (after this ingest)")
-        log.info(f"  new inserted: {inserted}, skipped (dup): {len(rows) - inserted}")
+        log.info(f"  new inserted: {inserted}, skipped (PK dup): {skipped_pk}, errors: {skipped_err}")
     finally:
         conn.close()
 
