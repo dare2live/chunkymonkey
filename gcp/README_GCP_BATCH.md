@@ -4,7 +4,24 @@ This directory contains a strict-PIT Cloud Batch template for heavyweight experi
 
 ## Quick Start (one-shot setup)
 
-After `gcloud auth login` + enable billing for project (GUI 1-click), run:
+### Prerequisite (Mac local, 一次性)
+
+```bash
+# 1. Install Docker Desktop for Mac (used to build cloud image)
+brew install --cask docker
+open -a Docker  # Start Docker
+
+# 2. Install gcloud CLI
+brew install --cask google-cloud-sdk
+
+# 3. Login + select project
+gcloud auth login
+gcloud config set project YOUR_PROJECT_ID
+```
+
+### One-shot Setup
+
+After prerequisites + enable billing for project (GUI 1-click), run:
 
 ```bash
 gcp/setup_all.sh PROJECT_ID BUCKET_NAME REGION EMAIL
