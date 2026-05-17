@@ -994,7 +994,16 @@ Phase 3 step 5 P3 holdout (4 months last):
 - `backend/scripts/audit_lgbm_feature_importance.py`: read-only LightGBM importance ranking
 - 帮 Phase 4 #2 (feature engineering) 决策: 哪些 features 真带 alpha, 哪些噪音
 
-**#42 feature_join_v4 wire script (Codex round 20 P0, commit ?)**:
+**#43 ingest_profit_forecast_snapshot.py — daily PIT immutable (Codex round 20 P1, commit ?)**:
+- `backend/scripts/ingest_profit_forecast_snapshot.py`:
+  - akshare stock_profit_forecast_em → raw_profit_forecast_snapshot_daily
+  - schema: snapshot_date / stock_code / forecast_inst_count / eps_forecast (this/next/two_years) / profit_yoy / source / source_label / as_of_date / fetched_at / raw_json
+  - INSERT...ON CONFLICT skip (immutable snapshot, 不覆盖历史)
+  - --dry-run + parse-only test 通过
+  - 等 Optuna PID 25088 完才能写 DB
+- 不接训练 panel (现 5 天 ingest 不够回测; 几个月累积后才能跑 PIT walk-forward)
+
+**#42 feature_join_v4 wire script (Codex round 20 P0, commit 5d0b715d)**:
 - `backend/services/labels/feature_join_v4.py`: v3_ext + 23 cols
   - market_cap_decile: 1 col (mcap_decile) from fact_market_cap_decile_daily
   - industry_beta: 2 cols (beta_60d, beta_60d_zscore) from fact_industry_beta_daily

@@ -23,7 +23,7 @@
 |---|---|---|
 | 4.B.1 | `forecast_upside.py` 纯函数模块 (upside = fy1_eps × target_pe / current_price - 1) | done (commit 95b30089) |
 | 4.B.1.fix | PIT winsorize fix (Codex CRITICAL: 之前全样本 quantile = forward leakage) | done |
-| 4.B.2 | `ingest_profit_forecast_snapshot.py` daily immutable PIT snapshot | 待 |
+| 4.B.2 | `ingest_profit_forecast_snapshot.py` daily immutable PIT snapshot | code done, 等 Optuna 完跑 |
 | 4.B.3 | shadow validation mart (5d/20d hit_rate) | 数月累积后 |
 | 4.B.4 | Optuna joint search space (forecast_year/target_pe_source/blend/upside_floor) | 数月后 |
 
