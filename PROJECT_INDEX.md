@@ -871,10 +871,17 @@ Codex review session 9 commit 后给出 **2 REDLINE Blocker + 12 FIX item + 1 CO
 
 **待修 (后续 commit)**: Q2b/Q2c/Q4/Q5/Q8 gate 系列, 但优先重 rebuild label panel 验证 fixed PIT + coverage.
 
-**#10 train_p0b_lightgbm.py Q8.5 + Q8.6 FIX (commit ?)**:
+**#10 train_p0b_lightgbm.py Q8.5 + Q8.6 FIX (commit 3dbcf1b5)**:
 - Q8.5: 不再 hardcode `feature_version='p0a_v1' / label_version='p0a_v1'`, 加 `--feature-version` + `--label-version` CLI 参数
 - Q8.6: 加 `--enforce-rankic-gate` flag, fail (RankIC<0.03 或 n_dates<30) 时 exit 1 (governance v1 default ON)
 - 测试: syntax + args 验证 PASS
+
+**#11 rebuild_p0a_label_panel.py Q2b + Q2c FIX (commit ?)**:
+- Q2b: signal_dates 跟 alpha158 dates intersection (防 label/feature dates 不一致)
+  - 之前 label = v_price_kline_qfq dates, feature = alpha158 dates 不一致 → 部分 row 无 features
+  - 加 a158_dates_set filter, market-only dates 自动 drop + log
+- Q2c: 加 `--run-audit-gate` 触发 audit_p0a_panel.py post-build hard gate
+  - subprocess invoke, exit != 0 → rebuild script 返回 fail code
 
 ### 2026-05-17 凌晨 数据治理 framework v1 (Codex round 16 task-mp8ktoe3-8rkde7, commit d055f5cb)
 

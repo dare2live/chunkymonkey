@@ -49,6 +49,8 @@ def main() -> int:
     parser.add_argument("--end-date", default="2026-05-06")    # rule-compliance: ok evidence=tdxhub-last-full-coverage-day
     parser.add_argument("--min-coverage-pct", type=float, default=0.95,
                         help="每个 signal_date stock 覆盖率 (Codex Q8.2 coverage gate)")
+    parser.add_argument("--run-audit-gate", action="store_true",
+                        help="Codex Q2c: 跑 audit_p0a_panel.py post-build gate (governance v1 default ON)")
     parser.add_argument("--universe-filter", default="60,00,30,68",
                         help="KEEP universe prefix (default: 60/00/30/68 A-share)")
     args = parser.parse_args()
@@ -73,6 +75,7 @@ def main() -> int:
     log.info(f"  ever-listed universe: {len(stocks):,} stocks (prefix {args.universe_filter}) — PIT via LEFT JOIN NULL")
 
     # 2. signal_dates from v_price_kline_qfq (tier-1 tdxhub primary)
+    # Codex Q2b FIX: 跟 alpha158 dates intersection (防 label/feature date 不一致)
     # 加 coverage gate (Codex Q8.2): 每个 signal_date 必须覆盖 >= min_coverage_pct * universe
     mkt = duckdb.connect(str(MARKET_DB), read_only=True)
     date_coverage = mkt.execute(
@@ -85,6 +88,20 @@ def main() -> int:
     if not date_coverage:
         log.error("v_price_kline_qfq empty in date range — aborting")
         return 1
+
+    # Q2b: intersect with alpha158 dates (feature panel source)
+    ALPHA_DB = REPO_ROOT / "data" / "alpha158.duckdb"
+    a158 = duckdb.connect(str(ALPHA_DB), read_only=True)
+    a158_dates_set = {str(r[0]) for r in a158.execute(
+        "SELECT DISTINCT date FROM fact_alpha158_panel WHERE date >= ? AND date <= ?",
+        [args.start_date, args.end_date],
+    ).fetchall()}
+    a158.close()
+    log.info(f"  alpha158 dates: {len(a158_dates_set):,}")
+    market_only_count = sum(1 for d, _ in date_coverage if str(d) not in a158_dates_set)
+    if market_only_count > 0:
+        log.warning(f"  market-only dates: {market_only_count} (will be dropped to keep label/feature in sync)")
+    date_coverage = [(d, n) for d, n in date_coverage if str(d) in a158_dates_set]
 
     min_codes = int(len(stocks) * args.min_coverage_pct * 0.5)  # 历史可能少一些股, 用 universe 50% 做下限
     valid_dates = [d for d, n in date_coverage if n >= min_codes]
@@ -131,6 +148,19 @@ def main() -> int:
              f"outliers_20d={sanity[1]} | max_abs_20d={sanity[2]}")
     if sanity[1] > 0:
         log.warning(f"  WARN: {sanity[1]} outlier rows |fwd|>1.0 (检查 v_price_kline_qfq 数据是否还有混染)")
+
+    # Codex Q2c FIX: invoke audit_p0a_panel.py 作为 post-build hard gate (governance v1)
+    if args.run_audit_gate:
+        import subprocess
+        log.info("  Codex Q2c: invoking audit_p0a_panel.py gate ...")
+        rc = subprocess.run(
+            ["python", str(REPO_ROOT / "backend" / "scripts" / "audit_p0a_panel.py")],
+            cwd=str(REPO_ROOT),
+            env={**__import__('os').environ, 'PYTHONPATH': 'backend'},
+        ).returncode
+        if rc != 0:
+            log.error(f"  audit_p0a_panel.py FAIL (exit {rc}) — governance v1 gate not passed")
+            return rc
 
     total_elapsed = time.time() - t0
     log.info(f"=== Done in {total_elapsed:.0f}s ===")
