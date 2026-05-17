@@ -994,7 +994,15 @@ Phase 3 step 5 P3 holdout (4 months last):
 - `backend/scripts/audit_lgbm_feature_importance.py`: read-only LightGBM importance ranking
 - 帮 Phase 4 #2 (feature engineering) 决策: 哪些 features 真带 alpha, 哪些噪音
 
-**#47 forecast EPS 首 snapshot 入库 (commit ?)**:
+**#48 paper_sim sizer ablation driver (Codex round 19 #1, commit ?)**:
+- `backend/scripts/run_paper_sim_sizer_ablation.py`:
+  - 跑 2 variants: equal vs score_rank_diff_v1 (yaml configs ready)
+  - 自动汇总 KPI from mart_paper_sim_kpi (ann_ret, max_dd, monthly_win, excess_hs300, sharpe, n_trades, avg_hold)
+  - --dry-run smoke test pass
+- 用户 "差异化到底" 验证最后一关
+- prerequisite: Optuna v4 完 + LGBM retrain + paper_sim_v2 各 variant 跑通
+
+**#47 forecast EPS 首 snapshot 入库 (commit 964f12c6)**:
 - `raw_profit_forecast_snapshot_daily`: 2,374 stocks × 13 fields (akshare 多年 EPS forecast)
 - snapshot_date=2026-05-17, EPS coverage 100% this year (2026), 99.9% next year (2027), 89.3% two years (2028)
 - Top inst_count: 贵州茅台 43 研报, 东鹏饮料 38, 安井食品 36
