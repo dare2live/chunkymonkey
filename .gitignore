@@ -20,6 +20,7 @@ data/multidim_models/*.pkl
 data/optuna/
 data/storage_cleanup_smoke/
 data/audit/
+.codegraph/
 claude/
 mlruns/
 node_modules/
