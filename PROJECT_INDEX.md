@@ -2356,22 +2356,14 @@ Master_chain v4 (blekqa4eb → 重启 b8naz1ii8) 实跑 Step 1 v3 build ~80s 跑
 - fact_top10_holder_period.effective_date DDL "公告日+1 交易日 PIT 安全", 实测 NULL 率待 ablation 完后查
 - mart_stock_survey_features.as_of_date PIT 安全
 
-### 2026-05-14 (Phase v3.2 v2 扩 feature + chain orchestrator)
+### 2026-05-14 (Phase v3.2 v2 扩 feature + chain orchestrator — 已删 2026-05-17)
 
-**`services/labels/feature_join_v2.py`** (+ 6 features, 79 → 85):
-- `formula_{macd, dyma, turtle20, turtle55, reversal}_triggered`: signal_date 当日触发 dummy (from fact_signal_context)
-- `formula_n_triggered`: 当日触发公式数量
-- Codex acf48d35 Q1 CRITICAL fix: 删 stage_opt_per_stock 3 列 (MAX GROUP BY stock_code 是 systemic leakage)
-- 输出表 `mart_p0a_feature_label_panel_v2` (跟 v1 并存, 不破坏现有 P1 ablation reads)
+历史 v2 chain (commit a3b1234~5d0b715d). 2026-05-17 cleanup 删除 (Codex round 20 verify 0 fn callers + 用户 [[feedback_dead_data_purge]] 废弃数据彻底删除):
+- `services/labels/feature_join.py` (v1, 0 fn callers)
+- `services/labels/feature_join_v2.py` (v2, 仅 orphan chain 1 caller)
+- `scripts/run_v3_2_full_chain.py` (orphan chain, 有 silent bug `cmd 没传 --feature-panel v2`, 实际跑 v1 panel)
 
-**`scripts/run_v3_2_full_chain.py`** (P1 ablation 后接续):
-1. build feature_label_panel_v2 (+ stage_opt + formula_trigger)
-2. train P0b v2 × 3 horizon (5d/10d/20d)
-3. Deflated SR audit (Bailey-LdP)
-4. paper_sim_v2 with ml_score yaml (blend Option A)
-5. P2 composite grid (81 weights)
-6. P3 final holdout (4 硬验收)
-7. promote champion (P3 PASS 才 promote)
+v1/v2 panel TABLE 不动 (train_p0b_lightgbm.py / run_p1_ablation.py 默认仍读 v1, defer cleanup 等 default 迁 v3+).
 
 ### 2026-05-14 (Phase v3.2 governance wire — build/feature_join 加 post-insert verify)
 
