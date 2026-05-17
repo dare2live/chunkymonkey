@@ -171,7 +171,30 @@ Round 25 改的文件 (待 Codex 完成后 review):
 - [OK] governance v1 框架部署完成 (yaml + sop + audit + check + lint + DELETE 16.5M leaked rows)
 - [OK] Phase 3 honest verdict: RankIC=0.0246, ann=-65.5%, P3 FAIL (干净 PIT 实测)
 - ⏳ Phase 4 alpha 提升: 50 new features (in progress) → 期望 RankIC 0.025 → 0.035+
-- ⏳ score_rank_diff_v1 sizer 差异化仓位 (commit 71bb2189) — 待 paper_sim ablation
+- ⏳ score_rank_diff_v1 sizer 差异化仓位 (commit 71bb2189) — paper_sim ablation **跑中 (PID 93189, equal variant)**
+
+## 2026-05-17 19:55 in-flight ops
+
+| Op | 主机 | PID | 进度 | ETA | 状态 |
+|---|---|---|---|---|---|
+| Wave 1 Optuna 4 jobs | GCP VM | 11255/323/89/57 | trials=0/50 各 | unclear | CPU 779-791% 各 满载 |
+| K-line VM catch-up | GCP VM | 14468 | 2000/5165 stocks 39% | ~10 min | 5.3 股/s, 0 失败 |
+| Sizer ablation equal | 本地 | 93189 | 42 min CPU 跑 | unclear | 365% CPU 多核 |
+
+Commits 本轮:
+- 71e75209 PIT industry source_available_date 严格化 (Codex Round 25)
+- c34c9643 sync GCP VM-to-local K线 delta merge 脚本 (Codex Round 25)
+- 26e4660d Codex Round 26 1059 行架构审计 doc
+- 088ec92d v4 panel feature audit 100K spearman (30 cols drop)
+- b28b49ea fix paper_sim --variant choices 移除 (解锁 sizer ablation)
+
+新 skill 蒸馏:
+- /parallel-grid-runner (Wave 1 4 大 lock 反例)
+- /data-integrity-audit (sync gap + NULL + fallback 4 模式)
+
+新 memory:
+- feedback_parallel_grid_lock.md
+- project_chunkymonkey_v4_panel_audit.md
 
 ## 工作纪律
 
