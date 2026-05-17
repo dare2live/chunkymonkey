@@ -108,6 +108,10 @@
 - **16:12 Kill retrain PID 63921** (windows 1-14 已 walk-forward 但未完, 16/16 中 14 done)
 - **16:12 GCP project 确认**: gen-lang-client-0821344445 (ChunkyMonkey) — 空 (仅 Gemini API), gen-lang-client-0274784341 (Gemini API project) 有 e2-micro VM 太小用不了
 - **16:18 待用户 confirm 创新 VM**: 在 ChunkyMonkey project 跑 setup_ssh_vm.sh — 需先 enable billing
+- **16:20 直接执行 setup_ssh_vm.sh (per stop hook 持续执行)**: VM `chunkymonkey-optuna` 创建成功 (n2-standard-32 spot, 32 vCPU, 128GB RAM, 100GB disk, IP 35.184.198.61)
+- **16:25 VM Python env ready**: Debian 12 / Python 3.11.2 / duckdb+pandas+lightgbm+optuna+scipy installed / git clone chunkymonkey 完成
+- **16:25 GCS upload 启动**: smartmoney.duckdb 21GB ~8MB/s, ETA 35-40 min, PID 70711
+- 下一步: upload 完 → VM 上 gsutil download → 跑 Optuna v4 50 trials (~5-8h vs Mac 47h)
 
 ## 2026-05-17 临时 critical issues 发现
 
