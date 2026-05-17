@@ -912,15 +912,32 @@ Codex review session 9 commit 后给出 **2 REDLINE Blocker + 12 FIX item + 1 CO
 - ON 时: 跳过 prefer_fallback / fallback_diagnostics akshare 分支, tdxhub 失败直接 return None (caller log)
 - 现 routers/updater.py 可改调 `tdxhub_only=True` 避免无意义 fetch
 
-**#17 final_holdout_freeze.py Q8.8 (commit ?)**:
+**#17 final_holdout_freeze.py Q8.8 (commit 9cc458e2)**:
 - Codex Q8.8: "Freeze final window before P3, log access, and ensure no ablation/threshold tuning reads it"
 - 新 `backend/services/portfolio/final_holdout_freeze.py`:
   - `mart_p3_holdout_freeze` 表 (PK model_id, period_start/end + frozen_at + access_log)
   - `freeze_window()`: P3 前 freeze 6-month window
   - `assert_no_holdout_leak(signal_dates, phase)`: train/Optuna/paper_sim 之前 invoke, raise if leak
   - `record_holdout_access()`: P3 acceptance 阶段记录访问 (audit trail)
-- 新单测 `backend/tests/portfolio/test_final_holdout_freeze.py`: 5 pass (freeze / overlap raise / outside pass / no-freeze skip / log append)
-- 后续整合 (orchestrator): P3 acceptance 前 freeze_window(), 之后 train/Optuna 调 assert_no_holdout_leak
+- 新单测 `backend/tests/portfolio/test_final_holdout_freeze.py`: 5 pass
+
+**#18 Phase 3 step 1 rebuild SUCCESS + Q7 cleanup mart_p0b corrupt era (commit ?)**:
+- **rebuild PID 19644 完成** (1044s ~17 min):
+  - rows_built: 2,933,230 / valid_entry: 2,863,896 (97.6%) / outliers_20d: 3,938 (0.16%)
+  - max_abs_20d: 9.93 (vs corrupt 时代 274 = **99.6% 改善**)
+  - codes: 5,210 (ever-listed PIT universe, Q2a 修复确认 ✓)
+  - dates: 563 (2024-01-02 ~ 2026-05-06, Q3 修复确认 ✓)
+- **Q7 cleanup**: mart_p0b_oos_predictions / mart_p0b_walkforward_eval label_version='v1'/'p0a_v1' 全 DELETE
+  - 11,655,579 rows DELETED 经 DROP+CTAS (避免 DuckDB ART index FATAL 大 DELETE bug)
+  - 现 table empty, 待 Phase 3 step 3 重训填充
+- 新 `backend/scripts/cleanup_corrupt_oos_predictions.py` (dry-run/--execute 模式 + DROP+CTAS pattern)
+
+**audit final state (Codex Q8 全 gate)**:
+| Check | session 开始 | Phase 3 完成后 | 改善 |
+|---|---|---|---|
+| vwap_close_ratio | critical 27,899 | critical 1,385 (tier-1 819 真实事件) | 95% ↓ |
+| single_source_drift | critical 0.79% | **ok 100%** | FIXED ✓ |
+| fwd_cost_outlier | critical 704,116 + 253,586 NaN | critical 4,688 + **0 NaN** | 99.3% ↓ |
 
 ### 2026-05-17 凌晨 数据治理 framework v1 (Codex round 16 task-mp8ktoe3-8rkde7, commit d055f5cb)
 
