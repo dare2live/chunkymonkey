@@ -994,7 +994,13 @@ Phase 3 step 5 P3 holdout (4 months last):
 - `backend/scripts/audit_lgbm_feature_importance.py`: read-only LightGBM importance ranking
 - 帮 Phase 4 #2 (feature engineering) 决策: 哪些 features 真带 alpha, 哪些噪音
 
-**#25 Phase 4 #6 LambdaMART Q8.5/Q8.6 fix (commit ?)**:
+**#26 Phase 4 #4 label horizon ablation chain script (commit ?)**:
+- `backend/scripts/run_phase4_label_horizon_ablation.sh`: 3 horizons (5d/10d/20d) sequential train
+- Step 0 wait Optuna done (pgrep -f loop) → Step 1 train × 3 → Step 2 aggregate RankIC
+- governance v1 baseline (LABEL_VERSION=p0a_v2_governance_v1, FEATURE_VERSION=p0a_v3)
+- 预计 ~30 min Mac CPU (3 × 10min)
+
+**#25 Phase 4 #6 LambdaMART Q8.5/Q8.6 fix (commit b44a171d)**:
 - run_p0b_lambdamart_v3.py 同 train_p0b 模式:
   - Q8.5: --feature-version / --label-version CLI 参数化
   - Q8.6: walkforward_eval INSERT OR REPLACE → DELETE+INSERT idempotent
