@@ -126,7 +126,10 @@ def main() -> int:
     db_path = args.db_path or str(DB_PATH)
     conn = duck_connect(db_path, read_only=True)  # rule-compliance: ok evidence=parallel-grid-multi-reader
     try:
-        conn.execute(OPTUNA_TRIALS_DDL)
+        # Codex Round 25 fix: skip DDL in --no-persist (don't need write).
+        # Pre-condition: caller pre-creates mart_p1_optuna_trials in non-parallel run.
+        if not args.no_persist:
+            conn.execute(OPTUNA_TRIALS_DDL)
         log.info(f"Loading DataFrame from {args.feature_panel} ...")
         import pandas as pd
         t_load = time.time()

@@ -1011,6 +1011,13 @@ Phase 3 step 5 P3 holdout (4 months last):
 - Gate: rank_ic >= 0.030 green / 0.0275 yellow / <0.0275 stop v4
 - Cost: Wave 1+2 estimated $5-7 (within user $10/月 credit)
 
+**#56 Data integrity P0 hotfix — VM kline catch-up + PIT guards (commit pending, 2026-05-17)**:
+- `gcp/test_tdxhub_connectivity.sh`: VM 上测试 9 个 TDXHub HQ server 的 TCP + `bars_records` 连通性。
+- `gcp/fetch_kline_via_vm.sh`: 本地触发 `chunkymonkey-optuna` 用 6 workers 跑 `build_price_kline_tdxhub.py --skip-existing`，生成 `p0_kline/delta/kline_delta_<run>.duckdb` 到 GCS。
+- `backend/scripts/sync_kline_from_gcs.py`: 从 GCS delta 幂等合并 `price_kline_tdxhub`，新增/维护 `source_available_date` 和 `mart_kline_gcs_sync_run`。
+- `build_industry_beta_daily.py` / `build_market_cap_decile_daily.py`: 新增 `--incremental`，只重算日期切片；mcap decile 增量保留起始日前 lookback 供 LAG。
+- `tdx_industry_client.py` / `industry_pit.py`: `dim_stock_tdx_industry_history` 与 `mart_stock_industry_pit` 记录 `source_available_date`；未来抓取的静态回填降级为 `current_label_fallback`，不伪装成 observed PIT。
+
 **#54 GCP Path A: SSH 单 VM 简化 setup (用户 push back Docker overkill, commit a0a4b42e)**:
 - `gcp/setup_ssh_vm.sh` (4-arg): 创建 GCE n2-standard-32 spot VM (32 vCPU, 128GB RAM)
 - 不用 Docker / Artifact Registry / Cloud Batch — pure SSH + Python venv
