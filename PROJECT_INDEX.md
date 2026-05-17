@@ -880,11 +880,19 @@ Codex review session 9 commit 后给出 **2 REDLINE Blocker + 12 FIX item + 1 CO
 - Q2b: signal_dates 跟 alpha158 dates intersection (防 label/feature dates 不一致)
 - Q2c: 加 `--run-audit-gate` 触发 audit_p0a_panel.py post-build hard gate
 
-**#12 final_holdout.py Q8.7 ann_ret sanity cap (commit ?)**:
+**#12 final_holdout.py Q8.7 ann_ret sanity cap (commit 5bad505e)**:
 - Codex Q8.7: 加 ANN_RET_SANITY_CAP = 0.50 (50% / 年)
 - 反例: lgbm_v3 P3 ann_ret=21843% (volume unit bug) 触发 → blocks PASS
 - 当 ann_ret > 0.50 → failures.append("sanity cap"), passed=False
 - 新单测 test_ann_ret_sanity_cap_blocks_corrupt_label_ann (1 pass)
+
+**#13 test_build.py Q4 HS300 fallback path test (commit ?)**:
+- Codex Q4: label-build 单测只 mock primary path, 没 cover fallback (HS300 allowlist) 路径
+- 加 `_make_conn_with_fallback_view` fixture: 完整 mock v_price_kline_qfq view (primary + fallback NOT EXISTS)
+- 加 `test_label_build_uses_hs300_fallback_when_no_tdxhub_primary`:
+  - 000300 stock 走 fallback (HS300 allowlist), 跑 build_p0a_label_panel
+  - 验 entry_vwap = amount/(volume*100) = 3510 (governance v1 公式正确)
+- pytest backend/tests/labels/: 32 pass (含 new 1)
 
 ### 2026-05-17 凌晨 数据治理 framework v1 (Codex round 16 task-mp8ktoe3-8rkde7, commit d055f5cb)
 

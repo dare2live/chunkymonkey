@@ -232,3 +232,107 @@ def test_only_exit_5d_unable_other_horizons_ok():
 
 def test_label_version_constant():
     assert LABEL_VERSION == "p0a_v2_governance_v1"
+
+
+def _make_conn_with_fallback_view(rows_primary: list[dict], rows_fallback: list[dict]) -> duckdb.DuckDBPyConnection:
+    """Codex Q4 FIX: fixture mock 完整 v_price_kline_qfq view (primary UNION fallback NOT EXISTS).
+
+    governance v1 prod view design:
+    - primary_rows: price_kline_tdxhub (tier-1 tdxhub, source_tier=1, is_fallback=FALSE)
+    - fallback_rows: price_kline (tier-3 allowlist hs300_only, source_tier=3, is_fallback=TRUE)
+                     NOT EXISTS in primary (避免重复)
+    """
+    conn = duckdb.connect(":memory:")
+    conn.execute("CREATE SCHEMA IF NOT EXISTS mkt")
+    conn.execute("""
+        CREATE TABLE mkt.price_kline_tdxhub (
+            code TEXT, date TEXT, freq TEXT, adjust TEXT,
+            open DOUBLE, high DOUBLE, low DOUBLE, close DOUBLE,
+            volume DOUBLE, amount DOUBLE,
+            factor DOUBLE DEFAULT 1.0, source TEXT DEFAULT 'tdxhub',
+            batch_id TEXT, ingested_at TEXT
+        )
+    """)
+    conn.execute("""
+        CREATE TABLE mkt.price_kline (
+            code TEXT, date TEXT, freq TEXT, adjust TEXT,
+            open DOUBLE, high DOUBLE, low DOUBLE, close DOUBLE,
+            volume DOUBLE, amount DOUBLE,
+            factor DOUBLE DEFAULT 1.0, source TEXT,
+            batch_id TEXT, ingested_at TEXT
+        )
+    """)
+    conn.execute("""
+        CREATE OR REPLACE VIEW mkt.v_price_kline_qfq AS
+        WITH primary_rows AS (
+            SELECT code, date, freq, adjust, open, high, low, close, volume, amount,
+                   COALESCE(factor, 1.0) AS factor,
+                   COALESCE(source, 'tdxhub') AS source_name,
+                   1::SMALLINT AS source_tier, FALSE AS is_fallback
+            FROM mkt.price_kline_tdxhub
+            WHERE freq='daily' AND adjust='qfq'
+              AND open > 0 AND high > 0 AND low > 0 AND close > 0
+              AND volume >= 1e-6 AND amount >= 1e-6
+        ),
+        fallback_rows AS (
+            SELECT f.code, f.date, f.freq, f.adjust, f.open, f.high, f.low, f.close, f.volume, f.amount,
+                   1.0 AS factor,
+                   COALESCE(f.source, 'akshare_csindex_hs300') AS source_name,
+                   3::SMALLINT AS source_tier, TRUE AS is_fallback
+            FROM mkt.price_kline f
+            WHERE f.freq='daily' AND f.adjust='qfq'
+              AND f.open > 0 AND f.high > 0 AND f.low > 0 AND f.close > 0
+              AND f.volume >= 1e-6 AND f.amount >= 1e-6
+              AND NOT EXISTS (
+                  SELECT 1 FROM mkt.price_kline_tdxhub p
+                  WHERE p.code = f.code AND p.date = f.date
+                    AND p.freq = f.freq AND p.adjust = f.adjust
+              )
+        )
+        SELECT * FROM primary_rows
+        UNION ALL
+        SELECT * FROM fallback_rows
+    """)
+    if rows_primary:
+        conn.executemany(
+            "INSERT INTO mkt.price_kline_tdxhub (code, date, freq, adjust, open, high, low, close, volume, amount) "
+            "VALUES (?, ?, 'daily', 'qfq', ?, ?, ?, ?, ?, ?)",
+            [(r["code"], r["date"], r["open"], r["high"], r["low"], r["close"], r["volume"], r["amount"])
+             for r in rows_primary],
+        )
+    if rows_fallback:
+        conn.executemany(
+            "INSERT INTO mkt.price_kline (code, date, freq, adjust, open, high, low, close, volume, amount, source) "
+            "VALUES (?, ?, 'daily', 'qfq', ?, ?, ?, ?, ?, ?, 'akshare_csindex_hs300')",
+            [(r["code"], r["date"], r["open"], r["high"], r["low"], r["close"], r["volume"], r["amount"])
+             for r in rows_fallback],
+        )
+    return conn
+
+
+def test_label_build_uses_hs300_fallback_when_no_tdxhub_primary():
+    """Codex Q4 FIX: HS300 fallback path 进入 entry/exit kline 时 vwap=amount/(volume*100) 公式正确."""
+    import datetime
+    # primary 给个 dummy 跑 trading_days CTE
+    rows_primary = [
+        {"code": "600000", "date": d.strftime("%Y-%m-%d"),
+         "open": 10.0, "high": 10.05, "low": 9.95, "close": 10.0,
+         "volume": 10.0, "amount": 10.0*10.0*100.0}
+        for d in (datetime.date(2024,1,2) + datetime.timedelta(days=i) for i in range(30))
+    ]
+    # fallback: HS300 000300 数据 (只 primary 没有的 (code,date) 才用 fallback)
+    rows_fallback = [
+        {"code": "000300", "date": (datetime.date(2024,1,2)+datetime.timedelta(days=i)).strftime("%Y-%m-%d"),
+         "open": 3500.0, "high": 3520.0, "low": 3480.0, "close": 3510.0,
+         "volume": 100.0, "amount": 100.0*100.0*3510.0}  # vwap = 3510
+        for i in range(30)
+    ]
+    conn = _make_conn_with_fallback_view(rows_primary, rows_fallback)
+    rt = compute_round_trip_cost_pct(_TX)
+    rows = _run_build_sql(conn, ["2024-01-02"], ["000300"], rt)
+    # 000300 走 fallback 路径 (HS300 allowlist), entry_vwap = 3510 (governance v1 公式)
+    assert len(rows) == 1
+    r = rows[0]
+    # entry_vwap (col index 3) ≈ 3510
+    assert r[3] is not None
+    assert abs(r[3] - 3510.0) < 1.0, f"entry_vwap={r[3]} should be ~3510 (HS300 fallback)"
