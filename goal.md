@@ -77,8 +77,11 @@
 - **v4 panel built 229s** (3m49s): mart_p0a_feature_label_panel_v4 2,901,970 rows × 143 cols
 - **v4 coverage audit**: mcap_decile 97.7% / beta_60d 97.6% / **sector_momentum 0%** (Codex round 20 警告: industry_pit 99.8% fallback, observed_snapshot filter 导致空) / survey 8.8% (v3 已有) / tom 100%
 - **Optuna v4 PID 47508 启动** (n_trials=50 + MedianPruner + PreparedPanel + per-trial persist)
-- 估时: 50 trials × ~10 min/trial × pruner factor 0.5 = ~4-6h (vs v3 实测 24 天)
+- **实测 (54m 后)**: trial 0 完成 mean_ic=0.0191 (低于 baseline 0.0246), score=-0.0297; trial 1 win 9/16 进行中
+- **每 trial 实测 ~32 min** (16 windows × 2 min/win, LGBM 训练 bottleneck), 比 v3 80 min/trial 快 2.5x
+- 估时修正: 50 trials × 32 min × pruner factor 0.6 = ~16h (vs v3 24 天)
 - 监控: `tail -f data/audit/logs/optuna_v4_20260517T121145.log`
+- 修 schema: ALTER mart_p1_optuna_trials ADD user_attrs_json + pruned_at_window (v4 callback 需)
 
 ## 2026-05-17 临时 critical issues 发现
 
