@@ -115,6 +115,9 @@ def main() -> int:
             line_start = text.rfind("\n", 0, m.start()) + 1
             line_end = text.find("\n", m.end())
             line = text[line_start:line_end if line_end > 0 else len(text)].strip()
+            # 跳过 Python 注释 (# 开头) — Codex Q8.3 verify code, not docs
+            if line.startswith("#"):
+                continue
             # 检查 ALLOWED_PATTERNS
             if any(allowed in line.lower() for allowed in (p.lower() for p in ALLOWED_PATTERNS)):
                 continue

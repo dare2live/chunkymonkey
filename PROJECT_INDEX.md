@@ -921,6 +921,12 @@ Codex review session 9 commit 后给出 **2 REDLINE Blocker + 12 FIX item + 1 CO
   - `record_holdout_access()`: P3 acceptance 阶段记录访问 (audit trail)
 - 新单测 `backend/tests/portfolio/test_final_holdout_freeze.py`: 5 pass
 
+**#19 build_p0a_feature_panel_v3.py Q2a fix + audit improvement (commit ?)**:
+- build_p0a_feature_panel_v3.py 也含 `is_active=1` filter (Codex Q2a REDLINE 完整覆盖)
+- 移除 `is_active=1`, KEEP universe 5,210 → 5,210 (ever-listed PIT)
+- audit_survivorship_gate.py 加 `line.startswith("#")` skip 防误判注释行
+- audit_survivorship_gate 现 PASS (4 builders 无 hardcode + 5210 DB codes)
+
 **#18 Phase 3 step 1 rebuild SUCCESS + Q7 cleanup mart_p0b corrupt era (commit ?)**:
 - **rebuild PID 19644 完成** (1044s ~17 min):
   - rows_built: 2,933,230 / valid_entry: 2,863,896 (97.6%) / outliers_20d: 3,938 (0.16%)

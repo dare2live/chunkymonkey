@@ -49,7 +49,9 @@ def main() -> int:
     sm = duckdb.connect(str(SMART_DB), read_only=True)
     stocks = [r[0] for r in sm.execute(
         "SELECT stock_code FROM dim_all_ever_listed "
-        "WHERE is_active=1 AND SUBSTR(stock_code,1,2) IN ('60','00','30','68') "
+        # Codex round 17 Q2a REDLINE FIX: 移除 is_active=1 防 survivorship bias
+        # PIT 自动: feature join 用 alpha158 actual coverage, 退市股 / 未上市无数据自动跳过
+        "WHERE SUBSTR(stock_code,1,2) IN ('60','00','30','68') "
         "ORDER BY stock_code"
     ).fetchall()]
     sm.close()
