@@ -103,6 +103,11 @@
 - **15:30 决定 cancel — 4 trials 全 < baseline 0.0246, Phase 4 features 不带 alpha 证据充分**
 - **15:30 Retrain LGBM PID 63919 启动** (trial 1 best params, mart_p0a_feature_label_panel_v4, model_id=lgbm_v4_optbest_7fed34)
 - 估时 retrain: ~30-60 min (单次 train, 非 walk-forward)
+- **16:10 Retrain windows 1-14 完成 mean RankIC 0.0092, std 0.0504** (低于 baseline, 14/16 windows): -0.049/+0.003/+0.037/+0.119/+0.072/-0.002/+0.016/+0.022/+0.009/+0.040/-0.035/+0.004/-0.082/-0.025
+- **16:12 用户指令 暂停所有计算 + 查 GCP project**
+- **16:12 Kill retrain PID 63921** (windows 1-14 已 walk-forward 但未完, 16/16 中 14 done)
+- **16:12 GCP project 确认**: gen-lang-client-0821344445 (ChunkyMonkey) — 空 (仅 Gemini API), gen-lang-client-0274784341 (Gemini API project) 有 e2-micro VM 太小用不了
+- **16:18 待用户 confirm 创新 VM**: 在 ChunkyMonkey project 跑 setup_ssh_vm.sh — 需先 enable billing
 
 ## 2026-05-17 临时 critical issues 发现
 
