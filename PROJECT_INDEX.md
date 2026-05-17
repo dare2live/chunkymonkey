@@ -994,6 +994,18 @@ Phase 3 step 5 P3 holdout (4 months last):
 - `backend/scripts/audit_lgbm_feature_importance.py`: read-only LightGBM importance ranking
 - 帮 Phase 4 #2 (feature engineering) 决策: 哪些 features 真带 alpha, 哪些噪音
 
+**#42 feature_join_v4 wire script (Codex round 20 P0, commit ?)**:
+- `backend/services/labels/feature_join_v4.py`: v3_ext + 23 cols
+  - market_cap_decile: 1 col (mcap_decile) from fact_market_cap_decile_daily
+  - industry_beta: 2 cols (beta_60d, beta_60d_zscore) from fact_industry_beta_daily
+  - sector_momentum: 9 raw cols via PIT industry (mart_stock_industry_pit observed_snapshot only)
+  - institution_survey: 4 raw cols from mart_stock_survey_features
+  - time_of_month: 7 inline SQL date features
+  - forecast_upside NOT wired (无 PIT 历史快照)
+- `backend/scripts/build_p0a_feature_panel_v4.py`: CLI driver, audit coverage by feature group
+- ⚠ 等 Optuna PID 25088 完才能跑 (DB single-writer lock)
+- feature_version='p0a_v4', table mart_p0a_feature_label_panel_v4
+
 **#41 Codex round 20 CRITICAL fixes (commit ?)**:
 - `backend/services/features/forecast_upside.py:54-63`: PIT winsorize fix. 之前全样本 quantile → forward leakage. 改 rolling window quantile, 每行只 clip 用自己 trailing window. test_winsorize_is_pit_safe 加.
 - `backend/scripts/promote_champion.py:132-145`: 删 rank_ic = ann_ret × 0.1 占位 (污染 champion register 指标). 改 _load_p0b_rank_ic from mart_p0b_walkforward_eval (优先 final_holdout, fallback 全 OOS windows avg). rank_ic None → 拒 promote (除非 --force).

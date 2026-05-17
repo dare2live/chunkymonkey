@@ -29,11 +29,12 @@
 
 ### 4.B.fixes Codex CRITICAL fixes (本 session)
 
-| # | bug | 修 |
-|---|---|---|
-| 1 | forecast_upside.py 全样本 winsorize = forward leakage | 改 rolling window quantile, 加 test_winsorize_is_pit_safe |
-| 2 | promote_champion.py rank_ic = ann_ret * 0.1 占位污染 champion register | 改 _load_p0b_rank_ic from mart_p0b_walkforward_eval, 无 → 拒 promote (除非 --force) |
-| 3 | Phase 4 features 全没 wire 到生产 panel — 设计 build_p0a_feature_panel_v4.py | 待 (等 Optuna 完) |
+| # | bug | 修 | 状态 |
+|---|---|---|---|
+| 1 | forecast_upside.py 全样本 winsorize = forward leakage | 改 rolling window quantile, 加 test_winsorize_is_pit_safe | done commit 89aa9c3b |
+| 2 | promote_champion.py rank_ic = ann_ret * 0.1 占位污染 champion register | 改 _load_p0b_rank_ic from mart_p0b_walkforward_eval, 无 → 拒 promote | done commit 89aa9c3b |
+| 3 | Phase 4 features 全没 wire 到生产 panel — 设计 build_p0a_feature_panel_v4.py | feature_join_v4.py + driver script done (code only, 等 Optuna 完跑) | done code |
+| 4 | run_v3_2_full_chain.py:97 silent bug (cmd 没传 --feature-panel v2 实际走 v1) | 待修 (script 可能 deprecate 整删) | 待 |
 
 ### 4.C Cleanup (Codex 重排: P0→P2, 因 train script 仍硬编码 v1)
 
