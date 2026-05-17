@@ -30,6 +30,21 @@ _TX = TxCostConfig(
 )
 
 
+def _seed_trading_calendar(conn: duckdb.DuckDBPyConnection, rows: list[dict]) -> None:
+    import datetime as dt
+
+    dates = sorted({dt.date.fromisoformat(r["date"]) for r in rows})
+    if not dates:
+        return
+    conn.execute("CREATE TABLE dim_trading_calendar (trade_date TEXT PRIMARY KEY, is_trading INTEGER)")
+    cur = dates[0]
+    calendar_rows = []
+    while cur <= dates[-1]:
+        calendar_rows.append((cur.isoformat(), 1))
+        cur += dt.timedelta(days=1)
+    conn.executemany("INSERT INTO dim_trading_calendar VALUES (?, ?)", calendar_rows)
+
+
 def _make_conn_with_mock_kline(rows: list[dict]) -> duckdb.DuckDBPyConnection:
     """Create in-memory conn with mkt schema + v_price_kline_qfq view (governance v1).
 
@@ -37,6 +52,7 @@ def _make_conn_with_mock_kline(rows: list[dict]) -> duckdb.DuckDBPyConnection:
     Test fixture creates price_kline_tdxhub + canonical view (mock production schema).
     """
     conn = duckdb.connect(":memory:")
+    _seed_trading_calendar(conn, rows)
     conn.execute("CREATE SCHEMA IF NOT EXISTS mkt")
     conn.execute("""
         CREATE TABLE mkt.price_kline_tdxhub (
@@ -73,7 +89,7 @@ def _make_conn_with_mock_kline(rows: list[dict]) -> duckdb.DuckDBPyConnection:
     return conn
 
 
-def _run_build_sql(conn, signal_dates, stock_codes, round_trip):
+def _run_build_sql(conn, signal_dates, stock_codes, round_trip, build_as_of_date: str = "2099-12-31"):
     """Helper: stage tmp tables + run _BUILD_SQL."""
     conn.execute("DROP TABLE IF EXISTS tmp_signal_dates")
     conn.execute("CREATE TEMP TABLE tmp_signal_dates(signal_date DATE)")
@@ -81,7 +97,7 @@ def _run_build_sql(conn, signal_dates, stock_codes, round_trip):
     conn.execute("DROP TABLE IF EXISTS tmp_stocks")
     conn.execute("CREATE TEMP TABLE tmp_stocks(stock_code TEXT)")
     conn.executemany("INSERT INTO tmp_stocks VALUES (?)", [(c,) for c in stock_codes])
-    return conn.execute(_BUILD_SQL, [round_trip, round_trip, round_trip]).fetchall()
+    return conn.execute(_BUILD_SQL, [build_as_of_date, round_trip]).fetchall()
 
 
 def test_ddl_creates_table():
@@ -90,7 +106,7 @@ def test_ddl_creates_table():
     n_cols = conn.execute(
         "SELECT COUNT(*) FROM information_schema.columns WHERE table_name='mart_p0a_label_panel'"
     ).fetchone()[0]
-    assert n_cols == 20  # 20 fields per ddl
+    assert n_cols == 28  # 28 fields per ddl
 
 
 def test_normal_path_all_horizons_have_label():
@@ -231,7 +247,75 @@ def test_only_exit_5d_unable_other_horizons_ok():
 
 
 def test_label_version_constant():
-    assert LABEL_VERSION == "p0a_v2_governance_v1"
+    assert LABEL_VERSION == "p0a_v3_horizon_governance"
+
+
+def _make_long_horizon_kline(n_days: int = 100) -> list[dict]:
+    import datetime as dt
+
+    out = []
+    start = dt.date(2024, 1, 2)
+    for i in range(n_days):
+        d = start + dt.timedelta(days=i)
+        vwap = 10.0 + i * 0.1
+        out.append({
+            "code": "600000", "date": d.isoformat(),
+            "open": vwap, "high": vwap + 0.05, "low": vwap - 0.05, "close": vwap,
+            "volume": 10.0,
+            "amount": vwap * 10.0 * 100.0,
+        })
+    return out
+
+
+def test_label_60d_uses_long_horizon_exit_and_has_coverage():
+    """60d label 使用 trading-calendar offset, 且 mock subset 有非空覆盖."""
+    import datetime as dt
+
+    kline = _make_long_horizon_kline()
+    conn = _make_conn_with_mock_kline(kline)
+    rt = compute_round_trip_cost_pct(_TX)
+    rows = _run_build_sql(
+        conn,
+        [kline[i]["date"] for i in range(5)],
+        ["600000"],
+        rt,
+        build_as_of_date="2024-12-31",
+    )
+    assert len(rows) == 5
+    trade_date = dt.date.fromisoformat(kline[0]["date"])
+    exit_date_60d = rows[0][17]
+    assert exit_date_60d > trade_date + dt.timedelta(days=55)
+    not_null_ratio = sum(1 for r in rows if r[20] is not None) / len(rows)
+    assert not_null_ratio >= 0.8
+
+
+def test_label_90d_uses_long_horizon_exit_and_respects_pit_visibility():
+    """90d label 在 build_as_of 早于 exit_date+1 时必须为 NULL."""
+    kline = _make_long_horizon_kline()
+    conn = _make_conn_with_mock_kline(kline)
+    rt = compute_round_trip_cost_pct(_TX)
+    rows = _run_build_sql(
+        conn,
+        [kline[0]["date"]],
+        ["600000"],
+        rt,
+        build_as_of_date="2024-12-31",
+    )
+    assert len(rows) == 1
+    r = rows[0]
+    expected_entry = kline[1]["amount"] / (kline[1]["volume"] * 100.0)
+    expected_90d = kline[91]["amount"] / (kline[91]["volume"] * 100.0)
+    assert r[21] is not None
+    assert abs(r[24] - ((expected_90d / expected_entry - 1.0) - rt)) < 1e-9
+
+    hidden = _run_build_sql(
+        conn,
+        [kline[0]["date"]],
+        ["600000"],
+        rt,
+        build_as_of_date=str(r[21]),
+    )
+    assert hidden[0][24] is None
 
 
 def _make_conn_with_fallback_view(rows_primary: list[dict], rows_fallback: list[dict]) -> duckdb.DuckDBPyConnection:
@@ -243,6 +327,7 @@ def _make_conn_with_fallback_view(rows_primary: list[dict], rows_fallback: list[
                      NOT EXISTS in primary (避免重复)
     """
     conn = duckdb.connect(":memory:")
+    _seed_trading_calendar(conn, rows_primary + rows_fallback)
     conn.execute("CREATE SCHEMA IF NOT EXISTS mkt")
     conn.execute("""
         CREATE TABLE mkt.price_kline_tdxhub (

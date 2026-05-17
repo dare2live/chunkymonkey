@@ -6,6 +6,8 @@ PIT 保证: signal_date 是 alpha158 panel date, entry/exit 都是未来 trade d
 """
 from __future__ import annotations
 
+LABEL_VERSION = "p0a_v3_horizon_governance"
+
 LABEL_PANEL_DDL = """
 CREATE TABLE IF NOT EXISTS mart_p0a_label_panel (
     stock_code         TEXT NOT NULL,
@@ -25,6 +27,14 @@ CREATE TABLE IF NOT EXISTS mart_p0a_label_panel (
     exit_vwap_20d      DOUBLE,
     unable_at_exit_20d BOOLEAN,
     fwd_cost_after_20d DOUBLE,
+    exit_date_60d      DATE,
+    exit_vwap_60d      DOUBLE,
+    unable_at_exit_60d BOOLEAN,
+    fwd_cost_after_60d DOUBLE,
+    exit_date_90d      DATE,
+    exit_vwap_90d      DOUBLE,
+    unable_at_exit_90d BOOLEAN,
+    fwd_cost_after_90d DOUBLE,
     round_trip_cost_pct DOUBLE,
     label_version      TEXT NOT NULL,
     built_at           TEXT NOT NULL,
@@ -39,8 +49,20 @@ CREATE INDEX IF NOT EXISTS idx_p0a_label_stock
     ON mart_p0a_label_panel(stock_code, signal_date);
 """
 
+LABEL_PANEL_MIGRATION_DDL = """
+ALTER TABLE mart_p0a_label_panel ADD COLUMN IF NOT EXISTS exit_date_60d DATE;
+ALTER TABLE mart_p0a_label_panel ADD COLUMN IF NOT EXISTS exit_vwap_60d DOUBLE;
+ALTER TABLE mart_p0a_label_panel ADD COLUMN IF NOT EXISTS unable_at_exit_60d BOOLEAN;
+ALTER TABLE mart_p0a_label_panel ADD COLUMN IF NOT EXISTS fwd_cost_after_60d DOUBLE;
+ALTER TABLE mart_p0a_label_panel ADD COLUMN IF NOT EXISTS exit_date_90d DATE;
+ALTER TABLE mart_p0a_label_panel ADD COLUMN IF NOT EXISTS exit_vwap_90d DOUBLE;
+ALTER TABLE mart_p0a_label_panel ADD COLUMN IF NOT EXISTS unable_at_exit_90d BOOLEAN;
+ALTER TABLE mart_p0a_label_panel ADD COLUMN IF NOT EXISTS fwd_cost_after_90d DOUBLE;
+"""
+
 
 def create_label_panel_ddl(conn) -> None:
     """Create mart_p0a_label_panel + indexes (idempotent)."""
     conn.execute(LABEL_PANEL_DDL)
+    conn.execute(LABEL_PANEL_MIGRATION_DDL)
     conn.execute(LABEL_PANEL_INDEX_DDL)

@@ -339,6 +339,45 @@
 4. 真金白银: leakage/估算/假设?
 5. 反例: 跟 Rule 5-7 反例对照过?
 
+## 10.0.3 高频 commit + push + codegraph sync (2026-05-17 用户 push back)
+
+> **用户原话**: "注意提高本地 git 和推送 github 的频率, 防止 terminal 总挂掉和 python 无缘无故退出"
+
+### 强制规则
+
+| 行为 | 频率 |
+|---|---|
+| **commit** | 每完成一个子任务立即 (e.g. 改一个 file + 测试 → commit) |
+| **push** | commit 后立即 (不攒 batch) |
+| **codegraph sync** | 每次 commit 后跑 `codegraph sync` (索引代码图) |
+| **WIP commit** | 即使没测完, 用 `wip:` 前缀也 commit + push (防止丢失) |
+
+### 流程模板
+
+```bash
+# 1. 改完一个 substantial 变更
+git add <files>
+git commit -m "..."   # 含 self-审 + rule-compliance 关键词
+git push              # 立刻 push, 不攒
+
+# 2. Codegraph sync (代码 graph 索引)
+codegraph sync        # ~1-2 秒, 防 query 用 stale index
+
+# 3. 下一个子任务
+```
+
+### 反例 (踩过)
+
+- 改 5 个 files + 攒一次 commit → terminal 崩 = 全丢
+- Python long script 跑 1 小时 → crash → 没 commit = 全丢
+- Codegraph stale → query 找不到新加 symbol = 误判 "未定义"
+
+### Codex 协作下的 commit
+
+派 Codex 任务**前** commit current state:
+- Codex 写完后, 用户/Claude 跟代码 race condition → 先 commit baseline
+- Codex stream output 长 → Claude 边读边 commit (don't wait)
+
 ## 10.0.2 GCP 资源管理 (2026-05-17 用户 push back)
 
 > **用户原话**: "把谷歌云的使用当个重点问题固化, 不要浪费资源并给出具体解决方案"

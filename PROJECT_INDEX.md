@@ -784,6 +784,15 @@ SELECT * FROM mart_data_source_watermark;
 
 每次 session 增量内容写这里, 新 session 启动时**从下往上读**最近改了啥.
 
+### 2026-05-17 晚 MSAF Phase 1 Codex A/B/C parallel deliver
+
+3 Codex 并行实施 Codex R34 5 步 redesign:
+- A. LambdaMART top-K cost-aware ranker (run_p0b_lambdamart_v6.py 644 行)
+- B. PIT data gate (universe.py PIT pit_active_ever / build_dim_listing_status.py / preflight_panel_build.py)
+- C. Horizon governance (label 60d/90d build + ddl + test)
+- R38 msaf_top_design 1700+ 行 (Scheme 7 机构跟随 + MSAF 顶层)
+测试 10/11 pass, 1 sentinel value 小 fail. CLAUDE.md §10.0.3 高频 commit/push/codegraph sync 固化.
+
 ### 2026-05-17 晚 CLAUDE.md §10.0.2 GCP 成本控制 + 项目交付标准固化
 
 用户 push back: "把谷歌云的使用当个重点问题固化, 不要浪费资源", "项目还不具备交付条件, 应该随时维护 goal.md". CLAUDE.md §10.0.2 加 GCP rule: VM 不用必 stop ($0.376/h spot, 24/7 $275/月 vs $10 credit). vm_start.sh + vm_stop.sh 自动化. goal.md 加 6 项交付标准. memory [[feedback-gcp-cost-control]] 新建.
