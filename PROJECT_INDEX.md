@@ -994,7 +994,15 @@ Phase 3 step 5 P3 holdout (4 months last):
 - `backend/scripts/audit_lgbm_feature_importance.py`: read-only LightGBM importance ranking
 - 帮 Phase 4 #2 (feature engineering) 决策: 哪些 features 真带 alpha, 哪些噪音
 
-**#48 paper_sim sizer ablation driver (Codex round 19 #1, commit ?)**:
+**#49 compute_forecast_upside_live SHADOW preview (Codex round 19+, commit ?)**:
+- `backend/scripts/compute_forecast_upside_live.py`:
+  - JOIN raw_profit_forecast_snapshot_daily × mart_stock_industry_pit × fact_financial_pit_daily × v_price_kline_qfq
+  - 算 upside_self / upside_industry / upside_blend / upside_consensus_pe (per Codex round 19 4 tier target_pe)
+  - 写 mart_forecast_upside_live (SHADOW only — NOT for training)
+  - Top-K 输出 daily live preview, paper_sim live 验证用
+- 历史 backtest 必须等 daily snapshot 累积数月再跑 (per Codex CRITICAL)
+
+**#48 paper_sim sizer ablation driver (Codex round 19 #1, commit 14352927)**:
 - `backend/scripts/run_paper_sim_sizer_ablation.py`:
   - 跑 2 variants: equal vs score_rank_diff_v1 (yaml configs ready)
   - 自动汇总 KPI from mart_paper_sim_kpi (ann_ret, max_dd, monthly_win, excess_hs300, sharpe, n_trades, avg_hold)
