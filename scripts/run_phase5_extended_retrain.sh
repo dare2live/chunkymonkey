@@ -81,26 +81,35 @@ echo "[phase5] Step 3: ensure code synced on VM (git pull)..."
 gcloud compute ssh chunkymonkey-optuna --zone=us-central1-a --tunnel-through-iap \
     --command="cd ~/chunkymonkey && git pull origin main 2>&1 | tail -3" 2>&1 | tee -a "$LOG"
 
-# 4. Run retrain background on VM (nohup + detach)
-echo "[phase5] Step 4: nohup retrain on VM..."
+# 4. Run retrain background on VM (nohup + self-stop on completion)
+# 用户 push back '真 proactive cost-cutting': remote job 完后 VM 自己 stop, 不依赖
+# 外部 cost_tracker 5-15min grace 浪费 \$0.03/次. self-stop = 0 waste.
+echo "[phase5] Step 4: nohup retrain on VM (含 self-stop on completion)..."
 RETRAIN_CMD="cd ~/chunkymonkey && \
-    PYTHONPATH=backend nohup python backend/scripts/retrain_lambdamart_v6.py \
-        --model-id '$MODEL_ID' \
-        --start-date '$START_DATE' \
-        --end-date '$END_DATE' \
-        --n-trials $N_TRIALS \
-        --min-train-months $MIN_TRAIN_MONTHS \
-        --top-k 20 \
-        > /tmp/retrain_${MODEL_ID}.log 2>&1 &
+    PYTHONPATH=backend nohup bash -c '\
+        python backend/scripts/retrain_lambdamart_v6.py \
+            --model-id \"$MODEL_ID\" \
+            --start-date \"$START_DATE\" \
+            --end-date \"$END_DATE\" \
+            --n-trials $N_TRIALS \
+            --min-train-months $MIN_TRAIN_MONTHS \
+            --top-k 20; \
+        RETRAIN_EXIT=\$?; \
+        echo \"[remote] retrain exit code: \$RETRAIN_EXIT @ \$(date)\"; \
+        echo \"[remote] auto self-stop VM (zero-waste design)\"; \
+        sudo shutdown -h +1 \"chunkymonkey job complete\"; \
+    ' > /tmp/retrain_${MODEL_ID}.log 2>&1 &
     sleep 5
     ps -p \$(pgrep -f 'retrain_lambdamart_v6.*$MODEL_ID' | head -1) >/dev/null && echo started || echo NOT_STARTED"
 
 gcloud compute ssh chunkymonkey-optuna --zone=us-central1-a --tunnel-through-iap \
     --command="$RETRAIN_CMD" 2>&1 | tee -a "$LOG"
 
-echo "[phase5] Retrain started on VM, ETA 4-6h"
+echo "[phase5] Retrain started on VM, ETA 4-6h. VM 完后自己 shutdown (1min 缓冲) — zero waste."
 echo "[phase5] Monitor: gcloud compute ssh chunkymonkey-optuna --zone=us-central1-a --tunnel-through-iap --command 'tail -f /tmp/retrain_${MODEL_ID}.log'"
-echo "[phase5] After complete: bash scripts/run_phase5_pull_results.sh $MODEL_ID"
+echo "[phase5] After VM stops: bash scripts/run_phase5_pull_results.sh $MODEL_ID"
 echo ""
-echo "[phase5] AUTO-STOP (定时 check): launchd cron / 或手动 bash gcp/vm_stop.sh"
-echo "[phase5] Budget safety: cost_tracker.sh 每 15 min 跑, RED + RUNNING → auto vm_stop"
+echo "[phase5] Defense layers:"
+echo "[phase5]   1. VM self-shutdown on job exit (primary, 0 waste)"
+echo "[phase5]   2. cost_tracker 每 15 min 跑, idle > 5min → auto stop (backup)"
+echo "[phase5]   3. Budget RED + RUNNING → auto stop (safety net)"

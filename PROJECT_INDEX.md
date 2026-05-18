@@ -784,6 +784,23 @@ SELECT * FROM mart_data_source_watermark;
 
 每次 session 增量内容写这里, 新 session 启动时**从下往上读**最近改了啥.
 
+### 2026-05-18 晚 GCP VM job self-shutdown + idle 5min grace (真 zero-waste 3 层 defense)
+
+用户 push back 'GCP solution still reactive (idle 5min still wastes \$0.03)':
+
+**新增 layer 1 (primary, 0 waste)**: VM job 完后自动 self-shutdown
+- scripts/run_phase5_extended_retrain.sh: remote nohup retrain 后追加 `sudo shutdown -h +1`
+- 1min 缓冲 (允许 log flush + SSH session 退出), 然后 VM 自己 shutdown
+- 比 cron-based grace 主动得多 (0min vs 5min vs 30min)
+
+**Layer 2 (backup)**: cost_tracker idle 5min auto-stop (上次 commit)
+**Layer 3 (safety net)**: Budget RED + RUNNING auto-stop (原有)
+
+3 层 defense 真主动:
+- 正常路径: job 完 → 1min VM 自己 shutdown (0 waste)
+- 异常 (job 卡死 / 用户忘 shutdown 命令): idle 5min cron 检测 stop (\$0.03 waste)
+- 极端 (idle 检测漏 + budget 飙): RED 触发 (saved by budget)
+
 ### 2026-05-18 晚 cron-based 自动化 + idle VM auto-stop (绕 FDA, audit 88→90%)
 
 用户 push back "GCP 主动 cost-cutting" + "zero LLM maintenance / 一次手工都不要":
