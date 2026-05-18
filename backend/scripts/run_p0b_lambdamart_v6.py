@@ -14,6 +14,7 @@ import os
 import sys
 import time
 import uuid
+import warnings
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
@@ -33,6 +34,9 @@ from services.perf.prepared_panel import make_lambdarank_groups
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s", datefmt="%H:%M:%S")
 log = logging.getLogger("p0b_lambdamart_v6")
+
+warnings.filterwarnings("ignore", message="Found 'ndcg_eval_at' in params.*")
+warnings.filterwarnings("ignore", message="X does not have valid feature names.*")
 
 
 _META_COLS = {
@@ -375,7 +379,6 @@ def _run_lambdamart_window(panel: RankPanel, window: WindowSpec, params: dict[st
         panel.X[window.train_idx],
         panel.y_relevance[window.train_idx],
         group=train_groups,
-        eval_at=[5, 10, 20],
     )
     pred = model.predict(panel.X[window.test_idx])
     return _prediction_frame(panel, window.test_idx, pred, label_col=label_col)

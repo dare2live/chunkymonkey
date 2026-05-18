@@ -784,6 +784,10 @@ SELECT * FROM mart_data_source_watermark;
 
 每次 session 增量内容写这里, 新 session 启动时**从下往上读**最近改了啥.
 
+### 2026-05-17 晚 LambdaMART v6 sentinel + prepared_panel cleanup (11/11 pass)
+
+Codex A 自动 follow-up: meta_cols 显式 set + fill_value=-9999.0; make_lambdarank_groups -7 lines cleanup. backend/tests 11/11 pass (sentinel value 已修).
+
 ### 2026-05-17 晚 MSAF Phase 1 Codex A/B/C parallel deliver
 
 3 Codex 并行实施 Codex R34 5 步 redesign:

@@ -238,7 +238,7 @@ def make_lambdarank_groups(
     feature_cols: Optional[list[str]] = None,
     meta_cols: Optional[set] = None,
     date_col: str = "signal_date",
-    fill_value: float | None = None,
+    fill_value: float = -9999.0,
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     """Build LightGBM LambdaRank arrays grouped by ``signal_date``.
 
@@ -318,12 +318,9 @@ def make_lambdarank_groups(
             encoded = np.clip(encoded, 0, 4)
         relevance[positions] = np.asarray(encoded, dtype=np.int32)
 
-    feature_df = df.copy()
-    feature_df[feature_cols] = feature_df[feature_cols].replace([np.inf, -np.inf], np.nan)
-    X_df = _feature_frame_to_float32(apply_feature_fillna_policy(feature_df, feature_cols), feature_cols)
-    if fill_value is not None:
-        X_df = X_df.fillna(fill_value)
+    X_df = df[feature_cols].replace([np.inf, -np.inf], np.nan)
     X = X_df.to_numpy(dtype=np.float32, copy=True)
+    X = np.nan_to_num(X, nan=fill_value, posinf=fill_value, neginf=fill_value)
     groups = df.groupby(date_col, sort=False).size().to_numpy(dtype=np.int32)
     if int(groups.sum()) != len(df):
         raise AssertionError(f"LambdaRank group sum mismatch: {groups.sum()} != {len(df)}")
