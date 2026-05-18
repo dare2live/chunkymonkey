@@ -803,6 +803,21 @@ regime_state.py 加 ret-based fallback (breadth=None case):
 OOS walk-forward PIT-strict (signal_date 之前 60d HS300, ret_60d), 不 leak future.
 test_regime_state 8/8 + test_ensemble 8/8 pass.
 
+### 2026-05-18 凌晨 Phase 4 backtest_validation gate runner on MSAF 实测
+
+backend/scripts/run_phase4_gate_on_msaf.py: 拿 Phase 3.3 实测 22 monthly obs 跑 4 gates.
+
+verdict: warn_only
+- PBO: missing (single-trial, multi-horizon 5d/10d NULL — 待 Phase 5 retrain)
+- DSR: error (n=22 < 30 obs, 待 OOS 扩到 2.5 年)
+- Conservative: PASS (ann_normal=+60.20% / ann_conservative=+58.70% slippage+1.5pp 后仍 > 0)
+- IS-OOS: FAIL (IS=0.04 / OOS=0.022 relative_drop 45% > 30% 阈值, overfitting 信号)
+
+Phase 4 真验 promote=promote 需:
+1. 扩 OOS sample ≥ 30 (2.5 年 monthly obs, 需 retrain start_date=2022 walk-forward)
+2. PBO multi-trial: 5d/10d/20d 都训, 3 trials returns_matrix
+3. 真 IS RankIC from train log (不用 placeholder 0.04)
+
 ### 2026-05-18 凌晨 Phase 3.3 KPI compute mode + robust median (历史 paper_sim 实测达标)
 
 backend/scripts/run_msaf_ensemble_paper_sim.py 加 --compute-kpi + --horizon flag, 实测 lgbm_governance_v1_20d Top-5 ensemble (sniper/institution placeholder None, 等价 pure lambdamart top-K) 22 monthly non-overlap obs (2024-07-01~2026-04-13, n_years=1.75):
