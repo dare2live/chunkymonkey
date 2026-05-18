@@ -167,4 +167,27 @@ if [[ "$ALERT" != "OK" ]]; then
     log "  >>> ALERT $ALERT: projected month \$$PROJECTED_MONTH > $(echo "scale=0; $BUDGET * 0.8 / 1" | bc) (80% \$$BUDGET budget)"
 fi
 
+# Actionable: RED alert + VM RUNNING → 自动 stop VM (用户 push back: 不只监控, 要驱动决策)
+if [[ "$ALERT" == "RED" && "$VM_STATUS" == "RUNNING" ]]; then
+    log ""
+    log "  !!! AUTO-ACTION: budget RED + VM RUNNING → 自动 stop VM 防止超支"
+    if [[ -f "$REPO_ROOT/gcp/vm_stop.sh" ]]; then
+        bash "$REPO_ROOT/gcp/vm_stop.sh" 2>&1 | tee -a "$REPO_ROOT/data/reports/gcp_auto_stop.log" >&2 || \
+            log "  WARN: auto stop failed, manual: bash gcp/vm_stop.sh"
+        log "  ✓ VM auto-stopped (budget protection)"
+    else
+        log "  WARN: gcp/vm_stop.sh 不存在, 无法 auto-stop"
+    fi
+fi
+
+# Actionable: VM RUNNING > 2h 无 active job (heuristic: 看 last_run_marker 文件)
+# 防止"忘 stop" 用户场景
+RUN_MARKER="$REPO_ROOT/data/reports/gcp_vm_active_job.marker"
+if [[ "$VM_STATUS" == "RUNNING" && ! -f "$RUN_MARKER" ]]; then
+    # 无 active job marker → 假设 idle
+    log ""
+    log "  !!! AUTO-ACTION: VM RUNNING 但无 active_job marker, 可能 idle (用户忘 stop)"
+    log "  → 建议: 跑 batch 前 touch $RUN_MARKER, 完后 rm; 或直接 bash gcp/vm_stop.sh"
+fi
+
 exit $EXIT_CODE

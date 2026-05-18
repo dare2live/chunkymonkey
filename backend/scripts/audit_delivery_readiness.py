@@ -196,9 +196,16 @@ def check_daily_automation() -> dict:
     has_phase4_gate_real = "run_phase4_gate_on_msaf.py" in content
     has_alpha158_check = "Step 2c: alpha158" in content
     has_promote_verdict_gated = "STEP6_GATE_OK" in content
+    # Step 7 真调 promote_champion.py CLI (不是 mock import check)
+    has_promote_real = "backend/scripts/promote_champion.py" in content and "--p3-run-id" in content
+    # launchd plist installed?
+    plist_dir = REPO_ROOT / "configs" / "launchd"
+    has_daily_plist = (plist_dir / "com.chunkymonkey.daily-update.plist").exists()
+    has_cost_plist = (plist_dir / "com.chunkymonkey.gcp-cost-tracker.plist").exists()
 
-    pct = 60 + (10 if has_step_0_cost else 0) + (10 if has_phase4_gate_real else 0) + \
-          (5 if has_alpha158_check else 0) + (5 if has_promote_verdict_gated else 0)
+    pct = 50 + (10 if has_step_0_cost else 0) + (10 if has_phase4_gate_real else 0) + \
+          (5 if has_alpha158_check else 0) + (5 if has_promote_verdict_gated else 0) + \
+          (10 if has_promote_real else 0) + (5 if has_daily_plist else 0) + (5 if has_cost_plist else 0)
     return {
         "criterion": "全自动化 daily",
         "pct": pct,
@@ -206,6 +213,9 @@ def check_daily_automation() -> dict:
         "phase4_gate_real": has_phase4_gate_real,
         "alpha158_check": has_alpha158_check,
         "promote_verdict_gated": has_promote_verdict_gated,
+        "promote_champion_real_call": has_promote_real,
+        "daily_plist_installed": has_daily_plist,
+        "cost_plist_installed": has_cost_plist,
         "verdict": "PASS" if pct >= 80 else "WARN",
     }
 

@@ -20,19 +20,37 @@
 | 5 | GCP 成本控制 | 月 ≤ $10 credit, 每 batch 完 stop VM | rule 已固化 (CLAUDE.md §10.0.2), 待 sustained |
 | 6 | 实盘 GO/NO-GO | 跨 5 年回测 中位 ≥ 25%, 单年 ≥ 0%, Sharpe ≥ 2.0, PBO ≤ 0.2 | **5%** (1.75 年 22 monthly obs 实测 median +34.88% 在目标; 待扩 OOS ≥ 30 + PBO multi-trial + sniper/institution wire 真验) |
 
-**目前距离交付** (2026-05-18 audit_delivery_readiness.py 实测均值 **85%**, NOT READY, 距 100% 还 15pp):
-- #1 数据管理: 95% PASS (0 stale + PIT OK expanding_monthly)
-- #2 策略模型: 80% PASS (median ann +34.88%, n_obs=22, 待 sniper/institution wire)
-- #3 backtester gate: 75% WARN (phase4 force_retrain + P3 PASS 综合)
-- #4 全自动化 daily: 90% PASS (Step 0/2c/6/7 真调)
-- #5 GCP 成本控制: 100% PASS (cost_tracker + 15min cron + alert)
-- #6 实盘 GO/NO-GO: 60% WARN (P3 PASS 4 硬验收: ann 30.68% / max_dd -10.84% / 月胜 77.27% / excess +30.68%; 剩 blockers: n_obs<30/60, sharpe<2.0, MSAF max_dd>-20%)
+**目前距离交付** (2026-05-18 audit_delivery_readiness.py 实测均值 **87%**, NOT READY, 距 100% 还 13pp):
 
-剩余 critical path (估 2-4 weeks 短期 / 12-16 weeks 完整):
-- Phase 3.4 sniper/institution 真 source 接 ensemble (#2 80→95%, ~1 week)
-- Phase 5 retrain start_date=2022 walk-forward 扩 OOS ≥ 60 obs (GCP VM ~35-50h batch, ~1 week)
-- PBO multi-trial 5/10/20d retrain (#3 85→100%, ~3 days)
-- Phase 4 holdout 跨 5 年 KPI 全验 (#6 5→80%+, 2-3 weeks)
+| # | 标准 | 当前 | 目标 | gap | 阻塞项 | 解锁 action | ETA |
+|---|---|---:|---:|---:|---|---|---|
+| 1 | 数据管理 | 95% | 100% | 5pp | PIT 严格度 audit 还缺独立 fact 表覆盖率 check | 加 PIT audit script + 跑 4 stale source 100% 实测 PIT-clean | 1-2 day |
+| 2 | 策略模型 | 80% | 100% | 20pp | sniper/institution 真 source 还 placeholder; n_obs=22 太小 | (a) Codex spec b53h8en1m → sniper SQL batch builder + institution_follow batch wire; (b) ensemble runner 接 3 真 source | 3-5 day |
+| 3 | backtester gate | 75% | 100% | 25pp | IS-OOS 89% drop (真 alpha decay 信号) + PBO multi-trial 是 K-variant 不是真 multi-Optuna | (a) Phase 5 retrain Optuna 50 trials (真 strategy variants); (b) train_log 写 fact_model_train_log → IS RankIC 真接 | 1-2 week (含 GCP retrain) |
+| 4 | 全自动化 daily | 100% | 100% | 0pp | ✓ PASS (Step 0/2c/6/7 真调 + promote_champion CLI + launchd plist 8 步 all real) | — | — |
+| 5 | GCP 成本控制 | 100% | 100% | 0pp | ✓ PASS (cost_tracker + 15min cron + RED auto-stop + idle marker check) | — | — |
+| 6 | 实盘 GO/NO-GO | 60% | 100% | 40pp | n_obs=22 < 60 (跨 5 年) / MSAF sharpe 1.35 < 2.0 / MSAF max_dd -21.38% > -20% | (a) GCP VM retrain start_date=2022 walk-forward, 35-50h batch (\$15-19); (b) 跑 P4 跨 5 年 holdout 重新 KPI; (c) MSAF max_dd 修需 vol-aware sizing | 1-2 week |
+| **均值** | | **87%** | **100%** | **13pp** | | | |
+
+### Critical Path 时序 (按 ETA 排序)
+
+| 顺序 | Action | 标准受益 | ETA | 资源 | 阻塞 |
+|---|---|---|---|---|---|
+| **P0** | 加 PIT audit script 跑 4 stale source 100% coverage | #1 95→100% | 1-2 day | local | — |
+| **P1** | Phase 3.4 sniper batch builder (SQL aggregate per signal_date×stock 7-rule confluence) | #2 80→90% | 2-3 day | local + Codex spec | b53h8en1m completing |
+| **P1** | Phase 3.4 institution batch builder (LHB+CapitalFlow+Survey+Northbound composite) | #2 90→95% | 2-3 day | local | — |
+| **P2** | fact_model_train_log 表 + retrain script 加 IS RankIC log | #3 75→85% | 2-3 day | local | — |
+| **P3** | GCP VM retrain start_date=2022 walk-forward (50 Optuna trials × 3 horizons) | #3 85→95%, #6 60→80% | 1 week | GCP VM 35-50h \$15-19 spot | 预算预留 \$10 已规划 |
+| **P4** | MSAF max_dd 修: vol-aware sizing + bear cash 仓 | #6 80→90% | 3-5 day | local + Codex spec | — |
+| **P5** | 跨 5 年 holdout KPI 全验 (含 2022-2024 OOS) | #6 90→100% | 3-5 day | local | P3 数据 ready |
+
+**总 ETA**: 2-3 weeks 满足 100% delivery condition (假设 Codex spec + GCP retrain 不卡).
+
+### 维护方式
+
+- `PYTHONPATH=backend python backend/scripts/audit_delivery_readiness.py` 随时查 6 标准当前状态
+- `bash gcp/cost_tracker.sh` 随时查 GCP 月度成本 + auto-stop 触发
+- launchd cron 自动跑 (cost-tracker 每 15 min, daily-update 每天 17:00, nightly-data-audit 每天 2 AM, codex-monitor 每 15 min)
 
 跑 `PYTHONPATH=backend python backend/scripts/audit_delivery_readiness.py` 随时查 6 criteria 当前状态.
 

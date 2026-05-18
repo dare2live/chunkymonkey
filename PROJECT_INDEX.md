@@ -803,6 +803,17 @@ regime_state.py 加 ret-based fallback (breadth=None case):
 OOS walk-forward PIT-strict (signal_date 之前 60d HS300, ret_60d), 不 leak future.
 test_regime_state 8/8 + test_ensemble 8/8 pass.
 
+### 2026-05-18 下午 goal.md milestone plan 大幅扩展 + GCP actionable + audit Step 7 真调 (均值 87%)
+
+stop hook 5 点 feedback 响应:
+1. goal.md 加 7 列详表 (当前/目标/gap/阻塞/action/ETA/资源) + Critical Path 时序 P0-P5
+2. backfill_walkforward_eval RankIC → promote_champion 解锁 → Champion promoted
+3. daily_update Step 7 真调 promote_champion.py CLI + P3 PASS lookup + verdict-gated
+4. gcp/cost_tracker.sh 加 actionable: RED+RUNNING → auto vm_stop.sh; idle marker check
+5. audit #4 daily 加 7 项真调检查 (promote_champion_real_call + plist_installed 等), 100% PASS
+
+均值 85→87% NOT READY (13pp gap, ETA 2-3 weeks per P0-P5 milestone).
+
 ### 2026-05-18 下午 Champion PROMOTED — backfill walkforward_eval RankIC 解锁
 
 新增 backend/scripts/backfill_walkforward_eval.py: 计算 22 OOS windows Spearman rank IC.
