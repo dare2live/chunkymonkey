@@ -238,11 +238,13 @@ MART_VERSIONS = {
     "mart_p0a_feature_label_panel_v2": "v1",     # P0a v2: + 6 formula_trigger dummies (stage_opt 删除 Codex Q1 leakage)
     "mart_p0a_feature_label_panel_v3": "v1",     # P0a v3: + survey 4 + valuation_z 4 + sector 5 + inst_path_a 5 (Codex 7-day plan Day 2-3)
     "mart_p0b_oos_predictions": "v1",            # P0b walk-forward OOS predictions (1 row per stock×signal_date×model_id)
+    "mart_p0b_lambdamart_v6_predictions": "v1",  # P0b LambdaMART v6 weekly retrain OOS predictions
     "mart_p0b_walkforward_eval": "v1",           # P0b 每窗 RankIC + IC IR + n_train/n_test
     "mart_p1_ablation_result": "v1",             # P1 feature group ablation (baseline + drop_one + only_one)
     "mart_p2_composite_result": "v1",            # P2 composite weight grid search (ret/dd/hp/turnover/cost/capacity)
     "mart_p3_acceptance_result": "v1",           # P3 final holdout 4 硬验收 + KPI snapshot
     "mart_champion_model": "v1",                 # P4c 单冠军 + KPI 完整性 Gate (Bailey-LdP deflated SR)
+    "mart_paper_sim_lambdamart_v6_kpi_compare": "v1",  # MSAF Phase 2.1 v6 versus v4 paper_sim KPI table
 }
 
 # dim_* 派生类 (静态/缓存型, 不含 raw dim, 12 张)

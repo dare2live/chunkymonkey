@@ -16,6 +16,7 @@ PLAN_V3 v3.2 P0c 决策:
 from __future__ import annotations
 
 import logging
+import re
 
 from services.paper_sim.selector import CandidateRow
 
@@ -23,10 +24,20 @@ from services.paper_sim.selector import CandidateRow
 log = logging.getLogger("paper_sim.ml_score_loader")
 
 
+_IDENTIFIER_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
+
+
+def _validate_prediction_table(table_name: str) -> str:
+    if not _IDENTIFIER_RE.match(table_name):
+        raise ValueError(f"invalid prediction table name: {table_name!r}")
+    return table_name
+
+
 def load_today_candidates_ml_score(
     conn,
     signal_date: str,
     model_id: str = "lgbm_baseline_v1",
+    prediction_table: str = "mart_p0b_oos_predictions",
     max_candidates: int = 30,
     min_score: float | None = None,
     exit_table: str = "mart_per_stock_stage_strategy_optimal_pit",
@@ -58,6 +69,7 @@ def load_today_candidates_ml_score(
         - mart_per_stock_stage_strategy_optimal_pit cutoff_date <= signal_date (Day 5 PIT)
         - 无 fallback latest snapshot, missing row 直接 drop (防 leakage)
     """
+    prediction_table = _validate_prediction_table(prediction_table)
     score_filter = f"AND score >= {float(min_score)}" if min_score is not None else ""
 
     if use_pit:
@@ -66,7 +78,7 @@ def load_today_candidates_ml_score(
         WITH preds AS (
             SELECT stock_code, signal_date, score,
                    fwd_cost_after_5d, fwd_cost_after_10d, fwd_cost_after_20d
-            FROM mart_p0b_oos_predictions
+            FROM {prediction_table}
             WHERE signal_date = ? AND model_id = ?
                   {score_filter}
             ORDER BY score DESC NULLS LAST
@@ -125,7 +137,7 @@ def load_today_candidates_ml_score(
             WITH preds AS (
                 SELECT stock_code, signal_date, score,
                        fwd_cost_after_5d, fwd_cost_after_10d, fwd_cost_after_20d
-                FROM mart_p0b_oos_predictions
+                FROM {prediction_table}
                 WHERE signal_date = ? AND model_id = ?
                       {score_filter}
                 ORDER BY score DESC NULLS LAST
@@ -188,7 +200,7 @@ def load_today_candidates_ml_score(
         WITH preds AS (
             SELECT stock_code, signal_date, score,
                    fwd_cost_after_5d, fwd_cost_after_10d, fwd_cost_after_20d
-            FROM mart_p0b_oos_predictions
+            FROM {prediction_table}
             WHERE signal_date = ? AND model_id = ?
                   {score_filter}
             ORDER BY score DESC NULLS LAST

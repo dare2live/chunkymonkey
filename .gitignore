@@ -32,3 +32,14 @@ backend/forecast_sample.csv
 *.duckdb
 *.duckdb.wal
 gcp/jobs/
+
+# Auto-add 2026-05-18: prevent large data files commit
+data/*.duckdb
+data/*.duckdb-wal
+data/*.duckdb-shm
+data/*.duckdb.backup_*
+data/*.duckdb.tmp
+data/*.duckdb.tmp/
+data/portfolio_backtest_nav.csv
+data/audit/
+data/reports/

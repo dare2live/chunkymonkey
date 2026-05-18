@@ -62,7 +62,47 @@ CREATE INDEX IF NOT EXISTS idx_p0b_oos_stock      ON mart_p0b_oos_predictions(st
 """
 
 
+LAMBDAMART_V6_PREDICTIONS_TABLE = "mart_p0b_lambdamart_v6_predictions"
+
+
+LAMBDAMART_V6_PREDICTIONS_DDL = """
+CREATE TABLE IF NOT EXISTS mart_p0b_lambdamart_v6_predictions (
+    stock_code        TEXT NOT NULL,
+    signal_date       DATE NOT NULL,
+    score             DOUBLE,
+    fwd_cost_after_5d  DOUBLE,
+    fwd_cost_after_10d DOUBLE,
+    fwd_cost_after_20d DOUBLE,
+    model_id          TEXT NOT NULL,
+    model_version     TEXT NOT NULL,
+    feature_version   TEXT NOT NULL,
+    label_version     TEXT NOT NULL,
+    walk_forward_mode TEXT NOT NULL,
+    train_start       DATE,
+    train_end         DATE,
+    test_start        DATE,
+    test_end          DATE,
+    is_final_holdout  BOOLEAN,
+    built_at          TEXT NOT NULL,
+    PRIMARY KEY (stock_code, signal_date, model_id)
+);
+"""
+
+
+LAMBDAMART_V6_PREDICTIONS_INDEX_DDL = """
+CREATE INDEX IF NOT EXISTS idx_p0b_lm_v6_signal_date
+    ON mart_p0b_lambdamart_v6_predictions(signal_date);
+CREATE INDEX IF NOT EXISTS idx_p0b_lm_v6_stock
+    ON mart_p0b_lambdamart_v6_predictions(stock_code, signal_date);
+"""
+
+
 def create_p0b_ddl(conn) -> None:
     conn.execute(OOS_PREDICTIONS_DDL)
     conn.execute(WALKFORWARD_EVAL_DDL)
     conn.execute(OOS_PREDICTIONS_INDEX_DDL)
+
+
+def create_lambdamart_v6_predictions_ddl(conn) -> None:
+    conn.execute(LAMBDAMART_V6_PREDICTIONS_DDL)
+    conn.execute(LAMBDAMART_V6_PREDICTIONS_INDEX_DDL)

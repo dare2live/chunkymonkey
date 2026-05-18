@@ -112,6 +112,45 @@ def test_model_id_filter():
     assert len(rows_lm) == 1 and rows_lm[0].stock_code == "600002"
 
 
+def test_prediction_table_override_reads_lambdamart_v6_table():
+    conn = _make_conn()
+    conn.execute(
+        """
+        CREATE TABLE mart_p0b_lambdamart_v6_predictions AS
+        SELECT * FROM mart_p0b_oos_predictions WHERE FALSE
+        """
+    )
+    conn.execute(
+        "INSERT INTO mart_p0b_lambdamart_v6_predictions VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        ["600009", "2024-06-17", 0.91, None, None, 0.04,
+         "lambdamart_v6_20260518", "v6.lambdamart", "p0a_v4", "horizon_governance_v1",
+         "expanding_monthly", "2024-01-01", "2024-05-31", "2024-06-01", "2024-06-30",
+         False, "ts"]
+    )
+    rows = load_today_candidates_ml_score(
+        conn,
+        "2024-06-17",
+        model_id="lambdamart_v6_20260518",
+        prediction_table="mart_p0b_lambdamart_v6_predictions",
+        use_pit=False,
+    )
+
+    assert len(rows) == 1
+    assert rows[0].stock_code == "600009"
+    assert rows[0].score == 0.91
+
+
+def test_prediction_table_override_rejects_invalid_identifier():
+    conn = _make_conn()
+    with pytest.raises(ValueError, match="invalid prediction table"):
+        load_today_candidates_ml_score(
+            conn,
+            "2024-06-17",
+            prediction_table="mart_p0b_oos_predictions;DROP TABLE x",
+            use_pit=False,
+        )
+
+
 def test_empty_date_returns_empty():
     conn = _make_conn()
     rows = load_today_candidates_ml_score(conn, "2024-12-31", use_pit=False)

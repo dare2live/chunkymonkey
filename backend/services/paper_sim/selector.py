@@ -601,7 +601,7 @@ def load_today_candidates_dispatch(
     """根据 cfg.mode 分发到 production / backtest / ensemble / ml_score loader.
 
     ml_score (PLAN_V3 v3.2 P0c Option A): ML score 替换 selector ranking,
-        从 mart_p0b_oos_predictions ORDER BY score DESC 取 top-K,
+        从配置的 prediction table ORDER BY score DESC 取 top-K,
         exit/swap 仍走 Optuna 9-dim 公式. 见 services/paper_sim/ml_score_loader.
     """
     if cfg.mode == "ensemble":
@@ -626,6 +626,7 @@ def load_today_candidates_dispatch(
         return load_today_candidates_ml_score(
             conn, signal_date,
             model_id=getattr(cfg, "ml_score_model_id", "lgbm_baseline_v1"),
+            prediction_table=getattr(cfg, "ml_score_prediction_table", "mart_p0b_oos_predictions"),
             max_candidates=getattr(cfg, "ml_score_max_candidates", 30),
             min_score=getattr(cfg, "ml_score_min_score", None),
             # Phase 1a Option C (Codex round 4): propagate fallback flag/params

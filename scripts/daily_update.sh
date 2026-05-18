@@ -41,6 +41,12 @@ LOG="/tmp/chunkymonkey_daily_update_${DATE}.log"
 DRY=0
 SKIP_SYNC=0
 USE_GCP=0
+MODEL_ID_DATE="${CHUNKY_MODEL_DATE_OVERRIDE:-$DATE}"
+DOW="${CHUNKY_DOW_OVERRIDE:-$(date +%u)}"
+VM_NAME="${VM_NAME:-chunkymonkey-optuna}"
+ZONE="${ZONE:-us-central1-a}"
+REMOTE_REPO_DIR="${REMOTE_REPO_DIR:-~/chunkymonkey}"
+MODEL_REFRESH_VM_STARTED=0
 
 # Parse args
 for arg in "$@"; do
@@ -59,6 +65,55 @@ fatal() {
     log "FATAL: $*"
     exit 1
 }
+
+stop_model_refresh_vm() {
+    if [[ "$MODEL_REFRESH_VM_STARTED" == "1" ]]; then
+        log "Stopping GCP VM after model refresh"
+        if ! bash gcp/vm_stop.sh >> "$LOG" 2>&1; then
+            log "WARN: VM stop failed; run bash gcp/vm_stop.sh manually"
+        fi
+        MODEL_REFRESH_VM_STARTED=0
+    fi
+}
+
+run_backtest_validation_gate() {
+    log "Running backtest_validation pre-flight gate"
+    PYTHONPATH=backend python - <<'PY' >> "$LOG" 2>&1
+import json
+import sys
+
+from services.backtest_validation.gate import run_all_gates
+
+result = run_all_gates("daily_update_model_refresh")
+print(json.dumps(result.to_dict(), ensure_ascii=False, sort_keys=True))
+if result.promote_action in {"block", "force_retrain"}:
+    sys.exit(1)
+PY
+}
+
+run_lambdamart_v6_retrain_on_vm() {
+    gcloud compute ssh "${VM_NAME}" --zone="${ZONE}" --tunnel-through-iap --command \
+        "bash -s -- '${REMOTE_REPO_DIR}' '${MODEL_ID_DATE}'" <<'REMOTE'
+set -euo pipefail
+
+REMOTE_REPO_DIR="$1"
+MODEL_ID_DATE="$2"
+REPO_DIR="${REMOTE_REPO_DIR/#\~/${HOME}}"
+
+cd "${REPO_DIR}"
+if [[ -d ".venv" ]]; then
+    # shellcheck disable=SC1091
+    source ".venv/bin/activate"
+fi
+export PYTHONPATH=backend
+python backend/scripts/retrain_lambdamart_v6.py \
+    --model-date "${MODEL_ID_DATE}" \
+    --n-trials 50 \
+    --full
+REMOTE
+}
+
+trap stop_model_refresh_vm EXIT
 
 log "=== ChunkyMonkey daily update ${DATE} ==="
 log "  dry=$DRY skip_sync=$SKIP_SYNC use_gcp=$USE_GCP"
@@ -89,39 +144,86 @@ fi
 if [[ "$SKIP_SYNC" == "0" ]]; then
     log "--- Step 2: Data sync ---"
     if [[ "$USE_GCP" == "1" ]]; then
+        # GCP path: VM tdxhub fetch (本地 network block 时用)
         log "Using GCP VM for backfill (tdxhub + akshare)"
         bash gcp/vm_start.sh >> "$LOG" 2>&1 || fatal "VM start failed"
-        # TODO: 在 VM 跑 sync, 然后 stop
-        log "GCP sync TBD (待 Phase 2: SUE/PEAD 接入后)"
+        bash gcp/fetch_kline_via_vm.sh >> "$LOG" 2>&1
+        kline_exit=$?
+        if [[ "$kline_exit" == "0" ]]; then
+            log "VM kline fetch OK"
+        else
+            log "WARN: VM kline fetch exit $kline_exit (alert + 继续)"
+        fi
         bash gcp/vm_stop.sh >> "$LOG" 2>&1 || log "WARN: VM stop failed"
     else
-        log "Local sync (tdxhub via raw_incremental)"
-        # TODO: invoke existing sync script
-        # PYTHONPATH=backend python backend/scripts/sync_tdxhub_daily.py >> "$LOG" 2>&1
-        log "local sync TBD (待集成现有 sync 路径)"
+        # Local path: tdxhub daily incremental
+        log "Local sync (tdxhub daily incremental)"
+        if [[ "$DRY" == "0" ]]; then
+            # latest_completed_trade_date 自动 target
+            PYTHONPATH=backend python backend/scripts/build_price_kline_tdxhub.py \
+                --skip-existing \
+                --workers 4 --connect-timeout 2.5 \
+                --max-server-attempts 9 --per-stock-retry-attempts 2 \
+                --write-batch-rows 5000 --log-every 200 \
+                >> "$LOG" 2>&1
+            sync_exit=$?
+            log "tdxhub sync exit $sync_exit"
+            # HS300 benchmark
+            PYTHONPATH=backend python backend/scripts/sync_hs300_benchmark_kline.py \
+                >> "$LOG" 2>&1 || log "WARN: HS300 sync 失败 (非 fatal)"
+        else
+            log "DRY: skip actual sync"
+        fi
     fi
 fi
 
 # Step 3: Label / panel rebuild (增量)
 log "--- Step 3: Label + panel incremental rebuild ---"
 if [[ "$DRY" == "0" ]]; then
-    # TODO: 增量 rebuild_p0a_label_panel + build_p0a_feature_panel_v6
-    log "increment rebuild TBD (待 Phase 1.1 horizon governance + Phase 1.3 PIT gate 实施完)"
+    # 增量 rebuild: 仅最近 7 天 (训练 cutoff 不变, 只补最新数据让 live 推理可用)
+    REBUILD_END=$(date +%Y-%m-%d)
+    REBUILD_START=$(date -v-7d +%Y-%m-%d 2>/dev/null || date --date='7 days ago' +%Y-%m-%d)
+    log "rebuild range: $REBUILD_START → $REBUILD_END (last 7d incremental)"
+
+    # 3a. Label panel 增量 (写 mart_p0a_label_panel)
+    PYTHONPATH=backend python backend/scripts/rebuild_p0a_label_panel.py \
+        --start-date "$REBUILD_START" --end-date "$REBUILD_END" \
+        >> "$LOG" 2>&1 || log "WARN: label panel rebuild 失败"
+
+    # 3b. v4 panel 增量 (Codex 2.1 完会改 v6 panel)
+    PYTHONPATH=backend python backend/scripts/build_p0a_feature_panel_v4.py \
+        --start-date "$REBUILD_START" --end-date "$REBUILD_END" \
+        >> "$LOG" 2>&1 || log "WARN: v4 panel rebuild 失败"
+
+    log "panel incremental rebuild done"
 else
     log "DRY: skip rebuild"
 fi
 
 # Step 4: Model refresh (weekly Optuna or cached)
 log "--- Step 4: Model refresh ---"
-DOW=$(date +%u)
+run_backtest_validation_gate || fatal "backtest_validation pre-flight gate failed"
 if [[ "$DOW" == "1" ]]; then
-    log "Monday: trigger weekly Optuna refresh"
-    if [[ "$USE_GCP" == "1" || "$DRY" == "0" ]]; then
-        # TODO: 自动 start VM + 跑 Optuna 50 trials × 3 类策略 + stop
-        log "weekly Optuna TBD (待 Phase 2: 3 类策略 wave 启动器)"
+    log "Monday: trigger weekly LambdaMART v6 Optuna refresh on GCP"
+    if [[ "$DRY" == "1" ]]; then
+        log "DRY: skip GCP VM retrain for lambdamart_v6_${MODEL_ID_DATE}"
+    else
+        bash gcp/vm_start.sh >> "$LOG" 2>&1 || fatal "VM start failed"
+        MODEL_REFRESH_VM_STARTED=1
+        set +e
+        run_lambdamart_v6_retrain_on_vm >> "$LOG" 2>&1
+        refresh_rc=$?
+        set -e
+        stop_model_refresh_vm
+        if [[ "$refresh_rc" != "0" ]]; then
+            fatal "LambdaMART v6 retrain failed on GCP"
+        fi
+        log "LambdaMART v6 retrain complete: lambdamart_v6_${MODEL_ID_DATE}"
     fi
+elif [[ "$DOW" -ge 2 && "$DOW" -le 5 ]]; then
+    log "Weekday (DOW=$DOW): use cached LambdaMART v6 model"
 else
-    log "Weekday (DOW=$DOW): use cached model"
+    log "Non-trading refresh day (DOW=$DOW): use cached LambdaMART v6 model"
 fi
 
 # Step 5: paper_sim live update

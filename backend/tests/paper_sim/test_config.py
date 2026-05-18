@@ -1,6 +1,8 @@
 """Paper Sim v2 — config 加载 + 校验单测."""
 from __future__ import annotations
 
+from pathlib import Path
+
 import pytest
 
 from services.paper_sim.config import load_config, PaperSimConfig
@@ -53,3 +55,12 @@ def test_validation_thresholds_align_with_user_goals():
     assert uc["annual_return_min"] >= 0.30, "用户原话: 年化 ≥ 30%"
     assert uc["max_dd_min"] >= -0.20, "用户原话: 不缩水 max_dd ≥ -20%"
     assert uc["excess_vs_hs300_min"] >= 0.0, "用户原话: 超额 > 0"
+
+
+def test_lambdamart_v6_config_uses_dedicated_prediction_table():
+    cfg_path = Path(__file__).resolve().parents[2] / "config" / "paper_sim_ml_score_lambdamart_v6.yaml"
+    cfg = load_config(path=cfg_path)
+
+    assert cfg.selection.mode == "ml_score"
+    assert cfg.selection.ml_score_model_id == "lambdamart_v6_20260518"
+    assert cfg.selection.ml_score_prediction_table == "mart_p0b_lambdamart_v6_predictions"

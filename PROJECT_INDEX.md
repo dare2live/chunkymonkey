@@ -784,6 +784,18 @@ SELECT * FROM mart_data_source_watermark;
 
 每次 session 增量内容写这里, 新 session 启动时**从下往上读**最近改了啥.
 
+### 2026-05-18 凌晨 Codex Phase 2 parallel deliver — MSAF 3 类策略 implementation
+
+3 Codex parallel deliver:
+- 2.1 (a9d5f91fb4205fdfd): backend/scripts/retrain_lambdamart_v6.py + run_paper_sim_lambdamart_v6_compare.py + paper_sim_ml_score_lambdamart_v6.yaml + ml_score_loader + selector + ml_ranking/ddl 改, daily_update Step 4 Monday VM retrain trap stop_model_refresh_vm
+- 2.2 (aae939b180ef9d244): backend/services/strategies/sniper/ {confluence.py, kelly_sizer.py, exit_rules.py}
+- 2.3 (a846ba43b2e439f36): backend/services/strategies/institution_follow/ {lhb_alpha, capital_flow_alpha, survey_alpha, northbound_alpha, _common}
+
+Tests: 11/11 pass (retrain v6 / daily_update model refresh / lambdamart v6 compare / institution follow PIT).
+
+daily_update.sh Step 2 + Step 4 真实调用 (local tdxhub sync + Monday VM Optuna retrain).
+daily_update.sh Step 3 增量 panel rebuild (label + v4 panel, last 7d).
+
 ### 2026-05-18 凌晨 watermark SLA 自动 update + alert (交付标准 #1 数据管理 40%)
 
 backend/scripts/update_watermark_sla.py:
