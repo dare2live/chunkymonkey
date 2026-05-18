@@ -1,0 +1,68 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.chunkymonkey.daily-update</string>
+    <key>ProgramArguments</key>
+    <array>
+        <string>/bin/bash</string>
+        <string>/Users/dp/Documents/M/stock/chunkymonkey/scripts/daily_update.sh</string>
+    </array>
+    <!-- Schedule: 每个交易日 17:00 (A 股收盘 15:00 + 2h 数据 publish 容缓) -->
+    <key>StartCalendarInterval</key>
+    <array>
+        <dict>
+            <key>Weekday</key>
+            <integer>1</integer>
+            <key>Hour</key>
+            <integer>17</integer>
+            <key>Minute</key>
+            <integer>0</integer>
+        </dict>
+        <dict>
+            <key>Weekday</key>
+            <integer>2</integer>
+            <key>Hour</key>
+            <integer>17</integer>
+            <key>Minute</key>
+            <integer>0</integer>
+        </dict>
+        <dict>
+            <key>Weekday</key>
+            <integer>3</integer>
+            <key>Hour</key>
+            <integer>17</integer>
+            <key>Minute</key>
+            <integer>0</integer>
+        </dict>
+        <dict>
+            <key>Weekday</key>
+            <integer>4</integer>
+            <key>Hour</key>
+            <integer>17</integer>
+            <key>Minute</key>
+            <integer>0</integer>
+        </dict>
+        <dict>
+            <key>Weekday</key>
+            <integer>5</integer>
+            <key>Hour</key>
+            <integer>17</integer>
+            <key>Minute</key>
+            <integer>0</integer>
+        </dict>
+    </array>
+    <key>StandardOutPath</key>
+    <string>/tmp/chunkymonkey_daily_update.stdout.log</string>
+    <key>StandardErrorPath</key>
+    <string>/tmp/chunkymonkey_daily_update.stderr.log</string>
+    <key>WorkingDirectory</key>
+    <string>/Users/dp/Documents/M/stock/chunkymonkey</string>
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>PATH</key>
+        <string>/opt/homebrew/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
+    </dict>
+</dict>
+</plist>

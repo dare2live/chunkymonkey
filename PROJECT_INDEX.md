@@ -784,6 +784,16 @@ SELECT * FROM mart_data_source_watermark;
 
 每次 session 增量内容写这里, 新 session 启动时**从下往上读**最近改了啥.
 
+### 2026-05-18 凌晨 launchd 一键安装 (交付标准 #4 全自动化)
+
+configs/launchd/com.chunkymonkey.daily-update.plist + scripts/install_launchd_all.sh:
+- 每个交易日 (Mon-Fri) 17:00 自动跑 daily_update.sh
+- install_launchd_all.sh 一键安装 3 个 launchd jobs (codex-monitor + nightly-audit + daily-update)
+- plutil -lint OK
+
+用户安装: bash scripts/install_launchd_all.sh (one-time setup)
+卸载: 见脚本输出.
+
 ### 2026-05-18 凌晨 Phase 1.5 wire: promote_champion + daily_update Step 6 gate 接入
 
 promote_champion.py:
