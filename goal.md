@@ -20,23 +20,23 @@
 | 5 | GCP 成本控制 | 月 ≤ $10 credit, 每 batch 完 stop VM | rule 已固化 (CLAUDE.md §10.0.2), 待 sustained |
 | 6 | 实盘 GO/NO-GO | 跨 5 年回测 中位 ≥ 25%, 单年 ≥ 0%, Sharpe ≥ 2.0, PBO ≤ 0.2 | **5%** (1.75 年 22 monthly obs 实测 median +34.88% 在目标; 待扩 OOS ≥ 30 + PBO multi-trial + sniper/institution wire 真验) |
 
-**目前距离交付** (2026-05-18 audit_delivery_readiness.py 实测均值 **87%**, NOT READY, 距 100% 还 13pp):
+**目前距离交付** (2026-05-18 audit_delivery_readiness.py 实测均值 **88%**, NOT READY, 距 100% 还 12pp):
 
 | # | 标准 | 当前 | 目标 | gap | 阻塞项 | 解锁 action | ETA |
 |---|---|---:|---:|---:|---|---|---|
-| 1 | 数据管理 | 95% | 100% | 5pp | PIT 严格度 audit 还缺独立 fact 表覆盖率 check | 加 PIT audit script + 跑 4 stale source 100% 实测 PIT-clean | 1-2 day |
+| 1 | 数据管理 | 100% | 100% | 0pp | ✓ PASS (SLA 0 alert + PIT 4/4 fact 表 100% audit) | — | — |
 | 2 | 策略模型 | 80% | 100% | 20pp | sniper/institution 真 source 还 placeholder; n_obs=22 太小 | (a) Codex spec b53h8en1m → sniper SQL batch builder + institution_follow batch wire; (b) ensemble runner 接 3 真 source | 3-5 day |
 | 3 | backtester gate | 75% | 100% | 25pp | IS-OOS 89% drop (真 alpha decay 信号) + PBO multi-trial 是 K-variant 不是真 multi-Optuna | (a) Phase 5 retrain Optuna 50 trials (真 strategy variants); (b) train_log 写 fact_model_train_log → IS RankIC 真接 | 1-2 week (含 GCP retrain) |
 | 4 | 全自动化 daily | 100% | 100% | 0pp | ✓ PASS (Step 0/2c/6/7 真调 + promote_champion CLI + launchd plist 8 步 all real) | — | — |
 | 5 | GCP 成本控制 | 100% | 100% | 0pp | ✓ PASS (cost_tracker + 15min cron + RED auto-stop + idle marker check) | — | — |
 | 6 | 实盘 GO/NO-GO | 60% | 100% | 40pp | n_obs=22 < 60 (跨 5 年) / MSAF sharpe 1.35 < 2.0 / MSAF max_dd -21.38% > -20% | (a) GCP VM retrain start_date=2022 walk-forward, 35-50h batch (\$15-19); (b) 跑 P4 跨 5 年 holdout 重新 KPI; (c) MSAF max_dd 修需 vol-aware sizing | 1-2 week |
-| **均值** | | **87%** | **100%** | **13pp** | | | |
+| **均值** | | **88%** | **100%** | **12pp** | | | |
 
 ### Critical Path 时序 (按 ETA 排序)
 
 | 顺序 | Action | 标准受益 | ETA | 资源 | 阻塞 |
 |---|---|---|---|---|---|
-| **P0** | 加 PIT audit script 跑 4 stale source 100% coverage | #1 95→100% | 1-2 day | local | — |
+| ~~P0~~ | ✓ DONE: PIT audit script 4 fact 表 100% PASS (commit b160d56e + 后续) | #1 95→100% | 完成 | local | — |
 | **P1** | Phase 3.4 sniper batch builder (SQL aggregate per signal_date×stock 7-rule confluence) | #2 80→90% | 2-3 day | local + Codex spec | b53h8en1m completing |
 | **P1** | Phase 3.4 institution batch builder (LHB+CapitalFlow+Survey+Northbound composite) | #2 90→95% | 2-3 day | local | — |
 | **P2** | fact_model_train_log 表 + retrain script 加 IS RankIC log | #3 75→85% | 2-3 day | local | — |

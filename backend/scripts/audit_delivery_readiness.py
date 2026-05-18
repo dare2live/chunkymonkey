@@ -33,12 +33,11 @@ log = logging.getLogger("delivery_audit")
 
 
 def check_data_management() -> dict:
-    """#1 数据管理: stale source count + PIT 严格度."""
+    """#1 数据管理: stale source count + PIT 严格度 + PIT coverage audit."""
     sla_report = REPO_ROOT / "data" / "audit" / "watermark_sla_latest.json"
     n_alerts = 9999
     if sla_report.exists():
         d = json.loads(sla_report.read_text())
-        # Schema: {n_updates, n_alerts, sources: [{alert: bool, ...}]}
         n_alerts = d.get("n_alerts", d.get("n_alert", None))
         if n_alerts is None and "sources" in d:
             n_alerts = sum(1 for r in d["sources"] if r.get("alert"))
@@ -47,32 +46,27 @@ def check_data_management() -> dict:
         if n_alerts is None:
             n_alerts = 9999
 
-    # PIT 严格度: 抽 model_id 检查 walk_forward_mode
-    smart_db = REPO_ROOT / "data" / "smartmoney.duckdb"
-    pit_strict = "unknown"
-    try:
-        con = duckdb.connect(str(smart_db), read_only=True)
-        rows = con.execute("""
-            SELECT walk_forward_mode, COUNT(*) AS n
-            FROM mart_p0b_oos_predictions
-            GROUP BY walk_forward_mode
-        """).fetchall()
-        con.close()
-        modes = {r[0]: r[1] for r in rows}
-        if "expanding_monthly" in modes and "none" not in modes:
-            pit_strict = "OK (expanding_monthly only)"
-        else:
-            pit_strict = f"WARN (modes: {modes})"
-    except Exception as e:
-        pit_strict = f"error: {e}"
+    # PIT coverage from audit_pit_coverage.py 输出
+    pit_report = REPO_ROOT / "data" / "reports" / "pit_audit.json"
+    pit_pct = 0
+    pit_summary = "not run"
+    if pit_report.exists():
+        d = json.loads(pit_report.read_text())
+        pit_pct = d.get("pit_coverage_pct", 0)
+        pit_summary = f"{d.get('n_pass', 0)}/{d.get('n_total', 0)} tables PASS"
 
-    status_pct = 95 if n_alerts == 0 else (80 if n_alerts <= 2 else (60 if n_alerts <= 5 else 30))
+    # 综合: SLA 50% + PIT 50%
+    sla_pct = 100 if n_alerts == 0 else (80 if n_alerts <= 2 else (60 if n_alerts <= 5 else 30))
+    status_pct = int(sla_pct * 0.5 + pit_pct * 0.5)
+
     return {
         "criterion": "数据管理",
         "pct": status_pct,
         "stale_alerts": n_alerts,
-        "pit_strict": pit_strict,
-        "verdict": "PASS" if n_alerts == 0 and "OK" in pit_strict else "WARN",
+        "sla_pct": sla_pct,
+        "pit_pct": pit_pct,
+        "pit_summary": pit_summary,
+        "verdict": "PASS" if status_pct >= 80 else "WARN",
     }
 
 

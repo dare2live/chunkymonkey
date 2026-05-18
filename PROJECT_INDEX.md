@@ -803,6 +803,20 @@ regime_state.py 加 ret-based fallback (breadth=None case):
 OOS walk-forward PIT-strict (signal_date 之前 60d HS300, ret_60d), 不 leak future.
 test_regime_state 8/8 + test_ensemble 8/8 pass.
 
+### 2026-05-18 下午 PIT audit 100% + #1 数据管理 PASS — 均值 87→88%
+
+新增 backend/scripts/audit_pit_coverage.py: 4 critical fact 表 PIT 实测 100% PASS.
+
+实测:
+- mart_p0a_label_panel: fwd_20d NULL 7.1%, label_versions=2 (partial rebuild OK), 568 dates
+- mart_p0b_oos_predictions: expanding_monthly only (no in-sample fit)
+- fact_lhb_event: gain_20d coverage 83.8% (forward 计算 PIT)
+- mart_p3_acceptance_result: latest P3 PASS
+
+audit_delivery_readiness #1 改 SLA 50% + PIT 50% 综合.
+
+P0 Critical Path 完成. 距 100% 还 12pp (P1-P5: sniper builder / institution builder / train_log / GCP retrain / vol-aware sizing).
+
 ### 2026-05-18 下午 goal.md milestone plan 大幅扩展 + GCP actionable + audit Step 7 真调 (均值 87%)
 
 stop hook 5 点 feedback 响应:
