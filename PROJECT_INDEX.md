@@ -803,6 +803,18 @@ regime_state.py 加 ret-based fallback (breadth=None case):
 OOS walk-forward PIT-strict (signal_date 之前 60d HS300, ret_60d), 不 leak future.
 test_regime_state 8/8 + test_ensemble 8/8 pass.
 
+### 2026-05-18 下午 audit #2 detect sniper真接 — 均值 88→90% (LM+sniper)
+
+audit check_strategy_model 改 4 档判:
+- 80% LM-only KPI 达标
+- **90% LM + sniper 真接** ★ 当前
+- 95% + n_obs ≥ 30
+- 100% + institution 4-class composite
+
+均值 90% NOT READY, 距 100% 10pp gap.
+
+Phase 5 GCP retrain (1 week, \$15-19) 一次性解锁 #2 95-100% / #3 100% / #6 90%+.
+
 ### 2026-05-18 下午 Codex P1 sniper batch builder 实施完成 — ensemble median 34.88→48.40% (+13.52pp)
 
 Codex agent blziuyb6u deliver:

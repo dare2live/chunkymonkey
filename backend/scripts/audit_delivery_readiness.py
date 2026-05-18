@@ -86,15 +86,38 @@ def check_strategy_model() -> dict:
     hit_rate = kpi.get("hit_rate")
     n_obs = kpi.get("n_obs", 0)
 
-    # Phase 3.4 sniper/institution 真接是 25% bonus
-    # Phase 4 holdout OOS ≥ 30 是 15% bonus
-    phase34 = "lambdamart_only" if median_ann else "incomplete"
+    # Phase 3.4 sniper/institution 真接 check (mart_sniper_score_daily 存在 + ensemble runner load_sniper_scores)
+    smart_db = REPO_ROOT / "data" / "smartmoney.duckdb"
+    has_sniper_mart = False
+    try:
+        con = duckdb.connect(str(smart_db), read_only=True)
+        r = con.execute("""
+            SELECT COUNT(*) FROM information_schema.tables WHERE table_name = 'mart_sniper_score_daily'
+        """).fetchone()
+        if r and r[0] > 0:
+            has_sniper_mart = True
+        con.close()
+    except Exception as e:
+        log.warning(f"sniper mart lookup failed: {e}")
+
+    # ensemble runner reads mart_sniper_score_daily?
+    runner_path = REPO_ROOT / "backend" / "scripts" / "run_msaf_ensemble_paper_sim.py"
+    ensemble_uses_sniper = False
+    if runner_path.exists():
+        ensemble_uses_sniper = "mart_sniper_score_daily" in runner_path.read_text()
+
+    phase34 = "lambdamart_only"
+    if has_sniper_mart and ensemble_uses_sniper:
+        phase34 = "LM + sniper"
+
     pct = 50
     if median_ann is not None and median_ann >= 0.25:
         pct = 80  # KPI 达标但 lambdamart only
-    if median_ann is not None and median_ann >= 0.25 and n_obs >= 30:
-        pct = 90  # 加 OOS ≥ 30 obs
+    if median_ann is not None and median_ann >= 0.25 and phase34 != "lambdamart_only":
+        pct = 90  # 加 1 source (sniper)
     if median_ann is not None and median_ann >= 0.25 and n_obs >= 30 and phase34 != "lambdamart_only":
+        pct = 95  # 加 OOS ≥ 30 obs
+    if median_ann is not None and median_ann >= 0.25 and n_obs >= 30 and "institution" in phase34:
         pct = 100  # 全 3 source
 
     return {

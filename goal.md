@@ -20,17 +20,17 @@
 | 5 | GCP 成本控制 | 月 ≤ $10 credit, 每 batch 完 stop VM | rule 已固化 (CLAUDE.md §10.0.2), 待 sustained |
 | 6 | 实盘 GO/NO-GO | 跨 5 年回测 中位 ≥ 25%, 单年 ≥ 0%, Sharpe ≥ 2.0, PBO ≤ 0.2 | **5%** (1.75 年 22 monthly obs 实测 median +34.88% 在目标; 待扩 OOS ≥ 30 + PBO multi-trial + sniper/institution wire 真验) |
 
-**目前距离交付** (2026-05-18 audit_delivery_readiness.py 实测均值 **88%**, NOT READY, 距 100% 还 12pp):
+**目前距离交付** (2026-05-18 audit_delivery_readiness.py 实测均值 **90%**, NOT READY, 距 100% 还 10pp):
 
 | # | 标准 | 当前 | 目标 | gap | 阻塞项 | 解锁 action | ETA |
 |---|---|---:|---:|---:|---|---|---|
 | 1 | 数据管理 | 100% | 100% | 0pp | ✓ PASS (SLA 0 alert + PIT 4/4 fact 表 100% audit) | — | — |
-| 2 | 策略模型 | 80% | 100% | 20pp | sniper/institution 真 source 还 placeholder; n_obs=22 太小 | (a) Codex spec b53h8en1m → sniper SQL batch builder + institution_follow batch wire; (b) ensemble runner 接 3 真 source | 3-5 day |
+| 2 | 策略模型 | 90% | 100% | 10pp | sniper 已真接 (median +48.40%/hit +68.18% ↑), institution 4-class composite 待; n_obs=22 < 30 | (a) institution 4-class composite (LHB+CapitalFlow+Survey+Northbound by money flow ratio); (b) Phase 5 retrain start=2022 扩 OOS ≥30 | 1 week + GCP \$15-19 |
 | 3 | backtester gate | 75% | 100% | 25pp | IS-OOS 89% drop (真 alpha decay 信号) + PBO multi-trial 是 K-variant 不是真 multi-Optuna | (a) Phase 5 retrain Optuna 50 trials (真 strategy variants); (b) train_log 写 fact_model_train_log → IS RankIC 真接 | 1-2 week (含 GCP retrain) |
 | 4 | 全自动化 daily | 100% | 100% | 0pp | ✓ PASS (Step 0/2c/6/7 真调 + promote_champion CLI + launchd plist 8 步 all real) | — | — |
 | 5 | GCP 成本控制 | 100% | 100% | 0pp | ✓ PASS (cost_tracker + 15min cron + RED auto-stop + idle marker check) | — | — |
 | 6 | 实盘 GO/NO-GO | 60% | 100% | 40pp | n_obs=22 < 60 (跨 5 年) / MSAF sharpe 1.35 < 2.0 / MSAF max_dd -21.38% > -20% | (a) GCP VM retrain start_date=2022 walk-forward, 35-50h batch (\$15-19); (b) 跑 P4 跨 5 年 holdout 重新 KPI; (c) MSAF max_dd 修需 vol-aware sizing | 1-2 week |
-| **均值** | | **88%** | **100%** | **12pp** | | | |
+| **均值** | | **90%** | **100%** | **10pp** | | | |
 
 ### Critical Path 时序 (按 ETA 排序)
 
