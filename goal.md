@@ -13,7 +13,7 @@
 
 | # | 类别 | 交付标准 | 当前状态 |
 |---|---|---|---|
-| 1 | 数据管理 | sync gap 自动 alert + watermark 实填 + 历史 leakage 清干净 + PIT 严格 | partial (sync gap 修过 1 次, watermark NULL) |
+| 1 | 数据管理 | sync gap 自动 alert + watermark 实填 + 历史 leakage 清干净 + PIT 严格 | **40%** (update_watermark_sla.py 自动 watermark + SLA alert wire 进 daily_update Step 1, 实测 6 watermark 自动 update + 5 alert, 历史 leakage 部分清 (kline gap 修过), PIT 严格在 panel build 已固化) |
 | 2 | 策略模型管理 | MSAF 3 类策略 (纯量化/狙击/机构跟随) + ensemble + regime gate 全上线 + paper_sim KPI 达标 | 0% (设计完, 实施 in flight) |
 | 3 | backtester gate | PBO/DSR/conservative/IS-OOS 4 gate 全部 enforce + 历史反例阻断验证 | **实施完 70%** (backend/services/backtest_validation/ + 13 tests + promote_champion wire + daily_update Step 6 import check OK. 待历史反例阻断验证 + 全 KPI 接入实测) |
 | 4 | **全自动化 daily update** | 用户每天跑数据更新 = 1 click or zero click, 不需要大模型维护 | **scaffold + wire + launchd 35%** (scripts/daily_update.sh + Step 6 gate wire + launchd plist + install_launchd_all.sh 1-click 安装. 待 Phase 2 完后 fill 真实数据/模型/paper_sim 调用) |

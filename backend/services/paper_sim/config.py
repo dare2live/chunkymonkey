@@ -71,6 +71,7 @@ class SelectionConfig:
     # PLAN_V3 v3.2 P0c: ML score mode (Option A) — selector ranking 用 mart_p0b_oos_predictions.
     # 只在 mode='ml_score' 生效. exit/swap 仍走 Optuna 9-dim 公式 (per_stock_stage).
     ml_score_model_id: str = "lgbm_baseline_v1"
+    ml_score_prediction_table: str = "mart_p0b_oos_predictions"
     ml_score_max_candidates: int = 30
     ml_score_min_score: float | None = None
     # Phase 1a Option C (Codex round 3 fallback default + round 4 MAJOR 落库闭环):
@@ -252,6 +253,9 @@ def _validate(cfg: PaperSimConfig) -> None:
                                         "direction", "pit_key")), \
                    f"ensemble alpha missing required keys: {a}"
             assert a["direction"] in (1, -1, +1)
+    if sel.mode == "ml_score":
+        assert sel.ml_score_prediction_table.replace("_", "").isalnum(), \
+            f"invalid ml_score_prediction_table: {sel.ml_score_prediction_table}"
 
 
 def load_config(path: Path | None = None, override: dict | None = None) -> PaperSimConfig:

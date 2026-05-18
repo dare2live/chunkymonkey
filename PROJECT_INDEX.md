@@ -784,6 +784,16 @@ SELECT * FROM mart_data_source_watermark;
 
 每次 session 增量内容写这里, 新 session 启动时**从下往上读**最近改了啥.
 
+### 2026-05-18 凌晨 watermark SLA 自动 update + alert (交付标准 #1 数据管理 40%)
+
+backend/scripts/update_watermark_sla.py:
+- 11 source watermark vs actual_max_date 自动 update (6 fixed today: industry_sw, institution_survey, kline_daily x2, stock_blocks, xdxr)
+- SLA threshold per source_tier (tier1=1d, tier2=2d, tier3=3d)
+- 5 stale alerts (financial_gpcw_8q 48d / holders_top10_float 19d / lhb_daily 20d / industry_sw 11d / stock_blocks 11d)
+- 报告 data/audit/watermark_sla_<date>.json
+
+wire 进 scripts/daily_update.sh Step 1 (preflight watermark + K-line continuity).
+
 ### 2026-05-18 凌晨 launchd 一键安装 (交付标准 #4 全自动化)
 
 configs/launchd/com.chunkymonkey.daily-update.plist + scripts/install_launchd_all.sh:

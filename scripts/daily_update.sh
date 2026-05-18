@@ -64,14 +64,25 @@ log "=== ChunkyMonkey daily update ${DATE} ==="
 log "  dry=$DRY skip_sync=$SKIP_SYNC use_gcp=$USE_GCP"
 
 # Step 1: Preflight
-log "--- Step 1: Preflight ---"
+log "--- Step 1: Preflight (watermark SLA + K-line gate) ---"
+# 1a. Watermark SLA check + auto-update
+SLA_ARGS=""
+[[ "$DRY" == "1" ]] && SLA_ARGS="--dry-run"
+PYTHONPATH=backend python backend/scripts/update_watermark_sla.py \
+    $SLA_ARGS \
+    --json-output "data/audit/watermark_sla_${DATE}.json" >> "$LOG" 2>&1
+sla_exit=$?
+if [[ "$sla_exit" == "2" ]]; then
+    log "WARN: watermark SLA alert (见 data/audit/watermark_sla_${DATE}.json)"
+elif [[ "$sla_exit" != "0" ]]; then
+    log "ERROR: watermark SLA check failed (exit $sla_exit)"
+fi
+
+# 1b. K-line continuity preflight
 if [[ -f "backend/scripts/preflight_panel_build.py" ]]; then
     if ! PYTHONPATH=backend python backend/scripts/preflight_panel_build.py >> "$LOG" 2>&1; then
-        log "WARN: preflight failed, K-line gap or watermark stale 可能"
-        # 不 fatal — 后续 sync 修
+        log "WARN: K-line preflight failed, gap or freshness 问题"
     fi
-else
-    log "preflight script missing, skip"
 fi
 
 # Step 2: Data sync (tdxhub + akshare)
