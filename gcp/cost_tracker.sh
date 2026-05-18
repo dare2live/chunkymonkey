@@ -96,10 +96,20 @@ else
     BURN_PER_DAY=0
     PROJECTED_MONTH=$DISK_MONTHLY
 fi
+# bc 输出 leading '.' (e.g. '.1290') 不是合法 JSON, 补 0 — 在 bc 计算后立刻 fix
+[[ "$BURN_PER_DAY" =~ ^\. ]] && BURN_PER_DAY="0$BURN_PER_DAY"
+[[ "$PROJECTED_MONTH" =~ ^\. ]] && PROJECTED_MONTH="0$PROJECTED_MONTH"
+[[ "$COMPUTE_COST" =~ ^\. ]] && COMPUTE_COST="0$COMPUTE_COST"
+[[ "$DISK_COST" =~ ^\. ]] && DISK_COST="0$DISK_COST"
+[[ "$TOTAL_SO_FAR" =~ ^\. ]] && TOTAL_SO_FAR="0$TOTAL_SO_FAR"
 
 PCT_OF_BUDGET=$(echo "scale=1; $PROJECTED_MONTH * 100 / $BUDGET" | bc)
 REMAINING_BUDGET=$(echo "scale=2; $BUDGET - $TOTAL_SO_FAR" | bc)
 REMAINING_HOURS=$(echo "scale=2; $REMAINING_BUDGET / $SPOT_RATE_HOUR" | bc)
+# bc leading '.' fix (避 JSON parse fail)
+[[ "$PCT_OF_BUDGET" =~ ^\. ]] && PCT_OF_BUDGET="0$PCT_OF_BUDGET"
+[[ "$REMAINING_BUDGET" =~ ^\. ]] && REMAINING_BUDGET="0$REMAINING_BUDGET"
+[[ "$REMAINING_HOURS" =~ ^\. ]] && REMAINING_HOURS="0$REMAINING_HOURS"
 
 # 5. Alert level
 if (( $(echo "$PCT_OF_BUDGET >= 100" | bc -l) )); then

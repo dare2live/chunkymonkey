@@ -803,6 +803,26 @@ regime_state.py 加 ret-based fallback (breadth=None case):
 OOS walk-forward PIT-strict (signal_date 之前 60d HS300, ret_60d), 不 leak future.
 test_regime_state 8/8 + test_ensemble 8/8 pass.
 
+### 2026-05-18 下午 audit_delivery_readiness.py + GCP cost_tracker + alpha158 ETL chain 修
+
+新增 backend/scripts/audit_delivery_readiness.py: 6 标准 1-stop check, 实测均值 **76%** (#1:95 / #2:80 / #3:85 / #4:90 / #5:100 / #6:5).
+
+新增 gcp/cost_tracker.sh + configs/launchd/com.chunkymonkey.gcp-cost-tracker.plist: GCP 月度成本实时跟踪 + 每 15 min cron, 实测 budget 39.9% / VM TERMINATED / alert OK.
+
+修 daily_update.sh:
+- Step 0 GCP cost check (verdict-gated USE_GCP=0 if RED)
+- Step 2c alpha158 freshness 自动 rebuild (>3d stale)
+- DRY/SKIP_SYNC env var override (\${DRY:-0})
+
+修 #1 数据管理 (40 → 95%):
+- fact_lhb_event ETL: 2026-04-28 → 2026-05-15 (raw 增量 rebuild)
+- sync_tdx_industry: 2026-05-07 → 2026-05-18 (5612 rows tdxhub fetch)
+- SLA_DAYS_OVERRIDE: 季报数据 100d 阈值 (financial_gpcw_8q / holders_top10 / qfii / aif10_holder_count)
+- alpha158 rebuild: 2026-04-23 → 2026-05-18 (4M rows / 813 dates / 12 sec)
+- rebuild_p0a_label_panel 增量 (2026-05-11~15 5 dates × 23,125 rows / 491 sec)
+
+实测 update_watermark_sla 0 alerts, audit_delivery_readiness 数据管理 95% PASS.
+
 ### 2026-05-18 凌晨 Phase 4 backtest_validation gate runner on MSAF 实测
 
 backend/scripts/run_phase4_gate_on_msaf.py: 拿 Phase 3.3 实测 22 monthly obs 跑 4 gates.
