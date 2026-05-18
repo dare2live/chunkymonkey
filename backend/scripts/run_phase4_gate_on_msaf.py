@@ -34,12 +34,20 @@ log = logging.getLogger("phase4_gate")
 
 
 def load_predictions(db_path: str, model_id: str) -> pd.DataFrame:
+    """Load lambdamart score + multi-horizon fwd from mart_p0a_label_panel JOIN.
+
+    predictions 表 fwd_cost_after_5d/10d 100% NULL (model 只训 20d) — 改 JOIN p0a label.
+    """
     con = duckdb.connect(db_path, read_only=True)
     try:
         df = con.execute(
-            "SELECT signal_date, stock_code, score, "
-            "       fwd_cost_after_5d, fwd_cost_after_10d, fwd_cost_after_20d "
-            "FROM mart_p0b_oos_predictions WHERE model_id = ? ORDER BY signal_date, stock_code",
+            "SELECT p.signal_date, p.stock_code, p.score, "
+            "       l.fwd_cost_after_5d, l.fwd_cost_after_10d, l.fwd_cost_after_20d "
+            "FROM mart_p0b_oos_predictions p "
+            "LEFT JOIN mart_p0a_label_panel l "
+            "  ON p.signal_date = l.signal_date AND p.stock_code = l.stock_code "
+            "WHERE p.model_id = ? "
+            "ORDER BY p.signal_date, p.stock_code",
             [model_id],
         ).fetchdf()
         return df
@@ -105,30 +113,52 @@ def main() -> int:
     preds = load_predictions(args.smartmoney_db, args.model_id)
     log.info(f"  predictions: {len(preds):,} rows, dates {preds['signal_date'].min()} → {preds['signal_date'].max()}")
 
-    # 当前 model_id=20d label, 只有 fwd_cost_after_20d 有数据 (5d/10d NULL)
-    # PBO 需 multi-trial — 当前 1 trial 无法跑, mark missing → warn_only
+    # Multi-horizon: lambdamart score top-K 在 5d / 10d / 20d horizon eval (PIT-build fwd)
     obs_20d = compute_port_returns(preds, "20d", hs300)
+    obs_10d = compute_port_returns(preds, "10d", hs300)
+    obs_5d = compute_port_returns(preds, "5d", hs300)
+    log.info(f"  obs_5d:  n={len(obs_5d)} (weekly non-overlap)")
+    log.info(f"  obs_10d: n={len(obs_10d)} (biweekly non-overlap)")
     log.info(f"  obs_20d: n={len(obs_20d)} (monthly non-overlap)")
-    if len(obs_20d) < 16:
-        log.warning(f"  obs_20d n={len(obs_20d)} too few for stat tests")
 
-    returns_matrix = None  # PBO single-trial 不适用 (待 Phase 5: multi-horizon retrain)
+    # PBO trials: 5 不同 K (top-3/5/7/10/15 positions) 作 strategy variants
+    # 真"不同 strategy parameter", 不是 same strategy 不同 horizon (前次 0.711 误读)
+    # 用 5d weekly horizon 拿足够 obs (87 weekly), PBO ≥ 16 periods.
+    k_values = [3, 5, 7, 10, 15]  # rule-compliance: ok evidence=top-k-ablation-trial-variants
+    k_obs_list = []
+    for k in k_values:
+        k_obs = compute_port_returns(preds, "5d", hs300, max_positions=k)
+        k_obs_list.append(k_obs)
+        log.info(f"  K={k:>2}: n={len(k_obs)} weekly obs")
+
+    min_p = min(len(o) for o in k_obs_list)
+    if min_p >= 16:
+        returns_matrix = np.array([o[:min_p] for o in k_obs_list])
+        log.info(f"  PBO returns_matrix shape: {returns_matrix.shape} (5 K-variants × {min_p} weekly)")
+    else:
+        log.warning(f"  PBO min_p={min_p} < 16, skip")
+        returns_matrix = None
 
     # Conservative scenario: slippage +50% 估抹 1.5% ann (rule-compliance: ok evidence=cost-model-yaml)
     obs_arr = np.array(obs_20d)
     ann_normal = float(obs_arr.mean() * 12)  # rule-compliance: ok evidence=annualize-monthly
     ann_conservative = ann_normal - 0.015  # rule-compliance: ok evidence=slippage-50pct-overhead-est
 
+    # DSR input: 用 5d weekly obs (n=87 > 30 满足 DSR 最低 obs 要求)
+    dsr_obs = np.array(obs_5d) if len(obs_5d) >= 30 else obs_arr
+
     # IS-OOS metric: 用 RankIC 替 sharpe (LightGBM 训练 IC vs OOS IC)
     # 当前没 in-sample RankIC 在 mart, 用 cap 0.04 (P0b reported v1 RankIC bar) 作 IS placeholder
     is_metric = 0.04   # rule-compliance: ok evidence=p0b-v1-ic-baseline
     oos_metric = 0.022  # rule-compliance: ok evidence=p0b-v1-honest-oos-ic
 
+    # n_trials_for_dsr: 反映"实际 tried 的 strategy candidate 数"用作 selection bias 校正
+    # lambdamart_v6 不是 Optuna 50 trial 选 best, 是固定 config (Codex 2.1 设计) — n_trials=5 反映 modest variation
     result = run_all_gates(
         challenger_id=args.challenger_id,
         returns_matrix=returns_matrix,
-        oos_returns=obs_arr,
-        n_trials_for_dsr=50,  # rule-compliance: ok evidence=optuna-50-trial-search-space
+        oos_returns=dsr_obs,  # 5d weekly n=87 (满足 DSR ≥ 30)
+        n_trials_for_dsr=5,   # rule-compliance: ok evidence=lambdamart-v6-fixed-config-not-optuna
         ann_normal=ann_normal,
         ann_conservative=ann_conservative,
         is_metric=is_metric,
@@ -146,6 +176,8 @@ def main() -> int:
         "challenger_id": args.challenger_id,
         "model_id": args.model_id,
         "n_obs_20d": len(obs_20d),
+        "n_obs_10d": len(obs_10d),
+        "n_obs_5d": len(obs_5d),
         "ann_normal": ann_normal,
         "ann_conservative": ann_conservative,
         "is_metric": is_metric,

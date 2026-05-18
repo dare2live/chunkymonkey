@@ -803,6 +803,17 @@ regime_state.py 加 ret-based fallback (breadth=None case):
 OOS walk-forward PIT-strict (signal_date 之前 60d HS300, ret_60d), 不 leak future.
 test_regime_state 8/8 + test_ensemble 8/8 pass.
 
+### 2026-05-18 下午 Phase 4 gate PBO multi-trial + DSR 5d weekly + Codex review spawn
+
+backend/scripts/run_phase4_gate_on_msaf.py 改进:
+- PBO: 5 K-variants (top-3/5/7/10/15) × 87 weekly obs → 0.145 PASS (此前缺 multi-trial → missing)
+- DSR: 改 obs_5d weekly n=87 (此前用 obs_20d n=22 < 30 → error)
+- n_trials_for_dsr 50→5 (lambdamart_v6 是固定 config 不是 Optuna 50 trials)
+
+当前 verdict: force_retrain (PBO PASS / DSR FAIL p_conf 0.0 / Conservative PASS / IS-OOS FAIL placeholder)
+
+Codex review spawn abb4894a: review 3 文件 (audit_delivery_readiness + cost_tracker + run_phase4_gate) + 3 设计 spec (PBO multi-trial Optuna / IS-OOS 真接 train log / Phase 3.4 sniper-institution batch builder).
+
 ### 2026-05-18 下午 audit_delivery_readiness.py + GCP cost_tracker + alpha158 ETL chain 修
 
 新增 backend/scripts/audit_delivery_readiness.py: 6 标准 1-stop check, 实测均值 **76%** (#1:95 / #2:80 / #3:85 / #4:90 / #5:100 / #6:5).
