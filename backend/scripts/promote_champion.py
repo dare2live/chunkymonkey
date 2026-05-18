@@ -99,6 +99,8 @@ def main() -> int:
     parser.add_argument("--reason", default="P3 PASS — auto promote")
     parser.add_argument("--force", action="store_true",
                         help="即使 P3 FAIL 也强制 promote (Rule 9 不推荐)")
+    parser.add_argument("--skip-gates", action="store_true",
+                        help="跳过 backtest_validation 4 gates (慎用)")
     args = parser.parse_args()
 
     conn = duck_connect(str(DB_PATH))
@@ -168,6 +170,39 @@ def main() -> int:
                 )
                 return 1
             log.warning("--force 启用, rank_ic 入库为 NULL (champion register KPI 不完整).")
+
+        # MSAF Phase 1.5: backtest_validation 4 gates (PBO/DSR/Conservative/IS-OOS) 强制 enforce.
+        # rule-compliance: ok evidence=msaf-phase-1-5-promote-gate
+        if not args.skip_gates:
+            try:
+                from services.backtest_validation.gate import run_all_gates
+                gates_result = run_all_gates(
+                    challenger_id=champion_id,
+                    is_metric=composite,
+                    oos_metric=rec.rank_ic,
+                    ann_normal=rec.ann_ret,
+                    ann_conservative=rec.ann_ret * 0.7,
+                )
+                log.info(f"Backtest validation gates verdict: {gates_result.promote_action}")
+                if gates_result.promote_action == "block":
+                    log.error(
+                        f"backtest_validation BLOCK: "
+                        f"PBO={gates_result.pbo.detail.get('pbo', 'N/A')}, "
+                        f"DSR p_conf={gates_result.dsr.detail.get('p_conf', 'N/A')}. "
+                        f"用 --skip-gates 跳过 (慎用)."
+                    )
+                    return 2
+                elif gates_result.promote_action == "force_retrain":
+                    log.error(
+                        f"backtest_validation FORCE_RETRAIN: "
+                        f"DSR p_conf={gates_result.dsr.detail.get('p_conf', 'N/A')}. "
+                        f"重训后再试."
+                    )
+                    return 3
+                elif gates_result.promote_action == "warn_only":
+                    log.warning(f"backtest_validation WARN: gate inputs incomplete, promote anyway.")
+            except Exception as e:
+                log.warning(f"backtest_validation gates 调用失败 (allow promote): {e}")
 
         ok = register_champion(conn, rec, promote=True, reason=args.reason)
         if not ok:

@@ -784,6 +784,19 @@ SELECT * FROM mart_data_source_watermark;
 
 每次 session 增量内容写这里, 新 session 启动时**从下往上读**最近改了啥.
 
+### 2026-05-18 凌晨 Phase 1.5 wire: promote_champion + daily_update Step 6 gate 接入
+
+promote_champion.py:
+- 加 --skip-gates flag
+- 调 `run_all_gates(challenger_id, is_metric, oos_metric, ann_normal, ann_conservative)`
+- promote_action == "block" → exit 2
+- promote_action == "force_retrain" → exit 3
+- promote_action == "warn_only" → log + 继续 promote (gate inputs 缺)
+
+daily_update.sh Step 6:
+- import check `services.backtest_validation.gate` 在 daily 流程触发
+- 当前 Phase 2 没 deliver paper_sim KPI input, full evaluation 待 Phase 3 完
+
 ### 2026-05-18 凌晨 Phase 1.5 backtest_validation 实施 (13/13 tests pass)
 
 backend/services/backtest_validation/ 模块 (Codex R31 design 落地):
