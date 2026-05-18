@@ -253,39 +253,58 @@ else
     log "DRY: skip rebuild"
 fi
 
-# Step 4: Model refresh (monthly Optuna or cached, 用户 push back 改 weekly → monthly)
-log "--- Step 4: Model refresh ---"
+# Step 4: Model refresh — event-driven 触发 + quarterly fallback (用户 push back 2026-05-18)
+log "--- Step 4: Model refresh (event-driven + quarterly fallback) ---"
 run_backtest_validation_gate || fatal "backtest_validation pre-flight gate failed"
-# 频率分析 (用户 2026-05-18 push back '需要 weekly 训练吗?'):
-# - daily / weekly: overkill (panel 增量小, hyperparam 不显著变)
-# - monthly (default): sweet spot — walk-forward OOS extend 1 month, hyperparam re-search 必要
-# - 触发: 每月 1 号 (DOM=1) 自动 retrain. Mac 12.8h overnight (\$0/月) 或 --gcp 4-6h (\$2.26/月)
+# 用户 push back: 'event-driven 我觉得比较合理或者按季度, gcp 设计成手工触发'
+#
+# 触发逻辑:
+# 1. event-driven (alpha decay): rank_ic 最近 4 windows 连降 → 触发 retrain (高优先级)
+# 2. quarterly fallback: DOM=1 of Jan/Apr/Jul/Oct (Q1/Q2/Q3/Q4 季初) → 触发 retrain
+# 3. 其它 days: use cached model
+#
+# GCP 改全手工触发 (不在 daily_update 自动调). 触发需 user explicit:
+#   bash scripts/run_phase5_extended_retrain.sh           # GCP 4-6h $2.26
+#   nohup ... retrain_lambdamart_v6.py ...                # Mac local 12.8h overnight
 DOM="${CHUNKY_DOM_OVERRIDE:-$(date +%-d)}"
-if [[ "$DOM" == "1" ]]; then
-    if [[ "$DRY" == "1" ]]; then
-        log "DRY: skip monthly LambdaMART v6 retrain (Day 1 of month)"
-    elif [[ "$USE_GCP" == "1" ]]; then
-        log "Day 1 of month: monthly LambdaMART v6 retrain on GCP (4-6h, ~\$2.26 spot, --gcp opt-in)"
-        bash gcp/vm_start.sh >> "$LOG" 2>&1 || fatal "VM start failed"
-        MODEL_REFRESH_VM_STARTED=1
-        set +e
-        run_lambdamart_v6_retrain_on_vm >> "$LOG" 2>&1
-        refresh_rc=$?
-        set -e
-        stop_model_refresh_vm
-        if [[ "$refresh_rc" != "0" ]]; then
-            fatal "LambdaMART v6 retrain failed on GCP"
-        fi
-        log "LambdaMART v6 monthly retrain complete (GCP): lambdamart_v6_${MODEL_ID_DATE}"
-    else
-        log "Day 1 of month: monthly LambdaMART v6 retrain on Mac local (12.8h overnight, \$0)"
-        log "  推荐 上月最后一天 Sunday 22:00 启动 nohup; 或用 --gcp flag 切 GCP"
-        log "  手动 1-click: nohup PYTHONPATH=backend python backend/scripts/retrain_lambdamart_v6.py --model-date ${MODEL_ID_DATE} > /tmp/retrain_${MODEL_ID_DATE}.log 2>&1 &"
-        log "  Skipping retrain in daily_update Mac default (避免 daily 12.8h 阻塞), 用户 monthly 手动 1-click 启动"
-    fi
+MONTH="${CHUNKY_MONTH_OVERRIDE:-$(date +%-m)}"
+IS_QUARTER_START=0
+[[ "$DOM" == "1" && ( "$MONTH" == "1" || "$MONTH" == "4" || "$MONTH" == "7" || "$MONTH" == "10" ) ]] && IS_QUARTER_START=1
+
+# 检查 alpha decay (rank_ic 最近 4 windows 连降)
+ALPHA_DECAY=$(PYTHONPATH=backend python -c "
+import duckdb
+con = duckdb.connect('data/smartmoney.duckdb', read_only=True)
+try:
+    # 取 latest champion model 最近 4 windows rank_ic
+    r = con.execute(\"\"\"
+        SELECT model_id, rank_ic FROM mart_p0b_walkforward_eval
+        WHERE model_id = (SELECT MAX(model_id) FROM mart_p0b_walkforward_eval WHERE rank_ic IS NOT NULL)
+        ORDER BY test_start DESC LIMIT 4
+    \"\"\").fetchall()
+    if len(r) >= 4:
+        ics = [row[1] for row in r]
+        # Strictly decreasing → decay
+        decay = all(ics[i] > ics[i+1] for i in range(3))
+        print('DECAY' if decay else 'STABLE')
+    else:
+        print('INSUFFICIENT_DATA')
+except Exception:
+    print('NO_EVAL')
+finally:
+    con.close()
+" 2>/dev/null)
+log "alpha decay check: $ALPHA_DECAY"
+
+if [[ "$ALPHA_DECAY" == "DECAY" ]]; then
+    log "[event-driven] Alpha decay detected (rank_ic 4 连降), 建议 retrain"
+    log "  手动触发: nohup PYTHONPATH=backend python backend/scripts/retrain_lambdamart_v6.py --model-date ${MODEL_ID_DATE} > /tmp/retrain_${MODEL_ID_DATE}.log 2>&1 &"
+    log "  或 GCP: bash scripts/run_phase5_extended_retrain.sh"
+elif [[ "$IS_QUARTER_START" == "1" ]]; then
+    log "[quarterly] Q$((($MONTH-1)/3+1)) 季初 (month=$MONTH day=$DOM), 建议 retrain"
+    log "  手动触发: nohup PYTHONPATH=backend python backend/scripts/retrain_lambdamart_v6.py --model-date ${MODEL_ID_DATE} > /tmp/retrain_${MODEL_ID_DATE}.log 2>&1 &"
 else
-    # Optional 触发: alpha decay (rank_ic 4 连降) — 待 Phase 5+ 加自动判定
-    log "Day $DOM of month: use cached LambdaMART v6 model (monthly retrain 在 1 号)"
+    log "[cached] alpha stable, 非季初, 使用 cached lambdamart_v6 model"
 fi
 
 # Step 5: paper_sim live update + regime check + MSAF ensemble KPI 真调
