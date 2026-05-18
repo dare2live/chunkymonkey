@@ -803,6 +803,23 @@ regime_state.py 加 ret-based fallback (breadth=None case):
 OOS walk-forward PIT-strict (signal_date 之前 60d HS300, ret_60d), 不 leak future.
 test_regime_state 8/8 + test_ensemble 8/8 pass.
 
+### 2026-05-18 下午 Codex P1 sniper batch builder 实施完成 — ensemble median 34.88→48.40% (+13.52pp)
+
+Codex agent blziuyb6u deliver:
+- backend/scripts/build_sniper_score_daily.py (SQL aggregate 7-rule confluence)
+- backend/tests/strategies/test_sniper_batch.py (3/3 pass)
+- run_msaf_ensemble_paper_sim.py 接 mart_sniper_score_daily.confluence_score
+
+实测 mart_sniper_score_daily 2.25M rows × 432 dates × 5210 stocks, trigger_pct 0.34%.
+
+ensemble (LM + sniper) vs lambdamart-only:
+- median ann +34.88% → **+48.40%** (+13.52pp) ★
+- hit_rate 63.64% → **68.18%** (+4.54pp)
+- mean +63.21% → +41.49% (outlier 削平 trade-off)
+- max_dd -21.38% → -24.28% (略恶化)
+
+核心 KPI 仍达标: median 48.40% > 25%, hit 68% > 55%, mean 41% > 25%.
+
 ### 2026-05-18 下午 P1 institution baseline 测试 — raw signal 反 underperform lambdamart-only
 
 ensemble runner 加 --with-institution flag (用 panel_v4.lhb_inst_buy_30d 简化):

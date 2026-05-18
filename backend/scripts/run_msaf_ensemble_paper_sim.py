@@ -1,17 +1,17 @@
 #!/usr/bin/env python3
-"""MSAF Phase 3.3: Ensemble paper_sim runner.
+"""MSAF Phase 3.4: Ensemble paper_sim runner.
 
 跑 3 类策略 ensemble + regime adaptive 加权的历史 paper_sim, 输出 KPI 跟 baseline 对比.
 
 3 类输入:
 - lambdamart_v6 (mart_p0b_oos_predictions 或 mart_p0b_lambdamart_v6_predictions)
-- sniper confluence (services.strategies.sniper, 当前 fallback 全 0)
+- sniper confluence (mart_sniper_score_daily)
 - 机构跟随 composite (services.strategies.institution_follow, 当前 fallback 全 0)
 
-For Phase 3.3 minimum viable:
+For Phase 3.4:
 - 用现有 lambdamart_v6 (Codex 2.1) 或 v4 ml_score 作输入
-- sniper / institution placeholder (返回 0 score, ensemble 仅取 lambdamart)
-- 后续 Phase 3.4 接全 3 source
+- sniper 读取 mart_sniper_score_daily.confluence_score 并归一化到 0..1
+- institution 可选用 panel_v4.lhb_inst_buy_30d
 
 Usage:
     PYTHONPATH=backend python backend/scripts/run_msaf_ensemble_paper_sim.py \
@@ -56,6 +56,28 @@ def load_lambdamart_predictions(
             "ORDER BY signal_date, stock_code",
             [model_id, start_date, end_date],
         ).fetchdf()
+        return df
+    finally:
+        con.close()
+
+
+def load_sniper_scores(
+    db_path: str,
+    start_date: str = "2024-07-01",  # rule-compliance: ok evidence=p0b-walk-forward-起始
+    end_date: str = "2026-04-13",    # rule-compliance: ok evidence=panel-cutoff
+) -> pd.DataFrame:
+    """Load sniper confluence scores normalized from 0..7 to 0..1."""
+    con = duckdb.connect(db_path, read_only=True)
+    try:
+        df = con.execute(
+            "SELECT signal_date, stock_code, CAST(confluence_score AS DOUBLE) / 7.0 AS sniper_score "
+            "FROM mart_sniper_score_daily "
+            "WHERE signal_date >= ? AND signal_date <= ? "
+            "ORDER BY signal_date, stock_code",
+            [start_date, end_date],
+        ).fetchdf()
+        if not df.empty:
+            df["signal_date"] = pd.to_datetime(df["signal_date"]).dt.normalize()
         return df
     finally:
         con.close()
@@ -223,7 +245,16 @@ def main() -> int:
     )
     log.info(f"  predictions: {len(preds):,} rows, {preds['signal_date'].min()} → {preds['signal_date'].max()}")
 
-    # 2b. Load institution score (Phase 3.4 minimum viable: lhb_inst_buy_30d)
+    # 2b. Load sniper score (Phase 3.4)
+    log.info("Loading sniper confluence scores...")
+    sniper_df = load_sniper_scores(args.smartmoney_db, args.start, args.end)
+    sniper_by_sd = {
+        sd: g.set_index("stock_code")["sniper_score"]
+        for sd, g in sniper_df.groupby("signal_date", sort=False)
+    }
+    log.info(f"  sniper scores: {len(sniper_df):,} rows, {len(sniper_by_sd):,} signal_dates")
+
+    # 2c. Load institution score (Phase 3.4 minimum viable: lhb_inst_buy_30d)
     inst_df = pd.DataFrame()
     if args.with_institution:
         log.info("Loading institution scores (lhb_inst_buy_30d)...")
@@ -254,18 +285,18 @@ def main() -> int:
         # lambdamart scores for this signal_date
         day_preds = preds[preds["signal_date"] == sd]
         lam = day_preds.set_index("stock_code")["score"]
+        day_sniper = sniper_by_sd.get(pd.Timestamp(sd).normalize(), pd.Series(dtype=float))
 
         # Institution score (Phase 3.4 minimum viable)
         inst = inst_by_sd.get(sd) if isinstance(inst_by_sd, dict) else (
             inst_by_sd.loc[sd] if sd in inst_by_sd.index.get_level_values(0).unique() else None
         )
 
-        # Sniper: 待 Codex agent a432eadffa 完成 mart_sniper_score_daily, 暂 None
         verdict = ensemble_scores(
             signal_date=sd_str,
             regime=regime,
             lambdamart_scores=lam,
-            sniper_scores=None,
+            sniper_scores=day_sniper,
             institution_scores=inst,
             max_positions=args.max_positions,
         )
