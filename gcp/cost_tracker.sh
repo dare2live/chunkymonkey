@@ -183,7 +183,7 @@ fi
 # Actionable: VM RUNNING 无 active job marker > IDLE_GRACE 分钟 → 自动 stop (proactive cost-cutting)
 # 防止"忘 stop" 用户场景, 用户 push back '主动 cost-cutting' (2026-05-18 stop hook)
 RUN_MARKER="$REPO_ROOT/data/reports/gcp_vm_active_job.marker"
-IDLE_GRACE_MIN="${GCP_IDLE_GRACE_MIN:-30}"      # rule-compliance: ok evidence=30min-grace-period
+IDLE_GRACE_MIN="${GCP_IDLE_GRACE_MIN:-5}"       # rule-compliance: ok evidence=5min-aggressive-grace (用户 push back '更主动')
 IDLE_TRACK_FILE="$REPO_ROOT/data/reports/gcp_vm_idle_first_seen.marker"
 
 if [[ "$VM_STATUS" == "RUNNING" && ! -f "$RUN_MARKER" ]]; then
