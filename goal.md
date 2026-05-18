@@ -40,10 +40,27 @@
 - SLA: 0 alerts
 
 **Phase 5 retrain 完成路径** (in-flight, 不需 LLM 干预):
-1. PID 79023 完成 (~10h, trial 7/50 当前)
+1. PID 79023 完成 (~21h 实测 per-trial ~33min × 50 trials, trial 8/50 当前 4.5h elapsed)
 2. `bash scripts/run_phase5_post_retrain.sh <new_model_id>` 自动跑: backfill walkforward_eval + P3 final holdout + promote_champion + ensemble paper_sim + phase4 gate + audit (现有, 已 commit)
-3. 重新 audit → 预期 criteria 2 升 90%, criteria 3 升 90%, criteria 6 升 30-40%
-4. 后续 调优 regime weights (Optuna 联合调优 institution cap 20%) + vol-aware sizing → criteria 6 70%+
+3. 重新 audit → 预期 criteria 2 升 100%, criteria 3 升 90%, criteria 6 升 70%
+
+**Data 上限 reality check (用户跨 5 年目标的硬约束)**:
+
+| Data 层 | 当前起点 | 当前 dates | 解锁 5 年所需起点 | Action |
+|---|---|---|---|---|
+| price_kline (market.duckdb) | 2022-01-01 | 1048 | 2021-01-01 | tdxhub backfill 1 年 (~2h, GCP $0.50) |
+| fact_alpha158_panel (alpha158.duckdb) | 2023-01-03 | 813 | 2022-01-01 | rebuild alpha158 1 年 (~6h Mac) |
+| mart_p0a_label_panel | 2024-01-02 | 568 | 2022-01-01 | rebuild label 2 年 (~3h) |
+| mart_p0a_feature_label_panel_v4 | 2024-01-02 | 557 | 2022-01-01 | rebuild panel_v4 2 年 (~12 min × N batches) |
+| mart_p0b_oos_predictions (Phase 5) | start=2023 → 预期 28 OOS months | trial 8/50 跑中 | start=2022 → 预期 50 OOS months | Phase 6 retrain start=2022 (~25h Mac 或 GCP $5) |
+
+n_obs ≥ 30 (criteria 6 → 70%): 仅 Phase 5 retrain 即可 (start=2023, 28-35 OOS months 边缘达标)
+n_obs ≥ 60 (criteria 6 → 85%): 需 Phase 6 retrain start=2022 + 上游 data backfill
+
+**P5 后调优 (达 100%)**:
+4. Optuna 联合调优 regime weights (institution cap 20%) + vol-aware sizing → sharpe ↑ / max_dd ↓
+5. Phase 6 上游 backfill + retrain start=2022 → n_obs ≥ 60 → criteria 6 85%+
+6. 跨 5 年 holdout 全验 → criteria 6 100%
 
 ### Critical Path 时序 (按 ETA 排序, 2026-05-18 更新)
 
