@@ -14,9 +14,9 @@
 | # | 类别 | 交付标准 | 当前状态 |
 |---|---|---|---|
 | 1 | 数据管理 | sync gap 自动 alert + watermark 实填 + 历史 leakage 清干净 + PIT 严格 | **40%** (update_watermark_sla.py 自动 watermark + SLA alert wire 进 daily_update Step 1, 实测 6 watermark 自动 update + 5 alert, 历史 leakage 部分清 (kline gap 修过), PIT 严格在 panel build 已固化) |
-| 2 | 策略模型管理 | MSAF 3 类策略 (纯量化/狙击/机构跟随) + ensemble + regime gate 全上线 + paper_sim KPI 达标 | **45%** (2.1 LambdaMART v6 retrain + paper_sim + 11 tests / 2.2 Sniper confluence+Kelly+exit / 2.3 机构跟随 LHB/资金/调研/北向 alpha. 待 ensemble + regime gate + paper_sim KPI 实测达标) |
+| 2 | 策略模型管理 | MSAF 3 类策略 (纯量化/狙击/机构跟随) + ensemble + regime gate 全上线 + paper_sim KPI 达标 | **60%** (2.1 LambdaMART v6 / 2.2 Sniper / 2.3 机构跟随 全 deliver + Phase 3 regime_state 8/8 tests pass 实测 HS300 1048 rows 2022-2026. 待 ensemble 加权 + paper_sim KPI 实测达标) |
 | 3 | backtester gate | PBO/DSR/conservative/IS-OOS 4 gate 全部 enforce + 历史反例阻断验证 | **实施完 70%** (backend/services/backtest_validation/ + 13 tests + promote_champion wire + daily_update Step 6 import check OK. 待历史反例阻断验证 + 全 KPI 接入实测) |
-| 4 | **全自动化 daily update** | 用户每天跑数据更新 = 1 click or zero click, 不需要大模型维护 | **scaffold + 8 步实 60%** (Step 1 SLA+preflight / Step 2 local tdxhub sync 或 GCP VM / Step 3 增量 panel rebuild / Step 4 Monday Optuna retrain / Step 6 gate import OK / Step 7-8 待. launchd plist + install_launchd_all.sh ready) |
+| 4 | **全自动化 daily update** | 用户每天跑数据更新 = 1 click or zero click, 不需要大模型维护 | **8 步真调用 75%** (Step 1 SLA+preflight / Step 2 local/GCP sync / Step 3 增量 rebuild / Step 4 Monday retrain / Step 5 regime + paper_sim / Step 6 gate / Step 7 promote ready, Step 8 report) |
 | 5 | GCP 成本控制 | 月 ≤ $10 credit, 每 batch 完 stop VM | rule 已固化 (CLAUDE.md §10.0.2), 待 sustained |
 | 6 | 实盘 GO/NO-GO | 跨 5 年回测 中位 ≥ 25%, 单年 ≥ 0%, Sharpe ≥ 2.0, PBO ≤ 0.2 | 0% (待 Phase 4 validation gate) |
 

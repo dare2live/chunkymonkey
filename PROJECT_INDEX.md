@@ -784,6 +784,19 @@ SELECT * FROM mart_data_source_watermark;
 
 每次 session 增量内容写这里, 新 session 启动时**从下往上读**最近改了啥.
 
+### 2026-05-18 凌晨 Phase 3 regime_state + daily_update Step 5/7 wire
+
+backend/services/strategies/regime/regime_state.py:
+- 4 状态 (bull/neutral/bear/crash) + REGIME_WEIGHTS dict (per ORCHESTRATION Layer 3)
+- 阈值: MA60 / ret60d > -15% / breadth 50%/40%
+- PIT-strict (signal_date 之前数据)
+- 实测 HS300 1048 rows 2022-2026 4 个 signal_date 全 neutral (breadth N/A)
+- 8/8 tests pass
+
+daily_update.sh:
+- Step 5 wire regime check (今日 verdict log)
+- Step 7 wire backtest_validation import check (待 Phase 3 完成 paper_sim KPI)
+
 ### 2026-05-18 凌晨 Codex Phase 2 parallel deliver — MSAF 3 类策略 implementation
 
 3 Codex parallel deliver:

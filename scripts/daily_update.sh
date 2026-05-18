@@ -226,10 +226,28 @@ else
     log "Non-trading refresh day (DOW=$DOW): use cached LambdaMART v6 model"
 fi
 
-# Step 5: paper_sim live update
-log "--- Step 5: paper_sim live ---"
-# TODO: 增量跑 paper_sim (今日 prediction + 累积 NAV)
-log "paper_sim live TBD (待 Phase 3: ensemble + regime gate)"
+# Step 5: paper_sim live update + regime check
+log "--- Step 5: paper_sim live + regime check ---"
+# Phase 3 regime_state 已 deliver. paper_sim live 需要 model output (Phase 2 完后).
+# 当前仅跑 regime_state check, 输出 today's verdict.
+if [[ "$DRY" == "0" ]]; then
+    PYTHONPATH=backend python - >> "$LOG" 2>&1 <<'PYEOF'
+import sys
+from datetime import date
+sys.path.insert(0, "backend")
+from services.strategies.regime.regime_state import load_hs300_kline, compute_regime_state
+try:
+    kline = load_hs300_kline()
+    sd = date.today().strftime("%Y-%m-%d")
+    v = compute_regime_state(sd, kline)
+    print(f"[regime] {sd}: state={v.state}, weights={v.weights}, reasoning={v.reasoning}")
+except Exception as e:
+    print(f"[regime] failed: {e}")
+PYEOF
+    log "regime check done (see log for verdict)"
+else
+    log "DRY: skip regime/paper_sim"
+fi
 
 # Step 6: backtester-mcp gate check
 log "--- Step 6: PBO/DSR/conservative gate ---"
@@ -252,10 +270,26 @@ except Exception as e:
 PYEOF
 log "gate module import check OK (full evaluation 待 Phase 3 paper_sim ensemble 输出 KPI 接入)"
 
-# Step 7: Champion promote
+# Step 7: Champion promote (auto if gate pass)
 log "--- Step 7: Champion promote ---"
-# TODO: 若 gate pass + Sharpe 提升 → promote
-log "champion promote TBD"
+# Phase 3+ 完整 wire 需要: 1) 最新 P3 run_id 2) gate_check 实测 KPI
+# 当前仅 import check 验证 promote_champion + backtest_validation 完整 OK
+if [[ "$DRY" == "0" ]]; then
+    PYTHONPATH=backend python -c "
+import sys
+sys.path.insert(0, 'backend')
+try:
+    from services.backtest_validation.gate import run_all_gates
+    print('[promote] backtest_validation import OK, awaiting Phase 3 ensemble KPI')
+    sys.exit(0)
+except Exception as e:
+    print(f'[promote] import failed: {e}')
+    sys.exit(1)
+" >> "$LOG" 2>&1
+    log "champion promote 接口 ready, 待 Phase 3 ensemble paper_sim 输出 KPI 触发"
+else
+    log "DRY: skip champion promote check"
+fi
 
 # Step 8: Report
 log "--- Step 8: Report ---"
