@@ -45,11 +45,12 @@ def load_lambdamart_predictions(
     start_date: str = "2024-07-01",  # rule-compliance: ok evidence=p0b-walk-forward-起始
     end_date: str = "2026-04-13",    # rule-compliance: ok evidence=panel-cutoff
 ) -> pd.DataFrame:
-    """Load LambdaMART (or LGBM) predictions from mart_p0b_oos_predictions."""
+    """Load LambdaMART (or LGBM) predictions + fwd returns from mart_p0b_oos_predictions."""
     con = duckdb.connect(db_path, read_only=True)
     try:
         df = con.execute(
-            "SELECT signal_date, stock_code, score "
+            "SELECT signal_date, stock_code, score, "
+            "       fwd_cost_after_5d, fwd_cost_after_10d, fwd_cost_after_20d "
             "FROM mart_p0b_oos_predictions "
             "WHERE model_id = ? AND signal_date >= ? AND signal_date <= ? "
             "ORDER BY signal_date, stock_code",
@@ -58,6 +59,113 @@ def load_lambdamart_predictions(
         return df
     finally:
         con.close()
+
+
+def compute_kpi(results: list[dict], preds: pd.DataFrame, horizon: str = "20d") -> dict:
+    """计算 portfolio KPI from ensemble top-K + fwd return.
+
+    Args:
+        results: list of dict from main loop (含 signal_date + top_k_codes)
+        preds: DataFrame with signal_date, stock_code, fwd_cost_after_5d/10d/20d
+        horizon: '5d', '10d', '20d' (= rebal_period)
+
+    Returns:
+        {ann_ret, max_dd, sharpe, n_obs, hit_rate, mean_ret, std_ret}
+
+    Note: rebal_freq = horizon (non-overlapping). 每 N trading days 取 1 obs.
+    horizon=20d 432 dates → 21 non-overlap monthly obs.
+    annualize_factor = 252/N (1.0 for 20d if treated as 12 obs/year).
+
+    rule-compliance: ok evidence=p0a-label-fwd-cost-after-N-d
+    """
+    fwd_col = f"fwd_cost_after_{horizon}"
+    n_days = int(horizon.rstrip("d"))
+    annualize_factor = 252 / n_days  # rule-compliance: ok evidence=trading-days-per-year
+
+    # Map (signal_date, stock_code) → fwd
+    fwd_map = preds.set_index(["signal_date", "stock_code"])[fwd_col].to_dict()
+
+    # Non-overlapping rebal: 每 n_days trading days 取 1 obs
+    rebal_results = results[::n_days]
+
+    obs: list[float] = []
+    n_skip = 0
+    for r in rebal_results:
+        sd_key = pd.Timestamp(r["signal_date"]).normalize()
+        # ensemble top_k_codes — equal weight, drop NaN
+        rets = []
+        for code in r["top_k_codes"]:
+            v = fwd_map.get((sd_key, code))
+            if v is not None and pd.notna(v):
+                rets.append(float(v))
+        if not rets:
+            n_skip += 1
+            continue
+        # Cash 占比 (bear regime 60% cash)
+        cash_pct = r.get("cash_pct", 0.0)
+        # Equity portfolio return
+        equity_ret = sum(rets) / len(rets)
+        # Total portfolio (cash 收益 0)
+        port_ret = (1 - cash_pct) * equity_ret
+        obs.append(port_ret)
+
+    if not obs:
+        return {"ann_ret": None, "max_dd": None, "sharpe": None, "n_obs": 0,
+                "n_skip": n_skip, "horizon": horizon}
+
+    obs_arr = np.array(obs)
+    mean_ret = obs_arr.mean()
+    std_ret = obs_arr.std(ddof=1)
+    sharpe = (mean_ret / std_ret * (annualize_factor ** 0.5)) if std_ret > 1e-12 else None
+
+    # NAV / max_dd (cumulative product) — non-overlap rebal so 真 compound
+    nav = (1 + obs_arr).cumprod()
+    running_max = pd.Series(nav).cummax()
+    drawdown = (pd.Series(nav) - running_max) / running_max
+    max_dd = float(drawdown.min())
+
+    # CAGR (compound annual) — 真实复利, 不是 arithmetic mean*12
+    nav_end = float(nav[-1])
+    n_years = len(obs_arr) / annualize_factor
+    cagr = (nav_end ** (1 / n_years) - 1) if (nav_end > 0 and n_years > 0) else None
+    # Arithmetic mean ann_ret (兼容)
+    ann_ret_arith = mean_ret * annualize_factor
+
+    hit_rate = float((obs_arr > 0).sum() / len(obs_arr))
+
+    # Robust stats: median + trimmed mean (剔 top/bottom 10% 防 outlier 抬指标)
+    median_ret = float(np.median(obs_arr))
+    # Trimmed mean (10% each side)
+    n_trim = max(1, len(obs_arr) // 10) if len(obs_arr) >= 10 else 0
+    if n_trim > 0:
+        sorted_obs = np.sort(obs_arr)
+        trimmed = sorted_obs[n_trim:-n_trim]
+        trimmed_mean = float(trimmed.mean()) if len(trimmed) > 0 else float(mean_ret)
+    else:
+        trimmed_mean = float(mean_ret)
+    median_ann = median_ret * annualize_factor  # rule-compliance: ok evidence=annualize-from-period
+    trimmed_ann = trimmed_mean * annualize_factor  # rule-compliance: ok evidence=annualize-from-period
+
+    return {
+        "ann_ret_cagr": float(cagr) if cagr is not None else None,  # 主指标 (compound)
+        "ann_ret_arith": float(ann_ret_arith),  # arithmetic mean × annualize
+        "ann_ret_median": float(median_ann),  # robust median × annualize (Rule 5 anti-outlier)
+        "ann_ret_trimmed10": float(trimmed_ann),  # 剔 top/bottom 10% 后 mean × annualize
+        "max_dd": max_dd,
+        "sharpe": float(sharpe) if sharpe is not None else None,
+        "n_obs": len(obs_arr),
+        "n_skip": n_skip,
+        "n_years": float(n_years),
+        "horizon": horizon,
+        "mean_ret_per_period": float(mean_ret),
+        "median_ret_per_period": median_ret,
+        "std_ret_per_period": float(std_ret),
+        "hit_rate": hit_rate,
+        "nav_end": nav_end,
+    }
+
+
+import numpy as np  # noqa: E402
 
 
 def main() -> int:
@@ -70,6 +178,8 @@ def main() -> int:
     parser.add_argument("--max-positions", type=int, default=5)
     parser.add_argument("--output-json", default=str(REPO_ROOT / "data" / "reports" / "msaf_ensemble_run.json"))
     parser.add_argument("--dry-run", action="store_true")
+    parser.add_argument("--compute-kpi", action="store_true", help="计算 portfolio KPI (ann/max_dd/sharpe)")
+    parser.add_argument("--horizon", default="20d", choices=["5d", "10d", "20d"])
     args = parser.parse_args()
 
     log.info(f"=== MSAF Ensemble paper_sim {args.start} → {args.end} ===")
@@ -127,6 +237,21 @@ def main() -> int:
     log.info(f"  signal_dates processed: {len(results)}")
     log.info(f"  regime distribution: {regime_counts}")
 
+    # KPI compute
+    kpi = None
+    if args.compute_kpi:
+        log.info(f"=== compute KPI (horizon={args.horizon}) ===")
+        kpi = compute_kpi(results, preds, horizon=args.horizon)
+        log.info(f"  ann_ret (CAGR):     {kpi.get('ann_ret_cagr'):+.2%}" if kpi.get('ann_ret_cagr') else "  ann_ret_cagr: N/A")
+        log.info(f"  ann_ret (arith):    {kpi.get('ann_ret_arith'):+.2%}" if kpi.get('ann_ret_arith') else "  ann_ret_arith: N/A")
+        log.info(f"  ann_ret (median):   {kpi.get('ann_ret_median'):+.2%} ★ robust" if kpi.get('ann_ret_median') is not None else "  ann_ret_median: N/A")
+        log.info(f"  ann_ret (trim 10%): {kpi.get('ann_ret_trimmed10'):+.2%} ★ robust" if kpi.get('ann_ret_trimmed10') is not None else "  ann_ret_trim10: N/A")
+        log.info(f"  max_dd:  {kpi.get('max_dd'):+.2%}" if kpi.get('max_dd') else "  max_dd:  N/A")
+        log.info(f"  sharpe:  {kpi.get('sharpe'):.3f}" if kpi.get('sharpe') else "  sharpe:  N/A")
+        log.info(f"  hit_rate: {kpi.get('hit_rate'):.2%}" if kpi.get('hit_rate') is not None else "  hit_rate: N/A")
+        log.info(f"  n_obs: {kpi.get('n_obs')}, n_skip: {kpi.get('n_skip')}, n_years: {kpi.get('n_years'):.2f}")
+        log.info(f"  NAV_end: {kpi.get('nav_end'):.4f}" if kpi.get('nav_end') else "")
+
     # Output
     if not args.dry_run:
         out_path = Path(args.output_json)
@@ -138,6 +263,7 @@ def main() -> int:
             "n_signal_dates": len(results),
             "results": results[:10],  # first 10 sample, full results 太大不存
             "results_total": len(results),
+            "kpi": kpi,
         }, indent=2, ensure_ascii=False, default=str))
         log.info(f"  saved: {args.output_json}")
 

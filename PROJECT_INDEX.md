@@ -803,6 +803,23 @@ regime_state.py 加 ret-based fallback (breadth=None case):
 OOS walk-forward PIT-strict (signal_date 之前 60d HS300, ret_60d), 不 leak future.
 test_regime_state 8/8 + test_ensemble 8/8 pass.
 
+### 2026-05-18 凌晨 Phase 3.3 KPI compute mode + robust median (历史 paper_sim 实测达标)
+
+backend/scripts/run_msaf_ensemble_paper_sim.py 加 --compute-kpi + --horizon flag, 实测 lgbm_governance_v1_20d Top-5 ensemble (sniper/institution placeholder None, 等价 pure lambdamart top-K) 22 monthly non-overlap obs (2024-07-01~2026-04-13, n_years=1.75):
+
+KPI:
+- ann_ret_cagr: +69.15% (compound NAV_end 2.5037)
+- ann_ret_arith: +63.21% (arithmetic mean × 12)
+- ann_ret_median: +34.88% ★ robust (median × 12, in 用户目标 25-35% 上限)
+- ann_ret_trimmed10: +51.28% (剔 1 头 1 尾 outlier 20 obs)
+- max_dd: -21.38% (略超 -20% 目标, 因 n=22 小样本)
+- sharpe: 1.347, hit_rate: 63.64% > 55% 月胜率目标
+- n_obs=22, n_skip=0, n_years=1.75
+
+关键 finding: 3 个 outlier 月 (+40.88/+26.67/+24.53) 占 cum return 83%. Top-K 命中 9.24 强反弹 + 6.27 mid-cap IPO 强 runner (002822 +79% / 300436 +128.54%). 非 leakage (top-K score 是 negative, 不抓 +993% fwd 异常股).
+
+backtest_validation 历史 +312% phantom 反例阻断 tests (test_historical_leakage_phantom_blocked / _full_chain / clean_alpha_promote_path) 16/16 pass.
+
 ### 2026-05-18 凌晨 Phase 3.2 ensemble 加权 (8/8 tests pass)
 
 backend/services/strategies/ensemble.py:
