@@ -71,19 +71,23 @@ def _compute_final_kpi(conn, model_id: str, last_n_months: int = 6) -> FinalHold
     Returns FinalHoldoutMetrics 含 model_version / feature_version / label_version /
     seed (从 mart_p0b_oos_predictions 元数据继承).
     """
+    # predictions table.fwd_cost_after_10d 100% NULL (model 只训 20d), JOIN mart_p0a_label_panel
     rows = conn.execute(
         """
         WITH ranked AS (
-            SELECT signal_date, stock_code, score, fwd_cost_after_10d,
-                   ROW_NUMBER() OVER (PARTITION BY signal_date ORDER BY score DESC NULLS LAST) AS rk,
-                   model_version, feature_version, label_version
-            FROM mart_p0b_oos_predictions
-            WHERE model_id = ?
+            SELECT p.signal_date, p.stock_code, p.score,
+                   l.fwd_cost_after_20d AS fwd_ret,
+                   ROW_NUMBER() OVER (PARTITION BY p.signal_date ORDER BY p.score DESC NULLS LAST) AS rk,
+                   p.model_version, p.feature_version, p.label_version
+            FROM mart_p0b_oos_predictions p
+            LEFT JOIN mart_p0a_label_panel l
+              ON p.signal_date = l.signal_date AND p.stock_code = l.stock_code
+            WHERE p.model_id = ?
         ),
         monthly AS (
             SELECT DATE_TRUNC('month', signal_date) AS month_start,
-                   AVG(fwd_cost_after_10d) AS avg_ret
-            FROM ranked WHERE rk <= 5 AND fwd_cost_after_10d IS NOT NULL
+                   AVG(fwd_ret) AS avg_ret
+            FROM ranked WHERE rk <= 5 AND fwd_ret IS NOT NULL
             GROUP BY DATE_TRUNC('month', signal_date)
             ORDER BY month_start DESC
             LIMIT ?

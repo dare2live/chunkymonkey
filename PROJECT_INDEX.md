@@ -803,6 +803,21 @@ regime_state.py 加 ret-based fallback (breadth=None case):
 OOS walk-forward PIT-strict (signal_date 之前 60d HS300, ret_60d), 不 leak future.
 test_regime_state 8/8 + test_ensemble 8/8 pass.
 
+### 2026-05-18 下午 P3 Final Holdout PASS (run_p3_session_fixed) — 4 硬验收全过
+
+Fix backend/scripts/run_p3_final_holdout.py: 改 fwd_cost_after_10d (predictions 100% NULL) → JOIN mart_p0a_label_panel fwd_cost_after_20d.
+
+实测 P3 PASS (lgbm_20260517_governance_v1_20d × 22 OOS months 2024-07~2026-04):
+- ann_ret 30.68% ≥ 30% PASS
+- max_dd -10.84% ≥ -20% PASS
+- excess vs HS300 +30.68% PASS
+- monthly_win_rate 77.27% ≥ 55% PASS
+- Verdict PASS, 可启动 paper trading
+
+此前 P3 全 0 错误 record (p3_governance_v1_final_20260517T085253) 应作废 (待物理清).
+
+promote_champion 仍阻 (mart_p0b_walkforward_eval rank_ic NULL, 待 retrain 写入).
+
 ### 2026-05-18 下午 Phase 4 gate PBO multi-trial + DSR 5d weekly + Codex review spawn
 
 backend/scripts/run_phase4_gate_on_msaf.py 改进:
