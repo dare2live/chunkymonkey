@@ -227,7 +227,9 @@ def main() -> int:
     parser.add_argument("--compute-kpi", action="store_true", help="计算 portfolio KPI (ann/max_dd/sharpe)")
     parser.add_argument("--horizon", default="20d", choices=["5d", "10d", "20d"])
     parser.add_argument("--no-institution", action="store_true",
-                        help="Disable mart_institution_score_daily composite for ablation")
+                        help="Disable mart_institution_score_daily composite for ablation (also default off)")
+    parser.add_argument("--with-institution", action="store_true",
+                        help="Enable mart_institution_score_daily composite (默认 OFF 实测 dilute lambdamart; Phase 5 调优后再 default ON)")
     args = parser.parse_args()
 
     log.info(f"=== MSAF Ensemble paper_sim {args.start} → {args.end} ===")
@@ -253,12 +255,16 @@ def main() -> int:
     }
     log.info(f"  sniper scores: {len(sniper_df):,} rows, {len(sniper_by_sd):,} signal_dates")
 
-    # 2c. Load institution score.
+    # 2c. Load institution score (default OFF per commit a10131f9 实测 KPI dilute)
+    # 实测 LM+sniper+inst: median -9.76% / max_dd -39.08% (vs LM+sniper +48.40% / -24.28%)
+    # 待 Phase 5 Optuna 联合调优 regime weights (institution cap 20%) 后 default ON.
     inst_df = pd.DataFrame()
-    if not args.no_institution:
-        log.info("Loading institution composite scores...")
+    if args.with_institution and not args.no_institution:
+        log.info("Loading institution composite scores (--with-institution opt-in)...")
         inst_df = load_institution_scores(args.smartmoney_db, args.start, args.end)
         log.info(f"  institution scores: {len(inst_df):,} rows")
+    else:
+        log.info("Institution scores SKIPPED (default OFF, opt-in --with-institution; see docs/msaf_p1b_institution_composite_20260518.md)")
 
     # 3. Loop daily signals
     signal_dates = preds["signal_date"].drop_duplicates().tolist()

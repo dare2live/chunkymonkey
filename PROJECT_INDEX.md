@@ -784,6 +784,15 @@ SELECT * FROM mart_data_source_watermark;
 
 每次 session 增量内容写这里, 新 session 启动时**从下往上读**最近改了啥.
 
+### 2026-05-18 下午 ensemble runner --with-institution opt-in flag (default OFF) — 均值 90% 维持
+
+修 Codex P1b deliver 后 institution 默认 ON 导致 KPI 大降:
+- 加 --with-institution flag 显式 opt-in
+- 默认 OFF (实测 LM+sniper median +48.40% 远优 LM+sniper+inst -9.76%)
+- Phase 5 Optuna 联合调优 regime weights 后才 default ON
+
+均值 90% 维持: #1 100% / #2 90% (LM+sniper) / #3 75% / #4 100% / #5 100% / #6 60%.
+
 ### 2026-05-18 凌晨 Phase 3.3 ensemble paper_sim runner + regime ret fallback
 
 backend/scripts/run_msaf_ensemble_paper_sim.py:
@@ -802,21 +811,6 @@ regime_state.py 加 ret-based fallback (breadth=None case):
 
 OOS walk-forward PIT-strict (signal_date 之前 60d HS300, ret_60d), 不 leak future.
 test_regime_state 8/8 + test_ensemble 8/8 pass.
-
-### 2026-05-18 下午 Codex P1b institution 4-class composite deliver + 实测 default OFF (KPI dilute)
-
-Codex agent task-mpavrn1o-w0ro9l deliver mart_institution_score_daily 2.25M rows (4-class LHB+CapitalFlow+Survey+Northbound).
-
-实测 LM+sniper+inst vs LM+sniper:
-- median -58.16pp (+48.40 → -9.76%)
-- max_dd 恶化 14.80pp (-24 → -39%)
-- hit_rate -31.82pp (68 → 36%)
-
-根因: avg_composite 0.065 低 base rate + ensemble min-max sparse-active 主导 → dilute lambdamart.
-
-决策: ensemble runner --with-institution flag opt-in, default OFF. Phase 5 Optuna 联合调优 regime weights (institution cap 20%).
-
-GCP P5 Extended Retrain 1-click wrapper scripts/run_phase5_extended_retrain.sh: 7 步 (budget check / vm_start / git pull / nohup retrain / monitor / auto-stop / pull). ETA 4-6h GCP \$2.26 (实测 smoke 21 min × 6 windows × 5 trials refine).
 
 ### 2026-05-18 下午 audit #2 detect sniper真接 — 均值 88→90% (LM+sniper)
 
