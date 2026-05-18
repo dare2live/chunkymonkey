@@ -40,7 +40,7 @@
 | **P1** | Phase 3.4 sniper batch builder (SQL aggregate per signal_date×stock 7-rule confluence) | #2 80→90% | 2-3 day | local + Codex spec | b53h8en1m completing |
 | **P1** | Phase 3.4 institution batch builder (LHB+CapitalFlow+Survey+Northbound composite) | #2 90→95% | 2-3 day | local | — |
 | **P2** | fact_model_train_log 表 + retrain script 加 IS RankIC log | #3 75→85% | 2-3 day | local | — |
-| **P3** | GCP VM retrain start_date=2022 walk-forward (50 Optuna trials × 3 horizons) | #3 85→95%, #6 60→80% | 1 week | GCP VM 35-50h \$15-19 spot | 预算预留 \$10 已规划 |
+| **P3** | GCP VM retrain start_date=2022 walk-forward (50 Optuna trials × 3 horizons) | #3 85→95%, #6 60→80% | 4-6h GCP (实测 6 windows × 5 trials = 21 min refine) | GCP n2-standard-32 spot 6h × \$0.376 = **\$2.26** | 预算预留 \$10 充足 (vs 之前 \$15-19 高估) |
 | **P4** | MSAF max_dd 修: vol-aware sizing + bear cash 仓 | #6 80→90% | 3-5 day | local + Codex spec | — |
 | **P5** | 跨 5 年 holdout KPI 全验 (含 2022-2024 OOS) | #6 90→100% | 3-5 day | local | P3 数据 ready |
 
@@ -51,6 +51,23 @@
 - `PYTHONPATH=backend python backend/scripts/audit_delivery_readiness.py` 随时查 6 标准当前状态
 - `bash gcp/cost_tracker.sh` 随时查 GCP 月度成本 + auto-stop 触发
 - launchd cron 自动跑 (cost-tracker 每 15 min, daily-update 每天 17:00, nightly-data-audit 每天 2 AM, codex-monitor 每 15 min)
+
+### GCP 成本固化具体方案 (用户 push back 重点)
+
+| 时机 | 机制 | 实施 commit |
+|---|---|---|
+| **pre-flight** | vm_start.sh budget check, RED → 拒绝启动 exit 2 | fb6a0369 |
+| **pre-flight** | YELLOW → 警告但允许 | fb6a0369 |
+| **pre-flight** | active_job marker auto create | fb6a0369 |
+| **in-flight** | cost_tracker.sh 每 15 min cron (launchd plist) | 6dc2251a |
+| **in-flight** | RED + RUNNING → auto bash vm_stop.sh | b160d56e |
+| **in-flight** | VM RUNNING 无 marker → 警告 ('忘 stop' 防御) | b160d56e |
+| **in-flight** | daily_update Step 0: cost check, RED → USE_GCP=0 fallback | 5b5d55bc |
+| **post-flight** | vm_stop.sh auto rm marker | fb6a0369 |
+| **monitoring** | data/reports/gcp_cost_summary.json (各 cron 写入) | 6dc2251a |
+| **monitoring** | data/reports/gcp_vm_uptime_log.csv (累计 uptime 估算) | 6dc2251a |
+
+GCP "不浪费资源" 5 层防御 (pre/in/post + monitor + audit), 全 actionable + verdict-gated.
 
 跑 `PYTHONPATH=backend python backend/scripts/audit_delivery_readiness.py` 随时查 6 criteria 当前状态.
 
