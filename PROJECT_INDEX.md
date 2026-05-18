@@ -784,6 +784,17 @@ SELECT * FROM mart_data_source_watermark;
 
 每次 session 增量内容写这里, 新 session 启动时**从下往上读**最近改了啥.
 
+### 2026-05-18 凌晨 ORCHESTRATION.md 顶层指挥体系 (用户 push back)
+
+用户 push back: "先设计一个指挥管理体系和方案, 怎么管理调度使用 agents 和 codex, 怎么使用谷歌云的资源". 写 ORCHESTRATION.md 顶层体系 doc (7 章节):
+- 体系总览 (Layer 0-3: user → Claude main → Codex/Claude sub-agents → 资源)
+- Agent 调度规则 (决策树 + 模板 + 并行 + 监控)
+- GCP 资源管理 (任务→资源决策 + VM 生命周期 + 月预算 + 数据 lifecycle)
+- commit/push/codegraph 工作流 (safe_commit pre-flight)
+- 任务分类 4 类 (设计/代码/compute/维护)
+- 6 项交付标准跟踪
+- 不再 ad-hoc 撞墙修 — 持续优化
+
 ### 2026-05-18 凌晨 防 Codex / commit 浪费时间 (用户 push back)
 
 用户 push back 2 项时间浪费:
