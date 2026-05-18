@@ -46,6 +46,17 @@ log = logging.getLogger("watermark_sla")
 # SLA threshold by source_tier (trading days)
 SLA_DAYS = {1: 1, 2: 2, 3: 3}
 
+# Override: 季度数据 (报告期 quarterly) 单独配置 SLA, 不走 tier
+# 季报披露窗: Q1=4/30 / Q2=8/31 / Q3=10/31 / Q4=4/30(年报)
+# 真实 publish lag 1-2 month 后, SLA 100d 覆盖最坏情况
+# rule-compliance: ok evidence=a-share-disclosure-window
+SLA_DAYS_OVERRIDE = {
+    "financial_gpcw_8q": 100,        # 8 quarter 财报, 季度更新
+    "holders_top10_float": 100,      # top10 股东季报
+    "qfii_holding_quarterly": 100,   # qfii 季报
+    "aif10_holder_count": 100,       # 股东户数季报
+}
+
 # data_domain → actual table + date column
 DATA_SOURCE_QUERIES = {
     "kline_daily": {
@@ -139,7 +150,8 @@ def main() -> int:
             actual_date = _query_actual_max_date(market_conn, smart_conn, data_domain)
             actual_days = _days_since(actual_date, today)
             watermark_days = _days_since(watermark_date, today)
-            sla = SLA_DAYS.get(source_tier, 3)
+            # 季度数据 override (gpcw_8q / holders_top10 / qfii 等)
+            sla = SLA_DAYS_OVERRIDE.get(data_domain, SLA_DAYS.get(source_tier, 3))
 
             status = "OK"
             alert = False
