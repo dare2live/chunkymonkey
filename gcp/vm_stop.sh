@@ -42,6 +42,10 @@ fi
 echo "[vm_stop] Stopping ${VM_NAME}..."
 gcloud compute instances stop "${VM_NAME}" --zone="${ZONE}"
 
+# 3b. Clear active_job marker (cost_tracker idle 检测用)
+REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+rm -f "$REPO_ROOT/data/reports/gcp_vm_active_job.marker"
+
 # 4. Verify
 status_after=$(gcloud compute instances describe "${VM_NAME}" --zone="${ZONE}" --format='value(status)' 2>/dev/null || echo "?")
 echo "[vm_stop] VM 状态: ${status_after}"

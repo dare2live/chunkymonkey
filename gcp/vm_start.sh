@@ -13,10 +13,45 @@ set -euo pipefail
 VM_NAME="${VM_NAME:-chunkymonkey-optuna}"
 ZONE="${ZONE:-us-central1-a}"
 WAIT_SSH="${WAIT_SSH:-1}"
+FORCE="${FORCE:-0}"
+DRY="${DRY:-0}"
 
-if [[ "${1:-}" == "--no-wait" ]]; then
-    WAIT_SSH=0
+for arg in "$@"; do
+    case "$arg" in
+        --no-wait) WAIT_SSH=0 ;;
+        --force) FORCE=1 ;;
+        --dry|--dry-run) DRY=1 ;;
+    esac
+done
+
+# Budget enforcement: cost_tracker RED alert 拒绝启动 (用户 push back: GCP 不浪费资源具体方案)
+REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+if [[ -f "$REPO_ROOT/gcp/cost_tracker.sh" && "$FORCE" != "1" ]]; then
+    echo "[vm_start] Pre-flight: GCP budget check..."
+    set +e
+    bash "$REPO_ROOT/gcp/cost_tracker.sh" --quiet >/dev/null 2>&1
+    COST_EXIT=$?
+    set -e
+    case "$COST_EXIT" in
+        2)
+            echo "[vm_start] BLOCK: 月度预算 RED (> 100%), 拒绝启动 VM 防超支."
+            echo "[vm_start]   解锁: bash gcp/vm_start.sh --force (慎用)"
+            echo "[vm_start]   或等下个月 budget reset, 或调高 GCP_BUDGET_USD env var"
+            exit 2
+            ;;
+        1)
+            echo "[vm_start] WARN: 月度预算 YELLOW (> 80%), 谨慎使用 VM"
+            echo "[vm_start]   建议: 跑完立即 bash gcp/vm_stop.sh"
+            ;;
+        0)
+            echo "[vm_start] Budget OK, 继续启动"
+            ;;
+    esac
 fi
+
+# Mark active_job marker (cost_tracker idle 检测用)
+mkdir -p "$REPO_ROOT/data/reports"
+date -Iseconds > "$REPO_ROOT/data/reports/gcp_vm_active_job.marker"
 
 # Check current state
 status=$(gcloud compute instances describe "${VM_NAME}" --zone="${ZONE}" --format='value(status)' 2>/dev/null || echo "MISSING")
