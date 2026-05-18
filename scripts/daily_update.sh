@@ -279,11 +279,10 @@ else
     log "Non-trading refresh day (DOW=$DOW): use cached LambdaMART v6 model"
 fi
 
-# Step 5: paper_sim live update + regime check
-log "--- Step 5: paper_sim live + regime check ---"
-# Phase 3 regime_state 已 deliver. paper_sim live 需要 model output (Phase 2 完后).
-# 当前仅跑 regime_state check, 输出 today's verdict.
+# Step 5: paper_sim live update + regime check + MSAF ensemble KPI 真调
+log "--- Step 5: paper_sim live + regime check + MSAF ensemble KPI ---"
 if [[ "$DRY" == "0" ]]; then
+    # 5a. Today regime verdict
     PYTHONPATH=backend python - >> "$LOG" 2>&1 <<'PYEOF'
 import sys
 from datetime import date
@@ -297,7 +296,25 @@ try:
 except Exception as e:
     print(f"[regime] failed: {e}")
 PYEOF
-    log "regime check done (see log for verdict)"
+    log "regime check done"
+
+    # 5b. MSAF ensemble paper_sim 历史 KPI (用 latest mart_p0b_oos_predictions)
+    ENSEMBLE_OUT="data/reports/msaf_ensemble_${DATE}.json"
+    PYTHONPATH=backend python backend/scripts/run_msaf_ensemble_paper_sim.py \
+        --compute-kpi --horizon 20d \
+        --output-json "$ENSEMBLE_OUT" >> "$LOG" 2>&1 || log "WARN: MSAF ensemble paper_sim 失败"
+    # Pull key KPI
+    KPI_SUMMARY=$(PYTHONPATH=backend python -c "
+import json
+try:
+    with open('$ENSEMBLE_OUT') as f:
+        d = json.load(f)
+    k = d.get('kpi', {})
+    print(f\"median_ann={k.get('ann_ret_median'):.2%} max_dd={k.get('max_dd'):.2%} sharpe={k.get('sharpe'):.2f} n_obs={k.get('n_obs')}\")
+except Exception as e:
+    print(f'parse failed: {e}')
+" 2>/dev/null)
+    log "MSAF ensemble KPI: $KPI_SUMMARY"
 else
     log "DRY: skip regime/paper_sim"
 fi
