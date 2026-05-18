@@ -28,7 +28,7 @@ log = logging.getLogger("build_sniper_score_daily")
 
 
 MART_DDL = """
-CREATE TABLE mart_sniper_score_daily (
+CREATE TABLE IF NOT EXISTS mart_sniper_score_daily (
     signal_date DATE NOT NULL,
     stock_code VARCHAR NOT NULL,
     confluence_score INTEGER NOT NULL,
@@ -306,7 +306,7 @@ def _build_insert_sql(conn: duckdb.DuckDBPyConnection, start_date: str, end_date
     unlock_pledge_cte = _unlock_pledge_cte(conn).format(end_date=end_date)
 
     return f"""
-INSERT INTO mart_sniper_score_daily
+INSERT OR REPLACE INTO mart_sniper_score_daily
 WITH
 universe AS MATERIALIZED (
     SELECT
@@ -465,8 +465,13 @@ def build_sniper_score_daily(
     end_date: str = DEFAULT_END_DATE,
     threads: int = 8,
     memory_limit: str = "6GB",
+    rebuild: bool = False,
 ) -> dict[str, object]:
-    """Materialize mart_sniper_score_daily and return summary stats."""
+    """Materialize mart_sniper_score_daily and return summary stats.
+
+    Incremental by default — INSERT OR REPLACE preserves rows outside [start_date, end_date].
+    Pass rebuild=True (or --rebuild via CLI) only for explicit full wipe.
+    """
     smartmoney_db = Path(smartmoney_db)
     market_db = Path(market_db)
     alpha158_db = Path(alpha158_db)
@@ -479,7 +484,9 @@ def build_sniper_score_daily(
         conn.execute(f"ATTACH '{_sql_path(alpha158_db)}' AS alpha158 (READ_ONLY)")
 
         insert_sql = _build_insert_sql(conn, start_date, end_date)
-        conn.execute("DROP TABLE IF EXISTS mart_sniper_score_daily")
+        if rebuild:
+            log.warning("rebuild=True: dropping mart_sniper_score_daily (full history wipe)")
+            conn.execute("DROP TABLE IF EXISTS mart_sniper_score_daily")
         conn.execute(MART_DDL)
         conn.execute(insert_sql)
 
@@ -512,11 +519,14 @@ def main() -> int:
     parser.add_argument("--end-date", default=DEFAULT_END_DATE)
     parser.add_argument("--threads", type=int, default=8)
     parser.add_argument("--memory-limit", default="6GB")
+    parser.add_argument("--rebuild", action="store_true",
+                        help="Drop existing mart_sniper_score_daily before rebuild (DESTRUCTIVE — full history wipe)")
     args = parser.parse_args()
 
     logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
     t0 = time.time()
-    log.info("Building mart_sniper_score_daily %s -> %s", args.start_date, args.end_date)
+    log.info("Building mart_sniper_score_daily %s -> %s (rebuild=%s)",
+             args.start_date, args.end_date, args.rebuild)
     result = build_sniper_score_daily(
         smartmoney_db=args.smartmoney_db,
         market_db=args.market_db,
@@ -525,6 +535,7 @@ def main() -> int:
         end_date=args.end_date,
         threads=args.threads,
         memory_limit=args.memory_limit,
+        rebuild=args.rebuild,
     )
     elapsed = time.time() - t0
     log.info(

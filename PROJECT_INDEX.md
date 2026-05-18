@@ -784,6 +784,28 @@ SELECT * FROM mart_data_source_watermark;
 
 每次 session 增量内容写这里, 新 session 启动时**从下往上读**最近改了啥.
 
+### 2026-05-18 晚 sniper/institution build script DROP-TABLE 回退 bug 修 + 全期 institution 恢复 + audit 90%
+
+根因: `build_sniper_score_daily.py` line 482 / `build_institution_score_daily.py` line 398 都
+`DROP TABLE IF EXISTS xxx; CREATE TABLE xxx;`. 任何带 --start-date/--end-date 增量调用都抹掉表外行.
+本次触发: 我跑 `--start-date 2026-04-14 --end-date 2026-04-23` 想增量补 institution → 2.25M 行 432
+dates 历史归零, 只剩 41K 行 8 dates. 跟 [[feedback-leakage-cleanup]] 同一类: 看似 idempotent 实则
+destructive.
+
+修:
+- MART_DDL 改 `CREATE TABLE IF NOT EXISTS`
+- sniper INSERT 从 `INSERT INTO` 改 `INSERT OR REPLACE INTO` (institution 之前已是 INSERT OR REPLACE)
+- `DROP TABLE IF EXISTS` 移到 `if rebuild:` flag 后, 默认 False
+- CLI 加 `--rebuild` flag (DESTRUCTIVE 警告 log)
+
+institution full restore: 2,292,400 行 / 440 dates / range 2024-07-01→2026-04-23 / 4-class composite
+avg 0.0667 / 100% coverage (lhb/capital_flow/survey/northbound).
+
+audit_delivery_readiness 实测均值 **90%** (DB lock 释放后 P3 PASS 真值读到):
+- #1 100% / #2 90% (LM+sniper) / #3 87% / #4 100% / #5 100% / #6 60%
+- 距 100% 10pp gap. 全部挂 Phase 5 retrain (PID 79023 trial 7/50, ETA 10h) 完成.
+- P3 last PASS: ann 30.68%, max_dd -10.84%, monthly_win 77.27%.
+
 ### 2026-05-18 下午 Optuna retrain weekly → monthly + GCP policy yaml 固化 (用户 push back '需要 weekly 训练吗?')
 
 频率分析: weekly overkill, monthly sweet spot (walk-forward OOS extend 1 month).

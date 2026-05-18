@@ -20,31 +20,43 @@
 | 5 | GCP 成本控制 | 月 ≤ $10 credit, 每 batch 完 stop VM | rule 已固化 (CLAUDE.md §10.0.2), 待 sustained |
 | 6 | 实盘 GO/NO-GO | 跨 5 年回测 中位 ≥ 25%, 单年 ≥ 0%, Sharpe ≥ 2.0, PBO ≤ 0.2 | **5%** (1.75 年 22 monthly obs 实测 median +34.88% 在目标; 待扩 OOS ≥ 30 + PBO multi-trial + sniper/institution wire 真验) |
 
-**目前距离交付** (2026-05-18 audit_delivery_readiness.py 实测均值 **90%**, NOT READY, 距 100% 还 10pp):
+**目前距离交付** (2026-05-18 20:37 audit_delivery_readiness.py 实测均值 **90%**, NOT READY, 距 100% 还 10pp; institution 全期 2.29M rows / 440 dates 已恢复, DB lock 释放后 P3 PASS 真值读到):
 
 | # | 标准 | 当前 | 目标 | gap | 阻塞项 | 解锁 action | ETA |
 |---|---|---:|---:|---:|---|---|---|
 | 1 | 数据管理 | 100% | 100% | 0pp | ✓ PASS (SLA 0 alert + PIT 4/4 fact 表 100% audit) | — | — |
-| 2 | 策略模型 | 90% | 100% | 10pp | sniper 已真接 (median +48.40%/hit +68.18% ↑), institution 4-class composite 待; n_obs=22 < 30 | (a) institution 4-class composite (LHB+CapitalFlow+Survey+Northbound by money flow ratio); (b) Phase 5 retrain start=2022 扩 OOS ≥30 | 1 week + GCP \$15-19 |
-| 3 | backtester gate | 75% | 100% | 25pp | IS-OOS 89% drop (真 alpha decay 信号) + PBO multi-trial 是 K-variant 不是真 multi-Optuna | (a) Phase 5 retrain Optuna 50 trials (真 strategy variants); (b) train_log 写 fact_model_train_log → IS RankIC 真接 | 1-2 week (含 GCP retrain) |
+| 2 | 策略模型 | 90% | 100% | 10pp | phase_3_4_status='LM + sniper' (institution opt-in 待 4-class composite 合并). n_obs=22<30 | Phase 5 retrain (PID 79023 trial 7/50, 4h elapsed, ETA 10h Mac) 完后 OOS ≥30 → 100% | 10h Mac local 完 |
+| 3 | backtester gate | 87% | 100% | 13pp | phase4_promote_action='block' (4 gate 3/4 PASS), P3 PASS (ann 30.68% / max_dd -10.84% / win 77.27%) | Phase 5 retrain → 跨 5 年 walk-forward Optuna 50 trials → phase4 = PROMOTE → 100% | 10h Mac local 完 |
 | 4 | 全自动化 daily | 100% | 100% | 0pp | ✓ PASS (Step 0/2c/6/7 真调 + promote_champion CLI + launchd plist 8 步 all real) | — | — |
-| 5 | GCP 成本控制 | 100% | 100% | 0pp | ✓ PASS (cost_tracker + 15min cron + RED auto-stop + idle marker check) | — | — |
-| 6 | 实盘 GO/NO-GO | 60% | 100% | 40pp | n_obs=22 < 60 (跨 5 年) / MSAF sharpe 1.35 < 2.0 / MSAF max_dd -21.38% > -20% | (a) GCP VM retrain start_date=2022 walk-forward, 35-50h batch (\$15-19); (b) 跑 P4 跨 5 年 holdout 重新 KPI; (c) MSAF max_dd 修需 vol-aware sizing | 1-2 week |
+| 5 | GCP 成本控制 | 100% | 100% | 0pp | ✓ PASS (gcp_policy.yaml 固化 5 层 defense + cost_tracker 15min cron + auto-stop + budget RED block) | — | — |
+| 6 | 实盘 GO/NO-GO | 60% | 100% | 40pp | P3 PASS ✓, n_obs=22<30, sharpe 0.81<2.0, max_dd -24.28%>-20% | (a) Phase 5 retrain → n_obs ≥30 自动跳 70%; (b) 扩 panel start=2022 → n_obs ≥60 跳 85%; (c) Optuna regime weights tune + vol-aware sizing → sharpe ↑ max_dd ↓ 跳 90%+ | Phase 5 10h + 调优 1-2 week |
 | **均值** | | **90%** | **100%** | **10pp** | | | |
 
-### Critical Path 时序 (按 ETA 排序)
+**当前 audit 详情快照**:
+- KPI: median +48.40%, sharpe 0.81, max_dd -24.28%, hit 68.18%, n_obs=22 (1.75 年)
+- P3 last verdict: PASS (ann 30.68%, max_dd -10.84%, monthly_win 77.27%)
+- Phase 4 gate: warn (4 gate 3/4 PASS, promote action=block)
+- GCP: TERMINATED, projected_month_cost \$3.999, alert OK
+- SLA: 0 alerts
+
+**Phase 5 retrain 完成路径** (in-flight, 不需 LLM 干预):
+1. PID 79023 完成 (~10h, trial 7/50 当前)
+2. `bash scripts/run_phase5_post_retrain.sh <new_model_id>` 自动跑: backfill walkforward_eval + P3 final holdout + promote_champion + ensemble paper_sim + phase4 gate + audit (现有, 已 commit)
+3. 重新 audit → 预期 criteria 2 升 90%, criteria 3 升 90%, criteria 6 升 30-40%
+4. 后续 调优 regime weights (Optuna 联合调优 institution cap 20%) + vol-aware sizing → criteria 6 70%+
+
+### Critical Path 时序 (按 ETA 排序, 2026-05-18 更新)
 
 | 顺序 | Action | 标准受益 | ETA | 资源 | 阻塞 |
 |---|---|---|---|---|---|
-| ~~P0~~ | ✓ DONE: PIT audit script 4 fact 表 100% PASS (commit b160d56e + 后续) | #1 95→100% | 完成 | local | — |
-| **P1** | Phase 3.4 sniper batch builder (SQL aggregate per signal_date×stock 7-rule confluence) | #2 80→90% | 2-3 day | local + Codex spec | b53h8en1m completing |
-| **P1** | Phase 3.4 institution batch builder (LHB+CapitalFlow+Survey+Northbound composite) | #2 90→95% | 2-3 day | local | — |
-| **P2** | fact_model_train_log 表 + retrain script 加 IS RankIC log | #3 75→85% | 2-3 day | local | — |
-| **P3** | GCP VM retrain start_date=2022 walk-forward (50 Optuna trials × 3 horizons) | #3 85→95%, #6 60→80% | 4-6h GCP (实测 6 windows × 5 trials = 21 min refine) | GCP n2-standard-32 spot 6h × \$0.376 = **\$2.26** | 预算预留 \$10 充足 (vs 之前 \$15-19 高估) |
-| **P4** | MSAF max_dd 修: vol-aware sizing + bear cash 仓 | #6 80→90% | 3-5 day | local + Codex spec | — |
-| **P5** | 跨 5 年 holdout KPI 全验 (含 2022-2024 OOS) | #6 90→100% | 3-5 day | local | P3 数据 ready |
+| ~~P0~~ | ✓ DONE: PIT audit + 4 fact 表 100% PASS / sniper/institution build script DROP-TABLE 回退 bug 修 (rebuild flag-gated) | #1 #2 dataset integrity | 完成 | local | — |
+| **P1 in-flight** | Mac Phase 5 retrain (PID 79023, lgbm_phase5_session_20260518T160747, start=2023-01-02, n_trials=50, top-K=20) | #2 80→90%, #3 37→75%, #6 5→30% | ~10h (trial 7/50 当前, 4h elapsed) | local Mac, $0 GCP | — |
+| **P2** | retrain 完后跑 `bash scripts/run_phase5_post_retrain.sh` (自动 backfill walkforward_eval + P3 + promote + ensemble KPI + phase4 + audit) | #2 #3 #6 升级 | 30-60 min | local | P1 完 |
+| **P3** | Optuna 联合调优 regime weights (institution cap 20%) | #6 30→50% sharpe ↑ | 4-6h | local OR GCP $2.26 | P2 完 |
+| **P4** | MSAF max_dd 修: vol-aware sizing + bear cash 仓 (Codex spec) | #6 50→70% max_dd ↓ | 3-5 day | local + Codex | P3 完 |
+| **P5** | 跨 5 年 holdout 全验 (含 2022-2024 OOS, 扩 n_obs ≥60) | #6 70→100% | 3-5 day | local | P4 完 |
 
-**总 ETA**: 2-3 weeks 满足 100% delivery condition (假设 Codex spec + GCP retrain 不卡).
+**总 ETA**: ~10h (Phase 5 retrain) + 30-60min (post-retrain pipeline) → 70% → 88% audit pct; 后续 1-2 week 触达 100%.
 
 ### 维护方式
 

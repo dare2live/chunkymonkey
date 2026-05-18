@@ -381,8 +381,13 @@ def build_institution_score_daily(
     batch_size: int = 8,
     threads: int = 8,
     memory_limit: str = "6GB",
+    rebuild: bool = False,
 ) -> dict[str, object]:
-    """Materialize mart_institution_score_daily and return summary stats."""
+    """Materialize mart_institution_score_daily and return summary stats.
+
+    Incremental by default — INSERT OR REPLACE preserves rows outside [start_date, end_date].
+    Pass rebuild=True (or --rebuild via CLI) only for explicit full wipe.
+    """
     conn = connect(str(smartmoney_db), read_only=False)
     try:
         conn.execute(f"PRAGMA threads={int(threads)}")
@@ -395,7 +400,9 @@ def build_institution_score_daily(
             raise RuntimeError(f"No signal dates found in {start_date} -> {end_date}")
 
         if dry_run_dates <= 0:
-            conn.execute("DROP TABLE IF EXISTS mart_institution_score_daily")
+            if rebuild:
+                log.warning("rebuild=True: dropping mart_institution_score_daily (full history wipe)")
+                conn.execute("DROP TABLE IF EXISTS mart_institution_score_daily")
             conn.execute(MART_DDL)
 
         built_at = datetime.now(timezone.utc).isoformat(timespec="seconds")
@@ -471,6 +478,8 @@ def main() -> int:
     parser.add_argument("--batch-size", type=int, default=8)
     parser.add_argument("--threads", type=int, default=8)
     parser.add_argument("--memory-limit", default="6GB")
+    parser.add_argument("--rebuild", action="store_true",
+                        help="Drop existing mart_institution_score_daily before rebuild (DESTRUCTIVE — full history wipe)")
     args = parser.parse_args()
 
     logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
@@ -483,6 +492,7 @@ def main() -> int:
         batch_size=args.batch_size,
         threads=args.threads,
         memory_limit=args.memory_limit,
+        rebuild=args.rebuild,
     )
     elapsed = time.time() - t0
 
