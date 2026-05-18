@@ -784,6 +784,30 @@ SELECT * FROM mart_data_source_watermark;
 
 每次 session 增量内容写这里, 新 session 启动时**从下往上读**最近改了啥.
 
+### 2026-05-18 晚 Circuit Breaker 实验失败 — MSAF 策略 mean-reverting, stop-loss 反伤
+
+加 portfolio-level circuit breaker (last_port_ret < -8% → 本期 100% cash) 测试是否能降 max_dd:
+
+| 指标 | baseline | + circuit breaker | delta |
+|---|---:|---:|---:|
+| ann_ret median | +48.40% | +12.51% | **-36pp 恶化** |
+| max_dd | -24.28% | -26.89% | **-2.6pp 恶化** |
+| sharpe | 0.81 | 0.65 | -0.16 恶化 |
+| hit_rate | 68.18% | 54.55% | -14pp 恶化 |
+| n_circuit_fired | 0 | 4/22 月 | — |
+
+诊断: 4 个亏月被 circuit breaker 切到 cash, 但**后续 4 个月 80% 是反弹**, 锁定亏损同时
+错过反弹 → 全面回归. 策略本身 mean-reverting (hit 68%, bad 月多是临时回撤), stop-loss
+反而切断恢复.
+
+**revert** 完整保持 baseline. 真金白银 self-check 验证: stop-loss 不是 max_dd 银弹.
+[[feedback-leakage-red-flag]] 类比: 没 measured 别 ship — 实测才知反效果.
+
+降 max_dd 真正路径需要从模型/数据层面:
+- Phase 5 retrain 学更好 ranking → bad 月减少
+- Phase 6 5年数据 → 验证更稳定
+- vol-aware 在 stock 层 (不是 portfolio 层): high-vol 股 down-weight, low-vol up-weight
+
 ### 2026-05-18 晚 GCP VM job self-shutdown + idle 5min grace (真 zero-waste 3 层 defense)
 
 用户 push back 'GCP solution still reactive (idle 5min still wastes \$0.03)':
