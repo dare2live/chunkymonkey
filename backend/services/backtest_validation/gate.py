@@ -76,10 +76,23 @@ def gate_pbo(returns_matrix: np.ndarray, *, threshold: float = 0.20) -> GateResu
         return GateResult(name="pbo", passes=False, reason=f"PBO error: {e}", detail={"error": str(e)})
 
 
-def gate_dsr(returns: np.ndarray, *, n_trials: int = 1, threshold_p_conf: float = 0.95) -> GateResult:
-    """DSR gate: 1D returns array."""
+def gate_dsr(
+    returns: np.ndarray,
+    *,
+    n_trials: int = 1,
+    threshold_p_conf: float = 0.95,
+    periods_per_year: int = 252,
+) -> GateResult:
+    """DSR gate: 1D returns array.
+
+    periods_per_year: 5d weekly → 50; 10d biweekly → 25; 20d monthly → 12; 1d daily → 252.
+    (Codex review b53h8en1m: 此前默认 252 但 5d weekly 输入 → SR 年化 unit mismatch)
+    """
     try:
-        result = compute_dsr(returns, n_trials=n_trials, threshold_p_conf=threshold_p_conf)
+        result = compute_dsr(
+            returns, n_trials=n_trials, threshold_p_conf=threshold_p_conf,
+            periods_per_year=periods_per_year,
+        )
         return GateResult(
             name="dsr",
             passes=result.passes,
@@ -169,6 +182,7 @@ def run_all_gates(
     returns_matrix: np.ndarray | None = None,
     oos_returns: np.ndarray | None = None,
     n_trials_for_dsr: int = 1,
+    periods_per_year_for_dsr: int = 252,
     ann_normal: float | None = None,
     ann_conservative: float | None = None,
     is_metric: float | None = None,
@@ -201,7 +215,10 @@ def run_all_gates(
 
     # DSR
     if oos_returns is not None:
-        dsr_r = gate_dsr(oos_returns, n_trials=n_trials_for_dsr)
+        dsr_r = gate_dsr(
+            oos_returns, n_trials=n_trials_for_dsr,
+            periods_per_year=periods_per_year_for_dsr,
+        )
     else:
         dsr_r = GateResult(
             name="dsr", passes=False, reason="oos_returns missing", detail={"error": "input_missing"}

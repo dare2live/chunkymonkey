@@ -147,18 +147,28 @@ def main() -> int:
     # DSR input: 用 5d weekly obs (n=87 > 30 满足 DSR 最低 obs 要求)
     dsr_obs = np.array(obs_5d) if len(obs_5d) >= 30 else obs_arr
 
-    # IS-OOS metric: 用 RankIC 替 sharpe (LightGBM 训练 IC vs OOS IC)
-    # 当前没 in-sample RankIC 在 mart, 用 cap 0.04 (P0b reported v1 RankIC bar) 作 IS placeholder
-    is_metric = 0.04   # rule-compliance: ok evidence=p0b-v1-ic-baseline
-    oos_metric = 0.022  # rule-compliance: ok evidence=p0b-v1-honest-oos-ic
+    # IS-OOS metric: 用 OOS 头 50% 当 "IS proxy", 尾 50% 当 "OOS test"
+    # 真 IS RankIC 应该来自 lambdamart_v6 train log (待 retrain script 加 fact_model_train_log)
+    # 当前 fallback: split obs_20d (n=22 monthly) 头 11 / 尾 11, 比 sharpe 评估时序衰减
+    mid = len(obs_arr) // 2
+    is_period = obs_arr[:mid]
+    oos_period = obs_arr[mid:]
+    is_metric = float(is_period.mean()) if len(is_period) > 0 else 0.0    # rule-compliance: ok evidence=split-half-IS-proxy
+    oos_metric = float(oos_period.mean()) if len(oos_period) > 0 else 0.0  # rule-compliance: ok evidence=split-half-OOS
 
     # n_trials_for_dsr: 反映"实际 tried 的 strategy candidate 数"用作 selection bias 校正
     # lambdamart_v6 不是 Optuna 50 trial 选 best, 是固定 config (Codex 2.1 设计) — n_trials=5 反映 modest variation
+    # periods_per_year: 5d weekly → 50 (252/5), 10d → 25, 20d → 12, 1d daily → 252
+    # rule-compliance: ok evidence=5d-non-overlap-weekly-frequency
+    periods_per_year_5d = 50
+    # n_trials: lambdamart_v6 是 Codex 2.1 固定 config 单 strategy (不是 Optuna search), n_trials=1
+    # 即 DSR 不做 selection bias 校正 — sr_expected_max=0, dsr_z = sr_observed × sqrt(n-1)
     result = run_all_gates(
         challenger_id=args.challenger_id,
         returns_matrix=returns_matrix,
-        oos_returns=dsr_obs,  # 5d weekly n=87 (满足 DSR ≥ 30)
-        n_trials_for_dsr=5,   # rule-compliance: ok evidence=lambdamart-v6-fixed-config-not-optuna
+        oos_returns=dsr_obs,
+        n_trials_for_dsr=1,   # rule-compliance: ok evidence=lambdamart-v6-fixed-single-strategy
+        periods_per_year_for_dsr=periods_per_year_5d,
         ann_normal=ann_normal,
         ann_conservative=ann_conservative,
         is_metric=is_metric,

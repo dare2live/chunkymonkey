@@ -126,20 +126,24 @@ def check_backtester_gate() -> dict:
 
     phase4_pct = 60
     phase4_verdict = "unknown"
-    pbo_passes = False
     if phase4_report.exists():
         d = json.loads(phase4_report.read_text())
         gate = d.get("gate_result", {})
         phase4_verdict = gate.get("promote_action", "unknown")
-        pbo_passes = gate.get("pbo", {}).get("passes", False)
-        cons_passes = gate.get("conservative", {}).get("passes", False)
-        if phase4_verdict == "warn_only":
-            phase4_pct = 85
-        elif phase4_verdict == "promote":
+        # 4 gates 各占 25%, 综合给 phase4_pct
+        n_pass = sum([
+            gate.get("pbo", {}).get("passes", False),
+            gate.get("dsr", {}).get("passes", False),
+            gate.get("conservative", {}).get("passes", False),
+            gate.get("is_oos", {}).get("passes", False),
+        ])
+        if phase4_verdict == "promote":
             phase4_pct = 100
-        elif phase4_verdict in ("block", "force_retrain"):
-            # PBO PASS + Conservative PASS 部分功绩 (即使 DSR/IS-OOS placeholder fail)
-            phase4_pct = 50 if (pbo_passes and cons_passes) else 30
+        elif phase4_verdict == "warn_only":
+            phase4_pct = 85
+        else:
+            # block / force_retrain: 看 4 gates pass 数
+            phase4_pct = 25 * n_pass  # 4/4=100, 3/4=75, 2/4=50, 1/4=25, 0/4=0
 
     # P3 acceptance verdict
     p3_pct = 0

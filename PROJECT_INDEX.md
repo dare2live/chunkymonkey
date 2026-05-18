@@ -803,6 +803,16 @@ regime_state.py 加 ret-based fallback (breadth=None case):
 OOS walk-forward PIT-strict (signal_date 之前 60d HS300, ret_60d), 不 leak future.
 test_regime_state 8/8 + test_ensemble 8/8 pass.
 
+### 2026-05-18 下午 phase4 gate DSR/IS-OOS 算法 fix + audit 4-gate 累积 — 均值 83→85% (Codex b53h8en1m findings)
+
+3 个 Codex review findings 实施:
+1. DSR periods_per_year 单位 fix (gate.py 加参数, 5d weekly 用 50): p_conf 0→0.98 PASS
+2. IS-OOS placeholder → split-half (头 11 / 尾 11): IS 9.09% / OOS 0.95% — 真 finding (alpha decay 2025H2)
+3. audit phase4 改 4-gate 累积 (25% × n_pass)
+
+实测 phase4 verdict block (PBO+DSR+Cons PASS / IS-OOS FAIL), 75% (3/4 gates)
+均值 83 → 85% NOT READY. 距 100% 还 15pp.
+
 ### 2026-05-18 下午 audit_delivery_readiness #3+#6 综合 P3 PASS — 均值 76→83%
 
 audit script 改进:

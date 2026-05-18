@@ -20,7 +20,7 @@
 | 5 | GCP 成本控制 | 月 ≤ $10 credit, 每 batch 完 stop VM | rule 已固化 (CLAUDE.md §10.0.2), 待 sustained |
 | 6 | 实盘 GO/NO-GO | 跨 5 年回测 中位 ≥ 25%, 单年 ≥ 0%, Sharpe ≥ 2.0, PBO ≤ 0.2 | **5%** (1.75 年 22 monthly obs 实测 median +34.88% 在目标; 待扩 OOS ≥ 30 + PBO multi-trial + sniper/institution wire 真验) |
 
-**目前距离交付** (2026-05-18 audit_delivery_readiness.py 实测均值 **83%**, NOT READY, 距 100% 还 17pp):
+**目前距离交付** (2026-05-18 audit_delivery_readiness.py 实测均值 **85%**, NOT READY, 距 100% 还 15pp):
 - #1 数据管理: 95% PASS (0 stale + PIT OK expanding_monthly)
 - #2 策略模型: 80% PASS (median ann +34.88%, n_obs=22, 待 sniper/institution wire)
 - #3 backtester gate: 75% WARN (phase4 force_retrain + P3 PASS 综合)
