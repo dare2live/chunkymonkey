@@ -147,11 +147,15 @@ def _find_violations(path: Path) -> list[tuple[int, str]]:
             # — 这些都是 wall-clock 合法用途 (不是 trade_date 写入).
             if any(tok in snippet for tok in (
                 "started_at", "finished_at", "built_at",
-                "heartbeat", "manifest", "run_id",
+                "heartbeat", "manifest", "run_id", "--run-id",
                 "isoformat(timespec=", "updated_at",
                 "profiled_at", "log.info(f", "logger.info(f",
                 "batch_id", "model_id", "stamp =", "f\"hs300_benchmark_",
                 "test_kline_availability", "snapshot_lag",
+                # 唯一 identifier (Optuna study / paper_sim comparison / model 时间戳):
+                "study_name", "comparison_id", "model_date",
+                # snapshot/ingest 类用 wall-clock 标 ingest 时间合理 (不是 trade_date):
+                "snapshot_date", "source_available_date",
                 # 健康检查 / audit 用 wall-clock 看物理时间是合理的:
                 "_days_lag(", "fetched_at <=",
                 # 显式 Phase ψ.5 allowlist 注释:

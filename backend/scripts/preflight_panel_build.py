@@ -16,6 +16,7 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(REPO_ROOT / "backend"))
 
 from services.labels.universe import pit_active_ever
+from services.utils import latest_completed_trade_date
 
 SMART_DB = REPO_ROOT / "data" / "smartmoney.duckdb"
 MARKET_DB = REPO_ROOT / "data" / "market.duckdb"
@@ -238,23 +239,32 @@ def main() -> int:
     parser = argparse.ArgumentParser(description="Run panel build pre-flight gate")
     parser.add_argument("--smart-db", default=str(SMART_DB))
     parser.add_argument("--market-db", default=str(MARKET_DB))
-    parser.add_argument("--current-date", default=date.today().isoformat())
+    parser.add_argument("--current-date", default=None,
+                        help="YYYY-MM-DD; default latest_completed_trade_date(smart_db)")
     parser.add_argument("--lookback-days", type=int, default=30)
     parser.add_argument("--min-coverage-pct", type=float, default=0.95)
     parser.add_argument("--watermark-sla-days", type=int, default=7)
     args = parser.parse_args()
 
     logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
-    config = PreflightConfig(
-        current_date=_parse_date(args.current_date) or date.today(),
-        lookback_days=args.lookback_days,
-        min_coverage_pct=args.min_coverage_pct,
-        watermark_sla_days=args.watermark_sla_days,
-    )
 
     smart_conn = duckdb.connect(args.smart_db, read_only=True)
     market_conn = duckdb.connect(args.market_db, read_only=True)
     try:
+        if args.current_date:
+            current = _parse_date(args.current_date) or date.fromisoformat(args.current_date)
+        else:
+            current_str = latest_completed_trade_date(smart_conn)
+            if not current_str:
+                log.error("latest_completed_trade_date returned None — kline 数据缺失? 拒启动")
+                return 2
+            current = date.fromisoformat(current_str)
+        config = PreflightConfig(
+            current_date=current,
+            lookback_days=args.lookback_days,
+            min_coverage_pct=args.min_coverage_pct,
+            watermark_sla_days=args.watermark_sla_days,
+        )
         run_preflight_or_exit(smart_conn, market_conn, config)
     finally:
         smart_conn.close()

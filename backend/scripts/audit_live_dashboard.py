@@ -23,12 +23,12 @@ from __future__ import annotations
 import argparse
 import logging
 import sys
-from datetime import date
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from services.db import get_conn
+from services.utils import latest_completed_trade_date
 
 
 logging.basicConfig(level=logging.INFO,
@@ -43,11 +43,14 @@ LIVE_PORTFOLIOS = ["live_A_v4", "live_B_v8", "live_C_adaptive"]
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--as-of", default=None,
-                        help="Date YYYY-MM-DD; default today")
+                        help="Date YYYY-MM-DD; default latest completed trade date")
     args = parser.parse_args()
-    as_of = args.as_of or date.today().isoformat()
 
     conn = get_conn()
+    as_of = args.as_of or latest_completed_trade_date(conn)
+    if not as_of:
+        log.error("latest_completed_trade_date returned None — kline 数据缺失? 拒启动")
+        return 2
     print(f"\n=== Live Forward Sim Dashboard {as_of} ===\n")
 
     for pid in LIVE_PORTFOLIOS:

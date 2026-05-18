@@ -784,6 +784,18 @@ SELECT * FROM mart_data_source_watermark;
 
 每次 session 增量内容写这里, 新 session 启动时**从下往上读**最近改了啥.
 
+### 2026-05-18 晚 calendar_gate test 10 项 pre-existing fail 清空 + 3 处真 wall-clock 修
+
+`backend/tests/test_calendar_gate.py` 跑下来 10 fail (pre-existing, 不是本 session 引入):
+- 真 leakage (3 处, 已修): audit_live_dashboard.py L48 / preflight_panel_build.py L241 /
+  run_paper_sim_live_daily.py L144/L152. 全部改 `latest_completed_trade_date(conn)` +
+  raise-on-None (exit 2 拒启动, 无 kline 数据时硬拦截).
+- 合法 wall-clock (5 处, 加 allowlist): study_name / comparison_id / model_date /
+  snapshot_date / source_available_date — 是唯一 identifier 或 ingest 时间戳, 不是
+  trade_date 写入. 加 5 tok 到 allowlist + `--run-id` (跟 run_id 同义).
+
+测试: 529 calendar_gate tests + 612 broader 全 PASS.
+
 ### 2026-05-18 晚 sniper/institution build script DROP-TABLE 回退 bug 修 + 全期 institution 恢复 + audit 90%
 
 根因: `build_sniper_score_daily.py` line 482 / `build_institution_score_daily.py` line 398 都

@@ -46,6 +46,7 @@ import yaml
 
 from services.db import get_conn
 from services.market_db import get_market_conn
+from services.utils import latest_completed_trade_date
 from services.paper_sim.config import load_config, PaperSimConfig
 from services.paper_sim.ddl import ensure_paper_sim_tables
 from services.paper_sim.driver import run_paper_sim_day_multi
@@ -141,7 +142,10 @@ def main() -> int:
     if args.catchup:
         conn = get_conn()
         try:
-            end = args.end or date.today().isoformat()
+            end = args.end or latest_completed_trade_date(conn)
+            if not end:
+                log.error("latest_completed_trade_date returned None — kline 数据缺失? 拒启动")
+                return 2
             days = trading_days_between(conn, args.start, end)
             log.info(f"Catchup {len(days)} trading days: {args.start} → {end}")
         finally:
@@ -149,7 +153,17 @@ def main() -> int:
         for d in days:
             run_one_day(d)
     else:
-        today = args.today or date.today().isoformat()
+        if args.today:
+            today = args.today
+        else:
+            conn = get_conn()
+            try:
+                today = latest_completed_trade_date(conn)
+            finally:
+                conn.close()
+            if not today:
+                log.error("latest_completed_trade_date returned None — kline 数据缺失? 拒启动")
+                return 2
         run_one_day(today)
     return 0
 
