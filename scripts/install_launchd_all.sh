@@ -25,6 +25,11 @@ if [[ -f "$PROJECT_ROOT/configs/launchd/com.chunkymonkey.nightly-data-audit.plis
     PLISTS+=("com.chunkymonkey.nightly-data-audit.plist")
 fi
 
+# Optional: gcp-cost-tracker (每 15 min, 实时 GCP 月度 budget tracking)
+if [[ -f "$PROJECT_ROOT/configs/launchd/com.chunkymonkey.gcp-cost-tracker.plist" ]]; then
+    PLISTS+=("com.chunkymonkey.gcp-cost-tracker.plist")
+fi
+
 echo "=== ChunkyMonkey launchd install ==="
 for plist in "${PLISTS[@]}"; do
     src="$PROJECT_ROOT/configs/launchd/$plist"

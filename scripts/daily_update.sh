@@ -118,6 +118,30 @@ trap stop_model_refresh_vm EXIT
 log "=== ChunkyMonkey daily update ${DATE} ==="
 log "  dry=$DRY skip_sync=$SKIP_SYNC use_gcp=$USE_GCP"
 
+# Step 0: GCP 成本 tracker (用户原则 CLAUDE.md §10.0.2: 不浪费 GCP 资源)
+log "--- Step 0: GCP cost tracker ---"
+COST_TRACKER_EXIT=0
+bash gcp/cost_tracker.sh --quiet >> "$LOG" 2>&1 || COST_TRACKER_EXIT=$?
+COST_ALERT=$(PYTHONPATH=backend python -c "
+import json
+try:
+    with open('data/reports/gcp_cost_summary.json') as f:
+        d = json.load(f)
+    print(d.get('alert_level', 'UNKNOWN'), d.get('pct_of_budget', 0), d.get('projected_month_cost', 0))
+except Exception as e:
+    print('UNKNOWN 0 0')
+" 2>/dev/null)
+log "GCP cost: $COST_ALERT"
+if [[ "$COST_TRACKER_EXIT" == "2" ]]; then
+    log "[GCP-ALERT-RED] 月度预算 >100%, 当前必须 stop VM"
+    if [[ "$USE_GCP" == "1" ]]; then
+        log "  USE_GCP=1 但预算超支, 强制改本地模式"
+        USE_GCP=0
+    fi
+elif [[ "$COST_TRACKER_EXIT" == "1" ]]; then
+    log "[GCP-ALERT-YELLOW] 月度预算 >80%, 谨慎使用 VM"
+fi
+
 # Step 1: Preflight
 log "--- Step 1: Preflight (watermark SLA + K-line gate) ---"
 # 1a. Watermark SLA check + auto-update
