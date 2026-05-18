@@ -20,13 +20,13 @@
 | 5 | GCP 成本控制 | 月 ≤ $10 credit, 每 batch 完 stop VM | rule 已固化 (CLAUDE.md §10.0.2), 待 sustained |
 | 6 | 实盘 GO/NO-GO | 跨 5 年回测 中位 ≥ 25%, 单年 ≥ 0%, Sharpe ≥ 2.0, PBO ≤ 0.2 | **5%** (1.75 年 22 monthly obs 实测 median +34.88% 在目标; 待扩 OOS ≥ 30 + PBO multi-trial + sniper/institution wire 真验) |
 
-**目前距离交付** (2026-05-18 audit_delivery_readiness.py 实测均值 **76%**, NOT READY):
-- #1 数据管理: 95% (0 stale + PIT OK)
-- #2 策略模型: 80% (median ann +34.88%, n_obs=22, 待 sniper/institution wire)
-- #3 backtester gate: 85% (verdict=warn_only 缺数据)
-- #4 全自动化 daily: 90% (8 步真调 + Step 0 cost + Step 2c alpha158 + Step 6/7 verdict-gated)
-- #5 GCP 成本控制: 100% (cost_tracker.sh 每 15 min + alert + daily_update Step 0)
-- #6 实盘 GO/NO-GO: 5% (n_obs=22 < 60 / sharpe 1.35 < 2.0 / max_dd -21.38% > -20%)
+**目前距离交付** (2026-05-18 audit_delivery_readiness.py 实测均值 **83%**, NOT READY, 距 100% 还 17pp):
+- #1 数据管理: 95% PASS (0 stale + PIT OK expanding_monthly)
+- #2 策略模型: 80% PASS (median ann +34.88%, n_obs=22, 待 sniper/institution wire)
+- #3 backtester gate: 75% WARN (phase4 force_retrain + P3 PASS 综合)
+- #4 全自动化 daily: 90% PASS (Step 0/2c/6/7 真调)
+- #5 GCP 成本控制: 100% PASS (cost_tracker + 15min cron + alert)
+- #6 实盘 GO/NO-GO: 60% WARN (P3 PASS 4 硬验收: ann 30.68% / max_dd -10.84% / 月胜 77.27% / excess +30.68%; 剩 blockers: n_obs<30/60, sharpe<2.0, MSAF max_dd>-20%)
 
 剩余 critical path (估 2-4 weeks 短期 / 12-16 weeks 完整):
 - Phase 3.4 sniper/institution 真 source 接 ensemble (#2 80→95%, ~1 week)

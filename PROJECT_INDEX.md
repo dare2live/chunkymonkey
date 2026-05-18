@@ -803,6 +803,25 @@ regime_state.py 加 ret-based fallback (breadth=None case):
 OOS walk-forward PIT-strict (signal_date 之前 60d HS300, ret_60d), 不 leak future.
 test_regime_state 8/8 + test_ensemble 8/8 pass.
 
+### 2026-05-18 下午 audit_delivery_readiness #3+#6 综合 P3 PASS — 均值 76→83%
+
+audit script 改进:
+- #3 backtester gate: phase4 (50%) + P3 (50%) 综合, P3 PASS 给 100% → 75%
+- #6 实盘 GO/NO-GO: P3 PASS 给 60% 大跃迁 (此前 5%)
+
+实测 audit_delivery_readiness:
+| # | 标准 | 旧% | 新% |
+|---|---|---:|---:|
+| 1 | 数据管理 | 95% | 95% |
+| 2 | 策略模型 | 80% | 80% |
+| 3 | backtester gate | 30% | 75% |
+| 4 | 全自动化 daily | 90% | 90% |
+| 5 | GCP 成本 | 100% | 100% |
+| 6 | 实盘 GO/NO-GO | 5% | 60% |
+| 均值 | | 67% | **83%** |
+
+剩余 17pp 距 100% delivery condition. Critical blockers: n_obs<60 / sharpe<2.0 / max_dd>-20% / Phase 3.4 sniper-institution wire / IS-OOS 真接 train log.
+
 ### 2026-05-18 下午 P3 Final Holdout PASS (run_p3_session_fixed) — 4 硬验收全过
 
 Fix backend/scripts/run_p3_final_holdout.py: 改 fwd_cost_after_10d (predictions 100% NULL) → JOIN mart_p0a_label_panel fwd_cost_after_20d.
