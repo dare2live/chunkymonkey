@@ -784,6 +784,16 @@ SELECT * FROM mart_data_source_watermark;
 
 每次 session 增量内容写这里, 新 session 启动时**从下往上读**最近改了啥.
 
+### 2026-05-18 凌晨 Phase 1.5 backtest_validation 实施 (13/13 tests pass)
+
+backend/services/backtest_validation/ 模块 (Codex R31 design 落地):
+- pbo.py: Lopez de Prado CSCV PBO (lambda = logit(omega), pass if PBO ≤ 0.20)
+- dsr.py: Bailey & Lopez de Prado Deflated SR (p_conf ≥ 0.95)
+- gate.py: 4 hard gates 综合 (PBO/DSR/Conservative/IS-OOS), AllGatesResult action: promote/block/warn_only/force_retrain
+- test_backtest_validation.py: 13 tests pass (clean alpha PBO<0.5, noise PBO ≈ 0.5, DSR selection bias n_trials, conservative/is-oos edge case)
+
+可被 daily_update.sh step 6 调用 + promote_champion.py 前 enforce.
+
 ### 2026-05-18 凌晨 daily_update.sh 全自动化 scaffold (交付标准 #4)
 
 scripts/daily_update.sh 8 步 framework:

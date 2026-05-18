@@ -15,7 +15,7 @@
 |---|---|---|---|
 | 1 | 数据管理 | sync gap 自动 alert + watermark 实填 + 历史 leakage 清干净 + PIT 严格 | partial (sync gap 修过 1 次, watermark NULL) |
 | 2 | 策略模型管理 | MSAF 3 类策略 (纯量化/狙击/机构跟随) + ensemble + regime gate 全上线 + paper_sim KPI 达标 | 0% (设计完, 实施 in flight) |
-| 3 | backtester gate | PBO/DSR/conservative/IS-OOS 4 gate 全部 enforce + 历史反例阻断验证 | 设计完 (R31), 实施待 |
+| 3 | backtester gate | PBO/DSR/conservative/IS-OOS 4 gate 全部 enforce + 历史反例阻断验证 | **实施完 50%** (backend/services/backtest_validation/ pbo+dsr+gate+13 tests, 待 wire 进 promote_champion + daily_update Step 6) |
 | 4 | **全自动化 daily update** | 用户每天跑数据更新 = 1 click or zero click, 不需要大模型维护 | **scaffold 10%** (scripts/daily_update.sh 8 步 framework done, TBD 待 Phase 1.5 + 2 + 3 fill) |
 | 5 | GCP 成本控制 | 月 ≤ $10 credit, 每 batch 完 stop VM | rule 已固化 (CLAUDE.md §10.0.2), 待 sustained |
 | 6 | 实盘 GO/NO-GO | 跨 5 年回测 中位 ≥ 25%, 单年 ≥ 0%, Sharpe ≥ 2.0, PBO ≤ 0.2 | 0% (待 Phase 4 validation gate) |
