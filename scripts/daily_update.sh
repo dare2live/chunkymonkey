@@ -249,44 +249,76 @@ else
     log "DRY: skip regime/paper_sim"
 fi
 
-# Step 6: backtester-mcp gate check
-log "--- Step 6: PBO/DSR/conservative gate ---"
-# MSAF Phase 1.5 完成: backend/services/backtest_validation/ 集成
-# 调用 gate.run_all_gates() — 若 promote_action == "block" → log + alert + 不 promote
-GATE_OUT=$(mktemp)
-PYTHONPATH=backend python - >> "$LOG" 2>&1 <<PYEOF
+# Step 6: backtester-mcp gate check (Phase 4 真调)
+log "--- Step 6: PBO/DSR/conservative gate (Phase 4 真调) ---"
+# MSAF Phase 4: backend/scripts/run_phase4_gate_on_msaf.py 跑 ensemble paper_sim 22 obs over 4 gates.
+# verdict ∈ {promote, block, warn_only, force_retrain}; warn_only/promote 才允许 Step 7 promote.
+GATE_OUT="data/reports/phase4_gate_result.json"
+if [[ "$DRY" == "0" ]]; then
+    PYTHONPATH=backend python backend/scripts/run_phase4_gate_on_msaf.py \
+        --output-json "$GATE_OUT" >> "$LOG" 2>&1 || log "[gate] WARN: phase4 gate runner exit non-zero (见 $LOG)"
+    # 读 verdict
+    VERDICT=$(PYTHONPATH=backend python -c "
 import json
-import sys
-sys.path.insert(0, "backend")
 try:
-    from services.backtest_validation.gate import run_all_gates
-    # TODO: 实测 paper_sim KPI 接入 (待 Phase 3 ensemble + regime gate 完成)
-    # 当前只 import check, 不跑 (缺 paper_sim KPI input)
-    print("[gate] module import OK, awaiting paper_sim KPI inputs")
-    sys.exit(0)
+    with open('$GATE_OUT') as f:
+        d = json.load(f)
+    print(d.get('gate_result', {}).get('promote_action', 'unknown'))
 except Exception as e:
-    print(f"[gate] import failed: {e}")
-    sys.exit(1)
-PYEOF
-log "gate module import check OK (full evaluation 待 Phase 3 paper_sim ensemble 输出 KPI 接入)"
+    print('unknown')
+")
+    log "Step 6 verdict: $VERDICT"
+    case "$VERDICT" in
+        promote)
+            log "[gate] PASS — Step 7 promote 允许"
+            STEP6_GATE_OK=1
+            ;;
+        warn_only)
+            log "[gate] WARN_ONLY — 缺数据 (OOS < 30 / PBO single-trial), alert only 不阻 promote"
+            STEP6_GATE_OK=1
+            ;;
+        block)
+            log "[gate] BLOCK — Step 7 promote 阻断"
+            STEP6_GATE_OK=0
+            ;;
+        force_retrain)
+            log "[gate] FORCE_RETRAIN — DSR 不显著, 待重训"
+            STEP6_GATE_OK=0
+            ;;
+        *)
+            log "[gate] verdict 未知 ($VERDICT), 默认阻断"
+            STEP6_GATE_OK=0
+            ;;
+    esac
+else
+    log "DRY: skip phase4 gate runner"
+    STEP6_GATE_OK=0
+fi
 
 # Step 7: Champion promote (auto if gate pass)
 log "--- Step 7: Champion promote ---"
 # Phase 3+ 完整 wire 需要: 1) 最新 P3 run_id 2) gate_check 实测 KPI
 # 当前仅 import check 验证 promote_champion + backtest_validation 完整 OK
-if [[ "$DRY" == "0" ]]; then
+if [[ "$DRY" == "0" && "${STEP6_GATE_OK:-0}" == "1" ]]; then
+    # Step 6 PASS / WARN_ONLY → 实际 promote_champion 调用
     PYTHONPATH=backend python -c "
 import sys
 sys.path.insert(0, 'backend')
 try:
-    from services.backtest_validation.gate import run_all_gates
-    print('[promote] backtest_validation import OK, awaiting Phase 3 ensemble KPI')
+    from services.promote_champion import promote_champion  # noqa
+    print('[promote] promote_champion ready (await Phase 5 wire model_id + run_id input)')
+    sys.exit(0)
+except ImportError:
+    # Module 不存在 fallback OK
+    print('[promote] promote_champion module 待 Phase 5 实施')
     sys.exit(0)
 except Exception as e:
-    print(f'[promote] import failed: {e}')
+    print(f'[promote] check failed: {e}')
     sys.exit(1)
 " >> "$LOG" 2>&1
-    log "champion promote 接口 ready, 待 Phase 3 ensemble paper_sim 输出 KPI 触发"
+    log "champion promote 接口 ready (gate verdict=$VERDICT, 待 Phase 5 wire run_id + 实际 promote)"
+elif [[ "$DRY" == "0" ]]; then
+    log "Step 6 gate verdict 不允许 promote (verdict=$VERDICT), Step 7 skipped"
 else
     log "DRY: skip champion promote check"
 fi
