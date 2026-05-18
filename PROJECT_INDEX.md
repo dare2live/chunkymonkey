@@ -803,6 +803,22 @@ regime_state.py 加 ret-based fallback (breadth=None case):
 OOS walk-forward PIT-strict (signal_date 之前 60d HS300, ret_60d), 不 leak future.
 test_regime_state 8/8 + test_ensemble 8/8 pass.
 
+### 2026-05-18 下午 Champion PROMOTED — backfill walkforward_eval RankIC 解锁
+
+新增 backend/scripts/backfill_walkforward_eval.py: 计算 22 OOS windows Spearman rank IC.
+
+实测 lgbm_20260517_governance_v1_20d:
+- rank_ic mean +0.0097, std 0.0978, IR +0.467 (modest)
+- 9.24~10 (反弹): +0.07 ~ +0.21
+- 2024-12 (调整): -0.23 (alpha 反向)
+- 2025 H1 震荡: ±0.05
+- 2025 H2 弱: ±0.04
+- 2026 Q1 振荡: -0.09 → +0.16
+
+Champion 首次 promoted (manual 跑, daily_update Step 7 still 待 wire):
+- champion_id: lgbm_20260517_governance_v1_20d_p3_session_fixed
+- verdict: warn_only (Conservative PASS, PBO/DSR/IS-OOS missing → 不阻 promote)
+
 ### 2026-05-18 下午 phase4 gate DSR/IS-OOS 算法 fix + audit 4-gate 累积 — 均值 83→85% (Codex b53h8en1m findings)
 
 3 个 Codex review findings 实施:

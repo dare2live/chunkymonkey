@@ -47,6 +47,8 @@ DOW="${CHUNKY_DOW_OVERRIDE:-$(date +%u)}"
 VM_NAME="${VM_NAME:-chunkymonkey-optuna}"
 ZONE="${ZONE:-us-central1-a}"
 REMOTE_REPO_DIR="${REMOTE_REPO_DIR:-~/chunkymonkey}"
+# Champion model_id for daily Step 7 promote / Step 4 retrain (rule-compliance: ok evidence=lambdamart-v6-codex-2.1-fixed-config)
+CHAMPION_MODEL_ID="${CHAMPION_MODEL_ID:-lgbm_20260517_governance_v1_20d}"
 MODEL_REFRESH_VM_STARTED=0
 
 # Parse args
@@ -347,27 +349,36 @@ else
 fi
 
 # Step 7: Champion promote (auto if gate pass)
-log "--- Step 7: Champion promote ---"
-# Phase 3+ 完整 wire 需要: 1) 最新 P3 run_id 2) gate_check 实测 KPI
-# 当前仅 import check 验证 promote_champion + backtest_validation 完整 OK
+log "--- Step 7: Champion promote (真调 P3 + promote_champion CLI) ---"
 if [[ "$DRY" == "0" && "${STEP6_GATE_OK:-0}" == "1" ]]; then
-    # Step 6 PASS / WARN_ONLY → 实际 promote_champion 调用
-    PYTHONPATH=backend python -c "
-import sys
-sys.path.insert(0, 'backend')
-try:
-    from services.promote_champion import promote_champion  # noqa
-    print('[promote] promote_champion ready (await Phase 5 wire model_id + run_id input)')
-    sys.exit(0)
-except ImportError:
-    # Module 不存在 fallback OK
-    print('[promote] promote_champion module 待 Phase 5 实施')
-    sys.exit(0)
-except Exception as e:
-    print(f'[promote] check failed: {e}')
-    sys.exit(1)
-" >> "$LOG" 2>&1
-    log "champion promote 接口 ready (gate verdict=$VERDICT, 待 Phase 5 wire run_id + 实际 promote)"
+    # 找最新 P3 PASS run_id
+    LATEST_P3_PASS=$(PYTHONPATH=backend python -c "
+import duckdb
+con = duckdb.connect('data/smartmoney.duckdb', read_only=True)
+r = con.execute(\"SELECT run_id FROM mart_p3_acceptance_result WHERE passed = TRUE AND ann_ret > 0 ORDER BY built_at DESC LIMIT 1\").fetchone()
+con.close()
+print(r[0] if r else 'NONE')
+" 2>/dev/null)
+    log "Latest P3 PASS run_id: $LATEST_P3_PASS"
+    if [[ "$LATEST_P3_PASS" == "NONE" || -z "$LATEST_P3_PASS" ]]; then
+        log "Step 7: 无 P3 PASS run_id, 先跑 run_p3_final_holdout"
+        P3_NEW_RUN_ID="p3_daily_$(date +%Y%m%dT%H%M%S)"
+        PYTHONPATH=backend python backend/scripts/run_p3_final_holdout.py \
+            --model-id "$CHAMPION_MODEL_ID" --run-id "$P3_NEW_RUN_ID" --last-n-months 22 \
+            >> "$LOG" 2>&1
+        LATEST_P3_PASS=$P3_NEW_RUN_ID
+    fi
+    # Real promote
+    PYTHONPATH=backend python backend/scripts/promote_champion.py \
+        --p3-run-id "$LATEST_P3_PASS" \
+        --reason "daily_update Step 7 auto promote (gate=$VERDICT)" \
+        >> "$LOG" 2>&1
+    promote_exit=$?
+    if [[ "$promote_exit" == "0" ]]; then
+        log "[promote] champion 成功 (P3 run_id=$LATEST_P3_PASS)"
+    else
+        log "[promote] champion fail (exit $promote_exit), 检查 $LOG"
+    fi
 elif [[ "$DRY" == "0" ]]; then
     log "Step 6 gate verdict 不允许 promote (verdict=$VERDICT), Step 7 skipped"
 else
