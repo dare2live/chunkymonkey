@@ -222,10 +222,38 @@ def check_daily_automation() -> dict:
     has_daily_plist = (plist_dir / "com.chunkymonkey.daily-update.plist").exists()
     has_cost_plist = (plist_dir / "com.chunkymonkey.gcp-cost-tracker.plist").exists()
 
+    # 真 loaded + 真 healthy 检测 (不只是 plist 文件存在 + 不只是 loaded):
+    # launchctl list 显示 + exit code != 126 (macOS Full Disk Access permission denied)
+    import subprocess
+    loaded_labels = {}  # label → last exit code
+    fda_blocked = False
+    try:
+        result = subprocess.run(
+            ["launchctl", "list"],
+            capture_output=True, text=True, timeout=5,
+        )
+        if result.returncode == 0:
+            for line in result.stdout.splitlines():
+                parts = line.strip().split()
+                if len(parts) >= 3 and parts[-1].startswith("com.chunkymonkey."):
+                    try:
+                        exit_code = int(parts[1])
+                    except (ValueError, IndexError):
+                        exit_code = -1
+                    loaded_labels[parts[-1]] = exit_code
+                    if exit_code == 126:
+                        fda_blocked = True
+    except Exception as e:
+        log.warning(f"launchctl list failed: {e}")
+    daily_loaded = loaded_labels.get("com.chunkymonkey.daily-update") == 0
+    cost_loaded = loaded_labels.get("com.chunkymonkey.gcp-cost-tracker") == 0
+
     pct = 40 + (10 if has_step_0_cost else 0) + (10 if has_phase4_gate_real else 0) + \
           (5 if has_alpha158_check else 0) + (5 if has_promote_verdict_gated else 0) + \
           (10 if has_step5_ensemble_real else 0) + \
-          (10 if has_promote_real else 0) + (5 if has_daily_plist else 0) + (5 if has_cost_plist else 0)
+          (10 if has_promote_real else 0) + \
+          (5 if daily_loaded else (2 if has_daily_plist else 0)) + \
+          (5 if cost_loaded else (2 if has_cost_plist else 0))
     return {
         "criterion": "全自动化 daily",
         "pct": min(pct, 100),
@@ -237,6 +265,16 @@ def check_daily_automation() -> dict:
         "promote_champion_real_call": has_promote_real,
         "daily_plist_installed": has_daily_plist,
         "cost_plist_installed": has_cost_plist,
+        "daily_plist_loaded": daily_loaded,
+        "cost_plist_loaded": cost_loaded,
+        "loaded_agents": {k: v for k, v in loaded_labels.items()},
+        "fda_blocked": fda_blocked,
+        "install_action": (
+            "macOS Full Disk Access 未授权 - 见 configs/launchd/install_all.sh 文档"
+            if fda_blocked else
+            "bash configs/launchd/install_all.sh install"
+            if not (daily_loaded and cost_loaded) else None
+        ),
         "verdict": "PASS" if pct >= 80 else "WARN",
     }
 

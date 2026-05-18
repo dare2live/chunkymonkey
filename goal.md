@@ -20,7 +20,16 @@
 | 5 | GCP 成本控制 | 月 ≤ $10 credit, 每 batch 完 stop VM | rule 已固化 (CLAUDE.md §10.0.2), 待 sustained |
 | 6 | 实盘 GO/NO-GO | 跨 5 年回测 中位 ≥ 25%, 单年 ≥ 0%, Sharpe ≥ 2.0, PBO ≤ 0.2 | **5%** (1.75 年 22 monthly obs 实测 median +34.88% 在目标; 待扩 OOS ≥ 30 + PBO multi-trial + sniper/institution wire 真验) |
 
-**目前距离交付** (2026-05-18 20:37 audit_delivery_readiness.py 实测均值 **90%**, NOT READY, 距 100% 还 10pp; institution 全期 2.29M rows / 440 dates 已恢复, DB lock 释放后 P3 PASS 真值读到):
+**目前距离交付** (2026-05-18 20:59 audit_delivery_readiness.py 真实测均值 **88%**, NOT READY, 距 100% 还 12pp; criteria 4 从 100→94% 因 audit 升级真测 launchd 加载状态 (从"文件存在"→"实际 launchctl loaded"); institution 全期 2.29M rows / 440 dates 已恢复):
+
+**criteria 4 macOS launchd reality (本 session 发现真实 gap)**:
+4 个 launchd plist 文件早已 commit 但都未 `launchctl load`. install 后实测 exit 126 = macOS Full Disk Access 权限拒. 这是**user 必做 1 次手工**:
+1. System Preferences → Privacy & Security → Full Disk Access
+2. 添加 `/bin/bash` (或 `$(which bash)`) → 重启
+3. 重跑 `bash configs/launchd/install_all.sh install`
+
+无 FDA 授权 = 必须 user 每天手动 `bash scripts/daily_update.sh` (其它都 work, 仅缺 cron 自动触发).
+
 
 | # | 标准 | 当前 | 目标 | gap | 阻塞项 | 解锁 action | ETA |
 |---|---|---:|---:|---:|---|---|---|

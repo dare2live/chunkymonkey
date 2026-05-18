@@ -784,6 +784,19 @@ SELECT * FROM mart_data_source_watermark;
 
 每次 session 增量内容写这里, 新 session 启动时**从下往上读**最近改了啥.
 
+### 2026-05-18 晚 audit 真测 launchd 加载状态 + install_all.sh 一键 install + macOS FDA 文档化
+
+**audit 升级 (作弊指标→真实指标)**: `audit_delivery_readiness.py:check_daily_automation`
+原检测 `(plist_dir / "*.plist").exists()` → 升级 `subprocess.run(['launchctl', 'list'])` 真测 loaded
+state + exit code (126 = macOS FDA permission denied 单独标记 fda_blocked=True).
+
+**install_all.sh** (新加 configs/launchd/): `install / status / uninstall` 3 命令, 一键安装
+全部 4 个 plist + 自动检测 exit 126 → 提示用户去 System Preferences → Privacy → Full Disk Access
+授权 /bin/bash.
+
+**audit 真值**: 90% → **88%** (criteria 4 100→94%). 反映真实 "files exist 但 launchd 未跑" gap.
+不再误报 100%. 用户授 FDA + install_all.sh install 后 → criteria 4 → 100%, 均值 → 90%.
+
 ### 2026-05-18 晚 calendar_gate test 10 项 pre-existing fail 清空 + 3 处真 wall-clock 修
 
 `backend/tests/test_calendar_gate.py` 跑下来 10 fail (pre-existing, 不是本 session 引入):
