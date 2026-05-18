@@ -784,6 +784,20 @@ SELECT * FROM mart_data_source_watermark;
 
 每次 session 增量内容写这里, 新 session 启动时**从下往上读**最近改了啥.
 
+### 2026-05-18 凌晨 daily_update.sh 全自动化 scaffold (交付标准 #4)
+
+scripts/daily_update.sh 8 步 framework:
+1. preflight (K-line continuity / watermark SLA)
+2. 数据 sync (local tdxhub + optional GCP akshare backfill)
+3. label + panel 增量 rebuild
+4. model refresh (weekly Optuna, weekday cached)
+5. paper_sim live
+6. backtester-mcp PBO/DSR gate
+7. champion promote (auto if gate pass)
+8. report 生成 (JSON + log)
+
+TBD steps 待 Phase 1.5 (gate wire) / Phase 2 (3 类策略 alpha 源 / SUE PEAD) / Phase 3 (ensemble + regime) 实施完 fill. 当前 scaffold 10% 完整, 但 framework 完整, cron-ready (launchd plist 待加).
+
 ### 2026-05-18 凌晨 ORCHESTRATION.md 顶层指挥体系 (用户 push back)
 
 用户 push back: "先设计一个指挥管理体系和方案, 怎么管理调度使用 agents 和 codex, 怎么使用谷歌云的资源". 写 ORCHESTRATION.md 顶层体系 doc (7 章节):
