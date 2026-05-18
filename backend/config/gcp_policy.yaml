@@ -1,0 +1,65 @@
+# GCP 治理 policy — 用户 2026-05-18 push back 固化 (yaml-driven)
+#
+# 用户原则:
+# - 月度预算 $10
+# - 不浪费资源 (auto stop)
+# - 用得越少越好 (daily 全 Mac)
+# - 大规模计算才用 (e.g. Optuna walk-forward)
+#
+# 5 层 defense (实施 commits: 6dc2251a / b160d56e / fb6a0369 / 526d95ba):
+# pre-flight  - vm_start RED 拒, YELLOW 警告, marker create
+# in-flight   - cost_tracker 15min cron, RED+RUNNING auto vm_stop, idle marker check
+# daily check - daily_update Step 0 cost check, RED → USE_GCP=0 fallback
+# post-flight - vm_stop auto rm marker
+# monitoring  - cost_summary.json + uptime_log.csv
+
+budget:
+  monthly_usd: 10.0           # rule-compliance: ok evidence=user-10usd-budget
+  yellow_threshold_pct: 80    # rule-compliance: ok evidence=80pct-warn
+  red_threshold_pct: 100      # rule-compliance: ok evidence=100pct-block
+
+vm:
+  name: chunkymonkey-optuna
+  zone: us-central1-a
+  machine_type: n2-standard-32
+  spot_rate_per_hour_usd: 0.376  # rule-compliance: ok evidence=2026-spot-rate
+  disk_monthly_usd: 4.0           # rule-compliance: ok evidence=100gb-pd-standard
+
+usage_policy:
+  daily:
+    target: never                  # daily 不调 GCP
+    enforcement: daily_update.sh Step 0 不主动 vm_start
+  weekly_retrain:
+    target: optional               # default Mac local, --gcp opt-in
+    fallback_when_red: mac_local_overnight  # RED → fallback Mac local 12.8h
+  large_batch:
+    target: opt-in                 # 用户 explicit 决策
+    examples:
+      - phase5_extended_retrain    # bash scripts/run_phase5_extended_retrain.sh
+      - akshare_bulk_backfill      # 国内 network block 时用 GCP VM 通
+
+enforcement:
+  pre_flight:
+    vm_start_red_block: true       # vm_start.sh RED budget → exit 2 拒启动
+    vm_start_yellow_warn: true     # YELLOW → 警告但允许
+    marker_create: data/reports/gcp_vm_active_job.marker
+  in_flight:
+    cost_tracker_interval_sec: 900  # 15 min
+    red_running_auto_stop: true    # RED + RUNNING → 自动 vm_stop
+    idle_marker_check: true        # VM RUNNING 无 marker → 警告
+  daily:
+    step_0_check: true             # daily_update Step 0 cost check
+    red_use_gcp_fallback: true     # RED → USE_GCP=0 强制
+  post_flight:
+    vm_stop_clear_marker: true     # vm_stop 清 active_job marker
+
+monitoring:
+  cost_summary_path: data/reports/gcp_cost_summary.json
+  uptime_log_path: data/reports/gcp_vm_uptime_log.csv
+  audit_script: gcp/cost_tracker.sh
+
+# 实测 (2026-05-18):
+# - VM TERMINATED 17 天 (Mac retrain since session)
+# - 月度 burn: $2.19 disk (39.9% budget)
+# - 项目 burn $0/月 if 完全 Mac (跟 user 期望 \$0/月 GCP 一致)
+# - 项目 burn $9/月 if --gcp weekly retrain 4 次 × $2.26

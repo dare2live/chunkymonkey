@@ -784,6 +784,24 @@ SELECT * FROM mart_data_source_watermark;
 
 每次 session 增量内容写这里, 新 session 启动时**从下往上读**最近改了啥.
 
+### 2026-05-18 下午 Optuna retrain weekly → monthly + GCP policy yaml 固化 (用户 push back '需要 weekly 训练吗?')
+
+频率分析: weekly overkill, monthly sweet spot (walk-forward OOS extend 1 month).
+
+daily_update Step 4 改:
+- 旧 DOW=1 (weekly Monday)
+- 新 DOM=1 (monthly day 1)
+- Mac 12.8h × 1/月 (\$0) 或 --gcp 4-6h × 1/月 (\$2.26)
+- 节省 \$6.74/月 (vs 之前 weekly \$9/月)
+
+新加 backend/config/gcp_policy.yaml: yaml-driven 5 层 defense + usage_policy + enforcement + monitoring 全配置.
+
+GCP "固化" 实施层次:
+- shell scripts (cost_tracker / vm_start / vm_stop / daily_update Step 0)
+- launchd plist (cost-tracker 15min cron + daily-update + codex-monitor)
+- yaml config (gcp_policy.yaml 新加, 后续 scripts 读 yaml 不 hard-code)
+- doc (CLAUDE.md §10.0.2 + memory feedback-gcp-cost-control)
+
 ### 2026-05-18 下午 ensemble runner --with-institution opt-in flag (default OFF) — 均值 90% 维持
 
 修 Codex P1b deliver 后 institution 默认 ON 导致 KPI 大降:
