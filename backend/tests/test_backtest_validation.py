@@ -146,3 +146,73 @@ def test_run_all_gates_pbo_fail_blocks():
     # Pure noise → PBO ≈ 0.5 > 0.20 → 不 pass
     # 但所有其它 gate 都可能 pass (small sample size)
     assert not r.pbo.passes or r.pbo.detail.get("pbo", 0) >= 0.20
+
+
+def test_historical_leakage_phantom_blocked():
+    """历史 +312% leakage 反例阻断: in-sample Optuna fit 给历史 signal 当 forward ranking.
+
+    场景: mart_per_stock_stage_strategy_optimal.sharpe 是全期 Optuna fit (不是 OOS), selector
+    ORDER BY sharpe DESC → 等于 "事后挑历史最强 5 只", paper_sim ann_ret +312% 假象.
+
+    特征:
+    - IS metric 巨高 (e.g. sharpe 5.0 假象)
+    - OOS metric 普通甚至负 (真实 walk-forward)
+    - IS-OOS relative_drop > 30% → gate_is_oos FAIL → block
+
+    rule-compliance: ok evidence=historical-leakage-+312pct-reproduction
+    """
+    # IS sharpe 5.0 (full-sample in-sample fit) vs OOS sharpe -0.5 (真实 walk-forward)
+    r = gate_is_oos(is_metric=5.0, oos_metric=-0.5, max_relative_drop=0.30)
+    assert not r.passes, "gate_is_oos 必须阻断 IS=5.0 vs OOS=-0.5 leakage"
+    assert r.detail["relative_drop"] > 1.0  # relative_drop 应该 > 100%
+
+
+def test_historical_leakage_phantom_full_chain():
+    """端到端 +312% 反例阻断: run_all_gates 集成验证."""
+    rng = np.random.default_rng(0)
+    # 模拟 paper_sim NAV 序列, in-sample fit 高 ann 但 walk-forward OOS 是噪音
+    # PBO input: 10 trials × 64 periods 都是噪声 (无真 alpha)
+    returns = rng.normal(0, 0.01, (10, 64))
+    r = run_all_gates(
+        challenger_id="historical_phantom_312pct",
+        returns_matrix=returns,
+        oos_returns=returns[0],  # 噪声 OOS
+        n_trials_for_dsr=50,     # 反映 Optuna 50-trial search
+        ann_normal=0.30,         # 假 +30% paper_sim
+        ann_conservative=-0.05,  # 真 conservative -5%
+        is_metric=5.0,           # 假 in-sample sharpe
+        oos_metric=-0.5,         # 真 OOS sharpe
+    )
+    # 必须 NOT promote
+    assert r.promote_action != "promote", f"phantom +312% 必须阻 promote, got {r.promote_action}"
+    # IS-OOS gate 应 fail (relative_drop 巨大)
+    assert not r.is_oos.passes
+    # Conservative gate 应 fail (真成本下 ann < 0)
+    assert not r.conservative.passes
+
+
+def test_clean_alpha_promote_path():
+    """干净 alpha 路径: 真实 walk-forward + conservative ann > 0 → promote 允许.
+
+    对比 phantom: 数字温和 / IS-OOS gap 小 / conservative 仍 > 0.
+
+    rule-compliance: ok evidence=clean-baseline-from-p0b-walk-forward
+    """
+    rng = np.random.default_rng(7)
+    n_trials, n_periods = 10, 64
+    returns = rng.normal(0, 0.01, (n_trials, n_periods))
+    returns[0] += 0.005  # 真 alpha 在 trial 0
+
+    r = run_all_gates(
+        challenger_id="clean_alpha_baseline",
+        returns_matrix=returns,
+        oos_returns=returns[0],
+        n_trials_for_dsr=10,
+        ann_normal=0.18,        # 真实 +18% (符合 v3.2 实测 RankIC 0.01-0.02 翻译)
+        ann_conservative=0.10,  # 保守后仍 +10%
+        is_metric=0.03,         # IS RankIC 0.03 (类似 v3.2 P0b)
+        oos_metric=0.022,       # OOS RankIC 0.022 (drop ~27% < 30% 阈值)
+    )
+    # 至少 is_oos + conservative pass
+    assert r.is_oos.passes, f"IS-OOS 应 pass: {r.is_oos.reason}"
+    assert r.conservative.passes, f"Conservative 应 pass: {r.conservative.reason}"
