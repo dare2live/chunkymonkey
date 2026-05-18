@@ -784,6 +784,25 @@ SELECT * FROM mart_data_source_watermark;
 
 每次 session 增量内容写这里, 新 session 启动时**从下往上读**最近改了啥.
 
+### 2026-05-18 凌晨 Phase 3.3 ensemble paper_sim runner + regime ret fallback
+
+backend/scripts/run_msaf_ensemble_paper_sim.py:
+- 跑 3 类策略 ensemble (lambdamart_v6 + sniper placeholder + institution placeholder) + regime adaptive 加权 历史 paper_sim
+- 输出 top-K codes/scores per signal_date
+- placeholder source (sniper/institution): Phase 3.4 接全 3 source
+
+regime_state.py 加 ret-based fallback (breadth=None case):
+- ret_60d > +8% + above MA60 → bull
+- ret_60d < -8% + below MA60 → bear
+- 其它 neutral
+
+实测 432 signal_dates (2024-07-01~2026-04-13, lgbm_governance_v1_20d):
+- bull 130 (30%) / neutral 279 (65%) / bear 23 (5%) / crash 0
+- 匹配 2024H2 反弹 + 2025 震荡 + 2026Q1 调整
+
+OOS walk-forward PIT-strict (signal_date 之前 60d HS300, ret_60d), 不 leak future.
+test_regime_state 8/8 + test_ensemble 8/8 pass.
+
 ### 2026-05-18 凌晨 Phase 3.2 ensemble 加权 (8/8 tests pass)
 
 backend/services/strategies/ensemble.py:

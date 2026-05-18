@@ -53,6 +53,9 @@ RET_WINDOW = 60      # 60d return
 BREADTH_BULL = 50.0  # > 50% stocks above MA20 = bull breadth
 BREADTH_BEAR = 40.0  # < 40% = bear breadth
 RET_CRASH = -0.15    # 60d ret < -15% = crash
+# Fallback thresholds when breadth_pct=None (rule-compliance: ok evidence=msaf-top-design-doc-r38)
+RET_BULL_FALLBACK = 0.08   # 60d ret > 8% + above MA60 → bull (no breadth)
+RET_BEAR_FALLBACK = -0.08  # 60d ret < -8% + below MA60 → bear (no breadth)
 
 
 def compute_regime_state(
@@ -99,6 +102,9 @@ def compute_regime_state(
         if breadth_pct is not None and breadth_pct < BREADTH_BEAR:
             state = "bear"
             reasons.append(f"below MA60 + breadth {breadth_pct:.1f}% < {BREADTH_BEAR}%")
+        elif breadth_pct is None and ret_60d < RET_BEAR_FALLBACK:
+            state = "bear"
+            reasons.append(f"below MA60 + ret_60d={ret_60d:.2%} < {RET_BEAR_FALLBACK:.2%} (no breadth)")
         else:
             state = "neutral"
             reasons.append(f"below MA60 but ret_60d={ret_60d:.2%} OK")
@@ -106,9 +112,12 @@ def compute_regime_state(
         if breadth_pct is not None and breadth_pct > BREADTH_BULL:
             state = "bull"
             reasons.append(f"above MA60 + breadth {breadth_pct:.1f}% > {BREADTH_BULL}%")
+        elif breadth_pct is None and ret_60d > RET_BULL_FALLBACK:
+            state = "bull"
+            reasons.append(f"above MA60 + ret_60d={ret_60d:.2%} > {RET_BULL_FALLBACK:.2%} (no breadth)")
         else:
             state = "neutral"
-            reasons.append(f"above MA60 but breadth N/A or {breadth_pct}%")
+            reasons.append(f"above MA60 but breadth N/A or {breadth_pct}%, ret_60d={ret_60d:.2%}")
 
     return RegimeVerdict(
         signal_date=signal_date,
