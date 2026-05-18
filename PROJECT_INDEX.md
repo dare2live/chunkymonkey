@@ -825,7 +825,7 @@ backend/scripts/run_msaf_ensemble_paper_sim.py 加 --compute-kpi + --horizon fla
 KPI:
 - ann_ret_cagr: +69.15% (compound NAV_end 2.5037)
 - ann_ret_arith: +63.21% (arithmetic mean × 12)
-- ann_ret_median: +34.88% ★ robust (median × 12, in 用户目标 25-35% 上限)
+- ann_ret_median: +34.88% ★ robust (median × 12, 跨过 25% 最低目标, 越高越好不封顶)
 - ann_ret_trimmed10: +51.28% (剔 1 头 1 尾 outlier 20 obs)
 - max_dd: -21.38% (略超 -20% 目标, 因 n=22 小样本)
 - sharpe: 1.347, hit_rate: 63.64% > 55% 月胜率目标
