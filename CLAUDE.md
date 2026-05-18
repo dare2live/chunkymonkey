@@ -339,6 +339,33 @@
 4. 真金白银: leakage/估算/假设?
 5. 反例: 跟 Rule 5-7 反例对照过?
 
+## 10.0.4 Codex 主动监控 + commit pre-flight (2026-05-18 用户 push back)
+
+> **用户原话**: "8 个 Codex 全 idle 9-11 小时... 这不就是时间浪费了吗", "commit retry 几小时? 你想个办法以后不再发生"
+
+### 反例 (踩过, 不能再)
+
+| 反例 | 浪费 | 防止 |
+|---|---|---|
+| 8 Codex companion 9-11 小时 idle, doc 早 deliver 但状态 misreport | ~$0 (Codex token 不收), 但用户时间感知 | `scripts/codex_monitor.sh` 每 15 min auto-cancel idle > 30min |
+| commit retry hook reject 几次 (PROJECT_INDEX 不同步 / commit-msg keyword 缺) | 5-10 min × N 次 | `scripts/safe_commit.sh` pre-flight 跑所有 hook |
+
+### 强制规则
+
+**1. 派 Codex 后**:
+- 不被动等 task-notification (companion 可能 misreport)
+- 主动: 每完成 main 任务 check 一次 `codex-companion status --json`
+- 任何 idle > 30 min → cancel + 检查 doc/code 是否已 deliver
+
+**2. Commit 前**:
+- 用 `bash scripts/safe_commit.sh "message"` (pre-flight 跑 PROJECT_INDEX + rule_compliance + commit-msg keyword check, 任一 fail 提前 abort + 提示修法)
+- **禁止** 直接 `git commit` 后被 reject 重试
+
+**3. 长期 background**:
+- `scripts/codex_monitor.sh` 每 15 min cron 跑, auto-cancel idle Codex
+- launchd plist 在 `configs/launchd/com.chunkymonkey.codex-monitor.plist`
+- 安装: `cp configs/launchd/... ~/Library/LaunchAgents/ && launchctl load ...`
+
 ## 10.0.3 高频 commit + push + codegraph sync (2026-05-17 用户 push back)
 
 > **用户原话**: "注意提高本地 git 和推送 github 的频率, 防止 terminal 总挂掉和 python 无缘无故退出"

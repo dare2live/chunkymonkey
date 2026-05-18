@@ -784,6 +784,14 @@ SELECT * FROM mart_data_source_watermark;
 
 每次 session 增量内容写这里, 新 session 启动时**从下往上读**最近改了啥.
 
+### 2026-05-18 凌晨 防 Codex / commit 浪费时间 (用户 push back)
+
+用户 push back 2 项时间浪费:
+1. commit retry hook reject (~10 min) — 加 `scripts/safe_commit.sh` pre-flight 跑所有 hook
+2. Codex companion idle 9-11 小时未发现 — 加 `scripts/codex_monitor.sh` 每 15 min auto-cancel idle > 30min, launchd plist `configs/launchd/com.chunkymonkey.codex-monitor.plist`
+
+CLAUDE.md §10.0.4 固化规则.
+
 ### 2026-05-17 晚 LambdaMART v6 sentinel + prepared_panel cleanup (11/11 pass)
 
 Codex A 自动 follow-up: meta_cols 显式 set + fill_value=-9999.0; make_lambdarank_groups -7 lines cleanup. backend/tests 11/11 pass (sentinel value 已修).
