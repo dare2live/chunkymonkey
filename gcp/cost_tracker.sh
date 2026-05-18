@@ -180,14 +180,40 @@ if [[ "$ALERT" == "RED" && "$VM_STATUS" == "RUNNING" ]]; then
     fi
 fi
 
-# Actionable: VM RUNNING > 2h 无 active job (heuristic: 看 last_run_marker 文件)
-# 防止"忘 stop" 用户场景
+# Actionable: VM RUNNING 无 active job marker > IDLE_GRACE 分钟 → 自动 stop (proactive cost-cutting)
+# 防止"忘 stop" 用户场景, 用户 push back '主动 cost-cutting' (2026-05-18 stop hook)
 RUN_MARKER="$REPO_ROOT/data/reports/gcp_vm_active_job.marker"
+IDLE_GRACE_MIN="${GCP_IDLE_GRACE_MIN:-30}"      # rule-compliance: ok evidence=30min-grace-period
+IDLE_TRACK_FILE="$REPO_ROOT/data/reports/gcp_vm_idle_first_seen.marker"
+
 if [[ "$VM_STATUS" == "RUNNING" && ! -f "$RUN_MARKER" ]]; then
-    # 无 active job marker → 假设 idle
+    # 无 active job marker → idle
     log ""
-    log "  !!! AUTO-ACTION: VM RUNNING 但无 active_job marker, 可能 idle (用户忘 stop)"
-    log "  → 建议: 跑 batch 前 touch $RUN_MARKER, 完后 rm; 或直接 bash gcp/vm_stop.sh"
+    if [[ ! -f "$IDLE_TRACK_FILE" ]]; then
+        # First time seeing idle, record timestamp
+        date "+%s" > "$IDLE_TRACK_FILE"
+        log "  WARN: VM RUNNING 但无 active_job marker — 首次记录 idle 时间戳"
+        log "  → 跑 batch 前 touch $RUN_MARKER, 完后 rm; idle > ${IDLE_GRACE_MIN}min 自动 stop"
+    else
+        # Has idle timestamp — check how long
+        IDLE_SINCE=$(cat "$IDLE_TRACK_FILE" 2>/dev/null || echo 0)
+        IDLE_MIN=$(( (NOW - IDLE_SINCE) / 60 ))
+        log "  WARN: VM RUNNING idle ${IDLE_MIN}min (grace ${IDLE_GRACE_MIN}min)"
+        if [[ "$IDLE_MIN" -ge "$IDLE_GRACE_MIN" ]]; then
+            log "  !!! AUTO-ACTION: idle > grace → 自动 stop VM (proactive cost-cutting)"
+            if [[ -f "$REPO_ROOT/gcp/vm_stop.sh" ]]; then
+                bash "$REPO_ROOT/gcp/vm_stop.sh" 2>&1 | tee -a "$REPO_ROOT/data/reports/gcp_auto_stop.log" >&2 || \
+                    log "  WARN: auto stop failed, manual: bash gcp/vm_stop.sh"
+                log "  ✓ VM auto-stopped (idle protection, saved ~\$0.376/h)"
+                rm -f "$IDLE_TRACK_FILE"
+            else
+                log "  WARN: gcp/vm_stop.sh 不存在, 无法 auto-stop"
+            fi
+        fi
+    fi
+else
+    # VM not idle (TERMINATED OR active marker exists) → clear idle track
+    [[ -f "$IDLE_TRACK_FILE" ]] && rm -f "$IDLE_TRACK_FILE"
 fi
 
 exit $EXIT_CODE

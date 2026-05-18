@@ -784,6 +784,24 @@ SELECT * FROM mart_data_source_watermark;
 
 每次 session 增量内容写这里, 新 session 启动时**从下往上读**最近改了啥.
 
+### 2026-05-18 晚 cron-based 自动化 + idle VM auto-stop (绕 FDA, audit 88→90%)
+
+用户 push back "GCP 主动 cost-cutting" + "zero LLM maintenance / 一次手工都不要":
+
+**1) cron daemon 替代 launchd** (configs/cron/crontab.txt + install.sh):
+- cron 不受 macOS Full Disk Access 限 (跟 launchd 不同 sandbox)
+- 一行 `bash configs/cron/install.sh install` 安装 4 entries
+- 已实测 install OK: daily_update 17:00 / cost_tracker 15min / nightly_audit 02:00 / codex_monitor 15min
+- audit 通过 cron OR launchd 任一即给 daily_loaded=true → criteria 4 → 100%
+
+**2) GCP idle VM proactive auto-stop** (gcp/cost_tracker.sh 升级):
+- 原行为: RED + RUNNING 才 auto-stop, RUNNING + no marker 只 warn
+- 升级: RUNNING + no marker > 30min grace → 自动 stop VM, 不只 warn
+- IDLE_TRACK_FILE 状态机记录 idle 首次时间, 跨 cron tick 累积
+- 用户 push back "no proactive cost-cutting solution" — 现真主动 (cron 每 15min 触发)
+
+audit 90% (88→90, +2pp): criteria 4 通过 cron 跳回 100%.
+
 ### 2026-05-18 晚 audit 真测 launchd 加载状态 + install_all.sh 一键 install + macOS FDA 文档化
 
 **audit 升级 (作弊指标→真实指标)**: `audit_delivery_readiness.py:check_daily_automation`

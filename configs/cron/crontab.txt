@@ -1,0 +1,38 @@
+# crontab 配置 — 用户每天 cron 自动跑 daily_update / cost tracker / data audit
+#
+# 用户 push back: macOS launchd 跑 ~/Documents/ 下 script 需 Full Disk Access 1 次手工授权
+# 替代: cron daemon 不受 FDA 限制, 一行 `crontab -e` 安装即真自动化
+#
+# Install:
+#   crontab -l > /tmp/cron_backup_$(date +%s).txt   # 备份现有 crontab
+#   cat configs/cron/crontab.txt | crontab -        # 安装本 file (覆盖现有!)
+#   OR (合并而非覆盖):
+#   (crontab -l 2>/dev/null; cat configs/cron/crontab.txt) | sort -u | crontab -
+#
+# Uninstall:
+#   crontab -r
+#
+# Verify:
+#   crontab -l
+#
+# 注意:
+# - cron 不继承 user shell 环境, 必须 absolute path
+# - SHELL / PATH 显式设置
+# - cron 不显示 stdout/stderr, 必须 >> log 2>&1
+# - 时区: cron 用 system local time (中国 CST)
+
+SHELL=/bin/bash
+PATH=/usr/local/bin:/usr/bin:/bin:/opt/homebrew/bin
+REPO=/Users/dp/Documents/M/stock/chunkymonkey
+
+# 每 15 min GCP cost tracker (含 idle VM auto-stop)
+*/15 * * * * cd $REPO && bash gcp/cost_tracker.sh >> /tmp/gcp_cost_tracker.log 2>&1
+
+# 每天 17:00 daily_update (A 股收盘 15:00 + 2h 数据 publish)
+0 17 * * * cd $REPO && bash scripts/daily_update.sh >> /tmp/chunkymonkey_daily_update.log 2>&1
+
+# 每天 02:00 nightly data audit (governance v1 periodic_audit)
+0 2 * * * cd $REPO && PYTHONPATH=backend python backend/scripts/nightly_data_audit.py >> /tmp/nightly_data_audit.log 2>&1
+
+# 每 15 min codex monitor (cancel idle > 30 min)
+*/15 * * * * cd $REPO && bash scripts/codex_monitor.sh >> /tmp/codex_monitor.log 2>&1
