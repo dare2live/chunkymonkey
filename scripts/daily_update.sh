@@ -256,11 +256,13 @@ fi
 # Step 4: Model refresh (weekly Optuna or cached)
 log "--- Step 4: Model refresh ---"
 run_backtest_validation_gate || fatal "backtest_validation pre-flight gate failed"
+# Weekly retrain: 默认 Mac local overnight (12.8h, \$0); --gcp opt-in 4-6h GCP (\$2.26/week, \$9/月).
+# 用户 push back (2026-05-18): GCP 用得少, daily 全 local, weekly retrain 也可 Mac.
 if [[ "$DOW" == "1" ]]; then
-    log "Monday: trigger weekly LambdaMART v6 Optuna refresh on GCP"
     if [[ "$DRY" == "1" ]]; then
-        log "DRY: skip GCP VM retrain for lambdamart_v6_${MODEL_ID_DATE}"
-    else
+        log "DRY: skip weekly LambdaMART v6 retrain"
+    elif [[ "$USE_GCP" == "1" ]]; then
+        log "Monday: weekly LambdaMART v6 retrain on GCP (4-6h, ~\$2.26 spot, --gcp opt-in)"
         bash gcp/vm_start.sh >> "$LOG" 2>&1 || fatal "VM start failed"
         MODEL_REFRESH_VM_STARTED=1
         set +e
@@ -271,7 +273,12 @@ if [[ "$DOW" == "1" ]]; then
         if [[ "$refresh_rc" != "0" ]]; then
             fatal "LambdaMART v6 retrain failed on GCP"
         fi
-        log "LambdaMART v6 retrain complete: lambdamart_v6_${MODEL_ID_DATE}"
+        log "LambdaMART v6 retrain complete (GCP): lambdamart_v6_${MODEL_ID_DATE}"
+    else
+        log "Monday: weekly LambdaMART v6 retrain on Mac local (12.8h overnight, \$0; --gcp 切 GCP 4-6h)"
+        log "  推荐 Sunday 22:00 启动 nohup; 或用 --gcp flag 切 GCP"
+        log "  手动 1-click: nohup PYTHONPATH=backend python backend/scripts/retrain_lambdamart_v6.py --model-date ${MODEL_ID_DATE} > /tmp/retrain_${MODEL_ID_DATE}.log 2>&1 &"
+        log "  Skipping retrain in daily_update Mac default (避免 daily 12.8h 阻塞), 用户 weekly 手动 1-click 启动"
     fi
 elif [[ "$DOW" -ge 2 && "$DOW" -le 5 ]]; then
     log "Weekday (DOW=$DOW): use cached LambdaMART v6 model"
