@@ -6,12 +6,12 @@
 3 类输入:
 - lambdamart_v6 (mart_p0b_oos_predictions 或 mart_p0b_lambdamart_v6_predictions)
 - sniper confluence (mart_sniper_score_daily)
-- 机构跟随 composite (services.strategies.institution_follow, 当前 fallback 全 0)
+- 机构跟随 composite (mart_institution_score_daily)
 
 For Phase 3.4:
 - 用现有 lambdamart_v6 (Codex 2.1) 或 v4 ml_score 作输入
 - sniper 读取 mart_sniper_score_daily.confluence_score 并归一化到 0..1
-- institution 可选用 panel_v4.lhb_inst_buy_30d
+- institution 默认读取 mart_institution_score_daily.composite_score
 
 Usage:
     PYTHONPATH=backend python backend/scripts/run_msaf_ensemble_paper_sim.py \
@@ -88,21 +88,20 @@ def load_institution_scores(
     start_date: str = "2024-07-01",  # rule-compliance: ok evidence=p0b-walk-forward-起始
     end_date: str = "2026-04-13",    # rule-compliance: ok evidence=panel-cutoff
 ) -> pd.DataFrame:
-    """Phase 3.4 minimum viable: institution score = lhb_inst_buy_30d (panel_v4 已有).
-
-    后续 Codex sniper builder (a432eadffa) 完成后, 改读 mart_institution_score_daily (4 alpha class composite).
-    """
+    """Load institution composite scores from mart_institution_score_daily."""
     con = duckdb.connect(db_path, read_only=True)
     try:
         df = con.execute(
             "SELECT signal_date, stock_code, "
-            "       CAST(lhb_inst_buy_30d AS DOUBLE) AS inst_score "
-            "FROM mart_p0a_feature_label_panel_v4 "
+            "       CAST(composite_score AS DOUBLE) AS inst_score "
+            "FROM mart_institution_score_daily "
             "WHERE signal_date >= ? AND signal_date <= ? "
-            "  AND lhb_inst_buy_30d IS NOT NULL "
+            "  AND composite_score IS NOT NULL "
             "ORDER BY signal_date, stock_code",
             [start_date, end_date],
         ).fetchdf()
+        if not df.empty:
+            df["signal_date"] = pd.to_datetime(df["signal_date"]).dt.normalize()
         return df
     finally:
         con.close()
@@ -227,8 +226,8 @@ def main() -> int:
     parser.add_argument("--dry-run", action="store_true")
     parser.add_argument("--compute-kpi", action="store_true", help="计算 portfolio KPI (ann/max_dd/sharpe)")
     parser.add_argument("--horizon", default="20d", choices=["5d", "10d", "20d"])
-    parser.add_argument("--with-institution", action="store_true",
-                        help="Phase 3.4 minimum viable: 用 panel_v4.lhb_inst_buy_30d 作 institution score")
+    parser.add_argument("--no-institution", action="store_true",
+                        help="Disable mart_institution_score_daily composite for ablation")
     args = parser.parse_args()
 
     log.info(f"=== MSAF Ensemble paper_sim {args.start} → {args.end} ===")
@@ -254,10 +253,10 @@ def main() -> int:
     }
     log.info(f"  sniper scores: {len(sniper_df):,} rows, {len(sniper_by_sd):,} signal_dates")
 
-    # 2c. Load institution score (Phase 3.4 minimum viable: lhb_inst_buy_30d)
+    # 2c. Load institution score.
     inst_df = pd.DataFrame()
-    if args.with_institution:
-        log.info("Loading institution scores (lhb_inst_buy_30d)...")
+    if not args.no_institution:
+        log.info("Loading institution composite scores...")
         inst_df = load_institution_scores(args.smartmoney_db, args.start, args.end)
         log.info(f"  institution scores: {len(inst_df):,} rows")
 
@@ -266,10 +265,10 @@ def main() -> int:
     log.info(f"  unique signal_dates: {len(signal_dates)}")
 
     # Pre-build per-signal-date institution map
-    inst_by_sd = (
-        inst_df.groupby("signal_date").apply(lambda g: g.set_index("stock_code")["inst_score"])
-        if len(inst_df) else {}
-    )
+    inst_by_sd = {
+        sd: g.set_index("stock_code")["inst_score"]
+        for sd, g in inst_df.groupby("signal_date", sort=False)
+    } if len(inst_df) else {}
 
     results: list[dict] = []
     regime_counts = {"bull": 0, "neutral": 0, "bear": 0, "crash": 0}
@@ -287,10 +286,7 @@ def main() -> int:
         lam = day_preds.set_index("stock_code")["score"]
         day_sniper = sniper_by_sd.get(pd.Timestamp(sd).normalize(), pd.Series(dtype=float))
 
-        # Institution score (Phase 3.4 minimum viable)
-        inst = inst_by_sd.get(sd) if isinstance(inst_by_sd, dict) else (
-            inst_by_sd.loc[sd] if sd in inst_by_sd.index.get_level_values(0).unique() else None
-        )
+        inst = inst_by_sd.get(pd.Timestamp(sd).normalize())
 
         verdict = ensemble_scores(
             signal_date=sd_str,
@@ -320,8 +316,8 @@ def main() -> int:
         kpi = compute_kpi(results, preds, horizon=args.horizon)
         log.info(f"  ann_ret (CAGR):     {kpi.get('ann_ret_cagr'):+.2%}" if kpi.get('ann_ret_cagr') else "  ann_ret_cagr: N/A")
         log.info(f"  ann_ret (arith):    {kpi.get('ann_ret_arith'):+.2%}" if kpi.get('ann_ret_arith') else "  ann_ret_arith: N/A")
-        log.info(f"  ann_ret (median):   {kpi.get('ann_ret_median'):+.2%} ★ robust" if kpi.get('ann_ret_median') is not None else "  ann_ret_median: N/A")
-        log.info(f"  ann_ret (trim 10%): {kpi.get('ann_ret_trimmed10'):+.2%} ★ robust" if kpi.get('ann_ret_trimmed10') is not None else "  ann_ret_trim10: N/A")
+        log.info(f"  ann_ret (median):   {kpi.get('ann_ret_median'):+.2%} robust" if kpi.get('ann_ret_median') is not None else "  ann_ret_median: N/A")
+        log.info(f"  ann_ret (trim 10%): {kpi.get('ann_ret_trimmed10'):+.2%} robust" if kpi.get('ann_ret_trimmed10') is not None else "  ann_ret_trim10: N/A")
         log.info(f"  max_dd:  {kpi.get('max_dd'):+.2%}" if kpi.get('max_dd') else "  max_dd:  N/A")
         log.info(f"  sharpe:  {kpi.get('sharpe'):.3f}" if kpi.get('sharpe') else "  sharpe:  N/A")
         log.info(f"  hit_rate: {kpi.get('hit_rate'):.2%}" if kpi.get('hit_rate') is not None else "  hit_rate: N/A")

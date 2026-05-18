@@ -22,6 +22,9 @@ class CapitalFlowAlpha:
     """PIT capital-flow features with raw main-flow fields when available."""
 
     FEATURE_COLUMNS = [
+        "main_inflow_5d",
+        "main_inflow_ratio_5d",
+        "sustained_buy_count_5d",
         "capital_main_net_amount_5d",
         "capital_main_net_amount_10d",
         "capital_main_net_pct_5d",
@@ -78,13 +81,16 @@ class CapitalFlowAlpha:
                        COALESCE(super_large_net_amount, 0) + COALESCE(large_net_amount, 0) AS inst_net_amount,
                        COALESCE(small_net_amount, 0) AS retail_net_amount
                   FROM raw_fund_flow_daily
-                 WHERE {dt} <= CAST(? AS DATE)
+                 WHERE {dt} < CAST(? AS DATE)
                    AND {dt} > CAST(? AS DATE) - INTERVAL '10 days'
                    {clause}
             )
             SELECT stock_code,
                    SUM(CASE WHEN trade_dt > CAST(? AS DATE) - INTERVAL '5 days'
                             THEN main_net_amount ELSE 0 END) AS capital_main_net_amount_5d,
+                   SUM(CASE WHEN trade_dt > CAST(? AS DATE) - INTERVAL '5 days'
+                             AND main_net_amount > 0
+                            THEN 1 ELSE 0 END) AS sustained_buy_count_5d,
                    SUM(main_net_amount) AS capital_main_net_amount_10d,
                    AVG(CASE WHEN trade_dt > CAST(? AS DATE) - INTERVAL '5 days'
                             THEN main_net_pct END) AS capital_main_net_pct_5d,
@@ -101,7 +107,7 @@ class CapitalFlowAlpha:
         df = fetch_df(
             self.conn,
             sql,
-            [signal, signal, *params, signal, signal, signal, signal],
+            [signal, signal, *params, signal, signal, signal, signal, signal],
         )
         return self._add_divergence(df)
 
@@ -116,13 +122,16 @@ class CapitalFlowAlpha:
                        COALESCE(exec_buy_pct_60d, 0) - COALESCE(exec_sell_pct_60d, 0) AS inst_proxy,
                        COALESCE(lhb_net_buy_pct_30d, 0) AS pct_proxy
                   FROM fact_capital_flow_pit_daily
-                 WHERE {dt} <= CAST(? AS DATE)
+                 WHERE {dt} < CAST(? AS DATE)
                    AND {dt} > CAST(? AS DATE) - INTERVAL '10 days'
                    {clause}
             )
             SELECT stock_code,
                    SUM(CASE WHEN trade_dt > CAST(? AS DATE) - INTERVAL '5 days'
                             THEN main_proxy ELSE 0 END) AS capital_main_net_amount_5d,
+                   SUM(CASE WHEN trade_dt > CAST(? AS DATE) - INTERVAL '5 days'
+                             AND main_proxy > 0
+                            THEN 1 ELSE 0 END) AS sustained_buy_count_5d,
                    SUM(main_proxy) AS capital_main_net_amount_10d,
                    AVG(CASE WHEN trade_dt > CAST(? AS DATE) - INTERVAL '5 days'
                             THEN pct_proxy END) AS capital_main_net_pct_5d,
@@ -138,7 +147,7 @@ class CapitalFlowAlpha:
         df = fetch_df(
             self.conn,
             sql,
-            [signal, signal, *params, signal, signal, signal],
+            [signal, signal, *params, signal, signal, signal, signal],
         )
         return self._add_divergence(df)
 
@@ -148,6 +157,8 @@ class CapitalFlowAlpha:
         if out.empty:
             out["capital_inst_retail_divergence_5d"] = pd.Series(dtype="float64")
             out["capital_inst_retail_divergence_10d"] = pd.Series(dtype="float64")
+            out["main_inflow_5d"] = pd.Series(dtype="float64")
+            out["main_inflow_ratio_5d"] = pd.Series(dtype="float64")
             return out
         for col in [
             "capital_inst_net_amount_5d",
@@ -162,6 +173,8 @@ class CapitalFlowAlpha:
         out["capital_inst_retail_divergence_10d"] = (
             out["capital_inst_net_amount_10d"] / (out["capital_retail_net_amount_10d"].abs() + 1.0)
         )
+        out["main_inflow_5d"] = out["capital_main_net_amount_5d"]
+        out["main_inflow_ratio_5d"] = out["capital_main_net_pct_5d"]
         return out
 
     @staticmethod

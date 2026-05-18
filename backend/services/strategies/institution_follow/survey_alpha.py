@@ -21,6 +21,8 @@ class SurveyAlpha:
     """PIT survey heat features using disclosure/notice date when present."""
 
     FEATURE_COLUMNS = [
+        "inst_survey_count_30d",
+        "inst_survey_quality_30d",
         "survey_count_30d",
         "survey_inst_count_30d",
         "survey_count_prev_30d",
@@ -59,8 +61,8 @@ class SurveyAlpha:
                        {available_dt} AS available_dt,
                        COALESCE(inst_count, 0) AS inst_count
                   FROM raw_institution_surveys
-                 WHERE {survey_dt} <= CAST(? AS DATE)
-                   AND {available_dt} <= CAST(? AS DATE)
+                 WHERE {survey_dt} < CAST(? AS DATE)
+                   AND {available_dt} < CAST(? AS DATE)
                    AND {available_dt} > CAST(? AS DATE) - INTERVAL '60 days'
                    {clause}
             )
@@ -69,9 +71,11 @@ class SurveyAlpha:
                             THEN 1 ELSE 0 END) AS survey_count_30d,
                    SUM(CASE WHEN available_dt > CAST(? AS DATE) - INTERVAL '30 days'
                             THEN inst_count ELSE 0 END) AS survey_inst_count_30d,
-                   SUM(CASE WHEN available_dt <= CAST(? AS DATE) - INTERVAL '30 days'
+                   AVG(CASE WHEN available_dt > CAST(? AS DATE) - INTERVAL '30 days'
+                            THEN inst_count END) AS inst_survey_quality_30d,
+                   SUM(CASE WHEN available_dt < CAST(? AS DATE) - INTERVAL '30 days'
                             THEN 1 ELSE 0 END) AS survey_count_prev_30d,
-                   SUM(CASE WHEN available_dt <= CAST(? AS DATE) - INTERVAL '30 days'
+                   SUM(CASE WHEN available_dt < CAST(? AS DATE) - INTERVAL '30 days'
                             THEN inst_count ELSE 0 END) AS survey_inst_count_prev_30d,
                    0 AS survey_expectation_upgrade_flag
               FROM survey
@@ -80,11 +84,13 @@ class SurveyAlpha:
         df = fetch_df(
             self.conn,
             sql,
-            [signal, signal, signal, *params, signal, signal, signal, signal],
+            [signal, signal, signal, *params, signal, signal, signal, signal, signal],
         )
         if df.empty:
             df["survey_heat_rising"] = pd.Series(dtype="float64")
+            df["inst_survey_count_30d"] = pd.Series(dtype="float64")
             return df
+        df["inst_survey_count_30d"] = pd.to_numeric(df["survey_inst_count_30d"], errors="coerce").fillna(0.0)
         df["survey_heat_rising"] = (
             (pd.to_numeric(df["survey_count_30d"], errors="coerce").fillna(0) > pd.to_numeric(df["survey_count_prev_30d"], errors="coerce").fillna(0))
             | (pd.to_numeric(df["survey_inst_count_30d"], errors="coerce").fillna(0) > pd.to_numeric(df["survey_inst_count_prev_30d"], errors="coerce").fillna(0))

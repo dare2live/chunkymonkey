@@ -2,7 +2,7 @@
 
 The source table has no separate announce_date column. LHB rows are daily public
 events, so this module treats fact_lhb_event.trade_date as the event availability
-date and always filters it with trade_date <= signal_date.
+date and always filters it with trade_date < signal_date.
 """
 
 from __future__ import annotations
@@ -50,14 +50,13 @@ class LHBAlpha:
             self.conn.close()
 
     def get_features(self, signal_date, universe: list[str] | None = None) -> pd.DataFrame:
-        """Return one feature row per stock_code using only events <= signal_date."""
+        """Return one feature row per stock_code using only events before signal_date."""
         signal = normalize_signal_date(signal_date)
         if not table_exists(self.conn, "fact_lhb_event"):
             return empty_features(universe, self.FEATURE_COLUMNS)
 
         recent = self._recent_event_features(signal, universe)
-        drift = self._historical_drift_features(signal, universe)
-        features = recent.merge(drift, on="stock_code", how="outer")
+        features = recent
         features = complete_universe(features, universe, self.FEATURE_COLUMNS[:-1])
         features["lhb_score"] = self._score(features)
         return complete_universe(features, universe, self.FEATURE_COLUMNS)
@@ -73,7 +72,7 @@ class LHBAlpha:
                        COALESCE(net_buy, 0) AS net_buy,
                        COALESCE(net_buy_pct, 0) AS net_buy_pct
                   FROM fact_lhb_event
-                 WHERE {dt} <= CAST(? AS DATE)
+                 WHERE {dt} < CAST(? AS DATE)
                    AND {dt} > CAST(? AS DATE) - INTERVAL '30 days'
                    {clause}
             )
@@ -108,7 +107,7 @@ class LHBAlpha:
                 SELECT e.stock_code,
                        {dt} AS event_date
                   FROM fact_lhb_event e
-                 WHERE {dt} <= CAST(? AS DATE)
+                 WHERE {dt} < CAST(? AS DATE)
                    AND {dt} > CAST(? AS DATE) - INTERVAL '420 days'
                    AND COALESCE(e.is_inst_net_buy, 0) = 1
                    {clause}

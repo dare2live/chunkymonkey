@@ -21,6 +21,8 @@ class NorthboundAlpha:
     """PIT northbound features from fact_hsgt_daily when available."""
 
     FEATURE_COLUMNS = [
+        "nb_holding_pct",
+        "nb_holding_chg_30d",
         "northbound_hold_market_value",
         "northbound_hold_pct_float",
         "northbound_hold_value_delta_30d",
@@ -52,7 +54,7 @@ class NorthboundAlpha:
             WITH latest_key AS (
                 SELECT stock_code, MAX({dt}) AS snapshot_dt
                   FROM fact_hsgt_daily
-                 WHERE {dt} <= CAST(? AS DATE)
+                 WHERE {dt} < CAST(? AS DATE)
                    {clause}
                  GROUP BY stock_code
             ),
@@ -68,7 +70,7 @@ class NorthboundAlpha:
             prev_key AS (
                 SELECT stock_code, MAX({dt}) AS snapshot_dt
                   FROM fact_hsgt_daily
-                 WHERE {dt} <= CAST(? AS DATE) - INTERVAL '30 days'
+                 WHERE {dt} < CAST(? AS DATE) - INTERVAL '30 days'
                    {clause}
                  GROUP BY stock_code
             ),
@@ -87,7 +89,10 @@ class NorthboundAlpha:
                    l.hold_market_value - COALESCE(p.hold_market_value, l.hold_market_value)
                        AS northbound_hold_value_delta_30d,
                    l.hold_pct_of_float - COALESCE(p.hold_pct_of_float, l.hold_pct_of_float)
-                       AS northbound_hold_pct_delta_30d
+                       AS northbound_hold_pct_delta_30d,
+                   l.hold_pct_of_float AS nb_holding_pct,
+                   l.hold_pct_of_float - COALESCE(p.hold_pct_of_float, l.hold_pct_of_float)
+                       AS nb_holding_chg_30d
               FROM latest l
               LEFT JOIN prev p ON p.stock_code = l.stock_code
         """

@@ -803,6 +803,21 @@ regime_state.py 加 ret-based fallback (breadth=None case):
 OOS walk-forward PIT-strict (signal_date 之前 60d HS300, ret_60d), 不 leak future.
 test_regime_state 8/8 + test_ensemble 8/8 pass.
 
+### 2026-05-18 下午 Codex P1b institution 4-class composite deliver + 实测 default OFF (KPI dilute)
+
+Codex agent task-mpavrn1o-w0ro9l deliver mart_institution_score_daily 2.25M rows (4-class LHB+CapitalFlow+Survey+Northbound).
+
+实测 LM+sniper+inst vs LM+sniper:
+- median -58.16pp (+48.40 → -9.76%)
+- max_dd 恶化 14.80pp (-24 → -39%)
+- hit_rate -31.82pp (68 → 36%)
+
+根因: avg_composite 0.065 低 base rate + ensemble min-max sparse-active 主导 → dilute lambdamart.
+
+决策: ensemble runner --with-institution flag opt-in, default OFF. Phase 5 Optuna 联合调优 regime weights (institution cap 20%).
+
+GCP P5 Extended Retrain 1-click wrapper scripts/run_phase5_extended_retrain.sh: 7 步 (budget check / vm_start / git pull / nohup retrain / monitor / auto-stop / pull). ETA 4-6h GCP \$2.26 (实测 smoke 21 min × 6 windows × 5 trials refine).
+
 ### 2026-05-18 下午 audit #2 detect sniper真接 — 均值 88→90% (LM+sniper)
 
 audit check_strategy_model 改 4 档判:
