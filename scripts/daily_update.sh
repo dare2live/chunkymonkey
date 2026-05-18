@@ -38,9 +38,10 @@ cd "$REPO_ROOT"
 
 DATE=$(date +%Y%m%d)
 LOG="/tmp/chunkymonkey_daily_update_${DATE}.log"
-DRY=0
-SKIP_SYNC=0
-USE_GCP=0
+# Env var override (e.g. DRY=1 SKIP_SYNC=1 bash daily_update.sh)
+DRY=${DRY:-0}
+SKIP_SYNC=${SKIP_SYNC:-0}
+USE_GCP=${USE_GCP:-0}
 MODEL_ID_DATE="${CHUNKY_MODEL_DATE_OVERRIDE:-$DATE}"
 DOW="${CHUNKY_DOW_OVERRIDE:-$(date +%u)}"
 VM_NAME="${VM_NAME:-chunkymonkey-optuna}"
@@ -199,6 +200,32 @@ if [[ "$SKIP_SYNC" == "0" ]]; then
             log "DRY: skip actual sync"
         fi
     fi
+fi
+
+# Step 2c: alpha158 incremental check + rebuild if stale
+log "--- Step 2c: alpha158 freshness check + rebuild if stale ---"
+ALPHA158_STALE_DAYS=$(PYTHONPATH=backend python -c "
+import duckdb, datetime
+try:
+    con = duckdb.connect('data/alpha158.duckdb', read_only=True)
+    r = con.execute('SELECT MAX(date) FROM fact_alpha158_panel').fetchone()[0]
+    con.close()
+    if r is None:
+        print(9999)
+    else:
+        # rule-compliance: ok evidence=alpha158-staleness-check
+        delta = (datetime.date.today() - r).days
+        print(delta)
+except Exception:
+    print(9999)
+" 2>/dev/null)
+log "alpha158 max stale: ${ALPHA158_STALE_DAYS} days"
+if [[ "$ALPHA158_STALE_DAYS" -gt 3 && "$DRY" == "0" ]]; then
+    log "alpha158 > 3d stale, 跑全量 rebuild (~12 sec on Mac)"
+    PYTHONPATH=backend python backend/scripts/build_alpha158_duck.py --start 2023-01-01 >> "$LOG" 2>&1 || \
+        log "WARN: alpha158 rebuild failed"
+else
+    log "alpha158 fresh (≤3d stale) 跳过 rebuild"
 fi
 
 # Step 3: Label / panel rebuild (增量)
