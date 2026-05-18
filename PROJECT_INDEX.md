@@ -803,6 +803,32 @@ regime_state.py 加 ret-based fallback (breadth=None case):
 OOS walk-forward PIT-strict (signal_date 之前 60d HS300, ret_60d), 不 leak future.
 test_regime_state 8/8 + test_ensemble 8/8 pass.
 
+### 2026-05-18 下午 daily_update Step 5 真调 MSAF ensemble KPI + audit Step 5 check
+
+daily_update.sh Step 5 改 mock regime → 真调 ensemble paper_sim:
+- 5a regime check (existing)
+- 5b 加 run_msaf_ensemble_paper_sim.py --compute-kpi 真调, 输出 KPI 4 metric (median_ann / max_dd / sharpe / n_obs)
+
+audit_delivery_readiness #4 加 step5_ensemble_real check (10 分): Step 5 真调 ensemble runner 不是 mock.
+
+8 步全真调 (no mock):
+- Step 0 GCP cost tracker + auto-stop
+- Step 1 SLA + preflight K-line
+- Step 2 tdxhub sync (Local / GCP)
+- Step 2c alpha158 freshness
+- Step 3 panel incremental rebuild
+- Step 4 Monday Optuna retrain (GCP VM)
+- **Step 5 regime + MSAF ensemble KPI**
+- Step 6 phase4 gate 4-gate verdict
+- Step 7 P3 PASS lookup + promote_champion CLI
+- Step 8 daily report (含 GCP cost + regime + SLA)
+
+8 plist installed (codex-monitor / daily-update / nightly-audit / gcp-cost-tracker).
+
+均值 88% (其它 5 标准未变, P1-P5 待完).
+
+P4 vol-sizing research: neutral cash=20% test → max_dd -15.44% PASS, 但 median ann 大幅降 → 不改 default, 留 Phase 5 Optuna 联合搜索 (docs/msaf_p4_vol_sizing_research_20260518.md).
+
 ### 2026-05-18 下午 PIT audit 100% + #1 数据管理 PASS — 均值 87→88%
 
 新增 backend/scripts/audit_pit_coverage.py: 4 critical fact 表 PIT 实测 100% PASS.
