@@ -61,6 +61,31 @@ def load_lambdamart_predictions(
         con.close()
 
 
+def load_institution_scores(
+    db_path: str,
+    start_date: str = "2024-07-01",  # rule-compliance: ok evidence=p0b-walk-forward-起始
+    end_date: str = "2026-04-13",    # rule-compliance: ok evidence=panel-cutoff
+) -> pd.DataFrame:
+    """Phase 3.4 minimum viable: institution score = lhb_inst_buy_30d (panel_v4 已有).
+
+    后续 Codex sniper builder (a432eadffa) 完成后, 改读 mart_institution_score_daily (4 alpha class composite).
+    """
+    con = duckdb.connect(db_path, read_only=True)
+    try:
+        df = con.execute(
+            "SELECT signal_date, stock_code, "
+            "       CAST(lhb_inst_buy_30d AS DOUBLE) AS inst_score "
+            "FROM mart_p0a_feature_label_panel_v4 "
+            "WHERE signal_date >= ? AND signal_date <= ? "
+            "  AND lhb_inst_buy_30d IS NOT NULL "
+            "ORDER BY signal_date, stock_code",
+            [start_date, end_date],
+        ).fetchdf()
+        return df
+    finally:
+        con.close()
+
+
 def compute_kpi(results: list[dict], preds: pd.DataFrame, horizon: str = "20d") -> dict:
     """计算 portfolio KPI from ensemble top-K + fwd return.
 
@@ -180,6 +205,8 @@ def main() -> int:
     parser.add_argument("--dry-run", action="store_true")
     parser.add_argument("--compute-kpi", action="store_true", help="计算 portfolio KPI (ann/max_dd/sharpe)")
     parser.add_argument("--horizon", default="20d", choices=["5d", "10d", "20d"])
+    parser.add_argument("--with-institution", action="store_true",
+                        help="Phase 3.4 minimum viable: 用 panel_v4.lhb_inst_buy_30d 作 institution score")
     args = parser.parse_args()
 
     log.info(f"=== MSAF Ensemble paper_sim {args.start} → {args.end} ===")
@@ -196,9 +223,22 @@ def main() -> int:
     )
     log.info(f"  predictions: {len(preds):,} rows, {preds['signal_date'].min()} → {preds['signal_date'].max()}")
 
+    # 2b. Load institution score (Phase 3.4 minimum viable: lhb_inst_buy_30d)
+    inst_df = pd.DataFrame()
+    if args.with_institution:
+        log.info("Loading institution scores (lhb_inst_buy_30d)...")
+        inst_df = load_institution_scores(args.smartmoney_db, args.start, args.end)
+        log.info(f"  institution scores: {len(inst_df):,} rows")
+
     # 3. Loop daily signals
     signal_dates = preds["signal_date"].drop_duplicates().tolist()
     log.info(f"  unique signal_dates: {len(signal_dates)}")
+
+    # Pre-build per-signal-date institution map
+    inst_by_sd = (
+        inst_df.groupby("signal_date").apply(lambda g: g.set_index("stock_code")["inst_score"])
+        if len(inst_df) else {}
+    )
 
     results: list[dict] = []
     regime_counts = {"bull": 0, "neutral": 0, "bear": 0, "crash": 0}
@@ -215,13 +255,18 @@ def main() -> int:
         day_preds = preds[preds["signal_date"] == sd]
         lam = day_preds.set_index("stock_code")["score"]
 
-        # sniper / institution placeholders (Phase 3.3 minimum viable)
+        # Institution score (Phase 3.4 minimum viable)
+        inst = inst_by_sd.get(sd) if isinstance(inst_by_sd, dict) else (
+            inst_by_sd.loc[sd] if sd in inst_by_sd.index.get_level_values(0).unique() else None
+        )
+
+        # Sniper: 待 Codex agent a432eadffa 完成 mart_sniper_score_daily, 暂 None
         verdict = ensemble_scores(
             signal_date=sd_str,
             regime=regime,
             lambdamart_scores=lam,
-            sniper_scores=None,  # TODO: Phase 3.4
-            institution_scores=None,  # TODO: Phase 3.4
+            sniper_scores=None,
+            institution_scores=inst,
             max_positions=args.max_positions,
         )
         results.append({

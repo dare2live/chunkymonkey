@@ -803,6 +803,16 @@ regime_state.py 加 ret-based fallback (breadth=None case):
 OOS walk-forward PIT-strict (signal_date 之前 60d HS300, ret_60d), 不 leak future.
 test_regime_state 8/8 + test_ensemble 8/8 pass.
 
+### 2026-05-18 下午 P1 institution baseline 测试 — raw signal 反 underperform lambdamart-only
+
+ensemble runner 加 --with-institution flag (用 panel_v4.lhb_inst_buy_30d 简化):
+- lambdamart-only: ann CAGR +69.15% / sharpe 1.35 / max_dd -21.38%
+- +institution (raw lhb count): ann CAGR -2.71% / sharpe 0.08 / max_dd -30.91%
+
+Finding: institution raw count 弱信号, ensemble 30% weight dilute lambdamart strong alpha. 真接需 4-class composite (Codex agent a432eadffa 跑中).
+
+不开 default. docs/msaf_p1_institution_baseline_20260518.md.
+
 ### 2026-05-18 下午 daily_update Step 5 真调 MSAF ensemble KPI + audit Step 5 check
 
 daily_update.sh Step 5 改 mock regime → 真调 ensemble paper_sim:
