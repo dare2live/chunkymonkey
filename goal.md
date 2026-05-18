@@ -84,11 +84,13 @@ n_obs ≥ 60 (criteria 6 → 85%): 需 Phase 6 retrain start=2022 + 上游 data 
 
 **总 ETA**: ~10h (Phase 5 retrain) + 30-60min (post-retrain pipeline) → 70% → 88% audit pct; 后续 1-2 week 触达 100%.
 
-### 维护方式
+### 维护方式 (零 LLM 依赖)
 
-- `PYTHONPATH=backend python backend/scripts/audit_delivery_readiness.py` 随时查 6 标准当前状态
-- `bash gcp/cost_tracker.sh` 随时查 GCP 月度成本 + auto-stop 触发
-- launchd cron 自动跑 (cost-tracker 每 15 min, daily-update 每天 17:00, nightly-data-audit 每天 2 AM, codex-monitor 每 15 min)
+- **一键 status**: `bash scripts/session_status.sh` (6 节: audit / Phase 5 / watcher / cron / GCP / processes)
+- `PYTHONPATH=backend python backend/scripts/audit_delivery_readiness.py` 随时查 6 标准
+- `bash gcp/cost_tracker.sh` 随时查 GCP 月度成本 + auto-stop
+- **cron 自动跑** (已 install, FDA-free): cost-tracker 15min / daily-update 17:00 / nightly-audit 02:00 / codex-monitor 15min
+- 重启? `bash configs/cron/install.sh status` 验证
 
 ### GCP 成本固化具体方案 (用户 push back 重点)
 
