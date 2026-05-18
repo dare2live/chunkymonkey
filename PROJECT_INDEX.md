@@ -784,6 +784,16 @@ SELECT * FROM mart_data_source_watermark;
 
 每次 session 增量内容写这里, 新 session 启动时**从下往上读**最近改了啥.
 
+### 2026-05-18 凌晨 Phase 3.2 ensemble 加权 (8/8 tests pass)
+
+backend/services/strategies/ensemble.py:
+- ensemble_scores(): 输入 regime + 3 类 strategy scores → 加权 normalize → top-K
+- crash regime → 全空仓 (cash_pct=1.0)
+- bear regime → 60% cash, K reduced
+- bull/neutral → full K positions
+- 各 source min-max normalize 后按 regime weight 加权
+- backend/tests/strategies/test_ensemble.py 8/8 pass
+
 ### 2026-05-18 凌晨 Phase 3 regime_state + daily_update Step 5/7 wire
 
 backend/services/strategies/regime/regime_state.py:
