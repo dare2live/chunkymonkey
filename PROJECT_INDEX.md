@@ -784,6 +784,42 @@ SELECT * FROM mart_data_source_watermark;
 
 每次 session 增量内容写这里, 新 session 启动时**从下往上读**最近改了啥.
 
+### 2026-05-19 早 启动 unblock #6 batch pipeline (background, ETA 7-10h)
+
+接 stop hook 反馈 (audit 90% NOT READY, #6 60% WARN unblock required), 启完整 background pipeline 自主推进:
+
+**真数据 verify**:
+- raw `price_kline_tdxhub`: 2022-01-04 起 ✓
+- `v_price_kline_qfq` 2023: 2023-01-03 → 2023-12-29 / 5013 codes ✓
+- `fact_alpha158_panel`: 2023-01-03 起 ✓
+- `fact_lhb_event` / `fact_risk_factors` / `fact_technical_trigger` / `fact_sector_momentum_daily`: 2023-01-03 起 ✓
+- `mart_stock_survey_features`: 2025-04-23 起 (LEFT JOIN NULL, 不阻塞)
+- `fact_capital_flow_pit_daily`: 2023-01-03 起 ✓
+
+**结论**: 支持表全 2023+, panel v3/v4 起点 2024-01 是 build script `--start-date` default 切割, 不是数据缺. Backfill 可行.
+
+**Background pipeline 4 layers** (启动 2026-05-19 09:17):
+- PID 76551 (label_panel rebuild `--start-date 2023-01-03`): 805 dates × 5210 stocks ≈ 4.19M rows, ETA 30-60min
+- PID 77727 (chain script): wait label → rebuild v3 → rebuild v4, ETA 1.5-2.5h total
+- PID 78164 (unblock launcher): wait chain → `gcloud storage cp smartmoney.duckdb` (22GB → GCS, 30-60min) → start VM → SSH retrain `--start-date 2023-01-03 --n-trials 50` + self-stop on completion
+- PID 78342 (GCP retrain watcher): wait VM TERMINATED → pull predictions from GCS → replace local smartmoney.duckdb → run `scripts/run_phase5_post_retrain.sh` (6 步: backfill walkforward_eval + P3 holdout + promote_champion + msaf_ensemble + phase4_gate + audit_delivery_readiness)
+
+**期望结果** (post-pipeline):
+- panel v4 range: 2023-01-03 → 2026-05-06 (vs 当前 2024-01-02 → 2026-04-23)
+- model OOS predictions: 2024-01 → 2026-04 (n_obs ≥ 30 monthly)
+- audit #6 实盘 GO/NO-GO: 60% → 70% (n_obs ≥ 30) OR 85%+ (if sharpe ≥ 2.0)
+- audit 整体: 90% → 95%+ NOT READY → READY
+
+**GCP cost**: spot rate $0.376/h × 4-6h ≈ $1.5-2.26 一次. 月预算 $10, 当前 $2.32 used + retrain $2 = $4.3 (43% budget). 在 [[feedback-gcp-cost-control]] 允许范围.
+
+**风险**:
+- GCS upload 22GB 用户网络速度未知, 估 30-60min
+- VM 上 disk 100GB 可容 (smartmoney 22GB + alpha158 3.5GB + market 1.4GB + retrain output ~5GB = 32GB)
+- VM self-stop 1min 缓冲后 shutdown, watcher poll 2min — 不会 miss
+- retrain crash / OOM: log 在 `/tmp/retrain_${MODEL_ID}.log` (VM), 后续可 SSH 拉
+
+**Single session 不能 wait 完整 pipeline**, 但 pipeline 全 autonomous (self-stop + watcher 链), 用户离开 7-10h 后 audit 应 95%+.
+
 ### 2026-05-19 早 unblock #6 实盘 GO/NO-GO 60% 路径分析
 
 跑完 Codex review fix 后 audit 整体 90% NOT READY, 单 WARN 是 #6 实盘 60%. 走 5 步根因分析:
