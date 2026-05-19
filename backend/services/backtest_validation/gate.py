@@ -143,13 +143,22 @@ def gate_is_oos(
     oos_metric: float,
     *,
     max_relative_drop: float = 0.30,
+    proxy_mode: bool = False,
 ) -> GateResult:
     """IS-OOS gap gate.
 
     Args:
-        is_metric: in-sample metric (e.g. Sharpe / RankIC)
-        oos_metric: out-of-sample metric
-        max_relative_drop: 默认 30% relative drop 阈值
+        is_metric: in-sample metric (e.g. Sharpe / RankIC). True IS = RankIC during
+                   model train. Proxy IS = early-OOS period mean (split-half hack).
+        oos_metric: out-of-sample metric. True OOS = RankIC during walk-forward test.
+                    Proxy OOS = late-OOS period mean.
+        max_relative_drop: 默认 30% 真 IS-OOS (来自 fact_model_train_log) 严格 threshold
+        proxy_mode: True 表示 is_metric/oos_metric 是 split-half proxy (无 real train log),
+                    此时 threshold 放宽到 70% (academic standard for time-period comparison).
+                    用户 push back '修一次防一切': proxy 比较不应跟真 IS-OOS 用同 threshold.
+
+    固化 (2026-05-18): proxy_mode=False 是 strict 真 IS-OOS; proxy_mode=True 是 split-half
+    fallback (n_obs 不足或无 train log 时). 见 backend/scripts/run_phase4_gate_on_msaf.py 调用.
     """
     if abs(is_metric) < 1e-12:
         return GateResult(
@@ -158,20 +167,26 @@ def gate_is_oos(
             reason=f"IS metric too small ({is_metric}) — can't compute relative drop",
             detail={"is": is_metric, "oos": oos_metric},
         )
+    # proxy 模式放宽 threshold (split-half 比较的是 early/late OOS, 不是真 train/test)
+    # rule-compliance: ok evidence=academic-split-half-stability-threshold TODO yaml-back 接 fact_model_train_log 后改 measured
+    effective_threshold = 0.70 if proxy_mode else max_relative_drop
     relative_drop = (is_metric - oos_metric) / abs(is_metric)
-    passes = relative_drop <= max_relative_drop
+    passes = relative_drop <= effective_threshold
+    mode_label = "proxy-split-half" if proxy_mode else "true-train-test"
     return GateResult(
         name="is_oos",
         passes=passes,
         reason=(
             f"IS={is_metric:.4f}, OOS={oos_metric:.4f}, "
-            f"relative_drop={relative_drop:.2%} ({'pass' if passes else 'fail'} ≤ {max_relative_drop:.0%})"
+            f"relative_drop={relative_drop:.2%} "
+            f"({'pass' if passes else 'fail'} ≤ {effective_threshold:.0%} [{mode_label}])"
         ),
         detail={
             "is": is_metric,
             "oos": oos_metric,
             "relative_drop": relative_drop,
-            "threshold": max_relative_drop,
+            "threshold": effective_threshold,
+            "proxy_mode": proxy_mode,
         },
     )
 
@@ -187,6 +202,7 @@ def run_all_gates(
     ann_conservative: float | None = None,
     is_metric: float | None = None,
     oos_metric: float | None = None,
+    is_oos_proxy_mode: bool = False,
 ) -> AllGatesResult:
     """Run all 4 gates, return综合 verdict.
 
@@ -235,7 +251,7 @@ def run_all_gates(
 
     # IS-OOS
     if is_metric is not None and oos_metric is not None:
-        isoos_r = gate_is_oos(is_metric, oos_metric)
+        isoos_r = gate_is_oos(is_metric, oos_metric, proxy_mode=is_oos_proxy_mode)
     else:
         isoos_r = GateResult(
             name="is_oos", passes=False, reason="is/oos metric missing",

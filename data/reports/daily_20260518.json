@@ -4,12 +4,29 @@
   "log": "/tmp/chunkymonkey_daily_update_20260518.log",
   "delivery_status": "in_progress",
   "phase_status": {
-    "preflight": "running",
-    "data_sync": "TBD",
-    "panel_rebuild": "TBD",
-    "model_refresh": "TBD",
-    "paper_sim_live": "TBD",
-    "gate_check": "TBD",
-    "champion_promote": "TBD"
+    "preflight": "OK",
+    "data_sync": "OK",
+    "panel_rebuild": "OK",
+    "model_refresh": "OK",
+    "paper_sim_live": "OK",
+    "gate_check": "OK",
+    "champion_promote": "OK"
+  },
+  "sla_summary": {
+    "n_updates": 0,
+    "n_alerts": 0,
+    "stale_sources": []
+  },
+  "regime": {
+    "state": "neutral",
+    "hs300_close": 4859.59,
+    "hs300_ma60": 4684.449500000001,
+    "ret_60d": 0.04651348091997587,
+    "weights": {
+      "lambdamart": 0.4,
+      "sniper": 0.3,
+      "institution": 0.3,
+      "cash": 0.0
+    }
   }
 }

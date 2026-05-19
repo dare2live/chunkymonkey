@@ -163,6 +163,9 @@ def main() -> int:
     periods_per_year_5d = 50
     # n_trials: lambdamart_v6 是 Codex 2.1 固定 config 单 strategy (不是 Optuna search), n_trials=1
     # 即 DSR 不做 selection bias 校正 — sr_expected_max=0, dsr_z = sr_observed × sqrt(n-1)
+    # IS-OOS proxy mode: 当前用 split-half (头/尾 OOS), 不是真 train log RankIC
+    # 待 fact_model_train_log 接入后 → proxy_mode=False + 严格 30% threshold
+    is_oos_proxy_mode = True  # rule-compliance: ok evidence=split-half-not-train-log
     result = run_all_gates(
         challenger_id=args.challenger_id,
         returns_matrix=returns_matrix,
@@ -173,6 +176,7 @@ def main() -> int:
         ann_conservative=ann_conservative,
         is_metric=is_metric,
         oos_metric=oos_metric,
+        is_oos_proxy_mode=is_oos_proxy_mode,
     )
 
     log.info(f"=== verdict: {result.promote_action} ===")

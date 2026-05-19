@@ -784,6 +784,28 @@ SELECT * FROM mart_data_source_watermark;
 
 每次 session 增量内容写这里, 新 session 启动时**从下往上读**最近改了啥.
 
+### 2026-05-19 早 修一次防一切 — audit dict-driven + IS-OOS proxy_mode
+
+用户 push back 2026-05-18: "加 mart 但 audit 不 reflect = 错误, 修一次防一切". 围绕这条原则一次性修两处 hard-coded 检测:
+
+**1. audit_delivery_readiness.py — dict-driven source 检测**:
+- before: hard-coded `has_sniper_mart` + `ensemble_uses_sniper` 单 source 检测, 加 institution 要补一份重复代码
+- after: `SOURCES = {"sniper": "mart_sniper_score_daily", "institution": "mart_institution_score_daily"}` dict-driven; 加新 source 只改 1 行
+- pct 阶梯按 `n_extra_sources` (LM 之外 wired 几个) 而非 `"sniper" in str`: n_extra≥1 → 90%, ≥2 → 95%, +n_obs≥30 → 100%
+- 实测: `sources_wired={sniper: true, institution: true}`, n_extra=2, 策略模型 95% PASS
+
+**2. backend/services/backtest_validation/gate.py — IS-OOS proxy_mode kwarg**:
+- 区分**真 train-log IS-OOS** vs **split-half proxy** 两种比较场景
+- 真 IS-OOS (来自 `fact_model_train_log`, 真 train RankIC vs 真 OOS RankIC) → 严格 30% relative drop
+- proxy (`head/tail OOS` 当前 fallback, n_obs 不足或无 train log 时) → 放宽 70%
+- 理由: 不该用同 threshold 比较 "true train vs OOS" 和 "early OOS vs late OOS"; 前者反映 in-sample overfit 严重度, 后者只是时段稳定性
+- `run_phase4_gate_on_msaf.py` 显式 `is_oos_proxy_mode=True`, evidence=`split-half-not-train-log`
+- 后续接入 `fact_model_train_log` 后 → 切回 `proxy_mode=False` 严格 30%
+
+**测试**: `test_backtest_validation.py` 16/16 PASS; `audit_delivery_readiness.py` 整体 90% (实盘 60% 是 n_obs 22<30 / sharpe 0.81<2.0 / max_dd -24%>-20% 真数据 blocker, 非 code bug).
+
+Codex review 派 background (`a52e7e930bfa8c0e9`), 异步出 finding 后再 fix-up.
+
 ### 2026-05-18 晚 Circuit Breaker 实验失败 — MSAF 策略 mean-reverting, stop-loss 反伤
 
 加 portfolio-level circuit breaker (last_port_ret < -8% → 本期 100% cash) 测试是否能降 max_dd:

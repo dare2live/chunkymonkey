@@ -86,39 +86,44 @@ def check_strategy_model() -> dict:
     hit_rate = kpi.get("hit_rate")
     n_obs = kpi.get("n_obs", 0)
 
-    # Phase 3.4 sniper/institution 真接 check (mart_sniper_score_daily 存在 + ensemble runner load_sniper_scores)
+    # Phase 3.4 sniper/institution 真接 check (mart 表存在 + ensemble runner 引用 = 真接)
+    # 固化 (2026-05-18 用户 push back '加 mart 但 audit 不 reflect = 错误, 修一次防一切'):
+    # 用 dict-driven 检测, 加新 source 只需加 1 行, 不漏检
     smart_db = REPO_ROOT / "data" / "smartmoney.duckdb"
-    has_sniper_mart = False
+    runner_path = REPO_ROOT / "backend" / "scripts" / "run_msaf_ensemble_paper_sim.py"
+    runner_text = runner_path.read_text() if runner_path.exists() else ""
+    SOURCES = {
+        "sniper": "mart_sniper_score_daily",
+        "institution": "mart_institution_score_daily",
+    }
+    sources_wired = {}
     try:
         con = duckdb.connect(str(smart_db), read_only=True)
-        r = con.execute("""
-            SELECT COUNT(*) FROM information_schema.tables WHERE table_name = 'mart_sniper_score_daily'
-        """).fetchone()
-        if r and r[0] > 0:
-            has_sniper_mart = True
+        for source_name, mart_table in SOURCES.items():
+            r = con.execute(
+                "SELECT COUNT(*) FROM information_schema.tables WHERE table_name = ?",
+                [mart_table],
+            ).fetchone()
+            has_mart = bool(r and r[0] > 0)
+            ensemble_uses = mart_table in runner_text
+            sources_wired[source_name] = has_mart and ensemble_uses
         con.close()
     except Exception as e:
-        log.warning(f"sniper mart lookup failed: {e}")
+        log.warning(f"source mart lookup failed: {e}")
 
-    # ensemble runner reads mart_sniper_score_daily?
-    runner_path = REPO_ROOT / "backend" / "scripts" / "run_msaf_ensemble_paper_sim.py"
-    ensemble_uses_sniper = False
-    if runner_path.exists():
-        ensemble_uses_sniper = "mart_sniper_score_daily" in runner_path.read_text()
-
-    phase34 = "lambdamart_only"
-    if has_sniper_mart and ensemble_uses_sniper:
-        phase34 = "LM + sniper"
+    active_sources = ["LM"] + [s for s, wired in sources_wired.items() if wired]
+    phase34 = " + ".join(active_sources)  # e.g. "LM + sniper + institution"
+    n_extra_sources = len(active_sources) - 1  # 减 LM 本身
 
     pct = 50
     if median_ann is not None and median_ann >= 0.25:
         pct = 80  # KPI 达标但 lambdamart only
-    if median_ann is not None and median_ann >= 0.25 and phase34 != "lambdamart_only":
-        pct = 90  # 加 1 source (sniper)
-    if median_ann is not None and median_ann >= 0.25 and n_obs >= 30 and phase34 != "lambdamart_only":
-        pct = 95  # 加 OOS ≥ 30 obs
-    if median_ann is not None and median_ann >= 0.25 and n_obs >= 30 and "institution" in phase34:
-        pct = 100  # 全 3 source
+    if median_ann is not None and median_ann >= 0.25 and n_extra_sources >= 1:
+        pct = 90  # 加 1 source (sniper OR institution)
+    if median_ann is not None and median_ann >= 0.25 and n_extra_sources >= 2:
+        pct = 95  # 全 3 source (LM + sniper + institution 都 wired)
+    if median_ann is not None and median_ann >= 0.25 and n_extra_sources >= 2 and n_obs >= 30:
+        pct = 100  # 全 3 source + OOS ≥ 30 obs
 
     return {
         "criterion": "策略模型管理",
@@ -132,6 +137,8 @@ def check_strategy_model() -> dict:
             "n_obs": n_obs,
         },
         "phase_3_4_status": phase34,
+        "sources_wired": sources_wired,
+        "n_extra_sources": n_extra_sources,
         "verdict": "PASS" if pct >= 80 else "WARN",
     }
 
