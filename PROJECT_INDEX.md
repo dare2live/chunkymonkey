@@ -784,6 +784,16 @@ SELECT * FROM mart_data_source_watermark;
 
 每次 session 增量内容写这里, 新 session 启动时**从下往上读**最近改了啥.
 
+### 2026-05-19 晚 panel rebuild DONE (27min, 7× faster) + Codex HIGH fix +150d buffer
+
+**实测**: panel rebuild PID 41029 done in **1611s (27 min)**, vs estimate 3.3h. Step 1 batch redesign + Step 2 materialize tmp_kline 实测有效 (~7× faster).
+- 4,034,417 PIT stock-date pairs × 5 horizons label calculated
+- Outlier: 4,569 rows |fwd|>1.0 (0.1%, likely 数据混染 残留 splits/divs)
+
+**Codex review (ac3f4ef1) HIGH NO-GO 修**: +130 自然日 buffer 不够长假 edge case (90 交易日 + 春节 7+ 国庆 7 → 140+ 自然日). 改 +150 自然日 (4 day safety margin). 当前 panel 已用 +130 build, fix 应用下次 rebuild + future incremental.
+
+**Chain advanced**: panel done → v3 build started (PID 45222, ETA ~30 min).
+
 ### 2026-05-19 晚 label_panel Step 2 materialize tmp_kline + Phase 5 auto chain launched
 
 **Step 2 实施** (sub-agent a58333b3 推荐):

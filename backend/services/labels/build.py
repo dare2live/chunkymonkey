@@ -304,16 +304,19 @@ def build_p0a_label_panel(
         # 替代 6× mkt.v_price_kline_qfq LEFT JOIN view scan. DuckDB columnar zone-map 比 view+index
         # 快 10-50×, 估时 ~30-60s materialize + JOIN. Date 转 DATE 类型 (原 TEXT) 让 join key 直接命中
         # hash join, 不需 strftime cast.
-        # Range = stocks_by_date min/max signal_date - 90 (forward 90d horizon need future K-line) +
-        # entry_date offset (+1).
-        # rule-compliance: ok evidence=materialize-kline-tmp-table-columnar-zonemap
+        # Range: forward 90 trading days ≈ 126 calendar days + 春节 ≤ 10 day buffer = 150 calendar days
+        # safe margin. Codex review 2026-05-19 ac3f4ef1 HIGH: +130d 不够 long holiday edge case
+        # (e.g. 春节 7+ day 关闭 + 国庆 7 day → 90 trading days 可达 140-145 calendar).
+        # Could query dim_trading_calendar to get exact max_signal_rank+91 date, but +150 buffer
+        # safer + simpler.
+        # rule-compliance: ok evidence=90-trading-days-plus-holiday-buffer-150-calendar
         all_dates = sorted(stocks_by_date.keys())
         min_signal_date = all_dates[0]
         max_signal_date = all_dates[-1]
-        # forward 90d horizon means we need K-line up to ~max_signal_date + 130 calendar days
         from datetime import date as _date, timedelta as _td
-        max_kline_date = (_date.fromisoformat(max_signal_date) + _td(days=130)).isoformat()
-        # also need a few days before earliest signal for entry_date computation
+        max_kline_date = (_date.fromisoformat(max_signal_date) + _td(days=150)).isoformat()
+        # entry_date = signal_date + 1 trading day. trading_day_rank uses dim_trading_calendar
+        # 不依赖 K-line 前置; -5 是冗余 buffer.
         min_kline_date = (_date.fromisoformat(min_signal_date) - _td(days=5)).isoformat()
         log.info(f"  materialize tmp_kline: {min_kline_date} → {max_kline_date}")
         conn.execute("DROP TABLE IF EXISTS tmp_kline")
