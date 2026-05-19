@@ -106,27 +106,63 @@ if [[ "$DRY" == "0" ]]; then
 fi
 
 # === Step 5: SSH retrain (self-shutdown on completion) ===
+# 2026-05-19 fix: Mac 重启 21:58 后排查发现 chain 5-19 18:09 失败根因:
+#   (1) GCS path 缺嵌套时间戳子目录 (panel_YYYYMMDD/ 下还有 phase5_parquet_*/ 一层)
+#   (2) 没 source .venv/bin/activate → 用 system python (无 duckdb)
+#   (3) 没 import parquet 到 DuckDB (retrain 读 mart_p0a_feature_label_panel_v4 表, 不读 parquet)
+#   (4) self-shutdown +1min 太激进 — retrain immediate fail 后 1min VM 就 down 没法 inspect
+# Evidence: VM 18:09:44 start → 18:12:31 stop (167s), GCS 0 retrain artifact.
+# 修法见下 (PANEL_GCS_PATH 含完整嵌套 path, source venv, import parquet step, rc-based shutdown buffer).
 log "Step 5: SSH retrain on VM, model_id=$MODEL_ID"
 write_status "retrain_launched" "$MODEL_ID"
 if [[ "$DRY" == "0" ]]; then
+    # GCS panel path: parent step 3 上传到 panel_$(date +%Y%m%d)/$EXPORT_DIR_basename/, 完整 path 含两层
+    # 用 ** 让 gcloud storage cp 递归找 parquet, 无 shell expansion 问题
+    PANEL_GCS_DIR="gs://chunkymonkey-data-0517/phase5/panel_$(date +%Y%m%d)/"
     REMOTE_CMD="cd ~/chunkymonkey && \
+        source .venv/bin/activate && \
         git pull origin main 2>&1 | tail -3 && \
-        echo '[remote] mkdir data/imports + download panel from GCS' && \
+        echo '[remote] mkdir data/imports + download panel from GCS (recursive **)' && \
         mkdir -p data/imports && \
-        gcloud storage cp -r 'gs://chunkymonkey-data-0517/phase5/panel_$(date +%Y%m%d)/*' data/imports/ 2>&1 | tail -3 && \
-        ls data/imports/ | head && \
-        echo '[remote] verify panel parquet present' && \
-        find data/imports -name '*.parquet' | head -5 && \
-        echo '[remote] start retrain nohup + self-shutdown' && \
-        PYTHONPATH=backend nohup bash -c \"\
-            python backend/scripts/retrain_lambdamart_v6.py \\
-                --model-id '$MODEL_ID' --start-date 2023-01-03 --end-date 2026-05-19 \\
-                --n-trials 50 --min-train-months 6 --top-k 20; \
-            RC=\\\$?; \
-            echo '[remote] retrain rc=\\\$RC @ \\\$(date)'; \
-            sudo shutdown -h +1 'chunkymonkey retrain done'; \
-        \" > /tmp/retrain_${MODEL_ID}.log 2>&1 & \
-        sleep 5 && pgrep -f 'retrain_lambdamart_v6.*${MODEL_ID}' | head -1"
+        gcloud storage cp -r '$PANEL_GCS_DIR**' data/imports/ 2>&1 | tail -5 && \
+        find data/imports -name '*.parquet' -print && \
+        echo '[remote] import parquet → smartmoney.duckdb (replace panel table)' && \
+        PYTHONPATH=backend python - <<EOF
+import duckdb, glob
+con = duckdb.connect('data/smartmoney.duckdb')
+for tbl_pat in [('mart_p0a_feature_label_panel_v4', 'mart_p0a_feature_label_panel_v4.parquet'), ('mart_p0a_label_panel', 'mart_p0a_label_panel.parquet')]:
+    tbl, pat = tbl_pat
+    matches = glob.glob(f'data/imports/**/{pat}', recursive=True) + glob.glob(f'data/imports/{pat}')
+    if matches:
+        con.execute(f'DROP TABLE IF EXISTS {tbl}')
+        con.execute(f\"CREATE TABLE {tbl} AS SELECT * FROM read_parquet('{matches[0]}')\")
+        n = con.execute(f'SELECT COUNT(*) FROM {tbl}').fetchone()[0]
+        print(f'  imported {tbl}: {n:,} rows')
+con.close()
+EOF
+        echo '[remote] start retrain detached + rc-based shutdown' && \
+        setsid nohup bash -c '
+          cd ~/chunkymonkey
+          source .venv/bin/activate
+          export PYTHONPATH=backend
+          export OPTUNA_N_JOBS=8
+          export OMP_NUM_THREADS=4
+          export LIGHTGBM_NUM_THREADS=4
+          mkdir -p logs
+          python backend/scripts/retrain_lambdamart_v6.py \\
+            --model-id $MODEL_ID --start-date 2023-01-03 --end-date 2026-05-19 \\
+            --n-trials 50 --min-train-months 6 --top-k 20 > logs/retrain_$MODEL_ID.log 2>&1
+          RC=\$?
+          echo \"[remote] retrain rc=\$RC @ \$(date -u)\" >> logs/retrain_$MODEL_ID.log
+          # rc=0: 成功 +5min buffer for cleanup. rc!=0: +60min preserve VM for inspection
+          if [ \$RC -eq 0 ]; then
+            sudo shutdown -h +5 \"retrain done\"
+          else
+            sudo shutdown -h +60 \"retrain rc=\$RC keep for inspection\"
+          fi
+        ' < /dev/null > /dev/null 2>&1 &
+        disown
+        sleep 15 && pgrep -fa retrain_lambdamart_v6 | head -3"
     gcloud compute ssh chunkymonkey-optuna --zone=us-central1-a --tunnel-through-iap \
         --command="$REMOTE_CMD" 2>&1 | tee -a "$LOG"
     echo "$MODEL_ID" > "$STATUS_DIR/model_id.txt"

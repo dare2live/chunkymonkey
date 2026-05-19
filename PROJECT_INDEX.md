@@ -784,6 +784,27 @@ SELECT * FROM mart_data_source_watermark;
 
 每次 session 增量内容写这里, 新 session 启动时**从下往上读**最近改了啥.
 
+### 2026-05-19 夜 fix: chain Step 5 GCS path + venv + rc-based shutdown (Mac 重启 post-mortem)
+
+**事故** (5-19 18:09-18:12 chain 失败 + 21:58 Mac 重启): GCP VM 5-19 18:09:44 启 → 18:12:31 stop (167s), 0 retrain artifact. 21:58 Mac 重启清 /tmp + 杀本地 retrain (lgbm_phase5_local_20260519T181324 trial 6/10 score 0.414 在飞中) + 杀 chain PID 41023/41239.
+
+**根因** 4 处 (scripts/run_phase5_auto_chain.sh:108-133 step 5):
+1. **GCS path 缺嵌套**: 写的 `panel_$(date)/`*, 实际 GCS 路径 `panel_20260519/phase5_parquet_20260519_180117/` 多一层时间戳目录, `gcloud storage cp -r ... *` literal 找不到 → data/imports 空
+2. **没 source venv**: VM 默认 system python 无 duckdb, 直接 `python` import 模块 fail
+3. **没 parquet → DuckDB import step**: retrain 读 `mart_p0a_feature_label_panel_v4` 表不读 parquet, 即使 parquet 下载到了也不会被消费
+4. **shutdown -h +1 过激**: retrain immediate fail (因 1+2+3) → 1min 后 VM down, 没法 inspect log
+
+**修法** (commit `<待 commit>`):
+- `PANEL_GCS_DIR=...panel_$(date +%Y%m%d)/` + `gcloud storage cp -r "${PANEL_GCS_DIR}**" ...` (递归 `**`, gcloud storage 真支持, 不依赖 shell glob)
+- step 5 第一句 `source .venv/bin/activate`
+- 加 inline Python `import duckdb` + `CREATE TABLE FROM read_parquet()` import 步, glob 含嵌套子目录
+- shutdown rc-based: `rc=0` → `+5min` (cleanup buffer), `rc!=0` → `+60min` (preserve VM 给 inspection)
+- detach 用 `setsid nohup ... < /dev/null > /dev/null 2>&1 &; disown` (替原 `nohup bash -c ... &`, 更稳, 不被 SSH disconnect 影响)
+
+**手动 launch GCP retrain 验证 fix 思路**: 22:30:43 启 `lgbm_phase5_gcp_20260519T143043` 跑通同套流程 (preflight 53s import panel 4.24M rows, retrain RankPanel built `(3.93M, 122) float32`, Optuna 进行中). OPTUNA_N_JOBS=8 (P-2 fix 实战), ETA 4-6h.
+
+**status file**: `data/reports/phase5_chain/status.json` + `model_id.txt` 更新到 `lgbm_phase5_gcp_20260519T143043`.
+
 ### 2026-05-19 晚 perf P-2 Optuna n_jobs parallel + 大宗交易 + Market Regime framework
 
 **Codex codegraph audit (aa94bbab)** 5 性能 hotspots + 5 架构 finding:
