@@ -784,6 +784,45 @@ SELECT * FROM mart_data_source_watermark;
 
 每次 session 增量内容写这里, 新 session 启动时**从下往上读**最近改了啥.
 
+### 2026-05-19 早 unblock #6 实盘 GO/NO-GO 60% 路径分析
+
+跑完 Codex review fix 后 audit 整体 90% NOT READY, 单 WARN 是 #6 实盘 60%. 走 5 步根因分析:
+
+**当前 paper_sim 状况** (msaf_ensemble_run.json):
+- date range: 2024-07-01 → 2026-04-13 (n_signal_dates=432)
+- n_obs (monthly non-overlap): **22**
+- median_ann +48% / sharpe 0.81 / max_dd -24% / monthly_win 77%
+
+**Audit #6 ladder** (check_live_ready):
+- 60%: P3 PASS (当前 = P3 ann +30% / max_dd -10% / monthly_win 77% PASS)
+- 70%: + n_obs ≥ 30 ← **未达, blocker A**
+- 85%: + n_obs ≥ 60 + sharpe ≥ 2.0 ← **未达, blocker B/C**
+- 90%: + max_dd ≤ -20% ← **未达, blocker D**
+
+**根因数据时间窗**:
+| 表 | 起点 | 终点 |
+|---|---|---|
+| `price_kline_tdxhub` (raw kline) | 2022-01-04 | 2026-05-18 (5.2M rows) |
+| `fact_capital_flow_pit_daily` | 2023-01-03 | 2026-05-13 |
+| `mart_p0a_feature_label_panel` (legacy) | 2023-01-03 | 2026-04-23 |
+| `mart_p0a_feature_label_panel_v3/v4` | **2024-01-02** | 2026-04-23 |
+| `mart_p0b_lambdamart_v6_predictions` | 2024-07-01 | 2026-04-13 |
+
+**结论**: panel v3/v4 起点 2024-01 是 alpha158 切割 (legacy panel 2023 起 + raw kline 2022 起). Phase 5 retrain script 默认 `--start 2022-01-02` 但 panel 无 2022 数据 → retrain 实际跑 2024-01 起 (无 unblock 效果). 真 unblock 顺序:
+
+1. **backfill alpha158 + fact_capital_flow + 其它支持表到 2022-01-04** (raw kline 已 OK)
+   - 用户网络约束 akshare block; GCP 端通 ([[project-data-source-constraints]])
+   - 估时 4-8h GCP + 网络 + DuckDB write
+2. **rebuild panel v4 start=2022-01-04** (incremental panel build script已支持 --start-date)
+   - 估时 30-60min local
+3. **retrain extended start=2022 in_GCP** (Phase 5 script ready, 但需 panel ready 前置)
+   - 估时 4-6h GCP ($2.26 spot)
+4. **paper_sim 重跑 ~50 月 OOS** + audit verify n_obs ≥ 30 + sharpe + max_dd 改善
+
+**单 session 内 actionable**: 无. 1+2+3+4 累计 ~9-15h + GCP $3-5 + 用户监控. 用户 explicit 决策启动.
+
+**当前可运行状态**: code-level 100% ready (cron 全自动化 + audit 真实化 + gate proxy degrade). 实盘上线需待数据时间窗扩展. v3.2 现状 baseline 仍为 η+++++++ +45.4%, 22 月 OOS 充分 demo.
+
 ### 2026-05-19 早 Codex review 收紧 audit 真启用 + proxy degrade
 
 接上次 commit (28f15170 audit dict-driven + IS-OOS proxy_mode), Codex review (task a52e7e93) 标 2 HIGH + 3 MEDIUM + 1 LOW. 按 [[feedback-codex-critical-no-compromise]] 全部接受立刻修:
