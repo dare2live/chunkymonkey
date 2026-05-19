@@ -11,9 +11,13 @@
 
 set -euo pipefail
 
+# launchd 默认 PATH 不含 /opt/homebrew/bin → 用 absolute paths
+export PATH="/opt/homebrew/bin:/opt/homebrew/opt/python@3.13/libexec/bin:/usr/local/bin:/usr/bin:/bin:$PATH"
+
 IDLE_THRESHOLD_MIN="${IDLE_THRESHOLD_MIN:-30}"
 COMPANION="/Users/dp/.claude/plugins/cache/openai-codex/codex/1.0.4/scripts/codex-companion.mjs"
 LOG="/tmp/codex_monitor.log"
+NODE_BIN="${NODE_BIN:-/opt/homebrew/bin/node}"
 
 if [[ ! -f "$COMPANION" ]]; then
     echo "Codex companion not found: $COMPANION" | tee -a "$LOG"
@@ -23,7 +27,7 @@ fi
 echo "=== $(date -u +%Y-%m-%dT%H:%M:%SZ) codex_monitor scan ===" | tee -a "$LOG"
 
 # Get status JSON
-status_json=$(node "$COMPANION" status --json 2>&1) || {
+status_json=$("$NODE_BIN" "$COMPANION" status --json 2>&1) || {
     echo "Failed to get codex status" | tee -a "$LOG"
     exit 0
 }
@@ -56,7 +60,7 @@ echo "$cancel_list" | while read line; do
     tid=$(echo "$line" | awk '{print $1}')
     [[ -z "$tid" ]] && continue
     echo "  Cancelling $tid..." | tee -a "$LOG"
-    node "$COMPANION" cancel "$tid" --json 2>&1 | grep -E "status|jobId" | head -2 | tee -a "$LOG"
+    "$NODE_BIN" "$COMPANION" cancel "$tid" --json 2>&1 | grep -E "status|jobId" | head -2 | tee -a "$LOG"
 done
 
 echo "=== done ===" | tee -a "$LOG"

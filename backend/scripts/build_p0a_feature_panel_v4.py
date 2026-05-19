@@ -46,6 +46,17 @@ def main() -> int:
     args = parser.parse_args()
 
     t0 = time.time()
+    # Codex review 2026-05-19 P0 (a846ce75 Q3): v4 panel build 必须 enforce 上界 =
+    # latest_completed_trade_date 防止 v3 残留盘中行污染 v4.
+    # rule-compliance: ok evidence=v4-panel-calendar-gate-upper-bound
+    import sys as _sys
+    _sys.path.insert(0, str(Path(__file__).resolve().parents[1]))  # backend/
+    from services.market_db import _latest_completed_trade_date_for_write
+    cal_max = _latest_completed_trade_date_for_write()
+    if args.end_date > cal_max:
+        log.warning(f"  end_date {args.end_date} > cal_max {cal_max}, clamped to {cal_max}")
+        args.end_date = cal_max
+
     log.info(f"=== Build feature_label_panel_v4 (range {args.start_date} → {args.end_date}) ===")
 
     # 1. Universe + dates from v3 panel (v3_ext skipped, capital_flow inlined)

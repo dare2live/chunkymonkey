@@ -71,6 +71,13 @@ def main():
     args = parser.parse_args()
 
     t0 = time.time()
+    # Codex review 2026-05-19 P1: end_date clamp 到 latest_completed_trade_date 防止盘中污染
+    # rule-compliance: ok evidence=calendar-gate-end-date-clamp-defense
+    import sys as _sys
+    _sys.path.insert(0, str(Path(__file__).resolve().parents[1]))  # backend/
+    from services.market_db import _latest_completed_trade_date_for_write
+    cal_max = _latest_completed_trade_date_for_write()  # fail-closed
+
     mkt = duckdb.connect(str(MARKET_DB), read_only=True)
     mkt.execute(f"ATTACH '{SMART_DB}' AS sm (READ_ONLY)")
     end_date = args.end
@@ -78,8 +85,12 @@ def main():
         end_date = mkt.execute(
             "SELECT MAX(date) FROM v_price_kline_qfq WHERE adjust='qfq' AND freq='daily'"
         ).fetchone()[0]
+    # clamp end_date to calendar last_closed (CLAUDE.md Rule 3 反例 defense)
+    if end_date and str(end_date) > cal_max:
+        log.warning(f"  end_date {end_date} > cal_max {cal_max}, clamped to {cal_max}")
+        end_date = cal_max
     log.info(f"=== Phase ψ.β.3 fact_capital_flow_pit_daily backfill ===")
-    log.info(f"  range: {args.start} → {end_date}")
+    log.info(f"  range: {args.start} → {end_date} (cal_max={cal_max})")
 
     # 1. 拉龙虎榜事件 (含 trade_date, net_buy_pct, is_inst_net_buy)
     log.info("加载 fact_lhb_event (龙虎榜) ...")

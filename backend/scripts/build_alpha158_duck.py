@@ -43,6 +43,14 @@ def build(output_db: str, start_date: str):
     # 核心 windows
     windows = [5, 10, 20, 30, 60]
 
+    # Codex review 2026-05-19 P0: alpha158 build 从 K-line 衍生, 必须 enforce 上界 =
+    # latest_completed_trade_date, 防止 K-line 表残留盘中行污染 alpha158 panel.
+    # CLAUDE.md Rule 3 反例: defense-in-depth.
+    # rule-compliance: ok evidence=alpha158-build-calendar-gate-upper-bound
+    from services.market_db import _latest_completed_trade_date_for_write
+    last_closed = _latest_completed_trade_date_for_write()  # fail-closed
+    logger.info("alpha158 build calendar gate: upper bound = %s (latest_completed)", last_closed)
+
     # 构造 Alpha158 主 SQL
     sql_parts = [f"""
     WITH px_raw AS (
@@ -55,7 +63,7 @@ def build(output_db: str, start_date: str):
                CAST(volume AS DOUBLE) AS volume,
                CAST(amount AS DOUBLE) AS amount
         FROM {CANONICAL_KLINE_QFQ_RELATION}
-        WHERE freq='daily' AND adjust='qfq' AND date >= '{start_date}'
+        WHERE freq='daily' AND adjust='qfq' AND date >= '{start_date}' AND date <= '{last_closed}'
     ),
     px AS (
         SELECT *,

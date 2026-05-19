@@ -52,6 +52,13 @@ def main():
     args = parser.parse_args()
 
     t0 = time.time()
+    # Codex review 2026-05-19 P1: end_date clamp 到 latest_completed_trade_date 防盘中污染
+    # rule-compliance: ok evidence=calendar-gate-end-date-clamp-defense
+    import sys as _sys
+    _sys.path.insert(0, str(Path(__file__).resolve().parents[1]))  # backend/
+    from services.market_db import _latest_completed_trade_date_for_write
+    cal_max = _latest_completed_trade_date_for_write()  # fail-closed
+
     mkt = duckdb.connect(str(MARKET_DB), read_only=True)
     mkt.execute(f"ATTACH '{SMART_DB}' AS sm (READ_ONLY)")
 
@@ -60,8 +67,12 @@ def main():
         end_date = mkt.execute(
             "SELECT MAX(date) FROM v_price_kline_qfq WHERE adjust='qfq' AND freq='daily'"
         ).fetchone()[0]
+    # clamp end_date to calendar last_closed
+    if end_date and str(end_date) > cal_max:
+        log.warning(f"  end_date {end_date} > cal_max {cal_max}, clamped to {cal_max}")
+        end_date = cal_max
     log.info(f"=== Phase ψ.β.sector backfill ===")
-    log.info(f"  range: {args.start} → {end_date}")
+    log.info(f"  range: {args.start} → {end_date} (cal_max={cal_max})")
     log.info(f"  industry_level: {args.industry_level}")
     log.info(f"  min_stocks_per_sector: {args.min_stocks_per_sector}")
 

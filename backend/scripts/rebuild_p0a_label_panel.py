@@ -74,6 +74,18 @@ def main() -> int:
     sm.close()
     log.info(f"  ever-listed universe: {len(stocks):,} stocks (prefix {args.universe_filter}) — PIT via LEFT JOIN NULL")
 
+    # Codex review 2026-05-19 P0 (a846ce75 Q3): label_panel build 必须 enforce 上界 =
+    # latest_completed_trade_date, 防止 K-line 残留盘中行导致 label panel 含盘中 signal.
+    # CLAUDE.md Rule 3 反例 defense-in-depth.
+    # rule-compliance: ok evidence=label-panel-calendar-gate-upper-bound
+    import sys as _sys
+    _sys.path.insert(0, str(Path(__file__).resolve().parents[1]))  # backend/
+    from services.market_db import _latest_completed_trade_date_for_write
+    cal_max = _latest_completed_trade_date_for_write()  # fail-closed
+    if args.end_date > cal_max:
+        log.warning(f"  end_date {args.end_date} > cal_max {cal_max}, clamped to {cal_max}")
+        args.end_date = cal_max
+
     # 2. signal_dates from v_price_kline_qfq (tier-1 tdxhub primary)
     # Codex Q2b FIX: 跟 alpha158 dates intersection (防 label/feature date 不一致)
     # 加 coverage gate (Codex Q8.2): 每个 signal_date 必须覆盖 >= min_coverage_pct * universe

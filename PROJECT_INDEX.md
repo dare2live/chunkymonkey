@@ -784,6 +784,42 @@ SELECT * FROM mart_data_source_watermark;
 
 每次 session 增量内容写这里, 新 session 启动时**从下往上读**最近改了啥.
 
+### 2026-05-19 下午 calendar gate 全面扩展 + codex_monitor launchd fix + agent lifecycle script
+
+**用户 push back 3 条**:
+1. "建一个 codex 交互检测机制" — `~/.codex_monitor/codex_monitor.sh` launchd (cron FDA fail Documents 路径, 移到 home dir + absolute node path 修)
+2. "建一个 agent 管理机制, 让 agents 主动报告完成情况" — `scripts/agents_status.sh` (Codex companion status + idle alarm + recent finished list)
+3. "不要只写文档, 要真实应用" — 实际跑 status check, 主动 dispatch + cancel + handoff
+
+**Codex 第 2 thread (fresh, a846ce75)** 答 Q1-Q4 systematic audit:
+- Q1 P0/P1 fix locations:
+  - `build_alpha158_duck.py:px_raw` 加 `AND date <= cal_max` (P0)
+  - `rebuild_p0a_label_panel.py:end_date` clamp 到 cal_max (P0)
+  - `build_p0a_feature_panel_v4.py:end_date` clamp (P0)
+  - `backfill_capital_flow_pit.py:end_date` clamp (P1)
+  - `backfill_sector_momentum_history.py:end_date` clamp (P1)
+- Q2 Step 2c alpha158 freshness check SQL fix (95% max_n_codes 阈值 — partial coverage 当 stale)
+- Q3 P0 list confirms: label_panel + v4 panel
+- Q4 follow-up doc paragraph
+
+**应用** (commit batch): 5 处加 calendar gate + Step 2c SQL fix + agents_status.sh script.
+
+**Codex thread 1 stuck → fresh** (CLAUDE.md feedback-codex-thread-stuck 实战):
+- task-mpc8o4it 33m 27s `progressPreview` 10 min 不更新 → cancel
+- 起 fresh `--fresh` 同 model gpt-5.5 effort xhigh, scope 收紧 4 个 Q 短答, 2 min 完成
+- 之前 thread 用 `nl -ba ... | sed` over-explore 是 stuck 嫌疑模式, 新 thread 禁
+
+**codex_monitor 装新** (FDA-safe path):
+- `~/.codex_monitor/codex_monitor.sh` (home dir, 非 Documents — 不受 macOS FDA 拦)
+- Plist `~/Library/LaunchAgents/com.chunkymonkey.codex-monitor.plist` (launchctl bootstrap + kickstart)
+- 每 900 秒跑, > 30 min idle auto-cancel
+- 实测 `OK: 0 running, none idle > 30min` ✓
+
+**Agent lifecycle 真实应用**:
+- `scripts/agents_status.sh` 列 running + idle alarm + recent finished
+- 我 active 用 status script check, 不只 passive 等 notify
+- 每次 0 running 主动 spawn next + 完成后 confirm 关闭
+
 ### 2026-05-19 下午 K线盘中污染事故 + 3 层防御加固 (Codex review CRITICAL)
 
 **事故复盘** (CLAUDE.md Rule 3 反例复刻):
