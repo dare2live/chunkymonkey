@@ -784,13 +784,42 @@ SELECT * FROM mart_data_source_watermark;
 
 每次 session 增量内容写这里, 新 session 启动时**从下往上读**最近改了啥.
 
-- audit_n_plus_one.py: N+1 IO-in-loop 检测, 4 patterns, WARN-only, baseline 21 findings (2026-05-19)
+### 2026-05-19 深夜 N+1 真问题率 35% + codegraph eval + retrain stall 根因 (5 Codex + 2 Claude 并发)
 
-### 2026-05-19 C6 codegraph-architecture-audit skill bridge refs
+**N+1 audit 实测** (audit_n_plus_one.py + Claude Explore a1e43ccb 验证):
+- 258 hits (HIGH 245 / MEDIUM 2 / LOW 11), **真 N+1 率 35.1%** (86 个真 / 159 误报)
+- 误报分布: schema DDL split 118 / test fixture 26 / schema migration 18 / audit script 14 / cleanup 2 / 合理 executemany batch 7
+- P0 真问题: routers/updater.py 7 / routers/institution.py + v3_paper 2 / services/backtest_engine 5 / capital_client 5 / data_quality 3 / model_artifact_gc 3 / schema_versions 3
+- 后续可加误报 KNOWN_FIXED tag 过滤模板
 
-| 条目 | 路径 | 用途 |
-|---|---|---|
-| codegraph-architecture-audit skill | `~/.claude/skills/codegraph-architecture-audit/SKILL.md` | C6 架构审计; 触发场景: 大型重构 PR (>20 files) / god-module 改 (db.py, build_feature_panel) / 季度 review / DB layer 大改 / Optuna runner 大改 / PIT 路径 SQL 大改 |
+**codegraph DB 状态** (Codex eval add03f50):
+- Codex sandbox 误判 broken — 实测 OK: `codegraph status` 812 files / 12,507 nodes / 43,010 edges / 47.77 MB, `codegraph query` 正常
+- 但 **spec 6109d5ba CLI flag 假设错** (Codex finding 接受):
+  - codegraph 0.6.8 query 实际 flag: `--path/--limit/--kind/--json` (没有 spec 假设的 `--def-use/--callers/--hotspot/--diff`)
+  - 实际可用 commands: `query` / `context <task>` (Markdown) / `affected <file>` (test list) / `serve` (MCP)
+  - spec C1 (def-use) / C2 (callers) / C4 (diff-mode) 部分章节需后续更新匹配实际 CLI
+
+**Codex 推荐方案 B** (不装 complexity-optimizer + 强化 spec + 后续加 MCP):
+- complexity-optimizer ~/.codex/skills/ 不存在, 用户 5-19 早 reject 后 reconsider; Codex eval 维持 reject
+- MCP server 后续加 (codegraph serve + .claude/mcp.json), Claude post-fix-audit 直接调 mcp__codegraph__affected, 每次节省 5-10 min
+
+**Retrain 15 min single-thread stall 根因** (Claude general-purpose aacdbf94):
+- `assert_pit_strict` 内 `pd.to_datetime` 对 30 expanding window 累积 3.5M strings 重复 parse (估 5-8 min) + `np.isin` string compare (估 1 min) + Python overhead (~30× scan)
+- Fix 1 (panel.signal_dates 一次性转 int64): 估 **30-60× 加速** (15 min → 20-30 sec), 不改 PIT 语义
+- 不立即实施 (retrain in-flight, 改代码不影响当前; 留作下次 retrain 加速 follow-up)
+- 文件: `backend/scripts/run_p0b_lambdamart_v6.py:89-101 + 182-218` / `backend/services/optimization/walk_forward.py:169-256`
+
+**并发实测** (CLAUDE.md §11.5): 一次 message 派 5 Codex + 2 Claude subagent = 7 agent 同时跑, 1 monitor + main session. 用户 push back "不要只派 codex, 你自己 agent 也派" 后立即实施.
+
+### 2026-05-19 深夜 feat: codegraph audit infra C5+C6 + N+1 detection 进生产
+
+Codex a085ce4e (C6 SKILL) + Codex a3e6850d (N+1 audit) 完成:
+- ~/.claude/skills/codegraph-architecture-audit/SKILL.md (用户全局, Codex 沙箱拒, 我代写按 spec C6)
+- CLAUDE.md §10.0 加 codegraph-architecture-audit skill 引用 (line 225)
+- backend/scripts/audit_n_plus_one.py + tests (5 pass) + report.md + results.json
+- ~/.claude/skills/data-integrity-audit/SKILL.md 加 Step 5b (N+1 detect, Codex 沙箱拒, 我代写)
+- Mock audit /tmp/codegraph_mock_audit_20260519.md (821 Python files / P0 god-module: db.py 2478 / market_db 728 / pricing_policy 869)
+- Stop hook ~/.claude/hooks/session_rule_audit.sh + settings.json (检测 multi-agent / continuous mode / codex frequent dispatch violation, WARN-only)
 
 ### 2026-05-19 夜 fix: chain Step 5 GCS path + venv + rc-based shutdown (Mac 重启 post-mortem)
 
