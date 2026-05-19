@@ -413,6 +413,27 @@ def sync_delta(args: argparse.Namespace) -> dict:
 
             conn.execute("BEGIN TRANSACTION")
             try:
+                # Codex review 2026-05-19 CRITICAL: GCS sync 也走 K-line write 主路径,
+                # 必须 enforce calendar gate 防 GCS 上游含盘中 partial data 写入主库.
+                # rule-compliance: ok evidence=CLAUDE.md-Rule-3-write-side-PIT-lint-GCS-path
+                import sys as _sys
+                _sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+                from services.market_db import _latest_completed_trade_date_for_write  # noqa: E402
+                _last_closed = _latest_completed_trade_date_for_write()  # raise on miss (fail-closed)
+                _staging_pre = conn.execute(
+                    "SELECT COUNT(*) FROM tmp_kline_gcs_delta WHERE date > ?",
+                    [_last_closed],
+                ).fetchone()[0]
+                if _staging_pre > 0:
+                    conn.execute(
+                        "DELETE FROM tmp_kline_gcs_delta WHERE date > ?",
+                        [_last_closed],
+                    )
+                    import logging
+                    logging.getLogger(__name__).warning(
+                        "GCS sync lint: rejected %d staging rows with date > %s",
+                        _staging_pre, _last_closed,
+                    )
                 conn.execute(
                     """
                     DELETE FROM price_kline_tdxhub AS target

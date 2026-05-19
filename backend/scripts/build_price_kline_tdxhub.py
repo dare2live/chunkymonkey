@@ -319,6 +319,15 @@ def normalize(rows: list[dict], batch_id: str, source_name: str = "tdxhub") -> l
 def write_batch(conn, rows: list[dict]) -> int:
     if not rows:
         return 0
+    # Codex review 2026-05-19 CRITICAL: write_batch 之前绕过 _clean_kline_rows_for_write 的 lint,
+    # 直接 DELETE/INSERT 主表 — 主 cron daily_update.sh 路径在这里写, 必须接入 calendar filter.
+    # rule-compliance: ok evidence=CLAUDE.md-Rule-3-defense-in-depth-write-side-PIT-lint
+    from services.market_db import filter_kline_rows_by_calendar
+    rows = filter_kline_rows_by_calendar(
+        rows, output_table="price_kline_tdxhub", batch_id=rows[0].get("batch_id") if rows else None,
+    )
+    if not rows:
+        return 0
     conn.execute(
         """
         CREATE TEMP TABLE IF NOT EXISTS tmp_price_kline_tdxhub_write (

@@ -784,6 +784,37 @@ SELECT * FROM mart_data_source_watermark;
 
 每次 session 增量内容写这里, 新 session 启动时**从下往上读**最近改了啥.
 
+### 2026-05-19 下午 K线盘中污染事故 + 3 层防御加固 (Codex review CRITICAL)
+
+**事故复盘** (CLAUDE.md Rule 3 反例复刻):
+- 2026-05-19 14:00 CST (A 股 15:00 才收盘) 盘中, daily_update.sh sync 路径 `build_price_kline_tdxhub.py:write_batch()` 绕过 calendar lint, tdxhub server 返回的 5月19日 partial K-line 直接写入 `price_kline_tdxhub` (5,184 codes) + alpha158 derived `fact_alpha158_panel` (5,175 codes).
+- 用户 push back: "有交易日历怎么还能抓今天5月19的呢? alpha158 抓到5月18, k线整体没有, 说明交易日历前置没用啊"
+- sync log 明确显示 calendar 选 target=2026-05-18 ✓, 但 **server 返回 multi-day data 含 future date, write-side 没 enforce filter**
+
+**Codex review (a264a31b) 1 CRITICAL + 3 HIGH + 2 LOW 全接受立刻修**:
+
+| Sev | Finding | Fix commit |
+|---|---|---|
+| CRITICAL | `build_price_kline_tdxhub.py:319 write_batch()` 绕过 `_clean_kline_rows_for_write` lint, 主 cron 路径未防御 | 提取 `filter_kline_rows_by_calendar()` 共享 helper + write_batch 调用 + sync_kline_from_gcs.py staging delete |
+| HIGH 1 | calendar lookup fail-open silent skip | 改 fail-closed, raise `KlineWriteLintError`; 加 env `KLINE_WRITE_LINT_BYPASS=1` escape hatch |
+| HIGH 2 | 缺 incident cleanup script 固化 | `backend/scripts/cleanup_kline_intraday_20260519.py` idempotent 删 + 实测 0 residue |
+| HIGH 3 | 缺有效单测 (fake row VWAP-close mismatch 先 reject) | `test_kline_write_calendar_lint.py` 5 项 monkeypatch + 合法 row 全 PASS |
+| LOW 1 | close_hour 隐式 | 显式 `close_hour=16` |
+| LOW 2 | `_cached` 命名误导 (没真 cache) | 改 `_latest_completed_trade_date_for_write` |
+
+**3 层防御 design** (defense-in-depth):
+| Layer | 当前 | 覆盖 |
+|---|---|---|
+| 1 Sync entry select target | `build_price_kline_tdxhub.choose_incremental_target_date` 用 `latest_completed_trade_date` | OK 但不够 (server 仍返回 multi-day) |
+| 2 Write entry filter rows | **新加** `filter_kline_rows_by_calendar()` 共享 helper, 接入 `write_batch` + `upsert_price_kline_tdxhub_rows` + GCS sync staging delete | 这次加 |
+| 3 Audit/preflight | daily_update Step 1 K-line preflight coverage check | 部分 (Step 2c alpha158 freshness check 还有 bug 待修, task #15) |
+
+**测试**: 5 new (test_kline_write_calendar_lint) + 28 existing = 33 PASS. Regression 0.
+
+**Cleanup verified**: cleanup script run idempotent 0 rows deleted (我手工 DELETE 在 sync 前已清, script 用作 post-incident 固化).
+
+**待跟进** (Codex 2 systematic audit a9c7c9e3 in flight): 哪些其它 sync entry 漏 cover (capital_flow / sector_momentum / sniper / institution 等 fact 表 backfill, alpha158 build) + Step 2c alpha158 freshness check bug 改 partial-coverage 检测 + Step 2c 全 universe coverage threshold.
+
 ### 2026-05-19 中午 K线 sync 拉齐 5月18日 + Codex 路径 A audit ladder split
 
 **用户 push back**: "认真检查一下k线是否真的都拉到了18日，我看只有3只" — 之前 max(date) 检查误判, 实际 alpha158/v4 panel 5月18日仅 2 codes (partial coverage).

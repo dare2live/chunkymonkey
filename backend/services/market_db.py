@@ -403,6 +403,82 @@ def _now_iso() -> str:
     return datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")  # Phase ψ.5 allowlist: INSERT timestamp helper
 
 
+class KlineWriteLintError(RuntimeError):
+    """Raised when calendar lookup fails or write contains 盘中 future-dated rows.
+
+    CLAUDE.md Rule 3 反例: fail-closed by default (Codex review HIGH 1 verdict).
+    Emergency bypass: env var KLINE_WRITE_LINT_BYPASS=1 (audit any uses).
+    """
+
+
+def _latest_completed_trade_date_for_write(*, raise_on_miss: bool = True) -> Optional[str]:
+    """Read latest_completed_trade_date from smartmoney.duckdb (calendar location).
+
+    Used as defense-in-depth lint at K-line write time to reject 盘中 contamination
+    (CLAUDE.md Rule 3 反例: tdxhub server 可能返回当日 partial K-line, write-side 必须 enforce).
+
+    fail-closed (Codex review 2026-05-19 HIGH 1): calendar 不可访问时 raise KlineWriteLintError,
+    不 silent skip. Emergency bypass via env KLINE_WRITE_LINT_BYPASS=1.
+
+    rule-compliance: ok evidence=defense-in-depth-PIT-lint-fail-closed
+    """
+    import os
+    if os.environ.get("KLINE_WRITE_LINT_BYPASS") == "1":
+        import logging
+        logging.getLogger(__name__).warning(
+            "kline write lint: BYPASS via KLINE_WRITE_LINT_BYPASS=1 (audit this bypass!)"
+        )
+        return None
+    try:
+        from services.db import get_conn as _get_smart_conn
+        from services.utils import latest_completed_trade_date as _latest_completed
+        smart_conn = _get_smart_conn()
+        try:
+            return _latest_completed(smart_conn, close_hour=16)  # rule-compliance: ok evidence=A-share-close-15:00-plus-1h-buffer
+        finally:
+            smart_conn.close()
+    except Exception as e:
+        if raise_on_miss:
+            raise KlineWriteLintError(
+                f"latest_completed_trade_date lookup failed: {e}. "
+                "fail-closed (CLAUDE.md Rule 3 + Codex 2026-05-19 HIGH 1). "
+                "Set KLINE_WRITE_LINT_BYPASS=1 to bypass (audit any uses)."
+            ) from e
+        return None
+
+
+def filter_kline_rows_by_calendar(
+    rows: list[dict],
+    *,
+    output_table: str = "price_kline_tdxhub",
+    batch_id: str = None,
+    raise_on_miss: bool = True,
+) -> list[dict]:
+    """Filter rows by latest_completed_trade_date (write-side PIT lint).
+
+    Shared helper (Codex review 2026-05-19 CRITICAL): 下沉到共享函数, 让所有 K-line writer
+    (write_batch in build_price_kline_tdxhub, sync_kline_from_gcs, upsert_price_kline_tdxhub_rows
+    via _clean_kline_rows_for_write) 都走同一 lint.
+
+    rule-compliance: ok evidence=shared-defense-PIT-lint
+    """
+    if not rows:
+        return rows
+    last_closed = _latest_completed_trade_date_for_write(raise_on_miss=raise_on_miss)
+    if last_closed is None:
+        return rows  # bypass only if KLINE_WRITE_LINT_BYPASS=1 (raise_on_miss=False)
+    before = len(rows)
+    filtered = [r for r in rows if str(r.get("date", ""))[:10] <= last_closed]
+    rejected = before - len(filtered)
+    if rejected > 0:
+        import logging
+        logging.getLogger(__name__).warning(
+            "kline write lint: rejected %d rows with date > %s (盘中污染防御, output_table=%s, batch_id=%s)",
+            rejected, last_closed, output_table, batch_id,
+        )
+    return filtered
+
+
 def _clean_kline_rows_for_write(
     conn,
     rows: list[dict],
@@ -430,6 +506,11 @@ def _clean_kline_rows_for_write(
                 "contract": "finite_positive_ohlcv_amount",
             },
         )
+    # CLAUDE.md Rule 3 反例 lint: reject future dates (tdxhub server 盘中可能返回当日 partial K-line).
+    # Codex review 2026-05-19 CRITICAL: 下沉到 filter_kline_rows_by_calendar 共享 helper.
+    cleaned_rows = filter_kline_rows_by_calendar(
+        cleaned_rows, output_table=output_table, batch_id=batch_id,
+    )
     return cleaned_rows
 
 
