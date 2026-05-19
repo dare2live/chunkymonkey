@@ -57,8 +57,13 @@ def load_predictions(db_path: str, model_id: str) -> pd.DataFrame:
 
 def compute_port_returns(
     preds: pd.DataFrame, horizon: str, hs300: pd.DataFrame, max_positions: int = 5
-) -> list[float]:
-    """Run ensemble + compute monthly port_ret using horizon non-overlap rebal."""
+) -> list[tuple[pd.Timestamp, float]]:
+    """Run ensemble + compute monthly port_ret using horizon non-overlap rebal.
+
+    Codex review 2026-05-19 MEDIUM 3: 返回 [(date, return), ...] tuple list 而非
+    bare returns list, 让 caller (PBO multi-K matrix) 按 date inner join 对齐 OOS 期.
+    之前 `o[:min_p]` list 前缀截断在不同 K 组合间 skip 不同日期 → matrix 列不再代表同 period.
+    """
     fwd_col = f"fwd_cost_after_{horizon}"
     n_days = int(horizon.rstrip("d"))
     fwd_map = preds.set_index(["signal_date", "stock_code"])[fwd_col].to_dict()
@@ -80,7 +85,7 @@ def compute_port_returns(
 
     # Non-overlap rebal
     rebal = results[::n_days]
-    obs = []
+    obs: list[tuple[pd.Timestamp, float]] = []
     for r in rebal:
         sd_norm = pd.Timestamp(r["sd"]).normalize()
         rets = []
@@ -92,7 +97,7 @@ def compute_port_returns(
             continue
         equity = sum(rets) / len(rets)
         port = (1 - r["cash_pct"]) * equity
-        obs.append(port)
+        obs.append((sd_norm, port))
     return obs
 
 
@@ -114,9 +119,13 @@ def main() -> int:
     log.info(f"  predictions: {len(preds):,} rows, dates {preds['signal_date'].min()} → {preds['signal_date'].max()}")
 
     # Multi-horizon: lambdamart score top-K 在 5d / 10d / 20d horizon eval (PIT-build fwd)
-    obs_20d = compute_port_returns(preds, "20d", hs300)
-    obs_10d = compute_port_returns(preds, "10d", hs300)
-    obs_5d = compute_port_returns(preds, "5d", hs300)
+    # 现 returns 是 [(date, port_ret), ...] tuple list (Codex MEDIUM 3 修)
+    obs_20d_pairs = compute_port_returns(preds, "20d", hs300)
+    obs_10d_pairs = compute_port_returns(preds, "10d", hs300)
+    obs_5d_pairs = compute_port_returns(preds, "5d", hs300)
+    obs_20d = [r for _, r in obs_20d_pairs]
+    obs_10d = [r for _, r in obs_10d_pairs]
+    obs_5d = [r for _, r in obs_5d_pairs]
     log.info(f"  obs_5d:  n={len(obs_5d)} (weekly non-overlap)")
     log.info(f"  obs_10d: n={len(obs_10d)} (biweekly non-overlap)")
     log.info(f"  obs_20d: n={len(obs_20d)} (monthly non-overlap)")
@@ -125,18 +134,24 @@ def main() -> int:
     # 真"不同 strategy parameter", 不是 same strategy 不同 horizon (前次 0.711 误读)
     # 用 5d weekly horizon 拿足够 obs (87 weekly), PBO ≥ 16 periods.
     k_values = [3, 5, 7, 10, 15]  # rule-compliance: ok evidence=top-k-ablation-trial-variants
-    k_obs_list = []
+    k_obs_pairs_list: list[list[tuple[pd.Timestamp, float]]] = []
     for k in k_values:
-        k_obs = compute_port_returns(preds, "5d", hs300, max_positions=k)
-        k_obs_list.append(k_obs)
-        log.info(f"  K={k:>2}: n={len(k_obs)} weekly obs")
+        k_obs_pairs = compute_port_returns(preds, "5d", hs300, max_positions=k)
+        k_obs_pairs_list.append(k_obs_pairs)
+        log.info(f"  K={k:>2}: n={len(k_obs_pairs)} weekly obs")
 
-    min_p = min(len(o) for o in k_obs_list)
-    if min_p >= 16:
-        returns_matrix = np.array([o[:min_p] for o in k_obs_list])
-        log.info(f"  PBO returns_matrix shape: {returns_matrix.shape} (5 K-variants × {min_p} weekly)")
+    # Codex MEDIUM 3 修: 按 date inner join 对齐 OOS 期, 不裸 list 前缀截断
+    # rule-compliance: ok evidence=PIT-OOS-period-alignment-inner-join
+    common_dates = set.intersection(*[set(d for d, _ in pairs) for pairs in k_obs_pairs_list])
+    common_dates_sorted = sorted(common_dates)
+    if len(common_dates_sorted) >= 16:
+        returns_matrix = np.array([
+            [dict(pairs)[d] for d in common_dates_sorted]
+            for pairs in k_obs_pairs_list
+        ])
+        log.info(f"  PBO returns_matrix shape: {returns_matrix.shape} (5 K-variants × {len(common_dates_sorted)} weekly, date-aligned)")
     else:
-        log.warning(f"  PBO min_p={min_p} < 16, skip")
+        log.warning(f"  PBO common_dates={len(common_dates_sorted)} < 16, skip")
         returns_matrix = None
 
     # Conservative scenario: slippage +50% 估抹 1.5% ann (rule-compliance: ok evidence=cost-model-yaml)
@@ -183,8 +198,11 @@ def main() -> int:
     log.info(f"  all_pass: {result.all_pass}")
 
     # Save
+    # Codex review 2026-05-19 MEDIUM 1: JSON 顶层显式写 is_oos_proxy_mode + is_oos_evidence,
+    # 下游 audit / promote 可机读 proxy 身份, 不依赖源码注释 grep.
     out_path = Path(args.output_json)
     out_path.parent.mkdir(parents=True, exist_ok=True)
+    is_oos_detail = result.is_oos.detail if result.is_oos else {}
     out_path.write_text(json.dumps({
         "run_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
         "challenger_id": args.challenger_id,
@@ -196,6 +214,8 @@ def main() -> int:
         "ann_conservative": ann_conservative,
         "is_metric": is_metric,
         "oos_metric": oos_metric,
+        "is_oos_proxy_mode": is_oos_proxy_mode,
+        "is_oos_evidence": is_oos_detail.get("evidence", "unknown"),
         "gate_result": result.to_dict(),
     }, indent=2, ensure_ascii=False, default=str))
     log.info(f"  saved: {args.output_json}")

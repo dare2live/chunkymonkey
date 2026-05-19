@@ -86,27 +86,51 @@ def check_strategy_model() -> dict:
     hit_rate = kpi.get("hit_rate")
     n_obs = kpi.get("n_obs", 0)
 
-    # Phase 3.4 sniper/institution 真接 check (mart 表存在 + ensemble runner 引用 = 真接)
+    # Phase 3.4 sniper/institution 真接 check (mart 表存在 + ensemble runner 引用 + 真启用 toggle)
     # 固化 (2026-05-18 用户 push back '加 mart 但 audit 不 reflect = 错误, 修一次防一切'):
-    # 用 dict-driven 检测, 加新 source 只需加 1 行, 不漏检
+    # 用 dict-driven 检测, 加新 source 只需加 1 行
+    # Codex review 2026-05-19 a52e7e93 HIGH: institution 默认 OFF (--with-institution), 必须读 msaf
+    # ensemble run json args 判定真启用; 不能只看 runner 源码 import (否则报 95% 假象).
+    # SOURCES spec 字段: mart_table (DB 检 schema) + enabled_args (run json args 字段, 全 true 才算真启用; None 表示 always-on)
     smart_db = REPO_ROOT / "data" / "smartmoney.duckdb"
     runner_path = REPO_ROOT / "backend" / "scripts" / "run_msaf_ensemble_paper_sim.py"
     runner_text = runner_path.read_text() if runner_path.exists() else ""
+    ensemble_run_path = REPO_ROOT / "data" / "reports" / "msaf_ensemble_run.json"
+    ensemble_args: dict = {}
+    if ensemble_run_path.exists():
+        try:
+            ensemble_args = json.loads(ensemble_run_path.read_text()).get("args", {})
+        except Exception as e:
+            log.warning(f"msaf_ensemble_run.json args parse failed: {e}")
     SOURCES = {
-        "sniper": "mart_sniper_score_daily",
-        "institution": "mart_institution_score_daily",
+        "sniper": {
+            "mart_table": "mart_sniper_score_daily",
+            "enabled_args": None,  # always-on, runner 直接 load_sniper_scores
+        },
+        "institution": {
+            "mart_table": "mart_institution_score_daily",
+            "enabled_args": {"with_institution": True, "no_institution": False},
+        },
     }
     sources_wired = {}
     try:
         con = duckdb.connect(str(smart_db), read_only=True)
-        for source_name, mart_table in SOURCES.items():
+        for source_name, spec in SOURCES.items():
+            mart_table = spec["mart_table"]
             r = con.execute(
                 "SELECT COUNT(*) FROM information_schema.tables WHERE table_name = ?",
                 [mart_table],
             ).fetchone()
             has_mart = bool(r and r[0] > 0)
             ensemble_uses = mart_table in runner_text
-            sources_wired[source_name] = has_mart and ensemble_uses
+            enabled_args = spec["enabled_args"]
+            if enabled_args is None:
+                arg_enabled = True  # always-on
+            else:
+                arg_enabled = all(
+                    ensemble_args.get(k) == v for k, v in enabled_args.items()
+                )
+            sources_wired[source_name] = has_mart and ensemble_uses and arg_enabled
         con.close()
     except Exception as e:
         log.warning(f"source mart lookup failed: {e}")
@@ -163,6 +187,10 @@ def check_backtester_gate() -> dict:
         ])
         if phase4_verdict == "promote":
             phase4_pct = 100
+        elif phase4_verdict == "warn_only_proxy":
+            # Codex review 2026-05-19 HIGH 2: proxy IS-OOS evidence degraded, 4 gates 全 pass 但
+            # 不等同 hard promote. pct 85 跟 warn_only 同 tier, 但 promote_action 区分 evidence 等级.
+            phase4_pct = 85
         elif phase4_verdict == "warn_only":
             phase4_pct = 85
         else:

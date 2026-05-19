@@ -784,6 +784,24 @@ SELECT * FROM mart_data_source_watermark;
 
 每次 session 增量内容写这里, 新 session 启动时**从下往上读**最近改了啥.
 
+### 2026-05-19 早 Codex review 收紧 audit 真启用 + proxy degrade
+
+接上次 commit (28f15170 audit dict-driven + IS-OOS proxy_mode), Codex review (task a52e7e93) 标 2 HIGH + 3 MEDIUM + 1 LOW. 按 [[feedback-codex-critical-no-compromise]] 全部接受立刻修:
+
+**HIGH 1 (audit institution 误判)**: audit 只看 mart 存在 + runner 源码包含表名 → 报 95% 假象, 但 institution 默认 OFF (runner `--with-institution` toggle), `msaf_ensemble_run.json` args.with_institution=false. 修法: `SOURCES` spec 扩展 `{mart_table, enabled_args}`, audit 读 ensemble run JSON args 判定真启用. 修完: 策略模型 95% → **90%** (institution=false 真实反映, n_extra=1).
+
+**HIGH 2 (proxy 70% pass = hard pass)**: split-half proxy 70% threshold pass 跟真 train-log 30% pass 同等 `promote_action='promote'`, 等于 degraded evidence 抬到 hard pass. 修法: `run_all_gates` proxy_mode=True 时即使 4 gates 全 pass 也降级 `promote_action='warn_only_proxy'`; `gate_is_oos` detail 加 `evidence='degraded-split-half-not-train-log'` vs `'true-train-log-PIT'`. audit 加 `warn_only_proxy` → 85% (跟 warn_only 同 tier).
+
+**MEDIUM 1 (JSON 持久化 proxy 字段)**: run_phase4_gate_on_msaf.py 输出 JSON 顶层加 `is_oos_proxy_mode` + `is_oos_evidence`, 下游 audit/promote 可机读 proxy 身份, 不靠源码 grep.
+
+**MEDIUM 2 (SOURCES spec 扩展)**: HIGH 1 配套, 加 `enabled_args` 字段.
+
+**MEDIUM 3 (PBO 日期对齐 existing bug)**: `compute_port_returns` 之前返回 bare returns list, `o[:min_p]` 在不同 K 组合丢失 OOS 期对齐. 修法: 返回 `[(date, return), ...]` tuple list, caller 按 date inner join 构造 returns_matrix.
+
+**LOW (常量提取 + 注释同步)**: 模块级 `TRUE_IS_OOS_MAX_DROP=0.30` / `SPLIT_HALF_PROXY_MAX_DROP=0.70`, module docstring 同步 proxy 70% 分支.
+
+**测试**: 19/19 PASS (+3 新单测: proxy_mode threshold loose, full pass degrades to warn_only_proxy, true train-log can promote). audit 真实化 95→90%, 整体 90% NOT READY 不变 (实盘 60% n_obs/sharpe/max_dd 数据 blocker 不动).
+
 ### 2026-05-19 早 修一次防一切 — audit dict-driven + IS-OOS proxy_mode
 
 用户 push back 2026-05-18: "加 mart 但 audit 不 reflect = 错误, 修一次防一切". 围绕这条原则一次性修两处 hard-coded 检测:

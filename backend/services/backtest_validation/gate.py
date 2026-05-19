@@ -4,12 +4,13 @@ ChunkyMonkey MSAF Phase 1.5 (Codex R31 design):
 - gate_pbo: PBO ≤ 0.20
 - gate_dsr: DSR p_conf ≥ 0.95
 - gate_conservative: 保守成交 (slippage+50%, VWAP/open, mask 加严) 后 ann > 0
-- gate_is_oos: IS-OOS gap < 30% relative
+- gate_is_oos: IS-OOS gap ≤ 30% relative (真 train-log) OR ≤ 70% (split-half proxy)
 
-任一 fail → block promote.
+任一 fail → block promote. proxy_mode=True 即使 4 gates 全 pass, promote 降级 'warn_only_proxy'
+(Codex review 2026-05-19 HIGH 2: proxy evidence 不该跟真 IS-OOS 同等 hard pass).
 
 Public API:
-- run_all_gates(challenger_id) -> dict
+- run_all_gates(challenger_id, ...) -> AllGatesResult
 """
 from __future__ import annotations
 
@@ -24,6 +25,12 @@ from services.backtest_validation.dsr import compute_dsr, DSRResult
 
 
 log = logging.getLogger("backtest_validation.gate")
+
+# IS-OOS gate thresholds (Codex review 2026-05-19 LOW: 提取常量同步注释)
+# rule-compliance: ok evidence=lopez-de-prado-PIT-train-log-30pct-academic-standard
+TRUE_IS_OOS_MAX_DROP = 0.30      # 真 train-log IS vs OOS RankIC 严格 threshold
+# rule-compliance: ok evidence=academic-split-half-stability-threshold TODO yaml-back 接 fact_model_train_log 后改 measured
+SPLIT_HALF_PROXY_MAX_DROP = 0.70  # split-half (early-OOS vs late-OOS) 时段稳定性 threshold
 
 
 @dataclass
@@ -42,7 +49,7 @@ class AllGatesResult:
     conservative: GateResult
     is_oos: GateResult
     all_pass: bool
-    promote_action: str  # "promote" | "block" | "warn_only" | "force_retrain"
+    promote_action: str  # "promote" | "warn_only_proxy" | "block" | "warn_only" | "force_retrain"
 
     def to_dict(self) -> dict[str, Any]:
         d: dict[str, Any] = {
@@ -142,7 +149,7 @@ def gate_is_oos(
     is_metric: float,
     oos_metric: float,
     *,
-    max_relative_drop: float = 0.30,
+    max_relative_drop: float = TRUE_IS_OOS_MAX_DROP,
     proxy_mode: bool = False,
 ) -> GateResult:
     """IS-OOS gap gate.
@@ -152,13 +159,17 @@ def gate_is_oos(
                    model train. Proxy IS = early-OOS period mean (split-half hack).
         oos_metric: out-of-sample metric. True OOS = RankIC during walk-forward test.
                     Proxy OOS = late-OOS period mean.
-        max_relative_drop: 默认 30% 真 IS-OOS (来自 fact_model_train_log) 严格 threshold
+        max_relative_drop: 真 IS-OOS (来自 fact_model_train_log) 严格 threshold,
+                           默认 TRUE_IS_OOS_MAX_DROP=0.30.
         proxy_mode: True 表示 is_metric/oos_metric 是 split-half proxy (无 real train log),
-                    此时 threshold 放宽到 70% (academic standard for time-period comparison).
-                    用户 push back '修一次防一切': proxy 比较不应跟真 IS-OOS 用同 threshold.
+                    此时 threshold 放宽到 SPLIT_HALF_PROXY_MAX_DROP=0.70 (academic
+                    standard for time-period stability). 用户 push back '修一次防一切':
+                    proxy 比较不应跟真 IS-OOS 用同 threshold.
 
-    固化 (2026-05-18): proxy_mode=False 是 strict 真 IS-OOS; proxy_mode=True 是 split-half
-    fallback (n_obs 不足或无 train log 时). 见 backend/scripts/run_phase4_gate_on_msaf.py 调用.
+    固化 (2026-05-18, Codex review HIGH 2 2026-05-19): proxy_mode=False 是 strict 真
+    IS-OOS evidence; proxy_mode=True 是 split-half fallback (n_obs 不足或无 train log 时),
+    detail['evidence'] 标 'degraded-split-half' 让下游 promote 路径降级 (run_all_gates
+    proxy_mode pass 不升级到 hard 'promote', 见 below).
     """
     if abs(is_metric) < 1e-12:
         return GateResult(
@@ -168,11 +179,11 @@ def gate_is_oos(
             detail={"is": is_metric, "oos": oos_metric},
         )
     # proxy 模式放宽 threshold (split-half 比较的是 early/late OOS, 不是真 train/test)
-    # rule-compliance: ok evidence=academic-split-half-stability-threshold TODO yaml-back 接 fact_model_train_log 后改 measured
-    effective_threshold = 0.70 if proxy_mode else max_relative_drop
+    effective_threshold = SPLIT_HALF_PROXY_MAX_DROP if proxy_mode else max_relative_drop
     relative_drop = (is_metric - oos_metric) / abs(is_metric)
     passes = relative_drop <= effective_threshold
     mode_label = "proxy-split-half" if proxy_mode else "true-train-test"
+    evidence = "degraded-split-half-not-train-log" if proxy_mode else "true-train-log-PIT"
     return GateResult(
         name="is_oos",
         passes=passes,
@@ -187,6 +198,7 @@ def gate_is_oos(
             "relative_drop": relative_drop,
             "threshold": effective_threshold,
             "proxy_mode": proxy_mode,
+            "evidence": evidence,
         },
     )
 
@@ -260,7 +272,13 @@ def run_all_gates(
 
     all_pass = all([pbo_r.passes, dsr_r.passes, cons_r.passes, isoos_r.passes])
     if all_pass:
-        action = "promote"
+        # Codex review 2026-05-19 HIGH 2: proxy IS-OOS evidence 是 degraded, 不该跟真 IS-OOS
+        # 同等 hard 'promote'. 即使 4 gates 全 boolean pass, proxy_mode=True 时降级 warn_only_proxy.
+        # 真 train-log (proxy_mode=False) 才允许 hard promote.
+        if is_oos_proxy_mode:
+            action = "warn_only_proxy"
+        else:
+            action = "promote"
     elif pbo_r.detail.get("error") or dsr_r.detail.get("error"):
         action = "warn_only"  # 缺数据 不阻 promote, 但 alert
     elif not pbo_r.passes:

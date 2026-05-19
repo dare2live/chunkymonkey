@@ -191,6 +191,83 @@ def test_historical_leakage_phantom_full_chain():
     assert not r.conservative.passes
 
 
+def test_gate_is_oos_proxy_mode_threshold_loose():
+    """proxy_mode=True 时 threshold 放宽到 70% (split-half 时段稳定性, 非真 train-OOS).
+
+    场景: relative_drop=0.50 在真 IS-OOS (30%) 会 fail, 在 proxy (70%) 应 pass.
+    Codex review 2026-05-19 HIGH 2 + LOW: evidence-tagged, threshold 用 module 常量.
+    """
+    # IS=0.10, OOS=0.05 → relative_drop=50%
+    r_proxy = gate_is_oos(is_metric=0.10, oos_metric=0.05, proxy_mode=True)
+    assert r_proxy.passes, "proxy_mode 50% drop 应 pass (≤70%)"
+    assert r_proxy.detail["proxy_mode"] is True
+    assert r_proxy.detail["threshold"] == 0.70
+    assert r_proxy.detail["evidence"] == "degraded-split-half-not-train-log"
+
+    r_true = gate_is_oos(is_metric=0.10, oos_metric=0.05, proxy_mode=False)
+    assert not r_true.passes, "true train-log mode 50% drop 应 fail (>30%)"
+    assert r_true.detail["proxy_mode"] is False
+    assert r_true.detail["threshold"] == 0.30
+    assert r_true.detail["evidence"] == "true-train-log-PIT"
+
+
+def test_run_all_gates_proxy_full_pass_degrades_to_warn_only_proxy():
+    """proxy_mode=True 即使 4 gates 全 pass, promote_action 降级 warn_only_proxy.
+
+    Codex review 2026-05-19 HIGH 2: split-half proxy evidence degraded,
+    不该跟真 train-log 同等 hard promote. 等接入 fact_model_train_log 后才允许 hard promote.
+    """
+    rng = np.random.default_rng(7)
+    n_trials, n_periods = 10, 64
+    returns = rng.normal(0, 0.01, (n_trials, n_periods))
+    returns[0] += 0.005
+
+    r = run_all_gates(
+        challenger_id="proxy_degraded_test",
+        returns_matrix=returns,
+        oos_returns=returns[0],
+        n_trials_for_dsr=10,
+        ann_normal=0.18,
+        ann_conservative=0.10,
+        is_metric=0.03,
+        oos_metric=0.022,
+        is_oos_proxy_mode=True,
+    )
+    # 4 gates pass + proxy → warn_only_proxy, not promote
+    if r.all_pass:
+        assert r.promote_action == "warn_only_proxy", (
+            f"proxy + all_pass 应降级 warn_only_proxy, got {r.promote_action}"
+        )
+    # IS-OOS evidence 应为 degraded
+    assert r.is_oos.detail.get("evidence") == "degraded-split-half-not-train-log"
+
+
+def test_run_all_gates_true_train_log_can_promote():
+    """proxy_mode=False (真 train-log IS-OOS) 时 4 gates 全 pass 允许 hard promote."""
+    rng = np.random.default_rng(7)
+    n_trials, n_periods = 10, 64
+    returns = rng.normal(0, 0.01, (n_trials, n_periods))
+    returns[0] += 0.005
+
+    r = run_all_gates(
+        challenger_id="true_train_log_test",
+        returns_matrix=returns,
+        oos_returns=returns[0],
+        n_trials_for_dsr=10,
+        ann_normal=0.18,
+        ann_conservative=0.10,
+        is_metric=0.03,
+        oos_metric=0.022,
+        is_oos_proxy_mode=False,
+    )
+    # IS-OOS evidence 应 true-train-log-PIT
+    assert r.is_oos.detail.get("evidence") == "true-train-log-PIT"
+    if r.all_pass:
+        assert r.promote_action == "promote", (
+            f"true train-log + all_pass 应 promote, got {r.promote_action}"
+        )
+
+
 def test_clean_alpha_promote_path():
     """干净 alpha 路径: 真实 walk-forward + conservative ann > 0 → promote 允许.
 
