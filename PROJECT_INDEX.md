@@ -784,6 +784,18 @@ SELECT * FROM mart_data_source_watermark;
 
 每次 session 增量内容写这里, 新 session 启动时**从下往上读**最近改了啥.
 
+### 2026-05-19 深夜 C4 pre-commit codegraph diff-check 实施 (我代写, Codex a20e5557 launch fail)
+
+Codex a20e5557 wrapper dispatch C4 hook 但实际 codex CLI thread bcdwjcyki output 0 bytes (launch fail). 我代写实施 .git/hooks/pre-commit step 4:
+
+- WARN-only 不 block commit
+- 检测 staged .py 文件: > 30 imports (high coupling) / > 800 LOC (god-module 候选)
+- 降级: codegraph 命令不可用 OR staged .py 0 → silent skip
+- 复用现有 MERGE_HEAD skip 语义
+- 实测 syntax OK
+
+实际不调 `codegraph --diff` (0.6.8 没此 flag, spec eval add03f50 verdict), 用 grep + wc 降级方案. 后续 codegraph MCP server 加上后可升级.
+
 ### 2026-05-19 深夜 N+1 真问题率 35% + codegraph eval + retrain stall 根因 (5 Codex + 2 Claude 并发)
 
 **N+1 audit 实测** (audit_n_plus_one.py + Claude Explore a1e43ccb 验证):
