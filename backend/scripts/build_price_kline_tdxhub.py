@@ -418,15 +418,21 @@ def load_fallback_latest_date(conn) -> str | None:
 
 
 def load_calendar_target_date() -> str | None:
-    """Return the latest completed A-share trading day from dim_trading_calendar."""
+    """Return the latest completed A-share trading day from dim_trading_calendar.
 
+    Sync entry use 15:05 阈值 (= A 股 15:00 close + 5min tdxhub publish buffer),
+    跟 K-line write site (filter_kline_rows_by_calendar) 阈值一致, 防 sync 选 target
+    跟 write lint 阈值不一致 (用户 2026-05-19 push back: '15:11 跑 daily_update 抓不到
+    5月19日 因为 target=5月18日').
+    rule-compliance: ok evidence=sync-target-15:05-aligned-with-write-lint
+    """
     try:
         biz_conn = get_business_conn()
     except Exception as exc:
         logger.warning("交易日历连接失败，将使用 fallback K 线日期兜底: %s", exc)
         return None
     try:
-        return latest_completed_trade_date(biz_conn)
+        return latest_completed_trade_date(biz_conn, close_hour=15, close_minute=5)
     except Exception as exc:
         logger.warning("交易日历读取失败，将使用 fallback K 线日期兜底: %s", exc)
         return None

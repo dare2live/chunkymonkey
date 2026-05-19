@@ -784,6 +784,42 @@ SELECT * FROM mart_data_source_watermark;
 
 每次 session 增量内容写这里, 新 session 启动时**从下往上读**最近改了啥.
 
+### 2026-05-19 下午 5月19日收盘全流程 sync + 完整性 audit (12 表 11 ✓)
+
+**用户 push back**:
+1. "5月19日收盘了, 跑一遍数据更新全流程看哪有问题并修复"
+2. "请你同步后做个数据完整性审计"
+
+**发现 bug**: 15:11 跑 daily_update 抓不到 5月19日 — `latest_completed_trade_date` close_hour=16 太保守 (= 收盘 + 1h buffer), 卡到 16:00 后才认 5月19日.
+
+**修法**: utils.py 加 `close_minute` 参数, K-line write site (`market_db.py`) + sync entry (`build_price_kline_tdxhub.py`) 显式 `close_hour=15, close_minute=5` (15:05 阈值 = A 股 15:00 close + 5min tdxhub publish buffer). default close_hour=16 保留 (其它 caller 不影响). 543 tests PASS.
+
+**全流程 sync 跑 + 5 stale derived 表 sync**:
+| 步骤 | 命令 | 结果 |
+|---|---|---|
+| K-line raw | `build_price_kline_tdxhub.py` | 5月19日 5,201 codes ✓ |
+| alpha158 | `build_alpha158_duck.py` (DROP+CREATE 18s) | 5月19日 5,178 codes ✓ |
+| label_panel | `rebuild_p0a_label_panel.py --start 2026-05-13 --end 2026-05-19` | 5月19日 4,625 ✓ (6 min) |
+| v3 + v4 panel | incremental build | 5月19日 5,210 ✓ |
+| capital_flow | `backfill_capital_flow_pit.py --start 2026-05-19` | 5月19日 4,333 ✓ |
+| sector_momentum | `backfill_sector_momentum_history.py --start 2026-05-19` | 5月19日 13 sectors ✓ |
+| risk_factors | `calc_risk_factors` | 5月19日 5,169 ✓ |
+| LHB events | `sync_lhb_range` + `build_lhb_events.py` | 5月18日 (5月19日 LHB 晚间 announce, legit) |
+| technical_trigger | `build_formula_signals_history.py` 全量 (root cause: --start 切窗口导致 lookback < 30, 全 formula short-circuit) | 5月19日 1,337 codes (legit, 7 个 formula triggers) |
+| sniper score | `build_sniper_score_daily.py --start 2026-04-24 --end 2026-05-19` (incremental 2s) | 5月19日 5,210 ✓ |
+| institution score | `build_institution_score_daily.py --start 2026-04-24 --end 2026-05-19 --batch-size 8` (3s) | 5月19日 5,210 ✓ |
+
+**完整性 audit script**: `backend/scripts/audit_data_completeness.py` 跨 12 表 max_date / coverage / 跟 cal_max 对齐.
+
+**实测 audit 结果**: **11/12 表 ✓ 5月19日**, 1 STALE_1d (LHB 5月18日, 晚间 announce legit), 1 PARTIAL (technical_trigger 1,337 codes = formula 触发 25% legit).
+
+**Codex 4-agent 混合并发实战** (用户 push back 固化 CLAUDE.md §11.5):
+- `aee63ad7` Codex review batch 30758e73: 8 LOW + 1 MEDIUM (Step 2c calendar gate 加)
+- `a846ce75` Codex systematic audit Q1-Q4 (fresh after thread 1 stuck 33min): 5 处 P0/P1 fix locations
+- `a8de2a13` Claude Explore lhb/risk sync 入口: routers/updater + sync_lhb_range + calc_risk_factors
+- `afb5ca8f` Claude general-purpose sniper/institution CLI: 增量 sync 命令模板 + 4 alpha class 依赖
+- `a8bd5822` Claude general-purpose technical_trigger 0-signal 调研: 根因 lookback < 30 全 short-circuit
+
 ### 2026-05-19 下午 calendar gate 全面扩展 + codex_monitor launchd fix + agent lifecycle script
 
 **用户 push back 3 条**:

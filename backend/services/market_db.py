@@ -434,7 +434,10 @@ def _latest_completed_trade_date_for_write(*, raise_on_miss: bool = True) -> Opt
         from services.utils import latest_completed_trade_date as _latest_completed
         smart_conn = _get_smart_conn()
         try:
-            return _latest_completed(smart_conn, close_hour=16)  # rule-compliance: ok evidence=A-share-close-15:00-plus-1h-buffer
+            # K-line write site: 15:05 阈值 = A 股 15:00 close + 5min tdxhub settlement publish buffer
+            # 实测 tdxhub 收盘 settlement publish 1 min 内完成, 5 min 缓冲 safe + user 15:00+ 可跑 daily_update
+            # rule-compliance: ok evidence=A-share-close-15:00-plus-5min-tdxhub-settlement-buffer
+            return _latest_completed(smart_conn, close_hour=15, close_minute=5)
         finally:
             smart_conn.close()
     except Exception as e:

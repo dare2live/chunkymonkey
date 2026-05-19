@@ -497,6 +497,32 @@ PLAN_V3 §6 phase gate (上游 FAIL 立即停) · 同文件 Edit/Write · 同 Du
 - P-1 PASS 没等就启 P0a → 严守 phase gate
 - 并发完不汇总直接下一步 → 必须 main 汇总
 
+### 11.5 Multi-agent max-并发 workflow (2026-05-19 用户 push back 固化)
+
+> 用户原话: "建一个 agent 管理机制", "不要只写文档要真实应用", "卡着红线并发", "Codex + Claude subagents 混合也可以多并发".
+
+**Rule**: 每次需 research / audit / review 时, **一次 message 派 max 5 agents 并行混合**:
+- 1-3 个 Codex (codex:codex-rescue): code review / systematic audit / design spec
+- 1-2 个 Claude subagent (Explore / general-purpose / Plan): file search / CLI inspection / multi-step research
+- 总数 ≤ 5 (Agent tool 并行硬上限)
+
+**配套机制 (已 deploy)**:
+- `~/.codex_monitor/codex_monitor.sh` (launchd 每 15 min auto-cancel idle > 30 min stuck Codex)
+- `scripts/agents_status.sh` (主动 poll list running + idle alarm + recent finished)
+- 装 launchd plist 在 FDA-safe 路径 (`~/.codex_monitor/` 而非 Documents/), 避 cron `Operation not permitted`
+
+**并发 scope orthogonal 原则**:
+- 各 agent 不同 file scope, 防 conflict
+- 读-only research 无 DB write 冲突
+- 主要 sync / write 必须 sequential (DuckDB 单 writer)
+
+**Triage**: 收到 notification 不 passive 等下一个 — 主动跑 `bash scripts/agents_status.sh` 看 0 running 立即 dispatch 下一批.
+
+**Codex thread stuck 处理** (2026-05-19 实战):
+- Thread > 30 min progressPreview 不更新 = cancel + `--fresh`
+- 收紧 scope 起新 thread (上次 thread 33min 卡 33min on `nl -ba ... | sed` over-explore; 新 thread 收紧 4 个 Q 短答 2min 完成)
+- 见 [[feedback-codex-thread-stuck]]
+
 ## 12. 用户偏好 / 沟通
 
 - **中文回复**. 简洁实用. **表格 > 段落**. 数字优先.

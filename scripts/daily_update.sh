@@ -208,20 +208,26 @@ fi
 log "--- Step 2c: alpha158 freshness check + rebuild if stale ---"
 ALPHA158_STALE_DAYS=$(PYTHONPATH=backend python -c "
 import duckdb, datetime
-# Codex review 2026-05-19 Q2 (a846ce75): 旧版用 MAX(date) 漏 partial coverage day
-# (5月18日 alpha158 仅 2 codes 被认为 fresh). 改用 >= 95% of max_n_codes 才算 full day.
-# rule-compliance: ok evidence=alpha158-freshness-partial-coverage-fix
+# Codex review 2026-05-19 Q2 (a846ce75) + MEDIUM (aee63ad7): 旧版 MAX(date) 漏 partial
+# coverage; v2 加 95% n_codes 阈值; v3 (本版) 加 calendar gate 防盘中 partial-但高覆盖
+# 边界 case (alpha158 即使 write lint 拦, defense-in-depth 二次 gate).
+# rule-compliance: ok evidence=alpha158-freshness-multi-gate-defense
 try:
+    import sys
+    sys.path.insert(0, 'backend')
+    from services.market_db import _latest_completed_trade_date_for_write
+    cal_max = _latest_completed_trade_date_for_write(raise_on_miss=False)
     con = duckdb.connect('data/alpha158.duckdb', read_only=True)
     r = con.execute('''
         WITH d AS (
             SELECT date, COUNT(DISTINCT stock_code) n
             FROM fact_alpha158_panel
+            WHERE ? IS NULL OR date <= ?
             GROUP BY date
         )
         SELECT MAX(date) FROM d
         WHERE n >= 0.95 * (SELECT MAX(n) FROM d)
-    ''').fetchone()[0]
+    ''', [cal_max, cal_max]).fetchone()[0]
     con.close()
     if r is None:
         print(9999)

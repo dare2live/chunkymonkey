@@ -92,8 +92,21 @@ def parse_any_date(value) -> Optional[datetime]:
     return None
 
 
-def latest_completed_trade_date(conn, now: Optional[datetime] = None, close_hour: int = 16) -> Optional[str]:
-    """返回最近一个已完成收盘的交易日（北京时间口径）。"""
+def latest_completed_trade_date(
+    conn,
+    now: Optional[datetime] = None,
+    close_hour: int = 16,
+    close_minute: int = 0,
+) -> Optional[str]:
+    """返回最近一个已完成收盘的交易日（北京时间口径）。
+
+    默认 close_hour=16 保守 (A 股 15:00 收盘 + 1h buffer). K-line write site
+    显式传 close_hour=15 close_minute=30 (15:30 阈值 = 15:00 close + 30min tdxhub
+    publish buffer), 让 daily_update 15:30 之后能跑.
+
+    2026-05-19 用户 push back: 之前 close_hour=16 (15:11 user 跑 daily_update 抓
+    不到 5月19日 数据). 引入 close_minute 支持 + K-line write site 用 15:30 阈值.
+    """
     if now is None:
         now_local = datetime.now(_MARKET_TZ)
     elif now.tzinfo is None:
@@ -102,7 +115,8 @@ def latest_completed_trade_date(conn, now: Optional[datetime] = None, close_hour
         now_local = now.astimezone(_MARKET_TZ)
 
     anchor_date = now_local.date()
-    if now_local.hour < close_hour:
+    # rule-compliance: ok evidence=A-share-15:00-close-plus-30min-tdxhub-buffer
+    if (now_local.hour, now_local.minute) < (close_hour, close_minute):
         anchor_date -= timedelta(days=1)
 
     row = conn.execute(
