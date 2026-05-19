@@ -784,6 +784,16 @@ SELECT * FROM mart_data_source_watermark;
 
 每次 session 增量内容写这里, 新 session 启动时**从下往上读**最近改了啥.
 
+### 2026-05-19 晚 doc: panel_pipeline_manifest.yaml (Codex HIGH 2 解)
+
+新 `backend/config/panel_pipeline_manifest.yaml` (~140 line) — 显式 DAG 契约替代 implicit v4 build 依赖 doc:
+- 11 sources (pit_field + upstream + calendar_gate)
+- 7 pipelines depth-ordered (alpha158 → label → v3 → v4 → retrain + sniper/institution scores)
+- preflight_gates spec (validator inputs ready check)
+- known_gaps debt 列表
+
+未实施 validator script (defer). Codex HIGH 3 (schema contract) + MEDIUM (asof helper / replace_partition) 留 future.
+
 ### 2026-05-19 晚 refactor: services/calendar.py 统一 (Codex HIGH 1 解)
 
 抽 `backend/services/calendar.py` ~130 line, 解 Codex 架构 HIGH 1 calendar gate 双源 (utils.py + market_db.py):
