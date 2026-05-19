@@ -403,51 +403,13 @@ def _now_iso() -> str:
     return datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")  # Phase ψ.5 allowlist: INSERT timestamp helper
 
 
-class KlineWriteLintError(RuntimeError):
-    """Raised when calendar lookup fails or write contains 盘中 future-dated rows.
-
-    CLAUDE.md Rule 3 反例: fail-closed by default (Codex review HIGH 1 verdict).
-    Emergency bypass: env var KLINE_WRITE_LINT_BYPASS=1 (audit any uses).
-    """
-
-
-def _latest_completed_trade_date_for_write(*, raise_on_miss: bool = True) -> Optional[str]:
-    """Read latest_completed_trade_date from smartmoney.duckdb (calendar location).
-
-    Used as defense-in-depth lint at K-line write time to reject 盘中 contamination
-    (CLAUDE.md Rule 3 反例: tdxhub server 可能返回当日 partial K-line, write-side 必须 enforce).
-
-    fail-closed (Codex review 2026-05-19 HIGH 1): calendar 不可访问时 raise KlineWriteLintError,
-    不 silent skip. Emergency bypass via env KLINE_WRITE_LINT_BYPASS=1.
-
-    rule-compliance: ok evidence=defense-in-depth-PIT-lint-fail-closed
-    """
-    import os
-    if os.environ.get("KLINE_WRITE_LINT_BYPASS") == "1":
-        import logging
-        logging.getLogger(__name__).warning(
-            "kline write lint: BYPASS via KLINE_WRITE_LINT_BYPASS=1 (audit this bypass!)"
-        )
-        return None
-    try:
-        from services.db import get_conn as _get_smart_conn
-        from services.utils import latest_completed_trade_date as _latest_completed
-        smart_conn = _get_smart_conn()
-        try:
-            # K-line write site: 15:05 阈值 = A 股 15:00 close + 5min tdxhub settlement publish buffer
-            # 实测 tdxhub 收盘 settlement publish 1 min 内完成, 5 min 缓冲 safe + user 15:00+ 可跑 daily_update
-            # rule-compliance: ok evidence=A-share-close-15:00-plus-5min-tdxhub-settlement-buffer
-            return _latest_completed(smart_conn, close_hour=15, close_minute=5)
-        finally:
-            smart_conn.close()
-    except Exception as e:
-        if raise_on_miss:
-            raise KlineWriteLintError(
-                f"latest_completed_trade_date lookup failed: {e}. "
-                "fail-closed (CLAUDE.md Rule 3 + Codex 2026-05-19 HIGH 1). "
-                "Set KLINE_WRITE_LINT_BYPASS=1 to bypass (audit any uses)."
-            ) from e
-        return None
+# Codex review 2026-05-19 a7ffbdb2 HIGH 1: calendar gate 统一到 services/calendar.py.
+# market_db 不再 own K-line write calendar policy, 改 import shim 保留 KlineWriteLintError 别名
+# (backward compat for callers + tests).
+from services.calendar import (  # noqa: E402, F401
+    CalendarMissError as KlineWriteLintError,
+    latest_completed_for_kline_write as _latest_completed_trade_date_for_write,
+)
 
 
 def filter_kline_rows_by_calendar(

@@ -784,6 +784,19 @@ SELECT * FROM mart_data_source_watermark;
 
 每次 session 增量内容写这里, 新 session 启动时**从下往上读**最近改了啥.
 
+### 2026-05-19 晚 refactor: services/calendar.py 统一 (Codex HIGH 1 解)
+
+抽 `backend/services/calendar.py` ~130 line, 解 Codex 架构 HIGH 1 calendar gate 双源 (utils.py + market_db.py):
+- `latest_completed_trade_date(conn, close_hour=16, close_minute=0)` 通用 PIT cutoff
+- `latest_completed_for_kline_write()` K-line write site 15:05 阈值 + fail-closed + env bypass
+- `latest_closed_or_raise()` 便利 wrapper
+- `CalendarMissError` exception
+- Constants: DEFAULT_CLOSE_HOUR=16 / KLINE_WRITE_CLOSE_HOUR=15 / KLINE_WRITE_CLOSE_MINUTE=5
+
+backward compat shim: utils.py + market_db.py re-export, 大量 caller 不影响.
+
+测试 564 PASS regression 0. Codex 架构 HIGH 2/3 + MEDIUM 待 dedicated future work.
+
 ### 2026-05-19 晚 4-agent 架构/流程/耦合性/数据完整性 audit (retrain 等待期间并行)
 
 **用户 push back**: "等待期间做架构、流程、耦合性、数据完整性"  → 派 4-agent 混合并发 (CLAUDE.md §11.5):

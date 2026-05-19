@@ -92,60 +92,10 @@ def parse_any_date(value) -> Optional[datetime]:
     return None
 
 
-def latest_completed_trade_date(
-    conn,
-    now: Optional[datetime] = None,
-    close_hour: int = 16,
-    close_minute: int = 0,
-) -> Optional[str]:
-    """返回最近一个已完成收盘的交易日（北京时间口径）。
-
-    默认 close_hour=16 保守 (A 股 15:00 收盘 + 1h buffer). K-line write site
-    显式传 close_hour=15 close_minute=30 (15:30 阈值 = 15:00 close + 30min tdxhub
-    publish buffer), 让 daily_update 15:30 之后能跑.
-
-    2026-05-19 用户 push back: 之前 close_hour=16 (15:11 user 跑 daily_update 抓
-    不到 5月19日 数据). 引入 close_minute 支持 + K-line write site 用 15:30 阈值.
-    """
-    if now is None:
-        now_local = datetime.now(_MARKET_TZ)
-    elif now.tzinfo is None:
-        now_local = now.replace(tzinfo=_MARKET_TZ)
-    else:
-        now_local = now.astimezone(_MARKET_TZ)
-
-    anchor_date = now_local.date()
-    # rule-compliance: ok evidence=A-share-15:00-close-plus-30min-tdxhub-buffer
-    if (now_local.hour, now_local.minute) < (close_hour, close_minute):
-        anchor_date -= timedelta(days=1)
-
-    row = conn.execute(
-        "SELECT MAX(trade_date) AS d FROM dim_trading_calendar "
-        "WHERE is_trading=1 AND trade_date <= ?",
-        (anchor_date.strftime("%Y-%m-%d"),)
-    ).fetchone()
-    if not row:
-        return None
-    if hasattr(row, "keys") and "d" in row.keys():
-        return row["d"]
-    return row[0]
-
-
-def latest_closed_or_raise(now: Optional[datetime] = None, close_hour: int = 16) -> str:
-    """Phase ψ.5 便利 wrapper — 不需 caller 传 conn, 内部自取 + raise on miss.
-
-    适合 deep-call sites (return_engine / scoring / screening 等), 让它们
-    一行替换原本的 `datetime.now().strftime("%Y-%m-%d")`. 拒绝静默 wall-clock fallback.
-    """
-    from services.db import get_conn
-
-    conn = get_conn()
-    try:
-        d = latest_completed_trade_date(conn, now=now, close_hour=close_hour)
-    finally:
-        conn.close()
-    if not d:
-        raise RuntimeError(
-            "dim_trading_calendar 未 seed 或表损坏; 拒绝 fallback to wall-clock now."
-        )
-    return d
+# Codex review 2026-05-19 a7ffbdb2 HIGH 1: calendar gate 统一到 services/calendar.py.
+# utils 保留 backward compat 导出 shim (避免大量 caller refactor).
+# rule-compliance: ok evidence=calendar-gate-unified-to-services.calendar
+from services.calendar import (  # noqa: E402, F401
+    latest_completed_trade_date,
+    latest_closed_or_raise,
+)
