@@ -111,8 +111,12 @@ write_status "retrain_launched" "$MODEL_ID"
 if [[ "$DRY" == "0" ]]; then
     REMOTE_CMD="cd ~/chunkymonkey && \
         git pull origin main 2>&1 | tail -3 && \
-        echo '[remote] download panel from GCS' && \
-        gcloud storage cp -r gs://chunkymonkey-data-0517/phase5/panel_$(date +%Y%m%d)/ ./data/imports/ 2>&1 | tail -3 && \
+        echo '[remote] mkdir data/imports + download panel from GCS' && \
+        mkdir -p data/imports && \
+        gcloud storage cp -r 'gs://chunkymonkey-data-0517/phase5/panel_$(date +%Y%m%d)/*' data/imports/ 2>&1 | tail -3 && \
+        ls data/imports/ | head && \
+        echo '[remote] verify panel parquet present' && \
+        find data/imports -name '*.parquet' | head -5 && \
         echo '[remote] start retrain nohup + self-shutdown' && \
         PYTHONPATH=backend nohup bash -c \"\
             python backend/scripts/retrain_lambdamart_v6.py \\
