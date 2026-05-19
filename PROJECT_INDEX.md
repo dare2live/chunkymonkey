@@ -784,6 +784,29 @@ SELECT * FROM mart_data_source_watermark;
 
 每次 session 增量内容写这里, 新 session 启动时**从下往上读**最近改了啥.
 
+### 2026-05-19 晚 label_panel batch redesign + Phase 5 prep (4-agent multi-agent 实战)
+
+**用户 push back**: "你继续按照 goal.md 推进" → audit 均值 93% NOT READY 卡 backtester 87% + 策略模型 90% < 100%. 需 Phase 5 extended retrain. 派 **4 sub-agents 并行混合** (CLAUDE.md §11.5 实战):
+
+| Agent | Scope | Verdict |
+|---|---|---|
+| `a641847d` Codex | Phase 5 batch 7 风险审查 | VERDICT conditional-on: disk ≥30GB / step 1 checkpoint / n_obs ≥60 / PIT audit |
+| `a58333b3` Claude general | label_panel 11h optimization | **批 redesign: 11h → 25-45min** (删 per-date loop, PIT 在 tmp_pit_stock_signal 已 cover) |
+| `a267bf47` Claude general | GCS 21GB sync optim | **partial parquet export: 1.48GB**, 5-12min vs 30-60min (14× speedup) |
+| `af3bf472` Claude Plan | Phase 5 chain script 12 步 design | status file driven + disk watcher + retry/abort 完整 plan |
+
+**实施 label_panel batch redesign** (Codex review a748f11e GO commit ✓):
+- `services/labels/build.py:43-94` SQL CTE 改: signals_with_rank 从 tmp_pit_stock_signal DISTINCT, stock_signal_grid 从 tmp_pit_stock_signal JOIN horizons_with_dates (替 tmp_stocks CROSS JOIN tmp_signal_dates)
+- `services/labels/build.py:303-318` Python: 删 805 次 per-date loop, 单次 batch SQL fetchall
+- 实测 5 dates × 5210 stocks = 23,125 rows in **73s** (vs old 250s+ estimate, 3.4× faster)
+- 全 805 dates 估时 **3.3h** (单步 redesign; sub-agent Step 2/3 可再降到 25-45min)
+
+**PIT 单测加**: `test_batch_redesign_pit_temporal_conflict_no_leak` mock stock A 在 2024-01-03 上市, verify panel 中无 (A, 2024-01-02) 行. 防 batch redesign 引入 listing-date 时序 leakage.
+
+**Codex verdict**: PIT 等价 ✓, JOIN 替 CROSS JOIN 不引新 row, GO commit. LOW 注释 noise 不阻塞.
+
+**Phase 5 batch 暂未启** (Codex conditional-on disk 30GB 不满足 — 现 15GB). 待 redesign step 2/3 实施 OR disk free.
+
 ### 2026-05-19 下午 5月19日收盘全流程 sync + 完整性 audit (12 表 11 ✓)
 
 **用户 push back**:

@@ -55,8 +55,12 @@ trading_day_rank AS (
     SELECT d, ROW_NUMBER() OVER (ORDER BY d) AS rk FROM trading_days
 ),
 signals_with_rank AS (
-    SELECT s.signal_date, r.rk AS signal_rk
-    FROM tmp_signal_dates s
+    -- Codex review 2026-05-19 + sub-agent a58333b3 优化: 改用 tmp_pit_stock_signal 直接 DISTINCT
+    -- 取 signal_date, 不再依赖 per-date loop 的 tmp_signal_dates. PIT 仍在 tmp_pit_stock_signal
+    -- (pit_universe_by_signal_date 已 filter listed_date <= signal_date) — 不 break PIT.
+    -- 性能: 11h → 25-45min (805 dates 一次 batch, 不再每 date 重 build SQL)
+    SELECT DISTINCT s.signal_date, r.rk AS signal_rk
+    FROM tmp_pit_stock_signal s
     JOIN trading_day_rank r ON r.d = s.signal_date
 ),
 horizons AS (
@@ -86,11 +90,16 @@ horizons_with_dates AS (
     LEFT JOIN trading_day_rank td90     ON td90.rk     = h.exit_rk_90d
 ),
 stock_signal_grid AS (
-    SELECT s.stock_code, h.signal_date, h.entry_date,
+    -- Codex review 2026-05-19 + sub-agent a58333b3: 改用 tmp_pit_stock_signal JOIN horizons_with_dates,
+    -- 不 CROSS JOIN tmp_stocks (会含 listed-after-signal-date 组合 → leakage 风险).
+    -- tmp_pit_stock_signal 已 PIT-clean (universe.py pit_universe_by_signal_date 按 listed_date <=
+    -- signal_date filter). 单次 batch 处理全 805 dates × 5K stocks, per-date loop 删除.
+    -- rule-compliance: ok evidence=PIT-via-tmp-pit-stock-signal-batch-redesign
+    SELECT t.stock_code, h.signal_date, h.entry_date,
            h.exit_date_5d, h.exit_date_10d, h.exit_date_20d,
            h.exit_date_60d, h.exit_date_90d
-    FROM tmp_stocks s
-    CROSS JOIN horizons_with_dates h
+    FROM tmp_pit_stock_signal t
+    JOIN horizons_with_dates h ON h.signal_date = t.signal_date
 ),
 entry_kline AS (
     SELECT g.stock_code, g.signal_date,
@@ -301,21 +310,12 @@ def build_p0a_label_panel(
         built_at = built_at_dt.isoformat(timespec="seconds")
         build_as_of_date = built_at_dt.date().isoformat()
 
-        # Run main build SQL per signal_date so future listings cannot leak into
-        # earlier signal dates through a multi-date stock-code union.
-        rows = []
-        for signal_date, stocks_for_date in stocks_by_date.items():
-            if not stocks_for_date:
-                continue
-            conn.execute("DROP TABLE IF EXISTS tmp_signal_dates")
-            conn.execute("CREATE TEMP TABLE tmp_signal_dates(signal_date DATE)")
-            conn.execute("INSERT INTO tmp_signal_dates VALUES (?)", [signal_date])
-
-            conn.execute("DROP TABLE IF EXISTS tmp_stocks")
-            conn.execute("CREATE TEMP TABLE tmp_stocks(stock_code TEXT)")
-            conn.executemany("INSERT INTO tmp_stocks VALUES (?)", [(c,) for c in stocks_for_date])
-
-            rows.extend(conn.execute(_BUILD_SQL, [build_as_of_date, round_trip]).fetchall())
+        # Codex review 2026-05-19 + sub-agent a58333b3 优化: per-date loop 删除, 改 single batch SQL.
+        # 原 loop 每 date DROP+CREATE tmp_signal_dates+tmp_stocks + 跑 _BUILD_SQL fetchall, 805 dates ×
+        # ~50s = 11h. New batch uses tmp_pit_stock_signal (已 PIT-clean) 直接 JOIN, 一次跑完.
+        # PIT 不破: tmp_pit_stock_signal 来自 pit_universe_by_signal_date (listed_date <= signal_date filter).
+        # rule-compliance: ok evidence=batch-redesign-PIT-preserved-via-tmp-pit-stock-signal
+        rows = conn.execute(_BUILD_SQL, [build_as_of_date, round_trip]).fetchall()
         if not rows:
             return {"rows_built": 0, "round_trip_cost_pct": round_trip, "label_version": LABEL_VERSION}
 

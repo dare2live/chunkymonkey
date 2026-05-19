@@ -90,14 +90,64 @@ def _make_conn_with_mock_kline(rows: list[dict]) -> duckdb.DuckDBPyConnection:
 
 
 def _run_build_sql(conn, signal_dates, stock_codes, round_trip, build_as_of_date: str = "2099-12-31"):
-    """Helper: stage tmp tables + run _BUILD_SQL."""
-    conn.execute("DROP TABLE IF EXISTS tmp_signal_dates")
-    conn.execute("CREATE TEMP TABLE tmp_signal_dates(signal_date DATE)")
-    conn.executemany("INSERT INTO tmp_signal_dates VALUES (?)", [(d,) for d in signal_dates])
-    conn.execute("DROP TABLE IF EXISTS tmp_stocks")
-    conn.execute("CREATE TEMP TABLE tmp_stocks(stock_code TEXT)")
-    conn.executemany("INSERT INTO tmp_stocks VALUES (?)", [(c,) for c in stock_codes])
+    """Helper: stage tmp_pit_stock_signal + run _BUILD_SQL (batch redesign 2026-05-19).
+
+    Old test helper used separate tmp_signal_dates + tmp_stocks (CROSS JOIN).
+    New build SQL reads tmp_pit_stock_signal (PIT-clean stock-date pairs) directly.
+    For non-PIT tests (CROSS JOIN test fixture stays equivalent), produce cartesian product.
+    """
+    conn.execute("DROP TABLE IF EXISTS tmp_pit_stock_signal")
+    conn.execute("CREATE TEMP TABLE tmp_pit_stock_signal(stock_code TEXT, signal_date DATE)")
+    # cartesian product (test helper); production uses PIT-filtered pairs
+    pairs = [(c, d) for d in signal_dates for c in stock_codes]
+    conn.executemany("INSERT INTO tmp_pit_stock_signal VALUES (?, ?)", pairs)
     return conn.execute(_BUILD_SQL, [build_as_of_date, round_trip]).fetchall()
+
+
+def test_batch_redesign_pit_temporal_conflict_no_leak():
+    """Codex review 2026-05-19 a748f11e PIT temporal conflict 单测.
+
+    场景: stock A 在 signal_date 2024-01-03 上市. signal_dates 含 [2024-01-02, 2024-01-03].
+    tmp_pit_stock_signal 只含 (A, 2024-01-03) (universe.py 已 filter listed_date<=signal_date).
+    panel 输出应只含 signal_date=2024-01-03 行, 2024-01-02 stock A 不应出现.
+
+    防御 batch redesign 引入 PIT leakage: 旧 CROSS JOIN tmp_stocks × tmp_signal_dates 会产 (A, 2024-01-02)
+    可能 leakage 未上市行; 新 JOIN tmp_pit_stock_signal 已 PIT-filter, 不引入 leakage row.
+
+    rule-compliance: ok evidence=PIT-temporal-conflict-defense
+    """
+    rows = [
+        # 2024-01-02: A 未上市 (无 K 线), B 已上市
+        {"code": "B", "date": "2024-01-02", "open": 10, "high": 11, "low": 9, "close": 10, "volume": 1000, "amount": 10000},
+        # 2024-01-03: A 上市 entry, B 继续
+        {"code": "A", "date": "2024-01-03", "open": 20, "high": 21, "low": 19, "close": 20, "volume": 500, "amount": 10000},
+        {"code": "B", "date": "2024-01-03", "open": 10.5, "high": 11.5, "low": 10, "close": 11, "volume": 1100, "amount": 11550},
+        # forward fills for label calc
+        {"code": "A", "date": "2024-01-04", "open": 20.5, "high": 21.5, "low": 20, "close": 21, "volume": 500, "amount": 10500},
+        {"code": "B", "date": "2024-01-04", "open": 11, "high": 12, "low": 10.5, "close": 11.5, "volume": 1100, "amount": 12100},
+        {"code": "A", "date": "2024-01-05", "open": 21, "high": 22, "low": 20.5, "close": 21.5, "volume": 500, "amount": 10750},
+        {"code": "B", "date": "2024-01-05", "open": 11.5, "high": 12.5, "low": 11, "close": 12, "volume": 1100, "amount": 12650},
+    ]
+    conn = _make_conn_with_mock_kline(rows)
+    try:
+        # tmp_pit_stock_signal 显式只含 (A, 2024-01-03) + B in both — simulate PIT universe filter result
+        conn.execute("DROP TABLE IF EXISTS tmp_pit_stock_signal")
+        conn.execute("CREATE TEMP TABLE tmp_pit_stock_signal(stock_code TEXT, signal_date DATE)")
+        conn.executemany(
+            "INSERT INTO tmp_pit_stock_signal VALUES (?, ?)",
+            [("B", "2024-01-02"), ("A", "2024-01-03"), ("B", "2024-01-03")],
+        )
+        out_rows = conn.execute(_BUILD_SQL, ["2099-12-31", compute_round_trip_cost_pct(_TX)]).fetchall()
+        # Extract (stock_code, signal_date) pairs from output
+        pairs = {(r[0], str(r[1])) for r in out_rows}
+        # A on 2024-01-02 must NOT appear (未上市)
+        assert ("A", "2024-01-02") not in pairs, "PIT leakage: A 在 2024-01-02 未上市却出现在 panel"
+        # B on both dates + A only on 2024-01-03 should appear
+        assert ("B", "2024-01-02") in pairs
+        assert ("B", "2024-01-03") in pairs
+        assert ("A", "2024-01-03") in pairs
+    finally:
+        conn.close()
 
 
 def test_ddl_creates_table():
