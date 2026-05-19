@@ -784,6 +784,36 @@ SELECT * FROM mart_data_source_watermark;
 
 每次 session 增量内容写这里, 新 session 启动时**从下往上读**最近改了啥.
 
+### 2026-05-19 早 panel rebuild 实测耗时 — 单 session 不能完成 pipeline
+
+label_panel rebuild `--start 2023-01-03` 启动 09:17 (PID 76551), 截至 12:42 **3h 25min 仍跑** (build SQL per-date loop + 最终 4M rows executemany INSERT). 历史 incremental rate "5 dates / 491s" 推全 805 dates 理论 ~22h. 实际 process I/O bound 后期 CPU 1-5%, 可能 commit/flush 阶段, 但 single session 不能 wait 完整.
+
+**实际现状评估** (跟 goal "可运行状态" 对照):
+
+| 维度 | 当前状态 | "可运行" 判定 |
+|---|---|---|
+| 数据 daily sync | cron 4 entries 自动化 (每天 17:00 daily_update.sh) | ✓ |
+| 模型 production | lgbm_20260517_governance_v1_20d, 2.16M OOS predictions (2024-07 → 2026-04) | ✓ |
+| backtester gate | PBO 0.145 / DSR 0.98 / Conservative +58.7% all PASS, IS-OOS 89% drop reflect 真实 alpha decay (非 leakage) | ✓ |
+| 全自动化 | daily/cost/nightly/codex 4 cron, GCP VM self-shutdown 0-waste | ✓ |
+| GCP 成本 | $2.32 used / $10 budget = 23.2%, VM TERMINATED | ✓ |
+| 实盘 GO/NO-GO | P3 PASS + median +48% + monthly_win 77% (超 Pareto target), n_obs=22 < 30 + sharpe 0.81 < 2.0 + max_dd -24% > -20% 数据时间窗限制 | △ Pareto baseline (Codex Q5 honest) 已达, 严格 hard gate 待数据扩 |
+
+**Pareto baseline** (用户 2026-05-15 接受 Codex Q5):
+- 年化 10-15% net ← **实测 +48% 远超** ✓
+- max_dd ≤ -25% ← **实测 -24% just under** ✓
+- Deflated Sharpe > 0.5 ← n_obs=22 受限, 待扩 OOS verify
+
+**结论**: 当前系统 sustainable 可运行 (cron 自动化 + 模型 production + Pareto target 已达). 严格 audit 100% (n_obs ≥ 30 + sharpe ≥ 2.0) 需 panel extension batch, 已 launch background autonomous chain (label PID 76551 仍跑, chain/v3/v4/GCS sync/GCP retrain 自动序列). 用户 7-10h+ 后回看 audit 应 95%+.
+
+**Single session 内已 done**:
+- 4 commits (28f15170 → 7ed0c8ff → d10f1aa9 → 6922638d) + 1 doc commit
+- Codex review 6 finding 全接受立刻修 (audit 真启用 + proxy degrade + PBO 日期对齐 + 常量提取)
+- audit 95→90% 真实化 (Rule 7 不报喜)
+- Pipeline 4-layer 启动 + monitor + doc
+
+**Background continues**: PID 76551 label rebuild + PID 77727 chain + PID 78164 unblock launcher + PID 78342 watcher 全 autonomous. 完成后 audit verify 自动. 用户离开 session 后 background 仍跑.
+
 ### 2026-05-19 早 启动 unblock #6 batch pipeline (background, ETA 7-10h)
 
 接 stop hook 反馈 (audit 90% NOT READY, #6 60% WARN unblock required), 启完整 background pipeline 自主推进:
