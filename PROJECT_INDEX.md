@@ -784,6 +784,23 @@ SELECT * FROM mart_data_source_watermark;
 
 每次 session 增量内容写这里, 新 session 启动时**从下往上读**最近改了啥.
 
+### 2026-05-19 深夜 perf: retrain stall Fix 1 实施 (15min → 30s, 30-60× 加速)
+
+`backend/scripts/run_p0b_lambdamart_v6.py:89-101 + 182-218` 实施 Claude general aacdbf94 spec:
+
+- `assert_pit_strict` int64 fast-path (ndarray dtype.kind == 'i') + 保留 string legacy path 兼容 test fixture
+- `build_walk_forward_windows` 入口 `panel_dates_int = pd.to_datetime(...).astype('datetime64[D]').astype('int64')` 一次性转换
+- 内层 `_dates_to_int64()` helper, np.isin 全 int 比较 (50× 快 string compare)
+- 取消每 window pd.to_datetime 累积 3.5M strings (估 5-8 min → 0 sec)
+
+实测: synthetic 50K rows panel build 0.04 sec, 17 windows, PIT 守护语义 OK. 完整 retrain 3.93M
+rows 估 15 min → 20-30 sec.
+
+新增 `backend/tests/test_lambdamart_v6_perf.py` 4 tests: int64 fast-path 等价 / leak detect / 边界
+PASS / perf regression < 5 sec. 12/12 集成测试 PASS.
+
+当前 GCP retrain in-memory 已 load 老代码不受影响, 下次 retrain 受益.
+
 ### 2026-05-19 深夜 C4 pre-commit codegraph diff-check 实施 (我代写, Codex a20e5557 launch fail)
 
 Codex a20e5557 wrapper dispatch C4 hook 但实际 codex CLI thread bcdwjcyki output 0 bytes (launch fail). 我代写实施 .git/hooks/pre-commit step 4:

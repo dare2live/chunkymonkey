@@ -87,9 +87,30 @@ class ModelRunResult:
 
 
 def assert_pit_strict(train_signal_dates, test_signal_dates) -> None:
-    """Require every train signal_date to be strictly before the test start."""
+    """Require every train signal_date to be strictly before the test start.
+
+    Fix 1 (Claude general aacdbf94, 2026-05-19): 若输入是 int64 ndarray (day-level epoch),
+    走 fast-path O(1) max/min; legacy string path 保留兼容 (test_lambdamart_v6.py:112 老调用).
+    Speedup: 30 expanding window 累积 3.5M strings pd.to_datetime 重复 parse ~5-8 min → 0 sec.
+    """
     if len(train_signal_dates) == 0 or len(test_signal_dates) == 0:
         raise AssertionError("PIT strict check requires non-empty train and test dates")
+    # Fix 1 fast-path: int64 ndarray (epoch day)
+    if (
+        isinstance(train_signal_dates, np.ndarray)
+        and train_signal_dates.dtype.kind == "i"
+        and isinstance(test_signal_dates, np.ndarray)
+        and test_signal_dates.dtype.kind == "i"
+    ):
+        last_train_int = int(train_signal_dates.max())
+        first_test_int = int(test_signal_dates.min())
+        if last_train_int >= first_test_int:
+            raise AssertionError(
+                f"PIT leak detected: last_train_epoch={last_train_int} >= "
+                f"first_test_epoch={first_test_int} (day-level int)"
+            )
+        return
+    # Legacy string path (test fixture 老调用兼容)
     train_dates = pd.to_datetime(pd.Series(train_signal_dates))
     test_dates = pd.to_datetime(pd.Series(test_signal_dates))
     last_train = train_dates.max()
@@ -186,7 +207,18 @@ def build_walk_forward_windows(
     forward_months: int,
     max_windows: int | None = None,
 ) -> list[WindowSpec]:
-    unique_dates = pd.Series(panel.signal_dates).drop_duplicates().tolist()
+    # Fix 1 (Claude general aacdbf94, 2026-05-19): panel.signal_dates 一次性转 int64 day-epoch,
+    # 后续 np.isin / assert_pit_strict 全 int 比较, 估 30-60× 加速 (15 min → 20-30 sec).
+    # 文件: docs/retrain_stall_fix1_patch_draft.md
+    # rule-compliance: ok evidence=claude-general-aacdbf94-retrain-stall-fix1-int64
+    panel_dates_str = panel.signal_dates  # original <U10 ndarray (kept for WindowSpec str fields)
+    panel_dates_int = (
+        pd.to_datetime(pd.Series(panel_dates_str))
+        .values.astype("datetime64[D]")
+        .astype("int64")
+    )
+
+    unique_dates = pd.Series(panel_dates_str).drop_duplicates().tolist()
     date_signals = [{"stock_code": "__date__", "signal_date": d} for d in unique_dates]
     splits = split_expanding_monthly(
         date_signals,
@@ -195,22 +227,35 @@ def build_walk_forward_windows(
         min_test=1,
     )
 
+    def _dates_to_int64(date_strs: set[str]) -> np.ndarray:
+        # str "2024-01-02" → int64 day-epoch
+        return np.array(
+            [
+                pd.Timestamp(d).to_datetime64().astype("datetime64[D]").astype("int64")
+                for d in date_strs
+            ],
+            dtype=np.int64,
+        )
+
     windows: list[WindowSpec] = []
     for sp in splits:
         train_dates = {str(r["signal_date"])[:10] for r in sp.train}
         test_dates = {str(r["signal_date"])[:10] for r in sp.test}
-        train_idx = np.where(np.isin(panel.signal_dates, list(train_dates)))[0].astype(np.int32)
-        test_idx = np.where(np.isin(panel.signal_dates, list(test_dates)))[0].astype(np.int32)
+        train_dates_int = _dates_to_int64(train_dates)
+        test_dates_int = _dates_to_int64(test_dates)
+        train_idx = np.where(np.isin(panel_dates_int, train_dates_int))[0].astype(np.int32)
+        test_idx = np.where(np.isin(panel_dates_int, test_dates_int))[0].astype(np.int32)
         if len(train_idx) == 0 or len(test_idx) == 0:
             continue
-        assert_pit_strict(panel.signal_dates[train_idx], panel.signal_dates[test_idx])
+        # Fix 1 fast-path: 传 int64 ndarray, assert_pit_strict 不再跑 pd.to_datetime on累积 3.5M strings
+        assert_pit_strict(panel_dates_int[train_idx], panel_dates_int[test_idx])
         windows.append(WindowSpec(
             train_idx=train_idx,
             test_idx=test_idx,
-            train_start=str(panel.signal_dates[train_idx[0]]),
-            train_end=str(panel.signal_dates[train_idx[-1]]),
-            test_start=str(panel.signal_dates[test_idx[0]]),
-            test_end=str(panel.signal_dates[test_idx[-1]]),
+            train_start=str(panel_dates_str[train_idx[0]]),
+            train_end=str(panel_dates_str[train_idx[-1]]),
+            test_start=str(panel_dates_str[test_idx[0]]),
+            test_end=str(panel_dates_str[test_idx[-1]]),
         ))
 
     if max_windows is not None:
