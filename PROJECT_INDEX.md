@@ -784,6 +784,19 @@ SELECT * FROM mart_data_source_watermark;
 
 每次 session 增量内容写这里, 新 session 启动时**从下往上读**最近改了啥.
 
+### 2026-05-19 晚 label_panel Step 2 materialize tmp_kline + Phase 5 auto chain launched
+
+**Step 2 实施** (sub-agent a58333b3 推荐):
+- `services/labels/build.py` Python: materialize `tmp_kline` (5M rows DATE-typed) before _BUILD_SQL
+- `_BUILD_SQL`: 6× LEFT JOIN mkt.v_price_kline_qfq → tmp_kline. 删 strftime cast (DATE 直接 JOIN).
+- 速度: 6× view scan → 1× materialize + 6× hash JOIN, sub-agent 估 805 dates 3.3h → 25-45min.
+- 测试 10/10 PASS (test helper 加 tmp_kline materialize).
+
+**Phase 5 auto chain** (commit 2742a870): `scripts/run_phase5_auto_chain.sh` 单 bash 入口 8 步.
+- PID 41023 panel rebuild full (用 Step 1, 跑前 in-memory loaded, 不受 Step 2 影响 — 但下次 rebuild + v3/v4 panel + 后续 incremental 都用 Step 2)
+- PID 41239 auto chain waits panel done → parquet export (1.5GB) → GCS sync → GCP VM → SSH retrain --start 2023-01-03 → self-shutdown → pull → post-retrain → audit
+- ETA total 8-12h autonomous, status `data/reports/phase5_chain/status.json` 监控
+
 ### 2026-05-19 晚 label_panel batch redesign + Phase 5 prep (4-agent multi-agent 实战)
 
 **用户 push back**: "你继续按照 goal.md 推进" → audit 均值 93% NOT READY 卡 backtester 87% + 策略模型 90% < 100%. 需 Phase 5 extended retrain. 派 **4 sub-agents 并行混合** (CLAUDE.md §11.5 实战):

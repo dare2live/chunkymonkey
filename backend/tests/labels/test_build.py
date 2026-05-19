@@ -101,6 +101,14 @@ def _run_build_sql(conn, signal_dates, stock_codes, round_trip, build_as_of_date
     # cartesian product (test helper); production uses PIT-filtered pairs
     pairs = [(c, d) for d in signal_dates for c in stock_codes]
     conn.executemany("INSERT INTO tmp_pit_stock_signal VALUES (?, ?)", pairs)
+    # Step 2 (a58333b3): materialize tmp_kline (production calls this in build_p0a_label_panel before _BUILD_SQL)
+    conn.execute("DROP TABLE IF EXISTS tmp_kline")
+    conn.execute(
+        "CREATE TEMP TABLE tmp_kline AS "
+        "SELECT code, date::DATE AS date, amount, volume, open, high, low, close "
+        "FROM mkt.v_price_kline_qfq "
+        "WHERE freq='daily' AND adjust='qfq'"
+    )
     return conn.execute(_BUILD_SQL, [build_as_of_date, round_trip]).fetchall()
 
 
@@ -136,6 +144,14 @@ def test_batch_redesign_pit_temporal_conflict_no_leak():
         conn.executemany(
             "INSERT INTO tmp_pit_stock_signal VALUES (?, ?)",
             [("B", "2024-01-02"), ("A", "2024-01-03"), ("B", "2024-01-03")],
+        )
+        # Step 2 (a58333b3): materialize tmp_kline
+        conn.execute("DROP TABLE IF EXISTS tmp_kline")
+        conn.execute(
+            "CREATE TEMP TABLE tmp_kline AS "
+            "SELECT code, date::DATE AS date, amount, volume, open, high, low, close "
+            "FROM mkt.v_price_kline_qfq "
+            "WHERE freq='daily' AND adjust='qfq'"
         )
         out_rows = conn.execute(_BUILD_SQL, ["2099-12-31", compute_round_trip_cost_pct(_TX)]).fetchall()
         # Extract (stock_code, signal_date) pairs from output

@@ -110,9 +110,8 @@ entry_kline AS (
            k.low    AS e_low,
            k.close  AS e_close
     FROM stock_signal_grid g
-    LEFT JOIN mkt.v_price_kline_qfq k
-      ON k.code = g.stock_code AND k.date = strftime(g.entry_date, '%Y-%m-%d')
-     AND k.freq='daily' AND k.adjust='qfq'
+    LEFT JOIN tmp_kline k
+      ON k.code = g.stock_code AND k.date = g.entry_date
 ),
 exit_5d AS (
     SELECT g.stock_code, g.signal_date,
@@ -120,9 +119,8 @@ exit_5d AS (
            k.open AS x_open, k.high AS x_high,
            k.low AS x_low, k.close AS x_close
     FROM stock_signal_grid g
-    LEFT JOIN mkt.v_price_kline_qfq k
-      ON k.code = g.stock_code AND k.date = strftime(g.exit_date_5d, '%Y-%m-%d')
-     AND k.freq='daily' AND k.adjust='qfq'
+    LEFT JOIN tmp_kline k
+      ON k.code = g.stock_code AND k.date = g.exit_date_5d
 ),
 exit_10d AS (
     SELECT g.stock_code, g.signal_date,
@@ -130,9 +128,8 @@ exit_10d AS (
            k.open AS x_open, k.high AS x_high,
            k.low AS x_low, k.close AS x_close
     FROM stock_signal_grid g
-    LEFT JOIN mkt.v_price_kline_qfq k
-      ON k.code = g.stock_code AND k.date = strftime(g.exit_date_10d, '%Y-%m-%d')
-     AND k.freq='daily' AND k.adjust='qfq'
+    LEFT JOIN tmp_kline k
+      ON k.code = g.stock_code AND k.date = g.exit_date_10d
 ),
 exit_20d AS (
     SELECT g.stock_code, g.signal_date,
@@ -140,9 +137,8 @@ exit_20d AS (
            k.open AS x_open, k.high AS x_high,
            k.low AS x_low, k.close AS x_close
     FROM stock_signal_grid g
-    LEFT JOIN mkt.v_price_kline_qfq k
-      ON k.code = g.stock_code AND k.date = strftime(g.exit_date_20d, '%Y-%m-%d')
-     AND k.freq='daily' AND k.adjust='qfq'
+    LEFT JOIN tmp_kline k
+      ON k.code = g.stock_code AND k.date = g.exit_date_20d
 ),
 exit_60d AS (
     SELECT g.stock_code, g.signal_date,
@@ -150,9 +146,8 @@ exit_60d AS (
            k.open AS x_open, k.high AS x_high,
            k.low AS x_low, k.close AS x_close
     FROM stock_signal_grid g
-    LEFT JOIN mkt.v_price_kline_qfq k
-      ON k.code = g.stock_code AND k.date = strftime(g.exit_date_60d, '%Y-%m-%d')
-     AND k.freq='daily' AND k.adjust='qfq'
+    LEFT JOIN tmp_kline k
+      ON k.code = g.stock_code AND k.date = g.exit_date_60d
 ),
 exit_90d AS (
     SELECT g.stock_code, g.signal_date,
@@ -160,9 +155,8 @@ exit_90d AS (
            k.open AS x_open, k.high AS x_high,
            k.low AS x_low, k.close AS x_close
     FROM stock_signal_grid g
-    LEFT JOIN mkt.v_price_kline_qfq k
-      ON k.code = g.stock_code AND k.date = strftime(g.exit_date_90d, '%Y-%m-%d')
-     AND k.freq='daily' AND k.adjust='qfq'
+    LEFT JOIN tmp_kline k
+      ON k.code = g.stock_code AND k.date = g.exit_date_90d
 ),
 masks_and_vwap AS (
     SELECT
@@ -305,6 +299,33 @@ def build_p0a_label_panel(
         conn.execute("DROP TABLE IF EXISTS tmp_pit_stock_signal")
         conn.execute("CREATE TEMP TABLE tmp_pit_stock_signal(stock_code TEXT, signal_date DATE)")
         conn.executemany("INSERT INTO tmp_pit_stock_signal VALUES (?, ?)", pit_pairs)
+
+        # Codex review 2026-05-19 + sub-agent a58333b3 Step 2 优化: materialize tmp_kline
+        # 替代 6× mkt.v_price_kline_qfq LEFT JOIN view scan. DuckDB columnar zone-map 比 view+index
+        # 快 10-50×, 估时 ~30-60s materialize + JOIN. Date 转 DATE 类型 (原 TEXT) 让 join key 直接命中
+        # hash join, 不需 strftime cast.
+        # Range = stocks_by_date min/max signal_date - 90 (forward 90d horizon need future K-line) +
+        # entry_date offset (+1).
+        # rule-compliance: ok evidence=materialize-kline-tmp-table-columnar-zonemap
+        all_dates = sorted(stocks_by_date.keys())
+        min_signal_date = all_dates[0]
+        max_signal_date = all_dates[-1]
+        # forward 90d horizon means we need K-line up to ~max_signal_date + 130 calendar days
+        from datetime import date as _date, timedelta as _td
+        max_kline_date = (_date.fromisoformat(max_signal_date) + _td(days=130)).isoformat()
+        # also need a few days before earliest signal for entry_date computation
+        min_kline_date = (_date.fromisoformat(min_signal_date) - _td(days=5)).isoformat()
+        log.info(f"  materialize tmp_kline: {min_kline_date} → {max_kline_date}")
+        conn.execute("DROP TABLE IF EXISTS tmp_kline")
+        conn.execute(
+            "CREATE TEMP TABLE tmp_kline AS "
+            "SELECT code, date::DATE AS date, amount, volume, open, high, low, close "
+            "FROM mkt.v_price_kline_qfq "
+            "WHERE freq='daily' AND adjust='qfq' AND date BETWEEN ? AND ?",
+            [min_kline_date, max_kline_date],
+        )
+        n_kline = conn.execute("SELECT COUNT(*) FROM tmp_kline").fetchone()[0]
+        log.info(f"  tmp_kline rows: {n_kline:,}")
 
         built_at_dt = datetime.now(UTC)
         built_at = built_at_dt.isoformat(timespec="seconds")
