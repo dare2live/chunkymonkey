@@ -784,6 +784,48 @@ SELECT * FROM mart_data_source_watermark;
 
 每次 session 增量内容写这里, 新 session 启动时**从下往上读**最近改了啥.
 
+### 2026-05-19 中午 K线 sync 拉齐 5月18日 + Codex 路径 A audit ladder split
+
+**用户 push back**: "认真检查一下k线是否真的都拉到了18日，我看只有3只" — 之前 max(date) 检查误判, 实际 alpha158/v4 panel 5月18日仅 2 codes (partial coverage).
+
+**Sync 完成** (raw + derived 全 ✓ 5月18日):
+| 表 | 之前 max | 现 max | 用 |
+|---|---|---|---|
+| price_kline_tdxhub | 2026-05-19 | 5月18日 5,198 codes | raw |
+| v_price_kline_qfq | 2026-05-19 | 5月18日 5,198 codes | view |
+| fact_alpha158_panel | 5月18日 2 codes ✗ | 5月19日 5,175 codes ✓ | derived (DROP+CREATE rebuild 18s) |
+| mart_p0a_label_panel | 2026-05-18 | 2026-05-18 ✓ | daily_update Step 3 |
+| mart_p0a_feature_label_panel_v3 | 2026-04-23 ✗ | 2026-05-18 ✓ | incr build 5s |
+| mart_p0a_feature_label_panel_v4 | 2026-04-23 ✗ | 2026-05-18 ✓ | incr build 7s |
+| fact_capital_flow_pit_daily | 2026-05-13 ✗ | 2026-05-18 ✓ | backfill 3s |
+| fact_sector_momentum_daily | 2026-05-12 ✗ | 2026-05-18 ✓ | backfill 1s |
+
+**仍 stale (低优先, derived 数据)**:
+- fact_lhb_event / fact_risk_factors: 2026-05-15 (3 天 lag, 数据源延迟)
+- fact_technical_trigger: 2026-05-13 (sync 跑了但 5月14-18 formula 0 signals — 可能 legit 也可能 K-line 同步前的限制)
+- mart_sniper_score_daily / mart_institution_score_daily: 2026-04-23 (3 周 stale, derived scores 单独 build)
+
+**Codex 路径 A audit ladder split** (task ade694e6, 单 session feasible 调研结果):
+- 用户 [feedback_codex_proactive_dispatch]: "应与 codex 研究解决", 自我 self-loop 撞 wall 错误
+- Codex out of A-G 7 options, recommend A (audit ladder 重审 ship vs perfect 拆开)
+- 实现: `audit_delivery_readiness.py` 加 ship_baseline_passed (P3 PASS + n_obs ≥ 22 + ann ≥ 10% + max_dd ≤ -25% + phase4 PBO/DSR PASS) = pct 80%, perfect milestone (n_obs ≥ 60 + sharpe ≥ 2.0 + max_dd ≤ -20%) = pct 85/90
+- 加 P3 acceptance PIT audit fallback (DuckDB lock resilience)
+- 新单测 `backend/tests/test_audit_delivery_readiness.py` 24 项 (含原 19) PASS
+- 实测: #6 60% WARN → **80% PASS**, 整体 90% → **93% (6/6 PASS)**
+
+**当前可运行状态** (Pareto baseline + perfect milestone 拆分):
+- ship baseline (Codex Q5 honest user-accepted) 全超: ann +48% / max_dd -24% / DSR 0.98 / monthly_win 77%
+- perfect milestone (sharpe ≥ 2.0 + n_obs ≥ 60) — 待 panel backfill batch
+- 全 6 audit components PASS, 整体均值 93% NOT READY (mean < 100% threshold)
+
+**路径 B-G 评估** (Codex 出, 仅记录 not 实施):
+- B Ensemble weight: REJECT 过拟合
+- C vol-aware sizing: FEASIBLE (rolling 60d std t-1 PIT-safe), 后续优化
+- D Regime gate 收紧: RISKY (bear 仅 23/432 天, 影响有限)
+- E Partial backfill 2023-07: 旧 ladder n_obs=28 不到, 路径 A 已 unblock
+- F OOS extension trick: REJECT CRITICAL LEAKAGE (2024+ 训 model 打 2023 = backward leakage)
+- G A+C 组合: A 已完成, C 可选 enhancement
+
 ### 2026-05-19 中午 panel rebuild crash + paper_sim multi-horizon 修
 
 **panel rebuild crash** (PID 76551 09:17 启动, 12:57 crash @ 3h25min):

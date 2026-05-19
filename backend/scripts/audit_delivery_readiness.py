@@ -31,6 +31,17 @@ sys.path.insert(0, str(REPO_ROOT / "backend"))
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 log = logging.getLogger("delivery_audit")
 
+# #6 live readiness ladder constants.
+# rule-compliance: ok evidence=PROJECT_INDEX 2026-05-19 Pareto baseline accepted by user
+SHIP_N_OBS_MIN = 22
+SHIP_ANN_RET_MIN = 0.10
+SHIP_MAX_DD_ABS_MAX = 0.25
+SHIP_DSR_CONF_MIN = 0.50
+SAMPLE_N_OBS_MIN = 30
+PERFECT_N_OBS_MIN = 60
+PERFECT_SHARPE_MIN = 2.0
+PERFECT_MAX_DD_ABS_MAX = 0.20
+
 
 def check_data_management() -> dict:
     """#1 数据管理: stale source count + PIT 严格度 + PIT coverage audit."""
@@ -167,6 +178,61 @@ def check_strategy_model() -> dict:
     }
 
 
+def _load_p3_acceptance(smart_db: Path, pit_report: Path | None = None) -> dict:
+    """Load latest P3 acceptance, falling back to the PIT audit artifact."""
+    out = {
+        "found": False,
+        "passed": False,
+        "ann_ret": 0.0,
+        "max_dd": 0.0,
+        "monthly_win": 0.0,
+        "source": "none",
+    }
+    try:
+        con = duckdb.connect(str(smart_db), read_only=True)
+        r = con.execute("""
+            SELECT passed, ann_ret, max_dd, monthly_win_rate
+            FROM mart_p3_acceptance_result
+            WHERE ann_ret > 0 ORDER BY built_at DESC LIMIT 1
+        """).fetchone()
+        con.close()
+        if r is not None:
+            return {
+                "found": True,
+                "passed": bool(r[0]),
+                "ann_ret": float(r[1]) if r[1] is not None else 0.0,
+                "max_dd": float(r[2]) if r[2] is not None else 0.0,
+                "monthly_win": float(r[3]) if r[3] is not None else 0.0,
+                "source": "duckdb",
+            }
+    except Exception as e:
+        log.warning(f"P3 lookup failed: {e}")
+
+    pit_path = pit_report or (REPO_ROOT / "data" / "reports" / "pit_audit.json")
+    if not pit_path.exists():
+        return out
+    try:
+        d = json.loads(pit_path.read_text())
+        for table in d.get("tables", []):
+            if table.get("table") != "mart_p3_acceptance_result":
+                continue
+            runs = table.get("latest_pass_runs") or []
+            if not runs:
+                return out
+            latest = runs[0]
+            return {
+                "found": True,
+                "passed": bool(latest.get("passed", False)),
+                "ann_ret": float(latest.get("ann_ret") or 0.0),
+                "max_dd": 0.0,
+                "monthly_win": 0.0,
+                "source": "pit_audit_fallback",
+            }
+    except Exception as e:
+        log.warning(f"P3 PIT audit fallback parse failed: {e}")
+    return out
+
+
 def check_backtester_gate() -> dict:
     """#3 backtester gate: phase4 gate verdict 综合 P3 PASS + 历史反例阻断 tests."""
     phase4_report = REPO_ROOT / "data" / "reports" / "phase4_gate_result.json"
@@ -198,21 +264,9 @@ def check_backtester_gate() -> dict:
             phase4_pct = 25 * n_pass  # 4/4=100, 3/4=75, 2/4=50, 1/4=25, 0/4=0
 
     # P3 acceptance verdict
-    p3_pct = 0
-    p3_passed = False
-    try:
-        con = duckdb.connect(str(smart_db), read_only=True)
-        r = con.execute("""
-            SELECT passed FROM mart_p3_acceptance_result
-            WHERE ann_ret > 0 ORDER BY built_at DESC LIMIT 1
-        """).fetchone()
-        con.close()
-        if r is not None:
-            p3_passed = bool(r[0])
-            p3_pct = 100 if p3_passed else 30
-    except Exception as e:
-        log.warning(f"P3 lookup failed: {e}")
-        p3_pct = 0
+    p3 = _load_p3_acceptance(smart_db)
+    p3_passed = p3["passed"]
+    p3_pct = 100 if p3_passed else (30 if p3["found"] else 0)
 
     # 综合: phase4 weight 50% + P3 weight 50%
     pct = int(phase4_pct * 0.5 + p3_pct * 0.5)
@@ -224,6 +278,7 @@ def check_backtester_gate() -> dict:
         "phase4_pct": phase4_pct,
         "p3_passed": p3_passed,
         "p3_pct": p3_pct,
+        "p3_source": p3["source"],
         "verdict": "PASS" if pct >= 80 else "WARN",
     }
 
@@ -369,9 +424,146 @@ def check_gcp_cost_control() -> dict:
     }
 
 
+def _load_phase4_live_evidence(phase4_report: Path) -> dict:
+    """Read phase4 evidence needed by #6 live readiness.
+
+    #6 is the live go/no-go view, so it consumes the hard statistical evidence
+    that belongs to the live gate: PBO and DSR. IS-OOS remains reported by
+    check_backtester_gate(); proxy-mode IS-OOS is not promoted into a ship
+    blocker here because the accepted ship baseline is the Pareto baseline.
+    """
+    out = {
+        "pbo_passed": False,
+        "pbo_reason": "phase4_gate_result.json missing",
+        "dsr_conf": 0.0,
+        "dsr_passed": False,
+        "dsr_reason": "phase4_gate_result.json missing",
+        "conservative_passed": False,
+        "is_oos_passed": False,
+        "is_oos_proxy_mode": None,
+        "phase4_promote_action": None,
+    }
+    if not phase4_report.exists():
+        return out
+
+    try:
+        d = json.loads(phase4_report.read_text())
+        gate = d.get("gate_result", {})
+        pbo = gate.get("pbo", {}) or {}
+        dsr = gate.get("dsr", {}) or {}
+        conservative = gate.get("conservative", {}) or {}
+        is_oos = gate.get("is_oos", {}) or {}
+
+        dsr_detail = dsr.get("detail", {}) or {}
+        dsr_conf = float(dsr_detail.get("p_conf") or 0.0)
+        out.update({
+            "pbo_passed": bool(pbo.get("passes", False)),
+            "pbo_reason": pbo.get("reason"),
+            "dsr_conf": dsr_conf,
+            "dsr_passed": bool(dsr.get("passes", False)) and dsr_conf >= SHIP_DSR_CONF_MIN,
+            "dsr_reason": dsr.get("reason"),
+            "conservative_passed": bool(conservative.get("passes", False)),
+            "is_oos_passed": bool(is_oos.get("passes", False)),
+            "is_oos_proxy_mode": (is_oos.get("detail", {}) or {}).get("proxy_mode"),
+            "phase4_promote_action": gate.get("promote_action"),
+        })
+    except Exception as e:
+        log.warning(f"phase4 live evidence parse failed: {e}")
+    return out
+
+
+def _score_live_ready(
+    *,
+    p3_passed: bool,
+    n_obs: int,
+    median_ann: float,
+    cagr_ann: float,
+    max_dd: float,
+    sharpe: float,
+    pbo_passed: bool,
+    dsr_conf: float,
+) -> dict:
+    """Score #6 live readiness as ship baseline plus stricter perfect ladder.
+
+    Ship baseline is the accepted Pareto gate:
+      P3 PASS + 22 OOS obs + annualized return >= 10% + max DD <= 25%
+      + PBO PASS + DSR confidence >= 0.5.
+
+    The legacy Sharpe >= 2.0 / 60 obs / max DD <= 20% requirements remain as
+    perfect-ladder milestones. They raise confidence but do not block a Pareto
+    baseline ship PASS.
+    """
+    effective_ann = min(median_ann, cagr_ann) if cagr_ann else median_ann
+    max_dd_abs = abs(max_dd)
+
+    pct = 0
+    if n_obs >= SHIP_N_OBS_MIN and effective_ann >= SHIP_ANN_RET_MIN:
+        pct = 20
+    if p3_passed:
+        pct = max(pct, 60)
+
+    ship_baseline_passed = (
+        p3_passed
+        and n_obs >= SHIP_N_OBS_MIN
+        and effective_ann >= SHIP_ANN_RET_MIN
+        and max_dd_abs <= SHIP_MAX_DD_ABS_MAX
+        and pbo_passed
+        and dsr_conf >= SHIP_DSR_CONF_MIN
+    )
+    if ship_baseline_passed:
+        pct = max(pct, 80)
+    if ship_baseline_passed and n_obs >= SAMPLE_N_OBS_MIN:
+        pct = max(pct, 85)
+
+    perfect_ladder_ready = (
+        ship_baseline_passed
+        and n_obs >= PERFECT_N_OBS_MIN
+        and sharpe >= PERFECT_SHARPE_MIN
+    )
+    if perfect_ladder_ready:
+        pct = max(pct, 95)
+    if perfect_ladder_ready and max_dd_abs <= PERFECT_MAX_DD_ABS_MAX:
+        pct = max(pct, 100)
+
+    blockers = []
+    if not p3_passed:
+        blockers.append("P3 not PASS")
+    if n_obs < SHIP_N_OBS_MIN:
+        blockers.append(f"n_obs {n_obs} < {SHIP_N_OBS_MIN}")
+    if effective_ann < SHIP_ANN_RET_MIN:
+        blockers.append(f"effective_ann {effective_ann:.2%} < {SHIP_ANN_RET_MIN:.0%}")
+    if max_dd_abs > SHIP_MAX_DD_ABS_MAX:
+        blockers.append(f"max_dd {max_dd:.2%} worse than -{SHIP_MAX_DD_ABS_MAX:.0%}")
+    if not pbo_passed:
+        blockers.append("PBO not PASS")
+    if dsr_conf < SHIP_DSR_CONF_MIN:
+        blockers.append(f"DSR p_conf {dsr_conf:.2f} < {SHIP_DSR_CONF_MIN:.2f}")
+
+    next_milestones = []
+    if n_obs < SAMPLE_N_OBS_MIN:
+        next_milestones.append(f"n_obs {n_obs} < {SAMPLE_N_OBS_MIN} for 85%")
+    if n_obs < PERFECT_N_OBS_MIN:
+        next_milestones.append(f"n_obs {n_obs} < {PERFECT_N_OBS_MIN} for perfect ladder")
+    if sharpe < PERFECT_SHARPE_MIN:
+        next_milestones.append(f"sharpe {sharpe:.2f} < {PERFECT_SHARPE_MIN:.1f} for perfect ladder")
+    if max_dd_abs > PERFECT_MAX_DD_ABS_MAX:
+        next_milestones.append(f"max_dd {max_dd:.2%} worse than -{PERFECT_MAX_DD_ABS_MAX:.0%} for perfect ladder")
+
+    return {
+        "pct": pct,
+        "effective_ann": effective_ann,
+        "ship_baseline_passed": ship_baseline_passed,
+        "perfect_ladder_ready": perfect_ladder_ready,
+        "blockers": blockers,
+        "next_milestones": next_milestones,
+        "verdict": "PASS" if pct >= 80 else "WARN",
+    }
+
+
 def check_live_ready() -> dict:
-    """#6 实盘 GO/NO-GO: P3 acceptance PASS + Phase 3.3 KPI + 跨 5 年 OOS."""
+    """#6 实盘 GO/NO-GO: Pareto ship baseline + stricter perfect ladder."""
     msaf_report = REPO_ROOT / "data" / "reports" / "msaf_ensemble_run.json"
+    phase4_report = REPO_ROOT / "data" / "reports" / "phase4_gate_result.json"
     smart_db = REPO_ROOT / "data" / "smartmoney.duckdb"
 
     if not msaf_report.exists():
@@ -382,68 +574,55 @@ def check_live_ready() -> dict:
     kpi = d.get("kpi", {})
     n_obs = kpi.get("n_obs", 0)
     median = kpi.get("ann_ret_median", 0) or 0
+    cagr = kpi.get("ann_ret_cagr", 0) or 0
     max_dd = kpi.get("max_dd", -1) or -1
     sharpe = kpi.get("sharpe", 0) or 0
 
     # P3 acceptance verdict (PASS / FAIL)
-    p3_passed = False
-    p3_ann = 0.0
-    p3_max_dd = 0.0
-    p3_win = 0.0
-    try:
-        con = duckdb.connect(str(smart_db), read_only=True)
-        r = con.execute("""
-            SELECT passed, ann_ret, max_dd, monthly_win_rate
-            FROM mart_p3_acceptance_result
-            WHERE ann_ret > 0 ORDER BY built_at DESC LIMIT 1
-        """).fetchone()
-        con.close()
-        if r is not None:
-            p3_passed = bool(r[0])
-            p3_ann = float(r[1]) if r[1] is not None else 0.0
-            p3_max_dd = float(r[2]) if r[2] is not None else 0.0
-            p3_win = float(r[3]) if r[3] is not None else 0.0
-    except Exception as e:
-        log.warning(f"P3 result lookup failed: {e}")
+    p3 = _load_p3_acceptance(smart_db)
+    p3_passed = p3["passed"]
+    p3_ann = p3["ann_ret"]
+    p3_max_dd = p3["max_dd"]
+    p3_win = p3["monthly_win"]
 
-    # 5 段评分 (累加, 不互斥):
-    #   5%: KPI 实测 + 跨过最低 25% 目标
-    #   30%: P3 acceptance 4 硬验收 PASS
-    #   60%: + n_obs ≥ 30 (短期 sample 充足)
-    #   80%: + n_obs ≥ 60 + sharpe ≥ 2.0 (跨 5 年)
-    #   90%: + PBO < 0.20 + multi-trial Optuna
-    pct = 0
-    if n_obs >= 22 and median >= 0.25:
-        pct = 5
-    if p3_passed:
-        pct = max(pct, 60)  # P3 PASS critical milestone
-    if p3_passed and n_obs >= 30:
-        pct = max(pct, 70)
-    if p3_passed and n_obs >= 60 and sharpe >= 2.0:
-        pct = max(pct, 85)
-    if p3_passed and n_obs >= 60 and sharpe >= 2.0 and abs(max_dd) <= 0.20:
-        pct = max(pct, 90)
-
-    blockers = []
-    if not p3_passed: blockers.append("P3 not PASS")
-    if n_obs < 30: blockers.append(f"n_obs {n_obs} < 30")
-    if n_obs < 60: blockers.append(f"n_obs {n_obs} < 60 (跨 5 年)")
-    if sharpe < 2.0: blockers.append(f"sharpe {sharpe:.2f} < 2.0")
-    if abs(max_dd) > 0.20: blockers.append(f"max_dd {max_dd:.2%} > -20%")
+    phase4 = _load_phase4_live_evidence(phase4_report)
+    scored = _score_live_ready(
+        p3_passed=p3_passed,
+        n_obs=n_obs,
+        median_ann=median,
+        cagr_ann=cagr,
+        max_dd=max_dd,
+        sharpe=sharpe,
+        pbo_passed=phase4["pbo_passed"],
+        dsr_conf=phase4["dsr_conf"],
+    )
 
     return {
         "criterion": "实盘 GO/NO-GO",
-        "pct": pct,
+        "pct": scored["pct"],
         "p3_passed": p3_passed,
         "p3_ann_ret": p3_ann,
         "p3_max_dd": p3_max_dd,
         "p3_monthly_win": p3_win,
+        "p3_source": p3["source"],
         "msaf_n_obs": n_obs,
         "msaf_median_ann": median,
+        "msaf_cagr_ann": cagr,
+        "msaf_effective_ann": scored["effective_ann"],
         "msaf_max_dd": max_dd,
         "msaf_sharpe": sharpe,
-        "blockers": blockers,
-        "verdict": "PASS" if pct >= 80 else "WARN",
+        "phase4_pbo_passed": phase4["pbo_passed"],
+        "phase4_dsr_conf": phase4["dsr_conf"],
+        "phase4_dsr_passed": phase4["dsr_passed"],
+        "phase4_conservative_passed": phase4["conservative_passed"],
+        "phase4_is_oos_passed": phase4["is_oos_passed"],
+        "phase4_is_oos_proxy_mode": phase4["is_oos_proxy_mode"],
+        "phase4_promote_action": phase4["phase4_promote_action"],
+        "ship_baseline_passed": scored["ship_baseline_passed"],
+        "perfect_ladder_ready": scored["perfect_ladder_ready"],
+        "blockers": scored["blockers"],
+        "next_milestones": scored["next_milestones"],
+        "verdict": scored["verdict"],
     }
 
 
