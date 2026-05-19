@@ -784,6 +784,14 @@ SELECT * FROM mart_data_source_watermark;
 
 每次 session 增量内容写这里, 新 session 启动时**从下往上读**最近改了啥.
 
+- audit_n_plus_one.py: N+1 IO-in-loop 检测, 4 patterns, WARN-only, baseline 21 findings (2026-05-19)
+
+### 2026-05-19 C6 codegraph-architecture-audit skill bridge refs
+
+| 条目 | 路径 | 用途 |
+|---|---|---|
+| codegraph-architecture-audit skill | `~/.claude/skills/codegraph-architecture-audit/SKILL.md` | C6 架构审计; 触发场景: 大型重构 PR (>20 files) / god-module 改 (db.py, build_feature_panel) / 季度 review / DB layer 大改 / Optuna runner 大改 / PIT 路径 SQL 大改 |
+
 ### 2026-05-19 夜 fix: chain Step 5 GCS path + venv + rc-based shutdown (Mac 重启 post-mortem)
 
 **事故** (5-19 18:09-18:12 chain 失败 + 21:58 Mac 重启): GCP VM 5-19 18:09:44 启 → 18:12:31 stop (167s), 0 retrain artifact. 21:58 Mac 重启清 /tmp + 杀本地 retrain (lgbm_phase5_local_20260519T181324 trial 6/10 score 0.414 在飞中) + 杀 chain PID 41023/41239.

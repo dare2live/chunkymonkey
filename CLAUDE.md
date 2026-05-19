@@ -222,6 +222,7 @@
 | Codex 适合做的事 | 例 |
 |---|---|
 | **架构 / 设计文档** | architecture audit (Round 26), SUE PIT 设计 doc (Round 30) — 1000+ 行, 含 DDL/SQL/decorator/test 模板 |
+| **codegraph-architecture-audit skill** | 大型重构 PR (>20 files) / god-module 改 (db.py, build_feature_panel) / 季度 review / DB layer 大改 / Optuna runner 大改 / PIT 路径 SQL 大改时, 用 `~/.claude/skills/codegraph-architecture-audit/SKILL.md` 串联 codegraph hotspot + pit-audit / post-fix-audit / data-integrity-audit / parallel-grid-runner |
 | **第三方工具调研** | awesome-quant 评估 (Round 29), 量化工具+社区策略 (Round 27/28) |
 | **数据 integrity / sync 修复** | 数据完整性 audit (Round 25), K线 GCS sync 脚本 |
 | **PIT-strict 设计** | 任何新 mart 表 schema, ASOF JOIN template, snapshot vs available_date 边界 |
