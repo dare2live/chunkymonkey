@@ -246,6 +246,51 @@ else
     log "alpha158 fresh (≤3d stale) 跳过 rebuild"
 fi
 
+# Step 2d-2h: satellite fact/mart syncs needed before panel/live consumers
+if [[ "$SKIP_SYNC" == "0" ]]; then
+    if [[ "$DRY" == "0" ]]; then
+        log "--- Step 2d: LHB event sync ---"
+        PYTHONPATH=backend python - <<'PYEOF' >> "$LOG" 2>&1 || log "WARN: LHB event sync 失败"
+import asyncio, duckdb, json
+from routers.updater import _step_sync_lhb
+conn = duckdb.connect("data/smartmoney.duckdb")
+try:
+    print(json.dumps(asyncio.run(_step_sync_lhb(conn)), ensure_ascii=False, default=str))
+finally:
+    conn.close()
+PYEOF
+
+        log "--- Step 2e: risk factors sync ---"
+        # rule-compliance: ok evidence=signature-fix-2026-05-19 (Codex patch a85ca8c9 误传 mkt_conn,
+        # calc_risk_factors 只接 conn + kwargs, 修)
+        PYTHONPATH=backend python - <<'PYEOF' >> "$LOG" 2>&1 || log "WARN: risk factors sync 失败"
+import duckdb
+from services.risk_factors import calc_risk_factors
+conn = duckdb.connect("data/smartmoney.duckdb")
+try:
+    print(calc_risk_factors(conn))
+finally:
+    conn.close()
+PYEOF
+
+        log "--- Step 2f: sector momentum PIT backfill ---"
+        PYTHONPATH=backend python backend/scripts/backfill_sector_momentum_history.py \
+            >> "$LOG" 2>&1 || log "WARN: sector momentum PIT backfill 失败"
+
+        log "--- Step 2g: capital flow PIT backfill ---"
+        PYTHONPATH=backend python backend/scripts/backfill_capital_flow_pit.py \
+            >> "$LOG" 2>&1 || log "WARN: capital flow PIT backfill 失败"
+
+        log "--- Step 2h: sniper/institution score marts ---"
+        PYTHONPATH=backend python backend/scripts/build_sniper_score_daily.py \
+            >> "$LOG" 2>&1 || log "WARN: sniper score mart build 失败"
+        PYTHONPATH=backend python backend/scripts/build_institution_score_daily.py \
+            >> "$LOG" 2>&1 || log "WARN: institution score mart build 失败"
+    else
+        log "DRY: skip Step 2d-2h satellite syncs"
+    fi
+fi
+
 # Step 3: Label / panel rebuild (增量)
 log "--- Step 3: Label + panel incremental rebuild ---"
 if [[ "$DRY" == "0" ]]; then

@@ -784,6 +784,21 @@ SELECT * FROM mart_data_source_watermark;
 
 每次 session 增量内容写这里, 新 session 启动时**从下往上读**最近改了啥.
 
+### 2026-05-19 晚 4-agent 架构/流程/耦合性/数据完整性 audit (retrain 等待期间并行)
+
+**用户 push back**: "等待期间做架构、流程、耦合性、数据完整性"  → 派 4-agent 混合并发 (CLAUDE.md §11.5):
+
+| Agent | Subagent | Verdict |
+|---|---|---|
+| `a85ca8c9` Codex | daily_update gaps | 自动 patch Step 2d-2h: LHB / risk / sector / capital / scores. 修了 1 bug (`calc_risk_factors` 误传 mkt_conn) |
+| `a7ffbdb2` Codex | 架构耦合性 | 5 findings: HIGH calendar gate 双源 (utils.py + market_db.py) 抽 services/calendar.py / HIGH v4 panel implicit DAG manifest 缺 / HIGH 裸 SQL hardcode → schema contract / MEDIUM PIT filter 重复 3 places / MEDIUM DROP+DELETE+INSERT 模板抽 replace_partition |
+| `a06bb191` Claude general | 跨表 data integrity 6 check | CRITICAL fwd_5d 5/9-5/13 gap (但实测 false alarm — sub-agent 把 5 trading days 算成 5 calendar days, PIT 实际 correct: build_as_of=5/19, exit_5d 5/11=5/19 PIT-NULL until 5/20) / HIGH v4 多 105K 空 label 行 (不 leakage) / MEDIUM alpha158 5/18-5/19 缺 14-23 codes / LOW silent JOIN 13 codes DATE/TEXT type cast |
+| `ac3362f9` Claude Explore | dead code | light, 推荐 archive cleanup_*.py + build_stock_formula_optuna v1/v2 重复审 |
+
+**实测验证 CRITICAL false alarm**: signal_date 5/11 entry=5/12 exit_5d = 5/12+5 trading days = 5/19. build_as_of_date=5/19, PIT 要求 build_as_of ≥ exit_date_5d + 1 = 5/20. 当前 5/19 < 5/20 → 必 NULL (PIT 正确). sub-agent miscount trading days.
+
+**Codex daily_update.sh Step 2d-2h patch + bug fix**: 加 5 satellite syncs (LHB / risk / sector / capital_flow / sniper+institution scores). Codex auto-edit script line 249-296. 我 verify 后修 `calc_risk_factors` signature bug (rm mkt_conn arg).
+
 ### 2026-05-19 晚 panel rebuild DONE (27min, 7× faster) + Codex HIGH fix +150d buffer
 
 **实测**: panel rebuild PID 41029 done in **1611s (27 min)**, vs estimate 3.3h. Step 1 batch redesign + Step 2 materialize tmp_kline 实测有效 (~7× faster).
