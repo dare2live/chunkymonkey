@@ -489,7 +489,18 @@ def run_optuna(
         )
         return final_score
 
-    study.optimize(objective, n_trials=n_trials, gc_after_trial=True)
+    # Codex codegraph audit P-2 (aa94bbab 2026-05-19): 加 n_jobs=4 parallel trials
+    # (Mac 8C 估 2-3× 加速, GCP 32C 估 4-8× 加速). 配 OMP_NUM_THREADS=2 限内层 LightGBM
+    # 防 thread oversubscription. 必须用 InMemoryStorage 或 SQLite study DB 防 race;
+    # 当前 study 是 in-memory single-process safe (Optuna 内部 multi-thread 锁).
+    # rule-compliance: ok evidence=codex-codegraph-P-2-parallel-trials
+    import os
+    n_jobs_default = max(1, min(4, (os.cpu_count() or 2) // 2))
+    n_jobs = int(os.environ.get("OPTUNA_N_JOBS", n_jobs_default))
+    if n_jobs > 1:
+        os.environ.setdefault("OMP_NUM_THREADS", "2")
+        os.environ.setdefault("LIGHTGBM_NUM_THREADS", "2")
+    study.optimize(objective, n_trials=n_trials, gc_after_trial=True, n_jobs=n_jobs)
     best = study.best_trial
     metrics = {
         "rank_ic": _finite(best.user_attrs.get("rank_ic"), float("nan")),

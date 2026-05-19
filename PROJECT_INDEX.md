@@ -784,6 +784,21 @@ SELECT * FROM mart_data_source_watermark;
 
 每次 session 增量内容写这里, 新 session 启动时**从下往上读**最近改了啥.
 
+### 2026-05-19 晚 perf P-2 Optuna n_jobs parallel + 大宗交易 + Market Regime framework
+
+**Codex codegraph audit (aa94bbab)** 5 性能 hotspots + 5 架构 finding:
+- P-2 实施: `run_p0b_lambdamart_v6.py:492` `study.optimize` 加 `n_jobs=min(4, cpu/2)` + `OMP_NUM_THREADS=2` 防 oversubscription. ENV `OPTUNA_N_JOBS` override. 估 Mac 8C 2-3× 加速 / GCP 32C 4-8× 加速 (50 trials 22-26h → 6-12h).
+- P-1 trade_date TEXT→DATE migration: defer (1-2 天 work, 全局 20-40% 加速)
+- HIGH-1 db.py god-module 2478 行: defer (1 周 拆 schema)
+- HIGH-2/4 fan-in 高 modules / ATTACH 41 文件: defer
+- P-3 build_feature_panel_duck.py 2291 行 mega: defer
+- P-4 21 executemany loops → INSERT FROM SELECT: defer
+- P-5 130 CTE / 56 TEMP 重复: defer
+
+**Codex 大宗交易 alpha (afcd11ee)**: `fact_dzjy_event` 已存 但只 7 天 548 rows. 5 features spec (block_trade_cost_spread / volume_ratio / support_score / volume_anomaly / inst_block_buy_ratio). ETA 1w 最小有效 / 1mo 生产 (backfill + notice_date 治理).
+
+**用户 vision: Market Regime Understanding System** (~ 7 engines + 20 研究方向). User 明确"不着急, 作为独立模块慢慢空闲时研究框架先". Sub-agent ac35dd39 写 `docs/market_regime_framework.md` 沉淀 (background).
+
 ### 2026-05-19 晚 doc: panel_pipeline_manifest.yaml (Codex HIGH 2 解)
 
 新 `backend/config/panel_pipeline_manifest.yaml` (~140 line) — 显式 DAG 契约替代 implicit v4 build 依赖 doc:
