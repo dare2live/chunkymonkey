@@ -45,15 +45,22 @@ def load_lambdamart_predictions(
     start_date: str = "2024-07-01",  # rule-compliance: ok evidence=p0b-walk-forward-起始
     end_date: str = "2026-04-13",    # rule-compliance: ok evidence=panel-cutoff
 ) -> pd.DataFrame:
-    """Load LambdaMART (or LGBM) predictions + fwd returns from mart_p0b_oos_predictions."""
+    """Load LambdaMART (or LGBM) predictions + fwd returns.
+
+    predictions table fwd_cost_after_5d/10d 100% NULL (model 只训 20d) — JOIN p0a label panel
+    取真 fwd_5d/10d (mirror run_phase4_gate_on_msaf.py:36-50 行为). evidence: 单 model lambdamart_v6
+    仅 20d horizon, multi-horizon eval 必须 label panel JOIN.
+    """
     con = duckdb.connect(db_path, read_only=True)
     try:
         df = con.execute(
-            "SELECT signal_date, stock_code, score, "
-            "       fwd_cost_after_5d, fwd_cost_after_10d, fwd_cost_after_20d "
-            "FROM mart_p0b_oos_predictions "
-            "WHERE model_id = ? AND signal_date >= ? AND signal_date <= ? "
-            "ORDER BY signal_date, stock_code",
+            "SELECT p.signal_date, p.stock_code, p.score, "
+            "       l.fwd_cost_after_5d, l.fwd_cost_after_10d, l.fwd_cost_after_20d "
+            "FROM mart_p0b_oos_predictions p "
+            "LEFT JOIN mart_p0a_label_panel l "
+            "  ON l.stock_code = p.stock_code AND l.signal_date = p.signal_date "
+            "WHERE p.model_id = ? AND p.signal_date >= ? AND p.signal_date <= ? "
+            "ORDER BY p.signal_date, p.stock_code",
             [model_id, start_date, end_date],
         ).fetchdf()
         return df

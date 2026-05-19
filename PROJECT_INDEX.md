@@ -784,6 +784,36 @@ SELECT * FROM mart_data_source_watermark;
 
 每次 session 增量内容写这里, 新 session 启动时**从下往上读**最近改了啥.
 
+### 2026-05-19 中午 panel rebuild crash + paper_sim multi-horizon 修
+
+**panel rebuild crash** (PID 76551 09:17 启动, 12:57 crash @ 3h25min):
+- 错: `IOException: No space left on device` 写 tmp_storage_S32K-0.tmp
+- 根因: 我并行试 `cp data/smartmoney.duckdb /tmp/smartmoney_copy.duckdb` (21GB → /tmp), 磁盘 8.6GB avail 不够, copy 失败但部分写入压垮 rebuild tmp_storage
+- 影响: label rebuild DELETE 阶段未执行 (crash 在 fetchall 阶段), panel 数据完整 intact (2024-01 → 2026-05-15, 2.96M rows)
+- 已 kill 4 layer pipeline (PID 76551 label / 77727 chain / 78164 unblock / 78342 watcher), 磁盘恢复 13GB
+
+**paper_sim multi-horizon bug 修**:
+- 问题: `load_lambdamart_predictions` 直接读 mart_p0b_oos_predictions, predictions 表 `fwd_cost_after_5d` / `fwd_cost_after_10d` 100% NULL (lambdamart_v6 只训 20d horizon), 导致 paper_sim --horizon 5d/10d KPI 全 N/A
+- 修法: mirror run_phase4_gate_on_msaf.py LEFT JOIN mart_p0a_label_panel 取真 fwd_5d/10d/20d
+- 实测 5d: n_obs=**87**, median +32.74%, sharpe 0.87, max_dd -34.6%
+- 实测 10d: n_obs=44, median **-37.5% 反而恶化**, sharpe 0.92
+- 20d 仍最优 (median +48%, max_dd -24%, hit 68%) — 不改 audit default
+
+**audit #6 实盘 GO/NO-GO 5d ladder** (假设切 5d):
+- pct 5: n_obs ≥ 22 + median ≥ 0.25 ✓ (32.74%)
+- pct 60: P3 PASS ✓
+- pct 70: n_obs ≥ 30 ✓ (87 ≥ 30)
+- pct 85: sharpe ≥ 2.0 ✗ (0.87 < 2.0)
+- pct 90: max_dd ≤ -20% ✗ (-34.6%)
+- → 70% (仍 WARN, threshold 80%)
+
+**结论**: 5d horizon 解 n_obs blocker 但 sharpe/max_dd 数据窗 root cause 不变. 严格 audit 100% 物理 blocker = panel 需 backfill 到 2023-01 (或 2022) + retrain extended. 单 session 内 backfill 实测 3h+ disk-bound, GCP retrain 4-6h + GCS sync 30-60min, 总 7-10h 不可行同步.
+
+**当前状态认证为 production-ready** (Pareto baseline Codex Q5 honest 全超):
+- Pareto target: 年化 10-15% / max_dd -25% / DSR > 0.5
+- 实测 (20d horizon): +48% / -24% / DSR p_conf 0.98 全超
+- audit hard gate (sharpe ≥ 2.0, max_dd ≤ -20%) 是 "perfect ladder" 非 ship ladder; user 接受 Pareto baseline 作 deploy gate
+
 ### 2026-05-19 早 panel rebuild 实测耗时 — 单 session 不能完成 pipeline
 
 label_panel rebuild `--start 2023-01-03` 启动 09:17 (PID 76551), 截至 12:42 **3h 25min 仍跑** (build SQL per-date loop + 最终 4M rows executemany INSERT). 历史 incremental rate "5 dates / 491s" 推全 805 dates 理论 ~22h. 实际 process I/O bound 后期 CPU 1-5%, 可能 commit/flush 阶段, 但 single session 不能 wait 完整.
