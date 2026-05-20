@@ -10,6 +10,7 @@ function PageMarketPerception() {
   const [themeSnapshot, setThemeSnapshot] = useStateMP(null);
   const [themeHistory, setThemeHistory] = useStateMP([]);
   const [underReaction, setUnderReaction] = useStateMP(null);
+  const [leaderFollower, setLeaderFollower] = useStateMP(null);
   const [health, setHealth] = useStateMP(null);
   const [loading, setLoading] = useStateMP(true);
   const [err, setErr] = useStateMP(null);
@@ -24,8 +25,9 @@ function PageMarketPerception() {
       fetch('/api/v3/market_perception/theme/snapshot').then(r => r.json()),
       fetch('/api/v3/market_perception/theme/history?days=14&top_n=5').then(r => r.json()),
       fetch('/api/v3/market_perception/under_reaction/snapshot?limit=20').then(r => r.json()),
+      fetch('/api/v3/market_perception/leader_follower/snapshot?limit=20').then(r => r.json()),
       fetch('/api/v3/market_perception/health').then(r => r.json()),
-    ]).then(([snap, hist, emotionSnap, emotionHist, themeSnap, themeHist, underSnap, hp]) => {
+    ]).then(([snap, hist, emotionSnap, emotionHist, themeSnap, themeHist, underSnap, leaderSnap, hp]) => {
       if (!alive) return;
       if (snap.ok === false) throw new Error(snap.error || 'snapshot failed');
       if (hist.ok === false) throw new Error(hist.error || 'history failed');
@@ -34,6 +36,7 @@ function PageMarketPerception() {
       if (themeSnap.ok === false) throw new Error(themeSnap.error || 'theme snapshot failed');
       if (themeHist.ok === false) throw new Error(themeHist.error || 'theme history failed');
       if (underSnap.ok === false) throw new Error(underSnap.error || 'under reaction snapshot failed');
+      if (leaderSnap.ok === false) throw new Error(leaderSnap.error || 'leader follower snapshot failed');
       setSnapshot(snap);
       setHistory(hist.data || []);
       setEmotionSnapshot(emotionSnap);
@@ -41,6 +44,7 @@ function PageMarketPerception() {
       setThemeSnapshot(themeSnap);
       setThemeHistory(themeHist.data || []);
       setUnderReaction(underSnap);
+      setLeaderFollower(leaderSnap);
       setHealth(hp);
       setLoading(false);
     }).catch(e => {
@@ -60,6 +64,8 @@ function PageMarketPerception() {
   const topTheme = themes[0] || {};
   const underRows = (underReaction && underReaction.data) || [];
   const topUnder = underRows[0] || {};
+  const leaderRows = (leaderFollower && leaderFollower.data) || [];
+  const topLeader = leaderRows[0] || {};
   const regime = d.regime_score;
   const emotion = e.emotion_score;
   const themeTone = topTheme.theme_score == null ? null : topTheme.theme_score > 0.45 ? 'pos' : topTheme.theme_score < -0.3 ? 'neg' : null;
@@ -114,6 +120,7 @@ function PageMarketPerception() {
               <MiniHealth k="emotion rows" v={health && health.emotion_rows != null ? String(health.emotion_rows) : '—'}/>
               <MiniHealth k="theme rows" v={health && health.theme_rows != null ? String(health.theme_rows) : '—'}/>
               <MiniHealth k="under rows" v={health && health.under_reaction_rows != null ? String(health.under_reaction_rows) : '—'}/>
+              <MiniHealth k="leader rows" v={health && health.leader_follower_rows != null ? String(health.leader_follower_rows) : '—'}/>
             </div>
             {engines.map(([name, status]) => (
               <div key={name} style={{display:'flex',alignItems:'center',justifyContent:'space-between',gap:10,padding:'7px 0',borderBottom:'1px solid var(--line-soft)'}}>
@@ -146,6 +153,11 @@ function PageMarketPerception() {
         foot={`snapshot ${topUnder.snapshot_date || '—'} · built_at ${fmtDateTime(topUnder.built_at)}`}>
         <UnderReactionTable rows={underRows}/>
       </UI.Card>
+
+      <UI.Card title="LeaderFollower · ChainDiffusion" action={<UI.ApiTag>/leader_follower/snapshot?limit=20</UI.ApiTag>}
+        foot={`snapshot ${topLeader.snapshot_date || '—'} · built_at ${fmtDateTime(topLeader.built_at)}`}>
+        <LeaderFollowerTable rows={leaderRows}/>
+      </UI.Card>
     </div>
   );
 }
@@ -162,7 +174,7 @@ function MiniHealth({ k, v, tone }) {
 
 function StatusBadge({ status }) {
   const UI = window.CMV3.UI;
-  const tone = status === 'live' ? 'hold' : status === 'stub' ? 'watch' : 'neutral';
+  const tone = status === 'live' ? 'hold' : status === 'research_mvp' ? 'info' : status === 'stub' ? 'watch' : 'neutral';
   return <UI.Pill tone={tone} size="xs">{status}</UI.Pill>;
 }
 
@@ -253,6 +265,43 @@ function UnderReactionTable({ rows }) {
             <td style={{padding:'8px 4px',textAlign:'right',fontFamily:'var(--f-mono)',color:(r.ret_5d||0)>=0?'#2f8a55':'#c4382e'}}>{r.ret_5d == null ? '—' : UI.fmt2pct(r.ret_5d)}</td>
             <td style={{padding:'8px 4px',textAlign:'right',fontFamily:'var(--f-mono)',color:(r.ret_20d||0)>=0?'#2f8a55':'#c4382e'}}>{r.ret_20d == null ? '—' : UI.fmt2pct(r.ret_20d)}</td>
             <td style={{padding:'8px 4px',textAlign:'right',fontFamily:'var(--f-mono)'}}>{r.lhb_count_30d ?? '—'}</td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  );
+}
+
+function LeaderFollowerTable({ rows }) {
+  const UI = window.CMV3.UI;
+  if (!rows || !rows.length) return <div style={{padding:12,color:'var(--ink-3)'}}>暂无龙头跟随数据</div>;
+  return (
+    <table style={{width:'100%',borderCollapse:'collapse',fontSize:12}}>
+      <thead>
+        <tr style={{textAlign:'left',color:'var(--ink-3)',fontSize:10,letterSpacing:'.04em',textTransform:'uppercase'}}>
+          <th style={{padding:'7px 4px'}}>主题</th>
+          <th style={{padding:'7px 4px'}}>阶段</th>
+          <th style={{padding:'7px 4px'}}>leader</th>
+          <th style={{padding:'7px 4px'}}>follower</th>
+          <th style={{padding:'7px 4px',textAlign:'right'}}>diffusion</th>
+          <th style={{padding:'7px 4px',textAlign:'right'}}>leader 5d</th>
+          <th style={{padding:'7px 4px',textAlign:'right'}}>follower 1d</th>
+          <th style={{padding:'7px 4px',textAlign:'right'}}>follower 5d</th>
+          <th style={{padding:'7px 4px',textAlign:'right'}}>amount</th>
+        </tr>
+      </thead>
+      <tbody>
+        {rows.slice(0, 12).map(r => (
+          <tr key={`${r.theme_name}-${r.leader_stock_code}-${r.follower_stock_code}`} style={{borderTop:'1px solid var(--line-soft)'}}>
+            <td style={{padding:'8px 4px',fontWeight:700,color:'var(--ink-0)'}}>{r.theme_name || '—'}</td>
+            <td style={{padding:'8px 4px'}}><UI.Pill tone={stageTone(r.lifecycle_stage)} size="xs">{r.lifecycle_stage || '—'}</UI.Pill></td>
+            <td style={{padding:'8px 4px',fontFamily:'var(--f-mono)',fontWeight:700,color:'var(--ink-0)'}}>{r.leader_stock_code}</td>
+            <td style={{padding:'8px 4px',fontFamily:'var(--f-mono)',fontWeight:700,color:'var(--ink-0)'}}>{r.follower_stock_code}</td>
+            <td style={{padding:'8px 4px',textAlign:'right',fontFamily:'var(--f-mono)',fontWeight:700,color:(r.diffusion_score||0)>=0?'#2f8a55':'#c4382e'}}>{fmtNum(r.diffusion_score, 3)}</td>
+            <td style={{padding:'8px 4px',textAlign:'right',fontFamily:'var(--f-mono)',color:(r.leader_ret_5d||0)>=0?'#2f8a55':'#c4382e'}}>{r.leader_ret_5d == null ? '—' : UI.fmt2pct(r.leader_ret_5d)}</td>
+            <td style={{padding:'8px 4px',textAlign:'right',fontFamily:'var(--f-mono)',color:(r.follower_ret_1d||0)>=0?'#2f8a55':'#c4382e'}}>{r.follower_ret_1d == null ? '—' : UI.fmt2pct(r.follower_ret_1d)}</td>
+            <td style={{padding:'8px 4px',textAlign:'right',fontFamily:'var(--f-mono)',color:(r.follower_ret_5d||0)>=0?'#2f8a55':'#c4382e'}}>{r.follower_ret_5d == null ? '—' : UI.fmt2pct(r.follower_ret_5d)}</td>
+            <td style={{padding:'8px 4px',textAlign:'right',fontFamily:'var(--f-mono)'}}>{fmtNum(r.follower_amount_ratio_5_20, 2)}</td>
           </tr>
         ))}
       </tbody>

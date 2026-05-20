@@ -49,6 +49,7 @@ def _market_perception_health(conn) -> dict:
             "emotion_rows": 0,
             "theme_rows": 0,
             "under_reaction_rows": 0,
+            "leader_follower_rows": 0,
         }
 
     row = conn.execute(
@@ -79,6 +80,7 @@ def _market_perception_health(conn) -> dict:
     emotion_rows = _table_row_count(conn, "mart_market_perception_emotion_daily")
     theme_rows = _table_row_count(conn, "mart_market_perception_theme_daily")
     under_reaction_rows = _table_row_count(conn, "mart_market_perception_under_reaction_daily")
+    leader_follower_rows = _table_row_count(conn, "mart_market_perception_leader_follower_daily")
     return {
         "mart_table_exists": True,
         "mart_rows": mart_rows,
@@ -93,6 +95,7 @@ def _market_perception_health(conn) -> dict:
         "emotion_rows": emotion_rows,
         "theme_rows": theme_rows,
         "under_reaction_rows": under_reaction_rows,
+        "leader_follower_rows": leader_follower_rows,
     }
 
 
@@ -304,6 +307,43 @@ UNDER_REACTION_SELECT = """
     lhb_inst_buy_30d, lhb_net_buy_pct_30d, exec_net_signal,
     holder_count_change_q_pct, theme_name, theme_score, lifecycle_stage,
     pit_cutoff_date, source_engines, built_at
+"""
+
+
+def _serialize_leader_follower_row(row) -> dict:
+    return {
+        "snapshot_date": str(row[0]) if row[0] is not None else None,
+        "theme_name": row[1],
+        "leader_stock_code": row[2],
+        "follower_stock_code": row[3],
+        "relation_type": row[4],
+        "lag_days": int(row[5]) if row[5] is not None else None,
+        "leader_strength_score": float(row[6]) if row[6] is not None else None,
+        "follower_lag_score": float(row[7]) if row[7] is not None else None,
+        "diffusion_score": float(row[8]) if row[8] is not None else None,
+        "leader_ret_5d": float(row[9]) if row[9] is not None else None,
+        "leader_ret_20d": float(row[10]) if row[10] is not None else None,
+        "follower_ret_1d": float(row[11]) if row[11] is not None else None,
+        "follower_ret_3d": float(row[12]) if row[12] is not None else None,
+        "follower_ret_5d": float(row[13]) if row[13] is not None else None,
+        "follower_ret_20d": float(row[14]) if row[14] is not None else None,
+        "follower_amount_ratio_5_20": float(row[15]) if row[15] is not None else None,
+        "theme_score": float(row[16]) if row[16] is not None else None,
+        "lifecycle_stage": row[17],
+        "pit_member_confidence": row[18],
+        "pit_cutoff_date": str(row[19]) if row[19] is not None else None,
+        "source_engines": row[20],
+        "built_at": str(row[21]) if row[21] is not None else None,
+    }
+
+
+LEADER_FOLLOWER_SELECT = """
+    snapshot_date, theme_name, leader_stock_code, follower_stock_code,
+    relation_type, lag_days, leader_strength_score, follower_lag_score,
+    diffusion_score, leader_ret_5d, leader_ret_20d, follower_ret_1d,
+    follower_ret_3d, follower_ret_5d, follower_ret_20d,
+    follower_amount_ratio_5_20, theme_score, lifecycle_stage,
+    pit_member_confidence, pit_cutoff_date, source_engines, built_at
 """
 
 
@@ -544,6 +584,37 @@ async def get_under_reaction_snapshot(limit: int = 50):
         return {"ok": False, "error": str(exc), "data": [], "limit": limit, "built_at": datetime.now(timezone.utc).isoformat()}
 
 
+@router.get("/leader_follower/snapshot")
+async def get_leader_follower_snapshot(limit: int = 50):
+    """Return latest PIT leader/follower diffusion edges."""
+    limit = max(1, min(int(limit), 200))
+    try:
+        with get_conn() as conn:
+            if not _table_exists(conn, "mart_market_perception_leader_follower_daily"):
+                return {"ok": True, "stub": True, "data": [], "limit": limit, "built_at": datetime.now(timezone.utc).isoformat()}
+            latest = conn.execute(
+                "SELECT MAX(snapshot_date) FROM mart_market_perception_leader_follower_daily",
+            ).fetchone()
+            if not latest or latest[0] is None:
+                return {"ok": True, "stub": True, "data": [], "limit": limit, "built_at": datetime.now(timezone.utc).isoformat()}
+            rows = conn.execute(
+                f"""
+                SELECT {LEADER_FOLLOWER_SELECT}
+                  FROM mart_market_perception_leader_follower_daily
+                 WHERE snapshot_date = ?
+                 ORDER BY diffusion_score DESC
+                 LIMIT ?
+                """,
+                [latest[0], limit],
+            ).fetchall()
+            data = [_serialize_leader_follower_row(row) for row in rows]
+            built_at = data[0]["built_at"] if data else datetime.now(timezone.utc).isoformat()
+            return {"ok": True, "stub": False, "data": data, "rows": len(data), "limit": limit, "built_at": built_at}
+    except Exception as exc:
+        logger.warning("market_perception leader_follower snapshot query failed: %s", exc)
+        return {"ok": False, "error": str(exc), "data": [], "limit": limit, "built_at": datetime.now(timezone.utc).isoformat()}
+
+
 @router.get("/health")
 async def get_health():
     """模块健康检查 — 列出哪些 engine 已实施."""
@@ -567,6 +638,9 @@ async def get_health():
         engines["ThemeLifecycleEngine"] = "live"
     if health.get("under_reaction_rows", 0) > 0:
         engines["FundFlowEngine"] = "live"
+    if health.get("leader_follower_rows", 0) > 0:
+        engines["LeaderFollowerEngine"] = "live"
+        engines["ChainDiffusionEngine"] = "research_mvp"
     return {
         "ok": True,
         "engines": engines,

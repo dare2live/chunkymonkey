@@ -180,6 +180,33 @@ MART_SCHEMA_SQL = """
             );
             CREATE INDEX IF NOT EXISTS idx_mmp_under_date_score ON mart_market_perception_under_reaction_daily(snapshot_date, under_reaction_score DESC);
 
+            CREATE TABLE IF NOT EXISTS mart_market_perception_leader_follower_daily (
+                snapshot_date              DATE NOT NULL,
+                theme_name                 VARCHAR NOT NULL,
+                leader_stock_code          VARCHAR NOT NULL,
+                follower_stock_code        VARCHAR NOT NULL,
+                relation_type              VARCHAR,
+                lag_days                   INTEGER,
+                leader_strength_score      DOUBLE,
+                follower_lag_score         DOUBLE,
+                diffusion_score            DOUBLE,
+                leader_ret_5d              DOUBLE,
+                leader_ret_20d             DOUBLE,
+                follower_ret_1d            DOUBLE,
+                follower_ret_3d            DOUBLE,
+                follower_ret_5d            DOUBLE,
+                follower_ret_20d           DOUBLE,
+                follower_amount_ratio_5_20 DOUBLE,
+                theme_score                DOUBLE,
+                lifecycle_stage            VARCHAR,
+                pit_member_confidence      VARCHAR,
+                pit_cutoff_date            DATE NOT NULL,
+                source_engines             VARCHAR,
+                built_at                   TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                PRIMARY KEY (snapshot_date, theme_name, leader_stock_code, follower_stock_code)
+            );
+            CREATE INDEX IF NOT EXISTS idx_mmp_leader_follower_date_score ON mart_market_perception_leader_follower_daily(snapshot_date, diffusion_score DESC);
+
             CREATE TABLE IF NOT EXISTS mart_lineage (
                 lineage_id         TEXT PRIMARY KEY,            -- e.g. 'mart_daily_recommendation/topk_v1'
                 output_table       TEXT NOT NULL,
