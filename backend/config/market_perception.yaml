@@ -79,3 +79,32 @@ regime_engine:
     regime_score_abs_max:
       value: 0.95
       evidence: "CLAUDE.md Rule 5 leakage guard: stop on abnormal regime_score > +0.95 or < -0.95."
+
+sensitivity_audit:
+  representative_stocks:
+    value:
+      - code: "600519"
+        name: "贵州茅台"
+        size_bucket: "large"
+        industry: "日常消费/白酒"
+      - code: "601318"
+        name: "中国平安"
+        size_bucket: "large"
+        industry: "金融/保险"
+      - code: "300750"
+        name: "宁德时代"
+        size_bucket: "large"
+        industry: "装备制造/电气设备"
+      - code: "300308"
+        name: "中际旭创"
+        size_bucket: "mid"
+        industry: "信息产业/通信设备"
+      - code: "002463"
+        name: "沪电股份"
+        size_bucket: "mid"
+        industry: "信息产业/元器件"
+      - code: "688012"
+        name: "中微公司"
+        size_bucket: "mid"
+        industry: "信息产业/半导体"
+    evidence: "User directive 2026-05-20: sensitivity/accuracy audit should include representative large/mid/small or documented gap and different industries. Current local universe has no reliable market-cap table, so size buckets are manually documented until a PIT market-cap source is available."

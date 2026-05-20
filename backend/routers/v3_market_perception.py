@@ -28,6 +28,13 @@ def _mart_row_count(conn) -> int:
     return int(row[0] if row else 0)
 
 
+def _table_row_count(conn, table: str) -> int:
+    if not _table_exists(conn, table):
+        return 0
+    row = conn.execute(f"SELECT COUNT(*) AS n FROM {table}").fetchone()
+    return int(row[0] if row else 0)
+
+
 def _market_perception_health(conn) -> dict:
     if not _table_exists(conn, "mart_market_perception_daily"):
         return {
@@ -38,7 +45,8 @@ def _market_perception_health(conn) -> dict:
             "latest_snapshot_lag_trading_days": None,
             "score_guard_status": "unknown",
             "score_guard_violations": None,
-            "latest_audit": None,
+        "latest_audit": None,
+        "emotion_rows": 0,
         }
 
     row = conn.execute(
@@ -66,6 +74,7 @@ def _market_perception_health(conn) -> dict:
     latest_lag = _latest_snapshot_lag_trading_days(conn, latest_snapshot)
     latest_audit = _latest_market_perception_audit(conn)
     latest_snapshot_audit_status = _latest_snapshot_audit_status(latest_snapshot, latest_audit)
+    emotion_rows = _table_row_count(conn, "mart_market_perception_emotion_daily")
     return {
         "mart_table_exists": True,
         "mart_rows": mart_rows,
@@ -77,6 +86,7 @@ def _market_perception_health(conn) -> dict:
         "score_guard_violations": guard_violations,
         "score_guard_abs_max": guard_abs_max,
         "latest_audit": latest_audit,
+        "emotion_rows": emotion_rows,
     }
 
 
@@ -256,6 +266,7 @@ async def get_health():
     """模块健康检查 — 列出哪些 engine 已实施."""
     engines = {
         "MarketRegimeEngine": "stub",
+        "MarketEmotionCycle": "spec_only",
         "ThemeLifecycleEngine": "spec_only",
         "ChainDiffusionEngine": "spec_only",
         "FundFlowEngine": "spec_only",
@@ -267,6 +278,8 @@ async def get_health():
         health = _market_perception_health(conn)
     if health["mart_rows"] > 0:
         engines["MarketRegimeEngine"] = "live"
+    if health.get("emotion_rows", 0) > 0:
+        engines["MarketEmotionCycle"] = "live"
     return {
         "ok": True,
         "engines": engines,

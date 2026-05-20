@@ -91,6 +91,34 @@ CREATE TABLE IF NOT EXISTS mart_market_perception_audit_log (
     built_at               TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 CREATE INDEX IF NOT EXISTS idx_mmp_audit_started ON mart_market_perception_audit_log(started_at DESC);
+CREATE TABLE IF NOT EXISTS mart_market_perception_emotion_daily (
+    snapshot_date              DATE NOT NULL,
+    emotion_score              DOUBLE,
+    emotion_state              VARCHAR,
+    action_bias                VARCHAR,
+    cycle_phase                VARCHAR,
+    market_breadth             DOUBLE,
+    up_count                   INTEGER,
+    down_count                 INTEGER,
+    limit_up_count             INTEGER,
+    limit_down_count           INTEGER,
+    first_board_count          INTEGER,
+    second_board_count         INTEGER,
+    third_plus_count           INTEGER,
+    promotion_rate_1_to_2      DOUBLE,
+    promotion_rate_2_to_3      DOUBLE,
+    open_board_rate            DOUBLE,
+    next_day_premium           DOUBLE,
+    turnover_concentration     DOUBLE,
+    lhb_event_count            INTEGER,
+    n_stocks                   INTEGER,
+    unknown_metrics            VARCHAR,
+    source_engines             VARCHAR,
+    pit_cutoff_date            DATE NOT NULL,
+    built_at                   TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (snapshot_date)
+);
+CREATE INDEX IF NOT EXISTS idx_mmp_emotion_date ON mart_market_perception_emotion_daily(snapshot_date);
 CREATE INDEX IF NOT EXISTS idx_pipeline_manifest_started ON mart_pipeline_run_manifest(started_at DESC);
 CREATE INDEX IF NOT EXISTS idx_pipeline_manifest_name_status ON mart_pipeline_run_manifest(pipeline_name, status);
 CREATE INDEX IF NOT EXISTS idx_source_watermark_domain ON mart_data_source_watermark(data_domain, source_tier);

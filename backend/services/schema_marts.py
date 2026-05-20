@@ -98,6 +98,35 @@ MART_SCHEMA_SQL = """
             );
             CREATE INDEX IF NOT EXISTS idx_mmp_audit_started ON mart_market_perception_audit_log(started_at DESC);
 
+            CREATE TABLE IF NOT EXISTS mart_market_perception_emotion_daily (
+                snapshot_date              DATE NOT NULL,
+                emotion_score              DOUBLE,
+                emotion_state              VARCHAR,
+                action_bias                VARCHAR,
+                cycle_phase                VARCHAR,
+                market_breadth             DOUBLE,
+                up_count                   INTEGER,
+                down_count                 INTEGER,
+                limit_up_count             INTEGER,
+                limit_down_count           INTEGER,
+                first_board_count          INTEGER,
+                second_board_count         INTEGER,
+                third_plus_count           INTEGER,
+                promotion_rate_1_to_2      DOUBLE,
+                promotion_rate_2_to_3      DOUBLE,
+                open_board_rate            DOUBLE,
+                next_day_premium           DOUBLE,
+                turnover_concentration     DOUBLE,
+                lhb_event_count            INTEGER,
+                n_stocks                   INTEGER,
+                unknown_metrics            VARCHAR,
+                source_engines             VARCHAR,
+                pit_cutoff_date            DATE NOT NULL,
+                built_at                   TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                PRIMARY KEY (snapshot_date)
+            );
+            CREATE INDEX IF NOT EXISTS idx_mmp_emotion_date ON mart_market_perception_emotion_daily(snapshot_date);
+
             CREATE TABLE IF NOT EXISTS mart_lineage (
                 lineage_id         TEXT PRIMARY KEY,            -- e.g. 'mart_daily_recommendation/topk_v1'
                 output_table       TEXT NOT NULL,
