@@ -141,6 +141,14 @@ class ExitConfig:
     use_optuna_trailing: bool
     use_optuna_hp: bool
     stage_deterioration_sell: bool
+    # Path A2 2026-05-20: anti-churn 强力版 (用户选项 A, 配套 min_forced_hp 不足后续).
+    # 强制 ANY single-position exit (hp_expired / stop_hit / trailing_hit / stage_deterioration)
+    # 都需 days_held >= min_holding_days_before_exit. 0 = 关闭 (backward compat).
+    # 跟 min_forced_hp 区别: min_forced_hp 只约束 hp_expired; 此字段约束全部 4 类 single-position exit.
+    # 不影响 hard_stop_portfolio_dd (portfolio-level 真实风控不能延迟).
+    # 不影响 swap (alpha-uplift 重 allocate, 不算 exit; 走 swap.min_holding_days_before_swap).
+    # evidence: 2026-05-20 实测 baseline 88 trades 全走 single-position exit, swap=0 churn 根因.
+    min_holding_days_before_exit: int = 0
 
 
 @dataclass(frozen=True)
@@ -239,6 +247,12 @@ def _validate(cfg: PaperSimConfig) -> None:
     r = cfg.risk
     assert r.daily_dd_warning_pct < 0 and r.daily_dd_warning_pct > -0.2
     assert r.max_dd_hard_stop_pct < r.daily_dd_warning_pct  # hard stop 更严
+
+    e = cfg.exit
+    # Path A2 2026-05-20: min_holding_days_before_exit (anti-churn 强力版)
+    # 0 = 关闭; 上限 30 (实测 5-15 区间合理, > 30 阻止 stop/trailing 太久会让 dd 严重劣化)
+    assert 0 <= e.min_holding_days_before_exit <= 30, \
+        f"min_holding_days_before_exit out of [0, 30]: {e.min_holding_days_before_exit}"
 
     sel = cfg.selection
     # Codex C4 (a163ca58): 加 ml_score / hybrid (Day 6 + P0c modes)

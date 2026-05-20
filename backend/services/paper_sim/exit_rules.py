@@ -40,7 +40,14 @@ class ExitInputs:
     today_stage: Optional[str]       # 今日 technical_stage (取自 fact_signal_context)
     min_forced_hp: int = 0           # Path A 2026-05-15: hp_expired 最小天数 (anti-churn)
                                      # 0 = 关闭, ≥1 = hp_expired 触发 days_held >= max(optimal_hp, min_forced_hp)
-                                     # stop_hit / trailing / stage_det 不受此限 (真实风险退出永远允许)
+                                     # stop_hit / trailing / stage_det 不受此限
+    min_holding_days_before_exit: int = 0  # Path A2 2026-05-20: 强力版 anti-churn (用户选项 A).
+                                           # 0 = 关闭, ≥1 = ANY single-position exit
+                                           # (hp_expired / stop_hit / trailing_hit / stage_deterioration)
+                                           # 必须 days_held >= min_holding_days_before_exit.
+                                           # 不影响 hard_stop_portfolio_dd (driver 调用) + swap.
+                                           # evidence: 2026-05-20 baseline 88 trades 全走 single-position exit
+                                           # swap=0 → 是 churn 根因, min_forced_hp 仅约束 hp_expired 不够.
 
 
 @dataclass(frozen=True)
@@ -61,40 +68,46 @@ def evaluate_exit(inp: ExitInputs) -> ExitDecision:
     if inp.entry_price <= 0 or inp.current_close <= 0:
         return ExitDecision(False, reason="invalid_price")
 
-    # 1. stop loss — 最优先 (止损永远优先)
+    # Path A2 2026-05-20: day-gate 计算 — 不阻 trailing arm + peak 更新
+    # (peak 跨日跟踪是 stateful 需求, 即使 gate 阻 exit 也要 update 给 driver 持久化)
+    day_gate_block = (inp.min_holding_days_before_exit > 0
+                      and inp.days_held < inp.min_holding_days_before_exit)
+
+    # 1. stop loss — 最优先 (止损永远优先, 但受 day-gate 约束)
     if inp.optimal_stop_pct is not None:
         stop_level = inp.entry_price * (1 + inp.optimal_stop_pct)
-        if inp.current_close <= stop_level:
+        if inp.current_close <= stop_level and not day_gate_block:
             return ExitDecision(True, reason="stop_hit", exit_price=inp.current_close)
 
-    # 2. target — 不直接卖, 而是 arm trailing
+    # 2. target — 不直接卖, 而是 arm trailing (arm 不受 gate 约束 — arm 是状态非 exit)
     new_armed = inp.trailing_armed
     if (not inp.trailing_armed
             and inp.optimal_target_pct is not None
             and inp.current_high >= inp.entry_price * (1 + inp.optimal_target_pct)):
         new_armed = True
 
-    # 3. trailing — armed 后才检
+    # 3. trailing — armed 后才检 (但 trailing exit 受 day-gate 约束; peak 更新永远做)
     if new_armed and inp.optimal_trailing_pct is not None:
         # peak_since_entry 是 max(high) 自 arm 起; mart 表里 trailing_pct 是正数 (回撤幅度)
         peak = max(inp.peak_since_entry, inp.current_high)
         trail_level = peak * (1 - inp.optimal_trailing_pct)
-        if inp.current_close <= trail_level:
+        if inp.current_close <= trail_level and not day_gate_block:
             return ExitDecision(True, reason="trailing_hit", exit_price=inp.current_close,
                                   new_trailing_armed=True, new_peak=peak)
-        # 未触发, 更新 peak (跨日传给 driver)
+        # 未触发 (或被 day-gate 阻), 更新 peak 给 driver 跨日持久化
         return ExitDecision(False, new_trailing_armed=True, new_peak=peak)
 
-    # 4. hp 到期 (Path A 2026-05-15: 强制 min_forced_hp 防 churning)
+    # 4. hp 到期 (Path A 2026-05-15: min_forced_hp / Path A2 2026-05-20: min_holding_days_before_exit)
     effective_hp = max(inp.optimal_hp, inp.min_forced_hp) if inp.optimal_hp > 0 else 0
-    if effective_hp > 0 and inp.days_held >= effective_hp:
+    if effective_hp > 0 and inp.days_held >= effective_hp and not day_gate_block:
         return ExitDecision(True, reason="hp_expired", exit_price=inp.current_close,
                               new_trailing_armed=new_armed)
 
-    # 5. stage 恶化 (买入时 ≤2 强信号, 今天 =4 + 当前亏损)
+    # 5. stage 恶化 (买入时 ≤2 强信号, 今天 =4 + 当前亏损; 受 day-gate 约束)
     if (inp.entry_stage in ("1", "1.5", "2")
             and inp.today_stage == "4"
-            and inp.current_close < inp.entry_price):
+            and inp.current_close < inp.entry_price
+            and not day_gate_block):
         return ExitDecision(True, reason="stage_deterioration", exit_price=inp.current_close,
                               new_trailing_armed=new_armed)
 

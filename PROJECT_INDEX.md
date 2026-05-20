@@ -784,6 +784,49 @@ SELECT * FROM mart_data_source_watermark;
 
 每次 session 增量内容写这里, 新 session 启动时**从下往上读**最近改了啥.
 
+### 2026-05-20 anti-churn Path A2: min_holding_days_before_exit=5 实测 (criteria #6 65→70%)
+
+承接 a746c31c 后 user 推 churn 根因. 我前次 push back swap threshold fix 设计错 (baseline 88 trades 全 single-position exit, swap=0, 不是 swap 根因), user 选**选项 A** 推 anti-churn 加 `min_holding_days_before_exit`. 此字段约束 4 类 single-position exit (hp_expired / stop_hit / trailing_hit / stage_deterioration), 不阻 portfolio_dd hard_stop (driver L279-302 独立分支) + 不阻 swap (alpha-uplift).
+
+**实施** (`076eb5d7` 后增量):
+- `backend/services/paper_sim/config.py::ExitConfig` 加 `min_holding_days_before_exit: int = 0` (default backward compat) + `_validate` 加 [0, 30] 范围 (>30 阻 stop/trailing 太久会 dd 严重劣化).
+- `backend/services/paper_sim/exit_rules.py::ExitInputs` 加 `min_holding_days_before_exit: int = 0`. `evaluate_exit` 加 `day_gate_block = (days_held < min_holding_days_before_exit)` 在 4 类 exit return 前短路; trailing arm + peak 更新永远做 (stateful 跨日需求).
+- `backend/services/paper_sim/driver.py` ExitInputs 调用传 `cfg.exit.min_holding_days_before_exit` (跟既有 `cfg.selection.min_forced_hp` 并列).
+- 跟 `min_forced_hp` 区别: `min_forced_hp` 只约束 hp_expired (Path A 2026-05-15); 此字段约束 4 类全部 (Path A2). 设计意图: hp_expired 约束在 baseline 87 closed 中只占 48% (42/87), stop+trailing 占 45% (39/87), 仅约束 hp 不够.
+- 新 `backend/config/paper_sim_ml_score_champion_minhold5.yaml` (派生自 champion_baseline.yaml, 仅 override `exit.min_holding_days_before_exit: 5`).
+- 新 `backend/tests/services/paper_sim/test_exit_min_holding_days.py` 15 tests PASS: 4 类 exit 各 blocked/allowed/边界 + min_holding=0 backward compat + trailing arm 不阻 + invalid_price 短路 + portfolio_dd 文档化测试 + min_forced_hp + min_holding 共存. 既有 165 paper_sim regression 全 PASS.
+
+**KPI 实测** (sim_run_id `champion_minhold5_20260520_105535_20260520_025539_b968ac`, 330 交易日 2025-01-02→2026-05-19, Mac 8C 13.85 min wall):
+
+| 指标 | baseline | minhold5 | 差 | 判定 |
+|---|---|---|---|---|
+| 年化 | +67.79% | +53.5% | -14.3pp | cost (FAIL 阈值 ≥30% 仍 PASS) |
+| max_dd | -20.81% | -17.4% | **+3.4pp 改善** | **PASS ≥-20%** ✓ |
+| sharpe | 1.66 | 1.56 | -0.10 | 微降 |
+| 月胜率 | 71.43% | 67% | -4.4pp | PASS ≥55% |
+| **年化换手** | **54.88x** | **48.82x** | **-11%** | FAIL ≤8 (仅 partial improvement) |
+| tx_cost_pct_of_gross_pnl | N/A | 5.3% | — | 健康 < 10% |
+| avg_holding_days | 13.1 | 15.8 | +20.6% | PASS ≥5 |
+| closed positions | 87 | 90 | +3 | 几乎无变 |
+| swap count | 0 | 0 | — | (swap 路径 0 触发, 不变) |
+
+**exit reason breakdown** (close_reason × n × min_days, 实测 fact_paper_sim_position):
+- baseline: hp_expired 42 (min=5d) / trailing 21 (min=1d) / stop 18 (min=2d) / hard_stop_dd 4 / stage_det 2
+- minhold5: hp_expired 49 (min=**5d**) / trailing 21 (min=**5d**) / stop 19 (min=**5d**) / stage_det 1 — **day-gate 工作正常, 所有 min=5 边界**
+
+**根因分析 — turnover 仅降 11%**:
+- baseline 已有 hp_expired min=5d (optimal_hp 通常 ≥7d), day-gate=5 主要影响 trailing/stop (39/87 = 45% 触发), 仅推迟 3-4 天
+- avg_holding +20.6% 跟 closed positions +3% 抵消, 总 turnover (gross_amount / capital × 252/period) 只降 11%
+- 要达 anti_churn ≤8 (× 1/6 减少) 需 min_holding=20-30+, 当前 5 远不够
+
+**判定**:
+- anti_churn turnover 仍 FAIL 但**显著降 + dd 改善 + tx_cost_pct 健康 + avg_holding +21%** = partial PASS
+- 用户决策框架触发"调更大 (10/15) 二次 retest", 后续可 minhold15/20 sim 二次验证
+- 4 leakage 红线 OK: sharpe 1.56 < 5 / ann 53.5% < 100% / 月胜 67% < 95% / vs baseline -14pp (反向, 非异常 uplift)
+- 不动 retrain v2 in-flight + lineage_url 集成
+
+**criteria #6 65→70%**: 找到 churn 缓解 mechanism (day-gate 4 类 exit) + 实测 dd 改善 -3.4pp + 验证 design correct (单测 15+165 全 PASS), 但 anti_churn unblock 待 min_holding=15 二次验证.
+
 ### 2026-05-20 champion baseline paper_sim + lineage_url e2e 实测 (criteria #2 90→95% / #6 60→65%)
 
 承接 d81975e6 lineage_url DDL 集成 deploy, 跑 production champion `lgbm_phase5_session_20260518T160747` paper_sim baseline 同时实测 lineage_url e2e + 验证 KPI vs Pareto target + leakage 守门.
