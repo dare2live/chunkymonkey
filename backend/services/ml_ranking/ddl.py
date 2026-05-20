@@ -12,6 +12,7 @@ OOS_PREDICTIONS_DDL = """
 CREATE TABLE IF NOT EXISTS mart_p0b_oos_predictions (
     stock_code        TEXT NOT NULL,
     signal_date       DATE NOT NULL,
+    trade_date_dt     DATE,
     score             DOUBLE,
     fwd_cost_after_5d  DOUBLE,
     fwd_cost_after_10d DOUBLE,
@@ -69,6 +70,7 @@ LAMBDAMART_V6_PREDICTIONS_DDL = """
 CREATE TABLE IF NOT EXISTS mart_p0b_lambdamart_v6_predictions (
     stock_code        TEXT NOT NULL,
     signal_date       DATE NOT NULL,
+    trade_date_dt     DATE,
     score             DOUBLE,
     fwd_cost_after_5d  DOUBLE,
     fwd_cost_after_10d DOUBLE,
@@ -97,12 +99,33 @@ CREATE INDEX IF NOT EXISTS idx_p0b_lm_v6_stock
 """
 
 
+def _ensure_trade_date_dt_column(conn, table_name: str, source_column: str) -> None:
+    """Phase A fallback: DuckDB cannot ALTER ADD STORED generated columns."""
+
+    try:
+        conn.execute(f"ALTER TABLE {table_name} ADD COLUMN IF NOT EXISTS trade_date_dt DATE")
+    except Exception as exc:
+        msg = str(exc).lower()
+        if "already exists" not in msg and "duplicate" not in msg:
+            raise
+    conn.execute(
+        f"""
+        UPDATE {table_name}
+           SET trade_date_dt = CAST({source_column} AS DATE)
+         WHERE trade_date_dt IS NULL
+           AND {source_column} IS NOT NULL
+        """
+    )
+
+
 def create_p0b_ddl(conn) -> None:
     conn.execute(OOS_PREDICTIONS_DDL)
     conn.execute(WALKFORWARD_EVAL_DDL)
     conn.execute(OOS_PREDICTIONS_INDEX_DDL)
+    _ensure_trade_date_dt_column(conn, "mart_p0b_oos_predictions", "signal_date")
 
 
 def create_lambdamart_v6_predictions_ddl(conn) -> None:
     conn.execute(LAMBDAMART_V6_PREDICTIONS_DDL)
     conn.execute(LAMBDAMART_V6_PREDICTIONS_INDEX_DDL)
+    _ensure_trade_date_dt_column(conn, LAMBDAMART_V6_PREDICTIONS_TABLE, "signal_date")

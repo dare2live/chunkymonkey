@@ -16,6 +16,7 @@ DDL = """
 CREATE TABLE IF NOT EXISTS mart_paper_sim_nav (
     sim_run_id        TEXT NOT NULL,             -- 一次 walk-forward 唯一 ID
     date              TEXT NOT NULL,
+    trade_date_dt     DATE,
     total_value       DOUBLE NOT NULL,           -- 现金 + 持仓市值
     cash              DOUBLE NOT NULL,
     positions_value   DOUBLE NOT NULL,
@@ -152,6 +153,7 @@ def ensure_paper_sim_tables(conn) -> None:
     # CREATE TABLE IF NOT EXISTS 不会修改已存表 schema, 需 ALTER 单独跑.
     # DuckDB ALTER ADD COLUMN IF NOT EXISTS 不支持, 用 try/except + duplicate-column 收窄 (Codex round 6 MINOR #5).
     _migrations = [
+        ("mart_paper_sim_nav",      "trade_date_dt DATE"),
         ("fact_paper_sim_position", "exit_source TEXT DEFAULT 'pit'"),
         ("fact_paper_sim_trade",    "exit_source TEXT DEFAULT 'pit'"),
         ("mart_paper_sim_kpi",      "pit_count INTEGER"),
@@ -168,3 +170,11 @@ def ensure_paper_sim_tables(conn) -> None:
             # 只吞 duplicate-column 错 (column 已存在), 其他 migration 错 raise
             if "already exists" not in str(_e).lower() and "duplicate" not in str(_e).lower():
                 raise
+    conn.execute(
+        """
+        UPDATE mart_paper_sim_nav
+           SET trade_date_dt = CAST(date AS DATE)
+         WHERE trade_date_dt IS NULL
+           AND date IS NOT NULL
+        """
+    )

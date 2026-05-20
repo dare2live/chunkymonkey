@@ -784,6 +784,15 @@ SELECT * FROM mart_data_source_watermark;
 
 每次 session 增量内容写这里, 新 session 启动时**从下往上读**最近改了啥.
 
+### 2026-05-19 深夜 perf P-1 trade_date TEXT→DATE Phase A fallback
+
+- `INFORMATION_SCHEMA` 实测: 当前 `trade_date` 列 13 个, DATE 4 / VARCHAR(TEXT) 9, 非历史 grep 估算的 43/7.
+- P-1 Phase A: 为 3 表加 `trade_date_dt DATE` generated-column fallback 普通列并回填: `mart_p0b_oos_predictions` / `mart_p0b_lambdamart_v6_predictions` / `mart_paper_sim_nav`.
+- DuckDB 1.5.2 不支持 `ALTER TABLE ... ADD GENERATED ... STORED`, 本轮自动 fallback 为 `ADD COLUMN IF NOT EXISTS trade_date_dt DATE` + `UPDATE ... CAST(...)`.
+- 验证: OOS 2,159,871→2,159,871 mismatch 0; LambdaMART v6 2,159,871→2,159,871 mismatch 0; paper_sim_nav 11,618→11,618 mismatch 0.
+- Benchmark: `mart_p0b_oos_predictions` Q1 source date 0.001861s / Q2 `trade_date_dt` 0.000901s, row count 628,438 / 628,438.
+- Spec: `docs/perf_p1_trade_date_migration_spec.md`; opt-in perf test: `backend/tests/scripts/test_perf_p1_trade_date.py`.
+
 ### 2026-05-19 深夜 perf: retrain stall Fix 1 实施 (15min → 30s, 30-60× 加速)
 
 `backend/scripts/run_p0b_lambdamart_v6.py:89-101 + 182-218` 实施 Claude general aacdbf94 spec:

@@ -1,16 +1,35 @@
-# Goal Ledger — ChunkyMonkey MSAF (Multi-Strategy Adaptive Framework)
+# ChunkyMonkey Goal
 
-> 用户终极目标 (clarified 2026-05-17):
-> - **跨年中位 ann_ret 25-35%**
-> - **单年 ann_ret ≥ 0%** (不接受任何年负收益)
-> - max_dd ≥ -20%, 月胜率 ≥ 55%
-> - 100 万 CNY × 5 仓 long-only T+1 retail
-> - **只做股票** (不能 ETF / 期货 / 期权 / 债券 / 商品)
+## 审计时间戳
+最后审计: 2026-05-19 深夜
+GCP retrain in-flight: lgbm_phase5_gcp_20260519T143043 (22:30:43 launched, PID 1893, 2929% CPU, ETA 4-6h, .88-2.5 spot)
+当前综合进度 76% (9 criteria 均值; 原 6 条 90% 均值不变)
 
+> 用户终极目标 (不变):
+> - 跨年中位 ann_ret 25-35% (25-35% 是最低目标线, 不是封顶)
+> - 单年 ann_ret >= 0% (不接受任何年负收益)
+> - max_dd >= -20%, 月胜率 >= 55%
+> - 100 万 x 5 仓 long-only T+1 retail
+> - 只做股票 (不能 ETF / 期货 / 期权 / 债券 / 商品)
 > 本 ledger 是 MSAF master plan, 实时滚动. PROJECT_INDEX.md 是地图, goal.md 是任务流水.
 
-## 项目交付标准 (用户 2026-05-17 定义, 不达 = 不交付)
+## 重要原则 (用户 2026-05-19 push)
+- 阶段性完成 != goal.md 完成; 随时调整直到可运营
+- 多任务并发优先
+- GCP retrain 为当前最高优先级 in-flight task
 
+## 2026-05-19 进展事件
+- 18:09 chain GCP launch fail (167s VM stop, GCS path bug fix 已 commit b3b870a6)
+- 18:13 local Mac lgbm_phase5_local_20260519T181324 trial 6/10 score 0.414 (21:58 Mac 重启 kill)
+- 22:30 manual GCP launch lgbm_phase5_gcp_20260519T143043 跑中 (当前 in-flight)
+- chain step 5 GCS path + venv + rc shutdown fix 已 commit
+- codegraph audit infra C4 hook + C5 N+1 audit + C6 SKILL 进生产 (~/.claude/skills/codegraph-architecture-audit/)
+- paper_sim + KPI compare 8 步 plan 已写入 docs/
+- retrain stall Fix 1 patch 草稿 (15 min -> 20-30 sec, 30-60x 加速)
+- Stop hook session_rule_audit deployed (~/.claude/hooks/)
+- 本 session 5 Codex + 2 Claude subagent 并发实战
+
+## 项目交付标准 (用户 2026-05-17 定义, 不达 = 不交付)
 | # | 类别 | 交付标准 | 当前状态 |
 |---|---|---|---|
 | 1 | 数据管理 | sync gap 自动 alert + watermark 实填 + 历史 leakage 清干净 + PIT 严格 | **80%** (5/5 stale source 实测修: (a) fact_lhb_event ETL 增量 (raw 2026-05-15 → fact 2026-05-15), (b) sync_tdx_industry 拉新数据 (industry_sw + stock_blocks 2026-05-07→2026-05-18), (c) SLA quarterly override 季报数据 (financial_gpcw_8q + holders_top10_float 100d 阈值). 实测 update_watermark_sla 0 alert. PIT 严格在 panel build 已固化) |
@@ -20,74 +39,55 @@
 | 5 | GCP 成本控制 | 月 ≤ $10 credit, 每 batch 完 stop VM | rule 已固化 (CLAUDE.md §10.0.2), 待 sustained |
 | 6 | 实盘 GO/NO-GO | 跨 5 年回测 中位 ≥ 25%, 单年 ≥ 0%, Sharpe ≥ 2.0, PBO ≤ 0.2 | **5%** (1.75 年 22 monthly obs 实测 median +34.88% 在目标; 待扩 OOS ≥ 30 + PBO multi-trial + sniper/institution wire 真验) |
 
-**目前距离交付** (2026-05-18 21:09 audit_delivery_readiness.py 真实测均值 **90%**, NOT READY, 距 100% 还 10pp; criteria 4 通过 cron-based automation 跳回 100% (绕开 macOS FDA 阻塞), watcher PID 27571 nohup 跟 retrain PID 79023):
+### #7 UI/UX + 人机交互优化 [30%]
+范围: daily KPI / paper_sim run / backtester gate / sniper/institution alpha / regime state 数据的用户消费路径
+当前缺口: web dashboard 缺失 / 实时 alert 机制缺失 / 历史 KPI timeseries 可视化缺失 / 每天 1-click 查看 pipeline 缺失
+参考: backend/main.py FastAPI router list, 现有 CLI 接口
+目标: 每个核心模块有对应的用户消费入口 (CLI 或 web), 1 click 可查当日状态
 
-**criteria 4 macOS launchd → cron 解 (本 session 真零依赖手工)**:
-1. launchd plist 实测 exit 126 (macOS FDA 限 `~/Documents/`)
-2. **替代方案 cron daemon** 不受 FDA 限: `bash configs/cron/install.sh install`
-3. **实测已 install**: crontab 4 entries (daily_update 17:00 / cost_tracker 15min / nightly_audit 02:00 / codex_monitor 15min)
-4. 用户**零手工**: cron 立即生效, 下次 17:00 自动跑 daily_update
+### #8 模块化 / 可复用 / 可扩展 [60%]
+范围: backend/services/ god-module 拆分 (db.py 2478 行 / market_db.py 728 行 / pricing_policy.py 869 行)
+当前进度: codegraph audit infra 已进生产 (C4 hook + C5 N+1 + C6 SKILL); 拆分方案未实施
+目标: 单文件 <= 400 行 / 模块边界清晰 / 无循环依赖 / N+1 query 归零
 
-audit 通过 cron OR launchd 任一即 100% (FDA-blocked 不再阻 100%).
+### #9 数据可回溯 / 可解读 [50%]
+范围: lineage 链 raw -> fact -> mart -> predictions -> KPI; 每行 prediction 能回溯 panel cells + feature_version + model_id + 时点 PIT cutoff
+当前进度: lineage 表存在但链路未串通; spec 文档 docs/sue_pit_design_20260517.md 已写
+参考: data_integrity_audit skill
+目标: 任意 prediction row 5 步内可追溯到原始数据 + 模型版本 + PIT 截止时点
 
-
+**目前距离交付** (2026-05-19 深夜 audit ledger; 原 6 criteria 均值 **90%** 不变, 加入 #7/#8/#9 后综合 **76%**, NOT READY):
 | # | 标准 | 当前 | 目标 | gap | 阻塞项 | 解锁 action | ETA |
 |---|---|---:|---:|---:|---|---|---|
-| 1 | 数据管理 | 100% | 100% | 0pp | ✓ PASS (SLA 0 alert + PIT 4/4 fact 表 100% audit) | — | — |
-| 2 | 策略模型 | 90% | 100% | 10pp | phase_3_4_status='LM + sniper' (institution opt-in 待 4-class composite 合并). n_obs=22<30 | Phase 5 retrain (PID 79023 trial 7/50, 4h elapsed, ETA 10h Mac) 完后 OOS ≥30 → 100% | 10h Mac local 完 |
-| 3 | backtester gate | 87% | 100% | 13pp | phase4_promote_action='block' (4 gate 3/4 PASS), P3 PASS (ann 30.68% / max_dd -10.84% / win 77.27%) | Phase 5 retrain → 跨 5 年 walk-forward Optuna 50 trials → phase4 = PROMOTE → 100% | 10h Mac local 完 |
-| 4 | 全自动化 daily | 100% | 100% | 0pp | ✓ PASS (8 步真调 + cron 自动跑 (FDA-free, 4 entries installed) — daily_update 17:00 / cost_tracker 15min / nightly_audit 02:00 / codex_monitor 15min) | — | — |
-| 5 | GCP 成本控制 | 100% | 100% | 0pp | ✓ PASS (gcp_policy.yaml 固化 5 层 defense + cost_tracker 15min cron + auto-stop + budget RED block) | — | — |
-| 6 | 实盘 GO/NO-GO | 60% | 100% | 40pp | P3 PASS ✓, n_obs=22<30, sharpe 0.81<2.0, max_dd -24.28%>-20% | (a) Phase 5 retrain → n_obs ≥30 自动跳 70%; (b) 扩 panel start=2022 → n_obs ≥60 跳 85%; (c) Optuna regime weights tune + vol-aware sizing → sharpe ↑ max_dd ↓ 跳 90%+ | Phase 5 10h + 调优 1-2 week |
-| **均值** | | **90%** | **100%** | **10pp** | | | |
+| 1 | 数据管理 | 100% | 100% | 0pp | PASS (SLA 0 alert + PIT 4/4 fact 表 100% audit) | - | - |
+| 2 | 策略模型 | 90% | 100% | 10pp | phase_3_4_status='LM + sniper' (institution opt-in 待 4-class composite 合并). n_obs=22<30 | GCP Phase 5 retrain 完后 OOS >=30 -> 100% | 4-6h GCP in-flight |
+| 3 | backtester gate | 87% | 100% | 13pp | phase4_promote_action='block' (4 gate 3/4 PASS), P3 PASS (ann 30.68% / max_dd -10.84% / win 77.27%) | Phase 5 retrain -> 跨 5 年 walk-forward Optuna -> phase4 = PROMOTE -> 100% | GCP retrain + post pipeline |
+| 4 | 全自动化 daily | 100% | 100% | 0pp | PASS (8 步真调 + cron 自动跑 (FDA-free, 4 entries installed): daily_update 17:00 / cost_tracker 15min / nightly_audit 02:00 / codex_monitor 15min) | - | - |
+| 5 | GCP 成本控制 | 100% | 100% | 0pp | PASS (gcp_policy.yaml 固化 5 层 defense + cost_tracker 15min cron + auto-stop + budget RED block) | - | - |
+| 6 | 实盘 GO/NO-GO | 60% | 100% | 40pp | P3 PASS, n_obs=22<30, sharpe 0.81<2.0, max_dd -24.28%>-20% | (a) Phase 5 retrain -> n_obs >=30 自动跳 70%; (b) 扩 panel start=2022 -> n_obs >=60 跳 85%; (c) Optuna regime weights tune + vol-aware sizing -> sharpe up max_dd down 跳 90%+ | Phase 5 + 调优 1-2 week |
+| 7 | UI/UX + 人机交互优化 | 30% | 100% | 70pp | web dashboard / alert / KPI timeseries / 1-click pipeline 缺失 | FastAPI/CLI 消费入口补齐 | 2-5 day |
+| 8 | 模块化 / 可复用 / 可扩展 | 60% | 100% | 40pp | god-module 未拆; N+1 需归零 | codegraph audit 驱动拆分 db/market_db/pricing_policy | 3-7 day |
+| 9 | 数据可回溯 / 可解读 | 50% | 100% | 50pp | lineage 表存在但 raw->KPI 链路未串通 | 串通 prediction row 到 raw/model/PIT cutoff | 2-5 day |
+| **均值** | | **76%** | **100%** | **24pp** | 原 6 条总分 540 + 新 3 条 140 = 680; 680/9 = 75.6% ≈ 76% | | |
 
-**当前 audit 详情快照**:
-- KPI: median +48.40%, sharpe 0.81, max_dd -24.28%, hit 68.18%, n_obs=22 (1.75 年)
-- P3 last verdict: PASS (ann 30.68%, max_dd -10.84%, monthly_win 77.27%)
-- Phase 4 gate: warn (4 gate 3/4 PASS, promote action=block)
-- GCP: TERMINATED, projected_month_cost \$3.999, alert OK
-- SLA: 0 alerts
+**全局均值更新**: 原 6 criteria 均值 90% 保持; 新均值 = (540 + 30 + 60 + 50) / 9 = 75.6% ≈ 76%
+**ETA / 升级路径**: GCP retrain done + paper_sim + KPI compare 验证 (~6-8h 后) -> criteria #2 策略模型 / #3 backtester gate / #6 实盘 GO-NO-GO 升级路径明确
 
-**Phase 5 retrain 完成路径** (in-flight, 不需 LLM 干预):
-1. PID 79023 完成 (~21h 实测 per-trial ~33min × 50 trials, trial 8/50 当前 4.5h elapsed)
-2. `bash scripts/run_phase5_post_retrain.sh <new_model_id>` 自动跑: backfill walkforward_eval + P3 final holdout + promote_champion + ensemble paper_sim + phase4 gate + audit (现有, 已 commit)
-3. 重新 audit → 预期 criteria 2 升 100%, criteria 3 升 90%, criteria 6 升 70%
-
-**Data 上限 reality check (用户跨 5 年目标的硬约束)**:
-
-| Data 层 | 当前起点 | 当前 dates | 解锁 5 年所需起点 | Action |
-|---|---|---|---|---|
-| price_kline (market.duckdb) | 2022-01-01 | 1048 | 2021-01-01 | tdxhub backfill 1 年 (~2h, GCP $0.50) |
-| fact_alpha158_panel (alpha158.duckdb) | 2023-01-03 | 813 | 2022-01-01 | rebuild alpha158 1 年 (~6h Mac) |
-| mart_p0a_label_panel | 2024-01-02 | 568 | 2022-01-01 | rebuild label 2 年 (~3h) |
-| mart_p0a_feature_label_panel_v4 | 2024-01-02 | 557 | 2022-01-01 | rebuild panel_v4 2 年 (~12 min × N batches) |
-| mart_p0b_oos_predictions (Phase 5) | start=2023 → 预期 28 OOS months | trial 8/50 跑中 | start=2022 → 预期 50 OOS months | Phase 6 retrain start=2022 (~25h Mac 或 GCP $5) |
-
-n_obs ≥ 30 (criteria 6 → 70%): 仅 Phase 5 retrain 即可 (start=2023, 28-35 OOS months 边缘达标)
-n_obs ≥ 60 (criteria 6 → 85%): 需 Phase 6 retrain start=2022 + 上游 data backfill
-
-**P5 后调优 (达 100%)**:
-4. Optuna 联合调优 regime weights (institution cap 20%) + vol-aware sizing → sharpe ↑ / max_dd ↓
-5. Phase 6 上游 backfill + retrain start=2022 → n_obs ≥ 60 → criteria 6 85%+
-6. 跨 5 年 holdout 全验 → criteria 6 100%
-
-### Critical Path 时序 (按 ETA 排序, 2026-05-18 更新)
-
+### Critical Path 时序 (按 ETA 排序, 2026-05-19 更新)
 | 顺序 | Action | 标准受益 | ETA | 资源 | 阻塞 |
 |---|---|---|---|---|---|
-| ~~P0~~ | ✓ DONE: PIT audit + 4 fact 表 100% PASS / sniper/institution build script DROP-TABLE 回退 bug 修 (rebuild flag-gated) | #1 #2 dataset integrity | 完成 | local | — |
-| **P1 in-flight** | Mac Phase 5 retrain (PID 79023, lgbm_phase5_session_20260518T160747, start=2023-01-02, n_trials=50, top-K=20) | #2 80→90%, #3 37→75%, #6 5→30% | ~10h (trial 7/50 当前, 4h elapsed) | local Mac, $0 GCP | — |
-| **P2** | retrain 完后跑 `bash scripts/run_phase5_post_retrain.sh` (自动 backfill walkforward_eval + P3 + promote + ensemble KPI + phase4 + audit) | #2 #3 #6 升级 | 30-60 min | local | P1 完 |
-| **P3** | Optuna 联合调优 regime weights (institution cap 20%) | #6 30→50% sharpe ↑ | 4-6h | local OR GCP $2.26 | P2 完 |
-| **P4** | MSAF max_dd 修: vol-aware sizing + bear cash 仓 (Codex spec) | #6 50→70% max_dd ↓ | 3-5 day | local + Codex | P3 完 |
-| **P5** | 跨 5 年 holdout 全验 (含 2022-2024 OOS, 扩 n_obs ≥60) | #6 70→100% | 3-5 day | local | P4 完 |
+| **P1 in-flight** | GCP retrain in-flight lgbm_phase5_gcp_20260519T143043 (22:30:43 launched, PID 1893, 2929% CPU) | #2 #3 #6 升级 | 4-6h | GCP .88-2.5 spot | - |
+| **P2** | retrain 完后跑 `bash scripts/run_phase5_post_retrain.sh <new_model_id>` (backfill walkforward_eval + P3 + promote + ensemble KPI + phase4 + audit) | #2 #3 #6 升级 | 30-60 min | local | P1 完 |
+| **P3** | paper_sim + KPI compare 8 步 plan 执行 / 对比旧 KPI | #2 #3 #6 | 1-2h | local | P2 完 |
+| **P4** | Optuna regime weights tune + vol-aware sizing + max_dd 修 | #6 60->90%+ | 1-2 week | local OR GCP | P3 完 |
+| **P5** | UI/UX 入口、模块拆分、lineage 串通并行推进 | #7 #8 #9 | 2-7 day | local + Codex | P1 不阻塞 |
 
-**总 ETA**: ~10h (Phase 5 retrain) + 30-60min (post-retrain pipeline) → 70% → 88% audit pct; 后续 1-2 week 触达 100%.
+**总 ETA**: GCP retrain 4-6h + post-retrain 30-60min + paper_sim/KPI compare 1-2h -> 原 6 条升级路径进入可验证状态; #7/#8/#9 并行补齐运营面.
 
 ### 维护方式 (零 LLM 依赖)
-
 - **一键 status**: `bash scripts/session_status.sh` (6 节: audit / Phase 5 / watcher / cron / GCP / processes)
-- `PYTHONPATH=backend python backend/scripts/audit_delivery_readiness.py` 随时查 6 标准
+- `PYTHONPATH=backend python backend/scripts/audit_delivery_readiness.py` 随时查 9 criteria (原 6 条 + 新增 3 条)
+- goal.md 当前综合进度按 9 criteria 追踪; 原 6 条仍用 audit_delivery_readiness.py 复核
 - `bash gcp/cost_tracker.sh` 随时查 GCP 月度成本 + auto-stop
 - **cron 自动跑** (已 install, FDA-free): cost-tracker 15min / daily-update 17:00 / nightly-audit 02:00 / codex-monitor 15min
 - 重启? `bash configs/cron/install.sh status` 验证
