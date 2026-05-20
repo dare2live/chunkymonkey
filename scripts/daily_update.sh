@@ -520,6 +520,110 @@ output = {
         "champion_promote": "OK",
     },
 }
+alert_flags = {
+    "sla_warn": False,
+    "kpi_anomaly": False,
+    "leakage_red": False,
+}
+
+def table_exists(conn, table_name):
+    try:
+        row = conn.execute(
+            "SELECT 1 FROM information_schema.tables WHERE table_name=? LIMIT 1",
+            [table_name],
+        ).fetchone()
+        return row is not None
+    except Exception:
+        return False
+
+def table_columns(conn, table_name):
+    try:
+        return [r[0] for r in conn.execute(f"DESCRIBE {table_name}").fetchall()]
+    except Exception:
+        return []
+
+def row_dict(row, columns):
+    if row is None:
+        return {}
+    if hasattr(row, "keys"):
+        return {k: row[k] for k in row.keys()}
+    return {col: row[i] for i, col in enumerate(columns) if i < len(row)}
+
+def as_float(value):
+    try:
+        return float(value)
+    except Exception:
+        return None
+
+def load_top_recommendations():
+    try:
+        sys.path.insert(0, "backend")
+        from services.db import get_conn
+        conn = get_conn()
+        try:
+            table = None
+            for candidate in ("mart_daily_topk_view_cache", "mart_daily_recommendation"):
+                if table_exists(conn, candidate):
+                    table = candidate
+                    break
+            if table is None:
+                return []
+            cols = table_columns(conn, table)
+            select_stock_name = "stock_name" if "stock_name" in cols else "NULL AS stock_name"
+            rank_col = "rank_in_date" if "rank_in_date" in cols else "NULL AS rank_in_date"
+            score_col = "pred_score" if "pred_score" in cols else "NULL AS pred_score"
+            percentile_col = "percentile" if "percentile" in cols else "NULL AS percentile"
+            features_col = "key_features_json" if "key_features_json" in cols else "NULL AS key_features_json"
+            run_mode_filter = "AND COALESCE(run_mode, 'champion') = 'champion'" if "run_mode" in cols else ""
+            rows = conn.execute(f"""
+                SELECT stock_code,
+                       {select_stock_name},
+                       {rank_col},
+                       {score_col},
+                       {percentile_col},
+                       {features_col}
+                  FROM {table}
+                 WHERE snapshot_date = (SELECT MAX(snapshot_date) FROM {table})
+                   {run_mode_filter}
+                 ORDER BY rank_in_date NULLS LAST, pred_score DESC NULLS LAST
+                 LIMIT 5
+            """).fetchall()
+            return [
+                {
+                    "stock_code": r[0],
+                    "stock_name": r[1],
+                    "rank_in_date": r[2],
+                    "pred_score": r[3],
+                    "percentile": r[4],
+                    "reason": r[5],
+                }
+                for r in rows
+            ]
+        finally:
+            conn.close()
+    except Exception:
+        return []
+
+def load_latest_kpi():
+    try:
+        sys.path.insert(0, "backend")
+        from services.db import get_conn
+        conn = get_conn()
+        try:
+            if not table_exists(conn, "mart_paper_sim_kpi"):
+                return {}
+            cols = table_columns(conn, "mart_paper_sim_kpi")
+            if not cols:
+                return {}
+            order_col = "built_at" if "built_at" in cols else "created_at" if "created_at" in cols else "period_end"
+            row = conn.execute(
+                f"SELECT * FROM mart_paper_sim_kpi ORDER BY {order_col} DESC NULLS LAST LIMIT 1"
+            ).fetchone()
+            return row_dict(row, cols)
+        finally:
+            conn.close()
+    except Exception:
+        return {}
 
 # Include SLA report summary
 if Path(sla_report).exists():
@@ -529,6 +633,9 @@ if Path(sla_report).exists():
         "n_alerts": sla.get("n_alerts", 0),
         "stale_sources": [s["source_name"] for s in sla.get("sources", []) if s.get("alert")],
     }
+    alert_flags["sla_warn"] = bool(output["sla_summary"]["n_alerts"])
+
+output["top_recommendations"] = load_top_recommendations()
 
 # Add today's regime verdict
 try:
@@ -547,10 +654,61 @@ try:
 except Exception as e:
     output["regime"] = {"error": str(e)}
 
-Path(report_json).write_text(json.dumps(output, indent=2, ensure_ascii=False))
+latest_kpi = load_latest_kpi()
+if latest_kpi:
+    output["latest_kpi"] = latest_kpi
+    all_kpi_pass = latest_kpi.get("all_kpi_pass")
+    if all_kpi_pass is False or str(all_kpi_pass).lower() == "false":
+        alert_flags["kpi_anomaly"] = True
+    max_dd = as_float(latest_kpi.get("max_dd"))
+    if max_dd is not None and max_dd < -0.25:
+        alert_flags["kpi_anomaly"] = True
+    ann_ret = as_float(latest_kpi.get("annual_return", latest_kpi.get("ann_ret")))
+    sharpe = as_float(latest_kpi.get("sharpe"))
+    if (ann_ret is not None and ann_ret > 1.0) or (sharpe is not None and sharpe > 5.0):
+        alert_flags["leakage_red"] = True
+
+output["alert_flags"] = alert_flags
+output.update(alert_flags)
+
+Path(report_json).write_text(json.dumps(output, indent=2, ensure_ascii=False, default=str))
 print(f"[report] written {report_json}")
 PYEOF
 log "Report written: $REPORT_JSON"
+
+REPORT_MD="data/reports/daily_${DATE}.md"
+if PYTHONPATH=backend python backend/scripts/gen_report.py --format markdown --output "$REPORT_MD" >> "$LOG" 2>&1; then
+    log "Markdown report written: $REPORT_MD"
+else
+    log "WARN: markdown report generation failed"
+fi
+
+if PYTHONPATH=backend python - "$REPORT_JSON" >> "$LOG" 2>&1 <<'PYEOF'
+import json
+import sys
+from pathlib import Path
+
+report_path = Path(sys.argv[1])
+try:
+    report = json.loads(report_path.read_text())
+except Exception:
+    sys.exit(1)
+flags = report.get("alert_flags") if isinstance(report.get("alert_flags"), dict) else {}
+keys = ("sla_warn", "kpi_anomaly", "leakage_red")
+active = [key for key in keys if bool(report.get(key)) or bool(flags.get(key))]
+if active:
+    print(f"[alerts] active={','.join(active)}")
+    sys.exit(0)
+print("[alerts] none")
+sys.exit(1)
+PYEOF
+then
+    log "Alerts present; dispatching notification"
+    PYTHONPATH=backend python -m backend.services.notification.dispatcher --report "$REPORT_JSON" >> "$LOG" 2>&1 || \
+        log "WARN: notification dispatch failed"
+else
+    log "No notification alerts"
+fi
 
 log "=== daily_update DONE ==="
 log "  -- Step 1-8 全部跑过 (TBD steps 待 Phase 3.3 ensemble paper_sim KPI 接入)"

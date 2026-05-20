@@ -1,0 +1,8 @@
+enabled: true
+smtp_host: YOUR_SMTP_HOST
+smtp_port: 587
+from_addr: YOUR_FROM_ADDR
+to_addrs:
+  - YOUR_TO_ADDR
+app_password: YOUR_APP_PASSWORD
+dry_run: true

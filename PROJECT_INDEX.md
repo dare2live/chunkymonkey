@@ -784,6 +784,10 @@ SELECT * FROM mart_data_source_watermark;
 
 每次 session 增量内容写这里, 新 session 启动时**从下往上读**最近改了啥.
 
+### 2026-05-20 P0a daily markdown report + notification system
+
+- Implemented P0a markdown daily report renderer, notification drivers (email dry-run, macOS, Slack webhook), alert dispatch wiring in `scripts/daily_update.sh` Step 8, and notification YAML templates.
+
 ### 2026-05-20 paper_sim KPI lineage integration (criteria #9 traceability 50→75)
 
 - `mart_paper_sim_kpi` 加 nullable `lineage_url TEXT`; DDL 新表带列, migration 用 `ALTER TABLE ... ADD COLUMN IF NOT EXISTS` + try/except 保持 duplicate-safe, 旧 sim_run_id 不回填且可继续 NULL.

@@ -1,0 +1,25 @@
+enabled: true
+default_channels:
+  - email
+  - macos
+optional_channels:
+  - slack
+conditions:
+  sla_warn:
+    enabled: true
+    severity: warn
+    channels:
+      - email
+      - macos
+  kpi_anomaly:
+    enabled: true
+    severity: warn
+    channels:
+      - email
+      - macos
+  leakage_red:
+    enabled: true
+    severity: critical
+    channels:
+      - email
+      - macos
