@@ -14,17 +14,21 @@ def test_daily_update_shell_syntax_valid():
 
 
 def test_step4_model_refresh_branches_and_cost_control_are_wired():
+    """Verify Step 4 wired with event-driven (alpha_decay) + quarterly fallback (DOM=1 Jan/Apr/Jul/Oct).
+    GCP retrain 改全手工触发 (user push back 2026-05-18), 不在 daily_update 自动调.
+    旧 cron Monday DOW=1 + GCP auto retrain 已 deprecated, 替换 IS_QUARTER_START.
+    """
     text = SCRIPT.read_text(encoding="utf-8")
 
-    assert "CHUNKY_DOW_OVERRIDE" in text
+    # Pre-flight + gate + variables
+    assert "CHUNKY_DOW_OVERRIDE" in text  # DOW still computed for general use
     assert "run_backtest_validation_gate" in text
     assert 'run_all_gates("daily_update_model_refresh")' in text
-    assert 'if [[ "$DOW" == "1" ]]' in text
-    assert "bash gcp/vm_start.sh" in text
-    assert "run_lambdamart_v6_retrain_on_vm" in text
-    assert "--n-trials 50" in text
-    assert "--full" in text
-    assert "bash gcp/vm_stop.sh" in text
-    assert "stop_model_refresh_vm" in text
-    assert 'elif [[ "$DOW" -ge 2 && "$DOW" -le 5 ]]' in text
-    assert "use cached LambdaMART v6 model" in text
+
+    # Event-driven + quarterly fallback (replaces old Monday cron)
+    assert "ALPHA_DECAY" in text  # event-driven trigger
+    assert "IS_QUARTER_START" in text  # quarterly fallback
+    assert 'DOM' in text  # day-of-month check
+
+    # GCP retrain 改手工触发 — 文档化提示用户手工跑命令
+    assert "run_phase5_extended_retrain.sh" in text or "retrain_lambdamart_v6.py" in text
