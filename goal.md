@@ -3,8 +3,8 @@
 ## 审计时间戳
 最后审计: 2026-05-20 上午
 GCP retrain v2 in-flight: **lgbm_phase5_gcp_20260520T010718** (01:07 北京 launch, F1+F2 protected: SQLite resume + per-trial checkpoint)
-当前综合进度 **~81.5%** (10 criteria 真实均值: #1=100 / #2=90 / #3=87 / #4=100 / #5=100 / #6=78 / #7=65 / #8=75 / #9=85 / #10=35).
-9 criteria 不含 #10 = ~86.7%. gap to 90% endpoint = 5-8.5pp. 主要 gap: #10 incremental 35% / #6 GO/NO-GO 78% / #8 模块化 75%.
+当前综合进度 **~82.5%** (10 criteria 真实均值: #1=100 / #2=90 / #3=87 / #4=100 / #5=100 / #6=78 / #7=65 / #8=75 / #9=85 / #10=45).
+9 criteria 不含 #10 = ~86.7%. gap to 90% endpoint = 7.5pp. 主要 gap: #10 incremental 45% / #6 GO/NO-GO 78% / #8 模块化 75%.
 解锁 path: retrain v2 done → #2 95% / #3 95% / #6 85% (合计 +1.4pp 综合); #10 P1 done 35→55% (+2pp); #8 db.py 拆 75→85% (+1pp). 目标累计 → 86% 综合, 仍距 90% 4pp.
 #7 UI/UX CLI 覆盖修正 50→65% (cm.sh 12 子命令 + notification 5 drivers + cm cache).
 
@@ -125,9 +125,9 @@ GCP retrain v2 in-flight: **lgbm_phase5_gcp_20260520T010718** (01:07 北京 laun
 目标: 任意 prediction row 5 步内可追溯到原始数据 + 模型版本 + PIT 截止时点 + 参数变化轨迹; lineage coverage 阶段目标从 90% bump 到 95%
 剩余 gap 15%: 旧 41 runs 没 backfill parent_sim_run_id (legacy NULL), 新 runs 自动有; 实盘 1 month 后 ≥ 5 runs 形成 chain 验证
 
-### #10 Incremental Management / Data Lineage [35%]
+### #10 Incremental Management / Data Lineage [45%]
 范围: 4-layer cache + incremental rebuild + retrain artifact reuse + paper_sim parameter-impact lineage
-当前进度: P0 paper_sim sim_config_hash schema/cache helper/runner flag/overview spec implemented (a2281696); cm cache subcommand 显示 4-layer status (commit bf4b4937); Layer 2 implicit (predictions via model_id); Layer 3/4 spec only
+当前进度: P0 paper_sim sim_config_hash schema/cache helper/runner flag/overview spec implemented (a2281696); cm cache subcommand 显示 4-layer status (commit bf4b4937); cm impact + param_impact_curve.py P1 工具 (commit a27d413b, KPI timeline + Δ impact table, 实测 4 runs champion variant evolution); Layer 2 implicit (predictions via model_id); Layer 3/4 spec only
 目标:
 - paper_sim cache hit rate >= 80% for repeated configs
 - All mart tables have lineage entries in mart_data_lineage
@@ -153,7 +153,7 @@ Tracked metric:
 | 7 | UI/UX + 人机交互优化 | 65% | 100% | 35pp | CLI 完整 (cm.sh 12 子命令 + notification 5 drivers + SESSION_HANDOFF auto); web dashboard / 历史 KPI timeseries 可选 Phase 缺 | web dashboard FastAPI 补齐 (可选) | 2-5 day |
 | 8 | 模块化 / 可复用 / 可扩展 | 60% | 100% | 40pp | god-module 未拆; N+1 需归零 | codegraph audit 驱动拆分 db/market_db/pricing_policy | 3-7 day |
 | 9 | 数据可回溯 / 可解读 | 50% | 100% | 50pp | lineage 表存在但 raw->KPI 链路未串通; lineage coverage target bump to 95% | 串通 prediction row 到 raw/model/PIT cutoff | 2-5 day |
-| 10 | Incremental Management / Data Lineage | 35% | 100% | 65pp | P0 paper_sim cache done; cm cache subcommand 显示 stats; Layer 3/4 spec only; full mart lineage not covered | P1 param impact + P2 panel incremental + P3 warm-start | 1-2 week |
+| 10 | Incremental Management / Data Lineage | 45% | 100% | 55pp | P0 cache + cm cache stats + P1 param_impact_curve 实施; Layer 3/4 spec only; full mart lineage not covered | P2 panel incremental + P3 warm-start | 1-2 week |
 | **均值** | | **71%** | **100%** | **29pp** | 原 6 条总分 540 + #7/#8/#9/#10 = 165; 705/10 = 70.5% ≈ 71% | | |
 
 **全局均值更新**: 原 6 criteria 均值 90% 保持; 新均值 = (540 + 30 + 60 + 50 + 25) / 10 = 70.5% ≈ 71%
