@@ -161,6 +161,10 @@ app.include_router(v3_views_router, prefix="/api/v3/view", tags=["v3_view"])
 from routers.v3_portfolio_builder import router as v3_portfolio_builder_router
 app.include_router(v3_portfolio_builder_router, prefix="/api/v3/portfolio", tags=["v3_portfolio"])
 
+# 市场感知 (Market Perception) — Codex 扩展模块 stub (docs/market_perception_codex_handoff.md)
+from routers.v3_market_perception import router as v3_market_perception_router
+app.include_router(v3_market_perception_router, prefix="/api/v3/market_perception", tags=["v3_market_perception"])
+
 # 初始化 signals_v2 默认配置（幂等）
 try:
     _conn = get_conn()

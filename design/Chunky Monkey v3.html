@@ -33,6 +33,8 @@
 <script type="text/babel" src="v3-page-institution-view.jsx"></script>
 <!-- Phase η++ 组合构建器 (Wilson + Kelly 3 risk profile) -->
 <script type="text/babel" src="v3-page-portfolio-builder.jsx"></script>
+<!-- 市场感知 (Market Perception) — Codex 扩展模块 stub -->
+<script type="text/babel" src="v3-page-market-perception.jsx"></script>
 <script type="text/babel" src="v3-drawer-stock.jsx"></script>
 <script type="text/babel" src="v3-drawer-system.jsx"></script>
 <!-- 真实数据替换 (mock fallback); 必须在所有 page/component 加载之后 -->
@@ -50,7 +52,7 @@ function App() {
   const [dataTick, setDataTick] = useState(0);
   const { PageToday, PageLab, PagePortfolio,
           PageStockView, PageFormulaView, PageInstitutionView,
-          PagePortfolioBuilder,
+          PagePortfolioBuilder, PageMarketPerception,
           StockDrawer, SystemDrawer, InstDrawer, RUN_META, UI } = window.CMV3;
 
   useEffect(() => {
@@ -72,6 +74,7 @@ function App() {
 
   const TABS = [
     { id:'today',     label:'今日',     sub:'Today' },
+    { id:'market',    label:'市场感知', sub:'Market' },
     { id:'builder',   label:'组合构建', sub:'Builder' },
     { id:'stock',     label:'股票视图', sub:'Stock' },
     { id:'formula',   label:'公式视图', sub:'Formula' },
@@ -122,6 +125,7 @@ function App() {
       {/* ============ MAIN ============ */}
       <main style={{flex:1,maxWidth:1480,width:'100%',margin:'0 auto',padding:'18px 24px 40px'}}>
         {tab==='today'     && <PageToday        onOpenStock={setStockCode}/>}
+        {tab==='market'    && <PageMarketPerception/>}
         {tab==='builder'   && <PagePortfolioBuilder onOpenStock={setStockCode}/>}
         {tab==='stock'     && <PageStockView    initialCode={stockCode} onOpenInst={setInstId}/>}
         {tab==='formula'   && <PageFormulaView  onOpenStock={setStockCode}/>}
