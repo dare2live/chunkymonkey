@@ -17,13 +17,15 @@ GCP retrain v2 in-flight: **lgbm_phase5_gcp_20260520T010718** (01:07 北京 laun
 - 0 leakage 已 PIT audit 验证 (commit a0a17a0c, code-level evidence-based, 0 未来函数)
 - minhold=15 锁为 prod-candidate alpha 增强, 实盘 honest expectation ann ~70-80% / dd -20% / sharpe 2.12
 - criteria #6 70 → 78% (user-接受 threshold 内 minhold15 Pareto 4 项过 3.5)
-- 综合 ~86 → ~87 → ~88 → ~89%, gap ~1pp 距运营条件 90% (criteria #9 lineage 75→85% +1pp)
+- 综合 (10 criteria 均值) 真实数: 80→81.5%, gap 8.5pp 距运营条件 90% (#9 lineage 75→85% / #7 UI/UX 50→65% / #10 incremental 25→35%)
 
-剩 ~3pp 路径 (retrain v2 done):
-- retrain v2 done n_obs ≥30 → 升 #6 78 → 85% (+7pp), 综合 87 → ~88%
-- Codex bvko66g8z cm CLI 完成 → 升 #7 50 → 70%, 综合 +2pp
-- workflow_checkpoint commit → 升 #9 90 → 95%, 综合 +1pp
-- 估 ~90% reachable 待 retrain v2 trial 完整 done (~2h ETA)
+剩 8.5pp 路径 (retrain v2 done):
+- retrain v2 done n_obs ≥30 → 升 #6 78 → 85% (+7pp), 综合 +0.7pp
+- retrain v2 done sharpe ≥ 2.0 → 升 #2 90→95% (+5pp), 综合 +0.5pp
+- retrain v2 done PBO ≤ 0.2 → 升 #3 87→95% (+8pp), 综合 +0.8pp
+- #10 incremental P1 (param_impact_curve.py + L3 panel incremental run) → 35→55%, 综合 +2pp
+- #8 模块化 db.py 拆 Phase 2 → 75→85%, 综合 +1pp
+- 累计 ~5pp → 86.5%, 仍距 90% endpoint 3.5pp. 需 #7 web 或 #10 L3 实施.
 
 **2026-05-20 上午 minhold15 重大 alpha 突破** (commit bde0fbc1):
 - ann **+108.2%** (vs baseline +67.79%) — 反向飙升, 不是 leakage (sharpe<5/win<95%/ann<100% 全 OK, alpha mechanism)
