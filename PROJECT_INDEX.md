@@ -354,6 +354,7 @@
 | `services/portfolio_sizer/` | profiles.py 不同风格 sizing |
 | `services/trade_plan/builder.py` | 交易计划生成 |
 | `services/candle_pattern/` | features (6 维 + 1 突破强度) / evaluator / search_space (4 维 Optuna 阈值) |
+| `services/market_perception/` | Market Perception P1: `compute_regime_for_date/range`, PIT-strict market context features written to `mart_market_perception_daily` |
 
 ### 3.6 机构 / 行业 / 阶段
 
@@ -973,6 +974,12 @@ SELECT * FROM mart_data_source_watermark;
 
 - 新增 `mart_market_perception_daily` DDL 到 `backend/services/schema_marts.py`, 幂等 ALTER / index 到 `backend/services/schema_migrations.py`; 仅新增 mart 表, 不改现有 `fact_*` / `mart_*` schema.
 - 验证: `PYTHONPATH=backend python -c "from services.db import get_conn; from services.schema_marts import ensure_schema; ensure_schema(get_conn())"` PASS.
+
+### 2026-05-20 Market Perception P1 service + builder
+
+- 新增 `backend/services/market_perception/regime_engine.py`: `compute_regime_for_date/range`, 输出 regime_score / breadth_state / volatility_state / sentiment_phase; snapshot_date 必须早于 today 且在 `dim_trading_calendar.is_trading=1`.
+- 新增 `backend/scripts/build_market_perception_daily.py`: 用 `services.duck_adapter.connect()` 连接主库, 写 `mart_market_perception_daily`, `built_at` 用 UTC now; 行情 READ-only attach `market.duckdb` 的 `market.v_price_kline_qfq`.
+- 测试: `PYTHONPATH=backend python -m pytest backend/tests/services/market_perception/ -v` = 4/4 passed.
 
 ### 2026-05-20 db.py Phase 1 facade split
 
