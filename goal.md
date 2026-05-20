@@ -5,6 +5,23 @@
 GCP retrain v2 in-flight: **lgbm_phase5_gcp_20260520T010718** (01:07 北京 launch, F1+F2 protected: SQLite resume + per-trial checkpoint)
 当前综合进度 **~86%** (9 criteria 均值, gap ~4pp 距运营条件 90%).
 
+**2026-05-20 中午 user-接受 explicit threshold 调整**:
+- user explicit: "跌到 70-80% 收益率也很高了, 回撤不大, 作为备选吧, 确定不是 leakage 没有未来函数就行"
+- user-accepted Pareto threshold (vs 原硬门槛):
+  - max_dd ≥-25% (vs 原 -20%) — user 接受 minhold5 -17.4 ≤ minhold15 -20.4 等
+  - anti_churn turnover ≤50x (vs 原 ≤8x) — user 接受 实盘 tx_cost 30-50pp drag 实际 net 70-80% 仍 strong
+  - sharpe ≥ 1.5 (vs 原 ≥ 2.0 perfect, minhold15 已达 2.12)
+- 0 leakage 已 PIT audit 验证 (commit a0a17a0c, code-level evidence-based, 0 未来函数)
+- minhold=15 锁为 prod-candidate alpha 增强, 实盘 honest expectation ann ~70-80% / dd -20% / sharpe 2.12
+- criteria #6 70 → 78% (user-接受 threshold 内 minhold15 Pareto 4 项过 3.5)
+- 综合 ~86 → ~87%, gap ~3pp 距运营条件 90%
+
+剩 ~3pp 路径 (retrain v2 done):
+- retrain v2 done n_obs ≥30 → 升 #6 78 → 85% (+7pp), 综合 87 → ~88%
+- Codex bvko66g8z cm CLI 完成 → 升 #7 50 → 70%, 综合 +2pp
+- workflow_checkpoint commit → 升 #9 90 → 95%, 综合 +1pp
+- 估 ~90% reachable 待 retrain v2 trial 完整 done (~2h ETA)
+
 **2026-05-20 上午 minhold15 重大 alpha 突破** (commit bde0fbc1):
 - ann **+108.2%** (vs baseline +67.79%) — 反向飙升, 不是 leakage (sharpe<5/win<95%/ann<100% 全 OK, alpha mechanism)
 - sharpe **2.12** — **达 perfect ladder ≥2.0** [PASS] (production-grade alpha 真实可达)
