@@ -12,6 +12,9 @@ import json
 import logging
 import math
 import os
+import shutil
+import signal
+import subprocess
 import sys
 from datetime import UTC, datetime
 from pathlib import Path
@@ -46,6 +49,117 @@ LABEL_COLUMNS = ("fwd_cost_after_5d", "fwd_cost_after_10d", "fwd_cost_after_20d"
 MODEL_VERSION = "v6.lambdamart"
 DEFAULT_FEATURE_VERSION = "p0a_v4"
 DEFAULT_LABEL_VERSION = "horizon_governance_v1"
+_PREEMPT_SYNC_IN_PROGRESS = False
+
+
+def _storage_sqlite_path(study_storage: str | None) -> Path | None:
+    if not study_storage or not study_storage.startswith("sqlite:///"):
+        return None
+    return Path(study_storage.removeprefix("sqlite:///"))
+
+
+def _write_sigterm_marker(
+    *,
+    model_id: str,
+    checkpoint_path: str | None,
+    study_storage: str | None,
+    signum: int,
+) -> Path:
+    marker_dir = Path(checkpoint_path).parent if checkpoint_path else Path("data/reports/optuna")
+    marker_dir.mkdir(parents=True, exist_ok=True)
+    marker_path = marker_dir / f"{model_id}.sigterm.json"
+    payload = {
+        "model_id": model_id,
+        "signal": signum,
+        "pid": os.getpid(),
+        "checkpoint_path": checkpoint_path,
+        "study_storage": study_storage,
+        "received_at": datetime.now(UTC).isoformat(timespec="seconds"),
+    }
+    tmp = marker_path.with_suffix(".tmp")
+    tmp.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+    tmp.replace(marker_path)
+    return marker_path
+
+
+def _sync_preempt_artifacts(
+    *,
+    model_id: str,
+    checkpoint_path: str | None,
+    study_storage: str | None,
+    gcs_sync_uri: str | None,
+    signum: int | None = None,
+) -> None:
+    """Best-effort copy of preemption artifacts to GCS within the short shutdown window."""
+
+    global _PREEMPT_SYNC_IN_PROGRESS
+    if not gcs_sync_uri or _PREEMPT_SYNC_IN_PROGRESS:
+        return
+    _PREEMPT_SYNC_IN_PROGRESS = True
+    try:
+        artifact_paths: list[Path] = []
+        if signum is not None:
+            artifact_paths.append(
+                _write_sigterm_marker(
+                    model_id=model_id,
+                    checkpoint_path=checkpoint_path,
+                    study_storage=study_storage,
+                    signum=signum,
+                )
+            )
+        if checkpoint_path:
+            artifact_paths.append(Path(checkpoint_path))
+        sqlite_path = _storage_sqlite_path(study_storage)
+        if sqlite_path:
+            artifact_paths.extend(
+                [
+                    sqlite_path,
+                    sqlite_path.with_name(sqlite_path.name + "-wal"),
+                    sqlite_path.with_name(sqlite_path.name + "-shm"),
+                ]
+            )
+
+        if shutil.which("gcloud"):
+            copier = ["gcloud", "storage", "cp"]
+        elif shutil.which("gsutil"):
+            copier = ["gsutil", "cp"]
+        else:
+            copier = None
+        if copier is None:
+            log.warning("GCS sync skipped: neither gcloud nor gsutil is available")
+            return
+        dest_dir = gcs_sync_uri.rstrip("/")
+        for artifact_path in artifact_paths:
+            if not artifact_path.exists() or not artifact_path.is_file():
+                continue
+            dest = f"{dest_dir}/{artifact_path.name}"
+            try:
+                subprocess.run([*copier, str(artifact_path), dest], check=False, timeout=8)
+            except subprocess.TimeoutExpired:
+                log.warning("GCS sync timed out for %s", artifact_path)
+    finally:
+        _PREEMPT_SYNC_IN_PROGRESS = False
+
+
+def _install_sigterm_handler(
+    *,
+    model_id: str,
+    checkpoint_path: str | None,
+    study_storage: str | None,
+    gcs_sync_uri: str | None,
+) -> None:
+    def _handle_sigterm(signum: int, _frame: Any) -> None:
+        log.warning("received SIGTERM; syncing checkpoint artifacts before exit")
+        _sync_preempt_artifacts(
+            model_id=model_id,
+            checkpoint_path=checkpoint_path,
+            study_storage=study_storage,
+            gcs_sync_uri=gcs_sync_uri,
+            signum=signum,
+        )
+        raise SystemExit(128 + signum)
+
+    signal.signal(signal.SIGTERM, _handle_sigterm)
 
 
 def make_model_id(model_date: str | None = None) -> str:
@@ -342,11 +456,24 @@ def main() -> int:
                         help="Optuna study name, default = model_id (F1 resume)")
     parser.add_argument("--checkpoint-path", default=None,
                         help="JSON checkpoint path for best params (F2, atomic per-trial write)")
+    parser.add_argument("--gcs-sync-uri", default=os.environ.get("RETRAIN_GCS_SYNC_URI"),
+                        help="Optional gs:// directory for best-effort SIGTERM sync of best.json and Optuna SQLite")
     args = parser.parse_args()
 
     model_id = args.model_id or make_model_id(args.model_date)
     db_path = args.db_path or str(DB_PATH)
     n_estimators = args.n_estimators if args.n_estimators is not None else (2000 if args.full else 300)
+    study_storage = args.study_storage
+    study_name = args.study_name or model_id
+    checkpoint_path = args.checkpoint_path
+    if study_storage and not checkpoint_path:
+        checkpoint_path = str(Path("data/reports/optuna") / f"{model_id}.best.json")
+    _install_sigterm_handler(
+        model_id=model_id,
+        checkpoint_path=checkpoint_path,
+        study_storage=study_storage,
+        gcs_sync_uri=args.gcs_sync_uri,
+    )
 
     log.info(
         "start retrain model_id=%s label=%s n_trials=%d n_estimators=%d feature_panel=%s",
@@ -374,13 +501,11 @@ def main() -> int:
         log.error("No walk-forward windows produced")
         return 1
 
-    # F1+F2 defaults: 若用户没显式给, 用 model_id 作 study_name + checkpoint path
-    study_storage = args.study_storage
-    study_name = args.study_name or model_id
-    checkpoint_path = args.checkpoint_path
-    if study_storage and not checkpoint_path:
-        from pathlib import Path
-        checkpoint_path = str(Path("data/reports/optuna") / f"{model_id}.best.json")
+    # Governance gate (CLAUDE.md Rule 6 + memory feedback_optuna_trials_no_shortcut):
+    # n_trials < 50 拦下 — 防再犯 "为省时间缩 trials = 漏 best params" 错 (2026-05-20 反例 Trial 14→27 best +3.7%)
+    from services.optimization.governance import enforce_pre_optimize
+    enforce_pre_optimize(n_trials=args.n_trials, has_seed=True)
+
     result = run_optuna(
         model_name="lambdamart",
         panel=panel,
@@ -418,6 +543,12 @@ def main() -> int:
         conn.close()
 
     log.info("wrote %s predictions to %s", f"{n_rows:,}", LAMBDAMART_V6_PREDICTIONS_TABLE)
+    _sync_preempt_artifacts(
+        model_id=model_id,
+        checkpoint_path=checkpoint_path,
+        study_storage=study_storage,
+        gcs_sync_uri=args.gcs_sync_uri,
+    )
     print(f"MODEL_ID={model_id}")
     return 0
 
