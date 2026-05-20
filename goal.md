@@ -1,9 +1,11 @@
 # ChunkyMonkey Goal
 
 ## 审计时间戳
-最后审计: 2026-05-19 深夜
-GCP retrain in-flight: lgbm_phase5_gcp_20260519T143043 (22:30:43 launched, PID 1893, 2929% CPU, ETA 4-6h, .88-2.5 spot)
-当前综合进度 76% (9 criteria 均值; 原 6 条 90% 均值不变)
+最后审计: 2026-05-20 上午
+GCP retrain v2 in-flight: **lgbm_phase5_gcp_20260520T010718** (01:07 北京 launch, F1+F2 protected: SQLite resume + per-trial checkpoint)
+当前综合进度 ~78% (9 criteria 均值; criteria #7 30→50% / #9 50→75% 推进, #8 60→70% in-flight by Codex ac005569)
+
+**距运营条件 (≥90% + retrain holdout 验证 + 无阻塞项) gap**: ~12pp + retrain ETA 4-6h pending
 
 > 用户终极目标 (不变):
 > - 跨年中位 ann_ret 25-35% (25-35% 是最低目标线, 不是封顶)
@@ -21,13 +23,25 @@ GCP retrain in-flight: lgbm_phase5_gcp_20260519T143043 (22:30:43 launched, PID 1
 ## 2026-05-19 进展事件
 - 18:09 chain GCP launch fail (167s VM stop, GCS path bug fix 已 commit b3b870a6)
 - 18:13 local Mac lgbm_phase5_local_20260519T181324 trial 6/10 score 0.414 (21:58 Mac 重启 kill)
-- 22:30 manual GCP launch lgbm_phase5_gcp_20260519T143043 跑中 (当前 in-flight)
+- 22:30 manual GCP launch lgbm_phase5_gcp_20260519T143043 (v1) 跑 3h32min → 02:02 北京 spot preempted (11 trials done, best trial 9 score 0.443 RankIC 0.0148, predictions 没 materialize)
 - chain step 5 GCS path + venv + rc shutdown fix 已 commit
 - codegraph audit infra C4 hook + C5 N+1 audit + C6 SKILL 进生产 (~/.claude/skills/codegraph-architecture-audit/)
 - paper_sim + KPI compare 8 步 plan 已写入 docs/
-- retrain stall Fix 1 patch 草稿 (15 min -> 20-30 sec, 30-60x 加速)
+- retrain stall Fix 1 实施 (15 min → 30 sec, 30-60x 加速, commit 19f2553e + tests pass)
 - Stop hook session_rule_audit deployed (~/.claude/hooks/)
 - 本 session 5 Codex + 2 Claude subagent 并发实战
+
+## 2026-05-20 进展事件
+- 凌晨 GCP reliability F1+F2 实施 (commit 3bbf7667): Optuna SQLite storage + per-trial atomic checkpoint, 防 preempt 浪费
+- 01:07 GCP retrain v2 launch (lgbm_phase5_gcp_20260520T010718) with F1+F2 保护 — 即使 spot preempt 可 resume
+- 上午 session 无缝衔接 framework (commit edc2bce5): scripts/session_snapshot.sh + SESSION_HANDOFF.md + SessionStart hook
+- F4 cron-based monitor + F5 cost_tracker IDLE_GRACE 30min (commit 320ffdbb): Mac sleep / SSH 断 proof
+- monitor.log cap 加 (用户 push 防累积)
+- criteria #7 UI/UX 30→50% (commit d81975e6): gen_report.py markdown renderer + notification framework 5 drivers (email/macos/slack)
+- criteria #9 数据可回溯 50→75% (commit d81975e6): mart_paper_sim_kpi.lineage_url + trace_lineage --output-file 集成
+- workflow_checkpoint.json/md in-flight (Codex aca4146c, 用户提议 business-level checkpoint)
+- P0-A db.py 拆 Phase 1 in-flight (Codex ac005569, façade re-export 保 backward compat)
+- 本 session 31+ commits push main, 7+ Codex + 3 Claude subagent 并发 (CLAUDE.md §11.5 实战)
 
 ## 项目交付标准 (用户 2026-05-17 定义, 不达 = 不交付)
 | # | 类别 | 交付标准 | 当前状态 |
