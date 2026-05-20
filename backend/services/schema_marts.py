@@ -232,6 +232,35 @@ MART_SCHEMA_SQL = """
             );
             CREATE INDEX IF NOT EXISTS idx_mmp_style_date ON mart_market_perception_style_daily(snapshot_date);
 
+            CREATE TABLE IF NOT EXISTS mart_market_perception_stock_context_daily (
+                snapshot_date              DATE NOT NULL,
+                stock_code                 VARCHAR NOT NULL,
+                context_score              DOUBLE,
+                context_state              VARCHAR,
+                market_regime_score        DOUBLE,
+                emotion_score              DOUBLE,
+                emotion_state              VARCHAR,
+                theme_name                 VARCHAR,
+                theme_score                DOUBLE,
+                lifecycle_stage            VARCHAR,
+                under_reaction_score       DOUBLE,
+                fund_anomaly_score         DOUBLE,
+                leader_follow_score        DOUBLE,
+                leader_stock_code          VARCHAR,
+                chain_diffusion_score      DOUBLE,
+                style_rotation_score       DOUBLE,
+                style_bias                 VARCHAR,
+                crowding_risk_score        DOUBLE,
+                overheat_reversal_risk     DOUBLE,
+                data_completeness_score    DOUBLE,
+                missing_context_fields     VARCHAR,
+                pit_cutoff_date            DATE NOT NULL,
+                source_engines             VARCHAR,
+                built_at                   TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                PRIMARY KEY (snapshot_date, stock_code)
+            );
+            CREATE INDEX IF NOT EXISTS idx_mmp_stock_context_date_score ON mart_market_perception_stock_context_daily(snapshot_date, context_score DESC);
+
             CREATE TABLE IF NOT EXISTS mart_lineage (
                 lineage_id         TEXT PRIMARY KEY,            -- e.g. 'mart_daily_recommendation/topk_v1'
                 output_table       TEXT NOT NULL,

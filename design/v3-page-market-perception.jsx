@@ -12,6 +12,7 @@ function PageMarketPerception() {
   const [underReaction, setUnderReaction] = useStateMP(null);
   const [leaderFollower, setLeaderFollower] = useStateMP(null);
   const [styleSnapshot, setStyleSnapshot] = useStateMP(null);
+  const [stockContext, setStockContext] = useStateMP(null);
   const [health, setHealth] = useStateMP(null);
   const [loading, setLoading] = useStateMP(true);
   const [err, setErr] = useStateMP(null);
@@ -28,8 +29,9 @@ function PageMarketPerception() {
       fetch('/api/v3/market_perception/under_reaction/snapshot?limit=20').then(r => r.json()),
       fetch('/api/v3/market_perception/leader_follower/snapshot?limit=20').then(r => r.json()),
       fetch('/api/v3/market_perception/style/snapshot').then(r => r.json()),
+      fetch('/api/v3/market_perception/stock_context/snapshot?limit=20').then(r => r.json()),
       fetch('/api/v3/market_perception/health').then(r => r.json()),
-    ]).then(([snap, hist, emotionSnap, emotionHist, themeSnap, themeHist, underSnap, leaderSnap, styleSnap, hp]) => {
+    ]).then(([snap, hist, emotionSnap, emotionHist, themeSnap, themeHist, underSnap, leaderSnap, styleSnap, contextSnap, hp]) => {
       if (!alive) return;
       if (snap.ok === false) throw new Error(snap.error || 'snapshot failed');
       if (hist.ok === false) throw new Error(hist.error || 'history failed');
@@ -40,6 +42,7 @@ function PageMarketPerception() {
       if (underSnap.ok === false) throw new Error(underSnap.error || 'under reaction snapshot failed');
       if (leaderSnap.ok === false) throw new Error(leaderSnap.error || 'leader follower snapshot failed');
       if (styleSnap.ok === false) throw new Error(styleSnap.error || 'style snapshot failed');
+      if (contextSnap.ok === false) throw new Error(contextSnap.error || 'stock context snapshot failed');
       setSnapshot(snap);
       setHistory(hist.data || []);
       setEmotionSnapshot(emotionSnap);
@@ -49,6 +52,7 @@ function PageMarketPerception() {
       setUnderReaction(underSnap);
       setLeaderFollower(leaderSnap);
       setStyleSnapshot(styleSnap);
+      setStockContext(contextSnap);
       setHealth(hp);
       setLoading(false);
     }).catch(e => {
@@ -71,6 +75,8 @@ function PageMarketPerception() {
   const leaderRows = (leaderFollower && leaderFollower.data) || [];
   const topLeader = leaderRows[0] || {};
   const style = (styleSnapshot && styleSnapshot.data) || {};
+  const contextRows = (stockContext && stockContext.data) || [];
+  const topContext = contextRows[0] || {};
   const regime = d.regime_score;
   const emotion = e.emotion_score;
   const themeTone = topTheme.theme_score == null ? null : topTheme.theme_score > 0.45 ? 'pos' : topTheme.theme_score < -0.3 ? 'neg' : null;
@@ -127,6 +133,7 @@ function PageMarketPerception() {
               <MiniHealth k="under rows" v={health && health.under_reaction_rows != null ? String(health.under_reaction_rows) : '—'}/>
               <MiniHealth k="leader rows" v={health && health.leader_follower_rows != null ? String(health.leader_follower_rows) : '—'}/>
               <MiniHealth k="style rows" v={health && health.style_rows != null ? String(health.style_rows) : '—'}/>
+              <MiniHealth k="context rows" v={health && health.stock_context_rows != null ? String(health.stock_context_rows) : '—'}/>
             </div>
             {engines.map(([name, status]) => (
               <div key={name} style={{display:'flex',alignItems:'center',justifyContent:'space-between',gap:10,padding:'7px 0',borderBottom:'1px solid var(--line-soft)'}}>
@@ -174,6 +181,11 @@ function PageMarketPerception() {
           <UI.KStat k="拥挤风险" v={fmtNum(style.crowding_risk_score, 3)} sub={`source ${style.style_source || '—'}`} tone={style.crowding_risk_score > 0.5 ? 'neg' : 'neutral'}/>
         </div>
         <StyleDetail row={style}/>
+      </UI.Card>
+
+      <UI.Card title="StockContext · Research Only" action={<UI.ApiTag>/stock_context/snapshot?limit=20</UI.ApiTag>}
+        foot={`snapshot ${topContext.snapshot_date || '—'} · built_at ${fmtDateTime(topContext.built_at)}`}>
+        <StockContextTable rows={contextRows}/>
       </UI.Card>
     </div>
   );
@@ -343,6 +355,51 @@ function StyleDetail({ row }) {
       {items.map(([k, v]) => <MiniHealth key={k} k={k} v={v}/>)}
     </div>
   );
+}
+
+function StockContextTable({ rows }) {
+  const UI = window.CMV3.UI;
+  if (!rows || !rows.length) return <div style={{padding:12,color:'var(--ink-3)'}}>暂无个股上下文数据</div>;
+  return (
+    <table style={{width:'100%',borderCollapse:'collapse',fontSize:12}}>
+      <thead>
+        <tr style={{textAlign:'left',color:'var(--ink-3)',fontSize:10,letterSpacing:'.04em',textTransform:'uppercase'}}>
+          <th style={{padding:'7px 4px'}}>代码</th>
+          <th style={{padding:'7px 4px'}}>状态</th>
+          <th style={{padding:'7px 4px'}}>主题</th>
+          <th style={{padding:'7px 4px'}}>leader</th>
+          <th style={{padding:'7px 4px',textAlign:'right'}}>context</th>
+          <th style={{padding:'7px 4px',textAlign:'right'}}>under</th>
+          <th style={{padding:'7px 4px',textAlign:'right'}}>theme</th>
+          <th style={{padding:'7px 4px',textAlign:'right'}}>follow</th>
+          <th style={{padding:'7px 4px',textAlign:'right'}}>crowd</th>
+          <th style={{padding:'7px 4px',textAlign:'right'}}>complete</th>
+        </tr>
+      </thead>
+      <tbody>
+        {rows.slice(0, 12).map(r => (
+          <tr key={r.stock_code} style={{borderTop:'1px solid var(--line-soft)'}}>
+            <td style={{padding:'8px 4px',fontFamily:'var(--f-mono)',fontWeight:700,color:'var(--ink-0)'}}>{r.stock_code}</td>
+            <td style={{padding:'8px 4px'}}><UI.Pill tone={contextTone(r.context_state)} size="xs">{r.context_state || '—'}</UI.Pill></td>
+            <td style={{padding:'8px 4px',color:'var(--ink-2)'}}>{r.theme_name || '—'} · {r.lifecycle_stage || '—'}</td>
+            <td style={{padding:'8px 4px',fontFamily:'var(--f-mono)'}}>{r.leader_stock_code || '—'}</td>
+            <td style={{padding:'8px 4px',textAlign:'right',fontFamily:'var(--f-mono)',fontWeight:700,color:(r.context_score||0)>=0?'#2f8a55':'#c4382e'}}>{fmtNum(r.context_score, 3)}</td>
+            <td style={{padding:'8px 4px',textAlign:'right',fontFamily:'var(--f-mono)'}}>{fmtNum(r.under_reaction_score, 2)}</td>
+            <td style={{padding:'8px 4px',textAlign:'right',fontFamily:'var(--f-mono)'}}>{fmtNum(r.theme_score, 2)}</td>
+            <td style={{padding:'8px 4px',textAlign:'right',fontFamily:'var(--f-mono)'}}>{fmtNum(r.leader_follow_score, 2)}</td>
+            <td style={{padding:'8px 4px',textAlign:'right',fontFamily:'var(--f-mono)'}}>{fmtNum(r.crowding_risk_score, 2)}</td>
+            <td title={r.missing_context_fields || ''} style={{padding:'8px 4px',textAlign:'right',fontFamily:'var(--f-mono)'}}>{r.data_completeness_score == null ? '—' : UI.fmt2pct(r.data_completeness_score, false)}</td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  );
+}
+
+function contextTone(state) {
+  return state === 'context_supportive' ? 'buy'
+    : state === 'context_hostile' ? 'sell'
+    : 'neutral';
 }
 
 function stageTone(stage) {

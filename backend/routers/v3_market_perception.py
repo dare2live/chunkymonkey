@@ -52,6 +52,7 @@ def _market_perception_health(conn) -> dict:
             "under_reaction_rows": 0,
             "leader_follower_rows": 0,
             "style_rows": 0,
+            "stock_context_rows": 0,
         }
 
     row = conn.execute(
@@ -84,6 +85,7 @@ def _market_perception_health(conn) -> dict:
     under_reaction_rows = _table_row_count(conn, "mart_market_perception_under_reaction_daily")
     leader_follower_rows = _table_row_count(conn, "mart_market_perception_leader_follower_daily")
     style_rows = _table_row_count(conn, "mart_market_perception_style_daily")
+    stock_context_rows = _table_row_count(conn, "mart_market_perception_stock_context_daily")
     return {
         "mart_table_exists": True,
         "mart_rows": mart_rows,
@@ -100,6 +102,7 @@ def _market_perception_health(conn) -> dict:
         "under_reaction_rows": under_reaction_rows,
         "leader_follower_rows": leader_follower_rows,
         "style_rows": style_rows,
+        "stock_context_rows": stock_context_rows,
     }
 
 
@@ -389,6 +392,46 @@ STYLE_SELECT = """
     small_ret_1d, mid_ret_1d, large_ret_1d, trend_ret_1d, reversal_ret_1d,
     top_decile_turnover_share, hot_stock_share, style_source, emotion_score,
     emotion_state, pit_cutoff_date, source_engines, built_at
+"""
+
+
+def _serialize_stock_context_row(row) -> dict:
+    return {
+        "snapshot_date": str(row[0]) if row[0] is not None else None,
+        "stock_code": row[1],
+        "context_score": _finite_float(row[2]),
+        "context_state": row[3],
+        "market_regime_score": _finite_float(row[4]),
+        "emotion_score": _finite_float(row[5]),
+        "emotion_state": row[6],
+        "theme_name": row[7],
+        "theme_score": _finite_float(row[8]),
+        "lifecycle_stage": row[9],
+        "under_reaction_score": _finite_float(row[10]),
+        "fund_anomaly_score": _finite_float(row[11]),
+        "leader_follow_score": _finite_float(row[12]),
+        "leader_stock_code": row[13],
+        "chain_diffusion_score": _finite_float(row[14]),
+        "style_rotation_score": _finite_float(row[15]),
+        "style_bias": row[16],
+        "crowding_risk_score": _finite_float(row[17]),
+        "overheat_reversal_risk": _finite_float(row[18]),
+        "data_completeness_score": _finite_float(row[19]),
+        "missing_context_fields": row[20],
+        "pit_cutoff_date": str(row[21]) if row[21] is not None else None,
+        "source_engines": row[22],
+        "built_at": str(row[23]) if row[23] is not None else None,
+    }
+
+
+STOCK_CONTEXT_SELECT = """
+    snapshot_date, stock_code, context_score, context_state,
+    market_regime_score, emotion_score, emotion_state, theme_name,
+    theme_score, lifecycle_stage, under_reaction_score, fund_anomaly_score,
+    leader_follow_score, leader_stock_code, chain_diffusion_score,
+    style_rotation_score, style_bias, crowding_risk_score,
+    overheat_reversal_risk, data_completeness_score, missing_context_fields,
+    pit_cutoff_date, source_engines, built_at
 """
 
 
@@ -683,6 +726,37 @@ async def get_style_snapshot():
         return {"ok": False, "error": str(exc), "data": None, "built_at": datetime.now(timezone.utc).isoformat()}
 
 
+@router.get("/stock_context/snapshot")
+async def get_stock_context_snapshot(limit: int = 50):
+    """Return latest stock-level market context rows."""
+    limit = max(1, min(int(limit), 200))
+    try:
+        with get_conn() as conn:
+            if not _table_exists(conn, "mart_market_perception_stock_context_daily"):
+                return {"ok": True, "stub": True, "data": [], "limit": limit, "built_at": datetime.now(timezone.utc).isoformat()}
+            latest = conn.execute(
+                "SELECT MAX(snapshot_date) FROM mart_market_perception_stock_context_daily",
+            ).fetchone()
+            if not latest or latest[0] is None:
+                return {"ok": True, "stub": True, "data": [], "limit": limit, "built_at": datetime.now(timezone.utc).isoformat()}
+            rows = conn.execute(
+                f"""
+                SELECT {STOCK_CONTEXT_SELECT}
+                  FROM mart_market_perception_stock_context_daily
+                 WHERE snapshot_date = ?
+                 ORDER BY context_score DESC
+                 LIMIT ?
+                """,
+                [latest[0], limit],
+            ).fetchall()
+            data = [_serialize_stock_context_row(row) for row in rows]
+            built_at = data[0]["built_at"] if data else datetime.now(timezone.utc).isoformat()
+            return {"ok": True, "stub": False, "data": data, "rows": len(data), "limit": limit, "built_at": built_at}
+    except Exception as exc:
+        logger.warning("market_perception stock_context snapshot query failed: %s", exc)
+        return {"ok": False, "error": str(exc), "data": [], "limit": limit, "built_at": datetime.now(timezone.utc).isoformat()}
+
+
 @router.get("/health")
 async def get_health():
     """模块健康检查 — 列出哪些 engine 已实施."""
@@ -713,6 +787,8 @@ async def get_health():
     if health.get("style_rows", 0) > 0:
         engines["CrowdingRiskEngine"] = "research_mvp"
         engines["StyleRotationEngine"] = "research_mvp"
+    if health.get("stock_context_rows", 0) > 0:
+        engines["StockContextEngine"] = "research_mvp"
     return {
         "ok": True,
         "engines": engines,
