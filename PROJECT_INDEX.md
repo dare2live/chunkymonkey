@@ -983,6 +983,12 @@ SELECT * FROM mart_data_source_watermark;
 - `design/v3-page-market-perception.jsx`: 前端 tab 拉 `/snapshot` / `/history?days=90` / `/health`, 显示 4 张 market context 卡片、built_at、7 engine status 和 regime/breadth/volatility 时序图.
 - 测试: `PYTHONPATH=backend python -m pytest backend/tests/services/market_perception/ -v` = 4/4 passed.
 
+### 2026-05-20 Market Perception rolling development plan
+
+- 新增 `市场感知开发计划.md`: 按 handoff / framework / CLAUDE / CodeGraph / complexity 审计制定 P1.1-P7 滚动计划。
+- 关键现实差异写入计划: 当前主库没有 `mart_index_daily` / `fact_stock_kline_daily`, P1 实际兼容读取 `market.v_price_kline_qfq`; P2 前先做 P1.1 range 批量化 + yaml 配置化 + health freshness。
+- 审计证据: CodeGraph sync 后 819 files / 12,632 nodes / 43,270 edges; complexity 定向扫描仅 `regime_engine.py:339` membership-in-loop 误报, 人工识别真正风险是 range 逐日重复窗口查询。
+
 ### 2026-05-20 db.py Phase 1 facade split
 
 - `backend/services/db.py` 缩为 6-line facade, import-star re-export `db_connection/schema_core/schema_marts/schema_migrations`; 业务侧 `from services.db import ...` 路径未改, grep count 保持 202.
