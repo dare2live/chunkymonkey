@@ -36,7 +36,7 @@ class EmailDriver(BaseDriver):
         return bool(self.config.get("dry_run", True))
 
     def _subject_with_prefix(self, subject: str) -> str:
-        prefix = f"[CM-Daily-{datetime.now().strftime('%Y%m%d')}]"
+        prefix = f"[CM-Daily-{datetime.now().strftime('%Y%m%d')}]"  # Phase ψ.5 allowlist: 邮件 subject prefix wall-clock
         if subject.startswith(prefix):
             return subject
         return f"{prefix} {subject}"

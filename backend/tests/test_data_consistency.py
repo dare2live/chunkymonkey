@@ -92,6 +92,7 @@ def test_retired_stock_kline_table_is_not_read_or_written_by_business_code():
 def test_retired_sw_industry_table_access_is_allowlisted_only_for_migration_and_cleanup():
     allowed = {
         "services/db.py",
+        "services/schema_migrations.py",
         "scripts/audit_stale_references.py",
         "services/data_deprecation.py",
     }

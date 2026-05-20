@@ -461,7 +461,7 @@ def run_optuna(
     # interrupted 后 重启同名 study 可 resume (load_if_exists=True), 已 COMPLETE trials 不重算.
     # rule-compliance: ok evidence=codex-bocq8b60j-gcp-reliability-f1-sqlite-storage
     resolved_name = study_name or (
-        f"p0b_{model_name}_v6_{datetime.now(UTC).strftime('%Y%m%dT%H%M%S')}_{uuid.uuid4().hex[:6]}"
+        f"p0b_{model_name}_v6_{datetime.now(UTC).strftime('%Y%m%dT%H%M%S')}_{uuid.uuid4().hex[:6]}"  # Phase ψ.5 allowlist: study_name wall-clock identifier
     )
     study = optuna.create_study(
         direction="maximize",

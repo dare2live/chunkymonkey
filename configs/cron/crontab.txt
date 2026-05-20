@@ -37,6 +37,9 @@ REPO=/Users/dp/Documents/M/stock/chunkymonkey
 # 每 15 min codex monitor (cancel idle > 30 min)
 */15 * * * * cd $REPO && bash scripts/codex_monitor.sh >> /tmp/codex_monitor.log 2>&1
 
+# 每 10 min workflow-level checkpoint (business pipeline, not session snapshot)
+*/10 * * * * cd $REPO && bash scripts/workflow_checkpoint.sh >> /tmp/workflow_checkpoint.log 2>&1
+
 # F4 P1: 每 5 min phase5 GCP retrain probe (替代 nohup, Mac sleep/SSH 断 proof)
 # probe 自动 no-op (sentinel 文件存在) → 长期不浪费资源
 */5 * * * * cd $REPO && bash scripts/monitor_phase5_gcp_retrain_probe.sh >> /tmp/phase5_monitor_probe.log 2>&1

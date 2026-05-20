@@ -299,7 +299,7 @@ def _infer_daily_json_path(output_path: Path | None) -> Path:
         match = re.search(r"daily_(\d{8})\.md$", output_path.name)
         if match:
             return output_path.with_name(f"daily_{match.group(1)}.json")
-    today_path = REPORTS_DIR / f"daily_{datetime.now().strftime('%Y%m%d')}.json"
+    today_path = REPORTS_DIR / f"daily_{datetime.now().strftime('%Y%m%d')}.json"  # Phase ψ.5 allowlist: daily report filename wall-clock
     if today_path.exists():
         return today_path
     candidates = sorted(REPORTS_DIR.glob("daily_*.json"))
@@ -444,7 +444,7 @@ def render_daily_markdown(
 
 
 def write_daily_markdown(input_json: Path | None, output_path: Path | None) -> Path:
-    output = output_path or (REPORTS_DIR / f"daily_{datetime.now().strftime('%Y%m%d')}.md")
+    output = output_path or (REPORTS_DIR / f"daily_{datetime.now().strftime('%Y%m%d')}.md")  # Phase ψ.5 allowlist: daily report filename wall-clock
     report_json = input_json or _infer_daily_json_path(output)
     output.parent.mkdir(parents=True, exist_ok=True)
     output.write_text(render_daily_markdown(report_json), encoding="utf-8")

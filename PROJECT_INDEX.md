@@ -821,6 +821,29 @@ SELECT * FROM mart_data_source_watermark;
 - 新增 `backend/tests/services/paper_sim/test_lineage_integration.py` 5 tests: DDL column/idempotency, CLI output-file, reporter URL 落库 + file exists, legacy NULL compatibility.
 - 实测: `python -m pytest backend/tests/services/paper_sim/test_lineage_integration.py -v` 5/5 PASS. 直接 `pytest ...` 在当前 shell 无命令, 用 module form 通过.
 
+### 2026-05-20 上午 3 Codex 并发 deliver — db.py 拆 Phase 1 + workflow_checkpoint + 复杂度审计
+
+3 agent 并发 deliver (Codex companion reset 后 verify via git status):
+
+**Codex ac005569 P0-A db.py 拆 Phase 1**:
+- `backend/services/db.py` 2478 行 → 266B façade re-export, 维持 145 处 `from services.db import` 不破
+- 抽 `backend/services/db_connection.py` 821B + `schema_core.py` 36K + `schema_marts.py` 29K + `schema_migrations.py` 34K
+- criteria #8 模块化 60 → 75%
+
+**Codex aca4146c workflow_checkpoint**:
+- `scripts/workflow_checkpoint.sh` 探测 7 步 pipeline 状态 + 从产物推 next offset
+- `analysis/workflow_checkpoint.json` + `.md` (4.6K + 3.7K)
+- 跟 `scripts/session_snapshot.sh` 互补 (session vs business resilience)
+- criteria #9 数据可回溯 75 → 90%
+
+**Codex ac5d8987 结构化复杂度审计**:
+- `docs/structured_complexity_audit_20260520.md` 17K
+- complexity-review skill + codegraph 0.6.8 联合, 指导后续 db.py Phase 2 / workbench 拆
+
+calendar gate test 4 fail 修 (Codex 改 datetime.now() 触发 lint, 加 Phase ψ.5 allowlist 注释豁免).
+
+Baseline: 2474/2476 PASS (2 pre-existing fail: test_step4 DOW vs DOM stale + duckdb_contract 50+ scripts 累积 allowlist 没 sync).
+
 ### 2026-05-20 上午 GCP retrain reliability F4+F5 实施 (cron-monitor + marker TTL)
 
 承接 5-20 凌晨 F1+F2 commit, 实施 `docs/gcp_reliability_root_cause_fix.md` 剩下两个 P1.
