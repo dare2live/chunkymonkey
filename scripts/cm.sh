@@ -15,6 +15,7 @@
 #   promote    — list P3 PASS candidate
 #   resume     — alias bash scripts/cm_resume.sh (中断恢复)
 #   status     — 综合状态 (session_snapshot)
+#   cache      — paper_sim cache hit-rate + lineage chain stats (criteria #10 incremental mgmt)
 #   help       — 显示帮助
 
 set -e
@@ -40,6 +41,7 @@ Usage:
   cm promote            P3 PASS candidate list
   cm resume             中断恢复 (bash cm_resume.sh)
   cm status             综合状态 (session_snapshot)
+  cm cache              paper_sim cache hit-rate + lineage chain (criteria #10)
   cm help               本帮助
 
 Resilience:
@@ -182,6 +184,70 @@ cm_install() {
     bash "$REPO_ROOT/scripts/install_resilience.sh" "$@"
 }
 
+cm_cache() {
+    # criteria #10 incremental mgmt: paper_sim cache + lineage stats
+    PYTHONPATH=backend python -c "
+import duckdb
+con = duckdb.connect('$DB_PATH', read_only=True)
+print('=== paper_sim cache state (criteria #10 incremental mgmt) ===')
+print()
+
+# 1. sim_config_hash 覆盖率 (新 / 旧 runs)
+r1 = con.execute(\"SELECT COUNT(*), COUNT(sim_config_hash), COUNT(DISTINCT sim_config_hash) FROM mart_paper_sim_kpi\").fetchone()
+print(f'  total_runs           = {r1[0]}')
+print(f'  has_sim_config_hash  = {r1[1]} ({r1[1]/r1[0]*100:.1f}%)')
+print(f'  distinct_hashes      = {r1[2]} (hit-rate proxy: 重复 hash = cache hit)')
+print()
+
+# 2. hash hit (重复 hash 表示 cache-eligible)
+r2 = con.execute(\"\"\"
+  SELECT sim_config_hash, COUNT(*) as n, MIN(built_at) as first_run, MAX(built_at) as last_run
+  FROM mart_paper_sim_kpi
+  WHERE sim_config_hash IS NOT NULL
+  GROUP BY sim_config_hash
+  HAVING COUNT(*) >= 2
+  ORDER BY n DESC LIMIT 5
+\"\"\").fetchall()
+if r2:
+    print(f'  cache-hit candidates (>=2 same hash):')
+    for x in r2:
+        print(f'    hash={x[0][:12]}... n={x[1]} first={x[2]} last={x[3]}')
+else:
+    print(f'  cache-hit candidates: 0 (没重复 hash, 全新 config — 期待 implicit reuse 累积)')
+print()
+
+# 3. parent_sim_run_id chain — 形成参数演化轨迹
+r3 = con.execute(\"\"\"
+  SELECT COUNT(*) FROM mart_paper_sim_kpi WHERE parent_sim_run_id IS NOT NULL
+\"\"\").fetchone()
+print(f'  parent-linked runs   = {r3[0]} (param-evolution trace)')
+print()
+
+# 4. 同 model_id 多 run = predictions reuse implicit (Layer 2)
+r4 = con.execute(\"\"\"
+  SELECT
+    JSON_EXTRACT_STRING(config_snapshot, '\$.model_id') as mid,
+    COUNT(*) as n
+  FROM mart_paper_sim_kpi
+  WHERE config_snapshot IS NOT NULL
+  GROUP BY mid
+  HAVING COUNT(*) >= 2
+  ORDER BY n DESC LIMIT 5
+\"\"\").fetchall()
+if r4:
+    print(f'  model_id implicit predictions reuse (Layer 2):')
+    for x in r4:
+        print(f'    model_id={(x[0] or \"\")[:50]}... n={x[1]} runs')
+print()
+print('=== layer status ===')
+print('  L1 paper_sim sim_config_hash    DEPLOYED (commit a2281696)')
+print('  L2 predictions reuse implicit   IMPLICIT via model_id')
+print('  L3 panel incremental rebuild    SPEC (commit aeb8ea53), not auto')
+print('  L4 retrain warm-start           SPEC, not auto')
+con.close()
+"
+}
+
 case "$CMD" in
     today|t)        cm_today ;;
     holdings|h)     cm_holdings ;;
@@ -192,6 +258,7 @@ case "$CMD" in
     promote|p)      cm_promote ;;
     resume)         cm_resume ;;
     status|st)      cm_status ;;
+    cache|c)        cm_cache ;;
     install|i)      cm_install "$@" ;;
     help|--help|-h|"") cm_help ;;
     *)              echo "[cm] unknown subcommand: $CMD"; cm_help; exit 1 ;;
