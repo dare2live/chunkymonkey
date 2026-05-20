@@ -457,19 +457,69 @@ def trace_markdown(conn: Any, **kwargs: Any) -> str:
     return render(conn, root, graph, time.monotonic() - start)
 
 
+def render_param_history(conn: Any, sim_run_id: str) -> str:
+    """渲染 parent_sim_run_id chain + param_diff timeline (commit a2281696 新 schema cols)."""
+    out = [f"# Param History — {sim_run_id}", ""]
+    out.append("跟踪 paper_sim 参数变化轨迹 (`mart_paper_sim_kpi.parent_sim_run_id` 形成链).")
+    out.append("")
+    chain: list[dict[str, Any]] = []
+    current = sim_run_id
+    seen: set[str] = set()
+    while current and current not in seen:
+        seen.add(current)
+        row = conn.execute(
+            "SELECT sim_run_id, parent_sim_run_id, sim_config_hash, param_diff_json, "
+            "annual_return, max_dd, sharpe, monthly_win_rate, variant, built_at "
+            "FROM mart_paper_sim_kpi WHERE sim_run_id = ?",
+            [current],
+        ).fetchone()
+        if not row:
+            out.append(f"- [MISSING] sim_run_id={current} 未在 mart_paper_sim_kpi 找到")
+            break
+        chain.append(rowdict(row))
+        current = chain[-1].get("parent_sim_run_id")
+    if not chain:
+        return "\n".join(out) + "\n"
+    out += ["", "## Chain (子 → 父)", ""]
+    out += [
+        "| depth | sim_run_id | variant | parent | sim_config_hash[:12] | ann | dd | sharpe | win | built_at |",
+        "|---:|---|---|---|---|---:|---:|---:|---:|---|",
+    ]
+    for i, r in enumerate(chain):
+        sch = (r.get("sim_config_hash") or "")[:12]
+        out.append(
+            f"| {i} | {r['sim_run_id']} | {r.get('variant','')} | {r.get('parent_sim_run_id','') or '(root)'} | {sch} "
+            f"| {(r.get('annual_return') or 0):.2%} | {(r.get('max_dd') or 0):.2%} "
+            f"| {(r.get('sharpe') or 0):.2f} | {(r.get('monthly_win_rate') or 0):.2%} | {r.get('built_at')} |"
+        )
+    out += ["", "## Param Diff Timeline (从子到父)", ""]
+    for i, r in enumerate(chain):
+        diff = r.get("param_diff_json")
+        if diff:
+            out += [f"### {i}. {r['sim_run_id']}", "```json", str(diff), "```", ""]
+        else:
+            out.append(f"### {i}. {r['sim_run_id']}  (no param_diff_json — root or legacy)")
+            out.append("")
+    return "\n".join(out) + "\n"
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Trace data lineage from a KPI, model, panel, or asset")
     parser.add_argument("--sim-run-id")
     parser.add_argument("--model-id")
     parser.add_argument("--panel-version")
     parser.add_argument("--asset-name")
+    parser.add_argument("--param-history", help="sim_run_id — 输出 parent chain + param_diff timeline (新 schema commit a2281696)")
     parser.add_argument("--db-path", default=str(DB_PATH))
     parser.add_argument("--max-depth", type=int, default=5)
     parser.add_argument("--output-file")
     args = parser.parse_args(argv)
     try:
         with connect(args.db_path, read_only=True) as conn:
-            markdown = trace_markdown(conn, **vars(args))
+            if args.param_history:
+                markdown = render_param_history(conn, args.param_history)
+            else:
+                markdown = trace_markdown(conn, **{k: v for k, v in vars(args).items() if k != "param_history"})
         if args.output_file:
             output_file = Path(args.output_file)
             output_file.parent.mkdir(parents=True, exist_ok=True)
