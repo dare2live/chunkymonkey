@@ -47,6 +47,7 @@ def _market_perception_health(conn) -> dict:
             "score_guard_violations": None,
             "latest_audit": None,
             "emotion_rows": 0,
+            "theme_rows": 0,
         }
 
     row = conn.execute(
@@ -75,6 +76,7 @@ def _market_perception_health(conn) -> dict:
     latest_audit = _latest_market_perception_audit(conn)
     latest_snapshot_audit_status = _latest_snapshot_audit_status(latest_snapshot, latest_audit)
     emotion_rows = _table_row_count(conn, "mart_market_perception_emotion_daily")
+    theme_rows = _table_row_count(conn, "mart_market_perception_theme_daily")
     return {
         "mart_table_exists": True,
         "mart_rows": mart_rows,
@@ -87,6 +89,7 @@ def _market_perception_health(conn) -> dict:
         "score_guard_abs_max": guard_abs_max,
         "latest_audit": latest_audit,
         "emotion_rows": emotion_rows,
+        "theme_rows": theme_rows,
     }
 
 
@@ -229,6 +232,41 @@ EMOTION_SELECT = """
 """
 
 
+def _serialize_theme_row(row) -> dict:
+    return {
+        "snapshot_date": str(row[0]) if row[0] is not None else None,
+        "theme_name": row[1],
+        "theme_score": float(row[2]) if row[2] is not None else None,
+        "lifecycle_stage": row[3],
+        "mainline_rank": int(row[4]) if row[4] is not None else None,
+        "is_mainline": bool(row[5]) if row[5] is not None else None,
+        "diffusion_state": row[6],
+        "sector_breadth": float(row[7]) if row[7] is not None else None,
+        "sector_ret_20d": float(row[8]) if row[8] is not None else None,
+        "sector_ret_60d": float(row[9]) if row[9] is not None else None,
+        "sector_excess_20d": float(row[10]) if row[10] is not None else None,
+        "sector_excess_60d": float(row[11]) if row[11] is not None else None,
+        "price_vs_ma20": float(row[12]) if row[12] is not None else None,
+        "price_vs_ma60": float(row[13]) if row[13] is not None else None,
+        "limit_up_count": int(row[14]) if row[14] is not None else None,
+        "n_stocks": int(row[15]) if row[15] is not None else None,
+        "top3_turnover_share": float(row[16]) if row[16] is not None else None,
+        "pit_member_confidence": row[17],
+        "source_engines": row[18],
+        "pit_cutoff_date": str(row[19]) if row[19] is not None else None,
+        "built_at": str(row[20]) if row[20] is not None else None,
+    }
+
+
+THEME_SELECT = """
+    snapshot_date, theme_name, theme_score, lifecycle_stage, mainline_rank,
+    is_mainline, diffusion_state, sector_breadth, sector_ret_20d,
+    sector_ret_60d, sector_excess_20d, sector_excess_60d, price_vs_ma20,
+    price_vs_ma60, limit_up_count, n_stocks, top3_turnover_share,
+    pit_member_confidence, source_engines, pit_cutoff_date, built_at
+"""
+
+
 @router.get("/snapshot")
 async def get_snapshot():
     """Return the latest market perception snapshot."""
@@ -363,6 +401,78 @@ async def get_emotion_history(days: int = 90):
         return {"ok": False, "error": str(exc), "data": [], "days_requested": days}
 
 
+@router.get("/theme/snapshot")
+async def get_theme_snapshot():
+    """Return latest PIT theme lifecycle rows."""
+    try:
+        with get_conn() as conn:
+            if not _table_exists(conn, "mart_market_perception_theme_daily"):
+                return {"ok": True, "stub": True, "data": [], "built_at": datetime.now(timezone.utc).isoformat()}
+            latest = conn.execute(
+                "SELECT MAX(snapshot_date) FROM mart_market_perception_theme_daily",
+            ).fetchone()
+            if not latest or latest[0] is None:
+                return {"ok": True, "stub": True, "data": [], "built_at": datetime.now(timezone.utc).isoformat()}
+            rows = conn.execute(
+                f"""
+                SELECT {THEME_SELECT}
+                  FROM mart_market_perception_theme_daily
+                 WHERE snapshot_date = ?
+                 ORDER BY mainline_rank, theme_name
+                """,
+                [latest[0]],
+            ).fetchall()
+            data = [_serialize_theme_row(row) for row in rows]
+            built_at = data[0]["built_at"] if data else datetime.now(timezone.utc).isoformat()
+            return {"ok": True, "stub": False, "data": data, "rows": len(data), "built_at": built_at}
+    except Exception as exc:
+        logger.warning("market_perception theme snapshot query failed: %s", exc)
+        return {"ok": False, "error": str(exc), "data": [], "built_at": datetime.now(timezone.utc).isoformat()}
+
+
+@router.get("/theme/history")
+async def get_theme_history(days: int = 20, top_n: int = 5):
+    """Return top-N theme lifecycle rows over the last N trading days."""
+    days = max(1, min(int(days), 120))
+    top_n = max(1, min(int(top_n), 20))
+    try:
+        with get_conn() as conn:
+            if not _table_exists(conn, "mart_market_perception_theme_daily"):
+                return {"ok": True, "stub": True, "data": [], "days_requested": days, "top_n": top_n}
+            rows = conn.execute(
+                f"""
+                WITH recent_days AS (
+                    SELECT trade_date
+                      FROM dim_trading_calendar
+                     WHERE is_trading = 1
+                       AND CAST(trade_date AS DATE) <= (
+                           SELECT MAX(snapshot_date) FROM mart_market_perception_theme_daily
+                       )
+                     ORDER BY CAST(trade_date AS DATE) DESC
+                     LIMIT ?
+                )
+                SELECT {THEME_SELECT}
+                  FROM mart_market_perception_theme_daily m
+                  JOIN recent_days d
+                    ON CAST(d.trade_date AS DATE) = m.snapshot_date
+                 WHERE m.mainline_rank <= ?
+                 ORDER BY m.snapshot_date, m.mainline_rank, m.theme_name
+                """,
+                (days, top_n),
+            ).fetchall()
+            return {
+                "ok": True,
+                "stub": False,
+                "data": [_serialize_theme_row(row) for row in rows],
+                "days_requested": days,
+                "top_n": top_n,
+                "rows": len(rows),
+            }
+    except Exception as exc:
+        logger.warning("market_perception theme history query failed: %s", exc)
+        return {"ok": False, "error": str(exc), "data": [], "days_requested": days, "top_n": top_n}
+
+
 @router.get("/health")
 async def get_health():
     """模块健康检查 — 列出哪些 engine 已实施."""
@@ -382,6 +492,8 @@ async def get_health():
         engines["MarketRegimeEngine"] = "live"
     if health.get("emotion_rows", 0) > 0:
         engines["MarketEmotionCycle"] = "live"
+    if health.get("theme_rows", 0) > 0:
+        engines["ThemeLifecycleEngine"] = "live"
     return {
         "ok": True,
         "engines": engines,

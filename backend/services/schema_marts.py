@@ -127,6 +127,32 @@ MART_SCHEMA_SQL = """
             );
             CREATE INDEX IF NOT EXISTS idx_mmp_emotion_date ON mart_market_perception_emotion_daily(snapshot_date);
 
+            CREATE TABLE IF NOT EXISTS mart_market_perception_theme_daily (
+                snapshot_date              DATE NOT NULL,
+                theme_name                 VARCHAR NOT NULL,
+                theme_score                DOUBLE,
+                lifecycle_stage            VARCHAR,
+                mainline_rank              INTEGER,
+                is_mainline                BOOLEAN,
+                diffusion_state            VARCHAR,
+                sector_breadth             DOUBLE,
+                sector_ret_20d             DOUBLE,
+                sector_ret_60d             DOUBLE,
+                sector_excess_20d          DOUBLE,
+                sector_excess_60d          DOUBLE,
+                price_vs_ma20              DOUBLE,
+                price_vs_ma60              DOUBLE,
+                limit_up_count             INTEGER,
+                n_stocks                   INTEGER,
+                top3_turnover_share        DOUBLE,
+                pit_member_confidence      VARCHAR,
+                source_engines             VARCHAR,
+                pit_cutoff_date            DATE NOT NULL,
+                built_at                   TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                PRIMARY KEY (snapshot_date, theme_name)
+            );
+            CREATE INDEX IF NOT EXISTS idx_mmp_theme_date ON mart_market_perception_theme_daily(snapshot_date);
+
             CREATE TABLE IF NOT EXISTS mart_lineage (
                 lineage_id         TEXT PRIMARY KEY,            -- e.g. 'mart_daily_recommendation/topk_v1'
                 output_table       TEXT NOT NULL,

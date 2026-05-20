@@ -119,6 +119,31 @@ CREATE TABLE IF NOT EXISTS mart_market_perception_emotion_daily (
     PRIMARY KEY (snapshot_date)
 );
 CREATE INDEX IF NOT EXISTS idx_mmp_emotion_date ON mart_market_perception_emotion_daily(snapshot_date);
+CREATE TABLE IF NOT EXISTS mart_market_perception_theme_daily (
+    snapshot_date              DATE NOT NULL,
+    theme_name                 VARCHAR NOT NULL,
+    theme_score                DOUBLE,
+    lifecycle_stage            VARCHAR,
+    mainline_rank              INTEGER,
+    is_mainline                BOOLEAN,
+    diffusion_state            VARCHAR,
+    sector_breadth             DOUBLE,
+    sector_ret_20d             DOUBLE,
+    sector_ret_60d             DOUBLE,
+    sector_excess_20d          DOUBLE,
+    sector_excess_60d          DOUBLE,
+    price_vs_ma20              DOUBLE,
+    price_vs_ma60              DOUBLE,
+    limit_up_count             INTEGER,
+    n_stocks                   INTEGER,
+    top3_turnover_share        DOUBLE,
+    pit_member_confidence      VARCHAR,
+    source_engines             VARCHAR,
+    pit_cutoff_date            DATE NOT NULL,
+    built_at                   TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (snapshot_date, theme_name)
+);
+CREATE INDEX IF NOT EXISTS idx_mmp_theme_date ON mart_market_perception_theme_daily(snapshot_date);
 CREATE INDEX IF NOT EXISTS idx_pipeline_manifest_started ON mart_pipeline_run_manifest(started_at DESC);
 CREATE INDEX IF NOT EXISTS idx_pipeline_manifest_name_status ON mart_pipeline_run_manifest(pipeline_name, status);
 CREATE INDEX IF NOT EXISTS idx_source_watermark_domain ON mart_data_source_watermark(data_domain, source_tier);

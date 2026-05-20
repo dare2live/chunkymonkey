@@ -113,6 +113,48 @@ emotion_engine:
       value: 0.95
       evidence: "CLAUDE.md Rule 5 leakage guard: stop on abnormal emotion_score > +0.95 or < -0.95."
 
+theme_lifecycle_engine:
+  source:
+    theme_level:
+      value: "tdx_l1_name"
+      evidence: "P3 MVP uses TDX L1 industry themes from mart_stock_industry_pit observed snapshots. This avoids using latest-only block membership for historical dates."
+    required_member_confidence:
+      value: "observed_snapshot"
+      evidence: "P3 PIT rule: only observed mart_stock_industry_pit intervals are eligible; current_label_fallback is excluded from historical theme lifecycle backfill."
+
+  scoring:
+    weights:
+      ret_20d_rank:
+        value: 0.25
+        evidence: "unknown: P3 MVP context-only cross-sectional rank weight; not used by ranker."
+      excess_20d_rank:
+        value: 0.25
+        evidence: "unknown: P3 MVP context-only cross-sectional rank weight; not used by ranker."
+      excess_60d_rank:
+        value: 0.20
+        evidence: "unknown: P3 MVP context-only cross-sectional rank weight; not used by ranker."
+      breadth_rank:
+        value: 0.20
+        evidence: "unknown: P3 MVP context-only cross-sectional rank weight; not used by ranker."
+      price_vs_ma20_rank:
+        value: 0.10
+        evidence: "unknown: P3 MVP context-only cross-sectional rank weight; not used by ranker."
+    top_quantile:
+      value: 0.75
+      evidence: "Cross-sectional quantile bucket for mainline candidate; percentile-based, not an absolute return threshold."
+    extreme_quantile:
+      value: 0.90
+      evidence: "Cross-sectional quantile bucket for climax candidate; percentile-based, not an absolute return threshold."
+    bottom_quantile:
+      value: 0.25
+      evidence: "Cross-sectional quantile bucket for retreat candidate; percentile-based, not an absolute return threshold."
+    min_stocks:
+      value: 20
+      evidence: "Operational floor to avoid tiny TDX L1 groups dominating lifecycle labels; context-only."
+    guard_abs_max:
+      value: 0.95
+      evidence: "CLAUDE.md Rule 5 leakage guard style: context scores should not hit abnormal absolute extremes. Theme score is rank-based then scaled to [-0.9,0.9]."
+
 sensitivity_audit:
   representative_stocks:
     value:
