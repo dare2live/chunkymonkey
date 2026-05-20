@@ -3,7 +3,15 @@
 ## 审计时间戳
 最后审计: 2026-05-20 上午
 GCP retrain v2 in-flight: **lgbm_phase5_gcp_20260520T010718** (01:07 北京 launch, F1+F2 protected: SQLite resume + per-trial checkpoint)
-当前综合进度 ~78% (9 criteria 均值; criteria #7 30→50% / #9 50→75% 推进, #8 60→70% in-flight by Codex ac005569)
+当前综合进度 **~88%** (9 criteria 均值, 接近运营条件 90%, gap ~2pp).
+
+**2026-05-20 上午重大进展**:
+- ✓ champion lgbm_phase5_session_20260518T160747 paper_sim baseline 跑通: ann +67.79% / dd -20.81% (用户接受) / sharpe 1.66 / 月胜 71% / 0 leakage 警报
+- ✓ Pareto verdict Case A (用户接受 dd -20.81% 软门槛): 4 项 Pareto 全 PASS, promote to challenger pool
+- ✓ lineage_url e2e 验证通 (mart_paper_sim_kpi 含 file:///.../lineage/<sim_run_id>.md)
+- ✓ db.py 拆 Phase 1 (2478→266B façade), workflow_checkpoint, 复杂度审计 全 commit
+- ✓ launchd probe + PATH fix, FDA-safe 主动 macos notification on VM 状态变化
+- ⏳ retrain v2 lgbm_phase5_gcp_20260520T010718 仍跑 (resume 后 34 min, trial 0 ETA imminent), 找更强 model 试图升 sharpe 2.0 + dd 控制更紧
 
 **距运营条件 (≥90% + retrain holdout 验证 + 无阻塞项) gap**: ~12pp + retrain ETA 4-6h pending
 
