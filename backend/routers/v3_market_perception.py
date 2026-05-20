@@ -410,7 +410,7 @@ def _serialize_stock_context_row(row) -> dict:
         "under_reaction_score": _finite_float(row[10]),
         "fund_anomaly_score": _finite_float(row[11]),
         "leader_follow_score": _finite_float(row[12]),
-        "leader_stock_code": row[13],
+        "leader_stock_code": _clean_text(row[13]),
         "chain_diffusion_score": _finite_float(row[14]),
         "style_rotation_score": _finite_float(row[15]),
         "style_bias": row[16],
@@ -422,6 +422,15 @@ def _serialize_stock_context_row(row) -> dict:
         "source_engines": row[22],
         "built_at": str(row[23]) if row[23] is not None else None,
     }
+
+
+def _clean_text(value):
+    if value is None:
+        return None
+    text = str(value).strip()
+    if not text or text.lower() in {"nan", "none", "null"}:
+        return None
+    return text
 
 
 STOCK_CONTEXT_SELECT = """

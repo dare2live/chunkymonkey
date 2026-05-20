@@ -382,7 +382,7 @@ function StockContextTable({ rows }) {
             <td style={{padding:'8px 4px',fontFamily:'var(--f-mono)',fontWeight:700,color:'var(--ink-0)'}}>{r.stock_code}</td>
             <td style={{padding:'8px 4px'}}><UI.Pill tone={contextTone(r.context_state)} size="xs">{r.context_state || '—'}</UI.Pill></td>
             <td style={{padding:'8px 4px',color:'var(--ink-2)'}}>{r.theme_name || '—'} · {r.lifecycle_stage || '—'}</td>
-            <td style={{padding:'8px 4px',fontFamily:'var(--f-mono)'}}>{r.leader_stock_code || '—'}</td>
+            <td style={{padding:'8px 4px',fontFamily:'var(--f-mono)'}}>{fmtText(r.leader_stock_code)}</td>
             <td style={{padding:'8px 4px',textAlign:'right',fontFamily:'var(--f-mono)',fontWeight:700,color:(r.context_score||0)>=0?'#2f8a55':'#c4382e'}}>{fmtNum(r.context_score, 3)}</td>
             <td style={{padding:'8px 4px',textAlign:'right',fontFamily:'var(--f-mono)'}}>{fmtNum(r.under_reaction_score, 2)}</td>
             <td style={{padding:'8px 4px',textAlign:'right',fontFamily:'var(--f-mono)'}}>{fmtNum(r.theme_score, 2)}</td>
@@ -475,6 +475,12 @@ function fmtDateTime(v) {
 
 function fmtNum(v, digits) {
   return v == null || Number.isNaN(Number(v)) ? '—' : Number(v).toFixed(digits);
+}
+
+function fmtText(v) {
+  if (v == null) return '—';
+  const text = String(v).trim();
+  return !text || ['nan', 'none', 'null'].includes(text.toLowerCase()) ? '—' : text;
 }
 
 function parseUnknownMetrics(v) {

@@ -36,6 +36,8 @@ def _clean(value):
         return None
     if isinstance(value, float) and not math.isfinite(value):
         return None
+    if isinstance(value, str) and value.strip().lower() in {"nan", "none", "null"}:
+        return None
     return value
 
 
@@ -57,7 +59,7 @@ def main() -> int:
                     _clean(rec.get("market_regime_score")), _clean(rec.get("emotion_score")), _clean(rec.get("emotion_state")),
                     rec.get("theme_name"), _clean(rec.get("theme_score")), rec.get("lifecycle_stage"),
                     _clean(rec.get("under_reaction_score")), _clean(rec.get("fund_anomaly_score")),
-                    _clean(rec.get("leader_follow_score")), rec.get("leader_stock_code"),
+                    _clean(rec.get("leader_follow_score")), _clean(rec.get("leader_stock_code")),
                     _clean(rec.get("chain_diffusion_score")), _clean(rec.get("style_rotation_score")),
                     rec.get("style_bias"), _clean(rec.get("crowding_risk_score")),
                     _clean(rec.get("overheat_reversal_risk")), rec["data_completeness_score"],
