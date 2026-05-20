@@ -42,6 +42,7 @@ Usage:
   cm resume             中断恢复 (bash cm_resume.sh)
   cm status             综合状态 (session_snapshot)
   cm cache              paper_sim cache hit-rate + lineage chain (criteria #10)
+  cm impact [<id>]      param impact curve (Δ KPI vs param_diff, default variant=champion)
   cm help               本帮助
 
 Resilience:
@@ -184,6 +185,15 @@ cm_install() {
     bash "$REPO_ROOT/scripts/install_resilience.sh" "$@"
 }
 
+cm_impact() {
+    # criteria #10 P1: param impact curve
+    if [ -z "$1" ]; then
+        PYTHONPATH=backend python "$REPO_ROOT/backend/scripts/param_impact_curve.py" --variant champion
+    else
+        PYTHONPATH=backend python "$REPO_ROOT/backend/scripts/param_impact_curve.py" --sim-run-id "$1"
+    fi
+}
+
 cm_cache() {
     # criteria #10 incremental mgmt: paper_sim cache + lineage stats
     PYTHONPATH=backend python -c "
@@ -259,6 +269,7 @@ case "$CMD" in
     resume)         cm_resume ;;
     status|st)      cm_status ;;
     cache|c)        cm_cache ;;
+    impact)         cm_impact "$@" ;;
     install|i)      cm_install "$@" ;;
     help|--help|-h|"") cm_help ;;
     *)              echo "[cm] unknown subcommand: $CMD"; cm_help; exit 1 ;;
