@@ -6,21 +6,19 @@ import json
 import logging
 import math
 from dataclasses import dataclass
+from functools import lru_cache
 from datetime import date, datetime
 from pathlib import Path
 from typing import Any
 
 import pandas as pd
+import yaml
 
 logger = logging.getLogger("cm-api.market-perception.regime")
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
 MARKET_DB = REPO_ROOT / "data" / "market.duckdb"
-HS300_CODE = "000300"  # rule-compliance: ok evidence=PROJECT_INDEX §2.1 HS300 index code
-TRADING_DAYS_FOR_RET = 60
-TRADING_DAYS_FOR_VOL = 20
-TRADING_DAYS_FOR_BREADTH_P75 = 90
-TRADING_DAYS_LOOKBACK = 130
+CONFIG_PATH = REPO_ROOT / "backend" / "config" / "market_perception.yaml"
 
 
 @dataclass(frozen=True)
@@ -33,6 +31,29 @@ class RegimeInputs:
     limit_up_count: int
     lhb_event_count: int
     n_obs_days: int
+
+
+@dataclass(frozen=True)
+class RegimeConfig:
+    hs300_code: str
+    ret_days: int
+    vol_days: int
+    breadth_p75_days: int
+    query_days: int
+    trend_scale: float
+    vol_reference: float
+    breadth_floor: float
+    trend_weight: float
+    volatility_weight: float
+    breadth_weight: float
+    low_vol_max: float
+    normal_vol_max: float
+    high_vol_max: float
+    spread_ret_min: float
+    climax_ret_min: float
+    climax_vol_min: float
+    fade_ret_max: float
+    regime_score_abs_max: float
 
 
 def compute_regime_for_date(conn, snapshot_date: str | date | datetime) -> dict[str, Any]:
@@ -81,16 +102,17 @@ def compute_regime_for_range(conn, start: str | date, end: str | date) -> pd.Dat
 
 
 def _load_inputs(conn, day: date) -> RegimeInputs:
+    cfg = get_regime_config()
     hs300 = _load_hs300_history(conn, day)
-    if len(hs300) < TRADING_DAYS_FOR_RET + 1:
+    if len(hs300) < cfg.ret_days + 1:
         raise ValueError(f"HS300 history before {day} has only {len(hs300)} rows")
 
     hs300 = hs300.sort_values("date").reset_index(drop=True)
     close_now = float(hs300.iloc[-1]["close"])
-    close_60 = float(hs300.iloc[-(TRADING_DAYS_FOR_RET + 1)]["close"])
-    ret_60d = close_now / close_60 - 1.0
+    close_prev = float(hs300.iloc[-(cfg.ret_days + 1)]["close"])
+    ret_60d = close_now / close_prev - 1.0
     log_ret = (hs300["close"].astype(float) / hs300["close"].astype(float).shift(1)).map(math.log)
-    vol_20d = float(log_ret.tail(TRADING_DAYS_FOR_VOL).std(ddof=1) * math.sqrt(252))
+    vol_20d = float(log_ret.tail(cfg.vol_days).std(ddof=1) * math.sqrt(252))
 
     breadth = _load_breadth_history(conn, day)
     if breadth.empty:
@@ -99,7 +121,7 @@ def _load_inputs(conn, day: date) -> RegimeInputs:
     if today.empty:
         raise ValueError(f"breadth row missing for {day}")
     breadth_ratio = float(today.iloc[-1]["breadth_ratio"])
-    p75_window = breadth.tail(TRADING_DAYS_FOR_BREADTH_P75)
+    p75_window = breadth.tail(cfg.breadth_p75_days)
     breadth_p75 = float(p75_window["breadth_ratio"].quantile(0.75))
     limit_up_count = int(today.iloc[-1]["limit_up_count"])
     lhb_count = _load_lhb_count(conn, day)
@@ -116,6 +138,7 @@ def _load_inputs(conn, day: date) -> RegimeInputs:
 
 
 def _load_hs300_history(conn, day: date) -> pd.DataFrame:
+    cfg = get_regime_config()
     if _table_exists(conn, "mart_index_daily"):
         cols = _columns(conn, "mart_index_daily")
         date_col = _first_existing(cols, ["trade_date", "date", "snapshot_date"])
@@ -125,7 +148,7 @@ def _load_hs300_history(conn, day: date) -> pd.DataFrame:
         params: list[Any] = [day.isoformat()]
         if code_col:
             where += f" AND ({code_col} = ? OR lower({code_col}) = 'hs300')"
-            params.append(HS300_CODE)
+            params.append(cfg.hs300_code)
         rows = _fetchall(
             conn,
             f"""
@@ -133,7 +156,7 @@ def _load_hs300_history(conn, day: date) -> pd.DataFrame:
               FROM mart_index_daily
              WHERE {where}
              ORDER BY CAST({date_col} AS DATE) DESC
-             LIMIT {TRADING_DAYS_LOOKBACK}
+             LIMIT {cfg.query_days}
             """,
             params,
         )
@@ -146,14 +169,15 @@ def _load_hs300_history(conn, day: date) -> pd.DataFrame:
              WHERE code = ? AND freq = 'daily' AND adjust = 'qfq'
                AND CAST(date AS DATE) <= ?
              ORDER BY CAST(date AS DATE) DESC
-             LIMIT {TRADING_DAYS_LOOKBACK}
+             LIMIT {cfg.query_days}
             """,
-            [HS300_CODE, day.isoformat()],
+            [cfg.hs300_code, day.isoformat()],
         )
     return pd.DataFrame(rows, columns=["date", "close"])
 
 
 def _load_breadth_history(conn, day: date) -> pd.DataFrame:
+    cfg = get_regime_config()
     if _table_exists(conn, "fact_stock_kline_daily"):
         cols = _columns(conn, "fact_stock_kline_daily")
         date_col = _first_existing(cols, ["trade_date", "date", "snapshot_date"])
@@ -171,7 +195,7 @@ def _load_breadth_history(conn, day: date) -> pd.DataFrame:
                      GROUP BY 1
               )
              ORDER BY CAST(date AS DATE) DESC
-             LIMIT {TRADING_DAYS_LOOKBACK}
+             LIMIT {cfg.query_days}
             """,
             [day.isoformat()],
         )
@@ -186,7 +210,7 @@ def _load_breadth_history(conn, day: date) -> pd.DataFrame:
               FROM dim_trading_calendar
              WHERE is_trading = 1 AND CAST(trade_date AS DATE) <= ?
              ORDER BY CAST(trade_date AS DATE) DESC
-             LIMIT {TRADING_DAYS_LOOKBACK + 1}
+             LIMIT {cfg.query_days + 1}
         ),
         px AS (
             SELECT code, CAST(date AS VARCHAR) AS date, close,
@@ -232,19 +256,26 @@ def _load_lhb_count(conn, day: date) -> int:
 
 
 def _score_regime(inputs: RegimeInputs) -> float:
-    trend_score = _clip(inputs.hs300_ret_60d / 0.25, -1.0, 1.0)
-    vol_score = _clip((0.25 - inputs.hs300_vol_20d) / 0.25, -1.0, 1.0)
+    cfg = get_regime_config()
+    trend_score = _clip(inputs.hs300_ret_60d / cfg.trend_scale, -1.0, 1.0)
+    vol_score = _clip((cfg.vol_reference - inputs.hs300_vol_20d) / cfg.vol_reference, -1.0, 1.0)
     if inputs.breadth_ratio >= inputs.breadth_p75_90d:
         denom = max(1.0 - inputs.breadth_p75_90d, 1e-6)
         breadth_score = _clip((inputs.breadth_ratio - inputs.breadth_p75_90d) / denom, 0.0, 1.0)
     else:
-        denom = max(inputs.breadth_p75_90d - 0.30, 1e-6)
+        denom = max(inputs.breadth_p75_90d - cfg.breadth_floor, 1e-6)
         breadth_score = -_clip((inputs.breadth_p75_90d - inputs.breadth_ratio) / denom, 0.0, 1.0)
-    return round(_clip(0.50 * trend_score + 0.25 * vol_score + 0.25 * breadth_score, -1.0, 1.0), 6)
+    score = (
+        cfg.trend_weight * trend_score
+        + cfg.volatility_weight * vol_score
+        + cfg.breadth_weight * breadth_score
+    )
+    return round(_clip(score, -1.0, 1.0), 6)
 
 
 def _breadth_state(breadth_ratio: float, breadth_p75_90d: float) -> str:
-    if breadth_ratio < 0.30:
+    cfg = get_regime_config()
+    if breadth_ratio < cfg.breadth_floor:
         return "杀跌"
     if breadth_ratio >= breadth_p75_90d:
         return "健康扩散"
@@ -252,28 +283,31 @@ def _breadth_state(breadth_ratio: float, breadth_p75_90d: float) -> str:
 
 
 def _volatility_state(vol: float) -> str:
-    if vol < 0.15:
+    cfg = get_regime_config()
+    if vol < cfg.low_vol_max:
         return "low"
-    if vol < 0.25:
+    if vol < cfg.normal_vol_max:
         return "normal"
-    if vol < 0.40:
+    if vol < cfg.high_vol_max:
         return "high"
     return "extreme"
 
 
 def _sentiment_phase(inputs: RegimeInputs) -> str:
-    if inputs.hs300_ret_60d > 0.12 and inputs.breadth_ratio >= inputs.breadth_p75_90d:
+    cfg = get_regime_config()
+    if inputs.hs300_ret_60d > cfg.spread_ret_min and inputs.breadth_ratio >= inputs.breadth_p75_90d:
         return "spread"
-    if inputs.hs300_ret_60d > 0.18 and inputs.hs300_vol_20d > 0.30:
+    if inputs.hs300_ret_60d > cfg.climax_ret_min and inputs.hs300_vol_20d > cfg.climax_vol_min:
         return "climax"
-    if inputs.hs300_ret_60d < -0.08 or inputs.breadth_ratio < 0.30:
+    if inputs.hs300_ret_60d < cfg.fade_ret_max or inputs.breadth_ratio < cfg.breadth_floor:
         return "fade"
     return "init"
 
 
 def _guard_regime_payload(payload: dict[str, Any]) -> None:
+    cfg = get_regime_config()
     score = payload["regime_score"]
-    if score > 0.95 or score < -0.95:
+    if abs(score) > cfg.regime_score_abs_max:
         raise ValueError(f"regime_score leakage guard triggered: {score}")
 
 
@@ -383,3 +417,40 @@ def _clip(value: float, lo: float, hi: float) -> float:
 
 def _sql_path(path: Path) -> str:
     return str(path).replace("'", "''")
+
+
+@lru_cache(maxsize=1)
+def get_regime_config() -> RegimeConfig:
+    """Load P1 MarketRegimeEngine config from yaml."""
+    raw = yaml.safe_load(CONFIG_PATH.read_text(encoding="utf-8")) or {}
+    section = raw.get("regime_engine") or {}
+
+    def value(path: list[str]) -> Any:
+        node: Any = section
+        for key in path:
+            node = node[key]
+        if isinstance(node, dict) and "value" in node:
+            return node["value"]
+        return node
+
+    return RegimeConfig(
+        hs300_code=str(value(["hs300_code"])),
+        ret_days=int(value(["lookback", "ret_days"])),
+        vol_days=int(value(["lookback", "vol_days"])),
+        breadth_p75_days=int(value(["lookback", "breadth_p75_days"])),
+        query_days=int(value(["lookback", "query_days"])),
+        trend_scale=float(value(["score", "trend_scale"])),
+        vol_reference=float(value(["score", "vol_reference"])),
+        breadth_floor=float(value(["score", "breadth_floor"])),
+        trend_weight=float(value(["score", "weights", "trend"])),
+        volatility_weight=float(value(["score", "weights", "volatility"])),
+        breadth_weight=float(value(["score", "weights", "breadth"])),
+        low_vol_max=float(value(["volatility_buckets", "low_max"])),
+        normal_vol_max=float(value(["volatility_buckets", "normal_max"])),
+        high_vol_max=float(value(["volatility_buckets", "high_max"])),
+        spread_ret_min=float(value(["sentiment", "spread_ret_min"])),
+        climax_ret_min=float(value(["sentiment", "climax_ret_min"])),
+        climax_vol_min=float(value(["sentiment", "climax_vol_min"])),
+        fade_ret_max=float(value(["sentiment", "fade_ret_max"])),
+        regime_score_abs_max=float(value(["guards", "regime_score_abs_max"])),
+    )

@@ -2,11 +2,12 @@
 from __future__ import annotations
 
 import logging
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 
 from fastapi import APIRouter
 
 from services.db import get_conn
+from services.market_perception.regime_engine import get_regime_config
 
 logger = logging.getLogger("cm-api.v3-market-perception")
 router = APIRouter()
@@ -25,6 +26,121 @@ def _mart_row_count(conn) -> int:
         return 0
     row = conn.execute("SELECT COUNT(*) AS n FROM mart_market_perception_daily").fetchone()
     return int(row[0] if row else 0)
+
+
+def _market_perception_health(conn) -> dict:
+    if not _table_exists(conn, "mart_market_perception_daily"):
+        return {
+            "mart_table_exists": False,
+            "mart_rows": 0,
+            "latest_snapshot_date": None,
+            "latest_built_at": None,
+            "latest_snapshot_lag_trading_days": None,
+            "score_guard_status": "unknown",
+            "score_guard_violations": None,
+            "latest_audit": None,
+        }
+
+    row = conn.execute(
+        """
+        SELECT COUNT(*) AS n,
+               CAST(MAX(snapshot_date) AS VARCHAR) AS latest_snapshot_date,
+               CAST(MAX(built_at) AS VARCHAR) AS latest_built_at
+          FROM mart_market_perception_daily
+        """,
+    ).fetchone()
+    mart_rows = int(row[0] if row else 0)
+    latest_snapshot = row[1] if row and row[1] is not None else None
+    latest_built_at = row[2] if row and row[2] is not None else None
+    guard_abs_max = get_regime_config().regime_score_abs_max
+    guard_row = conn.execute(
+        """
+        SELECT COUNT(*) AS n
+          FROM mart_market_perception_daily
+         WHERE regime_score IS NOT NULL
+           AND ABS(regime_score) > ?
+        """,
+        [guard_abs_max],
+    ).fetchone()
+    guard_violations = int(guard_row[0] if guard_row else 0)
+    latest_lag = _latest_snapshot_lag_trading_days(conn, latest_snapshot)
+    latest_audit = _latest_market_perception_audit(conn)
+    return {
+        "mart_table_exists": True,
+        "mart_rows": mart_rows,
+        "latest_snapshot_date": latest_snapshot,
+        "latest_built_at": latest_built_at,
+        "latest_snapshot_lag_trading_days": latest_lag,
+        "score_guard_status": "ok" if guard_violations == 0 else "alert",
+        "score_guard_violations": guard_violations,
+        "score_guard_abs_max": guard_abs_max,
+        "latest_audit": latest_audit,
+    }
+
+
+def _latest_snapshot_lag_trading_days(conn, latest_snapshot: str | None) -> int | None:
+    if not latest_snapshot:
+        return None
+    latest_expected = conn.execute(
+        """
+        SELECT CAST(MAX(trade_date) AS VARCHAR) AS trade_date
+          FROM dim_trading_calendar
+         WHERE is_trading = 1
+           AND CAST(trade_date AS DATE) < ?
+        """,
+        [date.today().isoformat()],
+    ).fetchone()
+    if not latest_expected or latest_expected[0] is None:
+        return None
+    row = conn.execute(
+        """
+        SELECT COUNT(*) AS n
+          FROM dim_trading_calendar
+         WHERE is_trading = 1
+           AND CAST(trade_date AS DATE) > ?
+           AND CAST(trade_date AS DATE) <= ?
+        """,
+        [latest_snapshot, latest_expected[0]],
+    ).fetchone()
+    return int(row[0] if row else 0)
+
+
+def _latest_market_perception_audit(conn) -> dict | None:
+    if not _table_exists(conn, "mart_market_perception_audit_log"):
+        return None
+    row = conn.execute(
+        """
+        SELECT run_id, CAST(started_at AS VARCHAR) AS started_at,
+               CAST(ended_at AS VARCHAR) AS ended_at, status,
+               CAST(start_date AS VARCHAR) AS start_date,
+               CAST(end_date AS VARCHAR) AS end_date,
+               trading_days_requested, rows_written, missing_days,
+               score_min, score_max, guard_status, input_row_counts_json, notes,
+               CAST(built_at AS VARCHAR) AS built_at
+          FROM mart_market_perception_audit_log
+         ORDER BY started_at DESC
+         LIMIT 1
+        """,
+    ).fetchone()
+    if not row:
+        return None
+    return {
+        "run_id": row[0],
+        "started_at": row[1],
+        "ended_at": row[2],
+        "status": row[3],
+        "start_date": row[4],
+        "end_date": row[5],
+        "trading_days_requested": int(row[6]) if row[6] is not None else None,
+        "rows_written": int(row[7]) if row[7] is not None else None,
+        "missing_days": int(row[8]) if row[8] is not None else None,
+        "score_min": float(row[9]) if row[9] is not None else None,
+        "score_max": float(row[10]) if row[10] is not None else None,
+        "guard_status": row[11],
+        "input_row_counts_json": row[12],
+        "notes": row[13],
+        "built_at": row[14],
+    }
 
 
 def _serialize_row(row) -> dict:
@@ -131,14 +247,12 @@ async def get_health():
         "StockContextEngine": "spec_only",
     }
     with get_conn() as conn:
-        row_count = _mart_row_count(conn)
-        has_mart = row_count > 0
-    if has_mart:
+        health = _market_perception_health(conn)
+    if health["mart_rows"] > 0:
         engines["MarketRegimeEngine"] = "live"
     return {
         "ok": True,
         "engines": engines,
-        "mart_table_exists": has_mart,
-        "mart_rows": row_count,
+        **health,
         "handoff_doc": "docs/market_perception_codex_handoff.md",
     }

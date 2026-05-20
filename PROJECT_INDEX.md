@@ -988,6 +988,7 @@ SELECT * FROM mart_data_source_watermark;
 - 新增 `市场感知开发计划.md`: 按 handoff / framework / CLAUDE / CodeGraph / complexity 审计制定 P1.1-P7 滚动计划。
 - 关键现实差异写入计划: 当前主库没有 `mart_index_daily` / `fact_stock_kline_daily`, P1 实际兼容读取 `market.v_price_kline_qfq`; P2 前先做 P1.1 range 批量化 + yaml 配置化 + health freshness。
 - 按最新市场理解思路重排路线: 将“产业链扩散”上抽象为市场状态理解层, P2 改为 MarketEmotionCycle / 涨停生态, 后续依次 ThemeLifecycle、FundFlow+UnderReaction、LeaderFollower+ChainDiffusion、Style/Crowding、StockContext。
+- P1.1 已推进配置化和可观测性: 新增 `backend/config/market_perception.yaml`, `mart_market_perception_audit_log`, `/health` latest snapshot lag / built_at / score guard / latest audit。smoke `2026-05-01 -> 2026-05-19` 写入 10/10 rows, score [-0.024959, 0.210000], guard ok; 全量 `2024-11-01 -> 2026-05-19` 在逐日 range 实现下超过 4 分钟未结束, 下一步必须先做 range 批量化。
 - 审计证据: CodeGraph sync 后 819 files / 12,632 nodes / 43,270 edges; complexity 定向扫描仅 `regime_engine.py:339` membership-in-loop 误报, 人工识别真正风险是 range 逐日重复窗口查询。
 
 ### 2026-05-20 db.py Phase 1 facade split

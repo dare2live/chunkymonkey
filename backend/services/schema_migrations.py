@@ -73,6 +73,24 @@ ALTER TABLE mart_market_perception_daily ADD COLUMN IF NOT EXISTS breadth_p75_90
 ALTER TABLE mart_market_perception_daily ADD COLUMN IF NOT EXISTS limit_up_count INTEGER;
 ALTER TABLE mart_market_perception_daily ADD COLUMN IF NOT EXISTS lhb_event_count INTEGER;
 CREATE INDEX IF NOT EXISTS idx_mmp_date ON mart_market_perception_daily(snapshot_date);
+CREATE TABLE IF NOT EXISTS mart_market_perception_audit_log (
+    run_id                 TEXT PRIMARY KEY,
+    started_at             TIMESTAMP NOT NULL,
+    ended_at               TIMESTAMP,
+    status                 VARCHAR NOT NULL,
+    start_date             DATE NOT NULL,
+    end_date               DATE NOT NULL,
+    trading_days_requested INTEGER,
+    rows_written           INTEGER,
+    missing_days           INTEGER,
+    score_min              DOUBLE,
+    score_max              DOUBLE,
+    guard_status           VARCHAR,
+    input_row_counts_json  VARCHAR,
+    notes                  VARCHAR,
+    built_at               TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_mmp_audit_started ON mart_market_perception_audit_log(started_at DESC);
 CREATE INDEX IF NOT EXISTS idx_pipeline_manifest_started ON mart_pipeline_run_manifest(started_at DESC);
 CREATE INDEX IF NOT EXISTS idx_pipeline_manifest_name_status ON mart_pipeline_run_manifest(pipeline_name, status);
 CREATE INDEX IF NOT EXISTS idx_source_watermark_domain ON mart_data_source_watermark(data_domain, source_tier);

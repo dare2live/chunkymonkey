@@ -1,0 +1,73 @@
+# Market Perception P1.1 configuration.
+# Every threshold keeps an evidence note. Values marked unknown are operational
+# defaults carried from the P1 MVP and must be calibrated before model weighting.
+
+regime_engine:
+  hs300_code:
+    value: "000300"
+    evidence: "PROJECT_INDEX.md Market Perception P1: HS300 index code used by P1 backfill."
+
+  lookback:
+    ret_days:
+      value: 60
+      evidence: "P1 MVP contract: 60 trading-day HS300 return."
+    vol_days:
+      value: 20
+      evidence: "P1 MVP contract: 20 trading-day realized volatility."
+    breadth_p75_days:
+      value: 90
+      evidence: "docs/market_perception_codex_handoff.md: breadth healthy threshold uses historical rolling p75, not hardcoded 0.6."
+    query_days:
+      value: 130
+      evidence: "Operational buffer: max(60, 20, 90) plus previous-close breadth requirement."
+
+  score:
+    trend_scale:
+      value: 0.25
+      evidence: "unknown: P1 MVP operational scale; requires OOS sweep before any trading weight."
+    vol_reference:
+      value: 0.25
+      evidence: "unknown: P1 MVP operational scale; requires OOS sweep before any trading weight."
+    breadth_floor:
+      value: 0.30
+      evidence: "unknown: P1 MVP kill-breadth floor; must be calibrated with history before trading use."
+    weights:
+      trend:
+        value: 0.50
+        evidence: "unknown: P1 MVP context-only weight; not used by ranker."
+      volatility:
+        value: 0.25
+        evidence: "unknown: P1 MVP context-only weight; not used by ranker."
+      breadth:
+        value: 0.25
+        evidence: "unknown: P1 MVP context-only weight; not used by ranker."
+
+  volatility_buckets:
+    low_max:
+      value: 0.15
+      evidence: "unknown: P1 MVP display bucket; requires historical quantile calibration."
+    normal_max:
+      value: 0.25
+      evidence: "unknown: P1 MVP display bucket; requires historical quantile calibration."
+    high_max:
+      value: 0.40
+      evidence: "unknown: P1 MVP display bucket; requires historical quantile calibration."
+
+  sentiment:
+    spread_ret_min:
+      value: 0.12
+      evidence: "unknown: P1 MVP phase heuristic; display-only."
+    climax_ret_min:
+      value: 0.18
+      evidence: "unknown: P1 MVP phase heuristic; display-only."
+    climax_vol_min:
+      value: 0.30
+      evidence: "unknown: P1 MVP phase heuristic; display-only."
+    fade_ret_max:
+      value: -0.08
+      evidence: "unknown: P1 MVP phase heuristic; display-only."
+
+  guards:
+    regime_score_abs_max:
+      value: 0.95
+      evidence: "CLAUDE.md Rule 5 leakage guard: stop on abnormal regime_score > +0.95 or < -0.95."

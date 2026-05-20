@@ -5,7 +5,11 @@ from datetime import date, timedelta
 import duckdb
 import pytest
 
-from services.market_perception.regime_engine import compute_regime_for_date
+from services.market_perception.regime_engine import (
+    compute_regime_for_date,
+    compute_regime_for_range,
+    get_regime_config,
+)
 
 
 def _make_conn(snapshot: date, *, trend: float, breadth_ratio: float, prior_breadth: float):
@@ -20,6 +24,8 @@ def _make_conn(snapshot: date, *, trend: float, breadth_ratio: float, prior_brea
     conn.executemany("INSERT INTO dim_trading_calendar VALUES (?, 1)", [(d.isoformat(),) for d in days])
 
     start_close = 100.0
+    for d in days[:-61]:
+        conn.execute("INSERT INTO mart_index_daily VALUES (?, '000300', ?)", [d.isoformat(), start_close])
     for i, d in enumerate(days[-61:]):
         close = start_close * (1.0 + trend * i / 60.0)
         conn.execute("INSERT INTO mart_index_daily VALUES (?, '000300', ?)", [d.isoformat(), close])
@@ -72,3 +78,25 @@ def test_no_lookahead():
     row = compute_regime_for_date(conn, snapshot)
 
     assert row["lhb_event_count"] == 1
+
+
+def test_regime_config_loaded_from_yaml():
+    cfg = get_regime_config()
+
+    assert cfg.hs300_code == "000300"
+    assert cfg.ret_days == 60
+    assert cfg.vol_days == 20
+    assert cfg.breadth_p75_days == 90
+    assert cfg.regime_score_abs_max == 0.95
+
+
+def test_range_matches_per_date_results():
+    snapshot = date(2026, 1, 15)
+    conn = _make_conn(snapshot, trend=0.12, breadth_ratio=0.58, prior_breadth=0.50)
+
+    frame = compute_regime_for_range(conn, snapshot - timedelta(days=2), snapshot)
+    expected = [compute_regime_for_date(conn, snapshot - timedelta(days=i)) for i in [2, 1, 0]]
+
+    assert frame["snapshot_date"].tolist() == [row["snapshot_date"] for row in expected]
+    assert frame["regime_score"].tolist() == [row["regime_score"] for row in expected]
+    assert frame["breadth_state"].tolist() == [row["breadth_state"] for row in expected]
