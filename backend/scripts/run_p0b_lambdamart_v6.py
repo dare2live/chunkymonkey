@@ -448,18 +448,33 @@ def run_optuna(
     turnover_limit: float,
     turnover_penalty_weight: float,
     top_k: int,
+    study_storage: str | None = None,
+    study_name: str | None = None,
+    checkpoint_path: str | None = None,
 ) -> ModelRunResult:
     if model_name not in {"lambdamart", "regressor"}:
         raise ValueError(f"unknown model_name={model_name}")
 
     sampler = optuna.samplers.TPESampler(seed=seed)
     pruner = optuna.pruners.MedianPruner(n_startup_trials=10, n_warmup_steps=2, n_min_trials=2)
+    # F1 (Codex bocq8b60j 2026-05-20): Optuna SQLite persistent storage 防 spot preempt 浪费.
+    # interrupted 后 重启同名 study 可 resume (load_if_exists=True), 已 COMPLETE trials 不重算.
+    # rule-compliance: ok evidence=codex-bocq8b60j-gcp-reliability-f1-sqlite-storage
+    resolved_name = study_name or (
+        f"p0b_{model_name}_v6_{datetime.now(UTC).strftime('%Y%m%dT%H%M%S')}_{uuid.uuid4().hex[:6]}"
+    )
     study = optuna.create_study(
         direction="maximize",
         sampler=sampler,
         pruner=pruner,
-        study_name=f"p0b_{model_name}_v6_{datetime.now(UTC).strftime('%Y%m%dT%H%M%S')}_{uuid.uuid4().hex[:6]}",
+        study_name=resolved_name,
+        storage=study_storage,
+        load_if_exists=study_storage is not None,
     )
+    if study_storage:
+        log.info("optuna study storage=%s name=%s load_if_exists=True", study_storage, resolved_name)
+    else:
+        log.warning("optuna in-memory storage (interrupted = 全丢, F1 fix 建议 --study-storage sqlite:///path)")
 
     def objective(trial: optuna.Trial) -> float:
         params = _suggest_common_params(trial, seed=seed, n_estimators=n_estimators)
@@ -545,7 +560,40 @@ def run_optuna(
     if n_jobs > 1:
         os.environ.setdefault("OMP_NUM_THREADS", "2")
         os.environ.setdefault("LIGHTGBM_NUM_THREADS", "2")
-    study.optimize(objective, n_trials=n_trials, gc_after_trial=True, n_jobs=n_jobs)
+
+    # F2 (Codex bocq8b60j 2026-05-20): 每 COMPLETE trial 写 best_params checkpoint json.
+    # spot preempt 时 interrupted, best params 已落盘可救回. atomic write (tmp + replace).
+    # rule-compliance: ok evidence=codex-bocq8b60j-gcp-reliability-f2-checkpoint-best
+    _callbacks: list = []
+    if checkpoint_path:
+        from pathlib import Path
+        import json as _json
+        _ckpt = Path(checkpoint_path)
+        _ckpt.parent.mkdir(parents=True, exist_ok=True)
+
+        def _checkpoint_best(study_obj, frozen_trial) -> None:
+            if frozen_trial.state != optuna.trial.TrialState.COMPLETE:
+                return
+            try:
+                best_trial = study_obj.best_trial
+            except ValueError:
+                return  # no completed trial yet
+            payload = {
+                "best_trial_number": best_trial.number,
+                "best_value": best_trial.value,
+                "best_params": best_trial.params,
+                "best_user_attrs": {k: v for k, v in best_trial.user_attrs.items()},
+                "study_name": study_obj.study_name,
+                "updated_at": datetime.now(UTC).isoformat(timespec="seconds"),
+            }
+            tmp = _ckpt.with_suffix(".tmp")
+            tmp.write_text(_json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+            tmp.replace(_ckpt)
+
+        _callbacks.append(_checkpoint_best)
+        log.info("optuna checkpoint enabled: %s (每 COMPLETE trial atomic write best params)", _ckpt)
+
+    study.optimize(objective, n_trials=n_trials, gc_after_trial=True, n_jobs=n_jobs, callbacks=_callbacks or None)
     best = study.best_trial
     metrics = {
         "rank_ic": _finite(best.user_attrs.get("rank_ic"), float("nan")),

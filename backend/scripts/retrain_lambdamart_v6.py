@@ -334,6 +334,14 @@ def main() -> int:
     parser.add_argument("--top-k", type=int, default=5)
     parser.add_argument("--turnover-limit", type=float, default=3.0)
     parser.add_argument("--turnover-penalty-weight", type=float, default=0.02)
+    # F1+F2 (Codex bocq8b60j 2026-05-20): Optuna SQLite persistent storage + checkpoint
+    # 防 spot preempt 浪费 + interrupted 时 best params 可救回
+    parser.add_argument("--study-storage", default=None,
+                        help="Optuna storage URL e.g. sqlite:///data/reports/optuna/<model_id>.db (F1 resume on preempt)")
+    parser.add_argument("--study-name", default=None,
+                        help="Optuna study name, default = model_id (F1 resume)")
+    parser.add_argument("--checkpoint-path", default=None,
+                        help="JSON checkpoint path for best params (F2, atomic per-trial write)")
     args = parser.parse_args()
 
     model_id = args.model_id or make_model_id(args.model_date)
@@ -366,6 +374,13 @@ def main() -> int:
         log.error("No walk-forward windows produced")
         return 1
 
+    # F1+F2 defaults: 若用户没显式给, 用 model_id 作 study_name + checkpoint path
+    study_storage = args.study_storage
+    study_name = args.study_name or model_id
+    checkpoint_path = args.checkpoint_path
+    if study_storage and not checkpoint_path:
+        from pathlib import Path
+        checkpoint_path = str(Path("data/reports/optuna") / f"{model_id}.best.json")
     result = run_optuna(
         model_name="lambdamart",
         panel=panel,
@@ -377,6 +392,9 @@ def main() -> int:
         turnover_limit=args.turnover_limit,
         turnover_penalty_weight=args.turnover_penalty_weight,
         top_k=args.top_k,
+        study_storage=study_storage,
+        study_name=study_name,
+        checkpoint_path=checkpoint_path,
     )
     _log_result_metrics(model_id, result)
 

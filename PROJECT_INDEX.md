@@ -793,6 +793,18 @@ SELECT * FROM mart_data_source_watermark;
 - Benchmark: `mart_p0b_oos_predictions` Q1 source date 0.001861s / Q2 `trade_date_dt` 0.000901s, row count 628,438 / 628,438.
 - Spec: `docs/perf_p1_trade_date_migration_spec.md`; opt-in perf test: `backend/tests/scripts/test_perf_p1_trade_date.py`.
 
+### 2026-05-20 凌晨 GCP retrain reliability F1+F2 实施 (Codex bocq8b60j root cause)
+
+5-19 22:30 → 5-20 02:02 retrain VM stop 跑 3.5h (60% likelihood spot preempt, serial port creds error 拿不到 100% 证据). 11 trials 完成 + best trial 9 score 0.443 RankIC 0.0148 (无 leakage). best params + predictions 全丢 (Optuna in-memory).
+
+F1 [P0] Optuna SQLite storage: `run_p0b_lambdamart_v6.py:454-475` 加 study_storage/study_name/load_if_exists. CLI `--study-storage sqlite:///path --study-name <model_id>`. interrupted 后重启同命令 resume.
+
+F2 [P0] 每 COMPLETE trial atomic checkpoint: `run_p0b_lambdamart_v6.py:560-590` `_checkpoint_best` callback. 写 `<model_id>.best.json` tmp+replace atomic. spot preempt 时 best params 落盘可救.
+
+CLI: `retrain_lambdamart_v6.py:336-345 + 383-405` 加 3 args, 默认 in-memory backward compat. 12/12 baseline tests PASS.
+
+Codex root cause doc: `docs/gcp_reliability_root_cause_fix.md` 含 5 fix + 3 resume option. Option A 推荐: trial 9 best params 直接 final materialize predictions (30-60min, $0.40).
+
 ### 2026-05-19 深夜 perf: retrain stall Fix 1 实施 (15min → 30s, 30-60× 加速)
 
 `backend/scripts/run_p0b_lambdamart_v6.py:89-101 + 182-218` 实施 Claude general aacdbf94 spec:
