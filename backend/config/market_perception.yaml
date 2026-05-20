@@ -3,6 +3,14 @@
 # defaults carried from the P1 MVP and must be calibrated before model weighting.
 
 regime_engine:
+  data_sources:
+    priority:
+      value:
+        - "tdxhub"
+        - "miaoxiang_f10"
+        - "akshare_supplement"
+      evidence: "User directive 2026-05-20: data source priority is tdxhub and xiaoxiang/miaoxiang under /stock; akshare is supplementary only. P1 K-line inputs use tdxhub-backed market.duckdb; Miaoxiang F10 is not a K-line source."
+
   hs300_code:
     value: "000300"
     evidence: "PROJECT_INDEX.md Market Perception P1: HS300 index code used by P1 backfill."

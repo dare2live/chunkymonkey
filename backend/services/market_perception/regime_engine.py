@@ -113,6 +113,16 @@ def compute_regime_for_range(conn, start: str | date, end: str | date) -> pd.Dat
     return pd.DataFrame(rows)
 
 
+def get_regime_source_max_date(conn) -> date | None:
+    """Return the latest date where core P1 market regime inputs are available."""
+    _attach_market_if_available(conn)
+    dates = [_load_hs300_max_date(conn), _load_breadth_max_date(conn)]
+    available = [d for d in dates if d is not None]
+    if not available:
+        return None
+    return min(available)
+
+
 def _payload_from_inputs(inputs: RegimeInputs) -> dict[str, Any]:
     regime_score = _score_regime(inputs)
     day = inputs.snapshot_date
@@ -333,6 +343,37 @@ def _load_hs300_range(conn, start_day: date, end_day: date) -> pd.DataFrame:
     return pd.DataFrame(rows, columns=["date", "close"])
 
 
+def _load_hs300_max_date(conn) -> date | None:
+    cfg = get_regime_config()
+    if _table_exists(conn, "mart_index_daily"):
+        cols = _columns(conn, "mart_index_daily")
+        date_col = _first_existing(cols, ["trade_date", "date", "snapshot_date"])
+        code_col = _first_existing(cols, ["index_code", "code", "symbol", "ts_code"], required=False)
+        where = "1=1"
+        params: list[Any] = []
+        if code_col:
+            where += f" AND ({code_col} = ? OR lower({code_col}) = 'hs300')"
+            params.append(cfg.hs300_code)
+        row = _fetchone(
+            conn,
+            f"SELECT CAST(MAX(CAST({date_col} AS DATE)) AS VARCHAR) AS max_date FROM mart_index_daily WHERE {where}",
+            params,
+        )
+    else:
+        row = _fetchone(
+            conn,
+            """
+            SELECT CAST(MAX(CAST(date AS DATE)) AS VARCHAR) AS max_date
+              FROM market.v_price_kline_qfq
+             WHERE code = ? AND freq = 'daily' AND adjust = 'qfq'
+            """,
+            [cfg.hs300_code],
+        )
+    if not row or row["max_date"] is None:
+        return None
+    return _to_date(row["max_date"])
+
+
 def _load_breadth_history(conn, day: date) -> pd.DataFrame:
     cfg = get_regime_config()
     if _table_exists(conn, "fact_stock_kline_daily"):
@@ -438,6 +479,29 @@ def _load_breadth_range(conn, start_day: date, end_day: date) -> pd.DataFrame:
         [start_day.isoformat(), end_day.isoformat()],
     )
     return pd.DataFrame(rows, columns=["date", "breadth_ratio", "limit_up_count"])
+
+
+def _load_breadth_max_date(conn) -> date | None:
+    if _table_exists(conn, "fact_stock_kline_daily"):
+        cols = _columns(conn, "fact_stock_kline_daily")
+        date_col = _first_existing(cols, ["trade_date", "date", "snapshot_date"])
+        row = _fetchone(
+            conn,
+            f"SELECT CAST(MAX(CAST({date_col} AS DATE)) AS VARCHAR) AS max_date FROM fact_stock_kline_daily",
+        )
+    else:
+        row = _fetchone(
+            conn,
+            """
+            SELECT CAST(MAX(CAST(date AS DATE)) AS VARCHAR) AS max_date
+              FROM market.v_price_kline_qfq
+             WHERE freq = 'daily' AND adjust = 'qfq'
+               AND regexp_matches(code, '^[0-9]{6}$')
+            """,
+        )
+    if not row or row["max_date"] is None:
+        return None
+    return _to_date(row["max_date"])
 
 
 def _load_lhb_count(conn, day: date) -> int:

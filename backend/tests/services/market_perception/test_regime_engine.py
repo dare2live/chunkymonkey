@@ -9,6 +9,7 @@ from services.market_perception.regime_engine import (
     compute_regime_for_date,
     compute_regime_for_range,
     get_regime_config,
+    get_regime_source_max_date,
 )
 
 
@@ -121,3 +122,11 @@ def test_range_missing_breadth_fails_fast():
 
     with pytest.raises(ValueError, match="breadth row missing"):
         compute_regime_for_range(conn, snapshot - timedelta(days=2), snapshot)
+
+
+def test_source_max_date_uses_core_input_minimum():
+    snapshot = date(2026, 1, 15)
+    conn = _make_conn(snapshot, trend=0.12, breadth_ratio=0.58, prior_breadth=0.50)
+    conn.execute("DELETE FROM mart_index_daily WHERE trade_date = ?", [snapshot.isoformat()])
+
+    assert get_regime_source_max_date(conn) == snapshot - timedelta(days=1)

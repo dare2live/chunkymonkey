@@ -19,7 +19,7 @@ if str(BACKEND) not in sys.path:
 from services.db_connection import DB_PATH  # noqa: E402
 from services.duck_adapter import connect  # noqa: E402
 from services.market_perception import compute_regime_for_range  # noqa: E402
-from services.market_perception.regime_engine import get_regime_config  # noqa: E402
+from services.market_perception.regime_engine import get_regime_config, get_regime_source_max_date  # noqa: E402
 from services.schema_marts import ensure_mart_schema  # noqa: E402
 
 logger = logging.getLogger("build_market_perception_daily")
@@ -29,6 +29,11 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--start", required=True, help="start trading date, YYYY-MM-DD")
     parser.add_argument("--end", required=True, help="end trading date, YYYY-MM-DD")
+    parser.add_argument(
+        "--clamp-to-source-max",
+        action="store_true",
+        help="explicitly clamp --end to the latest date covered by core tdxhub-backed inputs",
+    )
     return parser.parse_args()
 
 
@@ -43,8 +48,20 @@ def main() -> int:
         ensure_mart_schema(conn)
         trading_days_requested = _count_trading_days(conn, args.start, args.end)
         before_rows = _count_rows(conn, "mart_market_perception_daily")
+        effective_end = args.end
+        clamp_note = ""
+        if args.clamp_to_source_max:
+            source_max_date = get_regime_source_max_date(conn)
+            if source_max_date is None:
+                raise ValueError("cannot clamp to source max: no core market regime source data found")
+            if source_max_date.isoformat() < args.start:
+                raise ValueError(f"source max date {source_max_date} is earlier than start {args.start}")
+            if source_max_date.isoformat() < args.end:
+                effective_end = source_max_date.isoformat()
+                clamp_note = f"; requested_end={args.end}, effective_end={effective_end}, source_max={source_max_date}"
+                logger.warning("clamped market perception end from %s to source max %s", args.end, effective_end)
         try:
-            df = compute_regime_for_range(conn, args.start, args.end)
+            df = compute_regime_for_range(conn, args.start, effective_end)
         except Exception as exc:
             logger.warning("market perception build failed before write: %s", exc)
             _write_audit_log(
@@ -68,7 +85,7 @@ def main() -> int:
             conn.commit()
             raise
         if df.empty:
-            logger.warning("no trading-day rows computed for %s -> %s", args.start, args.end)
+            logger.warning("no trading-day rows computed for %s -> %s", args.start, effective_end)
             _write_audit_log(
                 conn,
                 run_id=run_id,
@@ -84,7 +101,7 @@ def main() -> int:
                 score_max=None,
                 guard_status="no_rows",
                 input_row_counts={"mart_market_perception_daily_before": before_rows},
-                notes="no trading-day rows computed",
+                notes=f"no trading-day rows computed{clamp_note}",
                 built_at=built_at,
             )
             conn.commit()
@@ -121,6 +138,26 @@ def main() -> int:
             """,
             rows,
         )
+        pruned_rows = 0
+        if effective_end < args.end:
+            row = conn.execute(
+                """
+                SELECT COUNT(*) AS n
+                  FROM mart_market_perception_daily
+                 WHERE snapshot_date > CAST(? AS DATE)
+                   AND snapshot_date <= CAST(? AS DATE)
+                """,
+                [effective_end, args.end],
+            ).fetchone()
+            pruned_rows = int(row[0] if row else 0)
+            conn.execute(
+                """
+                DELETE FROM mart_market_perception_daily
+                 WHERE snapshot_date > CAST(? AS DATE)
+                   AND snapshot_date <= CAST(? AS DATE)
+                """,
+                [effective_end, args.end],
+            )
         conn.commit()
         score_min = min(r[1] for r in rows)
         score_max = max(r[1] for r in rows)
@@ -145,19 +182,21 @@ def main() -> int:
             input_row_counts={
                 "mart_market_perception_daily_before": before_rows,
                 "mart_market_perception_daily_after": after_rows,
+                "pruned_rows_after_effective_end": max(pruned_rows, 0),
             },
-            notes="PIT-strict build_market_perception_daily completed",
+            notes=f"PIT-strict build_market_perception_daily completed{clamp_note}",
             built_at=built_at,
         )
         conn.commit()
         logger.info(
-            "wrote %d rows into mart_market_perception_daily, %s -> %s, regime_score=[%.4f, %.4f], guard=%s",
+            "wrote %d rows into mart_market_perception_daily, %s -> %s, regime_score=[%.4f, %.4f], guard=%s%s",
             len(rows),
             df["snapshot_date"].min(),
             df["snapshot_date"].max(),
             score_min,
             score_max,
             guard_status,
+            clamp_note,
         )
     return 0
 

@@ -1,5 +1,5 @@
 """Market perception service package."""
 
-from .regime_engine import compute_regime_for_date, compute_regime_for_range
+from .regime_engine import compute_regime_for_date, compute_regime_for_range, get_regime_source_max_date
 
-__all__ = ["compute_regime_for_date", "compute_regime_for_range"]
+__all__ = ["compute_regime_for_date", "compute_regime_for_range", "get_regime_source_max_date"]

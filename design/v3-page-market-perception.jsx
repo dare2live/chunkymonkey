@@ -39,6 +39,8 @@ function PageMarketPerception() {
   const regimeLabel = regime == null ? '—' : (regime > 0.3 ? 'risk_on' : regime < -0.3 ? 'risk_off' : 'mixed');
   const tone = regime == null ? null : regime > 0.3 ? 'pos' : regime < -0.3 ? 'neg' : null;
   const engines = health && health.engines ? Object.entries(health.engines) : [];
+  const auditStatus = health && health.latest_snapshot_audit_status;
+  const latestAudit = health && health.latest_audit;
 
   return (
     <div style={{display:'flex',flexDirection:'column',gap:12}}>
@@ -58,6 +60,12 @@ function PageMarketPerception() {
         </UI.Card>
         <UI.Card title="Engine Status" action={<UI.ApiTag>/health</UI.ApiTag>}>
           <div style={{display:'flex',flexDirection:'column',gap:8}}>
+            <div style={{display:'grid',gridTemplateColumns:'repeat(2, minmax(0, 1fr))',gap:8,paddingBottom:6,borderBottom:'1px solid var(--line-soft)'}}>
+              <MiniHealth k="latest lag" v={health && health.latest_snapshot_lag_trading_days != null ? `${health.latest_snapshot_lag_trading_days}d` : '—'}/>
+              <MiniHealth k="guard" v={health && health.score_guard_status ? health.score_guard_status : '—'} tone={health && health.score_guard_status === 'ok' ? 'ok' : 'warn'}/>
+              <MiniHealth k="audit" v={auditStatus || '—'} tone={auditStatus === 'ok' ? 'ok' : 'warn'}/>
+              <MiniHealth k="audit end" v={latestAudit && latestAudit.end_date ? latestAudit.end_date : '—'}/>
+            </div>
             {engines.map(([name, status]) => (
               <div key={name} style={{display:'flex',alignItems:'center',justifyContent:'space-between',gap:10,padding:'7px 0',borderBottom:'1px solid var(--line-soft)'}}>
                 <span style={{fontSize:12,fontWeight:600,color:'var(--ink-1)'}}>{name}</span>
@@ -67,6 +75,16 @@ function PageMarketPerception() {
           </div>
         </UI.Card>
       </div>
+    </div>
+  );
+}
+
+function MiniHealth({ k, v, tone }) {
+  const color = tone === 'ok' ? '#2f8a55' : tone === 'warn' ? '#a06a00' : 'var(--ink-1)';
+  return (
+    <div style={{minWidth:0}}>
+      <div style={{fontSize:10,color:'var(--ink-3)',textTransform:'uppercase',letterSpacing:0,fontFamily:'var(--f-mono)'}}>{k}</div>
+      <div title={v} style={{fontSize:11,fontWeight:700,color,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{v}</div>
     </div>
   );
 }
