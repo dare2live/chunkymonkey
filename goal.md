@@ -3,9 +3,10 @@
 ## 审计时间戳
 最后审计: 2026-05-20 上午
 GCP retrain v2 in-flight: **lgbm_phase5_gcp_20260520T010718** (01:07 北京 launch, F1+F2 protected: SQLite resume + per-trial checkpoint)
-当前综合进度 **~80%** (10 criteria 真实均值: #1=100 / #2=90 / #3=87 / #4=100 / #5=100 / #6=78 / #7=50 / #8=75 / #9=85 / #10=35).
-9 criteria 不含 #10 = ~85%. gap to 90% endpoint = 5-10pp. 主要 gap: #7 UI/UX 50% / #10 incremental 35% / #6 GO/NO-GO 78%.
-解锁 path: retrain v2 done → #2 95% / #3 95% / #6 85% (合计 +0.9pp 综合); #7 P0a notification done 50→65% (+1.5pp); #10 P1 done 35→55% (+2pp). 目标累计 → 86-87% 综合, 仍距 90% 4pp, 需 #7/#8/#10 集中推.
+当前综合进度 **~81.5%** (10 criteria 真实均值: #1=100 / #2=90 / #3=87 / #4=100 / #5=100 / #6=78 / #7=65 / #8=75 / #9=85 / #10=35).
+9 criteria 不含 #10 = ~86.7%. gap to 90% endpoint = 5-8.5pp. 主要 gap: #10 incremental 35% / #6 GO/NO-GO 78% / #8 模块化 75%.
+解锁 path: retrain v2 done → #2 95% / #3 95% / #6 85% (合计 +1.4pp 综合); #10 P1 done 35→55% (+2pp); #8 db.py 拆 75→85% (+1pp). 目标累计 → 86% 综合, 仍距 90% 4pp.
+#7 UI/UX CLI 覆盖修正 50→65% (cm.sh 12 子命令 + notification 5 drivers + cm cache).
 
 **2026-05-20 中午 user-接受 explicit threshold 调整**:
 - user explicit: "跌到 70-80% 收益率也很高了, 回撤不大, 作为备选吧, 确定不是 leakage 没有未来函数就行"
@@ -93,11 +94,17 @@ GCP retrain v2 in-flight: **lgbm_phase5_gcp_20260520T010718** (01:07 北京 laun
 | 5 | GCP 成本控制 | 月 ≤ $10 credit, 每 batch 完 stop VM | rule 已固化 (CLAUDE.md §10.0.2), 待 sustained |
 | 6 | 实盘 GO/NO-GO | 跨 5 年回测 中位 ≥ 25%, 单年 ≥ 0%, Sharpe ≥ 2.0, PBO ≤ 0.2 | **5%** (1.75 年 22 monthly obs 实测 median +34.88% 在目标; 待扩 OOS ≥ 30 + PBO multi-trial + sniper/institution wire 真验) |
 
-### #7 UI/UX + 人机交互优化 [30%]
+### #7 UI/UX + 人机交互优化 [65%]
 范围: daily KPI / paper_sim run / backtester gate / sniper/institution alpha / regime state 数据的用户消费路径
-当前缺口: web dashboard 缺失 / 实时 alert 机制缺失 / 历史 KPI timeseries 可视化缺失 / 每天 1-click 查看 pipeline 缺失
-参考: backend/main.py FastAPI router list, 现有 CLI 接口
-目标: 每个核心模块有对应的用户消费入口 (CLI 或 web), 1 click 可查当日状态
+当前进度:
+- gen_report.py markdown renderer (commit d81975e6)
+- notification framework 5 drivers (email/macos/slack/webhook/log) (commit 61c81eaa)
+- cm.sh CLI deploy (commit cccf707e): today/holdings/kpi/sync/gcp/retrain/promote/resume/status/cache/install/help
+- cm cache (commit bf4b4937): paper_sim 4-layer incremental status
+- SESSION_HANDOFF.md auto cron 5min (commit edc2bce5)
+当前缺口: web dashboard 缺失 / 历史 KPI timeseries 可视化缺失 (可选 Phase) / FastAPI 端点未补齐
+参考: backend/main.py FastAPI router list
+目标: 每个核心模块有对应的用户消费入口 (CLI 或 web), 1 click 可查当日状态. CLI 部分已 65%, web 0%.
 
 ### #8 模块化 / 可复用 / 可扩展 [60%]
 范围: backend/services/ god-module 拆分 (db.py 2478 行 / market_db.py 728 行 / pricing_policy.py 869 行)
@@ -141,7 +148,7 @@ Tracked metric:
 | 4 | 全自动化 daily | 100% | 100% | 0pp | PASS (8 步真调 + cron 自动跑 (FDA-free, 4 entries installed): daily_update 17:00 / cost_tracker 15min / nightly_audit 02:00 / codex_monitor 15min) | - | - |
 | 5 | GCP 成本控制 | 100% | 100% | 0pp | PASS (gcp_policy.yaml 固化 5 层 defense + cost_tracker 15min cron + auto-stop + budget RED block) | - | - |
 | 6 | 实盘 GO/NO-GO | 60% | 100% | 40pp | P3 PASS, n_obs=22<30, sharpe 0.81<2.0, max_dd -24.28%>-20% | (a) Phase 5 retrain -> n_obs >=30 自动跳 70%; (b) 扩 panel start=2022 -> n_obs >=60 跳 85%; (c) Optuna regime weights tune + vol-aware sizing -> sharpe up max_dd down 跳 90%+ | Phase 5 + 调优 1-2 week |
-| 7 | UI/UX + 人机交互优化 | 30% | 100% | 70pp | web dashboard / alert / KPI timeseries / 1-click pipeline 缺失 | FastAPI/CLI 消费入口补齐 | 2-5 day |
+| 7 | UI/UX + 人机交互优化 | 65% | 100% | 35pp | CLI 完整 (cm.sh 12 子命令 + notification 5 drivers + SESSION_HANDOFF auto); web dashboard / 历史 KPI timeseries 可选 Phase 缺 | web dashboard FastAPI 补齐 (可选) | 2-5 day |
 | 8 | 模块化 / 可复用 / 可扩展 | 60% | 100% | 40pp | god-module 未拆; N+1 需归零 | codegraph audit 驱动拆分 db/market_db/pricing_policy | 3-7 day |
 | 9 | 数据可回溯 / 可解读 | 50% | 100% | 50pp | lineage 表存在但 raw->KPI 链路未串通; lineage coverage target bump to 95% | 串通 prediction row 到 raw/model/PIT cutoff | 2-5 day |
 | 10 | Incremental Management / Data Lineage | 35% | 100% | 65pp | P0 paper_sim cache done; cm cache subcommand 显示 stats; Layer 3/4 spec only; full mart lineage not covered | P1 param impact + P2 panel incremental + P3 warm-start | 1-2 week |
