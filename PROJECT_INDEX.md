@@ -995,6 +995,18 @@ SELECT * FROM mart_data_source_watermark;
 - 新增 `backend/tests/services/paper_sim/test_lineage_integration.py` 5 tests: DDL column/idempotency, CLI output-file, reporter URL 落库 + file exists, legacy NULL compatibility.
 - 实测: `python -m pytest backend/tests/services/paper_sim/test_lineage_integration.py -v` 5/5 PASS. 直接 `pytest ...` 在当前 shell 无命令, 用 module form 通过.
 
+### 2026-05-20 上午 incremental management P0 (paper_sim cache + lineage + overview, Codex a971525e)
+
+4 层 incremental + 数据血缘:
+- L1 paper_sim cache [P0 implemented]: sim_config_hash + parent_sim_run_id + param_diff_json column on mart_paper_sim_kpi. sim_cache.py + --skip-if-cached. 测试 5/5 PASS.
+- L2 predictions reuse [doc]: 同 model_id 复用 mart_p0b_lambdamart_v6_predictions (现有 behavior 显式化)
+- L3 panel 增量 [spec P2]: signal_date_month partition, 30min→2min/月
+- L4 retrain warm-start [spec P3]: walk_forward window 增量, 1500 fit → 50 fit
+
+paper_sim_overview.py 实测 41 历史 sim_run 留存. 今上午 4 critical: minhold15 ann 108%/sharpe 2.12 prod-candidate. 历史最强 swap_v1_20260516_105028 ann 114%/sharpe 2.57 (但 win 100% 警报需 verify 不是 leakage).
+
+goal.md 加 criteria #10 25% — 3 metric (cache_hit_rate ≥80%, lineage_coverage 95%, param_impact_curve_rows >0).
+
 ### 2026-05-20 上午 3 Codex 并发 deliver — db.py 拆 Phase 1 + workflow_checkpoint + 复杂度审计
 
 3 agent 并发 deliver (Codex companion reset 后 verify via git status):

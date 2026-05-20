@@ -7,7 +7,7 @@ GCP retrain v2 in-flight: **lgbm_phase5_gcp_20260520T010718** (01:07 北京 laun
 
 **2026-05-20 上午 minhold15 重大 alpha 突破** (commit bde0fbc1):
 - ann **+108.2%** (vs baseline +67.79%) — 反向飙升, 不是 leakage (sharpe<5/win<95%/ann<100% 全 OK, alpha mechanism)
-- sharpe **2.12** — **达 perfect ladder ≥2.0** ✓ (production-grade alpha 真实可达)
+- sharpe **2.12** — **达 perfect ladder ≥2.0** [PASS] (production-grade alpha 真实可达)
 - max_dd -20.4% (回 baseline 水平)
 - per-pos win 49→66% (+17pp), avg_pnl_pct/仓 2.23→5.43% (+143%)
 - 机制: 强制持 ≥15d 过滤 stop_hit 假回调 (stop 18→9 减半), trailing/hp_expired 长窗实现 alpha
@@ -16,15 +16,15 @@ GCP retrain v2 in-flight: **lgbm_phase5_gcp_20260520T010718** (01:07 北京 laun
 - minhold=15 保留为 prod-candidate alpha 增强
 
 **2026-05-20 上午重大进展**:
-- ✓ champion lgbm_phase5_session_20260518T160747 paper_sim baseline 跑通: ann +67.79% / dd -20.81% (用户接受) / sharpe 1.66 / 月胜 71% / 超额 HS300 +93.4% / IR 1.54 / 0 leakage 警报
-- ⚠ Pareto verdict 实际 NO-GO (3 类阻断 2 hard FAIL):
+- [PASS] champion lgbm_phase5_session_20260518T160747 paper_sim baseline 跑通: ann +67.79% / dd -20.81% (用户接受) / sharpe 1.66 / 月胜 71% / 超额 HS300 +93.4% / IR 1.54 / 0 leakage 警报
+- [WARN] Pareto verdict 实际 NO-GO (3 类阻断 2 hard FAIL):
   - user_criteria max_dd -20.81%: 用户接受 软门槛
   - **anti_churn**: 换手 54.88x (≤8 阈值), 真实 tx_cost 估吃 30-50pp ann → 实盘 +17-37% net
   - **robustness**: rolling_ir_p25 -1.22 (>0 阈值), 25% 时段亏
-- ✓ lineage_url e2e 验证通 (mart_paper_sim_kpi 含 file:///.../lineage/<sim_run_id>.md)
-- ✓ db.py 拆 Phase 1 (2478→266B façade), workflow_checkpoint, 复杂度审计 全 commit
-- ✓ launchd probe + PATH fix, FDA-safe 主动 macos notification on VM 状态变化
-- ⏳ retrain v2 lgbm_phase5_gcp_20260520T010718 仍跑 (resume 后 34 min, trial 0 ETA imminent), 找更强 model 试图升 sharpe 2.0 + dd 控制更紧
+- [PASS] lineage_url e2e 验证通 (mart_paper_sim_kpi 含 file:///.../lineage/<sim_run_id>.md)
+- [PASS] db.py 拆 Phase 1 (2478→266B façade), workflow_checkpoint, 复杂度审计 全 commit
+- [PASS] launchd probe + PATH fix, FDA-safe 主动 macos notification on VM 状态变化
+- [PENDING] retrain v2 lgbm_phase5_gcp_20260520T010718 仍跑 (resume 后 34 min, trial 0 ETA imminent), 找更强 model 试图升 sharpe 2.0 + dd 控制更紧
 
 **距运营条件 (≥90% + retrain holdout 验证 + 无阻塞项) gap**: ~12pp + retrain ETA 4-6h pending
 
@@ -89,7 +89,23 @@ GCP retrain v2 in-flight: **lgbm_phase5_gcp_20260520T010718** (01:07 北京 laun
 范围: lineage 链 raw -> fact -> mart -> predictions -> KPI; 每行 prediction 能回溯 panel cells + feature_version + model_id + 时点 PIT cutoff
 当前进度: lineage 表存在但链路未串通; spec 文档 docs/sue_pit_design_20260517.md 已写
 参考: data_integrity_audit skill
-目标: 任意 prediction row 5 步内可追溯到原始数据 + 模型版本 + PIT 截止时点
+目标: 任意 prediction row 5 步内可追溯到原始数据 + 模型版本 + PIT 截止时点; lineage coverage 阶段目标从 90% bump 到 95%
+
+### #10 Incremental Management / Data Lineage [25%]
+范围: 4-layer cache + incremental rebuild + retrain artifact reuse + paper_sim parameter-impact lineage
+当前进度: P0 paper_sim sim_config_hash schema/cache helper/runner flag/overview spec implemented; Layer 2 documented; Layer 3/4 spec only
+目标:
+- paper_sim cache hit rate >= 80% for repeated configs
+- All mart tables have lineage entries in mart_data_lineage
+- param_impact_curve.py produces non-empty output
+- Schema migration idempotent (can run N times safely)
+
+Tracked metric:
+| Metric | Source | Current | Target |
+|---|---|---:|---:|
+| paper_sim_cache_hit_rate | mart_paper_sim_kpi.sim_config_hash repeated-config audit | new | >= 80% |
+| mart_data_lineage_coverage | mart tables with latest lineage row / all mart tables | partial | 95% |
+| param_impact_curve_rows | parent_sim_run_id chain output rows | new | > 0 |
 
 **目前距离交付** (2026-05-19 深夜 audit ledger; 原 6 criteria 均值 **90%** 不变, 加入 #7/#8/#9 后综合 **76%**, NOT READY):
 | # | 标准 | 当前 | 目标 | gap | 阻塞项 | 解锁 action | ETA |
@@ -102,10 +118,11 @@ GCP retrain v2 in-flight: **lgbm_phase5_gcp_20260520T010718** (01:07 北京 laun
 | 6 | 实盘 GO/NO-GO | 60% | 100% | 40pp | P3 PASS, n_obs=22<30, sharpe 0.81<2.0, max_dd -24.28%>-20% | (a) Phase 5 retrain -> n_obs >=30 自动跳 70%; (b) 扩 panel start=2022 -> n_obs >=60 跳 85%; (c) Optuna regime weights tune + vol-aware sizing -> sharpe up max_dd down 跳 90%+ | Phase 5 + 调优 1-2 week |
 | 7 | UI/UX + 人机交互优化 | 30% | 100% | 70pp | web dashboard / alert / KPI timeseries / 1-click pipeline 缺失 | FastAPI/CLI 消费入口补齐 | 2-5 day |
 | 8 | 模块化 / 可复用 / 可扩展 | 60% | 100% | 40pp | god-module 未拆; N+1 需归零 | codegraph audit 驱动拆分 db/market_db/pricing_policy | 3-7 day |
-| 9 | 数据可回溯 / 可解读 | 50% | 100% | 50pp | lineage 表存在但 raw->KPI 链路未串通 | 串通 prediction row 到 raw/model/PIT cutoff | 2-5 day |
-| **均值** | | **76%** | **100%** | **24pp** | 原 6 条总分 540 + 新 3 条 140 = 680; 680/9 = 75.6% ≈ 76% | | |
+| 9 | 数据可回溯 / 可解读 | 50% | 100% | 50pp | lineage 表存在但 raw->KPI 链路未串通; lineage coverage target bump to 95% | 串通 prediction row 到 raw/model/PIT cutoff | 2-5 day |
+| 10 | Incremental Management / Data Lineage | 25% | 100% | 75pp | P0 paper_sim cache done; Layer 3/4 spec only; full mart lineage not covered | P1 param impact + P2 panel incremental + P3 warm-start | 1-2 week |
+| **均值** | | **71%** | **100%** | **29pp** | 原 6 条总分 540 + #7/#8/#9/#10 = 165; 705/10 = 70.5% ≈ 71% | | |
 
-**全局均值更新**: 原 6 criteria 均值 90% 保持; 新均值 = (540 + 30 + 60 + 50) / 9 = 75.6% ≈ 76%
+**全局均值更新**: 原 6 criteria 均值 90% 保持; 新均值 = (540 + 30 + 60 + 50 + 25) / 10 = 70.5% ≈ 71%
 **ETA / 升级路径**: GCP retrain done + paper_sim + KPI compare 验证 (~6-8h 后) -> criteria #2 策略模型 / #3 backtester gate / #6 实盘 GO-NO-GO 升级路径明确
 
 ### Critical Path 时序 (按 ETA 排序, 2026-05-19 更新)
@@ -223,13 +240,13 @@ GCP "不浪费资源" 5 层防御 (pre/in/post + monitor + audit), 全 actionabl
 
 | Task | 本地 (Mac mini 8C 8GB) | GCP n2-standard-32 |
 |---|---|---|
-| Codex 协作 + design + commit + doc | ✓ | - |
-| 单测 + 小规模 SQL audit | ✓ | - |
-| 数据 ingestion (akshare 历史 backfill) | - | ✓ (网络通) |
-| Optuna walk-forward (50-200 trials × multi-strategy) | - | ✓ (32 cores 满载) |
-| paper_sim ablation 多 variant | ✓ (小) | ✓ (大) |
-| backtester-mcp PBO/DSR | ✓ (轻量) | - |
-| 3 类策略 parallel walk-forward (Wave 6-8) | - | ✓ (4-8 jobs 并行) |
+| Codex 协作 + design + commit + doc | yes | - |
+| 单测 + 小规模 SQL audit | yes | - |
+| 数据 ingestion (akshare 历史 backfill) | - | yes (网络通) |
+| Optuna walk-forward (50-200 trials × multi-strategy) | - | yes (32 cores 满载) |
+| paper_sim ablation 多 variant | yes (小) | yes (大) |
+| backtester-mcp PBO/DSR | yes (轻量) | - |
+| 3 类策略 parallel walk-forward (Wave 6-8) | - | yes (4-8 jobs 并行) |
 
 ## 1. 实施 Phase Plan (4 Phase, 17-25 weeks)
 

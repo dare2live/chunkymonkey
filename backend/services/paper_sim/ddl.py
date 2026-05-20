@@ -134,6 +134,9 @@ CREATE TABLE IF NOT EXISTS mart_paper_sim_kpi (
     all_kpi_pass      BOOLEAN,
     config_snapshot   TEXT,                      -- JSON of full PaperSimConfig (审计 + 复现)
     lineage_url       TEXT,                      -- local file:// report or future /v3/lineage/<sim_run_id>
+    sim_config_hash   VARCHAR,                   -- exact paper_sim cache key
+    parent_sim_run_id VARCHAR,                   -- parent run for parameter-impact lineage
+    param_diff_json   VARCHAR,                   -- JSON diff from parent_sim_run_id
     -- Phase 1a Option C (Codex round 6 MAJOR #1): exit_source 分层 attribution (按 closed position)
     pit_count         INTEGER,
     pit_pnl           DOUBLE,
@@ -145,6 +148,30 @@ CREATE TABLE IF NOT EXISTS mart_paper_sim_kpi (
 );
 CREATE INDEX IF NOT EXISTS idx_mpsk_variant ON mart_paper_sim_kpi(variant);
 """
+
+
+def _execute_duplicate_safe(conn, sql: str) -> None:
+    try:
+        conn.execute(sql)
+    except Exception as _e:
+        if "already exists" not in str(_e).lower() and "duplicate" not in str(_e).lower():
+            raise
+
+
+def apply_schema_migration(conn) -> None:
+    """幂等添加 paper_sim cache / lineage 列."""
+    _execute_duplicate_safe(
+        conn,
+        "ALTER TABLE mart_paper_sim_kpi ADD COLUMN IF NOT EXISTS sim_config_hash VARCHAR",
+    )
+    _execute_duplicate_safe(
+        conn,
+        "ALTER TABLE mart_paper_sim_kpi ADD COLUMN IF NOT EXISTS parent_sim_run_id VARCHAR",
+    )
+    _execute_duplicate_safe(
+        conn,
+        "ALTER TABLE mart_paper_sim_kpi ADD COLUMN IF NOT EXISTS param_diff_json VARCHAR",
+    )
 
 
 def ensure_paper_sim_tables(conn) -> None:
@@ -177,6 +204,7 @@ def ensure_paper_sim_tables(conn) -> None:
         # duplicate-column 安全忽略 (DuckDB 某些版本 IF NOT EXISTS 仍抛); 其他错 raise
         if "already exists" not in str(_e).lower() and "duplicate" not in str(_e).lower():
             raise
+    apply_schema_migration(conn)
     conn.execute(
         """
         UPDATE mart_paper_sim_nav
