@@ -93,6 +93,8 @@ def test_regime_config_loaded_from_yaml():
 def test_range_matches_per_date_results():
     snapshot = date(2026, 1, 15)
     conn = _make_conn(snapshot, trend=0.12, breadth_ratio=0.58, prior_breadth=0.50)
+    conn.execute("INSERT INTO fact_lhb_event VALUES (?, '000001', ?)", [snapshot.isoformat(), "2026-01-15 18:00:00"])
+    conn.execute("INSERT INTO fact_lhb_event VALUES (?, '000002', ?)", [snapshot.isoformat(), "2026-01-16 09:00:00"])
 
     frame = compute_regime_for_range(conn, snapshot - timedelta(days=2), snapshot)
     expected = [compute_regime_for_date(conn, snapshot - timedelta(days=i)) for i in [2, 1, 0]]
@@ -100,3 +102,22 @@ def test_range_matches_per_date_results():
     assert frame["snapshot_date"].tolist() == [row["snapshot_date"] for row in expected]
     assert frame["regime_score"].tolist() == [row["regime_score"] for row in expected]
     assert frame["breadth_state"].tolist() == [row["breadth_state"] for row in expected]
+    assert frame["lhb_event_count"].tolist() == [row["lhb_event_count"] for row in expected]
+
+
+def test_range_missing_hs300_fails_fast():
+    snapshot = date(2026, 1, 15)
+    conn = _make_conn(snapshot, trend=0.12, breadth_ratio=0.58, prior_breadth=0.50)
+    conn.execute("DELETE FROM mart_index_daily WHERE trade_date = ?", [snapshot.isoformat()])
+
+    with pytest.raises(ValueError, match="HS300 row missing"):
+        compute_regime_for_range(conn, snapshot - timedelta(days=2), snapshot)
+
+
+def test_range_missing_breadth_fails_fast():
+    snapshot = date(2026, 1, 15)
+    conn = _make_conn(snapshot, trend=0.12, breadth_ratio=0.58, prior_breadth=0.50)
+    conn.execute("DELETE FROM fact_stock_kline_daily WHERE trade_date = ?", [snapshot.isoformat()])
+
+    with pytest.raises(ValueError, match="breadth row missing"):
+        compute_regime_for_range(conn, snapshot - timedelta(days=2), snapshot)

@@ -97,8 +97,48 @@ def compute_regime_for_range(conn, start: str | date, end: str | date) -> pd.Dat
         raise ValueError(f"start {start_day} > end {end_day}")
 
     days = _trading_days(conn, start_day, end_day)
-    rows = [compute_regime_for_date(conn, d) for d in days]
+    if any(d >= date.today() for d in days):
+        raise ValueError(f"range {start_day} -> {end_day} includes today/future; PIT requires snapshot_date < today")
+    if not days:
+        return pd.DataFrame()
+
+    _attach_market_if_available(conn)
+    inputs_by_day = _load_inputs_for_range(conn, start_day, end_day, days)
+    rows = []
+    for day in days:
+        inputs = inputs_by_day.get(day)
+        if inputs is None:
+            raise ValueError(f"market regime inputs missing for {day}")
+        rows.append(_payload_from_inputs(inputs))
     return pd.DataFrame(rows)
+
+
+def _payload_from_inputs(inputs: RegimeInputs) -> dict[str, Any]:
+    regime_score = _score_regime(inputs)
+    day = inputs.snapshot_date
+    payload = {
+        "snapshot_date": day.isoformat(),
+        "regime_score": regime_score,
+        "breadth_state": _breadth_state(inputs.breadth_ratio, inputs.breadth_p75_90d),
+        "volatility_state": _volatility_state(inputs.hs300_vol_20d),
+        "sentiment_phase": _sentiment_phase(inputs),
+        "hs300_ret_60d": inputs.hs300_ret_60d,
+        "hs300_vol_20d": inputs.hs300_vol_20d,
+        "breadth_ratio": inputs.breadth_ratio,
+        "breadth_p75_90d": inputs.breadth_p75_90d,
+        "limit_up_count": inputs.limit_up_count,
+        "lhb_event_count": inputs.lhb_event_count,
+        "n_obs_days": inputs.n_obs_days,
+        "source_engines": json.dumps(
+            [
+                {"engine": "MarketRegimeEngine", "score": regime_score, "weight": 1.0},
+            ],
+            ensure_ascii=False,
+        ),
+        "pit_cutoff_date": day.isoformat(),
+    }
+    _guard_regime_payload(payload)
+    return payload
 
 
 def _load_inputs(conn, day: date) -> RegimeInputs:
@@ -137,6 +177,86 @@ def _load_inputs(conn, day: date) -> RegimeInputs:
     )
 
 
+def _load_inputs_for_range(
+    conn,
+    start_day: date,
+    end_day: date,
+    target_days: list[date],
+) -> dict[date, RegimeInputs]:
+    cfg = get_regime_config()
+    extended_start = _extended_start_day(conn, start_day)
+    hs300 = _load_hs300_range(conn, extended_start, end_day)
+    if hs300.empty:
+        raise ValueError(f"HS300 history before {end_day} is empty")
+    hs300 = hs300.sort_values("date").reset_index(drop=True)
+    hs300["day"] = pd.to_datetime(hs300["date"]).dt.date
+    hs300["close"] = hs300["close"].astype(float)
+    hs300["hs300_ret_60d"] = hs300["close"] / hs300["close"].shift(cfg.ret_days) - 1.0
+    log_ret = (hs300["close"] / hs300["close"].shift(1)).map(math.log)
+    hs300["hs300_vol_20d"] = log_ret.rolling(cfg.vol_days).std(ddof=1) * math.sqrt(252)
+    hs300["hs300_obs_days"] = hs300["close"].rolling(cfg.query_days, min_periods=1).count().astype(int)
+    hs300_features = hs300.set_index("day")
+
+    breadth = _load_breadth_range(conn, extended_start, end_day)
+    if breadth.empty:
+        raise ValueError(f"breadth history before {end_day} is empty")
+    breadth = breadth.sort_values("date").reset_index(drop=True)
+    breadth["day"] = pd.to_datetime(breadth["date"]).dt.date
+    breadth["breadth_ratio"] = breadth["breadth_ratio"].astype(float)
+    breadth["breadth_p75_90d"] = breadth["breadth_ratio"].rolling(cfg.breadth_p75_days, min_periods=1).quantile(0.75)
+    breadth["breadth_obs_days"] = breadth["breadth_ratio"].rolling(cfg.query_days, min_periods=1).count().astype(int)
+    breadth_features = breadth.set_index("day")
+
+    lhb_counts = _load_lhb_counts_range(conn, start_day, end_day)
+    out: dict[date, RegimeInputs] = {}
+    for day in target_days:
+        if day not in hs300_features.index:
+            raise ValueError(f"HS300 row missing for {day}")
+        if day not in breadth_features.index:
+            raise ValueError(f"breadth row missing for {day}")
+        hs_row = hs300_features.loc[day]
+        br_row = breadth_features.loc[day]
+        required = {
+            "hs300_ret_60d": hs_row["hs300_ret_60d"],
+            "hs300_vol_20d": hs_row["hs300_vol_20d"],
+            "breadth_ratio": br_row["breadth_ratio"],
+            "breadth_p75_90d": br_row["breadth_p75_90d"],
+        }
+        missing = [name for name, value in required.items() if pd.isna(value)]
+        if missing:
+            raise ValueError(f"market regime inputs for {day} missing required values: {missing}")
+        out[day] = RegimeInputs(
+            snapshot_date=day,
+            hs300_ret_60d=float(hs_row["hs300_ret_60d"]),
+            hs300_vol_20d=float(hs_row["hs300_vol_20d"]),
+            breadth_ratio=float(br_row["breadth_ratio"]),
+            breadth_p75_90d=float(br_row["breadth_p75_90d"]),
+            limit_up_count=int(br_row["limit_up_count"]),
+            lhb_event_count=int(lhb_counts.get(day, 0)),
+            n_obs_days=min(int(hs_row["hs300_obs_days"]), int(br_row["breadth_obs_days"])),
+        )
+    return out
+
+
+def _extended_start_day(conn, start_day: date) -> date:
+    cfg = get_regime_config()
+    rows = _fetchall(
+        conn,
+        f"""
+        SELECT CAST(trade_date AS VARCHAR) AS trade_date
+          FROM dim_trading_calendar
+         WHERE is_trading = 1
+           AND CAST(trade_date AS DATE) <= ?
+         ORDER BY CAST(trade_date AS DATE) DESC
+         LIMIT {cfg.query_days + 1}
+        """,
+        [start_day.isoformat()],
+    )
+    if not rows:
+        raise ValueError(f"no trading days found on or before {start_day}")
+    return _to_date(rows[-1]["trade_date"])
+
+
 def _load_hs300_history(conn, day: date) -> pd.DataFrame:
     cfg = get_regime_config()
     if _table_exists(conn, "mart_index_daily"):
@@ -172,6 +292,43 @@ def _load_hs300_history(conn, day: date) -> pd.DataFrame:
              LIMIT {cfg.query_days}
             """,
             [cfg.hs300_code, day.isoformat()],
+        )
+    return pd.DataFrame(rows, columns=["date", "close"])
+
+
+def _load_hs300_range(conn, start_day: date, end_day: date) -> pd.DataFrame:
+    cfg = get_regime_config()
+    if _table_exists(conn, "mart_index_daily"):
+        cols = _columns(conn, "mart_index_daily")
+        date_col = _first_existing(cols, ["trade_date", "date", "snapshot_date"])
+        close_col = _first_existing(cols, ["close", "close_price"])
+        code_col = _first_existing(cols, ["index_code", "code", "symbol", "ts_code"], required=False)
+        where = f"CAST({date_col} AS DATE) BETWEEN ? AND ?"
+        params: list[Any] = [start_day.isoformat(), end_day.isoformat()]
+        if code_col:
+            where += f" AND ({code_col} = ? OR lower({code_col}) = 'hs300')"
+            params.append(cfg.hs300_code)
+        rows = _fetchall(
+            conn,
+            f"""
+            SELECT CAST({date_col} AS VARCHAR) AS date, {close_col} AS close
+              FROM mart_index_daily
+             WHERE {where}
+             ORDER BY CAST({date_col} AS DATE)
+            """,
+            params,
+        )
+    else:
+        rows = _fetchall(
+            conn,
+            """
+            SELECT CAST(date AS VARCHAR) AS date, close
+              FROM market.v_price_kline_qfq
+             WHERE code = ? AND freq = 'daily' AND adjust = 'qfq'
+               AND CAST(date AS DATE) BETWEEN ? AND ?
+             ORDER BY CAST(date AS DATE)
+            """,
+            [cfg.hs300_code, start_day.isoformat(), end_day.isoformat()],
         )
     return pd.DataFrame(rows, columns=["date", "close"])
 
@@ -233,6 +390,56 @@ def _load_breadth_history(conn, day: date) -> pd.DataFrame:
     return pd.DataFrame(rows, columns=["date", "breadth_ratio", "limit_up_count"])
 
 
+def _load_breadth_range(conn, start_day: date, end_day: date) -> pd.DataFrame:
+    if _table_exists(conn, "fact_stock_kline_daily"):
+        cols = _columns(conn, "fact_stock_kline_daily")
+        date_col = _first_existing(cols, ["trade_date", "date", "snapshot_date"])
+        pct_col = _first_existing(cols, ["pct_change", "pct_chg", "change_pct", "return_1d"])
+        rows = _fetchall(
+            conn,
+            f"""
+            SELECT CAST({date_col} AS VARCHAR) AS date,
+                   AVG(CASE WHEN {pct_col} > 0 THEN 1.0 ELSE 0.0 END) AS breadth_ratio,
+                   SUM(CASE WHEN {pct_col} >= 9.5 THEN 1 ELSE 0 END)::INTEGER AS limit_up_count
+             FROM fact_stock_kline_daily
+             WHERE CAST({date_col} AS DATE) BETWEEN ? AND ?
+             GROUP BY 1
+             ORDER BY CAST(date AS DATE)
+            """,
+            [start_day.isoformat(), end_day.isoformat()],
+        )
+        return pd.DataFrame(rows, columns=["date", "breadth_ratio", "limit_up_count"])
+
+    rows = _fetchall(
+        conn,
+        """
+        WITH trade_days AS (
+            SELECT CAST(trade_date AS VARCHAR) AS trade_date
+              FROM dim_trading_calendar
+             WHERE is_trading = 1
+               AND CAST(trade_date AS DATE) BETWEEN ? AND ?
+        ),
+        px AS (
+            SELECT code, CAST(date AS VARCHAR) AS date, close,
+                   LAG(close) OVER (PARTITION BY code ORDER BY CAST(date AS DATE)) AS prev_close
+              FROM market.v_price_kline_qfq
+             WHERE freq = 'daily' AND adjust = 'qfq'
+               AND date IN (SELECT trade_date FROM trade_days)
+               AND regexp_matches(code, '^[0-9]{6}$')
+        )
+        SELECT date,
+               AVG(CASE WHEN close > prev_close THEN 1.0 ELSE 0.0 END) AS breadth_ratio,
+               SUM(CASE WHEN prev_close > 0 AND (close / prev_close - 1.0) >= 0.095 THEN 1 ELSE 0 END)::INTEGER AS limit_up_count
+          FROM px
+         WHERE prev_close IS NOT NULL
+         GROUP BY 1
+         ORDER BY CAST(date AS DATE)
+        """,
+        [start_day.isoformat(), end_day.isoformat()],
+    )
+    return pd.DataFrame(rows, columns=["date", "breadth_ratio", "limit_up_count"])
+
+
 def _load_lhb_count(conn, day: date) -> int:
     if not _table_exists(conn, "fact_lhb_event"):
         return 0
@@ -253,6 +460,31 @@ def _load_lhb_count(conn, day: date) -> int:
         params,
     )
     return int(row["n"] if row else 0)
+
+
+def _load_lhb_counts_range(conn, start_day: date, end_day: date) -> dict[date, int]:
+    if not _table_exists(conn, "fact_lhb_event"):
+        return {}
+    cols = _columns(conn, "fact_lhb_event")
+    built_filter = ""
+    params: list[Any] = [start_day.isoformat(), end_day.isoformat()]
+    if "built_at" in cols:
+        built_filter = (
+            " AND (built_at IS NULL OR TRY_CAST(built_at AS TIMESTAMP) <= "
+            "CAST(trade_date AS DATE) + INTERVAL 1 DAY - INTERVAL 1 SECOND)"
+        )
+    rows = _fetchall(
+        conn,
+        f"""
+        SELECT CAST(trade_date AS VARCHAR) AS trade_date, COUNT(*)::INTEGER AS n
+          FROM fact_lhb_event
+         WHERE CAST(trade_date AS DATE) BETWEEN ? AND ?
+               {built_filter}
+         GROUP BY 1
+        """,
+        params,
+    )
+    return {_to_date(row["trade_date"]): int(row["n"]) for row in rows}
 
 
 def _score_regime(inputs: RegimeInputs) -> float:

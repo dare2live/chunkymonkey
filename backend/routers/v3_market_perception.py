@@ -65,12 +65,14 @@ def _market_perception_health(conn) -> dict:
     guard_violations = int(guard_row[0] if guard_row else 0)
     latest_lag = _latest_snapshot_lag_trading_days(conn, latest_snapshot)
     latest_audit = _latest_market_perception_audit(conn)
+    latest_snapshot_audit_status = _latest_snapshot_audit_status(latest_snapshot, latest_audit)
     return {
         "mart_table_exists": True,
         "mart_rows": mart_rows,
         "latest_snapshot_date": latest_snapshot,
         "latest_built_at": latest_built_at,
         "latest_snapshot_lag_trading_days": latest_lag,
+        "latest_snapshot_audit_status": latest_snapshot_audit_status,
         "score_guard_status": "ok" if guard_violations == 0 else "alert",
         "score_guard_violations": guard_violations,
         "score_guard_abs_max": guard_abs_max,
@@ -141,6 +143,21 @@ def _latest_market_perception_audit(conn) -> dict | None:
         "notes": row[13],
         "built_at": row[14],
     }
+
+
+def _latest_snapshot_audit_status(latest_snapshot: str | None, latest_audit: dict | None) -> str:
+    if not latest_snapshot:
+        return "no_snapshot"
+    if not latest_audit:
+        return "no_audit"
+    if latest_audit.get("status") != "success":
+        return "latest_audit_not_success"
+    audit_end = latest_audit.get("end_date")
+    if audit_end is None:
+        return "audit_end_missing"
+    if str(audit_end) < str(latest_snapshot):
+        return "snapshot_newer_than_latest_success_audit"
+    return "ok"
 
 
 def _serialize_row(row) -> dict:

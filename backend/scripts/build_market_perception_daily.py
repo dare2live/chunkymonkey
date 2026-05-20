@@ -43,7 +43,30 @@ def main() -> int:
         ensure_mart_schema(conn)
         trading_days_requested = _count_trading_days(conn, args.start, args.end)
         before_rows = _count_rows(conn, "mart_market_perception_daily")
-        df = compute_regime_for_range(conn, args.start, args.end)
+        try:
+            df = compute_regime_for_range(conn, args.start, args.end)
+        except Exception as exc:
+            logger.warning("market perception build failed before write: %s", exc)
+            _write_audit_log(
+                conn,
+                run_id=run_id,
+                started_at=started_at,
+                ended_at=datetime.now(timezone.utc).replace(tzinfo=None),
+                status="failed",
+                start_date=args.start,
+                end_date=args.end,
+                trading_days_requested=trading_days_requested,
+                rows_written=0,
+                missing_days=trading_days_requested,
+                score_min=None,
+                score_max=None,
+                guard_status="failed",
+                input_row_counts={"mart_market_perception_daily_before": before_rows},
+                notes=f"failed before write: {exc}",
+                built_at=built_at,
+            )
+            conn.commit()
+            raise
         if df.empty:
             logger.warning("no trading-day rows computed for %s -> %s", args.start, args.end)
             _write_audit_log(
