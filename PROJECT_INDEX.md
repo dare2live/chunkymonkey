@@ -980,6 +980,7 @@ SELECT * FROM mart_data_source_watermark;
 - 新增 `backend/services/market_perception/regime_engine.py`: `compute_regime_for_date/range`, 输出 regime_score / breadth_state / volatility_state / sentiment_phase; snapshot_date 必须早于 today 且在 `dim_trading_calendar.is_trading=1`.
 - 新增 `backend/scripts/build_market_perception_daily.py`: 用 `services.duck_adapter.connect()` 连接主库, 写 `mart_market_perception_daily`, `built_at` 用 UTC now; 行情 READ-only attach `market.duckdb` 的 `market.v_price_kline_qfq`.
 - `backend/routers/v3_market_perception.py`: `/snapshot` / `/history` 读 `mart_market_perception_daily`; `/health` 仅当 mart rows > 0 时返回 `MarketRegimeEngine=live`.
+- `design/v3-page-market-perception.jsx`: 前端 tab 拉 `/snapshot` / `/history?days=90` / `/health`, 显示 4 张 market context 卡片、built_at、7 engine status 和 regime/breadth/volatility 时序图.
 - 测试: `PYTHONPATH=backend python -m pytest backend/tests/services/market_perception/ -v` = 4/4 passed.
 
 ### 2026-05-20 db.py Phase 1 facade split
