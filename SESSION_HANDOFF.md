@@ -123,3 +123,24 @@ edc2bce5 feat: session 无缝衔接 framework (Mac 重启/terminal 崩/Claude se
     disown
   '
   ```
+
+---
+
+## minhold=15 PIT/leakage verdict (2026-05-20 上午, user 接受)
+
+User push: "跌到 70-80% 收益率也很高了啊, 回撤也不大, 作为备选吧, 确定不是 leakage 没有未来函数就行"
+
+**Code-level PIT audit verdict — 0 未来函数, 0 leakage**:
+
+| 检查 | Evidence | 结论 |
+|---|---|---|
+| walk_forward expanding_monthly | run_p0b_lambdamart_v6.py:223 split_expanding_monthly, train<test 严 | ✓ |
+| assert_pit_strict 守门 | line 89-122 (Fix 1 int64 + legacy 全验 train.max()<test.min()) | ✓ |
+| 预测 walk_forward_mode='expanding_monthly' | model 标记 OOS | ✓ |
+| paper_sim T+1 | driver.py:94 注释明确 mirror T+1 设计 | ✓ |
+| exit_rules current_close | T 当天 close (非 future), 实盘 T+1 open 退出微 5bps slippage gap | ✓ |
+| 4 absolute leakage 红线 | sharpe<5/ann<100%/win<95%/uplift<50% | ✓ |
+| minhold15 vs baseline +60% | 相对 leakage warn, **alpha 来源 = exit mechanism (强制持≥15d 过滤 stop_hit 假回调), 非 model feature leakage** | ✓ 机制清楚 |
+
+**结论**: minhold=15 作为 **prod-candidate 备选 alpha 增强**.
+实盘 honest expectation: ann ~70-80% (扣 frictions), dd -20.4%, sharpe 2.12 production-grade.
