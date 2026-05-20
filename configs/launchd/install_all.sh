@@ -22,6 +22,7 @@ PLISTS=(
     "com.chunkymonkey.gcp-cost-tracker"
     "com.chunkymonkey.nightly-data-audit"
     "com.chunkymonkey.codex-monitor"
+    "com.chunkymonkey.phase5-monitor"
 )
 
 ACTION="${1:-install}"

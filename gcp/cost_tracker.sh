@@ -183,11 +183,38 @@ fi
 # Actionable: VM RUNNING 无 active job marker > IDLE_GRACE 分钟 → 自动 stop (proactive cost-cutting)
 # 防止"忘 stop" 用户场景, 用户 push back '主动 cost-cutting' (2026-05-18 stop hook)
 RUN_MARKER="$REPO_ROOT/data/reports/gcp_vm_active_job.marker"
-IDLE_GRACE_MIN="${GCP_IDLE_GRACE_MIN:-5}"       # rule-compliance: ok evidence=5min-aggressive-grace (用户 push back '更主动')
+# F5 P1 (docs/gcp_reliability_root_cause_fix.md): 5 min 对 4-6h retrain 太激进, 改 30
+# 反例: 5-19 22:30 retrain 跑 3.5h 中断 (60% likelihood spot, 但 5min cron-grace 也有触发风险)
+IDLE_GRACE_MIN="${GCP_IDLE_GRACE_MIN:-30}"      # rule-compliance: ok evidence=docs/gcp_reliability_root_cause_fix.md-F5
 IDLE_TRACK_FILE="$REPO_ROOT/data/reports/gcp_vm_idle_first_seen.marker"
 
-if [[ "$VM_STATUS" == "RUNNING" && ! -f "$RUN_MARKER" ]]; then
-    # 无 active job marker → idle
+# F5 marker TTL check (started_at + expected_max_hours 超时 → auto-stop)
+# 用户场景: 跑 batch 写 marker 后, batch 自身 crash 但 marker 没清, VM 假装"有 active job" 长跑浪费
+# TTL check 提供保险: marker 老于 expected_max_hours → 视为 stale, 拒绝豁免 idle 检测
+MARKER_STALE=0
+if [[ -f "$RUN_MARKER" ]]; then
+    MARKER_STARTED=$(grep -E '^started_at=' "$RUN_MARKER" 2>/dev/null | head -1 | cut -d= -f2- || echo "")
+    MARKER_MAX_HOURS=$(grep -E '^expected_max_hours=' "$RUN_MARKER" 2>/dev/null | head -1 | cut -d= -f2- || echo "24")
+    # 默认 24h, 防 parse fail
+    [[ -z "$MARKER_MAX_HOURS" ]] && MARKER_MAX_HOURS=24                          # rule-compliance: ok evidence=F5-default-24h-marker-TTL
+    if [[ -n "$MARKER_STARTED" ]]; then
+        # parse ISO timestamp, macOS date 兼容
+        MARKER_EPOCH=$(date -j -f "%Y-%m-%dT%H:%M:%S%z" "$MARKER_STARTED" "+%s" 2>/dev/null || \
+                       date -j -f "%Y-%m-%dT%H:%M:%S" "${MARKER_STARTED%%+*}" "+%s" 2>/dev/null || \
+                       echo 0)
+        if [[ "$MARKER_EPOCH" -gt 0 ]]; then
+            MARKER_AGE_HOUR=$(( (NOW - MARKER_EPOCH) / 3600 ))
+            if [[ "$MARKER_AGE_HOUR" -ge "$MARKER_MAX_HOURS" ]]; then
+                MARKER_STALE=1
+                log "  WARN: active_job marker stale (age ${MARKER_AGE_HOUR}h ≥ TTL ${MARKER_MAX_HOURS}h) — 视为 idle, 走 grace check"
+                log "       marker started_at=$MARKER_STARTED expected_max_hours=$MARKER_MAX_HOURS"
+            fi
+        fi
+    fi
+fi
+
+if [[ "$VM_STATUS" == "RUNNING" ]] && { [[ ! -f "$RUN_MARKER" ]] || [[ "$MARKER_STALE" == "1" ]]; }; then
+    # 无 active job marker OR marker TTL 超期 → idle
     log ""
     if [[ ! -f "$IDLE_TRACK_FILE" ]]; then
         # First time seeing idle, record timestamp

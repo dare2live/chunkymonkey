@@ -784,6 +784,36 @@ SELECT * FROM mart_data_source_watermark;
 
 每次 session 增量内容写这里, 新 session 启动时**从下往上读**最近改了啥.
 
+### 2026-05-20 上午 GCP retrain reliability F4+F5 实施 (cron-monitor + marker TTL)
+
+承接 5-20 凌晨 F1+F2 commit, 实施 `docs/gcp_reliability_root_cause_fix.md` 剩下两个 P1.
+
+**F4 cron-based monitor 替代 nohup** (Mac sleep / SSH 断 proof):
+- 新 `scripts/monitor_phase5_gcp_retrain_probe.sh` 单次 probe (不轮询), 跟原 `monitor_phase5_gcp_retrain.sh` 同语义但每次只跑 1 sample. 完成后写 `monitor_done_<MODEL_ID>.sentinel` 防重跑.
+- 新 launchd plist `configs/launchd/com.chunkymonkey.phase5-monitor.plist` (StartInterval 300 = 5min, RunAtLoad true). 加入 `install_all.sh` PLISTS array.
+- crontab.txt 也加 `*/5 * * * *` entry (cron daemon FDA-免疫, 跟 launchd 双管齐下).
+- 原 nohup monitor 保留, backward-compat 不破坏.
+- dry-run mode: `MONITOR_DRY_RUN=1` + `MOCK_VM_STATUS=...` 不真 SSH / vm_start / pull, 仅 mock 流程. test `backend/tests/scripts/test_monitor_probe.sh` 7/7 PASS.
+
+**F5 cost_tracker IDLE_GRACE 5→30 min + marker 加 model_id/owner/TTL**:
+- `gcp/cost_tracker.sh:186` default 5→30 (5min 对 4-6h retrain 太激进, 5-19 22:30 retrain 跑 3.5h 中断的 root cause 候选之一).
+- `gcp/cost_tracker.sh` 加 marker TTL check: started_at + expected_max_hours 超时 → `MARKER_STALE=1` → 走 idle 流程 (防 batch crash 后 marker 没清 VM 假装"有 active job"长跑浪费).
+- `gcp/vm_start.sh` marker 写入改 key=value 多行格式: `model_id` / `job_type` / `started_at` / `expected_max_hours` / `owner_script`. 调用方可 export 覆盖.
+- 兼容性: 旧 ISO 单行 marker (in-flight retrain 用的) 因缺 `started_at=` key, MARKER_STALE 保持 0, 不误杀.
+- test `backend/tests/scripts/test_cost_tracker_marker_ttl.sh` 9/9 PASS (default grace=30 / TTL check 引用 / 5 keys 全到 / 25h-stale 25≥24 触发 / 1h-fresh 1<24 不触发).
+
+**安装** (用户手动, 不立即 install):
+```bash
+bash configs/launchd/install_all.sh install      # launchd 路径
+# OR
+bash configs/cron/install.sh install              # cron daemon 路径 (FDA-免疫)
+```
+两路二选一即可, 也可双管齐下 (probe 有 sentinel 防重跑).
+
+**对 in-flight retrain 影响**: 零冲突. monitor 是 local script, F5 marker 改是新启 vm_start 才生效; in-flight `lgbm_phase5_gcp_20260520T010718` 的旧 marker (ISO 单行) 在新 cost_tracker 下视为 valid (无 TTL 字段 → skip stale check), 不触发 auto-stop.
+
+**File**: `scripts/monitor_phase5_gcp_retrain_probe.sh` / `configs/launchd/com.chunkymonkey.phase5-monitor.plist` / `configs/launchd/install_all.sh` (+1 plist label) / `configs/cron/crontab.txt` (+1 entry) / `gcp/cost_tracker.sh` (+TTL block, IDLE_GRACE 30) / `gcp/vm_start.sh` (marker 5 keys) / `backend/tests/scripts/test_monitor_probe.sh` (7 tests) / `backend/tests/scripts/test_cost_tracker_marker_ttl.sh` (9 tests).
+
 ### 2026-05-19 深夜 perf P-1 trade_date TEXT→DATE Phase A fallback
 
 - `INFORMATION_SCHEMA` 实测: 当前 `trade_date` 列 13 个, DATE 4 / VARCHAR(TEXT) 9, 非历史 grep 估算的 43/7.

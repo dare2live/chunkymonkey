@@ -49,9 +49,19 @@ if [[ -f "$REPO_ROOT/gcp/cost_tracker.sh" && "$FORCE" != "1" ]]; then
     esac
 fi
 
-# Mark active_job marker (cost_tracker idle 检测用)
+# Mark active_job marker (cost_tracker idle 检测 + TTL check 用)
+# F5 P1 (docs/gcp_reliability_root_cause_fix.md): marker 加 model_id / owner / TTL
+# 防"跑完 batch 忘 rm marker, idle VM 假装有 active job 长跑浪费"场景
+# 调用方可 export MODEL_ID / JOB_TYPE / EXPECTED_MAX_HOURS 覆盖默认
 mkdir -p "$REPO_ROOT/data/reports"
-date -Iseconds > "$REPO_ROOT/data/reports/gcp_vm_active_job.marker"
+RUN_MARKER="$REPO_ROOT/data/reports/gcp_vm_active_job.marker"
+cat > "$RUN_MARKER" <<EOF
+model_id=${MODEL_ID:-unknown}
+job_type=${JOB_TYPE:-manual}
+started_at=$(date -Iseconds)
+expected_max_hours=${EXPECTED_MAX_HOURS:-24}
+owner_script=${BASH_SOURCE[0]}
+EOF
 
 # Check current state
 status=$(gcloud compute instances describe "${VM_NAME}" --zone="${ZONE}" --format='value(status)' 2>/dev/null || echo "MISSING")

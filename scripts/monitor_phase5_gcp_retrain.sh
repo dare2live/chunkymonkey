@@ -22,7 +22,20 @@ STATUS_DIR="data/reports/phase5_chain"
 MONITOR_LOG="$STATUS_DIR/monitor.log"
 mkdir -p "$STATUS_DIR"
 
-log() { echo "[$(date '+%H:%M:%S')] $*" | tee -a "$MONITOR_LOG"; }
+MONITOR_LOG_MAX_LINES="${MONITOR_LOG_MAX_LINES:-500}"  # user push back: 防 log 无限累积
+
+log() {
+    echo "[$(date '+%H:%M:%S')] $*" | tee -a "$MONITOR_LOG"
+    # Rotate: keep last MONITOR_LOG_MAX_LINES lines (user push back: snapshot/log 新替代旧)
+    if [ -f "$MONITOR_LOG" ]; then
+        local lines
+        lines=$(wc -l < "$MONITOR_LOG" | tr -d ' ')
+        if [ "$lines" -gt "$((MONITOR_LOG_MAX_LINES * 2))" ]; then
+            tail -n "$MONITOR_LOG_MAX_LINES" "$MONITOR_LOG" > "$MONITOR_LOG.tmp"
+            mv "$MONITOR_LOG.tmp" "$MONITOR_LOG"
+        fi
+    fi
+}
 
 log "=== monitor start model_id=$MODEL_ID poll=${POLL_INTERVAL_SEC}s max=${MAX_DURATION_HOURS}h ==="
 
