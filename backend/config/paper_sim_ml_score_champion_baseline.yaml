@@ -1,0 +1,94 @@
+portfolio:
+  initial_cash: 1000000
+  max_positions: 5
+  position_sizing: "equal"
+  cash_when_strong_buy_lt: 5
+  min_cash_pct: 0.30
+
+selection:
+  mode: "ml_score"
+  candidate_source: "mart_p0b_lambdamart_v6_predictions"
+  rank_by: "score"
+  min_tier_to_buy: "BUY"
+  min_tier_to_swap_in: "STRONG_BUY"
+  liquidity_min_amount_20d: 50000000
+  liquidity_max_price: 500
+  exclude_stage: []
+  backtest_tier_thresholds:
+    strong_buy:
+      sharpe_min: 0.8
+      win_rate_min: 0.65
+      calmar_min: 1.0
+    buy:
+      sharpe_min: 0.3
+      win_rate_min: 0.55
+  # PROD champion (criteria #6 待 retrain done. 实测 1.53M rows / 2025-01-02..2026-04-13 / 307 dates)
+  # evidence: predictions table coverage 实测 2026-05-20
+  ml_score_model_id: "lgbm_phase5_session_20260518T160747"
+  ml_score_prediction_table: "mart_p0b_lambdamart_v6_predictions"
+  ml_score_max_candidates: 30
+  ml_score_min_score: null
+  min_forced_hp: 0
+
+exit:
+  use_optuna_stop: true
+  use_optuna_target: true
+  use_optuna_trailing: true
+  use_optuna_hp: true
+  stage_deterioration_sell: true
+
+swap:
+  enabled: true
+  severe_threshold: 0.50
+  candidate_must_close_gap: true
+  gap_buffer_pct: 0.0035
+  min_holding_days_before_swap: 1
+  max_swaps_per_day: 1
+
+tx_cost:
+  commission_pct: 0.00025
+  commission_min_cny: 5
+  stamp_duty_sell_pct: 0.0005
+  transfer_fee_pct: 0.00001
+  exchange_fee_pct: 0.0000341
+  regulatory_fee_pct: 0.00002
+  slippage_pct: 0.0008
+  large_order_surcharge_pct: 0.0015
+  large_order_adv_threshold_pct: 0.03
+
+risk:
+  daily_dd_warning_pct: -0.05
+  max_dd_hard_stop_pct: -0.20
+  hard_stop_freeze_days: 14
+
+data:
+  optimal_table_primary: "mart_per_stock_stage_strategy_optimal_pit"
+  optimal_table_fallback: "mart_per_stock_strategy_optimal"
+  benchmark: "000300"
+  start_date: "2025-01-02"
+
+validation:
+  user_criteria:
+    annual_return_min: 0.30
+    max_dd_min: -0.20
+    excess_vs_hs300_min: 0.0
+    monthly_win_rate_min: 0.55
+  anti_churn:
+    avg_holding_days_min: 5
+    annual_turnover_max: 8.0
+    tx_cost_pct_of_gross_pnl_max: 0.10
+    swap_uplift_total_min: 0.0
+  robustness:
+    rolling_ir_60d_median_min: 0.5
+    rolling_ir_60d_p25_min: 0.0
+    rolling_annual_90d_median_min: 0.25
+    regime_min_return_per_segment: -0.02
+  ablation:
+    swap_vs_baseline_annual_uplift_min: 0.03
+    swap_vs_baseline_max_dd_degradation_max: 0.02
+    swap_vs_baseline_sharpe_ratio_min: 1.05
+  sensitivity:
+    severe_threshold_sweep: [0.4, 0.5, 0.6]
+  reality_check:
+    slippage_stress_pct: 0.003
+    annual_degradation_max: 0.05

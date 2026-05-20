@@ -784,6 +784,29 @@ SELECT * FROM mart_data_source_watermark;
 
 每次 session 增量内容写这里, 新 session 启动时**从下往上读**最近改了啥.
 
+### 2026-05-20 champion baseline paper_sim + lineage_url e2e 实测 (criteria #2 90→95% / #6 60→65%)
+
+承接 d81975e6 lineage_url DDL 集成 deploy, 跑 production champion `lgbm_phase5_session_20260518T160747` paper_sim baseline 同时实测 lineage_url e2e + 验证 KPI vs Pareto target + leakage 守门.
+
+**实施**:
+- 新 `backend/config/paper_sim_ml_score_champion_baseline.yaml` (基于 lambdamart_v6.yaml override `ml_score_model_id` + `data.start_date=2025-01-02`).
+- 跑 `PYTHONPATH=backend python backend/scripts/run_paper_sim_v2.py --variant champion_baseline_20260520T102611 --config-path <yaml> --start 2025-01-02 --end 2026-04-13`, Mac local 13.7 min wall, 不动 GCP retrain in-flight `lgbm_phase5_gcp_20260520T010718`.
+- 新 `scripts/validate_champion_paper_sim.py` (read-only KPI + lineage_url e2e + baseline compare + leakage 守门).
+
+**KPI 实测** (sim_run_id `champion_baseline_20260520T102611_20260520_022612_4b63c0`, 307 交易日 2025-01-02→2026-04-13):
+- 年化 +67.79% (PASS ≥30%) / max_dd -20.81% (**FAIL** -20.00% 差 0.81pp) / 月胜率 71.43% (PASS ≥55%) / 超额 HS300 +93.38% (PASS >0)
+- Sharpe 1.66 / Calmar 3.26 / IR 1.54 / 总收益 +87.86% / 平均持仓 13.1 天 / 换手 54.88x (FAIL ≤8) / swap 0 次
+- 3 类阻断 `ALL_KPI_PASS=FALSE` (user_criteria FAIL max_dd 边缘 / anti_churn FAIL 换手过高 + swap=0 跳过 uplift / robustness FAIL rolling_ir_p25 -1.22 + 牛/熊段负)
+- 4-baseline 对比: vs swap_v1 best (sharpe 1.42 / ann +56.74% / 月胜 66.67%) champion 年化 uplift +19.5% (well below leakage 50% 阈值) / sharpe +17% / 月胜 +4.76pp / dd 改善 -0.78pp. vs sizer_ablation_equal (ann +68.31% / sharpe 0.91 / 月胜 45%) champion ann 持平但 sharpe +83% / 月胜 +26.4pp.
+- 4 leakage 红线全 OK: sharpe 1.66 < 5 / ann 67.79% < 100% / 月胜 71% < 95% / 相对 baseline uplift 19.5% < 50%.
+
+**lineage_url e2e 实测 (criteria #9 验证)**:
+- `mart_paper_sim_kpi.lineage_url` column ALTER 通过 (ddl.py `ADD COLUMN IF NOT EXISTS` 在 ensure_paper_sim_tables 触发, 旧 36 行 NULL 保持, 新行写 `file:///.../data/reports/lineage/<sim_run_id>.md`).
+- 文件落地 `data/reports/lineage/champion_baseline_20260520T102611_20260520_022612_4b63c0.md` 1565 bytes, 含 Root KPI / Model Training Evidence (optuna_run_id p0b_optuna_v4_20260517T041145_7fed34 trial 3 + params_json) / Dependency Tree (mart_paper_sim_kpi → fact_paper_sim_nav/position/trade).
+- 注意: trace_lineage.py PARENTS map 只接 KPI 直接 children (nav/position/trade), 不爬回 model→predictions→panel→fact 树; 模型侧 lineage 在 "Model Training Evidence" 段以 optuna_run_id 跳转. 后续可扩 PARENTS map 串 mart_p0b_lambdamart_v6_predictions → mart_p0a_feature_label_panel_v4 → fact_feature_panel.
+
+**结论**: champion 不达 Pareto (max_dd -20.81% 略超 / 换手 54.88x 远超 8 / robustness 子项不过), 但 KPI 全口径强于 4 baseline. 不上线, 待 retrain v2 (`lgbm_phase5_gcp_20260520T010718`) done 后 paper_sim 对比, 看新模型 max_dd 与换手能否拉回. criteria #6 实盘 GO/NO-GO 维持 NO-GO (待 retrain), criteria #2 KPI baseline 测出推 90→95%.
+
 ### 2026-05-20 updater.py N+1 真问题 fix (criteria #8 70→75%)
 
 承接 Claude Explore a1e43ccb 验证 audit_n_plus_one 258 hits 真问题率 35.1%, 实施其中 P0 真 N+1 2 处:

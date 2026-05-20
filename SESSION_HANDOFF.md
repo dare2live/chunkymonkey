@@ -25,7 +25,7 @@ bash scripts/install_resilience.sh   # SessionStart hook + cron + launchd 全装
 bash scripts/install_resilience.sh --status   # check 装好没
 ```
 
-**Snapshot 时间**: 2026-05-20 09:45:26 CST
+**Snapshot 时间**: 2026-05-20 10:16:53 CST
 
 ## 主线 retrain 状态
 
@@ -33,8 +33,8 @@ bash scripts/install_resilience.sh --status   # check 装好没
 |---|---|
 | Model ID | `lgbm_phase5_gcp_20260520T010718` |
 | VM 状态 | RUNNING |
-| VM 上次启动 | 2026-05-19T18:06:37.665-07:00 |
-| VM 上次停止 | 2026-05-19T17:39:56.993-07:00 |
+| VM 上次启动 | 2026-05-19T18:56:38.590-07:00 |
+| VM 上次停止 | 2026-05-19T18:51:59.254-07:00 |
 | F2 checkpoint best_value |  |
 | F2 checkpoint best_trial |  |
 | F2 updated_at |  |
@@ -45,12 +45,9 @@ bash scripts/install_resilience.sh --status   # check 装好没
 | 项 | 状态 |
 |---|---|
 | Local monitor | alive PID=68231 elapsed= |
-| Codex companion threads | 3 running |
+| Codex companion threads | 0 running |
 
-3
-  - task-mpdeb1rc-tu8j7e elapsed=4m 29s
-  - task-mpddz4bz-s20vat elapsed=13m 46s
-  - task-mpddxxec-ek7xtz elapsed=14m 41s
+0
 
 ## GCP 成本
 
@@ -64,13 +61,15 @@ bash scripts/install_resilience.sh --status   # check 装好没
 | 项 | 值 |
 |---|---|
 | Branch | main |
-| HEAD | `4eece3bd doc: goal.md 更新 — retrain v1 preempted + v2 in-flight (F1+F2) + criteria 7/9 推进` |
-| 最近 24h commits | 38 |
-| 未 commit 文件 | 16 |
+| HEAD | `b23f6ffb perf(updater): batch fix N+1 真问题 2 处 (criteria #8 70→75%)` |
+| 最近 24h commits | 40 |
+| 未 commit 文件 | 15 |
 
 ### 最近 10 commits
 
 ```
+b23f6ffb perf(updater): batch fix N+1 真问题 2 处 (criteria #8 70→75%)
+bdb0b843 feat: 中断恢复 1 命令入口 + 用户 prompt 模板 (session resilience 优化)
 4eece3bd doc: goal.md 更新 — retrain v1 preempted + v2 in-flight (F1+F2) + criteria 7/9 推进
 61c81eaa feat: notification framework (criteria 7 P0a, Codex a92b87c4) — email + macos + slack drivers
 d81975e6 feat: criteria 7 UI/UX P0a + criteria 9 lineage_url 集成 paper_sim KPI + silent except 修
@@ -79,13 +78,11 @@ edc2bce5 feat: session 无缝衔接 framework (Mac 重启/terminal 崩/Claude se
 3bbf7667 feat: GCP retrain reliability F1+F2 (Optuna SQLite + 每 trial checkpoint) — 防 spot preempt 浪费
 713368cf doc: GCP retrain reliability root cause + 5 fix + 3 resume option (Codex bocq8b60j)
 52877e88 feat + doc: goal.md 加 criteria 7-9 (Codex a9e53d93) + P-1 trade_date Phase A 实施 (Codex ae706482)
-19f2553e perf: retrain stall Fix 1 (15 min → ~30 sec, 30-60x) — assert_pit_strict int64 fast-path
-f64e3e8c feat: 数据 lineage spec + trace_lineage.py (Codex aeb8ea53)
 ```
 
 ## NEXT ACTION (auto-computed)
 
-**16 uncommitted files — git status 看 + bash scripts/safe_commit.sh**
+**15 uncommitted files — git status 看 + bash scripts/safe_commit.sh**
 
 ## Resilience 配置 (verified)
 
