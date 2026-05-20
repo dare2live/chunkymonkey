@@ -11,6 +11,7 @@ function PageMarketPerception() {
   const [themeHistory, setThemeHistory] = useStateMP([]);
   const [underReaction, setUnderReaction] = useStateMP(null);
   const [leaderFollower, setLeaderFollower] = useStateMP(null);
+  const [styleSnapshot, setStyleSnapshot] = useStateMP(null);
   const [health, setHealth] = useStateMP(null);
   const [loading, setLoading] = useStateMP(true);
   const [err, setErr] = useStateMP(null);
@@ -26,8 +27,9 @@ function PageMarketPerception() {
       fetch('/api/v3/market_perception/theme/history?days=14&top_n=5').then(r => r.json()),
       fetch('/api/v3/market_perception/under_reaction/snapshot?limit=20').then(r => r.json()),
       fetch('/api/v3/market_perception/leader_follower/snapshot?limit=20').then(r => r.json()),
+      fetch('/api/v3/market_perception/style/snapshot').then(r => r.json()),
       fetch('/api/v3/market_perception/health').then(r => r.json()),
-    ]).then(([snap, hist, emotionSnap, emotionHist, themeSnap, themeHist, underSnap, leaderSnap, hp]) => {
+    ]).then(([snap, hist, emotionSnap, emotionHist, themeSnap, themeHist, underSnap, leaderSnap, styleSnap, hp]) => {
       if (!alive) return;
       if (snap.ok === false) throw new Error(snap.error || 'snapshot failed');
       if (hist.ok === false) throw new Error(hist.error || 'history failed');
@@ -37,6 +39,7 @@ function PageMarketPerception() {
       if (themeHist.ok === false) throw new Error(themeHist.error || 'theme history failed');
       if (underSnap.ok === false) throw new Error(underSnap.error || 'under reaction snapshot failed');
       if (leaderSnap.ok === false) throw new Error(leaderSnap.error || 'leader follower snapshot failed');
+      if (styleSnap.ok === false) throw new Error(styleSnap.error || 'style snapshot failed');
       setSnapshot(snap);
       setHistory(hist.data || []);
       setEmotionSnapshot(emotionSnap);
@@ -45,6 +48,7 @@ function PageMarketPerception() {
       setThemeHistory(themeHist.data || []);
       setUnderReaction(underSnap);
       setLeaderFollower(leaderSnap);
+      setStyleSnapshot(styleSnap);
       setHealth(hp);
       setLoading(false);
     }).catch(e => {
@@ -66,6 +70,7 @@ function PageMarketPerception() {
   const topUnder = underRows[0] || {};
   const leaderRows = (leaderFollower && leaderFollower.data) || [];
   const topLeader = leaderRows[0] || {};
+  const style = (styleSnapshot && styleSnapshot.data) || {};
   const regime = d.regime_score;
   const emotion = e.emotion_score;
   const themeTone = topTheme.theme_score == null ? null : topTheme.theme_score > 0.45 ? 'pos' : topTheme.theme_score < -0.3 ? 'neg' : null;
@@ -121,6 +126,7 @@ function PageMarketPerception() {
               <MiniHealth k="theme rows" v={health && health.theme_rows != null ? String(health.theme_rows) : '—'}/>
               <MiniHealth k="under rows" v={health && health.under_reaction_rows != null ? String(health.under_reaction_rows) : '—'}/>
               <MiniHealth k="leader rows" v={health && health.leader_follower_rows != null ? String(health.leader_follower_rows) : '—'}/>
+              <MiniHealth k="style rows" v={health && health.style_rows != null ? String(health.style_rows) : '—'}/>
             </div>
             {engines.map(([name, status]) => (
               <div key={name} style={{display:'flex',alignItems:'center',justifyContent:'space-between',gap:10,padding:'7px 0',borderBottom:'1px solid var(--line-soft)'}}>
@@ -157,6 +163,17 @@ function PageMarketPerception() {
       <UI.Card title="LeaderFollower · ChainDiffusion" action={<UI.ApiTag>/leader_follower/snapshot?limit=20</UI.ApiTag>}
         foot={`snapshot ${topLeader.snapshot_date || '—'} · built_at ${fmtDateTime(topLeader.built_at)}`}>
         <LeaderFollowerTable rows={leaderRows}/>
+      </UI.Card>
+
+      <UI.Card title="StyleRotation · CrowdingRisk" action={<UI.ApiTag>/style/snapshot</UI.ApiTag>}
+        foot={`snapshot ${style.snapshot_date || '—'} · built_at ${fmtDateTime(style.built_at)}`}>
+        <div style={{display:'grid',gridTemplateColumns:'repeat(4, minmax(0, 1fr))',gap:12,marginBottom:10}}>
+          <UI.KStat k="风格偏好" v={style.style_bias || '—'} sub={style.style_rotation_score == null ? '—' : style.style_rotation_score.toFixed(3)} tone={style.style_rotation_score >= 0 ? 'pos' : 'neg'}/>
+          <UI.KStat k="大小盘" v={fmtNum(style.size_preference_score, 3)} sub={`small ${style.small_ret_1d == null ? '—' : UI.fmt2pct(style.small_ret_1d)}`}/>
+          <UI.KStat k="趋势/超跌" v={fmtNum(style.trend_preference_score, 3)} sub={`trend ${style.trend_ret_1d == null ? '—' : UI.fmt2pct(style.trend_ret_1d)}`}/>
+          <UI.KStat k="拥挤风险" v={fmtNum(style.crowding_risk_score, 3)} sub={`source ${style.style_source || '—'}`} tone={style.crowding_risk_score > 0.5 ? 'neg' : 'neutral'}/>
+        </div>
+        <StyleDetail row={style}/>
       </UI.Card>
     </div>
   );
@@ -306,6 +323,25 @@ function LeaderFollowerTable({ rows }) {
         ))}
       </tbody>
     </table>
+  );
+}
+
+function StyleDetail({ row }) {
+  const UI = window.CMV3.UI;
+  if (!row || !row.snapshot_date) return <div style={{padding:12,color:'var(--ink-3)'}}>暂无风格轮动数据</div>;
+  const items = [
+    ['mid 1d', row.mid_ret_1d == null ? '—' : UI.fmt2pct(row.mid_ret_1d)],
+    ['large 1d', row.large_ret_1d == null ? '—' : UI.fmt2pct(row.large_ret_1d)],
+    ['reversal 1d', row.reversal_ret_1d == null ? '—' : UI.fmt2pct(row.reversal_ret_1d)],
+    ['top turnover', row.top_decile_turnover_share == null ? '—' : UI.fmt2pct(row.top_decile_turnover_share, false)],
+    ['hot share', row.hot_stock_share == null ? '—' : UI.fmt2pct(row.hot_stock_share, false)],
+    ['overheat', fmtNum(row.overheat_reversal_risk, 3)],
+    ['emotion', row.emotion_state || '—'],
+  ];
+  return (
+    <div style={{display:'grid',gridTemplateColumns:'repeat(7, minmax(0, 1fr))',gap:8}}>
+      {items.map(([k, v]) => <MiniHealth key={k} k={k} v={v}/>)}
+    </div>
   );
 }
 

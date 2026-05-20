@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import logging
+import math
 from datetime import date, datetime, timezone
 
 from fastapi import APIRouter
@@ -50,6 +51,7 @@ def _market_perception_health(conn) -> dict:
             "theme_rows": 0,
             "under_reaction_rows": 0,
             "leader_follower_rows": 0,
+            "style_rows": 0,
         }
 
     row = conn.execute(
@@ -81,6 +83,7 @@ def _market_perception_health(conn) -> dict:
     theme_rows = _table_row_count(conn, "mart_market_perception_theme_daily")
     under_reaction_rows = _table_row_count(conn, "mart_market_perception_under_reaction_daily")
     leader_follower_rows = _table_row_count(conn, "mart_market_perception_leader_follower_daily")
+    style_rows = _table_row_count(conn, "mart_market_perception_style_daily")
     return {
         "mart_table_exists": True,
         "mart_rows": mart_rows,
@@ -96,6 +99,7 @@ def _market_perception_health(conn) -> dict:
         "theme_rows": theme_rows,
         "under_reaction_rows": under_reaction_rows,
         "leader_follower_rows": leader_follower_rows,
+        "style_rows": style_rows,
     }
 
 
@@ -197,6 +201,13 @@ def _serialize_row(row) -> dict:
         "pit_cutoff_date": str(row[13]) if row[13] is not None else None,
         "built_at": str(row[14]) if row[14] is not None else None,
     }
+
+
+def _finite_float(value) -> float | None:
+    if value is None:
+        return None
+    out = float(value)
+    return out if math.isfinite(out) else None
 
 
 def _serialize_emotion_row(row) -> dict:
@@ -344,6 +355,40 @@ LEADER_FOLLOWER_SELECT = """
     follower_ret_3d, follower_ret_5d, follower_ret_20d,
     follower_amount_ratio_5_20, theme_score, lifecycle_stage,
     pit_member_confidence, pit_cutoff_date, source_engines, built_at
+"""
+
+
+def _serialize_style_row(row) -> dict:
+    return {
+        "snapshot_date": str(row[0]) if row[0] is not None else None,
+        "style_rotation_score": _finite_float(row[1]),
+        "style_bias": row[2],
+        "size_preference_score": _finite_float(row[3]),
+        "trend_preference_score": _finite_float(row[4]),
+        "crowding_risk_score": _finite_float(row[5]),
+        "overheat_reversal_risk": _finite_float(row[6]),
+        "small_ret_1d": _finite_float(row[7]),
+        "mid_ret_1d": _finite_float(row[8]),
+        "large_ret_1d": _finite_float(row[9]),
+        "trend_ret_1d": _finite_float(row[10]),
+        "reversal_ret_1d": _finite_float(row[11]),
+        "top_decile_turnover_share": _finite_float(row[12]),
+        "hot_stock_share": _finite_float(row[13]),
+        "style_source": row[14],
+        "emotion_score": _finite_float(row[15]),
+        "emotion_state": row[16],
+        "pit_cutoff_date": str(row[17]) if row[17] is not None else None,
+        "source_engines": row[18],
+        "built_at": str(row[19]) if row[19] is not None else None,
+    }
+
+
+STYLE_SELECT = """
+    snapshot_date, style_rotation_score, style_bias, size_preference_score,
+    trend_preference_score, crowding_risk_score, overheat_reversal_risk,
+    small_ret_1d, mid_ret_1d, large_ret_1d, trend_ret_1d, reversal_ret_1d,
+    top_decile_turnover_share, hot_stock_share, style_source, emotion_score,
+    emotion_state, pit_cutoff_date, source_engines, built_at
 """
 
 
@@ -615,6 +660,29 @@ async def get_leader_follower_snapshot(limit: int = 50):
         return {"ok": False, "error": str(exc), "data": [], "limit": limit, "built_at": datetime.now(timezone.utc).isoformat()}
 
 
+@router.get("/style/snapshot")
+async def get_style_snapshot():
+    """Return latest style rotation and crowding snapshot."""
+    try:
+        with get_conn() as conn:
+            if not _table_exists(conn, "mart_market_perception_style_daily"):
+                return {"ok": True, "stub": True, "data": None, "built_at": datetime.now(timezone.utc).isoformat()}
+            row = conn.execute(
+                f"""
+                SELECT {STYLE_SELECT}
+                  FROM mart_market_perception_style_daily
+                 ORDER BY snapshot_date DESC LIMIT 1
+                """,
+            ).fetchone()
+            if not row:
+                return {"ok": True, "stub": True, "data": None, "built_at": datetime.now(timezone.utc).isoformat()}
+            data = _serialize_style_row(row)
+            return {"ok": True, "stub": False, "data": data, "built_at": data["built_at"]}
+    except Exception as exc:
+        logger.warning("market_perception style snapshot query failed: %s", exc)
+        return {"ok": False, "error": str(exc), "data": None, "built_at": datetime.now(timezone.utc).isoformat()}
+
+
 @router.get("/health")
 async def get_health():
     """模块健康检查 — 列出哪些 engine 已实施."""
@@ -626,6 +694,7 @@ async def get_health():
         "FundFlowEngine": "spec_only",
         "LeaderFollowerEngine": "spec_only",
         "CrowdingRiskEngine": "spec_only",
+        "StyleRotationEngine": "spec_only",
         "StockContextEngine": "spec_only",
     }
     with get_conn() as conn:
@@ -641,6 +710,9 @@ async def get_health():
     if health.get("leader_follower_rows", 0) > 0:
         engines["LeaderFollowerEngine"] = "live"
         engines["ChainDiffusionEngine"] = "research_mvp"
+    if health.get("style_rows", 0) > 0:
+        engines["CrowdingRiskEngine"] = "research_mvp"
+        engines["StyleRotationEngine"] = "research_mvp"
     return {
         "ok": True,
         "engines": engines,
