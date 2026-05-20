@@ -1,0 +1,126 @@
+# Path A3 真 anti-churn 双管 (2026-05-20 Round 3 retest): max_positions=10 + min_holding=15
+#
+# 派生自 paper_sim_ml_score_champion_minhold15.yaml.
+# 仅 override portfolio.max_positions: 5 → 10.
+# 目的: minhold5/15 实测 turnover 仅 -11% (54.88→48.82), min_holding_days 不是 anti_churn 正确工具.
+#       推论: turnover = gross/cap × 252/period; min_holding 推迟 exit 但 buy_cost 不变.
+#       新假设: 摊薄 per-position weight (5×140k → 10×70k) 配合 minhold=15, 看是否真减 turnover.
+#
+# 理论分析:
+#   - max_pos=5  + equal:  per_pct=0.70/5=0.14, 每仓 ~140k
+#   - max_pos=10 + equal:  per_pct=0.70/10=0.07, 每仓 ~70k
+#   - gross_total ≈ (n_open × per_cny + n_close × per_cny) × 2 (buy+sell)
+#   - 单纯翻倍 n_open (5→10) 同时减半 per_cny → gross_total 同 → turnover 同
+#   - 真减 turnover 必须: (a) candidates pool 末位 score 较低 → churn 慢 OR (b) minhold=15 同步压制 exit
+#
+# 历史 (2026-05-20 实测对比):
+#   baseline (minhold=0):  年化 +67.79% / max_dd -20.81% / sharpe 1.66 / 月胜 71.43% / 换手 54.88x / avg_hold 13.1d
+#   minhold5:              年化 +53.50% / max_dd -17.38% / sharpe 1.56 / 月胜 66.67% / 换手 48.82x (-11%, FAIL >>8)
+#   minhold15:             年化 +108.18%/ max_dd -20.36% / sharpe 2.12 / 月胜 66.67% / 换手 49.57x (FAIL >>8)
+#   maxpos10+minhold15:    本 yaml 实测
+#
+# 决策框架:
+#   A: 换手 ≤8  + dd OK + ann ≥30% → anti_churn unblock, criteria #6 70→80%
+#   B: 换手 ≤15 + dd OK + ann ≥50% → partial PASS, 考虑 anti_churn threshold 8 → 15
+#   C: 换手 ≥30 + ann 维持 → max_pos 也不 effective, anti_churn threshold 太严 (#6 70→72%)
+#   D: dd 大幅劣化 / ann 大跌 → 撤回, 锁 minhold15 为 production
+#
+# rule-compliance: ok evidence=2026-05-20 minhold5/15 实测 turnover 仅 -11/+1.5% 升级 max_pos 双管
+
+portfolio:
+  initial_cash: 1000000
+  max_positions: 10
+  position_sizing: "equal"
+  cash_when_strong_buy_lt: 5
+  min_cash_pct: 0.30
+
+selection:
+  mode: "ml_score"
+  candidate_source: "mart_p0b_lambdamart_v6_predictions"
+  rank_by: "score"
+  min_tier_to_buy: "BUY"
+  min_tier_to_swap_in: "STRONG_BUY"
+  liquidity_min_amount_20d: 50000000
+  liquidity_max_price: 500
+  exclude_stage: []
+  backtest_tier_thresholds:
+    strong_buy:
+      sharpe_min: 0.8
+      win_rate_min: 0.65
+      calmar_min: 1.0
+    buy:
+      sharpe_min: 0.3
+      win_rate_min: 0.55
+  # PROD champion (criteria #6 待 retrain done. 实测 1.53M rows / 2025-01-02..2026-04-13 / 307 dates)
+  # evidence: predictions table coverage 实测 2026-05-20
+  ml_score_model_id: "lgbm_phase5_session_20260518T160747"
+  ml_score_prediction_table: "mart_p0b_lambdamart_v6_predictions"
+  ml_score_max_candidates: 30
+  ml_score_min_score: null
+  min_forced_hp: 0   # 不重叠 anti-churn, 仅靠 exit.min_holding_days_before_exit
+
+exit:
+  use_optuna_stop: true
+  use_optuna_target: true
+  use_optuna_trailing: true
+  use_optuna_hp: true
+  stage_deterioration_sell: true
+  # Path A2 极强版 anti-churn: 强制所有 single-position exit 最少持 15 天.
+  # rule-compliance: ok evidence=2026-05-20 minhold5 实测 -11% turnover 不达 anti_churn (54.88→48.82) 升级 Round 2
+  min_holding_days_before_exit: 15
+
+swap:
+  enabled: true
+  severe_threshold: 0.50
+  candidate_must_close_gap: true
+  gap_buffer_pct: 0.0035
+  min_holding_days_before_swap: 1
+  max_swaps_per_day: 1
+
+tx_cost:
+  commission_pct: 0.00025
+  commission_min_cny: 5
+  stamp_duty_sell_pct: 0.0005
+  transfer_fee_pct: 0.00001
+  exchange_fee_pct: 0.0000341
+  regulatory_fee_pct: 0.00002
+  slippage_pct: 0.0008
+  large_order_surcharge_pct: 0.0015
+  large_order_adv_threshold_pct: 0.03
+
+risk:
+  daily_dd_warning_pct: -0.05
+  max_dd_hard_stop_pct: -0.20
+  hard_stop_freeze_days: 14
+
+data:
+  optimal_table_primary: "mart_per_stock_stage_strategy_optimal_pit"
+  optimal_table_fallback: "mart_per_stock_strategy_optimal"
+  benchmark: "000300"
+  start_date: "2025-01-02"
+
+validation:
+  user_criteria:
+    annual_return_min: 0.30
+    max_dd_min: -0.20
+    excess_vs_hs300_min: 0.0
+    monthly_win_rate_min: 0.55
+  anti_churn:
+    avg_holding_days_min: 5
+    annual_turnover_max: 8.0
+    tx_cost_pct_of_gross_pnl_max: 0.10
+    swap_uplift_total_min: 0.0
+  robustness:
+    rolling_ir_60d_median_min: 0.5
+    rolling_ir_60d_p25_min: 0.0
+    rolling_annual_90d_median_min: 0.25
+    regime_min_return_per_segment: -0.02
+  ablation:
+    swap_vs_baseline_annual_uplift_min: 0.03
+    swap_vs_baseline_max_dd_degradation_max: 0.02
+    swap_vs_baseline_sharpe_ratio_min: 1.05
+  sensitivity:
+    severe_threshold_sweep: [0.4, 0.5, 0.6]
+  reality_check:
+    slippage_stress_pct: 0.003
+    annual_degradation_max: 0.05

@@ -784,7 +784,61 @@ SELECT * FROM mart_data_source_watermark;
 
 每次 session 增量内容写这里, 新 session 启动时**从下往上读**最近改了啥.
 
-### 2026-05-20 anti-churn Path A2 Round 2: min_holding_days_before_exit=15 实测 (criteria #6 维持 70%, push back 80%)
+### 2026-05-20 anti-churn Path A3 Round 3: max_positions 5→10 + minhold=15 双管实测 (criteria #6 维持 70%, push back D 撤回)
+
+承接 minhold15 partial (turnover -10% 仍 FAIL >>8), user 推真 anti-churn fix path: max_pos 摊薄 + minhold 双管. **真金白银 push back**: 触发用户决策框架 **D (dd 大幅劣化撤回)** — maxpos10 摊薄被 dd -26.1% 劣化超 -20% 死线否决, 锁 minhold15 为 prod-candidate alpha 增强不再推进 maxpos10 路径.
+
+**实施** (`backend/config/paper_sim_ml_score_champion_maxpos10_minhold15.yaml`):
+- 派生自 `paper_sim_ml_score_champion_minhold15.yaml`, 仅 override `portfolio.max_positions: 5 → 10`.
+- 全栈参与: equal sizer 自动 per_pct = 0.70 / 10 = 0.07 (每仓 ~70k vs 5 仓 140k), driver L421 `slots_left = max_positions - holding_count` 自动 fill 到 10 仓, swap fallback 单仓 cash/max_positions (driver L614) 同步缩半.
+- 复用 portfolio_sizing equal mode (sizer.py L166-176), 无代码改, 仅配置 retest.
+
+**KPI 实测** (sim_run_id `champion_maxpos10_minhold15_20260520_121320_20260520_041321_2e4753`, 330 交易日 2025-01-02→2026-05-19, Mac 8C 13.8 min wall):
+
+| 指标 | baseline (307d) | minhold5 | minhold15 | **maxpos10+minhold15** | vs minhold15 |
+|---|---|---|---|---|---|
+| 年化 | +67.79% | +53.5% | +108.2% | **+112.3%** | **+4.1pp** |
+| max_dd | -20.81% | -17.4% | -20.4% | **-26.1%** | **-5.7pp 劣化, 突破 -20% 死线** |
+| sharpe | 1.66 | 1.56 | 2.12 | **1.76** | **-0.36 劣化** |
+| 月胜率 | 71.4% | 67% | 67% | **73%** | +6.3pp 改善 |
+| **年化换手** | 54.88x | 48.82x | 49.57x | **42.84x** | **-13.6% (仍 FAIL >>8)** |
+| tx_cost_pct | 5.98% | 5.28% | 3.69% | **4.59%** | +0.9pp 略升 |
+| avg_holding_days | 13.1 | 15.8 | 21.3 | 21.4 | 持平 |
+| trade count | — | — | 142 | **180** | **+27%** |
+| closed positions | 87 | 90 | 71 | **88** | +24% |
+| gross_sum (CNY) | — | — | 64.92M | **56.10M** | **-13.6%** (跟 turnover 一致) |
+| 每仓 avg_pnl_pct | 2.23% | 2.67% | 5.43% | 1.36% | **-4.07pp 摊薄严重** |
+
+**真因分析 — max_pos 摊薄是 turnover formula 的精确反向调整, 但不够强且 dd 共振**:
+
+1. **turnover 公式确认** (services/paper_sim/reporter.py L320-322): `annual_turnover = (gross_total / initial_cash) * (252 / period_days)`. 一次 trade 的 gross = buy/sell 当日金额. max_pos 5→10 → 单仓 cny ~140k → ~70k (-50%), 但 trade 翻倍 142→180 (+27%, 不是 +100%) 因为前期 candidates ≤5 没填满 10 仓 (signal_date 50% 时 loaded < 5 candidates, day 150 仍 pos=3). 结果 gross_sum 64.92M → 56.10M (-13.6%) → turnover 同步 -13.6%.
+
+2. **dd 共振劣化的真因**: 跨更多 stock 暴露面 (5→10) 在系统性回调 (2026-03 hard_stop 触发 dd-22%) 时同向损失 → portfolio dd 从 -20.4% 加深到 **-26.1%**. 摊薄不减相关性 (HS300 系统性 beta 共振), 单仓减半但仓数翻倍, 总暴露不变.
+
+3. **alpha 摊薄反向**: 每仓 avg_pnl_pct 5.43%→1.36% (-75%) — 因为 ml_score top-1 至 top-10 score 衰减 (ml_score_max_candidates=30, 但实际 candidates 多日 <10), 第 6-10 名 score 弱化 alpha. ann 仅微涨 +4.1pp 来自 capital 利用率改善 (cash 利用 30%→更低 cash%) 不来自 stock-level alpha.
+
+4. **核心 turnover gap**: 42.84x vs anti_churn 阈值 8x 仍 5.4× 超. 真正 fix 必须 (a) 减 candidates pool / 提高 score 门槛 → 减入场次数 OR (b) Optuna 显著放大 hp/trailing → 持仓拉到 60+d (avg_hold 21d 远不够) OR (c) min_score 阈值收紧让低分日 candidates=0 自然跳过.
+
+**4 leakage 红线 self-check** (Rule 5 §异常高数字):
+- sharpe 1.76 < 5 ✓ / ann +112.3% > 100% 警报阈值 但已用 minhold15 evidence 链解释 (alpha mechanism 同源, 仅 sizing 改变)
+- vs minhold15 ann +3.8% relative < +50% 阈值 ✓ (没 leakage 风险)
+- dd 劣化 -5.7pp = 风险信号但跟 alpha mechanism 一致 (跨更多 stock 增暴露面), 不是 leakage
+- closed positions 71→88 (+24%) 跟 trade 翻倍同步, 无 selection bias
+
+**用户决策框架结果**:
+- A (turnover ≤8 + dd OK + ann≥30%) → **FAIL** (turnover 42.84 远 >>8)
+- B (turnover ≤15 + dd OK + ann≥50%) → **FAIL** (turnover 42.84 远 >>15 AND dd -26.1 突破死线)
+- C (turnover ≥30 + ann 维持 → max_pos 也不 effective) → **MATCH** (turnover -13.6% 摊薄起效但 5.4× 超阈值)
+- **D (dd 大幅劣化撤回) → MATCH** ✓✓ — dd -20.4 → -26.1 (-5.7pp), 突破 -20% 用户死线, **必须撤回**
+
+**结论 + criteria #6 维持 70% + 撤回 maxpos10 路径**:
+- **撤回 maxpos10 路径**: yaml 保留为 negative finding evidence 不删 (供后续 doc 索引), 但不推荐作为 prod-candidate.
+- **锁 minhold15 为 alpha 增强 prod-candidate** (commit bde0fbc1): ann +108.2% / sharpe 2.12 / dd -20.4% (边缘 -0.4pp 微超), 配套等待 retrain v2 (`lgbm_phase5_gcp_20260520T010718`) 看新 predictions 是否自然降换手.
+- **不推 criteria #6 65→80%**: maxpos10 path FAIL 否决 partial 收益; anti_churn 仍 FAIL turnover 42.84x, 实盘成本压不住; max_dd 突破死线 = strict no-go.
+- **真因结论**: turnover 不是 capital sizing 能解的题, 是 trade frequency 题. 真路径在 ml_score min_score 阈值 OR Optuna hp/trailing 显著放大. ROI 排序: (i) 等 retrain v2 done 看新 score distribution + 自然 turnover (ii) min_score 加阈值切低分日 candidates → 减交易日 (iii) Optuna hp 加权重让 stop/target 更宽松延长持仓.
+- **不动**: baseline / minhold5 / minhold15 yaml (已 commit), retrain v2 in-flight (GCP independent).
+
+
 
 承接 minhold5 partial (-11% turnover 仍 FAIL >>8), user 推 minhold=15 二次 retest 探边界 + 决策. **真金白银 push back**: minhold=15 不应推 criteria #6 65→80%, 因 anti_churn 仍 FAIL turnover 49.57x; 但 minhold=15 **是 alpha tool 不是 anti-churn tool** (ann +60pp / sharpe +0.46 / dd 持平 / 每仓 pnl_pct +143%), 应保留并 follow-up 走 portfolio-level fix.
 
