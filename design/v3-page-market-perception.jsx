@@ -9,6 +9,7 @@ function PageMarketPerception() {
   const [emotionHistory, setEmotionHistory] = useStateMP([]);
   const [themeSnapshot, setThemeSnapshot] = useStateMP(null);
   const [themeHistory, setThemeHistory] = useStateMP([]);
+  const [underReaction, setUnderReaction] = useStateMP(null);
   const [health, setHealth] = useStateMP(null);
   const [loading, setLoading] = useStateMP(true);
   const [err, setErr] = useStateMP(null);
@@ -22,8 +23,9 @@ function PageMarketPerception() {
       fetch('/api/v3/market_perception/emotion/history?days=90').then(r => r.json()),
       fetch('/api/v3/market_perception/theme/snapshot').then(r => r.json()),
       fetch('/api/v3/market_perception/theme/history?days=14&top_n=5').then(r => r.json()),
+      fetch('/api/v3/market_perception/under_reaction/snapshot?limit=20').then(r => r.json()),
       fetch('/api/v3/market_perception/health').then(r => r.json()),
-    ]).then(([snap, hist, emotionSnap, emotionHist, themeSnap, themeHist, hp]) => {
+    ]).then(([snap, hist, emotionSnap, emotionHist, themeSnap, themeHist, underSnap, hp]) => {
       if (!alive) return;
       if (snap.ok === false) throw new Error(snap.error || 'snapshot failed');
       if (hist.ok === false) throw new Error(hist.error || 'history failed');
@@ -31,12 +33,14 @@ function PageMarketPerception() {
       if (emotionHist.ok === false) throw new Error(emotionHist.error || 'emotion history failed');
       if (themeSnap.ok === false) throw new Error(themeSnap.error || 'theme snapshot failed');
       if (themeHist.ok === false) throw new Error(themeHist.error || 'theme history failed');
+      if (underSnap.ok === false) throw new Error(underSnap.error || 'under reaction snapshot failed');
       setSnapshot(snap);
       setHistory(hist.data || []);
       setEmotionSnapshot(emotionSnap);
       setEmotionHistory(emotionHist.data || []);
       setThemeSnapshot(themeSnap);
       setThemeHistory(themeHist.data || []);
+      setUnderReaction(underSnap);
       setHealth(hp);
       setLoading(false);
     }).catch(e => {
@@ -54,6 +58,8 @@ function PageMarketPerception() {
   const e = (emotionSnapshot && emotionSnapshot.data) || {};
   const themes = (themeSnapshot && themeSnapshot.data) || [];
   const topTheme = themes[0] || {};
+  const underRows = (underReaction && underReaction.data) || [];
+  const topUnder = underRows[0] || {};
   const regime = d.regime_score;
   const emotion = e.emotion_score;
   const themeTone = topTheme.theme_score == null ? null : topTheme.theme_score > 0.45 ? 'pos' : topTheme.theme_score < -0.3 ? 'neg' : null;
@@ -107,6 +113,7 @@ function PageMarketPerception() {
               <MiniHealth k="regime rows" v={health && health.mart_rows != null ? String(health.mart_rows) : '—'}/>
               <MiniHealth k="emotion rows" v={health && health.emotion_rows != null ? String(health.emotion_rows) : '—'}/>
               <MiniHealth k="theme rows" v={health && health.theme_rows != null ? String(health.theme_rows) : '—'}/>
+              <MiniHealth k="under rows" v={health && health.under_reaction_rows != null ? String(health.under_reaction_rows) : '—'}/>
             </div>
             {engines.map(([name, status]) => (
               <div key={name} style={{display:'flex',alignItems:'center',justifyContent:'space-between',gap:10,padding:'7px 0',borderBottom:'1px solid var(--line-soft)'}}>
@@ -134,6 +141,11 @@ function PageMarketPerception() {
           <ThemeHistory rows={themeHistory}/>
         </UI.Card>
       </div>
+
+      <UI.Card title="FundFlow · UnderReaction" action={<UI.ApiTag>/under_reaction/snapshot?limit=20</UI.ApiTag>}
+        foot={`snapshot ${topUnder.snapshot_date || '—'} · built_at ${fmtDateTime(topUnder.built_at)}`}>
+        <UnderReactionTable rows={underRows}/>
+      </UI.Card>
     </div>
   );
 }
@@ -208,6 +220,43 @@ function ThemeHistory({ rows }) {
         </React.Fragment>
       ))}
     </div>
+  );
+}
+
+function UnderReactionTable({ rows }) {
+  const UI = window.CMV3.UI;
+  if (!rows || !rows.length) return <div style={{padding:12,color:'var(--ink-3)'}}>暂无资金预期差数据</div>;
+  return (
+    <table style={{width:'100%',borderCollapse:'collapse',fontSize:12}}>
+      <thead>
+        <tr style={{textAlign:'left',color:'var(--ink-3)',fontSize:10,letterSpacing:'.04em',textTransform:'uppercase'}}>
+          <th style={{padding:'7px 4px'}}>代码</th>
+          <th style={{padding:'7px 4px'}}>主题</th>
+          <th style={{padding:'7px 4px'}}>阶段</th>
+          <th style={{padding:'7px 4px',textAlign:'right'}}>under</th>
+          <th style={{padding:'7px 4px',textAlign:'right'}}>fund</th>
+          <th style={{padding:'7px 4px',textAlign:'right'}}>price</th>
+          <th style={{padding:'7px 4px',textAlign:'right'}}>5d</th>
+          <th style={{padding:'7px 4px',textAlign:'right'}}>20d</th>
+          <th style={{padding:'7px 4px',textAlign:'right'}}>LHB</th>
+        </tr>
+      </thead>
+      <tbody>
+        {rows.slice(0, 12).map(r => (
+          <tr key={r.stock_code} style={{borderTop:'1px solid var(--line-soft)'}}>
+            <td style={{padding:'8px 4px',fontFamily:'var(--f-mono)',fontWeight:700,color:'var(--ink-0)'}}>{r.stock_code}</td>
+            <td style={{padding:'8px 4px',color:'var(--ink-2)'}}>{r.theme_name || '—'}</td>
+            <td style={{padding:'8px 4px'}}><UI.Pill tone={stageTone(r.lifecycle_stage)} size="xs">{r.lifecycle_stage || '—'}</UI.Pill></td>
+            <td style={{padding:'8px 4px',textAlign:'right',fontFamily:'var(--f-mono)',fontWeight:700,color:(r.under_reaction_score||0)>=0?'#2f8a55':'#c4382e'}}>{fmtNum(r.under_reaction_score, 3)}</td>
+            <td style={{padding:'8px 4px',textAlign:'right',fontFamily:'var(--f-mono)'}}>{fmtNum(r.fund_anomaly_score, 2)}</td>
+            <td style={{padding:'8px 4px',textAlign:'right',fontFamily:'var(--f-mono)'}}>{fmtNum(r.price_reaction_score, 2)}</td>
+            <td style={{padding:'8px 4px',textAlign:'right',fontFamily:'var(--f-mono)',color:(r.ret_5d||0)>=0?'#2f8a55':'#c4382e'}}>{r.ret_5d == null ? '—' : UI.fmt2pct(r.ret_5d)}</td>
+            <td style={{padding:'8px 4px',textAlign:'right',fontFamily:'var(--f-mono)',color:(r.ret_20d||0)>=0?'#2f8a55':'#c4382e'}}>{r.ret_20d == null ? '—' : UI.fmt2pct(r.ret_20d)}</td>
+            <td style={{padding:'8px 4px',textAlign:'right',fontFamily:'var(--f-mono)'}}>{r.lhb_count_30d ?? '—'}</td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
   );
 }
 
