@@ -7,16 +7,19 @@ import logging
 import math
 from dataclasses import dataclass
 from datetime import date, datetime
+from functools import lru_cache
 from pathlib import Path
 from typing import Any
 
 import pandas as pd
+import yaml
 
 from .regime_engine import _attach_market_if_available, _fetchall, _fetchone, _table_exists, _to_date
 
 logger = logging.getLogger("cm-api.market-perception.emotion")
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
+CONFIG_PATH = REPO_ROOT / "backend" / "config" / "market_perception.yaml"
 UNKNOWN_METRICS = [
     "first_board_count",
     "second_board_count",
@@ -39,6 +42,19 @@ class EmotionInputs:
     turnover_concentration: float | None
     lhb_event_count: int
     n_stocks: int
+
+
+@dataclass(frozen=True)
+class EmotionConfig:
+    breadth_weight: float
+    limit_balance_weight: float
+    lhb_heat_weight: float
+    lhb_heat_scale: float
+    min_limit_balance_denominator: int
+    risk_on_min: float
+    risk_off_max: float
+    main_up_min: float
+    guard_abs_max: float
 
 
 def compute_emotion_for_date(conn, snapshot_date: str | date | datetime) -> dict[str, Any]:
@@ -191,13 +207,14 @@ def _load_market_view_stats(conn, start_day: date, end_day: date) -> pd.DataFram
 
 
 def _payload_from_inputs(inputs: EmotionInputs) -> dict[str, Any]:
+    cfg = get_emotion_config()
     score = _score_emotion(inputs)
     payload = {
         "snapshot_date": inputs.snapshot_date.isoformat(),
         "emotion_score": score,
-        "emotion_state": _emotion_state(score),
-        "action_bias": _action_bias(score),
-        "cycle_phase": _cycle_phase(inputs, score),
+        "emotion_state": _emotion_state(score, cfg),
+        "action_bias": _action_bias(score, cfg),
+        "cycle_phase": _cycle_phase(inputs, score, cfg),
         "market_breadth": inputs.market_breadth,
         "up_count": inputs.up_count,
         "down_count": inputs.down_count,
@@ -220,43 +237,52 @@ def _payload_from_inputs(inputs: EmotionInputs) -> dict[str, Any]:
         ),
         "pit_cutoff_date": inputs.snapshot_date.isoformat(),
     }
-    if abs(score) > 0.95:
+    if abs(score) > cfg.guard_abs_max:
         raise ValueError(f"emotion_score leakage guard triggered: {score}")
     return payload
 
 
 def _score_emotion(inputs: EmotionInputs) -> float:
+    cfg = get_emotion_config()
     breadth_component = _clip((inputs.market_breadth - 0.5) / 0.5, -1.0, 1.0)
     limit_balance = (inputs.limit_up_count - inputs.limit_down_count) / max(
         inputs.limit_up_count + inputs.limit_down_count,
-        20,
+        cfg.min_limit_balance_denominator,
     )
-    lhb_heat = _clip(inputs.lhb_event_count / max(inputs.n_stocks, 1) * 20.0, 0.0, 1.0)
-    return round(_clip(0.60 * breadth_component + 0.30 * limit_balance + 0.10 * lhb_heat, -1.0, 1.0), 6)
+    lhb_heat = _clip(inputs.lhb_event_count / max(inputs.n_stocks, 1) * cfg.lhb_heat_scale, 0.0, 1.0)
+    score = (
+        cfg.breadth_weight * breadth_component
+        + cfg.limit_balance_weight * limit_balance
+        + cfg.lhb_heat_weight * lhb_heat
+    )
+    return round(_clip(score, -1.0, 1.0), 6)
 
 
-def _emotion_state(score: float) -> str:
-    if score >= 0.35:
+def _emotion_state(score: float, cfg: EmotionConfig) -> str:
+    if score >= cfg.risk_on_min:
         return "赚钱效应扩张"
-    if score <= -0.35:
+    if score <= cfg.risk_off_max:
         return "亏钱效应扩散"
     return "分化震荡"
 
 
-def _action_bias(score: float) -> str:
-    if score >= 0.35:
+def _action_bias(score: float, cfg: EmotionConfig) -> str:
+    if score >= cfg.risk_on_min:
         return "追强有效"
-    if score <= -0.35:
+    if score <= cfg.risk_off_max:
         return "降低仓位"
     return "低吸观察"
 
 
-def _cycle_phase(inputs: EmotionInputs, score: float) -> str:
-    if score >= 0.55 and inputs.limit_up_count >= max(inputs.limit_down_count * 3, 20):
+def _cycle_phase(inputs: EmotionInputs, score: float, cfg: EmotionConfig) -> str:
+    if score >= cfg.main_up_min and inputs.limit_up_count >= max(
+        inputs.limit_down_count * 3,
+        cfg.min_limit_balance_denominator,
+    ):
         return "主升扩散"
-    if score >= 0.35:
+    if score >= cfg.risk_on_min:
         return "新周期试错"
-    if score <= -0.35:
+    if score <= cfg.risk_off_max:
         return "退潮"
     return "分歧"
 
@@ -335,3 +361,29 @@ def _clip(value: float, lo: float, hi: float) -> float:
     if math.isnan(value):
         raise ValueError("emotion input produced NaN")
     return max(lo, min(hi, float(value)))
+
+
+@lru_cache(maxsize=1)
+def get_emotion_config() -> EmotionConfig:
+    raw = yaml.safe_load(CONFIG_PATH.read_text(encoding="utf-8")) or {}
+    section = raw.get("emotion_engine") or {}
+
+    def value(path: list[str]) -> Any:
+        node: Any = section
+        for key in path:
+            node = node[key]
+        if isinstance(node, dict) and "value" in node:
+            return node["value"]
+        return node
+
+    return EmotionConfig(
+        breadth_weight=float(value(["score", "weights", "breadth"])),
+        limit_balance_weight=float(value(["score", "weights", "limit_balance"])),
+        lhb_heat_weight=float(value(["score", "weights", "lhb_heat"])),
+        lhb_heat_scale=float(value(["score", "lhb_heat_scale"])),
+        min_limit_balance_denominator=int(value(["score", "min_limit_balance_denominator"])),
+        risk_on_min=float(value(["thresholds", "risk_on_min"])),
+        risk_off_max=float(value(["thresholds", "risk_off_max"])),
+        main_up_min=float(value(["thresholds", "main_up_min"])),
+        guard_abs_max=float(value(["thresholds", "guard_abs_max"])),
+    )

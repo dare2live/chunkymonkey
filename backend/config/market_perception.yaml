@@ -80,6 +80,39 @@ regime_engine:
       value: 0.95
       evidence: "CLAUDE.md Rule 5 leakage guard: stop on abnormal regime_score > +0.95 or < -0.95."
 
+emotion_engine:
+  score:
+    weights:
+      breadth:
+        value: 0.60
+        evidence: "unknown: P2 MVP context-only weight; requires OOS sweep before model weighting."
+      limit_balance:
+        value: 0.30
+        evidence: "unknown: P2 MVP context-only weight; requires OOS sweep before model weighting."
+      lhb_heat:
+        value: 0.10
+        evidence: "unknown: P2 MVP context-only weight; requires OOS sweep before model weighting."
+    lhb_heat_scale:
+      value: 20.0
+      evidence: "unknown: P2 MVP density scale; display/context only."
+    min_limit_balance_denominator:
+      value: 20
+      evidence: "unknown: P2 MVP stability floor for low limit-count days; display/context only."
+
+  thresholds:
+    risk_on_min:
+      value: 0.4546955
+      evidence: "Historical quantile audit 2024-11-01..2026-05-18 mart_market_perception_emotion_daily: emotion_score p75=0.4546955."
+    risk_off_max:
+      value: -0.3064643
+      evidence: "Historical quantile audit 2024-11-01..2026-05-18 mart_market_perception_emotion_daily: emotion_score p10=-0.3064643."
+    main_up_min:
+      value: 0.6108906
+      evidence: "Historical quantile audit 2024-11-01..2026-05-18 mart_market_perception_emotion_daily: emotion_score p90=0.6108906."
+    guard_abs_max:
+      value: 0.95
+      evidence: "CLAUDE.md Rule 5 leakage guard: stop on abnormal emotion_score > +0.95 or < -0.95."
+
 sensitivity_audit:
   representative_stocks:
     value:

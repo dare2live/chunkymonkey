@@ -5,7 +5,7 @@ from datetime import date, timedelta
 
 import duckdb
 
-from services.market_perception.emotion_engine import compute_emotion_for_date, compute_emotion_for_range
+from services.market_perception.emotion_engine import compute_emotion_for_date, compute_emotion_for_range, get_emotion_config
 
 
 def _make_conn(snapshot: date, *, up_ratio: float, limit_up: int, limit_down: int):
@@ -44,7 +44,7 @@ def test_emotion_score_risk_on():
 
     row = compute_emotion_for_date(conn, snapshot)
 
-    assert row["emotion_score"] > 0.3
+    assert row["emotion_score"] >= get_emotion_config().risk_on_min
     assert row["emotion_state"] == "赚钱效应扩张"
     assert row["action_bias"] == "追强有效"
 
@@ -55,7 +55,7 @@ def test_emotion_score_risk_off():
 
     row = compute_emotion_for_date(conn, snapshot)
 
-    assert row["emotion_score"] < -0.3
+    assert row["emotion_score"] <= get_emotion_config().risk_off_max
     assert row["emotion_state"] == "亏钱效应扩散"
     assert row["action_bias"] == "降低仓位"
 
