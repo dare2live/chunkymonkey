@@ -59,6 +59,26 @@ MART_SCHEMA_SQL = """
                 PRIMARY KEY (data_domain, source_name, source_tier)
             );
 
+            CREATE TABLE IF NOT EXISTS mart_market_perception_daily (
+                snapshot_date       DATE NOT NULL,
+                regime_score        DOUBLE,
+                breadth_state       VARCHAR,
+                volatility_state    VARCHAR,
+                sentiment_phase     VARCHAR,
+                hs300_ret_60d       DOUBLE,
+                hs300_vol_20d       DOUBLE,
+                breadth_ratio       DOUBLE,
+                breadth_p75_90d     DOUBLE,
+                limit_up_count      INTEGER,
+                lhb_event_count     INTEGER,
+                n_obs_days          INTEGER,
+                source_engines      VARCHAR,
+                pit_cutoff_date     DATE NOT NULL,
+                built_at            TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                PRIMARY KEY (snapshot_date)
+            );
+            CREATE INDEX IF NOT EXISTS idx_mmp_date ON mart_market_perception_daily(snapshot_date);
+
             CREATE TABLE IF NOT EXISTS mart_lineage (
                 lineage_id         TEXT PRIMARY KEY,            -- e.g. 'mart_daily_recommendation/topk_v1'
                 output_table       TEXT NOT NULL,
@@ -685,8 +705,12 @@ MART_SCHEMA_SQL = """
             );
 """
 
-__all__ = ["ensure_mart_schema"]
+__all__ = ["ensure_mart_schema", "ensure_schema"]
 
 
 def ensure_mart_schema(conn) -> None:
     conn.executescript(MART_SCHEMA_SQL)
+
+
+def ensure_schema(conn) -> None:
+    ensure_mart_schema(conn)

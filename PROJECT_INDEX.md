@@ -282,6 +282,7 @@
 | `mart_stage_formula_fitness` | cohort fitness (fund × tech × formula × hp) |
 | `mart_stock_formula_optuna_v2` | 旧 per-stock × formula × hp 全宇宙 (337K 行) |
 | `fact_optuna_governance_log` | Phase ψ governance reject 审计 |
+| `mart_market_perception_daily` | Market Perception P1 daily snapshot: regime_score / breadth_state / volatility_state / sentiment_phase, PIT cutoff and built_at |
 
 ---
 
@@ -967,6 +968,11 @@ SELECT * FROM mart_data_source_watermark;
 - Tests: `backend/tests/test_updater_n_plus_one_fix.py` 8 tests PASS (single-batch / empty step_ids / filter None / single ID / 1000-inst GROUP BY / mapping shape / missing inst default 0/0/0 / no per-inst WHERE leak). 现有 updater 14 tests regression 全 PASS.
 - Audit 验证: updater.py 内 hits 12 → 10 (L1143 + L1991 specific findings 消失). 全局 258→257 (line shift 让 stats 抽出但 for-loop 内其他 query 仍计数).
 - 不动 endpoint signature / response shape / DB schema / services.db 路径, 跟 Codex ac005569 db.py split 与 in-flight retrain 0 冲突.
+
+### 2026-05-20 Market Perception P1 data layer
+
+- 新增 `mart_market_perception_daily` DDL 到 `backend/services/schema_marts.py`, 幂等 ALTER / index 到 `backend/services/schema_migrations.py`; 仅新增 mart 表, 不改现有 `fact_*` / `mart_*` schema.
+- 验证: `PYTHONPATH=backend python -c "from services.db import get_conn; from services.schema_marts import ensure_schema; ensure_schema(get_conn())"` PASS.
 
 ### 2026-05-20 db.py Phase 1 facade split
 
