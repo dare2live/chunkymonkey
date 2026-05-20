@@ -45,8 +45,8 @@ def _market_perception_health(conn) -> dict:
             "latest_snapshot_lag_trading_days": None,
             "score_guard_status": "unknown",
             "score_guard_violations": None,
-        "latest_audit": None,
-        "emotion_rows": 0,
+            "latest_audit": None,
+            "emotion_rows": 0,
         }
 
     row = conn.execute(
@@ -190,6 +190,45 @@ def _serialize_row(row) -> dict:
     }
 
 
+def _serialize_emotion_row(row) -> dict:
+    return {
+        "snapshot_date": str(row[0]) if row[0] is not None else None,
+        "emotion_score": float(row[1]) if row[1] is not None else None,
+        "emotion_state": row[2],
+        "action_bias": row[3],
+        "cycle_phase": row[4],
+        "market_breadth": float(row[5]) if row[5] is not None else None,
+        "up_count": int(row[6]) if row[6] is not None else None,
+        "down_count": int(row[7]) if row[7] is not None else None,
+        "limit_up_count": int(row[8]) if row[8] is not None else None,
+        "limit_down_count": int(row[9]) if row[9] is not None else None,
+        "first_board_count": int(row[10]) if row[10] is not None else None,
+        "second_board_count": int(row[11]) if row[11] is not None else None,
+        "third_plus_count": int(row[12]) if row[12] is not None else None,
+        "promotion_rate_1_to_2": float(row[13]) if row[13] is not None else None,
+        "promotion_rate_2_to_3": float(row[14]) if row[14] is not None else None,
+        "open_board_rate": float(row[15]) if row[15] is not None else None,
+        "next_day_premium": float(row[16]) if row[16] is not None else None,
+        "turnover_concentration": float(row[17]) if row[17] is not None else None,
+        "lhb_event_count": int(row[18]) if row[18] is not None else None,
+        "n_stocks": int(row[19]) if row[19] is not None else None,
+        "unknown_metrics": row[20],
+        "source_engines": row[21],
+        "pit_cutoff_date": str(row[22]) if row[22] is not None else None,
+        "built_at": str(row[23]) if row[23] is not None else None,
+    }
+
+
+EMOTION_SELECT = """
+    snapshot_date, emotion_score, emotion_state, action_bias, cycle_phase,
+    market_breadth, up_count, down_count, limit_up_count, limit_down_count,
+    first_board_count, second_board_count, third_plus_count,
+    promotion_rate_1_to_2, promotion_rate_2_to_3, open_board_rate,
+    next_day_premium, turnover_concentration, lhb_event_count, n_stocks,
+    unknown_metrics, source_engines, pit_cutoff_date, built_at
+"""
+
+
 @router.get("/snapshot")
 async def get_snapshot():
     """Return the latest market perception snapshot."""
@@ -258,6 +297,69 @@ async def get_history(days: int = 90):
             }
     except Exception as exc:
         logger.warning("market_perception history query failed: %s", exc)
+        return {"ok": False, "error": str(exc), "data": [], "days_requested": days}
+
+
+@router.get("/emotion/snapshot")
+async def get_emotion_snapshot():
+    """Return the latest short-term market emotion snapshot."""
+    try:
+        with get_conn() as conn:
+            if not _table_exists(conn, "mart_market_perception_emotion_daily"):
+                return {"ok": True, "stub": True, "data": None, "built_at": datetime.now(timezone.utc).isoformat()}
+            row = conn.execute(
+                f"""
+                SELECT {EMOTION_SELECT}
+                  FROM mart_market_perception_emotion_daily
+                 ORDER BY snapshot_date DESC LIMIT 1
+                """,
+            ).fetchone()
+            if not row:
+                return {"ok": True, "stub": True, "data": None, "built_at": datetime.now(timezone.utc).isoformat()}
+            data = _serialize_emotion_row(row)
+            return {"ok": True, "stub": False, "data": data, "built_at": data["built_at"]}
+    except Exception as exc:
+        logger.warning("market_perception emotion snapshot query failed: %s", exc)
+        return {"ok": False, "error": str(exc), "data": None, "built_at": datetime.now(timezone.utc).isoformat()}
+
+
+@router.get("/emotion/history")
+async def get_emotion_history(days: int = 90):
+    """Return last N trading-day short-term market emotion rows."""
+    days = max(1, min(int(days), 500))
+    try:
+        with get_conn() as conn:
+            if not _table_exists(conn, "mart_market_perception_emotion_daily"):
+                return {"ok": True, "stub": True, "data": [], "days_requested": days}
+            rows = conn.execute(
+                f"""
+                WITH recent_days AS (
+                    SELECT trade_date
+                      FROM dim_trading_calendar
+                     WHERE is_trading = 1
+                       AND CAST(trade_date AS DATE) <= (
+                           SELECT MAX(snapshot_date) FROM mart_market_perception_emotion_daily
+                       )
+                     ORDER BY CAST(trade_date AS DATE) DESC
+                     LIMIT ?
+                )
+                SELECT {EMOTION_SELECT}
+                  FROM mart_market_perception_emotion_daily m
+                  JOIN recent_days d
+                    ON CAST(d.trade_date AS DATE) = m.snapshot_date
+                 ORDER BY m.snapshot_date
+                """,
+                (days,),
+            ).fetchall()
+            return {
+                "ok": True,
+                "stub": False,
+                "data": [_serialize_emotion_row(row) for row in rows],
+                "days_requested": days,
+                "rows": len(rows),
+            }
+    except Exception as exc:
+        logger.warning("market_perception emotion history query failed: %s", exc)
         return {"ok": False, "error": str(exc), "data": [], "days_requested": days}
 
 
