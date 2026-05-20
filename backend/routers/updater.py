@@ -1134,18 +1134,26 @@ def _tracked_stock_names(conn) -> dict[str, Optional[str]]:
 def _mark_steps_status(conn, step_ids, status: str, error: str, *,
                        started_at: Optional[str] = None,
                        finished_at: Optional[str] = None):
+    # 性能修复 (criteria #8 N+1 audit L1143): 原 for sid: conn.execute(UPDATE WHERE step_id=?)
+    # 每个 step_id 单独发 1 条 SQL, step_ids 可 dynamic 任意长度 (调度路径 STEPS 4-30 不等).
+    # 改 batch: 单 UPDATE ... WHERE step_id IN (placeholders), 参数仍 parameterized 防 SQL injection.
+    # 行为等价: 同 step_id 集合, 同 status/error/started/finished 写值.
+    # evidence: test_updater_n_plus_one_fix.py::test_mark_steps_status_uses_single_batch
     if not step_ids:
+        return
+    ids = [sid for sid in step_ids if sid is not None]
+    if not ids:
         return
     now = datetime.now().isoformat()
     started = started_at if started_at is not None else now
     finished = finished_at if finished_at is not None else now
-    for sid in step_ids:
-        conn.execute(
-            "UPDATE step_status SET status=?, error=?, "
-            "started_at=COALESCE(started_at, ?), finished_at=? "
-            "WHERE step_id=?",
-            (status, error, started, finished, sid),
-        )
+    placeholders = ",".join("?" * len(ids))
+    conn.execute(
+        f"UPDATE step_status SET status=?, error=?, "
+        f"started_at=COALESCE(started_at, ?), finished_at=? "
+        f"WHERE step_id IN ({placeholders})",
+        (status, error, started, finished, *ids),
+    )
     conn.commit()
 
 
@@ -1982,17 +1990,35 @@ def _step_build_profiles_sync(conn) -> int:
         """).fetchall():
             _inst_summaries[r["institution_id"]] = dict(r)
 
+        # 性能修复 (criteria #8 N+1 audit L1991): 原 for inst: conn.execute(WHERE institution_id=?)
+        # 1000+ institutions × 单 inst query = N+1 (实测 institutions 量级 1k-10k).
+        # 预聚合一次 GROUP BY 拿全表 stats, for-loop 改用 dict lookup, 保持 sqlite3.Row 风格 (mapping access).
+        # 行为等价: 同 inst_id 取相同 total_events/total_stocks/total_periods.
+        # 找不到 inst_id 时给 0 0 0 (跟原 WHERE 无匹配 fetchone() 自然返回 (0,0,0) COUNT 行为一致).
+        # evidence: test_updater_n_plus_one_fix.py::test_build_profiles_stats_uses_single_batch
+        _inst_stats_map: dict = {}
+        for r in conn.execute("""
+            SELECT institution_id,
+                   COUNT(*) as total_events,
+                   COUNT(DISTINCT stock_code) as total_stocks,
+                   COUNT(DISTINCT report_date) as total_periods
+            FROM fact_institution_event
+            GROUP BY institution_id
+        """).fetchall():
+            _inst_stats_map[r["institution_id"]] = {
+                "total_events": r["total_events"],
+                "total_stocks": r["total_stocks"],
+                "total_periods": r["total_periods"],
+            }
+        _empty_stats = {"total_events": 0, "total_stocks": 0, "total_periods": 0}
+
         count = 0
         for inst in institutions:
             _raise_if_stop()
             inst_id = inst["id"]
 
-            # 基础统计
-            stats = conn.execute("""
-                SELECT COUNT(*) as total_events, COUNT(DISTINCT stock_code) as total_stocks,
-                       COUNT(DISTINCT report_date) as total_periods
-                FROM fact_institution_event WHERE institution_id = ?
-            """, (inst_id,)).fetchone()
+            # 基础统计 (从预聚合 dict 取, 替代 N+1 per-inst query)
+            stats = _inst_stats_map.get(inst_id, _empty_stats)
 
             # 收益统计（从增强后的 fact_institution_event 直接读取）
             returns = conn.execute("""

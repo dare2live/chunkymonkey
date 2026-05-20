@@ -41,15 +41,7 @@
   },
   {
     "file": "backend/routers/updater.py",
-    "line": 1143,
-    "pattern": "SQL_EXECUTE_IN_FOR_LOOP",
-    "severity": "HIGH",
-    "snippet": "for sid in step_ids: / conn.execute(",
-    "suggested_fix": "Batch rows and move execute/executemany outside the loop, or replace the loop with set-based SQL."
-  },
-  {
-    "file": "backend/routers/updater.py",
-    "line": 1954,
+    "line": 1962,
     "pattern": "SQL_EXECUTE_IN_FOR_LOOP",
     "severity": "HIGH",
     "snippet": "for col in (\"pricing_policy_id TEXT\", \"pricing_policy_hash TEXT\"): / conn.execute(f\"ALTER TABLE mart_institution_profile ADD COLUMN {col}\")",
@@ -57,15 +49,7 @@
   },
   {
     "file": "backend/routers/updater.py",
-    "line": 1991,
-    "pattern": "SQL_EXECUTE_IN_FOR_LOOP",
-    "severity": "HIGH",
-    "snippet": "for inst in institutions: / stats = conn.execute(\"\"\"",
-    "suggested_fix": "Batch rows and move execute/executemany outside the loop, or replace the loop with set-based SQL."
-  },
-  {
-    "file": "backend/routers/updater.py",
-    "line": 2538,
+    "line": 2564,
     "pattern": "SQL_EXECUTE_IN_FOR_LOOP",
     "severity": "HIGH",
     "snippet": "for i in range(0, len(extra_codes), 200): / conn.execute(f\"DELETE FROM mart_stock_trend WHERE stock_code IN ({placeholders})\", batch)",
@@ -73,7 +57,7 @@
   },
   {
     "file": "backend/routers/updater.py",
-    "line": 2561,
+    "line": 2587,
     "pattern": "SQL_EXECUTE_IN_FOR_LOOP",
     "severity": "HIGH",
     "snippet": "for i in range(0, len(update_batch), 500): / conn.executemany(update_sql, update_batch[i:i + 500])",
@@ -81,7 +65,7 @@
   },
   {
     "file": "backend/routers/updater.py",
-    "line": 2574,
+    "line": 2600,
     "pattern": "SQL_EXECUTE_IN_FOR_LOOP",
     "severity": "HIGH",
     "snippet": "for i in range(0, len(new_batch), 500): / conn.executemany(insert_sql, new_batch[i:i + 500])",
@@ -89,7 +73,7 @@
   },
   {
     "file": "backend/routers/updater.py",
-    "line": 2730,
+    "line": 2756,
     "pattern": "SQL_EXECUTE_IN_FOR_LOOP",
     "severity": "HIGH",
     "snippet": "for _, level_name, code_col, name_col in level_specs: / rows = conn.execute(f\"\"\"",
@@ -97,7 +81,7 @@
   },
   {
     "file": "backend/routers/updater.py",
-    "line": 2755,
+    "line": 2781,
     "pattern": "SQL_EXECUTE_IN_FOR_LOOP",
     "severity": "HIGH",
     "snippet": "for r in rows: / conn.execute(\"\"\"",
@@ -105,7 +89,7 @@
   },
   {
     "file": "backend/routers/updater.py",
-    "line": 4118,
+    "line": 4144,
     "pattern": "SQL_EXECUTE_IN_FOR_LOOP",
     "severity": "HIGH",
     "snippet": "for s in STEPS: / conn.execute(\"\"\"",
@@ -113,7 +97,7 @@
   },
   {
     "file": "backend/routers/updater.py",
-    "line": 4280,
+    "line": 4306,
     "pattern": "SQL_EXECUTE_IN_FOR_LOOP",
     "severity": "HIGH",
     "snippet": "for spec in missing: / conn.execute(",
@@ -713,7 +697,7 @@
   },
   {
     "file": "backend/scripts/gen_report.py",
-    "line": 26,
+    "line": 471,
     "pattern": "SQL_EXECUTE_IN_FOR_LOOP",
     "severity": "HIGH",
     "snippet": "for lv in [\"L1\", \"L2\", \"L3\"]: / r = conn.execute(",
@@ -721,7 +705,7 @@
   },
   {
     "file": "backend/scripts/gen_report.py",
-    "line": 53,
+    "line": 496,
     "pattern": "SQL_EXECUTE_IN_FOR_LOOP",
     "severity": "HIGH",
     "snippet": "for lv in [\"L1\", \"L2\", \"L3\"]: / r = conn.execute(",
@@ -729,7 +713,7 @@
   },
   {
     "file": "backend/scripts/gen_report.py",
-    "line": 65,
+    "line": 507,
     "pattern": "SQL_EXECUTE_IN_FOR_LOOP",
     "severity": "HIGH",
     "snippet": "for st in [\"closed\", \"open\"]: / r = conn.execute(",
@@ -1040,6 +1024,14 @@
     "suggested_fix": "Batch rows and move execute/executemany outside the loop, or replace the loop with set-based SQL."
   },
   {
+    "file": "backend/scripts/trace_lineage.py",
+    "line": 226,
+    "pattern": "SQL_EXECUTE_IN_FOR_LOOP",
+    "severity": "HIGH",
+    "snippet": "for table in candidates: / row = conn.execute(",
+    "suggested_fix": "Batch rows and move execute/executemany outside the loop, or replace the loop with set-based SQL."
+  },
+  {
     "file": "backend/scripts/train_tdx_keep_challenger_model.py",
     "line": 106,
     "pattern": "SQL_EXECUTE_IN_FOR_LOOP",
@@ -1229,62 +1221,6 @@
     "pattern": "SQL_EXECUTE_IN_FOR_LOOP",
     "severity": "HIGH",
     "snippet": "for run_table, issue_table in tables: / recent = conn.execute(",
-    "suggested_fix": "Batch rows and move execute/executemany outside the loop, or replace the loop with set-based SQL."
-  },
-  {
-    "file": "backend/services/db.py",
-    "line": 2031,
-    "pattern": "SQL_EXECUTE_IN_FOR_LOOP",
-    "severity": "HIGH",
-    "snippet": "for idx in (\"idx_setup_snapshot_sw1_date\", \"idx_dsi_l1\", \"idx_dsi_l2\"): / conn.execute(f\"DROP INDEX IF EXISTS {idx}\")",
-    "suggested_fix": "Batch rows and move execute/executemany outside the loop, or replace the loop with set-based SQL."
-  },
-  {
-    "file": "backend/services/db.py",
-    "line": 2046,
-    "pattern": "SQL_EXECUTE_IN_FOR_LOOP",
-    "severity": "HIGH",
-    "snippet": "for tbl, col in sw_drop_plan: / conn.execute(f\"ALTER TABLE {tbl} DROP COLUMN {col}\")",
-    "suggested_fix": "Batch rows and move execute/executemany outside the loop, or replace the loop with set-based SQL."
-  },
-  {
-    "file": "backend/services/db.py",
-    "line": 2094,
-    "pattern": "SQL_EXECUTE_IN_FOR_LOOP",
-    "severity": "HIGH",
-    "snippet": "for idx in (\"idx_event_industry_snapshot_l1\", \"idx_event_industry_snapshot_l2\"): / conn.execute(f\"DROP INDEX IF EXISTS {idx}\")",
-    "suggested_fix": "Batch rows and move execute/executemany outside the loop, or replace the loop with set-based SQL."
-  },
-  {
-    "file": "backend/services/db.py",
-    "line": 2109,
-    "pattern": "SQL_EXECUTE_IN_FOR_LOOP",
-    "severity": "HIGH",
-    "snippet": "for table in (\"fact_stock_archetype\", \"dim_stock_archetype_latest\"): / conn.execute(f\"ALTER TABLE {table} RENAME COLUMN sw_level1 TO tdx_l1_name\")",
-    "suggested_fix": "Batch rows and move execute/executemany outside the loop, or replace the loop with set-based SQL."
-  },
-  {
-    "file": "backend/services/db.py",
-    "line": 2124,
-    "pattern": "SQL_EXECUTE_IN_FOR_LOOP",
-    "severity": "HIGH",
-    "snippet": "for table in quality_tables: / conn.execute(f\"ALTER TABLE {table} RENAME COLUMN sw_level1 TO tdx_l1\")",
-    "suggested_fix": "Batch rows and move execute/executemany outside the loop, or replace the loop with set-based SQL."
-  },
-  {
-    "file": "backend/services/db.py",
-    "line": 2134,
-    "pattern": "SQL_EXECUTE_IN_FOR_LOOP",
-    "severity": "HIGH",
-    "snippet": "for table in turtle_tables: / conn.execute(f\"ALTER TABLE {table} RENAME COLUMN sw_level1 TO tdx_l1_name\")",
-    "suggested_fix": "Batch rows and move execute/executemany outside the loop, or replace the loop with set-based SQL."
-  },
-  {
-    "file": "backend/services/db.py",
-    "line": 2312,
-    "pattern": "SQL_EXECUTE_IN_FOR_LOOP",
-    "severity": "HIGH",
-    "snippet": "for cat, label, enabled in categories: / conn.execute(",
     "suggested_fix": "Batch rows and move execute/executemany outside the loop, or replace the loop with set-based SQL."
   },
   {
@@ -1489,7 +1425,7 @@
   },
   {
     "file": "backend/services/paper_sim/ddl.py",
-    "line": 166,
+    "line": 169,
     "pattern": "SQL_EXECUTE_IN_FOR_LOOP",
     "severity": "HIGH",
     "snippet": "for tbl, coldef in _migrations: / conn.execute(f\"ALTER TABLE {tbl} ADD COLUMN {coldef}\")",
@@ -1589,6 +1525,62 @@
     "pattern": "SQL_EXECUTE_IN_FOR_LOOP",
     "severity": "HIGH",
     "snippet": "for i in range(0, len(fix_updates), 500): / biz_conn.executemany(\"\"\"",
+    "suggested_fix": "Batch rows and move execute/executemany outside the loop, or replace the loop with set-based SQL."
+  },
+  {
+    "file": "backend/services/schema_migrations.py",
+    "line": 372,
+    "pattern": "SQL_EXECUTE_IN_FOR_LOOP",
+    "severity": "HIGH",
+    "snippet": "for idx in (\"idx_setup_snapshot_sw1_date\", \"idx_dsi_l1\", \"idx_dsi_l2\"): / conn.execute(f\"DROP INDEX IF EXISTS {idx}\")",
+    "suggested_fix": "Batch rows and move execute/executemany outside the loop, or replace the loop with set-based SQL."
+  },
+  {
+    "file": "backend/services/schema_migrations.py",
+    "line": 386,
+    "pattern": "SQL_EXECUTE_IN_FOR_LOOP",
+    "severity": "HIGH",
+    "snippet": "for tbl, col in sw_drop_plan: / conn.execute(f\"ALTER TABLE {tbl} DROP COLUMN {col}\")",
+    "suggested_fix": "Batch rows and move execute/executemany outside the loop, or replace the loop with set-based SQL."
+  },
+  {
+    "file": "backend/services/schema_migrations.py",
+    "line": 421,
+    "pattern": "SQL_EXECUTE_IN_FOR_LOOP",
+    "severity": "HIGH",
+    "snippet": "for idx in (\"idx_event_industry_snapshot_l1\", \"idx_event_industry_snapshot_l2\"): / conn.execute(f\"DROP INDEX IF EXISTS {idx}\")",
+    "suggested_fix": "Batch rows and move execute/executemany outside the loop, or replace the loop with set-based SQL."
+  },
+  {
+    "file": "backend/services/schema_migrations.py",
+    "line": 432,
+    "pattern": "SQL_EXECUTE_IN_FOR_LOOP",
+    "severity": "HIGH",
+    "snippet": "for table in (\"fact_stock_archetype\", \"dim_stock_archetype_latest\"): / conn.execute(f\"ALTER TABLE {table} RENAME COLUMN sw_level1 TO tdx_l1_name\")",
+    "suggested_fix": "Batch rows and move execute/executemany outside the loop, or replace the loop with set-based SQL."
+  },
+  {
+    "file": "backend/services/schema_migrations.py",
+    "line": 442,
+    "pattern": "SQL_EXECUTE_IN_FOR_LOOP",
+    "severity": "HIGH",
+    "snippet": "for table in quality_tables: / conn.execute(f\"ALTER TABLE {table} RENAME COLUMN sw_level1 TO tdx_l1\")",
+    "suggested_fix": "Batch rows and move execute/executemany outside the loop, or replace the loop with set-based SQL."
+  },
+  {
+    "file": "backend/services/schema_migrations.py",
+    "line": 452,
+    "pattern": "SQL_EXECUTE_IN_FOR_LOOP",
+    "severity": "HIGH",
+    "snippet": "for table in turtle_tables: / conn.execute(f\"ALTER TABLE {table} RENAME COLUMN sw_level1 TO tdx_l1_name\")",
+    "suggested_fix": "Batch rows and move execute/executemany outside the loop, or replace the loop with set-based SQL."
+  },
+  {
+    "file": "backend/services/schema_migrations.py",
+    "line": 561,
+    "pattern": "SQL_EXECUTE_IN_FOR_LOOP",
+    "severity": "HIGH",
+    "snippet": "for cat, label, enabled in categories: / conn.execute(",
     "suggested_fix": "Batch rows and move execute/executemany outside the loop, or replace the loop with set-based SQL."
   },
   {

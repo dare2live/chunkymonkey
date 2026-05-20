@@ -784,6 +784,31 @@ SELECT * FROM mart_data_source_watermark;
 
 每次 session 增量内容写这里, 新 session 启动时**从下往上读**最近改了啥.
 
+### 2026-05-20 updater.py N+1 真问题 fix (criteria #8 70→75%)
+
+承接 Claude Explore a1e43ccb 验证 audit_n_plus_one 258 hits 真问题率 35.1%, 实施其中 P0 真 N+1 2 处:
+
+- `backend/routers/updater.py:1134` `_mark_steps_status` — 原 `for sid in step_ids: conn.execute(UPDATE WHERE step_id=?)` 改单 batch `UPDATE step_status ... WHERE step_id IN (?...)`, 仍 parameterized 防 injection. step_ids 5-30 长度区间 → 5-30 SQL 降 1 SQL.
+- `backend/routers/updater.py:1991` `_step_build_profiles_sync` stats query — 原 `for inst in institutions: stats = conn.execute(WHERE institution_id=?)` 改预聚合 `GROUP BY institution_id` + Python dict lookup, 1000+ inst × 单 query 降 1 GROUP BY. response shape 保持 (`stats["total_events"]/total_stocks/total_periods` 仍可 mapping access). 未处理的同 for-loop 内其他 SQL (returns/dd/wr/buy/exit/follow/holding/recent) 留下一轮 (task 范围内不动, 防 retrain in-flight 风险).
+- Tests: `backend/tests/test_updater_n_plus_one_fix.py` 8 tests PASS (single-batch / empty step_ids / filter None / single ID / 1000-inst GROUP BY / mapping shape / missing inst default 0/0/0 / no per-inst WHERE leak). 现有 updater 14 tests regression 全 PASS.
+- Audit 验证: updater.py 内 hits 12 → 10 (L1143 + L1991 specific findings 消失). 全局 258→257 (line shift 让 stats 抽出但 for-loop 内其他 query 仍计数).
+- 不动 endpoint signature / response shape / DB schema / services.db 路径, 跟 Codex ac005569 db.py split 与 in-flight retrain 0 冲突.
+
+### 2026-05-20 db.py Phase 1 facade split
+
+- `backend/services/db.py` 缩为 6-line facade, import-star re-export `db_connection/schema_core/schema_marts/schema_migrations`; 业务侧 `from services.db import ...` 路径未改, grep count 保持 202.
+- 新增 `schema_core.py` (core/system CREATE TABLE DDL), `schema_marts.py` (mart_* CREATE TABLE DDL), `schema_migrations.py` (ALTER/DROP/INDEX + init_db/schema_versions orchestration), `db_connection.py` (DB_DIR/DB_PATH/get_conn).
+- 验证: `PYTHONPATH=backend python -c "from services.db import get_conn"` PASS; `python -m py_compile` PASS; focused DB regression `PYTHONPATH=backend python -m pytest backend/tests/test_db.py backend/tests/test_data_consistency.py::test_retired_sw_industry_table_access_is_allowlisted_only_for_migration_and_cleanup -q --tb=short` = 4 PASS.
+- Full backend suite rerun: `2463 passed, 5 failed, 6 deselected`; remaining failures are pre-existing governance/static checks outside db split (raw duckdb connect allowlist, calendar wall-clock lint, stale daily_update model-refresh expectation).
+
+### 2026-05-20 workflow lineage layer (business checkpoint)
+
+- 新增 `scripts/workflow_checkpoint.sh`: idempotent workflow-level checkpoint, 从 artifact + read-only DuckDB rows 推断 7 步业务 pipeline: GCS pull / pre-sim audit / paper_sim / KPI ingestion / KPI compare / Pareto gate / promote-ensemble-retrain decision.
+- 输出 `analysis/workflow_checkpoint.json` + `analysis/workflow_checkpoint.md`; `next_step` = first missing evidence, `resume_command` 给可续跑命令. 不复制 `SESSION_HANDOFF.md` 的 session/process 内容.
+- `scripts/session_snapshot.sh` 生成的 `SESSION_HANDOFF.md` 现在只引用 `analysis/workflow_checkpoint.md`, 让启动时同时看到 session 状态与业务 pipeline 状态.
+- `configs/cron/crontab.txt` 加 10 min workflow-level checkpoint cron: `bash scripts/workflow_checkpoint.sh >> /tmp/workflow_checkpoint.log 2>&1`.
+- 测试: `tests/scripts/test_workflow_checkpoint.sh` 覆盖 clean run / step1-only next_step=2 / all_done / JSON schema / MD non-empty; 全程 temp root, 不写生产 DuckDB.
+
 ### 2026-05-20 P0a daily markdown report + notification system
 
 - Implemented P0a markdown daily report renderer, notification drivers (email dry-run, macOS, Slack webhook), alert dispatch wiring in `scripts/daily_update.sh` Step 8, and notification YAML templates.

@@ -1,7 +1,7 @@
 # N+1 IO-in-loop Audit Report
 
-- Total findings: 258
-- HIGH: 245
+- Total findings: 257
+- HIGH: 244
 - MEDIUM: 2
 - LOW: 11
 - P-4 baseline: 21
@@ -16,16 +16,14 @@
 | HIGH | `backend/routers/strategy_preset.py` | 58 | SQL_EXECUTE_IN_FOR_LOOP | Batch rows and move execute/executemany outside the loop, or replace the loop with set-based SQL. | `for name, payload in seed_presets: / conn.execute(` |
 | HIGH | `backend/routers/updater.py` | 820 | SQL_EXECUTE_IN_FOR_LOOP | Batch rows and move execute/executemany outside the loop, or replace the loop with set-based SQL. | `for table_name in existing_tables: / conn.execute(f"DELETE FROM {table_name}")` |
 | HIGH | `backend/routers/updater.py` | 874 | SQL_EXECUTE_IN_FOR_LOOP | Batch rows and move execute/executemany outside the loop, or replace the loop with set-based SQL. | `for s in STEPS: / conn.execute("""` |
-| HIGH | `backend/routers/updater.py` | 1143 | SQL_EXECUTE_IN_FOR_LOOP | Batch rows and move execute/executemany outside the loop, or replace the loop with set-based SQL. | `for sid in step_ids: / conn.execute(` |
-| HIGH | `backend/routers/updater.py` | 1954 | SQL_EXECUTE_IN_FOR_LOOP | Batch rows and move execute/executemany outside the loop, or replace the loop with set-based SQL. | `for col in ("pricing_policy_id TEXT", "pricing_policy_hash TEXT"): / conn.execute(f"ALTER TABLE mart_institution_profile ADD COLUMN {col}")` |
-| HIGH | `backend/routers/updater.py` | 1991 | SQL_EXECUTE_IN_FOR_LOOP | Batch rows and move execute/executemany outside the loop, or replace the loop with set-based SQL. | `for inst in institutions: / stats = conn.execute("""` |
-| HIGH | `backend/routers/updater.py` | 2538 | SQL_EXECUTE_IN_FOR_LOOP | Batch rows and move execute/executemany outside the loop, or replace the loop with set-based SQL. | `for i in range(0, len(extra_codes), 200): / conn.execute(f"DELETE FROM mart_stock_trend WHERE stock_code IN ({placeholders})", batch)` |
-| HIGH | `backend/routers/updater.py` | 2561 | SQL_EXECUTE_IN_FOR_LOOP | Batch rows and move execute/executemany outside the loop, or replace the loop with set-based SQL. | `for i in range(0, len(update_batch), 500): / conn.executemany(update_sql, update_batch[i:i + 500])` |
-| HIGH | `backend/routers/updater.py` | 2574 | SQL_EXECUTE_IN_FOR_LOOP | Batch rows and move execute/executemany outside the loop, or replace the loop with set-based SQL. | `for i in range(0, len(new_batch), 500): / conn.executemany(insert_sql, new_batch[i:i + 500])` |
-| HIGH | `backend/routers/updater.py` | 2730 | SQL_EXECUTE_IN_FOR_LOOP | Batch rows and move execute/executemany outside the loop, or replace the loop with set-based SQL. | `for _, level_name, code_col, name_col in level_specs: / rows = conn.execute(f"""` |
-| HIGH | `backend/routers/updater.py` | 2755 | SQL_EXECUTE_IN_FOR_LOOP | Batch rows and move execute/executemany outside the loop, or replace the loop with set-based SQL. | `for r in rows: / conn.execute("""` |
-| HIGH | `backend/routers/updater.py` | 4118 | SQL_EXECUTE_IN_FOR_LOOP | Batch rows and move execute/executemany outside the loop, or replace the loop with set-based SQL. | `for s in STEPS: / conn.execute("""` |
-| HIGH | `backend/routers/updater.py` | 4280 | SQL_EXECUTE_IN_FOR_LOOP | Batch rows and move execute/executemany outside the loop, or replace the loop with set-based SQL. | `for spec in missing: / conn.execute(` |
+| HIGH | `backend/routers/updater.py` | 1962 | SQL_EXECUTE_IN_FOR_LOOP | Batch rows and move execute/executemany outside the loop, or replace the loop with set-based SQL. | `for col in ("pricing_policy_id TEXT", "pricing_policy_hash TEXT"): / conn.execute(f"ALTER TABLE mart_institution_profile ADD COLUMN {col}")` |
+| HIGH | `backend/routers/updater.py` | 2564 | SQL_EXECUTE_IN_FOR_LOOP | Batch rows and move execute/executemany outside the loop, or replace the loop with set-based SQL. | `for i in range(0, len(extra_codes), 200): / conn.execute(f"DELETE FROM mart_stock_trend WHERE stock_code IN ({placeholders})", batch)` |
+| HIGH | `backend/routers/updater.py` | 2587 | SQL_EXECUTE_IN_FOR_LOOP | Batch rows and move execute/executemany outside the loop, or replace the loop with set-based SQL. | `for i in range(0, len(update_batch), 500): / conn.executemany(update_sql, update_batch[i:i + 500])` |
+| HIGH | `backend/routers/updater.py` | 2600 | SQL_EXECUTE_IN_FOR_LOOP | Batch rows and move execute/executemany outside the loop, or replace the loop with set-based SQL. | `for i in range(0, len(new_batch), 500): / conn.executemany(insert_sql, new_batch[i:i + 500])` |
+| HIGH | `backend/routers/updater.py` | 2756 | SQL_EXECUTE_IN_FOR_LOOP | Batch rows and move execute/executemany outside the loop, or replace the loop with set-based SQL. | `for _, level_name, code_col, name_col in level_specs: / rows = conn.execute(f"""` |
+| HIGH | `backend/routers/updater.py` | 2781 | SQL_EXECUTE_IN_FOR_LOOP | Batch rows and move execute/executemany outside the loop, or replace the loop with set-based SQL. | `for r in rows: / conn.execute("""` |
+| HIGH | `backend/routers/updater.py` | 4144 | SQL_EXECUTE_IN_FOR_LOOP | Batch rows and move execute/executemany outside the loop, or replace the loop with set-based SQL. | `for s in STEPS: / conn.execute("""` |
+| HIGH | `backend/routers/updater.py` | 4306 | SQL_EXECUTE_IN_FOR_LOOP | Batch rows and move execute/executemany outside the loop, or replace the loop with set-based SQL. | `for spec in missing: / conn.execute(` |
 | HIGH | `backend/routers/v3_paper.py` | 107 | SQL_EXECUTE_IN_FOR_LOOP | Batch rows and move execute/executemany outside the loop, or replace the loop with set-based SQL. | `for r in rows: / pic = conn.execute(` |
 | HIGH | `backend/scripts/audit_end_to_end.py` | 43 | SQL_EXECUTE_IN_FOR_LOOP | Batch rows and move execute/executemany outside the loop, or replace the loop with set-based SQL. | `for table, expected_n, date_col in EXPECTED: / n = conn.execute(f"SELECT COUNT(*) FROM {table}").fetchone()[0]` |
 | HIGH | `backend/scripts/audit_end_to_end.py` | 100 | SQL_EXECUTE_IN_FOR_LOOP | Batch rows and move execute/executemany outside the loop, or replace the loop with set-based SQL. | `for name, sql, note in checks: / r = conn.execute(sql).fetchone()` |
@@ -61,3 +59,5 @@
 | HIGH | `backend/scripts/build_feature_drift_root_cause.py` | 298 | SQL_EXECUTE_IN_FOR_LOOP | Batch rows and move execute/executemany outside the loop, or replace the loop with set-based SQL. | `for table in OUTPUT_TABLES: / conn.execute(f"DELETE FROM {table} WHERE run_id = ?", (run_id,))` |
 | HIGH | `backend/scripts/build_feature_rank_matrix_duck.py` | 117 | SQL_EXECUTE_IN_FOR_LOOP | Batch rows and move execute/executemany outside the loop, or replace the loop with set-based SQL. | `for stmt in sql.split(";"): / conn.execute(stmt)` |
 | HIGH | `backend/scripts/build_feature_rank_matrix_duck.py` | 394 | SQL_EXECUTE_IN_FOR_LOOP | Batch rows and move execute/executemany outside the loop, or replace the loop with set-based SQL. | `for row in rows[max_entries:]: / conn.execute(f"DROP TABLE IF EXISTS {_quote_ident(table_name)}")` |
+| HIGH | `backend/scripts/build_feature_retention_decisions.py` | 100 | SQL_EXECUTE_IN_FOR_LOOP | Batch rows and move execute/executemany outside the loop, or replace the loop with set-based SQL. | `for stmt in DDL.split(";"): / conn.execute(stmt)` |
+| HIGH | `backend/scripts/build_feature_retention_decisions.py` | 144 | SQL_EXECUTE_IN_FOR_LOOP | Batch rows and move execute/executemany outside the loop, or replace the loop with set-based SQL. | `for peer in kept: / row = conn.execute(` |
