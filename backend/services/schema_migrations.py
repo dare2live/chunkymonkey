@@ -144,6 +144,32 @@ CREATE TABLE IF NOT EXISTS mart_market_perception_theme_daily (
     PRIMARY KEY (snapshot_date, theme_name)
 );
 CREATE INDEX IF NOT EXISTS idx_mmp_theme_date ON mart_market_perception_theme_daily(snapshot_date);
+CREATE TABLE IF NOT EXISTS mart_market_perception_under_reaction_daily (
+    snapshot_date              DATE NOT NULL,
+    stock_code                 VARCHAR NOT NULL,
+    under_reaction_score       DOUBLE,
+    fund_anomaly_score         DOUBLE,
+    price_reaction_score       DOUBLE,
+    capital_flow_score         DOUBLE,
+    amount_expansion_score     DOUBLE,
+    crowding_penalty           DOUBLE,
+    ret_5d                     DOUBLE,
+    ret_20d                    DOUBLE,
+    amount_ratio_5_20          DOUBLE,
+    lhb_count_30d              INTEGER,
+    lhb_inst_buy_30d           INTEGER,
+    lhb_net_buy_pct_30d        DOUBLE,
+    exec_net_signal            DOUBLE,
+    holder_count_change_q_pct  DOUBLE,
+    theme_name                 VARCHAR,
+    theme_score                DOUBLE,
+    lifecycle_stage            VARCHAR,
+    pit_cutoff_date            DATE NOT NULL,
+    source_engines             VARCHAR,
+    built_at                   TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (snapshot_date, stock_code)
+);
+CREATE INDEX IF NOT EXISTS idx_mmp_under_date_score ON mart_market_perception_under_reaction_daily(snapshot_date, under_reaction_score DESC);
 CREATE INDEX IF NOT EXISTS idx_pipeline_manifest_started ON mart_pipeline_run_manifest(started_at DESC);
 CREATE INDEX IF NOT EXISTS idx_pipeline_manifest_name_status ON mart_pipeline_run_manifest(pipeline_name, status);
 CREATE INDEX IF NOT EXISTS idx_source_watermark_domain ON mart_data_source_watermark(data_domain, source_tier);

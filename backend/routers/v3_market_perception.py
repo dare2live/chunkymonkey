@@ -48,6 +48,7 @@ def _market_perception_health(conn) -> dict:
             "latest_audit": None,
             "emotion_rows": 0,
             "theme_rows": 0,
+            "under_reaction_rows": 0,
         }
 
     row = conn.execute(
@@ -77,6 +78,7 @@ def _market_perception_health(conn) -> dict:
     latest_snapshot_audit_status = _latest_snapshot_audit_status(latest_snapshot, latest_audit)
     emotion_rows = _table_row_count(conn, "mart_market_perception_emotion_daily")
     theme_rows = _table_row_count(conn, "mart_market_perception_theme_daily")
+    under_reaction_rows = _table_row_count(conn, "mart_market_perception_under_reaction_daily")
     return {
         "mart_table_exists": True,
         "mart_rows": mart_rows,
@@ -90,6 +92,7 @@ def _market_perception_health(conn) -> dict:
         "latest_audit": latest_audit,
         "emotion_rows": emotion_rows,
         "theme_rows": theme_rows,
+        "under_reaction_rows": under_reaction_rows,
     }
 
 
@@ -264,6 +267,43 @@ THEME_SELECT = """
     sector_ret_60d, sector_excess_20d, sector_excess_60d, price_vs_ma20,
     price_vs_ma60, limit_up_count, n_stocks, top3_turnover_share,
     pit_member_confidence, source_engines, pit_cutoff_date, built_at
+"""
+
+
+def _serialize_under_reaction_row(row) -> dict:
+    return {
+        "snapshot_date": str(row[0]) if row[0] is not None else None,
+        "stock_code": row[1],
+        "under_reaction_score": float(row[2]) if row[2] is not None else None,
+        "fund_anomaly_score": float(row[3]) if row[3] is not None else None,
+        "price_reaction_score": float(row[4]) if row[4] is not None else None,
+        "capital_flow_score": float(row[5]) if row[5] is not None else None,
+        "amount_expansion_score": float(row[6]) if row[6] is not None else None,
+        "crowding_penalty": float(row[7]) if row[7] is not None else None,
+        "ret_5d": float(row[8]) if row[8] is not None else None,
+        "ret_20d": float(row[9]) if row[9] is not None else None,
+        "amount_ratio_5_20": float(row[10]) if row[10] is not None else None,
+        "lhb_count_30d": int(row[11]) if row[11] is not None else None,
+        "lhb_inst_buy_30d": int(row[12]) if row[12] is not None else None,
+        "lhb_net_buy_pct_30d": float(row[13]) if row[13] is not None else None,
+        "exec_net_signal": float(row[14]) if row[14] is not None else None,
+        "holder_count_change_q_pct": float(row[15]) if row[15] is not None else None,
+        "theme_name": row[16],
+        "theme_score": float(row[17]) if row[17] is not None else None,
+        "lifecycle_stage": row[18],
+        "pit_cutoff_date": str(row[19]) if row[19] is not None else None,
+        "source_engines": row[20],
+        "built_at": str(row[21]) if row[21] is not None else None,
+    }
+
+
+UNDER_REACTION_SELECT = """
+    snapshot_date, stock_code, under_reaction_score, fund_anomaly_score,
+    price_reaction_score, capital_flow_score, amount_expansion_score,
+    crowding_penalty, ret_5d, ret_20d, amount_ratio_5_20, lhb_count_30d,
+    lhb_inst_buy_30d, lhb_net_buy_pct_30d, exec_net_signal,
+    holder_count_change_q_pct, theme_name, theme_score, lifecycle_stage,
+    pit_cutoff_date, source_engines, built_at
 """
 
 
@@ -473,6 +513,37 @@ async def get_theme_history(days: int = 20, top_n: int = 5):
         return {"ok": False, "error": str(exc), "data": [], "days_requested": days, "top_n": top_n}
 
 
+@router.get("/under_reaction/snapshot")
+async def get_under_reaction_snapshot(limit: int = 50):
+    """Return latest fund-anomaly but price-under-reacted candidates."""
+    limit = max(1, min(int(limit), 200))
+    try:
+        with get_conn() as conn:
+            if not _table_exists(conn, "mart_market_perception_under_reaction_daily"):
+                return {"ok": True, "stub": True, "data": [], "limit": limit, "built_at": datetime.now(timezone.utc).isoformat()}
+            latest = conn.execute(
+                "SELECT MAX(snapshot_date) FROM mart_market_perception_under_reaction_daily",
+            ).fetchone()
+            if not latest or latest[0] is None:
+                return {"ok": True, "stub": True, "data": [], "limit": limit, "built_at": datetime.now(timezone.utc).isoformat()}
+            rows = conn.execute(
+                f"""
+                SELECT {UNDER_REACTION_SELECT}
+                  FROM mart_market_perception_under_reaction_daily
+                 WHERE snapshot_date = ?
+                 ORDER BY under_reaction_score DESC
+                 LIMIT ?
+                """,
+                [latest[0], limit],
+            ).fetchall()
+            data = [_serialize_under_reaction_row(row) for row in rows]
+            built_at = data[0]["built_at"] if data else datetime.now(timezone.utc).isoformat()
+            return {"ok": True, "stub": False, "data": data, "rows": len(data), "limit": limit, "built_at": built_at}
+    except Exception as exc:
+        logger.warning("market_perception under_reaction snapshot query failed: %s", exc)
+        return {"ok": False, "error": str(exc), "data": [], "limit": limit, "built_at": datetime.now(timezone.utc).isoformat()}
+
+
 @router.get("/health")
 async def get_health():
     """模块健康检查 — 列出哪些 engine 已实施."""
@@ -494,6 +565,8 @@ async def get_health():
         engines["MarketEmotionCycle"] = "live"
     if health.get("theme_rows", 0) > 0:
         engines["ThemeLifecycleEngine"] = "live"
+    if health.get("under_reaction_rows", 0) > 0:
+        engines["FundFlowEngine"] = "live"
     return {
         "ok": True,
         "engines": engines,
