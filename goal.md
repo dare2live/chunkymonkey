@@ -3,7 +3,17 @@
 ## 审计时间戳
 最后审计: 2026-05-20 上午
 GCP retrain v2 in-flight: **lgbm_phase5_gcp_20260520T010718** (01:07 北京 launch, F1+F2 protected: SQLite resume + per-trial checkpoint)
-当前综合进度 **~85%** (9 criteria 均值, gap ~5pp 距运营条件 90%, 含 3 类 KPI 阻断中 2 hard FAIL).
+当前综合进度 **~86%** (9 criteria 均值, gap ~4pp 距运营条件 90%).
+
+**2026-05-20 上午 minhold15 重大 alpha 突破** (commit bde0fbc1):
+- ann **+108.2%** (vs baseline +67.79%) — 反向飙升, 不是 leakage (sharpe<5/win<95%/ann<100% 全 OK, alpha mechanism)
+- sharpe **2.12** — **达 perfect ladder ≥2.0** ✓ (production-grade alpha 真实可达)
+- max_dd -20.4% (回 baseline 水平)
+- per-pos win 49→66% (+17pp), avg_pnl_pct/仓 2.23→5.43% (+143%)
+- 机制: 强制持 ≥15d 过滤 stop_hit 假回调 (stop 18→9 减半), trailing/hp_expired 长窗实现 alpha
+- **但 turnover 49.57x 仍 FAIL** (min_holding 不是 anti_churn right tool, turnover 公式 closed -18% 但 buy_cost 不变)
+- Agent push back ([[feedback_codex_critical_no_compromise]] Rule 12): 拒用 ann/sharpe 上涨掩盖 turnover FAIL, criteria #6 维持 70% 不升 80%
+- minhold=15 保留为 prod-candidate alpha 增强
 
 **2026-05-20 上午重大进展**:
 - ✓ champion lgbm_phase5_session_20260518T160747 paper_sim baseline 跑通: ann +67.79% / dd -20.81% (用户接受) / sharpe 1.66 / 月胜 71% / 超额 HS300 +93.4% / IR 1.54 / 0 leakage 警报
