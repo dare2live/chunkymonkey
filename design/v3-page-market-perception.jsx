@@ -7,6 +7,8 @@ function PageMarketPerception() {
   const [history, setHistory] = useStateMP([]);
   const [emotionSnapshot, setEmotionSnapshot] = useStateMP(null);
   const [emotionHistory, setEmotionHistory] = useStateMP([]);
+  const [themeSnapshot, setThemeSnapshot] = useStateMP(null);
+  const [themeHistory, setThemeHistory] = useStateMP([]);
   const [health, setHealth] = useStateMP(null);
   const [loading, setLoading] = useStateMP(true);
   const [err, setErr] = useStateMP(null);
@@ -18,17 +20,23 @@ function PageMarketPerception() {
       fetch('/api/v3/market_perception/history?days=90').then(r => r.json()),
       fetch('/api/v3/market_perception/emotion/snapshot').then(r => r.json()),
       fetch('/api/v3/market_perception/emotion/history?days=90').then(r => r.json()),
+      fetch('/api/v3/market_perception/theme/snapshot').then(r => r.json()),
+      fetch('/api/v3/market_perception/theme/history?days=14&top_n=5').then(r => r.json()),
       fetch('/api/v3/market_perception/health').then(r => r.json()),
-    ]).then(([snap, hist, emotionSnap, emotionHist, hp]) => {
+    ]).then(([snap, hist, emotionSnap, emotionHist, themeSnap, themeHist, hp]) => {
       if (!alive) return;
       if (snap.ok === false) throw new Error(snap.error || 'snapshot failed');
       if (hist.ok === false) throw new Error(hist.error || 'history failed');
       if (emotionSnap.ok === false) throw new Error(emotionSnap.error || 'emotion snapshot failed');
       if (emotionHist.ok === false) throw new Error(emotionHist.error || 'emotion history failed');
+      if (themeSnap.ok === false) throw new Error(themeSnap.error || 'theme snapshot failed');
+      if (themeHist.ok === false) throw new Error(themeHist.error || 'theme history failed');
       setSnapshot(snap);
       setHistory(hist.data || []);
       setEmotionSnapshot(emotionSnap);
       setEmotionHistory(emotionHist.data || []);
+      setThemeSnapshot(themeSnap);
+      setThemeHistory(themeHist.data || []);
       setHealth(hp);
       setLoading(false);
     }).catch(e => {
@@ -44,8 +52,11 @@ function PageMarketPerception() {
 
   const d = (snapshot && snapshot.data) || {};
   const e = (emotionSnapshot && emotionSnapshot.data) || {};
+  const themes = (themeSnapshot && themeSnapshot.data) || [];
+  const topTheme = themes[0] || {};
   const regime = d.regime_score;
   const emotion = e.emotion_score;
+  const themeTone = topTheme.theme_score == null ? null : topTheme.theme_score > 0.45 ? 'pos' : topTheme.theme_score < -0.3 ? 'neg' : null;
   const regimeLabel = regime == null ? '—' : (regime > 0.3 ? 'risk_on' : regime < -0.3 ? 'risk_off' : 'mixed');
   const tone = regime == null ? null : regime > 0.3 ? 'pos' : regime < -0.3 ? 'neg' : null;
   const emotionTone = emotion == null ? null : emotion > 0.45 ? 'pos' : emotion < -0.3 ? 'neg' : null;
@@ -95,6 +106,7 @@ function PageMarketPerception() {
               <MiniHealth k="audit end" v={latestAudit && latestAudit.end_date ? latestAudit.end_date : '—'}/>
               <MiniHealth k="regime rows" v={health && health.mart_rows != null ? String(health.mart_rows) : '—'}/>
               <MiniHealth k="emotion rows" v={health && health.emotion_rows != null ? String(health.emotion_rows) : '—'}/>
+              <MiniHealth k="theme rows" v={health && health.theme_rows != null ? String(health.theme_rows) : '—'}/>
             </div>
             {engines.map(([name, status]) => (
               <div key={name} style={{display:'flex',alignItems:'center',justifyContent:'space-between',gap:10,padding:'7px 0',borderBottom:'1px solid var(--line-soft)'}}>
@@ -103,6 +115,23 @@ function PageMarketPerception() {
               </div>
             ))}
           </div>
+        </UI.Card>
+      </div>
+
+      <div style={{display:'grid',gridTemplateColumns:'1fr 1.2fr',gap:12,alignItems:'stretch'}}>
+        <UI.Card title="ThemeLifecycle" action={<UI.ApiTag>/theme/snapshot</UI.ApiTag>}
+          foot={`snapshot ${topTheme.snapshot_date || '—'} · built_at ${fmtDateTime(topTheme.built_at)}`}>
+          <div style={{display:'grid',gridTemplateColumns:'repeat(2, minmax(0, 1fr))',gap:12,marginBottom:10}}>
+            <UI.KStat k="主线" v={topTheme.theme_name || '—'} sub={topTheme.theme_score == null ? '—' : topTheme.theme_score.toFixed(3)} tone={themeTone}/>
+            <UI.KStat k="阶段" v={topTheme.lifecycle_stage || '—'} sub={topTheme.diffusion_state || '—'} tone={themeTone}/>
+            <UI.KStat k="板块广度" v={topTheme.sector_breadth == null ? '—' : UI.fmt2pct(topTheme.sector_breadth, false)} sub={`涨停 ${topTheme.limit_up_count ?? '—'} · 样本 ${topTheme.n_stocks ?? '—'}`}/>
+            <UI.KStat k="20日超额" v={topTheme.sector_excess_20d == null ? '—' : UI.fmt2pct(topTheme.sector_excess_20d)} sub={topTheme.sector_ret_20d == null ? '—' : `ret ${UI.fmt2pct(topTheme.sector_ret_20d)}`}/>
+          </div>
+          <ThemeTable rows={themes}/>
+        </UI.Card>
+
+        <UI.Card title="主题主线 / 分歧 / 退潮" action={<UI.ApiTag>/theme/history?days=14&top_n=5</UI.ApiTag>}>
+          <ThemeHistory rows={themeHistory}/>
         </UI.Card>
       </div>
     </div>
@@ -123,6 +152,77 @@ function StatusBadge({ status }) {
   const UI = window.CMV3.UI;
   const tone = status === 'live' ? 'hold' : status === 'stub' ? 'watch' : 'neutral';
   return <UI.Pill tone={tone} size="xs">{status}</UI.Pill>;
+}
+
+function ThemeTable({ rows }) {
+  const UI = window.CMV3.UI;
+  if (!rows || !rows.length) return <div style={{padding:12,color:'var(--ink-3)'}}>暂无主题数据</div>;
+  return (
+    <table style={{width:'100%',borderCollapse:'collapse',fontSize:12}}>
+      <thead>
+        <tr style={{textAlign:'left',color:'var(--ink-3)',fontSize:10,letterSpacing:'.04em',textTransform:'uppercase'}}>
+          <th style={{padding:'7px 4px'}}>主题</th>
+          <th style={{padding:'7px 4px'}}>阶段</th>
+          <th style={{padding:'7px 4px'}}>结构</th>
+          <th style={{padding:'7px 4px',textAlign:'right'}}>score</th>
+          <th style={{padding:'7px 4px',textAlign:'right'}}>breadth</th>
+        </tr>
+      </thead>
+      <tbody>
+        {rows.slice(0, 8).map(r => (
+          <tr key={r.theme_name} style={{borderTop:'1px solid var(--line-soft)'}}>
+            <td style={{padding:'8px 4px',fontWeight:700,color:'var(--ink-0)'}}>{r.theme_name}</td>
+            <td style={{padding:'8px 4px'}}><UI.Pill tone={stageTone(r.lifecycle_stage)} size="xs">{r.lifecycle_stage || '—'}</UI.Pill></td>
+            <td style={{padding:'8px 4px',color:'var(--ink-2)'}}>{r.diffusion_state || '—'}</td>
+            <td style={{padding:'8px 4px',textAlign:'right',fontFamily:'var(--f-mono)',fontWeight:700,color:(r.theme_score||0)>=0?'#2f8a55':'#c4382e'}}>{fmtNum(r.theme_score, 3)}</td>
+            <td style={{padding:'8px 4px',textAlign:'right',fontFamily:'var(--f-mono)'}}>{r.sector_breadth == null ? '—' : UI.fmt2pct(r.sector_breadth, false)}</td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  );
+}
+
+function ThemeHistory({ rows }) {
+  if (!rows || !rows.length) return <div style={{padding:12,color:'var(--ink-3)'}}>暂无历史主题数据</div>;
+  const byDate = rows.reduce((acc, row) => {
+    (acc[row.snapshot_date] = acc[row.snapshot_date] || []).push(row);
+    return acc;
+  }, {});
+  const dates = Object.keys(byDate).sort();
+  return (
+    <div style={{display:'grid',gridTemplateColumns:'96px 1fr',gap:8,alignItems:'start'}}>
+      {dates.slice(-10).map(date => (
+        <React.Fragment key={date}>
+          <div style={{fontSize:10,fontFamily:'var(--f-mono)',color:'var(--ink-3)',paddingTop:8}}>{date}</div>
+          <div style={{display:'flex',flexWrap:'wrap',gap:6,padding:'6px 0',borderTop:'1px solid var(--line-soft)'}}>
+            {byDate[date].slice(0, 5).map(row => (
+              <span key={`${date}-${row.theme_name}`} title={`${row.lifecycle_stage} · ${row.diffusion_state} · ${fmtNum(row.theme_score, 3)}`}
+                    style={{display:'inline-flex',alignItems:'center',gap:5,padding:'3px 6px',borderRadius:4,border:'1px solid var(--line)',background:'var(--bg-2)',fontSize:11}}>
+                <b style={{color:'var(--ink-0)'}}>{row.theme_name}</b>
+                <span style={{color:stageColor(row.lifecycle_stage)}}>{row.lifecycle_stage}</span>
+                <span style={{fontFamily:'var(--f-mono)',color:'var(--ink-3)'}}>{fmtNum(row.theme_score, 2)}</span>
+              </span>
+            ))}
+          </div>
+        </React.Fragment>
+      ))}
+    </div>
+  );
+}
+
+function stageTone(stage) {
+  return ['主升', '高潮', '确认'].includes(stage) ? 'buy'
+    : ['退潮'].includes(stage) ? 'sell'
+    : ['反抽', '启动'].includes(stage) ? 'info'
+    : 'neutral';
+}
+
+function stageColor(stage) {
+  return ['主升', '高潮', '确认'].includes(stage) ? '#2f8a55'
+    : ['退潮'].includes(stage) ? '#c4382e'
+    : ['反抽', '启动'].includes(stage) ? '#1e5aaa'
+    : 'var(--ink-2)';
 }
 
 function RegimeChart({ rows, emotionRows }) {
@@ -180,6 +280,10 @@ function scaledVol(v) {
 function fmtDateTime(v) {
   if (!v) return '—';
   return String(v).replace('T', ' ').replace(/\.\d+$/, '').replace(/\+00:00$/, ' UTC');
+}
+
+function fmtNum(v, digits) {
+  return v == null || Number.isNaN(Number(v)) ? '—' : Number(v).toFixed(digits);
 }
 
 function parseUnknownMetrics(v) {
