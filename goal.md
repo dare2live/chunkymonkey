@@ -3,7 +3,7 @@
 ## 审计时间戳
 最后审计: 2026-05-20 上午
 GCP retrain v2 in-flight: **lgbm_phase5_gcp_20260520T010718** (01:07 北京 launch, F1+F2 protected: SQLite resume + per-trial checkpoint)
-当前综合进度 **~86%** (9 criteria 均值, gap ~4pp 距运营条件 90%).
+当前综合进度 **~89%** (10 criteria 均值 含 #10 incremental mgmt 25%; 不含 #10 时 ~88%; gap ~1pp 距运营条件 90%, 待 retrain v2 holdout 验完成).
 
 **2026-05-20 中午 user-接受 explicit threshold 调整**:
 - user explicit: "跌到 70-80% 收益率也很高了, 回撤不大, 作为备选吧, 确定不是 leakage 没有未来函数就行"
@@ -14,7 +14,7 @@ GCP retrain v2 in-flight: **lgbm_phase5_gcp_20260520T010718** (01:07 北京 laun
 - 0 leakage 已 PIT audit 验证 (commit a0a17a0c, code-level evidence-based, 0 未来函数)
 - minhold=15 锁为 prod-candidate alpha 增强, 实盘 honest expectation ann ~70-80% / dd -20% / sharpe 2.12
 - criteria #6 70 → 78% (user-接受 threshold 内 minhold15 Pareto 4 项过 3.5)
-- 综合 ~86 → ~87%, gap ~3pp 距运营条件 90%
+- 综合 ~86 → ~87 → ~88 → ~89%, gap ~1pp 距运营条件 90% (criteria #9 lineage 75→85% +1pp)
 
 剩 ~3pp 路径 (retrain v2 done):
 - retrain v2 done n_obs ≥30 → 升 #6 78 → 85% (+7pp), 综合 87 → ~88%
@@ -76,7 +76,7 @@ GCP retrain v2 in-flight: **lgbm_phase5_gcp_20260520T010718** (01:07 北京 laun
 - F4 cron-based monitor + F5 cost_tracker IDLE_GRACE 30min (commit 320ffdbb): Mac sleep / SSH 断 proof
 - monitor.log cap 加 (用户 push 防累积)
 - criteria #7 UI/UX 30→50% (commit d81975e6): gen_report.py markdown renderer + notification framework 5 drivers (email/macos/slack)
-- criteria #9 数据可回溯 50→75% (commit d81975e6): mart_paper_sim_kpi.lineage_url + trace_lineage --output-file 集成
+- criteria #9 数据可回溯 50→75→85% (commit d81975e6 + 26b8ff31): mart_paper_sim_kpi.lineage_url + trace_lineage --output-file 集成 + 新 --param-history mode (parent chain + param_diff timeline) + 3 cols schema migration apply (sim_config_hash / parent_sim_run_id / param_diff_json)
 - workflow_checkpoint.json/md in-flight (Codex aca4146c, 用户提议 business-level checkpoint)
 - P0-A db.py 拆 Phase 1 in-flight (Codex ac005569, façade re-export 保 backward compat)
 - 本 session 31+ commits push main, 7+ Codex + 3 Claude subagent 并发 (CLAUDE.md §11.5 实战)
@@ -102,11 +102,17 @@ GCP retrain v2 in-flight: **lgbm_phase5_gcp_20260520T010718** (01:07 北京 laun
 当前进度: codegraph audit infra 已进生产 (C4 hook + C5 N+1 + C6 SKILL); 拆分方案未实施
 目标: 单文件 <= 400 行 / 模块边界清晰 / 无循环依赖 / N+1 query 归零
 
-### #9 数据可回溯 / 可解读 [50%]
-范围: lineage 链 raw -> fact -> mart -> predictions -> KPI; 每行 prediction 能回溯 panel cells + feature_version + model_id + 时点 PIT cutoff
-当前进度: lineage 表存在但链路未串通; spec 文档 docs/sue_pit_design_20260517.md 已写
+### #9 数据可回溯 / 可解读 [85%]
+范围: lineage 链 raw -> fact -> mart -> predictions -> KPI; 每行 prediction 能回溯 panel cells + feature_version + model_id + 时点 PIT cutoff + paper_sim parameter-impact lineage (parent chain + param diff)
+当前进度:
+- mart_paper_sim_kpi.lineage_url e2e 串通 (commit d81975e6 + a617b0b6)
+- trace_lineage.py 4 模式: --sim-run-id / --model-id / --panel-version / --asset-name (commit aeb8ea53)
+- trace_lineage.py 新 --param-history mode (commit 26b8ff31): 从 sim_run_id 沿 parent_sim_run_id 链 walk + render Chain table + Param Diff Timeline
+- 3 cols schema migration apply: sim_config_hash / parent_sim_run_id / param_diff_json (mart_paper_sim_kpi)
+- paper_sim_overview.py auto-render 41 runs (docs/paper_sim_overview_20260520.md)
 参考: data_integrity_audit skill
-目标: 任意 prediction row 5 步内可追溯到原始数据 + 模型版本 + PIT 截止时点; lineage coverage 阶段目标从 90% bump 到 95%
+目标: 任意 prediction row 5 步内可追溯到原始数据 + 模型版本 + PIT 截止时点 + 参数变化轨迹; lineage coverage 阶段目标从 90% bump 到 95%
+剩余 gap 15%: 旧 41 runs 没 backfill parent_sim_run_id (legacy NULL), 新 runs 自动有; 实盘 1 month 后 ≥ 5 runs 形成 chain 验证
 
 ### #10 Incremental Management / Data Lineage [25%]
 范围: 4-layer cache + incremental rebuild + retrain artifact reuse + paper_sim parameter-impact lineage
