@@ -784,6 +784,60 @@ SELECT * FROM mart_data_source_watermark;
 
 每次 session 增量内容写这里, 新 session 启动时**从下往上读**最近改了啥.
 
+### 2026-05-20 anti-churn Path A2 Round 2: min_holding_days_before_exit=15 实测 (criteria #6 维持 70%, push back 80%)
+
+承接 minhold5 partial (-11% turnover 仍 FAIL >>8), user 推 minhold=15 二次 retest 探边界 + 决策. **真金白银 push back**: minhold=15 不应推 criteria #6 65→80%, 因 anti_churn 仍 FAIL turnover 49.57x; 但 minhold=15 **是 alpha tool 不是 anti-churn tool** (ann +60pp / sharpe +0.46 / dd 持平 / 每仓 pnl_pct +143%), 应保留并 follow-up 走 portfolio-level fix.
+
+**实施** (`backend/config/paper_sim_ml_score_champion_minhold5.yaml` 后增量):
+- 新 `backend/config/paper_sim_ml_score_champion_minhold15.yaml` (派生自 minhold5.yaml, 仅 override `exit.min_holding_days_before_exit: 15`).
+- 同 ExitConfig._validate 范围 [0, 30] (>30 阻 stop/trailing 太久会 dd 严重劣化, 15 在范围中).
+- 复用既有 `ExitInputs.day_gate_block` 短路, 无代码改, 仅配置 retest.
+
+**KPI 实测** (sim_run_id `champion_minhold15_20260520_111606_20260520_031612_9137bf`, 330 交易日 2025-01-02→2026-05-19, Mac 8C 14.0 min wall):
+
+| 指标 | baseline (307d 截 2026-04-13) | minhold5 (330d) | minhold15 (330d) | minhold15 vs minhold5 | minhold15 vs baseline |
+|---|---|---|---|---|---|
+| 年化 | +67.79% | +53.5% | **+108.2%** | **+54.7pp 反向飙升** | +40.4pp |
+| max_dd | -20.81% | -17.4% | -20.4% | -3.0pp 劣化 (回到 baseline) | +0.4pp 微改 |
+| sharpe | 1.66 | 1.56 | **2.12** | **+0.56** | +0.46 |
+| 月胜率 | 71.43% | 67% | 67% | 持平 | -4.4pp |
+| **年化换手** | **54.88x** | **48.82x** | **49.57x** | **+1.5% (FAIL)** | **-9.7% (仍 FAIL >>8)** |
+| tx_cost_pct_of_gross_pnl | N/A | 5.3% | 3.7% | 改善 | — |
+| avg_holding_days | 13.1 | 15.8 | 21.3 | +5.5d | +8.2d |
+| total_return | +87.86% | +75.28% | +161.21% | +85.93pp | +73.35pp |
+| closed positions | 87 (+5 open) | 90 (0 open) | **71** (0 open) | -19 笔 | -16 笔 |
+| **每仓 avg_pnl_pct** | 2.23% | 2.67% | **5.43%** | **+103%** | +143% |
+| **win_rate (per position)** | 49.4% | 52.2% | **66.2%** | **+14pp** | +17pp |
+
+**exit reason breakdown** (close_reason × n × min/avg/max_hold days, 实测 fact_paper_sim_position):
+- baseline: hp_expired 42 (5/13.5/60d, 1.00%) / trailing 21 (1/15.0/38d, 15.23%) / stop 18 (2/8.7/50d, -8.09%) / hard_dd 4 / stage 2
+- minhold5: hp_expired 49 (5/14.3/90d, 1.21%) / trailing 21 (5/23.0/65d, 17.22%) / stop 19 (5/11.4/51d, -9.18%) / stage 1
+- minhold15: hp_expired 32 (**15**/19.6/61d, 2.35%) / trailing 25 (**15**/24.0/64d, **17.75%**) / stop 9 (**15**/22.7/50d, -12.71%) / hard_dd 5
+
+**真因分析 — minhold=15 是 alpha tool 不是 anti-churn tool**:
+- **alpha 真因**: minhold=15 强制持 ≥15d → 关掉"过早 stop_hit"假回调 (stop n 18→9 减半, 但平均亏 -8.09%→-12.71% 即剩下的真 stop 损更大), trailing 在更长窗口实现 alpha (avg 15.23%→17.75% +2.5pp). hp_expired 平均 1.00%→2.35% (+135%), 拉长持 momentum 跑得更久. **每仓 avg_pnl_pct 2.23%→5.43% +143%** 是真 alpha mechanism.
+- **anti-churn 失败**: turnover = gross_amount / capital × 252 / period_days. closed 87→71 (-18%) 但每仓 buy_cost 不变, gross 只降 ~18%, period 同 330d → turnover 54.88→49.57 仅 -10%, 跟 minhold5 几乎一样. 要达 ≤8 需 6× 减仓换手, min_holding 不是 right tool.
+- **dd 回到 baseline**: minhold15 -20.4% vs minhold5 -17.4% (minhold5 改善 -3.4pp), 因为 minhold=15 关掉一部分 stop_hit 让亏单跑得更久 (hard_stop_dd 4→5, stop_hit avg -8.09%→-12.71%), 单笔最大 loss 上升; trade-off: alpha 更强但单笔 dd 更深, 总 portfolio dd 边缘 -20.4% (用户阈值 -20% 仍微超 -0.4pp).
+
+**4 leakage 红线 self-check** (Rule 5 §异常高数字):
+- sharpe 2.12 < 5 ✓ / ann +108.2% < ~150% absolute 红线 ✓ (但跨过 100% 警报阈值, 需 evidence 解释)
+- vs minhold5 +54.7pp = +102% relative jump → 触发 Rule 5 relative 红线 (≥+50%). **诚实 evidence**: 不是 leakage, 是 alpha mechanism — closed positions 减少 18% 但 win_rate 14pp 跳跃 + 每仓 pnl_pct 翻倍, 跟 minhold5 / baseline 同 model_id 同 prediction 表, 仅 exit timing 改. close_reason min_days 全=15 (day-gate 工作正常 0 bypass). 同 model 同 features 无新数据接入. mechanism: 持 ≥15d 过滤"假回调" stop_hit, 把 alpha 充分实现.
+- win_rate per-position 66.2% < 95% leakage 阈值 ✓
+- hard_dd hit 5 次 (vs baseline 4 次) — portfolio_dd 守门工作正常
+
+**用户决策框架结果**:
+- A (turnover ≤8 + dd≤-25% + ann≥30%) → **FAIL** (turnover 49.57 远 >>8)
+- B (turnover ≤15 + dd OK + ann≥40%) → **FAIL** (turnover 49.57 远 >>15)
+- C (ann<30% portfolio-level fix) → **不符** (ann 反向飙升 +108.2%)
+- D (dd 大幅劣化撤回 minhold5) → **不符** (dd -20.4% vs baseline -20.81% 微改善)
+- **新分支 (框架未列)**: ann 飙升 + sharpe 飙升 + dd 持平 + turnover 死活不降 = min_holding **是 alpha tool**, 应保留 minhold=15 当 alpha 增强但 anti_churn unblock 需真正的 portfolio-level fix (max_pos 5→10 OR vol-sizing OR 减 buy/sell freq).
+
+**结论 + criteria #6 维持 70%**:
+- 不推 criteria #6 65→80% (anti_churn 仍 FAIL turnover 49.57x, 实盘成本压不住).
+- minhold=15 yaml 保留为 prod-candidate alpha 增强 (ann +40pp vs baseline / sharpe +0.46 / dd 持平), 配合后续 anti_churn fix.
+- 后续路径 (按 ROI): (a) minhold=15 + max_pos 5→10 双管降换手 (capital 分散到更多 hold) (b) minhold=15 + vol-sizing 替 equal-weight (单仓 size 按 vol 缩, 降高 vol 仓换手) (c) 等 retrain v2 GCP done (`lgbm_phase5_gcp_20260520T010718`) 看 new predictions 自然换手是否降.
+- 不动 baseline (-04-13 cut-off) / minhold5 yaml (已 commit).
+
 ### 2026-05-20 anti-churn Path A2: min_holding_days_before_exit=5 实测 (criteria #6 65→70%)
 
 承接 a746c31c 后 user 推 churn 根因. 我前次 push back swap threshold fix 设计错 (baseline 88 trades 全 single-position exit, swap=0, 不是 swap 根因), user 选**选项 A** 推 anti-churn 加 `min_holding_days_before_exit`. 此字段约束 4 类 single-position exit (hp_expired / stop_hit / trailing_hit / stage_deterioration), 不阻 portfolio_dd hard_stop (driver L279-302 独立分支) + 不阻 swap (alpha-uplift).
