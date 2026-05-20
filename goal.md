@@ -3,11 +3,14 @@
 ## 审计时间戳
 最后审计: 2026-05-20 上午
 GCP retrain v2 in-flight: **lgbm_phase5_gcp_20260520T010718** (01:07 北京 launch, F1+F2 protected: SQLite resume + per-trial checkpoint)
-当前综合进度 **~88%** (9 criteria 均值, 接近运营条件 90%, gap ~2pp).
+当前综合进度 **~85%** (9 criteria 均值, gap ~5pp 距运营条件 90%, 含 3 类 KPI 阻断中 2 hard FAIL).
 
 **2026-05-20 上午重大进展**:
-- ✓ champion lgbm_phase5_session_20260518T160747 paper_sim baseline 跑通: ann +67.79% / dd -20.81% (用户接受) / sharpe 1.66 / 月胜 71% / 0 leakage 警报
-- ✓ Pareto verdict Case A (用户接受 dd -20.81% 软门槛): 4 项 Pareto 全 PASS, promote to challenger pool
+- ✓ champion lgbm_phase5_session_20260518T160747 paper_sim baseline 跑通: ann +67.79% / dd -20.81% (用户接受) / sharpe 1.66 / 月胜 71% / 超额 HS300 +93.4% / IR 1.54 / 0 leakage 警报
+- ⚠ Pareto verdict 实际 NO-GO (3 类阻断 2 hard FAIL):
+  - user_criteria max_dd -20.81%: 用户接受 软门槛
+  - **anti_churn**: 换手 54.88x (≤8 阈值), 真实 tx_cost 估吃 30-50pp ann → 实盘 +17-37% net
+  - **robustness**: rolling_ir_p25 -1.22 (>0 阈值), 25% 时段亏
 - ✓ lineage_url e2e 验证通 (mart_paper_sim_kpi 含 file:///.../lineage/<sim_run_id>.md)
 - ✓ db.py 拆 Phase 1 (2478→266B façade), workflow_checkpoint, 复杂度审计 全 commit
 - ✓ launchd probe + PATH fix, FDA-safe 主动 macos notification on VM 状态变化
