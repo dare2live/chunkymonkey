@@ -441,7 +441,15 @@ def render(conn: Any, root: dict[str, Any], graph: dict[str, dict[str, Any]], el
 
 
 def trace_markdown(conn: Any, **kwargs: Any) -> str:
-    params = {"max_depth": 5}
+    params = {
+        "sim_run_id": None,
+        "model_id": None,
+        "panel_version": None,
+        "asset_name": None,
+        "db_path": None,
+        "output_file": None,
+        "max_depth": 5,
+    }
     params.update(kwargs)
     args = argparse.Namespace(**params)
     start = time.monotonic()
@@ -457,10 +465,17 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--asset-name")
     parser.add_argument("--db-path", default=str(DB_PATH))
     parser.add_argument("--max-depth", type=int, default=5)
+    parser.add_argument("--output-file")
     args = parser.parse_args(argv)
     try:
         with connect(args.db_path, read_only=True) as conn:
-            print(trace_markdown(conn, **vars(args)), end="")
+            markdown = trace_markdown(conn, **vars(args))
+        if args.output_file:
+            output_file = Path(args.output_file)
+            output_file.parent.mkdir(parents=True, exist_ok=True)
+            output_file.write_text(markdown, encoding="utf-8")
+        else:
+            print(markdown, end="")
         return 0
     except Exception as exc:
         print(f"ERROR: {exc}", file=sys.stderr)

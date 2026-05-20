@@ -784,6 +784,14 @@ SELECT * FROM mart_data_source_watermark;
 
 每次 session 增量内容写这里, 新 session 启动时**从下往上读**最近改了啥.
 
+### 2026-05-20 paper_sim KPI lineage integration (criteria #9 traceability 50→75)
+
+- `mart_paper_sim_kpi` 加 nullable `lineage_url TEXT`; DDL 新表带列, migration 用 `ALTER TABLE ... ADD COLUMN IF NOT EXISTS` + try/except 保持 duplicate-safe, 旧 sim_run_id 不回填且可继续 NULL.
+- `write_kpi_summary()` 现在每行 KPI 预写 `file://<repo>/data/reports/lineage/<sim_run_id>.md`, INSERT 包含 `lineage_url`, commit 后生成同名 Markdown lineage report.
+- `trace_lineage.py` 支持 `--output-file PATH`, 自动创建 parent dirs; stdout 行为保持不变.
+- 新增 `backend/tests/services/paper_sim/test_lineage_integration.py` 5 tests: DDL column/idempotency, CLI output-file, reporter URL 落库 + file exists, legacy NULL compatibility.
+- 实测: `python -m pytest backend/tests/services/paper_sim/test_lineage_integration.py -v` 5/5 PASS. 直接 `pytest ...` 在当前 shell 无命令, 用 module form 通过.
+
 ### 2026-05-20 上午 GCP retrain reliability F4+F5 实施 (cron-monitor + marker TTL)
 
 承接 5-20 凌晨 F1+F2 commit, 实施 `docs/gcp_reliability_root_cause_fix.md` 剩下两个 P1.

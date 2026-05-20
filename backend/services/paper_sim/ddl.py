@@ -133,6 +133,7 @@ CREATE TABLE IF NOT EXISTS mart_paper_sim_kpi (
     -- 综合
     all_kpi_pass      BOOLEAN,
     config_snapshot   TEXT,                      -- JSON of full PaperSimConfig (审计 + 复现)
+    lineage_url       TEXT,                      -- local file:// report or future /v3/lineage/<sim_run_id>
     -- Phase 1a Option C (Codex round 6 MAJOR #1): exit_source 分层 attribution (按 closed position)
     pit_count         INTEGER,
     pit_pnl           DOUBLE,
@@ -170,6 +171,12 @@ def ensure_paper_sim_tables(conn) -> None:
             # 只吞 duplicate-column 错 (column 已存在), 其他 migration 错 raise
             if "already exists" not in str(_e).lower() and "duplicate" not in str(_e).lower():
                 raise
+    try:
+        conn.execute("ALTER TABLE mart_paper_sim_kpi ADD COLUMN IF NOT EXISTS lineage_url TEXT")
+    except Exception as _e:
+        # duplicate-column 安全忽略 (DuckDB 某些版本 IF NOT EXISTS 仍抛); 其他错 raise
+        if "already exists" not in str(_e).lower() and "duplicate" not in str(_e).lower():
+            raise
     conn.execute(
         """
         UPDATE mart_paper_sim_nav

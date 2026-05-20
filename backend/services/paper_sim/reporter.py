@@ -13,14 +13,142 @@ compute_excess_alpha. Paper sim 特化指标 (anti-churn, swap uplift) 在这里
 from __future__ import annotations
 
 import json
+import os
+import subprocess
+import sys
+import tempfile
 from dataclasses import asdict
+from pathlib import Path
 from typing import Any, Optional
 
 import numpy as np
 
+from services.duck_adapter import connect as duck_connect
 from services.paper_sim.config import PaperSimConfig
 from services.portfolio_walk_forward.metrics import compute_metrics, compute_excess_alpha
 from services.portfolio_walk_forward.regime import classify_regime
+
+
+REPO_ROOT = Path(__file__).resolve().parents[3]
+LINEAGE_REPORT_DIR = REPO_ROOT / "data" / "reports" / "lineage"
+TRACE_LINEAGE_SCRIPT = REPO_ROOT / "backend" / "scripts" / "trace_lineage.py"
+
+
+def _lineage_report_path(sim_run_id: str) -> Path:
+    return LINEAGE_REPORT_DIR / f"{sim_run_id}.md"
+
+
+def _lineage_url(path: Path) -> str:
+    return f"file://{path.resolve()}"
+
+
+def _snapshot_kpi_for_lineage(conn, sim_run_id: str) -> Path:
+    fd, raw_path = tempfile.mkstemp(prefix="paper_sim_lineage_", suffix=".duckdb")
+    os.close(fd)
+    snapshot_path = Path(raw_path)
+    snapshot_path.unlink(missing_ok=True)
+    row = conn.execute(
+        """
+        SELECT sim_run_id, variant, period_start, period_end, n_days,
+               annual_return, max_dd, sharpe, monthly_win_rate,
+               config_snapshot, lineage_url, built_at
+          FROM mart_paper_sim_kpi
+         WHERE sim_run_id = ?
+        """,
+        [sim_run_id],
+    ).fetchone()
+    if row is None:
+        raise RuntimeError(f"sim {sim_run_id} KPI row missing before lineage trace")
+
+    snap = duck_connect(str(snapshot_path))
+    try:
+        snap.execute(
+            """
+            CREATE TABLE mart_paper_sim_kpi (
+                sim_run_id TEXT,
+                variant TEXT,
+                period_start TEXT,
+                period_end TEXT,
+                n_days INTEGER,
+                annual_return DOUBLE,
+                max_dd DOUBLE,
+                sharpe DOUBLE,
+                monthly_win_rate DOUBLE,
+                config_snapshot TEXT,
+                lineage_url TEXT,
+                built_at TIMESTAMP
+            )
+            """
+        )
+        snap.execute(
+            """
+            INSERT INTO mart_paper_sim_kpi
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            [row[c] for c in (
+                "sim_run_id", "variant", "period_start", "period_end", "n_days",
+                "annual_return", "max_dd", "sharpe", "monthly_win_rate",
+                "config_snapshot", "lineage_url", "built_at",
+            )],
+        )
+        snap.commit()
+    finally:
+        snap.close()
+    return snapshot_path
+
+
+def _run_trace_lineage_script(sim_run_id: str, output_file: Path, db_path: Path) -> None:
+    env = os.environ.copy()
+    backend_path = str(REPO_ROOT / "backend")
+    env["PYTHONPATH"] = (
+        backend_path if not env.get("PYTHONPATH") else backend_path + os.pathsep + env["PYTHONPATH"]
+    )
+    subprocess.run(
+        [
+            sys.executable,
+            str(TRACE_LINEAGE_SCRIPT),
+            "--sim-run-id",
+            sim_run_id,
+            "--db-path",
+            str(db_path),
+            "--output-file",
+            str(output_file),
+        ],
+        cwd=str(REPO_ROOT),
+        env=env,
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+
+
+def _write_lineage_report(conn, sim_run_id: str, output_file: Path) -> None:
+    output_file.parent.mkdir(parents=True, exist_ok=True)
+    snapshot_path: Path | None = None
+    script_error: Exception | None = None
+    try:
+        snapshot_path = _snapshot_kpi_for_lineage(conn, sim_run_id)
+        _run_trace_lineage_script(sim_run_id, output_file, snapshot_path)
+    except Exception as exc:
+        script_error = exc
+    finally:
+        if snapshot_path is not None:
+            snapshot_path.unlink(missing_ok=True)
+
+    try:
+        from scripts.trace_lineage import trace_markdown
+
+        markdown = trace_markdown(
+            conn,
+            sim_run_id=sim_run_id,
+            model_id=None,
+            panel_version=None,
+            asset_name=None,
+        )
+        output_file.write_text(markdown, encoding="utf-8")
+    except Exception:
+        if script_error is not None or not output_file.exists():
+            raise
 
 
 def _load_nav_series(conn, sim_run_id: str) -> tuple[list[str], list[float], list[Optional[float]]]:
@@ -359,6 +487,27 @@ def write_kpi_summary(
     )
     _pit = partition.get("pit_only") or {}
     _fb = partition.get("fallback_only") or {}
+    lineage_path = _lineage_report_path(sim_run_id)
+    lineage_url = _lineage_url(lineage_path)
+    config_snapshot = json.dumps(
+        {"portfolio": asdict(cfg.portfolio), "swap": asdict(cfg.swap)},
+        ensure_ascii=False,
+    )
+    kpi_values = [
+        sim_run_id, variant, dates[0], dates[-1], len(navs),
+        uc["annual_return"], uc["max_dd"], uc["sharpe"], uc["calmar"],
+        uc["monthly_win_rate"], uc["total_return"], uc.get("excess_total_return"),
+        uc.get("information_ratio"), pass_uc,
+        ac["avg_holding_days"], ac["annual_turnover"], ac["tx_cost_total"],
+        ac["tx_cost_pct_of_gross_pnl"], ac["swap_count"], ac["swap_uplift_total"], pass_ac,
+        rb.get("rolling_ir_60d_median"), rb.get("rolling_ir_60d_p25"),
+        rb.get("rolling_annual_90d_median"),
+        rb.get("regime_bull_return"), rb.get("regime_bear_return"),
+        rb.get("regime_sideways_return"), pass_rb, all_pass,
+        config_snapshot, lineage_url,
+        _pit.get("count"), _pit.get("sum_pnl"), _pit.get("pnl_pct_aggregate"),
+        _fb.get("count"), _fb.get("sum_pnl"), _fb.get("pnl_pct_aggregate"),
+    ]
 
     conn.execute(
         """INSERT OR REPLACE INTO mart_paper_sim_kpi
@@ -370,29 +519,18 @@ def write_kpi_summary(
          rolling_ir_60d_median, rolling_ir_60d_p25, rolling_annual_90d_median,
          regime_bull_return, regime_bear_return, regime_sideways_return,
          robustness_pass, all_kpi_pass, config_snapshot,
+         lineage_url,
          pit_count, pit_pnl, pit_pnl_pct,
          fallback_count, fallback_pnl, fallback_pnl_pct)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
-                ?, ?, ?, ?, ?, ?)""",
-        [sim_run_id, variant, dates[0], dates[-1], len(navs),
-         uc["annual_return"], uc["max_dd"], uc["sharpe"], uc["calmar"],
-         uc["monthly_win_rate"], uc["total_return"], uc.get("excess_total_return"),
-         uc.get("information_ratio"), pass_uc,
-         ac["avg_holding_days"], ac["annual_turnover"], ac["tx_cost_total"],
-         ac["tx_cost_pct_of_gross_pnl"], ac["swap_count"], ac["swap_uplift_total"], pass_ac,
-         rb.get("rolling_ir_60d_median"), rb.get("rolling_ir_60d_p25"),
-         rb.get("rolling_annual_90d_median"),
-         rb.get("regime_bull_return"), rb.get("regime_bear_return"),
-         rb.get("regime_sideways_return"), pass_rb, all_pass,
-         json.dumps({"portfolio": asdict(cfg.portfolio), "swap": asdict(cfg.swap)},
-                    ensure_ascii=False),
-         _pit.get("count"), _pit.get("sum_pnl"), _pit.get("pnl_pct_aggregate"),
-         _fb.get("count"), _fb.get("sum_pnl"), _fb.get("pnl_pct_aggregate")],
+        VALUES (""" + ", ".join(["?"] * len(kpi_values)) + """)""",
+        kpi_values,
     )
     conn.commit()
+    _write_lineage_report(conn, sim_run_id, lineage_path)
 
     return {
         "variant": variant, "n_days": len(navs),
+        "lineage_url": lineage_url,
         "user_criteria": {**uc, "pass": pass_uc},
         "anti_churn": {**ac, "pass": pass_ac},
         "robustness": {**rb, "pass": pass_rb},
