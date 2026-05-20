@@ -3,8 +3,29 @@
 > 此文件由 `scripts/session_snapshot.sh` 每 5 min cron 自动更新.
 > Claude session start 时 read 此文件即可无缝衔接, 不需要用户 paste context.
 > Mac 重启 / terminal 崩 后, 启动 Claude → 自动 read → 立即知道当前状态 + next action.
+> 业务 pipeline 进度另见 `analysis/workflow_checkpoint.md` (pull/audit/paper_sim/KPI/gate/decision).
 
-**Snapshot 时间**: 2026-05-20 09:15:41 CST
+## 中断恢复用法 (用户必读)
+
+### 1. Mac 重启 / terminal 崩 后:
+```
+cd /Users/dp/Documents/M/stock/chunkymonkey
+bash scripts/cm_resume.sh          # 1 命令出当前 state + prompt 模板
+claude                              # SessionStart hook 自动 inject 本 handoff
+```
+
+### 2. 用户输入哪句话给 Claude:
+- **方案 A** (SessionStart hook 配好, 推荐): 不用输入, hook 自动 inject 本 handoff, Claude 看到立即继续 next_action
+- **方案 B** (hook fail / 想显式 trigger): 输入 `继续, 看 SESSION_HANDOFF.md 按 next_action 推进`
+- **方案 C** (复杂多步流程): 输入 `从 analysis/workflow_checkpoint.md 推断当前 pipeline step, 按 next_recovery_command 继续`
+
+### 3. 一次性 install 全部 resilience:
+```
+bash scripts/install_resilience.sh   # SessionStart hook + cron + launchd 全装
+bash scripts/install_resilience.sh --status   # check 装好没
+```
+
+**Snapshot 时间**: 2026-05-20 09:45:26 CST
 
 ## 主线 retrain 状态
 
@@ -27,9 +48,9 @@
 | Codex companion threads | 3 running |
 
 3
-  - task-mpddbug3-2zfxdk elapsed=2m 7s
-  - task-mpddbqwu-yk3aoc elapsed=2m 11s
-  - task-mpdc8cha-cnrgor elapsed=32m 49s
+  - task-mpdeb1rc-tu8j7e elapsed=4m 29s
+  - task-mpddz4bz-s20vat elapsed=13m 46s
+  - task-mpddxxec-ek7xtz elapsed=14m 41s
 
 ## GCP 成本
 
@@ -43,28 +64,28 @@
 | 项 | 值 |
 |---|---|
 | Branch | main |
-| HEAD | `3bbf7667 feat: GCP retrain reliability F1+F2 (Optuna SQLite + 每 trial checkpoint) — 防 spot preempt 浪费` |
-| 最近 24h commits | 34 |
-| 未 commit 文件 | 5 |
+| HEAD | `4eece3bd doc: goal.md 更新 — retrain v1 preempted + v2 in-flight (F1+F2) + criteria 7/9 推进` |
+| 最近 24h commits | 38 |
+| 未 commit 文件 | 16 |
 
 ### 最近 10 commits
 
 ```
+4eece3bd doc: goal.md 更新 — retrain v1 preempted + v2 in-flight (F1+F2) + criteria 7/9 推进
+61c81eaa feat: notification framework (criteria 7 P0a, Codex a92b87c4) — email + macos + slack drivers
+d81975e6 feat: criteria 7 UI/UX P0a + criteria 9 lineage_url 集成 paper_sim KPI + silent except 修
+320ffdbb feat: GCP reliability F4 + F5 + session resilience monitor log cap (Claude general a9cddbf3 + 用户 push)
+edc2bce5 feat: session 无缝衔接 framework (Mac 重启/terminal 崩/Claude session 中断 proof)
 3bbf7667 feat: GCP retrain reliability F1+F2 (Optuna SQLite + 每 trial checkpoint) — 防 spot preempt 浪费
 713368cf doc: GCP retrain reliability root cause + 5 fix + 3 resume option (Codex bocq8b60j)
 52877e88 feat + doc: goal.md 加 criteria 7-9 (Codex a9e53d93) + P-1 trade_date Phase A 实施 (Codex ae706482)
 19f2553e perf: retrain stall Fix 1 (15 min → ~30 sec, 30-60x) — assert_pit_strict int64 fast-path
 f64e3e8c feat: 数据 lineage spec + trace_lineage.py (Codex aeb8ea53)
-15181bdc doc: 模块化重构 plan 563 行 (Claude general a5b70bb9, push back P0 不只 db.py)
-b5331f13 doc + feat: UI/UX plan (Plan a6ed1e1f) + retrain early leakage check script
-c85703c6 feat: C4 pre-commit codegraph diff-check 实施 (spec C4, 我代写 Codex a20e5557 launch fail)
-5d088f78 doc: paper_sim + KPI compare 8 步 plan (Codex a5a83018, Plan a9487c8e 529 重派)
-0320a125 doc: retrain stall Fix 1 patch 草稿 (15min → 20-30s, Claude general aacdbf94)
 ```
 
 ## NEXT ACTION (auto-computed)
 
-**5 uncommitted files — git status 看 + bash scripts/safe_commit.sh**
+**16 uncommitted files — git status 看 + bash scripts/safe_commit.sh**
 
 ## Resilience 配置 (verified)
 

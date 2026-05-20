@@ -4,6 +4,7 @@
 # 输出:
 #   - data/reports/session_snapshot.json (machine-readable, cron auto-update)
 #   - SESSION_HANDOFF.md (human + Claude-readable, 含 "next action" 建议)
+#   - references analysis/workflow_checkpoint.md for business pipeline status
 #
 # 跑法:
 #   bash scripts/session_snapshot.sh                # 1 命令更新
@@ -155,6 +156,27 @@ cat > "$HANDOFF_MD" <<EOF
 > 此文件由 \`scripts/session_snapshot.sh\` 每 5 min cron 自动更新.
 > Claude session start 时 read 此文件即可无缝衔接, 不需要用户 paste context.
 > Mac 重启 / terminal 崩 后, 启动 Claude → 自动 read → 立即知道当前状态 + next action.
+> 业务 pipeline 进度另见 \`analysis/workflow_checkpoint.md\` (pull/audit/paper_sim/KPI/gate/decision).
+
+## 中断恢复用法 (用户必读)
+
+### 1. Mac 重启 / terminal 崩 后:
+\`\`\`
+cd /Users/dp/Documents/M/stock/chunkymonkey
+bash scripts/cm_resume.sh          # 1 命令出当前 state + prompt 模板
+claude                              # SessionStart hook 自动 inject 本 handoff
+\`\`\`
+
+### 2. 用户输入哪句话给 Claude:
+- **方案 A** (SessionStart hook 配好, 推荐): 不用输入, hook 自动 inject 本 handoff, Claude 看到立即继续 next_action
+- **方案 B** (hook fail / 想显式 trigger): 输入 \`继续, 看 SESSION_HANDOFF.md 按 next_action 推进\`
+- **方案 C** (复杂多步流程): 输入 \`从 analysis/workflow_checkpoint.md 推断当前 pipeline step, 按 next_recovery_command 继续\`
+
+### 3. 一次性 install 全部 resilience:
+\`\`\`
+bash scripts/install_resilience.sh   # SessionStart hook + cron + launchd 全装
+bash scripts/install_resilience.sh --status   # check 装好没
+\`\`\`
 
 **Snapshot 时间**: $NOW
 
