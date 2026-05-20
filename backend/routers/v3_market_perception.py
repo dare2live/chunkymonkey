@@ -1,22 +1,4 @@
-"""市场感知 (Market Perception) router — Codex 扩展模块入口.
-
-状态: STUB only — 我 (Claude) 先 stake 后端入口, 等 Codex 在此基础上扩展.
-
-Codex 任务范围 (见 docs/market_perception_codex_handoff.md):
-- MVP: MarketRegimeEngine 情绪温度计 (risk_on/off + 4-5 daily features)
-- 数据源: READ-only from mart_index_daily / fact_stock_kline_daily / fact_lhb_event /
-  mart_data_source_watermark / dim_trading_calendar
-- 新表: 可 CREATE mart_market_perception_daily (不动现有表)
-- Service 路径: backend/services/market_perception/ (新建独立模块)
-- API: 此 router 扩展更多 endpoint (current_snapshot / history / breadth / sentiment)
-- UI: design/v3-page-market-perception.jsx 同步扩展 (Claude stub 占位)
-
-约束:
-- 不 ALTER 现有表 schema
-- 不动 panel v4 / ranker / paper_sim / ensemble
-- PIT-strict (snapshot date ≤ current trade_date)
-- 中文 / 无 emoji
-"""
+"""市场感知 (Market Perception) router."""
 from __future__ import annotations
 
 import logging
@@ -38,66 +20,107 @@ def _table_exists(conn, table: str) -> bool:
     return bool(row and row[0])
 
 
+def _mart_row_count(conn) -> int:
+    if not _table_exists(conn, "mart_market_perception_daily"):
+        return 0
+    row = conn.execute("SELECT COUNT(*) AS n FROM mart_market_perception_daily").fetchone()
+    return int(row[0] if row else 0)
+
+
+def _serialize_row(row) -> dict:
+    return {
+        "snapshot_date": str(row[0]) if row[0] is not None else None,
+        "regime_score": float(row[1]) if row[1] is not None else None,
+        "breadth_state": row[2],
+        "volatility_state": row[3],
+        "sentiment_phase": row[4],
+        "hs300_ret_60d": float(row[5]) if row[5] is not None else None,
+        "hs300_vol_20d": float(row[6]) if row[6] is not None else None,
+        "breadth_ratio": float(row[7]) if row[7] is not None else None,
+        "breadth_p75_90d": float(row[8]) if row[8] is not None else None,
+        "limit_up_count": int(row[9]) if row[9] is not None else None,
+        "lhb_event_count": int(row[10]) if row[10] is not None else None,
+        "n_obs_days": int(row[11]) if row[11] is not None else None,
+        "source_engines": row[12],
+        "pit_cutoff_date": str(row[13]) if row[13] is not None else None,
+        "built_at": str(row[14]) if row[14] is not None else None,
+    }
+
+
 @router.get("/snapshot")
 async def get_snapshot():
-    """市场感知当前快照. STUB — Codex 扩展时改为 SELECT FROM mart_market_perception_daily."""
-    payload = {
-        "ok": True,
-        "stub": True,
-        "data": {
-            "snapshot_date": None,
-            "regime_score": None,
-            "breadth_state": None,
-            "volatility_state": None,
-            "sentiment_phase": None,
-            "n_engines_active": 0,
-            "note": "占位 — Codex 实施 MarketRegimeEngine 后此 endpoint 返真实数据",
-        },
-        "built_at": datetime.now(timezone.utc).isoformat(),
-    }
+    """Return the latest market perception snapshot."""
     try:
-        with get_conn(read_only=True) as conn:
-            if _table_exists(conn, "mart_market_perception_daily"):
-                row = conn.execute(
-                    """
-                    SELECT snapshot_date, regime_score, breadth_state,
-                           volatility_state, sentiment_phase
-                      FROM mart_market_perception_daily
-                     ORDER BY snapshot_date DESC LIMIT 1
-                    """,
-                ).fetchone()
-                if row:
-                    payload["stub"] = False
-                    payload["data"].update(
-                        {
-                            "snapshot_date": str(row[0]) if row[0] else None,
-                            "regime_score": float(row[1]) if row[1] is not None else None,
-                            "breadth_state": row[2],
-                            "volatility_state": row[3],
-                            "sentiment_phase": row[4],
-                            "note": "live from mart_market_perception_daily",
-                        }
-                    )
+        with get_conn() as conn:
+            if not _table_exists(conn, "mart_market_perception_daily"):
+                return {"ok": True, "stub": True, "data": None, "built_at": datetime.now(timezone.utc).isoformat()}
+            row = conn.execute(
+                """
+                SELECT snapshot_date, regime_score, breadth_state,
+                       volatility_state, sentiment_phase, hs300_ret_60d,
+                       hs300_vol_20d, breadth_ratio, breadth_p75_90d,
+                       limit_up_count, lhb_event_count, n_obs_days,
+                       source_engines, pit_cutoff_date, built_at
+                  FROM mart_market_perception_daily
+                 ORDER BY snapshot_date DESC LIMIT 1
+                """,
+            ).fetchone()
+            if not row:
+                return {"ok": True, "stub": True, "data": None, "built_at": datetime.now(timezone.utc).isoformat()}
+            data = _serialize_row(row)
+            return {"ok": True, "stub": False, "data": data, "built_at": data["built_at"]}
     except Exception as exc:
-        logger.warning("market_perception snapshot fallback to stub: %s", exc)
-    return payload
+        logger.warning("market_perception snapshot query failed: %s", exc)
+        return {"ok": False, "error": str(exc), "data": None, "built_at": datetime.now(timezone.utc).isoformat()}
 
 
 @router.get("/history")
 async def get_history(days: int = 90):
-    """市场感知历史时序. STUB — Codex 扩展时改为 SELECT FROM mart_market_perception_daily ORDER BY snapshot_date."""
-    return {
-        "ok": True,
-        "stub": True,
-        "data": [],
-        "days_requested": days,
-        "note": "占位 — Codex 扩展返 90 日 regime_score / breadth / volatility 时序",
-    }
+    """Return last N trading-day market perception rows."""
+    days = max(1, min(int(days), 500))
+    try:
+        with get_conn() as conn:
+            if not _table_exists(conn, "mart_market_perception_daily"):
+                return {"ok": True, "stub": True, "data": [], "days_requested": days}
+            rows = conn.execute(
+                """
+                WITH recent_days AS (
+                    SELECT trade_date
+                      FROM dim_trading_calendar
+                     WHERE is_trading = 1
+                       AND CAST(trade_date AS DATE) <= (
+                           SELECT MAX(snapshot_date) FROM mart_market_perception_daily
+                       )
+                     ORDER BY CAST(trade_date AS DATE) DESC
+                     LIMIT ?
+                )
+                SELECT m.snapshot_date, m.regime_score, m.breadth_state,
+                       m.volatility_state, m.sentiment_phase, m.hs300_ret_60d,
+                       m.hs300_vol_20d, m.breadth_ratio, m.breadth_p75_90d,
+                       m.limit_up_count, m.lhb_event_count, m.n_obs_days,
+                       m.source_engines, m.pit_cutoff_date, m.built_at
+                  FROM mart_market_perception_daily m
+                  JOIN recent_days d
+                    ON CAST(d.trade_date AS DATE) = m.snapshot_date
+                 ORDER BY m.snapshot_date
+                """,
+                (days,),
+            ).fetchall()
+            return {
+                "ok": True,
+                "stub": False,
+                "data": [_serialize_row(row) for row in rows],
+                "days_requested": days,
+                "rows": len(rows),
+            }
+    except Exception as exc:
+        logger.warning("market_perception history query failed: %s", exc)
+        return {"ok": False, "error": str(exc), "data": [], "days_requested": days}
 
 
 @router.get("/health")
 async def get_health():
-    """模块健康检查 — 列出哪些 engine 已实施, 哪些待 Codex 实施."""
+    """模块健康检查 — 列出哪些 engine 已实施."""
     engines = {
         "MarketRegimeEngine": "stub",
         "ThemeLifecycleEngine": "spec_only",
@@ -107,11 +130,15 @@ async def get_health():
         "CrowdingRiskEngine": "spec_only",
         "StockContextEngine": "spec_only",
     }
-    with get_conn(read_only=True) as conn:
-        has_mart = _table_exists(conn, "mart_market_perception_daily")
+    with get_conn() as conn:
+        row_count = _mart_row_count(conn)
+        has_mart = row_count > 0
+    if has_mart:
+        engines["MarketRegimeEngine"] = "live"
     return {
         "ok": True,
         "engines": engines,
         "mart_table_exists": has_mart,
+        "mart_rows": row_count,
         "handoff_doc": "docs/market_perception_codex_handoff.md",
     }
