@@ -172,6 +172,10 @@ except Exception as exc:
     from routers.v3_market_perception import router as v3_market_perception_router
 app.include_router(v3_market_perception_router, prefix="/api/v3/market_perception", tags=["v3_market_perception"])
 
+# Project D 股票图谱 (2026-05-22 用户新加): UI 查询层, 基于 Perception 7 mart, 不接 ranker
+from routers.stock_graph import router as stock_graph_router
+app.include_router(stock_graph_router, prefix="/api/v3", tags=["v3_stock_graph"])
+
 # 初始化 signals_v2 默认配置（幂等）
 try:
     _conn = get_conn()
