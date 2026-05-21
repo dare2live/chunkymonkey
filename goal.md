@@ -13,6 +13,54 @@ GCP 推进 (2026-05-21 11:57): stability-aware retrain 已按 controlled-use 启
 GCP/本地推进 (2026-05-21 12:31): stability retrain 首次 run `lgbm_phase5_stability_20260521T035555Z` 在 0 COMPLETE trial、无 best checkpoint 时被主动中止, 因为运行时发现 4 个 Optuna trial 同时继承 `OMP_NUM_THREADS=32`, 存在外层并发 × LightGBM 内层线程过量订阅风险。中止证据已拉回并上传 GCS: `data/reports/stability_retrain/lgbm_phase5_stability_20260521T035555Z_stability_retrain_20260521T035616Z.{json,log}`, summary 显示 `retrain_exit=137`, `prediction_rows=0`, `train_log_found=false`, `best_artifact=null`, 因此没有可复用完成结果。已修复并验证线程配置: `run_p0b_lambdamart_v6.py` 会在 `run_optuna()` 内 cap inner LightGBM threads; `scripts/gcp_stability_retrain.sh` 默认 `OPTUNA_N_JOBS_REMOTE=8`, `OMP_NUM_THREADS_REMOTE=4`, 且拒绝 `optuna_jobs * omp > REMOTE_MAX_THREADS`。验证: 本地 `test_lambdamart_v6.py + test_retrain_lambdamart_v6.py` 21 passed, py_compile pass, bash -n pass, wrapper 8x4 dry-run pass, wrapper 8x8 expected reject, CodeGraph sync 77 files, complexity scan 仍只报旧 `assets/js/app.js`; 远端 scoped backup `data/reports/code_sync_backup/20260521T042540Z_threadcap`, remote smoke `py_compile` + thread-cap assertion + wrapper dry-run pass。已受控重启新 run `lgbm_phase5_stability_20260521T042830Z`: parent `pid=1744`, child `pid=1748`, log `data/reports/stability_retrain/lgbm_phase5_stability_20260521T042830Z_stability_retrain_20260521T042822Z.log`, summary `data/reports/stability_retrain/lgbm_phase5_stability_20260521T042830Z_stability_retrain_20260521T042822Z.json`, GCS `gs://chunkymonkey-data-0517/phase5/stability_retrain`。12:31 CST monitor: feature panel 4,240,940 rows loaded, filter 后 3,933,543 rows, warm-start queued, log confirms `optuna parallelism: outer_jobs=8 inner_lightgbm_threads=4`, Optuna DB 8 RUNNING / 0 COMPLETE; 12:28 cost projected $5.456 / 54.5%, remaining $6.4794 / ~17.23 spot h, OK。下一步继续监控 completion; 完成后按 active model 导出 parquet、导入本地、跑 Phase4/frontier/delivery audit。
 GCP monitor (2026-05-21 13:38): active run `lgbm_phase5_stability_20260521T042830Z` 仍未落可复用 COMPLETE trial, 但 child 进程是 CPU-bound 而非 idle: elapsed `01:10:11`, CPU ~3028%, RSS ~26.4G, 70 threads, load avg ~31, Optuna DB 135,168 bytes 且状态为 8 RUNNING / 0 COMPLETE。历史同类 complete trial 常见约 50-86min, 当前应继续短周期监控到首批 COMPLETE; 若继续长时间 0 COMPLETE 且 CPU/DB/log 无有效进展, 停止并改小 smoke/short-window 校准后再长跑。13:37 cost projected $5.6017 / 56.0%, remaining $6.3854 / ~16.98 spot h, OK。
 GCP/本地纠偏 (2026-05-21 13:48): 主动停止 `lgbm_phase5_stability_20260521T042830Z`，因为复核代码时发现 stability objective 的关键漏洞: `run_p0b_lambdamart_v6.py` 只在 regressor 分支收集每窗口 `rank_ic`，LambdaMART 分支没有把窗口 RankIC 加入 `rank_ics`，导致 `--window-rank-ic-std-penalty-weight` / `--window-rank-ic-negative-rate-penalty-weight` 实际不会惩罚 LambdaMART 窗口稳定性。停止前 Optuna 仍 8 RUNNING / 0 COMPLETE、无 best checkpoint；远端 summary 显示 `retrain_exit=137`, `prediction_rows=0`, `train_log_found=false`, `best_artifact=null`，因此没有可复用完成结果被丢。当前本地修复方向: 对所有模型分支统一收集窗口 `rank_ic`，并新增测试证明 LambdaMART trial 会产生非 NaN `window_rank_ic_*` 与正的 `rank_ic_stability_penalty`；只有 targeted pytest、py_compile、bash -n、CodeGraph sync、complexity scan 和远端 dry-run/smoke 全通过后，才择机启动新的 stability retrain model_id。
+系统架构优化分批计划 (2026-05-21 22:30; 用户 push back "是不是把不影响 gcp 的都修复" → 反过来评估, 分批做不一次性): 三原则 - (a) 第一性原理: 主项目真瓶颈是 Phase4 verdict=block (alpha 问题, 不是 LOC); (b) 奥卡姆: god-modules 现状能 run, 拆是预防性投资, 不解决眼下交付; (c) 真金白银: 时间应花 alpha > god-module 重构. 反例: Codex 拆 1 个 workbench god-module 已引入 2 regression, 同时拆 5 个 N regression 概率高.
+
+**Stage 1 立刻做** (今晚已完成, ~1.5h): 低风险快修复, 不阻 GCP, 0 regression.
+- [DONE] market_perception/utils.py 抽 7 共享 helpers (`_table_exists` / `_fetchall` / `_fetchone` / `_to_date` / `_attach_market_if_available` / `_columns` / `_first_existing`); regime_engine 752→700 LOC (-7%), 6 sibling engines 无改动 (via re-export 保持兼容).
+- [DONE] services/utils.py 加 `finite_float()` 统一签名 (default 参数兼容 3 种历史签名); router_serialize.py 改 import 走集中版 (省 11 行重复, 验证 import 工作).
+- 实测 2721 passed / 0 failed (baseline 2718 +3, 0 regression).
+- 跳过 DDL 集中: agent 报告 37/34/28 把 tests fixture 算进去, **真 production 重复仅 dim_trading_calendar 2 处 + fact_feature_panel_candidate 5 处** (内容可能 schema 演进刻意不同), ROI 比预估低. 留 Stage 3.
+
+**Stage 2 等 GCP retrain 完 → 分叉决策** (~6-8h 后, 30/80 trial 处理中, best=0.3846):
+- 触发: `lgbm_phase5_stability_20260521T055800Z` 出 COMPLETE checkpoint + summary JSON.
+- 立刻跑 `bash scripts/post_retrain_pipeline.sh` 一键接 P1 pipeline (export → import → paper_sim → Phase4 gate → registry).
+- 看 Phase4 verdict 分 3 路径:
+
+  - **路径 α (verdict PASS / promote)** → 主项目交付路径. **集中精力 BestChoice Phase 1** (走 plan §5): import 1146 candidates → `mart_stock_formula_optuna_bestchoice_v1` → 主项目 paper_sim_v2 + Phase4 gate. **不再拆 god-modules** (delivery first).
+  - **路径 β (verdict BLOCK)** → 主项目 alpha 路线继续折腾, **不拆 god-modules** (改动期间撞车风险高). 走 alpha 探索: feature 新加 / label 改 / regime ensemble / BestChoice Phase 1 探索互补 alpha.
+  - **路径 γ (verdict warn_only_proxy / 推迟决策)** → 视情况, 可考虑小拆 (data_quality.py P0 低风险 dry run).
+
+**Stage 3 god-module 拆分** (仅在主项目稳定 1 周以上 + 无新需求时启动, 永久 P1):
+- 优先级 (按风险/ROI):
+  - data_quality.py 4276 LOC (低风险, 3 caller, 拆分模板 dry run) — 2-3 天
+  - updater.py 5136 LOC (最大 god-module + 风险中, 32 step + 16 endpoint) — 3-4 天
+  - scoring.py 2712 LOC (P1) — 2 天
+  - signals_v2.py 2013 LOC (高风险, 10+ caller 含 main.py 启动) — 2 天
+- 拆分模板已有先例 (workbench → workbench_*_read 30+ + market_schema.py + router_serialize.py)
+- 每个拆完跑 §7.4 双扫 (codegraph sync + complexity scan) + full pytest.
+
+**Stage 4 永久 P2** (有空闲窗口才做):
+- 脚本族合并: 26 audit / 5 paper_sim / 2 retrain → base class + YAML (省 ~3.2K LOC, 中风险需测试)
+- 死代码清理: 233 scripts 中 ~70 个可能死 (git log + grep + cron 引用验证后删)
+- DDL 真集中: dim_trading_calendar 2 处合并 (5 min) + fact_feature_panel_candidate 5 处 schema diff 分析后决定
+- _finite_float 剩余 9 处改 import (机械替换, 30 min, 收益 70 LOC)
+- 死 build script v1/v2 版本清理
+
+**Stage 5 永远不做** (奥卡姆 push back):
+- build_feature_panel_duck.py 主体 (是 script orchestration, 拆完反破坏可读性, 只抽 SQL helper)
+- scoring 大算法 (`calculate_institution_scores` / `calculate_stock_scores`) 内部 step (破坏 SQL 事务边界)
+- signals_v2 `build_today_signals` 顶层 orchestrator (跟 endpoint 一一对应)
+- updater.py 16 endpoint 本身 (路由本职, 别为 LOC 拆 endpoint)
+- v3_market_perception.py 继续抽 7 DB helpers 到 router_read.py (cosmetic, 全本地 caller 无真复用)
+- 强制集中 tests fixture DDL (test isolation 是正确做法, 不该集中)
+
+**工具评估** (2026-05-21 22:00 用户问 GitNexus):
+- 现阶段不替换 codegraph + complexity-optimizer (已固化 §7.4 流程, 覆盖 80% 审计需求, 0 license cost)
+- GitNexus 评估等 BestChoice Phase 1 真有跨 repo lineage 需求时再试 (group sync 是它最大优势)
+- 不上 GitNexus 的 PostToolUse hook (会自动改 AGENTS.md/CLAUDE.md, 跟我们手维护冲突)
+
+详细 audit 数据见 `analysis/system_architecture_audit_20260521.md`.
+
 BestChoice 独立运营评估 (2026-05-21 21:00; 用户问 "BestChoice 是否具备独立运营条件"): **不具备**. BestChoice 当前状态是"研究输出完整"(5201 stocks × 5 公式 × 45908 cache rows × 1146 candidate, vwap_tradable_v1 含 T+1/涨跌停/停牌), 但不是"实盘决策系统". 缺口按 plan §3: (1) 每日 top-K 选股排序 + 互斥 + 持仓约束 = 没有, 只有 candidate 池; (2) 组合级 NAV / Sharpe / Calmar / 月胜率 / 超额 HS300 = 没有, 只有 stock-formula 级 win_rate/avg_ret/avg_dd; (3) walk-forward OOS = 30% holdout split 有 selection bias, 不是主项目 `walk_forward.expanding_monthly`; (4) PIT-strict 守门 = 没有 `governance.enforce_pre_insert` 类拦 sharpe>5/win>0.95; (5) 跟 champion 互补/重合度 = 没跑过; (6) 真实交易成本 = 部分 (滑点/双边费率/换手率约束/一字板模拟未确认). 跟主项目 `lm735/sniper265/h10/k3/neutralcash20` baseline (ann=48.40%/dd=-24.28%/sharpe=0.81/n_obs=22, Phase4 verdict=block relative_drop 81.36%) 对比: BestChoice 从没经历 Phase4 gate. plan agent (Codex) 自己写: "不建议直接合并到生产", BestChoice agent.md §1 "不把已写代码当成完成依据". 真要独立运营约需 2-4 周补 7 项 (top-K / portfolio paper_sim / walk-forward / governance / PIT audit / transaction cost / vs champion), 实质 = 重做半个主项目. **后续 GCP retrain 完后执行路径**: 走 plan §5 Phase 1+ 流程, **不独立运营**. 顺序: (1) `scripts/post_retrain_pipeline.sh` 接 P1 pipeline (export → import → paper_sim → Phase4 gate); (2) BestChoice Phase 1: import 1146 candidates → `mart_stock_formula_optuna_bestchoice_v1` (read-only challenger, 不动 champion); (3) BestChoice Phase 2: 走主项目 `paper_sim_v2` + `Phase4 gate` + `mart_strategy_result_registry`; (4) 等组合 Sharpe ≥ 1.3 或 ann_ret ≥ 50% & max_dd 不差 -25% 或显著改善 champion 后才上 GCP 综合寻优; (5) 验证通过后 → 主项目 champion 加 BestChoice alpha family / challenger / ensemble component, 不另起独立运营 surface. 详细分析见 `analysis/data_integrity_audit_20260521.md` + `analysis/bestchoice_phase0_freeze_20260521.md` + `bestchoice/analysis/bestchoice_chunkymonkey_validation_plan.md`.
 
 BestChoice 条件化持有/退出策略计划 (2026-05-21 14:58; 待择机运行, 当前不抢主项目 active stability retrain 资源): 已将用户讨论方向固化为后续 POC，不立即盲跑 GCP。目标不是继续使用“全局固定持有 15/20 天”，而是用 BestChoice 公式信号 + 主项目 PIT 上下文学习条件化买卖点/持有周期。输入: BestChoice 讨论文档 `/Users/dp/Documents/M/stock/bestchoice/analysis/bestchoice_chunkymonkey_validation_plan.md`、BestChoice 1146 replacement candidates、主项目 PIT 特征/信号/阶段上下文。上下文桶: `stock_code + formula_id + variant_id + stage + macd_context + market/industry_regime + volatility_bucket + kline_pattern`，其中 MACD 至少拆 `zero_axis_above_golden_cross`、`zero_axis_below_golden_cross`、`dead_cross`、`above_zero_trend_continuation`、`below_zero_rebound_probe`。动作空间: 不只 `holding_days`, 还包括 `fixed_5/10/15/20/30`, 公式 exit signal、死叉退出、阶段恶化退出、trailing stop、profit target + time stop、max holding + early exit、regime risk-off exit。候选输出先落 namespaced challenger 表, 建议 `mart_bestchoice_context_exit_policy_v1` 或 `mart_stock_formula_optuna_bestchoice_v1`, key 至少包含 `cutoff_date + stock_code + formula_id + variant_id + context_bucket`; value 至少包含 `best_sell_rule`, `holding_days`, `stop_pct`, `target_pct`, `trailing_pct`, `expected_ret`, `expected_dd`, `win_rate`, `n_train`, `n_oos`, `confidence`, `fallback_level`, `source_artifact`, `params_hash`, `walk_forward_id`。验证规则: 必须 PIT-safe walk-forward, T+1, 成本/滑点/涨跌停/停牌约束齐全；样本不足按 fallback 逐级回退 `stock+formula+context -> formula+context -> stock+formula -> formula+stage -> global formula default`, 禁止为稀疏 bucket 硬给“历史最佳”。运行顺序: (1) 本地只读/小写入 POC, 先导入 BestChoice candidates, 只跑代表性公式/股票/context, 输出 paper_sim 和 leakage/PIT audit; (2) 若组合级达到 Sharpe>=1.3、或 ann_ret>=50% 且 max_dd 不差于 -25%、或能显著改善 champion drawdown/return/相关性, 才进入 GCP 扩大到全股票/全公式/多 context/multi cutoff 综合寻优; (3) GCP 运行前必须说明 objective、预计 wall time/成本、输入快照、输出路径、artifact 保存、monitor/stop/rollback, 并用 `CHUNKYMONKEY_GCP_EXPLICIT_OK=1`; (4) 所有 expensive unit 必须有 `params_hash + cutoff/window key + completion_status=complete + metrics_json` 级 checkpoint, 只复用完整验证通过的 unit, spot preempt 后补缺口, 禁止无条件全量重跑。运行触发: 主项目当前 `lgbm_phase5_stability_20260521T055800Z` 至少出现可用 COMPLETE checkpoint/summary 或被明确停掉并复盘后, 再安排 BestChoice POC；触发后第一步是 schema/runner/checkpoint 的本地 POC, 不是全量 GCP；若 POC 未过阈值, 只保留 evidence 和失败原因, 不上 GCP。

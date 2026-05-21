@@ -92,6 +92,23 @@ def parse_any_date(value) -> Optional[datetime]:
     return None
 
 
+def finite_float(value, default=None):
+    """Convert to finite float; non-finite (NaN/Inf) or unparsable → default.
+
+    2026-05-21 集中 (用户 audit push back: `_finite_float` 在 10 处重复定义, 3 种签名).
+    统一签名: 支持 default 参数, 不传默认 None.
+    向后兼容: default=None 等同 router_serialize 旧版; default=0.0 等同 optuna 旧版.
+    """
+    if value is None:
+        return default
+    try:
+        import math as _math
+        out = float(value)
+        return out if _math.isfinite(out) else default
+    except (TypeError, ValueError):
+        return default
+
+
 # Codex review 2026-05-19 a7ffbdb2 HIGH 1: calendar gate 统一到 services/calendar.py.
 # utils 保留 backward compat 导出 shim (避免大量 caller refactor).
 # rule-compliance: ok evidence=calendar-gate-unified-to-services.calendar

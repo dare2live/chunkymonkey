@@ -1,4 +1,9 @@
-"""PIT-strict daily market regime features for Market Perception P1."""
+"""PIT-strict daily market regime features for Market Perception P1.
+
+2026-05-21 拆 utils: 共享 helpers (`_table_exists` / `_fetchall` / `_fetchone` / `_to_date`
+/ `_attach_market_if_available` / `_columns` / `_first_existing` / `_sql_path` / MARKET_DB)
+已移到 `.utils`, 这里仅 re-export 保持现有 `from .regime_engine import _xxx` 兼容.
+"""
 
 from __future__ import annotations
 
@@ -14,10 +19,22 @@ from typing import Any
 import pandas as pd
 import yaml
 
+# Re-export shared utils for backward compat (6 sibling engines + tests still import from here).
+from .utils import (  # noqa: F401
+    MARKET_DB,
+    REPO_ROOT,
+    _attach_market_if_available,
+    _columns,
+    _fetchall,
+    _fetchone,
+    _first_existing,
+    _sql_path,
+    _table_exists,
+    _to_date,
+)
+
 logger = logging.getLogger("cm-api.market-perception.regime")
 
-REPO_ROOT = Path(__file__).resolve().parents[3]
-MARKET_DB = REPO_ROOT / "data" / "market.duckdb"
 CONFIG_PATH = REPO_ROOT / "backend" / "config" / "market_perception.yaml"
 
 
@@ -640,79 +657,10 @@ def _trading_days(conn, start_day: date, end_day: date) -> list[date]:
     return [_to_date(r["trade_date"]) for r in rows]
 
 
-def _attach_market_if_available(conn) -> None:
-    if _table_exists(conn, "mart_index_daily") and _table_exists(conn, "fact_stock_kline_daily"):
-        return
-    if not MARKET_DB.exists():
-        return
-    try:
-        conn.execute(f"ATTACH IF NOT EXISTS '{_sql_path(MARKET_DB)}' AS market (READ_ONLY)")
-    except Exception as exc:
-        logger.warning("market.duckdb attach failed: %s", exc)
-
-
-def _table_exists(conn, table: str) -> bool:
-    row = _fetchone(
-        conn,
-        "SELECT COUNT(*) AS n FROM information_schema.tables WHERE table_name = ?",
-        [table],
-    )
-    return bool(row and int(row["n"]) > 0)
-
-
-def _columns(conn, table: str) -> set[str]:
-    return {r["column_name"] for r in _fetchall(conn, f"DESCRIBE {table}")}
-
-
-def _first_existing(cols: set[str], names: list[str], required: bool = True) -> str | None:
-    for name in names:
-        if name in cols:
-            return name
-    if required:
-        raise ValueError(f"required columns missing; expected one of {names}, got {sorted(cols)}")
-    return None
-
-
-def _fetchone(conn, sql: str, params: list[Any] | None = None):
-    cur = conn.execute(sql, params or [])
-    row = cur.fetchone()
-    if row is None:
-        return None
-    cols = [d[0] for d in cur.description] if getattr(cur, "description", None) else []
-    if hasattr(row, "keys"):
-        return {k: row[k] for k in row.keys()}
-    return dict(zip(cols, row))
-
-
-def _fetchall(conn, sql: str, params: list[Any] | None = None):
-    cur = conn.execute(sql, params or [])
-    rows = cur.fetchall()
-    cols = [d[0] for d in cur.description] if getattr(cur, "description", None) else []
-    out = []
-    for row in rows:
-        if hasattr(row, "keys"):
-            out.append({k: row[k] for k in row.keys()})
-        else:
-            out.append(dict(zip(cols, row)))
-    return out
-
-
-def _to_date(value: str | date | datetime) -> date:
-    if isinstance(value, datetime):
-        return value.date()
-    if isinstance(value, date):
-        return value
-    return datetime.strptime(str(value)[:10], "%Y-%m-%d").date()
-
-
 def _clip(value: float, lo: float, hi: float) -> float:
     if math.isnan(value):
         raise ValueError("regime input produced NaN")
     return max(lo, min(hi, float(value)))
-
-
-def _sql_path(path: Path) -> str:
-    return str(path).replace("'", "''")
 
 
 @lru_cache(maxsize=1)

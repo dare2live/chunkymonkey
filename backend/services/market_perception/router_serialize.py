@@ -3,20 +3,14 @@
 2026-05-21 从 backend/routers/v3_market_perception.py 拆出 (god-module 807 LOC 拆分计划 Step 2).
 - 8 个 _serialize_*_row 函数 (各 endpoint 一个)
 - 6 个 SELECT 字符串常量 (跟 serialize 配对的 SQL column 列表)
-- 2 个 pure helper: _finite_float, _clean_text
+- 2 个 pure helper: _finite_float (走 services.utils 集中版), _clean_text
 
 Pure functions, 无 conn 依赖, 无 wall-clock, 无 side effect. 安全 import 0 cycle.
 """
 from __future__ import annotations
 
-import math
-
-
-def _finite_float(value) -> float | None:
-    if value is None:
-        return None
-    out = float(value)
-    return out if math.isfinite(out) else None
+# 2026-05-21 集中: _finite_float 之前在 10 处重复定义, 改走 services.utils.finite_float.
+from services.utils import finite_float as _finite_float  # noqa: F401
 
 
 def _clean_text(value):
