@@ -618,32 +618,59 @@
     if (el) setTimeout(() => { el.style.background = ''; }, 800);
   }
 
+  // P0-1 fix: 防按钮连点 / 竞态. 触发后 set busy, polling running=false 时 release.
+  // backend _is_running 全局锁是后端兜底, 前端 button disable 是第一道防线.
+  let _updateBusy = false;
+  function _setUpdateButtonsBusy(busy) {
+    _updateBusy = busy;
+    ['ds-smart', 'ds-data', 'ds-stop'].forEach(id => {
+      const el = document.getElementById(id);
+      if (el) {
+        el.disabled = busy && id !== 'ds-stop';   // stop 始终可点
+        if (busy && id !== 'ds-stop') el.style.opacity = '0.5';
+        else el.style.opacity = '';
+      }
+    });
+    document.querySelectorAll('.ds-step-chip').forEach(el => {
+      el.style.pointerEvents = busy ? 'none' : '';
+      el.style.opacity = busy ? '0.4' : '';
+    });
+  }
+
   async function smartUpdate() {
+    if (_updateBusy) { logLine('更新进行中, 请等待或点 停止', 'err'); return; }
+    _setUpdateButtonsBusy(true);
     logLine('智能更新触发...');
     try {
       const j = await fetchJSON('/api/inst/update/smart', { method: 'POST' });
       if (j.ok === false) {
         logLine('智能更新: ' + (j.message || 'busy'), 'err');
+        _setUpdateButtonsBusy(false);
       } else {
         logLine('智能更新启动: ' + JSON.stringify(j).slice(0, 200), 'ok');
         startPolling();
       }
     } catch (e) {
       logLine('失败: ' + e.message, 'err');
+      _setUpdateButtonsBusy(false);
     }
   }
   async function dataOnly() {
+    if (_updateBusy) { logLine('更新进行中, 请等待或点 停止', 'err'); return; }
+    _setUpdateButtonsBusy(true);
     logLine('运行 data 组 (sync_raw → ... → sync_lhb)...');
     try {
       const j = await fetchJSON('/api/inst/update/sync', { method: 'POST' });
       if (j.ok === false) {
         logLine('data 组: ' + (j.message || 'busy'), 'err');
+        _setUpdateButtonsBusy(false);
       } else {
         logLine('data 组启动 OK', 'ok');
         startPolling();
       }
     } catch (e) {
       logLine('失败: ' + e.message, 'err');
+      _setUpdateButtonsBusy(false);
     }
   }
   async function stopUpdate() {
@@ -652,6 +679,7 @@
       const j = await fetchJSON('/api/inst/update/stop', { method: 'POST' });
       logLine('停止: ' + JSON.stringify(j).slice(0, 100), j.ok === false ? 'err' : 'ok');
       stopPolling();
+      _setUpdateButtonsBusy(false);
     } catch (e) { logLine('停止失败: ' + e.message, 'err'); }
   }
 
@@ -678,11 +706,20 @@
         }
         if (j && j.running === false) {
           stopPolling();
+          _setUpdateButtonsBusy(false);
           logLine('更新完成 (后端 running=false)', 'ok');
         }
-      } catch (e) { /* silent, polling 容错 */ }
+      } catch (e) {
+        // P2-1 fix: polling 错误可见化, 不再 silent 吞 (audit 2026-05-21 push back)
+        if (!_pollErrCount) _pollErrCount = 0;
+        _pollErrCount++;
+        if (_pollErrCount === 1 || _pollErrCount % 5 === 0) {
+          logLine('轮询警告 (#' + _pollErrCount + '): ' + (e.message || '网络/超时'), 'err');
+        }
+      }
     }, 3000);
   }
+  let _pollErrCount = 0;
   function stopPolling() {
     if (_pollTimer) { clearInterval(_pollTimer); _pollTimer = null; }
   }

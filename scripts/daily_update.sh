@@ -155,16 +155,20 @@ fi
 # Step 1: Preflight
 log "--- Step 1: Preflight (watermark SLA + K-line gate) ---"
 # 1a. Watermark SLA check + auto-update
+# 2026-05-21 fix: set -e + python exit code 2 (alert) 会让脚本静默终止, sla_exit=$? 永远不执行.
+# 用 if 包起来让 conditional context 抑制 set -e.
 SLA_ARGS=""
 [[ "$DRY" == "1" ]] && SLA_ARGS="--dry-run"
-PYTHONPATH=backend python backend/scripts/update_watermark_sla.py \
+sla_exit=0
+if ! PYTHONPATH=backend python backend/scripts/update_watermark_sla.py \
     $SLA_ARGS \
-    --json-output "data/audit/watermark_sla_${DATE}.json" >> "$LOG" 2>&1
-sla_exit=$?
+    --json-output "data/audit/watermark_sla_${DATE}.json" >> "$LOG" 2>&1; then
+    sla_exit=$?
+fi
 if [[ "$sla_exit" == "2" ]]; then
     log "WARN: watermark SLA alert (见 data/audit/watermark_sla_${DATE}.json)"
 elif [[ "$sla_exit" != "0" ]]; then
-    log "ERROR: watermark SLA check failed (exit $sla_exit)"
+    log "ERROR: watermark SLA check failed (exit $sla_exit) — 继续推进 Step 2 sync"
 fi
 
 # 1b. K-line continuity preflight
@@ -194,13 +198,16 @@ if [[ "$SKIP_SYNC" == "0" ]]; then
         log "Local sync (tdxhub daily incremental)"
         if [[ "$DRY" == "0" ]]; then
             # latest_completed_trade_date 自动 target
-            PYTHONPATH=backend python backend/scripts/build_price_kline_tdxhub.py \
+            # 2026-05-21 fix: set -e + tdxhub exit 非 0 会让脚本静默终止. 用 if 包装抑制.
+            sync_exit=0
+            if ! PYTHONPATH=backend python backend/scripts/build_price_kline_tdxhub.py \
                 --skip-existing \
                 --workers 4 --connect-timeout 2.5 \
                 --max-server-attempts 9 --per-stock-retry-attempts 2 \
                 --write-batch-rows 5000 --log-every 200 \
-                >> "$LOG" 2>&1
-            sync_exit=$?
+                >> "$LOG" 2>&1; then
+                sync_exit=$?
+            fi
             log "tdxhub sync exit $sync_exit"
             # HS300 benchmark
             PYTHONPATH=backend python backend/scripts/sync_hs300_benchmark_kline.py \
