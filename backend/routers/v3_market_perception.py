@@ -9,6 +9,7 @@ from fastapi import APIRouter
 
 from services.db import get_conn
 from services.market_perception.regime_engine import get_regime_config
+from services.utils import latest_completed_trade_date
 
 logger = logging.getLogger("cm-api.v3-market-perception")
 router = APIRouter()
@@ -114,9 +115,9 @@ def _latest_snapshot_lag_trading_days(conn, latest_snapshot: str | None) -> int 
         SELECT CAST(MAX(trade_date) AS VARCHAR) AS trade_date
           FROM dim_trading_calendar
          WHERE is_trading = 1
-           AND CAST(trade_date AS DATE) < ?
+           AND CAST(trade_date AS DATE) <= ?
         """,
-        [date.today().isoformat()],
+        [latest_completed_trade_date(conn)],
     ).fetchone()
     if not latest_expected or latest_expected[0] is None:
         return None

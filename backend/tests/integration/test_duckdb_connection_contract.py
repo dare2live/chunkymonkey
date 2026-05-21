@@ -200,6 +200,7 @@ def test_production_code_keeps_raw_duckdb_connect_calls_allowlisted():
         "scripts/compute_forecast_upside_live.py",
         "scripts/eda_phase1a.py",
         "scripts/ingest_profit_forecast_snapshot.py",
+        "scripts/import_model_train_log_artifact.py",
         "scripts/import_phase5_remote_predictions.py",
         "scripts/model_monitor_dashboard.py",
         "scripts/monitor_optuna_v4.py",
