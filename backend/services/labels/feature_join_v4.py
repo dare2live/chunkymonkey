@@ -91,7 +91,10 @@ def _add_column_duplicate_safe(conn, table: str, col: str, dtype: str) -> None:
 
 
 _FEATURE_JOIN_SQL_V4 = """
-INSERT INTO mart_p0a_feature_label_panel_v4
+-- 2026-05-21 fix: 改用 BY NAME 按列名 match. v4 schema 现 143 cols, 我们只 SELECT 133 cols
+-- (v3.* 102 + 31 extra). 多的 10 cols (sector_* + inst_*) 是 legacy schema 保留位, 历史 row
+-- 有值, 新 row NULL OK. 用 BY NAME 让 DuckDB 自动按名匹配, 多的列默认 NULL.
+INSERT INTO mart_p0a_feature_label_panel_v4 BY NAME
 SELECT
     v3.*,
     -- capital_flow 12 cols (inline from fact_capital_flow_pit_daily PIT)

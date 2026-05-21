@@ -300,8 +300,23 @@ PYEOF
             >> "$LOG" 2>&1 || log "WARN: sniper score mart build 失败"
         PYTHONPATH=backend python backend/scripts/build_institution_score_daily.py \
             >> "$LOG" 2>&1 || log "WARN: institution score mart build 失败"
+
+        # 2026-05-21 加: institution_survey aif10 sync (修 lag 6d alert)
+        # 之前不在 daily_update sync 范围 → watermark SLA 持续 alert
+        # 实测 sync: written=3920 raw, mart=3805 rows
+        log "--- Step 2i: institution_survey aif10 sync ---"
+        PYTHONPATH=backend python - <<'PYEOF' >> "$LOG" 2>&1 || log "WARN: institution_survey sync 失败"
+from services.duck_adapter import connect as duck_connect
+from services.institution_survey_client import sync_institution_surveys
+conn = duck_connect("data/smartmoney.duckdb")
+try:
+    result = sync_institution_surveys(conn, days_back=180)
+    print(f"institution_survey: written={result.get('rows_upserted', 0)} mart={result.get('mart_rows', 0)} errors={result.get('errors', [])}")
+finally:
+    conn.close()
+PYEOF
     else
-        log "DRY: skip Step 2d-2h satellite syncs"
+        log "DRY: skip Step 2d-2i satellite syncs"
     fi
 fi
 

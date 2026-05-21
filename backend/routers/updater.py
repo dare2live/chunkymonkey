@@ -499,6 +499,46 @@ _stop_requested = False
 _run_context = None
 _last_run_context = None
 _audit_snapshot_refresh_task = None
+# 2026-05-21 P0-2 fix: 全局 exception 渠道, 异步 _run() 失败时记录, /update/status 返回给前端.
+# 否则前端看到 running=false 但不知错误, 假以为成功.
+_last_exception = None  # {"ts": str, "trigger": "smart|sync|step", "message": str, "type": str}
+
+
+def _record_last_exception(trigger: str, exc: BaseException) -> None:
+    """P0-2: 记录最新异常 (供 /update/status 返回前端). 守护型, 任何失败都不 raise."""
+    global _last_exception
+    try:
+        _last_exception = {
+            "ts": datetime.now().isoformat(),
+            "trigger": str(trigger),
+            "type": type(exc).__name__,
+            "message": str(exc)[:500],
+        }
+    except Exception:  # rule-compliance: ok evidence=safety-net-no-raise-from-error-recorder
+        pass
+
+
+def _safe_finally_cleanup(trigger: str, conn=None) -> None:
+    """P1-1: 嵌套守护 finally 块, 防 _is_running 锁泄漏.
+    任一 cleanup 异常都被吞并写 log, 但 _is_running 必定 reset.
+    """
+    global _is_running, _stop_requested
+    if conn is not None:
+        try:
+            conn.close()
+        except Exception as exc:  # rule-compliance: ok evidence=defensive-finally-conn-close
+            logger.warning(f"[{trigger}] conn.close exception: {exc}")
+    # _is_running / _stop_requested 必定 reset, 不管下面 cleanup 死活
+    _is_running = False
+    _stop_requested = False
+    try:
+        _finish_run_context({"result": None})
+    except Exception as exc:  # rule-compliance: ok evidence=defensive-finally-finish-run-context
+        logger.warning(f"[{trigger}] _finish_run_context exception: {exc}")
+    try:
+        _schedule_holder_audit_snapshot_refresh(trigger)
+    except Exception as exc:  # rule-compliance: ok evidence=defensive-finally-audit-refresh
+        logger.warning(f"[{trigger}] _schedule_holder_audit_snapshot_refresh exception: {exc}")
 
 
 class _RunStopped(Exception):
@@ -4368,6 +4408,7 @@ async def update_status():
             "summary": summary,
             "steps": steps,
             "logs": list(_ui_logs),
+            "last_exception": dict(_last_exception) if _last_exception else None,  # P0-2: 异常渠道
             "server_time": datetime.now().isoformat(),
         }
     finally:
@@ -4700,12 +4741,10 @@ async def smart_update(critical_only: bool = False):
         except Exception as e:
             _fail_unfinished_steps(conn, steps_to_run, f"运行异常: {e}")
             logger.error(f"[智能更新] 异常: {e}")
+            _record_last_exception("smart_update", e)  # P0-2: 异常渠道
         finally:
-            conn.close()
-            _is_running = False
-            _stop_requested = False
-            _finish_run_context({"result": locals().get("result_counts")})
-            _schedule_holder_audit_snapshot_refresh("smart_update")
+            # P1-1: 嵌套守护, 防 conn.close 抛异常导致 _is_running 永久卡
+            _safe_finally_cleanup("smart_update", conn=conn)
 
     asyncio.create_task(_run())
     return {"ok": True, "steps": len(steps_to_run), "step_ids": steps_to_run, "plan": plan}
@@ -4869,12 +4908,9 @@ async def run_single_step(step_id: str):
         except Exception as e:
             _fail_unfinished_steps(conn, step_ids, f"运行异常: {e}")
             logger.error(f"[单步] {step_name} 失败: {e}")
+            _record_last_exception(f"single_step:{step_id}", e)  # P0-2
         finally:
-            conn.close()
-            _is_running = False
-            _stop_requested = False
-            _finish_run_context({"result": locals().get("result_counts")})
-            _schedule_holder_audit_snapshot_refresh(f"single_step:{step_id}")
+            _safe_finally_cleanup(f"single_step:{step_id}", conn=conn)  # P1-1
 
     asyncio.create_task(_run())
     return {"ok": True, "step_id": step_id, "name": step_name, "steps": step_ids}
@@ -5092,12 +5128,9 @@ async def _run_group_pipeline(run_mode: str, run_name: str, group_id: str):
         except Exception as e:
             _fail_unfinished_steps(conn, step_ids, f"运行异常: {e}")
             logger.error(f"[{run_name}] 异常: {e}")
+            _record_last_exception(run_name, e)  # P0-2
         finally:
-            conn.close()
-            _is_running = False
-            _stop_requested = False
-            _finish_run_context({"result": locals().get("result_counts")})
-            _schedule_holder_audit_snapshot_refresh(run_name)
+            _safe_finally_cleanup(run_name, conn=conn)  # P1-1
 
     asyncio.create_task(_run())
     return {"ok": True, "steps": len(step_ids), "step_ids": step_ids}
