@@ -30,6 +30,7 @@
 - **v4 panel rebuild schema mismatch 修** — `mart_p0a_feature_label_panel_v4` schema 143 cols 但 INSERT SQL 给 133 values (v3.* 102 + 31 extra), 缺 5 sector_* + 5 inst_* (legacy schema 保留位). 改 `INSERT INTO ... BY NAME` 让 DuckDB 自动按列名 match, 多的 cols 默认 NULL. 实测 172s exit 0, coverage 多 group OK.
 - **institution_survey lag 6d 修** — daily_update.sh Step 2i 新加 aif10 `sync_institution_surveys` (走 services.duck_adapter.connect, raw duckdb 没 executescript). 实测 sync written=3920 raw, mart=3805 rows. watermark SLA tier 2 不再 alert.
 - **updater.py finally 守护 (P0-2 + P1-1)** — 全局 `_last_exception` state + `_record_last_exception()` + `_safe_finally_cleanup()`. /update/status 返回 `last_exception` 字段. smart_update / single_step / sync_only 3 处 finally 改用 `_safe_finally_cleanup` 嵌套 try/except, 防 conn.close / _finish_run_context 抛异常导致 `_is_running` 永久卡前端不可用. 实测 57 passed update/status tests.
+- **v3_market_perception.py god-module 拆分 (807→577 LOC, -29%)** — Plan agent 5 步 plan 执行: 抽 8 serialize functions + 6 SELECT 常量 + `_finite_float` + `_clean_text` 到新 `backend/services/market_perception/router_serialize.py` (271 LOC). 14 endpoint 行为不变 (zero user-facing change). Pure functions 无 conn 依赖, 无 PIT call. 实测 40 passed market_perception tests, codegraph sync 45 nodes updated, complexity 80 HIGH 维持全 legacy assets/js/app.js. 后续可继续抽 7 DB helpers 到 router_read.py.
 
 最后更新: **2026-05-17** (P0a label CRITICAL leakage → 数据治理 framework 优先, Codex round 16 yaml/sop deliver, ML chain 暂停 rebuild).
 
