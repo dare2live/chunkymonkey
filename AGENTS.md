@@ -1,0 +1,258 @@
+# Agent Operating Policy
+
+This file is the Codex-facing operating rulebook for this repo. `CLAUDE.md`
+contains older Claude-specific workflows and project memory; read it when a task
+touches strategy validation, PIT/leakage, Optuna, GCP, or multi-agent execution,
+then apply the rules below in Codex terms.
+
+## First Actions
+
+- Read `goal.md`, `SESSION_HANDOFF.md`, and `analysis/workflow_checkpoint.md`
+  before continuing interrupted work.
+- Run `git status --short` before edits. The worktree is often dirty; never
+  revert user or peer changes unless explicitly asked.
+- Prefer `rg`, `codegraph`, targeted tests, and read-only DuckDB inspection
+  before guessing.
+- Keep `goal.md` / handoff files current when the task changes delivery state,
+  GCP state, validation evidence, or next actions.
+
+## Codegraph + Complexity Review
+
+For any non-trivial code change, audit, refactor, performance task, or delivery
+readiness decision:
+
+1. Run or refresh CodeGraph first:
+   - `codegraph status .`
+   - `codegraph sync .` when files changed or the index may be stale
+   - `codegraph context "<task>"` or `codegraph query "<symbol>"` to identify
+     entry points, related tests, and dependency boundaries.
+2. Combine CodeGraph with the `complexity-optimizer` workflow:
+   - run `/Users/dp/.agents/skills/complexity-optimizer/scripts/analyze_complexity.py /Users/dp/Documents/M/stock/chunkymonkey --format markdown`
+     for broad scans when complexity/performance/N+1 risk is relevant;
+   - treat scanner output as leads, not proof;
+   - inspect surrounding code before patching;
+   - rank fixes by hot path, data size, blast radius, and testability.
+3. After edits, run targeted tests and `codegraph sync .` again so future
+   agents do not work from stale structure.
+
+## Parallel Execution
+
+Use parallelism aggressively when scopes do not conflict, especially for
+read-only discovery, code-path audits, test runs, and independent file scopes.
+
+Safe to parallelize:
+- documentation reading and summarization;
+- CodeGraph/context queries;
+- read-only DuckDB inventory with read-only connections;
+- independent code audits;
+- tests that do not write the same DB/output path;
+- implementation tasks with disjoint file ownership.
+
+Keep serialized:
+- edits to the same file or shared config;
+- writes to the same DuckDB table/output directory/cache/artifact;
+- Optuna studies sharing the same study name/storage;
+- commit/push/final merge;
+- `goal.md`, `SESSION_HANDOFF.md`, `AGENTS.md`, `CLAUDE.md`, and project index
+  updates unless one controller owns the edit.
+
+Controller responsibilities:
+- define each agent's read/write scope before starting;
+- tell worker agents they are not alone in the codebase and must not revert
+  others' changes;
+- review returned patches before accepting them;
+- run final tests and merge/update project state in one place.
+
+## GCP Controlled Use
+
+GCP is available for this project, but cloud work must be intentional,
+observable, and reproducible. Use local execution for code edits, small tests,
+read-only DuckDB inspection, lightweight JSON refreshes, and narrow audits. Use
+GCP when it materially improves throughput for expensive work such as large
+Optuna searches, integrated ChunkyMonkey + BestChoice optimization, long model
+replays, broad parameter sweeps, or repeated validation runs that would block
+local progress.
+
+Before starting any GCP workload that can spend money, mutate cloud state, or
+move large artifacts, state:
+- objective and exact command family;
+- expected wall time and rough cost/risk;
+- input data/source snapshot;
+- output paths in GCS/local repo and how they will be preserved;
+- monitor/stop/rollback plan.
+
+Commands that touch GCP must include `CHUNKYMONKEY_GCP_EXPLICIT_OK=1`. This is a
+safety latch against accidental cloud work, not a ban. It applies to:
+- `gcloud` / `gsutil`;
+- `gcp/*` scripts;
+- SSH to GCP VMs;
+- GCS upload/download/sync;
+- billing/cost tracker queries;
+- monitor/probe scripts;
+- start/stop/resume/inspect cloud jobs.
+
+When the user has approved a GCP-capable objective, the agent may use GCP within
+that objective without asking again for every subcommand, as long as the command
+stays inside the stated scope and uses the safety latch. If scope, cost, data
+movement, or runtime changes materially, pause and restate the plan first.
+
+Historical GCP artifacts may be read locally from disk. Refreshing or replacing
+them from cloud counts as GCP work and must follow the controlled-use rules.
+
+### GCP Execution Hygiene
+
+Do not run expensive GCP work through fragile one-line SSH commands. A GCP job is
+not allowed to start until the operator has a wrapper script or heredoc body that
+has been syntax-checked and includes explicit lifecycle handling.
+
+Minimum checklist for every GCP compute job:
+- cancel stale pending shutdowns before launch: `sudo shutdown -c || true`;
+- run under the intended remote environment, usually `. .venv/bin/activate` and
+  `PYTHONPATH=backend`;
+- write `current.pid`, `current.logpath`, `current.artifact`, and `current.gcs_dir`
+  under the job's report directory before backgrounding;
+- stream logs to a stable file and record the command exit code;
+- export small result artifacts to JSON/CSV when possible; do not pull or upload
+  a full 25GB DuckDB when the required evidence is a small row or report;
+- upload the small artifact and log to GCS before shutdown;
+- schedule shutdown only inside the verified wrapper finalization path, and add a
+  separate fallback TTL only after the job is confirmed running;
+- for stability retrains, prefer the read-only monitor wrapper
+  `CHUNKYMONKEY_GCP_EXPLICIT_OK=1 TAIL_LINES=80 bash scripts/gcp_stability_status.sh`
+  over ad hoc SSH polling, and do not export/import until it shows a COMPLETE
+  trial plus a best checkpoint or final summary;
+- after any SSH/IAP failure, check VM status and GCS artifacts before restarting,
+  because the VM may have stopped or the job may already have uploaded results;
+- when syncing code to a VM with a dirty worktree, back up the remote files first
+  and copy only the required scoped files. Do not `git pull` over local/remote
+  dirty state as a shortcut.
+
+If a GCP run wastes time or terminates without artifacts, record the root cause
+and prevention in `docs/gcp_controlled_execution_runbook.md` before retrying.
+
+## Long-Run Checkpoint Reuse
+
+Do not rerun expensive completed work just because a long job was interrupted.
+For any replay, Optuna study, parameter sweep, or train-log backfill that can run
+long enough to be preempted or manually stopped, design the job around reusable
+verified checkpoints before launching.
+
+Completion is not inferred from a log line. A result is reusable only when the
+stored checkpoint proves:
+- the same model/input snapshot and stable params/config hash;
+- the same expected window/trial/entity key and date boundaries;
+- positive train/test row counts where applicable;
+- parseable metrics/artifact JSON;
+- `checkpoint_status='complete'` or equivalent terminal state;
+- observed completed count equals expected count before any aggregate/promotion
+  row is written.
+
+For LambdaMART train-log replay, use `--train-log-only --resume-train-log`.
+Completed replay windows live in `fact_model_train_log_window` at
+`model_id + replay_id + window_key` grain. Restarted runs must skip only verified
+matching windows and compute missing windows. `fact_model_train_log` is allowed
+to receive the aggregate evidence row only after every expected replay window has
+been verified against the current params hash and window boundaries.
+
+## Strategy Validation Rules
+
+This project controls real-money stock strategy decisions. Treat every KPI as a
+deployment risk signal, not a scoreboard.
+
+- Measured, not estimated: returns, Sharpe, drawdown, hit rate, uplift, weights,
+  and thresholds must come from historical rows, Optuna output, or documented
+  backtests. If not measured, mark `unknown`.
+- No leakage: time `t` decisions may only use information available at or before
+  `t`. Check `built_at`, `as_of_date`, PIT universe, adjustment factors, purged
+  labels, embargo, and train/test time splits.
+- Suspiciously good numbers are warnings: Sharpe > 5, win rate > 95%, annualized
+  return > 100%, or large relative uplift needs leakage/PIT ablation before any
+  promotion claim.
+- Production claims must use cost-aware paper sim / Phase4 / PBO / DSR evidence,
+  not in-sample metrics.
+- `warn_only_proxy` is not a hard promote. A hard promote requires the gate's
+  actual promotion action to be `promote`, with non-proxy evidence where the gate
+  requires it.
+
+## Optuna and Parameter Search
+
+- Prefer the central optimization/governance helpers and YAML/config-backed
+  search spaces. Do not hardcode strategy thresholds or weights in business code.
+- Use time-aware walk-forward splits; Optuna must not see future OOS periods.
+- Record OOS metrics and reject/governance reasons. In-sample `sharpe` is not a
+  selector for forward decisions.
+- Heavy search should use GCP when local runtime would slow delivery, under the
+  GCP controlled-use rules above.
+
+## Root Cause and Data Integrity
+
+- Do not hide failures with `try/except: pass`, `--skip-step`, fixed end dates,
+  environment bypasses, or silent fallbacks.
+- Fix the first bad writer or bad join path, not just the symptom. If cleanup is
+  needed, do both: clean historical residue and add a regression guard.
+- For tdxhub/miaoxiang-backed data, treat missing listed-company data as a sync
+  or ingestion bug first. Do not assume the upstream truly lacks it without
+  evidence.
+- After bug/leakage/schema/cache fixes, actively look for stale artifacts:
+  generated JSON, old model rows, cache tables, lineage rows, dashboards, and
+  background processes.
+
+## Engineering Rules
+
+- Keep changes narrowly scoped and match existing style.
+- Do not invent frameworks for one-off changes. Abstract only when it removes
+  real duplication or matches an existing local pattern.
+- Configurable thresholds, paths, dates, model IDs, and table names belong in
+  config or arguments unless they are test fixtures or mathematical constants.
+- Use structured SQL/parsers/APIs instead of ad hoc string parsing when available.
+- Add focused tests proportional to risk. For shared behavior, add regression
+  tests.
+- Run the narrowest meaningful tests first, then broader checks when the blast
+  radius warrants it.
+- Run `git diff --check` before handing off.
+
+## Repository Hygiene
+
+Keep the codebase clean and organized at all times. A task is not finished while
+it leaves behind unexplained scratch files, dead code, obsolete documents, or
+unowned output directories.
+
+- Do not leave temporary files, debug dumps, one-off notebooks, ad hoc reports,
+  partial exports, or scratch scripts in the repo unless they are deliberate
+  evidence artifacts with stable names and a documented consumer.
+- Delete dead code, dead files, and unnecessary folders when they are clearly
+  superseded. Before deleting, use `rg` to check references and preserve anything
+  that is still part of audit evidence, lineage, reproducibility, or historical
+  validation.
+- Keep documents organized by purpose:
+  - current operating state belongs in `goal.md`, `SESSION_HANDOFF.md`, and
+    `analysis/workflow_checkpoint.md`;
+  - durable design/audit references belong under `docs/`;
+  - dated evidence and session archives belong under `analysis/`;
+  - old handoffs, stale prompts, duplicated status docs, and obsolete plans
+    should be removed once their useful facts are migrated.
+- Do not create extra directories just to hold one-off work. Reuse existing
+  `analysis/`, `docs/`, `data/reports/`, or module-local test locations when
+  they are the right owner.
+- After any substantial change, inspect `git status --short` and the relevant
+  generated/report directories. Either commit intentional artifacts with clear
+  names or remove them before handoff.
+- Preserve validation artifacts that support strategy decisions, but do not let
+  them become anonymous clutter. If an artifact matters, reference it from the
+  current ledger or a dated analysis document; if it does not matter, remove it.
+
+## Delivery Readiness
+
+- The project is not "done" just because one score improves. Update delivery
+  state only after the relevant audit scripts and evidence artifacts agree.
+- Preserve previous validation artifacts. Do not overwrite or delete probe/gate
+  results unless the user explicitly asks; add new evidence and refresh summary
+  JSON instead.
+- When BestChoice is involved, read
+  `/Users/dp/Documents/M/stock/bestchoice/analysis/bestchoice_chunkymonkey_validation_plan.md`
+  directly before making integration decisions. Follow that plan first:
+  Phase 0 artifact freeze/hash/lineage, namespaced challenger import, daily
+  candidate feed, main-project paper sim, KPI registry, and complementarity
+  comparison. Do not directly merge BestChoice logic into production
+  ChunkyMonkey, and do not run BestChoice GCP expansion until local portfolio
+  paper_sim or complementarity evidence satisfies the plan's trigger conditions.

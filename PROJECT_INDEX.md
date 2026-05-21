@@ -1278,7 +1278,7 @@ backward compat shim: utils.py + market_db.py re-export, 大量 caller 不影响
 - 速度: 6× view scan → 1× materialize + 6× hash JOIN, sub-agent 估 805 dates 3.3h → 25-45min.
 - 测试 10/10 PASS (test helper 加 tmp_kline materialize).
 
-**Phase 5 auto chain** (commit 2742a870): `scripts/run_phase5_auto_chain.sh` 单 bash 入口 8 步.
+**Phase 5 auto chain** (commit 2742a870, historical; superseded 2026-05-21 by controlled wrappers): `scripts/run_phase5_auto_chain.sh` was a single bash 8-step entrypoint and is now a blocking compatibility shim.
 - PID 41023 panel rebuild full (用 Step 1, 跑前 in-memory loaded, 不受 Step 2 影响 — 但下次 rebuild + v3/v4 panel + 后续 incremental 都用 Step 2)
 - PID 41239 auto chain waits panel done → parquet export (1.5GB) → GCS sync → GCP VM → SSH retrain --start 2023-01-03 → self-shutdown → pull → post-retrain → audit
 - ETA total 8-12h autonomous, status `data/reports/phase5_chain/status.json` 监控
@@ -1655,7 +1655,7 @@ Codex review 派 background (`a52e7e930bfa8c0e9`), 异步出 finding 后再 fix-
 用户 push back 'GCP solution still reactive (idle 5min still wastes \$0.03)':
 
 **新增 layer 1 (primary, 0 waste)**: VM job 完后自动 self-shutdown
-- scripts/run_phase5_extended_retrain.sh: remote nohup retrain 后追加 `sudo shutdown -h +1`
+- scripts/gcp_stability_retrain.sh / scripts/gcp_train_log_replay.sh: controlled wrapper 在 artifact/log 上传后追加 `sudo shutdown -h +1`; 旧 scripts/run_phase5_extended_retrain.sh 已废弃为直接 block 的 shim
 - 1min 缓冲 (允许 log flush + SSH session 退出), 然后 VM 自己 shutdown
 - 比 cron-based grace 主动得多 (0min vs 5min vs 30min)
 
@@ -2083,9 +2083,9 @@ scripts/daily_update.sh 8 步 framework:
 
 TBD steps 待 Phase 1.5 (gate wire) / Phase 2 (3 类策略 alpha 源 / SUE PEAD) / Phase 3 (ensemble + regime) 实施完 fill. 当前 scaffold 10% 完整, 但 framework 完整, cron-ready (launchd plist 待加).
 
-### 2026-05-18 凌晨 ORCHESTRATION.md 顶层指挥体系 (用户 push back)
+### 2026-05-18 凌晨 顶层指挥体系 (用户 push back)
 
-用户 push back: "先设计一个指挥管理体系和方案, 怎么管理调度使用 agents 和 codex, 怎么使用谷歌云的资源". 写 ORCHESTRATION.md 顶层体系 doc (7 章节):
+用户 push back: "先设计一个指挥管理体系和方案, 怎么管理调度使用 agents 和 codex, 怎么使用谷歌云的资源". 曾写顶层体系 doc (7 章节), 后续已将仍有效规则合并进 `AGENTS.md` / `CLAUDE.md`, 旧 `ORCHESTRATION.md` 因 GCP 调度策略已迁移为 controlled-use 并删除:
 - 体系总览 (Layer 0-3: user → Claude main → Codex/Claude sub-agents → 资源)
 - Agent 调度规则 (决策树 + 模板 + 并行 + 监控)
 - GCP 资源管理 (任务→资源决策 + VM 生命周期 + 月预算 + 数据 lifecycle)
@@ -4330,7 +4330,7 @@ exit params 取 best oos_sharpe / n_traded < 5 filter.
 
 **当前 in-flight**: PID 12518 paper_sim per_stock_stage=true, ETA 14:00.
 
-**HANDOFF**: `HANDOFF.md` 已写 (handoff 给 Claude Code CLI).
+**历史 handoff**: 旧 `HANDOFF.md` 的有用事实已沉淀到本文件和 `CLAUDE.md`; 为避免恢复时误读旧状态, 原文件已删除。
 
 ### 2026-05-14 (Phase ψ.δ.1 — 板块轮动预测 Ridge regression alpha + IC mean-reversion 发现)
 
