@@ -1,13 +1,13 @@
 #!/usr/bin/env bash
 # GCP 成本 tracker — 实时跟 VM uptime + 估算月度费用
 #
-# 用户原则 (CLAUDE.md §10.0.2): $10/月 budget, 不浪费.
+# 用户原则 (CLAUDE.md §9): $15/月 budget (2026-05-21 用户放宽), 不浪费. Alert-only, 不 auto-stop.
 # 跑此 script 输出:
 #   - 当前 VM 状态 (RUNNING / TERMINATED)
 #   - 本月已运行小时 (uptime 累计)
 #   - 估算 月底总成本 (按当前 burn rate 推)
-#   - 距离 $10 budget 还有多少 wall-time
-#   - 80%/100% threshold alert
+#   - 距离 $15 budget 还有多少 wall-time
+#   - 80%/100% threshold alert (仅日志, 不触发 stop)
 #
 # Usage:
 #   bash gcp/cost_tracker.sh                       # text output
@@ -25,11 +25,17 @@
 
 set -uo pipefail
 
+source "$(cd "$(dirname "$0")/.." && pwd)/scripts/lib/gcp_guard.sh"
+
+# 2026-05-20 user hard rule: no GCP usage unless explicitly authorized.
+# This script calls gcloud, so it is blocked by default too.
+require_gcp_explicit_ok "gcp/cost_tracker.sh"
+
 VM_NAME="${GCP_VM_NAME:-chunkymonkey-optuna}"        # rule-compliance: ok evidence=existing-vm-name
 VM_ZONE="${GCP_VM_ZONE:-us-central1-a}"              # rule-compliance: ok evidence=user-vm-zone
 SPOT_RATE_HOUR="${GCP_SPOT_RATE_HOUR:-0.376}"        # rule-compliance: ok evidence=n2-standard-32-spot-2026-rate
 DISK_MONTHLY="${GCP_DISK_MONTHLY:-4.0}"              # rule-compliance: ok evidence=100gb-pd-standard
-BUDGET="${GCP_BUDGET_USD:-10.0}"                     # rule-compliance: ok evidence=user-10usd-budget
+BUDGET="${GCP_BUDGET_USD:-15.0}"                     # rule-compliance: ok evidence=user-15usd-budget-2026-05-21
 
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 REPORT="$REPO_ROOT/data/reports/gcp_cost_summary.json"
@@ -167,17 +173,12 @@ if [[ "$ALERT" != "OK" ]]; then
     log "  >>> ALERT $ALERT: projected month \$$PROJECTED_MONTH > $(echo "scale=0; $BUDGET * 0.8 / 1" | bc) (80% \$$BUDGET budget)"
 fi
 
-# Actionable: RED alert + VM RUNNING → 自动 stop VM (用户 push back: 不只监控, 要驱动决策)
+# 2026-05-21 用户放宽: budget RED 不再 auto-stop, 仅日志警告.
+# 用户原话 "上限放宽到 $15, 不要触发 stop". 当前 active workload 不希望被预算自动打断.
 if [[ "$ALERT" == "RED" && "$VM_STATUS" == "RUNNING" ]]; then
     log ""
-    log "  !!! AUTO-ACTION: budget RED + VM RUNNING → 自动 stop VM 防止超支"
-    if [[ -f "$REPO_ROOT/gcp/vm_stop.sh" ]]; then
-        bash "$REPO_ROOT/gcp/vm_stop.sh" 2>&1 | tee -a "$REPO_ROOT/data/reports/gcp_auto_stop.log" >&2 || \
-            log "  WARN: auto stop failed, manual: bash gcp/vm_stop.sh"
-        log "  ✓ VM auto-stopped (budget protection)"
-    else
-        log "  WARN: gcp/vm_stop.sh 不存在, 无法 auto-stop"
-    fi
+    log "  !!! ALERT-ONLY: budget RED + VM RUNNING — 不 auto-stop (用户 2026-05-21 放宽), 请人工评估"
+    log "  手动 stop: bash gcp/vm_stop.sh"
 fi
 
 # Actionable: VM RUNNING 无 active job marker > IDLE_GRACE 分钟 → 自动 stop (proactive cost-cutting)

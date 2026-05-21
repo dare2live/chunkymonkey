@@ -1,6 +1,9 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+source "$(cd "$(dirname "$0")/.." && pwd)/scripts/lib/gcp_guard.sh"
+require_gcp_explicit_ok "gcp/gcs_sync.sh"
+
 # Best-effort sync for retrain_lambdamart_v6.py local Optuna artifacts.
 # Defaults follow the existing ChunkyMonkey GCS bucket convention; override
 # GCS_SYNC_URI when running in another project/bucket.

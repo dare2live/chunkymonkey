@@ -15,6 +15,9 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
+source scripts/lib/gcp_guard.sh
+require_gcp_explicit_ok "scripts/monitor_phase5_gcp_retrain.sh"
+
 MODEL_ID="${MODEL_ID:-$(cat data/reports/phase5_chain/model_id.txt 2>/dev/null | head -1)}"
 POLL_INTERVAL_SEC="${POLL_INTERVAL_SEC:-600}"
 MAX_DURATION_HOURS="${MAX_DURATION_HOURS:-8}"

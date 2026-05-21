@@ -6,6 +6,22 @@
 > **目标**: 新接手 (无论 Claude 还是人) 读完此文档**不用看代码 / 不用查 DB** 就能理解:
 > 项目业务 / 架构 / 技术路线 / 数据资产 / 当前进度 / 已知坑 / 常用操作.
 
+最后更新: **2026-05-21** (Codex 暂停 / Claude 全面接手 / GCP budget \$10→\$15 alert-only / stability retrain active / BestChoice POC plan 待启动).
+
+## [INDEX] 2026-05-21 增量
+
+- **CLAUDE.md** 重组 573→490 行 (12 段 + 目录 mini-TOC), §11 Codex 协作 ⏸ 暂停状态 (用户 push back 全面接手).
+- **AGENTS.md** 入库 — Codex-facing operating rulebook (First Actions / Repository Hygiene / Long-Run Checkpoint Reuse / GCP Execution Hygiene).
+- **GCP budget** 改 \$10→\$15 alert-only, 不 auto-stop. 3 处同步: `backend/config/gcp_policy.yaml` / `gcp/cost_tracker.sh` / CLAUDE.md §9.3.
+- **新 GCP scripts** (Codex 2026-05-20 沉淀):
+  - `scripts/gcp_stability_status.sh` (read-only monitor wrapper, 替代 ad hoc SSH 轮询)
+  - `scripts/gcp_stability_retrain.sh` (stability penalty 寻优 wrapper, thread-cap 8x4)
+  - `scripts/gcp_export_model_predictions.sh` (export 单 model 选择 parquet 到 GCS)
+  - `scripts/gcp_train_log_replay.sh` (LambdaMART --train-log-only --resume-train-log)
+  - `scripts/lib/gcp_guard.sh` (统一 `require_gcp_explicit_ok CHUNKYMONKEY_GCP_EXPLICIT_OK=1` latch)
+- **市场感知模块 (Market Perception)** Codex 14 commits 全 PIT-strict (mart schema → engine → router → UI + 7 子模块: market regime / emotion cycle / theme lifecycle / under-reaction / leader-follower / style rotation / stock context aggregation).
+- **BestChoice 综合寻优 POC** 设计完成代码骨架 ready: `backend/scripts/build_signal_context.py` + `analyze_macd_feature_buckets.py` + `optuna_per_stock_macd.py` + `backend/services/formula_engine/signal_context_ddl.py`. 触发条件: 主项目 stability retrain 出 COMPLETE checkpoint 后启动本地 POC.
+
 最后更新: **2026-05-17** (P0a label CRITICAL leakage → 数据治理 framework 优先, Codex round 16 yaml/sop deliver, ML chain 暂停 rebuild).
 
 ## [CRITICAL] 2026-05-17 重大数据治理事件

@@ -1,6 +1,9 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+source "$(cd "$(dirname "$0")/.." && pwd)/scripts/lib/gcp_guard.sh"
+require_gcp_explicit_ok "gcp/submit_jobs.sh"
+
 if [[ $# -lt 1 ]]; then
   echo "Usage: PROJECT_ID=YOUR_PROJECT_ID BUCKET=YOUR_BUCKET_NAME gcp/submit_jobs.sh BATCH_ID" >&2
   exit 2

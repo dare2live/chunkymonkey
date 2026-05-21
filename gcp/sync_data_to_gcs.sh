@@ -1,6 +1,9 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+source "$(cd "$(dirname "$0")/.." && pwd)/scripts/lib/gcp_guard.sh"
+require_gcp_explicit_ok "gcp/sync_data_to_gcs.sh"
+
 PROJECT_ID="${PROJECT_ID:-YOUR_PROJECT_ID}"
 BUCKET="${BUCKET:-YOUR_BUCKET_NAME}"
 PREFIX="${PREFIX:-chunkymonkey}"

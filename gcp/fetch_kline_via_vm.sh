@@ -10,6 +10,9 @@
 
 set -euo pipefail
 
+source "$(cd "$(dirname "$0")/.." && pwd)/scripts/lib/gcp_guard.sh"
+require_gcp_explicit_ok "gcp/fetch_kline_via_vm.sh"
+
 VM_NAME="${VM_NAME:-chunkymonkey-optuna}"
 ZONE="${ZONE:-us-central1-a}"
 BUCKET_URI="${BUCKET_URI:-gs://chunkymonkey-data-0517}"

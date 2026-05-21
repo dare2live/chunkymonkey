@@ -17,6 +17,9 @@
 
 set -euo pipefail
 
+source "$(cd "$(dirname "$0")/.." && pwd)/scripts/lib/gcp_guard.sh"
+require_gcp_explicit_ok "gcp/setup_ssh_vm.sh"
+
 if [ $# -lt 1 ]; then
     echo "Usage: $0 PROJECT_ID [BUCKET_NAME] [REGION]"
     echo

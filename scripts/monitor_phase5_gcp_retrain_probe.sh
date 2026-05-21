@@ -22,6 +22,12 @@
 set -uo pipefail
 cd "$(dirname "$0")/.."
 
+# 2026-05-21 controlled-use: GCP probes still require the safety latch.
+if [[ "${CHUNKYMONKEY_GCP_EXPLICIT_OK:-0}" != "1" ]]; then
+    echo "[$(date '+%Y-%m-%d %H:%M:%S')] BLOCK: GCP controlled-use requires CHUNKYMONKEY_GCP_EXPLICIT_OK=1; skip phase5 monitor probe." >&2
+    exit 3
+fi
+
 MODEL_ID="${MODEL_ID:-$(cat data/reports/phase5_chain/model_id.txt 2>/dev/null | head -1)}"
 DRY_RUN="${MONITOR_DRY_RUN:-0}"
 STATUS_DIR="data/reports/phase5_chain"

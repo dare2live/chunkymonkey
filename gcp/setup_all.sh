@@ -23,6 +23,9 @@
 
 set -euo pipefail
 
+source "$(cd "$(dirname "$0")/.." && pwd)/scripts/lib/gcp_guard.sh"
+require_gcp_explicit_ok "gcp/setup_all.sh"
+
 if [ $# -lt 4 ]; then
     echo "Usage: $0 PROJECT_ID BUCKET_NAME REGION EMAIL"
     echo

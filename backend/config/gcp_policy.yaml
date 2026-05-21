@@ -5,18 +5,35 @@
 # - 不浪费资源 (auto stop)
 # - 用得越少越好 (daily 全 Mac)
 # - 大规模计算才用 (e.g. Optuna walk-forward)
+# - 2026-05-21 起: GCP controlled-use; 大计算可用, 但命令必须带安全 latch
+
+mode:
+  default: controlled_use_requires_latch
+  user_rule: "GCP 可用于大计算/寻优/replay; 启动前说明 scope/cost/artifacts/stop plan"
+  explicit_enable_env: CHUNKYMONKEY_GCP_EXPLICIT_OK
+  explicit_enable_value: "1"
+  disallowed_without_explicit_approval:
+    - vm_start
+    - compute_ssh
+    - gcs_upload
+    - gcs_download
+    - batch_submit
+    - monitor_probe
+    - cost_tracker_query
 #
-# 5 层 defense (实施 commits: 6dc2251a / b160d56e / fb6a0369 / 526d95ba):
+# 当前第一层 defense: scripts/lib/gcp_guard.sh 要求 CHUNKYMONKEY_GCP_EXPLICIT_OK=1,
+# 防止误触 VM/GCS/SSH/cost/probe/Batch 入口。
+# 历史 5 层 defense 在 controlled-use GCP workload 中继续作为二级保护:
 # pre-flight  - vm_start RED 拒, YELLOW 警告, marker create
-# in-flight   - cost_tracker 15min cron, RED+RUNNING auto vm_stop, idle marker check
-# daily check - daily_update Step 0 cost check, RED → USE_GCP=0 fallback
+# in-flight   - cost_tracker 15min cron (current crontab/launchd disabled), RED+RUNNING auto vm_stop, idle marker check
+# daily check - daily_update Step 0 skips GCP unless explicitly authorized
 # post-flight - vm_stop auto rm marker
 # monitoring  - cost_summary.json + uptime_log.csv
 
 budget:
-  monthly_usd: 10.0           # rule-compliance: ok evidence=user-10usd-budget
-  yellow_threshold_pct: 80    # rule-compliance: ok evidence=80pct-warn
-  red_threshold_pct: 100      # rule-compliance: ok evidence=100pct-block
+  monthly_usd: 15.0           # rule-compliance: ok evidence=user-15usd-budget-2026-05-21
+  yellow_threshold_pct: 80    # rule-compliance: ok evidence=80pct-warn (alert only, no auto-stop)
+  red_threshold_pct: 100      # rule-compliance: ok evidence=100pct-warn (alert only, no auto-stop)
 
 vm:
   name: chunkymonkey-optuna
@@ -26,30 +43,33 @@ vm:
   disk_monthly_usd: 4.0           # rule-compliance: ok evidence=100gb-pd-standard
 
 usage_policy:
+  default:
+    target: controlled_use
+    enforcement: block unless CHUNKYMONKEY_GCP_EXPLICIT_OK=1 and scope/cost/artifacts/stop plan are stated
   daily:
     target: never                  # daily 不调 GCP
     enforcement: daily_update.sh Step 0 不主动 vm_start
   weekly_retrain:
-    target: optional               # default Mac local, --gcp opt-in
+    target: optional               # Mac local or GCP based on wall time/cost/artifact tradeoff
     fallback_when_red: mac_local_overnight  # RED → fallback Mac local 12.8h
   large_batch:
-    target: opt-in                 # 用户 explicit 决策
+    target: controlled_use
     examples:
-      - phase5_extended_retrain    # bash scripts/run_phase5_extended_retrain.sh
+      - phase5_stability_retrain   # bash scripts/gcp_stability_retrain.sh
       - akshare_bulk_backfill      # 国内 network block 时用 GCP VM 通
 
 enforcement:
   pre_flight:
-    vm_start_red_block: true       # vm_start.sh RED budget → exit 2 拒启动
+    vm_start_red_block: false      # 2026-05-21 user 放宽: RED 不阻 vm_start, 仅警告
     vm_start_yellow_warn: true     # YELLOW → 警告但允许
     marker_create: data/reports/gcp_vm_active_job.marker
   in_flight:
     cost_tracker_interval_sec: 900  # 15 min
-    red_running_auto_stop: true    # RED + RUNNING → 自动 vm_stop
+    red_running_auto_stop: false   # 2026-05-21 user 放宽: 不再 auto-stop, 仅 alert
     idle_marker_check: true        # VM RUNNING 无 marker → 警告
   daily:
     step_0_check: true             # daily_update Step 0 cost check
-    red_use_gcp_fallback: true     # RED → USE_GCP=0 强制
+    red_use_gcp_fallback: false    # 2026-05-21 user 放宽: RED 不强制禁用 GCP
   post_flight:
     vm_stop_clear_marker: true     # vm_stop 清 active_job marker
 

@@ -10,6 +10,8 @@
 
 set -euo pipefail
 
+source "$(cd "$(dirname "$0")/.." && pwd)/scripts/lib/gcp_guard.sh"
+
 VM_NAME="${VM_NAME:-chunkymonkey-optuna}"
 ZONE="${ZONE:-us-central1-a}"
 WAIT_SSH="${WAIT_SSH:-1}"
@@ -24,8 +26,13 @@ for arg in "$@"; do
     esac
 done
 
-# Budget enforcement: cost_tracker RED alert 拒绝启动 (用户 push back: GCP 不浪费资源具体方案)
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+
+# 2026-05-21 controlled-use: state scope/cost/artifacts/stop plan first.
+# This guard intentionally runs before budget checks because even cost checks call GCP.
+require_gcp_explicit_ok "gcp/vm_start.sh"
+
+# Budget enforcement: cost_tracker RED alert 拒绝启动 (用户 push back: GCP 不浪费资源具体方案)
 if [[ -f "$REPO_ROOT/gcp/cost_tracker.sh" && "$FORCE" != "1" ]]; then
     echo "[vm_start] Pre-flight: GCP budget check..."
     set +e
