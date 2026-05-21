@@ -56,7 +56,7 @@
 - `backend/scripts/gen_report.py` / `p0b_final_report.py` — 报告生成
 - `scripts/session_status.sh` / `agents_status.sh` / `codex_monitor.sh` — agent 状态
 - `scripts/monitor_phase5_gcp_retrain.sh` / `watch_phase5_retrain_and_post.sh` — retrain 监控
-- `scripts/run_phase5_extended_retrain.sh` — retrain 手动触发
+- `scripts/gcp_stability_retrain.sh` — GCP controlled-use stability retrain 手动触发
 
 **Report artifacts** (`data/reports/`):
 - `daily_YYYYMMDD.json` / `msaf_ensemble_YYYYMMDD.json` / `phase4_gate_result.json` / `gcp_cost_summary.json`

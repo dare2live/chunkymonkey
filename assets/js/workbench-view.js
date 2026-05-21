@@ -8,6 +8,8 @@
     dataSources: '/api/workbench/data-sources',
     pipelines: '/api/workbench/pipelines',
     features: '/api/workbench/features',
+    delivery: '/api/workbench/delivery-readiness',
+    paperSim: '/api/workbench/paper-sim/kpi-timeseries?limit=80',
     recommendations: '/api/workbench/recommendations',
     storage: '/api/workbench/storage'
   };
@@ -135,6 +137,8 @@
       tabButton('dataSources', '数据源', tab) +
       tabButton('pipelines', '管线', tab) +
       tabButton('features', '特征', tab) +
+      tabButton('delivery', 'GO/NO-GO', tab) +
+      tabButton('paperSim', 'KPI', tab) +
       tabButton('research', '研究', tab) +
       tabButton('champion', 'Champion', tab) +
       tabButton('recommendations', '推荐', tab) +
@@ -266,6 +270,242 @@
       '<span>' + fmtDuration(latestManifest.duration_s) + '</span>' +
       (latestManifest.gate_result ? '<span>' + pill(latestManifest.gate_result, latestManifest.gate_result) + '</span>' : '') +
       '</div></section>'
+    );
+  }
+
+  function toneForReturn(value) {
+    var n = Number(value);
+    if (!Number.isFinite(n)) return 'info';
+    if (n >= 0.25) return 'ok';
+    if (n >= 0) return 'warn';
+    return 'bad';
+  }
+
+  function toneForDrawdown(value) {
+    var n = Number(value);
+    if (!Number.isFinite(n)) return 'info';
+    if (n >= -0.20) return 'ok';
+    if (n >= -0.25) return 'warn';
+    return 'bad';
+  }
+
+  function toneForSharpe(value) {
+    var n = Number(value);
+    if (!Number.isFinite(n)) return 'info';
+    if (n >= 2.0) return 'ok';
+    if (n >= 1.5) return 'warn';
+    return 'bad';
+  }
+
+  function summarizeParamDiff(diff) {
+    if (!diff) return '-';
+    if (typeof diff !== 'object') return String(diff).slice(0, 140);
+    var parts = [];
+    Object.keys(diff).sort().forEach(function (section) {
+      var value = diff[section];
+      if (!value || typeof value !== 'object') {
+        parts.push(section);
+        return;
+      }
+      Object.keys(value).sort().slice(0, 3).forEach(function (key) {
+        var change = value[key];
+        if (Array.isArray(change) && change.length === 2) {
+          parts.push(section + '.' + key + ': ' + change[0] + ' → ' + change[1]);
+        } else {
+          parts.push(section + '.' + key);
+        }
+      });
+    });
+    return parts.length ? parts.join('; ') : '-';
+  }
+
+  function metricDelta(rows, key) {
+    rows = rows || [];
+    if (rows.length < 2) return null;
+    var latest = Number(rows[0] && rows[0][key]);
+    var previous = Number(rows[1] && rows[1][key]);
+    if (!Number.isFinite(latest) || !Number.isFinite(previous)) return null;
+    return latest - previous;
+  }
+
+  function renderMetricDelta(rows, key, asPct) {
+    var delta = metricDelta(rows, key);
+    if (delta == null) return '<span class="muted">no prior run</span>';
+    var tone = delta >= 0 ? 'ok' : 'bad';
+    var text = asPct ? fmtPct(delta) : fmtFloat(delta, 3);
+    return '<span class="wb-kpi-delta wb-kpi-delta-' + tone + '">' + (delta >= 0 ? '+' : '') + text + ' vs prior</span>';
+  }
+
+  function renderPaperSimSparkline(rows, key) {
+    rows = (rows || []).slice().reverse().filter(function (row) {
+      return row && row[key] != null && Number.isFinite(Number(row[key]));
+    });
+    if (rows.length < 2) return '<div class="wb-kpi-sparkline wb-kpi-sparkline-empty">insufficient history</div>';
+    var values = rows.map(function (row) { return Number(row[key]); });
+    var min = Math.min.apply(Math, values);
+    var max = Math.max.apply(Math, values);
+    var spread = max - min || 1;
+    var points = values.map(function (value, idx) {
+      var x = rows.length === 1 ? 0 : (idx / (rows.length - 1)) * 100;
+      var y = 100 - ((value - min) / spread) * 80 - 10;
+      return x.toFixed(2) + ',' + y.toFixed(2);
+    }).join(' ');
+    return '<svg class="wb-kpi-sparkline" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true">' +
+      '<polyline points="' + points + '"></polyline>' +
+      '</svg>';
+  }
+
+  function renderPaperSimKpiTable(rows) {
+    if (!rows.length) return renderEmpty('暂无 paper_sim KPI 历史');
+    return '<div class="wb-table-wrap"><table class="data-table data-table-compact wb-table wb-kpi-table">' +
+      '<thead><tr><th>run</th><th>variant</th><th>ann</th><th>Sharpe</th><th>MaxDD</th><th>月胜</th><th>换手</th><th>判定</th><th>参数变化</th><th>lineage</th></tr></thead><tbody>' +
+      rows.map(function (row) {
+        var pass = row.all_kpi_pass === true ? 'pass' : row.user_criteria_pass === true ? 'partial' : 'watch';
+        var lineage = row.lineage_url ? '<a href="' + esc(row.lineage_url) + '" target="_blank" rel="noopener">open</a>' : '-';
+        return '<tr>' +
+          '<td><code>' + esc(row.sim_run_id || '-') + '</code><div class="muted">' + esc(row.built_at || '-') + '</div></td>' +
+          '<td>' + esc(row.variant || '-') + '<div class="muted">' + esc((row.period_start || '-') + ' ~ ' + (row.period_end || '-')) + '</div></td>' +
+          '<td>' + pill(fmtPct(row.annual_return), toneForReturn(row.annual_return)) + '</td>' +
+          '<td>' + pill(fmtFloat(row.sharpe, 3), toneForSharpe(row.sharpe)) + '</td>' +
+          '<td>' + pill(fmtPct(row.max_dd), toneForDrawdown(row.max_dd)) + '</td>' +
+          '<td>' + fmtPct(row.monthly_win_rate) + '</td>' +
+          '<td>' + fmtFloat(row.annual_turnover, 1) + 'x</td>' +
+          '<td>' + pill(pass, pass === 'pass' ? 'ok' : pass === 'partial' ? 'warn' : 'info') + '</td>' +
+          '<td><span class="muted">' + esc(summarizeParamDiff(row.param_diff)) + '</span><div class="muted">parent <code>' + esc(row.parent_sim_run_id || '-') + '</code></div></td>' +
+          '<td>' + lineage + '</td>' +
+          '</tr>';
+      }).join('') +
+      '</tbody></table></div>';
+  }
+
+  function renderPaperSim(data) {
+    var rows = data.data || [];
+    var latest = data.latest || rows[0] || {};
+    setBody(
+      '<section class="panel wb-panel wb-kpi-hero">' +
+      '<div class="panel-head"><div><h3>Paper Sim KPI Timeseries</h3>' +
+      '<div class="muted">endpoint: <code>/api/workbench/paper-sim/kpi-timeseries</code></div></div>' +
+      '<div>' + pill((data.meta || {}).source_mode || 'snapshot', 'ok') + '</div></div>' +
+      '<div class="stats-row wb-stats-row">' +
+      statCard('最新年化', fmtPct(latest.annual_return), renderMetricDelta(rows, 'annual_return', true), toneForReturn(latest.annual_return)) +
+      statCard('最新 Sharpe', fmtFloat(latest.sharpe, 3), renderMetricDelta(rows, 'sharpe', false), toneForSharpe(latest.sharpe)) +
+      statCard('最大回撤', fmtPct(latest.max_dd), '目标 ≥ -20%', toneForDrawdown(latest.max_dd)) +
+      statCard('月胜率', fmtPct(latest.monthly_win_rate), '目标 ≥ 55%', Number(latest.monthly_win_rate) >= 0.55 ? 'ok' : 'warn') +
+      statCard('历史 runs', fmtNum((data.meta || {}).row_count || rows.length), 'latest ' + esc(latest.built_at || '-'), rows.length ? 'ok' : 'missing') +
+      '</div>' +
+      '<div class="wb-kpi-spark-grid">' +
+      '<div><div class="wb-kpi-spark-title">Annual Return</div>' + renderPaperSimSparkline(rows, 'annual_return') + '</div>' +
+      '<div><div class="wb-kpi-spark-title">Sharpe</div>' + renderPaperSimSparkline(rows, 'sharpe') + '</div>' +
+      '<div><div class="wb-kpi-spark-title">Max Drawdown</div>' + renderPaperSimSparkline(rows, 'max_dd') + '</div>' +
+      '</div>' +
+      '</section>' +
+      '<section class="panel wb-panel">' +
+      '<div class="panel-head"><div><h3>历史 KPI 与参数血缘</h3><div class="muted">parent chain / param_diff / lineage_url</div></div></div>' +
+      renderPaperSimKpiTable(rows) +
+      '</section>'
+    );
+  }
+
+  function renderCriteriaTable(rows) {
+    rows = rows || [];
+    if (!rows.length) return renderEmpty('暂无交付审计明细');
+    return '<div class="wb-table-wrap"><table class="data-table data-table-compact wb-table wb-delivery-table">' +
+      '<thead><tr><th>标准</th><th>当前</th><th>Verdict</th><th>关键证据</th></tr></thead><tbody>' +
+      rows.map(function (row) {
+        var evidence = [];
+        if (row.phase4_promote_action) evidence.push('phase4=' + row.phase4_promote_action);
+        if (row.msaf_n_obs != null) evidence.push('n_obs=' + row.msaf_n_obs);
+        if (row.msaf_sharpe != null) evidence.push('sharpe=' + fmtFloat(row.msaf_sharpe, 2));
+        if (row.msaf_max_dd != null) evidence.push('max_dd=' + fmtPct(row.msaf_max_dd));
+        if (row.policy) evidence.push('policy=' + row.policy);
+        if (row.sources_wired) evidence.push('sources=' + Object.keys(row.sources_wired).filter(function (k) { return row.sources_wired[k]; }).join('+'));
+        return '<tr>' +
+          '<td><strong>' + esc(row.criterion || '-') + '</strong></td>' +
+          '<td>' + pill(fmtPct((row.pct || 0) / 100), Number(row.pct || 0) >= 90 ? 'ok' : Number(row.pct || 0) >= 80 ? 'warn' : 'bad') + '</td>' +
+          '<td>' + pill(row.verdict || '-', row.verdict || '-') + '</td>' +
+          '<td><span class="muted">' + esc(evidence.join(' · ') || '-') + '</span></td>' +
+          '</tr>';
+      }).join('') +
+      '</tbody></table></div>';
+  }
+
+  function renderDeliveryBlockers(rows) {
+    rows = rows || [];
+    if (!rows.length) return '<div class="wb-empty-ok">无剩余 milestone / reject reason</div>';
+    return rows.map(function (row) {
+      var tone = row.scope === 'milestone' ? 'warn' : 'bad';
+      return '<div class="wb-delivery-blocker">' + pill(row.scope || 'blocker', tone) +
+        '<span>' + esc(row.text || '-') + '</span></div>';
+    }).join('');
+  }
+
+  function renderGateLine(label, gate) {
+    gate = gate || {};
+    var status = gate.passes === true ? 'pass' : gate.passes === false ? 'fail' : 'unknown';
+    return '<div class="wb-delivery-gate-row">' +
+      '<span>' + esc(label) + '</span>' +
+      pill(status, status === 'pass' ? 'ok' : status === 'fail' ? 'bad' : 'warn') +
+      '<code>' + esc(gate.reason || '-') + '</code>' +
+      '</div>';
+  }
+
+  function renderDelivery(data) {
+    data = data || {};
+    var live = data.live_go_no_go || {};
+    var challenger = data.challenger || {};
+    var decision = challenger.decision || {};
+    var challengerGate = challenger.gate || {};
+    var liveGate = data.live_gate || {};
+    var sources = data.sources || {};
+    var institution = sources.institution_evaluation || {};
+    var sourceAvailable = sources.available || {};
+    var sourceWired = sources.wired || {};
+    setBody(
+      '<section class="panel wb-panel wb-delivery-hero">' +
+      '<div class="panel-head"><div><h3>GO/NO-GO Delivery Board</h3>' +
+      '<div class="muted">endpoint: <code>/api/workbench/delivery-readiness</code></div></div>' +
+      '<div>' + pill(data.verdict || 'NOT_READY', data.ready_for_delivery ? 'ok' : 'bad') + '</div></div>' +
+      '<div class="stats-row wb-stats-row">' +
+      statCard('交付均值', fmtPct((data.avg_pct || 0) / 100), 'ready_for_delivery=' + esc(String(!!data.ready_for_delivery)), data.ready_for_delivery ? 'ok' : 'bad') +
+      statCard('Live #6', fmtPct((live.pct || 0) / 100), live.ship_baseline_passed ? 'ship baseline PASS' : 'ship baseline BLOCK', live.ship_baseline_passed ? 'warn' : 'bad') +
+      statCard('OOS obs', fmtNum(live.msaf_n_obs), 'target 30 / perfect 60', Number(live.msaf_n_obs || 0) >= 30 ? 'ok' : 'warn') +
+      statCard('Sharpe', fmtFloat(live.msaf_sharpe, 2), 'target 2.0', Number(live.msaf_sharpe || 0) >= 2 ? 'ok' : 'warn') +
+      statCard('MaxDD', fmtPct(live.msaf_max_dd), 'target ≥ -20%', Number(live.msaf_max_dd || -1) >= -0.20 ? 'ok' : 'warn') +
+      '</div>' +
+      '</section>' +
+
+      '<section class="panel wb-panel wb-delivery-grid">' +
+      '<div class="wb-delivery-card"><h3>Live Gate</h3>' +
+      '<div class="muted">model <code>' + esc(liveGate.model_id || '-') + '</code> · action ' + esc(liveGate.promote_action || '-') + '</div>' +
+      renderGateLine('PBO', liveGate.pbo) +
+      renderGateLine('DSR', liveGate.dsr) +
+      renderGateLine('Conservative', liveGate.conservative) +
+      renderGateLine('IS-OOS', liveGate.is_oos) +
+      '</div>' +
+      '<div class="wb-delivery-card"><h3>Rejected Challenger</h3>' +
+      '<div class="muted">model <code>' + esc(challenger.model_id || '-') + '</code></div>' +
+      '<div>' + pill(decision.decision || 'unknown', decision.decision === 'hold_reject' ? 'bad' : 'warn') + '</div>' +
+      renderGateLine('PBO', challengerGate.pbo) +
+      '<div class="muted">obs20=' + fmtNum(challengerGate.n_obs_20d) + ' · obs5=' + fmtNum(challengerGate.n_obs_5d) + '</div>' +
+      '</div>' +
+      '<div class="wb-delivery-card"><h3>Source Wiring</h3>' +
+      '<div class="wb-count-row">' +
+      '<span class="wb-count-pill">institution available <b>' + esc(String(!!sourceAvailable.institution)) + '</b></span>' +
+      '<span class="wb-count-pill">institution wired <b>' + esc(String(!!sourceWired.institution)) + '</b></span>' +
+      '</div>' +
+      '<div>' + pill(institution.production_decision || 'unknown', institution.production_decision === 'hold_reject' ? 'bad' : 'warn') + '</div>' +
+      '<div class="muted">institution opt-in evaluation is kept out of production until retuned.</div>' +
+      '</div>' +
+      '</section>' +
+
+      '<section class="panel wb-panel">' +
+      '<div class="panel-head"><div><h3>Remaining Gaps</h3><div class="muted">milestones + reject reasons</div></div></div>' +
+      renderDeliveryBlockers(data.blockers) +
+      '</section>' +
+      '<section class="panel wb-panel">' +
+      '<div class="panel-head"><div><h3>Delivery Criteria</h3><div class="muted">audit_delivery_readiness.py current evidence</div></div></div>' +
+      renderCriteriaTable(data.criteria) +
+      '</section>'
     );
   }
 
@@ -2051,6 +2291,8 @@
     if (tab === 'dataSources') return renderDataSources(data || {});
     if (tab === 'pipelines') return renderPipelines(data || {});
     if (tab === 'features') return renderFeatures(data || {});
+    if (tab === 'delivery') return renderDelivery(data || {});
+    if (tab === 'paperSim') return renderPaperSim(data || {});
     if (tab === 'research') return renderResearch(data || {});
     if (tab === 'champion') return renderChampion(data || {});
     if (tab === 'recommendations') return renderRecommendations(data || {});
@@ -2088,6 +2330,8 @@
     _renderDataSources: renderDataSources,
     _renderPipelines: renderPipelines,
     _renderFeatures: renderFeatures,
+    _renderDelivery: renderDelivery,
+    _renderPaperSim: renderPaperSim,
     _renderResearch: renderResearch,
     _renderChampion: renderChampion,
     _renderRecommendations: renderRecommendations,

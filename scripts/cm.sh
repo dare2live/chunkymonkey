@@ -113,6 +113,11 @@ con.close()
 }
 
 cm_gcp() {
+    if [[ "${CHUNKYMONKEY_GCP_EXPLICIT_OK:-0}" != "1" ]]; then
+        echo "GCP controlled-use: cloud commands require CHUNKYMONKEY_GCP_EXPLICIT_OK=1."
+        echo "启动前先明确 scope、预计耗时/成本、输入输出、artifact 保存和 stop/rollback。"
+        return 3
+    fi
     echo "=== GCP VM status ==="
     gcloud compute instances describe chunkymonkey-optuna --zone=us-central1-a --format='value(status,lastStartTimestamp,lastStopTimestamp)' 2>&1 | head -3
     echo ""
@@ -146,12 +151,12 @@ cm_retrain() {
         echo "  Trigger 2 (quarterly): DOM=1 of Jan/Apr/Jul/Oct"
         echo ""
         echo "  手工触发命令:"
-        echo "    GCP: bash scripts/run_phase5_extended_retrain.sh    # 4-6h \$2 spot"
+        echo "    GCP: bash scripts/gcp_stability_retrain.sh          # controlled-use stability search"
         echo "    Mac local: bash scripts/local_retrain.sh             # ~10-14h"
         return
     fi
     echo "[cm retrain] 当前不支持自动 trigger, 用 --dry 看条件"
-    echo "手工触发: bash scripts/run_phase5_extended_retrain.sh"
+    echo "手工触发: bash scripts/gcp_stability_retrain.sh"
 }
 
 cm_promote() {
@@ -196,66 +201,7 @@ cm_impact() {
 
 cm_cache() {
     # criteria #10 incremental mgmt: paper_sim cache + lineage stats
-    PYTHONPATH=backend python -c "
-import duckdb
-con = duckdb.connect('$DB_PATH', read_only=True)
-print('=== paper_sim cache state (criteria #10 incremental mgmt) ===')
-print()
-
-# 1. sim_config_hash 覆盖率 (新 / 旧 runs)
-r1 = con.execute(\"SELECT COUNT(*), COUNT(sim_config_hash), COUNT(DISTINCT sim_config_hash) FROM mart_paper_sim_kpi\").fetchone()
-print(f'  total_runs           = {r1[0]}')
-print(f'  has_sim_config_hash  = {r1[1]} ({r1[1]/r1[0]*100:.1f}%)')
-print(f'  distinct_hashes      = {r1[2]} (hit-rate proxy: 重复 hash = cache hit)')
-print()
-
-# 2. hash hit (重复 hash 表示 cache-eligible)
-r2 = con.execute(\"\"\"
-  SELECT sim_config_hash, COUNT(*) as n, MIN(built_at) as first_run, MAX(built_at) as last_run
-  FROM mart_paper_sim_kpi
-  WHERE sim_config_hash IS NOT NULL
-  GROUP BY sim_config_hash
-  HAVING COUNT(*) >= 2
-  ORDER BY n DESC LIMIT 5
-\"\"\").fetchall()
-if r2:
-    print(f'  cache-hit candidates (>=2 same hash):')
-    for x in r2:
-        print(f'    hash={x[0][:12]}... n={x[1]} first={x[2]} last={x[3]}')
-else:
-    print(f'  cache-hit candidates: 0 (没重复 hash, 全新 config — 期待 implicit reuse 累积)')
-print()
-
-# 3. parent_sim_run_id chain — 形成参数演化轨迹
-r3 = con.execute(\"\"\"
-  SELECT COUNT(*) FROM mart_paper_sim_kpi WHERE parent_sim_run_id IS NOT NULL
-\"\"\").fetchone()
-print(f'  parent-linked runs   = {r3[0]} (param-evolution trace)')
-print()
-
-# 4. 同 model_id 多 run = predictions reuse implicit (Layer 2)
-r4 = con.execute(\"\"\"
-  SELECT
-    JSON_EXTRACT_STRING(config_snapshot, '\$.model_id') as mid,
-    COUNT(*) as n
-  FROM mart_paper_sim_kpi
-  WHERE config_snapshot IS NOT NULL
-  GROUP BY mid
-  HAVING COUNT(*) >= 2
-  ORDER BY n DESC LIMIT 5
-\"\"\").fetchall()
-if r4:
-    print(f'  model_id implicit predictions reuse (Layer 2):')
-    for x in r4:
-        print(f'    model_id={(x[0] or \"\")[:50]}... n={x[1]} runs')
-print()
-print('=== layer status ===')
-print('  L1 paper_sim sim_config_hash    DEPLOYED (commit a2281696)')
-print('  L2 predictions reuse implicit   IMPLICIT via model_id')
-print('  L3 panel incremental rebuild    SPEC (commit aeb8ea53), not auto')
-print('  L4 retrain warm-start           SPEC, not auto')
-con.close()
-"
+    PYTHONPATH=backend python "$REPO_ROOT/backend/scripts/incremental_cache_status.py"
 }
 
 case "$CMD" in

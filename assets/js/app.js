@@ -864,6 +864,7 @@
   var _stockListLoadingPromise = null;
   var _stockListRenderSeq = 0;
   var _stockSearchTimer = null;
+  var _stockFilterMetaByCode = Object.create(null);
   // _stockValidationSector 已删除（stock-validation 视图下线）
   function activeStockSubtab() {
     return document.querySelector('.stock-tabs .tab-btn.active')?.dataset.stab || 'list';
@@ -1037,13 +1038,6 @@
   // Step 5 任务 4：matchSignalFilter / matchAttentionFilter / matchScoreBandFilter /
   // matchScreeningFilter / matchTurtleFilter 已随筛选条瘦身一并下线，不再有调用路径。
 
-  function matchGateFilter(s) {
-    // 与显示列共用同一份 stockGateInfo 解析，杜绝「各算各的」
-    var filterGate = stockListState.getFilterGate();
-    if (filterGate === 'all') return true;
-    return stockGateInfo(s).key === filterGate;
-  }
-
   function decorateStockSearchBlob(s) {
     if (!s) return s;
     var screeningTerms = [];
@@ -1075,10 +1069,18 @@
     return s;
   }
 
-  function matchIndustryFilter(s) {
-    var filter = stockListState.getFilterIndustry();
-    if (filter === 'all') return true;
-    return (s.tdx_l1 || '').trim() === filter;
+  function buildStockFilterMetaByCode(data) {
+    var metaByCode = Object.create(null);
+    (data || []).forEach(function (s) {
+      if (!s || !s.stock_code) return;
+      var gate = stockGateInfo(s).key || '';
+      metaByCode[s.stock_code] = {
+        gate: gate,
+        industry: (s.tdx_l1 || '').trim(),
+        search: String(s._search_blob || '').toLowerCase()
+      };
+    });
+    return metaByCode;
   }
 
   function applyStockFilters() {
@@ -1087,14 +1089,14 @@
     var keyword = ((el('stockSearch')?.value) || '').trim().toLowerCase();
     var rows = el('stockListContainer')?.querySelectorAll('tbody tr[data-stock-code]');
     if (!rows) return;
-    var data = stockListState.getData() || [];
-    var stockMap = {};
-    data.forEach(function (item) { stockMap[item.stock_code] = item; });
+    var filterGate = stockListState.getFilterGate();
+    var filterIndustry = stockListState.getFilterIndustry();
     rows.forEach(function (tr) {
-      var s = stockMap[tr.dataset.stockCode];
-      if (!s) { tr.style.display = 'none'; return; }
-      var show = matchGateFilter(s) && matchIndustryFilter(s);
-      if (show && keyword) show = String(s._search_blob || '').includes(keyword);
+      var meta = _stockFilterMetaByCode[tr.dataset.stockCode];
+      if (!meta) { tr.style.display = 'none'; return; }
+      var show = (filterGate === 'all' || meta.gate === filterGate) &&
+        (filterIndustry === 'all' || meta.industry === filterIndustry);
+      if (show && keyword) show = meta.search.includes(keyword);
       tr.style.display = show ? '' : 'none';
     });
   }
@@ -1184,6 +1186,7 @@
         '</tr>';
     };
     var sourceData = stockListState.getData() || [];
+    _stockFilterMetaByCode = buildStockFilterMetaByCode(sourceData);
     var data = stockSortRows(sourceData);
     renderStockResearchSummary(sourceData, industryViewState.getSummary(), stockListState.getSummary());
     if (!sourceData.length) {
@@ -2879,9 +2882,14 @@
     var r = await api('/api/inst/institutions?show=all');
     if (!r?.data) return;
     _mgmtData = r.data;
-    var types = [...new Set(r.data.map(i => i.type).filter(Boolean))];
+    var typeCounts = {};
+    r.data.forEach(function (item) {
+      if (!item.type) return;
+      typeCounts[item.type] = (typeCounts[item.type] || 0) + 1;
+    });
+    var types = Object.keys(typeCounts);
     var filterEl = el('mgmtTypeFilter');
-    filterEl.innerHTML = typeTag('all', '全部 ' + r.data.length) + types.map(t => typeTag(t, t + ' ' + r.data.filter(i => i.type === t).length)).join('');
+    filterEl.innerHTML = typeTag('all', '全部 ' + r.data.length) + types.map(t => typeTag(t, t + ' ' + typeCounts[t])).join('');
     filterEl.querySelectorAll('.type-tag').forEach(tag => {
       tag.addEventListener('click', () => {
         filterEl.querySelectorAll('.type-tag').forEach(t => t.classList.remove('active'));

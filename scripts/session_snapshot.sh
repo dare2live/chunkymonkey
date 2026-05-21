@@ -8,7 +8,8 @@
 #
 # 跑法:
 #   bash scripts/session_snapshot.sh                # 1 命令更新
-#   bash scripts/session_snapshot.sh --no-gcp       # 跳过 GCP query (offline)
+#   bash scripts/session_snapshot.sh                # 默认跳过 GCP query (offline)
+#   CHUNKYMONKEY_GCP_EXPLICIT_OK=1 bash scripts/session_snapshot.sh --with-gcp
 #
 # Cron 集成 (configs/cron/install.sh):
 #   */5 * * * * cd /Users/dp/Documents/M/stock/chunkymonkey && bash scripts/session_snapshot.sh > /tmp/session_snapshot.log 2>&1
@@ -22,7 +23,14 @@
 set -e
 cd "$(dirname "$0")/.."
 
-NO_GCP=0
+NO_GCP=1
+if [[ "${1:-}" == "--with-gcp" ]]; then
+    if [[ "${CHUNKYMONKEY_GCP_EXPLICIT_OK:-0}" != "1" ]]; then
+        echo "BLOCK: GCP controlled-use requires CHUNKYMONKEY_GCP_EXPLICIT_OK=1" >&2
+        exit 3
+    fi
+    NO_GCP=0
+fi
 [[ "${1:-}" == "--no-gcp" ]] && NO_GCP=1
 
 SNAPSHOT_JSON=data/reports/session_snapshot.json
@@ -244,29 +252,14 @@ $RECENT_COMMITS
 
 1. **Mac 重启 / terminal 崩 后**: 启动 terminal → \`cd /Users/dp/Documents/M/stock/chunkymonkey\` → 启动 \`claude\`
 2. Claude SessionStart hook 自动 cat \`SESSION_HANDOFF.md\` 注入 context
-3. Claude 看到: 当前 retrain model_id / VM status / F2 best_value / monitor 状态 / next action
-4. Claude 按 NEXT ACTION 执行 (restart monitor / pull predictions / resume retrain / commit / etc)
+3. Claude 看到: 当前 retrain model_id / local artifacts / next action
+4. Claude 按 NEXT ACTION 执行本地工作 (audit / compare / commit / etc)
 5. 用户 0 需要 paste 长 summary
 
-如果 F2 checkpoint 存在 + retrain 被 preempt, F1 SQLite resume:
-  \`\`\`bash
-  gcloud compute instances start chunkymonkey-optuna --zone=us-central1-a
-  # SSH 跑同样命令 — Optuna load_if_exists=True 自动 resume 已完成 trials
-  gcloud compute ssh chunkymonkey-optuna --zone=us-central1-a --tunnel-through-iap --command '
-    cd ~/chunkymonkey && source .venv/bin/activate
-    setsid nohup bash -c "
-      python backend/scripts/retrain_lambdamart_v6.py --model-id $RETRAIN_MODEL_ID \\
-        --start-date 2023-01-03 --end-date 2026-05-19 --n-trials 50 --min-train-months 6 \\
-        --study-storage sqlite:///data/reports/optuna/$RETRAIN_MODEL_ID.db \\
-        --study-name $RETRAIN_MODEL_ID \\
-        --checkpoint-path data/reports/optuna/$RETRAIN_MODEL_ID.best.json \\
-        --top-k 20 > logs/retrain_$RETRAIN_MODEL_ID.log 2>&1
-      RC=\$?
-      if [ \$RC -eq 0 ]; then sudo shutdown -h +5; else sudo shutdown -h +60; fi
-    " < /dev/null > /dev/null 2>&1 &
-    disown
-  '
-  \`\`\`
+GCP controlled-use (2026-05-21 用户澄清):
+- 可用于大计算、寻优、长 replay、主项目与 BestChoice 综合寻优。
+- 启动前说明 scope、wall time/成本、输入快照、输出路径、artifact 保存与 stop/rollback。
+- 脚本层仍要求 \`CHUNKYMONKEY_GCP_EXPLICIT_OK=1\`, 防误触。
 EOF
 
 echo "[session_snapshot] updated $SNAPSHOT_JSON + $HANDOFF_MD @ $NOW"

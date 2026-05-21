@@ -25,10 +25,10 @@
 | 6 | 本地 DDL | Optuna trials 表字段 | `mart_p1_optuna_trials` has `rank_ic_mean`, `params_json`, `user_attrs_json` | `gcp/run_rankic_experiment.py` |
 | 7 | 本地历史 KPI | 2026-05-17 DuckDB 读数 | `mart_paper_sim_kpi=37 rows`, `all_kpi_pass=0`, ann range `[-80.56%, 114.15%]` | `data/smartmoney.duckdb` read-only query |
 | 8 | 本地反例 | 异常高数字红线 | `RankIC > 0.3`, `Sharpe > 5`, 年化 `>100%`, 相对提升 `>=50%` 触发 leakage 审计 | `CLAUDE.md` |
-| 9 | 本地反例 | `+312%` 假象 | `mart_per_stock_stage_strategy_optimal.sharpe` 全期 IS fit 导致事后选强 | `CLAUDE.md`, `HANDOFF.md` |
+| 9 | 本地反例 | `+312%` 假象 | `mart_per_stock_stage_strategy_optimal.sharpe` 全期 IS fit 导致事后选强 | `CLAUDE.md`, `PROJECT_INDEX.md` |
 | 10 | 本地反例 | clean baseline | P0b clean RankIC `0.0108-0.0203`; roadmap baseline `0.0246` | `CLAUDE.md`, `docs/phase4_alpha_root_cause_roadmap.md` |
 | 11 | 本地反例 | VWAP 单位错误 | akshare 股 vs tdxhub 手; 旧 `/(volume*100)` 对股单位会得 `0.11` 元级错误 | `backend/tests/paper_sim/test_vwap.py` |
-| 12 | 本地反例 | stage optimal PIT broken | `mart_per_stock_stage_strategy_optimal.built_at` 单一时间戳 | DuckDB read-only query, `HANDOFF.md` |
+| 12 | 本地反例 | stage optimal PIT broken | `mart_per_stock_stage_strategy_optimal.built_at` 单一时间戳 | DuckDB read-only query, `PROJECT_INDEX.md` |
 
 | 本文术语 | 精确定义 |
 |---|---|
@@ -1221,7 +1221,7 @@ LIMIT 10;
 
 ```bash
 rg -n "mart_per_stock_stage_strategy_optimal|win_rate_60d|volume|vwap|inst_path_a|RankIC|\\+312|0\\.0353|0\\.0246" \
-  CLAUDE.md HANDOFF.md docs backend
+  CLAUDE.md PROJECT_INDEX.md docs backend
 ```
 
 ## Part E: 反例校验
@@ -1271,7 +1271,7 @@ ORDER BY rows DESC;
 
 ```bash
 rg -n "ORDER BY .*sharpe|COALESCE\\(oos_sharpe|walk_forward_mode='none'|mart_per_stock_stage_strategy_optimal" \
-  backend/services backend/scripts backend/tests CLAUDE.md HANDOFF.md
+  backend/services backend/scripts backend/tests CLAUDE.md PROJECT_INDEX.md
 ```
 
 | Gate 输出校准 | 目标数字 |
@@ -1316,7 +1316,7 @@ ORDER BY column_name;
 
 ```bash
 rg -n "mart_institution_profile|win_rate_60d|buy_win_rate_60d|inst_path_a|latest snapshot|latest-snapshot" \
-  backend docs CLAUDE.md HANDOFF.md
+  backend docs CLAUDE.md PROJECT_INDEX.md
 ```
 
 | Gate 输出校准 | 目标数字 |

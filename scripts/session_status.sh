@@ -63,15 +63,36 @@ echo ""
 # 4. cron entries
 echo "--- crontab automation ---"
 CRON_COUNT=$(crontab -l 2>/dev/null | grep -cE "^(\*/[0-9]+|[0-9]+) [0-9*]" || echo 0)
-echo "  cron entries installed: $CRON_COUNT (期望 4: daily/cost/nightly/codex)"
+echo "  cron entries installed: $CRON_COUNT (期望 4: daily/nightly/session/workflow; GCP cost cron disabled)"
 if [[ "$CRON_COUNT" -lt 4 ]]; then
     echo "  ACTION: bash configs/cron/install.sh install  (FDA-free 自动化)"
 fi
 echo ""
 
 # 5. GCP
-echo "--- GCP cost + VM ---"
-if [[ -f "$REPO_ROOT/data/reports/gcp_cost_summary.json" ]]; then
+echo "--- GCP policy ---"
+if python3 - "$REPO_ROOT/data/reports/phase5_chain/status.json" <<'PY'
+import json
+import sys
+
+path = sys.argv[1]
+try:
+    d = json.load(open(path))
+except Exception:
+    sys.exit(1)
+
+if d.get("step") != "gcp_disabled":
+    sys.exit(1)
+
+print("  Mode: CONTROLLED_USE_IDLE")
+print(f"  VM status: {d.get('status', 'UNKNOWN')}")
+print("  Cloud query: skipped")
+print(f"  Safety latch: {d.get('requires_explicit_enable_env', 'CHUNKYMONKEY_GCP_EXPLICIT_OK=1')}")
+PY
+then
+    :
+elif [[ -f "$REPO_ROOT/data/reports/gcp_cost_summary.json" ]]; then
+    echo "  GCP controlled-use status missing; showing stale local cost summary only"
     python3 -c "
 import json
 d = json.load(open('$REPO_ROOT/data/reports/gcp_cost_summary.json'))
@@ -81,7 +102,7 @@ print(f\"  Budget: {d.get('pct_of_budget', '?')}% used\")
 print(f\"  Projected month: \${d.get('projected_month_cost', '?')}\")
 "
 else
-    echo "  cost_summary.json 不存在, 跑 bash gcp/cost_tracker.sh"
+    echo "  cost_summary.json 不存在；GCP controlled-use, 不自动运行 cost_tracker"
 fi
 echo ""
 
@@ -94,6 +115,6 @@ echo "=========================================="
 echo "Next actions (if not in cron):"
 echo "  daily update:        bash scripts/daily_update.sh"
 echo "  audit:               PYTHONPATH=backend python backend/scripts/audit_delivery_readiness.py"
-echo "  cost check:          bash gcp/cost_tracker.sh"
+echo "  cost check:          GCP controlled-use; commands require CHUNKYMONKEY_GCP_EXPLICIT_OK=1"
 echo "  cron install:        bash configs/cron/install.sh install"
 echo "=========================================="

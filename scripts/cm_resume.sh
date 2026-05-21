@@ -85,6 +85,10 @@ fi
 # Verify cron snapshot installed
 if crontab -l 2>/dev/null | grep -q "session_snapshot"; then
     echo "  [OK]   cron snapshot 已 install (5min auto-update)"
+    if [[ -f /tmp/session_snapshot.log ]] && tail -20 /tmp/session_snapshot.log 2>/dev/null | grep -qi "Operation not permitted"; then
+        echo "  [FAIL] cron snapshot runtime blocked: /tmp/session_snapshot.log has Operation not permitted"
+        echo "         本次 cm_resume 已手动刷新; 长期修复需给 cron/bash Full Disk Access 或把 repo 移出 Documents."
+    fi
 else
     echo "  [WARN] cron snapshot 未 install — handoff 不会 auto-refresh"
     echo "         install: bash scripts/install_resilience.sh"

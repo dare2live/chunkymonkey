@@ -38,6 +38,17 @@ if [ "$MODE" = "--status" ]; then
     else
         echo "  [MISS] cron workflow_checkpoint"
     fi
+    cron_blocked=0
+    for log in /tmp/session_snapshot.log /tmp/workflow_checkpoint.log; do
+        if [[ -f "$log" ]] && tail -20 "$log" 2>/dev/null | grep -qi "Operation not permitted"; then
+            echo "  [FAIL] cron runtime blocked: $log has Operation not permitted"
+            cron_blocked=1
+        fi
+    done
+    if [[ "$cron_blocked" == "1" ]]; then
+        echo "         ACTION: 手动恢复先跑 bash scripts/cm_resume.sh;"
+        echo "                 长期修复需给 cron/bash Full Disk Access 或把 repo 移出 Documents."
+    fi
     # 3. launchd
     if launchctl list 2>/dev/null | grep -q "phase5-monitor"; then
         echo "  [OK]   launchd phase5-monitor (5min probe)"

@@ -15,6 +15,9 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
+source scripts/lib/gcp_guard.sh
+require_gcp_explicit_ok "scripts/retrain_early_leakage_check.sh"
+
 MODEL_ID="${1:-$(cat data/reports/phase5_chain/model_id.txt 2>/dev/null | head -1)}"
 [ -z "$MODEL_ID" ] && { echo "ERROR: MODEL_ID not provided"; exit 1; }
 

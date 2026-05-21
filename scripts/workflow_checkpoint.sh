@@ -418,17 +418,20 @@ def step_decision() -> Evidence:
 
 
 STEP_SPECS = [
-    ("pull_predictions", "pull predictions GCS to local", step_pull_predictions),
+    ("pull_predictions", "verify local prediction artifacts", step_pull_predictions),
     ("pre_sim_audit", "pre-sim audit", step_pre_sim_audit),
     ("paper_sim_execution", "paper_sim execution", step_paper_sim_execution),
     ("kpi_ingestion", "KPI ingestion", step_kpi_ingestion),
     ("kpi_comparison", "KPI comparison", step_kpi_comparison),
     ("pareto_verdict_gatekeeper", "Pareto verdict gatekeeper", step_pareto_gatekeeper),
-    ("decision", "decision promote/ensemble/retrain", step_decision),
+    ("decision", "decision promote/reject/retrain", step_decision),
 ]
 
 RESUME_COMMANDS = {
-    "pull_predictions": f'MODEL_ID="{MODEL_ID}" bash scripts/monitor_phase5_gcp_retrain_probe.sh',
+    "pull_predictions": (
+        f'find data/phase5_exports -maxdepth 3 -name "*.duckdb" -print; '
+        f'echo "GCP disabled: import only from existing local artifacts with backend/scripts/import_phase5_remote_predictions.py"'
+    ),
     "pre_sim_audit": "PYTHONPATH=backend python backend/scripts/audit_pit_coverage.py --output-json data/reports/pit_audit.json",
     "paper_sim_execution": (
         f'PYTHONPATH=backend python backend/scripts/run_msaf_ensemble_paper_sim.py --compute-kpi --horizon 20d '
@@ -439,11 +442,13 @@ RESUME_COMMANDS = {
         f'--lambdamart-model-id "{MODEL_ID}" --output-json "data/reports/msaf_ensemble_phase5_{MODEL_ID}.json"'
     ),
     "kpi_comparison": f'PYTHONPATH=backend python backend/scripts/run_paper_sim_lambdamart_v6_compare.py --lambdamart-model-id "{MODEL_ID}"',
-    "pareto_verdict_gatekeeper": f'PYTHONPATH=backend python backend/scripts/run_phase4_gate_on_msaf.py --model-id "{MODEL_ID}" --challenger-id "msaf_phase5_{MODEL_ID}"',
+    "pareto_verdict_gatekeeper": (
+        f'PYTHONPATH=backend python backend/scripts/run_phase4_gate_on_msaf.py --model-id "{MODEL_ID}" '
+        f'--challenger-id "msaf_phase5_{MODEL_ID}" --output-json "data/reports/phase4_gate_{MODEL_ID}.json"'
+    ),
     "decision": (
-        f'P3_RUN_ID="p3_phase5_$(date +%Y%m%dT%H%M%S)"; '
-        f'PYTHONPATH=backend python backend/scripts/run_p3_final_holdout.py --model-id "{MODEL_ID}" --run-id "$P3_RUN_ID" --last-n-months 40 && '
-        f'PYTHONPATH=backend python backend/scripts/promote_champion.py --p3-run-id "$P3_RUN_ID" --reason "Phase 5 retrain {MODEL_ID}"'
+        f'PYTHONPATH=backend python backend/scripts/record_phase5_decision.py --model-id "{MODEL_ID}" '
+        f'--phase4-json "data/reports/phase4_gate_{MODEL_ID}.json"'
     ),
 }
 

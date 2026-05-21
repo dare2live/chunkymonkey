@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Phase 5 Post-Retrain Pipeline — retrain 完成后 1-click 跑完整 audit + promote
 #
-# 配套 scripts/run_phase5_extended_retrain.sh (GCP) 或 Mac local retrain (PID 79023).
+# 配套 scripts/gcp_stability_retrain.sh (GCP controlled-use) 或 Mac local retrain.
 # retrain 输出 mart_p0b_oos_predictions 含新 model_id (~40 monthly OOS), 此 script:
 # 1. backfill walkforward_eval RankIC for new model_id
 # 2. run P3 Final Holdout (新 model_id, last 40 months)

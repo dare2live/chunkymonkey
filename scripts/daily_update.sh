@@ -35,6 +35,7 @@ set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$REPO_ROOT"
+source scripts/lib/gcp_guard.sh
 
 DATE=$(date +%Y%m%d)
 LOG="/tmp/chunkymonkey_daily_update_${DATE}.log"
@@ -95,6 +96,7 @@ PY
 }
 
 run_lambdamart_v6_retrain_on_vm() {
+    require_gcp_explicit_ok "scripts/daily_update.sh --gcp"
     gcloud compute ssh "${VM_NAME}" --zone="${ZONE}" --tunnel-through-iap --command \
         "bash -s -- '${REMOTE_REPO_DIR}' '${MODEL_ID_DATE}'" <<'REMOTE'
 set -euo pipefail
@@ -124,7 +126,12 @@ log "  dry=$DRY skip_sync=$SKIP_SYNC use_gcp=$USE_GCP"
 # Step 0: GCP 成本 tracker (用户原则 CLAUDE.md §10.0.2: 不浪费 GCP 资源)
 log "--- Step 0: GCP cost tracker ---"
 COST_TRACKER_EXIT=0
-bash gcp/cost_tracker.sh --quiet >> "$LOG" 2>&1 || COST_TRACKER_EXIT=$?
+if [[ "${CHUNKYMONKEY_GCP_EXPLICIT_OK:-0}" == "1" ]]; then
+    bash gcp/cost_tracker.sh --quiet >> "$LOG" 2>&1 || COST_TRACKER_EXIT=$?
+else
+    log "GCP disabled by user rule; skip cost tracker and force local mode"
+    USE_GCP=0
+fi
 COST_ALERT=$(PYTHONPATH=backend python -c "
 import json
 try:
@@ -325,7 +332,7 @@ run_backtest_validation_gate || fatal "backtest_validation pre-flight gate faile
 # 3. 其它 days: use cached model
 #
 # GCP 改全手工触发 (不在 daily_update 自动调). 触发需 user explicit:
-#   bash scripts/run_phase5_extended_retrain.sh           # GCP 4-6h $2.26
+#   bash scripts/gcp_stability_retrain.sh                 # GCP controlled-use stability search
 #   nohup ... retrain_lambdamart_v6.py ...                # Mac local 12.8h overnight
 DOM="${CHUNKY_DOM_OVERRIDE:-$(date +%-d)}"
 MONTH="${CHUNKY_MONTH_OVERRIDE:-$(date +%-m)}"
@@ -360,7 +367,7 @@ log "alpha decay check: $ALPHA_DECAY"
 if [[ "$ALPHA_DECAY" == "DECAY" ]]; then
     log "[event-driven] Alpha decay detected (rank_ic 4 连降), 建议 retrain"
     log "  手动触发: nohup PYTHONPATH=backend python backend/scripts/retrain_lambdamart_v6.py --model-date ${MODEL_ID_DATE} > /tmp/retrain_${MODEL_ID_DATE}.log 2>&1 &"
-    log "  或 GCP: bash scripts/run_phase5_extended_retrain.sh"
+    log "  或 GCP: bash scripts/gcp_stability_retrain.sh"
 elif [[ "$IS_QUARTER_START" == "1" ]]; then
     log "[quarterly] Q$((($MONTH-1)/3+1)) 季初 (month=$MONTH day=$DOM), 建议 retrain"
     log "  手动触发: nohup PYTHONPATH=backend python backend/scripts/retrain_lambdamart_v6.py --model-date ${MODEL_ID_DATE} > /tmp/retrain_${MODEL_ID_DATE}.log 2>&1 &"

@@ -1,9 +1,13 @@
 #!/usr/bin/env bash
 # FDA-safe wrapper for phase5 monitor probe + status notification.
-# Fix: launchd context PATH 不含 /opt/homebrew/bin (gcloud here), 显式 export.
+# GCP is disabled by default; do not query VM state unless explicitly authorized.
 export PATH="/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/sbin:/usr/sbin:$PATH"
 
 REPO=/Users/dp/Documents/M/stock/chunkymonkey
+cd "$REPO"
+source scripts/lib/gcp_guard.sh
+require_gcp_explicit_ok "scripts/local_monitor/probe_wrapper.sh"
+
 STATE_DIR="$HOME/.cm_monitor"
 mkdir -p "$STATE_DIR"
 

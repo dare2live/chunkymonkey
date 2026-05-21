@@ -125,14 +125,23 @@ def main():
     print(f"| **CHAMPION ({k['sim_run_id']})** | {fmt_pct(k['annual_return'])} | {fmt_pct(k['max_dd'])} "
           f"| {fmt_num(k['sharpe'])} | {fmt_pct(k['monthly_win_rate'])} | {fmt_pct(k['excess_vs_hs300'])} |")
     baseline_swap_v1_best = None
+    baseline_ids = [bid for bid, _ in BASELINES]
+    baseline_rows = {}
+    if baseline_ids:
+        placeholders = ", ".join("?" for _ in baseline_ids)
+        baseline_rows = {
+            row[0]: row[1:]
+            for row in conn.execute(
+                f"""
+                SELECT sim_run_id, annual_return, max_dd, sharpe, monthly_win_rate, excess_vs_hs300
+                  FROM mart_paper_sim_kpi
+                 WHERE sim_run_id IN ({placeholders})
+                """,
+                baseline_ids,
+            ).fetchall()
+        }
     for bid, blabel in BASELINES:
-        brow = conn.execute(
-            """
-            SELECT annual_return, max_dd, sharpe, monthly_win_rate, excess_vs_hs300
-              FROM mart_paper_sim_kpi WHERE sim_run_id = ?
-            """,
-            [bid],
-        ).fetchone()
+        brow = baseline_rows.get(bid)
         if brow is None:
             print(f"| {blabel} | NA | NA | NA | NA | NA |")
             continue
