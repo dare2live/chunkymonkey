@@ -4,7 +4,9 @@ from __future__ import annotations
 import json
 import re
 import time
-from datetime import UTC, datetime
+from datetime import datetime, timezone
+
+UTC = timezone.utc
 from pathlib import Path
 from typing import Any
 
@@ -2189,52 +2191,58 @@ def _check_feature_table_kline_alignment(
             ")"
         )
 
+    count_exprs = [
+        f"SUM(CASE WHEN {predicate} THEN 1 ELSE 0 END) AS {_quote_ident(check_name)}"
+        for check_name, predicate in checks.items()
+    ]
+    count_row = conn.execute(f"SELECT {', '.join(count_exprs)} {join_sql}").fetchone()
+    violation_counts = {
+        check_name: int(_row_value(count_row, check_name, index) or 0)
+        for index, check_name in enumerate(checks)
+    }
+
+    def _kline_violation_examples(predicate: str) -> list[dict[str, Any]]:
+        rows = conn.execute(
+            f"""
+            SELECT p.stock_code,
+                   p.date,
+                   p.close AS panel_close,
+                   {panel_source_name_expr} AS panel_source_name,
+                   {panel_source_tier_expr} AS panel_source_tier,
+                   {panel_is_fallback_expr} AS panel_is_fallback,
+                   k.close AS canonical_close,
+                   k.source_name AS canonical_source_name,
+                   k.source_tier AS canonical_source_tier,
+                   k.is_fallback AS canonical_is_fallback
+              {join_sql}
+             WHERE {predicate}
+             ORDER BY p.date DESC, p.stock_code
+             LIMIT ?
+            """,
+            (example_limit,),
+        ).fetchall()
+        return [
+            {
+                "stock_code": _row_value(row, "stock_code", 0),
+                "date": _row_value(row, "date", 1),
+                "panel_close": _row_value(row, "panel_close", 2),
+                "panel_source_name": _row_value(row, "panel_source_name", 3),
+                "panel_source_tier": _row_value(row, "panel_source_tier", 4),
+                "panel_is_fallback": _row_value(row, "panel_is_fallback", 5),
+                "canonical_close": _row_value(row, "canonical_close", 6),
+                "canonical_source_name": _row_value(row, "canonical_source_name", 7),
+                "canonical_source_tier": _row_value(row, "canonical_source_tier", 8),
+                "canonical_is_fallback": _row_value(row, "canonical_is_fallback", 9),
+            }
+            for row in rows
+        ]
+
     evidence: dict[str, Any] = {"checked": True, "row_count": row_count}
     for check_name, predicate in checks.items():
-        violation_count = int(
-            _row_value(
-                conn.execute(f"SELECT COUNT(*) AS n {join_sql} WHERE {predicate}").fetchone(),
-                "n",
-                0,
-            )
-            or 0
-        )
+        violation_count = violation_counts[check_name]
         examples: list[dict[str, Any]] = []
         if violation_count:
-            rows = conn.execute(
-                f"""
-                SELECT p.stock_code,
-                       p.date,
-                       p.close AS panel_close,
-                       {panel_source_name_expr} AS panel_source_name,
-                       {panel_source_tier_expr} AS panel_source_tier,
-                       {panel_is_fallback_expr} AS panel_is_fallback,
-                       k.close AS canonical_close,
-                       k.source_name AS canonical_source_name,
-                       k.source_tier AS canonical_source_tier,
-                       k.is_fallback AS canonical_is_fallback
-                  {join_sql}
-                 WHERE {predicate}
-                 ORDER BY p.date DESC, p.stock_code
-                 LIMIT ?
-                """,
-                (example_limit,),
-            ).fetchall()
-            examples = [
-                {
-                    "stock_code": _row_value(row, "stock_code", 0),
-                    "date": _row_value(row, "date", 1),
-                    "panel_close": _row_value(row, "panel_close", 2),
-                    "panel_source_name": _row_value(row, "panel_source_name", 3),
-                    "panel_source_tier": _row_value(row, "panel_source_tier", 4),
-                    "panel_is_fallback": _row_value(row, "panel_is_fallback", 5),
-                    "canonical_close": _row_value(row, "canonical_close", 6),
-                    "canonical_source_name": _row_value(row, "canonical_source_name", 7),
-                    "canonical_source_tier": _row_value(row, "canonical_source_tier", 8),
-                    "canonical_is_fallback": _row_value(row, "canonical_is_fallback", 9),
-                }
-                for row in rows
-            ]
+            examples = _kline_violation_examples(predicate)
         item = _detail(
             domain="feature_panel_kline",
             table_name=table_name,
@@ -3727,6 +3735,8 @@ def _is_forbidden_cleanup_name(name: str, *, table_name: bool = False) -> bool:
 
 
 def _is_forbidden_cleanup_artifact(path: Path) -> bool:
+    if path.parent.name == "analysis" and path.name.startswith("session_archive_"):
+        return False
     return _is_forbidden_cleanup_name(path.name, table_name=False)
 
 
@@ -3861,31 +3871,53 @@ def _check_data_processing_monitor(
     unclassified_rejected_runs = 0
     issue_rows = 0
     checked_tables = [table for table, _ in tables]
-    for run_table, issue_table in tables:
-        row = conn.execute(
-            f"SELECT COUNT(*) AS n FROM {_quote_table(run_table)}"
-        ).fetchone()
-        total_rows += int(_row_value(row, "n", 0) or 0)
-        recent = conn.execute(
-            f"""
-            SELECT run_id, tool_name, source_name, rejected_rows, reason_counts_json, duration_s
-              FROM {_quote_table(run_table)}
-             ORDER BY ended_at DESC
-             LIMIT {int(recent_limit)}
-            """
-        ).fetchall()
+    run_count_sql = "\nUNION ALL\n".join(
+        f"SELECT ? AS table_name, COUNT(*) AS n FROM {_quote_table(run_table)}"
+        for run_table, _ in tables
+    )
+    run_count_rows = conn.execute(run_count_sql, checked_tables).fetchall()
+    total_rows = sum(int(_row_value(row, "n", 1) or 0) for row in run_count_rows)
+
+    recent_sql = "\nUNION ALL\n".join(
+        f"""
+        SELECT ? AS table_name, run_id, tool_name, source_name, rejected_rows, reason_counts_json, duration_s
+          FROM (
+                SELECT run_id, tool_name, source_name, rejected_rows, reason_counts_json, duration_s, ended_at
+                  FROM {_quote_table(run_table)}
+                 ORDER BY ended_at DESC
+                 LIMIT {int(recent_limit)}
+          )
+        """.strip()
+        for run_table, _ in tables
+    )
+    recent_rows = conn.execute(recent_sql, checked_tables).fetchall()
+    recent_by_table: dict[str, list[Any]] = {run_table: [] for run_table, _ in tables}
+    for row in recent_rows:
+        recent_by_table.setdefault(str(_row_value(row, "table_name", 0)), []).append(row)
+
+    issue_tables = [issue_table for _, issue_table in tables if issue_table]
+    if issue_tables:
+        issue_count_sql = "\nUNION ALL\n".join(
+            f"SELECT ? AS table_name, COUNT(*) AS n FROM {_quote_table(issue_table)}"
+            for issue_table in issue_tables
+        )
+        issue_count_rows = conn.execute(issue_count_sql, issue_tables).fetchall()
+        issue_rows = sum(int(_row_value(row, "n", 1) or 0) for row in issue_count_rows)
+
+    for run_table, _issue_table in tables:
+        recent = recent_by_table.get(run_table, [])
         for item_row in recent:
-            rejected = int(_row_value(item_row, "rejected_rows", 3) or 0)
+            rejected = int(_row_value(item_row, "rejected_rows", 4) or 0)
             if rejected <= 0:
                 continue
             rejected_runs += 1
-            reason_counts = _safe_json_load(_row_value(item_row, "reason_counts_json", 4))
+            reason_counts = _safe_json_load(_row_value(item_row, "reason_counts_json", 5))
             if not isinstance(reason_counts, dict) or not reason_counts:
                 unclassified_rejected_runs += 1
                 item = _detail(
                     domain="data_processing_monitor",
                     table_name=run_table,
-                    column_name=str(_row_value(item_row, "tool_name", 1)),
+                    column_name=str(_row_value(item_row, "tool_name", 2)),
                     check_name="rejected_rows_have_reason",
                     status="fail",
                     row_count=len(recent),
@@ -3893,18 +3925,13 @@ def _check_data_processing_monitor(
                     reason="rejected rows must carry machine-readable rejection reason counts",
                     examples=[
                         {
-                            "run_id": _row_value(item_row, "run_id", 0),
-                            "source_name": _row_value(item_row, "source_name", 2),
+                            "run_id": _row_value(item_row, "run_id", 1),
+                            "source_name": _row_value(item_row, "source_name", 3),
                             "rejected_rows": rejected,
                         }
                     ],
                 )
                 _append_outcome(item, details=details, blockers=blockers, warnings=warnings)
-        if issue_table:
-            row = conn.execute(
-                f"SELECT COUNT(*) AS n FROM {_quote_table(issue_table)}"
-            ).fetchone()
-            issue_rows += int(_row_value(row, "n", 0) or 0)
 
     details.append(_detail(
         domain="data_processing_monitor",

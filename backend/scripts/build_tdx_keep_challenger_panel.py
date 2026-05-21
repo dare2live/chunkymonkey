@@ -124,17 +124,22 @@ def build_panel(
         """,
         (feature_set_id,),
     ).fetchone()
-    coverage = {}
-    for feature in TDX_KEEP_FEATURE_COLS:
-        c = conn.execute(
-            f"""
-            SELECT COUNT({feature}) * 100.0 / NULLIF(COUNT(*), 0)
-              FROM fact_feature_panel_tdx_keep_challenger
-             WHERE feature_set_id = ?
-            """,
-            (feature_set_id,),
-        ).fetchone()[0]
-        coverage[feature] = float(c or 0.0)
+    coverage_select = [
+        f"COUNT({feature}) * 100.0 / NULLIF(COUNT(*), 0) AS c_{idx}"
+        for idx, feature in enumerate(TDX_KEEP_FEATURE_COLS)
+    ]
+    coverage_row = conn.execute(
+        f"""
+        SELECT {', '.join(coverage_select)}
+          FROM fact_feature_panel_tdx_keep_challenger
+         WHERE feature_set_id = ?
+        """,
+        (feature_set_id,),
+    ).fetchone()
+    coverage = {
+        feature: float((coverage_row[idx] if coverage_row else 0.0) or 0.0)
+        for idx, feature in enumerate(TDX_KEEP_FEATURE_COLS)
+    }
     return {
         "feature_set_id": feature_set_id,
         "source_feature_set_id": source_feature_set_id,

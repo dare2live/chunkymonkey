@@ -50,6 +50,49 @@ class TestCompositeScore:
         )
         assert abs(m["trade_penalty"] - 0.5) < 1e-6
 
+    def test_build_composite_batches_model_metrics(self, conn):
+        from services.research.composite_score import build_composite_for_all_models
+        conn.executescript(
+            """
+            CREATE TABLE mart_paper_nav (
+                model_id TEXT,
+                snapshot_date INTEGER,
+                daily_ret DOUBLE,
+                drawdown DOUBLE
+            );
+            CREATE TABLE fact_paper_position (
+                model_id TEXT,
+                side TEXT
+            );
+            CREATE TABLE mart_signal_ic (
+                snapshot_date INTEGER,
+                ic_10d DOUBLE
+            );
+            """
+        )
+        conn.executemany(
+            "INSERT INTO mart_paper_nav VALUES (?, ?, ?, ?)",
+            [
+                ("m_a", 1, 0.01, -0.01),
+                ("m_a", 2, 0.02, -0.02),
+                ("m_b", 1, -0.01, -0.30),
+                ("m_b", 2, 0.01, -0.30),
+            ],
+        )
+        conn.executemany("INSERT INTO fact_paper_position VALUES (?, ?)", [("m_a", "sell")] * 40 + [("m_b", "sell")] * 40)
+        conn.executemany("INSERT INTO mart_signal_ic VALUES (?, ?)", [(i, 0.05) for i in range(1, 71)])
+
+        assert build_composite_for_all_models(conn, "2026-05-21") == 2
+        rows = conn.execute(
+            """
+            SELECT model_id, n_paper_trades, edge_guard
+            FROM mart_model_composite_score
+            WHERE eval_date = '2026-05-21'
+            ORDER BY model_id
+            """
+        ).fetchall()
+        assert [(r[0], r[1], r[2]) for r in rows] == [("m_a", 40, 1.0), ("m_b", 40, 0.0)]
+
 
 # ===================== edge_flags =====================
 class TestEdgeFlags:
@@ -102,6 +145,52 @@ class TestEdgeFlags:
             single_day_max_loss=-0.02, rolling_ic_4w_change=0.001,
         )
         assert f["flag_type"] == "RISKY"
+
+    def test_build_edge_flags_batches_model_metrics(self, conn):
+        from services.research.edge_flags import build_edge_flags_for_all_models
+        conn.executescript(
+            """
+            CREATE TABLE mart_paper_nav (
+                model_id TEXT,
+                snapshot_date INTEGER,
+                daily_ret DOUBLE,
+                drawdown DOUBLE
+            );
+            CREATE TABLE fact_paper_position (
+                model_id TEXT,
+                side TEXT
+            );
+            CREATE TABLE mart_signal_ic (
+                snapshot_date INTEGER,
+                ic_10d DOUBLE
+            );
+            """
+        )
+        conn.executemany(
+            "INSERT INTO mart_paper_nav VALUES (?, ?, ?, ?)",
+            [
+                ("m_a", 1, 0.01, -0.01),
+                ("m_a", 2, 0.02, -0.02),
+                ("m_b", 1, -0.01, -0.30),
+                ("m_b", 2, 0.01, -0.30),
+            ],
+        )
+        conn.executemany("INSERT INTO fact_paper_position VALUES (?, ?)", [("m_a", "sell")] * 40 + [("m_b", "sell")] * 40)
+        conn.executemany("INSERT INTO mart_signal_ic VALUES (?, ?)", [(i, 0.01 + i * 0.001) for i in range(1, 71)])
+
+        assert build_edge_flags_for_all_models(conn, "2026-05-21") == 2
+        rows = conn.execute(
+            """
+            SELECT model_id, flag_type, trigger_metric
+            FROM mart_model_edge_flags
+            WHERE eval_date = '2026-05-21'
+            ORDER BY model_id
+            """
+        ).fetchall()
+        assert [(r[0], r[1], r[2]) for r in rows] == [
+            ("m_a", "NORMAL", None),
+            ("m_b", "RISKY", "paper_max_drawdown"),
+        ]
 
 
 # ===================== reflection_log =====================

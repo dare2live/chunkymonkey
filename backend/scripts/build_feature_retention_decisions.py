@@ -90,6 +90,17 @@ EVENT_LIKE_FEATURES = {
 PRODUCTION_MIN_COVERAGE_PCT = 60.0
 
 
+def _quote_ident(name: str) -> str:
+    return '"' + name.replace('"', '""') + '"'
+
+
+def _row_get(row: Any, key: str, index: int) -> Any:
+    try:
+        return row[key]
+    except (TypeError, KeyError, IndexError):
+        return row[index]
+
+
 def ensure_tables(conn: Any) -> None:
     if hasattr(conn, "executescript"):
         conn.executescript(DDL)
@@ -135,27 +146,43 @@ def _latest_ablation_run(conn: Any, feature_set_id: str) -> str | None:
     return row[0] if row else None
 
 
-def _corr_with_kept(conn: Any, feature_set_id: str, feature: str, kept: list[str]) -> tuple[float | None, str | None]:
-    best_corr = None
-    best_peer = None
-    for peer in kept:
-        if peer == feature:
-            continue
-        row = conn.execute(
-            f"""
-            SELECT corr({feature}, {peer}) AS c
-            FROM fact_feature_panel_candidate
-            WHERE feature_set_id = ?
-              AND {feature} IS NOT NULL
-              AND {peer} IS NOT NULL
-            """,
-            (feature_set_id,),
-        ).fetchone()
-        corr = abs(float(row["c"])) if row and row["c"] is not None else None
+def _corr_with_kept_by_feature(
+    conn: Any,
+    feature_set_id: str,
+    features: list[str],
+    kept: list[str],
+) -> dict[str, tuple[float | None, str | None]]:
+    aliases: dict[str, tuple[str, str]] = {}
+    select_parts = []
+    for feature in features:
+        for peer in kept:
+            if peer == feature:
+                continue
+            alias = f"c_{len(aliases)}"
+            aliases[alias] = (feature, peer)
+            select_parts.append(f"corr({_quote_ident(feature)}, {_quote_ident(peer)}) AS {_quote_ident(alias)}")
+    if not select_parts:
+        return {feature: (None, None) for feature in features}
+
+    row = conn.execute(
+        f"""
+        SELECT {", ".join(select_parts)}
+        FROM fact_feature_panel_candidate
+        WHERE feature_set_id = ?
+        """,
+        (feature_set_id,),
+    ).fetchone()
+
+    best: dict[str, tuple[float | None, str | None]] = {feature: (None, None) for feature in features}
+    if not row:
+        return best
+    for idx, (alias, (feature, peer)) in enumerate(aliases.items()):
+        raw = _row_get(row, alias, idx)
+        corr = abs(float(raw)) if raw is not None else None
+        best_corr, _ = best[feature]
         if corr is not None and (best_corr is None or corr > best_corr):
-            best_corr = corr
-            best_peer = peer
-    return best_corr, best_peer
+            best[feature] = (corr, peer)
+    return best
 
 
 def _table_columns(conn: Any, table: str) -> set[str]:
@@ -227,15 +254,23 @@ def build_feature_candidate_coverage(
 
     out: dict[str, dict[str, Any]] = {}
     rows_to_write = []
-    for feature in candidate_features:
-        non_null = conn.execute(
+    if candidate_features:
+        coverage_select = [
+            f"COUNT({_quote_ident(feature)}) AS {_quote_ident(feature)}"
+            for feature in candidate_features
+        ]
+        coverage_count_row = conn.execute(
             f"""
-            SELECT COUNT({feature}) AS n
+            SELECT {", ".join(coverage_select)}
               FROM fact_feature_panel_candidate
              WHERE {where_sql}
             """,
             params,
-        ).fetchone()["n"]
+        ).fetchone()
+    else:
+        coverage_count_row = None
+    for idx, feature in enumerate(candidate_features):
+        non_null = _row_get(coverage_count_row, feature, idx) if coverage_count_row else 0
         coverage_pct = float(non_null or 0) * 100.0 / float(total or 1)
         pit_violations = int(pit_rows.get(feature, 0))
         production_ready = coverage_pct >= min_coverage_pct and pit_violations == 0
@@ -367,6 +402,11 @@ def build_feature_retention_decisions(
     }
 
     kept_features = [f for f, row in score_rows.items() if row["selected"]]
+    corr_with_kept = (
+        {}
+        if feature_set_id.startswith("tdx_gpcw_auto")
+        else _corr_with_kept_by_feature(conn, feature_set_id, candidate_features, kept_features)
+    )
     output_rows = []
     for feature in candidate_features:
         stat = score_rows.get(feature)
@@ -393,7 +433,7 @@ def build_feature_retention_decisions(
         if feature_set_id.startswith("tdx_gpcw_auto"):
             max_corr, corr_peer = None, None
         else:
-            max_corr, corr_peer = _corr_with_kept(conn, feature_set_id, feature, kept_features)
+            max_corr, corr_peer = corr_with_kept.get(feature, (None, None))
 
         decision = "watch"
         reason = "monitor"

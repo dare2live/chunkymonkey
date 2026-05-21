@@ -82,9 +82,8 @@ def main() -> int:
     conn.execute(f"ATTACH IF NOT EXISTS '{market_db}' AS market (READ_ONLY)")
 
     # Prereq
-    for tbl in ("mart_stock_industry_pit",):
-        r = conn.execute(f"SELECT COUNT(*) FROM {tbl}").fetchone()[0]
-        log.info(f"  prereq {tbl}: {r:,} rows")
+    r = conn.execute("SELECT COUNT(*) FROM mart_stock_industry_pit").fetchone()[0]
+    log.info(f"  prereq mart_stock_industry_pit: {r:,} rows")
 
     if args.incremental:
         conn.execute(DDL_CREATE_IF_NOT_EXISTS)

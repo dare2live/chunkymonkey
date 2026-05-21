@@ -214,27 +214,28 @@ def compute_horizon_evidence(
         list(formula_ids),
     )
 
+    signal_rows = conn.execute(
+        f"""
+        SELECT formula_id, formula_variant, stock_code, date
+          FROM fact_technical_trigger
+         WHERE formula_id IN ({placeholders}) AND date >= ? AND date <= ?
+         ORDER BY formula_id, formula_variant, stock_code, date
+        """,
+        [*formula_ids, eval_start, eval_end],
+    ).fetchall()
+    rows_by_formula_variant: dict[str, dict[str, list[tuple]]] = defaultdict(lambda: defaultdict(list))
+    for formula_id, variant, stock_code, signal_date in signal_rows:
+        rows_by_formula_variant[formula_id][variant].append((stock_code, signal_date))
+
+    evidence_rows = []
     for formula_id in formula_ids:
-        # 拉出该 formula 所有 (variant, stock_code, signal_date) 三元组
-        signal_rows = conn.execute(
-            """
-            SELECT formula_variant, stock_code, date
-              FROM fact_technical_trigger
-             WHERE formula_id = ? AND date >= ? AND date <= ?
-             ORDER BY formula_variant, stock_code, date
-            """,
-            [formula_id, eval_start, eval_end],
-        ).fetchall()
-        if not signal_rows:
+        rows_by_variant = rows_by_formula_variant.get(formula_id, {})
+        n_formula_signals = sum(len(rows) for rows in rows_by_variant.values())
+        if not n_formula_signals:
             log.warning(f"  {formula_id}: 无信号")
             continue
 
-        # group by variant
-        from collections import defaultdict
-        rows_by_variant: dict[str, list[tuple]] = defaultdict(list)
-        for variant, sc, d in signal_rows:
-            rows_by_variant[variant].append((sc, d))
-        log.info(f"  {formula_id}: {len(signal_rows)} 信号 / {len(rows_by_variant)} variants")
+        log.info(f"  {formula_id}: {n_formula_signals} 信号 / {len(rows_by_variant)} variants")
 
         for variant, sig_rows in rows_by_variant.items():
             returns_by_hd: dict[int, list[float]] = {hd: [] for hd in HOLDING_DAYS}
@@ -277,19 +278,34 @@ def compute_horizon_evidence(
                 sharpe = float(avg_ret / std_ret * np.sqrt(252 / hd)) if std_ret > 0 else 0.0
                 calmar = float(avg_ret / abs(avg_dd)) if avg_dd < 0 else 0.0
 
-                conn.execute(
-                    """
-                    INSERT OR REPLACE INTO mart_formula_horizon_evidence
-                      (formula_id, formula_variant, holding_days, eval_start_date, eval_end_date,
-                       n_signals, n_matured, win_rate, avg_ret, avg_dd, median_ret, calmar, sharpe,
-                       built_at)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
-                    """,
-                    [formula_id, variant, hd, eval_start, eval_end,
-                     len(sig_rows), len(returns), win_rate, avg_ret, avg_dd, median_ret, calmar, sharpe],
-                )
+                evidence_rows.append((
+                    formula_id,
+                    variant,
+                    hd,
+                    eval_start,
+                    eval_end,
+                    len(sig_rows),
+                    len(returns),
+                    win_rate,
+                    avg_ret,
+                    avg_dd,
+                    median_ret,
+                    calmar,
+                    sharpe,
+                ))
                 written += 1
                 log.info(f"    {variant} × {hd}d: win {win_rate:.1%} avg_ret {avg_ret:+.2%} sharpe {sharpe:.2f} (n_matured={len(returns)})")
+    if evidence_rows:
+        conn.executemany(
+            """
+            INSERT OR REPLACE INTO mart_formula_horizon_evidence
+              (formula_id, formula_variant, holding_days, eval_start_date, eval_end_date,
+               n_signals, n_matured, win_rate, avg_ret, avg_dd, median_ret, calmar, sharpe,
+               built_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+            """,
+            evidence_rows,
+        )
     conn.commit()
     return written
 

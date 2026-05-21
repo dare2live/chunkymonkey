@@ -209,17 +209,58 @@ def test_workbench_frontend_render_smoke_for_all_tabs():
           architecture: { run_id: 'arch_1', classification_counts: { production: 10 }, cleanup_candidates: [] },
           architecture_cleanup: { run_id: 'cleanup_1', status_counts: { blocked: 1 }, candidates: [] },
         };
+        const delivery = {
+          ready_for_delivery: false,
+          verdict: 'NOT_READY',
+          avg_pct: 92.83,
+          live_go_no_go: {
+            pct: 80,
+            ship_baseline_passed: true,
+            perfect_ladder_ready: false,
+            msaf_n_obs: 22,
+            msaf_sharpe: 0.81,
+            msaf_max_dd: -0.2428,
+          },
+          live_gate: {
+            model_id: 'live_model',
+            promote_action: 'block',
+            pbo: { passes: true, reason: 'PBO=0.145' },
+            dsr: { passes: true, reason: 'DSR p_conf=0.9825' },
+            conservative: { passes: true, reason: 'pass' },
+            is_oos: { passes: false, reason: 'proxy fail' },
+          },
+          challenger: {
+            model_id: 'phase5_model',
+            decision: { decision: 'hold_reject', production_status: 'candidate_hold_reject' },
+            gate: {
+              n_obs_20d: 34,
+              n_obs_5d: 135,
+              pbo: { passes: false, reason: 'PBO=0.626' },
+            },
+          },
+          sources: {
+            available: { institution: true },
+            wired: { institution: false },
+            institution_evaluation: { production_decision: 'hold_reject' },
+          },
+          blockers: [
+            { scope: 'milestone', text: 'n_obs 22 < 30 for 85%' },
+            { scope: 'challenger', text: 'pbo: PBO=0.626' },
+          ],
+          criteria: [{ criterion: '实盘 GO/NO-GO', pct: 80, verdict: 'PASS', msaf_n_obs: 22 }],
+        };
 
         render('_renderOverview', overview, ['最新完成交易日', 'cron_daily', 'champion_a']);
         render('_renderDataSources', dataSources, ['K线主源', 'tdxhub_quote', '信号快照', '今日信号快照', '数据源水位', 'TDX K线服务器健康', 'TDX F10 Source-Date Audit', 'plan_window_used_as_source_date']);
         render('_renderPipelines', pipelines, ['最近运行', 'cron_daily', '最慢运行']);
         render('_renderFeatures', features, ['Registry', 'Feature Search Space', '漂移缓解候选', 'mitigation_1', 'ret_20d']);
+        render('_renderDelivery', delivery, ['GO/NO-GO Delivery Board', 'NOT_READY', 'Rejected Challenger', 'PBO=0.626', 'Remaining Gaps']);
         render('_renderResearch', research, ['研究队列', 'Ranker 性能', 'Rank Matrix Cache', 'rank_matrix_cache_hit', 'ranker_perf', '个股持股周期画像', 'Top 变量影响', 'ma_ratio_250', '股东计划特征家族', 'plan_family_1', 'initial_event', 'shareholder_plan_decrease_count_180d', '行业 PIT 就绪度', 'industry_pit_1', '时序协同研究', 'signal_a']);
         render('_renderChampion', champion, ['Champion 阻塞上下文', 'deployed', 'champion_a']);
         render('_renderRecommendations', recommendations, ['Primary TopK', 'tdxhub_quote', '平安银行']);
         render('_renderStorage', storage, ['清理计划', '架构清理计划', 'cleanup_1']);
 
-        ['_renderOverview', '_renderDataSources', '_renderPipelines', '_renderFeatures',
+        ['_renderOverview', '_renderDataSources', '_renderPipelines', '_renderFeatures', '_renderDelivery',
          '_renderResearch', '_renderChampion', '_renderRecommendations', '_renderStorage'].forEach((name) => {
           elements['wb-tab-root'].innerHTML = '';
           window.WorkbenchView[name]({});

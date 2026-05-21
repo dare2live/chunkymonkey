@@ -190,13 +190,13 @@ def main() -> int:
             "DELETE FROM mart_p0b_walkforward_eval WHERE run_id = ? AND model_id = ?",
             [run_id, model_id],
         )
-        for i, win in enumerate(result.windows):
-            conn.execute(
-                """INSERT INTO mart_p0b_walkforward_eval
-                   (run_id, window_idx, model_id, model_version, feature_version, label_version,
-                    walk_forward_mode, train_start, train_end, test_start, test_end,
-                    n_train, n_test, rank_ic, rank_ic_ir, built_at)
-                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+        conn.executemany(
+            """INSERT INTO mart_p0b_walkforward_eval
+               (run_id, window_idx, model_id, model_version, feature_version, label_version,
+                walk_forward_mode, train_start, train_end, test_start, test_end,
+                n_train, n_test, rank_ic, rank_ic_ir, built_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            [
                 [
                     run_id, i, model_id, "v3.lambdamart", args.feature_version, args.label_version,
                     "expanding_monthly", win.train_start, win.train_end,
@@ -206,7 +206,9 @@ def main() -> int:
                     None if math.isnan(win.rank_ic_ir) else win.rank_ic_ir,
                     built_at,
                 ]
-            )
+                for i, win in enumerate(result.windows)
+            ],
+        )
 
         return 0
     finally:

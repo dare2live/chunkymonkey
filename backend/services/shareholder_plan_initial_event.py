@@ -1,7 +1,9 @@
 """Initial shareholder-plan event mart built from TDX/F10 latest-state rows."""
 from __future__ import annotations
 
-from datetime import UTC, datetime
+from datetime import datetime, timezone
+
+UTC = timezone.utc
 from typing import Any
 
 from services.schema_versions import record_actual_version

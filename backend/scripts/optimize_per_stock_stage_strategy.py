@@ -134,6 +134,12 @@ def main():
                         help="只跑指定公式 (多个空格分隔), e.g., "
                              "--formula reversal_1m_deep reversal_1m_mild. "
                              "默认跑全部公式. 不重 DELETE 其他公式 — 增量 UPSERT 同表.")
+    parser.add_argument("--stock-codes", nargs="+", default=None,
+                        help="只跑指定股票代码 (多个空格分隔). 用于 PIT 覆盖定向补表; "
+                             "写库时只替换这些股票的 stage-opt 行.")
+    parser.add_argument("--limit-stocks", type=int, default=None,
+                        help="按 stock_code 排序后只跑前 N 只股票, smoke/debug 用. "
+                             "写库时只替换实际运行股票的 stage-opt 行.")
     args = parser.parse_args()
 
     if args.end is None:
@@ -159,6 +165,14 @@ def main():
         formula_filter_sql = f" AND t.formula_id IN ({placeholders})"
         formula_filter_params = list(args.formula)
         log.info(f"  --formula 过滤: {args.formula}")
+    stock_filter_sql = ""
+    stock_filter_params: list = []
+    if args.stock_codes:
+        stock_codes = sorted({str(code).strip() for code in args.stock_codes if str(code).strip()})
+        placeholders = ",".join(["?"] * len(stock_codes))
+        stock_filter_sql = f" AND t.stock_code IN ({placeholders})"
+        stock_filter_params = stock_codes
+        log.info(f"  --stock-codes 过滤: {stock_codes}")
     sigs = mkt.execute(
         f"""SELECT t.stock_code, t.date, t.formula_id, t.formula_variant,
                   COALESCE(c.technical_stage, '?') AS stage
@@ -167,8 +181,9 @@ def main():
                ON c.stock_code = t.stock_code AND c.date = t.date
             WHERE t.date >= ? AND t.date <= ?
               {formula_filter_sql}
+              {stock_filter_sql}
             ORDER BY t.stock_code, t.formula_variant, t.date""",
-        [args.start, args.end] + formula_filter_params,
+        [args.start, args.end] + formula_filter_params + stock_filter_params,
     ).fetchall()
     n_raw = len(sigs)
     sigs = [r for r in sigs if not is_index_code(r[0]) and r[4] in ("1", "1.5", "2", "3", "4")]
@@ -188,6 +203,14 @@ def main():
 
     # 4. 加载 K 线
     all_codes = sorted({k[0] for k in keys_to_optimize})
+    if args.limit_stocks is not None:
+        all_codes = all_codes[: max(0, args.limit_stocks)]
+        allowed_codes = set(all_codes)
+        keys_to_optimize = [k for k in keys_to_optimize if k[0] in allowed_codes]
+        log.info(f"  --limit-stocks 生效: {len(all_codes):,} stocks, {len(keys_to_optimize):,} tasks")
+    if not all_codes or not keys_to_optimize:
+        log.warning("无可优化 stock/task, 退出且不修改业务表")
+        return
     log.info(f"加载 {len(all_codes):,} 股 K 线 ...")
     placeholders = ",".join(["?"] * len(all_codes))
     kl_rows = mkt.execute(
@@ -294,12 +317,29 @@ def main():
         table = cfg.output.stage_optimal_table
         conn.execute("BEGIN TRANSACTION")
         try:
-            # Phase ψ.α: 增量删除 — 只清本次跑的 formula_id 行, 不动其他公式数据
-            if args.formula:
+            # Phase ψ.α: 增量删除 — targeted run 只清本次跑的 stock/formula 行, 不动其他数据
+            run_stock_codes = sorted({row[0] for row in validated_rows})
+            if run_stock_codes:
+                stock_placeholders = ",".join(["?"] * len(run_stock_codes))
+                stock_where = f"stock_code IN ({stock_placeholders})"
+                stock_params = run_stock_codes
+            else:
+                stock_where = ""
+                stock_params = []
+            if not validated_rows:
+                log.warning("无 governance pass rows, 跳过业务表 DELETE/INSERT")
+                conn.execute("COMMIT")
+                return
+            if args.formula and stock_where:
                 placeholders = ",".join(["?"] * len(args.formula))
-                conn.execute(f"DELETE FROM {table} WHERE formula_id IN ({placeholders})",
-                             list(args.formula))
-                log.info(f"  增量 DELETE {table} WHERE formula_id IN {args.formula}")
+                conn.execute(
+                    f"DELETE FROM {table} WHERE {stock_where} AND formula_id IN ({placeholders})",
+                    stock_params + list(args.formula),
+                )
+                log.info(f"  增量 DELETE {table} WHERE stock_code IN run set AND formula_id IN {args.formula}")
+            elif stock_where:
+                conn.execute(f"DELETE FROM {table} WHERE {stock_where}", stock_params)
+                log.info(f"  增量 DELETE {table} WHERE stock_code IN run set ({len(run_stock_codes)} stocks)")
             else:
                 conn.execute(f"DELETE FROM {table}")
                 log.info(f"  全量 DELETE FROM {table}")

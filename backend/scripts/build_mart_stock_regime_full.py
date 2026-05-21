@@ -203,8 +203,14 @@ def main() -> int:
 
     # 5 acceptance audits
     log.info("\n=== acceptance audits ===")
-    for name, sql in ACCEPTANCE_AUDIT_SQL.items():
-        r = conn.execute(sql).fetchone()
+    audit_results = [
+        ("PIT-integrity-candle", conn.execute(ACCEPTANCE_AUDIT_SQL["PIT-integrity-candle"]).fetchone()),
+        ("PIT-integrity-regime", conn.execute(ACCEPTANCE_AUDIT_SQL["PIT-integrity-regime"]).fetchone()),
+        ("Feature-coverage", conn.execute(ACCEPTANCE_AUDIT_SQL["Feature-coverage"]).fetchone()),
+        ("Row-count", conn.execute(ACCEPTANCE_AUDIT_SQL["Row-count"]).fetchone()),
+        ("Schema", conn.execute(ACCEPTANCE_AUDIT_SQL["Schema"]).fetchone()),
+    ]
+    for name, r in audit_results:
         log.info(f"  {name}: {r}")
 
     return 0

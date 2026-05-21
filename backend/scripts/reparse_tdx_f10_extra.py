@@ -39,19 +39,49 @@ def _table_exists(conn: Any, table: str) -> bool:
     return bool(row)
 
 
+def _existing_derived_tables(conn: Any) -> list[str]:
+    placeholders = ",".join(["?"] * len(DERIVED_TABLES))
+    rows = conn.execute(
+        f"""
+        SELECT table_name
+        FROM information_schema.tables
+        WHERE table_schema = 'main' AND table_name IN ({placeholders})
+        """,
+        DERIVED_TABLES,
+    ).fetchall()
+    existing = {str(row[0]) for row in rows}
+    return [table for table in DERIVED_TABLES if table in existing]
+
+
+def _table_counts(conn: Any, tables: list[str]) -> dict[str, int]:
+    if not tables:
+        return {}
+    sql = "\nUNION ALL\n".join(
+        f"SELECT '{table}' AS table_name, COUNT(*) AS row_count FROM \"{table}\""
+        for table in tables
+    )
+    return {str(row[0]): int(row[1]) for row in conn.execute(sql).fetchall()}
+
+
 def _delete_derived_rows(conn: Any, stock_codes: list[str] | None) -> dict[str, int]:
-    deleted: dict[str, int] = {}
-    for table in DERIVED_TABLES:
-        if not _table_exists(conn, table):
-            continue
-        before = conn.execute(f'SELECT COUNT(*) FROM "{table}"').fetchone()[0]
-        if stock_codes:
-            placeholders = ",".join(["?"] * len(stock_codes))
-            conn.execute(f'DELETE FROM "{table}" WHERE stock_code IN ({placeholders})', stock_codes)
-        else:
-            conn.execute(f'DELETE FROM "{table}"')
-        after = conn.execute(f'SELECT COUNT(*) FROM "{table}"').fetchone()[0]
-        deleted[table] = int(before - after)
+    tables = _existing_derived_tables(conn)
+    before = _table_counts(conn, tables)
+    if stock_codes:
+        conn.execute("CREATE OR REPLACE TEMP TABLE __reparse_tdx_f10_target_codes(stock_code TEXT)")
+        conn.executemany(
+            "INSERT INTO __reparse_tdx_f10_target_codes VALUES (?)",
+            [(code,) for code in stock_codes],
+        )
+        delete_script = "\n".join(
+            f'DELETE FROM "{table}" WHERE stock_code IN (SELECT stock_code FROM __reparse_tdx_f10_target_codes);'
+            for table in tables
+        )
+        conn.executescript(delete_script)
+        conn.execute("DROP TABLE IF EXISTS __reparse_tdx_f10_target_codes")
+    elif tables:
+        conn.executescript("\n".join(f'DELETE FROM "{table}";' for table in tables))
+    after = _table_counts(conn, tables)
+    deleted = {table: before.get(table, 0) - after.get(table, 0) for table in tables}
     conn.commit()
     return deleted
 

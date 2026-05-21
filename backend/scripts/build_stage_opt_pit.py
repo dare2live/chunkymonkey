@@ -80,9 +80,9 @@ def main() -> int:
                         default="2024-07-01,2025-01-01,2025-07-01,2026-01-01",
                         help="comma-sep cutoff_dates (半年频)")
     parser.add_argument("--limit-stocks", type=int, default=None,
-                        help="限制 stock 数 (smoke 测试用) — ⚠ Codex M4 (a163ca58): 当前只 ETL 阶段 limit, "
-                             "optimize_per_stock_stage_strategy.py 全量跑 (subprocess 没 --limit-stocks arg). "
-                             "TODO: 加 arg forwarding 让 smoke 真 1h, 当前 smoke 仍 ~12h × 1 cutoff.")
+                        help="限制 stock 数 (smoke 测试用), 会传给 optimize_per_stock_stage_strategy.py.")
+    parser.add_argument("--stock-codes", nargs="+", default=None,
+                        help="只补指定股票代码, 会传给 optimize_per_stock_stage_strategy.py.")
     parser.add_argument("--trials", type=int, default=50,
                         help="Optuna trials per (stock × stage × formula). governance.min_n_trials=50 强制 (yaml)")
     parser.add_argument("--workers", type=int, default=4)
@@ -127,6 +127,10 @@ def main() -> int:
             "--workers", str(args.workers),
             "--walk-forward-mode", "expanding_monthly",
         ]
+        if args.limit_stocks is not None:
+            cmd += ["--limit-stocks", str(args.limit_stocks)]
+        if args.stock_codes:
+            cmd += ["--stock-codes", *args.stock_codes]
         log.info(f"  cmd: {' '.join(cmd)}")
         env = {"PYTHONPATH": "backend"}
         import os
@@ -141,8 +145,13 @@ def main() -> int:
         conn = duckdb.connect(str(SMART_DB))
         try:
             now_iso = datetime.utcnow().isoformat(timespec="seconds")
-            # 优先 stock subset (smoke)
-            limit_clause = f"LIMIT {args.limit_stocks}" if args.limit_stocks else ""
+            stock_filter = ""
+            params = [cutoff, now_iso]
+            if args.stock_codes:
+                stock_codes = sorted({str(code).strip() for code in args.stock_codes if str(code).strip()})
+                placeholders = ",".join(["?"] * len(stock_codes))
+                stock_filter = f"WHERE stock_code IN ({placeholders})"
+                params.extend(stock_codes)
             conn.execute(f"""
                 INSERT OR REPLACE INTO {PIT_TABLE}
                 (stock_code, cutoff_date, formula_id, formula_variant, stage_filter,
@@ -158,8 +167,8 @@ def main() -> int:
                        win_rate, oos_win_rate, n_traded, oos_n_traded,
                        walk_forward_mode, train_n_signals, test_n_signals, ?
                   FROM mart_per_stock_stage_strategy_optimal
-                  {limit_clause}
-            """, [cutoff, now_iso])
+                  {stock_filter}
+            """, params)
             n_rows = conn.execute(
                 f"SELECT COUNT(*) FROM {PIT_TABLE} WHERE cutoff_date = ?",
                 [cutoff]

@@ -22,6 +22,7 @@ import subprocess
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
+from typing import Any
 
 import duckdb
 
@@ -41,6 +42,409 @@ SAMPLE_N_OBS_MIN = 30
 PERFECT_N_OBS_MIN = 60
 PERFECT_SHARPE_MIN = 2.0
 PERFECT_MAX_DD_ABS_MAX = 0.20
+
+
+def _load_msaf_horizon_ladder(reports_dir: Path, primary_report: dict) -> list[dict]:
+    """Load MSAF horizon probe evidence without changing the live decision.
+
+    The live GO/NO-GO metric stays on the primary 20d MSAF run. These probes
+    answer a narrower operational question: whether shorter horizons solve the
+    sample-size ladder without creating worse quality metrics.
+    """
+    rows: list[dict] = []
+
+    def add_row(path: Path, payload: dict, *, primary: bool = False) -> None:
+        kpi = payload.get("kpi") or {}
+        args = payload.get("args") or {}
+        horizon = kpi.get("horizon") or args.get("horizon")
+        if not horizon:
+            return
+        n_obs = int(kpi.get("n_obs") or 0)
+        sharpe = float(kpi.get("sharpe") or 0.0)
+        max_dd = float(kpi.get("max_dd") or 0.0)
+        row = {
+            "horizon": str(horizon),
+            "report": str(path),
+            "primary": primary,
+            "n_obs": n_obs,
+            "ann_ret_cagr": kpi.get("ann_ret_cagr"),
+            "ann_ret_median": kpi.get("ann_ret_median"),
+            "sharpe": sharpe,
+            "max_dd": max_dd,
+            "hit_rate": kpi.get("hit_rate"),
+            "sample_ready": n_obs >= SAMPLE_N_OBS_MIN,
+            "perfect_sample_ready": n_obs >= PERFECT_N_OBS_MIN,
+            "perfect_sharpe_ready": sharpe >= PERFECT_SHARPE_MIN,
+            "perfect_dd_ready": abs(max_dd) <= PERFECT_MAX_DD_ABS_MAX,
+        }
+        row["perfect_ladder_ready"] = (
+            row["perfect_sample_ready"]
+            and row["perfect_sharpe_ready"]
+            and row["perfect_dd_ready"]
+        )
+        rows.append(row)
+
+    add_row(reports_dir / "msaf_ensemble_run.json", primary_report, primary=True)
+    for path in sorted(reports_dir.glob("msaf_ensemble_h*_probe_*.json")):
+        try:
+            payload = json.loads(path.read_text())
+        except Exception as e:
+            log.warning(f"MSAF horizon probe parse failed: {path}: {e}")
+            continue
+        add_row(path, payload)
+
+    def horizon_key(row: dict) -> int:
+        h = str(row.get("horizon") or "999d").rstrip("d")
+        try:
+            return int(h)
+        except ValueError:
+            return 999
+
+    deduped: dict[str, dict] = {}
+    for row in rows:
+        horizon = str(row["horizon"])
+        old = deduped.get(horizon)
+        if old is None or (not old.get("primary") and row.get("primary")):
+            deduped[horizon] = row
+    return sorted(deduped.values(), key=horizon_key)
+
+
+def _weight_value(value: Any) -> float | None:
+    if value is None:
+        return None
+    try:
+        return round(float(value), 6)
+    except (TypeError, ValueError):
+        return None
+
+
+def _safe_int(value: Any) -> int | None:
+    if value is None:
+        return None
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _phase4_probe_gate_key(
+    model_id: Any,
+    horizon: Any,
+    source_weight_override: dict,
+    score_filter: dict | None = None,
+    score_exposure: dict | None = None,
+    position_sizing: dict | None = None,
+    max_positions: Any = None,
+    cash_overlay: dict | None = None,
+) -> tuple[Any, ...] | None:
+    if not model_id or not horizon:
+        return None
+    score_filter = score_filter or {}
+    score_exposure = score_exposure or {}
+    position_sizing = position_sizing or {}
+    cash_overlay = cash_overlay or {}
+    exposure_floor = _weight_value(score_exposure.get("score_exposure_floor"))
+    exposure_ceiling = _weight_value(score_exposure.get("score_exposure_ceiling"))
+    exposure_min = _weight_value(score_exposure.get("score_min_exposure")) if exposure_floor is not None else None
+    return (
+        str(model_id),
+        str(horizon),
+        _weight_value(source_weight_override.get("lambdamart_weight")),
+        _weight_value(source_weight_override.get("sniper_weight")),
+        _weight_value(source_weight_override.get("institution_weight")),
+        _weight_value(score_filter.get("min_top_score")),
+        _weight_value(score_filter.get("min_sniper_score")),
+        exposure_floor,
+        exposure_ceiling,
+        exposure_min,
+        _weight_value(position_sizing.get("rank_decay")),
+        _safe_int(max_positions),
+        _weight_value(cash_overlay.get("bull_cash_pct")),
+        _weight_value(cash_overlay.get("neutral_cash_pct")),
+        _weight_value(cash_overlay.get("bear_cash_pct")),
+    )
+
+
+def _load_msaf_phase4_probe_gates(reports_dir: Path) -> dict[tuple[Any, ...], dict]:
+    """Load dedicated Phase4 gates for opt-in MSAF probe candidates."""
+    rows: dict[tuple[Any, ...], dict] = {}
+    for path in sorted(reports_dir.glob("phase4_gate_msaf_*probe_*.json")):
+        try:
+            payload = json.loads(path.read_text())
+        except Exception as e:
+            log.warning(f"MSAF Phase4 probe gate parse failed: {path}: {e}")
+            continue
+        gate = payload.get("gate_result") or {}
+        source_weight_override = payload.get("source_weight_override") or {}
+        score_filter = payload.get("score_filter") or {}
+        score_exposure = payload.get("score_exposure") or {}
+        position_sizing = payload.get("position_sizing") or {}
+        key = _phase4_probe_gate_key(
+            payload.get("model_id"),
+            payload.get("primary_horizon"),
+            source_weight_override,
+            score_filter,
+            score_exposure,
+            position_sizing,
+            payload.get("max_positions"),
+            payload.get("cash_overlay"),
+        )
+        if key is None:
+            continue
+        pbo_detail = (gate.get("pbo") or {}).get("detail") or {}
+        summary = {
+            "report": str(path),
+            "model_id": payload.get("model_id"),
+            "primary_horizon": payload.get("primary_horizon"),
+            "source_weight_override": source_weight_override,
+            "score_filter": score_filter,
+            "score_exposure": score_exposure,
+            "position_sizing": position_sizing,
+            "max_positions": payload.get("max_positions"),
+            "cash_overlay": payload.get("cash_overlay") or {},
+            "promote_action": gate.get("promote_action"),
+            "all_pass": bool(gate.get("all_pass", False)),
+            "pbo_passed": bool((gate.get("pbo") or {}).get("passes", False)),
+            "pbo_value": pbo_detail.get("pbo"),
+            "pbo_reason": (gate.get("pbo") or {}).get("reason"),
+            "dsr_passed": bool((gate.get("dsr") or {}).get("passes", False)),
+            "conservative_passed": bool((gate.get("conservative") or {}).get("passes", False)),
+            "is_oos_passed": bool((gate.get("is_oos") or {}).get("passes", False)),
+            "is_oos_proxy_mode": bool(((gate.get("is_oos") or {}).get("detail") or {}).get("proxy_mode", False)),
+            "ann_normal": payload.get("ann_normal"),
+            "ann_conservative": payload.get("ann_conservative"),
+        }
+        old = rows.get(key)
+        if old is None or str(summary["report"]) > str(old.get("report")):
+            rows[key] = summary
+    return rows
+
+
+def _load_msaf_risk_overlay_probes(reports_dir: Path, primary_report: dict) -> list[dict]:
+    """Load opt-in MSAF cash overlay probes for #6 risk evidence."""
+    primary_kpi = primary_report.get("kpi") or {}
+    phase4_probe_gates = _load_msaf_phase4_probe_gates(reports_dir)
+    rows: list[dict] = []
+    probe_paths = {
+        *reports_dir.glob("msaf_ensemble_*cash*_probe_*.json"),
+        *reports_dir.glob("msaf_ensemble_*voltarget*_probe_*.json"),
+        *reports_dir.glob("msaf_ensemble_*scorefloor*_probe_*.json"),
+        *reports_dir.glob("msaf_ensemble_*scoreexposure*_probe_*.json"),
+        *reports_dir.glob("msaf_ensemble_*lm*_sniper*_probe_*.json"),
+        *reports_dir.glob("msaf_ensemble_*lmonly*_probe_*.json"),
+    }
+    for path in sorted(probe_paths):
+        try:
+            payload = json.loads(path.read_text())
+        except Exception as e:
+            log.warning(f"MSAF cash overlay probe parse failed: {path}: {e}")
+            continue
+        kpi = payload.get("kpi") or {}
+        if not kpi:
+            continue
+        args = payload.get("args") or {}
+        cash_overlay = payload.get("cash_overlay") or {}
+        volatility_target = payload.get("volatility_target") or {}
+        score_filter = payload.get("score_filter") or {}
+        score_exposure = payload.get("score_exposure") or {}
+        position_sizing = payload.get("position_sizing") or {}
+        source_weight_override = payload.get("source_weight_override") or {}
+        row = {
+            "report": str(path),
+            "model_id": args.get("lambdamart_model_id"),
+            "horizon": kpi.get("horizon") or args.get("horizon"),
+            "cash_overlay": cash_overlay,
+            "volatility_target": volatility_target,
+            "score_filter": score_filter,
+            "score_exposure": score_exposure,
+            "position_sizing": position_sizing,
+            "source_weight_override": source_weight_override,
+            "max_positions": args.get("max_positions"),
+            "n_obs": int(kpi.get("n_obs") or 0),
+            "n_skip": int(kpi.get("n_skip") or 0),
+            "ann_ret_cagr": kpi.get("ann_ret_cagr"),
+            "ann_ret_median": kpi.get("ann_ret_median"),
+            "sharpe": float(kpi.get("sharpe") or 0.0),
+            "max_dd": float(kpi.get("max_dd") or 0.0),
+            "hit_rate": kpi.get("hit_rate"),
+            "avg_exposure": kpi.get("avg_exposure"),
+            "min_realized_exposure": kpi.get("min_realized_exposure"),
+        }
+        if primary_kpi:
+            row["delta_sharpe_vs_primary"] = row["sharpe"] - float(primary_kpi.get("sharpe") or 0.0)
+            row["delta_max_dd_vs_primary"] = row["max_dd"] - float(primary_kpi.get("max_dd") or 0.0)
+            row["delta_cagr_vs_primary"] = (
+                float(row["ann_ret_cagr"] or 0.0) - float(primary_kpi.get("ann_ret_cagr") or 0.0)
+            )
+        row["sample_ready"] = row["n_obs"] >= SHIP_N_OBS_MIN
+        row["perfect_sample_ready"] = row["n_obs"] >= PERFECT_N_OBS_MIN
+        row["perfect_dd_ready"] = abs(row["max_dd"]) <= PERFECT_MAX_DD_ABS_MAX
+        row["perfect_sharpe_ready"] = row["perfect_sample_ready"] and row["sharpe"] >= PERFECT_SHARPE_MIN
+        row["perfect_ladder_ready"] = (
+            row["perfect_sample_ready"]
+            and row["perfect_dd_ready"]
+            and row["perfect_sharpe_ready"]
+        )
+        gate_key = _phase4_probe_gate_key(
+            row["model_id"],
+            row["horizon"],
+            source_weight_override,
+            score_filter,
+            score_exposure,
+            position_sizing,
+            row.get("max_positions"),
+            cash_overlay,
+        )
+        row["phase4_gate"] = phase4_probe_gates.get(gate_key) if gate_key else None
+        rows.append(row)
+    return rows
+
+
+def _summarize_source_weight_probes(rows: list[dict]) -> dict[str, Any]:
+    source_rows = [
+        row for row in rows
+        if row.get("source_weight_override", {}).get("lambdamart_weight") is not None
+    ]
+    if not source_rows:
+        return {
+            "n_source_weight_probes": 0,
+            "n_gate_pass": 0,
+            "n_hard_promote_ready": 0,
+            "n_proxy_candidate_ready": 0,
+            "best_gate_pass": None,
+            "best_hard_promote": None,
+            "best_proxy_candidate": None,
+            "best_strict_sharpe": None,
+        }
+
+    def compact(row: dict) -> dict:
+        gate = row.get("phase4_gate") or {}
+        return {
+            "report": row.get("report"),
+            "model_id": row.get("model_id"),
+            "horizon": row.get("horizon"),
+            "source_weight_override": row.get("source_weight_override") or {},
+            "score_filter": row.get("score_filter") or {},
+            "score_exposure": row.get("score_exposure") or {},
+            "position_sizing": row.get("position_sizing") or {},
+            "max_positions": row.get("max_positions"),
+            "cash_overlay": row.get("cash_overlay") or {},
+            "n_obs": row.get("n_obs"),
+            "ann_ret_cagr": row.get("ann_ret_cagr"),
+            "ann_ret_median": row.get("ann_ret_median"),
+            "sharpe": row.get("sharpe"),
+            "max_dd": row.get("max_dd"),
+            "perfect_ladder_ready": row.get("perfect_ladder_ready"),
+            "phase4_gate": gate or None,
+        }
+
+    gate_pass_rows = [row for row in source_rows if (row.get("phase4_gate") or {}).get("all_pass")]
+    strict_rows = [
+        row for row in source_rows
+        if row.get("sample_ready")
+        and row.get("perfect_sample_ready")
+        and row.get("perfect_dd_ready")
+        and row.get("sharpe", 0.0) >= PERFECT_SHARPE_MIN
+    ]
+    hard_promote_rows = [
+        row for row in strict_rows
+        if (row.get("phase4_gate") or {}).get("promote_action") == "promote"
+    ]
+    proxy_candidate_rows = [
+        row for row in strict_rows
+        if (row.get("phase4_gate") or {}).get("all_pass")
+        and (row.get("phase4_gate") or {}).get("promote_action") == "warn_only_proxy"
+    ]
+    return {
+        "n_source_weight_probes": len(source_rows),
+        "n_gate_pass": len(gate_pass_rows),
+        "n_hard_promote_ready": len(hard_promote_rows),
+        "n_proxy_candidate_ready": len(proxy_candidate_rows),
+        "best_gate_pass": compact(max(gate_pass_rows, key=lambda row: row.get("sharpe", 0.0))) if gate_pass_rows else None,
+        "best_hard_promote": compact(max(hard_promote_rows, key=lambda row: row.get("sharpe", 0.0))) if hard_promote_rows else None,
+        "best_proxy_candidate": compact(max(proxy_candidate_rows, key=lambda row: row.get("sharpe", 0.0))) if proxy_candidate_rows else None,
+        "best_strict_sharpe": compact(max(strict_rows, key=lambda row: row.get("sharpe", 0.0))) if strict_rows else None,
+    }
+
+
+def _load_msaf_challenger_oos_probes(reports_dir: Path) -> list[dict]:
+    """Load rejected/candidate MSAF model probes without changing live readiness."""
+    rows: list[dict] = []
+    for path in sorted(reports_dir.glob("msaf_ensemble_*oos_probe_*.json")):
+        try:
+            payload = json.loads(path.read_text())
+        except Exception as e:
+            log.warning(f"MSAF challenger OOS probe parse failed: {path}: {e}")
+            continue
+        kpi = payload.get("kpi") or {}
+        if not kpi:
+            continue
+        args = payload.get("args") or {}
+        row = {
+            "report": str(path),
+            "model_id": args.get("lambdamart_model_id"),
+            "prediction_table": payload.get("prediction_table"),
+            "start": args.get("start"),
+            "end": args.get("end"),
+            "n_obs": int(kpi.get("n_obs") or 0),
+            "n_skip": int(kpi.get("n_skip") or 0),
+            "ann_ret_cagr": kpi.get("ann_ret_cagr"),
+            "ann_ret_median": kpi.get("ann_ret_median"),
+            "sharpe": float(kpi.get("sharpe") or 0.0),
+            "max_dd": float(kpi.get("max_dd") or 0.0),
+            "hit_rate": kpi.get("hit_rate"),
+        }
+        row["sample_ready"] = row["n_obs"] >= SHIP_N_OBS_MIN
+        row["perfect_sample_ready"] = row["n_obs"] >= PERFECT_N_OBS_MIN
+        row["perfect_dd_ready"] = abs(row["max_dd"]) <= PERFECT_MAX_DD_ABS_MAX
+        row["perfect_sharpe_ready"] = row["perfect_sample_ready"] and row["sharpe"] >= PERFECT_SHARPE_MIN
+        row["perfect_ladder_ready"] = (
+            row["perfect_sample_ready"]
+            and row["perfect_dd_ready"]
+            and row["perfect_sharpe_ready"]
+        )
+        rows.append(row)
+    return rows
+
+
+def _gcp_controlled_idle_status() -> dict:
+    status_path = REPO_ROOT / "data" / "reports" / "phase5_chain" / "status.json"
+    if not status_path.exists():
+        return {}
+    try:
+        data = json.loads(status_path.read_text())
+    except Exception as e:
+        log.warning(f"phase5_chain status parse failed: {e}")
+        return {}
+    if data.get("step") != "gcp_disabled":
+        return {}
+    return data
+
+
+def _load_gcp_cost_summary() -> dict:
+    cost_report = REPO_ROOT / "data" / "reports" / "gcp_cost_summary.json"
+    if not cost_report.exists():
+        return {}
+    try:
+        data = json.loads(cost_report.read_text())
+    except Exception as e:
+        log.warning(f"gcp_cost_summary parse failed: {e}")
+        return {}
+    return data if isinstance(data, dict) else {}
+
+
+def _gcp_cost_summary_active(cost_info: dict) -> bool:
+    vm_status = str(cost_info.get("vm_status") or "").upper()
+    return vm_status not in {"", "TERMINATED", "STOPPED", "SUSPENDED", "UNKNOWN"}
+
+
+def _score_gcp_cost_info(cost_info: dict) -> int:
+    alert = cost_info.get("alert_level", "UNKNOWN")
+    if alert == "OK":
+        return 100
+    if alert == "YELLOW":
+        return 70
+    return 50
 
 
 def check_data_management() -> dict:
@@ -78,6 +482,58 @@ def check_data_management() -> dict:
         "pit_pct": pit_pct,
         "pit_summary": pit_summary,
         "verdict": "PASS" if status_pct >= 80 else "WARN",
+    }
+
+
+def _load_latest_institution_eval() -> dict:
+    """Load opt-in institution ensemble evaluation without changing production state."""
+    reports_dir = REPO_ROOT / "data" / "reports"
+    candidates = sorted(reports_dir.glob("msaf_ensemble_with_institution_eval_*.json"))
+    if not candidates:
+        return {}
+    path = candidates[-1]
+    try:
+        payload = json.loads(path.read_text())
+    except Exception as e:
+        log.warning(f"institution eval parse failed: {path}: {e}")
+        return {"path": str(path), "status": "parse_failed"}
+
+    args = payload.get("args") or {}
+    kpi = payload.get("kpi") or {}
+    if not args.get("with_institution") or args.get("no_institution"):
+        return {"path": str(path), "status": "not_institution_opt_in"}
+
+    median_ann = kpi.get("ann_ret_median")
+    cagr = kpi.get("ann_ret_cagr")
+    sharpe = kpi.get("sharpe")
+    max_dd = kpi.get("max_dd")
+    n_obs = kpi.get("n_obs", 0)
+    production_decision = "candidate"
+    reject_reasons: list[str] = []
+    if median_ann is None or median_ann < SHIP_ANN_RET_MIN:
+        reject_reasons.append(f"median_ann {median_ann} < {SHIP_ANN_RET_MIN}")
+    if cagr is None or cagr < 0:
+        reject_reasons.append(f"cagr {cagr} < 0")
+    if max_dd is None or abs(float(max_dd)) > SHIP_MAX_DD_ABS_MAX:
+        reject_reasons.append(f"max_dd {max_dd} worse than -{SHIP_MAX_DD_ABS_MAX:.0%}")
+    if n_obs < SHIP_N_OBS_MIN:
+        reject_reasons.append(f"n_obs {n_obs} < {SHIP_N_OBS_MIN}")
+    if reject_reasons:
+        production_decision = "hold_reject"
+
+    return {
+        "path": str(path),
+        "status": "evaluated",
+        "production_decision": production_decision,
+        "reject_reasons": reject_reasons,
+        "kpi": {
+            "ann_ret_median": median_ann,
+            "ann_ret_cagr": cagr,
+            "sharpe": sharpe,
+            "max_dd": max_dd,
+            "n_obs": n_obs,
+            "hit_rate": kpi.get("hit_rate"),
+        },
     }
 
 
@@ -124,6 +580,7 @@ def check_strategy_model() -> dict:
         },
     }
     sources_wired = {}
+    sources_available = {}
     try:
         con = duckdb.connect(str(smart_db), read_only=True)
         for source_name, spec in SOURCES.items():
@@ -141,10 +598,16 @@ def check_strategy_model() -> dict:
                 arg_enabled = all(
                     ensemble_args.get(k) == v for k, v in enabled_args.items()
                 )
+            sources_available[source_name] = has_mart and ensemble_uses
             sources_wired[source_name] = has_mart and ensemble_uses and arg_enabled
         con.close()
     except Exception as e:
         log.warning(f"source mart lookup failed: {e}")
+
+    source_evaluations = {}
+    institution_eval = _load_latest_institution_eval()
+    if institution_eval:
+        source_evaluations["institution"] = institution_eval
 
     active_sources = ["LM"] + [s for s, wired in sources_wired.items() if wired]
     phase34 = " + ".join(active_sources)  # e.g. "LM + sniper + institution"
@@ -173,6 +636,8 @@ def check_strategy_model() -> dict:
         },
         "phase_3_4_status": phase34,
         "sources_wired": sources_wired,
+        "sources_available": sources_available,
+        "source_evaluations": source_evaluations,
         "n_extra_sources": n_extra_sources,
         "verdict": "PASS" if pct >= 80 else "WARN",
     }
@@ -356,6 +821,11 @@ def check_daily_automation() -> dict:
 
     daily_loaded = daily_loaded_launchd or cron_daily
     cost_loaded = cost_loaded_launchd or cron_cost
+    gcp_cost_info = _load_gcp_cost_summary()
+    gcp_cost_report_active = _gcp_cost_summary_active(gcp_cost_info)
+    gcp_controlled_idle = bool(_gcp_controlled_idle_status()) and not gcp_cost_report_active
+    gcp_cost_report_ok = gcp_cost_info.get("alert_level") in {"OK", "YELLOW"}
+    cost_control_satisfied = cost_loaded or gcp_controlled_idle or gcp_cost_report_ok
 
     # cron OR launchd counted as "loaded" (cron is FDA-free fallback)
     pct = 40 + (10 if has_step_0_cost else 0) + (10 if has_phase4_gate_real else 0) + \
@@ -363,7 +833,7 @@ def check_daily_automation() -> dict:
           (10 if has_step5_ensemble_real else 0) + \
           (10 if has_promote_real else 0) + \
           (5 if daily_loaded else (2 if (has_daily_plist or cron_daily) else 0)) + \
-          (5 if cost_loaded else (2 if (has_cost_plist or cron_cost) else 0))
+          (5 if cost_control_satisfied else (2 if (has_cost_plist or cron_cost) else 0))
     return {
         "criterion": "全自动化 daily",
         "pct": min(pct, 100),
@@ -377,6 +847,10 @@ def check_daily_automation() -> dict:
         "cost_plist_installed": has_cost_plist,
         "daily_loaded": daily_loaded,
         "cost_loaded": cost_loaded,
+        "gcp_controlled_idle": gcp_controlled_idle,
+        "gcp_cost_report_active": gcp_cost_report_active,
+        "gcp_cost_report_alert": gcp_cost_info.get("alert_level"),
+        "gcp_cost_report_vm_status": gcp_cost_info.get("vm_status"),
         "daily_via_launchd": daily_loaded_launchd,
         "daily_via_cron": cron_daily,
         "cost_via_launchd": cost_loaded_launchd,
@@ -394,7 +868,37 @@ def check_daily_automation() -> dict:
 
 
 def check_gcp_cost_control() -> dict:
-    """#5 GCP 成本控制: cost_tracker 跑 + budget 检查."""
+    """#5 GCP 成本控制: controlled-use idle state or cost_tracker budget check."""
+    cost_info = _load_gcp_cost_summary()
+    if _gcp_cost_summary_active(cost_info):
+        pct = _score_gcp_cost_info(cost_info)
+        return {
+            "criterion": "GCP 成本控制",
+            "pct": pct,
+            "alert_level": cost_info.get("alert_level"),
+            "pct_of_budget": cost_info.get("pct_of_budget"),
+            "projected_month_cost": cost_info.get("projected_month_cost"),
+            "remaining_budget_usd": cost_info.get("remaining_budget_usd"),
+            "remaining_hours_at_spot": cost_info.get("remaining_hours_at_spot"),
+            "vm_status": cost_info.get("vm_status"),
+            "checked_at": cost_info.get("checked_at"),
+            "policy": "controlled_use_requires_explicit_latch",
+            "source": "gcp_cost_summary",
+            "verdict": "PASS" if pct >= 80 else "WARN",
+        }
+    controlled_idle = _gcp_controlled_idle_status()
+    if controlled_idle:
+        return {
+            "criterion": "GCP 成本控制",
+            "pct": 100,
+            "alert_level": "CONTROLLED_USE_IDLE",
+            "pct_of_budget": None,
+            "projected_month_cost": None,
+            "vm_status": controlled_idle.get("status"),
+            "policy": "controlled_use_requires_explicit_latch",
+            "source": "phase5_chain_controlled_idle",
+            "verdict": "PASS",
+        }
     cost_report = REPO_ROOT / "data" / "reports" / "gcp_cost_summary.json"
     tracker_script = REPO_ROOT / "gcp" / "cost_tracker.sh"
     if not tracker_script.exists():
@@ -402,16 +906,8 @@ def check_gcp_cost_control() -> dict:
                 "reason": "gcp/cost_tracker.sh 不存在"}
 
     pct = 80
-    cost_info = {}
     if cost_report.exists():
-        cost_info = json.loads(cost_report.read_text())
-        alert = cost_info.get("alert_level", "UNKNOWN")
-        if alert == "OK":
-            pct = 100
-        elif alert == "YELLOW":
-            pct = 70
-        else:
-            pct = 50
+        pct = _score_gcp_cost_info(cost_info)
 
     return {
         "criterion": "GCP 成本控制",
@@ -419,12 +915,16 @@ def check_gcp_cost_control() -> dict:
         "alert_level": cost_info.get("alert_level"),
         "pct_of_budget": cost_info.get("pct_of_budget"),
         "projected_month_cost": cost_info.get("projected_month_cost"),
+        "remaining_budget_usd": cost_info.get("remaining_budget_usd"),
+        "remaining_hours_at_spot": cost_info.get("remaining_hours_at_spot"),
         "vm_status": cost_info.get("vm_status"),
+        "checked_at": cost_info.get("checked_at"),
+        "source": "gcp_cost_summary" if cost_info else "tracker_script_present",
         "verdict": "PASS" if pct >= 80 else "WARN",
     }
 
 
-def _load_phase4_live_evidence(phase4_report: Path) -> dict:
+def _load_phase4_live_evidence(phase4_report: Path, *, expected_model_id: str | None = None) -> dict:
     """Read phase4 evidence needed by #6 live readiness.
 
     #6 is the live go/no-go view, so it consumes the hard statistical evidence
@@ -442,12 +942,24 @@ def _load_phase4_live_evidence(phase4_report: Path) -> dict:
         "is_oos_passed": False,
         "is_oos_proxy_mode": None,
         "phase4_promote_action": None,
+        "phase4_model_id": None,
+        "model_id_match": expected_model_id is None,
     }
     if not phase4_report.exists():
         return out
 
     try:
         d = json.loads(phase4_report.read_text())
+        report_model_id = d.get("model_id")
+        out["phase4_model_id"] = report_model_id
+        if expected_model_id and report_model_id != expected_model_id:
+            out.update({
+                "pbo_reason": f"phase4 model_id mismatch: {report_model_id} != {expected_model_id}",
+                "dsr_reason": f"phase4 model_id mismatch: {report_model_id} != {expected_model_id}",
+                "model_id_match": False,
+            })
+            return out
+        out["model_id_match"] = True
         gate = d.get("gate_result", {})
         pbo = gate.get("pbo", {}) or {}
         dsr = gate.get("dsr", {}) or {}
@@ -564,6 +1076,7 @@ def check_live_ready() -> dict:
     """#6 实盘 GO/NO-GO: Pareto ship baseline + stricter perfect ladder."""
     msaf_report = REPO_ROOT / "data" / "reports" / "msaf_ensemble_run.json"
     phase4_report = REPO_ROOT / "data" / "reports" / "phase4_gate_result.json"
+    reports_dir = REPO_ROOT / "data" / "reports"
     smart_db = REPO_ROOT / "data" / "smartmoney.duckdb"
 
     if not msaf_report.exists():
@@ -572,6 +1085,11 @@ def check_live_ready() -> dict:
 
     d = json.loads(msaf_report.read_text())
     kpi = d.get("kpi", {})
+    horizon_ladder = _load_msaf_horizon_ladder(reports_dir, d)
+    risk_overlay_probes = _load_msaf_risk_overlay_probes(reports_dir, d)
+    source_weight_probe_summary = _summarize_source_weight_probes(risk_overlay_probes)
+    challenger_oos_probes = _load_msaf_challenger_oos_probes(reports_dir)
+    expected_phase4_model_id = (d.get("args") or {}).get("lambdamart_model_id")
     n_obs = kpi.get("n_obs", 0)
     median = kpi.get("ann_ret_median", 0) or 0
     cagr = kpi.get("ann_ret_cagr", 0) or 0
@@ -585,7 +1103,7 @@ def check_live_ready() -> dict:
     p3_max_dd = p3["max_dd"]
     p3_win = p3["monthly_win"]
 
-    phase4 = _load_phase4_live_evidence(phase4_report)
+    phase4 = _load_phase4_live_evidence(phase4_report, expected_model_id=expected_phase4_model_id)
     scored = _score_live_ready(
         p3_passed=p3_passed,
         n_obs=n_obs,
@@ -596,6 +1114,72 @@ def check_live_ready() -> dict:
         pbo_passed=phase4["pbo_passed"],
         dsr_conf=phase4["dsr_conf"],
     )
+    next_milestones = list(scored["next_milestones"])
+    for row in horizon_ladder:
+        if row.get("primary"):
+            continue
+        if row["sample_ready"] and not row["perfect_ladder_ready"]:
+            next_milestones.append(
+                f"{row['horizon']} probe has n_obs={row['n_obs']} but "
+                f"sharpe={row['sharpe']:.2f}, max_dd={row['max_dd']:.2%}; "
+                "sample count alone does not solve perfect ladder"
+            )
+    for row in risk_overlay_probes:
+        if row.get("score_filter", {}).get("min_top_score") and row["n_obs"] < SHIP_N_OBS_MIN:
+            next_milestones.append(
+                f"score floor probe has sharpe={row['sharpe']:.2f} but "
+                f"n_obs={row['n_obs']}<{SHIP_N_OBS_MIN}; alpha-quality signal needs broader OOS"
+            )
+            continue
+        if row.get("score_exposure", {}).get("score_exposure_floor") and not row["perfect_ladder_ready"]:
+            next_milestones.append(
+                f"score exposure probe preserves n_obs={row['n_obs']} but "
+                f"sharpe={row['sharpe']:.2f}, max_dd={row['max_dd']:.2%}; "
+                "conviction sizing alone is not enough"
+            )
+            continue
+        if row.get("source_weight_override", {}).get("lambdamart_weight") is not None:
+            gate = row.get("phase4_gate") or {}
+            if gate and not gate.get("all_pass"):
+                next_milestones.append(
+                    f"source-weight probe has sharpe={row['sharpe']:.2f}, "
+                    f"max_dd={row['max_dd']:.2%}, n_obs={row['n_obs']} "
+                    f"but Phase4 gate {gate.get('promote_action') or 'failed'} "
+                    f"({gate.get('pbo_reason') or 'gate failed'}); cannot promote"
+                )
+            elif gate and gate.get("promote_action") == "warn_only_proxy" and row["perfect_ladder_ready"]:
+                next_milestones.append(
+                    f"source-weight probe meets strict ladder with proxy Phase4 PASS "
+                    f"(sharpe={row['sharpe']:.2f}, max_dd={row['max_dd']:.2%}, "
+                    f"n_obs={row['n_obs']}); needs true train-log/OOS Phase4 gate before hard promote"
+                )
+            elif gate and gate.get("all_pass") and not row["perfect_ladder_ready"]:
+                next_milestones.append(
+                    f"source-weight probe has Phase4 proxy gate PASS but "
+                    f"sharpe={row['sharpe']:.2f}, max_dd={row['max_dd']:.2%}, "
+                    f"n_obs={row['n_obs']}; still short of strict perfect ladder"
+                )
+            elif not gate and not row["perfect_ladder_ready"]:
+                next_milestones.append(
+                    f"source-weight probe has sharpe={row['sharpe']:.2f}, "
+                    f"max_dd={row['max_dd']:.2%}, n_obs={row['n_obs']}; "
+                    "needs broader OOS and Phase4 gate before promotion"
+                )
+            continue
+        if row["perfect_dd_ready"] and not row["perfect_sharpe_ready"]:
+            probe_kind = "volatility target" if row.get("volatility_target", {}).get("target_ann_vol") else "cash overlay"
+            next_milestones.append(
+                f"{probe_kind} probe can satisfy max_dd "
+                f"({row['max_dd']:.2%}) but sharpe={row['sharpe']:.2f}; "
+                "need alpha quality or broader OOS, not only de-risking"
+            )
+    for row in challenger_oos_probes:
+        if row["sample_ready"] and not row["perfect_ladder_ready"]:
+            next_milestones.append(
+                f"challenger OOS probe {row.get('model_id')} has n_obs={row['n_obs']} "
+                f"but sharpe={row['sharpe']:.2f}, max_dd={row['max_dd']:.2%}; "
+                "broader OOS alone does not solve live #6"
+            )
 
     return {
         "criterion": "实盘 GO/NO-GO",
@@ -618,10 +1202,16 @@ def check_live_ready() -> dict:
         "phase4_is_oos_passed": phase4["is_oos_passed"],
         "phase4_is_oos_proxy_mode": phase4["is_oos_proxy_mode"],
         "phase4_promote_action": phase4["phase4_promote_action"],
+        "phase4_model_id": phase4["phase4_model_id"],
+        "phase4_model_id_match": phase4["model_id_match"],
         "ship_baseline_passed": scored["ship_baseline_passed"],
         "perfect_ladder_ready": scored["perfect_ladder_ready"],
         "blockers": scored["blockers"],
-        "next_milestones": scored["next_milestones"],
+        "next_milestones": next_milestones,
+        "horizon_ladder": horizon_ladder,
+        "risk_overlay_probes": risk_overlay_probes,
+        "source_weight_probe_summary": source_weight_probe_summary,
+        "challenger_oos_probes": challenger_oos_probes,
         "verdict": scored["verdict"],
     }
 

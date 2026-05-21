@@ -529,10 +529,32 @@ def build_research_schedule(config: dict[str, Any], conn: Any) -> list[dict[str,
 def persist_research_schedule(conn: Any, *, run_id: str, rows: list[dict[str, Any]], built_at: str) -> None:
     ensure_tables(conn)
     conn.execute("DELETE FROM mart_research_schedule_plan WHERE run_id = ?", (run_id,))
-    for row in rows:
-        evidence = row["evidence"]
-        command = row["command"]
-        conn.execute(
+    schedule_rows = [
+        (
+            run_id,
+            row["task_id"],
+            row["task_type"],
+            row["priority"],
+            row["status"],
+            row["enabled"],
+            row["evidence"]["table"],
+            row["evidence"]["key_column"],
+            row["evidence"]["run_id"],
+            bool(row["evidence"]["found"]),
+            row["evidence"]["status"],
+            row["evidence"]["built_at"],
+            _json(row["depends_on"]),
+            _json(row["command"]),
+            row["command"].get("command_text"),
+            _json(row["resources"]),
+            _json(row["config"]),
+            row["reason"],
+            built_at,
+        )
+        for row in rows
+    ]
+    if schedule_rows:
+        conn.executemany(
             """
             INSERT INTO mart_research_schedule_plan
             (run_id, task_id, task_type, priority, status, enabled,
@@ -541,27 +563,7 @@ def persist_research_schedule(conn: Any, *, run_id: str, rows: list[dict[str, An
              command_text, resources_json, config_json, reason, built_at)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
-            (
-                run_id,
-                row["task_id"],
-                row["task_type"],
-                row["priority"],
-                row["status"],
-                row["enabled"],
-                evidence["table"],
-                evidence["key_column"],
-                evidence["run_id"],
-                bool(evidence["found"]),
-                evidence["status"],
-                evidence["built_at"],
-                _json(row["depends_on"]),
-                _json(command),
-                command.get("command_text"),
-                _json(row["resources"]),
-                _json(row["config"]),
-                row["reason"],
-                built_at,
-            ),
+            schedule_rows,
         )
     record_actual_version(conn, "mart_research_schedule_plan")
     conn.commit()

@@ -35,9 +35,13 @@ def _table_columns(conn, table_name: str) -> set[str]:
 
 def _ensure_columns(conn, table_name: str, columns: dict[str, str]) -> None:
     existing = _table_columns(conn, table_name)
-    for col, ddl in columns.items():
-        if col not in existing:
-            conn.execute(f"ALTER TABLE {table_name} ADD COLUMN {col} {ddl}")
+    statements = [
+        f"ALTER TABLE {table_name} ADD COLUMN {col} {ddl}"
+        for col, ddl in columns.items()
+        if col not in existing
+    ]
+    if statements:
+        conn.execute(";\n".join(statements))
 
 
 def _parse_date(value) -> Optional[str]:
@@ -286,14 +290,8 @@ def _fetch_allotment_detail(symbol: str):
 
 
 def _store_dividend_summary(conn, snapshot_date: str, created_at: str, df) -> int:
-    inserted = 0
-    for row in df.to_dict("records"):
-        conn.execute("""
-            INSERT OR REPLACE INTO raw_capital_dividend_summary
-            (snapshot_date, stock_code, stock_name, listed_date, cumulative_dividend,
-             avg_annual_dividend, dividend_count, financing_total, financing_count, created_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        """, (
+    rows = [
+        (
             snapshot_date,
             str(row.get("代码") or "").zfill(6),
             row.get("名称"),
@@ -304,10 +302,18 @@ def _store_dividend_summary(conn, snapshot_date: str, created_at: str, df) -> in
             _parse_float(row.get("融资总额")),
             _parse_int(row.get("融资次数")),
             created_at,
-        ))
-        inserted += 1
+        )
+        for row in df.to_dict("records")
+    ]
+    if rows:
+        conn.executemany("""
+            INSERT OR REPLACE INTO raw_capital_dividend_summary
+            (snapshot_date, stock_code, stock_name, listed_date, cumulative_dividend,
+             avg_annual_dividend, dividend_count, financing_total, financing_count, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """, rows)
     conn.commit()
-    return inserted
+    return len(rows)
 
 
 def _repurchase_event_id(stock_code: str, notice_date: Optional[str], start_date: Optional[str], progress: Optional[str]) -> str:
@@ -320,20 +326,13 @@ def _repurchase_event_id(stock_code: str, notice_date: Optional[str], start_date
 
 
 def _store_repurchase(conn, snapshot_date: str, created_at: str, df) -> int:
-    inserted = 0
+    rows = []
     for row in df.to_dict("records"):
         stock_code = str(row.get("股票代码") or "").zfill(6)
         notice_date = _parse_date(row.get("最新公告日期"))
         start_date = _parse_date(row.get("回购起始时间"))
         event_id = _repurchase_event_id(stock_code, notice_date, start_date, row.get("实施进度"))
-        conn.execute("""
-            INSERT OR REPLACE INTO raw_capital_repurchase
-            (event_id, snapshot_date, stock_code, stock_name, latest_price, planned_price_ceiling,
-             planned_amount_low, planned_amount_high, planned_ratio_low, planned_ratio_high,
-             repurchase_start_date, progress, repurchased_shares, repurchased_amount,
-             latest_notice_date, created_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        """, (
+        rows.append((
             event_id,
             snapshot_date,
             stock_code,
@@ -351,9 +350,17 @@ def _store_repurchase(conn, snapshot_date: str, created_at: str, df) -> int:
             notice_date,
             created_at,
         ))
-        inserted += 1
+    if rows:
+        conn.executemany("""
+            INSERT OR REPLACE INTO raw_capital_repurchase
+            (event_id, snapshot_date, stock_code, stock_name, latest_price, planned_price_ceiling,
+             planned_amount_low, planned_amount_high, planned_ratio_low, planned_ratio_high,
+             repurchase_start_date, progress, repurchased_shares, repurchased_amount,
+             latest_notice_date, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """, rows)
     conn.commit()
-    return inserted
+    return len(rows)
 
 
 def _unlock_event_id(stock_code: str, unlock_date: Optional[str], unlock_type: Optional[str]) -> str:
@@ -361,19 +368,13 @@ def _unlock_event_id(stock_code: str, unlock_date: Optional[str], unlock_type: O
 
 
 def _store_unlock(conn, snapshot_date: str, created_at: str, df) -> int:
-    inserted = 0
+    rows = []
     for row in df.to_dict("records"):
         stock_code = str(row.get("股票代码") or "").zfill(6)
         unlock_date = _parse_date(row.get("解禁时间"))
         unlock_type = row.get("限售股类型")
         event_id = _unlock_event_id(stock_code, unlock_date, unlock_type)
-        conn.execute("""
-            INSERT OR REPLACE INTO raw_capital_unlock
-            (event_id, snapshot_date, stock_code, stock_name, unlock_date, unlock_type,
-             unlock_shares, actual_unlock_shares, actual_unlock_value, unlock_ratio_float_mkt,
-             preclose_price, pre20d_pct, post20d_pct, created_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        """, (
+        rows.append((
             event_id,
             snapshot_date,
             stock_code,
@@ -389,23 +390,25 @@ def _store_unlock(conn, snapshot_date: str, created_at: str, df) -> int:
             _parse_float(row.get("解禁后20日涨跌幅")),
             created_at,
         ))
-        inserted += 1
+    if rows:
+        conn.executemany("""
+            INSERT OR REPLACE INTO raw_capital_unlock
+            (event_id, snapshot_date, stock_code, stock_name, unlock_date, unlock_type,
+             unlock_shares, actual_unlock_shares, actual_unlock_value, unlock_ratio_float_mkt,
+             preclose_price, pre20d_pct, post20d_pct, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """, rows)
     conn.commit()
-    return inserted
+    return len(rows)
 
 
 def _store_dividend_detail(conn, stock_code: str, created_at: str, df) -> int:
-    inserted = 0
+    rows = []
     for row in (df.to_dict("records") if df is not None and not df.empty else []):
         notice_date = _parse_date(row.get("公告日期"))
         if not notice_date:
             continue
-        conn.execute("""
-            INSERT OR REPLACE INTO raw_capital_dividend_detail
-            (stock_code, notice_date, progress, send_shares, transfer_shares, cash_dividend,
-             ex_dividend_date, record_date, listing_date, source, updated_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        """, (
+        rows.append((
             stock_code,
             notice_date,
             row.get("进度"),
@@ -418,24 +421,24 @@ def _store_dividend_detail(conn, stock_code: str, created_at: str, df) -> int:
             "akshare_stock_history_dividend_detail_dividend",
             created_at,
         ))
-        inserted += 1
+    if rows:
+        conn.executemany("""
+            INSERT OR REPLACE INTO raw_capital_dividend_detail
+            (stock_code, notice_date, progress, send_shares, transfer_shares, cash_dividend,
+             ex_dividend_date, record_date, listing_date, source, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """, rows)
     conn.commit()
-    return inserted
+    return len(rows)
 
 
 def _store_allotment_detail(conn, stock_code: str, created_at: str, df) -> int:
-    inserted = 0
+    rows = []
     for row in (df.to_dict("records") if df is not None and not df.empty else []):
         notice_date = _parse_date(row.get("公告日期"))
         if not notice_date:
             continue
-        conn.execute("""
-            INSERT OR REPLACE INTO raw_capital_allotment_detail
-            (stock_code, notice_date, allotment_plan, allotment_price, base_shares,
-             ex_rights_date, record_date, payment_start_date, payment_end_date,
-             listing_date, raised_funds_total, source, updated_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        """, (
+        rows.append((
             stock_code,
             notice_date,
             _parse_float(row.get("配股方案")),
@@ -450,9 +453,16 @@ def _store_allotment_detail(conn, stock_code: str, created_at: str, df) -> int:
             "akshare_stock_history_dividend_detail_allotment",
             created_at,
         ))
-        inserted += 1
+    if rows:
+        conn.executemany("""
+            INSERT OR REPLACE INTO raw_capital_allotment_detail
+            (stock_code, notice_date, allotment_plan, allotment_price, base_shares,
+             ex_rights_date, record_date, payment_start_date, payment_end_date,
+             listing_date, raised_funds_total, source, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """, rows)
     conn.commit()
-    return inserted
+    return len(rows)
 
 
 def _select_capital_detail_candidates(conn, snapshot_date: str, stock_codes: Optional[list] = None,

@@ -273,12 +273,15 @@ def main():
         days = _trading_days(conn, args.from_date, args.to_date)
         log.info(f"sign-flip 3 实验 × {len(days)} 日 = {3*len(days)} step")
 
+        model_ids = [model_id for model_id, _cand_fn, _desc in experiments]
+        placeholders = ", ".join("?" for _ in model_ids)
+        conn.execute("BEGIN TRANSACTION")
+        conn.execute(f"DELETE FROM mart_paper_nav WHERE model_id IN ({placeholders})", model_ids)
+        conn.execute(f"DELETE FROM fact_paper_position WHERE model_id IN ({placeholders})", model_ids)
+        conn.execute("COMMIT")
+
         for model_id, cand_fn, desc in experiments:
             log.info(f"--- {model_id} ({desc}) ---")
-            conn.execute("BEGIN TRANSACTION")
-            conn.execute("DELETE FROM mart_paper_nav WHERE model_id=?", [model_id])
-            conn.execute("DELETE FROM fact_paper_position WHERE model_id=?", [model_id])
-            conn.execute("COMMIT")
             t0 = time.time()
             prev = None
             for i, d in enumerate(days):
@@ -303,17 +306,39 @@ def main():
 
         # 对比
         log.info("=== 实验对比 ===")
-        for model_id, _, desc in experiments:
-            r = conn.execute(
-                "SELECT cum_ret, drawdown, vs_hs300_cum_ret FROM mart_paper_nav WHERE model_id=? AND hs300_cum_ret IS NOT NULL ORDER BY snapshot_date DESC LIMIT 1",
-                [model_id],
-            ).fetchone()
-            mdd = conn.execute(
-                "SELECT MIN(drawdown) FROM mart_paper_nav WHERE model_id=?", [model_id]
-            ).fetchone()
+        latest_rows = conn.execute(
+            f"""
+            WITH ranked AS (
+                SELECT model_id, cum_ret, drawdown, vs_hs300_cum_ret,
+                       ROW_NUMBER() OVER (
+                           PARTITION BY model_id
+                           ORDER BY snapshot_date DESC
+                       ) AS rn
+                  FROM mart_paper_nav
+                 WHERE model_id IN ({placeholders})
+                   AND hs300_cum_ret IS NOT NULL
+            ),
+            max_drawdown AS (
+                SELECT model_id, MIN(drawdown) AS max_dd
+                  FROM mart_paper_nav
+                 WHERE model_id IN ({placeholders})
+                 GROUP BY model_id
+            )
+            SELECT ranked.model_id, ranked.cum_ret, ranked.drawdown,
+                   ranked.vs_hs300_cum_ret, max_drawdown.max_dd
+              FROM ranked
+              LEFT JOIN max_drawdown USING (model_id)
+             WHERE ranked.rn = 1
+            """,
+            [*model_ids, *model_ids],
+        ).fetchall()
+        latest_by_model = {row[0]: row for row in latest_rows}
+        desc_by_model = {model_id: desc for model_id, _cand_fn, desc in experiments}
+        for model_id in model_ids:
+            r = latest_by_model.get(model_id)
             if r:
-                vs = (r[2] or 0) * 100
-                log.info(f"  {model_id:35s} ({desc}): cum_ret={r[0]*100:+.2f}% / vs_hs300={vs:+.2f}% / max_dd={(mdd[0] or 0)*100:.2f}%")
+                vs = (r[3] or 0) * 100
+                log.info(f"  {model_id:35s} ({desc_by_model[model_id]}): cum_ret={r[1]*100:+.2f}% / vs_hs300={vs:+.2f}% / max_dd={(r[4] or 0)*100:.2f}%")
     finally:
         conn.close()
         mkt_conn.close()

@@ -46,6 +46,7 @@ def test_workbench_frontend_entrypoint_is_registered():
     assert "/api/workbench/data-sources" in workbench_js
     assert "/api/workbench/pipelines" in workbench_js
     assert "/api/workbench/features" in workbench_js
+    assert "/api/workbench/delivery-readiness" in workbench_js
     assert "/api/workbench/recommendations" in workbench_js
     assert "/api/workbench/storage" in workbench_js
     assert "data-wb-tab" in workbench_js
@@ -58,6 +59,8 @@ def test_workbench_frontend_entrypoint_is_registered():
     assert "renderTdxF10SourceDq" in workbench_js
     assert "管线" in workbench_js
     assert "特征" in workbench_js
+    assert "GO/NO-GO" in workbench_js
+    assert "renderDelivery" in workbench_js
     assert "推荐" in workbench_js
     assert "存储" in workbench_js
     assert "稳定性上下文" in workbench_js

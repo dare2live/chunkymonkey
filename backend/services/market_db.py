@@ -9,175 +9,31 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Iterable, Optional
 from uuid import uuid4
 
 from services.data_processing_monitor import record_data_processing_tool_run
 from services.duck_adapter import connect as _duck_connect, DuckConn
 from services.kline_source import KLINE_VALUE_EPSILON, clean_price_rows
-from services.source_policy import get_capability_policy
+from services.market_read import (
+    CANONICAL_KLINE_QFQ_RELATION,
+    CANONICAL_KLINE_QFQ_VIEW_DDL,
+    DEFAULT_KLINE_DAILY_QFQ_COLUMNS,
+    KLINE_DAILY_QFQ_POLICY,
+    PRICE_KLINE_TDXHUB_DDL,
+    canonical_kline_daily_qfq_sql,
+    get_all_sync_states,
+    get_all_xdxr_sync_states,
+    get_canonical_kline_qfq_relation,
+    get_kline,
+    get_kline_range,
+    get_xdxr_events,
+)
+from services.market_schema import ensure_market_schema
 
 _DB_DIR = Path(__file__).resolve().parent.parent.parent / "data"
 # Phase 7: DuckDB 主库
 _DB_PATH = _DB_DIR / "market.duckdb"
-KLINE_DAILY_QFQ_POLICY = get_capability_policy("kline_daily")
-CANONICAL_KLINE_QFQ_RELATION = KLINE_DAILY_QFQ_POLICY.canonical_relation or "market.v_price_kline_qfq"
-DEFAULT_KLINE_DAILY_QFQ_COLUMNS = (
-    "code", "date", "open", "high", "low", "close", "volume", "amount", "factor",
-)
 
-
-def get_canonical_kline_qfq_relation(schema: Optional[str] = None) -> str:
-    """Resolve the canonical daily qfq K-line relation for a connection.
-
-    Cross-database analytical jobs attach `market.duckdb` as `market` and use
-    `market.v_price_kline_qfq`. Direct market connections use
-    `v_price_kline_qfq`.
-    """
-    name = CANONICAL_KLINE_QFQ_RELATION.rsplit(".", 1)[-1]
-    return f"{schema}.{name}" if schema else name
-
-
-def canonical_kline_daily_qfq_sql(
-    *,
-    relation: str | None = None,
-    columns: Iterable[str] = DEFAULT_KLINE_DAILY_QFQ_COLUMNS,
-    include_source_lineage: bool = False,
-) -> str:
-    """Return the canonical daily qfq K-line SELECT used by analytical jobs."""
-    relation = relation or CANONICAL_KLINE_QFQ_RELATION
-    allowed = {
-        "code", "date", "open", "high", "low", "close", "volume", "amount", "factor",
-        "freq", "adjust",
-    }
-    selected = []
-    for column in columns:
-        if column not in allowed:
-            raise ValueError(f"unsupported canonical kline column: {column}")
-        selected.append(column)
-    if include_source_lineage:
-        selected.extend([
-            "COALESCE(source_name, 'unknown') AS source_name",
-            "COALESCE(source_tier, 99)::SMALLINT AS source_tier",
-            "COALESCE(is_fallback, FALSE) AS is_fallback",
-        ])
-    select_sql = ", ".join(selected)
-    return (
-        f"SELECT {select_sql}\n"
-        f"FROM {relation}\n"
-        "WHERE freq='daily' AND adjust='qfq'"
-    )
-
-
-PRICE_KLINE_TDXHUB_DDL = """
-CREATE TABLE IF NOT EXISTS price_kline_tdxhub (
-    code          TEXT NOT NULL,
-    date          TEXT NOT NULL,
-    freq          TEXT NOT NULL DEFAULT 'daily',
-    adjust        TEXT NOT NULL DEFAULT 'qfq',
-    open          REAL,
-    high          REAL,
-    low           REAL,
-    close         REAL,
-    volume        REAL,
-    amount        REAL,
-    factor        REAL,
-    source        TEXT DEFAULT 'tdxhub',
-    batch_id      TEXT,
-    ingested_at   TEXT DEFAULT CURRENT_TIMESTAMP,
-    PRIMARY KEY (code, date, freq, adjust)
-);
-CREATE INDEX IF NOT EXISTS idx_pkt_code ON price_kline_tdxhub(code);
-CREATE INDEX IF NOT EXISTS idx_pkt_date ON price_kline_tdxhub(date);
-
-CREATE TABLE IF NOT EXISTS price_kline_tdxhub_adjustment_event (
-    code          TEXT NOT NULL,
-    event_date    TEXT NOT NULL,
-    event_hash    TEXT NOT NULL,
-    adjust_factor REAL NOT NULL,
-    prev_close    REAL,
-    source        TEXT,
-    batch_id      TEXT,
-    applied_at    TEXT DEFAULT CURRENT_TIMESTAMP,
-    PRIMARY KEY (code, event_date, event_hash)
-);
-CREATE INDEX IF NOT EXISTS idx_pkt_adj_code_date
-    ON price_kline_tdxhub_adjustment_event(code, event_date);
-"""
-
-CANONICAL_KLINE_QFQ_VIEW_DDL = """
-CREATE OR REPLACE VIEW v_price_kline_qfq AS
-WITH primary_rows AS (
-    SELECT
-        code,
-        date,
-        freq,
-        adjust,
-        open,
-        high,
-        low,
-        close,
-        volume,
-        amount,
-        COALESCE(factor, 1.0) AS factor,
-        COALESCE(NULLIF(source, ''), 'tdxhub') AS source_name,
-        1::SMALLINT AS source_tier,
-        FALSE AS is_fallback,
-        batch_id,
-        ingested_at
-    FROM price_kline_tdxhub
-    WHERE freq = 'daily' AND adjust = 'qfq'
-      AND open IS NOT NULL AND open > 0
-      AND high IS NOT NULL AND high > 0
-      AND low IS NOT NULL AND low > 0
-      AND close IS NOT NULL AND close > 0
-      AND volume IS NOT NULL AND volume >= 1e-6
-      AND amount IS NOT NULL AND amount >= 1e-6
-      AND high >= open AND high >= close AND high >= low
-      AND low <= open AND low <= close AND low <= high
-),
-fallback_rows AS (
-    SELECT
-        f.code,
-        f.date,
-        f.freq,
-        f.adjust,
-        f.open,
-        f.high,
-        f.low,
-        f.close,
-        f.volume,
-        f.amount,
-        1.0 AS factor,
-        COALESCE(NULLIF(f.source, ''), 'akshare_multi_source') AS source_name,
-        3::SMALLINT AS source_tier,
-        TRUE AS is_fallback,
-        f.batch_id,
-        f.ingested_at
-    FROM price_kline f
-    WHERE f.freq = 'daily'
-      AND f.adjust = 'qfq'
-      AND f.open IS NOT NULL AND f.open > 0
-      AND f.high IS NOT NULL AND f.high > 0
-      AND f.low IS NOT NULL AND f.low > 0
-      AND f.close IS NOT NULL AND f.close > 0
-      AND f.volume IS NOT NULL AND f.volume >= 1e-6
-      AND f.amount IS NOT NULL AND f.amount >= 1e-6
-      AND f.high >= f.open AND f.high >= f.close AND f.high >= f.low
-      AND f.low <= f.open AND f.low <= f.close AND f.low <= f.high
-      AND NOT EXISTS (
-          SELECT 1
-          FROM primary_rows p
-          WHERE p.code = f.code
-            AND p.date = f.date
-            AND p.freq = f.freq
-            AND p.adjust = f.adjust
-      )
-)
-SELECT * FROM primary_rows
-UNION ALL
-SELECT * FROM fallback_rows
-"""
 
 # ---------------------------------------------------------------------------
 # Connection
@@ -197,202 +53,10 @@ def init_market_db():
     _DB_DIR.mkdir(parents=True, exist_ok=True)
     conn = get_market_conn()
     try:
-        conn.executescript("""
-        -- K 线数据主表
-        CREATE TABLE IF NOT EXISTS price_kline (
-            code        TEXT    NOT NULL,
-            date        TEXT    NOT NULL,
-            freq        TEXT    NOT NULL DEFAULT 'daily',
-            adjust      TEXT    NOT NULL DEFAULT 'qfq',
-            open        REAL,
-            high        REAL,
-            low         REAL,
-            close       REAL,
-            volume      REAL,
-            amount      REAL,
-            source      TEXT,
-            batch_id    TEXT,
-            ingested_at TEXT,
-            PRIMARY KEY (code, date, freq, adjust)
-        );
-        CREATE INDEX IF NOT EXISTS idx_pk_code_freq
-            ON price_kline(code, freq);
-        CREATE INDEX IF NOT EXISTS idx_pk_date
-            ON price_kline(date);
-
-        -- 除权除息 / 股本变动事件（TDX xdxr）
-        CREATE TABLE IF NOT EXISTS price_xdxr (
-            code            TEXT NOT NULL,
-            date            TEXT NOT NULL,
-            category        INTEGER NOT NULL,
-            name            TEXT,
-            fenhong         REAL,
-            peigujia        REAL,
-            songzhuangu     REAL,
-            peigu           REAL,
-            suogu           REAL,
-            panqianliutong  REAL,
-            panhouliutong   REAL,
-            qianzongguben   REAL,
-            houzongguben    REAL,
-            fenshu          REAL,
-            xingquanjia     REAL,
-            source          TEXT,
-            batch_id        TEXT,
-            ingested_at     TEXT,
-            PRIMARY KEY (code, date, category)
-        );
-        CREATE INDEX IF NOT EXISTS idx_xdxr_code_date
-            ON price_xdxr(code, date);
-
-        -- 同步状态表（覆盖状态交给审计层推导，不在此表堆字段）
-        CREATE TABLE IF NOT EXISTS market_sync_state (
-            dataset         TEXT NOT NULL DEFAULT 'price_kline',
-            code            TEXT NOT NULL,
-            freq            TEXT NOT NULL DEFAULT 'daily',
-            adjust          TEXT NOT NULL DEFAULT 'qfq',
-            source          TEXT,
-            min_date        TEXT,
-            max_date        TEXT,
-            row_count       INTEGER DEFAULT 0,
-            last_success_at TEXT,
-            last_attempt_at TEXT,
-            last_error      TEXT,
-            PRIMARY KEY (dataset, code, freq, adjust)
-        );
-
-        -- 导入批次记录
-        CREATE TABLE IF NOT EXISTS price_import_batch (
-            batch_id        TEXT PRIMARY KEY,
-            source_type     TEXT,
-            source_name     TEXT,
-            freq            TEXT,
-            adjust          TEXT,
-            rows_imported   INTEGER DEFAULT 0,
-            min_date        TEXT,
-            max_date        TEXT,
-            started_at      TEXT,
-            finished_at     TEXT,
-            status          TEXT DEFAULT 'running',
-            error           TEXT,
-            detail          TEXT
-        );
-        """)
-        conn.executescript(PRICE_KLINE_TDXHUB_DDL)
-        conn.executescript(CANONICAL_KLINE_QFQ_VIEW_DDL)
+        ensure_market_schema(conn)
         conn.commit()
     finally:
         conn.close()
-
-
-# ---------------------------------------------------------------------------
-# Read Functions
-# ---------------------------------------------------------------------------
-
-_PRICE_FIELDS = {"open", "high", "low", "close", "volume", "amount", "factor"}
-
-
-def _quote_price_field(field: str) -> str:
-    if field not in _PRICE_FIELDS:
-        raise ValueError(f"unsupported price field: {field}")
-    return f'"{field}"'
-
-
-def _relation_has_column(conn, relation: str, column: str) -> bool:
-    try:
-        rows = conn.execute(f"DESCRIBE {relation}").fetchall()
-    except Exception:
-        return False
-    for row in rows:
-        try:
-            name = row["column_name"]
-        except Exception:
-            name = row[0]
-        if str(name).lower() == column.lower():
-            return True
-    return False
-
-
-def get_kline(conn, code: str, date: str, freq: str = "daily",
-              field: str = "open") -> Optional[float]:
-    """单点价格查询：取指定日期的指定字段值"""
-    col = _quote_price_field(field)
-    relation = get_canonical_kline_qfq_relation() if freq == "daily" else "price_kline"
-    row = conn.execute(
-        f"SELECT {col} FROM {relation} "
-        "WHERE code=? AND date=? AND freq=? AND adjust='qfq'",
-        (code, date, freq)
-    ).fetchone()
-    if row:
-        return row[0]
-    # daily 回退到 monthly close
-    if freq == "daily":
-        row = conn.execute(
-            "SELECT \"close\" FROM price_kline "
-            "WHERE code=? AND date<=? AND freq='monthly' AND adjust='qfq' "
-            "ORDER BY date DESC LIMIT 1",
-            (code, date)
-        ).fetchone()
-        return row[0] if row else None
-    return None
-
-
-def get_kline_range(conn, code: str, start: str, end: str,
-                    freq: str = "daily") -> "list[dict]":
-    """区间查询：返回 [{date, open, high, low, close, volume, amount, factor}]"""
-    relation = get_canonical_kline_qfq_relation() if freq == "daily" else "price_kline"
-    has_factor = freq == "daily" and _relation_has_column(conn, relation, "factor")
-    factor_expr = "COALESCE(factor, 1.0) AS factor" if has_factor else "1.0 AS factor"
-    rows = conn.execute(
-        f"SELECT date, open, high, low, close, volume, amount, {factor_expr} "
-        f"FROM {relation} "
-        "WHERE code=? AND freq=? AND adjust='qfq' AND date>=? AND date<=? "
-        "ORDER BY date",
-        (code, freq, start, end)
-    ).fetchall()
-    return [dict(r) for r in rows]
-
-
-def get_xdxr_events(conn, code: str, start: Optional[str] = None,
-                    end: Optional[str] = None) -> "list[dict]":
-    """查询某只股票的除权除息 / 股本变动事件。"""
-    where = ["code=?"]
-    params: list = [code]
-    if start:
-        where.append("date>=?")
-        params.append(start)
-    if end:
-        where.append("date<=?")
-        params.append(end)
-
-    rows = conn.execute(
-        "SELECT code, date, category, name, fenhong, peigujia, songzhuangu, "
-        " peigu, suogu, panqianliutong, panhouliutong, qianzongguben, "
-        " houzongguben, fenshu, xingquanjia, source "
-        f"FROM price_xdxr WHERE {' AND '.join(where)} "
-        "ORDER BY date, category",
-        params,
-    ).fetchall()
-    return [dict(r) for r in rows]
-
-
-def get_all_sync_states(conn, freq: str = "daily") -> "list[dict]":
-    """查询所有股票的同步状态"""
-    rows = conn.execute(
-        "SELECT * FROM market_sync_state "
-        "WHERE dataset='price_kline' AND freq=? AND adjust='qfq'",
-        (freq,)
-    ).fetchall()
-    return [dict(r) for r in rows]
-
-
-def get_all_xdxr_sync_states(conn) -> "list[dict]":
-    """查询所有股票的 xdxr 同步状态。"""
-    rows = conn.execute(
-        "SELECT * FROM market_sync_state "
-        "WHERE dataset='price_xdxr' AND freq='event' AND adjust='none'"
-    ).fetchall()
-    return [dict(r) for r in rows]
 
 
 # ---------------------------------------------------------------------------

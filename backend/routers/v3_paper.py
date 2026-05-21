@@ -29,6 +29,31 @@ def _table_exists(conn, table: str) -> bool:
     return bool(r and r[0])
 
 
+def _latest_picture_by_code(conn, codes: list[str]) -> dict[str, tuple[Any, Any]]:
+    unique_codes = sorted({code for code in codes if code})
+    if not unique_codes or not _table_exists(conn, "mart_stock_picture_daily"):
+        return {}
+
+    placeholders = ",".join("?" for _ in unique_codes)
+    rows = conn.execute(
+        f"""
+        SELECT stock_code, latest_close, technical_stage
+          FROM (
+            SELECT stock_code, latest_close, technical_stage,
+                   ROW_NUMBER() OVER (
+                       PARTITION BY stock_code
+                       ORDER BY snapshot_date DESC
+                   ) AS rn
+              FROM mart_stock_picture_daily
+             WHERE stock_code IN ({placeholders})
+          )
+         WHERE rn = 1
+        """,
+        unique_codes,
+    ).fetchall()
+    return {str(r[0]): (r[1], r[2]) for r in rows}
+
+
 # ============ NAV ============
 @router.get("/nav")
 async def get_nav(
@@ -93,21 +118,18 @@ async def get_holdings(model_id: str = Query("paper_v1")):
             """,
             [model_id],
         ).fetchall()
-        # 拿最新 NAV 算 weight + 拿 mart_stock_picture_daily 算 stage
+        # 拿最新 NAV 算 weight + 批量拿最新 picture 算 close/stage
         latest_nav_row = conn.execute(
             "SELECT nav_value FROM mart_paper_nav WHERE model_id=? ORDER BY snapshot_date DESC LIMIT 1",
             [model_id],
         ).fetchone()
         total_nav = float(latest_nav_row[0]) if latest_nav_row else 1_000_000.0
+        pictures = _latest_picture_by_code(conn, [str(r[0]) for r in rows])
 
         data = []
         for r in rows:
             code, open_date, open_price, qty, notional, reason = r
-            # 找当前 close + stage
-            pic = conn.execute(
-                "SELECT latest_close, technical_stage FROM mart_stock_picture_daily WHERE stock_code=? ORDER BY snapshot_date DESC LIMIT 1",
-                [code],
-            ).fetchone()
+            pic = pictures.get(str(code))
             cur_close = float(pic[0]) if pic and pic[0] else float(open_price)
             stage = pic[1] if pic else "—"
             cur_value = qty * cur_close

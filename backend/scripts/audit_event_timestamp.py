@@ -147,6 +147,27 @@ def check_event_table_enumeration(conn) -> list[CheckResult]:
             "SELECT table_name FROM information_schema.tables WHERE table_schema='main'"
         ).fetchall()
     }
+    table_names = [spec["table"] for spec in EVENT_TABLES]
+    column_rows = conn.execute(
+        """
+        SELECT table_name, column_name
+        FROM information_schema.columns
+        WHERE table_schema = 'main'
+          AND table_name IN ({})
+        """.format(", ".join(["?"] * len(table_names))),
+        table_names,
+    ).fetchall()
+    columns_by_table: dict[str, set[str]] = {}
+    for table_name, column_name in column_rows:
+        columns_by_table.setdefault(table_name, set()).add(column_name)
+    count_by_table: dict[str, int] = {}
+    present_tables = [table for table in table_names if table in existing]
+    if present_tables:
+        count_sql = " UNION ALL ".join(
+            f"SELECT '{table}' AS table_name, COUNT(*) AS n FROM {table}"
+            for table in present_tables
+        )
+        count_by_table = {table: int(n) for table, n in conn.execute(count_sql).fetchall()}
     for spec in EVENT_TABLES:
         t = spec["table"]
         if t not in existing:
@@ -158,7 +179,7 @@ def check_event_table_enumeration(conn) -> list[CheckResult]:
                 extras={"critical": spec["critical"]},
             ))
             continue
-        cols = {c[0] for c in conn.execute(f"DESCRIBE {t}").fetchall()}
+        cols = columns_by_table.get(t, set())
         missing = [c for c in (spec["primary_ts"], spec["secondary_ts"]) if c and c not in cols]
         if missing:
             out.append(CheckResult(
@@ -169,7 +190,7 @@ def check_event_table_enumeration(conn) -> list[CheckResult]:
                 extras={"critical": spec["critical"], "missing": missing},
             ))
             continue
-        n = conn.execute(f"SELECT COUNT(*) FROM {t}").fetchone()[0]
+        n = count_by_table.get(t, 0)
         out.append(CheckResult(
             section="1. Event tables enumeration",
             name=t,
@@ -187,18 +208,62 @@ def check_timestamp_non_null_rate(conn) -> list[CheckResult]:
     Secondary_ts only WARN, since it's used for PIT-lag descriptive stats.
     """
     out: list[CheckResult] = []
+    existing = {
+        r[0] for r in conn.execute(
+            "SELECT table_name FROM information_schema.tables WHERE table_schema='main'"
+        ).fetchall()
+    }
+    table_names = [spec["table"] for spec in EVENT_TABLES]
+    column_rows = conn.execute(
+        """
+        SELECT table_name, column_name
+        FROM information_schema.columns
+        WHERE table_schema = 'main'
+          AND table_name IN ({})
+        """.format(", ".join(["?"] * len(table_names))),
+        table_names,
+    ).fetchall()
+    columns_by_table: dict[str, set[str]] = {}
+    for table_name, column_name in column_rows:
+        columns_by_table.setdefault(table_name, set()).add(column_name)
+
+    metric_parts: list[str] = []
     for spec in EVENT_TABLES:
         t = spec["table"]
-        try:
-            n_total = conn.execute(f"SELECT COUNT(*) FROM {t}").fetchone()[0]
-        except Exception as e:
+        cols = columns_by_table.get(t, set())
+        if t not in existing:
+            continue
+        select_parts = [f"'{t}' AS table_name", "COUNT(*) AS n_total"]
+        for kind, col in (("primary", spec["primary_ts"]), ("secondary", spec["secondary_ts"])):
+            if col and col in cols:
+                select_parts.append(
+                    f"COUNT(*) FILTER (WHERE {col} IS NULL OR CAST({col} AS VARCHAR) = '') AS {kind}_null"
+                )
+        metric_parts.append(f"SELECT {', '.join(select_parts)} FROM {t}")
+    metrics: dict[str, dict[str, int]] = {}
+    if metric_parts:
+        metric_cursor = conn.execute(" UNION ALL ".join(metric_parts))
+        metric_rows = metric_cursor.fetchall()
+        metric_cols = [desc[0] for desc in metric_cursor.description]
+        for row in metric_rows:
+            metrics[row[0]] = {
+                metric_cols[i]: int(value or 0)
+                for i, value in enumerate(row)
+                if i > 0
+            }
+
+    for spec in EVENT_TABLES:
+        t = spec["table"]
+        if t not in existing:
             out.append(CheckResult(
                 section="2. Timestamp non-null rate",
                 name=t,
                 status="WARN",
-                detail=f"{t}: cannot read row count: {e}",
+                detail=f"{t}: cannot read row count: table not found",
             ))
             continue
+        table_metrics = metrics.get(t, {})
+        n_total = table_metrics.get("n_total", 0)
         if n_total == 0:
             out.append(CheckResult(
                 section="2. Timestamp non-null rate",
@@ -210,18 +275,15 @@ def check_timestamp_non_null_rate(conn) -> list[CheckResult]:
         for kind, col in (("primary", spec["primary_ts"]), ("secondary", spec["secondary_ts"])):
             if not col:
                 continue
-            try:
-                n_null = conn.execute(
-                    f"SELECT COUNT(*) FROM {t} WHERE {col} IS NULL OR CAST({col} AS VARCHAR) = ''"
-                ).fetchone()[0]
-            except Exception as e:
+            if col not in columns_by_table.get(t, set()):
                 out.append(CheckResult(
                     section="2. Timestamp non-null rate",
                     name=f"{t}.{col}",
                     status="WARN",
-                    detail=f"{t}.{col}: check failed: {e}",
+                    detail=f"{t}.{col}: check failed: column not found",
                 ))
                 continue
+            n_null = table_metrics.get(f"{kind}_null", 0)
             non_null_rate = 1.0 - (n_null / n_total)
             row_label = f"{t}.{col}[{kind}]"
             if kind == "primary":

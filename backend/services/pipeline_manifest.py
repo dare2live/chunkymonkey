@@ -11,7 +11,9 @@ import json
 import os
 import subprocess
 import sys
-from datetime import UTC, datetime
+from datetime import datetime, timezone
+
+UTC = timezone.utc
 from pathlib import Path
 from typing import Any, Iterable
 
@@ -118,15 +120,49 @@ def table_exists(conn, table_name: str) -> bool:
 
 
 def table_row_counts(conn, tables: Iterable[str]) -> dict[str, int | None]:
-    counts: dict[str, int | None] = {}
-    for table in tables:
-        try:
-            if table_exists(conn, table):
-                row = conn.execute(f"SELECT COUNT(*) FROM {_quote_table_name(table)}").fetchone()
-                counts[table] = int(row[0]) if row else 0
-            else:
-                counts[table] = None
-        except Exception:
+    table_list = list(tables)
+    counts: dict[str, int | None] = {table: None for table in table_list}
+    if not table_list:
+        return counts
+    simple_tables = [table for table in table_list if "." not in table]
+    schema_tables = [tuple(table.split(".", 1)) for table in table_list if "." in table]
+    existing: set[str] = set()
+    if simple_tables:
+        placeholders = ", ".join("?" for _ in simple_tables)
+        rows = conn.execute(
+            f"""
+            SELECT table_name
+              FROM information_schema.tables
+             WHERE table_name IN ({placeholders})
+            """,
+            simple_tables,
+        ).fetchall()
+        existing.update(str(row[0]) for row in rows)
+    if schema_tables:
+        schema_predicates = " OR ".join("(table_schema = ? AND table_name = ?)" for _ in schema_tables)
+        params = [value for pair in schema_tables for value in pair]
+        rows = conn.execute(
+            f"""
+            SELECT table_schema, table_name
+              FROM information_schema.tables
+             WHERE {schema_predicates}
+            """,
+            params,
+        ).fetchall()
+        existing.update(f"{row[0]}.{row[1]}" for row in rows)
+    existing_ordered = [table for table in table_list if table in existing]
+    if not existing_ordered:
+        return counts
+    count_sql = "\nUNION ALL\n".join(
+        f"SELECT ? AS table_name, COUNT(*) AS n FROM {_quote_table_name(table)}"
+        for table in existing_ordered
+    )
+    params = existing_ordered
+    try:
+        for row in conn.execute(count_sql, params).fetchall():
+            counts[str(row[0])] = int(row[1] or 0)
+    except Exception:
+        for table in existing_ordered:
             counts[table] = None
     return counts
 

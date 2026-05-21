@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import argparse
 import gc
+import json
 import logging
 import math
 import os
@@ -388,6 +389,44 @@ def _cost_aware_score(metrics: dict[str, float], *, turnover_limit: float, turno
     return base - penalty, penalty
 
 
+def _rank_ic_stability_adjustment(
+    rank_ics: list[float],
+    *,
+    std_penalty_weight: float = 0.0,
+    negative_rate_penalty_weight: float = 0.0,
+) -> dict[str, float]:
+    """Return opt-in window RankIC stability diagnostics and objective adjustment."""
+
+    clean: list[float] = []
+    for value in rank_ics:
+        try:
+            numeric = float(value)
+        except (TypeError, ValueError):
+            continue
+        if math.isfinite(numeric):
+            clean.append(numeric)
+    if not clean:
+        return {
+            "window_rank_ic_mean": float("nan"),
+            "window_rank_ic_std": float("nan"),
+            "window_rank_ic_positive_rate": float("nan"),
+            "window_rank_ic_negative_rate": float("nan"),
+            "rank_ic_stability_penalty": 0.0,
+        }
+    mean_ic = float(np.mean(clean))
+    std_ic = float(np.std(clean, ddof=1)) if len(clean) > 1 else 0.0
+    positive_rate = float(sum(1 for value in clean if value > 0) / len(clean))
+    negative_rate = float(sum(1 for value in clean if value < 0) / len(clean))
+    penalty = std_penalty_weight * std_ic + negative_rate_penalty_weight * negative_rate
+    return {
+        "window_rank_ic_mean": mean_ic,
+        "window_rank_ic_std": std_ic,
+        "window_rank_ic_positive_rate": positive_rate,
+        "window_rank_ic_negative_rate": negative_rate,
+        "rank_ic_stability_penalty": float(penalty),
+    }
+
+
 def _suggest_common_params(trial: optuna.Trial, *, seed: int, n_estimators: int) -> dict[str, Any]:
     max_depth = trial.suggest_int("max_depth", 3, 8)
     num_leaves_high = max(2, min(127, 2 ** max_depth - 1))
@@ -411,7 +450,98 @@ def _suggest_common_params(trial: optuna.Trial, *, seed: int, n_estimators: int)
     }
 
 
-def _run_lambdamart_window(panel: RankPanel, window: WindowSpec, params: dict[str, Any], *, label_col: str) -> pd.DataFrame:
+def completed_trial_count(study: optuna.Study) -> int:
+    """Return completed Optuna trials, excluding pruned/failed/running leftovers."""
+
+    return sum(1 for trial in study.trials if trial.state == optuna.trial.TrialState.COMPLETE)
+
+
+def remaining_trials_for_target(study: optuna.Study, target_trials: int) -> int:
+    """Return trials still needed when resuming a persistent study.
+
+    Optuna's ``study.optimize(n_trials=N)`` appends N new trials to an existing
+    SQLite study. For GCP spot resume we need N to mean total target trials,
+    otherwise each restart burns another full batch.
+    """
+
+    if target_trials < 0:
+        raise ValueError(f"target_trials must be non-negative, got {target_trials}")
+    return max(0, int(target_trials) - completed_trial_count(study))
+
+
+def load_warm_start_params(path: str | Path) -> dict[str, Any]:
+    """Load reusable Optuna params from a previous best-trial checkpoint."""
+
+    checkpoint = Path(path)
+    if not checkpoint.exists():
+        raise FileNotFoundError(f"warm-start checkpoint not found: {checkpoint}")
+    payload = json.loads(checkpoint.read_text(encoding="utf-8"))
+    params = payload.get("best_params")
+    if not isinstance(params, dict) or not params:
+        raise ValueError(f"warm-start checkpoint missing non-empty best_params: {checkpoint}")
+    return dict(params)
+
+
+def enqueue_warm_start_trial(
+    study: optuna.Study,
+    params: dict[str, Any],
+    *,
+    source: str | None = None,
+) -> None:
+    """Queue a previous best param set as a pending trial for Layer 4 reuse."""
+
+    if not params:
+        raise ValueError("warm-start params must be non-empty")
+    user_attrs = {"warm_start": True}
+    if source:
+        user_attrs["warm_start_source"] = source
+    study.enqueue_trial(dict(params), user_attrs=user_attrs, skip_if_exists=True)
+
+
+def _read_positive_int_env(name: str, default: int) -> int:
+    raw = os.environ.get(name)
+    if raw is None or raw == "":
+        return int(default)
+    try:
+        value = int(raw)
+    except ValueError:
+        log.warning("invalid %s=%r; using %d", name, raw, default)
+        return int(default)
+    if value < 1:
+        log.warning("invalid %s=%r; using %d", name, raw, default)
+        return int(default)
+    return value
+
+
+def _configure_optuna_parallelism() -> tuple[int, int]:
+    """Return outer Optuna jobs and capped inner LightGBM threads."""
+
+    cpu_count = max(1, os.cpu_count() or 1)
+    n_jobs_default = max(1, min(4, cpu_count // 2))
+    n_jobs = _read_positive_int_env("OPTUNA_N_JOBS", n_jobs_default)
+    if n_jobs <= 1:
+        inner_threads = _read_positive_int_env("OMP_NUM_THREADS", min(8, cpu_count))
+        os.environ["OMP_NUM_THREADS"] = str(inner_threads)
+        os.environ["LIGHTGBM_NUM_THREADS"] = str(inner_threads)
+        return n_jobs, inner_threads
+
+    max_inner_threads = max(1, cpu_count // n_jobs)
+    requested_inner = _read_positive_int_env("OMP_NUM_THREADS", max_inner_threads)
+    inner_threads = min(requested_inner, max_inner_threads)
+    if inner_threads != requested_inner:
+        log.warning(
+            "capping inner LightGBM threads: OPTUNA_N_JOBS=%d OMP_NUM_THREADS=%d cpu_count=%d -> inner=%d",
+            n_jobs,
+            requested_inner,
+            cpu_count,
+            inner_threads,
+        )
+    os.environ["OMP_NUM_THREADS"] = str(inner_threads)
+    os.environ["LIGHTGBM_NUM_THREADS"] = str(inner_threads)
+    return n_jobs, inner_threads
+
+
+def _fit_lambdamart_window_model(panel: RankPanel, window: WindowSpec, params: dict[str, Any]) -> lgb.LGBMRanker:
     train_groups = _group_sizes_for_contiguous_dates(panel.signal_dates[window.train_idx])
     model = lgb.LGBMRanker(
         objective="lambdarank",
@@ -425,6 +555,11 @@ def _run_lambdamart_window(panel: RankPanel, window: WindowSpec, params: dict[st
         panel.y_relevance[window.train_idx],
         group=train_groups,
     )
+    return model
+
+
+def _run_lambdamart_window(panel: RankPanel, window: WindowSpec, params: dict[str, Any], *, label_col: str) -> pd.DataFrame:
+    model = _fit_lambdamart_window_model(panel, window, params)
     pred = model.predict(panel.X[window.test_idx])
     return _prediction_frame(panel, window.test_idx, pred, label_col=label_col)
 
@@ -451,6 +586,10 @@ def run_optuna(
     study_storage: str | None = None,
     study_name: str | None = None,
     checkpoint_path: str | None = None,
+    warm_start_params: dict[str, Any] | None = None,
+    warm_start_source: str | None = None,
+    window_rank_ic_std_penalty_weight: float = 0.0,
+    window_rank_ic_negative_rate_penalty_weight: float = 0.0,
 ) -> ModelRunResult:
     if model_name not in {"lambdamart", "regressor"}:
         raise ValueError(f"unknown model_name={model_name}")
@@ -475,6 +614,13 @@ def run_optuna(
         log.info("optuna study storage=%s name=%s load_if_exists=True", study_storage, resolved_name)
     else:
         log.warning("optuna in-memory storage (interrupted = 全丢, F1 fix 建议 --study-storage sqlite:///path)")
+    if warm_start_params:
+        enqueue_warm_start_trial(study, warm_start_params, source=warm_start_source)
+        log.info(
+            "optuna warm-start queued: source=%s params=%s",
+            warm_start_source or "(inline)",
+            sorted(warm_start_params.keys()),
+        )
 
     def objective(trial: optuna.Trial) -> float:
         params = _suggest_common_params(trial, seed=seed, n_estimators=n_estimators)
@@ -490,6 +636,9 @@ def run_optuna(
 
             metrics = evaluate_predictions(pred_df, label_col=label_col, top_k=top_k)
             pred_frames.append(pred_df)
+            rank_ic_value = _finite(metrics.get("rank_ic"), float("nan"))
+            if math.isfinite(rank_ic_value):
+                rank_ics.append(float(rank_ic_value))
 
             if model_name == "lambdamart":
                 score, _ = _cost_aware_score(
@@ -500,8 +649,6 @@ def run_optuna(
                 window_scores.append(score)
                 trial.report(float(np.mean(window_scores)), step=win_i)
             else:
-                if math.isfinite(_finite(metrics.get("rank_ic"), float("nan"))):
-                    rank_ics.append(float(metrics["rank_ic"]))
                 if rank_ics:
                     mean_ic = float(np.mean(rank_ics))
                     std_ic = float(np.std(rank_ics, ddof=1)) if len(rank_ics) > 1 else 0.0
@@ -527,14 +674,23 @@ def run_optuna(
                 final_score = -10.0
             penalty = 0.0
 
+        rank_ic_stability = _rank_ic_stability_adjustment(
+            rank_ics,
+            std_penalty_weight=window_rank_ic_std_penalty_weight,
+            negative_rate_penalty_weight=window_rank_ic_negative_rate_penalty_weight,
+        )
+        final_score -= rank_ic_stability["rank_ic_stability_penalty"]
+
         for key, value in final_metrics.items():
             trial.set_user_attr(key, None if not math.isfinite(_finite(value, float("nan"))) else float(value))
         trial.set_user_attr("turnover_penalty", float(penalty))
+        for key, value in rank_ic_stability.items():
+            trial.set_user_attr(key, None if not math.isfinite(value) else float(value))
         trial.set_user_attr("n_windows", len(windows))
         trial.set_user_attr("n_oos_rows", int(len(all_pred)))
         log.info(
             "%s trial %d: score=%.6f RankIC=%.4f NDCG@5=%.4f NDCG@10=%.4f NDCG@20=%.4f "
-            "top5_spread=%.4f top10_spread=%.4f turnover=%.2f penalty=%.4f",
+            "top5_spread=%.4f top10_spread=%.4f turnover=%.2f penalty=%.4f rank_ic_stability_penalty=%.4f",
             model_name,
             trial.number,
             final_score,
@@ -546,6 +702,7 @@ def run_optuna(
             _finite(final_metrics.get("top10_spread"), float("nan")),
             _finite(final_metrics.get("top5_turnover"), float("nan")),
             penalty,
+            rank_ic_stability["rank_ic_stability_penalty"],
         )
         return final_score
 
@@ -554,12 +711,8 @@ def run_optuna(
     # 防 thread oversubscription. 必须用 InMemoryStorage 或 SQLite study DB 防 race;
     # 当前 study 是 in-memory single-process safe (Optuna 内部 multi-thread 锁).
     # rule-compliance: ok evidence=codex-codegraph-P-2-parallel-trials
-    import os
-    n_jobs_default = max(1, min(4, (os.cpu_count() or 2) // 2))
-    n_jobs = int(os.environ.get("OPTUNA_N_JOBS", n_jobs_default))
-    if n_jobs > 1:
-        os.environ.setdefault("OMP_NUM_THREADS", "2")
-        os.environ.setdefault("LIGHTGBM_NUM_THREADS", "2")
+    n_jobs, inner_threads = _configure_optuna_parallelism()
+    log.info("optuna parallelism: outer_jobs=%d inner_lightgbm_threads=%d", n_jobs, inner_threads)
 
     # F2 (Codex bocq8b60j 2026-05-20): 每 COMPLETE trial 写 best_params checkpoint json.
     # spot preempt 时 interrupted, best params 已落盘可救回. atomic write (tmp + replace).
@@ -593,7 +746,28 @@ def run_optuna(
         _callbacks.append(_checkpoint_best)
         log.info("optuna checkpoint enabled: %s (每 COMPLETE trial atomic write best params)", _ckpt)
 
-    study.optimize(objective, n_trials=n_trials, gc_after_trial=True, n_jobs=n_jobs, callbacks=_callbacks or None)
+    trials_to_run = n_trials
+    if study_storage is not None:
+        completed_before = completed_trial_count(study)
+        trials_to_run = remaining_trials_for_target(study, n_trials)
+        log.info(
+            "optuna resume budget: target_total_trials=%d completed=%d remaining=%d",
+            n_trials,
+            completed_before,
+            trials_to_run,
+        )
+
+    if trials_to_run > 0:
+        study.optimize(
+            objective,
+            n_trials=trials_to_run,
+            gc_after_trial=True,
+            n_jobs=n_jobs,
+            callbacks=_callbacks or None,
+        )
+    else:
+        log.info("optuna target already satisfied; skipping optimize and using existing best trial")
+
     best = study.best_trial
     metrics = {
         "rank_ic": _finite(best.user_attrs.get("rank_ic"), float("nan")),
@@ -604,13 +778,18 @@ def run_optuna(
         "top10_spread": _finite(best.user_attrs.get("top10_spread"), float("nan")),
         "top5_turnover": _finite(best.user_attrs.get("top5_turnover"), float("nan")),
         "turnover_penalty": _finite(best.user_attrs.get("turnover_penalty"), 0.0),
+        "window_rank_ic_mean": _finite(best.user_attrs.get("window_rank_ic_mean"), float("nan")),
+        "window_rank_ic_std": _finite(best.user_attrs.get("window_rank_ic_std"), float("nan")),
+        "window_rank_ic_positive_rate": _finite(best.user_attrs.get("window_rank_ic_positive_rate"), float("nan")),
+        "window_rank_ic_negative_rate": _finite(best.user_attrs.get("window_rank_ic_negative_rate"), float("nan")),
+        "rank_ic_stability_penalty": _finite(best.user_attrs.get("rank_ic_stability_penalty"), 0.0),
     }
     return ModelRunResult(
         model_name=model_name,
         best_value=float(best.value),
         best_params=dict(best.params),
         metrics=metrics,
-        n_trials=n_trials,
+        n_trials=completed_trial_count(study),
         n_windows=len(windows),
     )
 
@@ -629,6 +808,11 @@ def _print_result(result: ModelRunResult) -> None:
     print(f"top-10 spread: {m['top10_spread']:.6f}")
     print(f"top-5 turnover count: {m['top5_turnover']:.6f}")
     print(f"turnover penalty: {m['turnover_penalty']:.6f}")
+    print(f"window RankIC mean: {m['window_rank_ic_mean']:.6f}")
+    print(f"window RankIC std: {m['window_rank_ic_std']:.6f}")
+    print(f"window RankIC positive rate: {m['window_rank_ic_positive_rate']:.6f}")
+    print(f"window RankIC negative rate: {m['window_rank_ic_negative_rate']:.6f}")
+    print(f"RankIC stability penalty: {m['rank_ic_stability_penalty']:.6f}")
     print(f"params: {result.best_params}")
 
 
@@ -664,6 +848,15 @@ def main() -> int:
     parser.add_argument("--turnover-limit", type=float, default=3.0,
                         help="average top-5 changed-name count allowed before penalty")
     parser.add_argument("--turnover-penalty-weight", type=float, default=0.02)
+    parser.add_argument("--window-rank-ic-std-penalty-weight", type=float, default=0.0,
+                        help="Opt-in objective penalty on per-window RankIC std; default 0 preserves existing behavior")
+    parser.add_argument("--window-rank-ic-negative-rate-penalty-weight", type=float, default=0.0,
+                        help="Opt-in objective penalty on negative per-window RankIC rate; default 0 preserves existing behavior")
+    parser.add_argument(
+        "--warm-start-checkpoint",
+        default=None,
+        help="Seed Optuna with best_params from a previous checkpoint JSON (Layer 4 warm-start)",
+    )
     parser.add_argument("--compare-regressor", action="store_true",
                         help="also run a v4-style LGBMRegressor Optuna baseline")
     args = parser.parse_args()
@@ -696,6 +889,7 @@ def main() -> int:
     if not windows:
         log.error("No walk-forward windows produced")
         return 1
+    warm_start_params = load_warm_start_params(args.warm_start_checkpoint) if args.warm_start_checkpoint else None
     log.info("walk-forward windows: %d", len(windows))
     for i, w in enumerate(windows[:5]):
         log.info(
@@ -721,6 +915,10 @@ def main() -> int:
             turnover_limit=args.turnover_limit,
             turnover_penalty_weight=args.turnover_penalty_weight,
             top_k=args.top_k,
+            warm_start_params=warm_start_params,
+            warm_start_source=args.warm_start_checkpoint,
+            window_rank_ic_std_penalty_weight=args.window_rank_ic_std_penalty_weight,
+            window_rank_ic_negative_rate_penalty_weight=args.window_rank_ic_negative_rate_penalty_weight,
         )
     ]
     _print_result(results[0])
@@ -738,6 +936,8 @@ def main() -> int:
                 turnover_limit=args.turnover_limit,
                 turnover_penalty_weight=args.turnover_penalty_weight,
                 top_k=args.top_k,
+                window_rank_ic_std_penalty_weight=args.window_rank_ic_std_penalty_weight,
+                window_rank_ic_negative_rate_penalty_weight=args.window_rank_ic_negative_rate_penalty_weight,
             )
         )
         _print_result(results[1])

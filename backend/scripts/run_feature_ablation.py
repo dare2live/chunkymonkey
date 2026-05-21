@@ -487,12 +487,23 @@ def main() -> None:
 
         # 写库 + 计算 vs_base 增量
         base_rank_ic = results.get("base", {}).get("rank_ic")
-        for name, r in results.items():
-            vs_base_pp = (
-                None if base_rank_ic is None or name == "base"
-                else (r["rank_ic"] - base_rank_ic) * 100  # 百分点
+        ablation_rows = [
+            (
+                run_id, name, args.label_name, r["n_features"],
+                json.dumps(r["feature_cols"], ensure_ascii=False),
+                r["ic"], r["rank_ic"], r["top_avg"], r["bot_avg"],
+                r["spread"], r["winrate"], built_at,
+                args.params_source, baseline_model_id, params_json,
+                (
+                    None if base_rank_ic is None or name == "base"
+                    else (r["rank_ic"] - base_rank_ic) * 100
+                ),
+                args.num_round, r["best_iteration"],
             )
-            conn.execute(
+            for name, r in results.items()
+        ]
+        if ablation_rows:
+            conn.executemany(
                 """
                 INSERT OR REPLACE INTO mart_model_ablation_run
                 (run_id, group_name, label_name, n_features, feature_cols_json,
@@ -503,14 +514,7 @@ def main() -> None:
                  rank_ic_vs_base_pp, num_round, best_iteration)
                 VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
                 """,
-                (
-                    run_id, name, args.label_name, r["n_features"],
-                    json.dumps(r["feature_cols"], ensure_ascii=False),
-                    r["ic"], r["rank_ic"], r["top_avg"], r["bot_avg"],
-                    r["spread"], r["winrate"], built_at,
-                    args.params_source, baseline_model_id, params_json,
-                    vs_base_pp, args.num_round, r["best_iteration"],
-                ),
+                ablation_rows,
             )
         conn.commit()
 

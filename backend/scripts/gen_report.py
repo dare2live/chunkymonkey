@@ -467,13 +467,21 @@ def write_legacy_backtest_report() -> Path:
 
     a("## 1. Institution Industry Performance (3 levels)")
     a("")
+    overview_rows = conn.execute(
+        "SELECT industry_level, COUNT(*), COUNT(DISTINCT institution_id), COUNT(DISTINCT industry_name), "
+        "AVG(avg_gain_30d), AVG(win_rate_30d) FROM research_inst_industry_performance "
+        "WHERE industry_level IN ('L1', 'L2', 'L3') AND buy_event_count>=3 "
+        "GROUP BY industry_level"
+    ).fetchall()
+    overview_by_level = {r[0]: r for r in overview_rows}
     for lv in ["L1", "L2", "L3"]:
-        r = conn.execute(
-            "SELECT COUNT(*), COUNT(DISTINCT institution_id), COUNT(DISTINCT industry_name), "
-            "AVG(avg_gain_30d), AVG(win_rate_30d) FROM research_inst_industry_performance "
-            "WHERE industry_level=? AND buy_event_count>=3", (lv,)
-        ).fetchone()
-        a(f"**{lv}**: {r[0]} combos ({r[1]} insts x {r[2]} industries), avg 30d gain +{r[3]:.2f}%, win rate {r[4]:.1f}%")
+        r = overview_by_level.get(lv)
+        if r:
+            combos, insts, industries, gain30, win_rate30 = r[1], r[2], r[3], r[4] or 0.0, r[5] or 0.0
+        else:
+            combos = insts = industries = 0
+            gain30 = win_rate30 = 0.0
+        a(f"**{lv}**: {combos} combos ({insts} insts x {industries} industries), avg 30d gain +{gain30:.2f}%, win rate {win_rate30:.1f}%")
 
     a("")
     a("### L3 Top Experts (events>=5, by 30d win rate)")
@@ -492,23 +500,39 @@ def write_legacy_backtest_report() -> Path:
     a("")
     a("### Expert Summary (WR>=60%, events>=5)")
     a("")
+    expert_rows = conn.execute(
+        "SELECT industry_level, COUNT(*), AVG(avg_gain_30d), AVG(win_rate_30d), AVG(avg_max_drawdown_30d) "
+        "FROM research_inst_industry_performance "
+        "WHERE industry_level IN ('L1', 'L2', 'L3') AND buy_event_count>=5 AND win_rate_30d>=60 "
+        "GROUP BY industry_level"
+    ).fetchall()
+    experts_by_level = {r[0]: r for r in expert_rows}
     for lv in ["L1", "L2", "L3"]:
-        r = conn.execute(
-            "SELECT COUNT(*), AVG(avg_gain_30d), AVG(win_rate_30d), AVG(avg_max_drawdown_30d) "
-            "FROM research_inst_industry_performance WHERE industry_level=? AND buy_event_count>=5 AND win_rate_30d>=60",
-            (lv,)
-        ).fetchone()
-        a(f"- **{lv}**: {r[0]} combos, +{r[1]:.1f}% gain, {r[2]:.1f}% WR, {r[3]:.1f}% DD")
+        r = experts_by_level.get(lv)
+        if r:
+            combos, gain30, win_rate30, drawdown30 = r[1], r[2] or 0.0, r[3] or 0.0, r[4] or 0.0
+        else:
+            combos = 0
+            gain30 = win_rate30 = drawdown30 = 0.0
+        a(f"- **{lv}**: {combos} combos, +{gain30:.1f}% gain, {win_rate30:.1f}% WR, {drawdown30:.1f}% DD")
 
     a("")
     a("## 2. Holding Chains")
     a("")
+    chain_rows = conn.execute(
+        "SELECT chain_status, COUNT(*), AVG(chain_days), AVG(event_count) "
+        "FROM research_holding_chains WHERE chain_status IN ('closed', 'open') "
+        "GROUP BY chain_status"
+    ).fetchall()
+    chains_by_status = {r[0]: r for r in chain_rows}
     for st in ["closed", "open"]:
-        r = conn.execute(
-            "SELECT COUNT(*), AVG(chain_days), AVG(event_count) FROM research_holding_chains WHERE chain_status=?", (st,)
-        ).fetchone()
-        days = f", avg {r[1]:.0f} days" if r[1] else ""
-        a(f"- **{st}**: {r[0]} chains{days}, avg {r[2]:.1f} events")
+        r = chains_by_status.get(st)
+        if r:
+            chain_count, chain_days, event_count = r[1], r[2], r[3] or 0.0
+        else:
+            chain_count, chain_days, event_count = 0, None, 0.0
+        days = f", avg {chain_days:.0f} days" if chain_days else ""
+        a(f"- **{st}**: {chain_count} chains{days}, avg {event_count:.1f} events")
 
     a("")
     a("### Top Event Sequences (closed)")

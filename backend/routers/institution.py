@@ -64,6 +64,21 @@ _STOCK_TRENDS_CACHE_TTL_SEC = 10
 _stock_trends_cache = {"ts": 0.0, "payload": None}
 
 
+def _load_industry_stat_map(conn, inst_id: str) -> dict[tuple[str, str], dict]:
+    rows = conn.execute(
+        """
+        SELECT industry_level, industry_name, avg_gain_30d, win_rate_30d
+          FROM mart_institution_industry_stat
+         WHERE institution_id = ?
+        """,
+        (inst_id,),
+    ).fetchall()
+    return {
+        (row["industry_level"], row["industry_name"]): dict(row)
+        for row in rows
+    }
+
+
 # ============================================================
 # 机构 CRUD
 # ============================================================
@@ -523,6 +538,7 @@ async def get_institution_detail(inst_id: str):
                  "tdx_l3": ind_map[c].get("tdx_l3_name"), "stock_code": c}
                 for c in stock_codes if c in ind_map
             ]
+            stat_by_level_name = _load_industry_stat_map(conn, inst_id)
 
             # 按一级 → 二级 → 三级 聚合
             from collections import defaultdict
@@ -546,10 +562,7 @@ async def get_institution_detail(inst_id: str):
                     for l3, cnt in sorted(v2["children"].items(), key=lambda x: -x[1]):
                         l2_data["children"].append({"level3": l3, "stock_count": cnt})
                     # 历史表现（如有）
-                    stat = conn.execute("""
-                        SELECT avg_gain_30d, win_rate_30d FROM mart_institution_industry_stat
-                        WHERE institution_id = ? AND industry_level = 'level2' AND industry_name = ?
-                    """, (inst_id, l2)).fetchone()
+                    stat = stat_by_level_name.get(("level2", l2))
                     if stat:
                         l2_data["avg_gain_30d"] = stat["avg_gain_30d"]
                         l2_data["win_rate_30d"] = stat["win_rate_30d"]
@@ -571,10 +584,7 @@ async def get_institution_detail(inst_id: str):
                         }
                     l1_data["children"].append(l2_data)
                 # 一级行业也查业绩
-                l1_stat = conn.execute("""
-                    SELECT avg_gain_30d, win_rate_30d FROM mart_institution_industry_stat
-                    WHERE institution_id = ? AND industry_level = 'level1' AND industry_name = ?
-                """, (inst_id, l1)).fetchone()
+                l1_stat = stat_by_level_name.get(("level1", l1))
                 if l1_stat:
                     l1_data["avg_gain_30d"] = l1_stat["avg_gain_30d"]
                     l1_data["win_rate_30d"] = l1_stat["win_rate_30d"]

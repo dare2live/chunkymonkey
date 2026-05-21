@@ -80,9 +80,13 @@ def _table_columns(conn, table_name: str) -> set[str]:
 
 def _ensure_columns(conn, table_name: str, columns: dict[str, str]) -> None:
     existing = _table_columns(conn, table_name)
-    for col, ddl in columns.items():
-        if col not in existing:
-            conn.execute(f"ALTER TABLE {table_name} ADD COLUMN {col} {ddl}")
+    statements = [
+        f"ALTER TABLE {table_name} ADD COLUMN {col} {ddl}"
+        for col, ddl in columns.items()
+        if col not in existing
+    ]
+    if statements:
+        conn.execute(";\n".join(statements))
 
 
 # ============================================================
@@ -1085,20 +1089,38 @@ def _apply_history_backfill(conn, stock_codes: list[str], records: list[dict], s
         touched.add(record["stock_code"])
         inserted += 1
 
-    for code in stock_codes:
-        count_row = conn.execute(
-            """
-            SELECT COUNT(*) AS cnt, MAX(report_date) AS latest_report
+    history_counts = {
+        row["stock_code"]: row
+        for row in conn.execute(
+            f"""
+            SELECT stock_code, COUNT(*) AS cnt, MAX(report_date) AS latest_report
             FROM raw_gpcw_financial
-            WHERE stock_code = ?
+            WHERE stock_code IN ({", ".join("?" for _ in stock_codes)})
+            GROUP BY stock_code
             """,
-            (code,),
-        ).fetchone()
+            stock_codes,
+        ).fetchall()
+    } if stock_codes else {}
+    state_rows = []
+    for code in stock_codes:
+        count_row = history_counts.get(code)
         state = states.get(code, {})
         history_rows = count_row["cnt"] if count_row else 0
         last_report_date = count_row["latest_report"] if count_row else None
         history_status = _history_stage_status(state, history_rows)
-        conn.execute(
+        state_rows.append((
+            code,
+            history_rows,
+            last_report_date,
+            synced_at,
+            history_status,
+            state.get("error"),
+            history_status,
+            state.get("error"),
+            synced_at,
+        ))
+    if state_rows:
+        conn.executemany(
             """
             INSERT INTO financial_sync_state
             (stock_code, history_rows, last_report_date, last_history_at,
@@ -1114,17 +1136,7 @@ def _apply_history_backfill(conn, stock_codes: list[str], records: list[dict], s
                 error = excluded.error,
                 updated_at = excluded.updated_at
             """,
-            (
-                code,
-                history_rows,
-                last_report_date,
-                synced_at,
-                history_status,
-                state.get("error"),
-                history_status,
-                state.get("error"),
-                synced_at,
-            ),
+            state_rows,
         )
     return inserted
 

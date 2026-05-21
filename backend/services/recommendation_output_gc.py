@@ -1,7 +1,9 @@
 """Delete obsolete recommendation outputs for retired/non-current models."""
 from __future__ import annotations
 
-from datetime import UTC, datetime
+from datetime import datetime, timezone
+
+UTC = timezone.utc
 from pathlib import Path
 from typing import Any
 
@@ -24,6 +26,10 @@ DELETE_STATUSES = {"retired", "deprecated", "deleted"}
 
 def _quote_ident(name: str) -> str:
     return '"' + name.replace('"', '""') + '"'
+
+
+def _sql_literal(value: str) -> str:
+    return "'" + value.replace("'", "''") + "'"
 
 
 def _table_exists(conn: Any, table: str) -> bool:
@@ -61,28 +67,50 @@ def _obsolete_output_model_rows(conn: Any) -> list[dict[str, Any]]:
          ORDER BY model_id
         """
     ).fetchall()
+    obsolete_models = [
+        {"model_id": str(row["model_id"]), "status": str(row["status"])}
+        for row in rows
+    ]
+    model_ids = [item["model_id"] for item in obsolete_models]
+    table_counts_by_model: dict[str, dict[str, int]] = {model_id: {} for model_id in model_ids}
+    output_tables = [
+        table
+        for table in OUTPUT_TABLES
+        if _table_exists(conn, table) and "model_id" in _columns(conn, table)
+    ]
+    if model_ids and output_tables:
+        placeholders = ", ".join("?" for _ in model_ids)
+        count_sql = "\nUNION ALL\n".join(
+            f"""
+            SELECT ? AS table_name, model_id, COUNT(*) AS n
+              FROM {_quote_ident(table)}
+             WHERE model_id IN ({placeholders})
+             GROUP BY model_id
+            """.strip()
+            for table in output_tables
+        )
+        params = [
+            value
+            for table in output_tables
+            for value in (table, *model_ids)
+        ]
+        for row in conn.execute(count_sql, params).fetchall():
+            model_id = str(row["model_id"])
+            table_name = str(row["table_name"])
+            count = int(row["n"] or 0)
+            if count:
+                table_counts_by_model.setdefault(model_id, {})[table_name] = count
     candidates = []
-    for row in rows:
-        model_id = str(row["model_id"])
-        table_counts = {}
-        for table in OUTPUT_TABLES:
-            if _table_exists(conn, table) and "model_id" in _columns(conn, table):
-                count = int(
-                    conn.execute(
-                        f"SELECT COUNT(*) AS n FROM {_quote_ident(table)} WHERE model_id = ?",
-                        (model_id,),
-                    ).fetchone()["n"]
-                    or 0
-                )
-                if count:
-                    table_counts[table] = count
+    for item in obsolete_models:
+        model_id = item["model_id"]
+        table_counts = table_counts_by_model.get(model_id, {})
         path = MODEL_ROOT / f"{model_id}.pkl"
         file_bytes = path.stat().st_size if path.exists() else 0
         if table_counts or file_bytes:
             candidates.append(
                 {
                     "model_id": model_id,
-                    "status": str(row["status"]),
+                    "status": item["status"],
                     "table_counts": table_counts,
                     "model_file": str(path) if file_bytes else None,
                     "model_file_bytes": file_bytes,
@@ -114,6 +142,16 @@ def execute_obsolete_recommendation_output_delete(
     ensure_data_deletion_tables(conn)
     plan = plan_obsolete_recommendation_output_delete(conn)
     executed = []
+    delete_model_ids_by_table: dict[str, list[str]] = {}
+    for candidate in plan["candidates"]:
+        for table in candidate["table_counts"]:
+            delete_model_ids_by_table.setdefault(table, []).append(candidate["model_id"])
+    if delete_model_ids_by_table:
+        delete_sql = "\n".join(
+            f"DELETE FROM {_quote_ident(table)} WHERE model_id IN ({', '.join(_sql_literal(model_id) for model_id in sorted(set(model_ids)))});"
+            for table, model_ids in delete_model_ids_by_table.items()
+        )
+        conn.executescript(delete_sql)
     for candidate in plan["candidates"]:
         model_id = candidate["model_id"]
         verification = {
@@ -124,15 +162,7 @@ def execute_obsolete_recommendation_output_delete(
         }
         for table, expected_rows in candidate["table_counts"].items():
             print(f"[recommendation_gc] {utc_now_iso()} delete {table} model_id={model_id}", flush=True)
-            before = int(
-                conn.execute(
-                    f"SELECT COUNT(*) AS n FROM {_quote_ident(table)} WHERE model_id = ?",
-                    (model_id,),
-                ).fetchone()["n"]
-                or 0
-            )
-            conn.execute(f"DELETE FROM {_quote_ident(table)} WHERE model_id = ?", (model_id,))
-            deleted_rows = before
+            deleted_rows = int(expected_rows or 0)
             if deleted_rows:
                 record_data_deletion(
                     conn,

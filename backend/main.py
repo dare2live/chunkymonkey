@@ -161,8 +161,15 @@ app.include_router(v3_views_router, prefix="/api/v3/view", tags=["v3_view"])
 from routers.v3_portfolio_builder import router as v3_portfolio_builder_router
 app.include_router(v3_portfolio_builder_router, prefix="/api/v3/portfolio", tags=["v3_portfolio"])
 
-# 市场感知 (Market Perception) — Codex 扩展模块 stub (docs/market_perception_codex_handoff.md)
-from routers.v3_market_perception import router as v3_market_perception_router
+# 市场感知 (Market Perception): standalone project at /stock/perception.
+PERCEPTION_SRC = Path(__file__).resolve().parents[2] / "perception" / "src"
+if PERCEPTION_SRC.exists() and str(PERCEPTION_SRC) not in sys.path:
+    sys.path.insert(0, str(PERCEPTION_SRC))
+try:
+    from perception.router import router as v3_market_perception_router
+except Exception as exc:
+    logger.warning("standalone perception router unavailable, falling back to bundled router: %s", exc)
+    from routers.v3_market_perception import router as v3_market_perception_router
 app.include_router(v3_market_perception_router, prefix="/api/v3/market_perception", tags=["v3_market_perception"])
 
 # 初始化 signals_v2 默认配置（幂等）
@@ -181,13 +188,16 @@ except Exception as _e:
 async def toggle_modules(settings: dict):
     try:
         conn = get_conn()
-        for k, v in settings.items():
-            if k in ["etf", "akquant"]:
-                val = "1" if v else "0"
-                conn.execute(
-                    "INSERT OR REPLACE INTO app_settings (key, value, updated_at) VALUES (?, ?, CURRENT_TIMESTAMP)",
-                    (f"module_{k}_enabled", val)
-                )
+        rows = [
+            (f"module_{k}_enabled", "1" if v else "0")
+            for k, v in settings.items()
+            if k in {"etf", "akquant"}
+        ]
+        if rows:
+            conn.executemany(
+                "INSERT OR REPLACE INTO app_settings (key, value, updated_at) VALUES (?, ?, CURRENT_TIMESTAMP)",
+                rows,
+            )
         conn.commit()
         conn.close()
         return {"status": "ok", "message": "配置已保存，请重启后端服务生效"}

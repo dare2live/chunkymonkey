@@ -77,15 +77,11 @@ def main() -> int:
     log.info(f"after: {n_after:,} rows (deleted {n_before - n_after})")
 
     # 重建 5 indexes (跟 db.py CREATE INDEX 语句一致)
-    indexes = [
-        ("idx_fact_hp_stock_date", "fact_top10_holder_period(stock_code, report_date DESC)"),
-        ("idx_fact_hp_name", "fact_top10_holder_period(holder_name)"),
-        ("idx_fact_hp_name_norm", "fact_top10_holder_period(holder_name_norm)"),
-        ("idx_fact_hp_eff_date", "fact_top10_holder_period(effective_date)"),
-        ("idx_fact_hp_set_class", "fact_top10_holder_period(holder_set, share_class)"),
-    ]
-    for name, spec in indexes:
-        conn.execute(f"CREATE INDEX IF NOT EXISTS {name} ON {spec}")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_fact_hp_stock_date ON fact_top10_holder_period(stock_code, report_date DESC)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_fact_hp_name ON fact_top10_holder_period(holder_name)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_fact_hp_name_norm ON fact_top10_holder_period(holder_name_norm)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_fact_hp_eff_date ON fact_top10_holder_period(effective_date)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_fact_hp_set_class ON fact_top10_holder_period(holder_set, share_class)")
     log.info(f"5 indexes recreated")
 
     conn.execute("DROP TABLE _tmp_holder_clean")

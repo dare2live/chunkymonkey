@@ -220,17 +220,14 @@ def main() -> int:
             col_list = ",".join(cols)
             # Clear today's slice + re-insert (idempotent re-runs)
             conn.execute("DELETE FROM mart_forecast_upside_live WHERE snapshot_date = ?", [snapshot_date])
-            inserted = 0
-            for r in rows:
-                try:
-                    conn.execute(
-                        f"INSERT INTO mart_forecast_upside_live ({col_list}) VALUES ({placeholders})",
-                        list(r),
-                    )
-                    inserted += 1
-                except Exception as e:
-                    # rule-compliance: ok evidence=ingest-best-effort-batch
-                    log.warning(f"insert err: {e}")
+            conn.executemany(
+                f"INSERT OR IGNORE INTO mart_forecast_upside_live ({col_list}) VALUES ({placeholders})",
+                [list(r) for r in rows],
+            )
+            inserted = conn.execute(
+                "SELECT COUNT(*) FROM mart_forecast_upside_live WHERE snapshot_date = ?",
+                [snapshot_date],
+            ).fetchone()[0]
             log.info(f"  inserted {inserted:,} rows")
 
             # Quick top-K by upside_blend

@@ -38,81 +38,106 @@ def audit_table_completeness(conn) -> list[dict]:
         ("fact_stock_technical_stage",             500_000, "date"),
     ]
     issues = []
+    table_names = [table for table, _expected_n, _date_col in EXPECTED]
+    placeholders = ", ".join("?" for _ in table_names)
+    existing_rows = conn.execute(
+        f"""
+        SELECT table_name
+          FROM information_schema.tables
+         WHERE table_name IN ({placeholders})
+        """,
+        table_names,
+    ).fetchall()
+    existing = {row[0] for row in existing_rows}
+    existing_specs = [
+        (table, expected_n, date_col)
+        for table, expected_n, date_col in EXPECTED
+        if table in existing
+    ]
+    stats_by_table = {}
+    if existing_specs:
+        stats_sql = "\nUNION ALL\n".join(
+            f"""
+            SELECT '{table}' AS table_name,
+                   COUNT(*) AS n,
+                   {f"CAST(MAX({date_col}) AS VARCHAR)" if date_col else "NULL"} AS latest
+              FROM {table}
+            """.strip()
+            for table, _expected_n, date_col in existing_specs
+        )
+        stats_by_table = {
+            row[0]: {"n": int(row[1] or 0), "latest": row[2]}
+            for row in conn.execute(stats_sql).fetchall()
+        }
     for table, expected_n, date_col in EXPECTED:
-        try:
-            n = conn.execute(f"SELECT COUNT(*) FROM {table}").fetchone()[0]
-            severity = "OK"
-            note = ""
-            if n < expected_n // 10:
-                severity = "FAIL"
-                note = f"行数严重不足 {n:,} < expect {expected_n:,}/10"
-            elif n < expected_n:
-                severity = "WARN"
-                note = f"行数偏少 {n:,} < {expected_n:,}"
-            latest = None
-            if date_col:
-                try:
-                    r = conn.execute(f"SELECT MAX({date_col}) FROM {table}").fetchone()
-                    latest = r[0]
-                except Exception:
-                    pass
-            issues.append({
-                "category": "table_completeness",
-                "table": table, "n": n, "expected_n": expected_n,
-                "severity": severity, "note": note, "latest": latest,
-            })
-        except Exception as e:
+        if table not in stats_by_table:
             issues.append({
                 "category": "table_completeness", "table": table,
-                "severity": "FAIL", "note": f"{e}",
+                "severity": "FAIL", "note": "table missing",
             })
+            continue
+        n = stats_by_table[table]["n"]
+        severity = "OK"
+        note = ""
+        if n < expected_n // 10:
+            severity = "FAIL"
+            note = f"行数严重不足 {n:,} < expect {expected_n:,}/10"
+        elif n < expected_n:
+            severity = "WARN"
+            note = f"行数偏少 {n:,} < {expected_n:,}"
+        issues.append({
+            "category": "table_completeness",
+            "table": table, "n": n, "expected_n": expected_n,
+            "severity": severity, "note": note, "latest": stats_by_table[table]["latest"],
+        })
     return issues
 
 
 def audit_join_consistency(conn) -> list[dict]:
     """2. 检查关键 JOIN 字段是否对齐."""
     issues = []
-    checks = [
+    try:
         # buy_signal 应该 join 到 strategy_optimal — LEFT JOIN by design, 允许部分 null
         # 触发数 - 寻优数 > 20% 才算异常 (太多未寻优股入 buy_signal 池)
-        ("buy_signal × strategy_optimal 缺失率 (≤20%)",
-         """WITH x AS (
-              SELECT COUNT(*) AS total FROM mart_stock_formula_buy_signal_daily
-            ), y AS (
-              SELECT COUNT(*) AS missing FROM mart_stock_formula_buy_signal_daily b
-                LEFT JOIN mart_per_stock_strategy_optimal o
-                  ON o.stock_code = b.stock_code AND o.formula_variant = b.formula_variant
-                WHERE o.stock_code IS NULL
-            )
-            SELECT y.missing FROM x, y WHERE (1.0 * y.missing / NULLIF(x.total, 0)) > 0.20""",
-         "缺失寻优结果占 buy_signal 总数 > 20% (新触发股未寻优)"),
-        # picture × buy_signal 一致
-        ("buy_signal × picture stock_code 覆盖",
-         """SELECT COUNT(*) FROM mart_stock_formula_buy_signal_daily b
-              LEFT JOIN mart_stock_picture_daily p
-                ON p.stock_code = b.stock_code
-                AND p.snapshot_date = (SELECT MAX(snapshot_date) FROM mart_stock_picture_daily)
-             WHERE p.stock_code IS NULL""",
-         "缺失画像的 buy_signal 行"),
-    ]
-    for name, sql, note in checks:
-        try:
-            r = conn.execute(sql).fetchone()
-            if r is None:
-                # SQL 返回 0 row = 不触发 alert 条件 (例如缺失率 ≤ 阈值)
-                issues.append({
-                    "category": "join_consistency", "check": name,
-                    "missing_count": 0, "severity": "OK", "note": note,
-                })
-            else:
-                issues.append({
-                    "category": "join_consistency", "check": name,
-                    "missing_count": r[0],
-                    "severity": "OK" if r[0] == 0 else ("WARN" if r[0] < 100 else "FAIL"),
-                    "note": note,
-                })
-        except Exception as e:
-            issues.append({"category": "join_consistency", "check": name, "severity": "FAIL", "note": str(e)})
+        r = conn.execute(
+            """WITH x AS (
+                 SELECT COUNT(*) AS total FROM mart_stock_formula_buy_signal_daily
+               ), y AS (
+                 SELECT COUNT(*) AS missing FROM mart_stock_formula_buy_signal_daily b
+                   LEFT JOIN mart_per_stock_strategy_optimal o
+                     ON o.stock_code = b.stock_code AND o.formula_variant = b.formula_variant
+                   WHERE o.stock_code IS NULL
+               )
+               SELECT y.missing FROM x, y WHERE (1.0 * y.missing / NULLIF(x.total, 0)) > 0.20"""
+        ).fetchone()
+        missing = 0 if r is None else r[0]
+        issues.append({
+            "category": "join_consistency",
+            "check": "buy_signal × strategy_optimal 缺失率 (≤20%)",
+            "missing_count": missing,
+            "severity": "OK" if missing == 0 else ("WARN" if missing < 100 else "FAIL"),
+            "note": "缺失寻优结果占 buy_signal 总数 > 20% (新触发股未寻优)",
+        })
+    except Exception as e:
+        issues.append({"category": "join_consistency", "check": "buy_signal × strategy_optimal 缺失率 (≤20%)", "severity": "FAIL", "note": str(e)})
+    try:
+        r = conn.execute(
+            """SELECT COUNT(*) FROM mart_stock_formula_buy_signal_daily b
+                 LEFT JOIN mart_stock_picture_daily p
+                   ON p.stock_code = b.stock_code
+                  AND p.snapshot_date = (SELECT MAX(snapshot_date) FROM mart_stock_picture_daily)
+                WHERE p.stock_code IS NULL"""
+        ).fetchone()
+        missing = r[0] if r else 0
+        issues.append({
+            "category": "join_consistency",
+            "check": "buy_signal × picture stock_code 覆盖",
+            "missing_count": missing,
+            "severity": "OK" if missing == 0 else ("WARN" if missing < 100 else "FAIL"),
+            "note": "缺失画像的 buy_signal 行",
+        })
+    except Exception as e:
+        issues.append({"category": "join_consistency", "check": "buy_signal × picture stock_code 覆盖", "severity": "FAIL", "note": str(e)})
     return issues
 
 
@@ -217,8 +242,100 @@ def audit_risk_constraint_validity(conn) -> list[dict]:
     return issues
 
 
+def audit_recommendation_pit_coverage(conn) -> list[dict]:
+    """5. Daily recommendations should surface whether PIT-safe params are used."""
+    issues = []
+    try:
+        row = conn.execute("""
+            WITH latest AS (
+              SELECT MAX(signal_date) AS signal_date
+              FROM mart_daily_position_recommendation
+            ),
+            latest_recs AS (
+              SELECT r.*
+              FROM mart_daily_position_recommendation r
+              JOIN latest l ON l.signal_date = r.signal_date
+            ),
+            pit_stock AS (
+              SELECT DISTINCT stock_code
+              FROM mart_per_stock_stage_strategy_optimal_pit
+              WHERE cutoff_date <= (SELECT signal_date FROM latest)
+            ),
+            pit_formula AS (
+              SELECT DISTINCT stock_code, formula_id, formula_variant
+              FROM mart_per_stock_stage_strategy_optimal_pit
+              WHERE cutoff_date <= (SELECT signal_date FROM latest)
+            )
+            SELECT
+              (SELECT signal_date FROM latest) AS signal_date,
+              COUNT(*) AS n_total,
+              COUNT(*) FILTER (WHERE r.match_tier IN ('stage_pit', 'stage_pit_formula_fallback')) AS n_pit,
+              COUNT(*) FILTER (WHERE r.match_tier = 'cross_stage_fallback') AS n_cross_stage,
+              COUNT(*) FILTER (WHERE ps.stock_code IS NOT NULL) AS n_same_stock_pit,
+              COUNT(*) FILTER (WHERE pf.stock_code IS NOT NULL) AS n_same_stock_formula_pit
+            FROM latest_recs r
+            LEFT JOIN pit_stock ps
+              ON ps.stock_code = r.stock_code
+            LEFT JOIN pit_formula pf
+              ON pf.stock_code = r.stock_code
+             AND pf.formula_id = r.formula_id
+             AND pf.formula_variant = r.formula_variant
+        """).fetchone()
+        signal_date, n_total, n_pit, n_cross_stage, n_same_stock_pit, n_same_stock_formula_pit = (
+            row if row else (None, 0, 0, 0, 0, 0)
+        )
+        diagnostic_reasons = {}
+        if signal_date:
+            try:
+                diag_rows = conn.execute("""
+                    SELECT missing_reason, COUNT(*) AS n
+                      FROM mart_daily_position_recommendation_pit_diagnostic
+                     WHERE signal_date = ?
+                     GROUP BY missing_reason
+                     ORDER BY n DESC, missing_reason
+                """, [signal_date]).fetchall()
+                diagnostic_reasons = {str(reason): int(n) for reason, n in diag_rows}
+            except Exception:
+                diagnostic_reasons = {}
+        pit_ratio = (n_pit / n_total) if n_total else 0.0
+        if not n_total:
+            severity = "FAIL"
+            note = "latest recommendation table has no rows"
+        elif n_pit == 0:
+            severity = "WARN"
+            note = "all latest recommendations use legacy cross-stage fallback; PIT-safe params did not reach final selection"
+        elif pit_ratio < 0.5:
+            severity = "WARN"
+            note = "PIT-safe params cover less than half of latest recommendations"
+        else:
+            severity = "OK"
+            note = "latest recommendations include PIT-safe stage params"
+        issues.append({
+            "category": "recommendation_pit_coverage",
+            "check": "latest daily recommendation PIT coverage",
+            "signal_date": signal_date,
+            "n_total": int(n_total or 0),
+            "n_pit": int(n_pit or 0),
+            "n_cross_stage": int(n_cross_stage or 0),
+            "n_same_stock_pit": int(n_same_stock_pit or 0),
+            "n_same_stock_formula_pit": int(n_same_stock_formula_pit or 0),
+            "pit_ratio": round(pit_ratio, 4),
+            "diagnostic_reasons": diagnostic_reasons,
+            "severity": severity,
+            "note": note,
+        })
+    except Exception as e:
+        issues.append({
+            "category": "recommendation_pit_coverage",
+            "check": "latest daily recommendation PIT coverage",
+            "severity": "FAIL",
+            "note": str(e),
+        })
+    return issues
+
+
 def audit_data_freshness(conn) -> list[dict]:
-    """5. 数据时效性 (是否到今日)."""
+    """6. 数据时效性 (是否到今日)."""
     issues = []
     from datetime import date
     today = date.today().isoformat()  # Phase ψ.5 allowlist: audit 衡量物理 today 的数据滞后天数
@@ -228,10 +345,26 @@ def audit_data_freshness(conn) -> list[dict]:
         ("mart_stock_picture_daily", "snapshot_date"),
         ("mart_stock_survey_features", "as_of_date"),
     ]
+    table_names = [table for table, _col in checks]
+    placeholders = ", ".join("?" for _ in table_names)
+    existing = {
+        row[0]
+        for row in conn.execute(
+            f"SELECT table_name FROM information_schema.tables WHERE table_name IN ({placeholders})",
+            table_names,
+        ).fetchall()
+    }
+    existing_checks = [(table, col) for table, col in checks if table in existing]
+    latest_by_table = {}
+    if existing_checks:
+        latest_sql = "\nUNION ALL\n".join(
+            f"SELECT '{table}' AS table_name, CAST(MAX({col}) AS VARCHAR) AS latest FROM {table}"
+            for table, col in existing_checks
+        )
+        latest_by_table = {row[0]: row[1] for row in conn.execute(latest_sql).fetchall()}
     for table, col in checks:
         try:
-            r = conn.execute(f"SELECT MAX({col}) FROM {table}").fetchone()
-            latest = r[0]
+            latest = latest_by_table.get(table)
             days_behind = "N/A"
             if latest:
                 from datetime import datetime
@@ -259,7 +392,9 @@ def main():
         all_issues += audit_outliers(conn)
         log.info("=== 4. 风险约束审计 ===")
         all_issues += audit_risk_constraint_validity(conn)
-        log.info("=== 5. 数据时效审计 ===")
+        log.info("=== 5. 推荐 PIT 覆盖审计 ===")
+        all_issues += audit_recommendation_pit_coverage(conn)
+        log.info("=== 6. 数据时效审计 ===")
         all_issues += audit_data_freshness(conn)
 
         # 汇总

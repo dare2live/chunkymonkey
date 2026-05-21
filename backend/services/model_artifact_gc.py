@@ -1,7 +1,9 @@
 """Delete obsolete model artifacts and model-scoped rows after verification."""
 from __future__ import annotations
 
-from datetime import UTC, datetime
+from datetime import datetime, timezone
+
+UTC = timezone.utc
 from pathlib import Path
 from typing import Any
 
@@ -77,12 +79,15 @@ def _model_id_tables(conn: Any) -> list[str]:
 
 def _model_ids(conn: Any, model_root: Path) -> list[str]:
     ids: set[str] = set()
-    for table in _model_id_tables(conn):
-        if _table_exists(conn, table) and "model_id" in _columns(conn, table):
-            rows = conn.execute(
-                f"SELECT DISTINCT model_id FROM {_quote_ident(table)} WHERE model_id IS NOT NULL AND model_id <> ''"
-            ).fetchall()
-            ids.update(str(_row_value(row, "model_id")) for row in rows)
+    model_tables = _model_id_tables(conn)
+    if model_tables:
+        sql = "\nUNION\n".join(
+            f"SELECT DISTINCT model_id FROM {_quote_ident(table)} WHERE model_id IS NOT NULL AND model_id <> ''"
+            for table in model_tables
+        )
+        rows = conn.execute(sql).fetchall()
+        ids.update(str(_row_value(row, "model_id")) for row in rows)
+    ref_selects: list[str] = []
     for table, ref_columns in MODEL_REF_TABLE_DELETE_SPECS:
         if not _table_exists(conn, table):
             continue
@@ -90,15 +95,17 @@ def _model_ids(conn: Any, model_root: Path) -> list[str]:
         for column in ref_columns:
             if column not in cols:
                 continue
-            rows = conn.execute(
+            ref_selects.append(
                 f"""
                 SELECT DISTINCT {_quote_ident(column)} AS model_id
                   FROM {_quote_ident(table)}
                  WHERE {_quote_ident(column)} IS NOT NULL
                    AND {_quote_ident(column)} <> ''
-                """
-            ).fetchall()
-            ids.update(str(_row_value(row, "model_id")) for row in rows)
+                """.strip()
+            )
+    if ref_selects:
+        rows = conn.execute("\nUNION\n".join(ref_selects)).fetchall()
+        ids.update(str(_row_value(row, "model_id")) for row in rows)
     if model_root.exists():
         ids.update(path.stem for path in model_root.glob("*.pkl"))
     return sorted(ids)
@@ -264,21 +271,27 @@ def _walkforward_run_ids(conn: Any, model_id: str) -> list[str]:
 def _run_id_table_counts(conn: Any, run_ids: list[str]) -> dict[str, int]:
     if not run_ids:
         return {}
-    counts: dict[str, int] = {}
+    selects: list[str] = []
+    params: list[Any] = []
     for table in RUN_ID_DEPENDENT_TABLES:
         if not _table_exists(conn, table) or "run_id" not in _columns(conn, table):
             continue
-        row = conn.execute(
+        selects.append(
             f"""
-            SELECT COUNT(*) AS n
+            SELECT ? AS table_name, COUNT(*) AS n
               FROM {_quote_ident(table)}
              WHERE run_id IN ({_placeholders(run_ids)})
-            """,
-            run_ids,
-        ).fetchone()
-        count = int(_row_value(row, "n") or 0)
+            """.strip()
+        )
+        params.extend([table, *run_ids])
+    if not selects:
+        return {}
+    rows = conn.execute("\nUNION ALL\n".join(selects), params).fetchall()
+    counts: dict[str, int] = {}
+    for row in rows:
+        count = int(_row_value(row, "n", 1) or 0)
         if count:
-            counts[table] = count
+            counts[str(_row_value(row, "table_name"))] = count
     return counts
 
 

@@ -287,17 +287,23 @@ def reconcile_gap_queue_snapshot(conn, *,
         own_mkt = True
 
     try:
+        placeholders = ", ".join("?" for _ in datasets)
+        existing_by_dataset: dict[str, dict[str, str]] = {dataset: {} for dataset in datasets}
+        if datasets:
+            existing_rows = conn.execute(
+                f"""
+                SELECT dataset, stock_code, status
+                FROM market_gap_queue
+                WHERE dataset IN ({placeholders})
+                """,
+                datasets,
+            ).fetchall()
+            for row in existing_rows:
+                dataset = row["dataset"]
+                existing_by_dataset.setdefault(dataset, {})[row["stock_code"]] = row["status"]
         for dataset in datasets:
             missing_codes = _compute_missing_codes(conn, dataset, stock_names=stock_names, mkt_conn=mkt_conn)
-            existing_rows = conn.execute(
-                """
-                SELECT stock_code, status
-                FROM market_gap_queue
-                WHERE dataset = ?
-                """,
-                (dataset,),
-            ).fetchall()
-            existing = {row["stock_code"]: row["status"] for row in existing_rows}
+            existing = existing_by_dataset.get(dataset, {})
 
             for code in missing_codes:
                 current_status = existing.get(code)
@@ -341,23 +347,26 @@ def summarize_gap_queue(conn, *, datasets: Optional[Iterable[str]] = None, limit
         "total_unresolved": 0,
         "datasets": [],
     }
-    for dataset in datasets:
-        counts = conn.execute(
-            """
-            SELECT
-                COUNT(*) AS unresolved,
-                SUM(CASE WHEN status = 'pending' THEN 1 ELSE 0 END) AS pending,
-                SUM(CASE WHEN status = 'retrying' THEN 1 ELSE 0 END) AS retrying,
-                SUM(CASE WHEN status = 'blocked' THEN 1 ELSE 0 END) AS blocked
-            FROM market_gap_queue
-            WHERE dataset = ? AND status != 'resolved'
-            """,
-            (dataset,),
-        ).fetchone()
-        unresolved = (counts["unresolved"] if counts and counts["unresolved"] is not None else 0)
-        items = conn.execute(
-            """
-            SELECT stock_code, stock_name, status, reason, last_error,
+    placeholders = ", ".join("?" for _ in datasets)
+    count_rows = conn.execute(
+        f"""
+        SELECT
+            dataset,
+            COUNT(*) AS unresolved,
+            SUM(CASE WHEN status = 'pending' THEN 1 ELSE 0 END) AS pending,
+            SUM(CASE WHEN status = 'retrying' THEN 1 ELSE 0 END) AS retrying,
+            SUM(CASE WHEN status = 'blocked' THEN 1 ELSE 0 END) AS blocked
+        FROM market_gap_queue
+        WHERE dataset IN ({placeholders}) AND status != 'resolved'
+        GROUP BY dataset
+        """,
+        datasets,
+    ).fetchall() if datasets else []
+    counts_by_dataset = {row["dataset"]: row for row in count_rows}
+    item_sql = "\nUNION ALL\n".join(
+        f"""
+        SELECT * FROM (
+            SELECT ? AS dataset_key, stock_code, stock_name, status, reason, last_error,
                    source_attempts, first_seen_at, last_attempt_at, updated_at
             FROM market_gap_queue
             WHERE dataset = ? AND status != 'resolved'
@@ -370,9 +379,24 @@ def summarize_gap_queue(conn, *, datasets: Optional[Iterable[str]] = None, limit
                 COALESCE(last_attempt_at, updated_at, first_seen_at) DESC,
                 stock_code
             LIMIT ?
-            """,
-            (dataset, limit_per_dataset),
-        ).fetchall()
+        )
+        """.strip()
+        for _dataset in datasets
+    )
+    item_params = [
+        value
+        for dataset in datasets
+        for value in (dataset, dataset, limit_per_dataset)
+    ]
+    item_rows = conn.execute(item_sql, item_params).fetchall() if item_sql else []
+    items_by_dataset: dict[str, list[dict]] = {dataset: [] for dataset in datasets}
+    for row in item_rows:
+        item = dict(row)
+        dataset = str(item.pop("dataset_key"))
+        items_by_dataset.setdefault(dataset, []).append(item)
+    for dataset in datasets:
+        counts = counts_by_dataset.get(dataset)
+        unresolved = (counts["unresolved"] if counts and counts["unresolved"] is not None else 0)
         dataset_payload = {
             "dataset": dataset,
             "label": DATASET_LABELS.get(dataset, dataset),
@@ -380,7 +404,7 @@ def summarize_gap_queue(conn, *, datasets: Optional[Iterable[str]] = None, limit
             "pending": (counts["pending"] if counts and counts["pending"] is not None else 0),
             "retrying": (counts["retrying"] if counts and counts["retrying"] is not None else 0),
             "blocked": (counts["blocked"] if counts and counts["blocked"] is not None else 0),
-            "items": [dict(row) for row in items],
+            "items": items_by_dataset.get(dataset, []),
         }
         payload["datasets"].append(dataset_payload)
         payload["total_unresolved"] += unresolved

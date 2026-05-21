@@ -3,7 +3,9 @@ from __future__ import annotations
 
 import json
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import datetime, timezone
+
+UTC = timezone.utc
 from pathlib import Path
 from typing import Any, Iterable
 
@@ -474,28 +476,12 @@ def _candidate_feature_panel_cleanup(
 def _model_prediction_cleanup(conn, policy: StorageRetentionPolicy) -> list[dict[str, Any]]:
     protected = protected_model_ids(conn, policy)
     candidates: list[dict[str, Any]] = []
+    direct_rules: list[ModelPredictionRule] = []
+    run_rules: list[ModelPredictionRule] = []
     for rule in policy.model_prediction_tables:
         cols = _columns(conn, rule.table)
         if rule.model_id_column and rule.model_id_column in cols:
-            rows = conn.execute(
-                f"""
-                SELECT {rule.model_id_column} AS model_id, COUNT(*) AS row_count
-                  FROM {rule.table}
-                 GROUP BY {rule.model_id_column}
-                """
-            ).fetchall()
-            for row in rows:
-                model_id = row["model_id"]
-                if model_id not in protected:
-                    candidates.append(
-                        {
-                            "kind": "model_prediction_rows",
-                            "table": rule.table,
-                            "model_id": model_id,
-                            "row_count": int(row["row_count"] or 0),
-                            "reason": "model is not champion/challenger/shadow",
-                        }
-                    )
+            direct_rules.append(rule)
             continue
 
         if (
@@ -510,29 +496,56 @@ def _model_prediction_cleanup(conn, policy: StorageRetentionPolicy) -> list[dict
                 or rule.model_id_source_model_id_column not in source_cols
             ):
                 continue
-            rows = conn.execute(
-                f"""
-                SELECT p.{rule.run_id_column} AS run_id,
-                       f.{rule.model_id_source_model_id_column} AS model_id,
-                       COUNT(*) AS row_count
-                  FROM {rule.table} p
-                  JOIN {rule.model_id_source_table} f
-                    ON p.{rule.run_id_column} = f.{rule.model_id_source_run_id_column}
-                 GROUP BY p.{rule.run_id_column}, f.{rule.model_id_source_model_id_column}
-                """
-            ).fetchall()
-            for row in rows:
-                if row["model_id"] not in protected:
-                    candidates.append(
-                        {
-                            "kind": "model_prediction_rows",
-                            "table": rule.table,
-                            "run_id": row["run_id"],
-                            "model_id": row["model_id"],
-                            "row_count": int(row["row_count"] or 0),
-                            "reason": "walk-forward run belongs to non-protected model",
-                        }
-                    )
+            run_rules.append(rule)
+    if direct_rules:
+        direct_sql = "\nUNION ALL\n".join(
+            f"""
+            SELECT '{rule.table}' AS table_name,
+                   {_quote_ident(rule.model_id_column or '')} AS model_id,
+                   COUNT(*) AS row_count
+              FROM {_quote_ident(rule.table)}
+             GROUP BY {_quote_ident(rule.model_id_column or '')}
+            """.strip()
+            for rule in direct_rules
+        )
+        for row in conn.execute(direct_sql).fetchall():
+            model_id = row["model_id"]
+            if model_id not in protected:
+                candidates.append(
+                    {
+                        "kind": "model_prediction_rows",
+                        "table": row["table_name"],
+                        "model_id": model_id,
+                        "row_count": int(row["row_count"] or 0),
+                        "reason": "model is not champion/challenger/shadow",
+                    }
+                )
+    if run_rules:
+        run_sql = "\nUNION ALL\n".join(
+            f"""
+            SELECT '{rule.table}' AS table_name,
+                   p.{_quote_ident(rule.run_id_column or '')} AS run_id,
+                   f.{_quote_ident(rule.model_id_source_model_id_column)} AS model_id,
+                   COUNT(*) AS row_count
+              FROM {_quote_ident(rule.table)} p
+              JOIN {_quote_ident(rule.model_id_source_table or '')} f
+                ON p.{_quote_ident(rule.run_id_column or '')} = f.{_quote_ident(rule.model_id_source_run_id_column)}
+             GROUP BY p.{_quote_ident(rule.run_id_column or '')}, f.{_quote_ident(rule.model_id_source_model_id_column)}
+            """.strip()
+            for rule in run_rules
+        )
+        for row in conn.execute(run_sql).fetchall():
+            if row["model_id"] not in protected:
+                candidates.append(
+                    {
+                        "kind": "model_prediction_rows",
+                        "table": row["table_name"],
+                        "run_id": row["run_id"],
+                        "model_id": row["model_id"],
+                        "row_count": int(row["row_count"] or 0),
+                        "reason": "walk-forward run belongs to non-protected model",
+                    }
+                )
     return candidates
 
 
@@ -577,16 +590,26 @@ def active_optuna_study_artifacts(policy: StorageRetentionPolicy) -> list[dict[s
 
 def protected_artifact_table_summaries(conn, policy: StorageRetentionPolicy) -> list[dict[str, Any]]:
     summaries: list[dict[str, Any]] = []
+    existing_rules = [
+        rule for rule in policy.protected_artifact_tables if _table_exists(conn, rule.table)
+    ]
+    row_counts: dict[str, int] = {}
+    if existing_rules:
+        count_sql = "\nUNION ALL\n".join(
+            f"SELECT '{rule.table}' AS table_name, COUNT(*) AS n FROM {_quote_ident(rule.table)}"
+            for rule in existing_rules
+        )
+        row_counts = {
+            str(row["table_name"]): int(row["n"] or 0)
+            for row in conn.execute(count_sql).fetchall()
+        }
     for rule in policy.protected_artifact_tables:
         exists = _table_exists(conn, rule.table)
-        row_count = None
-        if exists:
-            row_count = conn.execute(f"SELECT COUNT(*) AS n FROM {_quote_ident(rule.table)}").fetchone()["n"]
         summaries.append(
             {
                 "table": rule.table,
                 "exists": exists,
-                "row_count": int(row_count or 0) if exists else None,
+                "row_count": row_counts.get(rule.table, 0) if exists else None,
                 "reason": rule.reason,
             }
         )

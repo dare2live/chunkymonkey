@@ -41,6 +41,35 @@ def test_legacy_returns_410_gone():
     assert "/v3" in body["redirect"]
 
 
+def test_toggle_modules_batches_allowed_settings(monkeypatch):
+    class DummyConn:
+        def __init__(self):
+            self.rows = None
+            self.committed = False
+            self.closed = False
+
+        def executemany(self, sql, rows):
+            self.sql = sql
+            self.rows = rows
+
+        def commit(self):
+            self.committed = True
+
+        def close(self):
+            self.closed = True
+
+    conn = DummyConn()
+    monkeypatch.setattr(main, "get_conn", lambda: conn)
+
+    response = client.post("/api/settings/modules", json={"etf": True, "akquant": False, "unknown": True})
+
+    assert response.status_code == 200
+    assert response.json()["status"] == "ok"
+    assert conn.rows == [("module_etf_enabled", "1"), ("module_akquant_enabled", "0")]
+    assert conn.committed is True
+    assert conn.closed is True
+
+
 def test_workbench_storage_route_defaults_to_persisted_read_model(monkeypatch):
     calls = []
 

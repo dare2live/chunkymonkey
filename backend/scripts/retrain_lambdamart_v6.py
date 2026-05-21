@@ -8,6 +8,7 @@ and stores predictions in a dedicated v6 table for paper_sim.
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import logging
 import math
@@ -27,7 +28,11 @@ import pandas as pd
 from services.db import DB_PATH
 from services.duck_adapter import connect as duck_connect
 from services.ml_ranking.ddl import (
+    FACT_MODEL_TRAIN_LOG_TABLE,
+    FACT_MODEL_TRAIN_LOG_WINDOW_TABLE,
     LAMBDAMART_V6_PREDICTIONS_TABLE,
+    create_fact_model_train_log_ddl,
+    create_fact_model_train_log_window_ddl,
     create_lambdamart_v6_predictions_ddl,
 )
 from services.schema_versions import ensure_schema_version_table, record_actual_version
@@ -36,8 +41,12 @@ from scripts.run_p0b_lambdamart_v6 import (
     RankPanel,
     WindowSpec,
     build_walk_forward_windows,
+    evaluate_predictions,
     load_rank_panel,
     run_optuna,
+    load_warm_start_params,
+    _fit_lambdamart_window_model,
+    _prediction_frame,
     _run_lambdamart_window,
 )
 
@@ -193,6 +202,280 @@ def complete_lambdamart_params(
     return params
 
 
+def load_checkpoint_best_payload(checkpoint_path: str | Path) -> dict[str, Any]:
+    """Load and validate a per-trial best checkpoint JSON."""
+
+    path = Path(checkpoint_path)
+    if not path.exists():
+        raise FileNotFoundError(f"checkpoint not found: {path}")
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    params = payload.get("best_params")
+    if not isinstance(params, dict) or not params:
+        raise ValueError(f"checkpoint missing non-empty best_params: {path}")
+    return payload
+
+
+def load_checkpoint_best_params(checkpoint_path: str | Path) -> dict[str, Any]:
+    """Load best params from a per-trial checkpoint JSON."""
+
+    return dict(load_checkpoint_best_payload(checkpoint_path)["best_params"])
+
+
+def _stable_json_dumps(payload: Any) -> str:
+    return json.dumps(payload, ensure_ascii=False, sort_keys=True, default=str)
+
+
+def _date_str(value: Any) -> str | None:
+    if value is None:
+        return None
+    return str(value)[:10]
+
+
+def train_log_window_key(window: WindowSpec) -> str:
+    return "|".join(
+        [
+            str(window.train_start),
+            str(window.train_end),
+            str(window.test_start),
+            str(window.test_end),
+        ]
+    )
+
+
+def _window_identity(window: WindowSpec) -> dict[str, str]:
+    return {
+        "train_start": str(window.train_start),
+        "train_end": str(window.train_end),
+        "test_start": str(window.test_start),
+        "test_end": str(window.test_end),
+    }
+
+
+def make_train_log_params_hash(
+    *,
+    params: dict[str, Any],
+    label_col: str,
+    feature_version: str,
+    label_version: str,
+    seed: int | None,
+    windows: list[WindowSpec],
+) -> str:
+    """Stable hash for deciding whether a completed replay window is reusable."""
+
+    payload = {
+        "model_version": MODEL_VERSION,
+        "label_col": label_col,
+        "feature_version": feature_version,
+        "label_version": label_version,
+        "seed": seed,
+        "params": params,
+        "windows": [_window_identity(window) for window in windows],
+    }
+    return hashlib.sha256(_stable_json_dumps(payload).encode("utf-8")).hexdigest()
+
+
+def build_train_log_window_record(
+    *,
+    model_id: str,
+    replay_id: str,
+    params_hash: str,
+    window_idx: int,
+    window: WindowSpec,
+    n_train_rows: int,
+    n_test_rows: int,
+    n_features: int,
+    train_metrics: dict[str, Any],
+    oos_metrics: dict[str, Any],
+    feature_version: str,
+    label_version: str,
+    built_at: str,
+) -> dict[str, Any]:
+    metric_record = {
+        "window_idx": int(window_idx),
+        "train_start": str(window.train_start),
+        "train_end": str(window.train_end),
+        "test_start": str(window.test_start),
+        "test_end": str(window.test_end),
+        "n_train_rows": int(n_train_rows),
+        "n_test_rows": int(n_test_rows),
+        "train_metrics": train_metrics,
+        "oos_metrics": oos_metrics,
+    }
+    return {
+        "model_id": model_id,
+        "replay_id": replay_id,
+        "params_hash": params_hash,
+        "window_idx": int(window_idx),
+        "window_key": train_log_window_key(window),
+        "model_version": MODEL_VERSION,
+        "feature_version": feature_version,
+        "label_version": label_version,
+        "walk_forward_mode": "expanding_monthly",
+        "train_start": str(window.train_start),
+        "train_end": str(window.train_end),
+        "test_start": str(window.test_start),
+        "test_end": str(window.test_end),
+        "n_train_rows": int(n_train_rows),
+        "n_test_rows": int(n_test_rows),
+        "n_features": int(n_features),
+        "train_metrics_json": _stable_json_dumps(train_metrics),
+        "oos_metrics_json": _stable_json_dumps(oos_metrics),
+        "metrics_json": _stable_json_dumps(metric_record),
+        "checkpoint_status": "complete",
+        "built_at": built_at,
+    }
+
+
+def _window_metric_from_checkpoint_row(row: Any, expected_idx: int, window: WindowSpec) -> dict[str, Any] | None:
+    if row["checkpoint_status"] != "complete":
+        return None
+    if row["window_idx"] != expected_idx:
+        return None
+    if row["window_key"] != train_log_window_key(window):
+        return None
+    if _date_str(row["train_start"]) != str(window.train_start):
+        return None
+    if _date_str(row["train_end"]) != str(window.train_end):
+        return None
+    if _date_str(row["test_start"]) != str(window.test_start):
+        return None
+    if _date_str(row["test_end"]) != str(window.test_end):
+        return None
+    n_train_rows = int(row["n_train_rows"] or 0)
+    n_test_rows = int(row["n_test_rows"] or 0)
+    if n_train_rows <= 0 or n_test_rows <= 0:
+        return None
+    if n_train_rows != len(window.train_idx) or n_test_rows != len(window.test_idx):
+        return None
+    try:
+        metric_record = json.loads(row["metrics_json"])
+        train_metrics = json.loads(row["train_metrics_json"])
+        oos_metrics = json.loads(row["oos_metrics_json"])
+    except (TypeError, ValueError, json.JSONDecodeError):
+        return None
+    if not isinstance(metric_record, dict) or not isinstance(train_metrics, dict) or not isinstance(oos_metrics, dict):
+        return None
+    if metric_record.get("window_idx") != expected_idx:
+        return None
+    if int(metric_record.get("n_train_rows") or 0) != n_train_rows:
+        return None
+    if int(metric_record.get("n_test_rows") or 0) != n_test_rows:
+        return None
+    return {
+        "window_idx": expected_idx,
+        "train_start": str(window.train_start),
+        "train_end": str(window.train_end),
+        "test_start": str(window.test_start),
+        "test_end": str(window.test_end),
+        "n_train_rows": n_train_rows,
+        "n_test_rows": n_test_rows,
+        "train_metrics": train_metrics,
+        "oos_metrics": oos_metrics,
+    }
+
+
+def load_verified_train_log_windows(
+    conn,
+    *,
+    model_id: str,
+    replay_id: str,
+    params_hash: str,
+    windows: list[WindowSpec],
+) -> dict[str, dict[str, Any]]:
+    """Return only completed window checkpoints that exactly match this replay."""
+
+    create_fact_model_train_log_window_ddl(conn)
+    rows = conn.execute(
+        f"""
+        SELECT *
+          FROM {FACT_MODEL_TRAIN_LOG_WINDOW_TABLE}
+         WHERE model_id = ?
+           AND replay_id = ?
+           AND params_hash = ?
+           AND checkpoint_status = 'complete'
+        """,
+        [model_id, replay_id, params_hash],
+    ).fetchall()
+    rows_by_key = {str(row["window_key"]): row for row in rows}
+    verified: dict[str, dict[str, Any]] = {}
+    for idx, window in enumerate(windows):
+        key = train_log_window_key(window)
+        row = rows_by_key.get(key)
+        if row is None:
+            continue
+        metric_record = _window_metric_from_checkpoint_row(row, idx, window)
+        if metric_record is not None:
+            verified[key] = metric_record
+    return verified
+
+
+def persist_train_log_window(conn, record: dict[str, Any]) -> int:
+    """Persist one verified replay window and commit immediately for preemption safety."""
+
+    create_fact_model_train_log_window_ddl(conn)
+    columns = [
+        "model_id",
+        "replay_id",
+        "params_hash",
+        "window_idx",
+        "window_key",
+        "model_version",
+        "feature_version",
+        "label_version",
+        "walk_forward_mode",
+        "train_start",
+        "train_end",
+        "test_start",
+        "test_end",
+        "n_train_rows",
+        "n_test_rows",
+        "n_features",
+        "train_metrics_json",
+        "oos_metrics_json",
+        "metrics_json",
+        "checkpoint_status",
+        "built_at",
+    ]
+    conn.execute(
+        f"""
+        DELETE FROM {FACT_MODEL_TRAIN_LOG_WINDOW_TABLE}
+         WHERE model_id = ? AND replay_id = ? AND window_key = ?
+        """,
+        [record["model_id"], record["replay_id"], record["window_key"]],
+    )
+    conn.execute(
+        f"""
+        INSERT INTO {FACT_MODEL_TRAIN_LOG_WINDOW_TABLE}
+        ({", ".join(columns)})
+        VALUES ({", ".join("?" for _ in columns)})
+        """,
+        [record.get(column) for column in columns],
+    )
+    conn.commit()
+    return 1
+
+
+def _assert_complete_train_log_window_metrics(
+    windows: list[WindowSpec],
+    window_metrics: list[dict[str, Any]],
+) -> None:
+    if len(window_metrics) != len(windows):
+        raise ValueError(f"incomplete train-log replay: {len(window_metrics)}/{len(windows)} windows verified")
+    for idx, (window, metric) in enumerate(zip(windows, window_metrics, strict=True)):
+        if metric.get("window_idx") != idx:
+            raise ValueError(f"train-log replay window index mismatch at {idx}")
+        if metric.get("train_start") != str(window.train_start) or metric.get("train_end") != str(window.train_end):
+            raise ValueError(f"train-log replay train boundary mismatch at window {idx}")
+        if metric.get("test_start") != str(window.test_start) or metric.get("test_end") != str(window.test_end):
+            raise ValueError(f"train-log replay test boundary mismatch at window {idx}")
+        if int(metric.get("n_train_rows") or 0) != len(window.train_idx):
+            raise ValueError(f"train-log replay train row mismatch at window {idx}")
+        if int(metric.get("n_test_rows") or 0) != len(window.test_idx):
+            raise ValueError(f"train-log replay test row mismatch at window {idx}")
+        if not isinstance(metric.get("train_metrics"), dict) or not isinstance(metric.get("oos_metrics"), dict):
+            raise ValueError(f"train-log replay metrics missing at window {idx}")
+
+
 def _prediction_output_frame(
     pred_df: pd.DataFrame,
     *,
@@ -288,6 +571,248 @@ def materialize_best_predictions(
     return pd.concat(frames, ignore_index=True)
 
 
+def _finite_or_none(value: Any) -> float | None:
+    try:
+        numeric = float(value)
+    except (TypeError, ValueError):
+        return None
+    return numeric if math.isfinite(numeric) else None
+
+
+def _mean_or_none(values: list[float | None]) -> float | None:
+    clean = [float(v) for v in values if v is not None and math.isfinite(float(v))]
+    return float(sum(clean) / len(clean)) if clean else None
+
+
+def _metric_ir(values: list[float | None]) -> float | None:
+    clean = [float(v) for v in values if v is not None and math.isfinite(float(v))]
+    if not clean:
+        return None
+    if len(clean) == 1:
+        return 0.0
+    arr = pd.Series(clean, dtype="float64")
+    std = float(arr.std(ddof=1))
+    if std <= 1e-12:
+        return None
+    return float(arr.mean() / std * math.sqrt(len(clean)))
+
+
+def build_train_log_record(
+    *,
+    model_id: str,
+    feature_version: str,
+    label_version: str,
+    windows: list[WindowSpec],
+    window_metrics: list[dict[str, Any]],
+    built_at: str,
+    seed: int | None,
+    n_trials: int | None,
+    optuna_best_value: float | None,
+    replay_id: str | None = None,
+    params_hash: str | None = None,
+) -> dict[str, Any]:
+    """Build one aggregate true train/OOS evidence row for Phase4 IS-OOS gate."""
+
+    train_rank_ics = [
+        _finite_or_none((item.get("train_metrics") or {}).get("rank_ic"))
+        for item in window_metrics
+    ]
+    oos_rank_ics = [
+        _finite_or_none((item.get("oos_metrics") or {}).get("rank_ic"))
+        for item in window_metrics
+    ]
+    metrics_json = {
+        "metric_family": "rank_ic",
+        "is_aggregation": "window_mean_unweighted",
+        "oos_aggregation": "window_mean_unweighted",
+        "window_metrics": window_metrics,
+    }
+    if replay_id and params_hash:
+        metrics_json.update(
+            checkpoint_replay_id=replay_id,
+            checkpoint_params_hash=params_hash,
+            expected_windows=len(windows),
+            verified_windows=len(window_metrics),
+        )
+    first_window = windows[0] if windows else None
+    last_window = windows[-1] if windows else None
+    run_id = f"{model_id}:train_log:{built_at}"
+    return {
+        "model_id": model_id,
+        "run_id": run_id,
+        "model_version": MODEL_VERSION,
+        "feature_version": feature_version,
+        "label_version": label_version,
+        "train_start": first_window.train_start if first_window else None,
+        "train_end": last_window.train_end if last_window else None,
+        "n_train_rows": int(sum(item.get("n_train_rows") or 0 for item in window_metrics)),
+        "n_features": 0,
+        "is_rank_ic": _mean_or_none(train_rank_ics),
+        "is_rank_ic_ir": _metric_ir(train_rank_ics),
+        "is_ndcg5": _mean_or_none([
+            _finite_or_none((item.get("train_metrics") or {}).get("ndcg5"))
+            for item in window_metrics
+        ]),
+        "is_ndcg10": _mean_or_none([
+            _finite_or_none((item.get("train_metrics") or {}).get("ndcg10"))
+            for item in window_metrics
+        ]),
+        "is_ndcg20": _mean_or_none([
+            _finite_or_none((item.get("train_metrics") or {}).get("ndcg20"))
+            for item in window_metrics
+        ]),
+        "oos_rank_ic_avg": _mean_or_none(oos_rank_ics),
+        "oos_rank_ic_ir": _metric_ir(oos_rank_ics),
+        "seed": seed,
+        "n_trials": n_trials,
+        "n_windows": len(window_metrics),
+        "optuna_best_value": optuna_best_value,
+        "walk_forward_mode": "expanding_monthly",
+        "metrics_json": json.dumps(metrics_json, ensure_ascii=False, sort_keys=True, default=str),
+        "built_at": built_at,
+    }
+
+
+def materialize_best_predictions_with_train_log(
+    *,
+    panel: RankPanel,
+    windows: list[WindowSpec],
+    params: dict[str, Any],
+    label_col: str,
+    model_id: str,
+    feature_version: str,
+    label_version: str,
+    built_at: str | None = None,
+    seed: int | None = None,
+    n_trials: int | None = None,
+    optuna_best_value: float | None = None,
+    include_predictions: bool = True,
+    checkpoint_conn=None,
+    resume_train_log: bool = False,
+    replay_id: str | None = None,
+    params_hash: str | None = None,
+) -> tuple[pd.DataFrame, dict[str, Any]]:
+    """Run best LambdaMART windows once and return train-log evidence plus optional OOS rows."""
+
+    if resume_train_log and include_predictions:
+        raise ValueError("train-log resume can only skip windows when include_predictions=False")
+    if resume_train_log and checkpoint_conn is None:
+        raise ValueError("resume_train_log requires checkpoint_conn")
+    if checkpoint_conn is not None and (not replay_id or not params_hash):
+        raise ValueError("train-log window checkpointing requires replay_id and params_hash")
+
+    built_at = built_at or datetime.now(UTC).isoformat(timespec="seconds")
+    frames: list[pd.DataFrame] = []
+    window_metrics: list[dict[str, Any]] = []
+    completed_windows: dict[str, dict[str, Any]] = {}
+    if resume_train_log and checkpoint_conn is not None and replay_id and params_hash:
+        completed_windows = load_verified_train_log_windows(
+            checkpoint_conn,
+            model_id=model_id,
+            replay_id=replay_id,
+            params_hash=params_hash,
+            windows=windows,
+        )
+        if completed_windows:
+            log.info(
+                "train-log resume: verified %d/%d completed windows for replay_id=%s",
+                len(completed_windows),
+                len(windows),
+                replay_id,
+            )
+    for i, window in enumerate(windows):
+        window_key = train_log_window_key(window)
+        if window_key in completed_windows:
+            log.info(
+                "train-log resume: skip verified window %d/%d: train %s..%s -> test %s..%s",
+                i + 1,
+                len(windows),
+                window.train_start,
+                window.train_end,
+                window.test_start,
+                window.test_end,
+            )
+            window_metrics.append(completed_windows[window_key])
+            continue
+        log.info(
+            "materialize window %d/%d: train %s..%s -> test %s..%s",
+            i + 1,
+            len(windows),
+            window.train_start,
+            window.train_end,
+            window.test_start,
+            window.test_end,
+        )
+        model = _fit_lambdamart_window_model(panel, window, params)
+        train_pred = model.predict(panel.X[window.train_idx])
+        test_pred = model.predict(panel.X[window.test_idx])
+        train_df = _prediction_frame(panel, window.train_idx, train_pred, label_col=label_col)
+        pred_df = _prediction_frame(panel, window.test_idx, test_pred, label_col=label_col)
+        train_metrics = evaluate_predictions(train_df, label_col=label_col)
+        oos_metrics = evaluate_predictions(pred_df, label_col=label_col)
+        window_metrics.append(
+            {
+                "window_idx": i,
+                "train_start": window.train_start,
+                "train_end": window.train_end,
+                "test_start": window.test_start,
+                "test_end": window.test_end,
+                "n_train_rows": int(len(window.train_idx)),
+                "n_test_rows": int(len(window.test_idx)),
+                "train_metrics": train_metrics,
+                "oos_metrics": oos_metrics,
+            }
+        )
+        if checkpoint_conn is not None and replay_id and params_hash:
+            persist_train_log_window(
+                checkpoint_conn,
+                build_train_log_window_record(
+                    model_id=model_id,
+                    replay_id=replay_id,
+                    params_hash=params_hash,
+                    window_idx=i,
+                    window=window,
+                    n_train_rows=int(len(window.train_idx)),
+                    n_test_rows=int(len(window.test_idx)),
+                    n_features=len(panel.feature_columns),
+                    train_metrics=train_metrics,
+                    oos_metrics=oos_metrics,
+                    feature_version=feature_version,
+                    label_version=label_version,
+                    built_at=built_at,
+                ),
+            )
+        if include_predictions:
+            frames.append(
+                _prediction_output_frame(
+                    pred_df,
+                    label_col=label_col,
+                    model_id=model_id,
+                    feature_version=feature_version,
+                    label_version=label_version,
+                    window=window,
+                    built_at=built_at,
+                )
+            )
+    _assert_complete_train_log_window_metrics(windows, window_metrics)
+    predictions = pd.concat(frames, ignore_index=True) if frames else pd.DataFrame()
+    train_log = build_train_log_record(
+        model_id=model_id,
+        feature_version=feature_version,
+        label_version=label_version,
+        windows=windows,
+        window_metrics=window_metrics,
+        built_at=built_at,
+        seed=seed,
+        n_trials=n_trials,
+        optuna_best_value=optuna_best_value,
+        replay_id=replay_id,
+        params_hash=params_hash,
+    )
+    train_log["n_features"] = len(panel.feature_columns)
+    return predictions, train_log
+
+
 def persist_predictions(conn, predictions: pd.DataFrame, *, model_id: str) -> int:
     """Idempotently replace one model_id in mart_p0b_lambdamart_v6_predictions."""
 
@@ -323,6 +848,68 @@ def persist_predictions(conn, predictions: pd.DataFrame, *, model_id: str) -> in
     finally:
         conn._con.unregister(temp_name)
     return int(len(predictions))
+
+
+def persist_train_log(conn, record: dict[str, Any]) -> int:
+    """Persist one aggregate train-log evidence row without deleting older evidence."""
+
+    create_fact_model_train_log_ddl(conn)
+    columns = [
+        "model_id",
+        "run_id",
+        "model_version",
+        "feature_version",
+        "label_version",
+        "train_start",
+        "train_end",
+        "n_train_rows",
+        "n_features",
+        "is_rank_ic",
+        "is_rank_ic_ir",
+        "is_ndcg5",
+        "is_ndcg10",
+        "is_ndcg20",
+        "oos_rank_ic_avg",
+        "oos_rank_ic_ir",
+        "seed",
+        "n_trials",
+        "n_windows",
+        "optuna_best_value",
+        "walk_forward_mode",
+        "metrics_json",
+        "built_at",
+    ]
+    conn.execute(
+        f"DELETE FROM {FACT_MODEL_TRAIN_LOG_TABLE} WHERE model_id = ? AND run_id = ?",
+        [record["model_id"], record["run_id"]],
+    )
+    conn.execute(
+        f"""
+        INSERT INTO {FACT_MODEL_TRAIN_LOG_TABLE}
+        ({", ".join(columns)})
+        VALUES ({", ".join("?" for _ in columns)})
+        """,
+        [record.get(column) for column in columns],
+    )
+    return 1
+
+
+def persist_materialization_outputs(
+    conn,
+    predictions: pd.DataFrame,
+    train_log_record: dict[str, Any],
+    *,
+    model_id: str,
+    train_log_only: bool = False,
+) -> tuple[int, int]:
+    """Persist materialized outputs, optionally leaving prediction rows untouched."""
+
+    n_prediction_rows = 0
+    if not train_log_only:
+        n_prediction_rows = persist_predictions(conn, predictions, model_id=model_id)
+        register_lambdamart_v6_asset(conn)
+    n_train_log_rows = persist_train_log(conn, train_log_record)
+    return n_prediction_rows, n_train_log_rows
 
 
 def _table_exists(conn, table_name: str) -> bool:
@@ -448,6 +1035,10 @@ def main() -> int:
     parser.add_argument("--top-k", type=int, default=5)
     parser.add_argument("--turnover-limit", type=float, default=3.0)
     parser.add_argument("--turnover-penalty-weight", type=float, default=0.02)
+    parser.add_argument("--window-rank-ic-std-penalty-weight", type=float, default=0.0,
+                        help="Opt-in Optuna objective penalty on per-window RankIC std; default 0 preserves existing behavior")
+    parser.add_argument("--window-rank-ic-negative-rate-penalty-weight", type=float, default=0.0,
+                        help="Opt-in Optuna objective penalty on negative per-window RankIC rate; default 0 preserves existing behavior")
     # F1+F2 (Codex bocq8b60j 2026-05-20): Optuna SQLite persistent storage + checkpoint
     # 防 spot preempt 浪费 + interrupted 时 best params 可救回
     parser.add_argument("--study-storage", default=None,
@@ -456,6 +1047,18 @@ def main() -> int:
                         help="Optuna study name, default = model_id (F1 resume)")
     parser.add_argument("--checkpoint-path", default=None,
                         help="JSON checkpoint path for best params (F2, atomic per-trial write)")
+    parser.add_argument("--use-checkpoint-best", action="store_true",
+                        help="Skip Optuna and materialize predictions from --checkpoint-path best_params")
+    parser.add_argument("--train-log-only", action="store_true",
+                        help="Compute true train/OOS evidence but do not replace prediction rows")
+    parser.add_argument("--resume-train-log", dest="resume_train_log", action="store_true", default=True,
+                        help="Reuse verified per-window train-log checkpoints when --train-log-only is set")
+    parser.add_argument("--no-resume-train-log", dest="resume_train_log", action="store_false",
+                        help="Ignore per-window train-log checkpoints and recompute every replay window")
+    parser.add_argument("--train-log-replay-id", default=None,
+                        help="Stable replay id for per-window train-log checkpoints; default derives from model_id and params hash")
+    parser.add_argument("--warm-start-checkpoint", default=None,
+                        help="Seed Optuna with best_params from a prior checkpoint JSON (Layer 4 warm-start)")
     parser.add_argument("--gcs-sync-uri", default=os.environ.get("RETRAIN_GCS_SYNC_URI"),
                         help="Optional gs:// directory for best-effort SIGTERM sync of best.json and Optuna SQLite")
     args = parser.parse_args()
@@ -506,43 +1109,118 @@ def main() -> int:
     from services.optimization.governance import enforce_pre_optimize
     enforce_pre_optimize(n_trials=args.n_trials, has_seed=True)
 
-    result = run_optuna(
-        model_name="lambdamart",
-        panel=panel,
-        windows=windows,
-        label_col=args.label,
-        n_trials=args.n_trials,
-        n_estimators=n_estimators,
-        seed=args.seed,
-        turnover_limit=args.turnover_limit,
-        turnover_penalty_weight=args.turnover_penalty_weight,
-        top_k=args.top_k,
-        study_storage=study_storage,
-        study_name=study_name,
-        checkpoint_path=checkpoint_path,
-    )
-    _log_result_metrics(model_id, result)
+    warm_start_params = None
+    if args.warm_start_checkpoint:
+        warm_start_params = load_warm_start_params(args.warm_start_checkpoint)
+        log.info("loaded warm-start params from %s", args.warm_start_checkpoint)
 
-    params = complete_lambdamart_params(result.best_params, seed=args.seed, n_estimators=n_estimators)
-    predictions = materialize_best_predictions(
-        panel=panel,
-        windows=windows,
+    if args.use_checkpoint_best:
+        if not checkpoint_path:
+            raise ValueError("--use-checkpoint-best requires --checkpoint-path")
+        checkpoint_payload = load_checkpoint_best_payload(checkpoint_path)
+        best_params = dict(checkpoint_payload["best_params"])
+        optuna_best_value = _finite_or_none(checkpoint_payload.get("best_value"))
+        log.info("using checkpoint best params from %s; Optuna optimize skipped", checkpoint_path)
+    else:
+        result = run_optuna(
+            model_name="lambdamart",
+            panel=panel,
+            windows=windows,
+            label_col=args.label,
+            n_trials=args.n_trials,
+            n_estimators=n_estimators,
+            seed=args.seed,
+            turnover_limit=args.turnover_limit,
+            turnover_penalty_weight=args.turnover_penalty_weight,
+            top_k=args.top_k,
+            study_storage=study_storage,
+            study_name=study_name,
+            checkpoint_path=checkpoint_path,
+            warm_start_params=warm_start_params,
+            warm_start_source=args.warm_start_checkpoint,
+            window_rank_ic_std_penalty_weight=args.window_rank_ic_std_penalty_weight,
+            window_rank_ic_negative_rate_penalty_weight=args.window_rank_ic_negative_rate_penalty_weight,
+        )
+        _log_result_metrics(model_id, result)
+        best_params = result.best_params
+        optuna_best_value = float(result.best_value)
+
+    params = complete_lambdamart_params(best_params, seed=args.seed, n_estimators=n_estimators)
+    train_log_params_hash = make_train_log_params_hash(
         params=params,
         label_col=args.label,
-        model_id=model_id,
         feature_version=args.feature_version,
         label_version=args.label_version,
+        seed=args.seed,
+        windows=windows,
     )
+    train_log_replay_id = args.train_log_replay_id or f"{model_id}:train_log:{train_log_params_hash[:16]}"
+    use_train_log_resume = bool(args.train_log_only and args.resume_train_log)
+    if use_train_log_resume:
+        log.info("train-log replay_id=%s params_hash=%s", train_log_replay_id, train_log_params_hash)
 
-    conn = duck_connect(db_path)
-    try:
-        n_rows = persist_predictions(conn, predictions, model_id=model_id)
-        register_lambdamart_v6_asset(conn)
-        conn.commit()
-    finally:
-        conn.close()
+    if use_train_log_resume:
+        conn = duck_connect(db_path)
+        try:
+            predictions, train_log_record = materialize_best_predictions_with_train_log(
+                panel=panel,
+                windows=windows,
+                params=params,
+                label_col=args.label,
+                model_id=model_id,
+                feature_version=args.feature_version,
+                label_version=args.label_version,
+                seed=args.seed,
+                n_trials=args.n_trials,
+                optuna_best_value=optuna_best_value,
+                include_predictions=False,
+                checkpoint_conn=conn,
+                resume_train_log=True,
+                replay_id=train_log_replay_id,
+                params_hash=train_log_params_hash,
+            )
+            n_rows, _n_train_log_rows = persist_materialization_outputs(
+                conn,
+                predictions,
+                train_log_record,
+                model_id=model_id,
+                train_log_only=True,
+            )
+            conn.commit()
+        finally:
+            conn.close()
+    else:
+        predictions, train_log_record = materialize_best_predictions_with_train_log(
+            panel=panel,
+            windows=windows,
+            params=params,
+            label_col=args.label,
+            model_id=model_id,
+            feature_version=args.feature_version,
+            label_version=args.label_version,
+            seed=args.seed,
+            n_trials=args.n_trials,
+            optuna_best_value=optuna_best_value,
+            include_predictions=not args.train_log_only,
+        )
+        conn = duck_connect(db_path)
+        try:
+            n_rows, _n_train_log_rows = persist_materialization_outputs(
+                conn,
+                predictions,
+                train_log_record,
+                model_id=model_id,
+                train_log_only=args.train_log_only,
+            )
+            conn.commit()
+        finally:
+            conn.close()
 
-    log.info("wrote %s predictions to %s", f"{n_rows:,}", LAMBDAMART_V6_PREDICTIONS_TABLE)
+    if args.train_log_only:
+        log.info("train-log-only: left %s prediction rows untouched", LAMBDAMART_V6_PREDICTIONS_TABLE)
+    else:
+        log.info("wrote %s predictions to %s", f"{n_rows:,}", LAMBDAMART_V6_PREDICTIONS_TABLE)
+    log.info("wrote true train/OOS evidence to %s", FACT_MODEL_TRAIN_LOG_TABLE)
     _sync_preempt_artifacts(
         model_id=model_id,
         checkpoint_path=checkpoint_path,

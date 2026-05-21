@@ -21,6 +21,7 @@
   - `scripts/lib/gcp_guard.sh` (统一 `require_gcp_explicit_ok CHUNKYMONKEY_GCP_EXPLICIT_OK=1` latch)
 - **市场感知模块 (Market Perception)** Codex 14 commits 全 PIT-strict (mart schema → engine → router → UI + 7 子模块: market regime / emotion cycle / theme lifecycle / under-reaction / leader-follower / style rotation / stock context aggregation).
 - **BestChoice 综合寻优 POC** 设计完成代码骨架 ready: `backend/scripts/build_signal_context.py` + `analyze_macd_feature_buckets.py` + `optuna_per_stock_macd.py` + `backend/services/formula_engine/signal_context_ddl.py`. 触发条件: 主项目 stability retrain 出 COMPLETE checkpoint 后启动本地 POC.
+- **Backend wave (Codex 05-20/21, 210 files commit)** — workbench_*_read services 拆 god-module (~30 个) / LambdaMART v6 stability penalty (window_rank_ic_std + negative_rate) / audit_lambdamart_train_log_stability + audit_msaf_pbo_diagnostics + audit_msaf_probe_frontier / run_msaf_ensemble_paper_sim + run_phase4_gate_on_msaf / import_phase5_remote_predictions + import_model_train_log_artifact / backfill_paper_sim_cache_metadata + backfill_strategy_result_registry / mart_strategy_result_registry 加 lineage_url/params_json/source_artifact_uri / thread-cap fix (OPTUNA_N_JOBS * OMP_NUM_THREADS ≤ CPU) / audit_delivery_readiness 优先 active gcp_cost_summary / pricing_policy_* + market_schema split / 16 个新 tests.
 
 最后更新: **2026-05-17** (P0a label CRITICAL leakage → 数据治理 framework 优先, Codex round 16 yaml/sop deliver, ML chain 暂停 rebuild).
 

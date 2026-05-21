@@ -20,7 +20,8 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from routers.updater import _mark_steps_status  # noqa: E402
+from routers import updater  # noqa: E402
+from routers.updater import _mark_steps_status, _prime_step_status_rows  # noqa: E402
 
 
 # ---------------------------------------------------------------------------
@@ -57,6 +58,7 @@ class _RecordingConn:
 
     def __init__(self, response_queue=None):
         self.calls: list[tuple[str, tuple]] = []
+        self.executemany_calls: list[tuple[str, list[tuple]]] = []
         self.commits = 0
         # response_queue: list[list[Row]] FIFO; 默认空 list
         self._responses = list(response_queue or [])
@@ -65,6 +67,9 @@ class _RecordingConn:
         self.calls.append((sql, tuple(params or ())))
         rows = self._responses.pop(0) if self._responses else []
         return _Cursor(rows)
+
+    def executemany(self, sql, rows):
+        self.executemany_calls.append((sql, [tuple(row) for row in rows]))
 
     def commit(self):
         self.commits += 1
@@ -129,6 +134,36 @@ class TestMarkStepsStatusBatch:
         sql, params = conn.calls[0]
         assert "WHERE step_id IN (?)" in sql
         assert params[-1] == "sync_kline"
+
+
+class TestPrimeStepStatusRowsBatch:
+    def test_primes_selected_and_inactive_steps_with_one_executemany(self, monkeypatch):
+        steps = [
+            {"id": "a", "group": "g", "name": "A", "order": 1},
+            {"id": "b", "group": "g", "name": "B", "order": 2},
+            {"id": "c", "group": "g", "name": "C", "order": 3},
+        ]
+        monkeypatch.setattr(updater, "STEPS", steps)
+        conn = _RecordingConn()
+
+        _prime_step_status_rows(
+            conn,
+            ["a"],
+            inactive_mode="skipped",
+            skip_reasons={"b": "already fresh"},
+        )
+
+        assert len(conn.calls) == 1
+        assert "DELETE FROM step_status" in conn.calls[0][0]
+        assert len(conn.executemany_calls) == 1
+        sql, rows = conn.executemany_calls[0]
+        assert "INSERT OR REPLACE INTO step_status" in sql
+        assert rows == [
+            ("a", "g", "A", 1, "pending", None, None),
+            ("b", "g", "B", 2, "skipped", "already fresh", 0),
+            ("c", "g", "C", 3, "skipped", "数据已是最新，无需更新", 0),
+        ]
+        assert conn.commits == 1
 
 
 # ---------------------------------------------------------------------------

@@ -5,7 +5,9 @@ import hashlib
 import json
 import re
 from collections import defaultdict
-from datetime import UTC, datetime
+from datetime import datetime, timezone
+
+UTC = timezone.utc
 from typing import Any
 
 from services.schema_versions import record_actual_version

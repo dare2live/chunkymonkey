@@ -54,11 +54,13 @@ def _ensure_table():
                     "backtest": {"lookback_days": 90, "rebalance": "daily"},
                 }),
             ]
-            for name, payload in seed_presets:
-                conn.execute(
-                    "INSERT INTO dim_strategy_preset(name, payload, is_default) VALUES(?, ?, ?)",
-                    [name, json.dumps(payload, ensure_ascii=False), name == "稳健型"],
-                )
+            conn.executemany(
+                "INSERT INTO dim_strategy_preset(name, payload, is_default) VALUES(?, ?, ?)",
+                [
+                    (name, json.dumps(payload, ensure_ascii=False), name == "稳健型")
+                    for name, payload in seed_presets
+                ],
+            )
             logger.info("[strategy_preset] seed 3 个默认预设")
     finally:
         conn.close()

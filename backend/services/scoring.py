@@ -122,12 +122,10 @@ def save_scoring_config(conn, prefix: str, config: dict):
     将评分权重配置写入 app_settings。
     """
     now = datetime.now().isoformat()
-    for key, value in config.items():
-        full_key = f"{prefix}.{key}"
-        conn.execute(
-            "INSERT OR REPLACE INTO app_settings (key, value, updated_at) VALUES (?, ?, ?)",
-            (full_key, str(value), now)
-        )
+    conn.executemany(
+        "INSERT OR REPLACE INTO app_settings (key, value, updated_at) VALUES (?, ?, ?)",
+        [(f"{prefix}.{key}", str(value), now) for key, value in config.items()],
+    )
     conn.commit()
     logger.info(f"[评分] 保存配置 prefix={prefix}, {len(config)} 项")
 
@@ -1074,51 +1072,81 @@ def _fill_top_industries(conn):
     institutions = conn.execute(
         "SELECT institution_id FROM mart_institution_profile"
     ).fetchall()
+    main_rows = conn.execute("""
+        WITH industry_counts AS (
+            SELECT institution_id, tdx_l2, COUNT(*) AS cnt
+              FROM mart_current_relationship
+             WHERE tdx_l2 IS NOT NULL AND tdx_l2 != ''
+             GROUP BY institution_id, tdx_l2
+        ),
+        ranked AS (
+            SELECT institution_id, tdx_l2, cnt,
+                   ROW_NUMBER() OVER (
+                       PARTITION BY institution_id
+                       ORDER BY cnt DESC, tdx_l2
+                   ) AS rn
+              FROM industry_counts
+        ),
+        totals AS (
+            SELECT institution_id, COUNT(*) AS total
+              FROM mart_current_relationship
+             GROUP BY institution_id
+        )
+        SELECT ranked.institution_id, ranked.tdx_l2, ranked.cnt, ranked.rn, totals.total
+          FROM ranked
+          JOIN totals USING (institution_id)
+         WHERE ranked.rn <= 3
+    """).fetchall()
+    best_rows = conn.execute("""
+        WITH ranked AS (
+            SELECT institution_id,
+                   industry_name,
+                   ROW_NUMBER() OVER (
+                       PARTITION BY institution_id
+                       ORDER BY COALESCE(avg_gain_30d, 0) * COALESCE(win_rate_30d, 0) / 100.0 DESC,
+                                industry_name
+                   ) AS rn
+              FROM mart_institution_industry_stat
+             WHERE industry_level = 'level2' AND sample_events >= 3
+        )
+        SELECT institution_id, industry_name, rn
+          FROM ranked
+         WHERE rn <= 3
+    """).fetchall()
+    main_by_inst: dict[str, list[str]] = {}
+    concentration_by_inst: dict[str, float | None] = {}
+    for row in main_rows:
+        iid = row["institution_id"]
+        main_by_inst.setdefault(iid, []).append(row["tdx_l2"])
+        if int(row["rn"] or 0) == 1:
+            total = int(row["total"] or 0)
+            concentration_by_inst[iid] = round(float(row["cnt"] or 0) / total * 100, 1) if total > 0 else None
+    best_by_inst: dict[str, list[str]] = {}
+    for row in best_rows:
+        best_by_inst.setdefault(row["institution_id"], []).append(row["industry_name"])
 
+    update_rows = []
     for inst in institutions:
         iid = inst["institution_id"]
-
-        # main_industry: 从 mart_current_relationship 按行业频次
-        main_rows = conn.execute("""
-            SELECT tdx_l2, COUNT(*) as cnt
-            FROM mart_current_relationship
-            WHERE institution_id = ? AND tdx_l2 IS NOT NULL AND tdx_l2 != ''
-            GROUP BY tdx_l2 ORDER BY cnt DESC LIMIT 3
-        """, (iid,)).fetchall()
-        main = [r["tdx_l2"] for r in main_rows]
-
-        # best_industry: 从 mart_institution_industry_stat 按表现排序
-        best_rows = conn.execute("""
-            SELECT industry_name,
-                   COALESCE(avg_gain_30d, 0) * COALESCE(win_rate_30d, 0) / 100.0 as perf
-            FROM mart_institution_industry_stat
-            WHERE institution_id = ? AND industry_level = 'level2' AND sample_events >= 3
-            ORDER BY perf DESC LIMIT 3
-        """, (iid,)).fetchall()
-        best = [r["industry_name"] for r in best_rows]
-
-        # 计算持仓集中度（top1 行业占比）
-        total = conn.execute(
-            "SELECT COUNT(*) FROM mart_current_relationship WHERE institution_id = ?",
-            (iid,)
-        ).fetchone()[0]
-        concentration = round(main_rows[0]["cnt"] / total * 100, 1) if main_rows and total > 0 else None
-
-        conn.execute("""
-            UPDATE mart_institution_profile SET
-                main_industry_1 = ?, main_industry_2 = ?, main_industry_3 = ?,
-                best_industry_1 = ?, best_industry_2 = ?, best_industry_3 = ?,
-                concentration = ?, updated_at = ?
-            WHERE institution_id = ?
-        """, (
+        main = main_by_inst.get(iid, [])
+        best = best_by_inst.get(iid, [])
+        update_rows.append((
             main[0] if len(main) > 0 else None,
             main[1] if len(main) > 1 else None,
             main[2] if len(main) > 2 else None,
             best[0] if len(best) > 0 else None,
             best[1] if len(best) > 1 else None,
             best[2] if len(best) > 2 else None,
-            concentration, now, iid
+            concentration_by_inst.get(iid), now, iid,
         ))
+
+    conn.executemany("""
+            UPDATE mart_institution_profile SET
+                main_industry_1 = ?, main_industry_2 = ?, main_industry_3 = ?,
+                best_industry_1 = ?, best_industry_2 = ?, best_industry_3 = ?,
+                concentration = ?, updated_at = ?
+            WHERE institution_id = ?
+        """, update_rows)
 
     conn.commit()
     logger.info(f"[评分] 行业字段填充完成: {len(institutions)} 个机构")

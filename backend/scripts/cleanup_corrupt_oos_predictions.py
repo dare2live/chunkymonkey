@@ -38,6 +38,7 @@ SMART_DB = REPO_ROOT / "data" / "smartmoney.duckdb"
 # from yaml: configs/data_governance.yaml deprecation
 # governance v1 之前的 label_version (v1 = phase1/2; p0a_v1 = P0a 旧 corrupt 时代)
 CORRUPT_LABEL_VERSIONS = ("v1", "p0a_v1")
+TARGET_TABLES = ("mart_p0b_oos_predictions", "mart_p0b_walkforward_eval")
 
 
 def main() -> int:
@@ -48,12 +49,24 @@ def main() -> int:
 
     conn = duckdb.connect(str(SMART_DB), read_only=not args.execute)
     try:
-        for table in ("mart_p0b_oos_predictions", "mart_p0b_walkforward_eval"):
-            # Pre count
-            n_total = conn.execute(f"SELECT COUNT(*) FROM {table}").fetchone()[0]
-            n_corrupt = conn.execute(
-                f"SELECT COUNT(*) FROM {table} WHERE label_version IN {CORRUPT_LABEL_VERSIONS}"
-            ).fetchone()[0]
+        counts_sql = " UNION ALL ".join(
+            f"""
+            SELECT
+                '{table}' AS table_name,
+                COUNT(*) AS n_total,
+                COUNT(*) FILTER (WHERE label_version IN {CORRUPT_LABEL_VERSIONS}) AS n_corrupt
+            FROM {table}
+            """
+            for table in TARGET_TABLES
+        )
+        pre_counts = {
+            row[0]: {"n_total": row[1], "n_corrupt": row[2]}
+            for row in conn.execute(counts_sql).fetchall()
+        }
+
+        for table in TARGET_TABLES:
+            n_total = pre_counts[table]["n_total"]
+            n_corrupt = pre_counts[table]["n_corrupt"]
             n_keep = n_total - n_corrupt
             log.info(f"{table}: total={n_total:,} corrupt={n_corrupt:,} keep={n_keep:,}")
             if n_corrupt == 0:

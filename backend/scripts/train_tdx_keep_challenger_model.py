@@ -101,9 +101,12 @@ CREATE TABLE IF NOT EXISTS mart_multidim_prediction (
 def ensure_model_schema(conn) -> None:
     conn.executescript(MODEL_DDL)
     cols = {row[0] for row in conn.execute("DESCRIBE mart_multidim_model").fetchall()}
-    for col in ("feature_cols_json", "label_name", "feature_schema_version"):
-        if col not in cols:
-            conn.execute(f"ALTER TABLE mart_multidim_model ADD COLUMN {col} TEXT")
+    if "feature_cols_json" not in cols:
+        conn.execute("ALTER TABLE mart_multidim_model ADD COLUMN feature_cols_json TEXT")
+    if "label_name" not in cols:
+        conn.execute("ALTER TABLE mart_multidim_model ADD COLUMN label_name TEXT")
+    if "feature_schema_version" not in cols:
+        conn.execute("ALTER TABLE mart_multidim_model ADD COLUMN feature_schema_version TEXT")
     conn.commit()
 
 

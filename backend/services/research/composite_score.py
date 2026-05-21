@@ -9,6 +9,7 @@
 from __future__ import annotations
 
 import logging
+import math
 import time
 
 
@@ -77,33 +78,45 @@ def build_composite_for_all_models(conn, eval_date: str) -> int:
     if not paper_models:
         log.warning("无 paper model")
         return 0
+    model_ids = [row[0] for row in paper_models]
+    nav_by_model: dict[str, list[tuple[float | None, float | None]]] = {model_id: [] for model_id in model_ids}
+    nav_rows = conn.execute(
+        """
+        SELECT model_id, daily_ret, drawdown
+        FROM mart_paper_nav
+        ORDER BY model_id, snapshot_date
+        """
+    ).fetchall()
+    for model_id, daily_ret, drawdown in nav_rows:
+        nav_by_model.setdefault(model_id, []).append((daily_ret, drawdown))
+    trade_rows = conn.execute(
+        """
+        SELECT model_id, COUNT(*) AS n_trades
+        FROM fact_paper_position
+        WHERE side='sell'
+        GROUP BY model_id
+        """
+    ).fetchall()
+    trades_by_model = {row[0]: int(row[1] or 0) for row in trade_rows}
+    ic_row = conn.execute(
+        "SELECT AVG(ic_10d) FROM mart_signal_ic WHERE snapshot_date >= (SELECT MAX(snapshot_date) - 60 FROM mart_signal_ic)"
+    ).fetchone()
+    wf_ic = float(ic_row[0]) if ic_row and ic_row[0] is not None else 0.0
 
     # 计算每个 model 的 sharpe / max_dd / n_trades
     out_rows = []
-    for (model_id,) in paper_models:
+    for model_id in model_ids:
         # NAV 序列
-        navs = conn.execute(
-            "SELECT daily_ret, drawdown FROM mart_paper_nav WHERE model_id = ? ORDER BY snapshot_date",
-            [model_id],
-        ).fetchall()
+        navs = nav_by_model.get(model_id, [])
         rets = [float(r[0]) for r in navs if r[0] is not None]
         max_dd = min((float(r[1]) for r in navs if r[1] is not None), default=0.0)
         if len(rets) > 1:
-            import math
             n = len(rets); mean = sum(rets)/n; var = sum((r-mean)**2 for r in rets)/(n-1); sd = math.sqrt(var) if var>0 else 0
             sharpe = mean*252/(sd*math.sqrt(252)) if sd>0 else 0.0
         else:
             sharpe = 0.0
         # n_trades = sell 行数
-        n_trades = conn.execute(
-            "SELECT COUNT(*) FROM fact_paper_position WHERE side='sell' AND model_id=?",
-            [model_id],
-        ).fetchone()[0] or 0
-        # IC: 用 mart_signal_ic 全公式 rolling 平均 (没有 per-model IC, 简化)
-        ic_row = conn.execute(
-            "SELECT AVG(ic_10d) FROM mart_signal_ic WHERE snapshot_date >= (SELECT MAX(snapshot_date) - 60 FROM mart_signal_ic)"
-        ).fetchone()
-        wf_ic = float(ic_row[0]) if ic_row and ic_row[0] is not None else 0.0
+        n_trades = trades_by_model.get(model_id, 0)
 
         metrics = compute_composite_score(
             wf_rank_ic_avg=wf_ic, paper_sharpe=sharpe,

@@ -346,21 +346,28 @@ def _summarize(conn) -> dict[str, object]:
           FROM mart_institution_score_daily
         """
     ).fetchone()
-    coverage = {}
-    for spec in CLASS_SPECS:
-        cov = conn.execute(
-            f"""
-            SELECT
-                COUNT({spec.norm_column}) * 100.0 / NULLIF(COUNT(*), 0) AS row_coverage_pct,
-                COUNT(DISTINCT CASE WHEN {spec.norm_column} IS NOT NULL THEN signal_date END)
-                    * 100.0 / NULLIF(COUNT(DISTINCT signal_date), 0) AS date_coverage_pct
-              FROM mart_institution_score_daily
-            """
-        ).fetchone()
-        coverage[spec.name] = {
-            "row_coverage_pct": float(cov[0] or 0.0),
-            "date_coverage_pct": float(cov[1] or 0.0),
+    coverage_selects = []
+    for idx, spec in enumerate(CLASS_SPECS):
+        coverage_selects.extend([
+            f"COUNT({spec.norm_column}) * 100.0 / NULLIF(COUNT(*), 0) AS row_cov_{idx}",
+            (
+                f"COUNT(DISTINCT CASE WHEN {spec.norm_column} IS NOT NULL THEN signal_date END) "
+                f"* 100.0 / NULLIF(COUNT(DISTINCT signal_date), 0) AS date_cov_{idx}"
+            ),
+        ])
+    coverage_row = conn.execute(
+        f"""
+        SELECT {", ".join(coverage_selects)}
+          FROM mart_institution_score_daily
+        """
+    ).fetchone()
+    coverage = {
+        spec.name: {
+            "row_coverage_pct": float((coverage_row[idx * 2] if coverage_row else 0.0) or 0.0),
+            "date_coverage_pct": float((coverage_row[idx * 2 + 1] if coverage_row else 0.0) or 0.0),
         }
+        for idx, spec in enumerate(CLASS_SPECS)
+    }
     return {
         "row_count": int(row[0] or 0),
         "signal_dates": int(row[1] or 0),

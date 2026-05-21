@@ -39,6 +39,7 @@ from services.paper_sim.driver import run_paper_sim_day
 from services.paper_sim.reporter import write_kpi_summary
 from services.paper_sim.sim_cache import check_cache, compute_config_hash, register_cache
 from services.utils import latest_closed_or_raise
+from scripts.backfill_strategy_result_registry import backfill as refresh_strategy_result_registry
 
 
 logging.basicConfig(level=logging.INFO,
@@ -117,6 +118,7 @@ def run_walk_forward(
             summary["sim_config_hash"] = config_hash
             summary["parent_sim_run_id"] = parent_sim_run_id
             summary["param_diff_json"] = param_diff_json
+        refresh_strategy_result_registry(conn, dry_run=False)
         return summary
     finally:
         conn.close()

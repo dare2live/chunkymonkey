@@ -230,9 +230,12 @@ def backfill_future_holder_period_page_update_availability(conn) -> dict:
             """
         ).fetchall()
     ]
+    update_rows = []
     for page_date in page_dates:
         effective_date = next_trading_day_after(conn, page_date)
-        conn.execute(
+        update_rows.append((page_date, effective_date, page_date))
+    if update_rows:
+        conn.executemany(
             f"""
             UPDATE fact_top10_holder_period
                SET notice_date = ?,
@@ -241,7 +244,7 @@ def backfill_future_holder_period_page_update_availability(conn) -> dict:
              WHERE {candidate_where}
                AND {page_norm} = ?
             """,
-            (page_date, effective_date, page_date),
+            update_rows,
         )
     conn.commit()
     after = conn.execute(
@@ -315,9 +318,12 @@ def backfill_future_holder_period_fetched_at_availability(conn) -> dict:
             """
         ).fetchall()
     ]
+    update_rows = []
     for fetched_date in fetched_dates:
         effective_date = next_trading_day_after(conn, fetched_date)
-        conn.execute(
+        update_rows.append((fetched_date, effective_date, fetched_date))
+    if update_rows:
+        conn.executemany(
             f"""
             UPDATE fact_top10_holder_period
                SET notice_date = ?,
@@ -326,7 +332,7 @@ def backfill_future_holder_period_fetched_at_availability(conn) -> dict:
              WHERE {candidate_where}
                AND {fetched_norm} = ?
             """,
-            (fetched_date, effective_date, fetched_date),
+            update_rows,
         )
     conn.commit()
     after = conn.execute(
@@ -547,11 +553,10 @@ def backfill_institution_event_notice_sources(conn) -> dict:
         "idx_fie_holder",
         "idx_fie_notice_source",
     )
-    for index_name in event_indexes:
-        try:
-            conn.execute(f"DROP INDEX IF EXISTS {index_name}")
-        except Exception:
-            pass
+    try:
+        conn.execute(";\n".join(f"DROP INDEX IF EXISTS {index_name}" for index_name in event_indexes))
+    except Exception:  # rule-compliance: ok evidence=duckdb-drop-index-idempotent
+        pass
 
     holder_source_cte = f"""
         SELECT stock_code, report_date, holder_name, notice_date,

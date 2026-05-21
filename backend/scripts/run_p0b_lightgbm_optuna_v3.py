@@ -194,12 +194,12 @@ def main() -> int:
     conn = duck_connect(str(DB_PATH))
     try:
         built_at = datetime.now(UTC).isoformat(timespec="seconds")
-        for t in study.trials:
-            conn.execute(
-                """INSERT OR REPLACE INTO mart_p1_optuna_trials
-                   (run_id, trial_number, state, value, rank_ic_mean, rank_ic_std,
-                    n_windows, params_json, duration_s, built_at)
-                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+        conn.executemany(
+            """INSERT OR REPLACE INTO mart_p1_optuna_trials
+               (run_id, trial_number, state, value, rank_ic_mean, rank_ic_std,
+                n_windows, params_json, duration_s, built_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            [
                 [
                     run_id, t.number, t.state.name,
                     t.value if t.value is not None else None,
@@ -209,8 +209,10 @@ def main() -> int:
                     json.dumps(t.params, ensure_ascii=False),
                     t.duration.total_seconds() if t.duration else None,
                     built_at,
-                ],
-            )
+                ]
+                for t in study.trials
+            ],
+        )
     finally:
         conn.close()
 

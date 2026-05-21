@@ -108,14 +108,18 @@ def main() -> int:
         ("institution_survey (coverage 2025-04+)", "survey_count_30d"),
         ("time_of_month (inline)", "tom_day_of_month"),
     ]
-    for label, col in audit_cols:
-        try:
-            r = audit.execute(
-                f"SELECT COUNT(*), COUNT({col}) FROM mart_p0a_feature_label_panel_v4"
-            ).fetchone()
-            pct = r[1] / r[0] * 100 if r[0] else 0
-            log.info(f"  {label} ({col}): {r[1]:,}/{r[0]:,} ({pct:.1f}%)")
-        except Exception as e:
+    try:
+        exprs = ["COUNT(*) AS total_rows"] + [f"COUNT({col}) AS {col}" for _, col in audit_cols]
+        r = audit.execute(
+            f"SELECT {', '.join(exprs)} FROM mart_p0a_feature_label_panel_v4"
+        ).fetchone()
+        total = r[0] if r else 0
+        for idx, (label, col) in enumerate(audit_cols, start=1):
+            n_non_null = r[idx] if r else 0
+            pct = n_non_null / total * 100 if total else 0
+            log.info(f"  {label} ({col}): {n_non_null:,}/{total:,} ({pct:.1f}%)")
+    except Exception as e:
+        for label, _ in audit_cols:
             log.warning(f"  {label}: audit failed — {e}")
     audit.close()
 

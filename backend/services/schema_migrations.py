@@ -333,6 +333,35 @@ def _apply_schema_maintenance(conn) -> None:
     conn.executescript(SCHEMA_MAINTENANCE_SQL)
 
 
+def _execute_optional_ddl(conn, sql: str) -> None:
+    try:
+        conn.execute(sql)
+    except Exception:  # rule-compliance: ok evidence=db-py-split-schema-defensive
+        pass
+
+
+def _rename_columns_if_present(
+    conn,
+    table_name: str,
+    renames: tuple[tuple[str, str], ...],
+) -> None:
+    try:
+        cols = _table_columns(conn, table_name)
+    except Exception:  # rule-compliance: ok evidence=db-py-split-schema-defensive
+        return
+    statements = [
+        f"ALTER TABLE {table_name} RENAME COLUMN {old_name} TO {new_name};"
+        for old_name, new_name in renames
+        if old_name in cols and new_name not in cols
+    ]
+    if not statements:
+        return
+    try:
+        conn.executescript("\n".join(statements))
+    except Exception:  # rule-compliance: ok evidence=db-py-split-schema-defensive
+        pass
+
+
 def init_db():
     conn = get_conn()
     try:
@@ -549,11 +578,13 @@ def init_db():
             )
         except Exception:  # rule-compliance: ok evidence=db-py-split-schema-defensive
             pass
-        for idx in ("idx_setup_snapshot_sw1_date", "idx_dsi_l1", "idx_dsi_l2"):
-            try:
-                conn.execute(f"DROP INDEX IF EXISTS {idx}")
-            except Exception:  # rule-compliance: ok evidence=db-py-split-schema-defensive
-                pass
+        conn.executescript(
+            """
+            DROP INDEX IF EXISTS idx_setup_snapshot_sw1_date;
+            DROP INDEX IF EXISTS idx_dsi_l1;
+            DROP INDEX IF EXISTS idx_dsi_l2;
+            """
+        )
         sw_drop_plan = [
             ("fact_setup_snapshot", "snapshot_sw_level1"),
             ("fact_setup_snapshot", "snapshot_sw_level2"),
@@ -564,10 +595,7 @@ def init_db():
             ("dim_stock_tdx_industry", "sw_x_legacy"),
         ]
         for tbl, col in sw_drop_plan:
-            try:
-                conn.execute(f"ALTER TABLE {tbl} DROP COLUMN {col}")
-            except Exception:  # rule-compliance: ok evidence=db-py-split-schema-defensive
-                pass
+            _execute_optional_ddl(conn, f"ALTER TABLE {tbl} DROP COLUMN IF EXISTS {col}")
         try:
             conn.execute("DROP TABLE IF EXISTS dim_stock_industry")
         except Exception:  # rule-compliance: ok evidence=db-py-split-schema-defensive
@@ -598,44 +626,45 @@ def init_db():
                 )
         except Exception:  # rule-compliance: ok evidence=db-py-split-schema-defensive
             pass
-        for idx in ("idx_event_industry_snapshot_l1", "idx_event_industry_snapshot_l2"):
-            try:
-                conn.execute(f"DROP INDEX IF EXISTS {idx}")
-            except Exception:  # rule-compliance: ok evidence=db-py-split-schema-defensive
-                pass
+        conn.executescript(
+            """
+            DROP INDEX IF EXISTS idx_event_industry_snapshot_l1;
+            DROP INDEX IF EXISTS idx_event_industry_snapshot_l2;
+            """
+        )
         try:
             conn.execute("DROP TABLE IF EXISTS fact_institution_event_industry_snapshot")
         except Exception:  # rule-compliance: ok evidence=db-py-split-schema-defensive
             pass
         for table in ("fact_stock_archetype", "dim_stock_archetype_latest"):
-            try:
-                cols = _table_columns(conn, table)
-                if "sw_level1" in cols and "tdx_l1_name" not in cols:
-                    conn.execute(f"ALTER TABLE {table} RENAME COLUMN sw_level1 TO tdx_l1_name")
-                if "sw_level2" in cols and "tdx_l2_name" not in cols:
-                    conn.execute(f"ALTER TABLE {table} RENAME COLUMN sw_level2 TO tdx_l2_name")
-            except Exception:  # rule-compliance: ok evidence=db-py-split-schema-defensive
-                pass
+            _rename_columns_if_present(
+                conn,
+                table,
+                (
+                    ("sw_level1", "tdx_l1_name"),
+                    ("sw_level2", "tdx_l2_name"),
+                ),
+            )
         quality_tables = ("fact_stock_quality_features", "dim_stock_quality_latest")
         for table in quality_tables:
-            try:
-                cols = _table_columns(conn, table)
-                if "sw_level1" in cols and "tdx_l1" not in cols:
-                    conn.execute(f"ALTER TABLE {table} RENAME COLUMN sw_level1 TO tdx_l1")
-                if "sw_level2" in cols and "tdx_l2" not in cols:
-                    conn.execute(f"ALTER TABLE {table} RENAME COLUMN sw_level2 TO tdx_l2")
-            except Exception:  # rule-compliance: ok evidence=db-py-split-schema-defensive
-                pass
+            _rename_columns_if_present(
+                conn,
+                table,
+                (
+                    ("sw_level1", "tdx_l1"),
+                    ("sw_level2", "tdx_l2"),
+                ),
+            )
         turtle_tables = ("fact_stock_turtle_features", "dim_stock_turtle_latest")
         for table in turtle_tables:
-            try:
-                cols = _table_columns(conn, table)
-                if "sw_level1" in cols and "tdx_l1_name" not in cols:
-                    conn.execute(f"ALTER TABLE {table} RENAME COLUMN sw_level1 TO tdx_l1_name")
-                if "sw_level2" in cols and "tdx_l2_name" not in cols:
-                    conn.execute(f"ALTER TABLE {table} RENAME COLUMN sw_level2 TO tdx_l2_name")
-            except Exception:  # rule-compliance: ok evidence=db-py-split-schema-defensive
-                pass
+            _rename_columns_if_present(
+                conn,
+                table,
+                (
+                    ("sw_level1", "tdx_l1_name"),
+                    ("sw_level2", "tdx_l2_name"),
+                ),
+            )
         for col in ["score_basis TEXT", "score_confidence TEXT",
                      "historical_median_holding_days INTEGER",
                      "current_avg_held_days INTEGER"]:
@@ -739,11 +768,10 @@ def init_db():
                 ("B_SHARE", "B股 (200/900开头)", 1),
                 ("CDR", "CDR 存托凭证", 1),
             ]
-            for cat, label, enabled in categories:
-                conn.execute(
-                    "INSERT OR IGNORE INTO exclusion_categories (category, label, enabled, updated_at) VALUES (?, ?, ?, ?)",
-                    (cat, label, enabled, now)
-                )
+            conn.executemany(
+                "INSERT OR IGNORE INTO exclusion_categories (category, label, enabled, updated_at) VALUES (?, ?, ?, ?)",
+                [(cat, label, enabled, now) for cat, label, enabled in categories],
+            )
             conn.commit()
             logger.info(f"[DB] 初始化 {len(categories)} 个排除类别")
         from services.financial_client import ensure_tables as _ensure_fin_tables

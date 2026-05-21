@@ -103,16 +103,23 @@ def get_inst_current_holdings(conn, inst_id):
         WHERE institution_id = ?
         ORDER BY hold_market_cap DESC
     """, (inst_id,)).fetchall()
+    stock_codes = [h["stock_code"] for h in rows]
+    others_by_stock: dict[str, list] = {code: [] for code in stock_codes}
+    if stock_codes:
+        placeholders = ",".join(["?"] * len(stock_codes))
+        others_rows = conn.execute(f"""
+            SELECT stock_code, institution_id as id, display_name as name, inst_type as type
+            FROM mart_current_relationship
+            WHERE stock_code IN ({placeholders}) AND institution_id != ?
+            ORDER BY stock_code, hold_market_cap DESC
+        """, (*stock_codes, inst_id)).fetchall()
+        for other in others_rows:
+            others_by_stock.setdefault(other["stock_code"], []).append(other)
 
     result = []
     for h in rows:
         code, rd = h["stock_code"], h["report_date"]
-        # 同股其他机构也从 MCR 读取
-        others = conn.execute("""
-            SELECT institution_id as id, display_name as name, inst_type as type
-            FROM mart_current_relationship
-            WHERE stock_code = ? AND institution_id != ?
-        """, (code, inst_id)).fetchall()
+        others = others_by_stock.get(code, [])
 
         result.append(_with_industry_aliases({
             "stock_code": code, "stock_name": h["stock_name"],

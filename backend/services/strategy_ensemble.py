@@ -196,18 +196,20 @@ def compute_ensemble(
 
     # 4. upsert
     weight_config_json = json.dumps({s.name: s.weight for s in alphas}, ensure_ascii=False)
-    n_written = 0
-    for sc, score, breakdown, n_alphas in ensemble_scores:
-        conn.execute(
+    write_rows = [
+        (
+                snapshot_date, sc, round(score, 4), n_alphas,
+                json.dumps(breakdown, ensure_ascii=False), weight_config_json,
+        )
+        for sc, score, breakdown, n_alphas in ensemble_scores
+    ]
+    if write_rows:
+        conn.executemany(
             """INSERT OR REPLACE INTO mart_ensemble_signals
                (snapshot_date, stock_code, ensemble_score, n_alphas, alpha_breakdown, weight_config)
                VALUES (?, ?, ?, ?, ?, ?)""",
-            [
-                snapshot_date, sc, round(score, 4), n_alphas,
-                json.dumps(breakdown, ensure_ascii=False), weight_config_json,
-            ],
+            write_rows,
         )
-        n_written += 1
     conn.commit()
 
     # P0.1 schema_version
@@ -224,7 +226,7 @@ def compute_ensemble(
         "alphas": [s.name for s in alphas],
         "weights": {s.name: s.weight for s in alphas},
         "n_stocks_per_alpha": {name: len(data) for name, data in alpha_data.items()},
-        "n_written": n_written,
+        "n_written": len(write_rows),
         "elapsed_s": round(elapsed, 2),
     }
 

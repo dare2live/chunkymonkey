@@ -275,47 +275,54 @@ def _run_sql_walkforward(
     run_id = run_id or f"wf_{datetime.utcnow().strftime('%Y%m%d_%H%M%S')}"
     built_at = datetime.utcnow().isoformat(timespec="seconds")
     rows = []
+    corr_parts = []
+    corr_params: list[Any] = []
     for fold in ranges:
         for label in labels:
             corr_expr = ", ".join(
                 f"corr({_quote_ident(feature)}, {_quote_ident(label)}) AS {_quote_ident(feature)}"
                 for feature in usable_features
             )
-            corr_row = conn.execute(
+            corr_parts.append(
                 f"""
-                SELECT {corr_expr}
+                SELECT ? AS fold_id, ? AS label_name, {corr_expr}
                 FROM fact_feature_panel_candidate
                 WHERE feature_set_id = ?
                   AND date >= ?
                   AND date <= ?
                   AND {_quote_ident(label)} IS NOT NULL
-                """,
-                (feature_set_id, fold["holdout_start"], fold["holdout_end"]),
-            ).fetchone()
-            for feature in usable_features:
-                rank_ic = _to_float(corr_row[feature]) if corr_row else None
-                rows.append((
-                    run_id,
-                    feature_set_id,
-                    fold["fold_id"],
-                    fold["train_start"],
-                    fold["train_end"],
-                    fold["valid_start"],
-                    fold["valid_end"],
-                    fold["holdout_start"],
-                    fold["holdout_end"],
-                    feature,
-                    feature_group_map.get(feature, _feature_group(feature)),
-                    rank_ic,
-                    None,
-                    None if rank_ic is None else bool(rank_ic > 0),
-                    None,
-                    None,
-                    None,
-                    None,
-                    label,
-                    built_at,
-                ))
+                """
+            )
+            corr_params.extend([fold["fold_id"], label, feature_set_id, fold["holdout_start"], fold["holdout_end"]])
+    fold_by_id = {fold["fold_id"]: fold for fold in ranges}
+    corr_rows = conn.execute(" UNION ALL ".join(corr_parts), corr_params).fetchall() if corr_parts else []
+    for corr_row in corr_rows:
+        fold = fold_by_id[str(corr_row["fold_id"])]
+        label = str(corr_row["label_name"])
+        for feature in usable_features:
+            rank_ic = _to_float(corr_row[feature]) if corr_row else None
+            rows.append((
+                run_id,
+                feature_set_id,
+                fold["fold_id"],
+                fold["train_start"],
+                fold["train_end"],
+                fold["valid_start"],
+                fold["valid_end"],
+                fold["holdout_start"],
+                fold["holdout_end"],
+                feature,
+                feature_group_map.get(feature, _feature_group(feature)),
+                rank_ic,
+                None,
+                None if rank_ic is None else bool(rank_ic > 0),
+                None,
+                None,
+                None,
+                None,
+                label,
+                built_at,
+            ))
     conn.executemany(
         """
         INSERT OR REPLACE INTO mart_candidate_walkforward_eval

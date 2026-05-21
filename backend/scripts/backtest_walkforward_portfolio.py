@@ -343,12 +343,11 @@ def main() -> None:
             f"DELETE FROM mart_model_walkforward_portfolio_summary WHERE run_id = ?",
             [run_id],
         )
-        for r in rows:
-            conn.execute(
-                f"INSERT INTO mart_model_walkforward_portfolio_summary "
-                f"({', '.join(cols)}) VALUES ({', '.join(['?'] * len(cols))})",
-                tuple(r[c] for c in cols),
-            )
+        conn.executemany(
+            f"INSERT INTO mart_model_walkforward_portfolio_summary "
+            f"({', '.join(cols)}) VALUES ({', '.join(['?'] * len(cols))})",
+            [tuple(r[c] for c in cols) for r in rows],
+        )
         conn.commit()
         logger.info("写入 %d 行 mart_model_walkforward_portfolio_summary, run_id=%s",
                     len(rows), run_id)

@@ -212,19 +212,27 @@ def _load_panel_coverage(
     where_sql = "WHERE feature_set_id = ?" if has_feature_set and feature_set_id else ""
     params = (feature_set_id,) if has_feature_set and feature_set_id else ()
     out: dict[str, float] = {}
+    existing_features = []
     for feature in features:
         if feature not in columns:
             out[feature] = 0.0
-            continue
+        else:
+            existing_features.append(feature)
+    if existing_features:
+        select_parts = [
+            f"COUNT({_quote_ident(feature)}) * 100.0 / NULLIF(COUNT(*), 0) AS {_quote_ident(f'c_{idx}')}"
+            for idx, feature in enumerate(existing_features)
+        ]
         row = conn.execute(
             f"""
-            SELECT COUNT({_quote_ident(feature)}) * 100.0 / NULLIF(COUNT(*), 0)
+            SELECT {", ".join(select_parts)}
               FROM {_quote_ident(table)}
               {where_sql}
             """,
             params,
         ).fetchone()
-        out[feature] = float(row[0] or 0.0)
+        for idx, feature in enumerate(existing_features):
+            out[feature] = float(row[idx] or 0.0)
     return out
 
 

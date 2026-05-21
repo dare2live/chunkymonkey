@@ -212,29 +212,33 @@ def persist_cleanup_plan(
 ) -> None:
     ensure_tables(conn)
     conn.execute("DELETE FROM mart_architecture_cleanup_plan WHERE run_id = ?", (run_id,))
-    for row in rows:
-        conn.execute(
+    cleanup_rows = [
+        (
+            run_id,
+            row["inventory_run_id"],
+            row["asset_id"],
+            row["asset_type"],
+            row["path"],
+            row["classification"],
+            row["action"],
+            row["status"],
+            row["reason"],
+            _json(row["blockers"]),
+            row["smoke_status"],
+            row["smoke_error"],
+            built_at,
+        )
+        for row in rows
+    ]
+    if cleanup_rows:
+        conn.executemany(
             """
             INSERT INTO mart_architecture_cleanup_plan
             (run_id, inventory_run_id, asset_id, asset_type, path, classification,
              action, status, reason, blockers_json, smoke_status, smoke_error, built_at)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
-            (
-                run_id,
-                row["inventory_run_id"],
-                row["asset_id"],
-                row["asset_type"],
-                row["path"],
-                row["classification"],
-                row["action"],
-                row["status"],
-                row["reason"],
-                _json(row["blockers"]),
-                row["smoke_status"],
-                row["smoke_error"],
-                built_at,
-            ),
+            cleanup_rows,
         )
     record_actual_version(conn, "mart_architecture_cleanup_plan")
     conn.commit()

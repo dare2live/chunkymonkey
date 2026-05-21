@@ -429,12 +429,15 @@ def materialize_today_signal_cache(
 def save_config(conn, config: dict) -> None:
     """保存配置到 app_settings，只接受 DEFAULT_CONFIG 里已有的 key。"""
     now = datetime.now().isoformat()
-    for key, value in config.items():
-        if key not in DEFAULT_CONFIG:
-            continue
-        conn.execute(
+    rows = [
+        (f"{CONFIG_PREFIX}.{key}", str(value), now)
+        for key, value in config.items()
+        if key in DEFAULT_CONFIG
+    ]
+    if rows:
+        conn.executemany(
             "INSERT OR REPLACE INTO app_settings (key, value, updated_at) VALUES (?, ?, ?)",
-            (f"{CONFIG_PREFIX}.{key}", str(value), now),
+            rows,
         )
     conn.commit()
     logger.info(f"[signals_v2] 配置已保存: {config}")
@@ -1954,21 +1957,30 @@ def institution_multi_horizon(conn, institution_id: str) -> dict:
     """
     horizons = [30, 60, 90, 120]
     out = {"institution_id": institution_id, "horizons": []}
+    gain_cols = [f"gain_{h}d" for h in horizons]
+    try:
+        rows = conn.execute(
+            f"""
+            SELECT {", ".join(gain_cols)}
+              FROM fact_institution_event
+             WHERE institution_id = ?
+               AND event_type IN ('new_entry','increase')
+               AND ({" OR ".join(f"{col} IS NOT NULL" for col in gain_cols)})
+            """,
+            (institution_id,),
+        ).fetchall()
+    except Exception:
+        rows = []
 
     for h in horizons:
         col = f"gain_{h}d"
-        try:
-            rows = conn.execute(f"""
-                SELECT e.{col} AS gain
-                FROM fact_institution_event e
-                WHERE e.institution_id = ?
-                  AND e.event_type IN ('new_entry','increase')
-                  AND e.{col} IS NOT NULL
-            """, (institution_id,)).fetchall()
-        except Exception:
-            rows = []
-
-        gains = [float(r["gain"]) for r in rows if r["gain"] is not None]
+        col_idx = gain_cols.index(col)
+        gains = [
+            float(value)
+            for r in rows
+            for value in [r[col] if hasattr(r, "keys") else r[col_idx]]
+            if value is not None
+        ]
         if not gains:
             out["horizons"].append({"horizon_days": h, "n": 0})
             continue
@@ -1991,9 +2003,11 @@ def institution_multi_horizon(conn, institution_id: str) -> dict:
 def ensure_defaults(conn) -> None:
     """确保 app_settings 里有默认配置（只在缺失时插入，不覆盖用户值）。"""
     now = datetime.now().isoformat()
-    for key, value in DEFAULT_CONFIG.items():
-        conn.execute(
-            "INSERT OR IGNORE INTO app_settings (key, value, updated_at) VALUES (?, ?, ?)",
-            (f"{CONFIG_PREFIX}.{key}", str(value), now),
-        )
+    conn.executemany(
+        "INSERT OR IGNORE INTO app_settings (key, value, updated_at) VALUES (?, ?, ?)",
+        [
+            (f"{CONFIG_PREFIX}.{key}", str(value), now)
+            for key, value in DEFAULT_CONFIG.items()
+        ],
+    )
     conn.commit()

@@ -175,8 +175,13 @@ def _ensure_label_columns(conn: Any, feature_table: str, labels: list[str]) -> N
     if "stock_code" not in columns or "date" not in columns:
         raise RuntimeError(f"feature table must include stock_code and date: {feature_table}")
     relation = _quote_relation(feature_table)
-    for label in labels:
-        conn.execute(f"ALTER TABLE {relation} ADD COLUMN IF NOT EXISTS {_quote_ident(label)} DOUBLE")
+    _execute_script(
+        conn,
+        ";\n".join(
+            f"ALTER TABLE {relation} ADD COLUMN IF NOT EXISTS {_quote_ident(label)} DOUBLE"
+            for label in labels
+        ),
+    )
 
 
 def _parse_horizons(value: str | None) -> list[int]:

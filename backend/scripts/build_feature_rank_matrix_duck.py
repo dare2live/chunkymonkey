@@ -381,18 +381,36 @@ def _prune_rank_matrix_cache(conn: Any, *, max_entries: int, keep_cache_key: str
         return
     rows = conn.execute(
         """
+        WITH ranked_cache AS (
+            SELECT cache_key,
+                   table_name,
+                   ROW_NUMBER() OVER (
+                       ORDER BY COALESCE(last_used_at, created_at) DESC, cache_key DESC
+                   ) AS cache_rank
+              FROM mart_feature_rank_matrix_cache_manifest
+        )
         SELECT cache_key, table_name
-          FROM mart_feature_rank_matrix_cache_manifest
-         ORDER BY COALESCE(last_used_at, created_at) DESC, cache_key DESC
-        """
+          FROM ranked_cache
+         WHERE cache_rank > ?
+           AND cache_key <> ?
+        """,
+        [max_entries, keep_cache_key],
     ).fetchall()
-    for row in rows[max_entries:]:
-        cache_key = str(row["cache_key"])
-        table_name = str(row["table_name"])
-        if cache_key == keep_cache_key:
-            continue
-        conn.execute(f"DROP TABLE IF EXISTS {_quote_ident(table_name)}")
-        conn.execute("DELETE FROM mart_feature_rank_matrix_cache_manifest WHERE cache_key = ?", [cache_key])
+    if not rows:
+        return
+
+    expired_cache_keys = [str(row["cache_key"]) for row in rows]
+    drop_sql = ";\n".join(
+        f"DROP TABLE IF EXISTS {_quote_ident(str(row['table_name']))}"
+        for row in rows
+    )
+    conn.execute(f"{drop_sql};")
+    if expired_cache_keys:
+        placeholders = ", ".join("?" for _ in expired_cache_keys)
+        conn.execute(
+            f"DELETE FROM mart_feature_rank_matrix_cache_manifest WHERE cache_key IN ({placeholders})",
+            expired_cache_keys,
+        )
 
 
 def _compute_proxy_stat(

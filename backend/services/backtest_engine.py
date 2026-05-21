@@ -79,17 +79,16 @@ def build_inst_industry_performance(conn) -> dict:
     """).fetchall():
         inst_baseline[r["institution_id"]] = r["avg30"] or 0
 
-    count = 0
-    industry_join = industry_join_clause("e.stock_code", alias="industry_dim", join_type="INNER")
-    for level_col, level_name in [("tdx_l1", "L1"), ("tdx_l2", "L2"), ("tdx_l3", "L3")]:
-        rows = conn.execute(f"""
+    rows = conn.execute("""
+        WITH event_industry AS (
             SELECT
                 e.institution_id,
                 -- DuckDB GROUP BY 严格: 非聚合列必须 in GROUP BY 或 ANY_VALUE 包.
                 -- (institution_id, industry) 是 1:N -> 1:1 与 i 表 join, 同组 i 列恒等.
                 ANY_VALUE(COALESCE(NULLIF(i.display_name,''), i.name)) as inst_name,
                 ANY_VALUE(i.type) as inst_type,
-                industry_dim.{level_col} as industry,
+                'L1' AS industry_level,
+                industry_dim.tdx_l1 as industry,
                 -- 买入事件数
                 SUM(CASE WHEN e.event_type IN ('new_entry','increase') THEN 1 ELSE 0 END) as buy_cnt,
                 COUNT(*) as total_cnt,
@@ -121,38 +120,113 @@ def build_inst_industry_performance(conn) -> dict:
                     GREATEST(SUM(CASE WHEN e.event_type IN ('new_entry','increase') AND e.premium_pct>20 AND e.gain_30d IS NOT NULL THEN 1 ELSE 0 END),1) as hp_wr30
             FROM fact_institution_event e
             JOIN inst_institutions i ON e.institution_id = i.id
-            {industry_join}
-            WHERE industry_dim.{level_col} IS NOT NULL AND industry_dim.{level_col} != ''
+            INNER JOIN dim_stock_tdx_industry industry_dim ON e.stock_code = industry_dim.stock_code
+            WHERE industry_dim.tdx_l1 IS NOT NULL AND industry_dim.tdx_l1 != ''
                 AND e.gain_30d IS NOT NULL
-            GROUP BY e.institution_id, industry_dim.{level_col}
+            GROUP BY e.institution_id, industry_dim.tdx_l1
             HAVING buy_cnt >= 1
-        """).fetchall()
+            UNION ALL
+            SELECT
+                e.institution_id,
+                ANY_VALUE(COALESCE(NULLIF(i.display_name,''), i.name)) as inst_name,
+                ANY_VALUE(i.type) as inst_type,
+                'L2' AS industry_level,
+                industry_dim.tdx_l2 as industry,
+                SUM(CASE WHEN e.event_type IN ('new_entry','increase') THEN 1 ELSE 0 END) as buy_cnt,
+                COUNT(*) as total_cnt,
+                AVG(CASE WHEN e.event_type IN ('new_entry','increase') THEN e.gain_10d END) as ag10,
+                AVG(CASE WHEN e.event_type IN ('new_entry','increase') THEN e.gain_30d END) as ag30,
+                AVG(CASE WHEN e.event_type IN ('new_entry','increase') THEN e.gain_60d END) as ag60,
+                AVG(CASE WHEN e.event_type IN ('new_entry','increase') THEN e.gain_120d END) as ag120,
+                SUM(CASE WHEN e.event_type IN ('new_entry','increase') AND e.gain_10d>0 THEN 1 ELSE 0 END)*100.0/
+                    GREATEST(SUM(CASE WHEN e.event_type IN ('new_entry','increase') AND e.gain_10d IS NOT NULL THEN 1 ELSE 0 END),1) as wr10,
+                SUM(CASE WHEN e.event_type IN ('new_entry','increase') AND e.gain_30d>0 THEN 1 ELSE 0 END)*100.0/
+                    GREATEST(SUM(CASE WHEN e.event_type IN ('new_entry','increase') AND e.gain_30d IS NOT NULL THEN 1 ELSE 0 END),1) as wr30,
+                SUM(CASE WHEN e.event_type IN ('new_entry','increase') AND e.gain_60d>0 THEN 1 ELSE 0 END)*100.0/
+                    GREATEST(SUM(CASE WHEN e.event_type IN ('new_entry','increase') AND e.gain_60d IS NOT NULL THEN 1 ELSE 0 END),1) as wr60,
+                SUM(CASE WHEN e.event_type IN ('new_entry','increase') AND e.gain_120d>0 THEN 1 ELSE 0 END)*100.0/
+                    GREATEST(SUM(CASE WHEN e.event_type IN ('new_entry','increase') AND e.gain_120d IS NOT NULL THEN 1 ELSE 0 END),1) as wr120,
+                AVG(CASE WHEN e.event_type IN ('new_entry','increase') THEN e.max_drawdown_30d END) as dd30,
+                AVG(CASE WHEN e.event_type IN ('new_entry','increase') THEN e.max_drawdown_60d END) as dd60,
+                AVG(e.inst_ref_cost) as avg_cost,
+                AVG(e.premium_pct) as avg_prem,
+                SUM(CASE WHEN e.event_type IN ('new_entry','increase') AND e.premium_pct<=5 AND e.gain_30d>0 THEN 1 ELSE 0 END)*100.0/
+                    GREATEST(SUM(CASE WHEN e.event_type IN ('new_entry','increase') AND e.premium_pct<=5 AND e.gain_30d IS NOT NULL THEN 1 ELSE 0 END),1) as lp_wr30,
+                SUM(CASE WHEN e.event_type IN ('new_entry','increase') AND e.premium_pct>20 AND e.gain_30d>0 THEN 1 ELSE 0 END)*100.0/
+                    GREATEST(SUM(CASE WHEN e.event_type IN ('new_entry','increase') AND e.premium_pct>20 AND e.gain_30d IS NOT NULL THEN 1 ELSE 0 END),1) as hp_wr30
+            FROM fact_institution_event e
+            JOIN inst_institutions i ON e.institution_id = i.id
+            INNER JOIN dim_stock_tdx_industry industry_dim ON e.stock_code = industry_dim.stock_code
+            WHERE industry_dim.tdx_l2 IS NOT NULL AND industry_dim.tdx_l2 != ''
+                AND e.gain_30d IS NOT NULL
+            GROUP BY e.institution_id, industry_dim.tdx_l2
+            HAVING buy_cnt >= 1
+            UNION ALL
+            SELECT
+                e.institution_id,
+                ANY_VALUE(COALESCE(NULLIF(i.display_name,''), i.name)) as inst_name,
+                ANY_VALUE(i.type) as inst_type,
+                'L3' AS industry_level,
+                industry_dim.tdx_l3 as industry,
+                SUM(CASE WHEN e.event_type IN ('new_entry','increase') THEN 1 ELSE 0 END) as buy_cnt,
+                COUNT(*) as total_cnt,
+                AVG(CASE WHEN e.event_type IN ('new_entry','increase') THEN e.gain_10d END) as ag10,
+                AVG(CASE WHEN e.event_type IN ('new_entry','increase') THEN e.gain_30d END) as ag30,
+                AVG(CASE WHEN e.event_type IN ('new_entry','increase') THEN e.gain_60d END) as ag60,
+                AVG(CASE WHEN e.event_type IN ('new_entry','increase') THEN e.gain_120d END) as ag120,
+                SUM(CASE WHEN e.event_type IN ('new_entry','increase') AND e.gain_10d>0 THEN 1 ELSE 0 END)*100.0/
+                    GREATEST(SUM(CASE WHEN e.event_type IN ('new_entry','increase') AND e.gain_10d IS NOT NULL THEN 1 ELSE 0 END),1) as wr10,
+                SUM(CASE WHEN e.event_type IN ('new_entry','increase') AND e.gain_30d>0 THEN 1 ELSE 0 END)*100.0/
+                    GREATEST(SUM(CASE WHEN e.event_type IN ('new_entry','increase') AND e.gain_30d IS NOT NULL THEN 1 ELSE 0 END),1) as wr30,
+                SUM(CASE WHEN e.event_type IN ('new_entry','increase') AND e.gain_60d>0 THEN 1 ELSE 0 END)*100.0/
+                    GREATEST(SUM(CASE WHEN e.event_type IN ('new_entry','increase') AND e.gain_60d IS NOT NULL THEN 1 ELSE 0 END),1) as wr60,
+                SUM(CASE WHEN e.event_type IN ('new_entry','increase') AND e.gain_120d>0 THEN 1 ELSE 0 END)*100.0/
+                    GREATEST(SUM(CASE WHEN e.event_type IN ('new_entry','increase') AND e.gain_120d IS NOT NULL THEN 1 ELSE 0 END),1) as wr120,
+                AVG(CASE WHEN e.event_type IN ('new_entry','increase') THEN e.max_drawdown_30d END) as dd30,
+                AVG(CASE WHEN e.event_type IN ('new_entry','increase') THEN e.max_drawdown_60d END) as dd60,
+                AVG(e.inst_ref_cost) as avg_cost,
+                AVG(e.premium_pct) as avg_prem,
+                SUM(CASE WHEN e.event_type IN ('new_entry','increase') AND e.premium_pct<=5 AND e.gain_30d>0 THEN 1 ELSE 0 END)*100.0/
+                    GREATEST(SUM(CASE WHEN e.event_type IN ('new_entry','increase') AND e.premium_pct<=5 AND e.gain_30d IS NOT NULL THEN 1 ELSE 0 END),1) as lp_wr30,
+                SUM(CASE WHEN e.event_type IN ('new_entry','increase') AND e.premium_pct>20 AND e.gain_30d>0 THEN 1 ELSE 0 END)*100.0/
+                    GREATEST(SUM(CASE WHEN e.event_type IN ('new_entry','increase') AND e.premium_pct>20 AND e.gain_30d IS NOT NULL THEN 1 ELSE 0 END),1) as hp_wr30
+            FROM fact_institution_event e
+            JOIN inst_institutions i ON e.institution_id = i.id
+            INNER JOIN dim_stock_tdx_industry industry_dim ON e.stock_code = industry_dim.stock_code
+            WHERE industry_dim.tdx_l3 IS NOT NULL AND industry_dim.tdx_l3 != ''
+                AND e.gain_30d IS NOT NULL
+            GROUP BY e.institution_id, industry_dim.tdx_l3
+            HAVING buy_cnt >= 1
+        )
+        SELECT * FROM event_industry
+    """).fetchall()
 
-        for r in rows:
-            baseline = inst_baseline.get(r["institution_id"], 0)
-            edge = (r["ag30"] or 0) - baseline
-
-            conn.execute("""
-                INSERT OR REPLACE INTO research_inst_industry_performance
-                VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
-            """, (
-                r["institution_id"], r["inst_name"], r["inst_type"],
-                level_name, r["industry"],
-                r["buy_cnt"], r["total_cnt"],
-                r["ag10"], r["ag30"], r["ag60"], r["ag120"],
-                r["wr10"], r["wr30"], r["wr60"], r["wr120"],
-                None, None,  # median
-                r["dd30"], r["dd60"],
-                None,  # win_loss_ratio
-                r["avg_cost"], r["avg_prem"],
-                r["lp_wr30"], r["hp_wr30"],
-                edge,
-            ))
-            count += 1
+    write_rows = []
+    for r in rows:
+        baseline = inst_baseline.get(r["institution_id"], 0)
+        edge = (r["ag30"] or 0) - baseline
+        write_rows.append((
+            r["institution_id"], r["inst_name"], r["inst_type"],
+            r["industry_level"], r["industry"],
+            r["buy_cnt"], r["total_cnt"],
+            r["ag10"], r["ag30"], r["ag60"], r["ag120"],
+            r["wr10"], r["wr30"], r["wr60"], r["wr120"],
+            None, None,  # median
+            r["dd30"], r["dd60"],
+            None,  # win_loss_ratio
+            r["avg_cost"], r["avg_prem"],
+            r["lp_wr30"], r["hp_wr30"],
+            edge,
+        ))
+    if write_rows:
+        conn.executemany("""
+            INSERT OR REPLACE INTO research_inst_industry_performance
+            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+        """, write_rows)
 
     conn.commit()
-    logger.info(f"[回测-表1] 完成: {count} 条记录")
-    return {"rows": count}
+    logger.info(f"[回测-表1] 完成: {len(write_rows)} 条记录")
+    return {"rows": len(write_rows)}
 
 
 def build_holding_chains(conn) -> dict:
@@ -259,8 +333,8 @@ def build_holding_chains(conn) -> dict:
         chains.append(current_chain)
 
     # Write to table
-    count = 0
     chain_counter = defaultdict(int)
+    write_rows = []
     for c in chains:
         k = (c["institution_id"], c["stock_code"])
         chain_counter[k] += 1
@@ -281,10 +355,7 @@ def build_holding_chains(conn) -> dict:
         if c["entry_cost"] and c["exit_cost"] and c["entry_cost"] > 0:
             inst_gain = round((c["exit_cost"] - c["entry_cost"]) / c["entry_cost"] * 100, 2)
 
-        conn.execute("""
-            INSERT OR REPLACE INTO research_holding_chains
-            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
-        """, (
+        write_rows.append((
             c["institution_id"], c["stock_code"], cid,
             start, end, c["status"], days,
             "→".join(c["events"]), len(c["events"]),
@@ -293,11 +364,15 @@ def build_holding_chains(conn) -> dict:
             c["follow_g30"], c["follow_g60"], c["follow_g120"], c["dd30"],
             c["l1"], c["l2"], c["l3"],
         ))
-        count += 1
+    if write_rows:
+        conn.executemany("""
+            INSERT OR REPLACE INTO research_holding_chains
+            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+        """, write_rows)
 
     conn.commit()
-    logger.info(f"[回测-表2] 完成: {count} 条链")
-    return {"total_chains": count, "closed": sum(1 for c in chains if c["status"] == "closed")}
+    logger.info(f"[回测-表2] 完成: {len(write_rows)} 条链")
+    return {"total_chains": len(write_rows), "closed": sum(1 for c in chains if c["status"] == "closed")}
 
 
 def build_cross_factor_analysis(conn) -> dict:
@@ -329,9 +404,9 @@ def build_cross_factor_analysis(conn) -> dict:
         WHERE event_type IN ('new_entry','increase') AND gain_30d IS NOT NULL
     """).fetchone()[0] or 0
 
-    analyses = [
-        # (factor_a, factor_b, SQL)
-        ("inst_type", "industry_l1", """
+    industry_join = industry_join_clause("e.stock_code", alias="industry_dim", join_type="INNER")
+    analysis_results = [
+        ("inst_type", "industry_l1", conn.execute("""
             SELECT i.type as fa, industry_dim.tdx_l1 as fb,
                 COUNT(*) as n, AVG(e.gain_30d) as g30, AVG(e.gain_60d) as g60, AVG(e.gain_120d) as g120,
                 SUM(CASE WHEN e.gain_30d>0 THEN 1 ELSE 0 END)*100.0/COUNT(*) as wr30,
@@ -343,8 +418,8 @@ def build_cross_factor_analysis(conn) -> dict:
             WHERE e.event_type IN ('new_entry','increase') AND e.gain_30d IS NOT NULL
                 AND industry_dim.tdx_l1 IS NOT NULL
             GROUP BY i.type, industry_dim.tdx_l1 HAVING n>=10
-        """.format(industry_join=industry_join_clause("e.stock_code", alias="industry_dim", join_type="INNER"))),
-        ("change_magnitude", "industry_l1", """
+        """.format(industry_join=industry_join)).fetchall()),
+        ("change_magnitude", "industry_l1", conn.execute("""
             SELECT CASE
                 WHEN e.change_pct>100 THEN '翻倍加仓'
                 WHEN e.change_pct>50 THEN '大幅加仓'
@@ -361,8 +436,8 @@ def build_cross_factor_analysis(conn) -> dict:
             WHERE e.event_type IN ('new_entry','increase') AND e.gain_30d IS NOT NULL
                 AND industry_dim.tdx_l1 IS NOT NULL
             GROUP BY fa, industry_dim.tdx_l1 HAVING n>=10
-        """.format(industry_join=industry_join_clause("e.stock_code", alias="industry_dim", join_type="INNER"))),
-        ("report_season", "inst_type", """
+        """.format(industry_join=industry_join)).fetchall()),
+        ("report_season", "inst_type", conn.execute("""
             SELECT CASE
                 WHEN e.report_date LIKE '%0331' THEN 'Q1'
                 WHEN e.report_date LIKE '%0630' THEN 'H1'
@@ -378,8 +453,8 @@ def build_cross_factor_analysis(conn) -> dict:
             JOIN inst_institutions i ON e.institution_id=i.id
             WHERE e.event_type IN ('new_entry','increase') AND e.gain_30d IS NOT NULL
             GROUP BY fa, i.type HAVING n>=10
-        """),
-        ("premium_bucket", "industry_l1", """
+        """).fetchall()),
+        ("premium_bucket", "industry_l1", conn.execute("""
             SELECT CASE
                 WHEN e.premium_pct<=0 THEN '负溢价'
                 WHEN e.premium_pct<=10 THEN '0-10%'
@@ -395,8 +470,8 @@ def build_cross_factor_analysis(conn) -> dict:
             WHERE e.event_type IN ('new_entry','increase') AND e.gain_30d IS NOT NULL
                 AND e.premium_pct IS NOT NULL AND industry_dim.tdx_l1 IS NOT NULL
             GROUP BY fa, industry_dim.tdx_l1 HAVING n>=10
-        """.format(industry_join=industry_join_clause("e.stock_code", alias="industry_dim", join_type="INNER"))),
-        ("consensus", "premium_bucket", """
+        """.format(industry_join=industry_join)).fetchall()),
+        ("consensus", "premium_bucket", conn.execute("""
             WITH stock_inst AS (
                 SELECT stock_code, report_date, COUNT(DISTINCT institution_id) as inst_cnt
                 FROM fact_institution_event WHERE event_type IN ('new_entry','increase')
@@ -421,29 +496,27 @@ def build_cross_factor_analysis(conn) -> dict:
             WHERE e.event_type IN ('new_entry','increase') AND e.gain_30d IS NOT NULL
                 AND e.premium_pct IS NOT NULL
             GROUP BY fa, fb HAVING n>=20
-        """),
+        """).fetchall()),
     ]
 
-    count = 0
-    for fa_name, fb_name, sql in analyses:
-        rows = conn.execute(sql).fetchall()
+    write_rows = []
+    for fa_name, fb_name, rows in analysis_results:
         for r in rows:
-            # win_loss_ratio
-            wl = None
-            conn.execute("""
-                INSERT INTO research_cross_factor
-                VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)
-            """, (
+            write_rows.append((
                 fa_name, r["fa"], fb_name, r["fb"],
                 r["n"], r["g30"], r["g60"], r["g120"],
                 r["wr30"], r["wr60"], r["dd30"],
-                wl, (r["g30"] or 0) - bl,
+                None, (r["g30"] or 0) - bl,
             ))
-            count += 1
+    if write_rows:
+        conn.executemany("""
+            INSERT INTO research_cross_factor
+            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)
+        """, write_rows)
 
     conn.commit()
-    logger.info(f"[回测-表3] 完成: {count} 条交叉记录")
-    return {"rows": count}
+    logger.info(f"[回测-表3] 完成: {len(write_rows)} 条交叉记录")
+    return {"rows": len(write_rows)}
 
 
 def build_signal_transfer(conn) -> dict:
@@ -485,23 +558,24 @@ def build_signal_transfer(conn) -> dict:
         HAVING chain_cnt >= 3
     """).fetchall()
 
-    count = 0
+    write_rows = []
     for r in rows:
         capture = None
         if r["avg_inst_gain"] and r["avg_inst_gain"] != 0 and r["avg_fg30"]:
             capture = round(r["avg_fg30"] / r["avg_inst_gain"], 3)
 
-        conn.execute("""
-            INSERT OR REPLACE INTO research_signal_transfer
-            VALUES (?,?,?,?,?,?,?,?,?,?)
-        """, (
+        write_rows.append((
             r["institution_id"], r["inst_name"], r["inst_type"],
             r["industry_l2"], r["chain_cnt"],
             r["avg_inst_gain"], r["avg_fg30"], r["avg_fg60"],
             r["avg_prem"], capture,
         ))
-        count += 1
+    if write_rows:
+        conn.executemany("""
+            INSERT OR REPLACE INTO research_signal_transfer
+            VALUES (?,?,?,?,?,?,?,?,?,?)
+        """, write_rows)
 
     conn.commit()
-    logger.info(f"[回测-表4] 完成: {count} 条记录")
-    return {"rows": count}
+    logger.info(f"[回测-表4] 完成: {len(write_rows)} 条记录")
+    return {"rows": len(write_rows)}

@@ -106,13 +106,18 @@ def _parse_csv(value: str | None) -> list[str]:
 
 
 def _ensure_candidate_columns(conn: Any, columns: list[str], *, regime: bool) -> None:
-    conn.execute("ALTER TABLE fact_feature_panel_candidate ADD COLUMN IF NOT EXISTS close REAL")
-    for label in LABEL_COLUMNS:
-        conn.execute(f"ALTER TABLE fact_feature_panel_candidate ADD COLUMN IF NOT EXISTS {_quote_ident(label)} REAL")
+    statements = ["ALTER TABLE fact_feature_panel_candidate ADD COLUMN IF NOT EXISTS close REAL"]
+    statements.extend(
+        f"ALTER TABLE fact_feature_panel_candidate ADD COLUMN IF NOT EXISTS {_quote_ident(label)} REAL"
+        for label in LABEL_COLUMNS
+    )
     if regime:
-        conn.execute("ALTER TABLE fact_feature_panel_candidate ADD COLUMN IF NOT EXISTS regime_flag TEXT")
-    for col in columns:
-        conn.execute(f"ALTER TABLE fact_feature_panel_candidate ADD COLUMN IF NOT EXISTS {_quote_ident(col)} REAL")
+        statements.append("ALTER TABLE fact_feature_panel_candidate ADD COLUMN IF NOT EXISTS regime_flag TEXT")
+    statements.extend(
+        f"ALTER TABLE fact_feature_panel_candidate ADD COLUMN IF NOT EXISTS {_quote_ident(col)} REAL"
+        for col in columns
+    )
+    _execute_script(conn, ";\n".join(statements))
 
 
 def _feature_set_filter(

@@ -23,16 +23,31 @@ def generate_report(conn):
     lines.append("## 1. 机构三层行业表现\n")
 
     # 各层级总览
+    overview_rows = conn.execute("""
+        SELECT industry_level,
+               COUNT(*) as rows,
+               COUNT(DISTINCT institution_id) as insts,
+               COUNT(DISTINCT industry_name) as industries,
+               AVG(avg_gain_30d) as g30,
+               AVG(win_rate_30d) as wr30
+        FROM research_inst_industry_performance
+        WHERE industry_level IN ('L1', 'L2', 'L3') AND buy_event_count>=3
+        GROUP BY industry_level
+    """).fetchall()
+    overview_by_level = {r["industry_level"]: r for r in overview_rows}
     for level in ["L1", "L2", "L3"]:
-        r = conn.execute(f"""
-            SELECT COUNT(*) as rows, COUNT(DISTINCT institution_id) as insts,
-                   COUNT(DISTINCT industry_name) as industries,
-                   AVG(avg_gain_30d) as g30, AVG(win_rate_30d) as wr30
-            FROM research_inst_industry_performance
-            WHERE industry_level=? AND buy_event_count>=3
-        """, (level,)).fetchone()
-        lines.append(f"**{level}**: {r['rows']} 条 ({r['insts']} 机构 × {r['industries']} 行业), "
-                      f"平均30d收益 {r['g30']:.2f}%, 平均30d胜率 {r['wr30']:.1f}%")
+        r = overview_by_level.get(level)
+        if r:
+            rows = r["rows"]
+            insts = r["insts"]
+            industries = r["industries"]
+            g30 = r["g30"] or 0.0
+            wr30 = r["wr30"] or 0.0
+        else:
+            rows = insts = industries = 0
+            g30 = wr30 = 0.0
+        lines.append(f"**{level}**: {rows} 条 ({insts} 机构 × {industries} 行业), "
+                      f"平均30d收益 {g30:.2f}%, 平均30d胜率 {wr30:.1f}%")
 
     # Top 行业高手 (L3, 买入>=5)
     lines.append("\n### L3 行业高手 Top 15 (买入>=5, 按30d胜率)\n")

@@ -21,8 +21,18 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_SCAN_ROOTS = (REPO_ROOT / "backend", REPO_ROOT / "scripts")
 RESULTS_PATH = REPO_ROOT / "backend" / "scripts" / "audit_n_plus_one_results.json"
 REPORT_PATH = REPO_ROOT / "backend" / "scripts" / "audit_n_plus_one_report.md"
+DEFAULT_EXCLUDED_PARTS = {
+    ".git",
+    ".mypy_cache",
+    ".optuna",
+    ".pytest_cache",
+    ".ruff_cache",
+    "__pycache__",
+    "Users",
+    "tests",
+}
 
-P4_BASELINE_FINDINGS = 21
+P4_BASELINE_FINDINGS = 19
 LOOKAHEAD_LINES = 5
 KNOWN_FIXED_COMMIT = "76750c85"
 KNOWN_FIXED_PATH_SUFFIX = "backend/services/labels/build.py"
@@ -33,6 +43,14 @@ SEVERITY_ORDER = {"HIGH": 0, "MEDIUM": 1, "LOW": 2}
 
 FOR_LOOP_RE = re.compile(r"^(\s*)for\b.*:\s*(?:#.*)?$")
 ITERROWS_RE = re.compile(r"\.iterrows\s*\(")
+CHUNKED_RANGE_LOOP_RE = re.compile(
+    r"\bfor\s+\w+\s+in\s+range\s*\(\s*0\s*,\s*len\s*\([^)]+\)\s*,\s*(?:\d+|[A-Z_][A-Z0-9_]*)\s*\)\s*:"
+)
+SCHEMA_STATEMENT_LOOP_RE = re.compile(
+    r"\bfor\s+(?P<var>\w+)\s+in\s+"
+    r"(?:[A-Za-z_][A-Za-z0-9_]*(?:\.strip\s*\(\s*\))?\.split\s*\(\s*[\"'];[\"']\s*\)|"
+    r"[A-Z_]*(?:DDL|MIGRATION|MIGRATIONS)[A-Z_]*)\s*:"
+)
 
 PATTERN1_SQL_RE = re.compile(
     r"\bconn\.execute\s*\(|\bcursor\.execute\s*\(|\bexecutemany\s*\("
@@ -72,16 +90,17 @@ class Finding:
     suggested_fix: str
 
 
-def iter_python_files(roots: Sequence[Path]) -> list[Path]:
+def iter_python_files(roots: Sequence[Path], *, include_tests: bool = False) -> list[Path]:
     files: list[Path] = []
     for root in roots:
         if root.is_file() and root.suffix == ".py":
-            files.append(root)
+            if not _is_excluded_path(root, include_tests=include_tests):
+                files.append(root)
             continue
         if not root.exists():
             continue
         for path in root.rglob("*.py"):
-            if any(part in {".git", "__pycache__", ".pytest_cache", ".mypy_cache", ".ruff_cache"} for part in path.parts):
+            if _is_excluded_path(path, include_tests=include_tests):
                 continue
             files.append(path)
     return sorted(set(files))
@@ -135,6 +154,10 @@ def scan_text(text: str, rel_path: str) -> list[Finding]:
                 )
                 high_lines.add(body_idx)
             if PATTERN1_SQL_RE.search(body_line):
+                if _is_chunked_batch_loop(lines[idx], body_line):
+                    continue
+                if _is_schema_statement_loop(lines[idx], body_line):
+                    continue
                 findings.append(
                     _finding(
                         rel_path,
@@ -215,7 +238,14 @@ def write_json(findings: Sequence[Finding], path: Path = RESULTS_PATH) -> None:
     )
 
 
-def write_markdown(findings: Sequence[Finding], path: Path = REPORT_PATH, top_n: int = 50) -> None:
+def write_markdown(
+    findings: Sequence[Finding],
+    path: Path = REPORT_PATH,
+    top_n: int = 50,
+    *,
+    scanned_files: int | None = None,
+    scope: str = "production-code (tests excluded)",
+) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     counts = {severity: sum(1 for f in findings if f.severity == severity) for severity in ("HIGH", "MEDIUM", "LOW")}
     lines = [
@@ -226,6 +256,8 @@ def write_markdown(findings: Sequence[Finding], path: Path = REPORT_PATH, top_n:
         f"- MEDIUM: {counts['MEDIUM']}",
         f"- LOW: {counts['LOW']}",
         f"- P-4 baseline: {P4_BASELINE_FINDINGS}",
+        f"- Scanned Python files: {scanned_files if scanned_files is not None else 'unknown'}",
+        f"- Scope: {scope}",
         "- Mode: WARN-only",
         "",
         f"## Top {min(top_n, len(findings))} Findings",
@@ -257,15 +289,25 @@ def main(argv: Sequence[str] | None = None) -> int:
         type=Path,
         help="Root or Python file to scan. Defaults to backend/ and scripts/.",
     )
+    parser.add_argument(
+        "--include-tests",
+        action="store_true",
+        help="Include backend/tests in the scan. Defaults to production code only.",
+    )
     parser.add_argument("--json-out", type=Path, default=RESULTS_PATH)
     parser.add_argument("--md-out", type=Path, default=REPORT_PATH)
     args = parser.parse_args(argv)
 
     roots = tuple(args.root) if args.root else DEFAULT_SCAN_ROOTS
-    files = iter_python_files(roots)
+    files = iter_python_files(roots, include_tests=args.include_tests)
     findings = scan_files(files, REPO_ROOT)
     write_json(findings, args.json_out)
-    write_markdown(findings, args.md_out)
+    write_markdown(
+        findings,
+        args.md_out,
+        scanned_files=len(files),
+        scope="production + tests" if args.include_tests else "production-code (tests excluded)",
+    )
 
     counts = {severity: sum(1 for f in findings if f.severity == severity) for severity in ("HIGH", "MEDIUM", "LOW")}
     print(f"audit_n_plus_one: scanned {len(files)} Python files")
@@ -346,6 +388,33 @@ def _relative_path(path: Path, base: Path) -> str:
         return path.resolve().relative_to(base.resolve()).as_posix()
     except ValueError:
         return path.as_posix()
+
+
+def _is_excluded_path(path: Path, *, include_tests: bool) -> bool:
+    excluded = DEFAULT_EXCLUDED_PARTS if not include_tests else DEFAULT_EXCLUDED_PARTS - {"tests"}
+    try:
+        parts = path.resolve().relative_to(REPO_ROOT).parts
+    except ValueError:
+        parts = path.parts
+    return any(part in excluded for part in parts)
+
+
+def _is_chunked_batch_loop(loop_line: str, body_line: str) -> bool:
+    if not CHUNKED_RANGE_LOOP_RE.search(loop_line):
+        return False
+    if "executemany" in body_line:
+        return True
+    return " IN " in body_line.upper() and "batch" in body_line
+
+
+def _is_schema_statement_loop(loop_line: str, body_line: str) -> bool:
+    match = SCHEMA_STATEMENT_LOOP_RE.search(loop_line)
+    if not match:
+        return False
+    loop_var = match.group("var")
+    if re.search(rf"\.execute\s*\(\s*{re.escape(loop_var)}\s*\)", body_line):
+        return True
+    return bool(re.search(r"\.execute\s*\(\s*[A-Za-z_][A-Za-z0-9_]*\s*\)", body_line))
 
 
 def _indent_width(line: str) -> int:

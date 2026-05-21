@@ -816,8 +816,8 @@ def _reset_tables(conn, tables):
             existing_tables.append(table_name)
             counts[key] = conn.execute(f"SELECT COUNT(*) FROM {table_name}").fetchone()[0]
 
-        for table_name in existing_tables:
-            conn.execute(f"DELETE FROM {table_name}")
+        if existing_tables:
+            conn.execute(";\n".join(f"DELETE FROM {table_name}" for table_name in existing_tables))
 
         conn.commit()
     except Exception:
@@ -868,22 +868,24 @@ def _prime_step_status_rows(conn, active_step_ids, *, inactive_mode: str = "idle
     )
     selected = set(active_step_ids or [])
     skip_reasons = skip_reasons or {}
+    rows = []
     for s in STEPS:
         sid = s["id"]
         if sid in selected:
-            conn.execute("""
-                INSERT OR REPLACE INTO step_status
-                (step_id, group_name, step_name, step_order, status, error, records, started_at, finished_at)
-                VALUES (?, ?, ?, ?, 'pending', NULL, NULL, NULL, NULL)
-            """, (sid, s["group"], s["name"], s["order"]))
+            rows.append((sid, s["group"], s["name"], s["order"], "pending", None, None))
         else:
             status = "skipped" if inactive_mode == "skipped" else "idle"
             error = skip_reasons.get(sid, "数据已是最新，无需更新") if status == "skipped" else None
-            conn.execute("""
-                INSERT OR REPLACE INTO step_status
-                (step_id, group_name, step_name, step_order, status, error, records, started_at, finished_at)
-                VALUES (?, ?, ?, ?, ?, ?, 0, NULL, NULL)
-            """, (sid, s["group"], s["name"], s["order"], status, error))
+            rows.append((sid, s["group"], s["name"], s["order"], status, error, 0))
+    if rows:
+        conn.executemany(
+            """
+            INSERT OR REPLACE INTO step_status
+            (step_id, group_name, step_name, step_order, status, error, records, started_at, finished_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, NULL, NULL)
+            """,
+            rows,
+        )
     conn.commit()
 
 
@@ -1957,11 +1959,14 @@ def _step_build_profiles_sync(conn) -> int:
 
     refresh_stock_latest_cache(conn)
     pricing_policy = load_pricing_label_policy()
-    for col in ("pricing_policy_id TEXT", "pricing_policy_hash TEXT"):
-        try:
-            conn.execute(f"ALTER TABLE mart_institution_profile ADD COLUMN {col}")
-        except Exception:
-            pass
+    try:
+        conn.execute("ALTER TABLE mart_institution_profile ADD COLUMN pricing_policy_id TEXT")
+    except Exception:  # rule-compliance: ok evidence=duckdb-alter-column-idempotent
+        pass
+    try:
+        conn.execute("ALTER TABLE mart_institution_profile ADD COLUMN pricing_policy_hash TEXT")
+    except Exception:  # rule-compliance: ok evidence=duckdb-alter-column-idempotent
+        pass
     now = datetime.now().isoformat()
     conn.execute("BEGIN TRANSACTION")
     try:
@@ -2736,60 +2741,97 @@ def _step_build_industry_stat_sync(conn) -> int:
     try:
         conn.execute("DELETE FROM mart_institution_industry_stat")
 
-        institutions = conn.execute(
-            "SELECT id FROM inst_institutions WHERE enabled = 1 AND blacklisted = 0 AND merged_into IS NULL"
-        ).fetchall()
+        _raise_if_stop()
+        rows = conn.execute("""
+            WITH event_industry AS (
+                SELECT e.institution_id AS institution_id,
+                       'level1' AS industry_level,
+                       i.tdx_l1 AS tdx_code,
+                       i.tdx_l1_name AS industry_name,
+                       e.gain_30d, e.gain_60d, e.gain_90d, e.gain_120d,
+                       e.max_drawdown_30d, e.max_drawdown_60d
+                FROM fact_institution_event e
+                INNER JOIN inst_institutions inst ON inst.id = e.institution_id
+                INNER JOIN dim_stock_tdx_industry i ON i.stock_code = e.stock_code
+                WHERE inst.enabled = 1
+                  AND inst.blacklisted = 0
+                  AND inst.merged_into IS NULL
+                  AND i.tdx_l1 IS NOT NULL AND i.tdx_l1 != ''
+                  AND i.tdx_l1_name IS NOT NULL AND i.tdx_l1_name != ''
+                UNION ALL
+                SELECT e.institution_id AS institution_id,
+                       'level2' AS industry_level,
+                       i.tdx_l2 AS tdx_code,
+                       i.tdx_l2_name AS industry_name,
+                       e.gain_30d, e.gain_60d, e.gain_90d, e.gain_120d,
+                       e.max_drawdown_30d, e.max_drawdown_60d
+                FROM fact_institution_event e
+                INNER JOIN inst_institutions inst ON inst.id = e.institution_id
+                INNER JOIN dim_stock_tdx_industry i ON i.stock_code = e.stock_code
+                WHERE inst.enabled = 1
+                  AND inst.blacklisted = 0
+                  AND inst.merged_into IS NULL
+                  AND i.tdx_l2 IS NOT NULL AND i.tdx_l2 != ''
+                  AND i.tdx_l2_name IS NOT NULL AND i.tdx_l2_name != ''
+                UNION ALL
+                SELECT e.institution_id AS institution_id,
+                       'level3' AS industry_level,
+                       i.tdx_l3 AS tdx_code,
+                       i.tdx_l3_name AS industry_name,
+                       e.gain_30d, e.gain_60d, e.gain_90d, e.gain_120d,
+                       e.max_drawdown_30d, e.max_drawdown_60d
+                FROM fact_institution_event e
+                INNER JOIN inst_institutions inst ON inst.id = e.institution_id
+                INNER JOIN dim_stock_tdx_industry i ON i.stock_code = e.stock_code
+                WHERE inst.enabled = 1
+                  AND inst.blacklisted = 0
+                  AND inst.merged_into IS NULL
+                  AND i.tdx_l3 IS NOT NULL AND i.tdx_l3 != ''
+                  AND i.tdx_l3_name IS NOT NULL AND i.tdx_l3_name != ''
+            )
+            SELECT institution_id,
+                   industry_level,
+                   tdx_code,
+                   industry_name,
+                   COUNT(*) as cnt,
+                   AVG(gain_30d) as avg30, AVG(gain_60d) as avg60,
+                   AVG(gain_90d) as avg90, AVG(gain_120d) as avg120,
+                   SUM(CASE WHEN gain_30d > 0 THEN 1 WHEN gain_30d IS NOT NULL THEN 0 ELSE NULL END)
+                       * 100.0 / NULLIF(SUM(CASE WHEN gain_30d IS NOT NULL THEN 1 ELSE 0 END), 0) as wr30,
+                   SUM(CASE WHEN gain_60d > 0 THEN 1 WHEN gain_60d IS NOT NULL THEN 0 ELSE NULL END)
+                       * 100.0 / NULLIF(SUM(CASE WHEN gain_60d IS NOT NULL THEN 1 ELSE 0 END), 0) as wr60,
+                   SUM(CASE WHEN gain_90d > 0 THEN 1 WHEN gain_90d IS NOT NULL THEN 0 ELSE NULL END)
+                       * 100.0 / NULLIF(SUM(CASE WHEN gain_90d IS NOT NULL THEN 1 ELSE 0 END), 0) as wr90,
+                   SUM(CASE WHEN gain_30d > 0 OR gain_60d > 0 THEN 1 WHEN gain_30d IS NOT NULL OR gain_60d IS NOT NULL THEN 0 ELSE NULL END)
+                       * 100.0 / NULLIF(SUM(CASE WHEN gain_30d IS NOT NULL OR gain_60d IS NOT NULL THEN 1 ELSE 0 END), 0) as wr_total,
+                   AVG(max_drawdown_30d) as dd30, AVG(max_drawdown_60d) as dd60
+            FROM event_industry
+            GROUP BY institution_id, industry_level, tdx_code, industry_name
+            HAVING cnt >= 1
+        """).fetchall()
 
-        level_specs = [
-            (1, "level1", "tdx_l1", "tdx_l1_name"),
-            (2, "level2", "tdx_l2", "tdx_l2_name"),
-            (3, "level3", "tdx_l3", "tdx_l3_name"),
+        write_rows = [
+            (
+                r["institution_id"], r["industry_level"], r["industry_name"], r["tdx_code"], r["cnt"],
+                r["avg30"], r["avg60"], r["avg90"], r["avg120"],
+                r["wr30"], r["wr60"], r["wr90"], r["wr_total"],
+                r["dd30"], r["dd60"], now,
+            )
+            for r in rows
         ]
-
-        count = 0
-        for inst in institutions:
-            _raise_if_stop()
-            inst_id = inst["id"]
-
-            for _, level_name, code_col, name_col in level_specs:
-                _raise_if_stop()
-                rows = conn.execute(f"""
-                    SELECT i.{code_col} AS tdx_code,
-                           i.{name_col} AS industry_name,
-                           COUNT(*) as cnt,
-                           AVG(e.gain_30d) as avg30, AVG(e.gain_60d) as avg60,
-                           AVG(e.gain_90d) as avg90, AVG(e.gain_120d) as avg120,
-                           SUM(CASE WHEN e.gain_30d > 0 THEN 1 WHEN e.gain_30d IS NOT NULL THEN 0 ELSE NULL END)
-                               * 100.0 / NULLIF(SUM(CASE WHEN e.gain_30d IS NOT NULL THEN 1 ELSE 0 END), 0) as wr30,
-                           SUM(CASE WHEN e.gain_60d > 0 THEN 1 WHEN e.gain_60d IS NOT NULL THEN 0 ELSE NULL END)
-                               * 100.0 / NULLIF(SUM(CASE WHEN e.gain_60d IS NOT NULL THEN 1 ELSE 0 END), 0) as wr60,
-                           SUM(CASE WHEN e.gain_90d > 0 THEN 1 WHEN e.gain_90d IS NOT NULL THEN 0 ELSE NULL END)
-                               * 100.0 / NULLIF(SUM(CASE WHEN e.gain_90d IS NOT NULL THEN 1 ELSE 0 END), 0) as wr90,
-                           SUM(CASE WHEN e.gain_30d > 0 OR e.gain_60d > 0 THEN 1 WHEN e.gain_30d IS NOT NULL OR e.gain_60d IS NOT NULL THEN 0 ELSE NULL END)
-                               * 100.0 / NULLIF(SUM(CASE WHEN e.gain_30d IS NOT NULL OR e.gain_60d IS NOT NULL THEN 1 ELSE 0 END), 0) as wr_total,
-                           AVG(e.max_drawdown_30d) as dd30, AVG(e.max_drawdown_60d) as dd60
-                    FROM fact_institution_event e
-                    INNER JOIN dim_stock_tdx_industry i ON i.stock_code = e.stock_code
-                    WHERE e.institution_id = ?
-                      AND i.{code_col} IS NOT NULL AND i.{code_col} != ''
-                      AND i.{name_col} IS NOT NULL AND i.{name_col} != ''
-                    GROUP BY i.{code_col}, i.{name_col}
-                    HAVING cnt >= 1
-                """, (inst_id,)).fetchall()
-
-                for r in rows:
-                    conn.execute("""
-                        INSERT OR REPLACE INTO mart_institution_industry_stat
-                        (institution_id, industry_level, industry_name, tdx_code, sample_events,
-                         avg_gain_30d, avg_gain_60d, avg_gain_90d, avg_gain_120d,
-                         win_rate_30d, win_rate_60d, win_rate_90d, total_win_rate,
-                         max_drawdown_30d, max_drawdown_60d, updated_at)
-                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                    """, (inst_id, level_name, r["industry_name"], r["tdx_code"], r["cnt"],
-                          r["avg30"], r["avg60"], r["avg90"], r["avg120"],
-                          r["wr30"], r["wr60"], r["wr90"], r["wr_total"],
-                          r["dd30"], r["dd60"], now))
-                    count += 1
+        if write_rows:
+            conn.executemany(
+                """
+                INSERT OR REPLACE INTO mart_institution_industry_stat
+                (institution_id, industry_level, industry_name, tdx_code, sample_events,
+                 avg_gain_30d, avg_gain_60d, avg_gain_90d, avg_gain_120d,
+                 win_rate_30d, win_rate_60d, win_rate_90d, total_win_rate,
+                 max_drawdown_30d, max_drawdown_60d, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                write_rows,
+            )
+        count = len(write_rows)
 
         conn.commit()
     except Exception:
@@ -4140,11 +4182,13 @@ async def update_all():
             )
 
             # 初始化步骤状态
-            for s in STEPS:
-                conn.execute("""
-                    INSERT OR REPLACE INTO step_status (step_id, group_name, step_name, step_order, status)
-                    VALUES (?, ?, ?, ?, 'pending')
-                """, (s["id"], s["group"], s["name"], s["order"]))
+            conn.executemany(
+                """
+                INSERT OR REPLACE INTO step_status (step_id, group_name, step_name, step_order, status)
+                VALUES (?, ?, ?, ?, 'pending')
+                """,
+                [(s["id"], s["group"], s["name"], s["order"]) for s in STEPS],
+            )
             conn.commit()
 
             completed = set()
@@ -4302,13 +4346,12 @@ async def update_status():
         existing = {r[0] for r in conn.execute("SELECT step_id FROM step_status").fetchall()}
         missing = [s for s in STEPS if s["id"] not in existing]
         if missing:
-            for spec in missing:
-                conn.execute(
-                    """INSERT OR IGNORE INTO step_status
-                       (step_id, group_name, step_name, step_order, status, error, records, started_at, finished_at)
-                       VALUES (?, ?, ?, ?, 'idle', NULL, 0, NULL, NULL)""",
-                    (spec["id"], spec["group"], spec["name"], spec["order"]),
-                )
+            conn.executemany(
+                """INSERT OR IGNORE INTO step_status
+                   (step_id, group_name, step_name, step_order, status, error, records, started_at, finished_at)
+                   VALUES (?, ?, ?, ?, 'idle', NULL, 0, NULL, NULL)""",
+                [(spec["id"], spec["group"], spec["name"], spec["order"]) for spec in missing],
+            )
             conn.commit()
 
         rows = conn.execute("SELECT * FROM step_status ORDER BY step_order").fetchall()

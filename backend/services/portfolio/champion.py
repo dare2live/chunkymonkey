@@ -17,7 +17,9 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import datetime, timezone
+
+UTC = timezone.utc
 from typing import Optional
 
 log = logging.getLogger("portfolio.champion")

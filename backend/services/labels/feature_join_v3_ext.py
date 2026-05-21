@@ -20,7 +20,9 @@ Step 4 micro-ablation defer to chain v6 完后 (smartmoney.duckdb single writer 
 from __future__ import annotations
 
 import logging
-from datetime import UTC, datetime
+from datetime import datetime, timezone
+
+UTC = timezone.utc
 from typing import Iterable
 
 from services.duck_adapter import connect as duck_connect
@@ -31,6 +33,15 @@ FEATURE_PANEL_VERSION_V3_EXT = "p0a_v3_ext"
 
 
 # v3_ext panel 在 v3 基础上加 11 cols (training feature) + 1 meta col (holder_count_q_report_date 仅 audit, 不入 feature)
+
+
+def _add_column_duplicate_safe(conn, table: str, col: str, dtype: str) -> None:
+    try:
+        conn.execute(f"ALTER TABLE {table} ADD COLUMN {col} {dtype}")
+    except Exception as e:
+        log.debug(f"  ALTER ADD {col} skipped (likely exists): {e}")
+
+
 FEATURE_PANEL_DDL_V3_EXT = """
 CREATE TABLE IF NOT EXISTS mart_p0a_feature_label_panel_v3_ext AS
 SELECT * FROM mart_p0a_feature_label_panel_v3 WHERE 1=0;
@@ -92,27 +103,19 @@ def build_p0a_feature_label_panel_v3_ext(
             "SELECT * FROM mart_p0a_feature_label_panel_v3 WHERE 1=0"
         )
         # 加 11 cols + 1 meta (idempotent)
-        new_cols = [
-            ("lhb_count_30d", "INTEGER"),
-            ("lhb_net_buy_pct_30d", "DOUBLE"),
-            ("lhb_inst_buy_30d", "INTEGER"),
-            ("lhb_count_90d", "INTEGER"),
-            ("lhb_inst_buy_90d", "INTEGER"),
-            ("exec_buy_60d", "INTEGER"),
-            ("exec_sell_60d", "INTEGER"),
-            ("exec_buy_pct_60d", "DOUBLE"),
-            ("exec_sell_pct_60d", "DOUBLE"),
-            ("exec_net_signal", "DOUBLE"),
-            ("holder_count_change_q_pct", "DOUBLE"),
-            ("holder_count_q_report_date", "TEXT"),
-        ]
-        for col, dtype in new_cols:
-            try:
-                conn.execute(
-                    f"ALTER TABLE mart_p0a_feature_label_panel_v3_ext ADD COLUMN {col} {dtype}"
-                )
-            except Exception as e:
-                log.debug(f"  ALTER ADD {col} skipped (likely exists): {e}")
+        table = "mart_p0a_feature_label_panel_v3_ext"
+        _add_column_duplicate_safe(conn, table, "lhb_count_30d", "INTEGER")
+        _add_column_duplicate_safe(conn, table, "lhb_net_buy_pct_30d", "DOUBLE")
+        _add_column_duplicate_safe(conn, table, "lhb_inst_buy_30d", "INTEGER")
+        _add_column_duplicate_safe(conn, table, "lhb_count_90d", "INTEGER")
+        _add_column_duplicate_safe(conn, table, "lhb_inst_buy_90d", "INTEGER")
+        _add_column_duplicate_safe(conn, table, "exec_buy_60d", "INTEGER")
+        _add_column_duplicate_safe(conn, table, "exec_sell_60d", "INTEGER")
+        _add_column_duplicate_safe(conn, table, "exec_buy_pct_60d", "DOUBLE")
+        _add_column_duplicate_safe(conn, table, "exec_sell_pct_60d", "DOUBLE")
+        _add_column_duplicate_safe(conn, table, "exec_net_signal", "DOUBLE")
+        _add_column_duplicate_safe(conn, table, "holder_count_change_q_pct", "DOUBLE")
+        _add_column_duplicate_safe(conn, table, "holder_count_q_report_date", "TEXT")
 
         conn.execute("DROP TABLE IF EXISTS tmp_signal_dates")
         conn.execute("CREATE TEMP TABLE tmp_signal_dates(signal_date DATE)")

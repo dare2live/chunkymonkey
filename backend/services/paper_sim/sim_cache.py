@@ -58,6 +58,8 @@ def register_cache(
     config_hash: str,
     parent_sim_run_id: str | None,
     param_diff_json: str | dict[str, Any] | None,
+    *,
+    update_missing_only: bool = False,
 ) -> None:
     """Attach cache metadata to an existing KPI row."""
     if not sim_run_id:
@@ -65,13 +67,15 @@ def register_cache(
     if not config_hash:
         raise ValueError("config_hash is required")
     param_diff_text = _normalize_json_text(param_diff_json)
+    missing_only_sql = " AND sim_config_hash IS NULL" if update_missing_only else ""
     conn.execute(
-        """
+        f"""
         UPDATE mart_paper_sim_kpi
            SET sim_config_hash = ?,
                parent_sim_run_id = ?,
                param_diff_json = ?
          WHERE sim_run_id = ?
+         {missing_only_sql}
         """,
         [config_hash, parent_sim_run_id, param_diff_text, sim_run_id],
     )

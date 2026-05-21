@@ -294,8 +294,8 @@ def persist_drift_root_cause(
     built_at: str,
 ) -> dict[str, Any]:
     ensure_tables(conn)
-    for table in OUTPUT_TABLES:
-        conn.execute(f"DELETE FROM {table} WHERE run_id = ?", (run_id,))
+    conn.execute("DELETE FROM mart_feature_drift_root_cause WHERE run_id = ?", (run_id,))
+    conn.execute("DELETE FROM mart_feature_drift_root_cause_summary WHERE run_id = ?", (run_id,))
     conn.executemany(
         """
         INSERT INTO mart_feature_drift_root_cause (
@@ -351,8 +351,8 @@ def persist_drift_root_cause(
             for item in summaries
         ],
     )
-    for table in OUTPUT_TABLES:
-        record_actual_version(conn, table)
+    record_actual_version(conn, "mart_feature_drift_root_cause")
+    record_actual_version(conn, "mart_feature_drift_root_cause_summary")
     conn.commit()
     return {
         "detail_rows": len(rows),

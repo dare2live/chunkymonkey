@@ -459,7 +459,26 @@ def write_results(conn, run_id: str, curves: list[list[dict]], summaries: list[d
     conn.executescript(DDL)
     conn.execute("DELETE FROM mart_model_portfolio_curve WHERE run_id = ?", (run_id,))
     conn.execute("DELETE FROM mart_model_portfolio_summary WHERE run_id = ?", (run_id,))
-    for curve in curves:
+    curve_rows = [
+        (
+            run_id,
+            row.get("curve_id"),
+            row.get("curve_type"),
+            row.get("model_id"),
+            row.get("benchmark_id"),
+            row.get("date"),
+            row.get("nav"),
+            row.get("daily_ret"),
+            row.get("turnover"),
+            row.get("holdings_count"),
+            row.get("cost_bps"),
+            row.get("rebalance_days"),
+            row.get("built_at"),
+        )
+        for curve in curves
+        for row in curve
+    ]
+    if curve_rows:
         conn.executemany(
             """
             INSERT INTO mart_model_portfolio_curve
@@ -467,36 +486,20 @@ def write_results(conn, run_id: str, curves: list[list[dict]], summaries: list[d
              daily_ret, turnover, holdings_count, cost_bps, rebalance_days, built_at)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
-            [
-                (
-                    run_id,
-                    row.get("curve_id"),
-                    row.get("curve_type"),
-                    row.get("model_id"),
-                    row.get("benchmark_id"),
-                    row.get("date"),
-                    row.get("nav"),
-                    row.get("daily_ret"),
-                    row.get("turnover"),
-                    row.get("holdings_count"),
-                    row.get("cost_bps"),
-                    row.get("rebalance_days"),
-                    row.get("built_at"),
-                )
-                for row in curve
-            ],
+            curve_rows,
         )
-    for summary in summaries:
-        cols = [
-            "run_id", "curve_id", "curve_type", "model_id", "benchmark_id",
-            "start_date", "end_date", "cost_bps", "rebalance_days",
-            "final_nav", "total_return", "annualized_return", "max_drawdown",
-            "sharpe", "avg_turnover", "rebalance_count", "notes", "built_at",
-            "vs_random_l1_p90_pp",
-        ]
-        conn.execute(
+
+    cols = [
+        "run_id", "curve_id", "curve_type", "model_id", "benchmark_id",
+        "start_date", "end_date", "cost_bps", "rebalance_days",
+        "final_nav", "total_return", "annualized_return", "max_drawdown",
+        "sharpe", "avg_turnover", "rebalance_count", "notes", "built_at",
+        "vs_random_l1_p90_pp",
+    ]
+    if summaries:
+        conn.executemany(
             f"INSERT INTO mart_model_portfolio_summary ({', '.join(cols)}) VALUES ({', '.join(['?'] * len(cols))})",
-            tuple(summary.get(c) for c in cols),
+            [tuple(summary.get(c) for c in cols) for summary in summaries],
         )
     conn.commit()
 

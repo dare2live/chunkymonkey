@@ -47,14 +47,18 @@ CREATE INDEX IF NOT EXISTS idx_feature_candidate_date
 """
 
 
-def ensure_tables(conn: Any) -> None:
+def _execute_script(conn: Any, sql: str) -> None:
     if hasattr(conn, "executescript"):
-        conn.executescript(DDL)
+        conn.executescript(sql)
     else:
-        for stmt in DDL.split(";"):
+        for stmt in sql.split(";"):
             stmt = stmt.strip()
             if stmt:
                 conn.execute(stmt)
+
+
+def ensure_tables(conn: Any) -> None:
+    _execute_script(conn, DDL)
 
 
 def _quote_ident(name: str) -> str:
@@ -98,11 +102,16 @@ def _feature_candidates(conn: Any, source_feature_set_id: str, max_features: int
 
 
 def _ensure_feature_columns(conn: Any, features: list[str]) -> None:
-    conn.execute("ALTER TABLE fact_feature_panel_candidate ADD COLUMN IF NOT EXISTS close REAL")
-    for label in LABEL_COLUMNS:
-        conn.execute(f"ALTER TABLE fact_feature_panel_candidate ADD COLUMN IF NOT EXISTS {_quote_ident(label)} REAL")
-    for feature in features:
-        conn.execute(f"ALTER TABLE fact_feature_panel_candidate ADD COLUMN IF NOT EXISTS {_quote_ident(feature)} REAL")
+    statements = ["ALTER TABLE fact_feature_panel_candidate ADD COLUMN IF NOT EXISTS close REAL"]
+    statements.extend(
+        f"ALTER TABLE fact_feature_panel_candidate ADD COLUMN IF NOT EXISTS {_quote_ident(label)} REAL"
+        for label in LABEL_COLUMNS
+    )
+    statements.extend(
+        f"ALTER TABLE fact_feature_panel_candidate ADD COLUMN IF NOT EXISTS {_quote_ident(feature)} REAL"
+        for feature in features
+    )
+    _execute_script(conn, ";\n".join(statements))
 
 
 def build_tdx_gpcw_auto_feature_panel(

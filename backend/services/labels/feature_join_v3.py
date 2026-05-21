@@ -27,7 +27,9 @@ Codex review (a8c34359a) 反馈修复:
 from __future__ import annotations
 
 import logging
-from datetime import UTC, datetime
+from datetime import datetime, timezone
+
+UTC = timezone.utc
 from typing import Iterable
 
 from services.duck_adapter import connect as duck_connect

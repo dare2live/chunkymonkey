@@ -305,15 +305,20 @@ def ensure_schema_version_table(conn, commit: bool = True) -> None:
 
 def recreate_views(conn) -> dict[str, str]:
     """启动时 DROP + CREATE 所有声明的 view. 返回 {view_name: 'ok' | 'fail: msg'}."""
-    out = {}
-    for view_name, sql in RECREATE_VIEWS.items():
-        try:
-            conn.execute(f"DROP VIEW IF EXISTS {view_name}")
-            conn.execute(f"CREATE VIEW {view_name} AS {sql}")
-            out[view_name] = "ok"
-        except Exception as exc:
+    out = {view_name: "ok" for view_name in RECREATE_VIEWS}
+    if not RECREATE_VIEWS:
+        conn.commit()
+        return out
+    script = "\n".join(
+        f"DROP VIEW IF EXISTS {view_name};\nCREATE VIEW {view_name} AS {sql};"
+        for view_name, sql in RECREATE_VIEWS.items()
+    )
+    try:
+        conn.executescript(script)
+    except Exception as exc:
+        for view_name in RECREATE_VIEWS:
             out[view_name] = f"fail: {exc}"
-            logger.warning(f"[schema_version] view {view_name} 重建失败: {exc}")
+        logger.warning(f"[schema_version] view batch rebuild failed: {exc}")
     conn.commit()
     return out
 
@@ -341,21 +346,39 @@ def record_all_baselines(conn) -> int:
 
     用户重算派生层后也调用. 返回写入行数.
     """
-    n = 0
-    for table_name, expected in SCHEMA_VERSIONS.items():
-        # 只在表存在时记录 (避免污染)
-        try:
-            row = conn.execute(
-                "SELECT 1 FROM information_schema.tables WHERE table_name = ?",
-                [table_name],
-            ).fetchone()
-            if row:
-                record_actual_version(conn, table_name, expected)
-                n += 1
-        except Exception as exc:
-            logger.debug(f"[schema_version] 跳过 {table_name}: {exc}")
+    table_names = list(SCHEMA_VERSIONS)
+    if not table_names:
+        return 0
+    placeholders = ", ".join("?" for _ in table_names)
+    existing_rows = conn.execute(
+        f"""
+        SELECT table_name
+          FROM information_schema.tables
+         WHERE table_name IN ({placeholders})
+        """,
+        table_names,
+    ).fetchall()
+    existing = {row[0] for row in existing_rows}
+    rows = [
+        (table_name, expected, expected)
+        for table_name, expected in SCHEMA_VERSIONS.items()
+        if table_name in existing
+    ]
+    if rows:
+        ensure_schema_version_table(conn, commit=False)
+        conn.executemany(
+            """
+            INSERT INTO dim_schema_version (table_name, expected_version, actual_version, rebuilt_at)
+            VALUES (?, ?, ?, CURRENT_TIMESTAMP)
+            ON CONFLICT(table_name) DO UPDATE SET
+                expected_version = excluded.expected_version,
+                actual_version   = excluded.actual_version,
+                rebuilt_at       = excluded.rebuilt_at
+            """,
+            rows,
+        )
     conn.commit()
-    return n
+    return len(rows)
 
 
 def detect_drift(conn) -> list[dict]:

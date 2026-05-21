@@ -52,6 +52,10 @@ REPO_ROOT = Path(__file__).resolve().parent.parent.parent
 MARKET_DB = REPO_ROOT / "data" / "market.duckdb"
 ALPHA158_DB = REPO_ROOT / "data" / "alpha158.duckdb"
 
+# Canonical daily qfq K-line relation. price_kline is legacy/fallback-only in
+# current market.duckdb; v_price_kline_qfq is the production read path.
+KLINE_RELATION = "mkt.v_price_kline_qfq"
+
 # A-share code prefixes (60=主板沪 / 00=主板深 / 30=创业板 / 68=科创板 / 83,87=北交所).
 # Excludes ETF (15*/51*/56*/58*) and index (000300, 000905...) which live in
 # price_kline but are NOT part of the P0 ML ranking universe.
@@ -103,12 +107,13 @@ def _attach_alpha158(conn) -> None:
 
 
 def _month_first_trading_days(conn) -> list[str]:
-    """Return the first daily K线 date in each (year, month) of price_kline."""
+    """Return the first daily K线 date in each (year, month) of canonical K线."""
     rows = conn.execute(
-        """
+        f"""
         SELECT MIN(date) AS first_day
-          FROM mkt.price_kline
+          FROM {KLINE_RELATION}
          WHERE freq = 'daily'
+           AND adjust = 'qfq'
          GROUP BY substr(date, 1, 7)
          ORDER BY first_day
         """
@@ -121,8 +126,8 @@ def _ashare_universe(conn, ref_date: str) -> set[str]:
     return {
         r[0]
         for r in conn.execute(
-            f"SELECT DISTINCT code FROM mkt.price_kline "
-            f"WHERE freq='daily' AND date=? AND regexp_matches(code, '{ASHARE_PREFIX_REGEX}')",
+            f"SELECT DISTINCT code FROM {KLINE_RELATION} "
+            f"WHERE freq='daily' AND adjust='qfq' AND date=? AND regexp_matches(code, '{ASHARE_PREFIX_REGEX}')",
             [ref_date],
         ).fetchall()
     }
@@ -137,13 +142,24 @@ def check_kline_universe_timeseries(conn) -> list[CheckResult]:
     out: list[CheckResult] = []
     days = _month_first_trading_days(conn)
     series: list[tuple[str, int]] = []
-    for d in days:
-        n = conn.execute(
-            f"SELECT COUNT(DISTINCT code) FROM mkt.price_kline "
-            f"WHERE freq='daily' AND date=? AND regexp_matches(code, '{ASHARE_PREFIX_REGEX}')",
-            [d],
-        ).fetchone()[0]
-        series.append((d, n))
+    if days:
+        placeholders = ", ".join("?" for _ in days)
+        counts_by_day = {
+            row[0]: int(row[1] or 0)
+            for row in conn.execute(
+                f"""
+                SELECT date, COUNT(DISTINCT code) AS n
+                  FROM {KLINE_RELATION}
+                 WHERE freq='daily'
+                   AND adjust='qfq'
+                   AND regexp_matches(code, '{ASHARE_PREFIX_REGEX}')
+                   AND date IN ({placeholders})
+                 GROUP BY date
+                """,
+                days,
+            ).fetchall()
+        }
+        series = [(d, counts_by_day.get(d, 0)) for d in days]
 
     if not series:
         out.append(CheckResult(
@@ -246,8 +262,9 @@ def _latest_full_kline_date(conn) -> str:
     Avoids today's partial-sync (e.g. 74 codes) skewing the comparison.
     """
     rows = conn.execute(
-        f"SELECT date, COUNT(DISTINCT code) AS n FROM mkt.price_kline "
+        f"SELECT date, COUNT(DISTINCT code) AS n FROM {KLINE_RELATION} "
         f"WHERE freq='daily' AND regexp_matches(code, '{ASHARE_PREFIX_REGEX}') "
+        f"AND adjust='qfq' "
         f"GROUP BY 1 ORDER BY 1 DESC LIMIT 60"
     ).fetchall()
     counts = [r[1] for r in rows]
@@ -394,8 +411,9 @@ def check_cross_day_stability(conn) -> list[CheckResult]:
         f"""
         SELECT date FROM (
             SELECT date, COUNT(DISTINCT code) n
-              FROM mkt.price_kline
+              FROM {KLINE_RELATION}
              WHERE freq='daily' AND regexp_matches(code, '{ASHARE_PREFIX_REGEX}')
+               AND adjust='qfq'
              GROUP BY 1
         ) WHERE n > 4000
           ORDER BY date
@@ -412,20 +430,36 @@ def check_cross_day_stability(conn) -> list[CheckResult]:
         return out
 
     step = max(len(dates) // 20, 1)
-    samples = dates[::step][:20]
-    # For each sample, compare to the next trading day
+    sample_indexes = list(range(0, len(dates), step))[:20]
+    pairs = [
+        (dates[i], dates[i + 1])
+        for i in sample_indexes
+        if i + 1 < len(dates)
+    ]
+    needed_dates = sorted({d for pair in pairs for d in pair})
+    codes_by_date: dict[str, set[str]] = {d: set() for d in needed_dates}
+    if needed_dates:
+        placeholders = ", ".join("?" for _ in needed_dates)
+        code_rows = conn.execute(
+            f"""
+            SELECT date, code
+              FROM {KLINE_RELATION}
+             WHERE freq='daily'
+               AND adjust='qfq'
+               AND regexp_matches(code, '{ASHARE_PREFIX_REGEX}')
+               AND date IN ({placeholders})
+            """,
+            needed_dates,
+        ).fetchall()
+        for d, code in code_rows:
+            codes_by_date.setdefault(d, set()).add(code)
+
+    # For each sample, compare to the next full trading day.
     big_jumps: list[dict] = []
     transitions: list[dict] = []
-    for d in samples:
-        next_rows = conn.execute(
-            "SELECT date FROM mkt.price_kline WHERE freq='daily' AND date > ? ORDER BY date LIMIT 1",
-            [d],
-        ).fetchall()
-        if not next_rows:
-            continue
-        d_next = next_rows[0][0]
-        u_today = _ashare_universe(conn, d)
-        u_next = _ashare_universe(conn, d_next)
+    for d, d_next in pairs:
+        u_today = codes_by_date.get(d, set())
+        u_next = codes_by_date.get(d_next, set())
         if not u_today or not u_next:
             continue
         added = len(u_next - u_today)
@@ -494,8 +528,8 @@ def check_gap_analysis(conn) -> list[CheckResult]:
     if not kline_codes:
         # Roll back one day if no K线 on the panel's max date
         prior = conn.execute(
-            f"SELECT MAX(date) FROM mkt.price_kline "
-            f"WHERE freq='daily' AND date<=? AND regexp_matches(code, '{ASHARE_PREFIX_REGEX}')",
+            f"SELECT MAX(date) FROM {KLINE_RELATION} "
+            f"WHERE freq='daily' AND adjust='qfq' AND date<=? AND regexp_matches(code, '{ASHARE_PREFIX_REGEX}')",
             [ref_date],
         ).fetchone()[0]
         ref_date = prior

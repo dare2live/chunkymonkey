@@ -299,25 +299,29 @@ def persist_latest_etf_snapshot(conn, mkt_conn, *, connectivity: Optional[dict] 
     try:
         conn.execute("BEGIN TRANSACTION")
         conn.execute("DELETE FROM mart_etf_snapshot_latest")
-        for row in rows:
-            conn.execute(
+        snapshot_rows = [
+            (
+                row.get("code"),
+                snapshot_id,
+                row.get("category"),
+                row.get("factor_rank"),
+                row.get("factor_score"),
+                row.get("rotation_score"),
+                row.get("strategy_type"),
+                _json_dumps(row),
+                computed_at,
+            )
+            for row in rows
+        ]
+        if snapshot_rows:
+            conn.executemany(
                 """
                 INSERT OR REPLACE INTO mart_etf_snapshot_latest (
                     code, snapshot_id, category, factor_rank, factor_score,
                     rotation_score, strategy_type, payload_json, updated_at
                 ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
-                (
-                    row.get("code"),
-                    snapshot_id,
-                    row.get("category"),
-                    row.get("factor_rank"),
-                    row.get("factor_score"),
-                    row.get("rotation_score"),
-                    row.get("strategy_type"),
-                    _json_dumps(row),
-                    computed_at,
-                ),
+                snapshot_rows,
             )
         conn.execute(
             """

@@ -167,11 +167,14 @@ def check_mask_effective(conn) -> list[CheckResult]:
             detail=f"{bad_entry:,} rows: unable_at_entry=True 但 label 不是全 NULL",
         ))
     # 同理 per-horizon
-    for h in (5, 10, 20):
-        bad = conn.execute(f"""
-            SELECT COUNT(*) FROM mart_p0a_label_panel
-            WHERE unable_at_exit_{h}d = TRUE AND fwd_cost_after_{h}d IS NOT NULL
-        """).fetchone()[0]
+    horizon_bad = conn.execute("""
+        SELECT
+          COUNT(*) FILTER (WHERE unable_at_exit_5d = TRUE AND fwd_cost_after_5d IS NOT NULL) AS bad_5d,
+          COUNT(*) FILTER (WHERE unable_at_exit_10d = TRUE AND fwd_cost_after_10d IS NOT NULL) AS bad_10d,
+          COUNT(*) FILTER (WHERE unable_at_exit_20d = TRUE AND fwd_cost_after_20d IS NOT NULL) AS bad_20d
+        FROM mart_p0a_label_panel
+    """).fetchone()
+    for h, bad in zip((5, 10, 20), horizon_bad, strict=True):
         if bad == 0:
             out.append(CheckResult(
                 section="3. Mask effective",
@@ -192,32 +195,47 @@ def check_mask_effective(conn) -> list[CheckResult]:
 def check_keep_universe(conn, feature_panel: str = "mart_p0a_feature_label_panel") -> list[CheckResult]:
     """5. 所有 stock_code 前缀 ∈ KEEP universe (60/00/30/68)."""
     out: list[CheckResult] = []
-    for table in ("mart_p0a_label_panel", feature_panel):
-        try:
-            bad = conn.execute(f"""
-                SELECT COUNT(*) FROM {table}
-                WHERE SUBSTR(stock_code, 1, 2) NOT IN ('60', '00', '30', '68')
-            """).fetchone()[0]
-            if bad == 0:
-                out.append(CheckResult(
-                    section="5. KEEP universe",
-                    name=f"{table}_prefix",
-                    status="PASS",
-                    detail=f"{table}: 全部 60/00/30/68 前缀 ✓",
-                ))
-            else:
-                out.append(CheckResult(
-                    section="5. KEEP universe",
-                    name=f"{table}_prefix",
-                    status="FAIL",
-                    detail=f"{table}: {bad:,} 行非 KEEP universe 前缀",
-                ))
-        except Exception as e:
+    tables = ("mart_p0a_label_panel", feature_panel)
+    existing = {
+        r[0] for r in conn.execute(
+            "SELECT table_name FROM information_schema.tables WHERE table_schema='main'"
+        ).fetchall()
+    }
+    present_tables = [table for table in tables if table in existing]
+    bad_by_table: dict[str, int] = {}
+    if present_tables:
+        sql = " UNION ALL ".join(
+            f"""
+            SELECT '{table}' AS table_name, COUNT(*) AS bad
+            FROM {table}
+            WHERE SUBSTR(stock_code, 1, 2) NOT IN ('60', '00', '30', '68')
+            """
+            for table in present_tables
+        )
+        bad_by_table = {table: int(bad) for table, bad in conn.execute(sql).fetchall()}
+    for table in tables:
+        if table not in existing:
             out.append(CheckResult(
                 section="5. KEEP universe",
                 name=f"{table}_prefix",
                 status="WARN",
-                detail=f"{table} not present: {e}",
+                detail=f"{table} not present",
+            ))
+            continue
+        bad = bad_by_table.get(table, 0)
+        if bad == 0:
+            out.append(CheckResult(
+                section="5. KEEP universe",
+                name=f"{table}_prefix",
+                status="PASS",
+                detail=f"{table}: 全部 60/00/30/68 前缀 ✓",
+            ))
+        else:
+            out.append(CheckResult(
+                section="5. KEEP universe",
+                name=f"{table}_prefix",
+                status="FAIL",
+                detail=f"{table}: {bad:,} 行非 KEEP universe 前缀",
             ))
     return out
 

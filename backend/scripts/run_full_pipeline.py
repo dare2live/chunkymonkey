@@ -80,12 +80,18 @@ def dry_run_checks(min_codes: int) -> None:
 
     conn = get_conn()
     try:
+        table_counts = dict(
+            conn.execute(
+                """
+                SELECT table_name, COUNT(*) AS n
+                FROM information_schema.tables
+                WHERE table_name IN ('fact_feature_panel', 'mart_multidim_model')
+                GROUP BY table_name
+                """
+            ).fetchall()
+        )
         for table in ("fact_feature_panel", "mart_multidim_model"):
-            exists = conn.execute(
-                "SELECT COUNT(*) FROM information_schema.tables WHERE table_name = ?",
-                (table,),
-            ).fetchone()[0]
-            logger.info("smart.%s exists=%s", table, bool(exists))
+            logger.info("smart.%s exists=%s", table, bool(table_counts.get(table, 0)))
     finally:
         conn.close()
 

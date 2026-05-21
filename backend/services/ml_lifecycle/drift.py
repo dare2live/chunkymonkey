@@ -692,8 +692,15 @@ def write_drift_snapshot(
         # stable run timestamp.
         if snapshot_at is None:
             snapshot_at = datetime.utcnow().isoformat(timespec="seconds")
-        for r in drift_results:
-            conn.execute("""
+        rows = [
+            (
+                snapshot_at, r.get("model_id"), r.get("feature_set_id"), r["feature"],
+                None if (r["psi"] != r["psi"]) else r["psi"],  # 过滤 NaN
+                r["n_train"], r["n_recent"], window_days, r["severity"],
+            )
+            for r in drift_results
+        ]
+        conn.executemany("""
                 INSERT INTO mart_feature_drift
                   (snapshot_at, model_id, feature_set_id, feature, psi, n_train, n_recent, window_days, severity, notes)
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NULL)
@@ -704,10 +711,6 @@ def write_drift_snapshot(
                     n_recent = EXCLUDED.n_recent,
                     window_days = EXCLUDED.window_days,
                     severity = EXCLUDED.severity
-            """, (
-                snapshot_at, r.get("model_id"), r.get("feature_set_id"), r["feature"],
-                None if (r["psi"] != r["psi"]) else r["psi"],  # 过滤 NaN
-                r["n_train"], r["n_recent"], window_days, r["severity"],
-            ))
+            """, rows)
         conn.commit()
     return len(drift_results)

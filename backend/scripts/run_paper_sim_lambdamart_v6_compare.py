@@ -13,6 +13,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from services.db import get_conn
 from services.paper_sim.config import load_config
+from scripts.backfill_strategy_result_registry import backfill as refresh_strategy_result_registry
 from scripts.run_paper_sim_v2 import run_walk_forward
 
 
@@ -203,15 +204,15 @@ def load_kpi_row(conn, sim_run_id: str) -> dict:
 def write_compare_rows(conn, *, comparison_id: str, rows: list[CompareRow]) -> None:
     ensure_compare_table(conn)
     conn.execute(f"DELETE FROM {COMPARE_TABLE} WHERE comparison_id = ?", [comparison_id])
-    for row in rows:
-        conn.execute(
-            f"""
-            INSERT INTO {COMPARE_TABLE}
-            (comparison_id, model_label, model_id, prediction_table, sim_run_id,
-             period_start, period_end, rank_ic, rank_ic_n_dates, sharpe,
-             ann_ret, max_dd, monthly_win_rate, source_kpi_built_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """,
+    conn.executemany(
+        f"""
+        INSERT INTO {COMPARE_TABLE}
+        (comparison_id, model_label, model_id, prediction_table, sim_run_id,
+         period_start, period_end, rank_ic, rank_ic_n_dates, sharpe,
+         ann_ret, max_dd, monthly_win_rate, source_kpi_built_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        [
             [
                 comparison_id,
                 row.model_label,
@@ -227,9 +228,12 @@ def write_compare_rows(conn, *, comparison_id: str, rows: list[CompareRow]) -> N
                 row.max_dd,
                 row.monthly_win_rate,
                 row.source_kpi_built_at,
-            ],
-        )
+            ]
+            for row in rows
+        ],
+    )
     conn.commit()
+    refresh_strategy_result_registry(conn, dry_run=False)
 
 
 def _fmt_pct(value: float | None) -> str:

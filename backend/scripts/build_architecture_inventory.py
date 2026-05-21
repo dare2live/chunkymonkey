@@ -930,8 +930,9 @@ def _summary(assets: list[Asset], edges: list[Edge], run_id: str, built_at: str)
 
 def persist_inventory(conn: Any, inventory: Inventory, *, run_id: str, built_at: str) -> dict[str, Any]:
     ensure_tables(conn)
-    for table in INVENTORY_TABLES:
-        conn.execute(f"DELETE FROM {table} WHERE run_id = ?", (run_id,))
+    conn.execute("DELETE FROM mart_architecture_inventory_asset WHERE run_id = ?", (run_id,))
+    conn.execute("DELETE FROM mart_architecture_dependency_edge WHERE run_id = ?", (run_id,))
+    conn.execute("DELETE FROM mart_architecture_inventory_summary WHERE run_id = ?", (run_id,))
     conn.executemany(
         """
         INSERT INTO mart_architecture_inventory_asset (
@@ -1004,8 +1005,9 @@ def persist_inventory(conn: Any, inventory: Inventory, *, run_id: str, built_at:
             built_at,
         ),
     )
-    for table in INVENTORY_TABLES:
-        record_actual_version(conn, table)
+    record_actual_version(conn, "mart_architecture_inventory_asset")
+    record_actual_version(conn, "mart_architecture_dependency_edge")
+    record_actual_version(conn, "mart_architecture_inventory_summary")
     conn.commit()
     return summary
 

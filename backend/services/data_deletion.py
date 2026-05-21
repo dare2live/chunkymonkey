@@ -7,7 +7,9 @@ why data was removed and how many rows/files were affected.
 from __future__ import annotations
 
 import json
-from datetime import UTC, datetime
+from datetime import datetime, timezone
+
+UTC = timezone.utc
 from typing import Any
 
 from services.schema_versions import record_actual_version

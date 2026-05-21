@@ -254,25 +254,26 @@ def backfill_benchmark_columns(conn, mkt_conn, model_id: str = "paper_replay_v1"
         log.warning("  HS300 数据无, 跳过基准填充")
         return 0
     log.info(f"  HS300 NAV {len(hs300)} 日")
+    nav_rows = conn.execute(
+        "SELECT snapshot_date, cum_ret FROM mart_paper_nav WHERE model_id=?",
+        [model_id],
+    ).fetchall()
+    cum_ret_by_date = {str(row[0]): float(row[1] or 0.0) for row in nav_rows}
+    update_rows = [
+        [hs_nav, hs_nav - 1.0, cum_ret_by_date[d] - (hs_nav - 1.0), d, model_id]
+        for d, hs_nav in hs300.items()
+        if d in cum_ret_by_date
+    ]
 
     # 批量 UPDATE
     conn.execute("BEGIN TRANSACTION")
     try:
-        for d, hs_nav in hs300.items():
-            hs_cum = hs_nav - 1.0
-            # 取主组合该日 cum_ret 算 vs
-            r = conn.execute(
-                "SELECT cum_ret FROM mart_paper_nav WHERE snapshot_date=? AND model_id=?",
-                [d, model_id],
-            ).fetchone()
-            if not r:
-                continue
-            cum_ret = float(r[0] or 0.0)
-            conn.execute(
+        if update_rows:
+            conn.executemany(
                 """UPDATE mart_paper_nav
                       SET hs300_nav=?, hs300_cum_ret=?, vs_hs300_cum_ret=?
                     WHERE snapshot_date=? AND model_id=?""",
-                [hs_nav, hs_cum, cum_ret - hs_cum, d, model_id],
+                update_rows,
             )
         conn.execute("COMMIT")
     except BaseException:

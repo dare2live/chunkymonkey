@@ -540,19 +540,34 @@ def evaluate_gate(
         has_feature_set = "feature_set_id" in panel_cols
         where_sql = "WHERE feature_set_id = ?" if has_feature_set and feature_set_id else ""
         params = (feature_set_id,) if has_feature_set and feature_set_id else ()
+        existing_features = []
         for f in coverage_features:
             if f not in panel_cols:
                 coverage_rows.append({"feature": f, "coverage_pct": 0.0, "status": "missing_column"})
-                continue
-            c = conn.execute(
+            else:
+                existing_features.append(f)
+        coverage_by_feature = {}
+        if existing_features:
+            select_parts = [
+                f"COUNT({_quote_ident(f)}) * 100.0 / NULLIF(COUNT(*), 0) AS c_{idx}"
+                for idx, f in enumerate(existing_features)
+            ]
+            coverage_row = conn.execute(
                 f"""
-                SELECT COUNT({_quote_ident(f)}) * 100.0 / NULLIF(COUNT(*), 0)
+                SELECT {", ".join(select_parts)}
                   FROM {_quote_ident(feature_table)}
                   {where_sql}
                 """,
                 params,
-            ).fetchone()[0]
-            coverage_rows.append({"feature": f, "coverage_pct": float(c or 0), "status": "ok"})
+            ).fetchone()
+            coverage_by_feature = {
+                f: float((coverage_row[idx] if coverage_row else 0.0) or 0.0)
+                for idx, f in enumerate(existing_features)
+            }
+        coverage_rows.extend(
+            {"feature": f, "coverage_pct": coverage_by_feature[f], "status": "ok"}
+            for f in existing_features
+        )
     pass_coverage = sum(1 for r in coverage_rows if r["coverage_pct"] >= 60.0)
     required_coverage = len(coverage_features)
     missing_coverage_table = not _table_exists(conn, feature_table)

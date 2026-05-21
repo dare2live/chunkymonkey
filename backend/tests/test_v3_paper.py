@@ -7,6 +7,8 @@ from __future__ import annotations
 import pytest
 from fastapi.testclient import TestClient
 
+from routers.v3_paper import _latest_picture_by_code
+
 
 @pytest.fixture(scope="module")
 def client():
@@ -17,6 +19,52 @@ def client():
         sys.path.insert(0, str(backend_dir))
     from main import app
     return TestClient(app)
+
+
+class _Rows:
+    def __init__(self, *, one=None, all_rows=None):
+        self._one = one
+        self._all = all_rows or []
+
+    def fetchone(self):
+        return self._one
+
+    def fetchall(self):
+        return self._all
+
+
+class _PictureConn:
+    def __init__(self):
+        self.calls = []
+
+    def execute(self, sql, params=None):
+        self.calls.append((sql, params))
+        if "information_schema.tables" in sql:
+            return _Rows(one=(1,))
+        return _Rows(
+            all_rows=[
+                ("000001", 12.3, "stage_a"),
+                ("000002", 8.8, "stage_b"),
+            ]
+        )
+
+
+def test_latest_picture_by_code_batches_unique_codes():
+    conn = _PictureConn()
+
+    out = _latest_picture_by_code(conn, ["000002", "000001", "000001"])
+
+    assert out == {"000001": (12.3, "stage_a"), "000002": (8.8, "stage_b")}
+    assert len(conn.calls) == 2
+    assert "stock_code IN (?,?)" in conn.calls[1][0]
+    assert conn.calls[1][1] == ["000001", "000002"]
+
+
+def test_latest_picture_by_code_empty_input_skips_query():
+    conn = _PictureConn()
+
+    assert _latest_picture_by_code(conn, []) == {}
+    assert conn.calls == []
 
 
 class TestPaperNAV:

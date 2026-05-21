@@ -4,11 +4,13 @@ from __future__ import annotations
 from fastapi import APIRouter
 
 from services.db import get_conn
+from services.workbench_delivery_read import build_workbench_delivery_readiness
 from services.workbench_read import (
     build_workbench_champion,
     build_workbench_data_sources,
     build_workbench_features,
     build_workbench_overview,
+    build_workbench_paper_sim_kpi_timeseries,
     build_workbench_pipelines,
     build_workbench_recommendations,
     build_workbench_research,
@@ -89,3 +91,17 @@ def workbench_recommendations():
         return build_workbench_recommendations(conn)
     finally:
         conn.close()
+
+
+@router.get("/paper-sim/kpi-timeseries")
+def workbench_paper_sim_kpi_timeseries(limit: int = 50, variant: str | None = None):
+    conn = get_conn()
+    try:
+        return build_workbench_paper_sim_kpi_timeseries(conn, limit=limit, variant=variant)
+    finally:
+        conn.close()
+
+
+@router.get("/delivery-readiness")
+def workbench_delivery_readiness():
+    return build_workbench_delivery_readiness()

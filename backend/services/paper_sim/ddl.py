@@ -180,24 +180,15 @@ def ensure_paper_sim_tables(conn) -> None:
     # Phase 1a Option C migration: 已存表 ALTER 加 exit_source / partition KPI cols
     # CREATE TABLE IF NOT EXISTS 不会修改已存表 schema, 需 ALTER 单独跑.
     # DuckDB ALTER ADD COLUMN IF NOT EXISTS 不支持, 用 try/except + duplicate-column 收窄 (Codex round 6 MINOR #5).
-    _migrations = [
-        ("mart_paper_sim_nav",      "trade_date_dt DATE"),
-        ("fact_paper_sim_position", "exit_source TEXT DEFAULT 'pit'"),
-        ("fact_paper_sim_trade",    "exit_source TEXT DEFAULT 'pit'"),
-        ("mart_paper_sim_kpi",      "pit_count INTEGER"),
-        ("mart_paper_sim_kpi",      "pit_pnl DOUBLE"),
-        ("mart_paper_sim_kpi",      "pit_pnl_pct DOUBLE"),
-        ("mart_paper_sim_kpi",      "fallback_count INTEGER"),
-        ("mart_paper_sim_kpi",      "fallback_pnl DOUBLE"),
-        ("mart_paper_sim_kpi",      "fallback_pnl_pct DOUBLE"),
-    ]
-    for tbl, coldef in _migrations:
-        try:
-            conn.execute(f"ALTER TABLE {tbl} ADD COLUMN {coldef}")
-        except Exception as _e:
-            # 只吞 duplicate-column 错 (column 已存在), 其他 migration 错 raise
-            if "already exists" not in str(_e).lower() and "duplicate" not in str(_e).lower():
-                raise
+    _execute_duplicate_safe(conn, "ALTER TABLE mart_paper_sim_nav ADD COLUMN trade_date_dt DATE")
+    _execute_duplicate_safe(conn, "ALTER TABLE fact_paper_sim_position ADD COLUMN exit_source TEXT DEFAULT 'pit'")
+    _execute_duplicate_safe(conn, "ALTER TABLE fact_paper_sim_trade ADD COLUMN exit_source TEXT DEFAULT 'pit'")
+    _execute_duplicate_safe(conn, "ALTER TABLE mart_paper_sim_kpi ADD COLUMN pit_count INTEGER")
+    _execute_duplicate_safe(conn, "ALTER TABLE mart_paper_sim_kpi ADD COLUMN pit_pnl DOUBLE")
+    _execute_duplicate_safe(conn, "ALTER TABLE mart_paper_sim_kpi ADD COLUMN pit_pnl_pct DOUBLE")
+    _execute_duplicate_safe(conn, "ALTER TABLE mart_paper_sim_kpi ADD COLUMN fallback_count INTEGER")
+    _execute_duplicate_safe(conn, "ALTER TABLE mart_paper_sim_kpi ADD COLUMN fallback_pnl DOUBLE")
+    _execute_duplicate_safe(conn, "ALTER TABLE mart_paper_sim_kpi ADD COLUMN fallback_pnl_pct DOUBLE")
     try:
         conn.execute("ALTER TABLE mart_paper_sim_kpi ADD COLUMN IF NOT EXISTS lineage_url TEXT")
     except Exception as _e:

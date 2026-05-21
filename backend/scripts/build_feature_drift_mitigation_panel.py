@@ -222,13 +222,18 @@ def load_root_cause_features(
 
 
 def _ensure_candidate_columns(conn: Any, columns: list[str], *, labels: list[str], has_regime: bool) -> None:
-    conn.execute("ALTER TABLE fact_feature_panel_candidate ADD COLUMN IF NOT EXISTS close REAL")
-    for label in labels:
-        conn.execute(f"ALTER TABLE fact_feature_panel_candidate ADD COLUMN IF NOT EXISTS {_quote_ident(label)} REAL")
+    statements = ["ALTER TABLE fact_feature_panel_candidate ADD COLUMN IF NOT EXISTS close REAL"]
+    statements.extend(
+        f"ALTER TABLE fact_feature_panel_candidate ADD COLUMN IF NOT EXISTS {_quote_ident(label)} REAL"
+        for label in labels
+    )
     if has_regime:
-        conn.execute("ALTER TABLE fact_feature_panel_candidate ADD COLUMN IF NOT EXISTS regime_flag TEXT")
-    for column in columns:
-        conn.execute(f"ALTER TABLE fact_feature_panel_candidate ADD COLUMN IF NOT EXISTS {_quote_ident(column)} REAL")
+        statements.append("ALTER TABLE fact_feature_panel_candidate ADD COLUMN IF NOT EXISTS regime_flag TEXT")
+    statements.extend(
+        f"ALTER TABLE fact_feature_panel_candidate ADD COLUMN IF NOT EXISTS {_quote_ident(column)} REAL"
+        for column in columns
+    )
+    _execute_script(conn, ";\n".join(statements))
 
 
 def _build_quantile_selects(features: list[str], low: float, high: float) -> list[str]:

@@ -7,8 +7,8 @@
     + JOIN mart_stock_formula_buy_signal_daily.tier
 
   selection.mode = "backtest"    (walk-forward 用, 历史每天 inline 算)
-    数据源: fact_technical_trigger + mart_per_stock_stage_strategy_optimal
-            (cross-stage fallback) + fact_signal_context.technical_stage
+    数据源: fact_technical_trigger + mart_per_stock_stage_strategy_optimal_pit
+            (cutoff_date <= signal_date) + fact_signal_context.technical_stage
     评分跟 portfolio_backtest.py 同款: tier 简化判定 (sharpe + win + calmar)
 
 mode 选择放 config 里, business 代码不动 — Rule 2 + 项目特定 "模块化, 不硬编码".
@@ -31,63 +31,74 @@ TIER_RANK = {"NO_SIGNAL": 0, "WATCH": 1, "BUY": 2, "STRONG_BUY": 3}
 
 
 def _load_per_stock_stage_optimal(conn, stock_stage_pairs: list[tuple[str, str]],
-                                    min_n_traded: int = 5) -> dict[tuple[str, str], dict]:
+                                    min_n_traded: int = 5,
+                                    signal_date: str | None = None) -> dict[tuple[str, str], dict]:
     """Phase ψ.γ.2: 批量加载 (stock × stage) 的 best params from
-    mart_per_stock_stage_strategy_optimal (Phase ψ 9 维 Optuna OOS 产物).
+    mart_per_stock_stage_strategy_optimal_pit (Phase ψ 9 维 Optuna PIT 产物).
 
     选 row 规则: 每 (stock × stage) 取 oos_sharpe DESC 第一行, 跨 formula 取 best.
     过滤: oos_n_traded >= min_n_traded (避免少 trade 数据噪音).
 
     Rule 8: 只读 oos_* 字段, 不读 in-sample fit.
-    Rule 7: stock_code × stage_filter (PIT — stage 是 signal_date 当天的, 不是事后).
+    Rule 7: stock_code × stage_filter + cutoff_date <= signal_date.
 
     Returns: {(stock_code, stage_filter): {hp, stop, target, trailing, source_formula}}.
     """
     if not stock_stage_pairs:
         return {}
-    # 构 IN 列表 — DuckDB 不直接支持 tuple IN, 用 OR 拼或临时 table
-    # 简化: 在 Python 层 group by stage, 多次 query (stage 数 ≤ ~5)
-    by_stage: dict[str, list[str]] = {}
+    requested_pairs: list[tuple[str, str]] = []
     for sc, st in stock_stage_pairs:
         if st:
-            by_stage.setdefault(str(st), []).append(sc)
+            requested_pairs.append((str(sc), str(st)))
+    if not requested_pairs:
+        return {}
+
     out: dict[tuple[str, str], dict] = {}
-    for stage, codes in by_stage.items():
-        if not codes:
-            continue
-        qs = ",".join("?" * len(codes))
-        try:
-            rows = conn.execute(f"""
-                WITH ranked AS (
-                    SELECT stock_code, formula_id, formula_variant,
-                           optimal_hp, optimal_stop_pct, optimal_target_pct,
-                           optimal_trailing_pct, oos_sharpe, oos_n_traded,
-                           ROW_NUMBER() OVER (
-                             PARTITION BY stock_code
-                             ORDER BY oos_sharpe DESC NULLS LAST, oos_n_traded DESC
-                           ) AS rk
-                      FROM mart_per_stock_stage_strategy_optimal
-                     WHERE stage_filter = ?
-                       AND stock_code IN ({qs})
-                       AND oos_sharpe IS NOT NULL
-                       AND oos_n_traded >= ?
-                )
-                SELECT stock_code, formula_id, optimal_hp,
-                       optimal_stop_pct, optimal_target_pct, optimal_trailing_pct
-                  FROM ranked
-                 WHERE rk = 1
-            """, [stage, *codes, min_n_traded]).fetchall()
-            for r in rows:
-                sc = r[0]
-                out[(sc, stage)] = {
-                    "hp": int(r[2]),
-                    "stop_pct": float(r[3]),
-                    "target_pct": float(r[4]),
-                    "trailing_pct": float(r[5]),
-                    "source_formula": str(r[1]),
-                }
-        except Exception as e:
-            log.warning(f"  per_stock_stage load failed for stage={stage}: {e}")
+    cutoff = signal_date or "9999-12-31"  # rule-compliance: ok evidence=sentinel-far-future-date (signal_date=None 时不过滤, 不是 business date hardcode)
+    values_clause = ",".join(["(?, ?)"] * len(requested_pairs))
+    params = [value for pair in requested_pairs for value in pair]
+    try:
+        rows = conn.execute(f"""
+            WITH requested AS (
+                SELECT DISTINCT stock_code, stage_filter
+                FROM (VALUES {values_clause}) AS v(stock_code, stage_filter)
+            ),
+            ranked AS (
+                SELECT r.stock_code, r.stage_filter, p.formula_id,
+                       p.formula_variant, p.holding_days, p.optimal_stop_pct,
+                       p.optimal_target_pct, p.optimal_trailing_pct,
+                       p.oos_sharpe, p.oos_n_traded,
+                       ROW_NUMBER() OVER (
+                         PARTITION BY r.stock_code, r.stage_filter
+                         ORDER BY CAST(p.cutoff_date AS DATE) DESC,
+                                  p.oos_sharpe DESC NULLS LAST,
+                                  p.oos_n_traded DESC
+                       ) AS rk
+                  FROM requested r
+                  JOIN mart_per_stock_stage_strategy_optimal_pit p
+                    ON p.stock_code = r.stock_code
+                   AND p.stage_filter = r.stage_filter
+                 WHERE CAST(p.cutoff_date AS DATE) <= CAST(? AS DATE)
+                   AND p.oos_sharpe IS NOT NULL
+                   AND p.oos_n_traded >= ?
+            )
+            SELECT stock_code, stage_filter, formula_id, holding_days,
+                   optimal_stop_pct, optimal_target_pct, optimal_trailing_pct
+              FROM ranked
+             WHERE rk = 1
+        """, [*params, cutoff, min_n_traded]).fetchall()
+        for r in rows:
+            sc = str(r[0])
+            stage = str(r[1])
+            out[(sc, stage)] = {
+                "hp": int(r[3]),
+                "stop_pct": float(r[4]),
+                "target_pct": float(r[5]),
+                "trailing_pct": float(r[6]),
+                "source_formula": str(r[2]),
+            }
+    except Exception as e:
+        log.warning(f"  per_stock_stage load failed: {e}")
     return out
 
 
@@ -503,7 +514,7 @@ def load_today_candidates_ensemble(
 
     # Phase ψ.β.5 L2 + Phase ψ.γ.2 per-stock-stage 优先级:
     #   per_stock_stage > vol_aware > default_holding
-    # 都是 PIT 干净: per_stock_stage 用 mart_per_stock_stage_strategy_optimal (OOS-cleaned)
+    # 都是 PIT 干净: per_stock_stage 用 mart_per_stock_stage_strategy_optimal_pit
     # vol_aware 用 fact_risk_factors.vol_60d (WHERE calc_date <= signal_date PIT max)
     va = getattr(cfg, "vol_aware", {}) or {}
     pss_cfg = getattr(cfg, "per_stock_stage", {}) or {}
@@ -514,7 +525,12 @@ def load_today_candidates_ensemble(
     if pss_cfg.get("enabled") and final_codes:
         pairs = [(sc, stage_map.get(sc, "")) for sc in final_codes if stage_map.get(sc)]
         min_n_traded = int(pss_cfg.get("min_n_traded", 5))
-        pss_params = _load_per_stock_stage_optimal(conn, pairs, min_n_traded=min_n_traded)
+        pss_params = _load_per_stock_stage_optimal(
+            conn,
+            pairs,
+            min_n_traded=min_n_traded,
+            signal_date=signal_date,
+        )
         log.debug(f"  P2 per_stock_stage: 命中 {len(pss_params)}/{len(pairs)} stock×stage")
 
     # 2. vol_aware 批量加载 vol_60d (次优先级, 用于 pss 没命中的)
@@ -555,7 +571,7 @@ def load_today_candidates_ensemble(
         if cfg.min_tier_to_buy == "STRONG_BUY" and tier != "STRONG_BUY":
             continue
         stage = stage_map.get(sc, "")
-        # 优先级 1: per-stock × stage (mart_per_stock_stage_strategy_optimal)
+        # 优先级 1: per-stock × stage (PIT table)
         pss_p = pss_params.get((sc, stage)) if pss_cfg.get("enabled") else None
         if pss_p:
             hp_i        = pss_p["hp"]

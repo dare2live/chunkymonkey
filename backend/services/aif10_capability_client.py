@@ -395,17 +395,13 @@ def sync_financial_history_200q(secucodes: list[str] | None = None, limit: int =
                 page=1, page_size=200,
                 secucode=secucode,
             )
+            payload = []
             for r in (result.get("data") or []):
                 report_date = (r.get("REPORT_DATE") or "")[:10]
                 if not report_date:
                     continue
-                conn.execute(
-                    """INSERT OR REPLACE INTO raw_aif10_financial_history
-                    (secucode, report_date, report_type, eps, roe_jq, roa_jq,
-                     sale_gpr, sale_npr, asset_liab_ratio, tot_or, parent_netprofit,
-                     tot_or_yoy, netprofit_yoy, raw_json)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-                    [
+                payload.append(
+                    (
                         secucode, report_date,
                         r.get("REPORT_TYPE"),
                         r.get("EPSJB"),       # 基本 EPS
@@ -419,9 +415,18 @@ def sync_financial_history_200q(secucodes: list[str] | None = None, limit: int =
                         r.get("YOY_TOTAL_OPERATE_INCOME"),
                         r.get("YOY_PARENT_NETPROFIT"),
                         json.dumps(r, ensure_ascii=False, default=str),
-                    ],
+                    )
                 )
-                total += 1
+            if payload:
+                conn.executemany(
+                    """INSERT OR REPLACE INTO raw_aif10_financial_history
+                    (secucode, report_date, report_type, eps, roe_jq, roa_jq,
+                     sale_gpr, sale_npr, asset_liab_ratio, tot_or, parent_netprofit,
+                     tot_or_yoy, netprofit_yoy, raw_json)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                    payload,
+                )
+            total += len(payload)
         except Exception as exc:
             logger.warning(f"[aif10/financial_history] {secucode} 失败: {exc}")
             continue

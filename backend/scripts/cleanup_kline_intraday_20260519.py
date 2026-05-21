@@ -36,34 +36,67 @@ import duckdb
 CONTAMINATION_DATE = "2026-05-19"  # rule-compliance: ok evidence=incident-date
 
 
+def _quote_ident(name: str) -> str:
+    return '"' + name.replace('"', '""') + '"'
+
+
 def cleanup_db(db_path: Path, table_date_pairs: list[tuple[str, str]], dry_run: bool = False) -> dict:
     """Delete rows where date >= CONTAMINATION_DATE for each (table, date_col)."""
-    results = {}
+    results: dict[str, dict] = {}
+    if not table_date_pairs:
+        return results
     con = duckdb.connect(str(db_path))
     try:
-        for table, date_col in table_date_pairs:
-            try:
-                n = con.execute(
-                    f"SELECT COUNT(*) FROM {table} WHERE {date_col} >= ?",
-                    [CONTAMINATION_DATE],
-                ).fetchone()[0]
-                if n == 0:
-                    results[table] = {"status": "clean", "n": 0}
-                    continue
-                if dry_run:
-                    results[table] = {"status": "dry_run_would_delete", "n": n}
-                else:
-                    con.execute(
-                        f"DELETE FROM {table} WHERE {date_col} >= ?",
-                        [CONTAMINATION_DATE],
-                    )
-                    con.commit()
-                    results[table] = {"status": "deleted", "n": n}
-                # verify max date
-                max_d = con.execute(f"SELECT MAX({date_col}) FROM {table}").fetchone()[0]
-                results[table]["max_date_after"] = str(max_d)
-            except Exception as e:
-                results[table] = {"status": "error", "error": str(e)}
+        existing = {
+            row[0]
+            for row in con.execute(
+                "SELECT table_name FROM information_schema.tables WHERE table_name IN ({})".format(
+                    ",".join(["?"] * len(table_date_pairs))
+                ),
+                [table for table, _ in table_date_pairs],
+            ).fetchall()
+        }
+        targets = [(table, date_col) for table, date_col in table_date_pairs if table in existing]
+        for table, _ in table_date_pairs:
+            if table not in existing:
+                results[table] = {"status": "error", "error": f"table missing: {table}"}
+        if not targets:
+            return results
+
+        count_sql = " UNION ALL ".join(
+            f"SELECT '{table}' AS table_name, COUNT(*) AS n FROM {_quote_ident(table)} WHERE {_quote_ident(date_col)} >= ?"
+            for table, date_col in targets
+        )
+        counts = {
+            row[0]: int(row[1] or 0)
+            for row in con.execute(count_sql, [CONTAMINATION_DATE] * len(targets)).fetchall()
+        }
+        active_targets = [(table, date_col) for table, date_col in targets if counts.get(table, 0) > 0]
+        for table, _ in targets:
+            n = counts.get(table, 0)
+            if n == 0:
+                results[table] = {"status": "clean", "n": 0}
+            elif dry_run:
+                results[table] = {"status": "dry_run_would_delete", "n": n}
+            else:
+                results[table] = {"status": "deleted", "n": n}
+
+        if active_targets and not dry_run:
+            con.executescript(
+                "\n".join(
+                    f"DELETE FROM {_quote_ident(table)} WHERE {_quote_ident(date_col)} >= '{CONTAMINATION_DATE}';"
+                    for table, date_col in active_targets
+                )
+            )
+            con.commit()
+        if active_targets:
+            max_sql = " UNION ALL ".join(
+                f"SELECT '{table}' AS table_name, MAX({_quote_ident(date_col)}) AS max_date FROM {_quote_ident(table)}"
+                for table, date_col in active_targets
+            )
+            max_dates = {row[0]: row[1] for row in con.execute(max_sql).fetchall()}
+            for table, _ in active_targets:
+                results[table]["max_date_after"] = str(max_dates.get(table))
     finally:
         con.close()
     return results

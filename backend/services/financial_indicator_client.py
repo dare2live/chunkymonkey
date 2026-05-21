@@ -228,16 +228,8 @@ def _parse_indicator_rows(stock_code: str, df) -> list[dict]:
 
 
 def _upsert_indicator_records(conn, stock_code: str, records: list[dict], synced_at: str, error: Optional[str] = None) -> int:
-    inserted = 0
-    for rec in records:
-        conn.execute("""
-            INSERT OR REPLACE INTO fact_financial_indicator_ak
-            (stock_code, report_date, roe_ak, roa_ak, gross_margin_ak, net_margin_ak,
-             current_ratio_ak, quick_ratio_ak, debt_ratio_ak, asset_turnover_ak,
-             inventory_turnover_ak, receivables_turnover_ak, revenue_growth_yoy_ak,
-             net_profit_growth_yoy_ak, source, updated_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        """, (
+    payload = [
+        (
             stock_code,
             rec.get("report_date"),
             rec.get("roe_ak"),
@@ -254,8 +246,22 @@ def _upsert_indicator_records(conn, stock_code: str, records: list[dict], synced
             rec.get("net_profit_growth_yoy_ak"),
             rec.get("source"),
             rec.get("updated_at"),
-        ))
-        inserted += 1
+        )
+        for rec in records
+    ]
+    if payload:
+        conn.executemany(
+            """
+            INSERT OR REPLACE INTO fact_financial_indicator_ak
+            (stock_code, report_date, roe_ak, roa_ak, gross_margin_ak, net_margin_ak,
+             current_ratio_ak, quick_ratio_ak, debt_ratio_ak, asset_turnover_ak,
+             inventory_turnover_ak, receivables_turnover_ak, revenue_growth_yoy_ak,
+             net_profit_growth_yoy_ak, source, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            payload,
+        )
+    inserted = len(payload)
 
     row = conn.execute(
         """

@@ -40,22 +40,27 @@ WATCHED_TABLES: tuple[str, ...] = (
 def drop_redundant_indexes(conn) -> list[str]:
     """删除已知跟 PK 完全重复的 secondary index. 返回真删了的索引名."""
     dropped: list[str] = []
-    for table, idx in REDUNDANT_INDEXES:
-        try:
-            exists = conn.execute(
-                "SELECT 1 FROM duckdb_indexes() WHERE table_name = ? AND index_name = ?",
-                (table, idx),
-            ).fetchone()
-        except Exception as exc:
-            logger.warning("[db_health] duckdb_indexes() 查询失败 %s.%s: %s", table, idx, exc)
-            continue
-        if exists:
-            try:
-                conn.execute(f"DROP INDEX IF EXISTS {idx}")
-                dropped.append(f"{table}.{idx}")
-                logger.info("[db_health] 删冗余索引 %s.%s (跟 PK 同列)", table, idx)
-            except Exception as exc:
-                logger.warning("[db_health] DROP INDEX %s 失败: %s", idx, exc)
+    try:
+        predicates = " OR ".join("(table_name = ? AND index_name = ?)" for _ in REDUNDANT_INDEXES)
+        params = [value for pair in REDUNDANT_INDEXES for value in pair]
+        rows = conn.execute(
+            f"SELECT table_name, index_name FROM duckdb_indexes() WHERE {predicates}",
+            params,
+        ).fetchall()
+    except Exception as exc:
+        logger.warning("[db_health] duckdb_indexes() 查询失败: %s", exc)
+        return dropped
+    existing = [(row["table_name"], row["index_name"]) if hasattr(row, "keys") else (row[0], row[1]) for row in rows]
+    if not existing:
+        return dropped
+    try:
+        conn.execute(";\n".join(f"DROP INDEX IF EXISTS {idx}" for _, idx in existing))
+    except Exception as exc:
+        logger.warning("[db_health] DROP redundant indexes 失败: %s", exc)
+        return dropped
+    for table, idx in existing:
+        dropped.append(f"{table}.{idx}")
+        logger.info("[db_health] 删冗余索引 %s.%s (跟 PK 同列)", table, idx)
     return dropped
 
 
@@ -87,21 +92,27 @@ def check_table_index_consistency(conn, table: str) -> dict:
 
 def reindex_table(conn, table: str) -> list[str]:
     """暴力重建 table 上所有 secondary index (DROP + CREATE)."""
-    rebuilt: list[str] = []
     rows = conn.execute(
         "SELECT index_name, sql FROM duckdb_indexes() WHERE table_name = ?",
         (table,),
     ).fetchall()
-    for idx_name, ddl in rows:
-        if not ddl:
-            continue
-        try:
-            conn.execute(f"DROP INDEX IF EXISTS {idx_name}")
-            conn.execute(ddl)
-            rebuilt.append(idx_name)
-            logger.info("[db_health] REINDEX %s.%s", table, idx_name)
-        except Exception as exc:
-            logger.error("[db_health] REINDEX %s 失败: %s", idx_name, exc)
+    index_defs = [(row["index_name"], row["sql"]) if hasattr(row, "keys") else (row[0], row[1]) for row in rows]
+    index_defs = [(idx_name, ddl) for idx_name, ddl in index_defs if ddl]
+    if not index_defs:
+        return []
+    script = ";\n".join(
+        statement
+        for idx_name, ddl in index_defs
+        for statement in (f"DROP INDEX IF EXISTS {idx_name}", ddl)
+    )
+    try:
+        conn.execute(script)
+    except Exception as exc:
+        logger.error("[db_health] REINDEX %s 失败: %s", table, exc)
+        return []
+    rebuilt = [idx_name for idx_name, _ in index_defs]
+    for idx_name in rebuilt:
+        logger.info("[db_health] REINDEX %s.%s", table, idx_name)
     return rebuilt
 
 

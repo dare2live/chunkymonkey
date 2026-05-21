@@ -48,6 +48,7 @@ log = logging.getLogger("audit_survivorship")
 
 # Market K-line DB path (peer of smartmoney.duckdb)
 MARKET_DB_PATH = Path(DB_PATH).parent / "market.duckdb"
+KLINE_RELATION = "mkt.v_price_kline_qfq"
 
 # Reference dates for spot-check (cross-regime, fixed for reproducibility).
 # Picks span 2024 bull / 2024 H2 / 2025 mid / 2025 H2 + latest.
@@ -236,7 +237,7 @@ def check_universe_coverage_crosscheck(conn) -> list[CheckResult]:
     try:
         # K线 ever-appeared codes (mkt schema via ATTACH)
         kline_ever = conn.execute(
-            "SELECT COUNT(DISTINCT code) FROM mkt.price_kline WHERE freq='daily' AND adjust='qfq'"
+            f"SELECT COUNT(DISTINCT code) FROM {KLINE_RELATION} WHERE freq='daily' AND adjust='qfq'"
         ).fetchone()[0]
         active_now = conn.execute("SELECT COUNT(*) FROM dim_active_a_stock").fetchone()[0]
         ever_listed = conn.execute("SELECT COUNT(*) FROM dim_all_ever_listed").fetchone()[0]
@@ -244,9 +245,9 @@ def check_universe_coverage_crosscheck(conn) -> list[CheckResult]:
 
         # Codes in K线 but not in dim_all_ever_listed (真"幽灵")
         ghost_count = conn.execute(
-            """
+            f"""
             SELECT COUNT(DISTINCT k.code)
-            FROM mkt.price_kline k
+            FROM {KLINE_RELATION} k
             LEFT JOIN dim_all_ever_listed e ON k.code = e.stock_code
             WHERE k.freq='daily' AND k.adjust='qfq' AND e.stock_code IS NULL
             """
@@ -254,9 +255,9 @@ def check_universe_coverage_crosscheck(conn) -> list[CheckResult]:
 
         # Codes in K线 with date历史 但不在 active_now (delisted 候选)
         delisted_via_kline = conn.execute(
-            """
+            f"""
             SELECT COUNT(DISTINCT k.code)
-            FROM mkt.price_kline k
+            FROM {KLINE_RELATION} k
             LEFT JOIN dim_active_a_stock a ON k.code = a.stock_code
             WHERE k.freq='daily' AND k.adjust='qfq' AND a.stock_code IS NULL
             """
@@ -379,15 +380,33 @@ def check_survivorship_spot_check(conn) -> list[CheckResult]:
         rows=len(keep_universe),
     ))
 
+    placeholders = ", ".join("?" for _ in SPOT_CHECK_DATES)
+    try:
+        kline_rows = conn.execute(
+            f"""
+            SELECT date, code
+              FROM {KLINE_RELATION}
+             WHERE freq='daily'
+               AND adjust='qfq'
+               AND date IN ({placeholders})
+            """,
+            SPOT_CHECK_DATES,
+        ).fetchall()
+        kline_by_date: dict[str, set[str]] = {d: set() for d in SPOT_CHECK_DATES}
+        for sig_date, code in kline_rows:
+            kline_by_date.setdefault(sig_date, set()).add(code)
+    except Exception as e:
+        out.append(CheckResult(
+            section="4. KEEP universe K-line completeness",
+            name="spot_check_bootstrap",
+            status="WARN",
+            detail=f"could not load spot-check K线 data: {e}",
+        ))
+        return out
+
     for sig_date in SPOT_CHECK_DATES:
         try:
-            kline_universe = {
-                r[0] for r in conn.execute(
-                    "SELECT DISTINCT code FROM mkt.price_kline "
-                    "WHERE date=? AND freq='daily' AND adjust='qfq'",
-                    [sig_date],
-                ).fetchall()
-            }
+            kline_universe = kline_by_date.get(sig_date, set())
             if not kline_universe:
                 out.append(CheckResult(
                     section="4. KEEP universe K-line completeness",

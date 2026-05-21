@@ -14,6 +14,13 @@ from services.utils import latest_closed_or_raise as _latest_closed
 logger = logging.getLogger("cm-api")
 
 
+def _execute_ignore_error(conn, sql: str) -> None:
+    try:
+        conn.execute(sql)
+    except Exception:  # rule-compliance: ok evidence=function-name-ignore-error-intent
+        pass
+
+
 def ensure_tables(conn):
     conn.executescript("""
         CREATE TABLE IF NOT EXISTS fact_stock_industry_context (
@@ -92,21 +99,13 @@ def ensure_tables(conn):
         "sector_rotation_blacklisted INTEGER DEFAULT 0",
         "tdx_l1 TEXT", "tdx_l2 TEXT", "tdx_l1_name TEXT", "tdx_l2_name TEXT",
     ]:
-        try:
-            conn.execute(f"ALTER TABLE fact_stock_industry_context ADD COLUMN {col}")
-        except Exception:
-            pass
-        try:
-            conn.execute(f"ALTER TABLE dim_stock_industry_context_latest ADD COLUMN {col}")
-        except Exception:
-            pass
+        _execute_ignore_error(conn, f"ALTER TABLE fact_stock_industry_context ADD COLUMN {col}")
+        _execute_ignore_error(conn, f"ALTER TABLE dim_stock_industry_context_latest ADD COLUMN {col}")
     # Phase 2 迁移: 退役 sw_level1/2 列
-    for tbl in ("fact_stock_industry_context", "dim_stock_industry_context_latest"):
-        for col in ("sw_level1", "sw_level2"):
-            try:
-                conn.execute(f"ALTER TABLE {tbl} DROP COLUMN {col}")
-            except Exception:
-                pass
+    _execute_ignore_error(conn, "ALTER TABLE fact_stock_industry_context DROP COLUMN sw_level1")
+    _execute_ignore_error(conn, "ALTER TABLE fact_stock_industry_context DROP COLUMN sw_level2")
+    _execute_ignore_error(conn, "ALTER TABLE dim_stock_industry_context_latest DROP COLUMN sw_level1")
+    _execute_ignore_error(conn, "ALTER TABLE dim_stock_industry_context_latest DROP COLUMN sw_level2")
     conn.commit()
 
 

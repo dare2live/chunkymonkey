@@ -170,9 +170,15 @@ def main() -> int:
     conn.execute(f"ATTACH IF NOT EXISTS '{market_db}' AS market (READ_ONLY)")
 
     # Prereq
-    for tbl in ("mart_stock_industry_pit", "dim_trading_calendar"):
-        r = conn.execute(f"SELECT COUNT(*) FROM {tbl}").fetchone()[0]
-        log.info(f"  prereq {tbl}: {r:,} rows")
+    prereq_counts = conn.execute("""
+        SELECT 'mart_stock_industry_pit' AS table_name, COUNT(*) AS n
+        FROM mart_stock_industry_pit
+        UNION ALL
+        SELECT 'dim_trading_calendar' AS table_name, COUNT(*) AS n
+        FROM dim_trading_calendar
+    """).fetchall()
+    for table_name, n_rows in prereq_counts:
+        log.info(f"  prereq {table_name}: {n_rows:,} rows")
 
     conn.execute(DDL_DROP)
     conn.execute(DDL_CREATE)

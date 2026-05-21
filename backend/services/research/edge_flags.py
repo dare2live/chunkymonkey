@@ -74,33 +74,52 @@ def build_edge_flags_for_all_models(conn, eval_date: str) -> int:
     ).fetchall()
     if not paper_models:
         return 0
+    model_ids = [row[0] for row in paper_models]
+    nav_by_model: dict[str, list[tuple[float | None, float | None]]] = {model_id: [] for model_id in model_ids}
+    nav_rows = conn.execute(
+        """
+        SELECT model_id, daily_ret, drawdown
+        FROM mart_paper_nav
+        ORDER BY model_id, snapshot_date
+        """
+    ).fetchall()
+    for model_id, daily_ret, drawdown in nav_rows:
+        nav_by_model.setdefault(model_id, []).append((daily_ret, drawdown))
+    trade_rows = conn.execute(
+        """
+        SELECT model_id, COUNT(*) AS n_trades
+        FROM fact_paper_position
+        WHERE side='sell'
+        GROUP BY model_id
+        """
+    ).fetchall()
+    trades_by_model = {row[0]: int(row[1] or 0) for row in trade_rows}
+    # IC 4 周变化: 最近 20d IC - 20-40d IC
+    ic_row = conn.execute(
+        """
+        SELECT
+            AVG(ic_10d) FILTER (
+                WHERE snapshot_date >= (SELECT MAX(snapshot_date) - 20 FROM mart_signal_ic)
+            ) AS ic_recent,
+            AVG(ic_10d) FILTER (
+                WHERE snapshot_date >= (SELECT MAX(snapshot_date) - 40 FROM mart_signal_ic)
+                  AND snapshot_date <  (SELECT MAX(snapshot_date) - 20 FROM mart_signal_ic)
+            ) AS ic_prev
+        FROM mart_signal_ic
+        """
+    ).fetchone()
+    ic_change = (float(ic_row[0]) - float(ic_row[1])) if (ic_row and ic_row[0] and ic_row[1]) else 0.0
 
     out_rows = []
-    for (model_id,) in paper_models:
+    for model_id in model_ids:
         # paper 指标
-        navs = conn.execute(
-            "SELECT daily_ret, drawdown FROM mart_paper_nav WHERE model_id = ? ORDER BY snapshot_date",
-            [model_id],
-        ).fetchall()
+        navs = nav_by_model.get(model_id, [])
         if not navs:
             continue
         rets = [float(r[0]) for r in navs if r[0] is not None]
         max_dd = min((float(r[1]) for r in navs if r[1] is not None), default=0.0)
         sdl = min(rets, default=0.0) if rets else 0.0
-        n_trades = conn.execute(
-            "SELECT COUNT(*) FROM fact_paper_position WHERE side='sell' AND model_id=?",
-            [model_id],
-        ).fetchone()[0] or 0
-        # IC 4 周变化: 最近 20d IC - 20-40d IC
-        ic_recent = conn.execute(
-            "SELECT AVG(ic_10d) FROM mart_signal_ic WHERE snapshot_date >= (SELECT MAX(snapshot_date) - 20 FROM mart_signal_ic)"
-        ).fetchone()
-        ic_prev = conn.execute(
-            """SELECT AVG(ic_10d) FROM mart_signal_ic
-                WHERE snapshot_date >= (SELECT MAX(snapshot_date) - 40 FROM mart_signal_ic)
-                  AND snapshot_date <  (SELECT MAX(snapshot_date) - 20 FROM mart_signal_ic)"""
-        ).fetchone()
-        ic_change = (float(ic_recent[0]) - float(ic_prev[0])) if (ic_recent[0] and ic_prev[0]) else 0.0
+        n_trades = trades_by_model.get(model_id, 0)
 
         flag = classify_edge_flag(
             n_paper_trades=int(n_trades),

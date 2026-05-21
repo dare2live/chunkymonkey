@@ -29,7 +29,9 @@ API:
 from __future__ import annotations
 
 import logging
-from datetime import UTC, datetime
+from datetime import datetime, timezone
+
+UTC = timezone.utc
 from typing import Iterable
 
 from services.duck_adapter import connect as duck_connect
@@ -79,6 +81,13 @@ V4_NEW_COLS = [
     ("tom_is_last_week", "INTEGER"),
     ("tom_is_month_turn", "INTEGER"),
 ]
+
+
+def _add_column_duplicate_safe(conn, table: str, col: str, dtype: str) -> None:
+    try:
+        conn.execute(f"ALTER TABLE {table} ADD COLUMN {col} {dtype}")
+    except Exception as e:
+        log.debug(f"  ALTER ADD {col} skipped (likely exists): {e}")
 
 
 _FEATURE_JOIN_SQL_V4 = """
@@ -169,13 +178,38 @@ def build_p0a_feature_label_panel_v4(
             "CREATE TABLE IF NOT EXISTS mart_p0a_feature_label_panel_v4 AS "
             "SELECT * FROM mart_p0a_feature_label_panel_v3 WHERE 1=0"
         )
-        for col, dtype in V4_NEW_COLS:
-            try:
-                conn.execute(
-                    f"ALTER TABLE mart_p0a_feature_label_panel_v4 ADD COLUMN {col} {dtype}"
-                )
-            except Exception as e:
-                log.debug(f"  ALTER ADD {col} skipped (likely exists): {e}")
+        table = "mart_p0a_feature_label_panel_v4"
+        _add_column_duplicate_safe(conn, table, "lhb_count_30d", "INTEGER")
+        _add_column_duplicate_safe(conn, table, "lhb_net_buy_pct_30d", "DOUBLE")
+        _add_column_duplicate_safe(conn, table, "lhb_inst_buy_30d", "INTEGER")
+        _add_column_duplicate_safe(conn, table, "lhb_count_90d", "INTEGER")
+        _add_column_duplicate_safe(conn, table, "lhb_inst_buy_90d", "INTEGER")
+        _add_column_duplicate_safe(conn, table, "exec_buy_60d", "INTEGER")
+        _add_column_duplicate_safe(conn, table, "exec_sell_60d", "INTEGER")
+        _add_column_duplicate_safe(conn, table, "exec_buy_pct_60d", "DOUBLE")
+        _add_column_duplicate_safe(conn, table, "exec_sell_pct_60d", "DOUBLE")
+        _add_column_duplicate_safe(conn, table, "exec_net_signal", "DOUBLE")
+        _add_column_duplicate_safe(conn, table, "holder_count_change_q_pct", "DOUBLE")
+        _add_column_duplicate_safe(conn, table, "holder_count_q_report_date", "TEXT")
+        _add_column_duplicate_safe(conn, table, "mcap_decile", "INTEGER")
+        _add_column_duplicate_safe(conn, table, "beta_60d", "DOUBLE")
+        _add_column_duplicate_safe(conn, table, "beta_60d_zscore", "DOUBLE")
+        _add_column_duplicate_safe(conn, table, "sm_ret_5d", "DOUBLE")
+        _add_column_duplicate_safe(conn, table, "sm_ret_20d", "DOUBLE")
+        _add_column_duplicate_safe(conn, table, "sm_ret_60d", "DOUBLE")
+        _add_column_duplicate_safe(conn, table, "sm_ret_120d", "DOUBLE")
+        _add_column_duplicate_safe(conn, table, "sm_excess_20d", "DOUBLE")
+        _add_column_duplicate_safe(conn, table, "sm_excess_60d", "DOUBLE")
+        _add_column_duplicate_safe(conn, table, "sm_price_vs_ma20", "DOUBLE")
+        _add_column_duplicate_safe(conn, table, "sm_price_vs_ma60", "DOUBLE")
+        _add_column_duplicate_safe(conn, table, "sm_vol_60d", "DOUBLE")
+        _add_column_duplicate_safe(conn, table, "tom_day_of_month", "INTEGER")
+        _add_column_duplicate_safe(conn, table, "tom_days_to_month_end", "INTEGER")
+        _add_column_duplicate_safe(conn, table, "tom_days_from_month_start", "INTEGER")
+        _add_column_duplicate_safe(conn, table, "tom_month_phase", "INTEGER")
+        _add_column_duplicate_safe(conn, table, "tom_is_first_week", "INTEGER")
+        _add_column_duplicate_safe(conn, table, "tom_is_last_week", "INTEGER")
+        _add_column_duplicate_safe(conn, table, "tom_is_month_turn", "INTEGER")
 
         # Temp signal/stock filters (idempotent re-build by slice)
         conn.execute("DROP TABLE IF EXISTS tmp_signal_dates")

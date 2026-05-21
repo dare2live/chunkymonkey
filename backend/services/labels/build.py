@@ -26,7 +26,9 @@ PIT 保证 (Rule 7):
 from __future__ import annotations
 
 import logging
-from datetime import datetime, UTC
+from datetime import datetime, timezone
+
+UTC = timezone.utc
 from typing import Iterable
 
 from services.duck_adapter import connect as duck_connect

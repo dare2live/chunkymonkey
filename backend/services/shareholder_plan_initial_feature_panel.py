@@ -3,7 +3,9 @@ from __future__ import annotations
 
 import json
 import time
-from datetime import UTC, datetime
+from datetime import datetime, timezone
+
+UTC = timezone.utc
 from pathlib import Path
 from typing import Any
 
@@ -185,8 +187,15 @@ def _parse_columns(values: list[str] | tuple[str, ...] | None, defaults: list[st
 
 
 def _ensure_numeric_columns(conn: Any, columns: list[str]) -> None:
-    for col in columns:
-        conn.execute(f"ALTER TABLE {PANEL_TABLE} ADD COLUMN IF NOT EXISTS {_quote_ident(col)} DOUBLE")
+    if not columns:
+        return
+    _execute_script(
+        conn,
+        "\n".join(
+            f"ALTER TABLE {PANEL_TABLE} ADD COLUMN IF NOT EXISTS {_quote_ident(col)} DOUBLE;"
+            for col in columns
+        ),
+    )
 
 
 def ensure_shareholder_plan_initial_feature_panel_tables(conn: Any) -> None:

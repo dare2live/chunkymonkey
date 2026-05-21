@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import json
 from dataclasses import asdict, dataclass
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Iterable
 
 from services.model_feature_schema import (
@@ -230,7 +230,7 @@ def all_registered_feature_names() -> set[str]:
 
 
 def build_lineage_rows(model_id: str, feature_cols: Iterable[str]) -> list[dict]:
-    built_at = datetime.utcnow().isoformat()
+    built_at = datetime.now(timezone.utc).isoformat()
     rows = []
     for feature in feature_cols:
         spec = asdict(lineage_for_feature(str(feature)))
@@ -251,7 +251,13 @@ def model_feature_cols(conn, model_id: str) -> list[str]:
 
 
 def write_model_feature_lineage(conn, *, model_id: str, feature_cols: Iterable[str] | None = None) -> dict:
-    conn.executescript(DDL)
+    if hasattr(conn, "executescript"):
+        conn.executescript(DDL)
+    else:
+        for statement in DDL.split(";"):
+            statement = statement.strip()
+            if statement:
+                conn.execute(statement)
     cols = list(feature_cols) if feature_cols is not None else model_feature_cols(conn, model_id)
     rows = build_lineage_rows(model_id, cols)
     conn.execute("DELETE FROM mart_model_feature_lineage WHERE model_id = ?", (model_id,))

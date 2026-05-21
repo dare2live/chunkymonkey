@@ -53,49 +53,111 @@ def main() -> int:
         return 2
     print(f"\n=== Live Forward Sim Dashboard {as_of} ===\n")
 
+    placeholders = ", ".join(["?"] * len(LIVE_PORTFOLIOS))
+    latest_rows = conn.execute(
+        f"""
+        WITH ranked AS (
+          SELECT
+            sim_run_id,
+            total_value,
+            cash,
+            positions_value,
+            n_positions,
+            hs300_nav,
+            date,
+            ROW_NUMBER() OVER (PARTITION BY sim_run_id ORDER BY date DESC) AS rn
+          FROM mart_paper_sim_nav
+          WHERE sim_run_id IN ({placeholders}) AND date <= ?
+        )
+        SELECT sim_run_id, total_value, cash, positions_value, n_positions, hs300_nav, date
+        FROM ranked
+        WHERE rn = 1
+        """,
+        [*LIVE_PORTFOLIOS, as_of],
+    ).fetchall()
+    latest_by_pid = {row[0]: tuple(row)[1:] for row in latest_rows}
+    start_rows = conn.execute(
+        f"""
+        WITH ranked AS (
+          SELECT
+            sim_run_id,
+            total_value,
+            date,
+            ROW_NUMBER() OVER (PARTITION BY sim_run_id ORDER BY date ASC) AS rn
+          FROM mart_paper_sim_nav
+          WHERE sim_run_id IN ({placeholders})
+        )
+        SELECT sim_run_id, total_value, date
+        FROM ranked
+        WHERE rn = 1
+        """,
+        LIVE_PORTFOLIOS,
+    ).fetchall()
+    start_by_pid = {row[0]: tuple(row)[1:] for row in start_rows}
+    peak_by_pid = {
+        sim_run_id: peak
+        for sim_run_id, peak in conn.execute(
+            f"""
+            SELECT sim_run_id, MAX(total_value) AS peak
+            FROM mart_paper_sim_nav
+            WHERE sim_run_id IN ({placeholders}) AND date <= ?
+            GROUP BY sim_run_id
+            """,
+            [*LIVE_PORTFOLIOS, as_of],
+        ).fetchall()
+    }
+    r30_by_pid = {
+        sim_run_id: values
+        for sim_run_id, values in conn.execute(
+            f"""
+            WITH ranked AS (
+              SELECT
+                sim_run_id,
+                total_value,
+                ROW_NUMBER() OVER (PARTITION BY sim_run_id ORDER BY date DESC) AS rn
+              FROM mart_paper_sim_nav
+              WHERE sim_run_id IN ({placeholders}) AND date <= ?
+            )
+            SELECT sim_run_id, LIST(total_value ORDER BY rn) AS values
+            FROM ranked
+            WHERE rn <= 30
+            GROUP BY sim_run_id
+            """,
+            [*LIVE_PORTFOLIOS, as_of],
+        ).fetchall()
+    }
+    hard_stop_by_pid = {
+        sim_run_id: int(n_hard)
+        for sim_run_id, n_hard in conn.execute(
+            f"""
+            SELECT sim_run_id, COUNT(*) AS n_hard
+            FROM fact_paper_sim_trade
+            WHERE sim_run_id IN ({placeholders}) AND reason LIKE 'hard_stop%'
+            GROUP BY sim_run_id
+            """,
+            LIVE_PORTFOLIOS,
+        ).fetchall()
+    }
     for pid in LIVE_PORTFOLIOS:
         # 当前 NAV
-        r = conn.execute(
-            """SELECT total_value, cash, positions_value, n_positions, hs300_nav, date
-               FROM mart_paper_sim_nav
-               WHERE sim_run_id = ? AND date <= ?
-               ORDER BY date DESC LIMIT 1""",
-            [pid, as_of],
-        ).fetchone()
+        r = latest_by_pid.get(pid)
         if not r:
             print(f"  {pid}: (no data yet)")
             continue
         nav, cash, pos_val, n_pos, hs300, last_date = r
         # 起始 NAV
-        r_start = conn.execute(
-            """SELECT total_value, date FROM mart_paper_sim_nav
-               WHERE sim_run_id = ? ORDER BY date ASC LIMIT 1""",
-            [pid],
-        ).fetchone()
+        r_start = start_by_pid.get(pid)
         start_nav, start_date = r_start if r_start else (1_000_000, "?")
         cum_ret = (nav / start_nav - 1) if start_nav > 0 else 0
         # peak NAV → current dd
-        peak = conn.execute(
-            """SELECT MAX(total_value) FROM mart_paper_sim_nav
-               WHERE sim_run_id = ? AND date <= ?""",
-            [pid, as_of],
-        ).fetchone()[0] or nav
+        peak = peak_by_pid.get(pid) or nav
         dd = (nav / peak - 1) if peak > 0 else 0
         # 30-day rolling return
-        r30 = conn.execute(
-            """SELECT total_value FROM mart_paper_sim_nav
-               WHERE sim_run_id = ? AND date <= ?
-               ORDER BY date DESC LIMIT 30""",
-            [pid, as_of],
-        ).fetchall()
-        nav_30d_ago = r30[-1][0] if len(r30) >= 30 else None
+        r30 = r30_by_pid.get(pid, [])
+        nav_30d_ago = r30[-1] if len(r30) >= 30 else None
         ret_30d = (nav / nav_30d_ago - 1) if nav_30d_ago else None
         # Hard stop count
-        n_hard = conn.execute(
-            """SELECT COUNT(*) FROM fact_paper_sim_trade
-               WHERE sim_run_id = ? AND reason LIKE 'hard_stop%'""",
-            [pid],
-        ).fetchone()[0]
+        n_hard = hard_stop_by_pid.get(pid, 0)
 
         cash_pct = (cash / nav * 100) if nav > 0 else 0
         print(f"  {pid} (last {last_date}):")

@@ -77,10 +77,15 @@ def _ensure_table(conn: Any) -> None:
         row["column_name"] if hasattr(row, "keys") else row[0]
         for row in conn.execute("DESCRIBE dim_stock_tdx_industry").fetchall()
     }
-    for col in ("tdx_l1_name", "tdx_l2_name", "tdx_l3_name"):
-        if col not in existing:
-            conn.execute(f"ALTER TABLE dim_stock_tdx_industry ADD COLUMN {col} TEXT")
-            logger.info(f"[tdx_industry] ALTER TABLE: 新增列 {col}")
+    if "tdx_l1_name" not in existing:
+        conn.execute("ALTER TABLE dim_stock_tdx_industry ADD COLUMN tdx_l1_name TEXT")
+        logger.info("[tdx_industry] ALTER TABLE: 新增列 tdx_l1_name")
+    if "tdx_l2_name" not in existing:
+        conn.execute("ALTER TABLE dim_stock_tdx_industry ADD COLUMN tdx_l2_name TEXT")
+        logger.info("[tdx_industry] ALTER TABLE: 新增列 tdx_l2_name")
+    if "tdx_l3_name" not in existing:
+        conn.execute("ALTER TABLE dim_stock_tdx_industry ADD COLUMN tdx_l3_name TEXT")
+        logger.info("[tdx_industry] ALTER TABLE: 新增列 tdx_l3_name")
     conn.commit()
 
 

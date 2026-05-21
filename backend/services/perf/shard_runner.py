@@ -34,6 +34,7 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 import time
 from concurrent.futures import ProcessPoolExecutor, as_completed
 from dataclasses import dataclass, field, asdict
@@ -43,6 +44,18 @@ from typing import Callable, Any
 import duckdb
 
 log = logging.getLogger("perf.shard_runner")
+IDENT_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
+
+
+def _quote_ident(name: str) -> str:
+    parts = str(name or "").split(".")
+    if not parts or any(not IDENT_RE.match(part) for part in parts):
+        raise ValueError(f"unsafe identifier: {name!r}")
+    return ".".join(f'"{part}"' for part in parts)
+
+
+def _sql_literal(value: str) -> str:
+    return "'" + str(value).replace("'", "''") + "'"
 
 
 @dataclass
@@ -181,15 +194,21 @@ def reduce_to_duckdb(manifest: ShardManifest, target_table: str,
     conn = duckdb.connect(str(db_path))
     try:
         if mode == "delete_insert" and delete_clause:
-            conn.execute(f"DELETE FROM {target_table} WHERE {delete_clause}")
+            conn.execute(f"DELETE FROM {_quote_ident(target_table)} WHERE {delete_clause}")
             log.info(f"  cleared existing rows: WHERE {delete_clause}")
-        rows_inserted = 0
+        artifact_literals = [_sql_literal(str(artifact_path)) for artifact_path in artifacts]
+        union_select = "\nUNION ALL\n".join(
+            f"SELECT * FROM {artifact_literal}" for artifact_literal in artifact_literals
+        )
+        conn.execute(f"INSERT INTO {_quote_ident(target_table)} {union_select}")
+        count_union = "\nUNION ALL\n".join(
+            f"SELECT COUNT(*) AS n FROM {artifact_literal}" for artifact_literal in artifact_literals
+        )
+        rows_inserted = int(
+            conn.execute(f"SELECT SUM(n) FROM ({count_union})").fetchone()[0] or 0
+        )
         for artifact_path in artifacts:
-            # COPY parquet rows → target (列对应)
-            conn.execute(f"INSERT INTO {target_table} SELECT * FROM '{artifact_path}'")
-            r = conn.execute(f"SELECT COUNT(*) FROM '{artifact_path}'").fetchone()[0]
-            rows_inserted += r
-            log.info(f"  consumed {artifact_path}: +{r:,} rows")
+            log.info(f"  consumed {artifact_path}")
     finally:
         conn.close()
     elapsed = time.time() - t0

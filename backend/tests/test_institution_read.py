@@ -1,10 +1,13 @@
 import sys
 from pathlib import Path
 
+import pytest
+
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from conftest import duck_mem
+import routers.institution as institution_router
 import services.institution_read as institution_read
 
 
@@ -314,6 +317,39 @@ def test_load_institution_profile_detail_appends_exits_and_builds_industry_summa
         assert payload["industry_summary"][0]["children"][0]["level2"] == "半导体"
         assert payload["industry_summary"][0]["children"][0]["win_rate_30d"] == 70.0
         assert len(payload["industry_summary"][0]["children"][0]["children"]) == 2
+    finally:
+        conn.close()
+
+
+def test_router_load_industry_stat_map_batches_stats():
+    conn = duck_mem()
+    conn.executescript(
+        """
+        CREATE TABLE mart_institution_industry_stat (
+            institution_id TEXT,
+            industry_level TEXT,
+            industry_name TEXT,
+            avg_gain_30d REAL,
+            win_rate_30d REAL
+        );
+        """
+    )
+    try:
+        conn.executemany(
+            "INSERT INTO mart_institution_industry_stat VALUES (?, ?, ?, ?, ?)",
+            [
+                ("inst_a", "level1", "电子", 8.5, 66.0),
+                ("inst_a", "level2", "半导体", 10.2, 70.0),
+                ("inst_b", "level2", "银行", -1.0, 30.0),
+            ],
+        )
+        conn.commit()
+
+        stat_map = institution_router._load_industry_stat_map(conn, "inst_a")
+
+        assert set(stat_map) == {("level1", "电子"), ("level2", "半导体")}
+        assert stat_map[("level2", "半导体")]["avg_gain_30d"] == pytest.approx(10.2)
+        assert stat_map[("level1", "电子")]["win_rate_30d"] == pytest.approx(66.0)
     finally:
         conn.close()
 

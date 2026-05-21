@@ -639,17 +639,26 @@ def write_topk_view_cache(conn, rows: list[dict[str, Any]]) -> int:
 def demote_existing_primary_recommendations(conn, *, snapshot_date: str, model_id: str) -> None:
     """Keep one primary model per snapshot date before writing champion TopK."""
 
-    for table in ("mart_daily_recommendation", "mart_daily_topk_view_cache"):
-        conn.execute(
-            f"""
-            UPDATE {table}
-               SET is_primary = FALSE
-             WHERE snapshot_date = ?
-               AND model_id <> ?
-               AND is_primary = TRUE
-            """,
-            (snapshot_date, model_id),
-        )
+    conn.execute(
+        """
+        UPDATE mart_daily_recommendation
+           SET is_primary = FALSE
+         WHERE snapshot_date = ?
+           AND model_id <> ?
+           AND is_primary = TRUE
+        """,
+        (snapshot_date, model_id),
+    )
+    conn.execute(
+        """
+        UPDATE mart_daily_topk_view_cache
+           SET is_primary = FALSE
+         WHERE snapshot_date = ?
+           AND model_id <> ?
+           AND is_primary = TRUE
+        """,
+        (snapshot_date, model_id),
+    )
 
 
 def main():
@@ -946,23 +955,29 @@ def main():
         """,
         (target_date, model_id),
     )
-    for r in output:
-        conn.execute(
+    recommendation_rows = [
+        (
+            r['snapshot_date'], r['stock_code'], r['model_id'],
+            int(r['rank_in_date']), float(r['pred_score']), float(r['percentile']),
+            r.get('regime_flag'), r['key_features_json'],
+            r['track_id'], bool(r['is_primary']), r['run_mode'],
+            int(r.get('baseline_horizon_days') or 60),
+            int(r.get('selected_horizon_days') or 60),
+            r.get('selected_horizon_confidence'),
+            r.get('horizon_selection_run_id'),
+            r['built_at'],
+        )
+        for r in output
+    ]
+    if recommendation_rows:
+        conn.executemany(
             """INSERT OR REPLACE INTO mart_daily_recommendation
                (snapshot_date, stock_code, model_id, rank_in_date, pred_score, percentile,
                 regime_flag, key_features_json, track_id, is_primary, run_mode,
                 baseline_horizon_days, selected_horizon_days, selected_horizon_confidence,
                 horizon_selection_run_id, built_at)
                VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
-            (r['snapshot_date'], r['stock_code'], r['model_id'],
-             int(r['rank_in_date']), float(r['pred_score']), float(r['percentile']),
-             r.get('regime_flag'), r['key_features_json'],
-             r['track_id'], bool(r['is_primary']), r['run_mode'],
-             int(r.get('baseline_horizon_days') or 60),
-             int(r.get('selected_horizon_days') or 60),
-             r.get('selected_horizon_confidence'),
-             r.get('horizon_selection_run_id'),
-             r['built_at']),
+            recommendation_rows,
         )
     explanation_rows_written = write_recommendation_explanations(
         conn,

@@ -72,13 +72,26 @@ def main() -> int:
                     champion_candidate = r["model_id"]
                     break
 
+        row_by_model_id = {str(r["model_id"]): r for r in rows}
+        existing_status_by_model_id = {}
+        if row_by_model_id and not args.reset:
+            placeholders = ", ".join("?" for _ in row_by_model_id)
+            existing_status_by_model_id = {
+                str(row["model_id"]): row["status"]
+                for row in conn.execute(
+                    f"""
+                    SELECT model_id, status
+                      FROM mart_model_lifecycle
+                     WHERE model_id IN ({placeholders})
+                    """,
+                    tuple(row_by_model_id),
+                ).fetchall()
+            }
+
+        lifecycle_rows = []
         for r in rows:
             model_id = r["model_id"]
-            current = conn.execute(
-                "SELECT status FROM mart_model_lifecycle WHERE model_id = ?",
-                (model_id,),
-            ).fetchone()
-            if current and not args.reset:
+            if str(model_id) in existing_status_by_model_id:
                 continue
             ic_holdout = r["holdout_rank_ic"]
             cfg = {
@@ -97,19 +110,22 @@ def main() -> int:
             retired_at = r["created_at"] if status == "retired" else None
             notes = "auto-bootstrap from mart_multidim_model" if status == "champion" else None
 
-            conn.execute("""
-                INSERT INTO mart_model_lifecycle (
+            lifecycle_rows.append(
+                (
                     model_id, status, deployed_at, retired_at,
-                    ic_holdout, ic_walkforward_avg, ic_walkforward_std,
-                    drift_score, deploy_decision_notes, training_config,
-                    created_at, updated_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, now(), now())
-            """, (
+                    ic_holdout, None, None,
+                    None, notes,
+                    json.dumps(cfg, ensure_ascii=False),
+                )
+            )
+        conn.executemany("""
+            INSERT INTO mart_model_lifecycle (
                 model_id, status, deployed_at, retired_at,
-                ic_holdout, None, None,
-                None, notes,
-                json.dumps(cfg, ensure_ascii=False),
-            ))
+                ic_holdout, ic_walkforward_avg, ic_walkforward_std,
+                drift_score, deploy_decision_notes, training_config,
+                created_at, updated_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, now(), now())
+        """, lifecycle_rows)
         conn.commit()
         log.info("bootstrapped/synced %d models — champion=%s", len(rows), champion_candidate)
 

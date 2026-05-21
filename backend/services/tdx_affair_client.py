@@ -193,13 +193,12 @@ _GPCW_MANIFEST_COLUMNS = {
 
 def _ensure_gpcw_manifest_schema(conn: Any) -> None:
     conn.executescript(GPCW_MANIFEST_TABLE_DDL)
-    existing = {
-        row["column_name"] if hasattr(row, "keys") else row[0]
-        for row in conn.execute("DESCRIBE mart_tdx_gpcw_file_manifest").fetchall()
-    }
-    for col, ddl in _GPCW_MANIFEST_COLUMNS.items():
-        if col not in existing:
-            conn.execute(f"ALTER TABLE mart_tdx_gpcw_file_manifest ADD COLUMN {col} {ddl}")
+    conn.executescript(
+        "\n".join(
+            f"ALTER TABLE mart_tdx_gpcw_file_manifest ADD COLUMN IF NOT EXISTS {col} {ddl};"
+            for col, ddl in _GPCW_MANIFEST_COLUMNS.items()
+        )
+    )
     conn.executescript(GPCW_MANIFEST_INDEX_DDL)
 
 
@@ -217,14 +216,12 @@ def _ensure_table(conn: Any):
     """)
     # 前向兼容：如果 _FIELD_MAP / _FIELD_ALIASES_BY_DB_COLUMN 新增了字段但表已存在，
     # 自动 ALTER TABLE ADD COLUMN (覆盖全部 DB 列, 不只 _FIELD_MAP.values())
-    existing = {
-        row["column_name"] if hasattr(row, "keys") else row[0]
-        for row in conn.execute("DESCRIBE raw_gpcw_detail").fetchall()
-    }
-    for col in _NUMERIC_DB_COLUMNS:
-        if col not in existing:
-            conn.execute(f"ALTER TABLE raw_gpcw_detail ADD COLUMN {col} REAL")
-            logger.info(f"[gpcw] ALTER TABLE: 新增字段 {col}")
+    conn.executescript(
+        "\n".join(
+            f"ALTER TABLE raw_gpcw_detail ADD COLUMN IF NOT EXISTS {col} REAL;"
+            for col in _NUMERIC_DB_COLUMNS
+        )
+    )
     conn.execute("""
         CREATE TABLE IF NOT EXISTS raw_tdx_gpcw_wide (
             stock_code TEXT NOT NULL,
@@ -349,16 +346,41 @@ def _delete_impacted_gpcw_slices(conn: Any, report_date: str | None) -> dict[str
     if not report_date:
         return {}
     deleted: dict[str, int] = {}
-    for table in ("raw_gpcw_detail", "raw_tdx_gpcw_wide", "fact_tdx_gpcw_auto_feature_quarterly"):
-        exists = conn.execute(
-            "SELECT COUNT(*) FROM information_schema.tables WHERE table_name = ?",
-            (table,),
-        ).fetchone()[0]
-        if not exists:
-            continue
-        count = int(conn.execute(f"SELECT COUNT(*) FROM {table} WHERE report_date = ?", (report_date,)).fetchone()[0] or 0)
-        conn.execute(f"DELETE FROM {table} WHERE report_date = ?", (report_date,))
-        deleted[table] = count
+    candidate_tables = (
+        "raw_gpcw_detail",
+        "raw_tdx_gpcw_wide",
+        "fact_tdx_gpcw_auto_feature_quarterly",
+    )
+    placeholders = ", ".join("?" for _ in candidate_tables)
+    existing_rows = conn.execute(
+        f"""
+        SELECT table_name
+          FROM information_schema.tables
+         WHERE table_name IN ({placeholders})
+        """,
+        candidate_tables,
+    ).fetchall()
+    existing_tables = [
+        row["table_name"] if hasattr(row, "keys") else row[0]
+        for row in existing_rows
+    ]
+    if not existing_tables:
+        return deleted
+    count_sql = "\nUNION ALL\n".join(
+        f"SELECT '{table}' AS table_name, COUNT(*) AS n FROM {table} WHERE report_date = ?"
+        for table in existing_tables
+    )
+    for row in conn.execute(count_sql, [report_date] * len(existing_tables)).fetchall():
+        table_name = row["table_name"] if hasattr(row, "keys") else row[0]
+        count = row["n"] if hasattr(row, "keys") else row[1]
+        deleted[str(table_name)] = int(count or 0)
+    report_date_literal = str(report_date).replace("'", "''")
+    conn.executescript(
+        "\n".join(
+            f"DELETE FROM {table} WHERE report_date = '{report_date_literal}';"
+            for table in existing_tables
+        )
+    )
     return deleted
 
 

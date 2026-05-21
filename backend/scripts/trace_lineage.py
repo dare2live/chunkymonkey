@@ -103,6 +103,27 @@ def columns(conn: Any, table: str) -> set[str]:
     return {r[0] for r in conn.execute(f"DESCRIBE {table}").fetchall()}
 
 
+def columns_for_tables(conn: Any, tables: list[str]) -> dict[str, set[str]]:
+    valid_tables = [table for table in dict.fromkeys(tables) if table and valid_table(table)]
+    if not valid_tables:
+        return {}
+    placeholders = ", ".join(["?"] * len(valid_tables))
+    rows = conn.execute(
+        f"""
+        SELECT table_name, column_name
+        FROM information_schema.columns
+        WHERE table_name IN ({placeholders})
+        """,
+        valid_tables,
+    ).fetchall()
+    result = {table: set() for table in valid_tables}
+    for row in rows:
+        table_name = row["table_name"] if hasattr(row, "keys") else row[0]
+        column_name = row["column_name"] if hasattr(row, "keys") else row[1]
+        result.setdefault(str(table_name), set()).add(str(column_name))
+    return result
+
+
 def count_rows(conn: Any, table: str) -> int | None:
     if not exists(conn, table):
         return None
@@ -220,24 +241,47 @@ def model_from_sim(conn: Any, sim_run_id: str, kpi: dict[str, Any]) -> tuple[str
 
 def prediction_row(conn: Any, model_id: str, preferred: str | None) -> dict[str, Any]:
     candidates = ([preferred] if preferred else []) + [t for t in PRED_TABLES if t != preferred]
-    for table in candidates:
-        if not table or not exists(conn, table) or "model_id" not in columns(conn, table):
-            continue
-        row = conn.execute(
+    table_columns = columns_for_tables(conn, [table for table in candidates if table])
+    eligible = [
+        (idx, table, table_columns[table])
+        for idx, table in enumerate(candidates)
+        if table and table in table_columns and "model_id" in table_columns[table]
+    ]
+    if not eligible:
+        raise ValueError(f"unknown model_id: {model_id}")
+
+    def agg(cols: set[str], fn: str, column: str, alias: str) -> str:
+        return f"{fn}({column}) {alias}" if column in cols else f"NULL {alias}"
+
+    parts = []
+    params: list[Any] = []
+    for idx, table, cols in eligible:
+        parts.append(
             f"""
-            SELECT COUNT(*) row_count, MIN(signal_date) min_signal_date,
-                   MAX(signal_date) max_signal_date, MIN(train_start) min_train_start,
-                   MAX(train_end) max_train_end, ANY_VALUE(model_version) model_version,
-                   ANY_VALUE(feature_version) feature_version,
-                   ANY_VALUE(label_version) label_version, MAX(built_at) built_at
+            SELECT {idx} candidate_order, '{table}' asset, COUNT(*) row_count,
+                   {agg(cols, "MIN", "signal_date", "min_signal_date")},
+                   {agg(cols, "MAX", "signal_date", "max_signal_date")},
+                   {agg(cols, "MIN", "train_start", "min_train_start")},
+                   {agg(cols, "MAX", "train_end", "max_train_end")},
+                   {agg(cols, "ANY_VALUE", "model_version", "model_version")},
+                   {agg(cols, "ANY_VALUE", "feature_version", "feature_version")},
+                   {agg(cols, "ANY_VALUE", "label_version", "label_version")},
+                   {agg(cols, "MAX", "built_at", "built_at")}
               FROM {table}
              WHERE model_id=?
-            """,
-            [model_id],
-        ).fetchone()
+            """
+        )
+        params.append(model_id)
+
+    rows = conn.execute(
+        f"SELECT * FROM ({' UNION ALL '.join(parts)}) ORDER BY candidate_order",
+        params,
+    ).fetchall()
+    for row in rows:
         data = rowdict(row)
         if int(data.get("row_count") or 0) > 0:
-            data.update({"asset": table, "model_id": model_id})
+            data.update({"model_id": model_id})
+            data.pop("candidate_order", None)
             return data
     raise ValueError(f"unknown model_id: {model_id}")
 

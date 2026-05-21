@@ -171,15 +171,25 @@ def analyze_score_distribution(conn, start: str, end: str, model_id: str) -> dic
         print(f"  no signal_dates in mart_p0b_oos_predictions for {start}~{end}")
         return {"per_date_ks_pvalues": []}
 
+    sample_dates = [row[0] for row in rows]
+    placeholders = ",".join(["?"] * len(sample_dates))
+    score_rows = conn.execute(f"""
+        SELECT signal_date, score
+        FROM mart_p0b_oos_predictions
+        WHERE model_id = ?
+          AND signal_date IN ({placeholders})
+          AND score IS NOT NULL
+    """, [model_id, *sample_dates]).fetchall()
+    scores_by_date: dict[str, list[float]] = {str(d): [] for d in sample_dates}
+    for signal_date, score in score_rows:
+        scores_by_date.setdefault(str(signal_date), []).append(float(score))
+
     p_values = []
-    for (d,) in rows:
-        all_scores = conn.execute("""
-            SELECT score FROM mart_p0b_oos_predictions
-            WHERE model_id = ? AND signal_date = ? AND score IS NOT NULL
-        """, [model_id, d]).fetchall()
+    for d in sample_dates:
+        all_scores = scores_by_date.get(str(d), [])
         if len(all_scores) < 30:
             continue
-        all_arr = np.array([r[0] for r in all_scores])
+        all_arr = np.array(all_scores)
         top_k = np.sort(all_arr)[::-1][:30]  # top 30
         if len(top_k) >= 5 and len(all_arr) >= 30:
             _, p = stats.ks_2samp(top_k, all_arr)

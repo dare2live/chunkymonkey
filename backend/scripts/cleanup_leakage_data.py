@@ -47,6 +47,33 @@ LEAKAGE_MODEL_IDS = [
 ]
 
 
+def _count_by_key(conn, table: str, key_column: str, values: list[str]) -> dict[str, int]:
+    if not values:
+        return {}
+    placeholders = ", ".join("?" for _ in values)
+    try:
+        rows = conn.execute(
+            f"""
+            SELECT {key_column} AS key_value, COUNT(*) AS n
+              FROM {table}
+             WHERE {key_column} IN ({placeholders})
+             GROUP BY {key_column}
+            """,
+            values,
+        ).fetchall()
+    except Exception as exc:
+        log.debug(f"  {table}.{key_column} missing (expected for fresh DB): {exc}")
+        return {}
+    return {str(row[0]): int(row[1] or 0) for row in rows}
+
+
+def _delete_by_key(conn, table: str, key_column: str, values: list[str]) -> None:
+    if not values:
+        return
+    placeholders = ", ".join("?" for _ in values)
+    conn.execute(f"DELETE FROM {table} WHERE {key_column} IN ({placeholders})", values)
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="Cleanup leakage data residue")
     parser.add_argument("--execute", action="store_true", help="实际执行 (默认 dry-run)")
@@ -60,57 +87,41 @@ def main() -> int:
     conn = duckdb.connect(str(SMART_DB))
     try:
         # 1. mart_p1_optuna_trials 残留
+        optuna_counts = _count_by_key(conn, "mart_p1_optuna_trials", "run_id", LEAKAGE_RUN_IDS)
         for rid in LEAKAGE_RUN_IDS:
-            n = conn.execute(
-                "SELECT COUNT(*) FROM mart_p1_optuna_trials WHERE run_id = ?",
-                [rid],
-            ).fetchone()[0]
+            n = optuna_counts.get(rid, 0)
             log.info(f"  mart_p1_optuna_trials run_id='{rid}': {n} rows")
-            if args.execute and n > 0:
-                conn.execute("DELETE FROM mart_p1_optuna_trials WHERE run_id = ?", [rid])
-                log.info(f"    DELETED")
+        if args.execute and any(optuna_counts.values()):
+            _delete_by_key(conn, "mart_p1_optuna_trials", "run_id", LEAKAGE_RUN_IDS)
+            log.info("    DELETED mart_p1_optuna_trials leakage rows")
 
         # 2. mart_p0b_oos_predictions 残留
+        oos_counts = _count_by_key(conn, "mart_p0b_oos_predictions", "model_id", LEAKAGE_MODEL_IDS)
         for mid in LEAKAGE_MODEL_IDS:
-            try:
-                n = conn.execute(
-                    "SELECT COUNT(*) FROM mart_p0b_oos_predictions WHERE model_id = ?",
-                    [mid],
-                ).fetchone()[0]
-                log.info(f"  mart_p0b_oos_predictions model_id='{mid}': {n} rows")
-                if args.execute and n > 0:
-                    conn.execute("DELETE FROM mart_p0b_oos_predictions WHERE model_id = ?", [mid])
-                    log.info(f"    DELETED")
-            except Exception as e:
-                log.warning(f"  err: {e}")
+            n = oos_counts.get(mid, 0)
+            log.info(f"  mart_p0b_oos_predictions model_id='{mid}': {n} rows")
+        if args.execute and any(oos_counts.values()):
+            _delete_by_key(conn, "mart_p0b_oos_predictions", "model_id", LEAKAGE_MODEL_IDS)
+            log.info("    DELETED mart_p0b_oos_predictions leakage rows")
 
         # 3. mart_p0b_walkforward_eval 残留
-        for rid in LEAKAGE_RUN_IDS + [f"p0b_lgbm_v3_20d", f"p0b_lambdamart_v3_20d"]:
-            try:
-                n = conn.execute(
-                    "SELECT COUNT(*) FROM mart_p0b_walkforward_eval WHERE run_id = ?",
-                    [rid],
-                ).fetchone()[0]
-                log.info(f"  mart_p0b_walkforward_eval run_id='{rid}': {n} rows")
-                if args.execute and n > 0:
-                    conn.execute("DELETE FROM mart_p0b_walkforward_eval WHERE run_id = ?", [rid])
-                    log.info(f"    DELETED")
-            except Exception as e:
-                log.debug(f"  table/col missing (expected for fresh DB): {e}")
+        walkforward_run_ids = LEAKAGE_RUN_IDS + ["p0b_lgbm_v3_20d", "p0b_lambdamart_v3_20d"]
+        walkforward_counts = _count_by_key(conn, "mart_p0b_walkforward_eval", "run_id", walkforward_run_ids)
+        for rid in walkforward_run_ids:
+            n = walkforward_counts.get(rid, 0)
+            log.info(f"  mart_p0b_walkforward_eval run_id='{rid}': {n} rows")
+        if args.execute and any(walkforward_counts.values()):
+            _delete_by_key(conn, "mart_p0b_walkforward_eval", "run_id", walkforward_run_ids)
+            log.info("    DELETED mart_p0b_walkforward_eval leakage rows")
 
         # 4. mart_p1_ablation_result
+        ablation_counts = _count_by_key(conn, "mart_p1_ablation_result", "run_id", LEAKAGE_RUN_IDS)
         for rid in LEAKAGE_RUN_IDS:
-            try:
-                n = conn.execute(
-                    "SELECT COUNT(*) FROM mart_p1_ablation_result WHERE run_id = ?",
-                    [rid],
-                ).fetchone()[0]
-                log.info(f"  mart_p1_ablation_result run_id='{rid}': {n} rows")
-                if args.execute and n > 0:
-                    conn.execute("DELETE FROM mart_p1_ablation_result WHERE run_id = ?", [rid])
-                    log.info(f"    DELETED")
-            except Exception as e:
-                log.debug(f"  table/col missing (expected for fresh DB): {e}")
+            n = ablation_counts.get(rid, 0)
+            log.info(f"  mart_p1_ablation_result run_id='{rid}': {n} rows")
+        if args.execute and any(ablation_counts.values()):
+            _delete_by_key(conn, "mart_p1_ablation_result", "run_id", LEAKAGE_RUN_IDS)
+            log.info("    DELETED mart_p1_ablation_result leakage rows")
 
         # 5. mart_p0a_feature_label_panel_v3 物理 leakage cols
         if not args.keep_panel_cols:
@@ -121,11 +132,15 @@ def main() -> int:
                 for col in LEAKAGE_COLS_V3_PANEL:
                     if col in cols_exist:
                         log.info(f"  ALTER TABLE mart_p0a_feature_label_panel_v3 DROP COLUMN {col}")
-                        if args.execute:
-                            conn.execute(f"ALTER TABLE mart_p0a_feature_label_panel_v3 DROP COLUMN {col}")
-                            log.info(f"    DROPPED")
                     else:
                         log.info(f"  {col}: already absent")
+                if args.execute:
+                    drop_sql = "\n".join(
+                        f"ALTER TABLE mart_p0a_feature_label_panel_v3 DROP COLUMN IF EXISTS {col};"
+                        for col in LEAKAGE_COLS_V3_PANEL
+                    )
+                    conn.execute(drop_sql)
+                    log.info("    DROPPED leakage panel columns")
             except Exception as e:
                 log.error(f"ALTER failed: {e}")
                 log.error("  Fallback: 重 build panel via build_p0a_feature_panel_v3.py (改 SQL 删 CTE)")

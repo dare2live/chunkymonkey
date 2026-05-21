@@ -78,7 +78,123 @@ CREATE TABLE IF NOT EXISTS mart_daily_position_recommendation (
 );
 CREATE INDEX IF NOT EXISTS idx_mdpr_date    ON mart_daily_position_recommendation(signal_date);
 CREATE INDEX IF NOT EXISTS idx_mdpr_profile ON mart_daily_position_recommendation(profile_id, rank_in_profile);
+
+CREATE TABLE IF NOT EXISTS mart_daily_position_recommendation_pit_diagnostic (
+    signal_date              TEXT NOT NULL,
+    profile_id               TEXT NOT NULL,
+    rank_in_profile          INTEGER NOT NULL,
+    stock_code               TEXT NOT NULL,
+    formula_id               TEXT,
+    formula_variant          TEXT,
+    stage_bin                TEXT,
+    match_tier               TEXT,
+    pit_exact_stage_rows     INTEGER NOT NULL DEFAULT 0,
+    pit_same_formula_rows    INTEGER NOT NULL DEFAULT 0,
+    pit_same_stock_rows      INTEGER NOT NULL DEFAULT 0,
+    latest_pit_cutoff_date   TEXT,
+    missing_reason           TEXT NOT NULL,
+    built_at                 TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (signal_date, profile_id, stock_code, formula_id, formula_variant)
+);
+CREATE INDEX IF NOT EXISTS idx_mdpr_pit_diag_date
+    ON mart_daily_position_recommendation_pit_diagnostic(signal_date);
 """
+
+
+def _build_pit_diagnostic_rows(conn, signal_date: str, all_rows: list[tuple]) -> list[tuple]:
+    if not all_rows:
+        return []
+
+    inputs = [
+        (
+            signal_date,
+            r[2],   # profile_id
+            r[3],   # rank_in_profile
+            r[4],   # stock_code
+            r[5],   # formula_id
+            r[6],   # formula_variant
+            r[10],  # stage_bin
+            r[12],  # match_tier
+        )
+        for r in all_rows
+    ]
+    conn.execute("DROP TABLE IF EXISTS __mdpr_pit_diag_input")
+    conn.execute("""
+        CREATE TEMP TABLE __mdpr_pit_diag_input (
+            signal_date TEXT,
+            profile_id TEXT,
+            rank_in_profile INTEGER,
+            stock_code TEXT,
+            formula_id TEXT,
+            formula_variant TEXT,
+            stage_bin TEXT,
+            match_tier TEXT
+        )
+    """)
+    conn.executemany(
+        """INSERT INTO __mdpr_pit_diag_input
+           (signal_date, profile_id, rank_in_profile, stock_code, formula_id,
+            formula_variant, stage_bin, match_tier)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+        inputs,
+    )
+    rows = conn.execute("""
+        WITH qualified_pit AS (
+          SELECT stock_code, formula_id, formula_variant, stage_filter, cutoff_date
+            FROM mart_per_stock_stage_strategy_optimal_pit
+           WHERE CAST(cutoff_date AS DATE) <= CAST(? AS DATE)
+             AND COALESCE(oos_n_traded, n_traded, 0) >= 3
+             AND abs(COALESCE(oos_avg_ret, avg_ret, 0)) <= 0.5
+             AND optimal_stop_pct >= -0.5
+             AND abs(COALESCE(oos_sharpe, sharpe, 0)) <= 10
+        ),
+        pit_counts AS (
+          SELECT i.signal_date, i.profile_id, i.rank_in_profile,
+                 COUNT(*) FILTER (
+                   WHERE p.stock_code = i.stock_code
+                 ) AS pit_same_stock_rows,
+                 COUNT(*) FILTER (
+                   WHERE p.stock_code = i.stock_code
+                     AND p.formula_id = i.formula_id
+                     AND p.formula_variant = i.formula_variant
+                 ) AS pit_same_formula_rows,
+                 COUNT(*) FILTER (
+                   WHERE p.stock_code = i.stock_code
+                     AND p.formula_id = i.formula_id
+                     AND p.formula_variant = i.formula_variant
+                     AND p.stage_filter = i.stage_bin
+                 ) AS pit_exact_stage_rows,
+                 MAX(p.cutoff_date) FILTER (
+                   WHERE p.stock_code = i.stock_code
+                 ) AS latest_pit_cutoff_date
+            FROM __mdpr_pit_diag_input i
+            LEFT JOIN qualified_pit p
+              ON p.stock_code = i.stock_code
+          GROUP BY i.signal_date, i.profile_id, i.rank_in_profile
+        )
+        SELECT i.signal_date, i.profile_id, i.rank_in_profile, i.stock_code,
+               i.formula_id, i.formula_variant, i.stage_bin, i.match_tier,
+               COALESCE(c.pit_exact_stage_rows, 0) AS pit_exact_stage_rows,
+               COALESCE(c.pit_same_formula_rows, 0) AS pit_same_formula_rows,
+               COALESCE(c.pit_same_stock_rows, 0) AS pit_same_stock_rows,
+               c.latest_pit_cutoff_date,
+               CASE
+                 WHEN i.match_tier IN ('stage_pit', 'stage_pit_formula_fallback') THEN 'pit_selected'
+                 WHEN COALESCE(i.stage_bin, '?') = '?' THEN 'stage_unknown'
+                 WHEN COALESCE(c.pit_exact_stage_rows, 0) > 0 THEN 'pit_present_but_ranked_below_or_filtered'
+                 WHEN COALESCE(c.pit_same_formula_rows, 0) > 0 THEN 'stage_mismatch'
+                 WHEN COALESCE(c.pit_same_stock_rows, 0) > 0 THEN 'formula_missing_pit'
+                 ELSE 'stock_missing_pit'
+               END AS missing_reason
+          FROM __mdpr_pit_diag_input i
+          LEFT JOIN pit_counts c
+            ON c.signal_date = i.signal_date
+           AND c.profile_id = i.profile_id
+           AND c.rank_in_profile = i.rank_in_profile
+         ORDER BY i.profile_id, i.rank_in_profile
+    """, [signal_date]).fetchall()
+    conn.execute("DROP TABLE IF EXISTS __mdpr_pit_diag_input")
+    return [tuple(row) for row in rows]
 
 
 def main():
@@ -123,10 +239,10 @@ def main():
             )
             return f"CASE {cases} ELSE '?' END"
 
-        log.info("加载今日触发 × stage-aware Optuna 寻优结果 (ψ.2 = η+++++++ live 切换) ...")
-        # ψ.2 改造: 切到 stage-aware tier-1 (mart_per_stock_stage_strategy_optimal, 17,663 行
-        #  按 stock × variant × stage 寻优), tier-2 fallback 用旧 cross-stage 表
-        # —— 与 portfolio_backtest.py 同一 pattern, 保证 live 推荐与回测一致
+        log.info("加载今日触发 × PIT stage-aware Optuna 寻优结果 (ψ.2 = η+++++++ live 切换) ...")
+        # ψ.2 改造: tier-1 使用 mart_per_stock_stage_strategy_optimal_pit,
+        # 仅取 cutoff_date <= signal_date 的参数。tier-2 fallback 仍保留旧
+        # cross-stage 表, 但不再让单批 legacy stage snapshot 作为生产正向证据。
         BUCKET_MIN_N = 10  # 保留参数 (UI 展示需要)
 
         candidates_raw = conn.execute(
@@ -141,34 +257,91 @@ def main():
                 LEFT JOIN fact_signal_context c
                   ON c.stock_code = t.stock_code AND c.date = t.date
                WHERE t.date = ?
+            ),
+            stage_pit_exact AS (
+              SELECT *
+              FROM (
+                SELECT p.*,
+                       ROW_NUMBER() OVER (
+                         PARTITION BY p.stock_code, p.formula_id, p.formula_variant, p.stage_filter
+                         ORDER BY CAST(p.cutoff_date AS DATE) DESC,
+                                  p.oos_sharpe DESC NULLS LAST,
+                                  p.oos_n_traded DESC NULLS LAST
+                       ) AS rn
+                  FROM mart_per_stock_stage_strategy_optimal_pit p
+                 WHERE CAST(p.cutoff_date AS DATE) <= CAST(? AS DATE)
+                   AND COALESCE(p.oos_n_traded, p.n_traded, 0) >= 3
+              )
+              WHERE rn = 1
+            ),
+            stage_pit_formula AS (
+              SELECT *
+              FROM (
+                SELECT p.*,
+                       ROW_NUMBER() OVER (
+                         PARTITION BY p.stock_code, p.formula_id, p.formula_variant
+                         ORDER BY CAST(p.cutoff_date AS DATE) DESC,
+                                  p.oos_sharpe DESC NULLS LAST,
+                                  p.oos_n_traded DESC NULLS LAST
+                       ) AS rn
+                  FROM mart_per_stock_stage_strategy_optimal_pit p
+                 WHERE CAST(p.cutoff_date AS DATE) <= CAST(? AS DATE)
+                   AND COALESCE(p.oos_n_traded, p.n_traded, 0) >= 3
+              )
+              WHERE rn = 1
             )
-            -- η+++++++ tier-1: stage-aware optimal, fallback: cross-stage optimal
+            -- η+++++++ tier-1: PIT exact stage; tier-1b: PIT same stock+formula; fallback: cross-stage optimal
             SELECT ts.stock_code, ts.formula_id, ts.formula_variant,
                    ts.vol_bin, ts.amt_bin, ts.p60_bin, ts.stage_bin,
-                   COALESCE(sopt.optimal_hp,           opt.optimal_hp)           AS holding_days,
-                   COALESCE(sopt.n_traded,             opt.n_traded)             AS n_signals,
-                   COALESCE(sopt.win_rate,             opt.win_rate)             AS win_rate,
-                   COALESCE(sopt.avg_ret,              opt.avg_ret)              AS avg_ret,
-                   COALESCE(sopt.avg_max_dd,           opt.avg_max_dd)           AS avg_dd,
-                   COALESCE(sopt.sharpe,               opt.sharpe)               AS sharpe,
-                   COALESCE(sopt.calmar,               opt.calmar)               AS calmar,
-                   CASE WHEN sopt.stock_code IS NOT NULL THEN 'stage_aware'
+                   COALESCE(sopt.holding_days, sfopt.holding_days, opt.optimal_hp) AS holding_days,
+                   COALESCE(sopt.oos_n_traded, sopt.n_traded,
+                            sfopt.oos_n_traded, sfopt.n_traded, opt.n_traded)      AS n_signals,
+                   COALESCE(sopt.oos_win_rate, sopt.win_rate,
+                            sfopt.oos_win_rate, sfopt.win_rate, opt.win_rate)      AS win_rate,
+                   COALESCE(sopt.oos_avg_ret, sopt.avg_ret,
+                            sfopt.oos_avg_ret, sfopt.avg_ret, opt.avg_ret)         AS avg_ret,
+                   COALESCE(opt.avg_max_dd, sopt.optimal_stop_pct, sfopt.optimal_stop_pct) AS avg_dd,
+                   COALESCE(sopt.oos_sharpe, sopt.sharpe,
+                            sfopt.oos_sharpe, sfopt.sharpe, opt.sharpe)            AS sharpe,
+                   COALESCE(
+                     opt.calmar,
+                     CASE
+                       WHEN COALESCE(sopt.oos_avg_ret, sopt.avg_ret) > 0
+                        AND sopt.optimal_stop_pct < 0
+                       THEN COALESCE(sopt.oos_avg_ret, sopt.avg_ret) / abs(sopt.optimal_stop_pct)
+                       WHEN COALESCE(sfopt.oos_avg_ret, sfopt.avg_ret) > 0
+                        AND sfopt.optimal_stop_pct < 0
+                       THEN COALESCE(sfopt.oos_avg_ret, sfopt.avg_ret) / abs(sfopt.optimal_stop_pct)
+                       ELSE NULL
+                     END
+                   )                                                             AS calmar,
+                   CASE WHEN sopt.stock_code IS NOT NULL THEN 'stage_pit'
+                        WHEN sfopt.stock_code IS NOT NULL THEN 'stage_pit_formula_fallback'
                         ELSE 'cross_stage_fallback' END                          AS match_tier,
-                   COALESCE(sopt.optimal_stop_pct,     opt.optimal_stop_pct)     AS optimal_stop_pct,
-                   COALESCE(sopt.optimal_target_pct,   opt.optimal_target_pct)   AS optimal_target_pct,
-                   COALESCE(sopt.optimal_trailing_pct, opt.optimal_trailing_pct) AS optimal_trailing_pct,
+                  COALESCE(sopt.optimal_stop_pct,     sfopt.optimal_stop_pct,     opt.optimal_stop_pct)     AS optimal_stop_pct,
+                  COALESCE(sopt.optimal_target_pct,   sfopt.optimal_target_pct,   opt.optimal_target_pct)   AS optimal_target_pct,
+                  COALESCE(sopt.optimal_trailing_pct, sfopt.optimal_trailing_pct, opt.optimal_trailing_pct) AS optimal_trailing_pct,
                    p.fundamental_stage, p.latest_close,
                    COALESCE(sf.survey_bin, '冷')     AS survey_bin,
                    COALESCE(sf.survey_count_60d, 0)  AS survey_count_60d
               FROM today_signals ts
-              LEFT JOIN mart_per_stock_stage_strategy_optimal sopt
+              LEFT JOIN stage_pit_exact sopt
                 ON sopt.stock_code      = ts.stock_code
                AND sopt.formula_id      = ts.formula_id
                AND sopt.formula_variant = ts.formula_variant
                AND sopt.stage_filter    = ts.stage_bin
                -- audit fix: filter ret/dd/sharpe 异常值
-               AND abs(sopt.avg_ret) <= 0.5 AND sopt.avg_max_dd >= -0.5
-               AND abs(sopt.sharpe) <= 10
+               AND abs(COALESCE(sopt.oos_avg_ret, sopt.avg_ret, 0)) <= 0.5
+               AND sopt.optimal_stop_pct >= -0.5
+               AND abs(COALESCE(sopt.oos_sharpe, sopt.sharpe, 0)) <= 10
+              LEFT JOIN stage_pit_formula sfopt
+                ON sfopt.stock_code      = ts.stock_code
+               AND sfopt.formula_id      = ts.formula_id
+               AND sfopt.formula_variant = ts.formula_variant
+               AND sopt.stock_code IS NULL
+               AND abs(COALESCE(sfopt.oos_avg_ret, sfopt.avg_ret, 0)) <= 0.5
+               AND sfopt.optimal_stop_pct >= -0.5
+               AND abs(COALESCE(sfopt.oos_sharpe, sfopt.sharpe, 0)) <= 10
               LEFT JOIN mart_per_stock_strategy_optimal opt
                 ON opt.stock_code      = ts.stock_code
                AND opt.formula_id      = ts.formula_id
@@ -183,14 +356,17 @@ def main():
                AND sf.as_of_date = ?
              WHERE (sopt.stock_code IS NOT NULL OR opt.stock_code IS NOT NULL)
             """,
-            [signal_date, signal_date],
+            [signal_date, signal_date, signal_date, signal_date],
         ).fetchall()
         # 报告 stage-aware 命中 vs fallback 占比
-        n_stage_aware = sum(1 for r in candidates_raw if r[14] == "stage_aware")
-        n_fallback = len(candidates_raw) - n_stage_aware
+        n_stage_aware = sum(1 for r in candidates_raw if r[14] == "stage_pit")
+        n_stage_formula = sum(1 for r in candidates_raw if r[14] == "stage_pit_formula_fallback")
+        n_fallback = len(candidates_raw) - n_stage_aware - n_stage_formula
         log.info(
             f"  原始候选: {len(candidates_raw)} 条 "
-            f"(stage_aware tier-1 = {n_stage_aware}, cross_stage tier-2 fallback = {n_fallback})"
+            f"(stage_pit exact = {n_stage_aware}, "
+            f"stage_pit formula fallback = {n_stage_formula}, "
+            f"cross_stage fallback = {n_fallback})"
         )
 
         # 4. 转 dict, 加 signal_close 字段
@@ -251,10 +427,19 @@ def main():
                     r.get("sell_target"), r.get("stop_price"), r.get("trailing_pct"),
                 ))
 
+        diag_rows = _build_pit_diagnostic_rows(conn, signal_date, all_rows)
+        diag_reason_counts = {}
+        for row in diag_rows:
+            diag_reason_counts[row[12]] = diag_reason_counts.get(row[12], 0) + 1
+
         # 6. 写库 atomic
         conn.execute("BEGIN TRANSACTION")
         try:
             conn.execute("DELETE FROM mart_daily_position_recommendation WHERE signal_date = ?", [signal_date])
+            conn.execute(
+                "DELETE FROM mart_daily_position_recommendation_pit_diagnostic WHERE signal_date = ?",
+                [signal_date],
+            )
             if all_rows:
                 conn.executemany(
                     """INSERT INTO mart_daily_position_recommendation
@@ -272,6 +457,16 @@ def main():
                         sell_target_price, stop_price, trailing_pct)
                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                     all_rows,
+                )
+            if diag_rows:
+                conn.executemany(
+                    """INSERT INTO mart_daily_position_recommendation_pit_diagnostic
+                       (signal_date, profile_id, rank_in_profile, stock_code,
+                        formula_id, formula_variant, stage_bin, match_tier,
+                        pit_exact_stage_rows, pit_same_formula_rows, pit_same_stock_rows,
+                        latest_pit_cutoff_date, missing_reason)
+                       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                    diag_rows,
                 )
             conn.execute("COMMIT")
         except BaseException:
@@ -309,6 +504,7 @@ def main():
         tier_dist = Counter(r[12] for r in all_rows)
         sbin_dist = Counter(r[13] for r in all_rows if r[2] == "long")  # 仅 long profile 有意义
         print(f"\n推荐分层分布: {dict(tier_dist)}")
+        print(f"PIT 诊断原因分布: {diag_reason_counts}")
         print(f"长期 profile 调研桶分布: {dict(sbin_dist)}")
         print()
         log.info(f"=== 总耗时 {time.time()-t_total:.0f}s | 总推荐 {len(all_rows)} 条 ===")

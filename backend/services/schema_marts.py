@@ -279,6 +279,63 @@ MART_SCHEMA_SQL = """
                 updated_at         TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             );
 
+            CREATE VIEW IF NOT EXISTS mart_data_lineage AS
+            SELECT lineage_id,
+                   output_table AS mart_table,
+                   output_table,
+                   input_tables,
+                   sql_text,
+                   sql_hash,
+                   version,
+                   owner,
+                   description,
+                   last_run_at,
+                   last_row_count,
+                   last_status,
+                   last_error,
+                   last_runtime_s,
+                   created_at,
+                   updated_at
+              FROM mart_lineage;
+
+            CREATE TABLE IF NOT EXISTS mart_strategy_result_registry (
+                result_id           TEXT PRIMARY KEY,
+                source_table        TEXT NOT NULL,
+                source_pk           TEXT NOT NULL,
+                result_type         TEXT NOT NULL,
+                model_id            TEXT,
+                sim_run_id          TEXT,
+                comparison_id       TEXT,
+                variant             TEXT,
+                model_label         TEXT,
+                period_start        TEXT,
+                period_end          TEXT,
+                annual_return       DOUBLE,
+                max_dd              DOUBLE,
+                sharpe              DOUBLE,
+                monthly_win_rate    DOUBLE,
+                rank_ic             DOUBLE,
+                turnover            DOUBLE,
+                leakage_flag        BOOLEAN NOT NULL DEFAULT FALSE,
+                parent_result_id    TEXT,
+                baseline_result_id  TEXT,
+                sim_config_hash     TEXT,
+                param_diff_json     TEXT,
+                params_json         TEXT,
+                lineage_url         TEXT,
+                source_artifact_uri TEXT,
+                production_status   TEXT NOT NULL DEFAULT 'unknown',
+                decision            TEXT NOT NULL DEFAULT 'unknown',
+                decision_reason     TEXT,
+                evidence_json       TEXT NOT NULL DEFAULT '{}',
+                built_at            TIMESTAMP,
+                registered_at       TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+            );
+            CREATE UNIQUE INDEX IF NOT EXISTS idx_msrr_source
+                ON mart_strategy_result_registry(source_table, source_pk);
+            CREATE INDEX IF NOT EXISTS idx_msrr_model
+                ON mart_strategy_result_registry(model_id, sim_run_id, comparison_id);
+
             CREATE TABLE IF NOT EXISTS mart_model_lifecycle (
                 model_id              TEXT PRIMARY KEY,
                 status                TEXT NOT NULL,            -- 'champion' / 'challenger' / 'retired'
@@ -887,11 +944,29 @@ MART_SCHEMA_SQL = """
             );
 """
 
+MART_SCHEMA_MIGRATIONS = [
+    "ALTER TABLE mart_strategy_result_registry ADD COLUMN IF NOT EXISTS parent_result_id TEXT",
+    "ALTER TABLE mart_strategy_result_registry ADD COLUMN IF NOT EXISTS baseline_result_id TEXT",
+    "ALTER TABLE mart_strategy_result_registry ADD COLUMN IF NOT EXISTS sim_config_hash TEXT",
+    "ALTER TABLE mart_strategy_result_registry ADD COLUMN IF NOT EXISTS param_diff_json TEXT",
+    "ALTER TABLE mart_strategy_result_registry ADD COLUMN IF NOT EXISTS params_json TEXT",
+    "ALTER TABLE mart_strategy_result_registry ADD COLUMN IF NOT EXISTS lineage_url TEXT",
+    "ALTER TABLE mart_strategy_result_registry ADD COLUMN IF NOT EXISTS source_artifact_uri TEXT",
+]
+
 __all__ = ["ensure_mart_schema", "ensure_schema"]
 
 
 def ensure_mart_schema(conn) -> None:
-    conn.executescript(MART_SCHEMA_SQL)
+    if hasattr(conn, "executescript"):
+        conn.executescript(MART_SCHEMA_SQL)
+    else:
+        for stmt in MART_SCHEMA_SQL.split(";"):
+            stmt = stmt.strip()
+            if stmt:
+                conn.execute(stmt)
+    for stmt in MART_SCHEMA_MIGRATIONS:
+        conn.execute(stmt)
 
 
 def ensure_schema(conn) -> None:
