@@ -13,8 +13,8 @@
 | 4 | 数据 / 策略安全 — PIT / leakage / 异常数字警报 / 数据可信度 / Root Cause |
 | 5 | Optuna 治理 — walk-forward / governance / OOS 守门 |
 | 6 | 文档纪律 — 三件套 / 分层 / Repository Hygiene / 任务完成 ≠ 代码写完 |
-| 7 | Git + Commit — 高频 / safe_commit / hook |
-| 8 | Self-Check — write-time / commit-time |
+| 7 | Git + Commit — 高频 / safe_commit / hook / **codegraph+complexity 双扫** |
+| 8 | Self-Check — write-time / commit-time (9 项含 codegraph+complexity) |
 | 9 | GCP 资源管理 — controlled use / $15 budget (alert-only) / hygiene / checkpoint reuse |
 | 10 | 并发 — 串行硬约束 / 可并发 / 实现 |
 | 11 | Codex 协作 — ⏸ 当前暂停 (2026-05-21~) |
@@ -276,8 +276,66 @@
 | pre-commit `rule-compliance` | magic 数字 / hardcoded date 无 `# evidence:` 注释 → reject |
 | commit-msg `self-check` | message 缺关键词 (测试/防回退/PIT/OOS/实测) → reject |
 | pre-commit `ruff` | 代码格式 (可选) |
+| pre-commit `no-emoji` | emoji 进代码/docs → reject (PASS/FAIL/警告 marker 走文字, 不走 emoji VS16) |
 
 误判 → 改对应脚本 `PATTERNS` / `EVIDENCE_KEYWORDS`. **不要 `--no-verify` 跳**.
+
+### 7.4 Codegraph + Complexity 双扫 (每次代码改动后强制)
+
+> **用户 2026-05-21 push back**: "这应该在每次代码改动后都跑一遍, 防止代码庞大后修改成本太大".
+
+代码库已 14k+ nodes / 154k+ edges / 900+ files, 不做结构验证 = 改动盲飞. 每次 substantial change (非 doc-only / 非 typo) 必走:
+
+**Step 1 — Codegraph 索引 + 入口验证**:
+```bash
+codegraph status .                  # 看 pending 改动数, 确认 worktree 干净
+codegraph sync .                    # 索引新加 symbol / 改 signature, 1-2s
+codegraph query "<symbol>"          # 改 service/script 前: 看 caller 数 + signature 影响范围
+codegraph context "<task>"          # 改路径前: 列入口 + related test + 依赖边界
+```
+
+**Step 2 — Complexity 全扫**:
+```bash
+python /Users/dp/.agents/skills/complexity-optimizer/scripts/analyze_complexity.py \
+  /Users/dp/Documents/M/stock/chunkymonkey --format markdown
+```
+
+输出读法:
+- HIGH 数 + 文件分布: 新增 HIGH 在你改的文件 → 立刻修, 不留下次.
+- 历史 HIGH (e.g. `assets/js/app.js` 16 个) 已知遗留, 不阻 commit 但要跟.
+- N+1 / nested-loop / sort-in-loop / io-in-loop 优先, 涉数据量大的路径必修.
+
+**Step 3 — 改完再 sync**:
+- 大改 (拆 god-module / 加新 service / 改 import 链) → `codegraph sync .` 再跑一次, 防下次 query 用 stale index.
+
+**强制触发** (满足任一):
+- 新增 service / script / router / router 子模块
+- 改 LOC > 50 单文件 OR 改文件数 > 5
+- 拆 god-module / 重命名公开 API / 改 SQL JOIN 路径
+- commit 含 feat/refactor/perf 关键词
+- 用户问 "影响范围怎样" / "callers 都是谁"
+
+**豁免**:
+- 纯 doc / md 改 / typo / 注释
+- 单测 fixture only 改
+- 单行 config flag 改
+- 注释加 evidence 注释 (e.g. `# rule-compliance: ok evidence=...`)
+
+**反例 (踩过)**: Codex 2026-05-20 拆 god-module workbench.py 成 ~30 个 workbench_*_read services 是大改, **没跑 codegraph context** → tests baseline 跑出 2 个 regression (calendar_gate + duckdb_contract allowlist) — 这两个本可通过 `codegraph query "v3_market_perception"` + `codegraph context "duckdb.connect contract"` 提前发现. 反例固化: 2026-05-21 我接手 fix 才补做 codegraph 验证.
+
+**workflow 示例** (2026-05-21 BestChoice Phase 0 + tests baseline):
+```bash
+# 改动前先看入口
+codegraph query "build_signal_context"            # 确认 4 脚本 self-contained
+codegraph context "BestChoice POC entry"          # 入口 + related test
+
+# 改完跑全扫
+python /Users/dp/.agents/skills/complexity-optimizer/scripts/analyze_complexity.py \
+  /Users/dp/Documents/M/stock/chunkymonkey --format markdown | grep "^## "
+
+# 改完同步
+codegraph sync .                                  # safe_commit.sh 自动跑
+```
 
 ---
 
@@ -309,6 +367,7 @@
    - Process / cache / tmp file 清单
    - Execute cleanup + verify 0 residue
 8. **三件套同步了?** — delivery/GCP/validation/next action 任一变化即更新 (§6.1).
+9. **Codegraph + Complexity 跑过了?** — substantial change 必走 §7.4 双扫. 改前 `codegraph query <symbol>` / `codegraph context <task>` 看影响范围, 改完 `codegraph sync .` + complexity scan 看是否引入 HIGH hotspot. 反例: 2026-05-20 Codex 拆 god-module 没跑 → 2 个 regression 漏到下一 session.
 
 反模式: kill 进程 + 修代码 + restart 就以为完事, 没清 DB row / 没 ALTER DROP COLUMN / 没标 downstream model stale. 反例: Codex a8c34359a 标 CRITICAL → 我修代码 → commit → 但 panel 含 inst_path_a 5 cols 物理数据没清, paper_sim 若误读会 leakage.
 
