@@ -56,6 +56,13 @@ Perception 推进 (2026-05-22 09:00 CST; 跟主项目 verdict 并行不阻塞): 
   - DROP: multi-horizon label / 减持 windowing / LHB / capital flow 多滞后 / factor decay / Perception regime 接 panel (历史无显著证据 OR 破物理边界)
   - 月预算: projected 91.4% 剩 $1.30, Phase A 4 combo 全跑 ~$2 超 buffer; 推荐 1 combo (0.7/0.3) ~$0.50
 
+Spot preempt 根因 + 修复 (2026-05-22 11:10 CST; 用户 push back "为啥总这样, 请查找根因并修复" + "是并行跑批数量太多么" + "分小批量多次呢?"):
+- **根因**: spot preempt cycle (30-60 min) 小于 per-trial wall time (50-86 min, default 8 outer × 4 inner). 8 trial 同时 in-flight, preempt 来一砍全 8 个变 RUNNING→FAIL, 0 进 COMPLETE.
+- **用户 hypothesis "并行 8 太多"对一半**: 并行 8 是事实, 但分小批量 wall time per trial 不变, 不解.
+- **真修法**: 单 trial wall time < preempt cycle. 方案 C = 1 outer × 32 inner + n_estimators 300→100, 估单 trial ~3-10 min, fit preempt cycle.
+- **方案 C 已启** (2026-05-22 11:13 CST): retrain pid 1588 on VM, OPTUNA_N_JOBS=1, OMP_NUM_THREADS=32, --n-estimators 100, --n-trials 50, study resume same model_id. Background monitor bvbxz7aq0 跟踪 first COMPLETE wall time.
+- **若 plan C 仍 preempt 砍**: fallback 1×32 + n_estimators 50 (单 trial < 3 min), 或接受 56 COMPLETE current best 0.4009 plateau 收口.
+
 止损位设计讨论 (2026-05-22 10:50 CST; 用户 push back "没有止损位, 应该基于什么来设计, 讨论一下" — 已讨论先记 backlog, 后续 verdict 出 + Phase 3 paper_sim 时启用):
 - 现状: BestChoice candidates 只有 sell_rule (fixed_N天) + holding_days, 没显式 per-position stop. paper_sim 已有 portfolio-level HARD STOP (dd=-20% 全清), 已有 trailing_hit SELL reason 但参数 hardcode.
 - 7 个 candidate 方向 (评估表见讨论): A=ATR-based / B=Historical avg_dd-based / C=Forward-label PIT quantile / D=Volatility-band Bollinger / E=Regime-conditional / F=Time-decay / G=Combo
