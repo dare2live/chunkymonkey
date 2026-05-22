@@ -177,6 +177,43 @@ Implementation: `backend/scripts/build_ensemble_v4_bc_stage_filtered.py` 新 mod
 
 dd (-16.85%) 已 PASS / win (60%) 已 PASS. **仅 Sharpe + n_obs 还差**.
 
+### L. 2026-05-22 23:50 — Win rate 提升 POC backlog (用户 23:45 推)
+
+用户 push 研究 win rate 提升 (现 V4 monthly 45% / ensemble 60% / V4∩BC+Phase7 per-trade 78%).
+
+已 tested:
+- [OK] Multi-signal confirmation V4 ∩ BC + stage + Phase 7 → per-trade win 78%
+- [OK] Phase 7 context whitelist regime sub-gate → win 64-67%
+- [NEG] Hard stop-loss ATR+dd Optuna → win **-5pp** NEGATIVE
+- [OK] BC formula trigger fixed_N exit → BC 50% baseline
+
+未 tested POC backlog (per impact × cost ranking):
+
+| # | Pattern | 实施 | 价值 | 优先级 |
+|---|---|---|---|---|
+| C | 大盘 regime filter (HS300 200d MA up 才进) | 半天, 1-line condition | 高 — Stage 4 V4 IC -0.021 已证大盘 regime 影响 | 1 |
+| D | Multi-signal conviction count (5 signals 票房, conv≥3 才 buy) | 半天 | 中-高 — 更细 V4∩BC | 2 |
+| B | Dynamic take-profit (短 trailing 5% 长 trailing 15%) | 半天 | 中 | 3 |
+| A | Volume + price 双 confirmation (entry day vol > MA20 × 1.5) | 半天 | 中 | 4 |
+| E | 板块集中度限 (同 industry ≤ 3 picks/day) | 半天 | 中 — risk 控制 | 5 |
+
+推进时机: composite paper_sim_v6 (bgys90hro) verdict 出 + 下次 session 推进 v7 / n_obs gap fix 之间.
+
+**注: 不重做 stop-loss** (Phase 8 已证 NEGATIVE).
+
+### Stock universe audit (用户 23:45 push 'ST 北交所 新三板 排除了吗')
+
+待 paper_sim_v6 unlock DB 后 verify:
+- exchange prefix distribution (SSE 主板 60 / 科创 68 / SZSE 主板 00 / 创业 30 / BSE 8 4)
+- ST/*ST count from `dim_active_a_stock.stock_name` LIKE 'ST%'/'*ST%'
+- 新三板/老三板 (NEEQ) 4xxxxx/8xxxxx overlap with 北交所
+- 是否 dim_active_a_stock 限 = 主板+科创+创业+BSE only, 新三板/老三板 不在
+
+预 hypothesis (待 verify): dim_active_a_stock 'a_stock' suggests 主板+STAR+ChiNext+BSE, **可能** include 北交所 但 not 新三板 NEEQ.
+ST/*ST 是否 filter — 需查 panel build / candidate select logic.
+
+如果 V4 picks 含 ST/*ST/北交所 → 实盘 unrealistic (流动性差/退市风险), 需 add filter.
+
 ### K. 2026-05-22 23:30 — V4∩BC + Phase 7 复合 Sharpe **3.17** 突破
 
 跑 `run_paper_sim_ensemble_v4_bc_phase7.py` 各 top-K:
