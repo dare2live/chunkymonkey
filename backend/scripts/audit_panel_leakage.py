@@ -301,6 +301,59 @@ def audit_check_5_temporal_variance(conn, panel_table: str, sample_rows: int = 5
     return findings
 
 
+def audit_check_6_null_year_gradient(conn, panel_table: str) -> list[dict]:
+    """Check 6: Per-feature NULL ratio by year — flag time-availability leakage.
+
+    2026-05-22 Phase 4 v6 audit 反例: panel v4 cols (inst_holder_cnt 100/100/54/7%,
+    beta_60d 100/3/2/18%, etc) showed NULL ratio gradient across years, allowing ML
+    to indirectly learn "feature non-NULL = recent period = bull regime" → time leak.
+
+    Flag: gradient max(NULL%) - min(NULL%) > 50% → HIGH; 20-50% → MEDIUM.
+    """
+    findings = []
+    try:
+        cols = [c[0] for c in conn.execute(f"SELECT * FROM {panel_table} LIMIT 0").description]
+    except Exception as exc:
+        return [{"check": "6_null_year_gradient", "risk": "LOW", "reason": f"{panel_table} not found: {exc}"}]
+
+    feature_cols = [
+        c for c in cols
+        if c not in {"stock_code", "signal_date", "built_at", "trade_date_dt", "entry_date", "feature_version"}
+        and not c.startswith("fwd_") and not c.startswith("y_")
+    ]
+    for col in feature_cols:
+        try:
+            rows = conn.execute(
+                f"""
+                SELECT EXTRACT(YEAR FROM signal_date) AS yr,
+                       ROUND(100.0 * SUM(CASE WHEN {col} IS NULL THEN 1 ELSE 0 END) / COUNT(*), 2) AS np
+                  FROM {panel_table} GROUP BY yr ORDER BY yr
+                """
+            ).fetchall()
+        except Exception:
+            continue
+        if len(rows) < 2:
+            continue
+        nulls = [float(r[1]) for r in rows if r[1] is not None]
+        if not nulls or len(nulls) < 2:
+            continue
+        gradient = max(nulls) - min(nulls)
+        # rule-compliance: ok evidence=Phase 4 v6 IS-OOS drop 60% root cause = 4 cols with gradient > 50%
+        if gradient > 50:
+            findings.append({
+                "check": "6_null_year_gradient", "feature": col, "risk": "HIGH",
+                "reason": f"NULL gradient {gradient:.1f}% across years (time-availability leak)",
+                "yearly_null_pct": {int(r[0]): float(r[1]) for r in rows if r[1] is not None},
+            })
+        elif gradient > 20:
+            findings.append({
+                "check": "6_null_year_gradient", "feature": col, "risk": "MEDIUM",
+                "reason": f"NULL gradient {gradient:.1f}% across years (mild time-availability bias)",
+                "yearly_null_pct": {int(r[0]): float(r[1]) for r in rows if r[1] is not None},
+            })
+    return findings
+
+
 def main() -> int:
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument("--panel", default="mart_p0a_feature_label_panel_v4",
@@ -325,16 +378,18 @@ def main() -> int:
 
     all_findings = []
     with connect(args.db, read_only=True) as conn:
-        print("[1/5] PIT markers on fact_*/mart_*/dim_* tables ...")
+        print("[1/6] PIT markers on fact_*/mart_*/dim_* tables ...")
         all_findings.extend(audit_check_1_pit_markers(conn))
-        print("[2/5] Panel JOIN PIT-strict pattern ...")
+        print("[2/6] Panel JOIN PIT-strict pattern ...")
         all_findings.extend(audit_check_2_panel_join_pit(Path(args.panel_build_sql)))
-        print("[3/5] Flat current-mapping PARTITION BY (retrospective bias) ...")
+        print("[3/6] Flat current-mapping PARTITION BY (retrospective bias) ...")
         all_findings.extend(audit_check_3_flat_mapping_partition(Path(args.panel_build_sql), conn))
-        print("[4/5] Mapping table fallback ratio ...")
+        print("[4/6] Mapping table fallback ratio ...")
         all_findings.extend(audit_check_4_fallback_ratio(conn))
-        print(f"[5/5] Per-feature temporal variance (sample {args.sample_rows} rows) ...")
+        print(f"[5/6] Per-feature temporal variance (sample {args.sample_rows} rows) ...")
         all_findings.extend(audit_check_5_temporal_variance(conn, args.panel, args.sample_rows))
+        print(f"[6/6] Per-feature NULL ratio gradient across years ...")
+        all_findings.extend(audit_check_6_null_year_gradient(conn, args.panel))
 
     n_high = sum(1 for f in all_findings if f.get("risk") == "HIGH")
     n_medium = sum(1 for f in all_findings if f.get("risk") == "MEDIUM")

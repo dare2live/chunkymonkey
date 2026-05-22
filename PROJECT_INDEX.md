@@ -819,6 +819,26 @@ SELECT * FROM mart_data_source_watermark;
 
 每次 session 增量内容写这里, 新 session 启动时**从下往上读**最近改了啥.
 
+### 2026-05-22 v6 retrain BLOCK + audit tool check 6 (time-availability leak)
+
+v6 retrain 完整 done + Phase 4 gate **BLOCK** (commit 36b71cad):
+- PBO 0.251 FAIL / DSR 0.97 PASS / Conservative PASS / IS-OOS drop 60.8% FAIL
+- vs stability 92.43% drop: v6 减半但仍 fail (drop 30 cols 不够)
+- vs V4 same-period: v6 OOS +100% relative → 触发 CLAUDE.md §4.2 red line
+
+Panel v4 deep audit 找 hidden leakage:
+- Time-availability NULL gradient: 4 cols 100% NULL 2023 → low NULL 2026 = ML 学 'non-NULL = recent regime'
+- 升级 audit tool check 6: NULL gradient > 50% = HIGH
+- Tool catch 5 HIGH cols (manual 漏 2): inst_quality_max/inst_holder_cnt/mcap_decile/beta_60d/beta_60d_zscore
+
+反思 — 工具反应式不 systematic:
+- 我建 audit tool 时只考虑 PARTITION BY flat mapping (Phase D 当时 case)
+- 没对照 CLAUDE.md §4.1 8 类 leakage systematically implement
+- 每次新 leakage 暴露才补 check (reactive)
+- v6 浪费 ~$5 GCP + ~17h compute 才暴露此问题
+
+下步: enumerate ALL 10+ leakage patterns + test fixtures + checks 7/8/9 (future K-line / purge embargo / qfq retrospective / 宇宙 PIT / survivorship).
+
 ### 2026-05-22 BC Phase 5+6 — walk-forward lite audit done + Phase 6 daily ensemble script
 
 Phase 5 lite audit (commit d9637224):
