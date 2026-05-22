@@ -819,6 +819,24 @@ SELECT * FROM mart_data_source_watermark;
 
 每次 session 增量内容写这里, 新 session 启动时**从下往上读**最近改了啥.
 
+### 2026-05-22 per-stage stratification ablation 强信号
+
+V4 OOS predictions × fact_stock_technical_stage 619K joined:
+- Stage 1.5 IC +0.081 IR +0.45 (3x V4 baseline)
+- Stage 4 IC -0.021 IR -0.19 (V4 picks worse than random)
+- Stage 1/2/3 边缘
+
+Quick paper_sim top-5 hold-20d:
+- V4 + Stage {1.5, 2}: Sharpe +1.13
+- V4 all stages: Sharpe -0.40
+
+新 backend/scripts/build_ensemble_v4_bc_stage_filtered.py:
+- model_id ensemble_v4_bc_stage_filtered_v1
+- 2,159,871 rows, 12.4% (Stage 1+4) zero-scored
+- paper_sim_v6_compare 跑中
+
+goal.md Section J 加 finding.
+
 ### 2026-05-22 BC Phase 8 stop-loss Optuna NEGATIVE — Phase 7 是 optimum
 
 backend/scripts/run_optuna_bestchoice_phase8_stoploss.py:

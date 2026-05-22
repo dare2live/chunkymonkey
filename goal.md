@@ -131,6 +131,37 @@ Deliverable: `mart_p0a_feature_label_panel_v5` 表 + audit pass report.
 - Forward monitor: V4+BC ensemble cron via daily_update.sh 5c step (commit c9d9cead)
 - 6-12 weeks forward 数据后 review ensemble verdict (promote / hold / reject)
 
+### J. 2026-05-22 23:00 — per-stage stratification 真信号 (用户 23:00 push 跑 POC)
+
+V4 OOS predictions × `fact_stock_technical_stage` 619K joined rows:
+
+| Stage | rows | IC | IR | pos% | top-bot |
+|---|---|---|---|---|---|
+| 1 (early accum) | 25K | -0.013 | -0.10 | 50% | -0.010 |
+| **1.5 (active accum)** | 33K | **+0.081** | **+0.45** | **66%** | **+0.013** |
+| 2 (markup) | 116K | -0.001 | -0.01 | 60% | -0.006 |
+| 3 (distribution) | 202K | +0.010 | +0.06 | 62% | -0.010 |
+| **4 (markdown)** | 243K | **-0.021** | **-0.19** | **44%** | -0.008 |
+
+Quick paper_sim (top-5 picks, hold 20d, equal weight, 2025-01 to 2026-04):
+
+| Filter | Sharpe | Ann | DD | Win |
+|---|---|---|---|---|
+| V4 all stages | -0.40 | -13.9% | -89% | 45.6% |
+| **V4 + Stage {1.5, 2}** | **+1.13** | **+55%** | -76% | 61.4% |
+| V4 + Stage {1.5, 2, 3} | +0.45 | +14% | -69% | 61.4% |
+| V4 drop Stage 4 | +0.39 | +12% | -69% | 61.4% |
+
+**Stage 4 (markdown) 是真 alpha drag** — V4 在熊势股 picks 比 random 差.
+**Stage 1.5 + 2 是真 alpha 集中** — V4 在积极 accumulation + markup 阶段 picks 强.
+
+Implementation: `backend/scripts/build_ensemble_v4_bc_stage_filtered.py` 新 model_id `ensemble_v4_bc_stage_filtered_v1`:
+- v4_rank_pct + bc_rank_pct combine
+- Stage filter: zero out Stage 1 + 4 (267K rows / 2.16M, 12.4%)
+- Paper_sim_v6_compare 跑中 (~20 min)
+
+后续: 若 stage_filtered ensemble Sharpe > V4+BC 1.83 → 推 production champion 候选, 直接 push #6 perfect ladder target.
+
 ### I. 真 path to 运营 ready (gap-driven, 替代 phase 列表打勾思维)
 
 每次 session 推进必同步问: 距 `ready_for_delivery=True` 还差啥? 不是问 "phase 完了吗".
