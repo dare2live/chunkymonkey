@@ -35,6 +35,8 @@
 <script type="text/babel" src="v3-page-portfolio-builder.jsx"></script>
 <!-- 市场感知 (Market Perception) — Codex 扩展模块 stub -->
 <script type="text/babel" src="v3-page-market-perception.jsx"></script>
+<!-- BestChoice tab — Layer 4 read-only challenger data 2026-05-22 -->
+<script type="text/babel" src="v3-page-bestchoice.jsx"></script>
 <script type="text/babel" src="v3-drawer-stock.jsx"></script>
 <script type="text/babel" src="v3-drawer-system.jsx"></script>
 <!-- 真实数据替换 (mock fallback); 必须在所有 page/component 加载之后 -->
@@ -52,7 +54,7 @@ function App() {
   const [dataTick, setDataTick] = useState(0);
   const { PageToday, PageLab, PagePortfolio,
           PageStockView, PageFormulaView, PageInstitutionView,
-          PagePortfolioBuilder, PageMarketPerception,
+          PagePortfolioBuilder, PageMarketPerception, PageBestChoice,
           StockDrawer, SystemDrawer, InstDrawer, RUN_META, UI } = window.CMV3;
 
   useEffect(() => {
@@ -81,6 +83,7 @@ function App() {
     { id:'inst',      label:'机构视图', sub:'Inst' },
     { id:'lab',       label:'选股台',   sub:'Lab' },
     { id:'portfolio', label:'持仓',     sub:'Portfolio' },
+    { id:'bestchoice',label:'BestChoice', sub:'BC' },
   ];
 
   return (
@@ -132,6 +135,7 @@ function App() {
         {tab==='inst'      && <PageInstitutionView onOpenStock={setStockCode}/>}
         {tab==='lab'       && <PageLab          onOpenStock={setStockCode}/>}
         {tab==='portfolio' && <PagePortfolio    onOpenStock={setStockCode}/>}
+        {tab==='bestchoice'&& <PageBestChoice   onOpenStock={setStockCode}/>}
       </main>
 
       {stockCode && <StockDrawer code={stockCode} onClose={()=>setStockCode(null)}/>}

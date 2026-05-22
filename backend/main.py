@@ -176,6 +176,10 @@ app.include_router(v3_market_perception_router, prefix="/api/v3/market_perceptio
 from routers.stock_graph import router as stock_graph_router
 app.include_router(stock_graph_router, prefix="/api/v3", tags=["v3_stock_graph"])
 
+# BestChoice tab (2026-05-22 Layer 4 UI 挂载): read-only challenger data, 不动 champion
+from routers.v3_bestchoice import router as v3_bestchoice_router
+app.include_router(v3_bestchoice_router, prefix="/api/v3", tags=["v3_bestchoice"])
+
 # 初始化 signals_v2 默认配置（幂等）
 try:
     _conn = get_conn()

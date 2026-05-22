@@ -819,6 +819,22 @@ SELECT * FROM mart_data_source_watermark;
 
 每次 session 增量内容写这里, 新 session 启动时**从下往上读**最近改了啥.
 
+### 2026-05-22 BestChoice Layer 4 UI tab 挂载 (主项目 frontend, read-only)
+
+用户 push 'BC 挂载请开始吧, 文件夹移动延后'.
+
+5 新/改 files:
+- backend/services/bestchoice_read.py: get_overview / get_top_candidates / get_daily_picks / get_complementarity (read-only)
+- backend/routers/v3_bestchoice.py: 4 endpoints under /api/v3/bestchoice/
+- backend/main.py: register v3_bestchoice_router
+- design/Chunky Monkey v3.html: 加 tab id=bestchoice
+- design/v3-page-bestchoice.jsx: React page with 5 sections (overview/KPI/complementarity/top candidates/daily picks)
+
+Layer 4 = read-only challenger tab, 不动 champion / production / BC repo code.
+BC sibling repo 文件夹 暂不 move (Option B 延后, UI tab 解耦).
+
+未来增量: BC walk-forward audit (跨 repo) / Phase 5 ensemble production / 条件化退出 / stop-loss A+B sweep.
+
 ### 2026-05-22 proactive pre-edit check tool — scripts/pre_edit_check.sh
 
 用户 push back '能否利用 codegraph + complexity 在改代码之前避免问题呢' — 从 reactive scan (改完才查) 升级 proactive check (改之前 surface 风险).
