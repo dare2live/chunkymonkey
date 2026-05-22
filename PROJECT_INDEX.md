@@ -819,6 +819,17 @@ SELECT * FROM mart_data_source_watermark;
 
 每次 session 增量内容写这里, 新 session 启动时**从下往上读**最近改了啥.
 
+### 2026-05-22 D1 panel v5 universe — PIT filter dim_all_ever_listed (Pattern 8 survivorship fix)
+
+按 goal.md 综合规划 Day 1:
+- 新 backend/scripts/build_feature_panel_duck.py:_pit_universe_filter_sql() EXISTS clause + PIT filter
+- env PANEL_UNIVERSE_MODE=pit 切换; default 保持 dim_active_a_stock
+- 含 delisted stocks (1633 missing now will be included)
+- +2 tests verify behavior (9 passed)
+- codegraph +3 nodes / 0 new HIGH complexity
+
+下一 step Day 2: feature_join_v5.py + drop 5 time-availability cols at panel build.
+
 ### 2026-05-22 audit tool 6→9 checks + leakage catalog + safe_retrain wrapper
 
 用户 push '同样问题总发生 + GCP 浪费 + leakage 工具建好 + 跑批前先检查'.

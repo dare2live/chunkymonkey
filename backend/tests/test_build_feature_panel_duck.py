@@ -405,6 +405,55 @@ def test_insert_fact_panel_recreates_when_incremental_window_covers_existing_tab
         con.close()
 
 
+def test_pit_universe_filter_uses_dim_all_ever_listed(monkeypatch):
+    """Pattern 8 (survivorship) fix: PANEL_UNIVERSE_MODE=pit switches to PIT-strict EXISTS clause."""
+    monkeypatch.setenv("PANEL_UNIVERSE_MODE", "pit")
+    con = duckdb.connect(":memory:")
+    try:
+        con.execute("CREATE SCHEMA smartmoney")
+        con.execute(
+            """
+            CREATE TABLE smartmoney.dim_all_ever_listed (
+                stock_code TEXT,
+                stock_name TEXT,
+                first_seen_date DATE,
+                last_seen_date DATE,
+                is_active BOOLEAN,
+                delisted_date DATE
+            )
+            """
+        )
+        con.execute(
+            "INSERT INTO smartmoney.dim_all_ever_listed VALUES "
+            "('000001', 'A', '2020-01-01', '2025-12-31', TRUE, NULL),"
+            "('000002', 'B', '2018-01-01', '2024-06-30', FALSE, '2024-06-30')"
+        )
+        sql = subject._active_a_stock_filter_sql(con, alias="kline")
+        assert "dim_all_ever_listed" in sql
+        assert "EXISTS" in sql
+        assert "kline.code" in sql and "kline.date" in sql
+        assert "first_seen_date" in sql
+        assert "delisted_date" in sql
+    finally:
+        con.close()
+
+
+def test_active_a_stock_filter_default_keeps_old_behavior(monkeypatch):
+    """Default (no env var) uses dim_active_a_stock; old code paths unaffected."""
+    monkeypatch.delenv("PANEL_UNIVERSE_MODE", raising=False)
+    con = duckdb.connect(":memory:")
+    try:
+        con.execute("CREATE SCHEMA smartmoney")
+        con.execute("CREATE TABLE smartmoney.dim_active_a_stock (stock_code TEXT, stock_name TEXT)")
+        con.execute("INSERT INTO smartmoney.dim_active_a_stock VALUES ('000001', 'A')")
+        sql = subject._active_a_stock_filter_sql(con, alias="kline")
+        assert "dim_active_a_stock" in sql
+        assert "EXISTS" not in sql  # old IN clause, not new EXISTS
+        assert "kline.code IN" in sql
+    finally:
+        con.close()
+
+
 def test_feature_registry_covers_panel_and_keeps_labels_out_of_inputs():
     registry_result = subject.validate_feature_registry()
     inputs = subject.feature_input_columns()

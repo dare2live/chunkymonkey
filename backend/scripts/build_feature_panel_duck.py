@@ -413,7 +413,16 @@ def _relation_exists(duck, relation: str) -> bool:
 
 
 def _active_a_stock_filter_sql(duck, *, alias: str = "kline") -> str:
-    """Restrict stock research panels to listed A shares when the master exists."""
+    """Restrict stock research panels to listed A shares when the master exists.
+
+    2026-05-22 Pattern 8 (survivorship bias): default uses dim_active_a_stock = 5512
+    currently active stocks only. To fix survivorship for panel v5+, set env var
+    PANEL_UNIVERSE_MODE=pit which switches to dim_all_ever_listed (7138 stocks) with
+    PIT filter (first_seen_date <= alias.date AND (delisted_date IS NULL OR delisted_date > alias.date)).
+    """
+    import os  # rule-compliance: ok evidence=lazy import for env flag, local scope
+    if os.environ.get("PANEL_UNIVERSE_MODE", "").lower() == "pit":
+        return _pit_universe_filter_sql(duck, alias=alias)
 
     relation = "smartmoney.dim_active_a_stock"
     if not _relation_exists(duck, relation):
@@ -436,6 +445,38 @@ def _active_a_stock_filter_sql(duck, *, alias: str = "kline") -> str:
         "SELECT stock_code FROM smartmoney.dim_active_a_stock "
         "WHERE stock_code IS NOT NULL AND TRIM(CAST(stock_code AS VARCHAR)) != ''"
         ")"
+    )
+
+
+def _pit_universe_filter_sql(duck, *, alias: str = "kline") -> str:
+    """PIT-strict universe filter using dim_all_ever_listed (Pattern 8 survivorship fix).
+
+    For each kline row, include stock IF stock was listed at that date:
+      first_seen_date <= alias.date AND (delisted_date IS NULL OR delisted_date > alias.date)
+
+    Enables training on stocks that delisted within the test window, eliminating survivorship.
+
+    Activate by env: PANEL_UNIVERSE_MODE=pit
+    """
+    relation = "smartmoney.dim_all_ever_listed"
+    if not _relation_exists(duck, relation):
+        # Fallback to old behavior if PIT relation missing
+        return ""
+    try:
+        row = duck.execute(
+            f"SELECT COUNT(*) FROM {relation} WHERE stock_code IS NOT NULL AND TRIM(CAST(stock_code AS VARCHAR)) != ''"
+        ).fetchone()
+        if int(row[0] or 0) <= 0:
+            return ""
+    except Exception:
+        return ""
+    return (
+        f"AND EXISTS ("
+        f"SELECT 1 FROM smartmoney.dim_all_ever_listed e "
+        f"WHERE e.stock_code = {alias}.code "
+        f"AND e.first_seen_date <= {alias}.date "
+        f"AND (e.delisted_date IS NULL OR e.delisted_date > {alias}.date)"
+        f")"
     )
 
 
