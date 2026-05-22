@@ -819,6 +819,23 @@ SELECT * FROM mart_data_source_watermark;
 
 每次 session 增量内容写这里, 新 session 启动时**从下往上读**最近改了啥.
 
+### 2026-05-23 universe ST filter + composite portfolio Sharpe verdict
+
+Composite paper_sim_v6 verdict: Sharpe 1.85 (vs per-trade 3.17 illusion).
+所有 ensemble 变种 paper_sim_v6 收敛 1.84-1.85.
+
+#6 perfect ladder gap: Sharpe -0.15 / DD -0.63pp / Win partial / n_obs structural.
+
+Stock universe audit:
+- V4 5192 stocks: 60 1702 / 00 1491 / 30 1393 / 68 606
+- BSE / 新三板 / 老三板 / ETF prefix 排除 ✓
+- ST/*ST 19.31% V4 top-10 (235 stocks)
+
+universe.py 加 is_st_stock + sql_where_no_st (6 tests pass).
+Quick test V4 drop ST: Sharpe 0.50 -> 0.74 (+0.24).
+
+下次: composite + ST filter paper_sim_v6 verify Sharpe ≥ 2.0.
+
 ### 2026-05-22 V4∩BC + Phase 7 composite breakthrough
 
 V4 top-20 ∩ BC + Phase 7 + stage filter composite (per-trade Sharpe):

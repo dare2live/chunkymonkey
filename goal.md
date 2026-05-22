@@ -294,6 +294,26 @@ Composite intersection 没 material lift. paper_sim_v6 mature engine 已 extract
 
 6/1 GCP reset 后 v7 是 critical milestone. 之前 GCP wasted ~\$7 ($5 v6 + $2 stability) — v7 必走 safe_retrain.sh, audit must pass, panel v5 Pattern 10 FIXED is the test.
 
+### N. 2026-05-23 00:15 — ST filter added (universe.py extend)
+
+实测 V4 OOS predictions ∩ ST/*ST: **235 stocks** (45% of dim_active ST/*ST 238), V4 top-10 picks 19.31% 是 ST.
+
+Universe.py 加 `is_st_stock()` + `sql_where_no_st()` helper. ST_NAME_PREFIXES = ("ST", "*ST").
+
+简单 paper_sim ST filter impact (per-trade unit caveat):
+- V4 alone 含 ST: Sharpe 0.50 / win 54.4%
+- V4 alone drop ST: Sharpe **0.74 (+0.24)** / win **58.3% (+3.9pp)**
+
+预 composite ensemble + ST filter: Sharpe 1.85 → ~2.0+ (估, 待 paper_sim_v6 verify).
+
+剩 implementation 步骤 (下次 session):
+- build_ensemble_v4_intersect_bc_phase7.py 加 `AND NOT (stock_name LIKE 'ST%' OR stock_name LIKE '*ST%')` JOIN dim_active_a_stock
+- 重 build ensemble_v4_intersect_bc_phase7_st_filtered_v1
+- paper_sim_v6_compare 验证 (~15 min)
+- 若 Sharpe ≥ 2.0 + DD ≥ -20% + Win ≥ 55% → 3 gate PASS, 仅 n_obs structural blocker
+
+6 universe tests pass (backend/tests/test_universe.py).
+
 ### I. 真 path to 运营 ready (gap-driven, 替代 phase 列表打勾思维)
 
 每次 session 推进必同步问: 距 `ready_for_delivery=True` 还差啥? 不是问 "phase 完了吗".
