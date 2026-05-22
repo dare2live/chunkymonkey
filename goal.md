@@ -1,5 +1,130 @@
 # ChunkyMonkey Goal
 
+## 2026-05-22 综合规划 (9 天 local-only + 6/1 GCP reset 后 v7)
+
+> 本节 = session 末 final plan (用户 push "完整规划写到 goal.md"). 替换分散 ledger entries 作 forward roadmap. 顶部 priority, 下次 session 启动先读此.
+
+### A. 当前 state 实测 (2026-05-22 20:30 CST)
+
+| 项 | 状态 |
+|---|---|
+| **GCP 月预算** | $9.29 used / $13.71 projected (91.4% YELLOW). 剩 $5.71 / 15.18h spot. 距 6/1 reset 9 天 |
+| **VM** | TERMINATED (停, no burn) |
+| **V4 champion** (`lgbm_20260517_governance_v1_20d`, panel v3, OOS RankIC 0.025, Sharpe 0.65) | production, **honest** (panel v3 audit clean except survivorship) |
+| **v6 retrain** (`lgbm_phase5_stability_v6_20260522T071500Z`) | **BLOCK** (IS-OOS drop 60.8% + PBO 0.251 fail). 浪费 ~17h GCP / ~$5 |
+| **stability retrain** (`lgbm_phase5_stability_20260521T055800Z`) | **BLOCK** (IS-OOS drop 92.43%) |
+| **Ensemble V4+BC** (`ensemble_v4_bestchoice_v1`) | challenger, paper_sim Sharpe 1.83, registry `candidate_forward_monitor`. 真 forward Sharpe 估 1.5-1.7 |
+| **BestChoice** | Phase 1-6 done (import/feed/paper_sim/complementarity/audit/Production daily ensemble). **Phase 7 条件化退出 + Phase 8 stop-loss pending** |
+| **Project D 股票图谱** | Stage 1 API done. Stage 2 UI pending |
+| **Audit tool** | 9 checks (1-8 + 10, 9 qfq pending low-pri). safe_retrain.sh wrapper enforced |
+| **Leakage catalog** | `docs/leakage_pattern_catalog.md` 10 patterns, 6 covered |
+
+### B. 关键发现 / 反例 ledger
+
+| 反例 | Pattern | Status |
+|---|---|---|
+| Phase D: sector_*_tdx_l1_rel 用 `dim_stock_tdx_industry` flat NON-PIT | Pattern 9 PARTITION BY flat mapping | audit check 3 ✓ (panel v6 已 exclude) |
+| stability IS-OOS drop 92.43% | mixed (Pattern 9 + 10) | true train-log Phase 4 BLOCK |
+| v6 IS-OOS drop 60.8% (panel v4 - 30 cols 仍 leak) | Pattern 10 time-availability NULL gradient | audit check 6 ✓ (5 cols catch: inst_quality_max/inst_holder_cnt/mcap_decile/beta_60d/beta_60d_zscore) |
+| 生存者偏差 — panel 缺 1633/1928 delisted stocks | Pattern 8 survivorship | audit check 10 ✓ (V4 + v6 + BC 都缺) |
+| BC selection bias MILD (-16% W1→W3 drift) | selection bias (not strict leakage) | walk-forward audit defer (BC repo refactor 跨 repo) |
+
+### C. 9 天 local-only 工作 (5/22 → 5/31, 不启 GCP)
+
+> 硬规则: 剩 9 天 **不启** GCP retrain / Optuna search / 大计算. 6/1 后 budget reset 再做.
+
+#### Day 1-3: panel v5 build + audit-clean
+
+1. **D1**: 改 `backend/scripts/build_feature_panel_duck.py` line 418 + line 436 — universe 从 `dim_active_a_stock` 改 `dim_all_ever_listed` + PIT filter:
+   ```sql
+   SELECT stock_code FROM dim_all_ever_listed
+   WHERE first_seen_date <= '<signal_date>'
+     AND (delisted_date IS NULL OR delisted_date > '<signal_date>')
+   ```
+   解 Pattern 8 survivorship.
+2. **D2**: 改 `backend/services/labels/feature_join_v5.py` (copy from v4) — drop 5 time-availability cols at panel build level (vs --exclude-cols 运行时): inst_quality_max, inst_holder_cnt, mcap_decile, beta_60d, beta_60d_zscore. 解 Pattern 10.
+3. **D3**: build panel v5 + 跑 `audit_panel_leakage.py --panel mart_p0a_feature_label_panel_v5 --strict`. **要求 0 HIGH findings** 才 sign-off.
+
+Deliverable: `mart_p0a_feature_label_panel_v5` 表 + audit pass report.
+
+#### Day 4-7: BC Phase 7 条件化退出 POC (本地, 不 GCP)
+
+按 goal.md line 374 plan §5 Phase 7 spec:
+
+- Context buckets: `stock_code + formula_id + variant_id + stage + macd_context + market/industry_regime + volatility_bucket + kline_pattern`
+- MACD context: zero_axis_above_golden_cross / zero_axis_below_golden_cross / dead_cross / above_zero_trend_continuation / below_zero_rebound_probe
+- 动作空间: fixed_5/10/15/20/30, formula exit signal, 死叉退出, 阶段恶化退出, trailing stop, profit target + time stop, max holding + early exit, regime risk-off exit
+- 输出 `mart_bestchoice_context_exit_policy_v1`: key = `cutoff_date + stock_code + formula_id + variant_id + context_bucket`; value = `best_sell_rule + holding_days + stop_pct + target_pct + trailing_pct + expected_ret/dd + win_rate + n_train/oos + confidence + fallback_level + source_artifact + params_hash + walk_forward_id`
+- Fallback levels: `stock+formula+context → formula+context → stock+formula → formula+stage → global formula default`
+- 必 PIT-safe walk-forward + T+1 + 成本/滑点/涨跌停/停牌
+
+阈值 (per goal.md): 组合级 Sharpe ≥ 1.3 或 ann ≥ 50% 且 dd ≥ -25% → 才 Phase 8 GCP 扩大. 否则保留 evidence 不上 GCP.
+
+新 script (本地):
+- `backend/scripts/build_bestchoice_context_exit_policy.py`
+- `backend/scripts/run_paper_sim_bestchoice_phase7.py`
+
+#### Day 8: Project D Stage 2 UI (低优先, 可选)
+
+- `design/v3-drawer-stock.jsx` extend (tag chips + 关联弹窗)
+- consume Perception P5 + P7 mart + dim_stock_tdx_industry (current display only, 不入 model)
+
+#### Day 9: 6/1 reset 准备
+
+- safe_retrain.sh dry-run on panel v5
+- v7 retrain launch command 准备 (panel v5 + warm-start from stability best.json + Plan C config + audit 0 HIGH gate)
+
+### D. 6/1 后 GCP reset 第一 task: v7 retrain
+
+| Item | 配置 |
+|---|---|
+| Model | `lgbm_phase5_v7_<6/1ts>` |
+| Panel | `mart_p0a_feature_label_panel_v5` (clean per D1-D3) |
+| Exclude cols | 0 (panel v5 已 drop at build) |
+| Pre-flight | safe_retrain.sh: audit 0 HIGH + budget < 95% + 5-trial dry-run 健康 + confirm |
+| Optuna | 50 trials × n_est=100 × outer 1 × inner 32 (Plan C) |
+| Stability penalty | std 0.50 / neg_rate 0.20 (跟 v6 一致) |
+| Warm-start | stability_20260521T055800Z.best.json |
+| Expected wall time | ~10-15h spot (Plan C 15min trial × 50) |
+| Expected cost | ~$3.8-5.6 |
+| Success gate | Phase 4 true train-log: PBO ≤ 0.2 + DSR ≥ 0.95 + Conservative > 0 + IS-OOS drop ≤ 30% → promote |
+| Failure path | 不 promote, 留 challenger + 写 mart_strategy_result_registry block, 不再 retry 同 panel |
+
+### E. 后续 (post-v7)
+
+- v7 PASS → 上 champion, V4 降 backup, ensemble V4+v7+BC 试
+- v7 FAIL → diagnose root cause (会调用 audit_panel_leakage + ablation), 不再 blind retrain
+- BC Phase 7 POC PASS → Phase 8 stop-loss A+B sweep 上 GCP (~半 day + $1)
+- BC Phase 7 FAIL → 保留 evidence, BC 不上 condition exit, fixed_N 兜底
+
+### F. Hard rules (defense against re-occurrence)
+
+1. **No GCP retrain 不经 safe_retrain.sh** (audit + budget + dry-run + confirm)
+2. **Audit tool 必 0 HIGH** 才允许 retrain. 任何 HIGH 必先解
+3. **Manual exclude list 不可信** — 必 audit tool catch generate
+4. **Panel rebuild 走 safe_panel_build.sh** (HIGH → DROP panel + abort)
+5. **新发现 leakage** → 加 catalog + 加 check + 加 fixture (lockstep, 不允许 partial)
+6. **Budget hard-stop 95%** (gcp_policy.yaml — 待加 enforcement)
+
+### G. Pending milestones (track in registry)
+
+- `mart_strategy_result_registry`: ensemble_v4_bc_v1_20260522 (candidate_forward_monitor), v6 (candidate_hold_reject), stability (candidate_hold_reject)
+- Forward monitor: V4+BC ensemble cron via daily_update.sh 5c step (commit c9d9cead)
+- 6-12 weeks forward 数据后 review ensemble verdict (promote / hold / reject)
+
+### H. Honest tally — 今日 session 浪费 + 反例
+
+| 浪费 | 量 | 教训 |
+|---|---|---|
+| v6 retrain GCP 17h | ~$5 | panel v4 含 hidden time-availability + survivorship leak, 没事前 audit 就启 |
+| stability retrain GCP ~6h (前一日) | ~$2.25 | 同 panel v4 leakage 问题 |
+| 反应式 audit 工具迭代 | session time | 应一次 enumerate all 10 patterns + 写测试 fixture |
+| Manual audit 漏 cols | 2 (mcap_decile + beta_60d_zscore) | tool > manual, 必信工具 |
+
+**总: ~$7.25 GCP 浪费 + 反例 tool / catalog / safe_retrain wrapper 已沉淀 → 防 recurrence**.
+
+---
+
 ## 审计时间戳
 最后审计: 2026-05-21 15:06 Asia/Shanghai
 会话存档: `analysis/session_archive_20260520_2248.md`。用户要求存档并结束当前 goal；注意运营交付条件尚未满足, 因此不能把目标标记为完成。恢复时以该 archive + 本文件顶部为准。
