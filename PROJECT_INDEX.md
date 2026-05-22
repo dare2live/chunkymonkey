@@ -819,6 +819,22 @@ SELECT * FROM mart_data_source_watermark;
 
 每次 session 增量内容写这里, 新 session 启动时**从下往上读**最近改了啥.
 
+### 2026-05-22 BC complete plan — Phase 5 walk-forward lite audit + folder move start
+
+用户 'BC 按 goal.md 推进 + 还有移动文件夹'.
+
+Phase 5 audit (commit pending after PROJECT_INDEX sync):
+- 新 `backend/scripts/audit_bestchoice_walkforward_lite.py`: 不 re-run optuna (compute infeasible 1.87M trials)
+- 改 lite: 用 candidates' 已固定 params 在 stock K-line 跑, 按 buy_date 分 3 windows 测 metric 稳定性
+- W1 pre-2024-06 / W2 2024-06-2025-01 / W3 2025-01-now
+- 若 W1 >> W2/W3 = strong selection bias, W1 ≈ W2 ≈ W3 = params robust
+
+Folder migration starting:
+- `git mv` BC sibling repo (3.4 GB, 大部分 cache_*.duckdb) 不能整 copy
+- Plan: 仅 copy code files (*.py, scripts/, *.md, *.yaml, analysis/*.csv) ~10 MB 进 chunkymonkey/bestchoice/
+- skip cache_*.duckdb (gitignore exclude) — 可 regenerate
+- 保留 BC 原 sibling location 作 backup until verified
+
 ### 2026-05-22 BestChoice Layer 4 UI tab 挂载 (主项目 frontend, read-only)
 
 用户 push 'BC 挂载请开始吧, 文件夹移动延后'.
