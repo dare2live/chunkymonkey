@@ -819,6 +819,21 @@ SELECT * FROM mart_data_source_watermark;
 
 每次 session 增量内容写这里, 新 session 启动时**从下往上读**最近改了啥.
 
+### 2026-05-22 V4∩BC + Phase 7 composite breakthrough
+
+V4 top-20 ∩ BC + Phase 7 + stage filter composite (per-trade Sharpe):
+- top-K=20: Sharpe 3.17 / DD -11.5% / Win 77.8% / n=22
+- top-K=30: Sharpe 3.06 / DD -11.5% / n=32
+
+#6 perfect ladder gates:
+- Sharpe PASS (3.17 vs 2.0)
+- DD PASS (-11.5 vs -20)
+- Win PASS (77.8 vs 55)
+- n_obs FAIL (22 vs 60 structural)
+
+Caveat: per-trade Sharpe optimistic vs paper_sim_v6 monthly portfolio Sharpe.
+Build composite model_id ensemble_v4_intersect_bc_phase7_v1 for authoritative verify (bgys90hro running).
+
 ### 2026-05-22 Phase 4 gate --require-true-train-log strict mode
 
 goal.md Section I priority #4: hardening to prevent stability/v6 proxy 假 PASS 复发.
