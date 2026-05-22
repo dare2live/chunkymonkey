@@ -175,29 +175,7 @@ evidence: backend/scripts/build_feature_panel_duck.py:1824-1844 SQL inspection
 - 之前删的 broken phase3 first-cut script 已删 (commit 16dd46f0)
 - v5 study DB 远端已 rm
 
-**v3 Phase D2 backlog (用户 15:25 push back "类似行业历史这样总变化提升不大的指标 后续计划要做的")**:
-
-High risk (跟 industry 同模式 current mapping 反向应用历史):
-- 概念/主题板块 (Perception P3 mart_market_perception_theme_*): X2.1 daily snapshot 累积 (已启 3a8a8844, 当前 8 days), 长期 1+ 年才有完整 PIT 历史
-- ST/*ST 风险标记 (间接 via unable_at_entry): 加 fact_st_status_daily 表, daily PIT
-- 总股本/流通股本: fact_market_cap_decile_daily 已 daily PIT (3.5M rows, OK)
-- 指数成分 (HS300/中证500): dim_index_member_history 已 PIT (CLAUDE.md §4.1), verify panel JOIN 用对 as_of_date
-
-Medium risk PIT verify:
-- 基金/北上重仓股 (fact_capital_flow_pit_daily): JOIN 已 PIT-clean (Phase D 已 verify), source built_at 集中 ingest 但 trade_date 是真 PIT
-- analyst 目标价/EPS forecast: 若未来加 panel, 必 PIT
-- 复权因子 (qfq): 已 PIT (CLAUDE.md §4.1), verify panel kline 用 PIT factor 而非 latest
-
-Low real alpha (已 v6 drop):
-- fundamental (drop_fundamental OOS +0.0113)
-- lhb / executive / survey (各 +0.002-0.003)
-
-v3 Phase D2 plan (industry 解决后下一波):
-- #1 ST 状态 PIT (短期, 加 fact_st_status_daily, ~1 day work)
-- #2 verify mcap_decile + index_member_history panel JOIN as_of_date 严格 (audit, 半天)
-- #3 复权因子 PIT verify (audit panel kline build, ~半天)
-- #4 概念/主题 PIT 长期解 (X2.1 累积等 1+ 年)
-- #5 BestChoice candidate selection walk-forward OOS audit (跨 repo)
+**Phase D2 类 industry-history 指标 backlog — 用户 15:30 决策"这些都不做了"**: 不追加 ST status PIT / 概念 PIT / 指数成分 verify / 复权因子 verify 等工作. 当前已完成 fundamental + sector drop (v6 retrain), 不再扩大 PIT audit scope. 节省 budget + 聚焦 v6 结果验证.
 
 **BestChoice Phase 3 + Phase 4 complementarity (2026-05-22 11:48 CST)**:
 

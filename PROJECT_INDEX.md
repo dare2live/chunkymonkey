@@ -819,6 +819,44 @@ SELECT * FROM mart_data_source_watermark;
 
 每次 session 增量内容写这里, 新 session 启动时**从下往上读**最近改了啥.
 
+### 2026-05-22 v3 alpha 路线 + Phase A 特征 ablation + Phase D PIT 致命发现 + v6 retrain
+
+**True verdict BLOCK** (stability model `lgbm_phase5_stability_20260521T055800Z` true train-log Phase4 gate, commit 0b7c2352):
+- IS RankIC 0.1137, OOS RankIC 0.0086, relative_drop **92.43%** > 30% FAIL
+- 4 sub-check: PBO PASS / DSR PASS / Conservative PASS / IS-OOS FAIL → ALL False
+- paper_sim Sharpe 2.09 / ann +71.9% 误导 — ML signal OOS collapse, top-K subset 偶然好
+
+**Phase A feature ablation** (GCP 1×32-core, b868f15d / d704412f):
+- 14 groups ablation, baseline OOS 0.0593, train/test split simple (非 walk-forward)
+- Top drop-helps: fundamental (+0.0113 / +19%) / survey (+0.003) / lhb (+0.002) / executive (+0.0015)
+- Drop-hurts: sector (-0.0468 OOS 崩) / vol_mom (-0.008) / alpha158 (-0.008) / calendar (-0.005)
+- evidence: `analysis/feature_ablation_results_20260522.log`
+
+**Phase D PIT audit 致命发现** (96c2960d):
+- `backend/scripts/build_feature_panel_duck.py:1824-1844` sector-relative features 用 `dim_stock_tdx_industry` JOIN
+- `dim_stock_tdx_industry` 是 flat 5616 stocks × 1 row 当前 mapping, updated_at=2026-04-21 single time, **NON-PIT**
+- 计算: `ret_20d - AVG(ret_20d) OVER (PARTITION BY date, tdx_l1)` 用 today's tdx_l1 算所有历史 sector aggregate
+- = **retrospective industry bias leakage** (跟 CLAUDE.md §4.5 反例 mart_stock_industry_pit 99.978% fallback 同模式)
+- Phase A drop_sector OOS 崩 (0.0468) 是 leakage artifact 不是真 alpha
+- 估真 industry alpha ~0.002-0.008 OOS RankIC, 90%+ "sector signal" 是 leakage
+
+**用户决策** (15:20-15:30):
+- "不用行业历史" — drop sector features (6 cols: sector_ret_5d/20d/60d, sector_excess_20d/60d, industry_pit_confidence)
+- "Phase D2 backlog 都不做" — defer ST PIT / 概念 PIT / 指数成分 verify / 复权因子 verify
+- "保持代码文档清洁" — v5 stale 远端 study DB 已 rm
+
+**v5 retrain (deprecated, a18160a8 cleanup)**:
+- launched 14:50 with 24 cols dropped (Phase A noise only)
+- killed 15:20 因 sector leakage 未撤
+- 远端 study DB + best.json 已 rm
+
+**v6 retrain launched** (a18160a8):
+- model_id `lgbm_phase5_stability_v6_20260522T071500Z`, pid 1845 on VM
+- Plan C config: 1×32 thread + n_est=100, n_trials=50
+- exclude 30 cols (24 noise + 6 industry-related), 122→92 features
+- monitor bb1w8us87, ETA ~12h GCP + spot preempt cycles
+- 验证目标: 真 forward OOS RankIC + IS-OOS gap < 92.43%
+
 ### 2026-05-22 BestChoice Phase 1 + Phase 2 import (read-only challenger, plan §5)
 
 用户 push back "BestChoice 对主项目的补强也开始做" — 启 BestChoice 接主项目 plan §5 流程, 不独立运营.
