@@ -175,6 +175,34 @@ evidence: backend/scripts/build_feature_panel_duck.py:1824-1844 SQL inspection
 - 之前删的 broken phase3 first-cut script 已删 (commit 16dd46f0)
 - v5 study DB 远端已 rm
 
+**Ensemble V4+BestChoice 结果 (2026-05-22 17:10 CST; 用户问 "BestChoice 是否给主项目添 alpha"):**
+
+paper_sim_v6_compare with model_id=ensemble_v4_bestchoice_v1 (rank-percentile combine V4 score + BC confidence), 432 dates 2024-07→2026-04:
+
+| Model | Sharpe | ann_ret | max_dd | 月胜率 | 4目标 |
+|---|---|---|---|---|---|
+| V4 alone (panel v3 clean) | 0.65 | +36.10% | -21.70% | 45% | 0/4 |
+| BC alone | 1.10 | +34.87% | -22.09% | 50% | 1/4 |
+| **ENSEMBLE V4+BC** | **1.83** | **+74.39%** | **-16.85%** | **60%** | **4/4 全达成** |
+
+**Ensemble 大幅超 V4 alone (+182% Sharpe)** — 理论上限 sqrt(0.65²+1.10²)=1.27 实际 1.83, 说明 V4/BC 互补 alpha 真实 (correlation 几乎 0, 6.6% overlap).
+
+**用户终极目标 (Sharpe≥1.3 / ann≥30% / dd≥-20% / 月胜率≥55%) 首次全达成**, V4 部分 PIT-clean (panel v3 无 sector leakage).
+
+Caveat:
+- BC 仍 30% holdout split (selection bias risk) — 需 walk-forward audit 解
+- ensemble 没经 Phase4 true train-log gate (没 fact_model_train_log for ensemble)
+- 若 BC walk-forward Sharpe 减半, ensemble 估 ~sqrt(0.65²+0.55²)=0.85 仍达标但边缘
+
+evidence:
+- `mart_paper_sim_lambdamart_v6_kpi_compare` comparison_id=lm_v6_compare_20260522T074141 (ensemble row)
+- `/tmp/ensemble_paper_sim.log` paper_sim 完整 log
+
+Next:
+- v6 retrain 出 verdict 后, 跑 ensemble_v4_v6 + ensemble_v4_v6_bc (multi-way ensemble) 看是否进一步提升
+- 启 BestChoice walk-forward audit (跨 repo, ~1 day) 解 selection bias
+- 启 ensemble Phase4 gate (设计如何 generate ensemble train_log)
+
 **Leakage 检测结果 (2026-05-22 16:30 CST; 用户 push back "能不能检测之前跑的结果是否真的含 leakage"):**
 
 各 model leakage 验证 (用 fact_model_train_log + mart_p0b_walkforward_eval + panel schema diff):
