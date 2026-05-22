@@ -819,6 +819,27 @@ SELECT * FROM mart_data_source_watermark;
 
 每次 session 增量内容写这里, 新 session 启动时**从下往上读**最近改了啥.
 
+### 2026-05-22 BC sibling repo 迁徙到主项目 chunkymonkey/bestchoice/ (Layer 1 code merge)
+
+用户 push '还有移动文件夹'.
+
+Migration scope:
+- rsync /Users/dp/Documents/M/stock/bestchoice/ → chunkymonkey/bestchoice/
+- excluded *.duckdb (3+ GB cache + research_cache), __pycache__, .git/, cache_*
+- result: 64 MB (vs original 3.4 GB) — code + small analysis CSV/MD only
+
+Files copied (~100): compute.py / execution_model.py / formula_engine.py / main.py / settings.py / scripts/ / design/ / docs/ / analysis/*.csv / analysis/*.md
+
+Path 更新:
+- backend/scripts/audit_bestchoice_walkforward_lite.py: BESTCHOICE_ROOT = REPO_ROOT / 'bestchoice'
+- backend/scripts/build_bestchoice_phase2_daily_feed.py: same
+
+.gitignore 加 bestchoice/__pycache__/ + bestchoice/cache_*.duckdb + bestchoice/analysis/*.duckdb + bestchoice/.git/
+
+Verified: formula_engine import works from new location.
+
+原 sibling /Users/dp/Documents/M/stock/bestchoice/ 保留 backup, 不删, 待 audit + paper_sim 全 work 后 cleanup.
+
 ### 2026-05-22 BC complete plan — Phase 5 walk-forward lite audit + folder move start
 
 用户 'BC 按 goal.md 推进 + 还有移动文件夹'.

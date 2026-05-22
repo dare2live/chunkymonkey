@@ -1,0 +1,135 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<title>BestChoice · MACD 选股台</title>
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
+<link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+
+<div id="app"></div>
+
+<script>
+/* Default tweak values, persisted by the host */
+window.__TWEAK_DEFAULTS = /*EDITMODE-BEGIN*/{
+  "accent":          "#2d6cdf",
+  "colorDirection":  "red-up",
+  "density":         "cozy",
+  "showSparkline":   true
+}/*EDITMODE-END*/;
+</script>
+
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+
+<script type="text/babel" src="mock-data.jsx"></script>
+<script type="text/babel" src="tweaks-panel.jsx"></script>
+<script type="text/babel" src="ui-primitives.jsx"></script>
+<script type="text/babel" src="detail-pane.jsx"></script>
+<script type="text/babel" src="list-panel.jsx"></script>
+
+<script type="text/babel">
+const { useState, useEffect, useMemo } = React;
+const { TopBar, StrategyBar, KpiStrip, ListPanel, DetailPane } = window;
+
+function App() {
+  const [t, setTweak] = useTweaks(window.__TWEAK_DEFAULTS);
+
+  // Apply CSS variables / data attributes for tweaks
+  useEffect(() => {
+    document.documentElement.style.setProperty('--accent', t.accent);
+    const rgb = hexToRgb(t.accent);
+    if (rgb) {
+      document.documentElement.style.setProperty('--accent-soft', `rgba(${rgb.r},${rgb.g},${rgb.b},0.08)`);
+      document.documentElement.style.setProperty('--accent-border', `rgba(${rgb.r},${rgb.g},${rgb.b},0.22)`);
+    }
+    document.documentElement.setAttribute('data-color-direction', t.colorDirection);
+    document.documentElement.setAttribute('data-density', t.density);
+  }, [t.accent, t.colorDirection, t.density]);
+
+  const [profileId, setProfileId] = useState('tdx_12_26_9');
+  const [selectedCode, setSelectedCode] = useState('600519');
+
+  const status = { ready: true, message: '已就绪', data_date: '2026-05-15' };
+
+  const selected = useMemo(
+    () => window.MOCK.STOCKS.find(s => s.code === selectedCode),
+    [selectedCode]
+  );
+
+  return (
+    <div id="app-grid">
+      <TopBar status={status} onRefresh={() => {}} />
+      <StrategyBar profileId={profileId} onProfileChange={setProfileId} />
+      <KpiStrip summary={window.MOCK.SUMMARY} />
+
+      <div className="main-grid">
+        <ListPanel
+          stocks={window.MOCK.STOCKS}
+          selectedCode={selectedCode}
+          onSelect={setSelectedCode}
+          density={t.density}
+        />
+
+        <div className="panel right-panel">
+          <div className="detail-header">
+            <span className="detail-eyebrow">股票详情</span>
+            {selected && <span className="detail-eyebrow-code mono">{selected.code} · {selected.name}</span>}
+          </div>
+          <DetailPane row={selected} />
+        </div>
+      </div>
+
+      <TweaksPanel title="Tweaks">
+        <TweakSection label="主题色">
+          <TweakColor
+            label="Accent"
+            value={t.accent}
+            onChange={v => setTweak('accent', v)}
+            options={['#2d6cdf', '#1a8f6a', '#b3541e', '#6e3fc4', '#1f1d1a']}
+          />
+        </TweakSection>
+        <TweakSection label="涨跌色">
+          <TweakRadio
+            label="方向"
+            value={t.colorDirection}
+            onChange={v => setTweak('colorDirection', v)}
+            options={[
+              { value: 'red-up',   label: '红涨绿跌' },
+              { value: 'green-up', label: '绿涨红跌' },
+            ]}
+          />
+        </TweakSection>
+        <TweakSection label="表格密度">
+          <TweakRadio
+            label="行高"
+            value={t.density}
+            onChange={v => setTweak('density', v)}
+            options={[
+              { value: 'compact', label: '紧凑' },
+              { value: 'cozy',    label: '舒适' },
+              { value: 'comfortable', label: '宽松' },
+            ]}
+          />
+        </TweakSection>
+      </TweaksPanel>
+    </div>
+  );
+}
+
+function hexToRgb(hex) {
+  const m = /^#?([a-f0-9]{2})([a-f0-9]{2})([a-f0-9]{2})$/i.exec(hex);
+  if (!m) return null;
+  return { r: parseInt(m[1],16), g: parseInt(m[2],16), b: parseInt(m[3],16) };
+}
+
+ReactDOM.createRoot(document.getElementById('app')).render(<App />);
+</script>
+
+</body>
+</html>

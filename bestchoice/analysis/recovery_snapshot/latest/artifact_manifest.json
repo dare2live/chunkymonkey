@@ -1,0 +1,84 @@
+{
+  "files": [
+    {
+      "exists": true,
+      "mtime": "2026-05-20T18:02:25.660588+00:00",
+      "path": "goal.md",
+      "size": 373787
+    },
+    {
+      "exists": true,
+      "mtime": "2026-05-20T11:24:18.917759+00:00",
+      "path": "agent.md",
+      "size": 6190
+    },
+    {
+      "exists": true,
+      "mtime": "2026-05-20T18:02:47.460824+00:00",
+      "path": "SESSION_HANDOFF.md",
+      "size": 1170
+    },
+    {
+      "exists": true,
+      "mtime": "2026-05-20T08:39:34.944919+00:00",
+      "path": "analysis/top_level_architecture_plan.md",
+      "size": 10734
+    },
+    {
+      "exists": true,
+      "mtime": "2026-05-20T03:10:36.253420+00:00",
+      "path": "analysis/complexity_codegraph_audit.md",
+      "size": 13537
+    },
+    {
+      "exists": true,
+      "mtime": "2026-05-20T17:48:30.835181+00:00",
+      "path": "analysis/formula_local_optuna_batch_adoption.csv",
+      "size": 21990283
+    },
+    {
+      "exists": true,
+      "mtime": "2026-05-20T17:48:31.321407+00:00",
+      "path": "analysis/formula_local_optuna_batch_merge_plan.csv",
+      "size": 4709950
+    },
+    {
+      "exists": true,
+      "mtime": "2026-05-20T17:48:31.327944+00:00",
+      "path": "analysis/formula_local_optuna_batch_stock_best_replacements.csv",
+      "size": 354674
+    },
+    {
+      "exists": true,
+      "mtime": "2026-05-20T17:50:24.590167+00:00",
+      "path": "analysis/research_cache.duckdb",
+      "size": 973352960
+    },
+    {
+      "exists": true,
+      "mtime": "2026-05-20T17:50:33.890601+00:00",
+      "path": "analysis/incremental_eval.duckdb",
+      "size": 486813696
+    },
+    {
+      "exists": true,
+      "mtime": "2026-05-20T17:50:34.488370+00:00",
+      "path": "analysis/drift_trigger.duckdb",
+      "size": 590884864
+    },
+    {
+      "exists": true,
+      "mtime": "2026-05-19T16:36:56.696191+00:00",
+      "path": "analysis/stock_formula_best.csv",
+      "size": 5515719
+    },
+    {
+      "exists": true,
+      "mtime": "2026-05-20T08:39:20.186017+00:00",
+      "path": "analysis/strategy_research_audit.md",
+      "size": 583462
+    }
+  ],
+  "generated_at": "2026-05-20T18:02:47.362483+00:00",
+  "note": "Latest-only recovery snapshot. Large artifacts are referenced by manifest, not copied."
+}

@@ -1,0 +1,6 @@
+strategy_id,formula_id,display_name,cache_ready,stock_count,stocks_with_signal,avg_signal_count,avg_win_rate,avg_ret,avg_dd,avg_calmar,avg_untradable_rate,execution_model,params
+formula_gs_pullback_confirm,gs_pullback_confirm,GS回调确认,True,5201,4413,8.516882,0.735136,0.090532,-0.081485,1.897859,0.011929,vwap_tradable_v1,{}
+formula_gs_raw_buy,gs_raw_buy,GS原始买点,True,5201,5131,38.920678,0.524347,0.046227,-0.085226,0.631140,0.016828,vwap_tradable_v1,{}
+formula_ma_base_breakout,ma_base_breakout,均线筑底突破,True,5201,1496,1.360963,0.756516,0.087702,-0.075364,2.149693,0.036564,vwap_tradable_v1,{}
+formula_activity_breakout,activity_breakout,活跃度大牛突破,True,5201,5131,50.711752,0.524363,0.041024,-0.090106,0.498507,0.022534,vwap_tradable_v1,{}
+formula_volume_base_breakout,volume_base_breakout,巨量蓄势启动,True,5201,5131,13.057689,0.725092,0.103139,-0.061227,1.459459,0.017708,vwap_tradable_v1,{}

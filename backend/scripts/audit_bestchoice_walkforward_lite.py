@@ -39,7 +39,7 @@ import numpy as np
 import pandas as pd
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
-BESTCHOICE_ROOT = REPO_ROOT.parent / "bestchoice"
+BESTCHOICE_ROOT = REPO_ROOT / "bestchoice"  # 2026-05-22 moved sibling → main project subdir
 sys.path.insert(0, str(REPO_ROOT / "backend"))
 sys.path.insert(0, str(BESTCHOICE_ROOT))
 

@@ -1,0 +1,160 @@
+{
+  "generated_at": "2026-05-20T18:02:43.905448+00:00",
+  "operational_ready": true,
+  "checks": [
+    {
+      "name": "final_gates_passed",
+      "passed": true,
+      "detail": ""
+    },
+    {
+      "name": "full_market_covered",
+      "passed": true,
+      "detail": "covered=5201 market_total=5201"
+    },
+    {
+      "name": "aggregate_audit_passed",
+      "passed": true,
+      "detail": "candidates=1146 replacements=1146"
+    },
+    {
+      "name": "state_stores_clean",
+      "passed": true,
+      "detail": "consistency=True incremental=45908 drift=45908"
+    },
+    {
+      "name": "production_table_not_auto_overwritten",
+      "passed": true,
+      "detail": "stock_formula_best_rows=21302 source_rows={'adoption': 26005, 'merge_plan': 26005, 'production': 21302}"
+    },
+    {
+      "name": "dry_run_replacements_separate",
+      "passed": true,
+      "detail": "replacement_count=1146 candidate_count=1146"
+    },
+    {
+      "name": "no_active_worker_or_market_lock",
+      "passed": true,
+      "detail": "active_workers=0 market_locks=0"
+    }
+  ],
+  "gates": [
+    {
+      "name": "py_compile",
+      "command": [
+        "/opt/homebrew/opt/python@3.13/bin/python3.13",
+        "-m",
+        "py_compile",
+        "main.py",
+        "compute.py",
+        "execution_model.py",
+        "formula_engine.py",
+        "scripts/compute_formula_caches.py",
+        "scripts/drift_trigger_build.py",
+        "scripts/execution_model_smoke.py",
+        "scripts/formula_local_optuna.py",
+        "scripts/formula_local_optuna_adoption.py",
+        "scripts/formula_local_optuna_aggregate_audit.py",
+        "scripts/formula_local_optuna_batch.py",
+        "scripts/formula_local_optuna_merge_plan.py",
+        "scripts/formula_parameter_search.py",
+        "scripts/formula_sell_rule_audit.py",
+        "scripts/incremental_eval_build.py",
+        "scripts/macd_golden_cross_backtest.py",
+        "scripts/macd_optuna_backtest.py",
+        "scripts/operational_delivery_audit.py",
+        "scripts/research_cache_build.py",
+        "scripts/strategy_audit.py",
+        "scripts/strategy_effectiveness_audit.py",
+        "scripts/strategy_rebuild_audit.py",
+        "scripts/unified_data_smoke.py",
+        "scripts/workflow_checkpoint.py"
+      ],
+      "returncode": 0,
+      "passed": true,
+      "stdout": "",
+      "stderr": ""
+    },
+    {
+      "name": "execution_model_smoke",
+      "command": [
+        "/opt/homebrew/opt/python@3.13/bin/python3.13",
+        "scripts/execution_model_smoke.py"
+      ],
+      "returncode": 0,
+      "passed": true,
+      "stdout": "execution_model_smoke: ok",
+      "stderr": ""
+    },
+    {
+      "name": "unified_data_smoke",
+      "command": [
+        "/opt/homebrew/opt/python@3.13/bin/python3.13",
+        "scripts/unified_data_smoke.py"
+      ],
+      "returncode": 0,
+      "passed": true,
+      "stdout": "unified_data_smoke: ok",
+      "stderr": ""
+    },
+    {
+      "name": "strategy_rebuild_audit",
+      "command": [
+        "/opt/homebrew/opt/python@3.13/bin/python3.13",
+        "scripts/strategy_rebuild_audit.py"
+      ],
+      "returncode": 0,
+      "passed": true,
+      "stdout": "strategy_rebuild_audit: ready_formula_caches=5",
+      "stderr": ""
+    },
+    {
+      "name": "formula_local_optuna_aggregate_audit",
+      "command": [
+        "/opt/homebrew/opt/python@3.13/bin/python3.13",
+        "scripts/formula_local_optuna_aggregate_audit.py"
+      ],
+      "returncode": 0,
+      "passed": true,
+      "stdout": "formula_local_optuna_aggregate_audit: passed=True rows=26005 candidates=1146 replacements=1146",
+      "stderr": ""
+    },
+    {
+      "name": "git_diff_check",
+      "command": [
+        "git",
+        "diff",
+        "--check"
+      ],
+      "returncode": 0,
+      "passed": true,
+      "stdout": "",
+      "stderr": ""
+    },
+    {
+      "name": "workflow_checkpoint_brief",
+      "command": [
+        "/opt/homebrew/opt/python@3.13/bin/python3.13",
+        "scripts/workflow_checkpoint.py",
+        "--brief"
+      ],
+      "returncode": 0,
+      "passed": true,
+      "stdout": "Workflow checkpoint\ncwd: /Users/dp/Documents/M/stock/bestchoice\nphase: full_market_local_optuna_dry_run\nprogress: batch 260 complete, covered 5201 stocks, next_offset 5201\nartifacts: rows 26005, candidates 1146, replacements 1146, missing_without_reason 0\nconsistency.ready: True\nformula_caches: 5/5 ready\nmarket_db_lock_holders: 0\nactive_workers: 0\nsnapshot: analysis/recovery_snapshot/latest\nnext_action: operational_ready (full coverage, aggregate audit, and final operational gates passed)\nnext command(s):\n  cat analysis/operational_delivery_readiness.md\n\nTell Codex after a crash:\n请从中断处继续。先运行 `python scripts/workflow_checkpoint.py --brief`，检查 consistency.ready 和 next_action，然后按照 next_action/命令继续；遵守 goal.md 和 agent.md，不写入生产 stock_formula_best.csv。",
+      "stderr": ""
+    }
+  ],
+  "summary": {
+    "covered_stocks": 5201,
+    "market_total": 5201,
+    "adoption_rows": 26005,
+    "candidate_count": 1146,
+    "replacement_count": 1146,
+    "research_cache_rows": 45908,
+    "incremental_eval_rows": 45908,
+    "drift_trigger_rows": 45908,
+    "data_latest_date": "2026-05-19",
+    "production_stock_formula_best_rows": 21302
+  },
+  "production_merge_control": "Ready for controlled production merge review. This audit does not write analysis/stock_formula_best.csv; human approval is still required before replacement."
+}

@@ -44,3 +44,9 @@ data/*.duckdb.tmp/
 data/portfolio_backtest_nav.csv
 data/audit/
 data/reports/
+
+# BestChoice (moved from sibling 2026-05-22) — cache artifacts regenerable, exclude
+bestchoice/__pycache__/
+bestchoice/cache_*.duckdb
+bestchoice/analysis/*.duckdb
+bestchoice/.git/

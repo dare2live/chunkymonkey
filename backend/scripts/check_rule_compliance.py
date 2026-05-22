@@ -44,6 +44,7 @@ EXEMPT_PATH_PREFIXES = (
     "frontend/",
     "docs/",
     "design/",
+    "bestchoice/",            # 2026-05-22 BC migrated from sibling repo, own dev discipline
 )
 EXEMPT_PATH_SUFFIXES = (
     "/conftest.py",
