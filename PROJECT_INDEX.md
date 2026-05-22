@@ -819,6 +819,14 @@ SELECT * FROM mart_data_source_watermark;
 
 每次 session 增量内容写这里, 新 session 启动时**从下往上读**最近改了啥.
 
+### 2026-05-22 Phase 4 gate --require-true-train-log strict mode
+
+goal.md Section I priority #4: hardening to prevent stability/v6 proxy 假 PASS 复发.
+- run_phase4_gate_on_msaf.py 加 --require-true-train-log flag
+- 默认 OFF 保 back-compat
+- ON 时 train_log 缺 OR rejected -> abort exit 4
+- 用于 production promotion gate (v7+).
+
 ### 2026-05-22 per-stage stratification ablation 强信号
 
 V4 OOS predictions × fact_stock_technical_stage 619K joined:

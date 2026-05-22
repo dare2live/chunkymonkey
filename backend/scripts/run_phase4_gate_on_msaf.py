@@ -432,6 +432,9 @@ def main() -> int:
     parser.add_argument("--model-id", default="lgbm_20260517_governance_v1_20d")
     parser.add_argument("--challenger-id", default="msaf_v1_lambdamart_only")
     parser.add_argument("--output-json", default=str(REPO_ROOT / "data" / "reports" / "phase4_gate_result.json"))
+    parser.add_argument("--require-true-train-log", action="store_true",
+                        help="STRICT mode: abort if fact_model_train_log unavailable for model_id "
+                             "(disables warn_only_proxy fallback). Use for production promotion gates.")
     parser.add_argument("--lambdamart-weight", type=float, default=None)
     parser.add_argument("--sniper-weight", type=float, default=None)
     parser.add_argument("--institution-weight", type=float, default=None)
@@ -560,6 +563,15 @@ def main() -> int:
     # 即 DSR 不做 selection bias 校正 — sr_expected_max=0, dsr_z = sr_observed × sqrt(n-1)
     # IS-OOS proxy mode: false only when fact_model_train_log supplied true RankIC evidence.
     is_oos_proxy_mode = bool(is_oos_metrics["is_oos_proxy_mode"])
+    # rule-compliance: ok evidence=Phase 4 strict mode prevents proxy fallback (operational ready gate)
+    if args.require_true_train_log and is_oos_proxy_mode:
+        log.error(
+            "ABORT: --require-true-train-log set but model_id=%s has no fact_model_train_log row "
+            "(or rejected). Cannot use proxy split-half for production promotion gate. "
+            "First write train_log evidence via retrain_lambdamart_v6.py.",
+            args.model_id,
+        )
+        return 4
     result = run_all_gates(
         challenger_id=args.challenger_id,
         returns_matrix=returns_matrix,
