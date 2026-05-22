@@ -98,6 +98,23 @@ evidence: `analysis/feature_ablation_results_20260522.log`
 - 验证目标: v5 OOS RankIC > 0.0086 (旧 stability), true train-log IS-OOS gap < 92.43% (旧 92.43%)
 - 若 v5 OOS 显著 up + gap shrink → confirm Phase A finding 解决部分 overfit; 否则 features 不是唯一根因, 转 Phase B portfolio-objective 或 Phase D PIT 深审
 
+**v3 Phase D PIT audit 关键发现 (2026-05-22 15:00 CST)**:
+
+(1) `fact_capital_flow_pit_daily` build PIT-clean — `LEFT JOIN __lhb l ON l.trade_date <= d.trade_date` 正确 30/90d rolling window. built_at=2026-05-14 单时戳是 ingest 时, 不是 PIT marker (trade_date 才是).
+
+(2) **mart_stock_industry_pit 仅 ~13 天 observed_snapshot 覆盖 (2026-04-25→05-07), 其他几乎全是 current_label_fallback with effective_from=1900-01-01** — 测试期 2025-12→2026-04-14 100% fallback. CLAUDE.md §4.5 反例 99.978% fallback 同病.
+- 严格说 industry constant-per-stock 不算 time-machine leakage
+- 但 sector_ret_5d/20d/60d 等 sector aggregate features 用此 stale industry 算, 若 historical industry 真实跟现在不同, sector aggregates 系统偏差 (retrospective bias)
+- Phase A ablation drop_sector 让 OOS RankIC 崩 (0.0593→0.0125) → sector 是核心 signal, 但 sector signal 计算可能 含 retrospective bias
+- v3 Phase A 已 drop fundamental/survey/lhb/executive, 但 sector 保留. 若 sector 实际 leakage, v5 retrain OOS 仍可能 weak.
+
+**v3 Phase D 后续 work** (待 v5 verdict 出后):
+- 深查 sector_ret_* build: 用什么 industry table? 是否每 historical signal_date 用当时 industry 还是 current label?
+- 若 sector_ret 用 current industry 算历史 sector aggregate → 关键 leakage 源, 需 strict PIT 重 build
+- mart_stock_industry_pit X2.1 daily snapshot 累积 (handoff Task #28 已 commit 3a8a8844) 是长期解, 但当前 only 13 days, 没法历史 OOS 验证
+
+Phase D evidence: `mart_stock_industry_pit` 表 audit + capital_flow JOIN logic 已读 backend/scripts/backfill_capital_flow_pit.py
+
 **BestChoice Phase 3 + Phase 4 complementarity (2026-05-22 11:48 CST)**:
 
 Phase 3 paper_sim (adapter 30b4511c + paper_sim_lambdamart_v6_compare 跑 432 dates 2024-07→2026-04):
