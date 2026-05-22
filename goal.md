@@ -1,8 +1,27 @@
 # ChunkyMonkey Goal
 
+## 2026-05-22 22:35 CST — 真目标: 项目运营 ready, 不是 phase 列表打勾
+
+> 用户 22:35 push back: "你又没把 goal.md 全部执行当成最终目标, 阶段性完成就当完成了. 你应该边推进边结合实际修订 goal.md 直到项目具备运营条件".
+>
+> **核心修正**: BC Phase 7 sharpe 1.67 / 阶段 D1-D8 done 都**只是 milestone, 不等于运营 ready**.
+> 真目标 = `audit_delivery_readiness.py` `ready_for_delivery=True` (现 92.83% / NOT READY).
+>
+> 关键 gap to operational (per goal.md original line 132):
+> - **Sharpe** 0.81 (V4 baseline) → target ≥ 2.0 (gap: **+147%**)
+> - **max_dd** -24.28% → target ≥ -20% (gap: 4pp)
+> - **n_obs** 22 monthly → target ≥ 60 (gap: 3x more out-of-sample windows)
+> - **#6 perfect ladder** PBO/DSR/Conservative 已 PASS, 仅 Sharpe + dd + n_obs FAIL
+>
+> 今日 progress 贡献 vs gap:
+> - ensemble V4+BC Sharpe 1.83 (forward 估 1.5-1.7) — **接近 Sharpe ≥ 1.3 中位目标 但远未到 2.0 perfect ladder**
+> - Phase 7 policy 进一步 +0.47 sharpe (单 trade)
+> - Panel v5 Pattern 10 fix 待 v7 retrain 验证真 alpha lift
+> - n_obs 22 不变 (需更长 forward 累积 OR 多窗 walk-forward)
+
 ## 2026-05-22 综合规划 (9 天 local-only + 6/1 GCP reset 后 v7)
 
-> 本节 = session 末 final plan (用户 push "完整规划写到 goal.md"). 替换分散 ledger entries 作 forward roadmap. 顶部 priority, 下次 session 启动先读此.
+> 阶段性 done 不等于 final done. 此 plan 是 milestone, 不是 target.
 
 ### A. 当前 state 实测 (2026-05-22 20:30 CST)
 
@@ -111,6 +130,40 @@ Deliverable: `mart_p0a_feature_label_panel_v5` 表 + audit pass report.
 - `mart_strategy_result_registry`: ensemble_v4_bc_v1_20260522 (candidate_forward_monitor), v6 (candidate_hold_reject), stability (candidate_hold_reject)
 - Forward monitor: V4+BC ensemble cron via daily_update.sh 5c step (commit c9d9cead)
 - 6-12 weeks forward 数据后 review ensemble verdict (promote / hold / reject)
+
+### I. 真 path to 运营 ready (gap-driven, 替代 phase 列表打勾思维)
+
+每次 session 推进必同步问: 距 `ready_for_delivery=True` 还差啥? 不是问 "phase 完了吗".
+
+#### #6 perfect ladder 3 子门 (现 NOT READY):
+| 子门 | 当前 | Target | Gap | 改善路径 |
+|---|---|---|---|---|
+| Sharpe | V4 0.81 / ensemble V4+BC paper_sim 1.83 (forward 估 1.5-1.7) | ≥ 2.0 | +0.2-0.5 | (a) Multi-model ensemble (V4 + v7 + BC + Phase 7 policy combined) (b) Better entry selection (c) BC walk-forward audit cross-repo solve selection bias |
+| max_dd | V4 -21.7%, ensemble -16.85% | ≥ -20% | ensemble 已达, V4 alone 未达 | Phase 7 policy 提升 stop-loss 短 hold 改善 dd. Multi-bucket risk control. |
+| n_obs (monthly non-overlap) | 22 | ≥ 60 | 3x more | (a) 延长 paper_sim 历史 to pre-2023 OR (b) 用 forward 累积 + 现 22 windows (~10 月) + 接下来 wait 3-4 月 forward monitor |
+
+#### #1-#5 + #7-#10 (10 criteria 已 92% mean):
+- #2 (90%) — institution source production_decision = hold_reject. 待 institutional signal source review.
+- #3 (87%) — 部分 leakage audit 未 cover (audit checks 7+8+9 partial). 今天升级 6 checks done, 4 patterns 仍 partial.
+- #6 (80%) — perfect ladder above.
+- #7 (92%), #8 (94%), #9 (94%), #10 (84%) — UI/UX, modular, lineage, incremental. 渐进改善.
+
+#### 真 operation-driven 推进 priorities
+
+1. **v7 retrain on panel v5** (验 Pattern 10 fix 是否真 lift OOS, 解 v6 BLOCK loop) — 6/1 reset 后 GCP, 1 retrain ~$4
+2. **Multi-model ensemble** (V4 + v7 + BC + Phase 7 policy combined picks) — sharpe 真 push 到 2.0
+3. **Pattern 8 survivorship** (panel v3 rebuild with PIT universe) — 解最后一个 audit HIGH
+4. **Phase 4 gate true train-log mandatory** (already partial wired post commit 0b7c2352) — 防再发 stability / v6 BLOCK 路径
+5. **forward monitor 累积** (BC tab + ensemble registry, 6-12 周 实测验证 paper_sim claim)
+6. **mart_strategy_result_registry promotion automation** (verdict→ champion 自动 wiring, 现 manual)
+7. **6 项交付 #2/#3** (institution source review / audit tool checks 7+8+9 complete)
+
+#### 不属于运营 ready 必要 path (defer)
+
+- MSAF Phase 1-4 长期 (17-25 weeks, foundational refactor, 不直接达 #6)
+- Perception X2.x sourcing (1+ 年累积, 长期 alpha 增强 不阻 ready)
+- BC Phase 8 stop-loss (POC NEGATIVE, 关闭路径)
+- Stratification POC (per-stage / per-mcap) — 用户 22:35 说不跑
 
 ### H. Honest tally — 今日 session 浪费 + 反例
 
