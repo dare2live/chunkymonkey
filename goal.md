@@ -261,6 +261,39 @@ n_obs 路径:
 
 下次 session 优先做这个 — Sharpe / DD / Win 已 PASS, 只缺 n_obs.
 
+### M. 2026-05-23 00:00 — paper_sim_v6 authoritative verdict 修正 (per-trade 3.17 是 illusion)
+
+composite V4 ∩ BC + Phase 7 paper_sim_v6 (cmp lm_v6_compare_20260522T152025):
+- Sharpe 1.85 / ann 68.64% / dd -20.63% / win **50%**
+- vs per-trade 3.17 (simple paper_sim) = 单位差异 artifact
+
+**所有 ensemble 变种 paper_sim_v6 portfolio Sharpe 收敛到 ~1.84-1.85**:
+- V4+BC rank-combine: 1.83
+- V4+BC stage filtered: 1.84
+- V4 ∩ BC + Phase 7 composite: 1.85
+- V4 alone baseline: 0.65
+
+Composite intersection 没 material lift. paper_sim_v6 mature engine 已 extract 大部分 ensemble alpha.
+
+**#6 perfect ladder verdict (HONEST)**:
+| Gate | Threshold | Best (composite) | Status |
+|---|---|---|---|
+| Sharpe | ≥ 2.0 | 1.85 | FAIL -0.15 |
+| DD | ≥ -20% | -20.63% | FAIL -0.63pp |
+| Win | ≥ 55% | 50-60% | partial |
+| n_obs | ≥ 60 | 22 | FAIL structural |
+
+**项目仍 NOT READY**. 4 gate 全没满足.
+
+下一关键 paths to close gaps:
+1. v7 retrain panel v5 (Pattern 10 FIXED) → 唯一可能 push V4 OOS RankIC + 上 Sharpe
+2. n_obs gap: V4 inference 2021-2023 truly OOS (+36 monthly obs)
+3. ST/*ST filter add to universe.py
+4. Pattern 8 survivorship rebuild panel v3
+5. BC cross-repo walk-forward audit
+
+6/1 GCP reset 后 v7 是 critical milestone. 之前 GCP wasted ~\$7 ($5 v6 + $2 stability) — v7 必走 safe_retrain.sh, audit must pass, panel v5 Pattern 10 FIXED is the test.
+
 ### I. 真 path to 运营 ready (gap-driven, 替代 phase 列表打勾思维)
 
 每次 session 推进必同步问: 距 `ready_for_delivery=True` 还差啥? 不是问 "phase 完了吗".
