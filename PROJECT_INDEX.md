@@ -819,6 +819,18 @@ SELECT * FROM mart_data_source_watermark;
 
 每次 session 增量内容写这里, 新 session 启动时**从下往上读**最近改了啥.
 
+### 2026-05-22 D3 panel v5 built + audit confirms Pattern 10 FIXED
+
+按 goal.md plan Day 3:
+- backend/scripts/build_p0a_feature_panel_v5.py (cp from v4) — CLI build runner
+- 实际 build: 2,928,020 rows × 130 cols / 171s (feature_version=p0a_v5)
+- Audit check 6 (NULL gradient time-availability): **5 HIGH → 0** [PASS] **Pattern 10 FIXED**
+- Audit check 10 (survivorship): 1 HIGH (inherited from v3 source, v5 build uses v3 as base)
+- Audit check 3 (PARTITION BY): 4 (code pattern, v5 不物化 sector_*_tdx_l1_rel)
+- v5 仍 BLOCK if --strict (15 HIGH total) 但 Pattern 10 specifically resolved
+
+下 Pattern 8 (survivorship) 需 panel v3 rebuild with PANEL_UNIVERSE_MODE=pit (额外 work, defer to D4 or post-6/1).
+
 ### 2026-05-22 D2 feature_join_v5.py — drop 5 time-availability leak cols (Pattern 10)
 
 按 goal.md 9-day plan Day 2:

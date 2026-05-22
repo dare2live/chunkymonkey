@@ -101,13 +101,12 @@ def _add_column_duplicate_safe(conn, table: str, col: str, dtype: str) -> None:
 
 
 _FEATURE_JOIN_SQL_V5 = """
--- v5 schema (138 cols) = v4 (143) minus 5 time-availability leak cols (Pattern 10):
---   mcap_decile, beta_60d, beta_60d_zscore (dropped from JOIN list)
---   inst_quality_max, inst_holder_cnt (excluded from v3.* via EXCLUDE)
--- 用 BY NAME 按列名 match; v3.* EXCLUDE 排除 v3 base 中的 2 inst_* cols
+-- v5 schema = v3 base (102 cols) + V5_NEW_COLS (28) = 130 cols.
+-- v4 leaky cols (Pattern 10 NULL-gradient): mcap_decile / beta_60d / beta_60d_zscore
+--   dropped from v4 JOIN list; the other 2 cols were never in v3 base anyway.
 INSERT INTO mart_p0a_feature_label_panel_v5 BY NAME
 SELECT
-    v3.* EXCLUDE (inst_quality_max, inst_holder_cnt),
+    v3.*,
     -- capital_flow 12 cols (inline from fact_capital_flow_pit_daily PIT)
     cf.lhb_count_30d, cf.lhb_net_buy_pct_30d, cf.lhb_inst_buy_30d,
     cf.lhb_count_90d, cf.lhb_inst_buy_90d,

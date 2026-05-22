@@ -22,10 +22,10 @@ def test_v5_sql_excludes_leaky_cols():
     assert "mcd.mcap_decile" not in sql, "v5 SQL should drop mcap_decile from JOIN"
     assert "ib.beta_60d" not in sql, "v5 SQL should drop beta_60d from JOIN"
     assert "ib.beta_60d_zscore" not in sql, "v5 SQL should drop beta_60d_zscore from JOIN"
-    # SQL should EXCLUDE 2 v3-base leaky cols
-    assert "EXCLUDE (inst_quality_max, inst_holder_cnt)" in sql, (
-        "v5 SQL should EXCLUDE inst_quality_max/inst_holder_cnt from v3.*"
-    )
+    # inst_quality_max + inst_holder_cnt 不在 v3 base, 无需 EXCLUDE (实测 panel v3 102 cols 不含)
+    # Just ensure leaky cols not SELECTed at all
+    assert "inst_quality_max" not in sql.split("FROM")[0], "v5 SELECT should not include inst_quality_max"
+    assert "inst_holder_cnt" not in sql.split("FROM")[0], "v5 SELECT should not include inst_holder_cnt"
     # SQL should target mart_p0a_feature_label_panel_v5
     assert "INSERT INTO mart_p0a_feature_label_panel_v5" in sql
     # v4 JOIN tables not actively joined (comment refs may remain for documentation)
