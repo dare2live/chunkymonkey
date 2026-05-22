@@ -819,6 +819,23 @@ SELECT * FROM mart_data_source_watermark;
 
 每次 session 增量内容写这里, 新 session 启动时**从下往上读**最近改了啥.
 
+### 2026-05-22 D4 BC Phase 7 POC: walk-forward context-aware exit policy
+
+按 goal.md plan §5 Phase 7 + Day 4-7:
+- backend/scripts/build_bestchoice_context_exit_policy.py 新 script
+- Context buckets MACD: 5 类
+- Walk-forward TRAIN 2023-01 to 2024-12 / TEST 2025-01 to 2026-04
+- 修 v1 (in-sample sharpe 28.97 leak detected) -> v2 (walk-forward sharpe 2.87)
+- Top 100 candidates -> 42 policy rows mart_bestchoice_context_exit_policy_v1
+- Best context above_zero_trend_continuation sharpe 3.98 hold 17d
+
+Phase 7 gate PASS (sharpe>=1.3 ann>=50% dd>=-25%) caveats:
+- sharpe 2.87 yellow zone BC selection bias residual
+- entry selection in-sample (top 100 hindsight)
+- per-context sample <10 trades small
+
+未启 Phase 8 GCP (need BC walk-forward audit 跨 repo + larger entry pool).
+
 ### 2026-05-22 D3 panel v5 built + audit confirms Pattern 10 FIXED
 
 按 goal.md plan Day 3:
