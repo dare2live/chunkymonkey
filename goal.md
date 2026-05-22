@@ -56,6 +56,27 @@ Perception 推进 (2026-05-22 09:00 CST; 跟主项目 verdict 并行不阻塞): 
   - DROP: multi-horizon label / 减持 windowing / LHB / capital flow 多滞后 / factor decay / Perception regime 接 panel (历史无显著证据 OR 破物理边界)
   - 月预算: projected 91.4% 剩 $1.30, Phase A 4 combo 全跑 ~$2 超 buffer; 推荐 1 combo (0.7/0.3) ~$0.50
 
+**True train-log Phase4 verdict 确认 BLOCK (2026-05-22 11:12 CST)**: Plan C retrain 用 --warm-start-checkpoint 实际跑成 final fit mode (skip Optuna search, 直接用 best.json 跑 final fit), 但好处是 **远端写 fact_model_train_log true IS/OOS evidence**. 拉本地 import + 重跑 Phase4:
+- IS RankIC = 0.1137, OOS RankIC = **0.0086** (near noise)
+- IS IR 16.98, OOS IR 0.59
+- **relative_drop = 1 - OOS/IS = 92.43%** (Phase4 threshold <= 30% PASS, > 30% FAIL)
+- 4 sub-check: PBO PASS (0.102) / DSR PASS (1.0000) / Conservative PASS (+42.71%) / **IS-OOS FAIL (92.43%)** → ALL False → verdict **BLOCK**
+- 跟旧 model lgbm_phase5_gcp_20260520T010718 一模一样 (旧 relative_drop 81.36% FAIL, stability penalty 没解决根因)
+
+**含义**:
+- 之前 warn_only_proxy 是 proxy-split-half artifact, 误导 (用 OOS split 不是真 IS-OOS)
+- Stability penalty 帮 PBO + paper_sim ranking, **没解决 IS-OOS overfit 根因**
+- paper_sim Sharpe 2.09 / ann 71.9% 是 ML signal 在某 universe subset 偶然好, **OOS RankIC 0.0086 几乎=0 = ML 整体 ranking signal OOS 失效**
+- **此 model NOT promotable**, hold_reject 不动 champion
+- 旧 model lgbm_phase5_gcp + 新 stability model 都 FAIL 一同 IS-OOS gate — **alpha enhancement v2 plan 真正要解决的是 OOS RankIC near-zero 根因 (feature engineering / label engineering / objective change)**, 不是再 sweep stability penalty 参数
+
+**下一步 alpha 路线**:
+- v2 plan Phase A (stability penalty sweep) — drop, 已证 stability penalty 没解 IS-OOS
+- v2 plan Phase B (portfolio-objective replace NDCG) — 仍 worth try (直接 optimize Sharpe / max_dd 跟 portfolio metric, 不依赖 OOS ranking strength)
+- v2 plan Phase C (regime-conditional) — worth try (regime mismatch evidence)
+- **新优先**: feature ablation (drop 一组 features 看 OOS RankIC 是否上升 — 找 noise features 引入 overfit), 或 label engineering (改 fwd_5d/10d 看 horizon mismatch)
+- BestChoice Phase 3 paper_sim — 仍 worth run (互补 alpha 探索), 但 BestChoice 也要 walk-forward OOS verify, 不要直接 trust
+
 Spot preempt 根因 + 修复 (2026-05-22 11:10 CST; 用户 push back "为啥总这样, 请查找根因并修复" + "是并行跑批数量太多么" + "分小批量多次呢?"):
 - **根因**: spot preempt cycle (30-60 min) 小于 per-trial wall time (50-86 min, default 8 outer × 4 inner). 8 trial 同时 in-flight, preempt 来一砍全 8 个变 RUNNING→FAIL, 0 进 COMPLETE.
 - **用户 hypothesis "并行 8 太多"对一半**: 并行 8 是事实, 但分小批量 wall time per trial 不变, 不解.
