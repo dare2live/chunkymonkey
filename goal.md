@@ -175,6 +175,39 @@ evidence: backend/scripts/build_feature_panel_duck.py:1824-1844 SQL inspection
 - 之前删的 broken phase3 first-cut script 已删 (commit 16dd46f0)
 - v5 study DB 远端已 rm
 
+**Leakage 检测结果 (2026-05-22 16:30 CST; 用户 push back "能不能检测之前跑的结果是否真的含 leakage"):**
+
+各 model leakage 验证 (用 fact_model_train_log + mart_p0b_walkforward_eval + panel schema diff):
+
+| Model | Panel | sector_*? | 含 leakage 验证 |
+|---|---|---|---|
+| **V4 champion** `lgbm_20260517_governance_v1_20d` (production) | **v3** (102 cols) | **NO** | per-window IR 0.478 / 9/22 windows 负值 = honest alpha pattern, **NOT leakage** |
+| `lgbm_phase5_gcp_20260520T010718` (5/20) | v4 | YES | CONFIRMED leakage: train_log drop 81.35% BLOCK |
+| `lgbm_phase5_stability_20260521T055800Z` (今晨) | v4 | YES | CONFIRMED leakage: train_log drop 92.43% BLOCK |
+| `lgbm_phase5_session_20260518T160747` (5/18) | v4? | likely YES | not single-verified, same panel 推断含 |
+| `bestchoice_formula_challenger_v1` (BestChoice import) | N/A formula | NO | selection bias 不同问题, 待 walk-forward audit |
+
+**关键发现**:
+- V4 champion 用 **panel v3** (没 sector_*_tdx_l1_rel cols), 不含今天 Phase D 发现的致命 leakage
+- V4 仍含 ~14 noise cols (fundamental + survey + lhb basic, Phase A 证 noise) 但是 noise 不是 leakage
+- V4 paper_sim Sharpe 0.65 / ann 36% **真实可信不夸大** (per-window IR 0.478 honest pattern)
+- 实盘 forward 估 Sharpe 0.4-0.6 / ann 20-30%, **跟用户目标 (Sharpe≥1.3 / ann≥30%) 仍差距**
+
+**实盘建议**:
+- V4 champion 不需 kill — honest 但 weak alpha
+- 心理 expectation 调整: paper_sim 数字不全可信, Sharpe 0.65 = real ceiling reference
+- v6 verdict 出后看是否能 超过 V4 (panel v4 drop sector vs panel v3) — 若超过且 IS-OOS gap < 30% 是真 improvement
+
+**BestChoice 当前 integration 状态 (用户 16:30 push back "参数给到主项目用于训练和测试了么"):**
+
+| 集成层 | 状态 |
+|---|---|
+| 测试 (paper_sim Phase 3) | **DONE** (commit 30b4511c + 51381c09): 跑 paper_sim Sharpe 1.10 / ann 34.87% / dd -22.09% / 胜率 50% |
+| 测试 (Phase 4 complementarity) | **DONE**: 6.6% overlap with v4 (101 vs 97 picks, 0 same-day same-stock) — 互补 alpha source confirmed |
+| 训练 (作为 ML feature 重训) | **NOT DONE** — BestChoice candidates 是 signal level, 没作 panel feature input 给 ML retrain |
+| Ensemble (champion + BestChoice combined picks) | **NOT DONE** — plan §5 Phase 5+ 待启 |
+| Walk-forward OOS audit (验证 selection bias) | **NOT DONE** — 跨 repo 工作, deferred |
+
 **Phase D2 类 industry-history 指标 backlog — 用户 15:30 决策"这些都不做了"**: 不追加 ST status PIT / 概念 PIT / 指数成分 verify / 复权因子 verify 等工作. 当前已完成 fundamental + sector drop (v6 retrain), 不再扩大 PIT audit scope. 节省 budget + 聚焦 v6 结果验证.
 
 **BestChoice Phase 3 + Phase 4 complementarity (2026-05-22 11:48 CST)**:
