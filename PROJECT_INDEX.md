@@ -819,6 +819,28 @@ SELECT * FROM mart_data_source_watermark;
 
 每次 session 增量内容写这里, 新 session 启动时**从下往上读**最近改了啥.
 
+### 2026-05-22 proactive pre-edit check tool — scripts/pre_edit_check.sh
+
+用户 push back '能否利用 codegraph + complexity 在改代码之前避免问题呢' — 从 reactive scan (改完才查) 升级 proactive check (改之前 surface 风险).
+
+新 wrapper `scripts/pre_edit_check.sh`:
+- mode=file: 查目标文件 LOC + 调用方 (codegraph query) + 已有 HIGH hotspot (complexity scan filter to that file)
+- mode=topic (--topic flag): 查相关 codepaths (codegraph context)
+- output advisory (exit 0 不 block)
+
+Usage:
+  bash scripts/pre_edit_check.sh backend/scripts/retrain_lambdamart_v6.py
+  → 输出 LOC 1262 (god-module warn) + callers (test 引用) + complexity hotspot (none)
+
+  bash scripts/pre_edit_check.sh "panel sector features" --topic
+  → 输出 codegraph context entry points 跟 topic 相关
+
+集成思路 (后续可加):
+- safe_commit.sh 改前可手动 invoke
+- Claude Code PreToolUse hook (改 settings.json) auto-invoke before Edit/Write
+
+跟现有 §7.4 双扫 (改完 codegraph sync + complexity scan) 互补: pre-check 防 god-module + 漏 caller; post-check verify 没引入新 HIGH.
+
 ### 2026-05-22 leakage tool 强制 enforcement (A + C) + ensemble breakthrough
 
 **A: safe_commit.sh 加 Step 3.5 leakage audit gate**:
