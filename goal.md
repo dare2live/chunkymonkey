@@ -32,7 +32,26 @@ GCP/本地纠偏 (2026-05-21 13:48): 主动停止 `lgbm_phase5_stability_2026052
 
 GCP/本地推进 (2026-05-22 09:00 CST): final fit (--use-checkpoint-best, pid 3627) 已跑完 EXIT 写 3,396,073 predictions 到 mart_p0b_lambdamart_v6_predictions + fact_model_train_log. **Chain Stage 2 export FAIL** 因 pgrep 误判 (pid 1463 Optuna stability retrain 同 MODEL_ID 还在跑, refuse partial export). 按用户原则 "可接续 / 数据不丢失 / 结果可保存" 救场: manual `ALLOW_RUNNING_EXPORT=1` 跑 export → predictions parquet 43MB 落 GCS (`gs://chunkymonkey-data-0517/phase5/stability_retrain/lgbm_phase5_stability_20260521T055800Z/predictions/`) → pull `data/phase5_exports/lgbm_phase5_stability_20260521T055800Z/` → VM force stop (TERMINATED) → 跑 post_retrain_pipeline (Step 2 import 0 → 3,396,073 rows OK). **3 个 fix commit**: adecff18 chain Stage 2 加 fallback retry + FATAL 强制 vm_stop + session_snapshot model_id 改 fallback chain (stability_retrain/current.pointer > latest optuna/*.best.json mtime > legacy phase5_chain/model_id.txt, 实测 SESSION_HANDOFF 显示正确 stability model); bd739138 pipeline.sh paper_sim/record_decision arg 对齐 underlying script (--challenger-model-id → --lambdamart-model-id, --gate-json → --phase4-json). Cost final $9.29 used / projected $13.71 (91.4% YELLOW) / 月底 ~$1.30 buffer. 当前 paper_sim 跑中 (baseline day 200/432), verdict 预计 ~09:22 CST.
 
-Perception 推进 (2026-05-22 09:00 CST; 跟主项目 verdict 并行不阻塞): P4/P5/P6/P7 mart 同步扩到 14 trading days (2026-04-27 → 2026-05-19), 用现有 PIT observed_snapshot effective_from=2026-04-25 全区间, **不动 engine code 只 backfill 区间**, 不依赖 X2.1 概念 PIT 长期累积. P4 UnderReaction 300→700 rows (+2.3x) score [-0.51, 0.67]; P5 LeaderFollower 390→910 rows / 13 themes / 65 rows/day, diffusion [0.29, 0.90] mean 0.58 sanity 0 violations (leader_ret_5d ≥ follower_ret_5d 0 outlier + score in [0,1] 0 oob), 04-27 top 装备制造 300890 +24.9% vs followers -12.6%, 05-19 top 信息产业 688507 +58.6%; P6 Style 6→14 rows style [0.02, 0.14] crowding [0.42, 0.46]; P7 StockContext 300→702 rows context [-0.14, 0.44] completeness [0.86, 1.00] (上行因 P5/P6 都扩). dev_plan §9 滚动记录加一行. Next: 等 verdict 出后看 Phase 2 路径 α/β/γ 决定, Perception 这边 P5 case study + P6 lifecycle-aware crowding 仍可并行.
+Perception 推进 (2026-05-22 09:00 CST; 跟主项目 verdict 并行不阻塞): P4/P5/P6/P7 mart 同步扩到 14 trading days (2026-04-27 → 2026-05-19), 用现有 PIT observed_snapshot effective_from=2026-04-25 全区间, **不动 engine code 只 backfill 区间**, 不依赖 X2.1 概念 PIT 长期累积. P4 UnderReaction 300→700 rows (+2.3x) score [-0.51, 0.67]; P5 LeaderFollower 390→910 rows / 13 themes / 65 rows/day, diffusion [0.29, 0.90] mean 0.58 sanity 0 violations (leader_ret_5d ≥ follower_ret_5d 0 outlier + score in [0,1] 0 oob), 04-27 top 装备制造 300890 +24.9% vs followers -12.6%, 05-19 top 信息产业 688507 +58.6%; P6 Style 6→14 rows style [0.02, 0.14] crowding [0.42, 0.46]; P7 StockContext 300→702 rows context [-0.14, 0.44] completeness [0.86, 1.00] (上行因 P5/P6 都扩). dev_plan §9 滚动记录加一行. 加 `perception/scripts/backfill_all.sh` 一次顺序跑 7 engine backfill (P1→...→P7 dependency-ordered, syntax pass, 暂未跑 actual test 因 DuckDB lock).
+
+**Perception 暂停 (2026-05-22 09:35 CST; 用户明确 "市场感知项目先暂停吧, 在 goal.md 里以及相关文档里记录好当前进度")**: 暂停所有 Perception 并行工作 (P5 case study / P6 lifecycle-aware crowding / smoke test 等), 等待用户明确 resume. 当前 checkpoint 进度:
+- 7 engine mart 当前 row/date 范围 (实测今早 9:30 前):
+  - P1 emotion: 373 rows / 373 dates (2024-11-01 → 2026-05-19) — 全量已就绪
+  - P3 theme: 168 rows / 14 dates (2026-04-27 → 2026-05-19)
+  - P4 under_reaction: 700 rows / 14 dates
+  - P5 leader_follower: 910 rows / 14 dates / 13 themes / 65 rows/day, 0 sanity violation
+  - P6 style: 14 rows / 14 dates
+  - P7 stock_context: 702 rows / 14 dates / completeness [0.86, 1.00]
+- 已 commit: chunkymonkey/goal.md ledger (02d2ed8a) + perception 物理隔离不 commit (sibling repo 不是 git repo)
+- 已加 doc: perception/docs/development_plan.md §9 滚动记录 2 行 (P4-P7 扩区间 + backfill_all.sh)
+- **resume 时下一步候选** (按 development_plan §8 优先级):
+  - P3 主题边界扩到概念 — 卡 X2.1 tdx_industry daily snapshot 累积 (需 1+ 年)
+  - P4 hsgt/dzjy PIT 化 — handoff #25 标 [HOLD blocked] 复杂度上调
+  - P5 5 主题人工 case study — 不需新数据, doc-only, 20-30 min
+  - P5 ChainDiffusion 完整版 — 卡 X2.2 (F10 业务暴露度未结构化解析)
+  - P6 ThemeLifecycle 拥挤解释细化 (主升 vs 高潮风险) — engine 小改 30-60 min
+  - P7 StockContext drawer UI — frontend, 跟主项目 UI 改有 commit 冲突风险
+- **物理边界硬约束保持不变**: Perception sibling repo, 只写 `mart_market_perception_*`, 不接入主项目 LambdaMART panel / ranker / paper_sim / champion. UI 在 perception/src/perception/router.py + design/v3-page-market-perception.jsx. 主项目 backend/main.py:172 import perception.router 不动这条线.
 
 系统架构优化分批计划 (2026-05-21 22:30; 用户 push back "是不是把不影响 gcp 的都修复" → 反过来评估, 分批做不一次性): 三原则 - (a) 第一性原理: 主项目真瓶颈是 Phase4 verdict=block (alpha 问题, 不是 LOC); (b) 奥卡姆: god-modules 现状能 run, 拆是预防性投资, 不解决眼下交付; (c) 真金白银: 时间应花 alpha > god-module 重构. 反例: Codex 拆 1 个 workbench god-module 已引入 2 regression, 同时拆 5 个 N regression 概率高.
 
