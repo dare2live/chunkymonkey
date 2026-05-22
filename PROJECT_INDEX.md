@@ -819,6 +819,26 @@ SELECT * FROM mart_data_source_watermark;
 
 每次 session 增量内容写这里, 新 session 启动时**从下往上读**最近改了啥.
 
+### 2026-05-22 BC Phase 5+6 — walk-forward lite audit done + Phase 6 daily ensemble script
+
+Phase 5 lite audit (commit d9637224):
+- 1142/1146 candidates per-window metrics
+- W1 pre-2024-06: win 55.64% / W2: 66.02% / W3: 67.60%
+- Verdict: MILD bias (drop -16.4%, 不是 STRONG >30%)
+- 真 forward Sharpe 估 1.5-1.7 (paper_sim 1.83 含 ~10-15% bias), 仍 > 用户目标 1.3
+- evidence: data/reports/bestchoice_walkforward_lite/audit_20260522T104228.csv
+
+Phase 6 daily ensemble script (pending commit):
+- 新 backend/scripts/run_daily_ensemble_v4_bc.py
+- 新 mart_daily_ensemble_picks_v4_bc_v1 表
+- Per signal_date rank-percentile combine V4 + BC, output top-K
+- Smoke test on 2026-04-13 (V4 OOS end): 32 rows / top-5 V4-only (BC sparse that day)
+
+Phase 6 production integration roadmap:
+- daily_update.sh extend step (待)
+- mart_strategy_result_registry challenger row (待)
+- 6-12 周 forward monitor (Phase 5 verdict caveat)
+
 ### 2026-05-22 BC sibling repo 迁徙到主项目 chunkymonkey/bestchoice/ (Layer 1 code merge)
 
 用户 push '还有移动文件夹'.
