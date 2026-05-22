@@ -819,6 +819,22 @@ SELECT * FROM mart_data_source_watermark;
 
 每次 session 增量内容写这里, 新 session 启动时**从下往上读**最近改了啥.
 
+### 2026-05-22 BC Phase 8 stop-loss Optuna NEGATIVE — Phase 7 是 optimum
+
+backend/scripts/run_optuna_bestchoice_phase8_stoploss.py:
+- ATR stop K x ATR20 (K in [1.5, 3.0])
+- avg_dd stop M (M in [0.05, 0.20])
+- Optuna 50 trials TPESampler seed 42
+
+Best: K=2.10 M=0.08 sharpe 1.58
+vs Phase 7 no-stop sharpe 1.67 = -0.09 WORSE
+
+Phase 7 已 short-hold 12d 自带 stop 效果, 加硬 stop 切赢家也切输家.
+Win rate 64.7 -> 59.4% (-5.3pp) 没补偿 return.
+
+BC complete plan terminal optimum: Phase 7 sharpe 1.67 (no stop).
+未来 alpha improve 需 v7 retrain panel v5 OR cross-repo BC walk-forward audit (defer to 6/1 reset OR longer term).
+
 ### 2026-05-22 D6+D7+D8 Phase 7 paper_sim + Project D Stage 2 UI
 
 D6 Phase 7 paper_sim test:
