@@ -20,7 +20,7 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(REPO_ROOT / "backend"))
 from services.duck_adapter import connect  # noqa: E402
 
-ENSEMBLE_MODEL_ID = "ensemble_v4_intersect_bc_phase7_v1"
+ENSEMBLE_MODEL_ID = "ensemble_v4_intersect_bc_phase7_st_filtered_v1"
 V4_MODEL_ID = "lgbm_20260517_governance_v1_20d"
 BC_RUN_ID = "bestchoice_formula_optuna_20260521_v1"
 # rule-compliance: ok evidence=per-stage ablation V4 positive IC stages
@@ -59,15 +59,22 @@ def main() -> int:
                   FROM mart_daily_formula_candidate_bestchoice_v1
                  WHERE run_id = '{BC_RUN_ID}'
             ),
+            st_filter AS (
+                -- 2026-05-23 ST filter: drop currently-ST/*ST stocks
+                SELECT stock_code FROM dim_active_a_stock
+                 WHERE stock_name NOT LIKE 'ST%' AND stock_name NOT LIKE '*ST%'
+            ),
             joined AS (
                 SELECT v4.signal_date, v4.stock_code, v4.v4_score,
                        stage.stage,
                        CASE WHEN bc.stock_code IS NOT NULL THEN 1 ELSE 0 END AS has_bc,
+                       CASE WHEN st_filter.stock_code IS NOT NULL THEN 1 ELSE 0 END AS not_st,
                        v4.fwd_cost_after_5d, v4.fwd_cost_after_10d, v4.fwd_cost_after_20d,
                        v4.signal_date AS trade_date_dt
                   FROM v4
                   LEFT JOIN stage USING (stock_code, signal_date)
                   LEFT JOIN bc USING (stock_code, signal_date)
+                  LEFT JOIN st_filter USING (stock_code)
             ),
             ranked AS (
                 SELECT *,
@@ -76,8 +83,8 @@ def main() -> int:
                   FROM joined
             )
             SELECT stock_code, signal_date,
-                   -- Composite: v4_pct only if (BC signal AND stage in positive); else NULL
-                   CASE WHEN has_bc = 1 AND stage IN ({stages_csv})
+                   -- Composite: v4_pct only if (BC signal AND stage in positive AND NOT ST/*ST); else NULL
+                   CASE WHEN has_bc = 1 AND stage IN ({stages_csv}) AND not_st = 1
                         THEN v4_pct
                         ELSE NULL END AS score,
                    fwd_cost_after_5d, fwd_cost_after_10d, fwd_cost_after_20d,

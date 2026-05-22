@@ -172,7 +172,7 @@ Implementation: `backend/scripts/build_ensemble_v4_bc_stage_filtered.py` 新 mod
 
 **Sharpe gap to #6 ready: 0.16** (1.84 → 2.0). 路径:
 1. v7 retrain panel v5 PIT-clean (待 GCP, 6/1 reset)
-2. BC walk-forward audit cross-repo (defer)
+2. BC walk-forward audit defer (BC 在 chunkymonkey/bestchoice/ 同 repo, refactor formula_local_optuna.py)
 3. Phase 7 conditional exit ON TOP of stage-filtered ensemble (复合层试)
 
 dd (-16.85%) 已 PASS / win (60%) 已 PASS. **仅 Sharpe + n_obs 还差**.
@@ -290,7 +290,7 @@ Composite intersection 没 material lift. paper_sim_v6 mature engine 已 extract
 2. n_obs gap: V4 inference 2021-2023 truly OOS (+36 monthly obs)
 3. ST/*ST filter add to universe.py
 4. Pattern 8 survivorship rebuild panel v3
-5. BC cross-repo walk-forward audit
+5. BC walk-forward audit (chunkymonkey/bestchoice/ 内, 现同 repo)
 
 6/1 GCP reset 后 v7 是 critical milestone. 之前 GCP wasted ~\$7 ($5 v6 + $2 stability) — v7 必走 safe_retrain.sh, audit must pass, panel v5 Pattern 10 FIXED is the test.
 
@@ -321,7 +321,7 @@ Universe.py 加 `is_st_stock()` + `sql_where_no_st()` helper. ST_NAME_PREFIXES =
 #### #6 perfect ladder 3 子门 (现 NOT READY):
 | 子门 | 当前 | Target | Gap | 改善路径 |
 |---|---|---|---|---|
-| Sharpe | V4 0.81 / ensemble V4+BC paper_sim 1.83 (forward 估 1.5-1.7) | ≥ 2.0 | +0.2-0.5 | (a) Multi-model ensemble (V4 + v7 + BC + Phase 7 policy combined) (b) Better entry selection (c) BC walk-forward audit cross-repo solve selection bias |
+| Sharpe | V4 0.81 / ensemble V4+BC paper_sim 1.83 (forward 估 1.5-1.7) | ≥ 2.0 | +0.2-0.5 | (a) Multi-model ensemble (V4 + v7 + BC + Phase 7 policy combined) (b) Better entry selection (c) BC walk-forward audit (chunkymonkey/bestchoice/ 同 repo) solve selection bias |
 | max_dd | V4 -21.7%, ensemble -16.85% | ≥ -20% | ensemble 已达, V4 alone 未达 | Phase 7 policy 提升 stop-loss 短 hold 改善 dd. Multi-bucket risk control. |
 | n_obs (monthly non-overlap) | 22 | ≥ 60 | 3x more | (a) 延长 paper_sim 历史 to pre-2023 OR (b) 用 forward 累积 + 现 22 windows (~10 月) + 接下来 wait 3-4 月 forward monitor |
 

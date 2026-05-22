@@ -819,6 +819,22 @@ SELECT * FROM mart_data_source_watermark;
 
 每次 session 增量内容写这里, 新 session 启动时**从下往上读**最近改了啥.
 
+### 2026-05-23 doc fix: BC 已迁徙 chunkymonkey/bestchoice/ + ST composite running
+
+用户 push back: 'BC 跨 repo? 不是已经迁徙到主项目?'.
+
+BC migration done commit 4a86169d (2026-05-22).
+chunkymonkey/bestchoice/ subdir = 64MB code, cache 3.4GB excluded gitignore.
+
+goal.md cross-repo terminology cleanup: 6 occurrences updated to '(chunkymonkey/bestchoice/ 同 repo)'.
+
+BC complete plan terminal:
+- Phase 1-7 DONE
+- Phase 8 stop-loss NEGATIVE closed
+- Optimum: Phase 7 sharpe 1.67 single / V4+BC ensemble 1.83-1.85 paper_sim_v6
+
+build_ensemble_v4_intersect_bc_phase7.py 加 ST filter, paper_sim_v6 running bay7hhkgr.
+
 ### 2026-05-23 universe ST filter + composite portfolio Sharpe verdict
 
 Composite paper_sim_v6 verdict: Sharpe 1.85 (vs per-trade 3.17 illusion).
