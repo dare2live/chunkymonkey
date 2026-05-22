@@ -354,6 +354,123 @@ def audit_check_6_null_year_gradient(conn, panel_table: str) -> list[dict]:
     return findings
 
 
+def audit_check_7_forward_index_grep(panel_build_sql_path: Path) -> list[dict]:
+    """Check 7: AST/grep for forward-index patterns in feature engineering files.
+
+    Pattern 3 in catalog: `bars[sig_i+1:]`, `pd.shift(-N)`, `.iloc[i+N]`, etc.
+    These directly access future data → 假 PnL.
+    """
+    findings = []
+    # Scan panel build + related feature service files
+    targets = [panel_build_sql_path]
+    services_features = Path("backend/services/features")
+    if services_features.exists():
+        targets.extend(services_features.rglob("*.py"))
+
+    forward_patterns = [
+        re.compile(r"\bshift\s*\(\s*-\d+", re.IGNORECASE),  # shift(-N)
+        re.compile(r"\biloc\[\s*\w+\s*\+\s*\d+", re.IGNORECASE),  # iloc[i+N]
+        re.compile(r"bars\[\s*\w+\s*\+\s*\d+\s*:", re.IGNORECASE),  # bars[sig_i+1:]
+        re.compile(r"close_array\[\s*i\s*\+", re.IGNORECASE),
+    ]
+    for tgt in targets:
+        try:
+            text = Path(tgt).read_text()
+        except Exception:
+            continue
+        for pat in forward_patterns:
+            for m in pat.finditer(text):
+                # Get line number
+                line_no = text[:m.start()].count("\n") + 1
+                # Check if it's in a comment (basic skip)
+                line_start = text.rfind("\n", 0, m.start()) + 1
+                line_text = text[line_start:text.find("\n", m.start())]
+                if line_text.strip().startswith("#"):
+                    continue
+                findings.append({
+                    "check": "7_forward_index", "file": str(tgt),
+                    "line": line_no, "match": m.group(0), "risk": "HIGH",
+                    "reason": f"forward-index pattern detected: {m.group(0)} (Pattern 3 in catalog)",
+                })
+    return findings
+
+
+def audit_check_8_universe_pit(panel_build_sql_path: Path) -> list[dict]:
+    """Check 8: Universe selection PIT - grep for retrospective universe filters.
+
+    Pattern 6 in catalog: `WHERE listed_today=1` / `WHERE active=1` / `dim_active_a_stock`
+    without `as_of_date <= signal_date`. Causes survivorship bias.
+    """
+    findings = []
+    if not panel_build_sql_path.exists():
+        return findings
+    text = panel_build_sql_path.read_text()
+    retro_patterns = [
+        re.compile(r"WHERE\s+listed_today\s*=\s*1", re.IGNORECASE),
+        re.compile(r"WHERE\s+active\s*=\s*1\b", re.IGNORECASE),
+        re.compile(r"FROM\s+dim_active_a_stock\b", re.IGNORECASE),
+        re.compile(r"FROM\s+dim_all_ever_listed\b", re.IGNORECASE),
+    ]
+    pit_predicates = ["as_of_date", "effective_from", "effective_to", "<= signal_date"]
+    lines = text.split("\n")
+    for i, line in enumerate(lines):
+        for pat in retro_patterns:
+            if pat.search(line):
+                # Check ±5 lines context for PIT predicates
+                context = "\n".join(lines[max(0, i - 3):min(len(lines), i + 8)])
+                has_pit = any(p.lower() in context.lower() for p in pit_predicates)
+                if not has_pit:
+                    findings.append({
+                        "check": "8_universe_pit", "line": i + 1, "risk": "HIGH",
+                        "reason": "universe filter without PIT predicate (survivorship bias risk)",
+                        "context": line.strip()[:200],
+                    })
+    return findings
+
+
+def audit_check_10_survivorship_bias(conn) -> list[dict]:
+    """Check 10: Verify panel includes delisted stocks until delist_date.
+
+    Pattern 8 in catalog: 只用现存上市股 in training → 实盘 buys 退市股 unmodeled.
+    Check: count distinct stocks in panel vs ever-listed in dim_listing_status.
+    """
+    findings = []
+    try:
+        r1 = conn.execute(
+            "SELECT COUNT(DISTINCT stock_code) FROM mart_p0a_feature_label_panel_v4"
+        ).fetchone()
+        panel_stocks = r1[0] if r1 else 0
+        # Get ever-listed count (if dim_listing_status exists)
+        try:
+            r2 = conn.execute("SELECT COUNT(DISTINCT stock_code) FROM dim_all_ever_listed").fetchone()
+            ever_listed = r2[0] if r2 else 0
+        except Exception:
+            ever_listed = None
+
+        try:
+            r3 = conn.execute("SELECT COUNT(DISTINCT stock_code) FROM dim_active_a_stock").fetchone()
+            active = r3[0] if r3 else 0
+        except Exception:
+            active = None
+
+        if ever_listed and panel_stocks < ever_listed * 0.95:
+            findings.append({
+                "check": "10_survivorship_bias", "risk": "HIGH",
+                "panel_stocks": panel_stocks, "ever_listed": ever_listed,
+                "reason": f"panel has {panel_stocks} stocks vs ever_listed {ever_listed} (missing {ever_listed - panel_stocks} delisted; survivorship bias suspect)",
+            })
+        elif active and panel_stocks <= active:
+            # panel ≈ active stocks → potential survivorship
+            findings.append({
+                "check": "10_survivorship_bias", "risk": "MEDIUM",
+                "panel_stocks": panel_stocks, "active": active,
+                "reason": f"panel ({panel_stocks}) approx equals active ({active}); verify delisted stocks included in training",
+            })
+    except Exception as exc:
+        findings.append({"check": "10_survivorship_bias", "risk": "LOW", "reason": str(exc)[:120]})
+    return findings
+
+
 def main() -> int:
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument("--panel", default="mart_p0a_feature_label_panel_v4",
@@ -378,18 +495,24 @@ def main() -> int:
 
     all_findings = []
     with connect(args.db, read_only=True) as conn:
-        print("[1/6] PIT markers on fact_*/mart_*/dim_* tables ...")
+        print("[1/9] PIT markers on fact_*/mart_*/dim_* tables ...")
         all_findings.extend(audit_check_1_pit_markers(conn))
-        print("[2/6] Panel JOIN PIT-strict pattern ...")
+        print("[2/9] Panel JOIN PIT-strict pattern ...")
         all_findings.extend(audit_check_2_panel_join_pit(Path(args.panel_build_sql)))
-        print("[3/6] Flat current-mapping PARTITION BY (retrospective bias) ...")
+        print("[3/9] Flat current-mapping PARTITION BY (retrospective bias) ...")
         all_findings.extend(audit_check_3_flat_mapping_partition(Path(args.panel_build_sql), conn))
-        print("[4/6] Mapping table fallback ratio ...")
+        print("[4/9] Mapping table fallback ratio ...")
         all_findings.extend(audit_check_4_fallback_ratio(conn))
-        print(f"[5/6] Per-feature temporal variance (sample {args.sample_rows} rows) ...")
+        print(f"[5/9] Per-feature temporal variance (sample {args.sample_rows} rows) ...")
         all_findings.extend(audit_check_5_temporal_variance(conn, args.panel, args.sample_rows))
-        print(f"[6/6] Per-feature NULL ratio gradient across years ...")
+        print(f"[6/9] Per-feature NULL ratio gradient across years ...")
         all_findings.extend(audit_check_6_null_year_gradient(conn, args.panel))
+        print(f"[7/9] Forward-index pattern grep (feature code) ...")
+        all_findings.extend(audit_check_7_forward_index_grep(Path(args.panel_build_sql)))
+        print(f"[8/9] Universe selection PIT predicate ...")
+        all_findings.extend(audit_check_8_universe_pit(Path(args.panel_build_sql)))
+        print(f"[9/9] Survivorship bias (panel stocks vs ever_listed) ...")
+        all_findings.extend(audit_check_10_survivorship_bias(conn))
 
     n_high = sum(1 for f in all_findings if f.get("risk") == "HIGH")
     n_medium = sum(1 for f in all_findings if f.get("risk") == "MEDIUM")

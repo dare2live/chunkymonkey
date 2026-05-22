@@ -819,6 +819,23 @@ SELECT * FROM mart_data_source_watermark;
 
 每次 session 增量内容写这里, 新 session 启动时**从下往上读**最近改了啥.
 
+### 2026-05-22 audit tool 6→9 checks + leakage catalog + safe_retrain wrapper
+
+用户 push '同样问题总发生 + GCP 浪费 + leakage 工具建好 + 跑批前先检查'.
+
+audit_panel_leakage.py 升级 checks 7/8/10:
+- check 7: forward-index AST grep (shift(-N), iloc[i+N], bars[sig_i+1:])
+- check 8: universe PIT grep (WHERE listed_today=1 / dim_active_a_stock 缺 as_of)
+- check 10: 生存者偏差 (panel stocks vs ever_listed)
+
+Tool catch on panel v4:
+- check 6: 5 HIGH (inst_quality_max/inst_holder_cnt/mcap_decile/beta_60d/beta_60d_zscore)
+- **check 10: NEW HIGH — panel 5210 stocks vs ever_listed 7138 = 1928 delisted missing**
+- check 7/8: 0 findings (panel code 这些 dims 清洁)
+
+docs/leakage_pattern_catalog.md: 10 patterns systematic enumeration (cover 6 done, 4 pending)
+scripts/safe_retrain.sh: pre-flight wrapper (audit + budget + dry-run + confirmation gates)
+
 ### 2026-05-22 v6 retrain BLOCK + audit tool check 6 (time-availability leak)
 
 v6 retrain 完整 done + Phase 4 gate **BLOCK** (commit 36b71cad):
