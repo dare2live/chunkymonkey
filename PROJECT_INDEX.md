@@ -819,6 +819,25 @@ SELECT * FROM mart_data_source_watermark;
 
 每次 session 增量内容写这里, 新 session 启动时**从下往上读**最近改了啥.
 
+### 2026-05-22 D6+D7+D8 Phase 7 paper_sim + Project D Stage 2 UI
+
+D6 Phase 7 paper_sim test:
+- backend/scripts/run_paper_sim_bestchoice_phase7.py
+- BASELINE BC fixed_N vs POLICY context-aware + whitelist
+- Result: sharpe 1.19 -> 1.67 (+0.47), ann 65% -> 79% (+14%)
+- Trade count 10010 -> 4524 (filter 55% bad-context entries)
+- Policy 短持仓 (12d vs 30d) + drop above_zero_trend_continuation (walk-forward neg)
+
+D7 Phase 7 verdict: Policy 提升 portfolio sharpe +0.47 = 真 positive evidence.
+Phase 8 stop-loss A+B sweep 可考虑启动 (需 GCP, ~$1-2)
+
+D8 Project D Stage 2 UI:
+- design/v3-drawer-stock.jsx: 加 graph tab
+- consume /api/v3/stock_graph/{code}/tags + /related
+- tag chips per category color (theme/lifecycle/leader_follow/style/crowding/industry)
+- 关联股票 table (diffusion / relation)
+- 不接 ranker insight only
+
 ### 2026-05-22 D5 BC Phase 7 full 1146 POC — 2246 policy rows, context 分化大
 
 Full BC universe 1146 候选 walk-forward:

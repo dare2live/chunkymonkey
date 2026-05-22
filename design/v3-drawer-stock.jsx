@@ -1,12 +1,28 @@
 /* v3 · 单股画像 Drawer
    6 维画像 + 7 公式命中 + Trade plan + 优选追踪 + 历史 outcome
+   2026-05-22 Project D Stage 2 加: tag chips + 关联股票 (consume /api/v3/stock_graph/{code}/*)
 */
-const { useState: useStateD, useMemo: useMemoD } = React;
+const { useState: useStateD, useMemo: useMemoD, useEffect: useEffectD } = React;
 
 function StockDrawer({ code, onClose }) {
   const { STOCKS, FORMULAS, SELECTION_HISTORY, UI } = window.CMV3;
   const stock = STOCKS.find(s => s.code === code);
   const [tab, setTab] = useStateD('profile');
+  // Project D Stage 2: fetch tag chips + related stocks from API
+  const [stockGraph, setStockGraph] = useStateD(null);
+  const [graphLoading, setGraphLoading] = useStateD(false);
+
+  useEffectD(() => {
+    if (!code) return;
+    setGraphLoading(true);
+    Promise.all([
+      fetch(`/api/v3/stock_graph/${code}/tags`).then(r => r.ok ? r.json() : null).catch(() => null),
+      fetch(`/api/v3/stock_graph/${code}/related`).then(r => r.ok ? r.json() : null).catch(() => null),
+    ]).then(([tags, related]) => {
+      setStockGraph({ tags, related });
+      setGraphLoading(false);
+    }).catch(() => setGraphLoading(false));
+  }, [code]);
 
   if (!stock) return null;
 
@@ -37,6 +53,7 @@ function StockDrawer({ code, onClose }) {
             {id:'profile',  label:'画像 + 评分'},
             {id:'plan',     label:'交易计划'},
             {id:'history',  label:'优选历史'},
+            {id:'graph',    label:'图谱'},
           ].map(t => (
             <button key={t.id} onClick={()=>setTab(t.id)}
               style={{padding:'10px 14px',fontSize:12,fontWeight:600,background:'transparent',border:'none',cursor:'pointer',
@@ -53,6 +70,7 @@ function StockDrawer({ code, onClose }) {
           {tab==='profile' && <ProfilePanel stock={stock} formulas={FORMULAS}/>}
           {tab==='plan'    && <PlanPanel stock={stock}/>}
           {tab==='history' && <HistoryPanel stock={stock} history={SELECTION_HISTORY}/>}
+          {tab==='graph'   && <GraphPanel stockGraph={stockGraph} loading={graphLoading} code={code}/>}
         </div>
       </div>
     </div>
@@ -278,4 +296,68 @@ function HistoryPanel({ stock, history }) {
   );
 }
 
+// Project D Stage 2: Graph panel — consume /api/v3/stock_graph/{code}/tags + /related
+function GraphPanel({ stockGraph, loading, code }) {
+  const { UI } = window.CMV3;
+  if (loading) return <div style={{padding:20, color:'var(--ink-3)'}}>加载图谱 ...</div>;
+  if (!stockGraph || (!stockGraph.tags && !stockGraph.related)) {
+    return <div style={{padding:20, color:'var(--ink-3)'}}>暂无图谱数据 (API 返回为空 / mart_market_perception_* 未填充)</div>;
+  }
+  const tags = stockGraph.tags || {};
+  const related = stockGraph.related || {};
+  return (
+    <div style={{padding:'12px 22px',color:'var(--ink-0)'}}>
+      <h3 style={{marginTop:0,fontSize:14,fontWeight:600,color:'var(--ink-1)'}}>Tag Chips (Project D Stage 2)</h3>
+      <p style={{fontSize:11,color:'var(--ink-3)',margin:'4px 0 12px'}}>
+        消费 Perception P5/P7 mart + dim_stock_tdx_industry. 不入 ranker, 仅 insight.
+      </p>
+      <div style={{display:'flex',flexWrap:'wrap',gap:6,marginBottom:16}}>
+        {Object.entries(tags).map(([category, value]) => {
+          if (value === null || value === undefined || value === '') return null;
+          const colors = { theme: '#2f8a55', lifecycle: '#3b82f6', leader_follow: '#f59e0b', style: '#a855f7', crowding: '#ef4444', industry: '#06b6d4' };
+          const bg = colors[category] || '#6b7280';
+          return (
+            <span key={category} style={{padding:'4px 10px',background:bg+'22',color:bg,border:`1px solid ${bg}55`,borderRadius:12,fontSize:11,fontWeight:600}}>
+              <span style={{color:'var(--ink-3)',fontSize:10,marginRight:4}}>{category}</span>{String(value)}
+            </span>
+          );
+        })}
+      </div>
+
+      <h3 style={{fontSize:14,fontWeight:600,color:'var(--ink-1)',margin:'16px 0 8px'}}>关联股票 (leader → follower diffusion)</h3>
+      {related.related_stocks && related.related_stocks.length > 0 ? (
+        <table style={{width:'100%',borderCollapse:'collapse',fontSize:12}}>
+          <thead>
+            <tr style={{background:'var(--bg-1)',textAlign:'left'}}>
+              <th style={{padding:'6px 8px',color:'var(--ink-1)'}}>Code</th>
+              <th style={{padding:'6px 8px'}}>Name</th>
+              <th style={{padding:'6px 8px'}}>Industry</th>
+              <th style={{padding:'6px 8px'}}>Diffusion</th>
+              <th style={{padding:'6px 8px'}}>Relation</th>
+            </tr>
+          </thead>
+          <tbody>
+            {related.related_stocks.slice(0, 20).map((r, i) => (
+              <tr key={i} style={{borderBottom:'1px solid var(--bg-2)'}}>
+                <td style={{padding:'5px 8px',fontFamily:'var(--f-mono)'}}>{r.stock_code}</td>
+                <td style={{padding:'5px 8px'}}>{r.stock_name || '-'}</td>
+                <td style={{padding:'5px 8px',color:'var(--ink-3)'}}>{r.industry || '-'}</td>
+                <td style={{padding:'5px 8px',fontFamily:'var(--f-mono)'}}>{r.diffusion_score?.toFixed?.(3) ?? '-'}</td>
+                <td style={{padding:'5px 8px',color:'var(--ink-2)'}}>{r.relation_type || '同 theme'}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      ) : (
+        <div style={{color:'var(--ink-3)',fontSize:12}}>暂无关联股票数据</div>
+      )}
+
+      <p style={{marginTop:20,fontSize:10,color:'var(--ink-3)'}}>
+        数据源: Perception P5 LeaderFollower (14 dates MVP) + P7 StockContext + dim_stock_tdx_industry. 不接 ranker.
+      </p>
+    </div>
+  );
+}
+
 window.CMV3.StockDrawer = StockDrawer;
+window.CMV3.GraphPanel = GraphPanel;
