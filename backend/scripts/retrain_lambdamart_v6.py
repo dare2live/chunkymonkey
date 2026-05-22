@@ -1063,6 +1063,33 @@ def main() -> int:
                         help="Optional gs:// directory for best-effort SIGTERM sync of best.json and Optuna SQLite")
     args = parser.parse_args()
 
+    # Pre-train leakage audit (Option A integration, 2026-05-22 user push back)
+    # 5 自动 check (schema PIT marker / panel JOIN PIT-strict / flat current-mapping PARTITION BY /
+    # mapping fallback ratio / per-feature temporal variance). HIGH=block, MEDIUM=warn, set
+    # SKIP_LEAKAGE_AUDIT=1 to override (use only when audit known-false-positive).
+    if not os.environ.get("SKIP_LEAKAGE_AUDIT"):
+        import subprocess  # local import to avoid top-level dep when audit skipped
+        audit_cmd = [
+            sys.executable,
+            str(Path(__file__).parent / "audit_panel_leakage.py"),
+            "--panel", args.feature_panel,
+        ]
+        log.info("pre-train leakage audit: %s", " ".join(audit_cmd))
+        rc = subprocess.call(audit_cmd, env={**os.environ, "PYTHONPATH": "backend"})
+        if rc == 1:
+            log.error(
+                "BLOCK: pre-train leakage audit returned HIGH-risk findings (exit 1). "
+                "Review data/reports/leakage_audit/ and fix panel/source. "
+                "Override (use cautiously): SKIP_LEAKAGE_AUDIT=1"
+            )
+            return 3
+        elif rc == 2:
+            log.warning("pre-train leakage audit returned MEDIUM-risk findings (exit 2); proceeding (use --strict in audit to block)")
+        else:
+            log.info("pre-train leakage audit: PASS (rc=0)")
+    else:
+        log.warning("SKIP_LEAKAGE_AUDIT=1 set — pre-train audit bypassed (only ok for known-false-positive)")
+
     model_id = args.model_id or make_model_id(args.model_date)
     db_path = args.db_path or str(DB_PATH)
     n_estimators = args.n_estimators if args.n_estimators is not None else (2000 if args.full else 300)
