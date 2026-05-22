@@ -819,6 +819,27 @@ SELECT * FROM mart_data_source_watermark;
 
 每次 session 增量内容写这里, 新 session 启动时**从下往上读**最近改了啥.
 
+### 2026-05-22 leakage detection 专用工具 — backend/scripts/audit_panel_leakage.py
+
+用户 push back '建 leakage 检测专用工具确保跑验证训练前把 leakage 和未来函数检查明白'.
+
+5 自动检查 (per CLAUDE.md §4.1):
+1. PIT markers on fact_/mart_/dim_ tables (HIGH if missing on fact_/known_leaky_dim, MEDIUM others)
+2. Panel JOIN PIT-strict pattern (grep `<= signal_date` / ASOF / `date=p.date` around each JOIN)
+3. PARTITION BY with flat current-mapping cols (Phase D 反例 pattern)
+4. Mapping table fallback ratio (warn >5%, block >50%)
+5. Per-feature per-stock temporal variance (>95% stocks 0-std = constant 嫌疑)
+
+输出 data/reports/leakage_audit/<panel>_<ts>.json + stdout markdown + exit code (0/1/2).
+
+Integration:
+- standalone CLI
+- pre-retrain hook (TODO 加 retrain_lambdamart_v6.py 自动 call, HIGH block)
+- pre-commit hook (TODO rule-compliance 改 panel SQL 时 call)
+- 跟已有 pit-audit skill 互补 (skill manual, tool automated)
+
+未跑 first audit 因 DuckDB lock 被 ensemble paper_sim 持. paper_sim 完后跑.
+
 ### 2026-05-22 ensemble V4+BestChoice paper_sim alpha-additivity test
 
 用户 16:30 push back '看 BestChoice 结果是否给主项目提供 alpha'.
