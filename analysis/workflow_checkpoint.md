@@ -2,11 +2,11 @@
 
 Business-level pipeline tracker. Session-level state remains in SESSION_HANDOFF.md.
 
-- generated_at: `2026-05-22T00:35:00Z`
+- generated_at: `2026-05-22T01:45:00Z`
 - model_id: `lgbm_phase5_stability_20260521T055800Z`
-- current_step: `final_fit_running_window_24_of_34_chain_waiting`
-- next_step: `wait_final_fit_done_then_chain_auto_export_pull_vmstop_post_retrain_pipeline_then_phase4_verdict`
-- resume_command: `tail -20 /tmp/post_retrain_chain.log` 或 `CHUNKYMONKEY_GCP_EXPLICIT_OK=1 gcloud compute ssh chunkymonkey-optuna --zone=us-central1-a --tunnel-through-iap --command "tail -15 /tmp/final_fit.log"`
+- current_step: `verdict_warn_only_proxy_alpha_crosscheck_complete_pending_true_train_log_replay_decision`
+- next_step: `user_decide_path_gamma_subpath: (a) true_train_log_replay_to_resolve_proxy_mode | (b) bestchoice_phase1_import_1146_candidates_as_challenger | (c) plan_other_alpha_enhance_directions`
+- resume_command: 看 phase4_gate_lgbm_phase5_stability_20260521T055800Z.json + paper_sim KPI compare
 - background_processes:
   - local chain pid 50468 (`bash scripts/post_retrain_chain.sh`, 5min poll, 等 final fit EXITED → export → pull → vm_stop → post_retrain_pipeline)
   - GCP VM pid 3627 (`python retrain_lambdamart_v6.py --use-checkpoint-best`, window 24/34, ~75s/window, 剩 ~12-15 min)
@@ -87,7 +87,11 @@ Business-level pipeline tracker. Session-level state remains in SESSION_HANDOFF.
 | 12b | final fit (use-checkpoint-best) | running | GCP pid 3627 window 24/34, ~75s/window, log:/tmp/final_fit.log; 跳过 Optuna 直接 full data train + write predictions; 预计 ~08:50-09:00 CST 完成 |
 | 12c | post_retrain chain (local pid 50468) | running | bash scripts/post_retrain_chain.sh 5min poll 等 final fit EXITED; 接 export → gcloud cp → vm_stop → post_retrain_pipeline.sh (paper_sim + Phase4 gate + registry) → notify |
 | 13 | post-run lightweight artifact import path | ready | active model:`lgbm_phase5_stability_20260521T055800Z`; script:scripts/gcp_export_model_predictions.sh; script:backend/scripts/import_phase5_remote_predictions.py --remote-parquet-dir; script:backend/scripts/import_model_train_log_artifact.py; validation: importer tests 8 passed, py_compile pass, bash -n pass, export dry-run pass; chain 会自动调用 |
-| 14 | Phase4 verdict 分叉决策 | pending | chain 完成后看 verdict: PASS→BestChoice Phase 1 (goal.md Stage 2 路径 α); BLOCK→alpha 探索, 不拆 god-modules (路径 β); warn_only_proxy→视情况 (路径 γ) |
+| 14 | Phase4 verdict 出 | done | **verdict=warn_only_proxy / all_pass=true / production_status=candidate_hold_reject**. 4 子 check 全过: PBO=0.102 (旧 0.626) / DSR p_conf=1.0000 / Conservative ann normal 42.71% conservative 41.21% / IS=OOS=0.0339 relative_drop=-0.10% (proxy-split-half mode, 不是 true train-log). NDCG10=0.506 (旧 0.466, +8.5%). best_user_attrs window_rank_ic_std=0.0799 positive_rate=0.647 rank_ic_stability_penalty=0.110. 路径 γ. 但 warning: is_oos_proxy_mode=true, 不是硬 PASS; 用户原话 "回测 +312% 不该兴奋, 真实 < 回测", 当前 +71.9% 同样需 cross-check |
+| 15 | Paper_sim KPI cross-check | done | Sharpe **2.09** (baseline 0.65) / ann **+71.92%** (baseline +36.10%) / max_dd **-16.84%** (baseline -21.70%) / 月胜率 **70%** (baseline 45%) over 432 dates 2024-07-01→2026-04-13. 4 个用户终极目标全达成 (ann≥30% / dd≥-20% / 超额 HS300>0 / 胜率≥55%). leakage sanity (CLAUDE.md §4.2): Sharpe 2.09 / ann 71.9% / win 70% 都在 sane range, 但 ann +71.9% 相对 baseline +36% (~2x) 触发 relative ≥+50% 异常线, 必 cross-check |
+| 16 | Trade-level alpha cross-check (用户 09:40 push back 点名) | done | 99 BUY-SELL pairs: stability **avg_ret +4.51%** (baseline -0.58%) / win_rate **56.6%** (baseline 39.4%) / max +47.78% (baseline 25.77%) / avg hold 15.2 天 (forward 20d label 合理). 单笔 trade level alpha **真**: stability 是真 stock-picking alpha (baseline 单笔 -0.58% 平均亏损, 靠仓位凑 ann). **swap_uplift_estimate=None** [PASS] CLAUDE.md §4.5 反例避免 (paper_sim_v6 用真 K-line forward, 不是公式估算) |
+| 17 | Perception P1 emotion cross-check (BUY-day timing) | done | stability BUY days em=0.140 vs no-BUY 0.187 delta -0.047; baseline BUY 0.145 vs no-BUY 0.185 delta -0.039. 两 model 都 contrarian 倾向 (低情绪买). **stability 跟 baseline 行为类似 emotion-wise** → emotion 不是 stability 的差异 alpha 来源. P3/P5/P6/P7 mart 区间 (2026-04-27→2026-05-19) 不跟 paper_sim 区间 (2024-07-01→2026-04-13) 重叠, 不能 cross-check |
+| 18 | true train-log Phase4 replay (用户原则 "alpha 验证不暂停") | pending | final fit 写远端 fact_model_train_log 但未 import 本地; GCS 只 predictions/, 没 train_log JSON artifact; VM TERMINATED. 路径: (a) 启 VM 短暂 SSH export train_log JSON → vm_stop (~$0.20 cost); (b) 本地 `retrain_lambdamart_v6.py --train-log-only --resume-train-log` reproduce (1+ h 本地慢); (c) skip 直接 trust proxy verdict + cross-check (risk: stability retrain 是否真 train-log 也 PASS 未知). 决策待 user |
 
 ## Blockers
 
