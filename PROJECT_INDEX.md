@@ -819,6 +819,18 @@ SELECT * FROM mart_data_source_watermark;
 
 每次 session 增量内容写这里, 新 session 启动时**从下往上读**最近改了啥.
 
+### 2026-05-22 D2 feature_join_v5.py — drop 5 time-availability leak cols (Pattern 10)
+
+按 goal.md 9-day plan Day 2:
+- backend/services/labels/feature_join_v5.py (cp from v4): 138 cols = v4 143 - 5
+- 移除 LEFT JOIN fact_market_cap_decile_daily + fact_industry_beta_daily (3 cols)
+- v3.* EXCLUDE (inst_quality_max, inst_holder_cnt) — 2 v3 base leaky cols
+- target table mart_p0a_feature_label_panel_v5
+- +3 tests pass (12 total)
+- codegraph +2 nodes / 0 new HIGH complexity
+
+下 Day 3: build panel v5 实际跑 + 0-HIGH audit gate.
+
 ### 2026-05-22 D1 panel v5 universe — PIT filter dim_all_ever_listed (Pattern 8 survivorship fix)
 
 按 goal.md 综合规划 Day 1:
