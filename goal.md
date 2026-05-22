@@ -375,6 +375,39 @@ Wiring path: 写 `data/reports/v4_bc_ensemble_horizon_ladder_20260523.json` in M
 
 OR: 改 audit_delivery_readiness 加 query mart_paper_sim_lambdamart_v6_kpi_compare for ensemble verdict.
 
+### R. 2026-05-23 01:02 — V4+BC ensemble Phase 4 gate BLOCK (PBO 0.794 FAIL!)
+
+run_phase4_gate_on_msaf.py --model-id ensemble_v4_bc_stage_filtered_v1:
+- PBO: 0.794 FAIL (>>0.2 threshold) **新 problem**
+- DSR: 0.9976 PASS
+- Conservative: +41.58% ann PASS
+- IS-OOS: proxy mode PASS (no train_log for ensemble)
+- ALL: False, verdict=block
+
+vs V4 baseline (goal.md line 132): PBO=0.145 PASS.
+V4+BC ensemble PBO飙到 0.794 — 5x worse than V4 alone.
+
+PBO 0.794 means: 79% 概率 backtest 是 overfit/unstable.
+Reasons hypothesis:
+1. K-variant (top-3/5/7/10/15) picks 差异大, 不稳
+2. BC MILD selection bias (Phase 5 audit) 通过 ensemble 放大
+3. 真 portfolio variance 高
+
+**真 verdict 更严**:
+- 不只 Sharpe 1.84 < 2.0 + n_obs 22 < 60 gap
+- **Phase 4 gate BLOCK due to PBO** = ensemble 实际 NOT promotable
+- audit_delivery `phase4_promote_action=block` 现 OK confirm
+
+operational gap 重新估:
+- V4 baseline 0.65 sharpe + PBO 0.145 PASS = ship-ready 但 weak alpha
+- V4+BC ensemble 1.84 sharpe + PBO 0.794 FAIL = high sharpe 但 unstable
+- 需 **稳定** 高 sharpe (PBO PASS + Sharpe ≥ 2.0) 才 truly promotable
+
+Next priorities revised:
+1. Diagnose PBO 0.794 root cause (K-variant rank stability per week)
+2. v7 retrain panel v5 — possibly PBO 会改善 (more PIT-clean model)
+3. Per-K stability analysis (是否 top-3 vs top-15 picks 实际 不同 strategies)
+
 ### I. 真 path to 运营 ready (gap-driven, 替代 phase 列表打勾思维)
 
 每次 session 推进必同步问: 距 `ready_for_delivery=True` 还差啥? 不是问 "phase 完了吗".
