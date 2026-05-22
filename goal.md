@@ -212,6 +212,27 @@ Next: panel v4 deep audit 找剩余 leakage 源 (audit_panel_leakage tool 只 ca
 
 GCP: VM stopped, $5.71 / 15.18h spot 剩.
 
+**Panel v4 deep audit 发现 (2026-05-22 20:40 CST): time-availability leakage**:
+
+4 cols 显示 NULL 比例随年份单调下降 (老年 100% NULL → 新年低 NULL), ML 学到 "feature 非 NULL = 近期 = 牛市 regime" → indirect time leak:
+
+| col | 2023 null | 2024 null | 2025 null | 2026 null |
+|---|---|---|---|---|
+| inst_quality_max | 100% | 100% | 69% | 34% |
+| inst_holder_cnt | 100% | 100% | 54% | 7% |
+| beta_60d | 100% | 3.4% | 1.9% | 17.9% |
+| holder_count_change_q_pct | 100% | 100% | 100% | 91% |
+
+这跟今天 Phase D sector retrospective bias 同类 leakage 模式 — 都通过 feature value 暴露未来信息.
+
+v7 提议 exclude list 共 34 cols (v6 30 + 4 time-availability):
+- 旧 30 cols (Phase A noise 24 + Phase D sector 6)
+- 新增 4 cols: inst_quality_max, inst_holder_cnt, beta_60d, holder_count_change_q_pct
+
+不立即跑 v7 (budget $5.71 限 ~15h spot, 跟 50 trial 估等价). 待用户 decision.
+
+Audit tool 升级 candidate: audit_panel_leakage.py 加 check 6 — per-feature year-by-year NULL pattern (gradient > 50% → flag).
+
 **Ensemble V4+BestChoice 结果 (2026-05-22 17:10 CST; 用户问 "BestChoice 是否给主项目添 alpha"):**
 
 paper_sim_v6_compare with model_id=ensemble_v4_bestchoice_v1 (rank-percentile combine V4 score + BC confidence), 432 dates 2024-07→2026-04:
