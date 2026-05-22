@@ -226,6 +226,30 @@ Next:
 - 心理 expectation 调整: paper_sim 数字不全可信, Sharpe 0.65 = real ceiling reference
 - v6 verdict 出后看是否能 超过 V4 (panel v4 drop sector vs panel v3) — 若超过且 IS-OOS gap < 30% 是真 improvement
 
+**BC walk-forward lite audit 完成 (2026-05-22 19:00 CST):**
+
+跑 1142/1146 candidates, per-window metrics:
+
+| Window | Win rate | Avg ret | Signals |
+|---|---|---|---|
+| W1 pre-2024-06 | **55.64%** | +2.66% | 9201 |
+| W2 2024-06→2025-01 | 66.02% | +10.31% | 5032 |
+| W3 2025-01→now | **67.60%** | +7.51% | 10346 |
+
+**Verdict: MILD selection bias (drop pct -16.4%)** — Win rate 单调上升 (recent better), 不是 STRONG (>30% threshold).
+
+含义:
+- BC params 不完全 robust — recent weighted 10-12pp
+- W1 win 55.6% > 50% random → 真 alpha base 存在
+- 真 forward Sharpe 估 1.5-1.7 (paper_sim 1.83 含 ~10-15% upward bias)
+- 仍 > 用户目标 Sharpe ≥ 1.3 with margin
+
+**Phase 6 ensemble production: 可上**, 但需 6-12 周 forward monitor 验证.
+
+Caveat: lite 测 params, 未测 selection bias 强度 (完整 1.87M trials 不可行).
+
+evidence: `data/reports/bestchoice_walkforward_lite/audit_20260522T104228.csv`
+
 **BestChoice complete plan 推进 (2026-05-22 18:30 CST; 用户 push '按 goal.md 推进 BC, 包括页面迁徙和 audit 后续')**:
 
 Phase status:
