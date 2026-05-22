@@ -115,6 +115,32 @@ evidence: `analysis/feature_ablation_results_20260522.log`
 
 Phase D evidence: `mart_stock_industry_pit` 表 audit + capital_flow JOIN logic 已读 backend/scripts/backfill_capital_flow_pit.py
 
+**[CRITICAL] v3 Phase D 致命 leakage 确认 (2026-05-22 15:10 CST)**:
+
+Panel sector-relative features 源头追溯:
+- `backend/scripts/build_feature_panel_duck.py:1824` JOIN `smartmoney.dim_stock_tdx_industry` (flat 5616 stocks × 1 row, **non-PIT**, 只 updated_at=2026-04-21 single time)
+- `:1841-1844` 计算 `ret_20d_tdx_l1_rel = ret_20d - AVG(ret_20d) OVER (PARTITION BY date, tdx_l1)` — **用 today's tdx_l1 算所有历史 signal_date 的 sector aggregate**
+- = **retrospective industry bias leakage** (跟 CLAUDE.md §4.5 反例 99.978% fallback 同模式)
+
+含义:
+- Phase A ablation drop_sector OOS 崩 (0.0593→0.0125) **不是 sector signal 真有 alpha, 是 model 依赖此 retrospective bias artifact**
+- IS-OOS gap 92.43% 的关键根因之一: sector features 用 future industry 反向应用到历史
+- v5 retrain (即将完成) **大概率 OOS 仍弱**, 因为 sector features 仍在, 仍 leakage
+
+**修复路径困境**:
+- A) strict fix: 换 `dim_stock_tdx_industry` → `mart_stock_industry_pit` as-of JOIN. **但** observed 仅 13 days (2026-04-25→05-07), 99%+ historical dates 仍 fallback = current label = 同 leakage. **不解**
+- B) 真长期解: X2.1 daily snapshot 累积 (已启 3a8a8844, 当前 8 days), 1+ 年后才有完整 historical PIT
+- C) 短期解: drop sector features 重 train. Phase A 已证 OOS 短期看似崩, 但**真 OOS 才是诚实指标** (不是 leakage 的高 OOS)
+- D) Use 行业 ETF 实际历史成分作为 surrogate (e.g. CSI 同业 / 申万一级历史成分) — 需新数据源
+
+**v3 plan v3.1 调整**:
+- Phase A finding (fundamental 是 noise) 仍 valid, drop 24 noise cols 仍 OK
+- **新 #0 priority**: 把 sector-relative features (`ret_20d_tdx_l1_rel` 等 4 cols) 从 panel 中 drop OR 用 strict PIT industry
+- v5 retrain (running) 仍会有 sector leakage, 出 verdict 后用 v5 best params + 再 drop sector → v6 retrain 看 真 OOS
+- 真长期需 PIT industry historical 数据 (1+ 年累积 OR 第三方数据源)
+
+evidence: backend/scripts/build_feature_panel_duck.py:1824-1844 SQL inspection
+
 **BestChoice Phase 3 + Phase 4 complementarity (2026-05-22 11:48 CST)**:
 
 Phase 3 paper_sim (adapter 30b4511c + paper_sim_lambdamart_v6_compare 跑 432 dates 2024-07→2026-04):
