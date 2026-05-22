@@ -819,6 +819,25 @@ SELECT * FROM mart_data_source_watermark;
 
 每次 session 增量内容写这里, 新 session 启动时**从下往上读**最近改了啥.
 
+### 2026-05-22 leakage tool 强制 enforcement (A + C) + ensemble breakthrough
+
+**A: safe_commit.sh 加 Step 3.5 leakage audit gate**:
+- 触发: staged files 含 `build_feature_panel|mart_p0a|fact_capital_flow|dim_stock_tdx_industry|build_market_perception` pattern
+- 调 `audit_panel_leakage.py`, exit 1 (HIGH) → block commit (rc=4)
+- Override: `SKIP_LEAKAGE_AUDIT=1 bash scripts/safe_commit.sh`
+
+**C: scripts/safe_panel_build.sh wrapper**:
+- 跑 `build_feature_panel_duck.py [args]` → 跑 `audit_panel_leakage.py`
+- HIGH risk → DROP panel (防下游误用), exit 4
+- `KEEP_BAD_PANEL=1` debug 时保留, `SKIP_LEAKAGE_AUDIT=1` bypass
+
+加上之前 retrain_lambdamart_v6.py pre-train hook (commit 91b9966e), 现 3 layer enforcement:
+- (B) retrain entry: retrain_lambdamart_v6.py 默认 ON
+- (A) commit entry: safe_commit.sh staged panel/fact files 触发
+- (C) panel build entry: safe_panel_build.sh 强制 audit
+
+未来 retrain attempt 任 entry 都被 catch.
+
 ### 2026-05-22 audit tool first run validates Phase D + ensemble V4+BC breakthrough
 
 **Audit tool first run** (commit 6f3750d9 → 之后 bugfix bool dtype):

@@ -53,6 +53,32 @@ if ! PYTHONPATH=backend python backend/scripts/check_rule_compliance.py 2>&1 | t
     exit 3
 fi
 
+# 3.5 Leakage audit gate — trigger if staged files touch panel build / mart_p0a panel / fact_* tables
+# (2026-05-22 Phase D 反例: dim_stock_tdx_industry retrospective bias missed by manual audit)
+panel_touched=$(git diff --cached --name-only | grep -E "(build_feature_panel|mart_p0a|fact_capital_flow|dim_stock_tdx_industry|build_market_perception)" || true)
+if [[ -n "$panel_touched" ]]; then
+    echo
+    echo "=== Step 3.5: leakage audit (panel/fact files staged) ==="
+    echo "triggered by: $panel_touched"
+    if PYTHONPATH=backend python backend/scripts/audit_panel_leakage.py 2>&1 | tail -15; then
+        echo "[leakage-audit] OK"
+    else
+        rc=$?
+        if [[ "$rc" == "1" ]]; then
+            echo
+            echo "ERROR: leakage audit returned HIGH-risk findings (exit 1)."
+            echo "Review data/reports/leakage_audit/ and fix panel before commit."
+            echo "Override: SKIP_LEAKAGE_AUDIT=1 bash scripts/safe_commit.sh (only known-false-positive)"
+            if [[ "${SKIP_LEAKAGE_AUDIT:-0}" != "1" ]]; then
+                exit 4
+            fi
+            echo "WARNING: SKIP_LEAKAGE_AUDIT=1 bypass — proceeding."
+        else
+            echo "[leakage-audit] MEDIUM/WARN (exit $rc), not blocking."
+        fi
+    fi
+fi
+
 # 4. Commit message keyword check (manual preview)
 echo
 echo "=== Step 4: commit message keyword ==="
