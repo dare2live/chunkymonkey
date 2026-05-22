@@ -408,6 +408,43 @@ Next priorities revised:
 2. v7 retrain panel v5 — possibly PBO 会改善 (more PIT-clean model)
 3. Per-K stability analysis (是否 top-3 vs top-15 picks 实际 不同 strategies)
 
+### S. 2026-05-23 01:05 — 真 verdict: NO strategy currently promotable
+
+Phase 4 gate full compare (all paper_sim_v6 variants run):
+
+| Strategy | PBO | DSR | Cons | IS-OOS | Verdict |
+|---|---|---|---|---|---|
+| V4 baseline alone | **0.145 PASS** | PASS | PASS | 89.6 drop FAIL | BLOCK |
+| ensemble V4+BC v1 | 0.780 FAIL | PASS | PASS | relax PASS | BLOCK |
+| ensemble V4+BC stage-filtered | 0.794 FAIL | PASS | PASS | relax PASS | BLOCK |
+
+Pattern observed:
+- V4 alone: 稳 (PBO low) 但 OOS overfit (IS drop 89%)
+- V4+BC ensembles: high Sharpe (1.83-1.85) 但 rank-unstable across K-variants (PBO 0.78-0.79)
+
+**两 path 都 fail Phase 4 gate**:
+- 没 strategy 同时 stable + profitable
+- V4+BC Sharpe 1.84 是 mirage — Phase 4 gate BLOCK
+- audit_delivery_readiness 88% NOT READY 是 honest verdict
+
+V4 在 production 仅因 ship baseline 旧 audit (不 strict enforce Phase 4). New `--require-true-train-log` flag (commit db1d77a8) closing this loophole.
+
+唯一 unstuck path: v7 retrain panel v5 (Pattern 10 FIXED + 5 leaky cols removed).
+- v6 IS-OOS drop 60% block
+- v7 (cleaner panel) IF IS-OOS drop < 30% PASS + PBO < 0.2 + Sharpe ≥ 2.0 → promotable
+- 6/1 GCP reset 后启 via safe_retrain.sh --require-true-train-log
+- Cost ~$4 (panel v5 + 50 trials Plan C 15-min)
+
+Without v7 success, **没 operational path**. 不是 nice-to-have.
+
+如 v7 fail (panel v5 仍有 hidden leakage OR alpha 真弱):
+- Diagnose Pattern 8 survivorship + run panel v3 rebuild
+- Diagnose audit checks 7-10 残余 HIGH
+- Consider entry-level walk-forward enhancements (e.g. T+1 volume confirm)
+- Or accept V4 alone 0.65 Sharpe ship baseline + 实战 forward 6-12 周 累积 evidence
+
+诚实: 项目可能需要 **重新 evaluate** 是否 5000+ stock universe + LambdaMART 路径 reach Sharpe ≥ 2.0 是可行. 真 alpha 当前 evidence 估 0.5-0.8 honest Sharpe range.
+
 ### I. 真 path to 运营 ready (gap-driven, 替代 phase 列表打勾思维)
 
 每次 session 推进必同步问: 距 `ready_for_delivery=True` 还差啥? 不是问 "phase 完了吗".
