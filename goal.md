@@ -34,7 +34,23 @@ GCP/本地推进 (2026-05-22 09:00 CST): final fit (--use-checkpoint-best, pid 3
 
 Perception 推进 (2026-05-22 09:00 CST; 跟主项目 verdict 并行不阻塞): P4/P5/P6/P7 mart 同步扩到 14 trading days (2026-04-27 → 2026-05-19), 用现有 PIT observed_snapshot effective_from=2026-04-25 全区间, **不动 engine code 只 backfill 区间**, 不依赖 X2.1 概念 PIT 长期累积. P4 UnderReaction 300→700 rows (+2.3x) score [-0.51, 0.67]; P5 LeaderFollower 390→910 rows / 13 themes / 65 rows/day, diffusion [0.29, 0.90] mean 0.58 sanity 0 violations (leader_ret_5d ≥ follower_ret_5d 0 outlier + score in [0,1] 0 oob), 04-27 top 装备制造 300890 +24.9% vs followers -12.6%, 05-19 top 信息产业 688507 +58.6%; P6 Style 6→14 rows style [0.02, 0.14] crowding [0.42, 0.46]; P7 StockContext 300→702 rows context [-0.14, 0.44] completeness [0.86, 1.00] (上行因 P5/P6 都扩). dev_plan §9 滚动记录加一行. 加 `perception/scripts/backfill_all.sh` 一次顺序跑 7 engine backfill (P1→...→P7 dependency-ordered, syntax pass, 暂未跑 actual test 因 DuckDB lock).
 
-**Perception 暂停 (2026-05-22 09:35 CST; 用户明确 "市场感知项目先暂停吧, 在 goal.md 里以及相关文档里记录好当前进度")**: 暂停所有 Perception 并行工作 (P5 case study / P6 lifecycle-aware crowding / smoke test 等), 等待用户明确 resume. 当前 checkpoint 进度:
+**Perception 暂停范围 final clarify (2026-05-22 09:35-09:42 CST, 用户 3 段 push back)**:
+- 09:35 "市场感知项目先暂停吧, 在 goal.md 里以及相关文档里记录好当前进度"
+- 09:40 "不是全部暂停, 跟 gcp 跑批相关的 alpha 验证的内容请不要暂停" + "之前列过 top 3 可能增强主项目的什么产业链扩散啥的那个不要暂停"
+- 09:42 "其他可以增强 alpha 的你也可以计划着增加" + "只是把市场感知宏观分析的内容先暂停"
+
+**真正暂停 = 市场感知宏观分析** (我之前跑偏写过 c5e2c0fe 删除的 global_macro_plan / data_source_audit / four_project_unified_plan 系列 — 跨界的 global macro / 美股 / 商品 / 海外政策对 A 股影响, 上升到 macro level. 不再开此方向).
+
+**不暂停** (Perception 9 模块 + 7 mart 内部 + 主项目 alpha 验证/增强):
+- 主项目 alpha 验证: true train-log Phase4 gate replay (验证 stability retrain 是否真 promotable, 当前 verdict warn_only_proxy 因 is_oos_proxy_mode=true)
+- 主项目 alpha cross-check: 用 Perception 7 mart 对照主项目 paper_sim top picks 是否符合龙头/主题/资金路径
+- top 3 alpha 增强方向 (原 goal.md 第 18 行):
+  - (1) 概念 PIT 历史 + 龙头联动 (P3 概念扩 + P5 历史扩, 卡 X2.1 1+ 年累积)
+  - (2) 资金路径 PIT (P4 hsgt/dzjy built_at fix, handoff #25 标 HOLD 复杂度上调)
+  - (3) **产业链扩散** (P5 ChainDiffusion 完整版, F10 业务 segment 解析 `tdxhub_gpcw`) — 用户 09:40 明确点名
+- 其他 alpha 增强可计划增加 (待具体 propose 后定): e.g. 高管增减持 PIT, 大宗交易 PIT, 龙虎榜 cross-source, sector rotation 跨期, factor decay/timing, label engineering (forward N 多 horizon)
+
+按 09:35 完成的 Perception internal work checkpoint (这部分 NOT 暂停, 仍可推): 当前 checkpoint 进度:
 - 7 engine mart 当前 row/date 范围 (实测今早 9:30 前):
   - P1 emotion: 373 rows / 373 dates (2024-11-01 → 2026-05-19) — 全量已就绪
   - P3 theme: 168 rows / 14 dates (2026-04-27 → 2026-05-19)
