@@ -819,6 +819,29 @@ SELECT * FROM mart_data_source_watermark;
 
 每次 session 增量内容写这里, 新 session 启动时**从下往上读**最近改了啥.
 
+### 2026-05-22 D5 BC Phase 7 full 1146 POC — 2246 policy rows, context 分化大
+
+Full BC universe 1146 候选 walk-forward:
+- 2246 policy rows mart_bestchoice_context_exit_policy_v1 (policy_run_id=bestchoice_context_exit_v1_20260522_full)
+- above_zero_trend_continuation: n=861 sharpe **-0.23** (top 100 时 3.98 = hindsight artifact)
+- below_zero_rebound_probe: n=843 sharpe **6.14** (>5 red line, suspicious BC selection bias)
+- zero_axis_below_golden_cross: n=388 sharpe 1.15 (moderate)
+- zero_axis_above_golden_cross: n=146 sharpe 0.53
+- dead_cross: n=8 sample 太小
+
+Aggregate gate: sharpe 2.45 / ann 44.0% / dd -5.91% PASS
+
+实战决策:
+- 仅用 below_zero_rebound + zero_axis_below_golden_cross (positive sharpe contexts)
+- Drop above_zero_trend_continuation (negative sharpe walk-forward)
+
+Caveats:
+- below_zero_rebound sharpe 6.14 偏高 — BC residual selection bias
+- BC universe 本身 hindsight-selected from 26K with full-period Optuna
+- Walk-forward 仅 exit-rule 层 (entry selection in-sample)
+
+未启 Phase 8 GCP (需 BC cross-repo walk-forward audit 解 residual selection bias)
+
 ### 2026-05-22 D4 BC Phase 7 POC: walk-forward context-aware exit policy
 
 按 goal.md plan §5 Phase 7 + Day 4-7:
