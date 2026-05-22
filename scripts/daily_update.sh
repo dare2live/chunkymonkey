@@ -451,6 +451,24 @@ except Exception as e:
     print(f'parse failed: {e}')
 " 2>/dev/null)
     log "MSAF ensemble KPI: $KPI_SUMMARY"
+
+    # 5c. BestChoice Phase 6 daily ensemble (V4 + BC rank-combined) — 2026-05-22 added
+    log "--- 5c. BestChoice Phase 6 daily ensemble V4+BC ---"
+    PYTHONPATH=backend python backend/scripts/run_daily_ensemble_v4_bc.py \
+        --top-k 5 >> "$LOG" 2>&1 || log "WARN: BC daily ensemble 失败 (V4 OOS 边界 or BC sparse)"
+    # Pull last ensemble picks summary
+    BC_ENSEMBLE_SUMMARY=$(PYTHONPATH=backend python -c "
+import sys
+sys.path.insert(0, 'backend')
+from services.duck_adapter import connect
+try:
+    with connect('data/smartmoney.duckdb', read_only=True) as conn:
+        r = conn.execute('SELECT MAX(signal_date), COUNT(*) FROM mart_daily_ensemble_picks_v4_bc_v1 WHERE run_id = ?', ['ensemble_v4_bc_v1']).fetchone()
+        print(f'latest signal_date={r[0]}, total picks={r[1]}')
+except Exception as e:
+    print(f'parse failed: {e}')
+" 2>/dev/null)
+    log "BC ensemble: $BC_ENSEMBLE_SUMMARY"
 else
     log "DRY: skip regime/paper_sim"
 fi
