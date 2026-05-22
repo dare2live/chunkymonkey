@@ -162,6 +162,21 @@ Implementation: `backend/scripts/build_ensemble_v4_bc_stage_filtered.py` 新 mod
 
 后续: 若 stage_filtered ensemble Sharpe > V4+BC 1.83 → 推 production champion 候选, 直接 push #6 perfect ladder target.
 
+**实测**: ensemble_v4_bc_stage_filtered_v1 paper_sim_v6_compare 完成 (lm_v6_compare_20260522T144556):
+- Sharpe **1.84** vs no-stage-filter 1.83 = +0.01 (边际, 但稳)
+- ann 75.48% / dd -16.85% / win 60%
+- RankIC 0.0001 (低, 因 ensemble 不依靠 RankIC 排名)
+
+**结论**: paper_sim_v6 mature engine 已 mitigate stage 4 drag 通过 exit_rules + risk_control + sizer. Stage filter 顶层 marginal.
+早 quick paper_sim 大差异 (raw V4 -0.40 vs Stage{1.5,2} +1.13) 是 simple paper_sim 没 engine 保护.
+
+**Sharpe gap to #6 ready: 0.16** (1.84 → 2.0). 路径:
+1. v7 retrain panel v5 PIT-clean (待 GCP, 6/1 reset)
+2. BC walk-forward audit cross-repo (defer)
+3. Phase 7 conditional exit ON TOP of stage-filtered ensemble (复合层试)
+
+dd (-16.85%) 已 PASS / win (60%) 已 PASS. **仅 Sharpe + n_obs 还差**.
+
 ### I. 真 path to 运营 ready (gap-driven, 替代 phase 列表打勾思维)
 
 每次 session 推进必同步问: 距 `ready_for_delivery=True` 还差啥? 不是问 "phase 完了吗".
