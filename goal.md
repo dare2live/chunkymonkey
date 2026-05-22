@@ -314,6 +314,46 @@ Universe.py 加 `is_st_stock()` + `sql_where_no_st()` helper. ST_NAME_PREFIXES =
 
 6 universe tests pass (backend/tests/test_universe.py).
 
+### O. 2026-05-23 01:00 — ST filter on composite verdict 反预期 HURT
+
+ensemble_v4_intersect_bc_phase7_st_filtered_v1 paper_sim_v6 (cmp lm_v6_compare_20260522T163007):
+- Sharpe 1.47 (vs no-ST composite 1.85 = -0.38 WORSE)
+- ann 59.23% / DD -21.85% / Win 60.00% (+10pp win)
+
+反预期! ST filter alone V4 +0.24 lift, 但 ST filter on 强 confluence -0.38 HURT.
+Reason: 强 confluence 已 filter 弱 ST picks, 剩 ST 是 ML+BC 共识识别 short-term alpha. 移除 = 切赢家.
+
+ST filter 实战 implication: 仅适合 weak-signal universe (V4 alone), 不适合 strong-confluence strategy.
+
+### P. 2026-05-23 01:05 — #6 perfect ladder final 2/4 PASS
+
+paper_sim_v6 全 variants:
+| Strategy | Sharpe | DD | Win |
+|---|---|---|---|
+| V4 baseline | 0.65 | -21.7 | 45 |
+| V4+BC rank-combine | 1.83 | -16.85 | 60 |
+| V4+BC stage-filtered | 1.84 | -16.85 | 60 |
+| V4 ∩ BC + Phase 7 composite | 1.85 | -20.63 | 50 |
+| V4 ∩ BC + Phase 7 + ST filter | 1.47 | -21.85 | 60 |
+
+Best: **V4+BC stage-filtered Sharpe 1.84 / DD -16.85 / Win 60** (`ensemble_v4_bc_stage_filtered_v1`)
+
+| Gate | Threshold | Best | Status |
+|---|---|---|---|
+| Sharpe | ≥ 2.0 | 1.84 | FAIL -0.16 |
+| DD | ≥ -20% | -16.85 | PASS +3.15pp |
+| Win | ≥ 55% | 60 | PASS +5pp |
+| n_obs | ≥ 60 | 22 | FAIL structural |
+
+**2/4 gates PASS**. 仍 NOT READY.
+
+Path forward (gap closure 优先级):
+1. v7 retrain panel v5 (Pattern 10 FIXED) on GCP 6/1 reset 后, via safe_retrain.sh
+2. n_obs structural: V4 inference 2021-2023 truly OOS pre-train (kline 历史足, panel v3 需 extend)
+3. Pattern 8 survivorship: panel v3 rebuild with PANEL_UNIVERSE_MODE=pit
+
+不再 propose ensemble variants (5 个 paper_sim_v6 converge 1.84-1.85). v7 是真 lift path.
+
 ### I. 真 path to 运营 ready (gap-driven, 替代 phase 列表打勾思维)
 
 每次 session 推进必同步问: 距 `ready_for_delivery=True` 还差啥? 不是问 "phase 完了吗".
