@@ -6,6 +6,7 @@
 __pycache__/
 *.pyc
 .claude/
+!.claude/settings.json
 Users/
 data/qlib_data/features
 data/qlib_models/
