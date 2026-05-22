@@ -48,7 +48,12 @@ Perception 推进 (2026-05-22 09:00 CST; 跟主项目 verdict 并行不阻塞): 
   - (1) 概念 PIT 历史 + 龙头联动 (P3 概念扩 + P5 历史扩, 卡 X2.1 1+ 年累积)
   - (2) 资金路径 PIT (P4 hsgt/dzjy built_at fix, handoff #25 标 HOLD 复杂度上调)
   - (3) **产业链扩散** (P5 ChainDiffusion 完整版, F10 业务 segment 解析 `tdxhub_gpcw`) — 用户 09:40 明确点名
-- 其他 alpha 增强可计划增加 (待具体 propose 后定): e.g. 高管增减持 PIT, 大宗交易 PIT, 龙虎榜 cross-source, sector rotation 跨期, factor decay/timing, label engineering (forward N 多 horizon)
+- 其他 alpha 增强可计划增加 (已 plan @ 2026-05-22 09:55 CST, `analysis/alpha_enhancement_plan_20260522.md`): 8 候选方向, top 3 推进:
+  - Phase A (本周, ~2h ~$0.50): Multi-horizon label (fwd_5d/10d 加现 fwd_20d, 无新数据无 leakage 新增, GCP retrain)
+  - Phase B (下周, ~4h ~$0.50): 股东减持公告 windowing (fact_shareholder_plan 8K rows ready PIT-fixed, panel + GCP retrain)
+  - Phase C (评估): factor decay timing (本地 verify alpha decay 节奏先)
+  - Backlog: LHB 席位 windowing / capital flow 多滞后 / 跨 horizon label diff
+  - NOT ACTIVATED: Perception regime 接 panel (破物理边界硬约束)
 
 按 09:35 完成的 Perception internal work checkpoint (这部分 NOT 暂停, 仍可推): 当前 checkpoint 进度:
 - 7 engine mart 当前 row/date 范围 (实测今早 9:30 前):
