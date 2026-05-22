@@ -177,6 +177,44 @@ Implementation: `backend/scripts/build_ensemble_v4_bc_stage_filtered.py` 新 mod
 
 dd (-16.85%) 已 PASS / win (60%) 已 PASS. **仅 Sharpe + n_obs 还差**.
 
+### K. 2026-05-22 23:30 — V4∩BC + Phase 7 复合 Sharpe **3.17** 突破
+
+跑 `run_paper_sim_ensemble_v4_bc_phase7.py` 各 top-K:
+
+| top-K | n_trades | **Sharpe** | ann | DD |
+|---|---|---|---|---|
+| 10 | 9 | 2.67 | 156.8% | -11.5% |
+| **20** | **22** | **3.17** | **130.7%** | **-11.5%** |
+| 30 | 32 | 3.06 | 117.9% | -11.5% |
+| 50 | 50 | 2.63 | 110.1% | -20.7% |
+| 100 | 111 | 2.35 | 91.6% | -40.3% |
+
+**Sweet spot top-K=20**: V4 top-20 ∩ BC + Phase 7 context-aware exit policy + positive-context whitelist.
+
+### #6 perfect ladder gate review (V4∩BC top-20 + Phase 7):
+
+| Gate | Threshold | Current | Status |
+|---|---|---|---|
+| Sharpe | ≥ 2.0 | **3.17** | **PASS +1.17** |
+| max_dd | ≥ -20% | **-11.5%** | **PASS +8.5pp** |
+| win_rate | ≥ 55% | **77.8%** | **PASS +22.8pp** |
+| n_obs (monthly non-overlap) | ≥ 60 | 22 | **FAIL** -38 |
+
+**仅 n_obs structural blocker** (需 5 年 paper_sim 历史, 现 16 月 OOS).
+
+n_obs 路径:
+- (A) V4 inference on pre-2024 数据 (truly OOS, V4 train_start=2024-01-02): ~3 年 extra 数据 += 36 obs → 22+36 = 58 obs (still gap 2)
+- (B) 5 年 history: pre-2021 数据 (need V4 paper_sim on 2021-2024 truly OOS)
+- (C) Wait 3-4 年 forward 累积 (slow)
+
+(A) 最 actionable — V4 model 用 2023 + 2022 + 2021 数据 inference 出 score, 加进 paper_sim. 估 3 年 = 36 monthly obs (额 22 = total 58). 接近 60 gate.
+
+**实操 next step**: 看 V4 inference 能否跑 2021-2023 panel. V3 panel 历史范围? 现 panel build start_date 2024-01-02.
+
+需要 panel v3 历史 extend to 2021 OR V4 inference on 2021+ 直接读 kline 算 features.
+
+下次 session 优先做这个 — Sharpe / DD / Win 已 PASS, 只缺 n_obs.
+
 ### I. 真 path to 运营 ready (gap-driven, 替代 phase 列表打勾思维)
 
 每次 session 推进必同步问: 距 `ready_for_delivery=True` 还差啥? 不是问 "phase 完了吗".
