@@ -87,6 +87,17 @@ Caveat: baseline OOS RankIC 0.0593 比 stability model true train-log 跑出的 
 
 evidence: `analysis/feature_ablation_results_20260522.log`
 
+**v5 retrain launched (2026-05-22 14:50 CST; 用户 push back "可以使用 gcp")**:
+- model_id `lgbm_phase5_stability_v5_20260522T065000Z`
+- pid 1464 on VM, Plan C config (1×32 thread + n_est=100, n_trials=50)
+- `--exclude-cols`: 24 noise cols (8 fundamental + 4 survey + 7 lhb + 5 executive)
+- features used: 122 - 24 = 98 cols
+- monitor bs9yy1hb9 10min poll
+- ETA ~12h GCP (50 trial × 15min single, may + preempt cycles)
+- 估算 cost: ~\$0.376/h × 6h actual uptime = ~\$2.3 (projected $14 → $16.3, 月预算超 8.7%)
+- 验证目标: v5 OOS RankIC > 0.0086 (旧 stability), true train-log IS-OOS gap < 92.43% (旧 92.43%)
+- 若 v5 OOS 显著 up + gap shrink → confirm Phase A finding 解决部分 overfit; 否则 features 不是唯一根因, 转 Phase B portfolio-objective 或 Phase D PIT 深审
+
 **BestChoice Phase 3 + Phase 4 complementarity (2026-05-22 11:48 CST)**:
 
 Phase 3 paper_sim (adapter 30b4511c + paper_sim_lambdamart_v6_compare 跑 432 dates 2024-07→2026-04):
