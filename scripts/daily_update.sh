@@ -315,8 +315,26 @@ try:
 finally:
     conn.close()
 PYEOF
+
+        # 2026-05-22 加 (Stage X2.1): sync_industry 写 dim_stock_tdx_industry_history 累积 PIT 历史
+        # 阻塞 Perception P3 主题扩到概念 + P5 LeaderFollower 扩历史. tdxhub block 无历史 API,
+        # 唯一路径自建 daily snapshot 累积. tdx_industry_client.py 已在 sync 时自动追加历史表.
+        log "--- Step 2j: tdx_industry sync (累积 PIT 历史 for Perception P3/P5) ---"
+        PYTHONPATH=backend python - <<'PYEOF' >> "$LOG" 2>&1 || log "WARN: tdx_industry sync 失败"
+import asyncio
+from services.duck_adapter import connect as duck_connect
+from routers.updater import _step_sync_industry
+conn = duck_connect("data/smartmoney.duckdb")
+try:
+    n = asyncio.run(_step_sync_industry(conn))   # _step_sync_industry -> int
+    # verify history 累积
+    r = conn.execute("SELECT COUNT(DISTINCT snapshot_date), MAX(snapshot_date) FROM dim_stock_tdx_industry_history").fetchone()
+    print(f"tdx_industry: synced_rows={n} history_dates={r[0]} latest_snapshot={r[1]}")
+finally:
+    conn.close()
+PYEOF
     else
-        log "DRY: skip Step 2d-2i satellite syncs"
+        log "DRY: skip Step 2d-2j satellite syncs"
     fi
 fi
 
