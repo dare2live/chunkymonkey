@@ -56,6 +56,31 @@ Perception 推进 (2026-05-22 09:00 CST; 跟主项目 verdict 并行不阻塞): 
   - DROP: multi-horizon label / 减持 windowing / LHB / capital flow 多滞后 / factor decay / Perception regime 接 panel (历史无显著证据 OR 破物理边界)
   - 月预算: projected 91.4% 剩 $1.30, Phase A 4 combo 全跑 ~$2 超 buffer; 推荐 1 combo (0.7/0.3) ~$0.50
 
+**BestChoice Phase 3 + Phase 4 complementarity (2026-05-22 11:48 CST)**:
+
+Phase 3 paper_sim (adapter 30b4511c + paper_sim_lambdamart_v6_compare 跑 432 dates 2024-07→2026-04):
+- BestChoice: Sharpe 1.10 / ann +34.87% / max_dd -22.09% / 月胜率 50%
+- vs v4 baseline: Sharpe 0.65 / ann +36.10% / dd -21.7% / win 45% — BestChoice 全面略好
+- vs stability (BLOCK verdict): Sharpe 2.09 / ann +71.92% — BestChoice 弱
+- **1/4 用户终极目标 PASS** (仅 ann), 不达独立 champion 标
+
+Phase 4 complementarity (plan §5):
+- BestChoice 101 BUYs / 64 stocks, baseline 97 BUYs / 76 stocks
+- **shared stocks 5 (6.6%), same-day same-stock 0** → **完全不重合 alpha source**
+- plan §5 interpretation table: "improves champion ensemble" → **integrate as ensemble component**, 不替代 champion
+
+⚠ **BestChoice selection bias caveat** (跟 stability true verdict 同类 risk):
+- BestChoice candidates 来自 30% holdout split + full-period Optuna, **不是 walk-forward 真 OOS** (plan §3 selection bias)
+- paper_sim Sharpe 1.10 含 selection bias artifact, 真 forward 可能更差
+- **BestChoice 需独立 walk-forward OOS verify** (类似 stability true train-log audit) 才能 trust 作 ensemble component
+- 现在不能直接 promote, 标"互补 alpha 探索 done, 等 walk-forward OOS audit"
+
+下一步:
+- v3 Phase A feature ablation (找 OOS RankIC collapse 根因) — 本地, 立即可启
+- v3 Phase D PIT audit (sanity) — 本地, 立即可启
+- BestChoice walk-forward OOS audit (类似 retrain_lambdamart_v6 的 train_log_only path, 在 BestChoice 跑) — 后续 (跨 repo 工作)
+- Phase B/C (portfolio-objective + regime-conditional) 等 6/1 budget reset
+
 **True train-log Phase4 verdict 确认 BLOCK (2026-05-22 11:12 CST)**: Plan C retrain 用 --warm-start-checkpoint 实际跑成 final fit mode (skip Optuna search, 直接用 best.json 跑 final fit), 但好处是 **远端写 fact_model_train_log true IS/OOS evidence**. 拉本地 import + 重跑 Phase4:
 - IS RankIC = 0.1137, OOS RankIC = **0.0086** (near noise)
 - IS IR 16.98, OOS IR 0.59
