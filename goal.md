@@ -56,6 +56,37 @@ Perception 推进 (2026-05-22 09:00 CST; 跟主项目 verdict 并行不阻塞): 
   - DROP: multi-horizon label / 减持 windowing / LHB / capital flow 多滞后 / factor decay / Perception regime 接 panel (历史无显著证据 OR 破物理边界)
   - 月预算: projected 91.4% 剩 $1.30, Phase A 4 combo 全跑 ~$2 超 buffer; 推荐 1 combo (0.7/0.3) ~$0.50
 
+**v3 Phase A feature ablation 完成 (2026-05-22 14:25 CST; GCP 32-core ~16 min)**:
+
+train signal_date <= 2025-11-30, test 2025-12-01→2026-04-14, LightGBM 100 est × 14 ablation groups.
+
+Top **drop-helps** (feature 是 noise, drop 后 OOS 上):
+- **drop_fundamental** (pe/pb/ps/roe + z, 8 cols): OOS 0.0593 → 0.0706 (+19%), rel_drop 73.1% → 67.2%
+- drop_survey: +0.00301
+- drop_lhb: +0.00242
+- drop_executive: +0.00153
+
+**Drop-hurts** (核心 signal, 保留):
+- drop_sector: OOS 崩 0.0125 (-0.04676) — sector 是关键
+- drop_vol_mom: -0.00830
+- drop_alpha158: -0.00781 (64 cols, 网格 OK)
+- drop_calendar: -0.00509
+
+Caveat: baseline OOS RankIC 0.0593 比 stability model true train-log 跑出的 0.0086 高很多, 因 ablation 用 simple train/test split single fit 而非 walk-forward expanding_monthly. **绝对值偏乐观**, 但相对 delta 仍有信息.
+
+**v3 Phase A 结论**:
+- fundamental features 是 noise (A 股短期 alpha 跟 pe/pb/ps/roe 弱关联), drop 后 OOS 大幅 up
+- 可 prune fundamental (8 cols) + survey (4) + lhb (7) + executive (5) = 24/135 cols (~18% panel 简化)
+- 保留 sector/alpha158/vol_mom/calendar 核心 features
+- IS-OOS gap 67-73% 仍高 (远超 30% threshold), 说明 **features 不是唯一根因**, label/algorithm/regime 等还需查 (v3 plan Phase B/C/D)
+
+**Next**:
+- 重 train stability model with feature_set_v5 (drop fundamental/survey/lhb/executive), 看 walk-forward OOS 是否提升, true IS-OOS gap 是否 < 30%
+- 待 6/1 budget reset 后跑 GCP 50-trial stability retrain with v5 panel
+- 同时 v3 Phase D PIT audit 排查 hidden leakage
+
+evidence: `analysis/feature_ablation_results_20260522.log`
+
 **BestChoice Phase 3 + Phase 4 complementarity (2026-05-22 11:48 CST)**:
 
 Phase 3 paper_sim (adapter 30b4511c + paper_sim_lambdamart_v6_compare 跑 432 dates 2024-07→2026-04):
