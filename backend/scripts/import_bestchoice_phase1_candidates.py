@@ -88,6 +88,8 @@ def main() -> int:
             params_str = row.get("params", "{}")
             params_json = params_str if params_str.startswith("{") else "{}"
             params_hash = hashlib.sha256(params_json.encode()).hexdigest()[:16]
+            # Validation metrics may not exist in this CSV (only train+oos in summary CSV);
+            # the adoption CSV at analysis/formula_local_optuna_adoption_candidates.csv has them
             rows.append(
                 (
                     args.run_id,
@@ -106,6 +108,12 @@ def main() -> int:
                     _opt_float(row.get("delay_buy_rate", "")),
                     _opt_float(row.get("delay_sell_rate", "")),
                     _opt_float(row.get("score", "")),
+                    _opt_int(row.get("validation_signal_count", "")),
+                    _opt_float(row.get("validation_win_rate", "")),
+                    _opt_float(row.get("validation_avg_ret", "")),
+                    _opt_float(row.get("validation_score", "")),
+                    _opt_float(row.get("score_delta", "")),
+                    _opt_float(row.get("validation_score_delta", "")),
                     str(csv_path),
                     args.data_latest,
                     now_str,
@@ -136,6 +144,12 @@ def main() -> int:
                 delay_buy_rate DOUBLE,
                 delay_sell_rate DOUBLE,
                 score DOUBLE,
+                validation_signal_count INTEGER,
+                validation_win_rate DOUBLE,
+                validation_avg_ret DOUBLE,
+                validation_score DOUBLE,
+                score_delta DOUBLE,
+                validation_score_delta DOUBLE,
                 source_artifact VARCHAR,
                 source_data_latest_date DATE,
                 created_at TIMESTAMP
@@ -151,9 +165,11 @@ def main() -> int:
             INSERT INTO mart_stock_formula_optuna_bestchoice_v1 (
                 run_id, stock_code, formula_id, variant_id, params_json, params_hash,
                 sell_rule, holding_days, signal_count, win_rate, avg_ret, avg_dd, calmar,
-                delay_buy_rate, delay_sell_rate, score, source_artifact,
-                source_data_latest_date, created_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                delay_buy_rate, delay_sell_rate, score,
+                validation_signal_count, validation_win_rate, validation_avg_ret,
+                validation_score, score_delta, validation_score_delta,
+                source_artifact, source_data_latest_date, created_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             rows,
         )

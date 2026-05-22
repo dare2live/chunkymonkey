@@ -819,6 +819,68 @@ SELECT * FROM mart_data_source_watermark;
 
 每次 session 增量内容写这里, 新 session 启动时**从下往上读**最近改了啥.
 
+### 2026-05-22 BestChoice Phase 1 + Phase 2 import (read-only challenger, plan §5)
+
+用户 push back "BestChoice 对主项目的补强也开始做" — 启 BestChoice 接主项目 plan §5 流程, 不独立运营.
+
+**Phase 1** (`backend/scripts/import_bestchoice_phase1_candidates.py`):
+- 新 mart `mart_stock_formula_optuna_bestchoice_v1`: 1146 candidates / 1064 stocks / 4 formulas / 1 variant
+- source: bestchoice/analysis/formula_local_optuna_batch_stock_best_replacements.csv
+- score [37.15, 95.00] mean 67.50 / win_rate mean 0.6849
+- run_id=bestchoice_formula_optuna_20260521_v1
+- schema 跟 plan §5 Phase 1 一致 (含 validation_* 字段, CSV 该数据暂 NULL)
+
+**Phase 2** (`backend/scripts/build_bestchoice_phase2_daily_feed.py`):
+- 新 mart `mart_daily_formula_candidate_bestchoice_v1`: 25,684 signals / 815 signal_dates / 1063 stocks
+- signal_date range 2023-01-03 → 2026-05-21
+- avg confidence_score 64.43 / avg historical_win_rate 0.6435
+- T+1 buy_date via binary search dim_trading_calendar
+- 同 stock 同日去重 keep 最高 confidence (dedupped 186)
+- 用 bestchoice/formula_engine.py compute_formula_signals 跑 historical kline trigger detection (5 formula: gs_raw_buy/gs_pullback_confirm/ma_base_breakout/activity_breakout/volume_base_breakout)
+
+**Stop-loss design** (用户 push back 已记 goal.md backlog):
+- 7 候选评估表 (A=ATR / B=avg_dd / C=Forward-label / D=Bollinger / E=Regime / F=Time / G=Combo)
+- 推荐 A+B 双叉 + Optuna sweep: `stop = entry × (1 - max(K_atr × ATR(14)/entry, |avg_dd_stock| × M))`
+- 后续 Phase 3 paper_sim 时启用 sweep
+
+**Optuna resume retrain** (用户 push back "万一漏 best params"):
+- discovered Optuna study COMPLETE 仅 56/80, 缺 24 trial
+- reset 33 stale RUNNING → FAIL, 启 retrain --n-trials 50 (governance min) on VM pid 1824
+- current best trial 130 value=0.4009 (MAXIMIZE direction)
+- 续跑可能出更高 value
+
+**Code audit** (CLAUDE.md §7.4 双扫):
+- codegraph sync: Synced 2 changed files, Added 2, Updated 33 nodes
+- complexity scan: 0 new HIGH hotspots in 今天改动文件, 所有 HIGH 仍在 legacy assets/js/app.js
+
+### 2026-05-22 chain fix + session_snapshot fallback (incident response)
+
+Chain Stage 2 export pgrep 误判 (pid 1463 Optuna 跟 final fit 同 MODEL_ID), session_snapshot 读 stale model_id.
+
+**chain (`scripts/post_retrain_chain.sh`)**:
+- Stage 2 export FAIL 时, 若 best.json n_oos_rows > 0 → auto ALLOW_RUNNING_EXPORT=1 retry
+- 所有 FATAL exit 前强制 bash gcp/vm_stop.sh 防 cost burn
+
+**snapshot (`scripts/session_snapshot.sh`)**:
+- RETRAIN_MODEL_ID 加 fallback chain: stability_retrain/current.pointer > 最新 optuna/*.best.json mtime > phase5_chain/model_id.txt
+- 旧 hardcode 读 phase5_chain/model_id.txt = stale lgbm_phase5_gcp_20260520T010718, 实测 fix 后正确显示 stability model
+
+**pipeline (`scripts/post_retrain_pipeline.sh`)**:
+- Step 3 paper_sim arg: --challenger-model-id → --lambdamart-model-id (script 实际接收)
+- Step 5 record_decision arg: --gate-json → --phase4-json, 加 --output-json
+
+实测今晚 incident chain Stage 2 误判 → manual ALLOW_RUNNING_EXPORT=1 救场, predictions 3.4M 已落 GCS + local.
+
+### 2026-05-22 final fit verdict warn_only_proxy + alpha cross-check 完成
+
+`lgbm_phase5_stability_20260521T055800Z` final fit (--use-checkpoint-best) 跑完 3.4M predictions:
+- Verdict warn_only_proxy / all_pass=true / production_status=candidate_hold_reject
+- PBO 0.102 (旧 0.626 5.1x) / NDCG10 0.506 (旧 0.466 +8.5%) / OOS RankIC IR 11.186 (旧 1.535 7.3x)
+- paper_sim KPI: Sharpe 2.09 / ann +71.92% / max_dd -16.84% / 月胜率 70% (4 个用户终极目标全达成)
+- trade-level: stability avg_ret +4.51%/笔 vs baseline -0.58%/笔, win 56.6% vs 39.4%
+- swap_uplift_estimate=None (CLAUDE.md §4.5 反例避免)
+- pending: true train-log Phase4 replay (proxy mode 限制, 局部 fact_model_train_log 没 import)
+
 ### 2026-05-20 anti-churn Path A3 Round 3: max_positions 5→10 + minhold=15 双管实测 (criteria #6 维持 70%, push back D 撤回)
 
 承接 minhold15 partial (turnover -10% 仍 FAIL >>8), user 推真 anti-churn fix path: max_pos 摊薄 + minhold 双管. **真金白银 push back**: 触发用户决策框架 **D (dd 大幅劣化撤回)** — maxpos10 摊薄被 dd -26.1% 劣化超 -20% 死线否决, 锁 minhold15 为 prod-candidate alpha 增强不再推进 maxpos10 路径.

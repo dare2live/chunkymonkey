@@ -56,6 +56,17 @@ Perception 推进 (2026-05-22 09:00 CST; 跟主项目 verdict 并行不阻塞): 
   - DROP: multi-horizon label / 减持 windowing / LHB / capital flow 多滞后 / factor decay / Perception regime 接 panel (历史无显著证据 OR 破物理边界)
   - 月预算: projected 91.4% 剩 $1.30, Phase A 4 combo 全跑 ~$2 超 buffer; 推荐 1 combo (0.7/0.3) ~$0.50
 
+止损位设计讨论 (2026-05-22 10:50 CST; 用户 push back "没有止损位, 应该基于什么来设计, 讨论一下" — 已讨论先记 backlog, 后续 verdict 出 + Phase 3 paper_sim 时启用):
+- 现状: BestChoice candidates 只有 sell_rule (fixed_N天) + holding_days, 没显式 per-position stop. paper_sim 已有 portfolio-level HARD STOP (dd=-20% 全清), 已有 trailing_hit SELL reason 但参数 hardcode.
+- 7 个 candidate 方向 (评估表见讨论): A=ATR-based / B=Historical avg_dd-based / C=Forward-label PIT quantile / D=Volatility-band Bollinger / E=Regime-conditional / F=Time-decay / G=Combo
+- 推荐: **A + B 双叉 + Optuna sweep** — `final_stop = entry × (1 - max(K_atr × ATR(14)/entry, abs(avg_dd_stock) × M_avg_dd))`
+  - A (ATR) 给跨 stock vol normalization, K 走 Optuna sweep 不 hardcode (CLAUDE.md §4.5 反例避免)
+  - B (avg_dd) 用 BestChoice 已有 candidate-level 历史 dd, 不需新数据
+  - max() 双叉 robust, Optuna 2D sweep 16 combo GCP ~30 min ~\$0.20
+  - 不上 regime (E) / forward label (C) — 先 verify simple A+B; time-decay (F) 跟 BestChoice sell_rule 重叠
+- 实施路径: Phase 3 paper_sim 跑 BestChoice feed + stop A+B baseline (first-try M=1.0, K=2.0) → 对比 no-stop verify dd 压低 / ann 守住 → 若显著改善则 Optuna sweep optimal weights
+- 时机: 等续跑 retrain 出 verdict + Phase 3 paper_sim 启动时讨论参数 sweep 范围
+
 按 09:35 完成的 Perception internal work checkpoint (这部分 NOT 暂停, 仍可推): 当前 checkpoint 进度:
 - 7 engine mart 当前 row/date 范围 (实测今早 9:30 前):
   - P1 emotion: 373 rows / 373 dates (2024-11-01 → 2026-05-19) — 全量已就绪
