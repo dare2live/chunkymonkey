@@ -282,9 +282,12 @@ def audit_check_5_temporal_variance(conn, panel_table: str, sample_rows: int = 5
                 "n_stocks_constant": int(n_stocks_constant),
                 "n_stocks_sampled": int(len(stock_std)),
             })
-        # also check overall low variance
-        full_std = s.std()
-        full_range = s.max() - s.min() if s.max() != s.min() else 1.0
+        # also check overall low variance (cast to float so bool dtype doesn't break arithmetic)
+        s_num = s.astype(float)
+        full_std = float(s_num.std())
+        smax = float(s_num.max()) if pd.notna(s_num.max()) else 0.0
+        smin = float(s_num.min()) if pd.notna(s_num.min()) else 0.0
+        full_range = smax - smin if smax != smin else 1.0
         cv = full_std / abs(full_range) if full_range else 0
         if cv < TEMPORAL_VARIANCE_FLAG_PCT and s.nunique() < 20:
             findings.append({

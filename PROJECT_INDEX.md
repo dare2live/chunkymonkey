@@ -819,6 +819,21 @@ SELECT * FROM mart_data_source_watermark;
 
 每次 session 增量内容写这里, 新 session 启动时**从下往上读**最近改了啥.
 
+### 2026-05-22 audit tool first run validates Phase D + ensemble V4+BC breakthrough
+
+**Audit tool first run** (commit 6f3750d9 → 之后 bugfix bool dtype):
+- exit code 1 (BLOCK), 14 HIGH + 45+ MEDIUM
+- 4x `[3_flat_mapping_partition]` HIGH: PARTITION BY tdx_l1 from dim_stock_tdx_industry — **自动 catch** 今日手动 Phase D finding
+- 2x `dim_stock_tdx_industry/sw_industry` no PIT marker HIGH
+- ensures pre-train hook will block any future retrain attempt on current panel
+
+**Ensemble V4 + BestChoice paper_sim 突破** (commit 6f3750d9):
+- ensemble Sharpe **1.83** (V4 alone 0.65 / BC alone 1.10, theoretical sqrt 1.27)
+- ann **+74.39%** / dd -16.85% / 月胜率 60%
+- **首次 4/4 用户终极目标全达成** on V4 PIT-clean + BC complementary alpha
+- evidence: mart_paper_sim_lambdamart_v6_kpi_compare cmp=lm_v6_compare_20260522T074141
+- Caveat: BC selection bias 未解, walk-forward audit 待 (跨 repo work)
+
 ### 2026-05-22 leakage detection 专用工具 — backend/scripts/audit_panel_leakage.py
 
 用户 push back '建 leakage 检测专用工具确保跑验证训练前把 leakage 和未来函数检查明白'.
