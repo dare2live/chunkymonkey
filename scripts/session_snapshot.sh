@@ -49,7 +49,18 @@ UNCOMMITTED=$(git status --short 2>/dev/null | wc -l | tr -d ' ')
 RECENT_COMMITS=$(git log --oneline -10 2>/dev/null)
 
 # ============ 2. Retrain in-flight ============
-RETRAIN_MODEL_ID=$(cat data/reports/phase5_chain/model_id.txt 2>/dev/null | head -1)
+# Fallback chain: stability_retrain pointer > latest optuna best.json mtime > phase5_chain hardcode
+RETRAIN_MODEL_ID=$(cat data/reports/stability_retrain/current.pointer 2>/dev/null | tr -d '[:space:]')
+if [[ -z "$RETRAIN_MODEL_ID" ]]; then
+    # latest best.json in optuna dir, derive model_id from filename
+    LATEST_BEST=$(ls -t data/reports/optuna/*.best.json 2>/dev/null | head -1)
+    if [[ -n "$LATEST_BEST" ]]; then
+        RETRAIN_MODEL_ID=$(basename "$LATEST_BEST" .best.json)
+    fi
+fi
+if [[ -z "$RETRAIN_MODEL_ID" ]]; then
+    RETRAIN_MODEL_ID=$(cat data/reports/phase5_chain/model_id.txt 2>/dev/null | head -1)
+fi
 RETRAIN_STATUS_JSON=$(cat data/reports/phase5_chain/status.json 2>/dev/null || echo '{}')
 
 # Check VM status (GCP) — skip if --no-gcp

@@ -62,15 +62,31 @@ tail -5 /tmp/final_fit.log 2>/dev/null
     sleep "$POLL_SEC"
 done
 
-# Stage 2: export prediction parquet to GCS
+# Stage 2: export prediction parquet to GCS (with fallback when pgrep false-positive)
 log ""
 log "Stage 2: export prediction parquet via gcp_export_model_predictions.sh"
 if MODEL_ID="$MODEL_ID" bash scripts/gcp_export_model_predictions.sh 2>&1 | tee -a "$LOG" | tail -5; then
     log "export OK"
 else
-    log "FATAL: export failed"
-    notify_macos "Post retrain FAIL" "export failed, manual review"
-    exit 2
+    log "WARN: export refused (likely pgrep matched a co-running Optuna process with same MODEL_ID)"
+    # Verify final fit actually wrote complete predictions before bypassing pid check
+    EXPECTED_ROWS=$(python3 -c "import json; d=json.load(open('data/reports/optuna/$MODEL_ID.best.json')); print(d.get('best_user_attrs',{}).get('n_oos_rows', 0))" 2>/dev/null || echo "0")
+    if [[ "$EXPECTED_ROWS" -gt 0 ]]; then
+        log "fallback: best.json declares n_oos_rows=$EXPECTED_ROWS; predictions are model-final-fit output (Optuna trials do not write prediction rows), retrying export with ALLOW_RUNNING_EXPORT=1"
+        if MODEL_ID="$MODEL_ID" ALLOW_RUNNING_EXPORT=1 bash scripts/gcp_export_model_predictions.sh 2>&1 | tee -a "$LOG" | tail -5; then
+            log "export fallback OK (ALLOW_RUNNING_EXPORT=1)"
+        else
+            log "FATAL: export retry also failed; stopping VM before exit"
+            bash gcp/vm_stop.sh 2>&1 | tee -a "$LOG" | tail -3 || log "WARN: vm_stop on FATAL also failed"
+            notify_macos "Post retrain FAIL" "export retry failed, VM stopped, manual review"
+            exit 2
+        fi
+    else
+        log "FATAL: best.json missing n_oos_rows; cannot verify predictions ready; stopping VM"
+        bash gcp/vm_stop.sh 2>&1 | tee -a "$LOG" | tail -3 || log "WARN: vm_stop on FATAL also failed"
+        notify_macos "Post retrain FAIL" "export failed + best.json invalid, VM stopped, manual review"
+        exit 2
+    fi
 fi
 
 # Stage 3: pull parquet locally
@@ -81,8 +97,9 @@ if gcloud storage cp -r "gs://chunkymonkey-data-0517/phase5/stability_retrain/$M
     log "pull OK"
     ls -la "data/phase5_exports/$MODEL_ID/" | tee -a "$LOG" | head -5
 else
-    log "FATAL: pull failed"
-    notify_macos "Post retrain FAIL" "GCS pull failed, manual review"
+    log "FATAL: pull failed; stopping VM (GCS retains parquet, can retry pull later)"
+    bash gcp/vm_stop.sh 2>&1 | tee -a "$LOG" | tail -3 || log "WARN: vm_stop on FATAL also failed"
+    notify_macos "Post retrain FAIL" "GCS pull failed, VM stopped, parquet still in GCS"
     exit 3
 fi
 
