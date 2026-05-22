@@ -819,6 +819,24 @@ SELECT * FROM mart_data_source_watermark;
 
 每次 session 增量内容写这里, 新 session 启动时**从下往上读**最近改了啥.
 
+### 2026-05-22 ensemble V4+BestChoice paper_sim alpha-additivity test
+
+用户 16:30 push back '看 BestChoice 结果是否给主项目提供 alpha'.
+
+新 `backend/scripts/build_ensemble_v4_bestchoice_predictions.py`:
+- per signal_date PERCENT_RANK(v4_score) + PERCENT_RANK(bc_confidence)
+- import 2,159,871 rows to mart_p0b_lambdamart_v6_predictions with model_id=ensemble_v4_bestchoice_v1
+- 14,542 dual-signal rows (BC overlap with V4 ~6.7%)
+
+跑 paper_sim_v6_compare with ensemble model_id, 看 Sharpe(ensemble) vs Sharpe(V4)=0.65 vs Sharpe(BC)=1.10:
+- 若 > max(V4, BC) → BC 真给主项目添 alpha
+- 若 ≈ V4 → 不添
+- 理论 sqrt(0.65²+1.10²)=1.27 是 low-correlation ensemble 上限
+
+paper_sim btporwli5 background.
+
+leakage detection finish (commit 131a24c8): V4 champion (panel v3, 没 sector_*_tdx_l1_rel) honest, lambdamart_v6 retrains (gcp/stability/session) 全用 panel v4 都 leakage.
+
 ### 2026-05-22 v3 alpha 路线 + Phase A 特征 ablation + Phase D PIT 致命发现 + v6 retrain
 
 **True verdict BLOCK** (stability model `lgbm_phase5_stability_20260521T055800Z` true train-log Phase4 gate, commit 0b7c2352):
