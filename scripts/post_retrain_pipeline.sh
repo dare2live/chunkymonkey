@@ -160,20 +160,19 @@ log ""
 log "=== Step 3: paper_sim v6 compare ==="
 
 PAPER_SIM_DONE="$STATE_DIR/03_paper_sim.done"
-PAPER_SIM_OUT="$STATE_DIR/paper_sim_v6_compare.json"
 if [[ -f "$PAPER_SIM_DONE" ]]; then
     log "skip paper_sim (done)"
 elif [[ "$DRY_RUN" == "1" ]]; then
-    log "DRY: would run: run_paper_sim_lambdamart_v6_compare.py --challenger-model-id $MODEL_ID"
+    log "DRY: would run: run_paper_sim_lambdamart_v6_compare.py --lambdamart-model-id $MODEL_ID"
 else
+    # run_paper_sim_lambdamart_v6_compare.py writes its own outputs (mart tables + reports); no --output-json arg
     if ! PYTHONPATH=backend python backend/scripts/run_paper_sim_lambdamart_v6_compare.py \
-        --challenger-model-id "$MODEL_ID" \
-        --output-json "$PAPER_SIM_OUT" 2>&1 | tee -a "$LOG_FILE" | tail -40; then
+        --lambdamart-model-id "$MODEL_ID" 2>&1 | tee -a "$LOG_FILE" | tail -40; then
         log "FATAL: paper_sim failed"
         exit 3
     fi
     touch "$PAPER_SIM_DONE"
-    log "paper_sim done: $PAPER_SIM_OUT"
+    log "paper_sim done"
 fi
 
 # ------- Step 4: Phase4 gate verdict -------
@@ -204,15 +203,16 @@ log ""
 log "=== Step 5: registry update + decision ==="
 
 REGISTRY_DONE="$STATE_DIR/05_registry.done"
+REGISTRY_OUT="$STATE_DIR/decision_${MODEL_ID}.json"
 if [[ -f "$REGISTRY_DONE" ]]; then
     log "skip registry (done)"
 elif [[ "$DRY_RUN" == "1" ]]; then
-    log "DRY: would run: record_phase5_decision.py --model-id $MODEL_ID --verdict $VERDICT"
+    log "DRY: would run: record_phase5_decision.py --model-id $MODEL_ID --phase4-json $GATE_OUT --output-json $REGISTRY_OUT"
 else
     if ! PYTHONPATH=backend python backend/scripts/record_phase5_decision.py \
         --model-id "$MODEL_ID" \
-        --gate-json "$GATE_OUT" \
-        --paper-sim-json "$PAPER_SIM_OUT" 2>&1 | tee -a "$LOG_FILE" | tail -20; then
+        --phase4-json "$GATE_OUT" \
+        --output-json "$REGISTRY_OUT" 2>&1 | tee -a "$LOG_FILE" | tail -20; then
         log "WARN: registry record failed (non-fatal, gate verdict 仍可用)"
     fi
     touch "$REGISTRY_DONE"
@@ -225,7 +225,6 @@ log "  MODEL_ID:     $MODEL_ID"
 log "  verdict:      $VERDICT"
 log "  state_dir:    $STATE_DIR"
 log "  gate_json:    $GATE_OUT"
-log "  paper_sim:    $PAPER_SIM_OUT"
 log ""
 log "Next:"
 case "$VERDICT" in
