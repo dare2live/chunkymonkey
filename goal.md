@@ -354,6 +354,27 @@ Path forward (gap closure 优先级):
 
 不再 propose ensemble variants (5 个 paper_sim_v6 converge 1.84-1.85). v7 是真 lift path.
 
+### Q. 2026-05-23 01:10 — audit_delivery 不 reflect V4+BC ensemble (wiring gap)
+
+audit_delivery_readiness 读 disk json reports (`_load_msaf_horizon_ladder`).
+- 现读 MSAF ensemble json (Sharpe 0.81 / dd -24.28 / n_obs 22) — old strategy
+- V4+BC ensemble Sharpe 1.84 在 mart_paper_sim_lambdamart_v6_kpi_compare 表
+- audit 不 query 此 mart → operational verdict 还基于 old MSAF KPI
+
+3 tier thresholds (from audit_delivery_readiness.py constants):
+- **SHIP** (lower bar): n_obs≥22 + ann≥10% + dd≤25% + DSR conf≥0.5 + (no sharpe req)
+- **SAMPLE** (mid): n_obs≥30
+- **PERFECT** (top): n_obs≥60 + Sharpe≥2.0 + dd≤20%
+
+V4+BC stage-filtered ensemble:
+- SHIP-ready: PASS (22 obs / 75% ann / -16.85 dd / DSR待 verify)
+- SAMPLE-ready: FAIL (22 < 30)
+- PERFECT-ready: FAIL (Sharpe 1.84 < 2.0, n_obs 22 < 60)
+
+Wiring path: 写 `data/reports/v4_bc_ensemble_horizon_ladder_20260523.json` in MSAF format → audit_delivery picks up. Substantial production wiring work (defer or 自动化).
+
+OR: 改 audit_delivery_readiness 加 query mart_paper_sim_lambdamart_v6_kpi_compare for ensemble verdict.
+
 ### I. 真 path to 运营 ready (gap-driven, 替代 phase 列表打勾思维)
 
 每次 session 推进必同步问: 距 `ready_for_delivery=True` 还差啥? 不是问 "phase 完了吗".
