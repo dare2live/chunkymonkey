@@ -48,12 +48,13 @@ Perception 推进 (2026-05-22 09:00 CST; 跟主项目 verdict 并行不阻塞): 
   - (1) 概念 PIT 历史 + 龙头联动 (P3 概念扩 + P5 历史扩, 卡 X2.1 1+ 年累积)
   - (2) 资金路径 PIT (P4 hsgt/dzjy built_at fix, handoff #25 标 HOLD 复杂度上调)
   - (3) **产业链扩散** (P5 ChainDiffusion 完整版, F10 业务 segment 解析 `tdxhub_gpcw`) — 用户 09:40 明确点名
-- 其他 alpha 增强可计划增加 (已 plan @ 2026-05-22 09:55 CST, `analysis/alpha_enhancement_plan_20260522.md`): 8 候选方向, top 3 推进:
-  - Phase A (本周, ~2h ~$0.50): Multi-horizon label (fwd_5d/10d 加现 fwd_20d, 无新数据无 leakage 新增, GCP retrain)
-  - Phase B (下周, ~4h ~$0.50): 股东减持公告 windowing (fact_shareholder_plan 8K rows ready PIT-fixed, panel + GCP retrain)
-  - Phase C (评估): factor decay timing (本地 verify alpha decay 节奏先)
-  - Backlog: LHB 席位 windowing / capital flow 多滞后 / 跨 horizon label diff
-  - NOT ACTIVATED: Perception regime 接 panel (破物理边界硬约束)
+- 其他 alpha 增强 v2 实证驱动 plan @ 2026-05-22 10:10 CST (`analysis/alpha_enhancement_plan_20260522.md` v2). 用户 10:00 push back "经过这么多轮的验证应该有大概感觉哪些指标可能显著提升, 按规律决定测试参数而不是随机盲选". v1 (doc 推断) drop, v2 按历史实证累积规律选方向:
+  - 归纳: 历史显著提升的 4 个共同点 = 改 objective / PIT-strict / 真成本反事实 / walk-forward OOS gate. 加 features / 加数据 多触发 leakage 或边际小 (v3 102 features → leakage, lm735 6 维 sweep → drop 81%).
+  - **Phase A** (推荐立即, 现月预算 subset 1 combo): Stability penalty weight sweep (现 std=0.5/neg=0.2, sweep 0.3/0.7/1.0). 本轮已证 stability penalty PBO 5.1x / IR 7.3x 显著 + 极低 risk
+  - **Phase B**: Portfolio-objective replace NDCG (Optuna 直接 optimize Sharpe/Calmar/max_dd, 不优中间 metric) — 同思路 stability penalty 扩展
+  - **Phase C**: Regime-conditional model (旧 model bull regime OOS RankIC -0.012, regime mismatch evidence)
+  - DROP: multi-horizon label / 减持 windowing / LHB / capital flow 多滞后 / factor decay / Perception regime 接 panel (历史无显著证据 OR 破物理边界)
+  - 月预算: projected 91.4% 剩 $1.30, Phase A 4 combo 全跑 ~$2 超 buffer; 推荐 1 combo (0.7/0.3) ~$0.50
 
 按 09:35 完成的 Perception internal work checkpoint (这部分 NOT 暂停, 仍可推): 当前 checkpoint 进度:
 - 7 engine mart 当前 row/date 范围 (实测今早 9:30 前):

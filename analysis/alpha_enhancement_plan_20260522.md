@@ -1,104 +1,120 @@
-# Alpha Enhancement Plan — 2026-05-22
+# Alpha Enhancement Plan — 2026-05-22 (evidence-driven rewrite v2)
 
-> 触发: 2026-05-22 09:42 用户 push back "其他可以增强 alpha 的也可以计划着增加" + verdict warn_only_proxy 不该兴奋 (回测 +71.9% 触发 relative +50% 异常线).
+> v1 (09:55) 是 doc 推断 (data ready × 互补性 × 复杂度), 不是 实证驱动. 用户 push back: "经过这么多轮的验证你应该有个大概的感觉哪些指标可能会显著提升, 可以按这个规律去决定测试的参数".
 >
-> 设计原则:
-> - **不依赖 GCP retrain** 启动 (cost 91.4% YELLOW); plan 阶段不耗 GCP
-> - **真金白银** (CLAUDE.md §1.4): 每个方向必经 PIT audit + leakage check + walk-forward OOS, 不直接合并
-> - **互补 alpha** (用户原话): 跟现 v4 panel + 新 stability model 互补, 不重叠
-> - **每方向独立 challenger**, 不动 champion. 跑 paper_sim + Phase4 gate 后才决定 promote
-> - **奥卡姆**: 不一次加多 feature, 一个一个 verify
+> v2 重写: **按 ChunkyMonkey 历史几轮 retrain 的实证规律选方向**, drop 没历史证据的 "加 features / 加新数据" 方向.
 
-## 数据 ready 状况 (2026-05-22 实测)
+## 历史实证累积 (按 commit + goal.md ledger)
 
-| 数据源 | rows | PIT 状态 | 用法 |
-|---|---|---|---|
-| `fact_shareholder_plan` 股东减持计划 | 8,012 | [OK] PIT-fixed (announce_date NULL 已 fix, commit 69371838) | 减持公告 windowing alpha |
-| `fact_hsgt_daily` 北上 | 2,767 | ⚠ 卡 2024-08-16, [HOLD] 复杂度上调 | (HOLD, 待 sync 修) |
-| `fact_dzjy_event` 大宗 | 548 | ⚠ 仅 4 天 | (HOLD, 待累积) |
-| `fact_lhb_event` 龙虎榜 | 53,481 | [OK] (用户原话: 数据基础已就位) | 机构 / 游资 席位 windowing |
-| `fact_capital_flow_pit_daily` 资金流 | 875,349 | [OK] 已 PIT | 多滞后 features (1d/3d/5d/10d) |
-| `mart_market_perception_*` Perception 7 mart | varies | [OK] PIT (observed_snapshot) | regime / emotion / theme / under_reaction context features |
+| 改动 | 效果 | 规律 |
+|---|---|---|
+| 本轮 stability retrain: 加 `--window-rank-ic-std-penalty=0.50 + neg_rate-penalty=0.20` | PBO 0.626→0.102 (5.1x), NDCG10 +8.5%, OOS RankIC IR **1.535→11.186 (7.3x)**, Sharpe 1.32→2.09, ann +65% | **改 Optuna objective 加 stability penalty = 显著 + 低 risk** |
+| v3 102 features +75% RankIC vs baseline | 触发 leakage (inst_path_a latest snapshot + sector 99.978% fallback) | **加 features 大幅 RankIC 提升 → 怀疑 leakage** |
+| Hardcode vol stop/target/trailing → Optuna walk-forward sweep | 显著 + 真 alpha (commit history) | **阈值/权重必走 Optuna + walk-forward** |
+| portfolio_backtest naive +45% vs paper_sim 含 tx_cost | naive 多算 ~30pp | **paper_sim 必含真实成本/T+1** |
+| swap_uplift_estimate 公式 → 真 K-line forward | 拉低 ann 33pp | **forward 反事实必真 K-line** |
+| lm735/sniper265 6 维 hyperparams sweep | True IS/OOS drop 81.36% FAIL | **同 model 多维 sweep 不能解 model-level blocker** |
+| `mart_stock_industry_pit` fallback 99.978% → observed only | RankIC 假 +0.035 → 真 +0.022 | **PIT-strict 必 observed, fallback 高 = leakage** |
 
-## Top 8 Alpha 增强方向 — ROI 排序
+## 归纳
 
-按 (alpha 信息领先性 × 数据 ready × 跟现 v4 panel 互补性 × 实施复杂度) 排:
+**显著提升的 4 个共同点**:
+1. 改 Optuna **objective** (per-window stability / portfolio metric)
+2. PIT-strict 数据路径 (observed > 99%)
+3. 真实交易成本反事实
+4. Walk-forward OOS gate
 
-| # | 方向 | 数据 | 复杂度 | 互补性 | 风险 |
-|---|---|---|---|---|---|
-| **1** | **Multi-horizon label engineering** (fwd_5d/10d 加现有 fwd_20d) | 无新数据, 现 panel `fwd_cost_after_5d/10d/20d` cols 已存在 | 低 — 重 train 加 multi-label objective | 中 (catches short-term reversal) | 低 — 现有数据, 无 leakage 路径新增 |
-| **2** | **Factor decay timing** (lagged features 1d/3d/5d, 检测信号 decay 节奏) | 无新数据 | 低-中 — feature engineering + retrain | 高 (现 panel snapshot, 加时序 lag) | 低 |
-| **3** | **股东减持公告 windowing** (announce_date ±10d window, 减持 = bear, 增持 = bull) | `fact_shareholder_plan` 8K rows ready | 中 — panel JOIN + PIT-strict (announce_date <= signal_date) | 高 (公告事件 alpha, v4 panel 无此) | 中 — announce_date 历史 NULL 47% fix 后稳, 但仍要 PIT audit |
-| **4** | **LHB 席位 windowing** (机构席位 / 游资席位 上榜 ±5d, 持续上榜 = 强信号) | `fact_lhb_event` 53K rows | 中-高 — 席位类型分组 + windowing + PIT | 高 (席位流向 alpha, v4 简化版) | 中 |
-| **5** | **Capital flow 多滞后** (1d/3d/5d/10d lagged, 资金路径节奏) | `fact_capital_flow_pit_daily` 875K rows | 低-中 — feature add | 中 (v4 已 1d, 加多 lag) | 低 |
-| **6** | **Perception regime/emotion 接入 panel** (P1/P2 已 373 dates, 长期 coverage) | `mart_market_perception_emotion_daily` 373 dates | 中 — feature panel JOIN 物理边界 (Perception sibling repo, 用户多次重申不破) | 高 (regime context, v4 没) | **高** — 破物理边界风险, 需 careful |
-| 7 | **Sector rotation lead-lag** (Perception P6 StyleRotation 输出) | P6 mart 14 dates, 长期 coverage 不足 | 高 — 数据不足 | 高 | 高 (Perception 边界) |
-| 8 | **跨 horizon label diff** (fwd_20d - fwd_5d = trend persistence signal) | 现 panel | 低 — feature derived | 中 | 低 |
+**没显著效果 / 多 leakage 的方向**:
+- 加 features (v3 leakage)
+- 加新数据源 (announcement / institution visit 数据缺)
+- 多维 hyperparams sweep 同 model (lm735 系列)
+- formula-based estimation (swap_uplift_estimate 公式)
 
-## Path 1 — 推荐立即启动 (低风险高 ROI)
+## v2 Phase 排序 — 实证驱动
 
-**Multi-horizon label engineering** (方向 #1):
+### Phase A (推荐立即启动, 极低 risk 高确定性)
 
-- **Why**: 现 stability model 只用 `fwd_cost_after_20d` 单 label. Panel 已含 `fwd_cost_after_5d` / `fwd_cost_after_10d`. 加 multi-label objective (e.g. weighted avg 或 multi-task LambdaMART) 几乎 zero data risk.
-- **数据**: 已就位 (本地 panel 已有 3 horizons)
-- **实施**: 改 `run_p0b_lambdamart_v6.py --label fwd_cost_after_5d` 等同 multi-horizon, 跑 walk-forward retrain. **本地慢** (full data + 34 windows), 需 GCP 跑 ~1.5h
-- **风险**: 无新 leakage 路径; 现 panel 已 PIT-strict
-- **ETA**: GCP retrain ~1.5h, 加 paper_sim + Phase4 gate ~30 min, 总 ~2h
-- **Cost**: ~$0.50 GCP spot (n2-standard-32 1.5h × $0.376/h)
+**Stability penalty weight sweep** — 现 std=0.50 / neg_rate=0.20 是 first-try, walk-forward sweep 不同 weight combo 找 optimal.
 
-## Path 2 — 计划阶段 (data PIT audit 先做)
+- **Why**: 本轮已证 stability penalty 工作 (PBO 5.1x, IR 7.3x). Weight 是否 optimal 未知; first-try 不一定 best
+- **实施**:
+  - Sweep combo: (std=0.3, neg=0.1) / (std=0.5, neg=0.2 current) / (std=0.7, neg=0.3) / (std=1.0, neg=0.5)
+  - GCP retrain 4 × 80-trial Optuna stability retrain
+  - 每个 combo 走 post_retrain_pipeline → Phase4 gate verdict
+  - 找 verdict PASS (非 warn_only_proxy) + Sharpe/ann/dd 最优 combo
+- **数据**: 无新数据
+- **Risk**: 极低 (现有 objective + 现有 panel, 只 sweep penalty weight)
+- **Cost**: 4 × ~$0.50 = $2 GCP / 4 × ~1.5h = 6h
+- **预期**: 至少 1 个 combo 显著优于 current 0.5/0.2 (基于 hyperparams sweep 经验, first-try 通常非 optimal)
 
-**股东减持公告 windowing** (方向 #3):
+### Phase B (中确定性, 需 objective 函数改写)
 
-- **Why**: 公告事件 alpha 在 A 股市场极强 (减持公告后 5-15 天显著 underperform; 增持公告 outperform). v4 panel 没此 feature.
-- **数据**: `fact_shareholder_plan` 8K rows, PIT-fixed (commit 69371838).
-- **PIT audit 先**: 验证 announce_date <= signal_date for all rows, COALESCE(announce_date, '1900-01-01') 防 NULL leak. 跑 `/pit-audit` skill 5 步.
-- **Feature design**:
-  - `days_since_last_holder_plan` (减持公告距今)
-  - `recent_holder_plan_event_count_30d` (近 30 天减持公告数)
-  - `recent_holder_plan_event_type_share` (减持 / 增持比例)
-- **跟 panel 集成**: 加到 backend feature panel build 路径, 加 3 cols
-- **ETA**: PIT audit ~30 min, feature implement ~2h, GCP retrain ~1.5h, total ~4h
-- **Cost**: GCP ~$0.50
+**Portfolio-objective replace NDCG ranking** — Optuna optimize Sharpe / Calmar / max_dd 直接, 而非中间 ranking metric.
 
-## Path 3 — 中长期 (需 evidence)
+- **Why**: stability penalty 思路 = "直接 optimize 想要的", portfolio metric 比 NDCG ranking 更接近实盘目标
+- **实施**:
+  - 改 `run_p0b_lambdamart_v6.py` Optuna objective: 加 `--objective-mode {ranking,sharpe,calmar,multi_objective}`
+  - sharpe mode: 每 window OOS 跑 mini paper_sim 算 portfolio Sharpe, return 作为 trial objective
+  - GCP retrain 1 × 80-trial
+- **数据**: 无新数据
+- **Risk**: 中 (代码改 + objective 函数计算量大 — paper_sim per trial 慢)
+- **Cost**: ~$1 GCP (objective 复杂可能 2-3 倍慢) / ~3-4h
+- **预期**: 不一定显著优于 Phase A, 但 alpha source 不同 (portfolio metric vs ranking metric)
 
-**Factor decay timing** (方向 #2):
+### Phase C (中等确定性, regime evidence)
 
-- **Why**: 现 features 是 snapshot, 不抓时序 decay. 加 lagged 看 alpha 半衰期, 选择性放大长 alpha / 缩短短 alpha.
-- **数据**: 现有 panel, 加 lagged versions
-- **实施复杂**: feature engineering needs domain understanding + 多 model objective
-- **暂列**: 等 Path 1 + 2 验证后再启
+**Regime-conditional model** — bull/sideways/bear 三套 hyperparams or regime feature 显式.
 
-## Path 4 — Perception 边界 (谨慎)
+- **Why**: 旧 model bull regime OOS RankIC -0.012 vs neutral/bear positive — **regime mismatch evidence**, model 在 bull 失效
+- **实施**:
+  - 加 regime label 到 panel (用 `mart_market_perception_emotion_daily.market_regime_score` 或 main project regime detector — 注意 Perception 物理边界, 应 main project 自有 regime feature)
+  - Optuna 加 regime-conditional weight: lambda_bull / lambda_sideways / lambda_bear
+  - OR 训练 3 sub-models, regime gate ensemble
+- **数据**: regime label (现有 main project regime detector 或 panel feature)
+- **Risk**: 中 (regime 切分 OOS 风险; regime label 本身 PIT)
+- **Cost**: ~$0.50 GCP / ~2h
+- **预期**: 解决 bull regime 失效, ann / Sharpe 可能再 +10-20%
 
-**Perception regime/emotion 接入 panel** (方向 #6):
+### Drop (不推荐, 历史无显著效果或多 leakage)
 
-- **物理边界硬约束** (用户 4 次重申): Perception sibling repo, 不接主项目 panel.
-- **此方向破约束**, 不该启动. 除非用户明确改约束.
-- **替代**: 等用户 verdict 是否破约束; 当前列入 plan 但 mark "NOT ACTIVATED".
-
-## Path 5+ — Backlog
-
-- LHB 席位 windowing (方向 #4): 数据大 (53K rows), 实施中等. 验证 Path 1+2 后启动.
-- Capital flow 多滞后 (方向 #5): feature add 简单, 但跟 v4 重叠中. 验证 Path 1+2 后再加.
-- 跨 horizon label diff (方向 #8): 等 Path 1 多 horizon retrain 后顺手加.
+| 方向 | drop 原因 |
+|---|---|
+| Multi-horizon label engineering | Panel 已 3 horizon cols, 单 fwd_20d 已 Sharpe 2.09, 边际预期小. 不优先 |
+| 股东减持公告 windowing | 加 features 历史多 leakage / 8K rows 数据小 |
+| LHB 席位 windowing | 同上, 53K rows 但席位 alpha 半衰期短难抓 |
+| Capital flow 多滞后 | v4 已用, 多 lag 边际 |
+| Perception regime 接 panel | 破物理边界硬约束 (4 次重申) |
+| Factor decay timing | 复杂度高, 实证缺 |
 
 ## 推进顺序
 
-1. **Phase A** (本周): Path 1 multi-horizon label (GCP retrain, ~2h, ~$0.50)
-2. **Phase B** (下周): Path 2 股东减持 windowing (PIT audit + panel + GCP retrain, ~4h, ~$0.50)
-3. **Phase C** (评估): Path 3 factor decay (本地 verify alpha decay 节奏 first, 再决定 retrain)
-4. **Backlog**: Path 4-5
+1. **Phase A** (立即, 6h $2): stability penalty weight sweep (4 combo)
+2. **看 A 结果**:
+   - 若有 combo PASS (非 warn_only_proxy) + Sharpe/ann 进一步提升 → 走 plan §5 promote 路径
+   - 若全 warn_only_proxy → 启 Phase B portfolio-objective
+3. **Phase B** (~$1 3h): portfolio-objective if A 不解 promote
+4. **Phase C** (~$0.5 2h): regime-conditional if B 仍 warn
 
-每个 phase 独立 challenger, 不动 champion. 走 plan §5: post_retrain_pipeline → paper_sim + Phase4 gate → 看 verdict → BestChoice import 探索互补.
+每 phase 独立 challenger 不动 champion. 走 plan §5 标准路径. 总预算 ~$3.5 GCP, 在 月预算 buffer 内 (现 91.4% 剩 $1.30, 月底前不够; 但下月 reset 后可 fit).
+
+## 月预算考虑
+
+current month projected $13.71 / $15 (91.4%, $1.30 buffer). Phase A 4 combo = $2, **超 buffer**. 选项:
+- 等下月 1 号 reset 后启动 Phase A (推迟 9 天, 但本月可做 doc/audit 准备)
+- 现在跑 Phase A subset (e.g. 2 combo $1.00, 留 $0.30 buffer)
+- 现在跑 Phase A 1 combo (0.7/0.3 most promising) + Phase B subset
+
+**推荐**: 现在跑 Phase A subset = (std=0.7, neg=0.3) 1 combo (~$0.50, 留 $0.80 月底 buffer); 看效果决定 Phase B/C 启动 time.
 
 ## 跟 BestChoice Phase 1 关系
 
-- BestChoice Phase 1 (handoff goal.md Stage 2 路径 α 写) = main project verdict PASS 后启
-- 当前 verdict warn_only_proxy, BestChoice **不该 Phase 1 启动** (read-only challenger 也不该, 因 BestChoice 没经 Phase4 gate, 直接 challenger 是误导信号)
-- Alpha enhancement Phase A/B 先验证 main project alpha 增强, 走 plan §5 后再决定 BestChoice
+- 当前 verdict warn_only_proxy, BestChoice Phase 1 **不该启动** (handoff §5 路径 α 需 PASS)
+- Phase A 若给 PASS verdict → 走 plan §5 promote → 然后 BestChoice Phase 1
+- 不在 Phase A 跑完前提前启 BestChoice
 
-## 当前 commit
+## v1 vs v2 对比
 
-doc-only plan. 不动 code / data. 跟当前 verdict warn_only_proxy + alpha 验证完成的状态对齐.
+v1 (doc 推断): 8 方向, top 3 是 multi-horizon label / 减持 windowing / factor decay
+v2 (实证驱动): 3 方向, top 1 是 stability penalty sweep / portfolio-objective / regime-conditional
+
+v1 推断 ROI 高的方向 (加 features / 加数据) 在实证中**多触发 leakage 或边际小**. v2 选实证显著的方向 (改 objective, 不动 features) 复制本轮 stability retrain 思路.
