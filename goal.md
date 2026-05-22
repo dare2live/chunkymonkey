@@ -209,10 +209,19 @@ dd (-16.85%) 已 PASS / win (60%) 已 PASS. **仅 Sharpe + n_obs 还差**.
 - 新三板/老三板 (NEEQ) 4xxxxx/8xxxxx overlap with 北交所
 - 是否 dim_active_a_stock 限 = 主板+科创+创业+BSE only, 新三板/老三板 不在
 
-预 hypothesis (待 verify): dim_active_a_stock 'a_stock' suggests 主板+STAR+ChiNext+BSE, **可能** include 北交所 但 not 新三板 NEEQ.
-ST/*ST 是否 filter — 需查 panel build / candidate select logic.
+代码 audit done (`backend/services/universe.py`):
+- KEEP prefix: ("60", "00", "30", "68") = 沪主板/深主板+中小板/创业板/科创板
+- **已排除**: 北交所 (8/4) / 新三板 / 老三板 / ETF (15/51/56/58) / 港股通 (by prefix)
 
-如果 V4 picks 含 ST/*ST/北交所 → 实盘 unrealistic (流动性差/退市风险), 需 add filter.
+关键 gap:
+- ST/*ST (60/00/30/68 当前 ST 名) **未** universe.py filter → 仍可能 in panel/picks
+- 退市股 historical: Pattern 8 survivorship (panel 缺 1633 退市)
+- 实盘 risk: ST 跌停 ±5% / 流动性差 / 退市风险
+
+修复路径 (待 verify):
+- universe.py 加 ST filter via `dim_active_a_stock.stock_name LIKE 'ST%'/'*ST%'`
+- 或 paper_sim selector 即时 filter
+- 或 dim_listing_status PIT historical ST tracking (无现有 PIT 表)
 
 ### K. 2026-05-22 23:30 — V4∩BC + Phase 7 复合 Sharpe **3.17** 突破
 
