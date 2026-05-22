@@ -141,6 +141,64 @@ Panel sector-relative features 源头追溯:
 
 evidence: backend/scripts/build_feature_panel_duck.py:1824-1844 SQL inspection
 
+**用户决策 (2026-05-22 15:20 CST): "那就不用行业历史了"** + "注意保持代码和文档清洁不要残留"
+
+按估算 (Phase A ablation 数据):
+- baseline OOS RankIC 0.0593 中 sector 占 79% (0.0468)
+- sector per-col 贡献 0.0117 vs alpha158 per-col 0.00012 (差 100x) → sector 超额贡献绝大部分是 leakage artifact
+- 真 industry alpha 估 ~0.002-0.008 OOS RankIC (跟 PIT-clean features 同量级, 不特别突出)
+- 留 sector features 是 leakage 来源, drop 后 OOS 短期看似崩 (~0.0125) 但 **真 forward 才诚实**
+
+**v6 retrain launched (2026-05-22 15:20 CST)** — `lgbm_phase5_stability_v6_20260522T071500Z`:
+- pid 1845 on VM, Plan C config (1×32 + n_est=100, n_trials=50)
+- `--exclude-cols`: **30 cols** (24 noise from Phase A + 6 industry-related: sector_ret_5d/20d/60d, sector_excess_20d/60d, industry_pit_confidence)
+- features used: 122 - 30 = ~92 cols (alpha158 64 + vol_mom 6 + calendar 7 + others ~15)
+- 验证目标: v6 OOS RankIC vs v5 (有 sector)/baseline (0.0086 true train-log), true IS-OOS gap shrink
+- 若 v6 OOS RankIC > 0.005 但 < baseline (sector 撤了 OOS 短期降但 PIT-clean) → 真 alpha 找到, 可继续优化
+- 若 v6 OOS RankIC ≈ baseline → 仍有其他 leakage 源, 需 v3 Phase D 深查 (e.g. K-line forward / capital_flow lineage)
+
+**v5 stale 清理 (用户原则 "代码文档清洁不残留")**:
+- v5 study DB + best.json 已 rm 远端 (lgbm_phase5_stability_v5_20260522T065000Z.{db,best.json})
+- v5 没出 verdict, 不污染 mart 表
+- 本地 goal.md 保留 v5 launch ledger 作历史记录 (不删历史, 但标 superseded by v6)
+
+**v3 plan v3.1 (alpha_enhancement_plan_v3_20260522.md 应同步更新)**:
+- Phase A 仍 valid (drop noise 24 cols)
+- 新 #0 (从 Phase D leakage): drop sector 6 cols, 共 30 cols
+- 未来: 真 PIT industry historical (X2.1 daily snapshot 累积 1+ 年) 或第三方数据源 后再加 sector
+- 短期 strategy ceiling 必降 (sector leakage 撑的 paper_sim Sharpe 2.09 不可持续)
+
+**Code cleanup (用户原则)**:
+- `backend/scripts/build_feature_panel_duck.py:1824-1844` sector-relative SQL 暂不动 (大改 risky), 但下次 panel rebuild 时应 deprecate
+- `backend/scripts/feature_ablation_oos_rankic.py` 保留 (audit 历史 evidence)
+- `backend/scripts/import_bestchoice_phase{1,3}_predictions.py` + `build_bestchoice_phase2_daily_feed.py` 保留 (BestChoice 仍 worth ensemble path)
+- 之前删的 broken phase3 first-cut script 已删 (commit 16dd46f0)
+- v5 study DB 远端已 rm
+
+**v3 Phase D2 backlog (用户 15:25 push back "类似行业历史这样总变化提升不大的指标 后续计划要做的")**:
+
+High risk (跟 industry 同模式 current mapping 反向应用历史):
+- 概念/主题板块 (Perception P3 mart_market_perception_theme_*): X2.1 daily snapshot 累积 (已启 3a8a8844, 当前 8 days), 长期 1+ 年才有完整 PIT 历史
+- ST/*ST 风险标记 (间接 via unable_at_entry): 加 fact_st_status_daily 表, daily PIT
+- 总股本/流通股本: fact_market_cap_decile_daily 已 daily PIT (3.5M rows, OK)
+- 指数成分 (HS300/中证500): dim_index_member_history 已 PIT (CLAUDE.md §4.1), verify panel JOIN 用对 as_of_date
+
+Medium risk PIT verify:
+- 基金/北上重仓股 (fact_capital_flow_pit_daily): JOIN 已 PIT-clean (Phase D 已 verify), source built_at 集中 ingest 但 trade_date 是真 PIT
+- analyst 目标价/EPS forecast: 若未来加 panel, 必 PIT
+- 复权因子 (qfq): 已 PIT (CLAUDE.md §4.1), verify panel kline 用 PIT factor 而非 latest
+
+Low real alpha (已 v6 drop):
+- fundamental (drop_fundamental OOS +0.0113)
+- lhb / executive / survey (各 +0.002-0.003)
+
+v3 Phase D2 plan (industry 解决后下一波):
+- #1 ST 状态 PIT (短期, 加 fact_st_status_daily, ~1 day work)
+- #2 verify mcap_decile + index_member_history panel JOIN as_of_date 严格 (audit, 半天)
+- #3 复权因子 PIT verify (audit panel kline build, ~半天)
+- #4 概念/主题 PIT 长期解 (X2.1 累积等 1+ 年)
+- #5 BestChoice candidate selection walk-forward OOS audit (跨 repo)
+
 **BestChoice Phase 3 + Phase 4 complementarity (2026-05-22 11:48 CST)**:
 
 Phase 3 paper_sim (adapter 30b4511c + paper_sim_lambdamart_v6_compare 跑 432 dates 2024-07→2026-04):
