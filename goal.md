@@ -226,6 +226,29 @@ Next:
 - 心理 expectation 调整: paper_sim 数字不全可信, Sharpe 0.65 = real ceiling reference
 - v6 verdict 出后看是否能 超过 V4 (panel v4 drop sector vs panel v3) — 若超过且 IS-OOS gap < 30% 是真 improvement
 
+**BestChoice complete plan 推进 (2026-05-22 18:30 CST; 用户 push '按 goal.md 推进 BC, 包括页面迁徙和 audit 后续')**:
+
+Phase status:
+- Phase 1 import: [DONE] (dfe14acb)
+- Phase 2 daily feed: [DONE] (c87994c0)
+- Phase 3 paper_sim challenger: [DONE] (51381c09, Sharpe 1.10)
+- Phase 4 complementarity: [DONE] (51381c09, 6.6% overlap, 0 same-day same-stock)
+- **Phase 4.5 BC tab page (Layer 4 UI)** : [DONE] (98e99b96, /api/v3/bestchoice/* + design/v3-page-bestchoice.jsx + tab register)
+- **Phase 5 BC walk-forward audit**: [STARTING] (跨 repo, BC sibling repo refactor)
+- Phase 6 ensemble production: [PENDING] audit pass
+- Phase 7 条件化退出 POC: [PENDING] ensemble
+- Phase 8 stop-loss A+B sweep: [PENDING] ensemble
+
+BC folder 移动 (Option B): 延后, UI tab 不依赖, 跨 repo audit work 也不要求 (BC repo own refactor 可独立).
+
+Audit 计划 (Step 1 starting now):
+- BC repo `bestchoice/scripts/formula_local_optuna.py` 改 `_split_train_validation_trades` 加 `--cutoff-date` mode
+- 3 个 historical cutoffs (2024-06-01, 2025-01-01, 2025-06-01) per-cutoff optuna 重跑
+- 主项目 import per-cutoff candidates 为 separate run_ids
+- paper_sim per cutoff 在 corresponding forward 区间 (T → T+6mo)
+- compare walk-forward Sharpe vs 现 30%-holdout Sharpe 1.10
+- ETA: BC refactor 1天 + 3 cutoff 跑 2-3天 + 主项目集成 1天 = ~5-7 天 total
+
 **BestChoice 当前 integration 状态 (用户 16:30 push back "参数给到主项目用于训练和测试了么"):**
 
 | 集成层 | 状态 |
