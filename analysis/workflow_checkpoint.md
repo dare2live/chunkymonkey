@@ -2,11 +2,17 @@
 
 Business-level pipeline tracker. Session-level state remains in SESSION_HANDOFF.md.
 
-- generated_at: `2026-05-21T07:06:15Z`
-- model_id: `lgbm_phase5_gcp_20260520T010718`
-- current_step: `stability_retrain_running_after_fix`
-- next_step: `monitor_stability_retrain_to_first_complete_then_import_artifacts`
-- resume_command: `CHUNKYMONKEY_GCP_EXPLICIT_OK=1 TAIL_LINES=80 bash scripts/gcp_stability_status.sh`
+- generated_at: `2026-05-22T00:35:00Z`
+- model_id: `lgbm_phase5_stability_20260521T055800Z`
+- current_step: `final_fit_running_window_24_of_34_chain_waiting`
+- next_step: `wait_final_fit_done_then_chain_auto_export_pull_vmstop_post_retrain_pipeline_then_phase4_verdict`
+- resume_command: `tail -20 /tmp/post_retrain_chain.log` 或 `CHUNKYMONKEY_GCP_EXPLICIT_OK=1 gcloud compute ssh chunkymonkey-optuna --zone=us-central1-a --tunnel-through-iap --command "tail -15 /tmp/final_fit.log"`
+- background_processes:
+  - local chain pid 50468 (`bash scripts/post_retrain_chain.sh`, 5min poll, 等 final fit EXITED → export → pull → vm_stop → post_retrain_pipeline)
+  - GCP VM pid 3627 (`python retrain_lambdamart_v6.py --use-checkpoint-best`, window 24/34, ~75s/window, 剩 ~12-15 min)
+- final_fit_mode: `--use-checkpoint-best` skip Optuna, 用 stability retrain 跑出的 `lgbm_phase5_stability_20260521T055800Z.best.json` (trial_number=130, best_value=0.4009, max_depth=7, num_leaves=80, lr=0.041) 跑 full data train + write predictions
+- cost_at_0834: $9.10 used / projected $13.44 / **89.5% YELLOW** (alert-only, 不 auto-stop; chain 在 final fit done 后会 vm_stop)
+- spot_preempt_history: 2 次 (2026-05-21 22:44 + 23:52 CST), 4 次 auto-resume, 最终切到 final fit 跑剩余
 
 ## Current Local Readiness Update
 
@@ -77,8 +83,11 @@ Business-level pipeline tracker. Session-level state remains in SESSION_HANDOFF.
 | 9 | true train-log Phase4 gate | done | json:data/reports/phase4_gate_msaf_gcp_v6_lm735_sniper265_h10_k3_neutralcash20_probe_true_trainlog_20260521.json verdict=block IS/OOS relative_drop=81.36% |
 | 10 | OOS RankIC stability diagnostic | done | json:data/reports/lambdamart_train_log_stability_lgbm_phase5_gcp_20260520T010718_lm735_sniper265_h10_k3_neutralcash20_20260521.json positive_rate=67.65% negative_windows=11/34 |
 | 11 | stability-aware retrain entrypoint | done | script:scripts/gcp_stability_retrain.sh dry-run pass; deprecated scripts `run_phase5_extended_retrain.sh` / `run_phase5_auto_chain.sh` expected block |
-| 12 | stability-aware retrain run | running | aborted old model:`lgbm_phase5_stability_20260521T035555Z` retrain_exit=137 rows=0; aborted model:`lgbm_phase5_stability_20260521T042830Z` retrain_exit=137 rows=0 after LambdaMART stability objective bug; active model:`lgbm_phase5_stability_20260521T055800Z`; parent pid=1597 child pid=1601; remote smoke proved `rank_ic_stability_penalty=0.3349`; log:data/reports/stability_retrain/lgbm_phase5_stability_20260521T055800Z_stability_retrain_20260521T055750Z.log; 15:02 child CPU-bound, DB 8 RUNNING / 0 COMPLETE, no best/summary yet |
-| 13 | post-run lightweight artifact import path | ready | active model:`lgbm_phase5_stability_20260521T055800Z`; script:scripts/gcp_export_model_predictions.sh; script:backend/scripts/import_phase5_remote_predictions.py --remote-parquet-dir; script:backend/scripts/import_model_train_log_artifact.py; validation: importer tests 8 passed, py_compile pass, bash -n pass, export dry-run pass |
+| 12 | stability-aware retrain Optuna search | done | active model `lgbm_phase5_stability_20260521T055800Z` Optuna 跑完, best.json trial_number=130 best_value=0.4009 (max_depth=7 num_leaves=80 lr=0.041); 历经 2 次 spot preempt (22:44+23:52 CST) + 4 次 auto-resume |
+| 12b | final fit (use-checkpoint-best) | running | GCP pid 3627 window 24/34, ~75s/window, log:/tmp/final_fit.log; 跳过 Optuna 直接 full data train + write predictions; 预计 ~08:50-09:00 CST 完成 |
+| 12c | post_retrain chain (local pid 50468) | running | bash scripts/post_retrain_chain.sh 5min poll 等 final fit EXITED; 接 export → gcloud cp → vm_stop → post_retrain_pipeline.sh (paper_sim + Phase4 gate + registry) → notify |
+| 13 | post-run lightweight artifact import path | ready | active model:`lgbm_phase5_stability_20260521T055800Z`; script:scripts/gcp_export_model_predictions.sh; script:backend/scripts/import_phase5_remote_predictions.py --remote-parquet-dir; script:backend/scripts/import_model_train_log_artifact.py; validation: importer tests 8 passed, py_compile pass, bash -n pass, export dry-run pass; chain 会自动调用 |
+| 14 | Phase4 verdict 分叉决策 | pending | chain 完成后看 verdict: PASS→BestChoice Phase 1 (goal.md Stage 2 路径 α); BLOCK→alpha 探索, 不拆 god-modules (路径 β); warn_only_proxy→视情况 (路径 γ) |
 
 ## Blockers
 
