@@ -175,6 +175,43 @@ evidence: backend/scripts/build_feature_panel_duck.py:1824-1844 SQL inspection
 - 之前删的 broken phase3 first-cut script 已删 (commit 16dd46f0)
 - v5 study DB 远端已 rm
 
+**v6 retrain verdict (2026-05-22 20:30 CST): BLOCK** — panel v4 drop 30 cols 后仍有 hidden leakage
+
+Phase 4 true train-log gate result:
+| Sub-check | v6 | Threshold | Pass |
+|---|---|---|---|
+| PBO | 0.251 | <=0.2 | FAIL |
+| DSR | 0.9699 | >=0.95 | PASS |
+| Conservative | +82% ann | >0 | PASS |
+| **IS-OOS drop** | **60.8%** | <=30% | **FAIL** |
+| ALL | False | - | **block** |
+
+v6 vs stability:
+- stability IS-OOS drop 92.43% (上次 BLOCK)
+- v6 IS-OOS drop 60.80% (减半 但仍 fail)
+- Conclusion: drop 30 cols (sector + noise) 不够, panel v4 还有其他 hidden leakage 源
+
+v6 OOS vs V4 same-period (2025-01 to 2026-04):
+- V4 OOS RankIC 0.0284
+- v6 OOS RankIC 0.0569 (per-date) = +100% relative = 触发 CLAUDE.md 4.2 relative red line (+50% threshold)
+
+实测数据 (fact_model_train_log):
+- IS rank_ic 0.1607, OOS 0.0630, drop 60.7%
+- IS ndcg5 0.956 (suspicious high)
+- OOS positive_rate 100% (16/16 windows) — statistically improbable
+
+evidence: data/reports/phase4_gate_result.json + fact_model_train_log row + mart_strategy_result_registry result_id=lgbm_phase5_stability_v6_20260522_blocked
+
+production champion 决策:
+- V4 (panel v3, OOS 0.025, honest, Sharpe 0.65) 仍 production
+- ensemble V4+BC (Sharpe 1.83, hold_challenger forward monitor)
+- v6 BLOCK (candidate_hold_reject)
+- stability BLOCK (candidate_hold_reject)
+
+Next: panel v4 deep audit 找剩余 leakage 源 (audit_panel_leakage tool 只 catch sector PARTITION BY)
+
+GCP: VM stopped, $5.71 / 15.18h spot 剩.
+
 **Ensemble V4+BestChoice 结果 (2026-05-22 17:10 CST; 用户问 "BestChoice 是否给主项目添 alpha"):**
 
 paper_sim_v6_compare with model_id=ensemble_v4_bestchoice_v1 (rank-percentile combine V4 score + BC confidence), 432 dates 2024-07→2026-04:
