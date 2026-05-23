@@ -819,6 +819,24 @@ SELECT * FROM mart_data_source_watermark;
 
 每次 session 增量内容写这里, 新 session 启动时**从下往上读**最近改了啥.
 
+### 2026-05-23 universe tool + 7/7 strategies CONTAMINATED audit
+
+用户 push '做一个专用的工具' + '评估历史 strategies'.
+
+services/universe.py:
+- get_active_universe(conn, *, include_st=False, include_delisted=False)
+- audit_strategy_universe_contamination(conn, table, model_id_filter)
+
+backend/scripts/audit_strategy_universe.py:
+- 7 strategies all CONTAMINATED
+- V4 / v6 / ensemble variants / BC: ST 4.3-4.4% / 退市 10-11% / BSE 0 / ETF 0
+- Canonical clean universe 4562 stocks vs V4 5192 = -630 = -12.1%
+
+8 universe tests pass.
+Report: data/reports/strategy_universe_contamination_audit.json.
+
+Path: 6/1 v7 retrain on panel v5c (4558 stocks) via safe_retrain.sh.
+
 ### 2026-05-23 panel v5c verified 4558 stocks clean + audit_check_10 fix
 
 Panel v5c (full universe filter ST + 已退市 + dim_active):

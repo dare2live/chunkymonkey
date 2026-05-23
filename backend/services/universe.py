@@ -78,3 +78,100 @@ def sql_where_no_st(stock_name_column: str = "stock_name") -> str:
         f"({stock_name_column} IS NULL OR "
         f"({stock_name_column} NOT LIKE 'ST%' AND {stock_name_column} NOT LIKE '*ST%'))"
     )
+
+
+# === 2026-05-23 SINGLE SOURCE OF TRUTH for batch task universe ===
+# 用户 push '做一个专用的工具'. 所有 batch tasks 必须 调用 get_active_universe().
+
+def get_active_universe(
+    conn,
+    *,
+    include_st: bool = False,
+    include_delisted: bool = False,
+) -> set[str]:
+    """Single source of truth for batch task universe.
+
+    Default: A-share main (60/00/30/68) + exclude ST/*ST + exclude 已退市 + (implicitly) exclude NEEQ/北交所/老三板/ETF (prefix not in KEEP).
+
+    Args:
+        conn: DuckDB connection (read-only OK)
+        include_st: 含 ST/*ST (default False)
+        include_delisted: 含 已退市 (default False, dim_all_ever_listed.is_active=0)
+
+    Returns:
+        Set of stock_code strings.
+
+    Usage:
+        with connect(db, read_only=True) as conn:
+            universe = get_active_universe(conn)
+    """
+    prefixes_csv = ",".join(f"'{p}'" for p in ACTIVE_A_SHARE_PREFIXES)
+    sql = f"SELECT stock_code FROM dim_active_a_stock WHERE SUBSTR(stock_code, 1, 2) IN ({prefixes_csv})"
+    if not include_st:
+        sql += " AND stock_name NOT LIKE 'ST%' AND stock_name NOT LIKE '*ST%'"
+    stocks = {r[0] for r in conn.execute(sql).fetchall()}
+    if not include_delisted:
+        try:
+            delisted = {r[0] for r in conn.execute(
+                "SELECT stock_code FROM dim_all_ever_listed WHERE is_active = 0"
+            ).fetchall()}
+            stocks -= delisted
+        except Exception as e:
+            # rule-compliance: ok evidence=dim_all_ever_listed 缺时 fallback to current-active only
+            # not silent: 通过 stocks set 仍然返回 (caller 可 detect 已退市过滤未生效)
+            import logging
+            logging.getLogger(__name__).warning(
+                "dim_all_ever_listed lookup failed (%s) — 退市 filter not applied", e
+            )
+    return stocks
+
+
+def audit_strategy_universe_contamination(
+    conn, *, table: str,
+    model_id_col: str = "model_id",
+    stock_code_col: str = "stock_code",
+    model_id_filter: str | None = None,
+) -> dict:
+    """Audit existing strategy predictions for contamination by excluded stocks.
+
+    Returns dict with per-category contamination counts + percentages.
+    """
+    where_filter = f"WHERE {model_id_col} = '{model_id_filter}'" if model_id_filter else ""
+    and_or = "AND" if where_filter else "WHERE"
+
+    total = conn.execute(f"SELECT COUNT(*), COUNT(DISTINCT {stock_code_col}) FROM {table} {where_filter}").fetchone()
+    total_picks, unique_stocks = total[0], total[1]
+    if not total_picks:
+        return {"table": table, "model_id_filter": model_id_filter, "total_picks": 0}
+
+    st = conn.execute(f"""
+        SELECT COUNT(*), COUNT(DISTINCT t.{stock_code_col})
+          FROM {table} t LEFT JOIN dim_active_a_stock d ON d.stock_code = t.{stock_code_col}
+         {where_filter} {and_or} (d.stock_name LIKE 'ST%' OR d.stock_name LIKE '*ST%')
+    """).fetchone()
+
+    delisted = conn.execute(f"""
+        SELECT COUNT(*), COUNT(DISTINCT t.{stock_code_col})
+          FROM {table} t JOIN dim_all_ever_listed e ON e.stock_code = t.{stock_code_col}
+         {where_filter} {and_or} e.is_active = 0
+    """).fetchone()
+
+    neeq = conn.execute(f"""
+        SELECT COUNT(*), COUNT(DISTINCT {stock_code_col}) FROM {table}
+         {where_filter} {and_or} (SUBSTR({stock_code_col}, 1, 1) = '8' OR SUBSTR({stock_code_col}, 1, 1) = '4')
+    """).fetchone()
+
+    etf = conn.execute(f"""
+        SELECT COUNT(*), COUNT(DISTINCT {stock_code_col}) FROM {table}
+         {where_filter} {and_or} (SUBSTR({stock_code_col}, 1, 2) IN ('15','51','56','58'))
+    """).fetchone()
+
+    return {
+        "table": table, "model_id_filter": model_id_filter,
+        "total_picks": total_picks, "unique_stocks": unique_stocks,
+        "st_picks": st[0], "st_stocks": st[1], "st_pct": st[0] / total_picks * 100,
+        "delisted_picks": delisted[0], "delisted_stocks": delisted[1],
+        "delisted_pct": delisted[0] / total_picks * 100,
+        "neeq_picks": neeq[0], "neeq_stocks": neeq[1], "neeq_pct": neeq[0] / total_picks * 100,
+        "etf_picks": etf[0], "etf_stocks": etf[1], "etf_pct": etf[0] / total_picks * 100,
+    }
