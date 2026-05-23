@@ -428,7 +428,7 @@ def audit_check_8_universe_pit(panel_build_sql_path: Path) -> list[dict]:
     return findings
 
 
-def audit_check_10_survivorship_bias(conn) -> list[dict]:
+def audit_check_10_survivorship_bias(conn, panel_table: str = "mart_p0a_feature_label_panel_v4") -> list[dict]:
     """Check 10: Verify panel includes delisted stocks until delist_date.
 
     Pattern 8 in catalog: 只用现存上市股 in training → 实盘 buys 退市股 unmodeled.
@@ -437,7 +437,7 @@ def audit_check_10_survivorship_bias(conn) -> list[dict]:
     findings = []
     try:
         r1 = conn.execute(
-            "SELECT COUNT(DISTINCT stock_code) FROM mart_p0a_feature_label_panel_v4"
+            f"SELECT COUNT(DISTINCT stock_code) FROM {panel_table}"
         ).fetchone()
         panel_stocks = r1[0] if r1 else 0
         # Get ever-listed count (if dim_listing_status exists)
@@ -512,7 +512,7 @@ def main() -> int:
         print(f"[8/9] Universe selection PIT predicate ...")
         all_findings.extend(audit_check_8_universe_pit(Path(args.panel_build_sql)))
         print(f"[9/9] Survivorship bias (panel stocks vs ever_listed) ...")
-        all_findings.extend(audit_check_10_survivorship_bias(conn))
+        all_findings.extend(audit_check_10_survivorship_bias(conn, args.panel))
 
     n_high = sum(1 for f in all_findings if f.get("risk") == "HIGH")
     n_medium = sum(1 for f in all_findings if f.get("risk") == "MEDIUM")

@@ -819,6 +819,17 @@ SELECT * FROM mart_data_source_watermark;
 
 每次 session 增量内容写这里, 新 session 启动时**从下往上读**最近改了啥.
 
+### 2026-05-23 panel v5c verified 4558 stocks clean + audit_check_10 fix
+
+Panel v5c (full universe filter ST + 已退市 + dim_active):
+- 4558 stocks (vs 5210 base, -652 = -12.5%)
+- 0 ST/*ST, 0 已退市, 0 not-in-dim_active ✓
+- Pattern 10 NULL gradient 0 HIGH ✓
+
+audit_check_10 fix: hardcoded panel_v4 → args.panel (correct count display).
+
+v7 retrain runway clean. 待 6/1 GCP reset via safe_retrain.sh.
+
 ### 2026-05-23 panel v5c — full universe filter (ST + 退市 + dim_active filter)
 
 User push back '不只是 ST, 还有新三板老三板退市的'.
