@@ -353,6 +353,28 @@ Operational state 仍 audit_delivery 90% NOT READY 数学 verdict, 但 v7 现 pr
 
 测了其他 ensemble variants (v7+BC clean / v7+Phase7 / v8 PIT) — 全 worse Phase 4. v7 alone 是 best champion.
 
+### W. 2026-05-23 14:30+ — v9 stronger reg retrain + v7 monitor cron installed
+
+v9 retrain launched VM (lgbm_phase5_v9_20260523T070000Z):
+- panel mart_p0a_feature_label_panel_v5 PIT (same as v7)
+- n_trials 80 (vs v7 50)
+- n_estimators 200 (vs v7 100) — deeper trees, potentially better fit
+- penalty std 0.80 (vs v7 0.50) — much stronger stability
+- penalty neg_rate 0.40 (vs v7 0.20) — penalize negative-windows harder
+- ETA ~90 min, cost $0.50
+
+目标: v9 IS-OOS drop < v7 63.5% → closer to Phase 4 PASS.
+如 v9 仍 > 30% strict, 验证 LightGBM 自然 60+ drop = academic linear-factor threshold mismatch confirmed → 转 forward evidence path (Option 4).
+
+backend/scripts/monitor_v7_forward.py (新):
+- Daily KPI tracking (contamination ST/退市/BSE + paper_sim KPI)
+- Abort criteria check (sharpe <0.3, dd <-25, win <35, contamination >5)
+- 输出 data/reports/v7_forward_monitor.json
+- Cron installed: 30 8 * * * (daily 8:30 AM local time)
+- First run day 0: contamination 0% OK, paper_sim KPI loading
+
+Forward deploy infrastructure ready. 等 v9 verdict.
+
 ### N. 2026-05-23 00:15 — ST filter added (universe.py extend)
 
 实测 V4 OOS predictions ∩ ST/*ST: **235 stocks** (45% of dim_active ST/*ST 238), V4 top-10 picks 19.31% 是 ST.
