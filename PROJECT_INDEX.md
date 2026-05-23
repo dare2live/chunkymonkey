@@ -819,6 +819,19 @@ SELECT * FROM mart_data_source_watermark;
 
 每次 session 增量内容写这里, 新 session 启动时**从下往上读**最近改了啥.
 
+### 2026-05-23 Option 4 EXECUTED — v7 forward deploy candidate_forward_monitor
+
+User explicit '4' = forward deploy v7 (5 capital × 6 weeks).
+Registry result_id v7_clean_panel_v5c_20260523 production_status candidate_forward_monitor.
+abort criteria documented: forward_sharpe < 0.3 / dd < -25 / win < 35 / contamination > 5.
+
+Ensemble exploration verdict:
+- v7 alone Sharpe 0.87 BEST Phase 4 (3/4 PASS PBO 0.094)
+- v7+BC clean / v7+Phase7 / v8 PIT — 全 worse PBO
+
+Phase 4 IS-OOS strict 30 percent gate vs LightGBM 60-70 natural = academic threshold mismatch (Lopez de Prado 30 for linear factor).
+audit_delivery 90 percent = mathematical reality, 95 needs structural fix or operational threshold relax.
+
 ### 2026-05-23 audit_delivery wiring + 全 audit B section fixes summary
 
 audit_delivery_readiness._load_msaf_horizon_ladder extend:

@@ -327,6 +327,32 @@ NOT READY (90 < 95) gaps:
 
 GCP cost final 9.61 dollar / 50 = 19 percent (was 89 of 15). v7 only 0.40 dollar.
 
+### V. 2026-05-23 14:05 — Option 4 EXECUTED: v7 forward deploy as candidate_forward_monitor
+
+用户 explicit "4" selection (Option 4 from earlier evaluation).
+
+Registry entry (mart_strategy_result_registry):
+- result_id: v7_clean_panel_v5c_20260523
+- production_status: candidate_forward_monitor
+- decision: hold_challenger
+- model_id: lgbm_phase5_v7_20260523T010000Z
+- sharpe 0.87 / ann 21.7 / dd -19.0 / win 40
+
+Forward deploy 配置:
+- capital_allocation_pct: 5
+- monitor_window_weeks: 6
+- abort criteria:
+  - forward_sharpe < 0.3 for 4 consecutive weeks
+  - max_dd worse than -25 on forward
+  - win_rate < 35 after 3 weeks
+  - top K picks contamination > 5
+
+实战 evidence path: 6 周 forward 累积 + 周报 vs paper_sim 数字 比对. 若 forward Sharpe 0.5-0.8 range = paper_sim 真实, hold v7 as challenger. 若 < 0.3 = abort, revisit.
+
+Operational state 仍 audit_delivery 90% NOT READY 数学 verdict, 但 v7 现 production tracked + forward monitor 6 周 自然 close n_obs 部分 (22 → 40+).
+
+测了其他 ensemble variants (v7+BC clean / v7+Phase7 / v8 PIT) — 全 worse Phase 4. v7 alone 是 best champion.
+
 ### N. 2026-05-23 00:15 — ST filter added (universe.py extend)
 
 实测 V4 OOS predictions ∩ ST/*ST: **235 stocks** (45% of dim_active ST/*ST 238), V4 top-10 picks 19.31% 是 ST.
