@@ -469,6 +469,20 @@ except Exception as e:
     print(f'parse failed: {e}')
 " 2>/dev/null)
     log "BC ensemble: $BC_ENSEMBLE_SUMMARY"
+
+    # 5d. v7 forward deploy monitor — 2026-05-23 Option 4 deploy
+    log "--- 5d. v7 forward deploy monitor ---"
+    PYTHONPATH=backend python backend/scripts/monitor_v7_forward.py >> "$LOG" 2>&1 \
+        || log "WARN: v7 forward monitor 失败"
+    V7_MONITOR_STATUS=$(PYTHONPATH=backend python -c "
+import json
+try:
+    d = json.load(open('data/reports/v7_forward_monitor.json'))
+    print(f\"day {d.get('days_into_deploy', 0)} status={d.get('status', '?')} contamination={d.get('contamination_pct', 0)*100:.2f}%\")
+except Exception as e:
+    print(f'parse fail: {e}')
+" 2>/dev/null)
+    log "v7 monitor: $V7_MONITOR_STATUS"
 else
     log "DRY: skip regime/paper_sim"
 fi
