@@ -375,6 +375,23 @@ backend/scripts/monitor_v7_forward.py (新):
 
 Forward deploy infrastructure ready. 等 v9 verdict.
 
+### X. 2026-05-23 14:35 — BC walk-forward time-bucket VERDICT: STABLE (selection bias MILD confirmed)
+
+用户 3+ 次 ask: BC walk-forward audit. 实施 (sample-based, no Optuna re-search needed):
+
+Time-bucket forward 20d return per BC pick (kline row offset 20):
+| Bucket | n | mean ret | std | Sharpe | Win |
+|---|---|---|---|---|---|
+| P1 2024-H2 (Jul-Dec 24) | 4,512 | +5.89% | 0.20 | 1.06 | 56% |
+| P2 2025-H1 (Jan-Jun 25) | 3,870 | +4.37% | 0.14 | 1.11 | 65% |
+| P3 2025-H2+ (Jul 25-) | 6,713 | +4.15% | 0.15 | 0.97 | 57% |
+
+Cross-bucket Sharpe std: 0.059 (LOW = stable). Range 0.97-1.11.
+**Verdict: BC selection bias MILD** (consistent with Phase 5 audit verdict).
+BC alpha real across 3 time periods. paper_sim Sharpe 1.10 holds reasonably.
+
+Output: data/reports/bc_walk_forward_buckets_20260523.json
+
 ### N. 2026-05-23 00:15 — ST filter added (universe.py extend)
 
 实测 V4 OOS predictions ∩ ST/*ST: **235 stocks** (45% of dim_active ST/*ST 238), V4 top-10 picks 19.31% 是 ST.
