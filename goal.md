@@ -294,6 +294,39 @@ Composite intersection 没 material lift. paper_sim_v6 mature engine 已 extract
 
 6/1 GCP reset 后 v7 是 critical milestone. 之前 GCP wasted ~\$7 ($5 v6 + $2 stability) — v7 必走 safe_retrain.sh, audit must pass, panel v5 Pattern 10 FIXED is the test.
 
+### U. 2026-05-23 09:50 — v7 EXECUTED on panel v5c — audit 88→90 percent
+
+Budget raised 15->50 enabled NOW launch.
+
+v7 retrain VM (~1h wall, ~0.40 dollar):
+- 50 trials, best 0.330843 Trial 5
+- 16 windows OK, 1,355,708 predictions
+- TRUE train-log to fact_model_train_log
+
+paper_sim_v6 verdict cmp lm_v6_compare_20260523T013827:
+- RankIC 0.0452 vs V4 0.0246 = +84 model lift
+- Sharpe 0.87 vs V4 0.64 = +36 (still <2.0)
+- Ann 21.7 vs V4 35 lower
+- DD -19.02 PASS -20 gate (V4 -22.18 FAIL)
+- Win 40 vs V4 45
+
+Phase 4 gate --require-true-train-log:
+- PBO 0.094 PASS best ever (V4 0.145 V4+BC 0.78)
+- DSR PASS Cons PASS
+- IS-OOS 63.51 FAIL (strict 30, true-train-test)
+- 3/4 PASS verdict block
+
+audit_delivery 88 -> 90 percent:
+- 3 backtester 75 WARN -> 87 PASS
+- 6 unchanged (primary kpi 仍 MSAF)
+
+NOT READY (90 < 95) gaps:
+- IS-OOS 63.5 vs 30 strict (Pattern 8 v3 rebuild OR relax mode)
+- 6 needs primary kpi overwrite (operational decision)
+- n_obs 22 vs 60 structural
+
+GCP cost final 9.61 dollar / 50 = 19 percent (was 89 of 15). v7 only 0.40 dollar.
+
 ### N. 2026-05-23 00:15 — ST filter added (universe.py extend)
 
 实测 V4 OOS predictions ∩ ST/*ST: **235 stocks** (45% of dim_active ST/*ST 238), V4 top-10 picks 19.31% 是 ST.
