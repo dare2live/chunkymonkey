@@ -460,6 +460,21 @@ panel v5 rebuilding with ST exclusion. v7 retrain on this cleaner panel.
 Codex 跑过 BC Optuna 624K trials 本地分批 done. Walk-forward audit = 3x = 1.87M trials, expensive but feasible local (3-5 天 compute).
 应该: chunkymonkey/bestchoice/scripts/formula_local_optuna_batch.py extend 加 --cutoff flag, 跑 3 cutoffs, compare candidates overlap.
 
+#### T.1 实施: panel v5 ST-filtered build done
+
+Panel v5 ST-filtered (mart_p0a_feature_label_panel_v5):
+- 2,795,950 rows (vs no-ST 2,928,020 = -132K = -4.5%)
+- 0 ST/*ST stocks (verified)
+- Pattern 10 NULL gradient (check 6): 0 HIGH ✓
+- Pattern 8 survivorship (check 10): 1 HIGH (inherited v3 base)
+- 15 HIGH total (same as no-ST, ST gap closed by panel-level filter)
+
+**v7 retrain 准备就绪 on this cleanest panel**:
+- panel v5 ST-filtered + Pattern 10 fixed + Phase 4 strict mode + safe_retrain.sh + leakage catalog
+- 待 6/1 GCP reset launch with --require-true-train-log
+
+T.3 stub: `bestchoice/scripts/formula_local_optuna_walk_forward.py` (commit 0c99927f) — full implementation next session.
+
 ### I. 真 path to 运营 ready (gap-driven, 替代 phase 列表打勾思维)
 
 每次 session 推进必同步问: 距 `ready_for_delivery=True` 还差啥? 不是问 "phase 完了吗".
