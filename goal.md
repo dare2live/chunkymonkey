@@ -353,6 +353,40 @@ Operational state 仍 audit_delivery 90% NOT READY 数学 verdict, 但 v7 现 pr
 
 测了其他 ensemble variants (v7+BC clean / v7+Phase7 / v8 PIT) — 全 worse Phase 4. v7 alone 是 best champion.
 
+### Y. 2026-05-23 20:53 — v9b verdict: best paper_sim, PBO trade-off confirmed
+
+v9b retrain (stronger reg std=1.0 / neg=0.6, panel v5 PIT, n_trials 50, n_estimators 100):
+- 50 trials done (many pruned by stronger penalty), best Trial 32 value 0.3095
+- 1,425,193 predictions, TRUE train_log
+
+paper_sim verdict cmp lm_v6_compare_20260523T124207:
+- RankIC **0.0562** (best ever, +128 vs V4 baseline 0.025)
+- Sharpe **1.7085** (best ever, near 2.0)
+- ann 61.01 (best ever)
+- DD -16.16 (best ever, PASS -20 perfect ladder +3.84pp margin)
+- Win 65 (best ever, PASS 55 +10pp margin)
+
+paper_sim 3/4 perfect ladder PASS!
+
+Phase 4 gate --require-true-train-log:
+- PBO 0.409 FAIL (worse than v7 0.094)
+- DSR 0.998 PASS
+- Conservative +63 PASS
+- IS-OOS drop 51.28 FAIL (improved from v7 63.5 but still > 30 strict)
+- 2/4 BLOCK
+
+Trade-off confirmed:
+- Stronger reg ↓ IS-OOS drop (63 → 51)
+- But ↑ PBO (0.094 → 0.409) — over-reg → K-variant rank instability
+- v7 仍 best Phase 4 (3/4 PASS), v9b 仍 best paper_sim
+
+No model 同时 high paper_sim AND Phase 4 PASS.
+
+GCP cost final 9.70 / 50 = 19.4 percent (3 retrains v7+v8+v9b = ~$1.20).
+VM stopped.
+
+操作 implication: v9b 单 K=5 picks (固定 K) might be deployable — Phase 4 PBO measures multi-K instability not fixed-K. 后续 v9b 单 K paper_sim 可考虑.
+
 ### W. 2026-05-23 14:30+ — v9 stronger reg retrain + v7 monitor cron installed
 
 v9 retrain launched VM (lgbm_phase5_v9_20260523T070000Z):
