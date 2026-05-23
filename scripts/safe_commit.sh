@@ -72,7 +72,14 @@ if [[ -n "$panel_touched" ]]; then
             if [[ "${SKIP_LEAKAGE_AUDIT:-0}" != "1" ]]; then
                 exit 4
             fi
-            echo "WARNING: SKIP_LEAKAGE_AUDIT=1 bypass — proceeding."
+            # L12 enforcement: SKIP_LEAKAGE_AUDIT bypass requires documented reason in commit msg
+            if ! echo "$MSG" | grep -qiE "SKIP_LEAKAGE_AUDIT|pre-existing|documented caveat|panel v[0-9].*(prep|build)|inherited from"; then
+                echo "ERROR: SKIP_LEAKAGE_AUDIT=1 set but commit message lacks justification."
+                echo "Required: explain why (e.g. 'panel v3 base inherits historical contamination', 'pre-existing in v4 not introduced this commit')."
+                echo "Add reason to commit message keyword (panel.*prep / inherited / pre-existing / documented caveat / SKIP_LEAKAGE_AUDIT)."
+                exit 5
+            fi
+            echo "WARNING: SKIP_LEAKAGE_AUDIT=1 bypass with justification — proceeding."
         else
             echo "[leakage-audit] MEDIUM/WARN (exit $rc), not blocking."
         fi
