@@ -31,7 +31,7 @@ mode:
 # monitoring  - cost_summary.json + uptime_log.csv
 
 budget:
-  monthly_usd: 15.0           # rule-compliance: ok evidence=user-15usd-budget-2026-05-21
+  monthly_usd: 50.0           # rule-compliance: ok evidence=user-50usd-budget-2026-05-23-raise
   yellow_threshold_pct: 80    # rule-compliance: ok evidence=80pct-warn (alert only, no auto-stop)
   red_threshold_pct: 100      # rule-compliance: ok evidence=100pct-warn (alert only, no auto-stop)
 

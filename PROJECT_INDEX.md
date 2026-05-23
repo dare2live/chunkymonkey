@@ -819,6 +819,25 @@ SELECT * FROM mart_data_source_watermark;
 
 每次 session 增量内容写这里, 新 session 启动时**从下往上读**最近改了啥.
 
+### 2026-05-23 GCP budget 15 to 50 + 全面 project audit doc
+
+用户 push: 'gcp 预算调到 50 美元'.
+
+3 处 sync:
+- backend/config/gcp_policy.yaml monthly_usd 15 -> 50
+- gcp/cost_tracker.sh BUDGET 15 -> 50
+- CLAUDE.md 9.3
+
+Verify: projected $13.40 / $50 = 26.8 percent OK. Remaining $40.49 / 107.7h spot.
+v7 retrain $4 buffer $36+ comfortable.
+
+docs/project_audit_20260523.md 全面 audit:
+- A. 经验教训 (4 leakage patterns / 数字红线 / GCP 浪费 / debt / ensemble 顶限)
+- B. 当前 issues (data / model / audit / code / infra / wiring)
+- C. Fix priorities (v7 NOW vs 6/1, panel v3 rebuild)
+- D. Decision (V4 pause production?)
+- E. 不全白跑 - architectural progress 真
+
 ### 2026-05-23 universe tool + 7/7 strategies CONTAMINATED audit
 
 用户 push '做一个专用的工具' + '评估历史 strategies'.

@@ -35,7 +35,7 @@ VM_NAME="${GCP_VM_NAME:-chunkymonkey-optuna}"        # rule-compliance: ok evide
 VM_ZONE="${GCP_VM_ZONE:-us-central1-a}"              # rule-compliance: ok evidence=user-vm-zone
 SPOT_RATE_HOUR="${GCP_SPOT_RATE_HOUR:-0.376}"        # rule-compliance: ok evidence=n2-standard-32-spot-2026-rate
 DISK_MONTHLY="${GCP_DISK_MONTHLY:-4.0}"              # rule-compliance: ok evidence=100gb-pd-standard
-BUDGET="${GCP_BUDGET_USD:-15.0}"                     # rule-compliance: ok evidence=user-15usd-budget-2026-05-21
+BUDGET="${GCP_BUDGET_USD:-50.0}"                     # rule-compliance: ok evidence=user-50usd-budget-2026-05-23-raise
 
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 REPORT="$REPO_ROOT/data/reports/gcp_cost_summary.json"

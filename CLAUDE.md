@@ -415,7 +415,7 @@ codegraph sync .                                  # safe_commit.sh 自动跑
 | Spot rate | $0.376/h (76% off vs $1.553/h on-demand) |
 | Disk | 100 GB pd-standard ($0.04/GB-月 = $4/月) |
 | GCS | ~25 GB (smartmoney 21.4 + market 1.5 + alpha158 1.86 + delta) ($0.020/GB-月 = $0.50/月) |
-| **月预算** | **$15** (2026-05-21 用户放宽 from $10) |
+| **月预算** | **$50** (2026-05-23 用户放宽 from $15) |
 | Alert 阈值 | 80% YELLOW / 100% RED — **仅日志, 不 auto-stop** (用户 2026-05-21 明确) |
 
 cost tracker: `CHUNKYMONKEY_GCP_EXPLICIT_OK=1 bash gcp/cost_tracker.sh`.
