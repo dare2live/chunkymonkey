@@ -445,6 +445,21 @@ Without v7 success, **没 operational path**. 不是 nice-to-have.
 
 诚实: 项目可能需要 **重新 evaluate** 是否 5000+ stock universe + LambdaMART 路径 reach Sharpe ≥ 2.0 是可行. 真 alpha 当前 evidence 估 0.5-0.8 honest Sharpe range.
 
+### T. 2026-05-23 01:15 — 3 个 user push back (实事 correction)
+
+#### T.1 ST 训不准 — panel build level filter
+V4 (现 champion) 训于 universe 含 235 ST/*ST stocks, top-10 picks 19.3% 是 ST. 实盘 unrealistic. universe.py 加了 helper 但 panel build SQL 没用.
+**修复**: feature_join_v5 加 SQL filter (`v3.stock_code NOT IN (SELECT ... ST stocks)`).
+panel v5 rebuilding with ST exclusion. v7 retrain on this cleaner panel.
+
+#### T.2 akshare quant projects 借鉴 (无 web 查, 基于已知 common patterns)
+现已有: alpha158 / walk-forward / PIT / tx_cost / sizer / stop-loss avoid / orchestration / lineage.
+**缺**: industry-neutral 组合约束 + 真实容量限 (现仅 adv20 surcharge, 无 hard 容量上限).
+
+#### T.3 BC walk-forward audit 本地分批 feasible — 我之前错说 infeasible
+Codex 跑过 BC Optuna 624K trials 本地分批 done. Walk-forward audit = 3x = 1.87M trials, expensive but feasible local (3-5 天 compute).
+应该: chunkymonkey/bestchoice/scripts/formula_local_optuna_batch.py extend 加 --cutoff flag, 跑 3 cutoffs, compare candidates overlap.
+
 ### I. 真 path to 运营 ready (gap-driven, 替代 phase 列表打勾思维)
 
 每次 session 推进必同步问: 距 `ready_for_delivery=True` 还差啥? 不是问 "phase 完了吗".

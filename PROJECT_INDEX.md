@@ -819,6 +819,12 @@ SELECT * FROM mart_data_source_watermark;
 
 每次 session 增量内容写这里, 新 session 启动时**从下往上读**最近改了啥.
 
+### 2026-05-23 user push back T.1/T.2/T.3 corrections + panel v5b ST-filtered
+
+T.1 ST 训不准: V4 含 235 ST/*ST stocks top-10 19.3%. feature_join_v5 加 SQL filter NOT IN ST. panel v5b rebuilding.
+T.2 akshare 借鉴: 已有 alpha158/PIT/tx_cost etc, 缺 industry-neutral 约束 + 容量限.
+T.3 BC walk-forward audit 本地分批 feasible (Codex 已 demo 624K trials). 我之前 infeasible 过悲观.
+
 ### 2026-05-23 doc fix: BC 已迁徙 chunkymonkey/bestchoice/ + ST composite running
 
 用户 push back: 'BC 跨 repo? 不是已经迁徙到主项目?'.

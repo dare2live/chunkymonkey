@@ -158,6 +158,12 @@ LEFT JOIN fact_sector_momentum_daily sm
  AND sm.date = CAST(v3.signal_date AS VARCHAR)
 WHERE v3.signal_date IN (SELECT signal_date FROM tmp_signal_dates)
   AND v3.stock_code IN (SELECT stock_code FROM tmp_stocks)
+  -- 2026-05-23 ST filter: exclude stocks currently in ST/*ST status (universe.py is_st_stock)
+  -- 注意: 仅当前 status, 不是 PIT historical (历史 ST→去 ST 仍 leak, 待 dim_listing_status PIT 历史)
+  AND v3.stock_code NOT IN (
+      SELECT stock_code FROM dim_active_a_stock
+       WHERE stock_name LIKE 'ST%' OR stock_name LIKE '*ST%'
+  )
 """
 
 
