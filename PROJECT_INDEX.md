@@ -819,6 +819,20 @@ SELECT * FROM mart_data_source_watermark;
 
 每次 session 增量内容写这里, 新 session 启动时**从下往上读**最近改了啥.
 
+### 2026-05-23 panel v5c — full universe filter (ST + 退市 + dim_active filter)
+
+User push back '不只是 ST, 还有新三板老三板退市的'.
+
+实测 panel v5 ST-filtered 含:
+- 416 stocks dim_all_ever_listed.is_active=0 (历史已退市 stocks still leaked in)
+- 13 stocks not in dim_active_a_stock (likely delisted/removed)
+
+feature_join_v5 加 2 filter:
+- NOT IN dim_all_ever_listed WHERE is_active=0
+- IN dim_active_a_stock (排除 removed)
+
+Panel v5c rebuilding (~3 min).
+
 ### 2026-05-23 user push back T.1/T.2/T.3 corrections + panel v5b ST-filtered
 
 T.1 ST 训不准: V4 含 235 ST/*ST stocks top-10 19.3%. feature_join_v5 加 SQL filter NOT IN ST. panel v5b rebuilding.

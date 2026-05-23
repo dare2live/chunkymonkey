@@ -164,6 +164,14 @@ WHERE v3.signal_date IN (SELECT signal_date FROM tmp_signal_dates)
       SELECT stock_code FROM dim_active_a_stock
        WHERE stock_name LIKE 'ST%' OR stock_name LIKE '*ST%'
   )
+  -- 2026-05-23 已退市 filter: exclude stocks 已 delisted (dim_all_ever_listed.is_active=0)
+  -- 用户 push back '不只是 ST, 还有新三板老三板退市的'.
+  -- 历史 active 后退市 stocks 实盘 unrealistic (paper_sim 假设 normal trading)
+  AND v3.stock_code NOT IN (
+      SELECT stock_code FROM dim_all_ever_listed WHERE is_active = 0
+  )
+  -- 已 removed from dim_active_a_stock (most likely delisted) also excluded
+  AND v3.stock_code IN (SELECT stock_code FROM dim_active_a_stock)
 """
 
 
