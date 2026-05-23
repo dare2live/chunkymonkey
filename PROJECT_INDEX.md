@@ -819,6 +819,19 @@ SELECT * FROM mart_data_source_watermark;
 
 每次 session 增量内容写这里, 新 session 启动时**从下往上读**最近改了啥.
 
+### 2026-05-23 audit_delivery wiring + 全 audit B section fixes summary
+
+audit_delivery_readiness._load_msaf_horizon_ladder extend:
+- Glob v4_bc_ensemble_horizon_ladder*.json
+- V4+BC ensemble 1.84 现 visible in audit next_milestones (visibility only, verdict unchanged 88%)
+
+Project audit doc (docs/project_audit_20260523.md) 全面记录:
+- 7 经验教训 (Pattern 8/9/10/11 leakage / 数字红线 / GCP 浪费 / debt / ensemble 顶限 / 阶段 vs ready / Codex)
+- B section 6 issues (data / model / audit / code / infra / wiring)
+- C section fix priorities (v7 NOW vs 6/1)
+
+Budget raised 15 to 50 enables v7 NOW path. Waiting user explicit launch.
+
 ### 2026-05-23 GCP budget 15 to 50 + 全面 project audit doc
 
 用户 push: 'gcp 预算调到 50 美元'.

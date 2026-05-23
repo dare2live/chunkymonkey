@@ -92,6 +92,14 @@ def _load_msaf_horizon_ladder(reports_dir: Path, primary_report: dict) -> list[d
             log.warning(f"MSAF horizon probe parse failed: {path}: {e}")
             continue
         add_row(path, payload)
+    # 2026-05-23 加 V4+BC ensemble horizon_ladder reports (新 ensemble strategies)
+    for path in sorted(reports_dir.glob("v4_bc_ensemble_horizon_ladder*.json")):
+        try:
+            payload = json.loads(path.read_text())
+        except Exception as e:
+            log.warning(f"V4+BC ensemble report parse failed: {path}: {e}")
+            continue
+        add_row(path, payload)
 
     def horizon_key(row: dict) -> int:
         h = str(row.get("horizon") or "999d").rstrip("d")
