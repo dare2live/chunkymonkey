@@ -109,7 +109,20 @@ Forward 6 weeks parallel. Decision week 6+:
 | 1.7 | Perception sibling display UI entry (read-only) | 2-3h | v3_perception_legacy.py + UI tab |
 | ~~1.8~~ | **MOVED to Phase 2.2**: BC universe wire 必在 bc_absorbed copy 中做 (Track A FROZEN 不能改 bestchoice/) | - | - |
 
-**Phase 1 exit gate** (revised 2026-05-24): L7/L9/L10/L14 enforced ✓, best params consensus extracted ✓, Track A FROZEN ✓, Perception display UI 1.7 待. BC universe wire moved to Phase 2.2 (must operate on bc_absorbed copy).
+**Phase 1 exit gate** (revised 2026-05-24): L7/L9/L10/L14 enforced ✓, best params consensus extracted ✓, Track A FROZEN ✓, Perception display UI 1.7 ✓ (5 endpoints). BC universe wire moved to Phase 2.2 (done).
+
+**Phase 1 status (2026-05-24 23:00 CST): 8/8 DONE** ✓
+
+### Phase 2 status (in progress)
+
+| # | Task | Status |
+|---|---|---|
+| 2.1 | cp bestchoice/ → bc_absorbed/ (488K) | ✓ |
+| 2.2 | Universe wire ST filter 3 compute.py locations | ✓ |
+| 2.3 | governance.enforce_pre_optimize wired in formula_local_optuna | ✓ |
+| 2.4 | Formula bank 50 (7 categories × 7) | pending 1 week |
+| 2.5 | Stage filter integration (Wyckoff 1.5/2/3) | pending half day |
+| 2.6 | Phase 4 gate verify | pending 1h GCP $0.50 |
 
 ### Phase 2 — BC Absorbed Copy + 优化 (~2 周, ~$5 GCP)
 
