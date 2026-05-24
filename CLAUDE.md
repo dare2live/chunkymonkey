@@ -17,7 +17,7 @@
 | 8 | Self-Check — write-time / commit-time (9 项含 codegraph+complexity) |
 | 9 | GCP 资源管理 — controlled use / $15 budget (alert-only) / hygiene / checkpoint reuse |
 | 10 | 并发 — 串行硬约束 / 可并发 / 实现 |
-| 11 | Codex 协作 — ⏸ 当前暂停 (2026-05-21~) |
+| 11 | Codex 协作 — [ACTIVE] 已恢复 (2026-05-24~) |
 | 12 | 用户偏好 / 沟通 |
 | 附 | PROJECT_INDEX.md 入口 |
 
@@ -500,29 +500,30 @@ GCP run 浪费时间或没产 artifact → 记 root cause + 防回退到 `docs/g
 
 ---
 
-## 11. Codex 协作 — ⏸ 当前暂停 (2026-05-21~)
+## 11. Codex 协作 — [ACTIVE] 已恢复 (2026-05-24~)
 
-> **用户 2026-05-21 push back**: "派 Codex 的事儿可以暂停了, 现阶段由你全面接手, 直到我下一次让你重启对 codex 的调用再说".
+> **用户 2026-05-24**: "恢复与 codex 交流的规则".
+> 历史: 2026-05-21 用户曾暂停 Codex 协作 ("派 Codex 的事儿可以暂停了, 现阶段由你全面接手"), 2026-05-24 恢复.
 
-**当前规则**:
-- **不主动** `codex:rescue` / `codex:setup` / 多 Codex 派活.
-- commit gate 临时改走 §8.3 self-审 fallback (5 项写入 commit message).
-- 用户重启 Codex 后恢复下面历史规则.
-- `~/.codex_monitor/codex_monitor.sh` launchd 暂可保留 (历史 Codex thread 仍 auto-cancel idle > 30min, 防 stuck).
-- 历史 Codex thread 已知 ID / commit hash 仍可作为反例引用 (e.g. acf48d35 / a8c34359a).
-
-**重启后历史规则要点** (压缩自原版):
+**当前规则** (恢复 commit review gate + 主动派活):
 
 | 场景 | 规则 |
 |---|---|
-| commit review gate | 写完代码不立即 commit, 先 `codex:rescue` 提交 diff → 逐条评估 (接受/折中/拒绝) → 修 → review 循环 → commit + 引用 Codex agent ID + 拒绝理由 |
-| 豁免 | 纯 markdown / 改名 / 修错别字 |
+| commit review gate | 写完代码不立即 commit, 先 `codex:rescue` 提交 diff → 逐条评估 (接受/折中/拒绝) → 修 → review 循环 → commit + 引用 Codex agent ID + 拒绝理由. safe_commit.sh hook 强制 `Codex-Reviewed:` 关键词或 `# codex-review: skipped reason=<trivial/markdown/typo/rename>` 显式 bypass. |
+| 豁免 | 纯 markdown / 改名 / 修错别字 / hook+config 改 (非业务逻辑) |
 | 全盘接受 ≠ 协作 | 每 finding 走 5 维评估 (原则一致 / 用户目标 / 代价收益 / 现状妥协 / 现实数据) + 3 档反应 (接受/折中/拒绝) |
 | ⛔ CRITICAL 红线 | Codex 标 CRITICAL 涉及 PIT/leakage/真金白银 → 只能"完全接受+立刻修+test verified". 反例: 2026-05-15 我选"注释 TODO"折中, chain leakage RankIC +60% 假象. 详 [[feedback-codex-critical-no-compromise]] |
 | 主动派任务 | 架构 doc / SUE PIT 设计 / 第三方调研 / 数据 integrity / SQL 重构 / factor spec / negative finding |
 | 多 agent 并发 | 一次 message max 5 (1-3 Codex + 1-2 Claude subagent), 不同 file scope orthogonal |
 | Thread stuck | > 30 min `progressPreview` 不更新 → cancel + `--fresh`, **不走 fallback**. 收紧 scope 重派 (反例: 33min 卡 `nl -ba ... | sed` over-explore) |
 | Codex 跑 background 不上 VM | Codex companion 在本地 Mac, 不占 VM |
+| Stop hook 检测 | `~/.claude/hooks/session_rule_audit.sh` R1+R3 已 re-enable: research keywords ≥5 + 0 Agent dispatch / Bash ≥10 + 0 Agent dispatch → 提醒 (advisory, 不阻 stop) |
+| Codex monitor | `~/.codex_monitor/codex_monitor.sh` launchd 已保留 (idle > 30min auto-cancel, 防 stuck) |
+
+**恢复后的实际触发点** (从这一刻起):
+- 下次写代码 → safe_commit 前先 `codex:codex-rescue` 提交 diff review
+- §8.2 commit-time self-check 第 9 项默认重启 Codex review gate
+- §8.3 self-审 fallback 仅在 Codex 不可用 (e.g. quota / outage) 时启用
 
 ---
 

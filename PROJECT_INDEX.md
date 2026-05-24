@@ -819,6 +819,12 @@ SELECT * FROM mart_data_source_watermark;
 
 每次 session 增量内容写这里, 新 session 启动时**从下往上读**最近改了啥.
 
+### 2026-05-24 Codex 协作恢复
+
+用户原话: "恢复与codex交流的规则".
+CLAUDE.md §11 状态 PAUSED → ACTIVE. ~/.claude/hooks/session_rule_audit.sh R1+R3 取消注释.
+实际触发点: 下次 commit 前主动 codex:codex-rescue review diff; safe_commit.sh 默认要求 Codex-Reviewed 关键词.
+
 ### 2026-05-24 v7 daily inference + operational deliverability closed
 
 新增 `backend/scripts/run_daily_v7_inference.py` — 闭合 3 个交付运营 gap:
