@@ -432,9 +432,13 @@ def main() -> int:
     parser.add_argument("--model-id", default="lgbm_20260517_governance_v1_20d")
     parser.add_argument("--challenger-id", default="msaf_v1_lambdamart_only")
     parser.add_argument("--output-json", default=str(REPO_ROOT / "data" / "reports" / "phase4_gate_result.json"))
-    parser.add_argument("--require-true-train-log", action="store_true",
-                        help="STRICT mode: abort if fact_model_train_log unavailable for model_id "
-                             "(disables warn_only_proxy fallback). Use for production promotion gates.")
+    # L7 enforcement (2026-05-24): default ON — strict mode required for production promotion.
+    # 用户原话 MASTER_SYNTHESIS Phase 1.2: Phase 4 strict default ON.
+    parser.add_argument("--require-true-train-log",
+                        action=argparse.BooleanOptionalAction,
+                        default=True,
+                        help="STRICT mode (DEFAULT ON 2026-05-24): abort if fact_model_train_log unavailable. "
+                             "Use --no-require-true-train-log for legacy proxy mode (audit/diagnostic only).")
     parser.add_argument("--lambdamart-weight", type=float, default=None)
     parser.add_argument("--sniper-weight", type=float, default=None)
     parser.add_argument("--institution-weight", type=float, default=None)

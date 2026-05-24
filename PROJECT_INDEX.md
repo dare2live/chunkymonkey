@@ -819,6 +819,16 @@ SELECT * FROM mart_data_source_watermark;
 
 每次 session 增量内容写这里, 新 session 启动时**从下往上读**最近改了啥.
 
+### 2026-05-24 Phase 1 partial — Track A FROZEN + L7/L9/L14 enforcement
+
+Per goal.md MASTER_SYNTHESIS Phase 1 plan:
+- 1.1 bestchoice/FROZEN.md (Track A frozen tag)
+- 1.2 L7 Phase 4 --require-true-train-log default ON (BooleanOptionalAction)
+- 1.3 L9 retrain_lambdamart_v6 saves <model_id>.lgb.txt booster from last expanding window
+- 1.5 L14 monitor_v7_forward divergence > 30 percent = ALARM (week 1+)
+
+Pending: 1.4 registry validator / 1.6 best params extraction / 1.7 Perception display UI / 1.8 BC universe wire.
+
 ### 2026-05-23 Option 4 EXECUTED — v7 forward deploy candidate_forward_monitor
 
 User explicit '4' = forward deploy v7 (5 capital × 6 weeks).

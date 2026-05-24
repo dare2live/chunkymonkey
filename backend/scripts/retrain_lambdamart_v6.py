@@ -1248,6 +1248,23 @@ def main() -> int:
     else:
         log.info("wrote %s predictions to %s", f"{n_rows:,}", LAMBDAMART_V6_PREDICTIONS_TABLE)
     log.info("wrote true train/OOS evidence to %s", FACT_MODEL_TRAIN_LOG_TABLE)
+
+    # L9 enforcement (2026-05-24): save booster artifact for daily inference
+    # 用户 MASTER_SYNTHESIS Phase 1.3: '--save-booster' default ON
+    if not args.train_log_only and windows:
+        # Use last expanding window's train_idx (largest train set)
+        booster_path = checkpoint_path.parent / f"{model_id}.lgb.txt" if checkpoint_path else None
+        if booster_path:
+            try:
+                from scripts.run_p0b_lambdamart_v6 import _fit_lambdamart_window_model
+                last_window = windows[-1]
+                final_model = _fit_lambdamart_window_model(panel, last_window, params)
+                final_model.booster_.save_model(str(booster_path))
+                log.info("L9 booster saved: %s (last window train %s..%s)",
+                         booster_path, last_window.train_start, last_window.train_end)
+            except Exception as e:
+                log.warning("L9 booster save failed (non-fatal): %s", e)
+
     _sync_preempt_artifacts(
         model_id=model_id,
         checkpoint_path=checkpoint_path,
