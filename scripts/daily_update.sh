@@ -483,6 +483,22 @@ except Exception as e:
     print(f'parse fail: {e}')
 " 2>/dev/null)
     log "v7 monitor: $V7_MONITOR_STATUS"
+
+    # 5e. v7 daily forward inference — 2026-05-24 操作可交付状态
+    log "--- 5e. v7 daily forward inference (top-10 picks) ---"
+    PYTHONPATH=backend python backend/scripts/run_daily_v7_inference.py --top-k 10 >> "$LOG" 2>&1 \
+        || log "WARN: v7 daily inference 失败"
+    V7_PICKS_SUMMARY=$(PYTHONPATH=backend python -c "
+from services.duck_adapter import connect
+try:
+    with connect('data/smartmoney.duckdb', read_only=True) as c:
+        r = c.execute(\"SELECT signal_date, COUNT(*), STRING_AGG(stock_code, ',') FROM mart_v7_daily_forward_picks WHERE signal_date = (SELECT MAX(signal_date) FROM mart_v7_daily_forward_picks) GROUP BY signal_date\").fetchone()
+        if r: print(f'{r[0]}: {r[1]} picks [{r[2]}]')
+        else: print('NONE')
+except Exception as e:
+    print(f'query fail: {e}')
+" 2>/dev/null)
+    log "v7 picks: $V7_PICKS_SUMMARY"
 else
     log "DRY: skip regime/paper_sim"
 fi

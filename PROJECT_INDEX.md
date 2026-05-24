@@ -819,6 +819,16 @@ SELECT * FROM mart_data_source_watermark;
 
 每次 session 增量内容写这里, 新 session 启动时**从下往上读**最近改了啥.
 
+### 2026-05-24 v7 daily inference + operational deliverability closed
+
+新增 `backend/scripts/run_daily_v7_inference.py` — 闭合 3 个交付运营 gap:
+1. v7 booster artifact (`data/reports/optuna/lgbm_phase5_v7_*.lgb.txt` + `.feature_cols.json`) — 一次性 re-fit + save, 后续 daily run 直接 load
+2. 实测 cached load 3.6s, 比 re-fit ~3min 快 50×
+3. 新 mart `mart_v7_daily_forward_picks` (signal_date, stock_code, score, rank, model_id, built_at)
+4. `scripts/daily_update.sh` Step 5e wired (5d forward monitor → 5e daily inference)
+
+PIT/OOS 安全: 只用 v7 best_params 在 train window (2024-01-02 to 2024-06-28) re-fit, label fwd_cost_after_20d 不进 inference 输入, 不重新调参.
+
 ### 2026-05-24 Phase 1 + Phase 2.1-2.3+2.5 + Phase 2.4 technical category started
 
 Phase 1: 8/8 complete.
