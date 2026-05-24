@@ -1,0 +1,56 @@
+{
+  "model_id_base": "phase42_diag_ablation",
+  "panel": "mart_p0a_feature_label_panel_unified_v1",
+  "label": "fwd_cost_after_20d",
+  "codex_review_agent_id": "a885609738ef505a4",
+  "v7_baseline_rank_ic": 0.0452,
+  "v7_baseline_top5_spread": 0.0511,
+  "smoke_baseline_params_from": "lgbm_phase5_v7_20260523T010000Z.best.json",
+  "results": [
+    {
+      "config": "all_features",
+      "n_features": 116,
+      "train_rows": 788087,
+      "oos_rows": 957495,
+      "rank_ic_mean": 0.010617909858470023,
+      "rank_ic_std": 0.13087691583321223,
+      "rank_ic_n_days": 191,
+      "top5_spread": -0.004720087365071291,
+      "top10_spread": -0.003532061971658928
+    },
+    {
+      "config": "base_v5_only",
+      "n_features": 109,
+      "train_rows": 788087,
+      "oos_rows": 957495,
+      "rank_ic_mean": -0.024882756552870346,
+      "rank_ic_std": 0.14345188362016437,
+      "rank_ic_n_days": 191,
+      "top5_spread": -0.00959370213552405,
+      "top10_spread": -0.00469868099069707
+    },
+    {
+      "config": "base_v5_plus_perc_market",
+      "n_features": 116,
+      "train_rows": 788087,
+      "oos_rows": 957495,
+      "rank_ic_mean": 0.010617909858470023,
+      "rank_ic_std": 0.13087691583321223,
+      "rank_ic_n_days": 191,
+      "top5_spread": -0.004720087365071291,
+      "top10_spread": -0.003532061971658928
+    },
+    {
+      "config": "base_v5_plus_perc_stock",
+      "n_features": 109,
+      "train_rows": 788087,
+      "oos_rows": 957495,
+      "rank_ic_mean": -0.024882756552870346,
+      "rank_ic_std": 0.14345188362016437,
+      "rank_ic_n_days": 191,
+      "top5_spread": -0.00959370213552405,
+      "top10_spread": -0.00469868099069707
+    }
+  ],
+  "built_at": "20260524T155215Z"
+}

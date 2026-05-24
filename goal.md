@@ -155,9 +155,11 @@ Forward 6 weeks parallel. Decision week 6+:
 |---|---|---|---|---|
 | 4.1a | Build `mart_p0a_feature_label_panel_unified_v1` (panel_v5 + perception_absorbed features) | 1 day | DONE 2026-05-24 commit `6694d2ad` | 2.7M rows × 166 cols, 36 perception features |
 | **4.2 MVP** | Train unified ranker (smoke baseline v7 params, train 2024-11 ~ 2025-06) | 1 day | DONE 2026-05-24 commit `471b4b06`, **verdict NOT promote** | rank_ic 0.0106 vs v7 0.0452 = -76%, std 0.131 vs 0.069 = +90% |
-| **4.2-diag** | Feature group ablation diagnose root cause of regression | 2-3 days | ACTIVE (Codex `a8856097` chose path C) | per-group rank_ic ablation table; verdict A/B/C |
-| 4.1b | bc_absorbed 49 formula features merge into unified panel | 1 week | BLOCKED by 4.2-diag verdict | only run if 4.2-diag identifies feature-add as recovery path |
-| 4.2 final | Optuna re-search 50 trials (Codex Q1) | 1-2 day GCP $5-10 | BLOCKED by 4.2-diag | unified ensemble model |
+| **4.2-diag** | Feature group ablation diagnose root cause of regression | 2-3 days | DONE 2026-05-25 verdict PARTIAL — analysis/phase42_diag_verdict_20260525.md | rank_ic 76% regression root cause = single-fit vs walk-forward (NOT features) |
+| **4.2b** | Walk-forward unified ranker `retrain_unified_ranker_walkforward.py` (expanding_monthly) | 1 day | NEXT ACTIVE | replicates v7 walk-forward on unified panel |
+| 4.2c | Optuna 50-trial re-search on walk-forward unified | 1-2 day GCP $5-10 | BLOCKED on 4.2b | unified ensemble best_params |
+| 4.1b | bc_absorbed 49 formula features merge into unified panel | 1 week | BLOCKED on 4.2c rank_ic ≥ 0.04 | only run after 4.2c shows walk-forward unified beats v7 baseline |
+| 3.7 (new) | Backfill stock_context_daily + under_reaction_daily marts to 2024-11+ (Track A sibling repo, perception engine re-run) | 1 week | NEW — flagged by 4.2-diag (perc_stock all-NULL in unified panel) | stock-level perception features become usable |
 | 4.3 | Linear/factor model parallel build (Phase 4 IS-OOS naturally < 30%) | 1-2 week | NOT STARTED | factor model fallback |
 | 4.4 | paper_sim_v6 + Phase 4 gate strict on both | 1 day | NOT STARTED | KPI + verdict |
 | 4.5 | Single registry update | 1 day | NOT STARTED | unified champion tracking |
@@ -216,11 +218,11 @@ If script needs adaptation for unified panel groups: copy + adapt to `backend/sc
 | **G2** | Unified ensemble (Phase 4 output) | 1.5% | treatment A |
 | **G3** | Linear/factor model (Phase 4 output) | 1.5% | treatment B |
 
-**Config B** (Phase 4.2-diag KILL verdict): G1-only forward, 1.5% capital, defer G2/G3 to retry later
+**Config B** (Phase 4.2-diag PARTIAL verdict 2026-05-25 ACTIVATED): G1-only forward 1.5% capital, defer G2/G3 until 4.2c walk-forward unified delivers rank_ic ≥ 0.04
 | Group | Model | Capital | Purpose |
 |---|---|---|---|
-| **G1** | v7 (existing candidate_forward_monitor) | 1.5% | sole production |
-| ~~G2/G3~~ | DEFERRED | 0% | retry after bc_absorbed (Phase 4.1b) or linear/factor (Phase 4.3) deliver promotable ranker |
+| **G1** | v7 (existing candidate_forward_monitor, daily_update.sh Step 5e wired) | 1.5% | sole production now |
+| ~~G2/G3~~ | DEFERRED until 4.2c verdict | 0% | retry after walk-forward unified (4.2c) beats v7 baseline (rank_ic ≥ 0.04) |
 
 | # | Task | ETA |
 |---|---|---|

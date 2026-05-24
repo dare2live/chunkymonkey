@@ -819,6 +819,31 @@ SELECT * FROM mart_data_source_watermark;
 
 每次 session 增量内容写这里, 新 session 启动时**从下往上读**最近改了啥.
 
+### 2026-05-25 Phase 4.2-diag verdict PARTIAL — single-fit DEAD, walk-forward needed
+
+Codex agent a885609738ef505a4 path C ablation 跑完, evidence:
+| Config | features | rank_ic | std | top5 |
+|---|---|---|---|---|
+| all_features (unified v1) | 116 | 0.0106 | 0.131 | -0.005 |
+| base_v5_only | 109 | -0.0249 | 0.143 | -0.010 |
+| base_v5 + perc_market | 116 | 0.0106 | 0.131 | -0.005 |
+| v7 baseline | 105 | 0.0452 | 0.069 | +0.051 |
+
+3 关键发现:
+1. perception_stock 16 个 cols 全 object/NULL (mart 2026-04-27 ~ 2026-05-19 不覆盖 panel 2024-01 ~ 2026-04) → Phase 3.7 新任务 backfill stock_context+under_reaction marts.
+2. perception_market 加 0.0355 rank_ic 提升 (validates Phase 3.2 + 4.1a 整合工作).
+3. **root cause** = single-fit 训练方法, 不是 feature. base_v5 alone 单训出 NEGATIVE rank_ic, v7 用类似 panel 走 walk_forward 16 window 出 +0.0452.
+
+verdict 文档: analysis/phase42_diag_verdict_20260525.md.
+
+Decisions 写入 goal.md:
+- 4.2 MVP single-fit script kept as POC only, 不上 production
+- 4.2b: 写 retrain_unified_ranker_walkforward.py (expanding_monthly) — NEXT ACTIVE
+- 4.2c: Optuna 50-trial walk-forward (1-2 day GCP $5-10)
+- 4.1b bc_absorbed merge DEFERRED until 4.2c rank_ic >= 0.04
+- 3.7 (new): backfill stock_context+under_reaction marts to 2024-11+
+- Phase 5 Config B G1-only ACTIVATED (v7 sole production)
+
 ### 2026-05-24 Phase 4.2-diag 启动 (Codex path C 决策)
 
 Codex review agent `a885609738ef505a4` 选 path C (诊断 root cause). 不 push Phase 4.1b/Phase 5 building on broken ranker.
