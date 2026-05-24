@@ -828,7 +828,8 @@ bank/ formulas:
 - technical.py — 7 indicator formulas (MACD/RSI/BB/KDJ/ATR/divergence)
 - pattern.py — 7 patterns (cup-handle / W / triangle / flag / saucer / IH&S / box)
 - volume.py — 7 volume (OBV / MFI / spike / VWAP / A/D / CMF / VPT)
-Phase 2.4 day 3/7 done. 21 formulas. Remaining: multi_tf / event / sector / sentiment categories.
+- multi_tf.py — 7 multi-timeframe (W+D MACD / W HL+D break / M+D pullback / RSI align / W breakout / M stage+vol / W dragon+D)
+Phase 2.4 day 4/7 done. 28 formulas. Remaining: event / sector / sentiment categories.
 
 ### 2026-05-24 Phase 1 + 2.1-2.3 + 2.5 + Perception display done
 
