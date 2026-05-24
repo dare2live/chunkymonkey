@@ -819,6 +819,15 @@ SELECT * FROM mart_data_source_watermark;
 
 每次 session 增量内容写这里, 新 session 启动时**从下往上读**最近改了啥.
 
+### 2026-05-24 Phase 1 + Phase 2.1-2.3+2.5 + Phase 2.4 technical category started
+
+Phase 1: 8/8 complete.
+Phase 2: 4 done + 2.4 category 1/7 started.
+
+backend/services/bc_absorbed/bank/technical.py: 7 indicator formulas (MACD/RSI/BB/KDJ/ATR/divergence).
+
+Pending Phase 2.4: pattern / volume / multi_tf / event / sector / sentiment = 6 more categories (~42 formulas).
+
 ### 2026-05-24 Phase 1 + 2.1-2.3 + 2.5 + Perception display done
 
 Phase 1 8/8 complete.
