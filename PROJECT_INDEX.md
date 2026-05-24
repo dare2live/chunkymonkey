@@ -830,7 +830,11 @@ bank/ formulas:
 - volume.py — 7 volume (OBV / MFI / spike / VWAP / A/D / CMF / VPT)
 - multi_tf.py — 7 multi-timeframe (W+D MACD / W HL+D break / M+D pullback / RSI align / W breakout / M stage+vol / W dragon+D)
 - event.py — 7 event (earnings drift / insider cluster / block / HSGT / LHB / ex-div / index inclusion)
-Phase 2.4 day 5/7 done. 35 formulas. Remaining: sector / sentiment categories.
+- sector.py — 7 cross-sectional (rel mom / leader rank / smart money / rotation / RS / breadth / vol concentration)
+- sentiment.py — 7 sentiment (theme emerging / diffusion / crowding / context / lifecycle / diffusion rising / under_reaction)
+Phase 2.4 COMPLETE 7/7. **49 formulas total** via `from services.bc_absorbed.bank import ALL_FORMULAS`.
+
+Phase 2: 6/6 done (2.1 cp / 2.2 universe / 2.3 governance / 2.4 formulas / 2.5 stage filter / 2.6 待 Phase 4 gate verify).
 
 ### 2026-05-24 Phase 1 + 2.1-2.3 + 2.5 + Perception display done
 
