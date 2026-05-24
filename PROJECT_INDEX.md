@@ -824,10 +824,11 @@ SELECT * FROM mart_data_source_watermark;
 Phase 1: 8/8 complete.
 Phase 2: 4 done + 2.4 category 1/7 started.
 
-backend/services/bc_absorbed/bank/technical.py
-- bank/pattern.py — 7 patterns (cup-handle / W / triangle / flag / saucer / IHbackend/services/bc_absorbed/bank/technical.pyS / box): 7 indicator formulas (MACD/RSI/BB/KDJ/ATR/divergence).
-
-Pending Phase 2.4: pattern / volume / multi_tf / event / sector / sentiment = 6 more categories (~42 formulas).
+bank/ formulas:
+- technical.py — 7 indicator formulas (MACD/RSI/BB/KDJ/ATR/divergence)
+- pattern.py — 7 patterns (cup-handle / W / triangle / flag / saucer / IH&S / box)
+- volume.py — 7 volume (OBV / MFI / spike / VWAP / A/D / CMF / VPT)
+Phase 2.4 day 3/7 done. 21 formulas. Remaining: multi_tf / event / sector / sentiment categories.
 
 ### 2026-05-24 Phase 1 + 2.1-2.3 + 2.5 + Perception display done
 
