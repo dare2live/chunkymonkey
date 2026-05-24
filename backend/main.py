@@ -180,6 +180,10 @@ app.include_router(stock_graph_router, prefix="/api/v3", tags=["v3_stock_graph"]
 from routers.v3_bestchoice import router as v3_bestchoice_router
 app.include_router(v3_bestchoice_router, prefix="/api/v3", tags=["v3_bestchoice"])
 
+# Perception legacy display (2026-05-24 Phase 1.7): read-only Track A 展示, 不影响 champion
+from routers.v3_perception_legacy import router as v3_perception_legacy_router
+app.include_router(v3_perception_legacy_router)
+
 # 初始化 signals_v2 默认配置（幂等）
 try:
     _conn = get_conn()
