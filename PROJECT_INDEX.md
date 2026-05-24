@@ -819,6 +819,17 @@ SELECT * FROM mart_data_source_watermark;
 
 每次 session 增量内容写这里, 新 session 启动时**从下往上读**最近改了啥.
 
+### 2026-05-24 Phase 4.1a unified panel built + Phase 3.6 Pattern 9 audit CLEAN
+
+**Phase 4.1a 完成**: `mart_p0a_feature_label_panel_unified_v1` (2,715,667 rows, 4974 stocks, 166 cols).
+- Base panel v5 130 cols + 36 新 perception features (5 stock-level + 31 market-level)
+- Script: `backend/scripts/build_unified_panel_v1.py` (LEFT JOIN snapshot_date matching)
+- Fill rates: regime 64.3% / emotion 64.3% / style 0.7% / stock_context 0% / under_reaction 0%
+- 低 fill = perception 历史 backfill 不足 (style: 14 rows; stock_context/under_reaction: 702 rows in 2026-04-27 ~ 2026-05-19)
+- Phase 4.1b 后续: bc_absorbed formula bank 49 个 features 合并 (per stock kline compute)
+
+**Phase 3.6 Pattern 9 audit CLEAN**: 24 PARTITION BY sites in 7 engines, 0 用 flat dim_stock_tdx_industry, 全部 tdx_l1_name 来源 mart_stock_industry_pit PIT-correct. Evidence: analysis/phase3_6_pattern9_audit_perception_absorbed_20260524.md.
+
 ### 2026-05-24 Phase 3.2 PIT-strict joins + Codex consult hook
 
 **Phase 3.2 完成** - 5 个 perception_absorbed 引擎 wire built_at filter:
