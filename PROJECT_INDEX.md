@@ -819,6 +819,18 @@ SELECT * FROM mart_data_source_watermark;
 
 每次 session 增量内容写这里, 新 session 启动时**从下往上读**最近改了啥.
 
+### 2026-05-24 Phase 1 + 2.1-2.3 + 2.5 + Perception display done
+
+Phase 1 8/8 complete.
+
+Phase 2 4/6 done:
+- 2.1 bc_absorbed copy
+- 2.2 universe wire
+- 2.3 governance enforce
+- 2.5 stage_filter Wyckoff {1.5,2,3} positive IC (V4 ablation evidence)
+
+Pending Phase 2: 2.4 formula bank 50 / 2.6 Phase 4 gate.
+
 ### 2026-05-24 Phase 1 + 2.1-2.3 + Perception display done
 
 Phase 1 全 8 tasks:
