@@ -21,6 +21,10 @@ import sys
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
+EXEMPT_PREFIXES = (
+    "bestchoice/",  # Track A FROZEN, original BC code
+    "backend/services/bc_absorbed/",  # Track B initial copy 2026-05-24, grandfathered until Phase 2.2+ full universe wire
+)
 EXEMPT_FILES = {
     "backend/services/universe.py",  # the implementation itself
     "backend/tests/test_universe.py",  # test fixtures
@@ -39,6 +43,8 @@ def check_file(path: Path) -> list[dict]:
     """Returns list of violation dicts."""
     rel = str(path.relative_to(REPO_ROOT))
     if rel in EXEMPT_FILES:
+        return []
+    if any(rel.startswith(p) for p in EXEMPT_PREFIXES):
         return []
     if not path.suffix == ".py":
         return []

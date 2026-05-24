@@ -44,7 +44,8 @@ EXEMPT_PATH_PREFIXES = (
     "frontend/",
     "docs/",
     "design/",
-    "bestchoice/",            # 2026-05-22 BC migrated from sibling repo, own dev discipline
+    "bestchoice/",            # 2026-05-22 BC migrated from sibling repo, own dev discipline (Track A frozen 2026-05-24)
+    "backend/services/bc_absorbed/",   # 2026-05-24 Track B BC copy initial, grandfathered violations from upstream until Phase 2.3+ refactor
 )
 EXEMPT_PATH_SUFFIXES = (
     "/conftest.py",

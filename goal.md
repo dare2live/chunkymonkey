@@ -107,9 +107,9 @@ Forward 6 weeks parallel. Decision week 6+:
 | 1.5 | L14 Daily paper_sim vs forward reconcile | 30 min | extend monitor |
 | 1.6 | Best-params cross-model extraction (v7/v8/v9b Optuna DBs) | 2h | consensus zone JSON |
 | 1.7 | Perception sibling display UI entry (read-only) | 2-3h | v3_perception_legacy.py + UI tab |
-| 1.8 | BC universe wire (bestchoice/ replace dim_active_a_stock → universe.get_active_universe 10+ locations) | 2-3h | clean BC universe |
+| ~~1.8~~ | **MOVED to Phase 2.2**: BC universe wire 必在 bc_absorbed copy 中做 (Track A FROZEN 不能改 bestchoice/) | - | - |
 
-**Phase 1 exit gate**: L7/L9/L10/L14 enforced, Perception display works, BC clean universe verified.
+**Phase 1 exit gate** (revised 2026-05-24): L7/L9/L10/L14 enforced ✓, best params consensus extracted ✓, Track A FROZEN ✓, Perception display UI 1.7 待. BC universe wire moved to Phase 2.2 (must operate on bc_absorbed copy).
 
 ### Phase 2 — BC Absorbed Copy + 优化 (~2 周, ~$5 GCP)
 

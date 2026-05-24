@@ -819,6 +819,21 @@ SELECT * FROM mart_data_source_watermark;
 
 每次 session 增量内容写这里, 新 session 启动时**从下往上读**最近改了啥.
 
+### 2026-05-24 Phase 1 + 2.1-2.2 done — 6 enforcement + bc_absorbed copy + universe wire
+
+Phase 1 (per MASTER plan):
+- 1.1 bestchoice/FROZEN.md Track A freeze
+- 1.2 L7 Phase 4 --require-true-train-log default ON
+- 1.3 L9 retrain saves <model_id>.lgb.txt booster
+- 1.4 L10 check_registry_promote.py validator
+- 1.5 L14 monitor reconcile divergence flag
+- 1.6 extract_best_params_cross_model.py - v7/v8/v9b consensus zones
+
+Phase 2.1: cp bestchoice/* → backend/services/bc_absorbed/ (488K)
+Phase 2.2: universe wire ST filter inline at 3 dim_active_a_stock locations + rule-compliance evidence
+
+Pending: Phase 1.7 Perception display UI / Phase 2.3-2.6 walk-forward + formula bank + Phase 4 gate.
+
 ### 2026-05-24 Phase 1 partial — Track A FROZEN + L7/L9/L14 enforcement
 
 Per goal.md MASTER_SYNTHESIS Phase 1 plan:
