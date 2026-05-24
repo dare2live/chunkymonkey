@@ -829,7 +829,8 @@ bank/ formulas:
 - pattern.py — 7 patterns (cup-handle / W / triangle / flag / saucer / IH&S / box)
 - volume.py — 7 volume (OBV / MFI / spike / VWAP / A/D / CMF / VPT)
 - multi_tf.py — 7 multi-timeframe (W+D MACD / W HL+D break / M+D pullback / RSI align / W breakout / M stage+vol / W dragon+D)
-Phase 2.4 day 4/7 done. 28 formulas. Remaining: event / sector / sentiment categories.
+- event.py — 7 event (earnings drift / insider cluster / block / HSGT / LHB / ex-div / index inclusion)
+Phase 2.4 day 5/7 done. 35 formulas. Remaining: sector / sentiment categories.
 
 ### 2026-05-24 Phase 1 + 2.1-2.3 + 2.5 + Perception display done
 
