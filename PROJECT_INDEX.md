@@ -819,6 +819,21 @@ SELECT * FROM mart_data_source_watermark;
 
 每次 session 增量内容写这里, 新 session 启动时**从下往上读**最近改了啥.
 
+### 2026-05-24 Phase 4.2-diag 启动 (Codex path C 决策)
+
+Codex review agent `a885609738ef505a4` 选 path C (诊断 root cause). 不 push Phase 4.1b/Phase 5 building on broken ranker.
+
+goal.md Phase 4 section 重写: 4.1a / 4.2 MVP DONE 状态记录, 4.2-diag ACTIVE 加 executable steps + verdict criteria + exit gate. Phase 5 加 Config A/B 二选一 contingency.
+
+新 script: `backend/scripts/run_phase42_diag_ablation.py` — 5 configs ablation:
+1. all_features (baseline = unified_v1 result)
+2. base_v5_only (drop all perception)
+3. base_v5 + perception_market only (H1 — drop stock-level NULL noise)
+4. base_v5 + perception_stock only (sanity check stock-level adds anything)
+5. (skipped --quick) H2 v7-window retrain
+
+Codex codegraph survey (agent `a688cdb280316d4a8`) 完成: 项目 978 files / 15,380 nodes / 166,124 edges; flagged compute_pbo/dsr 不在 index (Codegraph indexer scope gap, file 实际在 backend/services/backtest_validation/).
+
 ### 2026-05-24 Phase 4.2 MVP unified ranker — verdict: 不 promote, v7 留生产
 
 实测 OOS (2025-07-01 ~ 2026-04-30, 957,495 rows, 191 days):

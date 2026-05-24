@@ -151,27 +151,76 @@ Forward 6 weeks parallel. Decision week 6+:
 
 ### Phase 4 — Unified Panel + Ensemble + Linear/Factor parallel (~3 周, $5-10 GCP)
 
-| # | Task | ETA | Output |
-|---|---|---|---|
-| 4.1 | Build `mart_p0a_feature_label_panel_unified_v1` (ml_ranker + bc_absorbed + perception_absorbed features) | 1 week | panel script + table |
-| 4.2 | Train unified LightGBM ranker on panel_unified | 1-2 day GCP | unified ensemble model |
-| 4.3 | Linear/factor model parallel build (Phase 4 IS-OOS naturally < 30%) | 1-2 week | factor model fallback |
-| 4.4 | paper_sim_v6 + Phase 4 gate strict on both | 1 day | KPI + verdict |
-| 4.5 | Single registry update | 1 day | unified champion tracking |
+| # | Task | ETA | State | Output |
+|---|---|---|---|---|
+| 4.1a | Build `mart_p0a_feature_label_panel_unified_v1` (panel_v5 + perception_absorbed features) | 1 day | DONE 2026-05-24 commit `6694d2ad` | 2.7M rows × 166 cols, 36 perception features |
+| **4.2 MVP** | Train unified ranker (smoke baseline v7 params, train 2024-11 ~ 2025-06) | 1 day | DONE 2026-05-24 commit `471b4b06`, **verdict NOT promote** | rank_ic 0.0106 vs v7 0.0452 = -76%, std 0.131 vs 0.069 = +90% |
+| **4.2-diag** | Feature group ablation diagnose root cause of regression | 2-3 days | ACTIVE (Codex `a8856097` chose path C) | per-group rank_ic ablation table; verdict A/B/C |
+| 4.1b | bc_absorbed 49 formula features merge into unified panel | 1 week | BLOCKED by 4.2-diag verdict | only run if 4.2-diag identifies feature-add as recovery path |
+| 4.2 final | Optuna re-search 50 trials (Codex Q1) | 1-2 day GCP $5-10 | BLOCKED by 4.2-diag | unified ensemble model |
+| 4.3 | Linear/factor model parallel build (Phase 4 IS-OOS naturally < 30%) | 1-2 week | NOT STARTED | factor model fallback |
+| 4.4 | paper_sim_v6 + Phase 4 gate strict on both | 1 day | NOT STARTED | KPI + verdict |
+| 4.5 | Single registry update | 1 day | NOT STARTED | unified champion tracking |
 
 **Phase 4 exit gate**:
 - Unified ensemble Phase 4 4/4 PASS (PROMOTE) OR
-- Linear/factor Phase 4 4/4 PASS as fallback
+- Linear/factor Phase 4 4/4 PASS as fallback OR
+- 4.2-diag verdict KILL → v7 stays G1 sole production, Phase 5 setup with G1-only
 
-### Phase 5 — 3-Group Forward Production Setup (~1 周, $0 GCP)
+#### Phase 4.2-diag executable steps (Codex agent `a8856097` 2026-05-24)
 
-3 strategies forward parallel, 1.5% capital each (4.5% total):
+**Decision rationale**: Unified v1 RankIC crashed -76% with std doubled. Building on top of broken ranker (4.1b/4.2 final) or moving to forward production (Phase 5) on this state is real-money risky. 2-3 days ablation < 1-2 week wasted feature engineering.
 
+**Step 1** — capture reproduction baseline:
+```bash
+PYTHONPATH=backend python backend/scripts/train_unified_ranker_v1.py 2>&1 | \
+  tee analysis/phase42_unified_repro_$(date +%Y%m%dT%H%M%S).log
+```
+
+**Step 2** — run feature group ablation:
+```bash
+# Compare per-group OOS rank_ic: panel_v5 base / perception / hybrid
+PYTHONPATH=backend python backend/scripts/run_feature_group_ablation.py \
+  --panel mart_p0a_feature_label_panel_unified_v1 \
+  --train-start 2024-11-01 --train-end 2025-06-30 \
+  --oos-start 2025-07-01 --oos-end 2026-04-30 \
+  --groups base_panel_v5,perception_market,perception_stock_level \
+  --output analysis/phase42_ablation_$(date +%Y%m%d).json
+```
+If script needs adaptation for unified panel groups: copy + adapt to `backend/scripts/run_feature_group_ablation_unified.py`.
+
+**Step 3** — analyze 3 hypotheses (compute in same ablation run):
+- H1 (NULL ratio noise): perception_market 64% fill + stock_level 0-1% fill — does excluding stock_level (4 cols) recover rank_ic?
+- H2 (train window too short): re-train with train 2024-01-02 ~ 2025-06-30 (drop perception since pre-2024-11 NULL); compare to v7-window baseline
+- H3 (feature selection): 116 numeric vs 157 total — which 41 cols got dropped + does any group of dropped cols matter?
+
+**Step 4** — verdict + path commit (codify in `analysis/phase42_diag_verdict_<date>.md`):
+- **Recovery**: identify exact group causing regression, fix or exclude → re-train → re-verify rank_ic ≥ 0.04 (within 90% of v7) → proceed Phase 4.1b
+- **Partial**: rank_ic recovers to 0.025-0.04 → ablation table justifies adding bc_absorbed (Phase 4.1b) to test further lift
+- **Kill**: rank_ic stuck < 0.025 → mark unified panel design failed → goto Phase 5 G1-only production with v7
+
+**Exit gate** (any path):
+- `analysis/phase42_ablation_<date>.json` with per-group rank_ic_mean + std
+- `analysis/phase42_diag_verdict_<date>.md` with decision + numbers
+- goal.md + PROJECT_INDEX.md updated with verdict
+- One of: Phase 4.1b unblocked, Phase 5 G1-only path activated, or Phase 4.3 linear/factor pivot
+
+### Phase 5 — Forward Production Setup (~1 周, $0 GCP)
+
+**State depends on Phase 4.2-diag verdict**. Two configs:
+
+**Config A** (default after Phase 4.2-diag recovery/partial verdict): 3-group, 1.5% capital each (4.5% total)
 | Group | Model | Capital | Purpose |
 |---|---|---|---|
 | **G1** | v7 (existing candidate_forward_monitor) | 1.5% | control baseline |
 | **G2** | Unified ensemble (Phase 4 output) | 1.5% | treatment A |
 | **G3** | Linear/factor model (Phase 4 output) | 1.5% | treatment B |
+
+**Config B** (Phase 4.2-diag KILL verdict): G1-only forward, 1.5% capital, defer G2/G3 to retry later
+| Group | Model | Capital | Purpose |
+|---|---|---|---|
+| **G1** | v7 (existing candidate_forward_monitor) | 1.5% | sole production |
+| ~~G2/G3~~ | DEFERRED | 0% | retry after bc_absorbed (Phase 4.1b) or linear/factor (Phase 4.3) deliver promotable ranker |
 
 | # | Task | ETA |
 |---|---|---|
