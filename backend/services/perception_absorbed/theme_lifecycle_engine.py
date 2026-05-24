@@ -58,7 +58,8 @@ def compute_theme_lifecycle_for_range(conn, start: str | date, end: str | date) 
         return pd.DataFrame()
 
     _validate_observed_pit_coverage(conn, start_day, end_day)
-    momentum = _load_sector_momentum(conn, start_day, end_day)
+    # rule-compliance: ok evidence=Phase 3.2 Codex review a7f6f763c431c9c09 — as_of=end_day for built_at filter
+    momentum = _load_sector_momentum(conn, start_day, end_day, as_of=end_day)
     if momentum.empty:
         raise ValueError(f"fact_sector_momentum_daily is empty for {start_day} -> {end_day}")
     internals = _load_sector_internal_stats(conn, start_day, end_day)
@@ -73,9 +74,10 @@ def compute_theme_lifecycle_for_range(conn, start: str | date, end: str | date) 
     return _score_and_label(frame, cfg)
 
 
-def _load_sector_momentum(conn, start_day: date, end_day: date) -> pd.DataFrame:
+def _load_sector_momentum(conn, start_day: date, end_day: date, as_of: date | None = None) -> pd.DataFrame:
     if not _table_exists(conn, "fact_sector_momentum_daily"):
         raise ValueError("fact_sector_momentum_daily is required for ThemeLifecycleEngine")
+    cutoff = (as_of or end_day).isoformat()
     rows = _fetchall(
         conn,
         """
@@ -89,9 +91,10 @@ def _load_sector_momentum(conn, start_day: date, end_day: date) -> pd.DataFrame:
                CAST(price_vs_ma60 AS DOUBLE) AS price_vs_ma60
           FROM fact_sector_momentum_daily
          WHERE CAST(date AS DATE) BETWEEN ? AND ?
+           AND (built_at IS NULL OR TRY_CAST(built_at AS TIMESTAMP) <= TRY_CAST(? AS TIMESTAMP))
          ORDER BY CAST(date AS DATE), sector_name
         """,
-        [start_day.isoformat(), end_day.isoformat()],
+        [start_day.isoformat(), end_day.isoformat(), cutoff],
     )
     return pd.DataFrame(rows)
 
@@ -124,6 +127,7 @@ def _load_fact_stock_internal_stats(conn, start_day: date, end_day: date) -> pd.
                 ON ip.stock_code = k.{code_col}
                AND CAST(k.{date_col} AS DATE) BETWEEN CAST(ip.effective_from AS DATE) AND CAST(ip.effective_to AS DATE)
                AND ip.confidence_level = ?
+               AND (ip.built_at IS NULL OR TRY_CAST(ip.built_at AS TIMESTAMP) <= TRY_CAST(? AS TIMESTAMP))
              WHERE CAST(k.{date_col} AS DATE) BETWEEN ? AND ?
                AND ip.tdx_l1_name IS NOT NULL
         ),
@@ -144,7 +148,7 @@ def _load_fact_stock_internal_stats(conn, start_day: date, end_day: date) -> pd.
          GROUP BY 1, 2
          ORDER BY CAST(snapshot_date AS DATE), theme_name
         """,
-        [get_theme_config().required_member_confidence, start_day.isoformat(), end_day.isoformat()],
+        [get_theme_config().required_member_confidence, end_day.isoformat(), start_day.isoformat(), end_day.isoformat()],
     )
     return pd.DataFrame(rows)
 
@@ -172,6 +176,7 @@ def _load_market_view_internal_stats(conn, start_day: date, end_day: date) -> pd
                 ON ip.stock_code = px.code
                AND CAST(px.snapshot_date AS DATE) BETWEEN CAST(ip.effective_from AS DATE) AND CAST(ip.effective_to AS DATE)
                AND ip.confidence_level = ?
+               AND (ip.built_at IS NULL OR TRY_CAST(ip.built_at AS TIMESTAMP) <= TRY_CAST(? AS TIMESTAMP))
              WHERE CAST(px.snapshot_date AS DATE) BETWEEN ? AND ?
                AND px.prev_close IS NOT NULL
                AND ip.tdx_l1_name IS NOT NULL
@@ -193,7 +198,7 @@ def _load_market_view_internal_stats(conn, start_day: date, end_day: date) -> pd
          GROUP BY 1, 2
          ORDER BY CAST(snapshot_date AS DATE), theme_name
         """,
-        [start_day.isoformat(), end_day.isoformat(), get_theme_config().required_member_confidence, start_day.isoformat(), end_day.isoformat()],
+        [start_day.isoformat(), end_day.isoformat(), get_theme_config().required_member_confidence, end_day.isoformat(), start_day.isoformat(), end_day.isoformat()],
     )
     return pd.DataFrame(rows)
 
@@ -291,9 +296,10 @@ def _validate_observed_pit_coverage(conn, start_day: date, end_day: date) -> Non
                  FROM mart_stock_industry_pit ip
                 WHERE ip.confidence_level = ?
                   AND CAST(cal.trade_date AS DATE) BETWEEN CAST(ip.effective_from AS DATE) AND CAST(ip.effective_to AS DATE)
+                  AND (ip.built_at IS NULL OR TRY_CAST(ip.built_at AS TIMESTAMP) <= TRY_CAST(? AS TIMESTAMP))
            )
         """,
-        [start_day.isoformat(), end_day.isoformat(), cfg.required_member_confidence],
+        [start_day.isoformat(), end_day.isoformat(), cfg.required_member_confidence, end_day.isoformat()],
     )
     covered = int(rows[0]["covered_days"] if rows else 0)
     expected = len(_trading_days(conn, start_day, end_day))

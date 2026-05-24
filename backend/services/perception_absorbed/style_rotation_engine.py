@@ -38,9 +38,10 @@ def compute_style_rotation_for_range(conn, start: str | date, end: str | date) -
     stocks = _load_stock_style_inputs(conn, start_day, end_day)
     if stocks.empty:
         raise ValueError(f"style rotation inputs missing for {start_day} -> {end_day}")
-    mcap = _load_market_cap_deciles(conn, start_day, end_day)
+    # rule-compliance: ok evidence=Phase 3.2 Codex review a7f6f763c431c9c09 — as_of=end_day for built_at filter
+    mcap = _load_market_cap_deciles(conn, start_day, end_day, as_of=end_day)
     stocks = _merge_style_deciles(stocks, mcap)
-    emotion = _load_emotion_context(conn, start_day, end_day)
+    emotion = _load_emotion_context(conn, start_day, end_day, as_of=end_day)
     rows = []
     for day in days:
         group = stocks[stocks["snapshot_date"] == day.isoformat()].copy()
@@ -113,9 +114,10 @@ def _load_stock_style_inputs(conn, start_day: date, end_day: date) -> pd.DataFra
     return pd.DataFrame(rows)
 
 
-def _load_market_cap_deciles(conn, start_day: date, end_day: date) -> pd.DataFrame:
+def _load_market_cap_deciles(conn, start_day: date, end_day: date, as_of: date | None = None) -> pd.DataFrame:
     if not _table_exists(conn, "fact_market_cap_decile_daily"):
         return pd.DataFrame()
+    cutoff = (as_of or end_day).isoformat()
     rows = _fetchall(
         conn,
         """
@@ -123,8 +125,9 @@ def _load_market_cap_deciles(conn, start_day: date, end_day: date) -> pd.DataFra
           FROM fact_market_cap_decile_daily
          WHERE trade_date BETWEEN ? AND ?
            AND source_max_trade_date <= trade_date
+           AND (built_at IS NULL OR TRY_CAST(built_at AS TIMESTAMP) <= TRY_CAST(? AS TIMESTAMP))
         """,
-        [start_day.isoformat(), end_day.isoformat()],
+        [start_day.isoformat(), end_day.isoformat(), cutoff],
     )
     return pd.DataFrame(rows)
 
@@ -149,17 +152,19 @@ def _merge_style_deciles(stocks: pd.DataFrame, mcap: pd.DataFrame) -> pd.DataFra
     return out
 
 
-def _load_emotion_context(conn, start_day: date, end_day: date) -> pd.DataFrame:
+def _load_emotion_context(conn, start_day: date, end_day: date, as_of: date | None = None) -> pd.DataFrame:
     if not _table_exists(conn, "mart_market_perception_emotion_daily"):
         return pd.DataFrame()
+    cutoff = (as_of or end_day).isoformat()
     rows = _fetchall(
         conn,
         """
         SELECT CAST(snapshot_date AS VARCHAR) AS snapshot_date, emotion_score, emotion_state
           FROM mart_market_perception_emotion_daily
          WHERE snapshot_date BETWEEN ? AND ?
+           AND (built_at IS NULL OR TRY_CAST(built_at AS TIMESTAMP) <= TRY_CAST(? AS TIMESTAMP))
         """,
-        [start_day.isoformat(), end_day.isoformat()],
+        [start_day.isoformat(), end_day.isoformat(), cutoff],
     )
     return pd.DataFrame(rows)
 

@@ -52,7 +52,7 @@ def compute_leader_follower_for_range(
     features = _load_stock_theme_features(conn, start_day, end_day)
     if features.empty:
         raise ValueError(f"leader/follower inputs missing for {start_day} -> {end_day}")
-    theme = _load_theme_context(conn, start_day, end_day)
+    theme = _load_theme_context(conn, start_day, end_day, as_of=end_day)
     if not theme.empty:
         features = features.merge(theme, on=["snapshot_date", "theme_name"], how="left")
     else:
@@ -124,18 +124,22 @@ def _load_stock_theme_features(conn, start_day: date, end_day: date) -> pd.DataF
             ON ip.stock_code = px.stock_code
            AND ip.confidence_level = 'observed_snapshot'
            AND CAST(px.snapshot_date AS DATE) BETWEEN CAST(ip.effective_from AS DATE) AND CAST(ip.effective_to AS DATE)
+           AND (ip.built_at IS NULL OR TRY_CAST(ip.built_at AS TIMESTAMP) <= TRY_CAST(? AS TIMESTAMP))
          WHERE CAST(px.snapshot_date AS DATE) BETWEEN ? AND ?
            AND px.close_5d IS NOT NULL
            AND px.close_20d IS NOT NULL
         """,
-        [query_start.isoformat(), end_day.isoformat(), start_day.isoformat(), end_day.isoformat()],
+        [query_start.isoformat(), end_day.isoformat(), end_day.isoformat(), start_day.isoformat(), end_day.isoformat()],
     )
     return pd.DataFrame(rows)
 
 
-def _load_theme_context(conn, start_day: date, end_day: date) -> pd.DataFrame:
+def _load_theme_context(conn, start_day: date, end_day: date, as_of: date | None = None) -> pd.DataFrame:
     if not _table_exists(conn, "mart_market_perception_theme_daily"):
         return pd.DataFrame()
+    # PIT-strict: filter rows whose built_at <= snapshot_date (or as_of if rebuild detection wanted).
+    # rule-compliance: ok evidence=Phase 3.2 Codex review a7f6f763c431c9c09 — built_at filter required for silent rebuilds
+    cutoff = (as_of or end_day).isoformat()
     rows = _fetchall(
         conn,
         """
@@ -143,8 +147,9 @@ def _load_theme_context(conn, start_day: date, end_day: date) -> pd.DataFrame:
                theme_name, theme_score, lifecycle_stage
           FROM mart_market_perception_theme_daily
          WHERE snapshot_date BETWEEN ? AND ?
+           AND (built_at IS NULL OR TRY_CAST(built_at AS TIMESTAMP) <= TRY_CAST(? AS TIMESTAMP))
         """,
-        [start_day.isoformat(), end_day.isoformat()],
+        [start_day.isoformat(), end_day.isoformat(), cutoff],
     )
     return pd.DataFrame(rows)
 

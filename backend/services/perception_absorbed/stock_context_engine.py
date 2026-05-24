@@ -44,7 +44,8 @@ def compute_stock_context_for_range(
     if not _table_exists(conn, "mart_market_perception_under_reaction_daily"):
         raise ValueError("mart_market_perception_under_reaction_daily is required for StockContextEngine MVP")
 
-    seeds = _load_under_reaction(conn, start_day, end_day, max(1, int(limit)))
+    # rule-compliance: ok evidence=Phase 3.2 Codex review a7f6f763c431c9c09 — as_of=end_day for built_at filter
+    seeds = _load_under_reaction(conn, start_day, end_day, max(1, int(limit)), as_of=end_day)
     if seeds.empty:
         return pd.DataFrame()
     frame = seeds
@@ -54,14 +55,15 @@ def compute_stock_context_for_range(
         (_load_style, ["snapshot_date"]),
         (_load_leader_follow, ["snapshot_date", "stock_code"]),
     ]:
-        add = loader(conn, start_day, end_day)
+        add = loader(conn, start_day, end_day, as_of=end_day)
         if not add.empty:
             frame = frame.merge(add, on=keys, how="left")
     frame = _score(frame)
     return frame.sort_values(["snapshot_date", "context_score"], ascending=[True, False]).reset_index(drop=True)
 
 
-def _load_under_reaction(conn, start_day: date, end_day: date, limit: int) -> pd.DataFrame:
+def _load_under_reaction(conn, start_day: date, end_day: date, limit: int, as_of: date | None = None) -> pd.DataFrame:
+    cutoff = (as_of or end_day).isoformat()
     rows = _fetchall(
         conn,
         """
@@ -75,20 +77,22 @@ def _load_under_reaction(conn, start_day: date, end_day: date, limit: int) -> pd
                 ON CAST(cal.trade_date AS DATE) = snapshot_date
                AND cal.is_trading = 1
              WHERE snapshot_date BETWEEN ? AND ?
+               AND (built_at IS NULL OR TRY_CAST(built_at AS TIMESTAMP) <= TRY_CAST(? AS TIMESTAMP))
         )
         SELECT snapshot_date, stock_code, under_reaction_score, fund_anomaly_score,
                theme_name, theme_score, lifecycle_stage
           FROM ranked
          WHERE rn <= ?
         """,
-        [start_day.isoformat(), end_day.isoformat(), limit],
+        [start_day.isoformat(), end_day.isoformat(), cutoff, limit],
     )
     return pd.DataFrame(rows)
 
 
-def _load_market_regime(conn, start_day: date, end_day: date) -> pd.DataFrame:
+def _load_market_regime(conn, start_day: date, end_day: date, as_of: date | None = None) -> pd.DataFrame:
     if not _table_exists(conn, "mart_market_perception_daily"):
         return pd.DataFrame()
+    cutoff = (as_of or end_day).isoformat()
     rows = _fetchall(
         conn,
         """
@@ -96,15 +100,17 @@ def _load_market_regime(conn, start_day: date, end_day: date) -> pd.DataFrame:
                regime_score AS market_regime_score
           FROM mart_market_perception_daily
          WHERE snapshot_date BETWEEN ? AND ?
+           AND (built_at IS NULL OR TRY_CAST(built_at AS TIMESTAMP) <= TRY_CAST(? AS TIMESTAMP))
         """,
-        [start_day.isoformat(), end_day.isoformat()],
+        [start_day.isoformat(), end_day.isoformat(), cutoff],
     )
     return pd.DataFrame(rows)
 
 
-def _load_emotion(conn, start_day: date, end_day: date) -> pd.DataFrame:
+def _load_emotion(conn, start_day: date, end_day: date, as_of: date | None = None) -> pd.DataFrame:
     if not _table_exists(conn, "mart_market_perception_emotion_daily"):
         return pd.DataFrame()
+    cutoff = (as_of or end_day).isoformat()
     rows = _fetchall(
         conn,
         """
@@ -112,15 +118,17 @@ def _load_emotion(conn, start_day: date, end_day: date) -> pd.DataFrame:
                emotion_score, emotion_state
           FROM mart_market_perception_emotion_daily
          WHERE snapshot_date BETWEEN ? AND ?
+           AND (built_at IS NULL OR TRY_CAST(built_at AS TIMESTAMP) <= TRY_CAST(? AS TIMESTAMP))
         """,
-        [start_day.isoformat(), end_day.isoformat()],
+        [start_day.isoformat(), end_day.isoformat(), cutoff],
     )
     return pd.DataFrame(rows)
 
 
-def _load_style(conn, start_day: date, end_day: date) -> pd.DataFrame:
+def _load_style(conn, start_day: date, end_day: date, as_of: date | None = None) -> pd.DataFrame:
     if not _table_exists(conn, "mart_market_perception_style_daily"):
         return pd.DataFrame()
+    cutoff = (as_of or end_day).isoformat()
     rows = _fetchall(
         conn,
         """
@@ -128,15 +136,17 @@ def _load_style(conn, start_day: date, end_day: date) -> pd.DataFrame:
                style_rotation_score, style_bias, crowding_risk_score, overheat_reversal_risk
           FROM mart_market_perception_style_daily
          WHERE snapshot_date BETWEEN ? AND ?
+           AND (built_at IS NULL OR TRY_CAST(built_at AS TIMESTAMP) <= TRY_CAST(? AS TIMESTAMP))
         """,
-        [start_day.isoformat(), end_day.isoformat()],
+        [start_day.isoformat(), end_day.isoformat(), cutoff],
     )
     return pd.DataFrame(rows)
 
 
-def _load_leader_follow(conn, start_day: date, end_day: date) -> pd.DataFrame:
+def _load_leader_follow(conn, start_day: date, end_day: date, as_of: date | None = None) -> pd.DataFrame:
     if not _table_exists(conn, "mart_market_perception_leader_follower_daily"):
         return pd.DataFrame()
+    cutoff = (as_of or end_day).isoformat()
     rows = _fetchall(
         conn,
         """
@@ -152,12 +162,13 @@ def _load_leader_follow(conn, start_day: date, end_day: date) -> pd.DataFrame:
                    ) AS rn
               FROM mart_market_perception_leader_follower_daily
              WHERE snapshot_date BETWEEN ? AND ?
+               AND (built_at IS NULL OR TRY_CAST(built_at AS TIMESTAMP) <= TRY_CAST(? AS TIMESTAMP))
         )
         SELECT snapshot_date, stock_code, leader_stock_code, leader_follow_score, chain_diffusion_score
           FROM ranked
          WHERE rn = 1
         """,
-        [start_day.isoformat(), end_day.isoformat()],
+        [start_day.isoformat(), end_day.isoformat(), cutoff],
     )
     return pd.DataFrame(rows)
 

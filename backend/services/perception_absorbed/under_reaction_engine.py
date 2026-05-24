@@ -46,10 +46,11 @@ def compute_under_reaction_for_range(
 
     _attach_market_if_available(conn)
     price = _load_price_reaction(conn, start_day, end_day)
-    flow = _load_capital_flow(conn, start_day, end_day)
+    # rule-compliance: ok evidence=Phase 3.2 Codex review a7f6f763c431c9c09 — as_of=end_day for built_at filter
+    flow = _load_capital_flow(conn, start_day, end_day, as_of=end_day)
     if price.empty or flow.empty:
         raise ValueError(f"under-reaction inputs missing for {start_day} -> {end_day}")
-    theme = _load_theme_context(conn, start_day, end_day)
+    theme = _load_theme_context(conn, start_day, end_day, as_of=end_day)
     frame = flow.merge(price, on=["snapshot_date", "stock_code"], how="inner")
     if not theme.empty:
         frame = frame.merge(theme, on=["snapshot_date", "stock_code"], how="left")
@@ -141,7 +142,8 @@ def _load_market_price_reaction(conn, start_day: date, end_day: date) -> pd.Data
     return pd.DataFrame(rows)
 
 
-def _load_capital_flow(conn, start_day: date, end_day: date) -> pd.DataFrame:
+def _load_capital_flow(conn, start_day: date, end_day: date, as_of: date | None = None) -> pd.DataFrame:
+    cutoff = (as_of or end_day).isoformat()
     rows = _fetchall(
         conn,
         """
@@ -150,15 +152,17 @@ def _load_capital_flow(conn, start_day: date, end_day: date) -> pd.DataFrame:
                exec_net_signal, holder_count_change_q_pct
           FROM fact_capital_flow_pit_daily
          WHERE CAST(trade_date AS DATE) BETWEEN ? AND ?
+           AND (built_at IS NULL OR TRY_CAST(built_at AS TIMESTAMP) <= TRY_CAST(? AS TIMESTAMP))
         """,
-        [start_day.isoformat(), end_day.isoformat()],
+        [start_day.isoformat(), end_day.isoformat(), cutoff],
     )
     return pd.DataFrame(rows)
 
 
-def _load_theme_context(conn, start_day: date, end_day: date) -> pd.DataFrame:
+def _load_theme_context(conn, start_day: date, end_day: date, as_of: date | None = None) -> pd.DataFrame:
     if not (_table_exists(conn, "mart_market_perception_theme_daily") and _table_exists(conn, "mart_stock_industry_pit")):
         return pd.DataFrame()
+    cutoff = (as_of or end_day).isoformat()
     rows = _fetchall(
         conn,
         """
@@ -169,9 +173,11 @@ def _load_theme_context(conn, start_day: date, end_day: date) -> pd.DataFrame:
             ON ip.tdx_l1_name = t.theme_name
            AND ip.confidence_level = 'observed_snapshot'
            AND t.snapshot_date BETWEEN CAST(ip.effective_from AS DATE) AND CAST(ip.effective_to AS DATE)
+           AND (ip.built_at IS NULL OR TRY_CAST(ip.built_at AS TIMESTAMP) <= TRY_CAST(? AS TIMESTAMP))
          WHERE t.snapshot_date BETWEEN ? AND ?
+           AND (t.built_at IS NULL OR TRY_CAST(t.built_at AS TIMESTAMP) <= TRY_CAST(? AS TIMESTAMP))
         """,
-        [start_day.isoformat(), end_day.isoformat()],
+        [cutoff, start_day.isoformat(), end_day.isoformat(), cutoff],
     )
     return pd.DataFrame(rows)
 

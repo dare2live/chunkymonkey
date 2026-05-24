@@ -819,6 +819,18 @@ SELECT * FROM mart_data_source_watermark;
 
 每次 session 增量内容写这里, 新 session 启动时**从下往上读**最近改了啥.
 
+### 2026-05-24 Phase 3.2 PIT-strict joins + Codex consult hook
+
+**Phase 3.2 完成** - 5 个 perception_absorbed 引擎 wire built_at filter:
+- leader_follower_engine / stock_context_engine / style_rotation_engine / theme_lifecycle_engine / under_reaction_engine
+- 13 处 SQL 加 `AND (built_at IS NULL OR TRY_CAST(built_at AS TIMESTAMP) <= TRY_CAST(? AS TIMESTAMP))`
+- 模式: as_of=end_day, 防 silent mart rebuilds 把后建数据漏给历史 backtest
+- Codex review agent ID: a7f6f763c431c9c09
+
+**实证**: `mart_market_perception_daily` 实际 built_at 全部 = 2026-05-20 (一次性 rebuild), snapshot_date 跨 2024-11-01 → 2026-05-19. 不加 filter, 2024 年 backtest 会用到 2026-05-20 建的行 = leakage. 加 filter 后 (as_of=2024-11-15): 0 rows (正确阻断).
+
+**新 hook**: `~/.claude/hooks/codex_consult_check.sh` (PreToolUse on Edit/Write .py): 检测最近 50 tool uses 无 Codex Agent dispatch → 提醒 (advisory, 不 block). 业务路径 (backend/services/routers/scripts) 触发, tests/docs/analysis 豁免.
+
 ### 2026-05-24 Codex 协作恢复
 
 用户原话: "恢复与codex交流的规则".
