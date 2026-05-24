@@ -24,6 +24,78 @@
 | Phase 4 PBO | < 0.2 |
 | Phase 4 IS-OOS | < 50% (model-class-aware) |
 
+### 已验证的测试结果 (all strategies, summary)
+
+#### ML models
+| Model | Panel | Sharpe | Ann | DD | Win | PBO | IS-OOS | Phase 4 |
+|---|---|---|---|---|---|---|---|---|
+| V4 baseline (production) | v3 (14% contaminated) | 0.65 | 36% | -22.2% | 45% | 0.145 PASS | 89.6% proxy FAIL | 3/4 BLOCK |
+| v6 stability retrain | v4 (Pattern 10 leak) | failed | - | - | - | 0.251 FAIL | 60.8% FAIL | BLOCK |
+| v7 (clean panel) | v5c (clean PIT) | 0.87 | 22% | -19.0% | 40% | **0.094 PASS** | 63.5% true FAIL | **3/4 PASS BLOCK** |
+| v8 (PIT historical) | v5_PIT | 1.53 | 43% | -19.3% | 50% | 0.366 FAIL | 70.85% FAIL | 2/4 BLOCK |
+| v9b (strong reg) | v5_PIT | **1.71** | **61%** | **-16.16%** | **65%** | 0.409 FAIL | 51.28% FAIL | 2/4 BLOCK |
+
+#### Ensemble variants (all PBO unstable, BLOCK)
+| Strategy | Sharpe | DD | Win | PBO | 备注 |
+|---|---|---|---|---|---|
+| V4 + BC rank-combine | 1.83 | -16.85% | 60% | 0.780 FAIL | high Sharpe K-variant unstable |
+| V4 + BC stage-filtered | 1.84 | -16.85% | 60% | 0.794 FAIL | marginal |
+| V4 ∩ BC + Phase 7 (portfolio) | 1.85 | -20.63% | 50% | - | BLOCK |
+| V4 ∩ BC + Phase 7 + ST filter | 1.47 | -21.85% | 60% | - | ST filter HURT -0.38 |
+| v7 + BC clean | 0.36 | -23.94% | 35% | - | BC dilutes v7 |
+| v7 + Phase 7 context | 1.04 | -18.86% | 50% | 0.827 FAIL | overlay 加 PBO |
+
+#### BC standalone
+| Item | Sharpe | DD | Win | Verdict |
+|---|---|---|---|---|
+| BC paper_sim (Phase 3) | 1.10 | -22.1% | 50% | candidate, 含 15.7% contamination |
+| BC walk-forward time-bucket P1/P2/P3 | 1.06/1.11/0.97 | - | 56/65/57% | MILD bias |
+| BC Phase 8 stop-loss A+B | 1.58 | - | 59.4% | NEGATIVE vs no-stop 1.67 |
+
+### Per-strategy 重跑 vs 复用 decision
+
+| Model | 含 contamination? | 重跑必要? | 替代 |
+|---|---|---|---|
+| V4 baseline | 14% (v3 base) | ⚠ 应弃 | reuse v7 ✓ done |
+| v6 stability | Pattern 10 leak | ✗ abandon | (root cause fixed) |
+| V4+BC ensembles | inherit 14% | ✗ abandon | (PBO 全 FAIL) |
+| v7/v8/v9b | clean | ✓ reuse as-is | - |
+| BC | 15.7% hard + 21% 微盘 | **必 wire universe** | Phase 2 BC absorbed |
+
+### Best params 提取 (无需重跑, Phase 1.6)
+- 已有 `data/reports/optuna/lgbm_phase5_v{7,8,9b}*.best.json` + study.db
+- 提取 cross-model consensus (max_depth/reg_alpha/min_child_samples zones)
+- Output: `data/reports/best_params_consensus.json`
+- ETA 2h, no GCP
+
+### 3-group forward verification 设计 (Phase 5-6)
+
+| Group | Model | Capital | Purpose |
+|---|---|---|---|
+| **G1** | v7 (existing) | 1.5% | control baseline, already deployed |
+| **G2** | Unified ensemble (Phase 4 output) | 1.5% | treatment A |
+| **G3** | Linear/factor model (Phase 4 output) | 1.5% | treatment B |
+
+Forward 6 weeks parallel. Decision week 6+:
+- Top performer Sharpe ≥ 0.8 → PROMOTE, scale 15%
+- Sharpe 0.5-0.8 → EXTEND monitor 12 weeks
+- < 0.5 → ABORT, revert V4
+
+### 盲点 list (10 items, addressed in phases)
+
+| # | 盲点 | Phase | 现状 |
+|---|---|---|---|
+| 1 | Tx cost realism (broker spread/impact) | 5 | adv20 surcharge only |
+| 2 | Concurrent positions correlation | 6 | 假独立 |
+| 3 | Regime detection | 4 | proposed only |
+| 4 | Capacity scaling (微盘 21%) | 1 | universe filter 加 mcap |
+| 5 | Alpha decay over time | 6 | no model |
+| 6 | Multi-horizon labels (only 20d) | 4 | signal mismatch |
+| 7 | Feature engineering (alpha158 7yr old) | 2+3 | base alpha 弱 |
+| 8 | Cross-validation methodology (expanding only) | 4 | overfit 片面 |
+| 9 | Survival analysis | 2 | rebalance freq 不优 |
+| 10 | Phase 4 model-class threshold | 4 | linear/factor 解 |
+
 ### Phase 1 — Foundation (~3 天, $0 GCP)
 
 | # | Task | ETA | Output |
