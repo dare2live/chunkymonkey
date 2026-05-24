@@ -836,6 +836,9 @@ Phase 2.4 COMPLETE 7/7. **49 formulas total** via `from services.bc_absorbed.ban
 
 Phase 2: 6/6 done (2.1 cp / 2.2 universe / 2.3 governance / 2.4 formulas / 2.5 stage filter / 2.6 待 Phase 4 gate verify).
 
+Phase 3.1 done 2026-05-24: backend/services/perception_absorbed/ (116K, 7 engines from sibling repo). 
+Pending Phase 3.2-3.6: PIT joins / historical extension / chain diffusion / unified panel join / Pattern 9 audit.
+
 ### 2026-05-24 Phase 1 + 2.1-2.3 + 2.5 + Perception display done
 
 Phase 1 8/8 complete.
