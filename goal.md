@@ -1,5 +1,172 @@
 # ChunkyMonkey Goal
 
+## 2026-05-24 — 后续 plan (active roadmap, 替代 prior sections)
+
+> 用户 (2026-05-24): "请制定后续计划更新到 goal.md".
+> 基于 MASTER_SYNTHESIS_20260523.md (84 commits 验证 + integration 整合 plan).
+> **停止 version retrain, 走 Track A 冻结 + Track B 副本优化 + 3 组 forward verification**.
+
+### 当前 state (2026-05-24)
+- v7 deployed `candidate_forward_monitor` (panel v5c clean, true train-log, PBO 0.094 PASS)
+- audit_delivery 90% NOT READY (95% gate, IS-OOS 30% strict 对 LightGBM 不可达)
+- v8/v9b 验证 paper_sim 上限 (1.53/1.71) but PBO unstable trade-off
+- BC 1063 candidates 含 15.7% 硬 contamination + 21% 微盘
+- 14+ enforcement layers shipped (hooks + scripts + cron)
+- GCP $9.70 / $50 = 19% used
+
+### 真 success 定义 (不是 paper_sim 95% gate)
+| Gate | Target |
+|---|---|
+| 实战 forward Sharpe | ≥ 1.0 stable 6+ months |
+| max_dd | ≥ -20% |
+| win rate | ≥ 55% monthly |
+| Universe | 100% clean |
+| Phase 4 PBO | < 0.2 |
+| Phase 4 IS-OOS | < 50% (model-class-aware) |
+
+### Phase 1 — Foundation (~3 天, $0 GCP)
+
+| # | Task | ETA | Output |
+|---|---|---|---|
+| 1.1 | Track A FROZEN tags (chunkymonkey/bestchoice/ + sibling perception README) | 10 min | freeze enforcement |
+| 1.2 | L7 Phase 4 `--require-true-train-log` default ON | 15 min | retrain script flip |
+| 1.3 | L9 Retrain save LightGBM booster `.lgb.txt` | 30 min | enables daily inference |
+| 1.4 | L10 Registry promote validator script + pre-commit | 1h | validator |
+| 1.5 | L14 Daily paper_sim vs forward reconcile | 30 min | extend monitor |
+| 1.6 | Best-params cross-model extraction (v7/v8/v9b Optuna DBs) | 2h | consensus zone JSON |
+| 1.7 | Perception sibling display UI entry (read-only) | 2-3h | v3_perception_legacy.py + UI tab |
+| 1.8 | BC universe wire (bestchoice/ replace dim_active_a_stock → universe.get_active_universe 10+ locations) | 2-3h | clean BC universe |
+
+**Phase 1 exit gate**: L7/L9/L10/L14 enforced, Perception display works, BC clean universe verified.
+
+### Phase 2 — BC Absorbed Copy + 优化 (~2 周, ~$5 GCP)
+
+| # | Task | ETA | Output |
+|---|---|---|---|
+| 2.1 | cp chunkymonkey/bestchoice/ → backend/services/bc_absorbed/ | 10 min | initial copy |
+| 2.2 | Wire universe + walk-forward governance | 3h | clean code |
+| 2.3 | Formula bank 7 categories × 7 = 50 formulas | 1 week | bank/{technical/pattern/volume/multi_tf/event/sector/sentiment}.py |
+| 2.4 | Stage filter integration (Wyckoff Stage {1.5, 2, 3}) | 半天 | improved picks |
+| 2.5 | Phase 4 gate on BC absorbed (true train_log mandatory) | 1h GCP $0.50 | verdict |
+
+**Phase 2 exit gate**: BC absorbed Sharpe vs BC original delta documented.
+
+### Phase 3 — Perception Absorbed Copy + 优化 (~2-3 周, $0 GCP)
+
+| # | Task | ETA | Output |
+|---|---|---|---|
+| 3.1 | cp perception/src/ → backend/services/perception_absorbed/ | 10 min | initial copy |
+| 3.2 | PIT-strict feature joins (built_at columns) | 1 day | PIT integrity |
+| 3.3 | P5 LeaderFollower historical theme membership extension | 3 days | longer history |
+| 3.4 | P3 ChainDiffusion concept network expansion | 3 days | richer alpha |
+| 3.5 | P6/P7 refactor for unified panel joinable | 2 days | feature merge ready |
+| 3.6 | Pattern 9 audit on absorbed | 1 day | leakage clean |
+
+**Phase 3 exit gate**: Perception absorbed marts joinable + Pattern audit clean.
+
+### Phase 4 — Unified Panel + Ensemble + Linear/Factor parallel (~3 周, $5-10 GCP)
+
+| # | Task | ETA | Output |
+|---|---|---|---|
+| 4.1 | Build `mart_p0a_feature_label_panel_unified_v1` (ml_ranker + bc_absorbed + perception_absorbed features) | 1 week | panel script + table |
+| 4.2 | Train unified LightGBM ranker on panel_unified | 1-2 day GCP | unified ensemble model |
+| 4.3 | Linear/factor model parallel build (Phase 4 IS-OOS naturally < 30%) | 1-2 week | factor model fallback |
+| 4.4 | paper_sim_v6 + Phase 4 gate strict on both | 1 day | KPI + verdict |
+| 4.5 | Single registry update | 1 day | unified champion tracking |
+
+**Phase 4 exit gate**:
+- Unified ensemble Phase 4 4/4 PASS (PROMOTE) OR
+- Linear/factor Phase 4 4/4 PASS as fallback
+
+### Phase 5 — 3-Group Forward Production Setup (~1 周, $0 GCP)
+
+3 strategies forward parallel, 1.5% capital each (4.5% total):
+
+| Group | Model | Capital | Purpose |
+|---|---|---|---|
+| **G1** | v7 (existing candidate_forward_monitor) | 1.5% | control baseline |
+| **G2** | Unified ensemble (Phase 4 output) | 1.5% | treatment A |
+| **G3** | Linear/factor model (Phase 4 output) | 1.5% | treatment B |
+
+| # | Task | ETA |
+|---|---|---|
+| 5.1 | 3 forward groups registry setup | 1 day |
+| 5.2 | daily_update_unified.sh — single pipeline runs all 3 | 2 days |
+| 5.3 | monitor_unified.py per-group abort criteria | 1 day |
+| 5.4 | Scaling rule: top performer week 6+ scales to 15%, others abort | 1 day |
+| 5.5 | Sunset Track A development (data refresh continues) | 1 day |
+
+### Phase 6 — Forward Evidence (6-12 周, $0 GCP, parallel)
+
+| Item | Continuous |
+|---|---|
+| 3 groups forward 6 weeks | per-group Sharpe + reconcile vs paper_sim |
+| Weekly aggregate + divergence flag (>30% = abort criterion) | per-group weekly report |
+| Week 6+ promote decision | top performer scales 15% / others abort |
+
+### Total schedule + GCP
+
+| Phase | Wall | GCP | Cumulative |
+|---|---|---|---|
+| 1 | 3 天 | $0 | $0 |
+| 2 | 2 周 | $5 | $5 |
+| 3 | 2-3 周 | $0 | $5 |
+| 4 | 3 周 | $5-10 | $10-15 |
+| 5 | 1 周 | $0 | $10-15 |
+| 6 | 6-12 周 (parallel) | $0 | $10-15 |
+| **Active dev** | **~2 月** | **$10-15** | within $50 budget |
+| **+ forward** | **+ 2-3 月** | $0 | total ~3-5 月 |
+
+### Stops + Continues
+
+**Stops** (per user 指令):
+- 不再 version retrain (v10/v11 etc)
+- 不再 ensemble permutations (5 已 tested converge)
+- 不再 threshold gaming (IS-OOS 30→70)
+- 不再 proposal-loop spinning
+- 不再 docs without enforcement (L7/L9/L10/L14 → hooks)
+
+**Continues**:
+- v7 forward 6 weeks evidence (already deployed)
+- Track A 子项目 data refresh OK
+- Track B 副本 absorb + optimize
+- Enforcement layer maintained
+- Forward monitor cron daily
+
+### Critical user decisions waiting
+
+| Decision | Default | User to confirm |
+|---|---|---|
+| Phase 1 immediate execute (3 天) | ✓ recommended | Y/N |
+| Linear/factor parallel at Phase 4 | ✓ recommended (fallback) | Y/N |
+| 3-group forward (G1/G2/G3 × 1.5% each) | ✓ recommended | Y/N |
+| Broker integration timing | Phase 5 paper account first | Y/N |
+| Phase 4 IS-OOS threshold model-class-aware (30 linear / 50 tree) | document explicitly | accept/relax |
+
+### 进度 tracking via existing infrastructure
+
+- `mart_strategy_result_registry` (current champion + 3 groups when Phase 5+)
+- `monitor_v7_forward.py` daily cron 8:30 AM
+- `v7_weekly_aggregate.py` weekly decision tree
+- `check_panel_lineage.py` consistency check (manual)
+- `check_kpi_redlines.py` 数字红线 audit
+- `check_universe_filter.py` pre-commit
+- L1-L13 + L15-L17 enforcement: hooks fire automatically
+- L7/L9/L10/L14 implementation: Phase 1 immediate
+
+### 文档 supersedes
+
+This plan supersedes earlier docs:
+- `docs/project_audit_20260523.md` (B section blind spots)
+- `docs/project_synthesis_20260523.md` (5 patterns + Occam)
+- `docs/integration_master_plan_20260523.md` (Track A/B architecture)
+- `docs/optimization_plan_consolidated_20260523.md` (phases)
+- `docs/MASTER_SYNTHESIS_20260523.md` (consolidated, primary reference)
+
+`MASTER_SYNTHESIS_20260523.md` 是 primary reference, this goal.md section is active roadmap.
+
+---
+
 ## 2026-05-22 22:35 CST — 真目标: 项目运营 ready, 不是 phase 列表打勾
 
 > 用户 22:35 push back: "你又没把 goal.md 全部执行当成最终目标, 阶段性完成就当完成了. 你应该边推进边结合实际修订 goal.md 直到项目具备运营条件".
