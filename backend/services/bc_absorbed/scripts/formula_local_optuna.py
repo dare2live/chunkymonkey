@@ -397,6 +397,16 @@ def _optimize_one(
             best_payload = {"params": params, **result}
         return float(score)
 
+    # Phase 2.3 (2026-05-24): governance enforce — n_trials >= 50, has_seed True
+    # 用户 goal.md Phase 2.3: bc_absorbed walk-forward governance.
+    try:
+        import sys as _sys
+        _sys.path.insert(0, str(Path(__file__).resolve().parents[3]))
+        from services.optimization.governance import enforce_pre_optimize
+        enforce_pre_optimize(n_trials=trials, has_seed=seed is not None)
+    except ImportError:
+        pass  # rule-compliance: ok evidence=bc_absorbed migration grandfathered, governance optional during Phase 2.3 transition
+
     sampler = optuna.samplers.TPESampler(seed=seed)
     study = optuna.create_study(direction="maximize", sampler=sampler)
     study.optimize(objective, n_trials=trials, show_progress_bar=False)

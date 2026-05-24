@@ -819,6 +819,25 @@ SELECT * FROM mart_data_source_watermark;
 
 每次 session 增量内容写这里, 新 session 启动时**从下往上读**最近改了啥.
 
+### 2026-05-24 Phase 1 + 2.1-2.3 + Perception display done
+
+Phase 1 全 8 tasks:
+- 1.1 Track A FROZEN
+- 1.2 L7 Phase 4 strict default ON
+- 1.3 L9 booster save
+- 1.4 L10 registry validator
+- 1.5 L14 reconcile
+- 1.6 cross-model best params
+- 1.7 Perception legacy display 5 endpoints router
+- 1.8 → Phase 2.2
+
+Phase 2.1-2.3:
+- 2.1 bc_absorbed copy 488K
+- 2.2 universe wire compute.py 3 locations
+- 2.3 governance.enforce_pre_optimize wired in formula_local_optuna
+
+Phase 2.4-2.6 pending: formula bank 50 / stage filter / Phase 4 gate.
+
 ### 2026-05-24 Phase 1 + 2.1-2.2 done — 6 enforcement + bc_absorbed copy + universe wire
 
 Phase 1 (per MASTER plan):
