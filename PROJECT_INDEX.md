@@ -819,6 +819,20 @@ SELECT * FROM mart_data_source_watermark;
 
 每次 session 增量内容写这里, 新 session 启动时**从下往上读**最近改了啥.
 
+### 2026-05-24 Phase 4.2 MVP unified ranker — verdict: 不 promote, v7 留生产
+
+实测 OOS (2025-07-01 ~ 2026-04-30, 957,495 rows, 191 days):
+| metric | v7 (105 cols) | unified v1 (116 cols numeric) | verdict |
+|---|---|---|---|
+| rank_ic | 0.0452 | 0.0106 | -76% worse mean |
+| top5_spread | 0.0511 | 0.0684 | +34% better |
+| top10_spread | n/a | 0.1286 | new |
+| rank_ic std | 0.069 | 0.131 | +90% worse instability |
+
+Codex review a8d412b0 Q3 verdict honored: RankIC + IS-OOS drop 不够, 需 rolling OOS stability + cost-aware paper_sim + PIT ablation. 当前数据: rank_ic 退步 + std 加倍 = NOT promotable. v7 留 G1 production. Unified panel/ranker 框架已 ready, 可下次 iteration 加 bc_absorbed formulas (Phase 4.1b) 后重训.
+
+新 artifacts: `backend/scripts/train_unified_ranker_v1.py`, `mart_unified_v1_oos_predictions`, `data/reports/optuna/unified_ranker_v1_<ts>.lgb.txt + feature_cols.json + oos_metrics.json`.
+
 ### 2026-05-24 Phase 4.1a unified panel built + Phase 3.6 Pattern 9 audit CLEAN
 
 **Phase 4.1a 完成**: `mart_p0a_feature_label_panel_unified_v1` (2,715,667 rows, 4974 stocks, 166 cols).
