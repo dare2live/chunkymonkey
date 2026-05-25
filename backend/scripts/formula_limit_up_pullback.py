@@ -71,7 +71,8 @@ DEFAULT_PARAMS = {
 }
 
 
-def load_kline_data(conn, min_date: str | None = None) -> dict:
+def load_kline_data(conn, min_date: str | None = None, universe: set[str] | None = None) -> dict:
+    """加载 K 线, 可选 universe 过滤 (排除 ST/退市/北交所)."""
     cfg = _load_yaml_config()
     if min_date is None:
         min_date = cfg.get("backtest", {}).get("start_date", "2023-01-01")  # from yaml: backtest.start_date
@@ -82,7 +83,9 @@ def load_kline_data(conn, min_date: str | None = None) -> dict:
         ORDER BY code, date
     """
     rows = conn.execute(sql, [min_date]).fetchall()
-    print(f"  loaded {len(rows):,} rows")
+    if universe:
+        rows = [r for r in rows if r[0] in universe]
+    print(f"  loaded {len(rows):,} rows" + (f" (universe filtered: {len(universe)} stocks)" if universe else ""))
 
     stocks: dict[str, dict] = {}
     cur_code = None
@@ -448,17 +451,31 @@ def print_stats(results, params, label=""):
     return stats
 
 
+def _load_clean_universe() -> set[str]:
+    """加载 clean universe (排除 ST/退市/北交所), 与交易日历同等强度."""
+    try:
+        smart_conn = duckdb.connect(str(DATA_DIR / "smartmoney.duckdb"), read_only=True)
+        from services.universe import get_active_universe
+        universe = get_active_universe(smart_conn)
+        smart_conn.close()
+        return universe
+    except Exception as e:
+        print(f"  WARNING: universe filter failed ({e}), using all stocks")
+        return set()
+
+
 def run_scan(params: dict | None = None, quiet: bool = False):
     params = {**DEFAULT_PARAMS, **(params or {})}
     if not quiet:
-        print(f"=== 涨停回调十字星 scan ===")
+        print(f"=== 回调十字星 scan ===")
         print(f"  breakout >= {params['breakout_pct_min']}%, vol >= {params['breakout_vol_ratio']}x, "
               f"pullback {params['pullback_min_days']}-{params['pullback_max_days']}d, "
               f"doji body <= {params['doji_body_ratio_max']}, "
               f"verify_rally={params.get('verify_rally')}")
 
+    universe = _load_clean_universe()
     conn = duckdb.connect(str(MARKET_DB), read_only=True)
-    stocks = load_kline_data(conn)
+    stocks = load_kline_data(conn, universe=universe or None)
     conn.close()
 
     all_results = []
@@ -501,8 +518,9 @@ def run_sweep():
     print("  参数扫描: 找最优组合")
     print("="*60)
 
+    universe = _load_clean_universe()
     conn = duckdb.connect(str(MARKET_DB), read_only=True)
-    stocks = load_kline_data(conn)
+    stocks = load_kline_data(conn, universe=universe or None)
     conn.close()
 
     sweep_configs = [
