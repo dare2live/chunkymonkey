@@ -80,15 +80,18 @@ ff8991b5 feat(phase-2.4-day2): pattern category 7 formulas
 b6ae348a feat(phase-2.3+INDEX): bc_absorbed walk-forward governance + index sync
 ```
 
-## NEXT ACTION (manual override 2026-05-25 07:30)
+## NEXT ACTION (manual override 2026-05-25 07:35)
 
-**Phase 4.2b walk-forward 后台跑到 14/22 windows. Resume 入口: 读 analysis/session_handoff_20260525.md.**
+**Phase 4.2b walk-forward 14/22 windows done, bg PID 88818 KILLED 07:35 CST. Resume 入口: 读 analysis/session_handoff_20260525.md.**
 
-Resume 流程:
-1. `ps -p 88818` — 看 bg 进程还在不在 (running / done / killed?)
-2. 看 `ls -t data/reports/optuna/unified_ranker_wf_v1_*.per_window.json | head -1` — windows 是否 22 完成
-3. 按 analysis/session_handoff_20260525.md "决策树" 推 Phase 5 Config B (>95% 概率 FAIL exit gate 已锁定) 或 Phase 4.2c (低概率 PASS)
-4. 不要 retrain v7 (G1 production)
+partial verdict (14/22 windows): mean -0.0092 ± 0.067, positive 5/14 = 35.7% (vs v7 0.0475 / 68.75%). **>95% 概率最终 FAIL exit gate ≥ 0.04**.
+
+Resume 3 选项:
+- A 重跑 22 窗 ~3h
+- B 改脚本 resume 跳已完成 + 跑剩 8 窗 ~1h
+- **C 推荐**: 14 partial 当 FAIL → Phase 5 Config B G1-only 锁定 (v7 daily inference 已 operational, Step 5e wired)
+
+不要 retrain v7. 详细决策树看 analysis/session_handoff_20260525.md.
 
 ## Resilience 配置 (verified)
 

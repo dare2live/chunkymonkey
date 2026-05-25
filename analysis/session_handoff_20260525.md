@@ -5,21 +5,27 @@
 
 ## 当前状态 (2026-05-25 07:30 CST)
 
-### 1. 后台进程 (PID 88818)
+### 1. 后台进程 (PID 88818) — **已 KILL 2026-05-25 07:35 CST**
+
+> 用户后续指示 "后台任务也停" → 主动 kill PID 88818.
 
 | 项 | 值 |
 |---|---|
-| PID | 88818 |
+| PID | 88818 (KILLED) |
 | 命令 | `PYTHONPATH=backend python backend/scripts/retrain_unified_ranker_walkforward.py` |
-| Elapsed | 2h15min (started ~05:13 CST) |
-| CPU time | 72 min |
-| 状态 | 运行中 (U 状态: I/O wait, 偶尔 R) |
-| RAM | 1.13 GB (健康, 不爆) |
-| 进度 | **14/22 windows done** |
-| Checkpoint | `data/reports/optuna/unified_ranker_wf_v1_20260524T220852Z.per_window.json` (incremental, 每窗写入) |
-| 预计完成 | 8 个 windows 剩, ~6-9 min/窗 = 50-75 min 后 |
+| Elapsed before kill | 2h20min (started ~05:13 CST, killed 07:35 CST) |
+| CPU time before kill | 72 min |
+| RAM peak | 1.13 GB (健康, 不爆) |
+| 进度 final | **14/22 windows done** |
+| Checkpoint | `data/reports/optuna/unified_ranker_wf_v1_20260524T220852Z.per_window.json` (incremental, 每窗写入完整) |
+| metrics.json | **未生成** (脚本 final aggregate 步骤未跑) |
+| CSV oos predictions | **未生成** |
 
-**不要 kill 这个进程** — 每窗 checkpoint 已保存, 让它自然跑完写 final metrics.json + CSV. 如果次会话发现进程已停 (crashed / killed / 已 finish), 看 per_window.json 是否完整.
+**Resume 模式两选**:
+
+- **A. 重跑全部 22 窗**: 删 partial per_window.json, 从头跑. ETA ~3h wall. 安全但浪费 14 windows 已算结果.
+- **B. 改脚本加 resume mode**: 读 per_window.json 跳已完成 windows, 只跑剩 8 个 (15-19). 改 ~30 行脚本. ETA 剩 ~1h wall.
+- **C. 跳过 4.2b 完成, 直接用 14 window partial 当 verdict**: mean -0.0092, positive 5/14 < 0.04 exit gate → 视为 FAIL → Phase 5 Config B G1-only 锁定. **推荐 C** — 14 window 已足够强 evidence (剩 8 window 即使全 +0.04 也只到 ~0.0055).
 
 ### 2. 已有 14 windows 实测结果
 

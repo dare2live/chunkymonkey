@@ -819,13 +819,20 @@ SELECT * FROM mart_data_source_watermark;
 
 每次 session 增量内容写这里, 新 session 启动时**从下往上读**最近改了啥.
 
+### 2026-05-25 Phase 4.2b walk-forward 暂停 — bg PID 88818 已 KILL, 14/22 partial
+
+用户两次指令: "把现在的工作停下来" (07:30) → 写 handoff doc; "后台任务也停" (07:35) → kill PID 88818.
+
+partial verdict (14/22 windows): mean -0.0092 ± 0.0671, positive 5/14 = 35.7% vs v7 baseline 0.0475 / 68.75%. >95% 概率最终 FAIL exit gate >= 0.04 (剩 8 windows 即便全 +0.04 也只到 ~0.005).
+
+Resume 3 选项 (详细在 analysis/session_handoff_20260525.md):
+- A 重跑 22 窗 ~3h
+- B 加 resume-mode 跳已完成跑剩 8 窗 ~1h
+- C (推荐): 14 partial 当 FAIL verdict → Phase 5 Config B G1-only 锁定 (v7 daily inference 已 operational Step 5e)
+
+goal.md Phase 4.2b 状态标 PAUSED, 引用 partial checkpoint.
+
 ### 2026-05-25 Phase 4.2b walk-forward 后台进度 14/22 — session 用户主动暂停
-
-后台 PID 88818 (started 05:13 CST), running mean -0.0092 ± 0.0671, positive 5/14 = 35.7% vs v7 baseline 0.0475 / 68.75%. 大概率最终 FAIL exit gate (rank_ic >= 0.04).
-
-每窗 checkpoint 到 data/reports/optuna/unified_ranker_wf_v1_20260524T220852Z.per_window.json. 不 kill 进程, 让它自然跑完.
-
-Resume 指引: analysis/session_handoff_20260525.md (含决策树 + Phase 5 Config B 锁定路径).
 
 ### 2026-05-25 Phase 4.2-diag verdict PARTIAL — single-fit DEAD, walk-forward needed
 
