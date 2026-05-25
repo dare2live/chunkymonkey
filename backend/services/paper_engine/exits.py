@@ -12,19 +12,21 @@ from __future__ import annotations
 
 from typing import Any
 
-LIMIT_THRESHOLD = 0.097  # 9.7% 视为涨跌停
+LIMIT_THRESHOLD = 0.097  # 主板 fallback, 新代码应传 limit_pct 参数
 
 
-def is_limit_up_day(open_p: float, prev_close: float | None) -> bool:
+def is_limit_up_day(open_p: float, prev_close: float | None, limit_pct: float | None = None) -> bool:
     if prev_close is None or prev_close <= 0:
         return False
-    return (open_p - prev_close) / prev_close >= LIMIT_THRESHOLD
+    threshold = limit_pct if limit_pct is not None else LIMIT_THRESHOLD
+    return (open_p - prev_close) / prev_close >= threshold
 
 
-def is_limit_down_day(open_p: float, prev_close: float | None) -> bool:
+def is_limit_down_day(open_p: float, prev_close: float | None, limit_pct: float | None = None) -> bool:
     if prev_close is None or prev_close <= 0:
         return False
-    return (open_p - prev_close) / prev_close <= -LIMIT_THRESHOLD
+    threshold = limit_pct if limit_pct is not None else LIMIT_THRESHOLD
+    return (open_p - prev_close) / prev_close <= -threshold
 
 
 def evaluate_exit(

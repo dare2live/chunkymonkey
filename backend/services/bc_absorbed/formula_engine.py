@@ -45,6 +45,11 @@ FORMULA_DEFINITIONS: dict[str, FormulaDefinition] = {
         "巨量蓄势启动",
         "巨量后缩量横盘，再温和放量突破平台。",
     ),
+    "pullback_doji": FormulaDefinition(
+        "pullback_doji",
+        "回调十字星",
+        "放量大涨后凌厉缩量回调收十字星，次日买入。按板块涨停阈值适配。",
+    ),
 }
 
 
@@ -522,6 +527,71 @@ def volume_base_breakout_signals(
     return {"entry": entry, "exit": close < ma20, "indicators": {"platform_low": platform_low, "platform_high": platform_high}}
 
 
+def pullback_doji_signals(
+    open_: np.ndarray,
+    high: np.ndarray,
+    low: np.ndarray,
+    close: np.ndarray,
+    volume: np.ndarray,
+    amount: np.ndarray,
+    params: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """回调十字星: 放量大涨→缩量回调→十字星→买入."""
+    del amount
+    params = params or {}
+    import yaml
+    from pathlib import Path
+    cfg_path = Path(__file__).resolve().parent.parent.parent / "config" / "formula_limit_up_pullback.yaml"
+    if cfg_path.exists():
+        with open(cfg_path) as f:
+            ycfg = yaml.safe_load(f) or {}
+    else:
+        ycfg = {}
+
+    from services.universe import get_limit_up_pct
+    limit_pct = float(params.get("limit_up_pct", 0.10))
+    breakout_ratio = float(params.get("breakout_limit_ratio",
+                                       ycfg.get("breakout", {}).get("limit_ratio", 0.7)))
+
+    det_params = {
+        "breakout_pct_min": breakout_ratio * limit_pct * 100,
+        "breakout_vol_ratio": float(params.get("breakout_vol_ratio",
+                                                ycfg.get("breakout", {}).get("vol_ratio", 1.5))),
+        "breakout_close_eq_high": bool(params.get("breakout_close_eq_high", False)),
+        "pullback_min_days": int(params.get("pullback_min_days",
+                                             ycfg.get("pullback", {}).get("min_days", 3))),
+        "pullback_max_days": int(params.get("pullback_max_days",
+                                             ycfg.get("pullback", {}).get("max_days", 5))),
+        "pullback_vol_shrink": float(params.get("pullback_vol_shrink",
+                                                 ycfg.get("pullback", {}).get("vol_shrink", 0.7))),
+        "pullback_above_breakout_low": True,
+        "doji_body_ratio_max": float(params.get("doji_body_ratio_max",
+                                                  ycfg.get("doji", {}).get("body_ratio_max", 0.3))),
+        "doji_range_min": float(params.get("doji_range_min",
+                                            ycfg.get("doji", {}).get("range_min", 0.005))),
+        "buy_offset": int(params.get("buy_offset", ycfg.get("entry", {}).get("buy_offset", 1))),
+        "pre_pattern": bool(params.get("pre_pattern", False)),
+    }
+
+    n = len(close)
+    dates = list(range(n))
+    from scripts.formula_limit_up_pullback import detect_signals
+    sigs = detect_signals(dates, open_, high, low, close, volume, det_params, limit_up_pct=limit_pct)
+
+    entry = np.zeros(n, dtype=bool)
+    exit_arr = np.zeros(n, dtype=bool)
+    for s in sigs:
+        bi = s["buy_idx"]
+        if 0 <= bi < n:
+            entry[bi] = True
+
+    cooldown = int(params.get("signal_cooldown_days", 0))
+    if cooldown > 0:
+        entry = _apply_cooldown(entry, cooldown)
+
+    return {"entry": entry, "exit": exit_arr, "indicators": {"n_signals": len(sigs)}}
+
+
 def compute_formula_signals(
     formula_id: str,
     *,
@@ -543,4 +613,6 @@ def compute_formula_signals(
         return activity_breakout_signals(open_, high, low, close, volume, amount, params)
     if formula_id == "volume_base_breakout":
         return volume_base_breakout_signals(open_, high, low, close, volume, amount, params)
+    if formula_id == "pullback_doji":
+        return pullback_doji_signals(open_, high, low, close, volume, amount, params)
     raise ValueError(f"unknown formula_id: {formula_id}")

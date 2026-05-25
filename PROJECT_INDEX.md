@@ -4315,6 +4315,8 @@ Codex aaedbc9d C 计划 4 段之第 3 段. 实盘 A 股 mask: 老 driver 仅靠 
   - `get_segment_limit_pct(stock_code) -> (up_pct, down_pct)` 主板 ±10% / 创业/科创 ±20% / 北交所 ±30%
   - `is_suspended(k)` volume/amount/close <= 0
   - `is_limit_up_today / is_limit_down_today(k, pre_close, pct)` close vs pre_close × (1+pct ± 1bp 容差)
+- `services/paper_engine/exits.py::is_limit_up_day/is_limit_down_day` 加 limit_pct 参数 (2026-05-25)
+  - 之前硬编码 0.097 对创业板/科创板 20% 涨停误判, 现按 stock_code 板块取值
   - `can_buy / can_sell(k, pre_close, stock_code)` 综合
 - `driver.py::_load_kline_today` 加 `pre_close` (LAG over date < today within 20-day window)
 - `driver.py` 3 决策点加 mask:

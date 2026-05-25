@@ -42,7 +42,7 @@ from services.backtest.result import TradeResult
 COMMISSION = 0.00025
 STAMP_DUTY = 0.0005
 SLIPPAGE = 0.001
-LIMIT_UP_PCT = 0.097  # from yaml: paper_sim_config
+LIMIT_UP_PCT_DEFAULT = 0.097  # 主板 fallback, 实际按 get_limit_up_pct(code) 取
 
 
 def _load_aux_data():
@@ -123,6 +123,7 @@ def _apply_aux_filter(sig_aux, params):
 
 def _execute_trade(code, buy_i, data, params):
     """模拟单笔交易, 含止损/止盈/trailing + 真实成本. 返回 TradeResult."""
+    from services.universe import get_limit_up_pct
     n = len(data["close"])
     o, h, l, c = data["open"], data["high"], data["low"], data["close"]
 
@@ -131,7 +132,8 @@ def _execute_trade(code, buy_i, data, params):
     buy_price_raw = o[buy_i]
     if buy_price_raw <= 0:
         return None
-    if buy_i > 0 and buy_price_raw >= c[buy_i - 1] * (1 + LIMIT_UP_PCT):
+    limit_pct = get_limit_up_pct(code) - 0.003  # 略低于涨停幅度判封板
+    if buy_i > 0 and buy_price_raw >= c[buy_i - 1] * (1 + limit_pct):
         return None
 
     buy_price = buy_price_raw * (1 + SLIPPAGE + COMMISSION)

@@ -485,6 +485,17 @@ def run_scan(params: dict | None = None, quiet: bool = False):
     universe = _load_clean_universe()
     conn = duckdb.connect(str(MARKET_DB), read_only=True)
     stocks = load_kline_data(conn, universe=universe or None)
+
+    # 强制前置审计 (与交易日历同强度)
+    from services.backtest_preflight import enforce_backtest_preflight
+    smart_conn = duckdb.connect(str(DATA_DIR / "smartmoney.duckdb"), read_only=True)
+    enforce_backtest_preflight(
+        stock_codes=list(stocks.keys()),
+        conn=smart_conn,
+        market_conn=conn,
+        tx_cost_bps=params.get("tx_cost_bps", 15),
+    )
+    smart_conn.close()
     conn.close()
 
     all_results = []
