@@ -819,6 +819,14 @@ SELECT * FROM mart_data_source_watermark;
 
 每次 session 增量内容写这里, 新 session 启动时**从下往上读**最近改了啥.
 
+### 2026-05-25 Phase 4.2b walk-forward 后台进度 14/22 — session 用户主动暂停
+
+后台 PID 88818 (started 05:13 CST), running mean -0.0092 ± 0.0671, positive 5/14 = 35.7% vs v7 baseline 0.0475 / 68.75%. 大概率最终 FAIL exit gate (rank_ic >= 0.04).
+
+每窗 checkpoint 到 data/reports/optuna/unified_ranker_wf_v1_20260524T220852Z.per_window.json. 不 kill 进程, 让它自然跑完.
+
+Resume 指引: analysis/session_handoff_20260525.md (含决策树 + Phase 5 Config B 锁定路径).
+
 ### 2026-05-25 Phase 4.2-diag verdict PARTIAL — single-fit DEAD, walk-forward needed
 
 Codex agent a885609738ef505a4 path C ablation 跑完, evidence:

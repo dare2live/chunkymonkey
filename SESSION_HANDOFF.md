@@ -25,20 +25,20 @@ bash scripts/install_resilience.sh   # SessionStart hook + cron + launchd 全装
 bash scripts/install_resilience.sh --status   # check 装好没
 ```
 
-**Snapshot 时间**: 2026-05-21 16:23:13 CST
+**Snapshot 时间**: 2026-05-24 21:51:21 CST
 
 ## 主线 retrain 状态
 
 | 项 | 值 |
 |---|---|
-| Model ID | `lgbm_phase5_gcp_20260520T010718` |
+| Model ID | `lgbm_phase5_v9b_20260523T083000Z` |
 | VM 状态 | ? |
 | VM 上次启动 |  |
 | VM 上次停止 |  |
-| F2 checkpoint best_value | 0.42370918210702596 |
-| F2 checkpoint best_trial | 36 |
-| F2 updated_at | 2026-05-20T08:57:45+00:00 |
-| F2 path | `data/reports/optuna/lgbm_phase5_gcp_20260520T010718.best.json` |
+| F2 checkpoint best_value | 0.3094819825339931 |
+| F2 checkpoint best_trial | 32 |
+| F2 updated_at | 2026-05-23T12:24:52+00:00 |
+| F2 path | `data/reports/optuna/lgbm_phase5_v9b_20260523T083000Z.best.json` |
 
 ## 后台 process
 
@@ -53,36 +53,42 @@ bash scripts/install_resilience.sh --status   # check 装好没
 
 | 项 | 值 |
 |---|---|
-| 月预算用 | 74.9% |
-| 剩余 spot 小时 | 13.7 h |
+| 月预算用 | 26.4% |
+| 剩余 spot 小时 | 106.8 h |
 
 ## Git 状态
 
 | 项 | 值 |
 |---|---|
 | Branch | main |
-| HEAD | `6005aadb Resolve HS300 source gap # PIT-strict` |
-| 最近 24h commits | 2 |
-| 未 commit 文件 | 272 |
+| HEAD | `dfcc6391 feat(phase-3.1): Perception absorbed 7 engines + INDEX` |
+| 最近 24h commits | 16 |
+| 未 commit 文件 | 6 |
 
 ### 最近 10 commits
 
 ```
-6005aadb Resolve HS300 source gap # PIT-strict
-d2b88143 Validate market perception browser UI # PIT-strict
-12553fc5 Refresh market cap decile input # PIT-strict
-6360918d Add stock context aggregation MVP # PIT-strict
-ee2e7b32 Add style rotation crowding MVP # PIT-strict
-f321c8a1 Add leader follower market diffusion MVP # PIT-strict
-895a52c2 Add under reaction dashboard # PIT-strict
-7d884042 Add under reaction engine MVP # PIT-strict
-afc724ec Add theme lifecycle dashboard # PIT-strict
-b7c7f3b1 Add theme lifecycle engine MVP # PIT-strict
+dfcc6391 feat(phase-3.1): Perception absorbed 7 engines + INDEX
+1b13dfaa feat(phase-2.4-COMPLETE+INDEX): 49 formulas across 7 categories Phase 2.4 done
+690312b1 feat(phase-2.4-day5): event 7 formulas + INDEX
+2bc67fd2 feat(phase-2.4-day4): multi_tf 7 formulas + INDEX
+0c03959a feat(phase-2.4-day3): volume category 7 formulas
+ff8991b5 feat(phase-2.4-day2): pattern category 7 formulas
+5e398c39 feat(phase-2.4-technical): formula bank category 1/7 (technical 7 formulas) + INDEX
+0312ad2f feat(phase-2.5): stage_filter module + PROJECT_INDEX
+6bf4ffcf doc(phase-1-2.3-progress): Phase 1 8/8 done + Phase 2.1-2.3 done status
+b6ae348a feat(phase-2.3+INDEX): bc_absorbed walk-forward governance + index sync
 ```
 
-## NEXT ACTION (auto-computed)
+## NEXT ACTION (manual override 2026-05-25 07:30)
 
-**272 uncommitted files — git status 看 + bash scripts/safe_commit.sh**
+**Phase 4.2b walk-forward 后台跑到 14/22 windows. Resume 入口: 读 analysis/session_handoff_20260525.md.**
+
+Resume 流程:
+1. `ps -p 88818` — 看 bg 进程还在不在 (running / done / killed?)
+2. 看 `ls -t data/reports/optuna/unified_ranker_wf_v1_*.per_window.json | head -1` — windows 是否 22 完成
+3. 按 analysis/session_handoff_20260525.md "决策树" 推 Phase 5 Config B (>95% 概率 FAIL exit gate 已锁定) 或 Phase 4.2c (低概率 PASS)
+4. 不要 retrain v7 (G1 production)
 
 ## Resilience 配置 (verified)
 
