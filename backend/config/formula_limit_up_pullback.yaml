@@ -1,0 +1,82 @@
+# 涨停回调十字星公式参数
+# 模式: 放量大涨 → 凌厉缩量回调 → 十字星 → 次日买入
+# Usage: PYTHONPATH=backend python backend/scripts/formula_limit_up_pullback.py
+
+# --- Step 1: 放量大涨 ---
+breakout:
+  pct_min: 7.0            # 涨幅 >= N% (7=接近涨停, 9.5=涨停)
+  vol_ratio: 1.5          # 量 >= N × MA20
+  close_eq_high: false    # true = 严格封板 H=C
+
+# --- Step 1b: 前置形态 (可选) ---
+pre_pattern:
+  enabled: false
+  low_lookback: 20        # 近 N 天低点
+  low_pct: 0.05           # close 距低点 <= N%
+  recovery_min_days: 2
+  recovery_max_days: 5
+  recovery_max_pct: 5.0   # 小涨累计不超 N%
+
+# --- Step 2: 凌厉回调 ---
+pullback:
+  min_days: 3
+  max_days: 5
+  vol_shrink: 0.7         # 回调均量 <= N × 大涨日量
+  above_breakout_low: true
+
+# --- Step 3: 十字星 ---
+doji:
+  body_ratio_max: 0.3     # |close-open| / (high-low) <= N
+  range_min: 0.005        # 最小振幅 (防零振幅)
+
+# --- Step 4: 买入 ---
+entry:
+  buy_offset: 1           # 十字星后第 N 天买入
+
+# --- 买后验证 ---
+verify:
+  enabled: true
+  rally_pct: 5.0          # 1-2 天内涨幅 >= N%
+  rally_window: 2         # 验证窗口 (天)
+
+# --- 辅助信号过滤 (提高命中率) ---
+aux_filters:
+  # 每个 filter 可单独 enable/disable
+  price_position:
+    enabled: false
+    min_60d_pct: 0.9      # 60 日价格位置 >= N (顶部)
+  turnover:
+    enabled: false
+    min_ratio: 2.0        # 买入日量 / MA60 >= N
+    max_ratio: 5.0
+  sector_momentum:
+    enabled: false
+    min_5d_ret: 0.03      # 板块 5 日涨幅 >= N
+  market_cap:
+    enabled: false
+    max_decile: 10         # 市值分位 <= N (1=微盘, 10=超大)
+  lhb:
+    enabled: false
+    max_30d_count: 0       # 30 日龙虎榜次数 <= N
+
+# --- 回测 ---
+backtest:
+  hold_days: [1, 2, 3, 5, 10, 15, 20]
+  tx_cost_bps: 15         # 单程 (含佣金+印花税)
+  start_date: "2023-01-01"
+
+# --- 预设组合 (sweep 用) ---
+presets:
+  base:
+    breakout.pct_min: 7.0
+  strict_limit:
+    breakout.pct_min: 9.5
+    breakout.close_eq_high: true
+  top_plus_volume:
+    breakout.pct_min: 7.0
+    aux_filters.price_position.enabled: true
+    aux_filters.turnover.enabled: true
+  info_tech_top:
+    breakout.pct_min: 7.0
+    aux_filters.price_position.enabled: true
+    # 行业过滤在代码中通过 industry_whitelist 实现

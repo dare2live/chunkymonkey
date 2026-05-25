@@ -82,6 +82,7 @@ def filter_kline_rows_by_calendar(
     output_table: str = "price_kline_tdxhub",
     batch_id: str = None,
     raise_on_miss: bool = True,
+    max_date_override: str | None = None,
 ) -> list[dict]:
     """Filter rows by latest_completed_trade_date (write-side PIT lint).
 
@@ -89,11 +90,13 @@ def filter_kline_rows_by_calendar(
     (write_batch in build_price_kline_tdxhub, sync_kline_from_gcs, upsert_price_kline_tdxhub_rows
     via _clean_kline_rows_for_write) 都走同一 lint.
 
+    max_date_override: batch sync 启动时锁定的 cutoff, 避免跨 15:05 阈值导致同批次不一致.
+
     rule-compliance: ok evidence=shared-defense-PIT-lint
     """
     if not rows:
         return rows
-    last_closed = _latest_completed_trade_date_for_write(raise_on_miss=raise_on_miss)
+    last_closed = max_date_override or _latest_completed_trade_date_for_write(raise_on_miss=raise_on_miss)
     if last_closed is None:
         return rows  # bypass only if KLINE_WRITE_LINT_BYPASS=1 (raise_on_miss=False)
     before = len(rows)
@@ -115,6 +118,7 @@ def _clean_kline_rows_for_write(
     source: str,
     output_table: str,
     batch_id: str = None,
+    max_date_override: str | None = None,
 ) -> list[dict]:
     cleaned_rows, stats = clean_price_rows(
         rows,
@@ -139,6 +143,7 @@ def _clean_kline_rows_for_write(
     # Codex review 2026-05-19 CRITICAL: 下沉到 filter_kline_rows_by_calendar 共享 helper.
     cleaned_rows = filter_kline_rows_by_calendar(
         cleaned_rows, output_table=output_table, batch_id=batch_id,
+        max_date_override=max_date_override,
     )
     return cleaned_rows
 

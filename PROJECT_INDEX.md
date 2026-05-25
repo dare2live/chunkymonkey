@@ -431,6 +431,7 @@
 | 主题 | 数量 | 例子 |
 |---|---|---|
 | `build_*` | 49 | build_formula_signals_history, build_signal_context, build_stock_formula_buy_signal_daily, build_daily_position_recommendations, build_picture_daily, build_stage_formula_fitness, build_architecture_inventory |
+| `formula_*` | 1 | **formula_limit_up_pullback.py** (涨停回调十字星选股, S/A/B 三档, YAML 配置 `config/formula_limit_up_pullback.yaml`) |
 | `run_*` | 17 | run_paper_sim_v2 (我们主用), run_follow_backtest (机构跟随), run_optuna_*, run_portfolio_mvp |
 | `validate_*` | 10 | validate_exclusion_rules 等 |
 | `audit_*` | 5 | **audit_end_to_end.py** (23 项检查) |
@@ -2042,6 +2043,13 @@ Codex a085ce4e (C6 SKILL) + Codex a3e6850d (N+1 audit) 完成:
 - Constants: DEFAULT_CLOSE_HOUR=16 / KLINE_WRITE_CLOSE_HOUR=15 / KLINE_WRITE_CLOSE_MINUTE=5
 
 backward compat shim: utils.py + market_db.py re-export, 大量 caller 不影响.
+
+### 2026-05-25: calendar gate batch 锁定修复
+
+`build_price_kline_tdxhub.py` sync 跨越 15:05 阈值时, 前拉股票 cutoff=前日, 后拉股票 cutoff=当日, 导致同批次覆盖率不一致 (实测: 5/25 仅 532/5206 股=10%).
+- `filter_kline_rows_by_calendar` 增加 `max_date_override` 参数
+- `build_price_kline_tdxhub.py::main()` 启动时锁定 `batch_max_date`, 整个 batch 共用
+- `_clean_kline_rows_for_write` 传递 override
 
 测试 564 PASS regression 0. Codex 架构 HIGH 2/3 + MEDIUM 待 dedicated future work.
 
