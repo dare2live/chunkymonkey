@@ -254,20 +254,37 @@ def _gs_core(
     return {"x3": x3, "x36": x, "gsb": gsb, "gss": gss}
 
 
+def _load_gs_yaml() -> dict[str, Any]:
+    import yaml
+    from pathlib import Path
+    cfg_path = Path(__file__).resolve().parent.parent.parent / "config" / "formula_gs.yaml"
+    if cfg_path.exists():
+        with open(cfg_path) as f:
+            return yaml.safe_load(f) or {}
+    return {}
+
+
 def gs_raw_buy_signals(open_: np.ndarray, high: np.ndarray, low: np.ndarray, close: np.ndarray, params: dict[str, Any] | None = None) -> dict[str, Any]:
     params = params or {}
+    ycfg = _load_gs_yaml().get("gs_raw_buy", {})
     core = _gs_core(
         open_,
         high,
         low,
         close,
-        ma_windows=tuple(params.get("x3_ma_windows", (3, 7, 13, 27))),
-        ema_fallback_span=int(params.get("ema_fallback_span", 5)),
-        down_adjust=float(params.get("down_adjust", 0.98)),
-        up_adjust=float(params.get("up_adjust", 1.02)),
-        iterations=int(params.get("iterations", 10)),
+        ma_windows=tuple(params.get("x3_ma_windows",
+                                     ycfg.get("x3_ma_windows", [3, 7, 13, 27]))),
+        ema_fallback_span=int(params.get("ema_fallback_span",
+                                          ycfg.get("ema_fallback_span", 5))),
+        down_adjust=float(params.get("down_adjust",
+                                      ycfg.get("down_adjust", 0.98))),
+        up_adjust=float(params.get("up_adjust",
+                                    ycfg.get("up_adjust", 1.02))),
+        iterations=int(params.get("iterations",
+                                   ycfg.get("iterations", 10))),
     )
-    entry = _apply_cooldown(core["gsb"], int(params.get("signal_cooldown_days", 0)))
+    entry = _apply_cooldown(core["gsb"], int(params.get("signal_cooldown_days",
+                                                         ycfg.get("signal_cooldown_days", 0))))
     return {"entry": entry, "exit": core["gss"], "indicators": core}
 
 
@@ -282,28 +299,43 @@ def gs_pullback_confirm_signals(
 ) -> dict[str, Any]:
     del volume, amount
     params = params or {}
-    core = _gs_core(open_, high, low, close)
+    full_cfg = _load_gs_yaml()
+    ycfg = full_cfg.get("gs_pullback_confirm", {})
+    core_cfg = full_cfg.get("gs_raw_buy", {})
+    core = _gs_core(
+        open_, high, low, close,
+        ma_windows=tuple(params.get("x3_ma_windows",
+                                     core_cfg.get("x3_ma_windows", [3, 7, 13, 27]))),
+        ema_fallback_span=int(params.get("ema_fallback_span",
+                                          core_cfg.get("ema_fallback_span", 5))),
+        down_adjust=float(params.get("down_adjust",
+                                      core_cfg.get("down_adjust", 0.98))),
+        up_adjust=float(params.get("up_adjust",
+                                    core_cfg.get("up_adjust", 1.02))),
+        iterations=int(params.get("iterations",
+                                   core_cfg.get("iterations", 10))),
+    )
     gsb = core["gsb"]
     gss = core["gss"]
     ls = _barslast(gss)
     lb = _barslast(gsb)
-    insell_days = int(params.get("insell_days", 3))
+    insell_days = int(params.get("insell_days", ycfg.get("insell_days", 3)))
     insell = (ls < lb) & (ls <= insell_days)
 
-    hist_window = int(params.get("hist_window", 90))
+    hist_window = int(params.get("hist_window", ycfg.get("hist_window", 90)))
     fastb = _rolling_sum_bool(gsb & (_barslast(gss) > 0) & (_barslast(gss) <= 3), hist_window)
     totb = _rolling_sum_bool(gsb & (_barslast(gss) > 0), hist_window)
     rate = np.divide(fastb * 100.0, totb, out=np.zeros(len(totb), dtype=np.float64), where=totb > 0)
-    histok = (totb >= 1) & (fastb >= 1) & (rate >= float(params.get("rate_min", 40)))
+    histok = (totb >= 1) & (fastb >= 1) & (rate >= float(params.get("rate_min", ycfg.get("rate_min", 40))))
 
     sellstate = ls < lb
     maxrun = _rolling_max(_barslastcount(sellstate).astype(np.float64), 45)
     sellpct = _rolling_sum_bool(sellstate, 45) * 100.0 / 45.0
-    greenok = (maxrun <= float(params.get("maxrun_max", 8))) & (sellpct <= float(params.get("sellpct_max", 60)))
+    greenok = (maxrun <= float(params.get("maxrun_max", ycfg.get("maxrun_max", 8)))) & (sellpct <= float(params.get("sellpct_max", ycfg.get("sellpct_max", 60))))
 
     maxlen = _rolling_max(np.where(gsb, _barslast(gss), 0).astype(np.float64), 90)
     longb = _rolling_sum_bool(gsb & (_barslast(gss) > 10), 90)
-    sellqual = (maxlen <= float(params.get("maxlen_max", 20))) & (longb <= float(params.get("longb_max", 2)))
+    sellqual = (maxlen <= float(params.get("maxlen_max", ycfg.get("maxlen_max", 20)))) & (longb <= float(params.get("longb_max", ycfg.get("longb_max", 2))))
 
     m20 = _ma(close, 20)
     m60 = _ma(close, 60)
@@ -314,10 +346,10 @@ def gs_pullback_confirm_signals(
         & (m60 > _ref(m60, 20))
         & (m90 > _ref(m90, 20))
         & (close > m90)
-        & (close > m60 * float(params.get("m60_buffer", 0.97)))
+        & (close > m60 * float(params.get("m60_buffer", ycfg.get("m60_buffer", 0.97))))
     )
     ret = _safe_div(close, _rolling_max(high, 20), 1.0)
-    pull = (ret <= float(params.get("ma_pull_high", 0.995))) & (ret >= float(params.get("ma_pull_low", 0.78)))
+    pull = (ret <= float(params.get("ma_pull_high", ycfg.get("ma_pull_high", 0.995)))) & (ret >= float(params.get("ma_pull_low", ycfg.get("ma_pull_low", 0.78))))
     entry = insell & histok & sellqual & greenok & up & pull
     return {"entry": entry, "exit": gss, "indicators": {**core, "rate": rate, "sellpct": sellpct}}
 

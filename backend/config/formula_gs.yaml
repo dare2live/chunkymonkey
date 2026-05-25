@@ -1,0 +1,33 @@
+# GS (Golden Section) 公式参数
+# gs_raw_buy: 原始 GS 买点 CROSS(X36, X3)
+# gs_pullback_confirm: GS 回调确认 (叠加历史质量/卖出状态/均线多头/回撤约束)
+# Usage: PYTHONPATH=backend python backend/services/bc_absorbed/scripts/formula_parameter_search.py --only gs_raw_buy gs_pullback_confirm
+
+# --- gs_raw_buy: GS 核心参数 ---
+gs_raw_buy:
+  x3_ma_windows: [3, 7, 13, 27]   # X3 均线组合窗口
+  ema_fallback_span: 5             # EMA fallback span (X3 NaN 时)
+  down_adjust: 0.98                # X36 下穿调整系数
+  up_adjust: 1.02                  # X36 上穿调整系数
+  iterations: 10                   # X36 迭代次数
+  signal_cooldown_days: 0          # 信号冷却天数 (0=不冷却)
+
+# --- gs_pullback_confirm: 回调确认层参数 ---
+gs_pullback_confirm:
+  # GS 核心沿用 gs_raw_buy 默认, 此处只定义确认层
+  insell_days: 3                   # 卖出状态判定: GS 卖出后 N 天内
+  hist_window: 90                  # 历史质量回看窗口 (天)
+  rate_min: 40                     # 快速反弹比率最低 (%)
+  maxrun_max: 8                    # 连续卖出状态最长 run (天)
+  sellpct_max: 60                  # 45 天内卖出状态占比上限 (%)
+  maxlen_max: 20                   # 90 天内最长卖出间隔
+  longb_max: 2                     # 90 天内长卖出次数上限
+  m60_buffer: 0.97                 # close > MA60 × N (均线多头确认)
+  ma_pull_high: 0.995              # 回撤上限: close / 20日最高 <=
+  ma_pull_low: 0.78                # 回撤下限: close / 20日最高 >=
+
+# --- 回测 ---
+backtest:
+  hold_days: [5, 10, 15, 20, 30, 60]
+  tx_cost_bps: 15                  # 单程 (佣金+印花税+滑点)
+  start_date: "2023-01-01"

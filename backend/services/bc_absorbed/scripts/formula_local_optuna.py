@@ -16,6 +16,12 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
+BACKEND_DIR = Path(__file__).resolve().parents[3]
+if str(BACKEND_DIR) not in sys.path:
+    sys.path.insert(0, str(BACKEND_DIR))
+
+PROJECT_ROOT = Path(__file__).resolve().parents[4]
+
 from compute import HOLDING_PERIODS, normalize_code
 from execution_model import EXECUTION_MODEL_VERSION, build_fixed_holding_trades, build_sell_rule_trades
 from formula_engine import compute_formula_signals
@@ -25,6 +31,9 @@ from scripts.formula_parameter_search import (
     _metrics_from_trades,
     _score,
 )
+
+MARKET_DB = PROJECT_ROOT / "data" / "market.duckdb"
+SMART_DB = PROJECT_ROOT / "data" / "smartmoney.duckdb"
 
 
 ANALYSIS_DIR = ROOT / "analysis"
@@ -440,6 +449,21 @@ def main() -> None:
     ANALYSIS_DIR.mkdir(parents=True, exist_ok=True)
     current_best = _load_current_best()
     stocks = _stock_by_code(args.codes)
+
+    import duckdb
+    from services.backtest_preflight import enforce_backtest_preflight
+    stock_codes = list(stocks.keys())
+    smart_conn = duckdb.connect(str(SMART_DB), read_only=True)
+    market_conn = duckdb.connect(str(MARKET_DB), read_only=True)
+    enforce_backtest_preflight(
+        stock_codes=stock_codes,
+        conn=smart_conn,
+        market_conn=market_conn,
+        tx_cost_bps=15,
+    )
+    smart_conn.close()
+    market_conn.close()
+
     rows: list[dict[str, Any]] = []
     started = time.time()
     for code in [normalize_code(c) for c in args.codes]:

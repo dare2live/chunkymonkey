@@ -6,7 +6,13 @@
 > **目标**: 新接手 (无论 Claude 还是人) 读完此文档**不用看代码 / 不用查 DB** 就能理解:
 > 项目业务 / 架构 / 技术路线 / 数据资产 / 当前进度 / 已知坑 / 常用操作.
 
-最后更新: **2026-05-21** (Codex 暂停 / Claude 全面接手 / GCP budget \$10→\$15 alert-only / stability retrain active / BestChoice POC plan 待启动).
+最后更新: **2026-05-26** (公式工厂整改 Phase 1 GS 系列完成).
+
+## [INDEX] 2026-05-26 增量
+
+- **公式工厂整改 Phase 1 完成**: GS 系列 (gs_raw_buy + gs_pullback_confirm) 接入 `backtest_preflight` 7 维审计 gate + YAML 配置化 (`backend/config/formula_gs.yaml`). `formula_parameter_search.py` 改用 `get_active_universe` 替代 fragile ATTACH+JOIN fallback. 7/7 全量 universe (4562 stocks) preflight PASS.
+- **新增配置**: `backend/config/formula_gs.yaml` — GS 公式参数 (core MA 窗口/迭代次数/回调确认层阈值/回测成本).
+- **Tech Debt 登记**: `assets/js/app.js` 80 HIGH complexity (全项目唯一 HIGH 集中文件), 排 Phase 3 后清理.
 
 ## [INDEX] 2026-05-21 增量
 

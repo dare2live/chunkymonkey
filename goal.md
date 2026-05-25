@@ -240,6 +240,12 @@ If script needs adaptation for unified panel groups: copy + adapt to `backend/sc
 | Weekly aggregate + divergence flag (>30% = abort criterion) | per-group weekly report |
 | Week 6+ promote decision | top performer scales 15% / others abort |
 
+### Tech Debt — Phase 3 之后
+
+| # | Task | 范围 | 备注 |
+|---|---|---|---|
+| TD1 | `assets/js/app.js` 复杂度清理 | 80 HIGH (nested-loop / io-in-loop / sort-in-loop) | 6853 行前端主逻辑, 唯一含 HIGH 的文件 |
+
 ### Total schedule + GCP
 
 | Phase | Wall | GCP | Cumulative |

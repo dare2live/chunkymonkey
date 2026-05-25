@@ -18,9 +18,18 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from compute import HOLDING_PERIODS, MARKET_DB, _attach_smart_db, normalize_code
+BACKEND_DIR = Path(__file__).resolve().parents[3]
+if str(BACKEND_DIR) not in sys.path:
+    sys.path.insert(0, str(BACKEND_DIR))
+
+PROJECT_ROOT = Path(__file__).resolve().parents[4]
+
+from compute import HOLDING_PERIODS, _attach_smart_db, normalize_code
 from execution_model import EXECUTION_MODEL_VERSION, build_fixed_holding_trades, build_sell_rule_trades
 from formula_engine import compute_formula_signals
+
+MARKET_DB = PROJECT_ROOT / "data" / "market.duckdb"
+SMART_DB = PROJECT_ROOT / "data" / "smartmoney.duckdb"
 
 
 ANALYSIS_DIR = ROOT / "analysis"
@@ -63,26 +72,20 @@ FORMULA_VARIANTS: dict[str, list[dict[str, Any]]] = {
 
 
 def _load_market_rows(max_stocks: int = 0) -> list[dict[str, Any]]:
+    from services.universe import get_active_universe
+    smart_conn = duckdb.connect(str(SMART_DB), read_only=True)
+    universe = get_active_universe(smart_conn)
+    smart_conn.close()
+
     con = duckdb.connect(str(MARKET_DB), read_only=True)
     try:
-        try:
-            _attach_smart_db(con)
-            raw = con.execute(
-                """
-                SELECT k.code, k.date, k.open, k.high, k.low, k.close, k.volume, k.amount
-                FROM v_price_kline_qfq k
-                INNER JOIN sm.dim_active_a_stock s ON k.code = s.stock_code
-                ORDER BY k.code, k.date
-                """
-            ).fetchnumpy()
-        except duckdb.IOException:
-            raw = con.execute(
-                """
-                SELECT code, date, open, high, low, close, volume, amount
-                FROM v_price_kline_qfq
-                ORDER BY code, date
-                """
-            ).fetchnumpy()
+        raw = con.execute(
+            """
+            SELECT code, date, open, high, low, close, volume, amount
+            FROM v_price_kline_qfq
+            ORDER BY code, date
+            """
+        ).fetchnumpy()
     finally:
         con.close()
 
@@ -94,9 +97,13 @@ def _load_market_rows(max_stocks: int = 0) -> list[dict[str, Any]]:
         if max_stocks and len(rows) >= max_stocks:
             break
         sl = slice(idx, idx + cnt)
+        code = normalize_code(code_raw)
+        idx += cnt
+        if code not in universe:
+            continue
         rows.append(
             {
-                "code": normalize_code(code_raw),
+                "code": code,
                 "dates": raw["date"][sl],
                 "open": raw["open"][sl].astype(np.float64),
                 "high": raw["high"][sl].astype(np.float64),
@@ -106,7 +113,6 @@ def _load_market_rows(max_stocks: int = 0) -> list[dict[str, Any]]:
                 "amount": raw["amount"][sl].astype(np.float64),
             }
         )
-        idx += cnt
     return rows
 
 
@@ -332,6 +338,20 @@ def main() -> None:
         excluded = set(args.exclude)
         formulas = [fid for fid in formulas if fid not in excluded]
     stocks = _load_market_rows(args.max_stocks)
+
+    from services.backtest_preflight import enforce_backtest_preflight
+    stock_codes = [s["code"] for s in stocks]
+    smart_conn = duckdb.connect(str(SMART_DB), read_only=True)
+    market_conn = duckdb.connect(str(MARKET_DB), read_only=True)
+    enforce_backtest_preflight(
+        stock_codes=stock_codes,
+        conn=smart_conn,
+        market_conn=market_conn,
+        tx_cost_bps=15,
+    )
+    smart_conn.close()
+    market_conn.close()
+
     tasks = [(fid, variant, stocks, args.max_signals_per_stock) for fid in formulas for variant in FORMULA_VARIANTS[fid]]
 
     print(
