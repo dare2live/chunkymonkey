@@ -2015,9 +2015,40 @@ R38 (机构跟随 + MSAF) → Phase 2-3 顶层 doc base
 | 3 | 巨量+54 bank 接入 + Optuna | 2-3 天 | GCP ($1.88) |
 | R2 | 全公式综合 Optuna 200 trials | 0.5 天 | 本地 |
 
+### Codex 具体建议 (agent a5c4391d0a5ed1ed8, 2026-05-25)
+
+**Phase 1 (GS 系列)**:
+- 路由所有 GS 回测/Optuna 路径走 load_clean_backtest_data() → enforce_backtest_preflight()
+- 要求显式传 tx_cost_bps, walk_forward_mode, has_future_filter, verified_used_as_entry
+- gs_raw_buy_signals() 和 gs_pullback_confirm_signals() 保持纯信号函数, 只通过 compute_formula_signals() 调用
+- 最小共享核心改动, 关闭全部 7 检 gap
+
+**Phase 2 (均线+活跃度)**:
+- ma_base_breakout: 阈值 (short_ma/mid_ma/long_ma/breakout_lookback/price_top_buffer) 从硬编码改 Optuna/config params
+- activity_breakout: x15_multiplier/big_bull_line/strong_line 同样外置到 params
+- 两个都接入 preflight/cost/walk-forward, 不在函数内硬编码涨停规则
+
+**Phase 3 (巨量+54 bank)**:
+- volume_base_breakout 已有 __latest_only/__eval_start_index/signal_cooldown_days, 作为模板
+- 54 bank 函数统一接入 compute_formula_signals() 而非各自 fork
+- PIT audit 作为 preflight 新 check 项自动化
+- 4 轮 Optuna 必须在 preflight 通过后才能跑
+
+### GCP 评估 (2026-05-25)
+
+| 场景 | 本地时间 | GCP 时间 | GCP 成本 | 建议 |
+|---|---|---|---|---|
+| Phase 1+2 代码改动 | 无计算 | - | $0 | 本地 |
+| 6 公式 Optuna (4x100 trials) | 2h | 0.5h | $0.19 | 本地够 |
+| 54 bank Optuna (4x100 trials) | 20h | 5h | $1.88 | GCP |
+| R2 综合寻优 (200 trials) | 3h | 0.75h | $0.28 | 本地可以 |
+
+GCP 仅 Phase 3 的 54 bank 需要, 月预算剩 ~$40, $1.88 在范围内.
+n2-standard-32 spot, 32 核并行, 理论 4x 加速.
+
 ### 关键文件
 
 - backend/services/backtest_preflight.py — 7 维审计 gate + load_clean_backtest_data
 - backend/services/universe.py — get_limit_up_pct + get_active_universe
-- backend/config/formula_limit_up_pullback.yaml — 公式参数模板
+- backend/config/formula_limit_up_pullback.yaml — 公式参数模板 (后续每个公式一个 YAML)
 - analysis/audit_bestchoice_preflight_20260525.md — BestChoice 审计报告
