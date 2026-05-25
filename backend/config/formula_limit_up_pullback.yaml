@@ -4,9 +4,12 @@
 
 # --- Step 1: 放量大涨 ---
 breakout:
-  pct_min: 7.0            # 涨幅 >= N% (7=接近涨停, 9.5=涨停)
+  limit_ratio: 0.7        # breakout 占涨停幅度比例 (主板 0.7×10%=7%, 创业板 0.7×20%=14%)
+  pct_min: 7.0            # fallback 绝对阈值 (不用 ratio 时)
   vol_ratio: 1.5          # 量 >= N × MA20
   close_eq_high: false    # true = 严格封板 H=C
+  # 涨停幅度按板块自动适配 (services/universe.py::get_limit_up_pct):
+  #   沪深主板(60/00): 10%, 创业板(30): 20%, 科创板(68): 20%
 
 # --- Step 1b: 前置形态 (可选) ---
 pre_pattern:

@@ -126,6 +126,27 @@ def get_active_universe(
     return stocks
 
 
+def get_limit_up_pct(stock_code: str) -> float:
+    """按板块返回涨停幅度. 主板 10%, 创业板/科创板 20%.
+
+    来源: dim_price_limit_rules + dim_market_segment.
+    """
+    if not stock_code or len(stock_code) < 3:
+        return 0.10
+    prefix3 = stock_code[:3]
+    # rule-compliance: ok evidence=dim_price_limit_rules + dim_market_segment 2020-08-24 起
+    if prefix3 in ("300", "301"):
+        return 0.20  # 创业板
+    if prefix3 == "688":
+        return 0.20  # 科创板
+    return 0.10  # 沪深主板 (60x/00x/001/002)
+
+
+def build_limit_up_pct_map(stock_codes) -> dict[str, float]:
+    """批量构建 {stock_code: limit_up_pct} 映射, 避免逐只查询."""
+    return {code: get_limit_up_pct(code) for code in stock_codes}
+
+
 def audit_strategy_universe_contamination(
     conn, *, table: str,
     model_id_col: str = "model_id",

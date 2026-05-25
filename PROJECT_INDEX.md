@@ -1055,6 +1055,8 @@ docs/project_audit_20260523.md 全面 audit:
 
 services/universe.py:
 - get_active_universe(conn, *, include_st=False, include_delisted=False)
+- get_limit_up_pct(stock_code) → 主板 0.10, 创业板/科创板 0.20 (来源: dim_price_limit_rules)
+- build_limit_up_pct_map(stock_codes) → 批量构建 {code: limit_up_pct}
 - audit_strategy_universe_contamination(conn, table, model_id_filter)
 
 backend/scripts/audit_strategy_universe.py:

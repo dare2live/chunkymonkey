@@ -40,7 +40,8 @@ def _load_yaml_config() -> dict:
 
 
 DEFAULT_PARAMS = {
-    "breakout_pct_min": 7.0,
+    "breakout_limit_ratio": 0.7,    # breakout 占涨停幅度比例 (主板 0.7×10%=7%, 创业板 0.7×20%=14%)
+    "breakout_pct_min": 7.0,        # fallback: 不用 ratio 时的绝对阈值
     "breakout_vol_ratio": 1.5,
     "breakout_close_eq_high": False,
 
@@ -169,12 +170,14 @@ def _check_pre_pattern(i, close, low, params):
     return False
 
 
-def detect_signals(dates, open_, high, low, close, volume, params):
+def detect_signals(dates, open_, high, low, close, volume, params, *, limit_up_pct: float = 0.10):
+    """limit_up_pct: 该股票的涨停幅度 (主板 0.10, 创业板/科创板 0.20)."""
     n = len(close)
     if n < 30:
         return []
 
-    pct_min = params["breakout_pct_min"]
+    breakout_ratio = params.get("breakout_limit_ratio", 0.7)  # from yaml: breakout 占涨停幅度的比例
+    pct_min = breakout_ratio * limit_up_pct * 100  # 主板 7%, 创业板 14%
     vol_ratio = params["breakout_vol_ratio"]
     strict_seal = params["breakout_close_eq_high"]
     pb_min = params["pullback_min_days"]
@@ -459,9 +462,15 @@ def _load_clean_universe() -> set[str]:
         universe = get_active_universe(smart_conn)
         smart_conn.close()
         return universe
-    except Exception as e:
+    except (ImportError, OSError) as e:  # rule-compliance: ok evidence=universe-load-fallback
         print(f"  WARNING: universe filter failed ({e}), using all stocks")
         return set()
+
+
+def _get_limit_up_pct(code: str) -> float:
+    """按板块返回涨停幅度. 主板 10%, 创业板/科创板 20%."""
+    from services.universe import get_limit_up_pct
+    return get_limit_up_pct(code)
 
 
 def run_scan(params: dict | None = None, quiet: bool = False):
@@ -483,6 +492,7 @@ def run_scan(params: dict | None = None, quiet: bool = False):
         sigs = detect_signals(
             data["dates"], data["open"], data["high"], data["low"],
             data["close"], data["volume"], params,
+            limit_up_pct=_get_limit_up_pct(code),
         )
         if sigs:
             bt = backtest_signals(
@@ -547,6 +557,7 @@ def run_sweep():
             sigs = detect_signals(
                 data["dates"], data["open"], data["high"], data["low"],
                 data["close"], data["volume"], params,
+                limit_up_pct=_get_limit_up_pct(code),
             )
             if sigs:
                 bt = backtest_signals(
