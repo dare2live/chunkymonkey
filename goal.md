@@ -1977,3 +1977,47 @@ R38 (机构跟随 + MSAF) → Phase 2-3 顶层 doc base
 - ~~v3.2 RankIC 0.0246 ann -65.5%~~ — 框架 deprecated, MSAF 重构
 - ~~Wave 1 4 jobs trial-0 v4_a158_lhb_mc 0.0313~~ — panel sync gap corrupted, 已 kill
 - ~~paper_sim sizer ablation equal -9% / rank_diff -2.8%~~ — 都 [FAIL], 当前 model 弱不能靠 sizer 救
+
+## 2026-05-25 — BestChoice 公式工厂整改计划
+
+> 用户 (2026-05-25): 以回调十字星为标准, 全部公式走统一验证流程, 各自独立测试后再整合.
+> 每天输出按等级排序的买入列表, 含预期收益/买卖价/持仓期/回撤.
+
+### 新标准 (pullback_doji 确立)
+
+每个公式必须通过 7 维 preflight 审计 (backtest_preflight.py, fail-closed):
+1. Universe clean (排除 ST/退市/北交所)
+2. 板块涨停阈值适配 (主板 10%, 创业板/科创板 20%)
+3. 成本模型 (>= 12bps round trip)
+4. 数据新鲜度 (K 线 vs 交易日历)
+5. 无未来函数入场条件
+6. verified 不做入场条件
+7. walk-forward mode 指定
+
+### 当前状态
+
+| 公式 | 标准达标 | 状态 |
+|---|---|---|
+| pullback_doji (回调十字星) | 7/7 PASS | 已完成, 注册 formula_engine |
+| gs_pullback_confirm | 0/7 | 待改 Phase 1 |
+| gs_raw_buy | 0/7 | 待改 Phase 1 |
+| ma_base_breakout | 0/7 | 待改 Phase 2 |
+| activity_breakout | 0/7 | 待改 Phase 2 |
+| volume_base_breakout | 0/7 | 待改 Phase 3 |
+| 54 bank 函数 | 0/7 | 待改 Phase 3 |
+
+### 执行计划
+
+| Phase | 内容 | 时间 | 计算资源 |
+|---|---|---|---|
+| 1 | GS 系列接入 preflight + 配置化 | 0.5-1 天 | 本地 |
+| 2 | 均线+活跃度接入 + Optuna | 1-1.5 天 | 本地 |
+| 3 | 巨量+54 bank 接入 + Optuna | 2-3 天 | GCP ($1.88) |
+| R2 | 全公式综合 Optuna 200 trials | 0.5 天 | 本地 |
+
+### 关键文件
+
+- backend/services/backtest_preflight.py — 7 维审计 gate + load_clean_backtest_data
+- backend/services/universe.py — get_limit_up_pct + get_active_universe
+- backend/config/formula_limit_up_pullback.yaml — 公式参数模板
+- analysis/audit_bestchoice_preflight_20260525.md — BestChoice 审计报告
