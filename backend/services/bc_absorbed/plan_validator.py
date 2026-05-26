@@ -207,8 +207,16 @@ def _check_param_scope(formulas: list[str]) -> dict:
             "detail": f"checked {len(formulas)} formulas, no per-stock params in search space"}
 
 
-def _check_board_coverage(formulas: list[str]) -> dict:
-    """检测 sample stocks 是否覆盖全部板块 (主板/创业板/科创板)."""
+def _check_sample_size_and_coverage(max_stocks: int = 0) -> dict:
+    """检测样本量是否足够 + 板块覆盖.
+
+    选股系统必须在全量 universe 上训练, 不能用小样本.
+    max_stocks=0 (全量) 是唯一正确设置.
+    """
+    if max_stocks > 0 and max_stocks < 4000:
+        return {"name": "sample_coverage", "status": "FAIL",
+                "detail": f"max_stocks={max_stocks} 太少! 选股系统必须在全量 universe ({4562}) 上训练. "
+                f"用 {max_stocks} 只训练的参数不能用于 {4562} 只选股. 设 --max-stocks 0 (全量)"}
     try:
         import sys
         from pathlib import Path
@@ -216,21 +224,20 @@ def _check_board_coverage(formulas: list[str]) -> dict:
         if scripts_dir not in sys.path:
             sys.path.insert(0, scripts_dir)
         from formula_local_optuna_batch import _load_stocks
-        stocks = _load_stocks(200)
+        stocks = _load_stocks(max_stocks)
         boards = {"00": 0, "30": 0, "60": 0, "68": 0}
         for code in stocks:
             prefix = code[:2]
             if prefix in boards:
                 boards[prefix] += 1
-        missing = [f"{p}({n})" for p, n in boards.items() if n == 0]
+        missing = [f"{p}" for p, n in boards.items() if n == 0]
         if missing:
-            return {"name": "board_coverage", "status": "FAIL",
-                    "detail": f"sample missing boards: {missing}. "
-                    f"Distribution: {boards}. 按 code 排序取前 N 只覆盖单一板块!"}
-        return {"name": "board_coverage", "status": "PASS",
-                "detail": f"all boards covered: {boards}"}
+            return {"name": "sample_coverage", "status": "FAIL",
+                    "detail": f"missing boards: {missing}. Distribution: {boards}"}
+        return {"name": "sample_coverage", "status": "PASS",
+                "detail": f"{len(stocks)} stocks, all boards: {boards}"}
     except Exception as e:
-        return {"name": "board_coverage", "status": "FAIL",
+        return {"name": "sample_coverage", "status": "FAIL",
                 "detail": f"cannot check: {e}"}
 
 
@@ -246,7 +253,7 @@ def _check_output_usable(output_path: str | None = None) -> dict:
 def validate_optuna_plan(
     formulas: list[str],
     trials: int = 100,
-    max_stocks: int = 200,
+    max_stocks: int = 0,
     output_path: str | None = None,
     est_sec_per_trial: float = 1.5,
 ) -> PlanCheckResult:
@@ -257,7 +264,7 @@ def validate_optuna_plan(
     result.checks.append(_check_formula_runnable(formulas))
     result.checks.append(_check_cost_efficiency(formulas, trials, est_sec_per_trial))
     result.checks.append(_check_param_scope(formulas))
-    result.checks.append(_check_board_coverage(formulas))
+    result.checks.append(_check_sample_size_and_coverage(max_stocks))
     result.checks.append(_check_output_usable(output_path))
 
     logger.info(result.summary())

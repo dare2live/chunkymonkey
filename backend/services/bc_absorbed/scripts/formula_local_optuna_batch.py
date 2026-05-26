@@ -283,7 +283,7 @@ def main() -> None:
     parser.add_argument("--seed", type=int, default=20260526)
     parser.add_argument("--output", type=str, default=None)
     parser.add_argument("--checkpoint-dir", type=str, default=None)
-    parser.add_argument("--max-stocks", type=int, default=200)
+    parser.add_argument("--max-stocks", type=int, default=0, help="0=全量 universe (推荐), >0=按板块均匀抽样")
     parser.add_argument("--resume", action="store_true")
     args = parser.parse_args()
 
