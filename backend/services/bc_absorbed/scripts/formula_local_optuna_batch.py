@@ -211,6 +211,18 @@ def main() -> None:
         sys.exit(1)
     print("formula_optuna_batch: data OK", flush=True)
 
+    print("formula_optuna_batch: validating plan logic...", flush=True)
+    from plan_validator import validate_optuna_plan, PlanValidationError
+    plan_result = validate_optuna_plan(
+        formulas=args.formulas,
+        trials=args.trials,
+        output_path=args.output,
+    )
+    print(plan_result.summary(), flush=True)
+    if not plan_result.passed:
+        print("PLAN VALIDATION FAILED — refusing to run", flush=True)
+        sys.exit(2)
+
     print("formula_optuna_batch: loading stocks...", flush=True)
     stocks = _load_stocks(args.max_stocks)
     sample_codes = list(stocks.keys())
