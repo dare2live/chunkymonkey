@@ -569,6 +569,14 @@ Layer 4: 展示 (依赖 Layer 3)
 4. paper_sim YAML 合并 (1 小时)
 5. God module 拆分 (updater 5136 行) (大工程, 单独排)
 
+**技术规范文档** (Codex 在写 `docs/technical_specification.md`, 需覆盖 15 个领域):
+1-10: 架构/模块管理/代码流程/数据管线/数据验证/回测/公式生命周期/配置/维护/扩展
+11. Handoff: goal.md 单一真相源, session_handoff_audit 工具, 记录标准
+12. 开发排期: P0/P1/P2 优先级, 时间成本估算, 依赖排序, 中断恢复, grill gate
+13. 进度追踪: goal.md 实时更新, commit message 作证据, 完成=端到端验证
+14. 协作: Claude + Codex 分工, 何时派 Codex, 避免重复, review gate
+15. 质量门: 所有 gate (preflight/plan_validator/data_audit/grill/gcp_launch/leakage/handoff)
+
 - **待简化**: get_active_universe + dim_active_a_stock 整套可删 — K 线就是 universe
   第一性原理: K 线有数据 = 能交易, 不需要预筛"活跃列表"
   ST 在公式层面处理 (get_limit_up_pct), 不需要 universe 层排除
