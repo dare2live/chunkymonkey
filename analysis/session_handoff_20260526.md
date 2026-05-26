@@ -23,7 +23,8 @@
 | Bug 修复 | multi_tf PIT / macd_divergence / mfi roll / dividend future / LHB executescript |
 | 四层架构 | profiler / ranker / pool / picks + config |
 | GCP | 跑了 2 轮都有问题 (29 无 search space + 200 只抽样偏差), 已修但未重跑 |
-| 数据 sync | K 线/risk/sector/capital_flow/exec/active/industry/LHB 到 05-26 |
+| 数据 sync | K 线/risk/sector/capital_flow/exec/active/industry/LHB 到 05-26, lhb_client.py executescript bug 修复 |
+| 脚本改动 | daily_formula_picks.py (每日选股) / formula_parameter_search.py (universe+preflight) / optuna_pullback_doji.py (GCP 用) / exits.py (一字涨跌停, 传 GCP) |
 | Codex review | 4 findings 全修 (OOS 选参 / shell 展开 / code scan / PIT 异常) |
 | Skills 安装 | 8 个 mattpocock skills (grill/diagnose/tdd/to-issues/handoff 等) |
 
