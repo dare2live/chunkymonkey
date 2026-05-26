@@ -1,0 +1,41 @@
+# 股票 Universe 规则配置 — 所有判断逻辑数据化, 不硬编码在代码里
+#
+# 第一性原理: K 线有交易 = 在交易. 没有 = 不在.
+# 奥卡姆剃刀: 不需要中间表 (dim_all_ever_listed), K 线就是真相源.
+
+# --- 包含规则 (白名单, 只有这些前缀才进 universe) ---
+include:
+  board_prefixes:
+    - "60"    # 沪主板
+    - "00"    # 深主板
+    - "30"    # 创业板 (涨跌停 20%)
+    - "68"    # 科创板 (涨跌停 20%)
+
+# --- 排除规则 ---
+exclude:
+  # ST/退市风险警示股
+  st_name_patterns:
+    - "ST"     # ST + *ST
+    - "*ST"
+
+  # 退市判定: K 线无交易天数
+  delisted:
+    source: "kline"  # 从 K 线判断, 不从快照表
+    no_trade_days: 90  # 连续 90 个自然日无交易 = 退市/长期停牌
+
+  # 暂不排除 (记录但不执行)
+  # new_stock_days: 60  # 新股上市 N 天内不参与 (流动性不稳)
+
+# --- 板块涨跌停 ---
+limit_up_pct:
+  "60": 0.10   # 沪主板
+  "00": 0.10   # 深主板
+  "30": 0.20   # 创业板
+  "68": 0.20   # 科创板
+
+# --- 数据源优先级 ---
+data_source:
+  active_stocks: "dim_active_a_stock"    # 当前活跃列表 (名字/板块)
+  kline: "price_kline_tdxhub"            # K 线 = 交易真相源
+  trading_calendar: "services.calendar"   # 交易日历 = 日期真相源
+  # 不再使用: dim_all_ever_listed (快照不可靠, 2026-05-26 误标 573 只)

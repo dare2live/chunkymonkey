@@ -1,33 +1,28 @@
-"""Active stock universe filter — hardcoded A-share + exclude 老三板/北交所/退市/ETF/ST.
+"""Active stock universe — 第一性原理: K 线有交易 = 活跃, 没有 = 不活跃.
 
-用户原话: "可以硬编码排除退市、新三板老三板的股票" + 2026-05-22 23:50 "排除 ST 北交所了吗"
+奥卡姆剃刀: 不需要 dim_all_ever_listed / 快照比对 / 多表 JOIN.
+K 线就是真相源 — 交易所让它交易, K 线就有数据.
 
-PLAN_V3 v3.2 P-1.2 接受用户硬编码 universe (而非通用 survivorship-unbiased):
-- A 股个人散户 5 仓位 paper_sim 场景, 不实际交易退市股/三板/ST 股
-- 排除后 P-1.2 spot check should_be_in 重新定义, 应 PASS
-- 生存者偏差仍存在 (已显式接受), 但 alpha 训练 / 选股 / 实盘模拟一致
-
-KEEP prefixes (v3.2 P-1 起始 universe):
-- 60 沪主板 / 00 深主板 + 中小板 / 30 创业板 / 68 科创板
-
-未在本 universe 内 (after prefix filter):
-- ETF (15 / 51 / 56 / 58): 跟个股选股逻辑不同
-- 港股通 / 老三板 / 北交所 (8/4): 流动性 / 规则不同
-
-额外 ST/*ST filter (2026-05-22 audit 发现 V4 top-10 picks 中 19.31% 是 ST/*ST):
-- ST/*ST 跌停 ±5% (vs normal ±10%), 流动性差, 退市风险
-- 实盘 unrealistic, paper_sim 假设 normal trading mechanism
-- 通过 `dim_active_a_stock.stock_name LIKE 'ST%'/'*ST%'` 排除
-- Caveat: 仅当前 ST status, 不是 PIT historical (历史 ST→去 ST 或反向 仍 leak)
+排除规则 (3 条, 仅此而已):
+  1. 前缀不是 60/00/30/68 → 排除 (ETF/北交所/三板)
+  2. 股票名含 ST/*ST → 排除 (涨跌停 ±5%, 规则不同)
+  3. K 线最近 90 天无交易 → 排除 (退市/长期停牌)
 """
 from __future__ import annotations
 
-# 用户硬编码 KEEP universe (CLAUDE.md 项目特定补充允许的"硬编码"豁免):
-# 60 沪主板 / 00 深主板 / 30 创业板 / 68 科创板.
-# rule-compliance: ok evidence=user-硬编码-A股个人散户5仓位场景
-ACTIVE_A_SHARE_PREFIXES: tuple[str, ...] = ("60", "00", "30", "68")
-# rule-compliance: ok evidence=2026-05-22 audit V4 top-10 picks 19.31% 是 ST/*ST 必排除
-ST_NAME_PREFIXES: tuple[str, ...] = ("ST", "*ST")
+def _load_universe_config() -> dict:
+    import yaml
+    from pathlib import Path
+    cfg_path = Path(__file__).resolve().parent.parent / "config" / "universe_rules.yaml"
+    if cfg_path.exists():
+        with open(cfg_path) as f:
+            return yaml.safe_load(f) or {}
+    return {}
+
+_UNIVERSE_CFG = _load_universe_config()
+ACTIVE_A_SHARE_PREFIXES: tuple[str, ...] = tuple(_UNIVERSE_CFG.get("include", {}).get("board_prefixes", ["60", "00", "30", "68"]))
+ST_NAME_PREFIXES: tuple[str, ...] = tuple(_UNIVERSE_CFG.get("exclude", {}).get("st_name_patterns", ["ST", "*ST"]))
+DELISTED_NO_TRADE_DAYS: int = _UNIVERSE_CFG.get("exclude", {}).get("delisted", {}).get("no_trade_days", 90)  # from yaml: universe_rules.yaml
 
 
 def is_active_a_share(stock_code: str) -> bool:
@@ -87,79 +82,59 @@ def get_active_universe(
     conn,
     *,
     include_st: bool = False,
-    include_delisted: bool = False,
     market_conn=None,
 ) -> set[str]:
-    """Single source of truth for batch task universe.
+    """哪些股票在交易? K 线是真相源.
 
-    Default: A-share main (60/00/30/68) + exclude ST/*ST + exclude 已退市 + (implicitly) exclude NEEQ/北交所/老三板/ETF (prefix not in KEEP).
+    三条规则:
+      1. 前缀 60/00/30/68 (A 股主板/创业板/科创板)
+      2. stock_name 不含 ST/*ST
+      3. K 线最近 90 天有交易 (退市/长期停牌排除)
 
-    Args:
-        conn: DuckDB connection (read-only OK)
-        include_st: 含 ST/*ST (default False)
-        include_delisted: 含 已退市 (default False, dim_all_ever_listed.is_active=0)
-
-    Returns:
-        Set of stock_code strings.
-
-    Usage:
-        with connect(db, read_only=True) as conn:
-            universe = get_active_universe(conn)
+    不依赖 dim_all_ever_listed (快照不可靠, 2026-05-26 误标 573 只).
     """
     prefixes_csv = ",".join(f"'{p}'" for p in ACTIVE_A_SHARE_PREFIXES)
-    sql = f"SELECT stock_code FROM dim_active_a_stock WHERE SUBSTR(stock_code, 1, 2) IN ({prefixes_csv})"
-    if not include_st:
-        sql += " AND stock_name NOT LIKE 'ST%' AND stock_name NOT LIKE '*ST%'"
-    stocks = {r[0] for r in conn.execute(sql).fetchall()}
-    if not include_delisted:
-        # 退市判定: 用 K 线实际交易记录, 不用 dim_all_ever_listed 快照
-        # 原因: dim_all_ever_listed 靠快照比对, 数据源一次 sync 失败就误标退市
-        #       (2026-05-26 发现 573 只活跃股被误标 is_active=0)
-        # 正确逻辑: K 线最近 60 个交易日无数据 = 真退市/长期停牌
+    sql = f"SELECT stock_code, stock_name FROM dim_active_a_stock WHERE SUBSTR(stock_code, 1, 2) IN ({prefixes_csv})"
+    rows = conn.execute(sql).fetchall()
+
+    stocks = set()
+    for code, name in rows:
+        if not include_st and name and (name.startswith("ST") or name.startswith("*ST")):
+            continue
+        stocks.add(code)
+
+    import duckdb
+    from pathlib import Path
+    mkt = market_conn
+    should_close = False
+    if mkt is None:
+        market_db = Path(__file__).resolve().parents[2] / "data" / "market.duckdb"
+        if market_db.exists():
+            mkt = duckdb.connect(str(market_db), read_only=True)
+            should_close = True
+    if mkt is not None:
         try:
-            import duckdb
-            from pathlib import Path
-            mkt = market_conn
-            should_close = False
-            if mkt is None:
-                market_db = Path(__file__).resolve().parents[2] / "data" / "market.duckdb"
-                if market_db.exists():
-                    mkt = duckdb.connect(str(market_db), read_only=True)
-                    should_close = True
-            if mkt is not None:
-                try:
-                    recent_traded = {r[0] for r in mkt.execute(
-                        "SELECT DISTINCT code FROM price_kline_tdxhub "
-                        "WHERE freq='daily' AND CAST(date AS DATE) >= CURRENT_DATE - INTERVAL '90 days'"
-                    ).fetchall()}
-                finally:
-                    if should_close:
-                        mkt.close()
-                if recent_traded:
-                    truly_delisted = stocks - recent_traded
-                    stocks -= truly_delisted
-        except Exception as e:
-            import logging
-            logging.getLogger(__name__).warning(
-                "K-line based delisting check failed (%s) — filter not applied", e
-            )
+            recent_traded = {r[0] for r in mkt.execute(
+                "SELECT DISTINCT code FROM price_kline_tdxhub "
+                "WHERE freq='daily' AND CAST(date AS DATE) >= CURRENT_DATE - INTERVAL '90 days'"
+            ).fetchall()}
+        finally:
+            if should_close:
+                mkt.close()
+        if recent_traded:
+            stocks &= recent_traded
     return stocks
 
 
-def get_limit_up_pct(stock_code: str) -> float:
-    """按板块返回涨停幅度. 主板 10%, 创业板/科创板 20%.
+_LIMIT_PCT_MAP = _UNIVERSE_CFG.get("limit_up_pct", {"60": 0.10, "00": 0.10, "30": 0.20, "68": 0.20})
 
-    来源: dim_price_limit_rules + dim_market_segment.
-    """
-    if not stock_code or len(stock_code) < 3:
+
+def get_limit_up_pct(stock_code: str) -> float:
+    """按板块返回涨停幅度. 从 universe_rules.yaml 读取."""
+    if not stock_code or len(stock_code) < 2:
         return 0.10
-    prefix3 = stock_code[:3]
-    # rule-compliance: ok evidence=dim_price_limit_rules + dim_market_segment 2020-08-24 起
-    if prefix3 in ("300", "301"):
-        return 0.20  # 创业板
-    if prefix3 == "688":
-        return 0.20  # 科创板
-    return 0.10  # 沪深主板 (60x/00x/001/002)
+    prefix = stock_code[:2]
+    return float(_LIMIT_PCT_MAP.get(prefix, 0.10))
 
 
 def build_limit_up_pct_map(stock_codes) -> dict[str, float]:
