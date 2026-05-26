@@ -455,9 +455,10 @@ Layer 3: portfolio_pool.py — 股票池 max 5
 
 #### P1: 前端问题
 
-- 公式视图 (`/api/v3/formulas`) 返回 0 个公式 — 没接 bc_absorbed formula_engine
-- 更新按钮在前端页面没看到 — 需检查 UI
+- 公式视图 (formula-view, `/api/v3/formulas`) 返回 0 个公式 — 没接 bc_absorbed formula_engine, 需加 API 返回 58 个公式定义
+- 更新按钮在前端页面没看到 — 需检查 v3-page-formula-view.jsx UI
 - 前端增量更新需求: 更新/计算完后缓存结果, 打开页面显示最后一次结果不每次重算
+- 买入价应用 T+1 VWAP (= (open+high+low+close)/4), 含交易成本 10.4 bps (from paper_sim_config.yaml)
 - **需求记录**: [[project-frontend-incremental-update]]
 
 #### P1: GCP 全量重跑
