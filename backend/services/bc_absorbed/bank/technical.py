@@ -125,10 +125,11 @@ def macd_divergence_bottom(close: np.ndarray, *, lookback: int = 20, **params: A
         window_macd = macd[i - lookback:i + 1]
         price_low_idx = int(np.argmin(window_close))
         macd_low_idx = int(np.argmin(window_macd))
-        # current is lower low in price but MACD already turned up from earlier low
-        if price_low_idx == lookback and macd_low_idx < lookback - 3:
-            if close[i] < close[i - lookback + price_low_idx] and macd[i] > macd[i - lookback + macd_low_idx]:
-                entry[i] = True
+        # current is near-low in price but MACD already turned up from earlier low
+        prior_price_low = np.min(window_close[:lookback])
+        prior_macd_low = np.min(window_macd[:lookback])
+        if close[i] <= prior_price_low and macd[i] > prior_macd_low:
+            entry[i] = True
     return entry, {"name": "macd_divergence_bottom", "lookback": lookback, "entry_count": int(entry.sum())}
 
 

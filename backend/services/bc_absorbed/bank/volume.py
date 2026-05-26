@@ -37,8 +37,11 @@ def mfi_oversold_bounce(close: np.ndarray, high: np.ndarray, low: np.ndarray,
     """MFI(14) crosses up through threshold (default 20 = oversold)."""
     tp = (high + low + close) / 3
     mf = tp * volume
-    pos_flow = np.where(tp > np.roll(tp, 1), mf, 0)
-    neg_flow = np.where(tp < np.roll(tp, 1), mf, 0)
+    prev_tp = np.empty_like(tp)
+    prev_tp[0] = tp[0]
+    prev_tp[1:] = tp[:-1]
+    pos_flow = np.where(tp > prev_tp, mf, 0)
+    neg_flow = np.where(tp < prev_tp, mf, 0)
     pos_sum = pd.Series(pos_flow).rolling(period).sum().values
     neg_sum = pd.Series(neg_flow).rolling(period).sum().values
     mfr = np.where(neg_sum > 0, pos_sum / neg_sum, 100)

@@ -22,12 +22,18 @@ import pandas as pd
 
 
 def _resample_close(close: np.ndarray, factor: int) -> np.ndarray:
-    """Resample daily close to factor-day bar close (last close of each window)."""
+    """Resample daily close to factor-day bar close (PIT safe: use previous window's close).
+
+    Each bar uses the PREVIOUS completed window's close, not the current window's.
+    This avoids future data leakage where intra-window days see end-of-window close.
+    """
     n = len(close)
     out = []
+    prev_close = close[0] if n > 0 else 0.0
     for i in range(0, n, factor):
         end = min(i + factor, n)
-        out.append(close[end - 1])
+        out.append(prev_close)
+        prev_close = close[end - 1]
     return np.array(out)
 
 

@@ -175,6 +175,132 @@ def _suggest_params(formula_id: str, trial: optuna.Trial) -> dict[str, Any]:
             "breakout_max_extension": trial.suggest_float("breakout_max_extension", 1.05, 1.12, step=0.01),
             "signal_cooldown_days": trial.suggest_int("signal_cooldown_days", 8, 18),
         }
+    if formula_id == "rsi_oversold_bounce":
+        return {
+            "threshold": trial.suggest_float("threshold", 20.0, 40.0, step=1.0),
+        }
+    if formula_id == "bollinger_squeeze_breakout":
+        return {
+            "period": trial.suggest_int("period", 10, 30),
+            "std_mult": trial.suggest_float("std_mult", 1.2, 2.8, step=0.1),
+            "squeeze_threshold": trial.suggest_float("squeeze_threshold", 0.025, 0.075, step=0.005),
+        }
+    if formula_id == "kdj_golden_cross":
+        return {
+            "k_period": trial.suggest_int("k_period", 5, 14),
+        }
+    if formula_id == "atr_breakout":
+        return {
+            "period": trial.suggest_int("period", 10, 30),
+            "atr_mult": trial.suggest_float("atr_mult", 0.25, 0.75, step=0.05),
+        }
+    if formula_id == "macd_divergence_bottom":
+        return {
+            "lookback": trial.suggest_int("lookback", 10, 30),
+        }
+    if formula_id == "cup_and_handle":
+        return {
+            "cup_period": trial.suggest_int("cup_period", 30, 90),
+            "handle_period": trial.suggest_int("handle_period", 8, 23),
+            "tolerance": trial.suggest_float("tolerance", 0.015, 0.045, step=0.005),
+        }
+    if formula_id == "double_bottom_w":
+        return {
+            "period": trial.suggest_int("period", 15, 45),
+            "tolerance": trial.suggest_float("tolerance", 0.01, 0.03, step=0.002),
+        }
+    if formula_id == "ascending_triangle":
+        return {
+            "period": trial.suggest_int("period", 15, 45),
+        }
+    if formula_id == "bull_flag_continuation":
+        return {
+            "flagpole_period": trial.suggest_int("flagpole_period", 5, 15),
+            "flag_period": trial.suggest_int("flag_period", 4, 12),
+            "pole_min_pct": trial.suggest_float("pole_min_pct", 0.05, 0.15, step=0.01),
+        }
+    if formula_id == "rounded_bottom":
+        return {
+            "period": trial.suggest_int("period", 30, 90),
+        }
+    if formula_id == "inverse_head_shoulders":
+        return {
+            "period": trial.suggest_int("period", 20, 60),
+        }
+    if formula_id == "box_breakout":
+        return {
+            "period": trial.suggest_int("period", 10, 30),
+            "range_tolerance": trial.suggest_float("range_tolerance", 0.025, 0.075, step=0.005),
+        }
+    if formula_id == "obv_breakout":
+        return {
+            "lookback": trial.suggest_int("lookback", 10, 30),
+        }
+    if formula_id == "mfi_oversold_bounce":
+        return {
+            "period": trial.suggest_int("period", 7, 21),
+            "threshold": trial.suggest_float("threshold", 10.0, 30.0, step=1.0),
+        }
+    if formula_id == "volume_spike":
+        return {
+            "period": trial.suggest_int("period", 10, 30),
+            "spike_mult": trial.suggest_float("spike_mult", 1.5, 4.5, step=0.25),
+        }
+    if formula_id == "vwap_cross_up":
+        return {
+            "period": trial.suggest_int("period", 10, 30),
+        }
+    if formula_id == "ad_line_uptrend":
+        return {
+            "period": trial.suggest_int("period", 5, 15),
+        }
+    if formula_id == "chaikin_money_flow":
+        return {
+            "period": trial.suggest_int("period", 11, 32),
+            "threshold": trial.suggest_float("threshold", 0.075, 0.225, step=0.005),
+        }
+    if formula_id == "vpt_divergence_bullish":
+        return {
+            "period": trial.suggest_int("period", 7, 21),
+        }
+    if formula_id == "weekly_higher_low_daily_break":
+        return {
+            "lookback": trial.suggest_int("lookback", 3, 8),
+        }
+    if formula_id == "weekly_breakout_daily_confirm":
+        return {
+            "weekly_window": trial.suggest_int("weekly_window", 10, 30),
+        }
+    if formula_id == "weekly_dragon_daily_pullback":
+        return {
+            "weekly_streak": trial.suggest_int("weekly_streak", 2, 5),
+        }
+    if formula_id == "pullback_doji":
+        pullback_min_days = trial.suggest_int("pullback_min_days", 2, 5)
+        pullback_max_days = trial.suggest_int("pullback_max_days", 3, 8)
+        if pullback_max_days < pullback_min_days:
+            pullback_max_days = pullback_min_days
+        return {
+            "limit_up_pct": trial.suggest_float("limit_up_pct", 0.07, 0.15, step=0.01),
+            "breakout_limit_ratio": trial.suggest_float("breakout_limit_ratio", 0.45, 0.95, step=0.05),
+            "breakout_vol_ratio": trial.suggest_float("breakout_vol_ratio", 0.8, 2.3, step=0.1),
+            "pullback_min_days": pullback_min_days,
+            "pullback_max_days": pullback_max_days,
+            "pullback_vol_shrink": trial.suggest_float("pullback_vol_shrink", 0.45, 0.95, step=0.05),
+            "doji_body_ratio_max": trial.suggest_float("doji_body_ratio_max", 0.15, 0.45, step=0.05),
+            "doji_range_min": trial.suggest_float("doji_range_min", 0.0025, 0.0075, step=0.0005),
+            "buy_offset": trial.suggest_int("buy_offset", 0, 2),
+            "signal_cooldown_days": trial.suggest_int("signal_cooldown_days", 0, 10),
+        }
+    if formula_id in {
+        "macd_golden_cross_above_zero",
+        "macd_zero_axis_bullish",
+        "weekly_macd_daily_macd_bull",
+        "monthly_uptrend_daily_pullback_buy",
+        "multi_tf_rsi_alignment",
+        "monthly_stage2_daily_volume_confirm",
+    }:
+        return {}
     return {}
 
 
