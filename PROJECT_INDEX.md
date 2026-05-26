@@ -15,6 +15,7 @@
 - **49 bank 函数接入**: `compute_formula_signals()` 通过 `_call_bank_formula` 适配器支持全部 49 个 bank 函数 (7 类 × 7: technical/pattern/volume/multi_tf/event/sector/sentiment). 自动 inspect 签名匹配 OHLCV 参数.
 - **交易成本统一**: `backtest_preflight.get_default_tx_cost_bps()` 从 `paper_sim_config.yaml` 自动计算 (佣金+印花税+过户费+规费+滑点 = 10.4 bps), 删除各处硬编码 15 bps. 一字涨跌停处理复用 `bestchoice/execution_model.py`.
 - **Leakage 检测强化**: 删除声明式 `has_future_filter`/`verified_used_as_entry` 参数, 改为: (1) walk_forward_mode 必填不传=FAIL (2) signal PIT spot-check 自动截断未来数据验证信号存活 (3) formula_id+sample_stock 必传. 6 核心公式 PIT spot-check 全部 PASS.
+- **四层分层架构 5 新模块**: Layer 0 `stock_profiler.py` (股票画像) / Layer 2 `signal_ranker.py` (共振评分) / Layer 3 `portfolio_pool.py` (股票池 max 5) / `daily_formula_picks.py` (每日选股) / `paper_sim_formula.yaml` (配置). 300616 端到端验证四层全部打通.
 - **Tech Debt 登记**: `assets/js/app.js` 80 HIGH complexity (全项目唯一 HIGH 集中文件), 排 Phase 3 后清理.
 
 ## [INDEX] 2026-05-21 增量
