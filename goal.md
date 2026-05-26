@@ -499,6 +499,12 @@ Layer 3: portfolio_pool.py — 股票池 max 5
 - LHB executescript bug → 已修, raw 更新 484 条到 05-26
 - LHB fact_lhb_event → 已重建 53905 行
 - dim_active_a_stock → 已刷新到 05-26
+- dim_all_ever_listed 573 只误标退市 → 已修 (K 线替代快照判定)
+- universe 规则配置化 → `backend/config/universe_rules.yaml`
+- **待修**: Codex 发现 6 处 bypass `get_active_universe` 直接 JOIN dim_active_a_stock
+  (screening_engine / bc_absorbed/compute / build_signal_context / build_ensemble)
+- **待修**: feature_join_v5 ST 检查用当前 name 非 PIT 安全
+- **待修**: monitor_v7_forward 仍用 dim_all_ever_listed.is_active=0
 - Executive trade → 已重建 68661 行到 05-27
 - Industry → 已刷新到 05-26
 - Stage/Quality/Archetype → build_picture_daily 已跑 (dim_stock_stage_days + mart_stock_picture_daily 到 05-26)
