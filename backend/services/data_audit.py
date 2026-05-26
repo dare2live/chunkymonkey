@@ -22,6 +22,11 @@ REPORT_PATH = ROOT / "data" / "reports" / "data_audit_latest.json"
 SMART_DB_PATH = ROOT / "data" / "smartmoney.duckdb"
 MARKET_DB_PATH = ROOT / "data" / "market.duckdb"
 KLINE_MIN_START = "2022-01-01"
+
+AUDIT_RULES = [
+    "kline_completeness", "kline_consistency", "board_coverage",
+    "date_range", "volume_sanity", "smartmoney_freshness", "cross_table_consistency",
+]
 SMART_MONEY_FRESHNESS_TABLES = (
     ("fact_risk_factors", "calc_date"),
     ("fact_sector_momentum_daily", "date"),
