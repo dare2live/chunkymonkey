@@ -354,6 +354,16 @@ def gs_pullback_confirm_signals(
     return {"entry": entry, "exit": gss, "indicators": {**core, "rate": rate, "sellpct": sellpct}}
 
 
+def _load_formula_yaml(name: str) -> dict[str, Any]:
+    import yaml
+    from pathlib import Path
+    cfg_path = Path(__file__).resolve().parent.parent.parent / "config" / f"formula_{name}.yaml"
+    if cfg_path.exists():
+        with open(cfg_path) as f:
+            return yaml.safe_load(f) or {}
+    return {}
+
+
 def ma_base_breakout_signals(
     open_: np.ndarray,
     high: np.ndarray,
@@ -365,9 +375,14 @@ def ma_base_breakout_signals(
 ) -> dict[str, Any]:
     del open_, high, low, volume, amount
     params = params or {}
-    short = int(params.get("short_ma", 5))
-    mid = int(params.get("mid_ma", 90))
-    long = int(params.get("long_ma", 145))
+    ycfg = _load_formula_yaml("ma_base_breakout")
+    ma_cfg = ycfg.get("ma", {})
+    base_cfg = ycfg.get("base", {})
+    brk_cfg = ycfg.get("breakout", {})
+    price_cfg = ycfg.get("price", {})
+    short = int(params.get("short_ma", ma_cfg.get("short", 5)))
+    mid = int(params.get("mid_ma", ma_cfg.get("mid", 90)))
+    long = int(params.get("long_ma", ma_cfg.get("long", 145)))
     ma_s = _ma(close, short)
     ma_m = _ma(close, mid)
     ma_l = _ma(close, long)
@@ -379,7 +394,7 @@ def ma_base_breakout_signals(
     ls = _barslast(ma_s >= ma_m)
     cross_l = _cross(close, ma_l)
     b145 = _barslast(cross_l)
-    rising = _rolling_sum_bool(ma_s > _ref(ma_s, 1), int(params.get("ma5_rising_count_window", 10)))
+    rising = _rolling_sum_bool(ma_s > _ref(ma_s, 1), int(params.get("ma5_rising_count_window", base_cfg.get("ma5_rising_count_window", 10))))
     since_break_count_below = np.zeros(len(close), dtype=np.float64)
     since_break_count_above = np.zeros(len(close), dtype=np.float64)
     for i in range(len(close)):
@@ -392,12 +407,12 @@ def ma_base_breakout_signals(
             since_break_count_below[i] = np.sum(close[start : i + 1] < ma_l[start : i + 1])
             since_break_count_above[i] = np.sum(close[start : i + 1] > ma_l[start : i + 1])
 
-    tj1 = (ls >= int(params.get("below_days_min", 45))) & (ma_s < ma_m)
-    tj2 = rising >= int(params.get("ma5_rising_min", 7))
-    tj3 = (_rolling_sum_bool(cross_l, int(params.get("breakout_lookback", 11))) >= 1) & (b145 <= int(params.get("breakout_recent_days", 10))) & (close > ma_l)
+    tj1 = (ls >= int(params.get("below_days_min", base_cfg.get("below_days_min", 45)))) & (ma_s < ma_m)
+    tj2 = rising >= int(params.get("ma5_rising_min", base_cfg.get("ma5_rising_min", 7)))
+    tj3 = (_rolling_sum_bool(cross_l, int(params.get("breakout_lookback", brk_cfg.get("breakout_lookback", 11)))) >= 1) & (b145 <= int(params.get("breakout_recent_days", brk_cfg.get("breakout_recent_days", 10)))) & (close > ma_l)
     tj4 = since_break_count_below == 0
     tj5 = _rolling_sum_bool(close > ma_l, 45) == (b145 + 1)
-    tj6 = (close <= top * float(params.get("price_top_buffer", 1.06))) & (close <= ma_l * float(params.get("price_long_ma_buffer", 1.10)))
+    tj6 = (close <= top * float(params.get("price_top_buffer", price_cfg.get("price_top_buffer", 1.06)))) & (close <= ma_l * float(params.get("price_long_ma_buffer", price_cfg.get("price_long_ma_buffer", 1.10))))
     tj7 = _rolling_sum_bool(_cross(ma_m, ma_l) | _cross(ma_l, ma_m), 45) == 0
     entry = tj1 & tj2 & tj3 & tj4 & tj5 & tj6 & tj7
     return {"entry": entry, "exit": close < ma_l, "indicators": {"ma_short": ma_s, "ma_mid": ma_m, "ma_long": ma_l}}
@@ -414,6 +429,11 @@ def activity_breakout_signals(
 ) -> dict[str, Any]:
     del volume, amount
     params = params or {}
+    ycfg = _load_formula_yaml("activity_breakout")
+    bull_cfg = ycfg.get("bull_line", {})
+    ret_cfg = ycfg.get("return_filter", {})
+    sig_cfg = ycfg.get("signal", {})
+    limit_cfg = ycfg.get("limit_adapt", {})
     x1 = np.where(close <= open_, close, open_)
     x2 = _safe_div(x1 - low, low) * 100.0
     x3 = _safe_div(close - _ref(close, 1, close[0] if len(close) else 0.0), _ref(close, 1, close[0] if len(close) else 1.0)) * 100.0
@@ -424,14 +444,23 @@ def activity_breakout_signals(
     x12 = x7 + x2
     x10 = x5 + x7
     x11 = x5 + x2
-    x15 = np.maximum.reduce([x12, x3, x11, x10, x2, x7, x4]) * float(params.get("x15_multiplier", 1.2))
-    big = np.full(len(close), float(params.get("big_bull_line", params.get("大牛线", 6.0))), dtype=np.float64)
+    x15 = np.maximum.reduce([x12, x3, x11, x10, x2, x7, x4]) * float(params.get("x15_multiplier", bull_cfg.get("x15_multiplier", 1.2)))
+    base_bull = float(params.get("big_bull_line", params.get("大牛线", bull_cfg.get("big_bull_line", 6.0))))
+    limit_pct = float(params.get("limit_up_pct", 0.0))
+    if limit_pct > 0 and limit_cfg.get("enabled", False):
+        base_limit = float(limit_cfg.get("base_limit_pct", 0.10))
+        base_bull = base_bull * (limit_pct / base_limit) if base_limit > 0 else base_bull
+    big = np.full(len(close), base_bull, dtype=np.float64)
     raw_entry = _cross(x15, big)
     prev_close = _ref(close, 1, close[0] if len(close) else 1.0)
     close_ret = _safe_div(close - prev_close, prev_close) * 100.0
-    entry = raw_entry & (close_ret >= float(params.get("min_close_ret", -100.0))) & (close_ret <= float(params.get("max_close_ret", 100.0)))
-    entry = _apply_cooldown(entry, int(params.get("signal_cooldown_days", 0)))
-    return {"entry": entry, "exit": x15 < float(params.get("strong_line", 3.0)), "indicators": {"x15": x15}}
+    entry = raw_entry & (close_ret >= float(params.get("min_close_ret", ret_cfg.get("min_close_ret", -100.0)))) & (close_ret <= float(params.get("max_close_ret", ret_cfg.get("max_close_ret", 100.0))))
+    entry = _apply_cooldown(entry, int(params.get("signal_cooldown_days", sig_cfg.get("signal_cooldown_days", 0))))
+    base_strong = float(params.get("strong_line", bull_cfg.get("strong_line", 3.0)))
+    if limit_pct > 0 and limit_cfg.get("enabled", False):
+        base_limit = float(limit_cfg.get("base_limit_pct", 0.10))
+        base_strong = base_strong * (limit_pct / base_limit) if base_limit > 0 else base_strong
+    return {"entry": entry, "exit": x15 < base_strong, "indicators": {"x15": x15}}
 
 
 def volume_base_breakout_signals(

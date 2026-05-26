@@ -11,7 +11,7 @@
 ## [INDEX] 2026-05-26 增量
 
 - **公式工厂整改 Phase 1 完成**: GS 系列 (gs_raw_buy + gs_pullback_confirm) 接入 `backtest_preflight` 7 维审计 gate + YAML 配置化 (`backend/config/formula_gs.yaml`). `formula_parameter_search.py` 改用 `get_active_universe` 替代 fragile ATTACH+JOIN fallback. 7/7 全量 universe (4562 stocks) preflight PASS.
-- **新增配置**: `backend/config/formula_gs.yaml` — GS 公式参数 (core MA 窗口/迭代次数/回调确认层阈值/回测成本).
+- **新增配置**: `backend/config/formula_gs.yaml` — GS 公式参数; `formula_ma_base_breakout.yaml` — 均线筑底参数; `formula_activity_breakout.yaml` — 活跃度大牛参数 (含板块涨停适配开关).
 - **Tech Debt 登记**: `assets/js/app.js` 80 HIGH complexity (全项目唯一 HIGH 集中文件), 排 Phase 3 后清理.
 
 ## [INDEX] 2026-05-21 增量
