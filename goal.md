@@ -501,6 +501,74 @@ Layer 3: portfolio_pool.py — 股票池 max 5
 - dim_active_a_stock → 已刷新到 05-26
 - dim_all_ever_listed 573 只误标退市 → 已修 (K 线替代快照判定)
 - universe 规则配置化 → `backend/config/universe_rules.yaml`
+### 架构重构: 基础设施分层 (第一性原理 + 奥卡姆剃刀)
+
+> 用户原话: "全局都要做成模块 数据表 配置文件 这样的架构, 这些都是基础设施"
+> "交易所数据源更新跟交易日历一起作为基础设施强制执行"
+> "各种判断逻辑也做成工具, 模块化 数据化 配置文件化 管理"
+
+**第一性原理: 7 个判断, 每个只有 1 个真相源**
+
+| 判断 | 真相源 | 查什么 | 现在的冗余 |
+|---|---|---|---|
+| 在交易吗? | K 线有数据 | price_kline_tdxhub | dim_all_ever_listed (已废) |
+| 什么板块? | 代码前缀 | stock_code[:2] | dim_market_segment (没人用) |
+| 涨跌停? | 交易所规则 | universe_rules.yaml | get_limit_up_pct 重复 |
+| 是 ST? | 股票名字 | dim_active_a_stock.stock_name | 10+ 处各自 LIKE |
+| 交易日? | 交易日历 | services/calendar.py | OK |
+| 叫什么名? | 交易所 | dim_active_a_stock | OK (但被当 universe 用) |
+| 交易成本? | 券商费率 | paper_sim_config.yaml | OK |
+
+**奥卡姆剃刀: 能删的删**
+
+| 对象 | 判定 | 原因 |
+|---|---|---|
+| dim_all_ever_listed 依赖 | 删 | K 线替代, 已改 |
+| dim_market_segment 表 | 删 | code[:2] 直接判断 |
+| dim_price_limit_rules 表 | 删 | YAML 已有 |
+| get_limit_up_pct (universe.py) | 删 | filters.py 有 get_limit_pct |
+| 16 个 paper_sim_*.yaml | 合并 | 变体用参数区分不用多文件 |
+
+**目标架构 (模块 + 数据表 + 配置)**:
+
+```
+Layer 0: 基础设施 (不依赖任何业务层)
+  config/universe_rules.yaml    — 板块前缀 + ST 模式 + 涨跌停 + 退市天数
+  config/paper_sim_config.yaml  — 交易成本 + 持仓规则
+  services/calendar.py          — 交易日历 (已有, OK)
+  services/universe.py          — get_active_universe (K线∩前缀∩非ST, 简化版)
+  services/trading_config/      — 涨跌停 / 停牌 / 一字板 (统一入口)
+  dim_active_a_stock            — 仅 code→name 映射, 不参与判断
+  price_kline_tdxhub            — 交易真相源
+  data_audit.py                 — 数据完整性审计 (sync 后自动跑)
+
+Layer 1: 公式引擎 (依赖 Layer 0)
+  bc_absorbed/formula_engine.py — 59 公式统一调度
+  bc_absorbed/bank/             — 49 bank 公式
+  bc_absorbed/derived_formulas.py — 300616 衍生公式
+
+Layer 2: 信号处理 (依赖 Layer 1)
+  bc_absorbed/signal_ranker.py  — 共振评分
+  bc_absorbed/stock_profiler.py — 股票画像
+  bc_absorbed/smartmoney_adapter.py — SmartMoney 数据喂公式
+
+Layer 3: 策略执行 (依赖 Layer 2)
+  bc_absorbed/portfolio_pool.py — 股票池 max 5
+  paper_sim/                    — 回测模拟
+  execution_model.py            — 交易执行 (涨跌停/延迟)
+
+Layer 4: 展示 (依赖 Layer 3)
+  routers/                      — API
+  v3/                           — 前端
+```
+
+**实施优先级**:
+1. 删 get_limit_up_pct 重复 → 统一 filters.py (10 分钟)
+2. 删 dim_all_ever_listed 剩余引用 (data_audit + monitor) (30 分钟)
+3. ST 检查统一入口 → universe.py is_st() 一处实现 (1 小时)
+4. paper_sim YAML 合并 (1 小时)
+5. God module 拆分 (updater 5136 行) (大工程, 单独排)
+
 - **待简化**: get_active_universe + dim_active_a_stock 整套可删 — K 线就是 universe
   第一性原理: K 线有数据 = 能交易, 不需要预筛"活跃列表"
   ST 在公式层面处理 (get_limit_up_pct), 不需要 universe 层排除
