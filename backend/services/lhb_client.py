@@ -31,7 +31,7 @@ LHB_SOURCE = "miaoxiang_RPT_DAILYBILLBOARD_DETAILSNEW"
 # ─────────────────────────────────────────────────────────────────────
 
 def ensure_tables(conn: Any) -> None:
-    conn.executescript("""
+    conn.execute("""
         CREATE TABLE IF NOT EXISTS raw_lhb_daily (
             trade_date       TEXT NOT NULL,
             stock_code       TEXT NOT NULL,
@@ -56,11 +56,10 @@ def ensure_tables(conn: Any) -> None:
             source           TEXT,
             ingested_at      TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             PRIMARY KEY (trade_date, stock_code, rank_reason)
-        );
-        CREATE INDEX IF NOT EXISTS idx_rlhb_stock ON raw_lhb_daily(stock_code);
-        CREATE INDEX IF NOT EXISTS idx_rlhb_trade ON raw_lhb_daily(trade_date);
+        )
     """)
-    conn.commit()
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_rlhb_stock ON raw_lhb_daily(stock_code)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_rlhb_trade ON raw_lhb_daily(trade_date)")
 
 
 # ─────────────────────────────────────────────────────────────────────
