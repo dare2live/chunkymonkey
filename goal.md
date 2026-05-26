@@ -420,6 +420,18 @@ Layer 3: portfolio_pool.py — 股票池 max 5
 - gs_raw_buy + obv_breakout 在 W1 (12-28) 和 W3 (04-21) 的理想买入日都命中
 - 250 日价格位置低 (< 0.30) + 低于 MA120 = 底部特征
 
+**W1 理想买入日精确 K 线 (2022-12-28, 首涨前 1 天)**:
+- close=20.65, ret=+2.1%, vol/MA60=1.1x, vol/MA20=1.3x, body=0.35, below MA120
+- pos250=0.10 (极低位), 30日年化波动下降
+
+**W3 理想买入日精确 K 线 (2026-04-21, 首涨前 1 天)**:
+- close=12.48, ret=+1.6%, vol/MA60=1.1x, vol/MA20=1.4x, body=0.68, below MA120
+- pos250=0.24 (低位), 量从 0.6x 开始回升
+
+**上帝视角 (未来函数) 300616 全量**: 35 笔交易, 累计 +21265%, 平均 +16%/笔.
+每笔 T 时刻共同特征: 大部分 below MA120, ret_5d 为负, pos250 < 0.30, gs_raw_buy 全未命中.
+参见代码: `derived_formulas.py` 中 `god_view_signals()` 函数.
+
 #### P0: Bank 49 公式整理 (Codex 评估完成)
 
 | 分类 | KEEP | REWORK | DROP | 说明 |
@@ -434,6 +446,22 @@ Layer 3: portfolio_pool.py — 股票池 max 5
 | **Total** | **11** | **25** | **13** | |
 
 **决策**: 不删, 灌数据让它们跑起来. REWORK 的补参数, DROP 的等数据积累后启用.
+
+**完整公式体系**: 通达信 5 + 十字星 1 + 衍生 4 + bank 49 = **59 个公式**
+- 当前能跑: 34 (OHLCV) + 10 (SmartMoney adapter 已接通) = 44 个
+- 暂不能跑: 11 个 (perception 太短 + 无数据源 + 北向单日) + 4 个衍生 (待优化)
+
+**SmartMoney adapter 8 loader 对应**:
+| 公式参数 | adapter loader | 数据源 |
+|---|---|---|
+| lhb_inst_seats | `_load_lhb` | fact_lhb_event (53K, T+2) |
+| insider_buy_count | `_load_exec_trade` | fact_executive_trade_event (68K, T+1) |
+| hsgt_net | `_load_hsgt` | fact_hsgt_daily (2.7K, 单日) |
+| ex_dividend_flag | `_load_dividend` | raw_capital_dividend_detail (12K) |
+| sector_ret | `_load_sector_momentum` | v_stock_sector_momentum_daily (4.5M) |
+| diffusion_score | `_load_perception_leader_follower` | perception LF (910, 短) |
+| context_score | `_load_perception_stock_context` | perception ctx (702, 短) |
+| under_reaction_score | `_load_perception_under_reaction` | perception UR (702, 短) |
 
 #### P1: 数据 sync 修复
 
@@ -476,6 +504,18 @@ Layer 3: portfolio_pool.py — 股票池 max 5
 **之前踩的坑**: 29/34 无 search space 白跑 + 200 只全深主板抽样偏差 + pullback_doji limit_up_pct 板块错
 
 **执行**: 需先 `/grill-with-docs` → grill_stamp → preflight_gcp_launch.sh 7/7 PASS → 启动
+
+**GCP 历次跑批结果**:
+- Wave A v1 (已作废): 200 只全深主板, 无 walk-forward, 29/34 无 search space
+  - 仅参考: gs_pullback_confirm 53.04 / ascending_triangle 49.23 / bull_flag 46.03
+- Wave A v2 (已作废): walk-forward + trial 分层, 但仍 200 只深主板
+  - 28/34 完成 0 失败, 但因抽样偏差结果不可用
+  - pullback_doji score=-999 (limit_up_pct 板块错, 已修)
+- **均已作废, 需全量 4541 stocks 重跑**
+
+**Codex wave_patterns.py**: Codex 写了 wave2_pullback_buy + wave3_rapid_doji 到
+`backend/services/labels/formulas/wave_patterns.py` (路径错, 已清理).
+代码逻辑已合并到 `derived_formulas.py`, 但参数需重新校准 (上帝视角方法).
 
 #### P2: 审计工具强化已完成
 
