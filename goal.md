@@ -569,6 +569,14 @@ Layer 4: 展示 (依赖 Layer 3)
 4. paper_sim YAML 合并 (1 小时)
 5. God module 拆分 (updater 5136 行) (大工程, 单独排)
 
+**执行进度 (2026-05-26)**:
+- Phase 0.2 LIMIT_THRESHOLD YAML: DONE (`f924d06a`)
+- Phase 0.3 tx_cost config: DONE
+- Phase 0.1 get_limit_up_pct 重复: 等 Codex 签名桥接
+- Phase 1.1 ST 统一: 14 处, B 类 6 处 SQL 需重构 (compute.py 3 + ensemble 1 + feature_join 1 + monitor 1)
+- Phase 1.2 dim_active_a_stock 23 处: 等 Codex 分类
+- Phase 2-4: 待做
+
 **技术规范文档** (Codex 在写 `docs/technical_specification.md`, 需覆盖 15 个领域):
 1-10: 架构/模块管理/代码流程/数据管线/数据验证/回测/公式生命周期/配置/维护/扩展
 11. Handoff: goal.md 单一真相源, session_handoff_audit 工具, 记录标准
