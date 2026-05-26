@@ -281,7 +281,8 @@ def _suggest_params(formula_id: str, trial: optuna.Trial) -> dict[str, Any]:
         if pullback_max_days < pullback_min_days:
             pullback_max_days = pullback_min_days
         return {
-            "limit_up_pct": trial.suggest_float("limit_up_pct", 0.07, 0.15, step=0.01),
+            # limit_up_pct 不搜索 — 由公式内部按每只股票板块自动取 (get_limit_up_pct)
+            # 搜 breakout_limit_ratio 即可控制大涨阈值
             "breakout_limit_ratio": trial.suggest_float("breakout_limit_ratio", 0.45, 0.95, step=0.05),
             "breakout_vol_ratio": trial.suggest_float("breakout_vol_ratio", 0.8, 2.3, step=0.1),
             "pullback_min_days": pullback_min_days,

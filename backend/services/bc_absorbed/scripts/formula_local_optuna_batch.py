@@ -155,10 +155,14 @@ def _stock_head(stock: dict[str, Any], end_idx: int) -> dict[str, Any]:
 
 
 def _entries_for(formula_id: str, stock: dict[str, Any], params: dict[str, Any]) -> np.ndarray:
+    run_params = dict(params)
+    if formula_id == "pullback_doji" and "limit_up_pct" not in run_params:
+        from services.universe import get_limit_up_pct
+        run_params["limit_up_pct"] = get_limit_up_pct(stock.get("code", ""))
     r = compute_formula_signals(
         formula_id, open_=stock["open"], high=stock["high"],
         low=stock["low"], close=stock["close"], volume=stock["volume"],
-        amount=stock["amount"], params=params,
+        amount=stock["amount"], params=run_params,
     )
     return np.where(r["entry"])[0]
 
