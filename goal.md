@@ -278,15 +278,33 @@ Layer 3: 股票池 (portfolio_pool.py) — 独立模块, 独立调参
 
 **实施顺序**:
 
-| 步骤 | 任务 | 依赖 | ETA |
-|---|---|---|---|
-| S0 | Layer 0 股票画像模块 | 无 | 1 天 |
-| S1 | 55 公式 × 单股 300616 全量验证 | S0 | 0.5 天 |
-| S2 | Layer 1 各公式独立 Optuna (per-profile) | S0+S1 | 2 天本地 / GCP |
-| S3 | Layer 2 共振评分器骨架 + 300616 验证 | S2 | 1 天 |
-| S4 | Layer 3 股票池骨架 + 300616 验证 | S3 | 1 天 |
-| S5 | 全量 walk-forward 验证 (Optuna per layer) | S4 | GCP $2-3 |
-| S6 | Paper Sim 集成 + 每日选股 | S5 | 1 天 |
+**Wave A (OHLCV baseline, GCP 已启动 2026-05-26)**:
+
+| 步骤 | 任务 | 状态 |
+|---|---|---|
+| A0 | Layer 0-3 五模块骨架 | DONE (stock_profiler/signal_ranker/portfolio_pool/daily_picks/config) |
+| A1 | 34 OHLCV 公式 × 100 trials GCP Optuna | RUNNING (gs_raw_buy 36.52 / gs_pullback_confirm 53.04 已完成, 余 32 个) |
+| A2 | Baseline 结果分析 + 公式排名 | blocked on A1 |
+
+**Wave B (SmartMoney 数据接入, A1 完成后)**:
+
+| 步骤 | 任务 | 依赖 | ETA | GCP |
+|---|---|---|---|---|
+| B1 | SmartMoney data adapter — 给 22 bank 公式喂外部数据 | A1 | 1 天 | $0 |
+| | 方案: 复用 `feature_join_v5.py` PIT-safe JOIN 模式, 从 smartmoney.duckdb 提取 per-stock-date 数组 | | | |
+| | 数据: LHB(5列) + 机构exec(5列) + sector_momentum(9列) + holder + risk_factors | | | |
+| B2 | 22 SmartMoney 公式 GCP Optuna | B1 | 0.5 天 | ~$0.8 |
+| | 需要 smartmoney.duckdb (29GB) 传到 VM 或从 GCS 拉 | | | |
+| B3 | Layer 0 画像扩展 (SmartMoney 维度) | B1 | 0.5 天 | $0 |
+| | 新增: archetype/quality/stage_days/industry_strength/attention/risk | | | |
+| B4 | Layer 2 共振 profile-aware Optuna | B2+B3 | 1 天 | ~$0.5 |
+| | stage 匹配 1.2x / quality 1.1x / risk 硬过滤 / attention 过热 0.8x | | | |
+| B5 | Layer 3 股票池组合优化 Optuna | B4 | 0.5 天 | ~$0.3 |
+| | max_k / score_threshold / 止盈止损参数 | | | |
+| B6 | 全 pipeline paper_sim + 每日选股 | B5 | 1 天 | $0 |
+
+**可并行**: B1 (adapter) 和 A1 结果分析可并行; B3 (画像) 可与 B2 (22 公式 GCP) 并行.
+**GCP 总成本**: Wave A ~$1.5 + Wave B ~$1.6 = ~$3.1, 预算 $37 充裕.
 
 每步产出独立可测试, 不依赖后续步骤. 每层参数独立 Optuna, 不混调.
 
