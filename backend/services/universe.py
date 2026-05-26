@@ -88,6 +88,7 @@ def get_active_universe(
     *,
     include_st: bool = False,
     include_delisted: bool = False,
+    market_conn=None,
 ) -> set[str]:
     """Single source of truth for batch task universe.
 
@@ -111,17 +112,36 @@ def get_active_universe(
         sql += " AND stock_name NOT LIKE 'ST%' AND stock_name NOT LIKE '*ST%'"
     stocks = {r[0] for r in conn.execute(sql).fetchall()}
     if not include_delisted:
+        # 退市判定: 用 K 线实际交易记录, 不用 dim_all_ever_listed 快照
+        # 原因: dim_all_ever_listed 靠快照比对, 数据源一次 sync 失败就误标退市
+        #       (2026-05-26 发现 573 只活跃股被误标 is_active=0)
+        # 正确逻辑: K 线最近 60 个交易日无数据 = 真退市/长期停牌
         try:
-            delisted = {r[0] for r in conn.execute(
-                "SELECT stock_code FROM dim_all_ever_listed WHERE is_active = 0"
-            ).fetchall()}
-            stocks -= delisted
+            import duckdb
+            from pathlib import Path
+            mkt = market_conn
+            should_close = False
+            if mkt is None:
+                market_db = Path(__file__).resolve().parents[2] / "data" / "market.duckdb"
+                if market_db.exists():
+                    mkt = duckdb.connect(str(market_db), read_only=True)
+                    should_close = True
+            if mkt is not None:
+                try:
+                    recent_traded = {r[0] for r in mkt.execute(
+                        "SELECT DISTINCT code FROM price_kline_tdxhub "
+                        "WHERE freq='daily' AND CAST(date AS DATE) >= CURRENT_DATE - INTERVAL '90 days'"
+                    ).fetchall()}
+                finally:
+                    if should_close:
+                        mkt.close()
+                if recent_traded:
+                    truly_delisted = stocks - recent_traded
+                    stocks -= truly_delisted
         except Exception as e:
-            # rule-compliance: ok evidence=dim_all_ever_listed 缺时 fallback to current-active only
-            # not silent: 通过 stocks set 仍然返回 (caller 可 detect 已退市过滤未生效)
             import logging
             logging.getLogger(__name__).warning(
-                "dim_all_ever_listed lookup failed (%s) — 退市 filter not applied", e
+                "K-line based delisting check failed (%s) — filter not applied", e
             )
     return stocks
 

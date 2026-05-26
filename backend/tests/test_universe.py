@@ -68,10 +68,23 @@ def test_get_active_universe(tmp_path, monkeypatch):
     """)
     conn.execute("INSERT INTO dim_all_ever_listed VALUES ('600002', 0)")  # 600002 已退市
 
+    # 创建模拟 K 线表, 让退市检查用测试数据 (不依赖真实 market.duckdb)
+    conn.execute("CREATE TABLE price_kline_tdxhub (code VARCHAR, freq VARCHAR, date DATE)")
+    conn.execute("""
+        INSERT INTO price_kline_tdxhub VALUES
+            ('600001', 'daily', CURRENT_DATE),
+            ('000001', 'daily', CURRENT_DATE),
+            ('300001', 'daily', CURRENT_DATE),
+            ('688001', 'daily', CURRENT_DATE),
+            ('600003', 'daily', CURRENT_DATE),
+            ('600004', 'daily', CURRENT_DATE)
+    """)
+    # 600002 没有 K 线 = 真退市
+
     from services.universe import get_active_universe
-    universe = get_active_universe(conn)
+    universe = get_active_universe(conn, market_conn=conn)
     # Should keep: 600001, 000001, 300001, 688001 (4 normal stocks)
-    # Excludes: 600002 (delisted), 600003+600004 (ST/*ST names), 830001 (prefix)
+    # Excludes: 600002 (no recent K-line), 600003+600004 (ST/*ST names), 830001 (prefix)
     assert "600001" in universe
     assert "000001" in universe
     assert "300001" in universe
