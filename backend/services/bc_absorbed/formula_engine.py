@@ -50,20 +50,25 @@ FORMULA_DEFINITIONS: dict[str, FormulaDefinition] = {
         "回调十字星",
         "放量大涨后凌厉缩量回调收十字星，次日买入。按板块涨停阈值适配。",
     ),
-    "consolidation_breakout": FormulaDefinition(
-        "consolidation_breakout",
+    "wave1_base_breakout": FormulaDefinition(
+        "wave1_base_breakout",
         "底部首涨",
-        "长期横盘后MA突破+量扩+不追涨停。300616 W1/W3起涨点。",
+        "长期低位+量比从地量回升到1.1-1.4x+不追涨停。300616 W1(12-28)/W3(04-21)验证。",
     ),
-    "continuation": FormulaDefinition(
-        "continuation",
-        "主涨续涨",
-        "趋势确认(MA20/60上方)+量能持续+不过度延伸。300616 主涨段。",
+    "wave2_pullback_buy": FormulaDefinition(
+        "wave2_pullback_buy",
+        "回调再起",
+        "前高回撤15-25%+gain_retained>40%+量比恢复。300616 W2(05-09)验证。",
     ),
-    "pullback_doji_enhanced": FormulaDefinition(
-        "pullback_doji_enhanced",
-        "增强十字星",
-        "原始十字星+gain_retained(>50%)+pb_depth(<7%)过滤弱信号。",
+    "wave3_rapid_doji": FormulaDefinition(
+        "wave3_rapid_doji",
+        "急涨十字星",
+        "20日涨>20%+浅回调+十字星+缩量。300616 W3(05-18→05-19涨停)验证。",
+    ),
+    "full_rally_rider": FormulaDefinition(
+        "full_rally_rider",
+        "主升浪骑乘",
+        "底部入场+移动止盈10%持有整轮。300616 W3(04-20→05-20 +57%)验证。",
     ),
 }
 
@@ -693,7 +698,11 @@ def pullback_doji_signals(
     return {"entry": entry, "exit": exit_arr, "indicators": {"n_signals": len(sigs)}}
 
 
-from derived_formulas import consolidation_breakout_signals, continuation_signals, pullback_doji_enhanced_signals
+from derived_formulas import (
+    wave1_base_breakout_signals, wave2_pullback_buy_signals,
+    wave3_rapid_doji_signals, full_rally_rider_signals,
+    consolidation_breakout_signals, continuation_signals, pullback_doji_enhanced_signals,
+)
 
 _OHLCV_FORMULAS = {
     "gs_raw_buy": lambda o, h, l, c, v, a, p: gs_raw_buy_signals(o, h, l, c, p),
@@ -702,6 +711,10 @@ _OHLCV_FORMULAS = {
     "activity_breakout": lambda o, h, l, c, v, a, p: activity_breakout_signals(o, h, l, c, v, a, p),
     "volume_base_breakout": lambda o, h, l, c, v, a, p: volume_base_breakout_signals(o, h, l, c, v, a, p),
     "pullback_doji": lambda o, h, l, c, v, a, p: pullback_doji_signals(o, h, l, c, v, a, p),
+    "wave1_base_breakout": lambda o, h, l, c, v, a, p: wave1_base_breakout_signals(o, h, l, c, v, a, p),
+    "wave2_pullback_buy": lambda o, h, l, c, v, a, p: wave2_pullback_buy_signals(o, h, l, c, v, a, p),
+    "wave3_rapid_doji": lambda o, h, l, c, v, a, p: wave3_rapid_doji_signals(o, h, l, c, v, a, p),
+    "full_rally_rider": lambda o, h, l, c, v, a, p: full_rally_rider_signals(o, h, l, c, v, a, p),
     "consolidation_breakout": lambda o, h, l, c, v, a, p: consolidation_breakout_signals(o, h, l, c, v, a, p),
     "continuation": lambda o, h, l, c, v, a, p: continuation_signals(o, h, l, c, v, a, p),
     "pullback_doji_enhanced": lambda o, h, l, c, v, a, p: pullback_doji_enhanced_signals(o, h, l, c, v, a, p),
