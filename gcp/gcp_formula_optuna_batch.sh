@@ -45,7 +45,9 @@ echo "--- Step 0: Plan validation (enforce) ---"
 # 0a. plan_validator: search space + runnable + cost
 PYTHONPATH=bestchoice:backend:backend/services/bc_absorbed python3 -c "
 from plan_validator import enforce_optuna_plan
-formulas = '$CORE $TECHNICAL $PATTERN $VOLUME $MULTI_TF'.split()
+formulas = \"$CORE $TECHNICAL $PATTERN $VOLUME $MULTI_TF\".split()
+if not formulas or formulas == ['']:
+    raise RuntimeError('Empty formula list — shell variable expansion failed')
 enforce_optuna_plan(formulas=formulas, trials=$TRIALS, output_path='$GCS_ROOT/artifacts/')
 print('Plan validation PASS')
 " || {

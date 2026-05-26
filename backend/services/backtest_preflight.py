@@ -178,7 +178,7 @@ def _check_code_leakage() -> dict:
             stripped = line.strip()
             if stripped.startswith("#"):
                 continue
-            if condition_pattern.search(stripped):
+            if future_pattern.search(stripped) or condition_pattern.search(stripped):
                 violations.append(f"{py_file.name}:{lineno}: {stripped[:80]}")
     if violations:
         return {"name": "code_leakage_scan", "status": "FAIL",
@@ -236,8 +236,8 @@ def _check_signal_pit(
         return {"name": "signal_pit_spotcheck", "status": "PASS",
                 "detail": f"{formula_id}: signal idx={test_idx} survived truncation (no future dependency)"}
     except Exception as e:
-        return {"name": "signal_pit_spotcheck", "status": "PASS",
-                "detail": f"spot-check exception skipped: {type(e).__name__}: {e}"}
+        return {"name": "signal_pit_spotcheck", "status": "FAIL",
+                "detail": f"spot-check crashed (not PASS): {type(e).__name__}: {e}"}
 
 
 def run_backtest_preflight(

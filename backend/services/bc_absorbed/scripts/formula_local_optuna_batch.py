@@ -287,7 +287,7 @@ def run_formula_optuna(
         validation_m = _metrics(validation_trades)
         train_score = _score(train_m)
         validation_score = _score(validation_m) if validation_m else -999.0
-        if best_payload is None or train_score > best_payload.get("train_score", -999):
+        if best_payload is None or validation_score > best_payload.get("score", -999):
             best_payload = {
                 "params": params,
                 "score": validation_score,
