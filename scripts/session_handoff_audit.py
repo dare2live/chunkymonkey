@@ -216,11 +216,23 @@ def main() -> int:
     print(f"\n{'='*50}")
     print(f"总计: {len(topics)} 主题, {len(missing_topics)} 未覆盖, {len(undocumented)} 文件未提及")
 
+    # 7. 生成人工确认 checklist
+    print(f"\n[7] Handoff 人工确认 checklist (工具无法自动判断的):")
+    checklist = [
+        "每个未完成任务有具体的 next step (不只是标题)?",
+        "关键数字都记录了 (score / 行数 / 成本 / 日期)?",
+        "失败的尝试记录了原因 (不只是'不 work')?",
+        "用户的原话/指令有记录 (特别是方向性决策)?",
+        "下个 session 的 Claude 读了 handoff 能不问用户就接着干?",
+    ]
+    for i, item in enumerate(checklist, 1):
+        print(f"  [ ] {i}. {item}")
+
     if total_issues > 0:
-        print(f"\nHANDOFF INCOMPLETE — 补完再收工")
+        print(f"\nHANDOFF INCOMPLETE — 补完再收工 ({len(missing_topics)} 主题 + {len(undocumented)} 文件)")
         return 1
     else:
-        print(f"\nHANDOFF COMPLETE — 可以收工")
+        print(f"\nHANDOFF AUTO-CHECK PASS — 人工确认上述 checklist 后可收工")
         return 0
 
 

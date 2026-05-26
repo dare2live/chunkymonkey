@@ -27,6 +27,7 @@
 | 脚本改动 | daily_formula_picks.py (每日选股) / formula_parameter_search.py (universe+preflight) / optuna_pullback_doji.py (GCP 用) / exits.py (一字涨跌停, 传 GCP) |
 | Codex review | 4 findings 全修 (OOS 选参 / shell 展开 / code scan / PIT 异常) |
 | Skills 安装 | 8 个 mattpocock skills (grill/diagnose/tdd/to-issues/handoff 等) |
+| Handoff 审计工具 | scripts/session_handoff_audit.py — 自动扫 commits vs 文档 + 人工 checklist, Stop hook + SessionStart hook 双触发 |
 
 ## 待续
 
