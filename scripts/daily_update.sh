@@ -357,6 +357,21 @@ if [[ "$DRY" == "0" ]]; then
         >> "$LOG" 2>&1 || log "WARN: v4 panel rebuild 失败"
 
     log "panel incremental rebuild done"
+
+    # 3c. data_audit — 宪法第六条: sync 后必跑审计
+    log "--- Step 3c: data_audit post-sync ---"
+    PYTHONPATH=backend python -c "
+import os; os.environ['DATA_AUDIT_STRICT'] = '0'
+from services.data_audit import run_post_sync_audit
+r = run_post_sync_audit('step3_label_panel', strict=False)
+checks = r.get('checks', [])
+n_pass = sum(1 for c in checks if c['status'] == 'PASS')
+n_fail = len(checks) - n_pass
+print(f'data_audit: {n_pass} PASS, {n_fail} FAIL')
+for c in checks:
+    if c['status'] != 'PASS':
+        print(f'  FAIL: {c[\"name\"]}: {c[\"detail\"][:60]}')
+" >> "$LOG" 2>&1 || log "WARN: data_audit 失败"
 else
     log "DRY: skip rebuild"
 fi
