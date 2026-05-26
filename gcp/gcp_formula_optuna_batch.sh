@@ -45,20 +45,17 @@ LOCAL_REPORT="data/reports/formula_optuna/$RUN_ID"
 mkdir -p "$LOCAL_REPORT"
 
 MARKET_SHA=$(shasum -a 256 data/market.duckdb | cut -d' ' -f1)
-SMART_SHA=$(shasum -a 256 data/smartmoney.duckdb | cut -d' ' -f1)
 echo "$MARKET_SHA  market.duckdb" > "$LOCAL_REPORT/input.sha256"
-echo "$SMART_SHA  smartmoney.duckdb" >> "$LOCAL_REPORT/input.sha256"
 echo "  market.duckdb SHA: ${MARKET_SHA:0:16}..."
-echo "  smartmoney.duckdb SHA: ${SMART_SHA:0:16}..."
+echo "  smartmoney.duckdb: VM 上已有 (5/23 版本, universe 过滤用, 变化极小)"
 
 if [ "$DRY_RUN" = "--dry-run" ]; then
-    echo "[DRY-RUN] Would upload data to $GCS_ROOT/input/"
+    echo "[DRY-RUN] Would upload market.duckdb to $GCS_ROOT/input/ (~1.5GB)"
+    echo "[DRY-RUN] smartmoney.duckdb 不传 — 34 公式只用 OHLCV, universe 用 VM 已有版本"
 else
-    echo "  Uploading market.duckdb to GCS..."
+    echo "  Uploading market.duckdb to GCS (~1.5GB)..."
     gcloud storage cp data/market.duckdb "$GCS_ROOT/input/market.duckdb"
-    echo "  Uploading smartmoney.duckdb to GCS..."
-    gcloud storage cp data/smartmoney.duckdb "$GCS_ROOT/input/smartmoney.duckdb"
-    echo "  Upload done."
+    echo "  Upload done. (smartmoney.duckdb 不传, VM 已有)"
 fi
 
 # --- Step 2: 打包代码 ---
@@ -129,20 +126,22 @@ tar -xzf ~/"${RUN_ID}_code.tgz" -C ~/chunkymonkey
 rm -f ~/"${RUN_ID}_code.tgz"
 echo "Code sync done."
 
-# Pull DBs from GCS (fresher than VM local)
+# Pull market.duckdb from GCS (K线数据, 必须最新)
+# smartmoney.duckdb 不传 — 34 公式只用 OHLCV, universe 过滤用 VM 已有版本
 echo "Downloading market.duckdb from GCS..."
 gcloud storage cp "$GCS_ROOT/input/market.duckdb" data/market.duckdb.tmp
-echo "Downloading smartmoney.duckdb from GCS..."
-gcloud storage cp "$GCS_ROOT/input/smartmoney.duckdb" data/smartmoney.duckdb.tmp
-
-# Atomic replace
 mv data/market.duckdb.tmp data/market.duckdb
-mv data/smartmoney.duckdb.tmp data/smartmoney.duckdb
-echo "Data sync done."
+echo "Data sync done (market.duckdb updated, smartmoney.duckdb using VM existing)."
+
+# Verify smartmoney exists on VM
+if [ ! -f data/smartmoney.duckdb ]; then
+    echo "FATAL: smartmoney.duckdb not found on VM"
+    exit 1
+fi
 
 # Activate env
 . .venv/bin/activate
-export PYTHONPATH=backend
+export PYTHONPATH=bestchoice:backend:backend/services/bc_absorbed
 export OPENBLAS_NUM_THREADS="$OMP_NUM_THREADS"
 export MKL_NUM_THREADS="$OMP_NUM_THREADS"
 
@@ -152,7 +151,7 @@ python -m py_compile backend/services/bc_absorbed/formula_engine.py
 echo "py_compile OK"
 
 # 5 batch groups: core → technical → pattern → volume → multi_tf
-CORE="gs_raw_buy gs_pullback_confirm ma_base_breakout activity_breakout volume_base_breakout"
+CORE="gs_raw_buy gs_pullback_confirm ma_base_breakout activity_breakout volume_base_breakout pullback_doji"
 TECHNICAL="macd_golden_cross_above_zero macd_zero_axis_bullish rsi_oversold_bounce bollinger_squeeze_breakout kdj_golden_cross atr_breakout macd_divergence_bottom"
 PATTERN="cup_and_handle double_bottom_w ascending_triangle bull_flag_continuation rounded_bottom inverse_head_shoulders box_breakout"
 VOLUME="obv_breakout mfi_oversold_bounce volume_spike vwap_cross_up ad_line_uptrend chaikin_money_flow vpt_divergence_bullish"

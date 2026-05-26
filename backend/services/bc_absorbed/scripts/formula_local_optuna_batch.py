@@ -21,12 +21,15 @@ import numpy as np
 import optuna
 
 ROOT = Path(__file__).resolve().parents[1]
-if str(ROOT) not in sys.path:
-    sys.path.insert(0, str(ROOT))
-
 BACKEND_DIR = Path(__file__).resolve().parents[3]
-if str(BACKEND_DIR) not in sys.path:
-    sys.path.insert(0, str(BACKEND_DIR))
+BESTCHOICE_DIR = Path(__file__).resolve().parents[4] / "bestchoice"
+
+# bc_absorbed 必须在 bestchoice 前, 否则 formula_engine 会找到 bestchoice 版本
+for p in [str(ROOT), str(BACKEND_DIR)]:
+    if p not in sys.path:
+        sys.path.insert(0, p)
+if BESTCHOICE_DIR.exists() and str(BESTCHOICE_DIR) not in sys.path:
+    sys.path.append(str(BESTCHOICE_DIR))
 
 PROJECT_ROOT = Path(__file__).resolve().parents[4]
 MARKET_DB = PROJECT_ROOT / "data" / "market.duckdb"
@@ -34,7 +37,8 @@ SMART_DB = PROJECT_ROOT / "data" / "smartmoney.duckdb"
 
 from compute import HOLDING_PERIODS, normalize_code
 from execution_model import build_fixed_holding_trades
-from formula_engine import compute_formula_signals, FORMULA_DEFINITIONS
+from formula_engine import compute_formula_signals, FORMULA_DEFINITIONS, _register_bank_definitions
+_register_bank_definitions()
 
 
 def _load_stocks(max_stocks: int = 0) -> dict[str, dict]:
@@ -253,8 +257,10 @@ def main() -> None:
                 "status": "complete",
             }
             results.append(row)
-            print(f"formula_optuna_batch: DONE {formula_id} score={row['score']:.2f} "
-                  f"win={row['win_rate']:.2%} elapsed={elapsed:.0f}s", flush=True)
+            s_str = f"{row['score']:.2f}" if row['score'] is not None else "N/A"
+            w_str = f"{row['win_rate']:.2%}" if row['win_rate'] is not None else "N/A"
+            print(f"formula_optuna_batch: DONE {formula_id} score={s_str} "
+                  f"win={w_str} elapsed={elapsed:.0f}s", flush=True)
 
             if cp_dir:
                 (cp_dir / f"{formula_id}.json").write_text(json.dumps({

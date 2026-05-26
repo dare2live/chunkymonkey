@@ -656,7 +656,12 @@ def pullback_doji_signals(
 
     n = len(close)
     dates = list(range(n))
-    from scripts.formula_limit_up_pullback import detect_signals
+    import importlib, sys
+    from pathlib import Path
+    scripts_dir = str(Path(__file__).resolve().parent.parent.parent / "scripts")
+    if scripts_dir not in sys.path:
+        sys.path.insert(0, scripts_dir)
+    from formula_limit_up_pullback import detect_signals
     sigs = detect_signals(dates, open_, high, low, close, volume, det_params, limit_up_pct=limit_pct)
 
     entry = np.zeros(n, dtype=bool)
