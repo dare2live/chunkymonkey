@@ -501,8 +501,11 @@ Layer 3: portfolio_pool.py — 股票池 max 5
 - dim_active_a_stock → 已刷新到 05-26
 - dim_all_ever_listed 573 只误标退市 → 已修 (K 线替代快照判定)
 - universe 规则配置化 → `backend/config/universe_rules.yaml`
-- **待修**: Codex 发现 6 处 bypass `get_active_universe` 直接 JOIN dim_active_a_stock
-  (screening_engine / bc_absorbed/compute / build_signal_context / build_ensemble)
+- **待简化**: get_active_universe + dim_active_a_stock 整套可删 — K 线就是 universe
+  第一性原理: K 线有数据 = 能交易, 不需要预筛"活跃列表"
+  ST 在公式层面处理 (get_limit_up_pct), 不需要 universe 层排除
+  98 处引用大部分是查股票名字 (改名 dim_stock_name 更准确)
+  暂保留, 逐步迁移
 - **待修**: feature_join_v5 ST 检查用当前 name 非 PIT 安全
 - **待修**: monitor_v7_forward 仍用 dim_all_ever_listed.is_active=0
 - Executive trade → 已重建 68661 行到 05-27
