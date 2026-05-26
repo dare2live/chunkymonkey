@@ -455,10 +455,14 @@ def main() -> None:
     stock_codes = list(stocks.keys())
     smart_conn = duckdb.connect(str(SMART_DB), read_only=True)
     market_conn = duckdb.connect(str(MARKET_DB), read_only=True)
+    sample = list(stocks.values())[0] if stocks else None
     enforce_backtest_preflight(
         stock_codes=stock_codes,
         conn=smart_conn,
         market_conn=market_conn,
+        walk_forward_mode="optuna_local",
+        formula_id=args.formulas[0] if args.formulas else None,
+        sample_stock=sample,
     )
     smart_conn.close()
     market_conn.close()

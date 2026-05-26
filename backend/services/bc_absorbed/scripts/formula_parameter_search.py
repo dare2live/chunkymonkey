@@ -343,10 +343,14 @@ def main() -> None:
     stock_codes = [s["code"] for s in stocks]
     smart_conn = duckdb.connect(str(SMART_DB), read_only=True)
     market_conn = duckdb.connect(str(MARKET_DB), read_only=True)
+    sample = stocks[0] if stocks else None
     enforce_backtest_preflight(
         stock_codes=stock_codes,
         conn=smart_conn,
         market_conn=market_conn,
+        walk_forward_mode="grid_search",
+        formula_id=formulas[0] if formulas else None,
+        sample_stock=sample,
     )
     smart_conn.close()
     market_conn.close()
