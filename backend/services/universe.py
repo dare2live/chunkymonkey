@@ -79,32 +79,15 @@ def sql_where_no_st(stock_name_column: str = "stock_name") -> str:
 # 用户 push '做一个专用的工具'. 所有 batch tasks 必须 调用 get_active_universe().
 
 def get_active_universe(
-    conn,
+    conn=None,
     *,
     include_st: bool = False,
     market_conn=None,
 ) -> set[str]:
-    """哪些股票在交易? K 线是真相源.
-
-    三条规则:
-      1. 前缀 60/00/30/68 (A 股主板/创业板/科创板)
-      2. stock_name 不含 ST/*ST
-      3. K 线最近 90 天有交易 (退市/长期停牌排除)
-
-    不依赖 dim_all_ever_listed (快照不可靠, 2026-05-26 误标 573 只).
-    """
-    prefixes_csv = ",".join(f"'{p}'" for p in ACTIVE_A_SHARE_PREFIXES)
-    sql = f"SELECT stock_code, stock_name FROM dim_active_a_stock WHERE SUBSTR(stock_code, 1, 2) IN ({prefixes_csv})"
-    rows = conn.execute(sql).fetchall()
-
-    stocks = set()
-    for code, name in rows:
-        if not include_st and name and (name.startswith("ST") or name.startswith("*ST")):
-            continue
-        stocks.add(code)
-
+    """K 线有交易 + 前缀白名单 + 非 ST = universe. 就这三条."""
     import duckdb
     from pathlib import Path
+
     mkt = market_conn
     should_close = False
     if mkt is None:
@@ -112,17 +95,31 @@ def get_active_universe(
         if market_db.exists():
             mkt = duckdb.connect(str(market_db), read_only=True)
             should_close = True
-    if mkt is not None:
+
+    if mkt is None:
+        return set()
+
+    try:
+        codes = {r[0] for r in mkt.execute(
+            "SELECT DISTINCT code FROM price_kline_tdxhub "
+            "WHERE freq='daily' AND CAST(date AS DATE) >= CURRENT_DATE - INTERVAL '90 days'"
+        ).fetchall()}
+    finally:
+        if should_close:
+            mkt.close()
+
+    stocks = {c for c in codes if len(c) >= 2 and c[:2] in ACTIVE_A_SHARE_PREFIXES}
+
+    if not include_st and conn is not None:
         try:
-            recent_traded = {r[0] for r in mkt.execute(
-                "SELECT DISTINCT code FROM price_kline_tdxhub "
-                "WHERE freq='daily' AND CAST(date AS DATE) >= CURRENT_DATE - INTERVAL '90 days'"
+            st_codes = {r[0] for r in conn.execute(
+                "SELECT stock_code FROM dim_active_a_stock "
+                "WHERE stock_name LIKE 'ST%' OR stock_name LIKE '*ST%'"
             ).fetchall()}
-        finally:
-            if should_close:
-                mkt.close()
-        if recent_traded:
-            stocks &= recent_traded
+            stocks -= st_codes
+        except Exception:
+            pass
+
     return stocks
 
 
