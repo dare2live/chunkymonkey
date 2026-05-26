@@ -162,6 +162,13 @@
 - **ensemble 13 weights 业务直觉写 yaml** → 全丢 Optuna.
 - **regime_gate `bear/sideways/bull` 拍脑袋** → 历史 regime sensitivity sweep.
 - **portfolio_backtest +45.4% 当最终决策** → 不含 tx_cost/T+1, paper_sim 加成本骤降. live 必须用含成本 paper_sim.
+- **`max_stocks=200` 按 code 排序** → 只取 00 深主板, 创业板/科创板/沪主板 0 只参与 Optuna. 审计只查 DB 层 (5206 stocks PASS), 没查 runner 实际加载数. 改: 全量 universe + 运行时 `validate_loaded_stocks` (板块覆盖 + 80% 比例).
+- **参数作用域错配** → `limit_up_pct` 是 per-stock 属性 (板块决定) 但放进 global Optuna search space. 等于用一个值适配两种市场规则. 改: per-stock 属性运行时自动取, 不进 search space.
+
+### 4.6 审计必须验证运行时状态, 不只是前置条件
+
+> 反例: DB 有 5206 stocks → preflight PASS. 但 runner 只加载 200 只 → 没人查.
+> 规则: **preflight 查的是"数据存在", 运行时验证查的是"数据被正确使用"**. 两者缺一不可.
 
 ---
 

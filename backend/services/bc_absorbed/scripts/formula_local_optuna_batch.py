@@ -243,10 +243,14 @@ def validate_loaded_stocks(stocks: dict[str, dict] | list[str], db_total: int) -
         raise RuntimeError(f"LOADED DATA FAIL: board distribution invalid: {boards}")
     if not isinstance(stocks, dict):
         raise RuntimeError("LOADED DATA FAIL: stock payload missing per-code history for train-window checks")
-    for code in codes[:20]:
+    short_train = []
+    for code in codes:
         stock = stocks[code]
-        if _split_idx(stock) < 120:
-            raise RuntimeError(f"LOADED DATA FAIL: {code} train split <120 days")
+        train_len = _split_idx(stock)
+        if train_len < 120 and len(stock["dates"]) >= 500:
+            short_train.append((code, train_len, len(stock["dates"])))
+    if short_train:
+        raise RuntimeError(f"LOADED DATA FAIL: {len(short_train)} stocks with >500 bars but train<120: {short_train[:5]}")
     print(f"formula_optuna_batch: loaded validation OK | loaded={loaded}, db_total={db_total}, boards={boards}, date_range={d_min}~{d_max}", flush=True)
 
 
