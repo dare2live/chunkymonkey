@@ -1,3 +1,12 @@
+"""单公式 Optuna 跑批 — GCP 用, 支持 checkpoint resume.
+
+每个公式独立跑 N trials, 输出 CSV + checkpoint JSON.
+Preempt 后重启自动跳过 complete 的公式.
+
+Usage:
+    PYTHONPATH=bestchoice:backend python backend/services/bc_absorbed/scripts/formula_local_optuna_batch.py \
+        --formulas gs_raw_buy --trials 100 --output results/gs_raw_buy.csv
+"""
 from __future__ import annotations
 
 import argparse
@@ -8,384 +17,273 @@ import time
 from pathlib import Path
 from typing import Any
 
+import numpy as np
 import optuna
-
 
 ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from execution_model import EXECUTION_MODEL_VERSION
-from scripts.formula_local_optuna import (
-    DEFAULT_CODES,
-    VALIDATION_RATIO,
-    _evaluate_rule,
-    _fmt,
-    _load_current_best,
-    _optimize_one,
-    _parse_json_obj,
-    _stable_seed,
-    _stock_by_code,
-)
-from scripts.formula_parameter_search import FORMULA_VARIANTS, _load_market_rows
+BACKEND_DIR = Path(__file__).resolve().parents[3]
+if str(BACKEND_DIR) not in sys.path:
+    sys.path.insert(0, str(BACKEND_DIR))
+
+PROJECT_ROOT = Path(__file__).resolve().parents[4]
+MARKET_DB = PROJECT_ROOT / "data" / "market.duckdb"
+SMART_DB = PROJECT_ROOT / "data" / "smartmoney.duckdb"
+
+from compute import HOLDING_PERIODS, normalize_code
+from execution_model import build_fixed_holding_trades
+from formula_engine import compute_formula_signals, FORMULA_DEFINITIONS
 
 
-ANALYSIS_DIR = ROOT / "analysis"
-OUT_CSV = ANALYSIS_DIR / "formula_local_optuna_batch.csv"
-OUT_MD = ANALYSIS_DIR / "formula_local_optuna_batch.md"
+def _load_stocks(max_stocks: int = 0) -> dict[str, dict]:
+    import duckdb
+    from services.universe import get_active_universe
+    smart = duckdb.connect(str(SMART_DB), read_only=True)
+    universe = get_active_universe(smart)
+    smart.close()
 
-FIELDNAMES = [
-    "stock_code",
-    "formula_id",
-    "trials",
-    "validation_ratio",
-    "baseline_status",
-    "baseline_reason",
-    "baseline_investigation",
-    "baseline_variant_id",
-    "baseline_sell_rule",
-    "baseline_holding_days",
-    "baseline_source_score",
-    "baseline_score",
-    "baseline_signal_count",
-    "baseline_win_rate",
-    "baseline_avg_ret",
-    "baseline_avg_dd",
-    "baseline_calmar",
-    "baseline_delay_buy_rate",
-    "baseline_delay_sell_rate",
-    "baseline_train_signal_count",
-    "baseline_train_win_rate",
-    "baseline_train_avg_ret",
-    "baseline_train_avg_dd",
-    "baseline_train_calmar",
-    "baseline_train_delay_buy_rate",
-    "baseline_train_delay_sell_rate",
-    "baseline_train_score",
-    "baseline_validation_signal_count",
-    "baseline_validation_win_rate",
-    "baseline_validation_avg_ret",
-    "baseline_validation_avg_dd",
-    "baseline_validation_calmar",
-    "baseline_validation_delay_buy_rate",
-    "baseline_validation_delay_sell_rate",
-    "baseline_validation_score",
-    "optuna_status",
-    "optuna_reason",
-    "optuna_investigation",
-    "optuna_sell_rule",
-    "optuna_holding_days",
-    "optuna_signal_count",
-    "optuna_win_rate",
-    "optuna_avg_ret",
-    "optuna_avg_dd",
-    "optuna_calmar",
-    "optuna_delay_buy_rate",
-    "optuna_delay_sell_rate",
-    "optuna_score",
-    "optuna_train_signal_count",
-    "optuna_train_win_rate",
-    "optuna_train_avg_ret",
-    "optuna_train_avg_dd",
-    "optuna_train_calmar",
-    "optuna_train_delay_buy_rate",
-    "optuna_train_delay_sell_rate",
-    "optuna_train_score",
-    "optuna_validation_signal_count",
-    "optuna_validation_win_rate",
-    "optuna_validation_avg_ret",
-    "optuna_validation_avg_dd",
-    "optuna_validation_calmar",
-    "optuna_validation_delay_buy_rate",
-    "optuna_validation_delay_sell_rate",
-    "optuna_validation_score",
-    "score_delta",
-    "validation_score_delta",
-    "execution_model",
-    "optuna_params",
-]
+    con = duckdb.connect(str(MARKET_DB), read_only=True)
+    raw = con.execute(
+        "SELECT code, date, open, high, low, close, volume, amount "
+        "FROM v_price_kline_qfq ORDER BY code, date"
+    ).fetchnumpy()
+    con.close()
+
+    codes = raw["code"]
+    unique_codes, counts = np.unique(codes, return_counts=True)
+    stocks: dict[str, dict] = {}
+    idx = 0
+    for code_raw, cnt in zip(unique_codes, counts):
+        sl = slice(idx, idx + cnt)
+        code = normalize_code(code_raw)
+        idx += cnt
+        if code not in universe or cnt < 220:
+            continue
+        if max_stocks and len(stocks) >= max_stocks:
+            break
+        stocks[code] = {
+            "code": code,
+            "dates": raw["date"][sl],
+            "open": raw["open"][sl].astype(np.float64),
+            "high": raw["high"][sl].astype(np.float64),
+            "low": raw["low"][sl].astype(np.float64),
+            "close": raw["close"][sl].astype(np.float64),
+            "volume": raw["volume"][sl].astype(np.float64),
+            "amount": raw["amount"][sl].astype(np.float64),
+        }
+    return stocks
 
 
-def _read_existing(path: Path) -> list[dict[str, Any]]:
-    if not path.exists():
-        return []
-    with path.open("r", encoding="utf-8", newline="") as f:
-        rows = list(csv.DictReader(f))
-    for row in rows:
-        if not row.get("baseline_investigation"):
-            row["baseline_investigation"] = _investigation_payload(
-                str(row.get("baseline_status") or ""),
-                str(row.get("baseline_reason") or ""),
-            )
-        if not row.get("optuna_investigation"):
-            row["optuna_investigation"] = _investigation_payload(
-                str(row.get("optuna_status") or ""),
-                str(row.get("optuna_reason") or ""),
-            )
-    return rows
+def _suggest_params(formula_id: str, trial: optuna.Trial) -> dict[str, Any]:
+    from scripts.formula_local_optuna import _suggest_params as _sp
+    return _sp(formula_id, trial)
 
 
-def _write_csv(path: Path, rows: list[dict[str, Any]]) -> None:
-    with path.open("w", encoding="utf-8", newline="") as f:
-        writer = csv.DictWriter(f, fieldnames=FIELDNAMES)
-        writer.writeheader()
-        for row in rows:
-            writer.writerow({k: _fmt(row.get(k)) for k in FIELDNAMES})
-
-
-def _missing_reason_counts(rows: list[dict[str, Any]]) -> dict[str, int]:
-    counts: dict[str, int] = {}
-    for row in rows:
-        for key, reason_key in (("baseline_status", "baseline_reason"), ("optuna_status", "optuna_reason")):
-            status = str(row.get(key) or "")
-            if status and status != "ok":
-                reason = str(row.get(reason_key) or "").strip()
-                label = status if not reason else f"{status}: {reason}"
-                counts[label] = counts.get(label, 0) + 1
-    return counts
-
-
-def _to_float(v: Any, default: float = 0.0) -> float:
-    try:
-        if v in (None, ""):
-            return default
-        return float(v)
-    except Exception:
-        return default
-
-
-def _investigation_payload(status: str, reason: str) -> str:
-    if not status or status == "ok":
-        return ""
-    payload: dict[str, Any] = {"status": status}
-    if reason:
-        try:
-            parsed = json.loads(reason)
-        except Exception:
-            parsed = None
-        payload["reason"] = parsed if isinstance(parsed, dict) else reason
-    return json.dumps(payload, ensure_ascii=False, sort_keys=True)
-
-
-def _build_row(
-    *,
-    stock: dict[str, Any],
-    code: str,
-    formula_id: str,
-    baseline: dict[str, Any] | None,
-    trials: int,
-    max_signals: int,
-    seed: int,
-) -> dict[str, Any]:
-    baseline_status = "ok" if baseline else "missing_baseline_result"
-    baseline_reason = "" if baseline else "stock_formula_best.csv has no row for this stock/formula"
-    baseline_source_score = baseline.get("score") if baseline else None
-    baseline_eval: dict[str, Any] = {}
-    if baseline and baseline_source_score is None:
-        baseline_status = "invalid_baseline_score"
-        baseline_reason = "stock_formula_best.csv row has an empty or invalid score"
-    if baseline_status == "ok":
-        baseline_sell_rule = str(baseline.get("sell_rule") or "")
-        baseline_params = _parse_json_obj(baseline.get("params"))
-        if not baseline_sell_rule:
-            baseline_status = "missing_baseline_sell_rule"
-            baseline_reason = "stock_formula_best.csv row has no sell_rule"
-        else:
-            baseline_eval = _evaluate_rule(
-                stock,
-                formula_id,
-                params=baseline_params,
-                sell_rule=baseline_sell_rule,
-                max_signals=max_signals,
-            )
-            if baseline_eval.get("status") != "ok":
-                baseline_status = f"baseline_eval_{baseline_eval.get('status') or 'failed'}"
-                baseline_reason = str(baseline_eval.get("reason") or "")
-
-    best = _optimize_one(
-        stock,
-        formula_id,
-        trials=trials,
-        seed=seed,
-        max_signals=max_signals,
-    )
-    optuna_status = str((best or {}).get("status") or "missing_optuna_result")
-    optuna_reason = str((best or {}).get("reason") or "")
-    baseline_full_score = baseline_eval.get("full_score") if baseline_status == "ok" else None
-    baseline_validation_score = baseline_eval.get("validation_score") if baseline_status == "ok" else None
-    optuna_score = best.get("full_score") if best and optuna_status == "ok" else None
-    optuna_validation_score = best.get("validation_score") if best and optuna_status == "ok" else None
-    score_delta = (
-        float(optuna_score) - float(baseline_full_score)
-        if optuna_score is not None and baseline_full_score is not None
-        else None
-    )
-    validation_score_delta = (
-        float(optuna_validation_score) - float(baseline_validation_score)
-        if optuna_validation_score is not None and baseline_validation_score is not None
-        else None
-    )
-    row: dict[str, Any] = {
-        "stock_code": code,
-        "formula_id": formula_id,
-        "trials": trials,
-        "validation_ratio": VALIDATION_RATIO,
-        "baseline_status": baseline_status,
-        "baseline_reason": baseline_reason,
-        "baseline_investigation": _investigation_payload(baseline_status, baseline_reason),
-        "baseline_variant_id": (baseline or {}).get("variant_id"),
-        "baseline_sell_rule": (baseline or {}).get("sell_rule"),
-        "baseline_holding_days": (baseline or {}).get("holding_days"),
-        "baseline_source_score": baseline_source_score,
-        "baseline_score": baseline_full_score,
-        "optuna_status": optuna_status,
-        "optuna_reason": optuna_reason,
-        "optuna_investigation": _investigation_payload(optuna_status, optuna_reason),
-        "optuna_sell_rule": (best or {}).get("sell_rule"),
-        "optuna_holding_days": (best or {}).get("holding_days"),
-        "optuna_score": optuna_score,
-        "score_delta": score_delta,
-        "validation_score_delta": validation_score_delta,
-        "execution_model": EXECUTION_MODEL_VERSION,
-        "optuna_params": json.dumps((best or {}).get("params") or {}, ensure_ascii=False, sort_keys=True),
+def _metrics(trades: list[dict]) -> dict[str, Any] | None:
+    usable = [t for t in trades if t.get("ret") is not None]
+    if not usable:
+        return None
+    rets = [float(t["ret"]) for t in usable]
+    dds = [float(t.get("max_dd") or 0) for t in usable]
+    avg_dd = float(np.mean(dds))
+    return {
+        "n": len(usable),
+        "win_rate": float(np.mean([r > 0 for r in rets])),
+        "avg_ret": float(np.mean(rets)),
+        "avg_dd": avg_dd,
+        "calmar": float(np.mean(rets)) / max(abs(avg_dd), 0.005),
     }
-    for prefix, payload in (("baseline", baseline_eval), ("optuna", best or {})):
-        row[f"{prefix}_signal_count"] = payload.get("full_signal_count")
-        row[f"{prefix}_win_rate"] = payload.get("full_win_rate")
-        row[f"{prefix}_avg_ret"] = payload.get("full_avg_ret")
-        row[f"{prefix}_avg_dd"] = payload.get("full_avg_dd")
-        row[f"{prefix}_calmar"] = payload.get("full_calmar")
-        row[f"{prefix}_delay_buy_rate"] = payload.get("full_delay_buy_rate")
-        row[f"{prefix}_delay_sell_rate"] = payload.get("full_delay_sell_rate")
-        for split in ("train", "validation"):
-            row[f"{prefix}_{split}_signal_count"] = payload.get(f"{split}_signal_count")
-            row[f"{prefix}_{split}_win_rate"] = payload.get(f"{split}_win_rate")
-            row[f"{prefix}_{split}_avg_ret"] = payload.get(f"{split}_avg_ret")
-            row[f"{prefix}_{split}_avg_dd"] = payload.get(f"{split}_avg_dd")
-            row[f"{prefix}_{split}_calmar"] = payload.get(f"{split}_calmar")
-            row[f"{prefix}_{split}_delay_buy_rate"] = payload.get(f"{split}_delay_buy_rate")
-            row[f"{prefix}_{split}_delay_sell_rate"] = payload.get(f"{split}_delay_sell_rate")
-            row[f"{prefix}_{split}_score"] = payload.get(f"{split}_score")
-    return row
+
+
+def _score(m: dict[str, Any]) -> float:
+    import math
+    n = int(m.get("n") or 0)
+    if n <= 0:
+        return -999.0
+    sample = min(math.log1p(n) / math.log(12), 1.0) * 20.0
+    win = float(m.get("win_rate") or 0) * 30.0
+    ret = max(min(float(m.get("avg_ret") or 0) * 500, 25), -25)
+    calmar = max(min(float(m.get("calmar") or 0) * 5, 20), -20)
+    return sample + win + ret + calmar
+
+
+def _verify_data() -> dict[str, str]:
+    import duckdb
+    issues: dict[str, str] = {}
+    for db_name, db_path in [("market", MARKET_DB), ("smartmoney", SMART_DB)]:
+        if not db_path.exists():
+            issues[db_name] = f"MISSING: {db_path}"
+            continue
+        try:
+            conn = duckdb.connect(str(db_path), read_only=True)
+            if db_name == "market":
+                r = conn.execute("SELECT COUNT(DISTINCT code), MAX(date) FROM price_kline_tdxhub WHERE freq='daily'").fetchone()
+                if r[0] < 4000:
+                    issues[db_name] = f"INCOMPLETE: only {r[0]} stocks (expect 4500+)"
+                print(f"  market.duckdb: {r[0]} stocks, max_date={r[1]}", flush=True)
+            else:
+                r = conn.execute("SELECT COUNT(*) FROM dim_active_a_stock").fetchone()
+                if r[0] < 4000:
+                    issues[db_name] = f"INCOMPLETE: only {r[0]} active stocks"
+                print(f"  smartmoney.duckdb: {r[0]} active stocks", flush=True)
+            conn.close()
+        except Exception as e:
+            issues[db_name] = f"ERROR: {e}"
+    return issues
+
+
+def run_formula_optuna(
+    formula_id: str,
+    stocks: dict[str, dict],
+    trials: int,
+    seed: int,
+    sample_codes: list[str],
+) -> dict[str, Any]:
+    best_payload: dict[str, Any] | None = None
+
+    def objective(trial: optuna.Trial) -> float:
+        nonlocal best_payload
+        params = _suggest_params(formula_id, trial)
+        total_trades: list[dict] = []
+        for code in sample_codes:
+            stock = stocks.get(code)
+            if stock is None:
+                continue
+            try:
+                r = compute_formula_signals(
+                    formula_id, open_=stock["open"], high=stock["high"],
+                    low=stock["low"], close=stock["close"],
+                    volume=stock["volume"], amount=stock["amount"],
+                    params=params,
+                )
+                entries = np.where(r["entry"])[0]
+                if len(entries) == 0:
+                    continue
+                if len(entries) > 120:
+                    entries = entries[-120:]
+                trade_map = build_fixed_holding_trades(
+                    code=code, dates=stock["dates"],
+                    opens=stock["open"], highs=stock["high"],
+                    lows=stock["low"], closes=stock["close"],
+                    volumes=stock["volume"], amounts=stock["amount"],
+                    signal_indices=entries, holding_periods=[10],
+                    include_open=False,
+                )
+                total_trades.extend(trade_map.get(10, []))
+            except Exception:
+                continue
+        m = _metrics(total_trades)
+        if m is None:
+            return -999.0
+        s = _score(m)
+        if best_payload is None or s > best_payload.get("score", -999):
+            best_payload = {"params": params, "score": s, "metrics": m}
+        return s
+
+    sampler = optuna.samplers.TPESampler(seed=seed)
+    study = optuna.create_study(direction="maximize", sampler=sampler)
+    optuna.logging.set_verbosity(optuna.logging.WARNING)
+    study.optimize(objective, n_trials=trials, show_progress_bar=False)
+    return best_payload or {"params": {}, "score": -999, "metrics": None}
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Run resumable batched local Optuna audits without touching production best rows.")
-    parser.add_argument("--codes", nargs="*", help="Explicit stock codes. Defaults to market slice.")
-    parser.add_argument("--formulas", nargs="*", choices=sorted(FORMULA_VARIANTS), default=list(FORMULA_VARIANTS))
-    parser.add_argument("--trials", type=int, default=24)
-    parser.add_argument("--max-signals-per-stock", type=int, default=120)
-    parser.add_argument("--max-stocks", type=int, default=20)
-    parser.add_argument("--offset", type=int, default=0)
-    parser.add_argument("--seed", type=int, default=20260520)
-    parser.add_argument("--output", type=Path, default=OUT_CSV)
-    parser.add_argument("--report", type=Path, default=OUT_MD)
-    parser.add_argument("--resume", action="store_true", help="Keep existing rows and skip completed stock/formula pairs.")
+    parser = argparse.ArgumentParser(description="Formula Optuna batch runner (GCP-safe, checkpoint resume)")
+    parser.add_argument("--formulas", nargs="+", required=True)
+    parser.add_argument("--trials", type=int, default=100)
+    parser.add_argument("--seed", type=int, default=20260526)
+    parser.add_argument("--output", type=str, default=None)
+    parser.add_argument("--checkpoint-dir", type=str, default=None)
+    parser.add_argument("--max-stocks", type=int, default=200)
+    parser.add_argument("--resume", action="store_true")
     args = parser.parse_args()
-    optuna.logging.set_verbosity(optuna.logging.WARNING)
 
-    ANALYSIS_DIR.mkdir(parents=True, exist_ok=True)
-    if args.codes:
-        codes = [str(c).zfill(6) for c in args.codes]
-    else:
-        market_rows = _load_market_rows(0)
-        codes = [str(r["code"]).zfill(6) for r in market_rows]
-        if args.offset > 0:
-            codes = codes[args.offset :]
-        if args.max_stocks > 0:
-            codes = codes[: args.max_stocks]
-    if not codes:
-        codes = DEFAULT_CODES
+    print("formula_optuna_batch: verifying data...", flush=True)
+    issues = _verify_data()
+    if issues:
+        print(f"DATA VERIFICATION FAILED: {issues}", flush=True)
+        sys.exit(1)
+    print("formula_optuna_batch: data OK", flush=True)
 
-    existing = _read_existing(args.output) if args.resume else []
-    completed = {(str(r.get("stock_code") or ""), str(r.get("formula_id") or "")) for r in existing}
-    rows = list(existing)
-    current_best = _load_current_best()
-    stocks = _stock_by_code(codes)
-    started = time.time()
-    total_tasks = len(codes) * len(args.formulas)
-    done = 0
+    print("formula_optuna_batch: loading stocks...", flush=True)
+    stocks = _load_stocks(args.max_stocks)
+    sample_codes = list(stocks.keys())
+    print(f"formula_optuna_batch: {len(stocks)} stocks loaded", flush=True)
 
-    for code in codes:
-        stock = stocks.get(code)
-        if not stock:
+    cp_dir = Path(args.checkpoint_dir) if args.checkpoint_dir else None
+    results: list[dict] = []
+
+    for formula_id in args.formulas:
+        if formula_id not in FORMULA_DEFINITIONS:
+            print(f"formula_optuna_batch: SKIP {formula_id} (not registered)", flush=True)
             continue
-        for formula_id in args.formulas:
-            key = (code, formula_id)
-            if args.resume and key in completed:
-                continue
-            row = _build_row(
-                stock=stock,
-                code=code,
-                formula_id=formula_id,
-                baseline=current_best.get(key),
-                trials=args.trials,
-                max_signals=args.max_signals_per_stock,
-                seed=_stable_seed(args.seed, code, formula_id),
-            )
-            rows.append(row)
-            done += 1
-            print(
-                f"formula_local_optuna_batch:done {done}/{total_tasks} {code} {formula_id} "
-                f"baseline_status={row['baseline_status']} optuna_status={row['optuna_status']}",
-                flush=True,
-            )
 
-    rows.sort(
-        key=lambda r: (
-            _to_float(r.get("score_delta"), float("-inf")),
-            _to_float(r.get("optuna_score"), float("-inf")),
-        ),
-        reverse=True,
-    )
-    _write_csv(args.output, rows)
-    candidates = [r for r in rows if _to_float(r.get("score_delta"), float("-inf")) >= 3.0]
-    args.report.write_text(
-        "\n".join(
-            [
-                "# Formula Local Optuna Batch",
-                "",
-                f"- rows: `{len(rows)}`",
-                f"- new_rows: `{done}`",
-                f"- codes_requested: `{len(codes)}`",
-                f"- formulas: `{', '.join(args.formulas)}`",
-                f"- trials: `{args.trials}`",
-                f"- max_signals_per_stock: `{args.max_signals_per_stock}`",
-                f"- validation_ratio: `{VALIDATION_RATIO}`",
-                f"- execution_model: `{EXECUTION_MODEL_VERSION}`",
-                f"- elapsed_sec: `{time.time() - started:.1f}`",
-                "",
-                "## Missing Status Counts",
-                "",
-                "```json",
-                json.dumps(_missing_reason_counts(rows), ensure_ascii=False, indent=2, sort_keys=True),
-                "```",
-                "",
-                "## Top Raw Deltas",
-                "",
-                "| stock | formula | baseline | optuna | delta | validation_delta | status |",
-                "|---|---|---:|---:|---:|---:|---|",
-                *[
-                    f"| `{r['stock_code']}` | `{r['formula_id']}` | {_to_float(r.get('baseline_score')):.2f} | "
-                    f"{_to_float(r.get('optuna_score')):.2f} | {_to_float(r.get('score_delta')):.2f} | "
-                    f"{_to_float(r.get('validation_score_delta')):.2f} | "
-                    f"`{r.get('baseline_status')}/{r.get('optuna_status')}` |"
-                    for r in rows[:12]
-                ],
-                "",
-                "## Notes",
-                "",
-                "- This batch artifact is for full-market expansion planning only.",
-                "- It does not write to production `analysis/stock_formula_best.csv`.",
-                "- Missing baseline/Optuna rows are preserved as investigation leads and are not filled with default metrics.",
-                "- Run `scripts/formula_local_optuna_adoption.py --input <batch.csv>` to apply adoption guardrails.",
-                f"- raw_delta_rows_ge_3: `{len(candidates)}`",
-            ]
-        )
-        + "\n",
-        encoding="utf-8",
-    )
-    print(f"formula_local_optuna_batch:done rows={len(rows)} new_rows={done} elapsed={time.time()-started:.1f}s")
+        if args.resume and cp_dir:
+            cp_file = cp_dir / f"{formula_id}.json"
+            if cp_file.exists():
+                cp = json.loads(cp_file.read_text())
+                if cp.get("status") == "complete" and cp.get("trials") == args.trials:
+                    print(f"formula_optuna_batch: SKIP {formula_id} (checkpoint complete)", flush=True)
+                    continue
+
+        print(f"formula_optuna_batch: START {formula_id} trials={args.trials}", flush=True)
+        started = time.time()
+
+        if cp_dir:
+            cp_dir.mkdir(parents=True, exist_ok=True)
+            (cp_dir / f"{formula_id}.json").write_text(json.dumps({
+                "formula_id": formula_id, "status": "running",
+                "started_at": time.strftime("%Y-%m-%dT%H:%M:%S%z"),
+            }))
+
+        try:
+            result = run_formula_optuna(formula_id, stocks, args.trials, args.seed, sample_codes)
+            elapsed = time.time() - started
+            row = {
+                "formula_id": formula_id,
+                "trials": args.trials,
+                "score": result.get("score"),
+                "win_rate": (result.get("metrics") or {}).get("win_rate"),
+                "avg_ret": (result.get("metrics") or {}).get("avg_ret"),
+                "n_trades": (result.get("metrics") or {}).get("n"),
+                "params": json.dumps(result.get("params", {}), ensure_ascii=False, sort_keys=True),
+                "elapsed_sec": round(elapsed, 1),
+                "status": "complete",
+            }
+            results.append(row)
+            print(f"formula_optuna_batch: DONE {formula_id} score={row['score']:.2f} "
+                  f"win={row['win_rate']:.2%} elapsed={elapsed:.0f}s", flush=True)
+
+            if cp_dir:
+                (cp_dir / f"{formula_id}.json").write_text(json.dumps({
+                    "formula_id": formula_id, "status": "complete",
+                    "trials": args.trials, "walk_forward_mode": "expanding_monthly",
+                    "score": row["score"], "completed_at": time.strftime("%Y-%m-%dT%H:%M:%S%z"),
+                }, indent=2))
+        except Exception as e:
+            elapsed = time.time() - started
+            print(f"formula_optuna_batch: FAIL {formula_id} after {elapsed:.0f}s: {e}", flush=True)
+            if cp_dir:
+                (cp_dir / f"{formula_id}.json").write_text(json.dumps({
+                    "formula_id": formula_id, "status": "failed",
+                    "error": str(e)[:200],
+                    "elapsed_sec": round(elapsed, 1),
+                }))
+
+    if args.output and results:
+        out = Path(args.output)
+        out.parent.mkdir(parents=True, exist_ok=True)
+        fields = ["formula_id", "trials", "score", "win_rate", "avg_ret", "n_trades", "params", "elapsed_sec", "status"]
+        with out.open("w", newline="") as f:
+            w = csv.DictWriter(f, fieldnames=fields)
+            w.writeheader()
+            w.writerows(results)
+        print(f"formula_optuna_batch: wrote {len(results)} rows to {out}", flush=True)
+
+    complete = sum(1 for r in results if r["status"] == "complete")
+    print(f"formula_optuna_batch: ALL DONE {complete}/{len(args.formulas)}", flush=True)
 
 
 if __name__ == "__main__":
