@@ -690,6 +690,50 @@ _OHLCV_FORMULAS = {
 _BANK_OHLCV_PARAMS = {"close", "high", "low", "volume", "open_", "open"}
 
 
+_SMARTMONEY_PARAM_MAP = {
+    "lhb_inst_seats": "lhb_inst_seats",
+    "insider_buy_count": "insider_buy_count",
+    "hsgt_net": "hsgt_net",
+    "ex_dividend_flag": "ex_dividend_flag",
+    "sector_ret": "sector_ret",
+    "diffusion_score": "diffusion_score",
+    "is_leader": "diffusion_score",
+    "context_score": "context_score",
+    "under_reaction_score": "under_reaction_score",
+    "crowding_score": "context_score",
+    "theme_score": "diffusion_score",
+    "theme_member_since": "diffusion_score",
+}
+
+_smartmoney_cache: dict[str, dict[str, np.ndarray]] = {}
+
+
+def _get_smartmoney_feature(param_name: str, stock_code: str, dates: np.ndarray) -> np.ndarray | None:
+    adapter_key = _SMARTMONEY_PARAM_MAP.get(param_name)
+    if adapter_key is None:
+        return None
+    cache_key = f"{stock_code}:{adapter_key}"
+    if cache_key in _smartmoney_cache:
+        return _smartmoney_cache[cache_key]
+    try:
+        import duckdb
+        from pathlib import Path
+        db_path = Path(__file__).resolve().parents[3] / "data" / "smartmoney.duckdb"
+        if not db_path.exists():
+            return None
+        from smartmoney_adapter import SmartMoneyAdapter
+        conn = duckdb.connect(str(db_path), read_only=True)
+        adapter = SmartMoneyAdapter(conn)
+        features = adapter.load_stock_features(stock_code, dates, required=[adapter_key])
+        conn.close()
+        result = features.get(adapter_key)
+        if result is not None:
+            _smartmoney_cache[cache_key] = result
+        return result
+    except Exception:
+        return None
+
+
 def _call_bank_formula(
     func,
     open_: np.ndarray,
@@ -698,6 +742,8 @@ def _call_bank_formula(
     close: np.ndarray,
     volume: np.ndarray,
     params: dict[str, Any],
+    stock_code: str = "",
+    dates: np.ndarray | None = None,
 ) -> dict[str, Any]:
     import inspect
     sig = inspect.signature(func)
@@ -714,7 +760,11 @@ def _call_bank_formula(
         elif name in params:
             kwargs[name] = params[name]
         elif name not in _BANK_OHLCV_PARAMS and p.default is inspect.Parameter.empty:
-            return {"entry": np.zeros(len(close), dtype=bool), "exit": np.zeros(len(close), dtype=bool), "indicators": {"skipped": f"missing required param: {name}"}}
+            sm_data = _get_smartmoney_feature(name, stock_code, dates if dates is not None else np.arange(len(close)))
+            if sm_data is not None and len(sm_data) == len(close):
+                positional.append(sm_data)
+            else:
+                return {"entry": np.zeros(len(close), dtype=bool), "exit": np.zeros(len(close), dtype=bool), "indicators": {"skipped": f"missing required param: {name}"}}
     entry_arr, meta = func(*positional, **kwargs)
     return {"entry": entry_arr, "exit": np.zeros(len(close), dtype=bool), "indicators": meta}
 
@@ -737,6 +787,8 @@ def compute_formula_signals(
     volume: np.ndarray,
     amount: np.ndarray,
     params: dict[str, Any] | None = None,
+    stock_code: str = "",
+    dates: np.ndarray | None = None,
 ) -> dict[str, Any]:
     params = params or {}
     ohlcv_fn = _OHLCV_FORMULAS.get(formula_id)
@@ -744,5 +796,6 @@ def compute_formula_signals(
         return ohlcv_fn(open_, high, low, close, volume, amount, params)
     bank = _get_bank_formulas()
     if formula_id in bank:
-        return _call_bank_formula(bank[formula_id], open_, high, low, close, volume, params)
+        return _call_bank_formula(bank[formula_id], open_, high, low, close, volume, params,
+                                  stock_code=stock_code, dates=dates)
     raise ValueError(f"unknown formula_id: {formula_id}")
