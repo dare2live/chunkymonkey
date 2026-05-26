@@ -38,6 +38,33 @@ echo "TRIALS:     $TRIALS per formula"
 echo "PARALLELISM: $OPTUNA_N_JOBS jobs × $OMP_NUM_THREADS threads = $TOTAL_THREADS"
 echo "MAX_STOCKS: $MAX_STOCKS"
 
+# --- Step 0: Plan validation gate (强制, 不通过不跑) ---
+echo ""
+echo "--- Step 0: Plan validation (enforce) ---"
+
+# 0a. plan_validator: search space + runnable + cost
+PYTHONPATH=bestchoice:backend:backend/services/bc_absorbed python3 -c "
+from plan_validator import enforce_optuna_plan
+formulas = '$CORE $TECHNICAL $PATTERN $VOLUME $MULTI_TF'.split()
+enforce_optuna_plan(formulas=formulas, trials=$TRIALS, output_path='$GCS_ROOT/artifacts/')
+print('Plan validation PASS')
+" || {
+    echo "PLAN VALIDATION FAILED — aborting GCP launch"
+    echo "Fix: ensure all formulas have search space, or remove those without"
+    exit 4
+}
+
+# 0b. grill checklist (非交互但硬检查)
+GRILL_STAMP="data/reports/formula_optuna/${RUN_ID}_grill_stamp.json"
+if [ ! -f "$GRILL_STAMP" ]; then
+    echo "ERROR: Grill stamp not found at $GRILL_STAMP"
+    echo "Before running GCP batch, run: /grill-with-docs on the execution plan"
+    echo "Then create stamp: echo '{\"grilled\":true,\"run_id\":\"$RUN_ID\"}' > $GRILL_STAMP"
+    exit 5
+fi
+echo "Grill stamp verified: $(cat "$GRILL_STAMP")"
+echo "Step 0 PASS"
+
 # --- Step 1: 本地数据 SHA + 上传 GCS ---
 echo ""
 echo "--- Step 1: Upload data to GCS ---"

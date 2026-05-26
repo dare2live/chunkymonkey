@@ -18,6 +18,7 @@
 | 9 | GCP 资源管理 — controlled use / $15 budget (alert-only) / hygiene / checkpoint reuse |
 | 10 | 并发 — 串行硬约束 / 可并发 / 实现 |
 | 11 | Codex 协作 — [ACTIVE] 已恢复 (2026-05-24~) |
+| 11.5 | Skills 强制使用 — grill / diagnose / tdd / plan_validator |
 | 12 | 用户偏好 / 沟通 |
 | 附 | PROJECT_INDEX.md 入口 |
 
@@ -533,6 +534,32 @@ GCP run 浪费时间或没产 artifact → 记 root cause + 防回退到 `docs/g
 - **不报喜不报忧** — 0 STRONG_BUY / 数据滞后 / 测试 fail / Gate FAIL 先讲.
 - 先讲业务结果 (年化/max_dd/超额), 技术次之.
 - 接任务先 **push back** 看更简单方案, 别上来就实现.
+
+---
+
+## 11.5 Skills 强制使用 (2026-05-26 安装)
+
+> 反例: 2026-05-26 GCP 跑 34 公式 Optuna, 29 个无 search space = 白跑. 如果执行前用 `/grill-with-docs` 拷问计划, 会直接发现.
+
+**已安装 skills** (`~/.claude/commands/`):
+
+| Skill | 触发场景 | 强制/建议 |
+|---|---|---|
+| `/grill-with-docs` | 执行计划前 (GCP 跑批 / Optuna / 新模块设计) | **强制** — 不 grill 不执行 |
+| `/grill-me` | 非代码决策 (架构方向 / 策略选择) | 建议 |
+| `/diagnose` | 硬 bug / 异常结果 / 性能回退 | **强制** — 不走诊断循环不猜 |
+| `/tdd` | 新公式 / 关键路径功能 | 建议 |
+| `/to-issues` | 拆大计划为独立可测 issue | 建议 |
+| `/handoff` | Claude ↔ Codex 交接 | 建议 |
+
+**强制规则**:
+1. **GCP 跑批前**: 必须 `/grill-with-docs` + `plan_validator.enforce_optuna_plan()` 双重验证
+2. **新公式加入前**: 必须有 Optuna search space (plan_validator 检查)
+3. **异常结果出现**: 必须 `/diagnose` 走完整诊断循环, 不许猜
+4. **执行前三问** (自动 self-check):
+   - 这个计划跑完, 产出是什么? 谁消费?
+   - 每个步骤的前提条件都验证了吗?
+   - 成本 vs 产出合理吗?
 
 ---
 
