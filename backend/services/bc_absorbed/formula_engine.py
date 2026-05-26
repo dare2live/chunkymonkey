@@ -53,6 +53,19 @@ FORMULA_DEFINITIONS: dict[str, FormulaDefinition] = {
 }
 
 
+def _register_bank_definitions() -> None:
+    try:
+        from bank import ALL_FORMULAS
+    except ImportError:
+        return
+    for fid in ALL_FORMULAS:
+        if fid not in FORMULA_DEFINITIONS:
+            FORMULA_DEFINITIONS[fid] = FormulaDefinition(fid, fid, f"bank formula: {fid}")
+
+
+_register_bank_definitions()
+
+
 def _ma(arr: np.ndarray, window: int) -> np.ndarray:
     out = np.full(len(arr), np.nan, dtype=np.float64)
     if window <= 0 or len(arr) < window:
@@ -474,24 +487,31 @@ def volume_base_breakout_signals(
 ) -> dict[str, Any]:
     del open_
     params = params or {}
+    ycfg = _load_formula_yaml("volume_base_breakout")
+    spk_cfg = ycfg.get("spike", {})
+    bas_cfg = ycfg.get("base", {})
+    dry_cfg = ycfg.get("dry", {})
+    wrm_cfg = ycfg.get("warm", {})
+    brk_cfg = ycfg.get("breakout", {})
+    sig_cfg = ycfg.get("signal", {})
     n = len(close)
-    spike_lookback = int(params.get("spike_lookback", 30))
-    spike_ratio = float(params.get("spike_ratio", 2.0))
-    amount_spike_ratio = float(params.get("amount_spike_ratio", 2.0))
-    base_min_days = int(params.get("base_min_days", 8))
-    base_max_days = int(params.get("base_max_days", 90))
-    base_range_max = float(params.get("base_range_max", 0.35))
-    base_floor = float(params.get("base_floor", 0.75))
-    base_ceiling = float(params.get("base_ceiling", 1.60))
-    dry_ratio = float(params.get("dry_ratio", 0.30))
-    warm_vol_ratio = float(params.get("warm_vol_ratio", 0.60))
-    warm_ret_min = float(params.get("warm_ret_min", 0.0))
-    warm_ret_max = float(params.get("warm_ret_max", 0.60))
-    breakout_window = int(params.get("breakout_window", 20))
-    breakout_near_high = float(params.get("breakout_near_high", 0.0))
-    breakout_max_extension = float(params.get("breakout_max_extension", 9.99))
-    dry_spike_ratio = float(params.get("dry_spike_ratio", 0.55))
-    signal_cooldown_days = int(params.get("signal_cooldown_days", 0))
+    spike_lookback = int(params.get("spike_lookback", spk_cfg.get("spike_lookback", 30)))
+    spike_ratio = float(params.get("spike_ratio", spk_cfg.get("spike_ratio", 2.0)))
+    amount_spike_ratio = float(params.get("amount_spike_ratio", spk_cfg.get("amount_spike_ratio", 2.0)))
+    base_min_days = int(params.get("base_min_days", bas_cfg.get("base_min_days", 8)))
+    base_max_days = int(params.get("base_max_days", bas_cfg.get("base_max_days", 90)))
+    base_range_max = float(params.get("base_range_max", bas_cfg.get("base_range_max", 0.35)))
+    base_floor = float(params.get("base_floor", bas_cfg.get("base_floor", 0.75)))
+    base_ceiling = float(params.get("base_ceiling", bas_cfg.get("base_ceiling", 1.60)))
+    dry_ratio = float(params.get("dry_ratio", dry_cfg.get("dry_ratio", 0.30)))
+    warm_vol_ratio = float(params.get("warm_vol_ratio", wrm_cfg.get("warm_vol_ratio", 0.60)))
+    warm_ret_min = float(params.get("warm_ret_min", wrm_cfg.get("warm_ret_min", 0.0)))
+    warm_ret_max = float(params.get("warm_ret_max", wrm_cfg.get("warm_ret_max", 0.60)))
+    breakout_window = int(params.get("breakout_window", brk_cfg.get("breakout_window", 20)))
+    breakout_near_high = float(params.get("breakout_near_high", brk_cfg.get("breakout_near_high", 0.0)))
+    breakout_max_extension = float(params.get("breakout_max_extension", brk_cfg.get("breakout_max_extension", 9.99)))
+    dry_spike_ratio = float(params.get("dry_spike_ratio", dry_cfg.get("dry_spike_ratio", 0.55)))
+    signal_cooldown_days = int(params.get("signal_cooldown_days", sig_cfg.get("signal_cooldown_days", 0)))
     latest_only = bool(params.get("__latest_only", False)) and signal_cooldown_days <= 0
     min_scan_i = max(25, base_min_days)
     eval_start_i = max(min_scan_i, int(params.get("__eval_start_index", min_scan_i)))
@@ -653,6 +673,55 @@ def pullback_doji_signals(
     return {"entry": entry, "exit": exit_arr, "indicators": {"n_signals": len(sigs)}}
 
 
+_OHLCV_FORMULAS = {
+    "gs_raw_buy": lambda o, h, l, c, v, a, p: gs_raw_buy_signals(o, h, l, c, p),
+    "gs_pullback_confirm": lambda o, h, l, c, v, a, p: gs_pullback_confirm_signals(o, h, l, c, v, a, p),
+    "ma_base_breakout": lambda o, h, l, c, v, a, p: ma_base_breakout_signals(o, h, l, c, v, a, p),
+    "activity_breakout": lambda o, h, l, c, v, a, p: activity_breakout_signals(o, h, l, c, v, a, p),
+    "volume_base_breakout": lambda o, h, l, c, v, a, p: volume_base_breakout_signals(o, h, l, c, v, a, p),
+    "pullback_doji": lambda o, h, l, c, v, a, p: pullback_doji_signals(o, h, l, c, v, a, p),
+}
+
+_BANK_OHLCV_PARAMS = {"close", "high", "low", "volume", "open_", "open"}
+
+
+def _call_bank_formula(
+    func,
+    open_: np.ndarray,
+    high: np.ndarray,
+    low: np.ndarray,
+    close: np.ndarray,
+    volume: np.ndarray,
+    params: dict[str, Any],
+) -> dict[str, Any]:
+    import inspect
+    sig = inspect.signature(func)
+    available = {"close": close, "high": high, "low": low, "volume": volume, "open_": open_, "open": open_}
+    positional = []
+    kwargs: dict[str, Any] = {}
+    for name, p in sig.parameters.items():
+        if name in available:
+            positional.append(available[name])
+        elif name == "params":
+            kwargs["params"] = params
+        elif p.kind == p.VAR_KEYWORD:
+            kwargs.update(params)
+        elif name in params:
+            kwargs[name] = params[name]
+        elif name not in _BANK_OHLCV_PARAMS and p.default is inspect.Parameter.empty:
+            return {"entry": np.zeros(len(close), dtype=bool), "exit": np.zeros(len(close), dtype=bool), "indicators": {"skipped": f"missing required param: {name}"}}
+    entry_arr, meta = func(*positional, **kwargs)
+    return {"entry": entry_arr, "exit": np.zeros(len(close), dtype=bool), "indicators": meta}
+
+
+def _get_bank_formulas() -> dict[str, Any]:
+    try:
+        from bank import ALL_FORMULAS
+        return ALL_FORMULAS
+    except ImportError:
+        return {}
+
+
 def compute_formula_signals(
     formula_id: str,
     *,
@@ -664,16 +733,11 @@ def compute_formula_signals(
     amount: np.ndarray,
     params: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
-    if formula_id == "gs_raw_buy":
-        return gs_raw_buy_signals(open_, high, low, close, params)
-    if formula_id == "gs_pullback_confirm":
-        return gs_pullback_confirm_signals(open_, high, low, close, volume, amount, params)
-    if formula_id == "ma_base_breakout":
-        return ma_base_breakout_signals(open_, high, low, close, volume, amount, params)
-    if formula_id == "activity_breakout":
-        return activity_breakout_signals(open_, high, low, close, volume, amount, params)
-    if formula_id == "volume_base_breakout":
-        return volume_base_breakout_signals(open_, high, low, close, volume, amount, params)
-    if formula_id == "pullback_doji":
-        return pullback_doji_signals(open_, high, low, close, volume, amount, params)
+    params = params or {}
+    ohlcv_fn = _OHLCV_FORMULAS.get(formula_id)
+    if ohlcv_fn is not None:
+        return ohlcv_fn(open_, high, low, close, volume, amount, params)
+    bank = _get_bank_formulas()
+    if formula_id in bank:
+        return _call_bank_formula(bank[formula_id], open_, high, low, close, volume, params)
     raise ValueError(f"unknown formula_id: {formula_id}")
