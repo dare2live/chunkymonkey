@@ -70,11 +70,14 @@ class PortfolioPool:
         date_idx: int,
         scored_signals: list,
         close_prices: dict[str, float],
+        next_open_prices: dict[str, float] | None = None,
         high_prices: dict[str, float] | None = None,
         ma_prices: dict[str, float] | None = None,
     ) -> list[PoolAction]:
-        """Process one day: check exits, then entries."""
+        """Process one day: check exits at close, then entries at T+1 open when supplied."""
         actions: list[PoolAction] = []
+        entry_prices = next_open_prices if next_open_prices is not None else close_prices
+        entry_date_idx = date_idx + 1 if next_open_prices is not None else date_idx
 
         for code in list(self.positions.keys()):
             pos = self.positions[code]
@@ -94,25 +97,25 @@ class PortfolioPool:
         candidates = [s for s in scored_signals
                       if s.score >= self.cfg["score_threshold"]
                       and s.code not in self.positions
-                      and s.code in close_prices]
+                      and s.code in entry_prices]
         candidates.sort(key=lambda s: -s.score)
 
         slots = self.available_slots
         if slots > 0:
             for sig in candidates[:slots]:
-                price = close_prices[sig.code]
+                price = entry_prices[sig.code]
                 if price <= 0:
                     continue
                 pos = Position(
                     code=sig.code,
-                    entry_idx=date_idx,
+                    entry_idx=entry_date_idx,
                     entry_price=price,
                     entry_score=sig.score,
                     highest_since_entry=price,
                     formulas=sig.formulas,
                 )
                 self.positions[sig.code] = pos
-                act = PoolAction("buy", sig.code, date_idx, "new_entry", price=price, score=sig.score)
+                act = PoolAction("buy", sig.code, entry_date_idx, "new_entry", price=price, score=sig.score)
                 actions.append(act)
                 self.trade_log.append(act)
                 slots -= 1
@@ -125,13 +128,13 @@ class PortfolioPool:
                 pnl = (price - worst_pos.entry_price) / worst_pos.entry_price if worst_pos.entry_price > 0 else 0
                 actions.append(PoolAction("sell", worst_code, date_idx, "replaced", price=price, pnl_pct=round(pnl, 4)))
                 del self.positions[worst_code]
-                new_price = close_prices[best_candidate.code]
+                new_price = entry_prices[best_candidate.code]
                 self.positions[best_candidate.code] = Position(
-                    code=best_candidate.code, entry_idx=date_idx, entry_price=new_price,
+                    code=best_candidate.code, entry_idx=entry_date_idx, entry_price=new_price,
                     entry_score=best_candidate.score, highest_since_entry=new_price,
                     formulas=best_candidate.formulas,
                 )
-                actions.append(PoolAction("buy", best_candidate.code, date_idx, "replace_entry", price=new_price, score=best_candidate.score))
+                actions.append(PoolAction("buy", best_candidate.code, entry_date_idx, "replace_entry", price=new_price, score=best_candidate.score))
 
         return actions
 

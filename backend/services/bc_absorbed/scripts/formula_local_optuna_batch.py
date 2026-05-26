@@ -41,6 +41,10 @@ from formula_engine import compute_formula_signals, FORMULA_DEFINITIONS, _regist
 _register_bank_definitions()
 
 
+TRAIN_RATIO = 0.70
+MAX_SIGNALS_PER_SPLIT = 120
+
+
 def _load_stocks(max_stocks: int = 0) -> dict[str, dict]:
     import duckdb
     from services.universe import get_active_universe
@@ -113,6 +117,66 @@ def _score(m: dict[str, Any]) -> float:
     return sample + win + ret + calmar
 
 
+def _param_count(formula_id: str) -> int:
+    optuna.logging.set_verbosity(optuna.logging.ERROR)
+    study = optuna.create_study(direction="maximize")
+    return len(_suggest_params(formula_id, study.ask()))
+
+
+def _tiered_trials(formula_id: str, requested_trials: int) -> tuple[int, int]:
+    n_params = _param_count(formula_id)
+    if n_params <= 0:
+        tier = 1
+    elif n_params <= 2:
+        tier = 30
+    elif n_params <= 6:
+        tier = 60
+    else:
+        tier = 100
+    return min(requested_trials, tier), n_params
+
+
+def _split_idx(stock: dict[str, Any]) -> int:
+    n = len(stock["dates"])
+    return max(1, min(n - 1, int(n * TRAIN_RATIO)))
+
+
+def _stock_head(stock: dict[str, Any], end_idx: int) -> dict[str, Any]:
+    return {
+        **stock,
+        "dates": stock["dates"][:end_idx],
+        "open": stock["open"][:end_idx],
+        "high": stock["high"][:end_idx],
+        "low": stock["low"][:end_idx],
+        "close": stock["close"][:end_idx],
+        "volume": stock["volume"][:end_idx],
+        "amount": stock["amount"][:end_idx],
+    }
+
+
+def _entries_for(formula_id: str, stock: dict[str, Any], params: dict[str, Any]) -> np.ndarray:
+    r = compute_formula_signals(
+        formula_id, open_=stock["open"], high=stock["high"],
+        low=stock["low"], close=stock["close"], volume=stock["volume"],
+        amount=stock["amount"], params=params,
+    )
+    return np.where(r["entry"])[0]
+
+
+def _trades_for_entries(stock: dict[str, Any], entries: np.ndarray) -> list[dict]:
+    if len(entries) == 0:
+        return []
+    if len(entries) > MAX_SIGNALS_PER_SPLIT:
+        entries = entries[-MAX_SIGNALS_PER_SPLIT:]
+    trade_map = build_fixed_holding_trades(
+        code=stock["code"], dates=stock["dates"],
+        opens=stock["open"], highs=stock["high"], lows=stock["low"], closes=stock["close"],
+        volumes=stock["volume"], amounts=stock["amount"],
+        signal_indices=entries, holding_periods=[10], include_open=False,
+    )
+    return trade_map.get(10, [])
+
+
 def _verify_data() -> dict[str, str]:
     import duckdb
     issues: dict[str, str] = {}
@@ -150,41 +214,38 @@ def run_formula_optuna(
     def objective(trial: optuna.Trial) -> float:
         nonlocal best_payload
         params = _suggest_params(formula_id, trial)
-        total_trades: list[dict] = []
+        train_trades: list[dict] = []
+        validation_trades: list[dict] = []
         for code in sample_codes:
             stock = stocks.get(code)
             if stock is None:
                 continue
             try:
-                r = compute_formula_signals(
-                    formula_id, open_=stock["open"], high=stock["high"],
-                    low=stock["low"], close=stock["close"],
-                    volume=stock["volume"], amount=stock["amount"],
-                    params=params,
-                )
-                entries = np.where(r["entry"])[0]
-                if len(entries) == 0:
-                    continue
-                if len(entries) > 120:
-                    entries = entries[-120:]
-                trade_map = build_fixed_holding_trades(
-                    code=code, dates=stock["dates"],
-                    opens=stock["open"], highs=stock["high"],
-                    lows=stock["low"], closes=stock["close"],
-                    volumes=stock["volume"], amounts=stock["amount"],
-                    signal_indices=entries, holding_periods=[10],
-                    include_open=False,
-                )
-                total_trades.extend(trade_map.get(10, []))
+                split_i = _split_idx(stock)
+                train_stock = _stock_head(stock, split_i)
+                train_trades.extend(_trades_for_entries(train_stock, _entries_for(formula_id, train_stock, params)))
+                full_entries = _entries_for(formula_id, stock, params)
+                validation_entries = full_entries[full_entries >= split_i]
+                validation_trades.extend(_trades_for_entries(stock, validation_entries))
             except Exception:
                 continue
-        m = _metrics(total_trades)
-        if m is None:
+        train_m = _metrics(train_trades)
+        if train_m is None:
             return -999.0
-        s = _score(m)
-        if best_payload is None or s > best_payload.get("score", -999):
-            best_payload = {"params": params, "score": s, "metrics": m}
-        return s
+        validation_m = _metrics(validation_trades)
+        train_score = _score(train_m)
+        validation_score = _score(validation_m) if validation_m else -999.0
+        if best_payload is None or train_score > best_payload.get("train_score", -999):
+            best_payload = {
+                "params": params,
+                "score": validation_score,
+                "metrics": validation_m,
+                "train_score": train_score,
+                "train_metrics": train_m,
+                "validation_score": validation_score,
+                "validation_metrics": validation_m,
+            }
+        return train_score
 
     sampler = optuna.samplers.TPESampler(seed=seed)
     study = optuna.create_study(direction="maximize", sampler=sampler)
@@ -213,15 +274,20 @@ def main() -> None:
 
     print("formula_optuna_batch: validating plan logic...", flush=True)
     from plan_validator import validate_optuna_plan, PlanValidationError
-    plan_result = validate_optuna_plan(
-        formulas=args.formulas,
-        trials=args.trials,
-        output_path=args.output,
-    )
-    print(plan_result.summary(), flush=True)
-    if not plan_result.passed:
-        print("PLAN VALIDATION FAILED — refusing to run", flush=True)
-        sys.exit(2)
+    trial_plan = {fid: _tiered_trials(fid, args.trials) for fid in args.formulas}
+    searchable_formulas = [fid for fid, (_, n_params) in trial_plan.items() if n_params > 0]
+    if searchable_formulas:
+        plan_result = validate_optuna_plan(
+            formulas=searchable_formulas,
+            trials=max(trial_plan[fid][0] for fid in searchable_formulas),
+            output_path=args.output,
+        )
+        print(plan_result.summary(), flush=True)
+        if not plan_result.passed:
+            print("PLAN VALIDATION FAILED — refusing to run", flush=True)
+            sys.exit(2)
+    else:
+        print("Plan Validation: no searchable params; all formulas run 1 baseline trial", flush=True)
 
     print("formula_optuna_batch: loading stocks...", flush=True)
     stocks = _load_stocks(args.max_stocks)
@@ -240,11 +306,13 @@ def main() -> None:
             cp_file = cp_dir / f"{formula_id}.json"
             if cp_file.exists():
                 cp = json.loads(cp_file.read_text())
-                if cp.get("status") == "complete" and cp.get("trials") == args.trials:
+                effective_trials, _ = trial_plan.get(formula_id, (args.trials, 0))
+                if cp.get("status") == "complete" and cp.get("trials") == effective_trials:
                     print(f"formula_optuna_batch: SKIP {formula_id} (checkpoint complete)", flush=True)
                     continue
 
-        print(f"formula_optuna_batch: START {formula_id} trials={args.trials}", flush=True)
+        effective_trials, n_params = trial_plan.get(formula_id, _tiered_trials(formula_id, args.trials))
+        print(f"formula_optuna_batch: START {formula_id} trials={effective_trials} params={n_params}", flush=True)
         started = time.time()
 
         if cp_dir:
@@ -255,12 +323,14 @@ def main() -> None:
             }))
 
         try:
-            result = run_formula_optuna(formula_id, stocks, args.trials, args.seed, sample_codes)
+            result = run_formula_optuna(formula_id, stocks, effective_trials, args.seed, sample_codes)
             elapsed = time.time() - started
             row = {
                 "formula_id": formula_id,
-                "trials": args.trials,
+                "trials": effective_trials,
+                "n_params": n_params,
                 "score": result.get("score"),
+                "train_score": result.get("train_score"),
                 "win_rate": (result.get("metrics") or {}).get("win_rate"),
                 "avg_ret": (result.get("metrics") or {}).get("avg_ret"),
                 "n_trades": (result.get("metrics") or {}).get("n"),
@@ -277,7 +347,7 @@ def main() -> None:
             if cp_dir:
                 (cp_dir / f"{formula_id}.json").write_text(json.dumps({
                     "formula_id": formula_id, "status": "complete",
-                    "trials": args.trials, "walk_forward_mode": "expanding_monthly",
+                    "trials": effective_trials, "walk_forward_mode": "temporal_70_30",
                     "score": row["score"], "completed_at": time.strftime("%Y-%m-%dT%H:%M:%S%z"),
                 }, indent=2))
         except Exception as e:
@@ -293,7 +363,7 @@ def main() -> None:
     if args.output and results:
         out = Path(args.output)
         out.parent.mkdir(parents=True, exist_ok=True)
-        fields = ["formula_id", "trials", "score", "win_rate", "avg_ret", "n_trades", "params", "elapsed_sec", "status"]
+        fields = ["formula_id", "trials", "n_params", "score", "train_score", "win_rate", "avg_ret", "n_trades", "params", "elapsed_sec", "status"]
         with out.open("w", newline="") as f:
             w = csv.DictWriter(f, fieldnames=fields)
             w.writeheader()
