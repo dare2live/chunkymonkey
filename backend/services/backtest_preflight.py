@@ -149,6 +149,44 @@ def _check_walk_forward(walk_forward_mode: str | None) -> dict:
             "detail": f"walk_forward_mode='{walk_forward_mode}'"}
 
 
+def _check_code_leakage() -> dict:
+    """Static scan: detect future-index access patterns in bank formula source code."""
+    import re
+    from pathlib import Path
+    bank_dir = Path(__file__).resolve().parent.parent / "services" / "bc_absorbed" / "bank"
+    if not bank_dir.exists():
+        return {"name": "code_leakage_scan", "status": "PASS",
+                "detail": "bank dir not found, skip"}
+    future_pattern = re.compile(
+        r'close\[.*(?:idx|i)\s*\+\s*[1-9].*\]'
+        r'|high\[.*(?:idx|i)\s*\+\s*[1-9].*\]'
+        r'|low\[.*(?:idx|i)\s*\+\s*[1-9].*\]'
+        r'|open[_]?\[.*(?:idx|i)\s*\+\s*[1-9].*\]'
+        r'|volume\[.*(?:idx|i)\s*\+\s*[1-9].*\]'
+    )
+    condition_pattern = re.compile(
+        r'if\s+.*close\[.*\+\s*[1-9]'
+        r'|if\s+.*high\[.*\+\s*[1-9]'
+        r'|if\s+.*low\[.*\+\s*[1-9]'
+    )
+    violations: list[str] = []
+    for py_file in bank_dir.glob("*.py"):
+        if py_file.name.startswith("_"):
+            continue
+        lines = py_file.read_text().splitlines()
+        for lineno, line in enumerate(lines, 1):
+            stripped = line.strip()
+            if stripped.startswith("#"):
+                continue
+            if condition_pattern.search(stripped):
+                violations.append(f"{py_file.name}:{lineno}: {stripped[:80]}")
+    if violations:
+        return {"name": "code_leakage_scan", "status": "FAIL",
+                "detail": f"{len(violations)} future-index patterns: " + "; ".join(violations[:3])}
+    return {"name": "code_leakage_scan", "status": "PASS",
+            "detail": f"scanned {len(list(bank_dir.glob('*.py')))} bank files, 0 future-index violations"}
+
+
 def _check_signal_pit(
     formula_id: str | None,
     sample_stock: dict | None,
@@ -234,6 +272,7 @@ def run_backtest_preflight(
 
     result.checks.append(_check_walk_forward(walk_forward_mode))
     result.checks.append(_check_signal_pit(formula_id, sample_stock))
+    result.checks.append(_check_code_leakage())
 
     return result
 

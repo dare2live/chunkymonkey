@@ -77,14 +77,11 @@ def lhb_institutional_appearance(close: np.ndarray, lhb_inst_seats: np.ndarray, 
 def dividend_ex_dividend_bounce(close: np.ndarray, ex_dividend_flag: np.ndarray, *,
                                   pre_window: int = 1, post_window: int = 5,
                                   **params: Any) -> tuple[np.ndarray, dict]:
-    """Ex-dividend day -pre to +post: bounce setup pattern."""
+    """Ex-dividend day: signal at ex-date close, buy T+1 open (no future data)."""
     entry = np.zeros(len(close), dtype=bool)
     ex_idx = np.where(ex_dividend_flag > 0)[0]
     for idx in ex_idx:
-        end = min(idx + post_window + 1, len(close))
-        start = max(idx - pre_window, 0)
-        # Trigger 1 day after ex-dividend if bounce starts
-        if idx + 1 < len(close) and close[idx + 1] > close[idx]:
+        if idx + 1 < len(close):
             entry[idx + 1] = True
     return entry, {"name": "dividend_ex_dividend_bounce", "entry_count": int(entry.sum())}
 

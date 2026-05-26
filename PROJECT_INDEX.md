@@ -17,6 +17,7 @@
 - **Leakage 检测强化**: 删除声明式 `has_future_filter`/`verified_used_as_entry` 参数, 改为: (1) walk_forward_mode 必填不传=FAIL (2) signal PIT spot-check 自动截断未来数据验证信号存活 (3) formula_id+sample_stock 必传. 6 核心公式 PIT spot-check 全部 PASS.
 - **四层分层架构 5 新模块**: Layer 0 `stock_profiler.py` (股票画像) / Layer 2 `signal_ranker.py` (共振评分) / Layer 3 `portfolio_pool.py` (股票池 max 5) / `daily_formula_picks.py` (每日选股) / `paper_sim_formula.yaml` (配置). 300616 端到端验证四层全部打通.
 - **GCP 跑批脚本**: `gcp/gcp_formula_optuna_batch.sh` (34 公式 5 批 checkpoint resume) + `formula_local_optuna_batch.py` (单公式 runner, 数据验证 + GCS 上传). 防 preempt: per-formula checkpoint. 防数据不完整: stock count + max_date 预检.
+- **Leakage 修复+审计**: `dividend_ex_dividend_bounce` close[idx+1] leakage 修复. 新增 `_check_code_leakage()` 静态扫描 bank 源码 future-index 模式. preflight 现 8 项检查 (universe/板块/成本/新鲜度/walk-forward/PIT spot-check/code leakage scan).
 - **Tech Debt 登记**: `assets/js/app.js` 80 HIGH complexity (全项目唯一 HIGH 集中文件), 排 Phase 3 后清理.
 
 ## [INDEX] 2026-05-21 增量
