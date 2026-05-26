@@ -42,7 +42,7 @@ from services.backtest.result import TradeResult
 COMMISSION = 0.00025
 STAMP_DUTY = 0.0005
 SLIPPAGE = 0.001
-LIMIT_UP_PCT_DEFAULT = 0.097  # 主板 fallback, 实际按 get_limit_up_pct(code) 取
+LIMIT_UP_PCT_DEFAULT = 0.10  # from yaml: universe_rules.yaml (主板 10%)
 
 
 def _load_aux_data():

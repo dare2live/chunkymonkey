@@ -12,7 +12,8 @@ from __future__ import annotations
 
 from typing import Any
 
-LIMIT_THRESHOLD = 0.097  # 主板 fallback, 新代码应传 limit_pct 参数
+from services.universe import get_limit_up_pct as _get_limit  # from yaml: universe_rules.yaml
+LIMIT_THRESHOLD = _get_limit("60")  # 主板 fallback, 新代码应传 limit_pct 参数
 
 
 def is_limit_up_day(open_p: float, prev_close: float | None, limit_pct: float | None = None) -> bool:

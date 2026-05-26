@@ -68,7 +68,7 @@ DEFAULT_PARAMS = {
     "verify_rally_window": 2,
 
     "hold_days": [3, 5, 10, 15, 20],
-    "tx_cost_bps": 15,
+    "tx_cost_bps": None,  # None = auto from paper_sim_config.yaml via get_default_tx_cost_bps()
 }
 
 
@@ -493,7 +493,7 @@ def run_scan(params: dict | None = None, quiet: bool = False):
         stock_codes=list(stocks.keys()),
         conn=smart_conn,
         market_conn=conn,
-        tx_cost_bps=params.get("tx_cost_bps", 15),
+        tx_cost_bps=params.get("tx_cost_bps"),  # None = auto from paper_sim_config.yaml
     )
     smart_conn.close()
     conn.close()
