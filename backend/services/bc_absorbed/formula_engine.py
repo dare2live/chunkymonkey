@@ -50,6 +50,21 @@ FORMULA_DEFINITIONS: dict[str, FormulaDefinition] = {
         "回调十字星",
         "放量大涨后凌厉缩量回调收十字星，次日买入。按板块涨停阈值适配。",
     ),
+    "consolidation_breakout": FormulaDefinition(
+        "consolidation_breakout",
+        "底部首涨",
+        "长期横盘后MA突破+量扩+不追涨停。300616 W1/W3起涨点。",
+    ),
+    "continuation": FormulaDefinition(
+        "continuation",
+        "主涨续涨",
+        "趋势确认(MA20/60上方)+量能持续+不过度延伸。300616 主涨段。",
+    ),
+    "pullback_doji_enhanced": FormulaDefinition(
+        "pullback_doji_enhanced",
+        "增强十字星",
+        "原始十字星+gain_retained(>50%)+pb_depth(<7%)过滤弱信号。",
+    ),
 }
 
 
@@ -678,6 +693,8 @@ def pullback_doji_signals(
     return {"entry": entry, "exit": exit_arr, "indicators": {"n_signals": len(sigs)}}
 
 
+from derived_formulas import consolidation_breakout_signals, continuation_signals, pullback_doji_enhanced_signals
+
 _OHLCV_FORMULAS = {
     "gs_raw_buy": lambda o, h, l, c, v, a, p: gs_raw_buy_signals(o, h, l, c, p),
     "gs_pullback_confirm": lambda o, h, l, c, v, a, p: gs_pullback_confirm_signals(o, h, l, c, v, a, p),
@@ -685,6 +702,9 @@ _OHLCV_FORMULAS = {
     "activity_breakout": lambda o, h, l, c, v, a, p: activity_breakout_signals(o, h, l, c, v, a, p),
     "volume_base_breakout": lambda o, h, l, c, v, a, p: volume_base_breakout_signals(o, h, l, c, v, a, p),
     "pullback_doji": lambda o, h, l, c, v, a, p: pullback_doji_signals(o, h, l, c, v, a, p),
+    "consolidation_breakout": lambda o, h, l, c, v, a, p: consolidation_breakout_signals(o, h, l, c, v, a, p),
+    "continuation": lambda o, h, l, c, v, a, p: continuation_signals(o, h, l, c, v, a, p),
+    "pullback_doji_enhanced": lambda o, h, l, c, v, a, p: pullback_doji_enhanced_signals(o, h, l, c, v, a, p),
 }
 
 _BANK_OHLCV_PARAMS = {"close", "high", "low", "volume", "open_", "open"}
