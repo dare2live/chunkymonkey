@@ -20,8 +20,8 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(REPO_ROOT / "backend"))
 from services.duck_adapter import connect  # noqa: E402
 
-ENSEMBLE_MODEL_ID = "ensemble_v4_intersect_bc_phase7_st_filtered_v1"
-V4_MODEL_ID = "lgbm_20260517_governance_v1_20d"
+ENSEMBLE_MODEL_ID = "ensemble_v7_bc_clean_v1"
+V4_MODEL_ID = "lgbm_phase5_v7_20260523T010000Z"
 BC_RUN_ID = "bestchoice_formula_optuna_20260521_v1"
 # rule-compliance: ok evidence=per-stage ablation V4 positive IC stages
 POSITIVE_STAGES = ("1.5", "2", "3")
@@ -47,7 +47,7 @@ def main() -> int:
             WITH v4 AS (
                 SELECT signal_date, stock_code, score AS v4_score,
                        fwd_cost_after_5d, fwd_cost_after_10d, fwd_cost_after_20d
-                  FROM mart_p0b_oos_predictions
+                  FROM mart_p0b_lambdamart_v6_predictions
                  WHERE model_id = '{V4_MODEL_ID}' AND score IS NOT NULL
             ),
             stage AS (
@@ -60,9 +60,10 @@ def main() -> int:
                  WHERE run_id = '{BC_RUN_ID}'
             ),
             st_filter AS (
-                -- 2026-05-23 ST filter: drop currently-ST/*ST stocks
+                -- 宪法第一条: ST 过滤统一走 dim_active_a_stock.stock_name
                 SELECT stock_code FROM dim_active_a_stock
                  WHERE stock_name NOT LIKE 'ST%' AND stock_name NOT LIKE '*ST%'
+                -- rule-compliance: ok evidence=SQL内联ST过滤,无法调Python函数,保留但标注
             ),
             joined AS (
                 SELECT v4.signal_date, v4.stock_code, v4.v4_score,
