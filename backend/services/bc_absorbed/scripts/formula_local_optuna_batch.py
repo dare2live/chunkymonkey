@@ -46,6 +46,7 @@ MAX_SIGNALS_PER_SPLIT = 120
 
 
 def _load_stocks(max_stocks: int = 0) -> dict[str, dict]:
+    """Load stocks with board-stratified sampling (不按 code 排序取前 N)."""
     import duckdb
     from services.universe import get_active_universe
     smart = duckdb.connect(str(SMART_DB), read_only=True)
@@ -61,7 +62,7 @@ def _load_stocks(max_stocks: int = 0) -> dict[str, dict]:
 
     codes = raw["code"]
     unique_codes, counts = np.unique(codes, return_counts=True)
-    stocks: dict[str, dict] = {}
+    all_stocks: dict[str, dict] = {}
     idx = 0
     for code_raw, cnt in zip(unique_codes, counts):
         sl = slice(idx, idx + cnt)
@@ -69,9 +70,7 @@ def _load_stocks(max_stocks: int = 0) -> dict[str, dict]:
         idx += cnt
         if code not in universe or cnt < 220:
             continue
-        if max_stocks and len(stocks) >= max_stocks:
-            break
-        stocks[code] = {
+        all_stocks[code] = {
             "code": code,
             "dates": raw["date"][sl],
             "open": raw["open"][sl].astype(np.float64),
@@ -81,7 +80,26 @@ def _load_stocks(max_stocks: int = 0) -> dict[str, dict]:
             "volume": raw["volume"][sl].astype(np.float64),
             "amount": raw["amount"][sl].astype(np.float64),
         }
-    return stocks
+
+    if max_stocks and len(all_stocks) > max_stocks:
+        boards = {"00": [], "30": [], "60": [], "68": []}
+        for code in all_stocks:
+            prefix = code[:2]
+            if prefix in boards:
+                boards[prefix].append(code)
+        per_board = max(1, max_stocks // len([b for b in boards.values() if b]))
+        sampled: dict[str, dict] = {}
+        rng = np.random.RandomState(42)
+        for prefix, board_codes in sorted(boards.items()):
+            if not board_codes:
+                continue
+            n_take = min(per_board, len(board_codes))
+            chosen = rng.choice(board_codes, n_take, replace=False)
+            for c in chosen:
+                sampled[c] = all_stocks[c]
+        return sampled
+
+    return all_stocks
 
 
 def _suggest_params(formula_id: str, trial: optuna.Trial) -> dict[str, Any]:

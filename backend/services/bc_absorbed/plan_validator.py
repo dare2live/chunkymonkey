@@ -176,6 +176,64 @@ def _check_cost_efficiency(formulas: list[str], trials: int, est_sec_per_trial: 
             "detail": f"est ${est_cost:.2f} for {useful_formulas} formulas ({est_hours:.1f}h, ${cost_per_formula:.2f}/formula)"}
 
 
+def _check_param_scope(formulas: list[str]) -> dict:
+    """检测 per-stock 参数 (板块/行业/市值决定) 是否混入 global search space."""
+    per_stock_keywords = ['limit_up_pct', 'limit_pct', 'board', 'industry_code', 'market_cap_class']
+    try:
+        import optuna
+        optuna.logging.set_verbosity(optuna.logging.ERROR)
+        try:
+            from scripts.formula_local_optuna import _suggest_params
+        except ImportError:
+            from formula_local_optuna import _suggest_params
+        violations = []
+        for fid in formulas:
+            try:
+                study = optuna.create_study()
+                trial = study.ask()
+                params = _suggest_params(fid, trial)
+                bad = [p for p in params if any(k in p.lower() for k in per_stock_keywords)]
+                if bad:
+                    violations.append(f"{fid}: {bad}")
+            except Exception:
+                pass
+        if violations:
+            return {"name": "param_scope", "status": "FAIL",
+                    "detail": f"per-stock params in global search space: {'; '.join(violations[:3])}"}
+    except ImportError:
+        return {"name": "param_scope", "status": "PASS",
+                "detail": "cannot import _suggest_params, skip"}
+    return {"name": "param_scope", "status": "PASS",
+            "detail": f"checked {len(formulas)} formulas, no per-stock params in search space"}
+
+
+def _check_board_coverage(formulas: list[str]) -> dict:
+    """检测 sample stocks 是否覆盖全部板块 (主板/创业板/科创板)."""
+    try:
+        import sys
+        from pathlib import Path
+        scripts_dir = str(Path(__file__).resolve().parent / "scripts")
+        if scripts_dir not in sys.path:
+            sys.path.insert(0, scripts_dir)
+        from formula_local_optuna_batch import _load_stocks
+        stocks = _load_stocks(200)
+        boards = {"00": 0, "30": 0, "60": 0, "68": 0}
+        for code in stocks:
+            prefix = code[:2]
+            if prefix in boards:
+                boards[prefix] += 1
+        missing = [f"{p}({n})" for p, n in boards.items() if n == 0]
+        if missing:
+            return {"name": "board_coverage", "status": "FAIL",
+                    "detail": f"sample missing boards: {missing}. "
+                    f"Distribution: {boards}. 按 code 排序取前 N 只覆盖单一板块!"}
+        return {"name": "board_coverage", "status": "PASS",
+                "detail": f"all boards covered: {boards}"}
+    except Exception as e:
+        return {"name": "board_coverage", "status": "FAIL",
+                "detail": f"cannot check: {e}"}
+
+
 def _check_output_usable(output_path: str | None = None) -> dict:
     """结果有明确的下游消费方."""
     if output_path is None:
@@ -198,6 +256,8 @@ def validate_optuna_plan(
     result.checks.append(_check_trial_value(formulas, trials))
     result.checks.append(_check_formula_runnable(formulas))
     result.checks.append(_check_cost_efficiency(formulas, trials, est_sec_per_trial))
+    result.checks.append(_check_param_scope(formulas))
+    result.checks.append(_check_board_coverage(formulas))
     result.checks.append(_check_output_usable(output_path))
 
     logger.info(result.summary())
