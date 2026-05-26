@@ -77,7 +77,142 @@ L4 展示      → API / 前端
 
 **WHY**: 29/34 无 search space 白跑 GCP $1.5; 200 只全深主板; 573 只误标. 都是没验证就执行.
 
-## 第六条: 完成标准
+## 第六条: 审计工具体系
+
+审计不是"跑一下看看", 是基础设施. 每个 gate 有明确的:
+- **输入**: 什么触发它
+- **检查项**: 具体查什么
+- **输出**: PASS/FAIL + 详情
+- **阻断**: FAIL 时怎么拦 (raise / exit / WARNING)
+- **扩展**: 怎么加新检查项
+- **维护**: 谁更新, 什么时候更新
+
+### 6.1 数据审计 (`data_audit.py`)
+
+```
+触发: 每次数据 sync 后自动跑 (daily_update.sh 每步后调)
+位置: backend/services/data_audit.py
+配置: 检查项硬编码 (应改为 YAML, 待做)
+
+检查项:
+  kline_completeness    — 逐股票 vs 交易日历, 缺天 = FAIL
+  kline_consistency     — 重复/gap > 5 天 = FAIL
+  board_coverage        — 四板块全覆盖
+  date_range            — 匹配交易日历 max_date
+  volume_sanity         — 无负值无全零
+  smartmoney_freshness  — 关键表新鲜度 vs 交易日历
+  cross_table_consistency — K线股票 vs universe + 误标退市检查
+
+输出: data/reports/data_audit_latest.json
+阻断: strict 模式 raise, warn 模式 log
+扩展: 加新检查 = 加 _check_xxx 函数 + 注册到 run_post_sync_audit
+维护: 新数据源接入时同步加检查项
+```
+
+### 6.2 回测前置审计 (`backtest_preflight.py`)
+
+```
+触发: 每次回测/Optuna/验证前, 在入口函数调 enforce_backtest_preflight()
+位置: backend/services/backtest_preflight.py
+
+检查项:
+  universe_clean        — stock_codes 全在 active universe
+  limit_pct_per_board   — 多板块区分 (不允许全用同一阈值)
+  cost_model            — tx_cost_bps >= 10 (from paper_sim_config.yaml)
+  data_freshness        — K线 max_date vs 交易日历
+  walk_forward          — 必须显式声明模式 (不传 = FAIL)
+  signal_pit_spotcheck  — 截断未来数据重跑, 信号消失 = FAIL
+  code_leakage_scan     — 静态扫 bank 源码 future-index 模式
+
+阻断: raise BacktestPreflightError
+扩展: 加 _check_xxx 函数 + 注册到 run_backtest_preflight
+维护: 新公式/新数据源接入时检查是否需要新检查项
+```
+
+### 6.3 计划验证 (`plan_validator.py`)
+
+```
+触发: GCP 跑批前, formula_local_optuna_batch.py main() 入口
+位置: backend/services/bc_absorbed/plan_validator.py
+
+检查项:
+  search_space          — 每个公式有非空 Optuna search space
+  trial_value           — N trials 不是重复跑同参数
+  formula_runnable      — 每个公式能 import + 小数据跑通
+  cost_efficiency       — 成本 vs 产出合理
+  param_scope           — per-stock 属性不在 global search space
+  sample_size_coverage  — 全量 universe (max_stocks=0) + 四板块覆盖
+  output_usable         — 结果有下游消费方
+
+阻断: raise PlanValidationError 或 exit 2
+扩展: 加 _check_xxx 函数 + 注册到 validate_optuna_plan
+维护: 新公式加入时自动被 search_space 检查覆盖
+```
+
+### 6.4 GCP 启动前置 (`preflight_gcp_launch.sh`)
+
+```
+触发: GCP 跑批脚本执行前, 手动跑
+位置: gcp/preflight_gcp_launch.sh
+
+检查项:
+  vm_running            — VM 状态 RUNNING
+  ssh_reachable         — SSH 能连通
+  remote_plan_validator — VM 上 plan_validator PASS
+  remote_data_integrity — VM 上 data verify OK
+  grill_stamp           — grill_stamp 文件存在
+  leakage_scan          — 本地 code leakage scan PASS
+  budget                — GCP 月预算未超
+
+阻断: exit 1
+扩展: 加新检查 = 加 shell 函数 + 调 check()
+维护: VM 配置变更时同步更新
+```
+
+### 6.5 Session Handoff (`session_handoff_audit.py`)
+
+```
+触发: session 结束时 (Stop hook) + 下次启动时 (SessionStart hook) + 手动
+位置: scripts/session_handoff_audit.py
+
+检查项:
+  topic_coverage        — commits 提取的主题在 goal.md 中覆盖
+  file_mention          — 新/改 Python 文件在文档中提及
+  human_checklist       — 5 项人工确认 (next step/数字/失败原因/用户指令/能接着干)
+
+阻断: WARNING (advisory, 不阻断)
+扩展: 加新 keyword 模式到 keywords_map
+维护: 每次发现遗漏模式时补充
+```
+
+### 6.6 工程纪律 (`/engineering-discipline`)
+
+```
+触发: 任何代码改动/架构决策/跑批前, 人工调用或自动提示
+位置: ~/Documents/M/engineering-discipline/skills/engineering-discipline.md
+
+检查项:
+  Step 1 — 第一性原理 (3 问)
+  Step 2 — 奥卡姆剃刀 (最简方案)
+  Step 3 — 教训查验 (4 层 16 条)
+  Step 4 — 计划拷问 (5 问)
+  Step 5 — 代码审查 (5 问)
+  Step 6 — 架构检验 (4 问)
+
+阻断: 人工判断 (skill 不自动阻断, 靠纪律)
+扩展: 踩新坑 → 加到 Step 3 教训列表
+维护: 跨项目共享, ~/Documents/M/engineering-discipline/ 独立 git
+```
+
+### 6.7 审计体系设计原则
+
+1. **每个 gate 必须有代码实现** — 不靠人记, 靠工具拦
+2. **FAIL 必须阻断** — 不允许 WARNING 然后继续 (除了 handoff audit)
+3. **新增功能 = 新增检查** — 加公式 → plan_validator 自动覆盖; 加数据源 → data_audit 加检查
+4. **审计覆盖运行时** — 不只查前置条件 (DB 有数据), 也查运行时 (runner 实际加载了多少)
+5. **审计结果可追溯** — 写 JSON 报告到 data/reports/, git 跟踪
+
+## 第七条: 完成标准
 
 "完成" = 以下全部满足:
 1. 代码写完 + 测试通过
@@ -90,14 +225,14 @@ L4 展示      → API / 前端
 
 **WHY**: LHB fact 没重建说"完成了"; stage 没更新说"完成了"; handoff 漏 6 项说"完成了".
 
-## 第七条: 教训即规则
+## 第八条: 教训即规则
 
 踩过的坑自动升级为规则, 写入 `/engineering-discipline` skill Step 3.
 规则一旦写入, 同类错误不允许再犯. 再犯 = 工具没拦住, 修工具.
 
 **WHY**: 同一个错误 (不验证就执行) 在这个 session 犯了 5 次. 记住不够, 工具拦截才行.
 
-## 第八条: 配置驱动
+## 第九条: 配置驱动
 
 所有阈值/参数/规则必须在 YAML 配置文件中, 不在代码里.
 
