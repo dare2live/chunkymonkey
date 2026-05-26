@@ -224,6 +224,32 @@ def _verify_data() -> dict[str, str]:
     return issues
 
 
+def validate_loaded_stocks(stocks: dict[str, dict] | list[str], db_total: int) -> None:
+    codes = list(stocks.keys()) if isinstance(stocks, dict) else list(stocks)
+    loaded = len(codes)
+    if loaded < int(db_total * 0.8):
+        raise RuntimeError(f"LOADED DATA FAIL: loaded={loaded} db_total={db_total} (<80%)")
+    boards = {"00": 0, "30": 0, "60": 0, "68": 0}
+    d_min = d_max = None
+    for code in codes:
+        b = str(code)[:2]
+        if b in boards:
+            boards[b] += 1
+        if isinstance(stocks, dict):
+            d0, d1 = stocks[code]["dates"][0], stocks[code]["dates"][-1]
+            d_min = d0 if d_min is None or d0 < d_min else d_min
+            d_max = d1 if d_max is None or d1 > d_max else d_max
+    if any(v == 0 for v in boards.values()) or max(boards.values()) > loaded * 0.5:
+        raise RuntimeError(f"LOADED DATA FAIL: board distribution invalid: {boards}")
+    if not isinstance(stocks, dict):
+        raise RuntimeError("LOADED DATA FAIL: stock payload missing per-code history for train-window checks")
+    for code in codes[:20]:
+        stock = stocks[code]
+        if _split_idx(stock) < 120:
+            raise RuntimeError(f"LOADED DATA FAIL: {code} train split <120 days")
+    print(f"formula_optuna_batch: loaded validation OK | loaded={loaded}, db_total={db_total}, boards={boards}, date_range={d_min}~{d_max}", flush=True)
+
+
 def run_formula_optuna(
     formula_id: str,
     stocks: dict[str, dict],
@@ -306,14 +332,19 @@ def main() -> None:
             output_path=args.output,
         )
         print(plan_result.summary(), flush=True)
-        if not plan_result.passed:
+    if not plan_result.passed:
             print("PLAN VALIDATION FAILED — refusing to run", flush=True)
             sys.exit(2)
     else:
         print("Plan Validation: no searchable params; all formulas run 1 baseline trial", flush=True)
 
     print("formula_optuna_batch: loading stocks...", flush=True)
+    import duckdb
+    market_db = duckdb.connect(str(MARKET_DB), read_only=True)
+    db_total = int(market_db.execute("SELECT COUNT(DISTINCT code) FROM v_price_kline_qfq").fetchone()[0] or 0)
+    market_db.close()
     stocks = _load_stocks(args.max_stocks)
+    validate_loaded_stocks(stocks, db_total)
     sample_codes = list(stocks.keys())
     print(f"formula_optuna_batch: {len(stocks)} stocks loaded", flush=True)
 
