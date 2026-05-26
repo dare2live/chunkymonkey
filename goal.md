@@ -240,85 +240,267 @@ If script needs adaptation for unified panel groups: copy + adapt to `backend/sc
 | Weekly aggregate + divergence flag (>30% = abort criterion) | per-group weekly report |
 | Week 6+ promote decision | top performer scales 15% / others abort |
 
-### 2026-05-26 — BestChoice 分层选股架构 (公式工厂整改后续)
+### 2026-05-26 — BestChoice 分层选股架构 (Codex 讨论汇总 + 修正计划)
 
 > 用户指令: "基础设施做好, 模块化可复用, 避免之前浪费. 分层独立调参. 基于股票 profile 分类选股, 不局限于已有公式, 你们独立研究."
 
-**前提**: 公式工厂 Phase 1-3 基础设施已就绪 (8/8 READY, 2026-05-26 audit):
-- 55 公式 (6 core + 49 bank) 全部接入 `compute_formula_signals`
-- Preflight 7 维强审计 (universe/板块/成本/新鲜度/walk-forward/PIT spot-check)
-- 交易成本从 `paper_sim_config.yaml` 自动读 (10.4 bps)
-- 一字涨跌停处理 (`execution_model.py`)
-- YAML 配置化, Optuna governance
+#### 基础设施 (已就绪)
 
-**四层架构**:
-
-```
-Layer 0: 股票画像 (stock_profiler.py) — 独立模块, 独立测试
-  输入: K线 + SmartMoney 345 tables
-  输出: 每只股票的 profile (趋势/波动/板块/资金/阶段)
-  可调: 画像维度, 分类阈值
-
-Layer 1: 单公式信号 (formula_engine + bank) — 各自独立 Optuna
-  输入: OHLCV + 画像 (可选)
-  输出: per-stock per-day entry/exit signal
-  可调: 各公式自己的 YAML 参数
-  已有: 55 个, 可扩展
-
-Layer 2: 共振评分器 (signal_ranker.py) — 独立模块, 独立调参
-  输入: Layer 1 各公式信号
-  输出: per-stock per-day composite_score
-  可调: 共振窗口 / 公式权重 / 最低共振数 / profile-aware 权重
-
-Layer 3: 股票池 (portfolio_pool.py) — 独立模块, 独立调参
-  输入: Layer 2 scored signals
-  输出: 当日持仓 (max 5) + 卖出指令
-  可调: max_k / score_threshold / 止盈止损 / 替换比例 / 仓位管理
-```
-
-**实施顺序**:
-
-**Wave A (OHLCV baseline, GCP 已启动 2026-05-26)**:
-
-| 步骤 | 任务 | 状态 |
+| 模块 | 文件 | 状态 |
 |---|---|---|
-| A0 | Layer 0-3 五模块骨架 | DONE (stock_profiler/signal_ranker/portfolio_pool/daily_picks/config) |
-| A1 | 34 OHLCV 公式 × 100 trials GCP Optuna | RUNNING (gs_raw_buy 36.52 / gs_pullback_confirm 53.04 已完成, 余 32 个) |
-| A2 | Baseline 结果分析 + 公式排名 | blocked on A1 |
+| Preflight 8 维审计 | `backtest_preflight.py` | DONE (universe/板块/成本/新鲜度/walk-forward/PIT spot-check/code leakage scan) |
+| Plan validator | `plan_validator.py` | DONE (search space/trial value/runnable/cost/output) |
+| Grill gate | `gcp_formula_optuna_batch.sh` Step 0 + `~/.claude/hooks/plan_grill_gate.sh` | DONE |
+| 55 公式引擎 | `formula_engine.py` + `bank/` | DONE (6 core + 49 bank) |
+| 28 公式 Optuna search space | `formula_local_optuna.py` | DONE (6 无参数公式确认不需搜索) |
+| SmartMoney adapter | `smartmoney_adapter.py` | DONE (8 loader, PIT 安全) |
+| 四层架构 | profiler/ranker/pool/picks | DONE (骨架, 待扩展) |
+| YAML 配置化 | 6 个 formula_*.yaml | DONE |
+| 交易成本统一 | `get_default_tx_cost_bps()` | DONE (10.4 bps from paper_sim_config) |
+| Skills | `/grill-with-docs` `/diagnose` `/tdd` 等 8 个 | DONE (强制使用规则) |
 
-**Wave B (SmartMoney 数据接入, A1 完成后)**:
+#### 教训 (2026-05-26 踩坑)
 
-| 步骤 | 任务 | 依赖 | ETA | GCP |
+| 教训 | 根因 | 修复 |
+|---|---|---|
+| 29/34 公式无 search space = 白跑 GCP | 计划制定时没验证前提 | plan_validator + grill gate 强制 |
+| multi_tf 7 公式 PIT leakage | `_resample_close` 用未来窗口 close 回填 | 改为前一完整窗口 close |
+| macd_divergence_bottom 永远不触发 | `close[i] < close[i]` 同 index 比较 | 改为 prior_window_min |
+| mfi_oversold_bounce 首行数据污染 | `np.roll(tp, 1)` wrap around | 改为 prev_tp 移位 |
+| pullback_doji GCP 跑不了 | import 路径问题 | 改绝对路径 |
+
+#### 四层架构
+
+```
+Layer 0: stock_profiler.py — 股票画像
+  当前: 6 维 (trend/vol_rank/vol_regime/price_position/stage/board)
+  待扩展 (Codex 建议): +archetype +quality +stage_days +industry_strength +attention +risk
+  数据源: dim_stock_archetype_latest / dim_stock_quality_latest / dim_stock_stage_days /
+          dim_stock_industry_context_latest / dim_stock_attention_latest / fact_risk_factors
+
+Layer 1: formula_engine.py — 55 公式信号
+  28 个有 Optuna search space (5 core + 22 bank + pullback_doji)
+  6 个无参数 (纯固定逻辑, 跑 1 trial baseline)
+  21 个需外部数据 (Wave B 接入)
+  Codex 公式-画像映射假设:
+    gs_raw_buy → uptrend + expanding vol
+    ma_base_breakout → stage=base + quiet→expanding
+    pullback_doji → uptrend + low/mid vol
+    activity_breakout → high activity + medium-high vol
+    volume_base_breakout → stage=base + quiet→expanding
+
+Layer 2: signal_ranker.py — 共振评分
+  当前: resonance 40% + quality 30% + vol_price 30%
+  待扩展 (Codex 建议 profile-aware 加权):
+    stage 匹配公式 → 1.2x / 不匹配 → 0.7x
+    quality 高 → 1.1x / 低 → 0.8x
+    industry 顺风 → 1.1x / 弱 → 0.9x
+    attention 过热 → reject 或 cap
+    risk 严重 → 硬过滤 (直接剔除)
+
+Layer 3: portfolio_pool.py — 股票池 max 5
+  当前: stop_loss 5% / trailing 10% / MA20 退出 / 替换 1.3x
+  待 Optuna: max_k / score_threshold / 止盈止损参数
+```
+
+#### 300616 三波策略 (Codex 设计, `analysis/codex_multi_wave_300616.md`)
+
+三类信号:
+1. `consolidation_breakout` — 长期横盘后首涨 (ma_base_breakout + gs_raw_buy + obv 共振)
+2. `continuation` — 主涨续涨 (3+ 公式共振 + MA20/60 上方 + 量能持续)
+3. `pullback_doji` — 回调十字星 (趋势完好 + 浅回调 + OBV 不破)
+
+十字星待修 (Codex review):
+- gain_retained_min 过滤 (区分 Signal 1 胜 vs Signal 2 负)
+- pb_depth_max 过滤 (回调太深 = 强手不坚定)
+- body_ratio_max 从 0.3 收窄到 0.1-0.25 搜索
+- buy_offset YAML 与代码统一
+
+#### Codex 建议的 6 个新公式方向
+
+| 新公式 | 数据源 | 逻辑 |
+|---|---|---|
+| stage_fresh_breakout | stage + days_in_stage | 只在阶段早期触发 |
+| quality_gated_breakout | quality_score | 低质量股不给突破信号 |
+| capital_confirmed_pullback | capital_flow | 回调时资金行为仍正 → 买 |
+| industry_aligned_signal | industry_context | 板块顺风时加强 |
+| attention_overheat_filter | attention_score | 过热时压制信号 |
+| risk_adjusted_resonance | risk_factors | 高风险直接硬过滤 |
+
+#### Wave B Leakage 警告 (Codex 审查)
+
+| 数据源 | 风险 | 处理 |
+|---|---|---|
+| fact_lhb_event / fact_dzjy_event | 缺 source-available date | T+2 保守延迟 (adapter 已内置) |
+| fact_hsgt_daily | 单日快照无历史 | 不回测, 等补数据 |
+| perception marts | 仅 2026-04+ (22 天) | `snapshot_date <= signal_date` 严格; 不做历史 Optuna |
+| ST name filter | 当前状态非 PIT 历史 | 不用作最终 production gate |
+| dividend_ex_dividend_bounce | 原 close[idx+1] leakage | 已修 (删除未来 close 条件) |
+
+#### SmartMoney 数据覆盖 (adapter 审计)
+
+| 数据源 | 行数 | 时间范围 | 可用于 Optuna |
+|---|---|---|---|
+| **v_stock_sector_momentum_daily** | 4.5M | 2023-2026 | **YES** — 最有价值 |
+| fact_lhb_event | 53K | 2023-2026 | YES (T+2 delay) |
+| fact_executive_trade_event | 68K | 1994-2026 | YES (T+1 delay) |
+| raw_capital_dividend_detail | 12K | ~2026 | PARTIAL |
+| fact_hsgt_daily | 2.7K | 单日 | **NO** |
+| perception marts (3 种) | 700-910 | 2026-04+ | **NO** — 太短 |
+
+#### 修正后执行计划
+
+**Wave A 重跑 (GCP, 需先 /grill-with-docs)**:
+
+| 步骤 | 任务 | 公式数 | search space |
+|---|---|---|---|
+| A1 | 28 有参数公式 × 100 trials Optuna | 28 | 全部有 (plan_validator 验证) |
+| A2 | 6 无参数公式 × 1 trial baseline | 6 | 无 (只评估默认值) |
+| A3 | pullback_doji × 100 trials (含 gain_retained/pb_depth 新参数) | 1 | 10 params (Codex 补) |
+| A4 | 结果分析 → 筛选 top 12-18 进入 Layer 2 | - | - |
+
+**Wave B (SmartMoney 接入)**:
+
+| 步骤 | 任务 | 依赖 | 数据需求 |
+|---|---|---|---|
+| B1 | sector 系 7 公式接入 adapter + Optuna | A4 | sector_momentum (4.5M, OK) |
+| B2 | event 系 LHB + exec_trade 公式接入 | A4 | lhb (53K) + exec (68K) |
+| B3 | Layer 0 画像扩展 (+6 SmartMoney 维度) | A4 | archetype/quality/stage/industry/attention/risk |
+| B4 | Layer 2 共振 profile-aware Optuna | B1+B2+B3 | 冻结 L1, 只调 L2 |
+| B5 | Layer 3 股票池 Optuna | B4 | 冻结 L1+L2, 只调 L3 |
+| B6 | 全 pipeline paper_sim | B5 | - |
+
+**Wave C (300616 策略验证)**:
+
+| 步骤 | 任务 |
+|---|---|
+| C1 | 实现 consolidation_breakout / continuation / pullback_doji 三信号 |
+| C2 | 300616 单股 W1/W2/W3 逐波验证 |
+| C3 | 同类股 10-20 只泛化验证 |
+| C4 | 全量 walk-forward (W3 作 holdout) |
+
+**组合搜索策略** (Codex 建议, 防爆炸):
+1. 单公式筛选: Wave A/B 每公式独立 Optuna → 按 score/win_rate/drawdown 筛到 12-18 个
+2. 去重: 按信号重叠度 + 收益相关性聚类, 每类取代表
+3. 分层调参: 冻结 L1 → 调 L2 → 调 L3 (不混调)
+4. 最终验证: 只有 B5/B6 champion 走 paper_sim + PBO/DSR + 成本 gate
+
+**GCP 成本** (修正):
+
+| 阶段 | 估计 |
+|---|---|
+| Wave A 重跑 (28+6+1 公式) | ~$1.2 |
+| Wave B (sector/event + L0/L2/L3) | ~$3-5 |
+| Wave C (300616 验证) | ~$0.5 |
+| **Total** | **~$5-7** |
+| 预算剩余 | ~$36 (充裕) |
+
+### 2026-05-26 Session 未完成事项 (下次 session 接续)
+
+#### P0: 300616 五公式优化 (核心任务)
+
+**现状**: 五公式框架搭了但验证不通过 — W1 三波全无信号, 参数不匹配.
+
+**正确方法** (用户指定):
+1. 先用上帝视角 (未来函数) 精确抓住 300616 三波的买卖点
+2. 然后从全 A 股跑, 看能否把 300616 选出来
+3. 再去掉未来函数, 调参争取最大胜率/收益/最小回撤
+
+**五公式**:
+| 公式 | 抓什么 | 300616 理想买卖 | 当前状态 |
+|---|---|---|---|
+| pullback_doji | 原始十字星 | 已有 7186 信号 | 需 300616 验证 |
+| wave1_base_breakout | W1 底部首涨 | 12-28 信号→12-29 买 | 无信号, 需重做 |
+| wave2_pullback_buy | W2 回调再起 | 05-09 信号→05-10 买 | 晚 1 天 (05-10), 需调 |
+| wave3_rapid_doji | W3 急涨十字星 | 05-18 信号→05-19 买 | 晚 2 天 (05-20), 需调 |
+| full_rally_rider | 整轮主升浪 | 04-20→05-20 +57% | 无信号, 需重做 |
+
+**已验证的关键特征** (用户观察 + 数据确认):
+- 量比从地量 (0.5-0.7x) 回升到 1.1-1.4x 是起涨前兆
+- gs_raw_buy + obv_breakout 在 W1 (12-28) 和 W3 (04-21) 的理想买入日都命中
+- 250 日价格位置低 (< 0.30) + 低于 MA120 = 底部特征
+
+#### P0: Bank 49 公式整理 (Codex 评估完成)
+
+| 分类 | KEEP | REWORK | DROP | 说明 |
 |---|---|---|---|---|
-| B1 | SmartMoney data adapter — 给 22 bank 公式喂外部数据 | A1 | 1 天 | $0 |
-| | 方案: 复用 `feature_join_v5.py` PIT-safe JOIN 模式, 从 smartmoney.duckdb 提取 per-stock-date 数组 | | | |
-| | 数据: LHB(5列) + 机构exec(5列) + sector_momentum(9列) + holder + risk_factors | | | |
-| B2 | 22 SmartMoney 公式 GCP Optuna | B1 | 0.5 天 | ~$0.8 |
-| | 需要 smartmoney.duckdb (29GB) 传到 VM 或从 GCS 拉 | | | |
-| B3 | Layer 0 画像扩展 (SmartMoney 维度) | B1 | 0.5 天 | $0 |
-| | 新增: archetype/quality/stage_days/industry_strength/attention/risk | | | |
-| B4 | Layer 2 共振 profile-aware Optuna | B2+B3 | 1 天 | ~$0.5 |
-| | stage 匹配 1.2x / quality 1.1x / risk 硬过滤 / attention 过热 0.8x | | | |
-| B5 | Layer 3 股票池组合优化 Optuna | B4 | 0.5 天 | ~$0.3 |
-| | max_k / score_threshold / 止盈止损参数 | | | |
-| B6 | 全 pipeline paper_sim + 每日选股 | B5 | 1 天 | $0 |
+| technical (7) | 2 | 5 | 0 | bollinger/atr 可用, 其余参数不够 |
+| pattern (7) | 4 | 3 | 0 | cup_and_handle/double_bottom/bull_flag/box 可用 |
+| volume (7) | 3 | 4 | 0 | mfi/volume_spike/chaikin 可用 |
+| multi_tf (7) | 0 | 7 | 0 | 全部 REWORK (PIT leakage 已修但参数固定) |
+| event (7) | 1 | 2 | 3+1 | insider 可用; earnings/block/index 无数据 DROP |
+| sector (7) | 1 | 0 | 6 | sector_relative_momentum 可用; 其余缺数据 |
+| sentiment (7) | 0 | 2 | 5 | perception 数据太短 DROP |
+| **Total** | **11** | **25** | **13** | |
 
-**可并行**: B1 (adapter) 和 A1 结果分析可并行; B3 (画像) 可与 B2 (22 公式 GCP) 并行.
-**GCP 总成本**: Wave A ~$1.5 + Wave B ~$1.6 = ~$3.1, 预算 $37 充裕.
+**决策**: 不删, 灌数据让它们跑起来. REWORK 的补参数, DROP 的等数据积累后启用.
 
-每步产出独立可测试, 不依赖后续步骤. 每层参数独立 Optuna, 不混调.
+#### P1: 数据 sync 修复
 
-**Codex 独立研究任务** (后台已启动 2026-05-26):
-- 股票画像维度设计 (哪些可测量维度区分股票类型)
-- 公式-画像映射假设 (哪类股票适合哪个公式)
-- 新公式研究方向 (基于 SmartMoney 345 tables 数据)
-- 共振评分设计
-- 结果待合并到此计划
+**已修**:
+- LHB executescript bug → 已修, raw 更新 484 条到 05-26
+- LHB fact_lhb_event → 已重建 53905 行
+- dim_active_a_stock → 已刷新到 05-26
+- Executive trade → 已重建 68661 行到 05-27
+- Industry → 已刷新到 05-26
+- Stage/Quality/Archetype → build_picture_daily 已跑 (dim_stock_stage_days + mart_stock_picture_daily 到 05-26)
+- K 线 → 已同步到 05-26, 删除 ETF (510300/510500) 2082 行
 
-**300616 三波实测基线** (已完成 2026-05-26):
-- 5 公式 × 3 波命中分析: `analysis/multi_wave_strategy_design_300616.md`
-- 多公式共振 > 单公式 (W1 主涨 5 公式共振, +29%)
-- gs_raw_buy + obv_breakout 共振是最稳定的起涨信号
+**未完成**:
+- dim_stock_stage_latest 仍 05-13 (来源是 scoring.py, 需前端 smart update)
+- dim_stock_quality_latest 仍 04-17 (同上)
+- daily_update.sh 从未定时跑 (无 log)
+- data_audit.py 建了但未集成到 daily_update.sh 每步后自动跑
+- **根因记录**: [[feedback-data-sync-silent-failure]]
+
+#### P1: 前端问题
+
+- 公式视图 (`/api/v3/formulas`) 返回 0 个公式 — 没接 bc_absorbed formula_engine
+- 更新按钮在前端页面没看到 — 需检查 UI
+- 前端增量更新需求: 更新/计算完后缓存结果, 打开页面显示最后一次结果不每次重算
+- **需求记录**: [[project-frontend-incremental-update]]
+
+#### P1: GCP 全量重跑
+
+**前提** (全部已就绪):
+- walk-forward 70/30 切分 ✓
+- trial 分层 (100/60/30/1) ✓
+- 全量 4541 stocks (不是 200) ✓
+- plan_validator 8 项检查 ✓ (含 board_coverage + sample_size + param_scope)
+- preflight_gcp_launch.sh 7 项远程验证 ✓
+- grill gate ✓
+- Codex review 4 findings 全修 ✓ (OOS 选参 / shell 展开 / code scan / PIT 异常)
+
+**GCP 成本修正**: 全量 4541 stocks × 1356 trials ≈ 34h, ~$13
+**之前踩的坑**: 29/34 无 search space 白跑 + 200 只全深主板抽样偏差 + pullback_doji limit_up_pct 板块错
+
+**执行**: 需先 `/grill-with-docs` → grill_stamp → preflight_gcp_launch.sh 7/7 PASS → 启动
+
+#### P2: 审计工具强化已完成
+
+| 工具 | 检查数 | 用途 |
+|---|---|---|
+| backtest_preflight | 8 项 | 回测前 (universe/板块/成本/新鲜度/walk-forward/PIT/code scan) |
+| plan_validator | 8 项 | 跑批前 (search space/trial/runnable/cost/param_scope/sample_size/board/output) |
+| data_audit | 7 项 | 数据 sync 后 (kline完整/一致/板块/日期/量价/smartmoney/跨表) |
+| preflight_gcp_launch | 7 项 | GCP 启动前远程验证 (VM/SSH/plan/data/grill/leakage/budget) |
+| grill gate | 强制 | 执行计划前必 `/grill-with-docs` |
+
+#### P2: Codex 讨论结论汇总
+
+已完成的 Codex 讨论 (全部结果已收到):
+- 300616 三波策略设计 → `analysis/codex_multi_wave_300616.md` (141 行)
+- 分层选股架构 → 5 项建议 (画像/映射/新公式/共振/排名)
+- Wave B 组合优化 → adapter 设计 + 组合搜索策略 + 成本
+- 29 公式 search space → 已补全 (22 有参数, 7 确认无需搜索)
+- 4 bug 修复 → multi_tf PIT / macd_divergence / mfi roll / dividend future
+- Bank 49 评估 → 11 KEEP / 25 REWORK / 13 DROP
+- Grill 修复 → walk-forward + T+1 open + trial 分层 + shell 展开
+
+#### 已安装的 Skills (跨项目)
+
+`~/.claude/commands/`: grill-with-docs / grill-me / diagnose / tdd / to-issues / handoff / zoom-out / to-prd
+强制规则: `~/.claude/CLAUDE.md §3.5` + `~/.claude/hooks/plan_grill_gate.sh`
 
 ### Tech Debt — Phase 3 之后
 
