@@ -1,0 +1,74 @@
+kline_checks:
+  source_table: market.price_kline_tdxhub
+  freq: daily
+  adjust: qfq
+  date_column: date
+  stock_code_column: code
+  active_table: dim_active_a_stock
+  active_code_column: stock_code
+  completeness_threshold: 0.0
+  gap_max_days: 5
+  board_prefixes:
+    - "00"
+    - "30"
+    - "60"
+    - "68"
+  min_start_date: "2022-01-01"
+  date_range_tolerance_days: 1
+  sample_limit: 5
+  gap_sample_limit: 8
+
+smartmoney_freshness:
+  default_max_lag_days: 3
+  sample_limit: 5
+  tables:
+    - table: fact_risk_factors
+      date_column: calc_date
+      max_lag_days: 3
+    - table: fact_sector_momentum_daily
+      date_column: date
+      max_lag_days: 3
+    - table: fact_capital_flow_pit_daily
+      date_column: trade_date
+      max_lag_days: 3
+    - table: mart_sniper_score_daily
+      date_column: signal_date
+      max_lag_days: 3
+    - table: mart_institution_score_daily
+      date_column: signal_date
+      max_lag_days: 3
+    - table: mart_stock_survey_activity
+      date_column: as_of_date
+      max_lag_days: 3
+
+cross_table_consistency:
+  sample_limit: 5
+  rules:
+    - name: kline_universe_coverage
+      enabled: true
+      kline_source_table: market.price_kline_tdxhub
+      kline_stock_code_column: code
+      universe_tables:
+        - table: dim_active_a_stock
+          stock_code_column: stock_code
+        - table: dim_all_ever_listed
+          stock_code_column: stock_code
+    - name: inactive_still_trading
+      enabled: true
+      kline_source_table: market.price_kline_tdxhub
+      kline_date_column: date
+      kline_stock_code_column: code
+      recent_days: 10
+      inactive_table: dim_all_ever_listed
+      inactive_code_column: stock_code
+      is_active_column: is_active
+      inactive_value: 0
+
+audit_rules:
+  - kline_completeness
+  - kline_consistency
+  - board_coverage
+  - date_range
+  - volume_sanity
+  - smartmoney_freshness
+  - cross_table_consistency

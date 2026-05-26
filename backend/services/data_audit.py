@@ -21,20 +21,155 @@ ROOT = Path(__file__).resolve().parents[2]
 REPORT_PATH = ROOT / "data" / "reports" / "data_audit_latest.json"
 SMART_DB_PATH = ROOT / "data" / "smartmoney.duckdb"
 MARKET_DB_PATH = ROOT / "data" / "market.duckdb"
-KLINE_MIN_START = "2022-01-01"
+CONFIG_PATH = ROOT / "backend" / "config" / "data_audit_rules.yaml"
 
-AUDIT_RULES = [
-    "kline_completeness", "kline_consistency", "board_coverage",
-    "date_range", "volume_sanity", "smartmoney_freshness", "cross_table_consistency",
-]
-SMART_MONEY_FRESHNESS_TABLES = (
-    ("fact_risk_factors", "calc_date"),
-    ("fact_sector_momentum_daily", "date"),
-    ("fact_capital_flow_pit_daily", "trade_date"),
-    ("mart_sniper_score_daily", "signal_date"),
-    ("mart_institution_score_daily", "signal_date"),
-    ("mart_stock_survey_activity", "as_of_date"),
-)
+
+def _load_yaml(path: Path) -> dict[str, Any]:
+    if not path.exists():
+        return {}
+    try:
+        import yaml  # type: ignore
+    except Exception as exc:  # pragma: no cover - local runtime has PyYAML.
+        raise RuntimeError("PyYAML is required to load data_audit_rules.yaml") from exc
+    loaded = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+    return loaded if isinstance(loaded, dict) else {}
+
+
+def _to_str(value: Any, default: str = "") -> str:
+    if value is None:
+        return default
+    return str(value)
+
+
+def _to_int(value: Any, default: int = 0) -> int:
+    if value is None:
+        return default
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return default
+
+
+def _to_float(value: Any, default: float = 0.0) -> float:
+    if value is None:
+        return default
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return default
+
+
+def _to_bool(value: Any, default: bool = False) -> bool:
+    if value is None:
+        return default
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, (int, float)):
+        return bool(value)
+    value_str = str(value).strip().lower()
+    if value_str in {"1", "true", "yes", "y", "on"}:
+        return True
+    if value_str in {"0", "false", "no", "off"}:
+        return False
+    return default
+
+
+def _as_list(value: Any, default: list[Any] | tuple[Any, ...] = ()) -> list[Any]:
+    if value is None:
+        return list(default)
+    if isinstance(value, list):
+        return value
+    if isinstance(value, tuple):
+        return list(value)
+    return [value]
+
+
+def _rule_enabled(rule: Any, default: bool = True) -> bool:
+    if isinstance(rule, dict):
+        return _to_bool(rule.get("enabled"), default=default)
+    return default
+
+
+def _first_matching_rule(rules: list[Any], name: str) -> dict[str, Any] | None:
+    for rule in rules:
+        if isinstance(rule, dict) and str(rule.get("name", "")).strip() == name:
+            return rule
+    return None
+
+
+def _load_audit_config() -> dict[str, Any]:
+    loaded = _load_yaml(CONFIG_PATH)
+    if not loaded:
+        logger.warning("data_audit_rules.yaml missing or empty; using embedded fallback values")
+    return {
+        "audit_rules": [
+            "kline_completeness",
+            "kline_consistency",
+            "board_coverage",
+            "date_range",
+            "volume_sanity",
+            "smartmoney_freshness",
+            "cross_table_consistency",
+        ],
+        "kline_checks": {
+            "source_table": "market.price_kline_tdxhub",
+            "freq": "daily",
+            "adjust": "qfq",
+            "date_column": "date",
+            "stock_code_column": "code",
+            "active_table": "dim_active_a_stock",
+            "active_code_column": "stock_code",
+            "completeness_threshold": 0.0,
+            "gap_max_days": 5,
+            "board_prefixes": ["00", "30", "60", "68"],
+            "min_start_date": "2022-01-01",
+            "date_range_tolerance_days": 1,
+            "sample_limit": 5,
+            "gap_sample_limit": 8,
+        },
+        "smartmoney_freshness": {
+            "default_max_lag_days": 3,
+            "sample_limit": 5,
+            "tables": [
+                {"table": "fact_risk_factors", "date_column": "calc_date", "max_lag_days": 3},
+                {"table": "fact_sector_momentum_daily", "date_column": "date", "max_lag_days": 3},
+                {"table": "fact_capital_flow_pit_daily", "date_column": "trade_date", "max_lag_days": 3},
+                {"table": "mart_sniper_score_daily", "date_column": "signal_date", "max_lag_days": 3},
+                {"table": "mart_institution_score_daily", "date_column": "signal_date", "max_lag_days": 3},
+                {"table": "mart_stock_survey_activity", "date_column": "as_of_date", "max_lag_days": 3},
+            ],
+        },
+        "cross_table_consistency": {
+            "sample_limit": 5,
+            "rules": [
+                {
+                    "name": "kline_universe_coverage",
+                    "enabled": True,
+                    "kline_source_table": "market.price_kline_tdxhub",
+                    "kline_stock_code_column": "code",
+                    "universe_tables": [
+                        {"table": "dim_active_a_stock", "stock_code_column": "stock_code"},
+                        {"table": "dim_all_ever_listed", "stock_code_column": "stock_code"},
+                    ],
+                },
+                {
+                    "name": "inactive_still_trading",
+                    "enabled": True,
+                    "kline_source_table": "market.price_kline_tdxhub",
+                    "kline_date_column": "date",
+                    "kline_stock_code_column": "code",
+                    "recent_days": 10,
+                    "inactive_table": "dim_all_ever_listed",
+                    "inactive_code_column": "stock_code",
+                    "is_active_column": "is_active",
+                    "inactive_value": 0,
+                },
+            ],
+        },
+    } | loaded
+
+
+AUDIT_RULES = _load_audit_config()
 
 
 @dataclass(frozen=True)
@@ -77,18 +212,27 @@ def _trading_lag_days(index: dict, from_date: Any, to_date: Any) -> int | None:
 
 
 def _check_kline_completeness(conn: duckdb.DuckDBPyConnection) -> CheckResult:
+    cfg = AUDIT_RULES.get("kline_checks", {})
+    table = _to_str(cfg.get("source_table"), "market.price_kline_tdxhub")
+    freq = _to_str(cfg.get("freq"), "daily")
+    adjust = _to_str(cfg.get("adjust"), "qfq")
+    date_col = _to_str(cfg.get("date_column"), "date")
+    code_col = _to_str(cfg.get("stock_code_column"), "code")
+    threshold = _to_float(cfg.get("completeness_threshold"), 0.0)
+    sample_limit = _to_int(cfg.get("sample_limit"), 5)
+
     try:
-        rows = conn.execute("""
-            SELECT code, MIN(date), MAX(date), COUNT(DISTINCT date)
-            FROM market.price_kline_tdxhub
-            WHERE freq='daily' AND adjust='qfq'
-            GROUP BY code
-        """).fetchall()
+        rows = conn.execute(f"""
+            SELECT {code_col}, MIN({date_col}), MAX({date_col}), COUNT(DISTINCT {date_col})
+            FROM {table}
+            WHERE freq=? AND adjust=?
+            GROUP BY {code_col}
+        """, [freq, adjust]).fetchall()
     except Exception as exc:
         return CheckResult("kline_completeness", "FAIL", f"query failed: {exc}")
 
     if not rows:
-        return CheckResult("kline_completeness", "FAIL", "price_kline_tdxhub is empty")
+        return CheckResult("kline_completeness", "FAIL", f"{table} is empty")
 
     misses: list[str] = []
     for code, mn, mx, actual in rows:
@@ -98,21 +242,33 @@ def _check_kline_completeness(conn: duckdb.DuckDBPyConnection) -> CheckResult:
             [str(mn)[:10], str(mx)[:10]],
         )
         expected = int(expected or 0)
-        if actual < expected:
+        if expected <= 0:
+            continue
+        missing_ratio = max(0.0, (expected - int(actual or 0)) / expected)
+        if missing_ratio > threshold:
             misses.append(f"{code}: actual={actual} expected={expected}")
     if misses:
-        return CheckResult("kline_completeness", "FAIL", f"{len(misses)} stock(s) miss trading days; sample: {', '.join(misses[:5])}")
+        return CheckResult("kline_completeness", "FAIL", f"{len(misses)} stock(s) miss trading days; sample: {', '.join(misses[:sample_limit])}")
     return CheckResult("kline_completeness", "PASS", "no missing trading days")
 
 
 def _check_kline_consistency(conn: duckdb.DuckDBPyConnection) -> CheckResult:
-    dup = conn.execute("""
-        SELECT code, date, COUNT(*)
-        FROM market.price_kline_tdxhub
-        WHERE freq='daily' AND adjust='qfq'
-        GROUP BY code, date
+    cfg = AUDIT_RULES.get("kline_checks", {})
+    table = _to_str(cfg.get("source_table"), "market.price_kline_tdxhub")
+    freq = _to_str(cfg.get("freq"), "daily")
+    adjust = _to_str(cfg.get("adjust"), "qfq")
+    date_col = _to_str(cfg.get("date_column"), "date")
+    code_col = _to_str(cfg.get("stock_code_column"), "code")
+    gap_max_days = _to_int(cfg.get("gap_max_days"), 5)
+    gap_sample_limit = _to_int(cfg.get("gap_sample_limit"), 8)
+
+    dup = conn.execute(f"""
+        SELECT {code_col}, {date_col}, COUNT(*)
+        FROM {table}
+        WHERE freq=? AND adjust=?
+        GROUP BY {code_col}, {date_col}
         HAVING COUNT(*) > 1
-    """).fetchall()
+    """, [freq, adjust]).fetchall()
     if dup:
         return CheckResult("kline_consistency", "FAIL", f"duplicate rows for {len(dup)} (stock,date) pairs")
 
@@ -120,14 +276,14 @@ def _check_kline_consistency(conn: duckdb.DuckDBPyConnection) -> CheckResult:
     if not idx:
         return CheckResult("kline_consistency", "FAIL", "trading calendar unavailable")
 
-    rows = conn.execute("""
-        SELECT code, date
-        FROM market.price_kline_tdxhub
-        WHERE freq='daily' AND adjust='qfq'
-        ORDER BY code, date
-    """).fetchall()
+    rows = conn.execute(f"""
+        SELECT {code_col}, {date_col}
+        FROM {table}
+        WHERE freq=? AND adjust=?
+        ORDER BY {code_col}, {date_col}
+    """, [freq, adjust]).fetchall()
     if not rows:
-        return CheckResult("kline_consistency", "FAIL", "price_kline_tdxhub is empty")
+        return CheckResult("kline_consistency", "FAIL", f"{table} is empty")
 
     prev_code: str | None = None
     prev_day_idx: int | None = None
@@ -138,73 +294,108 @@ def _check_kline_consistency(conn: duckdb.DuckDBPyConnection) -> CheckResult:
             samples.append(f"{code}:{d}")
             continue
         cur = idx[di]
-        if prev_code == code and prev_day_idx is not None and cur - prev_day_idx - 1 > 5:
+        if prev_code == code and prev_day_idx is not None and cur - prev_day_idx - 1 > gap_max_days:
             samples.append(f"{code}: +{cur-prev_day_idx-1} missing trading days")
         prev_code, prev_day_idx = code, cur
 
     if samples:
-        return CheckResult("kline_consistency", "FAIL", f"duplicates or gaps >5; sample: {', '.join(samples[:8])}")
-    return CheckResult("kline_consistency", "PASS", "no duplicates and no >5 trading-day gaps")
+        return CheckResult("kline_consistency", "FAIL", f"duplicates or gaps >{gap_max_days}; sample: {', '.join(samples[:gap_sample_limit])}")
+    return CheckResult("kline_consistency", "PASS", f"no duplicates and no >{gap_max_days} trading-day gaps")
 
 
 def _check_board_coverage(conn: duckdb.DuckDBPyConnection) -> CheckResult:
-    rows = conn.execute("""
-        SELECT DISTINCT code
-        FROM market.price_kline_tdxhub
-        WHERE freq='daily' AND adjust='qfq' AND code IS NOT NULL
-    """).fetchall()
+    cfg = AUDIT_RULES.get("kline_checks", {})
+    table = _to_str(cfg.get("source_table"), "market.price_kline_tdxhub")
+    freq = _to_str(cfg.get("freq"), "daily")
+    adjust = _to_str(cfg.get("adjust"), "qfq")
+    code_col = _to_str(cfg.get("stock_code_column"), "code")
+    sample_limit = _to_int(cfg.get("sample_limit"), 5)
+
+    rows = conn.execute(f"""
+        SELECT DISTINCT {code_col}
+        FROM {table}
+        WHERE freq=? AND adjust=? AND {code_col} IS NOT NULL
+    """, [freq, adjust]).fetchall()
     prefixes = {str(c[0]).zfill(6)[:2] for c in rows}
-    missing = sorted({"00", "30", "60", "68"} - prefixes)
+    expected_prefixes = {str(p) for p in _as_list(cfg.get("board_prefixes"), ("00", "30", "60", "68"))}
+    missing = sorted(expected_prefixes - prefixes)
     if missing:
-        return CheckResult("board_coverage", "FAIL", f"missing board prefixes: {', '.join(missing)}")
-    return CheckResult("board_coverage", "PASS", "all 4 board prefixes present")
+        return CheckResult("board_coverage", "FAIL", f"missing board prefixes: {', '.join(missing)}; sample: {', '.join(sorted(prefixes)[:sample_limit])}")
+    return CheckResult("board_coverage", "PASS", f"all {len(expected_prefixes)} board prefixes present")
 
 
 def _check_date_range(conn: duckdb.DuckDBPyConnection, calendar_svc=latest_completed_trade_date) -> CheckResult:
-    mn, mx = conn.execute("""
-        SELECT MIN(date), MAX(date)
-        FROM market.price_kline_tdxhub
-        WHERE freq='daily' AND adjust='qfq'
-    """).fetchone()
+    cfg = AUDIT_RULES.get("kline_checks", {})
+    table = _to_str(cfg.get("source_table"), "market.price_kline_tdxhub")
+    freq = _to_str(cfg.get("freq"), "daily")
+    adjust = _to_str(cfg.get("adjust"), "qfq")
+    date_col = _to_str(cfg.get("date_column"), "date")
+    min_start = _to_str(cfg.get("min_start_date"), "2022-01-01")
+    tolerance = _to_int(cfg.get("date_range_tolerance_days"), 1)
+
+    mn, mx = conn.execute(
+        f"""
+        SELECT MIN({date_col}), MAX({date_col})
+        FROM {table}
+        WHERE freq=? AND adjust=?
+        """,
+        [freq, adjust],
+    ).fetchone()
     mn_d, mx_d = _to_date(mn), _to_date(mx)
     if not mn_d or not mx_d:
-        return CheckResult("date_range", "FAIL", "could not read min/max from kline")
+        return CheckResult("date_range", "FAIL", f"could not read min/max from {table}")
 
-    if mn_d < datetime.fromisoformat(KLINE_MIN_START).date():
-        return CheckResult("date_range", "FAIL", f"min_date {mn_d} < {KLINE_MIN_START}")
+    if mn_d < datetime.fromisoformat(min_start).date():
+        return CheckResult("date_range", "FAIL", f"min_date {mn_d} < {min_start}")
 
     cal_d = _to_date(calendar_svc(conn))
     if not cal_d:
         return CheckResult("date_range", "FAIL", "calendar latest date unavailable")
 
-    if abs((mx_d - cal_d).days) > 1:
-        return CheckResult("date_range", "FAIL", f"max_date {mx_d} deviates from calendar latest {cal_d} by >1d")
+    if abs((mx_d - cal_d).days) > tolerance:
+        return CheckResult(
+            "date_range",
+            "FAIL",
+            f"max_date {mx_d} deviates from calendar latest {cal_d} by >{tolerance}d",
+        )
     return CheckResult("date_range", "PASS", f"min={mn_d} max={mx_d}, calendar={cal_d}")
 
 
 def _check_volume_sanity(conn: duckdb.DuckDBPyConnection) -> CheckResult:
-    neg = int(_scalar(conn, """
+    cfg = AUDIT_RULES.get("kline_checks", {})
+    table = _to_str(cfg.get("source_table"), "market.price_kline_tdxhub")
+    freq = _to_str(cfg.get("freq"), "daily")
+    adjust = _to_str(cfg.get("adjust"), "qfq")
+    code_col = _to_str(cfg.get("stock_code_column"), "code")
+    active_table = _to_str(cfg.get("active_table"), "dim_active_a_stock")
+    active_code_col = _to_str(cfg.get("active_code_column"), "stock_code")
+    neg = int(_scalar(conn, f"""
         SELECT COUNT(*)
-        FROM market.price_kline_tdxhub
-        WHERE freq='daily' AND adjust='qfq'
+        FROM {table}
+        WHERE freq=? AND adjust=?
           AND (COALESCE(volume,0) < 0 OR COALESCE(amount,0) < 0)
-    """) or 0)
+    """, [freq, adjust]) or 0)
     if neg:
         return CheckResult("volume_sanity", "FAIL", f"{neg} rows with negative volume/amount")
 
-    zero_active = int(_scalar(conn, """
+    zero_active = int(_scalar(conn, f"""
         SELECT COUNT(*)
-        FROM market.price_kline_tdxhub p
-        INNER JOIN dim_active_a_stock a ON a.stock_code=p.code
-        WHERE p.freq='daily' AND p.adjust='qfq'
+        FROM {table} p
+        INNER JOIN {active_table} a ON a.{active_code_col}=p.{code_col}
+        WHERE p.freq=? AND p.adjust=?
           AND COALESCE(p.volume,0)=0 AND COALESCE(p.amount,0)=0
-    """) or 0)
+    """, [freq, adjust]) or 0)
     if zero_active:
         return CheckResult("volume_sanity", "FAIL", f"{zero_active} all-zero rows for active stocks")
     return CheckResult("volume_sanity", "PASS", "no negative and no active all-zero rows")
 
 
 def _check_smartmoney_freshness(conn: duckdb.DuckDBPyConnection, calendar_svc=latest_completed_trade_date) -> CheckResult:
+    cfg = AUDIT_RULES.get("smartmoney_freshness", {})
+    rules = _as_list(cfg.get("tables"), [])
+    default_max_lag = _to_int(cfg.get("default_max_lag_days"), 3)
+    sample_limit = _to_int(cfg.get("sample_limit"), 5)
+
     cal = _to_date(calendar_svc(conn))
     if not cal:
         return CheckResult("smartmoney_freshness", "FAIL", "calendar latest date unavailable")
@@ -213,53 +404,112 @@ def _check_smartmoney_freshness(conn: duckdb.DuckDBPyConnection, calendar_svc=la
         return CheckResult("smartmoney_freshness", "FAIL", "trading calendar unavailable")
 
     fails: list[str] = []
-    for table, date_col in SMART_MONEY_FRESHNESS_TABLES:
+    for rule in rules:
+        if not isinstance(rule, dict):
+            continue
+        table = _to_str(rule.get("table"))
+        date_col = _to_str(rule.get("date_column"))
+        if not table or not date_col:
+            continue
+        max_lag_days = _to_int(rule.get("max_lag_days"), default_max_lag)
         row = _scalar(conn, f"SELECT MAX({date_col}) FROM {table}")
         latest = _to_date(row)
         if not latest:
             fails.append(f"{table}: no rows")
             continue
         lag = _trading_lag_days(idx, latest, cal)
-        if lag is None or lag > 3:
+        if lag is None or lag > max_lag_days:
             fails.append(f"{table}: lag>{lag if lag is not None else '?'} (latest={latest}, calendar={cal})")
     if fails:
-        return CheckResult("smartmoney_freshness", "FAIL", f"stale smartmoney tables: {'; '.join(fails)}")
-    return CheckResult("smartmoney_freshness", "PASS", "all key smartmoney tables within 3 trading days")
+        return CheckResult("smartmoney_freshness", "FAIL", f"stale smartmoney tables: {', '.join(fails[:sample_limit])}")
+    return CheckResult("smartmoney_freshness", "PASS", "all key smartmoney tables within configured lag")
 
 
 def _check_cross_table_consistency(conn: duckdb.DuckDBPyConnection) -> CheckResult:
-    kline_codes = {c for (c,) in conn.execute("""
-        SELECT DISTINCT code
-        FROM market.price_kline_tdxhub
-        WHERE code IS NOT NULL
-    """).fetchall()}
+    kline_cfg = AUDIT_RULES.get("kline_checks", {})
+    kline_code_col = _to_str(kline_cfg.get("stock_code_column"), "code")
+    cross_cfg = AUDIT_RULES.get("cross_table_consistency", {})
+    cross_rules = _as_list(cross_cfg.get("rules"), [])
+    sample_limit = _to_int(cross_cfg.get("sample_limit"), 5)
+
+    kline_coverage_rule = _first_matching_rule(cross_rules, "kline_universe_coverage")
+    if kline_coverage_rule is None:
+        return CheckResult("cross_table_consistency", "FAIL", "missing cross_table_consistency.kline_universe_coverage rule")
+    if not _rule_enabled(kline_coverage_rule, default=True):
+        return CheckResult("cross_table_consistency", "PASS", "cross-table consistency rules are disabled")
+
+    kline_source_table = _to_str(kline_coverage_rule.get("kline_source_table"), "market.price_kline_tdxhub")
+    kline_source_code_col = _to_str(kline_coverage_rule.get("kline_stock_code_column"), kline_code_col)
+
+    kline_codes = {c for (c,) in conn.execute(f"""
+        SELECT DISTINCT {kline_source_code_col}
+        FROM {kline_source_table}
+        WHERE {kline_source_code_col} IS NOT NULL
+    """).fetchall() if c is not None}
     if not kline_codes:
         return CheckResult("cross_table_consistency", "FAIL", "kline table has no stock codes")
 
-    all_codes = {c for (c,) in conn.execute("""
-        SELECT stock_code FROM dim_active_a_stock
-        UNION
-        SELECT stock_code FROM dim_all_ever_listed
-    """).fetchall() if c is not None}
+    all_codes: set[str] = set()
+    for universe in _as_list(kline_coverage_rule.get("universe_tables"), []):
+        if not isinstance(universe, dict):
+            continue
+        table = _to_str(universe.get("table"))
+        col = _to_str(universe.get("stock_code_column"), "stock_code")
+        if not table or not col:
+            continue
+        all_codes.update({c for (c,) in conn.execute(f"SELECT {col} FROM {table}").fetchall() if c is not None})
+
+    if not all_codes:
+        return CheckResult("cross_table_consistency", "PASS", "no universe rows configured for consistency checks")
+
     extras = sorted(c for c in kline_codes if c not in all_codes)
 
-    # 检查 dim_all_ever_listed 误标退市 (K线近期有交易但 is_active=0)
-    recent_codes = {c for (c,) in conn.execute("""
-        SELECT DISTINCT code FROM market.price_kline_tdxhub
-        WHERE freq='daily' AND date >= CURRENT_DATE - INTERVAL '10 days'
-    """).fetchall()}
-    wrongly_inactive = {c for (c,) in conn.execute(
-        "SELECT stock_code FROM dim_all_ever_listed WHERE is_active=0"
-    ).fetchall()} & recent_codes
+    inactive_rule = _first_matching_rule(cross_rules, "inactive_still_trading")
+    if inactive_rule is None:
+        return CheckResult("cross_table_consistency", "FAIL", "missing cross_table_consistency.inactive_still_trading rule")
+    if not _rule_enabled(inactive_rule, default=True):
+        if not extras:
+            return CheckResult(
+                "cross_table_consistency",
+                "PASS",
+                "cross-table consistency passed with optional stale inactive rule disabled",
+            )
+        return CheckResult(
+            "cross_table_consistency",
+            "FAIL",
+            f"{len(extras)} kline codes not in universe tables",
+        )
+
+    inactive_days = _to_int(inactive_rule.get("recent_days"), 10)
+    inactive_table = _to_str(inactive_rule.get("inactive_table"), "dim_all_ever_listed")
+    inactive_code_col = _to_str(inactive_rule.get("inactive_code_column"), "stock_code")
+    is_active_col = _to_str(inactive_rule.get("is_active_column"), "is_active")
+    inactive_value = _to_int(inactive_rule.get("inactive_value"), 0)
+    inactive_table_col_date = _to_str(inactive_rule.get("kline_date_column"), "date")
+    inactive_source_table = _to_str(inactive_rule.get("kline_source_table"), "market.price_kline_tdxhub")
+    inactive_source_code_col = _to_str(inactive_rule.get("kline_stock_code_column"), kline_source_code_col)
+
+    recent_codes = {c for (c,) in conn.execute(f"""
+        SELECT DISTINCT {inactive_source_code_col}
+        FROM {inactive_source_table}
+        WHERE CAST({inactive_table_col_date} AS DATE) >= CURRENT_DATE - INTERVAL '{inactive_days} days'
+    """).fetchall() if c is not None}
+    inactive_codes = {c for (c,) in conn.execute(
+        f"SELECT {inactive_code_col} FROM {inactive_table} WHERE {is_active_col} = {inactive_value}"
+    ).fetchall() if c is not None}
+    wrongly_inactive = inactive_codes & recent_codes
 
     issues = []
     if extras:
         issues.append(f"{len(extras)} kline codes not in universe tables")
     if wrongly_inactive:
-        issues.append(f"{len(wrongly_inactive)} stocks marked inactive but still trading (dim_all_ever_listed.is_active=0 误标)")
+        issues.append(f"{len(wrongly_inactive)} stocks marked inactive but still trading (inactive_value={inactive_value}, recent_days={inactive_days})")
 
     if issues:
-        return CheckResult("cross_table_consistency", "FAIL", "; ".join(issues) + f"; sample: {sorted(list(wrongly_inactive)[:5])}")
+        sample = ", ".join(sorted(wrongly_inactive)[:sample_limit]) if wrongly_inactive else ""
+        if sample:
+            issues.append(f"sample: {sample}")
+        return CheckResult("cross_table_consistency", "FAIL", "; ".join(issues))
     return CheckResult("cross_table_consistency", "PASS", "kline codes consistent with universe tables, no wrongly-inactive stocks")
 
 
@@ -274,16 +524,35 @@ def _is_strict(strict: bool) -> bool:
 
 
 def run_post_sync_audit(step_name: str, strict: bool = True) -> dict[str, Any]:
-    with _open_conn() as conn:
-        checks = [
-            _check_kline_completeness(conn),
-            _check_kline_consistency(conn),
-            _check_board_coverage(conn),
-            _check_date_range(conn),
-            _check_volume_sanity(conn),
-            _check_smartmoney_freshness(conn),
-            _check_cross_table_consistency(conn),
+    check_fns = {
+        "kline_completeness": _check_kline_completeness,
+        "kline_consistency": _check_kline_consistency,
+        "board_coverage": _check_board_coverage,
+        "date_range": _check_date_range,
+        "volume_sanity": _check_volume_sanity,
+        "smartmoney_freshness": _check_smartmoney_freshness,
+        "cross_table_consistency": _check_cross_table_consistency,
+    }
+    configured_rules = AUDIT_RULES.get("audit_rules", [])
+    if not isinstance(configured_rules, list):
+        configured_rules = [
+            "kline_completeness",
+            "kline_consistency",
+            "board_coverage",
+            "date_range",
+            "volume_sanity",
+            "smartmoney_freshness",
+            "cross_table_consistency",
         ]
+
+    checks = []
+    with _open_conn() as conn:
+        for rule in configured_rules:
+            check = check_fns.get(str(rule))
+            if check is None:
+                checks.append(CheckResult(str(rule), "FAIL", f"unknown audit rule '{rule}'"))
+                continue
+            checks.append(check(conn))
 
     result = {
         "run_at": datetime.now().isoformat(timespec="seconds"),
@@ -310,8 +579,8 @@ def audit_all(_conn: Any = None) -> list[dict[str, Any]]:
     for r in out:
         checks.append({
             "table": r["name"],
-            "issues": [{"level": "warn" if r["status"] == "WARN" else "error", "msg": r["detail"]}]
-            if r["status"] != "PASS" else [],
+            "issues": [{"level": "warn" if r["status"] == "WARN" else "error", "msg": r["detail"]}
+                      if r["status"] != "PASS" else []],
             "status": r["status"],
         })
     return checks
@@ -330,7 +599,9 @@ def load_last_audit_report(_conn: Any = None) -> dict[str, Any] | None:
 
 
 def summary() -> dict[str, Any]:
-    return {"n_checks": 7, "report_path": str(REPORT_PATH)}
+    configured_rules = AUDIT_RULES.get("audit_rules", [])
+    n_checks = len(configured_rules) if isinstance(configured_rules, list) else 7
+    return {"n_checks": n_checks, "report_path": str(REPORT_PATH)}
 
 
 def main() -> int:
