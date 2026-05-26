@@ -347,7 +347,6 @@ def main() -> None:
         stock_codes=stock_codes,
         conn=smart_conn,
         market_conn=market_conn,
-        tx_cost_bps=15,
     )
     smart_conn.close()
     market_conn.close()

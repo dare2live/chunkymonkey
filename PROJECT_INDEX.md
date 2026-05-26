@@ -13,6 +13,7 @@
 - **公式工厂整改 Phase 1 完成**: GS 系列 (gs_raw_buy + gs_pullback_confirm) 接入 `backtest_preflight` 7 维审计 gate + YAML 配置化 (`backend/config/formula_gs.yaml`). `formula_parameter_search.py` 改用 `get_active_universe` 替代 fragile ATTACH+JOIN fallback. 7/7 全量 universe (4562 stocks) preflight PASS.
 - **新增配置**: `backend/config/formula_gs.yaml` / `formula_ma_base_breakout.yaml` / `formula_activity_breakout.yaml` / `formula_volume_base_breakout.yaml` — 全 6 个核心公式 YAML 配置化.
 - **49 bank 函数接入**: `compute_formula_signals()` 通过 `_call_bank_formula` 适配器支持全部 49 个 bank 函数 (7 类 × 7: technical/pattern/volume/multi_tf/event/sector/sentiment). 自动 inspect 签名匹配 OHLCV 参数.
+- **交易成本统一**: `backtest_preflight.get_default_tx_cost_bps()` 从 `paper_sim_config.yaml` 自动计算 (佣金+印花税+过户费+规费+滑点 = 10.4 bps), 删除各处硬编码 15 bps. 一字涨跌停处理复用 `bestchoice/execution_model.py`.
 - **Tech Debt 登记**: `assets/js/app.js` 80 HIGH complexity (全项目唯一 HIGH 集中文件), 排 Phase 3 后清理.
 
 ## [INDEX] 2026-05-21 增量

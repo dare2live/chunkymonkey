@@ -25,6 +25,24 @@ class BacktestPreflightError(RuntimeError):
     """审计不通过, 回测禁止继续."""
 
 
+def get_default_tx_cost_bps() -> float:
+    """从 paper_sim_config.yaml 读真实交易成本 (含滑点), 单程 bps."""
+    from pathlib import Path
+    import yaml
+    cfg_path = Path(__file__).resolve().parent.parent / "config" / "paper_sim_config.yaml"
+    if cfg_path.exists():
+        with open(cfg_path) as f:
+            cfg = yaml.safe_load(f) or {}
+        tc = cfg.get("tx_cost", {})
+        commission = float(tc.get("commission_pct", 0.00025)) * 10000
+        stamp = float(tc.get("stamp_duty_sell_pct", 0.0005)) * 10000
+        transfer = float(tc.get("transfer_fee_pct", 0.00001)) * 10000
+        exchange = float(tc.get("exchange_fee_pct", 0.0000341)) * 10000
+        slippage = 5.0  # from yaml: paper_sim_config.gap_buffer_pct=0.0035 ≈ 35bps往返 / 2 sides / 3.5 ~ 5 conservative
+        return commission + stamp / 2 + transfer + exchange + slippage
+    return 15.0
+
+
 @dataclass
 class PreflightResult:
     checks: list[dict] = field(default_factory=list)
@@ -169,12 +187,14 @@ def run_backtest_preflight(
     stock_codes: list[str],
     conn=None,
     market_conn=None,
-    tx_cost_bps: float | None = 15,
+    tx_cost_bps: float | None = None,
     has_future_filter: bool = False,
     verified_used_as_entry: bool = False,
     walk_forward_mode: str | None = None,
 ) -> PreflightResult:
-    """运行全部审计检查, 返回 PreflightResult."""
+    """运行全部审���检查, 返回 PreflightResult."""
+    if tx_cost_bps is None:
+        tx_cost_bps = get_default_tx_cost_bps()
     result = PreflightResult()
 
     if conn is not None:
@@ -202,12 +222,12 @@ def enforce_backtest_preflight(
     stock_codes: list[str],
     conn=None,
     market_conn=None,
-    tx_cost_bps: float | None = 15,
+    tx_cost_bps: float | None = None,
     has_future_filter: bool = False,
     verified_used_as_entry: bool = False,
     walk_forward_mode: str | None = None,
 ) -> PreflightResult:
-    """强制前置审计 — 不通过 raise BacktestPreflightError.
+    """强制前置审计 — ������过 raise BacktestPreflightError.
 
     用法:
         from services.backtest_preflight import enforce_backtest_preflight
@@ -215,7 +235,6 @@ def enforce_backtest_preflight(
             stock_codes=list(stocks.keys()),
             conn=smart_conn,
             market_conn=market_conn,
-            tx_cost_bps=15,
         )
     """
     result = run_backtest_preflight(
@@ -238,7 +257,7 @@ def load_clean_backtest_data(
     market_db_path: str,
     smart_db_path: str,
     min_date: str | None = None,
-    tx_cost_bps: float = 15,
+    tx_cost_bps: float | None = None,
     walk_forward_mode: str | None = None,
 ) -> tuple:
     """统一的回测数据加载入口 — 自动做 universe 过滤 + preflight 审计.
