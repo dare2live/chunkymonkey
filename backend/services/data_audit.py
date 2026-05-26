@@ -242,13 +242,25 @@ def _check_cross_table_consistency(conn: duckdb.DuckDBPyConnection) -> CheckResu
         SELECT stock_code FROM dim_all_ever_listed
     """).fetchall() if c is not None}
     extras = sorted(c for c in kline_codes if c not in all_codes)
+
+    # 检查 dim_all_ever_listed 误标退市 (K线近期有交易但 is_active=0)
+    recent_codes = {c for (c,) in conn.execute("""
+        SELECT DISTINCT code FROM market.price_kline_tdxhub
+        WHERE freq='daily' AND date >= CURRENT_DATE - INTERVAL '10 days'
+    """).fetchall()}
+    wrongly_inactive = {c for (c,) in conn.execute(
+        "SELECT stock_code FROM dim_all_ever_listed WHERE is_active=0"
+    ).fetchall()} & recent_codes
+
+    issues = []
     if extras:
-        return CheckResult(
-            "cross_table_consistency",
-            "FAIL",
-            f"{len(extras)} kline stock(s) not in universe tables; sample: {', '.join(extras[:10])}",
-        )
-    return CheckResult("cross_table_consistency", "PASS", "kline codes are subset of union table")
+        issues.append(f"{len(extras)} kline codes not in universe tables")
+    if wrongly_inactive:
+        issues.append(f"{len(wrongly_inactive)} stocks marked inactive but still trading (dim_all_ever_listed.is_active=0 误标)")
+
+    if issues:
+        return CheckResult("cross_table_consistency", "FAIL", "; ".join(issues) + f"; sample: {sorted(list(wrongly_inactive)[:5])}")
+    return CheckResult("cross_table_consistency", "PASS", "kline codes consistent with universe tables, no wrongly-inactive stocks")
 
 
 def _overall_status(checks: list[CheckResult]) -> str:
