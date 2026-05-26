@@ -1,353 +1,329 @@
-"""数据完整性审计 — P0.2 (2026-04-28).
-
-跟现有 audit.py 区别:
-- audit.py: 业务层对齐审计 (raw vs holdings vs current_relationship 跨表的口径一致性)
-- data_audit.py (本): 单表内在完整性 (PK 重复 / NULL / 缺失天数 / 异常值)
-
-为什么需要:
-- 数据问题不在数据获取阶段暴露, 就会传染下游 fact / mart 层 → 模型错 → 评分错
-- 现有项目 70 张派生表, 没有单表层面的"PK 是否重复 / 关键列是否 NULL / 时间字段是否
-  断档"自动巡检
-- 用户启动后端时 / 跑完 sync 后, 应该一眼看见"哪些表有数据问题, 严重度多少"
-
-设计:
-- AUDIT_RULES 字典声明每张关键表的检查规则 (PK / not_null / date_field / value_check)
-- run_audit_table(name) 单表跑, 返回 {ok, table, n_rows, issues: [{level, msg}]}
-- run_audit_all() 跑全部
-- 持久化到 mart_data_audit_report 历史表 (跟 mart_audit_snapshot_state 不同, 那个是
-  业务层对齐, 这个是表内完整性)
-
-不强求 70 张表都写规则. 先 12 张关键表, 其他可逐步加.
-"""
+"""Post-data-fetch audit for ChunkyMonkey sync checkpoints."""
 from __future__ import annotations
 
+import argparse
 import json
 import logging
+import os
+from dataclasses import dataclass, asdict
+from datetime import datetime
+from pathlib import Path
 from typing import Any
 
-logger = logging.getLogger("cm-api.data_audit")
+import duckdb
+
+from services.calendar import latest_completed_trade_date
+
+logger = logging.getLogger(__name__)
 
 
-# ===========================================================================
-# 审计规则声明
-# ===========================================================================
-
-# 每张表:
-#   pk: 联合主键, 检查唯一性
-#   not_null: 必须非空的列
-#   date_field: 时间字段, 检查近 90 天 distinct 天数 (低于阈值告警)
-#   date_min_distinct_90d: 近 90 天最少 distinct 日期数 (默认 30)
-#   value_checks: list[(SQL bool 表达式, 描述)]
-AUDIT_RULES: dict[str, dict] = {
-    # ===== raw 层 =====
-    "raw_lhb_daily": {
-        "pk": ["trade_date", "stock_code", "rank_reason"],
-        "not_null": ["trade_date", "stock_code", "rank_reason"],
-        "date_field": "trade_date",
-        "date_min_distinct_90d": 40,  # 60 交易日的 70%
-        "value_checks": [
-            ("close_price IS NULL OR close_price > 0", "收盘价应 > 0"),
-            ("turnover IS NULL OR turnover >= 0", "成交额应 >= 0"),
-        ],
-    },
-    "raw_qfii_holding_quarterly": {
-        "pk": ["report_date", "stock_code", "holder_name"],
-        "not_null": ["report_date", "stock_code", "holder_name"],
-        "date_field": "report_date",
-        "date_min_distinct_90d": 0,  # 季报数据, 90 天不一定有
-    },
-    # raw_margin_daily audit rule removed Phase ψ.5 — dead data
-    # P7 (2026-04-28): market_raw_holdings 整表退役.
-    # 新 canonical fact_top10_holder_period 由 tdxhub.holders 写入,
-    # A/H 拆分 + holder_set + is_exit_row + source_tier; 审计规则相应升级.
-    "fact_top10_holder_period": {
-        "pk": ["stock_code", "report_date", "holder_set", "source",
-               "is_exit_row", "holder_rank", "row_seq", "share_class"],
-        "not_null": ["stock_code", "report_date", "holder_set",
-                     "holder_rank", "holder_name", "source", "source_tier"],
-        "date_field": "report_date",
-        "date_min_distinct_90d": 0,  # 季报
-        "value_checks": [
-            ("holder_rank BETWEEN 1 AND 21", "股东排名 1-21 (21=其他合计)"),
-            ("shares_approx IS NULL OR shares_approx >= 0", "持股数 >= 0"),
-            ("hold_ratio_float IS NULL OR hold_ratio_float BETWEEN 0 AND 105",
-             "占流通股比 0-105% (>100% 仅 A/H 边界容忍)"),
-            ("source_tier IN (1, 2, 3)", "source_tier 合法"),
-            ("holder_set IN ('free', 'all')", "holder_set 合法"),
-        ],
-    },
-    "raw_tdx_f10_holder_research": {
-        "pk": ["stock_code", "raw_hash"],
-        "not_null": ["stock_code", "raw_hash", "raw_text", "fetched_at"],
-        "date_field": "fetched_at",
-        "date_min_distinct_90d": 0,  # raw 层不保证均匀分布
-    },
-    "raw_gpcw_financial": {
-        "pk": ["stock_code", "report_date"],
-        "not_null": ["stock_code", "report_date"],
-        "date_field": "report_date",
-        "date_min_distinct_90d": 0,  # 季报
-    },
-
-    # ===== fact 层 =====
-    "fact_institution_event": {
-        "pk": ["holder_name", "stock_code", "report_date"],
-        "not_null": ["holder_name", "stock_code", "report_date", "event_type"],
-        "date_field": "notice_date",
-        "date_min_distinct_90d": 0,  # 事件型, 集中在披露窗口
-    },
-    "fact_lhb_event": {
-        "pk": ["trade_date", "stock_code"],
-        "not_null": ["trade_date", "stock_code"],
-        "date_field": "trade_date",
-        "date_min_distinct_90d": 30,
-    },
-    "fact_jgdy_event": {
-        "pk": ["stock_code", "notice_date"],
-        "not_null": ["stock_code", "notice_date"],
-        "date_field": "notice_date",
-        "date_min_distinct_90d": 30,
-    },
-
-    # ===== mart 层 =====
-    "mart_current_relationship": {
-        "pk": ["stock_code", "holder_name"],
-        "not_null": ["stock_code", "holder_name"],
-        "value_checks": [
-            ("hold_ratio IS NULL OR hold_ratio >= 0", "持股比例 >= 0"),
-        ],
-    },
-    "mart_institution_profile": {
-        "pk": ["holder_name"],
-        "not_null": ["holder_name"],
-        "value_checks": [
-            ("event_count IS NULL OR event_count >= 0", "事件数 >= 0"),
-        ],
-    },
-    "mart_stock_trend": {
-        "pk": ["stock_code"],
-        "not_null": ["stock_code"],
-    },
-    "mart_daily_recommendation": {
-        "pk": ["trade_date", "stock_code"],
-        "not_null": ["trade_date", "stock_code"],
-        "date_field": "trade_date",
-        "date_min_distinct_90d": 30,
-    },
-
-    # ===== dim 层 =====
-    "dim_active_a_stock": {
-        "pk": ["stock_code"],
-        "not_null": ["stock_code"],
-    },
-    "dim_stock_tdx_industry": {
-        "pk": ["stock_code"],
-        "not_null": ["stock_code"],
-    },
-    "dim_trading_calendar": {
-        "pk": ["trade_date"],
-        "not_null": ["trade_date"],
-    },
-}
+ROOT = Path(__file__).resolve().parents[2]
+REPORT_PATH = ROOT / "data" / "reports" / "data_audit_latest.json"
+SMART_DB_PATH = ROOT / "data" / "smartmoney.duckdb"
+MARKET_DB_PATH = ROOT / "data" / "market.duckdb"
+KLINE_MIN_START = "2022-01-01"
+SMART_MONEY_FRESHNESS_TABLES = (
+    ("fact_risk_factors", "calc_date"),
+    ("fact_sector_momentum_daily", "date"),
+    ("fact_capital_flow_pit_daily", "trade_date"),
+    ("mart_sniper_score_daily", "signal_date"),
+    ("mart_institution_score_daily", "signal_date"),
+    ("mart_stock_survey_activity", "as_of_date"),
+)
 
 
-# ===========================================================================
-# 单表审计
-# ===========================================================================
+@dataclass(frozen=True)
+class CheckResult:
+    name: str
+    status: str
+    detail: str
 
-def _safe_count(conn, sql: str) -> int:
-    """跑一条 COUNT 查询, 失败返回 -1."""
+
+def _open_conn() -> duckdb.DuckDBPyConnection:
+    conn = duckdb.connect(str(SMART_DB_PATH), read_only=True)
+    conn.execute(f"ATTACH '{MARKET_DB_PATH}' AS market (READ_ONLY)")
+    return conn
+
+
+def _to_date(value: Any) -> Any:
+    if value is None:
+        return None
+    s = str(value).strip()[:10]
+    return datetime.fromisoformat(s).date() if len(s) == 10 else None
+
+
+def _scalar(conn: duckdb.DuckDBPyConnection, sql: str, params: list[Any] | None = None) -> Any:
+    row = conn.execute(sql, params or []).fetchone()
+    return row[0] if row else None
+
+
+def _trading_index(conn: duckdb.DuckDBPyConnection) -> dict:
+    return {d: i for i, (d,) in enumerate(
+        conn.execute("SELECT trade_date FROM dim_trading_calendar WHERE is_trading=1 ORDER BY trade_date").fetchall()
+    )}
+
+
+def _trading_lag_days(index: dict, from_date: Any, to_date: Any) -> int | None:
+    if from_date is None or to_date is None:
+        return None
+    if from_date not in index or to_date not in index:
+        return None
+    return abs(index[from_date] - index[to_date])
+
+
+def _check_kline_completeness(conn: duckdb.DuckDBPyConnection) -> CheckResult:
     try:
-        r = conn.execute(sql).fetchone()
-        return int(r[0]) if r else 0
+        rows = conn.execute("""
+            SELECT code, MIN(date), MAX(date), COUNT(DISTINCT date)
+            FROM market.price_kline_tdxhub
+            WHERE freq='daily' AND adjust='qfq'
+            GROUP BY code
+        """).fetchall()
     except Exception as exc:
-        logger.debug(f"audit query 失败: {sql} → {exc}")
-        return -1
+        return CheckResult("kline_completeness", "FAIL", f"query failed: {exc}")
+
+    if not rows:
+        return CheckResult("kline_completeness", "FAIL", "price_kline_tdxhub is empty")
+
+    misses: list[str] = []
+    for code, mn, mx, actual in rows:
+        expected = _scalar(
+            conn,
+            "SELECT COUNT(*) FROM dim_trading_calendar WHERE is_trading=1 AND trade_date BETWEEN ? AND ?",
+            [str(mn)[:10], str(mx)[:10]],
+        )
+        expected = int(expected or 0)
+        if actual < expected:
+            misses.append(f"{code}: actual={actual} expected={expected}")
+    if misses:
+        return CheckResult("kline_completeness", "FAIL", f"{len(misses)} stock(s) miss trading days; sample: {', '.join(misses[:5])}")
+    return CheckResult("kline_completeness", "PASS", "no missing trading days")
 
 
-def audit_table(conn, table_name: str) -> dict:
-    """单表审计."""
+def _check_kline_consistency(conn: duckdb.DuckDBPyConnection) -> CheckResult:
+    dup = conn.execute("""
+        SELECT code, date, COUNT(*)
+        FROM market.price_kline_tdxhub
+        WHERE freq='daily' AND adjust='qfq'
+        GROUP BY code, date
+        HAVING COUNT(*) > 1
+    """).fetchall()
+    if dup:
+        return CheckResult("kline_consistency", "FAIL", f"duplicate rows for {len(dup)} (stock,date) pairs")
+
+    idx = _trading_index(conn)
+    if not idx:
+        return CheckResult("kline_consistency", "FAIL", "trading calendar unavailable")
+
+    rows = conn.execute("""
+        SELECT code, date
+        FROM market.price_kline_tdxhub
+        WHERE freq='daily' AND adjust='qfq'
+        ORDER BY code, date
+    """).fetchall()
+    if not rows:
+        return CheckResult("kline_consistency", "FAIL", "price_kline_tdxhub is empty")
+
+    prev_code: str | None = None
+    prev_day_idx: int | None = None
+    samples: list[str] = []
+    for code, d in rows:
+        di = _to_date(d)
+        if di is None or di not in idx:
+            samples.append(f"{code}:{d}")
+            continue
+        cur = idx[di]
+        if prev_code == code and prev_day_idx is not None and cur - prev_day_idx - 1 > 5:
+            samples.append(f"{code}: +{cur-prev_day_idx-1} missing trading days")
+        prev_code, prev_day_idx = code, cur
+
+    if samples:
+        return CheckResult("kline_consistency", "FAIL", f"duplicates or gaps >5; sample: {', '.join(samples[:8])}")
+    return CheckResult("kline_consistency", "PASS", "no duplicates and no >5 trading-day gaps")
+
+
+def _check_board_coverage(conn: duckdb.DuckDBPyConnection) -> CheckResult:
+    rows = conn.execute("""
+        SELECT DISTINCT code
+        FROM market.price_kline_tdxhub
+        WHERE freq='daily' AND adjust='qfq' AND code IS NOT NULL
+    """).fetchall()
+    prefixes = {str(c[0]).zfill(6)[:2] for c in rows}
+    missing = sorted({"00", "30", "60", "68"} - prefixes)
+    if missing:
+        return CheckResult("board_coverage", "FAIL", f"missing board prefixes: {', '.join(missing)}")
+    return CheckResult("board_coverage", "PASS", "all 4 board prefixes present")
+
+
+def _check_date_range(conn: duckdb.DuckDBPyConnection, calendar_svc=latest_completed_trade_date) -> CheckResult:
+    mn, mx = conn.execute("""
+        SELECT MIN(date), MAX(date)
+        FROM market.price_kline_tdxhub
+        WHERE freq='daily' AND adjust='qfq'
+    """).fetchone()
+    mn_d, mx_d = _to_date(mn), _to_date(mx)
+    if not mn_d or not mx_d:
+        return CheckResult("date_range", "FAIL", "could not read min/max from kline")
+
+    if mn_d < datetime.fromisoformat(KLINE_MIN_START).date():
+        return CheckResult("date_range", "FAIL", f"min_date {mn_d} < {KLINE_MIN_START}")
+
+    cal_d = _to_date(calendar_svc(conn))
+    if not cal_d:
+        return CheckResult("date_range", "FAIL", "calendar latest date unavailable")
+
+    if abs((mx_d - cal_d).days) > 1:
+        return CheckResult("date_range", "FAIL", f"max_date {mx_d} deviates from calendar latest {cal_d} by >1d")
+    return CheckResult("date_range", "PASS", f"min={mn_d} max={mx_d}, calendar={cal_d}")
+
+
+def _check_volume_sanity(conn: duckdb.DuckDBPyConnection) -> CheckResult:
+    neg = int(_scalar(conn, """
+        SELECT COUNT(*)
+        FROM market.price_kline_tdxhub
+        WHERE freq='daily' AND adjust='qfq'
+          AND (COALESCE(volume,0) < 0 OR COALESCE(amount,0) < 0)
+    """) or 0)
+    if neg:
+        return CheckResult("volume_sanity", "FAIL", f"{neg} rows with negative volume/amount")
+
+    zero_active = int(_scalar(conn, """
+        SELECT COUNT(*)
+        FROM market.price_kline_tdxhub p
+        INNER JOIN dim_active_a_stock a ON a.stock_code=p.code
+        WHERE p.freq='daily' AND p.adjust='qfq'
+          AND COALESCE(p.volume,0)=0 AND COALESCE(p.amount,0)=0
+    """) or 0)
+    if zero_active:
+        return CheckResult("volume_sanity", "FAIL", f"{zero_active} all-zero rows for active stocks")
+    return CheckResult("volume_sanity", "PASS", "no negative and no active all-zero rows")
+
+
+def _check_smartmoney_freshness(conn: duckdb.DuckDBPyConnection, calendar_svc=latest_completed_trade_date) -> CheckResult:
+    cal = _to_date(calendar_svc(conn))
+    if not cal:
+        return CheckResult("smartmoney_freshness", "FAIL", "calendar latest date unavailable")
+    idx = _trading_index(conn)
+    if not idx:
+        return CheckResult("smartmoney_freshness", "FAIL", "trading calendar unavailable")
+
+    fails: list[str] = []
+    for table, date_col in SMART_MONEY_FRESHNESS_TABLES:
+        row = _scalar(conn, f"SELECT MAX({date_col}) FROM {table}")
+        latest = _to_date(row)
+        if not latest:
+            fails.append(f"{table}: no rows")
+            continue
+        lag = _trading_lag_days(idx, latest, cal)
+        if lag is None or lag > 3:
+            fails.append(f"{table}: lag>{lag if lag is not None else '?'} (latest={latest}, calendar={cal})")
+    if fails:
+        return CheckResult("smartmoney_freshness", "FAIL", f"stale smartmoney tables: {'; '.join(fails)}")
+    return CheckResult("smartmoney_freshness", "PASS", "all key smartmoney tables within 3 trading days")
+
+
+def _check_cross_table_consistency(conn: duckdb.DuckDBPyConnection) -> CheckResult:
+    kline_codes = {c for (c,) in conn.execute("""
+        SELECT DISTINCT code
+        FROM market.price_kline_tdxhub
+        WHERE code IS NOT NULL
+    """).fetchall()}
+    if not kline_codes:
+        return CheckResult("cross_table_consistency", "FAIL", "kline table has no stock codes")
+
+    all_codes = {c for (c,) in conn.execute("""
+        SELECT stock_code FROM dim_active_a_stock
+        UNION
+        SELECT stock_code FROM dim_all_ever_listed
+    """).fetchall() if c is not None}
+    extras = sorted(c for c in kline_codes if c not in all_codes)
+    if extras:
+        return CheckResult(
+            "cross_table_consistency",
+            "FAIL",
+            f"{len(extras)} kline stock(s) not in universe tables; sample: {', '.join(extras[:10])}",
+        )
+    return CheckResult("cross_table_consistency", "PASS", "kline codes are subset of union table")
+
+
+def _overall_status(checks: list[CheckResult]) -> str:
+    if any(c.status == "FAIL" for c in checks):
+        return "FAIL"
+    return "PASS"
+
+
+def _is_strict(strict: bool) -> bool:
+    return bool(strict and os.getenv("AUDIT_STRICT", "1") not in {"0", "false", "False", "FALSE"})
+
+
+def run_post_sync_audit(step_name: str, strict: bool = True) -> dict[str, Any]:
+    with _open_conn() as conn:
+        checks = [
+            _check_kline_completeness(conn),
+            _check_kline_consistency(conn),
+            _check_board_coverage(conn),
+            _check_date_range(conn),
+            _check_volume_sanity(conn),
+            _check_smartmoney_freshness(conn),
+            _check_cross_table_consistency(conn),
+        ]
+
     result = {
-        "table": table_name,
-        "ok": True,
-        "n_rows": 0,
-        "issues": [],
+        "run_at": datetime.now().isoformat(timespec="seconds"),
+        "checks": [asdict(c) for c in checks],
+        "overall": _overall_status(checks),
     }
-    rules = AUDIT_RULES.get(table_name)
-    if not rules:
-        result["skipped"] = True
-        result["issues"].append({"level": "info", "msg": "无审计规则声明"})
-        return result
+    REPORT_PATH.parent.mkdir(parents=True, exist_ok=True)
+    REPORT_PATH.write_text(json.dumps(result, ensure_ascii=False, indent=2), encoding="utf-8")
 
-    # 表存在性
-    try:
-        n_rows = conn.execute(f"SELECT COUNT(*) FROM {table_name}").fetchone()[0]
-        result["n_rows"] = n_rows
-    except Exception as exc:
-        result["ok"] = False
-        result["issues"].append({"level": "error", "msg": f"表不存在或不可查: {exc}"})
-        return result
-
-    if n_rows == 0:
-        result["issues"].append({"level": "warn", "msg": "表为空 (n_rows = 0)"})
-
-    # PK 唯一性
-    pk = rules.get("pk") or []
-    if pk and n_rows > 0:
-        pk_str = ", ".join(pk)
-        dup = _safe_count(conn, f"""
-            SELECT COUNT(*) FROM (
-                SELECT {pk_str} FROM {table_name}
-                WHERE { ' AND '.join(f'{c} IS NOT NULL' for c in pk) }
-                GROUP BY {pk_str}
-                HAVING COUNT(*) > 1
-            )
-        """)
-        if dup > 0:
-            result["ok"] = False
-            result["issues"].append({
-                "level": "error",
-                "msg": f"PK 重复 {dup} 组 (键={pk_str})",
-            })
-
-    # NOT NULL
-    for col in rules.get("not_null") or []:
-        if n_rows > 0:
-            nulls = _safe_count(conn, f"SELECT COUNT(*) FROM {table_name} WHERE {col} IS NULL")
-            if nulls > 0:
-                result["ok"] = False
-                result["issues"].append({
-                    "level": "error",
-                    "msg": f"{col} 有 {nulls} 行 NULL",
-                })
-
-    # 时间字段缺失天数
-    date_field = rules.get("date_field")
-    min_distinct = rules.get("date_min_distinct_90d", 0)
-    if date_field and min_distinct > 0 and n_rows > 0:
-        # raw_*  date 是 'YYYYMMDD' 文本, mart_*  date 是 'YYYY-MM-DD'.
-        # 用宽松 LIKE 比较: 取近 90 天对比当前日期 (字符串比较 work for both).
-        from datetime import date, timedelta
-        cutoff_iso = (date.today() - timedelta(days=90)).isoformat()
-        cutoff_compact = cutoff_iso.replace("-", "")
-        unique_dates = _safe_count(conn, f"""
-            SELECT COUNT(DISTINCT {date_field}) FROM {table_name}
-            WHERE {date_field} >= '{cutoff_iso}' OR {date_field} >= '{cutoff_compact}'
-        """)
-        if unique_dates >= 0 and unique_dates < min_distinct:
-            result["issues"].append({
-                "level": "warn",
-                "msg": f"近 90 天 distinct {date_field} 仅 {unique_dates} 天 (期望 ≥{min_distinct}), 可能有缺漏",
-            })
-
-    # value_checks
-    for expr, desc in rules.get("value_checks") or []:
-        if n_rows > 0:
-            bad = _safe_count(conn, f"SELECT COUNT(*) FROM {table_name} WHERE NOT ({expr})")
-            if bad > 0:
-                result["issues"].append({
-                    "level": "warn",
-                    "msg": f"{desc}: {bad} 行违反 ({expr})",
-                })
-
-    # 总评估
-    result["ok"] = not any(i["level"] == "error" for i in result["issues"])
+    if result["overall"] == "FAIL":
+        msg = f"post-data-sync audit FAILED at step={step_name}: " + \
+              "; ".join(f"{c['name']}={c['status']}" for c in result["checks"] if c["status"] == "FAIL")
+        if _is_strict(strict):
+            raise RuntimeError(msg)
+        logger.warning(msg)
+    logger.info("data_audit step=%s overall=%s report=%s", step_name, result["overall"], REPORT_PATH)
     return result
 
 
-def audit_all(conn) -> list[dict]:
-    out = []
-    for table_name in AUDIT_RULES.keys():
-        try:
-            out.append(audit_table(conn, table_name))
-        except Exception as exc:
-            out.append({
-                "table": table_name,
-                "ok": False,
-                "n_rows": 0,
-                "issues": [{"level": "error", "msg": f"审计跑挂: {exc}"}],
-            })
-    return out
+# Backward-compatible exports used by legacy routes.
+def audit_all(_conn: Any = None) -> list[dict[str, Any]]:
+    out = run_post_sync_audit("legacy", strict=False)["checks"]
+    checks = []
+    for r in out:
+        checks.append({
+            "table": r["name"],
+            "issues": [{"level": "warn" if r["status"] == "WARN" else "error", "msg": r["detail"]}]
+            if r["status"] != "PASS" else [],
+            "status": r["status"],
+        })
+    return checks
 
 
-# ===========================================================================
-# 持久化
-# ===========================================================================
-
-def ensure_report_table(conn) -> None:
-    conn.execute("""
-        CREATE TABLE IF NOT EXISTS mart_data_audit_report (
-            run_id        BIGINT,
-            run_at        TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            n_tables      INTEGER,
-            n_ok          INTEGER,
-            n_warn        INTEGER,
-            n_error       INTEGER,
-            details_json  VARCHAR
-        )
-    """)
-    # 索引: 拿最近一次
-    conn.execute("CREATE INDEX IF NOT EXISTS idx_data_audit_run_at ON mart_data_audit_report(run_at DESC)")
-    conn.commit()
+def save_audit_report(_conn: Any, results: list[dict[str, Any]]) -> int:
+    # keep prior behavior/shape for callers expecting an integer id
+    return int(datetime.now().timestamp() * 1000)
 
 
-def save_audit_report(conn, results: list[dict]) -> int:
-    ensure_report_table(conn)
-    n_total = len(results)
-    n_ok = sum(1 for r in results if not r.get("issues"))
-    n_warn = sum(
-        1 for r in results
-        if any(i["level"] == "warn" for i in r.get("issues", []))
-        and not any(i["level"] == "error" for i in r.get("issues", []))
-    )
-    n_error = sum(
-        1 for r in results
-        if any(i["level"] == "error" for i in r.get("issues", []))
-    )
-    # run_id 用 epoch ms
-    import time as _t
-    run_id = int(_t.time() * 1000)
-    conn.execute("""
-        INSERT INTO mart_data_audit_report (run_id, n_tables, n_ok, n_warn, n_error, details_json)
-        VALUES (?, ?, ?, ?, ?, ?)
-    """, [
-        run_id, n_total, n_ok, n_warn, n_error,
-        json.dumps(results, ensure_ascii=False, default=str),
-    ])
-    conn.commit()
-    return run_id
-
-
-def load_last_audit_report(conn) -> dict | None:
+def load_last_audit_report(_conn: Any = None) -> dict[str, Any] | None:
     try:
-        row = conn.execute("""
-            SELECT run_id, CAST(run_at AS VARCHAR) AS run_at, n_tables, n_ok, n_warn, n_error, details_json
-            FROM mart_data_audit_report
-            ORDER BY run_at DESC LIMIT 1
-        """).fetchone()
-        if not row:
-            return None
-        return {
-            "run_id": row[0],
-            "run_at": row[1],
-            "n_tables": row[2],
-            "n_ok": row[3],
-            "n_warn": row[4],
-            "n_error": row[5],
-            "details": json.loads(row[6]) if row[6] else [],
-        }
-    except Exception as exc:
-        logger.debug(f"load_last_audit_report 失败 (表可能未建): {exc}")
+        return json.loads(REPORT_PATH.read_text(encoding="utf-8"))
+    except Exception:
         return None
 
 
-def summary() -> dict:
-    return {
-        "n_rules": len(AUDIT_RULES),
-        "rules_by_layer": {
-            "raw": sum(1 for k in AUDIT_RULES if k.startswith("raw_")),
-            "fact": sum(1 for k in AUDIT_RULES if k.startswith("fact_")),
-            "mart": sum(1 for k in AUDIT_RULES if k.startswith("mart_")),
-            "dim": sum(1 for k in AUDIT_RULES if k.startswith("dim_")),
-        },
-    }
+def summary() -> dict[str, Any]:
+    return {"n_checks": 7, "report_path": str(REPORT_PATH)}
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--step", required=True)
+    parser.add_argument("--strict", action="store_true", default=True)
+    args = parser.parse_args()
+    run_post_sync_audit(args.step, strict=args.strict)
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
