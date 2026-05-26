@@ -240,6 +240,68 @@ If script needs adaptation for unified panel groups: copy + adapt to `backend/sc
 | Weekly aggregate + divergence flag (>30% = abort criterion) | per-group weekly report |
 | Week 6+ promote decision | top performer scales 15% / others abort |
 
+### 2026-05-26 — BestChoice 分层选股架构 (公式工厂整改后续)
+
+> 用户指令: "基础设施做好, 模块化可复用, 避免之前浪费. 分层独立调参. 基于股票 profile 分类选股, 不局限于已有公式, 你们独立研究."
+
+**前提**: 公式工厂 Phase 1-3 基础设施已就绪 (8/8 READY, 2026-05-26 audit):
+- 55 公式 (6 core + 49 bank) 全部接入 `compute_formula_signals`
+- Preflight 7 维强审计 (universe/板块/成本/新鲜度/walk-forward/PIT spot-check)
+- 交易成本从 `paper_sim_config.yaml` 自动读 (10.4 bps)
+- 一字涨跌停处理 (`execution_model.py`)
+- YAML 配置化, Optuna governance
+
+**四层架构**:
+
+```
+Layer 0: 股票画像 (stock_profiler.py) — 独立模块, 独立测试
+  输入: K线 + SmartMoney 345 tables
+  输出: 每只股票的 profile (趋势/波动/板块/资金/阶段)
+  可调: 画像维度, 分类阈值
+
+Layer 1: 单公式信号 (formula_engine + bank) — 各自独立 Optuna
+  输入: OHLCV + 画像 (可选)
+  输出: per-stock per-day entry/exit signal
+  可调: 各公式自己的 YAML 参数
+  已有: 55 个, 可扩展
+
+Layer 2: 共振评分器 (signal_ranker.py) — 独立模块, 独立调参
+  输入: Layer 1 各公式信号
+  输出: per-stock per-day composite_score
+  可调: 共振窗口 / 公式权重 / 最低共振数 / profile-aware 权重
+
+Layer 3: 股票池 (portfolio_pool.py) — 独立模块, 独立调参
+  输入: Layer 2 scored signals
+  输出: 当日持仓 (max 5) + 卖出指令
+  可调: max_k / score_threshold / 止盈止损 / 替换比例 / 仓位管理
+```
+
+**实施顺序**:
+
+| 步骤 | 任务 | 依赖 | ETA |
+|---|---|---|---|
+| S0 | Layer 0 股票画像模块 | 无 | 1 天 |
+| S1 | 55 公式 × 单股 300616 全量验证 | S0 | 0.5 天 |
+| S2 | Layer 1 各公式独立 Optuna (per-profile) | S0+S1 | 2 天本地 / GCP |
+| S3 | Layer 2 共振评分器骨架 + 300616 验证 | S2 | 1 天 |
+| S4 | Layer 3 股票池骨架 + 300616 验证 | S3 | 1 天 |
+| S5 | 全量 walk-forward 验证 (Optuna per layer) | S4 | GCP $2-3 |
+| S6 | Paper Sim 集成 + 每日选股 | S5 | 1 天 |
+
+每步产出独立可测试, 不依赖后续步骤. 每层参数独立 Optuna, 不混调.
+
+**Codex 独立研究任务** (后台已启动 2026-05-26):
+- 股票画像维度设计 (哪些可测量维度区分股票类型)
+- 公式-画像映射假设 (哪类股票适合哪个公式)
+- 新公式研究方向 (基于 SmartMoney 345 tables 数据)
+- 共振评分设计
+- 结果待合并到此计划
+
+**300616 三波实测基线** (已完成 2026-05-26):
+- 5 公式 × 3 波命中分析: `analysis/multi_wave_strategy_design_300616.md`
+- 多公式共振 > 单公式 (W1 主涨 5 公式共振, +29%)
+- gs_raw_buy + obv_breakout 共振是最稳定的起涨信号
+
 ### Tech Debt — Phase 3 之后
 
 | # | Task | 范围 | 备注 |
