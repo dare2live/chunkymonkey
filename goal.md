@@ -492,6 +492,10 @@ Layer 3: portfolio_pool.py — 股票池 max 5
 #### P1: 数据 sync 修复
 
 **已修**:
+- dim_all_ever_listed 573 只活跃股误标退市 → 已修 is_active=1 (Universe 4541→4966)
+  根因: 数据源快照覆盖不全, delisted_date=2025-09-30/12-31 是截止日不是退市日
+  300616 (尚品宅配) 被误排除导致全 A 股筛选找不到它
+  data_audit 已加 wrongly-inactive 检查
 - LHB executescript bug → 已修, raw 更新 484 条到 05-26
 - LHB fact_lhb_event → 已重建 53905 行
 - dim_active_a_stock → 已刷新到 05-26
