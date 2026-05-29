@@ -502,6 +502,7 @@
 | `backend/config/pricing_label_policy.yaml` | 定价标签 |
 | `backend/config/feature_registry.yaml` | 特征注册 |
 | `backend/config/model_search.yaml` | 模型搜索 |
+| `backend/config/tdx_data_need_coverage.yaml` | TDX 数据需求/source priority/迁移建议 catalog，供 `audit_tdx_data_need_coverage.py` 物化到治理表 |
 
 ---
 
@@ -832,6 +833,29 @@ SELECT * FROM mart_data_source_watermark;
 ## 14. Session 增量更新日志 (Rule 9.5 长期沉淀)
 
 每次 session 增量内容写这里, 新 session 启动时**从下往上读**最近改了啥.
+
+### 2026-05-29 市场感知数据接入 P0 接线 + 关联探索(LHB 反向重磅发现)
+
+**关联探索实证(read-only, event study 全 A 股 2022-2026)**: 项目所有"主力跟随"信号 forward 超额收益全反向或随机 —
+- LHB 龙虎榜上榜后 20d 超额 -3.21% / 60d -5.80%, 高换手 LHB 60d -9.89%(超额胜率仅 24%)= **见光死, 最强反向信号**
+- 资金流"主力买"/机构持仓链跟随 = 反向/随机(胜率 50%)
+- 跟主升浪研究"真主升浪起涨前无 LHB 痕迹"完全互证 → **"得主力者得天下"在明面主力数据层面证伪**
+- 含义: 市场感知 alpha 不在跟随明面主力(反向), 在 regime 择时 + 个股量价 ML(V12-V17 70% 胜率) + 起涨前安静吸筹识别; LHB 可反向用作规避因子
+
+**P0 数据接入接线(daily_update.sh Step 2k/2l + SLA)**:
+- 反例: attention 断更 14 天(停 2026-05-15)没人发现因不在 daily_update+SLA; profit_forecast launchd 未 load 只跑 1 次
+- Step 2k: external_attention snapshot(关注度/调研, sync 现成); Step 2l: profit_forecast EPS(景气度 immutable PIT)
+- data_audit_rules.yaml 加 2 表 freshness SLA(max_lag_days=5, akshare 不稳放宽)
+- 实测落库今日快照: profit_forecast 1→2 天(+2381 行) / attention 断更恢复(+5499 行), SLA lag=0 PASS
+- Codex-Reviewed a641f791 CAN COMMIT(跟进项: profit_forecast snapshot_date wall-clock 非 calendar-gated, 非交易日跑产生非交易日键, 不阻 commit)
+
+**板块轮动回测(前序)**: L1/L2/申万行业动量 IC≈0 或均值回归(L2 IC-0.069), 跑不赢全板块等权 beta → 板块择时无 alpha; 真轮动在概念主题层但缺历史成分数据
+
+**market_perception backfill 进度**: emotion 100% 覆盖(2023-01~2026-05, 814 行); daily/theme/leader_follower 缺上游(dim_stock_tdx_industry_history 仅 9 天 forward-only, TDX 协议不提供历史 industry, 需 12-18 月自然积累)
+
+**5 份研究文档**: docs/market_perception_{optimization_plan,data_requirements,data_onboarding_spec,signal_alpha_findings}_20260529.md + zhushenglang_hunter_research_log_20260528.md
+
+**新表/改动**: scripts/daily_update.sh(+Step 2k/2l) · backend/config/data_audit_rules.yaml(+2 SLA)
 
 ### 2026-05-25 Phase 4.2b walk-forward 暂停 — bg PID 88818 已 KILL, 14/22 partial
 
@@ -1801,7 +1825,7 @@ Chain Stage 2 export pgrep 误判 (pid 1463 Optuna 跟 final fit 同 MODEL_ID), 
 
 ### 2026-05-20 Market Perception rolling development plan
 
-- 新增 `市场感知开发计划.md`: 按 handoff / framework / CLAUDE / CodeGraph / complexity 审计制定 P1.1-P7 滚动计划。
+- 新增 `analysis/market_perception_development_plan_20260520.md`: 按 handoff / framework / CLAUDE / CodeGraph / complexity 审计制定 P1.1-P7 滚动计划。
 - 关键现实差异写入计划: 当前主库没有 `mart_index_daily` / `fact_stock_kline_daily`, P1 实际兼容读取 `market.v_price_kline_qfq`; P2 前先做 P1.1 range 批量化 + yaml 配置化 + health freshness。
 - 按最新市场理解思路重排路线: 将“产业链扩散”上抽象为市场状态理解层, P2 改为 MarketEmotionCycle / 涨停生态, 后续依次 ThemeLifecycle、FundFlow+UnderReaction、LeaderFollower+ChainDiffusion、Style/Crowding、StockContext。
 - P1.1 已推进配置化和可观测性: 新增 `backend/config/market_perception.yaml`, `mart_market_perception_audit_log`, `/health` latest snapshot lag / built_at / score guard / latest audit。smoke `2026-05-01 -> 2026-05-19` 写入 10/10 rows, score [-0.024959, 0.210000], guard ok; 全量 `2024-11-01 -> 2026-05-19` 在逐日 range 实现下超过 4 分钟未结束, 下一步必须先做 range 批量化。
@@ -3159,7 +3183,7 @@ Final audit (training-window 900 day):
 
 **Phase 3 step 6 final audit verify**: 1/3 critical → ok (single_source). 2/3 critical 剩 (vwap 95% ↓ / fwd outlier governance v1 真实 distribution).
 
-后续 Phase 4 (alpha 根因回溯, PLAN_V3 §72 "失败不调目标"):
+后续 Phase 4 (alpha 根因回溯, analysis/plan_v3_20260514_archived.md §72 "失败不调目标"):
 - exit_params PIT 表 rebuild (1490 → 5210 codes, 配合新 label_version)
 - alpha 弱 (0.0246 RankIC) 回根因: feature engineering / Optuna 寻参 / 新 universe / 新 label horizon
 
@@ -3188,7 +3212,7 @@ Phase 3 step 5 P3 holdout (4 months last):
 → governance v1 unit bug 修干净后, **真实 alpha 不到 用户终极目标 (年化 30%)**. CLAUDE Rule 5
 "异常高数字 = leakage 警报" 反证 governance v1 enforce 落地有效 — 真实 forward 期望永远 < 回测.
 
-按 PLAN_V3 §72 "任一失败 → 停止包装, 回到 alpha 根因, 不调目标":
+按 analysis/plan_v3_20260514_archived.md §72 "任一失败 → 停止包装, 回到 alpha 根因, 不调目标":
 **不上线 paper trading**, Phase 4 必修:
 1. exit_params PIT rebuild (1490 → 5210 codes 配 governance v1 universe)
 2. Feature engineering 加新 alpha factors
@@ -4701,7 +4725,7 @@ v1/v2 panel TABLE 不动 (train_p0b_lightgbm.py / run_p1_ablation.py 默认仍�
 **用户 push back: "说了没做" 扫描结果**:
 - `services/data_governance/*` (commit f429d91f) 没在 ETL 调 (Phase ψ.γ.dict.2 自己反例)
 - 工程红线"新表必须注册 dim_schema_version" 7 个新 mart 没注册
-- PLAN_V3 §99 P0a 列出的"机构路径 A/B + 公式触发哑变量"没接 feature
+- analysis/plan_v3_20260514_archived.md §99 P0a 列出的"机构路径 A/B + 公式触发哑变量"没接 feature
 - `paper_sim_ml_score.yaml` 没跑过 / mart_p2_composite / mart_p3_acceptance / mart_champion 全空
 
 **本批补强**:
@@ -4728,7 +4752,7 @@ v1/v2 panel TABLE 不动 (train_p0b_lightgbm.py / run_p1_ablation.py 默认仍�
 - w3: 0.0104, w4: -0.0056, w5: 0.001
 - 波动大, overall 未必 ≥ 0.03
 
-PLAN_V3 §3 #5 label horizon ablation 决策点正在跑.
+analysis/plan_v3_20260514_archived.md §3 #5 label horizon ablation 决策点正在跑.
 
 ### 2026-05-14 (Phase v3.2 perf — DataFrame bulk INSERT 250× 加速 + P0b 入库)
 
@@ -4758,11 +4782,11 @@ PLAN_V3 §3 #5 label horizon ablation 决策点正在跑.
 - 入库 mart_p0b_oos_predictions + mart_p0b_walkforward_eval
 
 **结论**: 当前 alpha158 + risk_factors + financial_pit + 4 events 不足以预测 10d forward.
-PLAN_V3 §6 串行 gate 标 P0b FAIL → 阻塞 P0c.
+analysis/plan_v3_20260514_archived.md §6 串行 gate 标 P0b FAIL → 阻塞 P0c.
 
-**下一步** (PLAN_V3 §3 决策点 + Rule 9.4 失败先承认):
+**下一步** (analysis/plan_v3_20260514_archived.md §3 决策点 + Rule 9.4 失败先承认):
 - P1 ablation: alpha158 vs risk_factors vs events 贡献分析
-- 试 5d / 20d horizon (PLAN_V3 §3 #5 label horizon)
+- 试 5d / 20d horizon (analysis/plan_v3_20260514_archived.md §3 #5 label horizon)
 - 扩特征 (机构路径 A/B / 公式触发哑变量 / 行业中性)
 
 ### 2026-05-14 (Phase v3.2 P4c promote CLI + walk_forward._ym() regression test)
@@ -4837,7 +4861,7 @@ PLAN_V3 §6 串行 gate 标 P0b FAIL → 阻塞 P0c.
 - 耗时 1281.6s (~21 min), 4 LATERAL CTE 调度
 - round_trip_cost_pct = 0.302%, label_version = 'p0a_v1'
 
-**新脚本** `scripts/run_v3_2_pipeline.py` — PLAN_V3 §6 串行 gate Python 实现:
+**新脚本** `scripts/run_v3_2_pipeline.py` — analysis/plan_v3_20260514_archived.md §6 串行 gate Python 实现:
 - 7 phases (p-1 → p0a → p0b → p0c → p1 → p2 → p3) 串行
 - `--start-phase` / `--stop-phase` 单段或全跑
 - 每 phase PASS 才进下一个 (Rule 11 串行硬约束)
@@ -4847,7 +4871,7 @@ PLAN_V3 §6 串行 gate 标 P0b FAIL → 阻塞 P0c.
 ### 2026-05-14 (Phase v3.2 P3 — final holdout acceptance gate)
 
 **新模块** `services/portfolio/final_holdout.py`:
-- 4 个硬验收常量 (PLAN_V3 §0.1 用户终极目标):
+- 4 个硬验收常量 (analysis/plan_v3_20260514_archived.md §0.1 用户终极目标):
   - `ANN_RET_TARGET = 0.30`
   - `MAX_DD_TARGET = -0.20`
   - `MONTHLY_WIN_RATE_TARGET = 0.55`
@@ -4870,13 +4894,13 @@ PLAN_V3 §6 串行 gate 标 P0b FAIL → 阻塞 P0c.
 ### 2026-05-14 (Phase v3.2 P2 — composite scoring framework)
 
 **新模块** `services/portfolio/composite_score.py`:
-- `CompositeWeights`: PLAN_V3 §2 P2 权重 dataclass — ret_w/dd_w/hp_w/turnover_w/cost_w/capacity_w + hp_penalty_mode
+- `CompositeWeights`: analysis/plan_v3_20260514_archived.md §2 P2 权重 dataclass — ret_w/dd_w/hp_w/turnover_w/cost_w/capacity_w + hp_penalty_mode
 - `_hp_penalty(avg_hp, mode)`: 3 模式 (linear=1/hp / log=1/log(hp+e) / piecewise<5d 重罚 >60d 轻罚)
 - `compute_composite_score(ann_ret, max_dd, ...)`: 主公式
   = ret_w * ann_ret - dd_w*|max_dd| - hp_w*f(hp) - turnover_w*turnover - cost_w*tx_cost_pct - capacity_w*concentration
 - `score_strategy_run(metrics)`: convenience wrapper
 
-**待集成 P2.b**: validation grid/Optuna 搜权重 (PLAN_V3 §2 "权重由 validation 决定, 不预设").
+**待集成 P2.b**: validation grid/Optuna 搜权重 (analysis/plan_v3_20260514_archived.md §2 "权重由 validation 决定, 不预设").
 
 **单测** (9 passed): pure return / dd lowers / turnover lowers / 3 hp penalty modes / wrapper / 用户目标 (ann≥30 dd≥-20 composite ≥ 0.05).
 
@@ -4891,7 +4915,7 @@ PLAN_V3 §6 串行 gate 标 P0b FAIL → 阻塞 P0c.
   - add-one: 只用单 group → walk-forward → 看单组贡献
 - `AblationSuite.summary()`: tabular dict (rank_ic + ic_ir + delta_vs_baseline)
 
-PLAN_V3 §3 数据决定的决策点接入:
+analysis/plan_v3_20260514_archived.md §3 数据决定的决策点接入:
 - #2 alpha158 全量 vs top-N (add-one only_alpha158 vs baseline)
 - #3 机构路径 A/B (drop events_inst)
 - #4 公式特征是否保留 (drop formula_dummies — 当前未加入 panel)
@@ -4919,7 +4943,7 @@ noise_group (synthetic 强信号验证).
   - 返回 list[CandidateRow] 兼容现有 selector.py 结构
   - tier='ML_RANK' / match_tier='ml_score' 跟 V2 区分
 
-**Option A 决策** (PLAN_V3 §99 P0c):
+**Option A 决策** (analysis/plan_v3_20260514_archived.md §99 P0c):
 - selector ranking 用 ML score (替换公式 sharpe 排名)
 - exit / swap 仍走 Optuna 9-dim 公式 (mart_per_stock_stage_strategy_optimal)
 - 隔离"选股 alpha 是否成立" 实验, P2 再做 A/B/C 对比
@@ -4994,7 +5018,7 @@ exit params 取 best oos_sharpe / n_traded < 5 filter.
 
 ### 2026-05-14 (Phase v3.2 P0a.1 — cost-after label 模块落盘)
 
-**P0a 起步** (P-1 PASS 后启动, PLAN_V3 §6 串行 gate 解锁).
+**P0a 起步** (P-1 PASS 后启动, analysis/plan_v3_20260514_archived.md §6 串行 gate 解锁).
 
 **新模块** `services/labels/cost_after.py` (P0a 训练 label 入口):
 - `compute_round_trip_cost_pct(tx)`: 单次完整往返 (买+卖) tx_cost % (commission 2× + slippage 2× + stamp_duty + transfer_fee 2×), 实测 ≈ 0.302%
@@ -5026,7 +5050,7 @@ exit params 取 best oos_sharpe / n_traded < 5 filter.
 - 新模块 `services/universe.py::is_active_a_share` 守门 (60/00/30/68 前缀检查)
 - ETF (15/51/56/58) 等其他类**不硬编码进 EXCLUDED**, 后续 phase 单独 enable
 - audit_survivorship.py Section 4 改成"KEEP universe K 线完整性 spot check" (5 个采样日 coverage ≥ 99.5%)
-- PLAN_V3 §99 P-1 Go metric 同步更新 (KEEP coverage ≥ 99% 取代"退市/ST 覆盖差异")
+- analysis/plan_v3_20260514_archived.md §99 P-1 Go metric 同步更新 (KEEP coverage ≥ 99% 取代"退市/ST 覆盖差异")
 
 **P-1.4 root cause fix** (Rule 5):
 - 根因: tdxhub F10 parser 返回 placeholder plan stub (announce_date/subject/direction 全空), chunkymonkey ingest 没过滤就 INSERT → 7034 行空记录 (2026-04-28 一次 sync, 2138 个 distinct stock)
@@ -5130,7 +5154,7 @@ exit params 取 best oos_sharpe / n_traded < 5 filter.
 
 **项目改名**: chunky-monkey-v2 → chunkymonkey (GitHub repo + 本地目录 + 16 文件引用同步).
 
-**PLAN_V3.md** (本仓库根) = v3.2 共识版 实施计划, 含 §0-§9 完整路线. 后续 /goal 命令从中执行.
+**analysis/plan_v3_20260514_archived.md** = v3.2 共识版历史计划, 含 §0-§9 完整路线. 当前执行以 `goal.md` 顶部计划和 `docs/implementation_plan.md` 为准.
 
 ### 2026-05-14 (Phase ψ.γ.experiment — ablation 3 fail + per_stock_stage ceiling test 跑中)
 

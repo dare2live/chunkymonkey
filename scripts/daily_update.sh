@@ -333,8 +333,32 @@ try:
 finally:
     conn.close()
 PYEOF
+
+        # 2026-05-29 加 (市场感知数据接入 P0): external_attention 快照接线
+        # 反例: attention 断更 14 天 (停 2026-05-15) 没人发现, 因不在 daily_update + 不在 watermark SLA
+        # (memory feedback-data-sync-silent-failure). sync 函数 external_attention.py:387 现成, 纯没接线.
+        # append-only PIT 关注度/调研, 每拖一天永久丢一天历史.
+        log "--- Step 2k: external_attention snapshot (累积 PIT 关注度/调研) ---"
+        PYTHONPATH=backend python - <<'PYEOF' >> "$LOG" 2>&1 || log "WARN: external_attention sync 失败"
+from services.duck_adapter import connect as duck_connect
+from services.external_attention import sync_external_attention_snapshot
+conn = duck_connect("data/smartmoney.duckdb")
+try:
+    n = sync_external_attention_snapshot(conn)
+    r = conn.execute("SELECT COUNT(DISTINCT snapshot_date), MAX(snapshot_date) FROM fact_stock_attention_snapshot").fetchone()
+    print(f"external_attention: rows={n} history_dates={r[0]} latest={r[1]}")
+finally:
+    conn.close()
+PYEOF
+
+        # 2026-05-29 加 (市场感知数据接入 P0): profit_forecast EPS 快照接线
+        # 反例: launchd plist 未 load, 只跑过 1 次 (2026-05-17). 景气度 forward 因子源 (研究证实
+        # 多因子行业轮动有效), immutable PIT (INSERT OR IGNORE 同日 skip).
+        log "--- Step 2l: profit_forecast EPS snapshot (景气度 immutable PIT) ---"
+        PYTHONPATH=backend python backend/scripts/ingest_profit_forecast_snapshot.py \
+            >> "$LOG" 2>&1 || log "WARN: profit_forecast sync 失败"
     else
-        log "DRY: skip Step 2d-2j satellite syncs"
+        log "DRY: skip Step 2d-2l satellite syncs"
     fi
 fi
 
