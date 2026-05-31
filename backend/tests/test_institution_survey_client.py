@@ -36,6 +36,7 @@ def _survey_rows() -> list[dict]:
 
 def test_sync_institution_surveys_accepts_records(monkeypatch):
     conn = duck_mem()
+    monkeypatch.setattr(survey_client, "_latest_closed", lambda: "2026-04-24")
     monkeypatch.setattr(
         survey_client,
         "_fetch_from_eastmoney_skill",
@@ -63,6 +64,7 @@ def test_sync_institution_surveys_accepts_records(monkeypatch):
 
 def test_sync_institution_surveys_handles_empty_records(monkeypatch):
     conn = duck_mem()
+    monkeypatch.setattr(survey_client, "_latest_closed", lambda: "2026-04-24")
     monkeypatch.setattr(
         survey_client,
         "_fetch_from_eastmoney_skill",

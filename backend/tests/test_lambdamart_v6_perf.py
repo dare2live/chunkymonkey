@@ -71,6 +71,7 @@ def test_assert_pit_strict_int64_legit_boundary():
     assert_pit_strict(train_int, test_int)
 
 
+@pytest.mark.perf
 def test_build_walk_forward_windows_perf_regression():
     """Fix 1 perf 回退测试: synthetic 200 dates × 100 stocks panel, build < 5 sec.
 

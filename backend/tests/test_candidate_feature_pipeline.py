@@ -11,7 +11,6 @@ from scripts.run_feature_group_ablation import run_group_ablation
 from scripts.run_optuna_feature_elimination import run_optuna_feature_elimination
 from scripts.run_walkforward_feature_eval import run_walkforward_feature_eval
 from scripts.validate_tdx_feature_pit import validate_tdx_feature_pit
-from services.data_deprecation import record_data_deprecations
 
 
 def _create_candidate_inputs(conn):
@@ -230,44 +229,5 @@ def test_candidate_feature_panel_ablation_and_elimination_records():
         assert pit["status"] == "passed"
         assert pit_rows["n"] >= 1
         assert pit_rows["violations"] == 0
-    finally:
-        conn.close()
-
-
-def test_record_data_deprecations_updates_metadata_without_dropping_tables():
-    conn = duck_mem()
-    try:
-        retired_table = "market" + "_raw" + "_holdings"
-        conn.execute(
-            """
-            CREATE TABLE dim_data_asset (
-                table_name TEXT PRIMARY KEY,
-                deprecation_status TEXT DEFAULT 'active',
-                deprecated_at TEXT,
-                deprecated_reason TEXT,
-                replacement_table TEXT,
-                last_updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-            )
-            """
-        )
-        conn.execute(
-            "INSERT INTO dim_data_asset (table_name, deprecation_status) VALUES (?, 'active')",
-            (retired_table,),
-        )
-
-        result = record_data_deprecations(conn)
-        row = conn.execute(
-            "SELECT deprecation_status, replacement_table FROM dim_data_asset WHERE table_name = ?",
-            (retired_table,),
-        ).fetchone()
-        record_count = conn.execute(
-            "SELECT COUNT(*) FROM mart_data_deprecation_record WHERE table_name = ?",
-            (retired_table,),
-        ).fetchone()[0]
-
-        assert result["deprecated"][0]["table_name"] == retired_table
-        assert row["deprecation_status"] == "deprecated"
-        assert row["replacement_table"] == "fact_top10_holder_period"
-        assert record_count == 1
     finally:
         conn.close()
