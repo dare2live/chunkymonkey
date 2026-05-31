@@ -16,7 +16,7 @@ Snapshot: `2026-06-01 04:20:40 CST`
 | Storage payload | `PASS`: 320 scanned / 0 FAIL / 0 WARN / 11 reviewed PASS | Reviewed columns are governed by `backend/config/storage_retention.yaml`; recursive or over-cap payloads still block |
 | CodeGraph | Synced after the survey `.py` slice; pending may show the new untracked test until this slice is staged/committed | Re-run `codegraph status .` after this commit |
 | Complexity | Historical HIGH remains debt; tooling diff ignores line-number drift by default | New HIGH still blocks; line drift alone should not |
-| Data freshness/PIT | **WARN/FAIL mixed**: end-to-end freshness PASS with WARN; data completeness now has 2 issues (LHB source-blocked + trigger PARTIAL_WARN); survivorship gate PASS on current label_version, legacy v2 only via explicit flag | Continue LHB source gap triage and recommendation PIT; no strategy claim |
+| Data freshness/PIT | **WARN/FAIL mixed**: end-to-end freshness PASS with WARN; data completeness now has 2 issues (LHB event PARTIAL_WARN + trigger PARTIAL_WARN); survivorship gate PASS on current label_version, legacy v2 only via explicit flag | Continue LHB event-coverage triage and recommendation PIT; no strategy claim |
 
 ## Latest Slice
 
@@ -25,9 +25,10 @@ session refreshed `mart_p0a_label_panel` (current `p0a_v3_horizon_governance`
 version), `mart_p0a_feature_label_panel_v3`, `mart_p0a_feature_label_panel_v4`,
 `mart_sniper_score_daily`, and `mart_institution_score_daily` to
 `2026-05-29`, and aligned `audit_survivorship_gate.py` with the current label
-version so the gate now passes. Remaining freshness blockers are the LHB source
-gap (`raw_lhb_daily` / `fact_lhb_event` stop at `2026-05-25`) and the
-`fact_technical_trigger` PARTIAL_WARN. No GCP/Optuna/backtest work was started.
+  version so the gate now passes. Remaining freshness blockers are the LHB
+  event coverage `PARTIAL_WARN` (`fact_lhb_event` now reaches `2026-05-29` but
+  only covers a small subset of codes) and the `fact_technical_trigger`
+  PARTIAL_WARN. No GCP/Optuna/backtest work was started.
 
 K-line refresh commands used:
 
@@ -73,7 +74,7 @@ Downstream freshness refresh commands used:
 | `pytest -q backend/tests/test_build_formula_signals.py` | 19 passed |
 | `scripts/chunkyctl audit --run --scope backend/scripts/build_formula_signals_history.py --scope backend/scripts/build_stage_formula_fitness.py --scope backend/scripts/build_signal_context.py --scope backend/tests/test_build_formula_signals.py` | PASS |
 | Downstream coverage query | `fact_stock_technical_stage` max 2026-05-29 / 1,429,117 rows; `fact_signal_context` max 2026-05-29 / 2,125,233 rows; `fact_technical_trigger` max 2026-05-29 / 1,381,657 rows |
-| `audit_data_completeness.py` after trigger refresh | FAIL overall; remaining 7 issues: label/v3/v4/sniper/institution 2026-05-19, LHB 2026-05-25, trigger event-table partial warn |
+| `audit_data_completeness.py` after main-force catch-up | FAIL overall; remaining 2 issues: `fact_lhb_event` event coverage only 84 codes (1%), `fact_technical_trigger` event-table partial warn |
 | `audit_end_to_end.py` after trigger refresh | FAIL: 24 total / 18 OK / 4 WARN / 2 FAIL; FAIL now `mart_stock_picture_daily` and `mart_stock_survey_features` |
 | `audit_universe_coverage.py` after trigger refresh | PASS: 17 PASS / 5 WARN / 0 FAIL |
 | `audit_pit_integrity.py` after trigger refresh | PASS: 11 PASS / 28 WARN / 0 FAIL |
@@ -83,7 +84,7 @@ Downstream freshness refresh commands used:
 | `pytest -q backend/tests/sentiment/test_build_survey_features_script.py backend/tests/sentiment/test_survey_builder.py` | 9 passed |
 | `complexity-optimizer backend/scripts/build_survey_features.py` | No obvious hotspots in targeted scan |
 | `audit_end_to_end.py` after picture/survey refresh | PASS with WARN: 24 total / 18 OK / 6 WARN / 0 FAIL |
-| `audit_data_completeness.py` after picture/survey refresh | FAIL overall; remaining 7 issues: label/v3/v4/sniper/institution 2026-05-19, LHB 2026-05-25, trigger event-table partial warn |
+| `audit_data_completeness.py` after main-force catch-up | FAIL overall; remaining 2 issues: `fact_lhb_event` event coverage only 84 codes (1%), `fact_technical_trigger` event-table partial warn |
 | `audit_universe_coverage.py` after picture/survey refresh | PASS: 17 PASS / 5 WARN / 0 FAIL |
 | `audit_pit_integrity.py` after picture/survey refresh | PASS: 11 PASS / 28 WARN / 0 FAIL |
 | `audit_survivorship_gate.py` after label/survivorship refresh | PASS: current label_version p0a_v3_horizon_governance has 5,210 codes >= 90% of ever-listed 5,210 |
@@ -95,6 +96,6 @@ Downstream freshness refresh commands used:
 2. Confirm `git status --short`, `codegraph status .`, and
    `scripts/chunkyctl doctor --fast` return clean/PASS after the commit.
 3. Continue `goal.md` 6.11 downstream freshness from the current state. The
-   next true blocker is the LHB source gap (raw source max 2026-05-25). Keep
-   recommendation PIT coverage and `fact_technical_trigger` partial coverage as
-   WARN evidence, not production proof.
+   next true blocker is LHB event coverage and recommendation PIT. Keep
+   `fact_technical_trigger` partial coverage as WARN evidence, not production
+   proof.

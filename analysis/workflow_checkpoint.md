@@ -8,19 +8,20 @@ The model pipeline snapshot below is historical evidence for the completed
 
 ## Current Data Freshness Checkpoint
 
-- updated_at: `2026-06-01 07:39:32 CST`
+- updated_at: `2026-06-01 07:50:32 CST`
 - current_state: `architecture/data freshness repair`
 - K-line truth source: `price_kline_tdxhub` refreshed to trading calendar
   `2026-05-29` with tdxhub incremental sync.
 - data audit: `audit_data_completeness.py` still exits FAIL, but
   `price_kline_tdxhub`, `fact_alpha158_panel`, `fact_stock_technical_stage`,
-  `fact_signal_context`, `fact_technical_trigger`, `mart_stock_picture_daily`,
-  `mart_stock_survey_features`, `mart_p0a_label_panel`,
-  `mart_p0a_feature_label_panel_v3`, `mart_p0a_feature_label_panel_v4`,
-  `mart_sniper_score_daily`, and `mart_institution_score_daily` now reach
-  `2026-05-29`. Remaining 2 issues are `fact_lhb_event` stale because
-  `raw_lhb_daily` also stops at `2026-05-25`, and the `fact_technical_trigger`
-  event-table partial coverage warning.
+  `fact_signal_context`, `fact_technical_trigger`, `fact_capital_flow_pit_daily`,
+  `fact_risk_factors`, `fact_sector_momentum_daily`,
+  `mart_stock_picture_daily`, `mart_stock_survey_features`,
+  `mart_p0a_label_panel`, `mart_p0a_feature_label_panel_v3`,
+  `mart_p0a_feature_label_panel_v4`, `mart_sniper_score_daily`, and
+  `mart_institution_score_daily` now reach `2026-05-29`. Remaining 2 issues are
+  `fact_lhb_event` event coverage only 84 codes (1%), and the
+  `fact_technical_trigger` event-table partial coverage warning.
 - end-to-end audit: `audit_end_to_end.py` now exits PASS with WARN
   (`24 total / 18 OK / 6 WARN / 0 FAIL`); WARN includes recommendation PIT
   coverage 0, recommendation row count, and freshness days_behind=3 for
@@ -29,7 +30,7 @@ The model pipeline snapshot below is historical evidence for the completed
   `p0a_v2_governance_v1` gate remains available only for explicit historical
   review.
 - next_step: follow `goal.md` 6.11 from the current state; the next true
-  blocker is the LHB source gap. Recommendation PIT coverage and
+  blocker is LHB event coverage. Recommendation PIT coverage and
   `fact_technical_trigger` partial coverage remain WARN evidence.
 
 - generated_at: `2026-05-25T01:20:01Z`

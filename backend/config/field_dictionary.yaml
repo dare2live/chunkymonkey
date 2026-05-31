@@ -127,7 +127,7 @@ databases:
         vol_30d:     {type: DOUBLE, unit: "fraction (年化)", description: "30 日年化波动率"}
         vol_60d:     {type: DOUBLE, unit: "fraction (年化)", outlier_cap: 2.0}
         vol_120d:    {type: DOUBLE, unit: "fraction (年化)"}
-        sharpe_60d:  {type: DOUBLE, unit: dimensionless, outlier_cap: [-5, 5]}
+        sharpe_60d:  {type: DOUBLE, unit: dimensionless, outlier_cap: [-10, 10]}
         mom_30d:     {type: DOUBLE, unit: "fraction (累计 return)"}
         mom_60d:     {type: DOUBLE, unit: "fraction"}
         mom_120d:    {type: DOUBLE, unit: "fraction"}
@@ -291,7 +291,7 @@ databases:
         vol_30d:   {type: DOUBLE, unit: "fraction (年化)", outlier_cap: 2.0}
         vol_60d:   {type: DOUBLE, unit: "fraction (年化)", outlier_cap: 2.0}
         vol_120d:  {type: DOUBLE}
-        sharpe_60d: {type: DOUBLE, outlier_cap: [-5, 5]}
+        sharpe_60d: {type: DOUBLE, outlier_cap: [-10, 10]}
         mom_30d:   {type: DOUBLE, unit: fraction}
         mom_120d:  {type: DOUBLE}
         # Financial PIT (pe/pb/ps/roe — ASOF trade_date=signal_date)
