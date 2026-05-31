@@ -2,6 +2,10 @@
 
 Business-level pipeline tracker. Session-level state remains in SESSION_HANDOFF.md.
 
+Current Codex architecture/worktree-governance state is tracked in `goal.md`.
+The model pipeline snapshot below is historical evidence for the completed
+2026-05 long-running pipeline and must not be used as current GCP/Optuna state.
+
 - generated_at: `2026-05-25T01:20:01Z`
 - model_id: `lgbm_phase5_gcp_20260520T010718`
 - current_step: `all_done`

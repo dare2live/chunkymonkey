@@ -149,10 +149,137 @@ def test_storage_payload_audit_warns_path_marker_and_duplicate_samples() -> None
     assert "duplicate large top-sample payloads detected" in finding["reasons"]
 
 
+def test_storage_payload_reviewed_bounded_column_passes_total_warn() -> None:
+    conn = duckdb.connect(":memory:")
+    try:
+        conn.execute("CREATE TABLE fact_technical_trigger (reason_codes_json TEXT)")
+        conn.executemany("INSERT INTO fact_technical_trigger VALUES (?)", [("[\"a\"]",) for _ in range(12)])
+
+        report = audit_storage_payloads.build_storage_payload_report(
+            conn,
+            policy=_policy(
+                total_value_warn_bytes=20,
+                reviewed_columns=[
+                    {
+                        "table": "fact_technical_trigger",
+                        "column": "reason_codes_json",
+                        "classification": "compact_reason_codes",
+                        "max_value_bytes": 20,
+                        "max_total_value_bytes": 100,
+                    }
+                ],
+            ),
+            tables=["fact_technical_trigger"],
+        )
+    finally:
+        conn.close()
+
+    assert report["verdict"] == "PASS"
+    assert report["summary"]["reviewed"] == 1
+    finding = report["findings"][0]
+    assert finding["severity"] == "PASS"
+    assert finding["review"]["status"] == "accepted"
+    assert finding["reasons"] == ["reviewed payload: compact_reason_codes"]
+
+
+def test_storage_payload_reviewed_column_never_downgrades_recursive_fail() -> None:
+    conn = duckdb.connect(":memory:")
+    try:
+        conn.execute("CREATE TABLE mart_audit_snapshot_state (audit_json TEXT)")
+        conn.execute("INSERT INTO mart_audit_snapshot_state VALUES (?)", ('{"latest_dispatch": {}}',))
+
+        report = audit_storage_payloads.build_storage_payload_report(
+            conn,
+            policy=_policy(
+                max_value_fail_bytes=500,
+                reviewed_columns=[
+                    {
+                        "table": "mart_audit_snapshot_state",
+                        "column": "audit_json",
+                        "classification": "bad_review_rule",
+                        "max_value_bytes": 500,
+                    }
+                ],
+            ),
+            tables=["mart_audit_snapshot_state"],
+        )
+    finally:
+        conn.close()
+
+    assert report["verdict"] == "FAIL"
+    finding = report["findings"][0]
+    assert finding["review"]["status"] == "blocked"
+    assert "recursive keyword hits" in finding["review"]["blockers"]
+    assert "recursive keyword detected" in finding["reasons"]
+
+
+def test_storage_payload_reviewed_path_pointer_passes_when_allowed() -> None:
+    conn = duckdb.connect(":memory:")
+    try:
+        conn.execute("CREATE TABLE mart_paper_sim_kpi (lineage_url TEXT)")
+        conn.execute("INSERT INTO mart_paper_sim_kpi VALUES (?)", ("data/reports/lineage/run.md",))
+
+        report = audit_storage_payloads.build_storage_payload_report(
+            conn,
+            policy=_policy(
+                reviewed_columns=[
+                    {
+                        "table": "mart_paper_sim_kpi",
+                        "column": "lineage_url",
+                        "classification": "lineage_pointer",
+                        "allow_path_marker": True,
+                        "max_value_bytes": 100,
+                    }
+                ],
+            ),
+            tables=["mart_paper_sim_kpi"],
+        )
+    finally:
+        conn.close()
+
+    assert report["verdict"] == "PASS"
+    finding = report["findings"][0]
+    assert finding["path_marker_hits"] == 1
+    assert finding["review"]["status"] == "accepted"
+    assert finding["reasons"] == ["reviewed payload: lineage_pointer"]
+
+
+def test_storage_payload_reviewed_cap_breach_stays_warn() -> None:
+    conn = duckdb.connect(":memory:")
+    try:
+        conn.execute("CREATE TABLE mart_today_signal_cache_signal (signal_json TEXT)")
+        conn.execute("INSERT INTO mart_today_signal_cache_signal VALUES (?)", ("x" * 12,))
+
+        report = audit_storage_payloads.build_storage_payload_report(
+            conn,
+            policy=_policy(
+                max_value_warn_bytes=10,
+                max_value_fail_bytes=50,
+                reviewed_columns=[
+                    {
+                        "table": "mart_today_signal_cache_signal",
+                        "column": "signal_json",
+                        "classification": "bounded_cache_detail_row",
+                        "max_value_bytes": 10,
+                    }
+                ],
+            ),
+            tables=["mart_today_signal_cache_signal"],
+        )
+    finally:
+        conn.close()
+
+    assert report["verdict"] == "WARN"
+    finding = report["findings"][0]
+    assert finding["review"]["status"] == "blocked"
+    assert "max_value_bytes exceeds reviewed cap" in finding["review"]["blockers"]
+    assert "max_value_bytes exceeds warn threshold" in finding["reasons"]
+
+
 def test_storage_payload_markdown_renders_findings() -> None:
     report = {
         "verdict": "FAIL",
-        "summary": {"columns_scanned": 1, "fail": 1, "warn": 0, "pass": 0},
+        "summary": {"columns_scanned": 1, "fail": 1, "warn": 0, "reviewed": 0, "pass": 0},
         "findings": [
             {
                 "severity": "FAIL",

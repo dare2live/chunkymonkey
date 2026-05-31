@@ -67,6 +67,7 @@ DEFAULT_POLICY = {
         ".log",
         "file://",
     ),
+    "reviewed_columns": (),
 }
 
 
@@ -90,9 +91,43 @@ def load_payload_policy(path: str | Path | None = None) -> dict[str, Any]:
             policy[key] = tuple(str(item).lower() for item in (value or []))
         elif key in {"fail_on_recursive_keyword", "warn_on_path_marker"}:
             policy[key] = bool(value)
+        elif key == "reviewed_columns":
+            policy[key] = _normalize_reviewed_columns(value)
         else:
             policy[key] = int(value)
     return policy
+
+
+def _optional_int(value: Any) -> int | None:
+    if value is None:
+        return None
+    return int(value)
+
+
+def _normalize_reviewed_columns(raw: Any) -> tuple[dict[str, Any], ...]:
+    if not isinstance(raw, list):
+        return ()
+    rules: list[dict[str, Any]] = []
+    for item in raw:
+        if not isinstance(item, dict):
+            continue
+        table = str(item.get("table") or "").strip()
+        column = str(item.get("column") or "").strip()
+        if not table or not column:
+            continue
+        rules.append(
+            {
+                "table": table,
+                "column": column,
+                "classification": str(item.get("classification") or "reviewed_payload"),
+                "owner": str(item.get("owner") or ""),
+                "reason": str(item.get("reason") or ""),
+                "allow_path_marker": bool(item.get("allow_path_marker", False)),
+                "max_value_bytes": _optional_int(item.get("max_value_bytes")),
+                "max_total_value_bytes": _optional_int(item.get("max_total_value_bytes")),
+            }
+        )
+    return tuple(rules)
 
 
 def _quote_ident(name: str) -> str:
@@ -213,6 +248,48 @@ def _severity_for(stats: dict[str, Any], policy: dict[str, Any]) -> tuple[str, l
     ):
         severity = "WARN"
         reasons.append("duplicate large top-sample payloads detected")
+    return _apply_reviewed_column_rule(stats, severity, reasons, policy)
+
+
+def _reviewed_rule_for(table: str, column: str, policy: dict[str, Any]) -> dict[str, Any] | None:
+    for rule in tuple(policy.get("reviewed_columns") or ()):
+        if rule.get("table") == table and rule.get("column") == column:
+            return rule
+    return None
+
+
+def _apply_reviewed_column_rule(
+    stats: dict[str, Any],
+    severity: str,
+    reasons: list[str],
+    policy: dict[str, Any],
+) -> tuple[str, list[str]]:
+    rule = _reviewed_rule_for(str(stats["table"]), str(stats["column"]), policy)
+    if not rule:
+        return severity, reasons
+
+    blockers: list[str] = []
+    if stats["recursive_keyword_hits"] > 0:
+        blockers.append("recursive keyword hits")
+    max_value_bytes = rule.get("max_value_bytes")
+    if max_value_bytes is not None and stats["max_value_bytes"] > int(max_value_bytes):
+        blockers.append("max_value_bytes exceeds reviewed cap")
+    max_total_value_bytes = rule.get("max_total_value_bytes")
+    if max_total_value_bytes is not None and stats["total_value_bytes"] > int(max_total_value_bytes):
+        blockers.append("total_value_bytes exceeds reviewed cap")
+    if stats["path_marker_hits"] > 0 and not rule.get("allow_path_marker"):
+        blockers.append("path marker not allowed by reviewed rule")
+
+    stats["review"] = {
+        "status": "blocked" if blockers else "accepted",
+        "classification": rule.get("classification") or "reviewed_payload",
+        "owner": rule.get("owner") or "",
+        "reason": rule.get("reason") or "",
+        "blockers": blockers,
+    }
+    if severity == "WARN" and not blockers:
+        reasons = [f"reviewed payload: {stats['review']['classification']}"]
+        return "PASS", reasons
     return severity, reasons
 
 
@@ -270,6 +347,7 @@ def build_storage_payload_report(
     ]
     fail_count = sum(1 for item in findings if item["severity"] == "FAIL")
     warn_count = sum(1 for item in findings if item["severity"] == "WARN")
+    reviewed_count = sum(1 for item in findings if item.get("review", {}).get("status") == "accepted")
     verdict = "FAIL" if fail_count else "WARN" if warn_count else "PASS"
     return {
         "schema_version": 1,
@@ -283,6 +361,7 @@ def build_storage_payload_report(
             "columns_scanned": len(findings),
             "fail": fail_count,
             "warn": warn_count,
+            "reviewed": reviewed_count,
             "pass": sum(1 for item in findings if item["severity"] == "PASS"),
         },
         "findings": findings,
@@ -299,6 +378,7 @@ def render_markdown(report: dict[str, Any]) -> str:
         f"| Columns scanned | {report['summary']['columns_scanned']} |",
         f"| FAIL | {report['summary']['fail']} |",
         f"| WARN | {report['summary']['warn']} |",
+        f"| Reviewed PASS | {report['summary'].get('reviewed', 0)} |",
         "",
         "## Findings",
         "",

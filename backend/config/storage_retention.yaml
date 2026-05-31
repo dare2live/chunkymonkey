@@ -48,6 +48,90 @@ payload_audit:
     - /logs/
     - .log
     - file://
+  reviewed_columns:
+    - table: fact_technical_trigger
+      column: reason_codes_json
+      classification: compact_per_signal_reason_codes
+      owner: formula_engine
+      reason: Compact per-row formula trigger reason codes; row count can grow with signal history, but each value must stay tiny and non-recursive.
+      max_value_bytes: 512
+      max_total_value_bytes: 268435456
+    - table: mart_today_signal_cache_signal
+      column: signal_json
+      classification: bounded_cache_detail_row
+      owner: signals_v2
+      reason: Replacement for the former single-row signals_json blob; one bounded JSON row per signal keeps API cache replayable without recursive nesting.
+      max_value_bytes: 8192
+      max_total_value_bytes: 67108864
+    - table: raw_aif10_financial_history
+      column: raw_json
+      classification: bounded_raw_source_record
+      owner: financial_source_ingestion
+      reason: AIF10 source snapshots are replayable raw inputs; large total volume is expected only when each source record remains bounded.
+      max_value_bytes: 16384
+      max_total_value_bytes: 67108864
+    - table: raw_tdx_f10_holder_research
+      column: raw_text
+      classification: bounded_raw_source_record
+      owner: tdx_f10_source_ingestion
+      reason: TDX F10 holder raw text is a protected replay source; total volume is acceptable only with bounded individual records and zero recursive keys.
+      max_value_bytes: 65536
+      max_total_value_bytes: 1073741824
+    - table: raw_tdx_gpcw_wide
+      column: field_values_json
+      classification: bounded_raw_source_record
+      owner: tdx_gpcw_source_ingestion
+      reason: TDX GPCW wide field JSON is a protected replay source; total volume is acceptable only with bounded individual records and zero recursive keys.
+      max_value_bytes: 8192
+      max_total_value_bytes: 536870912
+    - table: mart_architecture_inventory_asset
+      column: api_routes_json
+      classification: governed_architecture_inventory_paths
+      owner: architecture_inventory
+      reason: Architecture inventory intentionally records route/path references; path markers are lineage evidence, not embedded artifacts.
+      allow_path_marker: true
+      max_value_bytes: 4096
+      max_total_value_bytes: 1048576
+    - table: mart_architecture_inventory_asset
+      column: frontend_api_calls_json
+      classification: governed_architecture_inventory_paths
+      owner: architecture_inventory
+      reason: Architecture inventory intentionally records frontend API path references; path markers are lineage evidence, not embedded artifacts.
+      allow_path_marker: true
+      max_value_bytes: 4096
+      max_total_value_bytes: 1048576
+    - table: mart_paper_sim_kpi
+      column: lineage_url
+      classification: governed_lineage_pointer
+      owner: paper_sim_lineage
+      reason: Lineage URL is an intentional pointer to a report artifact, not a copied artifact payload.
+      allow_path_marker: true
+      max_value_bytes: 512
+      max_total_value_bytes: 1048576
+    - table: mart_strategy_result_registry
+      column: evidence_json
+      classification: governed_strategy_evidence_pointer
+      owner: strategy_result_registry
+      reason: Strategy evidence can include artifact path references; recursive audit payloads remain blocked by recursive-key detection.
+      allow_path_marker: true
+      max_value_bytes: 4096
+      max_total_value_bytes: 1048576
+    - table: mart_strategy_result_registry
+      column: lineage_url
+      classification: governed_lineage_pointer
+      owner: strategy_result_registry
+      reason: Lineage URL is an intentional pointer to a report artifact, not a copied artifact payload.
+      allow_path_marker: true
+      max_value_bytes: 512
+      max_total_value_bytes: 1048576
+    - table: mart_stock_formula_optuna_bestchoice_v1
+      column: source_artifact
+      classification: governed_source_artifact_pointer
+      owner: bestchoice_phase1_import
+      reason: BestChoice candidate rows store source artifact pointers for reproducibility; they must remain short pointers, not embedded artifacts.
+      allow_path_marker: true
+      max_value_bytes: 512
+      max_total_value_bytes: 1048576
 
 protected_model_statuses:
   - champion

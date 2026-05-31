@@ -102,6 +102,7 @@ incomplete until this document is updated and the final handoff states whether
 | `data/reports/tooling/complexity_baseline.json` exists | `doctor` loads it by default; explicit `--baseline` still overrides |
 | `codegraph.pending.added` matches untracked indexable files | Review/stage by worktree bucket; do not force-sync or bulk stage to silence status |
 | `storage_payload.verdict=FAIL` | Inspect recursive JSON keys and oversized opaque DB payloads with `PYTHONPATH=backend python backend/scripts/audit_storage_payloads.py --format markdown` |
+| `storage_payload.summary.reviewed > 0` | Treat as reviewed PASS only when the matching `storage_retention.yaml` rule has owner, classification, caps, and recursive/path-marker guards |
 | `--skip-storage-payload` | Use only for emergency startup when the local DuckDB is unavailable; do not claim circular-reference cleanup from a skipped audit |
 
 ## Dirty Resolution Mode
