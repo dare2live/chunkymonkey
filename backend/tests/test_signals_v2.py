@@ -9,6 +9,7 @@ signals_v2 单元测试
     - 历史严格左切（no look-ahead）
 """
 
+import json
 from datetime import datetime, timedelta
 
 import pytest
@@ -28,8 +29,10 @@ from services.signals_v2 import (
     institution_track_record,
     backtest_historical,
     build_today_signals,
+    ensure_today_signal_cache,
     load_today_signal_cache,
     materialize_today_signal_cache,
+    migrate_today_signal_cache_payload,
     ensure_defaults,
     cohort_recent_matured,
     institution_multi_horizon,
@@ -503,6 +506,21 @@ def test_today_signal_cache_returns_last_materialized_result(memdb):
 
     materialized = materialize_today_signal_cache(memdb, config=cfg, freshness_days=30)
     cached = load_today_signal_cache(memdb, config=cfg, freshness_days=30)
+    cache_row = memdb.execute(
+        """
+        SELECT cache_key, signals_json, signal_count
+          FROM mart_today_signal_cache
+         LIMIT 1
+        """
+    ).fetchone()
+    detail_count = memdb.execute(
+        """
+        SELECT COUNT(*) AS n
+          FROM mart_today_signal_cache_signal
+         WHERE cache_key = ?
+        """,
+        (cache_row["cache_key"],),
+    ).fetchone()["n"]
     _seed_events(memdb, [
         ("inst1", "000099", "2023-Q4", newer_notice_iso, "new_entry", 0.0, 10.0, "医药"),
     ])
@@ -512,9 +530,94 @@ def test_today_signal_cache_returns_last_materialized_result(memdb):
     assert cached["summary"]["cache"]["status"] == "hit"
     assert cached["summary"]["total"] == 1
     assert cached["signals"][0]["stock_code"] == "000001"
+    assert cache_row["signals_json"] == "[]"
+    assert detail_count == cache_row["signal_count"] == 1
     assert stale_cached["summary"]["cache"]["stale"] is True
     assert stale_cached["summary"]["total"] == 1
     assert stale_cached["signals"][0]["stock_code"] == "000001"
+
+
+def test_today_signal_cache_migrates_legacy_payload_to_detail_table(memdb):
+    cfg = PolicyConfig(min_sample=5, ev_threshold_pct=3.0)
+    ensure_today_signal_cache(memdb)
+    legacy_payload = [
+        {"stock_code": "000001", "stock_name": "股票000001", "action": "follow"},
+        {"stock_code": "000002", "stock_name": "股票000002", "action": "watch"},
+    ]
+    materialized = materialize_today_signal_cache(memdb, config=cfg, freshness_days=30)
+    cache_key = materialized["cache"]["cache_key"]
+    policy_hash = materialized["cache"]["policy_hash"]
+    memdb.execute("DELETE FROM mart_today_signal_cache_signal WHERE cache_key = ?", (cache_key,))
+    memdb.execute(
+        """
+        UPDATE mart_today_signal_cache
+           SET summary_json = ?,
+               signals_json = ?,
+               signal_count = ?
+         WHERE cache_key = ?
+        """,
+        (
+            '{"total": 2}',
+            json.dumps(legacy_payload, ensure_ascii=False, sort_keys=True),
+            len(legacy_payload),
+            cache_key,
+        ),
+    )
+
+    dry_run = migrate_today_signal_cache_payload(memdb, execute=False)
+    migrated = migrate_today_signal_cache_payload(memdb, execute=True)
+    cached = load_today_signal_cache(memdb, config=cfg, freshness_days=30)
+    cache_row = memdb.execute(
+        """
+        SELECT signals_json, signal_count
+          FROM mart_today_signal_cache
+         WHERE cache_key = ?
+           AND policy_hash = ?
+        """,
+        (cache_key, policy_hash),
+    ).fetchone()
+    detail_count = memdb.execute(
+        """
+        SELECT COUNT(*) AS n
+          FROM mart_today_signal_cache_signal
+         WHERE cache_key = ?
+        """,
+        (cache_key,),
+    ).fetchone()["n"]
+
+    assert dry_run["execute"] is False
+    assert dry_run["rows_to_migrate"] == 1
+    assert dry_run["signals_to_migrate"] == 2
+    assert migrated["execute"] is True
+    assert migrated["payload_bytes_after"] == 2
+    assert cache_row["signals_json"] == "[]"
+    assert cache_row["signal_count"] == 2
+    assert detail_count == 2
+    assert [signal["stock_code"] for signal in cached["signals"]] == ["000001", "000002"]
+
+
+def test_today_signal_cache_migration_dry_run_does_not_create_tables(memdb):
+    result = migrate_today_signal_cache_payload(memdb, execute=False)
+    tables = {
+        row["table_name"]
+        for row in memdb.execute(
+            """
+            SELECT table_name
+              FROM information_schema.tables
+             WHERE table_name LIKE 'mart_today_signal_cache%'
+            """
+        ).fetchall()
+    }
+
+    assert result == {
+        "execute": False,
+        "rows_scanned": 0,
+        "rows_to_migrate": 0,
+        "signals_to_migrate": 0,
+        "payload_bytes_before": 0,
+        "payload_bytes_after": 0,
+    }
+    assert tables == set()
 
 
 def test_today_signals_exclude_future_notice_dates(memdb):

@@ -6,11 +6,11 @@
 > **目标**: 新接手 (无论 Claude 还是人) 读完此文档**不用看代码 / 不用查 DB** 就能理解:
 > 项目业务 / 架构 / 技术路线 / 数据资产 / 当前进度 / 已知坑 / 常用操作.
 
-最后更新: **2026-06-01** (storage payload / recursive JSON gate 接入 chunkyctl doctor).
+最后更新: **2026-06-01** (today signal cache 大 payload 迁移 + storage gate).
 
 ## [INDEX] 2026-06-01 增量
 
-- **Storage payload / recursive JSON 门禁固定化**: `backend/scripts/audit_storage_payloads.py` 现在只扫描 payload-like TEXT/JSON/BLOB 列，用 JSON key 形态识别 `latest_dispatch` / `queue_items` / `audit_json` 等递归风险，避免把普通 `stock_code/date/built_at` 或命令字符串误判成循环引用。`backend/config/storage_retention.yaml` 新增 `payload_column_name_tokens` owner；`scripts/chunkyctl doctor --fast` 默认接入 storage payload summary；quickstart / engineering governance / test registry 已同步。最新真实库只读门禁: 319 columns / 1 FAIL / 10 WARN / recursive hits 0，唯一 FAIL 是 `mart_today_signal_cache.signals_json` 单行 20,220,095 bytes，后续需迁为 summary/index + 明细表或 artifact ref。
+- **Storage payload / recursive JSON 门禁固定化 + today signal cache 迁移**: `backend/scripts/audit_storage_payloads.py` 现在只扫描 payload-like TEXT/JSON/BLOB 列，用 JSON key 形态识别 `latest_dispatch` / `queue_items` / `audit_json` 等递归风险，避免把普通 `stock_code/date/built_at` 或命令字符串误判成循环引用。`scripts/chunkyctl doctor --fast` 默认接入 storage payload summary。2026-06-01 已把真实库 `mart_today_signal_cache.signals_json` 单行 20,220,095 bytes / 9,286 signals 迁入新明细表 `mart_today_signal_cache_signal`，主表只留 summary/cache metadata + 兼容空数组；迁移脚本为 `backend/scripts/migrate_today_signal_cache_payload.py`，默认 dry-run，`--execute` 才写库。最新真实库门禁: 320 columns / 0 FAIL / 11 WARN / recursive hits 0；剩余 WARN 是有界明细/raw payload/path marker，不是单行整包 FAIL。
 - **Stock graph name-cache 误过滤修复**: `backend/services/stock_graph_read.py::get_stock_related` 的 same-industry related 查询把 `dim_active_a_stock` 从 `INNER JOIN` 改为 `LEFT JOIN`，该表只用于 code-to-name/cache 补名，不再过滤 `dim_stock_tdx_industry` 里的同行业关联股票。新增 `backend/tests/test_stock_graph_read.py` 回归：当关联股票不在 name cache 中时仍返回该关联，并用 stock code 作为展示名 fallback。测试登记在 `dim_active_name_cache_contract_tests`，不得作为 active-universe/tradeability 证据。
 - **`dim_active_a_stock` 合法用途 evidence 补齐**: route/read-model/data-sync/schema-writer/audit-config 中仍保留的 `dim_active_a_stock` 引用均需同一行 `rule-compliance` 证据；用途限定为 code-to-name/cache、data-sync enumeration、schema/table writer 或 audit config reference，不得重新作为 active-universe/tradeability 真相源。
 - **旧文档引用收束**: `PLAN_V3`、market perception handoff、deprecation SOP 等旧入口引用改为当前权威 `analysis/plan_v3_20260514_archived.md`、`docs/data_product_contract.md`、`docs/engineering_governance.md`；market status route 测试改用内存 DuckDB 与 mocked audit snapshot，不把本地生产库状态当默认测试证据。

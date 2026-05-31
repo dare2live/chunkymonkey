@@ -207,7 +207,8 @@ MART_VERSIONS = {
     "mart_stock_trend": "v1",                # 股票趋势 ⭐
     "mart_prediction_outcome": "v1",         # P2.8 预测 outcome tracker
     "mart_ensemble_signals": "v1",           # P3.11 多策略 ensemble
-    "mart_today_signal_cache": "v1",         # signals_v2 read cache
+    "mart_today_signal_cache": "v2",         # signals_v2 read cache summary row
+    "mart_today_signal_cache_signal": "v1",  # signals_v2 bounded per-signal cache rows
     # Phase β/γ/δ/ε 新增 (2026-05-12)
     "mart_formula_horizon_evidence": "v1",   # Phase β: 公式 horizon 胜率证据
     "mart_stage_formula_fitness": "v1",      # Phase β: stage × formula × hd 适配

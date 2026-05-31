@@ -63,6 +63,19 @@ CREATE TABLE IF NOT EXISTS mart_today_signal_cache (
 );
 """
 
+TODAY_SIGNAL_CACHE_SIGNAL_DDL = """
+CREATE TABLE IF NOT EXISTS mart_today_signal_cache_signal (
+    cache_key TEXT NOT NULL,
+    signal_rank INTEGER NOT NULL,
+    policy_hash TEXT NOT NULL,
+    stock_code TEXT,
+    action TEXT,
+    signal_json TEXT NOT NULL,
+    built_at TEXT NOT NULL,
+    PRIMARY KEY (cache_key, signal_rank)
+);
+"""
+
 
 # ─────────────────────────────────────────────────────────────────────
 # 配置
@@ -180,10 +193,11 @@ def load_config(conn) -> PolicyConfig:
 
 
 def ensure_today_signal_cache(conn) -> None:
+    ddl = TODAY_SIGNAL_CACHE_DDL + "\n" + TODAY_SIGNAL_CACHE_SIGNAL_DDL
     if hasattr(conn, "executescript"):
-        conn.executescript(TODAY_SIGNAL_CACHE_DDL)
+        conn.executescript(ddl)
         return
-    for stmt in TODAY_SIGNAL_CACHE_DDL.split(";"):
+    for stmt in ddl.split(";"):
         stmt = stmt.strip()
         if stmt:
             conn.execute(stmt)
@@ -252,6 +266,54 @@ def _today_signal_summary(
     return out
 
 
+def _load_today_signal_cache_items(conn, cache_key: str) -> list[dict] | None:
+    if "signal_json" not in _table_columns(conn, "mart_today_signal_cache_signal"):
+        return None
+    rows = conn.execute(
+        """
+        SELECT signal_json
+          FROM mart_today_signal_cache_signal
+         WHERE cache_key = ?
+         ORDER BY signal_rank
+        """,
+        (cache_key,),
+    ).fetchall()
+    return [json.loads(row["signal_json"] or "{}") for row in rows]
+
+
+def _replace_today_signal_cache_items(
+    conn,
+    *,
+    cache_key: str,
+    policy_hash: str,
+    built_at: str,
+    signals: list[dict],
+) -> None:
+    conn.execute("DELETE FROM mart_today_signal_cache_signal WHERE cache_key = ?", (cache_key,))
+    if not signals:
+        return
+    conn.executemany(
+        """
+        INSERT OR REPLACE INTO mart_today_signal_cache_signal (
+            cache_key, signal_rank, policy_hash, stock_code, action, signal_json, built_at
+        )
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+        """,
+        [
+            (
+                cache_key,
+                idx,
+                policy_hash,
+                signal.get("stock_code"),
+                signal.get("action"),
+                json.dumps(signal, ensure_ascii=False, sort_keys=True),
+                built_at,
+            )
+            for idx, signal in enumerate(signals)
+        ],
+    )
+
+
 def load_today_signal_cache(
     conn,
     *,
@@ -279,7 +341,12 @@ def load_today_signal_cache(
     ).fetchone()
     if not row:
         return None
-    signals = json.loads(row["signals_json"] or "[]")
+    detail_signals = _load_today_signal_cache_items(conn, cache_key)
+    signal_count = int(row["signal_count"] or 0)
+    if detail_signals is not None and (detail_signals or signal_count == 0):
+        signals = detail_signals
+    else:
+        signals = json.loads(row["signals_json"] or "[]")
     summary = json.loads(row["summary_json"] or "{}")
     current_source_max = _source_max_notice_date(conn)
     cache_status = {
@@ -287,7 +354,7 @@ def load_today_signal_cache(
         "cache_key": cache_key,
         "policy_hash": policy_hash,
         "built_at": row["built_at"],
-        "signal_count": int(row["signal_count"] or 0),
+        "signal_count": signal_count,
         "source_max_notice_date": row["source_max_notice_date"],
         "current_source_max_notice_date": current_source_max,
         "stale": bool(
@@ -406,16 +473,24 @@ def materialize_today_signal_cache(
             fresh_days,
             policy_hash,
             json.dumps(summary, ensure_ascii=False, sort_keys=True),
-            json.dumps(signal_dicts, ensure_ascii=False, sort_keys=True),
+            "[]",
             len(signal_dicts),
             source_max,
             built_at,
         ),
     )
+    _replace_today_signal_cache_items(
+        conn,
+        cache_key=cache_key,
+        policy_hash=policy_hash,
+        built_at=built_at,
+        signals=signal_dicts,
+    )
     try:
         from services.schema_versions import record_actual_version  # noqa: WPS433
 
         record_actual_version(conn, "mart_today_signal_cache")
+        record_actual_version(conn, "mart_today_signal_cache_signal")
     except Exception:
         logger.debug("[signals_v2] mart_today_signal_cache schema version record skipped", exc_info=True)
     conn.commit()
@@ -423,6 +498,74 @@ def materialize_today_signal_cache(
         "summary": summary,
         "signals": signal_dicts,
         "cache": cache_status,
+    }
+
+
+def migrate_today_signal_cache_payload(conn, *, execute: bool = False) -> dict:
+    """Move legacy whole-cache JSON blobs into the bounded detail table."""
+    if execute:
+        ensure_today_signal_cache(conn)
+    elif "signals_json" not in _table_columns(conn, "mart_today_signal_cache"):
+        return {
+            "execute": False,
+            "rows_scanned": 0,
+            "rows_to_migrate": 0,
+            "signals_to_migrate": 0,
+            "payload_bytes_before": 0,
+            "payload_bytes_after": 0,
+        }
+    rows = conn.execute(
+        """
+        SELECT cache_key, policy_hash, signals_json, signal_count, built_at
+          FROM mart_today_signal_cache
+         WHERE COALESCE(length(signals_json), 0) > 2
+         ORDER BY built_at DESC
+        """
+    ).fetchall()
+    payload_bytes_before = 0
+    rows_to_migrate = 0
+    signals_to_migrate = 0
+    for row in rows:
+        payload_text = row["signals_json"] or "[]"
+        payload_bytes_before += len(payload_text.encode("utf-8"))
+        signals = json.loads(payload_text)
+        if not isinstance(signals, list) or not signals:
+            continue
+        rows_to_migrate += 1
+        signals_to_migrate += len(signals)
+        if execute:
+            _replace_today_signal_cache_items(
+                conn,
+                cache_key=row["cache_key"],
+                policy_hash=row["policy_hash"],
+                built_at=row["built_at"],
+                signals=signals,
+            )
+            conn.execute(
+                """
+                UPDATE mart_today_signal_cache
+                   SET signals_json = '[]',
+                       signal_count = ?
+                 WHERE cache_key = ?
+                """,
+                (int(row["signal_count"] or len(signals)), row["cache_key"]),
+            )
+    if execute:
+        try:
+            from services.schema_versions import record_actual_version  # noqa: WPS433
+
+            record_actual_version(conn, "mart_today_signal_cache")
+            record_actual_version(conn, "mart_today_signal_cache_signal")
+        except Exception:
+            logger.debug("[signals_v2] today signal cache migration version record skipped", exc_info=True)
+        conn.commit()
+    return {
+        "execute": bool(execute),
+        "rows_scanned": len(rows),
+        "rows_to_migrate": rows_to_migrate,
+        "signals_to_migrate": signals_to_migrate,
+        "payload_bytes_before": payload_bytes_before,
+        "payload_bytes_after": 2 * rows_to_migrate if execute else payload_bytes_before,
     }
 
 
