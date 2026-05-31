@@ -6,7 +6,7 @@
 > **目标**: 新接手 (无论 Claude 还是人) 读完此文档**不用看代码 / 不用查 DB** 就能理解:
 > 项目业务 / 架构 / 技术路线 / 数据资产 / 当前进度 / 已知坑 / 常用操作.
 
-最后更新: **2026-06-01** (K-line + alpha158 + stage/context/trigger + picture/survey freshness catch-up + dirty safety/tooling ledger).
+最后更新: **2026-06-01** (K-line + alpha158 + stage/context/trigger + picture/survey + label/score freshness catch-up + dirty safety/tooling ledger).
 
 ## [INDEX] 2026-06-01 增量
 
@@ -857,6 +857,8 @@ SELECT * FROM mart_data_source_watermark;
 每次 session 增量内容写这里, 新 session 启动时**从下往上读**最近改了啥.
 
 ### 2026-06-01 文档治理落地 + P0 universe truth-source hardening
+
+**Current freshness / survivorship catch-up**: `fact_market_cap_decile_daily`、`fact_industry_beta_daily`、`fact_financial_pit_daily`、`mart_p0a_label_panel`、`mart_p0a_feature_label_panel_v3`、`mart_p0a_feature_label_panel_v4`、`mart_sniper_score_daily`、`mart_institution_score_daily` 已补到 2026-05-29；`backend/scripts/audit_survivorship_gate.py` 默认 label_version 已切到 `p0a_v3_horizon_governance`，当前 survivorship gate PASS。`backend/services/labels/feature_join_v3.py` 已补齐 v3 schema migration，避免旧表缺列阻断重建。`audit_data_completeness.py` 现在只剩 2 个问题: `fact_lhb_event` 受 `raw_lhb_daily` 2026-05-25 源头卡住，以及 `fact_technical_trigger` 仍是 PARTIAL_WARN。`audit_end_to_end.py` 已 PASS with WARN，但仍不能把推荐 PIT coverage 0 / LHB source gap 当生产证据。
 
 **Dirty cleanup 第一阶段已本地提交**: commit `e9a103bd` 把 docs 活跃面收敛为 10 个权威文档, 旧计划/旧交接迁入 `analysis/` 或 `analysis/docs_archive_20260531/`, 并新增 `scripts/chunkyctl`、docs graph audit、test-tool audit、storage payload audit、tooling gate、safe_commit no-push 模式。验证: docs graph PASS, test-tool scopes PASS, pytest 57/57, `check_universe_filter --all` CLEAN, complexity diff `new_high_count=0`.
 

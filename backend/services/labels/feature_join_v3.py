@@ -39,6 +39,13 @@ log = logging.getLogger("labels.feature_join_v3")
 FEATURE_PANEL_VERSION_V3 = "p0a_v3"
 
 
+def _add_column_duplicate_safe(conn, table: str, col: str, dtype: str) -> None:
+    try:
+        conn.execute(f"ALTER TABLE {table} ADD COLUMN {col} {dtype}")
+    except Exception as e:
+        log.debug("  ALTER ADD %s skipped (likely exists): %s", col, e)
+
+
 FEATURE_PANEL_DDL_V3 = """
 CREATE TABLE IF NOT EXISTS mart_p0a_feature_label_panel_v3 (
     stock_code TEXT NOT NULL,
@@ -474,6 +481,20 @@ def build_p0a_feature_label_panel_v3(
     conn = duck_connect(db_path, attach={"a158": alpha158_db_path})
     try:
         conn.execute(FEATURE_PANEL_DDL_V3)
+        for col, dtype in [
+            ("sector_ret_5d", "DOUBLE"),
+            ("sector_ret_20d", "DOUBLE"),
+            ("sector_ret_60d", "DOUBLE"),
+            ("sector_excess_20d", "DOUBLE"),
+            ("sector_excess_60d", "DOUBLE"),
+            ("inst_quality_wavg", "DOUBLE"),
+            ("inst_quality_max", "DOUBLE"),
+            ("inst_total_holding_ratio", "DOUBLE"),
+            ("inst_holder_cnt", "INTEGER"),
+            ("top_inst_holding_ratio", "DOUBLE"),
+            ("industry_pit_confidence", "TEXT"),
+        ]:
+            _add_column_duplicate_safe(conn, output_table, col, dtype)
         conn.execute("DROP TABLE IF EXISTS tmp_signal_dates")
         conn.execute("CREATE TEMP TABLE tmp_signal_dates(signal_date DATE)")
         conn.executemany("INSERT INTO tmp_signal_dates VALUES (?)", [(d,) for d in signal_dates])

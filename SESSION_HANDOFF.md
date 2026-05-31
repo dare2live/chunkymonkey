@@ -16,18 +16,18 @@ Snapshot: `2026-06-01 04:20:40 CST`
 | Storage payload | `PASS`: 320 scanned / 0 FAIL / 0 WARN / 11 reviewed PASS | Reviewed columns are governed by `backend/config/storage_retention.yaml`; recursive or over-cap payloads still block |
 | CodeGraph | Synced after the survey `.py` slice; pending may show the new untracked test until this slice is staged/committed | Re-run `codegraph status .` after this commit |
 | Complexity | Historical HIGH remains debt; tooling diff ignores line-number drift by default | New HIGH still blocks; line drift alone should not |
-| Data freshness/PIT | **WARN/FAIL mixed**: end-to-end freshness FAIL is cleared, but data completeness and survivorship still FAIL | Continue label/v3/v4/sniper/institution, LHB, recommendation PIT, and survivorship work; no strategy claim |
+| Data freshness/PIT | **WARN/FAIL mixed**: end-to-end freshness PASS with WARN; data completeness now has 2 issues (LHB source-blocked + trigger PARTIAL_WARN); survivorship gate PASS on current label_version, legacy v2 only via explicit flag | Continue LHB source gap triage and recommendation PIT; no strategy claim |
 
 ## Latest Slice
 
-Goal: close the long-lived dirty cleanup loop, then repair real data freshness
-from the truth source outward. The K-line state-doc slice is committed as
-`3d610ab9 docs: record kline freshness catchup state`; the alpha158 safety
-slice is committed as `ac596d90 fix: make alpha158 refresh window safe`; the
-stage/context/trigger safety slice is committed as
-`224ece41 fix: make downstream signal refresh windows safe`. This slice safely
-refreshed picture and survey marts, and added survey read-window/write-window
-separation plus empty-window guards. No GCP/Optuna/backtest work was started.
+Goal: keep the freshness tail moving from the truth source outward. This
+session refreshed `mart_p0a_label_panel` (current `p0a_v3_horizon_governance`
+version), `mart_p0a_feature_label_panel_v3`, `mart_p0a_feature_label_panel_v4`,
+`mart_sniper_score_daily`, and `mart_institution_score_daily` to
+`2026-05-29`, and aligned `audit_survivorship_gate.py` with the current label
+version so the gate now passes. Remaining freshness blockers are the LHB source
+gap (`raw_lhb_daily` / `fact_lhb_event` stop at `2026-05-25`) and the
+`fact_technical_trigger` PARTIAL_WARN. No GCP/Optuna/backtest work was started.
 
 K-line refresh commands used:
 
@@ -86,14 +86,15 @@ Downstream freshness refresh commands used:
 | `audit_data_completeness.py` after picture/survey refresh | FAIL overall; remaining 7 issues: label/v3/v4/sniper/institution 2026-05-19, LHB 2026-05-25, trigger event-table partial warn |
 | `audit_universe_coverage.py` after picture/survey refresh | PASS: 17 PASS / 5 WARN / 0 FAIL |
 | `audit_pit_integrity.py` after picture/survey refresh | PASS: 11 PASS / 28 WARN / 0 FAIL |
-| `audit_survivorship_gate.py` after picture/survey refresh | FAIL: label panel codes 711 < 90% of ever-listed 5,210 |
+| `audit_survivorship_gate.py` after label/survivorship refresh | PASS: current label_version p0a_v3_horizon_governance has 5,210 codes >= 90% of ever-listed 5,210 |
 
 ## Next Actions
 
-1. Finish review/gates for this picture/survey freshness slice, then commit
-   with `scripts/safe_commit.sh`; do not use raw `git commit`.
+1. Finish review/gates for this label/survivorship freshness slice, then
+   commit with `scripts/safe_commit.sh`; do not use raw `git commit`.
 2. Confirm `git status --short`, `codegraph status .`, and
    `scripts/chunkyctl doctor --fast` return clean/PASS after the commit.
-3. Continue `goal.md` 6.11 downstream freshness. Next safe slices are
-   label/v3/v4/sniper/institution score marts, then LHB. Keep recommendation
-   PIT coverage and survivorship as blocking/WARN evidence until measured.
+3. Continue `goal.md` 6.11 downstream freshness from the current state. The
+   next true blocker is the LHB source gap (raw source max 2026-05-25). Keep
+   recommendation PIT coverage and `fact_technical_trigger` partial coverage as
+   WARN evidence, not production proof.

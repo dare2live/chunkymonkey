@@ -14,7 +14,7 @@ Exit 1 = FAIL (label panel codes < ever_listed OR 代码硬编码 is_active=1)
 
 用法:
     PYTHONPATH=backend python backend/scripts/audit_survivorship_gate.py
-    PYTHONPATH=backend python backend/scripts/audit_survivorship_gate.py --label-version p0a_v2_governance_v1
+    PYTHONPATH=backend python backend/scripts/audit_survivorship_gate.py --label-version p0a_v3_horizon_governance
 """
 from __future__ import annotations
 
@@ -135,8 +135,11 @@ def _scan_training_builders(pattern: re.Pattern[str]) -> tuple[list[str], int]:
 
 def main() -> int:
     parser = argparse.ArgumentParser(description="Survivorship gate audit (Codex Q8.3)")
-    parser.add_argument("--label-version", default="p0a_v2_governance_v1",
-                        help="governance v1 label_version")
+    parser.add_argument(
+        "--label-version",
+        default="p0a_v3_horizon_governance",
+        help="current governance label_version",
+    )
     parser.add_argument("--universe-prefix", default="60,00,30,68",
                         help="KEEP universe prefix")
     args = parser.parse_args()
