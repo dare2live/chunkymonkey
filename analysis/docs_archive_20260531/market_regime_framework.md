@@ -685,10 +685,10 @@ w_lmart = base_w_lmart * h(market_regime_score, style_fit_score)
 ### 8.1 关联文档
 
 - ChunkyMonkey 总览: `docs/msaf_top_design_20260517.md`
-- v4 Panel 特征审计: `docs/v4_panel_feature_audit_20260517.md`
+- v4 Panel 特征审计: `analysis/v4_panel_feature_audit_20260517.md`
 - P1 Institution Baseline: `docs/msaf_p1_institution_baseline_20260518.md`
 - P4 Vol Sizing 研究: `docs/msaf_p4_vol_sizing_research_20260518.md`
-- First Principles 诊断: `docs/first_principles_diagnosis_20260517.md`
+- First Principles 诊断: `analysis/first_principles_diagnosis_20260517.md`
 
 ### 8.2 关键反例索引
 

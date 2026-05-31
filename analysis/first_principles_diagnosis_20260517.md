@@ -24,7 +24,7 @@
 | H. 训练/评估 horizon 治理错位 | **CONFIRMED / MAJOR** | policy primary 是 `follow_net_return_60d`: `pricing_label_policy.yaml:90-106`；P0a 只产 5/10/20d: `labels/build.py:59-66`；P3 固定 `fwd_cost_after_10d`: `run_p3_final_holdout.py:76-87`。 | 20d model 被 10d KPI 评价。若 10d/20d RankIC 差 0.005，年化估差约 `0.005/0.0246×5.9%=1.2pp`，且可能错 promote/reject。 |
 | K. Optuna 多重检验未闭环 | **PARTIAL / MAJOR** | objective: `run_p0b_lightgbm_optuna_v4.py:199-254`；DSR 关闭: `optuna_config.yaml:101-103`；DB `mart_p1_optuna_trials` 仅 3 行，低于 min 50。 | 选择偏差粗略上界 `sigma_ic×sqrt(2lnN)`；若 std=0.09、N=50，上界约 0.25 trial-score。 |
 | L. position sizing 不是风险模型 | **CONFIRMED / MAJOR** | `paper_sim/sizer.py:55-68` rank tilt；`:94-99` 用 `optimal_stop_pct` 近似 vol；YAML `:27-31` cap 25%。 | +6.2pp 仍 max_dd 约 -22.25%。25% 单仓 -10% 即 -2.5% NAV。 |
-| M. NULL/CONST 特征入模且 fillna(0) | **CONFIRMED / MAJOR** | `perf/prepared_panel.py:107-110` `fillna(0)`；`features/AUDIT_2026_05_17.md:9-15`；`docs/v4_panel_feature_audit_20260517.md:10-15`。DB: `sm_ret_60d`、`holder_count_change_q_pct` non-null=0/2,901,970；survey 8.8%。 | 0 填充混淆缺数据和真实 0。drop dead/noise 预期只 +0~0.0007 IC，但必须清理。 |
+| M. NULL/CONST 特征入模且 fillna(0) | **CONFIRMED / MAJOR** | `perf/prepared_panel.py:107-110` `fillna(0)`；`features/AUDIT_2026_05_17.md:9-15`；`analysis/v4_panel_feature_audit_20260517.md:10-15`。DB: `sm_ret_60d`、`holder_count_change_q_pct` non-null=0/2,901,970；survey 8.8%。 | 0 填充混淆缺数据和真实 0。drop dead/noise 预期只 +0~0.0007 IC，但必须清理。 |
 
 ## 第 3 节: 三档 verdict
 

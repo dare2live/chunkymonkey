@@ -1,0 +1,2408 @@
+version: 1
+updated_at: "2026-05-27"
+policy:
+  default_testpaths:
+    - backend/tests
+  default_excluded_markers:
+    - realdb
+    - perf
+    - network
+    - gcp
+    - slow
+  coverage_required_prefixes:
+    - backend/tests/scripts
+    - backend/tests/contract
+    - backend/tests/realdb
+    - backend/tests/perf
+    - tests
+  selected_registry_owner: "warn"
+  unregistered_selected_sample_limit: 25
+
+tools:
+  - id: test_tool_health_audit
+    paths:
+      - backend/scripts/audit_test_tool_health.py
+      - backend/tests/scripts/test_audit_test_tool_health.py
+      - backend/config/test_tool_registry.yaml
+      - docs/engineering_governance.md
+    owner_module: test_governance
+    scope: contract
+    runner: PYTHONPATH=backend python -m pytest -q backend/tests/scripts/test_audit_test_tool_health.py
+    status: active
+    evidence_level: trusted_current
+    truth_source: pytest.ini, test_tool_registry.yaml, filesystem inventory, audit-fixture tokens
+    risk_reason: bootstraps the pre-test validity gate and controller feedback loop; may contain retired-token audit-fixture strings
+    replacement: unknown
+    last_verified: "2026-05-27"
+
+  - id: tooling_gate_contract_tests
+    paths:
+      - backend/scripts/audit_tooling_gate.py
+      - backend/tests/scripts/test_audit_tooling_gate.py
+    owner_module: governance
+    scope: contract
+    runner: PYTHONPATH=backend python -m pytest -q backend/tests/scripts/test_audit_tooling_gate.py
+    status: active
+    evidence_level: trusted_with_scope
+    truth_source: CodeGraph status text fixtures, complexity-optimizer markdown fixtures, and baseline diff JSON contract
+    risk_reason: wraps external CodeGraph/complexity tools for local gates; parser drift could hide pending indexes or new HIGH findings
+    replacement: upstream CodeGraph JSON output and complexity-optimizer native baseline/diff if accepted
+    last_verified: "2026-05-27"
+
+  - id: docs_graph_audit_tests
+    paths:
+      - backend/scripts/audit_docs_graph.py
+      - backend/tests/scripts/test_audit_docs_graph.py
+      - docs/README.md
+    owner_module: docs_governance
+    scope: contract
+    runner: PYTHONPATH=backend python -m pytest -q backend/tests/scripts/test_audit_docs_graph.py
+    status: active
+    evidence_level: trusted_with_scope
+    truth_source: docs/README.md ownership map, markdown reference graph, cleanup ledger exceptions, current-authority SCC allowlist
+    risk_reason: stale docs and circular authority chains can mislead new sessions into old plans or deleted paths
+    replacement: integrate into chunkyctl audit/doctor once docs graph gate becomes a default startup check
+    last_verified: "2026-05-31"
+
+  - id: chunkyctl_contract_tests
+    paths:
+      - backend/scripts/chunkyctl.py
+      - backend/tests/scripts/test_chunkyctl.py
+      - scripts/chunkyctl
+      - docs/chunkyctl_session_quickstart.md
+    owner_module: governance
+    scope: contract
+    runner: PYTHONPATH=backend python -m pytest -q backend/tests/scripts/test_chunkyctl.py
+    status: active
+    evidence_level: trusted_with_scope
+    truth_source: chunkyctl JSON contract, quickstart startup contract, worktree bucket contract, existing local audit scripts, CodeGraph status text fixtures
+    risk_reason: project assistant is an orchestration convenience layer; drift could hide required gates or make sessions over-trust a narrow snapshot
+    replacement: dedicated package/CLI if chunkyctl grows beyond thin wrappers
+    last_verified: "2026-05-27"
+
+  - id: safe_commit_rule10_tests
+    paths:
+      - scripts/safe_commit.sh
+      - backend/tests/scripts/test_safe_commit.py
+    owner_module: governance
+    scope: contract
+    runner: PYTHONPATH=backend python -m pytest -q backend/tests/scripts/test_safe_commit.py
+    status: active
+    evidence_level: trusted_with_scope
+    truth_source: temporary git repository fixtures, staged Python files, Rule 10 commit-message contract
+    risk_reason: safe_commit is the final local commit gate; weak review trailers or empty skip reasons can bypass Codex review for Python changes
+    replacement: keep until commit policy is enforced by a stronger shared hook or CI gate
+    last_verified: "2026-05-28"
+
+  - id: storage_payload_audit_tests
+    paths:
+      - backend/scripts/audit_storage_payloads.py
+      - backend/tests/scripts/test_audit_storage_payloads.py
+      - backend/config/storage_retention.yaml
+    owner_module: storage_governance
+    scope: contract
+    runner: PYTHONPATH=backend python -m pytest -q backend/tests/scripts/test_audit_storage_payloads.py
+    status: active
+    evidence_level: trusted_with_scope
+    truth_source: storage_retention.yaml payload_audit thresholds, DuckDB TEXT/JSON/BLOB column inventory, recursive-keyword and large-payload fixtures
+    risk_reason: large JSON/TEXT payloads or recursive audit blobs can bloat DuckDB and mislead product/cache storage boundaries
+    replacement: native DuckDB storage observability or a broader data artifact governance service
+    last_verified: "2026-05-31"
+
+  - id: audit_script_tests
+    paths:
+      - backend/tests/scripts
+    owner_module: governance
+    scope: contract
+    runner: PYTHONPATH=backend python -m pytest -q backend/tests/scripts
+    status: active
+    evidence_level: trusted_with_scope
+    truth_source: audit script contracts and filesystem fixtures
+    risk_reason: audit scripts can drift from current gates if not checked before use
+    replacement: unknown
+    last_verified: "2026-05-27"
+
+  - id: architecture_contract_tests
+    paths:
+      - backend/tests/contract
+    owner_module: architecture
+    scope: contract
+    runner: PYTHONPATH=backend python -m pytest -q backend/tests/contract
+    status: active
+    evidence_level: trusted_with_scope
+    truth_source: architecture contract, workbench contract, K-line primary contract
+    risk_reason: contract tests must track architecture reform boundaries
+    replacement: unknown
+    last_verified: "2026-05-27"
+
+  - id: realdb_opt_in_tests
+    paths:
+      - backend/tests/realdb
+    owner_module: data_governance
+    scope: realdb
+    runner: PYTHONPATH=backend python -m pytest -q -m realdb backend/tests/realdb
+    status: active
+    evidence_level: trusted_with_scope
+    truth_source: local production DuckDB read-only state
+    risk_reason: must stay opt-in; local data freshness can fail independently of code
+    replacement: unknown
+    last_verified: "2026-05-27"
+
+  - id: performance_opt_in_tests
+    paths:
+      - backend/tests/perf
+      - backend/tests/scripts/test_perf_p1_trade_date.py
+    owner_module: performance
+    scope: perf
+    runner: PYTHONPATH=backend python -m pytest -q -m perf backend/tests/perf backend/tests/scripts/test_perf_p1_trade_date.py
+    status: active
+    evidence_level: trusted_with_scope
+    truth_source: query budget and local benchmark fixtures
+    risk_reason: must stay opt-in; timing evidence is environment-sensitive
+    replacement: unknown
+    last_verified: "2026-05-27"
+
+  - id: root_workflow_shell_tests
+    paths:
+      - tests/scripts
+    owner_module: workflow
+    scope: integration
+    runner: bash tests/scripts/test_workflow_checkpoint.sh
+    status: active
+    evidence_level: trusted_with_scope
+    truth_source: workflow shell contracts
+    risk_reason: root shell tests are outside pytest.ini default testpaths and require explicit registry runner
+    replacement: keep explicit shell runner or move to backend/tests when workflow test harness is standardized
+    last_verified: "2026-05-27"
+
+  - id: root_sniper_strategy_tests
+    paths:
+      - tests/strategies/test_sniper.py
+    owner_module: strategies
+    scope: unit
+    runner: PYTHONPATH=backend python -m pytest -q tests/strategies/test_sniper.py
+    status: active
+    evidence_level: trusted_with_scope
+    truth_source: sniper strategy unit contract
+    risk_reason: root strategy test is outside pytest.ini default testpaths, so it needs explicit owner and runner
+    replacement: move under backend/tests/strategies when root test cleanup is scheduled
+    last_verified: "2026-05-27"
+
+  - id: dim_active_universe_contract_tests
+    paths:
+      - backend/tests/test_universe.py
+      - backend/tests/test_audit_financial.py
+      - backend/tests/test_recommendation_universe.py
+      - backend/tests/test_screening_engine.py
+      - backend/tests/test_build_picture_daily.py
+    owner_module: universe
+    scope: unit
+    runner: PYTHONPATH=backend python -m pytest -q backend/tests/test_universe.py backend/tests/test_audit_financial.py backend/tests/test_recommendation_universe.py backend/tests/test_screening_engine.py backend/tests/test_build_picture_daily.py
+    status: active
+    evidence_level: trusted_with_scope
+    truth_source: K-line active universe truth, financial/event tables for domain coverage, dim_active_a_stock limited to code-to-name/cache/ST-name fixtures
+    risk_reason: protects current universe contracts; evidence is scoped and cannot prove production data freshness or strategy readiness
+    replacement: services.universe/get_active_universe contract tests where active universe is under test
+    last_verified: "2026-05-27"
+
+  - id: dim_active_name_cache_contract_tests
+    paths:
+      - backend/tests/test_institution_write.py
+      - backend/tests/test_performance_optimization_s1.py
+      - backend/tests/test_recommendation_contract.py
+      - backend/tests/test_stock_detail_read.py
+    owner_module: stock_identity
+    scope: unit
+    runner: PYTHONPATH=backend python -m pytest -q backend/tests/test_institution_write.py backend/tests/test_performance_optimization_s1.py backend/tests/test_recommendation_contract.py backend/tests/test_stock_detail_read.py
+    status: active
+    evidence_level: trusted_with_scope
+    truth_source: dim_active_a_stock code-to-name/cache fixture only, with business truth coming from target service tables
+    risk_reason: verifies display/name fallback contracts; cannot be cited as active-universe or tradeability evidence
+    replacement: security_master/name-cache service contracts when stock identity ownership is centralized
+    last_verified: "2026-05-27"
+
+  - id: dim_active_data_sync_enumeration_tests
+    paths:
+      - backend/tests/test_block_client.py
+      - backend/tests/test_build_price_kline_tdxhub.py
+      - backend/tests/test_financial_client.py
+      - backend/tests/test_tdx_kline_fetch_benchmark.py
+    owner_module: data_sync
+    scope: unit
+    runner: PYTHONPATH=backend python -m pytest -q backend/tests/test_block_client.py backend/tests/test_build_price_kline_tdxhub.py backend/tests/test_financial_client.py backend/tests/test_tdx_kline_fetch_benchmark.py
+    status: active
+    evidence_level: trusted_with_scope
+    truth_source: data-sync enumeration/cache fixtures; K-line sync output remains the trading truth source
+    risk_reason: data acquisition may enumerate cached stock identities, but downstream universe/tradeability decisions must not use this as truth
+    replacement: data-source coverage and security_master sync contracts when available
+    last_verified: "2026-05-27"
+
+  - id: feature_panel_universe_contract_tests
+    paths:
+      - backend/tests/test_build_feature_panel_duck.py
+    owner_module: feature_panel
+    scope: unit
+    runner: PYTHONPATH=backend python -m pytest -q backend/tests/test_build_feature_panel_duck.py
+    status: active
+    evidence_level: trusted_with_scope
+    truth_source: default A-share prefix filter plus optional PIT dim_all_ever_listed/date-aware filtering; dim_active_a_stock mention is a limited negative assertion only
+    risk_reason: feature panel tests verify current universe SQL shape and assert the default does not use dim_active_a_stock; they do not prove production data freshness or strategy readiness
+    replacement: make PIT/date-aware universe mode the production default when panel v5 migration is scheduled
+    last_verified: "2026-05-27"
+
+  - id: global_data_quality_contract_tests
+    paths:
+      - backend/tests/test_global_data_quality.py
+    owner_module: data_quality
+    scope: unit
+    runner: PYTHONPATH=backend python -m pytest -q backend/tests/test_global_data_quality.py
+    status: active
+    evidence_level: trusted_with_scope
+    truth_source: global data quality gate fixtures with isolated cleanup scan root; dim_active_a_stock limited to code-to-name/ST-name investability checks
+    risk_reason: verifies DQ contract behavior in DuckDB fixtures; does not prove real production data freshness or delivery readiness
+    replacement: split into domain-specific DQ contract files if file size or runtime starts blocking focused development
+    last_verified: "2026-05-27"
+
+  - id: backtest_contract_tests
+    paths:
+      - backend/tests/backtest
+    owner_module: backtest
+    scope: integration
+    runner: PYTHONPATH=backend python -m pytest -q backend/tests/backtest
+    status: active
+    evidence_level: trusted_with_scope
+    truth_source: local backtest fixtures, realistic-engine contracts, cost/limit/tradeability invariants
+    risk_reason: covers backtest mechanics with synthetic/local fixtures; cannot prove production data freshness, board coverage, or strategy readiness without backtest_preflight and measured paper-sim evidence
+    replacement: backtest_preflight and production paper_sim contract suites when strategy validation resumes
+    last_verified: "2026-05-27"
+
+  - id: paper_sim_contract_tests
+    paths:
+      - backend/tests/paper_sim
+    owner_module: paper_sim
+    scope: integration
+    runner: PYTHONPATH=backend python -m pytest -q backend/tests/paper_sim
+    status: active
+    evidence_level: trusted_with_scope
+    truth_source: local paper-sim fixtures, PIT K-line loader contract, transaction-cost and tradability rules
+    risk_reason: protects paper-sim mechanics and PIT regressions; synthetic fixtures must not be cited as production KPI, forward Sharpe, or deployable strategy evidence
+    replacement: cost-aware production paper_sim plus Phase4/PBO/DSR evidence when architecture gates pass
+    last_verified: "2026-05-27"
+
+  - id: optimization_contract_tests
+    paths:
+      - backend/tests/optimization
+    owner_module: optimization
+    scope: contract
+    runner: PYTHONPATH=backend python -m pytest -q backend/tests/optimization
+    status: active
+    evidence_level: trusted_with_scope
+    truth_source: walk-forward split contracts, governance rejection rules, DSR/PBO/objective fixtures, temporary Optuna storage fixtures
+    risk_reason: validates local optimization contracts and leakage guards; does not authorize Optuna/GCP runs or production promotion without plan_validator, backtest_preflight, and measured OOS evidence
+    replacement: plan_validator-backed Optuna integration tests when parameter search resumes
+    last_verified: "2026-05-27"
+
+  - id: pipeline_contract_tests
+    paths:
+      - backend/tests/pipeline
+    owner_module: pipeline
+    scope: pipeline
+    runner: PYTHONPATH=backend python -m pytest -q backend/tests/pipeline
+    status: active
+    evidence_level: trusted_with_scope
+    truth_source: local pipeline manifests, feature/PIT/lineage contracts, proxy-gate fixtures, drift-safe candidate fixtures
+    risk_reason: contains proxy and gate-behavior fixtures; a passing test proves only the local contract and must not be cited as production feature quality, PIT coverage, or strategy readiness
+    replacement: strict data_audit, lineage, PIT coverage, and non-proxy validation gates when production pipeline promotion resumes
+    last_verified: "2026-05-27"
+
+  - id: data_governance_contract_tests
+    paths:
+      - backend/tests/data_governance
+    owner_module: data_governance
+    scope: contract
+    runner: PYTHONPATH=backend python -m pytest -q backend/tests/data_governance
+    status: active
+    evidence_level: trusted_with_scope
+    truth_source: data governance enforcer and ETL hook local fixtures
+    risk_reason: validates enforcement hooks in local fixtures; does not prove production DuckDB freshness, lineage completeness, or external source coverage
+    replacement: strict data_audit and source-coverage governance checks for production data claims
+    last_verified: "2026-05-27"
+
+  - id: buy_signal_contract_tests
+    paths:
+      - backend/tests/buy_signal
+    owner_module: buy_signal
+    scope: unit
+    runner: PYTHONPATH=backend python -m pytest -q backend/tests/buy_signal
+    status: active
+    evidence_level: trusted_with_scope
+    truth_source: buy-signal config, factor aggregation, scoring, and classifier local fixtures
+    risk_reason: verifies local buy-signal mechanics only; does not prove deployable formula quality, universe cleanliness, or production backtest readiness
+    replacement: formula registry and backtest_preflight-backed signal tests when formula work resumes
+    last_verified: "2026-05-27"
+
+  - id: candle_pattern_contract_tests
+    paths:
+      - backend/tests/candle_pattern
+    owner_module: candle_pattern
+    scope: unit
+    runner: PYTHONPATH=backend python -m pytest -q backend/tests/candle_pattern
+    status: active
+    evidence_level: trusted_with_scope
+    truth_source: candle-pattern feature fixtures
+    risk_reason: validates local pattern feature extraction; cannot prove production signal value or PIT-safe strategy readiness
+    replacement: PIT formula-engine candle pattern tests when strategy formulas resume
+    last_verified: "2026-05-27"
+
+  - id: feature_contract_tests
+    paths:
+      - backend/tests/features
+    owner_module: features
+    scope: unit
+    runner: PYTHONPATH=backend python -m pytest -q backend/tests/features
+    status: active
+    evidence_level: trusted_with_scope
+    truth_source: local feature builder fixtures including PIT capital-flow and sector-momentum examples
+    risk_reason: protects feature-shape and PIT join behavior in synthetic DuckDB fixtures; does not prove production feature coverage, freshness, or alpha value
+    replacement: feature lineage, data_audit, and production panel PIT coverage gates
+    last_verified: "2026-05-27"
+
+  - id: integration_contract_tests
+    paths:
+      - backend/tests/integration
+    owner_module: integration
+    scope: integration
+    runner: PYTHONPATH=backend python -m pytest -q backend/tests/integration
+    status: active
+    evidence_level: trusted_with_scope
+    truth_source: local DuckDB connection and model-selection end-to-end fixtures
+    risk_reason: uses tmp-path databases and monkeypatching to validate wiring; does not prove production DB freshness, full model quality, or deployment readiness
+    replacement: strict production-data read-only integration gates when architecture blockers are closed
+    last_verified: "2026-05-27"
+
+  - id: label_contract_tests
+    paths:
+      - backend/tests/labels
+    owner_module: labels
+    scope: contract
+    runner: PYTHONPATH=backend python -m pytest -q backend/tests/labels
+    status: active
+    evidence_level: trusted_with_scope
+    truth_source: local label-builder fixtures, PIT stock-date pairs, financial/capital-flow PIT joins, and horizon label contracts
+    risk_reason: validates label and feature-join PIT mechanics in fixtures; does not prove production label panel coverage or survivorship safety
+    replacement: survivorship gate, panel coverage audit, and production label freshness checks
+    last_verified: "2026-05-27"
+
+  - id: ml_ranking_contract_tests
+    paths:
+      - backend/tests/ml_ranking
+    owner_module: ml_ranking
+    scope: contract
+    runner: PYTHONPATH=backend python -m pytest -q backend/tests/ml_ranking
+    status: active
+    evidence_level: trusted_with_scope
+    truth_source: synthetic ranking, walk-forward, RankIC, and ablation fixtures
+    risk_reason: mock ranking samples prove local metric/walk-forward wiring only; cannot be cited as model stability, forward Sharpe, or production alpha evidence
+    replacement: walk-forward model stability, PBO/DSR, and production train-log evidence
+    last_verified: "2026-05-27"
+
+  - id: portfolio_contract_tests
+    paths:
+      - backend/tests/portfolio
+    owner_module: portfolio
+    scope: contract
+    runner: PYTHONPATH=backend python -m pytest -q backend/tests/portfolio
+    status: active
+    evidence_level: trusted_with_scope
+    truth_source: local portfolio champion, composite score, final-holdout, and leakage-guard fixtures
+    risk_reason: validates portfolio decision and holdout guard mechanics; does not prove current champion is deployable or production holdout is fresh
+    replacement: cost-aware paper_sim, Phase4, PBO/DSR, and delivery-readiness evidence
+    last_verified: "2026-05-27"
+
+  - id: sentiment_contract_tests
+    paths:
+      - backend/tests/sentiment
+    owner_module: sentiment
+    scope: unit
+    runner: PYTHONPATH=backend python -m pytest -q backend/tests/sentiment
+    status: active
+    evidence_level: trusted_with_scope
+    truth_source: local sentiment config, binning, survey builder, validator, window, and factor-registry fixtures
+    risk_reason: verifies sentiment helper mechanics only; does not prove production survey freshness, market perception alpha, or deployable signal quality
+    replacement: sentiment lineage and production feature freshness gates when sentiment-derived signals are promoted
+    last_verified: "2026-05-27"
+
+  - id: market_perception_service_contract_tests
+    paths:
+      - backend/tests/services/market_perception
+    owner_module: market_perception
+    scope: contract
+    runner: PYTHONPATH=backend python -m pytest -q backend/tests/services/market_perception
+    status: active
+    evidence_level: trusted_with_scope
+    truth_source: local market-perception service fixtures, PIT industry tables, capital-flow PIT examples, and today/future rejection checks
+    risk_reason: protects service-level PIT and perception-engine wiring in fixtures; does not prove production market-perception freshness, source coverage, or stock-profile readiness
+    replacement: market-perception lineage/freshness audits and profile contract tests when profile APIs are promoted
+    last_verified: "2026-05-27"
+
+  - id: trading_config_contract_tests
+    paths:
+      - backend/tests/trading_config
+    owner_module: trading_config
+    scope: unit
+    runner: PYTHONPATH=backend python -m pytest -q backend/tests/trading_config
+    status: active
+    evidence_level: trusted_with_scope
+    truth_source: trading config fixtures for pricing, filters, horizon, execution model, and slippage rules
+    risk_reason: verifies config rule behavior in local fixtures; does not prove production tradeability, limit-up handling, or broker execution readiness
+    replacement: config-backed execution contract plus backtest_preflight tradeability checks when live execution planning resumes
+    last_verified: "2026-05-27"
+
+  - id: strategy_regime_state_tests
+    paths:
+      - backend/tests/strategies/test_regime_state.py
+    owner_module: strategies.regime
+    scope: unit
+    runner: PYTHONPATH=backend python -m pytest -q backend/tests/strategies/test_regime_state.py
+    status: active
+    evidence_level: trusted_with_scope
+    truth_source: synthetic HS300 K-line and market-breadth fixtures with PIT/future exclusion checks
+    risk_reason: validates local regime-state mechanics and future-row exclusion only; does not prove production regime data freshness or portfolio readiness
+    replacement: production regime data audit and walk-forward evidence when strategy validation resumes
+    last_verified: "2026-05-27"
+
+  - id: strategy_ensemble_tests
+    paths:
+      - backend/tests/strategies/test_ensemble.py
+    owner_module: strategies.ensemble
+    scope: unit
+    runner: PYTHONPATH=backend python -m pytest -q backend/tests/strategies/test_ensemble.py
+    status: active
+    evidence_level: trusted_with_scope
+    truth_source: synthetic score series and ensemble weighting fixtures
+    risk_reason: verifies allocation/ranking mechanics only; does not prove KPI, forward Sharpe, PBO, or strategy promotion readiness
+    replacement: paper_sim, Phase4, PBO/DSR, and forward evidence when ensemble strategy work resumes
+    last_verified: "2026-05-27"
+
+  - id: strategy_institution_follow_pit_tests
+    paths:
+      - backend/tests/strategies/test_institution_follow_pit.py
+      - backend/tests/strategies/test_institution_batch.py
+    owner_module: strategies.institution_follow
+    scope: contract
+    runner: PYTHONPATH=backend python -m pytest -q backend/tests/strategies/test_institution_follow_pit.py backend/tests/strategies/test_institution_batch.py
+    status: active
+    evidence_level: trusted_with_scope
+    truth_source: in-memory DuckDB fixtures for LHB, survey, northbound, PIT capital-flow, and per-date batch normalization
+    risk_reason: protects PIT/proxy/deprecated raw-flow guards in local fixtures; a passing test does not prove production alpha, data freshness, or source coverage
+    replacement: strict PIT/source-coverage audits plus measured paper_sim evidence when institution-follow strategies resume
+    last_verified: "2026-05-27"
+
+  - id: strategy_sniper_batch_builder_tests
+    paths:
+      - backend/tests/strategies/test_sniper_batch.py
+    owner_module: strategies.sniper
+    scope: integration
+    runner: PYTHONPATH=backend python -m pytest -q backend/tests/strategies/test_sniper_batch.py
+    status: active
+    evidence_level: trusted_with_scope
+    truth_source: temporary DuckDB smartmoney/market/alpha fixtures and sniper SQL builder checks
+    risk_reason: verifies batch builder and deprecated raw-fund-flow negative assertions in temp fixtures; does not prove production feature coverage, freshness, or strategy performance
+    replacement: sniper feature freshness audits, source coverage, and measured backtest/paper_sim evidence when sniper strategy work resumes
+    last_verified: "2026-05-27"
+
+  - id: paper_sim_service_contract_tests
+    paths:
+      - backend/tests/services/paper_sim
+    owner_module: paper_sim
+    scope: contract
+    runner: PYTHONPATH=backend python -m pytest -q backend/tests/services/paper_sim
+    status: active
+    evidence_level: trusted_with_scope
+    truth_source: local paper-sim service fixtures for min-holding exits, lineage integration, and sim cache metadata
+    risk_reason: validates service helpers in local fixtures; does not prove production KPI, current lineage completeness, or deployable portfolio behavior
+    replacement: full paper_sim contract suite and delivery-readiness evidence when strategy validation resumes
+    last_verified: "2026-05-27"
+
+  - id: test_fixture_helpers
+    paths:
+      - backend/tests/fixtures
+    owner_module: test_governance
+    scope: fixture
+    runner: manual fixture owner review plus consumers' pytest scopes
+    status: active
+    evidence_level: trusted_with_scope
+    truth_source: shared mini-market fixture helpers used by local tests
+    risk_reason: fixture helpers are evidence support only; they cannot independently prove business behavior, production data freshness, or PIT safety
+    replacement: module-owned fixtures if shared fixture scope becomes ambiguous
+    last_verified: "2026-05-27"
+
+  - id: portfolio_walk_forward_contract_tests
+    paths:
+      - backend/tests/portfolio_walk_forward
+    owner_module: portfolio_walk_forward
+    scope: contract
+    runner: PYTHONPATH=backend python -m pytest -q backend/tests/portfolio_walk_forward
+    status: active
+    evidence_level: trusted_with_scope
+    truth_source: local portfolio walk-forward regime and cash/liquidity fixtures
+    risk_reason: validates walk-forward helper behavior in fixtures; does not prove production regime stability, forward Sharpe, or portfolio promotion readiness
+    replacement: production walk-forward train-log evidence, Phase4, and delivery-readiness gates
+    last_verified: "2026-05-27"
+
+  - id: notification_contract_tests
+    paths:
+      - backend/tests/services/notification
+    owner_module: notification
+    scope: unit
+    runner: PYTHONPATH=backend python -m pytest -q backend/tests/services/notification
+    status: active
+    evidence_level: trusted_with_scope
+    truth_source: local notification command/webhook fixtures and alert flag formatting
+    risk_reason: uses mocks for external notification delivery; proves formatting and routing only, not live channel delivery or production monitoring readiness
+    replacement: opt-in network/channel smoke tests if live notification delivery becomes a release gate
+    last_verified: "2026-05-27"
+
+  - id: delivery_readiness_audit_root_tests
+    paths:
+      - backend/tests/test_audit_delivery_readiness.py
+    owner_module: delivery_readiness
+    scope: pipeline
+    runner: PYTHONPATH=backend python -m pytest -q backend/tests/test_audit_delivery_readiness.py
+    status: active
+    evidence_level: trusted_with_scope
+    truth_source: local delivery-readiness JSON fixtures, Phase4/PBO/DSR parser fixtures, PIT-audit fallback fixtures, and GCP idle/cost-control fixtures
+    risk_reason: verifies readiness-report parsing and gate semantics only; passing tests do not prove current production freshness, live GCP state, or strategy promotion readiness
+    replacement: real delivery-readiness, Phase4, PBO/DSR, data freshness, and GCP controlled-use gate evidence when release decisions resume
+    last_verified: "2026-05-27"
+
+  - id: workbench_delivery_readiness_read_tests
+    paths:
+      - backend/tests/test_workbench_delivery_readiness.py
+    owner_module: workbench_delivery_read
+    scope: contract
+    runner: PYTHONPATH=backend python -m pytest -q backend/tests/test_workbench_delivery_readiness.py
+    status: active
+    evidence_level: trusted_with_scope
+    truth_source: local delivery-readiness, Phase4 gate, and decision JSON fixtures for the workbench read model
+    risk_reason: verifies UI/read-model payload composition only; it does not prove delivery gates, production strategy readiness, or current data freshness
+    replacement: workbench contract tests backed by current delivery-readiness artifacts when release dashboard work resumes
+    last_verified: "2026-05-27"
+
+  - id: msaf_probe_frontier_root_tests
+    paths:
+      - backend/tests/test_audit_msaf_probe_frontier.py
+    owner_module: msaf.probe_frontier
+    scope: contract
+    runner: PYTHONPATH=backend python -m pytest -q backend/tests/test_audit_msaf_probe_frontier.py
+    status: active
+    evidence_level: trusted_with_scope
+    truth_source: local MSAF probe JSON fixtures and Phase4 gate fixture matching
+    risk_reason: protects proxy-vs-hard-promote classification in fixtures; warn_only_proxy remains non-production evidence and cannot support promotion
+    replacement: true OOS train-log, Phase4, PBO/DSR, and forward evidence when MSAF probes are reconsidered
+    last_verified: "2026-05-27"
+
+  - id: msaf_pbo_diagnostics_root_tests
+    paths:
+      - backend/tests/test_audit_msaf_pbo_diagnostics.py
+    owner_module: msaf.pbo_diagnostics
+    scope: unit
+    runner: PYTHONPATH=backend python -m pytest -q backend/tests/test_audit_msaf_pbo_diagnostics.py
+    status: active
+    evidence_level: trusted_with_scope
+    truth_source: synthetic return-matrix fixtures for PBO variant diagnostics and drawdown/sharpe helpers
+    risk_reason: validates diagnostic math on synthetic arrays only; does not prove current strategy PBO, live portfolio risk, or promotion readiness
+    replacement: measured Phase4/PBO artifacts for the target model and horizon
+    last_verified: "2026-05-27"
+
+  - id: lambdamart_train_log_stability_root_tests
+    paths:
+      - backend/tests/test_audit_lambdamart_train_log_stability.py
+    owner_module: ml_ranking.train_log_stability
+    scope: contract
+    runner: PYTHONPATH=backend python -m pytest -q backend/tests/test_audit_lambdamart_train_log_stability.py
+    status: active
+    evidence_level: trusted_with_scope
+    truth_source: local train-log metrics JSON fixtures and non-overlap strategy-return window fixtures
+    risk_reason: verifies stability-audit parser and aggregation behavior only; does not prove current model stability, complete checkpoints, or production train-log freshness
+    replacement: verified train-log checkpoint audit and forward stability evidence for the current model_id
+    last_verified: "2026-05-27"
+
+  - id: calendar_gate_root_tests
+    paths:
+      - backend/tests/test_calendar_gate.py
+    owner_module: calendar
+    scope: contract
+    runner: PYTHONPATH=backend python -m pytest -q backend/tests/test_calendar_gate.py
+    status: active
+    evidence_level: trusted_with_scope
+    truth_source: in-memory trading-calendar fixtures and AST lint for wall-clock date-string usage
+    risk_reason: protects date-truth routing and static wall-clock misuse checks; does not prove production calendar completeness or current K-line freshness
+    replacement: calendar service contract plus post-sync data_audit calendar/date-range checks
+    last_verified: "2026-05-27"
+
+  - id: pit_strict_preflight_root_tests
+    paths:
+      - backend/tests/test_pit_strict.py
+    owner_module: pit_preflight
+    scope: contract
+    runner: PYTHONPATH=backend python -m pytest -q backend/tests/test_pit_strict.py
+    status: active
+    evidence_level: trusted_with_scope
+    truth_source: in-memory listing-status, K-line coverage, and panel row-count fixtures
+    risk_reason: protects PIT active-ever and preflight gap behavior in fixtures; does not prove production panel survivorship safety or live K-line coverage
+    replacement: survivorship gate, PIT integrity audit, and universe coverage audit on current production data
+    last_verified: "2026-05-27"
+
+  - id: phase4_msaf_gate_root_tests
+    paths:
+      - backend/tests/test_run_phase4_gate_on_msaf.py
+    owner_module: phase4_msaf_gate
+    scope: integration
+    runner: PYTHONPATH=backend python -m pytest -q backend/tests/test_run_phase4_gate_on_msaf.py
+    status: active
+    evidence_level: trusted_with_scope
+    truth_source: temporary DuckDB model-prediction/train-log fixtures and MSAF portfolio-return calculation fixtures
+    risk_reason: verifies fallback selection and true-train-log-vs-split-half classification in local fixtures; split-half proxy remains non-production evidence
+    replacement: measured Phase4 gate, true train-log PIT evidence, paper_sim KPI, PBO/DSR, and forward validation for the candidate model
+    last_verified: "2026-05-27"
+
+  - id: tdx_f10_source_date_audit_root_tests
+    paths:
+      - backend/tests/test_tdx_f10_source_date_audit.py
+    owner_module: tdx_f10_source_date
+    scope: contract
+    runner: PYTHONPATH=backend python -m pytest -q backend/tests/test_tdx_f10_source_date_audit.py
+    status: active
+    evidence_level: trusted_with_scope
+    truth_source: in-memory TDX F10 raw-text fixtures and source-date section audit table fixtures
+    risk_reason: verifies source-date classification and future-date counting for sample F10 text only; does not prove full TDX source coverage or current F10 freshness
+    replacement: source coverage audit and PIT/freshness evidence for F10-backed holder and event features
+    last_verified: "2026-05-27"
+
+  - id: updater_audit_route_root_tests
+    paths:
+      - backend/tests/test_updater_audit.py
+    owner_module: updater.audit
+    scope: unit
+    runner: PYTHONPATH=backend python -m pytest -q backend/tests/test_updater_audit.py
+    status: active
+    evidence_level: trusted_with_scope
+    truth_source: monkeypatched updater audit route helpers, connection-close assertions, and task-state fixtures
+    risk_reason: verifies updater audit route plumbing only; does not prove quality audit freshness, DB state, or smart-update DAG correctness
+    replacement: updater route contract suite plus data_audit freshness evidence after sync/DAG changes
+    last_verified: "2026-05-27"
+
+  - id: historical_root_cause_regression_tests
+    paths:
+      - backend/tests/test_audit_fixes.py
+    owner_module: root_cause_regression
+    scope: contract
+    runner: PYTHONPATH=backend python -m pytest -q backend/tests/test_audit_fixes.py
+    status: active
+    evidence_level: trusted_with_scope
+    truth_source: local regression fixtures for drawdown horizon, institution scoring fallback, and TDX industry history snapshots
+    risk_reason: mixed historical root-cause guards protect specific fixed bugs only; they do not prove current signal quality, source freshness, or broad architecture readiness
+    replacement: split into module-owned tests if any covered domain changes or if root-file cleanup requires narrower ownership
+    last_verified: "2026-05-27"
+
+  - id: paper_sim_cache_metadata_root_tests
+    paths:
+      - backend/tests/test_backfill_paper_sim_cache_metadata.py
+    owner_module: paper_sim
+    scope: contract
+    runner: PYTHONPATH=backend python -m pytest -q backend/tests/test_backfill_paper_sim_cache_metadata.py
+    status: active
+    evidence_level: trusted_with_scope
+    truth_source: temporary DuckDB mart_paper_sim_kpi fixtures for cache-id/config-hash metadata backfill
+    risk_reason: verifies paper-sim cache metadata mechanics only; does not prove production KPI freshness, lineage completeness, or deployable portfolio behavior
+    replacement: full paper_sim lineage/cache gate plus measured paper_sim evidence when strategy validation resumes
+    last_verified: "2026-05-27"
+
+  - id: strategy_result_registry_root_tests
+    paths:
+      - backend/tests/test_backfill_strategy_result_registry.py
+    owner_module: strategy_result_registry
+    scope: contract
+    runner: PYTHONPATH=backend python -m pytest -q backend/tests/test_backfill_strategy_result_registry.py
+    status: active
+    evidence_level: trusted_with_scope
+    truth_source: temporary DuckDB strategy-result registry mapping fixtures for candidate_passed and hold_reject decisions
+    risk_reason: verifies registry mapping semantics only; candidate_passed or hold_reject rows are not hard promotion evidence
+    replacement: Phase4/PBO/DSR, production promotion gate, and strategy-result registry evidence for the target model
+    last_verified: "2026-05-27"
+
+  - id: backtest_validation_gate_root_tests
+    paths:
+      - backend/tests/test_backtest_validation.py
+    owner_module: backtest_validation
+    scope: contract
+    runner: PYTHONPATH=backend python -m pytest -q backend/tests/test_backtest_validation.py
+    status: active
+    evidence_level: trusted_with_scope
+    truth_source: local gate fixtures for PBO, DSR, IS/OOS, warn_only, warn_only_proxy, and in-sample phantom rejection semantics
+    risk_reason: protects validation-gate semantics only; proxy, warn-only, or in-sample fixtures cannot support production promotion claims
+    replacement: measured Phase4/PBO/DSR/forward evidence and backtest_preflight gate when promotion decisions resume
+    last_verified: "2026-05-27"
+
+  - id: model_portfolio_backtest_script_root_tests
+    paths:
+      - backend/tests/test_backtest_model_portfolio.py
+      - backend/tests/test_backtest_walkforward_portfolio.py
+    owner_module: model_portfolio_backtest
+    scope: integration
+    runner: PYTHONPATH=backend python -m pytest -q backend/tests/test_backtest_model_portfolio.py backend/tests/test_backtest_walkforward_portfolio.py
+    status: active
+    evidence_level: trusted_with_scope
+    truth_source: local model-portfolio prediction, label, and qfq K-line fixtures
+    risk_reason: verifies script mechanics with local fixtures only; does not prove full-universe backtest validity, cost realism, data freshness, or deployment readiness
+    replacement: backtest_preflight, measured paper_sim, Phase4/PBO/DSR, and production data freshness evidence
+    last_verified: "2026-05-27"
+
+  - id: portfolio_backtest_core_root_tests
+    paths:
+      - backend/tests/test_portfolio_backtest.py
+    owner_module: portfolio_backtest
+    scope: unit
+    runner: PYTHONPATH=backend python -m pytest -q backend/tests/test_portfolio_backtest.py
+    status: active
+    evidence_level: trusted_with_scope
+    truth_source: local slippage, constraint, and execution-price fixtures
+    risk_reason: validates core mechanics only; does not prove strategy alpha, realistic liquidity, or production execution readiness
+    replacement: cost-aware paper_sim and backtest_preflight tradeability checks
+    last_verified: "2026-05-27"
+
+  - id: paper_engine_root_tests
+    paths:
+      - backend/tests/test_paper_engine_portfolio.py
+      - backend/tests/test_run_paper_sim.py
+    owner_module: paper_engine
+    scope: integration
+    runner: PYTHONPATH=backend python -m pytest -q backend/tests/test_paper_engine_portfolio.py backend/tests/test_run_paper_sim.py
+    status: active
+    evidence_level: trusted_with_scope
+    truth_source: local paper-engine NAV, KPI, transaction, and simulation-run fixtures
+    risk_reason: verifies paper engine wiring with fixtures only; passing tests are not production KPI, forward Sharpe, or portfolio promotion evidence
+    replacement: full paper_sim run artifacts, KPI registry, Phase4/PBO/DSR, and delivery-readiness evidence
+    last_verified: "2026-05-27"
+
+  - id: msaf_ensemble_paper_sim_root_tests
+    paths:
+      - backend/tests/test_run_msaf_ensemble_paper_sim.py
+    owner_module: strategies.ensemble
+    scope: integration
+    runner: PYTHONPATH=backend python -m pytest -q backend/tests/test_run_msaf_ensemble_paper_sim.py
+    status: active
+    evidence_level: trusted_with_scope
+    truth_source: temporary prediction DB fixtures for MSAF cash/source/score controls and paper-sim runner wiring
+    risk_reason: validates MSAF runner controls in fixtures only; does not prove ensemble strategy readiness, PBO/DSR, or forward performance
+    replacement: measured Phase4/PBO/DSR/forward evidence for MSAF ensemble candidates
+    last_verified: "2026-05-27"
+
+  - id: event_institution_backtest_root_tests
+    paths:
+      - backend/tests/test_event_industry_backtest_scoring.py
+      - backend/tests/test_run_follow_backtest.py
+    owner_module: institution_backtest
+    scope: integration
+    runner: PYTHONPATH=backend python -m pytest -q backend/tests/test_event_industry_backtest_scoring.py backend/tests/test_run_follow_backtest.py
+    status: active
+    evidence_level: trusted_with_scope
+    truth_source: local institution event, TDX industry, and follow-backtest fixtures
+    risk_reason: verifies event/industry backtest mechanics only; does not prove current event source freshness, PIT lineage, or deployable alpha
+    replacement: source coverage, PIT/freshness audits, and measured paper_sim/backtest evidence for institution-follow strategies
+    last_verified: "2026-05-27"
+
+  - id: portfolio_mvp_event_backtest_root_tests
+    paths:
+      - backend/tests/test_run_portfolio_mvp.py
+    owner_module: portfolio_mvp
+    scope: integration
+    runner: PYTHONPATH=backend python -m pytest -q backend/tests/test_run_portfolio_mvp.py
+    status: active
+    evidence_level: trusted_with_scope
+    truth_source: local LHB, executive-event policy, and HS300 benchmark fixtures
+    risk_reason: verifies MVP event-backtest mechanics only; does not prove full production universe, benchmark freshness, or deployable portfolio behavior
+    replacement: governed backtest_preflight, paper_sim, and delivery-readiness evidence
+    last_verified: "2026-05-27"
+
+  - id: portfolio_sizer_root_tests
+    paths:
+      - backend/tests/test_portfolio_sizer.py
+    owner_module: portfolio_sizer
+    scope: unit
+    runner: PYTHONPATH=backend python -m pytest -q backend/tests/test_portfolio_sizer.py
+    status: active
+    evidence_level: trusted_with_scope
+    truth_source: local Wilson, Kelly, and profile sizing fixtures
+    risk_reason: validates sizing math and profile mechanics only; thresholds are policy inputs, not alpha or execution readiness proof
+    replacement: config-backed sizing policy contract plus measured paper_sim exposure/risk evidence
+    last_verified: "2026-05-27"
+
+  - id: walkforward_model_root_tests
+    paths:
+      - backend/tests/test_run_multidim_walkforward.py
+    owner_module: ml_ranking
+    scope: contract
+    runner: PYTHONPATH=backend python -m pytest -q backend/tests/test_run_multidim_walkforward.py
+    status: active
+    evidence_level: trusted_with_scope
+    truth_source: local multidimensional feature contract, fold, and prediction-write fixtures
+    risk_reason: verifies walk-forward writer mechanics only; does not prove current model stability, full sample coverage, or forward performance
+    replacement: verified train-log checkpoint coverage and model stability evidence
+    last_verified: "2026-05-27"
+
+  - id: feature_walkforward_eval_root_tests
+    paths:
+      - backend/tests/test_run_walkforward_feature_eval.py
+      - backend/tests/test_shareholder_plan_family_walkforward.py
+    owner_module: feature_walkforward
+    scope: contract
+    runner: PYTHONPATH=backend python -m pytest -q backend/tests/test_run_walkforward_feature_eval.py backend/tests/test_shareholder_plan_family_walkforward.py
+    status: active
+    evidence_level: trusted_with_scope
+    truth_source: local feature-walkforward and shareholder-plan family fixtures
+    risk_reason: validates feature evaluation mechanics only; does not prove production feature coverage, source freshness, or model promotion readiness
+    replacement: feature lineage/freshness gates and measured walk-forward evidence before model search resumes
+    last_verified: "2026-05-27"
+
+  - id: v3_portfolio_builder_backtest_endpoint_root_tests
+    paths:
+      - backend/tests/test_v3_portfolio_builder.py
+    owner_module: v3_portfolio_builder
+    scope: contract
+    runner: PYTHONPATH=backend python -m pytest -q backend/tests/test_v3_portfolio_builder.py
+    status: active
+    evidence_level: trusted_with_scope
+    truth_source: router read-model fixtures and portfolio walk-forward regime segment helper fixtures
+    risk_reason: verifies endpoint/read-model shape only; does not prove portfolio strategy readiness or current paper-sim KPI validity
+    replacement: API contract tests backed by current paper_sim and delivery-readiness artifacts
+    last_verified: "2026-05-27"
+
+  - id: workbench_paper_sim_timeseries_root_tests
+    paths:
+      - backend/tests/test_workbench_paper_sim_timeseries.py
+    owner_module: workbench
+    scope: contract
+    runner: PYTHONPATH=backend python -m pytest -q backend/tests/test_workbench_paper_sim_timeseries.py
+    status: active
+    evidence_level: trusted_with_scope
+    truth_source: local mart_paper_sim_kpi display/read-model fixtures
+    risk_reason: verifies Workbench timeseries payload only; it cannot prove paper_sim KPI correctness or strategy readiness
+    replacement: workbench contract backed by current KPI registry and paper_sim lineage evidence
+    last_verified: "2026-05-27"
+
+  - id: blended_recommendation_contract_tests
+    paths:
+      - backend/tests/test_blended_recommendation.py
+    owner_module: selection.blended_recommendation
+    scope: contract
+    runner: PYTHONPATH=backend python -m pytest -q backend/tests/test_blended_recommendation.py
+    status: active
+    evidence_level: trusted_with_scope
+    truth_source: in-memory DuckDB blended recommendation fixtures for base rank, formula bonus, sign flip, and reranking
+    risk_reason: validates blended-selection mechanics only; it does not prove production mart freshness, model quality, or deployable recommendation readiness
+    replacement: production data_audit, delivery-readiness, and measured paper_sim evidence when recommendation promotion resumes
+    last_verified: "2026-05-27"
+
+  - id: blended_recommendation_endpoint_contract_tests
+    paths:
+      - backend/tests/test_blended_recommendation_endpoint.py
+    owner_module: routers.v3_selection
+    scope: contract
+    runner: PYTHONPATH=backend python -m pytest -q backend/tests/test_blended_recommendation_endpoint.py
+    status: active
+    evidence_level: trusted_with_scope
+    truth_source: isolated FastAPI router test with monkeypatched DuckDB connection and local blended recommendation rows
+    risk_reason: verifies endpoint payload shape and sorting against mocked DuckDB state only; does not prove production DB row count or freshness
+    replacement: realdb opt-in endpoint smoke plus data freshness gate if production DB coverage must be verified
+    last_verified: "2026-05-27"
+
+  - id: candidate_feature_pipeline_root_tests
+    paths:
+      - backend/tests/test_candidate_feature_pipeline.py
+    owner_module: candidate_feature_pipeline
+    scope: contract
+    runner: PYTHONPATH=backend python -m pytest -q backend/tests/test_candidate_feature_pipeline.py
+    status: active
+    evidence_level: trusted_with_scope
+    truth_source: in-memory DuckDB candidate feature, ablation, walk-forward, elimination, and PIT fixtures
+    risk_reason: validates candidate feature pipeline mechanics only; it does not prove production source freshness, full sample coverage, or model promotion readiness
+    replacement: feature lineage/freshness gates plus measured walk-forward and plan-validator evidence before model search resumes
+    last_verified: "2026-05-27"
+
+  - id: data_deprecation_registry_root_tests
+    paths:
+      - backend/tests/test_data_deprecation.py
+    owner_module: data_deprecation
+    scope: contract
+    runner: PYTHONPATH=backend python -m pytest -q backend/tests/test_data_deprecation.py
+    status: active
+    evidence_level: trusted_with_scope
+    truth_source: in-memory DuckDB dim_data_asset and mart_data_deprecation_record fixtures
+    risk_reason: verifies metadata deprecation recording only; it does not drop tables, validate reader migration, or prove cleanup safety
+    replacement: architecture inventory plus lineage/read-path audit before deleting deprecated data assets
+    last_verified: "2026-05-27"
+
+  - id: executive_trade_events_contract_tests
+    paths:
+      - backend/tests/test_build_executive_trade_events.py
+    owner_module: executive_trade_events
+    scope: contract
+    runner: PYTHONPATH=backend python -m pytest -q backend/tests/test_build_executive_trade_events.py
+    status: active
+    evidence_level: trusted_with_scope
+    truth_source: local AkShare-style executive trade rows plus in-memory DuckDB raw/fact writer fixtures
+    risk_reason: validates normalization, aggregation, forward-return labeling, and writer mechanics only; it does not prove live AkShare availability, PIT signal usability, or production event freshness
+    replacement: event-source freshness, timestamp/PIT audit, and measured event-study evidence before alpha use
+    last_verified: "2026-05-27"
+
+  - id: candidate_feature_set_gc_contract_tests
+    paths:
+      - backend/tests/test_candidate_feature_set_gc.py
+    owner_module: candidate_feature_set_gc
+    scope: contract
+    runner: PYTHONPATH=backend python -m pytest -q backend/tests/test_candidate_feature_set_gc.py
+    status: active
+    evidence_level: trusted_with_scope
+    truth_source: in-memory DuckDB obsolete feature-set rows, model lifecycle rows, recommendations, and deletion ledger fixtures
+    risk_reason: validates deletion planning, approved cleanup, ledger writes, and production blocker detection only; it does not authorize production deletion without live CodeGraph/lineage/read-path evidence
+    replacement: architecture inventory, CodeGraph/rg reference audit, and data deletion runbook evidence before real DB cleanup
+    last_verified: "2026-05-27"
+
+  - id: etf_constants_contract_tests
+    paths:
+      - backend/tests/test_constants.py
+    owner_module: services.constants
+    scope: contract
+    runner: PYTHONPATH=backend python -m pytest -q backend/tests/test_constants.py
+    status: active
+    evidence_level: trusted_with_scope
+    truth_source: local ETF category constants and sort-order contract
+    risk_reason: verifies constant-map internal consistency only; it does not prove ETF strategy readiness, live ETF universe coverage, or market data freshness
+    replacement: config-backed ETF category owner plus ETF data coverage and strategy paper-sim evidence if ETF work resumes
+    last_verified: "2026-05-27"
+
+  - id: daily_update_model_refresh_shell_tests
+    paths:
+      - backend/tests/test_daily_update_model_refresh.py
+    owner_module: daily_update_orchestration
+    scope: contract
+    runner: PYTHONPATH=backend python -m pytest -q backend/tests/test_daily_update_model_refresh.py
+    status: active
+    evidence_level: trusted_with_scope
+    truth_source: shell syntax check and static daily_update.sh branch/cost-control assertions
+    risk_reason: verifies daily-update wiring text only; it does not execute the updater, prove model refresh quality, or authorize automatic GCP retraining
+    replacement: updater DAG audit, delivery-readiness gates, and explicit controlled-use GCP approval before cloud retraining
+    last_verified: "2026-05-27"
+
+  - id: static_data_contract_root_tests
+    paths:
+      - backend/tests/test_data_consistency.py
+    owner_module: data_contracts.static
+    scope: contract
+    runner: PYTHONPATH=backend python -m pytest -q backend/tests/test_data_consistency.py
+    status: active
+    evidence_level: trusted_with_scope
+    truth_source: static AST/text scan over backend services, scripts, and routers for retired table access and canonical K-line relation usage
+    risk_reason: verifies source-code contract only; it does not prove production DB content, data freshness, or runtime query coverage
+    replacement: realdb data_audit, stale-reference audit, and runtime lineage evidence for production readiness
+    last_verified: "2026-05-27"
+
+  - id: data_health_snapshot_root_tests
+    paths:
+      - backend/tests/test_data_health_snapshot.py
+    owner_module: data_health_snapshot
+    scope: contract
+    runner: PYTHONPATH=backend python -m pytest -q backend/tests/test_data_health_snapshot.py
+    status: active
+    evidence_level: trusted_with_scope
+    truth_source: in-memory DuckDB freshness, asset health, workbench data-source, and dry-run storage retention fixtures
+    risk_reason: validates health classification and Workbench read-model shape only; it does not prove current production table freshness or safe deletion execution
+    replacement: post-sync data_audit plus storage cleanup runbook evidence before production claims or deletes
+    last_verified: "2026-05-27"
+
+  - id: db_core_root_tests
+    paths:
+      - backend/tests/test_db.py
+    owner_module: db_core
+    scope: contract
+    runner: PYTHONPATH=backend python -m pytest -q backend/tests/test_db.py
+    status: active
+    evidence_level: trusted_with_scope
+    truth_source: temporary DuckDB and in-memory connection fixtures for module defaults and lock-retry behavior
+    risk_reason: validates DB bootstrap/retry mechanics only; it does not inspect production DuckDB health, locks, or data contents
+    replacement: startup DB health checks and explicit production DB audit when runtime readiness is assessed
+    last_verified: "2026-05-27"
+
+  - id: db_health_financial_root_tests
+    paths:
+      - backend/tests/test_db_health.py
+    owner_module: db_health
+    scope: contract
+    runner: PYTHONPATH=backend python -m pytest -q backend/tests/test_db_health.py
+    status: active
+    evidence_level: trusted_with_scope
+    truth_source: in-memory DuckDB financial schema/index fixtures and snapshot-stub cleanup cases
+    risk_reason: verifies DB health helpers and financial cleanup behavior on fixtures only; it does not prove the local production DuckDB has no index corruption
+    replacement: startup checks against the actual target DB plus data_audit before production readiness claims
+    last_verified: "2026-05-27"
+
+  - id: dependency_guards_root_tests
+    paths:
+      - backend/tests/test_dependency_guards.py
+    owner_module: dependency_guards
+    scope: unit
+    runner: PYTHONPATH=backend python -m pytest -q backend/tests/test_dependency_guards.py
+    status: active
+    evidence_level: trusted_with_scope
+    truth_source: local fake MiniRacer class and dependency guard installer fixtures
+    risk_reason: validates defensive cleanup patching only; it does not prove optional dependency availability or frontend formula execution readiness
+    replacement: environment/dependency audit when optional JS execution paths are enabled
+    last_verified: "2026-05-27"
+
+  - id: ml_drift_root_tests
+    paths:
+      - backend/tests/test_drift.py
+    owner_module: ml_lifecycle.drift
+    scope: contract
+    runner: PYTHONPATH=backend python -m pytest -q backend/tests/test_drift.py
+    status: active
+    evidence_level: trusted_with_scope
+    truth_source: in-memory DuckDB feature drift, PSI, feature_set_id, snapshot, and histogram cache fixtures
+    risk_reason: verifies drift computation mechanics only; it does not prove current model stability, production feature coverage, or promotion readiness
+    replacement: current model train-log, drift snapshots, and delivery-readiness evidence before model promotion
+    last_verified: "2026-05-27"
+
+  - id: etf_local_strategy_root_tests
+    paths:
+      - backend/tests/test_etf_db.py
+      - backend/tests/test_etf_grid_buy_hold.py
+      - backend/tests/test_etf_grid_engine_pure.py
+      - backend/tests/test_etf_grid_optimizer.py
+      - backend/tests/test_etf_strategy_return.py
+    owner_module: etf
+    scope: contract
+    runner: PYTHONPATH=backend python -m pytest -q backend/tests/test_etf_db.py backend/tests/test_etf_grid_buy_hold.py backend/tests/test_etf_grid_engine_pure.py backend/tests/test_etf_grid_optimizer.py backend/tests/test_etf_strategy_return.py
+    status: active
+    evidence_level: trusted_with_scope
+    truth_source: temporary ETF DuckDB schema fixtures and local ETF grid/mining calculation fixtures
+    risk_reason: verifies ETF DB initialization and local grid math only; it does not prove ETF universe/data freshness, backtest validity, or deployable strategy readiness
+    replacement: ETF data coverage, cost-aware paper_sim/backtest evidence, and delivery gates if ETF strategy work resumes
+    last_verified: "2026-05-27"
+
+  - id: holding_topk_eval_root_tests
+    paths:
+      - backend/tests/test_evaluate_holding_topk.py
+    owner_module: holding_topk_eval
+    scope: contract
+    runner: PYTHONPATH=backend python -m pytest -q backend/tests/test_evaluate_holding_topk.py
+    status: active
+    evidence_level: trusted_with_scope
+    truth_source: in-memory DuckDB prediction, feature-label, and TDX industry fixtures for top-k holding evaluation
+    risk_reason: validates holding top-k evaluation mechanics only; it does not prove current model quality, production labels, or deployable recommendation readiness
+    replacement: current train-log, paper_sim, delivery-readiness, and cost-aware portfolio evidence before model or recommendation promotion
+    last_verified: "2026-05-27"
+
+  - id: institution_event_notice_lineage_root_tests
+    paths:
+      - backend/tests/test_event_engine_notice_backfill.py
+    owner_module: institution_event_notice_lineage
+    scope: contract
+    runner: PYTHONPATH=backend python -m pytest -q backend/tests/test_event_engine_notice_backfill.py
+    status: active
+    evidence_level: trusted_with_scope
+    truth_source: in-memory DuckDB institution holding, TDX holder-period, and event lineage fixtures
+    risk_reason: validates notice-date backfill and lineage preservation only; it does not prove live holder source freshness or event-alpha tradability
+    replacement: holder source coverage, PIT timestamp audit, and measured event-study evidence before alpha use
+    last_verified: "2026-05-27"
+
+  - id: event_simulator_contract_tests
+    paths:
+      - backend/tests/test_event_simulator.py
+    owner_module: event_simulator
+    scope: contract
+    runner: PYTHONPATH=backend python -m pytest -q backend/tests/test_event_simulator.py
+    status: active
+    evidence_level: trusted_with_scope
+    truth_source: local event records and synthetic price panels for fill, stop, take-profit, and entry-price behavior
+    risk_reason: validates simulator mechanics only; it does not prove event strategy performance, slippage realism, or production K-line freshness
+    replacement: event backtest with backtest_preflight, cost model, and real K-line freshness evidence before strategy claims
+    last_verified: "2026-05-27"
+
+  - id: external_attention_contract_tests
+    paths:
+      - backend/tests/test_external_attention.py
+    owner_module: external_attention
+    scope: contract
+    runner: PYTHONPATH=backend python -m pytest -q backend/tests/test_external_attention.py
+    status: active
+    evidence_level: trusted_with_scope
+    truth_source: local AkShare-style external-attention payload fixtures and cache-copy checks
+    risk_reason: validates payload normalization/detail assembly and cache isolation only; it does not prove live AkShare availability or attention-source freshness
+    replacement: source coverage, freshness audit, and profile lineage evidence before production stock-profile use
+    last_verified: "2026-05-27"
+
+  - id: external_attention_smart_plan_root_tests
+    paths:
+      - backend/tests/test_external_attention_sync_plan.py
+    owner_module: external_attention_smart_plan
+    scope: contract
+    runner: PYTHONPATH=backend python -m pytest -q backend/tests/test_external_attention_sync_plan.py
+    status: active
+    evidence_level: trusted_with_scope
+    truth_source: in-memory DuckDB smart-update audit, relationship freshness, attention snapshot, and updater downstream-step fixtures
+    risk_reason: validates smart-plan decision mechanics only; it does not execute data sync, prove production freshness, or authorize GCP/long-running updates
+    replacement: updater DAG audit, data_audit, and controlled execution evidence before production update claims
+    last_verified: "2026-05-27"
+
+  - id: feature_join_v5_leakage_guard_tests
+    paths:
+      - backend/tests/test_feature_join_v5.py
+    owner_module: labels.feature_join_v5
+    scope: contract
+    runner: PYTHONPATH=backend python -m pytest -q backend/tests/test_feature_join_v5.py
+    status: active
+    evidence_level: trusted_with_scope
+    truth_source: static feature_join_v5 constants, SQL text, and function signature checks for known Pattern 10 leakage columns
+    risk_reason: validates a specific leakage guard only; it does not prove full label-panel PIT safety or production feature coverage
+    replacement: audit_panel_leakage, audit_pit_integrity, and survivorship/universe gates before model training claims
+    last_verified: "2026-05-27"
+
+  - id: prepared_panel_fillna_policy_tests
+    paths:
+      - backend/tests/test_fillna_policy.py
+    owner_module: perf.prepared_panel
+    scope: contract
+    runner: PYTHONPATH=backend python -m pytest -q backend/tests/test_fillna_policy.py
+    status: active
+    evidence_level: trusted_with_scope
+    truth_source: local pandas/numpy feature missing-value policy fixtures
+    risk_reason: validates PreparedPanel fill policy only; it does not prove feature semantics, model stability, or production feature completeness
+    replacement: feature lineage/freshness audits and measured model validation before training or promotion
+    last_verified: "2026-05-27"
+
+  - id: holdings_read_model_root_tests
+    paths:
+      - backend/tests/test_holdings.py
+    owner_module: holdings_read_model
+    scope: contract
+    runner: PYTHONPATH=backend python -m pytest -q backend/tests/test_holdings.py
+    status: active
+    evidence_level: trusted_with_scope
+    truth_source: in-memory DuckDB current-relationship fixtures with TDX industry aliases and peer institution rows
+    risk_reason: validates holdings read-model payload shape only; it does not prove holder data freshness, institution identity quality, or follow-trade performance
+    replacement: holder source coverage, profile lineage, and event/follow evidence before production stock or institution profile claims
+    last_verified: "2026-05-27"
+
+  - id: model_train_log_import_root_tests
+    paths:
+      - backend/tests/test_import_model_train_log_artifact.py
+    owner_module: model_train_log_import
+    scope: contract
+    runner: PYTHONPATH=backend python -m pytest -q backend/tests/test_import_model_train_log_artifact.py
+    status: active
+    evidence_level: trusted_with_scope
+    truth_source: temporary DuckDB and JSON train-log artifact fixtures
+    risk_reason: validates import idempotence, dry-run, and model-id mismatch guard only; it does not prove remote train-log completeness or model promotion readiness
+    replacement: verified checkpoint coverage, train-log window audit, and delivery-readiness evidence before using imported metrics
+    last_verified: "2026-05-27"
+
+  - id: phase5_remote_prediction_import_root_tests
+    paths:
+      - backend/tests/test_import_phase5_remote_predictions.py
+    owner_module: phase5_prediction_import
+    scope: contract
+    runner: PYTHONPATH=backend python -m pytest -q backend/tests/test_import_phase5_remote_predictions.py
+    status: active
+    evidence_level: trusted_with_scope
+    truth_source: temporary local/remote DuckDB and parquet prediction import fixtures
+    risk_reason: validates scoped model-id replacement, dry-run, mirroring, column reordering, and parquet import mechanics only; it does not prove remote artifact integrity or prediction quality
+    replacement: GCP controlled export evidence, artifact hashes, train-log coverage, and downstream delivery gates before production use
+    last_verified: "2026-05-27"
+
+  - id: industry_pit_root_tests
+    paths:
+      - backend/tests/test_industry_pit.py
+    owner_module: industry_pit
+    scope: contract
+    runner: PYTHONPATH=backend python -m pytest -q backend/tests/test_industry_pit.py
+    status: active
+    evidence_level: trusted_with_scope
+    truth_source: in-memory DuckDB industry history, signal scope, workbench, and data-quality readiness fixtures
+    risk_reason: validates industry PIT readiness mechanics only; it does not prove live industry history completeness or all feature joins are PIT safe
+    replacement: audit_pit_integrity, audit_panel_leakage, and production data lineage evidence before model training or profile claims
+    last_verified: "2026-05-27"
+
+  - id: institution_profile_read_model_root_tests
+    paths:
+      - backend/tests/test_institution_aux_read.py
+      - backend/tests/test_institution_read.py
+    owner_module: institution_profile_read_model
+    scope: contract
+    runner: PYTHONPATH=backend python -m pytest -q backend/tests/test_institution_aux_read.py backend/tests/test_institution_read.py
+    status: active
+    evidence_level: trusted_with_scope
+    truth_source: in-memory DuckDB institution holdings, event, profile, search, industry-stat, and exclusion-category fixtures
+    risk_reason: validates institution profile/read-model SQL, filters, ordering, and payload shape only; it does not prove holder/event source freshness, institution identity quality, or follow-trade alpha
+    replacement: profile lineage, source coverage, holder/event freshness, and measured institution-follow evidence before production stock or institution profile claims
+    last_verified: "2026-05-27"
+
+  - id: institution_router_contract_root_tests
+    paths:
+      - backend/tests/test_institution_contract.py
+    owner_module: institution_api_contract
+    scope: contract
+    runner: PYTHONPATH=backend python -m pytest -q backend/tests/test_institution_contract.py
+    status: active
+    evidence_level: trusted_with_scope
+    truth_source: FastAPI route contracts with monkeypatched connections and service payload fixtures
+    risk_reason: validates route payload shape and hidden-route exclusions only; it does not prove production DB completeness, stage/turtle freshness, or stock/institution profile readiness
+    replacement: opt-in realdb route smoke, profile lineage, and freshness evidence before production UI or profile claims
+    last_verified: "2026-05-27"
+
+  - id: institution_l2_metrics_root_tests
+    paths:
+      - backend/tests/test_institution_l2_metrics.py
+    owner_module: institution_l2_metrics
+    scope: contract
+    runner: PYTHONPATH=backend python -m pytest -q backend/tests/test_institution_l2_metrics.py
+    status: active
+    evidence_level: trusted_with_scope
+    truth_source: in-memory DuckDB follow-backtest and TDX industry fixtures for L2 scoring SQL CTEs
+    risk_reason: validates SQL aggregation mechanics only; synthetic train/holdout metrics are not production institution-follow evidence or promotion evidence
+    replacement: measured institution-follow paper_sim/backtest evidence with PIT and freshness gates before strategy claims
+    last_verified: "2026-05-27"
+
+  - id: institution_scoring_engine_root_tests
+    paths:
+      - backend/tests/test_institution_scoring_integration.py
+    owner_module: institution_scoring_engine
+    scope: integration
+    runner: PYTHONPATH=backend python -m pytest -q backend/tests/test_institution_scoring_integration.py
+    status: active
+    evidence_level: trusted_with_scope
+    truth_source: in-memory DuckDB institution profile, current relationship, industry-stat, score-config, and scoring output fixtures
+    risk_reason: validates scoring mechanics, fallback, and damping behavior only; fixture scores, win rates, and drawdowns are not production ranking or follow-trade evidence
+    replacement: measured institution scoring validation, source freshness, and profile lineage evidence before production scoring claims
+    last_verified: "2026-05-27"
+
+  - id: institution_scoring_read_contract_root_tests
+    paths:
+      - backend/tests/test_institution_scoring_read.py
+    owner_module: institution_scoring_read
+    scope: contract
+    runner: PYTHONPATH=backend python -m pytest -q backend/tests/test_institution_scoring_read.py
+    status: active
+    evidence_level: trusted_with_scope
+    truth_source: in-memory DuckDB institution profile, app_settings, mocked router connection, and scoring config fixtures
+    risk_reason: validates scorecard, breakdown, config, and delete payload contracts only; it does not prove scoring correctness, production data freshness, or strategy quality
+    replacement: measured scoring validation, source freshness, and profile lineage evidence before production scoring claims
+    last_verified: "2026-05-27"
+
+  - id: institution_survey_client_root_tests
+    paths:
+      - backend/tests/test_institution_survey_client.py
+    owner_module: institution_survey_client
+    scope: contract
+    runner: PYTHONPATH=backend python -m pytest -q backend/tests/test_institution_survey_client.py
+    status: active
+    evidence_level: trusted_with_scope
+    truth_source: monkeypatched EastMoney-style survey payloads plus in-memory raw/mart survey fixtures with fixed calendar as_of_date
+    risk_reason: validates survey sync normalization, idempotent write, and mart aggregation mechanics only; it does not prove live source availability, source coverage, or survey freshness
+    replacement: source coverage, data_audit freshness, and profile lineage evidence before production institution-survey claims
+    last_verified: "2026-05-27"
+
+  - id: akshare_panel_contract_tests
+    paths:
+      - backend/tests/test_build_akshare_panel.py
+    owner_module: data_sources.akshare
+    scope: unit
+    runner: PYTHONPATH=backend python -m pytest -q backend/tests/test_build_akshare_panel.py
+    status: active
+    evidence_level: trusted_with_scope
+    truth_source: local AkShare panel builder fixtures
+    risk_reason: verifies panel-building mechanics only; does not prove live AkShare availability or source freshness
+    replacement: data-source coverage audit and post-sync data_audit freshness checks
+    last_verified: "2026-05-27"
+
+  - id: fundamental_finance_ingestion_contract_tests
+    paths:
+      - backend/tests/test_build_fundamental_quarterly.py
+      - backend/tests/test_capital_client_store.py
+      - backend/tests/test_financial_indicator_client.py
+    owner_module: financial_data
+    scope: contract
+    runner: PYTHONPATH=backend python -m pytest -q backend/tests/test_build_fundamental_quarterly.py backend/tests/test_capital_client_store.py backend/tests/test_financial_indicator_client.py
+    status: active
+    evidence_level: trusted_with_scope
+    truth_source: local financial/fundamental ingestion and store fixtures
+    risk_reason: protects ingestion/store contract only; does not prove production finance source coverage or current data freshness
+    replacement: source coverage contract plus data_audit after financial-data sync
+    last_verified: "2026-05-27"
+
+  - id: lhb_ingestion_contract_tests
+    paths:
+      - backend/tests/test_build_lhb_events.py
+      - backend/tests/test_lhb_client.py
+    owner_module: lhb
+    scope: contract
+    runner: PYTHONPATH=backend python -m pytest -q backend/tests/test_build_lhb_events.py backend/tests/test_lhb_client.py
+    status: active
+    evidence_level: trusted_with_scope
+    truth_source: local LHB event ingestion/client fixtures
+    risk_reason: forward-return labels are analysis labels, not PIT signal proof; source freshness still needs audit evidence
+    replacement: LHB source coverage, PIT lineage, and freshness audits
+    last_verified: "2026-05-27"
+
+  - id: orderbook_snapshot_contract_tests
+    paths:
+      - backend/tests/test_build_orderbook_snapshot.py
+    owner_module: market_data.orderbook
+    scope: contract
+    runner: PYTHONPATH=backend python -m pytest -q backend/tests/test_build_orderbook_snapshot.py
+    status: active
+    evidence_level: trusted_with_scope
+    truth_source: local orderbook snapshot builder fixtures
+    risk_reason: verifies snapshot write mechanics only; does not prove live quote availability or order-flow freshness
+    replacement: market-data source coverage and post-sync freshness audit
+    last_verified: "2026-05-27"
+
+  - id: calendar_kline_contract_tests
+    paths:
+      - backend/tests/test_calendar_shim_compat.py
+      - backend/tests/test_kline_cleaning.py
+      - backend/tests/test_kline_write_calendar_lint.py
+      - backend/tests/test_market_db_canonical_kline.py
+      - backend/tests/test_updater_calendar_preflight.py
+    owner_module: market_data.calendar_kline
+    scope: contract
+    runner: PYTHONPATH=backend python -m pytest -q backend/tests/test_calendar_shim_compat.py backend/tests/test_kline_cleaning.py backend/tests/test_kline_write_calendar_lint.py backend/tests/test_market_db_canonical_kline.py backend/tests/test_updater_calendar_preflight.py
+    status: active
+    evidence_level: trusted_with_scope
+    truth_source: trading calendar and canonical K-line fixture contracts
+    risk_reason: protects calendar/K-line contract mechanics only; does not prove production K-line completeness or current sync freshness
+    replacement: data_audit K-line completeness, consistency, board coverage, and date-range checks
+    last_verified: "2026-05-27"
+
+  - id: kline_source_fallback_contract_tests
+    paths:
+      - backend/tests/test_kline_sources.py
+    owner_module: data_sources.kline
+    scope: contract
+    runner: PYTHONPATH=backend python -m pytest -q backend/tests/test_kline_sources.py
+    status: active
+    evidence_level: trusted_with_scope
+    truth_source: mocked tdxhub/akshare K-line source fallback fixtures
+    risk_reason: verifies fallback routing only; does not prove live source coverage or post-sync K-line freshness
+    replacement: source coverage probe plus data_audit K-line freshness
+    last_verified: "2026-05-27"
+
+  - id: holders_tdxhub_contract_tests
+    paths:
+      - backend/tests/test_holder_availability.py
+      - backend/tests/test_holders_event.py
+      - backend/tests/test_holders_resolver.py
+      - backend/tests/test_ingest_holders_tdxhub.py
+      - backend/tests/test_migrate_holders_to_tdxhub.py
+    owner_module: holders.tdxhub
+    scope: contract
+    runner: PYTHONPATH=backend python -m pytest -q backend/tests/test_holder_availability.py backend/tests/test_holders_event.py backend/tests/test_holders_resolver.py backend/tests/test_ingest_holders_tdxhub.py backend/tests/test_migrate_holders_to_tdxhub.py
+    status: active
+    evidence_level: trusted_with_scope
+    truth_source: local holders/F10 availability, raw-ingest, resolver, and migration fixtures
+    risk_reason: protects holder ingestion contracts only; does not prove current TDX source coverage, PIT availability, or production freshness
+    replacement: TDX source coverage, holder PIT/freshness audit, and lineage evidence
+    last_verified: "2026-05-27"
+
+  - id: tdx_f10_extra_contract_tests
+    paths:
+      - backend/tests/test_tdx_f10_extra_client.py
+    owner_module: tdx_f10_extra
+    scope: contract
+    runner: PYTHONPATH=backend python -m pytest -q backend/tests/test_tdx_f10_extra_client.py
+    status: active
+    evidence_level: trusted_with_scope
+    truth_source: local TDX F10 extra client fixtures
+    risk_reason: fixture coverage only; does not prove source freshness or full TDX endpoint coverage
+    replacement: source coverage audit and F10 freshness evidence
+    last_verified: "2026-05-27"
+
+  - id: industry_context_contract_tests
+    paths:
+      - backend/tests/test_event_industry_snapshot.py
+      - backend/tests/test_industry_context_engine.py
+      - backend/tests/test_industry_overview_read.py
+    owner_module: industry_context
+    scope: contract
+    runner: PYTHONPATH=backend python -m pytest -q backend/tests/test_event_industry_snapshot.py backend/tests/test_industry_context_engine.py backend/tests/test_industry_overview_read.py
+    status: active
+    evidence_level: trusted_with_scope
+    truth_source: local industry snapshot/context/read-model fixtures
+    risk_reason: verifies industry context mechanics only; does not prove current industry source freshness or strategy alpha
+    replacement: industry source sync audit plus profile/lineage contract
+    last_verified: "2026-05-27"
+
+  - id: data_lineage_asset_contract_tests
+    paths:
+      - backend/tests/test_data_asset_governance.py
+      - backend/tests/test_mart_data_lineage_compat.py
+      - backend/tests/test_model_feature_lineage.py
+    owner_module: data_lineage
+    scope: contract
+    runner: PYTHONPATH=backend python -m pytest -q backend/tests/test_data_asset_governance.py backend/tests/test_mart_data_lineage_compat.py backend/tests/test_model_feature_lineage.py
+    status: active
+    evidence_level: trusted_with_scope
+    truth_source: data asset, mart lineage, and model-feature lineage fixture contracts
+    risk_reason: protects lineage contract shape only; does not prove all production tables have complete current lineage
+    replacement: data lineage audit and profile lineage gates
+    last_verified: "2026-05-27"
+
+  - id: business_facts_contract_tests
+    paths:
+      - backend/tests/test_business_facts.py
+    owner_module: business_facts
+    scope: contract
+    runner: PYTHONPATH=backend python -m pytest -q backend/tests/test_business_facts.py
+    status: active
+    evidence_level: trusted_with_scope
+    truth_source: local business facts fixtures
+    risk_reason: verifies fact-shape mechanics only; does not prove production source coverage or freshness
+    replacement: source coverage and lineage/freshness audits for business fact tables
+    last_verified: "2026-05-27"
+
+  - id: shareholder_plan_research_contract_tests
+    paths:
+      - backend/tests/test_shareholder_plan_feature_family_eval.py
+      - backend/tests/test_shareholder_plan_initial_event.py
+      - backend/tests/test_shareholder_plan_initial_feature_panel.py
+    owner_module: shareholder_plan
+    scope: contract
+    runner: PYTHONPATH=backend python -m pytest -q backend/tests/test_shareholder_plan_feature_family_eval.py backend/tests/test_shareholder_plan_initial_event.py backend/tests/test_shareholder_plan_initial_feature_panel.py
+    status: active
+    evidence_level: trusted_with_scope
+    truth_source: shareholder-plan research candidate fixtures
+    risk_reason: research candidate tests are not production model input or promotion evidence
+    replacement: feature lineage/freshness gates and measured walk-forward evidence before model search resumes
+    last_verified: "2026-05-27"
+
+  - id: picture_profile_contract_tests
+    paths:
+      - backend/tests/test_picture_fundamental_stage.py
+      - backend/tests/test_picture_kline_latest.py
+    owner_module: stock_picture
+    scope: contract
+    runner: PYTHONPATH=backend python -m pytest -q backend/tests/test_picture_fundamental_stage.py backend/tests/test_picture_kline_latest.py
+    status: active
+    evidence_level: trusted_with_scope
+    truth_source: picture/profile fundamental-stage and latest-K-line fixtures
+    risk_reason: verifies profile payload mechanics only; missing or stale components must remain unknown/proxy rather than production facts
+    replacement: profile component contract, lineage_ref, and freshness-status gates
+    last_verified: "2026-05-27"
+
+  - id: updater_reset_contract_tests
+    paths:
+      - backend/tests/test_updater_reset_industry.py
+    owner_module: updater.reset
+    scope: contract
+    runner: PYTHONPATH=backend python -m pytest -q backend/tests/test_updater_reset_industry.py
+    status: active
+    evidence_level: trusted_with_scope
+    truth_source: updater reset-industry route and connection-lifecycle fixtures
+    risk_reason: verifies reset route mechanics only; does not prove updater DAG or data freshness
+    replacement: updater route contract suite and data_audit after sync
+    last_verified: "2026-05-27"
+
+  - id: tdx_keep_model_governance_contract_tests
+    paths:
+      - backend/tests/test_tdx_keep_productionization.py
+      - backend/tests/test_train_tdx_keep_challenger_model.py
+    owner_module: ml_ranking.tdx_keep
+    scope: contract
+    runner: PYTHONPATH=backend python -m pytest -q backend/tests/test_tdx_keep_productionization.py backend/tests/test_train_tdx_keep_challenger_model.py
+    status: active
+    evidence_level: trusted_with_scope
+    truth_source: synthetic TDX keep challenger/model-governance fixtures
+    risk_reason: synthetic promote_ready PASS is not production promotion evidence or forward KPI proof
+    replacement: measured Phase4/PBO/DSR/forward evidence and promotion gate artifacts
+    last_verified: "2026-05-27"
+
+  - id: formula_engine_contract_tests
+    paths:
+      - backend/tests/test_formula_engine.py
+      - backend/tests/test_build_formula_signals.py
+    owner_module: formula_engine
+    scope: contract
+    runner: PYTHONPATH=backend python -m pytest -q backend/tests/test_formula_engine.py backend/tests/test_build_formula_signals.py
+    status: active
+    evidence_level: trusted_with_scope
+    truth_source: local formula engine and formula-signal builder fixtures
+    risk_reason: verifies formula mechanics only; does not prove PIT-safe production signals or searchable Optuna space
+    replacement: formula registry/search-space checks plus PIT signal spotcheck before strategy validation resumes
+    last_verified: "2026-05-27"
+
+  - id: feature_registry_contract_tests
+    paths:
+      - backend/tests/test_feature_registry.py
+    owner_module: feature_registry
+    scope: contract
+    runner: PYTHONPATH=backend python -m pytest -q backend/tests/test_feature_registry.py
+    status: active
+    evidence_level: trusted_with_scope
+    truth_source: feature registry fixture contract
+    risk_reason: verifies feature registry mechanics only; does not prove production feature lineage or freshness
+    replacement: data need coverage, feature lineage, and freshness gates
+    last_verified: "2026-05-27"
+
+  - id: analytics_contract_tests
+    paths:
+      - backend/tests/test_analytics.py
+    owner_module: analytics
+    scope: contract
+    runner: PYTHONPATH=backend python -m pytest -q backend/tests/test_analytics.py
+    status: active
+    evidence_level: trusted_with_scope
+    truth_source: analytics fixture contract
+    risk_reason: validates analytics helper behavior only; does not prove strategy readiness or production data freshness
+    replacement: module-specific contract tests plus measured downstream evidence
+    last_verified: "2026-05-27"
+
+  - id: lambdamart_v6_contract_tests
+    paths:
+      - backend/tests/test_lambdamart_v6.py
+    owner_module: ml_ranking.lambdamart_v6
+    scope: contract
+    runner: PYTHONPATH=backend python -m pytest -q backend/tests/test_lambdamart_v6.py
+    status: active
+    evidence_level: trusted_with_scope
+    truth_source: mock/synthetic LambdaMART v6 feature and Optuna contract fixtures
+    risk_reason: synthetic Optuna contract is not forward KPI, model stability, or production promotion evidence
+    replacement: verified train-log checkpoints, walk-forward stability, Phase4/PBO/DSR, and forward validation
+    last_verified: "2026-05-27"
+
+  - id: lambdamart_v6_fast_path_root_tests
+    paths:
+      - backend/tests/test_lambdamart_v6_perf.py
+    owner_module: ml_ranking.lambdamart_v6
+    scope: contract
+    runner: PYTHONPATH=backend python -m pytest -q -m 'not perf' backend/tests/test_lambdamart_v6_perf.py
+    status: active
+    evidence_level: trusted_with_scope
+    truth_source: synthetic RankPanel and PIT boundary fixtures for LambdaMART v6 walk-forward helper fast paths
+    risk_reason: validates PIT boundary and int64 fast-path mechanics only; it does not prove real retrain throughput, model stability, or forward KPI quality
+    replacement: verified train-log checkpoints, full walk-forward stability evidence, Phase4/PBO/DSR, and forward validation
+    last_verified: "2026-05-27"
+
+  - id: lambdamart_v6_perf_opt_in_root_tests
+    paths:
+      - backend/tests/test_lambdamart_v6_perf.py
+    owner_module: ml_ranking.lambdamart_v6.perf
+    scope: perf
+    runner: PYTHONPATH=backend python -m pytest -q -m perf backend/tests/test_lambdamart_v6_perf.py
+    status: active
+    evidence_level: trusted_with_scope
+    truth_source: synthetic RankPanel timing budget for build_walk_forward_windows regression detection
+    risk_reason: timing evidence is environment-sensitive and opt-in only; it does not prove GCP retrain runtime, production model stability, or deployability
+    replacement: controlled retrain wrapper logs, verified checkpoints, train-log stability audit, and production-scale profiling
+    last_verified: "2026-05-27"
+
+  - id: model_artifact_gc_root_tests
+    paths:
+      - backend/tests/test_model_artifact_gc.py
+    owner_module: ml_lifecycle.model_artifact_gc
+    scope: contract
+    runner: PYTHONPATH=backend python -m pytest -q backend/tests/test_model_artifact_gc.py
+    status: active
+    evidence_level: trusted_with_scope
+    truth_source: in-memory DuckDB lifecycle, recommendation, gate-reference, pipeline-manifest, and temporary model-file fixtures
+    risk_reason: validates obsolete model delete planning/execution mechanics only; it does not authorize production artifact deletion without CodeGraph/rg/lineage review and an explicit approval path
+    replacement: deletion governance review, model lineage audit, manifest checks, and targeted production delete dry-run before deleting real artifacts
+    last_verified: "2026-05-27"
+
+  - id: model_artifact_wrapper_root_tests
+    paths:
+      - backend/tests/test_model_artifacts.py
+      - backend/tests/test_model_explainer.py
+    owner_module: ml_lifecycle.model_artifacts
+    scope: unit
+    runner: PYTHONPATH=backend python -m pytest -q backend/tests/test_model_artifacts.py backend/tests/test_model_explainer.py
+    status: active
+    evidence_level: trusted_with_scope
+    truth_source: fake LightGBM/Ridge blend, z-score, pickle, and contribution-additivity fixtures
+    risk_reason: validates wrapper math, serialization, and local explanation consistency only; it does not prove real feature importance quality, production model correctness, or promotion readiness
+    replacement: measured model validation, feature lineage, explanation QA, Phase4/PBO/DSR, and forward evidence
+    last_verified: "2026-05-27"
+
+  - id: neutralize_unit_root_tests
+    paths:
+      - backend/tests/test_neutralize.py
+    owner_module: ml_ranking.neutralize
+    scope: unit
+    runner: PYTHONPATH=backend python -m pytest -q backend/tests/test_neutralize.py
+    status: active
+    evidence_level: trusted_with_scope
+    truth_source: synthetic industry and market-cap neutralization fixtures
+    risk_reason: validates neutralization math only; it does not prove input industry/market-cap data is PIT-safe, fresh, or complete
+    replacement: feature lineage, PIT/freshness audits, and measured downstream model validation
+    last_verified: "2026-05-27"
+
+  - id: paper_engine_core_rule_root_tests
+    paths:
+      - backend/tests/test_paper_engine_entries.py
+      - backend/tests/test_paper_engine_exits.py
+      - backend/tests/test_paper_engine_outcomes.py
+      - backend/tests/test_paper_engine_signal_ic.py
+      - backend/tests/test_paper_engine_weights.py
+    owner_module: paper_engine.core_rules
+    scope: unit
+    runner: PYTHONPATH=backend python -m pytest -q backend/tests/test_paper_engine_entries.py backend/tests/test_paper_engine_exits.py backend/tests/test_paper_engine_outcomes.py backend/tests/test_paper_engine_signal_ic.py backend/tests/test_paper_engine_weights.py
+    status: active
+    evidence_level: trusted_with_scope
+    truth_source: synthetic OHLC, entry/exit, outcome, IC, and target-weight fixtures
+    risk_reason: validates paper-engine rule mechanics only; perfect IC, toy returns, cash reserve, thresholds, and limit cases are not production paper_sim KPI, forward Sharpe, or execution-readiness evidence
+    replacement: backtest_preflight, tradeability audit, cost-aware paper_sim artifacts, KPI registry, Phase4/PBO/DSR, and forward validation
+    last_verified: "2026-05-27"
+
+  - id: paper_engine_storage_benchmark_root_tests
+    paths:
+      - backend/tests/test_paper_engine_benchmarks.py
+      - backend/tests/test_paper_engine_ddl.py
+    owner_module: paper_engine.storage_benchmarks
+    scope: integration
+    runner: PYTHONPATH=backend python -m pytest -q backend/tests/test_paper_engine_benchmarks.py backend/tests/test_paper_engine_ddl.py
+    status: active
+    evidence_level: trusted_with_scope
+    truth_source: in-memory DuckDB paper-engine DDL and toy HS300/equal-weight benchmark fixtures
+    risk_reason: validates storage and benchmark alignment mechanics only; it does not prove production DB migration state, benchmark source freshness, or strategy-relative performance
+    replacement: realdb migration smoke, market-data freshness audit, full paper_sim KPI artifacts, and delivery-readiness evidence
+    last_verified: "2026-05-27"
+
+  - id: api_route_visibility_root_tests
+    paths:
+      - backend/tests/test_market_routes.py
+      - backend/tests/test_openapi_contract.py
+    owner_module: api_contract
+    scope: contract
+    runner: PYTHONPATH=backend python -m pytest -q backend/tests/test_market_routes.py backend/tests/test_openapi_contract.py
+    status: active
+    evidence_level: trusted_with_scope
+    truth_source: FastAPI route table plus isolated market-status audit snapshot fixture
+    risk_reason: verifies API visibility and route response shape only; it does not prove production DuckDB availability, data freshness, or UI readiness
+    replacement: route contract suite plus realdb data-health smoke when API release gates resume
+    last_verified: "2026-05-27"
+
+  - id: phase0_daily_controller_root_tests
+    paths:
+      - backend/tests/test_phase0_daily_closure.py
+    owner_module: cron_daily
+    scope: contract
+    runner: PYTHONPATH=backend python -m pytest -q backend/tests/test_phase0_daily_closure.py
+    status: active
+    evidence_level: trusted_with_scope
+    truth_source: local cron_daily phase-order, lock, lineage, and source-registry fixtures
+    risk_reason: verifies controller mechanics and special-report mappings only; it does not prove daily data sync freshness or external source availability
+    replacement: data_audit, source coverage audit, and real daily-run manifest checks after sync
+    last_verified: "2026-05-27"
+
+  - id: stock_picture_component_root_tests
+    paths:
+      - backend/tests/test_picture_ddl.py
+      - backend/tests/test_picture_institution_signal.py
+      - backend/tests/test_picture_stage_days.py
+      - backend/tests/test_picture_stock_type.py
+      - backend/tests/test_picture_valuation.py
+    owner_module: stock_picture
+    scope: unit
+    runner: PYTHONPATH=backend python -m pytest -q backend/tests/test_picture_ddl.py backend/tests/test_picture_institution_signal.py backend/tests/test_picture_stage_days.py backend/tests/test_picture_stock_type.py backend/tests/test_picture_valuation.py
+    status: active
+    evidence_level: trusted_with_scope
+    truth_source: in-memory stock-picture DDL, stage-days, valuation, stock-type, and institution-signal component fixtures
+    risk_reason: validates component mechanics only; classifier thresholds and synthetic holders are not production profile, CYQ, source freshness, or stock-file UI evidence
+    replacement: profile component contract with lineage_ref, freshness_status, evidence_status, and config/table-owned thresholds
+    last_verified: "2026-05-27"
+
+  - id: pipeline_policy_gc_root_tests
+    paths:
+      - backend/tests/test_pipeline_manifest.py
+      - backend/tests/test_pipeline_performance_policy.py
+      - backend/tests/test_pipeline_run_gc.py
+      - backend/tests/test_preflight.py
+    owner_module: pipeline_governance
+    scope: contract
+    runner: PYTHONPATH=backend python -m pytest -q backend/tests/test_pipeline_manifest.py backend/tests/test_pipeline_performance_policy.py backend/tests/test_pipeline_run_gc.py backend/tests/test_preflight.py
+    status: active
+    evidence_level: trusted_with_scope
+    truth_source: DuckDB manifest fixtures, config-backed performance policy, panel preflight fixtures, and in-memory obsolete-run delete ledger
+    risk_reason: verifies pipeline governance mechanics only; synthetic stale/preflight and delete cases do not authorize production deletion, data freshness claims, or long-run performance budgets
+    replacement: production run manifest audit, data_audit, deletion governance dry-run, and controlled GCP wrapper logs when heavy runs resume
+    last_verified: "2026-05-27"
+
+  - id: pricing_policy_sql_root_tests
+    paths:
+      - backend/tests/test_pricing_policy.py
+      - backend/tests/test_pricing_sql.py
+    owner_module: pricing_policy
+    scope: contract
+    runner: PYTHONPATH=backend python -m pytest -q backend/tests/test_pricing_policy.py backend/tests/test_pricing_sql.py
+    status: active
+    evidence_level: trusted_with_scope
+    truth_source: config-backed pricing policy fixture and in-memory QFQ VWAP SQL fixture
+    risk_reason: validates pricing-label policy and VWAP expression mechanics only; it does not prove production label panel freshness, model readiness, or execution quality
+    replacement: pricing data-readiness gate, follow-return label quality audit, and measured paper_sim evidence
+    last_verified: "2026-05-27"
+
+  - id: primitives_seed_root_tests
+    paths:
+      - backend/tests/test_primitives.py
+    owner_module: primitives
+    scope: unit
+    runner: PYTHONPATH=backend python -m pytest -q backend/tests/test_primitives.py
+    status: active
+    evidence_level: trusted_with_scope
+    truth_source: in-memory primitive config/dimension table seed fixtures
+    risk_reason: verifies seed table mechanics and retired table absence only; table seeds are not a substitute for universe_rules.yaml, K-line tradeability truth, or production migration evidence
+    replacement: config/table exact-sync checks, universe_rules validation, and real migration smoke
+    last_verified: "2026-05-27"
+
+  - id: qfii_client_root_tests
+    paths:
+      - backend/tests/test_qfii_client.py
+    owner_module: data_sources.qfii
+    scope: unit
+    runner: PYTHONPATH=backend python -m pytest -q backend/tests/test_qfii_client.py
+    status: active
+    evidence_level: trusted_with_scope
+    truth_source: mocked A-share QFII special-report rows, in-memory raw_qfii_holding_quarterly table, and updater step registry
+    risk_reason: validates normalization, idempotent writes, failure handling, and updater registration only; it does not prove Aif10/akshare source uptime or production freshness
+    replacement: source coverage probe, data-source freshness audit, and lineage/materialization checks
+    last_verified: "2026-05-27"
+
+  - id: recommendation_output_gc_root_tests
+    paths:
+      - backend/tests/test_recommendation_output_gc.py
+    owner_module: ml_lifecycle.recommendation_output_gc
+    scope: contract
+    runner: PYTHONPATH=backend python -m pytest -q backend/tests/test_recommendation_output_gc.py
+    status: active
+    evidence_level: trusted_with_scope
+    truth_source: in-memory model lifecycle, recommendation-output, cache, and data-deletion ledger fixtures
+    risk_reason: validates obsolete recommendation-output delete mechanics only; it does not authorize production deletion without CodeGraph/rg/lineage review and explicit approval
+    replacement: deletion governance review, recommendation lineage audit, and production delete dry-run before real cleanup
+    last_verified: "2026-05-27"
+
+  - id: phase5_decision_root_tests
+    paths:
+      - backend/tests/test_record_phase5_decision.py
+    owner_module: ml_lifecycle.phase5_decision
+    scope: contract
+    runner: PYTHONPATH=backend python -m pytest -q backend/tests/test_record_phase5_decision.py
+    status: active
+    evidence_level: trusted_with_scope
+    truth_source: local Phase4 gate payload fixture and decision JSON writer
+    risk_reason: verifies decision mapping and model-id guard only; it does not prove Phase4/PBO/DSR validity, forward KPI quality, or promotion readiness
+    replacement: measured Phase4/PBO/DSR/forward evidence plus human promotion review
+    last_verified: "2026-05-27"
+
+  - id: return_engine_pricing_root_tests
+    paths:
+      - backend/tests/test_return_engine_follow_cost.py
+    owner_module: return_engine
+    scope: unit
+    runner: PYTHONPATH=backend python -m pytest -q backend/tests/test_return_engine_follow_cost.py
+    status: active
+    evidence_level: trusted_with_scope
+    truth_source: synthetic QFQ VWAP/fallback pricing fixtures and in-memory K-line relation cache
+    risk_reason: validates return-engine entry-price mechanics only; it does not prove production K-line freshness, tradeability, or paper_sim KPI evidence
+    replacement: backtest_preflight, pricing data-readiness gate, and cost-aware production paper_sim validation
+    last_verified: "2026-05-27"
+
+  - id: scoring_composite_root_tests
+    paths:
+      - backend/tests/test_scoring_composite.py
+    owner_module: scoring
+    scope: unit
+    runner: PYTHONPATH=backend python -m pytest -q backend/tests/test_scoring_composite.py
+    status: active
+    evidence_level: trusted_with_scope
+    truth_source: synthetic composite, ceiling, pool, and discovery-score pure-function fixtures
+    risk_reason: validates scoring math branches only; hardcoded fixture thresholds and toy holders are not production alpha, profile, or strategy readiness evidence
+    replacement: config-backed scoring policy checks, feature lineage/freshness audit, and measured downstream validation
+    last_verified: "2026-05-27"
+
+  - id: source_policy_watermark_root_tests
+    paths:
+      - backend/tests/test_source_policy.py
+      - backend/tests/test_source_watermarks.py
+    owner_module: data_sources.source_governance
+    scope: contract
+    runner: PYTHONPATH=backend python -m pytest -q backend/tests/test_source_policy.py backend/tests/test_source_watermarks.py
+    status: active
+    evidence_level: trusted_with_scope
+    truth_source: config-backed source policy and in-memory source-watermark derivation fixtures
+    risk_reason: verifies tdxhub-primary/akshare-fallback policy loading and watermark mechanics only; it does not prove external source availability, PIT freshness, or production table completeness
+    replacement: source coverage probe, strict data_audit freshness checks, lineage materialization, and production DuckDB read-only source audits
+    last_verified: "2026-05-27"
+
+  - id: updater_step_budget_root_tests
+    paths:
+      - backend/tests/test_step_budget.py
+    owner_module: updater.status
+    scope: unit
+    runner: PYTHONPATH=backend python -m pytest -q backend/tests/test_step_budget.py
+    status: active
+    evidence_level: trusted_with_scope
+    truth_source: in-memory source-watermark lag fixtures and updater step budget model
+    risk_reason: validates dynamic timeout budgeting mechanics only; datetime-relative fixtures are not production data freshness evidence or a guarantee that long sync jobs are safe to run
+    replacement: updater run manifest audit, data_audit after sync, and controlled-run watchdog evidence
+    last_verified: "2026-05-27"
+
+  - id: updater_completeness_root_tests
+    paths:
+      - backend/tests/test_updater_completeness.py
+    owner_module: updater.completeness
+    scope: contract
+    runner: PYTHONPATH=backend python -m pytest -q backend/tests/test_updater_completeness.py
+    status: active
+    evidence_level: trusted_with_scope
+    truth_source: monkeypatched market/read-model coverage fixtures and updater completeness calibration contract
+    risk_reason: validates data-completeness status calibration mechanics only; it does not prove production table freshness or that a real update run reached completeness
+    replacement: strict data_audit after sync and updater run manifest evidence
+    last_verified: "2026-05-27"
+
+  - id: updater_connectivity_root_tests
+    paths:
+      - backend/tests/test_updater_connectivity.py
+    owner_module: updater.connectivity
+    scope: contract
+    runner: PYTHONPATH=backend python -m pytest -q backend/tests/test_updater_connectivity.py
+    status: active
+    evidence_level: trusted_with_scope
+    truth_source: cached connectivity helper fixtures and FastAPI route contract with mocked probe
+    risk_reason: validates connectivity cache and route shape only; mocked probes do not prove live TDX/source availability
+    replacement: controlled updater preflight connectivity probe plus source coverage and data_audit evidence
+    last_verified: "2026-05-27"
+
+  - id: updater_daily_sync_metrics_root_tests
+    paths:
+      - backend/tests/test_updater_daily_sync_metrics.py
+    owner_module: updater.sync_metrics
+    scope: contract
+    runner: PYTHONPATH=backend python -m pytest -q backend/tests/test_updater_daily_sync_metrics.py
+    status: active
+    evidence_level: trusted_with_scope
+    truth_source: mocked sync_raw/f10 extra module responses and update-step detail normalization fixtures
+    risk_reason: validates sync summary and metric formatting only; it does not run real ingestion or prove tdxhub/fallback source freshness
+    replacement: source coverage audit, updater run manifest, and post-sync data_audit freshness checks
+    last_verified: "2026-05-27"
+
+  - id: updater_execution_root_tests
+    paths:
+      - backend/tests/test_updater_execution.py
+    owner_module: updater.execution
+    scope: contract
+    runner: PYTHONPATH=backend python -m pytest -q backend/tests/test_updater_execution.py
+    status: active
+    evidence_level: trusted_with_scope
+    truth_source: fake connection, fake runner, dependency graph, progress ledger, and K-line connectivity fixtures
+    risk_reason: validates orchestration bookkeeping, dependency skips, connection lifecycle, and progress updates only; it does not execute production data sync or prove data freshness
+    replacement: controlled updater dry-run/run manifest plus strict data_audit after sync
+    last_verified: "2026-05-27"
+
+  - id: updater_institution_wrapper_root_tests
+    paths:
+      - backend/tests/test_updater_institution.py
+    owner_module: updater.institution
+    scope: contract
+    runner: PYTHONPATH=backend python -m pytest -q backend/tests/test_updater_institution.py
+    status: active
+    evidence_level: trusted_with_scope
+    truth_source: monkeypatched sync_industry wrapper and injected updater hooks
+    risk_reason: validates wrapper delegation and hook wiring only; it does not prove industry/source sync success or profile freshness
+    replacement: institution source coverage, updater run manifest, and data_audit/profile lineage evidence
+    last_verified: "2026-05-27"
+
+  - id: updater_launcher_root_tests
+    paths:
+      - backend/tests/test_updater_launcher.py
+    owner_module: updater.launcher
+    scope: contract
+    runner: PYTHONPATH=backend python -m pytest -q backend/tests/test_updater_launcher.py
+    status: active
+    evidence_level: trusted_with_scope
+    truth_source: fake launcher dependency bundle, background task cleanup, and group scheduling fixtures
+    risk_reason: validates background launcher lifecycle and scheduling mechanics only; it does not start real update jobs or prove run completion
+    replacement: controlled updater run manifest, watchdog evidence, and post-run data_audit
+    last_verified: "2026-05-27"
+
+  - id: updater_n_plus_one_root_tests
+    paths:
+      - backend/tests/test_updater_n_plus_one_fix.py
+    owner_module: updater.performance
+    scope: contract
+    runner: PYTHONPATH=backend python -m pytest -q backend/tests/test_updater_n_plus_one_fix.py
+    status: active
+    evidence_level: trusted_with_scope
+    truth_source: fake row/connection call logs, batched step-status operations, trends/profile helper fixtures
+    risk_reason: validates selected N+1 prevention mechanics and response-shape compatibility only; it does not prove full updater performance or production data quality
+    replacement: audit_n_plus_one report, updater runtime metrics, and complexity scan on touched updater modules
+    last_verified: "2026-05-27"
+
+  - id: updater_plan_root_tests
+    paths:
+      - backend/tests/test_updater_plan.py
+    owner_module: updater.plan
+    scope: unit
+    runner: PYTHONPATH=backend python -m pytest -q backend/tests/test_updater_plan.py
+    status: active
+    evidence_level: trusted_with_scope
+    truth_source: static updater step metadata, group selection, dependency filtering, and skipped-step ordering fixtures
+    risk_reason: validates DAG metadata helper behavior only; it does not prove that every production step is fresh, runnable, or complete
+    replacement: updater DAG architecture review, run manifest, and strict post-sync data_audit
+    last_verified: "2026-05-27"
+
+  - id: updater_status_root_tests
+    paths:
+      - backend/tests/test_updater_status.py
+    owner_module: updater.status
+    scope: contract
+    runner: PYTHONPATH=backend python -m pytest -q backend/tests/test_updater_status.py
+    status: active
+    evidence_level: trusted_with_scope
+    truth_source: fake connection, run context, smart-plan budget, calendar preflight, and status payload fixtures
+    risk_reason: validates status/plan payloads and connection lifecycle only; it does not prove real updater progress, source freshness, or production readiness
+    replacement: controlled updater run manifest, source watermarks, and strict data_audit after sync
+    last_verified: "2026-05-27"
+
+  - id: system_routes_realdb_smoke_tests
+    paths:
+      - backend/tests/test_system_routes.py
+    owner_module: system_routes
+    scope: realdb
+    runner: PYTHONPATH=backend python -m pytest -q -m realdb backend/tests/test_system_routes.py
+    status: active
+    evidence_level: trusted_with_scope
+    truth_source: opt-in full FastAPI app smoke against local production DuckDB initialization path
+    risk_reason: imports the production app and can touch local DuckDB state; it must stay realdb opt-in and cannot prove data freshness, routing completeness, or deployment readiness
+    replacement: isolated route contract tests with monkeypatched app dependencies before moving any portion back into default fast suite
+    last_verified: "2026-05-27"
+
+  - id: strategy_preset_router_unit_tests
+    paths:
+      - backend/tests/test_strategy_preset.py
+    owner_module: strategy_preset
+    scope: unit
+    runner: PYTHONPATH=backend python -m pytest -q backend/tests/test_strategy_preset.py
+    status: active
+    evidence_level: trusted_with_scope
+    truth_source: monkeypatched strategy preset router connection and batched default-preset seed fixture
+    risk_reason: validates preset seeding mechanics only; it does not prove production strategy config quality or promotion readiness
+    replacement: config-backed strategy preset governance and measured strategy validation evidence
+    last_verified: "2026-05-27"
+
+  - id: ta_lib_math_unit_tests
+    paths:
+      - backend/tests/test_ta_lib.py
+    owner_module: ta_lib
+    scope: unit
+    runner: PYTHONPATH=backend python -m pytest -q backend/tests/test_ta_lib.py
+    status: active
+    evidence_level: trusted_with_scope
+    truth_source: pure technical-analysis helper math fixtures
+    risk_reason: validates NaN/missing-value helper behavior only; it does not prove any formula alpha, PIT safety, or trading outcome
+    replacement: PIT formula engine tests and measured signal validation before formula claims
+    last_verified: "2026-05-27"
+
+  - id: trade_plan_builder_unit_tests
+    paths:
+      - backend/tests/test_trade_plan_builder.py
+    owner_module: trade_plan.builder
+    scope: unit
+    runner: PYTHONPATH=backend python -m pytest -q backend/tests/test_trade_plan_builder.py
+    status: active
+    evidence_level: trusted_with_scope
+    truth_source: pure trade-plan builder fixtures and validation errors
+    risk_reason: validates payload construction rules only; it does not prove executable trade quality, slippage, limit-up handling, or candidate readiness
+    replacement: backtest_preflight, cost-aware paper_sim, and order/tradeability gates before trading claims
+    last_verified: "2026-05-27"
+
+  - id: utils_calendar_unit_tests
+    paths:
+      - backend/tests/test_utils.py
+    owner_module: utils
+    scope: unit
+    runner: PYTHONPATH=backend python -m pytest -q backend/tests/test_utils.py
+    status: active
+    evidence_level: trusted_with_scope
+    truth_source: pure numeric/date helpers plus duck_mem trading calendar fixtures
+    risk_reason: validates helper mechanics only; calendar fixture rows are not proof of production calendar freshness
+    replacement: calendar service contract and strict data_audit date-range checks
+    last_verified: "2026-05-27"
+
+  - id: tdx_source_pool_contract_tests
+    paths:
+      - backend/tests/test_tdx_source.py
+    owner_module: data_sources.tdx
+    scope: contract
+    runner: PYTHONPATH=backend python -m pytest -q backend/tests/test_tdx_source.py
+    status: active
+    evidence_level: trusted_with_scope
+    truth_source: duck_mem TDX server-health fixtures, monkeypatched tdxhub quote clients, AkShare fallback, and TDX GPCW affair fixtures
+    risk_reason: validates source-pool, retry, fallback, GPCW sync/profile, and auto-feature mechanics only; mocked TDX/tdxhub calls do not prove live source availability or production freshness
+    replacement: data-source coverage probe, source-watermark audit, and post-sync data_audit freshness checks
+    last_verified: "2026-05-27"
+
+  - id: multidim_model_training_mechanics_tests
+    paths:
+      - backend/tests/test_train_multidim_model.py
+    owner_module: ml_ranking.multidim
+    scope: contract
+    runner: PYTHONPATH=backend python -m pytest -q backend/tests/test_train_multidim_model.py
+    status: active
+    evidence_level: trusted_with_scope
+    truth_source: duck_mem feature-panel/model-selection fixtures, explicit with_alpha158=False loader calls, and local feature-contract/parameter mechanics
+    risk_reason: validates training data loaders, feature group resolution, fixed params, and prediction row mechanics only; it does not run real Optuna/training or prove model production quality
+    replacement: plan_validator, walk-forward OOS evidence, and Phase4/PBO/DSR gates before model promotion
+    last_verified: "2026-05-27"
+
+  - id: xdxr_client_tempdb_contract_tests
+    paths:
+      - backend/tests/test_xdxr_client.py
+    owner_module: market_data.xdxr
+    scope: integration
+    runner: PYTHONPATH=backend python -m pytest -q backend/tests/test_xdxr_client.py
+    status: active
+    evidence_level: trusted_with_scope
+    truth_source: temporary market DuckDB path and monkeypatched TDX xdxr fetch fixtures
+    risk_reason: validates xdxr client sync/cache mechanics in temp DB only; it does not prove live TDX availability or production adjustment-factor freshness
+    replacement: controlled market-data sync plus data_audit K-line/xdxr consistency checks
+    last_verified: "2026-05-27"
+
+  - id: backend_test_duckdb_fixture
+    paths:
+      - backend/tests/conftest.py
+    owner_module: test_fixtures
+    scope: fixture
+    runner: PYTHONPATH=backend python -m pytest --collect-only -q backend/tests/conftest.py
+    status: active
+    evidence_level: trusted_with_scope
+    truth_source: canonical duck_mem helper backed by services.duck_adapter.connect(':memory:')
+    risk_reason: shared fixture support only; it is not independent business, data freshness, or universe evidence
+    replacement: module-local fixtures when a test needs a narrower DB contract
+    last_verified: "2026-05-27"
+
+  - id: backend_tests_package_marker
+    paths:
+      - backend/tests/__init__.py
+    owner_module: test_fixtures
+    scope: fixture
+    runner: PYTHONPATH=backend python -m pytest --collect-only -q backend/tests/__init__.py
+    status: active
+    evidence_level: trusted_with_scope
+    truth_source: empty backend.tests package marker
+    risk_reason: package marker only; it carries no test evidence and should be deleted if package semantics are proven unnecessary
+    replacement: delete after CodeGraph/rg confirms no import/package dependency remains
+    last_verified: "2026-05-27"
+
+  - id: v3_meta_helper_contract_tests
+    paths:
+      - backend/tests/test_v3_meta.py
+    owner_module: v3.meta
+    scope: contract
+    runner: PYTHONPATH=backend python -m pytest -q -m "not realdb" backend/tests/test_v3_meta.py
+    status: active
+    evidence_level: trusted_with_scope
+    truth_source: isolated v3_meta helper test with fake connection and table-existence fixtures
+    risk_reason: protects batched formula-stat query mechanics only; route smoke tests in the same file are realdb opt-in and do not prove production dashboard freshness
+    replacement: isolated router app contract tests before default-fast v3 API claims
+    last_verified: "2026-05-27"
+
+  - id: v3_meta_realdb_route_tests
+    paths:
+      - backend/tests/test_v3_meta.py
+    owner_module: v3.meta
+    scope: realdb
+    runner: PYTHONPATH=backend python -m pytest -q -m realdb backend/tests/test_v3_meta.py
+    status: active
+    evidence_level: trusted_with_scope
+    truth_source: opt-in full FastAPI app v3 meta/static route smoke against local production DuckDB and static files
+    risk_reason: route tests import the production app and may read local DuckDB/static state; they must stay realdb opt-in and cannot prove production freshness or UI readiness
+    replacement: isolated router contract tests with monkeypatched connections plus Browser smoke after frontend work resumes
+    last_verified: "2026-05-27"
+
+  - id: v3_picture_realdb_route_tests
+    paths:
+      - backend/tests/test_v3_picture.py
+    owner_module: v3.picture
+    scope: realdb
+    runner: PYTHONPATH=backend python -m pytest -q -m realdb backend/tests/test_v3_picture.py
+    status: active
+    evidence_level: trusted_with_scope
+    truth_source: opt-in full FastAPI app stock-picture/trade-plan route smoke against local production DuckDB
+    risk_reason: uses production app and real stock codes; it cannot be default fast evidence or prove stock profile freshness, trade-plan quality, or frontend readiness
+    replacement: isolated picture/profile contract tests with lineage/freshness/unknown-state fixtures
+    last_verified: "2026-05-27"
+
+  - id: v3_paper_helper_contract_tests
+    paths:
+      - backend/tests/test_v3_paper.py
+    owner_module: v3.paper
+    scope: contract
+    runner: PYTHONPATH=backend python -m pytest -q -m "not realdb" backend/tests/test_v3_paper.py
+    status: active
+    evidence_level: trusted_with_scope
+    truth_source: isolated _latest_picture_by_code helper fixture with fake connection rows
+    risk_reason: protects batching helper mechanics only; paper route tests in the same file are realdb opt-in and cannot prove paper_sim KPI readiness
+    replacement: isolated paper route contract tests plus measured paper_sim/Phase4 evidence
+    last_verified: "2026-05-27"
+
+  - id: v3_paper_realdb_route_tests
+    paths:
+      - backend/tests/test_v3_paper.py
+    owner_module: v3.paper
+    scope: realdb
+    runner: PYTHONPATH=backend python -m pytest -q -m realdb backend/tests/test_v3_paper.py
+    status: active
+    evidence_level: trusted_with_scope
+    truth_source: opt-in full FastAPI app paper NAV/holdings/KPI route smoke against local production DuckDB
+    risk_reason: route tests read production paper tables if present; they do not prove KPI validity, forward Sharpe, PBO/DSR, or production promotion readiness
+    replacement: cost-aware paper_sim contract tests and Phase4/PBO/DSR evidence
+    last_verified: "2026-05-27"
+
+  - id: v3_selection_realdb_route_tests
+    paths:
+      - backend/tests/test_v3_selection.py
+    owner_module: v3.selection
+    scope: realdb
+    runner: PYTHONPATH=backend python -m pytest -q -m realdb backend/tests/test_v3_selection.py
+    status: active
+    evidence_level: trusted_with_scope
+    truth_source: opt-in full FastAPI app selection route smoke against local production DuckDB
+    risk_reason: uses real selection tables and stock codes; it cannot be default fast evidence or prove selection quality, PIT safety, or strategy readiness
+    replacement: isolated selection contract tests plus PIT/freshness/lineage gates
+    last_verified: "2026-05-27"
+
+  - id: screening_api_read_root_tests
+    paths:
+      - backend/tests/test_screening_contract.py
+      - backend/tests/test_screening_read.py
+    owner_module: screening
+    scope: contract
+    runner: PYTHONPATH=backend python -m pytest -q backend/tests/test_screening_contract.py backend/tests/test_screening_read.py
+    status: active
+    evidence_level: trusted_with_scope
+    truth_source: FastAPI route visibility, in-memory screening mart fixtures, and monkeypatched route connection contract
+    risk_reason: verifies screening API/read-model shape only; it does not prove production screening mart freshness, universe correctness, or UI readiness
+    replacement: production screening data_audit, universe coverage gate, and route contract smoke after data sync
+    last_verified: "2026-05-27"
+
+  - id: selection_lifecycle_root_tests
+    paths:
+      - backend/tests/test_selection_ddl.py
+      - backend/tests/test_selection_feedback.py
+      - backend/tests/test_selection_logger.py
+      - backend/tests/test_selection_outcome.py
+      - backend/tests/test_selection_summary.py
+    owner_module: selection
+    scope: contract
+    runner: PYTHONPATH=backend python -m pytest -q backend/tests/test_selection_ddl.py backend/tests/test_selection_feedback.py backend/tests/test_selection_logger.py backend/tests/test_selection_outcome.py backend/tests/test_selection_summary.py
+    status: active
+    evidence_level: trusted_with_scope
+    truth_source: in-memory selection DDL, formula weight, logging, K-line outcome, and summary fixtures
+    risk_reason: validates selection lifecycle mechanics only; synthetic K-line/outcome/IC fixtures are not paper_sim KPI, formula alpha, or production promotion evidence
+    replacement: backtest_preflight, PIT K-line validation, cost-aware paper_sim evidence, and formula/search-space governance before strategy validation resumes
+    last_verified: "2026-05-27"
+
+  - id: scoring_engine_grade_root_tests
+    paths:
+      - backend/tests/test_scoring_engine.py
+    owner_module: scoring
+    scope: unit
+    runner: PYTHONPATH=backend python -m pytest -q backend/tests/test_scoring_engine.py
+    status: active
+    evidence_level: trusted_with_scope
+    truth_source: pure scoring grade/default helper fixtures
+    risk_reason: validates recency/premium grade helper branches only; fixture constants are not production scoring policy, institution alpha, or strategy readiness evidence
+    replacement: config-backed scoring policy checks, institution profile lineage/freshness audit, and measured downstream validation
+    last_verified: "2026-05-27"
+
+  - id: research_three_pieces_root_tests
+    paths:
+      - backend/tests/test_research_three_pieces.py
+    owner_module: research
+    scope: contract
+    runner: PYTHONPATH=backend python -m pytest -q backend/tests/test_research_three_pieces.py
+    status: active
+    evidence_level: trusted_with_scope
+    truth_source: services.research composite score, edge flag, reflection, and in-memory DDL fixtures
+    risk_reason: validates research helper mechanics only; synthetic Sharpe/drawdown/trade-count fixtures are not paper_sim KPI, forward Sharpe, or promotion evidence
+    replacement: cost-aware paper_sim, Phase4/PBO/DSR, and forward evidence before strategy claims
+    last_verified: "2026-05-27"
+
+  - id: lambdamart_v6_retrain_root_tests
+    paths:
+      - backend/tests/test_retrain_lambdamart_v6.py
+    owner_module: ml_ranking.lambdamart_v6.retrain
+    scope: contract
+    runner: PYTHONPATH=backend python -m pytest -q backend/tests/test_retrain_lambdamart_v6.py
+    status: active
+    evidence_level: trusted_with_scope
+    truth_source: retrain schema, checkpoint, train-log resume, temporary checkpoint, duck_mem, and in-memory Optuna fixtures
+    risk_reason: validates retrain orchestration and checkpoint semantics only; synthetic OOS/rank-IC/Optuna values are not model stability, GCP runtime, or production promotion evidence
+    replacement: verified train-log checkpoints, walk-forward stability, controlled GCP wrapper logs, Phase4/PBO/DSR, and forward validation
+    last_verified: "2026-05-27"
+
+  - id: daily_topk_root_tests
+    paths:
+      - backend/tests/test_run_daily_topk.py
+    owner_module: recommendation.daily_topk
+    scope: contract
+    runner: PYTHONPATH=backend python -m pytest -q backend/tests/test_run_daily_topk.py
+    status: active
+    evidence_level: trusted_with_scope
+    truth_source: daily-topk helper math, key-feature JSON, explanation writer, and duck_mem primary-demotion fixtures
+    risk_reason: validates daily recommendation writer/helper mechanics only; it does not load a real model, attach production DBs, prove champion quality, or authorize primary recommendation status
+    replacement: model validation, production data freshness, recommendation lineage, paper_sim/Phase4 evidence, and delivery gates
+    last_verified: "2026-05-27"
+
+  - id: feature_ablation_root_tests
+    paths:
+      - backend/tests/test_run_feature_ablation.py
+    owner_module: feature_ablation
+    scope: contract
+    runner: PYTHONPATH=backend python -m pytest -q backend/tests/test_run_feature_ablation.py
+    status: active
+    evidence_level: trusted_with_scope
+    truth_source: daily cross-section IC/decile math, LightGBM matrix construction, and duck_mem feature-panel loader fixture with alpha158 explicitly disabled
+    risk_reason: validates feature-ablation mechanics only; fixture IC/decile/matrix output is not production feature uplift, alpha158 coverage, or walk-forward evidence
+    replacement: source coverage, feature lineage/freshness audit, strict walk-forward feature ablation, and measured downstream validation
+    last_verified: "2026-05-27"
+
+  - id: feature_group_ablation_root_tests
+    paths:
+      - backend/tests/test_run_feature_group_ablation.py
+    owner_module: feature_ablation.group
+    scope: contract
+    runner: PYTHONPATH=backend python -m pytest -q backend/tests/test_run_feature_group_ablation.py
+    status: active
+    evidence_level: trusted_with_scope
+    truth_source: in-memory feature-panel candidate rows and mart_candidate_walkforward_eval fixtures
+    risk_reason: validates feature-group aggregation mechanics only; fixture rank-IC values and feature names are not production uplift or deployable feature evidence
+    replacement: feature lineage/freshness audit, walk-forward ablation artifacts, and measured downstream validation
+    last_verified: "2026-05-27"
+
+  - id: sector_momentum_root_tests
+    paths:
+      - backend/tests/test_sector_momentum.py
+    owner_module: sector_momentum
+    scope: integration
+    runner: PYTHONPATH=backend python -m pytest -q backend/tests/test_sector_momentum.py
+    status: active
+    evidence_level: trusted_with_scope
+    truth_source: in-memory industry, event, and K-line sector momentum fixtures
+    risk_reason: validates sector-momentum mechanics only; synthetic relative-date events are not production industry freshness, board coverage, or alpha evidence
+    replacement: data_audit, universe coverage, sector source freshness, and measured downstream validation
+    last_verified: "2026-05-27"
+
+  - id: signals_route_cache_root_tests
+    paths:
+      - backend/tests/test_signals_route_cache.py
+    owner_module: routers.signals
+    scope: contract
+    runner: PYTHONPATH=backend python -m pytest -q backend/tests/test_signals_route_cache.py
+    status: active
+    evidence_level: trusted_with_scope
+    truth_source: monkeypatched FastAPI route/cache contract fixtures
+    risk_reason: validates route cache response shape only; it does not prove real DB cache freshness, signal freshness, or UI readiness
+    replacement: route contract suite, data freshness gate, and realdb read-only smoke after sync
+    last_verified: "2026-05-27"
+
+  - id: signals_v2_institution_signal_root_tests
+    paths:
+      - backend/tests/test_signals_v2.py
+    owner_module: signals_v2
+    scope: integration
+    runner: PYTHONPATH=backend python -m pytest -q backend/tests/test_signals_v2.py
+    status: active
+    evidence_level: trusted_with_scope
+    truth_source: in-memory institution event, industry, settings, survey, today-cache, and notice-date PIT fixtures
+    risk_reason: validates EV/backtest/cohort/today-cache/D8 mechanics only; rolling-date synthetic gains are not production signal alpha, PIT coverage, or promotion evidence
+    replacement: PIT/freshness audits, non-proxy validation gates, paper_sim/Phase4/PBO/DSR, and forward evidence
+    last_verified: "2026-05-27"
+
+  - id: stock_horizon_read_root_tests
+    paths:
+      - backend/tests/test_stock_horizon_read.py
+    owner_module: stock_horizon_read
+    scope: contract
+    runner: PYTHONPATH=backend python -m pytest -q backend/tests/test_stock_horizon_read.py
+    status: active
+    evidence_level: trusted_with_scope
+    truth_source: in-memory horizon selection, gate, and effect read-model fixtures
+    risk_reason: validates latest-run read-model mechanics only; synthetic returns are not horizon validation, model quality, or production stock-file evidence
+    replacement: horizon validation artifacts, profile lineage/freshness gate, and measured downstream evidence
+    last_verified: "2026-05-27"
+
+  - id: stock_scoring_integration_root_tests
+    paths:
+      - backend/tests/test_stock_scoring_integration.py
+    owner_module: scoring
+    scope: integration
+    runner: PYTHONPATH=backend python -m pytest -q backend/tests/test_stock_scoring_integration.py
+    status: active
+    evidence_level: trusted_with_scope
+    truth_source: in-memory profile, relationship, financial, stage, forecast, turtle, attention, and monkeypatched market fixtures
+    risk_reason: validates stock scoring integration branches only; rolling-date fixture scores are not production profile/scoring readiness, institution alpha, or strategy evidence
+    replacement: config-backed scoring policy checks, profile lineage/freshness audit, data_audit, and measured downstream validation
+    last_verified: "2026-05-27"
+
+  - id: stock_trends_read_root_tests
+    paths:
+      - backend/tests/test_stock_trends_summary.py
+    owner_module: stock_trends_read
+    scope: contract
+    runner: PYTHONPATH=backend python -m pytest -q backend/tests/test_stock_trends_summary.py
+    status: active
+    evidence_level: trusted_with_scope
+    truth_source: local payload, dummy connection, and monkeypatched trend-map fixtures
+    risk_reason: validates trend read-model/frontend payload semantics only; it does not prove production trend/profile freshness or UI readiness
+    replacement: trend mart freshness audit, profile lineage contract, and route/UI smoke after API stabilization
+    last_verified: "2026-05-27"
+
+  - id: stock_watchlist_read_root_tests
+    paths:
+      - backend/tests/test_stock_watchlist_read.py
+    owner_module: stock_watchlist_read
+    scope: contract
+    runner: PYTHONPATH=backend python -m pytest -q backend/tests/test_stock_watchlist_read.py
+    status: active
+    evidence_level: trusted_with_scope
+    truth_source: in-memory blacklist, watchlist, and trend read fixtures
+    risk_reason: validates watchlist/blacklist read-model shape only; manual lists are not active-universe, tradeability, or candidate-quality proof
+    replacement: universe coverage gate, tradeability audit, profile lineage/freshness checks, and UI route contracts
+    last_verified: "2026-05-27"
+
+  - id: stock_turtle_engine_root_tests
+    paths:
+      - backend/tests/test_stock_turtle_engine.py
+    owner_module: stock_turtle_engine
+    scope: integration
+    runner: PYTHONPATH=backend python -m pytest -q backend/tests/test_stock_turtle_engine.py
+    status: active
+    evidence_level: trusted_with_scope
+    truth_source: in-memory trend, stage, forecast, industry, and synthetic QFQ K-line fixtures
+    risk_reason: validates turtle breakout/exit mechanics only; rolling dates and toy prices are not trading signal evidence, paper_sim KPI, or production readiness
+    replacement: backtest_preflight, tradeability audit, PIT signal spotcheck, paper_sim/Phase4/PBO/DSR, and forward evidence
+    last_verified: "2026-05-27"
+
+  - id: storage_retention_delete_governance_root_tests
+    paths:
+      - backend/tests/test_storage_retention.py
+    owner_module: storage_retention
+    scope: integration
+    runner: PYTHONPATH=backend python -m pytest -q backend/tests/test_storage_retention.py
+    status: active
+    evidence_level: trusted_with_scope
+    truth_source: temporary DuckDB, temporary files, retention config, and copied-DB cleanup fixtures
+    risk_reason: validates direct-delete retention mechanics only in temp/copy scope; it does not authorize production deletion without CodeGraph/rg/lineage review and explicit approval
+    replacement: deletion governance review, production dry-run, lineage audit, and targeted retention evidence before real cleanup
+    last_verified: "2026-05-27"

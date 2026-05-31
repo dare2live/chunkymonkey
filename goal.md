@@ -1,2486 +1,406 @@
 # ChunkyMonkey Goal
 
-## 2026-05-24 — 后续 plan (active roadmap, 替代 prior sections)
+## 2026-05-27 — 架构重构当前执行计划 (承接 handoff, 覆盖旧 M0/M4/M5 顺序)
 
-> 用户 (2026-05-24): "请制定后续计划更新到 goal.md".
-> 基于 MASTER_SYNTHESIS_20260523.md (84 commits 验证 + integration 整合 plan).
-> **停止 version retrain, 走 Track A 冻结 + Track B 副本优化 + 3 组 forward verification**.
+> 当前阶段是 **先架构后业务**。本节是接手 `analysis/handoff_20260527.md`、
+> `analysis/codex_bootstrap_20260527.md`、`docs/PROJECT_CONSTITUTION.md`、
+> `docs/architecture_reform_context.md` 后形成的执行计划。`docs/implementation_plan.md`
+> 已同步为同一架构优先口径。
 
-### 当前 state (2026-05-24)
-- v7 deployed `candidate_forward_monitor` (panel v5c clean, true train-log, PBO 0.094 PASS)
-- audit_delivery 90% NOT READY (95% gate, IS-OOS 30% strict 对 LightGBM 不可达)
-- v8/v9b 验证 paper_sim 上限 (1.53/1.71) but PBO unstable trade-off
-- BC 1063 candidates 含 15.7% 硬 contamination + 21% 微盘
-- 14+ enforcement layers shipped (hooks + scripts + cron)
-- GCP $9.70 / $50 = 19% used
+### 当前 FAIL / 风险先记
 
-### 真 success 定义 (不是 paper_sim 95% gate)
-| Gate | Target |
-|---|---|
-| 实战 forward Sharpe | ≥ 1.0 stable 6+ months |
-| max_dd | ≥ -20% |
-| win rate | ≥ 55% monthly |
-| Universe | 100% clean |
-| Phase 4 PBO | < 0.2 |
-| Phase 4 IS-OOS | < 50% (model-class-aware) |
+| 项 | 当前状态 | 风险/决策 |
+|---|---:|---|
+| `check_universe_filter.py --all` | **PASS: CLEAN (767 production files)** | non-test gate 已清零；`--include-tests` 仍可审计 fixture 引用 |
+| `dim_active_a_stock` 定位 | non-test 直接引用已治理 | 只能做 code->name/cache/data-sync/schema/meta，不做 universe 真相源 |
+| `universe_governance` | **PASS scoped audit**: `services.universe` / checker / recommendation universe / label universe 通过 test-tool audit、py_compile、per-file complexity、CodeGraph sync、`check_universe_filter --all`、`test_universe.py` + checker tests | ST SQL 过滤已改为从 `universe_rules.yaml` 的 `st_name_patterns` 生成；`dim_active_a_stock` 仅用于 ST 名称映射 evidence，不作为活跃 universe 真相源 |
+| Rule 10 | 已在 `safe_commit.sh` 增加 Step 4.5 blocking gate，并补 `SAFE_COMMIT_NO_PUSH=1` 本地提交模式；`test_safe_commit.py` 6 passed | `.py` staged commit 必须被 `Codex-Reviewed: APPROVE/APPROVE_WITH_NOTES` 或 8+ 字符 skip reason 硬约束；`REQUEST_CHANGES` 不可放行；dirty 收束可先本地 safe commit，不为清理工作区被迫 push |
+| 顶层设计审查 | **APPROVE_WITH_NOTES / 未最终闭环** | `docs/engineering_governance.md` 已补“二阶审查”，确认流程/功能/模块/数据表/配置文件这套管理方式本身合理；但 freshness/PIT/complexity gate 未全闭环，不能当架构完成证书 |
+| 硬编码治理 | 已纳入 `AGENTS.md`、bootstrap、top-level design review 和 chunkymonkey skills | 业务规则/阈值/source catalog/数据源优先级默认归 config/table/service；Python 只留测试夹具、数学常量、schema/enum、SQL DDL 或有证据的例外 |
+| 删除治理 | 已纳入 `AGENTS.md`、top-level design review 和 chunkymonkey skills | 经 CodeGraph + `rg` + 测试/审计验证可删的代码必须真删；不允许用注释、隐藏开关、改名、dead branch 或空壳保留来掩饰残留 |
+| 数据需求契约 | **PASS scoped audit / 生产库未写**: `tdx_data_need_coverage.yaml` 已把 `grain`、`pit_key`、`freshness_sla`、`evidence_status`、`production_eligibility` 升级为每个 need 的必填契约；`audit_tdx_data_need_coverage.py` 缺字段/非法 enum/eligible+unknown PIT 会 FAIL，DDL 与 `schema_marts.py` 已补新列 | 当前只验证配置 loader 与临时 DuckDB 物化，未写生产 DuckDB；后续 source 增删改必须先登记 need contract，再走 source probe、PIT/freshness、exact-sync 和 consumer eligibility |
+| 库内 artifact/cache 污染审计 | **WARN / 未发现 LifeHack 同型事故**: `analysis/lifehack_storage_bloat_analog_audit_20260531.md` 已记录只读证据；未发现 `fa_fact_agent_workflow_*`、`agent_workflow`、`latest_dispatch`、`queue_items` 或 `audit_json` 自回嵌台账。`data/smartmoney.duckdb` 29.4GiB 主要由预测/特征/财务面板大表构成；`mart_audit_snapshot_state.audit_json` 仅 4KB，`mart_market_perception_audit_log` 8 行且 bounded。 | 仍发现真实 storage smell：`mart_today_signal_cache.signals_json` 单行 20,220,095 bytes / 9,286 signals，`mart_global_data_quality_gate.evidence_json` 最大 185,645 bytes。这不是循环嵌套日志污染，但说明 DB summary、明细 payload、外部 artifact 的边界要制度化。后续 P0/P1 增加 artifact/cache storage contract：DB 放索引/摘要/可查询事实，大 payload 归明细表或受控 artifact；清理前必须用 CodeGraph + `rg` 定消费者并补回归 |
+| 文档引用图 / 循环权威链 | **PASS scoped / 10 active docs**: `docs/` 已压缩为 10 个活文档；旧研究/RCA/spec 已迁 `analysis/docs_archive_20260531/`；`audit_docs_graph.py` 当前区分 authority edge 与 context-only edge，运行快照/dated handoff 不再参与权威 SCC。 | 最新实跑: 13 sources / 262 edges / 193 authority edges / 23 context-only edges / 0 unresolved live refs / 0 missing archive targets / 0 forbidden SCC / largest SCC 7；后续新增活文档必须同批合并/归档/删除旧文档，保持 `docs/*.md <= 10`。 |
+| 文档清理切片验收 | **WARN / not stage-ready**: 新增 `scripts/chunkyctl docs --format markdown`，把 docs graph 与 docs/archive/support dirty 切片合并输出；当前 docs_graph PASS，但 docs cleanup slice 仍有 `dirty_docs_entries=75`、`dirty_support_entries=9`、`unknown_worktree_entries=0`；文档工具自身 test-tool gate PASS，`test_audit_docs_graph.py` + `test_chunkyctl.py` 为 25 passed。 | 这证明循环权威链已清且工具可用，但工作区清理尚未最终收束；后续 staging/commit 必须把 docs 删除、analysis 归档、docs map、goal/implementation、`audit_docs_graph.py`/tests、`chunkyctl docs` 入口作为同一 reviewed slice 处理，不能 `git add .`。 |
+| 文档内容整合 | **PASS scoped / active docs职责收窄**: `docs/implementation_plan.md` 已改为 durable roadmap，不再复制每个 slice 的实时 PASS/WARN；`docs/architecture_reform_context.md` 已改为 300616 历史原因和稳定原则，移除旧“当前状态/GCP 当前用量/40 违规”等易误导内容；`docs/README.md` 补“goal=状态、docs=规则契约、analysis=证据”的文档治理规则。 | 当前状态只写 `goal.md`；历史证据只进 `analysis/`；活文档保留 <=10 且不再自说自话。后续若新增文档/改变启动模式/改变 gate，必须同批更新 docs map 和 quickstart。 |
+| 文档归档内容审计 | **PASS scoped / no missing target**: 根目录三份迁移文档已与 `analysis/plan_v3_20260514_archived.md`、`analysis/data_integrity_audit_20260517.md`、`analysis/market_perception_development_plan_20260520.md` 逐字匹配；可从 HEAD 精确比对的归档项中 20 个 exact match，13 个为路径/status/controller-agent 规则的 intentional normalization，6 个无 HEAD 基线只能按 target-exists + live refs gate 管理。 | `Archived as/under` 不是当前权威入口；归档文件只作历史证据。若后续需要保留逐字证据，先用 `git show HEAD:<old>` / hash 比对，再改 ledger。 |
+| 测试工具可信度 | **PRE-TEST GATE ACTIVE / PASS**: `backend/config/test_tool_registry.yaml` + `backend/scripts/audit_test_tool_health.py` + `docs/engineering_governance.md` 已覆盖全部 selected test artifacts；root micro-batch 13 已完成 updater 9 个 root tests 与剩余 system/strategy/tdx/v3/utils/conftest/xdxr 等 14 个 root artifacts 的 owner/status/evidence 登记；Rule 10 行为测试已加入；full audit 为 0 FAIL / 0 WARN / 365 selected / 365 registered / 100% registry coverage | 这只证明测试工具 registry 与默认/opt-in scope 对齐，不证明业务数据或策略有效；updater targeted pytest 89 passed / 2 warnings；剩余 14 个 root artifacts 默认 pytest 76 passed / 63 deselected / 15 warnings；`system_routes` 与 `v3_*` route smoke 已标 `realdb` opt-in，realdb collect-only 63/66 collected，未执行真实库测试；`test_tdx_source.py` 仍有 `datetime.utcnow()` deprecation 小债 |
+| `raw_fund_flow_daily` | **FAIL / deprecated / stale, production fallback fixed**: 本地 86,426 rows，2025-08-21 -> 2026-04-24，`dim_data_asset.deprecation_status=deprecated`；`CapitalFlowAlpha` 与 institution score source gate 已改为 PIT-only，panel manifest 已标 raw 只能 research/deprecated | CYQ 主力画像仍需要真实主力/超大/大/中/小单资金流；恢复前必须 source probe + PIT/freshness gate，生产策略/画像路径不得吃 stale raw，raw 只能 research/proxy/unknown |
+| `market_perception` | **PLAN / gated**: 最近研究把路线收敛为“行业分类层均值回归、概念主题层才是 alpha 主战场，但必须 daily snapshot PIT 落库”；`fact_stock_attention_snapshot` / `raw_profit_forecast_snapshot_daily` 是 P0 接线，`dim_stock_tdx_block` 需要 history 化，`fact_margin_detail_daily` 是 P2 免费 14 年历史补位，LHB / 主力跟随信号整体反向或随机，AIF10 空壳不接 | 这条并行研究只反哺数据接入和 `daily_update` 纪律，不把“明面主力跟随”误升成正向生产证据 |
+| 画像 / 股票档案 | **PLAN / gated**: `docs/data_product_contract.md` 已新增 | 股票画像、机构画像、主力行为画像和前端股票档案必须先走数据需求契约 + lineage/freshness contract；前端不能先把 `unknown/proxy/stale` 包装成生产证据 |
+| `test_screening_engine.py` | **PASS**: active-universe fixture 已修复 | K 线 truth-source fixture 改为相对当前日期；`test_screening_engine.py` + `test_screening_read.py` 4 passed |
+| main 工作区 | **FAIL / 258 dirty entries**: `scripts/chunkyctl worktree --format markdown` 当前分为 12 桶、`unknown=0`、`CodeGraph candidate untracked=53`；已清理本地生成残留 `.DS_Store` / `__pycache__` / `.pytest_cache` / `.pyc`，未删日志/报告/DB 证据。 | dirty 已从“混乱长列表”变成可验收队列，但仍未 clean；不能盲目 `git add .`、不能回滚用户/同伴改动；必须按 docs/tooling/updater/data/service/test 切片验证、显式 stage、`safe_commit.sh` 收束。 |
+| CodeGraph 索引状态 | `scripts/chunkyctl audit --run ...` 本轮已执行 `codegraph sync .`；`codegraph status .` 仍显示 53 Added pending；`scripts/chunkyctl doctor --fast` 已解释 pending_added=53 正好匹配 untracked indexable `.py/.js/.jsx` files=53 | 这是未跟踪代码文件尚未被接受/删除造成的 pending，不是反复 sync 能解决；后续每个代码切片验收后再 `codegraph sync .`，最终由 staging/commit 或真实删除来清零。 |
+| 工具更新 | **LOCAL WRAPPER FIRST / PROJECT ASSISTANT SEED**: `audit_tooling_gate.py` / `chunkyctl doctor` 当前显示 258 dirty entries、CodeGraph pending 53；无 baseline 时 complexity diff 已改为 `baseline_unavailable`，只报 `unclassified_high_count`，不把历史 HIGH 误标为新增回归；已生成本地忽略基线 `data/reports/tooling/complexity_baseline.json`（capped 40 findings），`doctor --fast` 默认加载后显示 `diff_status=compared`、`new_high_count=0`、`unchanged_count=40`；`chunkyctl preflight` 已修复 `build` 命中 `ui` 子串的 frontend 假阳性，并兼容 `scripts/chunkyctl preflight "task" path...` 省心写法；`chunkyctl worktree` 已支持 JSON + `--format markdown`，dirty 分桶 unknown=0；`chunkyctl docs` 已新增为 docs graph + docs-cleanup dirty slice 面板；`chunkyctl audit` 已修复把 `backend/*.yaml` 误当 Python scope 的 py_compile/complexity 误判，wrapper 同时兼容位置 scope 与 `--scope` 写法；`safe_commit.sh` 支持 `SAFE_COMMIT_NO_PUSH=1` 本地安全提交；`docs/chunkyctl_session_quickstart.md` 已明确 dirty resolution mode | GitHub 调研后暂不引入 Worktrunk/lazygit/delta/git-absorb/git-town/git-branchless；先把 dirty/codegraph/complexity 机器化，再逐步收束成 `chunkyctl` 类项目专用审计/开发辅助入口；后续任何 session 启动模式、gate、工具入口或 controller/agent 工作法变化，必须同批更新 quickstart，不允许只留在对话或 handoff |
+| `docs_archive_moves` | **APPROVE_WITH_NOTES**: 三份 root 历史文档已逐字迁到 `analysis/data_integrity_audit_20260517.md`、`analysis/plan_v3_20260514_archived.md`、`analysis/market_perception_development_plan_20260520.md`；hash 复核一致: plan archive=851cd7b7, data-integrity archive=3aaabf4b, market-perception archive=ceb29db0，`git diff --no-index --stat` 无输出 | 后续 staging 时三份 root 删除和三份 `analysis/` 归档必须同组处理；旧 root 名称剩余命中为 Docs Map、迁移记录、归档正文标题或 test fixture，不是活跃入口 |
+| `config_project` | **PASS scoped audit**: `.gitignore`、`backend/config/field_dictionary.yaml`、`pytest.ini` 已和 test-tool registry / audit 脚本 / 回归一起审计；`pytest.ini` 默认排除 `realdb/perf/network/gcp/slow` | 这是配置门禁证据，不是业务数据或策略证据；后续 staging 应随 startup/test-tool/config slice 成组处理 |
+| `docs/implementation_plan.md` | 已收窄为 durable roadmap | 当前 PASS/WARN/FAIL 看本节；执行顺序、边界和验收标准看该文件 |
+| `updater.py` | 723 LOC route shell + `updater_execution.py` 823 LOC + `updater_launcher.py` 278 LOC + `updater_completeness.py` 108 LOC + `updater_plan.py` 130 LOC + `updater_lifeboat.py` 88 LOC + `updater_market_data.py` 765 LOC + `updater_infra.py` 258 LOC + `updater_calendar.py` 157 LOC + `updater_steps.py` 232 LOC + `updater_connectivity.py` 156 LOC + `updater_sync.py` 443 LOC + `updater_calc.py` 196 LOC + `updater_runtime.py` 34 LOC + `updater_audit.py` 53 LOC + `updater_status.py` 593 LOC + `updater_reset.py` 161 LOC + `updater_institution.py` 533 LOC + `updater_trends.py` 303 LOC + `updater_profiles.py` 455 LOC | runtime helper、infra/helper、calendar/date-truth、DAG metadata 与 DAG 查询/选择 helper、execution orchestration helper、full/group/smart/single 状态账本、group pipeline 执行循环 helper、full DAG 执行循环 helper、single-step chain 执行循环 helper、smart plan 执行循环 helper、smart-update 计划/交易日历 preflight helper、background task failure/cleanup launcher helper、smart/full/single/group background launcher deps、launcher callback bundle、group route request launcher helper、run-start helper、step-status priming helper/connection lifecycle、stale-running step_status 清理 helper、step_status catalog 同步 helper、source failure queue 状态 helper、update status payload/response helper、audit snapshot refresh helper、audit route payload helper、step-result apply helper、stop/hard-dependency bookkeeping helper、running/stopped/failed transition helper、K 线不可用 skip/gap_queue helper、K 线连通性预检 helper、runner managed connection helper、data_completeness 校准 helper、status/plan summary、connectivity probe/cache、reset table helper 与 reset response payload/connection lifecycle、standalone external sync/calc、sync_raw/sync_financial body、institution match、sync_industry body、industry_stat sync body、build_trends body、build_profiles body、sync_market_data body、lifeboat legacy endpoints 已抽出；full/group/single launcher 参数注入与 group route request 调度已迁入 `updater_launcher.py`，reset-derived/reset-industry response/connection lifecycle 已迁入 `updater_reset.py`，后续继续按 route/status 边界收薄 |
+| Complexity HIGH | backend API HIGH 已清；已治理 gate scripts 无 HIGH；本轮 test-tool/realdb 隔离变更未新增 touched-file HIGH；`build_architecture_inventory.py` 已完成 `_safe_latest()` 批量 latest-column 查询、嵌套路由 prefix 传播、frontend route match index、JS comment stripper 单通道状态机、`_apply_dependency_context()` set-based 去重/阻断汇总；2026-05-27 broad scan 仍报告大量历史 HIGH，主要集中在 `backend/scripts/*`；uncapped 总债见 handoff，不可把默认输出行数当剩余总量 | 继续按真相源/门禁影响优先修；`build_architecture_inventory.py` 仍有 parser/scanner/dependency 历史 HIGH，下一批继续 `build_drift_safe_feature_candidates.py`、`backtest_model_portfolio.py`、`build_bestchoice_context_exit_policy.py` 等脚本；不把测试工具 registry PASS 当作复杂度或业务性能完成 |
+| 端到端审计实跑 | **FAIL: 24 total / 19 OK / 2 WARN / 3 FAIL** | 报告脚本复杂度 HIGH 已清，但真实数据 freshness/PIT 未过：`fact_technical_trigger`/`fact_signal_context` 停 2026-05-19，`mart_stock_survey_features` 停 2026-05-20，推荐 PIT coverage 仍为 0 |
+| PIT integrity 实跑 | **PASS: 9 PASS / 30 WARN / 0 FAIL** | 已补 `mart_stock_formula_optuna_bestchoice_v1` 的 `as_of_date` / `built_at` 并重导入 1146 rows；仍有 30 个 WARN，不能把 legacy/warn-only 当 production 证据 |
+| Survivorship gate 实跑 | **FAIL: 1 issue** | `mart_p0a_label_panel` 默认 `label_version=p0a_v2_governance_v1` 仅 711 distinct codes，低于 KEEP ever-listed 5,210 的 90% 门槛；这是历史训练面板覆盖风险，不因脚本复杂度清理而消失 |
+| Universe coverage 实跑 | **PASS: 16 PASS / 6 WARN / 0 FAIL** | 真实 gate 0 FAIL；6 WARN 为 `fact_signal_context` 空行、近期 panel 空行和 1 个 partial-sync month-first 样本，不能当数据全新鲜证据 |
+| 数据完整性实跑 | **FAIL: 6 stale tables** | `audit_data_completeness.py` 代码复杂度已清，但本地数据审计发现 6 张表 `STALE_7d⚠`；这是数据新鲜度风险，不是架构代码 PASS |
+| 业务推进 | 暂停 | 不做 300616 五公式、前端公式视图、GCP/Optuna 全量跑批 |
 
-### 已验证的测试结果 (all strategies, summary)
+### 权威文档顺序
 
-#### ML models
-| Model | Panel | Sharpe | Ann | DD | Win | PBO | IS-OOS | Phase 4 |
-|---|---|---|---|---|---|---|---|---|
-| V4 baseline (production) | v3 (14% contaminated) | 0.65 | 36% | -22.2% | 45% | 0.145 PASS | 89.6% proxy FAIL | 3/4 BLOCK |
-| v6 stability retrain | v4 (Pattern 10 leak) | failed | - | - | - | 0.251 FAIL | 60.8% FAIL | BLOCK |
-| v7 (clean panel) | v5c (clean PIT) | 0.87 | 22% | -19.0% | 40% | **0.094 PASS** | 63.5% true FAIL | **3/4 PASS BLOCK** |
-| v8 (PIT historical) | v5_PIT | 1.53 | 43% | -19.3% | 50% | 0.366 FAIL | 70.85% FAIL | 2/4 BLOCK |
-| v9b (strong reg) | v5_PIT | **1.71** | **61%** | **-16.16%** | **65%** | 0.409 FAIL | 51.28% FAIL | 2/4 BLOCK |
+| 优先级 | 文档 | 用途 |
+|---:|---|---|
+| 1 | `AGENTS.md` | Codex 操作政策: dirty worktree、CodeGraph+complexity、GCP、删除治理 |
+| 2 | `goal.md` 本节 | 当前 FAIL/WARN 账本、优先级和下一步 |
+| 3 | `docs/chunkyctl_session_quickstart.md` | 新 session 启动契约 |
+| 4 | `docs/PROJECT_CONSTITUTION.md` | 最高规则: 真相源、分层、gate、完成标准 |
+| 5 | `docs/engineering_governance.md` | 第一性原理/奥卡姆、CodeGraph+complexity、测试工具、agents、GCP、删除治理 |
+| 6 | `docs/data_product_contract.md` | 数据需求、血缘、画像、市场感知支持、前端契约 |
+| 7 | `docs/strategy_validation_contract.md` | 回测、Optuna/GCP、paper_sim、forward、promotion、主升浪验证边界 |
+| 8 | `docs/architecture_reform_context.md` | 300616 哨兵案例和架构改革原因 |
+| 9 | `docs/implementation_plan.md` | 正式计划文档，已同步为架构优先口径 |
 
-#### Ensemble variants (all PBO unstable, BLOCK)
-| Strategy | Sharpe | DD | Win | PBO | 备注 |
-|---|---|---|---|---|---|
-| V4 + BC rank-combine | 1.83 | -16.85% | 60% | 0.780 FAIL | high Sharpe K-variant unstable |
-| V4 + BC stage-filtered | 1.84 | -16.85% | 60% | 0.794 FAIL | marginal |
-| V4 ∩ BC + Phase 7 (portfolio) | 1.85 | -20.63% | 50% | - | BLOCK |
-| V4 ∩ BC + Phase 7 + ST filter | 1.47 | -21.85% | 60% | - | ST filter HURT -0.38 |
-| v7 + BC clean | 0.36 | -23.94% | 35% | - | BC dilutes v7 |
-| v7 + Phase 7 context | 1.04 | -18.86% | 50% | 0.827 FAIL | overlay 加 PBO |
+`SESSION_HANDOFF.md`、`analysis/workflow_checkpoint.md`、`analysis/handoff_*.md`
+和 dated bootstrap/prompt 文件只作运行上下文与历史证据；若与以上权威文档
+冲突，以权威文档为准。
 
-#### BC standalone
-| Item | Sharpe | DD | Win | Verdict |
-|---|---|---|---|---|
-| BC paper_sim (Phase 3) | 1.10 | -22.1% | 50% | candidate, 含 15.7% contamination |
-| BC walk-forward time-bucket P1/P2/P3 | 1.06/1.11/0.97 | - | 56/65/57% | MILD bias |
-| BC Phase 8 stop-loss A+B | 1.58 | - | 59.4% | NEGATIVE vs no-stop 1.67 |
+### 不做清单 (直到架构 gate 通过)
 
-### Per-strategy 重跑 vs 复用 decision
-
-| Model | 含 contamination? | 重跑必要? | 替代 |
-|---|---|---|---|
-| V4 baseline | 14% (v3 base) | ⚠ 应弃 | reuse v7 ✓ done |
-| v6 stability | Pattern 10 leak | ✗ abandon | (root cause fixed) |
-| V4+BC ensembles | inherit 14% | ✗ abandon | (PBO 全 FAIL) |
-| v7/v8/v9b | clean | ✓ reuse as-is | - |
-| BC | 15.7% hard + 21% 微盘 | **必 wire universe** | Phase 2 BC absorbed |
-
-### Best params 提取 (无需重跑, Phase 1.6)
-- 已有 `data/reports/optuna/lgbm_phase5_v{7,8,9b}*.best.json` + study.db
-- 提取 cross-model consensus (max_depth/reg_alpha/min_child_samples zones)
-- Output: `data/reports/best_params_consensus.json`
-- ETA 2h, no GCP
-
-### 3-group forward verification 设计 (Phase 5-6)
-
-| Group | Model | Capital | Purpose |
-|---|---|---|---|
-| **G1** | v7 (existing) | 1.5% | control baseline, already deployed |
-| **G2** | Unified ensemble (Phase 4 output) | 1.5% | treatment A |
-| **G3** | Linear/factor model (Phase 4 output) | 1.5% | treatment B |
-
-Forward 6 weeks parallel. Decision week 6+:
-- Top performer Sharpe ≥ 0.8 → PROMOTE, scale 15%
-- Sharpe 0.5-0.8 → EXTEND monitor 12 weeks
-- < 0.5 → ABORT, revert V4
-
-### 盲点 list (10 items, addressed in phases)
-
-| # | 盲点 | Phase | 现状 |
-|---|---|---|---|
-| 1 | Tx cost realism (broker spread/impact) | 5 | adv20 surcharge only |
-| 2 | Concurrent positions correlation | 6 | 假独立 |
-| 3 | Regime detection | 4 | proposed only |
-| 4 | Capacity scaling (微盘 21%) | 1 | universe filter 加 mcap |
-| 5 | Alpha decay over time | 6 | no model |
-| 6 | Multi-horizon labels (only 20d) | 4 | signal mismatch |
-| 7 | Feature engineering (alpha158 7yr old) | 2+3 | base alpha 弱 |
-| 8 | Cross-validation methodology (expanding only) | 4 | overfit 片面 |
-| 9 | Survival analysis | 2 | rebalance freq 不优 |
-| 10 | Phase 4 model-class threshold | 4 | linear/factor 解 |
-
-### Phase 1 — Foundation (~3 天, $0 GCP)
-
-| # | Task | ETA | Output |
-|---|---|---|---|
-| 1.1 | Track A FROZEN tags (chunkymonkey/bestchoice/ + sibling perception README) | 10 min | freeze enforcement |
-| 1.2 | L7 Phase 4 `--require-true-train-log` default ON | 15 min | retrain script flip |
-| 1.3 | L9 Retrain save LightGBM booster `.lgb.txt` | 30 min | enables daily inference |
-| 1.4 | L10 Registry promote validator script + pre-commit | 1h | validator |
-| 1.5 | L14 Daily paper_sim vs forward reconcile | 30 min | extend monitor |
-| 1.6 | Best-params cross-model extraction (v7/v8/v9b Optuna DBs) | 2h | consensus zone JSON |
-| 1.7 | Perception sibling display UI entry (read-only) | 2-3h | v3_perception_legacy.py + UI tab |
-| ~~1.8~~ | **MOVED to Phase 2.2**: BC universe wire 必在 bc_absorbed copy 中做 (Track A FROZEN 不能改 bestchoice/) | - | - |
-
-**Phase 1 exit gate** (revised 2026-05-24): L7/L9/L10/L14 enforced ✓, best params consensus extracted ✓, Track A FROZEN ✓, Perception display UI 1.7 ✓ (5 endpoints). BC universe wire moved to Phase 2.2 (done).
-
-**Phase 1 status (2026-05-24 23:00 CST): 8/8 DONE** ✓
-
-### Phase 2 status (in progress)
-
-| # | Task | Status |
+| 暂停项 | 原因 | 恢复条件 |
 |---|---|---|
-| 2.1 | cp bestchoice/ → bc_absorbed/ (488K) | ✓ |
-| 2.2 | Universe wire ST filter 3 compute.py locations | ✓ |
-| 2.3 | governance.enforce_pre_optimize wired in formula_local_optuna | ✓ |
-| 2.4 | Formula bank 50 (7 categories × 7) | pending 1 week |
-| 2.5 | Stage filter integration (Wyckoff 1.5/2/3) | pending half day |
-| 2.6 | Phase 4 gate verify | pending 1h GCP $0.50 |
+| M0 300616 五公式 | 业务逻辑会被错误 universe / PIT / gate 污染 | 架构验收通过后再按 god-view -> PIT 去泄漏方法做 |
+| 主升浪猎手正式研究/验证 | 当前仍在框架治理期，不能把研究日志里的旧胜率当生产结论 | 框架治理工作结束并通过 architecture/docs/test/data/tooling gate 后，作为主线 P1 专题认真研究、复现、去泄漏验证 |
+| M4 前端公式视图 | 展示层不能先于可信公式/数据层 | L0-L3 gate 清楚、公式 registry 可信 |
+| M5 GCP 全量 Optuna | 之前 29/34 无 search space 白跑、200 只深主板偏样本 | `backtest_preflight` + `plan_validator` + GCP preflight 全 PASS |
+| 新策略 promotion claim | 未测指标必须 unknown | 只能用 paper_sim/Phase4/PBO/DSR/forward 证据 |
 
-### Phase 2 — BC Absorbed Copy + 优化 (~2 周, ~$5 GCP)
+### 架构完成后回归主线
 
-| # | Task | ETA | Output |
+架构 / 框架治理 gate 通过后恢复主线, 但顺序必须是验证先于展示。`docs/zhushenglang_hunter_research_log_20260528.md`
+作为“主项目做成主升浪猎手”的产品北极星保留；治理结束后要认真研究、复现和验证，不把旧 prototype 结论直接当生产证据。
+
+| 顺序 | 优先级 | 主线任务 | 前置 gate |
+|---:|---|---|---|
+| 0 | P1 | 主升浪猎手认真研究和验证 | 框架治理结束后启动；先复核研究日志的数据/代码/样本边界，再经 PIT、成本、T+1、涨跌停、持仓重叠、walk-forward、paper_sim 和 forward monitor 复验；70%/78%/86% 等数字只作研究假设 |
+| 1 | P1 | BestChoice 公式接入与冻结证据复核 | BestChoice artifact freeze/hash/lineage, namespaced challenger import |
+| 2 | P1 | 300616 原始公式复现 | universe/PIT 清洁, god-view 与 PIT 去泄漏分离 |
+| 3 | P1/P2 | 300616 衍生公式与参数空间 | `plan_validator` 8 项 PASS, search space 非空 |
+| 4 | P1/P2 | 主项目量化回测 / paper_sim | `backtest_preflight` 8 项 PASS, 成本/涨跌停/排除股票规则有效 |
+| 5 | P2 | 候选池与持仓监控 | paper_sim/Phase4/PBO/DSR/forward 证据足够, 未测指标仍 `unknown` |
+| 6 | P2/P3 | 股票画像和档案 API | profile contract + lineage/freshness gate |
+| 7 | P3/P4 | 全局前端 UI/交互重设计 | 业务 API、gate 状态、lineage contract 稳定 |
+
+因此“架构完成”不是直接上前端, 而是恢复可验证主线: 公式 -> 回测 -> 候选/监控 -> 画像/API -> 前端。
+
+### 总体目标架构
+
+| 层 | 责任 | 真相源 / 模块 | 当前整改重点 |
 |---|---|---|---|
-| 2.1 | cp chunkymonkey/bestchoice/ → backend/services/bc_absorbed/ | 10 min | initial copy |
-| 2.2 | Wire universe + walk-forward governance | 3h | clean code |
-| 2.3 | Formula bank 7 categories × 7 = 50 formulas | 1 week | bank/{technical/pattern/volume/multi_tf/event/sector/sentiment}.py |
-| 2.4 | Stage filter integration (Wyckoff Stage {1.5, 2, 3}) | 半天 | improved picks |
-| 2.5 | Phase 4 gate on BC absorbed (true train_log mandatory) | 1h GCP $0.50 | verdict |
+| L0 基础设施 | 交易日历、K 线、配置、审计 | `price_kline*`, `services/calendar.py`, `config/*.yaml`, `data_audit.py` | K 线为交易真相；`dim_active_a_stock` 降级为 cache/name |
+| L1 公式引擎 | 59 公式、参数、search space | `bc_absorbed/formula_engine.py`, `formula_*.yaml` | 暂停新公式，先确保 gate 和 universe 可信 |
+| L2 信号处理 | 共振评分、画像、SmartMoney adapter | `stock_profiler.py`, `signal_ranker.py`, `smartmoney_adapter.py` | 画像先做 contract/lineage/freshness；缺源字段输出 `unknown`，不抢当前 P0 |
+| L3 策略执行 | 股票池、paper_sim、交易模型 | `portfolio_pool.py`, `paper_sim/` | 成本/涨跌停/持仓规则来自配置 |
+| L4 展示 | API / 前端 | `backend/routers/*.py`, `v3/*` | `updater.py` god module 拆分，股票档案前端等后端画像 contract 稳定后再改 |
 
-**Phase 2 exit gate**: BC absorbed Sharpe vs BC original delta documented.
+### 智能更新管家边界
 
-### Phase 3 — Perception Absorbed Copy + 优化 (~2-3 周, $0 GCP)
+| 角色 | 负责 | 不负责 |
+|---|---|---|
+| 智能更新管家 | 审计输入、DAG 计划、依赖调度、锁/停止、超时、状态、日志、StepResult 汇总、质量 gate 汇总 | 拉行情、写财务表、算画像、判断 universe 真相 |
+| 数据/计算模块 | 自己的数据源、表写入、领域内校验、watermark、统一返回 `status/count/detail/error` | 全局流程、跨模块调度、前端状态、绕过 gate |
+| 审计模块 | 新鲜度、完整性、缺口、异常和是否需要更新 | 直接执行更新 |
 
-| # | Task | ETA | Output |
-|---|---|---|---|
-| 3.1 | cp perception/src/ → backend/services/perception_absorbed/ | 10 min | initial copy |
-| 3.2 | PIT-strict feature joins (built_at columns) | 1 day | PIT integrity |
-| 3.3 | P5 LeaderFollower historical theme membership extension | 3 days | longer history |
-| 3.4 | P3 ChainDiffusion concept network expansion | 3 days | richer alpha |
-| 3.5 | P6/P7 refactor for unified panel joinable | 2 days | feature merge ready |
-| 3.6 | Pattern 9 audit on absorbed | 1 day | leakage clean |
+后续 `updater.py` 拆分必须沿这个边界推进: 管家只监督流程和质量，数据模块自更新并交回可审计证据。
 
-**Phase 3 exit gate**: Perception absorbed marts joinable + Pattern audit clean.
+### 数据血缘与画像 / 股票档案路线图
 
-### Phase 4 — Unified Panel + Ensemble + Linear/Factor parallel (~3 周, $5-10 GCP)
+| 顺序 | 优先级 | 内容 | 依赖 / Gate |
+|---:|---|---|---|
+| 1 | P0 | 数据需求契约与血缘先行: 新画像字段先登记 need、grain、PIT key、freshness、consumer | `tdx_data_need_coverage.yaml`, `audit_tdx_data_need_coverage.py`, `docs/data_product_contract.md` |
+| 2 | P0/P1 | 统一画像 component contract: `value + as_of_date + built_at + source_tables + freshness_status + evidence_status + lineage_ref` | 缺数据必须 `unknown`; proxy 必须显式标注 |
+| 3 | P1 | 股票画像读模型: 趋势/量价/风险/行业/graph/horizon evidence 汇总 | K 线真相源、PIT lineage、不能从 `dim_active_a_stock` 推 universe |
+| 4 | P1 | 机构画像收敛: 复用 `mart_institution_profile`，补 source/freshness/lineage | 机构持仓、调研、龙虎榜、行业统计均需可追溯 |
+| 5 | P1/P2 | 主力行为画像: CYQ + 量价 + 事件 + 真实订单流资金 | `docs/chip_distribution_cyq_spec.md` 已把 CYQ 算法和验证写清；`raw_fund_flow_daily` 恢复前资金流维度为 `unknown` 或 proxy，不作生产证据 |
+| 6 | P2 | 股票档案 API: 统一现有 stock detail/graph/institution/profile 读模型 | contract test 覆盖 `unknown/proxy/production` |
+| 7 | P2/P3 | 前端股票档案: 总览、机构、主力/CYQ、数据血缘/新鲜度分区 | 后端 contract 稳定后再做；前端只展示证据，不自造判断 |
+| 8 | P3/P4 | 全局前端 UI/交互重设计: 按项目架构和流程重组操作台 | IA/交互方案审查 + contract tests + Browser 截图验收 + 关键流程 smoke |
 
-| # | Task | ETA | State | Output |
-|---|---|---|---|---|
-| 4.1a | Build `mart_p0a_feature_label_panel_unified_v1` (panel_v5 + perception_absorbed features) | 1 day | DONE 2026-05-24 commit `6694d2ad` | 2.7M rows × 166 cols, 36 perception features |
-| **4.2 MVP** | Train unified ranker (smoke baseline v7 params, train 2024-11 ~ 2025-06) | 1 day | DONE 2026-05-24 commit `471b4b06`, **verdict NOT promote** | rank_ic 0.0106 vs v7 0.0452 = -76%, std 0.131 vs 0.069 = +90% |
-| **4.2-diag** | Feature group ablation diagnose root cause of regression | 2-3 days | DONE 2026-05-25 verdict PARTIAL — analysis/phase42_diag_verdict_20260525.md | rank_ic 76% regression root cause = single-fit vs walk-forward (NOT features) |
-| **4.2b** | Walk-forward unified ranker `retrain_unified_ranker_walkforward.py` (expanding_monthly) | 1 day | **PAUSED 2026-05-25 07:30 CST** — 14/22 windows done, bg PID 88818 killed by user. Resume per `analysis/session_handoff_20260525.md`. Partial mean -0.0092 ± 0.067, positive 5/14 = 35.7% vs v7 0.0475 / 68.75% — high probability final verdict FAIL exit gate ≥ 0.04 | partial: data/reports/optuna/unified_ranker_wf_v1_20260524T220852Z.per_window.json |
-| 4.2c | Optuna 50-trial re-search on walk-forward unified | 1-2 day GCP $5-10 | BLOCKED on 4.2b | unified ensemble best_params |
-| 4.1b | bc_absorbed 49 formula features merge into unified panel | 1 week | BLOCKED on 4.2c rank_ic ≥ 0.04 | only run after 4.2c shows walk-forward unified beats v7 baseline |
-| 3.7 (new) | Backfill stock_context_daily + under_reaction_daily marts to 2024-11+ (Track A sibling repo, perception engine re-run) | 1 week | NEW — flagged by 4.2-diag (perc_stock all-NULL in unified panel) | stock-level perception features become usable |
-| 4.3 | Linear/factor model parallel build (Phase 4 IS-OOS naturally < 30%) | 1-2 week | NOT STARTED | factor model fallback |
-| 4.4 | paper_sim_v6 + Phase 4 gate strict on both | 1 day | NOT STARTED | KPI + verdict |
-| 4.5 | Single registry update | 1 day | NOT STARTED | unified champion tracking |
+详细路线见 `docs/data_product_contract.md`。该路线不改变当前“先架构后业务”的优先级: P0 仍是治理、universe、Rule 10、数据契约、复杂度和 updater 边界；全局前端重设计放在主线验证之后。
 
-**Phase 4 exit gate**:
-- Unified ensemble Phase 4 4/4 PASS (PROMOTE) OR
-- Linear/factor Phase 4 4/4 PASS as fallback OR
-- 4.2-diag verdict KILL → v7 stays G1 sole production, Phase 5 setup with G1-only
+### Dirty worktree 分阶段收束计划
 
-#### Phase 4.2-diag executable steps (Codex agent `a8856097` 2026-05-24)
+| 批次 | 优先级 | 当前桶/数量 | 处理方式 | 验收/退出条件 |
+|---:|---|---:|---|---|
+| 0 | P0 | 本地生成残留 | 已删除 `.DS_Store` / `__pycache__` / `.pytest_cache` / `.pyc`；日志、报告、DB 不删，先判定证据价值 | `find` 不再发现上述生成残留；git dirty 数不会因此下降，属环境清理 |
+| A | P0 | docs + controller: `project_docs=69`、`docs_archive_moves=6`、controller docs/state 相关 | 把 10 active docs、analysis 归档、root 历史文档删除、goal/implementation/quickstart 更新作为同一 docs-cleanup slice | `audit_docs_graph.py` PASS；`scripts/chunkyctl docs` 除 dirty slice 外无 graph FAIL；归档 hash/引用证明齐全 |
+| B | P0/P1 | startup/tooling: `startup_tooling=12`、部分 `config_project/tests/audit_gate_scripts` | 验收 `chunkyctl`、test-tool registry、Rule 10、safe_commit dry-run、GCP latch 文案；通过后单独 stage/commit | test-tool scope PASS；`test_chunkyctl.py`、`test_safe_commit.py`、工具脚本 py_compile/pytest PASS；Rule 10 verdict 可写入 commit message |
+| C | P0/P1 | universe/data/storage gates: `universe_governance=4`、`data_source_lineage_profiles=7`、storage payload audit | 验证 `check_universe_filter --all`、tdx need coverage、storage payload audit；禁止把 stale/proxy 变生产证据 | universe CLEAN；source/lineage/storage scoped tests PASS；真实库 storage finding 入账为后续迁移任务 |
+| D | P1 | updater split: `updater_split=30` | 按“管家监督流程、数据模块自更新”边界审查拆分文件和 root updater tests | CodeGraph + complexity paired；updater targeted pytest PASS；`updater.py` route shell 边界清楚 |
+| E | P1 | services/scripts/tests/config: `backend_services_api=30`、`pipeline_build_scripts=20`、`audit_gate_scripts` 剩余、`tests=36`、`config_project=7` | 按业务域小批次验收，优先数据真相源、PIT/freshness、测试工具有效性；不跨域大 commit | 每批都有 scope、test-tool gate、py_compile/pytest/domain audit、complexity diff；无新增 HIGH |
+| F | P0 | final clean | 所有保留 dirty 都已提交或明确交还用户；所有垃圾已删除；CodeGraph 再 sync | `git status --short` clean 或只剩用户明确保留项；`scripts/chunkyctl doctor --fast` 不再因未知/未验收 dirty FAIL |
 
-**Decision rationale**: Unified v1 RankIC crashed -76% with std doubled. Building on top of broken ranker (4.1b/4.2 final) or moving to forward production (Phase 5) on this state is real-money risky. 2-3 days ablation < 1-2 week wasted feature engineering.
+当前裁定: dirty 问题不再靠人工长列表处理，改为 bucket -> gate -> explicit stage -> safe_commit 的收束流水线。下一步先完成 A/B 两个治理切片，因为它们是后续所有 session 和提交纪律的地基。
 
-**Step 1** — capture reproduction baseline:
+### P0-P3 实施计划
+
+| 阶段 | 优先级 | 目标 | 主要动作 | 验收 |
+|---:|---|---|---|---|
+| 0 | P0 | 冻结现场和 scope | `git status --short`; `scripts/chunkyctl worktree --format markdown`; 按 dirty bucket 分类 tracked dirty / untracked；不 stage data parquet / skill 目录 / 无关文档；先删可再生本地残留 | 258 dirty entries 已分 12 桶且 unknown=0；本轮要动的文件列表明确 |
+| 1 | P0 | Universe lint 从误标 FAIL 变成真实剩余清单 | 修 5 处 `rule-compliance` 同行；复跑 checker；记录 non-test 剩余 | 5 处从报告消失，剩余列表可分组 |
+| 2 | P0 | Rule 10 从提醒变硬阻断 | `scripts/safe_commit.sh` 已增加 `.py staged` commit message gate，并补临时 git repo 行为测试 | 无 `Codex-Reviewed: APPROVE/APPROVE_WITH_NOTES` 或 8+ 字符 `codex-review: skipped reason=...` 时 exit 6；`REQUEST_CHANGES` 不放行 |
+| 3 | P0/P1 | 清完 non-test `dim_active_a_stock` | 合法 cache/name/data-sync/schema/meta 已加同一行 evidence；非法 universe 走 `get_active_universe()` | `check_universe_filter --all` CLEAN |
+| 4 | P1 | 保持正式计划文档同步 | `docs/implementation_plan.md` 已改为架构优先；后续随实际进度同步 | 文档不再声明旧 CLEAN 或旧优先级 |
+| 4.5 | P0/P1 | 顶层设计审查制度化 | `docs/engineering_governance.md` 已新增，明确流程/功能/模块/表/配置的 owner、truth source、gate、奥卡姆审查 | 后续架构变更能先填审查模板，避免新增表/配置/模块无主膨胀 |
+| 4.6 | P0/P1 | 硬编码治理制度化 | 将“业务规则/阈值/source catalog/优先级先定 owner”写入 `AGENTS.md`、bootstrap、top-level review、`chunkymonkey-governance` 和 `chunkymonkey-review-gate` | 新增业务值先判定 config/table/service/code exception；同一规则只能有一个真相源 |
+| 4.6.1 | P0/P1 | 删除治理制度化 | 将“验证可删就真删，禁止注释/隐藏/改名假删除；删除前用 CodeGraph + `rg` + 测试/审计取证”写入 `AGENTS.md`、top-level review、`chunkymonkey-governance` 和 `chunkymonkey-review-gate` | 死代码/旧测试/旧文档不再以注释、disabled branch 或空壳污染工作区；未验证可删的对象保持 active/quarantined 状态并写明证据缺口 |
+| 4.7 | P0/P1 | 数据需求契约化 | 已把 `grain`、`pit_key`、`freshness_sla`、`evidence_status`、`production_eligibility` 从 notes 提升为 YAML 必填字段；`need_027` 主力/超大/大/中/小单资金流明确为 `pit_key=unknown`、`evidence_status=unknown`、`production_eligibility=blocked`；`CapitalFlowAlpha` / institution score / panel manifest 已移除 stale raw 生产 fallback | `scripts/chunkyctl audit --run ...` PASS；targeted pytest 25 passed；临时 DuckDB 物化 27 needs / 10 priorities / 14 reassignments；缺字段、非法 enum、eligible+unknown PIT 都会 FAIL；生产 DuckDB exact-sync 尚未执行，需用户批准后单独写入 |
+| 4.8 | P0/P1 | 画像与股票档案路线契约化 | 新增 `docs/data_product_contract.md`；把股票画像、机构画像、主力行为画像、股票档案前端按 lineage -> profile contract -> mart/service -> API -> frontend 排序 | 任何画像/前端展示必须携带 source、PIT/freshness、`unknown/proxy/production` 状态和 lineage_ref |
+| 5 | P1 | 拆 `updater.py` | 已抽 19 个 `updater_*` 模块；第二十一至第五十八刀已迁出状态账本、step-status、连通性、execution loop、background task helper、smart plan/preflight、launcher 和 reset response payload/connection lifecycle；第五十一刀将 `sync_industry` body/gap queue/progress JSON 迁入 `updater_institution.py::_step_sync_industry_with_hooks`，`updater.py` 只保留 hook 注入 wrapper；第五十二刀将 `/update/status` 连接生命周期与 step_status catalog sync 迁入 `updater_status.py::build_update_status_response`；第五十三刀将 `/update/smart-plan` 连接生命周期与 plan budget response 迁入 `updater_status.py::build_smart_plan_response`；第五十四刀将 `/update/reset-derived` 与 `/update/reset-industry-derived` 连接生命周期迁入 `updater_reset.py::build_reset_derived_response` / `build_reset_industry_response`；第五十五刀将启动前 step_status priming 连接生命周期迁入 `updater_steps.py::prime_run_step_status_for_steps`；第五十六刀将 `/update/smart` 计划构建连接生命周期迁入 `updater_status.py::build_smart_update_plan`；第五十七刀将 run context/noop/finish/heartbeat helper 迁入 `updater_status.py`；第五十八刀将 group route request scheduling 迁入 `updater_launcher.py::launch_group_update_request` | god module 5136 -> 723 LOC，targeted tests pass，0 新 HIGH |
+| 6 | P0/P1 | 清复杂度 HIGH | P0-A `v3_meta.py` 已批量化；P0-B `institution.py` 已改为计数/预排序 map；P0-C `screening.py` 已抽顶层 name-key helper；P1 `v3_portfolio_builder.py` 已将 regime 分段汇总下沉到 service；P1 gate script `audit_delivery_readiness.py` 已预排序 glob paths 并批量查询 mart table existence；P1 data gate script `audit_data_completeness.py` 已按 DB 批量汇总 table freshness/coverage；P1 scanner `audit_n_plus_one.py` 已拆单层 helper并清自身 complexity HIGH；P1 leakage gate `audit_panel_leakage.py` 已批量 schema/null-gradient 查询并拆单层 grep helper；P1 PIT gate `audit_pit_integrity.py` 已批量 table/column inventory 并扁平化 walk-forward/forward-leak scans；P1 tradeability gate `audit_tradeability.py` 已拆静态扫描 helper并批量 spot-check raw/view counts；P1 survivorship gate `audit_survivorship_gate.py` 已批量 ever/active/panel count 并拆训练入口扫描 helper；P1 universe coverage gate `audit_universe_coverage.py` 已批量 K 线/业务表 ref-date codes 并抽稳定采样 helper；P1 TDX data need coverage gate `audit_tdx_data_need_coverage.py` 已把 source catalog/priority/reassignment 从 Python 硬编码迁到 `backend/config/tdx_data_need_coverage.yaml`，脚本只做 loader/校验/物化并补 exact-sync；P1 architecture inventory 已批量 latest-column 查询、修 nested router prefix、建立 route match index、把 `_strip_js_comments()` 改为单通道状态机、把 `_apply_dependency_context()` 改为 set-based 去重/阻断汇总 | backend API HIGH 已清；上述 gate scripts 无 HIGH，`audit_tdx_data_need_coverage.py` 仍有 1 个 MEDIUM membership 提示；`build_architecture_inventory.py` broad scan 仍有历史 HIGH；每刀 CodeGraph + complexity 成对；相关测试 PASS；不改变业务语义 |
+| 6.5 | P0/P1 | 测试工具清理与可信度审查 | 已建立第十轮闭环并完成全部 selected test artifact backfill：registry 记录 owner/status/evidence；审计器输出 FAIL/WARN + `controller_feedback` + `gate_updates` + `unregistered_selected_slices`；显式空 scope/默认 gate non-current/marker-scope drift 均失败；前三批目录级 129 个 artifacts scoped audit PASS；root batch 4/5 与 micro-batch 6-13 已按 owner 登记；root micro-batch 13a 覆盖 updater 9 个 root tests，scoped audit PASS，pytest 89 passed / 2 warnings；root micro-batch 13b 覆盖剩余 system/strategy/tdx/v3/utils/conftest/xdxr 等 14 个 root artifacts，scoped audit PASS，默认 pytest 76 passed / 63 deselected / 15 warnings，realdb collect-only 63/66 collected；Rule 10 行为测试已登记；`test_run_feature_ablation.py` 已隔离 `alpha158.duckdb` 隐式真实库；`test_system_routes.py` 不再在 module import 阶段加载生产 `main` | `pytest.ini` 默认排除 `realdb/perf/network/gcp/slow`；full audit 当前 PASS：0 FAIL / 0 WARN / 365 selected / 365 registered / 100% coverage；后续重点转为定期审计漂移、清理过期测试和真实库 opt-in 测试逐步 contract 化，不允许把 realdb collect-only 当业务证据 |
+| 6.6 | P0/P1 | 工具门禁 JSON 化 | 新增 `backend/scripts/audit_tooling_gate.py`：解析 git status、CodeGraph status、complexity markdown，输出 baseline/diff；无 baseline 时输出 `baseline_unavailable` + `unclassified_high_count`，加载 baseline 后才输出有效 `new_high_count`；`chunkyctl doctor` 默认加载本地忽略文件 `data/reports/tooling/complexity_baseline.json`；2026-05-31 已生成 capped baseline，`doctor --fast` 证实 baseline loaded / `new_high_count=0` / `unchanged_count=40`；`chunkyctl preflight` 改为 token 匹配 task risk，避免 `build` 误触发 `ui` frontend gate；新增 `docs/engineering_governance.md` 记录 GitHub 工具调研 | dirty worktree 不再只靠人工读长列表；历史 HIGH 和新增 HIGH 可分开治理，且不会因缺 baseline 把历史债误报成新增回归 |
+| 6.7 | P0/P1 | 项目专用审计/开发辅助工具雏形 | 新增 `backend/scripts/chunkyctl.py` + `scripts/chunkyctl` + `docs/chunkyctl_session_quickstart.md`，以 `audit_tooling_gate.py` 为 seed，保留 `doctor/worktree/preflight/audit` 四个最小入口；规则来自 AGENTS/goal/skills/config，不做黑箱大 prompt；`worktree` 默认 JSON，`--format markdown` 给 controller/agent 人读审查；`preflight` 兼容 `--task/--scope` 与位置参数 `preflight "task" path...`；`audit` 只对 `.py` scope 跑 py_compile/complexity，避免 YAML/INI 等配置误入 Python gate；quickstart 已写明启动契约维护规则和 dirty resolution mode | 新 session 默认只需按 `docs/chunkyctl_session_quickstart.md` 接手并跑 `scripts/chunkyctl doctor --fast`；doctor 已内嵌 worktree bucket summary 与 CodeGraph pending/untracked reconciliation，dirty 时再跑 `scripts/chunkyctl worktree --format markdown` 和 `scripts/chunkyctl worktree --bucket <name> --format markdown` 下钻；当前 258 entries 已分 12 桶且 unknown=0；入口语不绑定架构优化阶段，后续按当前用户请求、`goal.md` 和最新 handoff 继续；各 session 用同一工具拿事实和 gate，再由总控评审方向；后续增删改文档、优化工具或改变 gate/agent 启动流程时，必须同批更新 quickstart 并在 handoff/final 中说明 |
+| 6.8 | P0/P1 | 文档归档 bucket 审计 | `docs_archive_moves` 三份 root 历史文档已迁入 `analysis/`，controller + subagent 均验证旧 root 与新归档逐字一致；活跃代码注释已指向 `analysis/plan_v3_20260514_archived.md`；`docs/README.md` 已升级为文档索引/生命周期规则；一次性 cron automation RCA 已移到 `analysis/cron_automation_breakage_rca_20260529.md`；旧 market perception Codex prompt 经 `rg` 验证无外部引用后删除；`goal.md` 已把 2026-05-24 及更早历史章节完整归档到 `analysis/goal_legacy_20260531.md` | staging 时三份 root 删除和三份 `analysis/` 归档必须同组处理；`cron_automation_breakage_rca_20260529.md` 与 legacy goal archive 作为 analysis evidence 处理；旧 prompt 不再保留，后续 session 只使用 `docs/chunkyctl_session_quickstart.md` |
+| 6.9 | P0/P1 | artifact/cache storage 治理 | 已按 LifeHack 24.7GB 事故模型做本项目只读排查并落证据到 `analysis/lifehack_storage_bloat_analog_audit_20260531.md`：未发现 autopilot workflow 台账、自指递归 audit、同 blob 多行重复或产品零读者开发台账；发现 `mart_today_signal_cache.signals_json` 20MB 单行大 JSON，需要从“整包缓存入库”改为 summary/index + 明细表或外部 artifact 的明确边界 | 先用 CodeGraph/`rg` 锁定 `signals_v2`、`routers/signals.py`、Workbench 读模型消费者；新增只读审计阈值（大 TEXT/BLOB、路径入库、报告/日志表膨胀、重复大 blob、递归关键字）；再做兼容迁移与回归，禁止直接删生产缓存造成 API 空响应 |
+| 6.10 | P0/P1 | 文档引用图和循环权威链清理 | Scoped cleanup complete: `docs/` 已收敛为 10 个活文档；本轮新增 `engineering_governance.md`、`data_product_contract.md`、`strategy_validation_contract.md` 三个合并契约，并把 34 个旧 active docs 迁入 `analysis/docs_archive_20260531/`；`backend/scripts/audit_docs_graph.py` 当前 PASS：13 sources / 286 total edges / 217 authority edges / 26 context-only edges / 0 unresolved live refs / 0 missing archive targets / 0 forbidden SCC / largest SCC 7 | 后续验收保持 `docs/*.md <=10`，新增活文档必须同批合并/归档/删除旧文档；`zhushenglang_hunter_research_log_20260528.md` 作为主升浪猎手产品北极星保留，框架治理结束后进入 P1 严肃复现和验证 |
+| 7 | P2 | 清 paper_sim 死 YAML | `rg` 查 7 个 YAML 引用；无引用才删 | 无死引用，文档记录 |
+| 8 | P0/P1 | 总验收和架构说明 | 跑 checker/codegraph/complexity/tests/diff check；输出 L0-L4 全貌 | 用户能接着做业务，不靠口头记忆 |
+
+### 阶段 0: 现场冻结
+
+| 动作 | 命令/方法 | 注意 |
+|---|---|---|
+| 查看 dirty | `scripts/chunkyctl doctor --fast` + `scripts/chunkyctl worktree --format markdown` | 以实时 gate 为准；最新快照 258 dirty entries、12 个分桶、unknown=0，不能覆盖 |
+| 查看 tracked diff | `git diff --stat` | 区分前 session 改动和本次新增 |
+| 查看 untracked | `git ls-files --others --exclude-standard` | `data/phase5_exports/*.parquet` 不应误纳入架构 commit |
+| 计划 stage scope | 按阶段 stage | 不使用 `git add .` |
+
+### 阶段 1: `dim_active_a_stock` 治理
+
+| 子任务 | 文件/范围 | 处理方式 |
+|---|---|---|
+| 1.1 同行 annotation | `recommendation.py`, `screening_engine.py`, `recommendation_universe.py`, `stock_detail_read.py`, `stock_graph_read.py` | 把 `rule-compliance: ok evidence=...` 放到含 `dim_active_a_stock` 的同一行 |
+| 1.2 data-sync 合法枚举 | `build_price_kline_tdxhub.py`, `financial_client.py`, `capital_client.py`, `aif10_capability_client.py`, `institution_write.py` 等 | 同行 evidence: `data-sync-enumeration` / `lineage-metadata` |
+| 1.3 name lookup | `run_daily_topk.py`, stock read / router name mapping | 同行 evidence: `code-to-name-mapping` |
+| 1.4 schema/meta/audit | `schema_core.py`, `schema_migrations.py`, `security_master.py`, `data_lineage/registry.py`, `data_audit.py` 等 | 同行 evidence: `schema-definition`, `table-writer-itself`, `audit-config-reference` |
+| 1.5 非法 universe 过滤 | 任何把 dim 表当 active universe 的业务路径 | 改用 `services.universe.get_active_universe()` 或服务 API |
+
+阶段 1 验收命令:
+
 ```bash
-PYTHONPATH=backend python backend/scripts/train_unified_ranker_v1.py 2>&1 | \
-  tee analysis/phase42_unified_repro_$(date +%Y%m%dT%H%M%S).log
+PYTHONPATH=backend python backend/scripts/check_universe_filter.py --all
 ```
 
-**Step 2** — run feature group ablation:
+验收口径: non-test violations 必须为 0。若 test fixtures 仍报，先记录并决定是给测试夹具加 evidence，还是收紧 checker 的 test 豁免。
+
+当前结果 (2026-05-28): `check_universe_filter.py --all` 默认 production-code only，CLEAN (767 files checked)。`--include-tests` 保留人工审计口径，当前报告 37 个 test fixture 引用。
+
+### 阶段 2: Rule 10 blocking gate
+
+`scripts/safe_commit.sh` 在 commit message keyword 后、`git commit` 前增加硬门:
+
 ```bash
-# Compare per-group OOS rank_ic: panel_v5 base / perception / hybrid
-PYTHONPATH=backend python backend/scripts/run_feature_group_ablation.py \
-  --panel mart_p0a_feature_label_panel_unified_v1 \
-  --train-start 2024-11-01 --train-end 2025-06-30 \
-  --oos-start 2025-07-01 --oos-end 2026-04-30 \
-  --groups base_panel_v5,perception_market,perception_stock_level \
-  --output analysis/phase42_ablation_$(date +%Y%m%d).json
+py_staged=$(git diff --cached --name-only -- '*.py' | wc -l | tr -d ' ')
+if [[ "$py_staged" -gt 0 ]]; then
+    has_codex=$(echo "$MSG" | grep -cE "Codex-Reviewed:[[:space:]]*(APPROVE|APPROVE_WITH_NOTES)" || true)
+    has_request_changes=$(echo "$MSG" | grep -cE "Codex-Reviewed:[[:space:]]*REQUEST_CHANGES([[:space:]]|$|\\()" || true)
+    has_skip_reason=1  # only when codex-review skip reason is non-empty and 8+ chars
+    if [[ "$has_request_changes" -gt 0 ]]; then
+        echo "ERROR: staged .py files cannot be committed with Codex-Reviewed: REQUEST_CHANGES"
+        exit 6
+    fi
+    if [[ "$has_codex" == "0" && "$has_skip_reason" == "0" ]]; then
+        echo "ERROR: staged .py files require approved Codex review or meaningful skip reason"
+        exit 6
+    fi
+fi
 ```
-If script needs adaptation for unified panel groups: copy + adapt to `backend/scripts/run_feature_group_ablation_unified.py`.
 
-**Step 3** — analyze 3 hypotheses (compute in same ablation run):
-- H1 (NULL ratio noise): perception_market 64% fill + stock_level 0-1% fill — does excluding stock_level (4 cols) recover rank_ic?
-- H2 (train window too short): re-train with train 2024-01-02 ~ 2025-06-30 (drop perception since pre-2024-11 NULL); compare to v7-window baseline
-- H3 (feature selection): 116 numeric vs 157 total — which 41 cols got dropped + does any group of dropped cols matter?
+验收:
 
-**Step 4** — verdict + path commit (codify in `analysis/phase42_diag_verdict_<date>.md`):
-- **Recovery**: identify exact group causing regression, fix or exclude → re-train → re-verify rank_ic ≥ 0.04 (within 90% of v7) → proceed Phase 4.1b
-- **Partial**: rank_ic recovers to 0.025-0.04 → ablation table justifies adding bc_absorbed (Phase 4.1b) to test further lift
-- **Kill**: rank_ic stuck < 0.025 → mark unified panel design failed → goto Phase 5 G1-only production with v7
-
-**Exit gate** (any path):
-- `analysis/phase42_ablation_<date>.json` with per-group rank_ic_mean + std
-- `analysis/phase42_diag_verdict_<date>.md` with decision + numbers
-- goal.md + PROJECT_INDEX.md updated with verdict
-- One of: Phase 4.1b unblocked, Phase 5 G1-only path activated, or Phase 4.3 linear/factor pivot
-
-### Phase 5 — Forward Production Setup (~1 周, $0 GCP)
-
-**State depends on Phase 4.2-diag verdict**. Two configs:
-
-**Config A** (default after Phase 4.2-diag recovery/partial verdict): 3-group, 1.5% capital each (4.5% total)
-| Group | Model | Capital | Purpose |
-|---|---|---|---|
-| **G1** | v7 (existing candidate_forward_monitor) | 1.5% | control baseline |
-| **G2** | Unified ensemble (Phase 4 output) | 1.5% | treatment A |
-| **G3** | Linear/factor model (Phase 4 output) | 1.5% | treatment B |
-
-**Config B** (Phase 4.2-diag PARTIAL verdict 2026-05-25 ACTIVATED): G1-only forward 1.5% capital, defer G2/G3 until 4.2c walk-forward unified delivers rank_ic ≥ 0.04
-| Group | Model | Capital | Purpose |
-|---|---|---|---|
-| **G1** | v7 (existing candidate_forward_monitor, daily_update.sh Step 5e wired) | 1.5% | sole production now |
-| ~~G2/G3~~ | DEFERRED until 4.2c verdict | 0% | retry after walk-forward unified (4.2c) beats v7 baseline (rank_ic ≥ 0.04) |
-
-| # | Task | ETA |
-|---|---|---|
-| 5.1 | 3 forward groups registry setup | 1 day |
-| 5.2 | daily_update_unified.sh — single pipeline runs all 3 | 2 days |
-| 5.3 | monitor_unified.py per-group abort criteria | 1 day |
-| 5.4 | Scaling rule: top performer week 6+ scales to 15%, others abort | 1 day |
-| 5.5 | Sunset Track A development (data refresh continues) | 1 day |
-
-### Phase 6 — Forward Evidence (6-12 周, $0 GCP, parallel)
-
-| Item | Continuous |
+| 检查 | 命令/方式 |
 |---|---|
-| 3 groups forward 6 weeks | per-group Sharpe + reconcile vs paper_sim |
-| Weekly aggregate + divergence flag (>30% = abort criterion) | per-group weekly report |
-| Week 6+ promote decision | top performer scales 15% / others abort |
+| shell 语法 | `bash -n scripts/safe_commit.sh` |
+| 无 review 阻断 | `backend/tests/scripts/test_safe_commit.py` 临时 staged `.py` dry-run 覆盖 exit 6 |
+| 有 review 放行 | commit message 含 `Codex-Reviewed: APPROVE/APPROVE_WITH_NOTES` 或 8+ 字符 skip reason |
+| REQUEST_CHANGES 阻断 | `Codex-Reviewed: REQUEST_CHANGES` 无论是否附带 skip reason 都不能通过 Rule 10 |
 
-### 2026-05-26 — BestChoice 分层选股架构 (Codex 讨论汇总 + 修正计划)
+### 阶段 3: CodeGraph + complexity 工作流
 
-> 用户指令: "基础设施做好, 模块化可复用, 避免之前浪费. 分层独立调参. 基于股票 profile 分类选股, 不局限于已有公式, 你们独立研究."
+任何 `.py` 变更必须按以下顺序执行，不攒到最后:
 
-#### 基础设施 (已就绪)
-
-| 模块 | 文件 | 状态 |
-|---|---|---|
-| Preflight 8 维审计 | `backtest_preflight.py` | DONE (universe/板块/成本/新鲜度/walk-forward/PIT spot-check/code leakage scan) |
-| Plan validator | `plan_validator.py` | DONE (search space/trial value/runnable/cost/output) |
-| Grill gate | `gcp_formula_optuna_batch.sh` Step 0 + `~/.claude/hooks/plan_grill_gate.sh` | DONE |
-| 55 公式引擎 | `formula_engine.py` + `bank/` | DONE (6 core + 49 bank) |
-| 28 公式 Optuna search space | `formula_local_optuna.py` | DONE (6 无参数公式确认不需搜索) |
-| SmartMoney adapter | `smartmoney_adapter.py` | DONE (8 loader, PIT 安全) |
-| 四层架构 | profiler/ranker/pool/picks | DONE (骨架, 待扩展) |
-| YAML 配置化 | 6 个 formula_*.yaml | DONE |
-| 交易成本统一 | `get_default_tx_cost_bps()` | DONE (10.4 bps from paper_sim_config) |
-| Skills | `/grill-with-docs` `/diagnose` `/tdd` 等 8 个 | DONE (强制使用规则) |
-
-#### 教训 (2026-05-26 踩坑)
-
-| 教训 | 根因 | 修复 |
-|---|---|---|
-| 29/34 公式无 search space = 白跑 GCP | 计划制定时没验证前提 | plan_validator + grill gate 强制 |
-| multi_tf 7 公式 PIT leakage | `_resample_close` 用未来窗口 close 回填 | 改为前一完整窗口 close |
-| macd_divergence_bottom 永远不触发 | `close[i] < close[i]` 同 index 比较 | 改为 prior_window_min |
-| mfi_oversold_bounce 首行数据污染 | `np.roll(tp, 1)` wrap around | 改为 prev_tp 移位 |
-| pullback_doji GCP 跑不了 | import 路径问题 | 改绝对路径 |
-
-#### 四层架构
-
-```
-Layer 0: stock_profiler.py — 股票画像
-  当前: 6 维 (trend/vol_rank/vol_regime/price_position/stage/board)
-  待扩展 (Codex 建议): +archetype +quality +stage_days +industry_strength +attention +risk
-  数据源: dim_stock_archetype_latest / dim_stock_quality_latest / dim_stock_stage_days /
-          dim_stock_industry_context_latest / dim_stock_attention_latest / fact_risk_factors
-
-Layer 1: formula_engine.py — 55 公式信号
-  28 个有 Optuna search space (5 core + 22 bank + pullback_doji)
-  6 个无参数 (纯固定逻辑, 跑 1 trial baseline)
-  21 个需外部数据 (Wave B 接入)
-  Codex 公式-画像映射假设:
-    gs_raw_buy → uptrend + expanding vol
-    ma_base_breakout → stage=base + quiet→expanding
-    pullback_doji → uptrend + low/mid vol
-    activity_breakout → high activity + medium-high vol
-    volume_base_breakout → stage=base + quiet→expanding
-
-Layer 2: signal_ranker.py — 共振评分
-  当前: resonance 40% + quality 30% + vol_price 30%
-  待扩展 (Codex 建议 profile-aware 加权):
-    stage 匹配公式 → 1.2x / 不匹配 → 0.7x
-    quality 高 → 1.1x / 低 → 0.8x
-    industry 顺风 → 1.1x / 弱 → 0.9x
-    attention 过热 → reject 或 cap
-    risk 严重 → 硬过滤 (直接剔除)
-
-Layer 3: portfolio_pool.py — 股票池 max 5
-  当前: stop_loss 5% / trailing 10% / MA20 退出 / 替换 1.3x
-  待 Optuna: max_k / score_threshold / 止盈止损参数
+```bash
+codegraph query "<symbol>"
+codegraph context "<task>"
+# edit
+codegraph sync .
+python /Users/dp/.agents/skills/complexity-optimizer/scripts/analyze_complexity.py \
+  /Users/dp/Documents/M/stock/chunkymonkey/backend --format markdown
+PYTHONPATH=backend python backend/scripts/check_universe_filter.py --all
+git diff --check
 ```
 
-#### 300616 三波策略 (Codex 设计, `analysis/codex_multi_wave_300616.md`)
+若修改触及回测/验证/Optuna/GCP 入口，还必须先看:
 
-三类信号:
-1. `consolidation_breakout` — 长期横盘后首涨 (ma_base_breakout + gs_raw_buy + obv 共振)
-2. `continuation` — 主涨续涨 (3+ 公式共振 + MA20/60 上方 + 量能持续)
-3. `pullback_doji` — 回调十字星 (趋势完好 + 浅回调 + OBV 不破)
-
-十字星待修 (Codex review):
-- gain_retained_min 过滤 (区分 Signal 1 胜 vs Signal 2 负)
-- pb_depth_max 过滤 (回调太深 = 强手不坚定)
-- body_ratio_max 从 0.3 收窄到 0.1-0.25 搜索
-- buy_offset YAML 与代码统一
-
-#### Codex 建议的 6 个新公式方向
-
-| 新公式 | 数据源 | 逻辑 |
-|---|---|---|
-| stage_fresh_breakout | stage + days_in_stage | 只在阶段早期触发 |
-| quality_gated_breakout | quality_score | 低质量股不给突破信号 |
-| capital_confirmed_pullback | capital_flow | 回调时资金行为仍正 → 买 |
-| industry_aligned_signal | industry_context | 板块顺风时加强 |
-| attention_overheat_filter | attention_score | 过热时压制信号 |
-| risk_adjusted_resonance | risk_factors | 高风险直接硬过滤 |
-
-#### Wave B Leakage 警告 (Codex 审查)
-
-| 数据源 | 风险 | 处理 |
-|---|---|---|
-| fact_lhb_event / fact_dzjy_event | 缺 source-available date | T+2 保守延迟 (adapter 已内置) |
-| fact_hsgt_daily | 单日快照无历史 | 不回测, 等补数据 |
-| perception marts | 仅 2026-04+ (22 天) | `snapshot_date <= signal_date` 严格; 不做历史 Optuna |
-| ST name filter | 当前状态非 PIT 历史 | 不用作最终 production gate |
-| dividend_ex_dividend_bounce | 原 close[idx+1] leakage | 已修 (删除未来 close 条件) |
-
-#### SmartMoney 数据覆盖 (adapter 审计)
-
-| 数据源 | 行数 | 时间范围 | 可用于 Optuna |
-|---|---|---|---|
-| **v_stock_sector_momentum_daily** | 4.5M | 2023-2026 | **YES** — 最有价值 |
-| fact_lhb_event | 53K | 2023-2026 | YES (T+2 delay) |
-| fact_executive_trade_event | 68K | 1994-2026 | YES (T+1 delay) |
-| raw_capital_dividend_detail | 12K | ~2026 | PARTIAL |
-| fact_hsgt_daily | 2.7K | 单日 | **NO** |
-| perception marts (3 种) | 700-910 | 2026-04+ | **NO** — 太短 |
-
-#### 修正后执行计划
-
-**Wave A 重跑 (GCP, 需先 /grill-with-docs)**:
-
-| 步骤 | 任务 | 公式数 | search space |
-|---|---|---|---|
-| A1 | 28 有参数公式 × 100 trials Optuna | 28 | 全部有 (plan_validator 验证) |
-| A2 | 6 无参数公式 × 1 trial baseline | 6 | 无 (只评估默认值) |
-| A3 | pullback_doji × 100 trials (含 gain_retained/pb_depth 新参数) | 1 | 10 params (Codex 补) |
-| A4 | 结果分析 → 筛选 top 12-18 进入 Layer 2 | - | - |
-
-**Wave B (SmartMoney 接入)**:
-
-| 步骤 | 任务 | 依赖 | 数据需求 |
-|---|---|---|---|
-| B1 | sector 系 7 公式接入 adapter + Optuna | A4 | sector_momentum (4.5M, OK) |
-| B2 | event 系 LHB + exec_trade 公式接入 | A4 | lhb (53K) + exec (68K) |
-| B3 | Layer 0 画像扩展 (+6 SmartMoney 维度) | A4 | archetype/quality/stage/industry/attention/risk |
-| B4 | Layer 2 共振 profile-aware Optuna | B1+B2+B3 | 冻结 L1, 只调 L2 |
-| B5 | Layer 3 股票池 Optuna | B4 | 冻结 L1+L2, 只调 L3 |
-| B6 | 全 pipeline paper_sim | B5 | - |
-
-**Wave C (300616 策略验证)**:
-
-| 步骤 | 任务 |
+| Gate | 检查项 |
 |---|---|
-| C1 | 实现 consolidation_breakout / continuation / pullback_doji 三信号 |
-| C2 | 300616 单股 W1/W2/W3 逐波验证 |
-| C3 | 同类股 10-20 只泛化验证 |
-| C4 | 全量 walk-forward (W3 作 holdout) |
+| `backtest_preflight` | `universe_clean`, `limit_pct_per_board`, `cost_model`, `data_freshness`, `walk_forward`, `signal_pit_spotcheck`, `code_leakage_scan`, `excluded_stocks` |
+| `plan_validator` | `search_space`, `trial_value`, `formula_runnable`, `cost_efficiency`, `param_scope`, `sample_size_coverage`, `board_coverage`, `output_usable` |
+| `data_audit` | `kline_completeness`, `kline_consistency`, `board_coverage`, `date_range`, `volume_sanity`, `smartmoney_freshness`, `cross_table_consistency` |
 
-**组合搜索策略** (Codex 建议, 防爆炸):
-1. 单公式筛选: Wave A/B 每公式独立 Optuna → 按 score/win_rate/drawdown 筛到 12-18 个
-2. 去重: 按信号重叠度 + 收益相关性聚类, 每类取代表
-3. 分层调参: 冻结 L1 → 调 L2 → 调 L3 (不混调)
-4. 最终验证: 只有 B5/B6 champion 走 paper_sim + PBO/DSR + 成本 gate
+#### 硬编码治理检查
 
-**GCP 成本** (修正):
+每次新增或修改业务值时先判定 owner:
 
-| 阶段 | 估计 |
-|---|---|
-| Wave A 重跑 (28+6+1 公式) | ~$1.2 |
-| Wave B (sector/event + L0/L2/L3) | ~$3-5 |
-| Wave C (300616 验证) | ~$0.5 |
-| **Total** | **~$5-7** |
-| 预算剩余 | ~$36 (充裕) |
-
-### 2026-05-26 Session 未完成事项 (下次 session 接续)
-
-#### P0: 300616 五公式优化 (核心任务)
-
-**现状**: 五公式框架搭了但验证不通过 — W1 三波全无信号, 参数不匹配.
-
-**正确方法** (用户指定):
-1. 先用上帝视角 (未来函数) 精确抓住 300616 三波的买卖点
-2. 然后从全 A 股跑, 看能否把 300616 选出来
-3. 再去掉未来函数, 调参争取最大胜率/收益/最小回撤
-
-**五公式**:
-| 公式 | 抓什么 | 300616 理想买卖 | 当前状态 |
-|---|---|---|---|
-| pullback_doji | 原始十字星 | 已有 7186 信号 | 需 300616 验证 |
-| wave1_base_breakout | W1 底部首涨 | 12-28 信号→12-29 买 | 无信号, 需重做 |
-| wave2_pullback_buy | W2 回调再起 | 05-09 信号→05-10 买 | 晚 1 天 (05-10), 需调 |
-| wave3_rapid_doji | W3 急涨十字星 | 05-18 信号→05-19 买 | 晚 2 天 (05-20), 需调 |
-| full_rally_rider | 整轮主升浪 | 04-20→05-20 +57% | 无信号, 需重做 |
-
-**300616 三波精确数据**:
-- W1: 底 2022-12-29 (19.62) → 首涨 12-30 (+13.6%) → 主涨 01-04 (+15.3%) → 高 02-14 (29.04), 涨幅 +48%
-- W3: 底 2026-04-20 (12.28) → 首涨 04-22 (+11.6%) → 涨停 05-11 (+20%) → 涨停 05-19 (+20%) → 高 05-20 (19.29), 涨幅 +57%
-- W2 (失败波): 05-08 (+5.8%) → 05-10 (+16.9%) → 随后跌到 22.35, 十字星策略在 W2 亏损
-
-**用户指定的方法论** (原话):
-"先按答案写一个, 相当于用了未来函数, 然后再从所有股票里跑一遍, 看能不能抓出 300616,
-然后再研究未来函数和 leakage 删除后怎么调整参数争取最大胜率最大收益最小回撤"
-"买入用 T+1 open 的均价 (VWAP), 说明交易成本工具你没用上"
-
-**上帝视角已跑结果** (god_view_signals, future_window=20, gain_threshold=0.08, dd_max=-0.06):
-- 300616 全历史: 35 笔交易, 累计 +21265%, 平均 +16%/笔
-- T 时刻共同特征: 大部分 below MA120, ret_5d 为负, pos250 < 0.30
-- gs_raw_buy 在 35 个理想点**全未命中** (但在 W1 12-28 / W3 04-21 两个特定点命中)
-- 代码: `derived_formulas.py` 中可写 `god_view_signals()` 函数
-
-**五公式当前不 work 的具体原因**:
-- wave1_base_breakout: `base_days * 0.5` below MA120 条件太严, 300616 在 W1 底部不满足
-  (12-29 pos250=0.10 但 below_count 不够 — 之前有反弹突破过 MA120)
-- wave2_pullback_buy: 信号晚 1 天 (05-10 才出, 理想是 05-09), vol_wake=1.2 太高
-- wave3_rapid_doji: 信号晚 2 天 (05-20 才出, 理想是 05-18)
-- full_rally_rider: 依赖 wave1 信号, wave1 没信号所以整轮也没
-
-**交易成本**: T+1 VWAP = (open+high+low+close)/4, 含成本 10.4 bps (from paper_sim_config.yaml)
-佣金 2.5 + 印花税/2 2.5 + 过户 0.1 + 规费 0.34 + 滑点 5.0
-
-**已验证的关键特征** (用户观察 + 数据确认):
-- 量比从地量 (0.5-0.7x) 回升到 1.1-1.4x 是起涨前兆
-- gs_raw_buy + obv_breakout 在 W1 (12-28) 和 W3 (04-21) 的理想买入日都命中
-- 250 日价格位置低 (< 0.30) + 低于 MA120 = 底部特征
-
-**W1 理想买入日精确 K 线 (2022-12-28, 首涨前 1 天)**:
-- close=20.65, ret=+2.1%, vol/MA60=1.1x, vol/MA20=1.3x, body=0.35, below MA120
-- pos250=0.10 (极低位), 30日年化波动下降
-
-**W3 理想买入日精确 K 线 (2026-04-21, 首涨前 1 天)**:
-- close=12.48, ret=+1.6%, vol/MA60=1.1x, vol/MA20=1.4x, body=0.68, below MA120
-- pos250=0.24 (低位), 量从 0.6x 开始回升
-
-**上帝视角 (未来函数) 300616 全量**: 35 笔交易, 累计 +21265%, 平均 +16%/笔.
-每笔 T 时刻共同特征: 大部分 below MA120, ret_5d 为负, pos250 < 0.30, gs_raw_buy 全未命中.
-参见代码: `derived_formulas.py` 中 `god_view_signals()` 函数.
-
-#### P0: Bank 49 公式整理 (Codex 评估完成)
-
-| 分类 | KEEP | REWORK | DROP | 说明 |
-|---|---|---|---|---|
-| technical (7) | 2 | 5 | 0 | bollinger/atr 可用, 其余参数不够 |
-| pattern (7) | 4 | 3 | 0 | cup_and_handle/double_bottom/bull_flag/box 可用 |
-| volume (7) | 3 | 4 | 0 | mfi/volume_spike/chaikin 可用 |
-| multi_tf (7) | 0 | 7 | 0 | 全部 REWORK (PIT leakage 已修但参数固定) |
-| event (7) | 1 | 2 | 3+1 | insider 可用; earnings/block/index 无数据 DROP |
-| sector (7) | 1 | 0 | 6 | sector_relative_momentum 可用; 其余缺数据 |
-| sentiment (7) | 0 | 2 | 5 | perception 数据太短 DROP |
-| **Total** | **11** | **25** | **13** | |
-
-**决策**: 不删, 灌数据让它们跑起来. REWORK 的补参数, DROP 的等数据积累后启用.
-
-**完整公式体系**: 通达信 5 + 十字星 1 + 衍生 4 + bank 49 = **59 个公式**
-- 当前能跑: 34 (OHLCV) + 10 (SmartMoney adapter 已接通) = 44 个
-- 暂不能跑: 11 个 (perception 太短 + 无数据源 + 北向单日) + 4 个衍生 (待优化)
-
-**SmartMoney adapter 8 loader 对应**:
-| 公式参数 | adapter loader | 数据源 |
+| 类型 | 默认 owner | 例外 |
 |---|---|---|
-| lhb_inst_seats | `_load_lhb` | fact_lhb_event (53K, T+2) |
-| insider_buy_count | `_load_exec_trade` | fact_executive_trade_event (68K, T+1) |
-| hsgt_net | `_load_hsgt` | fact_hsgt_daily (2.7K, 单日) |
-| ex_dividend_flag | `_load_dividend` | raw_capital_dividend_detail (12K) |
-| sector_ret | `_load_sector_momentum` | v_stock_sector_momentum_daily (4.5M) |
-| diffusion_score | `_load_perception_leader_follower` | perception LF (910, 短) |
-| context_score | `_load_perception_stock_context` | perception ctx (702, 短) |
-| under_reaction_score | `_load_perception_under_reaction` | perception UR (702, 短) |
+| 规则、阈值、策略参数、开关 | YAML/config + loader 校验 | 测试夹具、数学常量 |
+| source/path catalog、数据源优先级、迁移建议、gate evidence | 数据表、稳定 artifact 或配置 | 单次脚本局部实现细节 |
+| fallback 顺序、规则解释、typed access | service module | 私有 helper 且不参与业务决策 |
+| schema/enum/SQL DDL | Python 可接受 | 不能复制成生产策略 |
 
-#### P1: 数据 sync 修复
+BLOCK 条件: 业务规则长期硬编码在 Python、同一规则在 YAML/SQL/Python 多处重复、无 owner/schema/consumer 的配置或表、router/updater 复制领域策略。
 
-**已修**:
-- dim_all_ever_listed 573 只活跃股误标退市 → 已修 is_active=1 (Universe 4541→4966)
-  根因: 数据源快照覆盖不全, delisted_date=2025-09-30/12-31 是截止日不是退市日
-  300616 (尚品宅配) 被误排除导致全 A 股筛选找不到它
-  data_audit 已加 wrongly-inactive 检查
-- LHB executescript bug → 已修, raw 更新 484 条到 05-26
-- LHB fact_lhb_event → 已重建 53905 行
-- dim_active_a_stock → 已刷新到 05-26
-- dim_all_ever_listed 573 只误标退市 → 已修 (K 线替代快照判定)
-- universe 规则配置化 → `backend/config/universe_rules.yaml`
-### 架构重构: 基础设施分层 (第一性原理 + 奥卡姆剃刀)
+### 阶段 3.5: Complexity HIGH 治理
 
-> 用户原话: "全局都要做成模块 数据表 配置文件 这样的架构, 这些都是基础设施"
-> "交易所数据源更新跟交易日历一起作为基础设施强制执行"
-> "各种判断逻辑也做成工具, 模块化 数据化 配置文件化 管理"
-
-**第一性原理: 7 个判断, 每个只有 1 个真相源**
-
-| 判断 | 真相源 | 查什么 | 现在的冗余 |
+| 优先级 | 范围 | 当前状态 | 下一步 |
 |---|---|---|---|
-| 在交易吗? | K 线有数据 | price_kline_tdxhub | dim_all_ever_listed (已废) |
-| 什么板块? | 代码前缀 | stock_code[:2] | dim_market_segment (没人用) |
-| 涨跌停? | 交易所规则 | universe_rules.yaml | get_limit_up_pct 重复 |
-| 是 ST? | 股票名字 | dim_active_a_stock.stock_name | 10+ 处各自 LIKE |
-| 交易日? | 交易日历 | services/calendar.py | OK |
-| 叫什么名? | 交易所 | dim_active_a_stock | OK (但被当 universe 用) |
-| 交易成本? | 券商费率 | paper_sim_config.yaml | OK |
+| P0-A | `backend/routers/v3_meta.py` | 已完成：`get_formulas()` 由 per-formula 查询改为批量查询 map，清掉 3 个 HIGH io/query-in-loop；`backend/tests/test_v3_meta.py` 27 passed, 2 warnings；`codegraph sync .` synced 29 changed files (27 added, 2 modified, 503 nodes) | 继续监控 response shape，不新增业务语义 |
+| P0-B | `backend/routers/institution.py` | 已完成：`get_institution_detail()` 行业树由循环内排序改为 Counter 计数 + parent group 预排序 map；新增 helper 回归覆盖 Layer B 注释与排序；`test_institution_read.py` + `test_institution_contract.py` 14 passed, 2 warnings；backend/routers complexity 不再报告 `institution.py` HIGH | 剩余 MEDIUM membership 提示暂不阻断 |
+| P0-C | `backend/routers/screening.py` | 已完成：`_to_name_keyed()` 从 route 内嵌 nested loop 改为顶层 `_rename_sector_in_value()` + 浅拷贝转换；`backend/tests/test_screening_read.py` 3 passed；backend/routers complexity 不再报告 `screening.py` HIGH | active-universe fixture 已单独修复；`test_screening_engine.py` + `test_screening_read.py` 4 passed |
+| P1 | `backend/routers/v3_portfolio_builder.py` | 已完成：regime 分段统计从 router 下沉到 `services.portfolio_walk_forward.regime.summarize_regime_segments()`；新增 service + endpoint 回归；backend/routers complexity 不再报告 HIGH | 后续转向 scripts/audit/backfill HIGH，按热路径和门禁影响排序 |
+| P1 | `backend/scripts/audit_delivery_readiness.py` | 已完成：循环内 `glob` 排序改为循环前预排序列表；strategy model source mart 表存在性由循环内 information_schema 查询改为一次批量查询；单文件 complexity 已无明显热点 | `test_audit_delivery_readiness.py` 16 passed；backend 全量 complexity 不再报告该文件；未运行会写 `delivery_readiness.json` 的完整审计 |
+| P1 | `backend/scripts/audit_data_completeness.py` | 已完成：每张表循环内 connect/query 改为按 DB 分组后一次 UNION 汇总 max_date 与当日 n_codes；新增纯函数和 DuckDB 临时库回归测试 | `backend/tests/scripts/test_audit_data_completeness.py` 3 passed；单文件/scripts/backend complexity 不再报告该文件；脚本实跑 exit 1，因 6 张本地表 `STALE_7d⚠` |
+| P1 | `backend/scripts/audit_n_plus_one.py` | 已完成：scanner 自身的 root/file/body/iterrows 嵌套扫描拆为单层 helper，循环头 `sorted(...)` 改为预排序列表；不改变 finding 规则和报告格式 | `backend/tests/scripts/test_audit_n_plus_one.py` 15 passed；脚本实跑到 `/tmp` 为 30 findings / 22 HIGH / 8 LOW / baseline OK；backend complexity 不再报告该文件 |
+| P1 | `backend/scripts/audit_panel_leakage.py` | 已完成：PIT marker schema introspection 改为一次 information_schema 批量读取；flat mapping PARTITION BY、fallback ratio、NULL year gradient、forward-index grep、universe PIT grep 与 summary print 拆成单层 helper；check 6 的 per-feature SQL 改为一次按 year 聚合；不放松 leakage finding 口径 | `backend/tests/scripts/test_audit_panel_leakage.py` 4 passed；与 `test_audit_n_plus_one.py` 合跑 19 passed；backend/scripts/backend complexity 不再报告该文件；未跑真实大库 `audit_panel_leakage.py --panel ...`，避免本轮写正式 leakage report/长耗时 |
+| P1 | `backend/scripts/audit_pit_integrity.py` | 已完成：walk-forward batch/OOS 表规格扁平化，information_schema 表/列读取批量化，cross-date forward leak spot-check 改为扁平 specs + 单次 UNION ALL；不改变 critical FAIL / legacy WARN / future-dated WARN 语义 | `backend/tests/scripts/test_audit_pit_integrity.py` 3 passed；与 import/leakage/nplusone 相邻测试合跑 24 passed；backend complexity 不再报告该文件；BestChoice PIT 元数据补齐后脚本实跑 PASS：9 PASS / 30 WARN / 0 FAIL |
+| P1 | `backend/scripts/import_bestchoice_phase1_candidates.py` | 已完成：BestChoice Phase 1 writer 新增/迁移 `as_of_date` 与 `built_at`，默认 source 切到 repo 内 `chunkymonkey/bestchoice/analysis/...`，避免静态 challenger artifact 缺 PIT key | `test_import_bestchoice_phase1_candidates.py` 2 passed；重导入 `mart_stock_formula_optuna_bestchoice_v1` 1146 rows；`audit_pit_integrity.py` 实跑 PASS：9 PASS / 30 WARN / 0 FAIL；backend complexity 不报告该文件 HIGH |
+| P1 | `backend/scripts/audit_event_timestamp.py` | 已完成：event table/column inventory 复用批量 helper；timestamp non-null、PIT lag、recent-30d sanity 从 per-table query 改为 UNION ALL 批量指标；不改变 primary FAIL / secondary WARN / unusual lag WARN 语义 | `backend/tests/scripts/test_audit_event_timestamp.py` 3 passed；与 import/PIT/leakage/nplusone 相邻测试合跑 27 passed；真实脚本实跑 PASS：55 PASS / 5 WARN / 0 FAIL；backend complexity 不再报告该文件 |
+| P1 | `backend/scripts/audit_tradeability.py` | 已完成：静态 grep 拆为 file-level helper，避免 file×line×pattern 嵌套；spot check raw/view 逐日查询改为一次批量 UNION ALL 计数；不改变 suspension/limit/spot-check PASS/WARN/FAIL 语义 | `backend/tests/scripts/test_audit_tradeability.py` 3 passed；与 `test_audit_n_plus_one.py` 合跑 18 passed；真实脚本实跑 PASS：4 PASS / 4 WARN / 0 FAIL；WARN 为本地 `price_kline` 无停牌样本和近 14 天无涨跌停 proxy，不能当完整生产覆盖证据；backend complexity 不再报告该文件 |
+| P1 | `backend/scripts/audit_survivorship_gate.py` | 已完成：DB 侧 ever-listed/active/panel count 从多次查询合成一次 CTE；训练入口 `is_active=1` 扫描拆成可测试 helper；不改变 allow-list 或 FAIL 门槛 | `backend/tests/scripts/test_audit_survivorship_gate.py` 3 passed；与 `test_audit_n_plus_one.py` 合跑 18 passed；真实脚本实跑 FAIL：label panel 711 codes < 90% of ever-listed 5,210；backend complexity 不再报告该文件 |
+| P1 | `backend/scripts/audit_universe_coverage.py` | 已完成：business-table coverage 从 ref_date × table 逐次查询改为批量 K 线 universe 与业务表 codes map；gap sample 排序抽到 helper；不改变 panel FAIL、event info、gap PASS/WARN/FAIL 语义 | `backend/tests/scripts/test_audit_universe_coverage.py` 4 passed；与 `test_audit_n_plus_one.py` 合跑 19 passed；真实脚本实跑 PASS：16 PASS / 6 WARN / 0 FAIL；backend/scripts/backend complexity 不再报告该文件；6 WARN 不可当 freshness 全绿证据 |
+| P1 | `backend/scripts/audit_tdx_data_need_coverage.py` | 已完成：`ensure_tables` fallback 不再 split DDL 循环执行；TDX data need/source priority/reassignment catalog 从 Python 常量迁入 `backend/config/tdx_data_need_coverage.yaml`；2026-05-27 补 exact-sync；2026-05-31 将 `grain` / `pit_key` / `freshness_sla` / `evidence_status` / `production_eligibility` 设为 need contract 必填并补 enum/eligible 校验；`need_027` 明确 blocked/unknown | `scripts/chunkyctl audit --run backend/scripts/audit_tdx_data_need_coverage.py ...` PASS；`backend/tests/scripts/test_audit_tdx_data_need_coverage.py` 15 passed；三文件 targeted pytest 25 passed；默认配置物化目标为 27 coverage / 10 priority / 14 reassignment rows；生产 DuckDB 已只读核实 `raw_fund_flow_daily` stale/deprecated，本轮未写生产 DuckDB exact-sync |
+| P1 | `backend/scripts/audit_stale_references.py` | 已完成：Tier 5/6/7 结论写入 JSON 报告和 summary，避免 console-only 证据丢失；commented-out-code 检测改为 AST/SQL 可解析口径，过滤公式说明、YAML 来源说明、英文说明性注释；新增 per-run `_read_lines` cache，降低 Tier1/Tier3/Phase0 重复全仓读取风险；Phase0 denylist 仍保持 report-only，不顺手改 blocking 策略 | `backend/tests/scripts/test_audit_stale_references.py` 8 passed；真实 smoke `--no-fail --output /tmp/chunkymonkey_stale_audit_smoke.json` 写出 `summary` + Tier5/6/7 arrays，当前 critical/warn/parity/Tier5/Tier6/Tier7 均 0；单文件 complexity 为 0 HIGH / 2 MEDIUM，测试文件 0 findings |
+| P1 | `backend/scripts/build_architecture_inventory.py` | 已完成三刀：`_safe_latest()` 从候选列逐条查询改为一次 SELECT 批量 latest-column 聚合；新增 nested `include_router()` app-prefix 传播，修复 lifeboat 子路由合同缺口；frontend route contract 改为静态 route set + pattern/prefix index；`_strip_js_comments()` 从嵌套 `while` 改为单通道状态机；`_apply_dependency_context()` 改为 incoming/source/target blocker set maps，统一排序/去重后赋值，test dependency 不产生 blocker | scoped test-tool audit PASS；`py_compile` PASS；`backend/tests/pipeline/test_architecture_inventory.py` + `backend/tests/contract/test_architecture_contracts.py` 15 passed；`codegraph sync .` synced 46 changed files；`check_universe_filter.py --all` CLEAN；full test-tool audit PASS；backend complexity 已不再报告旧 JS comment stripper 与 dependency context sort-in-loop 热点，但 broad scan 仍报该文件其他历史 HIGH；不能宣称 clean |
 
-**奥卡姆剃刀: 能删的删**
+### 阶段 4: `updater.py` 拆分方案
 
-| 对象 | 判定 | 原因 |
-|---|---|---|
-| dim_all_ever_listed 依赖 | 删 | K 线替代, 已改 |
-| dim_market_segment 表 | 删 | code[:2] 直接判断 |
-| dim_price_limit_rules 表 | 删 | YAML 已有 |
-| get_limit_up_pct (universe.py) | 删 | filters.py 有 get_limit_pct |
-| 16 个 paper_sim_*.yaml | 合并 | 变体用参数区分不用多文件 |
+执行前必须先跑:
 
-**目标架构 (模块 + 数据表 + 配置)**:
-
-```
-Layer 0: 基础设施 (不依赖任何业务层)
-  config/universe_rules.yaml    — 板块前缀 + ST 模式 + 涨跌停 + 退市天数
-  config/paper_sim_config.yaml  — 交易成本 + 持仓规则
-  services/calendar.py          — 交易日历 (已有, OK)
-  services/universe.py          — get_active_universe (K线∩前缀∩非ST, 简化版)
-  services/trading_config/      — 涨跌停 / 停牌 / 一字板 (统一入口)
-  dim_active_a_stock            — 仅 code→name 映射, 不参与判断
-  price_kline_tdxhub            — 交易真相源
-  data_audit.py                 — 数据完整性审计 (sync 后自动跑)
-
-Layer 1: 公式引擎 (依赖 Layer 0)
-  bc_absorbed/formula_engine.py — 59 公式统一调度
-  bc_absorbed/bank/             — 49 bank 公式
-  bc_absorbed/derived_formulas.py — 300616 衍生公式
-
-Layer 2: 信号处理 (依赖 Layer 1)
-  bc_absorbed/signal_ranker.py  — 共振评分
-  bc_absorbed/stock_profiler.py — 股票画像
-  bc_absorbed/smartmoney_adapter.py — SmartMoney 数据喂公式
-
-Layer 3: 策略执行 (依赖 Layer 2)
-  bc_absorbed/portfolio_pool.py — 股票池 max 5
-  paper_sim/                    — 回测模拟
-  execution_model.py            — 交易执行 (涨跌停/延迟)
-
-Layer 4: 展示 (依赖 Layer 3)
-  routers/                      — API
-  v3/                           — 前端
+```bash
+codegraph query "updater"
+codegraph context "updater split"
+python /Users/dp/.agents/skills/complexity-optimizer/scripts/analyze_complexity.py \
+  /Users/dp/Documents/M/stock/chunkymonkey/backend/routers --format markdown
 ```
 
-**实施优先级**:
-1. 删 get_limit_up_pct 重复 → 统一 filters.py (10 分钟)
-2. 删 dim_all_ever_listed 剩余引用 (data_audit + monitor) (30 分钟)
-3. ST 检查统一入口 → universe.py is_st() 一处实现 (1 小时)
-4. paper_sim YAML 合并 (1 小时)
-5. God module 拆分 (updater 5136 行) (大工程, 单独排)
+目标边界:
 
-**执行进度 (2026-05-26)**:
-- Phase 0.2 LIMIT_THRESHOLD YAML: DONE (`f924d06a`)
-- Phase 0.3 tx_cost config: DONE
-- Phase 0.1 get_limit_up_pct 重复: 等 Codex 签名桥接
-- Phase 1.1 ST 统一: 14 处, B 类 6 处 SQL 需重构 (compute.py 3 + ensemble 1 + feature_join 1 + monitor 1)
-- Phase 1.2 dim_active_a_stock 23 处: 等 Codex 分类
-- Phase 2-4: 待做
-
-**技术规范文档** (Codex 在写 `docs/technical_specification.md`, 需覆盖 15 个领域):
-1-10: 架构/模块管理/代码流程/数据管线/数据验证/回测/公式生命周期/配置/维护/扩展
-11. Handoff: goal.md 单一真相源, session_handoff_audit 工具, 记录标准
-12. 开发排期: P0/P1/P2 优先级, 时间成本估算, 依赖排序, 中断恢复, grill gate
-13. 进度追踪: goal.md 实时更新, commit message 作证据, 完成=端到端验证
-14. 协作: Claude + Codex 分工, 何时派 Codex, 避免重复, review gate
-15. 质量门: 所有 gate (preflight/plan_validator/data_audit/grill/gcp_launch/leakage/handoff)
-
-- **待简化**: get_active_universe + dim_active_a_stock 整套可删 — K 线就是 universe
-  第一性原理: K 线有数据 = 能交易, 不需要预筛"活跃列表"
-  ST 在公式层面处理 (get_limit_up_pct), 不需要 universe 层排除
-  98 处引用大部分是查股票名字 (改名 dim_stock_name 更准确)
-  暂保留, 逐步迁移
-- **待修**: feature_join_v5 ST 检查用当前 name 非 PIT 安全
-- **待修**: monitor_v7_forward 仍用 dim_all_ever_listed.is_active=0
-- Executive trade → 已重建 68661 行到 05-27
-- Industry → 已刷新到 05-26
-- Stage/Quality/Archetype → build_picture_daily 已跑 (dim_stock_stage_days + mart_stock_picture_daily 到 05-26)
-- K 线 → 已同步到 05-26, 删除 ETF (510300/510500) 2082 行
-
-**未完成**:
-- dim_stock_stage_latest 仍 05-13 (来源是 scoring.py, 需前端 smart update)
-- dim_stock_quality_latest 仍 04-17 (同上)
-- daily_update.sh 从未定时跑 (无 log)
-- data_audit.py 建了但未集成到 daily_update.sh 每步后自动跑
-- **根因记录**: [[feedback-data-sync-silent-failure]]
-
-#### P1: 前端问题
-
-- 公式视图 (formula-view, `/api/v3/formulas`) 返回 0 个公式 — 没接 bc_absorbed formula_engine, 需加 API 返回 58 个公式定义
-- 更新按钮在前端页面没看到 — 需检查 v3-page-formula-view.jsx UI
-- 前端增量更新需求: 更新/计算完后缓存结果, 打开页面显示最后一次结果不每次重算
-- 买入价应用 T+1 VWAP (= (open+high+low+close)/4), 含交易成本 10.4 bps (from paper_sim_config.yaml)
-- **需求记录**: [[project-frontend-incremental-update]]
-
-#### P1: GCP 全量重跑
-
-**前提** (全部已就绪):
-- walk-forward 70/30 切分 ✓
-- trial 分层 (100/60/30/1) ✓
-- 全量 4541 stocks (不是 200) ✓
-- plan_validator 8 项检查 ✓ (含 board_coverage + sample_size + param_scope)
-- preflight_gcp_launch.sh 7 项远程验证 ✓
-- grill gate ✓
-- Codex review 4 findings 全修 ✓ (OOS 选参 / shell 展开 / code scan / PIT 异常)
-
-**GCP 成本修正**: 全量 4541 stocks × 1356 trials ≈ 34h, ~$13
-**之前踩的坑**: 29/34 无 search space 白跑 + 200 只全深主板抽样偏差 + pullback_doji limit_up_pct 板块错
-
-**执行**: 需先 `/grill-with-docs` → grill_stamp → preflight_gcp_launch.sh 7/7 PASS → 启动
-
-**GCP 历次跑批结果**:
-- Wave A v1 (已作废): 200 只全深主板, 无 walk-forward, 29/34 无 search space
-  - 仅参考: gs_pullback_confirm 53.04 / ascending_triangle 49.23 / bull_flag 46.03
-- Wave A v2 (已作废): walk-forward + trial 分层, 但仍 200 只深主板
-  - 28/34 完成 0 失败, 但因抽样偏差结果不可用
-  - pullback_doji score=-999 (limit_up_pct 板块错, 已修)
-- **均已作废, 需全量 4541 stocks 重跑**
-
-**Codex wave_patterns.py**: Codex 写了 wave2_pullback_buy + wave3_rapid_doji 到
-`backend/services/labels/formulas/wave_patterns.py` (路径错, 已清理).
-代码逻辑已合并到 `derived_formulas.py`, 但参数需重新校准 (上帝视角方法).
-
-#### P2: 审计工具强化已完成
-
-| 工具 | 检查数 | 用途 |
+| 模块 | 内容 | 备注 |
 |---|---|---|
-| backtest_preflight | 8 项 | 回测前 (universe/板块/成本/新鲜度/walk-forward/PIT/code scan) |
-| plan_validator | 8 项 | 跑批前 (search space/trial/runnable/cost/param_scope/sample_size/board/output) |
-| data_audit | 7 项 | 数据 sync 后 (kline完整/一致/板块/日期/量价/smartmoney/跨表) |
-| preflight_gcp_launch | 7 项 | GCP 启动前远程验证 (VM/SSH/plan/data/grill/leakage/budget) |
-| grill gate | 强制 | 执行计划前必 `/grill-with-docs` |
+| `backend/routers/updater_infra.py` | UI log handler, reset logs, metrics helpers | 基础设施 helper |
+| `backend/routers/updater_steps.py` | step status, normalize/sanitize, `_prime_step_status_rows`, `_sync_step_status_catalog_for_steps`, `_record_step_source_state_for_domains`, `_update_step` | 状态机核心 |
+| `backend/routers/updater_calendar.py` | calendar step, trading calendar status | 日期真相源相关 |
+| `backend/routers/updater_runtime.py` | `_run_blocking_db_task`, `_run_blocking_market_db_task` | 共享 runtime helper，不放业务逻辑 |
+| `backend/routers/updater_audit.py` | audit snapshot refresh task、refreshing status helper、sync refresh helper | 审计快照后台刷新从主 router 分离；`routers.updater` 继续导入同名 helper |
+| `backend/routers/updater_plan.py` | `STEPS`, `HARD_DEPS`, `SOFT_DEPS`, `MANUAL_ONLY_STEPS` | DAG metadata 从 router 分离；`routers.updater` 继续 re-export 兼容测试/调用 |
+| `backend/routers/updater_execution.py` | hard-dependency blocking、remaining steps、K 线不可用 gap queue block/update fields、`StepRunProgress`、K 线不可用 skip helper、runner managed connection helper、group/full/single/smart 执行循环 helper | 从 smart/single/group/full route body 抽共享执行规则，不移动运行态 globals |
+| `backend/routers/updater_launcher.py` | `UpdaterExecutionDeps` launcher callback bundle、`run_background_update_task` 后台任务失败/cleanup launcher、`run_smart_update_background` / `run_full_update_background` / `run_single_update_background` / `run_group_update_background` launcher helpers | route-level launcher plumbing，依赖 `updater_execution.run_smart_steps/run_all_steps/run_single_steps/run_group_steps`，避免 execution helper 继续膨胀 |
+| `backend/routers/updater_status.py` | step budget、source domain、smart plan budget、critical daily filter、smart-update 计划/交易日历 preflight helper、status summary、update status payload/response connection lifecycle、smart-plan response connection lifecycle、downstream DAG helper | `updater.py` 只保留当前 STEPS/HARD_DEPS/SOFT_DEPS wrapper |
+| `backend/routers/updater_reset.py` | reset table 清理常量、批量 table existence/count/delete helper、reset-derived/reset-industry response payload/connection lifecycle helper | `updater.py` 只保留 reset route 编排和 smart-update 接续 |
+| `backend/routers/updater_connectivity.py` | connectivity probe、TTL cache、cached status helper | `updater.py` 只保留 route/runner 调用与 re-export |
+| `backend/routers/updater_sync.py` | 独立外部 sync runner；目前承接 sync_raw、LHB/QFII/AIF10/surveys/sync_financial body | 如果超过 1000 行，拆成 sync_fetch / sync_build，不硬塞 |
+| `backend/routers/updater_calc.py` | 独立计算/build/score runner；目前承接 financial/screening/sector/prediction/risk/external/stage/turtle/score/today-signal wrapper | 计算型步骤 |
+| `backend/routers/updater_institution.py` | institution-domain runner；目前承接 match_inst/exclusion helper、sync_industry body 与 build_industry_stat sync body | 后续优先评估 profiles 是否同域迁入 |
+| `backend/routers/updater_trends.py` | stock trend mart runner；承接 build_trends body、K 线批量读取、趋势 helper | `updater.py` 只保留 thin wrapper 注入 stop hook |
+| `backend/routers/updater_profiles.py` | institution profile mart runner；承接 build_profiles body、机构画像批量聚合、持仓周期 helper | `updater.py` 只保留 thin wrapper 注入 stop hook |
+| `backend/routers/updater_market_data.py` | market data runner；承接 sync_market_data body、gap queue reconciliation、daily/monthly K 线同步、xdxr sync 编排 | `updater.py` 只保留 thin wrapper 注入 stop hook/update_step |
+| `backend/routers/updater_lifeboat.py` | legacy lifeboat endpoints；承接 `/lifeboat/run/status/report`、子进程执行、HTML 报告返回 | `updater.py` 只 include 子 router，API path 不变 |
+| `backend/routers/updater_completeness.py` | data_completeness 覆盖率校准 helper；承接 returns/industry coverage 检查和 mart 表 `data_completeness` 标记 | 非目标 step 直接 return，避免每个 step 都做覆盖率查询；`updater.py` 只保留薄 wrapper 注入 truth source/logger |
+| `backend/routers/updater.py` | API routes 薄代理 | 保持现有 endpoint 兼容 |
 
-#### P2: Codex 讨论结论汇总
+当前进展 (2026-05-27):
 
-已完成的 Codex 讨论 (全部结果已收到):
-- 300616 三波策略设计 → `analysis/codex_multi_wave_300616.md` (141 行)
-- 分层选股架构 → 5 项建议 (画像/映射/新公式/共振/排名)
-- Wave B 组合优化 → adapter 设计 + 组合搜索策略 + 成本
-- 29 公式 search space → 已补全 (22 有参数, 7 确认无需搜索)
-- 4 bug 修复 → multi_tf PIT / macd_divergence / mfi roll / dividend future
-- Bank 49 评估 → 11 KEEP / 25 REWORK / 13 DROP
-- Grill 修复 → walk-forward + T+1 open + trial 分层 + shell 展开
+| 项 | 结果 |
+|---|---:|
+| 已抽模块 | `backend/routers/updater_infra.py`, `backend/routers/updater_calendar.py`, `backend/routers/updater_steps.py`, `backend/routers/updater_connectivity.py`, `backend/routers/updater_sync.py`, `backend/routers/updater_calc.py`, `backend/routers/updater_runtime.py`, `backend/routers/updater_audit.py`, `backend/routers/updater_institution.py`, `backend/routers/updater_trends.py`, `backend/routers/updater_profiles.py`, `backend/routers/updater_status.py`, `backend/routers/updater_reset.py`, `backend/routers/updater_market_data.py`, `backend/routers/updater_lifeboat.py`, `backend/routers/updater_plan.py`, `backend/routers/updater_execution.py`, `backend/routers/updater_launcher.py`, `backend/routers/updater_completeness.py` |
+| `updater.py` 行数 | 5136 -> 723 |
+| `updater_completeness.py` 行数 | 108 |
+| `updater_execution.py` 行数 | 823 |
+| `updater_launcher.py` 行数 | 278 |
+| `updater_plan.py` 行数 | 130 |
+| `updater_lifeboat.py` 行数 | 88 |
+| `updater_market_data.py` 行数 | 765 |
+| `updater_infra.py` 行数 | 258 |
+| `updater_calendar.py` 行数 | 157 |
+| `updater_steps.py` 行数 | 232 |
+| `updater_connectivity.py` 行数 | 156 |
+| `updater_sync.py` 行数 | 443 |
+| `updater_calc.py` 行数 | 196 |
+| `updater_runtime.py` 行数 | 34 |
+| `updater_audit.py` 行数 | 53 |
+| `updater_status.py` 行数 | 593 |
+| `updater_reset.py` 行数 | 161 |
+| `updater_institution.py` 行数 | 533 |
+| `updater_trends.py` 行数 | 303 |
+| `updater_profiles.py` 行数 | 455 |
+| 已迁移内容 | UI log handler/reset/get logs、daily sync source metrics、step detail/status normalize/format helper；交易日历前置、日期覆盖检查、calendar refresh；DAG metadata (`STEPS`/deps/manual-only) 与 DAG 查询/计划过滤 helper（step ids/index/name/group/selected deps/selected specs/skipped outside plan）；执行编排共享规则（hard dependency blocking、remaining steps、K 线不可用 gap queue block/update fields、`StepRunProgress` full/group/smart/single 状态账本、`_begin_run` 启动状态 helper、`_prime_run_step_status` 连接生命周期 helper、`apply_step_result` runner result 落账/progress helper、`mark_remaining_stopped` stop remaining helper、`skip_if_hard_dependency_blocked` hard-dependency skipped helper、`mark_step_running` / `mark_step_stopped` / `mark_step_failed` step transition helper、`skip_if_kline_unavailable` K 线不可用 skip/gap_queue bookkeeping helper、`kline_connectivity_for_steps` K 线连通性预检 helper、`run_step_with_managed_connection` runner 独立连接生命周期 helper、`run_group_steps` group pipeline 执行循环 helper、`run_all_steps` full DAG 执行循环 helper、`run_single_steps` single-step chain 执行循环 helper、`run_smart_steps` smart plan 执行循环 helper）；launcher callback bundle / background task failure-cleanup / smart/full/single/group background launcher / group route request scheduling 已迁入 `updater_launcher.py`；data_completeness 覆盖率校准 helper；step_status prime/connection-lifecycle/mark/stale-running-cleanup/catalog-sync/source-failure-state/fail/update/result normalize；blocking runtime helper；audit snapshot refresh task/status helper 与 `/update/audit` payload helper；status summary / update status payload/response connection lifecycle / smart-plan response connection lifecycle / smart plan budget / smart-update 计划/交易日历 preflight helper / downstream DAG helper；connectivity probe/cache helper；reset table 常量、批量清理 helper 与 reset response payload/connection lifecycle；sync_raw、LHB/QFII/AIF10/surveys/sync_financial external sync runner；gen_events/calc_returns/current_relationship + financial/screening/sector/prediction/risk/external/stage/turtle/score/today-signal calc/build wrapper；match_inst/exclusion helper；build_industry_stat sync body；build_trends body 与趋势/K 线批量读取 helper；build_profiles body 与机构画像批量聚合 helper；sync_market_data body 与 gap queue/daily/monthly/xdxr 编排；lifeboat legacy endpoints（`updater.py` 保留 thin wrapper / include router） |
+| 兼容处理 | `routers.updater` 继续回导出测试仍引用的私有 helper/calendar/step helper；`_prime_step_status_rows` 保留薄 wrapper 读取当前 `STEPS` |
+| 验证 | `py_compile` PASS；industry/reset focused tests 8 passed, 2 warnings；status+nplusone focused tests 39 passed；nplusone/status/system focused tests 45 passed, 2 warnings；updater adjacent suite 104 passed, 2 warnings；post-cleanup smoke 38 passed, 2 warnings；checker CLEAN (764 files checked)；敏感扫描仅命中两处历史注释，无 `dim_active_a_stock` / `shift(-` / `np.roll` / GCP / Optuna 命中；`git diff --check` / project index PASS；`codegraph sync .` 完成（27 changed files: 27 added, 445 nodes）；backend complexity 仍只有既有 HIGH，未新增 touched-file HIGH |
+| 剩余风险 | `codegraph status .` 因新 untracked 文件仍提示 `Added: 40 files`；`updater.py` 仍 723 LOC，route/status glue 仍可继续收薄；`updater_execution.py` 已降到 823 LOC，但仍偏大；`updater_market_data.py` 仍 765 LOC，后续可继续按 daily/monthly/xdxr 边界拆；未 stage/commit 前属于 main 工作区状态风险，不是索引未 sync |
 
-#### 已安装的 Skills (跨项目)
+拆分原则:
 
-`~/.claude/commands/`: grill-with-docs / grill-me / diagnose / tdd / to-issues / handoff / zoom-out / to-prd
-强制规则: `~/.claude/CLAUDE.md §3.5` + `~/.claude/hooks/plan_grill_gate.sh`
-
-### Tech Debt — Phase 3 之后
-
-| # | Task | 范围 | 备注 |
-|---|---|---|---|
-| TD1 | `assets/js/app.js` 复杂度清理 | 80 HIGH (nested-loop / io-in-loop / sort-in-loop) | 6853 行前端主逻辑, 唯一含 HIGH 的文件 |
-
-### Total schedule + GCP
-
-| Phase | Wall | GCP | Cumulative |
-|---|---|---|---|
-| 1 | 3 天 | $0 | $0 |
-| 2 | 2 周 | $5 | $5 |
-| 3 | 2-3 周 | $0 | $5 |
-| 4 | 3 周 | $5-10 | $10-15 |
-| 5 | 1 周 | $0 | $10-15 |
-| 6 | 6-12 周 (parallel) | $0 | $10-15 |
-| **Active dev** | **~2 月** | **$10-15** | within $50 budget |
-| **+ forward** | **+ 2-3 月** | $0 | total ~3-5 月 |
-
-### Stops + Continues
-
-**Stops** (per user 指令):
-- 不再 version retrain (v10/v11 etc)
-- 不再 ensemble permutations (5 已 tested converge)
-- 不再 threshold gaming (IS-OOS 30→70)
-- 不再 proposal-loop spinning
-- 不再 docs without enforcement (L7/L9/L10/L14 → hooks)
-
-**Continues**:
-- v7 forward 6 weeks evidence (already deployed)
-- Track A 子项目 data refresh OK
-- Track B 副本 absorb + optimize
-- Enforcement layer maintained
-- Forward monitor cron daily
-
-### Critical user decisions waiting
-
-| Decision | Default | User to confirm |
-|---|---|---|
-| Phase 1 immediate execute (3 天) | ✓ recommended | Y/N |
-| Linear/factor parallel at Phase 4 | ✓ recommended (fallback) | Y/N |
-| 3-group forward (G1/G2/G3 × 1.5% each) | ✓ recommended | Y/N |
-| Broker integration timing | Phase 5 paper account first | Y/N |
-| Phase 4 IS-OOS threshold model-class-aware (30 linear / 50 tree) | document explicitly | accept/relax |
-
-### 进度 tracking via existing infrastructure
-
-- `mart_strategy_result_registry` (current champion + 3 groups when Phase 5+)
-- `monitor_v7_forward.py` daily cron 8:30 AM
-- `v7_weekly_aggregate.py` weekly decision tree
-- `check_panel_lineage.py` consistency check (manual)
-- `check_kpi_redlines.py` 数字红线 audit
-- `check_universe_filter.py` pre-commit
-- L1-L13 + L15-L17 enforcement: hooks fire automatically
-- L7/L9/L10/L14 implementation: Phase 1 immediate
-
-### 文档 supersedes
-
-This plan supersedes earlier docs:
-- `docs/project_audit_20260523.md` (B section blind spots)
-- `docs/project_synthesis_20260523.md` (5 patterns + Occam)
-- `docs/integration_master_plan_20260523.md` (Track A/B architecture)
-- `docs/optimization_plan_consolidated_20260523.md` (phases)
-- `docs/MASTER_SYNTHESIS_20260523.md` (consolidated, primary reference)
-
-`MASTER_SYNTHESIS_20260523.md` 是 primary reference, this goal.md section is active roadmap.
-
----
-
-## 2026-05-22 22:35 CST — 真目标: 项目运营 ready, 不是 phase 列表打勾
-
-> 用户 22:35 push back: "你又没把 goal.md 全部执行当成最终目标, 阶段性完成就当完成了. 你应该边推进边结合实际修订 goal.md 直到项目具备运营条件".
->
-> **核心修正**: BC Phase 7 sharpe 1.67 / 阶段 D1-D8 done 都**只是 milestone, 不等于运营 ready**.
-> 真目标 = `audit_delivery_readiness.py` `ready_for_delivery=True` (现 92.83% / NOT READY).
->
-> 关键 gap to operational (per goal.md original line 132):
-> - **Sharpe** 0.81 (V4 baseline) → target ≥ 2.0 (gap: **+147%**)
-> - **max_dd** -24.28% → target ≥ -20% (gap: 4pp)
-> - **n_obs** 22 monthly → target ≥ 60 (gap: 3x more out-of-sample windows)
-> - **#6 perfect ladder** PBO/DSR/Conservative 已 PASS, 仅 Sharpe + dd + n_obs FAIL
->
-> 今日 progress 贡献 vs gap:
-> - ensemble V4+BC Sharpe 1.83 (forward 估 1.5-1.7) — **接近 Sharpe ≥ 1.3 中位目标 但远未到 2.0 perfect ladder**
-> - Phase 7 policy 进一步 +0.47 sharpe (单 trade)
-> - Panel v5 Pattern 10 fix 待 v7 retrain 验证真 alpha lift
-> - n_obs 22 不变 (需更长 forward 累积 OR 多窗 walk-forward)
-
-## 2026-05-22 综合规划 (9 天 local-only + 6/1 GCP reset 后 v7)
-
-> 阶段性 done 不等于 final done. 此 plan 是 milestone, 不是 target.
-
-### A. 当前 state 实测 (2026-05-22 20:30 CST)
-
-| 项 | 状态 |
+| 规则 | 做法 |
 |---|---|
-| **GCP 月预算** | $9.29 used / $13.71 projected (91.4% YELLOW). 剩 $5.71 / 15.18h spot. 距 6/1 reset 9 天 |
-| **VM** | TERMINATED (停, no burn) |
-| **V4 champion** (`lgbm_20260517_governance_v1_20d`, panel v3, OOS RankIC 0.025, Sharpe 0.65) | production, **honest** (panel v3 audit clean except survivorship) |
-| **v6 retrain** (`lgbm_phase5_stability_v6_20260522T071500Z`) | **BLOCK** (IS-OOS drop 60.8% + PBO 0.251 fail). 浪费 ~17h GCP / ~$5 |
-| **stability retrain** (`lgbm_phase5_stability_20260521T055800Z`) | **BLOCK** (IS-OOS drop 92.43%) |
-| **Ensemble V4+BC** (`ensemble_v4_bestchoice_v1`) | challenger, paper_sim Sharpe 1.83, registry `candidate_forward_monitor`. 真 forward Sharpe 估 1.5-1.7 |
-| **BestChoice** | Phase 1-6 done (import/feed/paper_sim/complementarity/audit/Production daily ensemble). **Phase 7 条件化退出 + Phase 8 stop-loss pending** |
-| **Project D 股票图谱** | Stage 1 API done. Stage 2 UI pending |
-| **Audit tool** | 9 checks (1-8 + 10, 9 qfq pending low-pri). safe_retrain.sh wrapper enforced |
-| **Leakage catalog** | `docs/leakage_pattern_catalog.md` 10 patterns, 6 covered |
-
-### B. 关键发现 / 反例 ledger
-
-| 反例 | Pattern | Status |
-|---|---|---|
-| Phase D: sector_*_tdx_l1_rel 用 `dim_stock_tdx_industry` flat NON-PIT | Pattern 9 PARTITION BY flat mapping | audit check 3 ✓ (panel v6 已 exclude) |
-| stability IS-OOS drop 92.43% | mixed (Pattern 9 + 10) | true train-log Phase 4 BLOCK |
-| v6 IS-OOS drop 60.8% (panel v4 - 30 cols 仍 leak) | Pattern 10 time-availability NULL gradient | audit check 6 ✓ (5 cols catch: inst_quality_max/inst_holder_cnt/mcap_decile/beta_60d/beta_60d_zscore) |
-| 生存者偏差 — panel 缺 1633/1928 delisted stocks | Pattern 8 survivorship | audit check 10 ✓ (V4 + v6 + BC 都缺) |
-| BC selection bias MILD (-16% W1→W3 drift) | selection bias (not strict leakage) | walk-forward audit defer (BC repo refactor 跨 repo) |
-
-### C. 9 天 local-only 工作 (5/22 → 5/31, 不启 GCP)
-
-> 硬规则: 剩 9 天 **不启** GCP retrain / Optuna search / 大计算. 6/1 后 budget reset 再做.
-
-#### Day 1-3: panel v5 build + audit-clean
-
-1. **D1**: 改 `backend/scripts/build_feature_panel_duck.py` line 418 + line 436 — universe 从 `dim_active_a_stock` 改 `dim_all_ever_listed` + PIT filter:
-   ```sql
-   SELECT stock_code FROM dim_all_ever_listed
-   WHERE first_seen_date <= '<signal_date>'
-     AND (delisted_date IS NULL OR delisted_date > '<signal_date>')
-   ```
-   解 Pattern 8 survivorship.
-2. **D2**: 改 `backend/services/labels/feature_join_v5.py` (copy from v4) — drop 5 time-availability cols at panel build level (vs --exclude-cols 运行时): inst_quality_max, inst_holder_cnt, mcap_decile, beta_60d, beta_60d_zscore. 解 Pattern 10.
-3. **D3**: build panel v5 + 跑 `audit_panel_leakage.py --panel mart_p0a_feature_label_panel_v5 --strict`. **要求 0 HIGH findings** 才 sign-off.
-
-Deliverable: `mart_p0a_feature_label_panel_v5` 表 + audit pass report.
-
-#### Day 4-7: BC Phase 7 条件化退出 POC (本地, 不 GCP)
-
-按 goal.md line 374 plan §5 Phase 7 spec:
-
-- Context buckets: `stock_code + formula_id + variant_id + stage + macd_context + market/industry_regime + volatility_bucket + kline_pattern`
-- MACD context: zero_axis_above_golden_cross / zero_axis_below_golden_cross / dead_cross / above_zero_trend_continuation / below_zero_rebound_probe
-- 动作空间: fixed_5/10/15/20/30, formula exit signal, 死叉退出, 阶段恶化退出, trailing stop, profit target + time stop, max holding + early exit, regime risk-off exit
-- 输出 `mart_bestchoice_context_exit_policy_v1`: key = `cutoff_date + stock_code + formula_id + variant_id + context_bucket`; value = `best_sell_rule + holding_days + stop_pct + target_pct + trailing_pct + expected_ret/dd + win_rate + n_train/oos + confidence + fallback_level + source_artifact + params_hash + walk_forward_id`
-- Fallback levels: `stock+formula+context → formula+context → stock+formula → formula+stage → global formula default`
-- 必 PIT-safe walk-forward + T+1 + 成本/滑点/涨跌停/停牌
-
-阈值 (per goal.md): 组合级 Sharpe ≥ 1.3 或 ann ≥ 50% 且 dd ≥ -25% → 才 Phase 8 GCP 扩大. 否则保留 evidence 不上 GCP.
-
-新 script (本地):
-- `backend/scripts/build_bestchoice_context_exit_policy.py`
-- `backend/scripts/run_paper_sim_bestchoice_phase7.py`
-
-#### Day 8: Project D Stage 2 UI (低优先, 可选)
-
-- `design/v3-drawer-stock.jsx` extend (tag chips + 关联弹窗)
-- consume Perception P5 + P7 mart + dim_stock_tdx_industry (current display only, 不入 model)
-
-#### Day 9: 6/1 reset 准备
-
-- safe_retrain.sh dry-run on panel v5
-- v7 retrain launch command 准备 (panel v5 + warm-start from stability best.json + Plan C config + audit 0 HIGH gate)
-
-### D. 6/1 后 GCP reset 第一 task: v7 retrain
-
-| Item | 配置 |
-|---|---|
-| Model | `lgbm_phase5_v7_<6/1ts>` |
-| Panel | `mart_p0a_feature_label_panel_v5` (clean per D1-D3) |
-| Exclude cols | 0 (panel v5 已 drop at build) |
-| Pre-flight | safe_retrain.sh: audit 0 HIGH + budget < 95% + 5-trial dry-run 健康 + confirm |
-| Optuna | 50 trials × n_est=100 × outer 1 × inner 32 (Plan C) |
-| Stability penalty | std 0.50 / neg_rate 0.20 (跟 v6 一致) |
-| Warm-start | stability_20260521T055800Z.best.json |
-| Expected wall time | ~10-15h spot (Plan C 15min trial × 50) |
-| Expected cost | ~$3.8-5.6 |
-| Success gate | Phase 4 true train-log: PBO ≤ 0.2 + DSR ≥ 0.95 + Conservative > 0 + IS-OOS drop ≤ 30% → promote |
-| Failure path | 不 promote, 留 challenger + 写 mart_strategy_result_registry block, 不再 retry 同 panel |
-
-### E. 后续 (post-v7)
-
-- v7 PASS → 上 champion, V4 降 backup, ensemble V4+v7+BC 试
-- v7 FAIL → diagnose root cause (会调用 audit_panel_leakage + ablation), 不再 blind retrain
-- BC Phase 7 POC PASS → Phase 8 stop-loss A+B sweep 上 GCP (~半 day + $1)
-- BC Phase 7 FAIL → 保留 evidence, BC 不上 condition exit, fixed_N 兜底
-
-### F. Hard rules (defense against re-occurrence)
-
-1. **No GCP retrain 不经 safe_retrain.sh** (audit + budget + dry-run + confirm)
-2. **Audit tool 必 0 HIGH** 才允许 retrain. 任何 HIGH 必先解
-3. **Manual exclude list 不可信** — 必 audit tool catch generate
-4. **Panel rebuild 走 safe_panel_build.sh** (HIGH → DROP panel + abort)
-5. **新发现 leakage** → 加 catalog + 加 check + 加 fixture (lockstep, 不允许 partial)
-6. **Budget hard-stop 95%** (gcp_policy.yaml — 待加 enforcement)
-
-### G. Pending milestones (track in registry)
-
-- `mart_strategy_result_registry`: ensemble_v4_bc_v1_20260522 (candidate_forward_monitor), v6 (candidate_hold_reject), stability (candidate_hold_reject)
-- Forward monitor: V4+BC ensemble cron via daily_update.sh 5c step (commit c9d9cead)
-- 6-12 weeks forward 数据后 review ensemble verdict (promote / hold / reject)
-
-### J. 2026-05-22 23:00 — per-stage stratification 真信号 (用户 23:00 push 跑 POC)
-
-V4 OOS predictions × `fact_stock_technical_stage` 619K joined rows:
-
-| Stage | rows | IC | IR | pos% | top-bot |
-|---|---|---|---|---|---|
-| 1 (early accum) | 25K | -0.013 | -0.10 | 50% | -0.010 |
-| **1.5 (active accum)** | 33K | **+0.081** | **+0.45** | **66%** | **+0.013** |
-| 2 (markup) | 116K | -0.001 | -0.01 | 60% | -0.006 |
-| 3 (distribution) | 202K | +0.010 | +0.06 | 62% | -0.010 |
-| **4 (markdown)** | 243K | **-0.021** | **-0.19** | **44%** | -0.008 |
-
-Quick paper_sim (top-5 picks, hold 20d, equal weight, 2025-01 to 2026-04):
-
-| Filter | Sharpe | Ann | DD | Win |
-|---|---|---|---|---|
-| V4 all stages | -0.40 | -13.9% | -89% | 45.6% |
-| **V4 + Stage {1.5, 2}** | **+1.13** | **+55%** | -76% | 61.4% |
-| V4 + Stage {1.5, 2, 3} | +0.45 | +14% | -69% | 61.4% |
-| V4 drop Stage 4 | +0.39 | +12% | -69% | 61.4% |
-
-**Stage 4 (markdown) 是真 alpha drag** — V4 在熊势股 picks 比 random 差.
-**Stage 1.5 + 2 是真 alpha 集中** — V4 在积极 accumulation + markup 阶段 picks 强.
-
-Implementation: `backend/scripts/build_ensemble_v4_bc_stage_filtered.py` 新 model_id `ensemble_v4_bc_stage_filtered_v1`:
-- v4_rank_pct + bc_rank_pct combine
-- Stage filter: zero out Stage 1 + 4 (267K rows / 2.16M, 12.4%)
-- Paper_sim_v6_compare 跑中 (~20 min)
-
-后续: 若 stage_filtered ensemble Sharpe > V4+BC 1.83 → 推 production champion 候选, 直接 push #6 perfect ladder target.
-
-**实测**: ensemble_v4_bc_stage_filtered_v1 paper_sim_v6_compare 完成 (lm_v6_compare_20260522T144556):
-- Sharpe **1.84** vs no-stage-filter 1.83 = +0.01 (边际, 但稳)
-- ann 75.48% / dd -16.85% / win 60%
-- RankIC 0.0001 (低, 因 ensemble 不依靠 RankIC 排名)
-
-**结论**: paper_sim_v6 mature engine 已 mitigate stage 4 drag 通过 exit_rules + risk_control + sizer. Stage filter 顶层 marginal.
-早 quick paper_sim 大差异 (raw V4 -0.40 vs Stage{1.5,2} +1.13) 是 simple paper_sim 没 engine 保护.
-
-**Sharpe gap to #6 ready: 0.16** (1.84 → 2.0). 路径:
-1. v7 retrain panel v5 PIT-clean (待 GCP, 6/1 reset)
-2. BC walk-forward audit defer (BC 在 chunkymonkey/bestchoice/ 同 repo, refactor formula_local_optuna.py)
-3. Phase 7 conditional exit ON TOP of stage-filtered ensemble (复合层试)
-
-dd (-16.85%) 已 PASS / win (60%) 已 PASS. **仅 Sharpe + n_obs 还差**.
-
-### L. 2026-05-22 23:50 — Win rate 提升 POC backlog (用户 23:45 推)
-
-用户 push 研究 win rate 提升 (现 V4 monthly 45% / ensemble 60% / V4∩BC+Phase7 per-trade 78%).
-
-已 tested:
-- [OK] Multi-signal confirmation V4 ∩ BC + stage + Phase 7 → per-trade win 78%
-- [OK] Phase 7 context whitelist regime sub-gate → win 64-67%
-- [NEG] Hard stop-loss ATR+dd Optuna → win **-5pp** NEGATIVE
-- [OK] BC formula trigger fixed_N exit → BC 50% baseline
-
-未 tested POC backlog (per impact × cost ranking):
-
-| # | Pattern | 实施 | 价值 | 优先级 |
-|---|---|---|---|---|
-| C | 大盘 regime filter (HS300 200d MA up 才进) | 半天, 1-line condition | 高 — Stage 4 V4 IC -0.021 已证大盘 regime 影响 | 1 |
-| D | Multi-signal conviction count (5 signals 票房, conv≥3 才 buy) | 半天 | 中-高 — 更细 V4∩BC | 2 |
-| B | Dynamic take-profit (短 trailing 5% 长 trailing 15%) | 半天 | 中 | 3 |
-| A | Volume + price 双 confirmation (entry day vol > MA20 × 1.5) | 半天 | 中 | 4 |
-| E | 板块集中度限 (同 industry ≤ 3 picks/day) | 半天 | 中 — risk 控制 | 5 |
-
-推进时机: composite paper_sim_v6 (bgys90hro) verdict 出 + 下次 session 推进 v7 / n_obs gap fix 之间.
-
-**注: 不重做 stop-loss** (Phase 8 已证 NEGATIVE).
-
-### Stock universe audit (用户 23:45 push 'ST 北交所 新三板 排除了吗')
-
-待 paper_sim_v6 unlock DB 后 verify:
-- exchange prefix distribution (SSE 主板 60 / 科创 68 / SZSE 主板 00 / 创业 30 / BSE 8 4)
-- ST/*ST count from `dim_active_a_stock.stock_name` LIKE 'ST%'/'*ST%'
-- 新三板/老三板 (NEEQ) 4xxxxx/8xxxxx overlap with 北交所
-- 是否 dim_active_a_stock 限 = 主板+科创+创业+BSE only, 新三板/老三板 不在
-
-代码 audit done (`backend/services/universe.py`):
-- KEEP prefix: ("60", "00", "30", "68") = 沪主板/深主板+中小板/创业板/科创板
-- **已排除**: 北交所 (8/4) / 新三板 / 老三板 / ETF (15/51/56/58) / 港股通 (by prefix)
-
-关键 gap:
-- ST/*ST (60/00/30/68 当前 ST 名) **未** universe.py filter → 仍可能 in panel/picks
-- 退市股 historical: Pattern 8 survivorship (panel 缺 1633 退市)
-- 实盘 risk: ST 跌停 ±5% / 流动性差 / 退市风险
-
-修复路径 (待 verify):
-- universe.py 加 ST filter via `dim_active_a_stock.stock_name LIKE 'ST%'/'*ST%'`
-- 或 paper_sim selector 即时 filter
-- 或 dim_listing_status PIT historical ST tracking (无现有 PIT 表)
-
-### K. 2026-05-22 23:30 — V4∩BC + Phase 7 复合 Sharpe **3.17** 突破
-
-跑 `run_paper_sim_ensemble_v4_bc_phase7.py` 各 top-K:
-
-| top-K | n_trades | **Sharpe** | ann | DD |
-|---|---|---|---|---|
-| 10 | 9 | 2.67 | 156.8% | -11.5% |
-| **20** | **22** | **3.17** | **130.7%** | **-11.5%** |
-| 30 | 32 | 3.06 | 117.9% | -11.5% |
-| 50 | 50 | 2.63 | 110.1% | -20.7% |
-| 100 | 111 | 2.35 | 91.6% | -40.3% |
-
-**Sweet spot top-K=20**: V4 top-20 ∩ BC + Phase 7 context-aware exit policy + positive-context whitelist.
-
-### #6 perfect ladder gate review (V4∩BC top-20 + Phase 7):
-
-| Gate | Threshold | Current | Status |
-|---|---|---|---|
-| Sharpe | ≥ 2.0 | **3.17** | **PASS +1.17** |
-| max_dd | ≥ -20% | **-11.5%** | **PASS +8.5pp** |
-| win_rate | ≥ 55% | **77.8%** | **PASS +22.8pp** |
-| n_obs (monthly non-overlap) | ≥ 60 | 22 | **FAIL** -38 |
-
-**仅 n_obs structural blocker** (需 5 年 paper_sim 历史, 现 16 月 OOS).
-
-n_obs 路径:
-- (A) V4 inference on pre-2024 数据 (truly OOS, V4 train_start=2024-01-02): ~3 年 extra 数据 += 36 obs → 22+36 = 58 obs (still gap 2)
-- (B) 5 年 history: pre-2021 数据 (need V4 paper_sim on 2021-2024 truly OOS)
-- (C) Wait 3-4 年 forward 累积 (slow)
-
-(A) 最 actionable — V4 model 用 2023 + 2022 + 2021 数据 inference 出 score, 加进 paper_sim. 估 3 年 = 36 monthly obs (额 22 = total 58). 接近 60 gate.
-
-**实操 next step**: 看 V4 inference 能否跑 2021-2023 panel. V3 panel 历史范围? 现 panel build start_date 2024-01-02.
-
-需要 panel v3 历史 extend to 2021 OR V4 inference on 2021+ 直接读 kline 算 features.
-
-下次 session 优先做这个 — Sharpe / DD / Win 已 PASS, 只缺 n_obs.
-
-### M. 2026-05-23 00:00 — paper_sim_v6 authoritative verdict 修正 (per-trade 3.17 是 illusion)
-
-composite V4 ∩ BC + Phase 7 paper_sim_v6 (cmp lm_v6_compare_20260522T152025):
-- Sharpe 1.85 / ann 68.64% / dd -20.63% / win **50%**
-- vs per-trade 3.17 (simple paper_sim) = 单位差异 artifact
-
-**所有 ensemble 变种 paper_sim_v6 portfolio Sharpe 收敛到 ~1.84-1.85**:
-- V4+BC rank-combine: 1.83
-- V4+BC stage filtered: 1.84
-- V4 ∩ BC + Phase 7 composite: 1.85
-- V4 alone baseline: 0.65
-
-Composite intersection 没 material lift. paper_sim_v6 mature engine 已 extract 大部分 ensemble alpha.
-
-**#6 perfect ladder verdict (HONEST)**:
-| Gate | Threshold | Best (composite) | Status |
-|---|---|---|---|
-| Sharpe | ≥ 2.0 | 1.85 | FAIL -0.15 |
-| DD | ≥ -20% | -20.63% | FAIL -0.63pp |
-| Win | ≥ 55% | 50-60% | partial |
-| n_obs | ≥ 60 | 22 | FAIL structural |
-
-**项目仍 NOT READY**. 4 gate 全没满足.
-
-下一关键 paths to close gaps:
-1. v7 retrain panel v5 (Pattern 10 FIXED) → 唯一可能 push V4 OOS RankIC + 上 Sharpe
-2. n_obs gap: V4 inference 2021-2023 truly OOS (+36 monthly obs)
-3. ST/*ST filter add to universe.py
-4. Pattern 8 survivorship rebuild panel v3
-5. BC walk-forward audit (chunkymonkey/bestchoice/ 内, 现同 repo)
-
-6/1 GCP reset 后 v7 是 critical milestone. 之前 GCP wasted ~\$7 ($5 v6 + $2 stability) — v7 必走 safe_retrain.sh, audit must pass, panel v5 Pattern 10 FIXED is the test.
-
-### U. 2026-05-23 09:50 — v7 EXECUTED on panel v5c — audit 88→90 percent
-
-Budget raised 15->50 enabled NOW launch.
-
-v7 retrain VM (~1h wall, ~0.40 dollar):
-- 50 trials, best 0.330843 Trial 5
-- 16 windows OK, 1,355,708 predictions
-- TRUE train-log to fact_model_train_log
-
-paper_sim_v6 verdict cmp lm_v6_compare_20260523T013827:
-- RankIC 0.0452 vs V4 0.0246 = +84 model lift
-- Sharpe 0.87 vs V4 0.64 = +36 (still <2.0)
-- Ann 21.7 vs V4 35 lower
-- DD -19.02 PASS -20 gate (V4 -22.18 FAIL)
-- Win 40 vs V4 45
-
-Phase 4 gate --require-true-train-log:
-- PBO 0.094 PASS best ever (V4 0.145 V4+BC 0.78)
-- DSR PASS Cons PASS
-- IS-OOS 63.51 FAIL (strict 30, true-train-test)
-- 3/4 PASS verdict block
-
-audit_delivery 88 -> 90 percent:
-- 3 backtester 75 WARN -> 87 PASS
-- 6 unchanged (primary kpi 仍 MSAF)
-
-NOT READY (90 < 95) gaps:
-- IS-OOS 63.5 vs 30 strict (Pattern 8 v3 rebuild OR relax mode)
-- 6 needs primary kpi overwrite (operational decision)
-- n_obs 22 vs 60 structural
-
-GCP cost final 9.61 dollar / 50 = 19 percent (was 89 of 15). v7 only 0.40 dollar.
-
-### V. 2026-05-23 14:05 — Option 4 EXECUTED: v7 forward deploy as candidate_forward_monitor
-
-用户 explicit "4" selection (Option 4 from earlier evaluation).
-
-Registry entry (mart_strategy_result_registry):
-- result_id: v7_clean_panel_v5c_20260523
-- production_status: candidate_forward_monitor
-- decision: hold_challenger
-- model_id: lgbm_phase5_v7_20260523T010000Z
-- sharpe 0.87 / ann 21.7 / dd -19.0 / win 40
-
-Forward deploy 配置:
-- capital_allocation_pct: 5
-- monitor_window_weeks: 6
-- abort criteria:
-  - forward_sharpe < 0.3 for 4 consecutive weeks
-  - max_dd worse than -25 on forward
-  - win_rate < 35 after 3 weeks
-  - top K picks contamination > 5
-
-实战 evidence path: 6 周 forward 累积 + 周报 vs paper_sim 数字 比对. 若 forward Sharpe 0.5-0.8 range = paper_sim 真实, hold v7 as challenger. 若 < 0.3 = abort, revisit.
-
-Operational state 仍 audit_delivery 90% NOT READY 数学 verdict, 但 v7 现 production tracked + forward monitor 6 周 自然 close n_obs 部分 (22 → 40+).
-
-测了其他 ensemble variants (v7+BC clean / v7+Phase7 / v8 PIT) — 全 worse Phase 4. v7 alone 是 best champion.
-
-### Y. 2026-05-23 20:53 — v9b verdict: best paper_sim, PBO trade-off confirmed
-
-v9b retrain (stronger reg std=1.0 / neg=0.6, panel v5 PIT, n_trials 50, n_estimators 100):
-- 50 trials done (many pruned by stronger penalty), best Trial 32 value 0.3095
-- 1,425,193 predictions, TRUE train_log
-
-paper_sim verdict cmp lm_v6_compare_20260523T124207:
-- RankIC **0.0562** (best ever, +128 vs V4 baseline 0.025)
-- Sharpe **1.7085** (best ever, near 2.0)
-- ann 61.01 (best ever)
-- DD -16.16 (best ever, PASS -20 perfect ladder +3.84pp margin)
-- Win 65 (best ever, PASS 55 +10pp margin)
-
-paper_sim 3/4 perfect ladder PASS!
-
-Phase 4 gate --require-true-train-log:
-- PBO 0.409 FAIL (worse than v7 0.094)
-- DSR 0.998 PASS
-- Conservative +63 PASS
-- IS-OOS drop 51.28 FAIL (improved from v7 63.5 but still > 30 strict)
-- 2/4 BLOCK
-
-Trade-off confirmed:
-- Stronger reg ↓ IS-OOS drop (63 → 51)
-- But ↑ PBO (0.094 → 0.409) — over-reg → K-variant rank instability
-- v7 仍 best Phase 4 (3/4 PASS), v9b 仍 best paper_sim
-
-No model 同时 high paper_sim AND Phase 4 PASS.
-
-GCP cost final 9.70 / 50 = 19.4 percent (3 retrains v7+v8+v9b = ~$1.20).
-VM stopped.
-
-操作 implication: v9b 单 K=5 picks (固定 K) might be deployable — Phase 4 PBO measures multi-K instability not fixed-K. 后续 v9b 单 K paper_sim 可考虑.
-
-### W. 2026-05-23 14:30+ — v9 stronger reg retrain + v7 monitor cron installed
-
-v9 retrain launched VM (lgbm_phase5_v9_20260523T070000Z):
-- panel mart_p0a_feature_label_panel_v5 PIT (same as v7)
-- n_trials 80 (vs v7 50)
-- n_estimators 200 (vs v7 100) — deeper trees, potentially better fit
-- penalty std 0.80 (vs v7 0.50) — much stronger stability
-- penalty neg_rate 0.40 (vs v7 0.20) — penalize negative-windows harder
-- ETA ~90 min, cost $0.50
-
-目标: v9 IS-OOS drop < v7 63.5% → closer to Phase 4 PASS.
-如 v9 仍 > 30% strict, 验证 LightGBM 自然 60+ drop = academic linear-factor threshold mismatch confirmed → 转 forward evidence path (Option 4).
-
-backend/scripts/monitor_v7_forward.py (新):
-- Daily KPI tracking (contamination ST/退市/BSE + paper_sim KPI)
-- Abort criteria check (sharpe <0.3, dd <-25, win <35, contamination >5)
-- 输出 data/reports/v7_forward_monitor.json
-- Cron installed: 30 8 * * * (daily 8:30 AM local time)
-- First run day 0: contamination 0% OK, paper_sim KPI loading
-
-Forward deploy infrastructure ready. 等 v9 verdict.
-
-### X. 2026-05-23 14:35 — BC walk-forward time-bucket VERDICT: STABLE (selection bias MILD confirmed)
-
-用户 3+ 次 ask: BC walk-forward audit. 实施 (sample-based, no Optuna re-search needed):
-
-Time-bucket forward 20d return per BC pick (kline row offset 20):
-| Bucket | n | mean ret | std | Sharpe | Win |
-|---|---|---|---|---|---|
-| P1 2024-H2 (Jul-Dec 24) | 4,512 | +5.89% | 0.20 | 1.06 | 56% |
-| P2 2025-H1 (Jan-Jun 25) | 3,870 | +4.37% | 0.14 | 1.11 | 65% |
-| P3 2025-H2+ (Jul 25-) | 6,713 | +4.15% | 0.15 | 0.97 | 57% |
-
-Cross-bucket Sharpe std: 0.059 (LOW = stable). Range 0.97-1.11.
-**Verdict: BC selection bias MILD** (consistent with Phase 5 audit verdict).
-BC alpha real across 3 time periods. paper_sim Sharpe 1.10 holds reasonably.
-
-Output: data/reports/bc_walk_forward_buckets_20260523.json
-
-### N. 2026-05-23 00:15 — ST filter added (universe.py extend)
-
-实测 V4 OOS predictions ∩ ST/*ST: **235 stocks** (45% of dim_active ST/*ST 238), V4 top-10 picks 19.31% 是 ST.
-
-Universe.py 加 `is_st_stock()` + `sql_where_no_st()` helper. ST_NAME_PREFIXES = ("ST", "*ST").
-
-简单 paper_sim ST filter impact (per-trade unit caveat):
-- V4 alone 含 ST: Sharpe 0.50 / win 54.4%
-- V4 alone drop ST: Sharpe **0.74 (+0.24)** / win **58.3% (+3.9pp)**
-
-预 composite ensemble + ST filter: Sharpe 1.85 → ~2.0+ (估, 待 paper_sim_v6 verify).
-
-剩 implementation 步骤 (下次 session):
-- build_ensemble_v4_intersect_bc_phase7.py 加 `AND NOT (stock_name LIKE 'ST%' OR stock_name LIKE '*ST%')` JOIN dim_active_a_stock
-- 重 build ensemble_v4_intersect_bc_phase7_st_filtered_v1
-- paper_sim_v6_compare 验证 (~15 min)
-- 若 Sharpe ≥ 2.0 + DD ≥ -20% + Win ≥ 55% → 3 gate PASS, 仅 n_obs structural blocker
-
-6 universe tests pass (backend/tests/test_universe.py).
-
-### O. 2026-05-23 01:00 — ST filter on composite verdict 反预期 HURT
-
-ensemble_v4_intersect_bc_phase7_st_filtered_v1 paper_sim_v6 (cmp lm_v6_compare_20260522T163007):
-- Sharpe 1.47 (vs no-ST composite 1.85 = -0.38 WORSE)
-- ann 59.23% / DD -21.85% / Win 60.00% (+10pp win)
-
-反预期! ST filter alone V4 +0.24 lift, 但 ST filter on 强 confluence -0.38 HURT.
-Reason: 强 confluence 已 filter 弱 ST picks, 剩 ST 是 ML+BC 共识识别 short-term alpha. 移除 = 切赢家.
-
-ST filter 实战 implication: 仅适合 weak-signal universe (V4 alone), 不适合 strong-confluence strategy.
-
-### P. 2026-05-23 01:05 — #6 perfect ladder final 2/4 PASS
-
-paper_sim_v6 全 variants:
-| Strategy | Sharpe | DD | Win |
-|---|---|---|---|
-| V4 baseline | 0.65 | -21.7 | 45 |
-| V4+BC rank-combine | 1.83 | -16.85 | 60 |
-| V4+BC stage-filtered | 1.84 | -16.85 | 60 |
-| V4 ∩ BC + Phase 7 composite | 1.85 | -20.63 | 50 |
-| V4 ∩ BC + Phase 7 + ST filter | 1.47 | -21.85 | 60 |
-
-Best: **V4+BC stage-filtered Sharpe 1.84 / DD -16.85 / Win 60** (`ensemble_v4_bc_stage_filtered_v1`)
-
-| Gate | Threshold | Best | Status |
-|---|---|---|---|
-| Sharpe | ≥ 2.0 | 1.84 | FAIL -0.16 |
-| DD | ≥ -20% | -16.85 | PASS +3.15pp |
-| Win | ≥ 55% | 60 | PASS +5pp |
-| n_obs | ≥ 60 | 22 | FAIL structural |
-
-**2/4 gates PASS**. 仍 NOT READY.
-
-Path forward (gap closure 优先级):
-1. v7 retrain panel v5 (Pattern 10 FIXED) on GCP 6/1 reset 后, via safe_retrain.sh
-2. n_obs structural: V4 inference 2021-2023 truly OOS pre-train (kline 历史足, panel v3 需 extend)
-3. Pattern 8 survivorship: panel v3 rebuild with PANEL_UNIVERSE_MODE=pit
-
-不再 propose ensemble variants (5 个 paper_sim_v6 converge 1.84-1.85). v7 是真 lift path.
-
-### Q. 2026-05-23 01:10 — audit_delivery 不 reflect V4+BC ensemble (wiring gap)
-
-audit_delivery_readiness 读 disk json reports (`_load_msaf_horizon_ladder`).
-- 现读 MSAF ensemble json (Sharpe 0.81 / dd -24.28 / n_obs 22) — old strategy
-- V4+BC ensemble Sharpe 1.84 在 mart_paper_sim_lambdamart_v6_kpi_compare 表
-- audit 不 query 此 mart → operational verdict 还基于 old MSAF KPI
-
-3 tier thresholds (from audit_delivery_readiness.py constants):
-- **SHIP** (lower bar): n_obs≥22 + ann≥10% + dd≤25% + DSR conf≥0.5 + (no sharpe req)
-- **SAMPLE** (mid): n_obs≥30
-- **PERFECT** (top): n_obs≥60 + Sharpe≥2.0 + dd≤20%
-
-V4+BC stage-filtered ensemble:
-- SHIP-ready: PASS (22 obs / 75% ann / -16.85 dd / DSR待 verify)
-- SAMPLE-ready: FAIL (22 < 30)
-- PERFECT-ready: FAIL (Sharpe 1.84 < 2.0, n_obs 22 < 60)
-
-Wiring path: 写 `data/reports/v4_bc_ensemble_horizon_ladder_20260523.json` in MSAF format → audit_delivery picks up. Substantial production wiring work (defer or 自动化).
-
-OR: 改 audit_delivery_readiness 加 query mart_paper_sim_lambdamart_v6_kpi_compare for ensemble verdict.
-
-### R. 2026-05-23 01:02 — V4+BC ensemble Phase 4 gate BLOCK (PBO 0.794 FAIL!)
-
-run_phase4_gate_on_msaf.py --model-id ensemble_v4_bc_stage_filtered_v1:
-- PBO: 0.794 FAIL (>>0.2 threshold) **新 problem**
-- DSR: 0.9976 PASS
-- Conservative: +41.58% ann PASS
-- IS-OOS: proxy mode PASS (no train_log for ensemble)
-- ALL: False, verdict=block
-
-vs V4 baseline (goal.md line 132): PBO=0.145 PASS.
-V4+BC ensemble PBO飙到 0.794 — 5x worse than V4 alone.
-
-PBO 0.794 means: 79% 概率 backtest 是 overfit/unstable.
-Reasons hypothesis:
-1. K-variant (top-3/5/7/10/15) picks 差异大, 不稳
-2. BC MILD selection bias (Phase 5 audit) 通过 ensemble 放大
-3. 真 portfolio variance 高
-
-**真 verdict 更严**:
-- 不只 Sharpe 1.84 < 2.0 + n_obs 22 < 60 gap
-- **Phase 4 gate BLOCK due to PBO** = ensemble 实际 NOT promotable
-- audit_delivery `phase4_promote_action=block` 现 OK confirm
-
-operational gap 重新估:
-- V4 baseline 0.65 sharpe + PBO 0.145 PASS = ship-ready 但 weak alpha
-- V4+BC ensemble 1.84 sharpe + PBO 0.794 FAIL = high sharpe 但 unstable
-- 需 **稳定** 高 sharpe (PBO PASS + Sharpe ≥ 2.0) 才 truly promotable
-
-Next priorities revised:
-1. Diagnose PBO 0.794 root cause (K-variant rank stability per week)
-2. v7 retrain panel v5 — possibly PBO 会改善 (more PIT-clean model)
-3. Per-K stability analysis (是否 top-3 vs top-15 picks 实际 不同 strategies)
-
-### S. 2026-05-23 01:05 — 真 verdict: NO strategy currently promotable
-
-Phase 4 gate full compare (all paper_sim_v6 variants run):
-
-| Strategy | PBO | DSR | Cons | IS-OOS | Verdict |
-|---|---|---|---|---|---|
-| V4 baseline alone | **0.145 PASS** | PASS | PASS | 89.6 drop FAIL | BLOCK |
-| ensemble V4+BC v1 | 0.780 FAIL | PASS | PASS | relax PASS | BLOCK |
-| ensemble V4+BC stage-filtered | 0.794 FAIL | PASS | PASS | relax PASS | BLOCK |
-
-Pattern observed:
-- V4 alone: 稳 (PBO low) 但 OOS overfit (IS drop 89%)
-- V4+BC ensembles: high Sharpe (1.83-1.85) 但 rank-unstable across K-variants (PBO 0.78-0.79)
-
-**两 path 都 fail Phase 4 gate**:
-- 没 strategy 同时 stable + profitable
-- V4+BC Sharpe 1.84 是 mirage — Phase 4 gate BLOCK
-- audit_delivery_readiness 88% NOT READY 是 honest verdict
-
-V4 在 production 仅因 ship baseline 旧 audit (不 strict enforce Phase 4). New `--require-true-train-log` flag (commit db1d77a8) closing this loophole.
-
-唯一 unstuck path: v7 retrain panel v5 (Pattern 10 FIXED + 5 leaky cols removed).
-- v6 IS-OOS drop 60% block
-- v7 (cleaner panel) IF IS-OOS drop < 30% PASS + PBO < 0.2 + Sharpe ≥ 2.0 → promotable
-- 6/1 GCP reset 后启 via safe_retrain.sh --require-true-train-log
-- Cost ~$4 (panel v5 + 50 trials Plan C 15-min)
-
-Without v7 success, **没 operational path**. 不是 nice-to-have.
-
-如 v7 fail (panel v5 仍有 hidden leakage OR alpha 真弱):
-- Diagnose Pattern 8 survivorship + run panel v3 rebuild
-- Diagnose audit checks 7-10 残余 HIGH
-- Consider entry-level walk-forward enhancements (e.g. T+1 volume confirm)
-- Or accept V4 alone 0.65 Sharpe ship baseline + 实战 forward 6-12 周 累积 evidence
-
-诚实: 项目可能需要 **重新 evaluate** 是否 5000+ stock universe + LambdaMART 路径 reach Sharpe ≥ 2.0 是可行. 真 alpha 当前 evidence 估 0.5-0.8 honest Sharpe range.
-
-### T. 2026-05-23 01:15 — 3 个 user push back (实事 correction)
-
-#### T.1 ST 训不准 — panel build level filter
-V4 (现 champion) 训于 universe 含 235 ST/*ST stocks, top-10 picks 19.3% 是 ST. 实盘 unrealistic. universe.py 加了 helper 但 panel build SQL 没用.
-**修复**: feature_join_v5 加 SQL filter (`v3.stock_code NOT IN (SELECT ... ST stocks)`).
-panel v5 rebuilding with ST exclusion. v7 retrain on this cleaner panel.
-
-#### T.2 akshare quant projects 借鉴 (无 web 查, 基于已知 common patterns)
-现已有: alpha158 / walk-forward / PIT / tx_cost / sizer / stop-loss avoid / orchestration / lineage.
-**缺**: industry-neutral 组合约束 + 真实容量限 (现仅 adv20 surcharge, 无 hard 容量上限).
-
-#### T.3 BC walk-forward audit 本地分批 feasible — 我之前错说 infeasible
-Codex 跑过 BC Optuna 624K trials 本地分批 done. Walk-forward audit = 3x = 1.87M trials, expensive but feasible local (3-5 天 compute).
-应该: chunkymonkey/bestchoice/scripts/formula_local_optuna_batch.py extend 加 --cutoff flag, 跑 3 cutoffs, compare candidates overlap.
-
-#### T.1 实施: panel v5 ST-filtered build done
-
-Panel v5 ST-filtered (mart_p0a_feature_label_panel_v5):
-- 2,795,950 rows (vs no-ST 2,928,020 = -132K = -4.5%)
-- 0 ST/*ST stocks (verified)
-- Pattern 10 NULL gradient (check 6): 0 HIGH ✓
-- Pattern 8 survivorship (check 10): 1 HIGH (inherited v3 base)
-- 15 HIGH total (same as no-ST, ST gap closed by panel-level filter)
-
-**v7 retrain 准备就绪 on this cleanest panel**:
-- panel v5 ST-filtered + Pattern 10 fixed + Phase 4 strict mode + safe_retrain.sh + leakage catalog
-- 待 6/1 GCP reset launch with --require-true-train-log
-
-T.3 stub: `bestchoice/scripts/formula_local_optuna_walk_forward.py` (commit 0c99927f) — full implementation next session.
-
-### I. 真 path to 运营 ready (gap-driven, 替代 phase 列表打勾思维)
-
-每次 session 推进必同步问: 距 `ready_for_delivery=True` 还差啥? 不是问 "phase 完了吗".
-
-#### #6 perfect ladder 3 子门 (现 NOT READY):
-| 子门 | 当前 | Target | Gap | 改善路径 |
-|---|---|---|---|---|
-| Sharpe | V4 0.81 / ensemble V4+BC paper_sim 1.83 (forward 估 1.5-1.7) | ≥ 2.0 | +0.2-0.5 | (a) Multi-model ensemble (V4 + v7 + BC + Phase 7 policy combined) (b) Better entry selection (c) BC walk-forward audit (chunkymonkey/bestchoice/ 同 repo) solve selection bias |
-| max_dd | V4 -21.7%, ensemble -16.85% | ≥ -20% | ensemble 已达, V4 alone 未达 | Phase 7 policy 提升 stop-loss 短 hold 改善 dd. Multi-bucket risk control. |
-| n_obs (monthly non-overlap) | 22 | ≥ 60 | 3x more | (a) 延长 paper_sim 历史 to pre-2023 OR (b) 用 forward 累积 + 现 22 windows (~10 月) + 接下来 wait 3-4 月 forward monitor |
-
-#### #1-#5 + #7-#10 (10 criteria 已 92% mean):
-- #2 (90%) — institution source production_decision = hold_reject. 待 institutional signal source review.
-- #3 (87%) — 部分 leakage audit 未 cover (audit checks 7+8+9 partial). 今天升级 6 checks done, 4 patterns 仍 partial.
-- #6 (80%) — perfect ladder above.
-- #7 (92%), #8 (94%), #9 (94%), #10 (84%) — UI/UX, modular, lineage, incremental. 渐进改善.
-
-#### 真 operation-driven 推进 priorities
-
-1. **v7 retrain on panel v5** (验 Pattern 10 fix 是否真 lift OOS, 解 v6 BLOCK loop) — 6/1 reset 后 GCP, 1 retrain ~$4
-2. **Multi-model ensemble** (V4 + v7 + BC + Phase 7 policy combined picks) — sharpe 真 push 到 2.0
-3. **Pattern 8 survivorship** (panel v3 rebuild with PIT universe) — 解最后一个 audit HIGH
-4. **Phase 4 gate true train-log mandatory** (already partial wired post commit 0b7c2352) — 防再发 stability / v6 BLOCK 路径
-5. **forward monitor 累积** (BC tab + ensemble registry, 6-12 周 实测验证 paper_sim claim)
-6. **mart_strategy_result_registry promotion automation** (verdict→ champion 自动 wiring, 现 manual)
-7. **6 项交付 #2/#3** (institution source review / audit tool checks 7+8+9 complete)
-
-#### 不属于运营 ready 必要 path (defer)
-
-- MSAF Phase 1-4 长期 (17-25 weeks, foundational refactor, 不直接达 #6)
-- Perception X2.x sourcing (1+ 年累积, 长期 alpha 增强 不阻 ready)
-- BC Phase 8 stop-loss (POC NEGATIVE, 关闭路径)
-- Stratification POC (per-stage / per-mcap) — 用户 22:35 说不跑
-
-### H. Honest tally — 今日 session 浪费 + 反例
-
-| 浪费 | 量 | 教训 |
-|---|---|---|
-| v6 retrain GCP 17h | ~$5 | panel v4 含 hidden time-availability + survivorship leak, 没事前 audit 就启 |
-| stability retrain GCP ~6h (前一日) | ~$2.25 | 同 panel v4 leakage 问题 |
-| 反应式 audit 工具迭代 | session time | 应一次 enumerate all 10 patterns + 写测试 fixture |
-| Manual audit 漏 cols | 2 (mcap_decile + beta_60d_zscore) | tool > manual, 必信工具 |
-
-**总: ~$7.25 GCP 浪费 + 反例 tool / catalog / safe_retrain wrapper 已沉淀 → 防 recurrence**.
-
----
-
-## 审计时间戳
-最后审计: 2026-05-21 15:06 Asia/Shanghai
-会话存档: `analysis/session_archive_20260520_2248.md`。用户要求存档并结束当前 goal；注意运营交付条件尚未满足, 因此不能把目标标记为完成。恢复时以该 archive + 本文件顶部为准。
-GCP 状态: **CONTROLLED USE / VM RUNNING / STABILITY RETRAIN ACTIVE**. 用户 2026-05-21 09:24 澄清: 先前更保守的 no-cloud 口径已被取代。当前规则改为 GCP 可用于大量耗时计算、参数寻优、长 replay、主项目与 BestChoice 综合寻优；但启动云端任务前仍要说明 objective、预计 wall time/成本、输入快照、输出路径、artifact 保存与 stop/rollback 方案。任何 GCP 命令仍必须显式设置 `CHUNKYMONKEY_GCP_EXPLICIT_OK=1` 作为误触安全 latch。最新真实进程查询 2026-05-21 15:02 CST: `chunkymonkey-optuna` RUNNING; active model `lgbm_phase5_stability_20260521T055800Z`, parent `pid=1597`, child `pid=1601`, log `data/reports/stability_retrain/lgbm_phase5_stability_20260521T055800Z_stability_retrain_20260521T055750Z.log`; Optuna DB 当前 8 RUNNING / 0 COMPLETE, child elapsed `01:04:56`, CPU ~3001%, RSS ~26.0GB, 70 threads, 尚无可复用 checkpoint。最新成本查询 14:57: projected $7.3501 / 73.5%, remaining $5.2574 / ~13.98 spot h, OK。当前运营交付仍 NOT READY。
-6 项交付审计: **92.83% 均值 / NOT READY** (`audit_delivery_readiness.py`: #1=100 / #2=90 / #3=87 / #4=100 / #5=100 / #6=80; `ready_for_delivery=false`). #6 ship baseline 已恢复 PASS: PBO=0.145 PASS, DSR p_conf=0.9825 PASS, conservative PASS; 但 perfect ladder 未达: n_obs 22<30/60, Sharpe 0.81<2.0, max_dd -24.28% worse than -20%。
-10 criteria 当前账本估计: **~92%** (#1=100 / #2=90 / #3=87 / #4=100 / #5=100 / #6=80 / #7=92 / #8=94 / #9=94 / #10=84). **仍 NOT READY**: 运营交付不能只看均值, #6 perfect ladder / 样本数 / 回撤 / Sharpe 未达；institution source 已评估但 production_decision=hold_reject。
-GCP/本地推进 (2026-05-21 11:11): resumable train-log replay 已实际跑完并验证。远端 `scripts/gcp_train_log_replay.sh` 对 `lgbm_phase5_gcp_20260520T010718` exit 0, 34/34 windows 完成, GCS 保存 `gs://chunkymonkey-data-0517/phase5/train_log_replay/lgbm_phase5_gcp_20260520T010718_train_log_20260521T024117Z.{json,log}`, 本地保存 `data/reports/train_log_replay/lgbm_phase5_gcp_20260520T010718_train_log_20260521T024117Z.{json,log}`。artifact 校验: `expected_windows=34`, `verified_windows=34`, `window_metrics_len=34`, `window_integrity_bad_count=0`, test_range 2023-07-03→2026-04-14, OOS rows sum 3,396,073, `oos_rank_ic_avg=0.0222157486`, `oos_rank_ic_ir=1.53523385`。已把 artifact 行导入本地 `fact_model_train_log`。重跑最佳 proxy candidate `lm735/sniper265/h10/k3/neutralcash20` 的 true train-log Phase4 gate: PBO/DSR/conservative 仍 PASS, 但 true train-test IS-OOS FAIL (`IS=0.1192`, `OOS=0.0222`, relative_drop=81.36% > 30%), verdict=`block`, 新证据 `data/reports/phase4_gate_msaf_gcp_v6_lm735_sniper265_h10_k3_neutralcash20_probe_true_trainlog_20260521.json`。刷新 frontier 后 `NO_PROMOTABLE_PROBE`, `n_promotable=0`, `n_proxy_candidate_ready=0`; delivery audit 仍 92.83% / NOT READY。结论: 这次 replay 证明旧 proxy candidate 不是 hard promote 解, 下一步应转向真正改善 OOS rank stability / entry-exit alpha, 而不是继续盲跑同一候选。
-本地推进 (2026-05-21 11:37): true train-log 稳定性诊断与下一轮受控 retrain 入口已收口。新增 `backend/scripts/audit_lambdamart_train_log_stability.py`, 对 34 个 replay window 拆解 train/OOS RankIC、相对 drop、regime、旧最佳策略窗口收益, 产物 `data/reports/lambdamart_train_log_stability_lgbm_phase5_gcp_20260520T010718_lm735_sniper265_h10_k3_neutralcash20_20260521.json`。诊断结果: true gate `IS=0.119153`, `OOS=0.022216`, relative_drop=81.36% FAIL; OOS RankIC positive_rate=67.65%, negative windows=11/34, OOS RankIC std=0.08438, 与旧策略窗口收益相关性仅 0.089; bull regime 平均 OOS RankIC=-0.01195。结论: 同一模型上继续调现金/仓位/LM-sniper 权重不能解决模型级 true IS/OOS blocker, 必须重新搜索更稳定的 alpha/model objective。`run_p0b_lambdamart_v6.py` / `retrain_lambdamart_v6.py` 新增 opt-in `--window-rank-ic-std-penalty-weight` 与 `--window-rank-ic-negative-rate-penalty-weight`, 默认 0 保持旧行为; 试验 attrs/metrics 会落窗口 RankIC mean/std/positive_rate/negative_rate/penalty。新增 `scripts/gcp_stability_retrain.sh` 作为受控 GCP 稳定性 retrain wrapper, 默认 penalty `0.50/0.20`, warm-start 旧 best checkpoint, 写 `current.pid/logpath/artifact/gcs_dir`, 上传 best/train-log/summary/log; 旧 `scripts/run_phase5_extended_retrain.sh` 与 `scripts/run_phase5_auto_chain.sh` 已降级为直接 block 的兼容 shim, 防止再用 remote `git pull` + fragile SSH 路径。验证: `bash -n` 覆盖 GCP/retrain/session 脚本 pass; `CHUNKYMONKEY_GCP_EXPLICIT_OK=1 bash scripts/gcp_stability_retrain.sh --dry-run` pass 且未启动 VM; deprecated shim expected exit 4; `py_compile` pass; targeted pytest 51 passed; frontier expected exit 1 / `NO_PROMOTABLE_PROBE`; delivery expected exit 1 / 92.83% / NOT READY。下一步: 做 GCP controlled-use preflight 后启动新 `lgbm_phase5_stability_*` retrain, 不再对旧模型做同口径全量重跑。
-GCP 推进 (2026-05-21 11:57): stability-aware retrain 已按 controlled-use 启动。Preflight: `gcp/cost_tracker.sh` 显示 VM TERMINATED、月预算 projected $4.73/47.2%、剩余 $6.95/约 18.48 spot 小时; `chunkymonkey-optuna` 为 `n2-standard-32` SPOT。CodeGraph 已 `sync` 73 个新增/变更文件, complexity scan 仅提示旧 `assets/js/app.js` 热点, 与本轮 retrain 路径无直接阻塞。远端同步前已备份 scoped 文件到 `data/reports/code_sync_backup/20260521T035347Z`; 未使用 `git pull`, 只同步 retrain/Phase4/train-log/guard 相关文件。远端 `.venv` 缺 pytest, 因此 VM smoke 降级为 `py_compile` + `scripts/gcp_stability_retrain.sh --dry-run`, 均 pass; 本地 targeted pytest 仍是测试证据。实际启动: `MODEL_ID=lgbm_phase5_stability_20260521T035555Z`, `N_TRIALS=80`, stability penalties `std=0.50`, `negative_rate=0.20`; remote `pid=1671`, log `data/reports/stability_retrain/lgbm_phase5_stability_20260521T035555Z_stability_retrain_20260521T035616Z.log`, summary `data/reports/stability_retrain/lgbm_phase5_stability_20260521T035555Z_stability_retrain_20260521T035616Z.json`, GCS `gs://chunkymonkey-data-0517/phase5/stability_retrain`。启动后复查: `ps` 显示进程存活 3m54s, feature panel 已加载 4,240,940 rows, date+label filter 后 3,933,543 rows, warm-start checkpoint 已载入, Optuna study 创建并排队 warm-start trial, completed=0/target=80。下一步: 监控 current 指针和 GCS/summary; 完成后拉回 summary/best/train-log 小 artifact, 导入本地证据并跑 Phase4/frontier/delivery audit。当前运营交付仍 NOT READY。
-本地推进 (2026-05-21 12:08): 趁 GCP stability retrain 运行中, 补齐完成后的轻量导入路径, 避免再拉整份 24GB `smartmoney.duckdb`。`backend/scripts/import_phase5_remote_predictions.py` 新增 `--remote-parquet-dir`, 可从模型级 `mart_p0b_lambdamart_v6_predictions.parquet` / `mart_p0b_oos_predictions.parquet` 导入并可 `--mirror-lambdamart-to-oos`; 新增 `backend/scripts/import_model_train_log_artifact.py` 可把 wrapper 上传的 `fact_model_train_log` JSON 证据导入本地; 新增 `scripts/gcp_export_model_predictions.sh` 受控导出 wrapper, 按 `MODEL_ID` 从远端 DuckDB 只导出预测分片 parquet 到 `gs://chunkymonkey-data-0517/phase5/stability_retrain/<MODEL_ID>/predictions`, 并拒绝在同 `MODEL_ID` retrain 仍运行时导出 partial rows。验证: `PYTHONPATH=backend python -m pytest -q backend/tests/test_import_phase5_remote_predictions.py backend/tests/test_import_model_train_log_artifact.py` 8 passed; `py_compile` pass; `bash -n` pass; export wrapper dry-run pass; CodeGraph sync 更新 75 files; complexity scan 仍只报旧 `assets/js/app.js` 热点。远端 12:10 CST 复查: VM RUNNING, parent `pid=1671`, child `pid=1674 python retrain_lambdamart_v6.py`, 首个 trial 仍在运行, Optuna DB 120K 且 mtime 更新到 04:09Z, summary/GCS 尚未生成; cost tracker 12:03 projected $5.02/50.1%, remaining $6.76/~17.98 spot h。下一步继续监控 run completion, 完成后按 runbook 导出 parquet、拉回小 artifact、导入本地并跑 Phase4/frontier/delivery audit。
-GCP/本地推进 (2026-05-21 12:31): stability retrain 首次 run `lgbm_phase5_stability_20260521T035555Z` 在 0 COMPLETE trial、无 best checkpoint 时被主动中止, 因为运行时发现 4 个 Optuna trial 同时继承 `OMP_NUM_THREADS=32`, 存在外层并发 × LightGBM 内层线程过量订阅风险。中止证据已拉回并上传 GCS: `data/reports/stability_retrain/lgbm_phase5_stability_20260521T035555Z_stability_retrain_20260521T035616Z.{json,log}`, summary 显示 `retrain_exit=137`, `prediction_rows=0`, `train_log_found=false`, `best_artifact=null`, 因此没有可复用完成结果。已修复并验证线程配置: `run_p0b_lambdamart_v6.py` 会在 `run_optuna()` 内 cap inner LightGBM threads; `scripts/gcp_stability_retrain.sh` 默认 `OPTUNA_N_JOBS_REMOTE=8`, `OMP_NUM_THREADS_REMOTE=4`, 且拒绝 `optuna_jobs * omp > REMOTE_MAX_THREADS`。验证: 本地 `test_lambdamart_v6.py + test_retrain_lambdamart_v6.py` 21 passed, py_compile pass, bash -n pass, wrapper 8x4 dry-run pass, wrapper 8x8 expected reject, CodeGraph sync 77 files, complexity scan 仍只报旧 `assets/js/app.js`; 远端 scoped backup `data/reports/code_sync_backup/20260521T042540Z_threadcap`, remote smoke `py_compile` + thread-cap assertion + wrapper dry-run pass。已受控重启新 run `lgbm_phase5_stability_20260521T042830Z`: parent `pid=1744`, child `pid=1748`, log `data/reports/stability_retrain/lgbm_phase5_stability_20260521T042830Z_stability_retrain_20260521T042822Z.log`, summary `data/reports/stability_retrain/lgbm_phase5_stability_20260521T042830Z_stability_retrain_20260521T042822Z.json`, GCS `gs://chunkymonkey-data-0517/phase5/stability_retrain`。12:31 CST monitor: feature panel 4,240,940 rows loaded, filter 后 3,933,543 rows, warm-start queued, log confirms `optuna parallelism: outer_jobs=8 inner_lightgbm_threads=4`, Optuna DB 8 RUNNING / 0 COMPLETE; 12:28 cost projected $5.456 / 54.5%, remaining $6.4794 / ~17.23 spot h, OK。下一步继续监控 completion; 完成后按 active model 导出 parquet、导入本地、跑 Phase4/frontier/delivery audit。
-GCP monitor (2026-05-21 13:38): active run `lgbm_phase5_stability_20260521T042830Z` 仍未落可复用 COMPLETE trial, 但 child 进程是 CPU-bound 而非 idle: elapsed `01:10:11`, CPU ~3028%, RSS ~26.4G, 70 threads, load avg ~31, Optuna DB 135,168 bytes 且状态为 8 RUNNING / 0 COMPLETE。历史同类 complete trial 常见约 50-86min, 当前应继续短周期监控到首批 COMPLETE; 若继续长时间 0 COMPLETE 且 CPU/DB/log 无有效进展, 停止并改小 smoke/short-window 校准后再长跑。13:37 cost projected $5.6017 / 56.0%, remaining $6.3854 / ~16.98 spot h, OK。
-GCP/本地纠偏 (2026-05-21 13:48): 主动停止 `lgbm_phase5_stability_20260521T042830Z`，因为复核代码时发现 stability objective 的关键漏洞: `run_p0b_lambdamart_v6.py` 只在 regressor 分支收集每窗口 `rank_ic`，LambdaMART 分支没有把窗口 RankIC 加入 `rank_ics`，导致 `--window-rank-ic-std-penalty-weight` / `--window-rank-ic-negative-rate-penalty-weight` 实际不会惩罚 LambdaMART 窗口稳定性。停止前 Optuna 仍 8 RUNNING / 0 COMPLETE、无 best checkpoint；远端 summary 显示 `retrain_exit=137`, `prediction_rows=0`, `train_log_found=false`, `best_artifact=null`，因此没有可复用完成结果被丢。当前本地修复方向: 对所有模型分支统一收集窗口 `rank_ic`，并新增测试证明 LambdaMART trial 会产生非 NaN `window_rank_ic_*` 与正的 `rank_ic_stability_penalty`；只有 targeted pytest、py_compile、bash -n、CodeGraph sync、complexity scan 和远端 dry-run/smoke 全通过后，才择机启动新的 stability retrain model_id。
-市场感知项目推进计划 (2026-05-22 00:30; 用户 push back "重点放在之前的市场感知 plan 上, 先不要并入主项目"): 我跑偏 2 次 (写"全球宏观共振"+"四项目统一规划"两版废弃 doc 已删除), 回归 `/Users/dp/Documents/M/stock/perception/docs/development_plan.md` 原 plan, 9 模块 + P1-P7 stage MVP 已完成. 物理边界**严格不变**: Perception 是独立 sibling repo `/Users/dp/Documents/M/stock/perception/`, 只写 `mart_market_perception_*` 输出, **不接入主项目 LambdaMART panel / ranker / paper_sim / champion**. 用户原话 "产业链扩散 + 板块轮动 + 龙头带动" 对应 P5 ChainDiffusion + P6 StyleRotation + P5 LeaderFollowerNetwork (P5 LeaderFollower MVP done 390 rows 6 天, ChainDiffusion 仍 research_mvp); 用户新加"宏观传导/股票图谱"是辅助 + 主项目 UI 层, 不修改 Perception 9 模块边界.
-
-**3 个最有 alpha 概率的数据** (按 alpha 信息领先性 × 主项目 v4 panel 互补性 × A 股市场结构契合度排序): (1) **概念 PIT 历史 + 龙头联动** = Perception P3 主题边界扩到概念 + P5 LeaderFollower 扩历史. 跟 v4 panel `industry_beta` / `sector_momentum` 互补 (v4 sector-level summary 没 per-stock-pair 龙头-跟随). 阻塞点: 概念 PIT 历史成员 (tdxhub block 当前 latest, 自建 daily snapshot 累积). (2) **资金路径 PIT** = Perception P4 FundFlowPath 完整版 (hsgt 北上 + dzjy 大宗 + 高管增减持). 数据基础已就位 (`fact_lhb_event` 53K rows + `fact_capital_flow_pit_daily` 875K rows), 但 hsgt/dzjy `built_at`/`source_available_date` 标记未做. (3) **F10 业务暴露度** = Perception P5 ChainDiffusion 完整版 (业务 segment + revenue 分项). `tdxhub_gpcw` 已抓但业务 segment 未结构化解析.
-
-**Perception 推进 5 步** (按 development_plan §8 + 不阻 GCP 原则):
-- (A) Stage X1 sourcing 摸底 (1-2 天, 不耗 GCP, 跟 GCP retrain 完全并行): tdxhub block PIT 历史 / 妙想 / akshare 概念 / F10 业务暴露 4 个调研, 给可执行选项. **现在启动**.
-- (B) P4 FundFlow PIT 化 (~0.5-1 天, 不依赖 X1): hsgt + dzjy `built_at` / `source_available_date` 修, P4 跑历史 → 输出"资金强但价格未反应"候选清单. **可与 X1 并行**.
-- (C) P3 主题边界扩到概念 (依赖 X1.1) + P5 LeaderFollower 扩历史 (~2-3 天).
-- (D) P5 ChainDiffusion 完整版 (依赖 X1.2/X1.3 产业链图谱 + F10 业务暴露度) (~5-7 天).
-- (E) Project D 股票图谱 (主项目 UI 内, 用户新加, 跟 Perception 物理隔离): 基于 Perception 现有 7 mart 输出 tag chips + 关联弹窗. 不接 ranker. (~3-5 天, 不依赖 X1).
-
-**GCP 监控原则** (用户 push back "及时检查 GCP 发现问题及时采取措施"): 用 `CHUNKYMONKEY_GCP_EXPLICIT_OK=1 TAIL_LINES=10 bash scripts/gcp_stability_status.sh` 每 ~30 min 主动 poll. SSH fail 必须识别为可疑 (前一次 monitor stale cache bug: SSH fail 时 fallback complete_count=0 + 读 cached VM RUNNING 假状态 → 没检测到 22:44 CST preempt). 当前 (2026-05-22 00:00 CST): VM 重启完, retrain resume 跑剩 ~48 trial (target 80, 已 32 COMPLETE + 31 PRUNED, best=0.3846 trial 18). 预计 4-6h 后跑完, 然后 `bash scripts/post_retrain_pipeline.sh` 接 P1. 若再 preempt: 看 best.json + Optuna SQLite, decide resume or accept.
-
-**Perception 物理边界硬约束** (4 次重申): 写 `mart_market_perception_*` 输出, 不写主项目其他 mart / ranker / panel / paper_sim. UI 在 Perception repo (`/stock/perception/src/perception/router.py` + `design/v3-page-market-perception.jsx`). 主项目 `backend/main.py:172` 已 import perception.router (fallback bundled legacy). 不动这条线.
-
-详细 plan 见 `/Users/dp/Documents/M/stock/perception/docs/development_plan.md` §1.2 (9 模块) + §5 (P1-P7 stage) + §8 (当前下一步). 之前我写的 3 个跑题 doc (global_macro_plan / data_source_audit / four_project_unified_plan) 已删. PROJECT_INDEX §INDEX 同步.
-
-GCP/本地推进 (2026-05-22 09:00 CST): final fit (--use-checkpoint-best, pid 3627) 已跑完 EXIT 写 3,396,073 predictions 到 mart_p0b_lambdamart_v6_predictions + fact_model_train_log. **Chain Stage 2 export FAIL** 因 pgrep 误判 (pid 1463 Optuna stability retrain 同 MODEL_ID 还在跑, refuse partial export). 按用户原则 "可接续 / 数据不丢失 / 结果可保存" 救场: manual `ALLOW_RUNNING_EXPORT=1` 跑 export → predictions parquet 43MB 落 GCS (`gs://chunkymonkey-data-0517/phase5/stability_retrain/lgbm_phase5_stability_20260521T055800Z/predictions/`) → pull `data/phase5_exports/lgbm_phase5_stability_20260521T055800Z/` → VM force stop (TERMINATED) → 跑 post_retrain_pipeline (Step 2 import 0 → 3,396,073 rows OK). **3 个 fix commit**: adecff18 chain Stage 2 加 fallback retry + FATAL 强制 vm_stop + session_snapshot model_id 改 fallback chain (stability_retrain/current.pointer > latest optuna/*.best.json mtime > legacy phase5_chain/model_id.txt, 实测 SESSION_HANDOFF 显示正确 stability model); bd739138 pipeline.sh paper_sim/record_decision arg 对齐 underlying script (--challenger-model-id → --lambdamart-model-id, --gate-json → --phase4-json). Cost final $9.29 used / projected $13.71 (91.4% YELLOW) / 月底 ~$1.30 buffer. 当前 paper_sim 跑中 (baseline day 200/432), verdict 预计 ~09:22 CST.
-
-Perception 推进 (2026-05-22 09:00 CST; 跟主项目 verdict 并行不阻塞): P4/P5/P6/P7 mart 同步扩到 14 trading days (2026-04-27 → 2026-05-19), 用现有 PIT observed_snapshot effective_from=2026-04-25 全区间, **不动 engine code 只 backfill 区间**, 不依赖 X2.1 概念 PIT 长期累积. P4 UnderReaction 300→700 rows (+2.3x) score [-0.51, 0.67]; P5 LeaderFollower 390→910 rows / 13 themes / 65 rows/day, diffusion [0.29, 0.90] mean 0.58 sanity 0 violations (leader_ret_5d ≥ follower_ret_5d 0 outlier + score in [0,1] 0 oob), 04-27 top 装备制造 300890 +24.9% vs followers -12.6%, 05-19 top 信息产业 688507 +58.6%; P6 Style 6→14 rows style [0.02, 0.14] crowding [0.42, 0.46]; P7 StockContext 300→702 rows context [-0.14, 0.44] completeness [0.86, 1.00] (上行因 P5/P6 都扩). dev_plan §9 滚动记录加一行. 加 `perception/scripts/backfill_all.sh` 一次顺序跑 7 engine backfill (P1→...→P7 dependency-ordered, syntax pass, 暂未跑 actual test 因 DuckDB lock).
-
-**Perception 暂停范围 final clarify (2026-05-22 09:35-09:42 CST, 用户 3 段 push back)**:
-- 09:35 "市场感知项目先暂停吧, 在 goal.md 里以及相关文档里记录好当前进度"
-- 09:40 "不是全部暂停, 跟 gcp 跑批相关的 alpha 验证的内容请不要暂停" + "之前列过 top 3 可能增强主项目的什么产业链扩散啥的那个不要暂停"
-- 09:42 "其他可以增强 alpha 的你也可以计划着增加" + "只是把市场感知宏观分析的内容先暂停"
-
-**真正暂停 = 市场感知宏观分析** (我之前跑偏写过 c5e2c0fe 删除的 global_macro_plan / data_source_audit / four_project_unified_plan 系列 — 跨界的 global macro / 美股 / 商品 / 海外政策对 A 股影响, 上升到 macro level. 不再开此方向).
-
-**不暂停** (Perception 9 模块 + 7 mart 内部 + 主项目 alpha 验证/增强):
-- 主项目 alpha 验证: true train-log Phase4 gate replay (验证 stability retrain 是否真 promotable, 当前 verdict warn_only_proxy 因 is_oos_proxy_mode=true)
-- 主项目 alpha cross-check: 用 Perception 7 mart 对照主项目 paper_sim top picks 是否符合龙头/主题/资金路径
-- top 3 alpha 增强方向 (原 goal.md 第 18 行):
-  - (1) 概念 PIT 历史 + 龙头联动 (P3 概念扩 + P5 历史扩, 卡 X2.1 1+ 年累积)
-  - (2) 资金路径 PIT (P4 hsgt/dzjy built_at fix, handoff #25 标 HOLD 复杂度上调)
-  - (3) **产业链扩散** (P5 ChainDiffusion 完整版, F10 业务 segment 解析 `tdxhub_gpcw`) — 用户 09:40 明确点名
-- 其他 alpha 增强 v2 实证驱动 plan @ 2026-05-22 10:10 CST (`analysis/alpha_enhancement_plan_20260522.md` v2). 用户 10:00 push back "经过这么多轮的验证应该有大概感觉哪些指标可能显著提升, 按规律决定测试参数而不是随机盲选". v1 (doc 推断) drop, v2 按历史实证累积规律选方向:
-  - 归纳: 历史显著提升的 4 个共同点 = 改 objective / PIT-strict / 真成本反事实 / walk-forward OOS gate. 加 features / 加数据 多触发 leakage 或边际小 (v3 102 features → leakage, lm735 6 维 sweep → drop 81%).
-  - **Phase A** (推荐立即, 现月预算 subset 1 combo): Stability penalty weight sweep (现 std=0.5/neg=0.2, sweep 0.3/0.7/1.0). 本轮已证 stability penalty PBO 5.1x / IR 7.3x 显著 + 极低 risk
-  - **Phase B**: Portfolio-objective replace NDCG (Optuna 直接 optimize Sharpe/Calmar/max_dd, 不优中间 metric) — 同思路 stability penalty 扩展
-  - **Phase C**: Regime-conditional model (旧 model bull regime OOS RankIC -0.012, regime mismatch evidence)
-  - DROP: multi-horizon label / 减持 windowing / LHB / capital flow 多滞后 / factor decay / Perception regime 接 panel (历史无显著证据 OR 破物理边界)
-  - 月预算: projected 91.4% 剩 $1.30, Phase A 4 combo 全跑 ~$2 超 buffer; 推荐 1 combo (0.7/0.3) ~$0.50
-
-**v3 Phase A feature ablation 完成 (2026-05-22 14:25 CST; GCP 32-core ~16 min)**:
-
-train signal_date <= 2025-11-30, test 2025-12-01→2026-04-14, LightGBM 100 est × 14 ablation groups.
-
-Top **drop-helps** (feature 是 noise, drop 后 OOS 上):
-- **drop_fundamental** (pe/pb/ps/roe + z, 8 cols): OOS 0.0593 → 0.0706 (+19%), rel_drop 73.1% → 67.2%
-- drop_survey: +0.00301
-- drop_lhb: +0.00242
-- drop_executive: +0.00153
-
-**Drop-hurts** (核心 signal, 保留):
-- drop_sector: OOS 崩 0.0125 (-0.04676) — sector 是关键
-- drop_vol_mom: -0.00830
-- drop_alpha158: -0.00781 (64 cols, 网格 OK)
-- drop_calendar: -0.00509
-
-Caveat: baseline OOS RankIC 0.0593 比 stability model true train-log 跑出的 0.0086 高很多, 因 ablation 用 simple train/test split single fit 而非 walk-forward expanding_monthly. **绝对值偏乐观**, 但相对 delta 仍有信息.
-
-**v3 Phase A 结论**:
-- fundamental features 是 noise (A 股短期 alpha 跟 pe/pb/ps/roe 弱关联), drop 后 OOS 大幅 up
-- 可 prune fundamental (8 cols) + survey (4) + lhb (7) + executive (5) = 24/135 cols (~18% panel 简化)
-- 保留 sector/alpha158/vol_mom/calendar 核心 features
-- IS-OOS gap 67-73% 仍高 (远超 30% threshold), 说明 **features 不是唯一根因**, label/algorithm/regime 等还需查 (v3 plan Phase B/C/D)
-
-**Next**:
-- 重 train stability model with feature_set_v5 (drop fundamental/survey/lhb/executive), 看 walk-forward OOS 是否提升, true IS-OOS gap 是否 < 30%
-- 待 6/1 budget reset 后跑 GCP 50-trial stability retrain with v5 panel
-- 同时 v3 Phase D PIT audit 排查 hidden leakage
-
-evidence: `analysis/feature_ablation_results_20260522.log`
-
-**v5 retrain launched (2026-05-22 14:50 CST; 用户 push back "可以使用 gcp")**:
-- model_id `lgbm_phase5_stability_v5_20260522T065000Z`
-- pid 1464 on VM, Plan C config (1×32 thread + n_est=100, n_trials=50)
-- `--exclude-cols`: 24 noise cols (8 fundamental + 4 survey + 7 lhb + 5 executive)
-- features used: 122 - 24 = 98 cols
-- monitor bs9yy1hb9 10min poll
-- ETA ~12h GCP (50 trial × 15min single, may + preempt cycles)
-- 估算 cost: ~\$0.376/h × 6h actual uptime = ~\$2.3 (projected $14 → $16.3, 月预算超 8.7%)
-- 验证目标: v5 OOS RankIC > 0.0086 (旧 stability), true train-log IS-OOS gap < 92.43% (旧 92.43%)
-- 若 v5 OOS 显著 up + gap shrink → confirm Phase A finding 解决部分 overfit; 否则 features 不是唯一根因, 转 Phase B portfolio-objective 或 Phase D PIT 深审
-
-**v3 Phase D PIT audit 关键发现 (2026-05-22 15:00 CST)**:
-
-(1) `fact_capital_flow_pit_daily` build PIT-clean — `LEFT JOIN __lhb l ON l.trade_date <= d.trade_date` 正确 30/90d rolling window. built_at=2026-05-14 单时戳是 ingest 时, 不是 PIT marker (trade_date 才是).
-
-(2) **mart_stock_industry_pit 仅 ~13 天 observed_snapshot 覆盖 (2026-04-25→05-07), 其他几乎全是 current_label_fallback with effective_from=1900-01-01** — 测试期 2025-12→2026-04-14 100% fallback. CLAUDE.md §4.5 反例 99.978% fallback 同病.
-- 严格说 industry constant-per-stock 不算 time-machine leakage
-- 但 sector_ret_5d/20d/60d 等 sector aggregate features 用此 stale industry 算, 若 historical industry 真实跟现在不同, sector aggregates 系统偏差 (retrospective bias)
-- Phase A ablation drop_sector 让 OOS RankIC 崩 (0.0593→0.0125) → sector 是核心 signal, 但 sector signal 计算可能 含 retrospective bias
-- v3 Phase A 已 drop fundamental/survey/lhb/executive, 但 sector 保留. 若 sector 实际 leakage, v5 retrain OOS 仍可能 weak.
-
-**v3 Phase D 后续 work** (待 v5 verdict 出后):
-- 深查 sector_ret_* build: 用什么 industry table? 是否每 historical signal_date 用当时 industry 还是 current label?
-- 若 sector_ret 用 current industry 算历史 sector aggregate → 关键 leakage 源, 需 strict PIT 重 build
-- mart_stock_industry_pit X2.1 daily snapshot 累积 (handoff Task #28 已 commit 3a8a8844) 是长期解, 但当前 only 13 days, 没法历史 OOS 验证
-
-Phase D evidence: `mart_stock_industry_pit` 表 audit + capital_flow JOIN logic 已读 backend/scripts/backfill_capital_flow_pit.py
-
-**[CRITICAL] v3 Phase D 致命 leakage 确认 (2026-05-22 15:10 CST)**:
-
-Panel sector-relative features 源头追溯:
-- `backend/scripts/build_feature_panel_duck.py:1824` JOIN `smartmoney.dim_stock_tdx_industry` (flat 5616 stocks × 1 row, **non-PIT**, 只 updated_at=2026-04-21 single time)
-- `:1841-1844` 计算 `ret_20d_tdx_l1_rel = ret_20d - AVG(ret_20d) OVER (PARTITION BY date, tdx_l1)` — **用 today's tdx_l1 算所有历史 signal_date 的 sector aggregate**
-- = **retrospective industry bias leakage** (跟 CLAUDE.md §4.5 反例 99.978% fallback 同模式)
-
-含义:
-- Phase A ablation drop_sector OOS 崩 (0.0593→0.0125) **不是 sector signal 真有 alpha, 是 model 依赖此 retrospective bias artifact**
-- IS-OOS gap 92.43% 的关键根因之一: sector features 用 future industry 反向应用到历史
-- v5 retrain (即将完成) **大概率 OOS 仍弱**, 因为 sector features 仍在, 仍 leakage
-
-**修复路径困境**:
-- A) strict fix: 换 `dim_stock_tdx_industry` → `mart_stock_industry_pit` as-of JOIN. **但** observed 仅 13 days (2026-04-25→05-07), 99%+ historical dates 仍 fallback = current label = 同 leakage. **不解**
-- B) 真长期解: X2.1 daily snapshot 累积 (已启 3a8a8844, 当前 8 days), 1+ 年后才有完整 historical PIT
-- C) 短期解: drop sector features 重 train. Phase A 已证 OOS 短期看似崩, 但**真 OOS 才是诚实指标** (不是 leakage 的高 OOS)
-- D) Use 行业 ETF 实际历史成分作为 surrogate (e.g. CSI 同业 / 申万一级历史成分) — 需新数据源
-
-**v3 plan v3.1 调整**:
-- Phase A finding (fundamental 是 noise) 仍 valid, drop 24 noise cols 仍 OK
-- **新 #0 priority**: 把 sector-relative features (`ret_20d_tdx_l1_rel` 等 4 cols) 从 panel 中 drop OR 用 strict PIT industry
-- v5 retrain (running) 仍会有 sector leakage, 出 verdict 后用 v5 best params + 再 drop sector → v6 retrain 看 真 OOS
-- 真长期需 PIT industry historical 数据 (1+ 年累积 OR 第三方数据源)
-
-evidence: backend/scripts/build_feature_panel_duck.py:1824-1844 SQL inspection
-
-**用户决策 (2026-05-22 15:20 CST): "那就不用行业历史了"** + "注意保持代码和文档清洁不要残留"
-
-按估算 (Phase A ablation 数据):
-- baseline OOS RankIC 0.0593 中 sector 占 79% (0.0468)
-- sector per-col 贡献 0.0117 vs alpha158 per-col 0.00012 (差 100x) → sector 超额贡献绝大部分是 leakage artifact
-- 真 industry alpha 估 ~0.002-0.008 OOS RankIC (跟 PIT-clean features 同量级, 不特别突出)
-- 留 sector features 是 leakage 来源, drop 后 OOS 短期看似崩 (~0.0125) 但 **真 forward 才诚实**
-
-**v6 retrain launched (2026-05-22 15:20 CST)** — `lgbm_phase5_stability_v6_20260522T071500Z`:
-- pid 1845 on VM, Plan C config (1×32 + n_est=100, n_trials=50)
-- `--exclude-cols`: **30 cols** (24 noise from Phase A + 6 industry-related: sector_ret_5d/20d/60d, sector_excess_20d/60d, industry_pit_confidence)
-- features used: 122 - 30 = ~92 cols (alpha158 64 + vol_mom 6 + calendar 7 + others ~15)
-- 验证目标: v6 OOS RankIC vs v5 (有 sector)/baseline (0.0086 true train-log), true IS-OOS gap shrink
-- 若 v6 OOS RankIC > 0.005 但 < baseline (sector 撤了 OOS 短期降但 PIT-clean) → 真 alpha 找到, 可继续优化
-- 若 v6 OOS RankIC ≈ baseline → 仍有其他 leakage 源, 需 v3 Phase D 深查 (e.g. K-line forward / capital_flow lineage)
-
-**v5 stale 清理 (用户原则 "代码文档清洁不残留")**:
-- v5 study DB + best.json 已 rm 远端 (lgbm_phase5_stability_v5_20260522T065000Z.{db,best.json})
-- v5 没出 verdict, 不污染 mart 表
-- 本地 goal.md 保留 v5 launch ledger 作历史记录 (不删历史, 但标 superseded by v6)
-
-**v3 plan v3.1 (alpha_enhancement_plan_v3_20260522.md 应同步更新)**:
-- Phase A 仍 valid (drop noise 24 cols)
-- 新 #0 (从 Phase D leakage): drop sector 6 cols, 共 30 cols
-- 未来: 真 PIT industry historical (X2.1 daily snapshot 累积 1+ 年) 或第三方数据源 后再加 sector
-- 短期 strategy ceiling 必降 (sector leakage 撑的 paper_sim Sharpe 2.09 不可持续)
-
-**Code cleanup (用户原则)**:
-- `backend/scripts/build_feature_panel_duck.py:1824-1844` sector-relative SQL 暂不动 (大改 risky), 但下次 panel rebuild 时应 deprecate
-- `backend/scripts/feature_ablation_oos_rankic.py` 保留 (audit 历史 evidence)
-- `backend/scripts/import_bestchoice_phase{1,3}_predictions.py` + `build_bestchoice_phase2_daily_feed.py` 保留 (BestChoice 仍 worth ensemble path)
-- 之前删的 broken phase3 first-cut script 已删 (commit 16dd46f0)
-- v5 study DB 远端已 rm
-
-**v6 retrain verdict (2026-05-22 20:30 CST): BLOCK** — panel v4 drop 30 cols 后仍有 hidden leakage
-
-Phase 4 true train-log gate result:
-| Sub-check | v6 | Threshold | Pass |
-|---|---|---|---|
-| PBO | 0.251 | <=0.2 | FAIL |
-| DSR | 0.9699 | >=0.95 | PASS |
-| Conservative | +82% ann | >0 | PASS |
-| **IS-OOS drop** | **60.8%** | <=30% | **FAIL** |
-| ALL | False | - | **block** |
-
-v6 vs stability:
-- stability IS-OOS drop 92.43% (上次 BLOCK)
-- v6 IS-OOS drop 60.80% (减半 但仍 fail)
-- Conclusion: drop 30 cols (sector + noise) 不够, panel v4 还有其他 hidden leakage 源
-
-v6 OOS vs V4 same-period (2025-01 to 2026-04):
-- V4 OOS RankIC 0.0284
-- v6 OOS RankIC 0.0569 (per-date) = +100% relative = 触发 CLAUDE.md 4.2 relative red line (+50% threshold)
-
-实测数据 (fact_model_train_log):
-- IS rank_ic 0.1607, OOS 0.0630, drop 60.7%
-- IS ndcg5 0.956 (suspicious high)
-- OOS positive_rate 100% (16/16 windows) — statistically improbable
-
-evidence: data/reports/phase4_gate_result.json + fact_model_train_log row + mart_strategy_result_registry result_id=lgbm_phase5_stability_v6_20260522_blocked
-
-production champion 决策:
-- V4 (panel v3, OOS 0.025, honest, Sharpe 0.65) 仍 production
-- ensemble V4+BC (Sharpe 1.83, hold_challenger forward monitor)
-- v6 BLOCK (candidate_hold_reject)
-- stability BLOCK (candidate_hold_reject)
-
-Next: panel v4 deep audit 找剩余 leakage 源 (audit_panel_leakage tool 只 catch sector PARTITION BY)
-
-GCP: VM stopped, $5.71 / 15.18h spot 剩.
-
-**Panel v4 deep audit 发现 (2026-05-22 20:40 CST): time-availability leakage**:
-
-4 cols 显示 NULL 比例随年份单调下降 (老年 100% NULL → 新年低 NULL), ML 学到 "feature 非 NULL = 近期 = 牛市 regime" → indirect time leak:
-
-| col | 2023 null | 2024 null | 2025 null | 2026 null |
-|---|---|---|---|---|
-| inst_quality_max | 100% | 100% | 69% | 34% |
-| inst_holder_cnt | 100% | 100% | 54% | 7% |
-| beta_60d | 100% | 3.4% | 1.9% | 17.9% |
-| holder_count_change_q_pct | 100% | 100% | 100% | 91% |
-
-这跟今天 Phase D sector retrospective bias 同类 leakage 模式 — 都通过 feature value 暴露未来信息.
-
-v7 提议 exclude list 共 34 cols (v6 30 + 4 time-availability):
-- 旧 30 cols (Phase A noise 24 + Phase D sector 6)
-- 新增 4 cols: inst_quality_max, inst_holder_cnt, beta_60d, holder_count_change_q_pct
-
-不立即跑 v7 (budget $5.71 限 ~15h spot, 跟 50 trial 估等价). 待用户 decision.
-
-Audit tool 升级 candidate: audit_panel_leakage.py 加 check 6 — per-feature year-by-year NULL pattern (gradient > 50% → flag).
-
-**Ensemble V4+BestChoice 结果 (2026-05-22 17:10 CST; 用户问 "BestChoice 是否给主项目添 alpha"):**
-
-paper_sim_v6_compare with model_id=ensemble_v4_bestchoice_v1 (rank-percentile combine V4 score + BC confidence), 432 dates 2024-07→2026-04:
-
-| Model | Sharpe | ann_ret | max_dd | 月胜率 | 4目标 |
-|---|---|---|---|---|---|
-| V4 alone (panel v3 clean) | 0.65 | +36.10% | -21.70% | 45% | 0/4 |
-| BC alone | 1.10 | +34.87% | -22.09% | 50% | 1/4 |
-| **ENSEMBLE V4+BC** | **1.83** | **+74.39%** | **-16.85%** | **60%** | **4/4 全达成** |
-
-**Ensemble 大幅超 V4 alone (+182% Sharpe)** — 理论上限 sqrt(0.65²+1.10²)=1.27 实际 1.83, 说明 V4/BC 互补 alpha 真实 (correlation 几乎 0, 6.6% overlap).
-
-**用户终极目标 (Sharpe≥1.3 / ann≥30% / dd≥-20% / 月胜率≥55%) 首次全达成**, V4 部分 PIT-clean (panel v3 无 sector leakage).
-
-Caveat:
-- BC 仍 30% holdout split (selection bias risk) — 需 walk-forward audit 解
-- ensemble 没经 Phase4 true train-log gate (没 fact_model_train_log for ensemble)
-- 若 BC walk-forward Sharpe 减半, ensemble 估 ~sqrt(0.65²+0.55²)=0.85 仍达标但边缘
-
-evidence:
-- `mart_paper_sim_lambdamart_v6_kpi_compare` comparison_id=lm_v6_compare_20260522T074141 (ensemble row)
-- `/tmp/ensemble_paper_sim.log` paper_sim 完整 log
-
-Next:
-- v6 retrain 出 verdict 后, 跑 ensemble_v4_v6 + ensemble_v4_v6_bc (multi-way ensemble) 看是否进一步提升
-- 启 BestChoice walk-forward audit (跨 repo, ~1 day) 解 selection bias
-- 启 ensemble Phase4 gate (设计如何 generate ensemble train_log)
-
-**Leakage 检测结果 (2026-05-22 16:30 CST; 用户 push back "能不能检测之前跑的结果是否真的含 leakage"):**
-
-各 model leakage 验证 (用 fact_model_train_log + mart_p0b_walkforward_eval + panel schema diff):
-
-| Model | Panel | sector_*? | 含 leakage 验证 |
-|---|---|---|---|
-| **V4 champion** `lgbm_20260517_governance_v1_20d` (production) | **v3** (102 cols) | **NO** | per-window IR 0.478 / 9/22 windows 负值 = honest alpha pattern, **NOT leakage** |
-| `lgbm_phase5_gcp_20260520T010718` (5/20) | v4 | YES | CONFIRMED leakage: train_log drop 81.35% BLOCK |
-| `lgbm_phase5_stability_20260521T055800Z` (今晨) | v4 | YES | CONFIRMED leakage: train_log drop 92.43% BLOCK |
-| `lgbm_phase5_session_20260518T160747` (5/18) | v4? | likely YES | not single-verified, same panel 推断含 |
-| `bestchoice_formula_challenger_v1` (BestChoice import) | N/A formula | NO | selection bias 不同问题, 待 walk-forward audit |
-
-**关键发现**:
-- V4 champion 用 **panel v3** (没 sector_*_tdx_l1_rel cols), 不含今天 Phase D 发现的致命 leakage
-- V4 仍含 ~14 noise cols (fundamental + survey + lhb basic, Phase A 证 noise) 但是 noise 不是 leakage
-- V4 paper_sim Sharpe 0.65 / ann 36% **真实可信不夸大** (per-window IR 0.478 honest pattern)
-- 实盘 forward 估 Sharpe 0.4-0.6 / ann 20-30%, **跟用户目标 (Sharpe≥1.3 / ann≥30%) 仍差距**
-
-**实盘建议**:
-- V4 champion 不需 kill — honest 但 weak alpha
-- 心理 expectation 调整: paper_sim 数字不全可信, Sharpe 0.65 = real ceiling reference
-- v6 verdict 出后看是否能 超过 V4 (panel v4 drop sector vs panel v3) — 若超过且 IS-OOS gap < 30% 是真 improvement
-
-**BC walk-forward lite audit 完成 (2026-05-22 19:00 CST):**
-
-跑 1142/1146 candidates, per-window metrics:
-
-| Window | Win rate | Avg ret | Signals |
-|---|---|---|---|
-| W1 pre-2024-06 | **55.64%** | +2.66% | 9201 |
-| W2 2024-06→2025-01 | 66.02% | +10.31% | 5032 |
-| W3 2025-01→now | **67.60%** | +7.51% | 10346 |
-
-**Verdict: MILD selection bias (drop pct -16.4%)** — Win rate 单调上升 (recent better), 不是 STRONG (>30% threshold).
-
-含义:
-- BC params 不完全 robust — recent weighted 10-12pp
-- W1 win 55.6% > 50% random → 真 alpha base 存在
-- 真 forward Sharpe 估 1.5-1.7 (paper_sim 1.83 含 ~10-15% upward bias)
-- 仍 > 用户目标 Sharpe ≥ 1.3 with margin
-
-**Phase 6 ensemble production: 可上**, 但需 6-12 周 forward monitor 验证.
-
-Caveat: lite 测 params, 未测 selection bias 强度 (完整 1.87M trials 不可行).
-
-evidence: `data/reports/bestchoice_walkforward_lite/audit_20260522T104228.csv`
-
-**BestChoice complete plan 推进 (2026-05-22 18:30 CST; 用户 push '按 goal.md 推进 BC, 包括页面迁徙和 audit 后续')**:
-
-Phase status:
-- Phase 1 import: [DONE] (dfe14acb)
-- Phase 2 daily feed: [DONE] (c87994c0)
-- Phase 3 paper_sim challenger: [DONE] (51381c09, Sharpe 1.10)
-- Phase 4 complementarity: [DONE] (51381c09, 6.6% overlap, 0 same-day same-stock)
-- **Phase 4.5 BC tab page (Layer 4 UI)** : [DONE] (98e99b96, /api/v3/bestchoice/* + design/v3-page-bestchoice.jsx + tab register)
-- **Phase 5 BC walk-forward audit**: [STARTING] (跨 repo, BC sibling repo refactor)
-- Phase 6 ensemble production: [PENDING] audit pass
-- Phase 7 条件化退出 POC: [PENDING] ensemble
-- Phase 8 stop-loss A+B sweep: [PENDING] ensemble
-
-BC folder 移动 (Option B): 延后, UI tab 不依赖, 跨 repo audit work 也不要求 (BC repo own refactor 可独立).
-
-Audit 计划 (Step 1 starting now):
-- BC repo `bestchoice/scripts/formula_local_optuna.py` 改 `_split_train_validation_trades` 加 `--cutoff-date` mode
-- 3 个 historical cutoffs (2024-06-01, 2025-01-01, 2025-06-01) per-cutoff optuna 重跑
-- 主项目 import per-cutoff candidates 为 separate run_ids
-- paper_sim per cutoff 在 corresponding forward 区间 (T → T+6mo)
-- compare walk-forward Sharpe vs 现 30%-holdout Sharpe 1.10
-- ETA: BC refactor 1天 + 3 cutoff 跑 2-3天 + 主项目集成 1天 = ~5-7 天 total
-
-**BestChoice 当前 integration 状态 (用户 16:30 push back "参数给到主项目用于训练和测试了么"):**
-
-| 集成层 | 状态 |
-|---|---|
-| 测试 (paper_sim Phase 3) | **DONE** (commit 30b4511c + 51381c09): 跑 paper_sim Sharpe 1.10 / ann 34.87% / dd -22.09% / 胜率 50% |
-| 测试 (Phase 4 complementarity) | **DONE**: 6.6% overlap with v4 (101 vs 97 picks, 0 same-day same-stock) — 互补 alpha source confirmed |
-| 训练 (作为 ML feature 重训) | **NOT DONE** — BestChoice candidates 是 signal level, 没作 panel feature input 给 ML retrain |
-| Ensemble (champion + BestChoice combined picks) | **NOT DONE** — plan §5 Phase 5+ 待启 |
-| Walk-forward OOS audit (验证 selection bias) | **NOT DONE** — 跨 repo 工作, deferred |
-
-**Phase D2 类 industry-history 指标 backlog — 用户 15:30 决策"这些都不做了"**: 不追加 ST status PIT / 概念 PIT / 指数成分 verify / 复权因子 verify 等工作. 当前已完成 fundamental + sector drop (v6 retrain), 不再扩大 PIT audit scope. 节省 budget + 聚焦 v6 结果验证.
-
-**BestChoice Phase 3 + Phase 4 complementarity (2026-05-22 11:48 CST)**:
-
-Phase 3 paper_sim (adapter 30b4511c + paper_sim_lambdamart_v6_compare 跑 432 dates 2024-07→2026-04):
-- BestChoice: Sharpe 1.10 / ann +34.87% / max_dd -22.09% / 月胜率 50%
-- vs v4 baseline: Sharpe 0.65 / ann +36.10% / dd -21.7% / win 45% — BestChoice 全面略好
-- vs stability (BLOCK verdict): Sharpe 2.09 / ann +71.92% — BestChoice 弱
-- **1/4 用户终极目标 PASS** (仅 ann), 不达独立 champion 标
-
-Phase 4 complementarity (plan §5):
-- BestChoice 101 BUYs / 64 stocks, baseline 97 BUYs / 76 stocks
-- **shared stocks 5 (6.6%), same-day same-stock 0** → **完全不重合 alpha source**
-- plan §5 interpretation table: "improves champion ensemble" → **integrate as ensemble component**, 不替代 champion
-
-⚠ **BestChoice selection bias caveat** (跟 stability true verdict 同类 risk):
-- BestChoice candidates 来自 30% holdout split + full-period Optuna, **不是 walk-forward 真 OOS** (plan §3 selection bias)
-- paper_sim Sharpe 1.10 含 selection bias artifact, 真 forward 可能更差
-- **BestChoice 需独立 walk-forward OOS verify** (类似 stability true train-log audit) 才能 trust 作 ensemble component
-- 现在不能直接 promote, 标"互补 alpha 探索 done, 等 walk-forward OOS audit"
-
-下一步:
-- v3 Phase A feature ablation (找 OOS RankIC collapse 根因) — 本地, 立即可启
-- v3 Phase D PIT audit (sanity) — 本地, 立即可启
-- BestChoice walk-forward OOS audit (类似 retrain_lambdamart_v6 的 train_log_only path, 在 BestChoice 跑) — 后续 (跨 repo 工作)
-- Phase B/C (portfolio-objective + regime-conditional) 等 6/1 budget reset
-
-**True train-log Phase4 verdict 确认 BLOCK (2026-05-22 11:12 CST)**: Plan C retrain 用 --warm-start-checkpoint 实际跑成 final fit mode (skip Optuna search, 直接用 best.json 跑 final fit), 但好处是 **远端写 fact_model_train_log true IS/OOS evidence**. 拉本地 import + 重跑 Phase4:
-- IS RankIC = 0.1137, OOS RankIC = **0.0086** (near noise)
-- IS IR 16.98, OOS IR 0.59
-- **relative_drop = 1 - OOS/IS = 92.43%** (Phase4 threshold <= 30% PASS, > 30% FAIL)
-- 4 sub-check: PBO PASS (0.102) / DSR PASS (1.0000) / Conservative PASS (+42.71%) / **IS-OOS FAIL (92.43%)** → ALL False → verdict **BLOCK**
-- 跟旧 model lgbm_phase5_gcp_20260520T010718 一模一样 (旧 relative_drop 81.36% FAIL, stability penalty 没解决根因)
-
-**含义**:
-- 之前 warn_only_proxy 是 proxy-split-half artifact, 误导 (用 OOS split 不是真 IS-OOS)
-- Stability penalty 帮 PBO + paper_sim ranking, **没解决 IS-OOS overfit 根因**
-- paper_sim Sharpe 2.09 / ann 71.9% 是 ML signal 在某 universe subset 偶然好, **OOS RankIC 0.0086 几乎=0 = ML 整体 ranking signal OOS 失效**
-- **此 model NOT promotable**, hold_reject 不动 champion
-- 旧 model lgbm_phase5_gcp + 新 stability model 都 FAIL 一同 IS-OOS gate — **alpha enhancement v2 plan 真正要解决的是 OOS RankIC near-zero 根因 (feature engineering / label engineering / objective change)**, 不是再 sweep stability penalty 参数
-
-**下一步 alpha 路线**:
-- v2 plan Phase A (stability penalty sweep) — drop, 已证 stability penalty 没解 IS-OOS
-- v2 plan Phase B (portfolio-objective replace NDCG) — 仍 worth try (直接 optimize Sharpe / max_dd 跟 portfolio metric, 不依赖 OOS ranking strength)
-- v2 plan Phase C (regime-conditional) — worth try (regime mismatch evidence)
-- **新优先**: feature ablation (drop 一组 features 看 OOS RankIC 是否上升 — 找 noise features 引入 overfit), 或 label engineering (改 fwd_5d/10d 看 horizon mismatch)
-- BestChoice Phase 3 paper_sim — 仍 worth run (互补 alpha 探索), 但 BestChoice 也要 walk-forward OOS verify, 不要直接 trust
-
-Spot preempt 根因 + 修复 (2026-05-22 11:10 CST; 用户 push back "为啥总这样, 请查找根因并修复" + "是并行跑批数量太多么" + "分小批量多次呢?"):
-- **根因**: spot preempt cycle (30-60 min) 小于 per-trial wall time (50-86 min, default 8 outer × 4 inner). 8 trial 同时 in-flight, preempt 来一砍全 8 个变 RUNNING→FAIL, 0 进 COMPLETE.
-- **用户 hypothesis "并行 8 太多"对一半**: 并行 8 是事实, 但分小批量 wall time per trial 不变, 不解.
-- **真修法**: 单 trial wall time < preempt cycle. 方案 C = 1 outer × 32 inner + n_estimators 300→100, 估单 trial ~3-10 min, fit preempt cycle.
-- **方案 C 已启** (2026-05-22 11:13 CST): retrain pid 1588 on VM, OPTUNA_N_JOBS=1, OMP_NUM_THREADS=32, --n-estimators 100, --n-trials 50, study resume same model_id. Background monitor bvbxz7aq0 跟踪 first COMPLETE wall time.
-- **若 plan C 仍 preempt 砍**: fallback 1×32 + n_estimators 50 (单 trial < 3 min), 或接受 56 COMPLETE current best 0.4009 plateau 收口.
-
-止损位设计讨论 (2026-05-22 10:50 CST; 用户 push back "没有止损位, 应该基于什么来设计, 讨论一下" — 已讨论先记 backlog, 后续 verdict 出 + Phase 3 paper_sim 时启用):
-- 现状: BestChoice candidates 只有 sell_rule (fixed_N天) + holding_days, 没显式 per-position stop. paper_sim 已有 portfolio-level HARD STOP (dd=-20% 全清), 已有 trailing_hit SELL reason 但参数 hardcode.
-- 7 个 candidate 方向 (评估表见讨论): A=ATR-based / B=Historical avg_dd-based / C=Forward-label PIT quantile / D=Volatility-band Bollinger / E=Regime-conditional / F=Time-decay / G=Combo
-- 推荐: **A + B 双叉 + Optuna sweep** — `final_stop = entry × (1 - max(K_atr × ATR(14)/entry, abs(avg_dd_stock) × M_avg_dd))`
-  - A (ATR) 给跨 stock vol normalization, K 走 Optuna sweep 不 hardcode (CLAUDE.md §4.5 反例避免)
-  - B (avg_dd) 用 BestChoice 已有 candidate-level 历史 dd, 不需新数据
-  - max() 双叉 robust, Optuna 2D sweep 16 combo GCP ~30 min ~\$0.20
-  - 不上 regime (E) / forward label (C) — 先 verify simple A+B; time-decay (F) 跟 BestChoice sell_rule 重叠
-- 实施路径: Phase 3 paper_sim 跑 BestChoice feed + stop A+B baseline (first-try M=1.0, K=2.0) → 对比 no-stop verify dd 压低 / ann 守住 → 若显著改善则 Optuna sweep optimal weights
-- 时机: 等续跑 retrain 出 verdict + Phase 3 paper_sim 启动时讨论参数 sweep 范围
-
-按 09:35 完成的 Perception internal work checkpoint (这部分 NOT 暂停, 仍可推): 当前 checkpoint 进度:
-- 7 engine mart 当前 row/date 范围 (实测今早 9:30 前):
-  - P1 emotion: 373 rows / 373 dates (2024-11-01 → 2026-05-19) — 全量已就绪
-  - P3 theme: 168 rows / 14 dates (2026-04-27 → 2026-05-19)
-  - P4 under_reaction: 700 rows / 14 dates
-  - P5 leader_follower: 910 rows / 14 dates / 13 themes / 65 rows/day, 0 sanity violation
-  - P6 style: 14 rows / 14 dates
-  - P7 stock_context: 702 rows / 14 dates / completeness [0.86, 1.00]
-- 已 commit: chunkymonkey/goal.md ledger (02d2ed8a) + perception 物理隔离不 commit (sibling repo 不是 git repo)
-- 已加 doc: perception/docs/development_plan.md §9 滚动记录 2 行 (P4-P7 扩区间 + backfill_all.sh)
-- **resume 时下一步候选** (按 development_plan §8 优先级):
-  - P3 主题边界扩到概念 — 卡 X2.1 tdx_industry daily snapshot 累积 (需 1+ 年)
-  - P4 hsgt/dzjy PIT 化 — handoff #25 标 [HOLD blocked] 复杂度上调
-  - P5 5 主题人工 case study — 不需新数据, doc-only, 20-30 min
-  - P5 ChainDiffusion 完整版 — 卡 X2.2 (F10 业务暴露度未结构化解析)
-  - P6 ThemeLifecycle 拥挤解释细化 (主升 vs 高潮风险) — engine 小改 30-60 min
-  - P7 StockContext drawer UI — frontend, 跟主项目 UI 改有 commit 冲突风险
-- **物理边界硬约束保持不变**: Perception sibling repo, 只写 `mart_market_perception_*`, 不接入主项目 LambdaMART panel / ranker / paper_sim / champion. UI 在 perception/src/perception/router.py + design/v3-page-market-perception.jsx. 主项目 backend/main.py:172 import perception.router 不动这条线.
-
-系统架构优化分批计划 (2026-05-21 22:30; 用户 push back "是不是把不影响 gcp 的都修复" → 反过来评估, 分批做不一次性): 三原则 - (a) 第一性原理: 主项目真瓶颈是 Phase4 verdict=block (alpha 问题, 不是 LOC); (b) 奥卡姆: god-modules 现状能 run, 拆是预防性投资, 不解决眼下交付; (c) 真金白银: 时间应花 alpha > god-module 重构. 反例: Codex 拆 1 个 workbench god-module 已引入 2 regression, 同时拆 5 个 N regression 概率高.
-
-**Stage 1 立刻做** (今晚已完成, ~1.5h): 低风险快修复, 不阻 GCP, 0 regression.
-- [DONE] market_perception/utils.py 抽 7 共享 helpers (`_table_exists` / `_fetchall` / `_fetchone` / `_to_date` / `_attach_market_if_available` / `_columns` / `_first_existing`); regime_engine 752→700 LOC (-7%), 6 sibling engines 无改动 (via re-export 保持兼容).
-- [DONE] services/utils.py 加 `finite_float()` 统一签名 (default 参数兼容 3 种历史签名); router_serialize.py 改 import 走集中版 (省 11 行重复, 验证 import 工作).
-- 实测 2721 passed / 0 failed (baseline 2718 +3, 0 regression).
-- 跳过 DDL 集中: agent 报告 37/34/28 把 tests fixture 算进去, **真 production 重复仅 dim_trading_calendar 2 处 + fact_feature_panel_candidate 5 处** (内容可能 schema 演进刻意不同), ROI 比预估低. 留 Stage 3.
-
-**Stage 2 等 GCP retrain 完 → 分叉决策** (~6-8h 后, 30/80 trial 处理中, best=0.3846):
-- 触发: `lgbm_phase5_stability_20260521T055800Z` 出 COMPLETE checkpoint + summary JSON.
-- 立刻跑 `bash scripts/post_retrain_pipeline.sh` 一键接 P1 pipeline (export → import → paper_sim → Phase4 gate → registry).
-- 看 Phase4 verdict 分 3 路径:
-
-  - **路径 α (verdict PASS / promote)** → 主项目交付路径. **集中精力 BestChoice Phase 1** (走 plan §5): import 1146 candidates → `mart_stock_formula_optuna_bestchoice_v1` → 主项目 paper_sim_v2 + Phase4 gate. **不再拆 god-modules** (delivery first).
-  - **路径 β (verdict BLOCK)** → 主项目 alpha 路线继续折腾, **不拆 god-modules** (改动期间撞车风险高). 走 alpha 探索: feature 新加 / label 改 / regime ensemble / BestChoice Phase 1 探索互补 alpha.
-  - **路径 γ (verdict warn_only_proxy / 推迟决策)** → 视情况, 可考虑小拆 (data_quality.py P0 低风险 dry run).
-
-**Stage 3 god-module 拆分** (仅在主项目稳定 1 周以上 + 无新需求时启动, 永久 P1):
-- 优先级 (按风险/ROI):
-  - data_quality.py 4276 LOC (低风险, 3 caller, 拆分模板 dry run) — 2-3 天
-  - updater.py 5136 LOC (最大 god-module + 风险中, 32 step + 16 endpoint) — 3-4 天
-  - scoring.py 2712 LOC (P1) — 2 天
-  - signals_v2.py 2013 LOC (高风险, 10+ caller 含 main.py 启动) — 2 天
-- 拆分模板已有先例 (workbench → workbench_*_read 30+ + market_schema.py + router_serialize.py)
-- 每个拆完跑 §7.4 双扫 (codegraph sync + complexity scan) + full pytest.
-
-**Stage 4 永久 P2** (有空闲窗口才做):
-- 脚本族合并: 26 audit / 5 paper_sim / 2 retrain → base class + YAML (省 ~3.2K LOC, 中风险需测试)
-- 死代码清理: 233 scripts 中 ~70 个可能死 (git log + grep + cron 引用验证后删)
-- DDL 真集中: dim_trading_calendar 2 处合并 (5 min) + fact_feature_panel_candidate 5 处 schema diff 分析后决定
-- _finite_float 剩余 9 处改 import (机械替换, 30 min, 收益 70 LOC)
-- 死 build script v1/v2 版本清理
-
-**Stage 5 永远不做** (奥卡姆 push back):
-- build_feature_panel_duck.py 主体 (是 script orchestration, 拆完反破坏可读性, 只抽 SQL helper)
-- scoring 大算法 (`calculate_institution_scores` / `calculate_stock_scores`) 内部 step (破坏 SQL 事务边界)
-- signals_v2 `build_today_signals` 顶层 orchestrator (跟 endpoint 一一对应)
-- updater.py 16 endpoint 本身 (路由本职, 别为 LOC 拆 endpoint)
-- v3_market_perception.py 继续抽 7 DB helpers 到 router_read.py (cosmetic, 全本地 caller 无真复用)
-- 强制集中 tests fixture DDL (test isolation 是正确做法, 不该集中)
-
-**工具评估** (2026-05-21 22:00 用户问 GitNexus):
-- 现阶段不替换 codegraph + complexity-optimizer (已固化 §7.4 流程, 覆盖 80% 审计需求, 0 license cost)
-- GitNexus 评估等 BestChoice Phase 1 真有跨 repo lineage 需求时再试 (group sync 是它最大优势)
-- 不上 GitNexus 的 PostToolUse hook (会自动改 AGENTS.md/CLAUDE.md, 跟我们手维护冲突)
-
-详细 audit 数据见 `analysis/system_architecture_audit_20260521.md`.
-
-BestChoice 独立运营评估 (2026-05-21 21:00; 用户问 "BestChoice 是否具备独立运营条件"): **不具备**. BestChoice 当前状态是"研究输出完整"(5201 stocks × 5 公式 × 45908 cache rows × 1146 candidate, vwap_tradable_v1 含 T+1/涨跌停/停牌), 但不是"实盘决策系统". 缺口按 plan §3: (1) 每日 top-K 选股排序 + 互斥 + 持仓约束 = 没有, 只有 candidate 池; (2) 组合级 NAV / Sharpe / Calmar / 月胜率 / 超额 HS300 = 没有, 只有 stock-formula 级 win_rate/avg_ret/avg_dd; (3) walk-forward OOS = 30% holdout split 有 selection bias, 不是主项目 `walk_forward.expanding_monthly`; (4) PIT-strict 守门 = 没有 `governance.enforce_pre_insert` 类拦 sharpe>5/win>0.95; (5) 跟 champion 互补/重合度 = 没跑过; (6) 真实交易成本 = 部分 (滑点/双边费率/换手率约束/一字板模拟未确认). 跟主项目 `lm735/sniper265/h10/k3/neutralcash20` baseline (ann=48.40%/dd=-24.28%/sharpe=0.81/n_obs=22, Phase4 verdict=block relative_drop 81.36%) 对比: BestChoice 从没经历 Phase4 gate. plan agent (Codex) 自己写: "不建议直接合并到生产", BestChoice agent.md §1 "不把已写代码当成完成依据". 真要独立运营约需 2-4 周补 7 项 (top-K / portfolio paper_sim / walk-forward / governance / PIT audit / transaction cost / vs champion), 实质 = 重做半个主项目. **后续 GCP retrain 完后执行路径**: 走 plan §5 Phase 1+ 流程, **不独立运营**. 顺序: (1) `scripts/post_retrain_pipeline.sh` 接 P1 pipeline (export → import → paper_sim → Phase4 gate); (2) BestChoice Phase 1: import 1146 candidates → `mart_stock_formula_optuna_bestchoice_v1` (read-only challenger, 不动 champion); (3) BestChoice Phase 2: 走主项目 `paper_sim_v2` + `Phase4 gate` + `mart_strategy_result_registry`; (4) 等组合 Sharpe ≥ 1.3 或 ann_ret ≥ 50% & max_dd 不差 -25% 或显著改善 champion 后才上 GCP 综合寻优; (5) 验证通过后 → 主项目 champion 加 BestChoice alpha family / challenger / ensemble component, 不另起独立运营 surface. 详细分析见 `analysis/data_integrity_audit_20260521.md` + `analysis/bestchoice_phase0_freeze_20260521.md` + `bestchoice/analysis/bestchoice_chunkymonkey_validation_plan.md`.
-
-BestChoice 条件化持有/退出策略计划 (2026-05-21 14:58; 待择机运行, 当前不抢主项目 active stability retrain 资源): 已将用户讨论方向固化为后续 POC，不立即盲跑 GCP。目标不是继续使用“全局固定持有 15/20 天”，而是用 BestChoice 公式信号 + 主项目 PIT 上下文学习条件化买卖点/持有周期。输入: BestChoice 讨论文档 `/Users/dp/Documents/M/stock/bestchoice/analysis/bestchoice_chunkymonkey_validation_plan.md`、BestChoice 1146 replacement candidates、主项目 PIT 特征/信号/阶段上下文。上下文桶: `stock_code + formula_id + variant_id + stage + macd_context + market/industry_regime + volatility_bucket + kline_pattern`，其中 MACD 至少拆 `zero_axis_above_golden_cross`、`zero_axis_below_golden_cross`、`dead_cross`、`above_zero_trend_continuation`、`below_zero_rebound_probe`。动作空间: 不只 `holding_days`, 还包括 `fixed_5/10/15/20/30`, 公式 exit signal、死叉退出、阶段恶化退出、trailing stop、profit target + time stop、max holding + early exit、regime risk-off exit。候选输出先落 namespaced challenger 表, 建议 `mart_bestchoice_context_exit_policy_v1` 或 `mart_stock_formula_optuna_bestchoice_v1`, key 至少包含 `cutoff_date + stock_code + formula_id + variant_id + context_bucket`; value 至少包含 `best_sell_rule`, `holding_days`, `stop_pct`, `target_pct`, `trailing_pct`, `expected_ret`, `expected_dd`, `win_rate`, `n_train`, `n_oos`, `confidence`, `fallback_level`, `source_artifact`, `params_hash`, `walk_forward_id`。验证规则: 必须 PIT-safe walk-forward, T+1, 成本/滑点/涨跌停/停牌约束齐全；样本不足按 fallback 逐级回退 `stock+formula+context -> formula+context -> stock+formula -> formula+stage -> global formula default`, 禁止为稀疏 bucket 硬给“历史最佳”。运行顺序: (1) 本地只读/小写入 POC, 先导入 BestChoice candidates, 只跑代表性公式/股票/context, 输出 paper_sim 和 leakage/PIT audit; (2) 若组合级达到 Sharpe>=1.3、或 ann_ret>=50% 且 max_dd 不差于 -25%、或能显著改善 champion drawdown/return/相关性, 才进入 GCP 扩大到全股票/全公式/多 context/multi cutoff 综合寻优; (3) GCP 运行前必须说明 objective、预计 wall time/成本、输入快照、输出路径、artifact 保存、monitor/stop/rollback, 并用 `CHUNKYMONKEY_GCP_EXPLICIT_OK=1`; (4) 所有 expensive unit 必须有 `params_hash + cutoff/window key + completion_status=complete + metrics_json` 级 checkpoint, 只复用完整验证通过的 unit, spot preempt 后补缺口, 禁止无条件全量重跑。运行触发: 主项目当前 `lgbm_phase5_stability_20260521T055800Z` 至少出现可用 COMPLETE checkpoint/summary 或被明确停掉并复盘后, 再安排 BestChoice POC；触发后第一步是 schema/runner/checkpoint 的本地 POC, 不是全量 GCP；若 POC 未过阈值, 只保留 evidence 和失败原因, 不上 GCP。
-GCP 受控重启 (2026-05-21 13:58; monitor 14:44): 已将本地修复 scoped sync 到 VM，远端备份 `data/reports/code_sync_backup/20260521T055600Z_stability_rankic_fix`；远端 smoke 证明 LambdaMART stability penalty 生效: `window_rank_ic_mean=0.04`, `window_rank_ic_negative_rate=0.5`, `rank_ic_stability_penalty=0.3349`；wrapper dry-run pass。已启动新 run `lgbm_phase5_stability_20260521T055800Z`, parent `pid=1597`, child `pid=1601`, log `data/reports/stability_retrain/lgbm_phase5_stability_20260521T055800Z_stability_retrain_20260521T055750Z.log`, summary `data/reports/stability_retrain/lgbm_phase5_stability_20260521T055800Z_stability_retrain_20260521T055750Z.json`, GCS `gs://chunkymonkey-data-0517/phase5/stability_retrain`。14:03 CST 复查: feature panel 已加载 4,240,940 rows, filter 后 3,933,543 rows, RankPanel built, warm-start queued, log confirms `optuna parallelism: outer_jobs=8 inner_lightgbm_threads=4`; Optuna DB 8 RUNNING / 0 COMPLETE, summary/GCS completion artifacts pending。14:44 CST 复查: child `pid=1601` elapsed `45:57`, CPU ~2953%, RSS ~22.4GB, 70 threads, DB 仍 8 RUNNING / 0 COMPLETE, `.best.json` 和 summary JSON 均不存在；cost 14:44 projected $7.0587 / 70.5%, remaining $5.4454 / ~14.48 spot h, OK。下一步只监控到首批 COMPLETE checkpoint；完成后再做 export/import/Phase4/frontier/delivery audit。
-本地推进 (2026-05-21 14:24): 新增只读 GCP stability monitor wrapper `scripts/gcp_stability_status.sh`, 已写入 `AGENTS.md` 与 `docs/gcp_controlled_execution_runbook.md`。标准监控命令: `CHUNKYMONKEY_GCP_EXPLICIT_OK=1 TAIL_LINES=80 bash scripts/gcp_stability_status.sh`。该脚本只读 `current.*` 指针、进程状态、Optuna trial states、best/summary artifact 是否存在与 log tail, 不启动 VM、不 export/import、不写远端文件。实际读数: active run `lgbm_phase5_stability_20260521T055800Z` child elapsed `26:28`, CPU ~2831%, RSS ~16.98GB, 70 threads, Optuna DB 8 RUNNING / 0 COMPLETE, `.best.json`/summary 仍 absent; cost projected $6.6216 / 66.2%, remaining $5.7274 / ~15.23 spot h, OK。结论不变: 还不能导出/导入, 等首个 COMPLETE + best checkpoint 或 final summary。
-GCP monitor (2026-05-21 14:31): 标准只读 wrapper 复查仍无可复用结果。parent `pid=1597`, child `pid=1601`, child elapsed `33:15`, CPU ~2888%, RSS ~19.7GB, 70 threads; Optuna DB `data/reports/optuna/lgbm_phase5_stability_20260521T055800Z.db` 仍为 8 RUNNING / 0 COMPLETE, latest trial 全无 completed_at, `.best.json` 与 final summary 仍不存在。cost tracker 14:31 OK: projected $6.7673 / 67.6%, remaining $5.6334 / ~14.98 spot h。delivery audit expected exit 1, 仍 92.83% / NOT READY, GCP criterion 正确读取 active `gcp_cost_summary`。继续监控到首个 COMPLETE; 未出现 COMPLETE 前禁止 export/import。
-本地审计 (2026-05-21 14:32): 修正 active docs 中残留的旧 GCP disabled/TERMINATED 口径, `goal.md` / `CLAUDE.md` 现在统一为 controlled-use + active VM RUNNING。`analysis/workflow_checkpoint.md/json` 和 `SESSION_HANDOFF.md` 已刷新到 14:31 状态, resume command 改为 `scripts/gcp_stability_status.sh` 只读 wrapper。验证: `python -m json.tool analysis/workflow_checkpoint.json` pass; `git diff --check -- goal.md SESSION_HANDOFF.md analysis/workflow_checkpoint.md analysis/workflow_checkpoint.json CLAUDE.md` pass; stale active wording `rg` 只剩历史 note; `codegraph sync .` pass; complexity-optimizer 宽扫仍只报 `assets/js/app.js` 历史 nested loop/sort-in-loop 热点, 未发现 stability retrain/import/export/doc 状态路径新 blocker。
-GCP/本地推进 (2026-05-21 14:39/14:40): 标准只读 wrapper 复查仍无可复用结果。child `pid=1601` elapsed `41:22`, CPU ~2935%, RSS ~21.3GB, 70 threads; Optuna DB mtime 更新到 `2026-05-21T06:38:25Z`, 但 trial state 仍 8 RUNNING / 0 COMPLETE, `.best.json` 与 final summary absent。cost tracker 14:39 OK: projected $6.9130 / 69.1%, remaining $5.5394 / ~14.73 spot h。未导出/导入。并行本地 #8 小优化: `assets/js/app.js` 机构管理 type filter 从每个 type 重扫全量 `r.data.filter(...)` 改为一次 `typeCounts` 聚合, 消除该 O(T*N) 重复扫描热点且不改 UI 输出。验证: `node --check assets/js/app.js` pass; frontend contract/render smoke 3 passed; complexity-optimizer 宽扫不再报告原 `assets/js/app.js:2884` 重复 filter 热点, 但仍有大量历史 app.js nested-loop/sort-in-loop leads 待后续分批处理。
-GCP monitor (2026-05-21 14:44): 标准只读 wrapper 复查仍无可复用结果。parent `pid=1597`, child `pid=1601`, child elapsed `45:57`, CPU ~2953%, RSS ~22.4GB, 70 threads; Optuna DB mtime 更新到 `2026-05-21T06:43:36Z`, trial state 仍 8 RUNNING / 0 COMPLETE, `.best.json` 与 final summary absent。cost tracker 14:44 OK: projected $7.0587 / 70.5%, remaining $5.4454 / ~14.48 spot h。未导出/导入；继续等首个 COMPLETE checkpoint。
-GCP/本地推进 (2026-05-21 14:48/14:51): 标准只读 wrapper 复查仍无可复用结果。parent `pid=1597`, child `pid=1601`, child elapsed `50:41`, CPU ~2968%, RSS ~23.3GB, 70 threads; Optuna DB mtime 更新到 `2026-05-21T06:48:03Z`, trial state 仍 8 RUNNING / 0 COMPLETE, `.best.json` 与 final summary absent。cost tracker 14:48 OK: projected $7.2044 / 72.0%, remaining $5.3514 / ~14.23 spot h。未导出/导入。并行本地 #8 小拆分: `backend/services/market_db.py` 将核心 market schema DDL 下沉到 `backend/services/market_schema.py::ensure_market_schema`, `market_db.py` 473→392 行, `market_schema.py` 208 行, `market_read.py` 169 行, 旧 `market_db.init_market_db()` / constants / writer imports 保持兼容。验证: `py_compile` pass; market/calendar/xdxr/audit-financial targeted 22 passed; CodeGraph query/sync pass (`Synced 76 changed files`, `Updated 972 nodes`); complexity scan 仍只报 legacy `assets/js/app.js` leads; delivery audit expected exit 1, 92.83% / NOT_READY。
-GCP monitor (2026-05-21 14:54): 标准只读 wrapper 复查仍无可复用结果。child `pid=1601` elapsed `56:14`, CPU ~2983%, RSS ~24.2GB, 70 threads; Optuna DB mtime 更新到 `2026-05-21T06:53:16Z`, trial state 仍 8 RUNNING / 0 COMPLETE, `.best.json` 与 final summary absent。未导出/导入；继续等首个 COMPLETE checkpoint。
-GCP monitor (2026-05-21 14:57): 标准只读 wrapper 复查仍无可复用结果。parent `pid=1597`, child `pid=1601`, child elapsed `59:26`, CPU ~2990%, RSS ~25.0GB, 70 threads; Optuna DB mtime 更新到 `2026-05-21T06:56:58Z`, trial state 仍 8 RUNNING / 0 COMPLETE, `.best.json` 与 final summary absent。cost tracker 14:57 OK: projected $7.3501 / 73.5%, remaining $5.2574 / ~13.98 spot h。未导出/导入；继续等首个 COMPLETE checkpoint。
-GCP/本地推进 (2026-05-21 15:02/15:05): 标准只读 wrapper 复查仍无可复用结果。parent `pid=1597`, child `pid=1601`, child elapsed `01:04:56`, CPU ~3001%, RSS ~26.0GB, 70 threads; Optuna DB mtime 更新到 `2026-05-21T07:02:30`, trial state 仍 8 RUNNING / 0 COMPLETE, `.best.json` 与 final summary absent。未导出/导入。并行本地 #8 frontend complexity 小优化: 股票列表搜索/筛选不再每次 `applyStockFilters()` 重扫 `stockListState.getData()` 构建 `stockMap`; `renderStockList()` 一次构建 `_stockFilterMetaByCode`, 后续搜索/筛选只扫 DOM rows 并查预计算 gate/industry/search blob。验证: `node --check assets/js/app.js` pass; frontend contract/render smoke 3 passed; complexity filtered scan 不再命中旧 `stockMap` / `matchGateFilter` / `matchIndustryFilter` 路径; `codegraph sync .` pass (`Synced 76 changed files`, `Updated 949 nodes`); `git diff --check -- assets/js/app.js` pass。交付审计 expected exit 1 仍 92.83% / NOT_READY。
-本地审计 (2026-05-21 14:08): 等待 GCP 首批 trial 时已按 `AGENTS.md` 跑 CodeGraph + complexity-optimizer。`codegraph sync .` 完成, 输出 `Synced 75 changed files`, `Updated 946 nodes`; 由于当前 worktree 仍有大量新增/未提交文件, `codegraph status .` 仍提示 75 added pending, 视作 dirty worktree 状态提示而非本轮 sync 失败。复杂度扫描 `/Users/dp/.agents/skills/complexity-optimizer/scripts/analyze_complexity.py ... --format markdown` 仍只命中历史 `assets/js/app.js` nested loop/sort-in-loop 热点, 未发现本轮 stability retrain / import / export 路径的新复杂度 blocker。
-本地纠偏 (2026-05-21 14:15/14:20): 修正 `audit_delivery_readiness.py` 的 GCP 成本控制口径。旧逻辑优先读 legacy `data/reports/phase5_chain/status.json step=gcp_disabled`, 因此在当前 VM 实际 RUNNING 时仍显示 `CONTROLLED_USE_IDLE` / `vm_status=TERMINATED`。新逻辑改为: 若 `data/reports/gcp_cost_summary.json` 显示 active VM (`vm_status=RUNNING`) 则优先使用成本报告和 alert, 只有没有 active cost evidence 时才接受 legacy controlled-idle。新增测试 `test_gcp_running_cost_summary_overrides_legacy_controlled_idle` 和 `test_daily_automation_uses_active_cost_report_over_legacy_idle`, 同时覆盖 GCP cost criterion 与 daily automation criterion。验证: `backend/tests/test_audit_delivery_readiness.py` 16 passed, `py_compile` pass, `audit_delivery_readiness.py --json` expected exit 1 但 GCP criterion 现在正确为 `source=gcp_cost_summary`, `vm_status=RUNNING`, `alert_level=OK`, `pct_of_budget=64.7`, daily criterion `gcp_cost_report_active=true`, 整体仍 92.83% / NOT READY；frontier 仍 `NO_PROMOTABLE_PROBE`；CodeGraph sync 更新 76 files / 966 nodes, complexity scan 仍只报旧 `assets/js/app.js`。
-本地推进 (2026-05-21 10:34): 按用户要求解决“不每次全量重跑、已验证结果可复用、首先确认确实跑完”。`backend/services/ml_ranking/ddl.py` 新增 `fact_model_train_log_window`; `retrain_lambdamart_v6.py --train-log-only` 默认启用 `--resume-train-log`, 为当前 params/window 生成稳定 `params_hash` 与 `replay_id`, 每个完成窗口立即写入 `fact_model_train_log_window` 并 commit。恢复时只跳过满足 `model_id/replay_id/params_hash/window_key`、train/test 边界、正 train/test row count、metrics JSON 可解析且 `checkpoint_status='complete'` 的窗口；最终 `fact_model_train_log` 只有在 expected windows 全部 verified 后才写入。`scripts/gcp_train_log_replay.sh` 已显式传 `--resume-train-log`。`AGENTS.md` 和 `docs/gcp_controlled_execution_runbook.md` 固化 Long-Run Checkpoint Reuse / Spot preempt 经验: Spot 抢占后重启同一 wrapper 复用 verified unit checkpoint, 不能盲目全量重跑。补充当前已跑完策略前五口径: 交付优先 #1 `lm735/sniper265/h10/k3/neutralcash20` Sharpe 2.099/CAGR 118.6%/max_dd -19.99%/n=68/PBO 0.119 PASS 但 `warn_only_proxy`; #2 `lm735/sniper265/h10/k3` Sharpe 2.229/CAGR 153.6%/max_dd -20.88%/PBO 0.145 PASS 但回撤略破 -20%; #3 `lm745/sniper255/h10/scorefloor45` Sharpe 2.018/max_dd -15.11%/PBO 0.340 FAIL; #4 `lm75/sniper25/h10` Sharpe 2.009/max_dd -14.42%/PBO 0.357 FAIL; #5 `lm76/sniper24/h10` Sharpe 2.025/max_dd -14.42%/PBO 0.388 FAIL。验证: `test_retrain_lambdamart_v6.py` 13 passed, `py_compile retrain/ddl` pass, `bash -n scripts/gcp_train_log_replay.sh` pass。下一步: 跑 Phase4/delivery 回归并在 GCP controlled-use preflight 后启动 resumable train-log replay。
-本地推进 (2026-05-21 09:38): 按用户要求暂停新策略推进, 先做 repo/doc hygiene 二次扫。已将 GCP controlled-use 同步到 `AGENTS.md`, `CLAUDE.md`, `gcp/README_GCP_BATCH.md`, `backend/config/gcp_policy.yaml`, `docs/agent_parallel_execution_policy.md`, `scripts/session_snapshot.sh`, `scripts/cm.sh`, `scripts/session_status.sh`, `scripts/lib/gcp_guard.sh`, `scripts/monitor_phase5_gcp_retrain_probe.sh`, `gcp/vm_start.sh`, `configs/cron/crontab.txt`, `audit_delivery_readiness.py` 及相关测试。`audit_delivery_readiness.py` 不再输出 `gcp_disabled`, 改为 `gcp_controlled_idle=true`, `alert_level=CONTROLLED_USE_IDLE`, `policy=controlled_use_requires_explicit_latch`; 旧 `phase5_chain/status.json step=gcp_disabled` 只作为 legacy step name 兼容读取。`analysis/session_archive_20260520_2248.md` 顶部已标注为 pre-2026-05-21 historical archive, 当前政策以 `AGENTS.md` 为准。验证: 旧 GCP 禁用语句 rg 扫描仅剩非 GCP 的 `--force` 注释; bash -n pass; delivery/workbench/Phase4/retrain/frontier targeted 57 passed; `audit_delivery_readiness.py --json` expected exit 1 / 92.83% / `ready_for_delivery=false`; `git diff --check` pass; `codegraph sync` pass。下一步才继续推进 `goal.md` 主线。
-本地推进 (2026-05-21 09:27): Phase4 train-log 安全硬化完成。`run_phase4_gate_on_msaf.py` 新增预测表窗口覆盖推断与 train-log 接受条件: `n_train_rows>0`, `n_windows>0`, 默认至少 2 个窗口, `walk_forward_mode='expanding_monthly'`, 且当同模型 predictions 可推断窗口数时, train-log `n_windows` 不能少于 prediction distinct windows；否则明确降级为 split-half proxy, 并在 JSON 的 `is_oos_metric_source.train_log_rejected` 写拒绝原因, 防止 smoke/partial train-log 误触发 hard promote。`retrain_lambdamart_v6.py` 新增 `--train-log-only` 和 `persist_materialization_outputs()`: 可重放计算 true train/OOS evidence 并只写 `fact_model_train_log`, 不删除/替换既有 prediction rows。GCP policy 同步更新为 controlled-use: `AGENTS.md` / `gcp/README_GCP_BATCH.md` 不再写“默认禁用”, 但 GCP 命令仍需 `CHUNKYMONKEY_GCP_EXPLICIT_OK=1`。验证: `py_compile` pass; Phase4+retrain narrow tests 18 passed; delivery/frontier/backtest targeted tests 56 passed; `audit_msaf_probe_frontier.py` expected exit 1 / `PROXY_READY_NEEDS_TRUE_IS_OOS`; `audit_delivery_readiness.py --json` expected exit 1 / 92.83% / `ready_for_delivery=false`; `git diff --check` pass; `codegraph sync` pass。当前仍无 hard promotable, 下一步应决定是否本地或 GCP 跑 `--train-log-only` long replay 来给 proxy candidate 补真 OOS 证据。
-本地推进 (2026-05-21 09:19): 按用户要求把“仓库卫生”固化并开始实际清理。`AGENTS.md` 新增 Repository Hygiene: 不留临时文件/死代码/死文档, 删除前 `rg` 查引用, 当前状态只放 `goal.md` / `SESSION_HANDOFF.md` / `analysis/workflow_checkpoint.md`, 设计审计归 `docs/`, dated evidence 归 `analysis/`, 验证产物必须有稳定命名和 ledger 引用。删除已被当前账本取代或会误导恢复的旧顶层文件: `HANDOFF.md`, `SESSION_HANDOFF_20260517.md`, `SESSION_FINAL_20260518.md`, `TEST_PLAN_CODEX_R24.md`, `RESEARCH_QUANT_TOOLS_R27.md`, `RESEARCH_COMMUNITY_STRATEGIES_R28.md`, `RESEARCH_AWESOME_QUANT_R29.md`, `ORCHESTRATION.md`; `gcp/README_GCP_BATCH.md` 改为 GCP controlled-use 政策入口, 不再保留直启 VM/GCS 命令。同步修正 `PROJECT_INDEX.md` 和 `docs/backtester_mcp_integration_20260517.md` 中的旧引用, 并新增 `analysis/codex_worktree_organization_20260521.md` 记录 dirty worktree 分桶。`DATA_INTEGRITY_AUDIT_20260517.md` 暂保留, 因 `docs/chunkymonkey_architecture_audit_20260517.md` 仍把它作为证据引用; `PLAN_V3.md` 暂保留, 因仍是 ML Ranking / BestChoice 延后定位参考。轻量校验: 旧文件引用已收敛到“已删除/历史说明”文字, `git diff --check` 通过。当前仍未运行 GCP、未写真实 DuckDB; 下一步回到 Phase4 train-log 覆盖率保护与 `--train-log-only` 回放入口。
-本地推进 (2026-05-21 09:07): 接续用户提醒的 Phase4 3 股 vs 5 股仓位线。当前结论保持: `lm735/sniper265/h10/k3` 是 3 股候选中收益最高, n_obs=68, Sharpe=2.229, CAGR=153.6%, 但 max_dd=-20.88% 未过 strict -20%; `lm735/sniper265/h10/k3/neutralcash20` 是唯一 proxy-ready 候选, n_obs=68, Sharpe=2.099, CAGR=118.6%, max_dd=-19.986%, PBO=0.119 PASS, DSR/conservative/IS-OOS proxy PASS, 但 `promote_action=warn_only_proxy`, 因此仍不能 hard promote。为解这个 blocker, 新增未来 retrain 真证据链: `backend/services/ml_ranking/ddl.py` 增加 `fact_model_train_log` DDL; `run_p0b_lambdamart_v6.py` 暴露单窗口 fit helper; `retrain_lambdamart_v6.py` 在物化 OOS predictions 同步计算 train-side RankIC/NDCG 与 OOS RankIC 并 `persist_train_log`; `run_phase4_gate_on_msaf.py` 优先读取 `fact_model_train_log` 并仅在存在同模型真 RankIC 时设 `is_oos_proxy_mode=false`, 否则保持 split-half proxy fallback。当前本地没有可回填的 train-log, 所以刷新 frontier 仍为 `PROXY_READY_NEEDS_TRUE_IS_OOS`, `n_promotable=0`, `n_proxy_candidate_ready=1`; delivery readiness 仍 **92.83% / ready_for_delivery=false**。#10 并行小补丁: `paper_sim/sim_cache.register_cache(update_missing_only=True)` 与 cache metadata backfill 防止覆盖已有 `sim_config_hash`; #8 N+1 baseline 同步为 **19 findings / 10 HIGH / 9 LOW / baseline 19 OK**。验证: combined train-log/Phase4/audit/cache targeted **73 passed**, N+1 tests **15 passed**, `audit_msaf_probe_frontier.py` expected exit 1 / `PROXY_READY_NEEDS_TRUE_IS_OOS`, `audit_delivery_readiness.py --json` **92.83% / ready_for_delivery=false**, py_compile pass, `git diff --check` pass。本轮没有运行 GCP、没有写真实 DuckDB。
-本地推进 (2026-05-21 08:49): 按用户要求用 codegraph + complexity review 收口主项目, BestChoice 只做后续线索盘点。`codegraph sync` 已覆盖主项目和 BestChoice；BestChoice 讨论文档定位为 `/Users/dp/Documents/M/stock/bestchoice/analysis/bestchoice_chunkymonkey_validation_plan.md`, 明确先不直接合并, 后续以受控 import/POC 和 GCP 大规模综合寻优推进。主项目未丢弃既有验证: 保留并纳入 08:20-08:24 新 probe/gate。`lm735/sniper265/h10/k3` KPI: n_obs=68, Sharpe=2.229, CAGR=153.6%, 但 max_dd=-20.88% 未过 strict -20%; `lm735/sniper265/h10/k3/neutralcash20` KPI: n_obs=68, Sharpe=2.099, CAGR=118.6%, max_dd=-19.986%, PBO=0.119 PASS, DSR/conservative/IS-OOS proxy PASS, 但 `promote_action=warn_only_proxy`。因此新增/修正 `backend/scripts/audit_msaf_probe_frontier.py`: hard promotable 必须 `promote_action=promote`, proxy 通过单列为 `proxy_candidate_ready`; 当前 frontier verdict=`PROXY_READY_NEEDS_TRUE_IS_OOS`, `n_promotable=0`, `n_proxy_candidate_ready=1`。`audit_delivery_readiness.py` 的 source-weight summary 同步输出 `n_hard_promote_ready=0`, `n_proxy_candidate_ready=1`, best proxy candidate 含 `max_positions=3`/`cash_overlay.neutral_cash_pct=0.2`; 总 readiness 仍 **92.83% / ready_for_delivery=false**。#8 并行小补丁: `build_feature_rank_matrix_duck.py` rank-matrix cache prune 改为一次 window query + batched DROP/DELETE, 刷新 N+1 audit 为 **19 findings / 10 HIGH / 9 LOW**。验证: #6 targeted tests **40 passed**, #8 targeted tests **18 passed**, py_compile pass, `audit_n_plus_one.py` pass, `git diff --check` pass, `codegraph sync` pass。本轮没有运行 GCP、没有写真实 DuckDB。
-本地推进 (2026-05-21 08:16): 新增默认关闭的 `--min-sniper-score` source-specific 入场过滤, runner/gate/PBO diagnostics/frontier/delivery readiness key 同口径支持。真实 probe: `lm745/sniper255/h10 + scorefloor45 + sniperfloor0.05/0.10/0.15/0.30/0.40`, 以及 `lm74/sniper26/h10 + scorefloor50 + sniperfloor0.05/0.10/0.30`。结论: sniper confluence 过滤有 alpha 信号但覆盖太窄, 不能交付。`lm745+scorefloor45+sniperfloor0.05/0.10` Sharpe=2.479, max_dd=-9.24%, 但 n_obs=41 (<60 perfect ladder); sniperfloor0.15 n_obs=34, sniperfloor0.30/0.40 n_obs=17。`lm74+scorefloor50+sniperfloor0.05/0.10` Sharpe=2.428, max_dd=-9.24%, n_obs=42。由于样本不足, 不跑 Phase4 gate 作为 promote 证据。同步修复 delivery readiness probe 口径 bug: source-weight probe 的 `perfect_ladder_ready` 现在要求 `PERFECT_N_OBS_MIN=60`, 不再把 n_obs=41 的高 Sharpe sniperfloor probe 错标为 perfect; 补测试覆盖。刷新 frontier: best overall Sharpe 变为 sniperfloor0.05 但 n_obs_gap_to_perfect=19, promotable=0; delivery readiness 仍以 decay0.5 作为 best strict by Sharpe 但 Phase4 PBO=0.771 block。验证: delivery readiness / runner / gate / frontier / PBO diagnostics / N+1 targeted **53 passed**; `audit_delivery_readiness.py --json` **92.83% / ready_for_delivery=false**; `git diff --check` pass; GCP 实查 TERMINATED, 本轮未启动新 GCP。
-本地推进 (2026-05-21 08:09): 新增默认关闭的 `--rank-decay` position sizing, runner/gate/PBO diagnostics/audit key 全部同口径支持；`rank_decay=1` 语义等权, 小于 1 则高排名更重, 不加杠杆, 不改变默认生产输出。真实 probe: `lm745/sniper255/h10 + scorefloor45 + decay0.5/0.7`, `lm74/sniper26/h10 + scorefloor50 + decay0.5`。KPI 层面大幅改善: `lm745+scorefloor45+decay0.5` n_obs=62, CAGR=176.6%, median_ann=82.1%, Sharpe=2.398, max_dd=-17.78%, hit=74.2%; `decay0.7` Sharpe=2.291/max_dd=-15.59%。但 Phase4 全部 block: decay0.5 PBO=0.771, decay0.7 PBO=0.568, lm74+floor50+decay0.5 PBO=0.549。PBO diagnostics 显示 decay0.5 是强烈过拟合形态: K=3 被 IS 选中 35.9% 时 OOS 下半区率 100%, K=5 下半区率 75.3%, K=15 下半区率 100%。刷新 frontier: best strict/overall Sharpe 变为 decay0.5 但 promotable=0; best gate-pass 仍是 lm73.5 (Sharpe=1.859/PBO=0.145)。结论: rank-decay 能抬收益但放大 IS/OOS top-K instability, 不是可交付路径；下一步应转向真正改善 OOS rank stability 的 alpha/entry-exit 特征, 而不是 post-rank sizing。验证: runner + Phase4 gate + frontier + delivery readiness + PBO diagnostics + N+1 targeted **49 passed**; `git diff --check` pass; `audit_delivery_readiness.py --json` 仍 **92.83% / ready_for_delivery=false**; GCP 实查 TERMINATED, 本轮未启动新 GCP。
-本地推进 (2026-05-21 08:02): 将 Phase4 gate 补齐到能验证 runner 已有的 opt-in `--min-top-score` / `--score-exposure-*` 候选, 默认参数为空, 不改变历史/生产默认口径；JSON 现在显式落 `score_filter` / `score_exposure`。同时修复 `audit_msaf_probe_frontier.py` 与 `audit_delivery_readiness.py` 的 probe/gate 匹配 key, 纳入 score filter/exposure 并归一化未启用 exposure 时的 `score_min_exposure=0.0`, 避免同权重不同策略互相误配。真实 probe: `lm74/sniper26/h10 + scorefloor45/50` 与 `lm745/sniper255/h10 + scorefloor45`。KPI 上 scorefloor 有突破迹象: `lm745 + scorefloor45` n_obs=62, Sharpe=2.018, max_dd=-15.11%, CAGR=109.0%, strict ladder 指标达标；但 Phase4 gate 仍 block, PBO=0.340 FAIL (DSR/Conservative/IS-OOS proxy PASS)。`lm74 + scorefloor50` Sharpe=1.990 但 PBO=0.375 FAIL。刷新 frontier: source-weight probes=31, gate pass=5, perfect-ladder-ready=3, strict_blocked_by_pbo=3, promotable=0; strict 最近 PBO 通过线变为 scorefloor45 的 PBO=0.340, 离 0.20 仍差 0.140。结论: score floor 能补 Sharpe/回撤, 但没有解决 K-variant PBO；当前仍不能 promote。验证: delivery readiness / frontier / Phase4 gate / MSAF runner / PBO diagnostics / N+1 targeted **46 passed**; `audit_delivery_readiness.py --json` **92.83% / ready_for_delivery=false**; `git diff --check` pass; GCP 实查 TERMINATED, 本轮未启动新 GCP。
-本地推进 (2026-05-21 07:54): 基于 PBO 变体诊断继续做 lm73→lm75 中间细扫, 验证“只调 LM/sniper 权重”是否存在可交付交集。新增 probe/gate: `lm735/sniper265/h10`, `lm74/sniper26/h10`, `lm745/sniper255/h10`。结果: lm73.5 n_obs=68, Sharpe=1.859, max_dd=-14.42%, Phase4 PBO=0.145 PASS / all_pass=true, 但距 Sharpe 2.0 仍差 0.141；lm74 Sharpe=1.910 但 PBO=0.322 FAIL / block；lm74.5 Sharpe=1.941 但 PBO=0.336 FAIL / block。刷新 frontier 后 source-weight probes=28, gate pass=5, perfect-ladder-ready=2, promotable=0, best gate-pass 改为 lm73.5。PBO 诊断确认断点: lm73.5 的 K=3 被 IS 选中 81.6% 且 OOS 下半区率 5.3%, 仍稳定；lm74 的 K=3 选中率降到 56.1% 且 OOS 下半区率升到 27.4%, K=15 仍 100% 下半区。结论: 细调 source weights 已到稳定性断点, 不能靠继续盲扫 0.73-0.75 达成运营交付；下一步必须改 rank/entry-exit/position-sizing 的 K-stability, 或新增 alpha 让 Sharpe 提升不伴随 K-variant PBO 断裂。验证: MSAF runner + Phase4 gate + PBO diagnostics + frontier + N+1 targeted **32 passed**; `audit_delivery_readiness.py --json` **92.83% / ready_for_delivery=false**。
-本地推进 (2026-05-21 07:49): 新增 `backend/scripts/audit_msaf_pbo_diagnostics.py` 与 `backend/tests/test_audit_msaf_pbo_diagnostics.py`, 用 Phase4 同源的 5d weekly / K=[3,5,7,10,15] date-aligned returns matrix 拆解 PBO, 输出每个 K 在 CSCV 中被 IS 选中后的 OOS 下半区失败率、OOS rank、variant stats 与相关矩阵。真实诊断产物写入 `data/reports/msaf_pbo_diagnostics_lm73_sniper27_20260521.json`, `...lm75_sniper25...`, `...lm76_sniper24...` (gitignored)。结论: `lm73/sniper27` 能过 PBO=0.110, 因 K=3 被选中 82.5% 时 OOS 下半区率仅 4.0%；`lm75/sniper25` PBO=0.357, K=3 选中 48.3% 时下半区率 36.3%, K=15 选中 10.0% 时下半区率 100%；`lm76/sniper24` PBO=0.388, K=3 选中 37.1% 时下半区率 59.9%, K=15 选中 9.8% 时下半区率 100%。这证明 strict ladder 区间的问题是 top-K 参数稳定性断裂, 不是单纯收益不够；下一步应做 K-stability-aware alpha/position sizing 或 entry/exit 改造, 不能直接 promote。验证: `test_audit_msaf_pbo_diagnostics.py` + frontier + N+1 targeted **19 passed**; `git diff --check` pass。GCP 最新实查仍 TERMINATED, 本轮未启动新 GCP。
-本地推进 (2026-05-21 07:44): frontier 审计进一步补充 PBO 阻断细节, `backend/scripts/audit_msaf_probe_frontier.py` 现在输出 `strict_blocked_by_pbo`、`strict_nearest_pbo_pass`、`strict_min_pbo_gap_to_pass`、`gate_pass_nearest_strict_ladder`。刷新结果: source-weight probes=25, gate pass=4, perfect-ladder-ready=2, strict_blocked_by_pbo=2, promotable=0；最近 PBO 通过线的 strict 候选是 `lm75/sniper25/h10`, n_obs=68, Sharpe=2.009, max_dd=-14.42%, PBO=0.357, 距 PBO≤0.20 还差 0.157；最佳 gate-pass/nearest strict 仍是 `lm73/sniper27/h10`, Sharpe=1.8498, 距 Sharpe 2.0 还差 0.1502。结论未变: 当前不能 promote, 下一步要解决 K-variant/alpha 稳定性, 不是放宽 gate 或继续盲扫权重。验证: `py_compile` pass; `test_audit_msaf_probe_frontier.py` **2 passed**; `audit_msaf_probe_frontier.py` expected exit 1 / `NO_PROMOTABLE_PROBE`; `audit_n_plus_one.py` **20 findings / 11 HIGH / 9 LOW / baseline 20 OK**; `audit_delivery_readiness.py --json` **92.83% / ready_for_delivery=false**。GCP 实查 TERMINATED, 本轮未启动新 GCP。
-本地推进 (2026-05-21 07:11): #8/#6 收尾与 frontier 证据补强。`backend/scripts/audit_n_plus_one.py` 将 P-4 baseline 从 21 更新为当前已验证的 20, 刷新后 N+1 为 **20 findings / 11 HIGH / 9 LOW / baseline 20 OK**, 不再出现“低于 baseline 可能错误”的噪声；新增 `backend/scripts/audit_msaf_probe_frontier.py` 与 `backend/tests/test_audit_msaf_probe_frontier.py`, 将现有 MSAF source-weight probe 与 Phase4 gate 机读匹配, 输出 `data/reports/msaf_probe_frontier_audit.json` (gitignored)。补跑可比窗口 `lm75/sniper25/h10` probe (`2023-07-03→2026-04-14`, output `data/reports/msaf_ensemble_gcp_v6_lm75_sniper25_h10_probe_20260521.json`): n_obs=68, Sharpe=2.009, max_dd=-14.42%, strict ladder 达标, 但对应既有 Phase4 gate PBO=0.357 FAIL / promote_action=block。刷新后真实 frontier: 25 个 source-weight probes, gate pass 4 个, perfect-ladder-ready 2 个, promotable 0 个；最佳 gate-pass 仍是 `lm73/sniper27/h10` (n_obs=68, Sharpe=1.8498, max_dd=-14.42%, PBO=0.110 PASS), 距 Sharpe 2.0 还差 0.1502；最佳 strict ladder 仍是 `lm76/sniper24/h10` (Sharpe=2.0249, PBO=0.388 FAIL)。结论: 当前本地 probe 集没有可 promote 交集, 下一步应改 alpha/稳定性或 Phase4 PBO robustness, 不是继续盲扫相邻 source weights。验证: `py_compile` pass; `test_audit_n_plus_one.py` **14 passed**; `test_audit_msaf_probe_frontier.py` **2 passed**; 合并 targeted **16 passed**; `audit_end_to_end.py` 仍 **24 total / 19 OK / 5 WARN / 0 FAIL**; `audit_delivery_readiness.py --json` 仍 **92.83% / ready_for_delivery=false**; `git diff --check` pass。GCP 实查 TERMINATED, 本轮未启动新 GCP。
-本地推进 (2026-05-21 07:02): #8 N+1 继续压到 P-4 baseline 以下。`backend/services/holdings.py` 将机构持仓的同股其他机构查询改为一次按 stock_code 集合预取；`backend/services/shareholder_plan_initial_feature_panel.py` 将 numeric column DDL 循环改为一次 `_execute_script`; `backend/services/paper_sim/selector.py` 将 per-stock-stage PIT 参数按 stage 多次查询改为一次 requested pairs JOIN + window ranking, 并更新内存 DuckDB 行为测试；`backend/services/research/composite_score.py` 与 `backend/services/research/edge_flags.py` 批量预取 NAV、sell trade count、IC 窗口指标后在内存按 model 计算；`backend/scripts/audit_n_plus_one.py` 修正命名 `BATCH` 分块 `executemany` 的误报并补测试；`backend/scripts/run_msaf_ensemble_paper_sim.py` 与 `backend/scripts/run_phase4_gate_on_msaf.py` 将候选预测表 row count 预取并在循环外读取选中表；`backend/scripts/cleanup_kline_intraday_20260519.py` 将固定表清理统计/删除/验证改为集合式 count + delete script + max_date 联合查询；`backend/scripts/build_p0a_feature_panel_v4.py` 将固定 audit cols coverage 改为一次聚合 SELECT。刷新 N+1 产物后默认生产口径 **31→20 findings, HIGH 18→11, LOW 13→9**, 已低于 P-4 baseline 21（审计器提示 baseline may be wrong）。验证: `python -m py_compile` 覆盖本轮改动脚本/服务 pass; targeted pytest **59 passed** (`test_holdings.py`, shareholder initial panel, per-stock-stage selector, research three pieces, audit_n_plus_one, MSAF paper sim/gate, DuckDB connection contract); `audit_end_to_end.py` 仍 **24 total / 19 OK / 5 WARN / 0 FAIL**; `audit_delivery_readiness.py --json` 单独无锁复跑仍 **92.83% / ready_for_delivery=false**。并行 readiness 曾因 DuckDB lock 出现 91.17 降级结果, 已废弃不用。`git diff --check` pass。GCP 实查 TERMINATED, 本轮未启动新 GCP。
-本地推进 (2026-05-21 06:50): #8 N+1 写入/lineage/重解析/统计查询继续收敛。`backend/scripts/backtest_model_portfolio.py` 将曲线与 summary 落库摊平成批量 `executemany`; `backend/scripts/compute_forecast_upside_live.py` 将 live forecast snapshot 写入改为 `INSERT OR IGNORE` 批量写并按快照计数; `backend/scripts/trace_lineage.py` 将候选预测表模型统计改为一次 `UNION ALL` 查询并批量读取表列元数据; `backend/scripts/reparse_tdx_f10_extra.py` 将派生表清理改为一次表存在性查询、联合计数、临时 stock_code 表 + DELETE script; `backend/scripts/replay_paper_history.py` 将 HS300 benchmark 回填先批量读取 nav 再 `executemany` 更新; `backend/scripts/eda_phase1a.py` 将 per-date score KS 查询改为一次读取样本日期分数后内存分组; `backend/scripts/run_walkforward_feature_eval.py` 将 fold/label corr 查询合并为一次 `UNION ALL`。刷新 N+1 产物后默认生产口径 **38→31 findings, HIGH 25→18**。验证: `python -m py_compile` 覆盖 7 个改动脚本 pass; targeted pytest **29 passed / 1 warning** (`test_backtest_model_portfolio.py`, `features/test_forecast_upside.py`, lineage integration, TDX F10 extra, walkforward feature eval); `audit_end_to_end.py` 仍 **24 total / 19 OK / 5 WARN / 0 FAIL**; `audit_delivery_readiness.py --json` 单独无锁复跑仍 **92.83% / ready_for_delivery=false**。并行 readiness 曾因 DuckDB lock 出现 91.17 降级结果, 已废弃不用。GCP 实查 TERMINATED, 本轮未启动新 GCP。
-本地推进 (2026-05-21 06:32): #8 N+1 feature/search/formula 脚本继续收敛。`backend/scripts/build_feature_retention_decisions.py` 将候选特征覆盖率逐列 COUNT 改为一次动态聚合, 将候选-vs-kept 相关性逐对查询改为一次动态 corr SELECT, 并补原生 DuckDB tuple / wrapper row 双兼容访问；`backend/scripts/build_feature_search_space.py` 将 coverage override 对每个 feature 单独 COUNT 改为存在列集合一次性聚合；`backend/scripts/build_formula_signals_history.py` 将 horizon evidence 的 formula 信号读取改为一次 `formula_id IN (...)` 批量读取后内存分组, evidence 写入改为集中 `executemany`。刷新 N+1 产物后默认生产口径 **54→50 findings, HIGH 41→37**。验证: `python -m py_compile` 覆盖 3 个改动脚本 pass; feature retention / feature search space / formula signals 选择集 **26 passed**; 内存 DuckDB smoke 覆盖批量相关性 helper pass; `audit_end_to_end.py` 仍 **24 total / 19 OK / 5 WARN / 0 FAIL**; `audit_delivery_readiness.py --json` 仍 **92.83% / ready_for_delivery=false**; `git diff --check` pass。GCP 实查 TERMINATED, 本轮未启动新 GCP。
-本地推进 (2026-05-21 06:36): #8 N+1 panel schema/coverage 继续收敛。`backend/scripts/build_feature_drift_mitigation_panel.py` 与 `backend/scripts/build_hybrid_feature_panel.py` 将候选 panel 补列的逐列 `ALTER TABLE` 改为组装 SQL script 后一次执行；`backend/scripts/build_tdx_gpcw_auto_feature_panel.py` 抽出 `_execute_script()` 并同样批量执行 close/label/auto feature 补列；`backend/scripts/build_tdx_keep_challenger_panel.py` 将 TDX keep feature coverage 从逐特征 COUNT 改为一次聚合读取。刷新 N+1 产物后默认生产口径 **50→43 findings, HIGH 37→30**。验证: `python -m py_compile` 覆盖 4 个改动脚本 pass; feature drift mitigation + hybrid panel **4 passed**; TDX keep productionization **12 passed**; TDX gpcw auto panel 内存 DuckDB schema smoke pass; `audit_end_to_end.py` 仍 **24 total / 19 OK / 5 WARN / 0 FAIL**; `audit_delivery_readiness.py --json` 仍 **92.83% / ready_for_delivery=false**; `git diff --check` pass。GCP 实查 TERMINATED, 本轮未启动新 GCP。
-本地推进 (2026-05-21 06:40): #8 N+1 summary/audit/label DDL 继续收敛。`backend/scripts/build_institution_score_daily.py` 将 institution class coverage summary 从每类单独扫描 mart 表改为一次聚合 SELECT；`backend/scripts/build_mart_stock_regime_full.py` 将 5 个 acceptance audit 查询显式执行后再循环 log, 避免 execute-in-loop 且保持各 audit row 输出不变；`backend/scripts/materialize_follow_return_labels.py` 将 follow-return label 补列循环改为 `_execute_script()` 一次执行。刷新 N+1 产物后默认生产口径 **43→40 findings, HIGH 30→27**。验证: `python -m py_compile` 覆盖 3 个改动脚本 pass; institution batch **3 passed**; DuckDB connection contract **6 passed**; materialize follow labels **6 passed**; institution summary 内存 DuckDB smoke pass; `audit_end_to_end.py` 仍 **24 total / 19 OK / 5 WARN / 0 FAIL**; `audit_delivery_readiness.py --json` 仍 **92.83% / ready_for_delivery=false**; `git diff --check` pass。GCP 实查 TERMINATED, 本轮未启动新 GCP。
-本地推进 (2026-05-21 06:44): #8 N+1 gate/validation 脚本继续收敛。`backend/scripts/evaluate_tdx_keep_promotion_gate.py` 将 coverage gate 的逐特征 COUNT 改为一次动态聚合, 保留缺失列 `missing_column` 输出与原 coverage row 结构；`scripts/validate_champion_paper_sim.py` 将固定 4 个 baseline KPI 查询改为一次 `sim_run_id IN (...)` 预取后按原顺序输出。刷新 N+1 产物后默认生产口径 **40→38 findings, HIGH 27→25**。验证: `python -m py_compile` 覆盖 2 个改动脚本 pass; TDX keep productionization **12 passed**; `audit_end_to_end.py` 仍 **24 total / 19 OK / 5 WARN / 0 FAIL**; `audit_delivery_readiness.py --json` 仍 **92.83% / ready_for_delivery=false**; `git diff --check` pass。GCP 实查 TERMINATED, 本轮未启动新 GCP。
-本地推进 (2026-05-21 06:27): #8 N+1 报告聚合继续收敛。`backend/scripts/run_backtest.py` 将固定 L1/L2/L3 行业层级总览从逐层查询改为一次 `GROUP BY industry_level`; `backend/scripts/gen_report.py` 将 legacy backtest report 的行业层级总览、expert summary、closed/open chain summary 从固定循环查询改为批量聚合后内存格式化。刷新 N+1 产物后默认生产口径 **58→54 findings, HIGH 45→41**。验证: `python -m py_compile` 覆盖 2 个改动脚本 pass; `PYTHONPATH=backend python -m pytest backend/tests/services/notification/test_notification.py -q` **5 passed**; `audit_end_to_end.py` 仍 **24 total / 19 OK / 5 WARN / 0 FAIL**; `audit_delivery_readiness.py --json` 仍 **92.83% / ready_for_delivery=false**。GCP 实查 TERMINATED, 本轮未启动新 GCP。
-本地推进 (2026-05-21 06:22): #8 N+1 写入/迁移继续收敛。`backend/scripts/plan_architecture_cleanup.py` 将 architecture cleanup plan 写入改为带空列表保护的 `executemany`; `backend/scripts/build_feature_rank_matrix_duck.py` 将 rank-matrix cache prune 的 manifest 删除改为按 expired cache_key 集合删除, 保留逐表 DROP; `backend/services/tdx_industry_client.py` 将固定 3 个 TDX 行业名称列 migration 显式展开。刷新 N+1 产物后默认生产口径 **60→58 findings, HIGH 47→45**。验证: `python -m py_compile` 覆盖 3 个改动模块 pass; architecture cleanup / feature rank matrix / TDX industry 选择集 **17 passed / 10 deselected**; `audit_end_to_end.py` 仍 **24 total / 19 OK / 5 WARN / 0 FAIL**; `audit_delivery_readiness.py --json` 仍 **92.83% / ready_for_delivery=false**。GCP 实查 TERMINATED, 本轮未启动新 GCP。
-本地推进 (2026-05-21 06:18): #8 N+1 写入路径继续收敛。`backend/scripts/run_daily_topk.py` 将 `mart_daily_recommendation` 推荐写入从逐行 INSERT 改为带空列表保护的 `executemany`; `backend/scripts/run_feature_ablation.py` 将 ablation 结果写入改为批量 payload + `executemany`; `backend/scripts/plan_research_schedule.py` 将 research schedule plan 写入改为批量 payload + `executemany`。刷新 N+1 产物后默认生产口径 **63→60 findings, HIGH 50→47**。验证: `python -m py_compile` 覆盖 3 个改动脚本 pass; daily topk / research schedule / feature ablation 选择集 **16 passed / 10 deselected**; `audit_end_to_end.py` 仍 **24 total / 19 OK / 5 WARN / 0 FAIL**; `audit_delivery_readiness.py --json` 仍 **92.83% / ready_for_delivery=false**。GCP 实查 TERMINATED, 本轮未启动新 GCP。
-本地推进 (2026-05-21 06:13): #8 N+1 schema migration 继续收敛。`backend/services/paper_sim/ddl.py` 将 paper_sim 固定 schema migration 循环展开为 `_execute_duplicate_safe` 显式调用；`backend/services/labels/feature_join_v3_ext.py` 将 v3_ext 12 个固定扩展列显式添加；`backend/services/labels/feature_join_v4.py` 将 v4 31 个固定扩展列显式添加, 保留 `V4_NEW_COLS` 作为计数/元数据来源；`backend/services/industry_context_engine.py` 将迁移执行封装到 `_execute_ignore_error`, 并显式展开 retired `sw_level1/sw_level2` drop。刷新 N+1 产物后默认生产口径 **67→63 findings, HIGH 54→50**。验证: `python -m py_compile` 覆盖 4 个改动模块 pass; `backend/tests/test_industry_context_engine.py` + paper_sim DDL/lineage + `test_feature_join_v3_ext.py` **14 passed**; `audit_end_to_end.py` 仍 **24 total / 19 OK / 5 WARN / 0 FAIL**; `audit_delivery_readiness.py --json` 仍 **92.83% / ready_for_delivery=false**。GCP 实查 TERMINATED, 本轮未启动新 GCP。
-本地推进 (2026-05-21 06:08): #8 N+1 scripts/services 继续收敛。`backend/scripts/train_tdx_keep_challenger_model.py` 将固定 3 个 `mart_multidim_model` schema column migration 展开, `backend/scripts/run_daily_topk.py` 将两张 primary 推荐表 demote 更新展开；`backend/services/etf_snapshot_manager.py` 将 ETF latest snapshot 逐行 upsert 改为带空列表保护的 `executemany`; `backend/services/financial_indicator_client.py` 将 AK 财务指标逐行 upsert 改为批量 payload + `executemany`, 新增 `backend/tests/test_financial_indicator_client.py` 覆盖批量写入与空 records 状态更新；`backend/services/aif10_capability_client.py` 将每个 secucode 的财务历史 rows 批量写入。刷新 N+1 产物后默认生产口径 **72→67 findings, HIGH 59→54**。验证: `python -m py_compile` 覆盖 5 个改动模块/测试 pass; TDX keep / daily topk / financial indicator / kline source 选择集 **16 passed / 23 deselected**, 另 TDX keep/topk 选择集 **23 passed / 10 deselected**; `audit_end_to_end.py` 仍 **24 total / 19 OK / 5 WARN / 0 FAIL**; `audit_delivery_readiness.py --json` 仍 **92.83% / ready_for_delivery=false**。GCP 实查 TERMINATED, 本轮未启动新 GCP。
-本地推进 (2026-05-21 06:03): #8 N+1 scripts 继续收敛。`backend/scripts/bootstrap_model_lifecycle.py` 将 per-model lifecycle existence check 改为一次 `model_id IN (...)` 批量读取, 插入改为 `executemany`; `backend/scripts/backtest_walkforward_portfolio.py` 将 walk-forward portfolio summary 逐行 INSERT 改为 `executemany`; `backend/scripts/run_paper_sim_lambdamart_v6_compare.py` 将 compare row 写入改为 `executemany`; `backend/scripts/run_p0b_lambdamart_v3.py` 将 walk-forward eval window 写入改为 `executemany`; `backend/scripts/run_p0b_lightgbm_optuna_v3.py` 将 Optuna trials 写入改为 `executemany`。刷新 N+1 产物后默认生产口径 **77→72 findings, HIGH 64→59**。验证: `python -m py_compile` 覆盖 5 个改动脚本 pass; `test_backtest_walkforward_portfolio.py` + stock-kline/v3/lambdamart 相关选择集 **18 passed**; `backend/tests/paper_sim/test_lambdamart_v6_compare.py` **2 passed**; `audit_end_to_end.py` 仍 **24 total / 19 OK / 5 WARN / 0 FAIL**; `audit_delivery_readiness.py --json` 单独无锁复跑仍 **92.83% / ready_for_delivery=false**。并行复核时曾因 DuckDB lock 出现 91.17 降级结果, 已废弃不用。GCP 实查 TERMINATED, 本轮未启动新 GCP。
-本地推进 (2026-05-21 05:59): #8 N+1 scripts 继续收敛。`backend/scripts/cleanup_corrupt_oos_predictions.py` 将两张 corrupt-era 表的 total/corrupt 计数合并为一次 UNION ALL 批量查询；`build_industry_beta_daily.py` 去掉单表 prereq 查询循环；`build_mart_stock_pool_assignment.py` 将两张 prereq 表计数改为一次 UNION ALL；`cleanup_holder_dup.py` 去掉固定 5 个 index 的 execute-in-loop；`build_feature_drift_root_cause.py` 与 `build_architecture_inventory.py` 将固定输出表 DELETE / schema version 记录显式展开；`run_full_pipeline.py --dry-run` 的表存在性检查改为一次 information_schema 查询。刷新 N+1 产物后默认生产口径 **85→77 findings, HIGH 72→64**。验证: `python -m py_compile` 覆盖 7 个改动脚本 pass; `cleanup_corrupt_oos_predictions.py` dry-run pass (`mart_p0b_oos_predictions` 2,159,871 rows corrupt=0; `mart_p0b_walkforward_eval` 22 rows corrupt=0); `run_full_pipeline.py --dry-run --min-codes 1` pass; architecture/feature-drift/duckdb connection tests **15 passed** (1 upstream utcnow warning, 并补 `import_phase5_remote_predictions.py` raw duckdb allowlist); `audit_end_to_end.py` 仍 **24 total / 19 OK / 5 WARN / 0 FAIL**; `audit_delivery_readiness.py --json` 仍 **92.83% / ready_for_delivery=false**。GCP 实查 TERMINATED, 本轮未启动新 GCP。
-本地推进 (2026-05-21 05:54): #8 N+1 scripts 继续收敛, `backend/scripts/backfill_strategy_result_registry.py` 将 registry upsert 的 existing `registered_at` 查询从 per-result 查询改为一次 `result_id IN (...)` 批量读取, 将逐条 DELETE 改为一次集合 DELETE, 并用 `executemany` 批量 INSERT；删除未使用的单条查询 helper。刷新 N+1 产物后默认生产口径 **87→85 findings, HIGH 74→72**。验证: `python -m py_compile backend/scripts/backfill_strategy_result_registry.py` pass; `PYTHONPATH=backend python -m pytest -q backend/tests/test_backfill_strategy_result_registry.py backend/tests/scripts/test_audit_n_plus_one.py` 18 passed; `PYTHONPATH=backend python backend/scripts/audit_n_plus_one.py` 85 findings / 72 HIGH; `PYTHONPATH=backend python backend/scripts/backfill_strategy_result_registry.py --dry-run --timeout 30` 读库 dry-run pass, candidate_rows=45。交付状态未变: **92.83% / ready_for_delivery=false**, #6 perfect ladder 仍是硬阻塞。本轮未启动新 GCP。
-本地推进 (2026-05-21 05:51): 修正 P-1 universe/survivorship 审计的真实 K线来源。根因: `data/market.duckdb.price_kline` 当前只有旧 fallback/指数 `000300` 1,048 rows, 而生产 canonical K线是 `v_price_kline_qfq` / `price_kline_tdxhub` 约 5.21M rows、5,205 stocks、到 2026-05-19。`backend/scripts/audit_universe_coverage.py` 与 `backend/scripts/audit_survivorship.py` 已切到 `mkt.v_price_kline_qfq`, 并保留上一轮批量化读取。复核: `audit_universe_coverage.py --json-out /tmp/universe_audit.json` 从 5 FAIL 变为 **19 PASS / 3 WARN / 0 FAIL**, latest full 2026-05-19, feature/alpha158 gap 1/5179=0.02%；`audit_survivorship.py --json-out /tmp/survivorship_audit.json` 从 5 FAIL 变为 **13 PASS / 1 WARN / 0 FAIL**, KEEP spot-check coverage 99.76%-99.98%。N+1 仍 **87 findings / 74 HIGH**。验证: `python -m py_compile backend/scripts/audit_universe_coverage.py backend/scripts/audit_survivorship.py` pass; `PYTHONPATH=backend python -m pytest -q backend/tests/scripts/test_audit_n_plus_one.py backend/tests/test_global_data_quality.py` 49 passed; `audit_end_to_end.py` 24 total / 19 OK / 5 WARN / 0 FAIL; `audit_delivery_readiness.py --json` 单独无锁复跑仍 **92.83% / ready_for_delivery=false**。GCP 实查仍 TERMINATED, 本轮未启动新 GCP。
-本地推进 (2026-05-21 05:47): #8 N+1 scripts 继续收敛, `backend/scripts/audit_universe_coverage.py` 将月度 K线 universe 计数从 per-day `execute` 改为一次 `GROUP BY date`, 将 cross-day stability spot check 改为一次读取样本日期 K线集合后在内存计算 churn；`backend/scripts/audit_survivorship.py` 将 KEEP universe spot-check 的多日期 K线读取改为一次 `date IN (...)` 批量查询。刷新 N+1 产物后默认生产口径 **90→87 findings, HIGH 77→74**。验证: `python -m py_compile backend/scripts/audit_universe_coverage.py backend/scripts/audit_survivorship.py` pass; `PYTHONPATH=backend python -m pytest -q backend/tests/scripts/test_audit_n_plus_one.py backend/tests/test_global_data_quality.py` 49 passed; `audit_end_to_end.py` 24 total / 19 OK / 5 WARN / 0 FAIL; `audit_delivery_readiness.py --json` 单独无锁复跑仍 **92.83% / ready_for_delivery=false**。注意: `audit_universe_coverage.py` 与 `audit_survivorship.py` 自身真实 FAIL, 根因为 `data/market.duckdb.mkt.price_kline` 当前只查到 `000300` 一条指数序列, KEEP/A-share K线覆盖几乎为 0；这不是本轮批量化引入, 但说明 market.duckdb 覆盖源仍需单独治理。本轮 GCP 实查仍 TERMINATED, 未启动新 GCP。
-本地推进 (2026-05-21 05:43): 推荐 PIT 覆盖治理继续实化。`backend/scripts/build_daily_position_recommendations.py` 新增 `mart_daily_position_recommendation_pit_diagnostic`, 每次生成最终推荐时同步写入每条推荐的 `pit_exact_stage_rows` / `pit_same_formula_rows` / `pit_same_stock_rows` / latest PIT cutoff / `missing_reason`, 不改变推荐排序或仓位。`backend/scripts/audit_end_to_end.py` 的 `recommendation_pit_coverage` 现在读取诊断原因分布。实跑 `build_daily_position_recommendations.py --date 2026-05-19`: 仍 7 条推荐、全部 `cross_stage_fallback`; 诊断原因分布为 `formula_missing_pit=3`, `stage_unknown=2`, `stock_missing_pit=2`, 其中 `605488/603171/002859` 是同股有 PIT 但最终推荐公式缺 PIT, `600850/600021` 是 stage `?`, `002892/601728` 是股票无 PIT。`audit_end_to_end.py` 仍 **24 total / 19 OK / 5 WARN / 0 FAIL**, PIT WARN 现在附 `diagnostic_reasons`。验证: `python -m py_compile backend/scripts/build_daily_position_recommendations.py backend/scripts/audit_end_to_end.py` pass; `PYTHONPATH=backend python -m pytest -q backend/tests/scripts/test_audit_n_plus_one.py backend/tests/test_global_data_quality.py` 49 passed; `audit_n_plus_one.py` 90 findings / 77 HIGH; `audit_delivery_readiness.py --json` 仍 **92.83% / ready_for_delivery=false**。本轮未启动新 GCP。
-本地推进 (2026-05-21 05:39): PIT stage 参数补表工具链修复与小批量实测。`backend/scripts/optimize_per_stock_stage_strategy.py` 新增 `--stock-codes` / `--limit-stocks`, 信号加载和 K 线任务会真实过滤股票; 写业务表时 targeted run 只 DELETE 本次实际运行股票/公式, 避免旧脚本 targeted run 误全表 DELETE。`backend/scripts/build_stage_opt_pit.py` 同步透传 `--stock-codes` / `--limit-stocks`, ETL 到 `mart_per_stock_stage_strategy_optimal_pit` 时按股票过滤。用最新 7 条推荐股票跑两次小批量补表: cutoff=2026-01-01 与 cutoff=2026-05-19 (训练到 2026-05-18, 对 2026-05-19 signal 仍 PIT-safe)。结果只生成 3 条 PIT rows: `002859/reversal_1m_mild/stage4`, `603171/turtle_breakout_20/stage1.5`, `605488/turtle_breakout_20/stage3`; 与最终推荐使用的 `turtle_breakout_20/55`、`dynamic_ma_iterative_cross` 组合不匹配, 说明当前最终推荐公式在这些股票上历史样本不足或未通过 governance, 不能靠小批量补表硬塞。`audit_end_to_end.py` 的 PIT 覆盖项已增强输出: latest n_total=7, n_pit=0, n_cross_stage=7, n_same_stock_pit=3, **n_same_stock_formula_pit=0**, pit_ratio=0.0。验证: `python -m py_compile backend/scripts/audit_end_to_end.py backend/scripts/optimize_per_stock_stage_strategy.py backend/scripts/build_stage_opt_pit.py` pass; `PYTHONPATH=backend python -m pytest -q backend/tests/scripts/test_audit_n_plus_one.py backend/tests/test_global_data_quality.py` 49 passed; `audit_n_plus_one.py` 90 findings / 77 HIGH; `audit_delivery_readiness.py --json` **92.83% / ready_for_delivery=false**。GCP 实查仍 TERMINATED, 本轮未启动新 GCP。
-本地推进 (2026-05-21 05:33): #1/#7 推荐 PIT 覆盖治理补强, `backend/scripts/audit_end_to_end.py` 新增 `recommendation_pit_coverage` 审计项, 对最新 `mart_daily_position_recommendation` 统计 `match_tier` 是否进入 PIT-safe 参数路径。当前真实输出: signal_date=2026-05-19, n_total=7, n_pit=0, n_cross_stage=7, pit_ratio=0.0, 因此端到端审计由 23 total / 19 OK / 4 WARN / 0 FAIL 变为 **24 total / 19 OK / 5 WARN / 0 FAIL**。新增 WARN 明确说明 all latest recommendations use legacy cross-stage fallback; PIT-safe params did not reach final selection。该项是治理暴露, 不是交付完成: 推荐仍可用但不能被误读为已使用 PIT stage 参数。验证: `python -m py_compile backend/scripts/audit_end_to_end.py backend/scripts/build_daily_position_recommendations.py backend/services/paper_sim/selector.py` pass; `PYTHONPATH=backend python -m pytest -q backend/tests/scripts/test_audit_n_plus_one.py backend/tests/test_global_data_quality.py` 49 passed; `audit_n_plus_one.py` 90 findings / 77 HIGH; `audit_delivery_readiness.py --json` **92.83% / ready_for_delivery=false**。GCP 实查仍 TERMINATED, 本轮未启动新 GCP。
-本地推进 (2026-05-21 05:29): 修复 PIT stage 参数 0 命中的上游 stage 缺口。根因: `fact_stock_technical_stage` 只到 2026-05-13, 导致 2026-05-19 的 `fact_signal_context.technical_stage` 全部为 `?`, PIT 表 stage_filter 为 1/1.5/2/3/4 无法匹配。已用 2025-01-01→2026-05-19 预热窗口补算 `fact_stock_technical_stage` 245,539 rows, 全表最新到 2026-05-19; 随后重建 `fact_signal_context` 2025-01-01→2026-05-19 共 1,072,870 rows。复核 2026-05-19 trigger stage 分布: `?` 608 / `2` 443 / `4` 324 / `1.5` 207 / `3` 189 / `1` 113, 已不再全 `?`; PIT exact match 原始候选 37, same stock+formula PIT fallback 56, cross-stage fallback 628。`build_daily_position_recommendations.py --date 2026-05-19` 仍产出 7 条推荐, 但最终入选 7 条仍全部 `cross_stage_fallback`, 说明 PIT 参数覆盖和排序质量仍不足, 需补 PIT stage 参数表覆盖或重新训练/扩充 cutoff。验证: `python -m py_compile backend/scripts/build_daily_position_recommendations.py backend/services/paper_sim/selector.py backend/scripts/audit_pit_integrity.py` pass; `audit_pit_integrity.py` 0 FAIL / 29 WARN / 10 PASS; `PYTHONPATH=backend python -m pytest -q backend/tests/paper_sim/test_per_stock_stage.py backend/tests/scripts/test_audit_n_plus_one.py backend/tests/test_global_data_quality.py` 53 passed; `audit_n_plus_one.py` 90 findings / 77 HIGH; `audit_end_to_end.py` 23 total / 19 OK / 4 WARN / 0 FAIL; `audit_delivery_readiness.py --json` **92.83% / ready_for_delivery=false**。GCP 实查仍 TERMINATED, 本轮未启动新 GCP。
-本地推进 (2026-05-21 05:21): #1 PIT hard gate 纠偏并切实际读取路径。`backend/scripts/audit_pit_integrity.py` 将 v3.2 critical 表从 legacy single-batch `mart_per_stock_stage_strategy_optimal` 改为 production PIT-safe `mart_per_stock_stage_strategy_optimal_pit`, batch-write anomaly 对 PIT 表使用 `cutoff_date` 而不是 `built_at`; legacy snapshot 继续保留 WARN/counterexample。`backend/services/paper_sim/selector.py` 的 `_load_per_stock_stage_optimal()` 改为读取 `mart_per_stock_stage_strategy_optimal_pit WHERE cutoff_date <= signal_date`, 调用端传入 `signal_date`; `backend/scripts/build_daily_position_recommendations.py` 的 stage-aware tier-1 同步改为 PIT 表, 用 `oos_*` 指标和 `optimal_stop_pct` 风险代理生成候选, legacy cross-stage 只作 fallback。复核: `audit_pit_integrity.py` 从 **1 FAIL / 26 WARN / 9 PASS** 改为 **0 FAIL / 29 WARN / 10 PASS**, 关键 PASS 为 `mart_per_stock_stage_strategy_optimal_pit` 4 distinct cutoff_date (2024-07-01→2026-01-01), 2,411 rows; legacy `mart_per_stock_stage_strategy_optimal` 单批 built_at 仍 WARN。`build_daily_position_recommendations.py --date 2026-05-19` 跑通并重写 7 条推荐, 但实际 stage_pit 命中 0、cross_stage fallback 702 原始候选/7 推荐, 说明 PIT stage 参数覆盖不足仍是质量缺口。验证: `python -m py_compile backend/scripts/audit_pit_integrity.py backend/services/paper_sim/selector.py backend/scripts/build_daily_position_recommendations.py` pass; `PYTHONPATH=backend python -m pytest -q backend/tests/paper_sim/test_per_stock_stage.py backend/tests/scripts/test_audit_n_plus_one.py backend/tests/test_global_data_quality.py` 53 passed; `audit_n_plus_one.py` 仍 90 findings / 77 HIGH; `audit_end_to_end.py` 23 total / 19 OK / 4 WARN / 0 FAIL; `audit_delivery_readiness.py --json` 锁释放后仍 **92.83% / ready_for_delivery=false**。GCP 实查仍 TERMINATED, 本轮未启动新 GCP。
-本地推进 (2026-05-21 05:16): #8 N+1 scripts 审计头部继续收敛, `backend/scripts/audit_event_timestamp.py` 将事件表列枚举/行数/primary-secondary timestamp null-rate 改为 information_schema inventory + UNION ALL 批量聚合；`backend/scripts/audit_p0a_panel.py` 将 5/10/20d mask 检查合成单次 FILTER 聚合, KEEP universe 两表检查改为一次 UNION ALL；`backend/scripts/audit_live_dashboard.py` 将 3 个 live portfolio 的 latest/start/peak/30d/hard_stop 读取改为窗口函数与 GROUP BY 批量查询；`backend/scripts/audit_pit_integrity.py` 将 batch-write anomaly、OOS validity、cross-date forward leak spot-check 改为批量 SQL。刷新 N+1 产物后默认生产口径 **98→90 findings, HIGH 85→77**。验证: `python -m py_compile backend/scripts/audit_event_timestamp.py backend/scripts/audit_p0a_panel.py backend/scripts/audit_live_dashboard.py backend/scripts/audit_pit_integrity.py` pass; `audit_event_timestamp.py` PASS (55 PASS / 5 WARN / 0 FAIL); `audit_p0a_panel.py` PASS (10 PASS / 0 WARN / 0 FAIL); `audit_live_dashboard.py` 可输出现有 live NAV, 但事实显示 live_A/B/C latest 仍为 2025-07-01 且 KPI rows absent; `audit_pit_integrity.py` 仍真实 FAIL (1 FAIL / 26 WARN / 9 PASS): `mart_per_stock_stage_strategy_optimal` 1,725 rows 共用 built_at=2026-05-15 19:43:39.933396, 不是 walk-forward, 该交付风险不能掩盖。`PYTHONPATH=backend python -m pytest -q backend/tests/scripts/test_audit_n_plus_one.py backend/tests/test_global_data_quality.py` 49 passed; `audit_end_to_end.py` 仍 23 total / 19 OK / 4 WARN / 0 FAIL; `audit_delivery_readiness.py --json` 锁释放后复核为 **92.83% / ready_for_delivery=false**。GCP 实查仍 TERMINATED, 本轮未启动新 GCP。
-本地推进 (2026-05-21 05:10): 修复 05:01 端到端审计暴露的真实时效 gap, 在不伪造 2026-05-20 行情的前提下按当前 market kline max=2026-05-19 对齐下游表。执行 `build_survey_features.py --start 2026-05-13 --end 2026-05-20`, 写入/刷新 4,093 rows, `mart_stock_survey_features` 最新到 2026-05-20；`build_signal_context.py --start 2025-01-01 --end 2026-05-19` 重建 `fact_signal_context` 1,072,870 rows, 全表最新到 2026-05-19；`build_picture_daily.py --date 2026-05-19` 写入 5,512 stocks x 4 tables = 22,048 rows, `mart_stock_picture_daily` 最新到 2026-05-19；`build_daily_position_recommendations.py --date 2026-05-19` 生成 7 条 2026-05-19 signal / 2026-05-20 buy recommendation。复核: `audit_end_to_end.py` 从 23 total / 18 OK / 2 WARN / 3 FAIL 改善到 **23 total / 19 OK / 4 WARN / 0 FAIL**；剩余 WARN 为 `mart_daily_position_recommendation` 7<10、`fact_technical_trigger`/`fact_signal_context`/`mart_stock_picture_daily` 均 latest 2026-05-19 (days_behind=2), 与行情源最新日期一致。`test_global_data_quality.py` 36 passed。`audit_delivery_readiness.py --json` 仍为 **92.83% / ready_for_delivery=false**, hard blocker 仍是 #6 perfect ladder: old GCP v6 `lgbm_phase5_gcp_20260520T010718` n_obs 34, Sharpe 0.875, max_dd -21.96%, perfect_sample/dd/sharpe/ladder 均 false。GCP 实查仍 TERMINATED, 本轮未启动新 GCP。
-本地推进 (2026-05-21 05:01): #8 N+1 scripts 头部继续收敛, `backend/scripts/replay_paper_history_signflip.py` 将 3 个 sign-flip 实验 model 的旧结果清理移到循环前一次 `IN (...)` 删除, 最终对比改为窗口函数 + grouped max_drawdown 批量查询, 清掉 6 个 HIGH; `backend/scripts/audit_end_to_end.py` 将表完整性/时效性检查改为 information_schema inventory + UNION ALL count/max, 将两项 JOIN consistency 检查显式展开, 清掉 3 个 HIGH。刷新 N+1 产物后默认生产口径 107→98 findings, HIGH 94→85。验证: `python -m py_compile backend/scripts/audit_end_to_end.py backend/scripts/replay_paper_history_signflip.py` pass; `PYTHONPATH=backend python -m pytest -q backend/tests/scripts/test_audit_n_plus_one.py` 13 passed; `PYTHONPATH=backend python backend/scripts/audit_n_plus_one.py` 98 findings / 85 HIGH; `PYTHONPATH=backend python backend/scripts/audit_end_to_end.py` 23 total / 18 OK / 2 WARN / 3 FAIL, FAIL 为真实时效 gap: `fact_signal_context` latest 2026-05-13 (8d behind), `mart_stock_picture_daily` latest 2026-05-12 (9d), `mart_stock_survey_features` latest 2026-05-12 (9d), WARN 为 `mart_daily_position_recommendation` rows 6<10 与 `fact_technical_trigger` latest 2026-05-19 (2d)。`git diff --check -- backend/scripts/replay_paper_history_signflip.py backend/scripts/audit_end_to_end.py backend/scripts/audit_n_plus_one_results.json backend/scripts/audit_n_plus_one_report.md goal.md` pass。`PYTHONPATH=backend python backend/scripts/audit_delivery_readiness.py --json` 仍为 92.83% / `ready_for_delivery=false`。GCP 实查 `chunkymonkey-optuna` 仍 TERMINATED, 本轮未启动新 GCP。
-本地推进 (2026-05-21 04:57): #1/#8 leakage cleanup 与 N+1 双推进, `backend/scripts/cleanup_leakage_data.py` 将 leakage residue 计数/删除集合化并修复 DuckDB 无 `executescript` 的实际执行 bug；随后执行 `PYTHONPATH=backend python backend/scripts/cleanup_leakage_data.py --execute`, 真实删除/验证 `mart_p0a_feature_label_panel_v3` 中 10 个已知 leakage 物理列 (`inst_quality_*`, `inst_*holding*`, `sector_ret_*`, `sector_excess_*`) 全部消失, 4 个已知 leakage run/model 残留表计数均为 0。`backend/services/scoring.py` 将 `_fill_top_industries` 从 per-institution 多次查询改为窗口函数批量聚合 + `executemany`; `backend/services/workbench_signal_cache_read.py` 将 main/market data processing run 读取改为 UNION ALL; `backend/services/ml_lifecycle/drift.py` 将 drift snapshot 写入改为 `executemany`。刷新 N+1 产物后默认生产口径 115→107 findings, HIGH 102→94。验证: `python -m py_compile backend/scripts/cleanup_leakage_data.py backend/services/scoring.py backend/services/workbench_signal_cache_read.py backend/services/ml_lifecycle/drift.py` pass; `PYTHONPATH=backend python -m pytest -q backend/tests/test_drift.py backend/tests/test_institution_scoring_read.py backend/tests/test_event_industry_backtest_scoring.py backend/tests/test_audit_fixes.py backend/tests/contract/test_workbench_read.py -k "signal_cache or data_processing or scoring or drift" backend/tests/scripts/test_audit_n_plus_one.py` 20 passed / 34 deselected / 4 warnings; `PYTHONPATH=backend python -m pytest -q backend/tests/test_global_data_quality.py` 36 passed; `PYTHONPATH=backend python backend/scripts/audit_n_plus_one.py` 107 findings / 94 HIGH; `git diff --check -- backend/scripts/cleanup_leakage_data.py backend/services/scoring.py backend/services/workbench_signal_cache_read.py backend/services/ml_lifecycle/drift.py backend/scripts/audit_n_plus_one_results.json backend/scripts/audit_n_plus_one_report.md goal.md data/smartmoney.duckdb` pass。`PYTHONPATH=backend python backend/scripts/audit_delivery_readiness.py --json` 仍为 92.83% / `ready_for_delivery=false`。GCP 实查 `chunkymonkey-optuna` 仍 TERMINATED, 本轮未启动新 GCP。
-本地推进 (2026-05-21 04:51): #8 N+1 运行支撑 service 继续收敛, `backend/services/gap_queue.py` 将 gap reconcile/summarize 的 per-dataset 队列查询改为批量 existing/counts/items 查询; `backend/services/storage_retention.py` 将 model prediction cleanup 与 protected artifact summaries 改为批量 inventory/count; `backend/services/recommendation_output_gc.py` 将 retired model output table counts 与删除脚本按表/model 集合化; `backend/services/scoring.py` 与 `backend/services/strategy_ensemble.py` 分别把 scoring config 与 ensemble signal 写入改为 `executemany`; `backend/services/pipeline_manifest.py` 将 table row counts 改为批量 information_schema + UNION ALL count; `backend/services/perf/shard_runner.py` reducer 改为一次 UNION ALL 插入/计数。刷新 N+1 产物后默认生产口径 126→115 findings, HIGH 113→102; top findings 继续集中在 scripts, service 剩余多为单项或复杂 drift 统计路径。验证: `python -m py_compile backend/services/gap_queue.py backend/services/storage_retention.py backend/services/recommendation_output_gc.py backend/services/scoring.py backend/services/strategy_ensemble.py backend/services/pipeline_manifest.py backend/services/perf/shard_runner.py` pass; `PYTHONPATH=backend python -m pytest -q backend/tests/test_storage_retention.py backend/tests/test_recommendation_output_gc.py backend/tests/test_institution_scoring_read.py backend/tests/test_scoring_composite.py backend/tests/test_scoring_engine.py backend/tests/test_event_industry_backtest_scoring.py backend/tests/test_audit_fixes.py backend/tests/test_pipeline_manifest.py backend/tests/perf/test_shard_runner.py backend/tests/test_data_consistency.py backend/tests/scripts/test_audit_n_plus_one.py` 83 passed; `PYTHONPATH=backend python backend/scripts/audit_n_plus_one.py` 115 findings / 102 HIGH; `git diff --check -- backend/services/gap_queue.py backend/services/storage_retention.py backend/services/recommendation_output_gc.py backend/services/scoring.py backend/services/strategy_ensemble.py backend/services/pipeline_manifest.py backend/services/perf/shard_runner.py backend/scripts/audit_n_plus_one_results.json backend/scripts/audit_n_plus_one_report.md goal.md` pass。`PYTHONPATH=backend python backend/scripts/audit_delivery_readiness.py --json` 仍为 92.83% / `ready_for_delivery=false`。GCP 实查 `chunkymonkey-optuna` 仍 TERMINATED, 本轮未启动新 GCP。
-本地推进 (2026-05-21 04:44): #8 N+1 service/schema 头部继续实修, `backend/services/schema_migrations.py` 将维护性 DDL DROP/RENAME/seed 写入集中为脚本/helper/`executemany`, 清掉 7 个 HIGH; `backend/services/schema_versions.py` 将 `RECREATE_VIEWS` 批脚本化并把 `record_all_baselines` 改为一次 information_schema inventory + 批量 upsert, 清掉 3 个 HIGH; `backend/services/signals_v2.py` 将 config/defaults 写入批量化, `institution_multi_horizon` 四个 horizon 合并为一次查询后内存聚合, 清掉 3 个 HIGH; `backend/services/tdx_affair_client.py` 将 gpcw manifest/raw 补列脚本化, changed-report slice 删除改为一次存在表/计数查询 + 批量删除脚本, 清掉 3 个 HIGH。刷新 N+1 产物后默认生产口径 142→126 findings, HIGH 129→113; 当前 top findings 已主要集中在 scripts, service 头部从 schema/signals/tdx 路径移除。验证: `python -m py_compile backend/services/schema_migrations.py backend/services/schema_versions.py backend/services/signals_v2.py backend/services/tdx_affair_client.py` pass; `PYTHONPATH=backend python -m pytest -q backend/tests/test_data_consistency.py backend/tests/scripts/test_audit_n_plus_one.py backend/tests/test_signals_v2.py backend/tests/test_audit_fixes.py backend/tests/test_signals_route_cache.py backend/tests/test_tdx_source.py -k "not requires_real_tdx"` 98 passed / 17 warnings; `PYTHONPATH=backend python backend/scripts/audit_n_plus_one.py` 126 findings / 113 HIGH; `git diff --check -- backend/services/schema_migrations.py backend/services/schema_versions.py backend/services/signals_v2.py backend/services/tdx_affair_client.py backend/scripts/audit_n_plus_one_results.json backend/scripts/audit_n_plus_one_report.md goal.md` pass。`PYTHONPATH=backend python backend/scripts/audit_delivery_readiness.py --json` 仍为 92.83% / `ready_for_delivery=false`。GCP 实查 `chunkymonkey-optuna` 仍 TERMINATED, 本轮未启动新 GCP。
-本地推进 (2026-05-21 04:38): #8 N+1 global data quality 门禁路径实修并恢复完整 DQ 回归, `backend/services/data_quality.py` 将 feature panel canonical kline lineage 多项违规 count 合成一次聚合 SQL, 将 data processing monitor 多表 run count / recent rejected runs / issue count 改为 UNION ALL 批量查询, 并把 kline examples 查询移入 helper, 主循环不再直接执行 SQL。cleanup policy 对约定交接档案 `analysis/session_archive_*.md` 增加精确白名单, 保留普通 archive/backup/quarantine 清理产物 blocker；工作区 `_find_forbidden_cleanup_artifacts` 现为 0。刷新 N+1 产物后默认生产口径 145→142 findings, HIGH 132→129; `backend/services/data_quality.py` 已不在 `audit_n_plus_one_results.json`。验证: `PYTHONPATH=backend python -m pytest -q backend/tests/test_global_data_quality.py` 36 passed; `PYTHONPATH=backend python -m pytest -q backend/tests/test_financial_client.py backend/tests/test_db_health.py backend/tests/test_holder_availability.py backend/tests/test_event_engine_notice_backfill.py backend/tests/test_model_artifact_gc.py backend/tests/test_capital_client_store.py backend/tests/test_event_industry_backtest_scoring.py backend/tests/scripts/test_audit_n_plus_one.py backend/tests/test_updater_n_plus_one_fix.py backend/tests/test_updater_reset_industry.py backend/tests/test_event_industry_snapshot.py backend/tests/test_strategy_preset.py backend/tests/test_system_routes.py backend/tests/test_institution_read.py backend/tests/test_v3_paper.py` 96 passed / 2 warnings; `python -m py_compile backend/services/data_quality.py` pass; `PYTHONPATH=backend python backend/scripts/audit_n_plus_one.py` 142 findings / 129 HIGH; `PYTHONPATH=backend python backend/scripts/audit_delivery_readiness.py --json` 仍为 92.83% / `ready_for_delivery=false`。GCP 实查 `chunkymonkey-optuna` 仍 TERMINATED, 本轮未启动新 GCP。
-本地推进 (2026-05-21 04:27): #8 N+1 financial/db health 运行时 service 实修, `backend/services/financial_client.py` 将 schema 补列 ALTER 合成一次 SQL script, `_apply_history_backfill` 的 per-stock history count 改为一次 `GROUP BY stock_code` 查询并批量 `executemany` 写 `financial_sync_state`; `backend/services/db_health.py` 将冗余索引存在性检查合并为一次 `duckdb_indexes()` 查询, REINDEX 的 DROP/CREATE 合成脚本执行。刷新 N+1 产物后默认生产口径 150→145 findings, HIGH 137→132; `backend/services/financial_client.py` 与 `backend/services/db_health.py` 已不在 `audit_n_plus_one_results.json`。验证: `PYTHONPATH=backend python -m pytest -q backend/tests/test_financial_client.py backend/tests/test_db_health.py` 17 passed; `PYTHONPATH=backend python -m pytest -q backend/tests/test_financial_client.py backend/tests/test_db_health.py backend/tests/test_holder_availability.py backend/tests/test_event_engine_notice_backfill.py backend/tests/test_model_artifact_gc.py backend/tests/test_capital_client_store.py backend/tests/test_event_industry_backtest_scoring.py backend/tests/scripts/test_audit_n_plus_one.py backend/tests/test_updater_n_plus_one_fix.py backend/tests/test_updater_reset_industry.py backend/tests/test_event_industry_snapshot.py backend/tests/test_strategy_preset.py backend/tests/test_system_routes.py backend/tests/test_institution_read.py backend/tests/test_v3_paper.py` 96 passed; `python -m py_compile backend/services/financial_client.py backend/services/db_health.py` pass; `PYTHONPATH=backend python backend/scripts/audit_delivery_readiness.py --json` 仍为 92.83% / `ready_for_delivery=false`。GCP 实查 `chunkymonkey-optuna` 仍 TERMINATED, 本轮未启动新 GCP。
-本地推进 (2026-05-21 04:24): #8 N+1 service 层继续实修, `backend/services/model_artifact_gc.py` 将 model_id 枚举与 run_id dependent table counts 改为动态 UNION/UNION ALL 单次查询, 保留 primary dependency / lifecycle / pricing policy 保护语义; `backend/services/holder_availability.py` 将 page_update / fetched_at future regulatory backfill 的逐日期 UPDATE 改为先计算交易日参数再 `executemany`, 事件索引 DROP 合成一次 SQL script。刷新 N+1 产物后默认生产口径 156→150 findings, HIGH 143→137; `backend/services/model_artifact_gc.py` 与 `backend/services/holder_availability.py` 已不在 `audit_n_plus_one_results.json`。验证: `PYTHONPATH=backend python -m pytest -q backend/tests/test_holder_availability.py backend/tests/test_event_engine_notice_backfill.py backend/tests/test_model_artifact_gc.py` 19 passed; `PYTHONPATH=backend python -m pytest -q backend/tests/test_holder_availability.py backend/tests/test_event_engine_notice_backfill.py backend/tests/test_model_artifact_gc.py backend/tests/test_capital_client_store.py backend/tests/test_event_industry_backtest_scoring.py backend/tests/scripts/test_audit_n_plus_one.py backend/tests/test_updater_n_plus_one_fix.py backend/tests/test_updater_reset_industry.py backend/tests/test_event_industry_snapshot.py backend/tests/test_strategy_preset.py backend/tests/test_system_routes.py backend/tests/test_institution_read.py backend/tests/test_v3_paper.py` 79 passed; `python -m py_compile backend/services/holder_availability.py backend/services/model_artifact_gc.py` pass; `PYTHONPATH=backend python backend/scripts/audit_delivery_readiness.py --json` 仍为 92.83% / `ready_for_delivery=false`。GCP 实查 `chunkymonkey-optuna` 仍 TERMINATED, 本轮未启动新 GCP。
-本地推进 (2026-05-21 04:19): #8 N+1 service 层实修继续推进, `backend/services/backtest_engine.py` 将机构三层行业表现从三次 level 查询改为单条 UNION ALL 集合 SQL, 并把 holding chains / cross factor / signal transfer 写入改为 `executemany`; `backend/services/capital_client.py` 将 raw capital summary / repurchase / unlock / dividend detail / allotment detail 逐行 upsert 改为批量 rows + `executemany`, `_ensure_columns` 缺失列 ALTER 合成一次 SQL script; 新增 `backend/tests/test_capital_client_store.py` 覆盖批量写入计数、股票代码归一化与空公告日过滤。刷新 N+1 产物后默认生产口径 167→156 findings, HIGH 154→143; `backend/services/backtest_engine.py` 与 `backend/services/capital_client.py` 已不在 `audit_n_plus_one_results.json`。验证: `PYTHONPATH=backend python -m pytest -q backend/tests/test_capital_client_store.py backend/tests/test_event_industry_backtest_scoring.py` 6 passed; `PYTHONPATH=backend python -m pytest -q backend/tests/test_capital_client_store.py backend/tests/test_event_industry_backtest_scoring.py backend/tests/scripts/test_audit_n_plus_one.py backend/tests/test_updater_n_plus_one_fix.py backend/tests/test_updater_reset_industry.py backend/tests/test_event_industry_snapshot.py backend/tests/test_strategy_preset.py backend/tests/test_system_routes.py backend/tests/test_institution_read.py backend/tests/test_v3_paper.py` 60 passed; `python -m py_compile backend/services/capital_client.py backend/services/backtest_engine.py backend/tests/test_capital_client_store.py` pass; `PYTHONPATH=backend python backend/scripts/audit_delivery_readiness.py --json` 仍为 92.83% / `ready_for_delivery=false`。GCP 实查 `chunkymonkey-optuna` 仍 TERMINATED, 本轮未启动新 GCP。
-本地推进 (2026-05-21 04:12): #8 N+1 production router 继续实修, `backend/routers/updater.py` 清掉剩余 3 个 updater HIGH: `_reset_tables` 将多表 DELETE 合成一次 SQL script 执行, `_step_build_profiles_sync` 去掉固定 ALTER COLUMN 循环, `_step_build_industry_stat_sync` 从 institution×level 多次聚合查询改为单条 `WITH event_industry AS (...) UNION ALL ... GROUP BY` 集合 SQL 并保留批量写入。刷新 N+1 产物后默认生产口径 170→167 findings, HIGH 157→154; `backend/routers/updater.py` 已不在 `audit_n_plus_one_results.json`。验证: `PYTHONPATH=backend python -m pytest -q backend/tests/test_event_industry_snapshot.py backend/tests/test_updater_reset_industry.py backend/tests/test_updater_n_plus_one_fix.py` 14 passed; `PYTHONPATH=backend python -m pytest -q backend/tests/scripts/test_audit_n_plus_one.py backend/tests/test_updater_n_plus_one_fix.py backend/tests/test_updater_reset_industry.py backend/tests/test_event_industry_snapshot.py backend/tests/test_strategy_preset.py backend/tests/test_system_routes.py backend/tests/test_institution_read.py backend/tests/test_v3_paper.py` 54 passed; `python -m py_compile backend/routers/updater.py` pass; `PYTHONPATH=backend python backend/scripts/audit_delivery_readiness.py --json` 仍为 92.83% / `ready_for_delivery=false`, 本次 P3 lookup 遇到本地 DuckDB lock 后按脚本 fallback 输出。GCP 实查 `chunkymonkey-optuna` 仍 TERMINATED, 本轮未启动新 GCP。
-本地推进 (2026-05-21 04:08): #8 N+1 审计误伤口径继续收紧, `backend/scripts/audit_n_plus_one.py` 新增 SQL script / DDL / schema statement loop 识别, `for stmt in sql_or_DDL.strip().split(";")` 与 uppercase `*DDL*/*MIGRATION*` statement list 的 `.execute(stmt_or_alias)` 不再列为 per-row N+1 HIGH; 保留真正数据行/实体循环检测。`backend/tests/scripts/test_audit_n_plus_one.py` 新增 DDL split / lowercase SQL script split / DDL strip split alias / schema migration loop 回归。刷新 N+1 产物后默认生产口径 229→170 findings, HIGH 216→157; SQL script / DDL / schema statement split loop findings 已移除。验证: `PYTHONPATH=backend python -m pytest -q backend/tests/scripts/test_audit_n_plus_one.py` 13 passed; `PYTHONPATH=backend python -m pytest -q backend/tests/scripts/test_audit_n_plus_one.py backend/tests/test_updater_n_plus_one_fix.py backend/tests/test_updater_reset_industry.py backend/tests/test_event_industry_snapshot.py backend/tests/test_strategy_preset.py backend/tests/test_system_routes.py backend/tests/test_institution_read.py backend/tests/test_v3_paper.py` 54 passed; `python -m py_compile backend/scripts/audit_n_plus_one.py backend/tests/scripts/test_audit_n_plus_one.py` pass; `PYTHONPATH=backend python backend/scripts/audit_delivery_readiness.py --json` 仍为 92.83% / `ready_for_delivery=false`。本轮未启动新 GCP。
-本地推进 (2026-05-21 04:00): #8 N+1 审计误伤口径收紧, `backend/scripts/audit_n_plus_one.py` 新增 chunked batch loop 识别: `for i in range(0, len(...), N)` 中的 `executemany(...)` 或 `DELETE ... IN (...), batch` 不再列为 per-row N+1 HIGH; 保留真正逐行 execute 检测。`backend/tests/scripts/test_audit_n_plus_one.py` 新增 chunked executemany / chunked IN delete 回归。刷新 N+1 产物后默认生产口径 235→229 findings, HIGH 222→216; `backend/routers/updater.py` 的 chunked delete/update/insert 批处理项已从结果移除。验证: `PYTHONPATH=backend python -m pytest -q backend/tests/scripts/test_audit_n_plus_one.py` 9 passed; `PYTHONPATH=backend python -m pytest -q backend/tests/scripts/test_audit_n_plus_one.py backend/tests/test_updater_n_plus_one_fix.py backend/tests/test_updater_reset_industry.py backend/tests/test_event_industry_snapshot.py backend/tests/test_strategy_preset.py backend/tests/test_system_routes.py backend/tests/test_institution_read.py backend/tests/test_v3_paper.py` 50 passed; `python -m py_compile backend/scripts/audit_n_plus_one.py backend/tests/scripts/test_audit_n_plus_one.py` pass; `PYTHONPATH=backend python backend/scripts/audit_delivery_readiness.py --json` 仍为 92.83% / `ready_for_delivery=false`。本轮未启动新 GCP。
-本地推进 (2026-05-21 03:57): #8 N+1 updater step_status 写入批量化, `backend/routers/updater.py` 中 `_prime_step_status_rows`、完整更新启动时 pending 初始化、`/api/inst/update/status` missing idle prime 三处由 per-step `conn.execute` 改为 `conn.executemany`, 保留 pending/idle/skipped/status/error/records 语义; `backend/tests/test_updater_n_plus_one_fix.py` 新增 `_prime_step_status_rows` 批量写入契约测试。刷新 N+1 产物后默认生产口径 238→235 findings, HIGH 225→222, 原 `for s in STEPS` / `for spec in missing` step_status 写入项已移除。验证: `PYTHONPATH=backend python -m pytest -q backend/tests/test_updater_n_plus_one_fix.py backend/tests/test_updater_reset_industry.py` 11 passed; `PYTHONPATH=backend python -m pytest -q backend/tests/test_updater_n_plus_one_fix.py backend/tests/test_updater_reset_industry.py backend/tests/test_event_industry_snapshot.py backend/tests/test_strategy_preset.py backend/tests/test_system_routes.py backend/tests/test_institution_read.py backend/tests/test_v3_paper.py backend/tests/scripts/test_audit_n_plus_one.py` 48 passed; `python -m py_compile backend/routers/updater.py backend/tests/test_updater_n_plus_one_fix.py` pass; `PYTHONPATH=backend python backend/scripts/audit_delivery_readiness.py --json` 仍为 92.83% / `ready_for_delivery=false`。本轮未启动新 GCP。
-本地推进 (2026-05-21 03:53): #8 N+1 strategy preset seed 写入批量化, `backend/routers/strategy_preset.py::_ensure_table` 在空表初始化默认 3 个 preset 时使用一次 `conn.executemany`, 替代 per-preset `conn.execute`; 新增 `backend/tests/test_strategy_preset.py` 覆盖默认 seed rows、默认项标记、payload JSON 与 close。刷新 N+1 产物后默认生产口径 239→238 findings, HIGH 226→225, `backend/routers/strategy_preset.py` 已不在 `audit_n_plus_one_results.json`。验证: `PYTHONPATH=backend python -m pytest -q backend/tests/test_strategy_preset.py` 1 passed; `PYTHONPATH=backend python -m pytest -q backend/tests/test_strategy_preset.py backend/tests/test_system_routes.py backend/tests/test_event_industry_snapshot.py backend/tests/test_institution_read.py backend/tests/test_v3_paper.py backend/tests/scripts/test_audit_n_plus_one.py` 37 passed; `python -m py_compile backend/routers/strategy_preset.py backend/tests/test_strategy_preset.py` pass; `PYTHONPATH=backend python backend/scripts/audit_delivery_readiness.py --json` 仍为 92.83% / `ready_for_delivery=false`。本轮未启动新 GCP。
-本地推进 (2026-05-21 03:50): #8 N+1 settings 写入降噪/批量化, `backend/main.py` 的 `/api/settings/modules` 将允许的 `etf` / `akquant` 设置先过滤成 rows 后一次 `conn.executemany`, 替代 per-key `conn.execute`; `backend/tests/test_system_routes.py` 覆盖批量写入、未知 key 忽略、commit/close。刷新 N+1 产物后默认生产口径 240→239 findings, HIGH 227→226, `backend/main.py` 已不在 `audit_n_plus_one_results.json`。验证: `PYTHONPATH=backend python -m pytest -q backend/tests/test_system_routes.py` 6 passed; `PYTHONPATH=backend python -m pytest -q backend/tests/test_system_routes.py backend/tests/test_event_industry_snapshot.py backend/tests/test_institution_read.py backend/tests/test_v3_paper.py backend/tests/scripts/test_audit_n_plus_one.py` 36 passed; `python -m py_compile backend/main.py backend/tests/test_system_routes.py` pass; `PYTHONPATH=backend python backend/scripts/audit_delivery_readiness.py --json` 仍为 92.83% / `ready_for_delivery=false`。本轮未启动新 GCP。
-本地推进 (2026-05-21 03:48): #8 N+1 updater 批量写入继续修复, `backend/routers/updater.py::_step_build_industry_stat_sync` 保留 per-institution/per-level 聚合 SQL 口径, 但将 `mart_institution_industry_stat` 写入从 per-row `conn.execute` 改为收集 `write_rows` 后 `conn.executemany`, 大机构/多行业更新时减少 Python/DB 往返。刷新 N+1 产物后默认生产口径 241→240 findings, HIGH 228→227; 原 `for r in rows -> conn.execute` 写入项已移除, 剩余 updater 项主要是小循环/分层查询/分批写入。验证: `PYTHONPATH=backend python -m pytest -q backend/tests/test_event_industry_snapshot.py` 3 passed; `PYTHONPATH=backend python -m pytest -q backend/tests/test_event_industry_snapshot.py backend/tests/test_institution_read.py backend/tests/test_v3_paper.py backend/tests/scripts/test_audit_n_plus_one.py` 30 passed; `python -m py_compile backend/routers/updater.py` pass; `PYTHONPATH=backend python backend/scripts/audit_delivery_readiness.py --json` 仍为 92.83% / `ready_for_delivery=false`。本轮未启动新 GCP。
-本地推进 (2026-05-21 03:45): #8 N+1 真实 API 路径继续修复, `backend/routers/institution.py` 的 `/api/inst/profiles/detail/{inst_id}` 行业树构建不再对每个 L1/L2 行业单独查询 `mart_institution_industry_stat`, 新增 `_load_industry_stat_map` 一次按 institution_id 批量读取 level/name 统计后在内存映射; `backend/tests/test_institution_read.py` 覆盖批量 stat map 与机构过滤。刷新 N+1 产物后默认生产口径 242→241 findings, HIGH 229→228, `backend/routers/institution.py` 已不在 `audit_n_plus_one_results.json`。验证: `PYTHONPATH=backend python -m pytest -q backend/tests/test_institution_read.py` 9 passed; `python -m py_compile backend/routers/institution.py backend/tests/test_institution_read.py` pass; `PYTHONPATH=backend python backend/scripts/audit_delivery_readiness.py --json` 仍为 92.83% / `ready_for_delivery=false`。本轮未启动新 GCP。
-本地推进 (2026-05-21 03:41): #8 N+1 真实热路径修复, `backend/routers/v3_paper.py` 的 `/api/v3/paper/holdings` 不再对每个 open position 单独查询 `mart_stock_picture_daily`, 新增 `_latest_picture_by_code` 批量按 stock_code 取最新 close/stage 后在内存映射; `backend/tests/test_v3_paper.py` 覆盖批量去重、空输入跳过查询。刷新 N+1 产物后默认生产口径从 243→242 findings, HIGH 230→229, `backend/routers/v3_paper.py` 已不在 `audit_n_plus_one_results.json`。验证: `PYTHONPATH=backend python -m pytest -q backend/tests/test_v3_paper.py` 11 passed; `PYTHONPATH=backend python -m pytest -q backend/tests/test_v3_paper.py backend/tests/scripts/test_audit_n_plus_one.py` 18 passed; `python -m py_compile backend/routers/v3_paper.py backend/tests/test_v3_paper.py` pass; `PYTHONPATH=backend python backend/scripts/audit_delivery_readiness.py --json` 仍为 92.83% / `ready_for_delivery=false`。本轮未启动新 GCP。
-本地推进 (2026-05-21 03:38): #8 N+1/codegraph 风险继续收敛, 将 `backend/scripts/audit_n_plus_one.py` 默认扫描口径改为 production-code only, 排除 `backend/tests` / cache / `.optuna` / `backend/Users` 本地镜像目录, 新增 `--include-tests` 显式开关保留完整口径; Markdown 报告新增 scanned file count 与 scope, 仓库内 `audit_n_plus_one_results.json` / `audit_n_plus_one_report.md` 已按默认生产口径刷新。默认审计: scanned 618 Python files, findings 243 (HIGH 230 / MEDIUM 0 / LOW 13), baseline 21 OK; 对照 `--include-tests`: scanned 943, findings 274。验证: `PYTHONPATH=backend python -m pytest -q backend/tests/scripts/test_audit_n_plus_one.py` 7 passed; `python -m py_compile backend/scripts/audit_n_plus_one.py` pass; `PYTHONPATH=backend python backend/scripts/audit_delivery_readiness.py --json` 仍为 92.83% / `ready_for_delivery=false`。本轮未启动新 GCP。
-本地推进 (2026-05-21 02:07): #8 Workbench read-model 继续拆分 TDX 模块, 将 F10 source-date audit 与 TDX F10 source DQ 读模型抽到 `backend/services/workbench_tdx_f10_read.py`; `workbench_tdx_read.py` 保留 TDX server health / market.duckdb readonly attach 并 re-export F10 builder, `data-sources` 输出 key `tdx_server_health` / `f10_source_date_audit` / `tdx_f10_source_dq` 保持不变。`workbench_tdx_read.py` 363→169 行, 新 F10 模块 221 行。验证: `python -m py_compile backend/services/workbench_tdx_read.py backend/services/workbench_tdx_f10_read.py backend/services/workbench_data_source_read.py backend/services/workbench_read.py` pass; `PYTHONPATH=backend python -m pytest -q backend/tests/contract/test_workbench_read.py backend/tests/contract/test_workbench_frontend_contract.py backend/tests/contract/test_workbench_frontend_render_smoke.py` 16 passed; `git diff --check` pass。最新 `audit_delivery_readiness.py --json` 仍为 92.83% / `ready_for_delivery=false`; #6 perfect ladder 仍未达。本轮未启动新 GCP。
-本地推进 (2026-05-21 02:04): #8 Workbench read-model 继续拆分 storage 模块, 将 architecture inventory cleanup summary 与 architecture cleanup plan/manifest fallback 读模型抽到 `backend/services/workbench_storage_architecture_read.py`; `workbench_storage_read.py` 保留 storage meta / latest cleanup manifest / retention live-plan 依赖注入和页面编排, 输出 key `architecture` / `architecture_cleanup` 保持不变。`workbench_storage_read.py` 376→198 行, 新 architecture 模块 232 行。验证: `python -m py_compile backend/services/workbench_storage_read.py backend/services/workbench_storage_architecture_read.py backend/services/workbench_read.py` pass; `PYTHONPATH=backend python -m pytest -q backend/tests/contract/test_workbench_read.py backend/tests/contract/test_workbench_frontend_contract.py backend/tests/contract/test_workbench_frontend_render_smoke.py` 16 passed; `git diff --check` pass。最新 `audit_delivery_readiness.py --json` 仍为 92.83% / `ready_for_delivery=false`; #6 perfect ladder 仍未达。本轮未启动新 GCP。
-本地推进 (2026-05-21 02:01): #8 Workbench read-model 继续拆分 feature 模块, 将 feature search-space / top associations / drift mitigation builds / PIT coverage / drift offenders 明细读模型抽到 `backend/services/workbench_feature_detail_read.py`; `workbench_feature_read.py` 复用 `build_latest_feature_panel_validation` 并保留 registry/meta/页面编排, 输出 key `latest_validation` / `search_spaces` / `top_associations` / `drift_mitigation_builds` / `pit_coverage` / `feature_drift` 保持不变。`workbench_feature_read.py` 382→177 行, 新 detail 模块 242 行。验证: `python -m py_compile backend/services/workbench_feature_read.py backend/services/workbench_feature_detail_read.py backend/services/workbench_data_source_watermark_read.py backend/services/workbench_read.py` pass; `PYTHONPATH=backend python -m pytest -q backend/tests/contract/test_workbench_read.py backend/tests/contract/test_workbench_frontend_contract.py backend/tests/contract/test_workbench_frontend_render_smoke.py` 16 passed; `git diff --check` pass。最新 `audit_delivery_readiness.py --json` 仍为 92.83% / `ready_for_delivery=false`; #6 perfect ladder 仍未达。本轮未启动新 GCP。
-本地推进 (2026-05-21 01:58): #8 Workbench read-model 继续拆分 data-sources 模块, 将 trading calendar target / feature panel validation / data-source watermark / kline primary/fallback/blocker 读模型抽到 `backend/services/workbench_data_source_watermark_read.py`; `workbench_data_source_read.py` 现在聚焦 data-sources 页面编排、source health 与 TDX 子视图, 输出 key `calendar_target` / `watermarks` / `kline` / `latest_feature_validation` / `blockers` 保持不变。`workbench_data_source_read.py` 386→246 行, 新 watermark 模块 217 行。验证: `python -m py_compile backend/services/workbench_data_source_read.py backend/services/workbench_data_source_watermark_read.py backend/services/workbench_read.py` pass; `PYTHONPATH=backend python -m pytest -q backend/tests/contract/test_workbench_read.py backend/tests/contract/test_workbench_frontend_contract.py backend/tests/contract/test_workbench_frontend_render_smoke.py` 16 passed; `git diff --check` pass。最新 `audit_delivery_readiness.py --json` 仍为 92.83% / `ready_for_delivery=false`; #6 perfect ladder 仍未达。本轮未启动新 GCP。
-本地推进 (2026-05-21 01:55): #8 Workbench read-model 继续拆分 champion 模块, 将 challenger 列表 / candidate evaluation / evidence bundle / promotion gate 明细读模型抽到 `backend/services/workbench_champion_detail_read.py`; `workbench_champion_read.py` 保留 `_champion_summary` / `_model_stability_context` 兼容导出和 champion 页面编排, 输出 key `challengers` / `candidate_evaluations` / `evidence_bundles` / `promotion_gates` 保持不变。`workbench_champion_read.py` 392→212 行, 新 detail 模块 247 行。验证: `python -m py_compile backend/services/workbench_champion_read.py backend/services/workbench_champion_detail_read.py backend/services/workbench_read.py` pass; `PYTHONPATH=backend python -m pytest -q backend/tests/contract/test_workbench_read.py backend/tests/contract/test_workbench_frontend_contract.py backend/tests/contract/test_workbench_frontend_render_smoke.py` 16 passed; `git diff --check` pass。最新 `audit_delivery_readiness.py --json` 仍为 92.83% / `ready_for_delivery=false`; #6 perfect ladder 仍未达。本轮未启动新 GCP。
-本地推进 (2026-05-21 01:50): #8 Workbench read-model 继续拆分 recommendations 模块, 将 latest primary key / top-k rows / row explanation 读模型抽到 `backend/services/workbench_recommendation_topk_read.py`; `workbench_recommendation_read.py` 保留 `_latest_recommendation_key` 兼容导出并调用 `build_recommendation_rows`, 输出 key `latest_primary` / `rows` 保持不变。`workbench_recommendation_read.py` 396→198 行, 新 top-k 模块 256 行。验证: `python -m py_compile backend/services/workbench_recommendation_read.py backend/services/workbench_recommendation_topk_read.py backend/services/workbench_read.py` pass; `PYTHONPATH=backend python -m pytest -q backend/tests/contract/test_workbench_read.py backend/tests/contract/test_workbench_frontend_contract.py backend/tests/contract/test_workbench_frontend_render_smoke.py` 16 passed; `git diff --check` pass。最新 `audit_delivery_readiness.py --json` 仍为 92.83% / `ready_for_delivery=false`; #6 perfect ladder 仍未达。本轮未启动新 GCP。
-本地推进 (2026-05-21 01:46): #8 Workbench read-model 继续拆分 temporal synergy policy 模块, 将 MTM gate / MTM strategy sweep 读模型抽到 `backend/services/workbench_temporal_synergy_policy_mtm_read.py`; `workbench_temporal_synergy_policy_read.py` 保留 policy facade, 输出 key `policy_mtm_gates` / `policy_mtm_strategy_sweeps` 保持不变。`workbench_temporal_synergy_policy_read.py` 414→253 行, 新 MTM 模块 237 行。验证: `python -m py_compile backend/services/workbench_temporal_synergy_policy_read.py backend/services/workbench_temporal_synergy_policy_mtm_read.py backend/services/workbench_temporal_synergy_read.py` pass; `PYTHONPATH=backend python -m pytest -q backend/tests/contract/test_workbench_read.py backend/tests/contract/test_workbench_frontend_contract.py backend/tests/contract/test_workbench_frontend_render_smoke.py` 16 passed; `git diff --check` pass。最新 `audit_delivery_readiness.py --json` 仍为 92.83% / `ready_for_delivery=false`; #6 perfect ladder 仍未达。本轮未启动新 GCP。
-本地推进 (2026-05-21 01:42): #8 Workbench read-model 继续拆分 research 模块, 将 research `read_model` metadata 与 `feature_drift` 辅助视图抽到 `backend/services/workbench_research_meta_read.py`; `workbench_research_read.py` 现在只做 research 页面组合, 输出 key `read_model` / `feature_drift` 保持不变。`workbench_research_read.py` 209→41 行, 新 meta 模块 171 行。验证: `python -m py_compile backend/services/workbench_research_read.py backend/services/workbench_research_meta_read.py backend/services/workbench_read.py` pass; `PYTHONPATH=backend python -m pytest -q backend/tests/contract/test_workbench_read.py backend/tests/contract/test_workbench_frontend_contract.py backend/tests/contract/test_workbench_frontend_render_smoke.py` 16 passed; `git diff --check` pass。最新 `audit_delivery_readiness.py --json` 仍为 92.83% / `ready_for_delivery=false`; #6 perfect ladder 仍未达。本轮未启动新 GCP。
-本地推进 (2026-05-21 01:39): #8 Workbench read-model 继续拆分 research 模块, 将 model stability studies 读模型抽到 `backend/services/workbench_model_stability_studies_read.py`; `workbench_research_read.py` 改为 import `build_model_stability_studies`, 输出 key `model_stability` 保持不变。`workbench_research_read.py` 273→209 行, 新 studies 模块 113 行。验证: `python -m py_compile backend/services/workbench_research_read.py backend/services/workbench_model_stability_studies_read.py backend/services/workbench_read.py` pass; `PYTHONPATH=backend python -m pytest -q backend/tests/contract/test_workbench_read.py backend/tests/contract/test_workbench_frontend_contract.py backend/tests/contract/test_workbench_frontend_render_smoke.py` 16 passed; `git diff --check` pass。最新 `audit_delivery_readiness.py --json` 仍为 92.83% / `ready_for_delivery=false`; #6 perfect ladder 仍未达。本轮未启动新 GCP。
-本地推进 (2026-05-21 01:36): #8 Workbench read-model 继续拆分 research 模块, 将 research schedule 读模型抽到 `backend/services/workbench_research_schedule_read.py`; `workbench_research_read.py` 改为 import `build_research_schedule_view`, 输出 key `research_schedule` 保持不变。`workbench_research_read.py` 340→273 行, 新 schedule 模块 134 行。验证: `python -m py_compile backend/services/workbench_research_read.py backend/services/workbench_research_schedule_read.py backend/services/workbench_ranker_runtime_read.py backend/services/workbench_read.py` pass; `PYTHONPATH=backend python -m pytest -q backend/tests/contract/test_workbench_read.py backend/tests/contract/test_workbench_frontend_contract.py backend/tests/contract/test_workbench_frontend_render_smoke.py` 16 passed; `git diff --check` pass。最新 `audit_delivery_readiness.py --json` 仍为 92.83% / `ready_for_delivery=false`; #6 perfect ladder 仍未达。本轮未启动新 GCP。
-本地推进 (2026-05-21 01:33): #8 Workbench read-model 继续拆分 research 模块, 将 ranker runtime / ranker policy 读模型抽到 `backend/services/workbench_ranker_runtime_read.py`; `workbench_research_read.py` 改为 import `build_ranker_runtime_view`, 输出 key `ranker_policy` / `ranker_profiles` 保持不变。`workbench_research_read.py` 511→340 行, 新 runtime 模块 206 行。验证: `python -m py_compile backend/services/workbench_research_read.py backend/services/workbench_ranker_runtime_read.py backend/services/workbench_read.py` pass; `PYTHONPATH=backend python -m pytest -q backend/tests/contract/test_workbench_read.py backend/tests/contract/test_workbench_frontend_contract.py backend/tests/contract/test_workbench_frontend_render_smoke.py` 16 passed; `git diff --check` pass。最新 `audit_delivery_readiness.py --json` 仍为 92.83% / `ready_for_delivery=false`; #6 perfect ladder 仍未达。本轮未启动新 GCP。
-本地推进 (2026-05-21 01:30): #8 Workbench read-model 继续拆分主 façade, 将 research 页 orchestrator 从 `backend/services/workbench_read.py` 迁入 `backend/services/workbench_research_read.py`; `services.workbench_read.build_workbench_research` 现在由 research 模块提供, 主 facade 只保留兼容导出和 storage/recommendation 依赖注入 wrapper。`workbench_read.py` 239→33 行, `workbench_research_read.py` 364→511 行。验证: `python -m py_compile backend/services/workbench_read.py backend/services/workbench_research_read.py` pass; `PYTHONPATH=backend python -m pytest -q backend/tests/contract/test_workbench_read.py backend/tests/contract/test_workbench_frontend_contract.py backend/tests/contract/test_workbench_frontend_render_smoke.py` 16 passed; `git diff --check` pass。最新 `audit_delivery_readiness.py --json` 仍为 92.83% / `ready_for_delivery=false`; #6 perfect ladder 仍未达。本轮未启动新 GCP。
-本地推进 (2026-05-21 01:26): #8 Workbench read-model 继续拆分主 façade, 将 overview 页 read-model 抽到 `backend/services/workbench_overview_read.py`; `services.workbench_read.build_workbench_overview` 现在由新模块提供, latest trading day / latest manifest / schedule counts / schema drift blockers / overview feature drift / storage summary 组合逻辑不再堆在主 facade。`workbench_read.py` 355→239 行, 新 overview 模块 261 行。验证: `python -m py_compile backend/services/workbench_read.py backend/services/workbench_overview_read.py` pass; `PYTHONPATH=backend python -m pytest -q backend/tests/contract/test_workbench_read.py backend/tests/contract/test_workbench_frontend_contract.py backend/tests/contract/test_workbench_frontend_render_smoke.py` 16 passed; `git diff --check` pass。最新 `audit_delivery_readiness.py --json` 仍为 92.83% / `ready_for_delivery=false`; #6 perfect ladder 仍未达。本轮未启动新 GCP。
-本地推进 (2026-05-21 01:23): #8 Workbench read-model 继续拆分主 façade, 将 temporal synergy research orchestrator 抽到 `backend/services/workbench_temporal_synergy_read.py`; `build_workbench_research()` 现在直接调用 `build_temporal_synergy_research(conn)`, 主 `workbench_read.py` 不再 import temporal quality/pair/policy/discovery 子视图, 输出 key `temporal_synergy` 保持不变。`workbench_read.py` 418→355 行, 新 orchestrator 126 行。验证: `python -m py_compile backend/services/workbench_read.py backend/services/workbench_temporal_synergy_read.py backend/services/workbench_temporal_synergy_discovery_read.py backend/services/workbench_temporal_synergy_policy_read.py backend/services/workbench_temporal_synergy_pairs_read.py backend/services/workbench_temporal_synergy_quality_read.py` pass; `PYTHONPATH=backend python -m pytest -q backend/tests/contract/test_workbench_read.py backend/tests/contract/test_workbench_frontend_contract.py backend/tests/contract/test_workbench_frontend_render_smoke.py` 16 passed; `git diff --check` pass。最新 `audit_delivery_readiness.py --json` 仍为 92.83% / `ready_for_delivery=false`; #6 perfect ladder 仍未达。本轮未启动新 GCP。
-本地推进 (2026-05-21 01:20): #8 Workbench read-model 继续拆分主 façade, 将 research 页 temporal synergy 的 redundancy clusters / conditional synergies discovery 读模型抽到 `backend/services/workbench_temporal_synergy_discovery_read.py`; `_temporal_synergy_research()` 改为调用 `build_temporal_synergy_discovery_view(conn, run_id=..., synergy_limit=...)`, 输出 key `redundancy_clusters` / `conditional_synergies` 保持不变, 并删除 facade 中已无调用的 JSON/select helper。`workbench_read.py` 531→418 行, 新模块 175 行。验证: `python -m py_compile backend/services/workbench_read.py backend/services/workbench_temporal_synergy_discovery_read.py backend/services/workbench_temporal_synergy_policy_read.py backend/services/workbench_temporal_synergy_pairs_read.py backend/services/workbench_temporal_synergy_quality_read.py` pass; `PYTHONPATH=backend python -m pytest -q backend/tests/contract/test_workbench_read.py backend/tests/contract/test_workbench_frontend_contract.py backend/tests/contract/test_workbench_frontend_render_smoke.py` 16 passed; `git diff --check` pass。最新 `audit_delivery_readiness.py --json` 仍为 92.83% / `ready_for_delivery=false`; #6 perfect ladder 仍未达。本轮未启动新 GCP。
-本地推进 (2026-05-21 01:17): #8 Workbench read-model 继续拆分主 façade, 将 research 页 temporal synergy 的 Optuna study / policy candidate / policy gate / MTM gate / strategy sweep 读模型抽到 `backend/services/workbench_temporal_synergy_policy_read.py`; `_temporal_synergy_research()` 改为调用 `build_temporal_synergy_policy_view(conn, run_id=...)`, 输出 key `optuna_studies` / `policy_candidates` / `policy_gates` / `policy_mtm_gates` / `policy_mtm_strategy_sweeps` 保持不变。`workbench_read.py` 838→531 行, 新模块 414 行。验证: `python -m py_compile backend/services/workbench_read.py backend/services/workbench_temporal_synergy_policy_read.py backend/services/workbench_temporal_synergy_pairs_read.py backend/services/workbench_temporal_synergy_quality_read.py` pass; `PYTHONPATH=backend python -m pytest -q backend/tests/contract/test_workbench_read.py backend/tests/contract/test_workbench_frontend_contract.py backend/tests/contract/test_workbench_frontend_render_smoke.py` 16 passed; `git diff --check` pass。最新 `audit_delivery_readiness.py --json` 仍为 92.83% / `ready_for_delivery=false`; #6 perfect ladder 仍未达。本轮未启动新 GCP。
-本地推进 (2026-05-21 01:13): #8 Workbench read-model 继续拆分主 façade, 将 research 页 temporal synergy 的 pair synergy / selected interaction 子视图抽到 `backend/services/workbench_temporal_synergy_pairs_read.py`; `_temporal_synergy_research()` 改为调用 `build_temporal_synergy_pair_view(conn, run_id=..., synergy_limit=...)`, 输出 key `top_synergies` / `selected_interactions` 保持不变。`workbench_read.py` 919→838 行, 新模块 152 行。验证: `python -m py_compile backend/services/workbench_read.py backend/services/workbench_temporal_synergy_quality_read.py backend/services/workbench_temporal_synergy_pairs_read.py` pass; `PYTHONPATH=backend python -m pytest -q backend/tests/contract/test_workbench_read.py backend/tests/contract/test_workbench_frontend_contract.py backend/tests/contract/test_workbench_frontend_render_smoke.py` 16 passed; `git diff --check` pass。最新 `audit_delivery_readiness.py --json` 仍为 92.83% / `ready_for_delivery=false`; #6 perfect ladder 仍未达。本轮未启动新 GCP。
-本地推进 (2026-05-21 01:09): #8 Workbench read-model 继续拆分主 façade, 将 research 页 temporal synergy 的 quality/relevance 子视图抽到 `backend/services/workbench_temporal_synergy_quality_read.py`; `_temporal_synergy_research()` 改为调用 `build_temporal_synergy_quality_view(conn, run_id=...)`, 输出 key `quality` / `label_summary` / `top_relevance` 保持不变。`workbench_read.py` 1027→919 行, 新模块 198 行。验证: `python -m py_compile backend/services/workbench_read.py backend/services/workbench_temporal_synergy_quality_read.py` pass; `PYTHONPATH=backend python -m pytest -q backend/tests/contract/test_workbench_read.py backend/tests/contract/test_workbench_frontend_contract.py backend/tests/contract/test_workbench_frontend_render_smoke.py` 16 passed; `git diff --check` pass。最新 `audit_delivery_readiness.py --json` 仍为 92.83% / `ready_for_delivery=false`; #6 perfect ladder 仍未达。本轮未启动新 GCP。
-本地推进 (2026-05-21 01:05): #8 Workbench read-model 继续低冲突拆分, 将 stock horizon profile 里的 feature-effect 子视图抽到 `backend/services/workbench_stock_horizon_effect_read.py`; `workbench_stock_horizon_read.py` 改为调用 `build_stock_horizon_effect_view(...)`, 输出 key `effect_run_id` / `effect_count` / `top_effects` / `feature_effects_by_horizon` 与 selected rows 的 `top_feature_effects` 注入保持不变。`workbench_stock_horizon_read.py` 460→315 行, 新模块 239 行, stock horizon 主模块降到 <400。验证: `python -m py_compile backend/services/workbench_stock_horizon_read.py backend/services/workbench_stock_horizon_effect_read.py backend/services/workbench_stock_horizon_selection_read.py backend/services/workbench_read.py` pass; `PYTHONPATH=backend python -m pytest -q backend/tests/contract/test_workbench_read.py backend/tests/contract/test_workbench_frontend_contract.py backend/tests/contract/test_workbench_frontend_render_smoke.py backend/tests/test_workbench_paper_sim_timeseries.py` 18 passed; `git diff --check` pass。最新 `audit_delivery_readiness.py --json` 仍为 92.83% / `ready_for_delivery=false`; #6 perfect ladder 仍未达。本轮未启动新 GCP。
-本地推进 (2026-05-21 01:01): #8 Workbench read-model 继续低冲突拆分, 将 shareholder-plan research 里的 family eval 子视图抽到 `backend/services/workbench_shareholder_plan_family_eval_read.py`; `workbench_shareholder_plan_read.py` 保留 `build_shareholder_plan_family_eval_view` import 兼容, `build_workbench_research()` 输出 key `shareholder_plan_family_eval` 保持不变。`workbench_shareholder_plan_read.py` 445→285 行, 新模块 230 行, shareholder-plan 主模块降到 <300。验证: `python -m py_compile backend/services/workbench_shareholder_plan_read.py backend/services/workbench_shareholder_plan_family_eval_read.py backend/services/workbench_shareholder_plan_initial_read.py backend/services/workbench_read.py` pass; `PYTHONPATH=backend python -m pytest -q backend/tests/contract/test_workbench_read.py backend/tests/test_shareholder_plan_initial_feature_panel.py backend/tests/contract/test_workbench_frontend_contract.py backend/tests/contract/test_workbench_frontend_render_smoke.py` 18 passed; `git diff --check` pass。最新 `audit_delivery_readiness.py --json` 仍为 92.83% / `ready_for_delivery=false`; #6 perfect ladder 仍未达。本轮未启动新 GCP。
-本地推进 (2026-05-21 00:58): #8 Workbench read-model 继续低冲突拆分, 将 champion 页里的 deployment summary 纯组装逻辑抽到 `backend/services/workbench_champion_deployment_read.py`; `workbench_champion_read.py` 改为调用 `build_champion_deployment_summary(...)`, 输出 key `deployment` 保持不变。`workbench_champion_read.py` 433→392 行, 新模块 46 行, champion 主模块降到 <400。验证: `python -m py_compile backend/services/workbench_champion_read.py backend/services/workbench_champion_deployment_read.py backend/services/workbench_champion_topk_read.py backend/services/workbench_read.py` pass; `PYTHONPATH=backend python -m pytest -q backend/tests/contract/test_workbench_read.py backend/tests/contract/test_workbench_frontend_contract.py backend/tests/contract/test_workbench_frontend_render_smoke.py` 16 passed; `git diff --check` pass。最新 `audit_delivery_readiness.py --json` 仍为 92.83% / `ready_for_delivery=false`; #6 perfect ladder 仍未达。本轮未启动新 GCP。
-本地推进 (2026-05-21 00:54): #8 Workbench read-model 继续低冲突拆分, 将 champion 页里的 latest primary top-k 子视图抽到 `backend/services/workbench_champion_topk_read.py`; `workbench_champion_read.py` 改为调用 `build_latest_primary_topk(conn)`, 输出 key `latest_primary_topk` 保持不变。`workbench_champion_read.py` 471→433 行, 新模块 100 行。验证: `python -m py_compile backend/services/workbench_champion_read.py backend/services/workbench_champion_topk_read.py backend/services/workbench_read.py` pass; `PYTHONPATH=backend python -m pytest -q backend/tests/contract/test_workbench_read.py backend/tests/contract/test_workbench_frontend_contract.py backend/tests/contract/test_workbench_frontend_render_smoke.py` 16 passed; `git diff --check` pass。最新 `audit_delivery_readiness.py --json` 仍为 92.83% / `ready_for_delivery=false`; #6 perfect ladder 仍未达。本轮未启动新 GCP。
-本地推进 (2026-05-21 00:52): #8 Workbench read-model 继续低冲突拆分, 将 features 页里的 availability contract 子视图抽到 `backend/services/workbench_feature_availability_read.py`; `workbench_feature_read.py` 改为调用 `build_feature_availability_contract_view(conn)`, 输出 key `availability_contract` 保持不变。`workbench_feature_read.py` 473→382 行, 新模块 141 行, feature 主模块降到 <400。验证: `python -m py_compile backend/services/workbench_feature_read.py backend/services/workbench_feature_availability_read.py backend/services/workbench_read.py` pass; `PYTHONPATH=backend python -m pytest -q backend/tests/contract/test_workbench_read.py backend/tests/pipeline/test_feature_catalog_current.py backend/tests/contract/test_workbench_frontend_contract.py backend/tests/contract/test_workbench_frontend_render_smoke.py` 17 passed; `git diff --check` pass。最新 `audit_delivery_readiness.py --json` 仍为 92.83% / `ready_for_delivery=false`; #6 perfect ladder 仍未达。本轮未启动新 GCP。
-本地推进 (2026-05-21 00:49): #8 Workbench read-model 继续低冲突拆分, 将 recommendations 页里的 risk/outcome 子视图抽到 `backend/services/workbench_recommendation_metrics_read.py`; `workbench_recommendation_read.py` 改为调用 `build_recommendation_risk()` / `build_recommendation_outcomes()`, 输出 key `risk` / `outcomes` 保持不变。`workbench_recommendation_read.py` 458→396 行, 新模块 92 行, recommendation 主模块降到 <400。验证: `python -m py_compile backend/services/workbench_recommendation_read.py backend/services/workbench_recommendation_metrics_read.py backend/services/workbench_read.py` pass; `PYTHONPATH=backend python -m pytest -q backend/tests/contract/test_workbench_read.py backend/tests/contract/test_workbench_frontend_contract.py backend/tests/contract/test_workbench_frontend_render_smoke.py` 16 passed; `git diff --check` pass。最新 `audit_delivery_readiness.py --json` 仍为 92.83% / `ready_for_delivery=false`; #6 perfect ladder 仍未达。本轮未启动新 GCP。
-本地推进 (2026-05-21 00:46): #8 Workbench read-model 继续低冲突拆分, 将 shareholder-plan research 里的 initial feature-panel quality 子视图抽到 `backend/services/workbench_shareholder_plan_initial_read.py`; `workbench_shareholder_plan_read.py` 保留 `build_shareholder_plan_initial_feature_panel_view` import 兼容, `build_workbench_research()` 输出 key `shareholder_plan_initial_feature_panel` 保持不变。`workbench_shareholder_plan_read.py` 525→445 行, 新模块 175 行。验证: `python -m py_compile backend/services/workbench_shareholder_plan_read.py backend/services/workbench_shareholder_plan_initial_read.py backend/services/workbench_read.py` pass; `PYTHONPATH=backend python -m pytest -q backend/tests/contract/test_workbench_read.py backend/tests/test_shareholder_plan_initial_feature_panel.py` 15 passed; frontend contract/render smoke 3 passed; `git diff --check` pass。最新 `audit_delivery_readiness.py --json` 仍为 92.83% / `ready_for_delivery=false`; #6 perfect ladder 仍未达。本轮未启动新 GCP。
-本地推进 (2026-05-21 00:42): #8 Workbench read-model 继续低冲突拆分, 将 stock horizon profile 里的 `mart_stock_horizon_selection` 子视图抽到 `backend/services/workbench_stock_horizon_selection_read.py`; `workbench_stock_horizon_read.py` 改为组合 `build_stock_horizon_selection_view(conn, run_id=...)`, 输出 key `horizon_selection` / `selected_horizon_distribution` / `selected_stocks` / `selection_count` 保持不变。`workbench_stock_horizon_read.py` 532→460 行, 新模块 155 行。验证: `python -m py_compile backend/services/workbench_stock_horizon_read.py backend/services/workbench_stock_horizon_selection_read.py backend/services/workbench_read.py` pass; `PYTHONPATH=backend python -m pytest -q backend/tests/contract/test_workbench_read.py backend/tests/contract/test_workbench_frontend_contract.py backend/tests/contract/test_workbench_frontend_render_smoke.py backend/tests/test_workbench_paper_sim_timeseries.py` 18 passed; `git diff --check` pass。最新 `audit_delivery_readiness.py --json` 仍为 92.83% / `ready_for_delivery=false`; #6 perfect ladder 仍未达。本轮未启动新 GCP。
-本地推进 (2026-05-21 00:39): #8 Workbench read-model 继续低冲突拆分, 将 champion/research 共用的 model stability context summary/diagnostic 读模型抽到 `backend/services/workbench_model_stability_read.py`; `workbench_champion_read.py` 保留 `_model_stability_context` 兼容 import, champion 输出 key `stability_context` 与 research 页 `stability_context` 保持不变。`workbench_champion_read.py` 592→471 行, 新模块 220 行。验证: `python -m py_compile backend/services/workbench_champion_read.py backend/services/workbench_model_stability_read.py backend/services/workbench_read.py` pass; `PYTHONPATH=backend python -m pytest -q backend/tests/contract/test_workbench_read.py backend/tests/pipeline/test_model_stability_context_diagnostics.py` 14 passed (1 upstream utcnow warning); frontend contract/render smoke 3 passed; `git diff --check` pass。最新 `audit_delivery_readiness.py --json` 仍为 92.83% / `ready_for_delivery=false`; #6 perfect ladder 仍未达。本轮未启动新 GCP。
-本地推进 (2026-05-21 00:36): #8 Workbench read-model 继续低冲突拆分, 将 features 页的 `mart_feature_catalog_current` / PIT join plan / exclusion reason catalog 子视图抽到 `backend/services/workbench_feature_catalog_read.py`; `build_workbench_features()` 改为调用 `build_feature_catalog_current_view(conn)`, 输出 key `feature_catalog` 保持兼容。`workbench_feature_read.py` 638→473 行, 新模块 235 行。验证: `python -m py_compile backend/services/workbench_feature_read.py backend/services/workbench_feature_catalog_read.py` pass; `PYTHONPATH=backend python -m pytest -q backend/tests/contract/test_workbench_read.py backend/tests/pipeline/test_feature_catalog_current.py` 14 passed; frontend contract/render smoke 3 passed; `git diff --check` pass。最新 `audit_delivery_readiness.py --json` 仍为 92.83% / `ready_for_delivery=false`; #6 perfect ladder 仍未达。本轮未启动新 GCP。
-本地推进 (2026-05-21 00:32): #8 Workbench read-model 继续低冲突拆分, 将 research 页的 schedule / model stability studies / ranker runtime profile 读模型抽到 `backend/services/workbench_research_read.py`; `build_workbench_research()` 仍保留原 API 与返回结构, 只改为组合新模块输出。`workbench_read.py` 1273→1027 行, 新模块 364 行。验证: `python -m py_compile backend/services/workbench_read.py backend/services/workbench_research_read.py` pass; `PYTHONPATH=backend python -m pytest -q backend/tests/contract/test_workbench_read.py backend/tests/contract/test_workbench_frontend_contract.py backend/tests/contract/test_workbench_frontend_render_smoke.py` 16 passed; `git diff --check -- backend/services/workbench_read.py backend/services/workbench_research_read.py` pass。最新 `audit_delivery_readiness.py --json` 仍为 92.83% / `ready_for_delivery=false`, #6 perfect ladder 仍是 hard blocker。本轮未启动新 GCP, 已知 `chunkymonkey-optuna` 仍 TERMINATED。
-最终停止/存档点 (2026-05-20 23:27): 用户再次明确“不要继续推进了，停止，然后存档”。本轮自此停止, 不再继续 #6/#8/#9/#10 或任何业务实现推进；仅保留当前未提交工作区与交接文档。最新可衔接状态: `workbench_read.py` 已拆到 3436 行, 最新验证仍是 23:24 的 Workbench recommendation split 回归 16 passed + `py_compile` + `git diff --check` pass。目标不得标记 complete, 因 `ready_for_delivery=false` / #6 perfect ladder 仍未达。
-用户停止点 (2026-05-20 23:00): 用户明确要求“不要继续推进了，停止，然后存档”。本次停止前只完成已开始的本地 #8 小切片收尾: `build_workbench_paper_sim_kpi_timeseries` 从 `workbench_read.py` 拆到 `backend/services/workbench_paper_sim_read.py`, 原 `services.workbench_read` import/API 保持兼容；`workbench_read.py` 4655→4543 行。验证: `test_workbench_paper_sim_timeseries.py` + `contract/test_workbench_read.py` 15 passed, `py_compile` pass。此为存档收尾, 不代表 goal 完成。
-本地推进 (2026-05-20 23:03): active goal 续跑后继续 #8 低冲突拆分, 将 `build_workbench_pipelines` 与 pipeline manifest read helpers 从 `workbench_read.py` 拆到 `backend/services/workbench_pipeline_read.py`, 原 `services.workbench_read.build_workbench_pipelines` 兼容 import 保留；`workbench_read.py` 4543→4459 行。验证: `test_pipeline_manifest.py` + `test_workbench_paper_sim_timeseries.py` + `contract/test_workbench_read.py` 19 passed; `py_compile` pass; `git diff --check` pass。交付状态仍 NOT READY, 因 #6 perfect ladder 未解。
-本地推进 (2026-05-20 23:08): #8 Workbench read-model 继续拆分, 将 data-sources 内的 asset health 子模型抽到 `backend/services/workbench_asset_health_read.py`, `workbench_read.py` 4459→4336 行, 原 `build_workbench_data_sources` 输出结构保持兼容。验证: `test_data_asset_governance.py` + `test_data_health_snapshot.py` + `contract/test_workbench_read.py` 34 passed; `py_compile` pass; `git diff --check` pass。交付状态仍 NOT READY。
-本地推进 (2026-05-20 23:14): #8 Workbench read-model 继续拆分, 将 `build_workbench_features` / feature availability / feature catalog 只读逻辑抽到 `backend/services/workbench_feature_read.py`, 原 `services.workbench_read.build_workbench_features` 兼容 import 保留；`workbench_read.py` 4336→3913 行, 首次降到 <4000。验证: `contract/test_workbench_read.py` + `pipeline/test_feature_catalog_current.py` 14 passed; `py_compile` pass; `git diff --check` pass。交付状态仍 NOT READY。
-本地推进 (2026-05-20 23:18): #8 Workbench read-model 继续拆分, 将 `build_workbench_storage` / storage cleanup / architecture cleanup 只读逻辑抽到 `backend/services/workbench_storage_read.py`; `workbench_read.build_workbench_storage` 保留 wrapper 并注入 `load_storage_retention_policy` / `plan_storage_cleanup`, 兼容现有 monkeypatch 测试。`workbench_read.py` 3913→3688 行。验证: `test_data_health_snapshot.py` + `test_storage_retention.py` + `contract/test_workbench_read.py` 34 passed; `py_compile` pass; `git diff --check` pass。交付状态仍 NOT READY。
-本地推进 (2026-05-20 23:24): #8 Workbench read-model 继续拆分, 将 `build_workbench_recommendations` / primary top-k / risk / outcome / source-quality 只读逻辑抽到 `backend/services/workbench_recommendation_read.py`; `workbench_read.build_workbench_recommendations` 保留 wrapper 并注入现有 `build_workbench_data_sources` 以保持 source_quality 口径。`build_workbench_champion` 仍需最新 primary key, 暂从新模块导入 `_latest_recommendation_key` 兼容。`workbench_read.py` 3688→3436 行。验证: `contract/test_workbench_read.py` + frontend contract/render smoke 16 passed; `py_compile` pass; `git diff --check` pass。交付状态仍 NOT READY。
-本地推进 (2026-05-20 23:36): #8 Workbench read-model 继续拆分, 将 `build_workbench_champion` / champion lifecycle summary / deployment blockers / stability context 只读逻辑抽到 `backend/services/workbench_champion_read.py`; `workbench_read.py` 3436→3019 行, 旧 `services.workbench_read.build_workbench_champion` 与 overview champion summary 兼容。验证: `contract/test_workbench_read.py` + frontend contract/render smoke 16 passed; `py_compile` pass; `git diff --check` pass。交付状态仍 NOT READY, 因 #6 perfect ladder 未解。
-本地推进/保存点 (2026-05-20 23:48): #8 Workbench read-model 继续拆分并保存当前进度, 将 `stock_horizon_profile` research read-model 从 `workbench_read.py` 抽到 `backend/services/workbench_stock_horizon_read.py`; `build_workbench_research()` 改为调用 `build_workbench_stock_horizon_profile(conn)`, 旧 `_stock_horizon_profile` / `_stock_horizon_baseline_label` / `_is_baseline_horizon` 重复实现已从 `workbench_read.py` 删除。`workbench_read.py` 3019→2554 行。验证: `contract/test_workbench_read.py` + frontend contract/render smoke 16 passed; `py_compile backend/services/workbench_read.py backend/services/workbench_stock_horizon_read.py` pass; `git diff --check` pass。用户随后要求保存现有进度并退出当前 goal；因 `audit_delivery_readiness.py --json` 仍为 92.83% / `ready_for_delivery=false`, goal 不得标记 complete。
-GCP 恢复授权核验 (2026-05-20 23:53; 2026-05-21 11:37 superseded entrypoint): 用户明确恢复 GCP 使用后, 已按 guard 要求用 `CHUNKYMONKEY_GCP_EXPLICIT_OK=1` 只读查询成本与 VM 状态。结论: 当时在跑的 GCP 任务已完成且 VM 已停; 本地 artifact 已导入 `mart_p0b_lambdamart_v6_predictions` 3,396,073 rows / 674 signal_dates / 2023-07-03→2026-04-14; `mart_p0b_oos_predictions` 对该 model 为 0 rows。成本 OK: projected $4.61 / $10, alert OK。无本地 `gcloud`/retrain/monitor 长进程残留。原 `scripts/run_phase5_extended_retrain.sh` remote `git pull origin main` 路径已于 2026-05-21 11:37 废弃并改成直接 block 的 shim; 后续 GCP retrain 只能走 `scripts/gcp_train_log_replay.sh` 或 `scripts/gcp_stability_retrain.sh` 这类受控 wrapper。
-GCP remote-code safety (2026-05-20 23:58; 2026-05-21 11:37 superseded): 旧 `scripts/run_phase5_extended_retrain.sh` 曾靠 remote branch/dirty preflight 防止跑旧 main, 但该方案仍保留 fragile SSH 和 remote git-pull 风险, 现已不再作为可执行入口。验证更新为: `bash -n scripts/run_phase5_extended_retrain.sh` pass; `CHUNKYMONKEY_GCP_EXPLICIT_OK=1 bash scripts/run_phase5_extended_retrain.sh --dry` expected exit 4 并提示改用 `scripts/gcp_stability_retrain.sh`。
-本地推进 (2026-05-21 00:00): #8 Workbench read-model 继续拆分, 将 research 页面里的 rank-matrix cache view 抽到 `backend/services/workbench_rank_matrix_read.py`, `build_workbench_research()` 改为调用 `build_rank_matrix_cache_view(conn)`; `workbench_read.py` 2554→2453 行, 新模块 173 行。验证: `py_compile backend/services/workbench_read.py backend/services/workbench_rank_matrix_read.py` pass; `contract/test_workbench_read.py` + frontend contract/render smoke 16 passed; `git diff --check` pass。最新 `audit_delivery_readiness.py --json` 仍为 92.83% / `ready_for_delivery=false`, #6 perfect ladder 与 Phase4 proxy gate 仍是交付硬阻塞。
-本地推进 (2026-05-21 00:05): #8 Workbench read-model 继续拆分, 将 data-sources 页里的 processing monitor 与 today signal cache 子视图抽到 `backend/services/workbench_data_source_read.py`; `build_workbench_data_sources()` 改为调用 `build_data_processing_monitor_view(conn)` / `build_today_signal_cache_view(conn)`, 原 `services.workbench_read.build_workbench_data_sources` API 保持兼容。`workbench_read.py` 2453→2349 行, 新模块 184 行。验证: `py_compile backend/services/workbench_read.py backend/services/workbench_data_source_read.py` pass; data asset/data health/workbench contract/frontend smoke 37 passed; `git diff --check` pass。交付状态仍 NOT READY, 主要阻塞仍是 #6 perfect ladder / Phase4 proxy gate。
-本地推进 (2026-05-21 00:09): #8 Workbench read-model 继续拆分, 将 data-sources 页剩余的 TDX server health / F10 source-date audit / TDX F10 DQ 子视图也抽到 `backend/services/workbench_data_source_read.py`; `build_workbench_data_sources()` 改为调用 `build_tdx_server_health_view(conn)` / `build_f10_source_date_audit_view(conn)` / `build_tdx_f10_source_dq_view(conn)`, 原输出结构保持兼容。`workbench_read.py` 2349→2049 行, data-source 子模块 495 行。验证: `py_compile backend/services/workbench_read.py backend/services/workbench_data_source_read.py` pass; data asset/data health/workbench contract/frontend smoke 37 passed; `git diff --check` pass。最新交付审计仍为 92.83% / `ready_for_delivery=false`。
-本地推进 (2026-05-21 00:12): #8 Workbench read-model 继续拆分, 将 research 页里的 industry PIT readiness 子视图抽到 `backend/services/workbench_industry_pit_read.py`; `build_workbench_research()` 改为调用 `build_industry_pit_readiness(conn)`。`workbench_read.py` 2049→1952 行, 新模块 169 行。验证: `py_compile backend/services/workbench_read.py backend/services/workbench_industry_pit_read.py` pass; Workbench contract/frontend smoke 16 passed; `git diff --check` pass。最新交付审计仍为 92.83% / `ready_for_delivery=false`。
-本地推进 (2026-05-21 00:17): #8 Workbench read-model 继续拆分, 将 research 页里的 shareholder-plan 三个子视图抽到 `backend/services/workbench_shareholder_plan_read.py`: `build_shareholder_plan_family_eval_view` / `build_shareholder_plan_initial_feature_panel_view` / `build_shareholder_plan_family_walkforward_view`; `build_workbench_research()` 输出 key 保持不变。`workbench_read.py` 1952→1525 行, 新模块 525 行。验证: `py_compile backend/services/workbench_read.py backend/services/workbench_shareholder_plan_read.py` pass; Workbench contract/frontend smoke 16 passed; `git diff --check` pass。最新交付审计仍为 92.83% / `ready_for_delivery=false`。
-本地推进 (2026-05-21 00:21): #8 Workbench read-model 继续拆分, 将 data-sources 顶层 builder、feature panel validation、source health overview 与 read-model meta 依赖迁到 `backend/services/workbench_data_source_read.py`; `services.workbench_read.build_workbench_data_sources` 现在通过模块 import 保持 API 兼容。`workbench_read.py` 1525→1273 行, data-source 子模块 814 行。验证: `py_compile backend/services/workbench_read.py backend/services/workbench_data_source_read.py` pass; data asset/data health/workbench contract/frontend smoke 37 passed; `git diff --check` pass。最新交付审计仍为 92.83% / `ready_for_delivery=false`。
-本地推进 (2026-05-21 00:27): #8 Workbench read-model 拆分继续收敛, 防止把 god-module 复杂度搬到新文件。将 data-sources 内的 TDX/F10 health/DQ 视图抽到 `backend/services/workbench_tdx_read.py`, 将 processing monitor / today signal cache 抽到 `backend/services/workbench_signal_cache_read.py`; `workbench_data_source_read.py` 从 814→386 行, `workbench_tdx_read.py` 363 行, `workbench_signal_cache_read.py` 184 行, 三者均 <400。验证: `py_compile` pass; data asset/data health/workbench contract/frontend smoke 37 passed; `git diff --check` pass。最新交付审计仍为 92.83% / `ready_for_delivery=false`。
-Challenger broader-OOS probe (2026-05-20 23:06): `run_msaf_ensemble_paper_sim.py` 的 prediction loader 与 Phase4 gate 对齐, 先读 `mart_p0b_oos_predictions`, 若目标 model 无 legacy rows 则 fallback 到 `mart_p0b_lambdamart_v6_predictions`; 默认 live baseline 不变。对本地已拉回的 rejected GCP v6 `lgbm_phase5_gcp_20260520T010718` 跑同一 MSAF runner 只读 probe: 覆盖 2023-07-03→2026-04-14, `n_obs=34/n_skip=0`, CAGR 33.77%, median ann 8.04%, Sharpe 0.875, max_dd -21.96%, hit 58.82%。结论: 更早 OOS 可以把样本数从 22 提到 34, 但 Sharpe/回撤仍不达 perfect ladder, 且该 challenger 既有 Phase4 PBO=0.626 FAIL / decision=hold_reject, 不能 promote。`delivery_readiness.json` 已新增 `challenger_oos_probes`, Workbench 透传。验证: runner/audit/workbench delivery tests 22 passed; `py_compile` pass。
-Source-weight alpha probe (2026-05-20 23:13): `run_msaf_ensemble_paper_sim.py` 新增默认关闭的 `--lambdamart-weight/--sniper-weight/--institution-weight`, 只用于 probe, 保持 regime cash 不变并归一化 source weights。live baseline 默认不变。LM/Sniper sweep: LM60/S40 Sharpe 0.985 / dd -18.45%; LM65/S35 Sharpe 1.149 / dd -24.16%; LM70/S30 Sharpe 1.445 / dd -17.81%; **LM75/S25 Sharpe 1.629 / dd -15.55% / CAGR 68.75% / median ann 28.67%**; LM85/S15 Sharpe 1.211 / dd -16.08%; LM-only Sharpe 1.347 / dd -21.38%。结论: source-weight tune 是目前唯一同时改善收益、Sharpe、回撤的本地 alpha 信号, 但仍只有 n_obs=22。`run_phase4_gate_on_msaf.py` 已支持同一 source override 并对 LM75/S25 跑专属 gate `phase4_gate_msaf_lm75_sniper25_probe_20260520.json`: PBO=0.798 FAIL, DSR p_conf=0.9947 PASS, conservative PASS, IS-OOS proxy FAIL (relative_drop 96.62%) → promote_action=block。因此 LM75/S25 只能作为下一轮更早 OOS/稳健性搜索种子, 不能交付。验证: runner/audit/workbench/gate tests 23 passed; gate runner tests 13 passed; `py_compile` pass。
-V6 source-weight robustness probe (2026-05-20 23:18): 将同一 source-weight sweep 放到更长 OOS 的 `lgbm_phase5_gcp_20260520T010718` 本地 artifact (2023-07-03→2026-04-14, 34 个 20d obs)。结果: LM55/S45 Sharpe 0.979 / dd -19.83%; LM60/S40 Sharpe 1.178 / dd -19.83%; **LM65/S35 Sharpe 1.236 / dd -19.83% / CAGR 51.74% / median ann 31.06%**; LM70/S30 Sharpe 1.213 / dd -19.83% / CAGR 43.74%; LM75/S25 Sharpe 0.985 / dd -23.60%; LM-only Sharpe 0.570。Phase4 专属 gate: LM70/S30 `phase4_gate_msaf_gcp_v6_lm70_sniper30_probe_20260520.json` 全通过 proxy gate (PBO=0.155 PASS, DSR=0.9995 PASS, conservative PASS, IS-OOS proxy PASS) → `warn_only_proxy`; LM65/S35 KPI 略高但 PBO=0.257 FAIL → block。结论: 更长 OOS 上权重信号可复现为中等 Sharpe、低回撤、PBO 可过的候选, 但 Sharpe 仍 <1.5/2.0, 不是交付解；下一步要在 LM65-70/S30-35 附近做稳健搜索或 entry-exit 改造提升 Sharpe, 不能直接 promote。
-V6 LM70/S30 horizon probe (2026-05-20 23:24): 对更稳健的 `lgbm_phase5_gcp_20260520T010718` + LM70/S30 做 holding horizon 5d/10d/20d 对比。20d: n_obs=34 / Sharpe 1.213 / max_dd -19.83% / CAGR 43.74%; 10d: **n_obs=68 / Sharpe 1.789 / max_dd -16.24% / CAGR 91.84% / median ann 34.33%**; 5d: n_obs=135 / Sharpe 1.823 / max_dd -22.90% / CAGR 101.89%。`run_phase4_gate_on_msaf.py` 新增默认 `--primary-horizon` (不改默认 20d), 并对 10d/5d 分别跑主周期 gate: 10d gate `phase4_gate_msaf_gcp_v6_lm70_sniper30_h10_probe_20260520.json` 全过 proxy (PBO=0.155, DSR=0.9995, conservative ann=72.41%, IS-OOS relative_drop=12.14%) → `warn_only_proxy`; 5d gate `phase4_gate_msaf_gcp_v6_lm70_sniper30_h5_probe_20260520.json` 也全过 proxy, 但 max_dd -22.90% 不达原 perfect -20 线。结论: 10d LM70/S30 是目前最接近运营备选的本地 candidate, 达用户接受过的 Sharpe≥1.5 / max_dd>-25 / n_obs≥60, 但仍未达 strict Sharpe≥2.0 且使用 proxy IS-OOS, 不能标交付完成；下一步应做 non-proxy train-log IS-OOS 或针对 10d 的更细 entry-exit/weight search。
-V6 10d fine source-weight boundary (2026-05-20 23:35): 本地只读细扫 `lgbm_phase5_gcp_20260520T010718` + 10d + LM/Sniper source weights。KPI: LM62/S38 Sharpe 1.700 / dd -20.69%; LM66/S34 1.718 / -17.13%; LM68/S32 1.799 / -16.24%; LM69/S31 1.794 / -16.24%; LM72/S28 1.835 / -15.40%; LM73/S27 1.850 / -14.42%; LM74/S26 1.910 / -14.42%; **LM76/S24 2.025 / -14.42% / n_obs=68 / CAGR 103.61%**; LM78/S22 1.960 / -14.42%; LM80/S20 1.898 / -15.51%。Phase4 gate boundary: LM72/S28 全过 proxy gate (PBO=0.124)；LM73/S27 全过 proxy gate (PBO=0.110)；LM74/S26 起 PBO FAIL (0.322)；LM75/S25 PBO FAIL (0.357)；LM76/S24 虽达 strict Sharpe≥2.0 但 PBO FAIL (0.388) → block。结论: 现有本地证据存在收益/稳健性折中；最佳 gate-pass 点约 LM73/S27, 但 Sharpe 仍 <2.0；最佳 Sharpe 点 LM76/S24 被 PBO 拦截。仍不能交付或 promote。
-本地推进 (2026-05-20 23:40): #6 交付证据链补强。`audit_delivery_readiness.py` 现在会把 `msaf_ensemble_*lm*_sniper*_probe_*.json` 与对应 `phase4_gate_msaf_*probe_*.json` 按 model_id + horizon + source weights 关联, 在 `delivery_readiness.json` 输出每个 source-weight probe 的 `phase4_gate`, 并新增 `source_weight_probe_summary`。当前自动摘要: best gate-pass = LM73/S27 10d, Sharpe 1.850 / max_dd -14.42% / n_obs 68 / PBO 0.110 / proxy gate 全过; best strict Sharpe = LM76/S24 10d, Sharpe 2.025 / max_dd -14.42% / n_obs 68, 但 PBO 0.388 FAIL → block。`workbench_delivery_read.py` 已透传该摘要到 GO/NO-GO tab, 避免 UI/运营面只看到 KPI probe 而看不到 gate 结论。验证: audit + workbench delivery + MSAF runner + Phase4 gate 相关 tests 26 passed; `py_compile` pass; `git diff --check` pass。交付状态仍 NOT READY。
-最新推进 (2026-05-20 19:46, policy updated 2026-05-21): GCP 误触保护已固化到统一 `scripts/lib/gcp_guard.sh` + 关键入口 (`gcp/vm_start.sh`, `gcp/vm_stop.sh`, `gcp/cost_tracker.sh`, `gcp/gcs_sync.sh`, `gcp/fetch_kline_via_vm.sh`, setup/submit/sync 脚本, phase5 monitor/auto-chain/extended-retrain, `cm gcp`, `session_snapshot.sh`)；当前为 controlled-use, 但无 `CHUNKYMONKEY_GCP_EXPLICIT_OK=1` 时仍直接 block。`session_status.sh` 已改为优先显示本地 controlled-use idle / TERMINATED, 不再展示旧 cost summary 的 RUNNING 误导。
-本地推进 (2026-05-20 19:49): #8 pricing policy 拆分完成第二段: 新增 `backend/services/pricing_policy_model.py`, `pricing_policy.py` 869→541 行, `pricing_schema.py` 88 行, 保持 `services.pricing_policy` API re-export。验证: pricing/pipeline/materialize follow label 13 tests pass; audit/import/backfill/pricing 20 tests pass; `git diff --check` pass。
-本地推进 (2026-05-20 20:16): #8 pricing policy 拆分完成第三段: `pricing_policy.py` 543→22 行 façade; 新增 `pricing_policy_records.py` 96 行、`pricing_policy_readiness.py` 194 行、`pricing_policy_evidence.py` 310 行, 所有 pricing policy 相关文件均 <400 行, 旧 import/API 兼容。验证: pricing 专项 18 passed; workbench/registry/lambdamart/retrain/audit 宽回归 30 passed; `git diff --check` pass。
-本地推进 (2026-05-20 20:00): #7 历史 KPI timeseries 后端端点补齐: `/api/workbench/paper-sim/kpi-timeseries` 返回 paper_sim KPI 历史、latest、parent_sim_run_id、param_diff、lineage_url, 供 dashboard 直接消费。验证: `backend/tests/test_workbench_paper_sim_timeseries.py` 2 passed；`test_system_routes.py` 需等当前 compare 释放 DuckDB lock 后补跑。
-本地推进 (2026-05-20 20:03): #10/#9 lineage 口径兼容补齐并应用到当前 DB: `mart_data_lineage` 作为 `mart_lineage` 兼容 view 创建, `refresh_all_lineage_state()` upsert 23, 当前 `mart_data_lineage`/`mart_lineage` 均 24 rows。验证: mart_data_lineage compat + workbench timeseries + market canonical/calendar tests 共 21 passed。
-本地 compare 结论 (2026-05-20 20:02): `phase5_gcp_lgbm_phase5_gcp_20260520T010718_baseline_window` 已完成, 但 **v6 不优于 baseline, 不应 promote**: LambdaMART v6 ann 43.67% / Sharpe 1.323 / max_dd -17.16% / 月胜 50.0% / RankIC 0.0293; v4 baseline ann 67.79% / Sharpe 1.660 / max_dd -20.81% / 月胜 71.43% / RankIC 0.0157。v6 回撤更浅、RankIC 更高, 但收益/Sharpe/月胜不足, 不能解锁 #6 perfect ladder。
-本地 gate/decision 结论 (2026-05-20 20:23): 修复 `run_phase4_gate_on_msaf.py` 只读 legacy OOS 表导致 v6 0-row gate 的问题；现在会在 `mart_p0b_oos_predictions` 无模型行时 fallback 到 `mart_p0b_lambdamart_v6_predictions`, 并拒绝写入 empty gate。v6 专属 gate 写入 `data/reports/phase4_gate_lgbm_phase5_gcp_20260520T010718.json`, 不覆盖主 MSAF baseline 的共享 `phase4_gate_result.json`。v6 有效 gate 读取 3,396,073 rows / 34 个 20d obs / 135 个 5d obs；Phase4 verdict=`block`, PBO=0.626>0.2 FAIL, DSR p_conf=0.9995 PASS, conservative PASS, IS-OOS proxy PASS。新增 `record_phase5_decision.py`, 写入 `data/reports/decision_lgbm_phase5_gcp_20260520T010718.json`: `decision=hold_reject`, `production_status=candidate_hold_reject`, next_action=keep current champion。`analysis/workflow_checkpoint` 对 v6 post-retrain 链路已到 `all_done`, 但这是拒绝闭环, 不是交付完成。
-本地 live gate 纠偏 (2026-05-20 20:20): GCP rejected challenger 的 gate 已归档为 `data/reports/phase4_gate_lgbm_phase5_gcp_20260520T010718.json`; 全局 `phase4_gate_result.json` 已重跑 live MSAF `lgbm_20260517_governance_v1_20d`。结果: PBO=0.145 PASS, DSR p_conf=0.9825 PASS, conservative PASS, IS-OOS split-half proxy FAIL → promote_action=block。`audit_delivery_readiness.py` 新增 `phase4_model_id_match` 同源检查, 防止 rejected challenger gate 再污染 live audit。验证: `test_audit_delivery_readiness.py` + `test_run_phase4_gate_on_msaf.py` 10 passed。
-结果管理表 (2026-05-20 20:31): 借鉴 BestChoice 的 dry-run adoption/merge-plan 机制, `mart_strategy_result_registry` 已升级为“结果 + 参数关系 + 数据血缘”管理表并纳入主 `ensure_mart_schema()`, 新库会自动建表；当前已回填 45 rows, 覆盖 `mart_paper_sim_kpi` 43 rows + LambdaMART v6 compare 2 rows。新增显式字段: `parent_result_id`, `baseline_result_id`, `sim_config_hash`, `param_diff_json`, `params_json`, `lineage_url`, `source_artifact_uri`。当前覆盖: config hash 41/45, parent link 40/45, param_diff 18/45, params_json 45/45, lineage_url 6/45, baseline link 2/45。`run_paper_sim_v2.py` 现在会在 walk-forward KPI/cache 写完后自动刷新 registry；`run_paper_sim_lambdamart_v6_compare.py` 会在 compare rows 写完后自动刷新 registry；回填脚本已兼容原生 DuckDB tuple rows 和 wrapped dict rows。GCP challenger 已结构化登记为 `decision=hold_reject` / `production_status=challenger_hold_reject`, 原因: monthly_win_rate 0.5000 < 0.55; ann_ret 0.4367 < baseline 0.6779; sharpe 1.3234 < baseline 1.6600。baseline 登记为 `reference`。该表只记录 candidate/reference/hold_reject 与证据, 不自动覆盖 champion。审计记录: `analysis/strategy_result_registry_lineage_20260520.md`。
-Feature lineage (2026-05-20 20:33): 已对当前 champion `baseline60_driftsafe_qfq_factor_vwap_model_selection_run_20260507_055705` 执行 `build_model_feature_lineage.py`, 生产库 `mart_model_feature_lineage` 从 0 rows 补到 27 rows, missing=0, status=passed。v6 challenger 不在 `mart_multidim_model`, 因此不通过 feature lineage 脚本生成, 继续作为 rejected compare/registry challenger 管理。
-Institution source 结论 (2026-05-20 20:14): `mart_institution_score_daily` 已存在且 runner 支持, audit 新增 `sources_available.institution=true` 与 opt-in eval 证据；但 `--with-institution` 隔离评估 median -9.76% / CAGR -4.32% / max_dd -39.08% / Sharpe 0.091 / hit 36.36%, 因此 `source_evaluations.institution.production_decision=hold_reject`, 当前生产仍只启用 `LM + sniper`。
-前端 dashboard (2026-05-20 20:08): workbench 新增 `KPI` tab, 接 `/api/workbench/paper-sim/kpi-timeseries?limit=80`, 展示最新 paper_sim KPI、ann/sharpe/max_dd sparkline、历史 KPI 表、parent_sim_run_id、param_diff、lineage_url；`CM_ASSET_VERSION=3.7.1` 防缓存。验证: `node --check assets/js/workbench-view.js`, workbench/system/openapi tests 9 passed, API smoke 返回最新 3 runs, 相关回归 48 tests passed。补充复核 (20:09): `PYTHONPATH=backend python -m pytest -q backend/tests/test_workbench_paper_sim_timeseries.py backend/tests/test_system_routes.py backend/tests/contract/test_workbench_frontend_contract.py backend/tests/contract/test_workbench_frontend_render_smoke.py` = 10 passed; 本地 uvicorn HTTP 实测 endpoint 返回真实 KPI rows, OpenAPI 已注册。Browser 插件本轮缺少 Node REPL 控制工具, 截图级视觉验收待补。`audit_delivery_readiness.py` 仍为 93% / NOT READY (`ready_for_delivery=false`)。
-GO/NO-GO dashboard (2026-05-20 20:29): workbench 新增 `GO/NO-GO` tab 与 `/api/workbench/delivery-readiness`, 汇总 `delivery_readiness.json`、主 MSAF `phase4_gate_result.json`、v6 专属 gate/decision、institution opt-in reject，直接展示 `NOT_READY`、live #6、OOS obs/Sharpe/max_dd、主 gate、被拒 challenger、source wiring 和 remaining gaps。`CM_ASSET_VERSION=3.7.2` 防缓存。验证: API smoke 200 (`NOT_READY`, avg=92.83, live n_obs=22, challenger=hold_reject, institution=hold_reject); workbench delivery/timeseries/system/frontend contract/render smoke 11 passed; `node --check assets/js/workbench-view.js`; `git diff --check` pass。
-Horizon ladder probe (2026-05-20 22:38): 对 live MSAF `lgbm_20260517_governance_v1_20d` 做 5d/10d 只读 probe, 不覆盖主 `msaf_ensemble_run.json`。结论: 5d n_obs=87 但 Sharpe=0.872 / max_dd=-34.61%; 10d n_obs=44 但 Sharpe=0.923 / max_dd=-29.70%; 20d 主口径 n_obs=22 / Sharpe=0.809 / max_dd=-24.28%。因此 #6 不是简单改短 horizon 解决, 下一步应走 vol-aware sizing / regime weights / 更早 OOS 扩展。`audit_delivery_readiness.py` 已把 `horizon_ladder` 写入 `delivery_readiness.json`, Workbench `/api/workbench/delivery-readiness` 透传该证据。验证: audit/workbench delivery tests 10 passed; `py_compile` pass; `git diff --check` pass。
-Risk overlay probe (2026-05-20 22:43): `run_msaf_ensemble_paper_sim.py` 新增默认关闭的 `--bull-cash-pct/--neutral-cash-pct/--bear-cash-pct`, 只提高对应 regime 最低现金比例, 不改变选股排名或主生产输出。只读 probe 结论: neutral 20%/40% cash 将 max_dd 从 -24.28% 改到 -22.25%, 但 Sharpe 降到 0.795/0.761; bull 15% + neutral 30% + bear 80% cash 将 max_dd 改到 **-18.91%** (达 perfect ladder 回撤线), 但 Sharpe 仍 **0.797** 且 CAGR 从 34.24% 降到 26.30%。说明单纯 cash de-risk 可解回撤但不能解 Sharpe/n_obs, 下一步应做 volatility targeting / alpha quality / 更早 OOS, 而不是只降仓。`audit_delivery_readiness.py` 已把 `risk_overlay_probes` 写入 `delivery_readiness.json`, Workbench 透传。验证: `test_run_msaf_ensemble_paper_sim.py` + audit/workbench delivery tests 15 passed; `py_compile` pass。
-L4 warm-start (2026-05-20 22:40): #10 从 spec-only 推进到可执行 opt-in。`run_p0b_lambdamart_v6.py` 新增 `load_warm_start_params()` / `enqueue_warm_start_trial()` 并支持 `--warm-start-checkpoint`; `retrain_lambdamart_v6.py` 同步支持该参数, 会把历史 best checkpoint 的 `best_params` 作为 Optuna WAITING trial 入队, 不跳过治理 trial budget, 不自动 promote。`cm cache` / `incremental_cache_status.py` 现在展示 L4 最新 checkpoint: `data/reports/optuna/lgbm_phase5_gcp_20260520T010718.best.json`, best_trial=36, best_value=0.42370918210702596, param_count=10, 状态 `DEPLOYED opt-in; not auto-promote`。验证: `test_retrain_lambdamart_v6.py` 7 passed; lambdamart/cache/registry 相关 20 passed; `py_compile` pass; `git diff --check` pass。
-Codex log guard (2026-05-20 22:56, updated 23:28): `~/.codex/log/codex-tui.log` 复涨到 5.1G, tail 证据显示为 GB 级单行 tracing span, 所以按行保留不可靠。已归档末尾 50MiB 到 `~/.codex/log/archive/codex-tui.tail.20260520_224552.log`, 并截断 live log；后续多次因 live log >100MiB 手动 rotate。新增 `scripts/rotate_codex_tui_log.sh` 作为 repo template, 但 macOS cron 执行 Documents 路径出现 `Operation not permitted`, 因此实际 runtime 已安装到 `/Users/dp/.codex/bin/rotate_codex_tui_log.sh`。因 5 分钟内仍可涨过 100MiB, crontab 已改为每 1 分钟直接调用 runtime 路径。超过 100MiB 时按字节归档末尾 50MiB、截断 live log、保留最近 6 个 gz archive；`configs/cron/crontab.txt` 已同步为 runtime 路径。验证: repo/runtime `bash -n` pass, 手动 runtime rotate pass。
-MSAF vol-target sweep (2026-05-20 22:49): `--target-ann-vol` prior-only 机制已跑 12%/15% 隔离 probe, 不覆盖主 `msaf_ensemble_run.json`。12%/15% target ann vol 将 max_dd 压到 -16.06%/-18.45%, 但 Sharpe 降到 0.460/0.483, CAGR 降到 9.88%/10.99%, avg_exposure=0.621/0.667。结论: vol targeting 与 cash overlay 一样只能降风险, 不能提高 Sharpe; #6 下一步必须提高 alpha quality / score filtering / 扩 OOS, 而不是继续缩风险。`delivery_readiness.json` 已纳入 `voltarget12/15` probe。验证: MSAF runner + audit/workbench delivery tests 15 passed; `py_compile` pass。
-Score-floor alpha quality probe (2026-05-20 22:53): `run_msaf_ensemble_paper_sim.py` 新增默认关闭的 `--min-top-score`, 低于阈值的 top picks 不补仓, 未用仓位转现金, 不改变主生产输出。隔离 probe: floor=0.45 得 Sharpe=0.569 / max_dd=-25.55% / n_obs=19; floor=0.50 得 Sharpe=1.060 / max_dd=-7.42% / CAGR=34.33% 但 n_obs=11; floor=0.55 得 Sharpe=7.04 / hit=100% 但 n_obs=3, 明显小样本不可用。结论: score conviction 存在有用信号, 但当前 OOS 覆盖太少, 需要更早 OOS 或更平滑的 score filtering 才能转成 #6 提升。`delivery_readiness.json` 已把 score-floor probe 标记为 alpha-quality signal needing broader OOS。验证: runner/audit/workbench delivery tests 17 passed; `py_compile` pass。
-Score-exposure smoothing probe (2026-05-20 22:58): `run_msaf_ensemble_paper_sim.py` 新增默认关闭的 `--score-exposure-floor/--score-exposure-ceiling/--score-min-exposure`, 按当日 top-K 平均 ensemble score 平滑缩 equity exposure, 不丢 picks, 因此保持 `n_obs=22/n_skip=0`。隔离 probe: 0.45→0.60 得 CAGR 20.62% / median ann 14.08% / Sharpe 0.917 / max_dd -9.35% / avg_score_exposure 0.404; 0.50→0.65 得 CAGR 11.38% / median ann 9.68% / Sharpe 0.985 / max_dd -4.45% / avg_score_exposure 0.241。结论: 平滑 conviction sizing 可修回撤且不打掉样本, 但明显牺牲收益, Sharpe 仍 <1.0, 不能解 perfect ladder。`delivery_readiness.json` 已纳入 score-exposure probe。验证: runner/audit/workbench delivery tests 20 passed; `py_compile` pass。
-Score diagnostics (2026-05-20 22:59): 对 live MSAF 22 个 20d 非重叠观测按 top-K avg/min/top/spread score 分桶检查, avg_score/port_ret corr=0.093, min_score corr=0.086, top_score corr=0.213, spread corr=0.199；最高 avg_score 桶 mean_ret=10.98% 但 n=7 且包含单个 46.34% 大赢家, 中间桶 mean_ret=-2.95%。结论: score conviction 有弱信号, 但当前样本太少且非单调, 继续手调阈值/分桶很可能过拟合；需要更早 OOS 或真实新 alpha/entry-exit 改造。
-历史 GCP checkpoint 事实: best_trial=#36, best_value=0.423709, n_windows=34, materialized_rows=3,396,073, rank_ic=0.0164, ndcg5=0.4927, top5_spread=0.0751, top5_turnover=5.57; updated_at=2026-05-20T08:57:45Z。Optuna resume budget bug 已修复并测试通过；该轮物化使用 checkpoint best, 不追加 trial。当前政策不是禁用 GCP, 而是 controlled-use: 新云端计算只能走受控 wrapper + 明确成本/输入/输出/stop 方案 + `CHUNKYMONKEY_GCP_EXPLICIT_OK=1`。
-当前 L3 事实: fact_feature_panel 4,099,596 rows / 5,201 stocks / 2023-01-03→2026-05-19; readonly incremental plan 已变为 noop (`feature panel already reaches canonical kline max date and source snapshot is unchanged`).
-
-**中断恢复真实状态 (2026-05-20 19:15)**:
-- `SESSION_HANDOFF.md` / `session_snapshot.json` 已手动刷新；`scripts/cm_resume.sh` 仍是主恢复入口。
-- cron 安装状态显示 OK, 但 `/tmp/session_snapshot.log` 和 `/tmp/workflow_checkpoint.log` 实际报 `Operation not permitted`，说明 macOS 权限阻止 cron 从 Documents 路径执行脚本。不要误信 cron freshness；恢复时必须先手动跑 `bash scripts/cm_resume.sh` 或 `bash scripts/session_snapshot.sh`。
-- launchd `com.chunkymonkey.phase5-monitor` 已卸载；cron 中 GCP cost/probe 条目已移除。`session_snapshot.sh` 默认 no-gcp。
-
-**2026-05-20 中午 user-接受 explicit threshold 调整**:
-- user explicit: "跌到 70-80% 收益率也很高了, 回撤不大, 作为备选吧, 确定不是 leakage 没有未来函数就行"
-- user-accepted Pareto threshold (vs 原硬门槛):
-  - max_dd ≥-25% (vs 原 -20%) — user 接受 minhold5 -17.4 ≤ minhold15 -20.4 等
-  - anti_churn turnover ≤50x (vs 原 ≤8x) — user 接受 实盘 tx_cost 30-50pp drag 实际 net 70-80% 仍 strong
-  - sharpe ≥ 1.5 (vs 原 ≥ 2.0 perfect, minhold15 已达 2.12)
-- 0 leakage 已 PIT audit 验证 (commit a0a17a0c, code-level evidence-based, 0 未来函数)
-- minhold=15 锁为 prod-candidate alpha 增强, 实盘 honest expectation ann ~70-80% / dd -20% / sharpe 2.12
-- criteria #6 70 → 78% (user-接受 threshold 内 minhold15 Pareto 4 项过 3.5)
-- 综合 (10 criteria 均值) 当前滚动估计约 ~92%; 但仍未到运营条件, 因 #6 perfect ladder 未解: n_obs 22<30/60, Sharpe 0.81<2.0, max_dd -24.28% worse than -20%。institution source 已完成评估但 hold_reject。GCP 不是后台默认路径, 但可按 controlled-use 用于当前 stability retrain、长 replay 与后续 BestChoice 综合寻优。
-
-剩余提升路径:
-- v6 本地 post-retrain/compare/gate/decision 已完成且 hold_reject；不要继续沿 v6 promote 路径。cash overlay 与 volatility target 都证明只能降回撤、不能提高 Sharpe；下一步应转向 alpha quality / score filtering / entry-exit interaction / 更早 OOS 扩展, 而不是继续简单 de-risk。
-- #10 L4 warm-start + mart lineage coverage: 当前 L3 incremental 已完成; L4 warm-start 已有本地 opt-in 机制和 checkpoint 证据, 下一段是 mart lineage denominator coverage 与 future exact cache adoption。
-- #8 模块化: market_db DDL/read/schema-init 已拆, pricing_policy 已拆为 façade/model/schema/records/readiness/evidence 且单文件 <400, workbench_read 已降为 façade; 下一步继续拆 market_db write helpers、frontend app.js legacy complexity 与剩余 N+1。
-- #7 人机交互: CLI + workbench KPI timeseries tab + GO/NO-GO delivery board 已可用；下一步只剩截图级浏览器验收与更细运营解释文案。
-
-**2026-05-20 上午 minhold15 重大 alpha 突破** (commit bde0fbc1):
-- ann **+108.2%** (vs baseline +67.79%) — 反向飙升, 不是 leakage (sharpe<5/win<95%/ann<100% 全 OK, alpha mechanism)
-- sharpe **2.12** — **达 perfect ladder ≥2.0** [PASS] (production-grade alpha 真实可达)
-- max_dd -20.4% (回 baseline 水平)
-- per-pos win 49→66% (+17pp), avg_pnl_pct/仓 2.23→5.43% (+143%)
-- 机制: 强制持 ≥15d 过滤 stop_hit 假回调 (stop 18→9 减半), trailing/hp_expired 长窗实现 alpha
-- **但 turnover 49.57x 仍 FAIL** (min_holding 不是 anti_churn right tool, turnover 公式 closed -18% 但 buy_cost 不变)
-- Agent push back ([[feedback_codex_critical_no_compromise]] Rule 12): 拒用 ann/sharpe 上涨掩盖 turnover FAIL, criteria #6 维持 70% 不升 80%
-- minhold=15 保留为 prod-candidate alpha 增强
-
-**2026-05-20 上午重大进展**:
-- [PASS] champion lgbm_phase5_session_20260518T160747 paper_sim baseline 跑通: ann +67.79% / dd -20.81% (用户接受) / sharpe 1.66 / 月胜 71% / 超额 HS300 +93.4% / IR 1.54 / 0 leakage 警报
-- [WARN] Pareto verdict 实际 NO-GO (3 类阻断 2 hard FAIL):
-  - user_criteria max_dd -20.81%: 用户接受 软门槛
-  - **anti_churn**: 换手 54.88x (≤8 阈值), 真实 tx_cost 估吃 30-50pp ann → 实盘 +17-37% net
-  - **robustness**: rolling_ir_p25 -1.22 (>0 阈值), 25% 时段亏
-- [PASS] lineage_url e2e 验证通 (mart_paper_sim_kpi 含 file:///.../lineage/<sim_run_id>.md)
-- [PASS] db.py 拆 Phase 1 (2478→266B façade), workflow_checkpoint, 复杂度审计 全 commit
-- [PASS] launchd probe + PATH fix, FDA-safe 主动 macos notification on VM 状态变化
-- [LOCAL ARTIFACT] retrain v2 `lgbm_phase5_gcp_20260520T010718` 已停止追加 Optuna trial; checkpoint best trial #36 已物化并拉回本地 subset artifact: `data/phase5_exports/lgbm_phase5_gcp_20260520T010718/`, LambdaMART predictions 已导入本地 (`mart_p0b_lambdamart_v6_predictions` 3,396,073 rows / 674 signal_dates / 2023-07-03→2026-04-14; `mart_p0b_oos_predictions` 0 rows)。本地 compare 已完成, 结论是不 promote v6, 并已写入 `mart_strategy_result_registry`。
-
-**距运营条件 (≥90% + retrain holdout 验证 + 无阻塞项) gap**: 当前 6 项 audit 92.83% 但 NOT READY, 10 criteria 估计约 92%; 仍有不可交付 hard gap。当前云端门是 active stability retrain 是否能产出可复用 COMPLETE checkpoint；本地门是 institution source hold/reject 后的替代 alpha、#10 lineage coverage/future cache adoption、以及 #6 OOS n_obs/sharpe/max_dd 的真实改善。
-
-> 用户终极目标 (不变):
-> - 跨年中位 ann_ret 25-35% (25-35% 是最低目标线, 不是封顶)
-> - 单年 ann_ret >= 0% (不接受任何年负收益)
-> - max_dd >= -20%, 月胜率 >= 55%
-> - 100 万 x 5 仓 long-only T+1 retail
-> - 只做股票 (不能 ETF / 期货 / 期权 / 债券 / 商品)
-> 本 ledger 是 MSAF master plan, 实时滚动. PROJECT_INDEX.md 是地图, goal.md 是任务流水.
-
-## 重要原则 (用户 2026-05-19 push)
-- 阶段性完成 != goal.md 完成; 随时调整直到可运营
-- 多任务并发优先
-- 并发 agents 使用规则已固化: 详见 `docs/agent_parallel_execution_policy.md`。可并发范围限于文档阅读、DuckDB 只读盘点、代码链路审计、测试/验证；禁止并发写同一文件、写同一 DuckDB、启动/停止同一 GCP job、查询同一 GCP/GCS/billing/cost/monitor probe、backfill 同一结果表。主控负责最终合并、更新 `goal.md` 并避免覆盖他人修改。
-- GCP controlled-use: 可用于大计算/寻优/长 replay/BestChoice 综合寻优, 但启动前要说明 scope、wall time/成本、输入快照、输出路径、artifact 保存和 stop/rollback。
-- 所有 GCP 命令必须先设置 `CHUNKYMONKEY_GCP_EXPLICIT_OK=1`; 否则启动/查询入口应直接失败。
-
-## 2026-05-19 进展事件
-- 18:09 chain GCP launch fail (167s VM stop, GCS path bug fix 已 commit b3b870a6)
-- 18:13 local Mac lgbm_phase5_local_20260519T181324 trial 6/10 score 0.414 (21:58 Mac 重启 kill)
-- 22:30 manual GCP launch lgbm_phase5_gcp_20260519T143043 (v1) 跑 3h32min → 02:02 北京 spot preempted (11 trials done, best trial 9 score 0.443 RankIC 0.0148, predictions 没 materialize)
-- chain step 5 GCS path + venv + rc shutdown fix 已 commit
-- codegraph audit infra C4 hook + C5 N+1 audit + C6 SKILL 进生产 (~/.claude/skills/codegraph-architecture-audit/)
-- paper_sim + KPI compare 8 步 plan 已写入 docs/
-- retrain stall Fix 1 实施 (15 min → 30 sec, 30-60x 加速, commit 19f2553e + tests pass)
-- Stop hook session_rule_audit deployed (~/.claude/hooks/)
-- 本 session 5 Codex + 2 Claude subagent 并发实战
-
-## 2026-05-20 进展事件
-- 凌晨 GCP reliability F1+F2 实施 (commit 3bbf7667): Optuna SQLite storage + per-trial atomic checkpoint, 防 preempt 浪费
-- 01:07 GCP retrain v2 launch (lgbm_phase5_gcp_20260520T010718) with F1+F2 保护 — 即使 spot preempt 可 resume
-- 上午 session 无缝衔接 framework (commit edc2bce5): scripts/session_snapshot.sh + SESSION_HANDOFF.md + SessionStart hook
-- F4 cron-based monitor + F5 cost_tracker IDLE_GRACE 30min (commit 320ffdbb): Mac sleep / SSH 断 proof
-- monitor.log cap 加 (用户 push 防累积)
-- criteria #7 UI/UX 30→50% (commit d81975e6): gen_report.py markdown renderer + notification framework 5 drivers (email/macos/slack)
-- criteria #9 数据可回溯 50→75→85% (commit d81975e6 + 26b8ff31): mart_paper_sim_kpi.lineage_url + trace_lineage --output-file 集成 + 新 --param-history mode (parent chain + param_diff timeline) + 3 cols schema migration apply (sim_config_hash / parent_sim_run_id / param_diff_json)
-- workflow_checkpoint.json/md in-flight (Codex aca4146c, 用户提议 business-level checkpoint)
-- P0-A db.py 拆 Phase 1 in-flight (Codex ac005569, façade re-export 保 backward compat)
-- 17:40 Codex continuation: `cm cache` 拆出 `backend/scripts/incremental_cache_status.py`, 以只读方式汇总 L1/L2/L3/L4 状态和 L3 `plan_incremental_window()`；修正旧输出 “L3 SPEC” 的误导。随后实跑 L3 incremental: `codex_l3_incremental_20260520_1740`, 29.108s, validation PASS, manifest gate PASS, panel 追到 2026-05-19。验证: `cm cache` noop, 目标 pytest 18 passed。
-- 17:44 GCP checkpoint 拉回本地: `lgbm_phase5_gcp_20260520T010718.best.json/.db`; best trial #36 value=0.423709。VM 仍 RUNNING, 远端 python active, 不能 stop。
-- 17:48 #8 market_db 拆分 Phase 2-A: 新增 `backend/services/market_schema.py`, 将 tdxhub DDL + canonical qfq view DDL 从 `market_db.py` 移出并 re-export backward compat；`market_db.py` 728→619 行。验证: market_db/canonical 9 tests, kline calendar/contract 13 tests, feature_panel+duckdb contract 18 tests 全 pass。
-- 18:53 GCP coordination update: 修复共享 `data/reports/phase5_chain/status.json` 陈旧状态为 `gcp_checkpoint_materializing`; 本地重复 SSH sleep 监控已清理。当前远端 PID 18838 仍在跑 `--use-checkpoint-best`, 进度 last seen 28/34, 未启动新 GCP batch。
-- 19:00 #10 cache/lineage backfill: 新增 `backend/scripts/backfill_paper_sim_cache_metadata.py`, 对 41 条 legacy `mart_paper_sim_kpi` 生成 namespaced `legacy_snapshot_v1:*` hash, parent chain 40/41, `cm cache` 从 0% hash coverage 升至 100%。`param_impact_curve.py --sim-run-id champion_maxpos10...` 已生成 `data/reports/lineage/param_impact_curve_latest.md`。
-- 19:26 historical: 用户当时要求固化更保守的 no-cloud 口径: 已强制 stop VM, 移除本机 cron GCP 条目, 卸载 phase5 launchd monitor, 并给 GCP 启动/查询/monitor 入口加 `CHUNKYMONKEY_GCP_EXPLICIT_OK=1` 硬门槛。该口径已在 2026-05-21 被 controlled-use 规则取代, 但 safety latch 保留。
-- 本 session 31+ commits push main, 7+ Codex + 3 Claude subagent 并发 (CLAUDE.md §11.5 实战)
-
-## 项目交付标准 (用户 2026-05-17 定义, 不达 = 不交付)
-| # | 类别 | 交付标准 | 当前状态 |
-|---|---|---|---|
-| 1 | 数据管理 | sync gap 自动 alert + watermark 实填 + 历史 leakage 清干净 + PIT 严格 | **80%** (5/5 stale source 实测修: (a) fact_lhb_event ETL 增量 (raw 2026-05-15 → fact 2026-05-15), (b) sync_tdx_industry 拉新数据 (industry_sw + stock_blocks 2026-05-07→2026-05-18), (c) SLA quarterly override 季报数据 (financial_gpcw_8q + holders_top10_float 100d 阈值). 实测 update_watermark_sla 0 alert. PIT 严格在 panel build 已固化) |
-| 2 | 策略模型管理 | MSAF 3 类策略 (纯量化/狙击/机构跟随) + ensemble + regime gate 全上线 + paper_sim KPI 达标 | **80%** (Phase 1 全 / Phase 2 全 (3 类 alpha) / Phase 3.1 regime 8/8 / Phase 3.2 ensemble 8/8 / Phase 3.3 ensemble paper_sim runner + KPI compute: **median ann +34.88% 跨过 25% 最低目标 (越高越好, 不封顶)**; CAGR +69.15% / trimmed +51.28% (n=22 monthly obs 实测 a704770a), max_dd -21.38%, sharpe 1.347, hit 63.64%. 待 Phase 3.4 接 sniper/institution 真 source + Phase 4 holdout 扩 OOS ≥ 30 obs) |
-| 3 | backtester gate | PBO/DSR/conservative/IS-OOS 4 gate 全部 enforce + 历史反例阻断验证 | **85%** (4 gate + 16 tests 含 +312% phantom 阻断 29c01119 / promote_champion wire / daily_update Step 6 import / Phase 4 gate runner on MSAF 实测 a704770a verdict=warn_only (Conservative PASS / IS-OOS FAIL / DSR PBO 缺数据). 待 Phase 5 PBO multi-trial retrain + OOS 扩 ≥ 30 真验 promote) |
-| 4 | **全自动化 daily update** | 用户每天跑数据更新 = 1 click or zero click, 不需要大模型维护 | **8 步真调用 85%** (Step 1 SLA+preflight / Step 2 local/GCP sync / Step 3 增量 rebuild / Step 4 Monday retrain / Step 5 regime + paper_sim / **Step 6 phase4 gate 真调 (verdict=warn_only 当前 OOS<30)** / **Step 7 verdict-gated promote** / Step 8 report 完整) |
-| 5 | GCP 成本控制 | 月 ≤ $10 credit, 每 batch 完 stop VM | rule 已固化 (CLAUDE.md §10.0.2), 待 sustained |
-| 6 | 实盘 GO/NO-GO | 跨 5 年回测 中位 ≥ 25%, 单年 ≥ 0%, Sharpe ≥ 2.0, PBO ≤ 0.2 | **5%** (1.75 年 22 monthly obs 实测 median +34.88% 在目标; 待扩 OOS ≥ 30 + PBO multi-trial + sniper/institution wire 真验) |
-
-### #7 UI/UX + 人机交互优化 [85%]
-范围: daily KPI / paper_sim run / backtester gate / sniper/institution alpha / regime state 数据的用户消费路径
-当前进度:
-- gen_report.py markdown renderer (commit d81975e6)
-- notification framework 5 drivers (email/macos/slack/webhook/log) (commit 61c81eaa)
-- cm.sh CLI deploy (commit cccf707e): today/holdings/kpi/sync/gcp/retrain/promote/resume/status/cache/install/help
-- cm cache (commit bf4b4937): paper_sim 4-layer incremental status
-- cm cache v2 (2026-05-20 17:40): 改读 `incremental_cache_status.py`, 展示 paper_sim cache schema coverage、L2 model reuse、L3 panel range/latest validation/latest manifest/readonly incremental plan。CLI 不再把已落地 L3 显示为 SPEC。
-- SESSION_HANDOFF.md auto cron 5min (commit edc2bce5)
-- workbench `KPI` tab (2026-05-20 20:07): latest KPI cards + sparkline + historical KPI/param lineage table, 接 `/api/workbench/paper-sim/kpi-timeseries`
-- workbench `GO/NO-GO` tab (2026-05-20 20:29): delivery readiness / live gate / rejected challenger / institution wiring / remaining gaps, 接 `/api/workbench/delivery-readiness`
-当前缺口: 截图级浏览器视觉验收尚缺; 当前 KPI tab + GO/NO-GO tab 已覆盖历史 KPI timeseries 与运营交付状态消费路径
-参考: backend/main.py FastAPI router list
-目标: 每个核心模块有对应的用户消费入口 (CLI 或 web), 1 click 可查当日状态. CLI 部分已完整; web KPI timeseries 与 GO/NO-GO 前后端已补。
-
-### #8 模块化 / 可复用 / 可扩展 [94%]
-范围: backend/services/ god-module 拆分 (db.py 2478 行 / market_db.py 728 行 / pricing_policy.py 869 行)
-当前进度: codegraph audit infra 已进生产 (C4 hook + C5 N+1 + C6 SKILL); `backend/services/db.py` 已拆成 6 行 façade, backward compat 保留；`market_db.py` DDL/read/schema-init 已拆到 `market_schema.py` / `market_read.py`, 728→392 行, 旧常量/import 兼容；`pricing_policy.py` 已拆为 22 行 façade, 逻辑分到 `pricing_policy_model.py` 258 / `pricing_schema.py` 88 / `pricing_policy_records.py` 96 / `pricing_policy_readiness.py` 194 / `pricing_policy_evidence.py` 310, 全部 <400 行且旧 API 兼容。`workbench_read.py` 已拆出 paper-sim KPI timeseries、pipeline read-model、asset health read-model、features read-model、storage read-model、recommendation read-model、champion read-model、stock horizon research read-model slices 等, 当前 29 行 façade, 旧 API 兼容。剩余: `market_db.py` 392 行刚低于 400, 仍可继续拆 write helpers 以降低耦合；N+1 / frontend `assets/js/app.js` legacy complexity 仍需分批处理。
-目标: 单文件 <= 400 行 / 模块边界清晰 / 无循环依赖 / N+1 query 归零
-
-### #9 数据可回溯 / 可解读 [94%]
-范围: lineage 链 raw -> fact -> mart -> predictions -> KPI; 每行 prediction 能回溯 panel cells + feature_version + model_id + 时点 PIT cutoff + paper_sim parameter-impact lineage (parent chain + param diff)
-当前进度:
-- mart_paper_sim_kpi.lineage_url e2e 串通 (commit d81975e6 + a617b0b6)
-- trace_lineage.py 4 模式: --sim-run-id / --model-id / --panel-version / --asset-name (commit aeb8ea53)
-- trace_lineage.py 新 --param-history mode (commit 26b8ff31): 从 sim_run_id 沿 parent_sim_run_id 链 walk + render Chain table + Param Diff Timeline
-- 3 cols schema migration apply: sim_config_hash / parent_sim_run_id / param_diff_json (mart_paper_sim_kpi)
-- paper_sim_overview.py auto-render 41 runs (docs/paper_sim_overview_20260520.md)
-- `mart_data_lineage` 兼容 view 已补, 指向现有 `mart_lineage` registry, 解决审计口径 table missing 问题
-参考: data_integrity_audit skill
-目标: 任意 prediction row 5 步内可追溯到原始数据 + 模型版本 + PIT 截止时点 + 参数变化轨迹; lineage coverage 阶段目标从 90% bump 到 95%
-剩余 gap 13%: mart lineage registry 仍需刷新覆盖到 95%; 新 prediction row 到 panel cell 级别 5 步 trace 仍需补强; 实盘 1 month 后 ≥ 5 runs 形成 chain 验证
-
-### #10 Incremental Management / Data Lineage [84%]
-范围: 4-layer cache + incremental rebuild + retrain artifact reuse + paper_sim parameter-impact lineage
-当前进度: P0 paper_sim sim_config_hash schema/cache helper/runner flag/overview spec implemented (a2281696); cm impact + param_impact_curve.py P1 工具 (commit a27d413b, KPI timeline + Δ impact table, 实测 4 runs champion variant evolution); Layer 2 implicit (predictions via model_id); Layer 3 panel incremental builder 已有 CLI+测试+validation/manifest 记录, `cm cache` v2 已可只读展示实际 plan；2026-05-20 已实跑 L3 incremental 到 2026-05-19 且再次 plan=noop；`mart_data_lineage` view 已与 `mart_lineage` registry 兼容；`mart_strategy_result_registry` 已显式记录结果 parent/baseline/config_hash/param_diff/lineage_url, 用于后续模型调优避免重复验证；Layer 4 warm-start 已从 spec-only 推进到 opt-in 可执行: `--warm-start-checkpoint` 读取历史 `.best.json` 并把 `best_params` enqueue 为 Optuna WAITING trial, `cm cache` 展示最新 checkpoint/best_trial/best_value。
-目标:
-- paper_sim cache hit rate >= 80% for repeated configs
-- All mart tables have lineage entries in mart_data_lineage
-- param_impact_curve.py produces non-empty output
-- Schema migration idempotent (can run N times safely)
-- L3 incremental dry-run/plan 能在无写锁情况下 1-click 展示，并在有写窗口时执行 `build_feature_panel_duck.py --mode incremental` 写入 validation + manifest
-
-Tracked metric:
-| Metric | Source | Current | Target |
-|---|---|---:|---:|
-| paper_sim_cache_hit_rate | mart_paper_sim_kpi.sim_config_hash repeated-config audit | 41/43 KPI rows = 95.3%; registry 41/45 = 91.1% | >= 80% repeated configs |
-| mart_data_lineage_coverage | mart tables with latest lineage row / all mart tables | compatibility view applied; registry refreshed to 24 rows; denominator coverage still needs audit | 95% |
-| param_impact_curve_rows | `param_impact_curve.py --variant champion` | 4 rows | > 0 |
-| l3_panel_incremental_plan | `cm cache` / `plan_incremental_window()` | noop after run; panel max=2026-05-19 | visible + executable |
-| l4_retrain_warm_start | `cm cache` / `--warm-start-checkpoint` | deployed opt-in; latest checkpoint best_trial=36 best_value=0.423709 param_count=10 | reusable best_params before next retrain |
-| strategy_result_registry_lineage | `mart_strategy_result_registry` parent/baseline/params evidence | 45 rows; params_json 45/45; parent links 40; baseline links 2; paper_sim/compare writers auto-refresh registry | 100% new result rows registered before promotion |
-
-**目前距离交付** (2026-05-20 22:40 audit ledger; 原 6 criteria 均值 **92.83%**, 加入 #7/#8/#9/#10 后综合估计 **~92%**, 且因 #6 perfect ladder hard gap 仍 NOT READY):
-| # | 标准 | 当前 | 目标 | gap | 阻塞项 | 解锁 action | ETA |
-|---|---|---:|---:|---:|---|---|---|
-| 1 | 数据管理 | 100% | 100% | 0pp | PASS (SLA 0 alert + PIT 4/4 fact 表 100% audit) | - | - |
-| 2 | 策略模型 | 90% | 100% | 10pp | phase_3_4_status='LM + sniper'; institution available/evaluated but production hold_reject; n_obs=22<30 | 本地推进替代 institution alpha 或低权重调参, 以及 OOS 扩展 | 1-2 week |
-| 3 | backtester gate | 87% | 100% | 13pp | live MSAF phase4_promote_action='block'; PBO/DSR/conservative PASS, IS-OOS split-half proxy FAIL; GCP v6 archived gate PBO=0.626 FAIL | 补非 proxy IS-OOS/train-log 证据, 或扩 OOS 后重跑 gate | 1-2 week |
-| 4 | 全自动化 daily | 100% | 100% | 0pp | PASS (8 步真调 + cron 自动跑: daily_update 17:00 / nightly_audit 02:00 / session_snapshot 5min / workflow_checkpoint 10min; GCP cost/probe cron disabled) | - | - |
-| 5 | GCP 成本控制 | 100% | 100% | 0pp | PASS (controlled-use: 允许当前任务授权的大计算; unified guard blocks gcloud/GCS/VM/cost/probe unless explicit authorization + `CHUNKYMONKEY_GCP_EXPLICIT_OK=1`; active VM cost 14:31 projected $6.77 / 67.6%, OK) | - | - |
-| 6 | 实盘 GO/NO-GO | 80% | 100% | 20pp | ship baseline PASS (PBO 0.145, DSR 0.9825, P3 PASS); perfect ladder 未达: live 20d n_obs=22<30/60, sharpe 0.81<2.0, max_dd -24.28%; cash overlay / vol targeting 可修回撤但压低 Sharpe; score floor/exposure 不能稳健解; broader-OOS v6 原始 Sharpe 0.875 / max_dd -21.96% 且 PBO FAIL/hold_reject; live LM75/S25 Sharpe 1.629 / dd -15.55% 但 n_obs=22 且 PBO=0.798 FAIL; v6 10d source-weight 细扫显示 **LM73/S27 是当前最佳 gate-pass 点: n_obs=68, Sharpe 1.850, max_dd -14.42%, PBO=0.110/DSR/Conservative/IS-OOS proxy 全过**; **LM76/S24 达 Sharpe 2.025 / max_dd -14.42% / n_obs=68, 但 PBO=0.388 FAIL → block**; institution source evaluated hold_reject | 现有本地证据卡在收益/稳健性折中: 要么 Sharpe<2.0 且 proxy gate 过, 要么 Sharpe≥2.0 但 PBO 失败；下一步需补 non-proxy IS-OOS/train-log 证据或新增 alpha/entry-exit 改造, 不能直接 promote | 1-2 week |
-| 7 | UI/UX + 人机交互优化 | 92% | 100% | 8pp | CLI 完整; `cm cache` v2 已真实读取 L3; paper_sim KPI tab + GO/NO-GO delivery board 已补, 能直接看 NOT_READY/gates/reject reasons/remaining gaps | 截图级浏览器视觉验收 + 更细运营解释文案 | 0.5-2 day |
-| 8 | 模块化 / 可复用 / 可扩展 | 94% | 100% | 6pp | db.py 已 façade; pricing_policy 全拆且单文件 <400; market_db DDL/read/schema-init 已拆到 392 行; workbench_read 已拆到 29 行 façade; N+1 已分批降噪/批量化, app.js 机构 type filter 与股票列表筛选热路径已各消除一次重复扫描; frontend legacy complexity 仍需继续压 | 继续拆 market_db write helpers, 分批处理 app.js/frontend complexity 与剩余 N+1 | 1-3 day |
-| 9 | 数据可回溯 / 可解读 | 94% | 100% | 6pp | legacy parent chain 已 backfill; mart_data_lineage view 已补并刷新 24 rows; strategy registry 已显式保存 parent/baseline/params/lineage; champion feature lineage 27/27 missing=0; prediction-row 到 panel-cell 级 trace 仍需补强 | 把 prediction→panel cell 追溯缩到 5 步内 | 1-3 day |
-| 10 | Incremental Management / Data Lineage | 84% | 100% | 16pp | L3 code+CLI+实跑已完成; paper_sim hash coverage 41/43=95.3%; parent chain 40; registry params_json 45/45 且 paper_sim/compare 自动刷新; L4 warm-start deployed opt-in, 不自动 promote | mart lineage denominator coverage + future exact cache adoption 观察 | 1-2 week |
-| **均值** | | **92%** | **100%** | **8pp** | 原 6 条 557 + #7/#8/#9/#10 361; 918/10 = 91.8% ≈ 92%; perfect ladder gap 阻止交付 | | |
-
-**全局均值更新**: 原 6 criteria 审计均值 92.83%; 新 10 criteria 估计 = 92%。注意 `audit_delivery_readiness.py` 当前只覆盖 6 项, #7-#10 仍按 goal ledger 手工评估；运营交付仍以 #6 perfect ladder / ready_for_delivery 为准。
-**ETA / 升级路径**: GCP 当前任务已恢复授权且 stability retrain 正在 RUNNING；未出现 COMPLETE 前只监控, 不导出/导入。v6 GCP post-retrain 链路已闭环为 hold_reject；live MSAF ship baseline 已恢复 PASS, 下一步优先等待 active stability checkpoint, 并并行推进 OOS 扩展、Sharpe/回撤真实改善、market_db/workbench_read 拆分、lineage coverage/future cache adoption。若要启动新的 GCP 任务, 先同步/确认代码版本、预算和 artifact 方案, 再用显式授权启动。
-
-### Critical Path 时序 (按 ETA 排序, 2026-05-20 20:23 更新)
-| 顺序 | Action | 标准受益 | ETA | 资源 | 阻塞 |
-|---|---|---|---|---|---|
-| **P1 DONE/REJECT** | GCP v6 compare + Phase4 gate + decision 已本地闭环为 hold_reject, live MSAF gate 已重跑恢复 ship baseline | #2 #3 #6 | 完成 | GCP artifact + local | live IS-OOS proxy FAIL / perfect ladder 未达 |
-| **P2 DONE** | L3 panel incremental 实跑 `codex_l3_incremental_20260520_1740` | #10 #1 #2 | 29.108s | local write lock | PASS |
-| **P3** | 拆 `market_db.py` / `workbench_read.py` 后续 slices, 保 façade + contract tests | #8 | 0.5-2 day | local | - |
-| **P4** | L4 retrain warm-start / mart lineage coverage 统一 | #10 #9 | 2-5 day | local | L3 已完成 |
-| **P5** | GO/NO-GO dashboard 已补; 只剩浏览器视觉验收与文案 polish | #7 | 0.5-2 day | local | Browser/Chrome 工具可用性 |
-
-**总 ETA**: 当前按 controlled-use 使用 GCP 跑 active stability retrain；同时并行推进本地可验证缺口。最快路径: active checkpoint 产出后轻量导入 + Phase4/frontier/delivery 审计, 以及 P3/P4 分拆与 L4 推进。
-
-### 维护方式 (零 LLM 依赖)
-- **一键 status**: `bash scripts/session_status.sh` (6 节: audit / Phase 5 / watcher / cron / GCP / processes)
-- `PYTHONPATH=backend python backend/scripts/audit_delivery_readiness.py` 随时查 6 criteria；本机请用 `python` (Homebrew 3.13), 不要用 `/usr/bin/python3` (3.9)
-- `bash scripts/cm.sh cache` 随时查 #10 L1/L2/L3/L4 当前状态和 L3 readonly incremental plan
-- goal.md 当前综合进度按 10 criteria 追踪; 原 6 条仍用 audit_delivery_readiness.py 复核
-- 当前任务已恢复 GCP 授权；所有 GCP 命令仍必须显式带 `CHUNKYMONKEY_GCP_EXPLICIT_OK=1`。启动长任务前先确认 remote code 版本和预算, 跑完必须 VM stop。
-- **cron 自动跑**: daily-update 17:00 / nightly-audit 02:00 / codex-monitor 15min / workflow checkpoint; GCP cost/probe 已移除。
-- 重启? `bash configs/cron/install.sh status` 验证
-
-### GCP Controlled-Use 与成本固化具体方案 (用户 push back 重点)
-
-当前策略: **GCP controlled-use**。下表历史 cost-control 机制在启动云端任务前继续生效；任何 `gcloud`/GCS/VM 调用仍必须设置 `CHUNKYMONKEY_GCP_EXPLICIT_OK=1`, 用作误触安全 latch。
-
-| 时机 | 机制 | 实施 commit |
-|---|---|---|
-| **pre-flight** | vm_start.sh budget check, RED → 拒绝启动 exit 2 | fb6a0369 |
-| **pre-flight** | YELLOW → 警告但允许 | fb6a0369 |
-| **pre-flight** | active_job marker auto create | fb6a0369 |
-| **in-flight** | cost_tracker.sh 每 15 min cron (launchd plist) — 当前已移除/禁用 | 6dc2251a |
-| **in-flight** | RED + RUNNING → auto bash vm_stop.sh | b160d56e |
-| **in-flight** | VM RUNNING 无 marker → 警告 ('忘 stop' 防御) | b160d56e |
-| **in-flight** | daily_update Step 0: cost check, RED → USE_GCP=0 fallback | 5b5d55bc |
-| **post-flight** | vm_stop.sh auto rm marker | fb6a0369 |
-| **monitoring** | data/reports/gcp_cost_summary.json (当前 controlled-use 监控证据; read-only query 必须带 latch) | 6dc2251a |
-| **monitoring** | data/reports/gcp_vm_uptime_log.csv (累计 uptime 估算) | 6dc2251a |
-
-GCP "不浪费资源" 当前第一原则是 controlled-use: 不做后台自动云端任务, 不盲目全量重跑, 只用受控 wrapper 运行有 checkpoint 和 artifact 方案的大计算；历史 5 层防御继续作为显式授权后的二级保护。
-
-跑 `PYTHONPATH=backend python backend/scripts/audit_delivery_readiness.py` 随时查 6 criteria 当前状态.
-
-## GCP 资源管理 (用户 push back 重点)
-
-固化在 CLAUDE.md §10.0.2 + memory [[feedback-gcp-cost-control]]. 关键:
-
-- VM `chunkymonkey-optuna` n2-standard-32 spot us-central1-a, $0.376/h
-- 24/7 running $275/月 vs 用户 **$10/月 credit** → 25× 超预算
-- 默认不做后台自动 GCP；当前任务已授权 controlled-use, 但每个 GCP 命令仍必须设置 `CHUNKYMONKEY_GCP_EXPLICIT_OK=1` 并匹配本任务目标。
-- Codex 跑本地 Mac, 不需 VM
-- VM 只在用户明确授权的 `chunkymonkey` 主项目 critical path 或 BestChoice 综合寻优计划中使用。不能为无关项目启动 GCP 资源。
-
-**当前 VM 状态** (2026-05-21 15:02 CST): RUNNING, active stability retrain `lgbm_phase5_stability_20260521T055800Z`; 只监控到 COMPLETE checkpoint, 未完成前不 export/import。
-
-## 0. 顶层设计: MSAF 三类策略融合
-
-### 0.1 选定方案 (2026-05-17 user confirm)
-
-3 类策略融合 + Regime Adaptive 加权 + 风控 hard gate:
-
-```
-┌──────────────────────────────────────────────────────┐
-│ Layer 1: Alpha 源 (基础 features)                       │
-│   - 量化组: alpha158 + sector + 估值 + mcap_decile      │
-│   - 机构组: LHB + 北向 + 主力 + 调研 + 大宗             │
-│   - 事件组: SUE + PEAD + 业绩预告 + 政策                │
-└──────────────────────────────────────────────────────┘
-                          ↓
-┌──────────────────────────────────────────────────────┐
-│ Layer 2: 3 类策略 parallel 执行                          │
-│   策略 1 纯量化: LambdaMART top-K + cost-aware         │
-│   策略 2 狙击手: confluence 触发, 1-3 仓, Kelly sizing   │
-│   策略 3 机构跟随: smart money following, 5 仓           │
-└──────────────────────────────────────────────────────┘
-                          ↓
-┌──────────────────────────────────────────────────────┐
-│ Layer 3: Regime Adaptive 加权                          │
-│   Bull (HS300 above MA60 + breadth >50%):              │
-│     量化 30% + 狙击 40% + 机构 30%                      │
-│   Neutral: 量化 40% + 狙击 30% + 机构 30%               │
-│   Bear (HS300 below MA60 + breadth <40%):              │
-│     量化 10% + 狙击 20% + 机构 10% (空仓 60%)           │
-│   Crash (跌穿 + 60d ret <-15%): 全空仓                  │
-└──────────────────────────────────────────────────────┘
-                          ↓
-┌──────────────────────────────────────────────────────┐
-│ Layer 4: 风控 hard gates                                │
-│   - 单年 ann_ret ≥ 0% hard (违反 → 全空仓 + alert)      │
-│   - max_dd ≥ -20% hard (违反 → 减仓 50%)                │
-│   - 月胜率 ≥ 55% target (不达 → log)                    │
-│   - 实盘前必过 backtester-mcp PBO/DSR (R31 已 design)   │
-└──────────────────────────────────────────────────────┘
-                          ↓
-┌──────────────────────────────────────────────────────┐
-│ Layer 5: 监控 + 自适应                                  │
-│   - 每月 evaluate 每类策略 oos_ann + oos_sharpe         │
-│   - alpha 衰减 detect (60d rolling IR < 0 → 退役)       │
-│   - regime drift alert                                  │
-│   - 实时 paper_sim ablation per 策略                    │
-└──────────────────────────────────────────────────────┘
+| 先小后大 | 先抽无副作用 helper，再抽 step 函数 |
+| API 不变 | route path、response shape、status 字段不变 |
+| 单模块尺寸 | 目标 < 1000 行；若 6 模块方案违反尺寸，允许拆成 7+ 模块 |
+| 测试跟随 | 每次抽取后跑相关 `test_updater_*` 和 route smoke |
+| 不跨层 | router 只编排，业务逻辑下沉 service 时需另立计划 |
+
+目标测试:
+
+```bash
+PYTHONPATH=backend python -m pytest -q \
+  backend/tests/test_updater_n_plus_one_fix.py \
+  backend/tests/test_updater_reset_industry.py \
+  backend/tests/test_updater_daily_sync_metrics.py \
+  backend/tests/test_system_routes.py
 ```
 
-### 0.2 数学期望
+### 阶段 5: 文档和交付同步
 
-| 配置 | 跨年中位 | 单年 ≥ 0% P | Sharpe | 工作量 |
-|---|---:|---:|---:|---:|
-| 单一策略 (Scheme 4/6/7) | 22-35% | 55-75% | 1.0-1.8 | 10-22w |
-| **MSAF 3 类 ensemble** | **30-45%** | **70-80%** | **2.0-3.0** | **17-25w** |
+| 文档 | 更新内容 |
+|---|---|
+| `docs/implementation_plan.md` | 已改为本节同口径: 架构优先；M0/M4/M5 暂停；P0/P1 架构 gate 优先 |
+| `SESSION_HANDOFF.md` | 只在交接/状态变化时更新，不和 cron 输出打架 |
+| `analysis/workflow_checkpoint.md` | 业务 pipeline 状态变化才更新 |
+| `goal.md` | 每批完成后更新数字、证据、下一步 |
 
-数学推导:
-- IR_ensemble = IR_individual × sqrt(N/(1+(N-1)ρ))
-- 3 个 IR=1.5 策略 × ρ=0.35 → IR_ensemble = 1.5 × sqrt(3/(1+0.7)) = 1.97
-- 单年 ≥ 0% P 跟单策略相比 ↑ 因低相关 ensemble smooth out
+### 最终验收标准
 
-### 0.3 资源分配
+| 验收项 | 标准 |
+|---|---|
+| Universe lint | `check_universe_filter.py --all` non-test = 0 |
+| Rule 10 | `safe_commit.sh` 对 staged `.py` 无 review 直接 block |
+| CodeGraph | `codegraph sync .` 已完成；`status` 只允许出现已解释的 untracked `Added` 风险 |
+| Complexity | backend 扫描无本轮新增 HIGH；遗留 hotspot 单独列明 |
+| Tests | 变更相关 targeted tests pass；大范围改动再跑更广测试 |
+| Diff hygiene | `git diff --check` pass |
+| Docs | `docs/implementation_plan.md`、`goal.md`、handoff 口径一致 |
+| 用户交付 | 输出 L0-L4 架构全貌、数据流、gate 位置、改前 vs 改后 |
 
-| Task | 本地 (Mac mini 8C 8GB) | GCP n2-standard-32 |
-|---|---|---|
-| Codex 协作 + design + commit + doc | yes | - |
-| 单测 + 小规模 SQL audit | yes | - |
-| 数据 ingestion (akshare 历史 backfill) | - | yes (网络通) |
-| Optuna walk-forward (50-200 trials × multi-strategy) | - | yes (32 cores 满载) |
-| paper_sim ablation 多 variant | yes (小) | yes (大) |
-| backtester-mcp PBO/DSR | yes (轻量) | - |
-| 3 类策略 parallel walk-forward (Wave 6-8) | - | yes (4-8 jobs 并行) |
+### GCP 规则保持
 
-## 1. 实施 Phase Plan (4 Phase, 17-25 weeks)
+本计划不启动 GCP。后续如恢复 GCP/Optuna，必须先说明 objective、命令族、预计 wall time/成本、输入快照、输出路径、artifact 保存、monitor/stop/rollback，并且所有 GCP 命令必须显式带:
 
-### Phase 1 (Week 1-4): Foundation 修
+```bash
+CHUNKYMONKEY_GCP_EXPLICIT_OK=1
+```
 
-Codex R34 5 步 redesign 落地 (基础 framework 干净):
+## Legacy Archive
 
-| 步 | 内容 | 工作量 | 负责 |
-|---|---|---:|---|
-| 1.1 | horizon governance (label 5/10/20/60/90d 全建, P3 按 model label 评) | 3-5d | Codex (派) |
-| 1.2 | **top-K cost-aware ranker** (LambdaMART/listwise NDCG@5 + cost penalty) | 5-8d | Codex (派) |
-| 1.3 | PIT data gate (survivor fix `universe.py` + NULL fillna 修 `prepared_panel.py`) | 4-7d | Codex (派) |
-| 1.4 | 组合层 (sector budget default + realized vol sizing + turnover budget) | 4-6d | Claude main |
-| 1.5 | backtester-mcp PBO/DSR gate 接入 (R31 doc 已 design) | 3-5d | Claude main |
-
-**Phase 1 acceptance**: 修后 lgbm_v3_honest_20d-equivalent 配置实测 RankIC ≥ 0.04 (vs current 0.025), Sharpe ≥ 1.0, 跨年中位 ann_ret ≥ 5%.
-
-### Phase 2 (Week 5-10): 3 类策略 parallel build
-
-| 策略 | 关键设计 doc | 工作量 | 负责 |
-|---|---|---:|---|
-| **策略 1 纯量化 v6** | LambdaMART + alpha158 + sector_excess + mcap_decile | 4-6w | Codex A |
-| **策略 2 狙击手** | R37 design + confluence + Kelly + R30 SUE PIT | 4-6w | Codex B |
-| **策略 3 机构跟随** | R38 design + LHB + 北向 + 主力 + 调研 | 4-6w | Codex C |
-
-数据 backfill (Phase 2 阻塞依赖):
-- SUE / yjyg / forecast 历史 (R30 设计, akshare → VM)
-- 北向资金历史 (待 verify ChunkyMonkey 现有)
-- 大宗交易历史 (待 verify)
-
-**Phase 2 acceptance**: 每类策略独立 RankIC ≥ 0.04, oos_sharpe ≥ 1.0, 历史 2022/2023 跨年中位 ann ≥ 8% (单类 not yet ensemble).
-
-### Phase 3 (Week 11-14): Ensemble + Regime Adaptive
-
-| 步 | 内容 | 工作量 |
-|---|---|---:|
-| 3.1 | Regime state 计算 (HS300 MA + breadth + 60d IR) | 4-6d |
-| 3.2 | 3 类策略 ensemble walk-forward 加权 | 5-7d |
-| 3.3 | Risk gates 实施 (单年 ≥ 0%, max_dd ≥ -20%, regime trigger 减仓 / 空仓) | 4-6d |
-| 3.4 | 监控层 (paper_sim ablation per 策略, alpha 衰减 detect) | 3-5d |
-
-**Phase 3 acceptance**: MSAF ensemble 2022/2023/2024/2025 paper_sim 每年 ann_ret ≥ 0%, 跨年中位 ≥ 20%, max_dd ≥ -20%.
-
-### Phase 4 (Week 15-18): Validation + Promote
-
-| 步 | 内容 | 工作量 |
-|---|---|---:|
-| 4.1 | backtester-mcp PBO/DSR gate 历史反例验证 (paper_sim +312% 等阻断) | 3-5d |
-| 4.2 | Final holdout (2026 H1) 跑 + decision | 1w |
-| 4.3 | 实盘前 paper_sim 累积验证 (3 月模拟) | 4-6w wall (paper) |
-| 4.4 | promote_champion 决策 + GO/NO-GO 实盘 | 1d |
-
-**Phase 4 acceptance**: MSAF Final holdout 实测跨年中位 ≥ 25%, 单年 ≥ 0% (历史 + holdout), PBO ≤ 0.20, DSR p ≥ 0.95.
-
-## 2. 当前 Codex 协作 (在 flight)
-
-| Codex Round | Topic | 状态 | 输出 |
-|---|---|---|---|
-| R25 数据完整性 | sync_kline_from_gcs.py | DONE | commit c34c9643 |
-| R26 综合架构 audit | 1059 行 doc | DONE | commit 26e4660d |
-| R27 量化工具评估 | AlphaLens/Riskfolio/TA-Lib | DONE | commit e5b8827d |
-| R28 中国社区策略 | SUE/PEAD/规律 | DONE | commit e5b8827d |
-| R29 awesome-quant | backtester-mcp/skfolio | DONE | commit abe1e145 |
-| R30 SUE PIT 设计 | 6 sub-factors 1057 行 | DONE | commit 5e306a64 |
-| R31 backtester-mcp PBO/DSR | 4-gate 1492 行 | DONE | commit 39d748ce |
-| R32 负面 filter | unlock/pledge/holder | **CANCELLED** (1h+ idle) | 待重派 Phase 2 |
-| R33 regime defense | HS300 MA + breadth | **CANCELLED** (1h+ idle, spec 含 ETF 需 update) | 待重派 Phase 3 |
-| R34 第一性原理 | 6 root cause + redesign | DONE | commit f314f8b7 |
-| R35 feasibility | Grinold-Kahn + 公开数据 | DONE | commit f314f8b7 |
-| R36 只做股票多 Scheme | 8 Scheme + 决策树 | DONE | commit f314f8b7 (281KB doc) |
-| R37 sniper Kelly verify | 历史 hindsight + 实测 | running 38min | 等 doc |
-| R38 机构跟随 + MSAF 顶层 | 3 类 ensemble 数学 | running 7min | 等 doc |
-
-## 3. 立即开始 — Phase 1 Week 1 (NOW)
-
-### 3.1 派 Codex Phase 1 implementation (parallel)
-
-| Codex | Phase 1 task | 状态 |
-|---|---|---|
-| Codex A | 1.2 LambdaMART top-K cost-aware ranker (改写 run_p0b_lightgbm_optuna_v4.py → run_p0b_lambdamart_v6.py) | 准备派 |
-| Codex B | 1.3 PIT data gate (universe.py survivor 修 + prepared_panel.py NULL fillna 修) | 准备派 |
-| Codex C | 1.1 horizon governance (label 5/10/20/60/90d 全建 + P3 evaluator multi-horizon) | 准备派 |
-| Claude main | 1.4 组合层 (sector budget + vol sizing + turnover budget) + 1.5 backtester-mcp wire | now |
-
-### 3.2 等 R37 + R38 完成后
-
-R37 (sniper) → Phase 2 策略 2 doc base
-R38 (机构跟随 + MSAF) → Phase 2-3 顶层 doc base
-
-## 4. 工作纪律 (carry over)
-
-- 中文输出, 表格 > 段落, 不报喜不报忧
-- 单分支 main, 不开 worktree
-- 每 commit Codex review gate (CLAUDE.md §10.1)
-- 派 Codex 主动 (CLAUDE.md §10.0) — 充分利用
-- multi-agent 协作 (CLAUDE.md §10.0.1) — Claude/Codex 跨 agent
-- PIT-strict CRITICAL 不可折中 (memory [[feedback-codex-critical-no-compromise]])
-- 真金白银 self-check (Rule 7)
-- backtester-mcp PBO/DSR 实盘前必过 (R31 design)
-- 数据治理 enforcement: watermark.max_data_date + panel build pre-flight K-line freshness gate (Codex R26 audit 指出)
-
-## 5. 历史 (deprecated, 仅参考)
-
-- ~~v3.2 RankIC 0.0246 ann -65.5%~~ — 框架 deprecated, MSAF 重构
-- ~~Wave 1 4 jobs trial-0 v4_a158_lhb_mc 0.0313~~ — panel sync gap corrupted, 已 kill
-- ~~paper_sim sizer ablation equal -9% / rank_diff -2.8%~~ — 都 [FAIL], 当前 model 弱不能靠 sizer 救
-
-## 2026-05-25 — BestChoice 公式工厂整改计划
-
-> 用户 (2026-05-25): 以回调十字星为标准, 全部公式走统一验证流程, 各自独立测试后再整合.
-> 每天输出按等级排序的买入列表, 含预期收益/买卖价/持仓期/回撤.
-
-### 新标准 (pullback_doji 确立)
-
-每个公式必须通过 7 维 preflight 审计 (backtest_preflight.py, fail-closed):
-1. Universe clean (排除 ST/退市/北交所)
-2. 板块涨停阈值适配 (主板 10%, 创业板/科创板 20%)
-3. 成本模型 (>= 12bps round trip)
-4. 数据新鲜度 (K 线 vs 交易日历)
-5. 无未来函数入场条件
-6. verified 不做入场条件
-7. walk-forward mode 指定
-
-### 当前状态
-
-| 公式 | 标准达标 | 状态 |
-|---|---|---|
-| pullback_doji (回调十字星) | 7/7 PASS | 已完成, 注册 formula_engine |
-| gs_pullback_confirm | 0/7 | 待改 Phase 1 |
-| gs_raw_buy | 0/7 | 待改 Phase 1 |
-| ma_base_breakout | 0/7 | 待改 Phase 2 |
-| activity_breakout | 0/7 | 待改 Phase 2 |
-| volume_base_breakout | 0/7 | 待改 Phase 3 |
-| 54 bank 函数 | 0/7 | 待改 Phase 3 |
-
-### 执行计划
-
-| Phase | 内容 | 时间 | 计算资源 |
-|---|---|---|---|
-| 1 | GS 系列接入 preflight + 配置化 | 0.5-1 天 | 本地 |
-| 2 | 均线+活跃度接入 + Optuna | 1-1.5 天 | 本地 |
-| 3 | 巨量+54 bank 接入 + Optuna | 2-3 天 | GCP ($1.88) |
-| R2 | 全公式综合 Optuna 200 trials | 0.5 天 | 本地 |
-
-### Codex 具体建议 (agent a5c4391d0a5ed1ed8, 2026-05-25)
-
-**Phase 1 (GS 系列)**:
-- 路由所有 GS 回测/Optuna 路径走 load_clean_backtest_data() → enforce_backtest_preflight()
-- 要求显式传 tx_cost_bps, walk_forward_mode, has_future_filter, verified_used_as_entry
-- gs_raw_buy_signals() 和 gs_pullback_confirm_signals() 保持纯信号函数, 只通过 compute_formula_signals() 调用
-- 最小共享核心改动, 关闭全部 7 检 gap
-
-**Phase 2 (均线+活跃度)**:
-- ma_base_breakout: 阈值 (short_ma/mid_ma/long_ma/breakout_lookback/price_top_buffer) 从硬编码改 Optuna/config params
-- activity_breakout: x15_multiplier/big_bull_line/strong_line 同样外置到 params
-- 两个都接入 preflight/cost/walk-forward, 不在函数内硬编码涨停规则
-
-**Phase 3 (巨量+54 bank)**:
-- volume_base_breakout 已有 __latest_only/__eval_start_index/signal_cooldown_days, 作为模板
-- 54 bank 函数统一接入 compute_formula_signals() 而非各自 fork
-- PIT audit 作为 preflight 新 check 项自动化
-- 4 轮 Optuna 必须在 preflight 通过后才能跑
-
-### GCP 评估 (2026-05-25)
-
-| 场景 | 本地时间 | GCP 时间 | GCP 成本 | 建议 |
-|---|---|---|---|---|
-| Phase 1+2 代码改动 | 无计算 | - | $0 | 本地 |
-| 6 公式 Optuna (4x100 trials) | 2h | 0.5h | $0.19 | 本地够 |
-| 54 bank Optuna (4x100 trials) | 20h | 5h | $1.88 | GCP |
-| R2 综合寻优 (200 trials) | 3h | 0.75h | $0.28 | 本地可以 |
-
-GCP 仅 Phase 3 的 54 bank 需要, 月预算剩 ~$40, $1.88 在范围内.
-n2-standard-32 spot, 32 核并行, 理论 4x 加速.
-
-### 关键文件
-
-- backend/services/backtest_preflight.py — 7 维审计 gate + load_clean_backtest_data
-- backend/services/universe.py — get_limit_up_pct + get_active_universe
-- backend/config/formula_limit_up_pullback.yaml — 公式参数模板 (后续每个公式一个 YAML)
-- analysis/audit_bestchoice_preflight_20260525.md — BestChoice 审计报告
+2026-05-24 and earlier goal sections have been archived to `analysis/goal_legacy_20260531.md`.
+They are historical evidence only. Current execution authority is the
+2026-05-27 architecture-reform section above plus the active docs listed in
+`docs/README.md`; runtime snapshots such as `SESSION_HANDOFF.md` and
+`analysis/workflow_checkpoint.md` are context-only.

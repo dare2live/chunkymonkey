@@ -68,10 +68,10 @@ L4 展示      → API / 前端
 
 | 动作 | 前置 gate | 不通过 |
 |---|---|---|
-| 写代码 | `/engineering-discipline` Step 1-3 | 停, 不写 |
+| 写代码 | `scripts/chunkyctl preflight` + `docs/engineering_governance.md` 设计审查 | 停, 不写 |
 | commit | 测试 + 审计工具 | reject |
 | 跑回测 | `backtest_preflight` 8 项 | raise |
-| 跑 GCP | `plan_validator` + `grill_stamp` + `preflight_gcp_launch` | exit |
+| 跑 GCP | `plan_validator` + GCP controlled-use preflight + `CHUNKYMONKEY_GCP_EXPLICIT_OK=1` | exit |
 | 数据 sync 后 | `data_audit` 7 项 | raise (strict) |
 | session 结束 | `session_handoff_audit` | WARNING |
 
@@ -92,7 +92,7 @@ L4 展示      → API / 前端
 ```
 触发: 每次数据 sync 后自动跑 (daily_update.sh 每步后调)
 位置: backend/services/data_audit.py
-配置: 检查项硬编码 (应改为 YAML, 待做)
+配置: backend/config/data_audit_rules.yaml, 代码只保留 loader/validator/fallback
 
 检查项:
   kline_completeness    — 逐股票 vs 交易日历, 缺天 = FAIL
@@ -149,23 +149,25 @@ L4 展示      → API / 前端
 维护: 新公式加入时自动被 search_space 检查覆盖
 ```
 
-### 6.4 GCP 启动前置 (`preflight_gcp_launch.sh`)
+### 6.4 GCP 启动前置 (controlled-use preflight)
 
 ```
-触发: GCP 跑批脚本执行前, 手动跑
-位置: gcp/preflight_gcp_launch.sh
+触发: 任何 GCP/SSH/GCS/billing/VM 命令执行前
+位置: `docs/engineering_governance.md` + `AGENTS.md` + scoped wrapper script
 
 检查项:
-  vm_running            — VM 状态 RUNNING
+  objective             — 目标、命令族、输入快照、输出路径明确
+  cost_and_runtime      — wall time、预算风险、停止条件明确
   ssh_reachable         — SSH 能连通
-  remote_plan_validator — VM 上 plan_validator PASS
+  explicit_ok           — 命令显式带 CHUNKYMONKEY_GCP_EXPLICIT_OK=1
+  lifecycle_wrapper     — pid/log/artifact/GCS/finalization/TTL 可追踪
+  remote_plan_validator — VM 上 plan_validator PASS (如涉及 Optuna/验证)
   remote_data_integrity — VM 上 data verify OK
-  grill_stamp           — grill_stamp 文件存在
   leakage_scan          — 本地 code leakage scan PASS
   budget                — GCP 月预算未超
 
 阻断: exit 1
-扩展: 加新检查 = 加 shell 函数 + 调 check()
+扩展: 加新检查 = 更新 controlled-use wrapper + `docs/chunkyctl_session_quickstart.md`
 维护: VM 配置变更时同步更新
 ```
 
@@ -185,23 +187,25 @@ L4 展示      → API / 前端
 维护: 每次发现遗漏模式时补充
 ```
 
-### 6.6 工程纪律 (`/engineering-discipline`)
+### 6.6 工程纪律 (`docs/engineering_governance.md` + ChunkyMonkey skills)
 
 ```
-触发: 任何代码改动/架构决策/跑批前, 人工调用或自动提示
-位置: ~/Documents/M/engineering-discipline/skills/engineering-discipline.md
+触发: 任何代码改动、架构决策、跑批、删除、提交前
+位置: `docs/engineering_governance.md`, `AGENTS.md`,
+     `chunkymonkey-governance`, `chunkymonkey-review-gate`,
+     `scripts/chunkyctl preflight`
 
 检查项:
-  Step 1 — 第一性原理 (3 问)
-  Step 2 — 奥卡姆剃刀 (最简方案)
-  Step 3 — 教训查验 (4 层 16 条)
-  Step 4 — 计划拷问 (5 问)
-  Step 5 — 代码审查 (5 问)
-  Step 6 — 架构检验 (4 问)
+  first_principles      — 是否服务可信实盘候选
+  occam                 — 是否能复用/删除/简化
+  owner                 — config/table/service/code exception 是否明确
+  truth_source          — 真相源、cache、evidence 是否分清
+  codegraph_complexity  — CodeGraph 与 complexity optimizer 成对
+  test_tool_validity    — 测试工具是否仍证明当前架构
 
-阻断: 人工判断 (skill 不自动阻断, 靠纪律)
-扩展: 踩新坑 → 加到 Step 3 教训列表
-维护: 跨项目共享, ~/Documents/M/engineering-discipline/ 独立 git
+阻断: controller 判断 + gate 脚本阻断
+扩展: 踩新坑 → 写入 active docs / AGENTS / ChunkyMonkey skill / checker
+维护: 项目内规则优先, 跨项目经验只作为参考
 ```
 
 ### 6.7 审计体系设计原则
@@ -227,7 +231,8 @@ L4 展示      → API / 前端
 
 ## 第八条: 教训即规则
 
-踩过的坑自动升级为规则, 写入 `/engineering-discipline` skill Step 3.
+踩过的坑自动升级为规则, 写入 active docs、`AGENTS.md`、ChunkyMonkey
+skill 或 checker。
 规则一旦写入, 同类错误不允许再犯. 再犯 = 工具没拦住, 修工具.
 
 **WHY**: 同一个错误 (不验证就执行) 在这个 session 犯了 5 次. 记住不够, 工具拦截才行.

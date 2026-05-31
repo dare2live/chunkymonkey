@@ -1,0 +1,158 @@
+#!/usr/bin/env bash
+# Thin convenience wrapper for backend/scripts/chunkyctl.py.
+
+set -euo pipefail
+
+cd "$(dirname "$0")/.."
+
+usage() {
+  cat <<'EOF'
+Usage:
+  scripts/chunkyctl doctor [--fast]
+  scripts/chunkyctl worktree [--bucket name] [--format json|markdown]
+  scripts/chunkyctl docs [--format json|markdown]
+  scripts/chunkyctl preflight "task description" [scope ...]
+  scripts/chunkyctl audit [--run] [scope ...]
+
+Examples:
+  scripts/chunkyctl doctor --fast
+  scripts/chunkyctl worktree
+  scripts/chunkyctl worktree --format markdown
+  scripts/chunkyctl worktree --bucket updater_split --format markdown
+  scripts/chunkyctl docs --format markdown
+  scripts/chunkyctl preflight "拆 updater status glue" backend/routers/updater.py backend/tests/test_updater_status.py
+  scripts/chunkyctl audit --run backend/scripts/chunkyctl.py backend/tests/scripts/test_chunkyctl.py
+  scripts/chunkyctl audit --run --scope backend/scripts/chunkyctl.py --scope backend/tests/scripts/test_chunkyctl.py
+
+Notes:
+  doctor     = project health snapshot.
+  worktree   = read-only dirty worktree bucket report.
+  docs       = docs graph + docs-cleanup worktree-slice readiness.
+  preflight  = what gates must run before editing a task.
+  audit      = scoped post-change checks; add --run to execute them.
+EOF
+}
+
+if [[ $# -eq 0 || "${1:-}" == "-h" || "${1:-}" == "--help" ]]; then
+  usage
+  exit 0
+fi
+
+cmd="$1"
+shift
+
+case "$cmd" in
+  doctor)
+    args=(doctor)
+    while [[ $# -gt 0 ]]; do
+      case "$1" in
+        --fast)
+          args+=(--skip-test-tool --skip-universe --max-findings 40)
+          shift
+          ;;
+        *)
+          args+=("$1")
+          shift
+          ;;
+      esac
+    done
+    PYTHONPATH=backend python backend/scripts/chunkyctl.py "${args[@]}"
+    ;;
+  worktree)
+    args=(worktree)
+    while [[ $# -gt 0 ]]; do
+      case "$1" in
+        --bucket)
+          if [[ $# -lt 2 ]]; then
+            echo "ERROR: --bucket requires a name." >&2
+            usage >&2
+            exit 2
+          fi
+          args+=(--bucket "$2")
+          shift 2
+          ;;
+        --format)
+          if [[ $# -lt 2 ]]; then
+            echo "ERROR: --format requires json or markdown." >&2
+            usage >&2
+            exit 2
+          fi
+          args+=(--format "$2")
+          shift 2
+          ;;
+        *)
+          echo "ERROR: unknown worktree option: $1" >&2
+          usage >&2
+          exit 2
+          ;;
+      esac
+    done
+    PYTHONPATH=backend python backend/scripts/chunkyctl.py "${args[@]}"
+    ;;
+  docs)
+    args=(docs)
+    while [[ $# -gt 0 ]]; do
+      case "$1" in
+        --format)
+          if [[ $# -lt 2 ]]; then
+            echo "ERROR: --format requires json or markdown." >&2
+            usage >&2
+            exit 2
+          fi
+          args+=(--format "$2")
+          shift 2
+          ;;
+        *)
+          echo "ERROR: unknown docs option: $1" >&2
+          usage >&2
+          exit 2
+          ;;
+      esac
+    done
+    PYTHONPATH=backend python backend/scripts/chunkyctl.py "${args[@]}"
+    ;;
+  preflight)
+    if [[ $# -lt 1 ]]; then
+      echo "ERROR: preflight requires a task description." >&2
+      usage >&2
+      exit 2
+    fi
+    task="$1"
+    shift
+    args=(preflight --task "$task")
+    for scope in "$@"; do
+      args+=(--scope "$scope")
+    done
+    PYTHONPATH=backend python backend/scripts/chunkyctl.py "${args[@]}"
+    ;;
+  audit)
+    args=(audit)
+    while [[ $# -gt 0 ]]; do
+      case "$1" in
+        --run|--include-stdout)
+          args+=("$1")
+          shift
+          ;;
+        --scope)
+          if [[ $# -lt 2 ]]; then
+            echo "ERROR: audit --scope requires a path." >&2
+            usage >&2
+            exit 2
+          fi
+          args+=(--scope "$2")
+          shift 2
+          ;;
+        *)
+          args+=(--scope "$1")
+          shift
+          ;;
+      esac
+    done
+    PYTHONPATH=backend python backend/scripts/chunkyctl.py "${args[@]}"
+    ;;
+  *)
+    echo "ERROR: unknown chunkyctl command: $cmd" >&2
+    usage >&2
+    exit 2
+    ;;
+esac

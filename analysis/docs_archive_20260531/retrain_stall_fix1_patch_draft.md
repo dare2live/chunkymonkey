@@ -179,7 +179,7 @@ def test_assert_pit_strict_int64_leak_detection():
 ## 引用
 
 - Claude general-purpose agent: aacdbf9413b4696b6
-- Spec: docs/codegraph_audit_integration_spec.md (审计 infra)
+- Spec: analysis/codegraph_audit_integration_spec.md (审计 infra)
 - 关联文件:
   - `backend/scripts/run_p0b_lambdamart_v6.py:89-101 + 182-218`
   - `backend/services/optimization/walk_forward.py:169-256`

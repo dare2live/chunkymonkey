@@ -25,7 +25,7 @@ bash scripts/install_resilience.sh   # SessionStart hook + cron + launchd 全装
 bash scripts/install_resilience.sh --status   # check 装好没
 ```
 
-**Snapshot 时间**: 2026-05-24 21:51:21 CST
+**Snapshot 时间**: 2026-05-31 22:11:21 CST
 
 ## 主线 retrain 状态
 
@@ -53,45 +53,36 @@ bash scripts/install_resilience.sh --status   # check 装好没
 
 | 项 | 值 |
 |---|---|
-| 月预算用 | 26.4% |
-| 剩余 spot 小时 | 106.8 h |
+| 月预算用 | 25.2% |
+| 剩余 spot 小时 | 105.9 h |
 
 ## Git 状态
 
 | 项 | 值 |
 |---|---|
 | Branch | main |
-| HEAD | `dfcc6391 feat(phase-3.1): Perception absorbed 7 engines + INDEX` |
-| 最近 24h commits | 16 |
-| 未 commit 文件 | 6 |
+| HEAD | `443da74c feat(perception): P0 数据接入接线 — attention/profit_forecast → daily_update Step 2k/2l + SLA` |
+| 最近 24h commits | 0 |
+| 未 commit 文件 | 185 |
 
 ### 最近 10 commits
 
 ```
-dfcc6391 feat(phase-3.1): Perception absorbed 7 engines + INDEX
-1b13dfaa feat(phase-2.4-COMPLETE+INDEX): 49 formulas across 7 categories Phase 2.4 done
-690312b1 feat(phase-2.4-day5): event 7 formulas + INDEX
-2bc67fd2 feat(phase-2.4-day4): multi_tf 7 formulas + INDEX
-0c03959a feat(phase-2.4-day3): volume category 7 formulas
-ff8991b5 feat(phase-2.4-day2): pattern category 7 formulas
-5e398c39 feat(phase-2.4-technical): formula bank category 1/7 (technical 7 formulas) + INDEX
-0312ad2f feat(phase-2.5): stage_filter module + PROJECT_INDEX
-6bf4ffcf doc(phase-1-2.3-progress): Phase 1 8/8 done + Phase 2.1-2.3 done status
-b6ae348a feat(phase-2.3+INDEX): bc_absorbed walk-forward governance + index sync
+443da74c feat(perception): P0 数据接入接线 — attention/profit_forecast → daily_update Step 2k/2l + SLA
+2bda0976 Revert "cleanup: 删 technical_specification + implementation_plan (内容已在 goal.md)"
+fd89d037 cleanup: 删 technical_specification + implementation_plan (内容已在 goal.md)
+7e77be97 feat(M3+M6): data_audit 配置化 + 集成到 daily_update
+c60d1967 feat(M3): data_audit 集成到 daily_update.sh Step 3c
+8e846426 doc: 架构落地执行计划 (Claude+Codex 讨论确认版)
+f86a5a93 fix: universe lint 2 处违规标注 rule-compliance + exempt
+2a815cfa refactor(universe): get_active_universe 简化到 3 行逻辑
+1e2d1ce5 doc: 落地方案执行进度 — Phase 0 部分完成, 1-4 待做
+f924d06a refactor(Phase0): 删 hardcode — LIMIT_THRESHOLD 从 YAML 读 + tx_cost 从 config 读
 ```
 
-## NEXT ACTION (manual override 2026-05-25 07:35)
+## NEXT ACTION (auto-computed)
 
-**Phase 4.2b walk-forward 14/22 windows done, bg PID 88818 KILLED 07:35 CST. Resume 入口: 读 analysis/session_handoff_20260525.md.**
-
-partial verdict (14/22 windows): mean -0.0092 ± 0.067, positive 5/14 = 35.7% (vs v7 0.0475 / 68.75%). **>95% 概率最终 FAIL exit gate ≥ 0.04**.
-
-Resume 3 选项:
-- A 重跑 22 窗 ~3h
-- B 改脚本 resume 跳已完成 + 跑剩 8 窗 ~1h
-- **C 推荐**: 14 partial 当 FAIL → Phase 5 Config B G1-only 锁定 (v7 daily inference 已 operational, Step 5e wired)
-
-不要 retrain v7. 详细决策树看 analysis/session_handoff_20260525.md.
+**185 uncommitted files — git status 看 + bash scripts/safe_commit.sh**
 
 ## Resilience 配置 (verified)
 

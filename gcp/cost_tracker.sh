@@ -184,9 +184,9 @@ fi
 # Actionable: VM RUNNING 无 active job marker > IDLE_GRACE 分钟 → 自动 stop (proactive cost-cutting)
 # 防止"忘 stop" 用户场景, 用户 push back '主动 cost-cutting' (2026-05-18 stop hook)
 RUN_MARKER="$REPO_ROOT/data/reports/gcp_vm_active_job.marker"
-# F5 P1 (docs/gcp_reliability_root_cause_fix.md): 5 min 对 4-6h retrain 太激进, 改 30
+# F5 P1 (analysis/gcp_reliability_root_cause_fix.md): 5 min 对 4-6h retrain 太激进, 改 30
 # 反例: 5-19 22:30 retrain 跑 3.5h 中断 (60% likelihood spot, 但 5min cron-grace 也有触发风险)
-IDLE_GRACE_MIN="${GCP_IDLE_GRACE_MIN:-30}"      # rule-compliance: ok evidence=docs/gcp_reliability_root_cause_fix.md-F5
+IDLE_GRACE_MIN="${GCP_IDLE_GRACE_MIN:-30}"      # rule-compliance: ok evidence=analysis/gcp_reliability_root_cause_fix.md-F5
 IDLE_TRACK_FILE="$REPO_ROOT/data/reports/gcp_vm_idle_first_seen.marker"
 
 # F5 marker TTL check (started_at + expected_max_hours 超时 → auto-stop)

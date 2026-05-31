@@ -5,6 +5,11 @@ Date: 2026-05-19
 Status: design only, first CLI implementation in `backend/scripts/trace_lineage.py`  
 Primary user question: "I see ann +48% in paper_sim. How exactly was this calculated, how clean was the input data, and when was the model trained?"
 
+2026-05-27 extension: the same traceability contract also applies to stock/institution/main-force
+profile components and stock dossier UI. A profile value is not production evidence unless it can
+report `as_of_date`, `built_at`, `source_tables`, `freshness_status`, `evidence_status`, and a
+`lineage_ref`. Missing or proxy inputs must be shown as `unknown` or `proxy`, not silently hidden.
+
 ## A. Current State Inventory
 
 ### A1. Registry coverage
@@ -18,6 +23,7 @@ The project already has a partial asset registry:
 | `mart_data_source_watermark` | source freshness and fallback state | 11 source rows across kline, LHB, holders, industry, financial, survey, xdxr |
 | `mart_pipeline_run_manifest` | script run ledger | 672 historical run rows, only partial coverage for model runs |
 | `mart_model_feature_lineage` | feature-to-source map for selected model families | table exists, currently sparse for P0b LambdaMART v6 |
+| profile component lineage | stock/institution/main-force profile evidence | planned in `docs/profile_lineage_roadmap.md`; must not be inferred only by frontend |
 
 The existing registry is enough to identify many table-level dependencies, but not enough to answer a KPI trace without additional heuristics.
 

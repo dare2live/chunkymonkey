@@ -18,6 +18,65 @@ import sys
 from datetime import datetime, timedelta
 from pathlib import Path
 
+_TOPIC_KEYWORDS = {
+    "formula": "公式改动",
+    "preflight": "审计工具",
+    "plan_validator": "计划验证",
+    "data_audit": "数据审计",
+    "leakage": "leakage 修复",
+    "GCP": "GCP 跑批",
+    "grill": "Grill gate",
+    "walk.forward": "Walk-forward",
+    "search.space": "Search space",
+    "bank": "Bank 公式",
+    "smartmoney|adapter": "SmartMoney 数据",
+    "profiler|ranker|pool": "四层架构",
+    "300616|wave|doji": "300616 策略",
+    "skill": "Skills 安装",
+    "sync|update": "数据同步",
+    "bug|fix": "Bug 修复",
+    "board|板块": "板块适配",
+    "Codex": "Codex 协作",
+    "front|前端|UI": "前端改动",
+    "cost|成本|tx_cost": "交易成本",
+}
+_TOPIC_PATTERNS = tuple(
+    (re.compile(pattern, re.IGNORECASE), topic)
+    for pattern, topic in _TOPIC_KEYWORDS.items()
+)
+_TOPIC_COVERAGE_KEYWORDS = {
+    "公式改动": ("formula", "公式"),
+    "审计工具": ("preflight", "审计", "audit"),
+    "计划验证": ("plan_validator", "计划验证"),
+    "数据审计": ("data_audit", "数据审计", "完整性"),
+    "leakage 修复": ("leakage", "未来函数", "PIT"),
+    "GCP 跑批": ("GCP", "跑批", "batch"),
+    "Grill gate": ("grill", "拷问"),
+    "Walk-forward": ("walk-forward", "walk_forward", "70/30"),
+    "Search space": ("search space", "search_space", "参数搜索"),
+    "Bank 公式": ("bank", "49", "KEEP", "REWORK", "DROP"),
+    "SmartMoney 数据": ("smartmoney", "adapter", "SmartMoney"),
+    "四层架构": ("profiler", "ranker", "pool", "四层"),
+    # rule-compliance: ok evidence=sentinel-case-topic-keyword-not-trading-filter
+    "300616 策略": ("300616", "三波", "wave"),
+    "Skills 安装": ("skill", "grill-with-docs", "diagnose"),
+    "数据同步": ("sync", "更新", "watermark"),
+    "Bug 修复": ("bug", "fix", "修复"),
+    "板块适配": ("板块", "board", "创业板"),
+    "Codex 协作": ("Codex", "codex"),
+    "前端改动": ("前端", "formula-view", "UI"),
+    "交易成本": ("VWAP", "tx_cost", "交易成本", "10.4"),
+}
+_TOPIC_COVERAGE = {
+    topic: tuple(keyword.lower() for keyword in keywords)
+    for topic, keywords in _TOPIC_COVERAGE_KEYWORDS.items()
+}
+_KEY_NUMBER_RE = re.compile(
+    r"\d+[./]\d+|score[=:]\s*[\d.]+|win[=:]\s*[\d.%]+|"
+    r"\d+\s*(?:公式|stocks|PASS|FAIL|rows|signals)"
+)
+_DOC_REF_RE = re.compile(r"[A-Za-z0-9_./-]+")
+
 
 def _git_commits_since(since: str) -> list[dict]:
     """获取 since 日期以来的所有 commits."""
@@ -49,85 +108,58 @@ def _git_diff_files(since: str) -> list[str]:
     return list(set(f.strip() for f in result.stdout.strip().split("\n") if f.strip()))
 
 
+def _topics_for_subject(subject: str) -> set[str]:
+    """Return topic labels matched by one commit subject."""
+    return {topic for pattern, topic in _TOPIC_PATTERNS if pattern.search(subject)}
+
+
 def _extract_topics_from_commits(commits: list[dict]) -> list[str]:
     """从 commit messages 提取关键主题."""
     topics = set()
-    keywords_map = {
-        "formula": "公式改动",
-        "preflight": "审计工具",
-        "plan_validator": "计划验证",
-        "data_audit": "数据审计",
-        "leakage": "leakage 修复",
-        "GCP": "GCP 跑批",
-        "grill": "Grill gate",
-        "walk.forward": "Walk-forward",
-        "search.space": "Search space",
-        "bank": "Bank 公式",
-        "smartmoney|adapter": "SmartMoney 数据",
-        "profiler|ranker|pool": "四层架构",
-        "300616|wave|doji": "300616 策略",
-        "skill": "Skills 安装",
-        "sync|update": "数据同步",
-        "bug|fix": "Bug 修复",
-        "board|板块": "板块适配",
-        "Codex": "Codex 协作",
-        "front|前端|UI": "前端改动",
-        "cost|成本|tx_cost": "交易成本",
-    }
     for commit in commits:
-        subject = commit["subject"]
-        for pattern, topic in keywords_map.items():
-            if re.search(pattern, subject, re.IGNORECASE):
-                topics.add(topic)
+        topics.update(_topics_for_subject(str(commit.get("subject", ""))))
     return sorted(topics)
+
+
+def _numbers_for_commit(commit: dict) -> list[str]:
+    """Return notable number snippets from one commit subject."""
+    subject = str(commit.get("subject", ""))
+    commit_hash = str(commit.get("hash", ""))
+    return [f"{commit_hash}: {found}" for found in _KEY_NUMBER_RE.findall(subject)]
 
 
 def _extract_numbers_from_commits(commits: list[dict]) -> list[str]:
     """从 commit messages 提取关键数字 (score/win_rate/count/etc)."""
     numbers = []
     for commit in commits:
-        subject = commit["subject"]
-        found = re.findall(r'\d+[./]\d+|score[=:]\s*[\d.]+|win[=:]\s*[\d.%]+|\d+\s*(?:公式|stocks|PASS|FAIL|rows|signals)', subject)
-        for f in found:
-            numbers.append(f"{commit['hash']}: {f}")
+        numbers.extend(_numbers_for_commit(commit))
     return numbers
+
+
+def _topic_is_documented(topic: str, doc_text_lower: str) -> bool:
+    """Check whether a topic is mentioned by any configured keyword."""
+    keywords = _TOPIC_COVERAGE.get(topic, (topic.lower(),))
+    return any(keyword in doc_text_lower for keyword in keywords)
 
 
 def _check_coverage(topics: list[str], doc_text: str) -> list[str]:
     """检查哪些主题在文档中没覆盖."""
-    topic_keywords = {
-        "公式改动": ["formula", "公式"],
-        "审计工具": ["preflight", "审计", "audit"],
-        "计划验证": ["plan_validator", "计划验证"],
-        "数据审计": ["data_audit", "数据审计", "完整性"],
-        "leakage 修复": ["leakage", "未来函数", "PIT"],
-        "GCP 跑批": ["GCP", "跑批", "batch"],
-        "Grill gate": ["grill", "拷问"],
-        "Walk-forward": ["walk-forward", "walk_forward", "70/30"],
-        "Search space": ["search space", "search_space", "参数搜索"],
-        "Bank 公式": ["bank", "49", "KEEP", "REWORK", "DROP"],
-        "SmartMoney 数据": ["smartmoney", "adapter", "SmartMoney"],
-        "四层架构": ["profiler", "ranker", "pool", "四层"],
-        "300616 策略": ["300616", "三波", "wave"],
-        "Skills 安装": ["skill", "grill-with-docs", "diagnose"],
-        "数据同步": ["sync", "更新", "dim_stock"],
-        "Bug 修复": ["bug", "fix", "修复"],
-        "板块适配": ["板块", "board", "创业板"],
-        "Codex 协作": ["Codex", "codex"],
-        "前端改动": ["前端", "formula-view", "UI"],
-        "交易成本": ["VWAP", "tx_cost", "交易成本", "10.4"],
-    }
+    doc_text_lower = doc_text.lower()
     missing = []
     for topic in topics:
-        keywords = topic_keywords.get(topic, [topic])
-        found = any(kw.lower() in doc_text.lower() for kw in keywords)
-        if not found:
+        if not _topic_is_documented(topic, doc_text_lower):
             missing.append(topic)
     return missing
 
 
+def _documented_file_refs(doc_text: str) -> set[str]:
+    """Extract path-like tokens that can document changed Python files."""
+    return set(_DOC_REF_RE.findall(doc_text))
+
+
 def _check_new_files_documented(changed_files: list[str], doc_text: str) -> list[str]:
     """检查新建的 Python 文件是否在文档中提到."""
+    documented_refs = _documented_file_refs(doc_text)
     undocumented = []
     for f in changed_files:
         if not f.endswith(".py"):
@@ -136,7 +168,8 @@ def _check_new_files_documented(changed_files: list[str], doc_text: str) -> list
         filename = Path(f).name
         if basename.startswith("__") or basename.startswith("test_"):
             continue
-        if basename not in doc_text and filename not in doc_text and f not in doc_text:
+        file_refs = {basename, filename, f}
+        if file_refs.isdisjoint(documented_refs):
             undocumented.append(f)
     return undocumented
 

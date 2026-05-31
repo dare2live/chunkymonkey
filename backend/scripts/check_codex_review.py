@@ -8,12 +8,14 @@ CLAUDE Rule 10 要求: 任何代码阶段性 commit 必须先 Codex review.
 
 本 hook 轻量验证 (不 auto-invoke Codex, 不 block 60-100s):
 1. 检测 commit 是否含 code-relevant 文件 (backend/services/scripts/config/tests/...)
-2. 如是 → commit message body 必须含 Codex 引用 (agent ID / "codex review" / "codex-review: skipped reason=...")
+2. 如是 → commit message body 必须含 Codex review evidence:
+   `Codex-Reviewed: APPROVE[_WITH_NOTES]`, agent ID, "codex review",
+   or `codex-review: skipped reason=...`
 3. 否则 reject 提醒 dev invoke `codex:rescue --model gpt-5.5 --effort xhigh`
 
 精度: 实际是否 invoke 真 Codex 不强检 (信任 dev), 但 message 留痕便于 audit.
 
-Bypass: 显式 `# codex-review: skipped reason=<typo|rename|markdown|trivial>` 在 message body.
+Bypass: 显式 `codex-review: skipped reason=<typo|rename|markdown|trivial>` 在 message body.
 强烈不建议 `--no-verify`.
 
 Codex 引用 keywords (任一即 PASS):
@@ -53,11 +55,7 @@ EXEMPT_PATH_SUFFIXES = (
 )
 
 
-EXEMPT_BODY_MARKERS = (
-    "# codex-review: skipped",   # 显式 skip with reason
-    "# codex-review: ok",
-    "# commit-msg: minimal",     # 已用 minimal flag 也跳过 Codex 严格
-)
+EXEMPT_BODY_MARKERS: tuple[str, ...] = ()
 
 
 CODEX_REVIEW_KEYWORDS = (
@@ -71,6 +69,18 @@ CODEX_REVIEW_KEYWORDS = (
     "aa4a41ca",
     "ac61258a",     # generic 8-char hex hint
 )
+
+APPROVED_CODEX_REVIEW_RE = re.compile(
+    r"Codex-Reviewed:[ \t]*(APPROVE_WITH_NOTES|APPROVE)([ \t]|\(|$)"
+)
+REQUEST_CHANGES_REVIEW_RE = re.compile(
+    r"Codex-Reviewed:[ \t]*REQUEST_CHANGES([ \t]|\(|$)"
+)
+SKIP_REASON_RE = re.compile(
+    r"(?:#\s*)?codex-review:\s*skipped reason=(?P<reason>.+)",
+    re.IGNORECASE,
+)
+MIN_SKIP_REASON_CHARS = 8
 
 
 def get_staged_files() -> list[str]:
@@ -106,12 +116,38 @@ def has_codex_reference(body: str) -> bool:
     return False
 
 
+def has_approved_codex_review(body: str) -> bool:
+    """body 是否含当前 Rule 10 canonical approval trailer."""
+    return APPROVED_CODEX_REVIEW_RE.search(body) is not None
+
+
+def has_rejected_codex_review(body: str) -> bool:
+    """body 是否显式记录了 REQUEST_CHANGES verdict."""
+    return REQUEST_CHANGES_REVIEW_RE.search(body) is not None
+
+
+def has_meaningful_skip_reason(body: str) -> bool:
+    """body 是否含足够具体的 skip reason, 兼容有无 leading #."""
+    for match in SKIP_REASON_RE.finditer(body):
+        reason = match.group("reason").strip()
+        if len(reason) >= MIN_SKIP_REASON_CHARS:
+            return True
+    return False
+
+
 def main(msg_path: str) -> int:
     msg = Path(msg_path).read_text(encoding="utf-8")
     body = msg
 
+    if has_rejected_codex_review(body):
+        print("=" * 80, file=sys.stderr)
+        print("ERROR: Codex review verdict is REQUEST_CHANGES.", file=sys.stderr)
+        print("修法: 先消除 review objections, 再提交 APPROVE / APPROVE_WITH_NOTES。", file=sys.stderr)
+        print("=" * 80, file=sys.stderr)
+        return 1
+
     # bypass marker
-    if any(m in body for m in EXEMPT_BODY_MARKERS):
+    if any(m in body for m in EXEMPT_BODY_MARKERS) or has_meaningful_skip_reason(body):
         return 0
 
     # ignore comment lines
@@ -122,7 +158,7 @@ def main(msg_path: str) -> int:
     if not needs_codex_review(staged):
         return 0   # 纯 doc / markdown, 跳过
 
-    if has_codex_reference(body_only):
+    if has_approved_codex_review(body_only) or has_codex_reference(body_only):
         return 0
 
     # Reject + 提示
@@ -142,15 +178,16 @@ def main(msg_path: str) -> int:
     print("  /codex:rescue --model gpt-5.5 --effort xhigh <prompt>", file=sys.stderr)
     print(file=sys.stderr)
     print("commit message body 必须含以下任一 evidence:", file=sys.stderr)
+    print("  - 'Codex-Reviewed: APPROVE' 或 'Codex-Reviewed: APPROVE_WITH_NOTES'", file=sys.stderr)
     print("  - 'Codex <agent_id>' (e.g. Codex ad2e09e7)", file=sys.stderr)
     print("  - 'codex review' / 'codex-rescue' / 'agent <ID>'", file=sys.stderr)
     print("  - 8-char hex agent ID pattern", file=sys.stderr)
     print(file=sys.stderr)
     print("Bypass (慎用, 加在 message body 内):", file=sys.stderr)
-    print("  '# codex-review: skipped reason=typo'", file=sys.stderr)
-    print("  '# codex-review: skipped reason=rename'", file=sys.stderr)
-    print("  '# codex-review: skipped reason=markdown'", file=sys.stderr)
-    print("  '# codex-review: skipped reason=trivial'", file=sys.stderr)
+    print("  'codex-review: skipped reason=typo'", file=sys.stderr)
+    print("  'codex-review: skipped reason=rename'", file=sys.stderr)
+    print("  'codex-review: skipped reason=markdown'", file=sys.stderr)
+    print("  'codex-review: skipped reason=trivial'", file=sys.stderr)
     print(file=sys.stderr)
     print("根因: CLAUDE Rule 10 — code 阶段性 commit 必须 Codex review.", file=sys.stderr)
     print("无 Codex review 的 code commit 下次 session 重读时无法 audit 是否经过 critical 检查.", file=sys.stderr)

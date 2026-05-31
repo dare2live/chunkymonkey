@@ -115,7 +115,7 @@
 
 ### P0-A. db.py 拆分 (头号 god-module, 230 DDL + 145 fan_in)
 
-> 跟 spec `chunkymonkey_architecture_audit_20260517.md` C3 节方向一致.
+> 跟 spec `analysis/chunkymonkey_architecture_audit_20260517.md` C3 节方向一致.
 
 **拆分目标 (新文件结构, services/db_core/)**:
 

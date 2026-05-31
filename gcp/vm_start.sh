@@ -57,7 +57,7 @@ if [[ -f "$REPO_ROOT/gcp/cost_tracker.sh" && "$FORCE" != "1" ]]; then
 fi
 
 # Mark active_job marker (cost_tracker idle 检测 + TTL check 用)
-# F5 P1 (docs/gcp_reliability_root_cause_fix.md): marker 加 model_id / owner / TTL
+# F5 P1 (analysis/gcp_reliability_root_cause_fix.md): marker 加 model_id / owner / TTL
 # 防"跑完 batch 忘 rm marker, idle VM 假装有 active job 长跑浪费"场景
 # 调用方可 export MODEL_ID / JOB_TYPE / EXPECTED_MAX_HOURS 覆盖默认
 mkdir -p "$REPO_ROOT/data/reports"

@@ -2,7 +2,7 @@
 
 本审计只写文档，不修改 `backend/`、`tests/`、`frontend/`。
 
-范围：`backend/` Python 源码、`backend/tests/` 测试邻接、`docs/modularization_refactor_plan.md` 对比。
+范围：`backend/` Python 源码、`backend/tests/` 测试邻接、`analysis/modularization_refactor_plan.md` 对比。
 
 背景引用：上次 codegraph audit `aa94bbab`、现有重构方案 `a5b70bb9`、已 deploy 的 P-2 / F1+F2 / P-1 / db.py Phase 1 / retrain in-flight 均作为既有事实，不在正文重复展开。
 

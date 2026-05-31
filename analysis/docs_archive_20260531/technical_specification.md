@@ -1,5 +1,9 @@
 # ChunkyMonkey Technical Specification
 
+> Status: reference, not the current execution plan. For active priorities use
+> `goal.md` and `docs/implementation_plan.md`; for non-negotiable rules use
+> `docs/PROJECT_CONSTITUTION.md`.
+
 ## 1. ARCHITECTURE
 
 **Authoritative operating path** (from goal): `raw data -> formula signals + PIT factors -> Optuna -> mart -> paper_sim selector -> simulate_trade -> NAV/KPI`. 

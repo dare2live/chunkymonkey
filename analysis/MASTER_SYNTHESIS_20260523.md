@@ -322,11 +322,11 @@ backend/services/
 
 | Prior doc | Status | Why superseded |
 |---|---|---|
-| docs/project_audit_20260523.md | partial | only B section issues, no integration |
-| docs/project_synthesis_20260523.md | partial | only synthesis A-K, no integration plan |
-| docs/integration_master_plan_20260523.md | partial | only integration Track A/B, no test results |
-| docs/optimization_plan_consolidated_20260523.md | partial | only phases, missing test results + best params |
-| **MASTER_SYNTHESIS_20260523.md** | **MASTER** | **All sections A-K covered** |
+| analysis/project_audit_20260523.md | partial | only B section issues, no integration |
+| analysis/project_synthesis_20260523.md | partial | only synthesis A-K, no integration plan |
+| analysis/integration_master_plan_20260523.md | partial | only integration Track A/B, no test results |
+| analysis/optimization_plan_consolidated_20260523.md | partial | only phases, missing test results + best params |
+| **analysis/MASTER_SYNTHESIS_20260523.md** | **MASTER** | **All sections A-K covered** |
 
 ---
 

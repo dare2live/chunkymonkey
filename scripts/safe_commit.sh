@@ -1,17 +1,19 @@
 #!/usr/bin/env bash
-# safe_commit.sh — pre-flight all hooks before commit + push + codegraph sync
+# safe_commit.sh — pre-flight all hooks before commit + optional push + codegraph sync
 #
 # 防止 "commit 失败 → retry 同一 message → 仍 reject" 浪费时间.
 #
 # Usage:
 #   bash scripts/safe_commit.sh "commit message body"
+#   SAFE_COMMIT_NO_PUSH=1 bash scripts/safe_commit.sh "local commit message body"
 #
 # 流程:
 #   1. git status — list staged files
 #   2. 跑 backend/scripts/check_project_index_sync.py — 若 fail 提示 + abort
 #   3. 跑 backend/scripts/check_rule_compliance.py — 若 fail 提示 + abort
 #   4. 验 commit message 含 GROUP A + B keyword
-#   5. git commit + git push + codegraph sync
+#   4.5 Rule 10 — staged .py 必须含 Codex review 或显式 skip reason
+#   5. git commit + optional git push + codegraph sync
 
 set -euo pipefail
 
@@ -101,11 +103,66 @@ if [[ "$has_a" == "0" && "$has_minimal" == "0" ]]; then
 fi
 echo "GROUP A match: $has_a, GROUP B match: $has_b, minimal: $has_minimal, codex-skip: $has_skip"
 
-# 5. Commit + push + codegraph
+# 4.5. Codex review gate (Rule 10 blocking)
 echo
-echo "=== Step 5: commit + push + codegraph sync ==="
+echo "=== Step 4.5: Codex review gate (Rule 10) ==="
+MIN_CODEX_SKIP_REASON_CHARS=8
+py_staged=$(git diff --cached --name-only -- '*.py' | wc -l | tr -d ' ')
+has_codex=$(echo "$MSG" | grep -cE "Codex-Reviewed:[[:space:]]*(APPROVE_WITH_NOTES|APPROVE)([[:space:]]|$|\\()" || true)
+has_request_changes=$(echo "$MSG" | grep -cE "Codex-Reviewed:[[:space:]]*REQUEST_CHANGES([[:space:]]|$|\\()" || true)
+skip_reason=$(
+    printf '%s\n' "$MSG" | awk '
+        {
+            pos = index($0, "codex-review: skipped reason=");
+            if (pos > 0) {
+                reason = substr($0, pos + length("codex-review: skipped reason="));
+                gsub(/^[[:space:]]+|[[:space:]]+$/, "", reason);
+                if (reason != "") {
+                    print reason;
+                    exit;
+                }
+            }
+        }
+    '
+)
+has_skip_reason=0
+if [[ "${#skip_reason}" -ge "$MIN_CODEX_SKIP_REASON_CHARS" ]]; then
+    has_skip_reason=1
+fi
+if [[ "$py_staged" -gt 0 ]]; then
+    if [[ "$has_request_changes" -gt 0 ]]; then
+        echo "ERROR: staged .py files cannot be committed with Codex-Reviewed: REQUEST_CHANGES"
+        echo "修法: 先消除 review objections 后再提交，或改成 APPROVE / APPROVE_WITH_NOTES / 合法 skip reason。"
+        exit 6
+    fi
+    if [[ "$has_codex" == "0" && "$has_skip_reason" == "0" ]]; then
+        echo "ERROR: staged .py files require 'Codex-Reviewed: APPROVE[_WITH_NOTES]' or a non-empty 'codex-review: skipped reason=...' (${MIN_CODEX_SKIP_REASON_CHARS}+ chars)"
+        echo "staged .py files: $py_staged"
+        echo "修法: 先跑 Codex review gate, 或对 trivial/markdown/typo/rename 写明 skip reason."
+        exit 6
+    fi
+    echo "Rule 10 OK: staged .py=$py_staged, Codex-Reviewed=$has_codex, REQUEST_CHANGES=$has_request_changes, skip_reason=$has_skip_reason"
+else
+    echo "Rule 10 skipped: no staged .py files"
+fi
+
+# 5. Commit + optional push + codegraph
+echo
+echo "=== Step 5: commit + optional push + codegraph sync ==="
+if [[ "${SAFE_COMMIT_DRY_RUN:-0}" == "1" ]]; then
+    echo "SAFE_COMMIT_DRY_RUN=1: stopping before git commit/push/codegraph sync."
+    exit 0
+fi
 git commit -m "$MSG"
-git push
+if [[ "${SAFE_COMMIT_NO_PUSH:-0}" == "1" ]]; then
+    echo "SAFE_COMMIT_NO_PUSH=1: skipping git push."
+else
+    git push
+fi
 codegraph sync 2>&1 | tail -1 || true
 echo
-echo "DONE: commit + push + codegraph sync 完成"
+if [[ "${SAFE_COMMIT_NO_PUSH:-0}" == "1" ]]; then
+    echo "DONE: commit + no-push + codegraph sync 完成"
+else
+    echo "DONE: commit + push + codegraph sync 完成"
+fi

@@ -142,8 +142,10 @@ Plan §5.1 列的最小字段映射:
 | `merge_decision` | `research_cache.merge_decision` | TEXT | replace / '' / reject |
 | `source_artifact` | (常量) `bestchoice/analysis/research_cache.duckdb#cb3cc580...` | TEXT | lineage 回溯 |
 | `source_data_latest_date` | `research_cache.data_latest_date` | TEXT | 最新 = 2026-05-19 |
+| `as_of_date` | `source_data_latest_date` | DATE | PIT key: 参数证据可用的数据截止日 |
 | `execution_model` | `research_cache.execution_model` | TEXT | `vwap_tradable_v1` |
 | `created_at` | (now) | TEXT | import 时点 |
+| `built_at` | (now) | TIMESTAMP | 主项目导入时点, 用于审计/lineage |
 
 ## 主项目验证缺口 (来自 plan §3)
 

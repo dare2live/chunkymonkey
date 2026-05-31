@@ -137,5 +137,5 @@ Wave 2 配置建议 (跑完 Wave 1 后):
 
 - skill [[data-integrity-audit]] §3 (coverage audit pattern)
 - skill [[pit-audit]] (per-col-group ablation Step 4)
-- docs/chunkymonkey_architecture_audit_20260517.md (Codex Round 26 §3 数据表管理)
+- analysis/chunkymonkey_architecture_audit_20260517.md (Codex Round 26 §3 数据表管理)
 - Wave 1 task 跑 4 configs 见 gcp/run_feature_ablation_grid.sh

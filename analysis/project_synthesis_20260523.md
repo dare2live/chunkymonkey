@@ -106,7 +106,7 @@ Layer 1: Unified PIT-strict panel
 - 8 unit tests pass
 
 ### F.6 Project audit doc
-- `docs/project_audit_20260523.md` (this session morning)
+- `analysis/project_audit_20260523.md` (this session morning)
 - `docs/v7_forward_decision_framework.md` (NEW) — promote/abort criteria
 - This synthesis doc (NEW)
 

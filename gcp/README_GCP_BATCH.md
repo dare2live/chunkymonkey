@@ -24,7 +24,7 @@ Historical GCP artifacts that are already present on local disk may be read
 locally. Refreshing or replacing them from cloud counts as GCP work and must
 follow the controlled-use policy.
 
-Operational checklist: follow `docs/gcp_controlled_execution_runbook.md` for
+Operational checklist: follow `docs/engineering_governance.md` for
 wrapper scripts, shutdown cancellation, pid/log/artifact markers, small artifact
 export, GCS upload, monitoring, and stop handling. Do not launch expensive jobs
 with fragile one-line SSH commands.

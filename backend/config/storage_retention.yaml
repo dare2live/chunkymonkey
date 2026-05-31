@@ -5,6 +5,28 @@ defaults:
   require_explicit_execute_flag: true
   large_delete_row_threshold: 1000000
 
+payload_audit:
+  max_value_warn_bytes: 1048576
+  max_value_fail_bytes: 10485760
+  total_value_warn_bytes: 10485760
+  total_value_fail_bytes: 104857600
+  top_sample_rows: 20
+  duplicate_sample_warn_count: 2
+  fail_on_recursive_keyword: true
+  warn_on_path_marker: true
+  recursive_keywords:
+    - latest_dispatch
+    - queue_items
+    - audit_json
+    - signals_json
+    - preview
+  path_markers:
+    - data/reports/
+    - analysis/
+    - /logs/
+    - .log
+    - file://
+
 protected_model_statuses:
   - champion
   - challenger

@@ -1,13 +1,13 @@
 # Phase 4 Alpha 根因回溯 Roadmap
 
-按 PLAN_V3 §72 "任一失败 → 停止包装, 回到 alpha 根因, 不调目标".
+按 `analysis/plan_v3_20260514_archived.md` §72 "任一失败 → 停止包装, 回到 alpha 根因, 不调目标".
 
 ## 触发条件
 
 governance v1 framework 完成 (Phase 1-3 26 commits) 后真实数据 verdict:
 - mart_p0b_oos_predictions RankIC = 0.0246 (< 0.03 Codex Q8.6 gate)
 - paper_sim ann_ret_approx = -65.5% (87 days late window)
-- P3 holdout 4 hard gate 全 FAIL (PLAN_V3 §99)
+- P3 holdout 4 hard gate 全 FAIL (`analysis/plan_v3_20260514_archived.md` §99)
 
 → governance v1 数据干净后真实 alpha 不达用户终极目标 (年化 ≥30%).
 
@@ -72,7 +72,7 @@ governance v1 framework 完成 (Phase 1-3 26 commits) 后真实数据 verdict:
 - 重 train final lgbm
 - 重 paper_sim 全 window 2024-07 ~ 2026-04
 - P3 holdout 4 hard gate verify + ann_ret sanity cap 0.5 verify
-- 若 PASS → upgrade plan, 否则 PLAN_V3 §72 "不调目标" 继续 Phase 4 探索
+- 若 PASS → upgrade plan, 否则 `analysis/plan_v3_20260514_archived.md` §72 "不调目标" 继续 Phase 4 探索
 
 ## 估时
 
@@ -101,6 +101,6 @@ governance v1 framework 完成 (Phase 1-3 26 commits) 后真实数据 verdict:
 
 ## 失败 fallback (Phase 4 全失败时)
 
-- 接受真实 alpha 弱 (年化 < 30%) — PLAN_V3 §72 verdict
+- 接受真实 alpha 弱 (年化 < 30%) — `analysis/plan_v3_20260514_archived.md` §72 verdict
 - 调整目标 user 决定 (e.g. 年化 10-15% net 是 honest baseline, Codex round 15 Q5 给出)
 - 转 risk-control alpha (低 dd + 稳定 monthly_win) 而非纯 alpha 增强

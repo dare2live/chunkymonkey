@@ -480,7 +480,7 @@ GCP 大任务**不允许** fragile one-line SSH. 必须 wrapper script / heredoc
 - SSH/IAP fail 后先 check VM status + GCS artifact 再重启 (VM 可能已停或 job 已上传结果).
 - code sync 到 dirty worktree VM: 先 backup 远端 + scope 拷贝, **不 `git pull` 强覆**.
 
-GCP run 浪费时间或没产 artifact → 记 root cause + 防回退到 `docs/gcp_controlled_execution_runbook.md` 再重试.
+GCP run 浪费时间或没产 artifact → 记 root cause + 防回退到 `docs/engineering_governance.md` 再重试.
 
 ### 9.5 Long-Run Checkpoint Reuse
 

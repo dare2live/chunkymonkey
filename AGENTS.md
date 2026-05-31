@@ -15,6 +15,9 @@ then apply the rules below in Codex terms.
   before guessing.
 - Keep `goal.md` / handoff files current when the task changes delivery state,
   GCP state, validation evidence, or next actions.
+- Keep `docs/chunkyctl_session_quickstart.md` current when startup commands,
+  gate order, controller/agent workflow, tool entrypoints, or project phase
+  assumptions change. New sessions must not inherit stale startup instructions.
 
 ## Codegraph + Complexity Review
 
@@ -35,10 +38,51 @@ readiness decision:
 3. After edits, run targeted tests and `codegraph sync .` again so future
    agents do not work from stale structure.
 
+## Test Tool Validity Gate
+
+Before running tests or using test results as delivery evidence, audit whether
+the selected tests still match the current architecture. A green test is not
+evidence if the tool is proving an obsolete universe, PIT, data-source, or DB
+assumption.
+
+Until `backend/scripts/audit_test_tool_health.py` exists, perform a manual
+pre-test check and state it in the work log:
+
+- identify the exact test command and files it will exercise;
+- confirm the test scope and marker are appropriate (`unit`, `contract`,
+  `integration`, `pipeline`, or explicit opt-in `realdb`/`perf`/`network`/`gcp`);
+- confirm fixtures use current truth sources: K-line for tradeability, calendar
+  for dates, `universe_rules.yaml` for board/limit rules, and
+  `dim_active_a_stock` only for code-to-name/cache/schema fixtures;
+- confirm DB fixtures use DuckDB/`duck_mem()` unless the test is explicitly
+  about Optuna SQLite storage or another documented exception;
+- reject tests that rely on fixed historical end dates, proxy/warn-only evidence,
+  over-mocked gates, or legacy paths as production proof.
+
+After the audit script exists, run it before meaningful targeted or broad test
+runs and treat FAIL as blocking unless the current task is fixing that test-tool
+failure. Keep the long-lived policy in `docs/engineering_governance.md` and the
+current FAIL/WARN state in `goal.md` or handoff.
+
 ## Parallel Execution
 
 Use parallelism aggressively when scopes do not conflict, especially for
 read-only discovery, code-path audits, test runs, and independent file scopes.
+The durable policy lives in `docs/engineering_governance.md`; keep this
+section and that file aligned when changing workflow rules.
+
+Default Codex mode for this repo is controller-led execution: Codex is the
+controller/architect/reviewer, not just a single-file implementer. The
+controller owns direction, decomposition, risk classification, scope assignment,
+final merge, final validation, and project-state updates. Sub-agents do bounded
+execution inside explicit scopes; their output is a candidate until reviewed and
+accepted by the controller.
+
+When Codex sub-agents are available, prefer them for bounded sidecar work that
+can proceed while the controller handles the critical path. Start with read-only
+explorers for architecture audits, complexity triage, data-lineage inventory,
+and failure root-cause mapping. Use worker agents only when their write scopes
+are disjoint and explicitly owned.
 
 Safe to parallelize:
 - documentation reading and summarization;
@@ -57,11 +101,18 @@ Keep serialized:
   updates unless one controller owns the edit.
 
 Controller responsibilities:
+- choose what not to delegate: architecture decisions, truth-source decisions,
+  final gate verdicts, shared documentation, staging, commits, pushes, GCP/Optuna
+  control, and DuckDB write windows stay with the controller;
 - define each agent's read/write scope before starting;
+- tell read-only agents not to edit, delete, stage, commit, run GCP, run Optuna,
+  or run long/expensive jobs;
 - tell worker agents they are not alone in the codebase and must not revert
   others' changes;
 - review returned patches before accepting them;
 - run final tests and merge/update project state in one place.
+- update `goal.md`/handoff only after reconciling agent results; shared docs are
+  serialized unless one controller owns the edit.
 
 ## GCP Controlled Use
 
@@ -128,7 +179,7 @@ Minimum checklist for every GCP compute job:
   dirty state as a shortcut.
 
 If a GCP run wastes time or terminates without artifacts, record the root cause
-and prevention in `docs/gcp_controlled_execution_runbook.md` before retrying.
+and prevention in `docs/engineering_governance.md` before retrying.
 
 ## Long-Run Checkpoint Reuse
 
@@ -211,6 +262,27 @@ deployment risk signal, not a scoreboard.
   radius warrants it.
 - Run `git diff --check` before handing off.
 
+## Hardcoding Governance
+
+Business rules are governed assets, not incidental constants. Before adding or
+modifying thresholds, strategy weights, date windows, stock codes, table/path
+catalogs, data-source priorities, universe/board/limit rules, or audit criteria
+in Python, decide the owner first.
+
+Default ownership:
+- YAML/config owns stable rules, thresholds, parameters, switches, and resource
+  policy.
+- Data tables own observed facts, source inventories, lineage, gate evidence,
+  runtime status, and reusable artifacts.
+- Service modules own validation, typed access, fallback order, and API shape.
+- Python literals are acceptable for test fixtures, mathematical constants,
+  schema/enum names, SQL DDL, and small local implementation details that are
+  not business policy.
+
+If a business value must remain in code, document why config/table ownership
+would be worse and add a focused regression check. Do not copy the same rule
+into YAML, SQL, and Python; one rule should have one source of truth.
+
 ## Repository Hygiene
 
 Keep the codebase clean and organized at all times. A task is not finished while
@@ -221,9 +293,13 @@ unowned output directories.
   partial exports, or scratch scripts in the repo unless they are deliberate
   evidence artifacts with stable names and a documented consumer.
 - Delete dead code, dead files, and unnecessary folders when they are clearly
-  superseded. Before deleting, use `rg` to check references and preserve anything
-  that is still part of audit evidence, lineage, reproducibility, or historical
-  validation.
+  superseded. Do not hide validated-dead code behind comments, flags, renamed
+  files, dead branches, or "kept for later" stubs; if evidence proves it is safe
+  to remove, remove it. Before deleting code or tests, use CodeGraph
+  (`codegraph query` / `codegraph context`) plus `rg` to check references,
+  owners, and call paths; run the narrowest relevant tests/audits after removal.
+  Preserve anything that is still part of audit evidence, lineage,
+  reproducibility, or historical validation.
 - Keep documents organized by purpose:
   - current operating state belongs in `goal.md`, `SESSION_HANDOFF.md`, and
     `analysis/workflow_checkpoint.md`;
@@ -240,6 +316,34 @@ unowned output directories.
 - Preserve validation artifacts that support strategy decisions, but do not let
   them become anonymous clutter. If an artifact matters, reference it from the
   current ledger or a dated analysis document; if it does not matter, remove it.
+
+### Dirty Worktree Resolution
+
+Treat a dirty worktree as a delivery risk, not as background noise. Always run
+`scripts/chunkyctl doctor --fast` and `scripts/chunkyctl worktree --format
+markdown` before staging or deleting broad changes. Unknown bucket count must be
+0 before any commit planning; if not, inspect with CodeGraph, `rg`, and owner
+docs first.
+
+Resolve dirty state in layers:
+
+1. Delete only proven generated local residue first: `.DS_Store`,
+   `__pycache__`, `.pytest_cache`, and `.pyc`. Do not delete logs, reports,
+   database files, or analysis artifacts until their owner and evidence value
+   are clear.
+2. Review and stage one bucket/slice at a time. Default order is controller
+   state/docs archive cleanup, startup tooling, universe/data-source governance,
+   updater split, then remaining service/script/test domains.
+3. A CodeGraph `Added` count that matches untracked `.py`/`.js`/`.jsx` files is
+   not an index bug; it means those files must be accepted into a reviewed slice
+   or deleted if obsolete.
+4. Never use `git add .` to solve dirty state. Stage explicit file lists only
+   after the slice has current gates and a clear commit message. Use
+   `SAFE_COMMIT_NO_PUSH=1 scripts/safe_commit.sh "message"` for local cleanup
+   commits unless the user explicitly wants to push.
+5. Do not revert or discard user/peer work to make status clean. If ownership is
+   unclear, keep the file dirty and record the evidence gap in `goal.md` or the
+   handoff instead of hiding it.
 
 ## Delivery Readiness
 

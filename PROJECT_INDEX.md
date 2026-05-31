@@ -66,7 +66,7 @@
 
 **Codex round 16 deliver** (task-mp8ktoe3-8rkde7):
 - `configs/data_governance.yaml` 244 行 — 3 tier / schema contract / 6 reject + 3 warn lint / cross-source / nightly audit / deprecation / lineage 4-level
-- `docs/deprecation_sop.md` 136 行 — 4 步 SOP (Decision Record / Read Path Removal / Physical Delete / Rebuild Gate)
+- `docs/engineering_governance.md` 136 行 — 4 步 SOP (Decision Record / Read Path Removal / Physical Delete / Rebuild Gate)
 - `backend/scripts/check_sina_tdxhub_overlap.py` — coverage 验证 (sina_not_in_tdxhub_codes = 0 verified)
 
 **Governance 已建但未 enforce 的基础设施 (修了一半)**:
@@ -853,7 +853,7 @@ SELECT * FROM mart_data_source_watermark;
 
 **market_perception backfill 进度**: emotion 100% 覆盖(2023-01~2026-05, 814 行); daily/theme/leader_follower 缺上游(dim_stock_tdx_industry_history 仅 9 天 forward-only, TDX 协议不提供历史 industry, 需 12-18 月自然积累)
 
-**5 份研究文档**: docs/market_perception_{optimization_plan,data_requirements,data_onboarding_spec,signal_alpha_findings}_20260529.md + zhushenglang_hunter_research_log_20260528.md
+**研究文档归档**: 市场感知 2026-05-29 系列已迁入 `analysis/docs_archive_20260531/`，当前活跃契约为 `docs/data_product_contract.md`；`docs/zhushenglang_hunter_research_log_20260528.md` 保留为主升浪猎手北极星。
 
 **新表/改动**: scripts/daily_update.sh(+Step 2k/2l) · backend/config/data_audit_rules.yaml(+2 SLA)
 
@@ -1060,7 +1060,7 @@ audit_delivery_readiness._load_msaf_horizon_ladder extend:
 - Glob v4_bc_ensemble_horizon_ladder*.json
 - V4+BC ensemble 1.84 现 visible in audit next_milestones (visibility only, verdict unchanged 88%)
 
-Project audit doc (docs/project_audit_20260523.md) 全面记录:
+Project audit doc (analysis/project_audit_20260523.md) 全面记录:
 - 7 经验教训 (Pattern 8/9/10/11 leakage / 数字红线 / GCP 浪费 / debt / ensemble 顶限 / 阶段 vs ready / Codex)
 - B section 6 issues (data / model / audit / code / infra / wiring)
 - C section fix priorities (v7 NOW vs 6/1)
@@ -1079,7 +1079,7 @@ Budget raised 15 to 50 enables v7 NOW path. Waiting user explicit launch.
 Verify: projected $13.40 / $50 = 26.8 percent OK. Remaining $40.49 / 107.7h spot.
 v7 retrain $4 buffer $36+ comfortable.
 
-docs/project_audit_20260523.md 全面 audit:
+analysis/project_audit_20260523.md 全面 audit:
 - A. 经验教训 (4 leakage patterns / 数字红线 / GCP 浪费 / debt / ensemble 顶限)
 - B. 当前 issues (data / model / audit / code / infra / wiring)
 - C. Fix priorities (v7 NOW vs 6/1, panel v3 rebuild)
@@ -1335,7 +1335,7 @@ Tool catch on panel v4:
 - **check 10: NEW HIGH — panel 5210 stocks vs ever_listed 7138 = 1928 delisted missing**
 - check 7/8: 0 findings (panel code 这些 dims 清洁)
 
-docs/leakage_pattern_catalog.md: 10 patterns systematic enumeration (cover 6 done, 4 pending)
+docs/strategy_validation_contract.md: 10 patterns systematic enumeration (cover 6 done, 4 pending)
 scripts/safe_retrain.sh: pre-flight wrapper (audit + budget + dry-run + confirmation gates)
 
 ### 2026-05-22 v6 retrain BLOCK + audit tool check 6 (time-availability leak)
@@ -1902,7 +1902,7 @@ goal.md 加 criteria #10 25% — 3 metric (cache_hit_rate ≥80%, lineage_covera
 - criteria #9 数据可回溯 75 → 90%
 
 **Codex ac5d8987 结构化复杂度审计**:
-- `docs/structured_complexity_audit_20260520.md` 17K
+- `analysis/structured_complexity_audit_20260520.md` 17K
 - complexity-review skill + codegraph 0.6.8 联合, 指导后续 db.py Phase 2 / workbench 拆
 
 calendar gate test 4 fail 修 (Codex 改 datetime.now() 触发 lint, 加 Phase ψ.5 allowlist 注释豁免).
@@ -1911,7 +1911,7 @@ Baseline: 2474/2476 PASS (2 pre-existing fail: test_step4 DOW vs DOM stale + duc
 
 ### 2026-05-20 上午 GCP retrain reliability F4+F5 实施 (cron-monitor + marker TTL)
 
-承接 5-20 凌晨 F1+F2 commit, 实施 `docs/gcp_reliability_root_cause_fix.md` 剩下两个 P1.
+承接 5-20 凌晨 F1+F2 commit, 实施 `analysis/gcp_reliability_root_cause_fix.md` 剩下两个 P1.
 
 **F4 cron-based monitor 替代 nohup** (Mac sleep / SSH 断 proof):
 - 新 `scripts/monitor_phase5_gcp_retrain_probe.sh` 单次 probe (不轮询), 跟原 `monitor_phase5_gcp_retrain.sh` 同语义但每次只跑 1 sample. 完成后写 `monitor_done_<MODEL_ID>.sentinel` 防重跑.
@@ -1946,7 +1946,7 @@ bash configs/cron/install.sh install              # cron daemon 路径 (FDA-免�
 - DuckDB 1.5.2 不支持 `ALTER TABLE ... ADD GENERATED ... STORED`, 本轮自动 fallback 为 `ADD COLUMN IF NOT EXISTS trade_date_dt DATE` + `UPDATE ... CAST(...)`.
 - 验证: OOS 2,159,871→2,159,871 mismatch 0; LambdaMART v6 2,159,871→2,159,871 mismatch 0; paper_sim_nav 11,618→11,618 mismatch 0.
 - Benchmark: `mart_p0b_oos_predictions` Q1 source date 0.001861s / Q2 `trade_date_dt` 0.000901s, row count 628,438 / 628,438.
-- Spec: `docs/perf_p1_trade_date_migration_spec.md`; opt-in perf test: `backend/tests/scripts/test_perf_p1_trade_date.py`.
+- Spec: `docs/data_product_contract.md`; opt-in perf test: `backend/tests/scripts/test_perf_p1_trade_date.py`.
 
 ### 2026-05-20 凌晨 GCP retrain reliability F1+F2 实施 (Codex bocq8b60j root cause)
 
@@ -1958,7 +1958,7 @@ F2 [P0] 每 COMPLETE trial atomic checkpoint: `run_p0b_lambdamart_v6.py:560-590`
 
 CLI: `retrain_lambdamart_v6.py:336-345 + 383-405` 加 3 args, 默认 in-memory backward compat. 12/12 baseline tests PASS.
 
-Codex root cause doc: `docs/gcp_reliability_root_cause_fix.md` 含 5 fix + 3 resume option. Option A 推荐: trial 9 best params 直接 final materialize predictions (30-60min, $0.40).
+Codex root cause doc: `analysis/gcp_reliability_root_cause_fix.md` 含 5 fix + 3 resume option. Option A 推荐: trial 9 best params 直接 final materialize predictions (30-60min, $0.40).
 
 ### 2026-05-19 深夜 perf: retrain stall Fix 1 实施 (15min → 30s, 30-60× 加速)
 
@@ -2060,7 +2060,7 @@ Codex a085ce4e (C6 SKILL) + Codex a3e6850d (N+1 audit) 完成:
 
 **Codex 大宗交易 alpha (afcd11ee)**: `fact_dzjy_event` 已存 但只 7 天 548 rows. 5 features spec (block_trade_cost_spread / volume_ratio / support_score / volume_anomaly / inst_block_buy_ratio). ETA 1w 最小有效 / 1mo 生产 (backfill + notice_date 治理).
 
-**用户 vision: Market Regime Understanding System** (~ 7 engines + 20 研究方向). User 明确"不着急, 作为独立模块慢慢空闲时研究框架先". Sub-agent ac35dd39 写 `docs/market_regime_framework.md` 沉淀 (background).
+**用户 vision: Market Regime Understanding System** (~ 7 engines + 20 研究方向). User 明确"不着急, 作为独立模块慢慢空闲时研究框架先". Sub-agent ac35dd39 写 `docs/data_product_contract.md` 沉淀 (background).
 
 ### 2026-05-19 晚 doc: panel_pipeline_manifest.yaml (Codex HIGH 2 解)
 
@@ -2662,7 +2662,7 @@ ensemble runner 加 --with-institution flag (用 panel_v4.lhb_inst_buy_30d 简�
 
 Finding: institution raw count 弱信号, ensemble 30% weight dilute lambdamart strong alpha. 真接需 4-class composite (Codex agent a432eadffa 跑中).
 
-不开 default. docs/msaf_p1_institution_baseline_20260518.md.
+不开 default. docs/strategy_validation_contract.md.
 
 ### 2026-05-18 下午 daily_update Step 5 真调 MSAF ensemble KPI + audit Step 5 check
 
@@ -2688,7 +2688,7 @@ audit_delivery_readiness #4 加 step5_ensemble_real check (10 分): Step 5 真�
 
 均值 88% (其它 5 标准未变, P1-P5 待完).
 
-P4 vol-sizing research: neutral cash=20% test → max_dd -15.44% PASS, 但 median ann 大幅降 → 不改 default, 留 Phase 5 Optuna 联合搜索 (docs/msaf_p4_vol_sizing_research_20260518.md).
+P4 vol-sizing research: neutral cash=20% test → max_dd -15.44% PASS, 但 median ann 大幅降 → 不改 default, 留 Phase 5 Optuna 联合搜索 (docs/strategy_validation_contract.md).
 
 ### 2026-05-18 下午 PIT audit 100% + #1 数据管理 PASS — 均值 87→88%
 
@@ -3601,7 +3601,7 @@ price_kline.volume 单位混乱, label panel vwap 算错 100×, 2.77M corrupt ro
 Codex round 16 deliver:
 1. `configs/data_governance.yaml` 244 行 — kline_governance_v1_tdxhub_primary
    - 3 tier (tdxhub / hs300_only / legacy retire) / schema contract / 6 reject lint / cross-source / audit / deprecation / lineage
-2. `docs/deprecation_sop.md` 136 行 — Source 退役 4 步 SOP
+2. `docs/engineering_governance.md` 136 行 — Source 退役 4 步 SOP
 3. `backend/scripts/check_sina_tdxhub_overlap.py` 113 行 — sina_not_in_tdxhub_codes=0 verified
 4. `backend/scripts/nightly_data_audit.py` 308 行 — 加入 git, 3 critical alarm 已 detect (vwap 27,899 / tier1 0.79% / fwd_outlier 704K)
 

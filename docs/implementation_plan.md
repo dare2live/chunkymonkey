@@ -1,128 +1,136 @@
-# ChunkyMonkey 架构重构 + 业务交付 — 落地执行计划
-Date: 2026-05-26 (Claude + Codex 讨论确认版)
+# ChunkyMonkey Architecture Implementation Plan
 
-## 执行顺序 (按依赖关系)
+This is the durable execution plan. It describes order, boundaries, gates, and
+acceptance criteria. It must not duplicate every current PASS/WARN/FAIL detail;
+the live ledger is `../goal.md`.
 
-```
-M0 300616五公式 → M4 前端公式视图 → M5 GCP全量跑批
-                                   ↗
-M3 data_audit集成 daily_update ──→
-M6 data_audit 配置化 ──→
+## Document Boundary
 
-(独立) S1-S4 技术债 (God module拆/YAML合并)
-(独立) M2 dim_all_ever_listed 清理
-```
+| Question | Source of truth |
+|---|---|
+| What is blocked or next right now? | `../goal.md` |
+| What is the execution order? | This file |
+| Why did the architecture reform start? | `architecture_reform_context.md` |
+| What rules are non-negotiable? | `PROJECT_CONSTITUTION.md`, `engineering_governance.md` |
+| What data/product contracts must future work satisfy? | `data_product_contract.md`, `strategy_validation_contract.md` |
 
-## M0: 300616 五公式优化 (1 天, 最高优先)
+If this file and `goal.md` disagree on current state, trust `goal.md` and update
+this file only when the durable sequence or gate changes.
 
-```
-方法: 上帝视角 → 全A股验证 → 去leakage调参
-代码: backend/services/bc_absorbed/derived_formulas.py
-数据: 300616 三波 W1(12-29→02-14) W3(04-20→05-20)
-关键特征: 量比 0.5x→1.4x 回升 + below MA120 + pos250低
-已有: 上帝视角35笔+21265% + T时刻特征分析 + gs_raw_buy在理想日命中
+## Risk First
 
-步骤:
-  1. 用未来函数写300616精确买卖 (已有god_view_signals基础)
-  2. 全A股跑看能否选出300616 (universe 4969已修OK, 300616已入选)
-  3. 逐步去掉未来函数, 用VWAP+成本验证
-  4. 五公式各自验证: 信号日 vs 理想日偏差 ≤ 1天
+| Risk | Decision |
+|---|---|
+| Dirty worktree hides unrelated changes | Work by bucket and reviewed slice; never `git add .` |
+| Old docs steer new work | Keep active docs <=10; current status only in `goal.md` |
+| Universe/PIT errors create fake alpha | Architecture gates precede formulas, backtests, Optuna, and frontend |
+| Historical HIGH complexity is confused with new debt | Use `chunkyctl doctor` baseline/diff and inspect scanner findings before patching |
+| Data-source needs drift as sources change | Manage needs in config/table contracts, not chat memory |
+| UI overclaims stale/proxy values | Backend evidence and lineage contracts must exist before frontend redesign |
 
-验证: 300616三波每波买入偏差≤1天, 含成本收益>0
-Owner: Claude (主) + Codex (review)
-```
+## Current Pause Line
 
-## M3: data_audit 集成到 daily_update (0.25 天)
+Do not resume business expansion until governance gates are accepted:
 
-```
-文件: scripts/daily_update.sh L341-362
-改法: Step 3 label/panel rebuild 后加:
-  PYTHONPATH=backend python -c "
-  from services.data_audit import run_post_sync_audit
-  result = run_post_sync_audit('step3_label_panel', strict=False)
-  print(result.get('overall', 'unknown'))
-  "
-验证: bash scripts/daily_update.sh --dry 日志含 data_audit
-Owner: Claude
-```
+| Paused work | Resume condition |
+|---|---|
+| 300616 original or derived formulas | Universe, PIT, data freshness, and plan gates pass |
+| BestChoice formula expansion | Artifact freeze, namespaced challenger import, and local paper evidence pass |
+| GCP Optuna or broad replay | `backtest_preflight`, `plan_validator`, data audit, and GCP controlled-use plan pass |
+| Stock-profile or global frontend redesign | Data/profile/API contracts are stable and tested |
 
-## M4: 前端公式视图 (0.5 天)
+主升浪猎手 remains the product north star, but the research log is hypothesis
+evidence, not production proof. It starts only after framework governance.
 
-```
-后端:
-  backend/routers/v3_meta.py — /api/v3/formulas 接入 bc_absorbed FORMULA_DEFINITIONS
-  返回 59 个公式 (id + display_name + description + type)
+## Target Architecture
 
-前端:
-  v3/v3-page-formula-view.jsx — 渲染公式列表
-
-验证: curl /api/v3/formulas | jq length >= 59
-      浏览器打开公式视图能看到公式
-Owner: Claude (后端) + Codex (前端 review)
-```
-
-## M5: GCP 全量 Optuna 跑批 (0.5-1 天)
-
-```
-脚本: gcp/gcp_formula_optuna_batch.sh (不是 gcp_stability_retrain.sh)
-前提: grill_stamp + preflight_gcp_launch 7/7 PASS
-参数: 全量 4541+ stocks, tiered trials (100/60/30/1), walk-forward 70/30
-成本: ~$13 (34h), 预算 $35 够
-
-验证: 34 公式全 complete + score > 0 + 0 FAIL
-Owner: Claude (启动+监控)
-```
-
-## M6: data_audit 配置化 (0.5 天, SHOULD)
-
-```
-现状: 检查项硬编码在 data_audit.py
-目标: 检查项从 YAML 读 (config/data_audit_rules.yaml)
-改法: 新建 YAML, data_audit.py 读 YAML 定义检查项
-验证: 改 YAML 参数不改代码, 审计行为变化
-Owner: Codex
-```
-
-## M2: dim_all_ever_listed 清理 (0.5 天, SHOULD)
-
-```
-现状: 12 文件引用, 但无 runtime 阻塞 (get_active_universe 已不依赖)
-改法: 逐个替换为 K线查询或 dim_listing_status, 审计脚本保留
-验证: grep dim_all_ever_listed 只剩 schema/audit/build_dim 文件
-Owner: Codex
-```
-
-## S1-S4: 技术债 (独立, 不阻塞业务)
-
-| Task | 估时 | 内容 |
+| Layer | Responsibility | Truth source / owner |
 |---|---|---|
-| S1 updater.py 拆分 | 2d | 5136行→5模块 |
-| S2 data_quality.py 拆分 | 2d | 4276行→3模块 |
-| S3 compute.py 拆分 | 3d | 3303行→3模块 |
-| S4 paper_sim YAML 合并 | 1.5d | 16个→基础+覆盖 |
+| L0 Infrastructure | Calendar, K-line, configs, audits | K-line tradeability, calendar dates, YAML rules |
+| L1 Formula engine | Formula logic, parameters, search spaces | Formula modules plus `formula_*.yaml` / `optuna_config.yaml` |
+| L2 Signal and profile | Signal context, stock/institution/main-force profiles | PIT features, lineage, freshness evidence |
+| L3 Strategy execution | Universe, paper sim, costs, constraints, promotion | Preflight gates, paper sim config, excluded stocks |
+| L4 API/UI | Cockpit, stock file, monitor views | Backend contracts; UI never fabricates evidence |
 
-## 总时间
+## Execution Roadmap
 
-| 类别 | 估时 | 状态 |
+| Order | Priority | Slice | Acceptance |
+|---:|---|---|---|
+| 0 | P0 | Worktree and docs governance | `scripts/chunkyctl doctor --fast`, `scripts/chunkyctl docs --format markdown`, docs graph PASS, reviewed dirty buckets |
+| 1 | P0 | Universe and truth-source governance | `check_universe_filter.py --all` CLEAN; `dim_active_a_stock` only code/name/cache/schema |
+| 2 | P0 | Commit/review/test-tool gates | Rule 10 blocks staged `.py` without review; test-tool audit has current registry coverage |
+| 3 | P0/P1 | Data-source and lineage contract | Need/source config has grain, PIT key, freshness SLA, evidence status, production eligibility |
+| 4 | P0/P1 | Storage/artifact contract | Large payloads are summarized, normalized, or governed as artifacts; no recursive audit blobs |
+| 5 | P1 | Updater manager split | `updater.py` stays a thin supervisor; data modules own their own updates and evidence |
+| 6 | P1 | Complexity debt | No new HIGH; historical HIGHs ranked by hot path, gate impact, data size, and testability |
+| 7 | P1 | Freshness/PIT repair chain | Stale tables and PIT WARN/FAIL are fixed at first bad writer, not hidden by fallbacks |
+| 8 | P1/P2 | Post-governance strategy mainline | 主升浪猎手, BestChoice, 300616, and main paper sim follow validation gates |
+| 9 | P2/P3 | Profiles/API/frontend | Profile contracts and evidence states exist before UI redesign |
+
+## Updater Boundary
+
+The smart updater is a supervisor, not the worker for every domain.
+
+| Role | Owns | Does not own |
 |---|---|---|
-| M0 300616 公式 | 1d | 待做 |
-| M3 data_audit 集成 | 0.25d | 待做 |
-| M4 前端公式视图 | 0.5d | 待做 |
-| M5 GCP 全量跑批 | 0.5-1d | 待做 (含等待时间) |
-| M6 data_audit 配置化 | 0.5d | 待做 |
-| M2 dim清理 | 0.5d | 待做 |
-| **MUST 合计** | **3-3.5d** | |
-| S1-S4 技术债 | 8.5d | 后续排 |
+| Updater supervisor | DAG plan, dependencies, locks, stop/resume, StepResult aggregation, audit summaries | Pulling every source, computing every mart, deciding universe truth |
+| Data/calculation module | Source connection, writes, domain validation, watermark, returned evidence | Global scheduling, UI state, cross-domain gate bypass |
+| Audit module | Freshness, completeness, PIT, lineage, anomaly status | Directly mutating source data as a side effect |
 
-## 已完成 (本 session)
+This boundary is the criterion for any remaining `updater.py` split.
 
-- get_active_universe → K线优先 ✓
-- LIMIT_THRESHOLD → YAML ✓
-- tx_cost → config ✓
-- dim_all_ever_listed 573误标 → 修 ✓
-- universe_rules.yaml ✓
-- check_universe_filter lint CLEAN ✓
-- PROJECT_CONSTITUTION 9条 ✓
-- engineering-discipline skill ✓
-- data_audit.py 7项检查 ✓
-- 全部审计工具体系设计 ✓
+## Data And Product Roadmap
+
+| Order | Priority | Work | Gate |
+|---:|---|---|---|
+| 1 | P0 | Source coverage exact-sync, including tdxhub primary and akshare fallback where the need requires it | `audit_tdx_data_need_coverage.py` |
+| 2 | P0/P1 | Restore or replace stale main/super-large/large/medium/small order-flow data | PIT/freshness evidence before production use |
+| 3 | P1 | CYQ implementation prerequisites | Float-share history, K-line alignment, PIT disclosure dates, validation cases |
+| 4 | P1 | Stock, institution, and main-force profile contracts | `value`, `as_of_date`, `built_at`, `source_tables`, `freshness_status`, `evidence_status`, `lineage_ref` |
+| 5 | P2 | Stock file API | Unknown/proxy/stale states covered by contract tests |
+| 6 | P3 | Frontend redesign | Browser/smoke checks after backend contracts stabilize |
+
+## Strategy Mainline After Governance
+
+| Order | Work | Minimum validation |
+|---:|---|---|
+| 0 | 主升浪猎手 serious research | Reproduce data/code boundaries; PIT, cost, T+1, limit-up, overlap, walk-forward, paper sim, forward monitor |
+| 1 | BestChoice challenger | Freeze/hash/lineage, namespaced import, complementarity evidence |
+| 2 | 300616 original formula replay | God-view diagnosis separated from PIT-safe logic |
+| 3 | 300616 derived formulas | Non-empty search space and sample/board coverage |
+| 4 | Main project backtest/paper sim | `backtest_preflight` 8 checks plus realistic execution |
+| 5 | Candidate and holding monitor | Promotion only with current, non-proxy evidence; missing metrics remain `unknown` |
+
+## Required Gates
+
+| Situation | Required commands / checks |
+|---|---|
+| New session | Follow `chunkyctl_session_quickstart.md` |
+| Before a task | `scripts/chunkyctl preflight "<task>" path...` |
+| `.py` edits | CodeGraph query/context before; `codegraph sync .` and complexity scan after |
+| Test evidence | `audit_test_tool_health.py --scope <scope>` before citing tests |
+| Docs cleanup | `audit_docs_graph.py --format markdown` and `scripts/chunkyctl docs --format markdown` |
+| Backtest/Optuna/GCP | `backtest_preflight`, `plan_validator`, data audit, explicit GCP controlled-use plan |
+| Commit | `scripts/safe_commit.sh`; no raw `git commit` |
+
+## Acceptance Criteria
+
+| Area | Accept when |
+|---|---|
+| Docs | Active docs <=10, no unresolved live refs, no forbidden authority cycles, stale docs archived or deleted |
+| Worktree | Intentional slices are reviewed by bucket; unrelated dirty files are preserved |
+| CodeGraph | Index synced after edits; remaining pending `Added` files are explained by untracked indexable files |
+| Complexity | No new HIGH; historical debt has priority and owner |
+| Data | Critical freshness/PIT/source gaps are `PASS`, `blocked`, or explicit `unknown`; no silent fallback |
+| Strategy | Results come from current measured evidence, not in-sample/proxy/warn-only claims |
+| User handoff | `goal.md` records current FAIL/WARN, next action, and unresolved risk |
+
+## GCP
+
+This plan does not start GCP. Any future GCP action must state objective,
+command family, expected runtime/cost, input snapshot, output path,
+monitor/stop/rollback plan, and use:
+
+```bash
+CHUNKYMONKEY_GCP_EXPLICIT_OK=1
+```

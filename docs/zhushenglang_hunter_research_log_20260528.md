@@ -751,7 +751,7 @@ KPI:
 
 | 项 | 状态 |
 |---|---|
-| Spec 文档 | [docs/chip_distribution_cyq_spec.md](docs/chip_distribution_cyq_spec.md) (615 行完整) |
+| Spec 文档 | [docs/chip_distribution_cyq_spec.md](chip_distribution_cyq_spec.md) (615 行完整) |
 | 算法 prototype | /tmp/cyq_proto.py |
 | 5 例股票 sanity 测试 | 通过, 跟通达信对齐(获利比例/90% 区间/N 周期内成本精确匹配) |
 | 实际工程化 | 未实现 (services/chip_distribution.py 不存在) |
@@ -1081,10 +1081,10 @@ Regime gate:
 
 | 文件 | 状态 |
 |---|---|
-| [docs/chip_distribution_cyq_spec.md](docs/chip_distribution_cyq_spec.md) | 已存在(615 行 CYQ spec) |
-| [docs/zhushenglang_hunter_research_log_20260528.md](docs/zhushenglang_hunter_research_log_20260528.md) | **本文档** |
-| [CLAUDE.md §5](CLAUDE.md) | Optuna 治理规则 |
-| [CLAUDE.md §11.5](CLAUDE.md) | Skills 强制使用 |
+| [docs/chip_distribution_cyq_spec.md](chip_distribution_cyq_spec.md) | 已存在(615 行 CYQ spec) |
+| [docs/zhushenglang_hunter_research_log_20260528.md](zhushenglang_hunter_research_log_20260528.md) | **本文档** |
+| 当前 strategy validation contract | 当前 Optuna/GCP/回测/promotion 治理规则；以 docs map 指向的 active contract 为准 |
+| 当前 engineering governance contract | 当前 Codex skill、CodeGraph、complexity、删除和测试工具规则；以 docs map 指向的 active contract 为准 |
 
 ### Backfill 数据(已落入 production DB)
 
