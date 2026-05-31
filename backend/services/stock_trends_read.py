@@ -81,7 +81,7 @@ def load_stock_trends_payload(conn) -> dict:
                e.reason,
                e.created_at
         FROM excluded_stocks e
-        LEFT JOIN dim_active_a_stock d ON d.stock_code = e.stock_code
+        LEFT JOIN dim_active_a_stock d ON d.stock_code = e.stock_code  -- rule-compliance: ok evidence=code-to-name-mapping
         WHERE e.category = 'MANUAL'
         ORDER BY e.created_at DESC
         """

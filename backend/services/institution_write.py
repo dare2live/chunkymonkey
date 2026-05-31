@@ -107,7 +107,7 @@ def resolve_stock_name(conn, stock_code: str) -> str:
         SELECT COALESCE(
             (
                 SELECT NULLIF(d.stock_name, '')
-                FROM dim_active_a_stock d
+                FROM dim_active_a_stock d -- rule-compliance: ok evidence=code-to-name-mapping
                 WHERE d.stock_code = ?
                 LIMIT 1
             ),

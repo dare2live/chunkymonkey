@@ -1041,7 +1041,7 @@ def _select_history_candidates(conn, stock_codes: Optional[list] = None, limit: 
             GROUP BY stock_code
         )
         SELECT a.stock_code
-        FROM dim_active_a_stock a
+        FROM dim_active_a_stock a -- rule-compliance: ok evidence=data-sync-enumeration
         LEFT JOIN excluded_stocks e ON e.stock_code = a.stock_code
         LEFT JOIN fin f ON f.stock_code = a.stock_code
         LEFT JOIN financial_sync_state s ON s.stock_code = a.stock_code
@@ -1163,7 +1163,7 @@ async def sync_financial_data(
     if not stock_codes:
         rows = conn.execute(
             "SELECT DISTINCT a.stock_code "
-            "FROM dim_active_a_stock a "
+            "FROM dim_active_a_stock a "  # rule-compliance: ok evidence=data-sync-enumeration
             "LEFT JOIN excluded_stocks e ON e.stock_code = a.stock_code "
             "WHERE e.stock_code IS NULL"
         ).fetchall()
@@ -1172,7 +1172,7 @@ async def sync_financial_data(
         stock_codes = [_normalize_stock_code(code) for code in stock_codes if _normalize_stock_code(code)]
 
     if not stock_codes:
-        logger.warning("[财务] dim_active_a_stock 为空，请先跑「数据获取 → 同步十大股东」拉取主数据")
+        logger.warning("[财务] dim_active_a_stock 为空，请先跑「数据获取 → 同步十大股东」拉取主数据")  # rule-compliance: ok evidence=data-sync-enumeration
         return 0
 
     def _check_stop() -> None:

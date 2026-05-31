@@ -3,7 +3,7 @@
 
 职责：
 - 拉取当前可交易 A 股代码清单
-- 缓存到本地表 dim_active_a_stock
+- 缓存到本地表 dim_active_a_stock (rule-compliance: ok evidence=table-writer-itself)
 - 为更新链路提供统一的“有效股票宇宙”入口
 
 设计原则：
@@ -55,14 +55,14 @@ def _parse_iso(ts: str):
 
 def _load_cached_codes(conn) -> Set[str]:
     rows = conn.execute(
-        "SELECT stock_code FROM dim_active_a_stock WHERE stock_code IS NOT NULL"
+        "SELECT stock_code FROM dim_active_a_stock WHERE stock_code IS NOT NULL"  # rule-compliance: ok evidence=table-writer-itself
     ).fetchall()
     return {str(r["stock_code"]).strip() for r in rows if r["stock_code"]}
 
 
 def _cache_is_fresh(conn, max_age_hours: int = ACTIVE_STOCK_CACHE_HOURS) -> bool:
     row = conn.execute(
-        "SELECT COUNT(*) AS cnt, MAX(updated_at) AS latest FROM dim_active_a_stock"
+        "SELECT COUNT(*) AS cnt, MAX(updated_at) AS latest FROM dim_active_a_stock"  # rule-compliance: ok evidence=table-writer-itself
     ).fetchone()
     if not row or (row["cnt"] or 0) < ACTIVE_STOCK_MIN_ROWS or not row["latest"]:
         return False
@@ -98,10 +98,10 @@ def refresh_active_a_stock_master(conn) -> int:
 
     conn.execute("BEGIN TRANSACTION")
     try:
-        conn.execute("DELETE FROM dim_active_a_stock")
+        conn.execute("DELETE FROM dim_active_a_stock")  # rule-compliance: ok evidence=table-writer-itself
         conn.executemany(
             """
-            INSERT INTO dim_active_a_stock
+            INSERT INTO dim_active_a_stock -- rule-compliance: ok evidence=table-writer-itself
             (stock_code, stock_name, market, source, updated_at)
             VALUES (?, ?, ?, ?, ?)
             """,

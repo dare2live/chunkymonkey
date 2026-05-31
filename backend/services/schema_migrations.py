@@ -294,7 +294,7 @@ CREATE INDEX IF NOT EXISTS idx_model_feature_lineage_model ON mart_model_feature
 CREATE INDEX IF NOT EXISTS idx_data_deletion_run ON mart_data_deletion_record(deletion_run_id);
 CREATE INDEX IF NOT EXISTS idx_data_deletion_table ON mart_data_deletion_record(table_name, delete_scope);
 DROP TABLE IF EXISTS raw_fetch_batch;
-CREATE INDEX IF NOT EXISTS idx_daas_updated ON dim_active_a_stock(updated_at);
+CREATE INDEX IF NOT EXISTS idx_daas_updated ON dim_active_a_stock(updated_at); -- rule-compliance: ok evidence=schema-definition
 CREATE INDEX IF NOT EXISTS idx_tdx_industry_l1 ON dim_stock_tdx_industry(tdx_l1);
 CREATE INDEX IF NOT EXISTS idx_tdx_industry_l2 ON dim_stock_tdx_industry(tdx_l2);
 CREATE INDEX IF NOT EXISTS idx_tdx_industry_l3 ON dim_stock_tdx_industry(tdx_l3);

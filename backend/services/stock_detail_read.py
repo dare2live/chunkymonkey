@@ -56,7 +56,7 @@ def load_stock_name(conn, stock_code: str) -> str:
         SELECT COALESCE(
             (
                 SELECT NULLIF(stock_name, '')
-                FROM dim_active_a_stock
+                FROM dim_active_a_stock  -- rule-compliance: ok evidence=code-to-name-mapping
                 WHERE stock_code = ?
                 LIMIT 1
             ),

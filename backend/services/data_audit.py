@@ -117,7 +117,7 @@ def _load_audit_config() -> dict[str, Any]:
             "adjust": "qfq",
             "date_column": "date",
             "stock_code_column": "code",
-            "active_table": "dim_active_a_stock",
+            "active_table": "dim_active_a_stock",  # rule-compliance: ok evidence=audit-config-reference
             "active_code_column": "stock_code",
             "completeness_threshold": 0.0,
             "gap_max_days": 5,
@@ -148,7 +148,7 @@ def _load_audit_config() -> dict[str, Any]:
                     "kline_source_table": "market.price_kline_tdxhub",
                     "kline_stock_code_column": "code",
                     "universe_tables": [
-                        {"table": "dim_active_a_stock", "stock_code_column": "stock_code"},
+                        {"table": "dim_active_a_stock", "stock_code_column": "stock_code"},  # rule-compliance: ok evidence=audit-config-reference
                         {"table": "dim_all_ever_listed", "stock_code_column": "stock_code"},
                     ],
                 },
@@ -367,7 +367,7 @@ def _check_volume_sanity(conn: duckdb.DuckDBPyConnection) -> CheckResult:
     freq = _to_str(cfg.get("freq"), "daily")
     adjust = _to_str(cfg.get("adjust"), "qfq")
     code_col = _to_str(cfg.get("stock_code_column"), "code")
-    active_table = _to_str(cfg.get("active_table"), "dim_active_a_stock")
+    active_table = _to_str(cfg.get("active_table"), "dim_active_a_stock")  # rule-compliance: ok evidence=audit-config-reference
     active_code_col = _to_str(cfg.get("active_code_column"), "stock_code")
     neg = int(_scalar(conn, f"""
         SELECT COUNT(*)

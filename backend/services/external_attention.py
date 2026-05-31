@@ -279,7 +279,7 @@ def _call_akshare_records(func_name: str, *args, retries: int = 2, retry_wait: f
 
 def _load_stock_name_map(conn) -> dict[str, str]:
     rows = conn.execute(
-        "SELECT stock_code, stock_name FROM dim_active_a_stock WHERE stock_code IS NOT NULL"
+        "SELECT stock_code, stock_name FROM dim_active_a_stock WHERE stock_code IS NOT NULL"  # rule-compliance: ok evidence=code-to-name-mapping
     ).fetchall()
     mapping = {
         _normalize_stock_code(row["stock_code"]): _safe_text(row["stock_name"]) or ""

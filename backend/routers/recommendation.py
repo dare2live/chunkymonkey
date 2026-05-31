@@ -168,7 +168,7 @@ async def get_daily_topk(
         sql = f"""
             WITH name_ref AS (
                 SELECT stock_code, stock_name, 1 AS source_priority
-                  FROM dim_active_a_stock
+                  FROM dim_active_a_stock  -- rule-compliance: ok evidence=code-to-name-mapping
                  WHERE stock_name IS NOT NULL AND stock_name <> ''
                 UNION ALL
                 SELECT stock_code, stock_name, 2 AS source_priority

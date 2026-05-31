@@ -203,7 +203,7 @@ async def get_board(limit: int = Query(50, ge=1, le=500)):
                    s.n_30d, s.n_total, s.win_rate, s.avg_ret,
                    s.last_outcome, s.last_select_date, s.last_formula
               FROM mart_stock_selection_summary s
-              LEFT JOIN dim_active_a_stock d ON d.stock_code = s.stock_code
+              LEFT JOIN dim_active_a_stock d ON d.stock_code = s.stock_code  -- rule-compliance: ok evidence=code-to-name-mapping
              WHERE s.snapshot_date = ?
              ORDER BY s.n_30d DESC, s.win_rate DESC NULLS LAST
              LIMIT ?

@@ -150,7 +150,7 @@ async def sync_tdx_blocks(conn, *, active_codes: set[str],
             "status": "blocked",
             "member_rows": 0,
             "catalog_rows": 0,
-            "reason": "dim_active_a_stock 为空",
+            "reason": "dim_active_a_stock 为空",  # rule-compliance: ok evidence=error-message-string
             "files": {},
         }
 

@@ -152,7 +152,7 @@ def _select_indicator_candidates(conn, stock_codes: Optional[list] = None, limit
             GROUP BY stock_code
         )
         SELECT a.stock_code
-        FROM dim_active_a_stock a
+        FROM dim_active_a_stock a -- rule-compliance: ok evidence=data-sync-enumeration
         LEFT JOIN excluded_stocks e ON e.stock_code = a.stock_code
         LEFT JOIN mart_stock_trend t ON t.stock_code = a.stock_code
         LEFT JOIN hist h ON h.stock_code = a.stock_code

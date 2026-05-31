@@ -347,7 +347,7 @@ def sync_financial_history_200q(secucodes: list[str] | None = None, limit: int =
     if secucodes is None:
         try:
             rows = conn.execute(
-                "SELECT stock_code FROM dim_active_a_stock LIMIT ?",
+                "SELECT stock_code FROM dim_active_a_stock LIMIT ?",  # rule-compliance: ok evidence=data-sync-enumeration
                 [limit],
             ).fetchall()
             secucodes = []
@@ -360,7 +360,7 @@ def sync_financial_history_200q(secucodes: list[str] | None = None, limit: int =
                 elif code.startswith(("4", "8")):
                     secucodes.append(f"{code}.BJ")
         except Exception as exc:
-            logger.warning(f"[aif10/financial_history] dim_active_a_stock 读失败: {exc}")
+            logger.warning(f"[aif10/financial_history] dim_active_a_stock 读失败: {exc}")  # rule-compliance: ok evidence=data-sync-enumeration
             return {"capability": "financial_history_200q", "rows": 0, "error": str(exc)}
 
     conn.execute("""
