@@ -354,6 +354,50 @@ def test_router_load_industry_stat_map_batches_stats():
         conn.close()
 
 
+def test_router_build_profile_industry_summary_preserves_layer_b_and_sorting():
+    industry_map = {
+        "600001": {"tdx_l1_name": "电子", "tdx_l2_name": "半导体", "tdx_l3_name": "芯片设计"},
+        "600002": {"tdx_l1_name": "电子", "tdx_l2_name": "半导体", "tdx_l3_name": "封装测试"},
+        "600003": {"tdx_l1_name": "金融", "tdx_l2_name": "银行", "tdx_l3_name": "城商行"},
+        "600004": {"tdx_l1": "code-only", "tdx_l2": "ignored", "tdx_l3": "ignored"},
+    }
+    stat_map = {
+        ("level1", "电子"): {"avg_gain_30d": 8.5, "win_rate_30d": 66.0},
+        ("level2", "半导体"): {"avg_gain_30d": 10.2, "win_rate_30d": 70.0},
+    }
+    layer_b = {
+        "半导体": {
+            "stable_score": 81.0,
+            "verdict": "stable",
+            "train_n": 12,
+            "ho_n": 5,
+            "ho_sharpe": 1.2,
+            "entry_lag": 1,
+            "max_hold_days": 20,
+            "stop_loss": -0.08,
+            "take_profit": 0.18,
+        }
+    }
+
+    summary = institution_router._build_profile_industry_summary(
+        industry_map,
+        ["600003", "600001", "600002", "600004"],
+        stat_map,
+        layer_b,
+    )
+
+    assert [item["level1"] for item in summary] == ["电子", "金融"]
+    assert summary[0]["stock_count"] == 2
+    assert summary[0]["pct"] == pytest.approx(66.7)
+    assert summary[0]["avg_gain_30d"] == pytest.approx(8.5)
+    child = summary[0]["children"][0]
+    assert child["level2"] == "半导体"
+    assert child["win_rate_30d"] == pytest.approx(70.0)
+    assert [item["level3"] for item in child["children"]] == ["芯片设计", "封装测试"]
+    assert child["layer_b"]["verdict"] == "stable"
+    assert child["layer_b"]["rec_params"]["max_hold_days"] == 20
+
+
 def test_load_institution_returns_history_calculates_extremes():
     conn = duck_mem()
     conn.executescript(

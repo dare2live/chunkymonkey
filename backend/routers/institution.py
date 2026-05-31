@@ -6,6 +6,7 @@
 
 import logging
 import time
+from collections import Counter, defaultdict
 from datetime import datetime
 
 from fastapi import APIRouter, Query
@@ -77,6 +78,120 @@ def _load_industry_stat_map(conn, inst_id: str) -> dict[tuple[str, str], dict]:
         (row["industry_level"], row["industry_name"]): dict(row)
         for row in rows
     }
+
+
+def _industry_names_for_code(industry_map: dict, stock_code: str) -> tuple[str, str, str] | None:
+    industry = industry_map.get(stock_code)
+    if not industry:
+        return None
+    return (
+        industry.get("tdx_l1_name") or "",
+        industry.get("tdx_l2_name") or "",
+        industry.get("tdx_l3_name") or "",
+    )
+
+
+def _group_counter_by_parent(counter: Counter, parent_size: int) -> dict[tuple, list[tuple[str, int]]]:
+    grouped = defaultdict(list)
+    for key, count in counter.items():
+        grouped[key[:parent_size]].append((key[parent_size], count))
+    return {
+        parent: sorted(items, key=lambda item: -item[1])
+        for parent, items in grouped.items()
+    }
+
+
+def _layer_b_payload(row: dict) -> dict:
+    return {
+        "stable_score": row["stable_score"],
+        "verdict": row["verdict"],
+        "train_n": row["train_n"],
+        "ho_n": row["ho_n"],
+        "ho_sharpe": row["ho_sharpe"],
+        "rec_params": {
+            "entry_lag": row["entry_lag"],
+            "max_hold_days": row["max_hold_days"],
+            "stop_loss": row["stop_loss"],
+            "take_profit": row["take_profit"],
+        },
+    }
+
+
+def _build_l2_industry_item(
+    level2: str,
+    stock_count: int,
+    level3_items: list[tuple[str, int]],
+    stat_by_level_name: dict[tuple[str, str], dict],
+    layer_b_by_l2: dict[str, dict],
+) -> dict:
+    item = {
+        "level2": level2,
+        "stock_count": stock_count,
+        "children": [
+            {"level3": level3, "stock_count": count}
+            for level3, count in level3_items
+        ],
+    }
+    stat = stat_by_level_name.get(("level2", level2))
+    if stat:
+        item["avg_gain_30d"] = stat["avg_gain_30d"]
+        item["win_rate_30d"] = stat["win_rate_30d"]
+    layer_b = layer_b_by_l2.get(level2)
+    if layer_b:
+        item["layer_b"] = _layer_b_payload(layer_b)
+    return item
+
+
+def _build_profile_industry_summary(
+    industry_map: dict,
+    stock_codes: list[str],
+    stat_by_level_name: dict[tuple[str, str], dict],
+    layer_b_by_l2: dict[str, dict],
+) -> list[dict]:
+    level1_counts = Counter()
+    level2_counts = Counter()
+    level3_counts = Counter()
+    for stock_code in stock_codes:
+        names = _industry_names_for_code(industry_map, stock_code)
+        if not names:
+            continue
+        level1, level2, level3 = names
+        if not level1:
+            continue
+        level1_counts[level1] += 1
+        if level2:
+            level2_counts[(level1, level2)] += 1
+            if level3:
+                level3_counts[(level1, level2, level3)] += 1
+
+    total_with_industry = sum(level1_counts.values())
+    level1_items = sorted(level1_counts.items(), key=lambda item: -item[1])
+    level2_by_level1 = _group_counter_by_parent(level2_counts, 1)
+    level3_by_level2 = _group_counter_by_parent(level3_counts, 2)
+
+    summary = []
+    for level1, stock_count in level1_items:
+        item = {
+            "level1": level1,
+            "stock_count": stock_count,
+            "pct": round(stock_count / max(total_with_industry, 1) * 100, 1),
+            "children": [
+                _build_l2_industry_item(
+                    level2,
+                    level2_count,
+                    level3_by_level2.get((level1, level2), []),
+                    stat_by_level_name,
+                    layer_b_by_l2,
+                )
+                for level2, level2_count in level2_by_level1.get((level1,), [])
+            ],
+        }
+        stat = stat_by_level_name.get(("level1", level1))
+        if stat:
+            item["avg_gain_30d"] = stat["avg_gain_30d"]
+            item["win_rate_30d"] = stat["win_rate_30d"]
+        summary.append(item)
+    return summary
 
 
 # ============================================================
@@ -524,71 +639,15 @@ async def get_institution_detail(inst_id: str):
         ]
         layer_b_stable.sort(key=lambda r: (r.get("stable_score") or 0), reverse=True)
 
-        # 行业汇总（通过 industry resolver 批量加载）
         industry_summary = []
         stock_codes = [h["stock_code"] for h in result if h.get("event_type") != "exit"]
         if stock_codes:
-            from services.industry import load_industry_map
-            ind_map = load_industry_map(conn)
-            # 用 tdx_l1_name / tdx_l2_name / tdx_l3_name（中文行业名），
-            # 与 mart_institution_industry_stat.industry_name 和 L2 score l2_name 对齐
-            ind_rows = [
-                {"tdx_l1": ind_map[c].get("tdx_l1_name"),
-                 "tdx_l2": ind_map[c].get("tdx_l2_name"),
-                 "tdx_l3": ind_map[c].get("tdx_l3_name"), "stock_code": c}
-                for c in stock_codes if c in ind_map
-            ]
-            stat_by_level_name = _load_industry_stat_map(conn, inst_id)
-
-            # 按一级 → 二级 → 三级 聚合
-            from collections import defaultdict
-            tree = defaultdict(lambda: {"stocks": 0, "children": defaultdict(lambda: {"stocks": 0, "children": defaultdict(int)})})
-            for r in ind_rows:
-                l1, l2, l3 = r["tdx_l1"] or "", r["tdx_l2"] or "", r["tdx_l3"] or ""
-                if l1:
-                    tree[l1]["stocks"] += 1
-                    if l2:
-                        tree[l1]["children"][l2]["stocks"] += 1
-                        if l3:
-                            tree[l1]["children"][l2]["children"][l3] += 1
-
-            total_with_ind = len(ind_rows)
-            for l1, v1 in sorted(tree.items(), key=lambda x: -x[1]["stocks"]):
-                l1_data = {"level1": l1, "stock_count": v1["stocks"],
-                           "pct": round(v1["stocks"] / max(total_with_ind, 1) * 100, 1),
-                           "children": []}
-                for l2, v2 in sorted(v1["children"].items(), key=lambda x: -x[1]["stocks"]):
-                    l2_data = {"level2": l2, "stock_count": v2["stocks"], "children": []}
-                    for l3, cnt in sorted(v2["children"].items(), key=lambda x: -x[1]):
-                        l2_data["children"].append({"level3": l3, "stock_count": cnt})
-                    # 历史表现（如有）
-                    stat = stat_by_level_name.get(("level2", l2))
-                    if stat:
-                        l2_data["avg_gain_30d"] = stat["avg_gain_30d"]
-                        l2_data["win_rate_30d"] = stat["win_rate_30d"]
-                    # Layer B 评分（如有）
-                    lb = layer_b_by_l2.get(l2)
-                    if lb:
-                        l2_data["layer_b"] = {
-                            "stable_score": lb["stable_score"],
-                            "verdict": lb["verdict"],
-                            "train_n": lb["train_n"],
-                            "ho_n": lb["ho_n"],
-                            "ho_sharpe": lb["ho_sharpe"],
-                            "rec_params": {
-                                "entry_lag": lb["entry_lag"],
-                                "max_hold_days": lb["max_hold_days"],
-                                "stop_loss": lb["stop_loss"],
-                                "take_profit": lb["take_profit"],
-                            },
-                        }
-                    l1_data["children"].append(l2_data)
-                # 一级行业也查业绩
-                l1_stat = stat_by_level_name.get(("level1", l1))
-                if l1_stat:
-                    l1_data["avg_gain_30d"] = l1_stat["avg_gain_30d"]
-                    l1_data["win_rate_30d"] = l1_stat["win_rate_30d"]
-                industry_summary.append(l1_data)
+            industry_summary = _build_profile_industry_summary(
+                load_industry_map(conn),
+                stock_codes,
+                _load_industry_stat_map(conn, inst_id),
+                layer_b_by_l2,
+            )
 
         return {
             "ok": True, "data": result, "total": len(result),
@@ -710,7 +769,7 @@ async def get_stock_attention(stock_code: str):
     try:
         snapshot = get_latest_stock_attention(conn, stock_code)
         stock_meta = conn.execute(
-            "SELECT stock_name FROM dim_active_a_stock WHERE stock_code = ? LIMIT 1",
+            "SELECT stock_name FROM dim_active_a_stock WHERE stock_code = ? LIMIT 1",  # rule-compliance: ok evidence=code-to-name-mapping
             (stock_code,),
         ).fetchone()
         if not stock_meta:

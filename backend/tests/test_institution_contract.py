@@ -1,7 +1,6 @@
 import sys
 from pathlib import Path
 
-import pytest
 from fastapi.testclient import TestClient
 
 
@@ -10,32 +9,42 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from main import app
 import routers.institution as institution_router
 import services.holdings as holdings_service
-from services.db import get_conn
 
 
 client = TestClient(app)
 
 
-def _has_stage_tables():
-    """Step 5 任务 A：数据端点依赖 dim_stock_stage_latest，
-    空 DB（data/ 未 symlink）时这些表不存在，跳过测试避免误报。"""
-    conn = get_conn()
-    try:
-        row = conn.execute(
-            """
-            SELECT table_name
-              FROM information_schema.tables
-             WHERE table_name IN ('dim_stock_stage_latest','mart_stock_trend')
-            """
-        ).fetchall()
-        return len(row) >= 2
-    finally:
-        conn.close()
+def test_stock_scoring_breakdown_exposes_shared_stage_turtle_payloads(monkeypatch):
+    class _DummyConn:
+        def __init__(self):
+            self.closed = False
 
+        def execute(self, _sql, _params=None):
+            return self
 
-def test_stock_scoring_breakdown_exposes_shared_stage_turtle_payloads():
-    if not _has_stage_tables():
-        pytest.skip("dim_stock_stage_latest 不存在（空 DB）")
+        def fetchone(self):
+            return {
+                "stock_code": "603899",
+                "stock_name": "样本股票",
+                "path_state": "突破准备",
+                "generic_stage_raw": 68.0,
+                "stage_type_adjust_raw": 5.0,
+                "stage_reason": "阶段结构健康",
+                "turtle_execution_score": 72.0,
+                "turtle_breakout_score": 75.0,
+                "turtle_risk_score": 42.0,
+                "turtle_score_delta": 3.0,
+                "turtle_setup_state": "S1待突破",
+                "turtle_preferred_system": "20d",
+                "turtle_reason": "接近突破位",
+            }
+
+        def close(self):
+            self.closed = True
+
+    conn = _DummyConn()
+    monkeypatch.setattr(institution_router, "get_conn", lambda *args, **kwargs: conn)
+
     response = client.get("/api/inst/scoring/breakdown/stock/603899")
 
     assert response.status_code == 200
@@ -46,6 +55,7 @@ def test_stock_scoring_breakdown_exposes_shared_stage_turtle_payloads():
     assert payload["object_id"] == "603899"
     assert payload["stage"] is not None
     assert payload["turtle"] is not None
+    assert conn.closed is True
 
 
 def test_institution_search_route_preserves_service_payload(monkeypatch):
